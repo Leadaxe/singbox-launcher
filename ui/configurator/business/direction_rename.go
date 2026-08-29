@@ -115,7 +115,7 @@ func RenameDirection(model *wizardmodels.WizardModel, oldTag, newTag string) int
 	// бы висеть на несуществующей группе.
 	//
 	// Правки ровно две и обе canonical (SPEC 117): GlobalOutbounds и
-	// локальные Направления источников (Sources[i].Outbounds). Legacy-вид
+	// ссылки модели (хопы, detour, DNS). Legacy-вид
 	// model.ParserConfig — одноразовая проекция и здесь не трогается:
 	// четвёртой копии имени больше не существует.
 	renameIn := func(dirs []configtypes.Direction) {
@@ -137,10 +137,6 @@ func RenameDirection(model *wizardmodels.WizardModel, oldTag, newTag string) int
 		}
 	}
 	renameIn(model.GlobalOutbounds)
-	// Per-source группы тоже могут предлагать Направление опцией.
-	for i := range model.Sources {
-		renameIn(model.Sources[i].Outbounds)
-	}
 
 	// 2. Цели правил.
 	for _, rs := range model.CustomRules {
@@ -198,25 +194,46 @@ func RenameDirection(model *wizardmodels.WizardModel, oldTag, newTag string) int
 		}
 	}
 
-	// 5. Позиции цепочек: хоп может вести в Направление.
+	// 5. Позиции цепочек: хоп может вести в Направление. Ссылка корневого
+	// пространства (FolderID пуст) — единственная форма, которой это
+	// касается: хоп на узел папки адресуется её id и от переименования
+	// Направления не зависит.
 	for i := range model.Sources {
-		ch := model.Sources[i].Chain
-		if ch == nil {
-			continue
-		}
-		for j, hop := range ch.Hops {
-			switch hop {
+		hops := model.Sources[i].Hops
+		for j := range hops {
+			if hops[j].FolderID != "" {
+				continue
+			}
+			switch hops[j].Tag {
 			case oldTag:
-				ch.Hops[j] = newTag
+				hops[j].Tag = newTag
 				renamed++
 			case oldAuto:
-				ch.Hops[j] = newAuto
+				hops[j].Tag = newAuto
 				renamed++
 			}
 		}
 	}
 
-	// 6. detour DNS-серверов.
+	// 6. Ссылки detour источников: цель дозвона тоже может быть
+	// Направлением, и после переименования она повисла бы — на сборке это
+	// fail-closed, то есть источник молча выпал бы из конфига.
+	for i := range model.Sources {
+		link := model.Sources[i].Detour
+		if link == nil || link.FolderID != "" {
+			continue
+		}
+		switch link.Tag {
+		case oldTag:
+			link.Tag = newTag
+			renamed++
+		case oldAuto:
+			link.Tag = newAuto
+			renamed++
+		}
+	}
+
+	// 7. detour DNS-серверов.
 	renamed += renameDNSDetour(model, oldTag, newTag, oldAuto, newAuto)
 
 	return renamed

@@ -100,10 +100,11 @@ type State struct {
 	// Было Connections.Outbounds.
 	Directions []configtypes.Direction
 
-	// Defaults — TEMPORARY BRIDGE (SPEC 118 W1-W4), удаляется в W5:
-	// глобальные умолчания подключений до переезда в настройки приложения
-	// (миграция W2, шаг 8). Было Connections.Defaults; в v7-файле — мостовой
-	// ключ `legacy_defaults`.
+	// Defaults — умолчания подключений, ПРОЧИТАННЫЕ из легаси-состояния
+	// (v2–v6) и живущие ровно до шага 8 миграции, который перекладывает их в
+	// настройки приложения (bin/settings.json). В каноне v7 умолчаний в
+	// состоянии нет (SPEC Т1): Save их не пишет, v7-файл их не несёт, и
+	// прод-код читает умолчания только из настроек.
 	Defaults Defaults
 
 	// === Common (template / rules) ===

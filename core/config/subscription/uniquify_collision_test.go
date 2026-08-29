@@ -3,7 +3,6 @@ package subscription
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"singbox-launcher/core/config/configtypes"
 )
@@ -100,17 +99,7 @@ func TestSubscriptionXX2XKeepsIdentitiesDistinct(t *testing.T) {
 		}
 	}
 
-	// Отметка на настоящем X-2 гасит только его.
-	off := loadFromInlineBody(t, body, configtypes.ProxySource{
-		DisabledNodes: map[string]int64{"X-2": time.Now().Unix()},
-	})
-	if len(off.Nodes) != 2 {
-		t.Fatalf("отметка на X-2 погасила %d узлов из 3, ожидался ровно один",
-			3-len(off.Nodes))
-	}
-	for _, n := range off.Nodes {
-		if n.Server == "two.com" {
-			t.Fatal("выключенным оказался не тот узел")
-		}
-	}
+	// Отметки выключения парсер больше не знает (SPEC 118 W5): роль карты
+	// перешла к node.enabled канона, а отбор выключенных — к эмиссии
+	// (config.EmitCanonicalSource). Проверка отбора живёт там.
 }

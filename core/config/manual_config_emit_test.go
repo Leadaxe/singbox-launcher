@@ -34,8 +34,6 @@ func TestManualConfigJSON_UnknownTypeAndFieldsSurvive(t *testing.T) {
 		// URI намеренно мусорный: при заданном config_json он игнорируется —
 		// протокол может вообще не иметь URI-схемы.
 		Connections: []string{"someproto://not-parseable"},
-		TagMask:     "my-node",
-		DetourTag:   "warp-out",
 		ConfigJSON: json.RawMessage(`{
 			"type": "someproto",
 			"tag": "hand-written",
@@ -54,8 +52,12 @@ func TestManualConfigJSON_UnknownTypeAndFieldsSurvive(t *testing.T) {
 	if !node.EmitRaw {
 		t.Error("manual node must carry EmitRaw")
 	}
-	if node.Tag != "my-node" {
-		t.Errorf("tag must be restamped by TagMask: got %q", node.Tag)
+	// SPEC 118 W5: тег и detour узла — поля МОДЕЛИ, а не парсера; их
+	// штампует эмиссия канона. Здесь проверяется только сохранность тела.
+	node.Tag = "my-node"
+	if node.Outbound != nil {
+		node.Outbound["tag"] = "my-node"
+		node.Outbound["detour"] = "warp-out"
 	}
 
 	outJSONs, epJSON, err := EmitNodeJSONs(node)
@@ -97,7 +99,6 @@ func TestManualConfigJSON_UnknownTypeAndFieldsSurvive(t *testing.T) {
 
 func TestManualConfigJSON_WireguardGoesToEndpoints(t *testing.T) {
 	ps := configtypes.ProxySource{
-		TagMask: "wg-manual",
 		ConfigJSON: json.RawMessage(`{
 			"type": "wireguard",
 			"address": ["10.2.0.2/32"],
@@ -109,6 +110,10 @@ func TestManualConfigJSON_WireguardGoesToEndpoints(t *testing.T) {
 	nodes := manualLoadNodes(t, ps)
 	if len(nodes) != 1 {
 		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+	nodes[0].Tag = "wg-manual"
+	if nodes[0].Outbound != nil {
+		nodes[0].Outbound["tag"] = "wg-manual"
 	}
 	outJSONs, epJSON, err := EmitNodeJSONs(nodes[0])
 	if err != nil {

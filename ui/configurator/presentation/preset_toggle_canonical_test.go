@@ -81,10 +81,6 @@ func TestPresetToggle_SingleCanonicalWriteAndIdempotent(t *testing.T) {
 	if got := countGlobalTag(m, presetAddedTag); got != 1 {
 		t.Fatalf("после toggle записей %q в GlobalOutbounds: %d, ожидалась ровно 1", presetAddedTag, got)
 	}
-	// Единственность записи: у источника локальных копий не появилось.
-	if len(m.Sources[0].Outbounds) != 0 {
-		t.Fatalf("toggle затронул локальные Outbounds источника: %+v", m.Sources[0].Outbounds)
-	}
 
 	// Идемпотентность: повторный вызов не плодит дублей.
 	globalsBefore := len(m.GlobalOutbounds)

@@ -303,17 +303,18 @@ func TestCanonical_LoadSaveLoadSave_ByteIdentical(t *testing.T) {
 	}
 }
 
-// TestCanonical_V6StructuralTransfer_RoundtripStable — SPEC 118 W1: загрузка
-// v6-состояния (структурный перенос, без семантической миграции) даёт
-// стабильный v7-roundtrip: Save(p1) → Load(p1) → Save(p2), p1 == p2. Легаси-
-// поля (fold, disabled_nodes, тройня, локальные outbounds, defaults) не
-// теряются — они едут в мостовых деривативах TEMPORARY BRIDGE до волны W2.
+// TestCanonical_V6StructuralTransfer_RoundtripStable — загрузка v6-состояния
+// даёт стабильный v7-roundtrip: Save(p1) → Load(p1) → Save(p2), p1 == p2.
+//
+// SPEC 118 W5: легаси-полей в типе больше нет — миграция перевела их в канон
+// (свёртка → replace, отметки → node.enabled, тройня → NodeLink), а defaults
+// переехали в настройки приложения. Проверяем именно КАНОН.
 func TestCanonical_V6StructuralTransfer_RoundtripStable(t *testing.T) {
 	dir := t.TempDir()
 	p1 := filepath.Join(dir, "p1.json")
 	p2 := filepath.Join(dir, "p2.json")
 
-	s1, err := Load(v6RoundtripFixture)
+	s1, err := Load(legacyFixtureCopy(t, v6RoundtripFixture))
 	if err != nil {
 		t.Fatalf("Load v6 fixture: %v", err)
 	}
@@ -346,11 +347,11 @@ func TestCanonical_V6StructuralTransfer_RoundtripStable(t *testing.T) {
 	if sub == nil {
 		t.Fatal("подписка не доехала до v7-формы")
 	}
-	if sub.Fold == nil || len(sub.DisabledNodes) != 2 || sub.TagPolicy == nil || len(sub.Outbounds) != 1 {
-		t.Errorf("легаси-поля подписки потеряны структурным переносом: %+v", sub)
+	if sub.Replace == nil {
+		t.Errorf("свёртка подписки не переехала в замену: %+v", sub)
 	}
-	if s2.Defaults.Reload != "4h" {
-		t.Errorf("defaults не доехали: %+v", s2.Defaults)
+	if sub.TagPolicy == nil {
+		t.Errorf("тег-политика подписки потеряна: %+v", sub)
 	}
 }
 

@@ -9,7 +9,6 @@ package tabs
 import (
 	"testing"
 
-	"singbox-launcher/core/config/configtypes"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -17,11 +16,11 @@ import (
 // ссылок при переименовании.
 func TestChainReferencedBy(t *testing.T) {
 	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{
-		{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindChain}, NodeTag: "inner",
-			Chain: &configtypes.SourceChain{Hops: []string{"a", "b"}}},
-		{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindChain}, NodeTag: "outer",
-			Chain: &configtypes.SourceChain{Hops: []string{"inner", "c"}}},
-		{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindServer}, NodeTag: "srv"},
+		{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindChain, Tag: "inner",
+			Hops: []wizardmodels.NodeLink{{Tag: "a"}, {Tag: "b"}}}},
+		{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindChain, Tag: "outer",
+			Hops: []wizardmodels.NodeLink{{Tag: "inner"}, {Tag: "c"}}}},
+		{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindServer, Tag: "srv"}},
 	}}
 
 	got := chainReferencedBy(m)

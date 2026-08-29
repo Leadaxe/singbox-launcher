@@ -59,7 +59,15 @@ func renderUnpackedNodes(nodes []*config.ParsedNode) (string, string) {
 	}
 	doc := unpackedDoc{}
 	emitted := 0
+	truncated := false
 	for _, node := range nodes {
+		if emitted >= previewNodeCap {
+			// Обрезаем ВЫВОД, а не состав: узлы все на месте, но
+			// MultiLineEntry без виртуализации подвешивает окно на
+			// полутысяче outbound'ов (fyne-io/fyne#2935).
+			truncated = true
+			break
+		}
 		outJSONs, epJSON, err := config.EmitNodeJSONs(node)
 		if err != nil {
 			continue
@@ -78,8 +86,8 @@ func renderUnpackedNodes(nodes []*config.ParsedNode) (string, string) {
 	if err != nil {
 		return "", err.Error()
 	}
-	status := locale.Tf("Unpacked nodes: %d", emitted)
-	if emitted >= previewNodeCap {
+	status := locale.Tf("Unpacked nodes: %d", len(nodes))
+	if truncated {
 		status += " " + locale.Tf("(showing first %d)", previewNodeCap)
 	}
 	return string(b), status

@@ -241,3 +241,27 @@ func autoStrategyFromGroupOptions(outbound map[string]interface{}) configtypes.D
 	}
 	return auto
 }
+
+// ServerNodeMaterial — тело узла-сервера и его происхождение.
+type ServerNodeMaterial struct {
+	// Body — готовый sing-box outbound, чист от tag/detour.
+	Body json.RawMessage
+	// OriginKind / OriginRaw — происхождение записи (state.OriginKind*).
+	OriginKind string
+	OriginRaw  string
+}
+
+// MaterializeServerNode — ЕДИНСТВЕННАЯ точка превращения «share-URI или
+// ручной JSON» в тело узла v7 (SPEC 118 Т2).
+//
+// Одна и та же функция обслуживает миграцию, добавление источника в UI и
+// «Regen from raw»: второй реализацией они разъехались бы на первой же
+// правке эмиттера — ровно тот класс расхождений, из-за которого
+// emitter-parser-pairing уже стоил трёх схем.
+func MaterializeServerNode(uri string, configJSON json.RawMessage) (*ServerNodeMaterial, error) {
+	res, err := materializeServerForMigration(state.MigrationServerRequest{URI: uri, ConfigJSON: configJSON})
+	if err != nil {
+		return nil, err
+	}
+	return &ServerNodeMaterial{Body: res.Body, OriginKind: res.OriginKind, OriginRaw: res.OriginRaw}, nil
+}

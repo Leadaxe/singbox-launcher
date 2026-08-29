@@ -260,9 +260,5 @@
       "client_v6": "fd00::2",
       "created_at": "2026-08-01T00:00:00Z"
     }
-  },
-  "legacy_defaults": {
-    "reload": "4h",
-    "max_nodes": 3000
   }
 }

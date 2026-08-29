@@ -5,7 +5,7 @@ package core
 // «Снять эталон ТЕКУЩИМ движком, пока старый движок жив»: тест прогоняет
 // v6-состояние с raw-кэшем (SPECS/118-F-N-STATE_V7/etalon/v6mig/) через
 // СЕГОДНЯШНИЙ конвейер raw-кэш → парсер → эмиссия outbound'ов
-// (buildSnapshotFromRawCache) и сверяет байт-в-байт с зафиксированным
+// (buildSnapshotFromState) и сверяет байт-в-байт с зафиксированным
 // снимком outbounds.snapshot.json.
 //
 // Почему снимок эмиссии, а не целый config.json: SPEC 118 меняет ровно слой
@@ -78,9 +78,9 @@ func TestEtalonV6MigOutboundSnapshot(t *testing.T) {
 
 	// Явный no-op-substituter: эталон не должен зависеть от шаблона на диске.
 	noSubst := func(name string) (interface{}, bool) { return nil, false }
-	cache, _, err := buildSnapshotFromRawCache(s, execDir, noSubst, nil)
+	cache, _, err := buildSnapshotFromState(s, execDir, noSubst, nil)
 	if err != nil {
-		t.Fatalf("buildSnapshotFromRawCache: %v", err)
+		t.Fatalf("buildSnapshotFromState: %v", err)
 	}
 
 	snap := struct {

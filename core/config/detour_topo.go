@@ -35,7 +35,6 @@ package config
 
 import (
 	"fmt"
-	"strings"
 )
 
 // detourEdge — единственная исходящая node-ссылка источника: индекс
@@ -141,13 +140,4 @@ func detourCascadeReason(hopName, targetSourceName string) string {
 func detourCycleReason(selfName, targetName string) string {
 	return fmt.Sprintf("циклическая ссылка: %q ходит через %q, и по цепочке переходов трафик возвращается к %q",
 		selfName, targetName, selfName)
-}
-
-// detourHopDisplayName — как зовут хоп в тексте причины: identity-тег ссылки,
-// за ним подпись, снятая пикером в момент выбора.
-func detourHopDisplayName(ps ProxySource) string {
-	if s := strings.TrimSpace(ps.DetourNodeTag); s != "" {
-		return s
-	}
-	return strings.TrimSpace(ps.DetourNodeLabel)
 }

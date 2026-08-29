@@ -72,7 +72,7 @@ func (p *WizardPresenter) MarkAsSaved() {
 // CreateStateFromModel создает state.State из текущей модели.
 //
 // SPEC 117 (W4): пишет ТОЛЬКО canonical — Connections (model.Sources,
-// model.GlobalOutbounds, model.Defaults) + остальные секции. Legacy-проекция
+// model.GlobalOutbounds) + остальные секции. Legacy-проекция
 // state.ParserConfig здесь не заполняется: она наполняется исключительно на
 // Load (syncLegacyFromConnections), а Save её не читает.
 func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels.WizardStateFile {
@@ -99,7 +99,6 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	} else {
 		state.Directions = []configtypes.Direction{}
 	}
-	state.Defaults = p.model.Defaults
 	state.WarpAccounts = p.model.WarpAccounts
 
 	// Извлекаем config_params из модели

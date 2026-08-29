@@ -118,65 +118,6 @@ func MergeSubscriptionNodes(sub *Source, res *SubFetchMaterial, trusted bool) (b
 		sub.PendingDisabled = remaining
 	}
 
-	syncLegacyDisabledMap(sub, freshTags, res.Truncated)
-
 	after, _ := json.Marshal(sub.Nodes)
 	return !bytes.Equal(before, after), warns
-}
-
-// syncLegacyDisabledMap — TEMPORARY BRIDGE (SPEC 118 W3-W4), удаляется в W5:
-// мостовая карта DisabledNodes обязана согласоваться с каноном node.enabled,
-// иначе legacy-путь сборки (adapter_source → filterDisabledNodes) выключал бы
-// узлы, которые канон считает включёнными, и наоборот. Правила:
-//
-//   - сначала ВТЯГИВАНИЕ (фикс ревью W3, блокер 1): легаси-запись по
-//     существующему узлу опускает канонический enabled в false. Направление
-//     «пользовательская правка любым путём побеждает»: отметки, записанные
-//     только в карту (старые state.json, легаси-пути UI), не должны молча
-//     откатываться merge'ем, который до этого читал один канон;
-//   - затем узел с enabled=false → запись (прежний timestamp, если был;
-//     иначе «сейчас» — чтобы легаси-TTL её не съел до W5);
-//   - узел с enabled=true и без записи в карте — записи нет;
-//   - ключ без узла: при truncated сохраняется (узел мог жить за капом),
-//     без truncated — выбрасывается (та же семантика, что у прежнего
-//     GCDisabledNodes: чистка только на пути достоверного обновления).
-func syncLegacyDisabledMap(sub *Source, freshTags map[string]bool, truncated bool) {
-	// Шаг 1 — втягивание map→enabled: отметка выключения по живому узлу
-	// побеждает канон. Обратного направления нет намеренно: «в карте нет
-	// записи» не отличает «пользователь включил» от «канон и так выключен,
-	// а карту никто не писал», поэтому включение доезжает только каноном
-	// (setNodeEnabled с фикса блокера 1 пишет оба представления).
-	for i := range sub.Nodes {
-		if _, off := sub.DisabledNodes[sub.Nodes[i].Tag]; off {
-			sub.Nodes[i].Enabled = false
-		}
-	}
-
-	rewritten := make(map[string]int64)
-	for i := range sub.Nodes {
-		n := &sub.Nodes[i]
-		if n.Enabled {
-			continue
-		}
-		ts := sub.DisabledNodes[n.Tag]
-		if ts == 0 {
-			ts = nowUnixForBridge()
-		}
-		rewritten[n.Tag] = ts
-	}
-	if truncated {
-		for k, v := range sub.DisabledNodes {
-			if freshTags[k] {
-				continue // канон уже решил судьбу этого тега выше
-			}
-			if _, ok := rewritten[k]; !ok {
-				rewritten[k] = v
-			}
-		}
-	}
-	if len(rewritten) == 0 {
-		sub.DisabledNodes = nil
-		return
-	}
-	sub.DisabledNodes = rewritten
 }

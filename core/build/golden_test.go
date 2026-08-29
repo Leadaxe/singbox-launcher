@@ -44,12 +44,16 @@ var nodeCommentRegex = regexp.MustCompile(`(?m)^[ \t]*//[^\n]*\n`)
 // Папки без всех четырёх обязательных файлов **пропускаются** — это даёт
 // возможность сначала закоммитить структуру и постепенно добавлять кейсы.
 //
-// **Префикс `real-` = work-in-progress.** Сценарии, начинающиеся с `real-`,
-// захвачены с реальной установки и тестируют полный путь BuildTemplateConfig
-// (initial build), который ещё не портирован в core/build (фаза 5.3 SPEC 045).
-// По умолчанию они **пропускаются**, чтобы основной `go test ./core/build`
-// был зелёный. Чтобы прогнать их — `GOLDEN_RUN_REAL=1 go test ./core/build`.
-// Каждый зелёный real-сценарий = пройденный milestone порта.
+// **Префикс `real-` = сценарий, захваченный с реальной установки.** Такие
+// сценарии прогоняются наравне со всеми — переменной `GOLDEN_RUN_REAL`
+// больше нет. Раньше они пропускались по умолчанию: сначала как
+// непортированный путь (SPEC 045), затем — на время вердикта O3 SPEC 118
+// по расхождениям секции dns. Оба повода исчерпаны: раннер приведён к
+// прод-пути, Р-DNS-2 (снятая живая `rule_set`-ссылка) починен в
+// `CollectEmittedRouteRuleSetTags`, Р-DNS-1 (порядок `dns.servers`) принят
+// капитаном и снят перезафиксацией `expected.config.json` честным выхлопом.
+// Сравнение — строгое, байт-в-байт (с одними лишь нормализациями
+// timestamp'а и косметических комментариев, см. normalizeParserTimestamp).
 //
 // Префикс `marker-fill-` = синтетический под-компонентный тест
 // (substitute vars + populate-existing-markers); проходит всегда.
@@ -71,11 +75,6 @@ func TestGoldenScenarios(t *testing.T) {
 			if !scenarioComplete(dir) {
 				skipped++
 				t.Skipf("scenario %s incomplete (need template.json / state.json / cache.json / expected.config.json)", name)
-				return
-			}
-			if strings.HasPrefix(name, "real-") && os.Getenv("GOLDEN_RUN_REAL") != "1" {
-				skipped++
-				t.Skipf("real-* scenario skipped (set GOLDEN_RUN_REAL=1 to enable WIP regression tracking for SPEC 045 phase 5.3 port)")
 				return
 			}
 			runGoldenScenario(t, dir)
@@ -167,6 +166,8 @@ func runGoldenScenario(t *testing.T, dir string) {
 		ForPreview: false,
 		DNS:        dnsCfg,
 		Route:      routeCfg,
+		Target:     TargetSpecFromState(s),
+		Preset:     presetContextFromState(s, td),
 	}
 
 	res, err := BuildConfig(ctx)
@@ -220,15 +221,29 @@ func parseGoldenTemplate(raw []byte) (*template.TemplateData, error) {
 		Config       json.RawMessage          `json:"config"`
 		Params       []template.TemplateParam `json:"params"`
 		Vars         []template.TemplateVar   `json:"vars"`
+		DNSOptions   json.RawMessage          `json:"dns_options"`
+		Presets      json.RawMessage          `json:"presets"`
 	}
 	if err := json.Unmarshal(raw, &root); err != nil {
 		return nil, err
 	}
 	td := &template.TemplateData{
-		RawConfig:   root.Config,
-		RawTemplate: raw,
-		Params:      root.Params,
-		Vars:        root.Vars,
+		RawConfig:     root.Config,
+		RawTemplate:   raw,
+		Params:        root.Params,
+		Vars:          root.Vars,
+		DNSOptionsRaw: root.DNSOptions,
+	}
+	if len(root.Presets) > 0 {
+		globalVarNames := make(map[string]bool, len(root.Vars))
+		for _, v := range root.Vars {
+			globalVarNames[v.Name] = true
+		}
+		// Платформенная фильтрация пресетов (`filterPresetsByPlatform`)
+		// приватна в template и в golden-фикстурах предмета не имеет —
+		// сценарии её не используют. Появится фикстура с per-platform
+		// пресетами — фильтр придётся экспортировать.
+		td.Presets, _ = template.LoadPresets(root.Presets, globalVarNames)
 	}
 	if len(root.ParserConfig) > 0 {
 		td.ParserConfig = `{"ParserConfig":` + string(root.ParserConfig) + `}`
@@ -300,9 +315,19 @@ func stateVarsToMap(s *state.State) map[string]string {
 
 // dnsConfigFromState — извлекает DNS-related поля из state в DNSConfig.
 //
-// state.DNSOptions хранит servers / rules; final / strategy исторически
-// живут как `dns_*` записи в state.Vars (ApplyDNSVarsFromSettingsToModel
-// в wizard читает их при load). Соответственно — берём оба источника.
+// Зеркало прод-функции `core.dnsConfigForUpdate` (config_service_context.go):
+// раздвоение путей обязано быть здесь тем же, что в бою, иначе golden
+// проверяет не тот конвейер, что собирает конфиг пользователю.
+//
+//   - v6/v7-состояние (есть rules[] или dns_options.servers/rules) — отсюда
+//     берутся только скаляры; servers/rules эмитятся через
+//     `MergePresetsIntoDNS` из `ctx.Preset.DNS`;
+//   - чистое v5 — `state.DNSOptions` единственный источник, читаем
+//     servers/RulesText напрямую.
+//
+// SPEC 118 W8: до перезафиксации golden-снимка в v7-форму фикстура была v4,
+// и парс наполнял легаси-зеркало `s.DNSOptions`; у v7-файла оно nil по
+// построению (см. load_v6.go), и старая ветка молча отдавала пустой DNS.
 //
 // `RulesText` reconstructируется как JSON-объект {"rules": [...]} для парсера
 // в MergeDNSSection.
@@ -314,7 +339,12 @@ func dnsConfigFromState(s *state.State) DNSConfig {
 		return DNSConfig{}
 	}
 	cfg := DNSConfig{}
-	if s.DNSOptions != nil {
+
+	v6Active := len(s.Rules) > 0 || len(s.DNS.Servers) > 0 || len(s.DNS.Rules) > 0
+	if v6Active {
+		cfg.Final = s.DNS.Final
+		cfg.Strategy = s.DNS.Strategy
+	} else if s.DNSOptions != nil {
 		d := s.DNSOptions
 		cfg.Servers = d.Servers
 		cfg.Final = d.Final
@@ -338,6 +368,46 @@ func dnsConfigFromState(s *state.State) DNSConfig {
 	return cfg
 }
 
+// presetContextFromState — зеркало прод-сборки `ctx.Preset`
+// (core.buildContextFromState). Без него v6/v7-путь эмиссии DNS и route
+// молчит: servers/rules живут в state.DNS/state.Rules и идут в конфиг
+// только через MergePresetsInto{DNS,Route}.
+//
+// ExecDir/SrsCachedPaths пусты: golden-сценарии не резолвят .srs-файлы с
+// диска (кэш rule-set'ов — не предмет byte-эквивалентности сборки).
+func presetContextFromState(s *state.State, td *template.TemplateData) PresetMergeContext {
+	ctx := PresetMergeContext{
+		Target:              TargetSpecFromState(s),
+		TemplateDNSDefaults: parseGoldenTemplateDNSDefaults(td),
+	}
+	if td != nil {
+		ctx.Presets = td.Presets
+		ctx.TemplateVars = td.Vars
+	}
+	if s != nil {
+		ctx.Rules = s.Rules
+		ctx.DNS = s.DNS
+		ctx.GlobalVars = stateVarsToMap(s)
+	}
+	return ctx
+}
+
+// parseGoldenTemplateDNSDefaults — порт `core.parseTemplateDNSDefaultsFromTD`:
+// dns_options.servers[] шаблона → DNS-библиотека для MergePresetsIntoDNS.
+// Без неё пользовательский override на шаблонный сервер не находит носителя.
+func parseGoldenTemplateDNSDefaults(td *template.TemplateData) []TemplateDNSServer {
+	if td == nil || len(td.DNSOptionsRaw) == 0 {
+		return nil
+	}
+	var dnsOpt struct {
+		Servers []json.RawMessage `json:"servers"`
+	}
+	if err := json.Unmarshal(td.DNSOptionsRaw, &dnsOpt); err != nil {
+		return nil
+	}
+	return ParseTemplateDNSDefaults(dnsOpt.Servers)
+}
+
 // routeConfigFromState — извлекает custom rules + final outbound из state
 // в RouteConfig. Соответствует тому, что wizard передаёт в MergeRouteSection
 // (model.CustomRules + model.SelectedFinalOutbound).
@@ -347,6 +417,12 @@ func dnsConfigFromState(s *state.State) DNSConfig {
 // источников. Для golden-парности оставим пустым (template fallback).
 func routeConfigFromState(s *state.State) RouteConfig {
 	if s == nil {
+		return RouteConfig{}
+	}
+	// Зеркало `core.routeConfigForUpdate`: при непустом state.Rules весь emit
+	// берёт на себя MergePresetsIntoRoute — легаси-CustomRules пропускаются,
+	// иначе каждое правило попало бы в route.rules[] дважды.
+	if len(s.Rules) > 0 {
 		return RouteConfig{}
 	}
 	rules := make([]RouteRule, 0, len(s.CustomRules))

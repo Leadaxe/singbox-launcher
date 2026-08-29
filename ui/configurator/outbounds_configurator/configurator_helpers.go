@@ -4,7 +4,7 @@
 // builder stays in configurator.go.
 //
 // SPEC 117: пакет работает НАПРЯМУЮ на canonical-модели
-// (model.GlobalOutbounds / model.Sources[i].Outbounds) — legacy-проекция
+// (model.GlobalOutbounds) — legacy-проекция
 // ParserConfig здесь больше не читается и не пишется.
 package outbounds_configurator
 
@@ -70,7 +70,7 @@ func collectRows(outbounds []config.Direction, presetTagToLabel map[string]strin
 	// её вкладке «Группа», а в списке Направлений выглядели чужеродно и
 	// требовали отдельного заголовка секции, чтобы список не читался одной
 	// кучей. Свёрнутые подписки вообще не хранят групп в состоянии — они
-	// разворачиваются на сборке (config.PrepareSourceFolds).
+	// разворачиваются на сборке (config.PrepareFolderReplaces).
 	var rows []outboundRow
 	for i := range outbounds {
 		ob := &outbounds[i]
@@ -233,14 +233,6 @@ func collectAllTags(model *wizardmodels.WizardModel) []string {
 		return nil
 	}
 	var tags []string
-	for si := range model.Sources {
-		if !model.Sources[si].Enabled {
-			continue
-		}
-		for i := range model.Sources[si].Outbounds {
-			tags = append(tags, model.Sources[si].Outbounds[i].Tag)
-		}
-	}
 	for i := range model.GlobalOutbounds {
 		tags = append(tags, model.GlobalOutbounds[i].Tag)
 	}

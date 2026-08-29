@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"image/color"
 	"strings"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -21,11 +20,8 @@ import (
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
-	"singbox-launcher/core/config/subscription"
-	"singbox-launcher/core/state"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
-	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -35,13 +31,8 @@ import (
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
 	sourceDetourHintText         = "Dial this source's nodes through another outbound to build a proxy chain. Group tags chain through a selector; » entries chain through one concrete server, tracked by that server and its node tag — editing the server's settings or tag prefix keeps the link, renaming its node tag clears it."
-	sourcePreviewNoCacheHintText = "Disabled subscriptions are not auto-fetched, so there is no cached body to preview. Click below to fetch this subscription once without enabling it."
-	sourceTagVarsHintText        = "Variables (work in all three fields): {$tag} original node tag · {$server} address · {$port} port · {$scheme} protocol (also {$protocol}) · {$label} name from the link's #fragment · {$comment} comment · {$num} node number from 1"
-	// SPEC 118: маска упразднена (features/sources.md). Поле остаётся
-	// видимым и заполненным — пользователь должен увидеть, ЧТО перестало
-	// действовать, — но правится оно уже нигде: сборка её игнорирует и
-	// говорит об этом в отчёте той же фразой. Вкладку снимает W6.
-	sourceTagMaskRetiredText = "The tag mask has been retired and is no longer applied; use prefix/postfix."
+	sourcePreviewNoCacheHintText = "Disabled subscriptions are not auto-fetched, so this one has no nodes yet. Click below to fetch it once without enabling it."
+	sourceTagVarsHintText        = "Variables (work in both fields): {$tag} original node tag · {$server} address · {$port} port · {$scheme} protocol (also {$protocol}) · {$label} name from the link's #fragment · {$comment} comment · {$num} node number from 1"
 )
 
 // Min heights for Source Edit dialog tab bodies (child window; do not use main window canvas before Show).
@@ -50,89 +41,15 @@ const (
 	sourceEditJSONScrollMinH     float32 = 380
 )
 
-// previewNodeCap bounds how many nodes the Preview tab parses/renders from a
-// source body, keeping the preview responsive for large (CIDR) subscriptions.
+// previewNodeCap — сколько узлов вкладка JSON выводит текстом.
+//
+// SPEC 118 W6: вкладка Preview больше не ограничена — она рисует
+// widget.List, а тот виртуализирует прокрутку сам, и обрезка списка узлов
+// подписки скрывала бы от пользователя половину его собственных галок. А вот
+// вкладка JSON выводит ОДИН текст в MultiLineEntry, у которого виртуализации
+// нет (fyne-io/fyne#2935): полтысячи outbound'ов там — секунды на
+// перерисовку кадра. Обрезка честная — статус-строка называет её вслух.
 const previewNodeCap = 200
-
-// parsePreviewNodesFromBody — парсер decoded body для Preview tab.
-//
-// Dispatcher по формату body (так же как SPEC 054 для preview_nodes):
-//   - Xray JSON array (Liberty VPN и подобные): ParseNodesFromXrayJSONArray
-//     (body — `[{"outbounds":...},...]`, без \n-разделения)
-//   - base64 / plain text-line (vless://...): построчно через ParseNode
-//
-// Без диспатча Xray JSON давал 0 нод (split по \n → 1 строка, не URI).
-//
-// SPEC 094: sing-box JSON (одиночный outbound, массив, целый конфиг, массив
-// конфигов) разбирается той же веткой, что и в основном пайплайне — иначе
-// превью показывало бы 0 нод для тела, которое импортируется успешно.
-//
-// Тонкая обёртка над parsePreviewNodesFromBodyEx для вызывающих, которым
-// причины отбраковки не нужны.
-func parsePreviewNodesFromBody(body []byte, skip []map[string]string) []*config.ParsedNode {
-	nodes, _ := parsePreviewNodesFromBodyEx(body, skip)
-	return nodes
-}
-
-// parsePreviewNodesFromBodyEx — тот же разбор, но вторым значением отдаёт
-// КОМПАКТНЫЙ список причин отбраковки (SPEC 115).
-//
-// Превью обязано совпадать с боевым разбором не только числом узлов, но и
-// объяснением: до этого вкладка Preview у протухшей подписки показывала
-// «0 server(s)» и «No servers found.» — то есть ровно тот же факт пустоты, что
-// и список Sources, и ни слова о причине. Причины берутся из ТОГО ЖЕ разбора,
-// а не из отдельного прохода: разъехавшись, превью и сборка снова давали бы
-// два разных ответа про одно тело.
-func parsePreviewNodesFromBodyEx(body []byte, skip []map[string]string) ([]*config.ParsedNode, []string) {
-	bodyStr := strings.TrimSpace(string(body))
-
-	if kind := subscription.ClassifySubscriptionBody(bodyStr); kind.IsSingbox() {
-		res, err := subscription.ParseSingboxBody(bodyStr, kind, skip)
-		if err != nil || res == nil {
-			var reasons []string
-			if err != nil {
-				reasons = []string{fmt.Sprintf("sing-box JSON body rejected: %v", err)}
-			}
-			return nil, reasons
-		}
-		return capPreviewNodes(uniquifyPreviewTags(subscription.DedupParsedNodes(res.Nodes))), nil
-	}
-
-	if subscription.IsXrayJSONArrayBody(bodyStr) {
-		nodes, reasons, err := subscription.ParseNodesFromXrayJSONArrayEx(bodyStr, skip)
-		if err != nil {
-			return nil, append(reasons, fmt.Sprintf("Xray JSON array body rejected: %v", err))
-		}
-		return capPreviewNodes(uniquifyPreviewTags(subscription.DedupParsedNodes(nodes))), reasons
-	}
-	rejected := &subscription.ParseFailureReasons{}
-	out := make([]*config.ParsedNode, 0)
-	contentStr := strings.ReplaceAll(string(body), "\r\n", "\n")
-	contentStr = strings.ReplaceAll(contentStr, "\r", "\n")
-	for _, line := range strings.Split(contentStr, "\n") {
-		line = subscription.NormalizeSubscriptionTextLine(line)
-		if line == "" {
-			continue
-		}
-		node, perr := subscription.ParseNode(line, skip)
-		if perr != nil {
-			// Причина построчной отбраковки — тоже свойство подписки:
-			// «vless:// не распаковывается» пользователь обязан увидеть, а не
-			// выводить из пустого списка.
-			rejected.Add(fmt.Sprintf("URI rejected: %v", perr))
-			continue
-		}
-		if node == nil {
-			continue
-		}
-		out = append(out, node)
-	}
-	// Дедуп ДО стемпинга и уникализации (SPEC 094 D3, как в боевом
-	// LoadNodesFromSource) — иначе дубль получил бы «X-2» и превью показало
-	// бы 39 строк там, где сборка даст 8. Кап — ПОСЛЕ дедупа: 32 копии не
-	// должны съедать лимит отрисовки.
-	return capPreviewNodes(uniquifyPreviewTags(subscription.DedupParsedNodes(out))), rejected.List()
-}
 
 // previewParseReasonsBlock — блок причин отбраковки для вкладки Preview;
 // nil, если причин нет (показывать нечего, и пустая рамка только шумит).
@@ -161,83 +78,79 @@ func previewParseReasonsBlock(reasons []string) fyne.CanvasObject {
 	return container.NewVBox(items...)
 }
 
-// uniquifyPreviewTags разводит одинаковые теги суффиксами «-2», «-3» и
-// штампует узлам идентичность (SPEC 112).
+// setNodeEnabled включает или выключает узел источника (SPEC 118 Т2).
 //
-// Провайдер часто отдаёт по два сервера на страну под одним именем
-// («🇳🇱-Нидерланды» дважды). В основном списке их разводит LoadNodesFromSource,
-// а превью зовёт парсер напрямую — без этого пользователь видит две
-// неразличимые строки и не понимает, какую из них выключает.
-//
-// Ловушка «Preview ≡ parse»: идентичность здесь обязана совпасть с боевой.
-// Совпадает потому, что превью тегов источника не применяет (сырой тег = тег
-// узла) и уникализирует тем же алгоритмом, в том же порядке разбора; сам
-// стемпинг идёт через ту же subscription.StampNodeIdentity.
-func uniquifyPreviewTags(nodes []*config.ParsedNode) []*config.ParsedNode {
-	tagCounts := make(map[string]int, len(nodes))
-	idCounts := make(map[string]int, len(nodes))
-	for _, node := range nodes {
-		if node == nil {
-			continue
-		}
-		subscription.StampNodeIdentity(node, idCounts)
-		node.Tag = subscription.MakeTagUnique(node.Tag, tagCounts, "ConfigWizard")
-	}
-	return nodes
-}
-
-// capPreviewNodes ограничивает превью, чтобы подписка на тысячи узлов не
-// подвешивала окно отрисовкой.
-func capPreviewNodes(nodes []*config.ParsedNode) []*config.ParsedNode {
-	if len(nodes) > previewNodeCap {
-		return nodes[:previewNodeCap]
-	}
-	return nodes
-}
-
-// setNodeEnabled ставит или снимает отметку «нода выключена» (SPEC 094 D4).
-//
-// Отметка хранится в Source.DisabledNodes по идентичности узла; значение —
-// unix-время последнего подтверждения, по нему потом работает GC.
-// Включение ноды удаляет ключ целиком, а не пишет false: пустая карта
-// сериализуется как отсутствующее поле (omitempty), и state.json не растёт
-// отметками «всё включено».
+// Отметка живёт ОДНИМ полем — `node.enabled`, по сырому тегу узла
+// (идентичность в рамках источника). Прежней карты выключенных с временами и
+// TTL больше нет: узел, исчезнувший из подписки, исчезает вместе со своей
+// отметкой на первом же достоверном merge.
 //
 // SPEC 117: правит canonical state.Source (в окне — его рабочую deep-copy;
 // до модели отметки доезжают на Save вместе со всей копией).
-//
-// SPEC 118 W3 (фикс ревью, блокер 1): пишутся ОБА представления — канон
-// Nodes[i].Enabled и мостовая легаси-карта. Идентичность узла = его сырой
-// тег (SPEC 112), то есть ключ карты и Node.Tag — одно и то же значение.
-// Запись только в карту молча откатывалась бы следующим fetch'ем: merge
-// берёт enabled из канона, а карта — временный мост до W5.
-func setNodeEnabled(src *wizardmodels.Source, hash string, enabled bool) {
-	if src == nil || hash == "" {
+func setNodeEnabled(src *wizardmodels.Source, rawTag string, enabled bool) {
+	if src == nil || rawTag == "" {
 		return
 	}
 	for i := range src.Nodes {
-		if src.Nodes[i].Tag == hash {
+		if src.Nodes[i].Tag == rawTag {
 			src.Nodes[i].Enabled = enabled
 		}
 	}
-	if enabled {
-		delete(src.DisabledNodes, hash)
-		if len(src.DisabledNodes) == 0 {
-			src.DisabledNodes = nil
+	// Узловой источник (server/chain/auto): узел один, и он сам источник.
+	if len(src.Nodes) == 0 && src.Tag == rawTag {
+		src.Enabled = enabled
+	}
+}
+
+// nodeEnabledInSource — включён ли узел с таким сырым тегом (SPEC 118 Т2:
+// отметка живёт полем node.enabled, отдельной карты выключенных нет).
+func nodeEnabledInSource(src *wizardmodels.Source, rawTag string) bool {
+	if src == nil || rawTag == "" {
+		return true
+	}
+	for i := range src.Nodes {
+		if src.Nodes[i].Tag == rawTag {
+			return src.Nodes[i].Enabled
+		}
+	}
+	if src.Tag == rawTag {
+		return src.Enabled
+	}
+	return true
+}
+
+// sourceOriginURI — исходная строка узла (share-URI либо текст sing-box
+// JSON), из которой собрано его тело. В модели v7 её дом — origin.raw.
+func sourceOriginURI(p *wizardmodels.Source) string {
+	if p == nil || p.Origin == nil {
+		return ""
+	}
+	return p.Origin.Raw
+}
+
+// setSourceOriginURI — правка происхождения узла в рабочем буфере.
+//
+// Тело здесь НЕ пересобирается: материализация идёт на Save
+// (materializeScratchServer), одним разбором на всю правку, а не на каждое
+// нажатие клавиши.
+func setSourceOriginURI(p *wizardmodels.Source, uri string) {
+	if p == nil {
+		return
+	}
+	if uri == "" {
+		if p.Origin != nil && p.Origin.Kind == wizardmodels.OriginKindURI {
+			p.Origin = nil
 		}
 		return
 	}
-	if src.DisabledNodes == nil {
-		src.DisabledNodes = make(map[string]int64, 1)
-	}
-	src.DisabledNodes[hash] = time.Now().Unix()
+	p.Origin = &wizardmodels.Origin{Kind: wizardmodels.OriginKindURI, Raw: uri}
 }
 
 // cloneSource — явная deep-copy state.Source для рабочего буфера окна
 // источника (SPEC 117, риск Р4).
 //
-// Поверхностная копия разделила бы Fold/Outbounds/DisabledNodes/Meta/Chain
-// с моделью: правка в форме утекала бы в модель до Save и переживала Cancel.
+// Поверхностная копия разделила бы Nodes/Replace/Meta/Skip с моделью:
+// правка в форме утекала бы в модель до Save и переживала Cancel.
 // Копируются все ссылочные поля; вложенные значения Options/Filters/Patch
 // (map[string]interface{}) копируются на верхнем уровне — глубже форма их
 // не мутирует, только заменяет целиком.
@@ -296,18 +209,6 @@ func cloneSource(src *wizardmodels.Source) wizardmodels.Source {
 		t := *src.TagPolicy
 		c.TagPolicy = &t
 	}
-	if src.Outbounds != nil {
-		c.Outbounds = make([]configtypes.Direction, len(src.Outbounds))
-		for i := range src.Outbounds {
-			c.Outbounds[i] = cloneDirection(&src.Outbounds[i])
-		}
-	}
-	if src.Fold != nil {
-		f := *src.Fold
-		// Тот же хвост ревью W1: Auto глубоко (внутри *TemplateInt).
-		f.Auto = src.Fold.Auto.Clone()
-		c.Fold = &f
-	}
 	if src.Update != nil {
 		u := *src.Update
 		if src.Update.AutoRefresh != nil {
@@ -326,43 +227,8 @@ func cloneSource(src *wizardmodels.Source) wizardmodels.Source {
 			pa := *src.Meta.ProviderAnnounce
 			m.ProviderAnnounce = &pa
 		}
-		m.PreviewNodes = append([]string(nil), src.Meta.PreviewNodes...)
 		c.Meta = &m
 	}
-	if src.Chain != nil {
-		ch := *src.Chain
-		ch.Hops = append([]string(nil), src.Chain.Hops...)
-		if src.Chain.StripEvasion != nil {
-			b := *src.Chain.StripEvasion
-			ch.StripEvasion = &b
-		}
-		if src.Chain.Strip != nil {
-			st := make(map[string]bool, len(src.Chain.Strip))
-			for k, v := range src.Chain.Strip {
-				st[k] = v
-			}
-			ch.Strip = st
-		}
-		if src.Chain.Rewrite != nil {
-			rw := make(map[string]interface{}, len(src.Chain.Rewrite))
-			for k, v := range src.Chain.Rewrite {
-				rw[k] = v
-			}
-			ch.Rewrite = rw
-		}
-		c.Chain = &ch
-	}
-	if src.ConfigJSON != nil {
-		c.ConfigJSON = append(json.RawMessage(nil), src.ConfigJSON...)
-	}
-	if src.DisabledNodes != nil {
-		dn := make(map[string]int64, len(src.DisabledNodes))
-		for k, v := range src.DisabledNodes {
-			dn[k] = v
-		}
-		c.DisabledNodes = dn
-	}
-
 	// SPEC 118 (W1): канонические поля v7 — глубокая копия, иначе правки
 	// буфера формы утекали бы в модель до Save (тот же контракт, что у
 	// остальных полей выше).
@@ -449,7 +315,7 @@ func cloneDirection(d *configtypes.Direction) configtypes.Direction {
 // фоновый fetch могли обновить их, пока окно открыто, и запись снимка
 // целиком молча откатывала бы свежие nodes[]/updateStatus. Поверх живых
 // полей применяются ТОЛЬКО оконные правки включённости — по тегам из
-// журнала тумблеров (enabledEdits), а не слепым снимком DisabledNodes:
+// журнала тумблеров (enabledEdits), а не слепым снимком состава:
 // так побеждают и свежий fetch, и то, что пользователь реально нажал.
 //
 // Вынесена из applySourceEditToModel, чтобы контракт Save был проверяем
@@ -473,10 +339,8 @@ func mergeEditedSourceIntoModel(
 	edited.Nodes = live.Nodes
 	edited.UpdateStatus = live.UpdateStatus
 	edited.PendingDisabled = live.PendingDisabled
-	edited.DisabledNodes = live.DisabledNodes
-	// Оконные тумблеры — поверх живых полей: setNodeEnabled пишет и канон
-	// Nodes[i].Enabled, и мостовую карту (блокер 1), то есть правка из окна
-	// доезжает даже до узлов, родившихся фоновым fetch'ем после открытия.
+	// Оконные тумблеры — поверх живых полей: правка из окна доезжает даже
+	// до узлов, родившихся фоновым fetch'ем после открытия.
 	for tag, enabled := range enabledEdits {
 		setNodeEnabled(edited, tag, enabled)
 	}
@@ -500,7 +364,7 @@ func applySourceEditToModel(
 	mergeEditedSourceIntoModel(m, sourceIndex, edited, enabledEdits)
 	m.BumpRevision()
 	m.PreviewNeedsParse = true
-	wizardbusiness.InvalidatePreviewCache(m)
+	wizardbusiness.InvalidateNodePool(m)
 	presenter.RefreshOutboundsConfiguratorList()
 	presenter.ScheduleRefreshOutboundOptionsDebounced()
 	presenter.MarkAsChanged()
@@ -550,16 +414,20 @@ func showSourceEditWindow(
 	if mm != nil && sourceIndex < len(mm.Sources) {
 		s := mm.Sources[sourceIndex]
 		switch s.Kind {
-		case wizardmodels.SourceTypeSubscription:
+		case wizardmodels.SourceKindSubscription:
 			if s.Meta != nil && strings.TrimSpace(s.Meta.ProfileTitle) != "" {
 				fullTitleSrc = s.Meta.ProfileTitle
 			} else if s.URL != "" {
 				fullTitleSrc = s.URL
 			}
-		case wizardmodels.SourceTypeServer:
+		case wizardmodels.SourceKindServer:
 			// Подпись, а без неё — тег: у server-источника тег и есть то
 			// имя, под которым его знают правила.
-			if name := firstNonEmpty(s.Label, s.NodeTag, s.URI); name != "" {
+			originRaw := ""
+			if s.Origin != nil {
+				originRaw = s.Origin.Raw
+			}
+			if name := firstNonEmpty(s.Label, s.Tag, originRaw); name != "" {
 				fullTitleSrc = name
 			}
 		}
@@ -590,8 +458,13 @@ func showSourceEditWindow(
 	// назад: nodeTagEntry.OnChanged срабатывает на каждый символ.
 	nodeTagAtOpen := strings.TrimSpace(m.Sources[sourceIndex].NodeTagOrLabel())
 	sourceIDAtOpen := m.Sources[sourceIndex].ID
-	nodeIdentityOwner := m.Sources[sourceIndex].Kind == wizardmodels.SourceTypeServer ||
-		m.Sources[sourceIndex].Kind == wizardmodels.SourceTypeChain
+	nodeIdentityOwner := m.Sources[sourceIndex].Kind == wizardmodels.SourceKindServer ||
+		m.Sources[sourceIndex].Kind == wizardmodels.SourceKindChain
+	// SPEC 118 Т8: форма тегов на момент открытия. Правка тег-политики или
+	// тега замены переименовывает то, чем адресован ручной выбор в кэше
+	// живого ядра (cache.db) — переписать его лаунчер не может и обязан
+	// предупредить (features/directions.md §10).
+	tagShapeAtOpen := tagShapeOf(&m.Sources[sourceIndex])
 	// srcRef — рабочая копия, если источник ещё существует в модели (список
 	// могли перестроить, пока окно открыто); nil — форме больше некого править.
 	srcRef := func() *wizardmodels.Source {
@@ -605,9 +478,15 @@ func showSourceEditWindow(
 	prefixEntry := widget.NewEntry()
 	prefixEntry.SetPlaceHolder(locale.T("prefix"))
 
-	// SPEC 052 phase 8: URL/URI/Label/Postfix/Mask editors теперь доступны
-	// в Settings tab. URL/Postfix/Mask показываются только для subscription;
-	// URI/Label — только для server. Все мутации идут через scratch + Source.
+	// SPEC 052 phase 8: URL/URI/Label/Postfix editors живут в Settings tab.
+	// URL/Prefix/Postfix — только у подписки; URI/Label — только у server.
+	// Все мутации идут через scratch + Source.
+	//
+	// SPEC 118 W6: поля маски тегов здесь больше нет — маска упразднена
+	// классом (тег узла хранится полем Node.Tag, а политика контейнера это
+	// ровно префикс с постфиксом). Отключённое поле держать было незачем:
+	// показывать управление, которое ничем не управляет, — хуже, чем не
+	// показывать его вовсе.
 	urlEntry := widget.NewEntry()
 	urlEntry.SetPlaceHolder("https://example.com/sub") // l10n-exempt: sample URL
 
@@ -627,13 +506,6 @@ func showSourceEditWindow(
 	postfixEntry := widget.NewEntry()
 	postfixEntry.SetPlaceHolder(locale.T("postfix"))
 
-	maskEntry := widget.NewEntry()
-	maskEntry.SetPlaceHolder(locale.T("{$tag}-{$server}"))
-	// SPEC 118: маска упразднена — поле показывает прежнее значение, но
-	// править его больше нечем. Дизейбл, а не удаление вкладки: удаление —
-	// предмет W6, а молчаливо принимать ввод, который сборка выбросит, нельзя.
-	maskEntry.Disable()
-
 	// SPEC 108: одна галка вместо прежних четырёх (`Local auto`,
 	// `Local select`, `Exclude from global`, `Expose tags`), из восьми
 	// комбинаций которых осмысленной была ровно одна. Галка отвечает на
@@ -650,11 +522,11 @@ func showSourceEditWindow(
 	// Пересборка набора вкладок: вкладка «Группа» появляется и исчезает
 	// вместе с галкой. Объявлена заранее — сами вкладки строятся ниже.
 	var syncFoldTabVisible func()
-	foldTabBody := newFoldTab(presenter.Model(), func() { applyFoldFromForm() })
+	foldTabBody := newReplaceTab(presenter.Model(), func() { applyFoldFromForm() })
 
 	// SPEC 110: форма цепочки. Существует только у источника-цепочки, где
 	// заменяет собой всё остальное: ни URL, ни URI, ни свёртки у неё нет.
-	isChainSource := m.Sources[sourceIndex].Kind == wizardmodels.SourceTypeChain
+	isChainSource := m.Sources[sourceIndex].Kind == wizardmodels.SourceKindChain
 	var chainTabBody *chainForm
 	if isChainSource {
 		selfTag := m.Sources[sourceIndex].NodeTagOrLabel()
@@ -666,14 +538,14 @@ func showSourceEditWindow(
 		}
 		chainTabBody = newChainForm(nil, cands, reality, detoured, nodeTypes, unsupported, func() {
 			if p := srcRef(); p != nil {
-				p.Chain = chainTabBody.Collect()
-				// Форма правит ТЕГ узла цепочки — он живёт в NodeTag копии.
+				applyChainFormToSource(p, chainTabBody.Collect(), chainTabBody.CollectLinks())
+				// Форма правит ТЕГ узла цепочки — он живёт в Node.Tag копии.
 				// Подпись (Label) при этом не трогается — на тег ссылаются
 				// фильтры и позиции других цепочек. Пустое поле применяется
 				// на Save (см. saveBtn): посимвольный OnChanged не должен
 				// стирать тег на полпути ввода.
 				if tag := chainTabBody.Tag(); tag != "" {
-					p.NodeTag = tag
+					p.Tag = tag
 				}
 			}
 			// SPEC 117: правка буферизуется в копии — модель не менялась,
@@ -688,7 +560,7 @@ func showSourceEditWindow(
 		chainTabBody.SetTag(scratch.NodeTagOrLabel())
 		// Загружаем из РАБОЧЕЙ копии: форма и дальше живёт на буфере, а не
 		// на записи модели (Cancel — без следов, риск Р4).
-		chainTabBody.Load(scratch.Chain)
+		chainTabBody.Load(chainFormSettings(&scratch), chainFormHops(&scratch))
 		// Владелец диалогов формы — это окно, а не главное: пикер позиции
 		// иначе всплыл бы за окном правки.
 		chainTabBody.parent = win
@@ -699,7 +571,7 @@ func showSourceEditWindow(
 		if !chainTabBody.nodesKnown {
 			go func() {
 				mm := presenter.Model()
-				if _, err := wizardbusiness.RebuildPreviewCache(mm); err != nil {
+				if _, err := wizardbusiness.RebuildNodePool(mm); err != nil {
 					return
 				}
 				cands := collectChainHopCandidates(mm, selfTag)
@@ -717,20 +589,11 @@ func showSourceEditWindow(
 			return
 		}
 		if !foldCheck.Checked {
-			p.Fold = nil
+			p.Replace = nil
 		} else {
-			p.Fold = foldTabBody.Collect()
+			p.Replace = foldTabBody.Collect(defaultReplaceTag(p, sourceIndex))
 		}
-		// Прежние флаги свёрткой выражены и больше не наши: оставленное
-		// значение перебивало бы её на сборке.
-		if p.Fold != nil {
-			p.ExcludeFromGlobal = false
-			p.ExposeGroupTagsToGlobal = false
-		}
-		// SPEC 118 (W2): канонический Replace следует за свёрткой — мост
-		// предпочитает его, устаревший канон молча перебивал бы форму.
-		syncReplaceFromFold(p, sourceIndex)
-		foldTabBody.updateTagsHint(foldTabBody.selectedMode(), foldTagPrefix(p), sourceIndex)
+		foldTabBody.updateTagsHint()
 		if syncFoldTabVisible != nil {
 			syncFoldTabVisible()
 		}
@@ -749,9 +612,9 @@ func showSourceEditWindow(
 			return
 		}
 		foldCheck.OnChanged = nil
-		foldCheck.SetChecked(p.Fold != nil)
+		foldCheck.SetChecked(p.Replace != nil)
 		foldCheck.OnChanged = func(bool) { applyFoldFromForm() }
-		foldTabBody.Load(p.Fold, foldTagPrefix(p), sourceIndex)
+		foldTabBody.Load(p.Replace, defaultReplaceTag(p, sourceIndex))
 	}
 
 	// SPEC 077 + SPEC 101 (ключ — SPEC 112): detour (proxy-chain) picker —
@@ -769,16 +632,18 @@ func showSourceEditWindow(
 		if p == nil {
 			return
 		}
-		choice := detourChoices[sel] // zero value for "" / detourNone → clears both
-		p.DetourTag = choice.Tag
-		// SPEC 112-A: в состояние едет ссылка-ОБЪЕКТ (источник + identity-тег
-		// узла), а не финальный конфиговый тег — тот вычисляется на сборке.
-		p.DetourNodeSourceID = choice.NodeSourceID
-		p.DetourNodeTag = choice.NodeTag
-		p.DetourNodeLabel = choice.NodeLabel
-		// Явный выбор гасит упразднённую ссылку: иначе миграция на сборке
-		// перебила бы только что выбранный пользователем хоп.
-		p.DetourNodeHash = ""
+		// zero value для "" / detourNone → detour снимается.
+		choice := detourChoices[sel]
+		// SPEC 118: в состояние едет ОДНА ссылка (NodeLink) — либо корневой
+		// финальный тег, либо пара «id папки + сырой тег узла». Финальный
+		// конфиговый тег узла папки здесь не хранится: он вычисляется на
+		// сборке и протух бы от правки тег-политики папки.
+		if choice.Link == nil {
+			p.Detour = nil
+		} else {
+			link := *choice.Link
+			p.Detour = &link
+		}
 		// SPEC 117: выбор буферизуется в копии до Save.
 	}
 	detourSelect.OnChanged = detourOnChanged
@@ -792,25 +657,28 @@ func showSourceEditWindow(
 		detourSelect.Refresh()
 	}
 
-	// tagSpec* — правка prefix/postfix/mask рабочей копии. TagSpec живёт
-	// указателем и создаётся лениво; все три поля пустые → nil (та же
+	// tagSpec* — правка prefix/postfix рабочей копии. TagPolicy живёт
+	// указателем и создаётся лениво; оба поля пустые → nil (та же
 	// нормализация, что раньше делал полевой маппинг на Save).
-	setTagSpecField := func(set func(*wizardmodels.TagSpec)) {
+	//
+	// SPEC 118 W5: маски тегов больше нет — тег узла хранится полем
+	// (Node.Tag), а политика контейнера это ровно префикс с постфиксом.
+	setTagSpecField := func(set func(*wizardmodels.TagPolicy)) {
 		p := srcRef()
 		if p == nil {
 			return
 		}
 		if p.TagPolicy == nil {
-			p.TagPolicy = &wizardmodels.TagSpec{}
+			p.TagPolicy = &wizardmodels.TagPolicy{}
 		}
 		set(p.TagPolicy)
-		if p.TagPolicy.Prefix == "" && p.TagPolicy.Postfix == "" && p.TagPolicy.Mask == "" {
+		if p.TagPolicy.Prefix == "" && p.TagPolicy.Postfix == "" {
 			p.TagPolicy = nil
 		}
 	}
-	tagSpecOf := func(p *wizardmodels.Source) wizardmodels.TagSpec {
+	tagSpecOf := func(p *wizardmodels.Source) wizardmodels.TagPolicy {
 		if p == nil || p.TagPolicy == nil {
-			return wizardmodels.TagSpec{}
+			return wizardmodels.TagPolicy{}
 		}
 		return *p.TagPolicy
 	}
@@ -824,9 +692,8 @@ func showSourceEditWindow(
 		ts := tagSpecOf(p)
 		prefixEntry.SetText(ts.Prefix)
 		postfixEntry.SetText(ts.Postfix)
-		maskEntry.SetText(ts.Mask)
 		// URI / Label / тег узла — для server-type; всё из рабочей копии.
-		uriEntry.SetText(p.URI)
+		uriEntry.SetText(sourceOriginURI(p))
 		labelEntry.SetText(p.Label)
 		nodeTagEntry.SetText(p.NodeTagOrLabel())
 		syncFoldFormFromModel(p)
@@ -844,12 +711,15 @@ func showSourceEditWindow(
 		p.URL = strings.TrimSpace(s)
 	}
 
+	// URI-поле правит ПРОИСХОЖДЕНИЕ узла: тело пересобирается из него на
+	// Save (см. saveBtn) — тем же путём, что fetch и миграция. Посимвольная
+	// материализация была бы разбором на каждое нажатие клавиши.
 	uriEntry.OnChanged = func(s string) {
 		p := srcRef()
 		if p == nil {
 			return
 		}
-		p.URI = strings.TrimSpace(s)
+		setSourceOriginURI(p, strings.TrimSpace(s))
 	}
 
 	labelEntry.OnChanged = func(s string) {
@@ -858,7 +728,7 @@ func showSourceEditWindow(
 			return
 		}
 		// Только подпись: тег живёт в NodeTag и правится своим полем.
-		// Прежде эта же строка переписывала TagMask, и переименование
+		// Прежде эта же строка переписывала маску тегов, и переименование
 		// источника молча уводило тег из-под ссылающихся на него правил.
 		// SPEC 117: как и остальные поля, подпись буферизуется до Save —
 		// раньше она правила модель посимвольно и не откатывалась Cancel'ом.
@@ -870,7 +740,7 @@ func showSourceEditWindow(
 		// Поле именует УЗЕЛ и есть только у источников-владельцев
 		// идентичности (server/chain); у подписки NodeTag не используется,
 		// и programmatic SetText не должен его затрагивать.
-		if p == nil || (p.Kind != wizardmodels.SourceTypeServer && p.Kind != wizardmodels.SourceTypeChain) {
+		if p == nil || (p.Kind != wizardmodels.SourceKindServer && p.Kind != wizardmodels.SourceKindChain) {
 			return
 		}
 		// SPEC 113-E: правка тега БУФЕРИЗУЕТСЯ в рабочей копии, как и
@@ -880,7 +750,7 @@ func showSourceEditWindow(
 		// в модель означала бы смену идентичности БЕЗ сопутствующего сброса
 		// ссылок — тот делается только на Save; Cancel обязан не оставлять
 		// следов.
-		p.NodeTag = strings.TrimSpace(s)
+		p.Tag = strings.TrimSpace(s)
 	}
 
 	prefixEntry.OnChanged = func(s string) {
@@ -888,21 +758,16 @@ func showSourceEditWindow(
 		if p == nil {
 			return
 		}
-		setTagSpecField(func(t *wizardmodels.TagSpec) { t.Prefix = strings.TrimSpace(s) })
-		// SPEC 108: переименовывать группы вручную больше не нужно — они
-		// не хранятся, а разворачиваются на сборке из текущего префикса
-		// (config.PrepareSourceFolds). Обновляем только подсказку с тегами.
-		if p.Fold != nil {
-			foldTabBody.updateTagsHint(foldTabBody.selectedMode(), foldTagPrefix(p), sourceIndex)
+		setTagSpecField(func(t *wizardmodels.TagPolicy) { t.Prefix = strings.TrimSpace(s) })
+		// Тег ЗАМЕНЫ теперь явный (replace.tag) и от префикса не зависит:
+		// обновляем только подсказку, чтобы она не отставала от формы.
+		if p.Replace != nil {
+			foldTabBody.updateTagsHint()
 		}
 	}
 
 	postfixEntry.OnChanged = func(s string) {
-		setTagSpecField(func(t *wizardmodels.TagSpec) { t.Postfix = strings.TrimSpace(s) })
-	}
-
-	maskEntry.OnChanged = func(s string) {
-		setTagSpecField(func(t *wizardmodels.TagSpec) { t.Mask = strings.TrimSpace(s) })
+		setTagSpecField(func(t *wizardmodels.TagPolicy) { t.Postfix = strings.TrimSpace(s) })
 	}
 
 	// SPEC 052 phase 8: Settings tab type-conditional. Subscription и server
@@ -911,15 +776,15 @@ func showSourceEditWindow(
 	rebuildSettingsLayout := func() {
 		settingsContent.Objects = settingsContent.Objects[:0]
 		mm := presenter.Model()
-		isServer := mm != nil && sourceIndex < len(mm.Sources) && mm.Sources[sourceIndex].Kind == wizardmodels.SourceTypeServer
+		isServer := mm != nil && sourceIndex < len(mm.Sources) && mm.Sources[sourceIndex].Kind == wizardmodels.SourceKindServer
 
 		if isServer {
-			// Server: URI + Label + ExcludeFromGlobal + Detour.
+			// Server: URI + тег узла + Label + Detour.
 			settingsContent.Add(widget.NewLabel(locale.T("Server URI")))
 			settingsContent.Add(uriEntry)
 			// Ручной config_json переопределяет URI — без пометки правка URI
 			// «молча не работает» и путает.
-			if len(scratch.ConfigJSON) > 0 {
+			if scratch.Origin != nil && scratch.Origin.Kind == wizardmodels.OriginKindJSON {
 				manualNote := widget.NewLabel(locale.T("A manual config_json is set — the URI above is ignored at build time (see the JSON tab)."))
 				manualNote.Wrapping = fyne.TextWrapWord
 				manualNote.Importance = widget.LowImportance
@@ -929,18 +794,12 @@ func showSourceEditWindow(
 			settingsContent.Add(nodeTagEntry)
 			settingsContent.Add(widget.NewLabel(locale.T("Label")))
 			settingsContent.Add(labelEntry)
-			// SPEC 108: `Exclude from global` из формы убран вместе с
-			// остальными тремя галками. Поле в состоянии остаётся и
-			// читается — им описаны конфиги, где узлы шли мимо общего
-			// списка без всяких групп, — но выставлять его больше нечем:
-			// свёртка всегда создаёт группу, а у server-source узел один и
-			// сворачивать нечего.
 			settingsContent.Add(widget.NewSeparator())
 			settingsContent.Add(widget.NewLabel(locale.T("Detour server (chain)")))
 			settingsContent.Add(detourSelect)
 			settingsContent.Add(detourHint)
 		} else {
-			// Subscription: URL + Tag prefix/postfix/mask + свёртка + Detour.
+			// Subscription: URL + Tag prefix/postfix + свёртка + Detour.
 			settingsContent.Add(widget.NewLabel(locale.T("Subscription URL")))
 			settingsContent.Add(urlEntry)
 			settingsContent.Add(widget.NewSeparator())
@@ -948,17 +807,10 @@ func showSourceEditWindow(
 			settingsContent.Add(prefixEntry)
 			settingsContent.Add(widget.NewLabel(locale.T("Tag postfix")))
 			settingsContent.Add(postfixEntry)
-			settingsContent.Add(widget.NewLabel(locale.T("Tag mask (retired)")))
-			settingsContent.Add(maskEntry)
-			maskRetiredHint := widget.NewLabel(locale.T(sourceTagMaskRetiredText))
-			maskRetiredHint.Wrapping = fyne.TextWrapWord
-			maskRetiredHint.Importance = widget.LowImportance
-			settingsContent.Add(maskRetiredHint)
 			// Список переменных — прямо под полями, а не за иконкой «?» и
-			// не в доках: их семь, они конкретны, и без них поле маски —
-			// пустое приглашение угадывать. Подсказка одна на три поля:
-			// переменные работают во всех (replaceTagVariables зовётся и
-			// для prefix/postfix, и для mask).
+			// не в доках: их семь, они конкретны, и без них поля префикса —
+			// пустое приглашение угадывать. Подсказка одна на оба поля:
+			// переменные работают в обоих.
 			tagVarsHint := widget.NewLabel(locale.T(sourceTagVarsHintText))
 			tagVarsHint.Wrapping = fyne.TextWrapWord
 			tagVarsHint.Importance = widget.LowImportance
@@ -1018,7 +870,7 @@ func showSourceEditWindow(
 			snapshot.Meta = &metaCopy
 		}
 		// SPEC 118 W3 (фикс ревью): горутина читает Skip и гоняет merge по
-		// Nodes/DisabledNodes/PendingDisabled — глубокие копии, иначе merge
+		// Nodes/PendingDisabled — глубокие копии, иначе merge
 		// мутировал бы backing-массивы, разделяемые с моделью и scratch'ем
 		// на UI-thread. Руками, без slices./maps. — go1.20 (win7-сборка).
 		if snapshot.Skip != nil {
@@ -1035,13 +887,6 @@ func showSourceEditWindow(
 			}
 			snapshot.Skip = sk
 		}
-		if snapshot.DisabledNodes != nil {
-			dn := make(map[string]int64, len(snapshot.DisabledNodes))
-			for k, v := range snapshot.DisabledNodes {
-				dn[k] = v
-			}
-			snapshot.DisabledNodes = dn
-		}
 		if snapshot.Nodes != nil {
 			nn := make([]wizardmodels.Node, len(snapshot.Nodes))
 			for i := range snapshot.Nodes {
@@ -1052,7 +897,10 @@ func showSourceEditWindow(
 		if snapshot.PendingDisabled != nil {
 			snapshot.PendingDisabled = append([]string(nil), snapshot.PendingDisabled...)
 		}
-		sourceID := snapshot.ID
+		// SPEC 118 W6 (хвост ревью W3): ревизия модели на момент снятия
+		// снимка. Окно источника правит МОДЕЛЬ на Save, а Save доступен всё
+		// время полёта fetch'а — запись снимка целиком откатила бы его.
+		revAtStart := m.Revision
 		configService := presenter.ConfigServiceAdapter()
 		go func() {
 			_, fetchErr := configService.RefreshSourceInPlace(&snapshot)
@@ -1064,18 +912,17 @@ func showSourceEditWindow(
 					previewListHost.Refresh()
 					return
 				}
-				// Snapshot обратно в model (slice мог реаллокнуться — ищем по ID).
+				// Snapshot обратно в model: поиск по ID (slice мог
+				// реаллокнуться), а при изменившейся ревизии — только поля
+				// результата fetch'а поверх живой записи.
 				m := presenter.Model()
-				for i := range m.Sources {
-					if m.Sources[i].ID == sourceID {
-						m.Sources[i] = snapshot
-						break
-					}
+				if !wizardbusiness.ApplyFetchSnapshot(m, &snapshot, revAtStart) {
+					return
 				}
 				// Состав узлов сменился — без инвалидции кэш превью (и
 				// счётчики, и кандидаты позиций цепочек) оставались бы от
 				// старого тела до случайной другой мутации.
-				wizardbusiness.InvalidatePreviewCache(m)
+				wizardbusiness.InvalidateNodePool(m)
 				presenter.MarkAsChanged()
 				// SPEC 118 W3: fetch-merge наполнил канонические nodes[] —
 				// мутация модели, ревизия обязана вырасти.
@@ -1108,64 +955,44 @@ func showSourceEditWindow(
 			// показать кнопку "Fetch now" вместо просто текста ошибки.
 			needsFetch := false
 
-			// SPEC 052 phase 8 preview pipeline:
-			//   - server-source: parse URI напрямую (без сети);
-			//   - subscription с .raw на диске: декодим cached body;
-			//   - subscription без .raw: показываем "Fetch now" affordance
-			//     (disabled-источники в обычном parser pipeline никогда не
-			//     дёргают сеть, поэтому .raw для них может не существовать —
-			//     одноразовый manual fetch снимает блок без необходимости
-			//     включать источник).
+			// SPEC 118 Т8: превью читает МАТЕРИАЛИЗОВАННЫЕ узлы — те же,
+			// из которых собирается конфиг. Разбора тут больше нет: тела
+			// разобраны один раз (fetch либо миграция) и лежат в состоянии.
+			//
+			// Подписка без единого узла = «её ещё ни разу не обновляли»
+			// (или последний ответ был недостоверен): показываем affordance
+			// одноразового fetch'а, а не пустой список.
 			if model != nil && sourceIndex < len(model.Sources) {
 				src := model.Sources[sourceIndex]
 				switch src.Kind {
-				case wizardmodels.SourceTypeServer:
-					if len(src.ConfigJSON) > 0 {
-						// Ручной config_json приоритетнее URI — как в сборке.
-						node, perr := subscription.NodeFromManualConfigJSON(src.ConfigJSON)
-						if perr != nil {
-							err = perr
-						} else if node != nil {
-							if tag := src.NodeTagOrLabel(); tag != "" {
-								node.Tag = tag
-							}
-							nodes = []*config.ParsedNode{node}
-						}
-					} else if src.URI != "" {
-						node, perr := subscription.ParseNode(src.URI, nil)
-						if perr != nil {
-							err = perr
-						} else if node != nil {
-							node.Tag = src.NodeTagOrLabel()
-							nodes = []*config.ParsedNode{node}
-						}
-					}
-				case wizardmodels.SourceTypeSubscription:
-					subsDir := platform.GetSubscriptionsDir(model.ExecDir)
-					if raw, rerr := state.ReadRawBody(subsDir, src.ID); rerr == nil && len(raw) > 0 {
-						decoded, decErr := subscription.DecodeSubscriptionContent(raw)
-						if decErr != nil {
-							err = decErr
-						} else {
-							pp := srcRef()
-							skip := []map[string]string(nil)
-							if pp != nil {
-								skip = pp.Skip
-							}
-							nodes, parseReasons = parsePreviewNodesFromBodyEx(decoded, skip)
-							// Сообщение провайдера — ПЕРВОЙ причиной: он
-							// объясняет, почему тело такое, а наши причины —
-							// что мы в этом теле увидели. Чужой текст,
-							// показывается как данные (см. announce).
-							if msg := providerAnnounceText(src.Meta); msg != "" {
-								parseReasons = append(
-									[]string{locale.Tf("provider says: %s", msg)},
-									parseReasons...)
-							}
-						}
+				case wizardmodels.SourceKindFolder, wizardmodels.SourceKindSubscription:
+					if len(src.Nodes) == 0 {
+						needsFetch = src.Kind == wizardmodels.SourceKindSubscription
 					} else {
-						// Нет кэша — UI даст affordance для one-shot fetch'а.
-						needsFetch = true
+						emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), sourceIndex, map[string]int{})
+						nodes = emitted.Nodes
+						parseReasons = append(parseReasons, emitted.Warnings...)
+					}
+					// SPEC 118 Т3/Т8: причины отбраковки записей ЖИВУТ В СОСТОЯНИИ —
+					// их записал fetch, когда разбирал тело. Разбирать тело
+					// заново, чтобы их узнать, вкладке больше нечем (и не нужно):
+					// у неё готовые узлы, а «почему их столько» знает только тот,
+					// кто их считал.
+					parseReasons = append(parseReasons, fetchWarningTexts(src.UpdateStatus)...)
+					// Сообщение провайдера — ПЕРВОЙ причиной: он объясняет,
+					// почему состав такой, а наши причины — что мы в нём
+					// увидели. Чужой текст, показывается как данные.
+					if msg := providerAnnounceText(diagOf(&src)); msg != "" {
+						parseReasons = append(
+							[]string{locale.Tf("provider says: %s", msg)},
+							parseReasons...)
+					}
+				default:
+					emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), sourceIndex, map[string]int{})
+					nodes = emitted.Nodes
+					parseReasons = append(parseReasons, emitted.Warnings...)
+					if len(nodes) == 0 && len(emitted.Warnings) == 0 {
+						err = fmt.Errorf("%s", locale.T("node has no body — set a URI or JSON"))
 					}
 				}
 			}
@@ -1302,8 +1129,7 @@ func showSourceEditWindow(
 								}
 								check.Enable()
 								check.OnChanged = nil
-								_, off := scratch.DisabledNodes[identity]
-								check.SetChecked(!off)
+								check.SetChecked(nodeEnabledInSource(&scratch, identity))
 								check.OnChanged = func(enabled bool) {
 									setNodeEnabled(&scratch, identity, enabled)
 									// Журнал правок окна: на Save тумблер
@@ -1337,7 +1163,7 @@ func showSourceEditWindow(
 	//     собирается руками); Reset возвращает генерацию из URI.
 	//   - subscription: read-only распаковка кэшированного body — правки
 	//     перезатёр бы первый же сетевой refresh.
-	isServerSource := m.Sources[sourceIndex].Kind == wizardmodels.SourceTypeServer
+	isServerSource := m.Sources[sourceIndex].Kind == wizardmodels.SourceKindServer
 
 	jsonEntry := widget.NewMultiLineEntry()
 	jsonEntry.Wrapping = fyne.TextWrapOff
@@ -1377,6 +1203,10 @@ func showSourceEditWindow(
 			dialog.ShowError(errors.New(locale.T("JSON is empty.")), win)
 			return
 		}
+		// Общая проверка на объект с непустым `type` — до ветвления: ядро
+		// не принимает outbound без типа НИ у сервера, ни у цепочки, и
+		// сказать это одной внятной строкой лучше, чем двумя разными из
+		// глубины каждой ветки.
 		var ob map[string]interface{}
 		if err := json.Unmarshal([]byte(text), &ob); err != nil {
 			dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
@@ -1417,39 +1247,49 @@ func showSourceEditWindow(
 				dialog.ShowError(errors.New(reason), win)
 				return
 			}
-			scratch.Chain = c
+			// Позиции из JSON приезжают финальными ТЕГАМИ — форма ядра другой
+			// адресации не знает. Разворачиваем их в ссылки по кандидатам:
+			// тег узла папки иначе лёг бы корневой ссылкой в никуда.
+			jsonHops := chainLinksFromTags(chainTabBody, parsed.Outbounds)
+			applyChainFormToSource(&scratch, c, jsonHops)
 			if chainTabBody != nil {
 				// Форма и JSON — два вида одного объекта: список позиций
 				// обязан показать то, что сейчас вписали.
-				chainTabBody.Load(c)
+				chainTabBody.Load(c, jsonHops)
 			}
 			doRefreshJSONTab()
 			// SPEC 117: правка буферизуется в копии — модель тронет Save.
 			return
 		}
-		// Compact сохраняет порядок полей пользователя (в отличие от
-		// Unmarshal→Marshal, который пересортировал бы ключи по алфавиту).
-		var compact bytes.Buffer
-		if err := json.Compact(&compact, []byte(text)); err != nil {
+		// SPEC 118 Т8: вкладка JSON server-узла — ПРЯМОЙ редактор тела.
+		// Разбор, проверка и материализация — в applyServerBodyJSON: одна
+		// точка на весь путь «текст → тело», и ошибка в ней означает ОТКАТ
+		// (узел остаётся прежним), а не полупринятую правку.
+		if err := applyServerBodyJSON(&scratch, text); err != nil {
 			dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
 			return
 		}
-		scratch.ConfigJSON = json.RawMessage(append([]byte(nil), compact.Bytes()...))
-		rebuildSettingsLayout() // пометка «URI игнорируется» в Settings
 		doRefreshJSONTab()
 	})
-	jsonResetBtn := widget.NewButton(locale.T("Reset to URI"), func() {
-		if len(scratch.ConfigJSON) == 0 {
+	// «Regen from raw» (SPEC 118 Т8): тело пересоздаётся из origin.raw.
+	// Неразбираемый raw = ошибка и ОТКАТ — узел не портится.
+	jsonResetBtn := widget.NewButton(locale.T("Regen from raw"), func() {
+		raw := sourceOriginURI(&scratch)
+		if raw == "" {
 			return
 		}
 		dialog.ShowConfirm(
-			locale.T("Reset to URI"),
-			locale.T("Delete the manual config_json and generate the outbound from the URI again?"),
+			locale.T("Regen from raw"),
+			locale.T("Rebuild the outbound from the original URI/JSON, discarding manual edits?"),
 			func(ok bool) {
 				if !ok {
 					return
 				}
-				scratch.ConfigJSON = nil
+				if err := regenServerBodyFromRaw(&scratch); err != nil {
+					// Откат: тело остаётся прежним, узел не испорчен.
+					dialog.ShowError(errors.New(locale.Tf("URI does not unpack: %s. You can write the outbound JSON by hand and press Apply.", err.Error())), win)
+					return
+				}
 				rebuildSettingsLayout()
 				doRefreshJSONTab()
 			}, win)
@@ -1468,7 +1308,15 @@ func showSourceEditWindow(
 	// это произвольный merge-patch по типам протоколов, и урезанная форма
 	// молча теряла бы ключи, которых не знает.
 	refreshChainJSONTab := func() {
-		c := scratch.Chain
+		// Позиции берём с формы: только она умеет развернуть ссылки в
+		// финальные теги, которых ждёт эмиттер цепочек.
+		var c *configtypes.SourceChain
+		if chainTabBody != nil {
+			c = chainTabBody.Collect()
+		}
+		if c == nil {
+			c = chainFormSettings(&scratch)
+		}
 		if c == nil {
 			c = &configtypes.SourceChain{}
 		}
@@ -1495,61 +1343,34 @@ func showSourceEditWindow(
 	}
 
 	refreshServerJSONTab := func() {
-		// Ручной config_json показывается как есть (порядок полей автора);
-		// tag/detour перештампуются при сборке.
-		if len(scratch.ConfigJSON) > 0 {
-			text := string(scratch.ConfigJSON)
+		// SPEC 118 Т8: вкладка показывает ТЕЛО узла — ровно то, что уедет в
+		// config.json (плюс tag/detour, которые штампует сборка). Разбора
+		// здесь нет: тело материализовано и лежит в состоянии.
+		if len(scratch.Body) > 0 {
+			text := string(scratch.Body)
 			var buf bytes.Buffer
-			if err := json.Indent(&buf, scratch.ConfigJSON, "", "  "); err == nil {
+			if err := json.Indent(&buf, scratch.Body, "", "  "); err == nil {
 				text = buf.String()
 			}
 			setJSONText(text)
-			jsonStatus.SetText(locale.T("Manual config_json — the URI is ignored at build time."))
-			jsonResetBtn.Enable()
+			jsonStatus.SetText(locale.T("The outbound as it will reach the config."))
+			if sourceOriginURI(&scratch) != "" {
+				jsonResetBtn.Enable()
+			} else {
+				jsonResetBtn.Disable()
+			}
 			return
 		}
 		jsonResetBtn.Disable()
-		// Генерация из URI — ровно тот же путь, что и сборка конфига.
-		// SPEC 117 (Т2): одноразовая прямая проекция canonical → legacy на
-		// входе парсера; выбрасывается сразу после вызова.
-		ps := scratch.ToProxySourceV4()
-		ps.Disabled = false
-		var node *config.ParsedNode
-		if res, _ := subscription.LoadNodesFromSourceEx(ps, map[string]int{}, nil, 0, 1); res != nil && len(res.Nodes) > 0 {
-			node = res.Nodes[0]
+		setJSONText("")
+		if raw := sourceOriginURI(&scratch); raw == "" {
+			jsonStatus.SetText(locale.T("No URI set. Paste a sing-box outbound object below and press Apply."))
+		} else {
+			jsonStatus.SetText(locale.Tf("URI does not unpack: %s. You can write the outbound JSON by hand and press Apply.", raw))
+			jsonResetBtn.Enable()
 		}
-		if node == nil {
-			// LoadNodesFromSourceEx ошибки только логирует — причину для
-			// пользователя добываем прямым ParseNode.
-			uri := subscription.NormalizeSubscriptionTextLine(scratch.URI)
-			switch {
-			case uri == "":
-				jsonStatus.SetText(locale.T("No URI set. Paste a sing-box outbound object below and press Apply."))
-			default:
-				reason := locale.T("No servers found.")
-				if _, perr := subscription.ParseNode(uri, nil); perr != nil {
-					reason = perr.Error()
-				}
-				jsonStatus.SetText(locale.Tf("URI does not unpack: %s. You can write the outbound JSON by hand and press Apply.", reason))
-			}
-			setJSONText("")
-			return
-		}
-		outJSONs, epJSON, eerr := config.EmitNodeJSONs(node)
-		if eerr != nil {
-			jsonStatus.SetText(locale.Tf("URI does not unpack: %s. You can write the outbound JSON by hand and press Apply.", eerr.Error()))
-			setJSONText("")
-			return
-		}
-		raw := epJSON
-		if raw == "" && len(outJSONs) > 0 {
-			raw = outJSONs[len(outJSONs)-1]
-		}
-		setJSONText(emittedToEditableJSON(raw))
-		jsonStatus.SetText(locale.T("Generated from URI."))
 	}
 
-	jsonRefreshSeq := 0
 	doRefreshJSONTab = func() {
 		if isChainSource {
 			refreshChainJSONTab()
@@ -1559,56 +1380,24 @@ func showSourceEditWindow(
 			refreshServerJSONTab()
 			return
 		}
-		// Subscription: как Preview — декод кэшированного body в горутине.
-		jsonRefreshSeq++
-		seq := jsonRefreshSeq
-		jsonStatus.SetText(locale.T("Loading..."))
-		// Снапшоты на UI-thread: горутина не должна читать scratch, который
-		// мутируют обработчики виджетов.
-		detourTag := scratch.DetourTag
-		disabled := make(map[string]int64, len(scratch.DisabledNodes))
-		for h, ts := range scratch.DisabledNodes {
-			disabled[h] = ts
+		// Подписка: тела уже материализованы — рендерим их синхронно и
+		// read-only (SPEC 118 Т8: узлы подписки несвободны).
+		model := presenter.Model()
+		if model == nil || sourceIndex >= len(model.Sources) {
+			setJSONText("")
+			jsonStatus.SetText("")
+			return
 		}
-		skip := append([]map[string]string(nil), scratch.Skip...)
-		go func() {
-			model := presenter.Model()
-			text := ""
-			status := ""
-			if model != nil && sourceIndex < len(model.Sources) {
-				src := model.Sources[sourceIndex]
-				subsDir := platform.GetSubscriptionsDir(model.ExecDir)
-				if raw, rerr := state.ReadRawBody(subsDir, src.ID); rerr != nil || len(raw) == 0 {
-					status = locale.T("Subscription has not been fetched yet")
-				} else if decoded, decErr := subscription.DecodeSubscriptionContent(raw); decErr != nil {
-					status = locale.Tf("URI does not unpack: %s. You can write the outbound JSON by hand and press Apply.", decErr.Error())
-				} else {
-					nodes := parsePreviewNodesFromBody(decoded, skip)
-					// Выключенные ноды не эмитятся — как в реальной сборке.
-					if len(disabled) > 0 {
-						kept := nodes[:0]
-						for _, n := range nodes {
-							if id := config.NodeIdentity(n); id != "" {
-								if _, off := disabled[id]; off {
-									continue
-								}
-							}
-							kept = append(kept, n)
-						}
-						nodes = kept
-					}
-					subscription.ApplySourceDetour(nodes, detourTag)
-					text, status = renderUnpackedNodes(nodes)
-				}
-			}
-			fyne.Do(func() {
-				if seq != jsonRefreshSeq {
-					return
-				}
-				setJSONText(text)
-				jsonStatus.SetText(status)
-			})
-		}()
+		src := model.Sources[sourceIndex]
+		if len(src.Nodes) == 0 {
+			setJSONText("")
+			jsonStatus.SetText(locale.T("Subscription has not been fetched yet"))
+			return
+		}
+		emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), sourceIndex, map[string]int{})
+		text, status := renderUnpackedNodes(emitted.Nodes)
+		setJSONText(text)
+		jsonStatus.SetText(status)
 	}
 
 	refreshJSONTab := func() {
@@ -1618,12 +1407,12 @@ func showSourceEditWindow(
 		doRefreshJSONTab()
 	}
 
-	jsonHintKey := "Read-only: how the cached subscription body unpacks into sing-box outbounds. Tags are shown before the source prefix/mask is applied; the list is rebuilt from the network on every refresh." // l10n-key
+	jsonHintKey := "Read-only: the sing-box outbounds this subscription is built from. Nodes of a subscription are not free-form — they are refreshed from the provider." // l10n-key
 	switch {
 	case isChainSource:
 		jsonHintKey = "The chain object exactly as it will reach the config. This is also where rewrite is edited — per-protocol overrides of node options; everything else is easier to change on the Chain tab." // l10n-key
 	case isServerSource:
-		jsonHintKey = "The sing-box outbound this source unpacks into — exactly what the build writes to config.json. Edit and press Apply to save a manual config_json (it overrides the URI); Reset returns to URI-generated. Tag and detour are restamped by the launcher at build time." // l10n-key
+		jsonHintKey = "The sing-box outbound this node is built from — exactly what the build writes to config.json. Edit and press Apply to store it; Regen from raw rebuilds it from the original URI/JSON. Tag and detour are restamped by the launcher at build time." // l10n-key
 	}
 	jsonHint := widget.NewLabel(locale.T(jsonHintKey))
 	jsonHint.Wrapping = fyne.TextWrapWord
@@ -1661,7 +1450,7 @@ func showSourceEditWindow(
 	}
 	syncFoldTabVisible = func() {
 		p := srcRef()
-		show := !isServerSource && !isChainSource && p != nil && p.Fold != nil
+		show := !isServerSource && !isChainSource && p != nil && p.Replace != nil
 		hasTab := false
 		for _, ti := range tabs.Items {
 			if ti == foldTab {
@@ -1711,12 +1500,7 @@ func showSourceEditWindow(
 		// правка «зайти на Группу, поменять интервал, Save» молча терялась —
 		// applyFoldFromForm срабатывал лишь на галку и селект режима.
 		if p := srcRef(); p != nil && foldCheck.Checked {
-			p.Fold = foldTabBody.Collect()
-			p.ExcludeFromGlobal = false
-			p.ExposeGroupTagsToGlobal = false
-			// SPEC 118 (W2): канон Replace — вслед за свёрткой (см.
-			// applyFoldFromForm).
-			syncReplaceFromFold(p, sourceIndex)
+			p.Replace = foldTabBody.Collect(defaultReplaceTag(p, sourceIndex))
 		}
 		// Тег цепочки финализируется с формы: пустое поле = «тега нет»
 		// (откат на подпись через NodeTagOrLabel) — посимвольный обработчик
@@ -1725,10 +1509,8 @@ func showSourceEditWindow(
 		// хватает (прежний контракт applyProxyEditToSource).
 		if isChainSource {
 			if chainTabBody != nil {
-				scratch.NodeTag = strings.TrimSpace(chainTabBody.Tag())
-			}
-			if scratch.Chain == nil {
-				scratch.Chain = &configtypes.SourceChain{}
+				scratch.Tag = strings.TrimSpace(chainTabBody.Tag())
+				applyChainFormToSource(&scratch, chainTabBody.Collect(), chainTabBody.CollectLinks())
 			}
 		}
 		// SPEC 117 (Т4): вся правка одной записью — копия в m.Sources[i];
@@ -1741,11 +1523,17 @@ func showSourceEditWindow(
 		// новый), потом сброс ссылок на СТАРОЕ имя.
 		affected := resetRefsAfterNodeRename(presenter, guiState,
 			nodeIdentityOwner, sourceIndex, sourceIDAtOpen, nodeTagAtOpen)
+		// SPEC 118 Т8: сменились финальные теги — ручной выбор в селекторах
+		// живого ядра адресован прежними именами и собьётся на умолчание.
+		stale := staleSelectionAfterEdit(tagShapeAtOpen, tagShapeOf(&scratch))
 		win.Close()
 		if len(affected) > 0 {
 			// Владелец окна — родительское, а не win: то закрывается прямо
 			// сейчас, и диалог на нём умер бы вместе с ним, не показавшись.
 			showDetourRefsResetDialog(parent, nodeTagAtOpen, affected)
+		}
+		if !stale.Empty() {
+			showStaleSelectionDialog(parent, stale)
 		}
 	})
 	buttonsRow := container.NewHBox(layout.NewSpacer(), cancelBtn, saveBtn)
@@ -1764,7 +1552,7 @@ func showSourceEditWindow(
 }
 
 // applyClearedNodeTag (SPEC 113-E) упразднён вместе со scratch-паттерном
-// (SPEC 117): рабочая копия несёт NodeTag напрямую, и очистка поля — такая
+// (SPEC 117): рабочая копия несёт Node.Tag напрямую, и очистка поля — такая
 // же буферизованная правка, как любая другая; Save применяет её присваиванием
 // копии целиком.
 
@@ -1805,7 +1593,7 @@ func resetRefsAfterNodeRename(
 	}
 	m.BumpRevision()
 	m.PreviewNeedsParse = true
-	wizardbusiness.InvalidatePreviewCache(m)
+	wizardbusiness.InvalidateNodePool(m)
 	presenter.RefreshOutboundsConfiguratorList()
 	presenter.ScheduleRefreshOutboundOptionsDebounced()
 	presenter.MarkAsChanged()
@@ -1835,6 +1623,37 @@ func showDetourRefsResetDialog(parent fyne.Window, nodeTag string, affected []st
 	content := container.NewVScroll(body)
 	content.SetMinSize(fyne.NewSize(460, 120))
 	dialog.ShowCustom(locale.T("Detour links cleared"), locale.T("OK"), content, parent)
+}
+
+// showStaleSelectionDialog предупреждает о протухании ручного выбора в
+// селекторах живого ядра (SPEC 118 Т8, features/directions.md §10).
+//
+// Тот же информирующий диалог, что у сброса ссылок при переименовании узла:
+// правка уже сохранена, отменять в нём нечего, а выбор в cache.db — не наша
+// собственность (переписать его лаунчер не может; у Remote-машины он вообще
+// на другой машине).
+//
+// Ловушка Fyne (fyne-label-minwidth-trap): Label без Wrapping задаёт окну
+// min-width своей строкой в одну линию.
+func showStaleSelectionDialog(parent fyne.Window, stale staleSelectionScope) {
+	if parent == nil || stale.Empty() {
+		return
+	}
+	var lines []string
+	if stale.NodesRenamed {
+		lines = append(lines, locale.T("Tag prefix/postfix changed — every node of this source is renamed in the config."))
+	}
+	if len(stale.GroupTags) > 0 {
+		lines = append(lines, locale.Tf("Group tags changed: %s.", strings.Join(stale.GroupTags, ", ")))
+	}
+	lines = append(lines, locale.T("A manual pick in a selector is remembered by the running core (cache.db) by tag, and the launcher cannot rewrite it: the affected selectors fall back to their default until you pick again. On a remote machine this applies to its own core."))
+
+	body := widget.NewLabel(strings.Join(lines, "\n\n"))
+	body.Wrapping = fyne.TextWrapWord
+
+	content := container.NewVScroll(body)
+	content.SetMinSize(fyne.NewSize(460, 160))
+	dialog.ShowCustom(locale.T("Selector choices will reset"), locale.T("OK"), content, parent)
 }
 
 // firstNonEmpty — первая непустая строка из перечисленных.

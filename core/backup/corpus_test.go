@@ -217,7 +217,7 @@ func checkExtensionsDropped(t *testing.T, dst *state.State, exp corpusExpectatio
 	if !exp.ExtensionsDropped {
 		return
 	}
-	back, err := Export(dst, ExportOptions{AppVersion: "corpus"})
+	back, _, err := Export(dst, ExportOptions{AppVersion: "corpus"})
 	if err != nil {
 		t.Fatalf("re-export: %v", err)
 	}
@@ -235,10 +235,18 @@ func checkDisabledHashes(t *testing.T, dst *state.State, exp corpusExpectation) 
 	if len(exp.DisabledHashes) == 0 {
 		return
 	}
+	// SPEC 118 W5: отметка выключения живёт полем node.enabled; у только что
+	// импортированной подписки узлов ещё нет (nodes[] в контракт не едут),
+	// поэтому отметка ждёт первого достоверного fetch в PendingDisabled.
 	found := map[string]bool{}
 	for _, src := range dst.Sources {
-		for hash := range src.DisabledNodes {
-			found[hash] = true
+		for _, tag := range src.PendingDisabled {
+			found[tag] = true
+		}
+		for i := range src.Nodes {
+			if !src.Nodes[i].Enabled {
+				found[src.Nodes[i].Tag] = true
+			}
 		}
 	}
 	for _, want := range exp.DisabledHashes {
@@ -305,7 +313,7 @@ func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
 	byTag := map[string]state.Source{}
 	count := 0
 	for _, src := range dst.Sources {
-		if src.Kind == state.SourceTypeChain {
+		if src.Kind == state.SourceKindChain {
 			byTag[src.NodeTagOrLabel()] = src
 			count++
 		}
@@ -320,7 +328,9 @@ func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
 		if !ok {
 			t.Fatalf("цепочка %q не создана импортом", want.Tag)
 		}
-		gotRaw, err := json.Marshal(src.Chain)
+		// SPEC 118 W5: канон цепочки в модели разложен по узлу (body + hops);
+		// сверяем ту же форму контракта, что уедет в файл.
+		gotRaw, err := json.Marshal(exportChainSpec(src))
 		if err != nil {
 			t.Fatalf("%s: marshal канона: %v", want.Tag, err)
 		}
@@ -340,7 +350,7 @@ func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
 	if !needExport {
 		return
 	}
-	b, err := Export(dst, ExportOptions{AppVersion: "corpus"})
+	b, _, err := Export(dst, ExportOptions{AppVersion: "corpus"})
 	if err != nil {
 		t.Fatalf("re-export: %v", err)
 	}

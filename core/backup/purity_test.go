@@ -20,7 +20,7 @@ import (
 // одинаковым, иначе сравнение байтов проверяло бы часы, а не чистоту.
 func fixedExport(t *testing.T, s *state.State) []byte {
 	t.Helper()
-	b, err := Export(s, ExportOptions{
+	b, _, err := Export(s, ExportOptions{
 		AppVersion: "test", Platform: "darwin", Now: time.Unix(1750000000, 0),
 	})
 	if err != nil {
@@ -45,34 +45,40 @@ func richState() *state.State {
 	}
 	s.Sources = []state.Source{
 		{
-			ID: "01SUB0000000000000000000", Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true},
-			URL: "https://example-1.com/sub", Label: "Main", MaxNodes: 200,
-			TagPolicy:               &state.TagSpec{Prefix: "[A] ", Mask: "%s"},
-			Update:                  &state.UpdateSpec{IntervalHours: 12, AutoRefresh: &auto},
-			DisabledNodes:           map[string]int64{"node-a": 1750000000, "node-b": 1750000001},
-			Skip:                    []map[string]string{{"field": "tag", "contains": "trial"}},
-			Outbounds:               []configtypes.Direction{{Tag: "local-select", Type: "selector"}},
-			Fold:                    &configtypes.SourceFold{Mode: configtypes.FoldModeSelect},
-			ExcludeFromGlobal:       true,
-			ExposeGroupTagsToGlobal: true,
-			DetourNodeSourceID:      "01SRV0000000000000000000",
-			DetourNodeTag:           "🔥 WARP",
-			DetourNodeLabel:         "WARP hop",
-		},
-		{
-			ID: "01SRV0000000000000000000", Node: state.Node{Kind: state.SourceKindServer, Enabled: true},
-			URI:   "vless://11111111-1111-1111-1111-111111111111@example-2.com:443?type=tcp#s",
-			Label: "WARP hop", NodeTag: "🔥 WARP", DetourTag: "hop-1",
-		},
-		{
-			ID: "01CHN0000000000000000000", Node: state.Node{Kind: state.SourceKindChain, Enabled: true},
-			NodeTag: "relay", Label: "Мой маршрут",
-			Chain: &configtypes.SourceChain{
-				Hops: []string{"vpn-de", "🔥 WARP"}, IdleTimeout: "0s",
-				StripEvasion: &stripOff,
-				Strip:        map[string]bool{"tls.utls": false},
-				Rewrite:      map[string]interface{}{"vless": map[string]interface{}{"flow": nil}},
+			ID: "01SUB0000000000000000000",
+			Node: state.Node{
+				Kind: state.SourceKindSubscription, Enabled: true,
+				Detour: &state.NodeLink{FolderID: "01SRV0000000000000000000", Tag: "🔥 WARP"},
 			},
+			URL: "https://example-1.com/sub", Name: "Main", MaxNodes: 200,
+			TagPolicy:       &state.TagPolicy{Prefix: "[A] "},
+			Update:          &state.UpdateSpec{IntervalHours: 12, AutoRefresh: &auto},
+			PendingDisabled: []string{"node-a", "node-b"},
+			Skip:            []map[string]string{{"field": "tag", "contains": "trial"}},
+			Replace:         &state.FolderReplace{Mode: state.FolderReplaceManual, Tag: "1:select"},
+		},
+		{
+			ID: "01SRV0000000000000000000",
+			Node: state.Node{
+				Kind: state.SourceKindServer, Enabled: true, Tag: "🔥 WARP",
+				Origin: &state.Origin{Kind: state.OriginKindURI, Raw: "vless://11111111-1111-1111-1111-111111111111@example-2.com:443?type=tcp#s"},
+				Detour: &state.NodeLink{Tag: "hop-1"},
+			},
+			Label: "WARP hop",
+		},
+		{
+			ID: "01CHN0000000000000000000",
+			Node: state.Node{
+				Kind: state.SourceKindChain, Enabled: true, Tag: "relay",
+				Body: configtypes.ChainBody(&configtypes.SourceChain{
+					IdleTimeout:  "0s",
+					StripEvasion: &stripOff,
+					Strip:        map[string]bool{"tls.utls": false},
+					Rewrite:      map[string]interface{}{"vless": map[string]interface{}{"flow": nil}},
+				}),
+				Hops: []state.NodeLink{{Tag: "vpn-de"}, {Tag: "🔥 WARP"}},
+			},
+			Label: "Мой маршрут",
 		},
 	}
 	// Номера — из своей же зоны оси (UserRuleNumStart и дальше): состояние,
@@ -175,15 +181,15 @@ func TestRoundTripAllEntitiesByteIdentical(t *testing.T) {
 
 	var chain *state.Source
 	for i := range restored.Sources {
-		if restored.Sources[i].Kind == state.SourceTypeChain {
+		if restored.Sources[i].Kind == state.SourceKindChain {
 			chain = &restored.Sources[i]
 		}
 	}
 	if chain == nil {
 		t.Fatal("цепочка потеряна на roundtrip")
 	}
-	if chain.NodeTag != "relay" {
-		t.Errorf("тег цепочки после импорта %q, ожидался %q — ссылки правил и позиций разъедутся", chain.NodeTag, "relay")
+	if chain.Tag != "relay" {
+		t.Errorf("тег цепочки после импорта %q, ожидался %q — ссылки правил и позиций разъедутся", chain.Tag, "relay")
 	}
 	if chain.Label != "Мой маршрут" {
 		t.Errorf("подпись цепочки после импорта %q", chain.Label)

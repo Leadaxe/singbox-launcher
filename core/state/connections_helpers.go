@@ -7,13 +7,14 @@
 // Load-миграциями старых форматов.
 package state
 
-// buildTagSpecFromLegacy возвращает *TagSpec (или nil если все три поля пустые).
-// Используется Load-миграцией v4 (legacy_migration.go).
-func buildTagSpecFromLegacy(prefix, postfix, mask string) *TagSpec {
+// buildTagSpecFromLegacy возвращает *legacyTagSpec (или nil если все три поля
+// пустые). Используется Load-миграцией v4 (legacy_migration.go): у неё на
+// входе прежняя ParserConfig-форма, где маска ещё существует.
+func buildTagSpecFromLegacy(prefix, postfix, mask string) *legacyTagSpec {
 	if prefix == "" && postfix == "" && mask == "" {
 		return nil
 	}
-	return &TagSpec{
+	return &legacyTagSpec{
 		Prefix:  prefix,
 		Postfix: postfix,
 		Mask:    mask,

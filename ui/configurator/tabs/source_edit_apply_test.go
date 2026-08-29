@@ -1,10 +1,8 @@
 package tabs
 
-// Поведенческие тесты пути Save окна источника (SPEC 118 W3, фиксы
-// адверсариального ревью, блокеры 1 и 2): тумблер узла в окне пишет ОБА
-// представления включённости и переживает fetch; Save переносит runtime-поля
-// fetch'а из живой записи модели и применяет оконные правки журналом, а не
-// слепым снимком.
+// Поведенческие тесты пути Save окна источника: тумблер узла в окне
+// переживает fetch; Save переносит runtime-поля fetch'а из живой записи
+// модели и применяет оконные правки журналом, а не слепым снимком.
 //
 // Тестируется реальный UI-путь данных: cloneSource (открытие окна) →
 // setNodeEnabled (тумблер) → mergeEditedSourceIntoModel (Save) →
@@ -38,9 +36,9 @@ func applyTestModel(nodes ...wizardmodels.Node) *wizardmodels.WizardModel {
 	}}}
 }
 
-// Блокер 1 — выключение узла в окне переживает Save и последующий fetch;
-// включение обратно — тоже. До фикса тумблер писал только легаси-карту,
-// merge читал канон, и выключение молча откатывалось первым же fetch'ем.
+// Выключение узла в окне переживает Save и последующий fetch; включение
+// обратно — тоже. Отметка живёт ОДНИМ полем node.enabled (SPEC 118 W5), и
+// merge читает именно его.
 func TestWindowToggleSurvivesSaveAndFetch(t *testing.T) {
 	m := applyTestModel(applyTestNode("A"), applyTestNode("B"))
 
@@ -51,9 +49,6 @@ func TestWindowToggleSurvivesSaveAndFetch(t *testing.T) {
 	enabledEdits["B"] = false
 	if scratch.Nodes[1].Enabled {
 		t.Fatal("setNodeEnabled не опустил канонический enabled в рабочей копии")
-	}
-	if _, off := scratch.DisabledNodes["B"]; !off {
-		t.Fatal("setNodeEnabled не записал мостовую карту")
 	}
 
 	// Save.
@@ -71,9 +66,6 @@ func TestWindowToggleSurvivesSaveAndFetch(t *testing.T) {
 	if live.Nodes[1].Enabled {
 		t.Fatal("выключение узла откатилось fetch'ем")
 	}
-	if _, off := live.DisabledNodes["B"]; !off {
-		t.Fatalf("мостовая карта рассинхронизирована: %v", live.DisabledNodes)
-	}
 
 	// Включение обратно тем же UI-путём — тоже переживает fetch.
 	scratch2 := cloneSource(live)
@@ -86,9 +78,6 @@ func TestWindowToggleSurvivesSaveAndFetch(t *testing.T) {
 	state.MergeSubscriptionNodes(live, freshBody(), true)
 	if !live.Nodes[1].Enabled {
 		t.Fatal("включение узла откатилось fetch'ем")
-	}
-	if _, off := live.DisabledNodes["B"]; off {
-		t.Fatalf("мостовая карта держит снятую отметку: %v", live.DisabledNodes)
 	}
 }
 
@@ -147,8 +136,5 @@ func TestSaveAppliesWindowTogglesOverFreshFetch(t *testing.T) {
 	}
 	if !live.Nodes[0].Enabled || !live.Nodes[2].Enabled {
 		t.Fatal("тумблер зацепил чужие узлы")
-	}
-	if _, off := live.DisabledNodes["B"]; !off {
-		t.Fatalf("мостовая карта не отражает тумблер: %v", live.DisabledNodes)
 	}
 }

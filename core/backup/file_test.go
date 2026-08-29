@@ -15,7 +15,7 @@ func TestWriteReadFileRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "lx-backup.json")
 
-	b, err := Export(mkState(), ExportOptions{AppVersion: "1.4.2", Now: time.Unix(1750000000, 0)})
+	b, _, err := Export(mkState(), ExportOptions{AppVersion: "1.4.2", Now: time.Unix(1750000000, 0)})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -300,7 +300,7 @@ func TestWriteFilePermissions(t *testing.T) {
 func TestWriteFileIsIndented(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "b.json")
-	b, _ := Export(mkState(), ExportOptions{})
+	b, _, _ := Export(mkState(), ExportOptions{})
 	if err := WriteFile(path, b); err != nil {
 		t.Fatal(err)
 	}

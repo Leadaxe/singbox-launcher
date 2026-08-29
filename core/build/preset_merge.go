@@ -182,6 +182,18 @@ type PresetMergeContext struct {
 	// не трогал. Без них `@dns_google_dot_outbound` уехал бы в конфиг
 	// строкой, и ядро отвергло бы его целиком.
 	TemplateVars []template.TemplateVar
+
+	// EmittedRuleSetTags (SPEC 118, Р-DNS-2) — теги, реально попадающие в
+	// `route.rule_set` финального конфига. Заполняется ОДИН раз до обхода
+	// секций (`CollectEmittedRouteRuleSetTags`), потому что секция dns
+	// собирается раньше route и своими силами этого множества не знает.
+	//
+	// nil — вырожденный режим для вызывающих, которым route-секция
+	// недоступна (превью отдельной секции, юнит-тесты merge'а): множество
+	// считается тут же, но БЕЗ вклада шаблонной route-секции и легаси-пути.
+	// Это ОСЛАБЛЕННЫЙ режим — он ещё может снять живую ссылку на
+	// шаблонный тег; боевой путь обязан передавать поле.
+	EmittedRuleSetTags map[string]bool
 }
 
 // hasNonSortablePreset — есть ли в шаблоне неотчуждаемый пресет, который
@@ -349,12 +361,15 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 		}
 	}
 
-	// Build emittedRuleSetTags для dangling-cleanup в DNS user rules.
-	presetByID := make(map[string]*template.Preset, len(ctx.Presets))
-	for i := range ctx.Presets {
-		presetByID[ctx.Presets[i].ID] = &ctx.Presets[i]
+	// Множество валидных rule_set-тегов для dangling-cleanup в DNS user rules.
+	// Боевой путь передаёт его готовым (посчитано по ВСЕМ источникам
+	// route.rule_set до обхода секций). Без него — вырожденный режим: то же
+	// перечисление, но без вклада шаблонной route-секции, которая тут
+	// недоступна.
+	emittedRuleSetTags := ctx.EmittedRuleSetTags
+	if emittedRuleSetTags == nil {
+		emittedRuleSetTags = CollectEmittedRouteRuleSetTags(nil, RouteConfig{}, ctx)
 	}
-	emittedRuleSetTags := collectRuleSetTagsFromPresets(presetByID, ctx.Rules, ctx.Target, ctx.GlobalVars)
 
 	// Emit rules: Active && Enabled. User → dangling cleanup; preset → as is.
 	for _, dr := range resolved.Rules {
@@ -425,37 +440,84 @@ func templateLikeFromCtx(ctx PresetMergeContext) template.TemplateData {
 	return td
 }
 
-// collectRuleSetTagsFromPresets — set rule_set tag'ов от ВСЕХ enabled
-// preset-ref'ов (после auto-prefix `<preset_id>:<local_tag>`).
+// CollectEmittedRouteRuleSetTags — set тегов, которые РЕАЛЬНО окажутся в
+// `route.rule_set` финального конфига.
 //
-// Используется в DNS rules dangling-cleanup: extra_rule с `rule_set` ссылкой
-// должен матчиться с реально-эмитнутым rule_set tag'ом. Иначе sing-box упадёт
-// на `start service: initialize DNS rule[N]: rule-set not found: <X>`.
-func collectRuleSetTagsFromPresets(presetByID map[string]*template.Preset, rules []state.Rule, target template.TargetSpec, globalVars map[string]string) map[string]bool {
-	tags := make(map[string]bool)
-	for _, rule := range rules {
-		if !rule.Enabled || rule.Kind != state.RuleKindPreset {
+// Зачем отдельная функция и почему она обязана быть полной. DNS-правило
+// пользователя ссылается на rule_set по тегу; `cleanDanglingDNSRule` снимает
+// ссылку, которой в конфиге нет (иначе ядро падает на
+// `initialize DNS rule[N]: rule-set not found: <X>` — весь конфиг мёртв).
+// Но «нет в конфиге» и «не найдено этой функцией» — разные вещи: если
+// множество известных тегов неполно, чистка снимает ЖИВУЮ ссылку, и правило
+// молча перестаёт ограничиваться своим набором — начинает матчить всё.
+// Именно так терялся `rule_set: "ru-domains"` у DNS-правила (SPEC 118, §7,
+// расхождение Р-DNS-2): множество строилось только по правилам
+// `RuleKindPreset`, а `ru-domains` объявлен прямо в `route.rule_set`
+// шаблона — ссылка живая, просто не увиденная.
+//
+// Поэтому источники здесь перечислены ровно те же, из которых складывается
+// `route.rule_set` в `MergeRouteSection` + `MergePresetsIntoRoute`:
+//
+//  1. теги, уже стоящие в route-секции шаблона (`routeRaw`);
+//  2. rule_set'ы легаси-пути `RouteConfig.Rules` (enabled);
+//  3. всё, что эмитит резолвер правил состояния — ЛЮБОГО kind'а
+//     (preset / srs / inline), кроме пропущенных (`Skipped`) и выключенных,
+//     ровно по тем же условиям, что и `MergePresetsIntoRoute`.
+//
+// Новый вид правила, эмитящий rule_set, приходит сюда сам: источник —
+// `ResolveRouteWithGlobals`, а не перечисление kind'ов.
+//
+// routeRaw — route-секция шаблона ДО merge'а (может быть пустой: тогда
+// вклад (1) пуст). routeCfg — легаси-конфиг route-секции.
+func CollectEmittedRouteRuleSetTags(routeRaw json.RawMessage, routeCfg RouteConfig, ctx PresetMergeContext) map[string]bool {
+	tags := make(map[string]bool, 8)
+
+	// (1) Теги из шаблонной route-секции.
+	if len(routeRaw) > 0 {
+		var route map[string]interface{}
+		if err := json.Unmarshal(routeRaw, &route); err == nil {
+			if arr, ok := route["rule_set"].([]interface{}); ok {
+				for _, rs := range arr {
+					if m, ok := rs.(map[string]interface{}); ok {
+						if t, _ := m["tag"].(string); t != "" {
+							tags[t] = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// (2) Легаси-путь MergeRouteSection: rule_set'ы включённых RouteRule.
+	for _, r := range routeCfg.Rules {
+		if !r.Enabled {
 			continue
 		}
-		preset, ok := presetByID[rule.Ref]
-		if !ok {
-			continue
-		}
-		body, err := rule.DecodeBody()
-		if err != nil {
-			continue
-		}
-		pb := body.(*state.PresetBody)
-		frags, _, ok := ExpandPresetWithGlobals(preset, pb.Vars, globalVars, target)
-		if !ok {
-			continue
-		}
-		for _, rs := range frags.RuleSets {
+		for _, rsRaw := range r.RuleSets {
+			var rs map[string]interface{}
+			if err := json.Unmarshal(rsRaw, &rs); err != nil {
+				continue
+			}
 			if t, _ := rs["tag"].(string); t != "" {
 				tags[t] = true
 			}
 		}
 	}
+
+	// (3) Единый резолв правил состояния — тот же вызов, что и в
+	// MergePresetsIntoRoute, с теми же фильтрами эмиссии.
+	st := &state.State{Rules: ctx.Rules, DNS: ctx.DNS}
+	tdVal := template.TemplateData{Presets: ctx.Presets}
+	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths, ctx.Target, ctx.GlobalVars)
+	for _, rs := range resolved.RuleSets {
+		if rs.Skipped || !rs.Enabled {
+			continue
+		}
+		if rs.Tag != "" {
+			tags[rs.Tag] = true
+		}
+	}
+
 	return tags
 }
 

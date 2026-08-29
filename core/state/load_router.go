@@ -58,6 +58,11 @@ func Load(path string) (*State, error) {
 	if s.Migration != nil && s.Migration.BackupPath == "" {
 		s.Migration.BackupPath = legacyBackupPath(path)
 	}
+	// SPEC 118 W6 (хвост W2): отчёт — на диск. Мигрирует ПЕРВЫЙ, кто откроет
+	// состояние, а на старте лаунчера это фоновая загрузка без окна: к
+	// открытию конфигуратора файл уже v7, и отчёта в памяти нет ни у кого.
+	// Файл рядом в bin/ переживает эту дистанцию.
+	PersistMigrationReport(lc.BinDir, s.Migration, path)
 
 	// Шаг 8 миграции (снос легаси) — гейт до W5 (PLAN §6): включается
 	// migrationPurgesLegacy. Порядок обязателен: сначала успешная запись

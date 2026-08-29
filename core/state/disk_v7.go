@@ -9,8 +9,7 @@
 //	  "rules":         [ ... ],                          // как v6
 //	  "vars":          [ ... ],
 //	  "dns_options":   { ... },
-//	  "warp_accounts": { ... },
-//	  "legacy_defaults": { ... }                         // TEMPORARY BRIDGE
+//	  "warp_accounts": { ... }
 //	}
 //
 // Roundtrip Load→Save→Load→Save — байт-в-байт (порядок полей struct =
@@ -34,15 +33,13 @@ const SchemaVersionV7 = 7
 const SchemaNameV7 = "sources_v7"
 
 // migrationPurgesLegacy — гейт шага 8 миграции v6→v7 (PLAN §6): снос
-// raw-кэша и легаси-ключей после миграции ВЫКЛЮЧЕН до волны W5, чтобы
-// мигрированное состояние сосуществовало со старым build-путём (мост
-// adapter_source.go читает легаси-поля, raw-кэш жив). Включается в W5.
+// raw-кэша и легаси-ключей после миграции. ВКЛЮЧЁН волной W5: моста больше
+// нет, легаси-поля никем не читаются, и держать их в файле значило бы
+// хранить материал, который система уже не понимает.
 //
-// В W1 семантической миграции ещё нет (шаги 1–7 — волна W2); загрузка v6
-// делает только структурный перенос adoptConnectionsV6.
-const migrationPurgesLegacy = false
-
-var _ = migrationPurgesLegacy // гейт объявлен для W2/W5; в W1 читателей нет
+// Константа оставлена (а не заинлайнена) как явная точка порядка: снос
+// выполняется ТОЛЬКО после успешной записи v7-файла (load_router).
+const migrationPurgesLegacy = true
 
 // diskStateV7 — корневая модель на диске v7. Используется ТОЛЬКО внутри
 // marshalDisk / parseV7 (порядок полей = порядок ключей файла).
@@ -54,12 +51,6 @@ type diskStateV7 struct {
 	Vars         []SettingVar            `json:"vars,omitempty"`
 	DNSOptions   DNSOptions              `json:"dns_options"`
 	WarpAccounts *WarpAccountsSection    `json:"warp_accounts,omitempty"`
-
-	// LegacyDefaults — TEMPORARY BRIDGE (SPEC 118 W1-W4), удаляется в W5:
-	// прежние Connections.Defaults до переезда в настройки приложения
-	// (миграция W2, шаг 8). Ключ намеренно мостовой, а не канонический
-	// «defaults»: в каноне v7 умолчаний в state не существует (SPEC Т1).
-	LegacyDefaults *Defaults `json:"legacy_defaults,omitempty"`
 }
 
 // parseV7 — прямой read canonical (v7) формата.
@@ -96,9 +87,6 @@ func parseV7(data []byte) (*State, error) {
 		DNS:                raw.DNSOptions,
 		WarpAccounts:       raw.WarpAccounts,
 		RulesLibraryMerged: true,
-	}
-	if raw.LegacyDefaults != nil {
-		s.Defaults = *raw.LegacyDefaults
 	}
 	if t, err := time.Parse(time.RFC3339, raw.Meta.CreatedAt); err == nil {
 		s.CreatedAt = t

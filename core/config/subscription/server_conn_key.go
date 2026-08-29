@@ -123,7 +123,7 @@ func sourceLogName(source string) string {
 // Боевой путь его НЕ зовёт: там дедуп идёт по одной записи (sourceDedup.accept)
 // строго ДО простановки тегов, и списком его не подменить. Функция для тех,
 // кто получил узлы, а не тело источника: вкладка Preview окна источника
-// (parsePreviewNodesFromBody) парсит тело своим путём и обязана показывать
+// (parseNodePoolFromBody) парсит тело своим путём и обязана показывать
 // то же, что соберётся, — иначе пользователь видит 39 строк там, где в
 // конфиг уедет 8 (превью ≡ боевой разбор).
 func DedupParsedNodes(nodes []*configtypes.ParsedNode) []*configtypes.ParsedNode {

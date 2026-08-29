@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"singbox-launcher/core/config/configtypes"
 )
 
 // fixedIDGen возвращает детерминированный счётчик "id-1", "id-2", …
@@ -52,9 +51,9 @@ func TestMigrate_RealFixture(t *testing.T) {
 	gotSub, gotSrv := 0, 0
 	for _, s := range state.Connections.Sources {
 		switch s.Type {
-		case SourceTypeSubscription:
+		case SourceKindSubscription:
 			gotSub++
-		case SourceTypeServer:
+		case SourceKindServer:
 			gotSrv++
 		}
 	}
@@ -67,7 +66,7 @@ func TestMigrate_RealFixture(t *testing.T) {
 	//    fixture: tag_prefix="WG:", uri ends with "#wg-mock"
 	//    expected label = "WG:wg-mock"
 	for _, s := range state.Connections.Sources {
-		if s.Type != SourceTypeServer {
+		if s.Type != SourceKindServer {
 			continue
 		}
 		if s.Label != "WG:wg-mock" {
@@ -155,7 +154,7 @@ func TestMigrate_SubscriptionOnly(t *testing.T) {
 	old := &v4File{
 		Version: 4,
 		ParserConfig: v4ParserConfig{
-			Proxies: []configtypes.ProxySource{{
+			Proxies: []legacyProxyV4{{
 				Source:    "https://example.com/sub",
 				TagPrefix: "S:",
 				Disabled:  false,
@@ -167,7 +166,7 @@ func TestMigrate_SubscriptionOnly(t *testing.T) {
 		t.Fatalf("got %d sources, want 1", len(state.Connections.Sources))
 	}
 	s := state.Connections.Sources[0]
-	if s.Type != SourceTypeSubscription || !s.Enabled || s.URL != "https://example.com/sub" {
+	if s.Type != SourceKindSubscription || !s.Enabled || s.URL != "https://example.com/sub" {
 		t.Errorf("subscription mismatch: %+v", s)
 	}
 	if s.Tag == nil || s.Tag.Prefix != "S:" {
@@ -180,7 +179,7 @@ func TestMigrate_ServerOnly(t *testing.T) {
 	old := &v4File{
 		Version: 4,
 		ParserConfig: v4ParserConfig{
-			Proxies: []configtypes.ProxySource{{
+			Proxies: []legacyProxyV4{{
 				Connections: []string{
 					"vless://uuid@host:443#node-A",
 					"vless://uuid@host:444",
@@ -195,7 +194,7 @@ func TestMigrate_ServerOnly(t *testing.T) {
 		t.Fatalf("got %d sources, want 2", len(state.Connections.Sources))
 	}
 	got0, got1 := state.Connections.Sources[0], state.Connections.Sources[1]
-	if got0.Type != SourceTypeServer || got1.Type != SourceTypeServer {
+	if got0.Type != SourceKindServer || got1.Type != SourceKindServer {
 		t.Errorf("both should be server type")
 	}
 	if got0.Label != "S:node-A" {
@@ -214,7 +213,7 @@ func TestMigrate_Mixed(t *testing.T) {
 	old := &v4File{
 		Version: 4,
 		ParserConfig: v4ParserConfig{
-			Proxies: []configtypes.ProxySource{{
+			Proxies: []legacyProxyV4{{
 				Source:      "https://example.com/sub",
 				Connections: []string{"vless://uuid@host:443#manual"},
 				TagPrefix:   "M:",
@@ -225,10 +224,10 @@ func TestMigrate_Mixed(t *testing.T) {
 	if len(state.Connections.Sources) != 2 {
 		t.Fatalf("got %d, want 2 (subscription + server)", len(state.Connections.Sources))
 	}
-	if state.Connections.Sources[0].Type != SourceTypeSubscription {
+	if state.Connections.Sources[0].Type != SourceKindSubscription {
 		t.Errorf("[0] should be subscription")
 	}
-	if state.Connections.Sources[1].Type != SourceTypeServer {
+	if state.Connections.Sources[1].Type != SourceKindServer {
 		t.Errorf("[1] should be server")
 	}
 }
@@ -239,7 +238,7 @@ func TestMigrate_Idempotent(t *testing.T) {
 	old := &v4File{
 		Version: 4,
 		ParserConfig: v4ParserConfig{
-			Proxies: []configtypes.ProxySource{{Source: "https://example.com/sub"}},
+			Proxies: []legacyProxyV4{{Source: "https://example.com/sub"}},
 		},
 	}
 	a := migrateV4ToV5(old, fixedIDGen())

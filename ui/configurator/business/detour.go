@@ -1,5 +1,11 @@
-// Package business — SPEC 077: detour (proxy-chain) option helpers for the
-// Source edit dialog.
+// Package business — SPEC 077 → SPEC 118: выбор цели дозвона (detour) для
+// окна источника.
+//
+// В модели v7 у цели ОДНА форма — `NodeLink` (features/directions.md §6):
+// либо ссылка корневого пространства финальных тегов (Направление, replace-тег
+// свёрнутой папки, верхний узел), либо пара «id папки + сырой тег узла в ней».
+// Прежней тройни detour_tag / detour_node_source_id / detour_node_hash
+// больше нет — здесь остался один выбор с одним значением.
 package business
 
 import (
@@ -25,44 +31,50 @@ var detourExcludedBuiltins = map[string]struct{}{
 	"auto-proxy-out":                {},
 }
 
-// DetourOptions builds the dropdown options and the currently-selected value
-// for a source's "Detour server" picker (SPEC 077).
+// DetourChoice — что означает одна опция пикера: готовая ссылка модели.
 //
-// Offered targets are deliberately narrow — only stable, user-meaningful
-// outbounds you'd intentionally chain through:
-//   - manual global outbound selectors (the groups you build on the Outbounds
-//     tab) and active preset groups;
-//   - NOT the built-in/service outbounds (direct-out / reject / drop) nor the
-//     template's auto-select group (auto-proxy-out) — see detourExcludedBuiltins;
-//   - NOT a subscription's own local auto/select groups (those are service
-//     groups over a whole subscription, not chain hops);
-//   - NOT individual subscription nodes (their tags are runtime-generated);
-//   - NOT single servers yet (their tags are runtime-only too — deferred).
-//
-// options[0] is always noneLabel (clears the detour). A dangling prior
-// selection (target no longer offered) is appended so it stays visible/clearable.
-// selected is noneLabel when DetourTag is empty, else the DetourTag value.
-//
-// SPEC 117: source — canonical *corestate.Source (форма правит рабочую
-// deep-copy записи модели, scratch-ProxySource упразднён).
-func DetourOptions(model *wizardmodels.WizardModel, source *corestate.Source, noneLabel string) (options []string, selected string) {
-	own := map[string]struct{}{}
-	if source != nil {
-		for _, ob := range source.Outbounds {
-			if ob.Tag != "" {
-				own[ob.Tag] = struct{}{}
-			}
-			for _, extra := range ob.AddOutbounds {
-				if extra != "" {
-					own[extra] = struct{}{}
-				}
-			}
-		}
-	}
-	localSub := localSubscriptionGroupTags(model)
+// Финальный конфиговый тег в выборе не хранится: он вычисляется на каждой
+// сборке (тег-политика папки), и хранимый протухал бы от её правки — ровно
+// тот класс багов, ради которого SPEC 112 снёс контент-хеш.
+type DetourChoice struct {
+	// Link — ссылка, которая уедет в Source.Detour. nil = «без detour».
+	Link *corestate.NodeLink
+	// Label — подпись выбранного узла для текстов формы.
+	Label string
+}
 
+// detourNodeMarker prefixes single-node options so they read differently from
+// group tags in the same dropdown.
+const detourNodeMarker = "» "
+
+// DetourOptions строит опции пикера «Detour server» и текущий выбор.
+//
+// Предлагаются только устойчивые, осмысленные цели:
+//   - Направления и активные группы пресетов (GetAvailableOutbounds), кроме
+//     служебных (detourExcludedBuiltins);
+//   - верхние узлы-серверы (кроме самого источника).
+//
+// options[0] — всегда noneLabel (сбрасывает detour). Повисший прежний выбор
+// (цели больше нет) дописывается в конец, чтобы остаться видимым и стираемым.
+func DetourOptions(model *wizardmodels.WizardModel, source *corestate.Source, noneLabel string) (options []string, selected string) {
+	options, selected, _ = DetourOptionsWithNodes(model, source, noneLabel)
+	return options, selected
+}
+
+// DetourOptionsWithNodes — то же плюс карта «показанная строка → её смысл».
+func DetourOptionsWithNodes(model *wizardmodels.WizardModel, source *corestate.Source, noneLabel string) (options []string, selected string, choices map[string]DetourChoice) {
 	options = []string{noneLabel}
+	choices = map[string]DetourChoice{}
 	inOptions := map[string]struct{}{noneLabel: {}}
+
+	// Свои replace-теги: свёрнутая папка не может ходить через собственную
+	// же замену — это ссылка на саму себя.
+	own := map[string]struct{}{}
+	if source != nil && source.Replace != nil && source.Replace.Tag != "" {
+		own[source.Replace.Tag] = struct{}{}
+		own[source.Replace.Tag+"-auto"] = struct{}{}
+	}
+
 	for _, tag := range GetAvailableOutbounds(model) {
 		if _, isBuiltin := detourExcludedBuiltins[tag]; isBuiltin {
 			continue // service/auto outbound — never a chain hop
@@ -70,99 +82,29 @@ func DetourOptions(model *wizardmodels.WizardModel, source *corestate.Source, no
 		if _, isOwn := own[tag]; isOwn {
 			continue
 		}
-		if _, isLocalSub := localSub[tag]; isLocalSub {
-			continue // a subscription's own group is not a chain target
-		}
 		options = append(options, tag)
 		inOptions[tag] = struct{}{}
+		choices[tag] = DetourChoice{Link: &corestate.NodeLink{Tag: tag}, Label: tag}
 	}
 
-	selected = noneLabel
-	if source != nil && source.DetourTag != "" {
-		selected = source.DetourTag
-		if _, ok := inOptions[selected]; !ok {
-			options = append(options, selected) // dangling — keep visible/clearable
-		}
-	}
-	return options, selected
-}
-
-// DetourChoice describes what one picker option means (SPEC 077 + SPEC 101,
-// ключ — SPEC 112, форма ссылки — SPEC 112-A).
-//
-// Задано ровно одно из двух: Tag метит в ГРУППУ (штампуется как есть) либо
-// пара NodeSourceID+NodeTag метит в ОДИН узел. Второе — ссылка-объект: ULID
-// источника-цели плюс identity-тег узла внутри него. Финальный конфиговый тег
-// в выборе не хранится: он вычисляется на каждой сборке (resolveNodeDetours),
-// а хранимый протухал бы от смены tag_prefix источника-цели.
-//
-// NodeSourceID пуст только у переходных выборов, дорезолвить которые не по
-// чему (источник-цель уже удалён): такая ссылка ищется глобально по тегу.
-type DetourChoice struct {
-	Tag          string
-	NodeSourceID string
-	NodeTag      string
-	NodeLabel    string
-}
-
-// detourNodeMarker prefixes single-node options so they read differently from
-// group tags in the same dropdown.
-const detourNodeMarker = "» "
-
-// DetourOptionsWithNodes builds the Source dialog's "Detour server" options:
-// the SPEC 077 group targets (see DetourOptions) plus, per SPEC 101, every
-// single-server source (state Connections URI) other than this source itself.
-// Subscription nodes are deliberately not offered — subscriptions carry
-// hundreds of unstable nodes; chaining through one of them is what a group is
-// for. options[0] is always noneLabel; choices maps a displayed option to its
-// meaning (absent for noneLabel).
-//
-// A dangling prior node selection (the server was deleted or renamed) stays
-// visible via its stored label so the user can see and clear it, mirroring the
-// dangling-tag behavior.
-func DetourOptionsWithNodes(model *wizardmodels.WizardModel, source *corestate.Source, noneLabel string) (options []string, selected string, choices map[string]DetourChoice) {
-	options, selected = DetourOptions(model, source, noneLabel)
-	choices = make(map[string]DetourChoice, len(options))
-	for _, tag := range options {
-		if tag != noneLabel {
-			choices[tag] = DetourChoice{Tag: tag}
-		}
-	}
-
-	// У canonical-источника URI один (server-type); «свои» адреса — чтобы
-	// не предлагать источнику цепочку через самого себя.
-	ownURIs := map[string]struct{}{}
-	if source != nil && strings.TrimSpace(source.URI) != "" {
-		ownURIs[strings.TrimSpace(source.URI)] = struct{}{}
-	}
-
-	selectedNodeSourceID, selectedNodeTag := "", ""
+	// Текущая ссылка источника.
+	var cur *corestate.NodeLink
 	if source != nil {
-		selectedNodeSourceID = strings.TrimSpace(source.DetourNodeSourceID)
-		selectedNodeTag = strings.TrimSpace(source.DetourNodeTag)
+		cur = source.Detour
 	}
 	selectedDisplay := ""
+
+	// Верхние узлы-серверы: они тоже законные цели (SPEC 112-A) — их тег
+	// корневой, уникализация ему не нужна.
 	if model != nil {
-		for _, s := range model.Sources {
-			if s.Kind != wizardmodels.SourceTypeServer {
+		for i := range model.Sources {
+			s := &model.Sources[i]
+			if s.Kind != wizardmodels.SourceKindServer {
 				continue
 			}
-			uri := strings.TrimSpace(s.URI)
-			// Источник без URI — ручной config_json; он тоже узел и хопом
-			// быть вправе (именно на таком стейт IRA и сломался: WARP лежал
-			// как uri+config_json, и контент-хеш их не сводил).
-			if uri != "" {
-				if _, own := ownURIs[uri]; own {
-					continue
-				}
-			} else if len(s.ConfigJSON) == 0 {
-				continue
+			if source != nil && s.ID != "" && s.ID == source.ID {
+				continue // цепочка через самого себя
 			}
-			// SPEC 112-A: ссылка — ОБЪЕКТ «источник + identity-тег узла». Для
-			// источника-сервера идентичность узла и есть его NodeTag (при
-			// пустом — Label: Source.NodeTagOrLabel), тот самый, что правится
-			// полем «тег узла». Финальный конфиговый тег здесь не пишется: он
-			// вычисляется на сборке и протухал бы от правки источника-цели.
 			nodeTag := strings.TrimSpace(s.NodeTagOrLabel())
 			if nodeTag == "" {
 				continue // безымянный узел адресовать нечем
@@ -172,85 +114,67 @@ func DetourOptionsWithNodes(model *wizardmodels.WizardModel, source *corestate.S
 				label = nodeTag
 			}
 			display := detourNodeMarker + label
-			if _, dup := choices[display]; dup {
-				display += " (2)"
+			for n := 2; ; n++ {
+				if _, dup := choices[display]; !dup {
+					break
+				}
+				display = detourNodeMarker + label + " (" + strconv.Itoa(n) + ")"
 			}
 			options = append(options, display)
-			choices[display] = DetourChoice{NodeSourceID: s.ID, NodeTag: nodeTag, NodeLabel: label}
-			if selectedDisplay != "" {
-				continue
-			}
-			switch {
-			case selectedNodeSourceID != "" && s.ID == selectedNodeSourceID && nodeTag == selectedNodeTag:
-				// Полная ссылка: сошлись обе части — резолв на сборке тоже
-				// строгий, показывать выбранным что-то другое было бы враньём.
-				selectedDisplay = display
-			case selectedNodeSourceID == "" && selectedNodeTag != "" && nodeTag == selectedNodeTag:
-				// Переходная ссылка без source_id: цель однозначна — дорезолвим
-				// её здесь, чтобы сохранение формы записало уже полный ref.
+			choices[display] = DetourChoice{Link: &corestate.NodeLink{Tag: nodeTag}, Label: label}
+			if selectedDisplay == "" && cur != nil && cur.FolderID == "" && cur.Tag == nodeTag {
 				selectedDisplay = display
 			}
 		}
 	}
 
-	if selectedNodeTag != "" || selectedNodeSourceID != "" {
-		if selectedDisplay == "" {
-			// Ссылка висит в пустоте (сервер удалён или переименован): держим
-			// сохранённую подпись видимой и стираемой — иначе пользователь не
-			// узнал бы, куда именно ведёт fail-closed на сборке.
-			label := source.DetourNodeLabel
-			if label == "" {
-				label = selectedNodeTag
-			}
-			if label == "" {
-				// Имени не осталось вовсе (ссылка только по id) — показываем
-				// id, чтобы опция вообще была видимой и стираемой.
-				label = selectedNodeSourceID
-			}
-			selectedDisplay = detourNodeMarker + label
-			// Тёзка среди живых опций: узел переименовали, а подпись источника
-			// осталась прежней — две неразличимые строки, из которых одна
-			// мёртвая. Разводим тем же суффиксом «(N)», что и дубли подписей
-			// выше, иначе повисшая ссылка подменила бы собой рабочую (строгий
-			// резолв на сборке её всё равно не примет).
-			for n := 2; ; n++ {
-				if _, dup := choices[selectedDisplay]; !dup {
-					break
-				}
-				selectedDisplay = detourNodeMarker + label + " (" + strconv.Itoa(n) + ")"
-			}
-			options = append(options, selectedDisplay)
-			choices[selectedDisplay] = DetourChoice{
-				NodeSourceID: selectedNodeSourceID,
-				NodeTag:      selectedNodeTag,
-				NodeLabel:    label,
+	selected = noneLabel
+	switch {
+	case cur == nil || strings.TrimSpace(cur.Tag) == "":
+		// без detour
+	case selectedDisplay != "":
+		selected = selectedDisplay
+	case cur.FolderID == "":
+		// Ссылка корневого пространства: либо живая опция выше, либо повисшая.
+		selected = cur.Tag
+		if _, ok := inOptions[selected]; !ok {
+			options = append(options, selected) // dangling — keep visible/clearable
+			choices[selected] = DetourChoice{Link: &corestate.NodeLink{Tag: cur.Tag}, Label: cur.Tag}
+		}
+	default:
+		// Ссылка на узел ПАПКИ. Узлы папок пикер не перечисляет (их сотни),
+		// но повисший/действующий выбор обязан остаться видимым и стираемым:
+		// иначе пользователь не узнал бы, куда ведёт fail-closed на сборке.
+		label := cur.Tag
+		if model != nil {
+			if folder := findSourceByID(model, cur.FolderID); folder != nil && folder.Name != "" {
+				label = folder.Name + " / " + cur.Tag
 			}
 		}
-		selected = selectedDisplay
+		display := detourNodeMarker + label
+		for n := 2; ; n++ {
+			if _, dup := choices[display]; !dup {
+				break
+			}
+			display = detourNodeMarker + label + " (" + strconv.Itoa(n) + ")"
+		}
+		options = append(options, display)
+		link := *cur
+		choices[display] = DetourChoice{Link: &link, Label: label}
+		selected = display
 	}
 	return options, selected, choices
 }
 
-// localSubscriptionGroupTags collects every local group tag declared by a
-// source (Sources[i].Outbounds / addOutbounds). These are the per-subscription
-// auto/select groups that must NOT be offered as detour chain targets.
-// Читает canonical model.Sources напрямую (SPEC 117) — проекция тут не нужна.
-func localSubscriptionGroupTags(model *wizardmodels.WizardModel) map[string]struct{} {
-	res := map[string]struct{}{}
-	if model == nil {
-		return res
+// findSourceByID — источник модели по ULID (nil, если такого нет).
+func findSourceByID(model *wizardmodels.WizardModel, id string) *corestate.Source {
+	if model == nil || id == "" {
+		return nil
 	}
 	for i := range model.Sources {
-		for _, ob := range model.Sources[i].Outbounds {
-			if ob.Tag != "" {
-				res[ob.Tag] = struct{}{}
-			}
-			for _, extra := range ob.AddOutbounds {
-				if extra != "" {
-					res[extra] = struct{}{}
-				}
-			}
+		if model.Sources[i].ID == id {
+			return &model.Sources[i]
 		}
 	}
-	return res
+	return nil
 }

@@ -1,80 +1,56 @@
+// File preview_parse_reasons_test.go — вкладка Preview обязана объяснять
+// пустоту (SPEC 115), и объясняет она её ИЗ СОСТОЯНИЯ (SPEC 118 Т3/Т8).
+//
+// Раньше вкладка разбирала тело своим кодом — второй реализацией разбора
+// рядом с боевой; SPEC 118 снёс раздельный разбор целиком: тело разбирается
+// один раз, при fetch, и per-record деградации остаются в
+// `updateStatus.warnings`. Проверяем, что этот канал доносит причины до
+// формы — иначе вкладка снова стала бы тупиком «0 server(s)» без повода.
 package tabs
 
 import (
 	"strings"
 	"testing"
+
+	corestate "singbox-launcher/core/state"
 )
 
-// SPEC 115 — вкладка Preview окна источника обязана объяснять пустоту.
-//
-// Раньше она показывала «0 server(s) from 1 source(s)» и «No servers found.» —
-// то есть дважды повторяла факт пустоты и молчала о причине. Превью разбирает
-// тело своим путём (кэшированный .raw, без сети), поэтому причины обязаны
-// доезжать и по нему тоже, а не только по боевой сборке.
+func TestFetchWarningTextsCarryReasons(t *testing.T) {
+	st := &corestate.SubUpdateStatus{Warnings: []corestate.FetchWarning{
+		{Kind: "bad_record", Tag: "🇳🇱 Нидерланды",
+			Message: "vless outbound rejected: empty user id — the server returned a placeholder, subscription may be expired"},
+		{Kind: "skip", Count: 12, Message: "records filtered by skip"},
+		// Вид без текста: остаться без строки он не вправе — тогда потеря
+		// снова стала бы молчаливой.
+		{Kind: "lost_group_member"},
+	}}
 
-// Протухшая подписка: ноль узлов И настоящая причина.
-func TestPreviewParseReasonsOnExpiredBody(t *testing.T) {
-	body := []byte(`[{
-	  "remarks": "🇳🇱 Нидерланды",
-	  "outbounds": [{
-	    "protocol": "vless", "tag": "proxy",
-	    "settings": { "vnext": [{ "address": "nl.test", "port": 443,
-	      "users": [{ "id": "" }] }] },
-	    "streamSettings": { "network": "tcp", "security": "tls" }
-	  }]
-	}]`)
-
-	nodes, reasons := parsePreviewNodesFromBodyEx(body, nil)
-	if len(nodes) != 0 {
-		t.Fatalf("протухшее тело дало %d узлов", len(nodes))
+	got := fetchWarningTexts(st)
+	if len(got) != 3 {
+		t.Fatalf("строк = %d, ожидали 3 — каждая деградация обязана быть названа: %v", len(got), got)
 	}
-	if len(reasons) == 0 {
-		t.Fatal("превью не объяснило пустоту — вкладка снова тупик")
-	}
-	joined := strings.Join(reasons, " | ")
+	joined := strings.Join(got, " | ")
 	if !strings.Contains(joined, "empty user id") {
-		t.Errorf("причина = %q, ожидалась настоящая", joined)
+		t.Errorf("настоящая причина отбраковки потеряна: %q", joined)
 	}
-	if strings.Contains(joined, "unsupported protocol") {
-		t.Errorf("битый элемент объявлен неподдерживаемым протоколом: %q", joined)
+	if !strings.Contains(joined, "🇳🇱 Нидерланды") {
+		t.Errorf("адресация узлом потеряна — непонятно, ЧТО отбраковано: %q", joined)
+	}
+	if !strings.Contains(got[2], "lost_group_member") {
+		t.Errorf("деградация без текста осталась без строки: %q", got[2])
 	}
 }
 
-// Чистое тело причин не даёт, и блок причин не строится: пустая рамка над
-// списком серверов — шум.
-func TestPreviewNoReasonsOnCleanBody(t *testing.T) {
-	body := []byte(`[{
-	  "remarks": "ok",
-	  "outbounds": [{
-	    "protocol": "vless", "tag": "proxy",
-	    "settings": { "vnext": [{ "address": "nl.test", "port": 443,
-	      "users": [{ "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" }] }] },
-	    "streamSettings": { "network": "tcp" }
-	  }]
-	}]`)
-
-	nodes, reasons := parsePreviewNodesFromBodyEx(body, nil)
-	if len(nodes) != 1 {
-		t.Fatalf("чистое тело дало %d узлов, ожидался 1", len(nodes))
+// Пустая диагностика причин не даёт, и блок причин не строится: пустая рамка
+// над списком серверов — шум.
+func TestFetchWarningTextsEmpty(t *testing.T) {
+	if got := fetchWarningTexts(nil); len(got) != 0 {
+		t.Fatalf("nil-диагностика дала причины: %v", got)
 	}
-	if len(reasons) != 0 {
-		t.Fatalf("чистое тело дало причины: %v", reasons)
+	if got := fetchWarningTexts(&corestate.SubUpdateStatus{}); len(got) != 0 {
+		t.Fatalf("пустая диагностика дала причины: %v", got)
 	}
-	if block := previewParseReasonsBlock(reasons); block != nil {
+	if block := previewParseReasonsBlock(nil); block != nil {
 		t.Error("блок причин построен без причин")
-	}
-}
-
-// Битые URI построчной подписки тоже объясняются: до этого строка молча
-// пропускалась, и превью показывало пустой список без повода.
-func TestPreviewParseReasonsOnBrokenURIList(t *testing.T) {
-	body := []byte("vless://not-a-valid-uri\nvmess://@@@broken@@@\n")
-
-	nodes, reasons := parsePreviewNodesFromBodyEx(body, nil)
-	if len(nodes) != 0 {
-		t.Fatalf("битые URI дали %d узлов", len(nodes))
-	}
-	if len(reasons) == 0 {
-		t.Fatal("битые URI не дали ни одной причины")
 	}
 }

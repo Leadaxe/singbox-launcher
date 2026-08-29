@@ -61,6 +61,27 @@ const (
 	// приехавшее НЕ применяется. Перезапись стёрла бы настройки, сделанные
 	// на этой машине, а правила и так найдут цель по тегу (SPEC 104).
 	WarnBackupDirectionExists = "backup_direction_exists"
+	// WarnBackupSourceKindUnsupported — вид источника, которого контракт
+	// 0.11 не знает (папка, провайдерская группа): в файл он не поехал.
+	// Секция folders[] — отдельный трек с LxBox-стороной (SPEC 118 §2).
+	WarnBackupSourceKindUnsupported = "backup_source_kind_unsupported"
+	// WarnBackupTagMaskDropped — `tag.mask` ПОДПИСКИ не применён: маска была
+	// шаблоном имени для каждой ноды (`{$label}` и подстановки), а в модели
+	// v7 у контейнера остались только prefix/postfix. У одиночного узла
+	// (server/chain) маска — это имя самого узла, и она молча становится
+	// его тегом; предупреждение ставится только там, где ПОТЕРЯ реальна.
+	WarnBackupTagMaskDropped = "backup_tag_mask_dropped"
+	// WarnBackupLocalDirectionDropped — локальное Направление источника,
+	// которое не породила свёртка: класс упразднён (SPEC 118), переносить
+	// его некуда. Fold-производная пара (`<PFX>select`/`<PFX>auto`) сюда не
+	// попадает — она приезжает заменой (FolderReplace), а не потерей.
+	WarnBackupLocalDirectionDropped = "backup_local_direction_dropped"
+	// WarnBackupReplaceTagDerived — ЯВНЫЙ тег замены папки/подписки не
+	// переживает контракт 0.11: там свёртка несла только режим, а имя группы
+	// было позиционным деривативом префикса. На приёмнике группа получит
+	// деривативное имя, и правила, метившие в прежнее, приедут выключенными.
+	// Предупреждение ставится на ЭКСПОРТЕ — там, где ещё видно оба имени.
+	WarnBackupReplaceTagDerived = "backup_replace_tag_derived"
 	// WarnBackupChainExists — цепочка с таким тегом уже есть: приехавшая НЕ
 	// применяется, своя сильнее. Warning ставится ВСЕГДА, даже когда «своя
 	// победила» — молчание скрыло бы случайных тёзок: две несвязанные
@@ -127,8 +148,10 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 	s.Sources = nil
 	s.Rules = nil
 
-	for _, sub := range b.Subscriptions {
-		s.Sources = append(s.Sources, importSubscription(sub))
+	for i, sub := range b.Subscriptions {
+		src, warns := importSubscription(sub, i)
+		s.Sources = append(s.Sources, src)
+		res.Warnings = append(res.Warnings, warns...)
 		res.AppliedSources++
 	}
 	for _, srv := range b.Servers {
@@ -170,7 +193,7 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 	// сборка (chain_hop_missing).
 	existingChains := map[string]bool{}
 	for _, src := range s.Sources {
-		if src.Kind == state.SourceTypeChain {
+		if src.Kind == state.SourceKindChain {
 			existingChains[src.NodeTagOrLabel()] = true
 		}
 	}
@@ -188,6 +211,13 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 		knownTags = append(knownTags, in.Tag)
 		res.AppliedSources++
 	}
+
+	// Позиции цепочек приехали строками (контракт 0.11 адреса папок не несёт):
+	// поднимаем их до адресных ссылок по ЖИВОМУ набору — уже импортированные
+	// источники плюс Направления принимающей стороны. Проход отдельный и
+	// последний, потому что видеть он обязан ВЕСЬ набор: цепочка может
+	// ссылаться на узел подписки, объявленной ниже неё.
+	resolveImportedHops(s.Sources, s.Directions)
 
 	known := newTagSet(knownTags)
 	presets := newTagSet(opts.KnownPresets)
@@ -237,12 +267,10 @@ func importDirections(list []Direction) []configtypes.Direction {
 	return out
 }
 
-// importSourceRef восстанавливает ссылку источника на цель дозвона.
+// importSourceRef восстанавливает ссылку источника на цель дозвона
+// (тройня контракта → NodeLink модели, convert_v7.go).
 func importSourceRef(src *state.Source, ref SourceRef) {
-	src.DetourTag = ref.DetourTag
-	src.DetourNodeSourceID = ref.DetourNodeSourceID
-	src.DetourNodeTag = ref.DetourNodeTag
-	src.DetourNodeLabel = ref.DetourNodeLabel
+	src.Detour = importNodeLinkRef(ref)
 }
 
 // ensureSourceID — Р3 (SPEC 117): ULID рождается в момент создания Source.
@@ -255,47 +283,107 @@ func ensureSourceID(id string) string {
 	return id
 }
 
-func importSubscription(sub Subscription) state.Source {
+// importSubscription — подписка контракта 0.11 в источник v7.
+//
+// index — позиция записи в файле: тег ЗАМЕНЫ (fold → replace) контракт не
+// несёт, а в v7 он явный. Материализуем его прежним позиционным деривативом
+// (`<N>:select`), тем же, что писала старая свёртка: правила и route.final
+// приезжают из того же файла и ссылаются именно на него.
+//
+// Второй возврат — потери конвертации, которые контракт выразить умеет, а
+// модель v7 больше нет: маска тегов и локальные Направления источника. Обе
+// приезжают в бэкапах v1.5.x, и обе обязаны быть названы вслух.
+func importSubscription(sub Subscription, index int) (state.Source, []Warning) {
+	var warns []Warning
 	src := state.Source{
-		Node:                    state.Node{Kind: state.SourceKindSubscription, Enabled: sub.Enabled == nil || *sub.Enabled},
-		ID:                      ensureSourceID(sub.ID),
-		URL:                     sub.URL,
-		Label:                   sub.Label,
-		MaxNodes:                sub.MaxNodes,
-		Skip:                    sub.Skip,
-		Outbounds:               importDirections(sub.Outbounds),
-		Fold:                    sub.Fold,
-		ExcludeFromGlobal:       sub.ExcludeFromGlobal,
-		ExposeGroupTagsToGlobal: sub.ExposeGroupTagsToGlobal,
+		Node:     state.Node{Kind: state.SourceKindSubscription, Enabled: sub.Enabled == nil || *sub.Enabled},
+		ID:       ensureSourceID(sub.ID),
+		URL:      sub.URL,
+		Name:     sub.Label,
+		MaxNodes: sub.MaxNodes,
+		Skip:     sub.Skip,
 	}
 	importSourceRef(&src, sub.SourceRef)
 	if sub.Tag != nil {
-		src.TagPolicy = &state.TagSpec{Prefix: sub.Tag.Prefix, Postfix: sub.Tag.Postfix, Mask: sub.Tag.Mask}
+		if sub.Tag.Prefix != "" || sub.Tag.Postfix != "" {
+			src.TagPolicy = &state.TagPolicy{Prefix: sub.Tag.Prefix, Postfix: sub.Tag.Postfix}
+		}
 	}
+	// Маска ПОДПИСКИ — шаблон имени для каждой ноды; prefix/postfix её не
+	// заменяют. Потеря названа, тегам нод она не подставляется.
+	if mask := importMaskTag(sub.Tag); mask != "" {
+		warns = append(warns, Warning{WarnBackupTagMaskDropped, subscriptionLabel(sub) + ": " + mask})
+	}
+	src.Replace = importFold(sub.Fold, backupReplaceTag(sub, index))
 	if sub.Update != nil {
 		src.Update = &state.UpdateSpec{IntervalHours: sub.Update.IntervalHours, AutoRefresh: sub.Update.Auto}
 	}
-	if len(sub.Disabled) > 0 {
-		src.DisabledNodes = make(map[string]int64, len(sub.Disabled))
-		for hash, ts := range sub.Disabled {
-			src.DisabledNodes[hash] = ts
+	// Локальные Направления источника: пара, порождённая свёрткой, уже
+	// приехала заменой (Replace выше) — второй раз её импортировать нельзя,
+	// это дало бы двух владельцев одного тега. Остальные упразднены классом.
+	if derived := foldDerivedDirectionTags(sub, index); len(sub.Outbounds) > 0 {
+		for _, ob := range sub.Outbounds {
+			tag := strings.TrimSpace(ob.Tag)
+			if tag == "" || derived[tag] {
+				continue
+			}
+			warns = append(warns, Warning{WarnBackupLocalDirectionDropped, subscriptionLabel(sub) + " → " + tag})
 		}
 	}
-	return src
+	// Отметки выключения: узлов у только что импортированной подписки нет
+	// (nodes[] в контракт не едут), поэтому они ждут первого достоверного
+	// fetch в PendingDisabled — вердикт O2.
+	for tag := range sub.Disabled {
+		if strings.TrimSpace(tag) != "" {
+			src.PendingDisabled = append(src.PendingDisabled, tag)
+		}
+	}
+	sort.Strings(src.PendingDisabled)
+	return src, warns
 }
 
+// subscriptionLabel — как назвать подписку в предупреждении: подпись, а если
+// её нет — URL (единственное, что у записи есть всегда).
+func subscriptionLabel(sub Subscription) string {
+	if l := strings.TrimSpace(sub.Label); l != "" {
+		return l
+	}
+	return sub.URL
+}
+
+// backupReplaceTag — тег замены свёрнутой подписки, приехавшей из бэкапа:
+// префикс тегов подписки с позиционным умолчанием «<номер>:» плюс `select`.
+// Формула та же, что у старой свёртки, — по этим тегам ссылаются правила
+// того же файла.
+func backupReplaceTag(sub Subscription, index int) string {
+	prefix := ""
+	if sub.Tag != nil {
+		prefix = sub.Tag.Prefix
+	}
+	return legacyFoldPrefix(prefix, index) + "select"
+}
+
+// importServer — одиночный узел контракта в источник v7.
+//
+// Тело материализуется не здесь: URI приезжает в origin.raw, и узел
+// становится собираемым после первого прохода материализации (Regen from raw
+// в окне источника либо сборка). ConfigJSON — уже готовое тело.
 func importServer(srv Server) state.Source {
 	src := state.Source{
-		Node:              state.Node{Kind: state.SourceKindServer, Enabled: srv.Enabled == nil || *srv.Enabled},
-		ID:                ensureSourceID(srv.ID),
-		URI:               srv.URI,
-		Label:             srv.Label,
-		NodeTag:           srv.NodeTag,
-		ExcludeFromGlobal: srv.ExcludeFromGlobal,
+		Node:  state.Node{Kind: state.SourceKindServer, Enabled: srv.Enabled == nil || *srv.Enabled, Tag: srv.NodeTag},
+		ID:    ensureSourceID(srv.ID),
+		Label: srv.Label,
+	}
+	if src.Tag == "" {
+		src.Tag = srv.Label
 	}
 	importSourceRef(&src, srv.SourceRef)
-	if len(srv.ConfigJSON) > 0 {
-		src.ConfigJSON = append(json.RawMessage(nil), srv.ConfigJSON...)
+	switch {
+	case len(srv.ConfigJSON) > 0:
+		src.Body = append(json.RawMessage(nil), srv.ConfigJSON...)
+		src.Origin = &state.Origin{Kind: state.OriginKindJSON, Raw: string(srv.ConfigJSON)}
+	case strings.TrimSpace(srv.URI) != "":
+		src.Origin = &state.Origin{Kind: state.OriginKindURI, Raw: srv.URI}
 	}
 	return src
 }
@@ -308,14 +396,16 @@ func importServer(srv Server) state.Source {
 // цепочек.
 func importChain(in Chain) state.Source {
 	src := state.Source{
-		Node:              state.Node{Kind: state.SourceKindChain, Enabled: in.Enabled == nil || *in.Enabled},
-		ID:                ensureSourceID(in.ID),
-		NodeTag:           in.Tag,
-		Label:             in.Label,
-		Chain:             in.Chain,
-		ExcludeFromGlobal: in.ExcludeFromGlobal,
+		Node: state.Node{
+			Kind:    state.SourceKindChain,
+			Enabled: in.Enabled == nil || *in.Enabled,
+			Tag:     in.Tag,
+			Body:    importChainBody(in.Chain),
+			Hops:    importHops(in.Chain.HopsOrNil()),
+		},
+		ID:    ensureSourceID(in.ID),
+		Label: in.Label,
 	}
-	importSourceRef(&src, in.SourceRef)
 	return src
 }
 

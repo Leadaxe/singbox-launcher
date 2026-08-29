@@ -7,7 +7,6 @@ package core
 // уровень fetch-сервиса).
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -67,7 +66,7 @@ func newFetchTestSource(url string) *state.Source {
 
 func fetchOnce(t *testing.T, src *state.Source, settings locale.Settings) {
 	t.Helper()
-	if !refreshOneSubscriptionSource(src, state.Defaults{}, settings, t.TempDir()) {
+	if !refreshOneSubscriptionSource(src, settings) {
 		t.Fatal("refreshOneSubscriptionSource ничего не изменил")
 	}
 }
@@ -174,9 +173,6 @@ func TestFetchMaxNodesCap(t *testing.T) {
 	}
 	if src.UpdateStatus == nil || !src.UpdateStatus.Truncated {
 		t.Fatalf("truncated не выставлен: %+v", src.UpdateStatus)
-	}
-	if src.Meta == nil || !src.Meta.Truncated {
-		t.Fatal("мостовая Meta.Truncated не выставлена")
 	}
 
 	// Ступень 2: дефолт настроек приложения.
@@ -367,61 +363,31 @@ func TestFetchAppliesPendingDisabled(t *testing.T) {
 	if !foundWarn {
 		t.Fatalf("несматченная отметка обязана дать warning: %+v", src.UpdateStatus.Warnings)
 	}
-	// Согласованность моста: карта выключенных отражает канон.
-	if _, ok := src.DisabledNodes["B"]; !ok {
-		t.Fatalf("мостовая карта не отражает enabled=false: %v", src.DisabledNodes)
-	}
 }
 
-// Фикс ревью W3 (блокер 1б, fetch-уровень): отметка выключения, записанная
-// ТОЛЬКО в легаси-карту DisabledNodes (старый state.json, легаси-путь UI),
-// втягивается в канон и переживает fetch — узел не «оживает».
-func TestFetchLegacyDisabledMapSurvivesFetch(t *testing.T) {
-	stub := newStubSub(t, strings.Join([]string{vlessLine(1, "A"), vlessLine(2, "B")}, "\n"))
-	src := newFetchTestSource(stub.srv.URL)
-	fetchOnce(t, src, locale.Settings{})
-
-	// Легаси-путь: только карта, канонический enabled не тронут.
-	src.DisabledNodes = map[string]int64{"B": 7}
-
-	fetchOnce(t, src, locale.Settings{})
-	if src.Nodes[1].Enabled {
-		t.Fatal("легаси-отметка карты не втянулась в канон — узел ожил после fetch")
-	}
-	if src.DisabledNodes["B"] != 7 {
-		t.Fatalf("timestamp легаси-отметки потерян: %v", src.DisabledNodes)
-	}
-}
-
-// Фикс ревью W3 (среднее): недостоверное тело не трогает ни nodes[], ни .raw
-// (симметрия 113-A на мостовую эпоху) — иначе легаси-путь сборки терял бы
-// узлы, которые канон сохранил.
-func TestFetchUntrustedBodyKeepsRawCache(t *testing.T) {
+// SPEC 113-A: недостоверное тело не трогает nodes[] — состояние остаётся тем,
+// на котором подписка реально живёт. Raw-кэша больше нет (SPEC 118 W5), и
+// проверять симметрию с ним нечего: единственный дом узлов — состояние.
+func TestFetchUntrustedBodyKeepsNodes(t *testing.T) {
 	stub := newStubSub(t, vlessLine(1, "A"))
 	src := newFetchTestSource(stub.srv.URL)
-	subsDir := t.TempDir()
-	if !refreshOneSubscriptionSource(src, state.Defaults{}, locale.Settings{}, subsDir) {
+	if !refreshOneSubscriptionSource(src, locale.Settings{}) {
 		t.Fatal("первый fetch ничего не изменил")
 	}
-	rawBefore, err := state.ReadRawBody(subsDir, src.ID)
-	if err != nil || len(rawBefore) == 0 {
-		t.Fatalf(".raw после успешного fetch: err=%v, %d байт", err, len(rawBefore))
+	if nodeTags(src) != "A" {
+		t.Fatalf("первый fetch: %s", nodeTags(src))
 	}
 
 	// Мусорное тело (HTML вместо подписки) → недостоверно.
 	stub.set("<html><body>Access denied battle://page</body></html>", http.StatusOK)
-	if !refreshOneSubscriptionSource(src, state.Defaults{}, locale.Settings{}, subsDir) {
+	if !refreshOneSubscriptionSource(src, locale.Settings{}) {
 		t.Fatal("недостоверный fetch обязан изменить updateStatus")
 	}
 	if nodeTags(src) != "A" {
 		t.Fatalf("недостоверное тело тронуло nodes: %s", nodeTags(src))
 	}
-	rawAfter, err := state.ReadRawBody(subsDir, src.ID)
-	if err != nil {
-		t.Fatalf("чтение .raw после недостоверного fetch: %v", err)
-	}
-	if !bytes.Equal(rawBefore, rawAfter) {
-		t.Fatal(".raw затёрт недостоверным телом — мостовая сборка потеряла бы узлы")
+	if src.UpdateStatus == nil || src.UpdateStatus.LastStatus != "err" {
+		t.Fatalf("недостоверность не отражена в updateStatus: %+v", src.UpdateStatus)
 	}
 }
 

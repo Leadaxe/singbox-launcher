@@ -99,22 +99,24 @@ func TestSubstituteParserConfigPlaceholders_UnknownPlaceholderLeftAlone(t *testi
 	}
 }
 
-func TestSubstituteParserConfigPlaceholders_ProxySourceOutbounds(t *testing.T) {
-	// Placeholders also live in parser_config.proxies[].outbounds[].options
-	// (local selectors). Ensure those are walked too.
+func TestSubstituteParserConfigPlaceholders_ProxySourceLocalGroups(t *testing.T) {
+	// Placeholders также живут в группах ЗАМЕНЫ свёрнутой папки — они
+	// разворачиваются проходом 0 в build-only поле LocalGroups (SPEC 118 W5:
+	// локальных Направлений в состоянии нет, замена — их единственный
+	// источник). Подстановка обязана дойти и туда.
 	pc := &ParserConfig{}
 	pc.ParserConfig.Proxies = []ProxySource{
 		{
 			Source: "https://example.com/sub",
-			Outbounds: []Direction{
+			LocalGroups: []Direction{
 				{Tag: "vpn-1-auto", Type: "urltest", Options: map[string]interface{}{"interval": "@urltest_interval"}},
 			},
 		},
 	}
 	SubstituteParserConfigPlaceholders(pc, nil)
 
-	if got := pc.ParserConfig.Proxies[0].Outbounds[0].Options["interval"]; got != "5m" {
-		t.Errorf("local selector interval: %v, want 5m fallback", got)
+	if got := pc.ParserConfig.Proxies[0].LocalGroups[0].Options["interval"]; got != "5m" {
+		t.Errorf("replace group interval: %v, want 5m fallback", got)
 	}
 }
 

@@ -200,9 +200,6 @@ func sourceDisplayName(ps ProxySource, index int) string {
 	if s := strings.TrimSpace(ps.Label); s != "" {
 		return s
 	}
-	if s := strings.TrimSpace(ps.TagMask); s != "" {
-		return s
-	}
 	if s := strings.TrimSpace(ps.Source); s != "" {
 		return s
 	}

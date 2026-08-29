@@ -7,14 +7,14 @@
 // сборке: пользователь настраивает один объект, а не два, обязанных
 // оставаться синхронными.
 //
-// # Чем отличается от умершего PrepareSourceFolds
+// # Чем отличается от умершей свёртки (fold)
 //
 //   - тег замены ЯВНЫЙ (`replace.tag`), а не позиционный дериватив: он не
 //     зависит от места папки в списке и переживает перестановку источников;
-//   - маркеры `WIZARD:auto`/`WIZARD:selector` в comment не пишутся вовсе —
+//   - маркеров `WIZARD:*` в comment не пишется вовсе —
 //     пул кандидатов Направлений решает ПРАВИЛО (outbound_filter.go), а не
 //     метка в тексте;
-//   - `ExcludeFromGlobal`/`ExposeGroupTagsToGlobal` не выставляются: тем же
+//   - флагов «исключить из пула»/«показать теги групп» больше нет: тем же
 //     правилом пула узлы свёрнутой папки из него уходят, а её replace-теги
 //     приходят.
 //
@@ -30,7 +30,7 @@ import (
 // PrepareFolderReplaces разворачивает свёртки папок в локальные группы.
 //
 // Мутирует переданный ParserConfig — как PrepareDirections и
-// PrepareSourceFolds, вызывается по копии, собранной для генерации.
+// PrepareDirections, вызывается по копии, собранной для генерации.
 //
 // tmplAutoOptions — те же `group_templates.auto.options` шаблона, что у
 // твинов Направлений: авто-группа замены и авто-группа Направления — одна и
@@ -48,7 +48,7 @@ func PrepareFolderReplaces(parserConfig *ParserConfig, tmplAutoOptions map[strin
 		if len(groups) == 0 {
 			continue
 		}
-		ps.Outbounds = append(ps.Outbounds, groups...)
+		ps.LocalGroups = append(ps.LocalGroups, groups...)
 		debuglog.DebugLog("SPEC 118: папка %d свёрнута в %d группу(ы), режим %s",
 			i+1, len(groups), ps.Canonical.Replace.Mode)
 	}

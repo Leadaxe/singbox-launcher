@@ -154,7 +154,7 @@ func buildFlagRegex(selected []string) string {
 // showFlagPickerPopup — modal popup поверх parent-canvas'а. На Apply вызывает
 // onApply с финальным regex. Cancel / клик вне → закрыть.
 //
-// `nodes` = model.PreviewNodes (если nil/empty — chips и list пустые,
+// `nodes` = model.NodePool (если nil/empty — chips и list пустые,
 // regex-поле всё равно работает).
 func showFlagPickerPopup(
 	parent fyne.Window,

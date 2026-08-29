@@ -118,41 +118,41 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	}
 
 	// Step 1.5: load template — нужен раньше (SPEC 056) для preset.outbounds
-	// pre-patch внутри buildSnapshotFromRawCache. Это лёгкая операция (file
+	// pre-patch внутри buildSnapshotFromState. Это лёгкая операция (file
 	// read + JSON parse), переиспользуется в Step 4 для BuildConfig.
 	td, err := template.LoadTemplateData(execDir)
 	if err != nil {
 		return fmt.Errorf("load template: %w", err)
 	}
 
-	// Step 2: попытаться построить snapshot из raw cache.
-	cacheSnap, parserRes, snapErr := buildSnapshotFromRawCache(s, execDir, nil, td)
-	cacheMissing := errors.Is(snapErr, ErrRawCacheIncomplete)
+	// Step 2: попытаться построить snapshot из материализованных узлов.
+	cacheSnap, parserRes, snapErr := buildSnapshotFromState(s, execDir, nil, td)
+	cacheMissing := errors.Is(snapErr, ErrNoMaterializedNodes)
 	if snapErr != nil && !cacheMissing {
 		// Сборка не состоялась — но если разбор успел объяснить, почему
 		// (все источники пусты, провайдер ответил отказом), это объяснение
 		// обязано доехать до списка источников. Молчаливый выход оставлял бы
 		// сломанную подписку с виду здоровой.
 		feedParserDiagnosticsOnFailure(parserRes)
-		return fmt.Errorf("build snapshot from raw cache: %w", snapErr)
+		return fmt.Errorf("build snapshot from materialized nodes: %w", snapErr)
 	}
 
 	if cacheMissing {
-		debuglog.InfoLog("RebuildConfigIfDirty: raw cache incomplete — triggering Update first")
+		debuglog.InfoLog("RebuildConfigIfDirty: подписки без материализованных узлов — сначала Update")
 		if ac.ConfigService == nil {
-			return fmt.Errorf("raw cache incomplete and ConfigService not initialized")
+			return fmt.Errorf("no materialized nodes and ConfigService not initialized")
 		}
 		// triggerRebuild=false: мы УЖЕ внутри Rebuild — хвостовой rebuild
 		// из Update замыкал бы взаимную рекурсию (см. updateConfigFromSubscriptions).
 		if _, updErr := ac.ConfigService.updateConfigFromSubscriptions(false); updErr != nil {
-			return fmt.Errorf("auto-update for empty raw cache failed: %w", updErr)
+			return fmt.Errorf("auto-update for empty node set failed: %w", updErr)
 		}
 		// Перечитываем state (Update сохраняет meta) и снова строим snapshot.
 		s, err = state.Load(statePath)
 		if err != nil {
 			return fmt.Errorf("reload state after auto-update: %w", err)
 		}
-		cacheSnap, parserRes, snapErr = buildSnapshotFromRawCache(s, execDir, nil, td)
+		cacheSnap, parserRes, snapErr = buildSnapshotFromState(s, execDir, nil, td)
 		if snapErr != nil {
 			feedParserDiagnosticsOnFailure(parserRes)
 			return fmt.Errorf("rebuild snapshot after auto-update: %w", snapErr)
@@ -170,7 +170,7 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		isForced, ac.StateService.IsCacheStale(), ac.StateService.IsConfigStale(), cacheMissing)
 
 	// SPEC 112-B часть B / SPEC 115: попытка сборки открывается ЗДЕСЬ, за
-	// noop-развилкой, а не в разборе raw-кэша выше. Разбор идёт до развилки, и
+	// noop-развилкой, а не в эмиссии выше. Разбор идёт до развилки, и
 	// открытая там попытка на холостом вызове (dirty-маркеры чисты, кэш на
 	// месте) осталась бы без санитайзерных записей и без Finish: холостой
 	// Rebuild стирал бы пометки «снято N» прошлой полной сборки, не дав взамен

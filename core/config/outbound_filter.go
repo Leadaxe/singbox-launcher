@@ -14,7 +14,7 @@ import (
 // filterNodesForSelector returns nodes that match the filter. filter may be nil (all nodes),
 // a single map (AND of key/pattern), or a slice of maps (OR of maps). Empty map = no filter.
 //
-// FilterNodesExcludeFromGlobal — ПУЛ КАНДИДАТОВ Направлений
+// FilterDirectionCandidatePool — ПУЛ КАНДИДАТОВ Направлений
 // (SPEC 118 W4, Т5; features/directions.md §2).
 //
 // Правило пула, и ничего кроме него:
@@ -29,10 +29,7 @@ import (
 // пула по-прежнему эмитится в outbounds и легален как хоп цепочки, цель
 // detour и член Auto — пул это видимость для Направлений, не для конфига.
 //
-// TEMPORARY BRIDGE (умирает в W5): у источников без канона решение
-// принимает прежний флаг ExcludeFromGlobal — состояния, ещё не прошедшие
-// материализацию, обязаны собираться как раньше.
-func FilterNodesExcludeFromGlobal(allNodes []*ParsedNode, proxies []ProxySource) []*ParsedNode {
+func FilterDirectionCandidatePool(allNodes []*ParsedNode, proxies []ProxySource) []*ParsedNode {
 	if len(allNodes) == 0 {
 		return allNodes
 	}
@@ -43,16 +40,9 @@ func FilterNodesExcludeFromGlobal(allNodes []*ParsedNode, proxies []ProxySource)
 			out = append(out, n)
 			continue
 		}
-		ps := proxies[idx]
-		if cs := ps.Canonical; cs != nil {
-			// Свёрнутая папка представлена в пуле только тегами замены.
-			if cs.IsContainer && cs.Replace != nil {
-				continue
-			}
-			out = append(out, n)
-			continue
-		}
-		if ps.ExcludeFromGlobal {
+		cs := proxies[idx].Canonical
+		// Свёрнутая папка представлена в пуле только тегами замены.
+		if cs != nil && cs.IsContainer && cs.Replace != nil {
 			continue
 		}
 		out = append(out, n)
@@ -189,7 +179,7 @@ func matchesPattern(value, pattern string) bool {
 // (i.e. result of the same LoadNodesFromSource pipeline that GenerateOutboundsFromParserConfig uses).
 // PreviewGlobalSelectorNodes applies exclude_from_global, then the same filter logic as PreviewSelectorNodes.
 func PreviewGlobalSelectorNodes(allNodes []*ParsedNode, proxies []ProxySource, outboundConfig Direction) ([]*ParsedNode, string) {
-	pool := FilterNodesExcludeFromGlobal(allNodes, proxies)
+	pool := FilterDirectionCandidatePool(allNodes, proxies)
 	return PreviewSelectorNodes(pool, outboundConfig)
 }
 

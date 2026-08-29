@@ -203,11 +203,11 @@ func scrubMachineBound(st *corestate.State) CloneSummary {
 
 	for _, s := range st.Sources {
 		switch s.Kind {
-		case corestate.SourceTypeSubscription:
+		case corestate.SourceKindSubscription:
 			sum.Subscriptions++
-		case corestate.SourceTypeServer:
+		case corestate.SourceKindServer:
 			sum.Servers++
-		case corestate.SourceTypeChain:
+		case corestate.SourceKindChain:
 			// Цепочка — тоже источник: она ВЕДЁТ маршрут, а Направление
 			// выбирает между маршрутами. Поэтому считается здесь.
 			sum.Chains++

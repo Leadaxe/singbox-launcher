@@ -295,7 +295,8 @@ func buildWizardWindow(
 				loadConfigFromFile(presenter, fileServiceAdapter, templateData, model, wizardWindow)
 			} else {
 				debuglog.InfoLog("ShowConfigWizard: loaded state from state.json")
-				maybeShowMigrationReport(wizardWindow, stateFile)
+				maybeShowMigrationReport(wizardWindow, stateFile,
+					filepath.Join(ac.FileService.ExecDir, constants.BinDirName))
 			}
 			// LoadState восстанавливает Target из meta файла. Для машины id и
 			// каталоги всегда из реестра (§5.8 — их в файле нет и быть не
@@ -641,7 +642,7 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 		// вкладку стало незачем.
 
 		// Вкладка Направлений: перестроить список — конфигуратор читает
-		// canonical (model.GlobalOutbounds / Sources[i].Outbounds) напрямую
+		// canonical (model.GlobalOutbounds) напрямую
 		// (SPEC 117), пересборка структуры из JSON упразднена.
 		if item.Text == locale.T("Directions") {
 			if guiState.RefreshOutboundsConfiguratorList != nil {
@@ -834,7 +835,8 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 			dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to restore state"), err))
 			return
 		}
-		maybeShowMigrationReport(wizardWindow, stateFile)
+		maybeShowMigrationReport(wizardWindow, stateFile,
+			filepath.Join(presenter.Model().ExecDir, constants.BinDirName))
 
 		// Синхронизируем GUI
 		presenter.SyncModelToGUI()

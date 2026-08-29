@@ -6,11 +6,10 @@
 // dns_options (SPEC 053/056). Нелегальные комбинации полей закрывает
 // normalizeSourceShape на Load и конструкторы.
 //
-// МОСТ (PLAN §6): пока сборка ходит через legacy-проекцию ProxySource,
-// Source несёт рядом с каноном легаси-поля v6 (помечены TEMPORARY BRIDGE).
-// Загрузка v6-состояния в W1 переносит их структурно, без семантической
-// миграции (миграция — волна W2); adapter_source.go деривирует из них
-// прежнюю ProxySource-форму, поэтому поведение build-путей не меняется.
+// SPEC 118 W5: моста больше нет. Легаси-поля v6 (disabled_nodes, fold,
+// exclude/expose, detour-тройня, локальные Направления, tag.mask, uri/
+// config_json/chain-строки) в этом типе не существуют: их читает ТОЛЬКО вход
+// миграции (legacySourceV6, migration_legacy_source.go) и выбрасывает шаг 8.
 package state
 
 import (
@@ -29,18 +28,6 @@ const (
 	SourceKindAuto         SourceKind = "auto"
 	SourceKindFolder       SourceKind = "folder"
 	SourceKindSubscription SourceKind = "subscription"
-)
-
-// TEMPORARY BRIDGE (SPEC 118 W1-W4), удаляется в W5: прежние имена
-// дискриминатора. Строковые значения совпадают со старым SourceType
-// («subscription»/«server»/«chain»), поэтому alias безопасен и держит
-// callsite'ы UI/backup компилируемыми до их канонизации.
-type SourceType = SourceKind
-
-const (
-	SourceTypeSubscription = SourceKindSubscription
-	SourceTypeServer       = SourceKindServer
-	SourceTypeChain        = SourceKindChain
 )
 
 // NodeLink — единая ссылка «через кого» (features/directions.md §6).
@@ -74,25 +61,14 @@ const (
 type TagPolicy struct {
 	Prefix  string `json:"prefix,omitempty"`
 	Postfix string `json:"postfix,omitempty"`
-
-	// Mask — TEMPORARY BRIDGE (SPEC 118 W1-W4), удаляется в W5. В каноне v7
-	// маски НЕТ (SPEC Т2); поле держит значение из v6-состояний до миграции
-	// W2 (mask server/chain → Node.Tag, mask-шаблон подписки — warning) и
-	// кормит legacy-парсер через мост.
-	Mask string `json:"mask,omitempty"`
 }
-
-// TagSpec — TEMPORARY BRIDGE (SPEC 118 W1-W4), удаляется в W5: прежнее имя
-// типа тег-политики (v6 «tag»-спека). Форма совпадает с TagPolicy, alias
-// держит callsite'ы UI/backup компилируемыми.
-type TagSpec = TagPolicy
 
 // IsZero — нечего применять (все поля пустые).
 func (t *TagPolicy) IsZero() bool {
 	if t == nil {
 		return true
 	}
-	return t.Prefix == "" && t.Postfix == "" && t.Mask == ""
+	return t.Prefix == "" && t.Postfix == ""
 }
 
 // AutoStrategy = configtypes.DirectionAuto — перенос, не изобретение
@@ -129,8 +105,16 @@ type Node struct {
 	Enabled bool    `json:"enabled"`
 	Origin  *Origin `json:"origin,omitempty"`
 
-	// Body — server only: готовый sing-box outbound, чист от detour
-	// (никакого запекания Outbound["detour"]).
+	// Body — готовый sing-box outbound, чист от detour (никакого запекания
+	// Outbound["detour"]).
+	//
+	//   - server: тело узла целиком (минус tag/detour);
+	//   - chain:  настройки маршрута БЕЗ позиций — `type`, `idle_timeout`,
+	//     `strip_evasion`, `strip`, `rewrite`. Позиции живут отдельным полем
+	//     Hops: они ссылки (NodeLink), а не значения, и в теле им делать
+	//     нечего — сборка подставляет их резолвом, как и всякую ссылку.
+	//
+	// У auto тела нет: группа целиком описана Group.
 	Body json.RawMessage `json:"body,omitempty"`
 	// Detour — server only; у kind=folder тем же ключом едет ОБЩИЙ detour
 	// папки (одна json-точка на оба смысла — семантика по kind, как всё в
@@ -168,11 +152,9 @@ type Source struct {
 	// ID — ULID; ЕДИНСТВЕННАЯ идентификация папки/подписки (NodeLink.folderId,
 	// имена профильных директорий, адресация отчётов).
 	//
-	// TEMPORARY BRIDGE (SPEC 118 W1-W4), удаляется в W5: до смерти
-	// detour-тройни ULID живёт и у узловых kind'ов (server/chain) — он
-	// адресат ссылок DetourNodeSourceID (SPEC 112-A); normalizeSourceShape
-	// его поэтому НЕ отбрасывает. Канонизация (id только у папки/подписки) —
-	// вместе со сносом тройни.
+	// У узловых kind'ов (server/chain/auto) ULID тоже живёт: на него
+	// ссылаются бэкап (SourceRef 0.11) и адресация UI-операций; ссылок на
+	// узлы по нему в модели v7 больше нет — их место занял NodeLink.
 	ID        string         `json:"id,omitempty"`
 	Name      string         `json:"name,omitempty"`
 	TagPolicy *TagPolicy     `json:"tag_policy,omitempty"`
@@ -188,73 +170,36 @@ type Source struct {
 	Meta         *SubMeta            `json:"meta,omitempty"`
 	UpdateStatus *SubUpdateStatus    `json:"update_status,omitempty"`
 	// PendingDisabled — одноразовые отметки выключения по сырым тегам
-	// (вердикт O2, SPEC 118): их БУДЕТ писать импорт бэкапа (волна W7 —
-	// сегодня импорт кладёт DisabledNodes-карту, её втягивает merge),
-	// когда nodes[] ещё пусты и применять карту не к чему.
+	// (вердикт O2, SPEC 118): их пишет импорт бэкапа и миграция, когда
+	// nodes[] ещё пусты и применять отметку не к чему.
 	// Применяются на первом ДОСТОВЕРНОМ
 	// fetch (MergeSubscriptionNodes) и стираются; при truncated-разборе
 	// несматченные теги переживают fetch — узел мог остаться за капом.
 	// Это не TTL-карта: поле живёт только между импортом и первым fetch.
 	PendingDisabled []string `json:"pending_disabled,omitempty"`
 
-	// === TEMPORARY BRIDGE (SPEC 118 W1-W4), удаляется в W5 ===
-	//
-	// Легаси-поля v6: доезжают структурным переносом Load v6 → v7 (волна W1,
-	// семантическая миграция — W2) и кормят adapter_source.go (проекцию
-	// v7 → ProxySource), которой живут build-пути до W4. Save v7 пишет их
-	// под прежними ключами, чтобы состояние не теряло данных до W2.
-
-	// Label — отображаемое имя server/chain/subscription (тег — NodeTag/Tag).
+	// Label — отображаемое имя узловых kind'ов (server/chain/auto): у
+	// папки и подписки ту же роль играет Name. Тег узла — Node.Tag.
 	Label string `json:"label,omitempty"`
-	// NodeTag — системный тег узла server/chain до миграции в Node.Tag
-	// (шаг 3 миграции W2). Пусто → тег = Label (см. NodeTagOrLabel).
-	NodeTag string `json:"node_tag,omitempty"`
-	// URI — share-URI одиночного сервера (материализация в body — W2).
-	URI string `json:"uri,omitempty"`
-	// ConfigJSON — ручной sing-box outbound (server); переезжает в Body в W2.
-	ConfigJSON json.RawMessage `json:"config_json,omitempty"`
-	// Chain — строковые хопы цепочки; []NodeLink Hops — миграция W2 (шаг 4).
-	Chain *configtypes.SourceChain `json:"chain,omitempty"`
-	// Outbounds — локальные Направления источника (умирают в W5; произвольные
-	// — warning миграции, fold-производные → Replace).
-	Outbounds []configtypes.Direction `json:"outbounds,omitempty"`
-	// ExcludeFromGlobal / ExposeGroupTagsToGlobal — флаги SPEC 108-эпохи.
-	ExcludeFromGlobal       bool `json:"exclude_from_global,omitempty"`
-	ExposeGroupTagsToGlobal bool `json:"expose_group_tags_to_global,omitempty"`
-	// Fold — свёртка подписки; → Replace с материализацией тега (шаг 6, W2).
-	Fold *configtypes.SourceFold `json:"fold,omitempty"`
-	// Detour-тройня + tag-ссылка SPEC 077/112-A; → NodeLink (шаг 5, W2).
-	DetourTag          string `json:"detour_tag,omitempty"`
-	DetourNodeSourceID string `json:"detour_node_source_id,omitempty"`
-	DetourNodeTag      string `json:"detour_node_tag,omitempty"`
-	DetourNodeHash     string `json:"detour_node_hash,omitempty"`
-	DetourNodeLabel    string `json:"detour_node_label,omitempty"`
-	// DisabledNodes — карта выключенных узлов подписки (SPEC 094 D4);
-	// → Node.Enabled=false по identity-ключам (шаг 2, W2).
-	DisabledNodes map[string]int64 `json:"disabled_nodes,omitempty"`
 }
 
-// NodeTagOrLabel — системный тег узла источника (server / chain).
+// NodeTagOrLabel — системный тег узла источника (server / chain / auto).
 //
-// Порядок: канонический Node.Tag (заполняет миграция W2 либо v7-нативная
-// запись) → легаси NodeTag → Label. Откат на Label — не удобство, а
-// совместимость: состояния до разделения ролей несут тег именно в Label.
+// В каноне v7 тег живёт в Node.Tag; откат на Label оставлен для узлов,
+// у которых тег не проставлен вовсе (импорт бэкапа до канонизации W7,
+// состояния до разделения ролей — там тег лежал именно в Label).
 func (s Source) NodeTagOrLabel() string {
 	if s.Tag != "" {
 		return s.Tag
-	}
-	if s.NodeTag != "" {
-		return s.NodeTag
 	}
 	return s.Label
 }
 
 // SubMeta — метаданные подписки: заголовки провайдера, userinfo, announce.
 //
-// Канон v7 = SubscriptionMeta МИНУС fetch-история и превью (PLAN §1.2);
-// история переезжает в SubUpdateStatus. Поля ниже раздела TEMPORARY BRIDGE
-// доживают в этом типе до W3 (перенос записи fetch-сервиса) / W5 (снос),
-// чтобы структурный перенос v6 → v7 был без потерь и без правки callsite'ов.
+// Канон v7 = прежний SubscriptionMeta МИНУС fetch-история и превью: история
+// живёт в SubUpdateStatus (единственный дом диагностики), превью узлов
+// упразднено вместе с ленивым кэшем — UI читает nodes[].
 type SubMeta struct {
 	// headers (HTTP response + inline #-comments в body первой строкой)
 	ProfileTitle               string    `json:"profile_title,omitempty"`
@@ -264,32 +209,9 @@ type SubMeta struct {
 	ContentDispositionFilename string    `json:"content_disposition_filename,omitempty"`
 	UserInfo                   *UserInfo `json:"userinfo,omitempty"`
 
-	// === TEMPORARY BRIDGE (SPEC 118 W1-W4), удаляется в W5 ===
-	// fetch-история: канонический дом — SubUpdateStatus; сюда пишет
-	// существующий fetch-сервис до W3.
-	URLAtFetch     string `json:"url_at_fetch,omitempty"`
-	LastFetchedAt  string `json:"last_fetched_at,omitempty"` // RFC3339 UTC
-	LastStatus     string `json:"last_status,omitempty"`     // "ok" | "err"
-	ErrorCount     int    `json:"error_count,omitempty"`
-	LastErrorMsg   string `json:"last_error_msg,omitempty"`
-	HTTPStatusCode int    `json:"http_status_code,omitempty"`
-	RawBodyBytes   int64  `json:"raw_body_bytes,omitempty"`
-
-	// TEMPORARY BRIDGE: счёт/превью узлов — канон читает nodes[] (W4/W6).
-	NodesCountFetched int      `json:"nodes_count_fetched,omitempty"`
-	Truncated         bool     `json:"truncated,omitempty"`
-	PreviewNodes      []string `json:"preview_nodes,omitempty"`
-
 	// SPEC 061: provider announce headers (success **or** failure).
 	ProviderAnnounce *ProviderAnnounce `json:"provider_announce,omitempty"`
-
-	// LastErrorURL — снимок actionable-URL последней ошибки (см. SPEC 061).
-	LastErrorURL string `json:"last_error_url,omitempty"`
 }
-
-// SubscriptionMeta — TEMPORARY BRIDGE (SPEC 118 W1-W4), удаляется в W5:
-// прежнее имя типа метаданных подписки для callsite'ов UI/fetch-сервиса.
-type SubscriptionMeta = SubMeta
 
 // FetchWarning — per-record деградация fetch (skip-счётчики, битые записи,
 // потерянные группы-члены). Источник данных отчёта сборки вместо parse-стадии
@@ -367,8 +289,6 @@ func NewSubscriptionSource(name, url string) Source {
 // обязательные. Неизвестный (или пустой) kind — внятный отказ загрузки:
 // файл от более нового мажора не должен сюда попасть, но защита обязана быть.
 //
-// Легаси-поля TEMPORARY BRIDGE намеренно не трогаются: их судьбу решает
-// миграция W2, а до неё они кормят legacy-проекцию сборки.
 func normalizeSourceShape(s *Source) ([]string, error) {
 	if s == nil {
 		return nil, nil
@@ -453,9 +373,9 @@ func normalizeSourceShape(s *Source) ([]string, error) {
 }
 
 // normalizeNodeShape — та же проверка формы на уровне Node (узловые kind'ы).
-// Server без body здесь НЕ деградируется: в мостовую эпоху W1-W4 тело живёт
-// в легаси-полях (URI/ConfigJSON/raw-кэш), правило битого фрагмента включится
-// вместе с материализацией (W2/W4).
+// Server без body здесь НЕ деградируется: подписка, которую ещё ни разу не
+// обновляли, легально приезжает с пустыми nodes[] (warning отчёта сборки —
+// не отказ загрузки).
 func normalizeNodeShape(n *Node, name string) []string {
 	var warns []string
 	drop := func(field string) {
@@ -472,10 +392,8 @@ func normalizeNodeShape(n *Node, name string) []string {
 			n.Group = nil
 		}
 	case SourceKindChain:
-		if len(n.Body) > 0 {
-			drop("body")
-			n.Body = nil
-		}
+		// Body у цепочки легален: там живут её настройки без позиций
+		// (idle_timeout / strip / rewrite) — см. комментарий у Node.Body.
 		if n.Detour != nil { // detour у Chain не существует (типом — SPEC Т2)
 			drop("detour")
 			n.Detour = nil

@@ -8,10 +8,9 @@ import (
 // ParserConfig.Proxies из canonical s.Sources (SPEC 117: проекция строится
 // один раз на Load; SPEC 118 W1: canonical — плоский v7-корень).
 //
-// Конверсия каждого Source — через мостовой (*Source).ToProxySourceV4
-// (adapter_source.go): единственный производитель legacy-формы, чтобы
-// деривация легаси-полей не расходилась между Load-проекцией и
-// AsParserConfig визарда. Индексный инвариант: Proxies[i] строится из
+// Конверсия каждого Source — через (*Source).ToProxySourceV4
+// (adapter_source.go): единственный производитель сборочной формы, чтобы
+// проекция не расходилась между Load-проекцией и AsParserConfig визарда. Индексный инвариант: Proxies[i] строится из
 // Sources[i] один к одному, без фильтрации и переупорядочивания.
 func syncLegacyFromCanonical(s *State) {
 	proxies := make([]configtypes.ProxySource, 0, len(s.Sources))
@@ -26,5 +25,4 @@ func syncLegacyFromCanonical(s *State) {
 	} else {
 		s.ParserConfig.ParserConfig.Outbounds = []configtypes.Direction{}
 	}
-	s.ParserConfig.ParserConfig.Parser.Reload = s.Defaults.Reload
 }

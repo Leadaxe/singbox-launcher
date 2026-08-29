@@ -131,10 +131,10 @@ func (ac *AppController) runScheduledRefresh(trigger string) {
 	stale := 0
 	skipped := 0
 	for _, src := range s.Sources {
-		if src.Kind != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
+		if src.Kind != state.SourceKindSubscription || !src.Enabled || src.URL == "" {
 			continue
 		}
-		if !sourceIsStale(&src, s.Defaults, settings, now) {
+		if !sourceIsStale(&src, settings, now) {
 			skipped++
 			continue
 		}
@@ -146,16 +146,12 @@ func (ac *AppController) runScheduledRefresh(trigger string) {
 }
 
 // sourceIsStale — true если с последней попытки fetch прошло >=
-// effective_reload. Время попытки — канонический updateStatus.last_attempt_at
-// (SPEC 118 W3), мостовой Meta.LastFetchedAt — фолбэк для немигрированных
-// записей. Source без единой попытки считается stale.
-func sourceIsStale(src *state.Source, defaults state.Defaults, settings locale.Settings, now time.Time) bool {
+// effective_reload. Время попытки — канонический updateStatus.last_attempt_at.
+// Source без единой попытки считается stale.
+func sourceIsStale(src *state.Source, settings locale.Settings, now time.Time) bool {
 	lastAttempt := ""
 	if src.UpdateStatus != nil {
 		lastAttempt = src.UpdateStatus.LastAttemptAt
-	}
-	if lastAttempt == "" && src.Meta != nil {
-		lastAttempt = src.Meta.LastFetchedAt // TEMPORARY BRIDGE (до W5)
 	}
 	if lastAttempt == "" {
 		return true
@@ -164,16 +160,15 @@ func sourceIsStale(src *state.Source, defaults state.Defaults, settings locale.S
 	if err != nil {
 		return true
 	}
-	effective := effectiveReload(src, defaults, settings)
+	effective := effectiveReload(src, settings)
 	return now.Sub(t.UTC()) >= effective
 }
 
 // effectiveReload — резолв интервала обновления (SPEC Т1, три ступени):
 // настройка подписки `update.interval_hours` → заголовок провайдера
-// `profile-update-interval` → дефолт настроек приложения; в мостовую эпоху
-// между ними и встроенным fallback'ом доживает прежний `defaults.reload`
-// из state.json (до переезда в настройки миграцией шага 8, W5).
-func effectiveReload(src *state.Source, defaults state.Defaults, settings locale.Settings) time.Duration {
+// `profile-update-interval` → дефолт настроек приложения; последним — свой
+// встроенный fallback.
+func effectiveReload(src *state.Source, settings locale.Settings) time.Duration {
 	if src.Update != nil && src.Update.IntervalHours > 0 {
 		return time.Duration(src.Update.IntervalHours) * time.Hour
 	}
@@ -182,12 +177,6 @@ func effectiveReload(src *state.Source, defaults state.Defaults, settings locale
 	}
 	if settings.DefaultSubscriptionReload != "" {
 		if d, err := time.ParseDuration(settings.DefaultSubscriptionReload); err == nil && d > 0 {
-			return d
-		}
-	}
-	// TEMPORARY BRIDGE (SPEC 118 W3-W4), удаляется в W5: см. комментарий выше.
-	if defaults.Reload != "" {
-		if d, err := time.ParseDuration(defaults.Reload); err == nil && d > 0 {
 			return d
 		}
 	}
@@ -288,10 +277,10 @@ func (ac *AppController) triggerRetryForFailedSources(trigger string) {
 	}
 	now := time.Now()
 	for _, src := range s.Sources {
-		if src.Kind != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
+		if src.Kind != state.SourceKindSubscription || !src.Enabled || src.URL == "" {
 			continue
 		}
-		if src.Meta == nil || src.Meta.LastStatus != "err" {
+		if src.UpdateStatus == nil || src.UpdateStatus.LastStatus != "err" {
 			continue
 		}
 		if !ac.eventCooldownAllow(src.ID, now) {

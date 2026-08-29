@@ -2,7 +2,7 @@
 // list of all outbounds (global + per-source) with Edit/Delete/Add.
 //
 // SPEC 117: все операции пакета выполняются на canonical-модели
-// (model.GlobalOutbounds / model.Sources[i].Outbounds); каждая мутация
+// (model.GlobalOutbounds); каждая мутация
 // завершается model.BumpRevision(). Legacy-проекция ParserConfig не
 // читается и не пишется.
 package outbounds_configurator
@@ -164,40 +164,15 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 				}
 				r2 := rowsNow[rowIdx]
 				tagsForAdd := tagsAbove(rowsNow, rowIdx)
-				wasGlobal := r2.IsGlobal
-				wasSourceIndex := r2.SourceIndex
 				ShowEditDialog(parent, editPresenter, r2.Outbound, r2.IsGlobal, r2.SourceIndex, tagsForAdd, func(updated *config.Direction, scopeKind string, sourceIndex int) {
 					model := editPresenter.Model()
 					if model == nil {
 						return
 					}
-					newGlobal := scopeKind == "global" || sourceIndex < 0
-					scopeChanged := wasGlobal != newGlobal || (!newGlobal && wasSourceIndex != sourceIndex)
-					// Preset entries: scope locked (preset должен оставаться
-					// global, иначе Sync создаст дубль при следующем вызове —
-					// per-source entry останется, plus новый global появится).
-					if r2.IsPreset {
-						scopeChanged = false
-					}
-					if scopeChanged {
-						// SPEC 117 (риск Р5): перенос между canonical-слайсами
-						// по индексу источника. Достройки пустых ProxySource{}
-						// больше нет: у canonical источник либо существует, либо
-						// такой scope недоступен вовсе — индекс за пределами
-						// model.Sources означает рассинхрон формы, и правку
-						// честнее выбросить, чем положить в выдуманную запись.
-						if wasGlobal {
-							model.GlobalOutbounds = append(model.GlobalOutbounds[:r2.IndexInSlice], model.GlobalOutbounds[r2.IndexInSlice+1:]...)
-						} else if wasSourceIndex >= 0 && wasSourceIndex < len(model.Sources) {
-							src := &model.Sources[wasSourceIndex]
-							src.Outbounds = append(src.Outbounds[:r2.IndexInSlice], src.Outbounds[r2.IndexInSlice+1:]...)
-						}
-						if newGlobal {
-							model.GlobalOutbounds = append(model.GlobalOutbounds, *updated)
-						} else if sourceIndex < len(model.Sources) {
-							model.Sources[sourceIndex].Outbounds = append(model.Sources[sourceIndex].Outbounds, *updated)
-						}
-					} else {
+					// SPEC 118 W5: локальных Направлений источника больше нет —
+					// Направление всегда глобальное, и scope выбирать не из
+					// чего. Осталась одна ветка: правка тела на месте.
+					{
 						// In-place body update. SPEC 058-R-N: для referenced
 						// entries Edit dialog (Phase 4 applyEditedConfig) уже
 						// вычислил USER patch и put его в updated.Updates +
@@ -227,9 +202,6 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 				}
 				if r2.IsGlobal {
 					model.GlobalOutbounds = append(model.GlobalOutbounds[:r2.IndexInSlice], model.GlobalOutbounds[r2.IndexInSlice+1:]...)
-				} else if r2.SourceIndex >= 0 && r2.SourceIndex < len(model.Sources) {
-					src := &model.Sources[r2.SourceIndex]
-					src.Outbounds = append(src.Outbounds[:r2.IndexInSlice], src.Outbounds[r2.IndexInSlice+1:]...)
 				}
 				model.BumpRevision()
 				refreshList()
@@ -363,13 +335,8 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			if model == nil {
 				return
 			}
-			if scopeKind == "global" || sourceIndex < 0 {
-				model.GlobalOutbounds = append(model.GlobalOutbounds, *updated)
-			} else if sourceIndex < len(model.Sources) {
-				// SPEC 117 (риск Р5): у canonical источник либо есть, либо
-				// scope недоступен — пустые ProxySource{} не достраиваются.
-				model.Sources[sourceIndex].Outbounds = append(model.Sources[sourceIndex].Outbounds, *updated)
-			}
+			// Направление всегда глобальное (SPEC 118 W5).
+			model.GlobalOutbounds = append(model.GlobalOutbounds, *updated)
 			model.BumpRevision()
 			refreshList()
 			if onApply != nil {

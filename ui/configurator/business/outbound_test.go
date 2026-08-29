@@ -81,9 +81,9 @@ func TestGetAvailableOutbounds_MemoByRevision(t *testing.T) {
 	if model.AvailableOutboundsMemoRev != model.Revision {
 		t.Fatalf("memo rev not set: got %d, want %d", model.AvailableOutboundsMemoRev, model.Revision)
 	}
-	InvalidatePreviewCache(model)
+	InvalidateNodePool(model)
 	if model.AvailableOutboundsMemoRev != 0 {
-		t.Fatal("InvalidatePreviewCache should clear outbound memo")
+		t.Fatal("InvalidateNodePool should clear outbound memo")
 	}
 }
 

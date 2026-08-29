@@ -24,11 +24,11 @@ func TestStateJSONRoundTrip(t *testing.T) {
 			Sources: []sourceV6{
 				{
 					ID:      "01ABCSUB",
-					Type:    SourceTypeSubscription,
+					Type:    SourceKindSubscription,
 					Enabled: true,
 					URL:     "https://example.com/sub",
-					Tag:     &TagSpec{Prefix: "T:"},
-					Meta: &SubscriptionMeta{
+					Tag: &legacyTagSpec{Prefix: "T:"},
+					Meta: &legacySubMeta{
 						ProfileTitle: "Test",
 						UserInfo: &UserInfo{
 							TotalBytes: 1 << 40,
@@ -40,7 +40,7 @@ func TestStateJSONRoundTrip(t *testing.T) {
 				},
 				{
 					ID:      "01ABCSRV",
-					Type:    SourceTypeServer,
+					Type:    SourceKindServer,
 					Enabled: false,
 					Label:   "wg-parnas",
 					URI:     "wireguard://...#wg-parnas",
@@ -69,8 +69,8 @@ func TestStateJSONRoundTrip(t *testing.T) {
 		t.Fatalf("Sources len: got %d, want 2", len(got.Connections.Sources))
 	}
 	sub := got.Connections.Sources[0]
-	if sub.Type != SourceTypeSubscription {
-		t.Errorf("sub.Type = %q, want %q", sub.Type, SourceTypeSubscription)
+	if sub.Type != SourceKindSubscription {
+		t.Errorf("sub.Type = %q, want %q", sub.Type, SourceKindSubscription)
 	}
 	if sub.Tag == nil || sub.Tag.Prefix != "T:" {
 		t.Errorf("sub.Tag prefix lost: %+v", sub.Tag)
@@ -82,7 +82,7 @@ func TestStateJSONRoundTrip(t *testing.T) {
 		t.Errorf("sub.Update lost")
 	}
 	srv := got.Connections.Sources[1]
-	if srv.Type != SourceTypeServer || srv.Label != "wg-parnas" {
+	if srv.Type != SourceKindServer || srv.Label != "wg-parnas" {
 		t.Errorf("srv mangled: %+v", srv)
 	}
 }
@@ -91,10 +91,9 @@ func TestStateJSONRoundTrip(t *testing.T) {
 // Всегда присутствуют только поля Node без omitempty: kind, tag, enabled.
 func TestSourceOmitempty(t *testing.T) {
 	s := Source{
-		Node:  Node{Kind: SourceKindServer, Tag: "wg-parnas", Enabled: true},
+		Node:  Node{Kind: SourceKindServer, Tag: "wg-parnas", Enabled: true, Origin: &Origin{Kind: OriginKindURI, Raw: "wireguard://..."}},
 		ID:    "01ABC",
 		Label: "wg-parnas",
-		URI:   "wireguard://...",
 	}
 	b, err := json.Marshal(s)
 	if err != nil {
@@ -103,7 +102,7 @@ func TestSourceOmitempty(t *testing.T) {
 	str := string(b)
 
 	// Ожидаем что поля подписки/папки не появятся.
-	for _, want := range []string{`"id":"01ABC"`, `"kind":"server"`, `"tag":"wg-parnas"`, `"label":"wg-parnas"`, `"uri":"wireguard://..."`} {
+	for _, want := range []string{`"id":"01ABC"`, `"kind":"server"`, `"tag":"wg-parnas"`, `"label":"wg-parnas"`, `"raw":"wireguard://..."`} {
 		if !strings.Contains(str, want) {
 			t.Errorf("missing %s in %s", want, str)
 		}
@@ -115,18 +114,17 @@ func TestSourceOmitempty(t *testing.T) {
 	}
 }
 
-// TestTagSpecIsZero — корректно определяем «пустой» TagPolicy/TagSpec.
+// TestTagSpecIsZero — корректно определяем «пустой» TagPolicy.
 func TestTagSpecIsZero(t *testing.T) {
 	cases := []struct {
 		name string
-		t    *TagSpec
+		t    *TagPolicy
 		zero bool
 	}{
 		{"nil", nil, true},
-		{"empty", &TagSpec{}, true},
-		{"prefix", &TagSpec{Prefix: "X:"}, false},
-		{"postfix", &TagSpec{Postfix: ":X"}, false},
-		{"mask", &TagSpec{Mask: "{$tag}"}, false},
+		{"empty", &TagPolicy{}, true},
+		{"prefix", &TagPolicy{Prefix: "X:"}, false},
+		{"postfix", &TagPolicy{Postfix: ":X"}, false},
 	}
 	for _, c := range cases {
 		if c.t.IsZero() != c.zero {
@@ -138,7 +136,7 @@ func TestTagSpecIsZero(t *testing.T) {
 // TestSubscriptionMetaOmitempty — пустой meta-объект сериализуется как `{}`,
 // но никаких лишних полей быть не должно.
 func TestSubscriptionMetaOmitempty(t *testing.T) {
-	m := SubscriptionMeta{}
+	m := SubMeta{}
 	b, err := json.Marshal(m)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)

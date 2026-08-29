@@ -233,19 +233,17 @@ func TestCollectAllTags(t *testing.T) {
 		want  []string
 	}{
 		{
-			name: "local first then global, disabled source skipped",
+			// SPEC 118 W5: локальных Направлений источника нет — теги
+			// собираются только из списка Направлений.
+			name: "sources contribute nothing",
 			model: &wizardmodels.WizardModel{
 				Sources: []wizardmodels.Source{
-					{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true}, URL: "A",
-						Outbounds: []config.Direction{{Tag: "a1"}, {Tag: "a2"}}},
-					{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: false}, URL: "B",
-						Outbounds: []config.Direction{{Tag: "b1"}}},
-					{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true}, URL: "C",
-						Outbounds: []config.Direction{{Tag: "c1"}}},
+					{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true}, URL: "A"},
+					{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: false}, URL: "B"},
 				},
 				GlobalOutbounds: []config.Direction{{Tag: "g1"}, {Tag: "g2"}},
 			},
-			want: []string{"a1", "a2", "c1", "g1", "g2"},
+			want: []string{"g1", "g2"},
 		},
 		{
 			name:  "only global",

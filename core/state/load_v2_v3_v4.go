@@ -17,8 +17,9 @@ func parseLegacyAndMigrate(data []byte, lc LoadContext) (*State, error) {
 	}
 
 	// 1. Декодируем parser_config (поддерживает оба формата —
-	//    "wrapped" v2 и "simplified" v3+).
-	var pc configtypes.ParserConfig
+	//    "wrapped" v2 и "simplified" v3+). Форма приватная (legacyProxyV4):
+	//    сборочная ProxySource легаси-полей больше не несёт (SPEC 118 W5).
+	var pc legacyParserConfigV4
 	if err := decodeParserConfig(raw.ParserConfig, &pc); err != nil {
 		return nil, err
 	}
@@ -60,7 +61,6 @@ func parseLegacyAndMigrate(data []byte, lc LoadContext) (*State, error) {
 		Version:              SchemaVersion,
 		ID:                   raw.ID,
 		Comment:              raw.Comment,
-		ParserConfig:         pc,
 		ConfigParams:         migrated.ConfigParams,
 		Vars:                 migrated.Vars,
 		SelectableRuleStates: selectable,
@@ -68,6 +68,9 @@ func parseLegacyAndMigrate(data []byte, lc LoadContext) (*State, error) {
 		RulesLibraryMerged:   raw.RulesLibraryMerged,
 		DNSOptions:           migrated.DNSOptions,
 	}
+	// Отпечаток последнего обновления — единственное, что переезжает из
+	// файловой parser_config: остальное пересобирает syncLegacyFromCanonical.
+	s.ParserConfig.ParserConfig.Parser.LastUpdated = pc.ParserConfig.Parser.LastUpdated
 	if t, err := time.Parse(time.RFC3339, raw.CreatedAt); err == nil {
 		s.CreatedAt = t
 	}
@@ -75,7 +78,7 @@ func parseLegacyAndMigrate(data []byte, lc LoadContext) (*State, error) {
 		s.UpdatedAt = t
 	}
 	// SPEC 118 (W1): структурный перенос мигрированной v5-секции в v7-корень.
-	adoptConnectionsV6(s, migrated.Connections)
+	legacySources := adoptConnectionsV6(s, migrated.Connections)
 	deriveV6FromLegacy(s) // BUG1: derive v6 Rules/DNS from migrated legacy fields
 
 	// SPEC 118 (W2): семантическая миграция v6→v7 (включая разворот
@@ -83,7 +86,7 @@ func parseLegacyAndMigrate(data []byte, lc LoadContext) (*State, error) {
 	// пересобирается из canonical: сырой legacy-вид из файла разъезжался бы
 	// с переписанными миграцией ссылками (fold both → `<tag>-auto`) —
 	// правила указывали бы на группу, которой сборка больше не эмитит.
-	migrateLegacyStateToV7(s, raw.Version, lc)
+	migrateLegacyStateToV7(s, raw.Version, lc, legacySources)
 	// Пересборка не теряет Parser.LastUpdated: sync трогает только
 	// Version/Proxies/Outbounds/Reload, отпечаток остаётся из файла.
 	syncLegacyFromCanonical(s)
@@ -111,19 +114,16 @@ type rawLegacyFile struct {
 //
 //  1. Упрощённый (v3+): {version, proxies, outbounds, parser}.
 //  2. Старый (v2 и ранее): обёрнутый {"ParserConfig":{…}}.
-func decodeParserConfig(raw json.RawMessage, dst *configtypes.ParserConfig) error {
+func decodeParserConfig(raw json.RawMessage, dst *legacyParserConfigV4) error {
 	if len(raw) == 0 {
 		return nil
 	}
 
 	var simplified struct {
-		Version   int                       `json:"version"`
-		Proxies   []configtypes.ProxySource `json:"proxies"`
-		Outbounds []configtypes.Direction   `json:"outbounds"`
-		Parser    struct {
-			Reload      string `json:"reload,omitempty"`
-			LastUpdated string `json:"last_updated,omitempty"`
-		} `json:"parser,omitempty"`
+		Version   int                     `json:"version"`
+		Proxies   []legacyProxyV4         `json:"proxies"`
+		Outbounds []configtypes.Direction `json:"outbounds"`
+		Parser    v4Parser                `json:"parser,omitempty"`
 	}
 	if err := json.Unmarshal(raw, &simplified); err == nil && simplified.Proxies != nil {
 		dst.ParserConfig.Version = simplified.Version
@@ -133,7 +133,7 @@ func decodeParserConfig(raw json.RawMessage, dst *configtypes.ParserConfig) erro
 		return nil
 	}
 
-	var legacy configtypes.ParserConfig
+	var legacy legacyParserConfigV4
 	if err := json.Unmarshal(raw, &legacy); err == nil {
 		*dst = legacy
 		return nil

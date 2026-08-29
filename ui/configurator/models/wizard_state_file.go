@@ -42,26 +42,26 @@ type (
 	// model. ConnectionsSection из алиасов удалена — секция стала приватной
 	// формой v6-парсера core/state; модель живёт на плоском корне
 	// (Sources/Directions).
-	Source           = corestate.Source
-	SourceType       = corestate.SourceType
-	SourceKind       = corestate.SourceKind
-	Node             = corestate.Node
-	NodeLink         = corestate.NodeLink
-	FetchWarning     = corestate.FetchWarning
-	SubUpdateStatus  = corestate.SubUpdateStatus
-	SubscriptionMeta = corestate.SubscriptionMeta
-	UserInfo         = corestate.UserInfo
-	TagSpec          = corestate.TagSpec
-	UpdateSpec       = corestate.UpdateSpec
-	Defaults         = corestate.Defaults
+	Source          = corestate.Source
+	SourceKind      = corestate.SourceKind
+	Node            = corestate.Node
+	NodeLink        = corestate.NodeLink
+	Origin          = corestate.Origin
+	AutoGroup       = corestate.AutoGroup
+	FolderReplace   = corestate.FolderReplace
+	TagPolicy       = corestate.TagPolicy
+	FetchWarning    = corestate.FetchWarning
+	SubUpdateStatus = corestate.SubUpdateStatus
+	SubMeta         = corestate.SubMeta
+	UserInfo        = corestate.UserInfo
+	UpdateSpec      = corestate.UpdateSpec
 )
 
-// Re-export SourceKind constants for UI (старые SourceType-имена — мостовые
-// алиасы core/state, живут до W5 SPEC 118).
+// Re-export SourceKind constants for UI.
 const (
-	SourceTypeSubscription = corestate.SourceTypeSubscription
-	SourceTypeServer       = corestate.SourceTypeServer
-	SourceTypeChain        = corestate.SourceTypeChain
+	OriginKindURI   = corestate.OriginKindURI
+	OriginKindWGIni = corestate.OriginKindWGIni
+	OriginKindJSON  = corestate.OriginKindJSON
 
 	SourceKindServer       = corestate.SourceKindServer
 	SourceKindChain        = corestate.SourceKindChain

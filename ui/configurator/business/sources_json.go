@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strings"
 
+	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/subscription"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
@@ -134,16 +135,27 @@ func AppendManualConfigJSON(ctx UIUpdater, body []byte, label string) error {
 		label = fmt.Sprintf("server-%d", len(model.Sources)+1)
 	}
 
+	// SPEC 118 Т2: тело узла материализуется сразу — тем же путём, что у
+	// миграции и fetch (config.MaterializeServerNode).
+	mat, matErr := config.MaterializeServerNode("", compact)
+	if matErr != nil {
+		return fmt.Errorf("outbound JSON: %w", matErr)
+	}
 	model.Sources = append(model.Sources, corestate.Source{
-		Node:       corestate.Node{Kind: corestate.SourceKindServer, Enabled: true},
-		ID:         corestate.MakeULID(),
-		Label:      label,
-		ConfigJSON: compact,
+		Node: corestate.Node{
+			Kind:    corestate.SourceKindServer,
+			Enabled: true,
+			Tag:     label,
+			Body:    mat.Body,
+			Origin:  &corestate.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw},
+		},
+		ID:    corestate.MakeULID(),
+		Label: label,
 	})
 
 	model.BumpRevision()
 	model.PreviewNeedsParse = true
-	InvalidatePreviewCache(model)
+	InvalidateNodePool(model)
 	ctx.RefreshOutboundsConfiguratorList()
 	return nil
 }

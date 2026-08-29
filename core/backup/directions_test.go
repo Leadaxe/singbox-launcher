@@ -92,7 +92,7 @@ func TestDirectionRoundTrip(t *testing.T) {
 		},
 	}}
 
-	b, err := Export(src, ExportOptions{AppVersion: "1.4.2"})
+	b, _, err := Export(src, ExportOptions{AppVersion: "1.4.2"})
 	if err != nil {
 		t.Fatalf("экспорт: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestDirectionForeignLabelDroppedWithWarning(t *testing.T) {
 		t.Fatalf("Направление не создано или переименовано: %+v", dst.Directions)
 	}
 	// Провоза больше нет: обратный экспорт обязан быть без чужого имени.
-	back, err := Export(dst, ExportOptions{AppVersion: "test"})
+	back, _, err := Export(dst, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}

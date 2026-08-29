@@ -49,7 +49,7 @@ func TestProxySourceCarriesProviderAnnounce(t *testing.T) {
 		ID:    "01SUB",
 		Label: "AL: Liberty",
 		URL:   "https://example.com/sub",
-		Meta: &SubscriptionMeta{
+		Meta: &SubMeta{
 			ProviderAnnounce: &ProviderAnnounce{
 				Message: "⚠️ Произошла ошибка при получении подписки.",
 			},

@@ -295,98 +295,236 @@ GUI-пакеты — скрипты `build/`. Git не трогать. `ui/traff
       падение `GOLDEN_RUN_REAL` — предсуществующий
       `dns.independent_cache`. Полный прогон зелёный.
 
-## W5 — Смерть легаси
+## W5 — Смерть легаси — СДЕЛАНО
 
-- [ ] Включить снос миграции (шаг 8): `migrationPurgesLegacy = true`.
-- [ ] Удалить: `core/state/raw_cache.go`, `core/rebuild_raw_cache.go`,
-      `LookupCachedBody`, писатель raw-кэша в fetch-сервисе.
-- [ ] Удалить disabled-машинерию: карта в типах, `filterDisabledNodes`,
-      `GCDisabledNodes`, TTL, debugapi disabled-nodes API (заменить на
-      enabled-мутацию узла), UI-кэши отметок.
-- [ ] Удалить fold: `SourceFold`, `PrepareSourceFolds`,
-      `EffectiveTagPrefix`, WIZARD-маркеры, Fold-вкладка окна источника →
-      вкладка Replace (минимальная правка формы: те же контролы
-      mode/strategy + явное поле tag; новых глифов не вводить).
-- [ ] Удалить `ExcludeFromGlobal`/`ExposeGroupTagsToGlobal` и ветки
-      `outbound_filter`.
-- [ ] Удалить локальные Направления: поле, scope конфигуратора, эмиссию
-      local selectors, `localSubscriptionGroupTags`-цели detour.
-- [ ] Удалить `TagSpec.Mask` (тип TagSpec → используется только
-      бэкап-границей/миграцией), `Meta.PreviewNodes`,
-      превью-кэши (`RebuildPreviewCache`, `PreviewNodesBySource`,
-      `SourceNodeCounts`, `PreviewCacheGeneration`), `Defaults` из
-      state и `WizardModel.Defaults`.
-- [ ] Удалить detour-тройню из прод-типов (читает только миграция) и
-      `Chain.Hops []string`-форму.
-- [ ] Удалить мост §6 целиком (TEMPORARY BRIDGE не существует).
-- [ ] Тесты категории (б) recon/tests.md: смерть предмета — удалить с
-      причиной в отчёте (в т.ч. `e2e_disabled_flow_test.go` — контракт
-      отменён осознанно; `expose_exclude_test.go`; `raw_cache_test.go`;
-      `disabled_nodes_*`; `preview_nodes_test.go`;
-      `rebuild_raw_cache_test.go`); переработка — по своим волнам уже
-      сделана, добить остатки.
-- [ ] Прогнать grep-инварианты SPEC §4.A — все по нулям.
-- [ ] `go build ./...` + `go test ./...` + `go vet ./...`.
+Отчёт: `SPECS/118-F-N-STATE_V7/reports/W5_REPORT.md` (снесённые
+файлы/символы, судьба тестов с причинами, таблица grep-инвариантов,
+результаты приёмки).
+
+- [x] Включён снос миграции (шаг 8): `migrationPurgesLegacy = true`.
+- [x] Удалены: `core/state/raw_cache.go`, `core/rebuild_raw_cache.go`,
+      `LookupCachedBody`, писатель raw-кэша в fetch-сервисе. Чтение и
+      удаление кэша живут ТОЛЬКО во входе миграции
+      (`core/state/migration_raw_cache.go`, приватный). Снимок сборки —
+      `core/rebuild_snapshot.go` (`buildSnapshotFromState`): эмиссия из
+      материализованных `nodes[]`, без сети и без разбора тел.
+- [x] Удалена disabled-машинерия: карта в типах состояния и в сборочной
+      форме, `filterDisabledNodes`, `migrateLegacyDisabledKeys`,
+      `GCDisabledNodes`, TTL, `syncLegacyDisabledMap`, UI-кэши отметок.
+      debugapi disabled-nodes API умер вместе с полем (сериализация
+      состояния — enabled узла); UI-тумблер пишет `node.enabled`.
+- [x] Удалён fold: `SourceFold`, `PrepareSourceFolds`, `EffectiveTagPrefix`,
+      WIZARD-маркеры. Fold-вкладка окна источника → вкладка Replace
+      (`source_replace_tab.go`): те же контролы mode/strategy плюс явное
+      поле tag; новых глифов не введено.
+- [x] Удалены `ExcludeFromGlobal`/`ExposeGroupTagsToGlobal` и ветки
+      `outbound_filter` (`FilterNodesExcludeFromGlobal` →
+      `FilterDirectionCandidatePool`: решает ПРАВИЛО пула, не флаг).
+- [x] Удалены локальные Направления: поле состояния, scope конфигуратора,
+      `localSubscriptionGroupTags`-цели detour. Группы ЗАМЕНЫ свёрнутой
+      папки разворачиваются проходом 0 в build-only поле
+      `ProxySource.LocalGroups` (`json:"-"`, на диск не едет).
+- [x] Удалены `TagSpec.Mask` (тип `TagSpec` умер целиком — остался
+      `TagPolicy{prefix,postfix}`; маска читается только миграцией и
+      бэкап-границей), `Meta.PreviewNodes`, превью-кэши
+      (`RebuildPreviewCache`/`PreviewNodesBySource`/`SourceNodeCounts`/
+      `PreviewCacheGeneration` → `NodePool*`, источник — эмиссия канона,
+      а счётчики читаются прямо из `nodes[]`), `Defaults` из state-файла
+      (ключ `legacy_defaults`) и `WizardModel.Defaults`.
+- [x] Удалена detour-тройня из прод-типов (`resolveNodeDetours`,
+      `migrateLegacyDetourNodeHash` и вся её обвязка) и `Chain.Hops`
+      []string-форма: цепочка стала узлом канона (`hops []NodeLink`).
+- [x] Удалён мост §6 целиком: `grep -rn "TEMPORARY BRIDGE"` → 0.
+      `GenerateOutboundsFromParserConfig` больше не принимает
+      `loadNodesFunc` — «сборка полезла разбирать тела» невыразимо по
+      построению.
+- [x] Тесты категории (б) удалены с причинами (таблица §5 отчёта:
+      `e2e_disabled_flow_test.go`, `expose_exclude_test.go`,
+      `raw_cache_test.go`, `disabled_nodes_*`, `preview_nodes_test.go`,
+      `rebuild_raw_cache_test.go` и остатки — 22 файла); переработка —
+      §5 отчёта.
+- [x] Grep-инварианты SPEC §4.A прогнаны — таблица в §6 отчёта; кода по
+      всем инвариантам ноль (остаточные вхождения — комментарии и
+      санкционированные читатели миграции).
+- [x] `go build ./...` + `go vet ./...` + `go test -count=1 ./...` —
+      зелёные. `ETALON_V6MIG=1` — РОВНО одно задекларированное
+      расхождение Р2 (`[P]auto` → `[P]select-auto`), других нет;
+      `go test ./core/build` зелёный.
+
+### Компенсации, вытянутые в W5 сносом (не расширение объёма)
+
+- [x] ДЫРА ПЛАНА: у цепочки в v7 не было дома для настроек маршрута
+      (`idle_timeout`/`strip_evasion`/`strip`/`rewrite`) — они умерли бы
+      вместе с `Source.Chain`. Настройки переехали в `Node.Body` (тот же
+      дом, что у тела сервера), позиции остались ссылками в `hops`;
+      конвертеры `configtypes.ChainBody`/`ChainFromBody`. Живые фичи
+      поправлены той же правкой: `features/sources.md` (устройство Chain),
+      `features/state.md` (шаг 4 миграции). Эталон подтверждает: цепочка
+      сохранила `idle_timeout: 2m`.
+- [x] `config.MaterializeServerNode` — единственная точка «share-URI или
+      JSON → тело узла» для миграции, добавления источника, вкладки JSON
+      и Regen (emitter-parser-pairing).
+- [x] `core/backup/convert_v7.go` — конвертеры границы v7 ↔ контракт 0.11
+      (W7 достраивает roundtrip-тесты и remote-гейт). Контракт и корпус
+      не тронуты.
+- [x] Минимум Т8, без которого снос ломал окно источника: вкладка JSON
+      server-узла = редактор `body` + «Regen from raw» (ошибка разбора →
+      откат), JSON подписки — read-only рендер тел, Overview — счёт узлов
+      и per-node `origin.raw` вместо блока raw body.
+- [x] `core/state/legacy_fixture_copy_test.go`: с включённым сносом Load
+      переписывает файл на месте — тесты обязаны читать КОПИЮ фикстуры,
+      иначе первый же прогон уничтожает testdata.
 
 ## W6 — UI-компенсация
 
-- [ ] Счётчики и превью источников из nodes[] (`source_tab.go`);
+- [x] Счётчики и превью источников из nodes[] (`source_tab.go`);
       состояние «не фетчилось» — из updateStatus.
-- [ ] Окно источника: JSON-вкладка server = редактор body; «Regen from
+- [x] Окно источника: JSON-вкладка server = редактор body; «Regen from
       raw» (ошибка разбора → откат, узел не портится); JSON подписки —
       синхронный body-рендер, read-only.
-- [ ] Overview: raw-body-блок → счёт узлов + per-node origin.raw;
+- [x] Overview: raw-body-блок → счёт узлов + per-node origin.raw;
       Storage record = v7-запись.
-- [ ] Пул хопов цепочек из nodes[] (+ Направления, replace-теги, верхние);
+- [x] Пул хопов цепочек из nodes[] (+ Направления, replace-теги, верхние);
       выбор хранится NodeLink.
-- [ ] Settings приложения: Default update interval + Default max nodes →
+- [x] Settings приложения: Default update interval + Default max nodes →
       `bin/settings.json`; двухступенчатый резолв виден в подсказках
       существующими средствами (без новых виджетов-вопросов).
-- [ ] Предупреждение о протухании выбора cache.db при операциях смены
+- [x] Предупреждение о протухании выбора cache.db при операциях смены
       финального тега (правка TagPolicy, replace.tag) — существующим
       механизмом предупреждений.
-- [ ] Поведенческие тесты Т8 (Regen-откат, счётчики, кандидаты хопов);
+- [x] Поведенческие тесты Т8 (Regen-откат, счётчики, кандидаты хопов);
       без ассертов на форматирование строк.
-- [ ] `go build ./...` + GUI-скрипты `build/`.
+- [x] Хвост W2: `MigrationReport` персистится в `bin/migration_report.txt`
+      (Load), показывается при первом открытии конфигуратора вместе с
+      отчётом из памяти и снимается после показа; отчёты профилей
+      дописываются.
+- [x] Хвост W3: write-back one-shot fetch (окно источника и строка Sources)
+      сверяет ревизию модели — при правке во время полёта заносятся только
+      поля результата fetch'а, а не снимок целиком
+      (`business/fetch_writeback.go`).
+- [x] Хвост W3: противоречие «мостовая Meta штампует ok при недостоверном
+      теле» проверено мёртвым — статус живёт только в `SubUpdateStatus`
+      (пишется на достоверном merge), заголовки — в `SubMeta`; `sourceDiag`
+      держит обе половины раздельно.
+- [x] `go build ./...` + GUI-скрипты `build/`.
 
-## W7 — Бэкап-конвертеры и remote-гейт
+## W7 — Бэкап-конвертеры и remote-гейт — СДЕЛАНО
 
-- [ ] `core/backup/convert_v7.go`: экспорт v7 → 0.11 (enabled →
+Отчёт: `SPECS/118-F-N-STATE_V7/reports/W7_REPORT.md` (найденная дыра с тегом
+замены, устройство гейта, форма Debug API, таблица приёмки).
+
+- [x] `core/backup/convert_v7.go`: экспорт v7 → 0.11 (enabled →
       disabled-карта по сырым тегам; replace → fold; NodeLink → тройня;
       hops → строковые финальные теги; TagPolicy → tag{prefix,postfix};
-      NodeTag = Node.tag; nodes[] не экспортируются).
-- [ ] Импорт 0.11 → v7: обратные конвертации; mask server/chain →
-      Node.tag, подписки — warning; локальные Направления:
-      fold-производные → replace, прочие — warning; хопы: резолв по
-      живому индексу, нерезолвнутые → `NodeLink{"", тег}` + warning;
-      disabled-карта — по вердикту O2 (до вердикта: warning-потеря,
-      место применения выделено функцией).
-- [ ] Corpus-тесты `contract/corpus/backup/` зелёные без правки фикстур;
-      roundtrip-тест экспорт→импорт (SPEC §4.F.2); импорт фикстуры
-      v1.5.x (§4.F.3).
-- [ ] Remote-гейт: `/profile/copy-from`, `PATCH /state/rules`,
-      `PATCH /state/dns` (state_endpoints.go + remote_endpoints.go) —
-      сверка meta.version, отказ с версиями в сообщении; тест §4.G.
-- [ ] Debug API: snapshot/state-эндпоинты отдают v7-форму (актуализация
-      сериализации, без обязательств совместимости).
-- [ ] `go build ./...` + `go test ./core/backup/... ./core/debugapi/...`.
+      NodeTag = Node.tag; nodes[] не экспортируются). Конвертеры написаны
+      в W5 как компенсация сноса; W7 достроил тесты и НАШЁЛ дыру:
+      `replace.tag` в контракте дома не имеет (в 0.11 имя группы было
+      позиционным деривативом префикса), и явный тег, с деривативом не
+      совпавший, круг не переживает — правила приёмника уехали бы в
+      никуда. Добавлены `replaceTagSurvivesExport` + код
+      `backup_replace_tag_derived`: расхождение называет ЭКСПОРТ, где ещё
+      видны оба имени. Формула свёрнута в общую `legacyFoldPrefix`
+      (воспроизводит старый движок байт-в-байт, включая TrimSpace).
+- [x] Импорт 0.11 → v7: обратные конвертации; mask server/chain →
+      Node.tag (потери нет — warning не ставится), подписки — warning;
+      локальные Направления: fold-производные → replace, прочие —
+      warning; хопы: `importHops` + второй проход `resolveImportedHops`
+      по живому индексу, нерезолвнутые остаются `NodeLink{"", тег}`
+      (fail-closed на сборке, без ложного warning'а — обоснование в
+      convert_v7.go).
+- [x] ХВОСТ W3: disabled-карта импорта → `PendingDisabled` (вердикт O2) —
+      закрыто ещё в W5 (`importSubscription`), W7 покрыл тестом.
+- [x] Corpus-тесты `contract/corpus/backup/` (14 кейсов) зелёные без
+      правки фикстур; §4.F.2 — `TestRoundTripV7ModelEquivalent` (все
+      четыре конвертации + названные цены: nodes[] не едут, настройки
+      маршрута цепочки живут в Node.Body) и
+      `TestRoundTripV7ResolvesHopIntoContainer` (резолв не ВЫДУМЫВАЕТ
+      адрес); §4.F.3 — `TestImportLegacy15xBackup` (fold+outbounds+
+      disabled+mask одним файлом) и
+      `TestImportLegacyServerMaskArrivesAsNodeTag`.
+- [x] Remote-гейт: `core/state/schema_gate.go` — версия спрашивается у
+      ФАЙЛА, а не у загруженного состояния (Load мигрирует и разбирает
+      всё «мажор и выше» как v7 — после него гейтить нечем). Отказ 409 с
+      обеими версиями в тексте и в полях `schema_found`/`schema_supported`.
+      Направление значимо: файл СТАРШЕ пропускается (миграция), из
+      БУДУЩЕГО — отвергается. GET не гейтуется (диагностика обязана
+      работать в момент расхождения); copy-from гейтуется по ИСХОДНИКУ.
+      Точки: `state_endpoints.go` (`stateAccess.path` + `guardStateSchema`
+      в PATCH-ветках rules/dns), `remote_state_endpoints.go` (path
+      machine-доступа), `remote_endpoints.go` (copy-from).
+      `lxd_remote_registry.go` не тронут. Тесты §4.G —
+      `core/debugapi/schema_gate_test.go` (6 шт., включая локальный PATCH
+      и «файл не тронут»); острота каждого гейта проверена временным
+      отключением.
+- [x] Debug API: `/state/full` (и remote-близнец) отдавал Go-структуру
+      `state.State` БЕЗ json-тегов — наружу текли PascalCase-ключи и
+      мёртвые поля загрузчика (`Defaults`, `SelectableRuleStates`,
+      `RulesLibraryMerged`, `ParserConfig`), а `dns` терялся. Введена
+      `(*State).MarshalV7` (обёртка чистой `marshalDisk`): сериализация у
+      endpoint'а и у файла теперь ОДНА по построению. `TestStateFull`
+      переписан под форму — ответ разбирается тем же `state.Parse`.
+      `/debug/snapshot` правки не потребовал (кладёт файл как есть).
+      Секреты не маскируются — by design.
+- [x] `go build ./...` + `go vet ./...` + `go test -count=1 ./...` —
+      зелёные (весь модуль); греп go1.20 по диффу — чисто; `ETALON_V6MIG=1`
+      — по-прежнему РОВНО одно задекларированное расхождение Р2.
+- [x] Живая фича `SPECS/features/state.md` поправлена той же правкой:
+      абзац о теге замены в разделе бэкапа; в «Внешних поверхностях» —
+      единая сериализация Debug API и устройство гейта (почему у файла,
+      направление расхождения, copy-from по исходнику, GET не гейтуется).
 
-## W8 — Голдены и приёмка
+## W8 — Голдены и приёмка — СДЕЛАНО (O3 закрыт вердиктом капитана 2026-08-29)
 
-- [ ] Golden `real-v088`: миграция фикстуры; сравнение config.json нового
-      движка с эталоном W2 — байт-в-байт; расхождения (если есть) —
-      поимённый список на вердикт O3, НЕ подгонять молча.
-- [ ] То же на `v6_roundtrip.json`-эталоне.
-- [ ] Перезафиксировать golden-снимок (state в v7-форме), снять SKIP по
-      умолчанию в `core/build/golden_test.go`.
-- [ ] Сценарий §4.B.10 на мигрированном real-v088 (правила не сброшены).
-- [ ] Полный прогон: `go build ./...`, `go test -count=1 ./...`,
-      `go vet ./...`; GUI-пакеты — `build/`-скрипты.
-- [ ] Греп go1.20 по диффу → 0; греп-инварианты §4.A повторно.
-- [ ] `docs/release_notes/upcoming.md`: миграция состояния, отчёт потерь,
-      смена умолчаний (defaults → настройки приложения), реальный кап
-      max_nodes.
-- [ ] IMPLEMENTATION_REPORT.md: файлы по волнам, судьба тестов категории
+Отчёт: `SPECS/118-F-N-STATE_V7/IMPLEMENTATION_REPORT.md` (файлы по волнам,
+судьба тестов, сигнатуры, grep-инварианты, §7 — вердикт байт-эквивалентности
+с поимённым списком расхождений).
+
+- [x] Golden `real-v088`: фикстура мигрирована в v7; сравнение с эталоном
+      W2 — **эмиссия (outbounds/endpoints/route/inbounds/log/experimental)
+      байт-в-байт**; секция `dns` — ДВА расхождения, поимённо в
+      IMPLEMENTATION_REPORT §7.3; вердикт O3 по ним — §7.6 (Р-DNS-1
+      принят, Р-DNS-2 починен). Оба — в коде, которого
+      кампания не касалась (весь DNS-конвейер: `git diff 39ab397` пуст);
+      проявились от починки самого раннера, читавшего DNS через легаси-
+      зеркало v5 мимо прод-пути. Ни код под эталон, ни эталон под код не
+      подгонялись.
+- [x] То же на эталоне класса `v6_roundtrip` (`etalon/v6mig`, `ETALON_V6MIG=1`)
+      — РОВНО одно задекларированное расхождение Р2 (`[P]auto` →
+      `[P]select-auto`), других нет.
+- [x] Golden-снимок перезафиксирован: `state.json` сценария — v7-форма
+      (входной v4 сохранён как `core/state/testdata/real_v088_v4.json`).
+      Раннер `golden_test.go` приведён к прод-пути (`ctx.Preset`,
+      канонический `state.DNS`, `TargetSpecFromState`, presets/DNS-библиотека
+      шаблона); `actual.config.json` переведён в `.gitignore` как артефакт
+      отладки.
+- [x] СНЯТИЕ SKIP у `real-*` — **сделано по вердикту капитана O3
+      (2026-08-29)**. Порядок был такой: сперва починен Р-DNS-2 —
+      предсуществующий прод-баг неполного множества валидных
+      `rule_set`-тегов (`CollectEmittedRouteRuleSetTags` в
+      `core/build/preset_merge.go`, точка вызова в `core/build/build.go`,
+      тест `core/build/dns_ruleset_dangling_test.go`; чистка висячих
+      ссылок сохранена); затем `expected.config.json` сценария
+      перезафиксирован честным выхлопом починенного раннера; затем снят
+      SKIP вместе с переменной `GOLDEN_RUN_REAL` — real-сценарии идут в
+      обычном `go test ./core/build`, сравнение осталось строгим
+      байт-в-байт. Против эталона W2 остался один принятый класс Р-DNS-1
+      (порядок `dns.servers`, множества идентичны). Разбор —
+      IMPLEMENTATION_REPORT §7.6, декларация — `etalon/README.md`.
+- [x] Сценарий §4.B.10 на мигрированном real-v088:
+      `TestMigrationScenario10RealV088RuleTargetsNotReset`
+      (`core/state/migration_scenarios_test.go`) — ни одна цель правила,
+      тег замены или Направление не считаются осиротевшими; проверено на
+      «кусачесть» временным сужением множества системных тегов.
+- [x] Полный прогон: `go build ./...`, `go test -count=1 ./...`,
+      `go vet ./...` — зелёные; GUI — `bash build/build_darwin.sh` зелёный.
+- [x] Греп go1.20 по диффу кампании → 0 (три совпадения — комментарии,
+      объясняющие сам гард); греп-инварианты §4.A прогнаны повторно —
+      таблица в IMPLEMENTATION_REPORT §5, кода по всем инвариантам ноль
+      (оговорка про имя `SourceNodeCounts` — там же).
+- [x] `docs/release_notes/upcoming.md`: миграция состояния (+`.v6.bak`),
+      отчёт потерь, defaults → настройки приложения, реальный кап
+      max_nodes (потолок 3000) — EN + RU.
+- [x] IMPLEMENTATION_REPORT.md: файлы по волнам, судьба тестов категории
       (б) с причинами, изменённые сигнатуры, таблица grep-инвариантов,
       результат байт-эквивалентности, статус открытых вопросов O1–O3.
 
@@ -395,10 +533,12 @@ GUI-пакеты — скрипты `build/`. Git не трогать. `ui/traff
 - [x] W2: cloneCanonicalNode / clone Replace.Strategy / clone Fold.Auto —
       deep-copy через новые `configtypes.(*TemplateInt).Clone` и
       `(*DirectionAuto).Clone` (разделяемых указателей больше нет).
-- [ ] Волна, включающая создание folder/auto (W5/этап 3): backup Export
-      switch по Kind обязан получить кейсы folder/auto (или явный
-      warning) — иначе молчаливое выпадение из экспорта (ловушка
-      этапа 0 SPEC 116).
+- [x] W5: backup Export switch по Kind получил кейсы folder/auto —
+      предупреждение `backup_source_kind_unsupported` (контракт 0.11 их
+      не знает, секция `folders[]` — отдельный трек SPEC 118 §2).
+      Подпись стала `Export(...) (*Backup, []Warning, error)`;
+      предупреждения экспорта показываются пользователю тем же списком,
+      что у импорта (`settings_backup.go`).
 - [x] Semantic-фиксация ревью: Load-проекция теперь несёт DisabledNodes
       (устранено расхождение projection/wizard в сторону намерения
       пользователя); folder/auto/unknown в проекции — выключенный
@@ -412,19 +552,19 @@ GUI-пакеты — скрипты `build/`. Git не трогать. `ui/traff
 - [x] etalon/README: честная формулировка про dns.independent_cache
       (раннер его НЕ нормализует; предсуществующее падение
       GOLDEN_RUN_REAL — не предмет W8).
-- [ ] W6: MigrationReport персистить в файл (bin/migration_report.txt)
+- [x] W6: MigrationReport персистить в файл (bin/migration_report.txt)
       и показывать при первом открытии конфигуратора — headless-первый
       Load сейчас оставляет отчёт только в логе (LOW/UX-находка).
 
 ## Хвосты ревью W3 (фикс-раунд принят)
 
-- [ ] W6: write-back one-shot fetch в окне источника
+- [x] W6: write-back one-shot fetch в окне источника
       (source_edit_window.go, m.Sources[i] = snapshot) — сверять ревизию
       модели перед записью: Save во время полёта fetch'а сейчас может
       быть откачен снимком (pre-existing гонка, не W3).
-- [ ] W6: мостовая Meta при недостоверном теле штампует LastStatus="ok"
-      с PreviewNodes из мусора, расходясь с UpdateStatus="err" — UI
-      мостовой эпохи показывает противоречивый успех; чинится смертью
-      мостовой Meta в W6 (проверить при сносе).
-- [ ] W7: импорт бэкапа переводится с DisabledNodes-карты на
-      PendingDisabled (комментарий в sources_v7.go актуализирован).
+- [x] W5: мостовая Meta умерла — история fetch живёт ТОЛЬКО в
+      `UpdateStatus`, а `SubMeta` несёт лишь заголовки провайдера.
+      Противоречивого успеха больше нет по построению.
+- [x] W5: импорт бэкапа переведён с DisabledNodes-карты на
+      `PendingDisabled` (вердикт O2); туда же миграция кладёт
+      несматченные ключи. Комментарий в sources_v7.go актуализирован.

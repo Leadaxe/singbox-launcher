@@ -33,6 +33,7 @@ func (s *Server) machineStateAccess(id string) stateAccess {
 		load: func() (*state.State, error) { return state.Load(path) },
 		save: func(st *state.State) error { return st.Save(path) },
 		mu:   s.machineMutex(id),
+		path: path,
 	}
 }
 

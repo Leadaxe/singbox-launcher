@@ -11,21 +11,6 @@ import (
 	"singbox-launcher/internal/textnorm"
 )
 
-// LookupCachedBody — package-level hook, позволяющий вызывающему слою
-// (Update / Rebuild в core) подать pre-fetched body для подписок без
-// network call'а.
-//
-// Контракт:
-//   - URL — Source.URL текущей подписки.
-//   - Возвращает (decoded body, true) если cache hit; (_, false) — fallback
-//     на стандартный FetchSubscription.
-//   - SPEC 052 phase 6: Update пишет `bin/subscriptions/<id>.raw`, потом
-//     устанавливает hook чтобы парсер не дёргал сеть второй раз. Rebuild
-//     ставит hook → читает raw → парсит без сети.
-//
-// nil → стандартное поведение (FetchSubscription).
-var LookupCachedBody func(url string) ([]byte, bool)
-
 // NodeIdentityFunc — package-level hook, дающий парсеру доступ к вычислению
 // идентичности узла (SPEC 112: идентичность = тег в рамках источника).
 //
@@ -44,8 +29,7 @@ var NodeIdentityFunc func(node *configtypes.ParsedNode) string
 //
 // Хеш считается от ЭМИТИРОВАННОГО outbound-JSON, а эмиттер живёт в пакете
 // config, который сам импортирует subscription. Прямой вызов дал бы цикл
-// импорта, поэтому используется тот же приём, что и для LookupCachedBody:
-// зависимость подставляется сверху.
+// импорта, поэтому зависимость подставляется сверху хуком.
 //
 // nil → миграция не выполняется: legacy-ключи доживают до следующего запуска,
 // а не выбрасываются молча.
@@ -129,241 +113,6 @@ func nodeIdentity(node *configtypes.ParsedNode) string {
 	return strings.TrimSpace(node.Tag)
 }
 
-// disabledNodeTTL возвращает срок жизни отметки о выключенной ноде
-// (SPEC 094 D4).
-//
-// clamp(3 × интервал обновления, 24h, 30d). Три цикла обновления — запас на
-// провайдера, у которого нода временно исчезла из выдачи: если удалять отметку
-// сразу, нода вернулась бы включённой за спиной пользователя. Верхняя граница
-// не даёт отметкам копиться годами.
-func disabledNodeTTL(updateIntervalHours int) time.Duration {
-	const (
-		minTTL = 24 * time.Hour
-		maxTTL = 30 * 24 * time.Hour
-	)
-	if updateIntervalHours <= 0 {
-		return minTTL
-	}
-	ttl := time.Duration(updateIntervalHours) * 3 * time.Hour
-	if ttl < minTTL {
-		return minTTL
-	}
-	if ttl > maxTTL {
-		return maxTTL
-	}
-	return ttl
-}
-
-// filterDisabledNodes убирает узлы, выключенные пользователем, и обновляет
-// временные метки у переживших отметок (SPEC 094 D4, ключи — SPEC 112).
-//
-// Возвращает оставшиеся узлы и карту отметок с обновлёнными временами. Карта
-// возвращается новой: вызывающий решает, сохранять ли её (GC выполняется только
-// при успешном сетевом обновлении, иначе кэш-прогон без сети стёр бы отметки
-// для нод, которых временно нет в теле).
-//
-// Перед фильтрацией legacy-ключи (SPEC 094/101: 64 hex контент-хеша)
-// переписываются на тег-идентичность — см. migrateLegacyDisabledKeys.
-//
-// trustedParse — «разбору верим» (SPEC 113, решение 2). Параметр, а не
-// глобальный флаг: достоверность знает только тот, кто добыл тело источника.
-func filterDisabledNodes(
-	nodes []*configtypes.ParsedNode,
-	disabled map[string]int64,
-	now time.Time,
-	trustedParse bool,
-) ([]*configtypes.ParsedNode, map[string]int64, bool) {
-	if len(disabled) == 0 {
-		return nodes, disabled, false
-	}
-
-	// Миграция идёт по ПОЛНОМУ списку узлов — до того как выключенные из него
-	// выпадут: legacy-ключ опознаётся именно по выключенному узлу.
-	disabled, migrated := migrateLegacyDisabledKeys(disabled, nodes, trustedParse)
-
-	refreshed := make(map[string]int64, len(disabled))
-	for id, ts := range disabled {
-		refreshed[id] = ts
-	}
-
-	kept := make([]*configtypes.ParsedNode, 0, len(nodes))
-	dropped := 0
-	for _, node := range nodes {
-		if node == nil {
-			continue
-		}
-		id := nodeIdentity(node)
-		if id == "" {
-			kept = append(kept, node)
-			continue
-		}
-		if _, off := disabled[id]; off {
-			// Нода на месте — отметка актуальна, продлеваем.
-			refreshed[id] = now.Unix()
-			dropped++
-			continue
-		}
-		kept = append(kept, node)
-	}
-
-	if dropped > 0 {
-		debuglog.DebugLog("Parser: %d node(s) skipped as disabled by the user", dropped)
-	}
-	if migrated > 0 {
-		debuglog.DebugLog("Parser: rewrote %d legacy disabled-node key(s) (SPEC 112)", migrated)
-	}
-	return kept, refreshed, migrated > 0
-}
-
-// legacyIdentityHashLen — длина упразднённого контент-хеша в hex-символах.
-const legacyIdentityHashLen = 64
-
-// isLegacyIdentityHash — ключ выглядит как контент-хеш SPEC 094/101.
-//
-// Проверяется форма, а не происхождение: тег из 64 hex-символов теоретически
-// возможен, но такой ключ и по новой модели совпал бы с этим же узлом, а без
-// проверки формы миграция гоняла бы legacy-хеш по всем узлам на каждом парсе.
-func isLegacyIdentityHash(key string) bool {
-	if len(key) != legacyIdentityHashLen {
-		return false
-	}
-	for i := 0; i < len(key); i++ {
-		c := key[i]
-		if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') {
-			continue
-		}
-		return false
-	}
-	return true
-}
-
-// ЗАКОН чисток отметок (SPEC 113, решение 2, формулировка пользователя):
-// «нет достоверного ответа — состояние не меняем». Любое ВЫБРАСЫВАНИЕ отметки
-// (миграция неопознанных legacy-ключей здесь, TTL-уборка в GCDisabledNodes,
-// любая будущая чистка) допустимо только по разбору, которому верим: тело
-// источника прочитано целиком, узлы есть, ни один не отброшен капом
-// MaxNodesPerSubscription. Иначе пустой или урезанный разбор молча включал бы
-// выключенные пользователем узлы обратно. Перепись СОВПАВШИХ ключей на новую
-// форму безопасна всегда: она не теряет ни одной отметки.
-
-// migrateLegacyDisabledKeys переписывает отметки выключения с упразднённого
-// контент-хеша на тег-идентичность (SPEC 112).
-//
-// Legacy-ключ ищется среди узлов ЭТОГО источника прогоном
-// LegacyNodeIdentityHashFunc. Совпал — отметка переезжает на идентичность
-// найденного узла. Не совпал: при trustedParse ключ выбрасывается (узла с
-// таким содержимым в источнике нет, отметка мертва), иначе ОСТАЁТСЯ как есть —
-// см. закон выше.
-//
-// Возвращает карту (ту же, если мигрировать нечего) и число ТРОНУТЫХ
-// legacy-ключей — и переписанных, и выброшенных: сохранять надо оба исхода,
-// иначе неопознанный хеш будет заново прогоняться по всем узлам на каждом
-// запуске. Персист обеспечивает возврат refreshedDisabled из
-// filterDisabledNodes.
-func migrateLegacyDisabledKeys(
-	disabled map[string]int64,
-	nodes []*configtypes.ParsedNode,
-	trustedParse bool,
-) (map[string]int64, int) {
-	legacyKeys := 0
-	for key := range disabled {
-		if isLegacyIdentityHash(key) {
-			legacyKeys++
-		}
-	}
-	if legacyKeys == 0 {
-		return disabled, 0
-	}
-	if LegacyNodeIdentityHashFunc == nil {
-		// Хук не подставлен (парсер в изоляции) — старые ключи доживают до
-		// следующего запуска, а не пропадают молча.
-		return disabled, 0
-	}
-
-	// Хеш считается один раз на узел: эмиссия узла не бесплатна, а подписка
-	// может отдать тысячи нод.
-	identityByLegacy := make(map[string]string, len(nodes))
-	for _, node := range nodes {
-		if node == nil {
-			continue
-		}
-		id := nodeIdentity(node)
-		if id == "" {
-			continue
-		}
-		h := LegacyNodeIdentityHashFunc(node)
-		if h == "" {
-			continue
-		}
-		if _, taken := identityByLegacy[h]; !taken {
-			identityByLegacy[h] = id
-		}
-	}
-
-	out := make(map[string]int64, len(disabled))
-	migrated := 0
-	for key, ts := range disabled {
-		if !isLegacyIdentityHash(key) {
-			out[key] = ts
-			continue
-		}
-		id, found := identityByLegacy[key]
-		if !found {
-			if !trustedParse {
-				// Разбору не верим — ключ мог не совпасть просто потому, что
-				// своего узла в этом прогоне не было (сеть отпала, кэш урезан).
-				debuglog.DebugLog("Parser: legacy disabled-node key %q kept — parse not trustworthy (SPEC 113)", key)
-				out[key] = ts
-				continue
-			}
-			debuglog.DebugLog("Parser: legacy disabled-node key %q matches no node — dropped (SPEC 112 migration)", key)
-			migrated++
-			continue
-		}
-		// Свежая отметка по тегу побеждает: если пользователь уже выключал
-		// узел после миграции, время у неё новее.
-		if prev, dup := out[id]; !dup || prev < ts {
-			out[id] = ts
-		}
-		migrated++
-	}
-	return out, migrated
-}
-
-// GCDisabledNodes убирает отметки о выключенных нодах, которых давно нет в
-// подписке (SPEC 094 D4). TTL считается из интервала обновления источника.
-//
-// Вызывать ТОЛЬКО после успешного СЕТЕВОГО обновления: на прогоне из кэша тело
-// может быть неполным, и отметки исчезли бы для живых нод — те молча включились
-// бы обратно за спиной пользователя. Это тот же ЗАКОН чисток, что и у миграции
-// legacy-ключей (см. комментарий над migrateLegacyDisabledKeys): выбрасывать —
-// только по достоверному разбору. Здесь его гарантирует вызывающий, потому что
-// GC зовётся не из парсера, а после апдейта источника.
-func GCDisabledNodes(disabled map[string]int64, updateIntervalHours int, now time.Time) map[string]int64 {
-	return gcDisabledNodes(disabled, disabledNodeTTL(updateIntervalHours), now)
-}
-
-// gcDisabledNodes — внутренняя реализация с явным TTL (удобна для тестов).
-func gcDisabledNodes(disabled map[string]int64, ttl time.Duration, now time.Time) map[string]int64 {
-	if len(disabled) == 0 {
-		return disabled
-	}
-	cutoff := now.Add(-ttl).Unix()
-	kept := make(map[string]int64, len(disabled))
-	expired := 0
-	for hash, ts := range disabled {
-		if ts < cutoff {
-			expired++
-			continue
-		}
-		kept[hash] = ts
-	}
-	if expired > 0 {
-		debuglog.DebugLog("Parser: dropped %d expired disabled-node mark(s)", expired)
-	}
-	return kept
-}
-
 // SPEC 112 снёс dedupNodesByIdentity вместе с контент-хешем — и вместе с ним
 // уехал дедуп байтовых копий (регресс v1.5.2: подписка из 39 записей, где 32
 // одинаковых ss:// различались только `#fragment`, показывала 32 узла вместо
@@ -440,19 +189,6 @@ type SourceLoadResult struct {
 	// IgnoredSections — секции целого конфига, которые импорт не читает
 	// (route/dns/inbounds/experimental). Показываются в превью.
 	IgnoredSections []string
-	// DisabledNodes — отметки о выключенных нодах с обновлёнными временами
-	// (SPEC 094 D4). Отметка ноды, встреченной в этом прогоне, продлевается;
-	// вызывающий решает, сохранять ли карту и запускать ли GC — просроченные
-	// отметки удаляются только после успешного СЕТЕВОГО обновления.
-	DisabledNodes map[string]int64
-	// DisabledMigrated — в DisabledNodes переписаны legacy-ключи
-	// (контент-хеши SPEC 094/101 → тег-идентичность, SPEC 112).
-	//
-	// Отдельный флаг, а не сравнение карт: вызывающий обязан СОХРАНИТЬ такой
-	// результат, иначе хеши будут мигрировать заново на каждом запуске и
-	// state.json никогда не почистится. Продление lastSeen сохранения не
-	// требует и флага не поднимает.
-	DisabledMigrated bool
 
 	// ParseFailures — КОМПАКТНЫЙ список причин, по которым разбор отбраковал
 	// содержимое источника: сетевая ошибка фетча, битые элементы Xray-массива,
@@ -465,8 +201,7 @@ type SourceLoadResult struct {
 	// сборка.
 	//
 	// SPEC 113-A не затрагивается: это только видимость. Достоверность разбора
-	// (bodyRead, trustedParse) считается прежним способом, и наличие причин на
-	// неё не влияет.
+	// считается прежним способом, и наличие причин на неё не влияет.
 	ParseFailures []string
 }
 
@@ -516,13 +251,6 @@ func LoadNodesFromSourceEx(
 	// и собственную идентичность — снять его отметку стало бы нечем.
 	dedup := newSourceDedup()
 
-	// SPEC 113 (решение 2): «нет достоверного ответа — состояние не меняем».
-	// Тело подписки прочитано целиком (сеть или живой кэш) — только тогда
-	// можно ВЫБРАСЫВАТЬ неопознанные legacy-отметки. Источник без URL
-	// (прямые ссылки, connections, ручной config_json) читается локально и
-	// достоверен всегда; подписка становится достоверной, когда тело получено.
-	bodyRead := !IsSubscriptionURL(proxySource.Source)
-
 	// SPEC 094 A4: секции импортированного конфига, которые парсер не читает.
 	// Группы отдельным списком НЕ идут: они рядовые узлы и лежат в nodes.
 	var ignoredSections []string
@@ -546,16 +274,7 @@ func LoadNodesFromSourceEx(
 			var content []byte
 			var err error
 
-			// SPEC 052: если caller установил cache-hook (Rebuild без сети
-			// или Update после refresh), берём оттуда — экономит fetch.
-			if LookupCachedBody != nil {
-				if cached, ok := LookupCachedBody(proxySource.Source); ok && len(cached) > 0 {
-					content = cached
-					debuglog.DebugLog("LoadNodesFromSource: Using cached body for subscription %d/%d (%d bytes)",
-						subscriptionIndex+1, totalSubscriptions, len(content))
-				}
-			}
-			if content == nil {
+			{
 				debuglog.DebugLog("LoadNodesFromSource: Fetching subscription %d/%d: %s",
 					subscriptionIndex+1, totalSubscriptions, proxySource.Source)
 				content, err = FetchSubscription(proxySource.Source)
@@ -573,9 +292,6 @@ func LoadNodesFromSourceEx(
 			} else if len(content) > 0 {
 				debuglog.DebugLog("LoadNodesFromSource: Fetched subscription %d/%d: %d bytes in %v",
 					subscriptionIndex+1, totalSubscriptions, len(content), fetchDuration)
-
-				// Тело на руках — разбору можно верить (SPEC 113, решение 2).
-				bodyRead = true
 
 				if progressCallback != nil {
 					progressCallback(20+float64(subscriptionIndex)*50.0/float64(totalSubscriptions)+10.0/float64(totalSubscriptions),
@@ -895,33 +611,6 @@ func LoadNodesFromSourceEx(
 			configtypes.MaxNodesPerSubscription, skippedDueToLimit)
 	}
 
-	// SPEC 077: apply the source-level detour to every node it produced, so the
-	// generator emits "detour":"<tag>" on each. Skipped for nodes that already
-	// carry an Xray Jump (the subscription declared its own chain — that wins)
-	// and for WireGuard endpoints with listen_port (the core rejects that
-	// combination). The tag is validated (dangling/cycle/self) later in the
-	// generator, where the full tag set is known; here we only stamp it.
-	// SPEC 101 + SPEC 112-A: ссылка на конкретный узел бьёт групповой detour —
-	// она разрешается и штампуется генератором (resolveNodeDetours) на проходе
-	// 2, когда существует весь набор узлов; штамповать здесь ещё и групповой
-	// тег значило бы оставить его при провале резолва (путь fail-closed).
-	// Легаси DetourNodeHash считается так же: он мигрирует там же.
-	if strings.TrimSpace(proxySource.DetourNodeTag) == "" &&
-		strings.TrimSpace(proxySource.DetourNodeSourceID) == "" &&
-		strings.TrimSpace(proxySource.DetourNodeHash) == "" {
-		ApplySourceDetour(nodes, proxySource.DetourTag)
-	}
-
-	// SPEC 094 D4: узлы, выключенные пользователем, не попадают в конфиг.
-	// Отметки живут по идентичности-тегу, поэтому переживают смену позиции
-	// ноды в подписке и правку тег-политики источника.
-	//
-	// trustedParse — SPEC 113, решение 2: тело прочитано, узлы есть и ни один
-	// не отброшен капом. Только тогда неопознанные legacy-ключи выбрасываются;
-	// иначе они остаются нетронутыми до следующего честного разбора.
-	trustedParse := bodyRead && len(nodes) > 0 && skippedDueToLimit == 0
-	nodes, refreshedDisabled, disabledMigrated := filterDisabledNodes(nodes, proxySource.DisabledNodes, time.Now(), trustedParse)
-
 	// Итог дедупа — до строки END, чтобы в логе он читался как часть разбора,
 	// а не как что-то, случившееся после него.
 	dedup.logSummary(proxySource.Source)
@@ -934,11 +623,9 @@ func LoadNodesFromSourceEx(
 	// доезжали бы лишь до тех вызывающих, кто зовёт Ex-форму.
 	reportParseFailures(proxySource, rejected.List())
 	return &SourceLoadResult{
-		Nodes:            nodes,
-		IgnoredSections:  ignoredSections,
-		DisabledNodes:    refreshedDisabled,
-		DisabledMigrated: disabledMigrated,
-		ParseFailures:    rejected.List(),
+		Nodes:           nodes,
+		IgnoredSections: ignoredSections,
+		ParseFailures:   rejected.List(),
 	}, nil
 }
 
@@ -958,41 +645,10 @@ func applyURINodeTags(
 	if node == nil {
 		return
 	}
-	if singleNodeSourceTag(proxySource) != "" {
-		// Источник-СЕРВЕР: весь источник — один узел, и зовут его тегом,
-		// который задал пользователь (Source.NodeTag → TagMask), а не
-		// фрагментом URI. Сырой тег тут не годится в идентичность: у одного и
-		// того же сервера он разный в формах `uri` и `config_json` (внутренний
-		// tag JSON-объекта), и ссылка на узел разъезжалась бы при переключении
-		// формы хранения — ровно тот баг, ради которого SPEC 112 сносил
-		// контент-хеш. Уникализация тут не нужна: узел один.
-		node.IdentityTag = singleNodeSourceTag(proxySource)
-	} else {
-		StampNodeIdentity(node, idCounts)
-	}
-	node.Tag = applyTagPrefixPostfix(node, proxySource.TagPrefix, proxySource.TagPostfix, proxySource.TagMask, nodeNum)
+	StampNodeIdentity(node, idCounts)
+	node.Tag = applyTagPrefixPostfix(node, proxySource.TagPrefix, proxySource.TagPostfix, nodeNum)
 	node.Tag = textnorm.NormalizeProxyDisplay(node.Tag)
 	node.Tag = MakeTagUnique(node.Tag, tagCounts, "Parser")
-}
-
-// singleNodeSourceTag — имя источника-сервера, если это он: источник, который
-// даёт РОВНО один узел и целиком назван собственным тегом (SPEC 112-A).
-//
-// Форма из ToProxySourceV4: ни подписки (Source), ни цепочки (Chain), маска
-// без переменных — она и есть имя узла, — и не больше одного адреса.
-// Пусто = обычный источник, идентичность снимается с провайдерского тега.
-func singleNodeSourceTag(ps configtypes.ProxySource) string {
-	if ps.Source != "" || ps.Chain != nil {
-		return ""
-	}
-	if len(ps.Connections) > 1 {
-		return "" // legacy multi-connection: узлов много, одного имени на них нет
-	}
-	mask := strings.TrimSpace(ps.TagMask)
-	if mask == "" || strings.Contains(mask, "{$") {
-		return "" // без маски или с переменными имя узла не константа
-	}
-	return mask
 }
 
 // applyTagsToSingboxNode применяет к импортированному узлу те же правила тегов,
@@ -1019,7 +675,7 @@ func applyTagsToSingboxNode(
 	// одинаковым именем в импортированном конфиге получили бы один ключ.
 	StampNodeIdentity(node, idCounts)
 
-	node.Tag = applyTagPrefixPostfix(node, proxySource.TagPrefix, proxySource.TagPostfix, proxySource.TagMask, nodeNum)
+	node.Tag = applyTagPrefixPostfix(node, proxySource.TagPrefix, proxySource.TagPostfix, nodeNum)
 	node.Tag = textnorm.NormalizeProxyDisplay(node.Tag)
 	node.Tag = MakeTagUnique(node.Tag, tagCounts, "Parser")
 	if node.Outbound != nil {
@@ -1143,39 +799,6 @@ func rebindImportedGroupNodes(
 	return kept
 }
 
-// ApplySourceDetour stamps node.Outbound["detour"] = detourTag on every eligible
-// node (SPEC 077). No-op when detourTag is empty. Nodes with an Xray Jump are
-// left untouched (see LoadNodesFromSource for the rationale). WireGuard endpoints
-// take detour like any dial-based outbound (sing-box-lx builds the peer dialer
-// from DialerOptions), except when the URI carried listen_port — the core
-// rejects detour+listen_port, and one such node would fail the whole config.
-//
-// Exported for the Source edit window's JSON tab, which unpacks cached
-// subscription bodies through the same steps as the real pipeline.
-func ApplySourceDetour(nodes []*configtypes.ParsedNode, detourTag string) {
-	detourTag = strings.TrimSpace(detourTag)
-	if detourTag == "" {
-		return
-	}
-	for _, node := range nodes {
-		if node == nil {
-			continue
-		}
-		if node.Jump != nil {
-			debuglog.DebugLog("ApplySourceDetour: node %q has an Xray Jump — source detour %q not applied", node.Tag, detourTag)
-			continue
-		}
-		if _, hasListenPort := node.Outbound["listen_port"]; hasListenPort && node.Scheme == "wireguard" {
-			debuglog.WarnLog("Parser: node %q has listen_port — source detour %q not applied (core rejects detour+listen_port)", node.Tag, detourTag)
-			continue
-		}
-		if node.Outbound == nil {
-			node.Outbound = map[string]interface{}{}
-		}
-		node.Outbound["detour"] = detourTag
-	}
-}
-
 // applyTagsToXrayNode applies tag_prefix/tag_postfix/tag_mask and MakeTagUnique to main and jump tags.
 func applyTagsToXrayNode(node *configtypes.ParsedNode, proxySource configtypes.ProxySource, nodeNum int, tagCounts map[string]int, idCounts map[string]int) {
 	// SPEC 094: исходный тег нужен узлам-группам, чтобы после префикса/маски
@@ -1192,10 +815,10 @@ func applyTagsToXrayNode(node *configtypes.ParsedNode, proxySource configtypes.P
 	if node.Jump != nil {
 		saved := node.Tag
 		node.Tag = node.Jump.Tag
-		node.Jump.Tag = applyTagPrefixPostfix(node, proxySource.TagPrefix, proxySource.TagPostfix, proxySource.TagMask, nodeNum)
+		node.Jump.Tag = applyTagPrefixPostfix(node, proxySource.TagPrefix, proxySource.TagPostfix, nodeNum)
 		node.Tag = saved
 	}
-	node.Tag = applyTagPrefixPostfix(node, proxySource.TagPrefix, proxySource.TagPostfix, proxySource.TagMask, nodeNum)
+	node.Tag = applyTagPrefixPostfix(node, proxySource.TagPrefix, proxySource.TagPostfix, nodeNum)
 	node.Tag = textnorm.NormalizeProxyDisplay(node.Tag)
 	node.Tag = MakeTagUnique(node.Tag, tagCounts, "Parser")
 	if node.Jump != nil {
@@ -1211,15 +834,12 @@ func applyTagsToXrayNode(node *configtypes.ParsedNode, proxySource configtypes.P
 }
 
 // applyTagPrefixPostfix applies prefix and postfix to a node tag if specified in ProxySource.
-// If tagMask is set, it replaces the entire tag and ignores prefix/postfix.
-// Supports variable substitution in prefix, postfix, and mask.
+// Supports variable substitution in prefix and postfix.
 // Returns the modified tag.
-func applyTagPrefixPostfix(node *configtypes.ParsedNode, tagPrefix, tagPostfix, tagMask string, nodeNum int) string {
-	// If tag_mask is set, use it to replace the entire tag (ignores prefix/postfix)
-	if tagMask != "" {
-		return replaceTagVariables(tagMask, node, nodeNum)
-	}
-
+//
+// SPEC 118 W5: маски тегов больше нет — в каноне v7 тег узла хранится полем
+// (Node.Tag), а тег-политика контейнера это ровно префикс с постфиксом.
+func applyTagPrefixPostfix(node *configtypes.ParsedNode, tagPrefix, tagPostfix string, nodeNum int) string {
 	tag := node.Tag
 
 	// Replace variables in prefix

@@ -132,17 +132,13 @@ func TestGroupNodeDoesNotTouchOutboundChannels(t *testing.T) {
 	}}
 
 	nodesBefore := len(parserConfig.ParserConfig.Outbounds)
-	localBefore := len(parserConfig.ParserConfig.Proxies[0].Outbounds)
+	localBefore := len(parserConfig.ParserConfig.Proxies[0].LocalGroups)
 
-	loader := func(ProxySource, map[string]int, func(float64, string), int, int) ([]*ParsedNode, error) {
-		return []*ParsedNode{
-			plainNode("n1", "a.example.com"),
-			plainNode("n2", "b.example.com"),
-			groupNode("auto", "n1", "n2"),
-		}, nil
-	}
-
-	res, err := GenerateOutboundsFromParserConfig(parserConfig, map[string]int{}, nil, loader, DirectionBuildOptions{})
+	res, err := generateWithCanonicalNodes(t, parserConfig, []*ParsedNode{
+		plainNode("n1", "a.example.com"),
+		plainNode("n2", "b.example.com"),
+		groupNode("auto", "n1", "n2"),
+	}, DirectionBuildOptions{})
 	if err != nil {
 		t.Fatalf("GenerateOutboundsFromParserConfig() error: %v", err)
 	}
@@ -150,7 +146,7 @@ func TestGroupNodeDoesNotTouchOutboundChannels(t *testing.T) {
 	if got := len(parserConfig.ParserConfig.Outbounds); got != nodesBefore {
 		t.Fatalf("global outbounds changed: %d → %d", nodesBefore, got)
 	}
-	if got := len(parserConfig.ParserConfig.Proxies[0].Outbounds); got != localBefore {
+	if got := len(parserConfig.ParserConfig.Proxies[0].LocalGroups); got != localBefore {
 		t.Fatalf("source-local outbounds changed: %d → %d", localBefore, got)
 	}
 
@@ -179,14 +175,10 @@ func TestGroupNodeIsSelectableByChannelFilter(t *testing.T) {
 		Filters: map[string]interface{}{"tag": "/auto/i"},
 	}}
 
-	loader := func(ProxySource, map[string]int, func(float64, string), int, int) ([]*ParsedNode, error) {
-		return []*ParsedNode{
-			plainNode("n1", "a.example.com"),
-			groupNode("auto", "n1"),
-		}, nil
-	}
-
-	res, err := GenerateOutboundsFromParserConfig(parserConfig, map[string]int{}, nil, loader, DirectionBuildOptions{})
+	res, err := generateWithCanonicalNodes(t, parserConfig, []*ParsedNode{
+		plainNode("n1", "a.example.com"),
+		groupNode("auto", "n1"),
+	}, DirectionBuildOptions{})
 	if err != nil {
 		t.Fatalf("GenerateOutboundsFromParserConfig() error: %v", err)
 	}

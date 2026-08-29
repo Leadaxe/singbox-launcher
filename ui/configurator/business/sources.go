@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
@@ -61,13 +62,13 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 	existingURIs := make(map[string]struct{}, len(model.Sources))
 	for _, src := range model.Sources {
 		switch src.Kind {
-		case corestate.SourceTypeSubscription:
+		case corestate.SourceKindSubscription:
 			if src.URL != "" {
 				existingURLs[src.URL] = struct{}{}
 			}
-		case corestate.SourceTypeServer:
-			if src.URI != "" {
-				existingURIs[src.URI] = struct{}{}
+		case corestate.SourceKindServer:
+			if src.Origin != nil && src.Origin.Kind == corestate.OriginKindURI && src.Origin.Raw != "" {
+				existingURIs[src.Origin.Raw] = struct{}{}
 			}
 		}
 	}
@@ -91,7 +92,7 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 		if prefix == "" {
 			prefix = GenerateTagPrefix(idx)
 		}
-		newSrc.TagPolicy = &corestate.TagSpec{Prefix: prefix}
+		newSrc.TagPolicy = &corestate.TagPolicy{Prefix: prefix}
 		model.Sources = append(model.Sources, newSrc)
 		existingURLs[subURL] = struct{}{}
 		added++
@@ -110,11 +111,19 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 			tag = fmt.Sprintf("server-%d", startIndex+added)
 		}
 		newSrc := corestate.Source{
-			Node:    corestate.Node{Kind: corestate.SourceKindServer, Enabled: true},
-			ID:      corestate.MakeULID(),
-			NodeTag: tag,
-			URI:     uri,
+			Node: corestate.Node{Kind: corestate.SourceKindServer, Enabled: true, Tag: tag},
+			ID:   corestate.MakeULID(),
 		}
+		// SPEC 118 Т2: тело узла материализуется СРАЗУ, тем же путём, что у
+		// миграции и fetch. Узел без тела собирать не из чего — держать его
+		// в модели «до первой сборки» значило бы вернуть ленивый разбор.
+		mat, matErr := config.MaterializeServerNode(uri, nil)
+		if matErr != nil {
+			debuglog.WarnLog("AddSources: URI %q не разобран: %v — узел не добавлен", uri, matErr)
+			continue
+		}
+		newSrc.Body = mat.Body
+		newSrc.Origin = &corestate.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw}
 		model.Sources = append(model.Sources, newSrc)
 		existingURIs[uri] = struct{}{}
 		added++
@@ -130,11 +139,20 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 		if tag == "" {
 			tag = fmt.Sprintf("server-%d", startIndex+added)
 		}
+		mat, matErr := config.MaterializeServerNode("", jn.ConfigJSON)
+		if matErr != nil {
+			debuglog.WarnLog("AddSources: JSON-узел %q не разобран: %v — узел не добавлен", tag, matErr)
+			continue
+		}
 		model.Sources = append(model.Sources, corestate.Source{
-			Node:       corestate.Node{Kind: corestate.SourceKindServer, Enabled: true},
-			ID:         corestate.MakeULID(),
-			NodeTag:    tag,
-			ConfigJSON: jn.ConfigJSON,
+			Node: corestate.Node{
+				Kind:    corestate.SourceKindServer,
+				Enabled: true,
+				Tag:     tag,
+				Body:    mat.Body,
+				Origin:  &corestate.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw},
+			},
+			ID: corestate.MakeULID(),
 		})
 		added++
 	}
@@ -146,7 +164,7 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 	// Bump revision & refresh UI.
 	model.BumpRevision()
 	model.PreviewNeedsParse = true
-	InvalidatePreviewCache(model)
+	InvalidateNodePool(model)
 	updater.RefreshOutboundsConfiguratorList()
 	timing.LogTiming("append sources", time.Since(time.Now()))
 	return nil

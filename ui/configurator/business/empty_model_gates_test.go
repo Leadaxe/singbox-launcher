@@ -74,7 +74,6 @@ func TestEmptyModelGate_ParseAndPreview(t *testing.T) {
 		ID:    "01C6SRV00000000000000000",
 		Node:  corestate.Node{Kind: corestate.SourceKindServer, Enabled: true},
 		Label: "srv",
-		URI:   "vless://uuid@host:443",
 	})
 	model.BumpRevision()
 	gen := &blockingGenMock{proceed: make(chan struct{}), out: &config.OutboundGenerationResult{}}

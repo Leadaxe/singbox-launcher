@@ -13,8 +13,6 @@ package core
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -22,7 +20,6 @@ import (
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/state"
-	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
@@ -39,26 +36,21 @@ import (
 //
 // Поведение:
 //   - Идём по `state.Sources` (только subscription, enabled, URL ≠ "");
-//   - На success: атомарная запись raw + обновлённая Meta (headers, last_status="ok",
-//     error_count=0, last_fetched_at, http_status_code, raw_body_bytes,
-//     preview_nodes[:50], nodes_count_fetched, truncated);
-//   - На failure: keep старого raw (per-source resilience), Meta.error_count++,
-//     last_status="err", last_error_msg, http_status_code (если был ответ);
-//   - После всех источников — DeleteOrphans: убираем `.raw` файлы id'ов
-//     которых больше нет в state;
+//   - На success: материализованные nodes[] (merge по сырому тегу),
+//     обновлённые заголовки провайдера в Meta и канонический updateStatus;
+//   - На failure: nodes[] не тронуты (SPEC 113-A), ошибка — в updateStatus;
 //   - Persist state.json через `state.Save` (atomic).
 func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 	if s == nil {
 		return
 	}
-	subsDir := platform.GetSubscriptionsDir(execDir)
 
 	dirty := false
 
 	// Считаем enabled subscriptions для progress reporting.
 	enabledCount := 0
 	for _, src := range s.Sources {
-		if src.Kind == state.SourceTypeSubscription && src.Enabled && src.URL != "" {
+		if src.Kind == state.SourceKindSubscription && src.Enabled && src.URL != "" {
 			enabledCount++
 		}
 	}
@@ -80,7 +72,7 @@ func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 	idx := 0
 	for i := range s.Sources {
 		src := &s.Sources[i]
-		if src.Kind != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
+		if src.Kind != state.SourceKindSubscription || !src.Enabled || src.URL == "" {
 			continue
 		}
 		idx++
@@ -92,26 +84,9 @@ func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 		}
 		progress(pct, fmt.Sprintf("Fetching %d/%d: %s", idx, enabledCount, shortURL))
 
-		if refreshOneSubscriptionSource(src, s.Defaults, settings, subsDir) {
+		if refreshOneSubscriptionSource(src, settings) {
 			dirty = true
 		}
-		// Прежний GCDisabledNodes-проход (SPEC 094 D4) здесь умер: карта
-		// выключенных теперь согласуется с каноном node.enabled внутри
-		// merge на том же пути достоверного обновления
-		// (state.syncLegacyDisabledMap); TTL-механика целиком умирает в W5.
-	}
-
-	// Lazy GC: known set = ОБЪЕДИНЕНИЕ Source.ID'ов из всех state'ов ЛОКАЛЬНОЙ
-	// машины (active state.json + named snapshots). `.raw` файл шарится между
-	// stages если Source с тем же ID присутствует в нескольких — удаляем
-	// только когда ID не упомянут НИГДЕ. Это защищает от случая «Update
-	// активного state'а сносит данные неактивного stage'а».
-	//
-	// SPEC 098: и множество, и каталог — локальные. У удалённых машин свои
-	// каталоги тел подписок внутри их директорий.
-	knownIDs := collectAllStageSourceIDs(execDir, constants.ConfigTargetLocal, "")
-	if _, gcErr := state.DeleteOrphans(subsDir, knownIDs); gcErr != nil {
-		debuglog.WarnLog("refreshSubscriptionsMetaAndCache: DeleteOrphans: %v", gcErr)
 	}
 
 	// Persist state с обновлённой meta. Best-effort.
@@ -121,75 +96,6 @@ func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 			debuglog.WarnLog("refreshSubscriptionsMetaAndCache: state.Save: %v", err)
 		}
 	}
-}
-
-// collectAllStageSourceIDs возвращает объединение Source.ID'ов из state-файлов
-// ОДНОЙ машины (её active state.json + её named snapshots).
-//
-// SPEC 052 phase 8 fix: <subscriptions>/<id>.raw шарится между stages,
-// если Source с тем же ID есть в нескольких state-файлах. DeleteOrphans
-// должен сравнивать с union ID'ов всех stage'ов, а не только active —
-// иначе Update активного state'а удалит .raw файлы, нужные другому
-// (неактивному) stage'у.
-//
-// SPEC 098: union считается В ГРАНИЦАХ МАШИНЫ, потому что каталог тел
-// подписок теперь тоже её собственный:
-//
-//	local          → bin/wizard_states/*.json  → bin/subscriptions/
-//	remote + <id>  → …/remote/<id>/*.json      → …/remote/<id>/subscriptions/
-//
-// До SPEC 098 каталог был общим, и функция обязана была обходить все уровни
-// wizard_states/ — иначе Update одной машины сносил тело подписки, которым
-// владеет другая. С раздельными каталогами обход чужих состояний стал
-// вредным: он удерживал бы от удаления .raw, уже никем в этой машине не
-// упомянутый.
-//
-// Read-only: errors per-file логируются и пропускаются (битый файл одного
-// snapshot'а не должен блокировать GC).
-func collectAllStageSourceIDs(execDir, target, machineID string) []string {
-	statesDir := platform.GetWizardStatesDirFor(execDir, target, machineID)
-	entries, err := os.ReadDir(statesDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		debuglog.WarnLog("collectAllStageSourceIDs: readdir %s: %v", statesDir, err)
-		return nil
-	}
-
-	idSet := make(map[string]struct{})
-	collectFromState := func(path string) {
-		s, loadErr := state.Load(path)
-		if loadErr != nil {
-			debuglog.DebugLog("collectAllStageSourceIDs: skip %s: %v", path, loadErr)
-			return
-		}
-		for _, src := range s.Sources {
-			if src.ID != "" {
-				idSet[src.ID] = struct{}{}
-			}
-		}
-	}
-
-	// SPEC 098: как и collectAllStageRuleSetTags — сканируется только свой
-	// уровень. Поддиректории (для local это папки машин) пропускаются:
-	// каталог тел подписок у каждой машины свой, и чужие состояния не должны
-	// влиять на её GC ни в одну сторону.
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		if !strings.HasSuffix(e.Name(), ".json") {
-			continue
-		}
-		collectFromState(filepath.Join(statesDir, e.Name()))
-	}
-
-	out := make([]string, 0, len(idSet))
-	for id := range idSet {
-		out = append(out, id)
-	}
-	return out
 }
 
 // refreshOneSubscriptionSource — атомарный fetch одного source: скачать →
@@ -203,11 +109,9 @@ func collectAllStageSourceIDs(execDir, target, machineID string) []string {
 // модель мимо UI-thread.
 //
 // На failed fetch / недостоверный разбор: nodes[] НЕ трогаются (SPEC 113-A),
-// старый .raw остаётся, ошибка — в updateStatus (и мостовую Meta).
-// На success: write .raw atomic (мост до W5 — сборка пока читает его),
-// merge в nodes[], meta полностью.
-func refreshOneSubscriptionSource(src *state.Source, defaults state.Defaults, settings locale.Settings, subsDir string) bool {
-	if src == nil || src.Kind != state.SourceTypeSubscription || src.URL == "" {
+// ошибка — в updateStatus. На success: merge в nodes[], заголовки в Meta.
+func refreshOneSubscriptionSource(src *state.Source, settings locale.Settings) bool {
+	if src == nil || src.Kind != state.SourceKindSubscription || src.URL == "" {
 		return false
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -215,39 +119,35 @@ func refreshOneSubscriptionSource(src *state.Source, defaults state.Defaults, se
 	res, fetchErr := subscription.FetchSubscriptionWithMeta(src.URL)
 
 	if fetchErr != nil {
-		// Мостовая Meta (TEMPORARY BRIDGE, UI читает её до W6) — новая копия,
-		// не мутация разделяемого указателя.
-		meta := state.SubscriptionMeta{}
+		// Заголовки провайдера — новая копия, не мутация разделяемого
+		// указателя: их читает UI со своего value-snapshot'а.
+		meta := state.SubMeta{}
 		if src.Meta != nil {
 			meta = *src.Meta
 		}
-		meta.URLAtFetch = src.URL
-		meta.LastFetchedAt = now
-		meta.LastStatus = "err"
-		meta.ErrorCount++
-		meta.LastErrorMsg = fetchErr.Error()
-		// SPEC 061: surface the structured announce on either error variant
-		// so UI can render an actionable dialog with the provider message +
-		// clickable URL, not just a flat error label.
+		// SPEC 061: структурированный announce нужен обеим формам ошибки —
+		// UI рисует по нему диалог с текстом провайдера и кликабельным URL,
+		// а не плоскую строку ошибки.
 		meta.ProviderAnnounce = nil
-		meta.LastErrorURL = ""
+		errURL := ""
+		httpCode := 0
 		if ae, ok := subscription.IsAnnounceError(fetchErr); ok {
 			a := ae.Announce
 			meta.ProviderAnnounce = &a
-			meta.LastErrorURL = a.URL
+			errURL = a.URL
 		}
 		if httpErr, ok := subscription.IsHTTPError(fetchErr); ok {
-			meta.HTTPStatusCode = httpErr.StatusCode
+			httpCode = httpErr.StatusCode
 			if httpErr.Announce != nil && !httpErr.Announce.IsEmpty() {
 				meta.ProviderAnnounce = httpErr.Announce
-				meta.LastErrorURL = httpErr.Announce.URL
+				errURL = httpErr.Announce.URL
 			}
 		} else if res != nil {
-			meta.HTTPStatusCode = res.HTTPStatus
+			httpCode = res.HTTPStatus
 		}
 		src.Meta = &meta
 		// Канонический статус: nodes[] не тронуты вообще (SPEC 113-A).
-		src.UpdateStatus = failedSubStatus(src.UpdateStatus, src.URL, now, fetchErr, meta.HTTPStatusCode, meta.LastErrorURL)
+		src.UpdateStatus = failedSubStatus(src.UpdateStatus, src.URL, now, fetchErr, httpCode, errURL)
 		debuglog.WarnLog("refreshOneSubscriptionSource: source %s fetch failed: %v", src.ID, fetchErr)
 		return true
 	}
@@ -255,7 +155,7 @@ func refreshOneSubscriptionSource(src *state.Source, defaults state.Defaults, se
 	// Единственное место разбора тела подписки (SPEC Т3): кап резолвится
 	// «настройка подписки → дефолт настроек приложения», аварийный потолок
 	// 3000 клэмпится внутри парсера.
-	capN := resolveSubscriptionMaxNodes(src.MaxNodes, settings, defaults)
+	capN := resolveSubscriptionMaxNodes(src.MaxNodes, settings)
 	material, matErr := config.MaterializeSubscriptionBody(src.ID, res.Body, src.Skip, capN)
 
 	// Достоверность (SPEC 113-A): обрыв разбора — недостоверен. Тело, из
@@ -270,20 +170,6 @@ func refreshOneSubscriptionSource(src *state.Source, defaults state.Defaults, se
 
 	var mergeWarns []string
 	if trusted {
-		// Raw-кэш — TEMPORARY BRIDGE (SPEC 118 W3-W4, умирает в W5): сборка
-		// читает его, пока эмиссия не переехала на nodes[]. Пишется ТОЛЬКО
-		// после trust-вердикта (фикс ревью W3, симметрия 113-A на мостовую
-		// эпоху): недостоверный ответ не трогает ни nodes[], ни .raw — иначе
-		// легаси-путь сборки терял бы узлы, которые канон сохранил.
-		//
-		// Известное окно расхождения .raw↔канон (не чиним, мост умирает в
-		// W5): .raw уже записан, а Save state.json у вызывающего упал →
-		// канонические nodes[] отстают от .raw до следующего достоверного
-		// fetch. Обе стороны при этом самодостаточны, следующий успешный
-		// fetch их выравнивает.
-		if writeErr := state.WriteRawBody(subsDir, src.ID, res.RawBody); writeErr != nil {
-			debuglog.WarnLog("refreshOneSubscriptionSource: WriteRawBody for %s: %v", src.ID, writeErr)
-		}
 		_, mergeWarns = state.MergeSubscriptionNodes(src, &state.SubFetchMaterial{
 			Nodes:     material.Nodes,
 			Truncated: material.Truncated,
@@ -309,32 +195,10 @@ func refreshOneSubscriptionSource(src *state.Source, defaults state.Defaults, se
 		debuglog.WarnLog("refreshOneSubscriptionSource: source %s body untrusted: %v — nodes kept", src.ID, reason)
 	}
 
-	// Мостовая Meta успеха (TEMPORARY BRIDGE, UI читает её до W6).
+	// Заголовки провайдера успешного ответа: канонический дом SubMeta.
+	// Диагностика (даты, коды, счёт узлов, truncated) живёт в updateStatus —
+	// второго её экземпляра в состоянии нет.
 	merged := res.Meta // value-copy
-	merged.URLAtFetch = src.URL
-	merged.LastFetchedAt = now
-	merged.LastStatus = "ok"
-	merged.ErrorCount = 0
-	merged.LastErrorMsg = ""
-	merged.LastErrorURL = ""
-	merged.HTTPStatusCode = res.HTTPStatus
-	merged.RawBodyBytes = res.RawBodyBytes
-	// ProviderAnnounce on success — only when the provider actually sent
-	// announce headers (already populated by ParseHeaders / ParseInlineComments
-	// into res.Meta). Otherwise stays nil so UI clears the 📢 badge.
-	// SPEC 054: для Xray JSON array подписок line-based extractPreviewNodes
-	// раздувал preview_nodes в 50 раз (одна "line" = весь JSON body ~1MB).
-	// Сначала пробуем формат-aware path через xray JSON parser; fallback на
-	// line-based для base64/text-line подписок.
-	if subscription.IsXrayJSONArrayBody(string(res.Body)) {
-		merged.PreviewNodes, merged.NodesCountFetched = extractXrayJSONPreviewNodes(res.Body, 50)
-	} else {
-		merged.PreviewNodes = extractPreviewNodes(res.Body, 50)
-		merged.NodesCountFetched = countURIs(res.Body)
-	}
-	// Реальный truncated от парсера, а не прежняя оценка «счёт строк > кап».
-	merged.Truncated = material != nil && material.Truncated
-
 	src.Meta = &merged
 	return true
 }
@@ -343,19 +207,12 @@ func refreshOneSubscriptionSource(src *state.Source, defaults state.Defaults, se
 // двухступенчатый — провайдерского заголовка у max_nodes не существует):
 // настройка подписки → дефолт настроек приложения → аварийный
 // потолок-константа (клэмп 3000 внутри ParseSubscriptionBody).
-func resolveSubscriptionMaxNodes(subMax int, settings locale.Settings, defaults state.Defaults) int {
+func resolveSubscriptionMaxNodes(subMax int, settings locale.Settings) int {
 	if subMax > 0 {
 		return subMax
 	}
 	if settings.DefaultSubscriptionMaxNodes > 0 {
 		return settings.DefaultSubscriptionMaxNodes
-	}
-	// TEMPORARY BRIDGE (SPEC 118 W3-W4), удаляется в W5: до включения сноса
-	// миграции (шаг 8) прежние defaults ещё не переехали в настройки
-	// приложения — без этой ступени пользователь с defaults.max_nodes в
-	// state.json потерял бы свой кап до W5.
-	if defaults.MaxNodes > 0 {
-		return defaults.MaxNodes
 	}
 	return 0 // → configtypes.MaxNodesPerSubscription в парсере
 }
@@ -422,8 +279,8 @@ func successSubStatus(url, now string, httpStatus int, rawBytes int64, material 
 //  3. Пользователь редактирует URL существующего source и кликает Refresh —
 //     то же самое, актуальный URL побеждает.
 //
-// Что трогаем на диске: только bin/subscriptions/<id>.raw (atomic .tmp+Rename).
-// Это per-source файл, конфликта с state.json нет.
+// На диске не трогаем ничего: материализованные узлы живут в состоянии, и
+// сохранить их — дело вызывающего.
 //
 // Concurrency: SubscriptionMu НЕ берётся — мы не модифицируем state.json. Если
 // одновременно сработает heartbeat / manual Update, они работают со state.json
@@ -436,25 +293,19 @@ func (svc *ConfigService) RefreshSourceInPlace(src *state.Source) (bool, error) 
 	if src == nil {
 		return false, fmt.Errorf("RefreshSourceInPlace: nil source")
 	}
-	if src.Kind != state.SourceTypeSubscription {
+	if src.Kind != state.SourceKindSubscription {
 		return false, fmt.Errorf("source %s is not a subscription (type=%q)", src.ID, src.Kind)
 	}
 	if src.URL == "" {
 		return false, fmt.Errorf("source %s has empty URL", src.ID)
 	}
 	execDir := svc.ac.FileService.ExecDir
-	subsDir := platform.GetSubscriptionsDir(execDir)
 
-	// Defaults капа: настройки приложения (SPEC Т1) + мостовые defaults из
-	// state.json, если он есть (TEMPORARY BRIDGE до W5) — нормально для
-	// cold-start, когда нет ни того, ни другого: парсер клэмпит потолком.
+	// Дефолт капа — настройки приложения (SPEC Т1); их отсутствие на
+	// cold-start нормально: парсер клэмпит своим потолком.
 	settings := locale.LoadSettings(platform.GetBinDir(execDir))
-	var defaults state.Defaults
-	if s, err := state.Load(platform.GetWizardStatePath(execDir)); err == nil {
-		defaults = s.Defaults
-	}
 
-	changed := refreshOneSubscriptionSource(src, defaults, settings, subsDir)
+	changed := refreshOneSubscriptionSource(src, settings)
 	return changed, nil
 }
 
@@ -489,13 +340,12 @@ func (svc *ConfigService) RefreshSingleSubscription(sourceID string) (*state.Sou
 	if src == nil {
 		return nil, fmt.Errorf("source not found: %s", sourceID)
 	}
-	if src.Kind != state.SourceTypeSubscription {
+	if src.Kind != state.SourceKindSubscription {
 		return nil, fmt.Errorf("source %s is not a subscription (type=%q)", sourceID, src.Kind)
 	}
 
-	subsDir := platform.GetSubscriptionsDir(execDir)
 	settings := locale.LoadSettings(platform.GetBinDir(execDir))
-	dirty := refreshOneSubscriptionSource(src, s.Defaults, settings, subsDir)
+	dirty := refreshOneSubscriptionSource(src, settings)
 	if dirty {
 		if err := s.Save(statePath); err != nil {
 			return src, fmt.Errorf("save state after refresh: %w", err)
@@ -510,7 +360,7 @@ func (svc *ConfigService) RefreshSingleSubscription(sourceID string) (*state.Sou
 	return src, nil
 }
 
-// extractXrayJSONPreviewNodes — SPEC 054. Для Xray JSON array подписок:
+// extractXrayJSONNodePool — SPEC 054. Для Xray JSON array подписок:
 // парсит body через subscription.ParseNodesFromXrayJSONArray и эмитит первые
 // `limit` нод в URI-like формате `<scheme>://<server>:<port>#<tag>`.
 //
@@ -519,10 +369,10 @@ func (svc *ConfigService) RefreshSingleSubscription(sourceID string) (*state.Sou
 //
 // На parse-error → возвращает (nil, 0) — caller должен решить fallback (но
 // caller сначала вызывает IsXrayJSONArrayBody, так что path должен совпадать).
-func extractXrayJSONPreviewNodes(body []byte, limit int) ([]string, int) {
+func extractXrayJSONNodePool(body []byte, limit int) ([]string, int) {
 	nodes, err := subscription.ParseNodesFromXrayJSONArray(string(body), nil)
 	if err != nil {
-		debuglog.WarnLog("extractXrayJSONPreviewNodes: parse failed: %v", err)
+		debuglog.WarnLog("extractXrayJSONNodePool: parse failed: %v", err)
 		return nil, 0
 	}
 	total := len(nodes)
@@ -615,9 +465,9 @@ func groupPreviewMembers(outbound map[string]interface{}) []string {
 	return out
 }
 
-// extractPreviewNodes — первые `limit` URI-like строк из decoded body.
+// extractNodePool — первые `limit` URI-like строк из decoded body.
 // «URI-like» = содержит "://", не пустая, не комментарий.
-func extractPreviewNodes(body []byte, limit int) []string {
+func extractNodePool(body []byte, limit int) []string {
 	if len(body) == 0 || limit <= 0 {
 		return nil
 	}

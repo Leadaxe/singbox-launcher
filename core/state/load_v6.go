@@ -29,13 +29,12 @@ import (
 // через новый dialog).
 //
 // SPEC 118: v6 — легаси-формат. Секция connections читается в приватную
-// v6-форму и переносится в плоский v7-корень СТРУКТУРНО (adoptConnectionsV6):
-// легаси-поля доезжают в мостовые деривативы TEMPORARY BRIDGE, из которых
-// adapter_source.go собирает прежнюю ProxySource-проекцию. Поверх переноса
-// работает семантическая миграция W2 (migrateLegacyStateToV7 — 8 шагов
-// features/state.md: материализация nodes[], отметки, теги, хопы, тройня,
-// fold→replace, отчёт потерь); снос легаси (шаг 8) гейтится
-// migrationPurgesLegacy до W5.
+// v6-форму и переносится в плоский v7-корень СТРУКТУРНО (adoptConnectionsV6);
+// легаси-значения уезжают сайдкаром legacySourceV6, который читает только
+// миграция. Поверх переноса работает семантическая миграция
+// (migrateLegacyStateToV7 — 8 шагов features/state.md: материализация
+// nodes[], отметки, теги, хопы, тройня, fold→replace, отчёт потерь); снос
+// легаси (шаг 8) идёт после успешной записи v7-файла.
 func parseV6Legacy(data []byte, lc LoadContext) (*State, error) {
 	var raw struct {
 		Meta         MetaSection          `json:"meta"`
@@ -83,12 +82,12 @@ func parseV6Legacy(data []byte, lc LoadContext) (*State, error) {
 	migrateSourceFolds(&raw.Connections)
 
 	// SPEC 118 (W1): структурный перенос v6-секции в плоский v7-корень.
-	adoptConnectionsV6(s, raw.Connections)
+	legacySources := adoptConnectionsV6(s, raw.Connections)
 
 	// SPEC 118 (W2): семантическая миграция — СТРОГО до построения
 	// legacy-видов (CustomRules и проекция обязаны видеть уже переписанные
 	// ссылки и мигрированный канон).
-	migrateLegacyStateToV7(s, 6, lc)
+	migrateLegacyStateToV7(s, 6, lc, legacySources)
 
 	// Generate legacy CustomRules view for backward-compat UI (Phase 6 will use RulesV6 directly).
 	s.CustomRules = legacyCustomRulesFromV6(s.Rules)

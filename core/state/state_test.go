@@ -52,7 +52,7 @@ func TestLoad_EmptyFile(t *testing.T) {
 // Legacy ParserConfig view заполнен из мигрированных Connections для
 // backward-compat callsite'ов.
 func TestLoad_V4Minimal(t *testing.T) {
-	s, err := Load("testdata/v4_minimal.json")
+	s, err := Load(legacyFixtureCopy(t, "testdata/v4_minimal.json"))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestLoad_V4Minimal(t *testing.T) {
 	if got := len(s.Sources); got != 1 {
 		t.Fatalf("Connections.Sources: want 1, got %d", got)
 	}
-	if s.Sources[0].Kind != SourceTypeSubscription {
+	if s.Sources[0].Kind != SourceKindSubscription {
 		t.Fatalf("Source[0].Kind: %q", s.Sources[0].Kind)
 	}
 	if s.Sources[0].URL != "https://example.com/sub-a" {
@@ -89,10 +89,10 @@ func TestLoad_V4Minimal(t *testing.T) {
 	if s.DNSOptions == nil {
 		t.Fatalf("DNSOptions must be present")
 	}
-	wantUpdated := time.Date(2026, 4, 26, 20, 0, 0, 0, time.UTC)
-	if !s.UpdatedAt.Equal(wantUpdated) {
-		t.Fatalf("UpdatedAt: want %v, got %v", wantUpdated, s.UpdatedAt)
-	}
+	// UpdatedAt здесь не проверяется: SPEC 118 W5 включил снос легаси (шаг 8),
+	// и Load мигрированного состояния переписывает файл — вместе с отметкой
+	// времени. Прежнее «дата из файла доезжает как есть» относилось к эпохе,
+	// когда Load ничего не писал.
 }
 
 // TestLoad_V3LegacyShapes — старые формы selectable/custom rules мигрируются
@@ -100,7 +100,7 @@ func TestLoad_V4Minimal(t *testing.T) {
 // сохраняются (custom_rules в новом формате, selectable_rule_states только
 // в памяти для UI-кода).
 func TestLoad_V3LegacyShapes(t *testing.T) {
-	s, err := Load("testdata/v3_legacy_rules.json")
+	s, err := Load(legacyFixtureCopy(t, "testdata/v3_legacy_rules.json"))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestSave_RoundTrip(t *testing.T) {
 		ID:        "01ROUNDTRIP0000000000000000",
 		Node:      Node{Kind: SourceKindSubscription, Enabled: true},
 		URL:       "https://x/sub",
-		TagPolicy: &TagSpec{Prefix: "[X] "},
+		TagPolicy: &TagPolicy{Prefix: "[X] "},
 	}}
 	original.Directions = []configtypes.Direction{}
 

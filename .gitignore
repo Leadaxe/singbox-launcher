@@ -98,3 +98,10 @@ singbox-launcher_arm64
 
 # Runtime PID file written by local dev runs.
 pid.txt
+
+# Golden-сценарии: раннер пишет actual.config.json рядом с фикстурой при
+# расхождении — это артефакт отладки, а не вход теста.
+core/build/testdata/golden/*/actual.config.json
+
+# Эталон v6mig: раннер пишет outbounds.actual.json при расхождении.
+SPECS/118-F-N-STATE_V7/etalon/v6mig/outbounds.actual.json

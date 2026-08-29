@@ -85,7 +85,7 @@ func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.
 		return
 	}
 
-	b, err := backup.Export(st, backup.ExportOptions{
+	b, exportWarns, err := backup.Export(st, backup.ExportOptions{
 		AppVersion: constants.AppVersion,
 		Platform:   runtime.GOOS,
 	})
@@ -119,10 +119,15 @@ func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.
 
 	// Секреты в файле лежат открытым текстом (BACKUP.md §5) — пользователь
 	// должен знать об этом ДО того, как отправит файл куда-нибудь.
-	dialog.ShowInformation(
-		locale.T("Backup saved"),
-		fmt.Sprintf(locale.T(settingsBackupExportDoneText), path),
-		win)
+	//
+	// Предупреждения экспорта — там же и тем же списком, что у импорта: то,
+	// что состояние несёт, а формат выразить не умеет (папки,
+	// провайдерские группы), обязано быть названо, а не выпасть молча.
+	msg := fmt.Sprintf(locale.T(settingsBackupExportDoneText), path)
+	if lines := warnLines(exportWarns, 10); lines != "" {
+		msg += "\n\n" + locale.T("Not exported:") + "\n" + lines
+	}
+	dialog.ShowInformation(locale.T("Backup saved"), msg, win)
 }
 
 // handleBackupImport читает файл, показывает, что приедет, и применяет

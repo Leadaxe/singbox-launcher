@@ -239,7 +239,7 @@ func moveDNSSlot(presenter *wizardpresentation.WizardPresenter, model *wizardmod
 	if !wizardmodels.MoveDNSRuleSlot(model, from, to) {
 		return
 	}
-	wizardbusiness.InvalidatePreviewCache(model) // drop cached preview so Preview tab reflects new order
+	wizardbusiness.InvalidateNodePool(model) // drop cached preview so Preview tab reflects new order
 	presenter.MarkAsChanged()
 	if refreshAll != nil {
 		refreshAll()

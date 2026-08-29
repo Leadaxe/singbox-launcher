@@ -148,66 +148,9 @@ func TestMergePendingDisabledSurvivesTruncated(t *testing.T) {
 	}
 }
 
-// Мостовая карта DisabledNodes согласуется с каноном (TEMPORARY BRIDGE):
-// выключенный узел несёт запись (со старым timestamp), включённый — нет,
-// ключ исчезнувшего узла выбрасывается на достоверном полном merge и
-// удерживается при truncated.
-func TestMergeSyncsLegacyDisabledMap(t *testing.T) {
-	restore := nowUnixForBridge
-	nowUnixForBridge = func() int64 { return 42 }
-	defer func() { nowUnixForBridge = restore }()
-
-	off := serverNode("A", `{}`)
-	off.Enabled = false
-	sub := mergeTestSub(off, serverNode("B", `{}`))
-	sub.DisabledNodes = map[string]int64{"A": 7, "gone": 9}
-
-	fresh := &SubFetchMaterial{Nodes: []Node{serverNode("A", `{}`), serverNode("B", `{}`)}}
-	MergeSubscriptionNodes(sub, fresh, true)
-	if len(sub.DisabledNodes) != 1 || sub.DisabledNodes["A"] != 7 {
-		t.Fatalf("карта после полного merge: %v", sub.DisabledNodes)
-	}
-
-	// Truncated: ключ без узла удерживается.
-	sub.DisabledNodes["stale"] = 9
-	MergeSubscriptionNodes(sub, &SubFetchMaterial{Nodes: []Node{serverNode("A", `{}`)}, Truncated: true}, true)
-	if sub.DisabledNodes["stale"] != 9 || sub.DisabledNodes["A"] != 7 {
-		t.Fatalf("карта после truncated merge: %v", sub.DisabledNodes)
-	}
-
-	// pending-отметка без старого timestamp получает мостовой «сейчас».
-	sub2 := mergeTestSub()
-	sub2.PendingDisabled = []string{"X"}
-	MergeSubscriptionNodes(sub2, &SubFetchMaterial{Nodes: []Node{serverNode("X", `{}`)}}, true)
-	if sub2.DisabledNodes["X"] != 42 {
-		t.Fatalf("мостовая карта не отражает pending-отметку: %v", sub2.DisabledNodes)
-	}
-}
-
-// Фикс ревью W3 (блокер 1б): отметка, живущая ТОЛЬКО в легаси-карте
-// DisabledNodes (старый state.json, легаси-путь UI), втягивается в канон
-// ДО перезаписи карты — пользовательская правка любым путём побеждает,
-// merge её не «оживляет».
-func TestMergePullsLegacyMapIntoCanon(t *testing.T) {
-	sub := mergeTestSub(serverNode("A", `{}`), serverNode("B", `{}`))
-	// Легаси-путь записал только карту; канонический enabled остался true.
-	sub.DisabledNodes = map[string]int64{"B": 7}
-
-	fresh := &SubFetchMaterial{Nodes: []Node{serverNode("A", `{}`), serverNode("B", `{}`)}}
-	changed, _ := MergeSubscriptionNodes(sub, fresh, true)
-	if !changed {
-		t.Fatal("втягивание отметки меняет канон — changed обязан подняться")
-	}
-	if sub.Nodes[1].Enabled {
-		t.Fatal("легаси-отметка карты не опустила канонический enabled — узел ожил")
-	}
-	if !sub.Nodes[0].Enabled {
-		t.Fatal("втягивание зацепило узел без отметки")
-	}
-	if sub.DisabledNodes["B"] != 7 {
-		t.Fatalf("timestamp легаси-отметки потерян: %v", sub.DisabledNodes)
-	}
-}
+// Мостовая карта DisabledNodes умерла вместе с мостом (SPEC 118 W5):
+// TestMergeSyncsLegacyDisabledMap и TestMergePullsLegacyMapIntoCanon удалены
+// вместе с предметом — отметка выключения живёт ОДНИМ полем node.enabled.
 
 // Смена вида узла у провайдера: enabled живёт, detour (только у Server)
 // теряется с warning, не молча.

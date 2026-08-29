@@ -31,7 +31,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/config"
-	"singbox-launcher/core/config/configtypes"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
@@ -224,17 +223,16 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		presenter.MergeGUIToModel()
 		m := presenter.Model()
 		m.Sources = append(m.Sources, corestate.Source{
-			Node: corestate.Node{Kind: corestate.SourceKindChain, Enabled: true},
-			ID:   corestate.MakeULID(),
 			// Выданное имя — ТЕГ узла: на него сошлются фильтры и позиции.
 			// Подпись остаётся пустой, и список показывает тег, пока
 			// пользователь не задаст своё отображаемое имя.
-			NodeTag: wizardbusiness.NextChainLabel(m.Sources),
-			Chain:   &configtypes.SourceChain{},
+			Node: corestate.Node{Kind: corestate.SourceKindChain, Enabled: true},
+			ID:   corestate.MakeULID(),
 		})
+		m.Sources[len(m.Sources)-1].Tag = wizardbusiness.NextChainLabel(m.Sources)
 		m.BumpRevision()
 		m.PreviewNeedsParse = true
-		wizardbusiness.InvalidatePreviewCache(m)
+		wizardbusiness.InvalidateNodePool(m)
 		presenter.RefreshOutboundsConfiguratorList()
 		if guiState.RefreshSourcesList != nil {
 			guiState.RefreshSourcesList()
@@ -358,6 +356,10 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 			return
 		}
 
+		// Дефолт интервала обновления — настройки приложения (SPEC 118 Т1);
+		// читается один раз на перерисовку списка, а не на строку.
+		defaultReload := locale.LoadSettings(platform.GetBinDir(m.ExecDir)).DefaultSubscriptionReload
+
 		for i := range m.Sources {
 			// IIFE so each row's closures capture the correct index (avoids loop variable capture bug)
 			func(sourceIndex int) {
@@ -367,8 +369,8 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				srcPtr := &m.Sources[sourceIndex]
 				src := *srcPtr
 
-				isSubscription := src.Kind == corestate.SourceTypeSubscription
-				meta := src.Meta
+				isSubscription := src.Kind == corestate.SourceKindSubscription
+				meta := diagOf(&src)
 				sourceID := src.ID
 
 				// Label / tooltip data из v5 Source (canonical).
@@ -377,8 +379,10 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// label или URI fragment.
 				label := ""
 				if isSubscription {
-					if meta != nil && strings.TrimSpace(meta.ProfileTitle) != "" {
-						label = strings.TrimSpace(meta.ProfileTitle)
+					if t := strings.TrimSpace(meta.profileTitle()); t != "" {
+						label = t
+					} else if src.Name != "" {
+						label = src.Name
 					} else {
 						label = src.URL
 					}
@@ -389,17 +393,17 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					// прятать единственный опознавательный признак.
 					label = src.Label
 					if label == "" {
-						label = src.NodeTag
+						label = src.Tag
 					}
-					if label == "" {
-						label = src.URI
+					if label == "" && src.Origin != nil {
+						label = src.Origin.Raw
 					}
 					if label == "" {
 						// Fallback: первый node tag из preview (если есть).
-						if m.PreviewNodesBySource != nil &&
-							sourceIndex < len(m.PreviewNodesBySource) &&
-							len(m.PreviewNodesBySource[sourceIndex]) > 0 {
-							first := m.PreviewNodesBySource[sourceIndex][0]
+						if m.NodePoolBySource != nil &&
+							sourceIndex < len(m.NodePoolBySource) &&
+							len(m.NodePoolBySource[sourceIndex]) > 0 {
+							first := m.NodePoolBySource[sourceIndex][0]
 							if first.Tag != "" {
 								label = first.Tag
 							} else if first.Label != "" {
@@ -428,10 +432,9 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// вместо метки идёт предупреждение: узел в конфиг не
 				// попадёт, и узнать об этом по факту пропавшего маршрута —
 				// худший из способов.
-				if src.Kind == corestate.SourceTypeChain {
+				if src.Kind == corestate.SourceKindChain {
 					if supported, _ := config.ChainSupportedByCore(); supported {
-						label += "  " + locale.Tf("[chain: %d]",
-							len(src.Chain.HopsOrNil()))
+						label += "  " + locale.Tf("[chain: %d]", len(src.Hops))
 					} else {
 						label += "  " + locale.T("[chain] ⚠️ core has no chain support")
 					}
@@ -468,29 +471,20 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				parseFailedReason := config.ParseFailedSourceReason(sourceID)
 
 				fullURL := src.URL
-				var tagPrefix, tagPostfix, tagMask string
+				var tagPrefix, tagPostfix string
 				if src.TagPolicy != nil {
 					tagPrefix = src.TagPolicy.Prefix
 					tagPostfix = src.TagPolicy.Postfix
-					tagMask = src.TagPolicy.Mask
-				}
-
-				localTags := make([]string, 0, len(src.Outbounds))
-				for _, ob := range src.Outbounds {
-					if ob.Tag != "" {
-						localTags = append(localTags, ob.Tag)
-					}
 				}
 
 				tooltipLines := []string{
 					fmt.Sprintf("URL: %s", fullURL),
 					fmt.Sprintf("tag_prefix: %s", tagPrefix),
 					fmt.Sprintf("tag_postfix: %s", tagPostfix),
-					fmt.Sprintf("tag_mask: %s", tagMask),
-					fmt.Sprintf("local outbounds: %d", len(localTags)),
 				}
-				if len(localTags) > 0 {
-					tooltipLines = append(tooltipLines, "tags: "+strings.Join(localTags, ", "))
+				if src.Replace != nil {
+					tooltipLines = append(tooltipLines,
+						fmt.Sprintf("replace: %s (%s)", src.Replace.Tag, src.Replace.Mode))
 				}
 				if metaTip := metaTooltip(meta); metaTip != "" {
 					tooltipLines = append(tooltipLines, "—— meta ——", metaTip)
@@ -498,8 +492,8 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				tooltipText := strings.Join(tooltipLines, "\n")
 
 				copyText := fullURL
-				if copyText == "" {
-					copyText = src.URI
+				if copyText == "" && src.Origin != nil {
+					copyText = src.Origin.Raw
 				}
 				sourceLabel := ttwidget.NewLabel(shortLabel)
 				sourceLabel.Wrapping = fyne.TextWrapOff
@@ -607,10 +601,10 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// provider announce. Placed to the LEFT of copy/edit so the
 				// row's edit/delete cluster keeps a stable visual position.
 				var noticeBtn *fynewidget.HoverForwardButton
-				if isSubscription && meta != nil && (meta.LastStatus == "err" || (meta.ProviderAnnounce != nil && !meta.ProviderAnnounce.IsEmpty())) {
+				if isSubscription && meta != nil && (meta.lastStatus() == "err" || (meta.providerAnnounce() != nil && !meta.providerAnnounce().IsEmpty())) {
 					icon := theme.WarningIcon()
 					tooltipKey := "Subscription update failed — click for details" // l10n-key
-					if meta.LastStatus != "err" {
+					if meta.lastStatus() != "err" {
 						// Success-with-notice path: provider sent content + announce.
 						// Use info-styled icon. We don't have an info-theme icon
 						// in our minimal set, fall back to QuestionIcon (📢-ish).
@@ -618,9 +612,17 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 						tooltipKey = "Provider sent a notice — click to read" // l10n-key
 					}
 					srcLabel := shortLabel
-					metaCopy := meta // capture by value for closure (meta is *SubscriptionMeta, stable)
+					// Снимок обеих половин диагностики — диалог рисуется
+					// вне владельца модели, разделять указатели нельзя.
+					diagCopy := &wizarddialogs.SourceDiag{}
+					if src.Meta != nil {
+						diagCopy.Meta = *src.Meta
+					}
+					if src.UpdateStatus != nil {
+						diagCopy.Status = *src.UpdateStatus
+					}
 					noticeBtn = fynewidget.NewHoverForwardButtonWithIcon("", icon, func() {
-						wizarddialogs.ShowSourceErrorDialog(guiState.Window, srcLabel, metaCopy)
+						wizarddialogs.ShowSourceErrorDialog(guiState.Window, srcLabel, diagCopy)
 					}, rowGetter)
 					noticeBtn.Importance = widget.LowImportance
 					fynewidget.SetToolTipSafe(noticeBtn, locale.T(tooltipKey))
@@ -674,7 +676,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				}
 				lines := []fyne.CanvasObject{titleRow}
 				if isSubscription {
-					if subtitle := formatSourceSubtitle(meta, srcPtr.Update, m.Defaults.Reload); subtitle != "" {
+					if subtitle := formatSourceSubtitle(meta, srcPtr.Update, defaultReload); subtitle != "" {
 						subtitleText := canvas.NewText(subtitle, theme.Color(theme.ColorNamePlaceHolder))
 						subtitleText.TextSize = theme.CaptionTextSize()
 						lines = append(lines, container.NewBorder(nil, nil, leftPad(), nil, subtitleText))
@@ -820,7 +822,7 @@ func applySourceMutation(presenter *wizardpresentation.WizardPresenter, guiState
 	presenter.MarkAsChanged()
 	m.BumpRevision()
 	m.PreviewNeedsParse = true
-	wizardbusiness.InvalidatePreviewCache(m)
+	wizardbusiness.InvalidateNodePool(m)
 	presenter.RefreshOutboundsConfiguratorList()
 	presenter.RefreshOutboundOptions()
 	if guiState != nil && guiState.RefreshSourcesList != nil {
@@ -895,7 +897,7 @@ func showSourcePreviewAllWindow(presenter *wizardpresentation.WizardPresenter) {
 
 		go func() {
 			mm := m
-			errorCount, err := wizardbusiness.RebuildPreviewCache(mm)
+			errorCount, err := wizardbusiness.RebuildNodePool(mm)
 			presenter.UpdateUI(func() {
 				if err != nil {
 					previewNodes = nil
@@ -903,7 +905,7 @@ func showSourcePreviewAllWindow(presenter *wizardpresentation.WizardPresenter) {
 					previewStatusLabel.SetText(locale.Tf("Error: %s", err.Error()))
 					return
 				}
-				previewNodes = mm.PreviewNodes
+				previewNodes = mm.NodePool
 				previewList.Refresh()
 				sourcesCount := len(mm.Sources)
 				status := locale.Tf("%d server(s) from %d source(s)", len(previewNodes), sourcesCount)
@@ -977,12 +979,12 @@ func CreateDirectionsTab(presenter *wizardpresentation.WizardPresenter) fyne.Can
 	onConfiguratorApply := func() {
 		m := presenter.Model()
 		// SPEC 117: конфигуратор мутирует canonical
-		// (model.GlobalOutbounds / model.Sources[i].Outbounds) напрямую —
+		// (model.GlobalOutbounds) напрямую —
 		// копировать назад больше нечего. Здесь остаются только производные
 		// эффекты правки: протухание превью и обновление зависимых списков.
 		m.BumpRevision()
 		m.PreviewNeedsParse = true
-		wizardbusiness.InvalidatePreviewCache(m)
+		wizardbusiness.InvalidateNodePool(m)
 		presenter.RefreshOutboundsConfiguratorList()
 		presenter.RefreshOutboundOptions()
 		if guiState.RefreshSourcesList != nil {
@@ -1053,6 +1055,10 @@ func refreshOneSourceFromUI(
 	if !found {
 		return
 	}
+	// SPEC 118 W6 (хвост ревью W3): ревизия модели на момент снятия снимка.
+	// Пока горутина качает, пользователь вправе править ту же запись —
+	// запись снимка целиком откатила бы его правки (см. ApplyFetchSnapshot).
+	revAtStart := m.Revision
 
 	configService := presenter.ConfigServiceAdapter()
 	go func() {
@@ -1067,18 +1073,17 @@ func refreshOneSourceFromUI(
 				return
 			}
 			// Snapshot обратно в model. Slice мог reallocate'нуться (Add /
-			// Del между snapshot-таймом и сейчас), поэтому ищем по ID заново.
+			// Del между snapshot-таймом и сейчас) — поиск по ID; а если
+			// модель успели ПРАВИТЬ, заносятся только поля результата
+			// fetch'а, а не снимок целиком (SPEC 118 W6, хвост ревью W3).
 			m := presenter.Model()
-			for i := range m.Sources {
-				if m.Sources[i].ID == sourceID {
-					m.Sources[i] = snapshot
-					break
-				}
+			if !wizardbusiness.ApplyFetchSnapshot(m, &snapshot, revAtStart) {
+				return
 			}
 			// Обновление меняет СОСТАВ узлов — кэш превью и счётчики на
 			// строках обязаны пересчитаться, иначе кандидаты позиций
 			// цепочки и «50 nodes» живут телом до обновления.
-			wizardbusiness.InvalidatePreviewCache(m)
+			wizardbusiness.InvalidateNodePool(m)
 			if guiState != nil && guiState.RefreshSourcesList != nil {
 				guiState.RefreshSourcesList()
 			}

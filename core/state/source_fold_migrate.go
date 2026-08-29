@@ -51,7 +51,7 @@ func migrateSourceFolds(cs *ConnectionsSection) {
 	}
 	for i := range cs.Sources {
 		src := &cs.Sources[i]
-		if src.Type != SourceTypeSubscription {
+		if src.Type != SourceKindSubscription {
 			continue
 		}
 
@@ -66,14 +66,14 @@ func migrateSourceFolds(cs *ConnectionsSection) {
 		}
 
 		if src.Fold == nil && (hasAuto || hasSelect) && src.ExposeGroupTagsToGlobal {
-			mode := configtypes.FoldModeSelect
+			mode := legacyFoldModeSelect
 			switch {
 			case hasAuto && hasSelect:
-				mode = configtypes.FoldModeSelectAuto
+				mode = legacyFoldModeSelectAuto
 			case hasAuto:
-				mode = configtypes.FoldModeAuto
+				mode = legacyFoldModeAuto
 			}
-			src.Fold = &configtypes.SourceFold{Mode: mode}
+			src.Fold = &legacyFold{Mode: mode}
 			if hasAuto {
 				// Параметры прежней urltest-группы переносим, чтобы
 				// пользовательские url/interval/tolerance не сбросились

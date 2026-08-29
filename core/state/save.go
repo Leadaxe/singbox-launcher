@@ -86,6 +86,25 @@ func (s *State) Save(path string) error {
 	return nil
 }
 
+// MarshalV7 — состояние в форме v7, БЕЗ записи на диск и без мутаций
+// (SPEC 118 Т10).
+//
+// Нужна отладочным поверхностям (`GET /state/full` и близнец машины). Без неё
+// они отдавали Go-структуру `State` как есть: PascalCase-ключи, мёртвые
+// легаси-поля (`Defaults`, `SelectableRuleStates`, `RulesLibraryMerged`,
+// `DNSOptions:null`) и read-only Load-проекция `ParserConfig`. То есть ответ
+// показывал ВНУТРЕННОСТИ загрузчика, а не состояние, и расходился с тем, что
+// лежит в файле, — при отладке миграции v7 это худшая из возможных подмен.
+//
+// Форма следует за схемой без обязательств совместимости: это локальный
+// интерфейс, а контракт переноса — бэкап 0.11.
+func (s *State) MarshalV7() ([]byte, error) {
+	if s == nil {
+		return nil, fmt.Errorf("state: MarshalV7 called on nil receiver")
+	}
+	return s.marshalDisk()
+}
+
 // marshalDisk — сериализация State в canonical (v7) shape (SPEC 118).
 //
 //	{
@@ -95,14 +114,12 @@ func (s *State) Save(path string) error {
 //	  "rules":         [ {kind, ref|id, enabled, body} ],
 //	  "vars":          [ ... ],                                 // dns_* scalars
 //	  "dns_options":   { servers: [...], rules: [...] },        // SPEC 056-R-N
-//	  "warp_accounts": { ... },
-//	  "legacy_defaults": { ... }                                // TEMPORARY BRIDGE
+//	  "warp_accounts": { ... }
 //	}
 //
 // Legacy `s.CustomRules` / `s.DNSOptions` НЕ сериализуются — источник истины
-// Rules / DNS. Легаси-ключей v6 в корне нет; мостовые поля источников
-// (TEMPORARY BRIDGE, SPEC 118 W1-W4) едут внутри sources[] под прежними
-// именами до миграции W2 и сноса W5.
+// Rules / DNS. Легаси-ключей v6 нет ни в корне, ни внутри sources[]: их
+// читает только вход миграции, и записывать их некуда (SPEC Т1).
 func (s *State) marshalDisk() ([]byte, error) {
 	out := diskStateV7{
 		Meta: MetaSection{
@@ -131,12 +148,6 @@ func (s *State) marshalDisk() ([]byte, error) {
 	}
 	if out.Directions == nil {
 		out.Directions = []configtypes.Direction{}
-	}
-	// TEMPORARY BRIDGE (SPEC 118 W1-W4), удаляется в W5: умолчания едут под
-	// мостовым ключом, пока не переехали в настройки приложения (W2, шаг 8).
-	if s.Defaults != (Defaults{}) {
-		d := s.Defaults
-		out.LegacyDefaults = &d
 	}
 	// SetEscapeHTML(false): по умолчанию encoding/json экранирует «&», «<» и
 	// «>» в & и подобное — защита для вставки JSON в HTML-страницу,

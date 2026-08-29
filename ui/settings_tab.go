@@ -165,6 +165,13 @@ func BuildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 
 	uaRow := container.NewBorder(nil, nil, uaLabel, uaResetBtn, uaEntry)
 
+	// ---- Умолчания подписок (SPEC 118 Т8) ----------------------------------
+	// Прежде они жили в состоянии (`connections.defaults`) и правились только
+	// руками в state.json; с v7 это настройки приложения — одни на все
+	// профили мастера, — и место им здесь, рядом с остальным поведением
+	// лаунчера.
+	subDefaultsBlock := buildSubscriptionDefaultsBlock(binDir)
+
 	// ---- Language section --------------------------------------------------
 	langTitle := widget.NewLabelWithStyle(locale.T("Language"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	langLabel := widget.NewLabel(locale.T("Language:"))
@@ -248,6 +255,7 @@ func BuildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 		autoUpdateCheck,
 		uaRow,
 		uaHint,
+		subDefaultsBlock,
 		widget.NewSeparator(),
 		subIDTitle,
 		subIDBlock,
@@ -255,6 +263,157 @@ func BuildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 		debugAPIBlock,
 	)
 	return content
+}
+
+// buildSubscriptionDefaultsBlock — два умолчания подписок (SPEC 118 Т8):
+// интервал автообновления и кап узлов.
+//
+// Оба поля — ДЕФОЛТЫ, а не настройки конкретной подписки: у каждой подписки
+// есть своё значение, и оно всегда старше. Поэтому в подсказках сказано, из
+// чего складывается итог — иначе поле «4h» выглядит как приказ, а на деле
+// половина подписок обновляется по своему расписанию или по заголовку
+// провайдера, и пользователь не понимает, почему.
+//
+// Ступеней у интервала три (своя настройка → заголовок провайдера
+// `profile-update-interval` → это поле), у капа две (провайдерского
+// заголовка для max_nodes не существует). Разница не косметическая: она
+// объясняет, почему подписка может обновляться не так, как здесь написано,
+// а количество узлов — ровно так.
+//
+// Пустое поле = встроенный дефолт; он и стоит плейсхолдером, чтобы «пусто»
+// не читалось как «ноль» или «выключено».
+func buildSubscriptionDefaultsBlock(binDir string) fyne.CanvasObject {
+	st := locale.LoadSettings(binDir)
+
+	reloadEntry := widget.NewEntry()
+	reloadEntry.SetPlaceHolder(subscriptionDefaultReloadFallback)
+	reloadEntry.SetText(st.DefaultSubscriptionReload)
+	reloadHint := widget.NewLabel(locale.Tf(
+		"Used when a subscription has neither its own schedule nor a profile-update-interval header. Go-duration form: 4h, 30m. Empty — built-in default (%s).",
+		subscriptionDefaultReloadFallback))
+	reloadHint.Wrapping = fyne.TextWrapWord
+	reloadHint.Importance = widget.LowImportance
+
+	maxNodesEntry := widget.NewEntry()
+	maxNodesEntry.SetPlaceHolder(strconv.Itoa(configtypes.MaxNodesPerSubscription))
+	if st.DefaultSubscriptionMaxNodes > 0 {
+		maxNodesEntry.SetText(strconv.Itoa(st.DefaultSubscriptionMaxNodes))
+	}
+	maxNodesHint := widget.NewLabel(locale.Tf(
+		"Used when a subscription has no max_nodes of its own — providers do not send this one in headers. It is a real parse limit, not a badge: nodes past it are not read at all. Empty — the hard ceiling (%d).",
+		configtypes.MaxNodesPerSubscription))
+	maxNodesHint.Wrapping = fyne.TextWrapWord
+	maxNodesHint.Importance = widget.LowImportance
+
+	// Ошибка ввода показывается строкой под полями, а не диалогом: диалог
+	// на каждый недописанный «4» посреди набора «4h» — это модальное окно
+	// поперёк ввода. Некорректное значение просто не сохраняется.
+	errLabel := widget.NewLabel("")
+	errLabel.Wrapping = fyne.TextWrapWord
+	errLabel.Importance = widget.WarningImportance
+	errLabel.Hide()
+	// fyne.Do обязателен: сохранение приходит и с UI-потока (OnSubmitted), и
+	// из таймера дебаунса — тот работает на своей горутине, а виджеты Fyne
+	// правятся только на UI-потоке.
+	setErr := func(msg string) {
+		fyne.Do(func() {
+			if msg == "" {
+				errLabel.Hide()
+				return
+			}
+			errLabel.SetText("⚠️ " + msg)
+			errLabel.Show()
+		})
+	}
+
+	saveReload := func(text string) {
+		text = strings.TrimSpace(text)
+		if text != "" {
+			d, err := time.ParseDuration(text)
+			if err != nil || d <= 0 {
+				setErr(locale.Tf("Update interval %q is not a duration — use forms like 4h or 30m.", text))
+				return
+			}
+		}
+		setErr("")
+		cur := locale.LoadSettings(binDir)
+		if cur.DefaultSubscriptionReload == text {
+			return
+		}
+		cur.DefaultSubscriptionReload = text
+		if err := locale.SaveSettings(binDir, cur); err != nil {
+			debuglog.WarnLog("settings_tab: save default_subscription_reload: %v", err)
+		}
+	}
+	saveMaxNodes := func(text string) {
+		text = strings.TrimSpace(text)
+		n := 0
+		if text != "" {
+			parsed, err := strconv.Atoi(text)
+			if err != nil || parsed <= 0 {
+				setErr(locale.Tf("Max nodes %q is not a positive number.", text))
+				return
+			}
+			n = parsed
+			if n > configtypes.MaxNodesPerSubscription {
+				// Клэмп, а не отказ: потолок жёсткий и парсер всё равно
+				// обрежет — молча принять большее число значило бы обещать
+				// то, чего не будет.
+				n = configtypes.MaxNodesPerSubscription
+			}
+		}
+		setErr("")
+		cur := locale.LoadSettings(binDir)
+		if cur.DefaultSubscriptionMaxNodes == n {
+			return
+		}
+		cur.DefaultSubscriptionMaxNodes = n
+		if err := locale.SaveSettings(binDir, cur); err != nil {
+			debuglog.WarnLog("settings_tab: save default_subscription_max_nodes: %v", err)
+		}
+	}
+
+	// Тот же дебаунс, что у User-Agent выше: Fyne шлёт OnChanged на каждый
+	// символ, и без задержки «4h» дало бы два атомарных перезаписывания
+	// settings.json, из которых первое ещё и с невалидным «4».
+	reloadEntry.OnChanged = debounceSettingsWrite(saveReload)
+	reloadEntry.OnSubmitted = saveReload
+	maxNodesEntry.OnChanged = debounceSettingsWrite(saveMaxNodes)
+	maxNodesEntry.OnSubmitted = saveMaxNodes
+
+	return container.NewVBox(
+		container.NewBorder(nil, nil, widget.NewLabel(locale.T("Default update interval:")), nil, reloadEntry),
+		reloadHint,
+		container.NewBorder(nil, nil, widget.NewLabel(locale.T("Default max nodes:")), nil, maxNodesEntry),
+		maxNodesHint,
+		errLabel,
+	)
+}
+
+// subscriptionDefaultReloadFallback — встроенный дефолт интервала
+// (core.autoUpdateDefaultReload). Строкой, потому что показывается только в
+// подсказке и плейсхолдере; продублирована сознательно — тянуть сюда
+// приватную константу планировщика ради текста подсказки не за чем.
+const subscriptionDefaultReloadFallback = "1h"
+
+// debounceSettingsWrite — запись настройки через 500 мс после того, как
+// пользователь перестал печатать (тот же приём, что у поля User-Agent).
+//
+// Каждый возвращённый обработчик держит свой таймер: два поля с общим
+// таймером гасили бы записи друг друга.
+func debounceSettingsWrite(save func(string)) func(string) {
+	var (
+		mu    sync.Mutex
+		timer *time.Timer
+	)
+	return func(text string) {
+		mu.Lock()
+		defer mu.Unlock()
+		if timer != nil {
+			timer.Stop()
+		}
+		timer = time.AfterFunc(500*time.Millisecond, func() { save(text) })
+	}
 }
 
 // buildSubscriptionIdentificationBlock — SPEC 061 Phase 4 controls:

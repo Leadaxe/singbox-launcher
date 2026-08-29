@@ -17,8 +17,8 @@
 // Здесь НЕТ (переезжает в эмиссию волны W4 или умирает):
 //   - тег-политики prefix/postfix/mask (эмиссия);
 //   - глобального MakeTagUnique (эмиссия);
-//   - ApplySourceDetour (body чист от detour — умирает);
-//   - filterDisabledNodes (роль у node.enabled — умирает).
+//   - штамповку detour в тело (body чист от detour — роль у NodeLink);
+//   - отбор выключенных узлов (роль у node.enabled).
 //
 // Волна W2 создаёт каркас как библиотеку (им пользуется миграция v6→v7);
 // fetch-сервис переключается сюда в W3.
@@ -391,7 +391,14 @@ func ApplyLegacyTagMachine(node *configtypes.ParsedNode, prefix, postfix, mask s
 	if node == nil {
 		return ""
 	}
-	tag := applyTagPrefixPostfix(node, prefix, postfix, mask, nodeNum)
+	// Маска — упразднённая форма (SPEC 118 W5): читает её только миграция,
+	// поэтому её ветка живёт здесь, а не в прод-машине тегов.
+	var tag string
+	if mask != "" {
+		tag = replaceTagVariables(mask, node, nodeNum)
+	} else {
+		tag = applyTagPrefixPostfix(node, prefix, postfix, nodeNum)
+	}
 	tag = textnorm.NormalizeProxyDisplay(tag)
 	return MakeTagUnique(tag, tagCounts, "Migration")
 }

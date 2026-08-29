@@ -177,10 +177,7 @@ func (svc *ConfigService) GenerateOutboundsFromParserConfig(
 	subst := config.BuildVarSubstituterFromDisk(execDir)
 	config.SubstituteParserConfigPlaceholders(parserConfig, subst)
 
-	loadNodesFunc := func(ps config.ProxySource, tc map[string]int, pc func(float64, string), idx, total int) ([]*config.ParsedNode, error) {
-		return svc.ProcessProxySource(ps, tc, pc, idx, total)
-	}
-	return config.GenerateOutboundsFromParserConfig(parserConfig, tagCounts, progressCallback, loadNodesFunc,
+	return config.GenerateOutboundsFromParserConfig(parserConfig, tagCounts, progressCallback,
 		directionBuildOptions(execDir))
 }
 
@@ -257,25 +254,11 @@ func (svc *ConfigService) updateConfigFromSubscriptions(triggerRebuild bool) (*c
 		updateParserProgress(ac, p, s)
 	}
 
-	loadNodesFunc := func(ps config.ProxySource, tc map[string]int, pc func(float64, string), idx, total int) ([]*config.ParsedNode, error) {
-		return svc.ProcessProxySource(ps, tc, pc, idx, total)
-	}
-	// SPEC 052 phase 6: parser использует pre-fetched .raw bodies через
-	// LookupCachedBody hook. Это устраняет double-fetch — refreshSubscriptionsMetaAndCache
-	// уже сходил в сеть и записал bin/subscriptions/<id>.raw; парсер
-	// читает оттуда без повторного network call'а.
-	subsDir := platform.GetSubscriptionsDir(execDir)
-	bodyByURL := buildBodyLookup(stateRef, subsDir)
-	prevHook := subscription.LookupCachedBody
-	subscription.LookupCachedBody = func(url string) ([]byte, bool) {
-		b, ok := bodyByURL[url]
-		return b, ok
-	}
-
+	// SPEC 118 Т5: сборка идёт из МАТЕРИАЛИЗОВАННЫХ nodes[] — тела подписок
+	// здесь не читаются и не парсятся, поэтому и подставлять их некуда.
 	tagCounts := make(map[string]int)
-	result, err := config.GenerateOutboundsFromParserConfig(parserConfig, tagCounts, progressCallback, loadNodesFunc,
+	result, err := config.GenerateOutboundsFromParserConfig(parserConfig, tagCounts, progressCallback,
 		directionBuildOptions(execDir))
-	subscription.LookupCachedBody = prevHook
 	if err != nil {
 		progressCallback(-1, fmt.Sprintf("Error: %v", err))
 		// Причины по источникам приезжают вместе с ошибкой (генератор отдаёт

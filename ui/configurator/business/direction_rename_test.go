@@ -30,9 +30,7 @@ func renameTestModel() *wizardmodels.WizardModel {
 			{Ref: "russian", Enabled: true, Vars: map[string]string{"out": "vpn-1"}},
 		},
 		Sources: []corestate.Source{
-			{Node: corestate.Node{Kind: corestate.SourceKindChain}, Chain: &configtypes.SourceChain{
-				Hops: []string{"node-a", "vpn-1"},
-			}},
+			{Node: corestate.Node{Kind: corestate.SourceKindChain, Hops: []corestate.NodeLink{{Tag: "node-a"}, {Tag: "vpn-1"}}}},
 		},
 		DNSServers: []json.RawMessage{
 			json.RawMessage(`{"tag":"dns-proxy","type":"udp","server":"1.1.1.1","detour":"vpn-1"}`),
@@ -74,11 +72,11 @@ func TestRenameDirectionRewritesEveryReference(t *testing.T) {
 	if m.PresetRefs[0].Vars["out"] != "Германия" {
 		t.Errorf("outbound-переменная пресета не переписана: %q", m.PresetRefs[0].Vars["out"])
 	}
-	if m.Sources[0].Chain.Hops[1] != "Германия" {
-		t.Errorf("позиция цепочки не переписана: %v", m.Sources[0].Chain.Hops)
+	if m.Sources[0].Hops[1].Tag != "Германия" {
+		t.Errorf("позиция цепочки не переписана: %v", m.Sources[0].Hops)
 	}
-	if m.Sources[0].Chain.Hops[0] != "node-a" {
-		t.Errorf("чужая позиция задета: %v", m.Sources[0].Chain.Hops)
+	if m.Sources[0].Hops[0].Tag != "node-a" {
+		t.Errorf("чужая позиция задета: %v", m.Sources[0].Hops)
 	}
 
 	var srv map[string]any
@@ -96,20 +94,19 @@ func TestRenameDirectionRewritesEveryReference(t *testing.T) {
 	}
 }
 
-// SPEC 117 (сценарий C2): переименование правит ровно два canonical-места —
-// GlobalOutbounds и локальные Направления источников (Sources[i].Outbounds).
-// Legacy-вид больше не существует как рабочая модель, четвёртой копии имени
-// нет и объекта для неё нет.
+// SPEC 118 W5: локальных Направлений источника нет — переименование правит
+// ОДНО canonical-место списка Направлений (GlobalOutbounds) плюс ссылки
+// модели (хопы цепочек, detour источников, DNS). Проверяем, что ссылка
+// detour источника тоже переписывается: повисшая цель = fail-closed, то есть
+// источник молча выпал бы из конфига.
 func TestRenameDirection_CanonicalOnly(t *testing.T) {
 	m := renameTestModel()
-	// Локальное Направление источника ссылается на переименовываемый тег
-	// опцией — та самая вторая canonical-половина правки.
 	m.Sources = append(m.Sources, corestate.Source{
-		Node: corestate.Node{Kind: corestate.SourceKindSubscription, Enabled: true},
-		URL:  "https://example.com/sub",
-		Outbounds: []configtypes.Direction{
-			{Tag: "AL:select", Type: "selector", AddOutbounds: []string{"vpn-1", "vpn-1-auto"}},
+		Node: corestate.Node{
+			Kind: corestate.SourceKindSubscription, Enabled: true,
+			Detour: &corestate.NodeLink{Tag: "vpn-1"},
 		},
+		URL: "https://example.com/sub",
 	})
 
 	RenameDirection(m, "vpn-1", "vpn-9")
@@ -120,9 +117,8 @@ func TestRenameDirection_CanonicalOnly(t *testing.T) {
 	if got := m.GlobalOutbounds[1].AddOutbounds; got[0] != "vpn-9" || got[1] != "vpn-9-auto" {
 		t.Errorf("ссылки в GlobalOutbounds не переписаны: %v", got)
 	}
-	local := m.Sources[len(m.Sources)-1].Outbounds[0].AddOutbounds
-	if local[0] != "vpn-9" || local[1] != "vpn-9-auto" {
-		t.Errorf("ссылки в Sources[i].Outbounds не переписаны: %v", local)
+	if d := m.Sources[len(m.Sources)-1].Detour; d == nil || d.Tag != "vpn-9" {
+		t.Errorf("ссылка detour источника не переписана: %+v", d)
 	}
 }
 

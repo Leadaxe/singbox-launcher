@@ -16,6 +16,7 @@ package presentation
 // вёрстку или форматирование строк — только данные модели и состояния.
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -37,11 +38,13 @@ func newCanonicalCRUDModel() *wizardmodels.WizardModel {
 			URL:   "https://example.com/sub",
 		},
 		{
-			ID:      "01C1SRV00000000000000000",
-			Node:    wizardmodels.Node{Kind: wizardmodels.SourceKindServer, Enabled: true},
-			Label:   "WARP hop",
-			NodeTag: "warp-hop",
-			URI:     "vless://uuid@host:443",
+			ID: "01C1SRV00000000000000000",
+			Node: wizardmodels.Node{
+				Kind: wizardmodels.SourceKindServer, Enabled: true, Tag: "warp-hop",
+				Body:   json.RawMessage(`{"type":"vless","server":"host","server_port":443,"uuid":"uuid"}`),
+				Origin: &wizardmodels.Origin{Kind: wizardmodels.OriginKindURI, Raw: "vless://uuid@host:443"},
+			},
+			Label: "WARP hop",
 		},
 	}
 	return m
@@ -69,12 +72,9 @@ func TestDirectionsCRUD_CanonicalThroughSaveLoad(t *testing.T) {
 	m.GlobalOutbounds = append(m.GlobalOutbounds, configtypes.Direction{Tag: "vpn-2", Type: "selector"})
 	m.BumpRevision()
 
-	// --- add (local, scope = источник 0).
-	m.Sources[0].Outbounds = append(m.Sources[0].Outbounds, configtypes.Direction{Tag: "NL:select", Type: "selector"})
-	m.BumpRevision()
-	if len(m.Sources[0].Outbounds) != 1 || m.Sources[0].Outbounds[0].Tag != "NL:select" {
-		t.Fatalf("local add не отразился немедленно: %+v", m.Sources[0].Outbounds)
-	}
+	// SPEC 118 W5: локальных Направлений источника нет — scope выбирать не
+	// из чего, Направление всегда глобальное. Ветки local-add и смены scope
+	// удалены вместе с предметом.
 
 	// --- reorder (drag): vpn-2 наверх.
 	outs := m.GlobalOutbounds
@@ -86,14 +86,6 @@ func TestDirectionsCRUD_CanonicalThroughSaveLoad(t *testing.T) {
 		t.Fatalf("reorder не отразился: %v", got)
 	}
 
-	// --- edit со сменой scope local → global (перенос между слайсами).
-	movedLocal := m.Sources[0].Outbounds[0]
-	m.Sources[0].Outbounds = m.Sources[0].Outbounds[:0]
-	if len(m.Sources[0].Outbounds) == 0 {
-		m.Sources[0].Outbounds = nil
-	}
-	m.GlobalOutbounds = append(m.GlobalOutbounds, movedLocal)
-	m.BumpRevision()
 
 	// --- toggle: выключить vpn-1.
 	for i := range m.GlobalOutbounds {
@@ -112,8 +104,8 @@ func TestDirectionsCRUD_CanonicalThroughSaveLoad(t *testing.T) {
 	}
 	m.BumpRevision()
 
-	wantGlobal := []string{"vpn-1", "NL:select"}
-	if got := globalTags(m); len(got) != 2 || got[0] != wantGlobal[0] || got[1] != wantGlobal[1] {
+	wantGlobal := []string{"vpn-1"}
+	if got := globalTags(m); len(got) != 1 || got[0] != wantGlobal[0] {
 		t.Fatalf("canonical после CRUD = %v, ожидалось %v", got, wantGlobal)
 	}
 
@@ -136,16 +128,11 @@ func TestDirectionsCRUD_CanonicalThroughSaveLoad(t *testing.T) {
 			t.Errorf("source[%d].ID = %q, ожидался %q (ID обязан жить в canonical)", i, loaded.Sources[i].ID, m.Sources[i].ID)
 		}
 	}
-	if len(loaded.Directions) != 2 ||
-		loaded.Directions[0].Tag != "vpn-1" ||
-		loaded.Directions[1].Tag != "NL:select" {
+	if len(loaded.Directions) != 1 || loaded.Directions[0].Tag != "vpn-1" {
 		t.Fatalf("outbounds после roundtrip: %+v", loaded.Directions)
 	}
 	if !loaded.Directions[0].Disabled {
 		t.Error("toggle (Disabled=true) потерян на Save/Load")
-	}
-	if len(loaded.Sources[0].Outbounds) != 0 {
-		t.Errorf("смена scope local→global оставила локальную копию: %+v", loaded.Sources[0].Outbounds)
 	}
 
 	// --- C7: update-конвейер (loadParserConfigForUpdate → generate) читает
@@ -162,7 +149,12 @@ func TestDirectionsCRUD_CanonicalThroughSaveLoad(t *testing.T) {
 	if proxies[0].Source != "https://example.com/sub" {
 		t.Errorf("проекция подписки: Source = %q", proxies[0].Source)
 	}
-	if len(proxies[1].Connections) != 1 || proxies[1].Connections[0] != "vless://uuid@host:443" {
-		t.Errorf("проекция server-URI: %+v", proxies[1].Connections)
+	// SPEC 118 Т5: узел едет в сборку КАНОНОМ (готовое тело), а не строкой
+	// URI — конвейер сборки парсер тел не зовёт.
+	if proxies[1].Canonical == nil || len(proxies[1].Canonical.Nodes) != 1 {
+		t.Fatalf("проекция server-узла без канона: %+v", proxies[1].Canonical)
+	}
+	if got := proxies[1].Canonical.Nodes[0].Tag; got != "warp-hop" {
+		t.Errorf("тег узла в проекции: %q", got)
 	}
 }

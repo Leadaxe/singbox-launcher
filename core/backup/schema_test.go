@@ -25,7 +25,7 @@ var identityHashRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 func exportSample(t *testing.T) map[string]any {
 	t.Helper()
-	b, err := Export(mkState(), ExportOptions{
+	b, _, err := Export(mkState(), ExportOptions{
 		AppVersion: "1.4.2", Platform: "darwin", Now: time.Unix(1750000000, 0),
 	})
 	if err != nil {
@@ -141,7 +141,7 @@ func TestExportEntityKeysAreDeclared(t *testing.T) {
 		t.Fatalf("разбор схемы: %v", err)
 	}
 
-	b, err := Export(richState(), ExportOptions{AppVersion: "test", Now: time.Unix(1750000000, 0)})
+	b, _, err := Export(richState(), ExportOptions{AppVersion: "test", Now: time.Unix(1750000000, 0)})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}

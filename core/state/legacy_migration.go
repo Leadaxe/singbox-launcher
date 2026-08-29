@@ -96,9 +96,10 @@ func migrateV4ToV5(old *v4File, gen IDGenerator) *diskStateV5 {
 	return out
 }
 
-// migrateLegacySources разворачивает legacy ProxySource[] в sourceV6[] (v5/v6-форма).
-// Один input может породить несколько output'ов (mixed source+connections).
-func migrateLegacySources(proxies []configtypes.ProxySource, gen IDGenerator) []sourceV6 {
+// migrateLegacySources разворачивает legacy proxies[] v2–v4 в sourceV6[]
+// (v5/v6-форма). Один input может породить несколько output'ов
+// (mixed source+connections).
+func migrateLegacySources(proxies []legacyProxyV4, gen IDGenerator) []sourceV6 {
 	out := make([]sourceV6, 0, len(proxies))
 	for _, ps := range proxies {
 		// 1. type=subscription (если задан source URL)
@@ -106,7 +107,7 @@ func migrateLegacySources(proxies []configtypes.ProxySource, gen IDGenerator) []
 			tag := buildTagSpecFromLegacy(ps.TagPrefix, ps.TagPostfix, ps.TagMask)
 			s := sourceV6{
 				ID:                      gen(),
-				Type:                    SourceTypeSubscription,
+				Type:                    SourceKindSubscription,
 				Enabled:                 !ps.Disabled,
 				URL:                     ps.Source,
 				Skip:                    ps.Skip,
@@ -124,7 +125,7 @@ func migrateLegacySources(proxies []configtypes.ProxySource, gen IDGenerator) []
 			label := legacyServerLabel(uri, j+1, ps.TagPrefix, ps.TagPostfix)
 			s := sourceV6{
 				ID:                gen(),
-				Type:              SourceTypeServer,
+				Type:              SourceKindServer,
 				Enabled:           !ps.Disabled,
 				Label:             label,
 				URI:               uri,
@@ -204,3 +205,4 @@ func cloneCustomRules(in []CustomRule) []CustomRule {
 	copy(out, in)
 	return out
 }
+

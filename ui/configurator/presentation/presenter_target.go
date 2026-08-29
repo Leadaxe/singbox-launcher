@@ -251,7 +251,7 @@ func (p *WizardPresenter) invalidateParsedNodes() {
 	p.model.OutboundStats = wizardmodels.OutboundStats{}
 	p.model.BumpRevision()
 	p.model.PreviewNeedsParse = true
-	wizardbusiness.InvalidatePreviewCache(p.model)
+	wizardbusiness.InvalidateNodePool(p.model)
 }
 
 // ApplyClonedState применяет состояние, склонированное с ДРУГОЙ машины.

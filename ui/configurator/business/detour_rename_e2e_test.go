@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"singbox-launcher/core/config"
-	"singbox-launcher/core/config/subscription"
 	corestate "singbox-launcher/core/state"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -23,24 +22,38 @@ const renameHopURI = "vless://b831381d-6324-4d53-ad4f-8cda48b30811@hop.example.c
 
 const renameDependentURI = "vless://c931381d-6324-4d53-ad4f-8cda48b30811@dep.example.com:443?encryption=none&security=tls&sni=dep.example.com#dep"
 
-func modelWithLiveNodeRef(hopTag string) *wizardmodels.WizardModel {
-	m := &wizardmodels.WizardModel{Sources: []corestate.Source{
-		{ID: "01WARP", Node: corestate.Node{Kind: corestate.SourceKindServer, Enabled: true},
-			Label: "WARP hop", NodeTag: hopTag, URI: renameHopURI},
-		{ID: "01DEP", Node: corestate.Node{Kind: corestate.SourceKindServer, Enabled: true},
-			Label: "Proton NL", NodeTag: "🇳🇱 Proton NL", URI: renameDependentURI,
-			DetourNodeSourceID: "01WARP", DetourNodeTag: hopTag, DetourNodeLabel: "WARP hop"},
+// renameNode — верхний узел-сервер с материализованным телом: SPEC 118 Т2,
+// узел без тела собирать не из чего.
+func renameNode(t *testing.T, id, tag, label, uri string, detour *corestate.NodeLink) corestate.Source {
+	t.Helper()
+	mat, err := config.MaterializeServerNode(uri, nil)
+	if err != nil {
+		t.Fatalf("материализация %q: %v", tag, err)
+	}
+	return corestate.Source{
+		ID: id,
+		Node: corestate.Node{
+			Kind: corestate.SourceKindServer, Enabled: true, Tag: tag,
+			Body:   mat.Body,
+			Origin: &corestate.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw},
+			Detour: detour,
+		},
+		Label: label,
+	}
+}
+
+func modelWithLiveNodeRef(t *testing.T, hopTag string) *wizardmodels.WizardModel {
+	return &wizardmodels.WizardModel{Sources: []corestate.Source{
+		renameNode(t, "01WARP", hopTag, "WARP hop", renameHopURI, nil),
+		renameNode(t, "01DEP", "🇳🇱 Proton NL", "Proton NL", renameDependentURI,
+			&corestate.NodeLink{Tag: hopTag}),
 	}}
-	return m
 }
 
 func buildNodesByTag(t *testing.T, m *wizardmodels.WizardModel) map[string]map[string]interface{} {
 	t.Helper()
 	// SPEC 117 (Т2): одноразовая проекция canonical → legacy на входе генератора.
 	res, err := config.GenerateOutboundsFromParserConfig(m.AsParserConfig(), map[string]int{}, nil,
-		func(ps config.ProxySource, tc map[string]int, pc func(float64, string), idx, total int) ([]*config.ParsedNode, error) {
-			return subscription.LoadNodesFromSource(ps, tc, pc, idx, total)
-		},
 		config.DirectionBuildOptions{BlockTag: "block-out", DirectTag: "direct-out"})
 	if err != nil {
 		t.Fatalf("сборка провалилась: %v", err)
@@ -73,7 +86,7 @@ func decodeEmittedForRenameTest(raw string) map[string]interface{} {
 
 // Контроль: до переименования ссылка живая и detour в конфиге стоит.
 func TestNodeRename_RefWorksBeforeRename(t *testing.T) {
-	m := modelWithLiveNodeRef("🔥🎭 WARP (MASQUE)")
+	m := modelWithLiveNodeRef(t, "🔥🎭 WARP (MASQUE)")
 	nodes := buildNodesByTag(t, m)
 
 	dep := nodes["🇳🇱 Proton NL"]
@@ -88,17 +101,17 @@ func TestNodeRename_RefWorksBeforeRename(t *testing.T) {
 // Переименование узла: ссылка сброшена в состоянии, сборка проходит без
 // fail-closed — зависимый источник в конфиге, просто без detour.
 func TestNodeRename_ResetsRefAndBuildStaysClean(t *testing.T) {
-	m := modelWithLiveNodeRef("🔥🎭 WARP (MASQUE)")
+	m := modelWithLiveNodeRef(t, "🔥🎭 WARP (MASQUE)")
 
 	// Пользователь переименовал узел в форме источника; сохранение зовёт
 	// ResetDetourNodeRefs со СТАРЫМ именем.
-	m.Sources[0].NodeTag = "🔥🎭 WARP v2"
+	m.Sources[0].Tag = "🔥🎭 WARP v2"
 	affected := ResetDetourNodeRefs(m, "01WARP", "🔥🎭 WARP (MASQUE)")
 	if len(affected) != 1 || affected[0] != "Proton NL" {
 		t.Fatalf("затронутые источники = %v, ожидался [Proton NL]", affected)
 	}
-	if s := m.Sources[1]; s.DetourNodeSourceID != "" || s.DetourNodeTag != "" {
-		t.Fatalf("ссылка обязана погаснуть в состоянии, осталось %+v", s)
+	if d := m.Sources[1].Detour; d != nil {
+		t.Fatalf("ссылка обязана погаснуть в состоянии, осталось %+v", d)
 	}
 
 	nodes := buildNodesByTag(t, m)
@@ -117,8 +130,8 @@ func TestNodeRename_ResetsRefAndBuildStaysClean(t *testing.T) {
 // Без сброса та же сборка падает fail-closed — это и есть та честность,
 // ради которой UI обязан сбрасывать ссылки сам.
 func TestNodeRename_WithoutResetFailsClosed(t *testing.T) {
-	m := modelWithLiveNodeRef("🔥🎭 WARP (MASQUE)")
-	m.Sources[0].NodeTag = "🔥🎭 WARP v2" // переименовали, ссылку не тронули
+	m := modelWithLiveNodeRef(t, "🔥🎭 WARP (MASQUE)")
+	m.Sources[0].Tag = "🔥🎭 WARP v2" // переименовали, ссылку не тронули
 
 	nodes := buildNodesByTag(t, m)
 	if nodes["🇳🇱 Proton NL"] != nil {

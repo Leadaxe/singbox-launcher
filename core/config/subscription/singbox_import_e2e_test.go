@@ -1,6 +1,9 @@
 package subscription
 
 import (
+	"encoding/base64"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"singbox-launcher/core/config/configtypes"
@@ -32,17 +35,17 @@ func loadFromInlineBodyWithCounts(
 ) *SourceLoadResult {
 	t.Helper()
 
-	const url = "https://example.invalid/sub"
-	ps.Source = url
-
-	prev := LookupCachedBody
-	LookupCachedBody = func(requested string) ([]byte, bool) {
-		if requested == url {
-			return []byte(body), true
-		}
-		return nil, false
-	}
-	t.Cleanup(func() { LookupCachedBody = prev })
+	// SPEC 118 W5: подсовывать тело хуком больше нечем — кэш тел умер вместе
+	// с raw-файлами. Тело отдаёт локальный стаб: разбор при этом идёт тем же
+	// путём, что в бою (скачать → декодировать → классифицировать →
+	// распарсить). base64 — потому что провайдеры так и отдают целые
+	// sing-box конфиги: голый JSON-объект декодер отвергает как «это не
+	// список ссылок», и такой ответ в бою до разбора не доходит.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(base64.StdEncoding.EncodeToString([]byte(body))))
+	}))
+	t.Cleanup(srv.Close)
+	ps.Source = srv.URL
 
 	res, err := LoadNodesFromSourceEx(ps, tagCounts, nil, 0, 1)
 	if err != nil {

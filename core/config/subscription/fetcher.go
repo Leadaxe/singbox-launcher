@@ -128,7 +128,7 @@ const MaxSubscriptionResponseSize = 10 * 1024 * 1024 // 10 MB
 type FetchResult struct {
 	Body         []byte
 	RawBody      []byte
-	Meta         state.SubscriptionMeta
+	Meta         state.SubMeta
 	HTTPStatus   int
 	RawBodyBytes int64
 }

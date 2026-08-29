@@ -128,122 +128,54 @@ type ProxySource struct {
 	Source           string              `json:"source,omitempty"`
 	Connections      []string            `json:"connections,omitempty"`
 	Skip             []map[string]string `json:"skip,omitempty"`
-	Outbounds        []Direction         `json:"outbounds,omitempty"`   // Local outbounds for this source (version 4)
 	TagPrefix        string              `json:"tag_prefix,omitempty"`  // Prefix to add to all node tags from this source
 	TagPostfix       string              `json:"tag_postfix,omitempty"` // Postfix to add to all node tags from this source
-	TagMask          string              `json:"tag_mask,omitempty"`    // Mask to replace entire tag (ignores tag_prefix and tag_postfix if set)
-	// ExcludeFromGlobal: when true, nodes from this source are omitted from the pool for global ParserConfig.outbounds (generation-time only).
-	//
-	// SPEC 108: свёрнутая подписка (Fold != nil) выставляет этот флаг сама
-	// на проходе 0 — узлы уходят в свою группу и в общем списке им делать
-	// нечего. Как самостоятельное поле он остаётся ради состояний, где
-	// `exclude_from_global` стоял БЕЗ локальных групп: свёрткой это не
-	// выражается (галка всегда создаёт группу), а ломать такой конфиг
-	// незачем. UI его больше не выставляет.
-	ExcludeFromGlobal bool `json:"exclude_from_global,omitempty"`
-	// ExposeGroupTagsToGlobal: when true, tags of wizard-marked local outbounds are merged into each global outbound at generation time (SPEC 026).
-	//
-	// SPEC 108: тоже выставляется свёрткой на проходе 0. Прежний флаг
-	// читается при загрузке состояния и разворачивается в Fold; UI его не
-	// показывает.
-	ExposeGroupTagsToGlobal bool `json:"expose_group_tags_to_global,omitempty"`
-	// Chain: SPEC 110 — источник является цепочкой хопов. nil = обычный
-	// источник (подписка или сервер).
-	//
-	// Материализуется в ОДИН узел с EmitRaw (как ручной config_json), а не
-	// в группу: цепочка это маршрут, и остальной лаунчер видит её узлом —
-	// её ловят фильтры Направлений, она переключается в Clash API.
-	Chain *SourceChain `json:"chain,omitempty"`
-	// Fold: SPEC 108 — свёртка подписки в одну группу вместо её узлов.
-	// nil = не свёрнута. Локальные группы из неё разворачиваются на сборке
-	// (config.PrepareSourceFolds), в состоянии не материализуются.
-	Fold *SourceFold `json:"fold,omitempty"`
 	// Disabled: quick on/off toggle exposed in the wizard Sources list.
 	// When true, the parser pipeline skips this source entirely (no fetch,
 	// no parse, no nodes generated). The source stays in the file so the
 	// user can re-enable it without re-entering its URL / skip rules / etc.
-	// Omit-when-default so legacy ParserConfig files (no field) are treated
-	// as enabled, matching prior behavior.
 	Disabled bool `json:"disabled,omitempty"`
-	// DetourTag: SPEC 077 — tag of another outbound that this source's nodes
-	// dial through (proxy chain). Empty = direct. Promoted to node.Outbound
-	// ["detour"] for each non-WireGuard node at parse time; validated (dangling/
-	// cycle/self → dropped) at generation time.
-	DetourTag string `json:"detour_tag,omitempty"`
-	// DetourNodeSourceID / DetourNodeTag — SPEC 112-A: ссылка на ОДИН узел,
-	// через который дозваниваются узлы этого источника (альтернатива DetourTag,
-	// который метит в группу). Ссылка — ОБЪЕКТ из двух частей:
+	// ConfigJSON: ручной sing-box outbound/endpoint объект.
 	//
-	//	DetourNodeSourceID — ULID источника-цели (ProxySource.ID);
-	//	DetourNodeTag      — identity-тег узла ВНУТРИ этого источника
-	//	                     (ParsedNode.IdentityTag, SPEC 112).
-	//
-	// Финальный конфиговый тег здесь НЕ хранится: он вычисляется на каждой
-	// сборке (prefix/mask/uniquify), и хранимый тег протухал бы от смены
-	// tag_prefix источника-цели — ровно тем же классом багов, что до SPEC 112
-	// протухал контент-хеш.
-	//
-	// Резолв СТРОГИЙ (дополнение к SPEC 112-A): ссылка жива, только если
-	// source_id найден И узел с таким identity-тегом в нём есть. Расхождение =
-	// fail-closed. Честность за пределами сборки обеспечивает UI: операция,
-	// меняющая идентичность узла (переименование node_tag), сама сбрасывает
-	// ссылки на него и сообщает об этом пользователю.
-	//
-	// Пустой DetourNodeSourceID при непустом DetourNodeTag — переходная форма
-	// (состояния dev-сборок между SPEC 112 и 112-A): тег трактуется как ФИНАЛЬНЫЙ
-	// и ищется глобально, как раньше.
-	//
-	// Mutually exclusive with DetourTag (UI enforces; if both are set,
-	// DetourNodeTag wins).
-	DetourNodeSourceID string `json:"detour_node_source_id,omitempty"`
-	DetourNodeTag      string `json:"detour_node_tag,omitempty"`
-	// DetourNodeHash: УПРАЗДНЁННАЯ ссылка по контент-хешу (SPEC 101).
-	//
-	// Читается только ради миграции состояний, записанных до SPEC 112:
-	// resolveNodeDetours опознаёт по нему узел (config.LegacyNodeIdentityHash)
-	// и переписывает ссылку в пару DetourNodeSourceID+DetourNodeTag; не опознал —
-	// берёт DetourNodeLabel как тег (label там и есть тег выбранного хопа), но
-	// уже без source_id: узел-цель неизвестен. После миграции поле не пишется.
-	DetourNodeHash string `json:"detour_node_hash,omitempty"`
-	// DetourNodeLabel: display-only snapshot of the picked node's tag at pick
-	// time, so the Source dialog can show a human label even when the node is
-	// temporarily absent. Not used for resolution — except as the fallback of
-	// the SPEC 112 migration described above.
-	DetourNodeLabel string `json:"detour_node_label,omitempty"`
-	// DisabledNodes: SPEC 094 D4 — per-node off switch, keyed by the node's
-	// IDENTITY and valued with the unix time the mark was last confirmed.
-	//
-	// Identity is the node's raw provider tag, uniquified within the source and
-	// taken before this source's tag_prefix / tag_mask (SPEC 112,
-	// config.NodeIdentity). The tag is the name the provider manages the node
-	// by: it survives the provider rotating the server behind that name, and
-	// changing the source's tag policy does not move the marks.
-	//
-	// Was an emitted-JSON hash until SPEC 112; keys of that shape (64 lowercase
-	// hex) are migrated to tag keys on the first parse of the source and are
-	// never written again.
-	//
-	// The timestamp exists for garbage collection: a node that has been gone
-	// from the subscription longer than the TTL drops out of the map, otherwise
-	// it would grow without bound over a subscription's lifetime.
-	DisabledNodes map[string]int64 `json:"disabled_nodes,omitempty"`
-	// ConfigJSON: ручной sing-box outbound/endpoint объект (server-source).
-	// Если задан, LoadNodesFromSource строит ноду из него (Connections не
-	// парсятся), а генератор эмитит map passthrough — включая типы и поля,
-	// которых лаунчер не знает. Tag и detour перештамповываются как обычно.
+	// SPEC 118 W5: это ВХОД ПАРСЕРА, а не поле состояния — в каноне v7 тело
+	// узла живёт в `Node.Body`. Заполняется только теми, кто зовёт парсер
+	// напрямую: fetch-сервис, «Regen from raw» и превью фрагмента (SPEC §4.A).
 	ConfigJSON json.RawMessage `json:"config_json,omitempty"`
 
 	// Canonical — ГОТОВЫЕ узлы канона v7 (state.Source.nodes[] либо body
 	// корневого узла), спроецированные для сборки (SPEC 118 W4).
 	//
-	// Непусто → конвейер сборки НЕ зовёт парсер тела: узлы уже
-	// материализованы (fetch W3 / миграция W2), эмиссия идёт из body, а
-	// тег-политика применяется на эмиссии. Пусто → мостовой путь W1–W3
-	// (парс raw-кэша) — он живёт до W5 ради состояний, ещё не прошедших
-	// материализацию.
+	// Конвейер сборки НЕ зовёт парсер тела: узлы уже материализованы (fetch
+	// либо миграция), эмиссия идёт из body, тег-политика применяется на
+	// эмиссии. nil бывает только у источника, которому нечего эмитить
+	// (узел без тела) — такой источник в конфиг не едет.
 	//
 	// `json:"-"`: проекция сборки, на диск не едет.
 	Canonical *CanonicalSource `json:"-"`
+
+	// Chain — цепочка источника, СОБРАННАЯ НА ЛЕТУ проходом 2
+	// (config.ResolveCanonicalChainHops): настройки маршрута из тела
+	// канонического узла плюс позиции с уже разрешёнными финальными тегами.
+	//
+	// Хранением это не является: в состоянии цепочка лежит узлом
+	// (`kind=chain`, body + hops []NodeLink). Поле существует потому, что
+	// эмиттер цепочек (chain_generator.go) говорит формой ядра, а позиции
+	// становятся известны только после загрузки всех источников.
+	//
+	// `json:"-"`: дериват сборки, на диск не едет.
+	Chain *SourceChain `json:"-"`
+
+	// LocalGroups — группы ЗАМЕНЫ свёрнутой папки, развёрнутые проходом 0
+	// (config.PrepareFolderReplaces).
+	//
+	// SPEC 118 W5: локальных Направлений источника в модели больше НЕТ —
+	// пользователь их не заводит и в состоянии их не существует. Осталась
+	// одна порождающая их сущность — `FolderReplace`, и она разворачивается
+	// на каждой сборке заново. Поэтому поле build-only: писать эти записи
+	// некуда, а читать их — только генератору селекторов.
+	//
+	// `json:"-"`: дериват сборки, на диск не едет.
+	LocalGroups []Direction `json:"-"`
 }
 
 // CanonicalSource — проекция канонического источника v7 в сборочную форму
@@ -721,7 +653,7 @@ type ParsedNode struct {
 	// уникализированный В ПРЕДЕЛАХ ИСТОЧНИКА, снятый ДО применения
 	// tag_prefix / tag_postfix / tag_mask.
 	//
-	// Именно она держит отметки выключения (ProxySource.DisabledNodes) и
+	// Именно она держит идентичность узла (SPEC 112) и
 	// принадлежность узла между элементами Xray-массива. Содержимое узла
 	// (server, port, ключи, SNI, транспорт) в идентичность НЕ входит:
 	// провайдер вправе поменять сервер под тем же именем — это тот же узел.

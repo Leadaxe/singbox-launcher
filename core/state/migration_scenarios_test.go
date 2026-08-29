@@ -261,16 +261,11 @@ func TestMigrationScenario2DisabledMarks(t *testing.T) {
 		t.Errorf("несматченный ключ не в отчёте: %v", s.Migration.Warnings)
 	}
 
-	// SPEC 118 W4: сборочная форма несёт отметки КАНОНОМ (nodes[].enabled), а
-	// мостовая disabled-карта у канонического источника снята
-	// (narrowBridgeForCanonical) — иначе один и тот же факт жил бы в двух
-	// местах и разъехался при первой правке.
+	// SPEC 118 W5: сборочная форма несёт отметки ТОЛЬКО каноном
+	// (nodes[].enabled) — второго представления не существует.
 	ps := sub.ToProxySourceV4()
 	if ps.Canonical == nil {
-		t.Fatal("канонической проекции нет — сборка пошла бы мостом")
-	}
-	if len(ps.DisabledNodes) != 0 {
-		t.Errorf("мостовая карта не снята у канонического источника: %v", ps.DisabledNodes)
+		t.Fatal("канонической проекции нет — собирать источник не из чего")
 	}
 	canonEnabled := map[string]bool{}
 	for _, n := range ps.Canonical.Nodes {
@@ -339,10 +334,6 @@ func TestMigrationScenario4ChainHops(t *testing.T) {
 	if !hasWarningContaining(s.Migration, "ghost") {
 		t.Errorf("висячий хоп без предупреждения: %v", s.Migration.Warnings)
 	}
-	// Легаси-строки хопов согласованы с переписью (их читает мост до W4).
-	if got := chain.Chain.Hops[3]; got != "[P]select-auto" {
-		t.Errorf("легаси-хоп не переписан: %q", got)
-	}
 }
 
 // §4.B.5 — detour: тройня обоих видов + переходная форма; NodeLink в каноне,
@@ -354,13 +345,9 @@ func TestMigrationScenario5Detour(t *testing.T) {
 	if srv.Node.Detour == nil || srv.Node.Detour.FolderID != subID || srv.Node.Detour.Tag != "NL-1" {
 		t.Fatalf("тройня на узел подписки → %+v", srv.Node.Detour)
 	}
-	// SPEC 118 W4: ссылку в сборку везёт КАНОН (NodeLink), а детур-тройня
-	// моста у канонического источника снята: два резолва одного ребра с
-	// разной строгостью перезаписывали бы друг друга на проходе 2.
+	// SPEC 118 W5: ссылку в сборку везёт ТОЛЬКО канон (NodeLink) — тройни
+	// в сборочной форме больше нет.
 	ps := srv.ToProxySourceV4()
-	if ps.DetourNodeSourceID != "" || ps.DetourNodeTag != "" || ps.DetourTag != "" {
-		t.Errorf("детур-тройня моста не снята у канонического источника: %+v", ps)
-	}
 	if ps.Canonical == nil || len(ps.Canonical.Nodes) != 1 {
 		t.Fatalf("канонической проекции узла нет: %+v", ps.Canonical)
 	}
@@ -454,13 +441,9 @@ func TestMigrationScenario6FoldToReplace(t *testing.T) {
 			}
 		}
 	}
-	// SPEC 118 W4: свёртку в сборку везёт КАНОН (Replace с явным тегом), а
-	// мостовой Fold у канонического источника снят — второй разворот дал бы
-	// дубль тега и отказ ядра.
+	// SPEC 118 W5: свёртку в сборку везёт ТОЛЬКО канон (Replace с явным
+	// тегом) — мостового Fold в сборочной форме больше нет.
 	ps := sub.ToProxySourceV4()
-	if ps.Fold != nil {
-		t.Errorf("мостовой Fold не снят у канонического источника: %+v", ps.Fold)
-	}
 	if ps.Canonical == nil || ps.Canonical.Replace == nil {
 		t.Fatalf("канонической свёртки нет: %+v", ps.Canonical)
 	}
@@ -513,9 +496,10 @@ func TestMigrationScenario7Losses(t *testing.T) {
 	}
 }
 
-// §4.B.8 — снос и идемпотентность: исходник не тронут (гейт W5), бэкап-копия
-// есть, v7 Save→Load→Save байт-в-байт, код сноса чистит raw и легаси-ключи,
-// defaults уезжают в настройки не перетирая явное.
+// §4.B.8 — снос и идемпотентность: файл переписан на v7 (шаг 8 включён в W5,
+// migrationPurgesLegacy), бэкап-копия исходника лежит рядом, v7
+// Save→Load→Save байт-в-байт, raw-кэш удалён, defaults уехали в настройки
+// приложения, не перетирая явное.
 func TestMigrationScenario8PurgeAndIdempotency(t *testing.T) {
 	fixture := strings.Replace(mainFixture, "%HEX%", legacyHashForURI(t, nl1URI), 1)
 	statePath := writeStateWithRaw(t, fixture, map[string]string{subID: rawBody})
@@ -526,11 +510,14 @@ func TestMigrationScenario8PurgeAndIdempotency(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Исходный файл не тронут (шаг 8 под гейтом), бэкап-копия существует и
-	// равна исходнику.
+	// Файл переписан миграцией (шаг 8), а страховкой служит бэкап-копия
+	// рядом: она обязана быть байт-в-байт исходником.
 	after, _ := os.ReadFile(statePath)
-	if !bytes.Equal(original, after) {
-		t.Fatal("исходный файл изменён загрузкой")
+	if bytes.Equal(original, after) {
+		t.Fatal("миграция не переписала файл — состояние осталось легаси")
+	}
+	if !bytes.Contains(after, []byte(`"schema": "sources_v7"`)) {
+		t.Fatalf("файл после миграции не в схеме v7:\n%s", after)
 	}
 	bak, err := os.ReadFile(statePath + ".v6.bak")
 	if err != nil {
@@ -574,16 +561,13 @@ func TestMigrationScenario8PurgeAndIdempotency(t *testing.T) {
 		t.Fatal("v7 roundtrip не байт-в-байт (сверх meta.updated_at)")
 	}
 
-	// Код сноса (включается в W5): raw-файл удалён, легаси-ключи сняты,
-	// defaults уехали в настройки приложения.
+	// Снос (шаг 8): raw-файл удалён, defaults уехали в настройки приложения.
+	// Легаси-ПОЛЕЙ сносить нечего: их нет в типе Source (SPEC 118 W5) — они
+	// живут только сайдкаром миграции и умирают вместе с ней.
 	lc := state.DeriveLoadContextForTest(statePath)
 	state.PurgeLegacyForTest(s, lc)
 	if _, err := os.Stat(filepath.Join(lc.SubsDir, subID+".raw")); !os.IsNotExist(err) {
 		t.Error("raw-кэш не удалён сносом")
-	}
-	sub := findSource(t, s, subID)
-	if sub.Fold != nil || sub.DisabledNodes != nil || sub.Outbounds != nil || sub.URI != "" {
-		t.Error("легаси-ключи пережили снос")
 	}
 	settings := locale.LoadSettings(lc.BinDir)
 	if settings.DefaultSubscriptionReload != "4h" || settings.DefaultSubscriptionMaxNodes != 700 {
@@ -644,10 +628,7 @@ func TestMigrationScenario10RuleTargetsSurviveEmission(t *testing.T) {
 	s, _ := loadMainFixture(t)
 
 	pc := s.ParserConfig
-	res, err := config.GenerateOutboundsFromParserConfig(&pc, map[string]int{}, nil,
-		func(configtypes.ProxySource, map[string]int, func(float64, string), int, int) ([]*configtypes.ParsedNode, error) {
-			return nil, nil
-		}, config.DirectionBuildOptions{})
+	res, err := config.GenerateOutboundsFromParserConfig(&pc, map[string]int{}, nil, config.DirectionBuildOptions{})
 	if err != nil {
 		t.Fatalf("эмиссия мигрированного состояния: %v", err)
 	}
@@ -694,6 +675,111 @@ func TestMigrationScenario10RuleTargetsSurviveEmission(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("известные цели не содержат %q: %v", want, known)
+		}
+	}
+}
+
+// §Т7 хвост W2 (SPEC 118 W6): Load кладёт отчёт миграции на диск.
+//
+// В памяти State отчёт до конфигуратора не доживает: мигрирует ПЕРВЫЙ, кто
+// откроет состояние, — на старте лаунчера это фоновая загрузка без окна, и к
+// открытию мастера файл уже v7. Дистанцию между двумя моментами переживает
+// только файл рядом.
+func TestMigrationReportPersistedByLoad(t *testing.T) {
+	s, statePath := loadMainFixture(t)
+	if !s.Migration.HasWarnings() {
+		t.Fatal("фикстура не дала ни одного предупреждения — проверять нечего")
+	}
+	binDir := filepath.Dir(filepath.Dir(statePath))
+
+	saved := state.ReadMigrationReport(binDir)
+	if saved == "" {
+		t.Fatal("Load не сохранил отчёт — на headless-старте он пропал бы")
+	}
+	for _, w := range s.Migration.Warnings {
+		if !strings.Contains(saved, w) {
+			t.Errorf("предупреждение не доехало до файла: %q", w)
+		}
+	}
+}
+
+// §4.B.10 на РЕАЛЬНОЙ фикстуре — мигрированный golden real-v088
+// (`core/state/testdata/real_v088_v4.json`, копия входа golden-сценария
+// `core/build/testdata/golden/real-v088/` до перезафиксации в v7).
+//
+// Синтетическая фикстура выше проверяет ВИДЫ тегов; эта — что на реальном
+// состоянии пользователя (5 подписок со свёрткой, 5 Направлений, 12 правил,
+// верхний WireGuard-узел) миграция не оставила ни одной цели, которую
+// `resetForeignRuleTargets` принял бы за осиротевшую. Стреляет он один раз и
+// необратимо: сброшенное на direct правило пользователь восстанавливает
+// руками.
+func TestMigrationScenario10RealV088RuleTargetsNotReset(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "real_v088_v4.json"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	statePath := writeStateWithRaw(t, string(raw), nil)
+	s, err := state.Load(statePath)
+	if err != nil {
+		t.Fatalf("load real-v088: %v", err)
+	}
+	if s.Migration == nil {
+		t.Fatal("real-v088 — легаси-состояние, отчёт миграции обязан быть")
+	}
+
+	// Множество известных целей строится ровно так, как его строит гард
+	// перед сбросом: Направления + замены свёрнутых папок + верхние узлы +
+	// системные теги шаблона.
+	var rootTags []string
+	for i := range s.Sources {
+		src := &s.Sources[i]
+		if src.Kind != state.SourceKindSubscription && src.Tag != "" {
+			rootTags = append(rootTags, src.Tag)
+		}
+	}
+	pc := s.ParserConfig
+	guard := config.BuildTagGuard(pc.ParserConfig.Outbounds, pc.ParserConfig.Proxies,
+		rootTags, []string{"direct-out", "block-out", "reject"})
+
+	// Каждая живая цель правила обязана быть известной. Пустая цель и
+	// системные теги шаблона проверяются тем же множеством — на них сброс
+	// стреляет так же.
+	checked := 0
+	for _, r := range s.Rules {
+		body, derr := r.DecodeBody()
+		if derr != nil {
+			continue
+		}
+		inline, ok := body.(*state.InlineBody)
+		if !ok || inline.Outbound == "" {
+			continue
+		}
+		checked++
+		if !guard.Taken(inline.Outbound) {
+			t.Errorf("цель правила %q не известна гарду — правило сбросилось бы на direct", inline.Outbound)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("ни одного правила с целью — фикстура не проверяет предмет")
+	}
+
+	// Теги замены свёрнутых папок: правила v6 целились в fold-теги, и
+	// миграция переписала их на replace-теги. Не знай их гард — reset увёл
+	// бы их в direct на первой же загрузке.
+	for i := range s.Sources {
+		src := &s.Sources[i]
+		if src.Replace == nil || src.Replace.Tag == "" {
+			continue
+		}
+		if !guard.Taken(src.Replace.Tag) {
+			t.Errorf("тег замены %q не известен гарду", src.Replace.Tag)
+		}
+	}
+
+	// Направления и их твины.
+	for _, d := range s.Directions {
+		if !guard.Taken(d.Tag) {
+			t.Errorf("Направление %q не известно гарду", d.Tag)
 		}
 	}
 }

@@ -1,11 +1,17 @@
 // File source_chain_hops.go — кандидаты позиций цепочки и их вид в списке
-// (SPEC 110).
+// (SPEC 110, SPEC 118 Т8).
 //
-// Позиция цепочки — это тег любого outbound'а: узла подписки, группы,
-// которую подписка экспортировала, другого Направления или встроенного
-// тега шаблона. Вписывать теги руками нельзя (как участники группы DNS и
-// детур): имена приходят из шаблона и подписок, и опечатка в теге — это
-// ссылка в никуда, на которой ядро не стартует вовсе.
+// Позиция цепочки — это ССЫЛКА (NodeLink), а не строка. Ссылка бывает двух
+// видов: корневая (финальный тег Направления, замены свёрнутой папки,
+// верхнего узла или системный тег шаблона) и папочная — пара «id папки +
+// СЫРОЙ тег узла в ней». Разница не формальная: финальный тег узла папки
+// вычисляется её тег-политикой на каждой сборке, и сохранённый в состоянии
+// протух бы от правки префикса — ровно тот класс багов, ради которого
+// SPEC 112 снёс контент-хэш.
+//
+// Вписывать теги руками нельзя (как участников группы DNS и детур): имена
+// приходят из шаблона и подписок, и опечатка — ссылка в никуда, на которой
+// ядро не стартует вовсе.
 //
 // Для чтения списка важен не только тег, но и ЧТО за ним стоит: группа
 // выбирает участника на лету, а `direct` на позиции ≥ 1 означает «хопа
@@ -25,17 +31,23 @@ import (
 
 // Виды позиции — определяют подпись справа в строке списка.
 const (
-	hopKindNode      = "node"      // узел подписки
+	hopKindNode      = "node"      // узел подписки или папки
 	hopKindGroup     = "group"     // группа, экспортированная подпиской
 	hopKindDirection = "direction" // другое Направление
 	hopKindChain     = "chain"     // другая цепочка (только позиция 0, T5)
 	hopKindBuiltin   = "builtin"   // встроенный тег шаблона (direct-out и т. п.)
 	hopKindUnknown   = "unknown"   // тег, которого больше нет
-	hopKindPending   = "pending"   // кэш узлов ещё не готов — судить рано
+	hopKindPending   = "pending"   // пул узлов ещё не собран — судить рано
 )
 
 // chainHopCandidate — возможная позиция цепочки.
 type chainHopCandidate struct {
+	// Link — то, что уедет в модель. Единственная форма хранения позиции.
+	Link corestate.NodeLink
+	// Tag — как позиция называется В КОНФИГЕ (финальный тег). Показывается
+	// пользователю и им же адресуются проверки формы: reality-узлы, узлы со
+	// своим detour, типы протоколов — всё это считается по эмитированному
+	// пулу, где ключ — финальный тег.
 	Tag  string
 	Kind string
 	// Below — цепочка объявлена НИЖЕ редактируемой по списку источников.
@@ -73,32 +85,50 @@ func (c chainHopCandidate) KindText() string {
 	}
 }
 
+// hopLinkKey — ключ ссылки для сравнения и карт.
+//
+// Пара (folderId, tag) склеивается через '\x00': разделитель, которого не
+// бывает ни в ULID папки, ни в теге, — иначе папка «a» с узлом «b/c» и папка
+// «a/b» с узлом «c» получили бы один ключ.
+func hopLinkKey(l corestate.NodeLink) string {
+	return l.FolderID + "\x00" + l.Tag
+}
+
 // collectChainHopCandidates собирает всё, на что цепочка может сослаться.
 //
 // selfTag исключается: ядро отвергает цепочку, содержащую саму себя
 // (`protocol/chain/chain.go:93`).
 //
-// Узлы берутся из готового кэша превью. Перестраивать его здесь нельзя:
-// разбор всех подписок занимает секунды на живых конфигах, а окно правки
-// открывается синхронно — пользователь смотрел бы на замерший интерфейс.
+// SPEC 118 Т8: узлы берутся из пула, собранного эмиссией материализованных
+// `nodes[]` — того же кода, что и на сборке. Узлы КОНТЕЙНЕРОВ (папок и
+// подписок) адресуются папочной ссылкой, узлы верхнего уровня — корневой:
+// как их адресует резолв сборки, так их и предлагает форма.
 func collectChainHopCandidates(
 	model *wizardmodels.WizardModel,
 	selfTag string,
 ) []chainHopCandidate {
 	seen := make(map[string]bool, 64)
 	var out []chainHopCandidate
-	add := func(tag, kind string) {
-		tag = strings.TrimSpace(tag)
-		if tag == "" || tag == selfTag || seen[tag] {
+	add := func(link corestate.NodeLink, displayTag, kind string) {
+		displayTag = strings.TrimSpace(displayTag)
+		link.Tag = strings.TrimSpace(link.Tag)
+		if displayTag == "" || link.Tag == "" || displayTag == selfTag {
+			return
+		}
+		key := hopLinkKey(link)
+		if seen[key] {
 			return
 		}
 		// SPEC 110 T6: рантайм-звенья `<chain>#<i>` в конфиге не существуют —
 		// ссылка на них не даст ядру стартовать.
-		if config.ChainInternalTag(tag) {
+		if config.ChainInternalTag(displayTag) {
 			return
 		}
-		seen[tag] = true
-		out = append(out, chainHopCandidate{Tag: tag, Kind: kind})
+		seen[key] = true
+		out = append(out, chainHopCandidate{Link: link, Tag: displayTag, Kind: kind})
+	}
+	addRoot := func(tag, kind string) {
+		add(corestate.NodeLink{Tag: tag}, tag, kind)
 	}
 
 	// Направления — сначала: это самые осмысленные позиции, и пользователь
@@ -112,14 +142,14 @@ func collectChainHopCandidates(
 				// него не даст стартовать ядру.
 				continue
 			}
-			add(d.Tag, hopKindDirection)
+			addRoot(d.Tag, hopKindDirection)
 		}
 	}
 
 	// Встроенные теги шаблона: direct-out на позиции 0 — это «первый хоп
 	// без прокси», осмысленный сценарий. Блокировка в цепочке смысла не
 	// имеет и не предлагается.
-	add("direct-out", hopKindBuiltin)
+	addRoot("direct-out", hopKindBuiltin)
 
 	if model != nil {
 		// SPEC 110 T5: другие цепочки — законные позиции, но только первой.
@@ -129,7 +159,7 @@ func collectChainHopCandidates(
 		// вверх по списку.
 		belowSelf := false
 		for _, src := range model.Sources {
-			if src.Kind != corestate.SourceTypeChain {
+			if src.Kind != corestate.SourceKindChain {
 				continue
 			}
 			if src.NodeTagOrLabel() == selfTag {
@@ -139,17 +169,32 @@ func collectChainHopCandidates(
 			if !src.Enabled {
 				continue
 			}
-			add(src.NodeTagOrLabel(), hopKindChain)
+			addRoot(src.NodeTagOrLabel(), hopKindChain)
 			if belowSelf && len(out) > 0 && out[len(out)-1].Tag == src.NodeTagOrLabel() {
 				out[len(out)-1].Below = true
 			}
 		}
-		// Кэш превью НЕ перестраиваем: он парсит все подписки разом, а у
-		// живых конфигов это сотни узлов — окно правки повисало на
-		// открытии. Берём то, что уже есть; пусто — список позиций
-		// покажет только Направления, и пользователь наполнит кэш,
-		// открыв превью или обновив подписки.
-		for _, n := range model.PreviewNodes {
+
+		// Замены свёрнутых папок: свёрнутая папка представлена в пуле
+		// Направлений (и в целях ссылок) ТОЛЬКО своими replace-тегами — её
+		// узлы под своими именами адресовать нельзя, и предлагать их значило
+		// бы вести к fail-closed.
+		for i := range model.Sources {
+			src := &model.Sources[i]
+			if src.Replace == nil || !src.Enabled {
+				continue
+			}
+			for _, tag := range chainReplaceTags(src.Replace) {
+				addRoot(tag, hopKindGroup)
+			}
+		}
+
+		// Узлы. Пул НЕ перестраиваем: он эмитит все узлы всех источников, а у
+		// живых конфигов это сотни — окно правки повисало бы на открытии.
+		// Берём то, что уже есть; пусто — список позиций покажет только
+		// Направления, а фон дозагрузит остальное (см. окно источника).
+		folderIDs := chainFolderIDsBySourceIndex(model)
+		for _, n := range model.NodePool {
 			if n == nil {
 				continue
 			}
@@ -157,7 +202,22 @@ func collectChainHopCandidates(
 			if n.Scheme == configtypes.SchemeGroup {
 				kind = hopKindGroup
 			}
-			add(n.Tag, kind)
+			folderID, isFolderNode := folderIDs[n.SourceIndex]
+			if !isFolderNode {
+				// Верхний узел: его финальный тег и есть адрес в корне.
+				addRoot(n.Tag, kind)
+				continue
+			}
+			if folderID == "" {
+				// Свёрнутая папка либо папка без id: её узлы адресовать
+				// нечем — за неё отвечают replace-теги выше.
+				continue
+			}
+			raw := strings.TrimSpace(n.IdentityTag)
+			if raw == "" {
+				raw = strings.TrimSpace(n.Tag)
+			}
+			add(corestate.NodeLink{FolderID: folderID, Tag: raw}, n.Tag, kind)
 		}
 	}
 
@@ -173,42 +233,83 @@ func collectChainHopCandidates(
 	return out
 }
 
-// chainNodesKnown — разобран ли кэш узлов.
+// chainReplaceTags — теги замены свёрнутой папки.
 //
-// Пустой кэш и «в подписках нет ни одного узла» здесь неразличимы, и это
+// Делегирует канонической формуле сборки (config.FolderReplaceTags), а не
+// повторяет её: разойдись они — и форма предлагала бы позицией тег, которого
+// в конфиге нет (или прятала бы существующий). Перевод формы нужен только
+// потому, что у модели и у сборки разные экземпляры одной структуры.
+func chainReplaceTags(r *corestate.FolderReplace) []string {
+	if r == nil {
+		return nil
+	}
+	return config.FolderReplaceTags(&configtypes.FolderReplace{Mode: r.Mode, Tag: r.Tag})
+}
+
+// chainFolderIDsBySourceIndex — «индекс источника → id папки» для источников,
+// чьи узлы живут в ПАПОЧНОМ пространстве тегов.
+//
+// Свёрнутая папка (`replace != nil`) в карту не попадает вовсе с пустым id:
+// её узлы не адресуются ссылками — конфиг видит только теги замены, и хоп на
+// узел свёрнутой папки был бы fail-closed.
+func chainFolderIDsBySourceIndex(model *wizardmodels.WizardModel) map[int]string {
+	if model == nil {
+		return nil
+	}
+	out := make(map[int]string, len(model.Sources))
+	for i := range model.Sources {
+		src := &model.Sources[i]
+		if src.Kind != corestate.SourceKindFolder && src.Kind != corestate.SourceKindSubscription {
+			continue
+		}
+		if src.Replace != nil {
+			out[i] = "" // свёрнута — узлы не адресуются
+			continue
+		}
+		out[i] = src.ID
+	}
+	return out
+}
+
+// chainNodesKnown — собран ли пул узлов.
+//
+// Пустой пул и «в подписках нет ни одного узла» здесь неразличимы, и это
 // осознанно: второе — тоже не повод объявлять позиции потерянными, пока
 // подписки не загружены.
 func chainNodesKnown(m *wizardmodels.WizardModel) bool {
-	return m != nil && len(m.PreviewNodes) > 0
+	return m != nil && len(m.NodePool) > 0
 }
 
-// chainHopLookup — быстрый доступ к кандидату по тегу.
+// chainHopLookup — быстрый доступ к кандидату по его ссылке.
 func chainHopLookup(cands []chainHopCandidate) map[string]chainHopCandidate {
 	m := make(map[string]chainHopCandidate, len(cands))
 	for _, c := range cands {
-		m[c.Tag] = c
+		m[hopLinkKey(c.Link)] = c
 	}
 	return m
 }
 
 // describeChainHop — вид позиции, уже лежащей в цепочке.
 //
-// Тег, которого больше нет среди кандидатов (подписка обновилась, узел
-// исчез), помечается неизвестным, а не выбрасывается молча: цепочка со
+// Ссылка, которой больше нет среди кандидатов (подписка обновилась, узел
+// исчез), помечается неизвестной, а не выбрасывается молча: цепочка со
 // ссылкой в никуда не соберётся, и пользователь должен увидеть, ЧТО именно
 // пропало, — иначе позиция просто исчезнет из списка и маршрут поменяется
 // без его ведома.
-func describeChainHop(tag string, lookup map[string]chainHopCandidate, nodesKnown bool) chainHopCandidate {
-	if c, ok := lookup[tag]; ok {
+func describeChainHop(link corestate.NodeLink, lookup map[string]chainHopCandidate, nodesKnown bool) chainHopCandidate {
+	if c, ok := lookup[hopLinkKey(link)]; ok {
 		return c
 	}
+	// Показать нечего, кроме самой ссылки: финального тега у неё нет (его
+	// вычисляет сборка по живой папке), поэтому в строке остаётся сырой тег.
+	fallback := chainHopCandidate{Link: link, Tag: link.Tag, Kind: hopKindUnknown}
 	if !nodesKnown {
-		// Кэш узлов ещё не разобран: в кандидатах пока только Направления,
+		// Пул узлов ещё не собран: в кандидатах пока только Направления,
 		// и объявить позицию потерянной значило бы покрасить красным
 		// рабочую цепочку — ровно то, что пользователь и увидел.
-		return chainHopCandidate{Tag: tag, Kind: hopKindPending}
+		fallback.Kind = hopKindPending
 	}
-	return chainHopCandidate{Tag: tag, Kind: hopKindUnknown}
+	return fallback
 }
 
 // chainReferencedBy — кто из цепочек ссылается на цепочку с этим именем.
@@ -223,17 +324,19 @@ func chainReferencedBy(m *wizardmodels.WizardModel) map[string][]string {
 	}
 	var out map[string][]string
 	for _, src := range m.Sources {
-		if src.Kind != corestate.SourceTypeChain || src.Chain == nil {
+		if src.Kind != corestate.SourceKindChain || len(src.Hops) == 0 {
 			continue
 		}
-		for _, hop := range src.Chain.Hops {
-			if hop == "" || hop == src.NodeTagOrLabel() {
+		for _, hop := range src.Hops {
+			// Ссылка на узел ПАПКИ (FolderID ≠ "") цепочку по имени не
+			// адресует: её переименование такой хоп не задевает.
+			if hop.FolderID != "" || hop.Tag == "" || hop.Tag == src.NodeTagOrLabel() {
 				continue
 			}
 			if out == nil {
 				out = make(map[string][]string, 2)
 			}
-			out[hop] = append(out[hop], src.NodeTagOrLabel())
+			out[hop.Tag] = append(out[hop.Tag], src.NodeTagOrLabel())
 		}
 	}
 	return out

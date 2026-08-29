@@ -254,6 +254,15 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 		ctx.Cache, excluded = sanitizeOutboundGraph(ctx.Cache, finalOutboundTags)
 	}
 
+	// SPEC 118 (Р-DNS-2): множество тегов, реально уезжающих в
+	// `route.rule_set` — ДО обхода секций. Секция dns собирается раньше
+	// route, а её чистка висячих `rule_set`-ссылок судит именно по этому
+	// множеству; посчитанное в одной секции по её собственным данным, оно
+	// было неполным и снимало живые ссылки (DNS-правило теряло ограничение
+	// и начинало матчить всё). Считается и для preview: чистка работает там
+	// так же, и неполное множество врало бы и в превью.
+	ctx.Preset.EmittedRuleSetTags = CollectEmittedRouteRuleSetTags(cfg["route"], ctx.Route, ctx.Preset)
+
 	for _, key := range order {
 		raw, ok := cfg[key]
 		if !ok {

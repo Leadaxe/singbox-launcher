@@ -3532,5 +3532,35 @@
   },
   "provider says: %s": {
     "value": "провайдер сообщает: %s"
+  },
+  "Default update interval:": {
+    "value": "Интервал обновления по умолчанию:"
+  },
+  "Default max nodes:": {
+    "value": "Максимум узлов по умолчанию:"
+  },
+  "Used when a subscription has neither its own schedule nor a profile-update-interval header. Go-duration form: 4h, 30m. Empty — built-in default (%s).": {
+    "value": "Применяется, когда у подписки нет ни своего расписания, ни заголовка profile-update-interval. Форма Go-длительности: 4h, 30m. Пусто — встроенное умолчание (%s)."
+  },
+  "Used when a subscription has no max_nodes of its own — providers do not send this one in headers. It is a real parse limit, not a badge: nodes past it are not read at all. Empty — the hard ceiling (%d).": {
+    "value": "Применяется, когда у подписки нет своего max_nodes — этот заголовок провайдеры не присылают. Это настоящий предел разбора, а не бейдж: узлы сверх него не читаются вовсе. Пусто — аварийный потолок (%d)."
+  },
+  "Update interval %q is not a duration — use forms like 4h or 30m.": {
+    "value": "Интервал обновления %q не длительность — пишите в форме 4h или 30m."
+  },
+  "Max nodes %q is not a positive number.": {
+    "value": "Максимум узлов %q не положительное число."
+  },
+  "Selector choices will reset": {
+    "value": "Выбор в селекторах сбросится"
+  },
+  "Tag prefix/postfix changed — every node of this source is renamed in the config.": {
+    "value": "Префикс/постфикс тегов изменён — все узлы этого источника переименованы в конфиге."
+  },
+  "Group tags changed: %s.": {
+    "value": "Теги групп изменены: %s."
+  },
+  "A manual pick in a selector is remembered by the running core (cache.db) by tag, and the launcher cannot rewrite it: the affected selectors fall back to their default until you pick again. On a remote machine this applies to its own core.": {
+    "value": "Ручной выбор в селекторе помнит работающее ядро (cache.db) — по тегу, и переписать его лаунчер не может: затронутые селекторы вернутся к умолчанию, пока вы не выберете заново. У удалённой машины это относится к её собственному ядру."
   }
 }

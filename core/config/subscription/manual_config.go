@@ -53,7 +53,7 @@ func NodeFromManualConfigJSON(raw []byte) (*configtypes.ParsedNode, error) {
 	}
 
 	// Пустой tag в config.json валит check; для server-source тег обычно
-	// перештампует TagMask=Label, но при пустом Label нужен свой fallback.
+	// перештампует тег из модели, но при пустом теге нужен свой fallback.
 	tag := mapString(ob, "tag")
 	if tag == "" {
 		tag = scheme

@@ -29,14 +29,28 @@ type ChainDegradation struct {
 
 // chainSourceTag — тег будущего узла цепочки.
 //
-// Имя источника, а при пустом — запасное `chain-<N>` по позиции в списке:
-// пустой тег в конфиге валит `sing-box check`, и оставить его нельзя даже
-// когда пользователь не удосужился назвать цепочку.
+// Берётся из канона (сырой тег chain-узла = его финальный тег: у корневого
+// узла тег-политики нет), а при пустом — запасное `chain-<N>` по позиции в
+// списке: пустой тег в конфиге валит `sing-box check`, и оставить его нельзя
+// даже когда пользователь не удосужился назвать цепочку.
 func chainSourceTag(src ProxySource, index int) string {
-	if t := src.TagMask; t != "" {
+	if t := canonicalChainTag(src); t != "" {
 		return t
 	}
 	return "chain-" + strconv.Itoa(index+1)
+}
+
+// canonicalChainTag — тег chain-узла источника (пусто, если такого узла нет).
+func canonicalChainTag(src ProxySource) string {
+	if src.Canonical == nil {
+		return ""
+	}
+	for i := range src.Canonical.Nodes {
+		if src.Canonical.Nodes[i].Kind == canonicalKindChain {
+			return strings.TrimSpace(src.Canonical.Nodes[i].Tag)
+		}
+	}
+	return ""
 }
 
 // ResolveChainSources строит узлы для источников-цепочек и дописывает их к
@@ -134,8 +148,8 @@ func ResolveChainSources(
 		}
 		tag := chainSourceTag(src, i)
 		name := tag
-		if src.TagMask == "" && src.Source != "" {
-			name = src.Source
+		if s := strings.TrimSpace(src.Label); s != "" {
+			name = s
 		}
 
 		degrade := func(reason string) {

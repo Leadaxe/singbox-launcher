@@ -9,7 +9,6 @@
 package config
 
 import (
-	"strings"
 
 	"singbox-launcher/internal/debuglog"
 )
@@ -24,23 +23,14 @@ type outboundInfo struct {
 	filteredNodes []*ParsedNode // Nodes that match this selector's filters
 	outboundCount int           // Total count: filteredNodes + valid addOutbounds (calculated in pass 2)
 	isValid       bool          // true if outboundCount > 0 (set in pass 2)
-	isLocal       bool          // true if it's a local selector (from proxySource.Outbounds), false if global
+	isLocal       bool          // true if it's a local selector (from proxySource.LocalGroups), false if global
 }
 
-// exposeTagCandidate is a wizard local outbound tag eligible for merge into global selectors (SPEC 026).
+// exposeTagCandidate — тег ЗАМЕНЫ свёрнутой папки, который пул кандидатов
+// Направлений видит вместо её узлов (SPEC 118, features/directions.md §5).
 type exposeTagCandidate struct {
 	Tag     string
 	Comment string
-}
-
-func commentHasWizardLocalOutboundMarker(comment string) bool {
-	if strings.Contains(comment, "WIZARD:auto") {
-		return true
-	}
-	if strings.Contains(comment, "WIZARD:select") || strings.Contains(comment, "WIZARD:selector") {
-		return true
-	}
-	return false
 }
 
 // collectExposeTagCandidates — теги, которые пул кандидатов Направлений
@@ -48,12 +38,9 @@ func commentHasWizardLocalOutboundMarker(comment string) bool {
 //
 // SPEC 118 W4: у канонического источника решает ПРАВИЛО — есть replace,
 // значит его теги (селектор и/или `-auto`-двойник) попадают в пул, а узлы
-// из него ушли (FilterNodesExcludeFromGlobal). Маркеры `WIZARD:*` в comment
-// для этого не нужны и не пишутся: метка в тексте была механизмом, а не
+// из него ушли (FilterDirectionCandidatePool). Маркеров `WIZARD:*` в comment
+// для этого не нужно и они не пишутся: метка в тексте была механизмом, а не
 // правилом, и переживала переименования хуже самого правила.
-//
-// TEMPORARY BRIDGE (умирает в W5): у источников без канона остаётся прежний
-// путь «ExposeGroupTagsToGlobal + маркер».
 func collectExposeTagCandidates(parserConfig *ParserConfig) []exposeTagCandidate {
 	if parserConfig == nil {
 		return nil
@@ -63,27 +50,16 @@ func collectExposeTagCandidates(parserConfig *ParserConfig) []exposeTagCandidate
 		if ps.Disabled {
 			continue
 		}
-		if cs := ps.Canonical; cs != nil {
-			if cs.Replace == nil {
-				continue
-			}
-			// Кандидатом становится ИТОГ свёртки, а не её внутренность: при
-			// both авто-двойник — опция селектора, и предлагать его вторым
-			// кандидатом значило бы показать пользователю в списке и папку,
-			// и её же автовыбор — выбор, которого он не просил.
-			if tag := FolderReplacePoolTag(cs.Replace); tag != "" {
-				out = append(out, exposeTagCandidate{Tag: tag})
-			}
+		cs := ps.Canonical
+		if cs == nil || cs.Replace == nil {
 			continue
 		}
-		if !ps.ExposeGroupTagsToGlobal {
-			continue
-		}
-		for _, ob := range ps.Outbounds {
-			if ob.Tag == "" || !commentHasWizardLocalOutboundMarker(ob.Comment) {
-				continue
-			}
-			out = append(out, exposeTagCandidate{Tag: ob.Tag, Comment: ob.Comment})
+		// Кандидатом становится ИТОГ свёртки, а не её внутренность: при
+		// both авто-двойник — опция селектора, и предлагать его вторым
+		// кандидатом значило бы показать пользователю в списке и папку,
+		// и её же автовыбор — выбор, которого он не просил.
+		if tag := FolderReplacePoolTag(cs.Replace); tag != "" {
+			out = append(out, exposeTagCandidate{Tag: tag})
 		}
 	}
 	return out
@@ -185,14 +161,14 @@ func buildOutboundsInfo(
 	var detourCycles []DetourCycle
 
 	for i, proxySource := range parserConfig.ParserConfig.Proxies {
-		if len(proxySource.Outbounds) == 0 {
+		if len(proxySource.LocalGroups) == 0 {
 			continue
 		}
 		sourceNodes, ok := nodesBySource[i]
 		if !ok {
 			sourceNodes = []*ParsedNode{}
 		}
-		for _, outboundConfig := range proxySource.Outbounds {
+		for _, outboundConfig := range proxySource.LocalGroups {
 			// SPEC 118 W4: авто-половина свёртки папки не принимает
 			// Auto-узлы своей папки — по той же причине, что твины
 			// Направлений исключают группы (features/directions.md §5).
@@ -408,14 +384,14 @@ func generateSelectorJSONs(
 	globalCount := 0
 
 	for i, proxySource := range parserConfig.ParserConfig.Proxies {
-		if len(proxySource.Outbounds) == 0 {
+		if len(proxySource.LocalGroups) == 0 {
 			continue
 		}
 		sourceNodes, ok := nodesBySource[i]
 		if !ok {
 			sourceNodes = []*ParsedNode{}
 		}
-		for _, outboundConfig := range proxySource.Outbounds {
+		for _, outboundConfig := range proxySource.LocalGroups {
 			info, exists := outboundsInfo[outboundConfig.Tag]
 			if !exists || !info.isValid {
 				if exists && !info.isValid {

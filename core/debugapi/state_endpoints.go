@@ -36,6 +36,7 @@ import (
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
+	"singbox-launcher/internal/platform"
 )
 
 // stateAccess — доступ к одному state-файлу: загрузка, сохранение и мьютекс,
@@ -45,17 +46,72 @@ type stateAccess struct {
 	load func() (*state.State, error)
 	save func(*state.State) error
 	mu   *sync.Mutex
+	// path — файл, за которым стоит этот доступ. Нужен ТОЛЬКО гейту мажора
+	// схемы (SPEC 118 Т10): Load мигрирует и потому наблюдать версию через
+	// него нельзя — вопрос «какой схемой файл написан» задаётся файлу.
+	path string
 }
 
 // localStateAccess — доступ к state.json локального визарда через facade
 // (Save взводит dirty-маркеры StateService — SPEC 050 invariant 3).
 func (s *Server) localStateAccess() stateAccess {
-	return stateAccess{load: s.facade.LoadState, save: s.facade.SaveState, mu: &s.stateMu}
+	return stateAccess{
+		load: s.facade.LoadState,
+		save: s.facade.SaveState,
+		mu:   &s.stateMu,
+		path: platform.GetWizardStatePath(s.facade.GetExecDir()),
+	}
+}
+
+// guardStateSchema — гейт мажора схемы перед ЧАСТИЧНОЙ правкой состояния
+// (SPEC 118 Т10, §4.G).
+//
+// PATCH правил и DNS — это load-modify-save: прочитать чужой файл, заменить
+// секцию, записать целиком. Если файл написан БОЛЕЕ НОВОЙ схемой, чтение
+// выронит всё незнакомое, а запись зафиксирует потерю — молча и необратимо.
+// Поэтому такой PATCH отвергается 409 с ОБЕИМИ версиями в тексте: это не
+// поломка запроса (400) и не отсутствие цели (404), а несовместимость
+// состояний двух сторон.
+//
+// GET не гейтуется: чтение ничего не переписывает, а отказ в диагностике
+// ровно в тот момент, когда пользователь выясняет причину, — худшее из
+// возможных поведений.
+//
+// Отсутствие файла гейтом не считается: его судьбу решает сам обработчик
+// (load вернёт ErrNotFound → 404). Пустой path означает «файл неизвестен» —
+// такой доступ не гейтуется, а не отвергается: гадать не о чем.
+func guardStateSchema(w http.ResponseWriter, acc stateAccess) bool {
+	if acc.path == "" {
+		return true
+	}
+	err := state.CheckSchemaCompatible(acc.path)
+	if err == nil || errors.Is(err, state.ErrSchemaFileMissing) {
+		return true
+	}
+	var mism *state.SchemaMismatchError
+	if errors.As(err, &mism) {
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error":            mism.Error(),
+			"schema_found":     mism.Found,
+			"schema_supported": mism.Supported,
+		})
+		return false
+	}
+	// Шапку прочитать не удалось (битый JSON, не наш файл) — правка вслепую
+	// запрещена по той же причине: неизвестную форму нельзя переписывать.
+	writeJSON(w, http.StatusConflict, map[string]any{
+		"error":            "state schema check failed: " + err.Error(),
+		"schema_supported": state.SchemaMajor,
+	})
+	return false
 }
 
 // handleStateFull — GET /state/full. Returns the full in-memory State as
-// JSON. We marshal via State directly so the response includes ALL
-// post-SPEC-060 fields (Rules, DNS, Connections.Outbounds with Ref/Updates).
+// JSON. We marshal via State directly, so the response follows the CURRENT
+// schema shape: since SPEC 118 that is v7 — flat `sources[]` (kind union with
+// materialized `nodes[]`) plus `directions[]`, `rules[]`, `dns_options`. This
+// is a local debug surface, not a contract: it tracks the schema without
+// backward-compatibility promises (the transfer contract is backup 0.11).
 func (s *Server) handleStateFull(w http.ResponseWriter, r *http.Request) {
 	s.stateFullWith(w, r, s.localStateAccess())
 }
@@ -74,7 +130,16 @@ func (s *Server) stateFullWith(w http.ResponseWriter, r *http.Request, acc state
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, st)
+	// Отдаём v7-форму, а не Go-структуру State: у неё нет json-тегов, и
+	// прямой marshal показывал PascalCase-ключи вместе с мёртвыми легаси-
+	// полями загрузчика (Defaults, SelectableRuleStates, ParserConfig). Одна
+	// сериализация с файлом — единственный способ не расходиться с ним.
+	raw, err := st.MarshalV7()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, json.RawMessage(raw))
 }
 
 // patchRulesReq — body for PATCH /state/rules.
@@ -105,6 +170,9 @@ func (s *Server) stateRulesWith(w http.ResponseWriter, r *http.Request, acc stat
 		writeJSON(w, http.StatusOK, map[string]any{"rules": st.Rules})
 
 	case http.MethodPatch:
+		if !guardStateSchema(w, acc) {
+			return
+		}
 		var req patchRulesReq
 		if err := decodeJSONBody(r, &req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid body: " + err.Error()})
@@ -173,6 +241,9 @@ func (s *Server) stateDNSWith(w http.ResponseWriter, r *http.Request, acc stateA
 		writeJSON(w, http.StatusOK, st.DNS)
 
 	case http.MethodPatch:
+		if !guardStateSchema(w, acc) {
+			return
+		}
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "read body: " + err.Error()})

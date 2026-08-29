@@ -44,7 +44,7 @@ func parseV5Legacy(data []byte, lc LoadContext) (*State, error) {
 	// (форма секции та же, что у v6). adoptLegacyDirections здесь НЕ зовётся
 	// — ровно как до W1 (v5-путь никогда не переносил прежний ключ
 	// `outbounds` в направления; менять это — не дело компиляционной волны).
-	adoptConnectionsV6(s, raw.Connections)
+	legacySources := adoptConnectionsV6(s, raw.Connections)
 
 	// BUG1 fix: derive canonical v6 Rules/DNS from legacy v5 CustomRules/
 	// DNSOptions так, чтобы headless Save (сериализует только v6) их не терял.
@@ -54,7 +54,7 @@ func parseV5Legacy(data []byte, lc LoadContext) (*State, error) {
 	// переноса — до построения legacy-проекции (она обязана видеть
 	// мигрированный канон). Маркерные fold-флаги v5-эпохи разворачивает
 	// сама миграция (adoptWizardMarkerFolds).
-	migrateLegacyStateToV7(s, 5, lc)
+	migrateLegacyStateToV7(s, 5, lc, legacySources)
 
 	// Заполняем legacy proxies-view из canonical для backward-compat
 	// callsite'ов (UI source_tab, dashboard counters, parser).

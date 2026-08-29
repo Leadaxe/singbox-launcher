@@ -35,7 +35,6 @@ func (p *WizardPresenter) restoreParserConfig(stateFile *wizardmodels.WizardStat
 	// Sources canonical из v5 Connections.
 	p.model.Sources = append([]wizardmodels.Source(nil), stateFile.Sources...)
 	p.model.GlobalOutbounds = append([]configtypes.Direction(nil), stateFile.Directions...)
-	p.model.Defaults = stateFile.Defaults
 	p.model.WarpAccounts = stateFile.WarpAccounts
 
 	// Validate: на свежей миграции должна быть хотя бы пустая slice.
@@ -65,7 +64,7 @@ func (p *WizardPresenter) restoreParserConfig(stateFile *wizardmodels.WizardStat
 	// Restore на Load — тоже мутация модели: производные результаты
 	// (генерация, мемо) обязаны перечитаться от свежезагруженного состава.
 	p.model.BumpRevision()
-	wizardbusiness.InvalidatePreviewCache(p.model)
+	wizardbusiness.InvalidateNodePool(p.model)
 	return nil
 }
 

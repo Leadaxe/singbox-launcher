@@ -140,7 +140,7 @@ func allRootLinkTargets(parserConfig *ParserConfig, directionTags map[string]boo
 				out = append(out, FolderReplaceTags(ps.Canonical.Replace)...)
 			}
 			// Мостовые локальные группы (Fold) — те же цели до W5.
-			for _, ob := range ps.Outbounds {
+			for _, ob := range ps.LocalGroups {
 				if ob.Tag != "" {
 					out = append(out, ob.Tag)
 				}

@@ -215,7 +215,7 @@ func appendReason(reasons []string, extra string) []string {
 // NaiveSupportProbe — hook installed by the app layer (core.AppController):
 // reports whether the running sing-box core supports naive outbounds and why
 // not. nil (parser-level tests, standalone use) → assume supported. Same
-// package-level-hook pattern as subscription.LookupCachedBody.
+// package-level-hook pattern used across the parser package.
 var NaiveSupportProbe func() (supported bool, reason string)
 
 // GenerateNodeJSON returns a single JSON object string for one proxy node (sing-box outbound).
@@ -1082,15 +1082,19 @@ func EmitNodeJSONs(node *ParsedNode) (outboundJSONs []string, endpointJSON strin
 	return append(jsons, mainJSON), "", nil
 }
 
-// GenerateOutboundsFromParserConfig is the main entry point: loads nodes from all proxy sources via loadNodesFunc,
-// generates node JSONs, then runs the three passes (buildOutboundsInfo, computeOutboundValidity, generateSelectorJSONs)
-// and returns the concatenated JSON strings (nodes, then local selectors, then global selectors) plus counts.
-// progressCallback(0–100, message) is optional for UI progress. tagCounts is passed to loadNodesFunc for deduplication.
+// GenerateOutboundsFromParserConfig is the main entry point: эмитит узлы из
+// МАТЕРИАЛИЗОВАННОГО канона каждого источника (SPEC 118 Т5 — конвейер сборки
+// тела подписок не парсит), затем прогоняет три прохода (buildOutboundsInfo,
+// computeOutboundValidity, generateSelectorJSONs) и возвращает
+// сконкатенированные JSON-строки (узлы, локальные селекторы, глобальные
+// селекторы) со счётчиками.
+//
+// progressCallback(0–100, message) необязателен. tagCounts — общий счётчик
+// уникализации финальных тегов на всю сборку.
 func GenerateOutboundsFromParserConfig(
 	parserConfig *ParserConfig,
 	tagCounts map[string]int,
 	progressCallback func(float64, string),
-	loadNodesFunc func(ProxySource, map[string]int, func(float64, string), int, int) ([]*ParsedNode, error),
 	directions DirectionBuildOptions,
 ) (*OutboundGenerationResult, error) {
 	// SPEC 104, проход 0 — раскрываем Направления: выключенные выпадают,
@@ -1103,12 +1107,6 @@ func GenerateOutboundsFromParserConfig(
 	// локальные группы. После Направлений и до подстановки переменных: у
 	// авто-группы замены те же `@urltest_*` в опциях.
 	PrepareFolderReplaces(parserConfig, directions.TwinOptions)
-
-	// SPEC 108, там же — свёртки МОСТОВЫХ источников (Fold). TEMPORARY BRIDGE
-	// (умирает в W5): состояния, ещё не прошедшие материализацию, обязаны
-	// собираться как раньше. Источник с каноном сюда не попадает —
-	// PrepareSourceFolds его пропускает.
-	PrepareSourceFolds(parserConfig, directions.TwinOptions)
 
 	// Hotfix v0.8.8.1 — substitute `@varname` placeholders in
 	// parser_config.outbounds[].options before generating selector JSONs. See
@@ -1143,28 +1141,10 @@ func GenerateOutboundsFromParserConfig(
 	}
 	skippedNaive := 0
 
-	// SPEC 115: причины отбраковки от разбора. Хук ставится на время ЭТОГО
-	// прогона и снимается сразу после цикла — глобальная переменная,
-	// пережившая свою сборку, приписала бы чужие причины следующей.
-	//
-	// Ключ — позиция источника в ParserConfig, а не ULID: у конфигов, собранных
-	// не из состояния, ULID пуст, и все такие источники слились бы в один ключ.
-	parseFailuresBySource := make(map[int][]string)
 	// SPEC 118 W4: эмиссионные деградации канонического пути (битое тело,
 	// пустая группа, снятое умолчание) — тот же адресат, что у причин
 	// разбора: отчёт сборки. Ключ — позиция источника, как и там.
 	emissionWarningsBySource := make(map[int][]string)
-	currentSourceIdx := -1
-	prevRecordHook := subscription.RecordParseFailures
-	subscription.RecordParseFailures = func(_ ProxySource, reasons []string) {
-		if currentSourceIdx >= 0 && len(reasons) > 0 {
-			parseFailuresBySource[currentSourceIdx] = reasons
-		}
-	}
-	// defer, а не только снятие после цикла: паника в загрузчике оставила бы
-	// хук этой сборки жить дальше, и следующий разбор писал бы причины в
-	// карту, которую уже никто не читает.
-	defer func() { subscription.RecordParseFailures = prevRecordHook }()
 
 	processedIdx := 0
 	succeededSources := 0
@@ -1181,33 +1161,18 @@ func GenerateOutboundsFromParserConfig(
 		}
 		processedIdx++
 
-		// SPEC 118 W4: источник с материализованными nodes[] эмитится из
-		// канона — конвейер сборки тело подписки НЕ читает и парсеры по
-		// подпискам не зовёт (SPEC Т5). Мостовой путь (loadNodesFunc →
-		// разбор raw-кэша) остаётся только для источников, ещё не прошедших
-		// материализацию; он умирает в W5 вместе с самим кэшем.
+		// SPEC 118 Т5: источник эмитится из МАТЕРИАЛИЗОВАННОГО канона —
+		// конвейер сборки тело подписки не читает и парсеры по подпискам не
+		// зовёт. Канона нет = собирать не из чего (узел без тела, подписку
+		// ещё ни разу не обновляли): это состояние источника, а не вторая
+		// ветка конвейера.
 		var nodesFromSource []*ParsedNode
-		var err error
 		if proxySource.Canonical != nil {
 			emitted := EmitCanonicalSource(proxySource, i, tagCounts)
 			nodesFromSource = emitted.Nodes
 			if len(emitted.Warnings) > 0 {
 				emissionWarningsBySource[i] = emitted.Warnings
 			}
-		} else {
-			// SPEC 094 A5: группы из импортированного sing-box конфига приходят
-			// В ЭТОМ ЖЕ списке как обычные узлы (SchemeGroup). Отдельного канала
-			// для них нет — вкладка Outbounds остаётся за каналами лаунчера.
-			currentSourceIdx = i
-			nodesFromSource, err = loadNodesFunc(proxySource, tagCounts, progressCallback, i, totalSources)
-			currentSourceIdx = -1
-		}
-		if err != nil {
-			debuglog.ErrorLog("GenerateOutboundsFromParserConfig: Error processing source %d/%d: %v", i+1, totalSources, err)
-			failedSources++
-			parseFailedSources = append(parseFailedSources,
-				sourceParseFailure(proxySource, appendReason(parseFailuresBySource[i], err.Error())))
-			continue
 		}
 
 		skippedNaiveHere := 0
@@ -1249,14 +1214,17 @@ func GenerateOutboundsFromParserConfig(
 			// разбора уже собраны (хук выше), и здесь они становятся записью
 			// отчёта: пользователю нужен ответ «почему пусто», а не факт
 			// пустоты.
-			failure := sourceParseFailure(proxySource, parseFailuresBySource[i])
+			// Причина «почему пусто» приезжает НЕ из разбора (его тут нет —
+			// SPEC 118 Т5), а из состояния источника: warnings последнего
+			// fetch'а кладёт в отчёт FeedBuildReportFromFetchStatus, а
+			// эмиссионные деградации — emissionWarningsBySource.
+			failure := sourceParseFailure(proxySource, emissionWarningsBySource[i])
 			debuglog.WarnLog("GenerateOutboundsFromParserConfig: source %d/%d returned zero nodes (counted as failed): %s",
 				i+1, totalSources, failure.Reason)
 			failedSources++
 			parseFailedSources = append(parseFailedSources, failure)
 		}
 	}
-	subscription.RecordParseFailures = prevRecordHook
 
 	if len(allNodes) == 0 {
 		// Узлов не набралось ни одного — конфига не будет. Но причины УЖЕ
@@ -1278,7 +1246,7 @@ func GenerateOutboundsFromParserConfig(
 			SkippedNaiveNodes:  skippedNaive,
 			SkippedNaiveReason: naiveReason,
 			// ExcludedSources здесь пуст по существу, а не по недосмотру:
-			// исключения считает resolveNodeDetours ниже, и при нулевом наборе
+			// исключения считает резолв графа ссылок ниже, и при нулевом наборе
 			// узлов исключать нечего — до графа ссылок дело не дошло.
 			ParseFailedSources: parseFailedSources,
 		}
@@ -1341,21 +1309,6 @@ func GenerateOutboundsFromParserConfig(
 		debuglog.WarnLog("tag guard: %s", c)
 	}
 
-	// ПРОХОД 2 (SPEC 112-A, инвариант двухпроходности): выше закончился проход
-	// 1 — каждый узел каждого источника получил ФИНАЛЬНЫЙ тег. Только теперь
-	// материализуются ссылки на узлы: строится единая карта резолва
-	// «источник + identity-тег → узел», и ссылки-объекты
-	// (detour_node_source_id + detour_node_tag) превращаются в теги. Легаси
-	// detour_node_hash мигрирует на этом же проходе.
-	//
-	// Резолв обязан идти ДО sanitizeNodeDetours, чтобы проставленные теги
-	// попали в проверку циклов и самоссылок, и до граф-санитайзера ниже по
-	// потоку — финального рубежа по всем рёбрам outbound-графа.
-	allNodes, excludedSources := resolveNodeDetours(parserConfig, nodesBySource, allNodes)
-	if len(allNodes) == 0 {
-		return nil, fmt.Errorf("no usable nodes: every source was dropped (detour node not found)")
-	}
-
 	// SPEC 077 → SPEC 113-B: самоссылка и кольцо detour среди узлов. Fail-closed:
 	// выбрасывается УЗЕЛ-носитель, а не ключ detour, — снятие ключа отправило бы
 	// его трафик напрямую молча. Висячие detour на теги шаблонных/preset-групп
@@ -1408,7 +1361,7 @@ func GenerateOutboundsFromParserConfig(
 		}
 	}
 
-	globalPool := FilterNodesExcludeFromGlobal(allNodes, parserConfig.ParserConfig.Proxies)
+	globalPool := FilterDirectionCandidatePool(allNodes, parserConfig.ParserConfig.Proxies)
 	exposeCandidates := collectExposeTagCandidates(parserConfig)
 	outboundsInfo, chainCycles, detourCycles := buildOutboundsInfo(parserConfig, nodesBySource, globalPool, progressCallback)
 	computeOutboundValidity(outboundsInfo, parserConfig, exposeCandidates, progressCallback)
@@ -1431,7 +1384,6 @@ func GenerateOutboundsFromParserConfig(
 		BrokenChains:         brokenChains,
 		ChainCycles:          chainCycles,
 		DetourCycles:         detourCycles,
-		ExcludedSources:      excludedSources,
 		ParseFailedSources:   parseFailedSources,
 		EmissionWarnings:     emissionWarnings,
 		NodeOrigins:          nodeOrigins,
@@ -1505,7 +1457,7 @@ func generateGroupNodeJSON(node *ParsedNode) (string, error) {
 // generateRawNodeJSON emits a manual config_json node (ParsedNode.EmitRaw):
 // the Outbound map goes into the config verbatim, except tag (restamped with
 // the node's final tag — label/mask/uniquify already applied) and detour
-// (stamped by subscription.ApplySourceDetour / the chain logic into the map itself).
+// (stamped into the map itself by the canonical link resolve / chain logic).
 //
 // tag and type lead for readability, the rest is sorted: determinism is
 // needed by the node identity hash, which is computed from the emitted JSON.
@@ -1666,300 +1618,6 @@ func normalizeChainHop(hop, owner *ParsedNode) *ParsedNode {
 	return out
 }
 
-// resolveNodeDetours implements SPEC 101 → SPEC 112 → SPEC 112-A — a source
-// chained through ONE concrete node, the node-level sibling of the
-// tag-addressed group detour (SPEC 077).
-//
-// Ссылка на узел — объект «source_id + identity-тег» (см. node_ref.go); тут
-// она материализуется в финальный тег. Это ПРОХОД 2 сборки: карта резолва
-// строится одним местом (buildNodeRefIndex), и только после неё резолвится
-// хоть что-нибудь. Резолв из прохода 1 запрещён по построению — там финальных
-// тегов у части узлов ещё нет.
-//
-// Группы кандидатами не являются: дозвон через selector — задача DetourTag.
-//
-// Fail-closed: ссылка не разрешилась (источник-цель удалён, узел исчез из
-// подписки, провайдер его переименовал) — узлы зависимого источника ВЫПАДАЮТ
-// из конфига с предупреждением. Хоп выбирали, чтобы спрятать за ним трафик
-// источника, и молча превратить его в прямой звонок нельзя.
-//
-// SPEC 113-B — единая строгость и топологический порядок:
-//   - источники со ссылками обходятся в порядке «цель раньше ссылающегося»
-//     (detour_topo.go), поэтому выпадение КАСКАДИРУЕТ: выпал источник хопа —
-//     выпадает и тот, кто через этот хоп ходил, со своей причиной;
-//   - кольцо ссылок = fail-closed ВСЕХ участников. Прежде кольцо доезжало до
-//     граф-санитайзера и разрывалось снятием detour — тихий переход на
-//     прямой дозвон, теперь запрещённый на всех уровнях;
-//   - у группового detour (DetourTag) та же строгость, но проверяется он
-//     позже: существование селектора шаблона известно только там, где собран
-//     полный набор финальных тегов (core/build, sanitizeOutboundGraph).
-//
-// Когда заданы и DetourNodeTag, и DetourTag (UI это запрещает, ручная правка
-// состояния — нет), побеждает ссылка на узел: LoadNodesFromSource у такого
-// источника групповой тег не штампует, штамп происходит здесь.
-//
-// Миграция SPEC 112: источник, у которого остался упразднённый
-// `detour_node_hash`, переезжает на ссылку-объект тут же — см.
-// migrateLegacyDetourNodeHash.
-//
-// Второе возвращаемое значение — реестр исключений (SPEC 112-B часть B): те же
-// drop'ы, но пригодные для показа. Молчаливое исключение по логу и было
-// парадоксом Proton NL — строка источника оставалась здоровой на вид.
-func resolveNodeDetours(
-	parserConfig *ParserConfig,
-	nodesBySource map[int][]*ParsedNode,
-	allNodes []*ParsedNode,
-) ([]*ParsedNode, []SourceExclusion) {
-	var refSources []int
-	for i, ps := range parserConfig.ParserConfig.Proxies {
-		if len(nodesBySource[i]) == 0 {
-			continue
-		}
-		if strings.TrimSpace(ps.DetourNodeTag) != "" ||
-			strings.TrimSpace(ps.DetourNodeSourceID) != "" ||
-			strings.TrimSpace(ps.DetourNodeHash) != "" {
-			refSources = append(refSources, i)
-		}
-	}
-	if len(refSources) == 0 {
-		return allNodes, nil
-	}
-
-	// Карта резолва — ОДНА на сборку и строится здесь, на проходе 2. Любой
-	// будущий вид ссылки на узел обязан ходить через неё, а не заводить свой
-	// поиск (см. развёрнутое обоснование в node_ref.go).
-	idx := buildNodeRefIndex(parserConfig, nodesBySource, allNodes)
-
-	// Легаси-хеши мигрируют ДО построения графа: без этого ребро у такого
-	// источника ещё не видно, и топологический порядок вышел бы неполным.
-	for _, i := range refSources {
-		ps := parserConfig.ParserConfig.Proxies[i]
-		if strings.TrimSpace(ps.DetourNodeHash) != "" &&
-			strings.TrimSpace(ps.DetourNodeTag) == "" && strings.TrimSpace(ps.DetourNodeSourceID) == "" {
-			// Состояние до SPEC 112 — ссылка живёт хешем; переводим на объект.
-			migrateLegacyDetourNodeHash(&parserConfig.ParserConfig.Proxies[i], idx, allNodes, i)
-		}
-	}
-
-	// SPEC 113-B: граф зависимостей источников. Ребро — «ссылающийся → источник,
-	// в котором живёт хоп». Предварительный резолв здесь НИЧЕГО не штампует:
-	// он нужен ровно ради ребра, и для tag-only ссылок (без source_id) это
-	// единственный способ узнать источник-цель.
-	edges := make(map[int]detourEdge, len(refSources))
-	for _, i := range refSources {
-		ps := parserConfig.ParserConfig.Proxies[i]
-		if res := idx.resolve(ps.DetourNodeSourceID, ps.DetourNodeTag); res.node != nil &&
-			res.node.SourceIndex != UnsetSourceIndex && res.node.SourceIndex != i {
-			edges[i] = detourEdge{target: res.node.SourceIndex, targetKnown: true}
-		}
-	}
-	order, inCycle := detourSourceOrder(refSources, edges)
-
-	dropSource := make(map[int]bool)
-	var excluded []SourceExclusion
-
-	dropWithReason := func(i int, reason string) {
-		ps := parserConfig.ParserConfig.Proxies[i]
-		name := sourceDisplayName(ps, i)
-		debuglog.WarnLog("Detour: %s — источник %q исключён из конфига (fail-closed)", reason, name)
-		dropSource[i] = true
-		excluded = append(excluded, SourceExclusion{
-			SourceID:    strings.TrimSpace(ps.ID),
-			SourceLabel: name,
-			Reason:      reason,
-		})
-	}
-
-	// Кольцо — fail-closed ВСЕХ участников: разорвать его снятием detour значит
-	// пустить трафик источника напрямую, чего пользователь не просил.
-	// Участники перечисляются в порядке источников, чтобы список исключений был
-	// детерминированным.
-	if len(inCycle) > 0 {
-		for _, i := range refSources {
-			if !inCycle[i] {
-				continue
-			}
-			ps := parserConfig.ParserConfig.Proxies[i]
-			targetName := idx.detourTargetName(parserConfig, ps.DetourNodeSourceID)
-			if targetName == "" {
-				if e, ok := edges[i]; ok && e.targetKnown && e.target < len(parserConfig.ParserConfig.Proxies) {
-					targetName = sourceDisplayName(parserConfig.ParserConfig.Proxies[e.target], e.target)
-				}
-			}
-			dropWithReason(i, detourCycleReason(sourceDisplayName(ps, i), targetName))
-		}
-	}
-
-	for _, i := range order {
-		ps := parserConfig.ParserConfig.Proxies[i]
-
-		// Каскад: источник-цель уже выпал — вместе с ним исчез и хоп. Проверка
-		// обязана идти ДО резолва: карта резолва строилась по полному набору
-		// узлов и о выпадениях этой сборки ничего не знает.
-		if e, ok := edges[i]; ok && e.targetKnown && dropSource[e.target] {
-			dropWithReason(i, detourCascadeReason(
-				detourHopDisplayName(ps),
-				sourceDisplayName(parserConfig.ParserConfig.Proxies[e.target], e.target)))
-			continue
-		}
-
-		res := idx.resolve(ps.DetourNodeSourceID, ps.DetourNodeTag)
-		if res.node == nil {
-			dropWithReason(i, detourFailureReason(parserConfig, idx, ps))
-			continue
-		}
-		target := res.node
-		for _, n := range nodesBySource[i] {
-			if n == nil || n == target {
-				continue // the hop itself dials direct
-			}
-			// Same eligibility as subscription.ApplySourceDetour (SPEC 077).
-			if n.Jump != nil {
-				debuglog.DebugLog("resolveNodeDetours: node %q has an Xray Jump — detour %q not applied", n.Tag, target.Tag)
-				continue
-			}
-			if _, hasLP := n.Outbound["listen_port"]; hasLP && n.Scheme == "wireguard" {
-				debuglog.WarnLog("Parser: node %q has listen_port — detour %q not applied (core rejects detour+listen_port)", n.Tag, target.Tag)
-				continue
-			}
-			if n.Outbound == nil {
-				n.Outbound = map[string]interface{}{}
-			}
-			n.Outbound["detour"] = target.Tag
-		}
-	}
-
-	if len(dropSource) == 0 {
-		return allNodes, nil
-	}
-	kept := allNodes[:0]
-	for _, n := range allNodes {
-		if n != nil && dropSource[n.SourceIndex] {
-			continue
-		}
-		kept = append(kept, n)
-	}
-	for i := range dropSource {
-		delete(nodesBySource, i)
-	}
-	return kept, excluded
-}
-
-// detourFailureMessage — строка предупреждения в лог: причина плюс имя
-// источника, который из-за неё выпал.
-func detourFailureMessage(parserConfig *ParserConfig, idx *nodeRefIndex, ps ProxySource, index int) string {
-	return fmt.Sprintf("Detour: %s — источник %q исключён из конфига (fail-closed)",
-		detourFailureReason(parserConfig, idx, ps), sourceDisplayName(ps, index))
-}
-
-// detourFailureReason — ПОЧЕМУ ссылка не разрешилась, без упоминания
-// зависимого источника.
-//
-// Отдельно от detourFailureMessage, потому что у причины теперь два
-// потребителя: лог (там она обрамляется именем выпавшего источника) и UI —
-// пометка в строке Wizard → Sources и тост после сборки (SPEC 112-B часть B),
-// где источник и так известен из контекста и повтор его имени только съедал бы
-// место.
-//
-// SPEC 112-A («Понятные ошибки»): текст обязан называть обе стороны — где
-// искали и что — человеческими именами. Источники зовутся подписью, за ней
-// тегом узла или URL; ULID выносится в текст только когда другого имени нет
-// (источник удалён — от него остался лишь id в ссылке).
-func detourFailureReason(parserConfig *ParserConfig, idx *nodeRefIndex, ps ProxySource) string {
-	nodeName := strings.TrimSpace(ps.DetourNodeTag)
-	if nodeName == "" {
-		nodeName = strings.TrimSpace(ps.DetourNodeLabel)
-	}
-
-	if target := idx.detourTargetName(parserConfig, ps.DetourNodeSourceID); target != "" {
-		if _, known := idx.sourceIndexByID[strings.TrimSpace(ps.DetourNodeSourceID)]; !known {
-			return fmt.Sprintf("источник ссылки (%s) не найден", target)
-		}
-		if nodeName == "" {
-			return fmt.Sprintf("в источнике %q не указан узел", target)
-		}
-		return fmt.Sprintf("в источнике %q не нашлось узла %q", target, nodeName)
-	}
-
-	if nodeName == "" {
-		return "ссылка на узел пуста"
-	}
-	return fmt.Sprintf("узла %q нет среди узлов конфига", nodeName)
-}
-
-// migrateLegacyDetourNodeHash переводит ссылку detour-на-узел с упразднённого
-// контент-хеша на ссылку-объект «source_id + identity-тег» (SPEC 112 → 112-A).
-//
-// Порядок проб:
-//  1. Прогнать LegacyNodeIdentityHash по всем узлам конфига; хеш совпал —
-//     ссылка едет на ПОЛНЫЙ ref найденного узла: ULID его источника плюс его
-//     identity-тег.
-//  2. Не совпал — взять DetourNodeLabel как тег, но уже БЕЗ source_id: узел
-//     под ним не опознан, и приписывать ссылке чужой источник нельзя. Пикер
-//     писал в label финальный тег узла на момент выбора, поэтому для узла,
-//     живого под тем же именем, глобальный поиск по тегу даст верную цель.
-//     Именно этот путь лечит стейт, где хеш протух из-за смены формы хранения
-//     узла (uri ↔ config_json дают разные хеши одного узла): узел на месте, а
-//     ссылка мертва, и источник fail-closed выпадал из конфига целиком.
-//
-// detour_node_hash гасится в любом исходе: повторно мигрировать нечего, и поле
-// больше не пишется. Ничего не найдено — ссылка остаётся пустой, и вызывающий
-// отработает fail-closed ровно так же, как для потерянной.
-func migrateLegacyDetourNodeHash(ps *ProxySource, idx *nodeRefIndex, allNodes []*ParsedNode, index int) {
-	hash := strings.TrimSpace(ps.DetourNodeHash)
-	ps.DetourNodeHash = ""
-	if hash == "" {
-		return
-	}
-
-	for _, n := range allNodes {
-		if n == nil || n.Scheme == SchemeGroup || n.Tag == "" {
-			continue
-		}
-		if LegacyNodeIdentityHash(n) != hash {
-			continue
-		}
-		if srcID := sourceIDOfNode(idx, n); srcID != "" {
-			ps.DetourNodeSourceID = srcID
-			ps.DetourNodeTag = nodeIdentityTag(n)
-		} else {
-			// У источника узла нет ULID (конфиг собран не из состояния):
-			// пишем tag-only ref, и он обязан нести ФИНАЛЬНЫЙ тег — именно по
-			// нему идёт глобальный поиск.
-			ps.DetourNodeSourceID = ""
-			ps.DetourNodeTag = n.Tag
-		}
-		debuglog.DebugLog("SPEC 112-A: ссылка источника %q переехала с упразднённого хеша на узел %q",
-			sourceDisplayName(*ps, index), n.Tag)
-		return
-	}
-
-	if label := strings.TrimSpace(ps.DetourNodeLabel); label != "" {
-		ps.DetourNodeSourceID = ""
-		ps.DetourNodeTag = label
-		debuglog.DebugLog("SPEC 112-A: хеш-ссылка источника %q не опознана — цель взята из подписи %q (поиск по финальному тегу)",
-			sourceDisplayName(*ps, index), label)
-		return
-	}
-
-	debuglog.WarnLog("Detour: устаревшая ссылка источника %q не опознана и подписи нет — ссылка потеряна, источник будет исключён из конфига (fail-closed)",
-		sourceDisplayName(*ps, index))
-}
-
-// sourceIDOfNode — ULID источника, которому принадлежит узел. Пусто, если у
-// источника ULID нет (конфиг собран не из состояния) — тогда мигрированная
-// ссылка останется tag-only и разрешится глобальным поиском.
-func sourceIDOfNode(idx *nodeRefIndex, n *ParsedNode) string {
-	if idx == nil || n == nil {
-		return ""
-	}
-	for id, i := range idx.sourceIndexByID {
-		if i == n.SourceIndex {
-			return id
-		}
-	}
-	return ""
-}
 
 // sanitizeNodeDetours выбрасывает узлы, чей detour сломал бы sing-box
 // (SPEC 077 → SPEC 113-B). Fail-closed: выбрасывается УЗЕЛ-носитель, а не поле

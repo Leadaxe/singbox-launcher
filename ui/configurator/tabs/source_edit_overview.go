@@ -3,26 +3,17 @@ package tabs
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
-	"singbox-launcher/core/config/subscription"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
-	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui/components"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
@@ -56,43 +47,53 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 
 		// === Identity ===
 		body.Add(sectionHeader(locale.T("Status")))
-		typeLabel := locale.T("Subscription")
-		if src.Kind == corestate.SourceTypeServer {
-			typeLabel = locale.T("Server")
-		}
+		// Тип — по виду источника. Раньше их было два и подпись сводилась к
+		// «подписка или сервер»; в v7 видов пять, и назвать цепочку
+		// подпиской значило бы соврать в первой же строке обзора.
+		typeLabel := sourceKindLabel(src.Kind)
 		body.Add(kvRow(locale.T("Type"), typeLabel))
 		body.Add(kvRow(locale.T("ID"), src.ID))
 		if src.URL != "" {
 			body.Add(kvRow(locale.T("URL"), src.URL))
 		}
-		if src.URI != "" {
-			body.Add(kvRow(locale.T("URI"), src.URI))
+		if src.Origin != nil && src.Origin.Raw != "" {
+			body.Add(kvRow(locale.T("Origin"), src.Origin.Raw))
 		}
 		// Тег и подпись — разные строки: раньше их роль делило одно поле,
 		// и по обзору нельзя было понять, на что сошлётся правило.
-		if tag := src.NodeTag; tag != "" {
+		if tag := src.Tag; tag != "" {
 			body.Add(kvRow(locale.T("Node tag"), tag))
+		}
+		if src.Name != "" {
+			body.Add(kvRow(locale.T("Name"), src.Name))
 		}
 		if src.Label != "" {
 			body.Add(kvRow(locale.T("Label"), src.Label))
 		}
 		body.Add(kvRow(locale.T("Enabled"), boolStr(src.Enabled)))
-		if src.ExcludeFromGlobal {
-			body.Add(kvRow(locale.T("Excluded from global"), "true"))
-		}
 
-		if src.Kind == corestate.SourceTypeServer {
+		// Диагностика fetch'а есть только у подписки: внешним владельцем
+		// состава больше никто не обладает. Остальным видам показываем их
+		// состав и запись хранилища — и НЕ предлагаем «нажать Refresh»:
+		// обновлять папку или цепочку неоткуда, и такая подпись отправляла
+		// бы пользователя искать кнопку, которой нет.
+		if src.Kind != corestate.SourceKindSubscription {
 			body.Add(widget.NewSeparator())
 			lbl := widget.NewLabel(locale.T("Server source — meta is not collected (only fetched per subscription)."))
 			lbl.Importance = widget.LowImportance
 			lbl.Wrapping = fyne.TextWrapWord
 			body.Add(lbl)
+			if len(src.Nodes) > 0 {
+				body.Add(widget.NewSeparator())
+				body.Add(sectionHeader(locale.Tf("Nodes: %d", len(src.Nodes))))
+				body.Add(nodeOriginList(src.Nodes))
+			}
 			appendStorageRecordSection(body, src)
 			body.Refresh()
 			return
 		}
 
-		meta := src.Meta
+		meta := diagOf(&src)
 		if meta == nil {
 			body.Add(widget.NewSeparator())
 			lbl := widget.NewLabel(locale.T("No meta yet — press Refresh to fetch this subscription."))
@@ -106,47 +107,53 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 
 		// === Status (fetch history) ===
 		body.Add(kvRow(locale.T("Last status"), formatStatusBadge(meta)))
-		if meta.LastFetchedAt != "" {
+		if at := meta.lastAttemptAt(); at != "" {
 			body.Add(kvRow(locale.T("Last fetched"),
-				fmt.Sprintf("%s (%s)", meta.LastFetchedAt, formatLastFetched(meta))))
+				fmt.Sprintf("%s (%s)", at, formatLastFetched(meta))))
 		}
-		if meta.HTTPStatusCode > 0 {
-			body.Add(kvRow(locale.T("HTTP status"), fmt.Sprintf("%d", meta.HTTPStatusCode)))
+		if st := src.UpdateStatus; st != nil {
+			if st.HTTPStatusCode > 0 {
+				body.Add(kvRow(locale.T("HTTP status"), fmt.Sprintf("%d", st.HTTPStatusCode)))
+			}
+			if st.RawBodyBytes > 0 {
+				body.Add(kvRow(locale.T("Body size"), humanizeBytes(st.RawBodyBytes)))
+			}
 		}
-		if meta.RawBodyBytes > 0 {
-			body.Add(kvRow(locale.T("Body size"), humanizeBytes(meta.RawBodyBytes)))
-		}
-		if meta.NodesCountFetched > 0 {
+		if meta.nodesCount() > 0 {
 			body.Add(kvRow(locale.T("Nodes fetched"), formatNodesCount(meta, 0)))
 		}
-		if meta.ErrorCount > 0 {
-			body.Add(kvRow(locale.T("Error count"), fmt.Sprintf("%d", meta.ErrorCount)))
+		if c := meta.errorCount(); c > 0 {
+			body.Add(kvRow(locale.T("Error count"), fmt.Sprintf("%d", c)))
 		}
-		if meta.LastErrorMsg != "" {
-			body.Add(kvRow(locale.T("Last error"), meta.LastErrorMsg))
+		if msg := meta.lastErrorMsg(); msg != "" {
+			body.Add(kvRow(locale.T("Last error"), msg))
 		}
 
 		// === Headers ===
-		hasHeaders := meta.ProfileTitle != "" || meta.ProfileUpdateIntervalHours > 0 ||
-			meta.SupportURL != "" || meta.ProfileWebPageURL != "" || meta.ContentDispositionFilename != ""
+		hdr := src.Meta
+		if hdr == nil {
+			hdr = &corestate.SubMeta{}
+		}
+		hasHeaders := hdr.ProfileTitle != "" || hdr.ProfileUpdateIntervalHours > 0 ||
+			hdr.SupportURL != "" || hdr.ProfileWebPageURL != "" || hdr.ContentDispositionFilename != ""
 		if hasHeaders {
 			body.Add(widget.NewSeparator())
 			body.Add(sectionHeader(locale.T("Subscription metadata (HTTP headers)")))
-			if meta.ProfileTitle != "" {
-				body.Add(kvRow(locale.T("Profile title"), meta.ProfileTitle))
+			if hdr.ProfileTitle != "" {
+				body.Add(kvRow(locale.T("Profile title"), hdr.ProfileTitle))
 			}
-			if meta.ProfileUpdateIntervalHours > 0 {
+			if hdr.ProfileUpdateIntervalHours > 0 {
 				body.Add(kvRow(locale.T("Update interval"),
-					fmt.Sprintf("%dh", meta.ProfileUpdateIntervalHours)))
+					fmt.Sprintf("%dh", hdr.ProfileUpdateIntervalHours)))
 			}
-			if meta.SupportURL != "" {
-				body.Add(kvRow(locale.T("Support URL"), meta.SupportURL))
+			if hdr.SupportURL != "" {
+				body.Add(kvRow(locale.T("Support URL"), hdr.SupportURL))
 			}
-			if meta.ProfileWebPageURL != "" {
-				body.Add(kvRow(locale.T("Web page"), meta.ProfileWebPageURL))
+			if hdr.ProfileWebPageURL != "" {
+				body.Add(kvRow(locale.T("Web page"), hdr.ProfileWebPageURL))
 			}
-			if meta.ContentDispositionFilename != "" {
-				body.Add(kvRow(locale.T("Content-Disposition filename"), meta.ContentDispositionFilename))
+			if hdr.ContentDispositionFilename != "" {
+				body.Add(kvRow(locale.T("Content-Disposition filename"), hdr.ContentDispositionFilename))
 			}
 		}
 
@@ -165,13 +172,13 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 			body.Add(widget.NewSeparator())
 			body.Add(sectionHeader(locale.T("Provider message")))
 			body.Add(kvRow(locale.T("Announcement"), msg))
-			if meta.ProviderAnnounce != nil && meta.ProviderAnnounce.URL != "" {
-				body.Add(kvRow(locale.T("Announcement URL"), meta.ProviderAnnounce.URL))
+			if a := meta.providerAnnounce(); a != nil && a.URL != "" {
+				body.Add(kvRow(locale.T("Announcement URL"), a.URL))
 			}
 		}
 
 		// === Quota ===
-		if ui := meta.UserInfo; ui != nil && (ui.TotalBytes > 0 || ui.ExpireUnix > 0) {
+		if ui := meta.userInfo(); ui != nil && (ui.TotalBytes > 0 || ui.ExpireUnix > 0) {
 			body.Add(widget.NewSeparator())
 			body.Add(sectionHeader(locale.T("Traffic quota")))
 			if ui.TotalBytes > 0 {
@@ -196,92 +203,15 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 			}
 		}
 
-		// === Raw body (slили из Raw tab) ===
-		execDir := m.ExecDir
-		if execDir != "" {
-			subsDir := platform.GetSubscriptionsDir(execDir)
-			rawPath := filepath.Join(subsDir, src.ID+".raw")
-			// Read strategy зависит от размера файла:
-			//   - small (<= rawBodyFullReadLimit, типичный base64 / text-line) —
-			//     читаем целиком, DecodeSubscriptionContent декодирует base64
-			//     или возвращает body как есть (для JSON / plain URI).
-			//   - large (Xray JSON ~1 MB) — partial read, skip decode (тяжёлый
-			//     json.Valid+Unmarshal на МБ; для preview достаточно prefix).
-			// В обоих случаях finally truncate to rawBodyMaxDisplay.
-			tRead := time.Now()
-			display, totalSize, ok := readRawBodySmart(rawPath, rawBodyMaxDisplay+1)
-			debuglog.DebugLog("buildOverviewTab: readRawBodySmart took %v (size=%d, total=%d, ok=%v)", time.Since(tRead), len(display), totalSize, ok)
-			if ok && len(display) > 0 {
-				body.Add(widget.NewSeparator())
-
-				truncatedNote := ""
-				if totalSize > rawBodyMaxDisplay {
-					if len(display) > rawBodyMaxDisplay {
-						display = display[:rawBodyMaxDisplay]
-					}
-					truncatedNote = locale.Tf("Showing first %d of %d bytes", rawBodyMaxDisplay, totalSize)
-				}
-
-				// Header: title + icon-кнопки сразу справа от него (inline HBox).
-				// Кнопки показываем всегда — путь полезен и когда body не truncated
-				// (юзер может захотеть открыть в внешнем editor'е).
-				// ttwidget.NewButtonWithIcon — поддерживает SetToolTip (обычный
-				// widget.Button его не поддерживает, поэтому setTooltip был no-op).
-				openBtn := ttwidget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
-					openInFileManager(subsDir)
-				})
-				openBtn.Importance = widget.LowImportance
-				openBtn.SetToolTip(locale.T("Open folder") + "\n" + subsDir)
-				copyBtn := ttwidget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
-					if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
-						app.Clipboard().SetContent(rawPath)
-					}
-				})
-				copyBtn.Importance = widget.LowImportance
-				copyBtn.SetToolTip(locale.T("Copy file path") + "\n" + rawPath)
-				headerRow := container.NewHBox(
-					sectionHeader(locale.T("Raw body (decoded)")),
-					openBtn, copyBtn,
-				)
-				body.Add(headerRow)
-
-				if truncatedNote != "" {
-					tr := widget.NewLabel(truncatedNote)
-					tr.Importance = widget.LowImportance
-					body.Add(tr)
-				}
-
-				// MultiLineEntry без Disable() — на macOS Fyne disabled-text
-				// рендерится цветом фона (невидимо). Оставляем editable
-				// на ввод, но без OnChanged — мутации игнорятся.
-				//
-				// TextWrapBreak (не Off): compact JSON подписки (типа Xray)
-				// идут одной длинной строкой без переводов, без wrap'а уходят
-				// далеко вправо за viewport — юзер видит чёрное пустое поле.
-				// Break wrap'ает по любому символу (JSON без пробелов
-				// нормально не break'ается по слову).
-				// Pre-wrap: компактный JSON / base64 одной строкой Fyne wrap'ает
-				// посимвольно (TextWrapBreak без виртуализации — 9+ сек на 4 KB).
-				// Вставляем \n каждые wrapEvery символов вручную и снимаем
-				// Fyne-wrap (TextWrapOff) — мгновенно.
-				displayStr := wrapLongLines(string(display), 100)
-				tEntry := time.Now()
-				bodyEntry := widget.NewMultiLineEntry()
-				bodyEntry.Wrapping = fyne.TextWrapOff
-				bodyEntry.SetText(displayStr)
-				debuglog.DebugLog("buildOverviewTab: bodyEntry.SetText(%d bytes, pre-wrapped %d lines) took %v", len(displayStr), strings.Count(displayStr, "\n")+1, time.Since(tEntry))
-				bodyEntry.OnChanged = func(s string) {
-					if s != string(display) {
-						bodyEntry.SetText(string(display))
-					}
-				}
-				bodyEntryScroll := container.NewVScroll(container.NewStack(
-					canvas.NewRectangle(transparentColor()),
-					bodyEntry,
-				))
-				bodyEntryScroll.SetMinSize(fyne.NewSize(0, 240))
-				body.Add(bodyEntryScroll)
-			}
+		// === Состав: узлы и их происхождение ===
+		//
+		// SPEC 118 Т8: блок «raw body» умер вместе с кэшем тел. Тела теперь
+		// материализованы поузлово, и честный ответ на «что за подписка» —
+		// её СОСТАВ, а не байты ответа сервера.
+		body.Add(widget.NewSeparator())
+		body.Add(sectionHeader(locale.Tf("Nodes: %d", len(src.Nodes))))
+		if len(src.Nodes) > 0 {
+			body.Add(nodeOriginList(src.Nodes))
 		}
 
 		appendStorageRecordSection(body, src)
@@ -290,16 +220,18 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 	}
 
 	// Lazy: НЕ вызываем refresh() здесь. Overview по дефолту неактивный таб
-	// (Settings — первый в NewAppTabs), а refresh() тянет ReadRawBody +
+	// (Settings — первый в NewAppTabs), а refresh() читает состав узлов +
 	// DecodeSubscriptionContent для подписки с 1 MB Xray JSON body — это
 	// ~10 сек на открытии окна. Refresh вызывается из tabs.OnSelected когда
 	// юзер реально кликает Overview. До этого таб показывает пустой VBox.
 	return rootWithGutter, refresh
 }
 
-// appendStorageRecordSection — блок «как источник записан в state.json»
-// (canonical v5 Source). Раньше этот снапшот был вкладкой JSON; переехал
-// сюда, когда вкладка JSON стала показывать распакованный sing-box outbound.
+// appendStorageRecordSection — блок «как источник записан в state.json»:
+// каноническая запись v7 (SPEC 118 Т8) — ровно то, что уедет на диск, со
+// всеми материализованными узлами, их origin и отметками включённости.
+// Раньше этот снапшот был вкладкой JSON; переехал сюда, когда вкладка JSON
+// стала показывать распакованный sing-box outbound.
 func appendStorageRecordSection(body *fyne.Container, src corestate.Source) {
 	body.Add(widget.NewSeparator())
 	body.Add(sectionHeader(locale.T("Storage record (state.json)")))
@@ -343,11 +275,52 @@ func sectionHeader(text string) *widget.Label {
 // Обрезка и схлопывание переносов — в state.AnnounceMessage: правило одно на
 // все поверхности (Overview, Preview, пометка Sources, отчёт «Итога»), и
 // разъехаться им нельзя.
-func providerAnnounceText(meta *corestate.SubscriptionMeta) string {
+func providerAnnounceText(meta *sourceDiag) string {
 	if meta == nil {
 		return ""
 	}
-	return meta.ProviderAnnounce.AnnounceMessage()
+	return meta.providerAnnounce().AnnounceMessage()
+}
+
+// nodeOriginList — список «сырой тег → origin.raw» узлов источника.
+//
+// Origin — то, из чего узел собран (share-URI, строка sing-box JSON): по нему
+// пользователь узнаёт узел, даже когда финальный тег ушёл под тег-политику.
+func nodeOriginList(nodes []corestate.Node) fyne.CanvasObject {
+	var b strings.Builder
+	for i := range nodes {
+		n := &nodes[i]
+		mark := ""
+		if !n.Enabled {
+			mark = " (off)"
+		}
+		raw := ""
+		if n.Origin != nil {
+			raw = n.Origin.Raw
+		}
+		b.WriteString(n.Tag)
+		b.WriteString(mark)
+		if raw != "" {
+			b.WriteString("\n    ")
+			b.WriteString(raw)
+		}
+		b.WriteString("\n")
+	}
+	entry := widget.NewMultiLineEntry()
+	entry.Wrapping = fyne.TextWrapOff
+	text := b.String()
+	entry.SetText(text)
+	entry.OnChanged = func(s string) {
+		if s != text {
+			entry.SetText(text)
+		}
+	}
+	scroll := container.NewVScroll(container.NewStack(
+		canvas.NewRectangle(transparentColor()),
+		entry,
+	))
+	scroll.SetMinSize(fyne.NewSize(0, 240))
+	return scroll
 }
 
 func kvRow(key, value string) fyne.CanvasObject {
@@ -361,115 +334,6 @@ func kvRow(key, value string) fyne.CanvasObject {
 	return container.NewBorder(nil, nil, keyLabel, nil, valueLabel)
 }
 
-// rawBodyFullReadLimit — лимит «маленького» файла. Файлы <= лимита читаются
-// целиком + декодируются нормально (base64/plain text). Файлы больше — partial
-// read только prefix (для Xray JSON 1 MB кейса — без декода).
-//
-// 256 KB покрывает типичные base64-encoded подписки (50-100 нод × ~300 байт ×
-// 4/3 base64 overhead = ~20 KB). Xray JSON редко меньше — обычно от 500 KB.
-const rawBodyFullReadLimit = 256 * 1024
-
-// readRawBodySmart выбирает стратегию по размеру файла:
-//   - file <= rawBodyFullReadLimit → read whole + DecodeSubscriptionContent
-//     (для base64 / plain text);
-//   - file >  rawBodyFullReadLimit → read first `displayPrefixBytes` без
-//     декода (для Xray JSON / огромных bodies).
-//
-// Возвращает (display-ready bytes, totalFileSize, ok).
-func readRawBodySmart(path string, displayPrefixBytes int) ([]byte, int, bool) {
-	stat, err := os.Stat(path)
-	if err != nil {
-		return nil, 0, false
-	}
-	total := int(stat.Size())
-	if total == 0 {
-		return nil, 0, false
-	}
-	if total <= rawBodyFullReadLimit {
-		// Small body: read all + decode normally.
-		full, rerr := os.ReadFile(path)
-		if rerr != nil {
-			return nil, total, false
-		}
-		// Try decode (base64 / json-passthrough / plain text). Best-effort:
-		// если decode упал — отдаём raw.
-		if decoded, derr := subscription.DecodeSubscriptionContent(full); derr == nil && len(decoded) > 0 {
-			return decoded, total, true
-		}
-		return full, total, true
-	}
-	// Large body: read only prefix, no decode (предполагаем JSON / уже-decoded).
-	f, ferr := os.Open(path)
-	if ferr != nil {
-		return nil, total, false
-	}
-	defer func() { _ = f.Close() }()
-	readN := displayPrefixBytes
-	if readN > total {
-		readN = total
-	}
-	buf := make([]byte, readN)
-	n, rerr := io.ReadFull(f, buf)
-	if rerr != nil && rerr != io.ErrUnexpectedEOF && rerr != io.EOF {
-		return nil, total, false
-	}
-	return buf[:n], total, true
-}
-
-// wrapLongLines вставляет '\n' каждые `every` символов в строки, длиннее
-// этого порога. Строки с уже-имеющимися переводами оставляет как есть.
-//
-// Цель: убрать стоимость Fyne text-wrap (TextWrapBreak без виртуализации) —
-// сами заранее разбиваем длинные строки на короткие. SetText на pre-wrapped
-// тексте с TextWrapOff летает.
-//
-// Используется для компактных JSON / base64 raw bodies подписок.
-func wrapLongLines(s string, every int) string {
-	if every <= 0 || len(s) < every {
-		return s
-	}
-	// Если уже есть переводы строк и средняя строка короче порога — не трогаем.
-	if nl := strings.Count(s, "\n"); nl > 0 && len(s)/(nl+1) < every {
-		return s
-	}
-	var b strings.Builder
-	b.Grow(len(s) + len(s)/every + 16)
-	for _, line := range strings.SplitAfter(s, "\n") {
-		if len(line) <= every {
-			b.WriteString(line)
-			continue
-		}
-		// Разбиваем длинную строку (без переводов) на куски.
-		for i := 0; i < len(line); i += every {
-			end := i + every
-			if end > len(line) {
-				end = len(line)
-			}
-			b.WriteString(line[i:end])
-			// Не дублируем \n если он уже на конце последнего куска.
-			if end < len(line) || (end == len(line) && !strings.HasSuffix(line, "\n")) {
-				b.WriteByte('\n')
-			}
-		}
-	}
-	return b.String()
-}
-
-// openInFileManager открывает path в системном file-manager'е (Finder/Explorer/xdg-open).
-// Best-effort: ошибки игнорируются (logged debuglog'ом нет смысла).
-func openInFileManager(path string) {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", path)
-	case "windows":
-		cmd = exec.Command("explorer", path)
-	default: // linux, *bsd
-		cmd = exec.Command("xdg-open", path)
-	}
-	_ = cmd.Start()
-}
-
 func boolStr(b bool) string {
 	if b {
 		return "true"
@@ -477,5 +341,21 @@ func boolStr(b bool) string {
 	return "false"
 }
 
-// guard: strings used somewhere
-var _ = strings.Builder{}
+// sourceKindLabel — подпись вида источника для обзора.
+//
+// Подписи взяты существующие (они уже живут в списке источников и в
+// подсказках) — новых для W6 не заводится: правило ui-visuals-approve-first.
+func sourceKindLabel(kind corestate.SourceKind) string {
+	switch kind {
+	case corestate.SourceKindServer:
+		return locale.T("Server")
+	case corestate.SourceKindChain:
+		return locale.T("chain")
+	case corestate.SourceKindAuto:
+		return locale.T("group")
+	case corestate.SourceKindFolder:
+		return locale.T("Group")
+	default:
+		return locale.T("Subscription")
+	}
+}

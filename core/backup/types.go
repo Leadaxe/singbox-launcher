@@ -110,10 +110,25 @@ type Subscription struct {
 	// регулярки в default. Поддержка — только launcher.
 	Outbounds []Direction `json:"outbounds,omitempty"`
 	// Fold — свёртка подписки в группу (SPEC 108). Только launcher.
-	Fold                    *configtypes.SourceFold `json:"fold,omitempty"`
-	ExcludeFromGlobal       bool                    `json:"exclude_from_global,omitempty"`
-	ExposeGroupTagsToGlobal bool                    `json:"expose_group_tags_to_global,omitempty"`
+	//
+	// SPEC 118: в модели ей наследует FolderReplace, а в контракте 0.11
+	// форма прежняя — конверторы границы (convert_v7.go) переводят одно в
+	// другое. Тип локальный: в приложении такого больше нет.
+	Fold                    *Fold `json:"fold,omitempty"`
+	ExcludeFromGlobal       bool  `json:"exclude_from_global,omitempty"`
+	ExposeGroupTagsToGlobal bool  `json:"expose_group_tags_to_global,omitempty"`
 	SourceRef
+}
+
+// Fold — свёртка подписки контракта 0.11 (прежний configtypes.SourceFold).
+//
+// Живёт ЗДЕСЬ, на границе бэкапа: контракт 0.11 не меняется (SPEC 118 §2), а
+// в модели v7 свёртки в этой форме нет — её место занял FolderReplace.
+type Fold struct {
+	// Mode: "select" | "auto" | "select_auto"; пустое читается как select.
+	Mode string `json:"mode,omitempty"`
+	// Auto — параметры автогруппы (режимы auto | select_auto).
+	Auto *configtypes.DirectionAuto `json:"auto,omitempty"`
 }
 
 // Direction — Направление, цель правил (SPEC 104).

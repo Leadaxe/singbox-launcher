@@ -65,7 +65,7 @@ type CanonicalEmitResult struct {
 // # Выключенный узел ПРОХОДИТ тег-машину и отбрасывается ПОСЛЕ
 //
 // Старый движок фильтровал выключенные узлы в самом конце разбора
-// (filterDisabledNodes — уже после applyURINodeTags), поэтому выключенный
+// (отбор шёл уже после простановки тегов), поэтому выключенный
 // узел успевал потребить и номер `{$num}`, и слот глобальной уникализации:
 // в подписке [A, выключенный B, B] третий узел получал финальный тег `B-2`.
 // Выброси его РАНЬШЕ машины — и сосед переехал бы на `B`, то есть у половины
@@ -78,7 +78,6 @@ func EmitCanonicalSource(ps ProxySource, sourceIndex int, tagCounts map[string]i
 	if cs == nil {
 		return res
 	}
-	res.Warnings = append(res.Warnings, canonicalMaskBridgeWarnings(ps)...)
 
 	// Номер узла ({$num}) считается по всем узлам, ПРОШЕДШИМ тег-машину, —
 	// включая выключенные и исключая несобравшиеся. Ровно так рос
@@ -116,32 +115,6 @@ func EmitCanonicalSource(ps ProxySource, sourceIndex int, tagCounts map[string]i
 		res.Nodes = append(res.Nodes, node)
 	}
 	return res
-}
-
-// canonicalMaskBridgeWarnings — честный отчёт про упразднённую тег-маску
-// (SPEC 118, features/sources.md).
-//
-// Маска тегов упразднена решением: канонический путь её не применяет вовсе.
-// Но форма источника мостовой эпохи её ещё пишет (TagPolicy.Mask → мостовое
-// поле TagMask), и молча игнорировать заполненное пользователем поле нельзя —
-// он увидел бы теги, которых не задавал, без единого слова о причине.
-// Поле формы задизейблено с той же подписью (W6 снимает вкладку целиком).
-//
-// Маска берётся только у КОНТЕЙНЕРА: у server/chain/auto мостовое поле
-// TagMask несёт тег самого узла (adapter_source.go), а не маску, и warning там
-// был бы ложным.
-func canonicalMaskBridgeWarnings(ps ProxySource) []string {
-	if ps.Canonical == nil || !ps.Canonical.IsContainer {
-		return nil
-	}
-	mask := strings.TrimSpace(ps.TagMask)
-	if mask == "" {
-		return nil
-	}
-	w := fmt.Sprintf("источник %q: тег-маска %q упразднена и не применяется; используйте prefix/postfix",
-		canonicalSourceLabel(ps), mask)
-	debuglog.WarnLog("canonical: %s", w)
-	return []string{w}
 }
 
 // canonicalSourceLabel — как назвать источник пользователю в отчёте.
@@ -316,10 +289,8 @@ func ResolveCanonicalChainHops(parserConfig *ParserConfig, targets *NodeLinkTarg
 				}
 				hops = append(hops, res.Tag)
 			}
-			if ps.Chain == nil {
-				ps.Chain = &configtypes.SourceChain{}
-			}
-			ps.Chain.Hops = hops
+			// Настройки маршрута — из тела узла, позиции — свежерезолвнутые.
+			ps.Chain = configtypes.ChainFromBody(cn.Body, hops)
 		}
 	}
 	return warnings
@@ -387,8 +358,7 @@ func canonicalPolicyInput(cs *configtypes.CanonicalSource, cn *configtypes.Canon
 // глобальный MakeTagUnique.
 //
 // У корневого узла политики нет: финальный тег = сырой (SPEC Т2). Маски в
-// каноне не существует — её место занял сырой тег; заполненное мостовое поле
-// маски не применяется молча, о нём отчитывается canonicalMaskBridgeWarnings.
+// каноне не существует — её место занял сырой тег.
 func applyEmissionTagMachine(node *ParsedNode, cs *configtypes.CanonicalSource, cn *configtypes.CanonicalNode, num int, tagCounts map[string]int) string {
 	tag := canonicalPolicyInput(cs, cn, node)
 	if cs.IsContainer {

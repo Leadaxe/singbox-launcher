@@ -41,10 +41,15 @@ type ExportOptions struct {
 // Пустые и нулевые поля опускаются: значение по умолчанию, записанное явно, —
 // это лишний шум, из-за которого «одно и то же состояние» перестаёт давать
 // один и тот же файл.
-func Export(s *state.State, opts ExportOptions) (*Backup, error) {
+// Второй возврат — предупреждения экспорта: то, что состояние несёт, а
+// контракт 0.11 выразить не умеет (папки, провайдерские группы). Молчаливое
+// выпадение здесь запрещено: пользователь обязан узнать, что часть настройки
+// в файл не поехала, ДО того как восстановится на новой машине.
+func Export(s *state.State, opts ExportOptions) (*Backup, []Warning, error) {
 	if s == nil {
-		return nil, fmt.Errorf("nil state")
+		return nil, nil, fmt.Errorf("nil state")
 	}
+	var warnings []Warning
 	now := opts.Now
 	if now.IsZero() {
 		now = time.Now()
@@ -74,19 +79,39 @@ func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 	// сохраняется порядок списка источников.
 	for i, src := range s.Sources {
 		switch src.Kind {
-		case state.SourceTypeSubscription:
-			b.Subscriptions = append(b.Subscriptions, exportSubscription(src))
-		case state.SourceTypeServer:
+		case state.SourceKindSubscription:
+			b.Subscriptions = append(b.Subscriptions, exportSubscription(src, i))
+			// Тег замены — единственное поле v7, у которого в контракте нет
+			// дома: 0.11 выводила имя группы формулой из префикса. Явное имя,
+			// с формулой не совпавшее, на приёмнике станет другим, и правила
+			// этого же файла метят мимо — молчать здесь нельзя.
+			if derived, ok := replaceTagSurvivesExport(src, i); !ok {
+				warnings = append(warnings, Warning{
+					Code:   WarnBackupReplaceTagDerived,
+					Detail: sourceExportName(src) + ": " + src.Replace.Tag + " → " + derived,
+				})
+			}
+		case state.SourceKindServer:
 			b.Servers = append(b.Servers, exportServer(src))
-		case state.SourceTypeChain:
+		case state.SourceKindChain:
 			b.Chains = append(b.Chains, exportChain(src, i))
+		case state.SourceKindFolder, state.SourceKindAuto:
+			// Контракт 0.11 не знает ни папок, ни провайдерских групп
+			// (секция folders[] — отдельный трек с LxBox-стороной, SPEC 118
+			// §2 «НЕ в этапе 2»). Молча выронить их из файла нельзя: это
+			// ровно та ловушка, из-за которой SPEC 116 потерял бы состав
+			// папки без единого слова.
+			warnings = append(warnings, Warning{
+				Code:   WarnBackupSourceKindUnsupported,
+				Detail: string(src.Kind) + " " + sourceExportName(src),
+			})
 		}
 	}
 
 	for _, r := range s.Rules {
 		rule, err := exportRule(r)
 		if err != nil {
-			return nil, fmt.Errorf("rule %s: %w", r.Kind, err)
+			return nil, warnings, fmt.Errorf("rule %s: %w", r.Kind, err)
 		}
 		b.Rules = append(b.Rules, rule)
 	}
@@ -106,7 +131,7 @@ func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 	// новой машине «Add WARP» плодил лишние device-записи в Cloudflare.
 	b.Warp = exportWarp(s)
 
-	return b, nil
+	return b, warnings, nil
 }
 
 // exportDirections — список Направлений в канонической форме.
@@ -128,15 +153,18 @@ func exportDirections(list []configtypes.Direction) []Direction {
 // восстановится на приёмнике первой же сборкой из своего состояния, а вывозить
 // протухающий хеш значило бы вернуть в формат ровно то, ради чего он снесён.
 func exportSourceRef(src state.Source) SourceRef {
-	ref := SourceRef{
-		DetourTag:          src.DetourTag,
-		DetourNodeSourceID: src.DetourNodeSourceID,
-		DetourNodeTag:      src.DetourNodeTag,
+	return exportNodeLinkRef(src.Detour)
+}
+
+// sourceExportName — как назвать источник в предупреждении экспорта.
+func sourceExportName(src state.Source) string {
+	if src.Name != "" {
+		return src.Name
 	}
-	if ref.DetourNodeTag != "" || ref.DetourNodeSourceID != "" {
-		ref.DetourNodeLabel = src.DetourNodeLabel
+	if n := src.NodeTagOrLabel(); n != "" {
+		return n
 	}
-	return ref
+	return src.ID
 }
 
 // exportChain — запись секции chains[] (SPEC 110).
@@ -149,12 +177,10 @@ func exportSourceRef(src state.Source) SourceRef {
 // (нормализация той же категории, что перенумерация правил).
 func exportChain(src state.Source, index int) Chain {
 	out := Chain{
-		ID:                src.ID,
-		Tag:               src.NodeTagOrLabel(),
-		Label:             src.Label,
-		Chain:             src.Chain,
-		ExcludeFromGlobal: src.ExcludeFromGlobal,
-		SourceRef:         exportSourceRef(src),
+		ID:    src.ID,
+		Tag:   src.NodeTagOrLabel(),
+		Label: src.Label,
+		Chain: exportChainSpec(src),
 	}
 	// Подпись, совпадающая с тегом, — это не подпись, а прежнее состояние
 	// без разделения ролей: писать её отдельным полем значит плодить шум,
@@ -197,48 +223,45 @@ func exportWarp(s *state.State) []json.RawMessage {
 	return out
 }
 
-func exportSubscription(src state.Source) Subscription {
+func exportSubscription(src state.Source, index int) Subscription {
 	out := Subscription{
-		ID:                      src.ID,
-		URL:                     src.URL,
-		Label:                   src.Label,
-		MaxNodes:                src.MaxNodes,
-		Skip:                    src.Skip,
-		Outbounds:               exportDirections(src.Outbounds),
-		Fold:                    src.Fold,
-		ExcludeFromGlobal:       src.ExcludeFromGlobal,
-		ExposeGroupTagsToGlobal: src.ExposeGroupTagsToGlobal,
-		SourceRef:               exportSourceRef(src),
+		ID:        src.ID,
+		URL:       src.URL,
+		Label:     src.Name,
+		MaxNodes:  src.MaxNodes,
+		Skip:      src.Skip,
+		Fold:      exportFold(src.Replace),
+		Disabled:  exportDisabledMap(src),
+		SourceRef: exportSourceRef(src),
+	}
+	if out.Label == "" {
+		out.Label = src.Label
 	}
 	if !src.Enabled {
 		out.Enabled = boolPtr(false)
 	}
 	if src.TagPolicy != nil && !src.TagPolicy.IsZero() {
-		out.Tag = &TagPolicy{Prefix: src.TagPolicy.Prefix, Postfix: src.TagPolicy.Postfix, Mask: src.TagPolicy.Mask}
+		out.Tag = &TagPolicy{Prefix: src.TagPolicy.Prefix, Postfix: src.TagPolicy.Postfix}
 	}
 	if src.Update != nil {
 		out.Update = &UpdatePolicy{IntervalHours: src.Update.IntervalHours, Auto: src.Update.AutoRefresh}
-	}
-	if len(src.DisabledNodes) > 0 {
-		out.Disabled = make(map[string]int64, len(src.DisabledNodes))
-		for hash, ts := range src.DisabledNodes {
-			out.Disabled[hash] = ts
-		}
 	}
 	return out
 }
 
 func exportServer(src state.Source) Server {
 	out := Server{
-		ID:                src.ID,
-		URI:               src.URI,
-		Label:             src.Label,
-		NodeTag:           src.NodeTag,
-		ExcludeFromGlobal: src.ExcludeFromGlobal,
-		SourceRef:         exportSourceRef(src),
+		ID:        src.ID,
+		Label:     src.Label,
+		NodeTag:   src.Tag,
+		SourceRef: exportSourceRef(src),
 	}
-	if len(src.ConfigJSON) > 0 {
-		out.ConfigJSON = append(json.RawMessage(nil), src.ConfigJSON...)
+	// Форма хранения узла в v7 одна — тело; исходный URI живёт в origin и
+	// едет тем же ключом, что и раньше, когда он был единственной формой.
+	if src.Origin != nil && src.Origin.Kind == state.OriginKindURI {
+		out.URI = src.Origin.Raw
+	} else if len(src.Body) > 0 {
+		out.ConfigJSON = append(json.RawMessage(nil), src.Body...)
 	}
 	if !src.Enabled {
 		out.Enabled = boolPtr(false)

@@ -1,7 +1,7 @@
 // Package business содержит бизнес-логику визарда конфигурации.
 //
 // Файл outbound.go содержит функции для работы с outbounds:
-//   - GetAvailableOutbounds - список доступных outbound тегов из canonical (GlobalOutbounds + Sources[i].Outbounds); мемо по ревизии модели
+//   - GetAvailableOutbounds - список доступных outbound тегов из canonical (GlobalOutbounds); мемо по ревизии модели
 //   - EnsureDefaultAvailableOutbounds - обеспечивает наличие обязательных outbounds (direct-out, reject, drop)
 //   - EnsureFinalSelected - обеспечивает выбранный final outbound в модели
 //
@@ -65,7 +65,7 @@ func ResolveMergedOutbound(model *wizardmodels.WizardModel, tag string) *config.
 
 // GetAvailableOutbounds возвращает список доступных outbound тегов из модели.
 // Читает canonical `model.GlobalOutbounds` (SPEC 117); результат кэшируется
-// по ревизии модели (сброс — InvalidatePreviewCache / любая мутация).
+// по ревизии модели (сброс — InvalidateNodePool / любая мутация).
 func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 	tags := map[string]struct{}{
 		wizardmodels.DefaultOutboundTag: {},
@@ -106,13 +106,12 @@ func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 			tags[extra] = struct{}{}
 		}
 	}
-	// SPEC 108: локальные группы подписок (Sources[i].Outbounds) целями
-	// правил НЕ предлагаются. Такая цель живёт по чужим правилам жизненного
-	// цикла: исчезает вместе с подпиской и переименовывается вместе с её
-	// префиксом, а правило молча указывает в никуда. Группа подписки — это
-	// группировка и сахар к Направлению, а не самостоятельная цель (S3).
-	// Осиротевшие ссылки из старых состояний сбрасываются на direct при
-	// загрузке (state.resetForeignRuleTargets).
+	// Теги ЗАМЕН свёрнутых папок целями правил не предлагаются: такая цель
+	// живёт по чужим правилам жизненного цикла — исчезает вместе с папкой, а
+	// правило молча указывает в никуда. Замена это группировка и сахар к
+	// Направлению, а не самостоятельная цель (SPEC 108 S3). Осиротевшие
+	// ссылки из старых состояний сбрасываются при загрузке
+	// (state.resetForeignRuleTargets).
 
 	// SPEC 056: добавляем теги от preset.outbounds[] mode=add активных
 	// preset-ref'ов (mode=update не вводит новых тегов, только патчит
@@ -249,10 +248,10 @@ func AllDirectionTags(model *wizardmodels.WizardModel) []string {
 			out = append(out, tag)
 		}
 	}
-	// Sources[i].Outbounds сюда НЕ входят намеренно: это локальные группы
-	// источника, цели чужого жизненного цикла — ровно то, ради чьего сброса
-	// resetForeignRuleTargets и существует (SPEC 108 S5). Включить их значило
-	// бы защитить от сброса осиротевшие ссылки на `AL:select`.
+	// Теги ЗАМЕН свёрнутых папок сюда НЕ входят намеренно: цели чужого
+	// жизненного цикла — ровно то, ради чьего сброса resetForeignRuleTargets
+	// и существует (SPEC 108 S5). Включить их значило бы защитить от сброса
+	// осиротевшие ссылки на `AL:select`.
 	return out
 }
 

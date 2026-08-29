@@ -70,12 +70,6 @@ func ValidateParserConfig(parserConfig *config.ParserConfig) error {
 			}
 		}
 
-		// Validate outbounds
-		for j, outbound := range proxy.Outbounds {
-			if err := ValidateOutbound(&outbound); err != nil {
-				return fmt.Errorf("proxy %d outbound %d: %w", i, j, err)
-			}
-		}
 	}
 
 	// Validate global outbounds

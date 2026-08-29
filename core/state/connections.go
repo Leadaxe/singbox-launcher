@@ -1,11 +1,11 @@
 // File connections.go — раздел "connections" схем v5/v6 (SPEC 052) и общие
 // типы Defaults/UpdateSpec/UserInfo.
 //
-// SPEC 118 (этап 2, W1): ConnectionsSection и sourceV6 — ПРИВАТНАЯ форма
-// парсеров старых схем (v2–v6) и будущей миграции W2. Канонический тип
-// источника — state.Source (sources_v7.go); загрузка старого состояния
-// переносит sourceV6 в v7-форму структурно (adoptConnectionsV6, disk_v7.go),
-// легаси-поля доезжают в мостовые деривативы TEMPORARY BRIDGE.
+// SPEC 118 (этап 2): ConnectionsSection и sourceV6 — ПРИВАТНАЯ форма
+// парсеров старых схем (v2–v6) и миграции. Канонический тип источника —
+// state.Source (sources_v7.go); загрузка старого состояния переносит
+// sourceV6 в v7-форму (adoptConnectionsV6), а легаси-поля уезжают в сайдкар
+// миграции (legacySourceV6, migration_legacy_source.go) и умирают с ней.
 package state
 
 import (
@@ -46,12 +46,11 @@ func (c *ConnectionsSection) adoptLegacyDirections() {
 	c.LegacyOutbounds = nil
 }
 
-// Defaults — настройки по умолчанию для всех source'ов.
+// Defaults — прежние умолчания подключений схем v2–v6.
 //
-// TEMPORARY BRIDGE (SPEC 118 W1-W4), удаляется в W5: в каноне v7 умолчаний в
-// state нет (они переезжают в настройки приложения, миграция W2 / волна W5);
-// до переезда значения живут в State.Defaults и пишутся в v7-файл под
-// мостовым ключом legacy_defaults.
+// В каноне v7 умолчаний в состоянии НЕТ (SPEC Т1): они переехали в настройки
+// приложения (bin/settings.json). Тип читается только парсерами старых схем
+// и шагом 8 миграции, который их туда и перекладывает.
 type Defaults struct {
 	Reload   string `json:"reload,omitempty"`
 	MaxNodes int    `json:"max_nodes,omitempty"`
@@ -76,13 +75,13 @@ type sourceV6 struct {
 	// type=subscription only
 	URL                     string                  `json:"url,omitempty"`
 	Skip                    []map[string]string     `json:"skip,omitempty"`
-	Tag                     *TagPolicy              `json:"tag,omitempty"`
+	Tag                     *legacyTagSpec          `json:"tag,omitempty"`
 	Outbounds               []configtypes.Direction `json:"outbounds,omitempty"`
 	ExposeGroupTagsToGlobal bool                    `json:"expose_group_tags_to_global,omitempty"`
-	Fold                    *configtypes.SourceFold `json:"fold,omitempty"`
+	Fold                    *legacyFold             `json:"fold,omitempty"`
 	Update                  *UpdateSpec             `json:"update,omitempty"`
 	MaxNodes                int                     `json:"max_nodes,omitempty"`
-	Meta                    *SubMeta                `json:"meta,omitempty"`
+	Meta                    *legacySubMeta          `json:"meta,omitempty"`
 
 	// type=server only
 	URI        string          `json:"uri,omitempty"`
@@ -102,28 +101,65 @@ type sourceV6 struct {
 	DisabledNodes map[string]int64 `json:"disabled_nodes,omitempty"`
 }
 
-// toV7 — структурный перенос sourceV6 в каноническую v7-форму (SPEC 118 W1).
-//
-// БЕЗ семантической миграции: шаги 1–7 (материализация nodes[], перенос
-// отметок/тегов/хопов/тройни/fold) — волна W2. Здесь только раскладка по
-// новым домам: type → kind, tag-спека → tag_policy; всё остальное едет как
-// есть в мостовые поля TEMPORARY BRIDGE, из которых adapter_source.go
-// деривирует прежнюю ProxySource-форму (поведение сборки не меняется).
-func (v sourceV6) toV7() Source {
-	return Source{
+// legacyTagSpec — прежняя «tag»-спека v6: prefix/postfix плюс УПРАЗДНЁННАЯ
+// маска. Канон v7 несёт только TagPolicy{prefix,postfix} (SPEC Т2); mask у
+// server/chain хранила тег узла (переезжает в Node.Tag), у подписки была
+// шаблоном (упраздняется с warning).
+type legacyTagSpec struct {
+	Prefix  string `json:"prefix,omitempty"`
+	Postfix string `json:"postfix,omitempty"`
+	Mask    string `json:"mask,omitempty"`
+}
+
+// legacySubMeta — прежние метаданные подписки v6: канонические заголовки
+// плюс fetch-история и превью, которых в v7-мете нет (история → SubUpdateStatus,
+// превью упразднено).
+type legacySubMeta struct {
+	ProfileTitle               string    `json:"profile_title,omitempty"`
+	ProfileUpdateIntervalHours int       `json:"profile_update_interval_hours,omitempty"`
+	SupportURL                 string    `json:"support_url,omitempty"`
+	ProfileWebPageURL          string    `json:"profile_web_page_url,omitempty"`
+	ContentDispositionFilename string    `json:"content_disposition_filename,omitempty"`
+	UserInfo                   *UserInfo `json:"userinfo,omitempty"`
+
+	URLAtFetch     string `json:"url_at_fetch,omitempty"`
+	LastFetchedAt  string `json:"last_fetched_at,omitempty"`
+	LastStatus     string `json:"last_status,omitempty"`
+	ErrorCount     int    `json:"error_count,omitempty"`
+	LastErrorMsg   string `json:"last_error_msg,omitempty"`
+	HTTPStatusCode int    `json:"http_status_code,omitempty"`
+	RawBodyBytes   int64  `json:"raw_body_bytes,omitempty"`
+
+	NodesCountFetched int      `json:"nodes_count_fetched,omitempty"`
+	Truncated         bool     `json:"truncated,omitempty"`
+	NodePool      []string `json:"preview_nodes,omitempty"`
+
+	ProviderAnnounce *ProviderAnnounce `json:"provider_announce,omitempty"`
+
+	LastErrorURL string `json:"last_error_url,omitempty"`
+}
+
+// toV7 — структурный перенос sourceV6 в каноническую v7-форму: раскладка по
+// новым домам (type → kind, tag-спека → tag_policy, канонические поля меты).
+// Семантическая миграция (материализация nodes[], отметки, теги, хопы,
+// тройня, fold → replace) идёт следом, из сайдкара legacySourceV6.
+func (v sourceV6) toV7() (Source, legacySourceV6) {
+	out := Source{
 		Node: Node{
 			Kind:    v.Type,
 			Enabled: v.Enabled,
 		},
-		ID:        v.ID,
-		TagPolicy: v.Tag,
-		URL:       v.URL,
-		Skip:      v.Skip,
-		MaxNodes:  v.MaxNodes,
-		Update:    v.Update,
-		Meta:      v.Meta,
+		ID:       v.ID,
+		URL:      v.URL,
+		Skip:     v.Skip,
+		MaxNodes: v.MaxNodes,
+		Update:   v.Update,
+	}
+	if v.Tag != nil && (v.Tag.Prefix != "" || v.Tag.Postfix != "") {
+		out.TagPolicy = &TagPolicy{Prefix: v.Tag.Prefix, Postfix: v.Tag.Postfix}
+	}
 
-		// TEMPORARY BRIDGE (SPEC 118 W1-W4), удаляется в W5.
+	legacy := legacySourceV6{
 		Label:                   v.Label,
 		NodeTag:                 v.NodeTag,
 		URI:                     v.URI,
@@ -140,22 +176,53 @@ func (v sourceV6) toV7() Source {
 		DetourNodeLabel:         v.DetourNodeLabel,
 		DisabledNodes:           v.DisabledNodes,
 	}
+	if v.Tag != nil {
+		legacy.TagMask = v.Tag.Mask
+	}
+	if v.Meta != nil {
+		out.Meta = &SubMeta{
+			ProfileTitle:               v.Meta.ProfileTitle,
+			ProfileUpdateIntervalHours: v.Meta.ProfileUpdateIntervalHours,
+			SupportURL:                 v.Meta.SupportURL,
+			ProfileWebPageURL:          v.Meta.ProfileWebPageURL,
+			ContentDispositionFilename: v.Meta.ContentDispositionFilename,
+			UserInfo:                   v.Meta.UserInfo,
+			ProviderAnnounce:           v.Meta.ProviderAnnounce,
+		}
+		legacy.MetaHistory = legacySubMetaHistory{
+			URLAtFetch:        v.Meta.URLAtFetch,
+			LastFetchedAt:     v.Meta.LastFetchedAt,
+			LastStatus:        v.Meta.LastStatus,
+			ErrorCount:        v.Meta.ErrorCount,
+			LastErrorMsg:      v.Meta.LastErrorMsg,
+			LastErrorURL:      v.Meta.LastErrorURL,
+			HTTPStatusCode:    v.Meta.HTTPStatusCode,
+			RawBodyBytes:      v.Meta.RawBodyBytes,
+			NodesCountFetched: v.Meta.NodesCountFetched,
+			Truncated:         v.Meta.Truncated,
+		}
+	}
+	return out, legacy
 }
 
 // adoptConnectionsV6 — перенос секции connections старых схем в плоский
-// v7-корень State (структурно, см. sourceV6.toV7).
-func adoptConnectionsV6(s *State, cs ConnectionsSection) {
+// v7-корень State. Возвращает сайдкар легаси-полей (вход миграции), который
+// живёт ровно до конца Load.
+func adoptConnectionsV6(s *State, cs ConnectionsSection) []legacySourceV6 {
 	s.Sources = make([]Source, 0, len(cs.Sources))
+	legacy := make([]legacySourceV6, 0, len(cs.Sources))
 	for _, src := range cs.Sources {
-		s.Sources = append(s.Sources, src.toV7())
+		v7, leg := src.toV7()
+		s.Sources = append(s.Sources, v7)
+		legacy = append(legacy, leg)
 	}
 	s.Directions = cs.Outbounds
 	s.Defaults = cs.Defaults
+	return legacy
 }
 
 // UpdateSpec — настройки авто-обновления per-subscription. nil → используются
-// глобальные умолчания (State.Defaults.Reload; после W5 — настройки
-// приложения).
+// умолчания настроек приложения (bin/settings.json).
 type UpdateSpec struct {
 	IntervalHours int   `json:"interval_hours,omitempty"`
 	AutoRefresh   *bool `json:"auto_refresh,omitempty"` // nil → true (default включён)

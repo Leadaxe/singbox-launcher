@@ -17,8 +17,18 @@ func chainOf(hops ...string) *configtypes.SourceChain {
 }
 
 // chainSource — источник-цепочка в ParserConfig.
+//
+// SPEC 118 W5: тег цепочки живёт в каноне (узел kind=chain), а сама форма
+// маршрута собирается проходом 2 в build-only поле Chain — здесь мы её
+// подставляем напрямую, минуя резолв ссылок (он проверяется отдельно).
 func chainSource(tag string, c *configtypes.SourceChain) ProxySource {
-	return ProxySource{TagMask: tag, Chain: c}
+	return ProxySource{
+		Label: tag,
+		Chain: c,
+		Canonical: &configtypes.CanonicalSource{
+			Nodes: []configtypes.CanonicalNode{{Kind: "chain", Tag: tag, Enabled: true}},
+		},
+	}
 }
 
 // resolveOne прогоняет один источник-цепочку через разрешение и возвращает

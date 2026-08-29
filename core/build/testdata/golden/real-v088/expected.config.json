@@ -1,7 +1,6 @@
 {
   "dns": {
     "final": "direct_dns_resolver",
-    "independent_cache": false,
     "rules": [
       {
         "rule_set": "ru-domains",
@@ -13,19 +12,9 @@
     ],
     "servers": [
       {
-        "tag": "local_dns_resolver",
-        "type": "local"
-      },
-      {
         "server": "8.8.8.8",
         "server_port": 53,
         "tag": "direct_dns_resolver",
-        "type": "udp"
-      },
-      {
-        "server": "1.1.1.1",
-        "server_port": 53,
-        "tag": "cloudflare_udp",
         "type": "udp"
       },
       {
@@ -43,13 +32,22 @@
         "server_port": 443,
         "tag": "yandex_doh",
         "type": "https"
+      },
+      {
+        "tag": "local_dns_resolver",
+        "type": "local"
+      },
+      {
+        "server": "1.1.1.1",
+        "server_port": 53,
+        "tag": "cloudflare_udp",
+        "type": "udp"
       }
     ],
     "strategy": "prefer_ipv4"
   },
   "endpoints": [
     /** @ParserSTART_E */
-    // wg-mock
     {
       "address": [
         "10.10.10.2/32"
@@ -109,63 +107,34 @@
   },
   "outbounds": [
     /** @ParserSTART */
-	// Страна А
 	{"tag":"AL:Страна А","type":"vless","server":"node-01.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000001","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"LJf609JSbbYZ--csSIKQRpTl-9g8V2ACaV-2VIrDbpg","short_id":"46c76914d0eb5ffc"}}},
-	// 🇷🇺Страна РУ
 	{"tag":"AL:🇷🇺Страна РУ","type":"vless","server":"node-02.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000002","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"sni.node-02.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"v7eSwMwzw8xa5p3GZTYRw6Ctmf5-KKEvLRaGuc4-cCU","short_id":"2d01341521519872"}}},
-	// Страна В
 	{"tag":"AL:Страна В","type":"vless","server":"node-03.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000003","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"alt-sni-a.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"5jf6-nLWVfKOmJtnQVyoWTnEvjQf8j4sQu-T31BPJa0","short_id":"7ca824394db816cb"}}},
-	// Страна Г 1
 	{"tag":"AL:Страна Г 1","type":"vless","server":"node-04.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000004","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"pgCtyarc8of5IGdM1ybz7kihawtBNcoi7RpQQ1S3lm0","short_id":"3bc592fa489a06de"}}},
-	// Страна Д
 	{"tag":"AL:Страна Д","type":"vless","server":"node-05.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000005","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"V0yJ0ZyN28ZEMzDx3Q4xnDHYNnZnXjHuG2FXw9ccdg0","short_id":"90a3eced86f6f145"}}},
-	// Страна Е
 	{"tag":"AL:Страна Е","type":"vless","server":"node-06.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000006","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"BI2MQjgEdcaxD92GIeqoOzGJqwIMN0wD1zN18BdSss8","short_id":"ab890735a1df3b55"}}},
-	// Страна Ж
 	{"tag":"AL:Страна Ж","type":"vless","server":"node-07.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000007","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"i2cnIYJ3ajD-W4ooccX20_JbTMvMb3ox6rjrc0kmil4","short_id":"f4f0bda29c6936a3"}}},
-	// Страна З
 	{"tag":"AL:Страна З","type":"vless","server":"node-08.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000008","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"aHLVyP4MCRxzBX3-a3VUc3gxU2nO3fGGNGucS-oR98E","short_id":"73b489bcafc9e9fd"}}},
-	// Страна И
 	{"tag":"AL:Страна И","type":"vless","server":"node-09.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000009","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"JlDSkQ0iimOo6yd61QOAQPKAYQ5mHH2OAxnynHWOtsM","short_id":"853c5270235fdc80"}}},
-	// Страна Г 2
 	{"tag":"AL:Страна Г 2","type":"vless","server":"node-10.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000010","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"EGbPSYGhP7SMWfd8Le2LH3fepF7ZaGATvihm58Fyerw","short_id":"9963c6b7eb02fc3f"}}},
-	// Страна Л
 	{"tag":"AL:Страна Л","type":"vless","server":"node-11.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000011","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"uavGwFiE0IZVbkAphHn1nGVl5nah4Eww1Pmz4bn2CKk","short_id":"cc187220b8e95fcb"}}},
-	// Страна М
 	{"tag":"AL:Страна М","type":"vless","server":"node-12.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000012","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"CDXQT69A0Jk3mN2uEokpkLBo-eaeWrlZbQKW5GjGckY","short_id":"72ff94c1a8d9b894"}}},
-	// Страна Н
 	{"tag":"AL:Страна Н","type":"vless","server":"node-13.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000013","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"MMGSm0MVRJAP-MTDCj0fKgWhmqiupSI_mr6aUvRLRPo","short_id":"f6d44805bccaae12"}}},
-	// Страна О
 	{"tag":"AL:Страна О","type":"vless","server":"node-14.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000014","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"JlY9OwvLpBivSWIjaO8bmdgLtlwBPt5BkQTMIFplKC8","short_id":"82aad6ba7dc83d7f"}}},
-	// Страна П
 	{"tag":"AL:Страна П","type":"vless","server":"node-15.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000015","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"a4tRXja0OIOxNR0E5J7iB7WRp0Q8UutttAEup60qsio","short_id":"94f0c081f5b19e9c"}}},
-	// Страна Р
 	{"tag":"AL:Страна Р","type":"vless","server":"node-16.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000016","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"1dSIU3nzLz8K5hpJ0MhJHTVtOhEaQrsMqMHSacqhadc","short_id":"9d8818aae0b9a8d0"}}},
-	// Страна С
 	{"tag":"AL:Страна С","type":"vless","server":"node-17.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000017","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"-cdygI8TaFYmoMg536CRaCJt97XmXPDQa9iSyq_YHjU","short_id":"888b614a4cb937a0"}}},
-	// Страна Т
 	{"tag":"AL:Страна Т","type":"vless","server":"node-18.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000018","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"Vnsn5ggJBJ9bmk4OyndUBDVwIx8dmrjnxj_e7MrZmXM","short_id":"75dcf0e12000488d"}}},
-	// Страна У
 	{"tag":"AL:Страна У","type":"vless","server":"node-19.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000019","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"DMmvNaqzyf6JoYQK7-Hh7_huh9VCX8gO4K2DXYnIPYY","short_id":"5d8699d399928fd4"}}},
-	// Страна Ф
 	{"tag":"AL:Страна Ф","type":"vless","server":"node-20.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000020","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"alt-sni-b.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"Kb9DzRgm3PUPjeTOy3qZCJjWt_g6DWEemCRUqOnD7Rk","short_id":"996003ba981c6caf"}}},
-	// Страна Х
 	{"tag":"AL:Страна Х","type":"vless","server":"node-21.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000021","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"C6Z_D_wUCZ8HyI5WsIieQFvCStJih1MrL4eK2KqVlA0","short_id":"a8dcb3d9607403e7"}}},
-	// Страна Ц
 	{"tag":"AL:Страна Ц","type":"vless","server":"node-22.example","server_port":8443,"uuid":"00000000-0000-4000-8000-000000000022","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"shared-sni.example","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"wJxp9Xo016wsPWw0zSXhEdMnRo8JhRPh87-R4ZadyoE","short_id":"ca7efa80e2aee530"}}},
-	// local auto WIZARD:auto
 	{"tag":"AL:auto","type":"urltest","outbounds":["AL:Страна А","AL:🇷🇺Страна РУ","AL:Страна В","AL:Страна Г 1","AL:Страна Д","AL:Страна Е","AL:Страна Ж","AL:Страна З","AL:Страна И","AL:Страна Г 2","AL:Страна Л","AL:Страна М","AL:Страна Н","AL:Страна О","AL:Страна П","AL:Страна Р","AL:Страна С","AL:Страна Т","AL:Страна У","AL:Страна Ф","AL:Страна Х","AL:Страна Ц"],"interrupt_exist_connections":true,"interval":"5m","tolerance":100,"url":"https://cp.cloudflare.com/generate_204"},
-	// local select WIZARD:selector
 	{"tag":"AL:select","type":"selector","outbounds":["AL:auto","AL:Страна А","AL:🇷🇺Страна РУ","AL:Страна В","AL:Страна Г 1","AL:Страна Д","AL:Страна Е","AL:Страна Ж","AL:Страна З","AL:Страна И","AL:Страна Г 2","AL:Страна Л","AL:Страна М","AL:Страна Н","AL:Страна О","AL:Страна П","AL:Страна Р","AL:Страна С","AL:Страна Т","AL:Страна У","AL:Страна Ф","AL:Страна Х","AL:Страна Ц"],"interrupt_exist_connections":true,"default":"AL:auto"},
-	// Proxy automated group for everything that should go through VPN
 	{"tag":"auto-proxy-out","type":"urltest","outbounds":["AL:Страна А","AL:Страна В","AL:Страна Г 1","AL:Страна Д","AL:Страна Е","AL:Страна Ж","AL:Страна З","AL:Страна И","AL:Страна Г 2","AL:Страна Л","AL:Страна М","AL:Страна Н","AL:Страна О","AL:Страна П","AL:Страна Р","AL:Страна С","AL:Страна Т","AL:Страна У","AL:Страна Ф","AL:Страна Х","AL:Страна Ц","WG:wg-mock","AL:auto","AL:select"],"interrupt_exist_connections":true,"interval":"5m","tolerance":100,"url":"https://cp.cloudflare.com/generate_204"},
-	// Proxy group for everything that should go through VPN
 	{"tag":"proxy-out","type":"selector","outbounds":["direct-out","auto-proxy-out","AL:Страна А","AL:Страна В","AL:Страна Г 1","AL:Страна Д","AL:Страна Е","AL:Страна Ж","AL:Страна З","AL:Страна И","AL:Страна Г 2","AL:Страна Л","AL:Страна М","AL:Страна Н","AL:Страна О","AL:Страна П","AL:Страна Р","AL:Страна С","AL:Страна Т","AL:Страна У","AL:Страна Ф","AL:Страна Х","AL:Страна Ц","WG:wg-mock","AL:auto","AL:select"],"interrupt_exist_connections":true,"default":"auto-proxy-out"},
-	// Proxy group for russian VPN
 	{"tag":"ru VPN 🇷🇺","type":"selector","outbounds":["direct-out","AL:🇷🇺Страна РУ"],"interrupt_exist_connections":true,"default":"direct-out"},
-	// Proxy group 1
 	{"tag":"vpn ①","type":"selector","outbounds":["direct-out","proxy-out","AL:Страна А","AL:🇷🇺Страна РУ","AL:Страна В","AL:Страна Г 1","AL:Страна Д","AL:Страна Е","AL:Страна Ж","AL:Страна З","AL:Страна И","AL:Страна Г 2","AL:Страна Л","AL:Страна М","AL:Страна Н","AL:Страна О","AL:Страна П","AL:Страна Р","AL:Страна С","AL:Страна Т","AL:Страна У","AL:Страна Ф","AL:Страна Х","AL:Страна Ц","WG:wg-mock","AL:auto","AL:select"],"interrupt_exist_connections":true,"default":"proxy-out"},
-	// Proxy group 2
 	{"tag":"vpn ②","type":"selector","outbounds":["direct-out","proxy-out","AL:Страна А","AL:🇷🇺Страна РУ","AL:Страна В","AL:Страна Г 1","AL:Страна Д","AL:Страна Е","AL:Страна Ж","AL:Страна З","AL:Страна И","AL:Страна Г 2","AL:Страна Л","AL:Страна М","AL:Страна Н","AL:Страна О","AL:Страна П","AL:Страна Р","AL:Страна С","AL:Страна Т","AL:Страна У","AL:Страна Ф","AL:Страна Х","AL:Страна Ц","WG:wg-mock","AL:auto","AL:select"],"interrupt_exist_connections":true,"default":"proxy-out"},
 /** @ParserEND */
     {"tag":"direct-out","type":"direct"}

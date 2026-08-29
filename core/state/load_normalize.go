@@ -20,17 +20,10 @@ func normalizeNilSlices(s *State) {
 	}
 	sanitizeOutboundRefs(&s.Directions)
 	for i := range s.Sources {
-		sanitizeOutboundRefs(&s.Sources[i].Outbounds)
 		// Источник без id — рукописный state.json: приложение минтит ULID
-		// при создании (SPEC 117 W4, Р3), а до сноса обратного синка пустой
-		// id долечивал матчинг на Save. Синка больше нет — долечиваем на
-		// Load, иначе ссылки detour_node_source_id на такой источник не
-		// смогут родиться вовсе. Симметрично ensureSourceID импорта бэкапа.
-		//
-		// SPEC 118 (W1): правило пока действует для ВСЕХ kind'ов — ULID
-		// узловых источников жив как адресат detour-тройни (мост);
-		// канонизация «id только у папки/подписки» — вместе со сносом
-		// тройни (W5).
+		// при создании (SPEC 117 W4, Р3). Долечиваем на Load, иначе
+		// NodeLink.FolderID на такую папку не сможет родиться вовсе.
+		// Симметрично ensureSourceID импорта бэкапа.
 		if s.Sources[i].ID == "" {
 			s.Sources[i].ID = MakeULID()
 		}

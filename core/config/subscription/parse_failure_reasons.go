@@ -84,7 +84,7 @@ func (r *ParseFailureReasons) Empty() bool { return len(r.reasons) == 0 }
 // RecordParseFailures — package-level hook: разбор источника отдаёт наверх
 // причины отбраковки СРАЗУ, не дожидаясь, пока их вернёт результат.
 //
-// Тот же приём, что у LookupCachedBody / NodeIdentityFunc, и по той же
+// Тот же приём, что у NodeIdentityFunc, и по той же
 // причине: единственный потребитель — генератор из пакета config, а он зовёт
 // разбор через функцию-параметр `loadNodesFunc`, чья сигнатура отдаёт только
 // `([]*ParsedNode, error)`. Расширять её значило бы переписать полтора десятка

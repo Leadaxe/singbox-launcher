@@ -68,7 +68,6 @@ func canonRoot(id, tag string, node configtypes.CanonicalNode) ProxySource {
 	return ProxySource{
 		ID:        id,
 		Label:     tag,
-		TagMask:   tag,
 		Canonical: &configtypes.CanonicalSource{Nodes: []configtypes.CanonicalNode{node}},
 	}
 }
@@ -83,17 +82,12 @@ func runCanonicalBuild(t *testing.T, proxies []ProxySource, directions []Directi
 	pc.ParserConfig.Proxies = proxies
 	pc.ParserConfig.Outbounds = directions
 
-	loadCalled := false
-	loadNodes := func(ProxySource, map[string]int, func(float64, string), int, int) ([]*ParsedNode, error) {
-		loadCalled = true
-		return nil, nil
-	}
-	res, err := GenerateOutboundsFromParserConfig(pc, map[string]int{}, nil, loadNodes, DirectionBuildOptions{})
+	// SPEC Т5: парсер тел конвейеру сборки больше не передаётся вовсе —
+	// сигнатура GenerateOutboundsFromParserConfig его не принимает, и
+	// «сборка полезла разбирать тела» стало невыразимо по построению.
+	res, err := GenerateOutboundsFromParserConfig(pc, map[string]int{}, nil, DirectionBuildOptions{})
 	if err != nil {
 		t.Fatalf("GenerateOutboundsFromParserConfig: %v", err)
-	}
-	if loadCalled {
-		t.Fatal("SPEC Т5 нарушен: конвейер сборки вызвал парсер тел у канонического источника")
 	}
 	return res
 }
@@ -332,7 +326,7 @@ func TestEmitE3_ChainHopsToReplaceTagAndRootNode(t *testing.T) {
 		Hops: []configtypes.NodeLink{{Tag: "Hop"}, {Tag: "F1-pick"}},
 	}
 	chainSrc := ProxySource{
-		ID: "C1", Label: "chain-1", TagMask: "chain-1",
+		ID: "C1", Label: "chain-1",
 		Canonical: &configtypes.CanonicalSource{Nodes: []configtypes.CanonicalNode{chainNode}},
 	}
 
@@ -359,7 +353,7 @@ func TestEmitE3_DanglingChainHopIsFailClosed(t *testing.T) {
 	}
 	res := runCanonicalBuild(t, []ProxySource{
 		canonRoot("S1", "Hop", canonServerNode("Hop", "Hop", "hop.example", 443)),
-		{ID: "C1", Label: "chain-1", TagMask: "chain-1",
+		{ID: "C1", Label: "chain-1",
 			Canonical: &configtypes.CanonicalSource{Nodes: []configtypes.CanonicalNode{chainNode}}},
 	}, nil)
 
@@ -735,44 +729,11 @@ func TestEmitDisabledNodeConsumesNumVariable(t *testing.T) {
 	}
 }
 
-// ── Фикс-раунд W4: упразднённая тег-маска говорит о себе ─────────────
+// Тег-маска упразднена ВМЕСТЕ С ПОЛЕМ (SPEC 118 W5): в сборочной форме её
+// больше нет, и warning о ней стал невыразим по построению. Проверки
+// TestEmitRetiredMaskIsReported / TestEmitRootNodeTagIsNotReportedAsMask
+// удалены вместе с предметом.
 
-// Мостовое поле маски у контейнера канонический путь не применяет — и это
-// обязано доехать до отчёта сборки, иначе пользователь видит теги, которых не
-// задавал, без единого слова о причине.
-func TestEmitRetiredMaskIsReported(t *testing.T) {
-	src := canonFolder("F1", "[P] ", "", canonServerNode("NL-1", "NL-1", "nl.example", 443))
-	src.TagMask = "{$tag}-{$server}"
-
-	res := runCanonicalBuild(t, []ProxySource{src}, nil)
-
-	if !hasTag(emittedTags(res), "[P] NL-1") {
-		t.Fatalf("маска всё-таки применилась: %v", emittedTags(res))
-	}
-	found := false
-	for _, w := range res.EmissionWarnings {
-		if strings.Contains(w, "{$tag}-{$server}") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("про упразднённую маску не сказано ни слова: %v", res.EmissionWarnings)
-	}
-}
-
-// У корневого узла мостовое поле TagMask несёт ТЕГ узла, а не маску, — warning
-// там был бы ложным.
-func TestEmitRootNodeTagIsNotReportedAsMask(t *testing.T) {
-	res := runCanonicalBuild(t, []ProxySource{
-		canonRoot("S1", "Tokyo", canonServerNode("Tokyo", "Tokyo", "tok.example", 443)),
-	}, nil)
-
-	for _, w := range res.EmissionWarnings {
-		if strings.Contains(w, "Tokyo") && strings.Contains(w, "prefix/postfix") {
-			t.Errorf("тег корневого узла принят за маску: %q", w)
-		}
-	}
-}
 
 // ── Фикс-раунд W4: WG с висячим detour не молчит ─────────────────────
 

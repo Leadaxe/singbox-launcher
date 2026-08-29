@@ -161,13 +161,13 @@ func ShowEditDialog(
 		if editPresenter != nil {
 			if m := editPresenter.Model(); m != nil {
 				// Same path as Preview tab: rebuild the preview cache before
-				// reading PreviewNodes. Без этого кэш пуст, если юзер ещё не
+				// reading NodePool. Без этого кэш пуст, если юзер ещё не
 				// открывал Preview tab, и picker показывает 0 нод.
 				// best-effort: ошибка ребилда не блокирует picker, просто
 				// возможно nodes окажется stale/empty (юзер увидит чипы 0
 				// или пустой список).
-				_, _ = wizardbusiness.RebuildPreviewCache(m)
-				nodes = m.PreviewNodes
+				_, _ = wizardbusiness.RebuildNodePool(m)
+				nodes = m.NodePool
 			}
 		}
 		showFlagPickerPopup(parent, nodes, filterValEntry.Text, filterInvertCheck.Checked,
@@ -711,12 +711,12 @@ func ShowEditDialog(
 		}
 
 		// Ensure preview cache is up to date.
-		errorCount, err := wizardbusiness.RebuildPreviewCache(model)
+		errorCount, err := wizardbusiness.RebuildNodePool(model)
 		if err != nil {
 			previewStatusLabel.SetText(locale.Tf("Failed to build preview cache: %v", err))
 			return
 		}
-		allNodes := model.PreviewNodes
+		allNodes := model.NodePool
 		if len(allNodes) == 0 {
 			previewStatusLabel.SetText(locale.T("No nodes available for preview. Please configure sources and try again."))
 			return
@@ -732,12 +732,12 @@ func ShowEditDialog(
 			filteredSet[n] = true
 		}
 
-		// Map node pointer to source label using PreviewNodesBySource; подписи
+		// Map node pointer to source label using NodePoolBySource; подписи
 		// источников — из canonical model.Sources (индексный инвариант Р1:
 		// Proxies[i] ↔ Sources[i]).
 		sourceLabels := make(map[*config.ParsedNode]string)
-		if model.PreviewNodesBySource != nil {
-			for si, nodes := range model.PreviewNodesBySource {
+		if model.NodePoolBySource != nil {
+			for si, nodes := range model.NodePoolBySource {
 				if si < 0 || si >= len(model.Sources) {
 					continue
 				}
