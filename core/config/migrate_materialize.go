@@ -192,21 +192,22 @@ func emitMigrationBody(node *configtypes.ParsedNode) (json.RawMessage, error) {
 	return stripTagAndDetour(json.RawMessage(emitted))
 }
 
-// stripTagAndDetour убирает из outbound-объекта ключи tag и detour.
-// Пересборка через map сортирует ключи — стабильно между запусками; W4
-// всё равно разбирает body в map перед эмиссией.
+// stripTagAndDetour убирает из outbound-объекта ключи tag и detour,
+// СОХРАНЯЯ порядок остальных (body_keyorder.go).
+//
+// Порядок обязателен (W4, риск Р1): тело — это ровно то, что эмиттер пишет в
+// config.json без tag/detour, и сборка возвращает их на прежние места. Сортируй
+// мы ключи здесь (как делал каркас W2), эмиссия из nodes[] расходилась бы со
+// старым движком на КАЖДОМ узле, и байт-эквивалентность эталонов была бы
+// недостижима в принципе.
 func stripTagAndDetour(raw json.RawMessage) (json.RawMessage, error) {
-	var obj map[string]interface{}
-	if err := json.Unmarshal(raw, &obj); err != nil {
-		return nil, fmt.Errorf("body is not a JSON object: %w", err)
-	}
-	delete(obj, "tag")
-	delete(obj, "detour")
-	out, err := json.Marshal(obj)
+	obj, err := decodeOrderedJSONObject(raw)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	obj.delete("tag")
+	obj.delete("detour")
+	return obj.encode(), nil
 }
 
 // autoStrategyFromGroupOptions — allowlist-перенос опций провайдерской

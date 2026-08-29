@@ -332,6 +332,13 @@ func singboxTypeToScheme(t string) (string, bool) {
 	return s, ok
 }
 
+// SchemeFromSingboxType — тот же словарь наружу (SPEC 118 W4): эмиссия из
+// материализованных nodes[] определяет схему узла по типу его тела, и второй
+// таблицы соответствий заводить нельзя — она разъехалась бы с этой.
+func SchemeFromSingboxType(t string) (string, bool) {
+	return singboxTypeToScheme(strings.ToLower(strings.TrimSpace(t)))
+}
+
 // singboxTypeIsAddressless — типы без server/server_port на верхнем уровне.
 func singboxTypeIsAddressless(t string) bool {
 	return t == "wireguard"

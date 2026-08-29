@@ -58,6 +58,28 @@ func DirectionTagTaken(model *wizardmodels.WizardModel, tag, exceptTag string) b
 			return true
 		}
 	}
+	// SPEC 118 W4: ЕДИНЫЙ гард занятости (features/directions.md §8) —
+	// replace-теги свёрнутых папок, их `-auto`-двойники и верхние узлы.
+	// Направление `x` рядом с папкой, чья замена зовётся `x`, дало бы два
+	// `x-auto`, и ядро отвергло бы весь конфиг: частная проверка «занят ли
+	// тег среди Направлений» этого не видит по построению.
+	//
+	// Твин проверяем парой: занять `x`, когда чужой `x-auto` уже есть,
+	// значит завести вторую группу с тем же именем на следующей сборке.
+	owners := ModelTagOwners(model)
+	// Собственные притязания владельца снимаем: открыть форму `x` и
+	// сохранить, не трогая тег, — обычный сценарий, а не конфликт с самим
+	// собой (то же и для его твина `x-auto`).
+	if exceptTag != "" {
+		delete(owners, exceptTag)
+		delete(owners, exceptTag+"-auto")
+	}
+	if _, taken := owners[tag]; taken {
+		return true
+	}
+	if _, taken := owners[tag+"-auto"]; taken {
+		return true
+	}
 	// Служебные цели и всё, что уже предлагается целью правил (узлы,
 	// теги пресетов, объявления шаблона).
 	for _, known := range GetAvailableOutbounds(model) {

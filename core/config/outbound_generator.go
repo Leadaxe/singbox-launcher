@@ -118,6 +118,15 @@ type OutboundGenerationResult struct {
 	// (первые несколько РАЗНЫХ), а не стенограмма на 500 строк.
 	ParseFailedSources []SourceExclusion
 
+	// EmissionWarnings — деградации ЭМИССИИ из материализованных nodes[]
+	// (SPEC 118 W4): битое тело узла, выпавший член Auto-группы, снятое
+	// умолчание, непойманная позиция цепочки, столкновение тегов в гарде.
+	//
+	// Отдельно от ParseFailedSources: там причины РАЗБОРА тела (он теперь
+	// живёт только в fetch и пишет свои строки в updateStatus), здесь —
+	// причины сборки. Оба потока сходятся в отчёте «Итога».
+	EmissionWarnings []string
+
 	// NodeOrigins — финальный тег узла → источник, из которого он приехал
 	// (SPEC 113-B). Нужен последнему рубежу: граф-санитайзер (core/build)
 	// видит только теги, а выбросив узел за висячий detour, обязан назвать
@@ -236,6 +245,15 @@ func GenerateNodeJSONBare(node *ParsedNode) (string, error) {
 	// configurator. It carries no server/server_port, so it gets its own
 	// emitter rather than threading "skip these fields" through the whole
 	// per-scheme switch below.
+	// SPEC 118 W4: узел из материализованных nodes[] несёт ГОТОВОЕ тело —
+	// ровно то, что эмиттер написал в момент материализации, минус tag и
+	// detour. Возвращаем их на прежние места и отдаём как есть: второй
+	// проход через per-scheme ветку был бы вторым источником правды о форме
+	// outbound'а и разъехался бы при первой правке эмиттера.
+	if len(node.EmitBody) > 0 {
+		return generateCanonicalBodyJSON(node)
+	}
+
 	if node.Scheme == SchemeGroup {
 		return generateGroupNodeJSON(node)
 	}
@@ -1081,9 +1099,15 @@ func GenerateOutboundsFromParserConfig(
 	// подставились штатно, без отдельной ветки для них.
 	PrepareDirections(parserConfig, directions.TwinOptions)
 
-	// SPEC 108, тот же проход 0 — разворачиваем свёрнутые подписки в
+	// SPEC 118 W4, тот же проход 0 — разворачиваем свёртки папок (replace) в
 	// локальные группы. После Направлений и до подстановки переменных: у
-	// автогруппы подписки те же `@urltest_*` в опциях.
+	// авто-группы замены те же `@urltest_*` в опциях.
+	PrepareFolderReplaces(parserConfig, directions.TwinOptions)
+
+	// SPEC 108, там же — свёртки МОСТОВЫХ источников (Fold). TEMPORARY BRIDGE
+	// (умирает в W5): состояния, ещё не прошедшие материализацию, обязаны
+	// собираться как раньше. Источник с каноном сюда не попадает —
+	// PrepareSourceFolds его пропускает.
 	PrepareSourceFolds(parserConfig, directions.TwinOptions)
 
 	// Hotfix v0.8.8.1 — substitute `@varname` placeholders in
@@ -1126,6 +1150,10 @@ func GenerateOutboundsFromParserConfig(
 	// Ключ — позиция источника в ParserConfig, а не ULID: у конфигов, собранных
 	// не из состояния, ULID пуст, и все такие источники слились бы в один ключ.
 	parseFailuresBySource := make(map[int][]string)
+	// SPEC 118 W4: эмиссионные деградации канонического пути (битое тело,
+	// пустая группа, снятое умолчание) — тот же адресат, что у причин
+	// разбора: отчёт сборки. Ключ — позиция источника, как и там.
+	emissionWarningsBySource := make(map[int][]string)
 	currentSourceIdx := -1
 	prevRecordHook := subscription.RecordParseFailures
 	subscription.RecordParseFailures = func(_ ProxySource, reasons []string) {
@@ -1153,12 +1181,27 @@ func GenerateOutboundsFromParserConfig(
 		}
 		processedIdx++
 
-		// SPEC 094 A5: группы из импортированного sing-box конфига приходят
-		// В ЭТОМ ЖЕ списке как обычные узлы (SchemeGroup). Отдельного канала
-		// для них нет — вкладка Outbounds остаётся за каналами лаунчера.
-		currentSourceIdx = i
-		nodesFromSource, err := loadNodesFunc(proxySource, tagCounts, progressCallback, i, totalSources)
-		currentSourceIdx = -1
+		// SPEC 118 W4: источник с материализованными nodes[] эмитится из
+		// канона — конвейер сборки тело подписки НЕ читает и парсеры по
+		// подпискам не зовёт (SPEC Т5). Мостовой путь (loadNodesFunc →
+		// разбор raw-кэша) остаётся только для источников, ещё не прошедших
+		// материализацию; он умирает в W5 вместе с самим кэшем.
+		var nodesFromSource []*ParsedNode
+		var err error
+		if proxySource.Canonical != nil {
+			emitted := EmitCanonicalSource(proxySource, i, tagCounts)
+			nodesFromSource = emitted.Nodes
+			if len(emitted.Warnings) > 0 {
+				emissionWarningsBySource[i] = emitted.Warnings
+			}
+		} else {
+			// SPEC 094 A5: группы из импортированного sing-box конфига приходят
+			// В ЭТОМ ЖЕ списке как обычные узлы (SchemeGroup). Отдельного канала
+			// для них нет — вкладка Outbounds остаётся за каналами лаунчера.
+			currentSourceIdx = i
+			nodesFromSource, err = loadNodesFunc(proxySource, tagCounts, progressCallback, i, totalSources)
+			currentSourceIdx = -1
+		}
 		if err != nil {
 			debuglog.ErrorLog("GenerateOutboundsFromParserConfig: Error processing source %d/%d: %v", i+1, totalSources, err)
 			failedSources++
@@ -1259,7 +1302,44 @@ func GenerateOutboundsFromParserConfig(
 			directionTagsForChains[d.Tag] = true
 		}
 	}
+
+	// SPEC 118 W4: ЕДИНЫЙ резолв NodeLink. Строится один словарь целей на всю
+	// сборку — узлы папок по сырым тегам + корневое пространство финальных
+	// тегов (верхние узлы, Направления, replace-теги, системные) — и только
+	// после него материализуется хоть одна ссылка (тот же инвариант
+	// двухпроходности, что у node_ref.go).
+	linkTargets := BuildNodeLinkTargets(parserConfig.ParserConfig.Proxies, nodesBySource, allRootLinkTargets(parserConfig, directionTagsForChains))
+	// Позиции цепочек — до ResolveChainSources: она строит узел по строковым
+	// тегам и о ссылках не знает.
+	emissionWarnings := ResolveCanonicalChainHops(parserConfig, linkTargets)
+
 	allNodes, brokenChains := ResolveChainSources(parserConfig, allNodes, nodesBySource, directionTagsForChains)
+
+	// Detour узлов и состав Auto-групп канона: fail-closed по detour (с
+	// каскадом и кольцами), prune по членам.
+	var linkWarnings []string
+	allNodes, linkWarnings = ApplyCanonicalNodeLinks(parserConfig.ParserConfig.Proxies, nodesBySource, allNodes, linkTargets)
+	emissionWarnings = append(emissionWarnings, linkWarnings...)
+	for i := 0; i < len(parserConfig.ParserConfig.Proxies); i++ {
+		if ws := emissionWarningsBySource[i]; len(ws) > 0 {
+			emissionWarnings = append(emissionWarnings, ws...)
+		}
+	}
+
+	// SPEC 118 W4: ЕДИНЫЙ гард занятости тегов (features/directions.md §8).
+	// Столкновение «Направление x + replace-тег x» дало бы два `x-auto` и
+	// отказ ядра на всём конфиге — здесь оно становится внятным
+	// предупреждением сборки, адресованным пользователю.
+	tagGuard := BuildTagGuard(
+		parserConfig.ParserConfig.Outbounds,
+		parserConfig.ParserConfig.Proxies,
+		rootNodeTagsForGuard(parserConfig, nodesBySource),
+		directions.SystemTags,
+	)
+	emissionWarnings = append(emissionWarnings, tagGuard.Conflicts()...)
+	for _, c := range tagGuard.Conflicts() {
+		debuglog.WarnLog("tag guard: %s", c)
+	}
 
 	// ПРОХОД 2 (SPEC 112-A, инвариант двухпроходности): выше закончился проход
 	// 1 — каждый узел каждого источника получил ФИНАЛЬНЫЙ тег. Только теперь
@@ -1353,6 +1433,7 @@ func GenerateOutboundsFromParserConfig(
 		DetourCycles:         detourCycles,
 		ExcludedSources:      excludedSources,
 		ParseFailedSources:   parseFailedSources,
+		EmissionWarnings:     emissionWarnings,
 		NodeOrigins:          nodeOrigins,
 		SkippedNaiveReason:   naiveReason,
 	}, nil
@@ -1465,6 +1546,32 @@ func generateRawNodeJSON(node *ParsedNode) (string, error) {
 	}
 
 	return "{" + strings.Join(parts, ",") + "}", nil
+}
+
+// generateCanonicalBodyJSON эмитит узел из материализованного тела канона v7
+// (SPEC 118 W4).
+//
+// Тело хранится БЕЗ ключей tag и detour — их владелец модель, а не тело
+// (SPEC Т2: «body чист от detour»). Здесь они возвращаются на прежние места:
+// `tag` первым, `detour` последним — ровно там, где их писал per-scheme
+// эмиттер, из которого тело и получилось. Порядок остальных ключей не
+// трогается вовсе, поэтому байты совпадают со старым движком.
+func generateCanonicalBodyJSON(node *ParsedNode) (string, error) {
+	obj, err := decodeOrderedJSONObject(node.EmitBody)
+	if err != nil {
+		return "", fmt.Errorf("canonical node %q: %w", node.Tag, err)
+	}
+	obj.setFirst("tag", marshalJSONStringRaw(node.Tag))
+	// Detour приезжает резолвом (проход 2) через ту же карту Outbound, что
+	// и у остальных узлов: единая точка, а не отдельный канал.
+	if node.Outbound != nil {
+		if d, ok := node.Outbound["detour"].(string); ok {
+			if d = strings.TrimSpace(d); d != "" {
+				obj.setLast("detour", marshalJSONStringRaw(d))
+			}
+		}
+	}
+	return string(obj.encode()), nil
 }
 
 // groupMemberTags returns the group's member tags in order.

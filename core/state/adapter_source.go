@@ -62,6 +62,8 @@ func (s *Source) ToProxySourceV4() configtypes.ProxySource {
 			ps.TagPostfix = s.TagPolicy.Postfix
 			ps.TagMask = s.TagPolicy.Mask
 		}
+		ps.Canonical = s.canonicalProjection()
+		narrowBridgeForCanonical(&ps)
 		return ps
 
 	case SourceKindServer:
@@ -75,13 +77,15 @@ func (s *Source) ToProxySourceV4() configtypes.ProxySource {
 			ConfigJSON:        s.ConfigJSON, // ручной outbound JSON
 		}
 		s.applyLegacyDetour(&ps)
+		ps.Canonical = s.canonicalProjection()
+		narrowBridgeForCanonical(&ps)
 		return ps
 
 	case SourceKindChain:
 		// SPEC 110: цепочка не имеет ни URL, ни URI — только позиции.
 		// TagMask несёт ТЕГ узла, а не подпись: на тег цепочки ссылаются
 		// фильтры Направлений и позиции других цепочек.
-		return configtypes.ProxySource{
+		ps := configtypes.ProxySource{
 			ID:                s.ID,
 			Label:             s.displayName(),
 			TagMask:           s.NodeTagOrLabel(),
@@ -89,15 +93,236 @@ func (s *Source) ToProxySourceV4() configtypes.ProxySource {
 			Disabled:          !s.Enabled,
 			Chain:             s.Chain, // TEMPORARY BRIDGE: []NodeLink hops — W2/W4
 		}
+		ps.Canonical = s.canonicalProjection()
+		narrowBridgeForCanonical(&ps)
+		return ps
+
+	case SourceKindFolder:
+		// Папка: у мостового конвейера её формы нет вовсе — узлы едут
+		// канонической проекцией (W4). Плейсхолдер остаётся выключенным
+		// ТОЛЬКО когда канона нет: индексный инвариант Proxies[i]↔Sources[i]
+		// обязан жить в любом случае.
+		ps := configtypes.ProxySource{
+			ID:       s.ID,
+			Label:    s.displayName(),
+			Disabled: !s.Enabled,
+		}
+		if s.TagPolicy != nil {
+			ps.TagPrefix = s.TagPolicy.Prefix
+			ps.TagPostfix = s.TagPolicy.Postfix
+		}
+		ps.Canonical = s.canonicalProjection()
+		if ps.Canonical == nil {
+			ps.Disabled = true
+		}
+		return ps
+
+	case SourceKindAuto:
+		// Корневая провайдерская группа — узел, а не контейнер.
+		ps := configtypes.ProxySource{
+			ID:       s.ID,
+			Label:    s.displayName(),
+			TagMask:  s.NodeTagOrLabel(),
+			Disabled: !s.Enabled,
+		}
+		ps.Canonical = s.canonicalProjection()
+		if ps.Canonical == nil {
+			ps.Disabled = true
+		}
+		return ps
 	}
 
-	// folder / auto: legacy-конвейер их не собирает до W4 — отдаём
-	// выключенный плейсхолдер, сохраняя позиции индексного инварианта.
+	// Неизвестный kind: legacy-конвейер его не собирает — отдаём выключенный
+	// плейсхолдер, сохраняя позиции индексного инварианта.
 	return configtypes.ProxySource{
 		ID:       s.ID,
 		Label:    s.displayName(),
 		Disabled: true,
 	}
+}
+
+// narrowBridgeForCanonical СУЖАЕТ мост у источника, эмиссия которого уже
+// идёт из канона (SPEC 118 W4, PLAN §9: «мост сужается до Load-проекции
+// build-путей — детур-деривации умирают»).
+//
+// Легаси-поля, чью работу забрал канон, обнуляются НЕ ради чистоты, а чтобы
+// не сделать её дважды:
+//
+//   - detour-тройня: её штампует resolveNodeDetours на том же проходе 2,
+//     что и ApplyCanonicalNodeLinks, и она перезаписала бы уже разрешённый
+//     NodeLink своим ответом — с другой строгостью и другим индексом;
+//   - Fold: свёртку разворачивает PrepareFolderReplaces по явному тегу,
+//     второй разворот дал бы дубль тега и отказ ядра;
+//   - DisabledNodes: выключенные узлы канон в эмиссию не пускает вовсе, и
+//     карта здесь уже ни на что не влияет — но оставить её значило бы
+//     держать живым ровно тот механизм, который W5 сносит.
+//
+// Поля, которые канон НЕ забрал (Source/Skip/URL — вход fetch; Label и
+// ProviderAnnounce — тексты диагностики; ExcludeFromGlobal у источников без
+// канона), остаются: их читают другие стадии.
+func narrowBridgeForCanonical(ps *configtypes.ProxySource) {
+	if ps == nil || ps.Canonical == nil {
+		return
+	}
+	ps.DetourTag = ""
+	ps.DetourNodeSourceID = ""
+	ps.DetourNodeTag = ""
+	ps.DetourNodeHash = ""
+	ps.DetourNodeLabel = ""
+	ps.Fold = nil
+	ps.DisabledNodes = nil
+	// Пул кандидатов решает правило (features/directions.md §2), а не флаги:
+	// у канонического источника они больше ничего не значат.
+	ps.ExcludeFromGlobal = false
+	ps.ExposeGroupTagsToGlobal = false
+}
+
+// canonicalProjection — проекция канона v7 в сборочную форму (SPEC 118 W4).
+//
+// nil = канона нет (материализация ещё не прошла) → сборка идёт мостовым
+// путём: парс raw-кэша/URI, как до W4. Непусто → конвейер сборки тел не
+// читает и парсеры по подпискам не зовёт (SPEC Т5).
+func (s *Source) canonicalProjection() *configtypes.CanonicalSource {
+	if s == nil {
+		return nil
+	}
+	switch s.Kind {
+	case SourceKindFolder, SourceKindSubscription:
+		if len(s.Nodes) == 0 {
+			return nil
+		}
+		cs := &configtypes.CanonicalSource{
+			FolderID:     s.ID,
+			IsContainer:  true,
+			FolderDetour: canonicalLink(s.Detour),
+			Replace:      canonicalReplace(s.Replace),
+		}
+		if s.TagPolicy != nil {
+			cs.TagPrefix = s.TagPolicy.Prefix
+			cs.TagPostfix = s.TagPolicy.Postfix
+		}
+		cs.Nodes = make([]configtypes.CanonicalNode, 0, len(s.Nodes))
+		for i := range s.Nodes {
+			cs.Nodes = append(cs.Nodes, canonicalNodeProjection(&s.Nodes[i]))
+		}
+		return cs
+
+	case SourceKindServer, SourceKindChain, SourceKindAuto:
+		// Корневой узел материализован? У server признак — непустой Body,
+		// у chain — Hops, у auto — Group. Без них узел ещё живёт в
+		// легаси-полях (URI/ConfigJSON/Chain), и его собирает мост.
+		if !s.Node.materialized() {
+			return nil
+		}
+		n := canonicalNodeProjection(&s.Node)
+		// Тег корневого узла — тот, под которым его знает конфиг: канон
+		// Node.Tag, иначе легаси NodeTag/Label (до миграции W2).
+		n.Tag = s.NodeTagOrLabel()
+		return &configtypes.CanonicalSource{
+			Nodes: []configtypes.CanonicalNode{n},
+		}
+	}
+	return nil
+}
+
+// materialized — узел несёт канонические данные эмиссии.
+func (n *Node) materialized() bool {
+	if n == nil {
+		return false
+	}
+	switch n.Kind {
+	case SourceKindServer:
+		return len(n.Body) > 0
+	case SourceKindChain:
+		return len(n.Hops) > 0
+	case SourceKindAuto:
+		return n.Group != nil
+	}
+	return false
+}
+
+// canonicalNodeProjection — Node (канон) → сборочная форма.
+func canonicalNodeProjection(n *Node) configtypes.CanonicalNode {
+	out := configtypes.CanonicalNode{
+		Kind:    string(n.Kind),
+		Tag:     n.Tag,
+		Enabled: n.Enabled,
+		Body:    n.Body,
+		Detour:  canonicalLink(n.Detour),
+	}
+	if n.Origin != nil {
+		out.OriginKind = n.Origin.Kind
+		out.OriginRaw = n.Origin.Raw
+	}
+	if len(n.Hops) > 0 {
+		out.Hops = make([]configtypes.NodeLink, 0, len(n.Hops))
+		for _, h := range n.Hops {
+			out.Hops = append(out.Hops, configtypes.NodeLink{FolderID: h.FolderID, Tag: h.Tag})
+		}
+	}
+	if n.Group != nil {
+		g := &configtypes.CanonicalAutoGroup{
+			GroupType: n.Group.GroupType,
+			Default:   n.Group.Default,
+			Options:   AutoStrategyOptions(n.Group.Strategy),
+		}
+		g.Members = make([]configtypes.NodeLink, 0, len(n.Group.Members))
+		for _, m := range n.Group.Members {
+			g.Members = append(g.Members, configtypes.NodeLink{FolderID: m.FolderID, Tag: m.Tag})
+		}
+		out.Group = g
+	}
+	return out
+}
+
+// canonicalLink — NodeLink канона → сборочная форма.
+func canonicalLink(l *NodeLink) *configtypes.NodeLink {
+	if l == nil {
+		return nil
+	}
+	return &configtypes.NodeLink{FolderID: l.FolderID, Tag: l.Tag}
+}
+
+// canonicalReplace — FolderReplace канона → сборочная форма.
+func canonicalReplace(r *FolderReplace) *configtypes.FolderReplace {
+	if r == nil {
+		return nil
+	}
+	return &configtypes.FolderReplace{
+		Mode:     r.Mode,
+		Tag:      r.Tag,
+		Strategy: r.Strategy.Clone(),
+	}
+}
+
+// AutoStrategyOptions разворачивает AutoStrategy провайдерской группы в опции
+// sing-box-группы — тем же allowlist'ом, каким миграция/fetch их собирали
+// (config.autoStrategyFromGroupOptions, обратная сторона).
+//
+// Живёт здесь, а не в config: проекция обязана быть рядом с типом, из
+// которого читает, иначе пакет config получил бы вторую точку знания о форме
+// AutoStrategy.
+func AutoStrategyOptions(a AutoStrategy) map[string]interface{} {
+	opts := make(map[string]interface{}, 5)
+	if a.URL != "" {
+		opts["url"] = a.URL
+	}
+	if a.Interval != "" {
+		opts["interval"] = a.Interval
+	}
+	if a.IdleTimeout != "" {
+		opts["idle_timeout"] = a.IdleTimeout
+	}
+	if v := a.Tolerance.Value(); v != nil {
+		opts["tolerance"] = v
+	}
+	if a.InterruptExistConnections != nil {
+		opts["interrupt_exist_connections"] = *a.InterruptExistConnections
+	}
+	if len(opts) == 0 {
+		return nil
+	}
+	return opts
 }
 
 // displayName — отображаемое имя источника: канонический Name папки/подписки,

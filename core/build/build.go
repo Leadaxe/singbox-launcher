@@ -305,6 +305,14 @@ func buildSection(ctx BuildContext, key string, raw json.RawMessage, finalOutbou
 		if err != nil {
 			return "", err
 		}
+		// SPEC 118 W4: `dns.detour` — полноправное ребро outbound-графа
+		// (features/directions.md §9). Висячий detour DNS-сервера обязан
+		// ловиться ЗДЕСЬ, а не падением ядра на старте. В preview
+		// (finalOutboundTags=nil) не трогаем: набор тегов там неполон, и
+		// false-positive хуже висячей ссылки в неприменяемом превью.
+		if !ctx.ForPreview && len(finalOutboundTags) > 0 {
+			merged = SanitizeDNSDetours(merged, finalOutboundTags)
+		}
 		return FormatSectionJSON(merged, 2)
 	case "route":
 		merged, err := MergeRouteSection(raw, ctx.Route)

@@ -13,7 +13,25 @@ import (
 
 // filterNodesForSelector returns nodes that match the filter. filter may be nil (all nodes),
 // a single map (AND of key/pattern), or a slice of maps (OR of maps). Empty map = no filter.
-// FilterNodesExcludeFromGlobal drops nodes whose source has exclude_from_global (SPEC 026).
+//
+// FilterNodesExcludeFromGlobal — ПУЛ КАНДИДАТОВ Направлений
+// (SPEC 118 W4, Т5; features/directions.md §2).
+//
+// Правило пула, и ничего кроме него:
+//
+//   - верхние узлы — все до единого;
+//   - узлы папок БЕЗ replace — под финальными тегами;
+//   - у папок С replace вместо узлов пул видит только теги замены (их
+//     подмешивает генератор селекторов, см. collectExposeTagCandidates).
+//
+// Механизма «спрятать узел из пула поштучно» не существует: кому служебный
+// транспорт мешает — заводит фильтр или убирает транспорт в папку. Узел вне
+// пула по-прежнему эмитится в outbounds и легален как хоп цепочки, цель
+// detour и член Auto — пул это видимость для Направлений, не для конфига.
+//
+// TEMPORARY BRIDGE (умирает в W5): у источников без канона решение
+// принимает прежний флаг ExcludeFromGlobal — состояния, ещё не прошедшие
+// материализацию, обязаны собираться как раньше.
 func FilterNodesExcludeFromGlobal(allNodes []*ParsedNode, proxies []ProxySource) []*ParsedNode {
 	if len(allNodes) == 0 {
 		return allNodes
@@ -25,7 +43,16 @@ func FilterNodesExcludeFromGlobal(allNodes []*ParsedNode, proxies []ProxySource)
 			out = append(out, n)
 			continue
 		}
-		if proxies[idx].ExcludeFromGlobal {
+		ps := proxies[idx]
+		if cs := ps.Canonical; cs != nil {
+			// Свёрнутая папка представлена в пуле только тегами замены.
+			if cs.IsContainer && cs.Replace != nil {
+				continue
+			}
+			out = append(out, n)
+			continue
+		}
+		if ps.ExcludeFromGlobal {
 			continue
 		}
 		out = append(out, n)

@@ -1276,6 +1276,12 @@
   "Tag mask (overrides prefix/postfix)": {
     "value": "Маска тэга (переопределяет prefix/postfix)"
   },
+  "Tag mask (retired)": {
+    "value": "Маска тэга (упразднена)"
+  },
+  "The tag mask has been retired and is no longer applied; use prefix/postfix.": {
+    "value": "Тег-маска упразднена и не применяется; используйте prefix/postfix."
+  },
   "human-readable label": {
     "value": "человекочитаемое имя"
   },

@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/locale"
@@ -260,17 +261,29 @@ func TestMigrationScenario2DisabledMarks(t *testing.T) {
 		t.Errorf("несматченный ключ не в отчёте: %v", s.Migration.Warnings)
 	}
 
-	// Согласованность моста: карта переписана на сырые теги, деривация из
-	// enabled=false не добавляет вторых ключей.
+	// SPEC 118 W4: сборочная форма несёт отметки КАНОНОМ (nodes[].enabled), а
+	// мостовая disabled-карта у канонического источника снята
+	// (narrowBridgeForCanonical) — иначе один и тот же факт жил бы в двух
+	// местах и разъехался при первой правке.
 	ps := sub.ToProxySourceV4()
-	if _, ok := ps.DisabledNodes["DE-2"]; !ok {
-		t.Error("мостовая карта потеряла DE-2")
+	if ps.Canonical == nil {
+		t.Fatal("канонической проекции нет — сборка пошла бы мостом")
 	}
-	if _, ok := ps.DisabledNodes["NL-1"]; !ok {
-		t.Error("мостовая карта не получила переписанный hex → NL-1")
+	if len(ps.DisabledNodes) != 0 {
+		t.Errorf("мостовая карта не снята у канонического источника: %v", ps.DisabledNodes)
 	}
-	if len(ps.DisabledNodes) != 3 { // DE-2, NL-1, ghost-mark
-		t.Errorf("мостовая карта задвоила ключи: %v", ps.DisabledNodes)
+	canonEnabled := map[string]bool{}
+	for _, n := range ps.Canonical.Nodes {
+		canonEnabled[n.Tag] = n.Enabled
+	}
+	if canonEnabled["DE-2"] {
+		t.Error("проекция потеряла отметку DE-2")
+	}
+	if canonEnabled["NL-1"] {
+		t.Error("проекция не получила переписанный hex → NL-1")
+	}
+	if !canonEnabled["NL-1-2"] {
+		t.Error("NL-1-2 выключен в проекции без отметки")
 	}
 }
 
@@ -341,9 +354,18 @@ func TestMigrationScenario5Detour(t *testing.T) {
 	if srv.Node.Detour == nil || srv.Node.Detour.FolderID != subID || srv.Node.Detour.Tag != "NL-1" {
 		t.Fatalf("тройня на узел подписки → %+v", srv.Node.Detour)
 	}
+	// SPEC 118 W4: ссылку в сборку везёт КАНОН (NodeLink), а детур-тройня
+	// моста у канонического источника снята: два резолва одного ребра с
+	// разной строгостью перезаписывали бы друг друга на проходе 2.
 	ps := srv.ToProxySourceV4()
-	if ps.DetourNodeSourceID != subID || ps.DetourNodeTag != "NL-1" {
-		t.Errorf("мост потерял пару source_id+tag: %+v", ps)
+	if ps.DetourNodeSourceID != "" || ps.DetourNodeTag != "" || ps.DetourTag != "" {
+		t.Errorf("детур-тройня моста не снята у канонического источника: %+v", ps)
+	}
+	if ps.Canonical == nil || len(ps.Canonical.Nodes) != 1 {
+		t.Fatalf("канонической проекции узла нет: %+v", ps.Canonical)
+	}
+	if d := ps.Canonical.Nodes[0].Detour; d == nil || d.FolderID != subID || d.Tag != "NL-1" {
+		t.Errorf("проекция потеряла ссылку detour: %+v", d)
 	}
 
 	trans := findSource(t, s, "01J0000000000000000000TRNS")
@@ -432,10 +454,18 @@ func TestMigrationScenario6FoldToReplace(t *testing.T) {
 			}
 		}
 	}
-	// Мост эмитит переписанные теги (override поверх позиционных).
+	// SPEC 118 W4: свёртку в сборку везёт КАНОН (Replace с явным тегом), а
+	// мостовой Fold у канонического источника снят — второй разворот дал бы
+	// дубль тега и отказ ядра.
 	ps := sub.ToProxySourceV4()
-	if ps.Fold == nil || ps.Fold.SelectTagOverride != "[P]select" || ps.Fold.AutoTagOverride != "[P]select-auto" {
-		t.Errorf("мостовые override-теги свёртки: %+v", ps.Fold)
+	if ps.Fold != nil {
+		t.Errorf("мостовой Fold не снят у канонического источника: %+v", ps.Fold)
+	}
+	if ps.Canonical == nil || ps.Canonical.Replace == nil {
+		t.Fatalf("канонической свёртки нет: %+v", ps.Canonical)
+	}
+	if ps.Canonical.Replace.Mode != configtypes.FolderReplaceBoth || ps.Canonical.Replace.Tag != "[P]select" {
+		t.Errorf("проекция свёртки: %+v", ps.Canonical.Replace)
 	}
 
 	// Позиционный дериватив при пустом префиксе: подписка №1 → "1:select".
@@ -599,5 +629,71 @@ func TestMigrationScenario9Seed(t *testing.T) {
 	}
 	if _, err := state.Load(p); err != nil {
 		t.Fatalf("v7-модель сида не читается: %v", err)
+	}
+}
+
+// §4.B.10 — rule-reset не стреляет: на МИГРИРОВАННОМ состоянии сборка эмитит
+// ровно те теги, на которые смотрят переписанные ссылки, а известные цели
+// содержат все виды из гарда занятости.
+//
+// Проверяется на реальной эмиссии, а не на списке строк: сброс осиротевших
+// целей сравнивает цель правила с тем, что реально попадёт в config.json, и
+// разойдись эти два множества — правило ушло бы в direct на первой загрузке
+// (deps-К2).
+func TestMigrationScenario10RuleTargetsSurviveEmission(t *testing.T) {
+	s, _ := loadMainFixture(t)
+
+	pc := s.ParserConfig
+	res, err := config.GenerateOutboundsFromParserConfig(&pc, map[string]int{}, nil,
+		func(configtypes.ProxySource, map[string]int, func(float64, string), int, int) ([]*configtypes.ParsedNode, error) {
+			return nil, nil
+		}, config.DirectionBuildOptions{})
+	if err != nil {
+		t.Fatalf("эмиссия мигрированного состояния: %v", err)
+	}
+
+	emitted := map[string]bool{}
+	for _, line := range res.OutboundsJSON {
+		body := line
+		if i := strings.Index(body, "{"); i >= 0 {
+			body = body[i:]
+		}
+		body = strings.TrimRight(strings.TrimSpace(body), ",")
+		var m map[string]interface{}
+		if json.Unmarshal([]byte(body), &m) != nil {
+			continue
+		}
+		if tag, _ := m["tag"].(string); tag != "" {
+			emitted[tag] = true
+		}
+	}
+
+	// Цели правил, route_final и dns.detour после переписи миграции.
+	for _, want := range []string{"[P]select", "[P]select-auto"} {
+		if !emitted[want] {
+			t.Errorf("тег %q не эмитирован — правило на него сбросилось бы на direct; emitted=%v", want, emitted)
+		}
+	}
+
+	// Гард знает все виды тегов: замены, твины, верхние узлы, системные.
+	guard := config.BuildTagGuard(pc.ParserConfig.Outbounds, pc.ParserConfig.Proxies,
+		[]string{"Tokyo", "Transitional", "chain-1"}, []string{"direct-out", "block-out"})
+	for _, want := range []string{"[P]select", "[P]select-auto", "Tokyo", "video-out", "direct-out"} {
+		if !guard.Taken(want) {
+			t.Errorf("гард не знает тега %q — переименование смогло бы его занять", want)
+		}
+	}
+	known := config.KnownTargetTags(guard, pc.ParserConfig.Outbounds)
+	for _, want := range []string{"[P]select", "[P]select-auto", "Tokyo"} {
+		found := false
+		for _, k := range known {
+			if k == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("известные цели не содержат %q: %v", want, known)
+		}
 	}
 }

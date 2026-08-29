@@ -47,6 +47,13 @@ func PrepareSourceFolds(parserConfig *ParserConfig, tmplAutoOptions map[string]i
 		if ps.Fold == nil || ps.Disabled {
 			continue
 		}
+		// SPEC 118 W4: у канонического источника свёртку разворачивает
+		// PrepareFolderReplaces — по явному тегу и без маркеров. Мостовой
+		// Fold у него доживает лишь как отражение replace (TEMPORARY BRIDGE),
+		// и второй разворот дал бы дубль тега.
+		if ps.Canonical != nil {
+			continue
+		}
 		groups := buildFoldGroups(*ps.Fold, ps.TagPrefix, i, tmplAutoOptions)
 		if len(groups) == 0 {
 			continue

@@ -191,6 +191,10 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 	gen := config.StartBuildReport()
 	model.BuildReportGen = gen
 	corepkg.FeedBuildReportFromParser(gen, result)
+	// SPEC 118 W4: деградации последнего fetch — из состояния (тела сборка не
+	// читает). Тот же вызов, что у боевой сборки: разъехавшись, «Итог» и
+	// config.json дали бы разные ответы про одну конфигурацию.
+	corepkg.FeedBuildReportFromFetchStatus(gen, model.Sources)
 
 	model.OutboundStats.NodesCount = result.NodesCount
 	model.OutboundStats.EndpointsCount = result.EndpointsCount

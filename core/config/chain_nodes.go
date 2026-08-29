@@ -98,6 +98,20 @@ func ResolveChainSources(
 	for _, tag := range ChainBuiltinHopTags {
 		known[tag] = true
 	}
+	// SPEC 118 W4: теги ЗАМЕН свёрнутых папок — законные позиции
+	// (features/directions.md §5: «резолв NodeLink видит replace-теги наравне
+	// с узлами»). Узлом такая цель не является: замена разворачивается
+	// локальной группой на проходе 0, и без этой добавки хоп на неё
+	// деградировал бы цепочку, хотя цель в конфиге есть.
+	for i := range parserConfig.ParserConfig.Proxies {
+		ps := parserConfig.ParserConfig.Proxies[i]
+		if ps.Disabled || ps.Canonical == nil {
+			continue
+		}
+		for _, tag := range FolderReplaceTags(ps.Canonical.Replace) {
+			known[tag] = true
+		}
+	}
 
 	// Для проверок состава: узлы по тегам (reality) и уже разрешённые
 	// цепочки (вложенность). Раньше эти валидаторы существовали, но

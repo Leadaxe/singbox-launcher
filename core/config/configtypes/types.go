@@ -232,7 +232,103 @@ type ProxySource struct {
 	// парсятся), а генератор эмитит map passthrough — включая типы и поля,
 	// которых лаунчер не знает. Tag и detour перештамповываются как обычно.
 	ConfigJSON json.RawMessage `json:"config_json,omitempty"`
+
+	// Canonical — ГОТОВЫЕ узлы канона v7 (state.Source.nodes[] либо body
+	// корневого узла), спроецированные для сборки (SPEC 118 W4).
+	//
+	// Непусто → конвейер сборки НЕ зовёт парсер тела: узлы уже
+	// материализованы (fetch W3 / миграция W2), эмиссия идёт из body, а
+	// тег-политика применяется на эмиссии. Пусто → мостовой путь W1–W3
+	// (парс raw-кэша) — он живёт до W5 ради состояний, ещё не прошедших
+	// материализацию.
+	//
+	// `json:"-"`: проекция сборки, на диск не едет.
+	Canonical *CanonicalSource `json:"-"`
 }
+
+// CanonicalSource — проекция канонического источника v7 в сборочную форму
+// (SPEC 118 W4, PLAN §4).
+//
+// Держит ровно то, что нужно эмиссии: готовые узлы, тег-политику папки и
+// свёртку. Ссылки NodeLink уже здесь — их резолвит единый резолв
+// (nodelink_resolve.go), а не частные поиски по тегам.
+type CanonicalSource struct {
+	// FolderID — ULID папки/подписки (адресат NodeLink.FolderID). Пусто у
+	// корневого узла: его пространство тегов — корневое.
+	FolderID string
+	// IsContainer — источник является папкой/подпиской (у корневого узла
+	// тег-политики нет, финальный тег = сырой).
+	IsContainer bool
+	// TagPrefix / TagPostfix — тег-политика контейнера (переменные живут).
+	TagPrefix  string
+	TagPostfix string
+	// Nodes — узлы в порядке модели.
+	Nodes []CanonicalNode
+	// FolderDetour — общий detour папки: применяется к Server-узлам БЕЗ
+	// личного, пропуская Chain и Auto (features/directions.md §7).
+	FolderDetour *NodeLink
+	// Replace — свёртка папки; nil = папка развёрнута поузлово.
+	Replace *FolderReplace
+}
+
+// CanonicalNode — один готовый узел канона в сборочной форме.
+type CanonicalNode struct {
+	// Kind: "server" | "chain" | "auto" (значения state.SourceKind).
+	Kind string
+	// Tag — СЫРОЙ тег: идентичность в контейнере, вход тег-политики.
+	Tag     string
+	Enabled bool
+	// Body — готовый sing-box outbound, чист от tag/detour (server only).
+	Body json.RawMessage
+	// OriginRaw / OriginKind — происхождение записи (диагностика, {$label}).
+	OriginRaw  string
+	OriginKind string
+	// Detour — личный detour узла (server only).
+	Detour *NodeLink
+	// Hops — позиции цепочки, ближний первым (chain only).
+	Hops []NodeLink
+	// Group — провайдерская группа (auto only).
+	Group *CanonicalAutoGroup
+}
+
+// CanonicalAutoGroup — провайдерская группа канона в сборочной форме.
+type CanonicalAutoGroup struct {
+	// GroupType: "selector" | "urltest".
+	GroupType string
+	// Default — сырой тег члена (selector only).
+	Default string
+	Members []NodeLink
+	// Options — опции группы (url/interval/tolerance/…), уже раскрытые из
+	// AutoStrategy в форму sing-box.
+	Options map[string]interface{}
+}
+
+// NodeLink — ссылка «через кого» в сборочной форме (зеркало state.NodeLink;
+// state сюда импортировать нельзя — цикл).
+type NodeLink struct {
+	// FolderID: "" → корневое пространство ФИНАЛЬНЫХ тегов.
+	FolderID string
+	// Tag — сырой тег узла папки | финальный тег корня.
+	Tag string
+}
+
+// FolderReplace — свёртка папки в сборочной форме (зеркало
+// state.FolderReplace).
+type FolderReplace struct {
+	// Mode: "manual" | "auto" | "both".
+	Mode string
+	// Tag — явный тег замены; both → двойник "<Tag>-auto".
+	Tag string
+	// Strategy — параметры авто-половины; nil при manual.
+	Strategy *DirectionAuto
+}
+
+// Режимы FolderReplace (зеркало state.FolderReplace*).
+const (
+	FolderReplaceManual = "manual"
+	FolderReplaceAuto   = "auto"
+	FolderReplaceBoth   = "both"
+)
 
 // Sentinel ref values for Direction (SPEC 058-R-N STATE_AS_TEMPLATE_DIFF).
 //
@@ -314,6 +410,18 @@ type Direction struct {
 	// непуст у родителя и указывает на группу.
 	TwinOf  string `json:"-"`
 	TwinTag string `json:"-"`
+
+	// NoGroupMembers — запись НЕ принимает в состав групповые узлы
+	// (selector/urltest из импортированного конфига).
+	//
+	// Живёт только во время сборки (`json:"-"`), как TwinOf/TwinTag. Причина
+	// та же, что у твинов Направлений: авто-измеритель поверх чужой группы
+	// мерил бы её текущий выбор, а не скорость сервера. Отдельный флаг, а не
+	// переиспользование TwinOf: TwinOf меняет обработку записи в проходах
+	// 1–3 целиком (исключение из пула, отказ от expose-кредита), а
+	// авто-половина свёртки папки — самостоятельная локальная группа
+	// (SPEC 118 W4, features/directions.md §5).
+	NoGroupMembers bool `json:"-"`
 
 	// SPEC 057/058-R-N: preset/template binding.
 	Ref     string           `json:"ref,omitempty"`     // "" (direct) | "#TEMPLATE#" | "<preset_id>"
@@ -636,6 +744,26 @@ type ParsedNode struct {
 	// emitter — the whole point is carrying types and fields the emitter
 	// does not know about.
 	EmitRaw bool
+	// EmitBody — ГОТОВОЕ тело узла из канона v7 (state.Node.Body): сборка
+	// эмитит его как есть, только возвращая на места ключи tag и detour
+	// (SPEC 118 W4, Т5 «сборка не читает тел подписок и не зовёт парсеры»).
+	//
+	// Порядок ключей внутри сохраняется байт-в-байт — это и есть то, что
+	// эмиттер лаунчера написал в момент материализации; поэтому эмиссия из
+	// nodes[] совпадает со старым движком, парсившим тело на каждой сборке.
+	//
+	// Приоритетнее EmitRaw и per-scheme-ветки: непусто → узел эмитится
+	// отсюда. Outbound при этом ЗАПОЛНЕН (разбор тела в map) — его читают
+	// фильтры Направлений, санитайзер и проверки цепочек.
+	EmitBody json.RawMessage
+	// CanonicalDetour — личный detour узла из канона v7 (NodeLink).
+	// Резолвится единым резолвом на проходе 2; в body не запекается.
+	CanonicalDetour *NodeLink
+	// CanonicalGroupMembers / CanonicalGroupDefault — состав провайдерской
+	// Auto-группы канона по ссылкам NodeLink (сырые теги своей папки).
+	// Резолв на проходе 2 переписывает их в финальные теги членов.
+	CanonicalGroupMembers []NodeLink
+	CanonicalGroupDefault string
 	// Warnings — коды деградаций, применённых к узлу при разборе
 	// (SPEC 103, фаза 2). Словарь кодов — contract/registry/warnings.json.
 	//

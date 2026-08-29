@@ -186,46 +186,114 @@ GUI-пакеты — скрипты `build/`. Git не трогать. `ui/traff
 - [x] `go build ./...` + `go test -count=1 ./...` + `go vet ./...` —
       зелёные; греп go1.20 по правкам — чисто.
 
-## W4 — Эмиссия, резолв, гард, пул
+## W4 — Эмиссия, резолв, гард, пул — СДЕЛАНО
 
-- [ ] Сборка из nodes[]: проекция подписок/папок отдаёт готовые узлы
-      (body → ParsedNode), конвейер сборки не вызывает парс тел подписок;
-      raw-кэш из сборки не читается (файлы ещё живут для миграции).
-- [ ] Эмиссионная тег-машина: NormalizeProxyDisplay → TagPolicy
-      (prefix/tag/postfix + переменные) → MakeTagUnique (глобальный);
-      порядок применения = старый (эталонная байт-эквивалентность).
-- [ ] `core/config/nodelink_resolve.go`: единый резолв NodeLink
-      (detour/hops fail-closed + кольца; members prune; словарь целей:
-      корень + узлы папок + replace-теги + Направления + системные);
-      топология — расширение detour_topo; WG-исключение detour.
-- [ ] Папочный общий detour: Server-узлам без личного, пропуская
-      Chain/Auto.
-- [ ] Auto-эмиссия: фильтр enabled-членов, пустая группа не эмитится +
-      warning, default вне состава — снимается с warning; selector
-      сохраняет type/default.
-- [ ] `PrepareFolderReplaces` вместо `PrepareSourceFolds`: явный tag,
-      both → `<tag>-auto` (buildTwin), исключение Auto-узлов из
-      авто-состава, селекторная половина из group_templates.channel;
-      WIZARD-маркеры не пишутся.
-- [ ] Пул кандидатов Направлений (outbound_filter): верхние + папки без
-      replace (финальные теги) + replace-теги; твины исключают Auto-узлы
-      и replace-теги.
-- [ ] `core/config/tag_guard.go`: единое множество занятых (Направления +
-      твины + replace + `-auto` + верхние + системные); подключить к
-      сборке и `DirectionTagTaken`.
-- [ ] `rule_target_reset`: known += replace-теги, `-auto`-двойники,
-      верхние узлы (тест §4.B.10 — правила не сброшены на мигрированном
-      состоянии).
-- [ ] dns.detour — в граф-санитайзер (висячий ловится сборкой) и в
-      known-реестр.
-- [ ] Отчёт сборки: fetch-строки из updateStatus.warnings; адресация
-      folderId/(folderId, tag); эмиссионные причины (chain_failed,
-      naive_degraded, detour ⚠) — как раньше.
-- [ ] Мост: детур/фолд-деривации из adapter_source сняты (остаётся только
-      Load-проекция там, где build-пути ещё читают ProxySource-форму).
-- [ ] Тесты SPEC §4.E (1–9); переработка chain/detour/group-семейств
-      тестов на NodeLink (семантика резолва прежняя).
-- [ ] `go build ./...` + `go test ./core/... ./ui/...`.
+- [x] Сборка из nodes[]: `Source.canonicalProjection()` →
+      `ProxySource.Canonical` (`configtypes.CanonicalSource/CanonicalNode`,
+      `json:"-"`); `EmitCanonicalSource` (`core/config/canonical_emit.go`)
+      строит узлы из body — конвейер сборки парсер тел не зовёт (тест
+      `runCanonicalBuild` падает, если loadNodesFunc сработал). Мостовой
+      путь остаётся у источников БЕЗ канона (материализация не прошла) —
+      умирает в W5 вместе с raw-кэшем.
+- [x] Тело эмитится КАК ЕСТЬ с возвратом `tag`/`detour` на прежние места
+      (`core/config/body_keyorder.go`: порядок ключей не теряется).
+      `stripTagAndDetour` переписан на тот же ordered-разбор — без этого
+      каркасная W2-сортировка ключей ломала байт-равенство на КАЖДОМ узле.
+- [x] Эмиссионная тег-машина: политика(prefix/postfix + переменные) →
+      NormalizeProxyDisplay → глобальный MakeTagUnique. Вход политики —
+      ПРОВАЙДЕРСКИЙ тег из origin.raw (`subscription.ProviderTagFromLabel`),
+      а НЕ уникализированный сырой тег канона: старая машина уникализировала
+      финальный тег (`[P] NL-1 •-2`), и подмена дала бы `[P] NL-1-2 •`
+      (Р1). Подпись/комментарий восстанавливаются из origin
+      (`subscription.LabelFromOriginURI`) — для `{$label}`/`{$comment}` и
+      фильтров.
+- [x] `core/config/nodelink_resolve.go`: `NodeLinkTargets` (узлы папок по
+      сырым тегам + корневое пространство финальных тегов + Направления +
+      твины + replace-теги + системные), `ApplyCanonicalNodeLinks` —
+      detour fail-closed с каскадом до фикспойнта и кольцами,
+      members prune; `ResolveCanonicalChainHops` — позиции цепочек до
+      ResolveChainSources (нерезолвнутая уезжает сырой и роняет цепочку
+      целиком). WG-исключение detour — в точке применения.
+- [x] Папочный общий detour: Server-узлам без личного, пропуская
+      Chain/Auto (`applyCanonicalDetourLink`).
+- [x] Auto-эмиссия: выключенные члены не рождаются вовсе, битые — prune с
+      warning; пустая группа не эмитится + warning; default только у
+      selector и только из состава.
+- [x] `PrepareFolderReplaces` (`core/config/folder_replaces.go`): явный
+      tag, both → `<tag>-auto` через `buildTwin`, `NoGroupMembers` (новый
+      build-only флаг Direction) исключает Auto-узлы папки из авто-состава,
+      селекторная половина — опции шаблонных групп. WIZARD-маркеры не
+      пишутся; `PrepareSourceFolds` пропускает канонические источники.
+- [x] Пул кандидатов (`FilterNodesExcludeFromGlobal` +
+      `collectExposeTagCandidates`): верхние узлы + узлы папок без replace
+      + replace-тег свёрнутой (итог свёртки, не её внутренность). Твины
+      уже исключали Auto-узлы (`dropGroupNodes`) и expose-кандидатов
+      (`TwinOf != ""`).
+- [x] `core/config/tag_guard.go`: `TagGuard`/`BuildTagGuard`/
+      `KnownTargetTags`; вызывается на сборке (конфликты → EmissionWarnings
+      + WARN). Модельная сторона — `ui/configurator/business/
+      tag_guard_model.go` (`ModelTagOwners`/`ModelReplaceTags`/
+      `ModelRootNodeTags`/`KnownRuleTargetTags`), подключена к
+      `DirectionTagTaken`.
+- [x] `rule_target_reset`: known = `KnownRuleTargetTags` (replace-теги,
+      `-auto`-двойники, верхние узлы, выключенные Направления) + прежние
+      доступные цели.
+- [x] dns.detour — ребро outbound-графа: `core/build/
+      dns_detour_sanitize.go` (`SanitizeDNSDetours` в `buildSection` для
+      секции dns, `DNSDetourTags` для реестра). Ключ снимается, сервер
+      живёт: у DNS-сервера detour это «через какой канал резолвить», а не
+      анонимность (в отличие от detour узла — там выбрасывается носитель).
+- [x] Отчёт сборки: новые виды `fetch_degraded` (из
+      `update_status.warnings` — `FeedBuildReportFromFetchStatus`,
+      адресация «источник → сырой тег», плюс «ни разу не обновлялась») и
+      `emit_degraded` (`OutboundGenerationResult.EmissionWarnings`).
+      Зовётся из обеих точек — боевой Rebuild и «Итог» визарда.
+- [x] Мост сужен: `narrowBridgeForCanonical` снимает у канонического
+      источника детур-тройню, Fold, DisabledNodes и exclude/expose —
+      иначе те же рёбра резолвились бы дважды с разной строгостью.
+- [x] Тесты §4.E 1–9 (`core/config/canonical_emit_test.go`), §4.E.8
+      (`core/build/dns_detour_sanitize_test.go`), §4.B.10
+      (`TestMigrationScenario10RuleTargetsSurviveEmission` +
+      `ui/configurator/business/tag_guard_model_test.go`), Р8
+      (`core/build_report_fetch_status_test.go`). Три W2-теста
+      мостовых деривации переписаны на канонические проекции (предмет
+      деривации W4 упраздняет).
+- [x] Самопроверка эталонами: `ETALON_V6MIG=1` даёт РОВНО одно
+      задекларированное расхождение Р2 (`[P]auto` → `[P]select-auto`),
+      других нет. `real-v088` — golden берёт готовый `cache.json` и слой
+      эмиссии не трогает; `go test ./core/build` зелёный.
+- [x] `go build ./...` + `go vet ./...` + `go test -count=1 ./...` —
+      зелёные; греп go1.20 по диффу — чисто.
+
+### Фикс-раунд W4 (по REJECT ревью)
+
+- [x] БЛОКЕР: выключенный узел ПРОХОДИТ тег-машину и отбрасывается ПОСЛЕ
+      неё (`EmitCanonicalSource`) — потребляет и `{$num}`, и слот
+      глобальной уникализации, ровно как старый движок
+      (`filterDisabledNodes` шёл после `applyURINodeTags`). Иначе у
+      соседей сдвигались финальные теги: [A, выкл. B, B] дал бы третьему
+      `B` вместо `B-2`, протухнув выборами cache.db и ссылками. Тесты —
+      `TestEmitDisabledNodeStillConsumesUniqueSlot`,
+      `TestEmitDisabledNodeConsumesNumVariable`.
+- [x] Отчёт сборки: подписка с `UpdateStatus.LastStatus=="err"` и узлами
+      прошлого успеха видна (`lastFetchFailedReason` в
+      `FeedBuildReportFromFetchStatus`) — причина провала + дата узлов,
+      из которых собран конфиг; без успеха в истории строка остаётся
+      одна («ни разу не обновлялась»). Тесты —
+      `core/build_report_fetch_status_test.go`.
+- [x] `TagPolicy.Mask` больше не игнорируется молча:
+      `canonicalMaskBridgeWarnings` кладёт warning в `EmissionWarnings`
+      (только у КОНТЕЙНЕРА — у server/chain/auto мостовой `TagMask` несёт
+      тег узла), поле формы задизейблено с той же подписью
+      (`source_edit_window.go`, вкладку снимает W6).
+- [x] WG-detour с висячей целью — `warnWireguardDanglingDetours` (один
+      раз, до фикспойнта); носитель не роняется (detour к WG неприменим),
+      но две неработающие настройки сразу названы вслух.
+- [x] Пересамопроверка: `ETALON_V6MIG=1` — по-прежнему РОВНО одно
+      расхождение Р2; выхлоп `real-v088` байт-в-байт равен эталону W2
+      (`SPECS/118-F-N-STATE_V7/etalon/real-v088.config.json`), остаточное
+      падение `GOLDEN_RUN_REAL` — предсуществующий
+      `dns.independent_cache`. Полный прогон зелёный.
 
 ## W5 — Смерть легаси
 

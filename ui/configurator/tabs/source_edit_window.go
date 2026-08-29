@@ -37,6 +37,11 @@ const (
 	sourceDetourHintText         = "Dial this source's nodes through another outbound to build a proxy chain. Group tags chain through a selector; » entries chain through one concrete server, tracked by that server and its node tag — editing the server's settings or tag prefix keeps the link, renaming its node tag clears it."
 	sourcePreviewNoCacheHintText = "Disabled subscriptions are not auto-fetched, so there is no cached body to preview. Click below to fetch this subscription once without enabling it."
 	sourceTagVarsHintText        = "Variables (work in all three fields): {$tag} original node tag · {$server} address · {$port} port · {$scheme} protocol (also {$protocol}) · {$label} name from the link's #fragment · {$comment} comment · {$num} node number from 1"
+	// SPEC 118: маска упразднена (features/sources.md). Поле остаётся
+	// видимым и заполненным — пользователь должен увидеть, ЧТО перестало
+	// действовать, — но правится оно уже нигде: сборка её игнорирует и
+	// говорит об этом в отчёте той же фразой. Вкладку снимает W6.
+	sourceTagMaskRetiredText = "The tag mask has been retired and is no longer applied; use prefix/postfix."
 )
 
 // Min heights for Source Edit dialog tab bodies (child window; do not use main window canvas before Show).
@@ -624,6 +629,10 @@ func showSourceEditWindow(
 
 	maskEntry := widget.NewEntry()
 	maskEntry.SetPlaceHolder(locale.T("{$tag}-{$server}"))
+	// SPEC 118: маска упразднена — поле показывает прежнее значение, но
+	// править его больше нечем. Дизейбл, а не удаление вкладки: удаление —
+	// предмет W6, а молчаливо принимать ввод, который сборка выбросит, нельзя.
+	maskEntry.Disable()
 
 	// SPEC 108: одна галка вместо прежних четырёх (`Local auto`,
 	// `Local select`, `Exclude from global`, `Expose tags`), из восьми
@@ -939,8 +948,12 @@ func showSourceEditWindow(
 			settingsContent.Add(prefixEntry)
 			settingsContent.Add(widget.NewLabel(locale.T("Tag postfix")))
 			settingsContent.Add(postfixEntry)
-			settingsContent.Add(widget.NewLabel(locale.T("Tag mask (overrides prefix/postfix)")))
+			settingsContent.Add(widget.NewLabel(locale.T("Tag mask (retired)")))
 			settingsContent.Add(maskEntry)
+			maskRetiredHint := widget.NewLabel(locale.T(sourceTagMaskRetiredText))
+			maskRetiredHint.Wrapping = fyne.TextWrapWord
+			maskRetiredHint.Importance = widget.LowImportance
+			settingsContent.Add(maskRetiredHint)
 			// Список переменных — прямо под полями, а не за иконкой «?» и
 			// не в доках: их семь, они конкретны, и без них поле маски —
 			// пустое приглашение угадывать. Подсказка одна на три поля:

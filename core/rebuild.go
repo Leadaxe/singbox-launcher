@@ -181,6 +181,10 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	// сборка обязана снять прежние ⚠, иначе пометка переживёт свою причину.
 	gen := config.StartBuildReport()
 	FeedBuildReportFromParser(gen, parserRes)
+	// SPEC 118 W4: деградации последнего fetch — из состояния, не из разбора
+	// (тела сборка не читает). Кладутся в ту же попытку: пользователю нужен
+	// один список причин, а не два по стадиям конвейера.
+	FeedBuildReportFromFetchStatus(gen, s.Sources)
 
 	// Step 4: build.
 	ctx := ac.buildContextFromState(s, cacheSnap, td)

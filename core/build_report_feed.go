@@ -14,8 +14,11 @@
 package core
 
 import (
+	"strings"
+
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 )
 
@@ -66,6 +69,19 @@ func FeedBuildReportFromParser(gen config.BuildGeneration, res *config.OutboundG
 		})
 	}
 
+	// SPEC 118 W4: деградации ЭМИССИИ из материализованных nodes[]
+	// (нерезолвнутая позиция цепочки, выпавший член Auto, снятое умолчание,
+	// столкновение тегов в гарде). Раньше их место занимали причины разбора;
+	// разбор теперь живёт только в fetch, а сборка отчитывается за то, что
+	// не смогла собрать из уже принятого.
+	for _, w := range res.EmissionWarnings {
+		entries = append(entries, config.BuildReportEntry{
+			Kind:    config.BuildReportEmitDegraded,
+			Subject: "emission",
+			Reason:  w,
+		})
+	}
+
 	// naive без поддержки в ядре: узлы сняты, конфиг собран. Молчание тут
 	// читалось бы как баг парсера — «узлы были, узлов нет».
 	if res.SkippedNaiveNodes > 0 {
@@ -78,6 +94,121 @@ func FeedBuildReportFromParser(gen config.BuildGeneration, res *config.OutboundG
 	}
 
 	config.AddBuildReportEntries(gen, entries)
+}
+
+// FeedBuildReportFromFetchStatus кладёт в отчёт деградации ПОСЛЕДНЕГО
+// ОБНОВЛЕНИЯ подписок, прочитанные ИЗ СОСТОЯНИЯ (SPEC 118 W4, Т3/Р8).
+//
+// # Почему из состояния, а не из разбора
+//
+// В модели v7 тело подписки разбирается один раз — при fetch, — и его
+// per-record деградации (битая запись, потерянный член группы, обрезка
+// капом, недостоверный ответ) персистятся в `update_status.warnings`.
+// Сборка тел не читает вовсе, поэтому заново узнать эти причины ей неоткуда:
+// единственный честный источник — состояние.
+//
+// Это и закрывает риск Р8 (двухфазность отчёта «Итога»): строки появляются
+// сразу после fetch, а не после следующей пересборки, потому что читатель
+// синхронно смотрит в state, а не ждёт своей стадии конвейера.
+//
+// Подписка, ни разу не сфетченная (nodes[] пуст, успехов не было), — тоже
+// строка отчёта, а не отказ сборки (SPEC Т3).
+func FeedBuildReportFromFetchStatus(gen config.BuildGeneration, sources []state.Source) {
+	var entries []config.BuildReportEntry
+	for i := range sources {
+		src := &sources[i]
+		if src.Kind != state.SourceKindSubscription || !src.Enabled {
+			continue
+		}
+		label := src.Name
+		if label == "" {
+			label = src.Label
+		}
+		if label == "" {
+			label = src.URL
+		}
+		st := src.UpdateStatus
+
+		// «Никогда не фетчилось» — предупреждение, не отказ: конфиг идёт из
+		// того, что есть у остальных источников.
+		if len(src.Nodes) == 0 && (st == nil || st.LastSuccessAt == "") {
+			entries = append(entries, config.BuildReportEntry{
+				Kind:        config.BuildReportFetchDegraded,
+				Subject:     label,
+				SourceID:    src.ID,
+				SourceLabel: label,
+				Reason:      "подписка ещё ни разу не обновлялась — узлов нет; нажмите Update",
+			})
+			continue
+		}
+		if st == nil {
+			continue
+		}
+
+		// Последнее обновление ПРОВАЛИЛОСЬ, а узлы в конфиг всё-таки едут —
+		// от прошлого успеха. Молчать тут нельзя: пользователь видит полный
+		// список узлов и считает подписку свежей, хотя провайдер мог давно
+		// сменить или отозвать половину. Отказом это не является — сборка
+		// честно идёт из последнего известного успеха, поэтому вид записи
+		// тот же fetch_degraded, что у остальных деградаций обновления.
+		if st.LastStatus == subUpdateStatusErr {
+			entries = append(entries, config.BuildReportEntry{
+				Kind:        config.BuildReportFetchDegraded,
+				Subject:     label,
+				SourceID:    src.ID,
+				SourceLabel: label,
+				Reason:      lastFetchFailedReason(st),
+				NodeCount:   len(src.Nodes),
+			})
+		}
+
+		for _, w := range st.Warnings {
+			reason := w.Message
+			if reason == "" {
+				reason = w.Kind
+			}
+			subject := label
+			if w.Tag != "" {
+				// Адресация (folderId, tag): субъект — конкретный узел, а
+				// пометка строки Sources остаётся за SourceID.
+				subject = label + " → " + w.Tag
+			}
+			entries = append(entries, config.BuildReportEntry{
+				Kind:        config.BuildReportFetchDegraded,
+				Subject:     subject,
+				SourceID:    src.ID,
+				SourceLabel: label,
+				Reason:      reason,
+				NodeCount:   w.Count,
+			})
+		}
+	}
+	if len(entries) == 0 {
+		return
+	}
+	config.AddBuildReportEntries(gen, entries)
+}
+
+// subUpdateStatusErr — значение SubUpdateStatus.LastStatus для провала.
+const subUpdateStatusErr = "err"
+
+// lastFetchFailedReason — формулировка провалившегося обновления: что
+// сломалось и ЧЕМ при этом собран конфиг.
+//
+// Дата последнего успеха — половина смысла записи: «обновление провалилось»
+// без неё читается как «узлов нет», а узлы есть, просто старые. Когда успеха
+// не было вовсе, вторая половина опускается — врать про несуществующую дату
+// хуже, чем не сказать.
+func lastFetchFailedReason(st *state.SubUpdateStatus) string {
+	msg := strings.TrimSpace(st.LastErrorMsg)
+	if msg == "" {
+		msg = "причина не сохранена"
+	}
+	reason := "последнее обновление провалилось: " + msg
+	if at := strings.TrimSpace(st.LastSuccessAt); at != "" {
+		reason += "; конфиг собран из узлов от " + at
+	}
+	return reason
 }
 
 // feedParserDiagnosticsOnFailure открывает попытку и кладёт в неё причины

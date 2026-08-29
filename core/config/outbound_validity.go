@@ -43,12 +43,39 @@ func commentHasWizardLocalOutboundMarker(comment string) bool {
 	return false
 }
 
+// collectExposeTagCandidates — теги, которые пул кандидатов Направлений
+// видит ВМЕСТО узлов свёрнутой папки.
+//
+// SPEC 118 W4: у канонического источника решает ПРАВИЛО — есть replace,
+// значит его теги (селектор и/или `-auto`-двойник) попадают в пул, а узлы
+// из него ушли (FilterNodesExcludeFromGlobal). Маркеры `WIZARD:*` в comment
+// для этого не нужны и не пишутся: метка в тексте была механизмом, а не
+// правилом, и переживала переименования хуже самого правила.
+//
+// TEMPORARY BRIDGE (умирает в W5): у источников без канона остаётся прежний
+// путь «ExposeGroupTagsToGlobal + маркер».
 func collectExposeTagCandidates(parserConfig *ParserConfig) []exposeTagCandidate {
 	if parserConfig == nil {
 		return nil
 	}
 	var out []exposeTagCandidate
 	for _, ps := range parserConfig.ParserConfig.Proxies {
+		if ps.Disabled {
+			continue
+		}
+		if cs := ps.Canonical; cs != nil {
+			if cs.Replace == nil {
+				continue
+			}
+			// Кандидатом становится ИТОГ свёртки, а не её внутренность: при
+			// both авто-двойник — опция селектора, и предлагать его вторым
+			// кандидатом значило бы показать пользователю в списке и папку,
+			// и её же автовыбор — выбор, которого он не просил.
+			if tag := FolderReplacePoolTag(cs.Replace); tag != "" {
+				out = append(out, exposeTagCandidate{Tag: tag})
+			}
+			continue
+		}
 		if !ps.ExposeGroupTagsToGlobal {
 			continue
 		}
@@ -166,7 +193,14 @@ func buildOutboundsInfo(
 			sourceNodes = []*ParsedNode{}
 		}
 		for _, outboundConfig := range proxySource.Outbounds {
-			filteredNodes := filterNodesForSelector(sourceNodes, outboundConfig.Filters)
+			// SPEC 118 W4: авто-половина свёртки папки не принимает
+			// Auto-узлы своей папки — по той же причине, что твины
+			// Направлений исключают группы (features/directions.md §5).
+			localPool := sourceNodes
+			if outboundConfig.NoGroupMembers {
+				localPool = dropGroupNodes(localPool)
+			}
+			filteredNodes := filterNodesForSelector(localPool, outboundConfig.Filters)
 			filteredNodes, chainCycles = appendChainCycles(chainCycles,
 				filteredNodes, outboundConfig.Tag, chainHops)
 			filteredNodes, detourCycles = appendDetourCycles(detourCycles,
@@ -389,7 +423,13 @@ func generateSelectorJSONs(
 				}
 				continue
 			}
-			selectorJSON, err := GenerateSelectorWithFilteredAddOutbounds(sourceNodes, outboundConfig, outboundsInfo, false, nil)
+			// Тот же пул, что на проходе 1: состав считается заново, и без
+			// повторного исключения Auto-узел вернулся бы в авто-состав.
+			localGenPool := sourceNodes
+			if outboundConfig.NoGroupMembers {
+				localGenPool = dropGroupNodes(localGenPool)
+			}
+			selectorJSON, err := GenerateSelectorWithFilteredAddOutbounds(localGenPool, outboundConfig, outboundsInfo, false, nil)
 			if err != nil {
 				debuglog.WarnLog("GenerateOutboundsFromParserConfig: Failed to generate local selector %s for source %d: %v",
 					outboundConfig.Tag, i+1, err)
