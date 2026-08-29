@@ -97,7 +97,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		}
 		m := presenter.Model()
 		m.PreviewNeedsParse = true
-		presenter.UpdateParserConfig(m.ParserConfigJSON)
+		presenter.RefreshOutboundsConfiguratorList()
 		if guiState.RefreshSourcesList != nil {
 			guiState.RefreshSourcesList()
 		}
@@ -208,7 +208,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 
 			m := presenter.Model()
 			m.PreviewNeedsParse = true
-			presenter.UpdateParserConfig(m.ParserConfigJSON)
+			presenter.RefreshOutboundsConfiguratorList()
 			if guiState.RefreshSourcesList != nil {
 				guiState.RefreshSourcesList()
 			}
@@ -234,10 +234,9 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 			Chain:   &configtypes.SourceChain{},
 		})
 		m.BumpRevision()
-		m.RefreshDerivedParserConfig()
 		m.PreviewNeedsParse = true
 		wizardbusiness.InvalidatePreviewCache(m)
-		presenter.UpdateParserConfig(m.ParserConfigJSON)
+		presenter.RefreshOutboundsConfiguratorList()
 		if guiState.RefreshSourcesList != nil {
 			guiState.RefreshSourcesList()
 		}
@@ -801,13 +800,13 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 
 // applySourceMutation is the single refresh chain every Sources-list mutation
 // runs after editing model.Sources (перетаскивание, enable toggle, delete):
-// mark dirty → re-derive ParserConfig → invalidate preview cache →
-// UpdateParserConfig → refresh outbound options → rebuild the list.
+// mark dirty → bump revision → invalidate preview cache →
+// refresh configurator list → refresh outbound options → rebuild the list.
 //
-// MarkAsChanged is called explicitly (and first) on purpose: UpdateParserConfig
-// below suppresses the ParserConfig text widget's OnChanged → MarkAsChanged
-// (see UpdateParserConfig), so without this the mutation would be silently
-// lost on close and the Save button wouldn't light up.
+// MarkAsChanged is called explicitly (and first) on purpose: the refresh
+// chain below does not touch widgets whose OnChanged marks the state dirty,
+// so without this the mutation would be silently lost on close and the Save
+// button wouldn't light up.
 //
 // Keeping all source mutations on this one helper is deliberate — the chain
 // drifted before (the enable toggle used to skip RefreshOutboundOptions, so a
@@ -821,10 +820,9 @@ func applySourceMutation(presenter *wizardpresentation.WizardPresenter, guiState
 	// MarkAsChanged — первым, намеренно (см. комментарий к функции выше).
 	presenter.MarkAsChanged()
 	m.BumpRevision()
-	m.RefreshDerivedParserConfig()
 	m.PreviewNeedsParse = true
 	wizardbusiness.InvalidatePreviewCache(m)
-	presenter.UpdateParserConfig(m.ParserConfigJSON)
+	presenter.RefreshOutboundsConfiguratorList()
 	presenter.RefreshOutboundOptions()
 	if guiState != nil && guiState.RefreshSourcesList != nil {
 		guiState.RefreshSourcesList()
@@ -984,16 +982,15 @@ func CreateDirectionsTab(presenter *wizardpresentation.WizardPresenter) fyne.Can
 		// копировать назад больше нечего. Здесь остаются только производные
 		// эффекты правки: протухание превью и обновление зависимых списков.
 		m.BumpRevision()
-		m.RefreshDerivedParserConfig()
 		m.PreviewNeedsParse = true
 		wizardbusiness.InvalidatePreviewCache(m)
-		presenter.UpdateParserConfig(m.ParserConfigJSON)
+		presenter.RefreshOutboundsConfiguratorList()
 		presenter.RefreshOutboundOptions()
 		if guiState.RefreshSourcesList != nil {
 			guiState.RefreshSourcesList()
 		}
 		// Мутации списка (Edit/Add/Delete, ↑/↓) обязаны помечать состояние
-		// изменённым явно: UpdateParserConfig подавляет OnChanged.
+		// изменённым явно: refresh-цепочка выше OnChanged-виджеты не трогает.
 		presenter.MarkAsChanged()
 	}
 

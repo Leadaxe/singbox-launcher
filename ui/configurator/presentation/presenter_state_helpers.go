@@ -28,9 +28,9 @@ func (p *WizardPresenter) extractConfigParams() []wizardmodels.ConfigParam {
 	return []wizardmodels.ConfigParam{}
 }
 
-// restoreParserConfig — SPEC 052 phase 8: переносит state.Connections в
-// model.{Sources,GlobalOutbounds,Defaults} (canonical) и обновляет derived
-// `ParserConfig`/`ParserConfigJSON` для UI/parser callsite'ов.
+// restoreParserConfig — переносит state.Connections в
+// model.{Sources,GlobalOutbounds,Defaults} (canonical) и поднимает ревизию
+// модели: производные результаты перечитаются от свежезагруженного состава.
 func (p *WizardPresenter) restoreParserConfig(stateFile *wizardmodels.WizardStateFile) error {
 	// Sources canonical из v5 Connections.
 	p.model.Sources = append([]wizardmodels.Source(nil), stateFile.Connections.Sources...)
@@ -65,8 +65,6 @@ func (p *WizardPresenter) restoreParserConfig(stateFile *wizardmodels.WizardStat
 	// Restore на Load — тоже мутация модели: производные результаты
 	// (генерация, мемо) обязаны перечитаться от свежезагруженного состава.
 	p.model.BumpRevision()
-	// Refresh derived view (ParserConfig + ParserConfigJSON) для UI.
-	p.model.RefreshDerivedParserConfig()
 	wizardbusiness.InvalidatePreviewCache(p.model)
 	return nil
 }

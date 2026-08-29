@@ -31,13 +31,13 @@ func modelWithLiveNodeRef(hopTag string) *wizardmodels.WizardModel {
 			Label: "Proton NL", NodeTag: "🇳🇱 Proton NL", URI: renameDependentURI,
 			DetourNodeSourceID: "01WARP", DetourNodeTag: hopTag, DetourNodeLabel: "WARP hop"},
 	}}
-	m.RefreshDerivedParserConfig()
 	return m
 }
 
 func buildNodesByTag(t *testing.T, m *wizardmodels.WizardModel) map[string]map[string]interface{} {
 	t.Helper()
-	res, err := config.GenerateOutboundsFromParserConfig(m.ParserConfig, map[string]int{}, nil,
+	// SPEC 117 (Т2): одноразовая проекция canonical → legacy на входе генератора.
+	res, err := config.GenerateOutboundsFromParserConfig(m.AsParserConfig(), map[string]int{}, nil,
 		func(ps config.ProxySource, tc map[string]int, pc func(float64, string), idx, total int) ([]*config.ParsedNode, error) {
 			return subscription.LoadNodesFromSource(ps, tc, pc, idx, total)
 		},
@@ -100,7 +100,6 @@ func TestNodeRename_ResetsRefAndBuildStaysClean(t *testing.T) {
 	if s := m.Sources[1]; s.DetourNodeSourceID != "" || s.DetourNodeTag != "" {
 		t.Fatalf("ссылка обязана погаснуть в состоянии, осталось %+v", s)
 	}
-	m.RefreshDerivedParserConfig()
 
 	nodes := buildNodesByTag(t, m)
 	dep := nodes["🇳🇱 Proton NL"]
@@ -120,7 +119,6 @@ func TestNodeRename_ResetsRefAndBuildStaysClean(t *testing.T) {
 func TestNodeRename_WithoutResetFailsClosed(t *testing.T) {
 	m := modelWithLiveNodeRef("🔥🎭 WARP (MASQUE)")
 	m.Sources[0].NodeTag = "🔥🎭 WARP v2" // переименовали, ссылку не тронули
-	m.RefreshDerivedParserConfig()
 
 	nodes := buildNodesByTag(t, m)
 	if nodes["🇳🇱 Proton NL"] != nil {

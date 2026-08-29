@@ -88,8 +88,8 @@ type GUIState struct {
 	// входы схлопываются.
 	RunFinalBuild func()
 
-	// Optional refresh for Outbounds configurator list (set by CreateOutboundsAndParserConfigTab).
-	// Must run after ParserConfig/proxies change from Sources Edit, UpdateParserConfig, or tab switch.
+	// Optional refresh for Outbounds configurator list (set by CreateDirectionsTab).
+	// Must run after sources/directions change from Sources Edit or tab switch.
 	RefreshOutboundsConfiguratorList func()
 
 	// DNS tab
@@ -114,8 +114,6 @@ type GUIState struct {
 	// Нужна, потому что состав вкладки зависит от таргета (поля платформы)
 	// и от её собственных vars (gateway_mode → LAN-интерфейсы).
 	RefreshTargetTabFromModel func()
-
-	// Last valid ParserConfig JSON for revert on validation error (e.g. on tab switch from Outbounds tab).
 
 	// UI-флаги состояния операций
 	SaveInProgress          bool

@@ -39,7 +39,6 @@ func TestRebuildPreviewCache_ChainBecomesNode(t *testing.T) {
 			},
 		},
 	}
-	m.RefreshDerivedParserConfig()
 
 	if _, err := RebuildPreviewCache(m); err != nil {
 		t.Fatalf("RebuildPreviewCache: %v", err)
@@ -94,7 +93,6 @@ func TestRebuildPreviewCache_ChainDegradedWhenCoreLacksSupport(t *testing.T) {
 			},
 		},
 	}
-	m.RefreshDerivedParserConfig()
 
 	if _, err := RebuildPreviewCache(m); err != nil {
 		t.Fatalf("RebuildPreviewCache: %v", err)
@@ -137,7 +135,6 @@ func TestPreviewPoolMatchesBuildPool(t *testing.T) {
 			{Tag: "vpn-1", Type: "selector", Filters: map[string]interface{}{"tag": "/NL/i"}},
 		},
 	}
-	m.RefreshDerivedParserConfig()
 
 	if _, err := RebuildPreviewCache(m); err != nil {
 		t.Fatalf("RebuildPreviewCache: %v", err)
@@ -148,7 +145,7 @@ func TestPreviewPoolMatchesBuildPool(t *testing.T) {
 		previewTags = append(previewTags, n.Tag)
 	}
 
-	res, err := config.GenerateOutboundsFromParserConfig(m.ParserConfig, map[string]int{}, nil,
+	res, err := config.GenerateOutboundsFromParserConfig(m.AsParserConfig(), map[string]int{}, nil,
 		func(ps config.ProxySource, tc map[string]int, pc func(float64, string), idx, total int) ([]*config.ParsedNode, error) {
 			return subscription.LoadNodesFromSource(ps, tc, pc, idx, total)
 		},

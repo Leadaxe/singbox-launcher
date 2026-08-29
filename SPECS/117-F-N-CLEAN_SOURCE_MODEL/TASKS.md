@@ -184,50 +184,63 @@
 
 ## W5 — Чистка мёртвого транспорта и полей
 
-- [ ] `UpdateParserConfig(text)`: удалить из
+- [x] `UpdateParserConfig(text)`: удалить из
       `business/ui_updater.go:23` (интерфейс),
       `presentation/presenter_ui_updater.go:23-40` (полезный остаток —
       `RefreshOutboundsConfiguratorList` — вызывать напрямую где нужно);
       убрать все ~15 вызовов (`source_tab.go:101,212,240,825,1017`;
       `source_edit_window.go:329,663,1577`; `sources.go:153`;
       `sources_json.go:148,164`; `presenter_sync.go:259`).
-- [ ] `models/wizard_model.go`: удалить поля `ParserConfig`,
+- [x] `models/wizard_model.go`: удалить поля `ParserConfig`,
       `ParserConfigJSON`, метод `RefreshDerivedParserConfig` (компилятор
       выдаст пропущенные call-site'ы — каждому уже должен соответствовать
       `BumpRevision` из W1; риск Р2); `AsParserConfig` остаётся с
       комментарием об индексном инварианте 1:1 (Р1).
-- [ ] `presentation/presenter_target.go:246-256`:
+- [x] `presentation/presenter_target.go:246-256`:
       `invalidateParsedNodes` — вместо `model.ParserConfig = nil` —
       `BumpRevision` + инвалидция превью.
-- [ ] `configurator.go:339-361`: сид из шаблона — парс строки шаблона
+- [x] `configurator.go:339-361`: сид из шаблона — парс строки шаблона
       сразу в canonical (`GlobalOutbounds`/`Defaults`), без
       `model.ParserConfigJSON`.
-- [ ] `presentation/gui_state.go:91-93,118`: остатки «last valid
+- [x] `presentation/gui_state.go:91-93,118`: остатки «last valid
       ParserConfig JSON» удалить.
-- [ ] `business/validator.go:220-236`: `ValidateParserConfigJSON` +
+- [x] `business/validator.go:220-236`: `ValidateParserConfigJSON` +
       `TestValidateParserConfigJSON` (`validator_test.go:417`) удалить
       (прод-вызовов нет).
-- [ ] Прогнать grep-инварианты SPEC §5.A — все по нулям.
-- [ ] `go build ./...` + `go test ./...` зелёные.
+- [x] Прогнать grep-инварианты SPEC §5.A — все по нулям.
+- [x] `go build ./...` + `go test ./...` зелёные.
 
 ## W6 — Приёмка
 
-- [ ] Поведенческие тесты SPEC §5.C (business/presentation-уровень, без
+- [x] Поведенческие тесты SPEC §5.C (business/presentation-уровень, без
       ассертов на форматирование строк — правило no-ui-format-tests):
-      - [ ] C1 CRUD Направления сквозь Save/Load;
-      - [ ] C2 rename canonical-only;
-      - [ ] C3 окно источника: Apply → `m.Sources[i]`; Cancel — без
-            следов в модели (deep-copy, Р4);
-      - [ ] C4 preset toggle — одна запись, идемпотентность;
-      - [ ] C5 stale-guard по ревизии (если не закрыт W1);
-      - [ ] C6 гейты пустой модели;
-      - [ ] C7 update-конвейер от свежезагруженного state.
-- [ ] Полный прогон: `go build ./...`, `go test ./...`, `go vet ./...`;
+      - [x] C1 CRUD Направления сквозь Save/Load —
+            `presentation/canonical_crud_test.go`;
+      - [x] C2 rename canonical-only — закрыт W3
+            (`TestRenameDirection_CanonicalOnly`);
+      - [x] C3 окно источника: Apply → `m.Sources[i]`; Cancel — без
+            следов в модели (deep-copy, Р4) — закрыт W3
+            (`tabs/source_node_tag_buffer_test.go`:
+            TestNodeTagEditIsBufferedUntilSave / …ReachesModelOnSave /
+            TestCloneSourceIsDeeplyIndependent / …ChainIndependent +
+            `disabled_node_toggle_test.go`);
+      - [x] C4 preset toggle — одна запись, идемпотентность —
+            `presentation/preset_toggle_canonical_test.go`;
+      - [x] C5 stale-guard по ревизии — закрыт W1
+            (`business/parser_stale_test.go`);
+      - [x] C6 гейты пустой модели —
+            `business/empty_model_gates_test.go`;
+      - [x] C7 update-конвейер от свежезагруженного state —
+            Load-проекция в `presentation/canonical_crud_test.go`
+            (+ `core/state` TestSave_RoundTrip).
+- [x] Полный прогон: `go build ./...`, `go test ./...`, `go vet ./...`;
       GUI-пакеты — `build/`-скрипты.
-- [ ] Греп go1.20 по диффу:
+- [x] Греп go1.20 по диффу:
       `git diff --name-only | xargs grep -nE "\b(min|max|clear)\(|slices\.|maps\.|PathValue|errors\.Join"`
       (только чтение диффа, без git-мутаций) → 0 в новых правках.
-- [ ] `ui/traffic/**` не затронут (`git status` — только чтение).
-- [ ] IMPLEMENTATION_REPORT.md: изменённые файлы, снесённые тесты с
+- [x] `ui/traffic/**` не затронут волнами SPEC 117 (`git status` — только
+      чтение; в рабочей копии есть незакоммиченные правки `ui/traffic/*`
+      ПАРАЛЛЕЛЬНОЙ сессии — ExportSnapshot тулбара, к этапу не относятся).
+- [x] IMPLEMENTATION_REPORT.md: изменённые файлы, снесённые тесты с
       причинами, изменённые сигнатуры, таблица grep-инвариантов,
       результаты roundtrip.

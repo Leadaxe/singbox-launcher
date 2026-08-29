@@ -13,7 +13,7 @@ type stubStaleUIUpdater struct {
 }
 
 func (s stubStaleUIUpdater) Model() *wizardmodels.WizardModel { return s.model }
-func (stubStaleUIUpdater) UpdateParserConfig(string)          {}
+func (stubStaleUIUpdater) RefreshOutboundsConfiguratorList()  {}
 func (stubStaleUIUpdater) UpdateTemplatePreview(string)       {}
 func (stubStaleUIUpdater) UpdateSaveProgress(float64)         {}
 func (stubStaleUIUpdater) UpdateSaveButtonText(string)        {}
@@ -57,7 +57,6 @@ func newStaleTestModel() *wizardmodels.WizardModel {
 		URL:     "https://example.com/a",
 	})
 	model.BumpRevision()
-	model.RefreshDerivedParserConfig()
 	return model
 }
 

@@ -392,10 +392,9 @@ func applySourceEditToModel(
 	edited.MaxNodes = m.Sources[sourceIndex].MaxNodes
 	m.Sources[sourceIndex] = *edited
 	m.BumpRevision()
-	m.RefreshDerivedParserConfig()
 	m.PreviewNeedsParse = true
 	wizardbusiness.InvalidatePreviewCache(m)
-	presenter.UpdateParserConfig(m.ParserConfigJSON)
+	presenter.RefreshOutboundsConfiguratorList()
 	presenter.ScheduleRefreshOutboundOptionsDebounced()
 	presenter.MarkAsChanged()
 	if guiState.RefreshSourcesList != nil {
@@ -1635,10 +1634,9 @@ func resetRefsAfterNodeRename(
 		return nil
 	}
 	m.BumpRevision()
-	m.RefreshDerivedParserConfig()
 	m.PreviewNeedsParse = true
 	wizardbusiness.InvalidatePreviewCache(m)
-	presenter.UpdateParserConfig(m.ParserConfigJSON)
+	presenter.RefreshOutboundsConfiguratorList()
 	presenter.ScheduleRefreshOutboundOptionsDebounced()
 	presenter.MarkAsChanged()
 	if guiState != nil && guiState.RefreshSourcesList != nil {

@@ -340,7 +340,6 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 		_ = build.MigrateOutboundsToReferencedShape(&p.model.GlobalOutbounds, stateFile.Rules, p.model.TemplateData, p.model.Target)
 		build.SyncOutboundsWithTemplate(stateFile.Rules, &p.model.GlobalOutbounds, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
 		p.model.BumpRevision()
-		p.model.RefreshDerivedParserConfig()
 	}
 
 	// Установка флага для парсинга (шаг 7)

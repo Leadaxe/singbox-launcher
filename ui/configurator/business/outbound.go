@@ -1,7 +1,7 @@
 // Package business содержит бизнес-логику визарда конфигурации.
 //
 // Файл outbound.go содержит функции для работы с outbounds:
-//   - GetAvailableOutbounds - список доступных outbound тегов (ParserConfig или JSON); мемо по trimmed ParserConfigJSON при ParserConfig == nil
+//   - GetAvailableOutbounds - список доступных outbound тегов из canonical (GlobalOutbounds + Sources[i].Outbounds); мемо по ревизии модели
 //   - EnsureDefaultAvailableOutbounds - обеспечивает наличие обязательных outbounds (direct-out, reject, drop)
 //   - EnsureFinalSelected - обеспечивает выбранный final outbound в модели
 //

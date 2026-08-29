@@ -47,7 +47,6 @@ func TestPreviewNodeCountsSeeDedup(t *testing.T) {
 			URL:     url,
 		}},
 	}
-	m.RefreshDerivedParserConfig()
 
 	if _, err := RebuildPreviewCache(m); err != nil {
 		t.Fatalf("RebuildPreviewCache: %v", err)

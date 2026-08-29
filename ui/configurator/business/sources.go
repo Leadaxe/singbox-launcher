@@ -2,8 +2,8 @@
 //
 // AppendURLsToSources / ApplyURLsToSources заменяют старые
 // AppendURLsToParserConfig / ApplyURLToParserConfig — мутируют canonical
-// `model.Sources` напрямую, потом вызывают `RefreshDerivedParserConfig`
-// для синхронизации derived `ParserConfig`/`ParserConfigJSON`.
+// `model.Sources` напрямую и поднимают ревизию модели (`BumpRevision`,
+// SPEC 117): производные результаты перечитываются от canonical.
 package business
 
 import (
@@ -146,12 +146,11 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 		return nil
 	}
 
-	// Refresh derived caches & UI.
+	// Bump revision & refresh UI.
 	model.BumpRevision()
-	model.RefreshDerivedParserConfig()
 	model.PreviewNeedsParse = true
 	InvalidatePreviewCache(model)
-	updater.UpdateParserConfig(model.ParserConfigJSON)
+	updater.RefreshOutboundsConfiguratorList()
 	timing.LogTiming("append sources", time.Since(time.Now()))
 	return nil
 }

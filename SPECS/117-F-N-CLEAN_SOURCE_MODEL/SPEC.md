@@ -149,7 +149,7 @@ Legacy `ParserConfig`/`ProxySource` — **одноразовая проекци�
 | Мёртвый транспорт вычищен | `grep -rn "UpdateParserConfig(" ui` → 0; `grep -rn "ApplyParserConfigFromCurrentJSON\|ValidateParserConfigJSON" ui` → 0 |
 | Модель не держит legacy | в `WizardModel` нет полей типа `*config.ParserConfig`/строки его сериализации; `grep -rn "model.ParserConfig\b\|m.ParserConfig\b" ui --include=*.go` → 0 |
 | Конфигуратор на canonical | в `ui/configurator/outbounds_configurator` нет упоминаний `ProxySource` кроме одноразовой проекции для `PreviewGlobalSelectorNodes`; функции `getParserConfig` нет |
-| Scratch снесён | `grep -rn "ToProxySourceV4" ui` → 0 (в `core/state/adapter_source.go` остаётся — это прямая проекция) |
+| Scratch снесён | `grep -rn "ToProxySourceV4" ui` → 0 вхождений, мутирующих модель; кроме одноразовых проекций Т2 «на входе parse/generate» — их в ui ровно две: `AsParserConfig` (`models/wizard_model.go`) и превью JSON-вкладки `refreshServerJSONTab` (`source_edit_window.go`, проекция выбрасывается сразу после вызова). В `core/state/adapter_source.go` остаётся — это прямая проекция |
 | Отпечатков нет | в `ui/configurator/business/parser.go` нет сравнения строк как stale-признака |
 
 ### B. Roundtrip и стабильность идентичности

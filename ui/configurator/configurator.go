@@ -343,18 +343,17 @@ func loadConfigFromFile(presenter *wizardpresentation.WizardPresenter, fileServi
 		dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to load existing config"), err))
 	}
 	if loadedConfig {
-		model.ParserConfigJSON = parserConfigJSON
 		model.SourceURLs = sourceURLs
 		// Сид из шаблона — мутация модели: производные результаты обязаны
 		// перечитаться (features/state.md «Ревизия модели»).
 		model.BumpRevision()
-		// SPEC 052 fix: ParserConfigJSON это derived view; canonical для
-		// outbounds — model.GlobalOutbounds. Если оставить пустым, на первом
-		// Save в state.json уедут пустые connections.outbounds, и Rebuild
-		// сгенерирует config.json без proxy-out / auto-proxy-out / других
-		// селекторов из шаблона — sing-box упадёт с FATAL "default outbound
-		// not found: proxy-out". Парсим JSON один раз, копируем outbounds
-		// в canonical place.
+		// SPEC 117: сид шаблона парсится сразу в canonical
+		// model.GlobalOutbounds — промежуточного model.ParserConfigJSON
+		// больше нет. Если оставить пустым, на первом Save в state.json
+		// уедут пустые connections.outbounds, и Rebuild сгенерирует
+		// config.json без proxy-out / auto-proxy-out / других селекторов из
+		// шаблона — sing-box упадёт с FATAL "default outbound not found:
+		// proxy-out". Парсим JSON один раз, копируем outbounds в canonical.
 		var parsed config.ParserConfig
 		if err := json.Unmarshal([]byte(parserConfigJSON), &parsed); err != nil {
 			debuglog.WarnLog("loadConfigFromFile: failed to parse template parser_config for GlobalOutbounds seed: %v", err)

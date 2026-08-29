@@ -216,22 +216,3 @@ func ValidateSize(size int64, maxSize int64, entityName string) error {
 func ValidateHTTPResponseSize(size int64) error {
 	return ValidateSize(size, wizardutils.MaxSubscriptionSize, "HTTP response")
 }
-
-// ValidateParserConfigJSON validates ParserConfig JSON text.
-func ValidateParserConfigJSON(jsonText string) error {
-	if jsonText == "" {
-		return fmt.Errorf("ParserConfig JSON is empty")
-	}
-
-	jsonBytes := []byte(jsonText)
-	if err := ValidateJSON(jsonBytes); err != nil {
-		return fmt.Errorf("invalid ParserConfig JSON: %w", err)
-	}
-
-	var parserConfig config.ParserConfig
-	if err := json.Unmarshal(jsonBytes, &parserConfig); err != nil {
-		return fmt.Errorf("failed to parse ParserConfig JSON: %w", err)
-	}
-
-	return ValidateParserConfig(&parserConfig)
-}

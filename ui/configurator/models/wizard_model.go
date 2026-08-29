@@ -3,7 +3,7 @@
 // Файл wizard_model.go определяет WizardModel — чистую модель данных визарда без GUI зависимостей.
 //
 // WizardModel содержит только бизнес-данные (без Fyne виджетов):
-//   - ParserConfig данные (ParserConfigJSON, ParserConfig) — источник истины для списка источников (Proxies)
+//   - Sources + GlobalOutbounds + Defaults — canonical источник истины (SPEC 117)
 //   - SourceURLs — поле ввода для добавления новых URL (кнопка Add); не источник истины для существующих источников
 //   - Сгенерированные outbounds (GeneratedOutbounds, OutboundStats)
 //   - Template данные (TemplateData)
@@ -48,14 +48,11 @@ type OutboundStats struct {
 
 // WizardModel — модель данных визарда конфигурации.
 //
-// SPEC 052 phase 8 cleanup: канонический источник истины для списка
-// подключений — `Sources []corestate.Source`. Старые поля
-// `ParserConfig`/`ParserConfigJSON` остаются как ДЕРИВНЫЕ:
-//   - `AsParserConfig()` — собирает `*config.ParserConfig` для парсера на лету
-//     из `Sources` + `GlobalOutbounds` + `Defaults`.
-//   - `ParserConfigJSON` — кэш сериализации того же на момент последнего
-//     RefreshSerializedParserConfig (для JSON-editor вкладки и как
-//     дешёвый fingerprint для stale-detection в ParseAndPreview).
+// SPEC 117: канонический источник истины — `Sources []corestate.Source` +
+// `GlobalOutbounds` + `Defaults`. Legacy-форма `*config.ParserConfig` в
+// модели НЕ хранится: `AsParserConfig()` собирает её одноразовой проекцией
+// непосредственно на входе parse/generate/валидации, и проекция
+// выбрасывается. Stale-detection и мемо-кэши привязаны к `Revision`.
 //
 // SourceNodeCount — счёт узлов одного источника для списка Sources.
 type SourceNodeCount struct {
@@ -86,16 +83,6 @@ type WizardModel struct {
 	// Зеркалит state.warp_accounts. Диалог Add WARP переиспользует запись
 	// вместо новой регистрации, поэтому MASQUE H2/H3 ложатся на один ключ.
 	WarpAccounts *corestate.WarpAccountsSection
-
-	// ParserConfigJSON — derived: кэш сериализации `AsParserConfig()` в
-	// строку для JSON-editor виджета. Refresh в `RefreshSerializedParserConfig`
-	// после любой мутации Sources/GlobalOutbounds. Не источник истины.
-	ParserConfigJSON string
-
-	// ParserConfig — derived: кэш `AsParserConfig()` для callsite'ов которые
-	// не получают модель напрямую (preview cache, parser pipeline). Заполняется
-	// `RefreshDerivedParserConfig`. Не источник истины.
-	ParserConfig *config.ParserConfig
 
 	// SourceURLs — текст в поле "Subscription URL or Direct Links" (ввод для кнопки Add); не используется для замены Proxies
 	SourceURLs string
@@ -208,10 +195,10 @@ type WizardModel struct {
 
 	// Revision — монотонная ревизия модели (features/state.md «Ревизия
 	// модели»). Растёт при каждой мутации Sources/GlobalOutbounds/Defaults и
-	// прочих полей, влияющих на сборку. Не сериализуется. Заменяет строковый
-	// fingerprint ParserConfigJSON: производный результат (генерация,
-	// мемо-кэши) привязывается к ревизии на старте и выбрасывается, если
-	// модель успела уйти вперёд.
+	// прочих полей, влияющих на сборку. Не сериализуется. Заменяет прежний
+	// строковый fingerprint сериализованной модели: производный результат
+	// (генерация, мемо-кэши) привязывается к ревизии на старте и
+	// выбрасывается, если модель успела уйти вперёд.
 	Revision uint64 `json:"-"`
 
 	// Мемо для GetAvailableOutbounds; ключ — ревизия модели на момент счёта
@@ -294,19 +281,6 @@ func (m *WizardModel) AsParserConfig() *config.ParserConfig {
 	}
 	pc.ParserConfig.Parser.Reload = m.Defaults.Reload
 	return pc
-}
-
-// RefreshDerivedParserConfig — вызывается после мутации Sources/GlobalOutbounds
-// для синхронизации деривных кэшей (`ParserConfig` + `ParserConfigJSON`).
-// Идемпотентна; ошибки сериализации тихие (для JSON-editor display'а).
-func (m *WizardModel) RefreshDerivedParserConfig() {
-	if m == nil {
-		return
-	}
-	m.ParserConfig = m.AsParserConfig()
-	if data, err := json.MarshalIndent(map[string]interface{}{"ParserConfig": m.ParserConfig.ParserConfig}, "", "  "); err == nil {
-		m.ParserConfigJSON = string(data)
-	}
 }
 
 // BumpRevision — пометить модель изменённой (features/state.md «Ревизия
