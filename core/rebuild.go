@@ -183,8 +183,7 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	FeedBuildReportFromParser(gen, parserRes)
 
 	// Step 4: build.
-	parserCfg := s.ParserConfig
-	ctx := ac.buildContextFromState(s, cacheSnap, td, &parserCfg)
+	ctx := ac.buildContextFromState(s, cacheSnap, td)
 	res, err := build.BuildConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("build: %w", err)

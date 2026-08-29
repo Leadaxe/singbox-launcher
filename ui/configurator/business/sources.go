@@ -147,6 +147,7 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 	}
 
 	// Refresh derived caches & UI.
+	model.BumpRevision()
 	model.RefreshDerivedParserConfig()
 	model.PreviewNeedsParse = true
 	InvalidatePreviewCache(model)

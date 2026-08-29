@@ -5,7 +5,6 @@ import (
 
 	"singbox-launcher/core/config"
 	corestate "singbox-launcher/core/state"
-	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
 // SPEC 113-B (M3) — реестр исключений переписывается КАЖДОЙ сборкой, включая
@@ -37,12 +36,9 @@ func (m *registryGenMock) RefreshSourceInPlace(*corestate.Source) (bool, error) 
 	return false, nil
 }
 
-const registryTestJSON = `{"ParserConfig":{"version":1,"proxies":[{"source":"https://example.com/a"}],"outbounds":[]}}`
-
 func runPreview(t *testing.T, res *config.OutboundGenerationResult) {
 	t.Helper()
-	model := wizardmodels.NewWizardModel()
-	model.ParserConfigJSON = registryTestJSON
+	model := newStaleTestModel()
 	if err := ParseAndPreview(stubStaleUIUpdater{model: model}, &registryGenMock{out: res}); err != nil {
 		t.Fatalf("ParseAndPreview: %v", err)
 	}
@@ -72,8 +68,8 @@ func TestParseAndPreview_WritesExclusionRegistry(t *testing.T) {
 	}
 }
 
-// Отброшенный результат (ParserConfigJSON изменился во время генерации) реестр
-// трогать не имеет права: сборки, чей итог выброшен, не было.
+// Отброшенный результат (модель мутировала во время генерации — ревизия ушла
+// вперёд) реестр трогать не имеет права: сборки, чей итог выброшен, не было.
 func TestParseAndPreview_DiscardedResultLeavesRegistryAlone(t *testing.T) {
 	t.Cleanup(config.ResetBuildReport)
 
@@ -89,13 +85,12 @@ func TestParseAndPreview_DiscardedResultLeavesRegistryAlone(t *testing.T) {
 		out:     &config.OutboundGenerationResult{OutboundsJSON: []string{`{"type":"direct","tag":"x"}`}},
 	}
 
-	model := wizardmodels.NewWizardModel()
-	model.ParserConfigJSON = registryTestJSON
+	model := newStaleTestModel()
 	errCh := make(chan error, 1)
 	go func() { errCh <- ParseAndPreview(stubStaleUIUpdater{model: model}, mock) }()
 
 	<-entered
-	model.ParserConfigJSON = staleTestJSONB
+	model.BumpRevision() // мутация модели во время генерации
 	close(proceed)
 	if err := <-errCh; err != nil {
 		t.Fatalf("ParseAndPreview: %v", err)

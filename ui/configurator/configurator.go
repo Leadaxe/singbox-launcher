@@ -345,6 +345,9 @@ func loadConfigFromFile(presenter *wizardpresentation.WizardPresenter, fileServi
 	if loadedConfig {
 		model.ParserConfigJSON = parserConfigJSON
 		model.SourceURLs = sourceURLs
+		// Сид из шаблона — мутация модели: производные результаты обязаны
+		// перечитаться (features/state.md «Ревизия модели»).
+		model.BumpRevision()
 		// SPEC 052 fix: ParserConfigJSON это derived view; canonical для
 		// outbounds — model.GlobalOutbounds. Если оставить пустым, на первом
 		// Save в state.json уедут пустые connections.outbounds, и Rebuild

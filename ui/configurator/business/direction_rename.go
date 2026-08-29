@@ -41,12 +41,9 @@ func DirectionTagTaken(model *wizardmodels.WizardModel, tag, exceptTag string) b
 	if tag == exceptTag {
 		return false
 	}
-	// Форма правит legacy-вид (model.ParserConfig), а canonical список
-	// подтягивается позже — при вводе нового тега актуален именно он.
+	// Canonical список Направлений — единственный актуальный (SPEC 117):
+	// формы правят его же, отдельного «более свежего» вида больше нет.
 	dirs := model.GlobalOutbounds
-	if model.ParserConfig != nil && len(model.ParserConfig.ParserConfig.Outbounds) > 0 {
-		dirs = model.ParserConfig.ParserConfig.Outbounds
-	}
 	for i := range dirs {
 		if dirs[i].Tag == exceptTag {
 			continue

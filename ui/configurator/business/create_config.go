@@ -74,7 +74,9 @@ func buildConfigWithExclusions(model *wizardmodels.WizardModel, forPreview bool)
 	SyncDNSModelToSettingsVars(model)
 	MaterializeSecretsIfNeeded(model)
 
-	if strings.TrimSpace(model.ParserConfigJSON) == "" {
+	// Гейт «нечего собирать» — по canonical-модели, не по строковому кэшу
+	// (SPEC 117 C6).
+	if len(model.Sources) == 0 {
 		return "", nil, fmt.Errorf("ParserConfig is empty and no template available")
 	}
 

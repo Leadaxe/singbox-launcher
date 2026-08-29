@@ -568,10 +568,12 @@ func (tab *CoreDashboardTab) readConfigOnDemand() {
 		debuglog.WarnLog("CoreDashboard: state.json not loaded on demand: %v", err)
 		return
 	}
-	debuglog.InfoLog("CoreDashboard: state.json snapshot (parser_config v%d, %d proxy sources, %d outbounds, %d custom rules)",
-		s.ParserConfig.ParserConfig.Version,
-		len(s.ParserConfig.ParserConfig.Proxies),
-		len(s.ParserConfig.ParserConfig.Outbounds),
+	// Счётчики — из canonical s.Connections (SPEC 117): Load-проекция
+	// s.ParserConfig — только для build-путей, читать её здесь незачем.
+	debuglog.InfoLog("CoreDashboard: state.json snapshot (schema v%d, %d sources, %d outbounds, %d custom rules)",
+		s.Version,
+		len(s.Connections.Sources),
+		len(s.Connections.Outbounds),
 		len(s.CustomRules))
 }
 

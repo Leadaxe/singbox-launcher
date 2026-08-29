@@ -26,6 +26,13 @@ func TestBuildPreviewConfig_RespectsRemoteTarget(t *testing.T) {
 		model.TemplateData = templateData
 		model.ExecDir = execDir
 		model.ParserConfigJSON = strings.TrimSpace(templateData.ParserConfig)
+		// SPEC 117: гейт «нечего собирать» смотрит на canonical model.Sources.
+		model.Sources = append(model.Sources, wizardmodels.Source{
+			ID:      "01TESTPREVIEWTARGET000000",
+			Type:    wizardmodels.SourceTypeSubscription,
+			Enabled: true,
+			URL:     "https://example.com/sub",
+		})
 		model.RulesLibraryMerged = true
 		model.Target = target
 		ApplyWizardDNSTemplate(model)

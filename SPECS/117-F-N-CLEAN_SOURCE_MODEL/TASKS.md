@@ -8,77 +8,77 @@
 
 ## W1 — Фундамент: ревизия модели
 
-- [ ] `ui/configurator/models/wizard_model.go`: поле `Revision uint64
+- [x] `ui/configurator/models/wizard_model.go`: поле `Revision uint64
       `json:"-"`` + метод `BumpRevision()` с doc-комментарием
       (features/state.md «Ревизия модели»; UI-поток, без атомиков).
-- [ ] Вставить `BumpRevision()` рядом с каждым существующим вызовом
+- [x] Вставить `BumpRevision()` рядом с каждым существующим вызовом
       `RefreshDerivedParserConfig` (Refresh пока не удалять):
-      - [ ] `ui/configurator/tabs/source_tab.go` (:101, :212, :240,
+      - [x] `ui/configurator/tabs/source_tab.go` (:101, :212, :240,
             `applySourceMutation` :806-826 — порядок с `MarkAsChanged`
             сохранить, риск Р10; :1017)
-      - [ ] `ui/configurator/tabs/source_edit_window.go` (:329, :663, :1577)
-      - [ ] `ui/configurator/business/sources.go` (:150-153)
-      - [ ] `ui/configurator/business/sources_json.go` (:145-148, :163-164)
-      - [ ] `ui/configurator/presentation/presenter_sync.go`
+      - [x] `ui/configurator/tabs/source_edit_window.go` (:329, :663, :1577)
+      - [x] `ui/configurator/business/sources.go` (:150-153)
+      - [x] `ui/configurator/business/sources_json.go` (:145-148, :163-164)
+      - [x] `ui/configurator/presentation/presenter_sync.go`
             (`RefreshAfterPresetToggle` :249-260)
-      - [ ] `ui/configurator/presentation/presenter_state_helpers.go`
+      - [x] `ui/configurator/presentation/presenter_state_helpers.go`
             (`restoreParserConfig` :31-67)
-      - [ ] `ui/configurator/configurator.go` (сид шаблона :339-361)
-      - [ ] `ui/configurator/business/preview_cache.go` (ветка
+      - [x] `ui/configurator/configurator.go` (сид шаблона :339-361)
+      - [x] `ui/configurator/business/preview_cache.go` (ветка
             nil→Refresh :28-40, пока жива)
-- [ ] `ui/configurator/business/parser.go`: stale-guard `:170` — снапшот
+- [x] `ui/configurator/business/parser.go`: stale-guard `:170` — снапшот
       `rev := model.Revision` на старте, сравнение ревизий вместо строк;
       семантика выброса (`BuildReportGen = 0`) прежняя.
-- [ ] `ui/configurator/business/outbound.go`: мемо
+- [x] `ui/configurator/business/outbound.go`: мемо
       `AvailableOutboundsMemoKey string` → `AvailableOutboundsMemoRev uint64`
       (поле в `wizard_model.go:209-211`), сброс в `InvalidatePreviewCache`.
-- [ ] Тесты: переписать
+- [x] Тесты: переписать
       `ui/configurator/business/parser_stale_test.go` (:52, :87) на
       ревизию (мутация модели во время генерации → результат выброшен;
       без мутации → применён).
-- [ ] `go build ./...` + `go test ./ui/configurator/...` зелёные.
+- [x] `go build ./...` + `go test ./ui/configurator/...` зелёные.
 
 ## W2 — Read-пути → canonical / одноразовая проекция
 
-- [ ] `ui/configurator/business/parser.go`: вход `ParseAndPreview` =
+- [x] `ui/configurator/business/parser.go`: вход `ParseAndPreview` =
       `model.AsParserConfig()` (снести парс строки :52-83 и size-gate по
       строке); удалить запись `model.ParserConfig = &parserConfig` (:213).
-- [ ] `ui/configurator/business/outbound.go`: `GetAvailableOutbounds`
+- [x] `ui/configurator/business/outbound.go`: `GetAvailableOutbounds`
       (:69-140) и `AllDirectionTags` (:267-290) — теги из
       `model.GlobalOutbounds` + `model.Sources[i].Outbounds`; фоллбэк-парс
       строки удалить.
-- [ ] `ui/configurator/business/detour.go`: `localSubscriptionGroupTags`
+- [x] `ui/configurator/business/detour.go`: `localSubscriptionGroupTags`
       (:237-260) — из `model.Sources`; фоллбэк-парс удалить.
-- [ ] `ui/configurator/business/preview_cache.go`: `RebuildPreviewCache`
+- [x] `ui/configurator/business/preview_cache.go`: `RebuildPreviewCache`
       (:28-150) — локальная проекция `AsParserConfig()`;
       `previewDirectionTags` (:151-165) — canonical;
       `applyMigratedDisabledKeys` (:191-203) не трогать (комментарий об
       индексном инварианте Р1 — к `AsParserConfig`).
-- [ ] Гейты пустоты → `len(model.Sources)`:
-      - [ ] `ui/configurator/business/create_config.go:77`
-      - [ ] `ui/configurator/presentation/presenter_async.go:45`
-      - [ ] `ui/configurator/presentation/presenter_save.go:89-113`
+- [x] Гейты пустоты → `len(model.Sources)`:
+      - [x] `ui/configurator/business/create_config.go:77`
+      - [x] `ui/configurator/presentation/presenter_async.go:45`
+      - [x] `ui/configurator/presentation/presenter_save.go:89-113`
         (валидация «есть хоть один источник» без повторного парса)
-- [ ] `ui/configurator/business/direction_rename.go`: `DirectionTagTaken`
+- [x] `ui/configurator/business/direction_rename.go`: `DirectionTagTaken`
       (:44-63) — только canonical (приоритет legacy-вида снести).
-- [ ] `ui/configurator/tabs/source_tab.go:889-911`: счётчики источников
+- [x] `ui/configurator/tabs/source_tab.go:889-911`: счётчики источников
       из `len(m.Sources)` / `PreviewNodesBySource`.
-- [ ] `ui/configurator/tabs/source_chain_tab.go:716-729` +
+- [x] `ui/configurator/tabs/source_chain_tab.go:716-729` +
       `source_chain_hops.go:86-115`: кандидаты позиций цепочки из
       canonical (`GlobalOutbounds`, `Sources[i].Outbounds`);
       `getParserConfigForChain` удалить.
-- [ ] Core-косметика:
-      - [ ] `main.go:259-272` — счётчики из `s.Connections`
-      - [ ] `ui/core_dashboard_tab.go:556-574` — то же
-      - [ ] `core/config_service_context.go:26-28` — мёртвый параметр
+- [x] Core-косметика:
+      - [x] `main.go:259-272` — счётчики из `s.Connections`
+      - [x] `ui/core_dashboard_tab.go:556-574` — то же
+      - [x] `core/config_service_context.go:26-28` — мёртвый параметр
             `_ *config.ParserConfig` убрать; `core/rebuild.go:186-187` —
             мёртвый провоз убрать
-      - [ ] `core/state/state.go:78-84` — комментарий поля: read-only
+      - [x] `core/state/state.go:78-84` — комментарий поля: read-only
             Load-проекция, писать запрещено
-- [ ] НЕ трогать: `business/loader.go` (строка шаблона),
+- [x] НЕ трогать: `business/loader.go` (строка шаблона),
       `loadParserConfigForUpdate`/`rebuild_raw_cache.go` (читают
       Load-проекцию свежезагруженного state — законно).
-- [ ] `go build ./...` + `go test ./ui/... ./core/...` зелёные.
+- [x] `go build ./...` + `go test ./ui/... ./core/...` зелёные.
 
 ## W3 — Write-пути и CRUD на canonical
 

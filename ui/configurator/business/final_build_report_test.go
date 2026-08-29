@@ -31,6 +31,14 @@ func finalReportModel(t *testing.T) *wizardmodels.WizardModel {
 	model.TemplateData = td
 	model.ExecDir = execDir
 	model.ParserConfigJSON = strings.TrimSpace(td.ParserConfig)
+	// SPEC 117: гейты «нечего собирать» смотрят на canonical model.Sources —
+	// эмулируем добавленную подписку (генератор в тестах замокан).
+	model.Sources = append(model.Sources, wizardmodels.Source{
+		ID:      "01TESTFINALREPORT00000000",
+		Type:    wizardmodels.SourceTypeSubscription,
+		Enabled: true,
+		URL:     "https://example.com/sub",
+	})
 	model.RulesLibraryMerged = true
 	model.Target = wizardtemplate.LocalTarget()
 	ApplyWizardDNSTemplate(model)

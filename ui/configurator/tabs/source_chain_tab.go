@@ -17,7 +17,6 @@
 package tabs
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -707,27 +706,6 @@ func chainFormRow(label string, field fyne.CanvasObject) fyne.CanvasObject {
 	l := widget.NewLabel(label)
 	box := container.NewGridWrap(fyne.NewSize(labelWidth, l.MinSize().Height), l)
 	return container.NewBorder(nil, nil, box, nil, field)
-}
-
-// getParserConfigForChain — ParserConfig модели для сбора кандидатов.
-//
-// Направления берутся оттуда: в Sources их нет, а позицией цепочки
-// Направление быть обязано — это главное, чего не умеет detour.
-func getParserConfigForChain(m *wizardmodels.WizardModel) *config.ParserConfig {
-	if m == nil {
-		return nil
-	}
-	if m.ParserConfig != nil {
-		return m.ParserConfig
-	}
-	if strings.TrimSpace(m.ParserConfigJSON) == "" {
-		return nil
-	}
-	var parsed config.ParserConfig
-	if err := json.Unmarshal([]byte(m.ParserConfigJSON), &parsed); err != nil {
-		return nil
-	}
-	return &parsed
 }
 
 // chainNodeFlags — то, что форма знает об узлах, но сама увидеть не может:

@@ -3,11 +3,9 @@
 package business
 
 import (
-	"encoding/json"
 	"strconv"
 	"strings"
 
-	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -231,28 +229,16 @@ func DetourOptionsWithNodes(model *wizardmodels.WizardModel, source *configtypes
 }
 
 // localSubscriptionGroupTags collects every local group tag declared by a
-// proxy source (proxySource.Outbounds / addOutbounds). These are the
-// per-subscription auto/select groups that GetAvailableOutbounds also returns
-// for the Rules picker, but which must NOT be offered as detour chain targets.
+// source (Sources[i].Outbounds / addOutbounds). These are the per-subscription
+// auto/select groups that must NOT be offered as detour chain targets.
+// Читает canonical model.Sources напрямую (SPEC 117) — проекция тут не нужна.
 func localSubscriptionGroupTags(model *wizardmodels.WizardModel) map[string]struct{} {
 	res := map[string]struct{}{}
 	if model == nil {
 		return res
 	}
-	var parserCfg *config.ParserConfig
-	if model.ParserConfig != nil {
-		parserCfg = model.ParserConfig
-	} else if jsonStr := strings.TrimSpace(model.ParserConfigJSON); jsonStr != "" {
-		var parsed config.ParserConfig
-		if err := json.Unmarshal([]byte(jsonStr), &parsed); err == nil {
-			parserCfg = &parsed
-		}
-	}
-	if parserCfg == nil {
-		return res
-	}
-	for _, proxySource := range parserCfg.ParserConfig.Proxies {
-		for _, ob := range proxySource.Outbounds {
+	for i := range model.Sources {
+		for _, ob := range model.Sources[i].Outbounds {
 			if ob.Tag != "" {
 				res[ob.Tag] = struct{}{}
 			}

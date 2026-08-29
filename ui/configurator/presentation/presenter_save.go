@@ -31,7 +31,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -86,32 +85,20 @@ func (p *WizardPresenter) SaveConfig() {
 }
 
 // validateSaveInput проверяет входные данные перед сохранением.
-// Only ParserConfig.ParserConfig.Proxies is the source of truth; at least one proxy must have Source or Connections.
+// Истина — canonical model.Sources (SPEC 117): «есть хоть один источник»
+// проверяется без повторного парса строкового кэша.
 func (p *WizardPresenter) validateSaveInput() bool {
-	if strings.TrimSpace(p.model.ParserConfigJSON) == "" {
-		debuglog.WarnLog("SaveConfig: ParserConfig is empty")
-		dialog.ShowError(errors.New(locale.T("ParserConfig is empty")), p.guiState.Window)
-		return false
-	}
 	if err := wizardbusiness.ValidateDNSModel(p.model); err != nil {
 		debuglog.WarnLog("SaveConfig: DNS validation failed: %v", err)
 		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("DNS settings are invalid"), err), p.guiState.Window)
 		return false
 	}
-	var pc config.ParserConfig
-	if err := json.Unmarshal([]byte(p.model.ParserConfigJSON), &pc); err != nil {
-		debuglog.WarnLog("SaveConfig: ParserConfig JSON invalid: %v", err)
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("ParserConfig is invalid"), err), p.guiState.Window)
+	if len(p.model.Sources) == 0 {
+		debuglog.WarnLog("SaveConfig: no sources in model")
+		dialog.ShowError(errors.New(locale.T("Add at least one source: use the Sources tab (Add) or add proxies in ParserConfig on the Outbounds tab.")), p.guiState.Window)
 		return false
 	}
-	for _, px := range pc.ParserConfig.Proxies {
-		if strings.TrimSpace(px.Source) != "" || len(px.Connections) > 0 {
-			return true
-		}
-	}
-	debuglog.WarnLog("SaveConfig: no proxy with source or connections in ParserConfig")
-	dialog.ShowError(errors.New(locale.T("Add at least one source: use the Sources tab (Add) or add proxies in ParserConfig on the Outbounds tab.")), p.guiState.Window)
-	return false
+	return true
 }
 
 // checkSaveOperationState проверяет состояние операции сохранения.

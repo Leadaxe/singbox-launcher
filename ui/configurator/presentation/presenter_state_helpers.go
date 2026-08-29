@@ -62,6 +62,9 @@ func (p *WizardPresenter) restoreParserConfig(stateFile *wizardmodels.WizardStat
 		}
 	}
 
+	// Restore на Load — тоже мутация модели: производные результаты
+	// (генерация, мемо) обязаны перечитаться от свежезагруженного состава.
+	p.model.BumpRevision()
 	// Refresh derived view (ParserConfig + ParserConfigJSON) для UI.
 	p.model.RefreshDerivedParserConfig()
 	wizardbusiness.InvalidatePreviewCache(p.model)

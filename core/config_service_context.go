@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 
 	"singbox-launcher/core/build"
-	"singbox-launcher/core/config"
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
@@ -22,10 +21,10 @@ import (
 // Если state nil (legacy fallback) — DNS/Route остаются пустыми, шаблонные
 // дефолты используются как есть.
 //
-// Параметр parserConfig оставлен в сигнатуре для backward-compat callsite'ов;
-// в SPEC 045 cleanup'е поле `BuildContext.ParserConfigJSON` удалено вместе
-// с блоком `@ParserConfig` в config.json. Аргумент игнорируется.
-func (ac *AppController) buildContextFromState(s *state.State, cache *build.ParsedCache, td *template.TemplateData, _ *config.ParserConfig) build.BuildContext {
+// SPEC 117: мёртвый параметр `_ *config.ParserConfig` вычищен (остался от
+// SPEC 045, когда поле BuildContext.ParserConfigJSON удалили вместе с блоком
+// `@ParserConfig` в config.json — аргумент игнорировался).
+func (ac *AppController) buildContextFromState(s *state.State, cache *build.ParsedCache, td *template.TemplateData) build.BuildContext {
 	ctx := build.BuildContext{
 		Template:   td,
 		Cache:      cache,

@@ -83,7 +83,6 @@ func (c chainHopCandidate) KindText() string {
 // открывается синхронно — пользователь смотрел бы на замерший интерфейс.
 func collectChainHopCandidates(
 	model *wizardmodels.WizardModel,
-	parserConfig *config.ParserConfig,
 	selfTag string,
 ) []chainHopCandidate {
 	seen := make(map[string]bool, 64)
@@ -103,9 +102,11 @@ func collectChainHopCandidates(
 	}
 
 	// Направления — сначала: это самые осмысленные позиции, и пользователь
-	// думает о маршруте именно в них.
-	if parserConfig != nil {
-		for _, d := range parserConfig.ParserConfig.Outbounds {
+	// думает о маршруте именно в них. Теги — из canonical GlobalOutbounds
+	// (SPEC 117): кандидаты позиций это теги Направлений, проекция не нужна.
+	if model != nil {
+		for i := range model.GlobalOutbounds {
+			d := &model.GlobalOutbounds[i]
 			if d.Disabled {
 				// Выключенное Направление в конфиг не попадёт, а ссылка на
 				// него не даст стартовать ядру.

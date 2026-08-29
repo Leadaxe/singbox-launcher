@@ -12,18 +12,13 @@ const none = "(none)"
 
 func modelWithOutbounds(t *testing.T, tags ...string) *wizardmodels.WizardModel {
 	t.Helper()
-	obs := make([]map[string]interface{}, 0, len(tags))
+	obs := make([]configtypes.Direction, 0, len(tags))
 	for _, tag := range tags {
-		obs = append(obs, map[string]interface{}{"tag": tag, "type": "selector"})
+		obs = append(obs, configtypes.Direction{Tag: tag, Type: "selector"})
 	}
-	wrap := map[string]interface{}{
-		"ParserConfig": map[string]interface{}{"outbounds": obs},
-	}
-	b, err := json.Marshal(wrap)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	return &wizardmodels.WizardModel{ParserConfigJSON: string(b)}
+	// SPEC 117: модель строится сразу canonical — GlobalOutbounds, без
+	// строкового транспорта.
+	return &wizardmodels.WizardModel{GlobalOutbounds: obs}
 }
 
 func contains(s []string, v string) bool {
@@ -63,18 +58,15 @@ func TestDetourOptions_ExcludesOwnGroups(t *testing.T) {
 // A subscription's own local groups (any subscription, not just the edited one)
 // must NOT be offered as detour targets — only global selectors / presets.
 func TestDetourOptions_ExcludesAllSubscriptionLocalGroups(t *testing.T) {
-	obs := []map[string]interface{}{{"tag": "proxy", "type": "selector"}}
-	proxies := []map[string]interface{}{
-		{"source": "https://x/sub1", "outbounds": []map[string]interface{}{
-			{"tag": "sub-auto", "type": "urltest"},
-		}},
-	}
-	wrap := map[string]interface{}{"ParserConfig": map[string]interface{}{"outbounds": obs, "proxies": proxies}}
-	b, err := json.Marshal(wrap)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	m := &wizardmodels.WizardModel{ParserConfigJSON: string(b)}
+	m := modelWithOutbounds(t, "proxy")
+	m.Sources = []wizardmodels.Source{{
+		Type:    wizardmodels.SourceTypeSubscription,
+		Enabled: true,
+		URL:     "https://x/sub1",
+		Outbounds: []configtypes.Direction{
+			{Tag: "sub-auto", Type: "urltest"},
+		},
+	}}
 
 	opts, _ := DetourOptions(m, nil, none)
 	if contains(opts, "sub-auto") {

@@ -323,6 +323,7 @@ func serializeParserAfterSourceEdit(
 	if scratch != nil && sourceIndex >= 0 && sourceIndex < len(m.Sources) {
 		applyProxyEditToSource(scratch, &m.Sources[sourceIndex])
 	}
+	m.BumpRevision()
 	m.RefreshDerivedParserConfig()
 	m.PreviewNeedsParse = true
 	wizardbusiness.InvalidatePreviewCache(m)
@@ -473,7 +474,7 @@ func showSourceEditWindow(
 	var chainTabBody *chainForm
 	if isChainSource {
 		selfTag := m.Sources[sourceIndex].NodeTagOrLabel()
-		cands := collectChainHopCandidates(presenter.Model(), getParserConfigForChain(presenter.Model()), selfTag)
+		cands := collectChainHopCandidates(presenter.Model(), selfTag)
 		reality, detoured, nodeTypes := chainNodeFlags(presenter.Model())
 		unsupported := ""
 		if supported, reason := config.ChainSupportedByCore(); !supported {
@@ -513,7 +514,7 @@ func showSourceEditWindow(
 				if _, err := wizardbusiness.RebuildPreviewCache(mm); err != nil {
 					return
 				}
-				cands := collectChainHopCandidates(mm, getParserConfigForChain(mm), selfTag)
+				cands := collectChainHopCandidates(mm, selfTag)
 				reality, detoured, types := chainNodeFlags(mm)
 				fyne.Do(func() {
 					chainTabBody.SetCandidates(cands, reality, detoured, types, chainNodesKnown(mm))
@@ -659,6 +660,7 @@ func showSourceEditWindow(
 		// Прежде эта же строка переписывала TagMask, и переименование
 		// источника молча уводило тег из-под ссылающихся на него правил.
 		mm.Sources[sourceIndex].Label = strings.TrimSpace(s)
+		mm.BumpRevision()
 		mm.RefreshDerivedParserConfig()
 		presenter.UpdateParserConfig(mm.ParserConfigJSON)
 		presenter.MarkAsChanged()
@@ -1571,6 +1573,7 @@ func resetRefsAfterNodeRename(
 	if len(affected) == 0 {
 		return nil
 	}
+	m.BumpRevision()
 	m.RefreshDerivedParserConfig()
 	m.PreviewNeedsParse = true
 	wizardbusiness.InvalidatePreviewCache(m)

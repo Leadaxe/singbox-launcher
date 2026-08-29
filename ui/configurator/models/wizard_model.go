@@ -206,8 +206,17 @@ type WizardModel struct {
 	// не отдал целый конфиг.
 	PreviewIgnoredSectionsBySource map[int][]string
 
-	// Мемо для GetAvailableOutbounds при чтении только из ParserConfigJSON (ParserConfig == nil); сброс в InvalidatePreviewCache.
-	AvailableOutboundsMemoKey  string   `json:"-"`
+	// Revision — монотонная ревизия модели (features/state.md «Ревизия
+	// модели»). Растёт при каждой мутации Sources/GlobalOutbounds/Defaults и
+	// прочих полей, влияющих на сборку. Не сериализуется. Заменяет строковый
+	// fingerprint ParserConfigJSON: производный результат (генерация,
+	// мемо-кэши) привязывается к ревизии на старте и выбрасывается, если
+	// модель успела уйти вперёд.
+	Revision uint64 `json:"-"`
+
+	// Мемо для GetAvailableOutbounds; ключ — ревизия модели на момент счёта
+	// (0 = пусто); сброс в InvalidatePreviewCache.
+	AvailableOutboundsMemoRev  uint64   `json:"-"`
 	AvailableOutboundsMemoTags []string `json:"-"`
 
 	// ExecDir — директория исполняемого файла (для путей к SRS и т.д.)
@@ -262,6 +271,12 @@ func NewWizardModel() *WizardModel {
 //
 // Возвращаемый pointer указывает на свежий объект — caller может его
 // мутировать (substitute placeholders) без побочных эффектов на модель.
+//
+// Индексный инвариант (SPEC 117, риск Р1): Proxies[i] строится из Sources[i]
+// один к одному, и это ЕДИНСТВЕННЫЙ производитель проекции. На инварианте
+// висят applyMigratedDisabledKeys и карты превью PreviewNodesBySource /
+// SourceNodeCounts (map[int] по индексу источника) — не переупорядочивать
+// и не фильтровать элементы при построении.
 func (m *WizardModel) AsParserConfig() *config.ParserConfig {
 	if m == nil {
 		return &config.ParserConfig{}
@@ -292,6 +307,18 @@ func (m *WizardModel) RefreshDerivedParserConfig() {
 	if data, err := json.MarshalIndent(map[string]interface{}{"ParserConfig": m.ParserConfig.ParserConfig}, "", "  "); err == nil {
 		m.ParserConfigJSON = string(data)
 	}
+}
+
+// BumpRevision — пометить модель изменённой (features/state.md «Ревизия
+// модели»). Зовётся после каждой canonical-мутации. Только UI-поток, без
+// атомиков: у модели нет внутренней синхронизации, как и у остальных полей
+// WizardModel; фоновые конвейеры снимают снапшот ревизии до старта и
+// сверяют после через существующие UI-обёртки.
+func (m *WizardModel) BumpRevision() {
+	if m == nil {
+		return
+	}
+	m.Revision++
 }
 
 // SrsDir — каталог, куда качать .srs для текущего таргета (SPEC 098 §2.3).

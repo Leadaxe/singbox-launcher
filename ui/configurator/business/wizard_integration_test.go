@@ -77,8 +77,16 @@ func TestDefaultWizardFlow_NextNextFinish(t *testing.T) {
 	model.ExecDir = execDir
 	model.ParserConfigJSON = strings.TrimSpace(templateData.ParserConfig)
 
-	// Emulate user entering subscription URL (Page 1 of wizard)
+	// Emulate user entering subscription URL (Page 1 of wizard).
+	// SPEC 117: гейт «нечего собирать» смотрит на canonical model.Sources —
+	// подписка добавляется как источник (сборка превью её не скачивает).
 	model.SourceURLs = "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt"
+	model.Sources = append(model.Sources, wizardmodels.Source{
+		ID:      "01TESTWIZARDFLOW000000000",
+		Type:    wizardmodels.SourceTypeSubscription,
+		Enabled: true,
+		URL:     model.SourceURLs,
+	})
 
 	// SPEC 053 removed template.selectable_rules — wizard now opens with empty
 	// CustomRules; user adds rules via +Add Rule / Library (presets). This test
@@ -141,8 +149,15 @@ func TestWizardFlowWithCustomRules(t *testing.T) {
 	model.ExecDir = execDir
 	model.ParserConfigJSON = strings.TrimSpace(templateData.ParserConfig)
 
-	// Emulate user entering subscription URL
+	// Emulate user entering subscription URL.
+	// SPEC 117: canonical-источник для гейта «нечего собирать» (см. выше).
 	model.SourceURLs = "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt"
+	model.Sources = append(model.Sources, wizardmodels.Source{
+		ID:      "01TESTWIZARDRULES00000000",
+		Type:    wizardmodels.SourceTypeSubscription,
+		Enabled: true,
+		URL:     model.SourceURLs,
+	})
 
 	// SPEC 053 removed template.selectable_rules — wizard now opens with empty
 	// CustomRules; user adds rules via +Add Rule / Library (presets). This test

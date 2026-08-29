@@ -234,6 +234,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 			NodeTag: wizardbusiness.NextChainLabel(m.Sources),
 			Chain:   &configtypes.SourceChain{},
 		})
+		m.BumpRevision()
 		m.RefreshDerivedParserConfig()
 		m.PreviewNeedsParse = true
 		wizardbusiness.InvalidatePreviewCache(m)
@@ -818,7 +819,9 @@ func applySourceMutation(presenter *wizardpresentation.WizardPresenter, guiState
 	if m == nil {
 		return
 	}
+	// MarkAsChanged — первым, намеренно (см. комментарий к функции выше).
 	presenter.MarkAsChanged()
+	m.BumpRevision()
 	m.RefreshDerivedParserConfig()
 	m.PreviewNeedsParse = true
 	wizardbusiness.InvalidatePreviewCache(m)
@@ -886,7 +889,7 @@ func showSourcePreviewAllWindow(presenter *wizardpresentation.WizardPresenter) {
 
 	refreshPreview := func() {
 		m := presenter.Model()
-		if m.ParserConfig == nil || len(m.ParserConfig.ParserConfig.Proxies) == 0 {
+		if len(m.Sources) == 0 {
 			previewNodes = nil
 			previewList.Refresh()
 			previewStatusLabel.SetText(locale.T("No sources. Add URLs and click Refresh."))
@@ -906,10 +909,7 @@ func showSourcePreviewAllWindow(presenter *wizardpresentation.WizardPresenter) {
 				}
 				previewNodes = mm.PreviewNodes
 				previewList.Refresh()
-				sourcesCount := 0
-				if mm.ParserConfig != nil {
-					sourcesCount = len(mm.ParserConfig.ParserConfig.Proxies)
-				}
+				sourcesCount := len(mm.Sources)
 				status := locale.Tf("%d server(s) from %d source(s)", len(previewNodes), sourcesCount)
 				if errorCount > 0 {
 					status += locale.Tf("  ⚠️ %d error(s)", errorCount)
@@ -1011,6 +1011,7 @@ func CreateDirectionsTab(presenter *wizardpresentation.WizardPresenter) fyne.Can
 				m.Sources[i].Outbounds = append([]configtypes.Direction(nil), proxies[i].Outbounds...)
 			}
 		}
+		m.BumpRevision()
 		m.RefreshDerivedParserConfig()
 		m.PreviewNeedsParse = true
 		wizardbusiness.InvalidatePreviewCache(m)

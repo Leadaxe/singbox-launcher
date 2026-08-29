@@ -255,6 +255,7 @@ func (p *WizardPresenter) RefreshAfterPresetToggle() {
 		if p.model.ParserConfig != nil {
 			build.SyncOutboundsWithTemplate(rulesV6, &p.model.ParserConfig.ParserConfig.Outbounds, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
 		}
+		p.model.BumpRevision()
 		p.model.RefreshDerivedParserConfig()
 		p.UpdateParserConfig(p.model.ParserConfigJSON)
 	}

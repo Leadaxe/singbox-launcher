@@ -78,9 +78,12 @@ type State struct {
 	// ParserConfig — proxies (sources) + global outbounds в legacy-форме
 	// (configtypes.ParserConfig.ParserConfig.{Proxies,Outbounds,Parser}).
 	//
-	// SPEC 052: эта view ДЕРИВНАЯ от Connections. На Load v5 заполняется
-	// reverse-адаптером из Connections.Sources; на Save сначала
-	// SyncConnectionsFromLegacy, затем write v5.
+	// SPEC 117: read-only Load-проекция. Наполняется ТОЛЬКО на Load
+	// (syncLegacyFromConnections) для build-путей core, перечитывающих state
+	// с диска на каждую операцию (loadParserConfigForUpdate, rebuild).
+	// Писать в неё запрещено; Save её не читает. Код, мутирующий
+	// s.Connections в памяти, не имеет права читать s.ParserConfig того же
+	// экземпляра — проекция строится один раз на Load и после мутаций врёт.
 	ParserConfig configtypes.ParserConfig
 
 	// === Connections (v5 canonical) ===

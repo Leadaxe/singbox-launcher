@@ -142,6 +142,7 @@ func AppendManualConfigJSON(ctx UIUpdater, body []byte, label string) error {
 		ConfigJSON: compact,
 	})
 
+	model.BumpRevision()
 	model.RefreshDerivedParserConfig()
 	model.PreviewNeedsParse = true
 	InvalidatePreviewCache(model)
@@ -160,6 +161,7 @@ func RelabelLastSources(ctx UIUpdater, before int, label string) {
 		return
 	}
 	model.Sources[len(model.Sources)-1].Label = label
+	model.BumpRevision()
 	model.RefreshDerivedParserConfig()
 	ctx.UpdateParserConfig(model.ParserConfigJSON)
 }

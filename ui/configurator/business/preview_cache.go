@@ -35,19 +35,11 @@ func RebuildPreviewCache(model *wizardmodels.WizardModel) (int, error) {
 		return 0, fmt.Errorf("wizard model is nil")
 	}
 
-	// SPEC 052 phase 8: ParserConfig — derived view; если не заполнен,
-	// перегенерируем из canonical Sources/GlobalOutbounds/Defaults.
-	if model.ParserConfig == nil {
-		model.RefreshDerivedParserConfig()
-	}
+	// SPEC 117: одноразовая проекция canonical → legacy-форма загрузчика.
+	// Строится локально на входе и выбрасывается — модель проекцию не хранит.
+	pc := model.AsParserConfig()
 
-	if model.ParserConfig == nil {
-		model.PreviewNodes = nil
-		model.PreviewNodesBySource = nil
-		return 0, nil
-	}
-
-	proxies := model.ParserConfig.ParserConfig.Proxies
+	proxies := pc.ParserConfig.Proxies
 	totalSources := len(proxies)
 	if totalSources == 0 {
 		model.PreviewNodes = nil
@@ -123,7 +115,7 @@ func RebuildPreviewCache(model *wizardmodels.WizardModel) (int, error) {
 	// Деградировавшие цепочки (ядро без with_lx_chain, недошедшая позиция)
 	// в пул не попадают — как и в конфиге; их причины показывает сборка.
 	chainPool, broken := config.ResolveChainSources(
-		model.ParserConfig, allNodes, nodesBySource, previewDirectionTags(model))
+		pc, allNodes, nodesBySource, previewDirectionTags(model))
 	for _, b := range broken {
 		debuglog.DebugLog("wizardPreviewCache: цепочка %q не стала узлом: %s", b.Tag, b.Reason)
 	}
@@ -149,10 +141,10 @@ func RebuildPreviewCache(model *wizardmodels.WizardModel) (int, error) {
 // деградировала бы в превью с причиной «позиция не найдена», хотя в
 // конфиге собирается (там тот же список строит генератор).
 func previewDirectionTags(model *wizardmodels.WizardModel) map[string]bool {
-	if model == nil || model.ParserConfig == nil {
+	if model == nil {
 		return nil
 	}
-	dirs := model.ParserConfig.ParserConfig.Outbounds
+	dirs := model.GlobalOutbounds
 	tags := make(map[string]bool, len(dirs))
 	for _, d := range dirs {
 		if d.Tag != "" && !d.Disabled {
@@ -172,7 +164,7 @@ func InvalidatePreviewCache(model *wizardmodels.WizardModel) {
 	model.PreviewNodes = nil
 	model.PreviewNodesBySource = nil
 	model.PreviewIgnoredSectionsBySource = nil
-	model.AvailableOutboundsMemoKey = ""
+	model.AvailableOutboundsMemoRev = 0
 	model.AvailableOutboundsMemoTags = nil
 	// Счётчики узлов выведены из этого кэша и пережить его не могут:
 	// иначе список Sources показывал бы числа от прошлого состава.
@@ -182,9 +174,9 @@ func InvalidatePreviewCache(model *wizardmodels.WizardModel) {
 // applyMigratedDisabledKeys кладёт переписанные парсером отметки выключения
 // обратно в canonical Source (SPEC 112).
 //
-// proxyIndex — индекс в ParserConfig.ParserConfig.Proxies; canonical Sources
-// идут тем же порядком (RefreshDerivedParserConfig строит derived-view из них
-// один к одному), поэтому индекс общий.
+// proxyIndex — индекс в проекции ParserConfig.Proxies; canonical Sources
+// идут тем же порядком (AsParserConfig строит проекцию 1:1 по индексу —
+// инвариант Р1, см. комментарий у AsParserConfig), поэтому индекс общий.
 //
 // Времена lastSeen из парса сюда НЕ переносятся отдельно: карта приезжает
 // целиком, и продление меток — штатная часть того же прогона.
