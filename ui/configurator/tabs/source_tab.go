@@ -179,7 +179,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// SPEC 084.1: «Add WARP» — генератор Cloudflare WARP. Регистрирует аккаунт и
 	// отдаёт готовый wireguard://-URI в тот же Add-путь, что и ручная вставка.
 	addWarpAction := func() {
-		wizarddialogs.ShowAddWarpDialog(presenter, applyAddedSources)
+		wizarddialogs.ShowAddWarpDialog(presenter, nil, applyAddedSources)
 	}
 
 	// «Add server» — ручная форма: SOCKS5/HTTP по полям либо Source (любой
@@ -188,7 +188,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// подсмотреть. Форма собирает вход и отдаёт в тот же путь Add; вручную
 	// отредактированный JSON идёт своей веткой, чтобы сохраниться побайтово.
 	addServerAction := func() {
-		wizarddialogs.ShowAddServerDialog(presenter, func(res wizarddialogs.AddServerResult) {
+		wizarddialogs.ShowAddServerDialog(presenter, nil, func(res wizarddialogs.AddServerResult) {
 			presenter.MergeGUIToModel()
 			before := len(presenter.Model().Sources)
 
@@ -247,6 +247,25 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		showSourceEditWindow(presenter, guiState, guiState.Window, idx, m.Sources[idx].Label)
 	}
 
+	// SPEC 116 этап 3 (сценарий С1): «Add folder» — пустой контейнер под
+	// собственные узлы пользователя. Папка создаётся ПУСТОЙ и окно правки
+	// НЕ открывается: в отличие от цепочки, пустая папка — законное
+	// состояние (её наполняют потом, узел за узлом), и открывать форму
+	// значило бы требовать настройки там, где настраивать нечего.
+	//
+	// Конструктор — существующий corestate.NewFolderSource: он же минтит
+	// ULID, а ULID у папки единственная идентификация (на него смотрит
+	// NodeLink.FolderID). Своего создания папки не заводить.
+	addFolderAction := func() {
+		presenter.MergeGUIToModel()
+		m := presenter.Model()
+		if m == nil {
+			return
+		}
+		m.Sources = append(m.Sources, corestate.NewFolderSource(wizardbusiness.NextFolderName(m.Sources)))
+		applySourceMutation(presenter, guiState)
+	}
+
 	// Limit width and height of URL input field (3 lines)
 	// Wrap MultiLineEntry in Scroll container to show scrollbars; right gutter for scrollbar strip
 	urlURIGutter := components.NewScrollGutter()
@@ -269,6 +288,10 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	var overflowBtn *widget.Button
 	overflowBtn = widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
 		menu := fyne.NewMenu("",
+			// SPEC 116 §O6: «Add folder» первым пунктом — папка это
+			// контейнер, в который потом кладут всё остальное из этого же
+			// меню; порядок читается как «сначала куда, потом что».
+			fyne.NewMenuItem(locale.T("Add folder"), addFolderAction),
 			fyne.NewMenuItem(locale.T("Add server"), addServerAction),
 			fyne.NewMenuItem(locale.T("Add hop chain"), addChainAction),
 			fyne.NewMenuItem(locale.T("Add WARP"), addWarpAction),
@@ -370,6 +393,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				src := *srcPtr
 
 				isSubscription := src.Kind == corestate.SourceKindSubscription
+				isFolder := src.Kind == corestate.SourceKindFolder
 				meta := diagOf(&src)
 				sourceID := src.ID
 
@@ -378,7 +402,19 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// для человека), URL уходит в tooltip + Edit-окно. Для server —
 				// label или URI fragment.
 				label := ""
-				if isSubscription {
+				if isFolder {
+					// SPEC 116 §O5 (вердикт А): строку папки НЕ декорируем —
+					// ни метки, ни иконки. Отличие от подписки читается само:
+					// у папки нет URL в подстроке и нет кнопки обновления.
+					//
+					// Имя папки живёт в Source.Name (не в Label — это
+					// контейнер, а не узел); своего имени пользователь мог
+					// ещё не дать только у папок из чужого состояния.
+					label = strings.TrimSpace(src.Name)
+					if label == "" {
+						label = locale.Tf("Source %d", sourceIndex+1)
+					}
+				} else if isSubscription {
 					if t := strings.TrimSpace(meta.profileTitle()); t != "" {
 						label = t
 					} else if src.Name != "" {
@@ -425,6 +461,13 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					} else {
 						label += "  " + locale.Tf("· %d of %d nodes", c.Enabled, c.Total)
 					}
+				} else if isFolder {
+					// SPEC 116 A1: у пустой папки счётчик показывается явным
+					// «0 nodes», а не пропадает. Пустота папки — это её
+					// нормальное начальное состояние (только что создали,
+					// ещё не наполнили), и молчание строки читалось бы как
+					// «счётчик ещё не посчитан».
+					label += "  " + locale.Tf("· %d nodes", 0)
 				}
 
 				// SPEC 110: цепочку видно по строке — иначе она неотличима
@@ -469,6 +512,21 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// ⚠, что у исключения, но причина принципиально другая:
 				// чинить надо саму подписку, а не ссылку на узел.
 				parseFailedReason := config.ParseFailedSourceReason(sourceID)
+				// SPEC 116 A1: ПУСТАЯ ПАПКА — не сбой. У подписки ноль узлов
+				// значит «что-то не так с провайдером»; у папки это воля
+				// пользователя: он её создал и ещё не наполнил. Сборка
+				// считает контейнер без узлов не давшим ни одного (общее
+				// правило генератора), но объявлять папку сломанной здесь
+				// нельзя — чинить в ней нечего.
+				if isFolder && len(src.Nodes) == 0 {
+					parseFailedReason = ""
+				}
+				// SPEC 116 W12 фикс 3: деградации ЭМИССИИ этого источника
+				// (выпавший член Auto, нерезолвнутая позиция цепочки, снятое
+				// умолчание, столкновение тегов). Раньше они уходили в отчёт
+				// «Итога» без адресата, и строка списка про них молчала —
+				// починить их можно только зная, у кого именно.
+				emitWarnings := config.EmitWarningsForSource(sourceID)
 
 				fullURL := src.URL
 				var tagPrefix, tagPostfix string
@@ -562,7 +620,17 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				editBtn.Importance = widget.LowImportance
 				fynewidget.SetToolTipSafe(editBtn, locale.T("Edit"))
 
+				folderHasNodes := isFolder && len(src.Nodes) > 0
 				delBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DeleteIcon(), func() {
+					// SPEC 116 сценарий С7: у НЕПУСТОЙ папки удаление — не
+					// «да/нет», а выбор судьбы её узлов: снести вместе с
+					// папкой либо вынести в корень. Обычное подтверждение
+					// здесь предлагало бы ровно один исход и молча уносило
+					// десяток настроенных узлов.
+					if folderHasNodes {
+						showFolderDeleteDialog(presenter, guiState, sourceID, shortLabel, len(src.Nodes))
+						return
+					}
 					// Confirm before removing — deletion drops the source (and its
 					// nodes) from the config; matches the Rules-tab delete UX.
 					dialog.ShowConfirm(
@@ -711,6 +779,19 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					dropped.TextStyle = fyne.TextStyle{Italic: true}
 					lines = append(lines, container.NewBorder(nil, nil, leftPad(), nil, dropped))
 				}
+				// Эмиссионные деградации — ОТДЕЛЬНОЙ строкой, а не в общей
+				// цепочке else if: источник, потерявший члена группы, при этом
+				// вполне может быть и урезанным на последнем рубеже, и это
+				// разные факты. Мягкая пометка: узлы источник дал, работает он
+				// частично.
+				for _, w := range emitWarnings {
+					// Причина уже переведена движком — здесь только знак.
+					emitLabel := widget.NewLabel("⚠ " + w)
+					emitLabel.Wrapping = fyne.TextWrapWord
+					emitLabel.Importance = widget.MediumImportance
+					emitLabel.TextStyle = fyne.TextStyle{Italic: true}
+					lines = append(lines, container.NewBorder(nil, nil, leftPad(), nil, emitLabel))
+				}
 				var rowInner fyne.CanvasObject = titleRow
 				if len(lines) > 1 {
 					rowInner = container.New(tightVBox{}, lines...)
@@ -842,6 +923,114 @@ func applySourceMutation(presenter *wizardpresentation.WizardPresenter, guiState
 			}
 		})
 	}()
+}
+
+// showFolderDeleteDialog — удаление НЕПУСТОЙ папки (SPEC 116 сценарий С7).
+//
+// Два исхода, а не «да/нет»: узлы в папке — собственность пользователя, и
+// молча унести их вместе с контейнером нельзя.
+//
+//   - «Delete with nodes» — папка и её узлы уходят из конфигурации;
+//   - «Move nodes to root» — каждый узел становится верхним Source
+//     (business.ExtractFolderNodesToRoot, волна W2), после чего опустевшая
+//     папка удаляется.
+//
+// Ссылки НА вынесенные узлы (detour, хопы, члены Auto) переписывает реестр
+// W2 — они не рвутся, и сообщать о них нечего. А вот ФИНАЛЬНЫЙ тег узла у
+// папки с тег-политикой меняется (в корне политики нет), и ручной выбор в
+// селекторах живого ядра по нему протухает — про это предупреждает
+// существующий showStaleSelectionDialog, своего диалога не заводим.
+//
+// Три кнопки не влезают в dialog.ShowConfirm, поэтому окно собрано
+// NewCustomWithoutButtons — тем же приёмом, что диалог WARP.
+//
+// Ловушка Fyne (fyne-label-minwidth-trap): текст обязан быть Wrapping, иначе
+// имя папки в одну строку задаёт окну min-width и раздувает диалог.
+func showFolderDeleteDialog(
+	presenter *wizardpresentation.WizardPresenter,
+	guiState *wizardpresentation.GUIState,
+	folderID string,
+	folderLabel string,
+	nodeCount int,
+) {
+	if presenter == nil || guiState == nil || guiState.Window == nil || folderID == "" {
+		return
+	}
+
+	body := widget.NewLabel(locale.Tf(
+		"Folder %q holds %d node(s). Delete them together with the folder, or move them to the root of the sources list?",
+		folderLabel, nodeCount))
+	body.Wrapping = fyne.TextWrapWord
+
+	var d *dialog.CustomDialog
+
+	// Позиция папки ищется по ULID НА КЛИКЕ, а не берётся индексом из строки
+	// списка: пока висел диалог, порядок Sources мог поменяться (фоновый
+	// fetch, перетаскивание, второе окно), и удаление по устаревшему индексу
+	// снесло бы чужой источник. ULID — единственная идентификация папки.
+	folderIndex := func() int {
+		m := presenter.Model()
+		if m == nil {
+			return -1
+		}
+		for i := range m.Sources {
+			if m.Sources[i].ID == folderID && m.Sources[i].Kind == corestate.SourceKindFolder {
+				return i
+			}
+		}
+		return -1
+	}
+
+	deleteBtn := widget.NewButton(locale.T("Delete with nodes"), func() {
+		if d != nil {
+			d.Hide()
+		}
+		m := presenter.Model()
+		idx := folderIndex()
+		if m == nil || idx < 0 {
+			return
+		}
+		m.Sources = append(m.Sources[:idx], m.Sources[idx+1:]...)
+		applySourceMutation(presenter, guiState)
+	})
+	deleteBtn.Importance = widget.DangerImportance
+
+	extractBtn := widget.NewButton(locale.T("Move nodes to root"), func() {
+		if d != nil {
+			d.Hide()
+		}
+		m := presenter.Model()
+		idx := folderIndex()
+		if m == nil || idx < 0 {
+			return
+		}
+		// Политика читается ДО выноса: после него папки в модели уже нет.
+		hadTagPolicy := m.Sources[idx].TagPolicy != nil && !m.Sources[idx].TagPolicy.IsZero()
+		// Порядок обязателен: сначала вынести (функция W2 адресует папку по
+		// индексу и вставляет узлы сразу ЗА ней), потом удалить опустевшую —
+		// иначе вставлять было бы некуда и позиция узлов в списке уехала бы
+		// в конец, за все подписки.
+		wizardbusiness.ExtractFolderNodesToRoot(m, idx)
+		m.Sources = append(m.Sources[:idx], m.Sources[idx+1:]...)
+		applySourceMutation(presenter, guiState)
+		if hadTagPolicy {
+			showStaleSelectionDialog(guiState.Window, staleSelectionScope{NodesRenamed: true})
+		}
+	})
+
+	cancelBtn := widget.NewButton(locale.T("Cancel"), func() {
+		if d != nil {
+			d.Hide()
+		}
+	})
+
+	content := container.NewVBox(
+		body,
+		container.NewHBox(layout.NewSpacer(), cancelBtn, extractBtn, deleteBtn),
+	)
+	d = dialog.NewCustomWithoutButtons(locale.T("Delete folder"), content, guiState.Window)
+	d.Resize(fyne.NewSize(520, 200))
+	d.Show()
 }
 
 // showSourcePreviewAllWindow opens a window with the combined server list from all sources (uses View window slot).

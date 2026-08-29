@@ -65,9 +65,32 @@ type ParsedBodyEntry struct {
 	MemberRawTags   []string
 }
 
+// RejectedBodyRecord — запись тела, которую разобрать не удалось
+// (SPEC 116 W11). Материализуется узлом kind=unsupported на СВОЕЙ позиции:
+// пользователь видит, что провайдер прислал строку, которую мы не поняли, — и
+// видит саму строку.
+//
+// Принятой записью она НЕ становится: `Num` не потребляет (нумерация {$num}
+// считает принятые), кап не занимает, слот уникализации сырых тегов не берёт.
+// Позиция запоминается индексом того места, где запись стояла среди ПРИНЯТЫХ:
+// материализация вставляет её обратно ровно туда.
+type RejectedBodyRecord struct {
+	// After — сколько записей было принято ДО этой (0 = запись стояла первой).
+	After int
+	// Reason — почему не разобрали (текст парсера, он же едет в диагностику).
+	Reason string
+	// OriginKind / OriginRaw — исходник записи байт в байт: «uri» — строка
+	// списка. Запись без пофрагментного исходника сюда не попадает вовсе —
+	// показывать было бы нечего.
+	OriginKind string
+	OriginRaw  string
+}
+
 // ParsedBody — результат чистого разбора тела.
 type ParsedBody struct {
 	Entries []*ParsedBodyEntry
+	// Rejected — записи, которые разобрать не удалось, в порядке тела.
+	Rejected []RejectedBodyRecord
 	// Truncated — разбор упёрся в кап: удалять «исчезнувшие» узлы при merge
 	// запрещено (SPEC 113-A).
 	Truncated bool
@@ -199,7 +222,10 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 			node, err := ParseNode(line, skip)
 			if err != nil {
 				// Битая запись — деградация записи с warning, не подписки.
+				// SPEC 116 W11: и не молчаливая пропажа — запись остаётся в
+				// составе узлом kind=unsupported со своим исходником.
 				st.warn(fmt.Sprintf("record rejected: %v", err))
+				st.reject(err.Error(), OriginKindURI, line)
 				continue
 			}
 			if node == nil {
@@ -225,6 +251,24 @@ type bodyParseState struct {
 
 func (st *bodyParseState) warn(msg string) {
 	st.res.Warnings = append(st.res.Warnings, msg)
+}
+
+// reject запоминает неразобранную запись на её позиции (SPEC 116 W11).
+//
+// Счётчик принятых НЕ трогается: отбракованная запись не занимает ни номер
+// {$num}, ни слот уникализации, ни место в капе — ровно как раньше, когда она
+// просто исчезала. Запись без исходника не запоминается: показать было бы
+// нечего, а «unsupported без origin» — форма, которую модель не держит.
+func (st *bodyParseState) reject(reason, originKind, originRaw string) {
+	if strings.TrimSpace(originRaw) == "" {
+		return
+	}
+	st.res.Rejected = append(st.res.Rejected, RejectedBodyRecord{
+		After:      st.accepted,
+		Reason:     reason,
+		OriginKind: originKind,
+		OriginRaw:  originRaw,
+	})
 }
 
 func (st *bodyParseState) capReached() bool {
@@ -274,7 +318,9 @@ func (st *bodyParseState) accept(node *configtypes.ParsedNode, originKind, origi
 		if entry.RawTag == "" {
 			// Узел без тега: сырой тег — идентичность, без неё узлу не жить
 			// в nodes[] (merge-ключа нет). Деградация записи.
-			st.warn(fmt.Sprintf("record without tag skipped (%s://%s)", node.Scheme, node.Server))
+			reason := fmt.Sprintf("record without tag (%s://%s)", node.Scheme, node.Server)
+			st.warn(reason + " skipped")
+			st.reject(reason, originKind, originRaw)
 			return
 		}
 		if len(node.Chain) > 0 {

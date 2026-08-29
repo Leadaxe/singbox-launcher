@@ -166,7 +166,13 @@ func refreshOneSubscriptionSource(src *state.Source, settings locale.Settings) b
 	// честно удалит исчезнувших. material == nil при nil-ошибке парсера —
 	// дефект контракта ниже по стеку: тоже недостоверно (фикс ревью W3 —
 	// прежняя форма выражения разыменовывала бы nil в ветке trusted).
-	trusted := matErr == nil && material != nil && (len(material.Nodes) > 0 || len(material.Warnings) == 0)
+	//
+	// SPEC 116 W11: считается по СОБРАВШИМСЯ узлам (material.Supported), а не
+	// по длине Nodes — в ней теперь живут и неразобранные записи
+	// (kind=unsupported). HTML-страница вместо подписки даёт полный список
+	// отбракованных строк, и посчитай мы их узлами, ответ объявился бы
+	// достоверным и снёс бы весь состав.
+	trusted := matErr == nil && material != nil && (material.Supported > 0 || len(material.Warnings) == 0)
 
 	var mergeWarns []string
 	if trusted {
@@ -255,7 +261,10 @@ func successSubStatus(url, now string, httpStatus int, rawBytes int64, material 
 		RawBodyBytes:   rawBytes,
 	}
 	if material != nil {
-		st.NodesCountFetched = len(material.Nodes)
+		// Счёт узлов — СОБРАВШИХСЯ: неразобранные записи (SPEC 116 W11) ездят
+		// в том же Nodes, но узлами подписки не являются — их число UI
+		// показывает отдельным слагаемым («38 + 5 unsupported»).
+		st.NodesCountFetched = material.Supported
 		st.Truncated = material.Truncated
 		for _, w := range material.Warnings {
 			st.Warnings = append(st.Warnings, state.FetchWarning{Kind: "parse", Message: w})

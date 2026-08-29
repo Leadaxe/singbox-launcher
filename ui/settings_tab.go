@@ -381,10 +381,20 @@ func buildSubscriptionDefaultsBlock(binDir string) fyne.CanvasObject {
 	maxNodesEntry.OnChanged = debounceSettingsWrite(saveMaxNodes)
 	maxNodesEntry.OnSubmitted = saveMaxNodes
 
+	// SPEC 116 W12 фикс 6: поля — ПО СОДЕРЖИМОМУ. Через Border растянутый на
+	// всю ширину ввод обещал длинное значение, а внутри живут «4h» и «300»:
+	// поле шириной в пол-экрана под три символа читается как незаполненная
+	// форма. Тот же приём, что у HWID, — GridWrap фиксированной ширины,
+	// хвост строки отдан спейсеру.
+	shortEntry := func(e fyne.CanvasObject, w float32) fyne.CanvasObject {
+		return container.New(layout.NewGridWrapLayout(fyne.NewSize(w, e.MinSize().Height)), e)
+	}
 	return container.NewVBox(
-		container.NewBorder(nil, nil, widget.NewLabel(locale.T("Default update interval:")), nil, reloadEntry),
+		container.NewHBox(widget.NewLabel(locale.T("Default update interval:")),
+			shortEntry(reloadEntry, 90), layout.NewSpacer()),
 		reloadHint,
-		container.NewBorder(nil, nil, widget.NewLabel(locale.T("Default max nodes:")), nil, maxNodesEntry),
+		container.NewHBox(widget.NewLabel(locale.T("Default max nodes:")),
+			shortEntry(maxNodesEntry, 90), layout.NewSpacer()),
 		maxNodesHint,
 		errLabel,
 	)
@@ -548,11 +558,12 @@ func buildSubscriptionIdentificationBlock(ac *core.AppController, binDir string)
 	}
 
 	hwidLabel := widget.NewLabel(locale.T("Device ID (HWID):"))
-	// 120px ≈ 12 visible UUID chars; full 36-char UUID still fits via
-	// horizontal scroll inside the entry. Compact-by-default — users
-	// either copy-paste the whole string or use Regenerate, both work
-	// without seeing the full ID at once.
-	hwidEntryFixed := container.New(layout.NewGridWrapLayout(fyne.NewSize(120, hwidEntry.MinSize().Height)), hwidEntry)
+	// SPEC 116 W12 фикс 6: ID виден ЦЕЛИКОМ. Прежние 120px показывали
+	// двенадцать символов из тридцати шести, и «свой» ID нельзя было ни
+	// сверить с тем, что зарегистрировано у провайдера, ни продиктовать в
+	// поддержку — только выделить вслепую и скопировать. 340px ≈ полный
+	// UUID 8-4-4-4-12 моноширинной ширины поля.
+	hwidEntryFixed := container.New(layout.NewGridWrapLayout(fyne.NewSize(340, hwidEntry.MinSize().Height)), hwidEntry)
 	hwidRow := container.NewHBox(hwidLabel, hwidEntryFixed, regenBtn, layout.NewSpacer())
 
 	return container.NewVBox(

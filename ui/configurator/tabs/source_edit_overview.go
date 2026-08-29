@@ -3,7 +3,6 @@ package tabs
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -85,8 +84,7 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 			body.Add(lbl)
 			if len(src.Nodes) > 0 {
 				body.Add(widget.NewSeparator())
-				body.Add(sectionHeader(locale.Tf("Nodes: %d", len(src.Nodes))))
-				body.Add(nodeOriginList(src.Nodes))
+				body.Add(sectionHeader(sourceNodesHeader(src.Nodes)))
 			}
 			appendStorageRecordSection(body, src)
 			body.Refresh()
@@ -203,16 +201,41 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 			}
 		}
 
-		// === Состав: узлы и их происхождение ===
+		// === Диагностика разбора ===
+		//
+		// SPEC 116 W11: список причин деградации переехал сюда со вкладки
+		// Preview. Там его место заняли ⚠-строки самих записей — они точнее,
+		// потому что привязаны к записи; сюда же собрано то, что к ОДНОЙ
+		// записи не привязывается: обрезка капом, потери при merge,
+		// нерезолвнутые члены групп.
+		if reasons := fetchWarningTexts(src.UpdateStatus); len(reasons) > 0 {
+			body.Add(widget.NewSeparator())
+			if block := previewParseReasonsBlock(reasons); block != nil {
+				body.Add(block)
+			}
+		}
+
+		// === Состав ===
 		//
 		// SPEC 118 Т8: блок «raw body» умер вместе с кэшем тел. Тела теперь
 		// материализованы поузлово, и честный ответ на «что за подписка» —
 		// её СОСТАВ, а не байты ответа сервера.
+		//
+		// SPEC 116 W11: поузловой список «тег → origin.raw» здесь убран —
+		// он дублировал вкладку Preview хуже неё самой (без галок, без
+		// операций, без причин), а состав узнают там. Осталась строка счёта,
+		// и в ней неразобранные записи названы отдельным слагаемым.
 		body.Add(widget.NewSeparator())
-		body.Add(sectionHeader(locale.Tf("Nodes: %d", len(src.Nodes))))
-		if len(src.Nodes) > 0 {
-			body.Add(nodeOriginList(src.Nodes))
-		}
+		body.Add(sectionHeader(sourceNodesHeader(src.Nodes)))
+
+		// === Сырой ответ подписки по требованию ===
+		//
+		// Не кэш: тело подписки в состоянии не живёт и жить не будет (SPEC 118
+		// Т8). Кнопка скачивает ответ ЗАНОВО и показывает его как есть —
+		// диагностика «что вообще прислал провайдер», когда состав выглядит
+		// не так, как ожидалось. Узлы при этом не трогаются вовсе: это показ,
+		// а не обновление.
+		appendRawBodySection(body, src.URL)
 
 		appendStorageRecordSection(body, src)
 
@@ -280,47 +303,6 @@ func providerAnnounceText(meta *sourceDiag) string {
 		return ""
 	}
 	return meta.providerAnnounce().AnnounceMessage()
-}
-
-// nodeOriginList — список «сырой тег → origin.raw» узлов источника.
-//
-// Origin — то, из чего узел собран (share-URI, строка sing-box JSON): по нему
-// пользователь узнаёт узел, даже когда финальный тег ушёл под тег-политику.
-func nodeOriginList(nodes []corestate.Node) fyne.CanvasObject {
-	var b strings.Builder
-	for i := range nodes {
-		n := &nodes[i]
-		mark := ""
-		if !n.Enabled {
-			mark = " (off)"
-		}
-		raw := ""
-		if n.Origin != nil {
-			raw = n.Origin.Raw
-		}
-		b.WriteString(n.Tag)
-		b.WriteString(mark)
-		if raw != "" {
-			b.WriteString("\n    ")
-			b.WriteString(raw)
-		}
-		b.WriteString("\n")
-	}
-	entry := widget.NewMultiLineEntry()
-	entry.Wrapping = fyne.TextWrapOff
-	text := b.String()
-	entry.SetText(text)
-	entry.OnChanged = func(s string) {
-		if s != text {
-			entry.SetText(text)
-		}
-	}
-	scroll := container.NewVScroll(container.NewStack(
-		canvas.NewRectangle(transparentColor()),
-		entry,
-	))
-	scroll.SetMinSize(fyne.NewSize(0, 240))
-	return scroll
 }
 
 func kvRow(key, value string) fyne.CanvasObject {

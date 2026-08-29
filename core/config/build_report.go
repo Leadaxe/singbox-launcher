@@ -302,6 +302,32 @@ func ParseFailedSourceReason(sourceID string) string {
 	return ""
 }
 
+// EmitWarningsForSource — деградации ЭМИССИИ, адресованные этому источнику
+// (SPEC 116 W12, фикс 3).
+//
+// До этой волны эмиссионные записи адресата не имели вовсе (субъект
+// "emission"), и строка Sources молчала: пользователь видел «узел X
+// исключён» в отчёте «Итога» и сам искал, чей это узел. Теперь причина
+// приезжает с ULID, и строка обязана показать её так же, как показывает
+// деградации подписки.
+//
+// Их бывает несколько на один источник (выпали три члена группы) — поэтому
+// список, а не одна строка, как у ParseFailedSourceReason.
+func EmitWarningsForSource(sourceID string) []string {
+	if sourceID == "" {
+		return nil
+	}
+	buildReportMu.RLock()
+	defer buildReportMu.RUnlock()
+	var out []string
+	for _, e := range buildReport {
+		if e.Kind == BuildReportEmitDegraded && e.SourceID == sourceID {
+			out = append(out, e.Reason)
+		}
+	}
+	return out
+}
+
 // DroppedNodesForSource — сколько узлов источника снял последний рубеж; ноль,
 // если источник прошёл сборку целым.
 //

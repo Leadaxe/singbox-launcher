@@ -17,13 +17,14 @@
 
 | Сущность | Место | Заметка |
 |---|---|---|
-| `SourceKind` + константы | `sources_v7.go:23,25` | server/chain/auto/folder/subscription |
+| `SourceKind` + константы | `sources_v7.go:23,25` | server/chain/auto/folder/subscription **+ unsupported** (W11: только внутри контейнера — в корне `normalizeSourceShape` отвергает) |
 | `NodeLink{FolderID,Tag}` | `sources_v7.go:34` | FolderID=="" → корневое простр-во финальных тегов |
 | `Origin{Kind,Raw,SubURL}` | `sources_v7.go:42` | kind: uri/wg_ini/json (`:52`); kind=warp НЕ существует |
 | `TagPolicy{Prefix,Postfix}` + `IsZero` | `sources_v7.go:61,67` | маски нет; переменные — на эмиссии |
 | `AutoStrategy` (alias) | `sources_v7.go:77` | = `configtypes.DirectionAuto`, 9 полей |
 | `AutoGroup{GroupType,Default,Members,Strategy}` | `sources_v7.go:80` | Default — СЫРОЙ тег члена, живёт тут, не в Strategy |
-| `Node{Kind,Tag,Enabled,Origin,Body,Detour,Hops,Group}` | `sources_v7.go:99` | Body чист от detour; Hops — chain only; Group — auto only |
+| `Node{Kind,Tag,Enabled,Origin,Body,Detour,Hops,Group,Reason}` | `sources_v7.go:99` | Body чист от detour; Hops — chain only; Group — auto only; **Reason — unsupported only** |
+| `(*Node).IsUnsupported` / `NewUnsupportedNode` | `sources_v7.go:152,159` | SPEC 116 W11: неразобранная запись тела как узел контейнера — origin обязателен, enabled всегда false |
 | `FolderReplace{Mode,Tag,Strategy}` | `sources_v7.go:130` | режимы `:139` manual/auto/both |
 | `Source` (embedded `Node` + ID/Name/TagPolicy/Nodes/Replace + sub-поля) | `sources_v7.go:147` | ID — ULID, единственная идентификация папки |
 | `Source.NodeTagOrLabel()` | `sources_v7.go:191` | откат на Label только для доканонических записей |
@@ -71,10 +72,17 @@
 
 | Функция | Место |
 |---|---|
-| `MaterializeSubscriptionBody(subID, decodedBody, skip, capN)` | `core/config/fetch_materialize.go:42` |
-| `SubscriptionFetchMaterial` | `core/config/fetch_materialize.go:24` |
-| `MergeSubscriptionNodes(sub, res, trusted)` | `core/state/subscription_merge.go:50` |
-| `SubFetchMaterial{Nodes,Truncated}` | `core/state/subscription_merge.go:20` |
+| `MaterializeSubscriptionBody(subID, decodedBody, skip, capN)` | `core/config/fetch_materialize.go:50` |
+| `unsupportedNodeFromRecord` (W11) | `core/config/fetch_materialize.go:122` — тег из подписи записи, иначе позиционный `unsupported-N`; уникальность считается по одному множеству с принятыми |
+| `SubscriptionFetchMaterial.Supported` (W11) | `core/config/fetch_materialize.go:25` — достоверность ответа считается по СОБРАВШИМСЯ, не по `len(Nodes)` |
+| `subscription.RejectedBodyRecord` / `bodyParseState.reject` (W11) | `core/config/subscription/parse_body.go:77,262` — отбракованная запись с позицией (`After` = сколько принято до неё) и исходником; счётчик принятых не трогает |
+| `SubscriptionFetchMaterial` | `core/config/fetch_materialize.go:25` |
+| `MergeSubscriptionNodes(sub, res, trusted)` | `core/state/subscription_merge.go:94` |
+| `MergeFolderNodesFromSubscription(folder, subURL, res, trusted)` | `core/state/subscription_merge.go:188` |
+| `repointFolderAutoMembers(folder, subURL, touched)` (SPEC 116 W7) | `core/state/subscription_merge.go:301` — хвост folder-merge: members приехавшего Auto переуказываются на папку, непопавший член — prune + warning, выпавший `Group.Default` снимается |
+| `refreshMergedNode(fresh, old)` — общая половина обоих merge | `core/state/subscription_merge.go:43` — W11: переход unsupported→узел НЕ переносит `enabled` (починенная запись оживает включённой), обратный переход гасит его принудительно |
+| `nodeSubURL` / `setNodeSubURL` / `nodeTagTaken` | `core/state/subscription_merge.go:336,353,370` — `setNodeSubURL` САЖАЕТ origin на клон (копия узла делит `*Origin` с материалом вызывающего) |
+| `SubFetchMaterial{Nodes,Truncated}` | `core/state/subscription_merge.go:31` |
 | Оркестрация одного обновления | `core/config_service_subscriptions.go:113` `refreshOneSubscriptionSource` |
 | Все подписки разом | `core/config_service_subscriptions.go:43` `refreshSubscriptionsMetaAndCache` |
 | Резолв капа (подписка → настройки) | `core/config_service_subscriptions.go:210` `resolveSubscriptionMaxNodes` |
@@ -89,6 +97,10 @@
 **Материализованный канон → узлы**:
 
 - `EmitCanonicalSource(ps, sourceIndex, tagCounts)` — `canonical_emit.go:75`;
+  узлов kind=unsupported он не видит вовсе: их отсекает ПРОЕКЦИЯ
+  (`state.(*Source).canonicalProjection`, `adapter_source.go:109`) — пропуск
+  структурный и ДО тег-машины, иначе неразобранная запись съела бы `{$num}` и
+  слот уникализации у соседей (SPEC 116 W11);
   результат `CanonicalEmitResult` `:46`.
 - Ветки по kind: `buildCanonicalNode:150`, `buildCanonicalServer:177`,
   `buildCanonicalAuto:217`; chain откладывается на 2-й проход
@@ -108,11 +120,25 @@
 - `NodeLinkTargets` `:47`; `BuildNodeLinkTargets(...)` `:64` — ОДИН словарь
   целей на всю сборку; `allRootLinkTargets:121`, `rootNodeTagsForGuard:157`.
 - `(*NodeLinkTargets).Resolve(link)` `:201`; `NodeLinkResolution` `:187`.
-- `ApplyCanonicalNodeLinks(...)` `:234` — detour fail-closed + members prune.
-- `resolveCanonicalDetour:349`, `detectCanonicalDetourCycles:383` (кольца
-  fail-closed), `resolveCanonicalGroup:455` (prune), `canonicalGroupFolder:507`.
-- `warnWireguardDanglingDetours:329` — detour не применяется к WG (`:318`).
-- `ResolveCanonicalChainHops(parserConfig, targets)` — `canonical_emit.go:262`.
+- `ApplyCanonicalNodeLinks(...)` `:234` — detour fail-closed + members prune;
+  отдаёт `[]EmissionWarning` (W12), адресат берётся у самого узла по
+  `SourceIndex` (замыкание `addr` внутри).
+- `resolveCanonicalDetour:370`, `detectCanonicalDetourCycles:403` (кольца
+  fail-closed), `resolveCanonicalGroup:475` (prune), `canonicalGroupFolder:527`.
+- `warnWireguardDanglingDetours:344` — detour не применяется к WG; отдаёт
+  `nodeWarning{node,text}` (`:361`), адресата ставит вызывающий.
+- `ResolveCanonicalChainHops(parserConfig, targets)` — `canonical_emit.go:262`
+  (тоже `[]EmissionWarning`).
+
+**Деградации эмиссии с адресатом** (`emission_warning.go`, SPEC 116 W12 фикс 2+3):
+
+- `EmissionWarning{Text,SourceID,SourceLabel,DirectionTag}` `:59`;
+  `EmissionWarningTexts:76` (только фразы — лог, тесты, `sourceParseFailure`).
+- `sourceOfNodeTag:91` (тег узла → источник) и `directionOwningTag:108`
+  (тег → Направление; у развёрнутого твина адресат — РОДИТЕЛЬ) — адресация
+  столкновений гарда; `emissionWarningsFor:131` — пачка фраз одного источника.
+- Фразы — АНГЛИЙСКИЕ ключи локали константами `:31–51`; перевод в
+  `bin/locale/ru.json`. Ключ обязан совпадать с записью каталога байт-в-байт.
 
 **Свёртки папок** (`folder_replaces.go`):
 
@@ -123,10 +149,20 @@
 
 **Гард занятости тегов** (`tag_guard.go`):
 
-- `TagGuard` `:38`, `NewTagGuard:46`, `Claim:52`, `Taken:68`, `Owner:77`,
-  `Conflicts:85`, `Tags:94`; `TagOwnerKind` `:27`.
-- `BuildTagGuard(directions, proxies, rootNodeTags, systemTags)` `:114`.
-- `KnownTargetTags(guard, directions)` `:156` — множество для сброса
+- `TagGuard` `:44`, `NewTagGuard:68`, `Claim:74`, `Taken:90`, `Owner:99`,
+  `Conflicts:107` (отдаёт `[]TagConflict`, не строки), `ConflictTexts:115`,
+  `Tags:128`; `TagOwnerKind` `:28` — значения теперь АНГЛИЙСКИЕ ключи локали
+  (`Localized():41`), `TagConflict{Tag,Prev,Kind}` `:56` + `Text():63`.
+- `BuildTagGuard(directions, proxies, rootNodeTags, systemTags)` `:148`.
+  **W12 фикс 1**: гард строится по форме ПОСЛЕ `ExpandDirectionTwins`, где
+  обе половины пары лежат отдельными записями. Твин-запись (`TwinOf != ""`)
+  claim'ится как `TagOwnerTwin` и НЕ дублируется формулой `d.Tag+twinSuffix`
+  (карта `twinTags` `:181` — теги всех записей списка + `TwinTag` родителей).
+  Иначе каждое Направление с автовыбором давало ложное «тег занят дважды:
+  Направление и авто-группа Направления», и то же самое — шаблонная
+  отдельно стоящая `x-auto`, из-за которой твин вовсе не разворачивается.
+  Тест — `tag_guard_twin_test.go`.
+- `KnownTargetTags(guard, directions)` `:222` — множество для сброса
   осиротевших целей правил (обязано знать ВСЕ виды тегов).
 
 **Генератор / санитайзер** (`outbound_generator.go`):
@@ -154,14 +190,31 @@
 - Хранилище/жизненный цикл: `core/config/build_report.go` — `BuildReportEntry:101`,
   `BuildGeneration:123`, `StartBuildReport:161`, `FinishBuildReport:179`,
   `AddBuildReportEntries:199`, `BuildReport:237`, `BuildReportReadyFor:278`,
-  `ParseFailedSourceReason:291`, `DroppedNodesForSource:312`, `ResetBuildReport:147`.
-- Фиды: `core/build_report_feed.go` — `FeedBuildReportFromParser:33`,
+  `ParseFailedSourceReason:291`, `EmitWarningsForSource:316` (SPEC 116 W12 —
+  деградации эмиссии ЭТОГО источника; их бывает несколько, поэтому список, а
+  не одна строка), `DroppedNodesForSource:338`, `ResetBuildReport:147`.
+- Фиды: `core/build_report_feed.go` — `FeedBuildReportFromParser:33`
+  (эмиссионные записи едут с `SourceID`/`SourceLabel` из `EmissionWarning` —
+  раньше субъектом стояла строка "emission"),
   `FeedBuildReportFromFetchStatus:116` (диагностика из состояния, не из разбора),
   `FeedBuildReportFromSanitizer:245`.
 - Вызовы: `core/rebuild.go:183,187,199`; UI-путь — `business/parser.go:152,193,197`,
   `business/create_config.go:216`.
-- UI-модель отчёта: `ui/configurator/tabs/final_report_model.go`, вкладка
-  `final_tab.go`.
+- UI-модель отчёта: `ui/configurator/tabs/final_report_model.go` —
+  `finalReportLines:88` (порядок видов: потери источника целиком → частичные
+  `fetch_degraded`/`emit_degraded` → naive), `finalReportEntryText:125`,
+  `finalBuildStatusText:168` (**W12 фикс 4** — «Build OK» / «Build OK, N
+  warnings» / «Build FAILED: причина» чистой функцией; вёрстка берёт текст и
+  признак провала), `saveButtonVisible:64`.
+- Вкладка `final_tab.go`: `statusLabel` над списком (`CreateFinalTab`), кнопка
+  `copyBtn` — **W12 фикс 5** — `NewButtonWithIcon("Copy config",
+  theme.ContentCopyIcon())`, как «Copy token» в `ui/settings_tab.go:594`, и
+  копирует СОБРАННЫЙ конфиг (`builtText`), а не текст отчёта. Провал сборки
+  больше не рисует красную строку внутри списка — он и есть статус.
+- Строка Sources с ⚠ эмиссии — `ui/configurator/tabs/source_tab.go`
+  (`emitWarnings := config.EmitWarningsForSource(sourceID)` рядом с
+  `parseFailedReason`; рисуется ОТДЕЛЬНОЙ строкой, не в цепочке `else if`:
+  потеря члена группы и урезание на последнем рубеже — разные факты).
 
 ### 1.5 Бэкап (контракт 0.11)
 
@@ -172,39 +225,103 @@
   `importMaskTag:212`, `replaceTagSurvivesExport:232`,
   `legacyFoldPrefix:252`, `foldDerivedDirectionTags:267`,
   `resolveImportedHops:303`.
-- `Export(s, opts)` — `core/backup/export.go:48`; `exportSubscription:226`,
-  `exportServer:252`, `exportChain:178`, `exportSourceRef:155`.
-- `Import(s, b, opts)` — `core/backup/import.go:134`; `importSubscription:296`,
-  `importServer:371`, `importChain:397`, `backupReplaceTag:358`,
-  `ensureSourceID:279`.
+- `Export(s, opts)` — `core/backup/export.go:50`; `exportSubscription`,
+  `exportServer`, `exportChain`, `exportSourceRef`.
+- `Import(s, b, opts)` — `core/backup/import.go:149`; `importSubscription`,
+  `importServer`, `importChain`, `backupReplaceTag`, `ensureSourceID`.
 - Типы контракта — `core/backup/types.go`; UI — `ui/configurator/tabs/settings_backup.go`,
   `settings_backup_report_window.go`.
 
+**Папка в бэкапе (SPEC 116 W9, §O1=А)**: контракт 0.11 папок не знает, и
+экспорт их не пишет — но потеря обязана быть НАЗВАНА (критерий A9).
+
+- `backup.Warning` (`core/backup/import.go:21`) несёт, кроме `Code`/`Detail`,
+  ещё `Kind` и `Nodes`: код `backup_source_kind_unsupported` общий у папки и
+  провайдерской группы, а фразы разные, и объём потери («и её 12 узлов»)
+  из строки не вычитаешь. Литералы `Warning{…}` — только КЛЮЧЕВЫЕ: позиционные
+  ломались на каждом новом поле.
+- `Export` копит такие потери в отдельный `dropped` и кладёт его **в начало**
+  общего списка (`export.go:115` + `:129`): «не поехало вовсе» обязано
+  читаться раньше, чем «приехало иначе» (`WarnBackupReplaceTagDerived`).
+- UI: `showExportReport` (`settings_backup_report_window.go:122`) — то же окно,
+  что у импорта, БЕЗ обрезки; текст для буфера — `exportReportText:137`.
+  Окно общее: `openBackupReportWindow:75` (импорт заходит через
+  `openImportReportWindow:59`). Прежняя модалка резала список на 10 строках и
+  отсылала за хвостом в отчёт импорта, которого при экспорте не бывает.
+- Фраза потери — `unsupportedSourceWarnText` (`settings_backup.go:302`),
+  ветка `warnText:261`. `warnLines` (`:243`) остался только у превью импорта.
+- `contract/**` не тронут: секция `folders[]` — отдельный трек (§O1 вариант В).
+
 ### 1.6 UI-конфигуратор
 
-**Список источников**: `ui/configurator/tabs/source_tab.go` (1139) —
-`CreateSourcesTab:57`, `applySourceMutation:816`, `showSourcePreviewAllWindow:848`,
-`nodeDisplayLine:950`, `CreateDirectionsTab:976`, `refreshOneSourceFromUI:1033`.
+**Список источников**: `ui/configurator/tabs/source_tab.go` (1309) —
+`CreateSourcesTab:57`, `applySourceMutation:878`, `showSourcePreviewAllWindow:1018`,
+`nodeDisplayLine:1120`, `CreateDirectionsTab:1146`, `refreshOneSourceFromUI:1203`.
 
-**Окно источника**: `ui/configurator/tabs/source_edit_window.go` (1667) —
+Папка в списке (SPEC 116 W3): `addFolderAction:259` (⋮ → «Add folder»,
+ПЕРВЫМ пунктом — §O6; зовёт `corestate.NewFolderSource` + `applySourceMutation`,
+окно правки НЕ открывает), `showFolderDeleteDialog:930` (два исхода С7:
+«удалить с узлами» / «вынести узлы в корень» через
+`business.ExtractFolderNodesToRoot`, затем снос опустевшей папки; папка
+адресуется ULID'ом на клике, не индексом строки). Строка папки НЕ
+декорирована (§O5=А): отличие читается по отсутствию URL в подстроке и
+кнопки обновления. Имя строки — `Source.Name`; у пустой папки счётчик
+показывается явным «· 0 nodes», а `parseFailedReason` подавлен
+(`isFolder && len(Nodes)==0`) — пустота папки это воля пользователя, а не
+сбой источника.
+
+**Окно источника**: `ui/configurator/tabs/source_edit_window.go` (1857) —
 `showSourceEditWindow:377` (главный конструктор окна);
 `cloneSource:190`, `cloneCanonicalNode:162`, `cloneDirection:264`
 (value-snapshot формы), `mergeEditedSourceIntoModel:324`,
 `applySourceEditToModel:353` (путь Save), `setNodeEnabled:90`,
 `nodeEnabledInSource:107`, `sourceOriginURI:124`/`setSourceOriginURI:136`,
-`resetRefsAfterNodeRename:1571`, `showDetourRefsResetDialog:1614`,
-`showStaleSelectionDialog:1638`.
+`resetRefsAfterNodeRename:1761`, `showDetourRefsResetDialog:1804`,
+`showStaleSelectionDialog:1828`.
+
+Настройки по виду источника (SPEC 116 W4): `rebuildSettingsLayout:847` —
+**`switch` по kind, три ветки** (папка / server / всё прочее = подписка);
+общие блоки `tagPolicyBlock:828` (prefix+postfix+подсказка переменных) и
+`detourBlock:842` делятся подпиской и папкой дословно. У папки: имя
+(`nameEntry:520` → `Source.Name`, OnChanged гейтит по kind), тег-политика,
+свёртка, detour — **ни URL, ни интервала, ни max_nodes, ни skip** (A8).
+Прежнее «не server ⇒ подписка» осталось верным ровно в одном месте —
+`syncFoldTabVisible:1641` (условие вычитанием, папку пропускает само);
+остальные ветки текстов разведены по kind: заголовок окна `:426`
+(«Folder — имя»), подсказка JSON `:1607`, пустой контейнер `:1578`.
+Read-only JSON у папки — `:1319` (`isServerSource`), кнопок Apply/Regen нет
+(`:1613` — `switch`: server/chain → Apply+Regen, папка → «Copy nodes as JSON»
+(W8, `:1624`), подписка → без кнопок).
+
+**Операции над узлом контейнера (SPEC 116 W5)** — `preview_node_ops.go`,
+контекст собирается в окне: `nodeOps := &previewNodeOps{…}`
+(`source_edit_window.go:928`), в нём же `reloadScratch` (перечитать рабочую
+копию из живой записи, `:934`) и `refreshPreview`. Меню строки —
+`showPreviewNodeContextMenu` (`preview_node_info.go:49`), ему передаётся
+**сырой** тег (`identities[id]`, `source_edit_window.go:1236`), а не
+`node.Tag`. Авторазыменование при правке тела/Regen —
+`dereferenceEditedSourceNode` (`preview_node_ops.go:503`) +
+`notifyNodeDereferenced` (`:484`), зовутся из Apply JSON
+(`source_edit_window.go:1442`) и Regen (`:1470`).
 
 Вкладки окна:
 
 | Вкладка | Файл | Точка входа |
 |---|---|---|
-| Overview | `source_edit_overview.go` | `buildOverviewTab:26`; `nodeOriginList:289`, `appendStorageRecordSection:235` |
+| Overview | `source_edit_overview.go` | `buildOverviewTab:25`; `appendStorageRecordSection:258`. **W11**: поузловой `nodeOriginList` удалён (дублировал Preview), диагностика fetch'а (`fetchWarningTexts` + `previewParseReasonsBlock`) переехала сюда со вкладки Preview |
+| Overview: счёт и сырой ответ (W11) | `source_edit_raw_body.go` | `sourceNodesHeader:43` («Nodes: 38 + 5 unsupported»), `appendRawBodySection:63` (кнопка Reload — СКАЧИВАЕТ тело заново через `subscription.FetchSubscriptionWithMeta` и только показывает: ни nodes[], ни updateStatus не трогает), `renderRawBodyView:157` (галки base64 → urldecode → pretty-print; неудача шага не ошибка, шаг просто не применяется) |
 | Chain | `source_chain_tab.go` | `newChainForm:111`, `Load:178`, `Collect:267`, `CollectLinks:249`, `applyChainFormToSource:862` |
 | Chain (кандидаты хопов) | `source_chain_hops.go` | `collectChainHopCandidates:106`, `chainReplaceTags:242`, `chainFolderIDsBySourceIndex:255`, `chainReferencedBy:321` |
 | Replace (свёртка) | `source_replace_tab.go` | `newReplaceTab:53`, `Load:113`, `Collect:145`, `defaultReplaceTag:205`, `replaceAutoChoices:219` |
 | Body / JSON | `source_body_edit.go` | `applyServerBodyJSON:40`, `regenServerBodyFromRaw:71` (Regen) |
-| JSON-рендер | `source_edit_json.go` | `renderUnpackedNodes:53`, `emittedToEditableJSON:38` |
+| JSON-рендер | `source_edit_json.go` | `unpackNodesDoc:72` (общий сборщик документа `{outbounds,endpoints}`, `limit<=0` = без обрезки), `renderUnpackedNodes:118` (показ, `limit=previewNodeCap`), `emittedToEditableJSON:38`, `stripEmittedDecorations:21` |
+| JSON: «взять всю папку» (W8) | `folder_copy_json.go` | `folderCopyNodesJSON:47` (живая запись + `EmitCanonicalSource` со СВОИМ пустым `tagCounts` → `unpackNodesDoc(…, 0)` → `fynewidget.SetClipboard`), `folderCopyJSONButton:109` (nil у не-папки). Теги **финальные** (§O2 вариант А); второй эмиссии нет — та же `config.EmitNodeJSONs`, что у сборки. Пустого документа в буфер не уходит: 0 узлов → сообщение, причина названа раздельно (все выключены / не собрались) |
+| Preview (операции над узлом) | `preview_node_ops.go` | `previewNodeOps:61`, `nodeOpsAllowed:98` (= «kind == folder»), `reorderAllowed:111`, `applyReorder:129`, `folderTargets:181`, `showMoveOrCopyDialog:222`/`applyMoveOrCopy:268`, `showRenameDialog:315`/`applyRename:337`, `showDeleteDialog:394`/`applyDelete:411`, `afterModelMutation:446` |
+| Preview (наполнение папки, W6) | `folder_add_nodes.go` | `newFolderAddNodes:76` (nil у не-папки), `button:94`, `showPasteDialog:121`, `addFromFiles:153`/`fyneFileOpen:172`, `applyFiles:208`, `applyInput:243`, `humanError:268`, `addWarp:280`, `addServer:293`, `finish:312`, `folderAddNodesHeader:342` (встраивание — `source_edit_window.go:948`) |
+| Preview (заливка подписки, W7) | `folder_fill_from_sub.go` | `showFillFromSubscriptionDialog:56` (селект доноров), `applyFillFromSubscription:123` (немедленная мутация + `applySourceMutation`/`afterModelMutation`), `offerSubscriptionRefresh:153` (зовёт существующий `refreshOneSourceFromUI`, своего fetch'а нет; дозаливки после обновления нет намеренно), `reportFillResult:172`. Пункт меню — в `folderAddNodes.button()` за разделителем |
+| Preview (меню строки) | `preview_node_info.go` | `showPreviewNodeContextMenu:49` (сырой тег + `*previewNodeOps` параметрами; `node == nil` — выключенный узел: пункты просмотра гаснут, операции остаются), `showPreviewNodeInfoWindow:120` |
+| Preview (модель строки, W11) | `preview_rows.go` | `previewRow:30`, `buildPreviewRows:53` (строки — по составу `nodes[]`, эмитированные узлы подставляются по СЫРОМУ тегу; группы идентичности не имеют и раздаются по порядку), `previewRowsSupported:114`, `previewRowsUnsupported:125` |
+| Preview (вид строки, W11) | `preview_row_view.go` | `previewRowTitle:30`, `previewRowSubtitle:46` (у Unsupported «⚠ причина» вместо протокола), `previewRowToolTip:67`, `previewAnnounceBlock:88`, `showPreviewRowInfoWindow:106` (клик — название + `origin.raw`), `showPreviewRowContextMenu:158` |
 | Прочее | `source_edit_misc.go`, `source_meta_format.go`, `source_tag_shift_warning.go` | предупреждение о смене финального тега |
 
 **business/**:
@@ -212,14 +329,83 @@
 - `node_pool.go` — см. §1.3.
 - `tag_guard_model.go` — `ModelTagOwners:30`, `ModelReplaceTags:70`,
   `ModelRootNodeTags:94`, `KnownRuleTargetTags:117` (модельная половина гарда).
+- `folder_fill_subscription.go` (W11-правка) — неразобранные записи в папку не
+  едут: заливка их пропускает, а материал из одних только них — отказ
+  `ErrSubscriptionNotFetched` (пустой merge разыменовал бы все прежние копии).
 - `fetch_writeback.go` — `ApplyFetchSnapshot(m, snapshot, revAtStart):37`,
   `applyFetchResultFields:77` (запись результата фонового fetch в живую модель
   под проверку ревизии).
+- `node_move.go` (SPEC 116 W2 + W5) — операции над узлом контейнера:
+  `CopyNodeToFolder:63`, `MoveNodeToFolder:95`, `ExtractFolderNodesToRoot:227`,
+  `DereferenceNodeOrigin:288`; W5 добавила `RepointContainerNodeLinks:312`
+  (переименование НА МЕСТЕ: контейнер тот же, меняется вторая половина
+  адреса) и `ClearContainerNodeLinks:331` (удаление: цели больше нет —
+  ссылка гасится, а не уводится на соседа). Реестр переписи ссылок на УЗЕЛ —
+  `repointNodeLinks:416` (detour / hops / members / `Group.Default`) +
+  `repointGroupLinks:483`; ссылки корневого пространства, которые в папку
+  указать не могут, только ПЕРЕЧИСЛЯЮТСЯ — `rootOnlyRefsToTag:145`.
+  Механика: `lookupNodeForMove:513`, `lookupFolderIndex:540`,
+  `placeNodeIntoFolder:559`, `removeNodeFromSource:574`, `containerRefOf:592`,
+  `rootTagSet:605`, `uniqueTagIn:628`, `cloneCanonicalNodeForMove:645`.
+  Побочки (`BumpRevision`/`InvalidateNodePool`/`MarkAsChanged`/диалоги) — на
+  вызывающем UI, как у `ResetDetourNodeRefs`.
+  **Не путать с `ResetDetourNodeRefs` (`detour_refs.go:35`)**: тот ГАСИТ и
+  знает только `Source.Detour` — он путь Save для ВЕРХНЕГО узла; у узла
+  контейнера ссылок четыре вида, и при переименовании их надо переписать,
+  а не погасить.
 - `rule_target_reset` — `ui/configurator/presentation/rule_target_reset.go:35`
   `(*WizardPresenter).resetForeignRuleTargets`.
-- Смежное: `sources.go:165`, `sources_json.go:156,174` (мутации + BumpRevision),
+- `source_input.go` (SPEC 116 W6) — **единственный разбор** «текст → узлы» на
+  все пути Add: `parseSourceInput:70` (`carveSingboxJSON` → `classifyInputLines`
+  → `config.MaterializeServerNode`), результат `parsedSourceInput:42`
+  (`Subscriptions` / `Nodes` / `URIOf` для дедупа корня / `Unnamed` для имени
+  из файла). Куда положить — решает вызывающий: корень (`AppendURLsToSources`,
+  `sources.go:35`) или папка (`AppendNodesToFolder`). Второго разбора не
+  заводить — ловушка «эмиттер и парсер ходят парой» (дыра Д6).
+- `folder_fill.go` (SPEC 116 W6) — `AppendNodesToFolder:54` (узлы в хвост
+  `Source.Nodes`, тег уникализируется общим `uniqueTagIn` в пределах ЭТОЙ
+  папки), `FolderFillResult:106` (`Added` + `SkippedSubscriptions`),
+  `ErrSubscriptionInFolder:120` (сентинел: UI подменяет его переведённым
+  текстом, сравнения по подстроке нет), `TagFromFileName:132`.
+  Подписка в папку не кладётся: вложенных контейнеров нет.
+- `folder_fill_subscription.go` (SPEC 116 W7) — заливка подписки в папку:
+  `FillFolderFromSubscription:74` (материал = уже материализованные
+  `sub.Nodes`, скопированные `cloneCanonicalNodeForMove`; `Truncated` — из
+  `sub.UpdateStatus`; звонок в `corestate.MergeFolderNodesFromSubscription`),
+  `FolderSubscriptionFillResult:54`, `ErrSubscriptionNotFetched:50` (сентинел
+  «подписку ни разу не обновляли» — UI предлагает обновление),
+  `FolderFillSubscriptions:143` + `FolderFillSubscriptionChoice:125` (список
+  доноров), `lookupSubscriptionIndex:172`. **Второго разбора тела нет и быть
+  не может** — тело подписки в модели не хранится вовсе, и «дозаливка через
+  повторный fetch» здесь была бы вторым конвейером разбора (ловушка «сборка
+  не парсит тела подписок»).
+- `sources.go:157` `NextFolderName` (SPEC 116 W3) — свободное «Folder N».
+  В отличие от `NextChainLabel:131` это ИМЯ контейнера (`Source.Name`), а не
+  тег: занятость считается по именам папок и подписок, ссылок на него нет.
+- `detour_refs.go:111` `SourceDisplayName` — как источник зовут пользователю.
+  У КОНТЕЙНЕРОВ (папка/подписка) первым читается `Name`, у узловых kind'ов —
+  `Label`: порядок обязан совпадать с `corestate.displayName()`
+  (`adapter_source.go:230`), иначе одна и та же папка звалась бы в диалогах
+  и в списке по-разному (SPEC 116 W4).
+- Смежное: `sources.go:115`, `sources_json.go:156,174` (мутации + BumpRevision),
   `clone_source.go`, `detour_refs.go` (`ResetDetourNodeRefs`),
   `direction_rename.go`, `source_node_counts.go` (счётчик из `nodes[]`, НЕ превью-кэш).
+
+**Смежное вне пакета** (SPEC 116 W6):
+
+- `internal/platform/file_dialog.go` — `PickOpenFile:24` (одиночный),
+  `PickOpenFiles:48` (**мультивыбор**), `splitPickedPaths:66` (разделитель —
+  перевод строки: единственный байт, которого не бывает внутри пути ни на
+  одной из трёх ОС). Реализации: `file_dialog_darwin.go`
+  (`with multiple selections allowed` + цикл `POSIX path of`),
+  `file_dialog_windows.go` (`$d.Multiselect` + `$d.FileNames`),
+  `file_dialog_linux.go` (zenity `--multiple --separator=\n`; у **kdialog**
+  мультивыбора без разделителя нет — его ветка осознанно одиночная),
+  `file_dialog_stub.go`.
+- `ui/configurator/dialogs/` — у `ShowAddWarpDialog` и `ShowAddServerDialog`
+  появился параметр `owner fyne.Window` (`nil` = главное окно визарда).
+  Окно источника — отдельное `app.NewWindow` (`source_edit_window.go:453`), и
+  диалог, прибитый к главному окну, всплывал бы за спиной у пользователя.
 
 **Модель**: `ui/configurator/models/wizard_model.go` — `BumpRevision:280`,
 проекция `AsParserConfig()` (одноразовая, см. ловушки).
@@ -231,7 +417,7 @@
 ### 2.1 fetch → merge → save
 
 ```
-UI: source_tab.go:1033 refreshOneSourceFromUI
+UI: source_tab.go:1203 refreshOneSourceFromUI
     │  (или фон: core/config_service_subscriptions.go:43 refreshSubscriptionsMetaAndCache)
     ▼
 core/config_service_subscriptions.go:113 refreshOneSubscriptionSource
@@ -244,7 +430,7 @@ core/config_service_subscriptions.go:113 refreshOneSubscriptionSource
     └─ :248 successSubStatus / :224 failedSubStatus → Source.UpdateStatus
     ▼
 UI-запись: business/fetch_writeback.go:37 ApplyFetchSnapshot(m, snapshot, revAtStart)
-    │  вызовы: source_tab.go:1080, source_edit_window.go:919
+    │  вызовы: source_tab.go:1250, source_edit_window.go:1030
     ▼
 m.BumpRevision() → InvalidateNodePool → State.Save (save.go:25)
 ```
@@ -352,14 +538,31 @@ State.Save (core/state/save.go:25) → MarshalV7:101
 
 ### 3.2 Источники / папки
 
-- **Merge по СЫРОМУ тегу** — `subscription_merge.go:50`. Совпал → body/origin
-  свежие, `enabled`+`detour` живут; новый → добавлен включённым; исчезнувший →
-  удалён (в подписке) / разыменован (в папке).
+- **Merge по СЫРОМУ тегу** — одно ядро на два контейнера. Совпал → body/origin
+  свежие, `enabled`+`detour` живут (перенос пометок — `refreshMergedNode:43`);
+  новый → добавлен включённым; исчезнувший → удалён (подписка,
+  `MergeSubscriptionNodes:80`) / **разыменован** (папка,
+  `MergeFolderNodesFromSubscription:175`).
+- **Ключ заливки в папку — пара (`origin.subUrl == subURL`, сырой тег)**: узлы
+  папки с другим `subUrl` или без него не участвуют, не двигаются и не
+  трогаются. Позицию в папке задаёт пользователь — совпавший остаётся на
+  своём месте (порядок тела провайдера НЕ навязывается), новый идёт в хвост.
+  Занятый чужим узлом сырой тег → узел тела деградирует с warning, подмены
+  и второго узла с тем же тегом не бывает.
+- **Auto, приехавший заливкой, переуказывает members на папку**
+  (`repointFolderAutoMembers`, SPEC 116 W7). Копией члена считается узел
+  папки ЭТОЙ заливки (`origin.subUrl == subURL`), а не любой одноимённый:
+  тег, отбитый коллизией, занят ЧУЖИМ узлом, и увести член на него значило бы
+  молча подменить состав группы соседним узлом пользователя. Непопавший член —
+  prune + warning (не fail-closed: группа живёт); выпавший из состава
+  `Group.Default` снимается тем же проходом. Ручной Auto папки и заливку
+  другой подписки проход не трогает — они не в `touched`.
 - **trusted=false → nodes[] не трогаются вообще**; `Truncated=true` →
-  обновлять и добавлять можно, удалять «исчезнувших» НЕЛЬЗЯ (`:83`).
+  обновлять и добавлять можно, удалять «исчезнувших» НЕЛЬЗЯ (`:115`), и в
+  папке при truncated не выполняется разыменование (`:236`).
 - `PendingDisabled` — одноразовое поле между импортом бэкапа/миграцией и
   первым достоверным fetch; применяется по сырым тегам и стирается
-  (`subscription_merge.go:98`). Не TTL-карта.
+  (`subscription_merge.go:125`). Не TTL-карта.
 - Порядок `nodes[]` после merge = порядок свежего тела; удержанные
   truncated-узлы уходят в хвост в прежнем относительном порядке.
 - Тег-политика — косметика эмиссии: её правка не рвёт enabled, NodeLink и
@@ -376,13 +579,15 @@ State.Save (core/state/save.go:25) → MarshalV7:101
   остаются и работают целями цепочек, detour и членами Auto.
 - **detour/хопы — fail-closed** (носитель деградирует с ⚠, кольца тоже),
   **члены Auto — prune** (выпадают, группа живёт; без членов не эмитится).
-  Разница намеренная: `nodelink_resolve.go:349` vs `:455`.
+  Разница намеренная: `nodelink_resolve.go:370` vs `:475`.
 - Гард занятости — один на все виды тегов сразу (Направления + твины,
-  replace-теги + их `-auto`, верхние узлы, системные): `tag_guard.go:114`.
-  Направление `x` и replace-тег `x` дали бы два `x-auto`.
+  replace-теги + их `-auto`, верхние узлы, системные): `tag_guard.go:148`.
+  Направление `x` и replace-тег `x` дали бы два `x-auto`. При этом ОДНА
+  сущность претендентом дважды не считается: развёрнутый твин и его родитель
+  — это пара, а не коллизия (SPEC 116 W12 фикс 1).
 - Реестр переписи ссылок обязан знать ВСЕ виды тегов из гарда — иначе первая
   загрузка сбросит живые правила на direct, приняв replace-теги за чужие
-  (`KnownTargetTags:156`, `KnownRuleTargetTags` в модели).
+  (`KnownTargetTags:222`, `KnownRuleTargetTags` в модели).
 - Твины и авто-половина replace исключают групповые кандидаты (Auto-узлы и
   replace-теги): urltest поверх чужой группы мерил бы чужой выбор.
 - **Выключенные УЗЛЫ проходят тег-машину, выключенные ИСТОЧНИКИ — нет.**
@@ -435,6 +640,49 @@ State.Save (core/state/save.go:25) → MarshalV7:101
   (`replaceTagSurvivesExport:232`), молча подменять имя запрещено.
 - **Fyne label min-width** (`showDetourRefsResetDialog:1614`): длинный `Label`
   без `Wrapping` задаёт окну min-width своей строкой и раздувает диалог.
+- **Адрес узла = пара (контейнер, сырой тег).** Перенос меняет ОБЕ половины
+  разом: `{folderId: A, tag: raw}` → `{folderId: B, tag: raw′}`; у верхнего
+  узла `folderId` пуст, а тег финальный (у корня политики нет). Отсюда две
+  ловушки `node_move.go`: (1) сравнивать при переписи ОБЕ половины — иначе
+  одноимённый узел ЧУЖОЙ папки поедет вместе с переносимым; (2) `move` из
+  корня в папку осиротит цели правил / `route.final` / DNS-detour /
+  addOutbounds — переписать их нельзя (папку они не адресуют), поэтому
+  `rootOnlyRefsToTag:145` их НАЗЫВАЕТ, и UI обязан показать (критерий A3:
+  «либо переписана реестром, либо названа в предупреждении»).
+- **Copy не двигает ссылки.** Оригинал остался на месте — переписывать
+  нечего, и пустой список у `CopyNodeToFolder` не «забыт», а верен. При этом
+  `origin.subUrl` копия СОХРАНЯЕТ (она участвует в будущей merge-заливке);
+  обнуляет его только `DereferenceNodeOrigin` — от правки содержимого, не от
+  переезда.
+- **Операции над узлом НЕ буферизуются в scratch** (SPEC 116 W5). Окно
+  источника правит value-snapshot, но Move/Copy затрагивают ДВА источника, а
+  scratch знает один: буферизация оставила бы узел уже в чужой папке и ещё в
+  исходной, а Cancel — два экземпляра с одним сырым тегом. Поэтому
+  Move/Copy/Rename/Delete/reorder мутируют модель НЕМЕДЛЕННО (как fetch), и
+  окно обязано перечитать scratch (`reloadScratch`,
+  `source_edit_window.go:934`) — иначе следующий Save запишет снимок,
+  снятый ДО операции, и молча откатит её.
+- **Drag в `widget.List` ≠ drag в VBox** (`fynewidget.DragReorderGroup`).
+  Список узлов контейнера — первый drag-список на виртуализированном
+  `widget.List`, а тот ПЕРЕИСПОЛЬЗУЕТ объекты строк: обычный `Register`
+  оставил бы уехавшую за экран строку висеть под прежним индексом, два
+  индекса заявили бы одну полосу экрана и бросок ушёл бы в чужой слот.
+  Отсюда `RegisterRecycled:163` (карта держится биекцией),
+  `DragHandle.SetIndex:396` (захват перепривязывается на каждой привязке
+  строки) и `Total`/`slots():193` (кламп по СПИСКУ ДАННЫХ, а не по видимым
+  строкам). У VBox-списков `Total == 0` и поведение прежнее.
+  **`to` у `OnReorder` отсчитывается по слайсу УЖЕ БЕЗ вырезанного элемента** —
+  так его понимает `chainForm.moveHop` (`source_chain_tab.go:669`), и
+  `moveNodeWithinSlice` (`preview_node_ops.go`) обязан понимать так же: захват
+  один, и две разные семантики под ним — гарантированный баг.
+- **Разбор входного текста один на корень и на папку** (SPEC 116 W6).
+  `parseSourceInput` (`business/source_input.go:70`) — единственное место, где
+  вставленный текст превращается в узлы; корень и папка отличаются ТОЛЬКО
+  адресом назначения. Новая ветка «а сюда положим по-другому» обязана звать
+  это же ядро, а не заводить свой `carveSingboxJSON`/`classifyInputLines`:
+  расхождение двух разборов не даст ни одной ошибки компиляции и вылезет
+  схемой, которая работает в Sources и молча урезается в папке (дыра Д6,
+  ловушка «эмиттер и парсер ходят парой»).
 - **Ленивый кэш ≠ «данных нет»**: превью-кэша больше нет, счётчики читают
   `nodes[]` напрямую (`source_node_counts.go`). Совпадение имени
   `SourceNodeCounts` со старым кэшем — не воскрешение механики.

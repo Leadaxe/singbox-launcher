@@ -33,6 +33,11 @@ import (
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
 	settingsBackupReportMoreText = "The full list is in the import report shown after the import."
+
+	// Заголовок списка потерь экспорта. У импорта потери — «применено не
+	// полностью» (запись приехала, но иначе); у экспорта — «в файл не
+	// попало»: разные события, и одним словом их называть нельзя.
+	settingsBackupExportLostTitleText = "Did not make it into the file:"
 )
 
 // showImportReport показывает итог импорта.
@@ -52,17 +57,33 @@ func showImportReport(win fyne.Window, res *backup.ImportResult, warns []backup.
 
 // openImportReportWindow — собственно окно отчёта.
 func openImportReportWindow(res *backup.ImportResult, warns []backup.Warning) {
+	openBackupReportWindow(
+		locale.T("Import report"),
+		importReportHead(res),
+		locale.T("Not applied as-is:"),
+		importReportText(res, warns),
+		warns)
+}
+
+// openBackupReportWindow — окно списка потерь, общее для импорта и экспорта.
+//
+// Экспорт получил его в SPEC 116 W9 (§O1=А): раньше он показывал потери
+// модалкой с обрезкой на 10 строках, и хвост «… +N» отсылал в ОТЧЁТ ИМПОРТА,
+// которого при экспорте не бывает. Пользователь, создавший папку, видел
+// «Копия сохранена» и обрубок списка — то самое молчание, которое запрещает
+// критерий A9.
+func openBackupReportWindow(title, headText, warnTitleText, copyText string, warns []backup.Warning) {
 	app := fyne.CurrentApp()
 	if app == nil {
 		return
 	}
-	w := app.NewWindow(locale.T("Import report"))
+	w := app.NewWindow(title)
 
 	head := widget.NewLabelWithStyle(
-		importReportHead(res), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+		headText, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	head.Wrapping = fyne.TextWrapWord
 
-	warnTitle := widget.NewLabel(locale.T("Not applied as-is:"))
+	warnTitle := widget.NewLabel(warnTitleText)
 	warnTitle.Wrapping = fyne.TextWrapWord
 
 	// Каждая потеря — своей строкой, без лимита. Wrapping обязателен: Label без
@@ -76,7 +97,7 @@ func openImportReportWindow(res *backup.ImportResult, warns []backup.Warning) {
 	}
 
 	copyBtn := widget.NewButton(locale.T("Copy"), func() {
-		fynewidget.SetClipboard(importReportText(res, warns))
+		fynewidget.SetClipboard(copyText)
 	})
 	closeBtn := widget.NewButton(locale.T("Close"), func() { w.Close() })
 	closeBtn.Importance = widget.HighImportance
@@ -90,6 +111,41 @@ func openImportReportWindow(res *backup.ImportResult, warns []backup.Warning) {
 	w.Resize(fyne.NewSize(560, 420))
 	w.CenterOnScreen()
 	w.Show()
+}
+
+// showExportReport показывает итог экспорта (SPEC 116 W9, критерий A9).
+//
+// Без потерь — короткий диалог «сохранено, храните надёжно», как было.
+// С потерями — то же окно, что у импорта: полный НЕОБРЕЗАННЫЙ список того,
+// чего в файле нет. Обрезка здесь была прямым нарушением A9 — папка,
+// оказавшаяся одиннадцатой, выпадала под «… +N».
+func showExportReport(win fyne.Window, path string, warns []backup.Warning) {
+	head := fmt.Sprintf(locale.T(settingsBackupExportDoneText), path)
+	if len(warns) == 0 {
+		dialog.ShowInformation(locale.T("Backup saved"), head, win)
+		return
+	}
+	openBackupReportWindow(
+		locale.T("Export report"),
+		head,
+		locale.T(settingsBackupExportLostTitleText),
+		exportReportText(path, warns),
+		warns)
+}
+
+// exportReportText — весь отчёт экспорта одним текстом для буфера обмена.
+func exportReportText(path string, warns []backup.Warning) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, locale.T(settingsBackupExportDoneText), path)
+	if len(warns) > 0 {
+		sb.WriteString("\n\n")
+		sb.WriteString(locale.T(settingsBackupExportLostTitleText))
+		for _, w := range warns {
+			sb.WriteString("\n• ")
+			sb.WriteString(warnText(w))
+		}
+	}
+	return sb.String()
 }
 
 // importReportHead — шапка отчёта: что применилось.

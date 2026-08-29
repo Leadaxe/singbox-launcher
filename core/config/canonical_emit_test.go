@@ -141,7 +141,7 @@ func hasTag(tags []string, want string) bool {
 }
 
 func joinWarnings(res *OutboundGenerationResult) string {
-	return strings.Join(res.EmissionWarnings, " | ")
+	return strings.Join(EmissionWarningTexts(res.EmissionWarnings), " | ")
 }
 
 // ── §4.E.1 — тег-политика на эмиссии ─────────────────────────────────
@@ -250,7 +250,9 @@ func TestEmitE2_DetourCycleIsFailClosed(t *testing.T) {
 	if hasTag(tags, "A") || hasTag(tags, "B") {
 		t.Errorf("участники кольца detour остались в конфиге: %v", tags)
 	}
-	if !strings.Contains(joinWarnings(res), "кольцо") {
+	// Тексты эмиссии — английские ключи локали (SPEC 116 W12, фикс 2);
+	// в тестах каталог не загружен, поэтому проверяется дефолт.
+	if !strings.Contains(joinWarnings(res), "detour loop") {
 		t.Errorf("кольцо не названо пользователю: %v", res.EmissionWarnings)
 	}
 }
@@ -452,7 +454,7 @@ func TestEmitE4_SelectorKeepsTypeAndDefaultDropsForeign(t *testing.T) {
 	if _, has := obj2["default"]; has {
 		t.Errorf("умолчание вне состава уехало в конфиг: %v", obj2["default"])
 	}
-	if !strings.Contains(joinWarnings(res2), "умолчание") {
+	if !strings.Contains(joinWarnings(res2), "default") {
 		t.Errorf("снятие умолчания молчаливо: %v", res2.EmissionWarnings)
 	}
 }
@@ -621,7 +623,7 @@ func TestEmitE7_GuardCatchesDirectionVersusReplaceCollision(t *testing.T) {
 		[]Direction{{Tag: "x", Type: "selector", Auto: &configtypes.DirectionAuto{Interval: "3m"}}})
 
 	joined := joinWarnings(res)
-	if !strings.Contains(joined, `"x"`) || !strings.Contains(joined, "занят") {
+	if !strings.Contains(joined, `"x"`) || !strings.Contains(joined, "claimed twice") {
 		t.Errorf("столкновение «Направление x + замена x» не названо: %v", res.EmissionWarnings)
 	}
 }
@@ -765,7 +767,7 @@ func TestEmitWireguardDanglingDetourWarns(t *testing.T) {
 		t.Errorf("WG-узлу проштампован detour — ядро такого не принимает: %v", res.EndpointsJSON)
 	}
 	found := false
-	for _, w := range res.EmissionWarnings {
+	for _, w := range EmissionWarningTexts(res.EmissionWarnings) {
 		if strings.Contains(w, "WG") && strings.Contains(w, "ghost") {
 			found = true
 		}
@@ -792,7 +794,7 @@ func TestEmitWireguardResolvableDetourStaysQuiet(t *testing.T) {
 		canonRoot("S1", "WG", wg),
 	}, nil)
 
-	for _, w := range res.EmissionWarnings {
+	for _, w := range EmissionWarningTexts(res.EmissionWarnings) {
 		if strings.Contains(w, "wireguard") {
 			t.Errorf("рабочая конфигурация названа деградацией: %q", w)
 		}

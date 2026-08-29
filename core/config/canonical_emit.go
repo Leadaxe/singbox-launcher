@@ -38,6 +38,7 @@ import (
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/textnorm"
 )
 
@@ -97,7 +98,7 @@ func EmitCanonicalSource(ps ProxySource, sourceIndex int, tagCounts map[string]i
 			// Про выключенный узел молчим: он не «сломался», его выключили.
 			if cn.Enabled {
 				res.Warnings = append(res.Warnings,
-					fmt.Sprintf("node %q not emittable — dropped: %v", cn.Tag, err))
+					locale.Tf(emitNodeNotEmittableText, cn.Tag, err))
 				debuglog.WarnLog("canonical: узел %q не эмитируется: %v", cn.Tag, err)
 			}
 			continue
@@ -259,11 +260,11 @@ var errCanonicalChainDeferred = fmt.Errorf("chain node is built on pass 2")
 //
 // Мутирует parserConfig — как и остальные проходы 0/2, по копии, собранной
 // для генерации.
-func ResolveCanonicalChainHops(parserConfig *ParserConfig, targets *NodeLinkTargets) []string {
+func ResolveCanonicalChainHops(parserConfig *ParserConfig, targets *NodeLinkTargets) []EmissionWarning {
 	if parserConfig == nil || targets == nil {
 		return nil
 	}
-	var warnings []string
+	var warnings []EmissionWarning
 	for i := range parserConfig.ParserConfig.Proxies {
 		ps := &parserConfig.ParserConfig.Proxies[i]
 		cs := ps.Canonical
@@ -282,8 +283,13 @@ func ResolveCanonicalChainHops(parserConfig *ParserConfig, targets *NodeLinkTarg
 					// Сырой тег доедет до ChainEmitError/ResolveChainSources
 					// и уронит цепочку с внятной причиной (fail-closed).
 					hops = append(hops, link.Tag)
-					w := fmt.Sprintf("цепочка %q: позиция %q не разрешилась (%s)", cn.Tag, link.Tag, res.Problem)
-					warnings = append(warnings, w)
+					w := locale.Tf(emitChainHopUnresolvedText, cn.Tag, link.Tag, res.Problem)
+					// Адресат — сам источник-цепочка: чинят позицию в его окне.
+					warnings = append(warnings, EmissionWarning{
+						Text:        w,
+						SourceID:    strings.TrimSpace(ps.ID),
+						SourceLabel: sourceDisplayName(*ps, i),
+					})
 					debuglog.WarnLog("nodelink: %s", w)
 					continue
 				}

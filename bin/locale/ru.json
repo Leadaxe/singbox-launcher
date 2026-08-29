@@ -1027,6 +1027,81 @@
   "⚠ %d node(s) dropped: %s": {
     "value": "⚠ снято узлов: %d — %s"
   },
+  "Build OK": {
+    "value": "Сборка прошла"
+  },
+  "Build OK, %d warning(s)": {
+    "value": "Сборка прошла, предупреждений: %d"
+  },
+  "Build FAILED: %v": {
+    "value": "Сборка НЕ УДАЛАСЬ: %v"
+  },
+  "Copy config": {
+    "value": "Копировать конфиг"
+  },
+  "the reference is empty": {
+    "value": "ссылка пуста"
+  },
+  "the referenced source is gone": {
+    "value": "источник ссылки не найден"
+  },
+  "it has no node %q": {
+    "value": "узла %q в нём нет"
+  },
+  "target %q is not among nodes, Directions and folder replacements": {
+    "value": "цели %q нет среди узлов, Направлений и замен"
+  },
+  "node %q dropped: the detour target did not resolve (%s) — a hop set up for anonymity may not silently become a direct dial": {
+    "value": "узел %q исключён: цель detour не разрешилась (%s) — переход настроен ради анонимности и не имеет права стать прямым дозвоном"
+  },
+  "node %q dropped: its detour target %q fell out of the config itself": {
+    "value": "узел %q исключён: узел-цель detour %q сам выпал из конфига"
+  },
+  "node %q dropped: its detour points at itself": {
+    "value": "узел %q исключён: detour указывает на него самого"
+  },
+  "node %q dropped: detour loop — the chain of hops leads traffic back to itself": {
+    "value": "узел %q исключён: кольцо detour — по цепочке переходов трафик возвращается к нему самому"
+  },
+  "node %q (wireguard): detour does not apply to WireGuard, and its target %q did not resolve either (%s)": {
+    "value": "узел %q (wireguard): detour не применяется к WireGuard, а его цель %q к тому же не разрешилась (%s)"
+  },
+  "group %q: member %q left the group (%s)": {
+    "value": "группа %q: член %q выпал из состава (%s)"
+  },
+  "the node fell out of the config": {
+    "value": "узел выпал из конфига"
+  },
+  "group %q is not emitted: no members left (an empty group breaks core startup)": {
+    "value": "группа %q не эмитируется: не осталось ни одного члена (пустая группа роняет старт ядра)"
+  },
+  "group %q: default %q is not among the members — the key was dropped": {
+    "value": "группа %q: умолчание %q не входит в состав — ключ снят"
+  },
+  "chain %q: position %q did not resolve (%s)": {
+    "value": "цепочка %q: позиция %q не разрешилась (%s)"
+  },
+  "node %q is not emittable — dropped: %v": {
+    "value": "узел %q не эмитируется — снят: %v"
+  },
+  "tag %q is claimed twice: %s and %s": {
+    "value": "тег %q занят дважды: %s и %s"
+  },
+  "a Direction": {
+    "value": "Направление"
+  },
+  "a Direction auto-group": {
+    "value": "авто-группа Направления"
+  },
+  "a folder replacement": {
+    "value": "замена папки"
+  },
+  "a node": {
+    "value": "узел"
+  },
+  "a template system tag": {
+    "value": "системный тег шаблона"
+  },
   "Generated config.json": {
     "value": "Собранный config.json"
   },
@@ -3101,6 +3176,24 @@
   "The full list is in the import report shown after the import.": {
     "value": "Полный список — в отчёте после импорта."
   },
+  "Export report": {
+    "value": "Отчёт экспорта"
+  },
+  "Did not make it into the file:": {
+    "value": "В файл не попало:"
+  },
+  "folder \"%s\" and its %d node(s) did not make it into the file: this backup format cannot carry folders yet": {
+    "value": "папка «%s» и её узлов — %d — в файл не попали: формат копии пока не умеет переносить папки"
+  },
+  "folder \"%s\" did not make it into the file: this backup format cannot carry folders yet": {
+    "value": "папка «%s» в файл не попала: формат копии пока не умеет переносить папки"
+  },
+  "group \"%s\" did not make it into the file: this backup format cannot carry provider groups yet": {
+    "value": "группа «%s» в файл не попала: формат копии пока не умеет переносить провайдерские группы"
+  },
+  "%s — this backup format cannot carry it, the record did not make it into the file": {
+    "value": "%s — формат копии этого не переносит, запись в файл не попала"
+  },
   "%s — target does not exist here, the rule is imported turned off": {
     "value": "%s — такой цели здесь нет, правило импортировано выключенным"
   },
@@ -3562,5 +3655,257 @@
   },
   "A manual pick in a selector is remembered by the running core (cache.db) by tag, and the launcher cannot rewrite it: the affected selectors fall back to their default until you pick again. On a remote machine this applies to its own core.": {
     "value": "Ручной выбор в селекторе помнит работающее ядро (cache.db) — по тегу, и переписать его лаунчер не может: затронутые селекторы вернутся к умолчанию, пока вы не выберете заново. У удалённой машины это относится к её собственному ядру."
+  },
+  "Add folder": {
+    "value": "Добавить папку"
+  },
+  "Delete folder": {
+    "value": "Удалить папку"
+  },
+  "Folder %q holds %d node(s). Delete them together with the folder, or move them to the root of the sources list?": {
+    "value": "В папке %q — %d узл(ов). Удалить их вместе с папкой или вынести в корень списка источников?"
+  },
+  "Delete with nodes": {
+    "value": "Удалить вместе с узлами"
+  },
+  "Move nodes to root": {
+    "value": "Вынести узлы в корень"
+  },
+  "Folder — %s": {
+    "value": "Папка — %s"
+  },
+  "Folder name": {
+    "value": "Имя папки"
+  },
+  "folder name": {
+    "value": "имя папки"
+  },
+  "Fold this folder into a group": {
+    "value": "Свернуть папку в группу"
+  },
+  "This folder has no nodes yet.": {
+    "value": "В папке пока нет узлов."
+  },
+  "Read-only: the sing-box outbounds this folder is built from. Edit a node through its own entry on the Preview tab.": {
+    "value": "Только чтение: outbound'ы sing-box, из которых собирается папка. Узел правится своей записью на вкладке «Просмотр»."
+  },
+  "Copy to folder…": {
+    "value": "Скопировать в папку…"
+  },
+  "Move to folder…": {
+    "value": "Перенести в папку…"
+  },
+  "Rename…": {
+    "value": "Переименовать…"
+  },
+  "Copy node to folder": {
+    "value": "Копировать узел в папку"
+  },
+  "Move node to folder": {
+    "value": "Перенести узел в папку"
+  },
+  "Node %q — pick the destination folder:": {
+    "value": "Узел %q — выберите папку назначения:"
+  },
+  "No folders yet": {
+    "value": "Папок пока нет"
+  },
+  "Create a folder first: Sources → ⋮ → Add folder.": {
+    "value": "Сначала создайте папку: «Источники» → ⋮ → «Добавить папку»."
+  },
+  "Rename node": {
+    "value": "Переименовать узел"
+  },
+  "The node tag is its identity inside this container: links to it are repointed, and a manual pick in a selector of the running core will reset.": {
+    "value": "Тег узла — его идентичность внутри контейнера: ссылки на него будут переписаны, а ручной выбор в селекторе работающего ядра сбросится."
+  },
+  "Node tag cannot be empty.": {
+    "value": "Тег узла не может быть пустым."
+  },
+  "Tag %q is already taken in this container.": {
+    "value": "Тег %q в этом контейнере уже занят."
+  },
+  "Node %q is gone.": {
+    "value": "Узла %q больше нет."
+  },
+  "Delete node": {
+    "value": "Удалить узел"
+  },
+  "Delete node %q from this folder?": {
+    "value": "Удалить узел %q из этой папки?"
+  },
+  "Node unlinked from its subscription": {
+    "value": "Узел отвязан от подписки"
+  },
+  "Node %q was edited, so it no longer follows the subscription: the next fill will neither overwrite nor remove it.": {
+    "value": "Узел %q отредактирован и больше не следует за подпиской: следующая заливка его не перетрёт и не удалит."
+  },
+  "Add nodes…": {
+    "value": "Добавить узлы…"
+  },
+  "Paste links or JSON…": {
+    "value": "Вставить ссылки или JSON…"
+  },
+  "Add nodes to folder": {
+    "value": "Добавить узлы в папку"
+  },
+  "Subscription URLs, direct links (vless://, wireguard://, …), [Interface]/[Peer] config text or a sing-box outbound JSON. One per line.": {
+    "value": "Ссылки на подписку, прямые ссылки (vless://, wireguard://, …), текст конфига [Interface]/[Peer] либо JSON outbound'а sing-box. По одной в строке."
+  },
+  "Select config files (.conf / .vpn / .txt / .json)": {
+    "value": "Выберите файлы конфигов (.conf / .vpn / .txt / .json)"
+  },
+  "a subscription URL cannot be added to a folder — add it in Sources, then fill the folder from it": {
+    "value": "ссылку на подписку в папку положить нельзя — добавьте её в «Источниках», а потом залейте из неё папку"
+  },
+  "Some files were not added": {
+    "value": "Часть файлов не добавлена"
+  },
+  "Nodes added": {
+    "value": "Узлы добавлены"
+  },
+  "%d node(s) added to the folder.": {
+    "value": "В папку добавлено узлов: %d."
+  },
+  "Fill from subscription…": {
+    "value": "Залить из подписки…"
+  },
+  "Fill folder from subscription": {
+    "value": "Залить папку из подписки"
+  },
+  "Fill": {
+    "value": "Залить"
+  },
+  "Nodes of the chosen subscription are merged into this folder by raw tag: your enabled flags, detours and order survive, and a node that disappeared at the provider stays in the folder.": {
+    "value": "Узлы выбранной подписки вливаются в папку по сырому тегу: ваши галки, detour'ы и порядок сохраняются, а узел, исчезнувший у провайдера, остаётся в папке."
+  },
+  "No subscriptions yet": {
+    "value": "Подписок пока нет"
+  },
+  "Add a subscription in Sources first, then fill the folder from it.": {
+    "value": "Сначала добавьте подписку в «Источниках», а потом залейте из неё папку."
+  },
+  "not fetched yet": {
+    "value": "ещё не обновлялась"
+  },
+  "%d node(s)": {
+    "value": "узлов: %d"
+  },
+  "Subscription %q has no nodes yet — it has never been fetched. Refresh it now?": {
+    "value": "У подписки %q ещё нет узлов — её ни разу не обновляли. Обновить сейчас?"
+  },
+  "Filled with warnings": {
+    "value": "Залито с предупреждениями"
+  },
+  "Folder filled": {
+    "value": "Папка залита"
+  },
+  "The folder is already up to date with this subscription.": {
+    "value": "Папка уже соответствует этой подписке."
+  },
+  "Folder filled from %q.": {
+    "value": "Папка залита из %q."
+  },
+  "Copy nodes as JSON": {
+    "value": "Скопировать узлы как JSON"
+  },
+  "Nothing to copy": {
+    "value": "Копировать нечего"
+  },
+  "None of the folder nodes could be built into an outbound.": {
+    "value": "Ни один узел папки не собрался в outbound."
+  },
+  "All nodes of this folder are disabled — they do not reach the config either.": {
+    "value": "Все узлы папки выключены — в конфиг они тоже не попадают."
+  },
+  "%d node(s) copied as JSON.": {
+    "value": "Скопировано узлов в JSON: %d."
+  },
+  "%d node(s) could not be built and were left out.": {
+    "value": "Не собралось и не попало в выгрузку узлов: %d."
+  },
+  "Nodes: %d": {
+    "value": "Узлов: %d"
+  },
+  " + %d unsupported": {
+    "value": " + %d не разобрано"
+  },
+  "could not be parsed": {
+    "value": "не удалось разобрать"
+  },
+  "Reason": {
+    "value": "Причина"
+  },
+  "Origin": {
+    "value": "Исходник"
+  },
+  "Copy source line": {
+    "value": "Скопировать исходную строку"
+  },
+  "Raw response": {
+    "value": "Сырой ответ"
+  },
+  "Reload": {
+    "value": "Скачать заново"
+  },
+  "Not fetched — press Reload to download the body as it is now.": {
+    "value": "Не скачано — нажмите «Скачать заново», чтобы получить тело как оно есть сейчас."
+  },
+  "Fetch failed: %s": {
+    "value": "Скачать не удалось: %s"
+  },
+  "HTTP %d · %s": {
+    "value": "HTTP %d · %s"
+  },
+  "base64": {
+    "value": "base64"
+  },
+  "urldecode": {
+    "value": "urldecode"
+  },
+  "pretty-print": {
+    "value": "форматировать"
+  },
+  "A backup of the original file was saved next to it:": {
+    "value": "Рядом сохранена резервная копия исходного файла:"
+  },
+  "Configuration migration report": {
+    "value": "Отчёт о переносе конфигурации"
+  },
+  "The saved configuration was migrated to the new storage format. Some settings could not be carried over unchanged:": {
+    "value": "Сохранённая конфигурация перенесена в новый формат хранения. Часть настроек не удалось перенести без изменений:"
+  },
+  "Disabled subscriptions are not auto-fetched, so this one has no nodes yet. Click below to fetch it once without enabling it.": {
+    "value": "Выключенные подписки не обновляются автоматически, поэтому узлов пока нет. Кнопка ниже скачает её один раз, не включая."
+  },
+  "Group tag": {
+    "value": "Тег группы"
+  },
+  "MTU": {
+    "value": "MTU"
+  },
+  "Read-only: the sing-box outbounds this subscription is built from. Nodes of a subscription are not free-form — they are refreshed from the provider.": {
+    "value": "Только чтение: outbound'ы sing-box, из которых собрана эта подписка. Узлы подписки не правятся вручную — они обновляются у провайдера."
+  },
+  "Rebuild the outbound from the original URI/JSON, discarding manual edits?": {
+    "value": "Пересобрать outbound из исходного URI/JSON, отбросив ручные правки?"
+  },
+  "Regen from raw": {
+    "value": "Пересобрать из исходника"
+  },
+  "The outbound as it will reach the config.": {
+    "value": "Outbound в том виде, в каком он попадёт в конфиг."
+  },
+  "The sing-box outbound this node is built from — exactly what the build writes to config.json. Edit and press Apply to store it; Regen from raw rebuilds it from the original URI/JSON. Tag and detour are restamped by the launcher at build time.": {
+    "value": "Outbound sing-box, из которого собран этот узел, — ровно то, что сборка пишет в config.json. Правьте и нажмите Apply, чтобы сохранить; «Пересобрать из исходника» вернёт его к исходному URI/JSON. Тег и detour лаунчер проставляет заново на сборке."
+  },
+  "The source arrives as one entry instead of every node. Its nodes stay in the config as that group's members.": {
+    "value": "Источник приезжает одной записью вместо всех узлов. Его узлы остаются в конфиге членами этой группы."
+  },
+  "Variables (work in both fields): {$tag} original node tag · {$server} address · {$port} port · {$scheme} protocol (also {$protocol}) · {$label} name from the link's #fragment · {$comment} comment · {$num} node number from 1": {
+    "value": "Переменные (работают в обоих полях): {$tag} исходный тег узла · {$server} адрес · {$port} порт · {$scheme} протокол (также {$protocol}) · {$label} имя из #fragment ссылки · {$comment} комментарий · {$num} номер узла с 1"
+  },
+  "node has no body — set a URI or JSON": {
+    "value": "у узла нет тела — задайте URI или JSON"
   }
 }

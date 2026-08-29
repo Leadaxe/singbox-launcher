@@ -23,6 +23,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/backup"
+	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
@@ -120,14 +121,12 @@ func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.
 	// Секреты в файле лежат открытым текстом (BACKUP.md §5) — пользователь
 	// должен знать об этом ДО того, как отправит файл куда-нибудь.
 	//
-	// Предупреждения экспорта — там же и тем же списком, что у импорта: то,
-	// что состояние несёт, а формат выразить не умеет (папки,
-	// провайдерские группы), обязано быть названо, а не выпасть молча.
-	msg := fmt.Sprintf(locale.T(settingsBackupExportDoneText), path)
-	if lines := warnLines(exportWarns, 10); lines != "" {
-		msg += "\n\n" + locale.T("Not exported:") + "\n" + lines
-	}
-	dialog.ShowInformation(locale.T("Backup saved"), msg, win)
+	// Предупреждения экспорта — тем же окном, что у импорта, и БЕЗ обрезки
+	// (SPEC 116 W9, критерий A9): то, что состояние несёт, а формат выразить
+	// не умеет (папки, провайдерские группы), обязано быть названо целиком.
+	// Прежняя модалка резала список на десяти строках и отсылала за
+	// продолжением в отчёт импорта, которого при экспорте не существует.
+	showExportReport(win, path, exportWarns)
 }
 
 // handleBackupImport читает файл, показывает, что приедет, и применяет
@@ -280,10 +279,51 @@ func warnText(w backup.Warning) string {
 		// лишний ключ, и перечислять его внутренности значило бы утопить
 		// пользователя в списке вместо объяснения.
 		return fmt.Sprintf(locale.T("this backup was made by an older version and carries an \"extensions\" section (%s); the shared fields were imported, the rest is dropped"), w.Detail)
+	case backup.WarnBackupSourceKindUnsupported:
+		return unsupportedSourceWarnText(w)
 	case backup.WarnBackupChainExists:
 		return fmt.Sprintf(locale.T("%s — a chain with this name already exists here, the incoming one is skipped"), w.Detail)
 	default:
 		return w.Code + ": " + w.Detail
+	}
+}
+
+// unsupportedSourceWarnText — запись, которой в файле не будет вовсе
+// (SPEC 116 W9, §O1=А).
+//
+// Три вещи обязаны прозвучать в одной строке: ЧТО потеряно (папка или
+// провайдерская группа — код у них общий, а слова разные), КАК её зовут и
+// СКОЛЬКО узлов уехало вместе с ней. Без числа «папка не поддержана»
+// читается как мелкая оговорка формата, хотя на деле это решение не
+// восстанавливаться из этого файла.
+//
+// Ноль узлов — не «нет данных», а пустая папка: числа тогда нет, потому что
+// терять нечего кроме самой папки.
+func unsupportedSourceWarnText(w backup.Warning) string {
+	name := w.Detail
+	if name == "" {
+		name = locale.T("unnamed")
+	}
+	switch w.Kind {
+	case string(corestate.SourceKindFolder):
+		if w.Nodes > 0 {
+			return fmt.Sprintf(
+				locale.T("folder \"%s\" and its %d node(s) did not make it into the file: this backup format cannot carry folders yet"),
+				name, w.Nodes)
+		}
+		return fmt.Sprintf(
+			locale.T("folder \"%s\" did not make it into the file: this backup format cannot carry folders yet"),
+			name)
+	case string(corestate.SourceKindAuto):
+		return fmt.Sprintf(
+			locale.T("group \"%s\" did not make it into the file: this backup format cannot carry provider groups yet"),
+			name)
+	default:
+		// Новый вид источника без своей ветки: сказать «не поехало» честнее,
+		// чем показать машинный код. Ветка обязана появиться вместе с видом.
+		return fmt.Sprintf(
+			locale.T("%s — this backup format cannot carry it, the record did not make it into the file"),
+			name)
 	}
 }
 

@@ -34,26 +34,86 @@ const previewInfoScrollGutter = 5
 
 // showPreviewNodeContextMenu показывает меню строки превью по правому клику.
 //
-// Пунктов немного и намеренно: превью — это просмотр, а не редактор.
-// Выключение узла делает чекбокс в самой строке.
-func showPreviewNodeContextMenu(win fyne.Window, node *config.ParsedNode, pe *fyne.PointEvent) {
-	if win == nil || node == nil || pe == nil {
+// SPEC 116 W5 (§O4 = вариант А): к трём пунктам просмотра добавлены операции
+// над узлом контейнера — превью у папки перестало быть только просмотром и
+// стало её основным рабочим экраном. Второго списка узлов при этом не
+// заведено: он разъехался бы с этим.
+//
+// rawTag — СЫРОЙ тег узла (идентичность в рамках контейнера, SPEC 112), а не
+// node.Tag: тот уже прошёл тег-машину эмиссии (префикс папки, уникализация
+// `-2`, переменные) и адресом узла в модели не является. Вызывающий знает его
+// как identities[id] и обязан передать сюда — выводить его обратно из
+// финального тега нельзя, политику не развернуть однозначно.
+//
+// ops == nil (или контейнер — подписка) — меню остаётся прежним, просмотровым.
+func showPreviewNodeContextMenu(
+	win fyne.Window,
+	node *config.ParsedNode,
+	rawTag string,
+	ops *previewNodeOps,
+	pe *fyne.PointEvent,
+) {
+	if win == nil || pe == nil {
 		return
 	}
 
-	menu := fyne.NewMenu("",
-		fyne.NewMenuItem(locale.T("Node info…"), func() {
-			showPreviewNodeInfoWindow(node)
-		}),
-		fyne.NewMenuItem(locale.T("Copy JSON"), func() {
-			fynewidget.SetClipboard(previewNodeJSON(node))
-		}),
-		fyne.NewMenuItem(locale.T("Copy tag"), func() {
-			fynewidget.SetClipboard(node.Tag)
-		}),
-	)
+	// node == nil — узел есть в составе, но эмиссия его не выпустила
+	// (выключен). Пункты просмотра ему не подходят: показывать нечего, а JSON
+	// у него ровно тот, которого в конфиге нет. Операции над узлом при этом
+	// остаются: он в составе контейнера, и двигать/переименовывать/удалять его
+	// пользователь вправе — иначе выключенный узел стал бы неприкасаемым.
+	var items []*fyne.MenuItem
+	if node != nil {
+		items = append(items,
+			fyne.NewMenuItem(locale.T("Node info…"), func() {
+				showPreviewNodeInfoWindow(node)
+			}),
+			fyne.NewMenuItem(locale.T("Copy JSON"), func() {
+				fynewidget.SetClipboard(previewNodeJSON(node))
+			}),
+			fyne.NewMenuItem(locale.T("Copy tag"), func() {
+				fynewidget.SetClipboard(node.Tag)
+			}),
+		)
+	}
 
-	widget.ShowPopUpMenuAtPosition(menu, win.Canvas(), pe.AbsolutePosition)
+	// Операции адресуют узел сырым тегом: без него команда не знает, что
+	// двигать, и показывать её было бы обманом.
+	if ops != nil && strings.TrimSpace(rawTag) != "" {
+		if len(items) > 0 {
+			items = append(items, fyne.NewMenuItemSeparator())
+		}
+		// «Copy to folder…» есть ВСЕГДА, в том числе у подписки: копия ничего
+		// в источнике не меняет, а это ровно требование П2 — забрать узел
+		// провайдера себе.
+		items = append(items, fyne.NewMenuItem(locale.T("Copy to folder…"), func() {
+			ops.showMoveOrCopyDialog(rawTag, false)
+		}))
+		// Move / Rename / Delete правят СОСТАВ контейнера, а состав подписки
+		// принадлежит провайдеру (features/sources.md §«Свобода и несвобода
+		// узлов»): следующий fetch вернул бы удалённый узел и переименовал
+		// переименованный. Поэтому у подписки этих пунктов нет вовсе —
+		// отключённый пункт обещал бы то, чего мы не сделаем.
+		if ops.nodeOpsAllowed() {
+			items = append(items,
+				fyne.NewMenuItem(locale.T("Move to folder…"), func() {
+					ops.showMoveOrCopyDialog(rawTag, true)
+				}),
+				fyne.NewMenuItem(locale.T("Rename…"), func() {
+					ops.showRenameDialog(rawTag)
+				}),
+				fyne.NewMenuItem(locale.T("Delete"), func() {
+					ops.showDeleteDialog(rawTag)
+				}),
+			)
+		}
+	}
+
+	if len(items) == 0 {
+		// Пустое меню — пустая рамка под курсором: показывать её незачем.
+		return
+	}
+	widget.ShowPopUpMenuAtPosition(fyne.NewMenu("", items...), win.Canvas(), pe.AbsolutePosition)
 }
 
 // showPreviewNodeInfoWindow открывает окно с разбором узла и его JSON.

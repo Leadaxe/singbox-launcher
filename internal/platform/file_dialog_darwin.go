@@ -42,6 +42,48 @@ func pickOpenFileNative(prompt string, exts []string) (string, bool, error) {
 	return path, true, nil
 }
 
+// pickOpenFilesNative — та же панель Finder с `with multiple selections
+// allowed`. AppleScript возвращает СПИСОК алиасов, и `POSIX path of` к списку
+// не применяется: путь берётся поэлементно циклом, а строки склеиваются через
+// перевод строки — единственный разделитель, которого не может быть внутри
+// POSIX-пути (в отличие от запятой и пробела).
+func pickOpenFilesNative(prompt string, exts []string) ([]string, bool, error) {
+	var b strings.Builder
+	b.WriteString("set theFiles to (choose file")
+	if len(exts) > 0 {
+		quoted := make([]string, len(exts))
+		for i, e := range exts {
+			quoted[i] = appleScriptStringLiteral(e)
+		}
+		b.WriteString(" of type {")
+		b.WriteString(strings.Join(quoted, ", "))
+		b.WriteString("}")
+	}
+	if strings.TrimSpace(prompt) != "" {
+		b.WriteString(" with prompt ")
+		b.WriteString(appleScriptStringLiteral(prompt))
+	}
+	b.WriteString(" with multiple selections allowed)\n")
+	b.WriteString("set out to \"\"\n")
+	b.WriteString("repeat with f in theFiles\n")
+	b.WriteString("set out to out & (POSIX path of f) & linefeed\n")
+	b.WriteString("end repeat\n")
+	b.WriteString("return out")
+
+	out, err := exec.Command("osascript", "-e", b.String()).Output()
+	if err != nil {
+		if ee, ok := err.(*exec.ExitError); ok && isAppleScriptCancel(ee.Stderr) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	paths := splitPickedPaths(string(out))
+	if len(paths) == 0 {
+		return nil, false, nil
+	}
+	return paths, true, nil
+}
+
 // isAppleScriptCancel reports whether osascript stderr is a user-cancel. The
 // cancel is AppleScript error -128 (errAECanceled); the message is localized
 // ("User canceled" / "Отменено пользователем." / …) so we match the numeric

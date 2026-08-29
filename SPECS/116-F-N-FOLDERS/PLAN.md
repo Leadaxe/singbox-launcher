@@ -270,3 +270,30 @@ UI**, а не эти функции (правило: бизнес-функция
   (`build_darwin.sh -i`).
 - `CODEMAP.md` обновляется новыми адресами (merge папки, node_move,
   ветка настроек папки, меню узла).
+
+---
+
+## W12 — UI-фиксы этапа 2 по обкатке (после W11)
+
+Шесть точечных правок существующих виджетов и текстов, найденных обкаткой
+этапа 3. Новых виджетов, глифов и вкладок не заводится.
+
+Точки:
+- Гард: `core/config/tag_guard.go` `BuildTagGuard` — пара «Направление +
+  его развёрнутый твин» больше не считается двумя претендентами на
+  `<tag>-auto` (форма приходит уже после `ExpandDirectionTwins`).
+- Локаль: `core/config/emission_warning.go` — английские ключи константами,
+  перевод в `bin/locale/ru.json`; туда же переехали значения
+  `TagOwnerKind` и причины `NodeLinkTargets.Resolve`.
+- Адресат: `EmissionWarning{Text,SourceID,SourceLabel,DirectionTag}` вместо
+  строки; `core/build_report_feed.go` кладёт ULID в запись отчёта,
+  `config.EmitWarningsForSource` отдаёт их строке Sources.
+- Статус сборки: `ui/configurator/tabs/final_report_model.go`
+  `finalBuildStatusText` + `statusLabel` в `final_tab.go`.
+- Кнопка: `Copy config` иконкой `theme.ContentCopyIcon()` — как «Copy
+  token» в `ui/settings_tab.go`.
+- Поля: `ui/settings_tab.go` — короткие «Default update interval» /
+  «Default max nodes», широкий «Device ID (HWID)».
+
+Тесты — только на гард (`core/config/tag_guard_twin_test.go`): на вёрстку
+и формулировки тестов в проекте нет.

@@ -125,7 +125,11 @@ type OutboundGenerationResult struct {
 	// Отдельно от ParseFailedSources: там причины РАЗБОРА тела (он теперь
 	// живёт только в fetch и пишет свои строки в updateStatus), здесь —
 	// причины сборки. Оба потока сходятся в отчёте «Итога».
-	EmissionWarnings []string
+	//
+	// SPEC 116 W12 (фикс 3): запись, а не строка — у деградации эмиссии есть
+	// адресат (источник или Направление), и отчёт обязан его знать, чтобы ⚠
+	// встал у виновной строки, а не под общим субъектом "emission".
+	EmissionWarnings []EmissionWarning
 
 	// NodeOrigins — финальный тег узла → источник, из которого он приехал
 	// (SPEC 113-B). Нужен последнему рубежу: граф-санитайзер (core/build)
@@ -1279,18 +1283,22 @@ func GenerateOutboundsFromParserConfig(
 	linkTargets := BuildNodeLinkTargets(parserConfig.ParserConfig.Proxies, nodesBySource, allRootLinkTargets(parserConfig, directionTagsForChains))
 	// Позиции цепочек — до ResolveChainSources: она строит узел по строковым
 	// тегам и о ссылках не знает.
+	// SPEC 116 W12 фикс 3: предупреждения эмиссии едут с адресатом
+	// (SourceID/Направление), чтобы ⚠ встал у виновной строки Sources — так же,
+	// как у деградаций подписок.
 	emissionWarnings := ResolveCanonicalChainHops(parserConfig, linkTargets)
 
 	allNodes, brokenChains := ResolveChainSources(parserConfig, allNodes, nodesBySource, directionTagsForChains)
 
 	// Detour узлов и состав Auto-групп канона: fail-closed по detour (с
 	// каскадом и кольцами), prune по членам.
-	var linkWarnings []string
+	var linkWarnings []EmissionWarning
 	allNodes, linkWarnings = ApplyCanonicalNodeLinks(parserConfig.ParserConfig.Proxies, nodesBySource, allNodes, linkTargets)
 	emissionWarnings = append(emissionWarnings, linkWarnings...)
 	for i := 0; i < len(parserConfig.ParserConfig.Proxies); i++ {
 		if ws := emissionWarningsBySource[i]; len(ws) > 0 {
-			emissionWarnings = append(emissionWarnings, ws...)
+			emissionWarnings = append(emissionWarnings,
+				emissionWarningsFor(parserConfig.ParserConfig.Proxies[i], i, ws)...)
 		}
 	}
 
@@ -1304,9 +1312,20 @@ func GenerateOutboundsFromParserConfig(
 		rootNodeTagsForGuard(parserConfig, nodesBySource),
 		directions.SystemTags,
 	)
-	emissionWarnings = append(emissionWarnings, tagGuard.Conflicts()...)
+	// Адресат столкновения: если спорный тег принадлежит узлу — это строка
+	// Sources его источника; если Направлению или его твину — вкладка
+	// Направлений. Без адресата пользователь читал бы «тег занят дважды» и не
+	// знал, где именно чинить (фикс 3).
 	for _, c := range tagGuard.Conflicts() {
-		debuglog.WarnLog("tag guard: %s", c)
+		w := EmissionWarning{Text: c.Text()}
+		if src, index, ok := sourceOfNodeTag(parserConfig.ParserConfig.Proxies, nodesBySource, c.Tag); ok {
+			w.SourceID = strings.TrimSpace(src.ID)
+			w.SourceLabel = sourceDisplayName(src, index)
+		} else if dir := directionOwningTag(parserConfig.ParserConfig.Outbounds, c.Tag); dir != "" {
+			w.DirectionTag = dir
+		}
+		emissionWarnings = append(emissionWarnings, w)
+		debuglog.WarnLog("tag guard: %s", w.Text)
 	}
 
 	// SPEC 077 → SPEC 113-B: самоссылка и кольцо detour среди узлов. Fail-closed:

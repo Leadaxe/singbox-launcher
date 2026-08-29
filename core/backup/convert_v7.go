@@ -62,6 +62,12 @@ func exportFold(r *state.FolderReplace) *Fold {
 func exportDisabledMap(src state.Source) map[string]int64 {
 	out := map[string]int64{}
 	for i := range src.Nodes {
+		// Неразобранная запись (kind=unsupported, SPEC 116 W11) выключена не
+		// пользователем, а собственной невозможностью: в файл её отметка не
+		// едет — приёмник иначе выключил бы у себя ЖИВОЙ одноимённый узел.
+		if src.Nodes[i].IsUnsupported() {
+			continue
+		}
 		if !src.Nodes[i].Enabled && strings.TrimSpace(src.Nodes[i].Tag) != "" {
 			out[src.Nodes[i].Tag] = 0
 		}
@@ -310,6 +316,12 @@ func resolveImportedHops(sources []state.Source, directions []configtypes.Direct
 		switch src.Kind {
 		case state.SourceKindFolder, state.SourceKindSubscription:
 			for j := range src.Nodes {
+				// Неразобранная запись целью хопа быть не может (сборка её не
+				// эмитит вовсе) — и адресом контейнера её тег тоже не служит:
+				// иначе хоп «уехал» бы в узел, которого в конфиге нет.
+				if src.Nodes[j].IsUnsupported() {
+					continue
+				}
 				tag := strings.TrimSpace(src.Nodes[j].Tag)
 				if tag == "" {
 					continue

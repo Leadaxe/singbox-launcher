@@ -23,6 +23,21 @@ type Warning struct {
 	Code string
 	// Detail — что именно затронуто: имя правила, тег, URL.
 	Detail string
+	// Kind — вид записи, о которой warning, когда одного кода мало.
+	// `backup_source_kind_unsupported` выдаётся и на папку, и на
+	// провайдерскую группу: код у потери один (контракт этого вида не
+	// знает), а сказать пользователю их надо разными словами. Раньше вид
+	// приклеивался к началу Detail, и UI пришлось бы отрывать его обратно
+	// разбором строки, которую сам же и собирал.
+	Kind string
+	// Nodes — сколько узлов уехало вместе с записью, о которой warning.
+	// Ноль означает «неприменимо» (правило, переменная, поле), а не «узлов
+	// не было». Поле нужно ровно там, где потеря измеряется не фактом, а
+	// объёмом: выпавшая из файла папка стоит своего состава, и назвать
+	// пользователю «папка не поехала», умолчав о её десяти узлах, значит
+	// пересказать половину потери. Разбирать число из Detail в UI было бы
+	// вторым парсером человеческой строки — поле дешевле и не врёт.
+	Nodes int
 }
 
 func (w Warning) String() string { return w.Code + ": " + w.Detail }
@@ -175,7 +190,7 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 			continue
 		}
 		if existing[in.Tag] {
-			res.Warnings = append(res.Warnings, Warning{WarnBackupDirectionExists, in.Tag})
+			res.Warnings = append(res.Warnings, Warning{Code: WarnBackupDirectionExists, Detail: in.Tag})
 			knownTags = append(knownTags, in.Tag)
 			continue
 		}
@@ -202,7 +217,7 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 			continue
 		}
 		if existingChains[in.Tag] {
-			res.Warnings = append(res.Warnings, Warning{WarnBackupChainExists, in.Tag})
+			res.Warnings = append(res.Warnings, Warning{Code: WarnBackupChainExists, Detail: in.Tag})
 			knownTags = append(knownTags, in.Tag)
 			continue
 		}
@@ -243,7 +258,7 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 		if known.empty() || known.has(b.Route.Final) {
 			setConfigParam(s, "final", b.Route.Final)
 		} else {
-			res.Warnings = append(res.Warnings, Warning{WarnBackupFinalDropped, b.Route.Final})
+			res.Warnings = append(res.Warnings, Warning{Code: WarnBackupFinalDropped, Detail: b.Route.Final})
 		}
 	}
 
@@ -312,7 +327,7 @@ func importSubscription(sub Subscription, index int) (state.Source, []Warning) {
 	// Маска ПОДПИСКИ — шаблон имени для каждой ноды; prefix/postfix её не
 	// заменяют. Потеря названа, тегам нод она не подставляется.
 	if mask := importMaskTag(sub.Tag); mask != "" {
-		warns = append(warns, Warning{WarnBackupTagMaskDropped, subscriptionLabel(sub) + ": " + mask})
+		warns = append(warns, Warning{Code: WarnBackupTagMaskDropped, Detail: subscriptionLabel(sub) + ": " + mask})
 	}
 	src.Replace = importFold(sub.Fold, backupReplaceTag(sub, index))
 	if sub.Update != nil {
@@ -327,7 +342,7 @@ func importSubscription(sub Subscription, index int) (state.Source, []Warning) {
 			if tag == "" || derived[tag] {
 				continue
 			}
-			warns = append(warns, Warning{WarnBackupLocalDirectionDropped, subscriptionLabel(sub) + " → " + tag})
+			warns = append(warns, Warning{Code: WarnBackupLocalDirectionDropped, Detail: subscriptionLabel(sub) + " → " + tag})
 		}
 	}
 	// Отметки выключения: узлов у только что импортированной подписки нет
@@ -419,7 +434,7 @@ func importRule(r Rule, known, presets tagSet) (state.Rule, []Warning, error) {
 	// весь VPN одним импортом (BACKUP.md §3).
 	if r.Outbound != "" && !known.empty() && !known.has(r.Outbound) {
 		enabled = false
-		warns = append(warns, Warning{WarnBackupUnknownOutbound, ruleLabel(r) + " → " + r.Outbound})
+		warns = append(warns, Warning{Code: WarnBackupUnknownOutbound, Detail: ruleLabel(r) + " → " + r.Outbound})
 	}
 
 	out := state.Rule{
@@ -436,7 +451,7 @@ func importRule(r Rule, known, presets tagSet) (state.Rule, []Warning, error) {
 		out.Ref = r.Ref
 		if !presets.empty() && !presets.has(r.Ref) {
 			out.Enabled = false
-			warns = append(warns, Warning{WarnBackupUnknownPreset, r.Ref})
+			warns = append(warns, Warning{Code: WarnBackupUnknownPreset, Detail: r.Ref})
 		}
 		body := state.PresetBody{Vars: r.Vars}
 		raw, err := json.Marshal(body)
@@ -467,9 +482,9 @@ func importRule(r Rule, known, presets tagSet) (state.Rule, []Warning, error) {
 		// (структура чужая). Но и ронять весь импорт из-за одного правила
 		// нельзя — пользователь потеряет всё остальное. Правило
 		// пропускается, факт называется.
-		return state.Rule{}, append(warns, Warning{WarnBackupUnknownField, "rules[].kind=json: " + ruleLabel(r)}), errSkipRule
+		return state.Rule{}, append(warns, Warning{Code: WarnBackupUnknownField, Detail: "rules[].kind=json: " + ruleLabel(r)}), errSkipRule
 	default:
-		return state.Rule{}, append(warns, Warning{WarnBackupUnknownField, "rules[].kind=" + string(r.Kind)}), errSkipRule
+		return state.Rule{}, append(warns, Warning{Code: WarnBackupUnknownField, Detail: "rules[].kind=" + string(r.Kind)}), errSkipRule
 	}
 
 	return out, warns, nil
@@ -538,7 +553,7 @@ func importVars(s *state.State, vars map[string]string) []Warning {
 		if !IsPortableVar(name) {
 			// Непереносимое имя на этой машине значит другое (путь,
 			// интерфейс, платформенный флаг) — применять нельзя.
-			warns = append(warns, Warning{WarnBackupVarSkipped, name})
+			warns = append(warns, Warning{Code: WarnBackupVarSkipped, Detail: name})
 			continue
 		}
 		setVar(s, name, vars[name])

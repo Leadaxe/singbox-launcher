@@ -28,6 +28,10 @@ const (
 	SourceKindAuto         SourceKind = "auto"
 	SourceKindFolder       SourceKind = "folder"
 	SourceKindSubscription SourceKind = "subscription"
+	// SourceKindUnsupported — запись тела, которую разобрать не удалось
+	// (SPEC 116 W11). Живёт ТОЛЬКО внутри контейнера: корневым источником
+	// такой узел не бывает — в корень его класть неоткуда.
+	SourceKindUnsupported SourceKind = "unsupported"
 )
 
 // NodeLink — единая ссылка «через кого» (features/directions.md §6).
@@ -94,8 +98,21 @@ const (
 	AutoGroupURLTest  = "urltest"
 )
 
-// Node — узел: kind ∈ {server, chain, auto}. Живёт в корне sources[]
-// (через embedded в Source) и в Folder.Nodes.
+// Node — узел: kind ∈ {server, chain, auto, unsupported}. Живёт в корне
+// sources[] (через embedded в Source) и в Folder.Nodes; kind=unsupported —
+// только в контейнере.
+//
+// # Unsupported (SPEC 116 W11)
+//
+// Отбракованная запись тела не исчезает, а материализуется узлом
+// kind=unsupported: он занимает СВОЮ позицию в nodes[], несёт `reason`
+// (почему не разобрали) и ОБЯЗАТЕЛЬНЫЙ origin (raw = запись как пришла).
+// Тела у него нет, detour неприменим, `enabled` всегда false и включение
+// запрещено — собирать из него нечего. Эмиссия пропускает его ДО тег-машины
+// (не потребляет ни {$num}, ни слот уникализации — старый движок такую запись
+// узлом не считал вовсе), поэтому появление такого узла НЕ двигает финальные
+// теги соседей. Целью NodeLink он быть не может — его просто нет среди узлов
+// сборки.
 type Node struct {
 	Kind SourceKind `json:"kind"`
 	// Tag — СЫРОЙ тег: идентичность в рамках контейнера, снятый ДО
@@ -124,6 +141,29 @@ type Node struct {
 	Hops []NodeLink `json:"hops,omitempty"`
 	// Group — auto only.
 	Group *AutoGroup `json:"group,omitempty"`
+	// Reason — unsupported only: почему запись не разобралась. Текст
+	// парсера (английский, как и прочие per-record деградации): он же едет
+	// в диагностику fetch, и переводить его на месте значило бы завести две
+	// формулировки одной причины.
+	Reason string `json:"reason,omitempty"`
+}
+
+// IsUnsupported — узел является нематериализованной записью тела.
+func (n *Node) IsUnsupported() bool {
+	return n != nil && n.Kind == SourceKindUnsupported
+}
+
+// NewUnsupportedNode — отбракованная запись тела как узел контейнера
+// (SPEC 116 W11). Origin обязателен: без исходника пользователю не по чему
+// узнать запись, а починить её — тем более.
+func NewUnsupportedNode(tag, reason, originKind, originRaw string) Node {
+	return Node{
+		Kind:    SourceKindUnsupported,
+		Tag:     tag,
+		Enabled: false,
+		Origin:  &Origin{Kind: originKind, Raw: originRaw},
+		Reason:  reason,
+	}
 }
 
 // FolderReplace — свёртка папки: объект, не узел.
@@ -357,7 +397,7 @@ func normalizeSourceShape(s *Source) ([]string, error) {
 		for i := range s.Nodes {
 			n := &s.Nodes[i]
 			switch n.Kind {
-			case SourceKindServer, SourceKindChain, SourceKindAuto:
+			case SourceKindServer, SourceKindChain, SourceKindAuto, SourceKindUnsupported:
 				if ws := normalizeNodeShape(n, fmt.Sprintf("%s/nodes[%d]", sourceShapeName(s), i)); len(ws) > 0 {
 					warns = append(warns, ws...)
 				}
@@ -365,6 +405,12 @@ func normalizeSourceShape(s *Source) ([]string, error) {
 				return warns, fmt.Errorf("state: source %s: node %q несёт неизвестный kind %q — файл от более новой схемы, обновите приложение", sourceShapeName(s), n.Tag, n.Kind)
 			}
 		}
+
+	case SourceKindUnsupported:
+		// Неразобранная запись живёт только внутри контейнера: её родил разбор
+		// тела, а у корневого источника тела нет. В корне она бы ничего не
+		// значила — и никакой fetch её оттуда не починил бы.
+		return warns, fmt.Errorf("state: source %s: kind=unsupported легален только внутри контейнера", sourceShapeName(s))
 
 	default:
 		return warns, fmt.Errorf("state: source %s несёт неизвестный kind %q — файл от более новой схемы, обновите приложение", sourceShapeName(s), s.Kind)
@@ -380,6 +426,12 @@ func normalizeNodeShape(n *Node, name string) []string {
 	var warns []string
 	drop := func(field string) {
 		warns = append(warns, fmt.Sprintf("node %s (kind=%s): поле %q нелегально для этого kind — отброшено", name, n.Kind, field))
+	}
+	// Причина живёт только у неразобранной записи: у собравшегося узла ей
+	// нечего объяснять, а показанная строкой «⚠ …» она соврала бы.
+	if n.Kind != SourceKindUnsupported && n.Reason != "" {
+		drop("reason")
+		n.Reason = ""
 	}
 	switch n.Kind {
 	case SourceKindServer:
@@ -417,6 +469,35 @@ func normalizeNodeShape(n *Node, name string) []string {
 		}
 		if n.Group == nil {
 			warns = append(warns, fmt.Sprintf("node %s: kind=auto без group — группа не эмитится", name))
+		}
+	case SourceKindUnsupported:
+		// Собирать из неразобранной записи нечего: тела, маршрута и состава у
+		// неё не существует типом. Включённой она тоже не бывает — иначе
+		// «включено» обещало бы узел в конфиге, которого нет.
+		if len(n.Body) > 0 {
+			drop("body")
+			n.Body = nil
+		}
+		if n.Detour != nil {
+			drop("detour")
+			n.Detour = nil
+		}
+		if len(n.Hops) > 0 {
+			drop("hops")
+			n.Hops = nil
+		}
+		if n.Group != nil {
+			drop("group")
+			n.Group = nil
+		}
+		if n.Enabled {
+			drop("enabled")
+			n.Enabled = false
+		}
+		if n.Origin == nil {
+			// Исходник — единственное, что у такой записи есть. Без него узел
+			// не рассказывает ни что это было, ни как это чинить.
+			warns = append(warns, fmt.Sprintf("node %s: kind=unsupported без origin — исходник записи потерян", name))
 		}
 	}
 	return warns

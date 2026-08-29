@@ -4,19 +4,26 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
+	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 )
 
 var (
 	_ fyne.Tappable          = (*SecondaryTapWrap)(nil)
 	_ fyne.SecondaryTappable = (*SecondaryTapWrap)(nil)
 	_ desktop.Mouseable      = (*SecondaryTapWrap)(nil)
+	_ desktop.Hoverable      = (*SecondaryTapWrap)(nil)
 )
 
 // SecondaryTapWrap is a thin widget around content that receives secondary (right) taps.
 // Primary taps on non-button areas hit this widget before the List row (Fyne hit-test
 // prefers SecondaryTappable here); OnPrimary runs so the row can still be selected.
+//
+// Tooltip: the wrap embeds ttwidget.ToolTipWidget, so SetToolTip on it shows the
+// text anywhere over the wrapped row — the row's own children are canvas objects
+// with no hover of their own, and giving each of them a tooltip would mean one
+// tooltip per column instead of one per row. Empty text = no tooltip at all.
 type SecondaryTapWrap struct {
-	widget.BaseWidget
+	ttwidget.ToolTipWidget
 
 	Content fyne.CanvasObject
 

@@ -89,6 +89,16 @@ type DragReorderGroup struct {
 	// its top or bottom edge scrolls the list.
 	Scroll *container.Scroll
 
+	// Total — сколько элементов в СПИСКЕ ДАННЫХ, когда он длиннее видимого
+	// (widget.List: зарегистрированы только видимые строки, см.
+	// RegisterRecycled). 0 = «список равен зарегистрированным строкам», как у
+	// VBox-списков — их поведение не меняется.
+	//
+	// Нужен клампу: без него перетаскивание за нижний край длинного списка
+	// упиралось бы в индекс последней ВИДИМОЙ строки и молча роняло узел в
+	// середину.
+	Total int
+
 	rows map[int]fyne.CanvasObject
 
 	// indicator is the insertion line, parented to the canvas overlay so it can
@@ -132,10 +142,60 @@ func (g *DragReorderGroup) Register(idx int, row fyne.CanvasObject) {
 	g.rows[idx] = row
 }
 
+// RegisterRecycled — Register для списка, который ПЕРЕИСПОЛЬЗУЕТ объекты строк
+// (widget.List: видимые строки перепривязываются к другим индексам на каждой
+// прокрутке).
+//
+// Обычного Register там мало: он идемпотентен по индексу, но не по объекту, и
+// уехавшая за экран строка остаётся висеть под своим прежним индексом, будучи
+// уже перепривязанной к другому. Тогда два индекса заявляют одну и ту же
+// полосу экрана, и targetForY отдаёт то один, то другой — точка вставки
+// прыгает, а drop уходит в чужой слот.
+//
+// Здесь карта держится БИЕКЦИЕЙ: объект сначала снимается со всех прежних
+// индексов, потом встаёт под текущий. Регистрация покрывает ровно видимые
+// строки — этого хватает, потому что бросить строку можно только туда, куда
+// пользователь видит (за край экрана списки доводит autoScroll, а он
+// перепривязывает строки по дороге).
+//
+// SPEC 116 W5: понадобилось списку узлов контейнера — первому drag-списку на
+// widget.List (у Sources/Rules/DNS строки живут в VBox и строятся целиком).
+func (g *DragReorderGroup) RegisterRecycled(idx int, row fyne.CanvasObject) {
+	if g == nil || row == nil {
+		return
+	}
+	if g.rows == nil {
+		g.rows = make(map[int]fyne.CanvasObject)
+	}
+	for i, existing := range g.rows {
+		if existing == row && i != idx {
+			delete(g.rows, i)
+		}
+	}
+	g.rows[idx] = row
+}
+
 // count reports how many rows are registered.
 func (g *DragReorderGroup) count() int {
 	if g == nil {
 		return 0
+	}
+	return len(g.rows)
+}
+
+// slots — сколько СЛОТОВ у списка данных: Total, если он задан (виртуальный
+// список длиннее экрана), иначе число зарегистрированных строк.
+//
+// Разведено с count() намеренно: count отвечает на «сколько строк я вижу и
+// могу измерить», slots — на «в какой диапазон индексов допустим бросок». Их
+// смешение и есть та ошибка, из-за которой длинный список ронял узел в
+// середину.
+func (g *DragReorderGroup) slots() int {
+	if g == nil {
+		return 0
+	}
+	if g.Total > len(g.rows) {
+		return g.Total
 	}
 	return len(g.rows)
 }
@@ -161,7 +221,7 @@ func (g *DragReorderGroup) rowBand(idx int) (top, bottom float32, ok bool) {
 // once the pointer passes that row's middle. Swapping on first contact instead
 // makes a slow drag oscillate between two slots.
 func (g *DragReorderGroup) targetForY(y float32, from int) int {
-	n := g.count()
+	n := g.slots()
 	for idx := range g.rows {
 		top, bottom, ok := g.rowBand(idx)
 		if !ok || y < top || y > bottom {
@@ -180,23 +240,48 @@ func (g *DragReorderGroup) targetForY(y float32, from int) int {
 	}
 	// Past either end of the list: pin to that end, so a drag that overshoots
 	// still lands instead of silently cancelling.
-	if top, ok := g.firstBandTop(); ok && y < top {
-		return 0
+	//
+	// «Край» берётся у КРАЙНЕЙ ЗАРЕГИСТРИРОВАННОЙ строки, а не у слота 0 /
+	// n-1: у виртуального списка их на экране может не быть вовсе, и жёсткая
+	// адресация давала бы «полосы нет» → бросок молча отменялся.
+	if idx, top, ok := g.topmostBand(); ok && y < top {
+		return idx
 	}
-	if bottom, ok := g.lastBandBottom(); ok && y > bottom {
-		return clampIndex(n-1, n)
+	if idx, bottom, ok := g.bottommostBand(); ok && y > bottom {
+		return clampIndex(idx, n)
 	}
 	return from
 }
 
-func (g *DragReorderGroup) firstBandTop() (float32, bool) {
-	top, _, ok := g.rowBand(0)
-	return top, ok
+// topmostBand / bottommostBand — крайние ИЗ ЗАРЕГИСТРИРОВАННЫХ строк по
+// вертикали. У VBox-списка это ровно слоты 0 и n-1 (прежнее поведение), у
+// виртуального — верхняя и нижняя видимые строки.
+func (g *DragReorderGroup) topmostBand() (int, float32, bool) {
+	bestIdx, bestY, ok := 0, float32(0), false
+	for idx := range g.rows {
+		top, _, valid := g.rowBand(idx)
+		if !valid {
+			continue
+		}
+		if !ok || top < bestY {
+			bestIdx, bestY, ok = idx, top, true
+		}
+	}
+	return bestIdx, bestY, ok
 }
 
-func (g *DragReorderGroup) lastBandBottom() (float32, bool) {
-	_, bottom, ok := g.rowBand(g.count() - 1)
-	return bottom, ok
+func (g *DragReorderGroup) bottommostBand() (int, float32, bool) {
+	bestIdx, bestY, ok := 0, float32(0), false
+	for idx := range g.rows {
+		_, bottom, valid := g.rowBand(idx)
+		if !valid {
+			continue
+		}
+		if !ok || bottom > bestY {
+			bestIdx, bestY, ok = idx, bottom, true
+		}
+	}
+	return bestIdx, bestY, ok
 }
 
 // showIndicator draws the insertion line at the edge of the target row: above
@@ -300,6 +385,18 @@ func NewDragHandle(group *DragReorderGroup, idx int, rowGetter RowHoverGetter) *
 	h := &DragHandle{group: group, index: idx, rowGetter: rowGetter}
 	h.ExtendBaseWidget(h)
 	return h
+}
+
+// SetIndex перепривязывает захват к другому слоту.
+//
+// Нужен строкам ПЕРЕИСПОЛЬЗУЕМОГО списка (widget.List): там объект строки
+// создаётся один раз, а индекс ему сообщают на каждой привязке. У списков в
+// VBox индекс задаётся конструктором и не меняется — их этот метод не
+// касается.
+func (h *DragHandle) SetIndex(idx int) {
+	if h != nil {
+		h.index = idx
+	}
 }
 
 // CreateRenderer implements fyne.Widget.

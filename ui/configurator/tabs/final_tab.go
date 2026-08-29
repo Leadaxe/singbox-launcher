@@ -24,6 +24,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/config"
@@ -56,7 +57,27 @@ func CreateFinalTab(presenter *wizardpresentation.WizardPresenter, guiState *wiz
 	reportScroll := container.NewVScroll(reportBox)
 	reportScroll.SetMinSize(fyne.NewSize(0, 160))
 
-	copyBtn := widget.NewButton(locale.T("Copy"), nil)
+	// SPEC 116 W12 фикс 4: явный статус сборки НАД списком. Исход перестаёт
+	// читаться косвенно (пустой список / непустой / красная строка внутри
+	// него) — главное («собралось или нет») стоит первой строкой.
+	statusLabel := widget.NewLabel("")
+	statusLabel.Wrapping = fyne.TextWrapWord
+	statusLabel.TextStyle = fyne.TextStyle{Bold: true}
+	statusLabel.Hide()
+	setStatus := func(text string, failed bool) {
+		statusLabel.SetText(text)
+		if failed {
+			statusLabel.Importance = widget.DangerImportance
+		} else {
+			statusLabel.Importance = widget.MediumImportance
+		}
+		statusLabel.Refresh()
+		statusLabel.Show()
+	}
+
+	// Иконка и стиль — те же, что у «Copy token» в Settings
+	// (`ui/settings_tab.go`): одна операция, один облик (фикс 5).
+	copyBtn := widget.NewButtonWithIcon(locale.T("Copy config"), theme.ContentCopyIcon(), nil)
 	copyBtn.Hide()
 
 	// Та же операция, что у кнопки Save справа внизу: записать state.json и
@@ -88,6 +109,7 @@ func CreateFinalTab(presenter *wizardpresentation.WizardPresenter, guiState *wiz
 	runner.onStart = func() {
 		progress.Show()
 		progressLabel.Show()
+		statusLabel.Hide()
 		reportBox.Objects = nil
 		reportBox.Refresh()
 		copyBtn.Hide()
@@ -107,10 +129,12 @@ func CreateFinalTab(presenter *wizardpresentation.WizardPresenter, guiState *wiz
 			// не собралось, нельзя, а подсовывать вместо причины пустой
 			// «предупреждений нет» — прямая ложь.
 			debuglog.ErrorLog("final: сборка конфига: %v", err)
-			errLabel := widget.NewLabel(locale.Tf("Build failed: %v", err))
-			errLabel.Wrapping = fyne.TextWrapWord
-			errLabel.Importance = widget.DangerImportance
-			reportBox.Objects = []fyne.CanvasObject{errLabel}
+			text, _ := finalBuildStatusText(err, 0)
+			setStatus(text, true)
+			// Список остаётся пустым: причина уже стоит статусом, и
+			// дублировать её строкой внутри отчёта значило бы показать один
+			// факт дважды (фикс 4).
+			reportBox.Objects = nil
 			reportBox.Refresh()
 			updateGlobalSaveGate(guiState, false)
 			return
@@ -122,17 +146,27 @@ func CreateFinalTab(presenter *wizardpresentation.WizardPresenter, guiState *wiz
 			// его записи — не тот отчёт, под который открывался бы Save.
 			// Гейт и так закрыт (saveButtonVisible сверяет gen), но рисовать
 			// чужие записи как «наш итог» — та же ложь в мягкой форме.
+			statusLabel.Hide()
 			reportBox.Objects = nil
 			reportBox.Refresh()
 			updateGlobalSaveGate(guiState, false)
 			return
 		}
 		lines := finalReportLines(entries)
+		statusText, failed := finalBuildStatusText(nil, len(lines))
+		setStatus(statusText, failed)
 		reportBox.Objects = finalReportWidgets(presenter, guiState, lines)
 		reportBox.Refresh()
 
-		copyText := finalReportText(lines)
-		copyBtn.OnTapped = func() { fynewidget.SetClipboard(copyText) }
+		// Кнопка зовётся «Copy config» и копирует именно конфиг: отчёт виден
+		// на экране целиком, а собранный config.json — тысячи строк, которые
+		// иначе достаются только выделением в отдельном окне.
+		copyBtn.OnTapped = func() {
+			builtMu.Lock()
+			cfg := builtText
+			builtMu.Unlock()
+			fynewidget.SetClipboard(cfg)
+		}
 		copyBtn.Show()
 
 		showBtn.OnTapped = func() {
@@ -167,6 +201,7 @@ func CreateFinalTab(presenter *wizardpresentation.WizardPresenter, guiState *wiz
 	body := container.NewVBox(
 		hint,
 		container.NewVBox(progressLabel, progress),
+		statusLabel,
 		reportScroll,
 		buttons,
 		backupSection(presenter, win),

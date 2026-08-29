@@ -92,7 +92,11 @@ func finalReportLines(entries []config.BuildReportEntry) []finalReportLine {
 		config.BuildReportTargetMissing:     2,
 		config.BuildReportNodesDropped:      3,
 		config.BuildReportChainFailed:       4,
-		config.BuildReportNaiveDegraded:     5,
+		// Деградации обновления и эмиссии — частичные потери у источника,
+		// который работает: после всего, что стоило источника целиком.
+		config.BuildReportFetchDegraded: 5,
+		config.BuildReportEmitDegraded:  6,
+		config.BuildReportNaiveDegraded: 7,
 	}
 	idx := make([]int, len(entries))
 	for i := range idx {
@@ -136,8 +140,39 @@ func finalReportEntryText(e config.BuildReportEntry) string {
 		return locale.Tf("%d naive node(s) skipped: %s", e.NodeCount, e.Reason)
 	case config.BuildReportTargetMissing:
 		return locale.Tf("Detour target %q is missing from the build: %s", subject, e.Reason)
+	case config.BuildReportEmitDegraded, config.BuildReportFetchDegraded:
+		// Причина уже сформулирована целиком (она называет и узел, и что с
+		// ним) — субъект добавляется ТОЛЬКО как адрес, где чинить. Без
+		// источника фраза остаётся сама собой, а не «: причина» без левого
+		// края (SPEC 116 W12, фикс 3).
+		if subject == "" {
+			return e.Reason
+		}
+		// Склейка, а не фраза: обе половины уже переведены, переводить
+		// пунктуацию между ними не за чем.
+		return fmt.Sprintf("%s — %s", subject, e.Reason)
 	}
 	return fmt.Sprintf("%s: %s", subject, e.Reason)
+}
+
+// finalBuildStatusText — явный статус сборки над списком (SPEC 116 W12,
+// фикс 4).
+//
+// До этой волны исход читался косвенно: пустой список означал «собралось
+// чисто», непустой — «собралось с предупреждениями», а провал показывался
+// одной красной строкой ВНУТРИ того же списка. Три разных исхода, отличимых
+// только по содержимому, — и пользователь, пробежав список глазами, не знал
+// главного: конфиг вообще собрался или нет.
+//
+// Чистая функция: вёрстка берёт у неё текст и важность.
+func finalBuildStatusText(err error, warnings int) (string, bool) {
+	if err != nil {
+		return locale.Tf("Build FAILED: %v", err), true
+	}
+	if warnings == 0 {
+		return locale.T("Build OK"), false
+	}
+	return locale.Tf("Build OK, %d warning(s)", warnings), false
 }
 
 // finalReportText — весь отчёт одним текстом для кнопки «Копировать».

@@ -51,8 +51,14 @@ const (
 // перерисовку кадра. Обрезка честная — статус-строка называет её вслух.
 const previewNodeCap = 200
 
-// previewParseReasonsBlock — блок причин отбраковки для вкладки Preview;
-// nil, если причин нет (показывать нечего, и пустая рамка только шумит).
+// previewParseReasonsBlock — блок причин отбраковки; nil, если причин нет
+// (показывать нечего, и пустая рамка только шумит).
+//
+// SPEC 116 W11: с вкладки Preview этот блок УБРАН — построчные причины взяли
+// ⚠-строки самих записей, а списком из двухсот причин над списком из двухсот
+// узлов пользоваться было нельзя. Живёт он теперь в Overview, где собрана
+// диагностика источника целиком (обрезка капом, merge, потерянные члены
+// групп) — то, что к одной строке состава не привязывается.
 //
 // Wrapping обязателен у каждой строки: Label без него отдаёт всю строку как
 // min-width и раздувает окно источника на весь экран (fyne-ловушка), а причины
@@ -411,6 +417,9 @@ func showSourceEditWindow(
 	// сам ellipsis'ит до доступной ширины (избегаем двойного "...").
 	mm := presenter.Model()
 	fullTitleSrc := shortLabel
+	// isFolderSource — вид источника, известный ещё до сборки формы: от него
+	// зависят заголовок окна, ветка настроек и тексты подсказок (SPEC 116 W4).
+	isFolderSource := m.Sources[sourceIndex].Kind == wizardmodels.SourceKindFolder
 	if mm != nil && sourceIndex < len(mm.Sources) {
 		s := mm.Sources[sourceIndex]
 		switch s.Kind {
@@ -419,6 +428,14 @@ func showSourceEditWindow(
 				fullTitleSrc = s.Meta.ProfileTitle
 			} else if s.URL != "" {
 				fullTitleSrc = s.URL
+			}
+		case wizardmodels.SourceKindFolder:
+			// SPEC 116 W4 (Д3, критерий A8): у папки нет ни URL, ни
+			// ProfileTitle — без своей ветки заголовок падал в default и
+			// показывал shortLabel вызывающего. Имя папки живёт в
+			// Source.Name (не в Label: папка — контейнер, а не узел).
+			if name := strings.TrimSpace(s.Name); name != "" {
+				fullTitleSrc = name
 			}
 		case wizardmodels.SourceKindServer:
 			// Подпись, а без неё — тег: у server-источника тег и есть то
@@ -432,7 +449,13 @@ func showSourceEditWindow(
 			}
 		}
 	}
+	// SPEC 116 W4 (A8): у папки заголовок — «Folder — имя», а не «Source — »:
+	// подписи «источник» пользователь для своей папки не выбирал, а вид
+	// контейнера в заголовке — единственное место, где он назван словом.
 	title := locale.Tf("Source — %s", fullTitleSrc)
+	if isFolderSource {
+		title = locale.Tf("Folder — %s", fullTitleSrc)
+	}
 	win := app.NewWindow(title)
 	presenter.SetViewWindow(win)
 	win.SetOnClosed(func() {
@@ -496,6 +519,13 @@ func showSourceEditWindow(
 	labelEntry := widget.NewEntry()
 	labelEntry.SetPlaceHolder(locale.T("human-readable label"))
 
+	// SPEC 116 W4: имя папки. Отдельное поле от Label намеренно — имя
+	// контейнера живёт в Source.Name (sources_v7.go), ссылок на него нет, и
+	// переименование папки ничего не рвёт: тег-политика и сырые теги узлов
+	// от имени не зависят.
+	nameEntry := widget.NewEntry()
+	nameEntry.SetPlaceHolder(locale.T("folder name"))
+
 	// Тег узла — отдельным полем от подписи: на него ссылаются фильтры
 	// Направлений, позиции цепочек и правила, поэтому переименование в
 	// списке его менять не должно (прежде Label работал и подписью, и
@@ -512,7 +542,13 @@ func showSourceEditWindow(
 	// «сворачивать ли»; чем именно заменить узлы — на вкладке «Группа».
 	var afterSync func()
 
-	foldCheck := ttwidget.NewCheck(locale.T("Fold this subscription into a group"), nil)
+	// SPEC 116 W4: свёртка одинаково устроена у подписки и у папки, но
+	// называть папку подпиской нельзя — подпись у галки своя, механика та же.
+	foldCheckKey := "Fold this subscription into a group" // l10n-key
+	if isFolderSource {
+		foldCheckKey = "Fold this folder into a group" // l10n-key
+	}
+	foldCheck := ttwidget.NewCheck(locale.T(foldCheckKey), nil)
 	foldCheck.SetToolTip(locale.T("Its nodes are replaced by a single entry in the directions list. Pick what to fold into on the Group tab."))
 
 	// Вкладка «Группа»: во что именно сворачивать. Отдельно от галки
@@ -695,6 +731,7 @@ func showSourceEditWindow(
 		// URI / Label / тег узла — для server-type; всё из рабочей копии.
 		uriEntry.SetText(sourceOriginURI(p))
 		labelEntry.SetText(p.Label)
+		nameEntry.SetText(p.Name)
 		nodeTagEntry.SetText(p.NodeTagOrLabel())
 		syncFoldFormFromModel(p)
 		refreshDetourOptions()
@@ -735,6 +772,18 @@ func showSourceEditWindow(
 		p.Label = strings.TrimSpace(s)
 	}
 
+	// SPEC 116 W4: имя контейнера. Пишется только у папки — normalizeSourceShape
+	// отбрасывает Name у узловых kind'ов (server/chain/auto) с warning, а имя
+	// подписки приезжает из её метаданных, и правка формы там была бы затёрта
+	// первым же fetch'ем. Как и остальные поля, буферизуется до Save.
+	nameEntry.OnChanged = func(s string) {
+		p := srcRef()
+		if p == nil || p.Kind != wizardmodels.SourceKindFolder {
+			return
+		}
+		p.Name = strings.TrimSpace(s)
+	}
+
 	nodeTagEntry.OnChanged = func(s string) {
 		p := srcRef()
 		// Поле именует УЗЕЛ и есть только у источников-владельцев
@@ -772,13 +821,61 @@ func showSourceEditWindow(
 
 	// SPEC 052 phase 8: Settings tab type-conditional. Subscription и server
 	// показывают разные блоки полей.
+	//
+	// SPEC 116 W4 (дыра Д3): развилка перестала быть бинарной. Прежнее
+	// «не server ⇒ подписка» показывало папке поле «Subscription URL» и
+	// оставляло её без единственной своей настройки — имени. Веток три, и
+	// новый вид контейнера обязан заводить свою, а не доставаться ветке
+	// подписки по остаточному принципу.
 	settingsContent := container.NewVBox()
+	// tagPolicyBlock — общий для контейнеров блок «префикс/постфикс +
+	// подсказка переменных». Он одинаков у подписки и папки по построению:
+	// тег-политика — свойство контейнера, а не источника состава.
+	tagPolicyBlock := func() {
+		settingsContent.Add(widget.NewLabel(locale.T("Tag prefix")))
+		settingsContent.Add(prefixEntry)
+		settingsContent.Add(widget.NewLabel(locale.T("Tag postfix")))
+		settingsContent.Add(postfixEntry)
+		// Список переменных — прямо под полями, а не за иконкой «?» и
+		// не в доках: их семь, они конкретны, и без них поля префикса —
+		// пустое приглашение угадывать. Подсказка одна на оба поля:
+		// переменные работают в обоих.
+		tagVarsHint := widget.NewLabel(locale.T(sourceTagVarsHintText))
+		tagVarsHint.Wrapping = fyne.TextWrapWord
+		tagVarsHint.Importance = widget.LowImportance
+		settingsContent.Add(tagVarsHint)
+	}
+	detourBlock := func() {
+		settingsContent.Add(widget.NewLabel(locale.T("Detour server (chain)")))
+		settingsContent.Add(detourSelect)
+		settingsContent.Add(detourHint)
+	}
 	rebuildSettingsLayout := func() {
 		settingsContent.Objects = settingsContent.Objects[:0]
 		mm := presenter.Model()
-		isServer := mm != nil && sourceIndex < len(mm.Sources) && mm.Sources[sourceIndex].Kind == wizardmodels.SourceKindServer
+		kind := wizardmodels.SourceKindSubscription
+		if mm != nil && sourceIndex < len(mm.Sources) {
+			kind = mm.Sources[sourceIndex].Kind
+		}
+		isServer := kind == wizardmodels.SourceKindServer
+		isFolder := kind == wizardmodels.SourceKindFolder
 
-		if isServer {
+		switch {
+		case isFolder:
+			// Папка (SPEC 116, критерий A8): имя + тег-политика + свёртка +
+			// detour. Ни URL, ни интервала обновления, ни max_nodes, ни
+			// skip[] — состав папки принадлежит пользователю, сети за ним
+			// нет, и показывать настройки закачки, которой не будет, значит
+			// обещать несуществующее поведение.
+			settingsContent.Add(widget.NewLabel(locale.T("Folder name")))
+			settingsContent.Add(nameEntry)
+			settingsContent.Add(widget.NewSeparator())
+			tagPolicyBlock()
+			settingsContent.Add(widget.NewSeparator())
+			settingsContent.Add(foldCheck)
+			settingsContent.Add(widget.NewSeparator())
+			detourBlock()
+		case isServer:
 			// Server: URI + тег узла + Label + Detour.
 			settingsContent.Add(widget.NewLabel(locale.T("Server URI")))
 			settingsContent.Add(uriEntry)
@@ -795,32 +892,20 @@ func showSourceEditWindow(
 			settingsContent.Add(widget.NewLabel(locale.T("Label")))
 			settingsContent.Add(labelEntry)
 			settingsContent.Add(widget.NewSeparator())
-			settingsContent.Add(widget.NewLabel(locale.T("Detour server (chain)")))
-			settingsContent.Add(detourSelect)
-			settingsContent.Add(detourHint)
-		} else {
+			detourBlock()
+		default:
 			// Subscription: URL + Tag prefix/postfix + свёртка + Detour.
+			// Сюда же падает корневой auto-источник: своей формы у него нет
+			// и до этого этапа не было. Новый вид контейнера обязан заводить
+			// СВОЮ ветку выше, а не доставаться этой (дыра Д3).
 			settingsContent.Add(widget.NewLabel(locale.T("Subscription URL")))
 			settingsContent.Add(urlEntry)
 			settingsContent.Add(widget.NewSeparator())
-			settingsContent.Add(widget.NewLabel(locale.T("Tag prefix")))
-			settingsContent.Add(prefixEntry)
-			settingsContent.Add(widget.NewLabel(locale.T("Tag postfix")))
-			settingsContent.Add(postfixEntry)
-			// Список переменных — прямо под полями, а не за иконкой «?» и
-			// не в доках: их семь, они конкретны, и без них поля префикса —
-			// пустое приглашение угадывать. Подсказка одна на оба поля:
-			// переменные работают в обоих.
-			tagVarsHint := widget.NewLabel(locale.T(sourceTagVarsHintText))
-			tagVarsHint.Wrapping = fyne.TextWrapWord
-			tagVarsHint.Importance = widget.LowImportance
-			settingsContent.Add(tagVarsHint)
+			tagPolicyBlock()
 			settingsContent.Add(widget.NewSeparator())
 			settingsContent.Add(foldCheck)
 			settingsContent.Add(widget.NewSeparator())
-			settingsContent.Add(widget.NewLabel(locale.T("Detour server (chain)")))
-			settingsContent.Add(detourSelect)
-			settingsContent.Add(detourHint)
+			detourBlock()
 		}
 		settingsContent.Refresh()
 	}
@@ -835,7 +920,39 @@ func showSourceEditWindow(
 	previewStatusScroll := container.NewHScroll(previewStatus)
 	previewListHost := container.NewStack()
 	previewGutter := components.NewScrollGutter()
-	previewBox := container.NewBorder(previewStatusScroll, nil, nil, previewGutter, previewListHost)
+
+	// SPEC 116 W5: контекст операций над узлом контейнера (move/copy/rename/
+	// delete). Собирается ДО refreshPreviewTab, потому что список узлов
+	// раздаёт его строкам; refreshPreview внутри заполняется ниже, когда
+	// функция перерисовки уже существует.
+	//
+	// reloadScratch — почему он вообще нужен: Move/Copy затрагивают ДВА
+	// источника, а рабочая копия окна знает только свой, поэтому эти операции
+	// применяются к модели немедленно (см. шапку preview_node_ops.go). После
+	// такой мутации снимок окна устарел, и Save записал бы его поверх
+	// операции — значит копию обязательно перечитать из живой записи.
+	nodeOps := &previewNodeOps{
+		presenter:   presenter,
+		guiState:    guiState,
+		win:         win,
+		sourceIndex: sourceIndex,
+		kind:        m.Sources[sourceIndex].Kind,
+		reloadScratch: func() {
+			mm := presenter.Model()
+			if mm == nil || sourceIndex < 0 || sourceIndex >= len(mm.Sources) {
+				return
+			}
+			scratch = cloneSource(&mm.Sources[sourceIndex])
+		},
+	}
+
+	// SPEC 116 W6: «Add nodes…» — наполнение папки. В шапке списка узлов, а не
+	// в Settings: это операция над СОСТАВОМ, и её место рядом с составом.
+	// У не-папки конструктор возвращает nil, и шапка остаётся прежней строкой
+	// состояния — состав подписки принадлежит провайдеру, добавлять в неё
+	// руками нечего.
+	previewHeader := folderAddNodesHeader(previewStatusScroll, newFolderAddNodes(nodeOps, win))
+	previewBox := container.NewBorder(previewHeader, nil, nil, previewGutter, previewListHost)
 
 	previewRefreshSeq := 0
 	// fetchInProgress: предохранитель от двойного клика "Fetch now" пока
@@ -942,15 +1059,19 @@ func showSourceEditWindow(
 		previewListHost.Refresh()
 		go func() {
 			model := presenter.Model()
-			var nodes []*config.ParsedNode
+			// rows — состав контейнера строками: собравшиеся узлы и
+			// неразобранные записи в порядке nodes[] (SPEC 116 W11,
+			// preview_rows.go).
+			var rows []previewRow
 			var err error
-			// parseReasons — компактные причины отбраковки от ТОГО ЖЕ разбора,
-			// что дал nodes (SPEC 115). Показываются и при нуле узлов, и при
-			// частичной отбраковке: «половина подписки протухла» — тоже ответ,
-			// которого у пользователя раньше не было. До этого вкладка Preview
-			// у протухшей подписки писала «0 server(s)» и «No servers found.» —
-			// то есть повторяла факт пустоты и молчала о причине.
-			var parseReasons []string
+			// announce — сообщение ПРОВАЙДЕРА над списком. Прежний блок
+			// «Why nodes were rejected» здесь упразднён (SPEC 116 W11): роль
+			// построчных причин взяли ⚠-строки самих записей, а списком причин
+			// у подписки на две сотни узлов всё равно нельзя было
+			// пользоваться. Прочая диагностика fetch'а (merge, обрезка капом,
+			// потерянные члены групп) переехала в Overview — там её место
+			// рядом со статусом источника, а не поверх его состава.
+			announce := ""
 			// needsFetch — true когда нет .raw кэша для subscription: UI должен
 			// показать кнопку "Fetch now" вместо просто текста ошибки.
 			needsFetch := false
@@ -970,28 +1091,15 @@ func showSourceEditWindow(
 						needsFetch = src.Kind == wizardmodels.SourceKindSubscription
 					} else {
 						emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), sourceIndex, map[string]int{})
-						nodes = emitted.Nodes
-						parseReasons = append(parseReasons, emitted.Warnings...)
+						rows = buildPreviewRows(src.Nodes, emitted.Nodes)
 					}
-					// SPEC 118 Т3/Т8: причины отбраковки записей ЖИВУТ В СОСТОЯНИИ —
-					// их записал fetch, когда разбирал тело. Разбирать тело
-					// заново, чтобы их узнать, вкладке больше нечем (и не нужно):
-					// у неё готовые узлы, а «почему их столько» знает только тот,
-					// кто их считал.
-					parseReasons = append(parseReasons, fetchWarningTexts(src.UpdateStatus)...)
-					// Сообщение провайдера — ПЕРВОЙ причиной: он объясняет,
-					// почему состав такой, а наши причины — что мы в нём
-					// увидели. Чужой текст, показывается как данные.
-					if msg := providerAnnounceText(diagOf(&src)); msg != "" {
-						parseReasons = append(
-							[]string{locale.Tf("provider says: %s", msg)},
-							parseReasons...)
-					}
+					// Сообщение провайдера — над списком: он объясняет, почему
+					// состав такой. Чужой текст, показывается как данные.
+					announce = providerAnnounceText(diagOf(&src))
 				default:
 					emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), sourceIndex, map[string]int{})
-					nodes = emitted.Nodes
-					parseReasons = append(parseReasons, emitted.Warnings...)
-					if len(nodes) == 0 && len(emitted.Warnings) == 0 {
+					rows = buildPreviewRows(nil, emitted.Nodes)
+					if len(rows) == 0 && len(emitted.Warnings) == 0 {
 						err = fmt.Errorf("%s", locale.T("node has no body — set a URI or JSON"))
 					}
 				}
@@ -1021,36 +1129,57 @@ func showSourceEditWindow(
 					previewListHost.Refresh()
 					return
 				}
+				unsupportedCount := previewRowsUnsupported(rows)
 				if err != nil {
 					previewStatus.SetText(locale.Tf("Local outbounds: %d · Servers: load failed — %s", 0, err.Error()))
+				} else if unsupportedCount > 0 {
+					// Отбракованные записи названы отдельным слагаемым: они
+					// часть состава, но не серверы, и сложить их в одно число
+					// значило бы соврать про то, что уедет в конфиг.
+					previewStatus.SetText(locale.Tf("%d server(s) from %d source(s)",
+						previewRowsSupported(rows), 1) +
+						locale.Tf(" + %d unsupported", unsupportedCount))
 				} else {
-					previewStatus.SetText(locale.Tf("%d server(s) from %d source(s)", len(nodes), 1))
+					previewStatus.SetText(locale.Tf("%d server(s) from %d source(s)", previewRowsSupported(rows), 1))
 				}
-				// SPEC 115: причины отбраковки — под счётчиком, ДО списка.
-				// Строка «0 server(s) from 1 source(s)» отвечает на вопрос
-				// «сколько», а пользователю нужен ответ «почему»; без него
-				// вкладка Preview у протухшей подписки была тупиком.
-				reasonsBlock := previewParseReasonsBlock(parseReasons)
+				// Сообщение провайдера — под счётчиком, ДО списка: чужой текст,
+				// показанный как данные (блок причин отбраковки здесь
+				// упразднён — SPEC 116 W11).
+				announceBlock := previewAnnounceBlock(announce)
 				if err == nil {
-					if len(nodes) == 0 {
+					if len(rows) == 0 {
 						lbl := widget.NewLabel(locale.T("No servers found."))
 						lbl.Importance = widget.LowImportance
 						// Spacer below pushes label to top instead of centering blank space.
 						items := []fyne.CanvasObject{lbl}
-						if reasonsBlock != nil {
-							items = append(items, reasonsBlock)
+						if announceBlock != nil {
+							items = append(items, announceBlock)
 						}
 						items = append(items, layout.NewSpacer())
 						previewListHost.Add(container.NewVBox(items...))
 					} else {
-						nn := nodes
+						nn := rows
 						// SPEC 094 D4: у каждой ноды переключатель «включена».
 						// Отметка живёт по идентичности узла — сырому тегу
 						// источника (SPEC 112), поэтому переживает смену
 						// сервера под тем же именем и правку tag_prefix.
 						identities := make([]string, len(nn))
-						for i, n := range nn {
-							identities[i] = config.NodeIdentity(n)
+						for i := range nn {
+							identities[i] = nn[i].RawTag
+						}
+						// SPEC 116 W5 (П5): порядок узлов таскается ВНУТРИ
+						// контейнера — и только у папки. Порядок узлов подписки
+						// задаёт тело провайдера (merge кладёт свежие в порядке
+						// тела), и перестановка потерялась бы на первом же
+						// обновлении. Границу контейнера drag не пересекает по
+						// построению: группа перетаскивания живёт внутри одного
+						// списка и знает только его слоты.
+						var dragGroup *fynewidget.DragReorderGroup
+						if nodeOps.reorderAllowed() {
+							dragGroup = fynewidget.NewDragReorderGroup(func(from, to int) {
+								nodeOps.applyReorder(identities, from, to)
+							})
+							dragGroup.Total = len(nn)
 						}
 						// widget.List сам виртуализирует scroll — не оборачиваем в
 						// NewScroll/NewVScroll (двойной scroll + ограничивающий
@@ -1076,7 +1205,21 @@ func showSourceEditWindow(
 
 								titleBox := container.New(
 									previewTightVBox{gap: previewTitleSubtitleGap}, name, sub)
-								row := container.NewBorder(nil, nil, check, nil, titleBox)
+								// Ведущий кластер — ВСЕГДА HBox, даже когда
+								// захвата нет: иначе разбор строки в updateItem
+								// зависел бы от вида контейнера, а это ровно та
+								// развилка «не server ⇒ подписка», от которой уже
+								// пришлось лечить окно (Д3). Без захвата на его
+								// месте стоит распорка той же ширины — колонка
+								// чекбоксов не съезжает между видами.
+								var grip fyne.CanvasObject
+								if dragGroup != nil {
+									grip = fynewidget.NewDragHandle(dragGroup, 0, nil)
+								} else {
+									grip = fynewidget.NewDragHandleSpacer()
+								}
+								lead := container.NewHBox(grip, check)
+								row := container.NewBorder(nil, nil, lead, nil, titleBox)
 
 								// Правый клик по строке — контекстное меню с
 								// «Info»: разобранные поля и JSON, который
@@ -1089,9 +1232,22 @@ func showSourceEditWindow(
 								if !ok {
 									return
 								}
-								node := nn[id]
+								pr := nn[id]
+								// SPEC 116 W5: меню получает СЫРОЙ тег
+								// отдельным параметром — node.Tag финальный
+								// (прошёл политику папки и уникализацию), а
+								// операции адресуют узел его идентичностью.
+								rawTag := identities[id]
+								// SPEC 116 W11: полный текст причины — тултипом
+								// по наведению. В подстроке он не помещается, а
+								// причины длинные по построению («empty user id
+								// — the server returned a placeholder…»).
+								wrap.SetToolTip(previewRowToolTip(pr))
+								wrap.OnPrimary = func(fyne.KeyModifier) {
+									showPreviewRowInfoWindow(pr)
+								}
 								wrap.OnSecondary = func(pe *fyne.PointEvent) {
-									showPreviewNodeContextMenu(win, node, pe)
+									showPreviewRowContextMenu(win, pr, rawTag, nodeOps, pe)
 								}
 
 								row, ok := wrap.Content.(*fyne.Container)
@@ -1099,7 +1255,20 @@ func showSourceEditWindow(
 									return
 								}
 								titleBox, _ := row.Objects[0].(*fyne.Container)
-								check, _ := row.Objects[1].(*widget.Check)
+								lead, _ := row.Objects[1].(*fyne.Container)
+								if lead == nil || len(lead.Objects) < 2 {
+									return
+								}
+								// Строка списка ПЕРЕИСПОЛЬЗУЕТСЯ: и захват, и
+								// регистрация геометрии обязаны перепривязаться к
+								// текущему слоту, иначе два индекса заявят одну
+								// полосу экрана и бросок уйдёт в чужое место
+								// (см. RegisterRecycled).
+								if h, isHandle := lead.Objects[0].(*fynewidget.DragHandle); isHandle && dragGroup != nil {
+									h.SetIndex(id)
+									dragGroup.RegisterRecycled(id, wrap)
+								}
+								check, _ := lead.Objects[1].(*widget.Check)
 								if titleBox == nil || check == nil || len(titleBox.Objects) < 2 {
 									return
 								}
@@ -1109,15 +1278,33 @@ func showSourceEditWindow(
 									return
 								}
 
-								name.Text = nodeDisplayLine(nn[id])
+								name.Text = previewRowTitle(pr)
 								name.Color = theme.Color(theme.ColorNameForeground)
 								name.Refresh()
 
-								sub.Text = previewNodeSubtitle(nn[id])
-								sub.Color = theme.Color(theme.ColorNamePlaceHolder)
+								sub.Text = previewRowSubtitle(pr)
+								if pr.Unsupported {
+									// Причина — там же, где у остальных строк
+									// «протокол·транспорт·security»: подстрока
+									// строки отвечает на «что это», и у
+									// неразобранной записи ответ ровно такой.
+									sub.Color = theme.Color(theme.ColorNameWarning)
+								} else {
+									sub.Color = theme.Color(theme.ColorNamePlaceHolder)
+								}
 								sub.Refresh()
 
 								identity := identities[id]
+								if pr.Unsupported {
+									// Неразобранная запись включению не подлежит
+									// (собирать из неё нечего): чекбокс пустой и
+									// задизейблен — обещать включение, которого
+									// модель не допускает, нельзя.
+									check.OnChanged = nil
+									check.SetChecked(false)
+									check.Disable()
+									return
+								}
 								// Узел без идентичности выключать нельзя:
 								// отметку не к чему привязать, и она поехала бы
 								// на соседа при следующем обновлении.
@@ -1139,11 +1326,11 @@ func showSourceEditWindow(
 								}
 							},
 						)
-						// Частичная отбраковка: узлы есть, но часть элементов
-						// отвергнута. Причины идут НАД списком — иначе их не
-						// видно у подписки на две сотни серверов.
-						if reasonsBlock != nil {
-							previewListHost.Add(container.NewBorder(reasonsBlock, nil, nil, nil, srvList))
+						// Сообщение провайдера — НАД списком, одной строкой:
+						// список причин здесь упразднён (SPEC 116 W11), их
+						// место — в самих строках.
+						if announceBlock != nil {
+							previewListHost.Add(container.NewBorder(announceBlock, nil, nil, nil, srvList))
 						} else {
 							previewListHost.Add(srvList)
 						}
@@ -1153,6 +1340,9 @@ func showSourceEditWindow(
 			})
 		}()
 	}
+	// Замыкание существует только теперь — операции над узлом обязаны
+	// перерисовать список после немедленной мутации модели.
+	nodeOps.refreshPreview = refreshPreviewTab
 
 	// JSON tab — как источник распакуется в sing-box (та же точка эмиссии,
 	// что у реальной сборки: config.EmitNodeJSONs). Снапшот записи хранилища,
@@ -1265,9 +1455,22 @@ func showSourceEditWindow(
 		// Разбор, проверка и материализация — в applyServerBodyJSON: одна
 		// точка на весь путь «текст → тело», и ошибка в ней означает ОТКАТ
 		// (узел остаётся прежним), а не полупринятую правку.
+		//
+		// SPEC 116 W5 (Д5, критерий A4): правка тела — «ручной чих» по копии
+		// узла подписки, и она разыменовывает узел. Признак снимается ДО
+		// материализации: та пересаживает Origin целиком, и после неё узнать,
+		// была ли связь, уже негде.
+		hadSubURL := scratch.Origin != nil && scratch.Origin.SubURL != ""
 		if err := applyServerBodyJSON(&scratch, text); err != nil {
 			dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
 			return
+		}
+		// Разыменование делает ОБЩАЯ точка (business.DereferenceNodeOrigin), а
+		// не «Origin без subUrl» побочкой материализации: правило Д5 обязано
+		// быть выполнено явно, иначе первая же правка материализатора,
+		// научившаяся переносить поля Origin, тихо его отменит.
+		if dereferenceEditedSourceNode(&scratch) || hadSubURL {
+			notifyNodeDereferenced(win, scratch.NodeTagOrLabel())
 		}
 		doRefreshJSONTab()
 	})
@@ -1285,10 +1488,17 @@ func showSourceEditWindow(
 				if !ok {
 					return
 				}
+				// SPEC 116 W5 (Д5, критерий A4): Regen — второй повод
+				// разыменования из тех же правил, что и правка тела.
+				hadSubURL := scratch.Origin != nil && scratch.Origin.SubURL != ""
 				if err := regenServerBodyFromRaw(&scratch); err != nil {
-					// Откат: тело остаётся прежним, узел не испорчен.
+					// Откат: тело остаётся прежним, узел не испорчен, и
+					// разыменовывать нечего — правки не случилось.
 					dialog.ShowError(errors.New(locale.Tf("URI does not unpack: %s. You can write the outbound JSON by hand and press Apply.", err.Error())), win)
 					return
+				}
+				if dereferenceEditedSourceNode(&scratch) || hadSubURL {
+					notifyNodeDereferenced(win, scratch.NodeTagOrLabel())
 				}
 				rebuildSettingsLayout()
 				doRefreshJSONTab()
@@ -1380,8 +1590,9 @@ func showSourceEditWindow(
 			refreshServerJSONTab()
 			return
 		}
-		// Подписка: тела уже материализованы — рендерим их синхронно и
-		// read-only (SPEC 118 Т8: узлы подписки несвободны).
+		// Контейнер (подписка либо папка): тела уже материализованы —
+		// рендерим их синхронно и read-only (SPEC 118 Т8: узлы подписки
+		// несвободны; правка узлов папки — вкладка Preview, SPEC 116 W5).
 		model := presenter.Model()
 		if model == nil || sourceIndex >= len(model.Sources) {
 			setJSONText("")
@@ -1391,7 +1602,13 @@ func showSourceEditWindow(
 		src := model.Sources[sourceIndex]
 		if len(src.Nodes) == 0 {
 			setJSONText("")
-			jsonStatus.SetText(locale.T("Subscription has not been fetched yet"))
+			// SPEC 116 W4: пустая папка — законное состояние, а не «ещё не
+			// обновляли»: сети за ней нет и обновлять её нечем.
+			if isFolderSource {
+				jsonStatus.SetText(locale.T("This folder has no nodes yet."))
+			} else {
+				jsonStatus.SetText(locale.T("Subscription has not been fetched yet"))
+			}
 			return
 		}
 		emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), sourceIndex, map[string]int{})
@@ -1413,17 +1630,34 @@ func showSourceEditWindow(
 		jsonHintKey = "The chain object exactly as it will reach the config. This is also where rewrite is edited — per-protocol overrides of node options; everything else is easier to change on the Chain tab." // l10n-key
 	case isServerSource:
 		jsonHintKey = "The sing-box outbound this node is built from — exactly what the build writes to config.json. Edit and press Apply to store it; Regen from raw rebuilds it from the original URI/JSON. Tag and detour are restamped by the launcher at build time." // l10n-key
+	case isFolderSource:
+		// SPEC 116 W4: текст подписки говорил про провайдера и обновление —
+		// у папки нет ни того, ни другого. Read-only вкладка остаётся:
+		// узлы папки правятся поштучно, а не одним текстом (SPEC 116 W5).
+		jsonHintKey = "Read-only: the sing-box outbounds this folder is built from. Edit a node through its own entry on the Preview tab." // l10n-key
 	}
 	jsonHint := widget.NewLabel(locale.T(jsonHintKey))
 	jsonHint.Wrapping = fyne.TextWrapWord
 	jsonGutter := components.NewScrollGutter()
 	jsonScrollWithGutter := container.NewBorder(nil, nil, nil, jsonGutter, jsonScroll)
 	var jsonCol *fyne.Container
-	if isServerSource || isChainSource {
+	switch {
+	case isServerSource || isChainSource:
 		jsonButtonsRow := container.NewHBox(jsonApplyBtn, jsonResetBtn, layout.NewSpacer())
 		jsonCol = container.NewVBox(jsonHint, jsonStatus, jsonScrollWithGutter, jsonButtonsRow)
-	} else {
-		jsonCol = container.NewVBox(jsonHint, jsonStatus, jsonScrollWithGutter)
+	default:
+		// SPEC 116 W8 (С6/A6): «взять всю папку → JSON». Кнопка живёт здесь, а
+		// не в «Add nodes…»: там наполнение, тут обратное направление —
+		// выгрузка, и уезжает в буфер ровно то, что показано на этой вкладке
+		// (но БЕЗ обрезки по previewNodeCap — см. folder_copy_json.go).
+		// У подписки кнопки нет: её состав забирается собственным URL.
+		copyBtn := folderCopyJSONButton(isFolderSource, presenter, sourceIndex, win)
+		if copyBtn != nil {
+			jsonCol = container.NewVBox(jsonHint, jsonStatus, jsonScrollWithGutter,
+				container.NewHBox(copyBtn, layout.NewSpacer()))
+		} else {
+			jsonCol = container.NewVBox(jsonHint, jsonStatus, jsonScrollWithGutter)
+		}
 	}
 
 	// SPEC 052 phase 8: Overview-tab включает raw body section (раньше был
@@ -1434,9 +1668,14 @@ func showSourceEditWindow(
 	previewTab := container.NewTabItem(locale.TN(1, "Preview"), previewBox)
 	overviewTab := container.NewTabItem(locale.T("Overview"), overviewContent)
 	jsonTab := container.NewTabItem(locale.T("JSON"), jsonCol)
-	// Вкладка «Группа» — только у подписок и только при включённой свёртке
-	// (как «Автовыбор» у Направления, SPEC 104): показывать настройки того,
-	// чего нет, — значит предлагать настроить выключённое.
+	// Вкладка «Группа» — только у КОНТЕЙНЕРОВ (подписка и папка) и только при
+	// включённой свёртке (как «Автовыбор» у Направления, SPEC 104): показывать
+	// настройки того, чего нет, — значит предлагать настроить выключённое.
+	//
+	// SPEC 116 W4: условие ниже сформулировано вычитанием (`!isServerSource &&
+	// !isChainSource`), поэтому папку оно пропускает само — своей ветки тут не
+	// нужно. Это единственное место окна, где «не узел ⇒ контейнер» верно и
+	// после появления папок.
 	foldTab := container.NewTabItem(locale.T("Group"), container.NewVScroll(foldTabBody.content))
 	var tabs *container.AppTabs
 	if isChainSource && chainTabBody != nil {

@@ -36,12 +36,21 @@ const (
 
 // ShowAddWarpDialog открывает WARP-конфигуратор. onURI получает готовый URI
 // (wireguard:// или masque://) в главном потоке Fyne — обычно applyAddedSources.
-func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func(string)) {
+//
+// owner — окно, которому принадлежит диалог; nil означает главное окно
+// визарда. Параметр появился в SPEC 116 W6: наполнение папки зовёт эту же
+// форму из ОТДЕЛЬНОГО окна источника (app.NewWindow), и диалог, прибитый к
+// главному окну, всплыл бы за спиной у пользователя — он нажал бы «Add WARP»
+// и не увидел ничего.
+func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, owner fyne.Window, onURI func(string)) {
 	guiState := presenter.GUIState()
 	if guiState == nil || guiState.Window == nil || onURI == nil {
 		return
 	}
 	win := guiState.Window
+	if owner != nil {
+		win = owner
+	}
 
 	wg := newWarpWGSection()
 	mq := newWarpMasqueSection()

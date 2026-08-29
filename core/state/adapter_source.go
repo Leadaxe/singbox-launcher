@@ -107,6 +107,17 @@ func (s *Source) canonicalProjection() *configtypes.CanonicalSource {
 		}
 		cs.Nodes = make([]configtypes.CanonicalNode, 0, len(s.Nodes))
 		for i := range s.Nodes {
+			// Неразобранная запись (kind=unsupported) в сборочную форму не
+			// едет ВООБЩЕ — SPEC 116 W11. Пропуск ровно здесь, ДО тег-машины:
+			// пройди она эмиссию хотя бы «выключенным узлом», она съела бы
+			// номер {$num} и слот глобальной уникализации, и у соседей
+			// поменялись бы финальные теги — то есть протухли бы выборы в
+			// кэше ядра и ссылки, адресующие финальный тег. Старый движок
+			// такую запись узлом не считал вовсе, и этот пропуск — ровно то
+			// же поведение.
+			if s.Nodes[i].IsUnsupported() {
+				continue
+			}
 			cs.Nodes = append(cs.Nodes, canonicalNodeProjection(&s.Nodes[i]))
 		}
 		return cs

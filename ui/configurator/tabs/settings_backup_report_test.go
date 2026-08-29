@@ -50,6 +50,26 @@ func TestImportReportTextWithoutWarnings(t *testing.T) {
 	}
 }
 
+// Отчёт ЭКСПОРТА тоже не режет (SPEC 116 W9, критерий A9): успешный файл,
+// молча потерявший папку, запрещён, а папка, оказавшаяся одиннадцатой в
+// списке, при обрезке на десяти строках терялась именно молча.
+func TestExportReportTextKeepsEveryWarning(t *testing.T) {
+	warns := makeWarns(40)
+	text := exportReportText("/tmp/lx-backup.json", warns)
+
+	for _, w := range warns {
+		if !strings.Contains(text, w.Detail) {
+			t.Fatalf("в отчёте экспорта нет предупреждения %q", w.Detail)
+		}
+	}
+	if strings.Contains(text, "… +") {
+		t.Error("отчёт экспорта обрезан, а не должен")
+	}
+	if !strings.Contains(text, "/tmp/lx-backup.json") {
+		t.Errorf("в отчёте нет пути к записанному файлу: %q", text)
+	}
+}
+
 // Превью ДО импорта, наоборот, режет — но отсылает за полным списком в отчёт,
 // иначе «… +N» оставляет пользователя без продолжения.
 func TestWarnLinesTruncatesAndPointsToReport(t *testing.T) {

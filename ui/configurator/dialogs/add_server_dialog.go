@@ -65,12 +65,18 @@ type AddServerResult struct {
 
 // ShowAddServerDialog открывает форму ручного добавления источника. onResult
 // получает результат в главном потоке Fyne.
-func ShowAddServerDialog(presenter *wizardpresentation.WizardPresenter, onResult func(AddServerResult)) {
+//
+// owner — окно, которому принадлежит диалог; nil означает главное окно
+// визарда (см. довод у ShowAddWarpDialog, SPEC 116 W6).
+func ShowAddServerDialog(presenter *wizardpresentation.WizardPresenter, owner fyne.Window, onResult func(AddServerResult)) {
 	guiState := presenter.GUIState()
 	if guiState == nil || guiState.Window == nil || onResult == nil {
 		return
 	}
 	win := guiState.Window
+	if owner != nil {
+		win = owner
+	}
 
 	f := newAddServerForm()
 

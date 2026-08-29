@@ -35,12 +35,12 @@
 package config
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/locale"
 )
 
 // NodeLinkTargets — словарь целей резолва на одну сборку.
@@ -201,17 +201,17 @@ type NodeLinkResolution struct {
 func (t *NodeLinkTargets) Resolve(link configtypes.NodeLink) NodeLinkResolution {
 	tag := strings.TrimSpace(link.Tag)
 	if tag == "" {
-		return NodeLinkResolution{Problem: "ссылка пуста"}
+		return NodeLinkResolution{Problem: locale.T(emitLinkEmptyText)}
 	}
 	if folder := strings.TrimSpace(link.FolderID); folder != "" {
 		byRaw, known := t.byFolder[folder]
 		if !known {
-			return NodeLinkResolution{Problem: "источник ссылки не найден"}
+			return NodeLinkResolution{Problem: locale.T(emitLinkSourceMissingText)}
 		}
 		if n := byRaw[tag]; n != nil {
 			return NodeLinkResolution{Node: n, Tag: n.Tag}
 		}
-		return NodeLinkResolution{Problem: fmt.Sprintf("узла %q в нём нет", tag)}
+		return NodeLinkResolution{Problem: locale.Tf(emitLinkNodeMissingText, tag)}
 	}
 	if n := t.byRootTag[tag]; n != nil {
 		return NodeLinkResolution{Node: n, Tag: n.Tag}
@@ -221,7 +221,7 @@ func (t *NodeLinkTargets) Resolve(link configtypes.NodeLink) NodeLinkResolution 
 		// ссылка законна (§4.E.3).
 		return NodeLinkResolution{Tag: tag}
 	}
-	return NodeLinkResolution{Problem: fmt.Sprintf("цели %q нет среди узлов, Направлений и замен", tag)}
+	return NodeLinkResolution{Problem: locale.Tf(emitLinkTargetUnknownText, tag)}
 }
 
 // ApplyCanonicalNodeLinks — проход 2 для канонических узлов: detour, позиции
@@ -236,11 +236,23 @@ func ApplyCanonicalNodeLinks(
 	nodesBySource map[int][]*ParsedNode,
 	allNodes []*ParsedNode,
 	targets *NodeLinkTargets,
-) ([]*ParsedNode, []string) {
+) ([]*ParsedNode, []EmissionWarning) {
 	if targets == nil {
 		return allNodes, nil
 	}
-	var warnings []string
+	var warnings []EmissionWarning
+	// SPEC 116 W12 фикс 3: адресат берётся у САМОГО узла (SourceIndex), а не
+	// угадывается по тексту причины. Иначе строка Sources не знает, у кого
+	// ставить ⚠, — а именно за этим предупреждение и пишется.
+	addr := func(n *ParsedNode, text string) EmissionWarning {
+		w := EmissionWarning{Text: text}
+		if n != nil && n.SourceIndex != UnsetSourceIndex && n.SourceIndex >= 0 && n.SourceIndex < len(proxies) {
+			ps := proxies[n.SourceIndex]
+			w.SourceID = strings.TrimSpace(ps.ID)
+			w.SourceLabel = sourceDisplayName(ps, n.SourceIndex)
+		}
+		return w
+	}
 
 	// dropped — узлы, выпавшие fail-closed; повторный проход видит их
 	// отсутствие и роняет тех, кто на них ссылался (каскад).
@@ -249,7 +261,9 @@ func ApplyCanonicalNodeLinks(
 	// WireGuard с висячей целью — до фикспойнта и ровно один раз: сама
 	// проверка живёт внутри фикспойнтного цикла и повторила бы warning на
 	// каждом проходе.
-	warnings = append(warnings, warnWireguardDanglingDetours(allNodes, targets)...)
+	for _, wg := range warnWireguardDanglingDetours(allNodes, targets) {
+		warnings = append(warnings, addr(wg.node, wg.text))
+	}
 
 	// Итерация до фикспойнта: каждое выпадение может открыть следующее.
 	// Верхняя граница защитная — каждый содержательный проход что-то
@@ -262,7 +276,7 @@ func ApplyCanonicalNodeLinks(
 			}
 			if reason := resolveCanonicalDetour(n, targets, dropped); reason != "" {
 				dropped[n] = true
-				warnings = append(warnings, reason)
+				warnings = append(warnings, addr(n, reason))
 				debuglog.WarnLog("nodelink: %s", reason)
 				changed = true
 			}
@@ -276,8 +290,8 @@ func ApplyCanonicalNodeLinks(
 	if cycled := detectCanonicalDetourCycles(allNodes, dropped); len(cycled) > 0 {
 		for _, n := range cycled {
 			dropped[n] = true
-			reason := fmt.Sprintf("узел %q исключён: кольцо detour — по цепочке переходов трафик возвращается к нему самому", n.Tag)
-			warnings = append(warnings, reason)
+			reason := locale.Tf(emitDetourCycleText, n.Tag)
+			warnings = append(warnings, addr(n, reason))
 			debuglog.WarnLog("nodelink: %s", reason)
 		}
 	}
@@ -290,12 +304,13 @@ func ApplyCanonicalNodeLinks(
 		if len(n.CanonicalGroupMembers) == 0 && n.CanonicalGroupDefault == "" {
 			continue // импортированная группа мостового пути — её состав уже сведён
 		}
-		ws := resolveCanonicalGroup(n, targets, dropped)
-		warnings = append(warnings, ws...)
+		for _, w := range resolveCanonicalGroup(n, targets, dropped) {
+			warnings = append(warnings, addr(n, w))
+		}
 		if len(groupMemberTags(n)) == 0 {
 			dropped[n] = true
-			reason := fmt.Sprintf("группа %q не эмитируется: не осталось ни одного члена (пустая группа роняет старт ядра)", n.Tag)
-			warnings = append(warnings, reason)
+			reason := locale.Tf(emitGroupEmptyText, n.Tag)
+			warnings = append(warnings, addr(n, reason))
 			debuglog.WarnLog("nodelink: %s", reason)
 		}
 	}
@@ -326,8 +341,8 @@ const wireguardScheme = "wireguard"
 // вещи, ни одна из которых не действует, — переход, который ядро не умеет, и
 // цель, которой в сборке нет. Дешевле сказать, чем оставить гадать, почему
 // трафик идёт не туда.
-func warnWireguardDanglingDetours(allNodes []*ParsedNode, targets *NodeLinkTargets) []string {
-	var warnings []string
+func warnWireguardDanglingDetours(allNodes []*ParsedNode, targets *NodeLinkTargets) []nodeWarning {
+	var warnings []nodeWarning
 	for _, n := range allNodes {
 		if n == nil || n.Scheme != wireguardScheme || n.CanonicalDetour == nil {
 			continue
@@ -336,12 +351,18 @@ func warnWireguardDanglingDetours(allNodes []*ParsedNode, targets *NodeLinkTarge
 		if res.Problem == "" {
 			continue
 		}
-		w := fmt.Sprintf("узел %q (wireguard): detour не применяется к WireGuard, а его цель %q к тому же не разрешилась (%s)",
-			n.Tag, n.CanonicalDetour.Tag, res.Problem)
-		warnings = append(warnings, w)
+		w := locale.Tf(emitWireguardDetourText, n.Tag, n.CanonicalDetour.Tag, res.Problem)
+		warnings = append(warnings, nodeWarning{node: n, text: w})
 		debuglog.WarnLog("nodelink: %s", w)
 	}
 	return warnings
+}
+
+// nodeWarning — фраза и узел, к которому она относится: адресата ставит
+// вызывающий, у которого на руках список источников.
+type nodeWarning struct {
+	node *ParsedNode
+	text string
 }
 
 // resolveCanonicalDetour штампует detour узлу. Возвращает непустую причину,
@@ -360,14 +381,13 @@ func resolveCanonicalDetour(n *ParsedNode, targets *NodeLinkTargets, dropped map
 	}
 	res := targets.Resolve(*n.CanonicalDetour)
 	if res.Problem != "" {
-		return fmt.Sprintf("узел %q исключён: цель detour не разрешилась (%s) — переход настроен ради анонимности и не имеет права стать прямым дозвоном",
-			n.Tag, res.Problem)
+		return locale.Tf(emitDetourUnresolvedText, n.Tag, res.Problem)
 	}
 	if res.Node != nil && dropped[res.Node] {
-		return fmt.Sprintf("узел %q исключён: узел-цель detour %q сам выпал из конфига", n.Tag, res.Tag)
+		return locale.Tf(emitDetourTargetDroppedText, n.Tag, res.Tag)
 	}
 	if res.Tag == n.Tag {
-		return fmt.Sprintf("узел %q исключён: detour указывает на него самого", n.Tag)
+		return locale.Tf(emitDetourSelfText, n.Tag)
 	}
 	if n.Outbound == nil {
 		n.Outbound = map[string]interface{}{}
@@ -461,9 +481,9 @@ func resolveCanonicalGroup(n *ParsedNode, targets *NodeLinkTargets, dropped map[
 		if res.Problem != "" || (res.Node != nil && dropped[res.Node]) {
 			why := res.Problem
 			if why == "" {
-				why = "узел выпал из конфига"
+				why = locale.T(emitMemberDroppedReasonText)
 			}
-			w := fmt.Sprintf("группа %q: член %q выпал из состава (%s)", n.Tag, link.Tag, why)
+			w := locale.Tf(emitGroupMemberLostText, n.Tag, link.Tag, why)
 			warnings = append(warnings, w)
 			debuglog.WarnLog("nodelink: %s", w)
 			continue
@@ -495,7 +515,7 @@ func resolveCanonicalGroup(n *ParsedNode, targets *NodeLinkTargets, dropped map[
 				return warnings
 			}
 		}
-		w := fmt.Sprintf("группа %q: умолчание %q не входит в состав — ключ снят", n.Tag, def)
+		w := locale.Tf(emitGroupDefaultDroppedText, n.Tag, def)
 		warnings = append(warnings, w)
 		debuglog.WarnLog("nodelink: %s", w)
 	}

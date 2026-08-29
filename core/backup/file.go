@@ -130,7 +130,7 @@ func decodeTolerant(data []byte) (*Backup, []Warning, error) {
 			return nil, nil, err
 		}
 		for _, place := range places {
-			warns = append(warns, Warning{WarnBackupFieldTypeMismatch, place})
+			warns = append(warns, Warning{Code: WarnBackupFieldTypeMismatch, Detail: place})
 		}
 		cur = next
 	}
@@ -490,12 +490,12 @@ func (sc *unknownScan) warnings() []Warning {
 	if len(sc.extensionsAt) > 0 {
 		places := append([]string(nil), sc.extensionsAt...)
 		sort.Strings(places)
-		out = append(out, Warning{WarnBackupExtensionsDropped, strings.Join(places, ", ")})
+		out = append(out, Warning{Code: WarnBackupExtensionsDropped, Detail: strings.Join(places, ", ")})
 	}
 	fields := append([]string(nil), sc.fields...)
 	sort.Strings(fields)
 	for _, name := range fields {
-		out = append(out, Warning{WarnBackupUnknownField, name})
+		out = append(out, Warning{Code: WarnBackupUnknownField, Detail: name})
 	}
 	return out
 }

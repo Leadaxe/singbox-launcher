@@ -18,28 +18,50 @@
 package config
 
 import (
-	"fmt"
 	"sort"
 	"strings"
+
+	"singbox-launcher/internal/locale"
 )
 
 // TagOwnerKind — чей это тег (для внятного сообщения об отказе).
 type TagOwnerKind string
 
+// Значения — АНГЛИЙСКИЕ ключи локали (SPEC 116 W12, фикс 2): владелец
+// подставляется в текст предупреждения и обязан переводиться вместе с ним.
 const (
-	TagOwnerDirection TagOwnerKind = "Направление"
-	TagOwnerTwin      TagOwnerKind = "авто-группа Направления"
-	TagOwnerReplace   TagOwnerKind = "замена папки"
-	TagOwnerNode      TagOwnerKind = "узел"
-	TagOwnerSystem    TagOwnerKind = "системный тег шаблона"
+	TagOwnerDirection TagOwnerKind = "a Direction"
+	TagOwnerTwin      TagOwnerKind = "a Direction auto-group"
+	TagOwnerReplace   TagOwnerKind = "a folder replacement"
+	TagOwnerNode      TagOwnerKind = "a node"
+	TagOwnerSystem    TagOwnerKind = "a template system tag"
 )
+
+// Localized — вид владельца на языке пользователя.
+func (k TagOwnerKind) Localized() string { return locale.T(string(k)) }
 
 // TagGuard — множество занятых тегов с указанием владельца.
 type TagGuard struct {
 	owners map[string]TagOwnerKind
 	// conflicts — теги, на которые претендовали двое; заполняется при
 	// построении и отдаётся вызывающему как отказ сборки.
-	conflicts []string
+	//
+	// Записью, а не строкой (SPEC 116 W12, фикс 3): отчёт обязан знать САМ
+	// ТЕГ, чтобы поставить ⚠ у виновной строки, — из готовой фразы его
+	// пришлось бы выковыривать регуляркой.
+	conflicts []TagConflict
+}
+
+// TagConflict — двое на один тег.
+type TagConflict struct {
+	Tag  string
+	Prev TagOwnerKind
+	Kind TagOwnerKind
+}
+
+// Text — фраза для человека (переведённая).
+func (c TagConflict) Text() string {
+	return locale.Tf(emitTagConflictText, c.Tag, c.Prev.Localized(), c.Kind.Localized())
 }
 
 // NewTagGuard — пустой гард.
@@ -58,7 +80,7 @@ func (g *TagGuard) Claim(tag string, kind TagOwnerKind) {
 		if prev == kind && kind == TagOwnerSystem {
 			return // системные теги приходят из нескольких секций шаблона
 		}
-		g.conflicts = append(g.conflicts, fmt.Sprintf("тег %q занят дважды: %s и %s", tag, prev, kind))
+		g.conflicts = append(g.conflicts, TagConflict{Tag: tag, Prev: prev, Kind: kind})
 		return
 	}
 	g.owners[tag] = kind
@@ -82,11 +104,23 @@ func (g *TagGuard) Owner(tag string) TagOwnerKind {
 }
 
 // Conflicts — все столкновения, найденные при построении.
-func (g *TagGuard) Conflicts() []string {
+func (g *TagGuard) Conflicts() []TagConflict {
 	if g == nil {
 		return nil
 	}
 	return g.conflicts
+}
+
+// ConflictTexts — те же столкновения фразами (лог, тесты, копия отчёта).
+func (g *TagGuard) ConflictTexts() []string {
+	if g == nil || len(g.conflicts) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(g.conflicts))
+	for _, c := range g.conflicts {
+		out = append(out, c.Text())
+	}
+	return out
 }
 
 // Tags — отсортированный список занятых тегов (детерминизм для реестров и
@@ -129,18 +163,50 @@ func BuildTagGuard(directions []Direction, proxies []ProxySource, rootNodeTags [
 			g.Claim(tag, TagOwnerReplace)
 		}
 	}
+	// Твины и родители дедуплицируются по ВЛАДЕЛЬЦУ, а не по тегу.
+	//
+	// Гард строится по СБОРОЧНОЙ форме — то есть уже ПОСЛЕ
+	// `ExpandDirectionTwins`, и в списке лежат обе половины пары: сама
+	// auto-группа отдельной записью (`TwinOf` = тег родителя) и родитель с
+	// `TwinTag`. Наивная формула `d.Tag+twinSuffix` объявляла бы вторым
+	// претендентом на `x-auto` ту же самую сущность, и КАЖДОЕ Направление с
+	// автовыбором давало ложное «тег занят дважды: Направление и
+	// авто-группа Направления».
+	//
+	// Тот же случай — шаблонная отдельно стоящая `x-auto`: `ExpandDirectionTwins`
+	// видит тег занятым, твина НЕ создаёт и оставляет `TwinTag` пустым
+	// (`direction_twins.go:98`). Претендент здесь тоже один.
+	// Тег, за которым в списке УЖЕ стоит своя запись, производной формулой
+	// второй раз не занимается: владелец один и тот же.
+	twinTags := make(map[string]bool, len(directions)*2)
+	for i := range directions {
+		if t := strings.TrimSpace(directions[i].TwinTag); t != "" {
+			twinTags[t] = true
+		}
+		if t := strings.TrimSpace(directions[i].Tag); t != "" {
+			twinTags[t] = true
+		}
+	}
 	for i := range directions {
 		d := directions[i]
-		if d.Tag == "" || d.Disabled {
+		if d.Tag == "" {
 			// Выключенное Направление в конфиг не идёт, но имя за собой
 			// держит: включить обратно оно обязано без коллизии.
-			if d.Tag == "" {
-				continue
-			}
+			continue
+		}
+		if strings.TrimSpace(d.TwinOf) != "" {
+			// Развёрнутая auto-группа: она и есть твин родителя.
+			g.Claim(d.Tag, TagOwnerTwin)
+			continue
 		}
 		g.Claim(d.Tag, TagOwnerDirection)
-		if d.Auto != nil {
-			g.Claim(d.Tag+twinSuffix, TagOwnerTwin)
+		if d.Auto == nil {
+			continue
+		}
+		// Пара уже развёрнута: тег твина занят его собственной записью
+		// (либо шаблонной одноимённой группой) — второй раз не претендуем.
+		if twin := d.Tag + twinSuffix; !twinTags[twin] {
+			g.Claim(twin, TagOwnerTwin)
 		}
 	}
 	return g

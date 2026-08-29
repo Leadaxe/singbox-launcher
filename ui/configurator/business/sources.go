@@ -7,13 +7,11 @@
 package business
 
 import (
-	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
-	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
@@ -30,32 +28,21 @@ import (
 // `Label=fragment` (или fallback `server-N`). Это семантическое отличие
 // от legacy, где все direct-links группировались в один ProxySource{
 // Connections:[...]}; в v5 schema каждый сервер — индивидуальная сущность.
+//
+// SPEC 116 W6: сам РАЗБОР текста живёт в `parseSourceInput`
+// (source_input.go) — он же обслуживает наполнение папки. Здесь остался
+// только адрес назначения: «каждый узел — отдельным Source в корень».
 func AppendURLsToSources(ctx UIUpdater, input string) error {
 	model := ctx.Model()
 	updater := ctx
 	timing := debuglog.StartTiming("appendURLsToSources")
 	defer timing.EndWithDefer()
 
-	if input == "" {
-		return fmt.Errorf("input is empty")
+	parsed, err := parseSourceInput(input, len(model.Sources))
+	if err != nil {
+		return err
 	}
-
-	// Вставленный sing-box JSON разбирается до построчного классификатора:
-	// документ многострочный, и цикл по строкам не нашёл бы в нём ни ссылки.
-	// isJSON отделяет «не JSON» от «битый JSON» — второе обязано дойти до
-	// пользователя ошибкой, а не общим «no valid URLs to add».
-	jsonNodes, isJSON, jsonErr := carveSingboxJSON(input)
-	if jsonErr != nil {
-		return jsonErr
-	}
-
-	var subs, conns []string
-	if !isJSON {
-		subs, conns = classifyInputLines(input, timing)
-	}
-	if len(subs) == 0 && len(conns) == 0 && len(jsonNodes) == 0 {
-		return fmt.Errorf("no valid URLs to add")
-	}
+	subs := parsed.Subscriptions
 
 	// Build URL/URI lookup maps for de-dup.
 	existingURLs := make(map[string]struct{}, len(model.Sources))
@@ -98,61 +85,24 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 		added++
 	}
 
-	for _, uri := range conns {
-		if _, ok := existingURIs[uri]; ok {
-			continue
-		}
-		// Фрагмент ссылки (#имя) — это тег outbound'а: именно под ним узел
-		// уедет в config.json и на него сошлются правила. Подпись остаётся
-		// пустой — показывать её списку нечего сверх тега, пока
-		// пользователь не задал своё имя.
-		tag := extractURIFragment(uri)
-		if tag == "" {
-			tag = fmt.Sprintf("server-%d", startIndex+added)
-		}
-		newSrc := corestate.Source{
-			Node: corestate.Node{Kind: corestate.SourceKindServer, Enabled: true, Tag: tag},
-			ID:   corestate.MakeULID(),
-		}
-		// SPEC 118 Т2: тело узла материализуется СРАЗУ, тем же путём, что у
-		// миграции и fetch. Узел без тела собирать не из чего — держать его
-		// в модели «до первой сборки» значило бы вернуть ленивый разбор.
-		mat, matErr := config.MaterializeServerNode(uri, nil)
-		if matErr != nil {
-			debuglog.WarnLog("AddSources: URI %q не разобран: %v — узел не добавлен", uri, matErr)
-			continue
-		}
-		newSrc.Body = mat.Body
-		newSrc.Origin = &corestate.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw}
-		model.Sources = append(model.Sources, newSrc)
-		existingURIs[uri] = struct{}{}
-		added++
-	}
-
-	// JSON-узлы: каждый outbound — отдельный Source(server) с ConfigJSON и
-	// пустым URI. Дедупа по URI здесь нет — два одинаковых outbound'а это
-	// осознанная вставка, а сравнивать документы побайтово смысла мало.
-	for _, jn := range jsonNodes {
-		// Имя из JSON-узла — это тег outbound'а: под ним узел знают
-		// правила и фильтры Направлений, поэтому оно едет в NodeTag.
-		tag := jn.Label
-		if tag == "" {
-			tag = fmt.Sprintf("server-%d", startIndex+added)
-		}
-		mat, matErr := config.MaterializeServerNode("", jn.ConfigJSON)
-		if matErr != nil {
-			debuglog.WarnLog("AddSources: JSON-узел %q не разобран: %v — узел не добавлен", tag, matErr)
-			continue
+	// Узлы (share-URI, wg-INI, вставленный sing-box JSON) — каждый отдельным
+	// Source(server) в корень. Разбор уже сделан ядром: здесь только дедуп по
+	// исходному URI и упаковка в Source.
+	//
+	// Дедупа для JSON-узлов нет (у них `URIOf == ""`): два одинаковых
+	// outbound'а — осознанная вставка, а сравнивать документы побайтово
+	// смысла мало.
+	for i := range parsed.Nodes {
+		uri := parsed.URIOf[i]
+		if uri != "" {
+			if _, ok := existingURIs[uri]; ok {
+				continue
+			}
+			existingURIs[uri] = struct{}{}
 		}
 		model.Sources = append(model.Sources, corestate.Source{
-			Node: corestate.Node{
-				Kind:    corestate.SourceKindServer,
-				Enabled: true,
-				Tag:     tag,
-				Body:    mat.Body,
-				Origin:  &corestate.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw},
-			},
-			ID: corestate.MakeULID(),
+			Node: parsed.Nodes[i],
+			ID:   corestate.MakeULID(),
 		})
 		added++
 	}
@@ -187,6 +137,32 @@ func NextChainLabel(sources []corestate.Source) string {
 	}
 	for i := 1; ; i++ {
 		name := "chain-" + strconv.Itoa(i)
+		if !used[name] {
+			return name
+		}
+	}
+}
+
+// NextFolderName — свободное ИМЯ для новой папки (SPEC 116 этап 3, W3).
+//
+// В отличие от цепочки (NextChainLabel) это НЕ тег: у папки тега нет, её
+// имя — `Source.Name`, подпись контейнера. На него не ссылаются ни правила,
+// ни фильтры Направлений (узлы папки адресуются своими сырыми тегами через
+// пару «FolderID + тег»), поэтому уникальность здесь — удобство списка, а
+// не требование конфига: две «Folder 1» рядом человек не различит.
+//
+// Занятость считается по именам КОНТЕЙНЕРОВ (папок и подписок): подписка
+// со своим profile_title тоже стоит в этом же списке, и совпадение имён
+// путало бы ровно так же.
+func NextFolderName(sources []corestate.Source) string {
+	used := make(map[string]bool, len(sources))
+	for _, src := range sources {
+		if name := strings.TrimSpace(src.Name); name != "" {
+			used[name] = true
+		}
+	}
+	for i := 1; ; i++ {
+		name := "Folder " + strconv.Itoa(i)
 		if !used[name] {
 			return name
 		}

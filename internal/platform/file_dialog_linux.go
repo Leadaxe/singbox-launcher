@@ -21,6 +21,42 @@ func pickOpenFileNative(prompt string, exts []string) (string, bool, error) {
 	return "", false, ErrNativeDialogUnavailable
 }
 
+// pickOpenFilesNative — те же zenity/kdialog с мультивыбором.
+//
+// Оба инструмента отдают выбранное ОДНОЙ строкой со своим разделителем:
+// zenity — заданным через `--separator`, kdialog — пробелами. Пробел в пути
+// возможен, поэтому zenity просим разделять переводом строки; у kdialog такой
+// опции нет, и мультивыбор его ветки заведомо ломается на путях с пробелами —
+// вместо тихой порчи он остаётся одиночным (лучше один правильный файл, чем
+// три битых пути).
+func pickOpenFilesNative(prompt string, exts []string) ([]string, bool, error) {
+	if _, err := exec.LookPath("zenity"); err == nil {
+		name, args := zenityArgs(prompt, exts)
+		args = append(args, "--multiple", "--separator=\n")
+		out, rerr := exec.Command(name, args...).Output()
+		text := strings.TrimSpace(string(out))
+		if rerr != nil {
+			if _, ok := rerr.(*exec.ExitError); ok && text == "" {
+				return nil, false, nil // cancel
+			}
+			return nil, false, rerr
+		}
+		paths := splitPickedPaths(text)
+		if len(paths) == 0 {
+			return nil, false, nil
+		}
+		return paths, true, nil
+	}
+	if _, err := exec.LookPath("kdialog"); err == nil {
+		path, ok, kerr := runFilePicker(kdialogArgs(prompt, exts))
+		if kerr != nil || !ok {
+			return nil, ok, kerr
+		}
+		return []string{path}, true, nil
+	}
+	return nil, false, ErrNativeDialogUnavailable
+}
+
 func runFilePicker(name string, args []string) (string, bool, error) {
 	out, err := exec.Command(name, args...).Output()
 	path := strings.TrimSpace(string(out))

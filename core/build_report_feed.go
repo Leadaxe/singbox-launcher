@@ -74,11 +74,24 @@ func FeedBuildReportFromParser(gen config.BuildGeneration, res *config.OutboundG
 	// столкновение тегов в гарде). Раньше их место занимали причины разбора;
 	// разбор теперь живёт только в fetch, а сборка отчитывается за то, что
 	// не смогла собрать из уже принятого.
+	//
+	// SPEC 116 W12 (фикс 3): у записи есть АДРЕСАТ. Раньше субъектом стояла
+	// строка "emission", и пользователь, прочитав «узел X исключён», шёл
+	// искать глазами, у какого из сорока источников этот узел живёт — притом
+	// что в момент рождения предупреждения источник был известен точно.
+	// Теперь ULID едет в SourceID, и строка Sources встаёт с ⚠ у виновника —
+	// ровно как у деградаций подписки (fetch_degraded).
 	for _, w := range res.EmissionWarnings {
+		subject := strings.TrimSpace(w.SourceLabel)
+		if subject == "" {
+			subject = strings.TrimSpace(w.DirectionTag)
+		}
 		entries = append(entries, config.BuildReportEntry{
-			Kind:    config.BuildReportEmitDegraded,
-			Subject: "emission",
-			Reason:  w,
+			Kind:        config.BuildReportEmitDegraded,
+			Subject:     subject,
+			SourceID:    w.SourceID,
+			SourceLabel: w.SourceLabel,
+			Reason:      w.Text,
 		})
 	}
 
