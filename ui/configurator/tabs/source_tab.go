@@ -67,9 +67,10 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// (обкатка заход 3), и подпись «что сюда вставлять» осталась только здесь.
 	// Перечень — виды тела из body_classify.go: URI-список, Xray-массив,
 	// sing-box JSON (4 формы), INI wg-quick ([Interface]/[Peer],
-	// BodyKindWGConf) и Amnezia vpn:// — оно и стоит за «…».
+	// BodyKindWGConf — вместе с AWG-полями Jc/Jmin/…/I1-I5) и Amnezia vpn://,
+	// которое и стоит за «…».
 	guiState.SourceURLEntry.SetPlaceHolder(
-		locale.T("Subscription URL, Direct Links, Sing-box/XRay JSON, [INI], ..."))
+		locale.T("Subscription URL, Direct Links, JSON, WG/AWG INI ..."))
 	guiState.SourceURLEntry.Wrapping = fyne.TextWrapOff
 	// No automatic application: URLs are applied only when the user clicks Add.
 	guiState.SourceURLEntry.OnChanged = func(value string) {

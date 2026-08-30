@@ -103,6 +103,8 @@ func xrayNodeFromOutbound(ob map[string]interface{}, label string) (*configtypes
 		return xrayBuildTrojanFromOutbound(ob, label)
 	case "shadowsocks":
 		return xrayBuildShadowsocksFromOutbound(ob, label)
+	case "hysteria":
+		return xrayBuildHysteriaFromOutbound(ob, label)
 	case "hysteria2":
 		return xrayBuildHysteria2FromOutbound(ob, label)
 	default:
