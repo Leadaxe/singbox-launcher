@@ -998,7 +998,16 @@ func showSourceEditWindow(
 	// состояния — состав подписки принадлежит провайдеру, добавлять в неё
 	// руками нечего.
 	previewHeader := folderAddNodesHeader(previewStatusScroll, newFolderAddNodes(nodeOps, win))
-	previewBox := container.NewBorder(previewHeader, nil, nil, previewGutter, previewListHost)
+	// Обкатка заход 3: над списком — «визитка» источника (имя провайдера, его
+	// объявление с переносами строк, кнопка поддержки). Preview открывают,
+	// чтобы посмотреть состав, и всё, чем подписка себя называет, обязано быть
+	// здесь, а не на вкладке Overview, куда не заходят.
+	previewTop := container.NewVBox()
+	if card := sourcePreviewCard(&m.Sources[sourceIndex]); card != nil {
+		previewTop.Add(card)
+	}
+	previewTop.Add(previewHeader)
+	previewBox := container.NewBorder(previewTop, nil, nil, previewGutter, previewListHost)
 
 	previewRefreshSeq := 0
 	// fetchInProgress: предохранитель от двойного клика "Fetch now" пока
@@ -1692,7 +1701,11 @@ func showSourceEditWindow(
 			container.NewVScroll(chainTabBody.built))
 		tabs = container.NewAppTabs(chainTab, jsonTab)
 	} else {
-		tabs = container.NewAppTabs(settingsTab, previewTab, overviewTab, jsonTab)
+		// Обкатка заход 3: Preview — ПЕРВАЯ вкладка. К источнику приходят
+		// смотреть его состав; Settings открывают, когда что-то правят, а это
+		// заметно реже. Заодно снимается ленивость показа: первая вкладка
+		// активна на открытии и рисуется сразу.
+		tabs = container.NewAppTabs(previewTab, settingsTab, overviewTab, jsonTab)
 	}
 	syncFoldTabVisible = func() {
 		p := srcRef()
@@ -1706,9 +1719,22 @@ func showSourceEditWindow(
 		}
 		switch {
 		case show && !hasTab:
-			// Сразу после Settings: расклад — продолжение галки, а не
-			// довесок в конец за JSON.
-			tabs.Items = append([]*container.TabItem{settingsTab, foldTab}, tabs.Items[1:]...)
+			// Сразу ПОСЛЕ Settings: расклад — продолжение галки, а не
+			// довесок в конец за JSON. Позиция ищется по самому Settings, а
+			// не по индексу: с заходом 3 Preview стоит первой, и жёсткая
+			// «единица» вставила бы «Группу» между Preview и Settings.
+			at := len(tabs.Items)
+			for i, ti := range tabs.Items {
+				if ti == settingsTab {
+					at = i + 1
+					break
+				}
+			}
+			items := make([]*container.TabItem, 0, len(tabs.Items)+1)
+			items = append(items, tabs.Items[:at]...)
+			items = append(items, foldTab)
+			items = append(items, tabs.Items[at:]...)
+			tabs.Items = items
 			tabs.Refresh()
 		case !show && hasTab:
 			tabs.Remove(foldTab)
@@ -1735,6 +1761,12 @@ func showSourceEditWindow(
 		case jsonTab:
 			refreshJSONTab()
 		}
+	}
+	// Стартовая вкладка OnSelected НЕ поднимает (Fyne зовёт его только на
+	// смену), а с заходом 3 первой стоит Preview — без явного вызова окно
+	// открывалось бы на вечном «Loading…».
+	if tabs.Selected() == previewTab {
+		refreshPreviewTab()
 	}
 
 	cancelBtn := widget.NewButton(locale.T("Cancel"), func() {
