@@ -40,6 +40,21 @@ type SingboxImportResult struct {
 	// т.п.): SPEC 118 Т3 требует «не молча» — fetch персистит их в
 	// updateStatus, лог сам по себе пользователя не достигает.
 	Warnings []string
+	// rejected — записи, которые узлом не стали, с их местом в Nodes
+	// (SPEC 116 W11). Не экспортируется: единственный читатель — чистый парсер
+	// тела в этом же пакете, а `UnsupportedTypes` выше отвечает на другой
+	// вопрос («какие типы мы не умеем») и записей поштучно не хранит.
+	rejected jsonRejectSink
+}
+
+// RejectedRecords — неразобранные записи импорта в порядке появления
+// (SPEC 116 W11): каждая обязана материализоваться узлом kind=unsupported на
+// своей позиции. Возвращается парой (позиция в Nodes, причина, исходник).
+func (r *SingboxImportResult) RejectedRecords() []jsonRejectedRecord {
+	if r == nil {
+		return nil
+	}
+	return r.rejected.list()
 }
 
 // ParseSingboxBody разбирает тело подписки, классифицированное как sing-box JSON.
@@ -174,6 +189,10 @@ func parseSingboxConfig(
 	for entryIdx, entry := range entries {
 		entryType := strings.ToLower(strings.TrimSpace(mapString(entry, "type")))
 		if entryType == "" {
+			// Запись без типа — тоже неразобранная запись, а не пустое место
+			// (W11): собрать из неё нечего, но провайдер её прислал.
+			result.rejected.add(len(result.Nodes),
+				"outbound rejected: missing type", marshalRawJSONElement(entry))
 			continue
 		}
 		if IsSingboxServiceType(entryType) {
@@ -194,9 +213,14 @@ func parseSingboxConfig(
 		node, err := parseSingboxEntry(entry, cfgIdx, entryIdx)
 		if err != nil {
 			// A6: гранулярность узла — соседи и остальная подписка живут.
+			// W11: и не молчаливая пропажа — запись остаётся в составе узлом
+			// kind=unsupported на своей позиции, со своим исходником.
 			debuglog.WarnLog("Parser: singbox import: config %d entry %d (%s): %v",
 				cfgIdx, entryIdx, entryType, err)
 			unsupported[entryType] = struct{}{}
+			result.rejected.add(len(result.Nodes),
+				fmt.Sprintf("%s outbound rejected: %v", entryType, err),
+				marshalRawJSONElement(entry))
 			continue
 		}
 

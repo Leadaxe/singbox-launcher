@@ -74,6 +74,11 @@ func ApplyFetchSnapshot(m *wizardmodels.WizardModel, snapshot *corestate.Source,
 // merge подписки сам сохраняет их у совпавших узлов, а окно источника
 // применяет свои тумблеры поверх живой записи журналом правок
 // (mergeEditedSourceIntoModel) — второго хозяина у поля нет и здесь.
+//
+// SPEC 116 W13: этот же список переносится в ДИСКОВУЮ запись —
+// core.persistFetchResultForSource. Списки обязаны совпадать: у них один
+// смысл («что принадлежит fetch'у»), и разойдясь, они дадут разное состояние
+// в памяти и в state.json. Новое поле результата fetch'а — в оба места.
 func applyFetchResultFields(live *corestate.Source, snapshot *corestate.Source) {
 	live.Nodes = snapshot.Nodes
 	live.UpdateStatus = snapshot.UpdateStatus

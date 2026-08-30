@@ -85,11 +85,37 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// Keep help button compact (single-symbol width) and pinned to the right.
 	helpButtonCompact := container.NewGridWrap(fyne.NewSize(24, 24), wireguardHelpButton)
 	hintRow := container.NewBorder(nil, nil, nil, helpButtonCompact, hintLabel)
+	// SPEC 116 W13 (обкатка Саши): вкладка умеет показывать не только корень,
+	// но и состав ОДНОЙ папки — тем же списком, теми же строками. Состояние
+	// живёт в замыкании вкладки, как и подсветка перехода из «Итога»: это
+	// состояние ЭКРАНА, оно не имеет смысла ни для сборки, ни для сохранения и
+	// не переживает пересоздание вкладки.
+	drill := &folderDrillState{}
+
 	// applyAddedSources runs the shared Add path: parse `text` (URI links /
 	// vpn:// / [Interface]/[Peer] conf) into sources, refresh UI, clear the
 	// field. Used by both the Add button and Add-from-file (SPEC 079).
-	applyAddedSources := func(text string) {
+	//
+	// SPEC 116 W13: в режиме папки тот же текст едет НЕ в корень, а в открытую
+	// папку — путь наполнения W6 (business.AppendNodesToFolder → тот же
+	// parseSourceInput). Второго разбора здесь нет и быть не может (дыра Д6).
+	// applyAddedSourcesNamed — тот же путь, но с именем для БЕЗЫМЯННЫХ узлов
+	// (имя файла у импорта). В корне имя ставит RelabelLastSources, в папке —
+	// ядро наполнения; здесь только развилка адреса.
+	var applyAddedSourcesNamed func(text, defaultTag string)
+	applyAddedSources := func(text string) { applyAddedSourcesNamed(text, "") }
+	applyAddedSourcesNamed = func(text, defaultTag string) {
 		presenter.MergeGUIToModel()
+		if drill.active() {
+			if !applyAddedSourcesToFolderNamed(
+				presenter, guiState, drill.folderID, text, defaultTag) {
+				return
+			}
+			guiState.SourceURLsProgrammatic = true
+			guiState.SourceURLEntry.SetText("")
+			guiState.SourceURLsProgrammatic = false
+			return
+		}
 		if err := wizardbusiness.AppendURLsToSources(presenter, strings.TrimSpace(text)); err != nil {
 			debuglog.ErrorLog("source_tab: Add error: %v", err)
 			return
@@ -129,7 +155,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				return
 			}
 			if text != "" {
-				applyAddedSources(text)
+				applyAddedSourcesNamed(text, wizardbusiness.TagFromFileName(rc.URI().Name()))
 			}
 		}, guiState.Window)
 		fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".conf", ".vpn", ".txt"}))
@@ -165,7 +191,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 			return
 		}
 		if text != "" {
-			applyAddedSources(text)
+			applyAddedSourcesNamed(text, wizardbusiness.TagFromFileName(path))
 		}
 	}
 
@@ -190,6 +216,19 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	addServerAction := func() {
 		wizarddialogs.ShowAddServerDialog(presenter, nil, func(res wizarddialogs.AddServerResult) {
 			presenter.MergeGUIToModel()
+			// SPEC 116 W13: в режиме папки оба исхода формы едут в ПАПКУ, и
+			// оба одним путём — ядром разбора (carveSingboxJSON узнаёт
+			// одиночный outbound и кладёт его тело побайтово). Ровно так же
+			// поступает та же форма в окне папки (folder_add_nodes.go:addServer).
+			if drill.active() {
+				text := strings.TrimSpace(res.Text)
+				if len(res.ConfigJSON) > 0 {
+					text = string(res.ConfigJSON)
+				}
+				applyAddedSourcesToFolderNamed(
+					presenter, guiState, drill.folderID, text, strings.TrimSpace(res.Label))
+				return
+			}
 			before := len(presenter.Model().Sources)
 
 			if len(res.ConfigJSON) > 0 {
@@ -287,17 +326,35 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// menu (same pattern as ui/traffic/toolbar.go) so the header stays clean.
 	var overflowBtn *widget.Button
 	overflowBtn = widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
-		menu := fyne.NewMenu("",
-			// SPEC 116 §O6: «Add folder» первым пунктом — папка это
-			// контейнер, в который потом кладут всё остальное из этого же
-			// меню; порядок читается как «сначала куда, потом что».
-			fyne.NewMenuItem(locale.T("Add folder"), addFolderAction),
-			fyne.NewMenuItem(locale.T("Add server"), addServerAction),
-			fyne.NewMenuItem(locale.T("Add hop chain"), addChainAction),
-			fyne.NewMenuItem(locale.T("Add WARP"), addWarpAction),
-			fyne.NewMenuItem(locale.T("Add from file"), addFromFileAction),
-			fyne.NewMenuItem(locale.T("Free community servers"), getFreeVPNAction),
-		)
+		var items []*fyne.MenuItem
+		if drill.active() {
+			// SPEC 116 W13, режим папки: остаются ровно те пункты, чей
+			// результат — УЗЕЛ, и они кладут его в открытую папку (тот же
+			// состав, что у «Add nodes…» в окне папки). «Add folder» и «Add
+			// hop chain» создают КОНТЕЙНЕР и Source корня: показывать их,
+			// глядя внутрь папки, значило бы предложить действие, результат
+			// которого пользователь тут же не увидит (вложенных папок нет —
+			// features/sources.md). «Free community servers» подставляет
+			// подписочный URL, а подписка в папку не кладётся.
+			items = []*fyne.MenuItem{
+				fyne.NewMenuItem(locale.T("Add server"), addServerAction),
+				fyne.NewMenuItem(locale.T("Add WARP"), addWarpAction),
+				fyne.NewMenuItem(locale.T("Add from file"), addFromFileAction),
+			}
+		} else {
+			items = []*fyne.MenuItem{
+				// SPEC 116 §O6: «Add folder» первым пунктом — папка это
+				// контейнер, в который потом кладут всё остальное из этого же
+				// меню; порядок читается как «сначала куда, потом что».
+				fyne.NewMenuItem(locale.T("Add folder"), addFolderAction),
+				fyne.NewMenuItem(locale.T("Add server"), addServerAction),
+				fyne.NewMenuItem(locale.T("Add hop chain"), addChainAction),
+				fyne.NewMenuItem(locale.T("Add WARP"), addWarpAction),
+				fyne.NewMenuItem(locale.T("Add from file"), addFromFileAction),
+				fyne.NewMenuItem(locale.T("Free community servers"), getFreeVPNAction),
+			}
+		}
+		menu := fyne.NewMenu("", items...)
 		pop := widget.NewPopUpMenu(menu, guiState.Window.Canvas())
 		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(overflowBtn)
 		pop.ShowAtPosition(fyne.NewPos(pos.X, pos.Y+overflowBtn.MinSize().Height))
@@ -330,6 +387,13 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 
 	sourcesBox := container.NewVBox()
 
+	// Объявлена здесь, а не рядом со своей шапкой: пересборка списка гасит её
+	// в режиме папки (SPEC 116 W13), а замыкание не может сослаться на
+	// переменную, объявленную ниже.
+	previewAllBtn := widget.NewButton(locale.T("Preview all servers…"), func() {
+		showSourcePreviewAllWindow(presenter)
+	})
+
 	// SPEC 115 §3: какой источник подсвечен переходом из отчёта «Итога» и
 	// какая строка его несёт. Живут в замыкании вкладки, а не в модели:
 	// подсветка — состояние ЭТОГО экрана, оно не переживает пересоздание
@@ -342,7 +406,19 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// model.Sources; на конфиг он не влияет (узлы собираются из всех
 	// включённых подписок), но определяет вид списка и нумерацию
 	// префиксов по умолчанию.
+	// SPEC 116 W13: в режиме папки ТОТ ЖЕ захват переставляет узлы ВНУТРИ
+	// папки (механика W5 — previewNodeOps.applyReorder), а не источники.
+	// Второй группы перетаскивания не заводим: список один, и две группы на
+	// один VBox спорили бы за полосы строк. Порядок m.Sources режим не трогает
+	// вовсе — выход возвращает корень ровно таким, каким он был.
+	var folderDrillReorder func(from, to int)
 	dragGroup := fynewidget.NewDragReorderGroup(func(from, to int) {
+		if drill.active() {
+			if folderDrillReorder != nil {
+				folderDrillReorder(from, to)
+			}
+			return
+		}
 		m := presenter.Model()
 		if m == nil || from < 0 || from >= len(m.Sources) || to < 0 || to >= len(m.Sources) || from == to {
 			return
@@ -360,7 +436,17 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		applySourceMutation(presenter, guiState)
 	})
 
-	refreshSourcesList := func() {
+	// Пересборка списка зовётся изнутри самой себя (строка папки и строка
+	// возврата переключают режим и тут же перерисовываются), поэтому имя
+	// объявлено вперёд: замыкание не может сослаться на переменную, которой
+	// ещё нет.
+	var refreshSourcesList func()
+	refreshSourcesListRef := func() {
+		if refreshSourcesList != nil {
+			refreshSourcesList()
+		}
+	}
+	refreshSourcesList = func() {
 		sourcesBox.Objects = sourcesBox.Objects[:0]
 		// Ссылка на подсвеченную строку живёт ровно один набор строк:
 		// пересборка списка делает прежний виджет мусором, и прокрутка к
@@ -372,6 +458,27 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		// «не срабатывало», а полоса могла разрешиться в чужой индекс.
 		dragGroup.Reset()
 		m := presenter.Model()
+		// SPEC 116 W13 — режим папки: ТОТ ЖЕ список показывает состав одной
+		// папки. Ветка стоит до всего остального, потому что в этом режиме
+		// строк источников нет вовсе, а не «есть, но других».
+		if drill.active() {
+			name, ok := renderFolderDrillRows(presenter, guiState, drill, dragGroup, sourcesBox,
+				&folderDrillReorder, refreshSourcesListRef)
+			if ok {
+				// Шапка и подсказка — те же виджеты, у них меняется только
+				// текст: «не меняя интерфейса» значит именно это. Кнопка
+				// «Preview all servers…» гаснет — она про ВСЕ источники сразу,
+				// и внутри одной папки обещала бы не то, что покажет.
+				applyFolderDrillChrome(sourcesLabel, hintLabel, previewAllBtn, name)
+				sourcesBox.Refresh()
+				return
+			}
+			// Папки не стало, пока на неё смотрели, — молча возвращаемся в
+			// корень: показывать состав того, чего нет, не из чего.
+			drill.leave()
+			folderDrillReorder = nil
+		}
+		applyFolderDrillChrome(sourcesLabel, hintLabel, previewAllBtn, "")
 		if len(m.Sources) == 0 {
 			emptyGutter := components.NewScrollGutter()
 			sourcesBox.Add(container.NewHBox(widget.NewLabel(locale.T("No sources defined in ParserConfig.")), layout.NewSpacer(), emptyGutter))
@@ -535,12 +642,22 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					tagPostfix = src.TagPolicy.Postfix
 				}
 
-				tooltipLines := []string{
-					fmt.Sprintf("URL: %s", fullURL),
-					fmt.Sprintf("tag_prefix: %s", tagPrefix),
-					fmt.Sprintf("tag_postfix: %s", tagPostfix),
+				// W13, обкатка: тултип показывает ТОЛЬКО заполненные поля.
+				// Раньше три строки печатались всегда, и у папки (URL нет,
+				// политики нет) под курсором висело «URL: / tag_prefix: /
+				// tag_postfix:» — три пустых двоеточия вместо подсказки.
+				// Пустой тултип не показывается вовсе: рамка без текста
+				// читается как сбой отрисовки.
+				var tooltipLines []string
+				addTip := func(key, val string) {
+					if strings.TrimSpace(val) != "" {
+						tooltipLines = append(tooltipLines, fmt.Sprintf("%s: %s", key, val))
+					}
 				}
-				if src.Replace != nil {
+				addTip("URL", fullURL)
+				addTip("tag_prefix", tagPrefix)
+				addTip("tag_postfix", tagPostfix)
+				if src.Replace != nil && strings.TrimSpace(src.Replace.Tag) != "" {
 					tooltipLines = append(tooltipLines,
 						fmt.Sprintf("replace: %s (%s)", src.Replace.Tag, src.Replace.Mode))
 				}
@@ -806,17 +923,63 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 						return rowSourceID != "" && rowSourceID == revealedSourceID
 					},
 				})
+				// SPEC 116 W13: правый клик по строке ВЕРХНЕГО узла —
+				// «Move to folder…» / «Copy to folder…». Механика W2 и
+				// диалоги W5 берутся целиком (source_row_node_ops.go), здесь
+				// только точка входа.
+				//
+				// Обёртка снаружи HoverRow, а не внутри: Fyne отдаёт событие
+				// САМОМУ ГЛУБОКОМУ подходящему объекту (FindObjectAtPositionMatching
+				// перезаписывает найденное по мере спуска). Снаружи HoverRow
+				// остаётся глубже и продолжает получать hover сам, а правый
+				// клик достаётся обёртке — она единственная SecondaryTappable
+				// на этой ветке. Внутри обёртка перехватила бы hover и
+				// погасила подсветку строки.
+				var rowOuter fyne.CanvasObject = row
+				if isFolder {
+					// SPEC 116 W13 (требование Саши дословно): «нажать на папку
+					// и в том же окне, не меняя интерфейса, провалиться в
+					// папку». Клик по СТРОКЕ, не по иконкам действий: кнопки
+					// (copy/edit/del) лежат глубже обёртки и получают свой tap
+					// сами — Fyne отдаёт событие самому глубокому подходящему
+					// объекту, и до обёртки оно не доходит.
+					//
+					// Та же обёртка снаружи HoverRow, что у меню верхнего узла:
+					// внутри она перехватила бы hover и погасила подсветку.
+					enterID := sourceID
+					wrap := fynewidget.NewSecondaryTapWrap(row)
+					wrap.OnPrimary = func(fyne.KeyModifier) {
+						if strings.TrimSpace(enterID) == "" {
+							return
+						}
+						drill.enter(enterID)
+						refreshSourcesList()
+					}
+					rowOuter = wrap
+				} else if sourceRowNodeOpsAllowed(src.Kind) {
+					// Адрес узла в корне: у корневого пространства тег-политики
+					// нет, поэтому сырой тег равен финальному.
+					rawTag := src.NodeTagOrLabel()
+					rowIndex := sourceIndex
+					rowKind := src.Kind
+					wrap := fynewidget.NewSecondaryTapWrap(row)
+					wrap.OnSecondary = func(pe *fyne.PointEvent) {
+						showSourceRowNodeContextMenu(
+							presenter, guiState, rowIndex, rowKind, rawTag, pe)
+					}
+					rowOuter = wrap
+				}
 				if rowSourceID != "" && rowSourceID == revealedSourceID {
-					revealedRow = row
+					revealedRow = rowOuter
 				}
 				// Регистрируем КАЖДУЮ строку: вычисление точки вставки
 				// просматривает полосы всех строк, не только перетаскиваемой.
-				dragGroup.Register(sourceIndex, row)
+				dragGroup.Register(sourceIndex, rowOuter)
 				row.WireTooltipLabelHover(sourceLabel)
 				if prefixLabel != nil {
 					row.WireTooltipLabelHover(prefixLabel)
 				}
-				sourcesBox.Add(row)
+				sourcesBox.Add(rowOuter)
 			}(i)
 		}
 
@@ -837,6 +1000,11 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// после: только тогда на руках свежий виджет строки.
 	guiState.RevealSource = func(sourceID string) {
 		revealedSourceID = strings.TrimSpace(sourceID)
+		// Переход из отчёта адресует ИСТОЧНИК, а источники живут в корне:
+		// оставшись внутри папки, список показал бы её состав и молча
+		// проигнорировал переход.
+		drill.leave()
+		folderDrillReorder = nil
 		refreshSourcesList()
 		if revealedRow == nil {
 			// Источник могли удалить между сборкой и кликом по строке
@@ -847,9 +1015,6 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		sourcesScroll.ScrollToOffset(fyne.NewPos(0, rowOffsetInBox(sourcesBox, revealedRow)))
 	}
 
-	previewAllBtn := widget.NewButton(locale.T("Preview all servers…"), func() {
-		showSourcePreviewAllWindow(presenter)
-	})
 	sourcesHeader := container.NewHBox(
 		sourcesLabel,
 		layout.NewSpacer(),
@@ -1233,10 +1398,14 @@ func refreshOneSourceFromUI(
 	for i := range m.Sources {
 		if m.Sources[i].ID == sourceID {
 			snapshot = m.Sources[i]
-			if snapshot.Meta != nil {
-				metaCopy := *snapshot.Meta
-				snapshot.Meta = &metaCopy
-			}
+			// SPEC 116 W13: снимок обязан быть ГЛУБОКИМ по всем полям, которые
+			// горутина читает или переписывает. Прежде копировалась одна Meta,
+			// а Skip/Nodes/PendingDisabled уезжали в горутину общими с моделью
+			// backing-массивами — ровно то, от чего окно источника уже
+			// защищается в triggerOneShotFetch. Два пути одной кнопки не имеют
+			// права расходиться в этом: merge ходит по Nodes и по
+			// PendingDisabled, а UI-поток в это же время рисует список.
+			deepCopySourceForFetch(&snapshot)
 			found = true
 			break
 		}

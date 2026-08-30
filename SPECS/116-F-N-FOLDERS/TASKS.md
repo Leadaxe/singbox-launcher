@@ -391,3 +391,104 @@
       файлам чист
 - [x] `CODEMAP.md` — §1.3 (гард, резолв, новый `emission_warning.go`), §1.4
       (адресат записи, статус, кнопка), §3.3/3.4 (пара ≠ коллизия)
+
+## W13 — Обкатка Саши (30.08.2026, ночь)
+
+- [x] БАГ: ↻ в строке подписки (Liberty) не доносит результат до state —
+      last_success остаётся старым, Unsupported-узлы не материализуются,
+      updateStatus не обновляется. Диагностировать путь кнопки строки
+      (RefreshSingleSubscription vs write-back окна/снапшота), починить,
+      комплексный тест на путь кнопки.
+      → Причина (гипотеза «а»): `RefreshSourceInPlace` был единственным
+      входом fetch'а, который на диск не писал вовсе — результат ↻ жил
+      только в модели визарда, а `state.json` тем временем переписывали
+      целиком другие писатели (heartbeat, VPN-event retry, Update) со своих
+      дисковых копий. Разойтись копиям хватало одного клика: следующая
+      полная запись любой стороны молча выбрасывала результат другой.
+      Подтверждено логом живой машины: 23:41:17 визард загрузил состояние,
+      23:41:37 ↻ разобрал 38 записей, 23:41:44 авто-обновление обновило ту
+      же подписку с ДИСКА, 00:03:10 Save визарда перекрыл файл моделью — в
+      state.json у Liberty остался `last_success_at=21:03:25`.
+      Фикс: `core.persistFetchResultForSource` (закрепление полей fetch'а
+      для ОДНОГО источника под `SubscriptionMu`, без создания записи на
+      cold-start) + общий `deepCopySourceForFetch` на обе точки кнопки.
+      Тест: `ui/configurator/business/row_refresh_writeback_test.go`.
+- [x] Список Sources: правый клик по строке ВЕРХНЕГО узла (server/chain/
+      auto) → Move to folder / Copy to folder (механика W2 есть, нет
+      UI-точки; тем же реестром переписи и диалогами, что в Preview).
+      → `ui/configurator/tabs/source_row_node_ops.go`: точка входа и меню,
+      контекст — тот же `previewNodeOps` (win = главное окно,
+      reloadScratch/refreshPreview = nil), диалог и предупреждения — те же
+      `showMoveOrCopyDialog`/`applyMoveOrCopy`, мутация и реестр переписи —
+      те же `business.MoveNodeToFolder`/`CopyNodeToFolder` (они же
+      перечисляют непереносимые ссылки корня — `rootOnlyRefsToTag`, их
+      называет `showDetourRefsResetDialog`). Встраивание — `source_tab.go`:
+      `NewSecondaryTapWrap` СНАРУЖИ `HoverRow` (Fyne отдаёт событие самому
+      глубокому подходящему объекту; внутри обёртка перехватила бы hover и
+      погасила подсветку строки).
+- [x] Drill-down папки в списке Sources: клик по строке папки → тот же
+      список показывает её содержимое (первая строка «← имя папки» =
+      выход), узлы папки строками с чекбоксами и правым кликом; Add-поле
+      сверху в режиме папки заливает в неё. Без новых виджетов — та же
+      таблица списка.
+      → `ui/configurator/tabs/source_folder_drilldown.go`: режим — состояние
+      ВКЛАДКИ (`folderDrillState`, ULID открытой папки) в том же замыкании,
+      что и подсветка перехода из «Итога»; та же `refreshSourcesList`
+      наполняет тот же `sourcesBox` либо корнем, либо составом папки. Строки
+      — тот же `buildPreviewRows` и та же эмиссия `EmitCanonicalSource`, что
+      на вкладке Preview (иначе список показывал бы не тот состав, из
+      которого собирается конфиг — баг #91); вид строки —
+      `previewRowTitle/Subtitle/ToolTip`. Правый клик — тот же
+      `showPreviewRowContextMenu` с `previewNodeOps` (win = главное окно,
+      reloadScratch/refreshPreview = nil): Move/Copy/Rename/Delete и «Node
+      info…» без вторых диалогов. Галка пишет `Enabled` прямо в модель и
+      зовёт `applySourceMutation` (scratch'а и Save у списка нет). DnD — тот
+      же захват вкладки, в режиме папки уводится на
+      `previewNodeOps.applyReorder` (по СЫРЫМ тегам); `dragGroup.Total` не
+      ставится — строки в VBox, регистрируются все. Add-поле в режиме папки
+      идёт в `business.AppendNodesToFolder` (тот же `parseSourceInput`, W6),
+      имя файла едет `defaultTag`'ом; ⋮-меню оставляет только пункты, чей
+      результат — УЗЕЛ (Add folder / Add hop chain / Free community servers
+      создают Source КОРНЯ и в режиме папки скрыты). Обвязка переключается
+      текстом ТЕХ ЖЕ виджетов (`applyFolderDrillChrome`): заголовок «Sources»
+      ⇄ «Folder: имя», подсказка про узлы папки, «Preview all servers…»
+      гаснет. Выход возвращает корень как был — порядок `m.Sources` режим не
+      трогает вовсе; `RevealSource` из отчёта выходит из режима сам (переход
+      адресует ИСТОЧНИК, а источники живут в корне).
+      Тест: `ui/configurator/tabs/source_folder_drilldown_test.go`.
+- [x] Тултип строки источника: пустые поля (URL:, tag_prefix:,
+      tag_postfix: без значений) не показывать; пустой тултип не
+      показывать вовсе.
+      → `source_tab.go`: строки собираются через `addTip` (печатается только
+      непустое значение), `replace:` — только при непустом теге. Пустой
+      итоговый текст тултипа не показывается сам собой: `SetToolTip("")`
+      гасит его по контракту `ttwidget.ToolTipWidget.MouseIn`.
+- [x] ДЕФЕКТ W11 (найден в W13): JSON-ветки парсера тел отбраковывали
+      записи ВНУТРИ себя, не порождая `RejectedBodyRecord` — на Xray- и
+      sing-box-телах узлы `kind=unsupported` не материализовались вовсе
+      (`fetch_materialize.go:84` строит их только из отбраковок общего
+      потока). Симптом в логе: «Parser: Xray element N: unsupported
+      protocol "hysteria" skipped» — и запись исчезала из состава.
+      → Новый позиционный сток `jsonRejectSink`
+      (`core/config/subscription/json_body_rejects.go`): JSON-ветки
+      отдают наверх КАЖДУЮ неразобранную запись с её местом в
+      возвращаемом списке узлов и каноническим маршалом элемента как
+      `origin.raw`. Отдельный тип, а НЕ `ParseFailureReasons`: тот —
+      компактный список РАЗНЫХ причин с потолком 3, из которого класс
+      «протокол не поддержан» намеренно исключён
+      (`xray_reject_reasons_test.go`); здесь нужна каждая запись поштучно.
+      Позиции пересчитываются `remapRejectsToKeptNodes` после каждого
+      фильтра, который выбрасывает узлы (правило владения §342, резолв
+      состава групп), и переводятся в нумерацию ПРИНЯТЫХ записей
+      проигрыванием (`newJSONRejectFlusher`) — арифметикой нельзя: дедуп
+      по подписи и кап отбрасывают часть узлов уже в `st.accept`.
+      Охвачены ветки: Xray-массив (неподдержанный протокол, битый
+      поддержанный outbound, непригодная цепочка `dialerProxy`),
+      sing-box-импорт (неразобранный тип, запись без `type`). URI-ветка
+      это делала с W11; base64/clash отдельных веток не имеют (base64
+      декодируется в URI-список до разбора, clash-ветки в парсере нет).
+      НЕ становятся unsupported (и не должны): отсечка `skip[]`,
+      служебные протоколы, дедуп-дубли и цели чужого `detour` — это не
+      «не поняли запись», а намеренные стадии разбора.
+      Тест: `core/config/unsupported_node_test.go` →
+      `TestMaterializeXrayBodyKeepsUnsupportedProtocolInPlace`.

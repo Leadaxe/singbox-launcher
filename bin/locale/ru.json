@@ -3743,6 +3743,18 @@
   "Add nodes…": {
     "value": "Добавить узлы…"
   },
+  "Folder": {
+    "value": "Папка"
+  },
+  "Folder: %s": {
+    "value": "Папка: %s"
+  },
+  "Folder is empty — paste links above to add nodes.": {
+    "value": "Папка пуста — вставьте ссылки в поле выше, чтобы добавить узлы."
+  },
+  "Adds nodes to this folder: direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://) or sing-box JSON. One per line. A subscription URL goes to Sources, not into a folder.": {
+    "value": "Добавляет узлы в эту папку: прямые ссылки (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://) либо JSON sing-box. По одной в строке. Ссылка на подписку кладётся в «Источники», а не в папку."
+  },
   "Paste links or JSON…": {
     "value": "Вставить ссылки или JSON…"
   },

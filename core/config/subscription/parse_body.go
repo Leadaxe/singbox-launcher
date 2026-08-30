@@ -176,17 +176,23 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 		for _, w := range importRes.Warnings {
 			st.warn(w)
 		}
-		for _, node := range importRes.Nodes {
+		// Неразобранные записи импорта встают на СВОИ места между принятыми
+		// (SPEC 116 W11): позиции ветка посчитала по своему списку узлов,
+		// здесь они переводятся в нумерацию принятых.
+		flushJSON := newJSONRejectFlusher(st, importRes.RejectedRecords())
+		flushJSON(0)
+		for i, node := range importRes.Nodes {
 			// Исходный тег нужен группам для перепривязки состава на сырые
 			// теги (тот же приём, что applyTagsToSingboxNode → SourceTag).
 			if node != nil && node.SourceTag == "" {
 				node.SourceTag = node.Tag
 			}
 			st.accept(node, OriginKindJSON, marshalNodeOriginJSON(node))
+			flushJSON(i + 1)
 		}
 
 	case bodyKind == BodyKindXrayArray:
-		arrayNodes, xrayReasons, err := ParseNodesFromXrayJSONArrayEx(contentStr, skip)
+		arrayNodes, xrayReasons, xrayRejects, err := parseNodesFromXrayJSONArrayFull(contentStr, skip)
 		for _, r := range xrayReasons {
 			st.warn(r)
 		}
@@ -194,20 +200,28 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 			st.warn(fmt.Sprintf("Xray JSON array body rejected: %v", err))
 			break
 		}
-		for _, node := range arrayNodes {
-			if node == nil {
-				continue
+		// Неразобранные outbound'ы Xray-тела (неподдержанный протокол, битая
+		// цепочка dialerProxy) встают на СВОИ места между принятыми узлами
+		// (SPEC 116 W11). До этого они исчезали внутри ветки за WARN'ом в
+		// логе, и на Xray-теле узлы kind=unsupported не рождались вовсе.
+		flushJSON := newJSONRejectFlusher(st, xrayRejects)
+		flushJSON(0)
+		for i, node := range arrayNodes {
+			if node != nil {
+				if node.SourceTag == "" {
+					node.SourceTag = node.Tag
+				}
+				// Синтезированные Xray-группы происхождения не имеют
+				// (origin=null — warp-К1/группы); обычные узлы — kind=json.
+				originKind, originRaw := OriginKindJSON, marshalNodeOriginJSON(node)
+				if node.Scheme == configtypes.SchemeGroup {
+					originKind, originRaw = "", ""
+				}
+				st.accept(node, originKind, originRaw)
 			}
-			if node.SourceTag == "" {
-				node.SourceTag = node.Tag
-			}
-			// Синтезированные Xray-группы происхождения не имеют
-			// (origin=null — warp-К1/группы); обычные узлы — kind=json.
-			originKind, originRaw := OriginKindJSON, marshalNodeOriginJSON(node)
-			if node.Scheme == configtypes.SchemeGroup {
-				originKind, originRaw = "", ""
-			}
-			st.accept(node, originKind, originRaw)
+			// Сдача отбраковок идёт и для nil-элемента: позиции считались по
+			// ИНДЕКСУ списка, и пропуск шага увёл бы запись за конец состава.
+			flushJSON(i + 1)
 		}
 
 	default: // URI-список

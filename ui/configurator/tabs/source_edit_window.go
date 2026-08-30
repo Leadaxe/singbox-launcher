@@ -193,6 +193,52 @@ func cloneCanonicalNode(n wizardmodels.Node) wizardmodels.Node {
 	return c
 }
 
+// deepCopySourceForFetch готовит снимок источника к передаче в горутину
+// одноразового fetch'а (SPEC 116 W13).
+//
+// ОДНА реализация на обе точки кнопки обновления — строку списка
+// (refreshOneSourceFromUI) и «Fetch now» окна источника (triggerOneShotFetch).
+// Разойдясь, они уже расходились: окно копировало Skip/Nodes/PendingDisabled,
+// строка — одну Meta, и горутина строки уезжала с backing-массивами модели,
+// по которым UI-поток в это же время рисует список, а merge ходит своими
+// проходами. Новое ссылочное поле Source, которое читает или пишет fetch,
+// добавлять сюда — второго места нет.
+//
+// go1.20-гард (win7-сборка CI): без slices./maps. — ручные копии.
+func deepCopySourceForFetch(s *wizardmodels.Source) {
+	if s == nil {
+		return
+	}
+	if s.Meta != nil {
+		metaCopy := *s.Meta
+		s.Meta = &metaCopy
+	}
+	if s.Skip != nil {
+		sk := make([]map[string]string, len(s.Skip))
+		for i, mp := range s.Skip {
+			if mp == nil {
+				continue
+			}
+			mm := make(map[string]string, len(mp))
+			for k, v := range mp {
+				mm[k] = v
+			}
+			sk[i] = mm
+		}
+		s.Skip = sk
+	}
+	if s.Nodes != nil {
+		nn := make([]wizardmodels.Node, len(s.Nodes))
+		for i := range s.Nodes {
+			nn[i] = cloneCanonicalNode(s.Nodes[i])
+		}
+		s.Nodes = nn
+	}
+	if s.PendingDisabled != nil {
+		s.PendingDisabled = append([]string(nil), s.PendingDisabled...)
+	}
+}
+
 func cloneSource(src *wizardmodels.Source) wizardmodels.Source {
 	if src == nil {
 		return wizardmodels.Source{}
@@ -979,41 +1025,12 @@ func showSourceEditWindow(
 			fetchInProgress = false
 			return
 		}
-		// Snapshot источника на UI-thread (deep-copy Meta — иначе goroutine
-		// мутирует общий объект через pointer).
+		// Snapshot источника на UI-thread. Глубокая копия обязательна: горутина
+		// читает Skip и гоняет merge по Nodes/PendingDisabled, а поверхностная
+		// копия разделила бы backing-массивы с моделью и scratch'ем UI-потока.
+		// Реализация общая с кнопкой ↻ строки — deepCopySourceForFetch.
 		snapshot := m.Sources[sourceIndex]
-		if snapshot.Meta != nil {
-			metaCopy := *snapshot.Meta
-			snapshot.Meta = &metaCopy
-		}
-		// SPEC 118 W3 (фикс ревью): горутина читает Skip и гоняет merge по
-		// Nodes/PendingDisabled — глубокие копии, иначе merge
-		// мутировал бы backing-массивы, разделяемые с моделью и scratch'ем
-		// на UI-thread. Руками, без slices./maps. — go1.20 (win7-сборка).
-		if snapshot.Skip != nil {
-			sk := make([]map[string]string, len(snapshot.Skip))
-			for i, mp := range snapshot.Skip {
-				if mp == nil {
-					continue
-				}
-				mm := make(map[string]string, len(mp))
-				for k, v := range mp {
-					mm[k] = v
-				}
-				sk[i] = mm
-			}
-			snapshot.Skip = sk
-		}
-		if snapshot.Nodes != nil {
-			nn := make([]wizardmodels.Node, len(snapshot.Nodes))
-			for i := range snapshot.Nodes {
-				nn[i] = cloneCanonicalNode(snapshot.Nodes[i])
-			}
-			snapshot.Nodes = nn
-		}
-		if snapshot.PendingDisabled != nil {
-			snapshot.PendingDisabled = append([]string(nil), snapshot.PendingDisabled...)
-		}
+		deepCopySourceForFetch(&snapshot)
 		// SPEC 118 W6 (хвост ревью W3): ревизия модели на момент снятия
 		// снимка. Окно источника правит МОДЕЛЬ на Save, а Save доступен всё
 		// время полёта fetch'а — запись снимка целиком откатила бы его.

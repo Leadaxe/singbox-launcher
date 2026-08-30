@@ -9,7 +9,9 @@ package core
 //   - refreshSubscriptionsMetaAndCache НЕ берёт SubscriptionMu сам — его держит
 //     caller (UpdateConfigFromSubscriptions, остался в config_service.go);
 //   - RefreshSingleSubscription держит SubscriptionMu на весь load→mutate→save;
-//   - RefreshSourceInPlace намеренно НЕ берёт SubscriptionMu (не пишет state.json).
+//   - RefreshSourceInPlace качает БЕЗ мьютекса (сеть на in-memory URL), а
+//     закрепление результата на диске (persistFetchResultForSource, SPEC 116
+//     W13) берёт тот же SubscriptionMu на свой короткий load→mutate→save.
 
 import (
 	"fmt"
@@ -277,9 +279,9 @@ func successSubStatus(url, now string, httpStatus int, rawBytes int64, material 
 }
 
 // RefreshSourceInPlace — SPEC 052 phase 7 cold-start path: fetch+raw+meta для
-// одного source, переданного по pointer'у из in-memory wizard model. Не делает
-// state.Load и не пишет state.json — caller (Wizard) сам решает, когда
-// persist'ить через свой Save flow. Это даёт корректный UX в трёх сценариях:
+// одного source, переданного по pointer'у из in-memory wizard model. Fetch
+// идёт на in-memory URL — это и есть смысл пути, и он даёт корректный UX в
+// трёх сценариях:
 //
 //  1. Cold start, state.json ещё нет (свежая инсталляция, шаблон с дефолтными
 //     URL'ами в model). Refresh должен работать без принуждения к Save.
@@ -288,16 +290,29 @@ func successSubStatus(url, now string, httpStatus int, rawBytes int64, material 
 //  3. Пользователь редактирует URL существующего source и кликает Refresh —
 //     то же самое, актуальный URL побеждает.
 //
-// На диске не трогаем ничего: материализованные узлы живут в состоянии, и
-// сохранить их — дело вызывающего.
+// SPEC 116 W13 (баг обкатки): результат ДОПОЛНИТЕЛЬНО закрепляется в
+// state.json — для ЭТОГО источника и только для полей, которые родил fetch
+// (persistFetchResultForSource). Прежде путь не писал на диск вовсе, и это
+// был единственный вход fetch'а с таким свойством: у ↻ строки результат жил
+// только в памяти визарда, а state.json тем временем переписывали ДРУГИЕ
+// писатели (heartbeat, VPN-event retry, Update) — каждый со своей копии,
+// загруженной с диска, и целым файлом. Разойтись двум копиям достаточно было
+// одного клика: дальше любая полная запись — хоть Save визарда, хоть
+// авто-обновление — молча выбрасывала результат другой стороны. На живой
+// машине это выглядело так: ↻ отработал, лог показал разбор, а в state.json
+// у подписки остались last_success_at и состав узлов часовой давности.
 //
-// Concurrency: SubscriptionMu НЕ берётся — мы не модифицируем state.json. Если
-// одновременно сработает heartbeat / manual Update, они работают со state.json
-// со своей версией Source — наш in-memory pointer им не виден. UI button-state
-// блокирует двойной клик по той же row.
+// Записываются ТОЛЬКО поля fetch'а (nodes/updateStatus/meta/pendingDisabled)
+// — остальным в записи владеет визард, и переносить сюда его правки нельзя:
+// снимок в горутине старше живой модели ровно настолько, сколько летел fetch.
 //
-// Возвращает (changed, err): changed=true если src.Meta изменился (caller
-// должен пере-рендерить row); err — fetch/write ошибки.
+// Concurrency: запись идёт под SubscriptionMu — тем же, которым сериализуются
+// heartbeat и Update. UI button-state блокирует двойной клик по той же row.
+//
+// Возвращает (changed, err): changed=true если результат fetch'а изменил
+// запись (caller должен пере-рендерить row); err — ошибки fetch'а. Неудача
+// закрепления на диске не отменяет успех обновления в памяти: визард сохранит
+// его своим Save.
 func (svc *ConfigService) RefreshSourceInPlace(src *state.Source) (bool, error) {
 	if src == nil {
 		return false, fmt.Errorf("RefreshSourceInPlace: nil source")
@@ -315,7 +330,61 @@ func (svc *ConfigService) RefreshSourceInPlace(src *state.Source) (bool, error) 
 	settings := locale.LoadSettings(platform.GetBinDir(execDir))
 
 	changed := refreshOneSubscriptionSource(src, settings)
+	if changed {
+		svc.persistFetchResultForSource(src, execDir)
+	}
 	return changed, nil
+}
+
+// persistFetchResultForSource закрепляет в state.json результат fetch'а ОДНОГО
+// источника (SPEC 116 W13).
+//
+// Почему не Save целой модели: модель принадлежит визарду, и её запись — его
+// Save. Здесь на руках только снимок одного источника, снятый до fetch'а;
+// всё, что в нём НЕ результат сети (url, skip, тег-политика, замена, подпись,
+// enabled), к моменту приземления могло устареть на любую правку пользователя.
+// Поэтому в дисковую запись переносятся ровно те же поля, что переносит
+// business.applyFetchResultFields в модель — список обязан совпадать с ним.
+//
+// Источник, которого на диске нет (визард ещё не сохранял его — сценарий 1
+// cold-start), НЕ создаётся: state.json пишет визард, и родить там половину
+// записи значило бы подсунуть ему источник без url и подписи.
+func (svc *ConfigService) persistFetchResultForSource(src *state.Source, execDir string) {
+	if src == nil || src.ID == "" || svc == nil || svc.ac == nil {
+		return
+	}
+	statePath := platform.GetWizardStatePath(execDir)
+
+	svc.ac.SubscriptionMu.Lock()
+	defer svc.ac.SubscriptionMu.Unlock()
+
+	s, err := state.Load(statePath)
+	if err != nil {
+		// Cold start (state.json ещё нет) — не ошибка пути: результат живёт в
+		// модели, визард сохранит его своим Save.
+		debuglog.DebugLog("persistFetchResultForSource: state.Load: %v — результат остаётся в памяти", err)
+		return
+	}
+	disk := s.FindSource(src.ID)
+	if disk == nil || disk.Kind != state.SourceKindSubscription {
+		debuglog.DebugLog("persistFetchResultForSource: источник %s ещё не сохранён визардом — пропуск", src.ID)
+		return
+	}
+	disk.Nodes = src.Nodes
+	disk.UpdateStatus = src.UpdateStatus
+	disk.Meta = src.Meta
+	disk.PendingDisabled = src.PendingDisabled
+
+	if err := s.Save(statePath); err != nil {
+		debuglog.WarnLog("persistFetchResultForSource: state.Save: %v", err)
+		return
+	}
+	// «Конфиг устарел» (SPEC Т4): состав узлов на диске сменился, но сборку
+	// отсюда не запускаем — это решение пользователя, как и у
+	// RefreshSingleSubscription.
+	if svc.ac.StateService != nil {
+		svc.ac.StateService.MarkConfigStale()
+	}
 }
 
 // RefreshSingleSubscription — SPEC 052 phase 7: per-source manual refresh,

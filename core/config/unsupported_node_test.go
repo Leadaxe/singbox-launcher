@@ -229,6 +229,66 @@ func TestMaterializeKeepsRejectedRecordInPlace(t *testing.T) {
 	}
 }
 
+// Xray-тело: неподдержанный протокол ПОСЕРЕДИНЕ обязан встать узлом
+// kind=unsupported на своей позиции — с исходником и причиной про протокол.
+//
+// Дефект W13: Xray-ветка выбрасывала такую запись внутри себя одним WARN'ом
+// («unsupported protocol "hysteria" skipped») и наверх не отдавала ничего —
+// материализация строит unsupported-узлы только из отбраковок общего потока,
+// поэтому на Xray-телах они не появлялись вовсе. URI-ветка это делала с W11
+// (см. TestMaterializeKeepsRejectedRecordInPlace) — тела разных форматов
+// обязаны вести себя одинаково.
+func TestMaterializeXrayBodyKeepsUnsupportedProtocolInPlace(t *testing.T) {
+	body := []byte(`[
+	  {"remarks":"A","outbounds":[{"protocol":"vless","tag":"proxy",
+	    "settings":{"vnext":[{"address":"a.example","port":443,
+	      "users":[{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","encryption":"none"}]}]},
+	    "streamSettings":{"network":"tcp","security":"tls"}}]},
+	  {"remarks":"BROKEN","outbounds":[{"protocol":"hysteria","tag":"legacy",
+	    "settings":{"servers":[{"address":"h.example","port":443,"password":"pw"}]}}]},
+	  {"remarks":"B","outbounds":[{"protocol":"vless","tag":"proxy",
+	    "settings":{"vnext":[{"address":"b.example","port":443,
+	      "users":[{"id":"11111111-2222-3333-4444-555555555555","encryption":"none"}]}]},
+	    "streamSettings":{"network":"tcp","security":"tls"}}]}
+	]`)
+
+	mat, err := MaterializeSubscriptionBody("SUB1", body, nil, 0)
+	if err != nil {
+		t.Fatalf("materialize: %v", err)
+	}
+	if len(mat.Nodes) != 3 {
+		t.Fatalf("узлов = %d, ожидали 3 (два собравшихся + одна неразобранная): %+v",
+			len(mat.Nodes), mat.Nodes)
+	}
+	if mat.Supported != 2 {
+		t.Errorf("Supported = %d, ожидали 2 — достоверность ответа считается по собравшимся", mat.Supported)
+	}
+
+	// Позиция: неразобранная запись стоит ВТОРОЙ — ровно там, где её прислал
+	// провайдер, между двумя собравшимися узлами.
+	if mat.Nodes[0].Kind != state.SourceKindServer || mat.Nodes[2].Kind != state.SourceKindServer {
+		t.Fatalf("соседи неразобранной записи не собрались: %q / %q",
+			mat.Nodes[0].Kind, mat.Nodes[2].Kind)
+	}
+	mid := mat.Nodes[1]
+	if !mid.IsUnsupported() {
+		t.Fatalf("на позиции неподдержанного протокола стоит %q, ожидали unsupported", mid.Kind)
+	}
+	if !strings.Contains(mid.Reason, "hysteria") {
+		t.Errorf("причина = %q, ожидали упоминание протокола: пользователь обязан понять,\n"+
+			"что запись отбракована именно из-за протокола, а не «сломалась вообще»", mid.Reason)
+	}
+	if mid.Origin == nil || !strings.Contains(mid.Origin.Raw, "h.example") {
+		t.Errorf("исходник записи потерян: %+v — без него запись нечем узнать", mid.Origin)
+	}
+	if mid.Enabled {
+		t.Error("неразобранная запись приехала включённой — собирать из неё нечего")
+	}
+	if mid.Tag == "" {
+		t.Error("у неразобранной записи нет тега — он ей нужен как идентичность (merge-ключ)")
+	}
+}
+
 // emitTags — финальные теги узлов источника, как их видит сборка.
 func emitTags(t *testing.T, src state.Source) []string {
 	t.Helper()

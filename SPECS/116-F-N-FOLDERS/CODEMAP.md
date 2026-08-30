@@ -75,7 +75,8 @@
 | `MaterializeSubscriptionBody(subID, decodedBody, skip, capN)` | `core/config/fetch_materialize.go:50` |
 | `unsupportedNodeFromRecord` (W11) | `core/config/fetch_materialize.go:122` — тег из подписи записи, иначе позиционный `unsupported-N`; уникальность считается по одному множеству с принятыми |
 | `SubscriptionFetchMaterial.Supported` (W11) | `core/config/fetch_materialize.go:25` — достоверность ответа считается по СОБРАВШИМСЯ, не по `len(Nodes)` |
-| `subscription.RejectedBodyRecord` / `bodyParseState.reject` (W11) | `core/config/subscription/parse_body.go:77,262` — отбракованная запись с позицией (`After` = сколько принято до неё) и исходником; счётчик принятых не трогает |
+| `subscription.RejectedBodyRecord` / `bodyParseState.reject` (W11) | `core/config/subscription/parse_body.go:77,262` — отбракованная запись с позицией (`After` = сколько принято до неё) и исходником; счётчик принятых не трогает. **Единственный** вход материализации unsupported-узлов: ветка формата, не позвавшая `reject`, теряет запись молча |
+| `jsonRejectSink` / `newJSONRejectFlusher` / `remapRejectsToKeptNodes` (W11, фикс W13) | `core/config/subscription/json_body_rejects.go` — сток отбраковок JSON-веток (Xray-массив, sing-box-импорт): они отдают наверх готовый СПИСОК узлов, поэтому позиция помнится как «сколько узлов ветки выпущено до записи» и пересчитывается на выживших после каждого фильтра (владение §342, резолв групп), а в нумерацию принятых переводится проигрыванием — арифметикой нельзя, дедуп и кап режут уже в `st.accept`. **Не** `ParseFailureReasons`: тот дедуплицирует, имеет потолок 3 и намеренно не содержит класс «протокол не поддержан» |
 | `SubscriptionFetchMaterial` | `core/config/fetch_materialize.go:25` |
 | `MergeSubscriptionNodes(sub, res, trusted)` | `core/state/subscription_merge.go:94` |
 | `MergeFolderNodesFromSubscription(folder, subURL, res, trusted)` | `core/state/subscription_merge.go:188` |
@@ -87,10 +88,22 @@
 | Все подписки разом | `core/config_service_subscriptions.go:43` `refreshSubscriptionsMetaAndCache` |
 | Резолв капа (подписка → настройки) | `core/config_service_subscriptions.go:210` `resolveSubscriptionMaxNodes` |
 | Статусы | `failedSubStatus:224`, `successSubStatus:248` (там же) |
-| Точки на один источник | `RefreshSourceInPlace:292`, `RefreshSingleSubscription:321` |
+| Точки на один источник | `RefreshSourceInPlace:316`, `RefreshSingleSubscription:399` |
+| Закрепление результата ↻ на диске (W13) | `persistFetchResultForSource:352` — load → перенос ТОЛЬКО полей fetch'а (nodes/updateStatus/meta/pendingDisabled) в дисковую запись этого id → Save, под `SubscriptionMu`; источник, которого визард ещё не сохранял, НЕ создаётся |
 
 Вызовы, связывающие конвейер: `config_service_subscriptions.go:159`
 (`MaterializeSubscriptionBody`) → `:173` (`MergeSubscriptionNodes`).
+
+**Кто пишет `state.json`** (W13, важнее, чем кажется): визард (`SaveConfig` —
+модель ЦЕЛИКОМ), `RefreshSingleSubscription` (авто-обновление / retry — своя
+дисковая копия целиком) и `refreshSubscriptionsMetaAndCache` (Update, там же).
+Файл каждый раз пишется целиком, поэтому расхождение модели и диска по одному
+источнику любая следующая полная запись разрешает в пользу писателя, а не
+данных. До W13 путь ↻ строки был единственным входом fetch'а, который на диск
+не писал вовсе, — его результат жил только в модели и терялся первым же чужим
+Save (баг обкатки: ↻ отработал, разбор в логе, mtime свежий, а
+`last_success_at` подписки часовой давности). Новый вход fetch'а обязан
+закреплять свой результат, а не рассчитывать на Save визарда.
 
 ### 1.3 Эмиссия (`core/config/`)
 
@@ -254,13 +267,14 @@
 
 ### 1.6 UI-конфигуратор
 
-**Список источников**: `ui/configurator/tabs/source_tab.go` (1309) —
-`CreateSourcesTab:57`, `applySourceMutation:878`, `showSourcePreviewAllWindow:1018`,
-`nodeDisplayLine:1120`, `CreateDirectionsTab:1146`, `refreshOneSourceFromUI:1203`.
+**Список источников**: `ui/configurator/tabs/source_tab.go` (1497) —
+`CreateSourcesTab:57`, `applySourceMutation:1062`, `showFolderDeleteDialog:1114`,
+`showSourcePreviewAllWindow:1202`, `nodeDisplayLine:1304`,
+`CreateDirectionsTab:1330`, `refreshOneSourceFromUI:1387`.
 
-Папка в списке (SPEC 116 W3): `addFolderAction:259` (⋮ → «Add folder»,
+Папка в списке (SPEC 116 W3): `addFolderAction:298` (⋮ → «Add folder»,
 ПЕРВЫМ пунктом — §O6; зовёт `corestate.NewFolderSource` + `applySourceMutation`,
-окно правки НЕ открывает), `showFolderDeleteDialog:930` (два исхода С7:
+окно правки НЕ открывает), `showFolderDeleteDialog:1114` (два исхода С7:
 «удалить с узлами» / «вынести узлы в корень» через
 `business.ExtractFolderNodesToRoot`, затем снос опустевшей папки; папка
 адресуется ULID'ом на клике, не индексом строки). Строка папки НЕ
@@ -269,6 +283,52 @@
 показывается явным «· 0 nodes», а `parseFailedReason` подавлен
 (`isFolder && len(Nodes)==0`) — пустота папки это воля пользователя, а не
 сбой источника.
+
+**Правый клик по строке ВЕРХНЕГО узла (W13)** — `source_row_node_ops.go`:
+`sourceRowNodeOpsAllowed:52` (server/chain/auto — у контейнеров не один узел,
+а состав, и он правится строкой Preview), `showSourceRowNodeContextMenu:67`
+(Move/Copy to folder…). Своей механики нет: контекст — тот же
+`previewNodeOps` (`win` = главное окно, `reloadScratch`/`refreshPreview` =
+nil, рабочей копии у списка нет), диалог и предупреждения — те же
+`showMoveOrCopyDialog`/`applyMoveOrCopy` (`preview_node_ops.go:240,286`), а
+реестр переписи и перечисление непереносимых ссылок корня — те же
+`business.MoveNodeToFolder`/`CopyNodeToFolder` (`rootOnlyRefsToTag`).
+Встраивание — `source_tab.go` (~`:820`): `fynewidget.NewSecondaryTapWrap`
+СНАРУЖИ `HoverRow`, потому что Fyne отдаёт событие самому ГЛУБОКОМУ
+подходящему объекту (`FindObjectAtPositionMatching`) — внутри обёртка
+перехватила бы hover и погасила подсветку строки. В `sourcesBox`,
+`dragGroup.Register` и `revealedRow` едет внешний объект (`rowOuter`).
+
+Тултип строки (W13): печатаются ТОЛЬКО заполненные поля (`addTip`,
+`source_tab.go:~652`); пустой текст = тултипа нет вовсе (контракт
+`ttwidget.ToolTipWidget.MouseIn`). Раньше у папки под курсором висели три
+пустых двоеточия.
+
+**Вход В ПАПКУ прямо в списке (W13)** — `source_folder_drilldown.go` (551).
+Клик по строке папки переключает ТУ ЖЕ таблицу в режим её состава; новых
+виджетов, окон и вкладок нет.
+
+| Элемент | Место | Заметка |
+|---|---|---|
+| `folderDrillState{folderID}` + `active/enter/leave` | `:91,97,104,105` | состояние ЭКРАНА в замыкании `CreateSourcesTab` (`source_tab.go:93`), рядом с `revealedSourceID`; в модель не едет |
+| `folderDrillIndex(sources, id)` | `:112` | адрес — ULID, не индекс: пока смотрят состав, порядок `m.Sources` вправе поехать. `-1` у пропавшей папки → вкладка сама возвращается в корень |
+| `buildFolderDrillRows` → `folderDrillRowsInput` | `:147,130` | состав ТЕМ ЖЕ `buildPreviewRows` и ТОЙ ЖЕ `config.EmitCanonicalSource` (свой пустой `tagCounts`), что вкладка Preview и сборка — иначе список показывал бы не тот состав (баг #91) |
+| `folderDrillBackRow` | `:207` | первая строка «← имя»: `HoverRow` + `SecondaryTapWrap.OnPrimary`; правого клика нет — она не узел |
+| `folderDrillNodeRow` | `:235` | `[захват][галка] имя/подстрока`; тексты — `previewRowTitle/Subtitle/ToolTip`; правый клик — `showPreviewRowContextMenu` с `previewNodeOps` (`newFolderDrillNodeOps:187`, `win` = главное окно, `reloadScratch`/`refreshPreview` = nil) |
+| `folderDrillNodeEnabled` / `folderDrillSetNodeEnabled` | `:502,527` | галка пишет `Enabled` ПРЯМО в модель (scratch'а и Save у списка нет) и зовёт `applySourceMutation` — как тумблер источника |
+| `renderFolderDrillRows` | `:367` | наполняет `sourcesBox`; ставит `*reorder` (замыкание на `previewNodeOps.applyReorder` по СЫРЫМ тегам). `dragGroup.Total` НЕ ставится: строки живут в VBox, регистрируются все, а ненулевой `Total` разрешил бы бросок в слот, которого в корне нет |
+| `applyFolderDrillChrome` | `:325` | обвязка: заголовок «Sources» ⇄ «Folder: имя», подсказка ⇄ `folderDrillHintText`, `previewAllBtn` гаснет (она про ВСЕ источники) |
+| `applyAddedSourcesToFolder(Named)` | `:444,458` | Add-поле в режиме папки → `business.AppendNodesToFolder` (тот же `parseSourceInput`, W6). Поле НЕ очищается при отказе: отвергнутый текст обязан остаться на экране |
+
+Точки встраивания в `source_tab.go`: `applyAddedSourcesNamed:107` (развилка
+адреса Add + имя из файла), форма сервера `:223`, ⋮-меню `:330` (в режиме
+папки остаются только пункты, чей результат — УЗЕЛ: Add server / Add WARP /
+Add from file), захват `:416` (в режиме папки переставляет узлы ВНУТРИ папки),
+`refreshSourcesList:464` (ветка режима — до всего остального),
+`RevealSource` (`drill.leave()` — переход из отчёта адресует ИСТОЧНИК, а они в
+корне), клик по строке папки `:512` (`SecondaryTapWrap.OnPrimary` СНАРУЖИ
+`HoverRow`; кнопки строки лежат глубже и свой tap получают сами).
+Тест — `source_folder_drilldown_test.go` (адресация ULID'ом + порядок строк).
 
 **Окно источника**: `ui/configurator/tabs/source_edit_window.go` (1857) —
 `showSourceEditWindow:377` (главный конструктор окна);
@@ -429,11 +489,22 @@ core/config_service_subscriptions.go:113 refreshOneSubscriptionSource
     │        (merge по СЫРОМУ тегу; trusted=false → nodes[] не трогаются)
     └─ :248 successSubStatus / :224 failedSubStatus → Source.UpdateStatus
     ▼
+диск (W13): persistFetchResultForSource:352 — только у пути ↻
+    │  (RefreshSourceInPlace); load → поля fetch'а в запись этого id → Save
+    ▼
 UI-запись: business/fetch_writeback.go:37 ApplyFetchSnapshot(m, snapshot, revAtStart)
-    │  вызовы: source_tab.go:1250, source_edit_window.go:1030
+    │  вызовы: source_tab.go (refreshOneSourceFromUI:1222),
+    │          source_edit_window.go (triggerOneShotFetch)
     ▼
 m.BumpRevision() → InvalidateNodePool → State.Save (save.go:25)
 ```
+
+Снимок для горутины fetch'а — ОДНА реализация на обе точки кнопки:
+`deepCopySourceForFetch` (`source_edit_window.go:208`), зовётся из
+`refreshOneSourceFromUI` и `triggerOneShotFetch`. Прежде окно копировало
+Skip/Nodes/PendingDisabled, а строка — одну Meta, и её горутина уезжала с
+backing-массивами живой модели. Новое ссылочное поле Source, которое читает
+или пишет fetch, добавлять туда.
 
 ### 2.2 загрузка → миграция → v7
 
@@ -683,6 +754,17 @@ State.Save (core/state/save.go:25) → MarshalV7:101
   расхождение двух разборов не даст ни одной ошибки компиляции и вылезет
   схемой, которая работает в Sources и молча урезается в папке (дыра Д6,
   ловушка «эмиттер и парсер ходят парой»).
+- **`state.json` пишется ЦЕЛИКОМ, а писателей несколько** (W13). Визард
+  сохраняет модель, авто-обновление и Update — свои дисковые копии; каждая
+  запись перекрывает файл. Значит результат, доехавший только до одной из
+  сторон, обречён: следующая полная запись другой стороны его выбросит, и
+  ошибка выглядит как «сохранилось, но старое» (свежий mtime при старом
+  `last_success_at`). Отсюда правило: КАЖДЫЙ вход fetch'а закрепляет свой
+  результат на диске сам (`persistFetchResultForSource`), перенося только
+  поля, которые он родил, — Save визарда не гарантирован ни по времени, ни
+  вообще. Список переносимых полей обязан совпадать с
+  `business.applyFetchResultFields`: они делят один смысл «что принадлежит
+  fetch'у», и разойдясь, дадут разное состояние в памяти и на диске.
 - **Ленивый кэш ≠ «данных нет»**: превью-кэша больше нет, счётчики читают
   `nodes[]` напрямую (`source_node_counts.go`). Совпадение имени
   `SourceNodeCounts` со старым кэшем — не воскрешение механики.
