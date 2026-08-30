@@ -958,24 +958,25 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					// внутри она перехватила бы hover и погасила подсветку.
 					enterID := sourceID
 					wrap := fynewidget.NewSecondaryTapWrap(row)
-					// Обкатка, заход 3: клик по контейнеру — МЕНЮ (Open / Edit /
-					// Copy JSON / Delete), а не голый провал: «левый клик по
-					// папке должен быть тоже осмысленный». Левый и правый клик —
-					// одно меню, один механизм на папку и подписку.
+					// Обкатка, заход 3: ЛЕВЫЙ клик — провал в состав (как у
+					// всех строк-контейнеров с W13), ПРАВЫЙ — меню Open / Edit /
+					// Copy JSON / Delete. Один механизм на папку и подписку.
+					openContainer := func() {
+						if strings.TrimSpace(enterID) == "" {
+							return
+						}
+						drill.enter(enterID)
+						refreshSourcesList()
+					}
 					menuIndex := sourceIndex
 					menuLabel := shortLabel
-					showMenu := func(pe *fyne.PointEvent) {
-						showSourceContainerContextMenu(
-							presenter, guiState, menuIndex, menuLabel, pe, func() {
-								if strings.TrimSpace(enterID) == "" {
-									return
-								}
-								drill.enter(enterID)
-								refreshSourcesList()
-							})
+					wrap.OnPrimary = func(fyne.KeyModifier) {
+						openContainer()
 					}
-					wrap.OnPrimaryEvent = showMenu
-					wrap.OnSecondary = showMenu
+					wrap.OnSecondary = func(pe *fyne.PointEvent) {
+						showSourceContainerContextMenu(
+							presenter, guiState, menuIndex, menuLabel, pe, openContainer)
+					}
 					rowOuter = wrap
 				} else if sourceRowNodeOpsAllowed(src.Kind) {
 					// Адрес узла в корне: у корневого пространства тег-политики
