@@ -381,6 +381,21 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				fyne.NewMenuItem(locale.T("Add WARP"), addWarpAction),
 				fyne.NewMenuItem(locale.T("Add from file"), addFromFileAction),
 			}
+			// Обкатка заход 3: «Fill from subscription…» — ТОТ ЖЕ пункт, что
+			// в окне папки (folder_fill_from_sub.go). Без него drill-down знал
+			// про наполнение папки меньше, чем её окно, а на попытку вставить
+			// URL подписки прямо в папку отвечал отказом, не показав законного
+			// пути. Механика берётся целиком — второй заливки не заводим.
+			if idx := folderDrillIndex(mm.Sources, drill.folderID); idx >= 0 {
+				ops := newFolderDrillNodeOps(presenter, guiState, idx, mm.Sources[idx].Kind)
+				if fill := newFolderAddNodes(ops, guiState.Window); fill != nil {
+					items = append(items,
+						fyne.NewMenuItemSeparator(),
+						fyne.NewMenuItem(locale.T("Fill from subscription…"),
+							fill.showFillFromSubscriptionDialog),
+					)
+				}
+			}
 		} else {
 			items = []*fyne.MenuItem{
 				// SPEC 116 §O6: «Add folder» первым пунктом — папка это
