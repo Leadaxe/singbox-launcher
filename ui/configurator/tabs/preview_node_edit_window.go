@@ -18,6 +18,19 @@
 // (`previewNodeOps.nodeOpsAllowed`): состав подписки принадлежит провайдеру,
 // и правка тела пережила бы ровно до первого fetch'а.
 //
+// # Почему вкладки, а не один свиток
+//
+// Первая редакция окна складывала имя, тело и происхождение в одну колонку —
+// и читалась как ТРЕТИЙ, просмотровый экран поверх уже существующей правки:
+// до исходника приходилось скроллить мимо редактора, а обратно — тем же
+// путём. У узла ровно те же две роли, что у server-источника в окне
+// источника: «что это за узел» (имя, происхождение, причина отбраковки) и
+// «его outbound» (тело). Расклад вкладок здесь тот же — Settings | JSON, — и
+// второго вида окна узла не заводится.
+//
+// У неразобранной записи вкладки JSON нет вовсе: тела за ней не стоит, и
+// вкладка была бы пустым редактором с кнопками в никуда.
+//
 // # Почему путь правки — тот же source_body_edit
 //
 // `applyServerBodyJSON` / `regenServerBodyFromRaw` — единственная точка
@@ -126,22 +139,7 @@ func showPreviewNodeEditWindow(r previewRow, rawTag string, ops *previewNodeOps)
 		}
 	}
 
-	body := container.NewVBox(
-		previewSectionHeader(locale.T("Name")),
-		nameRow,
-	)
-
-	// Причина отбраковки — сразу под именем: у неразобранной записи это
-	// главное, что о ней вообще известно.
-	if r.Unsupported {
-		body.Add(previewInfoRow(locale.T("Reason"), previewRowReason(r)))
-	}
-
-	// --- тело узла ----------------------------------------------------------
-	bodyEntry := widget.NewMultiLineEntry()
-	bodyEntry.Wrapping = fyne.TextWrapOff
-	bodyEntry.SetText(nodeBodyText(ops, tag, r))
-
+	// Подсказка над телом: чем узел правится, либо почему не правится.
 	hintText := nodeEditBodyHintText
 	if r.Unsupported {
 		hintText = nodeEditUnsupportedText
@@ -154,14 +152,40 @@ func showPreviewNodeEditWindow(r previewRow, rawTag string, ops *previewNodeOps)
 	hint.Wrapping = fyne.TextWrapWord
 	hint.Importance = widget.LowImportance
 
-	body.Add(widget.NewSeparator())
-	if !r.Unsupported {
-		// У неразобранной записи тела нет вовсе — заголовок «Outbound JSON»
-		// над пустым полем обещал бы объект, которого не существует. Причина и
-		// исходник у неё уже показаны, и этого достаточно.
-		body.Add(previewSectionHeader(locale.T("Outbound JSON")))
+	// Вкладка Settings — «что это за узел»: имя (его идентичность, SPEC 112),
+	// причина отбраковки у неразобранной записи и происхождение. Тело узла
+	// уехало на свою вкладку JSON — ровно тот же расклад, что у окна
+	// server-источника, где Settings и JSON тоже разделены.
+	settingsBox := container.NewVBox(
+		previewSectionHeader(locale.T("Name")),
+		nameRow,
+	)
+
+	// Причина отбраковки — сразу под именем: у неразобранной записи это
+	// главное, что о ней вообще известно.
+	if r.Unsupported {
+		settingsBox.Add(previewInfoRow(locale.T("Reason"), previewRowReason(r)))
 	}
-	body.Add(hint)
+	// Подсказка «почему тела нет» встаёт под причину и только у неразобранной
+	// записи: у неё вкладки JSON нет вовсе (ниже), и объяснению больше негде
+	// стоять. У остальных та же переменная — шапка вкладки JSON.
+	if r.Unsupported {
+		settingsBox.Add(hint)
+	}
+
+	// --- тело узла ----------------------------------------------------------
+	bodyEntry := widget.NewMultiLineEntry()
+	bodyEntry.Wrapping = fyne.TextWrapOff
+	bodyEntry.SetText(nodeBodyText(ops, tag, r))
+
+	// Шапка вкладки JSON. У неразобранной записи заголовка «Outbound JSON»
+	// нет: тела за ней не стоит вовсе, и заголовок над пустым полем обещал бы
+	// объект, которого не существует, — ей остаётся одна подсказка-причина.
+	jsonHead := container.NewVBox()
+	if !r.Unsupported {
+		jsonHead.Add(previewSectionHeader(locale.T("Outbound JSON")))
+	}
+	jsonHead.Add(hint)
 
 	if !editable {
 		// Ввод откатывается, а не Disable(): на macOS выключенный Entry
@@ -207,12 +231,6 @@ func showPreviewNodeEditWindow(r previewRow, rawTag string, ops *previewNodeOps)
 		bodyBtnItems = append(bodyBtnItems, regenBtn, applyBtn)
 	}
 	bodyButtons := container.NewHBox(bodyBtnItems...)
-	if r.Unsupported {
-		// Копировать из пустого редактора нечего, и «Copy JSON» у записи без
-		// тела был бы кнопкой в никуда: у неё есть «Copy» исходника ниже.
-		bodyEntry.Hide()
-		bodyButtons.Hide()
-	}
 
 	// --- происхождение ------------------------------------------------------
 	origin := r.OriginRaw
@@ -231,30 +249,44 @@ func showPreviewNodeEditWindow(r previewRow, rawTag string, ops *previewNodeOps)
 		}
 	}
 
-	originBlock := container.NewVBox(
-		widget.NewSeparator(),
-		previewSectionHeader(locale.T("Origin")),
-		originEntry,
-		container.NewHBox(layout.NewSpacer(), widget.NewButton(locale.T("Copy"), func() {
-			fynewidget.SetClipboard(frozenOrigin)
-		})),
-	)
-	if strings.TrimSpace(origin) == "" {
-		// Узел, собранный руками с нуля, исходника не имеет — пустая рамка
-		// под заголовком «Origin» читалась бы как потеря данных.
-		originBlock.Hide()
+	if strings.TrimSpace(origin) != "" {
+		// Происхождение — часть ответа «что это за узел», и живёт оно на
+		// Settings рядом с именем. У узла, собранного руками с нуля, исходника
+		// нет вовсе: пустая рамка под заголовком «Origin» читалась бы как
+		// потеря данных, поэтому блок не добавляется, а не прячется.
+		settingsBox.Add(widget.NewSeparator())
+		settingsBox.Add(previewSectionHeader(locale.T("Origin")))
+		settingsBox.Add(originEntry)
+		settingsBox.Add(container.NewHBox(layout.NewSpacer(),
+			widget.NewButton(locale.T("Copy"), func() {
+				fynewidget.SetClipboard(frozenOrigin)
+			})))
 	}
 
-	// Тело растягивается на всю оставшуюся высоту: правят именно его, а имя
-	// и происхождение — короткие блоки по краям.
-	content := container.NewBorder(
-		container.NewVBox(body),
-		container.NewVBox(bodyButtons, originBlock),
-		nil, nil,
-		bodyEntry,
-	)
+	// Вкладки, а не один свиток: у узла ровно те же две роли, что у
+	// server-источника в окне источника, — «что это за узел» (имя,
+	// происхождение) и «его outbound» (тело). Смешанные в одну колонку, они
+	// заставляли скроллить мимо редактора к исходнику и обратно; расклад
+	// вкладок здесь тот же, что там, и второго вида окна узла не заводится.
+	//
+	// Тело на своей вкладке растягивается на всю высоту — правят именно его,
+	// а шапка и кнопки прижаты к краям.
+	jsonTabBody := container.NewBorder(jsonHead, bodyButtons, nil, nil, bodyEntry)
 
-	win.SetContent(content)
+	tabItems := []*container.TabItem{
+		container.NewTabItem(locale.T("Settings"), container.NewVScroll(settingsBox)),
+	}
+	if !r.Unsupported {
+		// У неразобранной записи вкладки JSON нет вовсе: тела за ней не стоит,
+		// и вкладка была бы пустым редактором с кнопками в никуда. Причина,
+		// объяснение и исходник у неё уже на Settings — этого достаточно.
+		tabItems = append(tabItems, container.NewTabItem(locale.T("JSON"), jsonTabBody))
+	}
+
+	tabs := container.NewAppTabs(tabItems...)
+	tabs.SetTabLocation(container.TabLocationTop)
+
+	win.SetContent(tabs)
 	win.Resize(fyne.NewSize(680, 620))
 	win.CenterOnScreen()
 	win.Show()
@@ -268,6 +300,15 @@ func showPreviewNodeEditWindow(r previewRow, rawTag string, ops *previewNodeOps)
 // её обратно значило бы вморозить результат тег-машины в состав.
 func nodeBodyText(ops *previewNodeOps, rawTag string, r previewRow) string {
 	node := lookupContainerNode(ops, rawTag)
+	if node != nil && len(node.Body) == 0 && node.Group != nil {
+		// Авто-группа: тела у неё нет, а эмитированный r.Node собран без
+		// прохода резолва — его outbounds всегда пуст, и показывать его
+		// значило бы врать «группа пустая». Показываем запись состава как
+		// она хранится: тип, члены-ссылки, стратегия.
+		if b, err := json.MarshalIndent(node, "", "  "); err == nil {
+			return string(b)
+		}
+	}
 	if node == nil || len(node.Body) == 0 {
 		if r.Node != nil {
 			// Узла в составе нет (узловой источник: server/chain/auto — он сам

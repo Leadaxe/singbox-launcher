@@ -239,8 +239,13 @@ func parseSingboxConfig(
 	// A5/A7: группы идут ПОСЛЕ узлов — и в тот же список. Это рядовые узлы
 	// без привилегий, а не записи вкладки Outbounds (см. singbox_groups.go).
 	for _, groupEntry := range groupEntries {
-		groupNode, ok := singboxGroupToNode(groupEntry, nodeByTag, &result.Warnings)
-		if !ok {
+		groupNode, rejectReason := singboxGroupToNode(groupEntry, nodeByTag, &result.Warnings)
+		if rejectReason != "" {
+			// Пустая или безымянная группа — не молчаливая пропажа, а
+			// неразобранная запись на своей позиции (обкатка W13 заход 3:
+			// «пустые сломанные узлы — как сломанный узел hysteria»).
+			result.rejected.add(len(result.Nodes), rejectReason,
+				marshalRawJSONElement(groupEntry))
 			continue
 		}
 		result.Nodes = append(result.Nodes, groupNode)

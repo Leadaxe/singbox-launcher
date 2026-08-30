@@ -42,6 +42,7 @@
 package tabs
 
 import (
+	"encoding/json"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -184,4 +185,59 @@ func sourceID(presenter *wizardpresentation.WizardPresenter, sourceIndex int) st
 		return ""
 	}
 	return m.Sources[sourceIndex].ID
+}
+
+// showSourceContainerContextMenu — меню строки КОНТЕЙНЕРА (папка, подписка)
+// по клику. Один механизм на оба вида: подписка — та же папка с чужим
+// составом, различия прав живут в модели, а не здесь.
+//
+// Принцип «меню = кнопки» (заход 2): пункты ведут туда же, куда иконки
+// строки — «Edit…» = карандаш (`showSourceEditWindow`), «Delete» = корзина
+// (`showSourceRowDeleteDialog` с веткой непустой папки). Своё здесь только
+// «Open» (провал в состав — раньше висел на голом левом клике) и «Copy
+// JSON» — запись источника из state.json ЦЕЛИКОМ, с узлами и origin: тот же
+// снапшот, что блок «Storage record» в Overview.
+func showSourceContainerContextMenu(
+	presenter *wizardpresentation.WizardPresenter,
+	guiState *wizardpresentation.GUIState,
+	sourceIndex int,
+	shortLabel string,
+	pe *fyne.PointEvent,
+	onOpen func(),
+) {
+	if presenter == nil || guiState == nil || guiState.Window == nil || pe == nil {
+		return
+	}
+	m := presenter.Model()
+	if m == nil || sourceIndex < 0 || sourceIndex >= len(m.Sources) {
+		return
+	}
+	src := m.Sources[sourceIndex]
+	nodeCount := len(src.Nodes)
+
+	items := []*fyne.MenuItem{
+		fyne.NewMenuItem(locale.T("Open"), onOpen),
+		fyne.NewMenuItem(locale.T("Edit"), func() {
+			presenter.MergeGUIToModel()
+			mm := presenter.Model()
+			if mm == nil || sourceIndex >= len(mm.Sources) {
+				return
+			}
+			showSourceEditWindow(presenter, guiState, guiState.Window, sourceIndex, shortLabel)
+		}),
+		fyne.NewMenuItem(locale.T("Copy JSON"), func() {
+			b, err := json.MarshalIndent(src, "", "  ")
+			if err != nil {
+				return
+			}
+			fynewidget.SetClipboard(string(b))
+		}),
+		fyne.NewMenuItemSeparator(),
+		fyne.NewMenuItem(locale.T("Delete"), func() {
+			showSourceRowDeleteDialog(presenter, guiState, sourceIndex,
+				src.ID, shortLabel, nodeCount)
+		}),
+	}
+	widget.ShowPopUpMenuAtPosition(
+		fyne.NewMenu("", items...), guiState.Window.Canvas(), pe.AbsolutePosition)
 }

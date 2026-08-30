@@ -35,6 +35,11 @@ type SecondaryTapWrap struct {
 	// (e.g. label / padding in a List row). Modifier is from the press event; use 0 if unknown.
 	OnPrimary func(mods fyne.KeyModifier)
 
+	// OnPrimaryEvent is like OnPrimary but receives the tap's PointEvent — for
+	// handlers that anchor a popup at the click position. When set, it runs
+	// INSTEAD of OnPrimary.
+	OnPrimaryEvent func(*fyne.PointEvent)
+
 	// OnSecondary is invoked on right-click / long-press secondary tap.
 	OnSecondary func(*fyne.PointEvent)
 }
@@ -62,9 +67,13 @@ func (w *SecondaryTapWrap) MouseDown(e *desktop.MouseEvent) {
 func (w *SecondaryTapWrap) MouseUp(_ *desktop.MouseEvent) {}
 
 // Tapped implements fyne.Tappable (primary tap on the wrap itself, not on child buttons).
-func (w *SecondaryTapWrap) Tapped(_ *fyne.PointEvent) {
+func (w *SecondaryTapWrap) Tapped(pe *fyne.PointEvent) {
 	mods := w.lastPrimaryPressMods
 	w.lastPrimaryPressMods = 0
+	if w.OnPrimaryEvent != nil {
+		w.OnPrimaryEvent(pe)
+		return
+	}
 	if w.OnPrimary != nil {
 		w.OnPrimary(mods)
 	}

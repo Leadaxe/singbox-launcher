@@ -231,19 +231,26 @@ func buildFolderDrillRows(sources []corestate.Source, folderID string) (folderDr
 	return out, true
 }
 
-// folderDrillBackLabel — текст первой строки режима: имя контейнера.
+// folderDrillBackLabel — текст первой строки режима: вид и имя контейнера.
 //
 // Знак возврата — ИКОНКА слева от подписи (см. folderDrillBackGap), поэтому в
-// тексте остаётся только неразрывный пробел и имя. Имя обрезается тем же
-// `TruncateStringEllipsis` и той же длиной, что имена источников в корне:
-// строка возврата стоит в том же списке и обязана вести себя как его строка, а
-// не расширять окно длинным именем.
-func folderDrillBackLabel(name string) string {
+// тексте остаётся неразрывный пробел, слово вида («Folder:»/«Subscription:»)
+// и имя. Вид нужен потому, что имя ПОДПИСКИ по умолчанию — её URL: без
+// префикса шапка выглядела бы адресной строкой, а не «где я». Обрезается
+// только ИМЯ, тем же `TruncateStringEllipsis` и той же длиной, что имена
+// источников в корне: строка возврата стоит в том же списке и обязана вести
+// себя как его строка, а не расширять окно длинным именем.
+func folderDrillBackLabel(kind corestate.SourceKind, name string) string {
+	word := locale.T("Folder")
+	if kind == corestate.SourceKindSubscription {
+		word = locale.T("Subscription")
+	}
 	n := strings.TrimSpace(name)
 	if n == "" {
-		n = locale.T("Folder")
+		return folderDrillBackGap + word
 	}
-	return folderDrillBackGap + wizardutils.TruncateStringEllipsis(n, wizardutils.MaxLabelRunes, "...")
+	return folderDrillBackGap + word + ": " +
+		wizardutils.TruncateStringEllipsis(n, wizardutils.MaxLabelRunes, "...")
 }
 
 // newFolderDrillNodeOps — контекст операций над узлом контейнера для СПИСКА.
@@ -281,8 +288,8 @@ func newFolderDrillNodeOps(
 // список), и тот же клик-обработчик через `SecondaryTapWrap.OnPrimary` —
 // новых кликабельных виджетов волна не заводит. Правого клика у неё нет:
 // строка возврата не узел, операций над ней не бывает.
-func folderDrillBackRow(name string, onLeave func()) fyne.CanvasObject {
-	lbl := widget.NewLabel(folderDrillBackLabel(name))
+func folderDrillBackRow(kind corestate.SourceKind, name string, onLeave func()) fyne.CanvasObject {
+	lbl := widget.NewLabel(folderDrillBackLabel(kind, name))
 	lbl.Wrapping = fyne.TextWrapOff
 	lbl.Truncation = fyne.TextTruncateEllipsis
 	lbl.TextStyle = fyne.TextStyle{Bold: true}
@@ -534,7 +541,7 @@ func renderFolderDrillRows(
 		}
 	}
 
-	sourcesBox.Add(folderDrillBackRow(input.Name, func() {
+	sourcesBox.Add(folderDrillBackRow(input.Kind, input.Name, func() {
 		drill.leave()
 		if reorder != nil {
 			*reorder = nil

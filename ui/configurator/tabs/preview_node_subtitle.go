@@ -82,6 +82,13 @@ func previewGroupSubtitle(node *config.ParsedNode) string {
 	if raw, ok := node.Outbound[configtypes.GroupMembersKey].([]interface{}); ok {
 		members = len(raw)
 	}
+	if members == 0 && len(node.CanonicalGroupMembers) > 0 {
+		// Превью зовёт эмиссию БЕЗ прохода 2: состав канонической группы там
+		// ещё ссылки NodeLink, а не outbounds, и без этой ветки любая живая
+		// авто-группа подписки показывала бы «[0]». Показываем заявленный
+		// размер; битые члены выпадут только на сборке конфига.
+		members = len(node.CanonicalGroupMembers)
+	}
 
 	label := fmt.Sprintf("%s [%d]", icon, members)
 	if mode != "" {
