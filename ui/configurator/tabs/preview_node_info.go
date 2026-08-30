@@ -98,18 +98,19 @@ func showPreviewNodeContextMenu(
 		items = append(items, fyne.NewMenuItem(locale.T("Copy to folder…"), func() {
 			ops.showMoveOrCopyDialog(rawTag, false)
 		}))
-		// Move / Rename / Delete правят СОСТАВ контейнера, а состав подписки
-		// принадлежит провайдеру (features/sources.md §«Свобода и несвобода
-		// узлов»): следующий fetch вернул бы удалённый узел и переименовал
+		// Move / Delete правят СОСТАВ контейнера, а состав подписки принадлежит
+		// провайдеру (features/sources.md §«Свобода и несвобода узлов»):
+		// следующий fetch вернул бы удалённый узел и переименовал
 		// переименованный. Поэтому у подписки этих пунктов нет вовсе —
 		// отключённый пункт обещал бы то, чего мы не сделаем.
+		//
+		// Отдельного «Rename…» нет (обкатка заход 3): переименование живёт
+		// полем окна узла, которое открывает «Node info…». Пункт меню вёл в
+		// свой диалог поверх того же действия — второй путь к одному и тому же.
 		if ops.nodeOpsAllowed() {
 			items = append(items,
 				fyne.NewMenuItem(locale.T("Move to folder…"), func() {
 					ops.showMoveOrCopyDialog(rawTag, true)
-				}),
-				fyne.NewMenuItem(locale.T("Rename…"), func() {
-					ops.showRenameDialog(rawTag)
 				}),
 				fyne.NewMenuItem(locale.T("Delete"), func() {
 					ops.showDeleteDialog(rawTag)

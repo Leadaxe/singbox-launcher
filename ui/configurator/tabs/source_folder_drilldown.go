@@ -406,11 +406,22 @@ func folderDrillNodeRow(
 	lead := container.NewHBox(grip, fynewidget.CheckLeadingWrap(check))
 
 	// Кнопки справа — тот же кластер и тот же зазор, что у строки источника.
-	editBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DocumentCreateIcon(), func() {
+	//
+	// Иконка ЗАВИСИТ ОТ ПРАВ (обкатка заход 3): карандаш обещает правку, а
+	// узел подписки не правится — состав принадлежит провайдеру, и окно у него
+	// read-only. Значит и кнопка обязана звать себя честно: «инфо» вместо
+	// «Edit». Окно одно и то же (preview_node_edit_window.go) — разъезжаются
+	// только подпись и глиф, а не поведение.
+	editable := ops != nil && ops.nodeOpsAllowed() && !pr.Unsupported
+	editIcon, editTip := theme.DocumentCreateIcon(), locale.T("Edit")
+	if !editable {
+		editIcon, editTip = theme.InfoIcon(), locale.T("Info")
+	}
+	editBtn := fynewidget.NewHoverForwardButtonWithIcon("", editIcon, func() {
 		showPreviewNodeEditWindow(pr, identity, ops)
 	}, rowGetter)
 	editBtn.Importance = widget.LowImportance
-	fynewidget.SetToolTipSafe(editBtn, locale.T("Edit"))
+	fynewidget.SetToolTipSafe(editBtn, editTip)
 	rightItems := []fyne.CanvasObject{editBtn}
 	if ops != nil && ops.nodeOpsAllowed() && identity != "" {
 		delBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DeleteIcon(), func() {

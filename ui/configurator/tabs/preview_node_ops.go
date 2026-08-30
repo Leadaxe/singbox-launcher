@@ -323,35 +323,14 @@ func (o *previewNodeOps) applyMoveOrCopy(rawTag, dstFolderID string, move bool) 
 	}
 }
 
-// showRenameDialog — переименование узла контейнера (сырой тег).
-//
-// Сырой тег — ИДЕНТИЧНОСТЬ узла в рамках контейнера (SPEC 112): смена тега =
-// появление другого узла, поэтому ссылки на прежний адрес переписываются
-// реестром W2, а не гасятся вслепую. Отдельно от переименования верхнего узла
-// (то живёт полем формы, `nodeTagEntry`): у узла контейнера поля формы нет —
-// его правит только эта команда.
-func (o *previewNodeOps) showRenameDialog(rawTag string) {
-	entry := widget.NewEntry()
-	entry.SetText(rawTag)
-
-	body := widget.NewLabel(locale.T(
-		"The node tag is its identity inside this container: links to it are repointed, and a manual pick in a selector of the running core will reset."))
-	body.Wrapping = fyne.TextWrapWord
-
-	content := container.NewVBox(body, entry)
-
-	d := dialog.NewCustomConfirm(locale.T("Rename node"), locale.T("OK"), locale.T("Cancel"), content,
-		func(ok bool) {
-			if !ok {
-				return
-			}
-			o.applyRename(rawTag, strings.TrimSpace(entry.Text))
-		}, o.win)
-	d.Resize(fyne.NewSize(520, 220))
-	d.Show()
-}
-
 // applyRename переименовывает узел контейнера и переписывает ссылки на него.
+//
+// Единственный вызывающий — кнопка Rename в окне узла
+// (preview_node_edit_window.go). Своего диалога переименования у меню больше
+// нет (обкатка заход 3): он вёл к тому же действию, что поле окна, и два пути
+// к одному только путали. Сырой тег — ИДЕНТИЧНОСТЬ узла в рамках контейнера
+// (SPEC 112): смена тега = появление другого узла, поэтому ссылки на прежний
+// адрес переписываются реестром W2, а не гасятся вслепую.
 func (o *previewNodeOps) applyRename(oldTag, newTag string) {
 	if newTag == "" {
 		dialog.ShowError(fmt.Errorf("%s", locale.T("Node tag cannot be empty.")), o.win)

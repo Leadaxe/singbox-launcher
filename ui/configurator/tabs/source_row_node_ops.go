@@ -132,9 +132,9 @@ func showSourceRowNodeContextMenu(
 		fyne.NewMenuItem(locale.T("Move to folder…"), func() {
 			ops.showMoveOrCopyDialog(rawTag, true)
 		}),
-		// Переименование верхнего узла живёт полем формы: только там на Save
-		// отрабатывает сброс ссылок на прежнюю идентичность.
-		fyne.NewMenuItem(locale.T("Rename…"), openEdit),
+		// Отдельного «Rename…» нет (обкатка заход 3): он вёл в то же окно, что
+		// и «Node info…», где переименование и живёт полем формы — два пункта
+		// с одним действием только запутывали.
 		fyne.NewMenuItem(locale.T("Delete"), func() {
 			showSourceRowDeleteDialog(presenter, guiState, sourceIndex, sourceID(presenter, sourceIndex),
 				shortLabel, 0)
