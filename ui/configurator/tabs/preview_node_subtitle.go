@@ -118,7 +118,7 @@ func previewTransportName(node *config.ParsedNode) string {
 	// «tcp» значит соврать. WireGuard и MASQUE ходят по UDP, QUIC-протоколы
 	// несут транспорт внутри себя.
 	switch node.Scheme {
-	case "wireguard", "masque", "hysteria2", "tuic":
+	case "wireguard", "masque", "hysteria", "hysteria2", "tuic":
 		return ""
 	}
 	tr, ok := node.Outbound["transport"].(map[string]interface{})

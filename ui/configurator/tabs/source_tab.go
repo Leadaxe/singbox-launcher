@@ -50,7 +50,7 @@ import (
 
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
-	sourceHintText = "Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://). For multiple links, use a new line for each."
+	sourceHintText = "Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://, hysteria://, hysteria2://, ssh://, wireguard://). For multiple links, use a new line for each."
 )
 
 // CreateSourcesTab creates the Sources tab UI (URLs, URL status and preview).
@@ -490,6 +490,27 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 			refreshSourcesList()
 		}
 	}
+	// Прокрутка списка. Указатель, потому что сам VScroll создаётся ниже (ему
+	// нужен собранный sourcesBox), а сбрасывать смещение надо изнутри
+	// пересборки — при СМЕНЕ РЕЖИМА.
+	//
+	// Без сброса выход из контейнера оставлял смещение от его состава: список
+	// корня короче, и человек видел пустоту, пока не тронет колесо (обкатка
+	// заход 3). Обратный вход — та же беда наоборот.
+	var sourcesScrollRef *container.Scroll
+	// lastDrillID — на состав какого контейнера смотрел прошлый показ; пусто =
+	// корень. Сравнение именно с ним, а не с флагом «в контейнере»: переход
+	// «папка A → папка B» тоже меняет список целиком.
+	lastDrillID := ""
+	resetScrollOnModeChange := func(now string) {
+		if now == lastDrillID {
+			return
+		}
+		lastDrillID = now
+		if sourcesScrollRef != nil {
+			sourcesScrollRef.ScrollToOffset(fyne.NewPos(0, 0))
+		}
+	}
 	refreshSourcesList = func() {
 		sourcesBox.Objects = sourcesBox.Objects[:0]
 		// Ссылка на подсвеченную строку живёт ровно один набор строк:
@@ -536,6 +557,9 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				}
 				sourcesTitleSwap.Refresh()
 				sourcesBox.Refresh()
+				// Смена режима обнуляет прокрутку: смещение от прошлого
+				// списка в новом указывает в пустоту.
+				resetScrollOnModeChange(drill.folderID)
 				return
 			}
 			// Контейнера не стало, пока на него смотрели, — молча возвращаемся
@@ -547,6 +571,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 			guiState.SourceURLEntry, addURLButton, overflowBtn, "", false)
 		sourcesTitleSwap.Objects = []fyne.CanvasObject{sourcesLabel}
 		sourcesTitleSwap.Refresh()
+		resetScrollOnModeChange("")
 		if len(m.Sources) == 0 {
 			emptyGutter := components.NewScrollGutter()
 			sourcesBox.Add(container.NewHBox(widget.NewLabel(locale.T("No sources defined in ParserConfig.")), layout.NewSpacer(), emptyGutter))
@@ -1057,6 +1082,10 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 
 	sourcesScroll := container.NewVScroll(sourcesBox)
 	sourcesScroll.SetMinSize(fyne.NewSize(0, 80))
+	// Связываем указатель: до этой строки пересборки уже могли отработать
+	// (первый вызов идёт выше), и сброс там просто ничего не делал — на
+	// открытии вкладки список и так стоит в начале.
+	sourcesScrollRef = sourcesScroll
 
 	// SPEC 115 §3: переход «показать источник» из отчёта «Итога».
 	//

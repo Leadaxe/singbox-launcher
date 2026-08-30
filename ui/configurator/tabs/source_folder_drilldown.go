@@ -100,7 +100,7 @@ const (
 	// Отличается от корневой ровно тем, чем отличается адрес: подписка в папку
 	// не кладётся (вложенных контейнеров нет), и перечислять её среди
 	// принимаемого значило бы обещать то, что ядро отвергнет.
-	folderDrillHintText = "Adds nodes to this folder: direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://) or sing-box JSON. One per line. A subscription URL goes to Sources, not into a folder."
+	folderDrillHintText = "Adds nodes to this folder: direct links (vless://, vmess://, trojan://, ss://, hysteria://, hysteria2://, ssh://, wireguard://) or sing-box JSON. One per line. A subscription URL goes to Sources, not into a folder."
 	// subDrillHintText — подсказка в режиме ПОДПИСКИ.
 	//
 	// Поле Add там выключено: состав подписки приезжает от провайдера, и узел,

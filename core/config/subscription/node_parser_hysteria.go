@@ -60,14 +60,30 @@ func buildHysteriaOutbound(node *configtypes.ParsedNode, outbound map[string]int
 		outbound["obfs"] = obfs
 	}
 
-	if up := hysteriaMbps(node, "upmbps", "up_mbps", "up"); up > 0 {
-		outbound["up_mbps"] = up
-	}
-	if down := hysteriaMbps(node, "downmbps", "down_mbps", "down"); down > 0 {
-		outbound["down_mbps"] = down
-	}
+	// Пропускная способность у v1 ОБЯЗАТЕЛЬНА: без up_mbps ядро отказывается
+	// поднимать outbound («missing upload speed»/«missing download speed»), а
+	// это fatal для ВСЕГО config.json, не для одной ноды. Ссылки же сплошь и
+	// рядом её не несут, поэтому недостающая половина добирается дефолтом.
+	up := hysteriaMbps(node, "upmbps", "up_mbps", "up")
+	down := hysteriaMbps(node, "downmbps", "down_mbps", "down")
+	outbound["up_mbps"] = hysteriaBandwidthOrDefault(up)
+	outbound["down_mbps"] = hysteriaBandwidthOrDefault(down)
 
 	buildHysteriaTLS(node, outbound)
+}
+
+// hysteriaDefaultMbps — подстановка для узла, чья ссылка не назвала скорость.
+//
+// Значение не «лимит», а стартовая оценка для congestion control Hysteria 1.x:
+// сервер согласует реальную полосу сам, а ядру нужно ненулевое число, чтобы
+// вообще собрать outbound.
+const hysteriaDefaultMbps = 100
+
+func hysteriaBandwidthOrDefault(v int) int {
+	if v > 0 {
+		return v
+	}
+	return hysteriaDefaultMbps
 }
 
 // hysteriaAuthFromNode достаёт секрет v1 из query (auth/auth_str) или userinfo.

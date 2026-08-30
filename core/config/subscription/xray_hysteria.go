@@ -85,11 +85,20 @@ func xrayBuildHysteriaFromOutbound(ob map[string]interface{}, label string) (*co
 		}
 	}
 
-	if up := xrayHysteriaMbps(hySettings, settings, "up_mbps", "upMbps", "up"); up > 0 {
-		outbound["up_mbps"] = up
-	}
-	if down := xrayHysteriaMbps(hySettings, settings, "down_mbps", "downMbps", "down"); down > 0 {
-		outbound["down_mbps"] = down
+	up := xrayHysteriaMbps(hySettings, settings, "up_mbps", "upMbps", "up", "upmbps")
+	down := xrayHysteriaMbps(hySettings, settings, "down_mbps", "downMbps", "down", "downmbps")
+	if version == 1 {
+		// v1 без скорости не стартует и роняет весь конфиг — см.
+		// hysteriaBandwidthOrDefault в URI-пути, правило общее.
+		outbound["up_mbps"] = hysteriaBandwidthOrDefault(up)
+		outbound["down_mbps"] = hysteriaBandwidthOrDefault(down)
+	} else {
+		if up > 0 {
+			outbound["up_mbps"] = up
+		}
+		if down > 0 {
+			outbound["down_mbps"] = down
+		}
 	}
 
 	// TLS обязателен: оба протокола живут поверх QUIC. Общая выемка не читает
@@ -153,8 +162,8 @@ func xrayHysteriaAuth(sections ...map[string]interface{}) string {
 		if sec == nil {
 			continue
 		}
-		for _, key := range []string{"auth", "auth_str", "authStr", "password", "obfsPassword"} {
-			if v := strings.TrimSpace(xrayMapString(sec, key)); v != "" && key != "obfsPassword" {
+		for _, key := range []string{"auth", "auth_str", "authStr", "password"} {
+			if v := strings.TrimSpace(xrayMapString(sec, key)); v != "" {
 				return v
 			}
 		}
