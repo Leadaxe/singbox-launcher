@@ -289,14 +289,25 @@ func newFolderDrillNodeOps(
 // список), и тот же клик-обработчик через `SecondaryTapWrap.OnPrimary` —
 // новых кликабельных виджетов волна не заводит. Правого клика у неё нет:
 // строка возврата не узел, операций над ней не бывает.
-func folderDrillBackRow(kind corestate.SourceKind, name string, onLeave func()) fyne.CanvasObject {
+func folderDrillBackRow(kind corestate.SourceKind, name string, warnCount int, onLeave func()) fyne.CanvasObject {
 	lbl := widget.NewLabel(folderDrillBackLabel(kind, name))
 	lbl.Wrapping = fyne.TextWrapOff
 	lbl.Truncation = fyne.TextTruncateEllipsis
 	lbl.TextStyle = fyne.TextStyle{Bold: true}
 
+	// Сводка ошибок состава — В ШАПКЕ, а не только у строк: сломанные записи
+	// могут стоять глубоко в списке, и без сводки состав выглядит здоровым,
+	// пока не проскроллишь до них (обкатка, заход 3).
+	var warnBadge fyne.CanvasObject
+	if warnCount > 0 {
+		w := widget.NewLabel(fmt.Sprintf("%s %d %s",
+			previewUnsupportedMark, warnCount, locale.T("node error(s)")))
+		w.Importance = widget.WarningImportance
+		warnBadge = w
+	}
+
 	row := fynewidget.NewHoverRow(
-		container.NewBorder(nil, nil, widget.NewIcon(theme.NavigateBackIcon()), nil, lbl),
+		container.NewBorder(nil, nil, widget.NewIcon(theme.NavigateBackIcon()), warnBadge, lbl),
 		fynewidget.HoverRowConfig{IsSelected: func() bool { return false }},
 	)
 	wrap := fynewidget.NewSecondaryTapWrap(row)

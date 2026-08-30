@@ -3943,5 +3943,8 @@
   },
   "no working members": {
     "value": "нет живых членов"
+  },
+  "node error(s)": {
+    "value": "ошибок узлов"
   }
 }

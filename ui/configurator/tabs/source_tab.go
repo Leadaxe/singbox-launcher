@@ -502,7 +502,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// «Где я» — закреплённая шапка секции вместо «Sources»: она
 				// не уезжает за прокрутку и она же выход из контейнера.
 				sourcesTitleSwap.Objects = []fyne.CanvasObject{
-					folderDrillBackRow(input.Kind, input.Name, func() {
+					folderDrillBackRow(input.Kind, input.Name, previewRowsBroken(input.Rows), func() {
 						drill.leave()
 						folderDrillReorder = nil
 						refreshSourcesListRef()
@@ -1054,11 +1054,9 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		sourcesScroll.ScrollToOffset(fyne.NewPos(0, rowOffsetInBox(sourcesBox, revealedRow)))
 	}
 
-	sourcesHeader := container.NewHBox(
-		sourcesTitleSwap,
-		layout.NewSpacer(),
-		previewAllBtn,
-	)
+	// Border, а не HBox: HBox даёт центру только MinSize, а у строки возврата
+	// с Truncation он крошечный — имя контейнера схлопывалось в «…».
+	sourcesHeader := container.NewBorder(nil, nil, nil, previewAllBtn, sourcesTitleSwap)
 
 	// Без ведущего разделителя: AppTabs уже рисует свой divider под строкой
 	// вкладок (container/apptabs.go), и собственная линия первым элементом

@@ -185,3 +185,15 @@ func previewRowsUnsupported(rows []previewRow) int {
 	}
 	return n
 }
+
+// previewRowsBroken — сводка ⚠ состава: неразобранные записи плюс авто-группы
+// без единого живого члена (после annotatePreviewGroupRows).
+func previewRowsBroken(rows []previewRow) int {
+	n := 0
+	for i := range rows {
+		if rows[i].Unsupported || (rows[i].GroupCounted && rows[i].GroupAlive == 0) {
+			n++
+		}
+	}
+	return n
+}
