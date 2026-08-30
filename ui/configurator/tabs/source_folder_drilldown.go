@@ -120,6 +120,14 @@ type folderDrillState struct {
 	// корня. Имя поля историческое: режим начинался с папок, а адресация у
 	// обоих контейнеров одна и та же.
 	folderID string
+	// announceOpen — раскрыт ли блок объявления провайдера под шапкой.
+	//
+	// Живёт в состоянии ВКЛАДКИ, а не в модели: это положение экрана, оно не
+	// сохраняется и не имеет смысла для сборки. Свёрнут по умолчанию —
+	// объявление бывает многострочным и оттеснило бы состав, ради которого
+	// сюда и заходят. Сбрасывается на выходе: раскрыв анонс одной подписки,
+	// человек не просил раскрывать его у следующей.
+	announceOpen bool
 }
 
 // active — вкладка сейчас показывает состав контейнера.
@@ -130,8 +138,14 @@ func (d *folderDrillState) active() bool {
 // enter открывает контейнер, leave возвращает корень. Перерисовку зовёт
 // вызывающий: обе операции меняют ровно одно поле, и лишний refresh при
 // повторном клике по той же строке был бы мельканием списка.
-func (d *folderDrillState) enter(folderID string) { d.folderID = strings.TrimSpace(folderID) }
-func (d *folderDrillState) leave()                { d.folderID = "" }
+func (d *folderDrillState) enter(folderID string) {
+	d.folderID = strings.TrimSpace(folderID)
+	d.announceOpen = false
+}
+func (d *folderDrillState) leave() {
+	d.folderID = ""
+	d.announceOpen = false
+}
 
 // nodesAreFree — в открытый контейнер можно КЛАСТЬ узлы руками.
 //
@@ -287,35 +301,109 @@ func newFolderDrillNodeOps(
 	}
 }
 
-// folderDrillBackRow — первая строка режима: выход в корень.
+// folderDrillHeader — закреплённая шапка режима: «где я», сводка ошибок,
+// кнопки контейнера и раскрывающийся блок объявления провайдера.
 //
-// Строка ОДНА и она же заголовок: отдельного «Folder: имя» над списком больше
-// нет (заход 2, пункт 2) — две подписи об одном и том же месте спорили друг с
-// другом и занимали высоту, которой в списке и так мало.
+// Строка ОДНА и она же заголовок: отдельного «Folder: имя» над списком нет
+// (заход 2, пункт 2) — две подписи об одном месте спорили друг с другом.
+// Первой строкой СПИСКА она тоже больше не живёт (заход 3): уезжала за
+// прокрутку вместе с составом, и «где я» пропадало с экрана.
 //
-// Тот же `HoverRow`, что у строк источников (подсветка наведения одна на весь
-// список), и тот же клик-обработчик через `SecondaryTapWrap.OnPrimary` —
-// новых кликабельных виджетов волна не заводит. Правого клика у неё нет:
-// строка возврата не узел, операций над ней не бывает.
-func folderDrillBackRow(kind corestate.SourceKind, name string, warnCount int, onLeave func()) fyne.CanvasObject {
+// Кнопки справа — тот же набор и порядок, что у строки контейнера в списке
+// Sources (принцип «меню = кнопки»): Support (иконка Telegram у t.me), Edit
+// (окно источника), ↻ Fetch у подписки. Корзины здесь нет намеренно: удалять
+// контейнер, стоя внутри него, — операция, за которой сразу следует «а куда
+// меня выкинуло»; удаление живёт в списке Sources и в меню правого клика.
+//
+// Объявление провайдера — под шапкой, СВЁРНУТОЕ (кнопка 📢): оно бывает
+// многострочным и в развёрнутом виде оттеснило бы состав, ради которого сюда
+// заходят. Кнопки съедают свой клик сами (лежат глубже обёртки), клик по
+// остальной строке — выход в корень.
+func folderDrillHeader(
+	presenter *wizardpresentation.WizardPresenter,
+	guiState *wizardpresentation.GUIState,
+	src *corestate.Source,
+	sourceIndex int,
+	name string,
+	warnCount int,
+	announceOpen bool,
+	onToggleAnnounce func(),
+	onLeave func(),
+) fyne.CanvasObject {
+	kind := src.Kind
 	lbl := widget.NewLabel(folderDrillBackLabel(kind, name))
 	lbl.Wrapping = fyne.TextWrapOff
 	lbl.Truncation = fyne.TextTruncateEllipsis
 	lbl.TextStyle = fyne.TextStyle{Bold: true}
 
+	meta := diagOf(src)
+	announce := sourcePreviewAnnounceText(meta)
+
+	var rowGetter func() *fynewidget.HoverRow
+	var row *fynewidget.HoverRow
+	rowGetter = func() *fynewidget.HoverRow { return row }
+
+	rightItems := make([]fyne.CanvasObject, 0, 5)
+
 	// Сводка ошибок состава — В ШАПКЕ, а не только у строк: сломанные записи
 	// могут стоять глубоко в списке, и без сводки состав выглядит здоровым,
 	// пока не проскроллишь до них (обкатка, заход 3).
-	var warnBadge fyne.CanvasObject
 	if warnCount > 0 {
 		w := widget.NewLabel(fmt.Sprintf("%s %d %s",
 			previewUnsupportedMark, warnCount, locale.T("node error(s)")))
 		w.Importance = widget.WarningImportance
-		warnBadge = w
+		rightItems = append(rightItems, w)
 	}
 
-	row := fynewidget.NewHoverRow(
-		container.NewBorder(nil, nil, widget.NewIcon(theme.NavigateBackIcon()), warnBadge, lbl),
+	// 📢 — только когда объявление есть: кнопка, за которой пусто, обещала бы
+	// содержимое, которого нет.
+	if announce != "" {
+		icon := theme.MenuExpandIcon()
+		if announceOpen {
+			icon = theme.MenuDropDownIcon()
+		}
+		btn := fynewidget.NewHoverForwardButtonWithIcon("", icon, func() {
+			if onToggleAnnounce != nil {
+				onToggleAnnounce()
+			}
+		}, rowGetter)
+		btn.Importance = widget.LowImportance
+		fynewidget.SetToolTipSafe(btn, locale.T("Provider message"))
+		rightItems = append(rightItems, btn)
+	}
+
+	if support := supportLinkButton(meta, rowGetter); support != nil {
+		rightItems = append(rightItems, support)
+	}
+
+	editBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DocumentCreateIcon(), func() {
+		presenter.MergeGUIToModel()
+		m := presenter.Model()
+		if m == nil || sourceIndex < 0 || sourceIndex >= len(m.Sources) {
+			return
+		}
+		showSourceEditWindow(presenter, guiState, guiState.Window, sourceIndex,
+			wizardbusiness.SourceDisplayName(m.Sources[sourceIndex]))
+	}, rowGetter)
+	editBtn.Importance = widget.LowImportance
+	fynewidget.SetToolTipSafe(editBtn, locale.T("Edit"))
+	rightItems = append(rightItems, editBtn)
+
+	// ↻ — только у подписки: URL есть у неё, а не у папки.
+	if kind == corestate.SourceKindSubscription && strings.TrimSpace(src.ID) != "" {
+		id := src.ID
+		fetchBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.ViewRefreshIcon(), func() {
+			refreshOneSourceFromUI(presenter, guiState, id)
+		}, rowGetter)
+		fetchBtn.Importance = widget.LowImportance
+		fynewidget.SetToolTipSafe(fetchBtn, locale.T("Fetch this subscription now"))
+		rightItems = append(rightItems, fetchBtn)
+	}
+
+	rightControls := container.New(tightHBox{spacing: rowIconGap}, rightItems...)
+
+	row = fynewidget.NewHoverRow(
+		container.NewBorder(nil, nil, widget.NewIcon(theme.NavigateBackIcon()), rightControls, lbl),
 		fynewidget.HoverRowConfig{IsSelected: func() bool { return false }},
 	)
 	wrap := fynewidget.NewSecondaryTapWrap(row)
@@ -324,7 +412,14 @@ func folderDrillBackRow(kind corestate.SourceKind, name string, warnCount int, o
 			onLeave()
 		}
 	}
-	return wrap
+
+	if announce == "" || !announceOpen {
+		return wrap
+	}
+	msg := widget.NewLabel(announce)
+	msg.Wrapping = fyne.TextWrapWord
+	msg.Importance = widget.LowImportance
+	return container.NewVBox(wrap, msg)
 }
 
 // folderDrillNodeRow — строка одного узла контейнера внутри списка Sources.

@@ -502,11 +502,20 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// «Где я» — закреплённая шапка секции вместо «Sources»: она
 				// не уезжает за прокрутку и она же выход из контейнера.
 				sourcesTitleSwap.Objects = []fyne.CanvasObject{
-					folderDrillBackRow(input.Kind, input.Name, previewRowsBroken(input.Rows), func() {
-						drill.leave()
-						folderDrillReorder = nil
-						refreshSourcesListRef()
-					}),
+					folderDrillHeader(
+						presenter, guiState,
+						&m.Sources[input.SourceIndex], input.SourceIndex,
+						input.Name, previewRowsBroken(input.Rows),
+						drill.announceOpen,
+						func() {
+							drill.announceOpen = !drill.announceOpen
+							refreshSourcesListRef()
+						},
+						func() {
+							drill.leave()
+							folderDrillReorder = nil
+							refreshSourcesListRef()
+						}),
 				}
 				sourcesTitleSwap.Refresh()
 				sourcesBox.Refresh()
