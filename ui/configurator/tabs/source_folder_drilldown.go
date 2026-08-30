@@ -220,6 +220,14 @@ func buildFolderDrillRows(sources []corestate.Source, folderID string) (folderDr
 		Kind:        src.Kind,
 		Name:        wizardbusiness.SourceDisplayName(src),
 	}
+	// Для подписки без своего имени SourceDisplayName падает в URL — шапка
+	// выглядела бы адресной строкой. Имя от провайдера (profile-title) —
+	// то же, каким подписку зовёт заголовок окна источника.
+	if src.Kind == corestate.SourceKindSubscription && src.Meta != nil {
+		if t := strings.TrimSpace(src.Meta.ProfileTitle); t != "" {
+			out.Name = t
+		}
+	}
 	if len(src.Nodes) > 0 {
 		emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), idx, map[string]int{})
 		out.Rows = buildPreviewRows(src.Nodes, emitted.Nodes)
