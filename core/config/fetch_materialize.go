@@ -15,6 +15,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/state"
@@ -62,12 +63,14 @@ func MaterializeSubscriptionBody(subID string, decodedBody []byte, skip []map[st
 
 	// Теги узлов (и принятых, и неразобранных) обязаны быть уникальны в рамках
 	// контейнера: сырой тег — идентичность и merge-ключ. Принятые уже
-	// уникализированы парсером; неразобранной записи тег даём здесь, поэтому
-	// занятость считаем по одному множеству на весь материал.
-	taken := make(map[string]bool, len(pb.Entries))
+	// уникализированы парсером; неразобранной записи тег даём здесь — ТОЙ ЖЕ
+	// машиной (subscription.MakeIdentityUnique) и по ОДНОМУ счётчику на весь
+	// материал, поэтому столкновение с соседом разводится общим правилом
+	// «X, X-2, X-3», а не вторым, своим.
+	idCounts := make(map[string]int, len(pb.Entries))
 	for _, e := range pb.Entries {
 		if e != nil {
-			taken[e.RawTag] = true
+			idCounts[e.RawTag] = 1
 		}
 	}
 
@@ -81,9 +84,7 @@ func MaterializeSubscriptionBody(subID string, decodedBody []byte, skip []map[st
 	accepted := 0
 	flushRejected := func() {
 		for _, r := range rejectedAt[accepted] {
-			node := unsupportedNodeFromRecord(r, taken, len(out.Nodes)+1)
-			taken[node.Tag] = true
-			out.Nodes = append(out.Nodes, node)
+			out.Nodes = append(out.Nodes, unsupportedNodeFromRecord(r, idCounts, len(out.Nodes)+1))
 		}
 	}
 
@@ -114,19 +115,62 @@ func MaterializeSubscriptionBody(subID string, decodedBody []byte, skip []map[st
 
 // unsupportedNodeFromRecord — неразобранная запись тела как узел контейнера.
 //
-// Тег берётся ИЗ ЗАПИСИ (подпись во фрагменте share-URI — единственное имя,
-// которое пользователь у неё видел), а когда её нет или она уже занята —
-// позиционный `unsupported-N`, где N — место записи в составе. Позиционный
-// тег не притворяется именем: запись всё равно узнаётся по исходнику, а тег
-// ей нужен как идентичность (merge-ключ и адрес в контейнере).
-func unsupportedNodeFromRecord(r subscription.RejectedBodyRecord, taken map[string]bool, pos int) state.Node {
-	tag := textnorm.NormalizeProxyDisplay(subscription.LabelFromOriginURI(r.OriginRaw))
-	if tag == "" || taken[tag] {
+// Тег берётся ИЗ ЗАПИСИ — тем полем, которое в ней несёт имя (SPEC 116 W13):
+// у URI-записи это фрагмент-подпись, у элемента JSON-тела — `tag`/`ps`/
+// `remarks`/`name`, у анонса провайдера — сам его текст. Позиционный
+// `unsupported-N` остаётся ровно для записи, у которой имени нет вовсе (или
+// оно уже занято соседом): он не притворяется именем — запись узнаётся по
+// исходнику, а тег ей нужен как идентичность (merge-ключ и адрес в
+// контейнере).
+//
+// Имя из записи — ещё и условие merge-стабильности: у баннера тег = его
+// подпись, поэтому при следующем fetch тот же баннер матчится по сырому тегу
+// и не плодит вторую копию. Позиционный тег такой гарантии не даёт — он
+// поедет от любой вставки выше по телу, поэтому остаётся ровно для безымянных.
+//
+// Столкновение имён разводит ОБЩАЯ машина уникализации контейнера
+// (`X`, `X-2`, …) — та же, что у принятых узлов: два одинаковых баннера
+// подряд обязаны именоваться тем же правилом, что два одноимённых сервера.
+func unsupportedNodeFromRecord(r subscription.RejectedBodyRecord, idCounts map[string]int, pos int) state.Node {
+	tag := clampUnsupportedTag(textnorm.NormalizeProxyDisplay(nameFromRejectedRecord(r)))
+	if tag == "" {
+		// Имени в записи нет вовсе — позиционный тег как идентичность. Он тоже
+		// идёт через общий счётчик: `unsupported-3` мог прийти именем соседа.
 		tag = fmt.Sprintf("unsupported-%d", pos)
 	}
-	for taken[tag] {
-		pos++
-		tag = fmt.Sprintf("unsupported-%d", pos)
+	return state.NewUnsupportedNode(subscription.MakeIdentityUnique(tag, idCounts), r.Reason, r.OriginKind, r.OriginRaw)
+}
+
+// maxUnsupportedTagRunes — потолок длины тега неразобранной записи.
+//
+// Анонс провайдера бывает не заголовком, а абзацем; тег — идентичность и
+// строка списка, и класть в него килобайт чужого текста незачем. Обрезка
+// стабильна (тот же текст → тот же тег), поэтому merge-ключ не плывёт, а
+// полный исходник всё равно лежит в `origin.raw`.
+const maxUnsupportedTagRunes = 120
+
+func clampUnsupportedTag(tag string) string {
+	runes := []rune(tag)
+	if len(runes) <= maxUnsupportedTagRunes {
+		return tag
 	}
-	return state.NewUnsupportedNode(tag, r.Reason, r.OriginKind, r.OriginRaw)
+	return strings.TrimSpace(string(runes[:maxUnsupportedTagRunes])) + "…"
+}
+
+// nameFromRejectedRecord — как эту запись зовут у провайдера.
+//
+// Развилка по виду исходника, а не по причине отбраковки: имя лежит в РАЗНЫХ
+// местах у разных форматов тела, и правило «взять поле имени» одно на все
+// причины — сломанный узел и анонс провайдера называются одинаково.
+func nameFromRejectedRecord(r subscription.RejectedBodyRecord) string {
+	if r.Reason == subscription.RejectReasonProviderBanner {
+		// Анонс провайдера — сам себе имя: его текст и есть подпись, которую
+		// пользователь видел в списке. Гонять его через URI-разбор нельзя —
+		// «Оплата: РФ/зарубеж» превратилась бы в обрезок до двоеточия.
+		return r.OriginRaw
+	}
+	if r.OriginKind == state.OriginKindJSON {
+		return subscription.NameFromOriginJSON(r.OriginRaw)
+	}
+	return subscription.LabelFromOriginURI(r.OriginRaw)
 }

@@ -8,7 +8,6 @@ package tabs
 
 import (
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/internal/fynewidget"
@@ -37,6 +36,21 @@ func previewRowTitle(r previewRow) string {
 	return nodeDisplayLine(r.Node)
 }
 
+// previewRowReason — причина отбраковки на языке пользователя.
+//
+// В состоянии причина хранится АНГЛИЙСКИМ ключом (то же правило, что у фраз
+// эмиссионных деградаций): иначе смена языка переписывала бы `nodes[]`, а
+// merge сравнивал бы переведённые строки. Перевод — здесь, на показе, одной
+// точкой на все три места, где причина видна (подстрока, тултип, окно записи).
+// Ключ без записи в каталоге проходит насквозь: технический текст парсера
+// («vless outbound rejected: empty user id») переводить нечем и незачем.
+func previewRowReason(r previewRow) string {
+	if r.Reason == "" {
+		return locale.T("could not be parsed")
+	}
+	return locale.T(r.Reason)
+}
+
 // previewRowSubtitle — вторая строка: «протокол·транспорт·security» у узла,
 // «⚠ причина» у неразобранной записи.
 //
@@ -45,11 +59,7 @@ func previewRowTitle(r previewRow) string {
 // «вот почему её нет».
 func previewRowSubtitle(r previewRow) string {
 	if r.Unsupported {
-		reason := r.Reason
-		if reason == "" {
-			reason = locale.T("could not be parsed")
-		}
-		return previewUnsupportedMark + " " + reason
+		return previewUnsupportedMark + " " + previewRowReason(r)
 	}
 	if r.Node == nil {
 		// Узел в составе есть, эмиссия его не выпустила: он выключен.
@@ -68,93 +78,24 @@ func previewRowToolTip(r previewRow) string {
 	if !r.Unsupported {
 		return ""
 	}
-	tip := r.Reason
-	if tip == "" {
-		tip = locale.T("could not be parsed")
-	}
+	tip := previewRowReason(r)
 	if r.OriginRaw != "" {
 		tip += "\n" + r.OriginRaw
 	}
 	return tip
 }
 
-// previewAnnounceBlock — сообщение провайдера над списком; nil, когда
-// провайдер молчал.
-//
-// Чужой текст, показанный КАК ДАННЫЕ (то же правило, что в Overview):
-// провайдер объясняет, почему состав такой, — интерпретировать его за него мы
-// не беремся. Wrapping обязателен: Label без него отдаёт всю строку как
-// min-width и раздувает окно на весь экран (fyne-ловушка).
-func previewAnnounceBlock(msg string) fyne.CanvasObject {
-	if msg == "" {
-		return nil
-	}
-	lbl := widget.NewLabel(locale.Tf("provider says: %s", msg))
-	lbl.Wrapping = fyne.TextWrapWord
-	lbl.Importance = widget.WarningImportance
-	return lbl
-}
-
-// showPreviewRowInfoWindow — клик по строке: как узел зовут и из чего он
-// сделан (SPEC 116 W11).
-//
-// Два поля, и оба нужны обоим видам строк: имя — то, под которым узел
-// известен пользователю, исходник (`origin.raw`) — то, из чего он собран
-// (или из чего собраться не смог). Полное окно разбора («Node info…»)
-// осталось в контекстном меню: у неразобранной записи разбирать нечего, а у
-// узла оно длинное и по клику всплывать не должно.
-func showPreviewRowInfoWindow(r previewRow) {
-	origin := r.OriginRaw
-	if origin == "" && !r.Unsupported {
-		// Узел, собранный руками с нуля, исходника не имеет — показывать
-		// пустое окно незачем, у него есть полноценное «Node info…».
-		showPreviewNodeInfoWindow(r.Node)
-		return
-	}
-
-	win := fyne.CurrentApp().NewWindow(locale.Tf("Node: %s", previewRowTitle(r)))
-
-	body := container.NewVBox(
-		previewInfoRow(locale.T("Tag"), previewRowTitle(r)),
-	)
-	if r.Unsupported {
-		reason := r.Reason
-		if reason == "" {
-			reason = locale.T("could not be parsed")
-		}
-		body.Add(previewInfoRow(locale.T("Reason"), reason))
-	}
-	body.Add(widget.NewSeparator())
-	body.Add(previewSectionHeader(locale.T("Origin")))
-
-	// MultiLineEntry, а не Label: исходник длинный, его выделяют и копируют.
-	// Ввод откатывается — тот же приём, что у read-only полей Overview
-	// (Disable() на macOS красит текст цветом фона).
-	entry := widget.NewMultiLineEntry()
-	entry.Wrapping = fyne.TextWrapBreak
-	entry.SetText(origin)
-	entry.OnChanged = func(s string) {
-		if s != origin {
-			entry.SetText(origin)
-		}
-	}
-	body.Add(entry)
-	body.Add(widget.NewButton(locale.T("Copy"), func() {
-		fynewidget.SetClipboard(origin)
-	}))
-
-	win.SetContent(previewWithScrollGutter(body))
-	win.Resize(fyne.NewSize(560, 360))
-	win.CenterOnScreen()
-	win.Show()
-}
-
 // showPreviewRowContextMenu — меню строки правым кликом.
 //
-// У неразобранной записи из всего меню осмысленны два пункта: посмотреть её
-// исходник и скопировать его (починить строку можно только вставив её
-// исправленной — руками, в папку). Пункты про JSON, тег и операции над узлом
-// ей не подходят: узла за ней нет.
+// У неразобранной записи из всего меню осмысленны два пункта: открыть её в
+// том же окне узла (read-only: тела нет, есть причина и исходник) и
+// скопировать исходник (починить строку можно только вставив её исправленной
+// — руками, в папку). Пункты про JSON, тег и операции над узлом ей не
+// подходят: узла за ней нет.
+//
+// W13 заход 2: отдельного окна «Node info…» строки больше нет — и карандаш
+// строки, и первый пункт меню открывают ОДНО окно правки узла
+// (`showPreviewNodeEditWindow`), принцип «меню = кнопки».
 func showPreviewRowContextMenu(
 	win fyne.Window,
 	r previewRow,
@@ -169,13 +110,13 @@ func showPreviewRowContextMenu(
 		// Узел может быть nil — выключенный узел эмиссию не проходит, но
 		// строкой остаётся, и операции над ним (перенести, переименовать,
 		// удалить) обязаны работать: он в составе, просто не в конфиге.
-		showPreviewNodeContextMenu(win, r.Node, rawTag, ops, pe)
+		showPreviewNodeContextMenu(win, r, rawTag, ops, pe)
 		return
 	}
 	origin := r.OriginRaw
 	items := []*fyne.MenuItem{
 		fyne.NewMenuItem(locale.T("Node info…"), func() {
-			showPreviewRowInfoWindow(r)
+			showPreviewNodeEditWindow(r, rawTag, ops)
 		}),
 		fyne.NewMenuItem(locale.T("Copy source line"), func() {
 			fynewidget.SetClipboard(origin)

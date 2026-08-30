@@ -31,7 +31,7 @@ func serverWithBody(originKind, originRaw string) *wizardmodels.Source {
 func TestRegenFromRawRollsBackOnBrokenRaw(t *testing.T) {
 	src := serverWithBody(wizardmodels.OriginKindURI, "vless://not-a-valid-uri")
 
-	if err := regenServerBodyFromRaw(src); err == nil {
+	if err := regenServerBodyFromRaw(&src.Node); err == nil {
 		t.Fatal("неразбираемый raw принят без ошибки — узел молча испорчен")
 	}
 	if string(src.Body) != workingBody {
@@ -48,7 +48,7 @@ func TestRegenFromRawRebuildsBody(t *testing.T) {
 	const uri = "vless://b831381d-6324-4d53-ad4f-8cda48b30811@nl.example:443?security=tls&sni=nl.example#nl"
 	src := serverWithBody(wizardmodels.OriginKindURI, uri)
 
-	if err := regenServerBodyFromRaw(src); err != nil {
+	if err := regenServerBodyFromRaw(&src.Node); err != nil {
 		t.Fatalf("рабочий URI не пересобрался: %v", err)
 	}
 	var ob map[string]interface{}
@@ -76,7 +76,7 @@ func TestRegenFromRawRebuildsBody(t *testing.T) {
 func TestRegenFromRawWithoutOrigin(t *testing.T) {
 	src := &wizardmodels.Source{Node: wizardmodels.Node{
 		Kind: wizardmodels.SourceKindServer, Body: json.RawMessage(workingBody)}}
-	if err := regenServerBodyFromRaw(src); err == nil {
+	if err := regenServerBodyFromRaw(&src.Node); err == nil {
 		t.Fatal("узел без origin пересобрался из ниоткуда")
 	}
 	if string(src.Body) != workingBody {
@@ -89,7 +89,7 @@ func TestRegenFromRawWithoutOrigin(t *testing.T) {
 func TestApplyServerBodyJSON(t *testing.T) {
 	t.Run("битый JSON откатывается", func(t *testing.T) {
 		src := serverWithBody(wizardmodels.OriginKindURI, "vless://x")
-		if err := applyServerBodyJSON(src, "{not json"); err == nil {
+		if err := applyServerBodyJSON(&src.Node, "{not json"); err == nil {
 			t.Fatal("битый JSON принят")
 		}
 		if string(src.Body) != workingBody {
@@ -99,7 +99,7 @@ func TestApplyServerBodyJSON(t *testing.T) {
 
 	t.Run("объект без type откатывается", func(t *testing.T) {
 		src := serverWithBody(wizardmodels.OriginKindURI, "vless://x")
-		if err := applyServerBodyJSON(src, `{"server":"a.example"}`); err == nil {
+		if err := applyServerBodyJSON(&src.Node, `{"server":"a.example"}`); err == nil {
 			t.Fatal("outbound без type принят — ядро на нём не стартует")
 		}
 		if string(src.Body) != workingBody {
@@ -110,7 +110,7 @@ func TestApplyServerBodyJSON(t *testing.T) {
 	t.Run("валидный объект принят, порядок ключей сохранён", func(t *testing.T) {
 		src := serverWithBody(wizardmodels.OriginKindURI, "vless://x")
 		const edited = `{"type":"trojan","server":"b.example","server_port":8443,"password":"q"}`
-		if err := applyServerBodyJSON(src, edited); err != nil {
+		if err := applyServerBodyJSON(&src.Node, edited); err != nil {
 			t.Fatalf("валидный объект отвергнут: %v", err)
 		}
 		// Порядок ключей — это то, что написал пользователь: пересортировка

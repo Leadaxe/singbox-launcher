@@ -65,6 +65,31 @@ type ParsedBodyEntry struct {
 	MemberRawTags   []string
 }
 
+// RejectReasonProviderBanner — причина отбраковки записи-АНОНСА провайдера
+// (SPEC 116 W13).
+//
+// Провайдеры вставляют в тело подписки строки-баннеры («Лучшие сервера»,
+// «БЕЛЫЕ СПИСКИ В САМОМ НИЗУ»): это не узлы и никогда ими не были — это
+// рубрикатор списка, написанный человеком для человека. Прежде такая строка
+// отбраковывалась общим «unsupported scheme», и пользователь читал у своего
+// же оглавления диагноз про схему, которой там нет и не подразумевалось.
+//
+// Ключ АНГЛИЙСКИЙ — как фразы эмиссионных деградаций: перевод живёт в
+// `bin/locale/ru.json`, а в состоянии хранится ключ (иначе смена языка
+// переписывала бы `nodes[]`).
+const RejectReasonProviderBanner = "provider banner, not a server"
+
+// isProviderBannerLine — строка тела, которая узлом не притворялась вовсе.
+//
+// Признак ровно один и намеренно узкий: в строке нет разделителя схемы
+// `://`. Всё, что схему заявило, но не разобралось (`vless://` с пустым
+// uuid, неизвестная схема `wtf://`), — это СЛОМАННЫЙ узел, и его причина
+// обязана остаться технической: пользователю там нужно чинить, а не читать
+// «это баннер».
+func isProviderBannerLine(line string) bool {
+	return !strings.Contains(line, "://")
+}
+
 // RejectedBodyRecord — запись тела, которую разобрать не удалось
 // (SPEC 116 W11). Материализуется узлом kind=unsupported на СВОЕЙ позиции:
 // пользователь видит, что провайдер прислал строку, которую мы не поняли, — и
@@ -231,6 +256,16 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 				continue
 			}
 			if st.capReached() {
+				continue
+			}
+			// Анонс провайдера («Лучшие сервера», «ПОДХОДЯТ ДЛЯ ИГР») — тоже
+			// запись состава, но узлом она не притворялась (SPEC 116 W13):
+			// разбирать её незачем, а причина у неё своя, не «unsupported
+			// scheme». Тегом станет сама подпись — так один и тот же баннер
+			// матчится при повторном fetch и не плодит копий.
+			if isProviderBannerLine(line) {
+				st.warn(fmt.Sprintf("record rejected: %s", RejectReasonProviderBanner))
+				st.reject(RejectReasonProviderBanner, OriginKindURI, line)
 				continue
 			}
 			node, err := ParseNode(line, skip)

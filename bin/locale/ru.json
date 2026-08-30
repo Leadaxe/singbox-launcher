@@ -3845,6 +3845,9 @@
   "could not be parsed": {
     "value": "не удалось разобрать"
   },
+  "provider banner, not a server": {
+    "value": "анонс провайдера, а не сервер"
+  },
   "Reason": {
     "value": "Причина"
   },
@@ -3919,5 +3922,23 @@
   },
   "node has no body — set a URI or JSON": {
     "value": "у узла нет тела — задайте URI или JSON"
+  },
+  "Rename": {
+    "value": "Переименовать"
+  },
+  "The sing-box outbound this node is built from. Edit and press Apply; Regen from raw rebuilds it from the origin below. Tag and detour are restamped by the launcher at build time.": {
+    "value": "Outbound sing-box, из которого собран этот узел. Правьте и нажмите Apply; «Пересобрать из исходника» вернёт его к исходнику ниже. Тег и detour лаунчер проставляет заново на сборке."
+  },
+  "Read-only: nodes of a subscription are refreshed from the provider, so an edit here would be lost on the next update. Use “Copy to folder…” to take this node for yourself.": {
+    "value": "Только чтение: узлы подписки обновляются у провайдера, и правка здесь пропала бы на следующем обновлении. Заберите узел себе через «Скопировать в папку…»."
+  },
+  "This entry could not be parsed, so it has no outbound body — only the original line below. Fix it by pasting a corrected link into a folder.": {
+    "value": "Эту запись не удалось разобрать, тела у неё нет — только исходная строка ниже. Починить можно, вставив исправленную ссылку в папку."
+  },
+  "Nodes of a subscription come from the provider and cannot be added by hand — an entry added here would be gone on the next update. Use “Copy to folder…” on a node to take it for yourself.": {
+    "value": "Узлы подписки приезжают от провайдера, и добавить их руками нельзя — запись пропала бы на следующем обновлении. Заберите нужный узел себе через «Скопировать в папку…»."
+  },
+  "No nodes yet — refresh this subscription in the sources list.": {
+    "value": "Узлов пока нет — обновите подписку в списке источников."
   }
 }

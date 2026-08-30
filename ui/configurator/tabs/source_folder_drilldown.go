@@ -1,31 +1,48 @@
-// File source_folder_drilldown.go — вход В ПАПКУ прямо в списке Sources
+// File source_folder_drilldown.go — вход В КОНТЕЙНЕР прямо в списке Sources
 // (SPEC 116 W13, обкатка; требование дословно: «нажать на папку и в том же
-// окне, не меняя интерфейса, провалиться в папку»).
+// окне, не меняя интерфейса, провалиться в папку». Заход 2 распространил то же
+// на ПОДПИСКУ).
 //
 // # Что это такое и чем НЕ является
 //
 // Это не второй список узлов и не новое окно. Вкладка Sources получает одно
-// состояние — ULID открытой папки (`openFolderID` в замыкании
-// `CreateSourcesTab`), — и ТА ЖЕ функция `refreshSourcesList` наполняет ТОТ ЖЕ
-// `sourcesBox` либо корнем, либо составом папки. Виджеты те же: `HoverRow` +
-// `SecondaryTapWrap` снаружи (та же ловушка глубины Fyne, что у W13-меню
-// верхнего узла), `DragHandle` из той же `DragReorderGroup`, `widget.Check`.
+// состояние — ULID открытого контейнера, — и ТА ЖЕ функция `refreshSourcesList`
+// наполняет ТОТ ЖЕ `sourcesBox` либо корнем, либо составом контейнера. Виджеты
+// те же: `HoverRow` + `SecondaryTapWrap` снаружи (та же ловушка глубины Fyne,
+// что у W13-меню верхнего узла), `DragHandle` из той же `DragReorderGroup`,
+// `widget.Check`.
 //
 // Второго списка узлов заводить нельзя по той же причине, по которой W5 не
 // стала заводить его в окне источника (§O4 = вариант А): состав контейнера
-// один, и вторая его модель разъехалась бы с первой. Поэтому строки папки
-// строятся ТЕМ ЖЕ `buildPreviewRows` (preview_rows.go) и той же эмиссией
-// `config.EmitCanonicalSource`, что вкладка Preview, а рисуются
-// `previewRowTitle`/`previewRowSubtitle` — теми же текстами.
+// один, и вторая его модель разъехалась бы с первой. Поэтому строки строятся
+// ТЕМ ЖЕ `buildPreviewRows` (preview_rows.go) и той же эмиссией
+// `config.EmitCanonicalSource`, что вкладка Preview, а рисуются той же парой
+// `canvas.Text` в `previewTightVBox`, что строка списка Preview: заход 2
+// исправил вёрстку, разъехавшуюся с превью (заголовок и подстрока не
+// выравнивались с чекбоксом, `widget.Label` давал лишние отступы).
+//
+// # Папка и подписка: один экран, разные права
+//
+// Различие целиком в МОДЕЛИ, а не в экране: состав подписки принадлежит
+// провайдеру (features/sources.md §«Свобода и несвобода узлов»), и Move /
+// Rename / Delete там запрещены — следующий fetch вернул бы удалённый узел и
+// переименовал переименованный. Экран это уже знает одним местом —
+// `previewNodeOps.nodeOpsAllowed()` (= «kind == folder»): меню само не
+// показывает запрещённых пунктов, корзина у строки не рисуется, а поле Add
+// наверху вкладки в режиме подписки гаснет с подсказкой (в подписку руками не
+// льют). Развилку «а это подписка?» по экрану не разносить — она одна и живёт
+// в модели прав.
 //
 // # Почему операции — те же самые
 //
-// Правый клик по узлу папки в этом режиме зовёт `showPreviewRowContextMenu` с
+// Правый клик по узлу в этом режиме зовёт `showPreviewRowContextMenu` с
 // контекстом `previewNodeOps`, у которого `win` = главное окно визарда, а
 // `reloadScratch`/`refreshPreview` пусты — рабочей копии у списка нет, список
 // целиком перестраивает `applySourceMutation` (ровно как в
 // source_row_node_ops.go). Move/Copy/Rename/Delete и реестр переписи ссылок
-// берутся целиком; вторых диалогов волна не заводит.
+// берутся целиком; вторых диалогов волна не заводит. Кнопки справа у строки —
+// ТОТ ЖЕ набор действий, что в меню (принцип «меню = кнопки»): карандаш зовёт
+// `showPreviewNodeEditWindow`, корзина — `previewNodeOps.showDeleteDialog`.
 //
 // # Почему Add-поле в режиме папки льёт в папку
 //
@@ -35,13 +52,14 @@
 // `business.AppendNodesToFolder`, W6): корень и папка отличаются адресом
 // назначения, а не разбором (ловушка «эмиттер и парсер ходят парой», дыра Д6).
 //
-// # Чего в режиме папки нет
+// # Чего в режиме контейнера нет
 //
 // «Preview all servers…» остаётся кнопкой КОРНЯ (она про все источники
-// сразу), а кнопка ↻ у узла папки бессмысленна: URL есть у подписки, а не у
-// узла. Порядок узлов таскается внутри папки (`applyReorder`, W5), выход
-// возвращает корень ровно таким, каким он был: порядок `m.Sources` режим не
-// трогает вовсе.
+// сразу), а кнопка ↻ у узла бессмысленна: URL есть у подписки целиком, а не у
+// её узла. Порядок узлов таскается внутри ПАПКИ (`applyReorder`, W5) — у
+// подписки порядок задаёт тело провайдера, и захват там не показывается.
+// Выход возвращает корень ровно таким, каким он был: порядок `m.Sources` режим
+// не трогает вовсе.
 package tabs
 
 import (
@@ -50,6 +68,7 @@ import (
 	"strings"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
@@ -65,12 +84,14 @@ import (
 	wizardutils "singbox-launcher/ui/configurator/utils"
 )
 
-// folderDrillBackMark — знак возврата в строке «← имя папки».
+// folderDrillBackGap — неразрывный пробел между иконкой возврата и именем.
 //
-// «←» U+2190 уже живёт в шрифте и в проекте (новых глифов волна не заводит —
-// правило ui-visuals-approve-first). Стрелка стоит ПЕРЕД именем: строка
-// читается как действие «выйти отсюда», а не как заголовок.
-const folderDrillBackMark = "←"
+// U+00A0, а не обычный пробел: имя и знак возврата — одна подпись одной
+// строки, и перенос между ними оторвал бы стрелку от того, куда она ведёт.
+// Текстовой «←» здесь больше нет: глифа U+2190 в шрифте Fyne нет, и обкатка
+// показала на его месте «�» (заход 2, пункт 2). Знак возврата рисует
+// `theme.NavigateBackIcon()` — иконка, а не символ.
+const folderDrillBackGap = " "
 
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
@@ -80,34 +101,76 @@ const (
 	// не кладётся (вложенных контейнеров нет), и перечислять её среди
 	// принимаемого значило бы обещать то, что ядро отвергнет.
 	folderDrillHintText = "Adds nodes to this folder: direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://) or sing-box JSON. One per line. A subscription URL goes to Sources, not into a folder."
+	// subDrillHintText — подсказка в режиме ПОДПИСКИ.
+	//
+	// Поле Add там выключено: состав подписки приезжает от провайдера, и узел,
+	// добавленный руками, исчез бы на первом же обновлении. Сказать это словами
+	// обязательно — выключенное поле без объяснения читается как поломка.
+	subDrillHintText = "Nodes of a subscription come from the provider and cannot be added by hand — an entry added here would be gone on the next update. Use “Copy to folder…” on a node to take it for yourself."
 )
 
-// folderDrillState — состояние вкладки «мы внутри папки».
+// folderDrillState — состояние вкладки «мы внутри контейнера».
 //
 // ULID, а не индекс: пока пользователь смотрит состав, порядок `m.Sources`
 // вправе поменяться (фоновый fetch, перетаскивание из второго окна, удаление
 // соседа), и индекс увёл бы список в чужой источник. ULID — единственная
-// идентификация папки (SPEC 118).
+// идентификация контейнера (SPEC 118).
 type folderDrillState struct {
-	// folderID — ULID открытой папки; пусто = режим корня.
+	// folderID — ULID открытого контейнера (папки или подписки); пусто = режим
+	// корня. Имя поля историческое: режим начинался с папок, а адресация у
+	// обоих контейнеров одна и та же.
 	folderID string
 }
 
-// active — вкладка сейчас показывает состав папки.
+// active — вкладка сейчас показывает состав контейнера.
 func (d *folderDrillState) active() bool {
 	return d != nil && strings.TrimSpace(d.folderID) != ""
 }
 
-// enter открывает папку, leave возвращает корень. Перерисовку зовёт
+// enter открывает контейнер, leave возвращает корень. Перерисовку зовёт
 // вызывающий: обе операции меняют ровно одно поле, и лишний refresh при
 // повторном клике по той же строке был бы мельканием списка.
 func (d *folderDrillState) enter(folderID string) { d.folderID = strings.TrimSpace(folderID) }
 func (d *folderDrillState) leave()                { d.folderID = "" }
 
-// folderDrillIndex — позиция открытой папки в m.Sources; -1, если её не стало.
+// nodesAreFree — в открытый контейнер можно КЛАСТЬ узлы руками.
 //
-// Пропавшая папка (удалили из второго окна, откатили импортом бэкапа) режим не
-// ломает: список сам возвращается в корень — показывать состав того, чего
+// Ровно у папки. У подписки состав принадлежит провайдеру, и добавленный
+// руками узел исчез бы на первом же fetch'е — то же правило и та же причина,
+// что у `previewNodeOps.nodeOpsAllowed`; ссылаться на модель прав здесь нечем
+// (контекста операций у шапки вкладки нет), поэтому вид читается из модели.
+//
+// В корне (режим не активен) свобода полная: там Add кладёт ИСТОЧНИКИ.
+func (d *folderDrillState) nodesAreFree(sources []corestate.Source) bool {
+	if !d.active() {
+		return true
+	}
+	idx := folderDrillIndex(sources, d.folderID)
+	if idx < 0 {
+		return false
+	}
+	return sources[idx].Kind == corestate.SourceKindFolder
+}
+
+// drillContainerKind — в какой контейнер можно провалиться прямо из списка.
+//
+// Папка и подписка, и обе по одной причине: у них не один узел, а СОСТАВ, и
+// смотреть на него строкой контейнера негде. У server/chain/auto состава нет —
+// узел там и есть сам Source, его правит окно источника.
+func drillContainerKind(kind corestate.SourceKind) bool {
+	switch kind {
+	case corestate.SourceKindFolder, corestate.SourceKindSubscription:
+		return true
+	default:
+		return false
+	}
+}
+
+// folderDrillIndex — позиция открытого контейнера в m.Sources; -1, если его не
+// стало.
+//
+// Пропавший контейнер (удалили из второго окна, откатили импортом бэкапа) режим
+// не ломает: список сам возвращается в корень — показывать состав того, чего
 // больше нет, не из чего.
 func folderDrillIndex(sources []corestate.Source, folderID string) int {
 	id := strings.TrimSpace(folderID)
@@ -115,30 +178,32 @@ func folderDrillIndex(sources []corestate.Source, folderID string) int {
 		return -1
 	}
 	for i := range sources {
-		if sources[i].ID == id && sources[i].Kind == corestate.SourceKindFolder {
+		if sources[i].ID == id && drillContainerKind(sources[i].Kind) {
 			return i
 		}
 	}
 	return -1
 }
 
-// folderDrillRowsInput — всё, что нужно строкам режима папки.
+// folderDrillRowsInput — всё, что нужно строкам режима контейнера.
 //
-// Собирается ОДНИМ проходом на перерисовку: эмиссия папки стоит денег
-// (тег-машина + уникализация), и звать её по разу на строку значило бы
-// пересобирать состав N раз на один показ.
+// Собирается ОДНИМ проходом на перерисовку: эмиссия стоит денег (тег-машина +
+// уникализация), и звать её по разу на строку значило бы пересобирать состав N
+// раз на один показ.
 type folderDrillRowsInput struct {
-	// SourceIndex — позиция папки на момент сборки строк.
+	// SourceIndex — позиция контейнера на момент сборки строк.
 	SourceIndex int
-	// Rows — состав папки строками (та же модель, что у вкладки Preview).
+	// Kind — вид контейнера: от него зависят права над узлами (см. шапку).
+	Kind corestate.SourceKind
+	// Rows — состав контейнера строками (та же модель, что у вкладки Preview).
 	Rows []previewRow
 	// Identities — сырые теги строк: адрес всех операций над узлом.
 	Identities []string
-	// Name — как папку зовут пользователю (для строки возврата).
+	// Name — как контейнер зовут пользователю (для строки возврата).
 	Name string
 }
 
-// buildFolderDrillRows собирает состав открытой папки для показа в списке.
+// buildFolderDrillRows собирает состав открытого контейнера для показа.
 //
 // Эмиссия — ТА ЖЕ, что у вкладки Preview и у сборки конфига
 // (`config.EmitCanonicalSource` со СВОИМ пустым `tagCounts`): иначе список
@@ -152,6 +217,7 @@ func buildFolderDrillRows(sources []corestate.Source, folderID string) (folderDr
 	src := sources[idx]
 	out := folderDrillRowsInput{
 		SourceIndex: idx,
+		Kind:        src.Kind,
 		Name:        wizardbusiness.SourceDisplayName(src),
 	}
 	if len(src.Nodes) > 0 {
@@ -165,40 +231,51 @@ func buildFolderDrillRows(sources []corestate.Source, folderID string) (folderDr
 	return out, true
 }
 
-// folderDrillBackLabel — текст первой строки режима: «← имя папки».
+// folderDrillBackLabel — текст первой строки режима: имя контейнера.
 //
-// Имя обрезается тем же `TruncateStringEllipsis` и той же длиной, что имена
-// источников в корне: строка возврата стоит в том же списке и обязана вести
-// себя как его строка, а не расширять окно длинным именем.
+// Знак возврата — ИКОНКА слева от подписи (см. folderDrillBackGap), поэтому в
+// тексте остаётся только неразрывный пробел и имя. Имя обрезается тем же
+// `TruncateStringEllipsis` и той же длиной, что имена источников в корне:
+// строка возврата стоит в том же списке и обязана вести себя как его строка, а
+// не расширять окно длинным именем.
 func folderDrillBackLabel(name string) string {
 	n := strings.TrimSpace(name)
 	if n == "" {
 		n = locale.T("Folder")
 	}
-	return folderDrillBackMark + " " + wizardutils.TruncateStringEllipsis(n, wizardutils.MaxLabelRunes, "...")
+	return folderDrillBackGap + wizardutils.TruncateStringEllipsis(n, wizardutils.MaxLabelRunes, "...")
 }
 
-// newFolderDrillNodeOps — контекст операций над узлом папки для СПИСКА.
+// newFolderDrillNodeOps — контекст операций над узлом контейнера для СПИСКА.
 //
 // Отличается от оконного ровно двумя вещами, обе те же, что в
 // source_row_node_ops.go: владелец диалогов — главное окно визарда, а
 // reloadScratch/refreshPreview пусты (рабочей копии у списка нет; всё
 // перерисовывает applySourceMutation).
+//
+// `kind` — НАСТОЯЩИЙ вид контейнера, а не «папка всегда»: на нём стоят все
+// права над узлами (`nodeOpsAllowed` / `reorderAllowed`), и соврать здесь
+// значило бы показать у подписки Delete, который отменит первый же fetch.
 func newFolderDrillNodeOps(
 	presenter *wizardpresentation.WizardPresenter,
 	guiState *wizardpresentation.GUIState,
 	sourceIndex int,
+	kind corestate.SourceKind,
 ) *previewNodeOps {
 	return &previewNodeOps{
 		presenter:   presenter,
 		guiState:    guiState,
 		win:         guiState.Window,
 		sourceIndex: sourceIndex,
-		kind:        corestate.SourceKindFolder,
+		kind:        kind,
 	}
 }
 
 // folderDrillBackRow — первая строка режима: выход в корень.
+//
+// Строка ОДНА и она же заголовок: отдельного «Folder: имя» над списком больше
+// нет (заход 2, пункт 2) — две подписи об одном и том же месте спорили друг с
+// другом и занимали высоту, которой в списке и так мало.
 //
 // Тот же `HoverRow`, что у строк источников (подсветка наведения одна на весь
 // список), и тот же клик-обработчик через `SecondaryTapWrap.OnPrimary` —
@@ -223,15 +300,24 @@ func folderDrillBackRow(name string, onLeave func()) fyne.CanvasObject {
 	return wrap
 }
 
-// folderDrillNodeRow — строка одного узла папки внутри списка Sources.
+// folderDrillNodeRow — строка одного узла контейнера внутри списка Sources.
 //
-// Состав строки — тот же, что на вкладке Preview: [захват][галка] имя /
-// подстрока. Чекбокс пишет `Enabled` НАПРЯМУЮ в модель (а не в журнал правок
-// окна): у списка нет ни scratch'а, ни Save — он живёт по образцу тумблера
-// источника, который тут же зовёт applySourceMutation.
+// Вёрстка — ТА ЖЕ, что у строки списка Preview (заход 2, пункт 4): пара
+// `canvas.Text` в `previewTightVBox` вместо двух `widget.Label` в `tightVBox`.
+// Разница была видна глазом: у Label свой внутренний отступ (тема даёт
+// ~4px сверху и снизу каждому), из-за него заголовок вставал выше центра
+// чекбокса, подстрока отрывалась, и строка папки занимала заметно больше
+// высоты, чем такая же строка в превью. Одна компоновка на оба списка — иначе
+// они расходятся на каждой правке темы.
 //
-// Правый клик — `showPreviewRowContextMenu`: те же Move/Copy/Rename/Delete и
-// «Node info…», что в Preview, включая ветку неразобранной записи.
+// Чекбокс пишет `Enabled` НАПРЯМУЮ в модель (а не в журнал правок окна): у
+// списка нет ни scratch'а, ни Save — он живёт по образцу тумблера источника,
+// который тут же зовёт applySourceMutation.
+//
+// Кнопки справа = пункты меню (принцип «меню = кнопки», заход 2 пункт 6):
+// карандаш открывает окно узла, корзина удаляет его тем же
+// `showDeleteDialog`. У узла ПОДПИСКИ корзины нет вовсе — состав подписки
+// принадлежит провайдеру, и удаление отменил бы первый же fetch.
 func folderDrillNodeRow(
 	presenter *wizardpresentation.WizardPresenter,
 	guiState *wizardpresentation.GUIState,
@@ -244,18 +330,14 @@ func folderDrillNodeRow(
 	var row *fynewidget.HoverRow
 	rowGetter := func() *fynewidget.HoverRow { return row }
 
-	name := widget.NewLabel(previewRowTitle(pr))
-	name.Wrapping = fyne.TextWrapOff
-	name.Truncation = fyne.TextTruncateEllipsis
+	name := canvas.NewText(previewRowTitle(pr), theme.Color(theme.ColorNameForeground))
+	name.TextSize = previewNameTextSize
 
-	sub := widget.NewLabel(previewRowSubtitle(pr))
-	sub.Wrapping = fyne.TextWrapOff
-	sub.Truncation = fyne.TextTruncateEllipsis
-	sub.TextStyle = fyne.TextStyle{Italic: true}
+	sub := canvas.NewText(previewRowSubtitle(pr), theme.Color(theme.ColorNamePlaceHolder))
+	sub.TextSize = previewSubtitleTextSize
 	if pr.Unsupported {
-		sub.Importance = widget.WarningImportance
-	} else {
-		sub.Importance = widget.LowImportance
+		// Причина — там же, где у остальных строк «протокол·транспорт·security».
+		sub.Color = theme.Color(theme.ColorNameWarning)
 	}
 
 	check := widget.NewCheck("", nil)
@@ -268,12 +350,12 @@ func folderDrillNodeRow(
 		// та же развилка и те же два исхода, что в списке Preview.
 		check.SetChecked(!pr.Unsupported)
 		check.Disable()
-		name.Importance = widget.LowImportance
+		name.Color = theme.Color(theme.ColorNameDisabled)
 	} else {
 		enabled := folderDrillNodeEnabled(presenter, folderID, identity)
 		check.SetChecked(enabled)
 		if !enabled {
-			name.Importance = widget.LowImportance
+			name.Color = theme.Color(theme.ColorNameDisabled)
 		}
 		check.OnChanged = func(on bool) {
 			if !folderDrillSetNodeEnabled(presenter, folderID, identity, on) {
@@ -284,26 +366,49 @@ func folderDrillNodeRow(
 	}
 
 	// Ведущий кластер — как у строки источника: захват ЛЕВЕЕ галки. Захват
-	// есть всегда (порядок узлов папки принадлежит пользователю, П5); у
-	// неразобранной записи он тоже есть — её позиция в составе такая же
-	// пользовательская, как у остальных.
-	grip := fynewidget.NewDragHandle(dragGroup, rowIndex, rowGetter)
+	// есть только там, где порядок принадлежит пользователю (папка): у
+	// подписки его задаёт тело провайдера, и перестановка потерялась бы на
+	// первом же обновлении. На месте захвата тогда стоит распорка той же
+	// ширины — колонка чекбоксов не съезжает между видами контейнеров.
+	var grip fyne.CanvasObject
+	if ops != nil && ops.reorderAllowed() {
+		grip = fynewidget.NewDragHandle(dragGroup, rowIndex, rowGetter)
+	} else {
+		grip = fynewidget.NewDragHandleSpacer()
+	}
 	lead := container.NewHBox(grip, fynewidget.CheckLeadingWrap(check))
 
-	titleBox := container.New(tightVBox{}, name, sub)
+	// Кнопки справа — тот же кластер и тот же зазор, что у строки источника.
+	editBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DocumentCreateIcon(), func() {
+		showPreviewNodeEditWindow(pr, identity, ops)
+	}, rowGetter)
+	editBtn.Importance = widget.LowImportance
+	fynewidget.SetToolTipSafe(editBtn, locale.T("Edit"))
+	rightItems := []fyne.CanvasObject{editBtn}
+	if ops != nil && ops.nodeOpsAllowed() && identity != "" {
+		delBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DeleteIcon(), func() {
+			ops.showDeleteDialog(identity)
+		}, rowGetter)
+		delBtn.Importance = widget.LowImportance
+		fynewidget.SetToolTipSafe(delBtn, locale.T("Del"))
+		rightItems = append(rightItems, delBtn)
+	}
+	rightControls := container.New(tightHBox{spacing: rowIconGap}, rightItems...)
+
+	titleBox := container.New(previewTightVBox{gap: previewTitleSubtitleGap}, name, sub)
 	row = fynewidget.NewHoverRow(
-		container.NewBorder(nil, nil, lead, nil, titleBox),
+		container.NewBorder(nil, nil, lead, rightControls, titleBox),
 		fynewidget.HoverRowConfig{IsSelected: func() bool { return false }},
 	)
 
 	// Обёртка СНАРУЖИ HoverRow — та же ловушка Fyne, что у меню верхнего узла
 	// (FindObjectAtPositionMatching отдаёт событие самому глубокому
 	// подходящему объекту): внутри обёртка перехватила бы hover и погасила
-	// подсветку строки.
+	// подсветку строки. Кнопки строки лежат глубже и свой tap получают сами.
 	wrap := fynewidget.NewSecondaryTapWrap(row)
 	wrap.SetToolTip(previewRowToolTip(pr))
 	wrap.OnPrimary = func(fyne.KeyModifier) {
-		showPreviewRowInfoWindow(pr)
+		showPreviewNodeEditWindow(pr, identity, ops)
 	}
 	wrap.OnSecondary = func(pe *fyne.PointEvent) {
 		showPreviewRowContextMenu(guiState.Window, pr, identity, ops, pe)
@@ -311,59 +416,88 @@ func folderDrillNodeRow(
 	return wrap
 }
 
-// applyFolderDrillChrome переключает ОБВЯЗКУ вкладки между корнем и папкой.
+// applyFolderDrillChrome переключает ОБВЯЗКУ вкладки между корнем и
+// контейнером.
 //
-// Виджеты те же — меняются только их тексты и видимость кнопки: требование
-// звучало «не меняя интерфейса», и второй шапки под режим папки волна не
-// заводит. Пустое `folderName` = вернуть корневой вид.
+// Виджеты те же — меняются только тексты, доступность поля Add и видимость
+// кнопки: требование звучало «не меняя интерфейса», и второй шапки под режим
+// контейнера волна не заводит.
 //
-//   - заголовок списка: «Sources» ⇄ имя папки (человек обязан видеть, ГДЕ он);
-//   - подсказка под полем ввода: про подписки и ссылки ⇄ про узлы папки —
-//     подписку в папку не кладут, и обещать её значило бы врать;
+// Заголовок списка при этом НЕ трогается (заход 2, пункт 2): «где я» говорит
+// первая строка списка — «‹ имя», она же выход. Прежнее «Folder: имя» над
+// списком дублировало её и спорило с ней при длинном имени.
+//
+//   - подсказка под полем ввода: про подписки и ссылки ⇄ про узлы папки ⇄ про
+//     несвободу узлов подписки;
+//   - поле Add и кнопка «Add»: в режиме ПОДПИСКИ выключены — руками в подписку
+//     не льют (следующий fetch унёс бы добавленное);
 //   - «Preview all servers…» гаснет: она про ВСЕ источники сразу, а внутри
-//     папки открывала бы окно не про то, на что смотрит пользователь.
+//     контейнера открывала бы окно не про то, на что смотрит пользователь.
 func applyFolderDrillChrome(
-	sourcesLabel *widget.Label,
 	hintLabel *widget.Label,
 	previewAllBtn *widget.Button,
-	folderName string,
+	addEntry *widget.Entry,
+	addBtn *widget.Button,
+	overflowBtn *widget.Button,
+	kind corestate.SourceKind,
+	inContainer bool,
 ) {
-	name := strings.TrimSpace(folderName)
-	if name == "" {
-		if sourcesLabel != nil {
-			sourcesLabel.SetText(locale.T("Sources"))
+	setAdd := func(enabled bool) {
+		if addEntry != nil {
+			if enabled {
+				addEntry.Enable()
+			} else {
+				addEntry.Disable()
+			}
 		}
+		for _, b := range []*widget.Button{addBtn, overflowBtn} {
+			if b == nil {
+				continue
+			}
+			if enabled {
+				b.Enable()
+			} else {
+				b.Disable()
+			}
+		}
+	}
+	if !inContainer {
 		if hintLabel != nil {
 			hintLabel.SetText(locale.T(sourceHintText))
 		}
 		if previewAllBtn != nil {
 			previewAllBtn.Show()
 		}
+		setAdd(true)
 		return
-	}
-	if sourcesLabel != nil {
-		sourcesLabel.SetText(locale.Tf("Folder: %s",
-			wizardutils.TruncateStringEllipsis(name, wizardutils.MaxLabelRunes, "...")))
-	}
-	if hintLabel != nil {
-		hintLabel.SetText(locale.T(folderDrillHintText))
 	}
 	if previewAllBtn != nil {
 		previewAllBtn.Hide()
 	}
+	if kind == corestate.SourceKindSubscription {
+		if hintLabel != nil {
+			hintLabel.SetText(locale.T(subDrillHintText))
+		}
+		setAdd(false)
+		return
+	}
+	if hintLabel != nil {
+		hintLabel.SetText(locale.T(folderDrillHintText))
+	}
+	setAdd(true)
 }
 
-// renderFolderDrillRows наполняет список вкладки составом открытой папки.
+// renderFolderDrillRows наполняет список вкладки составом открытого контейнера.
 //
-// Возвращает имя папки и признак «папка ещё существует». false = папки в
-// модели уже нет: вызывающий тогда сам возвращает вкладку в корень. Своего
+// Возвращает вид контейнера и признак «он ещё существует». false = контейнера
+// в модели уже нет: вызывающий тогда сам возвращает вкладку в корень. Своего
 // «а покажем пусто» здесь нет — пустой список без строки возврата был бы
 // тупиком.
 //
-// Порядок строк: сначала «← имя папки», затем узлы в порядке `nodes[]`. Захват
-// перетаскивания регистрируется по индексу СТРОКИ УЗЛА (без строки возврата) —
-// иначе бросок уехал бы на одну позицию, а сама строка возврата стала бы
-// слотом, в который можно бросить узел.
+// Порядок строк: сначала строка возврата с именем, затем узлы в порядке
+// `nodes[]`. Захват перетаскивания регистрируется по индексу СТРОКИ УЗЛА (без
+// строки возврата) — иначе бросок уехал бы на одну позицию, а сама строка
+// возврата стала бы слотом, в который можно бросить узел.
 func renderFolderDrillRows(
 	presenter *wizardpresentation.WizardPresenter,
 	guiState *wizardpresentation.GUIState,
@@ -372,7 +506,7 @@ func renderFolderDrillRows(
 	sourcesBox *fyne.Container,
 	reorder *func(from, to int),
 	refresh func(),
-) (string, bool) {
+) (corestate.SourceKind, bool) {
 	m := presenter.Model()
 	if m == nil {
 		return "", false
@@ -382,15 +516,21 @@ func renderFolderDrillRows(
 		return "", false
 	}
 
-	ops := newFolderDrillNodeOps(presenter, guiState, input.SourceIndex)
+	ops := newFolderDrillNodeOps(presenter, guiState, input.SourceIndex, input.Kind)
 	// Перестановка адресует узлы СЫРЫМИ тегами, а не индексами в nodes[]:
 	// список показывает состав, из которого эмиссия могла что-то не выпустить
 	// (выключенный, неразобранный), и индексы совпадать не обязаны — ровно тот
 	// же довод, что у applyReorder на вкладке Preview.
 	identities := input.Identities
 	if reorder != nil {
-		*reorder = func(from, to int) {
-			ops.applyReorder(identities, from, to)
+		if ops.reorderAllowed() {
+			*reorder = func(from, to int) {
+				ops.applyReorder(identities, from, to)
+			}
+		} else {
+			// Порядок узлов подписки задаёт провайдер: бросок обязан быть
+			// холостым, а не переставить то, что вернётся обратно.
+			*reorder = nil
 		}
 	}
 
@@ -405,32 +545,45 @@ func renderFolderDrillRows(
 	}))
 
 	if len(input.Rows) == 0 {
-		// Пустая папка — законное состояние (её только что создали): говорим
-		// об этом словами и оставляем строку возврата на месте.
-		hint := widget.NewLabel(locale.T("Folder is empty — paste links above to add nodes."))
+		// Пустой контейнер — законное состояние (папку только что создали,
+		// подписку ещё не обновляли): говорим об этом словами и оставляем
+		// строку возврата на месте.
+		text := locale.T("Folder is empty — paste links above to add nodes.")
+		if input.Kind == corestate.SourceKindSubscription {
+			text = locale.T("No nodes yet — refresh this subscription in the sources list.")
+		}
+		hint := widget.NewLabel(text)
 		hint.Wrapping = fyne.TextWrapWord
 		hint.Importance = widget.LowImportance
 		sourcesBox.Add(hint)
-		return input.Name, true
+		return input.Kind, true
 	}
 
-	// Total намеренно НЕ ставится: строки папки живут в том же VBox, что и
-	// строки источников, и регистрируются все до одной (виртуализации тут нет).
+	// Total намеренно НЕ ставится: строки живут в том же VBox, что и строки
+	// источников, и регистрируются все до одной (виртуализации тут нет).
 	// Total нужен только виртуализированному widget.List, а оставшись
-	// ненулевым, он разрешил бы бросок в слот, которого в корне уже нет.
+	// ненулевым, он разрешил бы бросок в слот, которого в корне нет.
+	reorderable := ops.reorderAllowed()
 	for i := range input.Rows {
 		rowObj := folderDrillNodeRow(
 			presenter, guiState, ops, dragGroup, drill.folderID, i, input.Rows[i])
-		// Регистрируем КАЖДУЮ строку: вычисление точки вставки просматривает
-		// полосы всех строк, не только перетаскиваемой (контракт
-		// DragReorderGroup, тот же, что у списка источников).
-		dragGroup.Register(i, rowObj)
+		if reorderable {
+			// Регистрируем КАЖДУЮ строку: вычисление точки вставки просматривает
+			// полосы всех строк, не только перетаскиваемой (контракт
+			// DragReorderGroup, тот же, что у списка источников).
+			//
+			// У подписки не регистрируем ни одной: захвата там нет, бросок
+			// начаться не может, а строки, заявившие полосы экрана в группе,
+			// пережили бы выход в корень записями с чужими индексами.
+			dragGroup.Register(i, rowObj)
+		}
 		sourcesBox.Add(rowObj)
 	}
-	return input.Name, true
+	return input.Kind, true
 }
 
-// applyAddedSourcesToFolder — путь Add в режиме папки.
+// applyAddedSourcesToFolderNamed — путь Add в режиме папки, с ИМЕНЕМ для
+// безымянных узлов.
 //
 // Разбор ТОТ ЖЕ (`business.AppendNodesToFolder` → `parseSourceInput`), адрес
 // назначения другой. Подписка узлом не становится: её отвергает то же ядро
@@ -438,23 +591,14 @@ func renderFolderDrillRows(
 // кнопки «Add nodes…» в окне папки (folderAddNodesSubscriptionText) — двух
 // формулировок одного отказа не заводим.
 //
-// Возвращает true, когда узлы легли: только тогда поле ввода очищается —
-// отвергнутый текст обязан остаться на экране, иначе человек потеряет то, что
-// вставил, вместе с сообщением об ошибке.
-func applyAddedSourcesToFolder(
-	presenter *wizardpresentation.WizardPresenter,
-	guiState *wizardpresentation.GUIState,
-	folderID, text string,
-) bool {
-	return applyAddedSourcesToFolderNamed(presenter, guiState, folderID, text, "")
-}
-
-// applyAddedSourcesToFolderNamed — тот же путь с ИМЕНЕМ для безымянных узлов.
-//
 // `defaultTag` нужен ровно там же, где он нужен окну папки: имя файла у
 // импорта и поле тега у формы сервера. У ссылки со своим `#fragment` он не
 // применяется — правило одно и живёт в ядре (AppendNodesToFolder), здесь
 // только адрес.
+//
+// Возвращает true, когда узлы легли: только тогда поле ввода очищается —
+// отвергнутый текст обязан остаться на экране, иначе человек потеряет то, что
+// вставил, вместе с сообщением об ошибке.
 func applyAddedSourcesToFolderNamed(
 	presenter *wizardpresentation.WizardPresenter,
 	guiState *wizardpresentation.GUIState,
@@ -498,7 +642,7 @@ func applyAddedSourcesToFolderNamed(
 	return true
 }
 
-// folderDrillNodeEnabled — включён ли узел папки (по сырому тегу).
+// folderDrillNodeEnabled — включён ли узел контейнера (по сырому тегу).
 func folderDrillNodeEnabled(
 	presenter *wizardpresentation.WizardPresenter,
 	folderID, rawTag string,
@@ -520,10 +664,10 @@ func folderDrillNodeEnabled(
 	return false
 }
 
-// folderDrillSetNodeEnabled ставит отметку включённости узла папки.
+// folderDrillSetNodeEnabled ставит отметку включённости узла контейнера.
 //
-// Возвращает false, когда ставить некуда (папка или узел исчезли, пока висел
-// список) — вызывающий тогда не гоняет побочки мутации впустую.
+// Возвращает false, когда ставить некуда (контейнер или узел исчезли, пока
+// висел список) — вызывающий тогда не гоняет побочки мутации впустую.
 func folderDrillSetNodeEnabled(
 	presenter *wizardpresentation.WizardPresenter,
 	folderID, rawTag string,

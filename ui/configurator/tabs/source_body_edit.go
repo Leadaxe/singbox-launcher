@@ -37,9 +37,16 @@ import (
 // Возвращает ошибку и НЕ трогает узел, если текст не JSON, не объект или без
 // непустого `type` — ядро такой outbound не принимает, а принять его молча
 // значило бы сломать весь конфиг ради одного узла.
-func applyServerBodyJSON(src *wizardmodels.Source, text string) error {
-	if src == nil {
-		return fmt.Errorf("no source")
+//
+// Аргумент — УЗЕЛ, а не Source: путь правки тела один на верхний узел
+// (`&scratch.Node` в окне источника) и на узел контейнера (строка папки или
+// подписки, W13 заход 2). Ни `Body`, ни `Origin` к Source-обвязке отношения
+// не имеют — они поля `Node`, и сужение сигнатуры до них не даёт завести
+// вторую реализацию «текст → тело» для узла папки (ловушка «эмиттер и парсер
+// ходят парой»).
+func applyServerBodyJSON(node *wizardmodels.Node, text string) error {
+	if node == nil {
+		return fmt.Errorf("no node")
 	}
 	var ob map[string]interface{}
 	if err := json.Unmarshal([]byte(text), &ob); err != nil {
@@ -56,8 +63,8 @@ func applyServerBodyJSON(src *wizardmodels.Source, text string) error {
 	if err != nil {
 		return err
 	}
-	src.Body = mat.Body
-	src.Origin = &wizardmodels.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw}
+	node.Body = mat.Body
+	node.Origin = &wizardmodels.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw}
 	return nil
 }
 
@@ -68,11 +75,11 @@ func applyServerBodyJSON(src *wizardmodels.Source, text string) error {
 // всё остальное — как share-URI. Ошибка = ОТКАТ: узел остаётся прежним, и
 // вызывающий показывает причину. Именно ради этого материализация идёт во
 // временные переменные, а не прямо в поля источника.
-func regenServerBodyFromRaw(src *wizardmodels.Source) error {
-	if src == nil || src.Origin == nil {
+func regenServerBodyFromRaw(node *wizardmodels.Node) error {
+	if node == nil || node.Origin == nil {
 		return fmt.Errorf("no origin to regenerate from")
 	}
-	raw := src.Origin.Raw
+	raw := node.Origin.Raw
 	if raw == "" {
 		return fmt.Errorf("origin is empty")
 	}
@@ -80,7 +87,7 @@ func regenServerBodyFromRaw(src *wizardmodels.Source) error {
 		mat *config.ServerNodeMaterial
 		err error
 	)
-	if src.Origin.Kind == wizardmodels.OriginKindJSON {
+	if node.Origin.Kind == wizardmodels.OriginKindJSON {
 		mat, err = config.MaterializeServerNode("", json.RawMessage(raw))
 	} else {
 		mat, err = config.MaterializeServerNode(raw, nil)
@@ -88,7 +95,7 @@ func regenServerBodyFromRaw(src *wizardmodels.Source) error {
 	if err != nil {
 		return err
 	}
-	src.Body = mat.Body
-	src.Origin = &wizardmodels.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw}
+	node.Body = mat.Body
+	node.Origin = &wizardmodels.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw}
 	return nil
 }

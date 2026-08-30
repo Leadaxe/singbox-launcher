@@ -131,6 +131,59 @@ func TestBuildFolderDrillRowsEmptyFolderStaysOpen(t *testing.T) {
 	}
 }
 
+// Заход 2: провалиться можно и в ПОДПИСКУ — у неё тоже состав, а не один узел.
+// Права над этим составом при этом другие, и знать о них обязана модель, а не
+// экран: узлы подписки принадлежат провайдеру, руками в неё не льют.
+func TestFolderDrillOpensSubscriptionWithLockedNodes(t *testing.T) {
+	sub := corestate.NewSubscriptionSource("Liberty", "https://example.com/sub")
+	sub.ID = "SUB1"
+	sub.Nodes = []corestate.Node{stateServer("A"), stateServer("B")}
+	sources := []corestate.Source{
+		drillFolder("FLD1", "Home", stateServer("H")),
+		sub,
+		drillServerSource("SRV1", "srv-1"),
+	}
+
+	if got := folderDrillIndex(sources, "SUB1"); got != 1 {
+		t.Fatalf("folderDrillIndex(подписки) = %d, want 1", got)
+	}
+	// Узловой источник составом не обладает — в него не проваливаются.
+	if got := folderDrillIndex(sources, "SRV1"); got != -1 {
+		t.Fatalf("folderDrillIndex(server) = %d, want -1", got)
+	}
+
+	input, ok := buildFolderDrillRows(sources, "SUB1")
+	if !ok {
+		t.Fatal("подписка обязана открываться тем же списком")
+	}
+	if input.Kind != corestate.SourceKindSubscription {
+		t.Fatalf("Kind = %q, want subscription — на нём стоят все права над узлами", input.Kind)
+	}
+	if len(input.Rows) != 2 || input.Identities[0] != "A" || input.Identities[1] != "B" {
+		t.Fatalf("состав подписки разъехался со строками: %+v", input.Identities)
+	}
+
+	// Свобода узлов — по контейнеру, а не по экрану: в папку класть можно, в
+	// подписку нельзя, в корне (режим выключен) Add кладёт источники.
+	d := &folderDrillState{}
+	if !d.nodesAreFree(sources) {
+		t.Fatal("в корне Add обязан работать")
+	}
+	d.enter("FLD1")
+	if !d.nodesAreFree(sources) {
+		t.Fatal("в папку узлы класть можно")
+	}
+	d.enter("SUB1")
+	if d.nodesAreFree(sources) {
+		t.Fatal("в подписку узлы руками не льют — их унесёт первый же fetch")
+	}
+	// Контейнер исчез, пока на него смотрели: наливать некуда.
+	d.enter("GONE")
+	if d.nodesAreFree(sources) {
+		t.Fatal("исчезнувший контейнер объявлен свободным для наполнения")
+	}
+}
+
 // Состояние режима: enter/leave и active — единственный переключатель вкладки.
 func TestFolderDrillStateEnterLeave(t *testing.T) {
 	d := &folderDrillState{}

@@ -15,6 +15,7 @@
 package subscription
 
 import (
+	"encoding/json"
 	"net/url"
 	"strings"
 
@@ -53,6 +54,46 @@ func LabelFromOriginURI(raw string) string {
 	}
 	label = sanitizeForDisplay(label)
 	return textnorm.NormalizeProxyDisplay(label)
+}
+
+// nameFieldsInJSONRecord — поля JSON-записи, которые несут ИМЯ.
+//
+// Порядок — от самого специфичного к самому общему: `tag` (sing-box и Xray),
+// `ps` (vmess-JSON), `remarks` (Xray-профиль и clash-подобные тела), `name`
+// (общий фолбэк). Первое непустое выигрывает: у одной записи их обычно ровно
+// одно, а когда их два, специфичное и есть то, под которым запись показана.
+var nameFieldsInJSONRecord = []string{"tag", "ps", "remarks", "name"}
+
+// NameFromOriginJSON — имя записи JSON-тела из её исходника (SPEC 116 W13).
+//
+// Тот же вопрос, на который у URI-записи отвечает LabelFromOriginURI: «как эту
+// запись зовут у провайдера». У JSON-элемента имя лежит полем, а не
+// фрагментом, поэтому разбор свой — но правило одно: имя берётся ИЗ ЗАПИСИ, а
+// позиционный `unsupported-N` остаётся только для записи, у которой имени нет
+// вовсе.
+//
+// Пустая строка = исходник не JSON-объект либо ни одного именующего поля в
+// нём нет.
+func NameFromOriginJSON(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	var obj map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &obj); err != nil {
+		return ""
+	}
+	for _, key := range nameFieldsInJSONRecord {
+		s, ok := obj[key].(string)
+		if !ok {
+			continue
+		}
+		s = textnorm.NormalizeProxyDisplay(sanitizeForDisplay(strings.TrimSpace(s)))
+		if s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // CommentFromLabel — комментарий узла по его подписи: часть после «|», а без

@@ -59,7 +59,7 @@ func TestDereferenceEditedSourceNode_NoopWithoutSubURL(t *testing.T) {
 func TestRegenThenDereferenceKeepsNodeFree(t *testing.T) {
 	src := derefSource("https://example.com/sub")
 
-	if err := regenServerBodyFromRaw(src); err != nil {
+	if err := regenServerBodyFromRaw(&src.Node); err != nil {
 		t.Fatalf("рабочий URI не пересобрался: %v", err)
 	}
 	// Материализация пересаживает Origin целиком — после неё связи уже нет,
@@ -77,7 +77,7 @@ func TestApplyBodyLeavesNodeDereferenced(t *testing.T) {
 	src := derefSource("https://example.com/sub")
 
 	const edited = `{"type":"trojan","server":"b.example","server_port":8443,"password":"p2"}`
-	if err := applyServerBodyJSON(src, edited); err != nil {
+	if err := applyServerBodyJSON(&src.Node, edited); err != nil {
 		t.Fatalf("правка тела отвергнута: %v", err)
 	}
 	if src.Origin.SubURL != "" {

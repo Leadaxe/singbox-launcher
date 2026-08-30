@@ -107,6 +107,13 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	applyAddedSourcesNamed = func(text, defaultTag string) {
 		presenter.MergeGUIToModel()
 		if drill.active() {
+			// Заход 2: в режиме ПОДПИСКИ Add выключен целиком (поле, кнопка и
+			// пункты ⋮). Тихий возврат — последний рубеж: если какой-то путь
+			// всё же дошёл сюда, узел не должен уехать в состав, который
+			// принадлежит провайдеру.
+			if m := presenter.Model(); m == nil || !drill.nodesAreFree(m.Sources) {
+				return
+			}
 			if !applyAddedSourcesToFolderNamed(
 				presenter, guiState, drill.folderID, text, defaultTag) {
 				return
@@ -221,6 +228,12 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 			// одиночный outbound и кладёт его тело побайтово). Ровно так же
 			// поступает та же форма в окне папки (folder_add_nodes.go:addServer).
 			if drill.active() {
+				// Заход 2: в подписку руками не льют — форма туда не доедет
+				// (пункта в ⋮ нет), но проверка стоит и здесь: диалог
+				// асинхронный, и режим мог смениться, пока он висел.
+				if mm := presenter.Model(); mm == nil || !drill.nodesAreFree(mm.Sources) {
+					return
+				}
 				text := strings.TrimSpace(res.Text)
 				if len(res.ConfigJSON) > 0 {
 					text = string(res.ConfigJSON)
@@ -336,6 +349,15 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 			// которого пользователь тут же не увидит (вложенных папок нет —
 			// features/sources.md). «Free community servers» подставляет
 			// подписочный URL, а подписка в папку не кладётся.
+			//
+			// Заход 2: в режиме ПОДПИСКИ не остаётся ни одного — её состав
+			// принадлежит провайдеру, и любой из этих пунктов положил бы узел,
+			// который унесёт первое же обновление. Меню при этом не
+			// показывается вовсе: пустая рамка под курсором читается как сбой.
+			mm := presenter.Model()
+			if mm == nil || !drill.nodesAreFree(mm.Sources) {
+				return
+			}
 			items = []*fyne.MenuItem{
 				fyne.NewMenuItem(locale.T("Add server"), addServerAction),
 				fyne.NewMenuItem(locale.T("Add WARP"), addWarpAction),
@@ -462,23 +484,27 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		// папки. Ветка стоит до всего остального, потому что в этом режиме
 		// строк источников нет вовсе, а не «есть, но других».
 		if drill.active() {
-			name, ok := renderFolderDrillRows(presenter, guiState, drill, dragGroup, sourcesBox,
+			kind, ok := renderFolderDrillRows(presenter, guiState, drill, dragGroup, sourcesBox,
 				&folderDrillReorder, refreshSourcesListRef)
 			if ok {
-				// Шапка и подсказка — те же виджеты, у них меняется только
-				// текст: «не меняя интерфейса» значит именно это. Кнопка
-				// «Preview all servers…» гаснет — она про ВСЕ источники сразу,
-				// и внутри одной папки обещала бы не то, что покажет.
-				applyFolderDrillChrome(sourcesLabel, hintLabel, previewAllBtn, name)
+				// Подсказка и доступность Add — те же виджеты, у них меняется
+				// только текст и состояние: «не меняя интерфейса» значит
+				// именно это. Кнопка «Preview all servers…» гаснет — она про
+				// ВСЕ источники сразу, и внутри одного контейнера обещала бы
+				// не то, что покажет. Заголовок списка не трогается: «где я»
+				// говорит первая строка списка, она же выход.
+				applyFolderDrillChrome(hintLabel, previewAllBtn,
+					guiState.SourceURLEntry, addURLButton, overflowBtn, kind, true)
 				sourcesBox.Refresh()
 				return
 			}
-			// Папки не стало, пока на неё смотрели, — молча возвращаемся в
-			// корень: показывать состав того, чего нет, не из чего.
+			// Контейнера не стало, пока на него смотрели, — молча возвращаемся
+			// в корень: показывать состав того, чего нет, не из чего.
 			drill.leave()
 			folderDrillReorder = nil
 		}
-		applyFolderDrillChrome(sourcesLabel, hintLabel, previewAllBtn, "")
+		applyFolderDrillChrome(hintLabel, previewAllBtn,
+			guiState.SourceURLEntry, addURLButton, overflowBtn, "", false)
 		if len(m.Sources) == 0 {
 			emptyGutter := components.NewScrollGutter()
 			sourcesBox.Add(container.NewHBox(widget.NewLabel(locale.T("No sources defined in ParserConfig.")), layout.NewSpacer(), emptyGutter))
@@ -737,35 +763,13 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				editBtn.Importance = widget.LowImportance
 				fynewidget.SetToolTipSafe(editBtn, locale.T("Edit"))
 
-				folderHasNodes := isFolder && len(src.Nodes) > 0
+				folderNodeCount := 0
+				if isFolder {
+					folderNodeCount = len(src.Nodes)
+				}
 				delBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DeleteIcon(), func() {
-					// SPEC 116 сценарий С7: у НЕПУСТОЙ папки удаление — не
-					// «да/нет», а выбор судьбы её узлов: снести вместе с
-					// папкой либо вынести в корень. Обычное подтверждение
-					// здесь предлагало бы ровно один исход и молча уносило
-					// десяток настроенных узлов.
-					if folderHasNodes {
-						showFolderDeleteDialog(presenter, guiState, sourceID, shortLabel, len(src.Nodes))
-						return
-					}
-					// Confirm before removing — deletion drops the source (and its
-					// nodes) from the config; matches the Rules-tab delete UX.
-					dialog.ShowConfirm(
-						locale.T("Confirmation"),
-						locale.Tf("Delete \"%s\"? The source and its nodes are removed from the configuration.", shortLabel),
-						func(ok bool) {
-							if !ok {
-								return
-							}
-							m := presenter.Model()
-							if sourceIndex >= len(m.Sources) {
-								return
-							}
-							m.Sources = append(m.Sources[:sourceIndex], m.Sources[sourceIndex+1:]...)
-							applySourceMutation(presenter, guiState)
-						},
-						guiState.Window,
-					)
+					showSourceRowDeleteDialog(
+						presenter, guiState, sourceIndex, sourceID, shortLabel, folderNodeCount)
 				}, rowGetter)
 				delBtn.Importance = widget.LowImportance
 				fynewidget.SetToolTipSafe(delBtn, locale.T("Del"))
@@ -936,13 +940,19 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// на этой ветке. Внутри обёртка перехватила бы hover и
 				// погасила подсветку строки.
 				var rowOuter fyne.CanvasObject = row
-				if isFolder {
+				if drillContainerKind(src.Kind) {
 					// SPEC 116 W13 (требование Саши дословно): «нажать на папку
 					// и в том же окне, не меняя интерфейса, провалиться в
-					// папку». Клик по СТРОКЕ, не по иконкам действий: кнопки
-					// (copy/edit/del) лежат глубже обёртки и получают свой tap
-					// сами — Fyne отдаёт событие самому глубокому подходящему
-					// объекту, и до обёртки оно не доходит.
+					// папку». Заход 2 распространил то же на ПОДПИСКУ: у неё
+					// тоже не узел, а состав, и смотреть на него строкой
+					// контейнера негде. Права над узлами при этом другие, и
+					// знает о них модель (previewNodeOps.nodeOpsAllowed), а не
+					// эта развилка.
+					//
+					// Клик по СТРОКЕ, не по иконкам действий: кнопки
+					// (copy/edit/del/↻) лежат глубже обёртки и получают свой
+					// tap сами — Fyne отдаёт событие самому глубокому
+					// подходящему объекту, и до обёртки оно не доходит.
 					//
 					// Та же обёртка снаружи HoverRow, что у меню верхнего узла:
 					// внутри она перехватила бы hover и погасила подсветку.
@@ -962,10 +972,11 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					rawTag := src.NodeTagOrLabel()
 					rowIndex := sourceIndex
 					rowKind := src.Kind
+					rowLabel := shortLabel
 					wrap := fynewidget.NewSecondaryTapWrap(row)
 					wrap.OnSecondary = func(pe *fyne.PointEvent) {
 						showSourceRowNodeContextMenu(
-							presenter, guiState, rowIndex, rowKind, rawTag, pe)
+							presenter, guiState, rowIndex, rowKind, rawTag, rowLabel, pe)
 					}
 					rowOuter = wrap
 				}
@@ -1088,6 +1099,54 @@ func applySourceMutation(presenter *wizardpresentation.WizardPresenter, guiState
 			}
 		})
 	}()
+}
+
+// showSourceRowDeleteDialog — удаление источника кнопкой-корзиной строки.
+//
+// Вынесено из замыкания строки (W13 заход 2, пункт 5): тот же путь зовёт и
+// пункт «Delete» контекстного меню верхнего узла — принцип «меню = кнопки»
+// требует ОДНОЙ реализации на оба входа, иначе меню и корзина разъедутся
+// текстами подтверждения и веткой непустой папки.
+//
+// `folderNodeCount > 0` = непустая папка: у неё удаление не «да/нет», а выбор
+// судьбы узлов (сценарий С7) — своим диалогом, showFolderDeleteDialog.
+func showSourceRowDeleteDialog(
+	presenter *wizardpresentation.WizardPresenter,
+	guiState *wizardpresentation.GUIState,
+	sourceIndex int,
+	sourceID string,
+	shortLabel string,
+	folderNodeCount int,
+) {
+	if presenter == nil || guiState == nil || guiState.Window == nil {
+		return
+	}
+	// SPEC 116 сценарий С7: у НЕПУСТОЙ папки удаление — не «да/нет», а выбор
+	// судьбы её узлов: снести вместе с папкой либо вынести в корень. Обычное
+	// подтверждение здесь предлагало бы ровно один исход и молча уносило
+	// десяток настроенных узлов.
+	if folderNodeCount > 0 {
+		showFolderDeleteDialog(presenter, guiState, sourceID, shortLabel, folderNodeCount)
+		return
+	}
+	// Confirm before removing — deletion drops the source (and its nodes) from
+	// the config; matches the Rules-tab delete UX.
+	dialog.ShowConfirm(
+		locale.T("Confirmation"),
+		locale.Tf("Delete \"%s\"? The source and its nodes are removed from the configuration.", shortLabel),
+		func(ok bool) {
+			if !ok {
+				return
+			}
+			m := presenter.Model()
+			if m == nil || sourceIndex < 0 || sourceIndex >= len(m.Sources) {
+				return
+			}
+			m.Sources = append(m.Sources[:sourceIndex], m.Sources[sourceIndex+1:]...)
+			applySourceMutation(presenter, guiState)
+		},
+		guiState.Window,
+	)
 }
 
 // showFolderDeleteDialog — удаление НЕПУСТОЙ папки (SPEC 116 сценарий С7).

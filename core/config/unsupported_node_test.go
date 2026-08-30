@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/state"
 )
 
@@ -286,6 +287,148 @@ func TestMaterializeXrayBodyKeepsUnsupportedProtocolInPlace(t *testing.T) {
 	}
 	if mid.Tag == "" {
 		t.Error("у неразобранной записи нет тега — он ей нужен как идентичность (merge-ключ)")
+	}
+}
+
+// Анонс провайдера («Лучшие сервера») — запись состава, а не сервер и не
+// сломанный узел (SPEC 116 W13).
+//
+// До W13 такая строка получала общий диагноз «unsupported scheme»: пользователь
+// читал у собственного оглавления причину про схему, которой там нет и не
+// подразумевалось. Проверяется всё, на чём держится модель: своя причина,
+// тег = подпись баннера (он же merge-ключ), исходник байт в байт и позиция
+// между узлами.
+func TestMaterializeProviderBannerBecomesUnsupported(t *testing.T) {
+	body := []byte(strings.Join([]string{
+		"Лучшие сервера",
+		"trojan://pw@a.example:443#A",
+		"ПОДХОДЯТ ДЛЯ ИГР",
+		"trojan://pw@b.example:443#B",
+	}, "\n"))
+
+	mat, err := MaterializeSubscriptionBody("SUB1", body, nil, 0)
+	if err != nil {
+		t.Fatalf("materialize: %v", err)
+	}
+	if len(mat.Nodes) != 4 {
+		t.Fatalf("узлов = %d, ожидали 4 (два баннера + два сервера): %+v", len(mat.Nodes), mat.Nodes)
+	}
+	if mat.Supported != 2 {
+		t.Errorf("Supported = %d, ожидали 2 — баннеры серверами не считаются", mat.Supported)
+	}
+
+	// Позиция: баннер стоит там, где его прислал провайдер, — он и есть
+	// заголовок следующей за ним группы узлов.
+	if mat.Nodes[1].Tag != "A" || mat.Nodes[3].Tag != "B" {
+		t.Fatalf("баннер сдвинул соседей: %q / %q", mat.Nodes[1].Tag, mat.Nodes[3].Tag)
+	}
+
+	for i, want := range map[int]string{0: "Лучшие сервера", 2: "ПОДХОДЯТ ДЛЯ ИГР"} {
+		n := mat.Nodes[i]
+		if !n.IsUnsupported() {
+			t.Errorf("на позиции %d стоит %q, ожидали unsupported", i, n.Kind)
+			continue
+		}
+		if n.Tag != want {
+			t.Errorf("тег баннера = %q, ожидали %q — тег баннера это его подпись,\n"+
+				"иначе при повторном fetch тот же баннер не сматчится и удвоится", n.Tag, want)
+		}
+		if n.Reason != subscription.RejectReasonProviderBanner {
+			t.Errorf("причина = %q, ожидали %q — «unsupported scheme» у строки,\n"+
+				"которая узлом не притворялась, объясняет не то", n.Reason, subscription.RejectReasonProviderBanner)
+		}
+		if n.Origin == nil || n.Origin.Raw != want {
+			t.Errorf("исходник баннера = %+v, ожидали %q как есть", n.Origin, want)
+		}
+	}
+}
+
+// Тот же баннер при повторном fetch обязан сматчиться по сырому тегу и НЕ
+// удвоиться: на этом и держится решение «тег = подпись», а не позиционный.
+func TestMergeKeepsProviderBannerStable(t *testing.T) {
+	body := []byte(strings.Join([]string{
+		"Лучшие сервера",
+		"trojan://pw@a.example:443#A",
+	}, "\n"))
+
+	first, err := MaterializeSubscriptionBody("SUB1", body, nil, 0)
+	if err != nil {
+		t.Fatalf("materialize: %v", err)
+	}
+	sub := state.NewSubscriptionSource("P", "https://example/sub")
+	sub.Nodes = append([]state.Node(nil), first.Nodes...)
+
+	// Второй fetch того же тела — состав обязан остаться прежним.
+	second, err := MaterializeSubscriptionBody("SUB1", body, nil, 0)
+	if err != nil {
+		t.Fatalf("materialize #2: %v", err)
+	}
+	state.MergeSubscriptionNodes(&sub, &state.SubFetchMaterial{Nodes: second.Nodes}, true)
+
+	if len(sub.Nodes) != 2 {
+		tags := make([]string, 0, len(sub.Nodes))
+		for _, n := range sub.Nodes {
+			tags = append(tags, n.Tag)
+		}
+		t.Fatalf("после повторного fetch состав = %v, ожидали 2 узла: баннер размножился —\n"+
+			"значит его тег не сматчился сам с собой", tags)
+	}
+	if sub.Nodes[0].Tag != "Лучшие сервера" {
+		t.Errorf("тег баннера поехал на %q", sub.Nodes[0].Tag)
+	}
+}
+
+// Два одинаковых баннера в одном теле разводятся ТОЙ ЖЕ машиной уникализации
+// (`X`, `X-2`), что и два одноимённых сервера: своё второе правило дало бы им
+// разные схемы именования и сломало бы матч второму.
+func TestMaterializeUniquifiesDuplicateBannerTags(t *testing.T) {
+	body := []byte(strings.Join([]string{
+		"Лучшие сервера",
+		"trojan://pw@a.example:443#A",
+		"Лучшие сервера",
+	}, "\n"))
+
+	mat, err := MaterializeSubscriptionBody("SUB1", body, nil, 0)
+	if err != nil {
+		t.Fatalf("materialize: %v", err)
+	}
+	if len(mat.Nodes) != 3 {
+		t.Fatalf("узлов = %d, ожидали 3", len(mat.Nodes))
+	}
+	if mat.Nodes[0].Tag != "Лучшие сервера" || mat.Nodes[2].Tag != "Лучшие сервера-2" {
+		t.Errorf("теги баннеров = %q / %q, ожидали «Лучшие сервера» и «Лучшие сервера-2»:\n"+
+			"уникализация обязана быть общей машиной контейнера, а не своей",
+			mat.Nodes[0].Tag, mat.Nodes[2].Tag)
+	}
+}
+
+// Элемент Xray-тела со своим полем `tag` обязан отдать это имя неразобранной
+// записи (SPEC 116 W13): позиционный `unsupported-N` — только для записи, у
+// которой имени нет вовсе.
+func TestMaterializeXrayUnsupportedTakesTagFromRecord(t *testing.T) {
+	body := []byte(`[
+	  {"remarks":"A","outbounds":[{"protocol":"vless","tag":"proxy",
+	    "settings":{"vnext":[{"address":"a.example","port":443,
+	      "users":[{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","encryption":"none"}]}]},
+	    "streamSettings":{"network":"tcp","security":"tls"}}]},
+	  {"remarks":"BROKEN","outbounds":[{"protocol":"hysteria","tag":"Токио · игры",
+	    "settings":{"servers":[{"address":"h.example","port":443,"password":"pw"}]}}]}
+	]`)
+
+	mat, err := MaterializeSubscriptionBody("SUB1", body, nil, 0)
+	if err != nil {
+		t.Fatalf("materialize: %v", err)
+	}
+	if len(mat.Nodes) != 2 {
+		t.Fatalf("узлов = %d, ожидали 2: %+v", len(mat.Nodes), mat.Nodes)
+	}
+	bad := mat.Nodes[1]
+	if !bad.IsUnsupported() {
+		t.Fatalf("второй узел = %q, ожидали unsupported", bad.Kind)
+	}
+	if bad.Tag != "Токио · игры" {
+		t.Errorf("тег = %q, ожидали «Токио · игры» — имя берётся ИЗ ЗАПИСИ (поле tag),\n"+
+			"позиционный unsupported-N остаётся только для безымянных", bad.Tag)
 	}
 }
 

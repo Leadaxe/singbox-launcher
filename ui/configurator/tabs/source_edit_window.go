@@ -1081,14 +1081,13 @@ func showSourceEditWindow(
 			// preview_rows.go).
 			var rows []previewRow
 			var err error
-			// announce — сообщение ПРОВАЙДЕРА над списком. Прежний блок
-			// «Why nodes were rejected» здесь упразднён (SPEC 116 W11): роль
-			// построчных причин взяли ⚠-строки самих записей, а списком причин
-			// у подписки на две сотни узлов всё равно нельзя было
-			// пользоваться. Прочая диагностика fetch'а (merge, обрезка капом,
-			// потерянные члены групп) переехала в Overview — там её место
-			// рядом со статусом источника, а не поверх его состава.
-			announce := ""
+			// Блоков НАД списком здесь больше нет вовсе. «Why nodes were
+			// rejected» упразднён в W11 (роль построчных причин взяли
+			// ⚠-строки самих записей), склеенная строка «provider says: …» —
+			// в W13: анонсы провайдера это записи тела, и каждая стоит своей
+			// строкой состава на своём месте. Диагностика fetch'а целиком
+			// живёт в Overview — рядом со статусом источника, а не поверх его
+			// состава.
 			// needsFetch — true когда нет .raw кэша для subscription: UI должен
 			// показать кнопку "Fetch now" вместо просто текста ошибки.
 			needsFetch := false
@@ -1110,9 +1109,6 @@ func showSourceEditWindow(
 						emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), sourceIndex, map[string]int{})
 						rows = buildPreviewRows(src.Nodes, emitted.Nodes)
 					}
-					// Сообщение провайдера — над списком: он объясняет, почему
-					// состав такой. Чужой текст, показывается как данные.
-					announce = providerAnnounceText(diagOf(&src))
 				default:
 					emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), sourceIndex, map[string]int{})
 					rows = buildPreviewRows(nil, emitted.Nodes)
@@ -1159,21 +1155,18 @@ func showSourceEditWindow(
 				} else {
 					previewStatus.SetText(locale.Tf("%d server(s) from %d source(s)", previewRowsSupported(rows), 1))
 				}
-				// Сообщение провайдера — под счётчиком, ДО списка: чужой текст,
-				// показанный как данные (блок причин отбраковки здесь
-				// упразднён — SPEC 116 W11).
-				announceBlock := previewAnnounceBlock(announce)
+				// Склеенной строки «provider says: …» над списком больше нет
+				// (SPEC 116 W13): анонсы провайдера — записи тела, и каждая
+				// живёт СВОЕЙ строкой состава узлом kind=unsupported на своём
+				// месте. Диагностический канал `Meta.ProviderAnnounce`
+				// (заголовок HTTP / `#announce:`) остался, но его дом —
+				// Overview, где живёт вся диагностика fetch'а.
 				if err == nil {
 					if len(rows) == 0 {
 						lbl := widget.NewLabel(locale.T("No servers found."))
 						lbl.Importance = widget.LowImportance
 						// Spacer below pushes label to top instead of centering blank space.
-						items := []fyne.CanvasObject{lbl}
-						if announceBlock != nil {
-							items = append(items, announceBlock)
-						}
-						items = append(items, layout.NewSpacer())
-						previewListHost.Add(container.NewVBox(items...))
+						previewListHost.Add(container.NewVBox(lbl, layout.NewSpacer()))
 					} else {
 						nn := rows
 						// SPEC 094 D4: у каждой ноды переключатель «включена».
@@ -1260,8 +1253,11 @@ func showSourceEditWindow(
 								// причины длинные по построению («empty user id
 								// — the server returned a placeholder…»).
 								wrap.SetToolTip(previewRowToolTip(pr))
+								// W13 заход 2: клик открывает ТО ЖЕ окно узла, что
+								// карандаш строки и первый пункт меню — окна
+								// «Node info…» больше не существует.
 								wrap.OnPrimary = func(fyne.KeyModifier) {
-									showPreviewRowInfoWindow(pr)
+									showPreviewNodeEditWindow(pr, rawTag, nodeOps)
 								}
 								wrap.OnSecondary = func(pe *fyne.PointEvent) {
 									showPreviewRowContextMenu(win, pr, rawTag, nodeOps, pe)
@@ -1343,14 +1339,7 @@ func showSourceEditWindow(
 								}
 							},
 						)
-						// Сообщение провайдера — НАД списком, одной строкой:
-						// список причин здесь упразднён (SPEC 116 W11), их
-						// место — в самих строках.
-						if announceBlock != nil {
-							previewListHost.Add(container.NewBorder(announceBlock, nil, nil, nil, srvList))
-						} else {
-							previewListHost.Add(srvList)
-						}
+						previewListHost.Add(srvList)
 					}
 				}
 				previewListHost.Refresh()
@@ -1478,7 +1467,7 @@ func showSourceEditWindow(
 		// материализации: та пересаживает Origin целиком, и после неё узнать,
 		// была ли связь, уже негде.
 		hadSubURL := scratch.Origin != nil && scratch.Origin.SubURL != ""
-		if err := applyServerBodyJSON(&scratch, text); err != nil {
+		if err := applyServerBodyJSON(&scratch.Node, text); err != nil {
 			dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
 			return
 		}
@@ -1508,7 +1497,7 @@ func showSourceEditWindow(
 				// SPEC 116 W5 (Д5, критерий A4): Regen — второй повод
 				// разыменования из тех же правил, что и правка тела.
 				hadSubURL := scratch.Origin != nil && scratch.Origin.SubURL != ""
-				if err := regenServerBodyFromRaw(&scratch); err != nil {
+				if err := regenServerBodyFromRaw(&scratch.Node); err != nil {
 					// Откат: тело остаётся прежним, узел не испорчен, и
 					// разыменовывать нечего — правки не случилось.
 					dialog.ShowError(errors.New(locale.Tf("URI does not unpack: %s. You can write the outbound JSON by hand and press Apply.", err.Error())), win)

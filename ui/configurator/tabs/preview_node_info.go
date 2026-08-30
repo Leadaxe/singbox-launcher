@@ -12,16 +12,19 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/config"
-	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 )
 
-// SPEC 095 — окно «Info» для узла на вкладке Preview.
+// SPEC 095 — меню строки узла на вкладке Preview и в списке Sources.
 //
-// Отдельное от servers_node_info.go: то читает config.json по тегу, а здесь
-// конфига ещё нет — подписка только разобрана, пользователь её даже не
-// сохранил. Данные берутся прямо из ParsedNode.
+// SPEC 116 W13 (обкатка, заход 2): прежнее просмотровое окно
+// `showPreviewNodeInfoWindow` (разбор полей + JSON, только чтение) и всплывающее
+// окошко клика `showPreviewRowInfoWindow` упразднены — у строки узла ОДНО окно,
+// `showPreviewNodeEditWindow` (preview_node_edit_window.go): имя, тело,
+// происхождение, и правка там же, где просмотр. Держать три окна на одну строку
+// значило бы разводить три набора текстов вокруг одного узла, а пользователю,
+// увидевшему битое тело, всё равно было бы нечем его починить.
 
 // previewInfoKeyColumnWidth — ширина колонки с названиями полей.
 //
@@ -29,15 +32,12 @@ import (
 // колонка значений разъезжается.
 const previewInfoKeyColumnWidth = 168
 
-// previewInfoScrollGutter — отступ справа под полосу прокрутки.
-const previewInfoScrollGutter = 5
-
 // showPreviewNodeContextMenu показывает меню строки превью по правому клику.
 //
-// SPEC 116 W5 (§O4 = вариант А): к трём пунктам просмотра добавлены операции
-// над узлом контейнера — превью у папки перестало быть только просмотром и
-// стало её основным рабочим экраном. Второго списка узлов при этом не
-// заведено: он разъехался бы с этим.
+// SPEC 116 W5 (§O4 = вариант А): к пунктам просмотра добавлены операции над
+// узлом контейнера — превью у папки перестало быть только просмотром и стало её
+// основным рабочим экраном. Второго списка узлов при этом не заведено: он
+// разъехался бы с этим.
 //
 // rawTag — СЫРОЙ тег узла (идентичность в рамках контейнера, SPEC 112), а не
 // node.Tag: тот уже прошёл тег-машину эмиссии (префикс папки, уникализация
@@ -46,9 +46,12 @@ const previewInfoScrollGutter = 5
 // финального тега нельзя, политику не развернуть однозначно.
 //
 // ops == nil (или контейнер — подписка) — меню остаётся прежним, просмотровым.
+//
+// W13 заход 2 (принцип «меню = кнопки»): первый пункт открывает ТО ЖЕ окно, что
+// карандаш строки, — набор действий у меню и у кнопок справа один.
 func showPreviewNodeContextMenu(
 	win fyne.Window,
-	node *config.ParsedNode,
+	r previewRow,
 	rawTag string,
 	ops *previewNodeOps,
 	pe *fyne.PointEvent,
@@ -56,18 +59,24 @@ func showPreviewNodeContextMenu(
 	if win == nil || pe == nil {
 		return
 	}
+	node := r.Node
 
 	// node == nil — узел есть в составе, но эмиссия его не выпустила
-	// (выключен). Пункты просмотра ему не подходят: показывать нечего, а JSON
-	// у него ровно тот, которого в конфиге нет. Операции над узлом при этом
-	// остаются: он в составе контейнера, и двигать/переименовывать/удалять его
-	// пользователь вправе — иначе выключенный узел стал бы неприкасаемым.
+	// (выключен). Пункты про эмитированный JSON и финальный тег ему не
+	// подходят: показывать нечего, а JSON у него ровно тот, которого в конфиге
+	// нет. Окно узла и операции при этом остаются: он в составе контейнера, и
+	// смотреть/двигать/переименовывать/удалять его пользователь вправе —
+	// иначе выключенный узел стал бы неприкасаемым.
 	var items []*fyne.MenuItem
+	// Окно узла адресует его парой (контейнер из ops, сырой тег): без
+	// контекста открывать нечего, и пункт не показывается.
+	if ops != nil {
+		items = append(items, fyne.NewMenuItem(locale.T("Node info…"), func() {
+			showPreviewNodeEditWindow(r, rawTag, ops)
+		}))
+	}
 	if node != nil {
 		items = append(items,
-			fyne.NewMenuItem(locale.T("Node info…"), func() {
-				showPreviewNodeInfoWindow(node)
-			}),
 			fyne.NewMenuItem(locale.T("Copy JSON"), func() {
 				fynewidget.SetClipboard(previewNodeJSON(node))
 			}),
@@ -116,119 +125,6 @@ func showPreviewNodeContextMenu(
 	widget.ShowPopUpMenuAtPosition(fyne.NewMenu("", items...), win.Canvas(), pe.AbsolutePosition)
 }
 
-// showPreviewNodeInfoWindow открывает окно с разбором узла и его JSON.
-func showPreviewNodeInfoWindow(node *config.ParsedNode) {
-	if node == nil {
-		return
-	}
-
-	win := fyne.CurrentApp().NewWindow(
-		locale.Tf("Node: %s", node.Tag))
-
-	body := container.NewVBox()
-
-	body.Add(previewSectionHeader(locale.T("General")))
-	body.Add(previewInfoRow(locale.T("Tag"), node.Tag))
-	body.Add(previewInfoRow(locale.T("Type"), node.Scheme))
-
-	if node.Scheme == configtypes.SchemeGroup {
-		appendPreviewGroupRows(body, node)
-	} else {
-		if node.Server != "" {
-			body.Add(previewInfoRow(locale.T("Server"),
-				fmt.Sprintf("%s:%d", node.Server, node.Port)))
-		}
-		if tr := previewTransportName(node); tr != "" {
-			body.Add(previewInfoRow(locale.T("Transport"), tr))
-		}
-		if sec := previewSecurityName(node); sec != "" {
-			body.Add(previewInfoRow(locale.T("Security"), sec))
-		}
-	}
-
-	// Цепочка detour: узел ходит через другие — это важнее многих полей.
-	if len(node.Chain) > 0 {
-		body.Add(widget.NewSeparator())
-		body.Add(previewSectionHeader(locale.T("Chain positions (%d)")))
-		for i, hop := range node.Chain {
-			if hop == nil {
-				continue
-			}
-			body.Add(previewInfoRow(
-				fmt.Sprintf("%d", i+1),
-				fmt.Sprintf("%s  (%s:%d)", hop.Tag, hop.Server, hop.Port)))
-		}
-	}
-
-	// JSON — отдельной вкладкой: он длинный и оттеснял бы разобранные поля.
-	jsonText := previewNodeJSON(node)
-	jsonEntry := widget.NewMultiLineEntry()
-	jsonEntry.SetText(jsonText)
-	jsonEntry.Wrapping = fyne.TextWrapOff
-
-	jsonTab := container.NewBorder(
-		nil,
-		widget.NewButton(locale.T("Copy JSON"), func() {
-			fynewidget.SetClipboard(jsonText)
-		}),
-		nil, nil,
-		jsonEntry,
-	)
-
-	tabs := container.NewAppTabs(
-		container.NewTabItem(locale.T("Details"),
-			previewWithScrollGutter(body)),
-		container.NewTabItem(locale.T("Outbound JSON"), jsonTab),
-	)
-
-	win.SetContent(tabs)
-	win.Resize(fyne.NewSize(620, 640))
-	win.CenterOnScreen()
-	win.Show()
-}
-
-// appendPreviewGroupRows добавляет строки, специфичные для узла-группы.
-func appendPreviewGroupRows(body *fyne.Container, node *config.ParsedNode) {
-	if node.Outbound == nil {
-		return
-	}
-
-	if url, ok := node.Outbound["url"].(string); ok && url != "" {
-		body.Add(previewInfoRow(locale.T("Test URL"), url))
-	}
-	if interval, ok := node.Outbound["interval"].(string); ok && interval != "" {
-		body.Add(previewInfoRow(locale.T("Test interval"), interval))
-	}
-	if def, ok := node.Outbound["default"].(string); ok && def != "" {
-		body.Add(previewInfoRow(locale.T("Default"), def))
-	}
-
-	members := previewGroupMemberTags(node)
-	body.Add(widget.NewSeparator())
-	body.Add(previewSectionHeader(
-		locale.Tf("Group members (%d)", len(members))))
-	for _, tag := range members {
-		l := widget.NewLabel("   · " + tag)
-		l.Truncation = fyne.TextTruncateEllipsis
-		body.Add(l)
-	}
-}
-
-// previewGroupMemberTags возвращает состав узла-группы.
-func previewGroupMemberTags(node *config.ParsedNode) []string {
-	if node == nil || node.Outbound == nil {
-		return nil
-	}
-	raw, _ := node.Outbound[configtypes.GroupMembersKey].([]interface{})
-	out := make([]string, 0, len(raw))
-	for _, item := range raw {
-		if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
 // previewNodeJSON форматирует outbound узла для показа.
 //
 // Это тот самый объект, который уйдёт в config.json, — по нему видно всё,
@@ -269,11 +165,4 @@ func previewInfoRow(key, value string) *fyne.Container {
 	valueEntry.Wrapping = fyne.TextWrapOff
 
 	return container.NewBorder(nil, nil, keyCell, nil, valueEntry)
-}
-
-// previewWithScrollGutter добавляет отступ под полосу прокрутки.
-func previewWithScrollGutter(body fyne.CanvasObject) fyne.CanvasObject {
-	gutter := canvas.NewRectangle(color.Transparent)
-	gutter.SetMinSize(fyne.NewSize(previewInfoScrollGutter, 0))
-	return container.NewScroll(container.NewBorder(nil, nil, nil, gutter, body))
 }

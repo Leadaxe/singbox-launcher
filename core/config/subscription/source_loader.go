@@ -73,6 +73,23 @@ func makeIdentityUnique(raw string, idCounts map[string]int) string {
 	return uniquifyAgainstCounts(raw, idCounts)
 }
 
+// MakeIdentityUnique — та же машина уникализации сырых тегов, что у принятых
+// узлов (StampNodeIdentity), но без узла на руках.
+//
+// Экспортирована для материализации неразобранных записей (SPEC 116 W13):
+// теперь имя есть и у них (подпись баннера, `tag`/`ps`/`remarks` элемента
+// JSON), а значит и столкнуться оно может — и разводить столкновение обязана
+// ТА ЖЕ машина, что у соседей по контейнеру. Своя вторая («тег занят →
+// позиционный `unsupported-N`») дала бы двум одинаковым баннерам подряд разные
+// правила именования, и второй перестал бы матчиться при следующем fetch.
+func MakeIdentityUnique(raw string, idCounts map[string]int) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || idCounts == nil {
+		return raw
+	}
+	return makeIdentityUnique(raw, idCounts)
+}
+
 // uniquifyAgainstCounts подбирает свободное имя вида `X`, `X-2`, `X-3` и
 // занимает его в счётчике.
 //

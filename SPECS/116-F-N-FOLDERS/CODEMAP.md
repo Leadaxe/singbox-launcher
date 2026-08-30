@@ -73,7 +73,8 @@
 | Функция | Место |
 |---|---|
 | `MaterializeSubscriptionBody(subID, decodedBody, skip, capN)` | `core/config/fetch_materialize.go:50` |
-| `unsupportedNodeFromRecord` (W11) | `core/config/fetch_materialize.go:122` — тег из подписи записи, иначе позиционный `unsupported-N`; уникальность считается по одному множеству с принятыми |
+| `unsupportedNodeFromRecord` (W11, тег из записи — W13) | `core/config/fetch_materialize.go` — имя берётся ИЗ ЗАПИСИ развилкой `nameFromRejectedRecord` (URI → `LabelFromOriginURI`, JSON → `NameFromOriginJSON` по полям `tag`/`ps`/`remarks`/`name`, баннер → сам его текст); позиционный `unsupported-N` — только для безымянной. Уникализация — ТОЙ ЖЕ машиной, что у принятых (`subscription.MakeIdentityUnique` над `uniquifyAgainstCounts`), по ОДНОМУ счётчику `idCounts` на весь материал: два одинаковых баннера дают «X»/«X-2», как два одноимённых сервера. Своё правило «тег занят → позиционный» снято — оно ломало матч второму баннеру при следующем fetch. Потолок тега `maxUnsupportedTagRunes`=120 |
+| `RejectReasonProviderBanner` / `isProviderBannerLine` (W13) | `core/config/subscription/parse_body.go` — анонс провайдера («Лучшие сервера») = запись состава, а не сломанный узел: признак узкий (в строке НЕТ `://`), причина своя и хранится АНГЛИЙСКИМ ключом (перевод — на показе, `previewRowReason`). Всё, что схему заявило и не разобралось, остаётся сломанным узлом с технической причиной |
 | `SubscriptionFetchMaterial.Supported` (W11) | `core/config/fetch_materialize.go:25` — достоверность ответа считается по СОБРАВШИМСЯ, не по `len(Nodes)` |
 | `subscription.RejectedBodyRecord` / `bodyParseState.reject` (W11) | `core/config/subscription/parse_body.go:77,262` — отбракованная запись с позицией (`After` = сколько принято до неё) и исходником; счётчик принятых не трогает. **Единственный** вход материализации unsupported-узлов: ветка формата, не позвавшая `reject`, теряет запись молча |
 | `jsonRejectSink` / `newJSONRejectFlusher` / `remapRejectsToKeptNodes` (W11, фикс W13) | `core/config/subscription/json_body_rejects.go` — сток отбраковок JSON-веток (Xray-массив, sing-box-импорт): они отдают наверх готовый СПИСОК узлов, поэтому позиция помнится как «сколько узлов ветки выпущено до записи» и пересчитывается на выживших после каждого фильтра (владение §342, резолв групп), а в нумерацию принятых переводится проигрыванием — арифметикой нельзя, дедуп и кап режут уже в `st.accept`. **Не** `ParseFailureReasons`: тот дедуплицирует, имеет потолок 3 и намеренно не содержит класс «протокол не поддержан» |
@@ -284,10 +285,18 @@ Save (баг обкатки: ↻ отработал, разбор в логе, m
 (`isFolder && len(Nodes)==0`) — пустота папки это воля пользователя, а не
 сбой источника.
 
-**Правый клик по строке ВЕРХНЕГО узла (W13)** — `source_row_node_ops.go`:
-`sourceRowNodeOpsAllowed:52` (server/chain/auto — у контейнеров не один узел,
-а состав, и он правится строкой Preview), `showSourceRowNodeContextMenu:67`
-(Move/Copy to folder…). Своей механики нет: контекст — тот же
+**Правый клик по строке ВЕРХНЕГО узла (W13; полное меню — заход 2)** —
+`source_row_node_ops.go`: `sourceRowNodeOpsAllowed` (server/chain/auto — у
+контейнеров не один узел, а состав, и он правится строкой состава),
+`showSourceRowNodeContextMenu` (Node info…/правка, Copy JSON, Copy tag,
+Copy/Move to folder…, Rename…, Delete). Своей механики нет ни у одного
+пункта — **принцип «меню = кнопки»**: Node info…/Rename… →
+`showSourceEditWindow` (окно источника И ЕСТЬ форма правки верхнего узла;
+свой диалог переименования был бы вторым путём БЕЗ `resetRefsAfterNodeRename`
+на Save), Delete → `showSourceRowDeleteDialog` (`source_tab.go` — вынесен из
+замыкания строки, один вход у корзины и у пункта, вместе с веткой непустой
+папки С7), Copy JSON → `sourceRowNodeJSON` (та же `EmitCanonicalSource` +
+`previewNodeJSON`, что у списка и сборки). Контекст Move/Copy — тот же
 `previewNodeOps` (`win` = главное окно, `reloadScratch`/`refreshPreview` =
 nil, рабочей копии у списка нет), диалог и предупреждения — те же
 `showMoveOrCopyDialog`/`applyMoveOrCopy` (`preview_node_ops.go:240,286`), а
@@ -304,31 +313,53 @@ nil, рабочей копии у списка нет), диалог и пред
 `ttwidget.ToolTipWidget.MouseIn`). Раньше у папки под курсором висели три
 пустых двоеточия.
 
-**Вход В ПАПКУ прямо в списке (W13)** — `source_folder_drilldown.go` (551).
-Клик по строке папки переключает ТУ ЖЕ таблицу в режим её состава; новых
-виджетов, окон и вкладок нет.
+**Вход В КОНТЕЙНЕР прямо в списке (W13; подписки — заход 2)** —
+`source_folder_drilldown.go`. Клик по строке ПАПКИ ИЛИ ПОДПИСКИ переключает
+ТУ ЖЕ таблицу в режим её состава; новых виджетов, окон и вкладок нет.
+Различие папки и подписки — не в экране, а в модели прав: `kind` едет в
+`previewNodeOps`, и `nodeOpsAllowed()`/`reorderAllowed()` сами гасят
+Move/Rename/Delete/захват у подписки.
 
-| Элемент | Место | Заметка |
-|---|---|---|
-| `folderDrillState{folderID}` + `active/enter/leave` | `:91,97,104,105` | состояние ЭКРАНА в замыкании `CreateSourcesTab` (`source_tab.go:93`), рядом с `revealedSourceID`; в модель не едет |
-| `folderDrillIndex(sources, id)` | `:112` | адрес — ULID, не индекс: пока смотрят состав, порядок `m.Sources` вправе поехать. `-1` у пропавшей папки → вкладка сама возвращается в корень |
-| `buildFolderDrillRows` → `folderDrillRowsInput` | `:147,130` | состав ТЕМ ЖЕ `buildPreviewRows` и ТОЙ ЖЕ `config.EmitCanonicalSource` (свой пустой `tagCounts`), что вкладка Preview и сборка — иначе список показывал бы не тот состав (баг #91) |
-| `folderDrillBackRow` | `:207` | первая строка «← имя»: `HoverRow` + `SecondaryTapWrap.OnPrimary`; правого клика нет — она не узел |
-| `folderDrillNodeRow` | `:235` | `[захват][галка] имя/подстрока`; тексты — `previewRowTitle/Subtitle/ToolTip`; правый клик — `showPreviewRowContextMenu` с `previewNodeOps` (`newFolderDrillNodeOps:187`, `win` = главное окно, `reloadScratch`/`refreshPreview` = nil) |
-| `folderDrillNodeEnabled` / `folderDrillSetNodeEnabled` | `:502,527` | галка пишет `Enabled` ПРЯМО в модель (scratch'а и Save у списка нет) и зовёт `applySourceMutation` — как тумблер источника |
-| `renderFolderDrillRows` | `:367` | наполняет `sourcesBox`; ставит `*reorder` (замыкание на `previewNodeOps.applyReorder` по СЫРЫМ тегам). `dragGroup.Total` НЕ ставится: строки живут в VBox, регистрируются все, а ненулевой `Total` разрешил бы бросок в слот, которого в корне нет |
-| `applyFolderDrillChrome` | `:325` | обвязка: заголовок «Sources» ⇄ «Folder: имя», подсказка ⇄ `folderDrillHintText`, `previewAllBtn` гаснет (она про ВСЕ источники) |
-| `applyAddedSourcesToFolder(Named)` | `:444,458` | Add-поле в режиме папки → `business.AppendNodesToFolder` (тот же `parseSourceInput`, W6). Поле НЕ очищается при отказе: отвергнутый текст обязан остаться на экране |
+| Элемент | Заметка |
+|---|---|
+| `folderDrillState{folderID}` + `active/enter/leave` | состояние ЭКРАНА в замыкании `CreateSourcesTab`, рядом с `revealedSourceID`; в модель не едет. Имя поля историческое — адрес у обоих контейнеров один |
+| `drillContainerKind(kind)` | folder \| subscription: у них СОСТАВ, а не один узел. server/chain/auto сюда не попадают — их узел и есть Source |
+| `folderDrillState.nodesAreFree(sources)` | «сюда можно класть узлы руками» = ровно папка; на нём стоят гейты Add (поле, кнопка, ⋮ и тихий возврат на самих путях — диалоги Add асинхронны) |
+| `folderDrillIndex(sources, id)` | адрес — ULID, не индекс: пока смотрят состав, порядок `m.Sources` вправе поехать. `-1` у пропавшего контейнера → вкладка сама возвращается в корень |
+| `buildFolderDrillRows` → `folderDrillRowsInput{SourceIndex,Kind,Rows,Identities,Name}` | состав ТЕМ ЖЕ `buildPreviewRows` и ТОЙ ЖЕ `config.EmitCanonicalSource` (свой пустой `tagCounts`), что вкладка Preview и сборка — иначе список показывал бы не тот состав (баг #91) |
+| `folderDrillBackRow` | первая строка: `theme.NavigateBackIcon()` + U+00A0 + имя. Текстовой «←» (U+2190) НЕТ — глифа нет в шрифте Fyne, на его месте рисовалось «�». Она же заголовок: отдельного «Folder: …» над списком больше нет |
+| `folderDrillNodeRow` | `[захват\|распорка][галка] имя/подстрока [карандаш][корзина]`. Вёрстка — ДОСЛОВНО та же, что у строки Preview: `canvas.Text` + `previewTightVBox{gap: previewTitleSubtitleGap}` (не `widget.Label`+`tightVBox` — у Label свой отступ темы, заголовок вставал выше центра чекбокса). Кнопки = пункты меню: карандаш → `showPreviewNodeEditWindow`, корзина → `ops.showDeleteDialog` (у подписки её нет) |
+| `folderDrillNodeEnabled` / `folderDrillSetNodeEnabled` | галка пишет `Enabled` ПРЯМО в модель (scratch'а и Save у списка нет) и зовёт `applySourceMutation` — как тумблер источника |
+| `renderFolderDrillRows` | наполняет `sourcesBox`, возвращает `kind`; ставит `*reorder` (замыкание на `previewNodeOps.applyReorder` по СЫРЫМ тегам) только у папки. `dragGroup.Total` НЕ ставится: строки живут в VBox, регистрируются все, а ненулевой `Total` разрешил бы бросок в слот, которого в корне нет |
+| `applyFolderDrillChrome` | обвязка: подсказка `sourceHintText` ⇄ `folderDrillHintText` ⇄ `subDrillHintText`; поле Add + кнопка «Add» + ⋮ выключаются в режиме подписки; `previewAllBtn` гаснет (она про ВСЕ источники). Заголовок списка НЕ трогается |
+| `applyAddedSourcesToFolderNamed` | Add-поле в режиме папки → `business.AppendNodesToFolder` (тот же `parseSourceInput`, W6). Поле НЕ очищается при отказе: отвергнутый текст обязан остаться на экране |
 
-Точки встраивания в `source_tab.go`: `applyAddedSourcesNamed:107` (развилка
-адреса Add + имя из файла), форма сервера `:223`, ⋮-меню `:330` (в режиме
-папки остаются только пункты, чей результат — УЗЕЛ: Add server / Add WARP /
-Add from file), захват `:416` (в режиме папки переставляет узлы ВНУТРИ папки),
-`refreshSourcesList:464` (ветка режима — до всего остального),
-`RevealSource` (`drill.leave()` — переход из отчёта адресует ИСТОЧНИК, а они в
-корне), клик по строке папки `:512` (`SecondaryTapWrap.OnPrimary` СНАРУЖИ
-`HoverRow`; кнопки строки лежат глубже и свой tap получают сами).
-Тест — `source_folder_drilldown_test.go` (адресация ULID'ом + порядок строк).
+Точки встраивания в `source_tab.go`: `applyAddedSourcesNamed` (развилка
+адреса Add + имя из файла + гейт `nodesAreFree`), форма сервера (тот же
+гейт), ⋮-меню (в режиме папки остаются только пункты, чей результат — УЗЕЛ:
+Add server / Add WARP / Add from file; в режиме подписки меню не
+открывается), захват `dragGroup` (в режиме папки переставляет узлы ВНУТРИ
+папки), `refreshSourcesList` (ветка режима — до всего остального),
+`RevealSource` (`drill.leave()` — переход из отчёта адресует ИСТОЧНИК, а они
+в корне), клик по строке контейнера (`drillContainerKind`,
+`SecondaryTapWrap.OnPrimary` СНАРУЖИ `HoverRow`; кнопки строки лежат глубже и
+свой tap получают сами).
+Тест — `source_folder_drilldown_test.go` (адресация ULID'ом, порядок строк,
+подписка + `nodesAreFree`).
+
+**Окно ОДНОГО узла контейнера (W13 заход 2)** —
+`preview_node_edit_window.go`, `showPreviewNodeEditWindow(row, rawTag, ops)`:
+имя (Rename → готовый `previewNodeOps.applyRename`), тело (Apply / Regen from
+raw — ТОТ ЖЕ `source_body_edit`-путь, сигнатура сужена до `*Node`), исходник
+(`origin.raw`, только чтение). Правится ТОЛЬКО узел папки: у подписки и у
+неразобранной записи то же окно read-only (у второй секция «Outbound JSON»
+скрыта целиком — тела нет). Мутация НЕМЕДЛЕННАЯ (`applySourceMutation` +
+`afterModelMutation`), разыменование Д5/A4 — той же `DereferenceNodeOrigin`.
+**Упразднены оба прежних просмотровых окна**: `showPreviewRowInfoWindow`
+(W11, клик по строке) и `showPreviewNodeInfoWindow` («Node info…», разбор +
+JSON) вместе с `appendPreviewGroupRows`/`previewGroupMemberTags`/
+`previewWithScrollGutter`. Три окна вокруг одного узла показывали и ни одно
+не правило.
 
 **Окно источника**: `ui/configurator/tabs/source_edit_window.go` (1857) —
 `showSourceEditWindow:377` (главный конструктор окна);
@@ -357,7 +388,7 @@ Read-only JSON у папки — `:1319` (`isServerSource`), кнопок Apply/
 контекст собирается в окне: `nodeOps := &previewNodeOps{…}`
 (`source_edit_window.go:928`), в нём же `reloadScratch` (перечитать рабочую
 копию из живой записи, `:934`) и `refreshPreview`. Меню строки —
-`showPreviewNodeContextMenu` (`preview_node_info.go:49`), ему передаётся
+`showPreviewNodeContextMenu` (`preview_node_info.go`), ему передаётся
 **сырой** тег (`identities[id]`, `source_edit_window.go:1236`), а не
 `node.Tag`. Авторазыменование при правке тела/Regen —
 `dereferenceEditedSourceNode` (`preview_node_ops.go:503`) +
@@ -373,15 +404,15 @@ Read-only JSON у папки — `:1319` (`isServerSource`), кнопок Apply/
 | Chain | `source_chain_tab.go` | `newChainForm:111`, `Load:178`, `Collect:267`, `CollectLinks:249`, `applyChainFormToSource:862` |
 | Chain (кандидаты хопов) | `source_chain_hops.go` | `collectChainHopCandidates:106`, `chainReplaceTags:242`, `chainFolderIDsBySourceIndex:255`, `chainReferencedBy:321` |
 | Replace (свёртка) | `source_replace_tab.go` | `newReplaceTab:53`, `Load:113`, `Collect:145`, `defaultReplaceTag:205`, `replaceAutoChoices:219` |
-| Body / JSON | `source_body_edit.go` | `applyServerBodyJSON:40`, `regenServerBodyFromRaw:71` (Regen) |
+| Body / JSON | `source_body_edit.go` | `applyServerBodyJSON`, `regenServerBodyFromRaw` (Regen). Аргумент — `*Node`, не `*Source` (W13 заход 2): `Body` и `Origin` принадлежат узлу, и та же пара правит узел контейнера из окна узла |
 | JSON-рендер | `source_edit_json.go` | `unpackNodesDoc:72` (общий сборщик документа `{outbounds,endpoints}`, `limit<=0` = без обрезки), `renderUnpackedNodes:118` (показ, `limit=previewNodeCap`), `emittedToEditableJSON:38`, `stripEmittedDecorations:21` |
 | JSON: «взять всю папку» (W8) | `folder_copy_json.go` | `folderCopyNodesJSON:47` (живая запись + `EmitCanonicalSource` со СВОИМ пустым `tagCounts` → `unpackNodesDoc(…, 0)` → `fynewidget.SetClipboard`), `folderCopyJSONButton:109` (nil у не-папки). Теги **финальные** (§O2 вариант А); второй эмиссии нет — та же `config.EmitNodeJSONs`, что у сборки. Пустого документа в буфер не уходит: 0 узлов → сообщение, причина названа раздельно (все выключены / не собрались) |
 | Preview (операции над узлом) | `preview_node_ops.go` | `previewNodeOps:61`, `nodeOpsAllowed:98` (= «kind == folder»), `reorderAllowed:111`, `applyReorder:129`, `folderTargets:181`, `showMoveOrCopyDialog:222`/`applyMoveOrCopy:268`, `showRenameDialog:315`/`applyRename:337`, `showDeleteDialog:394`/`applyDelete:411`, `afterModelMutation:446` |
 | Preview (наполнение папки, W6) | `folder_add_nodes.go` | `newFolderAddNodes:76` (nil у не-папки), `button:94`, `showPasteDialog:121`, `addFromFiles:153`/`fyneFileOpen:172`, `applyFiles:208`, `applyInput:243`, `humanError:268`, `addWarp:280`, `addServer:293`, `finish:312`, `folderAddNodesHeader:342` (встраивание — `source_edit_window.go:948`) |
 | Preview (заливка подписки, W7) | `folder_fill_from_sub.go` | `showFillFromSubscriptionDialog:56` (селект доноров), `applyFillFromSubscription:123` (немедленная мутация + `applySourceMutation`/`afterModelMutation`), `offerSubscriptionRefresh:153` (зовёт существующий `refreshOneSourceFromUI`, своего fetch'а нет; дозаливки после обновления нет намеренно), `reportFillResult:172`. Пункт меню — в `folderAddNodes.button()` за разделителем |
-| Preview (меню строки) | `preview_node_info.go` | `showPreviewNodeContextMenu:49` (сырой тег + `*previewNodeOps` параметрами; `node == nil` — выключенный узел: пункты просмотра гаснут, операции остаются), `showPreviewNodeInfoWindow:120` |
+| Preview (меню строки) | `preview_node_info.go` | `showPreviewNodeContextMenu` (принимает `previewRow` + сырой тег + `*previewNodeOps`; `row.Node == nil` — выключенный узел: пункты про эмитированный JSON/тег гаснут, окно узла и операции остаются). Первый пункт ведёт в то же окно, что карандаш строки — принцип «меню = кнопки». `showPreviewNodeInfoWindow` УПРАЗДНЁН (W13 заход 2); из файла остались только `previewNodeJSON`, `previewSectionHeader`, `previewInfoRow` |
 | Preview (модель строки, W11) | `preview_rows.go` | `previewRow:30`, `buildPreviewRows:53` (строки — по составу `nodes[]`, эмитированные узлы подставляются по СЫРОМУ тегу; группы идентичности не имеют и раздаются по порядку), `previewRowsSupported:114`, `previewRowsUnsupported:125` |
-| Preview (вид строки, W11) | `preview_row_view.go` | `previewRowTitle:30`, `previewRowSubtitle:46` (у Unsupported «⚠ причина» вместо протокола), `previewRowToolTip:67`, `previewAnnounceBlock:88`, `showPreviewRowInfoWindow:106` (клик — название + `origin.raw`), `showPreviewRowContextMenu:158` |
+| Preview (вид строки, W11; W13) | `preview_row_view.go` | `previewRowTitle`, `previewRowReason` (**W13** — перевод причины ОДНОЙ точкой на все три места, где она видна: в состоянии причина хранится английским ключом), `previewRowSubtitle` (у Unsupported «⚠ причина» вместо протокола), `previewRowToolTip`, `showPreviewRowContextMenu` (`showPreviewRowInfoWindow` УПРАЗДНЁН — W13 заход 2, окно узла одно). **`previewAnnounceBlock` упразднён (W13)** вместе с питающим каналом в Preview: анонсы провайдера — записи тела, каждая своей строкой состава. `meta.provider_announce` (HTTP / `#announce:`) это ДРУГОЕ — сообщение о самой подписке; его дом Overview + отчёт сборки |
 | Прочее | `source_edit_misc.go`, `source_meta_format.go`, `source_tag_shift_warning.go` | предупреждение о смене финального тега |
 
 **business/**:
