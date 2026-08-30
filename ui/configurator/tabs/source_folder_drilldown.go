@@ -556,18 +556,18 @@ func folderDrillNodeRow(
 // кнопки: требование звучало «не меняя интерфейса», и второй шапки под режим
 // контейнера волна не заводит.
 //
-// Заголовок списка при этом НЕ трогается (заход 2, пункт 2): «где я» говорит
-// первая строка списка — «‹ имя», она же выход. Прежнее «Folder: имя» над
-// списком дублировало её и спорило с ней при длинном имени.
+// Заголовок списка меняет вызывающий (заход 3): в контейнере на его месте
+// стоит закреплённая шапка `folderDrillHeader`, она же выход.
 //
-//   - подсказка под полем ввода: про подписки и ссылки ⇄ про узлы папки ⇄ про
+//   - подсказка ПОЛЯ ввода (тултип, заход 3 — под полем она занимала три
+//     строки высоты постоянно): про подписки и ссылки ⇄ про узлы папки ⇄ про
 //     несвободу узлов подписки;
 //   - поле Add и кнопка «Add»: в режиме ПОДПИСКИ выключены — руками в подписку
 //     не льют (следующий fetch унёс бы добавленное);
 //   - «Preview all servers…» гаснет: она про ВСЕ источники сразу, а внутри
 //     контейнера открывала бы окно не про то, на что смотрит пользователь.
 func applyFolderDrillChrome(
-	hintLabel *widget.Label,
+	hintTarget fyne.CanvasObject,
 	previewAllBtn *widget.Button,
 	addEntry *widget.Entry,
 	addBtn *widget.Button,
@@ -575,6 +575,11 @@ func applyFolderDrillChrome(
 	kind corestate.SourceKind,
 	inContainer bool,
 ) {
+	setHint := func(text string) {
+		if hintTarget != nil {
+			fynewidget.SetToolTipSafe(hintTarget, locale.T(text))
+		}
+	}
 	setAdd := func(enabled bool) {
 		if addEntry != nil {
 			if enabled {
@@ -595,9 +600,7 @@ func applyFolderDrillChrome(
 		}
 	}
 	if !inContainer {
-		if hintLabel != nil {
-			hintLabel.SetText(locale.T(sourceHintText))
-		}
+		setHint(sourceHintText)
 		if previewAllBtn != nil {
 			previewAllBtn.Show()
 		}
@@ -608,15 +611,11 @@ func applyFolderDrillChrome(
 		previewAllBtn.Hide()
 	}
 	if kind == corestate.SourceKindSubscription {
-		if hintLabel != nil {
-			hintLabel.SetText(locale.T(subDrillHintText))
-		}
+		setHint(subDrillHintText)
 		setAdd(false)
 		return
 	}
-	if hintLabel != nil {
-		hintLabel.SetText(locale.T(folderDrillHintText))
-	}
+	setHint(folderDrillHintText)
 	setAdd(true)
 }
 
@@ -627,7 +626,7 @@ func applyFolderDrillChrome(
 //
 // Строка возврата в СПИСКЕ больше не живёт (обкатка заход 3): она уезжала за
 // прокрутку вместе с составом, и «где я» пропадало с экрана. Теперь выход —
-// закреплённая шапка секции (folderDrillBackRow вместо заголовка «Sources»),
+// закреплённая шапка секции (folderDrillHeader вместо заголовка «Sources»),
 // её строит вызывающий из возвращённого input. Здесь — только строки узлов;
 // захват перетаскивания регистрируется по индексу строки узла как и раньше.
 func renderFolderDrillRows(

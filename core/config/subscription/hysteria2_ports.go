@@ -7,7 +7,10 @@ import (
 	"strings"
 )
 
-const hysteria2URLPrefix = "hysteria2://"
+const (
+	hysteria2URLPrefix = "hysteria2://"
+	hysteriaURLPrefix  = "hysteria://"
+)
 
 // hysteria2SplitHostAndPort splits host[:portspec] after the @ fragment.
 // For IPv6, host is bracketed and portspec follows "]:".
@@ -73,10 +76,19 @@ func hysteria2AuthorityNeedsRecovery(portSpec string) bool {
 // (see https://v2.hysteria.network/docs/advanced/Port-Hopping/) so net/url can parse them.
 // Returns the parseable URL, the full authority port list string for merging into mport, and nil error on success.
 func hysteria2RecoverMultiPortAuthority(raw string) (*url.URL, string, error) {
-	if !strings.HasPrefix(raw, hysteria2URLPrefix) {
-		return nil, "", fmt.Errorf("not hysteria2")
+	// Hysteria v1 использует тот же синтаксис порт-хоппинга в authority
+	// (клиенты 1.x, «port hopping»), поэтому восстановление общее на оба
+	// префикса — иначе v1-ссылка с диапазоном терялась бы целиком.
+	prefix := ""
+	switch {
+	case strings.HasPrefix(raw, hysteria2URLPrefix):
+		prefix = hysteria2URLPrefix
+	case strings.HasPrefix(raw, hysteriaURLPrefix):
+		prefix = hysteriaURLPrefix
+	default:
+		return nil, "", fmt.Errorf("not hysteria")
 	}
-	rest := strings.TrimPrefix(raw, hysteria2URLPrefix)
+	rest := strings.TrimPrefix(raw, prefix)
 	frag := ""
 	if i := strings.Index(rest, "#"); i >= 0 {
 		frag = rest[i:]
@@ -104,7 +116,7 @@ func hysteria2RecoverMultiPortAuthority(raw string) (*url.URL, string, error) {
 	}
 	host, portSpec, ok := hysteria2SplitHostAndPort(hostPortPart)
 	if !ok || host == "" {
-		return nil, "", fmt.Errorf("invalid hysteria2 host")
+		return nil, "", fmt.Errorf("invalid hysteria host")
 	}
 	if !hysteria2AuthorityNeedsRecovery(portSpec) {
 		return nil, "", fmt.Errorf("authority does not use multi-port syntax")
@@ -113,7 +125,7 @@ func hysteria2RecoverMultiPortAuthority(raw string) (*url.URL, string, error) {
 	if !ok {
 		return nil, "", fmt.Errorf("no usable port in %q", portSpec)
 	}
-	rebuilt := hysteria2URLPrefix
+	rebuilt := prefix
 	if userinfo != "" {
 		rebuilt += userinfo + "@"
 	}

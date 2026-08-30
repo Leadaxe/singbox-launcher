@@ -223,7 +223,7 @@ func appendReason(reasons []string, extra string) []string {
 var NaiveSupportProbe func() (supported bool, reason string)
 
 // GenerateNodeJSON returns a single JSON object string for one proxy node (sing-box outbound).
-// Field order and presence follow sing-box expectations. Supports: vless, vmess, trojan, shadowsocks, hysteria2, tuic, naive, masque, anytls, ssh, socks.
+// Field order and presence follow sing-box expectations. Supports: vless, vmess, trojan, shadowsocks, hysteria, hysteria2, tuic, naive, masque, anytls, ssh, socks.
 // Includes optional TLS (including reality), transport (ws/http/grpc), and protocol-specific options.
 // Returned string ends with a trailing comma and may include a leading comment line (node label) for readability.
 func GenerateNodeJSON(node *ParsedNode) (string, error) {
@@ -361,6 +361,38 @@ func GenerateNodeJSONBare(node *ParsedNode) (string, error) {
 				obfsJSON := "{" + strings.Join(obfsParts, ",") + "}"
 				parts = append(parts, fmt.Sprintf(`"obfs":%s`, obfsJSON))
 			}
+		}
+	} else if node.Scheme == "hysteria" {
+		// Hysteria v1: секрет — auth_str (не password), obfs — ПЛОСКАЯ строка
+		// (option/hysteria.go, HysteriaOutboundOptions.Obfs), а не объект
+		// {type,password}, как у hysteria2. TLS-блок печатает общая секция ниже.
+		if auth, ok := node.Outbound["auth_str"].(string); ok && auth != "" {
+			authJSON, err := json.Marshal(auth)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal hysteria auth_str: %w", err)
+			}
+			parts = append(parts, fmt.Sprintf(`"auth_str":%s`, string(authJSON)))
+		}
+		if serverPorts, ok := node.Outbound["server_ports"].([]string); ok && len(serverPorts) > 0 {
+			serverPorts = subscription.NormalizeHysteria2ServerPortsSlice(serverPorts)
+			serverPortsJSON, err := json.Marshal(serverPorts)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal hysteria server_ports: %w", err)
+			}
+			parts = append(parts, fmt.Sprintf(`"server_ports":%s`, string(serverPortsJSON)))
+		}
+		if upMbps, ok := node.Outbound["up_mbps"].(int); ok && upMbps > 0 {
+			parts = append(parts, fmt.Sprintf(`"up_mbps":%d`, upMbps))
+		}
+		if downMbps, ok := node.Outbound["down_mbps"].(int); ok && downMbps > 0 {
+			parts = append(parts, fmt.Sprintf(`"down_mbps":%d`, downMbps))
+		}
+		if obfs, ok := node.Outbound["obfs"].(string); ok && obfs != "" {
+			obfsJSON, err := json.Marshal(obfs)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal hysteria obfs: %w", err)
+			}
+			parts = append(parts, fmt.Sprintf(`"obfs":%s`, string(obfsJSON)))
 		}
 	} else if node.Scheme == "ss" {
 		// Extract method and password from outbound

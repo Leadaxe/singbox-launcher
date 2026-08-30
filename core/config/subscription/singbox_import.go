@@ -345,6 +345,7 @@ var singboxSchemeByType = map[string]string{
 	"vmess":       "vmess",
 	"trojan":      "trojan",
 	"shadowsocks": "ss",
+	"hysteria":    "hysteria",
 	"hysteria2":   "hysteria2",
 	"tuic":        "tuic",
 	"anytls":      "anytls",
@@ -383,6 +384,9 @@ func singboxCredentialFromMap(ob map[string]interface{}, scheme string) string {
 		return mapString(ob, "uuid")
 	case "trojan", "hysteria2", "anytls", "ss":
 		return mapString(ob, "password")
+	case "hysteria":
+		// v1 хранит секрет в auth_str (а не password): см. option/hysteria.go.
+		return mapString(ob, "auth_str")
 	default:
 		return ""
 	}

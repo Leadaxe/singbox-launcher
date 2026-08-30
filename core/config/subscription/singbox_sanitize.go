@@ -47,7 +47,7 @@ func IsSingboxGroupType(t string) bool {
 // masque: h3 несёт TLS внутри QUIC, а ядро (SPEC 062 §1.3) для него игнорирует
 // utls/reality/ech с предупреждением — снимаем их здесь, как у остальных QUIC.
 var quicOutboundTypes = map[string]struct{}{
-	"hysteria2": {}, "tuic": {}, "masque": {},
+	"hysteria": {}, "hysteria2": {}, "tuic": {}, "masque": {},
 }
 
 // SanitizeSingboxOutboundMap приводит импортированный outbound к форме,
@@ -74,6 +74,7 @@ func SanitizeSingboxOutboundMap(ob map[string]interface{}, tag string) []string 
 		codes = append(codes, WarnPacketEncodingUnknown)
 	}
 	sanitizeSingboxHysteria2Obfs(ob, obType, tag)
+	sanitizeSingboxHysteriaObfs(ob, obType, tag)
 	return codes
 }
 
@@ -251,6 +252,41 @@ func sanitizeSingboxPacketEncoding(ob map[string]interface{}, tag string) bool {
 		return true
 	}
 	return false
+}
+
+// sanitizeSingboxHysteriaObfs приводит obfs узла Hysteria v1 к форме ядра.
+//
+// У v1 obfs — ПЛОСКАЯ строка-секрет (option/hysteria.go), а у hysteria2 —
+// объект {type,password}. Провайдеры, конвертирующие конфиги автоматически,
+// иногда кладут в v1 объект от v2: ядро отвергает такой outbound на разборе
+// («json: cannot unmarshal object into ... string») и это роняет ВЕСЬ конфиг,
+// а не одну ноду. Достаём секрет, если он там есть, иначе снимаем блок.
+func sanitizeSingboxHysteriaObfs(ob map[string]interface{}, obType, tag string) {
+	if obType != "hysteria" {
+		return
+	}
+	obfsRaw, ok := ob["obfs"]
+	if !ok {
+		return
+	}
+	switch v := obfsRaw.(type) {
+	case string:
+		if strings.TrimSpace(v) == "" {
+			delete(ob, "obfs")
+		}
+	case map[string]interface{}:
+		password := strings.TrimSpace(mapString(v, "password"))
+		if password == "" {
+			debuglog.WarnLog("Parser: singbox import %q: hysteria obfs object without password — dropping obfs", tag)
+			delete(ob, "obfs")
+			return
+		}
+		debuglog.WarnLog("Parser: singbox import %q: hysteria obfs given as object — using its password as the obfs string", tag)
+		ob["obfs"] = password
+	default:
+		debuglog.WarnLog("Parser: singbox import %q: hysteria obfs of unexpected shape — dropping obfs", tag)
+		delete(ob, "obfs")
+	}
 }
 
 // sanitizeSingboxHysteria2Obfs снимает обфускацию с неподдерживаемым типом.

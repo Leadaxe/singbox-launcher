@@ -58,12 +58,18 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	guiState := presenter.GUIState()
 	const directLinksDocURL = "https://github.com/Leadaxe/singbox-launcher/blob/6beb136b9082823699c6509d32e62f212fd7ff90/docs/ParserConfig.md#%D1%84%D0%BE%D1%80%D0%BC%D0%B0%D1%82%D1%8B-uri-%D0%B4%D0%BB%D1%8F-%D0%BF%D1%80%D1%8F%D0%BC%D1%8B%D1%85-%D1%81%D1%81%D1%8B%D0%BB%D0%BE%D0%BA"
 
-	// Section 1: Subscription URL or Direct Links
-	urlLabel := widget.NewLabel(locale.T("Subscription URL, Direct Links or sing-box JSON:"))
-	urlLabel.Importance = widget.MediumImportance
-
+	// Section 1: Subscription URL or Direct Links.
+	//
+	// Заголовка над полем нет намеренно (обкатка заход 3): он дословно
+	// повторял плейсхолдер самого поля.
 	guiState.SourceURLEntry = widget.NewMultiLineEntry()
-	guiState.SourceURLEntry.SetPlaceHolder(locale.T("https://your-subscription-url-here"))
+	// Плейсхолдер называет ФОРМАТЫ, а не пример URL: заголовок над полем снят
+	// (обкатка заход 3), и подпись «что сюда вставлять» осталась только здесь.
+	// Перечень — виды тела из body_classify.go: URI-список, Xray-массив,
+	// sing-box JSON (4 формы), INI wg-quick ([Interface]/[Peer],
+	// BodyKindWGConf) и Amnezia vpn:// — оно и стоит за «…».
+	guiState.SourceURLEntry.SetPlaceHolder(
+		locale.T("Subscription URL, Direct Links, Sing-box/XRay JSON, [INI], ..."))
 	guiState.SourceURLEntry.Wrapping = fyne.TextWrapOff
 	// No automatic application: URLs are applied only when the user clicks Add.
 	guiState.SourceURLEntry.OnChanged = func(value string) {
@@ -74,17 +80,28 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		presenter.MarkAsChanged()
 	}
 
-	hintLabel := widget.NewLabel(locale.T(sourceHintText))
-	hintLabel.Wrapping = fyne.TextWrapWord
-	wireguardHelpButton := widget.NewButton("?", func() {
+	// Подсказка о принимаемых форматах — ТУЛТИПОМ кнопки «?», а не строкой под
+	// полем (обкатка заход 3: «в верхней части слишком много текста»). Три
+	// строки перечисления схем занимали высоту постоянно, а нужны они один
+	// раз — пока человек не понял, что сюда вставлять.
+	//
+	// Именно кнопка, а не само поле: `widget.Entry` тултипов не умеет
+	// (fyne-tooltip даёт обёртки только для Button/Label/Check/Select и т.п.),
+	// а заводить свой ttwidget.Entry ради подсказки — лишний виджет в дереве.
+	// Клик по той же кнопке открывает документацию: наведение объясняет,
+	// нажатие ведёт подробнее.
+	//
+	// Текст переключает applyFolderDrillChrome — между корнем, папкой и
+	// подпиской, как раньше переключал текст метки.
+	wireguardHelpButton := ttwidget.NewButton("?", func() {
 		if err := platform.OpenURL(directLinksDocURL); err != nil {
 			dialog.ShowError(fmt.Errorf("failed to open docs: %w", err), guiState.Window)
 		}
 	})
 	wireguardHelpButton.Importance = widget.LowImportance
+	fynewidget.SetToolTipSafe(wireguardHelpButton, locale.T(sourceHintText))
 	// Keep help button compact (single-symbol width) and pinned to the right.
 	helpButtonCompact := container.NewGridWrap(fyne.NewSize(24, 24), wireguardHelpButton)
-	hintRow := container.NewBorder(nil, nil, nil, helpButtonCompact, hintLabel)
 	// SPEC 116 W13 (обкатка Саши): вкладка умеет показывать не только корень,
 	// но и состав ОДНОЙ папки — тем же списком, теми же строками. Состояние
 	// живёт в замыкании вкладки, как и подсветка перехода из «Итога»: это
@@ -381,14 +398,17 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(overflowBtn)
 		pop.ShowAtPosition(fyne.NewPos(pos.X, pos.Y+overflowBtn.MinSize().Height))
 	})
-	// Header: только label (⋮ переехал в строку ввода, вплотную к Add).
-	urlHeader := container.NewHBox(urlLabel)
-
-	// URL field: [entry .......] [Add] [⋮]. Add и overflow-меню стоят рядом справа
-	// от поля — ⋮ сразу за кнопкой Add, а не в дальнем углу заголовка.
+	// URL field: [entry .......] [Add] [⋮] [?]. Все кнопки строки ввода стоят
+	// рядом справа от поля.
+	//
+	// Заголовка над полем больше нет (обкатка заход 3): «Subscription URL,
+	// Direct Links or sing-box JSON:» слово в слово повторял плейсхолдер того
+	// же поля, а строку высоты занимал постоянно. Подсказка о форматах уехала
+	// в тултип поля, «?» — сюда же, к остальным кнопкам.
 	addCluster := container.NewHBox(
 		container.NewCenter(addURLButton),
 		container.NewCenter(overflowBtn),
+		container.NewCenter(helpButtonCompact),
 	)
 	urlEntryRow := container.NewBorder(
 		nil, nil,
@@ -397,11 +417,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		urlEntryWithSize,
 	)
 
-	urlContainer := container.NewVBox(
-		urlHeader,   // Header with Get free VPN
-		urlEntryRow, // Input field + Add button on the right
-		hintRow,     // Hint + docs button
-	)
+	urlContainer := container.NewVBox(urlEntryRow)
 
 	// Section 2: Sources list (based on ParserConfig.ParserConfig.Proxies)
 	sourcesLabel := widget.NewLabel(locale.T("Sources"))
@@ -497,7 +513,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// именно это. Кнопка «Preview all servers…» гаснет — она про
 				// ВСЕ источники сразу, и внутри одного контейнера обещала бы
 				// не то, что покажет.
-				applyFolderDrillChrome(hintLabel, previewAllBtn,
+				applyFolderDrillChrome(wireguardHelpButton, previewAllBtn,
 					guiState.SourceURLEntry, addURLButton, overflowBtn, input.Kind, true)
 				// «Где я» — закреплённая шапка секции вместо «Sources»: она
 				// не уезжает за прокрутку и она же выход из контейнера.
@@ -526,7 +542,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 			drill.leave()
 			folderDrillReorder = nil
 		}
-		applyFolderDrillChrome(hintLabel, previewAllBtn,
+		applyFolderDrillChrome(wireguardHelpButton, previewAllBtn,
 			guiState.SourceURLEntry, addURLButton, overflowBtn, "", false)
 		sourcesTitleSwap.Objects = []fyne.CanvasObject{sourcesLabel}
 		sourcesTitleSwap.Refresh()
