@@ -670,7 +670,13 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// половина выключена галками, выглядит в списке так же,
 				// как полная. Показываем «сколько пойдёт в конфиг», а при
 				// расхождении — и сколько всего.
-				if c, ok := m.SourceNodeCounts[sourceIndex]; ok && c.Total > 0 {
+				// kind=server (в том числе WG/AWG INI: это тот же server с
+				// origin.kind=wg_ini) — всегда ровно один узел, и «1 nodes» /
+				// «0 of 1 nodes» в строке ничего не сообщают: сущность одна,
+				// а её включённость видна по галке и приглушённому тексту.
+				// У chain/auto/контейнеров число — это состав, оно нужно.
+				singleNode := src.Kind == corestate.SourceKindServer
+				if c, ok := m.SourceNodeCounts[sourceIndex]; ok && c.Total > 0 && !singleNode {
 					if c.Enabled == c.Total {
 						label += "  " + locale.Tf("· %d nodes", c.Total)
 					} else {
