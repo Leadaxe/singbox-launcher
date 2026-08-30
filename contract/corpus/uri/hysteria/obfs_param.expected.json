@@ -1,0 +1,23 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "auth_str": "a",
+        "down_mbps": 50,
+        "obfs": "s3cr3t",
+        "server": "example-1.com",
+        "server_port": 36712,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com"
+        },
+        "type": "hysteria",
+        "up_mbps": 50
+      },
+      "kind": "outbound",
+      "label": "Obfs",
+      "scheme": "hysteria"
+    }
+  ],
+  "v": 1
+}

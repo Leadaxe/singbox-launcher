@@ -1,0 +1,2 @@
+# Панели иногда пишут секрет в userinfo — принимаем как запасной слот
+hysteria://pw@example-1.com:443?upmbps=10&downmbps=10#Userinfo

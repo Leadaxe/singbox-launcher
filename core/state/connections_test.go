@@ -91,8 +91,10 @@ func TestStateJSONRoundTrip(t *testing.T) {
 // Всегда присутствуют только поля Node без omitempty: kind, tag, enabled.
 func TestSourceOmitempty(t *testing.T) {
 	s := Source{
-		Node:  Node{Kind: SourceKindServer, Tag: "wg-parnas", Enabled: true, Origin: &Origin{Kind: OriginKindURI, Raw: "wireguard://..."}},
-		ID:    "01ABC",
+		Node: Node{Kind: SourceKindServer, Tag: "wg-parnas", Enabled: true, Origin: &Origin{Kind: OriginKindURI, Raw: "wireguard://..."}},
+		ID:   "01ABC",
+		// Label заполнен намеренно: он LEGACY-вход (json:"-") и обязан НЕ
+		// уезжать на диск — проверка ниже стоит в списке unwanted.
 		Label: "wg-parnas",
 	}
 	b, err := json.Marshal(s)
@@ -102,12 +104,12 @@ func TestSourceOmitempty(t *testing.T) {
 	str := string(b)
 
 	// Ожидаем что поля подписки/папки не появятся.
-	for _, want := range []string{`"id":"01ABC"`, `"kind":"server"`, `"tag":"wg-parnas"`, `"label":"wg-parnas"`, `"raw":"wireguard://..."`} {
+	for _, want := range []string{`"id":"01ABC"`, `"kind":"server"`, `"tag":"wg-parnas"`, `"raw":"wireguard://..."`} {
 		if !strings.Contains(str, want) {
 			t.Errorf("missing %s in %s", want, str)
 		}
 	}
-	for _, unwanted := range []string{`"url":`, `"skip":`, `"tag_policy":`, `"outbounds":`, `"meta":`, `"update":`, `"max_nodes":`, `"expose_group_tags_to_global":`, `"nodes":`, `"replace":`, `"update_status":`} {
+	for _, unwanted := range []string{`"label":`, `"url":`, `"skip":`, `"tag_policy":`, `"outbounds":`, `"meta":`, `"update":`, `"max_nodes":`, `"expose_group_tags_to_global":`, `"nodes":`, `"replace":`, `"update_status":`} {
 		if strings.Contains(str, unwanted) {
 			t.Errorf("unexpected %s in %s", unwanted, str)
 		}

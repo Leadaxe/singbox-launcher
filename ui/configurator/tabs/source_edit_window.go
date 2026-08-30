@@ -562,8 +562,6 @@ func showSourceEditWindow(
 	uriEntry := widget.NewEntry()
 	uriEntry.SetPlaceHolder("vless://uuid@host:443?...#tokyo") // l10n-exempt: sample URI
 
-	labelEntry := widget.NewEntry()
-	labelEntry.SetPlaceHolder(locale.T("human-readable label"))
 
 	// SPEC 116 W4: имя папки. Отдельное поле от Label намеренно — имя
 	// контейнера живёт в Source.Name (sources_v7.go), ссылок на него нет, и
@@ -776,7 +774,6 @@ func showSourceEditWindow(
 		postfixEntry.SetText(ts.Postfix)
 		// URI / Label / тег узла — для server-type; всё из рабочей копии.
 		uriEntry.SetText(sourceOriginURI(p))
-		labelEntry.SetText(p.Label)
 		nameEntry.SetText(p.Name)
 		nodeTagEntry.SetText(p.NodeTagOrLabel())
 		syncFoldFormFromModel(p)
@@ -803,19 +800,6 @@ func showSourceEditWindow(
 			return
 		}
 		setSourceOriginURI(p, strings.TrimSpace(s))
-	}
-
-	labelEntry.OnChanged = func(s string) {
-		p := srcRef()
-		if p == nil {
-			return
-		}
-		// Только подпись: тег живёт в NodeTag и правится своим полем.
-		// Прежде эта же строка переписывала маску тегов, и переименование
-		// источника молча уводило тег из-под ссылающихся на него правил.
-		// SPEC 117: как и остальные поля, подпись буферизуется до Save —
-		// раньше она правила модель посимвольно и не откатывалась Cancel'ом.
-		p.Label = strings.TrimSpace(s)
 	}
 
 	// SPEC 116 W4: имя контейнера. Пишется только у папки — normalizeSourceShape
@@ -922,7 +906,12 @@ func showSourceEditWindow(
 			settingsContent.Add(widget.NewSeparator())
 			detourBlock()
 		case isServer:
-			// Server: URI + тег узла + Label + Detour.
+			// Server: URI + тег узла + Detour.
+			//
+			// Поля Label нет (обкатка заход 3): у узла имя — его ТЕГ, а Label
+			// остался legacy-входом миграции (v6→v7 переносил его в Name/Tag) и
+			// новой записи не получает. Второе имя рядом с тегом только путало:
+			// правишь подпись — а в конфиге и в ссылках стоит тег.
 			settingsContent.Add(widget.NewLabel(locale.T("Server URI")))
 			settingsContent.Add(uriEntry)
 			// Ручной config_json переопределяет URI — без пометки правка URI
@@ -935,8 +924,6 @@ func showSourceEditWindow(
 			}
 			settingsContent.Add(widget.NewLabel(locale.T("Node tag")))
 			settingsContent.Add(nodeTagEntry)
-			settingsContent.Add(widget.NewLabel(locale.T("Label")))
-			settingsContent.Add(labelEntry)
 			settingsContent.Add(widget.NewSeparator())
 			detourBlock()
 		default:
@@ -1370,6 +1357,11 @@ func showSourceEditWindow(
 	//   - subscription: read-only распаковка кэшированного body — правки
 	//     перезатёр бы первый же сетевой refresh.
 	isServerSource := m.Sources[sourceIndex].Kind == wizardmodels.SourceKindServer
+	// isContainerSource — у источника есть СОСТАВ (nodes[]), а не один
+	// собственный узел. От этого зависит, показывать ли вкладку Preview:
+	// список из одной строки, повторяющей заголовок окна, смысла не несёт.
+	isContainerSource := m.Sources[sourceIndex].Kind == wizardmodels.SourceKindFolder ||
+		m.Sources[sourceIndex].Kind == wizardmodels.SourceKindSubscription
 
 	jsonEntry := widget.NewMultiLineEntry()
 	jsonEntry.Wrapping = fyne.TextWrapOff
@@ -1700,12 +1692,19 @@ func showSourceEditWindow(
 		chainTab := container.NewTabItem(locale.T("Chain"),
 			container.NewVScroll(chainTabBody.built))
 		tabs = container.NewAppTabs(chainTab, jsonTab)
-	} else {
-		// Обкатка заход 3: Preview — ПЕРВАЯ вкладка. К источнику приходят
-		// смотреть его состав; Settings открывают, когда что-то правят, а это
-		// заметно реже. Заодно снимается ленивость показа: первая вкладка
-		// активна на открытии и рисуется сразу.
+	} else if isContainerSource {
+		// Обкатка заход 3: у КОНТЕЙНЕРА Preview — первая вкладка. К подписке и
+		// папке приходят смотреть состав; Settings открывают, когда что-то
+		// правят, а это заметно реже. Заодно снимается ленивость показа:
+		// первая вкладка активна на открытии и рисуется сразу.
 		tabs = container.NewAppTabs(previewTab, settingsTab, overviewTab, jsonTab)
+	} else {
+		// У УЗЛОВОГО источника (server / auto) вкладки Preview нет вовсе
+		// (обкатка заход 3: «первая вкладка бессмысленная»). Состава у него не
+		// бывает — он сам себе узел, и Preview повторял его имя третий раз
+		// подряд: в заголовке окна, в визитке и в единственной строке списка.
+		// Что это за узел, отвечают Settings и JSON.
+		tabs = container.NewAppTabs(settingsTab, overviewTab, jsonTab)
 	}
 	syncFoldTabVisible = func() {
 		p := srcRef()

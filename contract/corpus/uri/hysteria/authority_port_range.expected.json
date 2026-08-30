@@ -1,0 +1,25 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "auth_str": "a",
+        "down_mbps": 10,
+        "server": "example-1.com",
+        "server_port": 20000,
+        "server_ports": [
+          "20000:30000"
+        ],
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com"
+        },
+        "type": "hysteria",
+        "up_mbps": 10
+      },
+      "kind": "outbound",
+      "label": "Hop",
+      "scheme": "hysteria"
+    }
+  ],
+  "v": 1
+}

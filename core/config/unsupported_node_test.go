@@ -245,8 +245,8 @@ func TestMaterializeXrayBodyKeepsUnsupportedProtocolInPlace(t *testing.T) {
 	    "settings":{"vnext":[{"address":"a.example","port":443,
 	      "users":[{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","encryption":"none"}]}]},
 	    "streamSettings":{"network":"tcp","security":"tls"}}]},
-	  {"remarks":"BROKEN","outbounds":[{"protocol":"hysteria","tag":"legacy",
-	    "settings":{"servers":[{"address":"h.example","port":443,"password":"pw"}]}}]},
+	  {"remarks":"BROKEN","outbounds":[{"protocol":"wireguard","tag":"legacy",
+	    "settings":{"peers":[{"endpoint":"h.example:443","publicKey":"pw"}]}}]},
 	  {"remarks":"B","outbounds":[{"protocol":"vless","tag":"proxy",
 	    "settings":{"vnext":[{"address":"b.example","port":443,
 	      "users":[{"id":"11111111-2222-3333-4444-555555555555","encryption":"none"}]}]},
@@ -275,7 +275,7 @@ func TestMaterializeXrayBodyKeepsUnsupportedProtocolInPlace(t *testing.T) {
 	if !mid.IsUnsupported() {
 		t.Fatalf("на позиции неподдержанного протокола стоит %q, ожидали unsupported", mid.Kind)
 	}
-	if !strings.Contains(mid.Reason, "hysteria") {
+	if !strings.Contains(mid.Reason, "wireguard") {
 		t.Errorf("причина = %q, ожидали упоминание протокола: пользователь обязан понять,\n"+
 			"что запись отбракована именно из-за протокола, а не «сломалась вообще»", mid.Reason)
 	}
@@ -411,8 +411,8 @@ func TestMaterializeXrayUnsupportedTakesTagFromRecord(t *testing.T) {
 	    "settings":{"vnext":[{"address":"a.example","port":443,
 	      "users":[{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","encryption":"none"}]}]},
 	    "streamSettings":{"network":"tcp","security":"tls"}}]},
-	  {"remarks":"BROKEN","outbounds":[{"protocol":"hysteria","tag":"Токио · игры",
-	    "settings":{"servers":[{"address":"h.example","port":443,"password":"pw"}]}}]}
+	  {"remarks":"BROKEN","outbounds":[{"protocol":"wireguard","tag":"Токио · игры",
+	    "settings":{"peers":[{"endpoint":"h.example:443","publicKey":"pw"}]}}]}
 	]`)
 
 	mat, err := MaterializeSubscriptionBody("SUB1", body, nil, 0)

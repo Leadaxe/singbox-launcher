@@ -1,0 +1,2 @@
+# Нет up/down → подставляется дефолт: без них ядро роняет ВЕСЬ конфиг
+hysteria://example-1.com:36712?auth=a&sni=example-1.com#Defaults

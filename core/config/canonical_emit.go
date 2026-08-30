@@ -449,6 +449,9 @@ func canonicalCredential(ob map[string]interface{}, scheme string) string {
 		return canonicalString(ob["uuid"])
 	case "trojan", "hysteria2", "anytls", "ss":
 		return canonicalString(ob["password"])
+	case "hysteria":
+		// v1 держит секрет в auth_str — см. singboxCredentialFromMap.
+		return canonicalString(ob["auth_str"])
 	}
 	return ""
 }

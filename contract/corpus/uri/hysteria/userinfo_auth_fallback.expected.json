@@ -1,0 +1,22 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "auth_str": "pw",
+        "down_mbps": 10,
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com"
+        },
+        "type": "hysteria",
+        "up_mbps": 10
+      },
+      "kind": "outbound",
+      "label": "Userinfo",
+      "scheme": "hysteria"
+    }
+  ],
+  "v": 1
+}

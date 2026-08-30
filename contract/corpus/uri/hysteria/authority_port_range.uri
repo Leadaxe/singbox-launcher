@@ -1,0 +1,2 @@
+# Port hopping прямо в authority (тот же синтаксис, что у hysteria2)
+hysteria://example-1.com:20000-30000?auth=a&upmbps=10&downmbps=10#Hop
