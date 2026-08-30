@@ -65,6 +65,16 @@ func previewRowSubtitle(r previewRow) string {
 		// Узел в составе есть, эмиссия его не выпустила: он выключен.
 		return locale.T("off")
 	}
+	if r.GroupCounted {
+		// Честный размер пула из модели (annotatePreviewGroupRows). Ноль
+		// живых членов = на сборке группа пуста: ⚠ как у сломанного узла,
+		// а не «[N] fastest — типа всё нормально» (обкатка, заход 3).
+		sub := previewGroupSubtitleCounted(r.Node, r.GroupAlive)
+		if r.GroupAlive == 0 {
+			return previewUnsupportedMark + " " + sub + " — " + locale.T("no working members")
+		}
+		return sub
+	}
 	return previewNodeSubtitle(r.Node)
 }
 

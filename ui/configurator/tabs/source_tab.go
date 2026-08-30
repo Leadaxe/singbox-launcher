@@ -406,6 +406,11 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// Section 2: Sources list (based on ParserConfig.ParserConfig.Proxies)
 	sourcesLabel := widget.NewLabel(locale.T("Sources"))
 	sourcesLabel.Importance = widget.MediumImportance
+	// Шапка секции сменная (обкатка заход 3): в корне — «Sources», в режиме
+	// контейнера — закреплённая кликабельная строка возврата «← Подписка: имя».
+	// Первой строкой списка она была плоха тем, что уезжала за прокрутку
+	// вместе с составом — «где я» пропадало с экрана.
+	sourcesTitleSwap := container.NewVBox(sourcesLabel)
 
 	sourcesBox := container.NewVBox()
 
@@ -484,17 +489,26 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		// папки. Ветка стоит до всего остального, потому что в этом режиме
 		// строк источников нет вовсе, а не «есть, но других».
 		if drill.active() {
-			kind, ok := renderFolderDrillRows(presenter, guiState, drill, dragGroup, sourcesBox,
+			input, ok := renderFolderDrillRows(presenter, guiState, drill, dragGroup, sourcesBox,
 				&folderDrillReorder, refreshSourcesListRef)
 			if ok {
 				// Подсказка и доступность Add — те же виджеты, у них меняется
 				// только текст и состояние: «не меняя интерфейса» значит
 				// именно это. Кнопка «Preview all servers…» гаснет — она про
 				// ВСЕ источники сразу, и внутри одного контейнера обещала бы
-				// не то, что покажет. Заголовок списка не трогается: «где я»
-				// говорит первая строка списка, она же выход.
+				// не то, что покажет.
 				applyFolderDrillChrome(hintLabel, previewAllBtn,
-					guiState.SourceURLEntry, addURLButton, overflowBtn, kind, true)
+					guiState.SourceURLEntry, addURLButton, overflowBtn, input.Kind, true)
+				// «Где я» — закреплённая шапка секции вместо «Sources»: она
+				// не уезжает за прокрутку и она же выход из контейнера.
+				sourcesTitleSwap.Objects = []fyne.CanvasObject{
+					folderDrillBackRow(input.Kind, input.Name, func() {
+						drill.leave()
+						folderDrillReorder = nil
+						refreshSourcesListRef()
+					}),
+				}
+				sourcesTitleSwap.Refresh()
 				sourcesBox.Refresh()
 				return
 			}
@@ -505,6 +519,8 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		}
 		applyFolderDrillChrome(hintLabel, previewAllBtn,
 			guiState.SourceURLEntry, addURLButton, overflowBtn, "", false)
+		sourcesTitleSwap.Objects = []fyne.CanvasObject{sourcesLabel}
+		sourcesTitleSwap.Refresh()
 		if len(m.Sources) == 0 {
 			emptyGutter := components.NewScrollGutter()
 			sourcesBox.Add(container.NewHBox(widget.NewLabel(locale.T("No sources defined in ParserConfig.")), layout.NewSpacer(), emptyGutter))
@@ -1039,7 +1055,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	}
 
 	sourcesHeader := container.NewHBox(
-		sourcesLabel,
+		sourcesTitleSwap,
 		layout.NewSpacer(),
 		previewAllBtn,
 	)

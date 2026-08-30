@@ -1108,6 +1108,7 @@ func showSourceEditWindow(
 					} else {
 						emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), sourceIndex, map[string]int{})
 						rows = buildPreviewRows(src.Nodes, emitted.Nodes)
+						annotatePreviewGroupRows(rows, src.Nodes, model.Sources)
 					}
 				default:
 					emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), sourceIndex, map[string]int{})

@@ -223,6 +223,7 @@ func buildFolderDrillRows(sources []corestate.Source, folderID string) (folderDr
 	if len(src.Nodes) > 0 {
 		emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), idx, map[string]int{})
 		out.Rows = buildPreviewRows(src.Nodes, emitted.Nodes)
+		annotatePreviewGroupRows(out.Rows, src.Nodes, sources)
 	}
 	out.Identities = make([]string, len(out.Rows))
 	for i := range out.Rows {
@@ -497,14 +498,13 @@ func applyFolderDrillChrome(
 // renderFolderDrillRows наполняет список вкладки составом открытого контейнера.
 //
 // Возвращает вид контейнера и признак «он ещё существует». false = контейнера
-// в модели уже нет: вызывающий тогда сам возвращает вкладку в корень. Своего
-// «а покажем пусто» здесь нет — пустой список без строки возврата был бы
-// тупиком.
+// в модели уже нет: вызывающий тогда сам возвращает вкладку в корень.
 //
-// Порядок строк: сначала строка возврата с именем, затем узлы в порядке
-// `nodes[]`. Захват перетаскивания регистрируется по индексу СТРОКИ УЗЛА (без
-// строки возврата) — иначе бросок уехал бы на одну позицию, а сама строка
-// возврата стала бы слотом, в который можно бросить узел.
+// Строка возврата в СПИСКЕ больше не живёт (обкатка заход 3): она уезжала за
+// прокрутку вместе с составом, и «где я» пропадало с экрана. Теперь выход —
+// закреплённая шапка секции (folderDrillBackRow вместо заголовка «Sources»),
+// её строит вызывающий из возвращённого input. Здесь — только строки узлов;
+// захват перетаскивания регистрируется по индексу строки узла как и раньше.
 func renderFolderDrillRows(
 	presenter *wizardpresentation.WizardPresenter,
 	guiState *wizardpresentation.GUIState,
@@ -513,14 +513,14 @@ func renderFolderDrillRows(
 	sourcesBox *fyne.Container,
 	reorder *func(from, to int),
 	refresh func(),
-) (corestate.SourceKind, bool) {
+) (folderDrillRowsInput, bool) {
 	m := presenter.Model()
 	if m == nil {
-		return "", false
+		return folderDrillRowsInput{}, false
 	}
 	input, ok := buildFolderDrillRows(m.Sources, drill.folderID)
 	if !ok {
-		return "", false
+		return folderDrillRowsInput{}, false
 	}
 
 	ops := newFolderDrillNodeOps(presenter, guiState, input.SourceIndex, input.Kind)
@@ -541,20 +541,10 @@ func renderFolderDrillRows(
 		}
 	}
 
-	sourcesBox.Add(folderDrillBackRow(input.Kind, input.Name, func() {
-		drill.leave()
-		if reorder != nil {
-			*reorder = nil
-		}
-		if refresh != nil {
-			refresh()
-		}
-	}))
-
 	if len(input.Rows) == 0 {
 		// Пустой контейнер — законное состояние (папку только что создали,
-		// подписку ещё не обновляли): говорим об этом словами и оставляем
-		// строку возврата на месте.
+		// подписку ещё не обновляли): говорим об этом словами; выход живёт
+		// в закреплённой шапке, тупика нет.
 		text := locale.T("Folder is empty — paste links above to add nodes.")
 		if input.Kind == corestate.SourceKindSubscription {
 			text = locale.T("No nodes yet — refresh this subscription in the sources list.")
@@ -563,7 +553,7 @@ func renderFolderDrillRows(
 		hint.Wrapping = fyne.TextWrapWord
 		hint.Importance = widget.LowImportance
 		sourcesBox.Add(hint)
-		return input.Kind, true
+		return input, true
 	}
 
 	// Total намеренно НЕ ставится: строки живут в том же VBox, что и строки
@@ -586,7 +576,7 @@ func renderFolderDrillRows(
 		}
 		sourcesBox.Add(rowObj)
 	}
-	return input.Kind, true
+	return input, true
 }
 
 // applyAddedSourcesToFolderNamed — путь Add в режиме папки, с ИМЕНЕМ для

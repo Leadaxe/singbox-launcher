@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config"
+	corestate "singbox-launcher/core/state"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -41,6 +42,12 @@ type previewRow struct {
 	// OriginRaw — исходник записи байт в байт (у Unsupported — единственное,
 	// по чему её можно узнать и починить).
 	OriginRaw string
+	// GroupAlive/GroupCounted — честный размер пула авто-группы: члены,
+	// которые СЕЙЧАС резолвятся по модели (annotatePreviewGroupRows).
+	// Counted=false — строку не считали (нет доступа к модели): подстрока
+	// падает на заявленный состав.
+	GroupAlive   int
+	GroupCounted bool
 }
 
 // buildPreviewRows раскладывает состав контейнера в строки списка.
@@ -107,6 +114,53 @@ func buildPreviewRows(stateNodes []wizardmodels.Node, emitted []*config.ParsedNo
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// annotatePreviewGroupRows — считает живых членов авто-групп по МОДЕЛИ.
+//
+// Эмиссия одного источника резолва ссылок не делает (проход 2 идёт только на
+// сборке конфига), поэтому по эмитированному узлу группа всегда выглядит
+// «заявленной». А заявленный член может быть мёртв: его источник выключен или
+// удалён, узел исчез из состава, выключен или сам стал unsupported. Считаем
+// то, что резолвится сейчас, — группа с нулём живых членов на сборке пуста и
+// обязана показываться сломанной (⚠), а не «типа всё нормально» (обкатка,
+// заход 3).
+//
+// rows и stateNodes идут одним порядком (контракт buildPreviewRows); длины
+// расходятся только у узлового источника без состава — там групп-ссылок нет.
+func annotatePreviewGroupRows(rows []previewRow, stateNodes []wizardmodels.Node, sources []corestate.Source) {
+	if len(rows) != len(stateNodes) {
+		return
+	}
+	var byID map[string]*corestate.Source
+	for i := range rows {
+		sn := &stateNodes[i]
+		if sn.Group == nil || rows[i].Unsupported {
+			continue
+		}
+		if byID == nil {
+			byID = make(map[string]*corestate.Source, len(sources))
+			for j := range sources {
+				byID[sources[j].ID] = &sources[j]
+			}
+		}
+		alive := 0
+		for _, m := range sn.Group.Members {
+			src := byID[strings.TrimSpace(m.FolderID)]
+			if src == nil || !src.Enabled {
+				continue
+			}
+			for k := range src.Nodes {
+				n := &src.Nodes[k]
+				if n.Tag == m.Tag && n.Enabled && !n.IsUnsupported() {
+					alive++
+					break
+				}
+			}
+		}
+		rows[i].GroupAlive = alive
+		rows[i].GroupCounted = true
+	}
 }
 
 // previewRowsSupported — сколько строк несут собравшийся узел (счётчик
