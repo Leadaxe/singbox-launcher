@@ -124,6 +124,17 @@
     "@tun"
    ]
   },
+   {
+   "name": "tun_address_exclude",
+   "type": "text",
+   "wizard_ui": "edit",
+   "title": "TUN exclude interface address",
+   "tooltip": "CIDR address for the TUN interface (inbounds address). IPv4 is required; the IPv6 address is set separately by the Enable IPv6 switch below.",
+   "default_value": "10.0.0.0/8",
+   "#enable": [
+    "@tun"
+   ]
+  },
   {
    "name": "ipv6_enabled",
    "type": "bool",
@@ -1931,6 +1942,7 @@
      "type": "tun",
      "tag": "tun-in",
      "auto_route": "@auto_route",
+     "route_exclude_address": "@tun_address_exclude",
      "address": [
       "@tun_address",
       {
