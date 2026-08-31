@@ -23,7 +23,6 @@ import (
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
-	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -975,10 +974,14 @@ func showSourceEditWindowAt(
 		postfixEntry.SetText(ts.Postfix)
 		// URI / Label / тег узла — для server-type; всё из рабочей копии.
 		//
-		// Программная установка исходника обязана ПЕРЕСТАВИТЬ режим блока
-		// Origin: в режиме чтения OnChanged откатывает поле к запомненному
-		// тексту, и без переустановки свежее значение вернулось бы к
-		// прежнему прямо в момент показа.
+		// ПОРЯДОК ВАЖЕН: сначала снять сторожа отката, потом писать текст.
+		// В режиме чтения OnChanged возвращает поле к запомненному `frozen`, а
+		// запомнен он был ПУСТЫМ (setOriginMode(false) отрабатывает при сборке
+		// окна, когда форма ещё не заполнена). При обратном порядке SetText
+		// поднимал этот же OnChanged и откатывал исходник к пустоте — узел с
+		// живым origin показывал плейсхолдер (обкатка заход 3: «Origin не
+		// доступен, нет источника»).
+		uriEntry.OnChanged = nil
 		uriEntry.SetText(sourceOriginURI(p))
 		if setOriginMode != nil {
 			originTextAtOpen = uriEntry.Text
@@ -1275,8 +1278,10 @@ func showSourceEditWindowAt(
 	rebuildSettingsLayout()
 	settingsScroll := container.NewVScroll(settingsContent)
 	settingsScroll.SetMinSize(fyne.NewSize(0, sourceEditSettingsScrollMinH))
-	settingsGutter := components.NewScrollGutter()
-	settingsWithGutter := container.NewBorder(nil, nil, nil, settingsGutter, settingsScroll)
+	// Без внешнего ScrollGutter (обкатка заход 3): VScroll рисует полосу
+	// ПОВЕРХ содержимого, и отступ справа складывался с ней — поле уходило
+	// под полосу, а сама полоса стояла в пустом столбце рядом.
+	settingsWithGutter := container.NewBorder(nil, nil, nil, nil, settingsScroll)
 
 	previewStatus := widget.NewLabel(locale.T("Loading..."))
 	previewStatus.Wrapping = fyne.TextWrapOff
@@ -1981,8 +1986,9 @@ func showSourceEditWindowAt(
 	}
 	jsonHint := widget.NewLabel(locale.T(jsonHintKey))
 	jsonHint.Wrapping = fyne.TextWrapWord
-	jsonGutter := components.NewScrollGutter()
-	jsonScrollWithGutter := container.NewBorder(nil, nil, nil, jsonGutter, jsonScroll)
+	// Без внешнего ScrollGutter — по той же причине, что у Settings: полосу
+	// VScroll рисует поверх содержимого, а отступ рядом только сужал поле.
+	jsonScrollWithGutter := container.NewBorder(nil, nil, nil, nil, jsonScroll)
 	var jsonCol *fyne.Container
 	switch {
 	case isServerSource || isChainSource:
