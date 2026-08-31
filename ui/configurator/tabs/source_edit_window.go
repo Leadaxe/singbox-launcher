@@ -23,6 +23,7 @@ import (
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -1276,12 +1277,14 @@ func showSourceEditWindowAt(
 		settingsContent.Refresh()
 	}
 	rebuildSettingsLayout()
-	settingsScroll := container.NewVScroll(settingsContent)
+	// Gutter — ВНУТРИ скролла (канонический приём, components.ScrollGutter
+	// call pattern): сам скролл встаёт вплотную к краю окна, а содержимое
+	// держится от полосы на её ширину. Снаружи (как было) отступ давал пустой
+	// столбец рядом с полосой; без отступа вовсе полоса ложилась на текст.
+	settingsScroll := container.NewVScroll(
+		container.NewBorder(nil, nil, nil, components.NewScrollGutter(), settingsContent))
 	settingsScroll.SetMinSize(fyne.NewSize(0, sourceEditSettingsScrollMinH))
-	// Без внешнего ScrollGutter (обкатка заход 3): VScroll рисует полосу
-	// ПОВЕРХ содержимого, и отступ справа складывался с ней — поле уходило
-	// под полосу, а сама полоса стояла в пустом столбце рядом.
-	settingsWithGutter := container.NewBorder(nil, nil, nil, nil, settingsScroll)
+	settingsWithGutter := settingsScroll
 
 	previewStatus := widget.NewLabel(locale.T("Loading..."))
 	previewStatus.Wrapping = fyne.TextWrapOff
@@ -1712,10 +1715,13 @@ func showSourceEditWindowAt(
 			}
 		}
 	}
-	jsonScroll := container.NewVScroll(container.NewStack(
-		canvas.NewRectangle(color.Transparent),
-		jsonEntry,
-	))
+	// Gutter внутри скролла — тот же приём, что у Settings.
+	jsonScroll := container.NewVScroll(container.NewBorder(nil, nil, nil,
+		components.NewScrollGutter(),
+		container.NewStack(
+			canvas.NewRectangle(color.Transparent),
+			jsonEntry,
+		)))
 	jsonScroll.SetMinSize(fyne.NewSize(0, sourceEditJSONScrollMinH))
 
 	jsonStatus := widget.NewLabel("")
@@ -1986,9 +1992,7 @@ func showSourceEditWindowAt(
 	}
 	jsonHint := widget.NewLabel(locale.T(jsonHintKey))
 	jsonHint.Wrapping = fyne.TextWrapWord
-	// Без внешнего ScrollGutter — по той же причине, что у Settings: полосу
-	// VScroll рисует поверх содержимого, а отступ рядом только сужал поле.
-	jsonScrollWithGutter := container.NewBorder(nil, nil, nil, nil, jsonScroll)
+	jsonScrollWithGutter := jsonScroll
 	var jsonCol *fyne.Container
 	switch {
 	case isServerSource || isChainSource:
