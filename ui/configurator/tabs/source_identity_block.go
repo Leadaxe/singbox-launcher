@@ -29,6 +29,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -176,14 +177,37 @@ func newSourceIdentityBlock(srcRef func() *corestate.Source) *sourceIdentityBloc
 	hint.Wrapping = fyne.TextWrapWord
 	hint.Importance = widget.LowImportance
 
+	// Две колонки: слева подпись, справа значение с галкой наследования.
+	// Раньше блок шёл в столбец, и подписи «User-Agent» / «Device ID» стояли
+	// отдельными строками над полями — семь строк высоты там, где хватает
+	// четырёх (обкатка заход 3: «компактизируй, сделай в 2 колонки»).
+	//
+	// Ширину колонки подписей держит самая длинная из них: Border отдаёт
+	// левому элементу его MinSize, поэтому поля начинаются на одной линии
+	// сами, без хардкода ширины.
+	// Подписи — ОДИН экземпляр самой длинной задаёт ширину колонки: у
+	// пустой строки MinSize нулевой, и строки-галки уехали бы левее полей.
+	// Поэтому распорка меряется по фактическому тексту, а не по «».
+	widest := widget.NewLabel(locale.T("Device ID (HWID)"))
+	labelWidth := widest.MinSize().Width
+	labelCol := func(text string) fyne.CanvasObject {
+		l := widget.NewLabel(text)
+		l.Alignment = fyne.TextAlignTrailing
+		return container.New(layout.NewGridWrapLayout(
+			fyne.NewSize(labelWidth, l.MinSize().Height)), l)
+	}
+	row := func(label string, value fyne.CanvasObject, check *widget.Check) fyne.CanvasObject {
+		return container.NewBorder(nil, nil, labelCol(label), check, value)
+	}
+
 	b.content = container.NewVBox(
-		widget.NewLabel(locale.T("User-Agent")),
-		container.NewBorder(nil, nil, nil, b.uaCheck, b.uaEntry),
-		container.NewBorder(nil, nil, nil, b.sendCheck, b.sendValue),
-		container.NewBorder(nil, nil, nil, b.hashCheck, b.hashValue),
-		widget.NewLabel(locale.T("Device ID (HWID)")),
-		container.NewBorder(nil, nil, nil,
-			container.NewHBox(b.hwidRegenBt, b.hwidCheck), b.hwidEntry),
+		row(locale.T("User-Agent"), b.uaEntry, b.uaCheck),
+		row(locale.T("Device ID (HWID)"),
+			container.NewBorder(nil, nil, nil, b.hwidRegenBt, b.hwidEntry), b.hwidCheck),
+		// Галки значения сами себе подпись — левая колонка у них пустая, но
+		// отступ тот же, иначе они уехали бы под колонку подписей.
+		row("", b.sendValue, b.sendCheck),
+		row("", b.hashValue, b.hashCheck),
 		hint,
 	)
 	return b
