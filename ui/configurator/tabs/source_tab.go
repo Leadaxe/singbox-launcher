@@ -1166,14 +1166,18 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// с Truncation он крошечный — имя контейнера схлопывалось в «…».
 	sourcesHeader := container.NewBorder(nil, nil, nil, previewAllBtn, sourcesTitleSwap)
 
-	tabScrollGutter := components.NewScrollGutter()
-
-	// Sources list fills remaining tab height (preview all servers moved to a separate window).
+	// Sources list fills remaining tab height (preview all servers moved to a
+	// separate window).
+	//
+	// Внешнего ScrollGutter здесь НЕТ (обкатка заход 3): полосу прокрутки
+	// резервируют сами строки — и корневые (rowGutter), и строки drill-down.
+	// Второй отступ снаружи складывался с первым и отодвигал весь список от
+	// правого края на двойную ширину полосы.
 	listBlock := container.NewBorder(
 		sourcesHeader,
 		nil,
 		nil,
-		tabScrollGutter,
+		nil,
 		sourcesScroll,
 	)
 

@@ -1282,7 +1282,6 @@ func showSourceEditWindowAt(
 	previewStatus.Wrapping = fyne.TextWrapOff
 	previewStatusScroll := container.NewHScroll(previewStatus)
 	previewListHost := container.NewStack()
-	previewGutter := components.NewScrollGutter()
 
 	// SPEC 116 W5: контекст операций над узлом контейнера (move/copy/rename/
 	// delete). Собирается ДО refreshPreviewTab, потому что список узлов
@@ -1324,7 +1323,10 @@ func showSourceEditWindowAt(
 		previewTop.Add(card)
 	}
 	previewTop.Add(previewHeader)
-	previewBox := container.NewBorder(previewTop, nil, nil, previewGutter, previewListHost)
+	// Внешнего ScrollGutter нет (обкатка заход 3): полосу прокрутки рисует сам
+	// widget.List поверх своих строк, а отступ справа складывался с ней и
+	// отодвигал весь список от края на двойную ширину.
+	previewBox := container.NewBorder(previewTop, nil, nil, nil, previewListHost)
 
 	previewRefreshSeq := 0
 	// fetchInProgress: предохранитель от двойного клика "Fetch now" пока
