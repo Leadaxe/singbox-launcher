@@ -161,7 +161,7 @@ func refreshOneSubscriptionSource(src *state.Source, settings locale.Settings) b
 	// «настройка подписки → дефолт настроек приложения», аварийный потолок
 	// 3000 клэмпится внутри парсера.
 	capN := resolveSubscriptionMaxNodes(src.MaxNodes, settings)
-	material, matErr := config.MaterializeSubscriptionBody(src.ID, res.Body, src.Skip, capN)
+	material, matErr := config.MaterializeSubscriptionBody(src.ID, res.Body, src.Skip, capN, src.ExposeRelays)
 
 	// Достоверность (SPEC 113-A): обрыв разбора — недостоверен. Тело, из
 	// которого не родилось НИ ОДНОЙ записи при наличии per-record деградаций,

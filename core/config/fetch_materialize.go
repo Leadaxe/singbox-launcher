@@ -48,7 +48,10 @@ type SubscriptionFetchMaterial struct {
 // приложения); ≤0 → аварийный потолок-константа (клэмп 3000 — внутри
 // парсера). Ошибка (пустое тело / обрыв разбора) возвращается вызывающему —
 // это признак НЕДОСТОВЕРНОГО ответа: nodes[] трогать нельзя (SPEC 113-A).
-func MaterializeSubscriptionBody(subID string, decodedBody []byte, skip []map[string]string, capN int) (*SubscriptionFetchMaterial, error) {
+// exposeRelays — выделять ли служебные узлы (релеи `sockopt.dialerProxy`)
+// отдельными записями состава; false = прежнее поведение, релей живёт внутри
+// тела своего узла.
+func MaterializeSubscriptionBody(subID string, decodedBody []byte, skip []map[string]string, capN int, exposeRelays bool) (*SubscriptionFetchMaterial, error) {
 	pb, parseErr := subscription.ParseSubscriptionBody(decodedBody, skip, capN)
 	if pb == nil {
 		return nil, parseErr
@@ -103,6 +106,20 @@ func MaterializeSubscriptionBody(subID string, decodedBody []byte, skip []map[st
 			reason := fmt.Sprintf("not emittable: %v", convErr)
 			out.Warnings = append(out.Warnings, fmt.Sprintf("node %q not emittable — dropped: %v", e.RawTag, convErr))
 			out.Nodes = append(out.Nodes, state.NewUnsupportedNode(e.RawTag, reason, e.OriginKind, e.OriginRaw))
+			flushRejected()
+			continue
+		}
+		// Служебные узлы записи (релеи BYPASS) — ОТДЕЛЬНЫМИ узлами, если
+		// подписка так настроена: иначе они остаются внутри тела и человеку
+		// невидимы. Владелец дозванивается через первый из них полем Detour.
+		if exposeRelays {
+			relays, detour := relayNodesFromEntry(subID, e, node.Tag)
+			if detour != nil {
+				node.Detour = detour
+			}
+			out.Nodes = append(out.Nodes, node)
+			out.Supported++
+			out.Nodes = append(out.Nodes, relays...)
 			flushRejected()
 			continue
 		}

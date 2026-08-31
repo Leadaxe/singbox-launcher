@@ -221,6 +221,9 @@ type CanonicalNode struct {
 	Hops []NodeLink
 	// Group — провайдерская группа (auto only).
 	Group *CanonicalAutoGroup
+	// Service — узел служебный (релей BYPASS, SPEC 120): в конфиг идёт, в
+	// пользовательский выбор — нет.
+	Service bool
 }
 
 // CanonicalAutoGroup — провайдерская группа канона в сборочной форме.
@@ -661,6 +664,11 @@ type ParsedNode struct {
 	// Пустая строка = «идентичности нет» (узел собран не парсером источника):
 	// вызывающий обязан считать это отсутствием, а не общим ключом "".
 	IdentityTag string
+	// Service — узел служебный: приехал довеском чужой записи (релей
+	// BYPASS, SPEC 120). Несётся до потребителей эмиссии, чтобы список
+	// показал его шестерёнкой, а выбор Направлений не предлагал.
+	// В конфиг попадает как всякий другой — detour на него иначе повис бы.
+	Service bool
 	// Chain is the ordered detour path from the nearest hop outwards
 	// (SPEC 094 B1). Empty means the node dials directly.
 	//

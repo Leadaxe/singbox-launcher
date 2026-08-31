@@ -202,7 +202,7 @@ func TestMaterializeKeepsRejectedRecordInPlace(t *testing.T) {
 		"trojan://pw@b.example:443#B",
 	}, "\n"))
 
-	mat, err := MaterializeSubscriptionBody("SUB1", body, nil, 0)
+	mat, err := MaterializeSubscriptionBody("SUB1", body, nil, 0, false)
 	if err != nil {
 		t.Fatalf("materialize: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestMaterializeXrayBodyKeepsUnsupportedProtocolInPlace(t *testing.T) {
 	    "streamSettings":{"network":"tcp","security":"tls"}}]}
 	]`)
 
-	mat, err := MaterializeSubscriptionBody("SUB1", body, nil, 0)
+	mat, err := MaterializeSubscriptionBody("SUB1", body, nil, 0, false)
 	if err != nil {
 		t.Fatalf("materialize: %v", err)
 	}
@@ -306,7 +306,7 @@ func TestMaterializeProviderBannerBecomesUnsupported(t *testing.T) {
 		"trojan://pw@b.example:443#B",
 	}, "\n"))
 
-	mat, err := MaterializeSubscriptionBody("SUB1", body, nil, 0)
+	mat, err := MaterializeSubscriptionBody("SUB1", body, nil, 0, false)
 	if err != nil {
 		t.Fatalf("materialize: %v", err)
 	}
@@ -351,7 +351,7 @@ func TestMergeKeepsProviderBannerStable(t *testing.T) {
 		"trojan://pw@a.example:443#A",
 	}, "\n"))
 
-	first, err := MaterializeSubscriptionBody("SUB1", body, nil, 0)
+	first, err := MaterializeSubscriptionBody("SUB1", body, nil, 0, false)
 	if err != nil {
 		t.Fatalf("materialize: %v", err)
 	}
@@ -359,7 +359,7 @@ func TestMergeKeepsProviderBannerStable(t *testing.T) {
 	sub.Nodes = append([]state.Node(nil), first.Nodes...)
 
 	// Второй fetch того же тела — состав обязан остаться прежним.
-	second, err := MaterializeSubscriptionBody("SUB1", body, nil, 0)
+	second, err := MaterializeSubscriptionBody("SUB1", body, nil, 0, false)
 	if err != nil {
 		t.Fatalf("materialize #2: %v", err)
 	}
@@ -388,7 +388,7 @@ func TestMaterializeUniquifiesDuplicateBannerTags(t *testing.T) {
 		"Лучшие сервера",
 	}, "\n"))
 
-	mat, err := MaterializeSubscriptionBody("SUB1", body, nil, 0)
+	mat, err := MaterializeSubscriptionBody("SUB1", body, nil, 0, false)
 	if err != nil {
 		t.Fatalf("materialize: %v", err)
 	}
@@ -415,7 +415,7 @@ func TestMaterializeXrayUnsupportedTakesTagFromRecord(t *testing.T) {
 	    "settings":{"peers":[{"endpoint":"h.example:443","publicKey":"pw"}]}}]}
 	]`)
 
-	mat, err := MaterializeSubscriptionBody("SUB1", body, nil, 0)
+	mat, err := MaterializeSubscriptionBody("SUB1", body, nil, 0, false)
 	if err != nil {
 		t.Fatalf("materialize: %v", err)
 	}

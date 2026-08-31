@@ -160,6 +160,7 @@ func canonicalNodeProjection(n *Node) configtypes.CanonicalNode {
 		Enabled: n.Enabled,
 		Body:    n.Body,
 		Detour:  canonicalLink(n.Detour),
+		Service: n.Service,
 	}
 	if n.Origin != nil {
 		out.OriginKind = n.Origin.Kind

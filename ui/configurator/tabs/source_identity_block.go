@@ -73,7 +73,12 @@ func newSourceIdentityBlock(srcRef func() *corestate.Source) *sourceIdentityBloc
 	b := &sourceIdentityBlock{}
 
 	// --- User-Agent ---------------------------------------------------------
-	b.uaEntry = widget.NewSelectEntry(subscription.UserAgentPresets)
+	// Первым пунктом — UA САМОГО ЛАУНЧЕРА: он значение по умолчанию, и без
+	// него из списка нельзя было вернуться к дефолту иначе как галкой «как в
+	// системе» (обкатка заход 3). Дальше — пресеты чужих клиентов из ассета.
+	uaOptions := append([]string{configtypes.BuildSubscriptionUserAgent()},
+		subscription.UserAgentPresets...)
+	b.uaEntry = widget.NewSelectEntry(uaOptions)
 	b.uaEntry.SetPlaceHolder(locale.T("client User-Agent"))
 	b.uaEntry.OnChanged = func(s string) {
 		if p := srcRef(); p != nil && !b.uaCheck.Checked {

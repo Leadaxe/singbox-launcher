@@ -204,6 +204,7 @@ func buildCanonicalServer(cs *configtypes.CanonicalSource, cn *configtypes.Canon
 		Outbound:    outbound,
 		EmitBody:    cn.Body,
 		IdentityTag: cn.Tag,
+		Service:     cn.Service,
 		SourceIndex: configtypes.UnsetSourceIndex,
 	}
 	node.UUID = canonicalCredential(outbound, scheme)

@@ -63,6 +63,10 @@ type sourceNodeRowSpec struct {
 	Dimmed bool
 	// ToolTip — полный текст под курсором; пусто = тултипа нет.
 	ToolTip string
+	// Service — узел служебный (релей BYPASS, SPEC 120): перед именем
+	// шестерёнка. Она говорит «этот узел здесь ради другого» — его не выбирают
+	// в Направлениях, но он живой и виден в хопах цепочки.
+	Service bool
 
 	// Checked / CheckDisabled — состояние галки включённости.
 	Checked        bool
@@ -131,7 +135,14 @@ func newSourceNodeRow(spec sourceNodeRowSpec) (fyne.CanvasObject, *fynewidget.Ho
 		components.NewScrollGutter(),
 	)
 
-	titleRow := container.NewBorder(nil, nil, leftLead, rightControls, title)
+	// Шестерёнка — ПЕРЕД именем, отдельным виджетом, а не в тексте тега: тег
+	// адресует узел в конфиге и в ссылках, украшать его нельзя.
+	var titleCell fyne.CanvasObject = title
+	if spec.Service {
+		gear := widget.NewIcon(theme.SettingsIcon())
+		titleCell = container.NewBorder(nil, nil, gear, nil, title)
+	}
+	titleRow := container.NewBorder(nil, nil, leftLead, rightControls, titleCell)
 
 	lines := []fyne.CanvasObject{titleRow}
 	if spec.Subtitle != "" {
