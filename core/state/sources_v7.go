@@ -213,7 +213,17 @@ type Source struct {
 	// 292 Xray-конфига, включая рабочие BYPASS через socks5-релей). Глобальной
 	// настройки для этого мало: подменять UA всем подпискам ради одной значит
 	// сломать выдачу остальным, которые под нашим UA отвечают правильно.
-	UserAgent    string              `json:"user_agent,omitempty"`
+	UserAgent string `json:"user_agent,omitempty"`
+	// HWID — идентификатор устройства для ЭТОЙ подписки; пусто = глобальный.
+	// Провайдеры привязывают подписку к устройству и считают их лимит: свой
+	// HWID на подписку разводит устройства между разными провайдерами.
+	HWID string `json:"hwid,omitempty"`
+	// SendHWID — отправлять ли X-Hwid-заголовки; nil = «как в системе».
+	// Указатель, а не bool: иначе «не отправлять» неотличимо от «не задано».
+	SendHWID *bool `json:"send_hwid,omitempty"`
+	// HashDeviceModel — хэшировать ли модель устройства; nil = «как в системе».
+	HashDeviceModel *bool `json:"hash_device_model,omitempty"`
+
 	Skip         []map[string]string `json:"skip,omitempty"`
 	MaxNodes     int                 `json:"max_nodes,omitempty"`
 	Update       *UpdateSpec         `json:"update,omitempty"`
@@ -373,9 +383,10 @@ func normalizeSourceShape(s *Source) ([]string, error) {
 			drop("replace")
 			s.Replace = nil
 		}
-		if s.URL != "" || s.UserAgent != "" || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil || len(s.PendingDisabled) > 0 {
-			drop("url/user_agent/skip/max_nodes/update/meta/update_status/pending_disabled")
-			s.URL, s.UserAgent, s.Skip, s.MaxNodes, s.Update, s.Meta, s.UpdateStatus, s.PendingDisabled = "", "", nil, 0, nil, nil, nil, nil
+		if s.URL != "" || s.UserAgent != "" || s.HWID != "" || s.SendHWID != nil || s.HashDeviceModel != nil || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil || len(s.PendingDisabled) > 0 {
+			drop("url/identity/skip/max_nodes/update/meta/update_status/pending_disabled")
+			s.URL, s.UserAgent, s.HWID, s.SendHWID, s.HashDeviceModel = "", "", "", nil, nil
+			s.Skip, s.MaxNodes, s.Update, s.Meta, s.UpdateStatus, s.PendingDisabled = nil, 0, nil, nil, nil, nil
 		}
 		if ws := normalizeNodeShape(&s.Node, sourceShapeName(s)); len(ws) > 0 {
 			warns = append(warns, ws...)
@@ -405,9 +416,10 @@ func normalizeSourceShape(s *Source) ([]string, error) {
 			s.Group = nil
 		}
 		if s.Kind == SourceKindFolder {
-			if s.URL != "" || s.UserAgent != "" || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil || len(s.PendingDisabled) > 0 {
-				drop("url/user_agent/skip/max_nodes/update/meta/update_status/pending_disabled")
-				s.URL, s.UserAgent, s.Skip, s.MaxNodes, s.Update, s.Meta, s.UpdateStatus, s.PendingDisabled = "", "", nil, 0, nil, nil, nil, nil
+			if s.URL != "" || s.UserAgent != "" || s.HWID != "" || s.SendHWID != nil || s.HashDeviceModel != nil || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil || len(s.PendingDisabled) > 0 {
+				drop("url/identity/skip/max_nodes/update/meta/update_status/pending_disabled")
+				s.URL, s.UserAgent, s.HWID, s.SendHWID, s.HashDeviceModel = "", "", "", nil, nil
+				s.Skip, s.MaxNodes, s.Update, s.Meta, s.UpdateStatus, s.PendingDisabled = nil, 0, nil, nil, nil, nil
 			}
 		}
 		for i := range s.Nodes {

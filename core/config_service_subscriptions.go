@@ -118,9 +118,10 @@ func refreshOneSubscriptionSource(src *state.Source, settings locale.Settings) b
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	// UA источника (пусто → глобальный из настроек → дефолт): провайдеры
-	// ветвят выдачу по User-Agent, и подписке нужен СВОЙ.
-	res, fetchErr := subscription.FetchSubscriptionWithMetaUA(src.URL, src.UserAgent)
+	// Идентификация источника (пустые поля → глобальные настройки):
+	// провайдеры ветвят выдачу по User-Agent и привязывают подписку к
+	// устройству по HWID.
+	res, fetchErr := subscription.FetchSubscriptionWithMetaFor(src.URL, SourceIdentityOf(src))
 
 	if fetchErr != nil {
 		// Заголовки провайдера — новая копия, не мутация разделяемого

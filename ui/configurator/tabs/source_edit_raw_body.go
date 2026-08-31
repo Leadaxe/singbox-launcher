@@ -62,7 +62,7 @@ func sourceNodesHeader(nodes []corestate.Node) string {
 // ходить, обещала бы несуществующее.
 // userAgent — UA ИСТОЧНИКА: провайдеры ветвят выдачу по нему, и без него
 // диагностика показывала бы не то тело, которое приедет на fetch.
-func appendRawBodySection(body *fyne.Container, subURL, userAgent string) {
+func appendRawBodySection(body *fyne.Container, subURL string, id subscription.SourceIdentity) {
 	subURL = strings.TrimSpace(subURL)
 	if subURL == "" {
 		return
@@ -120,7 +120,7 @@ func appendRawBodySection(body *fyne.Container, subURL, userAgent string) {
 		reloadBtn.Disable()
 		status.SetText(locale.T("Loading..."))
 		go func() {
-			res, err := subscription.FetchSubscriptionWithMetaUA(subURL, userAgent)
+			res, err := subscription.FetchSubscriptionWithMetaFor(subURL, id)
 			fyne.Do(func() {
 				reloadBtn.Enable()
 				if err != nil {

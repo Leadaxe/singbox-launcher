@@ -3985,5 +3985,17 @@
   },
   "Some providers return a different node list depending on the client that asks. Leave empty to use the launcher default (or the global override from Settings).": {
     "value": "Некоторые провайдеры отдают разный список узлов в зависимости от того, какой клиент спрашивает. Пусто — использовать UA лаунчера (или глобальную подмену из настроек)."
+  },
+  "as in system": {
+    "value": "как в системе"
+  },
+  "client User-Agent": {
+    "value": "User-Agent клиента"
+  },
+  "device ID for this subscription": {
+    "value": "ID устройства для этой подписки"
+  },
+  "Some providers return a different node list depending on the client that asks, and bind the subscription to a device by its ID. Leave “as in system” to use the global settings.": {
+    "value": "Некоторые провайдеры отдают разный список узлов в зависимости от того, какой клиент спрашивает, и привязывают подписку к устройству по его ID. Оставьте «как в системе», чтобы использовать общие настройки."
   }
 }

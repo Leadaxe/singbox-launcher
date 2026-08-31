@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/config/subscription"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
@@ -235,7 +236,12 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 		// диагностика «что вообще прислал провайдер», когда состав выглядит
 		// не так, как ожидалось. Узлы при этом не трогаются вовсе: это показ,
 		// а не обновление.
-		appendRawBodySection(body, src.URL, src.UserAgent)
+		appendRawBodySection(body, src.URL, subscription.SourceIdentity{
+			UserAgent: src.UserAgent,
+			HWID:      src.HWID,
+			SendHWID:  src.SendHWID,
+			HashModel: src.HashDeviceModel,
+		})
 
 		appendStorageRecordSection(body, src)
 
