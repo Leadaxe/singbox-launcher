@@ -332,7 +332,13 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		if m == nil {
 			return
 		}
-		m.Sources = append(m.Sources, corestate.NewFolderSource(wizardbusiness.NextFolderName(m.Sources)))
+		folder := corestate.NewFolderSource(wizardbusiness.NextFolderName(m.Sources))
+		m.Sources = append(m.Sources, folder)
+		// Созданная папка ОТКРЫВАЕТСЯ сразу (обкатка заход 3): её заводят,
+		// чтобы тут же наполнить, и лишний клик по строке был работой на
+		// пустом месте. drill.enter только меняет состояние — список
+		// перерисовывает applySourceMutation ниже.
+		drill.enter(folder.ID)
 		applySourceMutation(presenter, guiState)
 	}
 
@@ -789,10 +795,6 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				}
 				tooltipText := strings.Join(tooltipLines, "\n")
 
-				copyText := fullURL
-				if copyText == "" && src.Origin != nil {
-					copyText = src.Origin.Raw
-				}
 				sourceLabel := ttwidget.NewLabel(shortLabel)
 				sourceLabel.Wrapping = fyne.TextWrapOff
 				sourceLabel.Truncation = fyne.TextTruncateEllipsis
@@ -836,18 +838,11 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					applySourceMutation(presenter, guiState)
 				}
 
-				copyBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.ContentCopyIcon(), func() {
-					if copyText == "" {
-						return
-					}
-					if guiState.Window != nil {
-						fyne.CurrentApp().Clipboard().SetContent(copyText)
-						dialogs.ShowAutoHideInfo(fyne.CurrentApp(), guiState.Window, locale.T("Copied"), locale.T("Source copied to clipboard."))
-					}
-				}, rowGetter)
-				copyBtn.Importance = widget.LowImportance
+				// Кнопки копирования в строке НЕТ (обкатка заход 3): у папки
+				// копировать нечего — URL у неё не бывает, и кнопка молча ничего
+				// не делала; у подписки URL виден в её окне, а «Copy JSON» есть
+				// в меню строки по правому клику — этого достаточно.
 				sourceLabel.SetToolTip(tooltipText)
-				fynewidget.SetToolTipSafe(copyBtn, tooltipText)
 
 				editBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DocumentCreateIcon(), func() {
 					presenter.MergeGUIToModel()
@@ -939,7 +934,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// Правое меню строки остаётся: там есть то, чего в окне нет
 				// (копировать тег, перенос в папку).
 				if !sourceRowNodeOpsAllowed(src.Kind) {
-					rightControlsItems = append(rightControlsItems, copyBtn, editBtn)
+					rightControlsItems = append(rightControlsItems, editBtn)
 				}
 				if refreshBtn != nil {
 					rightControlsItems = append(rightControlsItems, refreshBtn)

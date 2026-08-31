@@ -68,7 +68,6 @@ import (
 	"strings"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
@@ -433,22 +432,15 @@ func folderDrillHeader(
 
 // folderDrillNodeRow — строка одного узла контейнера внутри списка Sources.
 //
-// Вёрстка — ТА ЖЕ, что у строки списка Preview (заход 2, пункт 4): пара
-// `canvas.Text` в `previewTightVBox` вместо двух `widget.Label` в `tightVBox`.
-// Разница была видна глазом: у Label свой внутренний отступ (тема даёт
-// ~4px сверху и снизу каждому), из-за него заголовок вставал выше центра
-// чекбокса, подстрока отрывалась, и строка папки занимала заметно больше
-// высоты, чем такая же строка в превью. Одна компоновка на оба списка — иначе
-// они расходятся на каждой правке темы.
+// Вёрстки здесь НЕТ: она одна на все списки и живёт в source_node_row.go
+// (обкатка заход 3 — «шаблон строки внутри папки и на root-уровне должен быть
+// один и правиться из одного места»). Эта функция только переводит узел
+// контейнера в спецификацию строки: что показать, что можно нажать и какие
+// права у пользователя над этим узлом.
 //
 // Чекбокс пишет `Enabled` НАПРЯМУЮ в модель (а не в журнал правок окна): у
 // списка нет ни scratch'а, ни Save — он живёт по образцу тумблера источника,
 // который тут же зовёт applySourceMutation.
-//
-// Кнопки справа = пункты меню (принцип «меню = кнопки», заход 2 пункт 6):
-// карандаш открывает окно узла, корзина удаляет его тем же
-// `showDeleteDialog`. У узла ПОДПИСКИ корзины нет вовсе — состав подписки
-// принадлежит провайдеру, и удаление отменил бы первый же fetch.
 func folderDrillNodeRow(
 	presenter *wizardpresentation.WizardPresenter,
 	guiState *wizardpresentation.GUIState,
@@ -458,37 +450,31 @@ func folderDrillNodeRow(
 	rowIndex int,
 	pr previewRow,
 ) fyne.CanvasObject {
-	var row *fynewidget.HoverRow
-	rowGetter := func() *fynewidget.HoverRow { return row }
+	identity := pr.RawTag
 
-	name := canvas.NewText(previewRowTitle(pr), theme.Color(theme.ColorNameForeground))
-	name.TextSize = previewNameTextSize
-
-	sub := canvas.NewText(previewRowSubtitle(pr), theme.Color(theme.ColorNamePlaceHolder))
-	sub.TextSize = previewSubtitleTextSize
-	if pr.Unsupported {
-		// Причина — там же, где у остальных строк «протокол·транспорт·security».
-		sub.Color = theme.Color(theme.ColorNameWarning)
+	spec := sourceNodeRowSpec{
+		Title:        previewRowTitle(pr),
+		Subtitle:     previewRowSubtitle(pr),
+		SubtitleWarn: pr.Unsupported,
+		ToolTip:      previewRowToolTip(pr),
+		OnOpen:       func() { showPreviewNodeEditWindow(pr, identity, ops) },
+		OnMenu: func(pe *fyne.PointEvent) {
+			showPreviewRowContextMenu(guiState.Window, pr, identity, ops, pe)
+		},
 	}
 
-	check := widget.NewCheck("", nil)
-	identity := pr.RawTag
+	// Галка. Неразобранная запись включению не подлежит (собирать из неё
+	// нечего); узел без идентичности пометить некуда — отметка поехала бы на
+	// соседа при следующем обновлении. Оба исхода те же, что в списке Preview.
 	if pr.Unsupported || identity == "" {
-		// Неразобранная запись включению не подлежит (собирать из неё нечего) —
-		// галка пустая; узел без идентичности пометить некуда (отметка поехала
-		// бы на соседа при следующем обновлении) — галка стоит, но не
-		// нажимается. Обещать включение, которого модель не допускает, нельзя —
-		// та же развилка и те же два исхода, что в списке Preview.
-		check.SetChecked(!pr.Unsupported)
-		check.Disable()
-		name.Color = theme.Color(theme.ColorNameDisabled)
+		spec.Checked = !pr.Unsupported
+		spec.CheckDisabled = true
+		spec.Dimmed = true
 	} else {
 		enabled := folderDrillNodeEnabled(presenter, folderID, identity)
-		check.SetChecked(enabled)
-		if !enabled {
-			name.Color = theme.Color(theme.ColorNameDisabled)
-		}
-		check.OnChanged = func(on bool) {
+		spec.Checked = enabled
+		spec.Dimmed = !enabled
+		spec.OnCheckChanged = func(on bool) {
 			if !folderDrillSetNodeEnabled(presenter, folderID, identity, on) {
 				return
 			}
@@ -496,73 +482,31 @@ func folderDrillNodeRow(
 		}
 	}
 
-	// Ведущий кластер — как у строки источника: захват ЛЕВЕЕ галки. Захват
-	// есть только там, где порядок принадлежит пользователю (папка): у
+	// Захват — только там, где порядок принадлежит пользователю (папка): у
 	// подписки его задаёт тело провайдера, и перестановка потерялась бы на
-	// первом же обновлении. На месте захвата тогда стоит распорка той же
-	// ширины — колонка чекбоксов не съезжает между видами контейнеров.
-	var grip fyne.CanvasObject
-	if ops != nil && ops.reorderAllowed() {
-		grip = fynewidget.NewDragHandle(dragGroup, rowIndex, rowGetter)
-	} else {
-		grip = fynewidget.NewDragHandleSpacer()
-	}
-	lead := container.NewHBox(grip, fynewidget.CheckLeadingWrap(check))
-
-	// Кнопки справа — тот же кластер и тот же зазор, что у строки источника.
+	// первом же обновлении. nil → шаблон ставит распорку той же ширины.
 	//
-	// Иконка ЗАВИСИТ ОТ ПРАВ (обкатка заход 3): карандаш обещает правку, а
-	// узел подписки не правится — состав принадлежит провайдеру, и окно у него
-	// read-only. Значит и кнопка обязана звать себя честно: «инфо» вместо
-	// «Edit». Окно одно и то же (preview_node_edit_window.go) — разъезжаются
-	// только подпись и глиф, а не поведение.
-	editable := ops != nil && ops.nodeOpsAllowed() && !pr.Unsupported
-	editIcon, editTip := theme.DocumentCreateIcon(), locale.T("Edit")
-	if !editable {
-		editIcon, editTip = theme.InfoIcon(), locale.T("Info")
-	}
-	editBtn := fynewidget.NewHoverForwardButtonWithIcon("", editIcon, func() {
-		showPreviewNodeEditWindow(pr, identity, ops)
-	}, rowGetter)
-	editBtn.Importance = widget.LowImportance
-	fynewidget.SetToolTipSafe(editBtn, editTip)
-	rightItems := []fyne.CanvasObject{editBtn}
+	// Корзина — только у узла ПАПКИ: в подписке у строки остаётся одна галка
+	// (обкатка заход 3), состав там принадлежит провайдеру. Карандаша нет ни
+	// у кого — окно открывает клик по строке, как в корне.
 	if ops != nil && ops.nodeOpsAllowed() && identity != "" {
-		delBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DeleteIcon(), func() {
-			ops.showDeleteDialog(identity)
-		}, rowGetter)
-		delBtn.Importance = widget.LowImportance
-		fynewidget.SetToolTipSafe(delBtn, locale.T("Del"))
-		rightItems = append(rightItems, delBtn)
+		spec.OnDelete = func() { ops.showDeleteDialog(identity) }
 	}
-	// Полоса прокрутки списка рисуется ПОВЕРХ строк, поэтому её ширина
-	// резервируется в самой строке — тем же ScrollGutter, что у строк корня
-	// (source_tab.go). Без него скроллбар ложился на иконки справа (обкатка
-	// заход 3). Кнопки пакуются вплотную, а gutter отделён обычным отступом
-	// HBox — как в корне.
-	rightControls := container.NewHBox(
-		container.New(tightHBox{spacing: rowIconGap}, rightItems...),
-		components.NewScrollGutter(),
-	)
 
-	titleBox := container.New(previewTightVBox{gap: previewTitleSubtitleGap}, name, sub)
-	row = fynewidget.NewHoverRow(
-		container.NewBorder(nil, nil, lead, rightControls, titleBox),
-		fynewidget.HoverRowConfig{IsSelected: func() bool { return false }},
-	)
-
-	// Обёртка СНАРУЖИ HoverRow — та же ловушка Fyne, что у меню верхнего узла
-	// (FindObjectAtPositionMatching отдаёт событие самому глубокому
-	// подходящему объекту): внутри обёртка перехватила бы hover и погасила
-	// подсветку строки. Кнопки строки лежат глубже и свой tap получают сами.
-	wrap := fynewidget.NewSecondaryTapWrap(row)
-	wrap.SetToolTip(previewRowToolTip(pr))
-	wrap.OnPrimary = func(fyne.KeyModifier) {
-		showPreviewNodeEditWindow(pr, identity, ops)
+	var wrap fyne.CanvasObject
+	var row *fynewidget.HoverRow
+	if ops != nil && ops.reorderAllowed() {
+		// Захват держит ссылку на строку (проброс hover), а строка ещё не
+		// собрана — отсюда отложенный getter.
+		var built *fynewidget.HoverRow
+		spec.Drag = fynewidget.NewDragHandle(dragGroup, rowIndex,
+			func() *fynewidget.HoverRow { return built })
+		wrap, row = newSourceNodeRow(spec)
+		built = row
+	} else {
+		wrap, row = newSourceNodeRow(spec)
 	}
-	wrap.OnSecondary = func(pe *fyne.PointEvent) {
-		showPreviewRowContextMenu(guiState.Window, pr, identity, ops, pe)
-	}
+	_ = row
 	return wrap
 }
 
