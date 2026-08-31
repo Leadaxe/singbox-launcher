@@ -303,6 +303,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		m.BumpRevision()
 		m.PreviewNeedsParse = true
 		wizardbusiness.InvalidateNodePool(m)
+		wizardbusiness.InvalidateSourceNodeCounts(m)
 		presenter.RefreshOutboundsConfiguratorList()
 		if guiState.RefreshSourcesList != nil {
 			guiState.RefreshSourcesList()
@@ -1220,6 +1221,12 @@ func applySourceMutation(presenter *wizardpresentation.WizardPresenter, guiState
 	m.BumpRevision()
 	m.PreviewNeedsParse = true
 	wizardbusiness.InvalidateNodePool(m)
+	wizardbusiness.InvalidateSourceNodeCounts(m)
+	// Счётчики узлов — тоже производная состава: без сброса кэш, построенный
+	// до мутации, живёт вечно, и папка, наполненная после создания, навсегда
+	// показывала «0 nodes» (обкатка заход 3). Инвалидация стоит РЯДОМ с
+	// пулом — оба кэша снимает одно и то же событие.
+	wizardbusiness.InvalidateSourceNodeCounts(m)
 	presenter.RefreshOutboundsConfiguratorList()
 	presenter.RefreshOutboundOptions()
 	if guiState != nil && guiState.RefreshSourcesList != nil {
@@ -1538,6 +1545,7 @@ func CreateDirectionsTab(presenter *wizardpresentation.WizardPresenter) fyne.Can
 		m.BumpRevision()
 		m.PreviewNeedsParse = true
 		wizardbusiness.InvalidateNodePool(m)
+		wizardbusiness.InvalidateSourceNodeCounts(m)
 		presenter.RefreshOutboundsConfiguratorList()
 		presenter.RefreshOutboundOptions()
 		if guiState.RefreshSourcesList != nil {
@@ -1641,6 +1649,7 @@ func refreshOneSourceFromUI(
 			// строках обязаны пересчитаться, иначе кандидаты позиций
 			// цепочки и «50 nodes» живут телом до обновления.
 			wizardbusiness.InvalidateNodePool(m)
+			wizardbusiness.InvalidateSourceNodeCounts(m)
 			if guiState != nil && guiState.RefreshSourcesList != nil {
 				guiState.RefreshSourcesList()
 			}

@@ -486,6 +486,7 @@ func afterSourceEditApplied(
 	m.BumpRevision()
 	m.PreviewNeedsParse = true
 	wizardbusiness.InvalidateNodePool(m)
+	wizardbusiness.InvalidateSourceNodeCounts(m)
 	presenter.RefreshOutboundsConfiguratorList()
 	presenter.ScheduleRefreshOutboundOptionsDebounced()
 	presenter.MarkAsChanged()
@@ -1405,6 +1406,7 @@ func showSourceEditWindowAt(
 				// счётчики, и кандидаты позиций цепочек) оставались бы от
 				// старого тела до случайной другой мутации.
 				wizardbusiness.InvalidateNodePool(m)
+				wizardbusiness.InvalidateSourceNodeCounts(m)
 				presenter.MarkAsChanged()
 				// SPEC 118 W3: fetch-merge наполнил канонические nodes[] —
 				// мутация модели, ревизия обязана вырасти.
@@ -2242,6 +2244,7 @@ func resetRefsAfterNodeRename(
 	m.BumpRevision()
 	m.PreviewNeedsParse = true
 	wizardbusiness.InvalidateNodePool(m)
+	wizardbusiness.InvalidateSourceNodeCounts(m)
 	presenter.RefreshOutboundsConfiguratorList()
 	presenter.ScheduleRefreshOutboundOptionsDebounced()
 	presenter.MarkAsChanged()

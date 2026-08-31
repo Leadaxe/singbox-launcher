@@ -240,6 +240,7 @@ func moveDNSSlot(presenter *wizardpresentation.WizardPresenter, model *wizardmod
 		return
 	}
 	wizardbusiness.InvalidateNodePool(model) // drop cached preview so Preview tab reflects new order
+	wizardbusiness.InvalidateSourceNodeCounts(model)
 	presenter.MarkAsChanged()
 	if refreshAll != nil {
 		refreshAll()
