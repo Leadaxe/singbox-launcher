@@ -20,6 +20,7 @@ import (
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
@@ -144,12 +145,32 @@ func setSourceOriginURI(p *wizardmodels.Source, uri string) {
 		return
 	}
 	if uri == "" {
-		if p.Origin != nil && p.Origin.Kind == wizardmodels.OriginKindURI {
+		if p.Origin != nil && p.Origin.Kind != wizardmodels.OriginKindJSON {
 			p.Origin = nil
 		}
 		return
 	}
-	p.Origin = &wizardmodels.Origin{Kind: wizardmodels.OriginKindURI, Raw: uri}
+	// Вид определяется ФОРМОЙ текста, а не прибит к "uri": в это же поле
+	// вставляют блок wg-quick (SPEC 119), и записать ему kind=uri значило бы
+	// потерять вид происхождения на первом же Save — узел перестал бы
+	// пересобираться из конфига провайдера.
+	kind := wizardmodels.OriginKindURI
+	if len(subscription.WGConfBlocksOf(uri)) > 0 {
+		kind = wizardmodels.OriginKindWGIni
+	}
+	p.Origin = &wizardmodels.Origin{Kind: kind, Raw: uri}
+}
+
+// uriEntryMinHeightFor — минимальная высота поля происхождения.
+//
+// У ссылки хватает пары строк (она и есть одна строка, перенос — для
+// длинных), а блок wg-quick без запаса читать невозможно: у Proton это два
+// десятка строк с комментариями (SPEC 119).
+func uriEntryMinHeightFor(p *wizardmodels.Source) float32 {
+	if p != nil && p.Origin != nil && p.Origin.Kind == wizardmodels.OriginKindWGIni {
+		return 320
+	}
+	return 60
 }
 
 // cloneSource — явная deep-copy state.Source для рабочего буфера окна
@@ -414,6 +435,54 @@ func applySourceEditToModel(
 		return
 	}
 	mergeEditedSourceIntoModel(m, sourceIndex, edited, enabledEdits)
+	afterSourceEditApplied(presenter, guiState, m)
+}
+
+// mergeEditedNodeIntoModel — data-часть Save, когда окно открыто на УЗЕЛ
+// внутри контейнера.
+//
+// Пишется ровно узел по своему адресу, а не строка целиком: состав, runtime
+// fetch'а и настройки контейнера окну узла не принадлежат, и запись снимком
+// откатила бы их. Возвращает false, если узел исчез, — Save тогда ничего не
+// делает, как и при исчезнувшей строке.
+func mergeEditedNodeIntoModel(
+	m *wizardmodels.WizardModel,
+	link wizardmodels.NodeLink,
+	edited *wizardmodels.Source,
+) bool {
+	if m == nil || edited == nil {
+		return false
+	}
+	live := wizardbusiness.NodeByLink(m, link)
+	if live == nil {
+		return false
+	}
+	*live = edited.Node
+	return true
+}
+
+// applyNodeEditToModel — путь Save окна, открытого на узел контейнера.
+func applyNodeEditToModel(
+	presenter *wizardpresentation.WizardPresenter,
+	guiState *wizardpresentation.GUIState,
+	m *wizardmodels.WizardModel,
+	link wizardmodels.NodeLink,
+	edited *wizardmodels.Source,
+) {
+	if !mergeEditedNodeIntoModel(m, link, edited) {
+		return
+	}
+	afterSourceEditApplied(presenter, guiState, m)
+}
+
+// afterSourceEditApplied — общий хвост Save: пересчёт превью, инвалидация
+// пула и перерисовка списков. Один на обе ветки, чтобы правка узла и правка
+// строки не разъехались по набору обновлений.
+func afterSourceEditApplied(
+	presenter *wizardpresentation.WizardPresenter,
+	guiState *wizardpresentation.GUIState,
+	m *wizardmodels.WizardModel,
+) {
 	m.BumpRevision()
 	m.PreviewNeedsParse = true
 	wizardbusiness.InvalidateNodePool(m)
@@ -425,12 +494,100 @@ func applySourceEditToModel(
 	}
 }
 
+// sourceView — что за вид строки открыт в окне источника.
+//
+// Единственный реестр видов на всё окно. Каждый kind называет себя ЯВНО:
+// формулировка вычитанием («не сервер и не цепочка ⇒ контейнер») уже стоила
+// нам дыры Д3, когда auto-источник молча достался ветке подписки.
+//
+// Вид отвечает на три разных вопроса, и смешивать их нельзя:
+//   - isNode: у строки есть СОБСТВЕННЫЙ узел (тег, origin, тело) — server,
+//     chain, auto, unsupported;
+//   - isContainer: у строки есть СОСТАВ (nodes[]) — folder, subscription;
+//   - остальные поля — частные ветки формы.
+type sourceView struct {
+	kind        wizardmodels.SourceKind
+	isServer    bool
+	isChain     bool
+	isAuto      bool
+	isFolder    bool
+	isSub       bool
+	isUnsupport bool
+	// isNode — строка сама себе узел (состава нет).
+	isNode bool
+	// isContainer — у строки есть состав nodes[].
+	isContainer bool
+}
+
+// sourceViewOf — единственная точка, где kind превращается в набор признаков.
+func sourceViewOf(kind wizardmodels.SourceKind) sourceView {
+	v := sourceView{kind: kind}
+	switch kind {
+	case wizardmodels.SourceKindServer:
+		v.isServer, v.isNode = true, true
+	case wizardmodels.SourceKindChain:
+		v.isChain, v.isNode = true, true
+	case wizardmodels.SourceKindAuto:
+		v.isAuto, v.isNode = true, true
+	case wizardmodels.SourceKindUnsupported:
+		v.isUnsupport, v.isNode = true, true
+	case wizardmodels.SourceKindFolder:
+		v.isFolder, v.isContainer = true, true
+	case wizardmodels.SourceKindSubscription:
+		v.isSub, v.isContainer = true, true
+	default:
+		// Неизвестный вид: контейнером его считать нельзя (состава может не
+		// быть), узлом — тоже. Форма покажет минимум, а не чужую ветку.
+	}
+	return v
+}
+
 // showSourceEditWindow opens Settings | Preview | JSON for one proxy source (SPEC 026).
+//
+// Открывает СТРОКУ КОРНЯ (папку, подписку, узел). Узел внутри контейнера
+// открывается showSourceEditWindowForNode — окно то же, отличается адрес.
 func showSourceEditWindow(
 	presenter *wizardpresentation.WizardPresenter,
 	guiState *wizardpresentation.GUIState,
 	parent fyne.Window,
 	sourceIndex int,
+	shortLabel string,
+) {
+	showSourceEditWindowAt(presenter, guiState, parent, sourceIndex, wizardmodels.NodeLink{}, shortLabel)
+}
+
+// showSourceEditWindowForNode открывает окно на УЗЕЛ ВНУТРИ контейнера.
+//
+// Окно одно на обе роли (обкатка: «не должно быть двух окон на одну задачу»):
+// узел в папке и узел в корне — одна и та же сущность, различается только
+// адрес. Адрес — NodeLink, тот же тип, которым модель уже адресует detour,
+// хопы цепочек и членов групп; вторая система координат («индекс контейнера +
+// индекс узла») разъехалась бы с ним на первом же переносе узла.
+func showSourceEditWindowForNode(
+	presenter *wizardpresentation.WizardPresenter,
+	guiState *wizardpresentation.GUIState,
+	parent fyne.Window,
+	link wizardmodels.NodeLink,
+	shortLabel string,
+) {
+	if presenter == nil {
+		return
+	}
+	idx := wizardbusiness.SourceIndexByLink(presenter.Model(), link)
+	if idx < 0 {
+		return
+	}
+	showSourceEditWindowAt(presenter, guiState, parent, idx, link, shortLabel)
+}
+
+// showSourceEditWindowAt — общая реализация. Пустой nodeLink означает «окно
+// открыто на саму строку sourceIndex», непустой — «на узел в её составе».
+func showSourceEditWindowAt(
+	presenter *wizardpresentation.WizardPresenter,
+	guiState *wizardpresentation.GUIState,
+	parent fyne.Window,
+	sourceIndex int,
+	nodeLink wizardmodels.NodeLink,
 	shortLabel string,
 ) {
 	if presenter == nil {
@@ -463,9 +620,25 @@ func showSourceEditWindow(
 	// сам ellipsis'ит до доступной ширины (избегаем двойного "...").
 	mm := presenter.Model()
 	fullTitleSrc := shortLabel
-	// isFolderSource — вид источника, известный ещё до сборки формы: от него
-	// зависят заголовок окна, ветка настроек и тексты подсказок (SPEC 116 W4).
-	isFolderSource := m.Sources[sourceIndex].Kind == wizardmodels.SourceKindFolder
+	// Вид источника — ОДНА точка ветвления на всё окно (обкатка: «окно само
+	// загружает виджеты в себя в зависимости от kind»).
+	//
+	// Раньше признаки вычислялись порознь в четырёх местах файла и часть
+	// условий формулировалась ВЫЧИТАНИЕМ («не сервер и не цепочка ⇒
+	// контейнер»). Так и появилась дыра Д3: подписка с auto-источником
+	// делили одну ветку `default`, потому что ни одна их не называла. Новый
+	// вид kind обязан назвать себя здесь — и тогда всякое место, которое его
+	// не учло, видно сразу, а не достаётся ему по остаточному принципу.
+	// Вид — по kind ТОГО, что открыто: у узла контейнера это его собственный
+	// kind, а не kind папки, в которой он лежит.
+	srcKind := m.Sources[sourceIndex].Kind
+	if strings.TrimSpace(nodeLink.Tag) != "" {
+		if n := wizardbusiness.NodeByLink(m, nodeLink); n != nil {
+			srcKind = n.Kind
+		}
+	}
+	view := sourceViewOf(srcKind)
+	isFolderSource := view.isFolder
 	if mm != nil && sourceIndex < len(mm.Sources) {
 		s := mm.Sources[sourceIndex]
 		switch s.Kind {
@@ -513,7 +686,22 @@ func showSourceEditWindow(
 	// SPEC 117 (Т4): рабочий буфер окна — deep-copy canonical state.Source.
 	// Widget'ы мутируют копию; Save записывает её в m.Sources[sourceIndex]
 	// целиком (applySourceEditToModel); Cancel закрывает окно без следов.
-	scratch := cloneSource(&m.Sources[sourceIndex])
+	// Узел контейнера подаётся форме тем же типом, что и строка корня: Node
+	// встроен в Source, поэтому «узел в папке» — это Source, у которого
+	// заполнена только узловая часть. Так вся форма (вид, поля, Save)
+	// остаётся одной, а различие сводится к тому, ОТКУДА взят буфер и КУДА
+	// он вернётся.
+	editingNode := strings.TrimSpace(nodeLink.Tag) != ""
+	var scratch wizardmodels.Source
+	if editingNode {
+		node := wizardbusiness.NodeByLink(m, nodeLink)
+		if node == nil {
+			return // узел исчез между кликом и открытием — законный исход
+		}
+		scratch = wizardmodels.Source{Node: cloneCanonicalNode(*node)}
+	} else {
+		scratch = cloneSource(&m.Sources[sourceIndex])
+	}
 	// SPEC 118 W3 (фикс ревью, блокер 2): журнал тумблеров включённости,
 	// сделанных В ЭТОМ окне (identity → последнее выбранное состояние).
 	// На Save он применяется поверх runtime-полей живой записи модели —
@@ -547,6 +735,15 @@ func showSourceEditWindow(
 	prefixEntry := widget.NewEntry()
 	prefixEntry.SetPlaceHolder(locale.T("prefix"))
 
+	originEditing := false
+	originTextAtOpen := sourceOriginURI(&scratch)
+	// Перерисовка вкладки JSON после успешного Regen: сама вкладка строится
+	// ниже, поэтому ссылка объявлена заранее (nil до её сборки — Regen из
+	// формы возможен только после того, как окно собрано целиком).
+	var refreshJSONAfterOriginRegen func()
+	var originBtnRow *fyne.Container
+	var setOriginMode func(editing bool)
+
 	// SPEC 052 phase 8: URL/URI/Label/Postfix editors живут в Settings tab.
 	// URL/Prefix/Postfix — только у подписки; URI/Label — только у server.
 	// Все мутации идут через scratch + Source.
@@ -559,9 +756,13 @@ func showSourceEditWindow(
 	urlEntry := widget.NewEntry()
 	urlEntry.SetPlaceHolder("https://example.com/sub") // l10n-exempt: sample URL
 
-	uriEntry := widget.NewEntry()
+	// MultiLine, а не однострочный Entry: происхождением узла бывает не
+	// только ссылка в строку, но и блок wg-quick на два десятка строк
+	// (SPEC 119) — в однострочном поле он показывался обрезанным и не
+	// правился.
+	uriEntry := widget.NewMultiLineEntry()
+	uriEntry.Wrapping = fyne.TextWrapBreak
 	uriEntry.SetPlaceHolder("vless://uuid@host:443?...#tokyo") // l10n-exempt: sample URI
-
 
 	// SPEC 116 W4: имя папки. Отдельное поле от Label намеренно — имя
 	// контейнера живёт в Source.Name (sources_v7.go), ссылок на него нет, и
@@ -606,7 +807,7 @@ func showSourceEditWindow(
 
 	// SPEC 110: форма цепочки. Существует только у источника-цепочки, где
 	// заменяет собой всё остальное: ни URL, ни URI, ни свёртки у неё нет.
-	isChainSource := m.Sources[sourceIndex].Kind == wizardmodels.SourceKindChain
+	isChainSource := view.isChain
 	var chainTabBody *chainForm
 	if isChainSource {
 		selfTag := m.Sources[sourceIndex].NodeTagOrLabel()
@@ -773,7 +974,16 @@ func showSourceEditWindow(
 		prefixEntry.SetText(ts.Prefix)
 		postfixEntry.SetText(ts.Postfix)
 		// URI / Label / тег узла — для server-type; всё из рабочей копии.
+		//
+		// Программная установка исходника обязана ПЕРЕСТАВИТЬ режим блока
+		// Origin: в режиме чтения OnChanged откатывает поле к запомненному
+		// тексту, и без переустановки свежее значение вернулось бы к
+		// прежнему прямо в момент показа.
 		uriEntry.SetText(sourceOriginURI(p))
+		if setOriginMode != nil {
+			originTextAtOpen = uriEntry.Text
+			setOriginMode(originEditing)
+		}
 		nameEntry.SetText(p.Name)
 		nodeTagEntry.SetText(p.NodeTagOrLabel())
 		syncFoldFormFromModel(p)
@@ -791,16 +1001,10 @@ func showSourceEditWindow(
 		p.URL = strings.TrimSpace(s)
 	}
 
-	// URI-поле правит ПРОИСХОЖДЕНИЕ узла: тело пересобирается из него на
-	// Save (см. saveBtn) — тем же путём, что fetch и миграция. Посимвольная
-	// материализация была бы разбором на каждое нажатие клавиши.
-	uriEntry.OnChanged = func(s string) {
-		p := srcRef()
-		if p == nil {
-			return
-		}
-		setSourceOriginURI(p, strings.TrimSpace(s))
-	}
+	// Обработчик uriEntry ставится РЕЖИМОМ блока Origin (setOriginMode ниже):
+	// по умолчанию поле только читается, правка включается кнопкой Edit.
+	// Безусловный OnChanged здесь означал бы, что исходник правится всегда —
+	// а случайный символ в нём это сломанный узел на следующем Regen.
 
 	// SPEC 116 W4: имя контейнера. Пишется только у папки — normalizeSourceShape
 	// отбрасывает Name у узловых kind'ов (server/chain/auto) с warning, а имя
@@ -875,6 +1079,86 @@ func showSourceEditWindow(
 		tagVarsHint.Importance = widget.LowImportance
 		settingsContent.Add(tagVarsHint)
 	}
+	// --- Origin: чтение по умолчанию, правка по кнопке ----------------------
+	//
+	// Исходник — то, ИЗ ЧЕГО собран узел, и случайный символ в нём означает
+	// сломанный узел на следующем Regen. Поэтому поле открыто на чтение, а
+	// правка включается явно: Edit → правишь → Regen пересобирает тело из
+	// нового текста.
+	//
+	// Regen меняет только БУФЕР окна (scratch): в модель всё уходит на Save,
+	// как и любая другая правка формы. Cancel окна отменяет и это.
+
+	originCopyBtn := widget.NewButton(locale.T("Copy"), func() {
+		fynewidget.SetClipboard(uriEntry.Text)
+	})
+	originEditBtn := widget.NewButton(locale.T("Edit"), func() {
+		setOriginMode(true)
+	})
+	originCancelBtn := widget.NewButton(locale.T("Cancel"), func() {
+		// Возврат к тексту, с которым вошли в режим правки: набранное
+		// отменяется целиком, узел не трогался — Regen ещё не звали.
+		uriEntry.SetText(originTextAtOpen)
+		setSourceOriginURI(&scratch, originTextAtOpen)
+		setOriginMode(false)
+	})
+	originRegenBtn := widget.NewButton(locale.T("Regen"), func() {
+		raw := strings.TrimSpace(uriEntry.Text)
+		if raw == "" {
+			dialog.ShowError(errors.New(locale.T("Origin is empty.")), win)
+			return
+		}
+		hadSubURL := scratch.Origin != nil && scratch.Origin.SubURL != ""
+		if err := regenServerBodyFromRawText(&scratch.Node, raw); err != nil {
+			// ОСТАЁМСЯ в режиме правки: набранное не выбрасывается, иначе
+			// пользователь потеряет текст из-за одной опечатки.
+			dialog.ShowError(errors.New(locale.Tf(
+				"Origin does not unpack: %s. You can write the outbound JSON by hand and press Apply.",
+				err.Error())), win)
+			return
+		}
+		if dereferenceEditedSourceNode(&scratch) || hadSubURL {
+			notifyNodeDereferenced(win, scratch.NodeTagOrLabel())
+		}
+		// Тело пересобрано — вкладка JSON обязана показать новое.
+		if refreshJSONAfterOriginRegen != nil {
+			refreshJSONAfterOriginRegen()
+		}
+		originTextAtOpen = raw
+		setOriginMode(false)
+	})
+	originRegenBtn.Importance = widget.HighImportance
+
+	setOriginMode = func(editing bool) {
+		originEditing = editing
+		if editing {
+			uriEntry.OnChanged = func(s string) {
+				p := srcRef()
+				if p == nil {
+					return
+				}
+				setSourceOriginURI(p, strings.TrimSpace(s))
+			}
+			originBtnRow.Objects = []fyne.CanvasObject{originCopyBtn, originCancelBtn, originRegenBtn}
+		} else {
+			// Ввод откатывается, а не Disable(): на macOS выключенный Entry
+			// красит текст цветом фона, а исходник обязан читаться и
+			// копироваться (та же ловушка, что у read-only полей Overview).
+			frozen := uriEntry.Text
+			uriEntry.OnChanged = func(s string) {
+				if s != frozen {
+					uriEntry.SetText(frozen)
+				}
+			}
+			originBtnRow.Objects = []fyne.CanvasObject{originCopyBtn, originEditBtn}
+		}
+		originBtnRow.Refresh()
+	}
+	originBtnRow = container.NewHBox(originCopyBtn, originEditBtn)
+	// Стартуем в чтении: правка — осознанное действие.
+	setOriginMode(false)
+	_ = originEditing
+
 	detourBlock := func() {
 		settingsContent.Add(widget.NewLabel(locale.T("Detour server (chain)")))
 		settingsContent.Add(detourSelect)
@@ -887,11 +1171,11 @@ func showSourceEditWindow(
 		if mm != nil && sourceIndex < len(mm.Sources) {
 			kind = mm.Sources[sourceIndex].Kind
 		}
-		isServer := kind == wizardmodels.SourceKindServer
-		isFolder := kind == wizardmodels.SourceKindFolder
-
-		switch {
-		case isFolder:
+		// Ветвление по ВИДУ, где каждый называет себя сам. Ветки `default`
+		// с чужим содержимым здесь быть не должно: именно она (подписка +
+		// auto в одной) и была дырой Д3.
+		switch v := sourceViewOf(kind); {
+		case v.isFolder:
 			// Папка (SPEC 116, критерий A8): имя + тег-политика + свёртка +
 			// detour. Ни URL, ни интервала обновления, ни max_nodes, ни
 			// skip[] — состав папки принадлежит пользователю, сети за ним
@@ -905,15 +1189,36 @@ func showSourceEditWindow(
 			settingsContent.Add(foldCheck)
 			settingsContent.Add(widget.NewSeparator())
 			detourBlock()
-		case isServer:
-			// Server: URI + тег узла + Detour.
+
+		case v.isServer:
+			// Узел-сервер. Порядок блоков — Tag, Detour, Origin: сперва кто
+			// это, потом через кого ходит, и только потом длинный исходник.
 			//
 			// Поля Label нет (обкатка заход 3): у узла имя — его ТЕГ, а Label
 			// остался legacy-входом миграции (v6→v7 переносил его в Name/Tag) и
 			// новой записи не получает. Второе имя рядом с тегом только путало:
 			// правишь подпись — а в конфиге и в ссылках стоит тег.
-			settingsContent.Add(widget.NewLabel(locale.T("Server URI")))
-			settingsContent.Add(uriEntry)
+			settingsContent.Add(widget.NewLabel(locale.T("Node tag")))
+			settingsContent.Add(nodeTagEntry)
+			settingsContent.Add(widget.NewSeparator())
+			detourBlock()
+			settingsContent.Add(widget.NewSeparator())
+			// Подпись по виду происхождения: «Server URI» над блоком
+			// wg-quick врала бы про природу текста (SPEC 119).
+			uriLabel := locale.T("Server URI")
+			if scratch.Origin != nil && scratch.Origin.Kind == wizardmodels.OriginKindWGIni {
+				uriLabel = locale.T("Origin (wg-quick config)")
+			}
+			// Заголовок и кнопки — ОДНОЙ строкой: Origin занимает всю
+			// оставшуюся высоту, и кнопки под ним уезжали бы за прокрутку.
+			settingsContent.Add(container.NewBorder(nil, nil,
+				widget.NewLabel(uriLabel), originBtnRow, nil))
+			// Минимальная высота поля: внутри VBox виджет получает ровно свой
+			// MinSize, а у MultiLineEntry это одна строка — блок wg-quick
+			// показывался бы в один-два ряда.
+			uriSizeRect := canvas.NewRectangle(color.Transparent)
+			uriSizeRect.SetMinSize(fyne.NewSize(0, uriEntryMinHeightFor(&scratch)))
+			settingsContent.Add(container.NewStack(uriSizeRect, uriEntry))
 			// Ручной config_json переопределяет URI — без пометки правка URI
 			// «молча не работает» и путает.
 			if scratch.Origin != nil && scratch.Origin.Kind == wizardmodels.OriginKindJSON {
@@ -922,15 +1227,34 @@ func showSourceEditWindow(
 				manualNote.Importance = widget.LowImportance
 				settingsContent.Add(manualNote)
 			}
+
+		case v.isAuto:
+			// Провайдерская группа / автовыбор. Своей формы у неё нет: тела
+			// не существует типом (весь узел описан Group), URL и свёртки
+			// тоже. Остаются тег и detour — то, что у группы есть.
+			//
+			// До ревизии ветки auto не было вовсе, и она молча доставалась
+			// подписке: пользователь видел поле «Subscription URL» у группы,
+			// которая ничего не качает (дыра Д3).
 			settingsContent.Add(widget.NewLabel(locale.T("Node tag")))
 			settingsContent.Add(nodeTagEntry)
 			settingsContent.Add(widget.NewSeparator())
 			detourBlock()
-		default:
-			// Subscription: URL + Tag prefix/postfix + свёртка + Detour.
-			// Сюда же падает корневой auto-источник: своей формы у него нет
-			// и до этого этапа не было. Новый вид контейнера обязан заводить
-			// СВОЮ ветку выше, а не доставаться этой (дыра Д3).
+
+		case v.isUnsupport:
+			// Неразобранная запись: тела нет, править нечего. Показываем то,
+			// что о ней известно, — тег и исходник; Detour ей неприменим
+			// типом (features/sources.md §Unsupported).
+			settingsContent.Add(widget.NewLabel(locale.T("Node tag")))
+			settingsContent.Add(nodeTagEntry)
+			settingsContent.Add(widget.NewSeparator())
+			settingsContent.Add(widget.NewLabel(locale.T("Origin")))
+			uriSizeRect := canvas.NewRectangle(color.Transparent)
+			uriSizeRect.SetMinSize(fyne.NewSize(0, uriEntryMinHeightFor(&scratch)))
+			settingsContent.Add(container.NewStack(uriSizeRect, uriEntry))
+
+		case v.isSub:
+			// Подписка: URL + Tag prefix/postfix + свёртка + Detour.
 			settingsContent.Add(widget.NewLabel(locale.T("Subscription URL")))
 			settingsContent.Add(urlEntry)
 			settingsContent.Add(widget.NewSeparator())
@@ -939,6 +1263,12 @@ func showSourceEditWindow(
 			settingsContent.Add(foldCheck)
 			settingsContent.Add(widget.NewSeparator())
 			detourBlock()
+
+		default:
+			// Вид, которого реестр не знает. Не молчим и не подсовываем чужую
+			// форму: показываем тег — единственное, что есть у всякой строки.
+			settingsContent.Add(widget.NewLabel(locale.T("Node tag")))
+			settingsContent.Add(nodeTagEntry)
 		}
 		settingsContent.Refresh()
 	}
@@ -1356,12 +1686,7 @@ func showSourceEditWindow(
 	//     собирается руками); Reset возвращает генерацию из URI.
 	//   - subscription: read-only распаковка кэшированного body — правки
 	//     перезатёр бы первый же сетевой refresh.
-	isServerSource := m.Sources[sourceIndex].Kind == wizardmodels.SourceKindServer
-	// isContainerSource — у источника есть СОСТАВ (nodes[]), а не один
-	// собственный узел. От этого зависит, показывать ли вкладку Preview:
-	// список из одной строки, повторяющей заголовок окна, смысла не несёт.
-	isContainerSource := m.Sources[sourceIndex].Kind == wizardmodels.SourceKindFolder ||
-		m.Sources[sourceIndex].Kind == wizardmodels.SourceKindSubscription
+	isServerSource := view.isServer
 
 	jsonEntry := widget.NewMultiLineEntry()
 	jsonEntry.Wrapping = fyne.TextWrapOff
@@ -1589,6 +1914,14 @@ func showSourceEditWindow(
 		}
 	}
 
+	// Regen из блока Origin умеет обновить вкладку JSON только после того,
+	// как та собрана: до этого момента ссылка nil и Regen из формы недоступен.
+	refreshJSONAfterOriginRegen = func() {
+		if doRefreshJSONTab != nil {
+			doRefreshJSONTab()
+		}
+	}
+
 	doRefreshJSONTab = func() {
 		if isChainSource {
 			refreshChainJSONTab()
@@ -1679,36 +2012,42 @@ func showSourceEditWindow(
 	// Вкладка «Группа» — только у КОНТЕЙНЕРОВ (подписка и папка) и только при
 	// включённой свёртке (как «Автовыбор» у Направления, SPEC 104): показывать
 	// настройки того, чего нет, — значит предлагать настроить выключённое.
-	//
-	// SPEC 116 W4: условие ниже сформулировано вычитанием (`!isServerSource &&
-	// !isChainSource`), поэтому папку оно пропускает само — своей ветки тут не
-	// нужно. Это единственное место окна, где «не узел ⇒ контейнер» верно и
-	// после появления папок.
 	foldTab := container.NewTabItem(locale.T("Group"), container.NewVScroll(foldTabBody.content))
 	var tabs *container.AppTabs
-	if isChainSource && chainTabBody != nil {
+	// Главная вкладка — СВОЯ у каждого вида, а не «Settings для всех, кроме
+	// цепочки»: у цепочки это её позиции, у контейнера — состав, у узла —
+	// его настройки.
+	switch {
+	case view.isChain && chainTabBody != nil:
 		// У цепочки вкладка позиций — главная и первая: остальное окно
 		// (подписка, URI, свёртка) к ней не относится.
 		chainTab := container.NewTabItem(locale.T("Chain"),
 			container.NewVScroll(chainTabBody.built))
 		tabs = container.NewAppTabs(chainTab, jsonTab)
-	} else if isContainerSource {
+	case view.isContainer:
 		// Обкатка заход 3: у КОНТЕЙНЕРА Preview — первая вкладка. К подписке и
 		// папке приходят смотреть состав; Settings открывают, когда что-то
 		// правят, а это заметно реже. Заодно снимается ленивость показа:
 		// первая вкладка активна на открытии и рисуется сразу.
 		tabs = container.NewAppTabs(previewTab, settingsTab, overviewTab, jsonTab)
-	} else {
-		// У УЗЛОВОГО источника (server / auto) вкладки Preview нет вовсе
-		// (обкатка заход 3: «первая вкладка бессмысленная»). Состава у него не
-		// бывает — он сам себе узел, и Preview повторял его имя третий раз
-		// подряд: в заголовке окна, в визитке и в единственной строке списка.
-		// Что это за узел, отвечают Settings и JSON.
+	case view.isUnsupport:
+		// Неразобранная запись: тела нет, и вкладка JSON была бы пустым
+		// редактором с кнопками в никуда (тот же расклад, что в окне узла
+		// контейнера). Причина и исходник — на Settings.
+		tabs = container.NewAppTabs(settingsTab, overviewTab)
+	default:
+		// Узловой источник (server / auto / неизвестный вид): вкладки Preview
+		// нет вовсе (обкатка заход 3: «первая вкладка бессмысленная») —
+		// состава у него не бывает, он сам себе узел, и Preview повторял бы
+		// его имя третий раз подряд: в заголовке окна, в визитке и в
+		// единственной строке списка.
 		tabs = container.NewAppTabs(settingsTab, overviewTab, jsonTab)
 	}
 	syncFoldTabVisible = func() {
 		p := srcRef()
-		show := !isServerSource && !isChainSource && p != nil && p.Replace != nil
+		// Свёртка есть только у контейнера — называем его прямо, а не
+		// вычитанием узловых видов.
+		show := view.isContainer && p != nil && p.Replace != nil
 		hasTab := false
 		for _, ti := range tabs.Items {
 			if ti == foldTab {
@@ -1793,7 +2132,15 @@ func showSourceEditWindow(
 		// SPEC 117 (Т4): вся правка одной записью — копия в m.Sources[i];
 		// runtime-поля fetch'а берутся из живой записи, оконные тумблеры —
 		// журналом enabledEdits (блокер 2 ревью W3).
-		applySourceEditToModel(presenter, guiState, presenter.Model(), sourceIndex, &scratch, enabledEdits)
+		//
+		// Узел контейнера пишется по СВОЕМУ адресу: строка-контейнер окну
+		// узла не принадлежит, и запись её снимком снесла бы состав и
+		// runtime fetch'а.
+		if editingNode {
+			applyNodeEditToModel(presenter, guiState, presenter.Model(), nodeLink, &scratch)
+		} else {
+			applySourceEditToModel(presenter, guiState, presenter.Model(), sourceIndex, &scratch, enabledEdits)
+		}
 		// SPEC 112-A: узел переименован — его прежней идентичности больше нет,
 		// и ссылки на неё обязаны погаснуть здесь, а не молча провалиться на
 		// следующей сборке. Порядок важен: сначала запись формы (тег уже

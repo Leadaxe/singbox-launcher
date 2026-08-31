@@ -80,9 +80,9 @@ func parseSourceInput(input string, fallbackIndex int) (*parsedSourceInput, erro
 	}
 
 	res := &parsedSourceInput{}
-	var conns []string
+	var conns, rawOf []string
 	if !isJSON {
-		res.Subscriptions, conns = classifyInputLines(input, silentTiming{})
+		res.Subscriptions, conns, rawOf = classifyInputLines(input, silentTiming{})
 	}
 	if len(res.Subscriptions) == 0 && len(conns) == 0 && len(jsonNodes) == 0 {
 		return nil, fmt.Errorf("no valid URLs to add")
@@ -90,7 +90,7 @@ func parseSourceInput(input string, fallbackIndex int) (*parsedSourceInput, erro
 
 	next := fallbackIndex
 
-	for _, uri := range conns {
+	for i, uri := range conns {
 		// Фрагмент ссылки (#имя) — это тег outbound'а: именно под ним узел
 		// уедет в config.json и на него сошлются правила.
 		tag := extractURIFragment(uri)
@@ -101,7 +101,15 @@ func parseSourceInput(input string, fallbackIndex int) (*parsedSourceInput, erro
 		}
 		// SPEC 118 Т2: тело материализуется СРАЗУ, тем же путём, что у
 		// миграции и fetch. Узел без тела собирать не из чего.
-		mat, matErr := config.MaterializeServerNode(uri, nil)
+		//
+		// SPEC 119: материализуется ИСХОДНИК, а не выведенная из него ссылка.
+		// У вставленного конфига wg-quick это блок [Interface]…[Peer] со
+		// всеми комментариями; у обычной ссылки исходник — она сама.
+		material := uri
+		if i < len(rawOf) && rawOf[i] != "" {
+			material = rawOf[i]
+		}
+		mat, matErr := config.MaterializeServerNode(material, nil)
 		if matErr != nil {
 			debuglog.WarnLog("AddSources: URI %q не разобран: %v — узел не добавлен", uri, matErr)
 			continue

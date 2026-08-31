@@ -2,6 +2,20 @@
 
 **🌐 Language**: English | [Русский](ParserConfig.ru.md)
 
+> ## ⚠️ This document is outdated
+>
+> The normative documentation now lives in three places:
+>
+> - **Subscription body parsing** (formats, kinds of composition records,
+>   comments, metadata) — [`SPECS/features/subscriptions.md`](../SPECS/features/subscriptions.md)
+> - **Source model** (tree, tags, identity, merge, fetch) —
+>   [`SPECS/features/sources.md`](../SPECS/features/sources.md)
+> - **Per-protocol support** (URI keys, JSON fields, degradations) —
+>   `contract/registry/protocols/*.json`, one file per protocol
+>
+> The former text follows. It still documents the source field format and is
+> useful as a reference for it, but where they disagree the documents above win.
+
 > **Where this lives (schema v6).** Parser settings live in **`state.json`**, not in `config.json`. Subscriptions are in `connections.sources[]`, shared selectors in `connections.outbounds[]` (see [`WIZARD_STATE.md`](WIZARD_STATE.md)); the per-source `tag_prefix`, `tag_postfix`, `tag_mask`, `skip`, `outbounds`, `disabled` live on the Source.
 >
 > ⚠️ **The `/** @ParserConfig ... */` block in `config.json` is gone** — removed in SPEC 045, `state.json` is now the single (canonical) store. Into `config.json` the parser writes only the nodes themselves, between the `@ParserSTART`/`@ParserEND` markers (and `@ParserSTART_E`/`@ParserEND_E` for endpoints).

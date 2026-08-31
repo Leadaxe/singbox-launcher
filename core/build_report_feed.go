@@ -20,6 +20,21 @@ import (
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/locale"
+)
+
+// Длинные тексты локализации: ключ = английский текст (SPEC 111). Тексты
+// отчёта видит пользователь, и зашитый русский показывался поверх английского
+// интерфейса (обкатка заход 3).
+const (
+	// reportNeverFetchedText — подписку ещё ни разу не обновляли.
+	reportNeverFetchedText = "subscription has never been updated — no nodes yet; press Update"
+	// reportReasonNotStoredText — провал был, но текст ошибки не сохранился.
+	reportReasonNotStoredText = "reason was not stored"
+	// reportFetchFailedText — что сломалось на последнем обновлении.
+	reportFetchFailedText = "last update failed: %s"
+	// reportBuiltFromNodesAtText — чем собран конфиг, раз свежих узлов нет.
+	reportBuiltFromNodesAtText = "; config built from nodes fetched at %s"
 )
 
 // FeedBuildReportFromParser кладёт в отчёт всё, что знает ПАРСЕРНАЯ стадия:
@@ -150,7 +165,7 @@ func FeedBuildReportFromFetchStatus(gen config.BuildGeneration, sources []state.
 				Subject:     label,
 				SourceID:    src.ID,
 				SourceLabel: label,
-				Reason:      "подписка ещё ни разу не обновлялась — узлов нет; нажмите Update",
+				Reason:      locale.T(reportNeverFetchedText),
 			})
 			continue
 		}
@@ -215,11 +230,11 @@ const subUpdateStatusErr = "err"
 func lastFetchFailedReason(st *state.SubUpdateStatus) string {
 	msg := strings.TrimSpace(st.LastErrorMsg)
 	if msg == "" {
-		msg = "причина не сохранена"
+		msg = locale.T(reportReasonNotStoredText)
 	}
-	reason := "последнее обновление провалилось: " + msg
+	reason := locale.Tf(reportFetchFailedText, msg)
 	if at := strings.TrimSpace(st.LastSuccessAt); at != "" {
-		reason += "; конфиг собран из узлов от " + at
+		reason += locale.Tf(reportBuiltFromNodesAtText, at)
 	}
 	return reason
 }

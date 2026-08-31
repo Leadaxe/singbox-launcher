@@ -88,7 +88,7 @@ func TestFeedBuildReportFromFetchStatus_NeverFetchedIsWarningNotFailure(t *testi
 	FeedBuildReportFromFetchStatus(gen, sources)
 
 	reasons := reportReasonsFromReport(config.BuildReportFetchDegraded)
-	if len(reasons) != 1 || !strings.Contains(reasons[0], "ни разу не обновлялась") {
+	if len(reasons) != 1 || !strings.Contains(reasons[0], "has never been updated") {
 		t.Fatalf("нефетченная подписка не отражена: %v", reasons)
 	}
 }
@@ -183,7 +183,7 @@ func TestFeedBuildReportFromFetchStatus_FailedAndNeverSucceededSaysItOnce(t *tes
 	FeedBuildReportFromFetchStatus(gen, sources)
 
 	reasons := reportReasonsFromReport(config.BuildReportFetchDegraded)
-	if len(reasons) != 1 || !strings.Contains(reasons[0], "ни разу не обновлялась") {
+	if len(reasons) != 1 || !strings.Contains(reasons[0], "has never been updated") {
 		t.Fatalf("нефетченная подписка описана не одной строкой: %v", reasons)
 	}
 }

@@ -77,6 +77,15 @@ type previewNodeOps struct {
 	reloadScratch func()
 	// refreshPreview — перерисовать список узлов вкладки.
 	refreshPreview func()
+	// rootNode — контейнера нет: sourceIndex указывает на САМ узел в
+	// m.Sources, а не на контейнер с составом. Так открывается окно узла для
+	// корневого server-источника: Node встроен в Source, и адресовать его
+	// надо верхним уровнем, а не Nodes[].
+	//
+	// Двух окон на одну задачу быть не должно (обкатка): у узла есть ровно
+	// одно окно, и различие «в папке / в корне» — это адрес узла, а не повод
+	// заводить вторую форму.
+	rootNode bool
 }
 
 // nodeOpsAllowed — состав этого контейнера правится командами меню.
@@ -96,7 +105,14 @@ type previewNodeOps struct {
 // «Copy to folder…» при этом есть ВЕЗДЕ: копия ничего в источнике не меняет —
 // это ровно требование П2 «забрать узел провайдера себе».
 func (o *previewNodeOps) nodeOpsAllowed() bool {
-	return o != nil && o.kind == corestate.SourceKindFolder
+	if o == nil {
+		return false
+	}
+	// Корневой узел принадлежит пользователю целиком — как узел папки.
+	if o.rootNode {
+		return true
+	}
+	return o.kind == corestate.SourceKindFolder
 }
 
 // reorderAllowed — порядок узлов этого контейнера принадлежит пользователю.

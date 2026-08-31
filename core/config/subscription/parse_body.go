@@ -38,8 +38,9 @@ import (
 // Словарь Origin.Kind — единый со схемой v7 (state.OriginKind*): парсер
 // порождает происхождение ровно в той форме, в которой оно хранится.
 const (
-	OriginKindURI  = state.OriginKindURI
-	OriginKindJSON = state.OriginKindJSON
+	OriginKindURI   = state.OriginKindURI
+	OriginKindJSON  = state.OriginKindJSON
+	OriginKindWGIni = state.OriginKindWGIni
 )
 
 // ParsedBodyEntry — одна принятая запись тела: узел или провайдерская группа.
@@ -174,18 +175,45 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 		return res, nil
 	}
 
-	// wg-quick .conf → канонические wireguard://-URI и дальше как URI-список
-	// (SPEC 103 B11): разбор INI один, в parseWireGuardURI.
+	// wg-quick .conf → канонические wireguard://-URI (SPEC 103 B11): разбор
+	// INI один, в parseWireGuardURI.
+	//
+	// Ветка своя, а не подмена contentStr на строки URI, потому что
+	// происхождением узла обязан стать ИСХОДНЫЙ блок INI, а не ссылка,
+	// которую мы из него вывели (SPEC 119). При подмене origin штамповала
+	// общая URI-ветка — и записывала туда наш собственный вывод: без
+	// комментариев блока (метка локации, выключенные опции, запасной
+	// Endpoint под решёткой) и без исходного порядка ключей. Такой узел
+	// нельзя пересобрать из конфига провайдера: Regen разбирал бы нашу же
+	// ссылку.
 	if bodyKind == BodyKindWGConf {
-		wgURIs, skippedBlocks := WGConfBodyToURIs(contentStr)
+		converted, skippedBlocks := WGConfBodyToConvertedBlocks(contentStr)
 		if skippedBlocks > 0 {
 			st.warn(fmt.Sprintf("wg-quick body: %d block(s) skipped (no [Peer] endpoint)", skippedBlocks))
 		}
-		if len(wgURIs) == 0 {
+		if len(converted) == 0 {
 			st.warn("wg-quick body: no usable [Interface] block")
 		}
-		contentStr = strings.Join(wgURIs, "\n")
-		bodyKind = BodyKindURIList
+		for _, block := range converted {
+			if st.capReached() {
+				continue
+			}
+			node, err := ParseNode(block.URI, skip)
+			if err != nil {
+				// Блок разобрался в URI, но узлом не стал: запись остаётся в
+				// составе со СВОИМ исходником — показывать надо блок, а не
+				// промежуточную ссылку.
+				st.warn(fmt.Sprintf("record rejected: %v", err))
+				st.reject(err.Error(), OriginKindWGIni, block.Raw)
+				continue
+			}
+			if node == nil {
+				continue // отсечено skip-фильтром
+			}
+			st.accept(node, OriginKindWGIni, block.Raw)
+		}
+		st.finish()
+		return res, nil
 	}
 
 	switch {
@@ -256,6 +284,16 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 				continue
 			}
 			if st.capReached() {
+				continue
+			}
+			// `#`-строка — КОММЕНТАРИЙ тела, а не запись состава: заголовки
+			// подписки (`# profile-title:`, `# profile-update-interval:`) уже
+			// вычитаны в SubMeta (ParseInlineComments), прочие — просто текст
+			// автора списка. Показывать их ещё и строками состава значило бы
+			// разобрать одно и то же дважды и объявить ошибкой то, что мы уже
+			// успешно поняли (обкатка заход 3: «8 node error(s)» на пяти
+			// заголовках и дате).
+			if strings.HasPrefix(line, "#") {
 				continue
 			}
 			// Анонс провайдера («Лучшие сервера», «ПОДХОДЯТ ДЛЯ ИГР») — тоже

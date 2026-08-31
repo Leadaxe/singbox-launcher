@@ -79,6 +79,7 @@ import (
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 	wizardutils "singbox-launcher/ui/configurator/utils"
@@ -400,7 +401,15 @@ func folderDrillHeader(
 		rightItems = append(rightItems, fetchBtn)
 	}
 
-	rightControls := container.New(tightHBox{spacing: rowIconGap}, rightItems...)
+	// Полоса прокрутки списка рисуется ПОВЕРХ строк, поэтому её ширина
+	// резервируется в самой строке — тем же ScrollGutter, что у строк корня
+	// (source_tab.go). Без него скроллбар ложился на иконки справа (обкатка
+	// заход 3). Кнопки пакуются вплотную, а gutter отделён обычным отступом
+	// HBox — как в корне.
+	rightControls := container.NewHBox(
+		container.New(tightHBox{spacing: rowIconGap}, rightItems...),
+		components.NewScrollGutter(),
+	)
 
 	row = fynewidget.NewHoverRow(
 		container.NewBorder(nil, nil, widget.NewIcon(theme.NavigateBackIcon()), rightControls, lbl),
@@ -526,7 +535,15 @@ func folderDrillNodeRow(
 		fynewidget.SetToolTipSafe(delBtn, locale.T("Del"))
 		rightItems = append(rightItems, delBtn)
 	}
-	rightControls := container.New(tightHBox{spacing: rowIconGap}, rightItems...)
+	// Полоса прокрутки списка рисуется ПОВЕРХ строк, поэтому её ширина
+	// резервируется в самой строке — тем же ScrollGutter, что у строк корня
+	// (source_tab.go). Без него скроллбар ложился на иконки справа (обкатка
+	// заход 3). Кнопки пакуются вплотную, а gutter отделён обычным отступом
+	// HBox — как в корне.
+	rightControls := container.NewHBox(
+		container.New(tightHBox{spacing: rowIconGap}, rightItems...),
+		components.NewScrollGutter(),
+	)
 
 	titleBox := container.New(previewTightVBox{gap: previewTitleSubtitleGap}, name, sub)
 	row = fynewidget.NewHoverRow(

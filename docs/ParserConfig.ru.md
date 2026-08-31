@@ -2,6 +2,20 @@
 
 **🌐 Язык**: [English](ParserConfig.md) | Русский
 
+> ## ⚠️ Документ устарел
+>
+> Актуальная нормативная документация разнесена по трём местам:
+>
+> - **Разбор тела подписки** (форматы, виды записей состава, комментарии,
+>   метаданные) — [`SPECS/features/subscriptions.md`](../SPECS/features/subscriptions.md)
+> - **Модель источников** (дерево, теги, идентичность, merge, fetch) —
+>   [`SPECS/features/sources.md`](../SPECS/features/sources.md)
+> - **Что мы умеем из каждого протокола** (ключи URI, поля JSON,
+>   деградации) — `contract/registry/protocols/*.json`, по файлу на протокол
+>
+> Ниже — прежний текст. Он описывает формат полей источника и остаётся
+> полезным как справочник по ним, но при расхождении верны документы выше.
+
 > **Где это хранится (актуально для schema v6).** Настройки парсера живут в **`state.json`**, а не в `config.json`. Список подписок — в `connections.sources[]`, общие селекторы — в `connections.outbounds[]` (см. [`WIZARD_STATE.md`](WIZARD_STATE.md)); per-source `tag_prefix`, `tag_postfix`, `tag_mask`, `skip`, `outbounds`, `disabled` живут на уровне Source.
 >
 > ⚠️ **Блока `/** @ParserConfig ... */` в `config.json` больше нет** — он удалён в SPEC 045, `state.json` стал единственным (canonical) хранилищем. В `config.json` парсер пишет только сами узлы, между маркерами `@ParserSTART`/`@ParserEND` (и `@ParserSTART_E`/`@ParserEND_E` для endpoints).

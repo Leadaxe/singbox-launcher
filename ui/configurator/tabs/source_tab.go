@@ -342,11 +342,16 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	urlEntryScrollInner := container.NewBorder(nil, nil, nil, urlURIGutter, guiState.SourceURLEntry)
 	urlEntryScroll := container.NewScroll(urlEntryScrollInner)
 	urlEntryScroll.Direction = container.ScrollBoth
-	// Create dummy Rectangle to set size (height 3 lines, width limited)
+	// Прямоугольник задаёт МИНИМУМ (три строки), а не фиксированную высоту:
+	// поле живёт в половине VSplit и обязано расти вместе с ней. Раньше тот
+	// же Stack держал ровно 60px — при перетаскивании полоски росла половина,
+	// а скролл внутри оставался прежним, и поле визуально не увеличивалось.
+	//
+	// Stack растягивает ВСЕ свои элементы по размеру контейнера, поэтому
+	// скролл занимает всю выданную высоту, а прямоугольник продолжает
+	// работать нижней границей через MinSize.
 	urlEntrySizeRect := canvas.NewRectangle(color.Transparent)
-	urlEntrySizeRect.SetMinSize(fyne.NewSize(0, 60)) // Width 900px, height ~3 lines (approx 20px per line)
-	// Wrap in Max container with Rectangle to fix size
-	// Scroll container will be limited by this size and show scrollbars when content doesn't fit
+	urlEntrySizeRect.SetMinSize(fyne.NewSize(0, 60)) // ~3 строки (≈20px на строку)
 	urlEntryWithSize := container.NewStack(
 		urlEntrySizeRect,
 		urlEntryScroll,
@@ -433,7 +438,11 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		urlEntryWithSize,
 	)
 
-	urlContainer := container.NewVBox(urlEntryRow)
+	// Без VBox: он выдаёт детям РОВНО их MinSize и не растягивает по высоте —
+	// половина VSplit росла, а строка ввода внутри оставалась в три строки.
+	// Border-строка сама занимает всю выданную высоту, кнопки Add/⋮/? при
+	// этом прижаты вправо и по высоте не тянутся (они в Center).
+	urlContainer := urlEntryRow
 
 	// Section 2: Sources list (based on ParserConfig.ParserConfig.Proxies)
 	sourcesLabel := widget.NewLabel(locale.T("Sources"))
@@ -921,7 +930,17 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				if supportBtn := supportLinkButton(meta, rowGetter); supportBtn != nil {
 					rightControlsItems = append(rightControlsItems, supportBtn)
 				}
-				rightControlsItems = append(rightControlsItems, copyBtn, editBtn)
+				// У СТРОКИ-УЗЛА карандаша и копирования нет: обе команды
+				// живут внутри его окна, которое открывается кликом по
+				// строке. Иконка, дублирующая клик, занимала место и делала
+				// строку узла шумнее строки контейнера, где клик значит
+				// другое (провал в состав) и кнопки поэтому нужны.
+				//
+				// Правое меню строки остаётся: там есть то, чего в окне нет
+				// (копировать тег, перенос в папку).
+				if !sourceRowNodeOpsAllowed(src.Kind) {
+					rightControlsItems = append(rightControlsItems, copyBtn, editBtn)
+				}
 				if refreshBtn != nil {
 					rightControlsItems = append(rightControlsItems, refreshBtn)
 				}
@@ -1074,6 +1093,19 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					rowKind := src.Kind
 					rowLabel := shortLabel
 					wrap := fynewidget.NewSecondaryTapWrap(row)
+					// ЛЕВЫЙ клик открывает узел — как в составе папки, где он
+					// это делает с W13. Раньше строка узла в корне на клик не
+					// отвечала вовсе, и одно и то же действие в двух списках
+					// работало по-разному: в папке кликом, в корне только
+					// карандашом.
+					wrap.OnPrimary = func(fyne.KeyModifier) {
+						presenter.MergeGUIToModel()
+						mm := presenter.Model()
+						if mm == nil || rowIndex >= len(mm.Sources) {
+							return
+						}
+						showSourceEditWindow(presenter, guiState, guiState.Window, rowIndex, rowLabel)
+					}
 					wrap.OnSecondary = func(pe *fyne.PointEvent) {
 						showSourceRowNodeContextMenu(
 							presenter, guiState, rowIndex, rowKind, rawTag, rowLabel, pe)
@@ -1134,28 +1166,35 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// с Truncation он крошечный — имя контейнера схлопывалось в «…».
 	sourcesHeader := container.NewBorder(nil, nil, nil, previewAllBtn, sourcesTitleSwap)
 
-	// Без ведущего разделителя: AppTabs уже рисует свой divider под строкой
-	// вкладок (container/apptabs.go), и собственная линия первым элементом
-	// давала две полоски подряд. Разделитель между URL и списком остаётся —
-	// он делит блоки, а не дублирует рамку вкладки.
-	topBlock := container.NewVBox(
-		urlContainer,
-		widget.NewSeparator(),
-		sourcesHeader,
-	)
-
 	tabScrollGutter := components.NewScrollGutter()
 
 	// Sources list fills remaining tab height (preview all servers moved to a separate window).
-	body := container.NewBorder(
-		topBlock,
+	listBlock := container.NewBorder(
+		sourcesHeader,
 		nil,
 		nil,
 		tabScrollGutter,
 		sourcesScroll,
 	)
 
-	return body
+	// Поле ввода и список делит ТАСКАЕМЫЙ разделитель, а не приклеенная к
+	// верху полоска: в поле вставляют не только ссылку в строку, но и
+	// многострочный конфиг wg-quick — в трёх фиксированных строках такой
+	// текст не разглядеть и не отредактировать. Ведущего разделителя по
+	// прежнему нет: AppTabs уже рисует свой divider под строкой вкладок, и
+	// собственная линия первым элементом давала две полоски подряд.
+	//
+	// Минимальная высота половин — их же MinSize (у поля это те самые 60px
+	// от urlEntrySizeRect), поэтому схлопнуть поле в ноль нельзя.
+	//
+	// Позиция не запоминается между запусками намеренно: это состояние
+	// ЭТОГО экрана, как и подсветка источника, — не настройка приложения.
+	split := container.NewVSplit(urlContainer, listBlock)
+	// Поле ввода занимает свой минимум, всё остальное — списку: он и есть
+	// содержимое вкладки, а поле разворачивают под задачу.
+	split.SetOffset(0)
+
+	return split
 }
 
 // applySourceMutation is the single refresh chain every Sources-list mutation

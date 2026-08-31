@@ -1499,6 +1499,9 @@
   "URI does not unpack: %s. You can write the outbound JSON by hand and press Apply.": {
     "value": "URI не распаковывается: %s. Можно написать outbound JSON руками и нажать «Применить»."
   },
+  "Origin does not unpack: %s. You can write the outbound JSON by hand and press Apply.": {
+    "value": "Исходник не распаковывается: %s. Можно написать outbound JSON руками и нажать «Применить»."
+  },
   "Unpacked nodes: %d": {
     "value": "Распаковано нод: %d"
   },
@@ -3946,5 +3949,32 @@
   },
   "node error(s)": {
     "value": "ошибок узлов"
+  },
+  "Regen from origin": {
+    "value": "Пересобрать из исходника"
+  },
+  "Rebuild the outbound from the origin text above, discarding manual edits to the JSON?": {
+    "value": "Пересобрать outbound из текста исходника выше, отбросив ручные правки JSON?"
+  },
+  "Regen": {
+    "value": "Пересобрать"
+  },
+  "Origin is empty.": {
+    "value": "Исходник пуст."
+  },
+  "Subscription URL, Direct Links, JSON, WG/AWG INI ...": {
+    "value": "Ссылка на подписку, прямые ссылки, JSON, WG/AWG INI ..."
+  },
+  "subscription has never been updated — no nodes yet; press Update": {
+    "value": "подписка ещё ни разу не обновлялась — узлов нет; нажмите Update"
+  },
+  "reason was not stored": {
+    "value": "причина не сохранена"
+  },
+  "last update failed: %s": {
+    "value": "последнее обновление провалилось: %s"
+  },
+  "; config built from nodes fetched at %s": {
+    "value": "; конфиг собран из узлов от %s"
   }
 }

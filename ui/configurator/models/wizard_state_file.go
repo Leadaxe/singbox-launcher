@@ -68,6 +68,11 @@ const (
 	SourceKindAuto         = corestate.SourceKindAuto
 	SourceKindFolder       = corestate.SourceKindFolder
 	SourceKindSubscription = corestate.SourceKindSubscription
+	// SourceKindUnsupported — запись тела, которую не удалось разобрать.
+	// Живёт только в составе контейнера, но реестр видов окна источника
+	// обязан называть её явно: вид, не названный ни одной веткой, достаётся
+	// чужой по остаточному принципу (дыра Д3).
+	SourceKindUnsupported = corestate.SourceKindUnsupported
 )
 
 // WizardStateVersion — для callsite'ов которые используют это для

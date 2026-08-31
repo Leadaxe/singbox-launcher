@@ -215,7 +215,14 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 }
 
 // classifyInputLines классифицирует входные строки на подписки и прямые ссылки.
-func classifyInputLines(input string, timing interface{ LogTiming(string, time.Duration) }) (subscriptions []string, connections []string) {
+//
+// rawOf — исходник строки connections[i], когда он ОТЛИЧАЕТСЯ от самой строки.
+// Пуст у обычных ссылок (там исходник и есть строка) и несёт блок
+// `[Interface]`…`[Peer]` у вставленного конфига wg-quick: узел разбирается из
+// выведенного нами URI, а происхождением обязан стать блок провайдера
+// (SPEC 119). Без этой пары вставка руками теряла комментарии блока ровно
+// так же, как их терял разбор тела подписки.
+func classifyInputLines(input string, timing interface{ LogTiming(string, time.Duration) }) (subscriptions []string, connections []string, rawOf []string) {
 	splitStartTime := time.Now()
 
 	// SPEC 076: pasted [Interface]/[Peer] conf text (WireGuard/AmneziaWG .conf)
@@ -226,6 +233,7 @@ func classifyInputLines(input string, timing interface{ LogTiming(string, time.D
 	// conf text can be pasted together.
 	input, confBlocks := subscription.ExtractWGConfBlocks(input)
 	confURIs := make([]string, 0, len(confBlocks))
+	confRaws := make([]string, 0, len(confBlocks))
 	for _, block := range confBlocks {
 		uri, err := subscription.ConvertWGConfText(block)
 		if err != nil {
@@ -233,6 +241,7 @@ func classifyInputLines(input string, timing interface{ LogTiming(string, time.D
 			continue
 		}
 		confURIs = append(confURIs, uri)
+		confRaws = append(confRaws, block)
 	}
 
 	lines := strings.Split(input, "\n")
@@ -240,6 +249,7 @@ func classifyInputLines(input string, timing interface{ LogTiming(string, time.D
 
 	subscriptions = make([]string, 0)
 	connections = make([]string, 0)
+	rawOf = make([]string, 0)
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -250,14 +260,17 @@ func classifyInputLines(input string, timing interface{ LogTiming(string, time.D
 			subscriptions = append(subscriptions, line)
 		} else if subscription.IsDirectLink(line) {
 			connections = append(connections, line)
+			// Исходник ссылки — она сама; отдельного raw у неё нет.
+			rawOf = append(rawOf, "")
 		}
 	}
 	connections = append(connections, confURIs...)
+	rawOf = append(rawOf, confRaws...)
 
 	timing.LogTiming("classify lines", time.Since(splitStartTime))
 	debuglog.DebugLog("applyURLToParserConfig: Classified lines: %d subscriptions, %d connections",
 		len(subscriptions), len(connections))
-	return subscriptions, connections
+	return subscriptions, connections, rawOf
 }
 
 // SerializeParserConfig serializes ParserConfig to JSON string.

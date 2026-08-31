@@ -79,7 +79,24 @@ func regenServerBodyFromRaw(node *wizardmodels.Node) error {
 	if node == nil || node.Origin == nil {
 		return fmt.Errorf("no origin to regenerate from")
 	}
-	raw := node.Origin.Raw
+	return regenServerBodyFromRawText(node, node.Origin.Raw)
+}
+
+// regenServerBodyFromRawText — тот же Regen, но из ЯВНО переданного текста
+// происхождения (SPEC 119, фаза 2).
+//
+// Нужен правке raw в окне узла: модель разрешает править исходник, но
+// действует правка только через Regen (features/sources.md, §Происхождение).
+// Пересборка идёт из текста, который пользователь видит в поле, а не из
+// сохранённого в узле, — иначе кнопка Regen применяла бы прежний исходник и
+// правка молча пропадала бы.
+//
+// Успех перезаписывает origin.raw новым текстом: он и есть новое
+// происхождение узла. Ошибка — ОТКАТ, узел остаётся прежним.
+func regenServerBodyFromRawText(node *wizardmodels.Node, raw string) error {
+	if node == nil || node.Origin == nil {
+		return fmt.Errorf("no origin to regenerate from")
+	}
 	if raw == "" {
 		return fmt.Errorf("origin is empty")
 	}

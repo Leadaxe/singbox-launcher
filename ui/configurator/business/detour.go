@@ -63,6 +63,51 @@ func DetourOptions(model *wizardmodels.WizardModel, source *corestate.Source, no
 
 // DetourOptionsWithNodes — то же плюс карта «показанная строка → её смысл».
 func DetourOptionsWithNodes(model *wizardmodels.WizardModel, source *corestate.Source, noneLabel string) (options []string, selected string, choices map[string]DetourChoice) {
+	h := detourHolder{}
+	if source != nil {
+		h.cur = source.Detour
+		h.selfID = source.ID
+		if source.Replace != nil {
+			h.replaceTag = source.Replace.Tag
+		}
+	}
+	return detourOptionsFor(model, h, noneLabel)
+}
+
+// DetourOptionsForNode — тот же пикер для узла ВНУТРИ контейнера (папка,
+// подписка).
+//
+// Отдельного резолва здесь нет и быть не должно: ссылка (NodeLink) у всех
+// носителей одна и та же — пара «id папки + сырой тег», где пустой FolderID
+// означает корневое пространство (features/directions.md). Разными были лишь
+// три входа — текущая ссылка, свои replace-теги и собственный ID для
+// самоисключения, — и они вынесены в detourHolder. Вторая реализация пикера
+// разъехалась бы с первой на первой же правке правил fail-closed.
+//
+// folderID — контейнер, в котором лежит узел (его ID); rawTag — сырой тег
+// самого узла: через себя цепочку не строят.
+func DetourOptionsForNode(model *wizardmodels.WizardModel, node *corestate.Node, folderID, rawTag, noneLabel string) (options []string, selected string, choices map[string]DetourChoice) {
+	h := detourHolder{selfFolderID: folderID, selfRawTag: rawTag}
+	if node != nil {
+		h.cur = node.Detour
+	}
+	return detourOptionsFor(model, h, noneLabel)
+}
+
+// detourHolder — носитель detour глазами пикера: всё, что ему нужно знать о
+// том, КТО выбирает цель. Источник и узел контейнера различаются только этим.
+type detourHolder struct {
+	// cur — действующая ссылка носителя.
+	cur *corestate.NodeLink
+	// selfID — ID носителя-источника (пусто у узла контейнера).
+	selfID string
+	// replaceTag — тег свёртки носителя-папки (пусто у остальных).
+	replaceTag string
+	// selfFolderID / selfRawTag — адрес носителя-узла внутри контейнера.
+	selfFolderID, selfRawTag string
+}
+
+func detourOptionsFor(model *wizardmodels.WizardModel, holder detourHolder, noneLabel string) (options []string, selected string, choices map[string]DetourChoice) {
 	options = []string{noneLabel}
 	choices = map[string]DetourChoice{}
 	inOptions := map[string]struct{}{noneLabel: {}}
@@ -70,9 +115,9 @@ func DetourOptionsWithNodes(model *wizardmodels.WizardModel, source *corestate.S
 	// Свои replace-теги: свёрнутая папка не может ходить через собственную
 	// же замену — это ссылка на саму себя.
 	own := map[string]struct{}{}
-	if source != nil && source.Replace != nil && source.Replace.Tag != "" {
-		own[source.Replace.Tag] = struct{}{}
-		own[source.Replace.Tag+"-auto"] = struct{}{}
+	if holder.replaceTag != "" {
+		own[holder.replaceTag] = struct{}{}
+		own[holder.replaceTag+"-auto"] = struct{}{}
 	}
 
 	for _, tag := range GetAvailableOutbounds(model) {
@@ -87,11 +132,7 @@ func DetourOptionsWithNodes(model *wizardmodels.WizardModel, source *corestate.S
 		choices[tag] = DetourChoice{Link: &corestate.NodeLink{Tag: tag}, Label: tag}
 	}
 
-	// Текущая ссылка источника.
-	var cur *corestate.NodeLink
-	if source != nil {
-		cur = source.Detour
-	}
+	cur := holder.cur
 	selectedDisplay := ""
 
 	// Верхние узлы-серверы: они тоже законные цели (SPEC 112-A) — их тег
@@ -102,8 +143,14 @@ func DetourOptionsWithNodes(model *wizardmodels.WizardModel, source *corestate.S
 			if s.Kind != wizardmodels.SourceKindServer {
 				continue
 			}
-			if source != nil && s.ID != "" && s.ID == source.ID {
+			if holder.selfID != "" && s.ID == holder.selfID {
 				continue // цепочка через самого себя
+			}
+			// Узел контейнера тоже не ходит через себя: у корневого узла
+			// адрес — пустой FolderID и его сырой тег.
+			if holder.selfFolderID == "" && holder.selfRawTag != "" &&
+				strings.TrimSpace(s.NodeTagOrLabel()) == holder.selfRawTag {
+				continue
 			}
 			nodeTag := strings.TrimSpace(s.NodeTagOrLabel())
 			if nodeTag == "" {

@@ -152,6 +152,16 @@ func materializeServerForMigration(req state.MigrationServerRequest) (*state.Mig
 		}, nil
 	}
 
+	// Блок wg-quick — не URI: его нельзя нормализовать построчно и скормить
+	// ParseNode. Происхождением узла остаётся ИСХОДНЫЙ текст блока
+	// (SPEC 119), поэтому конвертация в канонический wireguard:// здесь
+	// промежуточная и в origin не попадает: иначе Regen переписал бы raw
+	// нашим собственным выводом и потерял комментарии блока — ровно то, ради
+	// чего исходник и хранится.
+	if blocks := subscription.WGConfBlocksOf(req.URI); len(blocks) > 0 {
+		return materializeWGConfBlock(blocks)
+	}
+
 	line := subscription.NormalizeSubscriptionTextLine(req.URI)
 	if line == "" {
 		return nil, fmt.Errorf("no URI and no config_json")
@@ -171,6 +181,39 @@ func materializeServerForMigration(req state.MigrationServerRequest) (*state.Mig
 		Body:       body,
 		OriginKind: state.OriginKindURI,
 		OriginRaw:  req.URI, // байт в байт, как хранился
+		LegacyHash: LegacyNodeIdentityHash(node),
+	}, nil
+}
+
+// materializeWGConfBlock собирает узел из текста wg-quick.
+//
+// Ровно один блок: материализуется ОДИН узел, и текст, несущий несколько
+// секций [Interface], для этого входа неоднозначен — из какого блока
+// собирать. Пользователю это сообщается ошибкой, а не выбором наугад.
+func materializeWGConfBlock(blocks []string) (*state.MigrationServerResult, error) {
+	if len(blocks) > 1 {
+		return nil, fmt.Errorf("wg-quick text carries %d [Interface] blocks — one node needs exactly one", len(blocks))
+	}
+	raw := blocks[0]
+	uri, err := subscription.ConvertWGConfText(raw)
+	if err != nil {
+		return nil, fmt.Errorf("wg-quick block: %w", err)
+	}
+	node, err := subscription.ParseNode(uri, nil)
+	if err != nil {
+		return nil, fmt.Errorf("wg-quick block: %w", err)
+	}
+	if node == nil {
+		return nil, fmt.Errorf("wg-quick block parsed to no node")
+	}
+	body, err := emitMigrationBody(node)
+	if err != nil {
+		return nil, err
+	}
+	return &state.MigrationServerResult{
+		Body:       body,
+		OriginKind: state.OriginKindWGIni,
+		OriginRaw:  raw, // блок байт в байт, а не выведенный из него URI
 		LegacyHash: LegacyNodeIdentityHash(node),
 	}, nil
 }
