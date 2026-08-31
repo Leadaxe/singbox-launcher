@@ -203,7 +203,17 @@ type Source struct {
 
 	// === subscription only ===
 
-	URL          string              `json:"url,omitempty"`
+	URL string `json:"url,omitempty"`
+	// UserAgent — User-Agent ИМЕННО ЭТОЙ подписки; пусто = глобальный из
+	// настроек (а он пуст → дефолт лаунчера).
+	//
+	// Поле нужно потому, что провайдеры ВЕТВЯТ выдачу по UA: одна и та же
+	// ссылка отдаёт разным клиентам разные тела (у Liberty под UA лаунчера
+	// приезжает протухшая sing-box-ветка на 40 прямых узлов, под UA Happ —
+	// 292 Xray-конфига, включая рабочие BYPASS через socks5-релей). Глобальной
+	// настройки для этого мало: подменять UA всем подпискам ради одной значит
+	// сломать выдачу остальным, которые под нашим UA отвечают правильно.
+	UserAgent    string              `json:"user_agent,omitempty"`
 	Skip         []map[string]string `json:"skip,omitempty"`
 	MaxNodes     int                 `json:"max_nodes,omitempty"`
 	Update       *UpdateSpec         `json:"update,omitempty"`
@@ -335,7 +345,6 @@ func NewSubscriptionSource(name, url string) Source {
 // по kind обнуляет нелегальные КАНОНИЧЕСКИЕ поля (с warning), проверяет
 // обязательные. Неизвестный (или пустой) kind — внятный отказ загрузки:
 // файл от более нового мажора не должен сюда попасть, но защита обязана быть.
-//
 func normalizeSourceShape(s *Source) ([]string, error) {
 	if s == nil {
 		return nil, nil
@@ -364,9 +373,9 @@ func normalizeSourceShape(s *Source) ([]string, error) {
 			drop("replace")
 			s.Replace = nil
 		}
-		if s.URL != "" || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil || len(s.PendingDisabled) > 0 {
-			drop("url/skip/max_nodes/update/meta/update_status/pending_disabled")
-			s.URL, s.Skip, s.MaxNodes, s.Update, s.Meta, s.UpdateStatus, s.PendingDisabled = "", nil, 0, nil, nil, nil, nil
+		if s.URL != "" || s.UserAgent != "" || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil || len(s.PendingDisabled) > 0 {
+			drop("url/user_agent/skip/max_nodes/update/meta/update_status/pending_disabled")
+			s.URL, s.UserAgent, s.Skip, s.MaxNodes, s.Update, s.Meta, s.UpdateStatus, s.PendingDisabled = "", "", nil, 0, nil, nil, nil, nil
 		}
 		if ws := normalizeNodeShape(&s.Node, sourceShapeName(s)); len(ws) > 0 {
 			warns = append(warns, ws...)
@@ -396,9 +405,9 @@ func normalizeSourceShape(s *Source) ([]string, error) {
 			s.Group = nil
 		}
 		if s.Kind == SourceKindFolder {
-			if s.URL != "" || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil || len(s.PendingDisabled) > 0 {
-				drop("url/skip/max_nodes/update/meta/update_status/pending_disabled")
-				s.URL, s.Skip, s.MaxNodes, s.Update, s.Meta, s.UpdateStatus, s.PendingDisabled = "", nil, 0, nil, nil, nil, nil
+			if s.URL != "" || s.UserAgent != "" || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil || len(s.PendingDisabled) > 0 {
+				drop("url/user_agent/skip/max_nodes/update/meta/update_status/pending_disabled")
+				s.URL, s.UserAgent, s.Skip, s.MaxNodes, s.Update, s.Meta, s.UpdateStatus, s.PendingDisabled = "", "", nil, 0, nil, nil, nil, nil
 			}
 		}
 		for i := range s.Nodes {

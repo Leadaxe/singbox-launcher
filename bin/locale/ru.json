@@ -3976,5 +3976,14 @@
   },
   "; config built from nodes fetched at %s": {
     "value": "; конфиг собран из узлов от %s"
+  },
+  "User-Agent": {
+    "value": "User-Agent"
+  },
+  "default (launcher UA)": {
+    "value": "по умолчанию (UA лаунчера)"
+  },
+  "Some providers return a different node list depending on the client that asks. Leave empty to use the launcher default (or the global override from Settings).": {
+    "value": "Некоторые провайдеры отдают разный список узлов в зависимости от того, какой клиент спрашивает. Пусто — использовать UA лаунчера (или глобальную подмену из настроек)."
   }
 }

@@ -60,7 +60,9 @@ func sourceNodesHeader(nodes []corestate.Node) string {
 //
 // url пуст (не подписка / URL не задан) — блока нет: кнопка, которой некуда
 // ходить, обещала бы несуществующее.
-func appendRawBodySection(body *fyne.Container, subURL string) {
+// userAgent — UA ИСТОЧНИКА: провайдеры ветвят выдачу по нему, и без него
+// диагностика показывала бы не то тело, которое приедет на fetch.
+func appendRawBodySection(body *fyne.Container, subURL, userAgent string) {
 	subURL = strings.TrimSpace(subURL)
 	if subURL == "" {
 		return
@@ -118,7 +120,7 @@ func appendRawBodySection(body *fyne.Container, subURL string) {
 		reloadBtn.Disable()
 		status.SetText(locale.T("Loading..."))
 		go func() {
-			res, err := subscription.FetchSubscriptionWithMeta(subURL)
+			res, err := subscription.FetchSubscriptionWithMetaUA(subURL, userAgent)
 			fyne.Do(func() {
 				reloadBtn.Enable()
 				if err != nil {

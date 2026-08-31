@@ -82,6 +82,16 @@ var LoadSubscriptionSettingsFunc func() SubscriptionRequestSettings
 // FetchSubscriptionWithMeta and the legacy FetchSubscription wrapper stay
 // in lockstep — see SPEC 061 §"Request headers".
 func applySubscriptionRequestHeaders(req *http.Request) {
+	applySubscriptionRequestHeadersUA(req, "")
+}
+
+// applySubscriptionRequestHeadersUA — то же, но с UA КОНКРЕТНОГО источника.
+//
+// Приоритет: UA источника → глобальный из настроек → дефолт лаунчера.
+// Пер-источниковый нужен потому, что провайдеры ветвят выдачу по UA (см.
+// state.Source.UserAgent): глобальная подмена ради одной подписки ломает
+// выдачу остальным.
+func applySubscriptionRequestHeadersUA(req *http.Request, sourceUA string) {
 	// User-Agent: load settings ONCE here so we can let the user override
 	// the default UA via Settings tab. Empty user value → default helper
 	// (current launcher version + OS/arch). Both branches Set() once —
@@ -90,7 +100,10 @@ func applySubscriptionRequestHeaders(req *http.Request) {
 	if LoadSubscriptionSettingsFunc != nil {
 		s = LoadSubscriptionSettingsFunc()
 	}
-	ua := strings.TrimSpace(s.UserAgent)
+	ua := strings.TrimSpace(sourceUA)
+	if ua == "" {
+		ua = strings.TrimSpace(s.UserAgent)
+	}
 	if ua == "" {
 		ua = configtypes.BuildSubscriptionUserAgent()
 	}
@@ -224,6 +237,12 @@ func (e *FetchAnnounceError) Error() string {
 // На любой ошибке (network/HTTP/decode) возвращает (*FetchResult с
 // HTTPStatus заполненным если был ответ, без Body, без Meta) + error.
 func FetchSubscriptionWithMeta(url string) (*FetchResult, error) {
+	return FetchSubscriptionWithMetaUA(url, "")
+}
+
+// FetchSubscriptionWithMetaUA — загрузка с UA КОНКРЕТНОГО источника.
+// Пустой userAgent = прежнее поведение (глобальный UA из настроек).
+func FetchSubscriptionWithMetaUA(url, userAgent string) (*FetchResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), NetworkRequestTimeout)
 	defer cancel()
 
@@ -232,7 +251,7 @@ func FetchSubscriptionWithMeta(url string) (*FetchResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-	applySubscriptionRequestHeaders(req)
+	applySubscriptionRequestHeadersUA(req, userAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {

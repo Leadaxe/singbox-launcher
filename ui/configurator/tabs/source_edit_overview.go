@@ -235,7 +235,7 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 		// диагностика «что вообще прислал провайдер», когда состав выглядит
 		// не так, как ожидалось. Узлы при этом не трогаются вовсе: это показ,
 		// а не обновление.
-		appendRawBodySection(body, src.URL)
+		appendRawBodySection(body, src.URL, src.UserAgent)
 
 		appendStorageRecordSection(body, src)
 

@@ -33,7 +33,9 @@ import (
 const (
 	sourceDetourHintText         = "Dial this source's nodes through another outbound to build a proxy chain. Group tags chain through a selector; » entries chain through one concrete server, tracked by that server and its node tag — editing the server's settings or tag prefix keeps the link, renaming its node tag clears it."
 	sourcePreviewNoCacheHintText = "Disabled subscriptions are not auto-fetched, so this one has no nodes yet. Click below to fetch it once without enabling it."
-	sourceTagVarsHintText        = "Variables (work in both fields): {$tag} original node tag · {$server} address · {$port} port · {$scheme} protocol (also {$protocol}) · {$label} name from the link's #fragment · {$comment} comment · {$num} node number from 1"
+	// sourceUserAgentHintText — зачем у подписки свой User-Agent.
+	sourceUserAgentHintText = "Some providers return a different node list depending on the client that asks. Leave empty to use the launcher default (or the global override from Settings)."
+	sourceTagVarsHintText   = "Variables (work in both fields): {$tag} original node tag · {$server} address · {$port} port · {$scheme} protocol (also {$protocol}) · {$label} name from the link's #fragment · {$comment} comment · {$num} node number from 1"
 )
 
 // Min heights for Source Edit dialog tab bodies (child window; do not use main window canvas before Show).
@@ -767,6 +769,15 @@ func showSourceEditWindowAt(
 	urlEntry := widget.NewEntry()
 	urlEntry.SetPlaceHolder("https://example.com/sub") // l10n-exempt: sample URL
 
+	// User-Agent ЭТОЙ подписки. Пусто = глобальный из настроек приложения.
+	//
+	// Поле здесь, а не только в общих настройках, потому что провайдеры
+	// ветвят выдачу по UA: одна и та же ссылка отдаёт разным клиентам разные
+	// тела. Глобальной подмены для этого мало — она сломала бы выдачу
+	// остальным подпискам, которые под нашим UA отвечают правильно.
+	uaEntry := widget.NewEntry()
+	uaEntry.SetPlaceHolder(locale.T("default (launcher UA)"))
+
 	// MultiLine, а не однострочный Entry: происхождением узла бывает не
 	// только ссылка в строку, но и блок wg-quick на два десятка строк
 	// (SPEC 119) — в однострочном поле он показывался обрезанным и не
@@ -981,6 +992,7 @@ func showSourceEditWindowAt(
 			return
 		}
 		urlEntry.SetText(p.URL)
+		uaEntry.SetText(p.UserAgent)
 		ts := tagSpecOf(p)
 		prefixEntry.SetText(ts.Prefix)
 		postfixEntry.SetText(ts.Postfix)
@@ -1005,6 +1017,12 @@ func showSourceEditWindowAt(
 		refreshDetourOptions()
 		if afterSync != nil {
 			afterSync()
+		}
+	}
+
+	uaEntry.OnChanged = func(s string) {
+		if p := srcRef(); p != nil {
+			p.UserAgent = strings.TrimSpace(s)
 		}
 	}
 
@@ -1274,6 +1292,12 @@ func showSourceEditWindowAt(
 			// Подписка: URL + Tag prefix/postfix + свёртка + Detour.
 			settingsContent.Add(widget.NewLabel(locale.T("Subscription URL")))
 			settingsContent.Add(urlEntry)
+			settingsContent.Add(widget.NewLabel(locale.T("User-Agent")))
+			settingsContent.Add(uaEntry)
+			uaHint := widget.NewLabel(locale.T(sourceUserAgentHintText))
+			uaHint.Wrapping = fyne.TextWrapWord
+			uaHint.Importance = widget.LowImportance
+			settingsContent.Add(uaHint)
 			settingsContent.Add(widget.NewSeparator())
 			tagPolicyBlock()
 			settingsContent.Add(widget.NewSeparator())
