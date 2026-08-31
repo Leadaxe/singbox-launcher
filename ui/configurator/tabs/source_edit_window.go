@@ -639,7 +639,17 @@ func showSourceEditWindowAt(
 	}
 	view := sourceViewOf(srcKind)
 	isFolderSource := view.isFolder
-	if mm != nil && sourceIndex < len(mm.Sources) {
+	// Имя в заголовке — у окна УЗЛА от самого узла, а не от строки: sourceIndex
+	// у него указывает на контейнер, и ветки ниже подставили бы имя папки
+	// («Source — Folder 1» над формой узла, обкатка заход 3). shortLabel сюда
+	// уже приходит от вызывающего — это подпись строки узла.
+	if editingNodeTitle := strings.TrimSpace(nodeLink.Tag); editingNodeTitle != "" {
+		if n := wizardbusiness.NodeByLink(m, nodeLink); n != nil {
+			if t := strings.TrimSpace(n.Tag); t != "" {
+				fullTitleSrc = t
+			}
+		}
+	} else if mm != nil && sourceIndex < len(mm.Sources) {
 		s := mm.Sources[sourceIndex]
 		switch s.Kind {
 		case wizardmodels.SourceKindSubscription:
@@ -1170,15 +1180,17 @@ func showSourceEditWindowAt(
 	}
 	rebuildSettingsLayout := func() {
 		settingsContent.Objects = settingsContent.Objects[:0]
-		mm := presenter.Model()
-		kind := wizardmodels.SourceKindSubscription
-		if mm != nil && sourceIndex < len(mm.Sources) {
-			kind = mm.Sources[sourceIndex].Kind
-		}
+		// Вид — ОБЩИЙ для всего окна (`view`), а не пересчитанный по строке
+		// sourceIndex. Пересчёт здесь был багом: когда окно открыто на УЗЕЛ
+		// внутри папки, sourceIndex указывает на папку, и форма показывала
+		// «Folder name» + тег-политику + «Fold this subscription» вместо
+		// полей узла — при том, что заголовок и вкладки уже считались по
+		// настоящему виду узла (обкатка заход 3).
+		//
 		// Ветвление по ВИДУ, где каждый называет себя сам. Ветки `default`
 		// с чужим содержимым здесь быть не должно: именно она (подписка +
 		// auto в одной) и была дырой Д3.
-		switch v := sourceViewOf(kind); {
+		switch v := view; {
 		case v.isFolder:
 			// Папка (SPEC 116, критерий A8): имя + тег-политика + свёртка +
 			// detour. Ни URL, ни интервала обновления, ни max_nodes, ни
