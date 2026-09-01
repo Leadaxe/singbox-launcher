@@ -31,6 +31,42 @@ func stripEmittedDecorations(s string) string {
 	return strings.TrimSuffix(out, ",")
 }
 
+// withPendingDetour дописывает в тело узла ссылку detour, которую эмиссия
+// одного источника ещё не разрешила.
+//
+// Вкладка обещает «JSON как он уйдёт в конфиг», а `detour` появляется только
+// на проходе 2 полной сборки (ApplyCanonicalNodeLinks) — его здесь нет. Без
+// этой подстановки узел с релеем показывался как прямой, хотя в config.json у
+// него стоит переход (SPEC 120: «хочу видеть JSON в точности как в конфиге»).
+//
+// Подставляется СЫРОЙ тег цели: финальный (с префиксом источника) знает
+// только полная сборка. Это честнее пустоты — видно и факт перехода, и через
+// кого он идёт.
+func withPendingDetour(body string, node *config.ParsedNode) string {
+	if node == nil || node.CanonicalDetour == nil {
+		return body
+	}
+	tag := strings.TrimSpace(node.CanonicalDetour.Tag)
+	if tag == "" {
+		return body
+	}
+	// Уже проставлен полной сборкой — не дублируем.
+	if node.Outbound != nil {
+		if _, ok := node.Outbound["detour"]; ok {
+			return body
+		}
+	}
+	trimmed := strings.TrimSpace(body)
+	if !strings.HasPrefix(trimmed, "{") {
+		return body
+	}
+	enc, err := json.Marshal(tag)
+	if err != nil {
+		return body
+	}
+	return "{\"detour\": " + string(enc) + "," + trimmed[1:]
+}
+
 // emittedToEditableJSON превращает строку эмиттера в pretty JSON-объект.
 //
 // json.Indent (а не Unmarshal→MarshalIndent): работает на токенах и сохраняет
@@ -97,7 +133,8 @@ func unpackNodesDoc(nodes []*config.ParsedNode, limit int) unpackedNodesResult {
 			continue
 		}
 		for _, oj := range outJSONs {
-			doc.Outbounds = append(doc.Outbounds, json.RawMessage(stripEmittedDecorations(oj)))
+			doc.Outbounds = append(doc.Outbounds,
+				json.RawMessage(withPendingDetour(stripEmittedDecorations(oj), node)))
 		}
 		res.Emitted++
 	}
