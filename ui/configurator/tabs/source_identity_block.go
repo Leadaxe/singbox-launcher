@@ -46,6 +46,8 @@ const (
 	sourceIdentityHintText = "Some providers return a different node list depending on the client that asks, and bind the subscription to a device by its ID. Leave “as in system” to use the global settings."
 	// sourceIdentityAsSystemText — подпись галки наследования.
 	sourceIdentityAsSystemText = "as in system"
+	// sourceRelaysHintText — что даёт выделение служебных узлов.
+	sourceRelaysHintText = "Some providers route a node through an intermediate relay. Off: the relay lives inside its node and stays invisible. On: it becomes a separate node marked with a gear — you can see it, switch it off, and pick it as a chain hop. It is never offered in Directions."
 )
 
 // sourceIdentityBlock — виджеты блока и их привязка к рабочей копии формы.
@@ -65,6 +67,8 @@ type sourceIdentityBlock struct {
 	hwidCheck   *widget.Check
 	hwidEntry   *widget.Entry
 	hwidRegenBt *widget.Button
+
+	relaysCheck *widget.Check
 }
 
 // newSourceIdentityBlock собирает блок. `srcRef` отдаёт рабочую копию формы;
@@ -178,6 +182,21 @@ func newSourceIdentityBlock(srcRef func() *corestate.Source) *sourceIdentityBloc
 		}
 	})
 
+	// --- Служебные узлы (релеи BYPASS) --------------------------------------
+	//
+	// Провайдер отдаёт конфиги, где путь к серверу идёт через промежуточный
+	// socks5-релей. Выключено: релей живёт внутри тела своего узла и человеку
+	// невидим. Включено: он становится отдельным узлом с шестерёнкой — его
+	// видно, можно выключить и выбрать позицией цепочки.
+	b.relaysCheck = widget.NewCheck(locale.T("Show provider relays as separate nodes"), func(on bool) {
+		if p := srcRef(); p != nil {
+			p.ExposeRelays = on
+		}
+	})
+	relaysHint := widget.NewLabel(locale.T(sourceRelaysHintText))
+	relaysHint.Wrapping = fyne.TextWrapWord
+	relaysHint.Importance = widget.LowImportance
+
 	hint := widget.NewLabel(locale.T(sourceIdentityHintText))
 	hint.Wrapping = fyne.TextWrapWord
 	hint.Importance = widget.LowImportance
@@ -214,6 +233,9 @@ func newSourceIdentityBlock(srcRef func() *corestate.Source) *sourceIdentityBloc
 		row("", b.sendValue, b.sendCheck),
 		row("", b.hashValue, b.hashCheck),
 		hint,
+		widget.NewSeparator(),
+		b.relaysCheck,
+		relaysHint,
 	)
 	return b
 }
@@ -254,6 +276,8 @@ func (b *sourceIdentityBlock) syncFromModel(src *corestate.Source, global source
 		b.hashValue.SetChecked(*src.HashDeviceModel)
 		b.hashValue.Enable()
 	}
+
+	b.relaysCheck.SetChecked(src.ExposeRelays)
 
 	hw := strings.TrimSpace(src.HWID)
 	b.hwidCheck.SetChecked(hw == "")

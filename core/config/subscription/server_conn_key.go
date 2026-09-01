@@ -37,7 +37,28 @@ func dedupSignature(node *configtypes.ParsedNode) string {
 	if LegacyNodeIdentityHashFunc == nil {
 		return ""
 	}
-	return LegacyNodeIdentityHashFunc(node)
+	sig := LegacyNodeIdentityHashFunc(node)
+	if sig == "" {
+		return ""
+	}
+	// ПУТЬ ДОЗВОНА — часть идентичности соединения (SPEC 120).
+	//
+	// Хэш считается по ТЕЛУ узла, а релей (`sockopt.dialerProxy` у Xray) в
+	// тело не входит — он живёт отдельным полем Chain. Из-за этого «Испания»
+	// и «Испания BYPASS» давали одну подпись, и BYPASS-вариант выбрасывался
+	// как дубль: у Liberty так терялись все 27 обходных конфигов, притом что
+	// прямой путь к их серверам зарезан и работали как раз обходные.
+	//
+	// Тот же сервер через релей — ДРУГОЕ соединение и другая схема обхода:
+	// ровно тот довод, по которому не схлопывают grpc- и xhttp-варианты
+	// одного сервера (SPEC 113-A §2).
+	for _, hop := range node.Chain {
+		if hop == nil {
+			continue
+		}
+		sig += "|via:" + LegacyNodeIdentityHashFunc(hop)
+	}
+	return sig
 }
 
 // sourceDedup — состояние per-source дедупа записей.

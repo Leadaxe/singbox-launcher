@@ -167,7 +167,17 @@ func ShowEditDialog(
 				// возможно nodes окажется stale/empty (юзер увидит чипы 0
 				// или пустой список).
 				_, _ = wizardbusiness.RebuildNodePool(m)
-				nodes = m.NodePool
+				// Служебные узлы (релеи провайдера, SPEC 120) в выбор
+				// Направления не идут: они существуют ради чужого узла, а
+				// не как самостоятельная страна. В конфиге и в хопах
+				// цепочки они при этом остаются.
+				nodes = make([]*config.ParsedNode, 0, len(m.NodePool))
+				for _, n := range m.NodePool {
+					if n != nil && n.Service {
+						continue
+					}
+					nodes = append(nodes, n)
+				}
 			}
 		}
 		showFlagPickerPopup(parent, nodes, filterValEntry.Text, filterInvertCheck.Checked,

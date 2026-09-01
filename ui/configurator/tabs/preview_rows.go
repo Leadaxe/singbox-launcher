@@ -37,6 +37,9 @@ type previewRow struct {
 	// Unsupported — запись, которую разобрать не удалось: чекбокса у неё нет,
 	// а вместо протокола в подстроке едет причина.
 	Unsupported bool
+	// Service — узел служебный (релей провайдера, SPEC 120): строка помечена
+	// шестерёнкой, в выборе Направлений его нет.
+	Service bool
 	// Reason — причина отбраковки (только у Unsupported).
 	Reason string
 	// OriginRaw — исходник записи байт в байт (у Unsupported — единственное,
@@ -104,7 +107,7 @@ func buildPreviewRows(stateNodes []wizardmodels.Node, emitted []*config.ParsedNo
 		// Исходник берётся из СОСТОЯНИЯ, а не из эмитированного узла:
 		// ParsedNode происхождение не несёт (эмиссия читает его, но обратно не
 		// кладёт), а «из чего сделан узел» пользователю нужно у любой строки.
-		row := previewRow{Node: node, RawTag: raw}
+		row := previewRow{Node: node, RawTag: raw, Service: sn.Service}
 		if sn.Origin != nil {
 			row.OriginRaw = sn.Origin.Raw
 		}

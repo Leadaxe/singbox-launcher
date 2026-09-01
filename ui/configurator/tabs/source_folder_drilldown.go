@@ -456,6 +456,7 @@ func folderDrillNodeRow(
 		Title:        previewRowTitle(pr),
 		Subtitle:     previewRowSubtitle(pr),
 		SubtitleWarn: pr.Unsupported,
+		Service:      pr.Service,
 		ToolTip:      previewRowToolTip(pr),
 		OnOpen:       func() { showPreviewNodeEditWindow(pr, identity, ops) },
 		OnMenu: func(pe *fyne.PointEvent) {
