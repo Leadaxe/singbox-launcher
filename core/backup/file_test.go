@@ -136,7 +136,7 @@ func TestParseAggregatesExtensionsIntoSingleWarning(t *testing.T) {
 		t.Fatalf("warning'ов об extensions %d, ожидался ровно один: %v", len(got), warns)
 	}
 	for _, place := range []string{
-		"<корень файла>",
+		"<file root>",
 		"subscriptions[https://a.example/sub]",
 		"subscriptions[https://b.example/sub]",
 		"chains[relay]",
