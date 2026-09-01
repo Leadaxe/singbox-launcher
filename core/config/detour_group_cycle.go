@@ -68,8 +68,8 @@ func dropNodesDetouringThroughGroup(nodes []*ParsedNode, groupTag string) ([]*Pa
 	dropped := make([]string, 0, cyclic)
 	for _, n := range nodes {
 		if nodeDetourTarget(n) == groupTag {
-			debuglog.WarnLog("detour: узел %q ходит через %q и потому не входит в её состав "+
-				"(иначе ядро не стартует: кольцо зависимостей)", n.Tag, groupTag)
+			debuglog.WarnLog("detour: node %q dials through %q and therefore is not among its members "+
+				"(otherwise the core will not start: dependency ring)", n.Tag, groupTag)
 			dropped = append(dropped, n.Tag)
 			continue
 		}

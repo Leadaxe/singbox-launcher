@@ -68,7 +68,7 @@ func (p *WizardPresenter) resetForeignRuleTargets() {
 		if target == "" || known[target] {
 			continue
 		}
-		debuglog.WarnLog("SPEC 108: правило %q целилось в %q — такой цели нет, сброшено на %q",
+		debuglog.WarnLog("SPEC 108: rule %q targeted %q — no such target, reset to %q",
 			rs.Rule.Label, target, wizardmodels.DefaultOutboundTag)
 		rs.SelectedOutbound = wizardmodels.DefaultOutboundTag
 	}
@@ -76,7 +76,7 @@ func (p *WizardPresenter) resetForeignRuleTargets() {
 	// route.final: осиротевшая цель здесь увела бы ВЕСЬ трафик по умолчанию
 	// в никуда — это хуже, чем одно правило.
 	if f := p.model.SelectedFinalOutbound; f != "" && !known[f] {
-		debuglog.WarnLog("SPEC 108: route.final целился в %q — такой цели нет, сброшен на %q",
+		debuglog.WarnLog("SPEC 108: route.final targeted %q — no such target, reset to %q",
 			f, wizardmodels.DefaultOutboundTag)
 		p.model.SelectedFinalOutbound = wizardmodels.DefaultOutboundTag
 		if p.model.SettingsVars != nil {

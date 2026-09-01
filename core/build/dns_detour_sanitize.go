@@ -72,8 +72,8 @@ func SanitizeDNSDetours(dnsRaw json.RawMessage, finalTags map[string]bool) json.
 			continue
 		}
 		tag, _ := servers[i]["tag"].(string)
-		debuglog.WarnLog("build: у DNS-сервера %q цель detour %q отсутствует в финальном конфиге — ключ снят "+
-			"(иначе ядро не стартует); резолв пойдёт напрямую", tag, detour)
+		debuglog.WarnLog("build: DNS server %q has detour target %q missing from the final config — key removed "+
+			"(otherwise the core will not start); resolution will go direct", tag, detour)
 		delete(servers[i], "detour")
 		changed = true
 	}

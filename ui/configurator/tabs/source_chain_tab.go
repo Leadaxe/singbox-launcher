@@ -96,7 +96,7 @@ type chainForm struct {
 	nodesKnown bool
 
 	// realityTags — позиции, чьи узлы поднимают reality: у них нельзя
-	// снимать tls.utls, иначе ядро не стартует (T4). Считается по узлам,
+	// снимать tls.utls, otherwise the core will not start (T4). Считается по узлам,
 	// которых сама цепочка не видит, — потому и приезжает снаружи.
 	realityTags map[string]bool
 

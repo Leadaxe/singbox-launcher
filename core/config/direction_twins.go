@@ -51,7 +51,7 @@ func PrepareDirections(parserConfig *ParserConfig, twinOptions map[string]interf
 		if d.Disabled {
 			// Выключенное Направление не материализуется вовсе. Правила,
 			// на него ссылавшиеся, чистит CleanDanglingOutboundsInRouteRules.
-			debuglog.DebugLog("directions: %q выключено — пропускаем", d.Tag)
+			debuglog.DebugLog("directions: %q is disabled — skipping", d.Tag)
 			continue
 		}
 		out = append(out, d)
@@ -97,7 +97,7 @@ func ExpandDirectionTwins(directions []configtypes.Direction, tmplAutoOptions ma
 		}
 		twinTag := d.Tag + twinSuffix
 		if used[twinTag] {
-			debuglog.WarnLog("directions: %q уже занят — автогруппа для %q не создаётся", twinTag, d.Tag)
+			debuglog.WarnLog("directions: %q is already taken — no auto group created for %q", twinTag, d.Tag)
 			out = append(out, d)
 			continue
 		}

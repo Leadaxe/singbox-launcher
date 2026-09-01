@@ -111,7 +111,7 @@ func parseSourceInput(input string, fallbackIndex int) (*parsedSourceInput, erro
 		}
 		mat, matErr := config.MaterializeServerNode(material, nil)
 		if matErr != nil {
-			debuglog.WarnLog("AddSources: URI %q не разобран: %v — узел не добавлен", uri, matErr)
+			debuglog.WarnLog("AddSources: URI %q not parsed: %v — node not added", uri, matErr)
 			continue
 		}
 		res.Nodes = append(res.Nodes, corestate.Node{
@@ -136,7 +136,7 @@ func parseSourceInput(input string, fallbackIndex int) (*parsedSourceInput, erro
 		}
 		mat, matErr := config.MaterializeServerNode("", jn.ConfigJSON)
 		if matErr != nil {
-			debuglog.WarnLog("AddSources: JSON-узел %q не разобран: %v — узел не добавлен", tag, matErr)
+			debuglog.WarnLog("AddSources: JSON node %q not parsed: %v — node not added", tag, matErr)
 			continue
 		}
 		res.Nodes = append(res.Nodes, corestate.Node{

@@ -72,7 +72,7 @@ func RebuildNodePool(model *wizardmodels.WizardModel) (int, error) {
 		}
 		emitted := config.EmitCanonicalSource(ps, i, tagCounts)
 		for _, w := range emitted.Warnings {
-			debuglog.DebugLog("wizardNodePool: источник %d: %s", i+1, w)
+			debuglog.DebugLog("wizardNodePool: source %d: %s", i+1, w)
 		}
 		nodes := emitted.Nodes
 		if len(nodes) == 0 {
@@ -86,7 +86,7 @@ func RebuildNodePool(model *wizardmodels.WizardModel) (int, error) {
 		allNodes = append(allNodes, nodes...)
 	}
 
-	debuglog.DebugLog("wizardNodePool: собрано %d узлов из %d источников (пустых: %d)", len(allNodes), totalSources, errorCount)
+	debuglog.DebugLog("wizardNodePool: collected %d nodes from %d sources (empty: %d)", len(allNodes), totalSources, errorCount)
 
 	// SPEC 110: источники-цепочки становятся узлами ровно тем же вызовом,
 	// что и на сборке, — иначе пул показывал бы не тот состав, из которого
@@ -99,7 +99,7 @@ func RebuildNodePool(model *wizardmodels.WizardModel) (int, error) {
 	chainPool, broken := config.ResolveChainSources(
 		pc, allNodes, nodesBySource, nodePoolDirectionTags(model))
 	for _, b := range broken {
-		debuglog.DebugLog("wizardNodePool: цепочка %q не стала узлом: %s", b.Tag, b.Reason)
+		debuglog.DebugLog("wizardNodePool: chain %q did not become a node: %s", b.Tag, b.Reason)
 	}
 	allNodes = chainPool
 

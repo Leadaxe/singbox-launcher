@@ -365,12 +365,12 @@ func (svc *ConfigService) persistFetchResultForSource(src *state.Source, execDir
 	if err != nil {
 		// Cold start (state.json ещё нет) — не ошибка пути: результат живёт в
 		// модели, визард сохранит его своим Save.
-		debuglog.DebugLog("persistFetchResultForSource: state.Load: %v — результат остаётся в памяти", err)
+		debuglog.DebugLog("persistFetchResultForSource: state.Load: %v — result stays in memory", err)
 		return
 	}
 	disk := s.FindSource(src.ID)
 	if disk == nil || disk.Kind != state.SourceKindSubscription {
-		debuglog.DebugLog("persistFetchResultForSource: источник %s ещё не сохранён визардом — пропуск", src.ID)
+		debuglog.DebugLog("persistFetchResultForSource: source %s not saved by the wizard yet — skipped", src.ID)
 		return
 	}
 	disk.Nodes = src.Nodes

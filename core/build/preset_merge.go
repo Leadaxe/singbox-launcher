@@ -673,10 +673,10 @@ func repairDanglingDNSRefs(dns map[string]interface{}, servers []interface{}, dn
 
 	if final, _ := dns["final"].(string); final != "" && !present[final] {
 		if firstTag != "" {
-			debuglog.WarnLog("dns: final %q не попал в конфиг — заменён на %q", final, firstTag)
+			debuglog.WarnLog("dns: final %q did not reach the config — replaced with %q", final, firstTag)
 			dns["final"] = firstTag
 		} else {
-			debuglog.WarnLog("dns: final %q не попал в конфиг, серверов нет — ключ удалён", final)
+			debuglog.WarnLog("dns: final %q did not reach the config and there are no servers — key removed", final)
 			delete(dns, "final")
 		}
 	}
@@ -688,7 +688,7 @@ func repairDanglingDNSRefs(dns map[string]interface{}, servers []interface{}, dn
 		}
 		if dr, _ := m["domain_resolver"].(string); dr != "" && !present[dr] {
 			tag, _ := m["tag"].(string)
-			debuglog.WarnLog("dns: сервер %q: domain_resolver %q не попал в конфиг — ключ удалён (дефолтный резолвер)", tag, dr)
+			debuglog.WarnLog("dns: server %q: domain_resolver %q did not reach the config — key removed (default resolver)", tag, dr)
 			delete(m, "domain_resolver")
 		}
 	}
@@ -701,7 +701,7 @@ func repairDanglingDNSRefs(dns map[string]interface{}, servers []interface{}, dn
 			continue
 		}
 		if srv, _ := m["server"].(string); srv != "" && !present[srv] {
-			debuglog.WarnLog("dns: правило со server %q выброшено — сервер не попал в конфиг", srv)
+			debuglog.WarnLog("dns: rule with server %q dropped — the server did not reach the config", srv)
 			continue
 		}
 		kept = append(kept, m)
@@ -772,11 +772,11 @@ func pruneDNSGroupMembers(servers []interface{}) []interface{} {
 			}
 			groupTag, _ := m["tag"].(string)
 			if len(dropped) > 0 {
-				debuglog.WarnLog("dns: группа %q: участники %v не попали в конфиг (выключены или объявлены неактивным пресетом) — исключены из состава",
+				debuglog.WarnLog("dns: group %q: members %v did not reach the config (disabled or declared by an inactive preset) — excluded from the members",
 					groupTag, dropped)
 			}
 			if len(kept) == 0 {
-				debuglog.WarnLog("dns: группа %q осталась без участников — не эмитится", groupTag)
+				debuglog.WarnLog("dns: group %q has no members left — not emitted", groupTag)
 				removedGroup = true
 				continue
 			}

@@ -561,7 +561,7 @@ func substituteTemplateDNSServer(
 	resolved := template.ResolveTemplateVarsFor(td.Vars, templateVars, nil, target)
 	substituted, _, err := template.SubstituteVarsInJSONStrict(raw, td.Vars, resolved, target)
 	if err != nil {
-		debuglog.WarnLog("resolve_dns: подстановка в теле DNS-сервера не удалась: %v", err)
+		debuglog.WarnLog("resolve_dns: substitution in the DNS server body failed: %v", err)
 		return body
 	}
 	var out map[string]interface{}

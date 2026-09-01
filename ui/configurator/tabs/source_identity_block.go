@@ -69,6 +69,11 @@ type sourceIdentityBlock struct {
 	hwidRegenBt *widget.Button
 
 	relaysCheck *widget.Check
+	// relaysInfo — сводка «сколько узлов ходят через релеи провайдера».
+	// Detour у BYPASS-узла свой у каждого, списком его в форме подписки не
+	// показать — отсюда счётчик (обкатка: «detour сервера всегда показывать
+	// в свойствах подписки»).
+	relaysInfo *widget.Label
 }
 
 // newSourceIdentityBlock собирает блок. `srcRef` отдаёт рабочую копию формы;
@@ -194,6 +199,9 @@ func newSourceIdentityBlock(srcRef func() *corestate.Source) *sourceIdentityBloc
 			p.RelaysInDirections = on
 		}
 	})
+	b.relaysInfo = widget.NewLabel("")
+	b.relaysInfo.Wrapping = fyne.TextWrapWord
+
 	relaysHint := widget.NewLabel(locale.T(sourceRelaysHintText))
 	relaysHint.Wrapping = fyne.TextWrapWord
 	relaysHint.Importance = widget.LowImportance
@@ -235,6 +243,7 @@ func newSourceIdentityBlock(srcRef func() *corestate.Source) *sourceIdentityBloc
 		row("", b.hashValue, b.hashCheck),
 		hint,
 		widget.NewSeparator(),
+		b.relaysInfo,
 		b.relaysCheck,
 		relaysHint,
 	)
@@ -279,6 +288,24 @@ func (b *sourceIdentityBlock) syncFromModel(src *corestate.Source, global source
 	}
 
 	b.relaysCheck.SetChecked(src.RelaysInDirections)
+
+	// Сводка по релеям: у каждого BYPASS-узла свой дозвонщик, поэтому в форме
+	// подписки показываем счётчик, а конкретный detour виден в окне узла.
+	relays, viaRelay := 0, 0
+	for i := range src.Nodes {
+		if src.Nodes[i].Service {
+			relays++
+		}
+		if src.Nodes[i].Detour != nil {
+			viaRelay++
+		}
+	}
+	if relays == 0 {
+		b.relaysInfo.Hide()
+	} else {
+		b.relaysInfo.SetText(locale.Tf("%d node(s) dial through %d provider relay(s)", viaRelay, relays))
+		b.relaysInfo.Show()
+	}
 
 	hw := strings.TrimSpace(src.HWID)
 	b.hwidCheck.SetChecked(hw == "")

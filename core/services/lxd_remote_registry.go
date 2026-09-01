@@ -63,7 +63,7 @@ type RemoteDaemon struct {
 	//
 	// Нужен генерации: путь `<StateDir>/resources/<name>` уезжает в
 	// rule_set[].path, и резолвит его ядро НА ТОЙ СТОРОНЕ. Кешируем, чтобы
-	// сборка конфига не требовала живой сети — Configure должен работать и с
+	// config build не требовала живой сети — Configure должен работать и с
 	// выключенным роутером.
 	StateDir string `json:"state_dir,omitempty"`
 	// AddedAt — когда сопряглись (RFC3339, для UI-списка).

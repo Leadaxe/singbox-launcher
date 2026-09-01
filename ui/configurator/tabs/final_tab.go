@@ -128,7 +128,7 @@ func CreateFinalTab(presenter *wizardpresentation.WizardPresenter, guiState *wiz
 			// Ошибка вместо отчёта, Save не появляется: сохранять то, что
 			// не собралось, нельзя, а подсовывать вместо причины пустой
 			// «предупреждений нет» — прямая ложь.
-			debuglog.ErrorLog("final: сборка конфига: %v", err)
+			debuglog.ErrorLog("final: config build: %v", err)
 			text, _ := finalBuildStatusText(err, 0)
 			setStatus(text, true)
 			// Список остаётся пустым: причина уже стоит статусом, и
@@ -254,7 +254,7 @@ func revealSourceInWizard(presenter *wizardpresentation.WizardPresenter, guiStat
 	// переключать вкладку не за чем, и молчаливый прыжок «в никуда» был бы
 	// хуже бездействия.
 	if sourceIndexByID(modelSourceIDs(presenter), sourceID) < 0 {
-		debuglog.DebugLog("final: источник %q из отчёта больше не существует — перехода нет", sourceID)
+		debuglog.DebugLog("final: source %q from the report no longer exists — no jump", sourceID)
 		return
 	}
 	if guiState.Tabs != nil {

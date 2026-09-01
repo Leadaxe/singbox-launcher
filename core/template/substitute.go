@@ -527,22 +527,22 @@ func EvalIfScalar(node json.RawMessage, vars []TemplateVar, stateVars map[string
 	target = target.Normalized()
 	var outer map[string]interface{}
 	if err := json.Unmarshal(node, &outer); err != nil {
-		debuglog.WarnLog("EvalIfScalar: невалидный JSON: %v", err)
+		debuglog.WarnLog("EvalIfScalar: invalid JSON: %v", err)
 		return "", false
 	}
 	ifKeys := ifKeysSorted(outer)
 	if len(outer) != 1 || len(ifKeys) != 1 {
-		debuglog.WarnLog("EvalIfScalar: узел должен быть объектом ровно с одним ключом \"#if…\"")
+		debuglog.WarnLog("EvalIfScalar: the node must be an object with exactly one key \"#if…\"")
 		return "", false
 	}
 	rawBody, ok := outer[ifKeys[0]]
 	if !ok {
-		debuglog.WarnLog("EvalIfScalar: узел не содержит \"#if…\"")
+		debuglog.WarnLog("EvalIfScalar: the node does not contain \"#if…\"")
 		return "", false
 	}
 	body, ok := rawBody.(map[string]interface{})
 	if !ok {
-		debuglog.WarnLog("EvalIfScalar: #if body не объект")
+		debuglog.WarnLog("EvalIfScalar: #if body is not an object")
 		return "", false
 	}
 
@@ -563,7 +563,7 @@ func EvalIfScalar(node json.RawMessage, vars []TemplateVar, stateVars map[string
 	substituteWalkCtx(&branch, varTypes, resolved, target, nil)
 	s, ok := branch.(string)
 	if !ok {
-		debuglog.WarnLog("EvalIfScalar: выбранная ветка — не строковый скаляр (%T)", branch)
+		debuglog.WarnLog("EvalIfScalar: the chosen branch is not a string scalar (%T)", branch)
 		return "", false
 	}
 	return s, true

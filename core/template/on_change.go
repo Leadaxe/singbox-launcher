@@ -40,7 +40,7 @@ func ApplyOnChange(changed string, vars []TemplateVar, stateVars map[string]stri
 
 func applyOnChangeRec(name string, vars []TemplateVar, stateVars map[string]string, target TargetSpec, visited map[string]int, depth int, touched *[]string) {
 	if depth >= onChangeMaxDepth {
-		debuglog.WarnLog("ApplyOnChange: превышена максимальная глубина (%d) на var %q — обрываю (возможный цикл в шаблоне)", onChangeMaxDepth, name)
+		debuglog.WarnLog("ApplyOnChange: maximum depth (%d) exceeded at var %q — aborting (possible cycle in the template)", onChangeMaxDepth, name)
 		return
 	}
 	// Жёсткий предохранитель дополнительно к fixpoint-guard: одна и та же var
@@ -51,7 +51,7 @@ func applyOnChangeRec(name string, vars []TemplateVar, stateVars map[string]stri
 	maxVisits := len(vars) + 1
 	visited[name]++
 	if visited[name] > maxVisits {
-		debuglog.WarnLog("ApplyOnChange: var %q встречена в цепочке on_change более %d раз — обрываю (цикл)", name, maxVisits)
+		debuglog.WarnLog("ApplyOnChange: var %q seen more than %d times in the on_change chain — aborting (cycle)", name, maxVisits)
 		return
 	}
 
@@ -72,7 +72,7 @@ func applyOnChangeRec(name string, vars []TemplateVar, stateVars map[string]stri
 	}
 	var set map[string]json.RawMessage
 	if err := json.Unmarshal(setRaw, &set); err != nil {
-		debuglog.WarnLog("ApplyOnChange: var %q on_change.set невалиден: %v", name, err)
+		debuglog.WarnLog("ApplyOnChange: var %q on_change.set is invalid: %v", name, err)
 		return
 	}
 

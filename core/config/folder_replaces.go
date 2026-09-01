@@ -49,7 +49,7 @@ func PrepareFolderReplaces(parserConfig *ParserConfig, tmplAutoOptions map[strin
 			continue
 		}
 		ps.LocalGroups = append(ps.LocalGroups, groups...)
-		debuglog.DebugLog("SPEC 118: папка %d свёрнута в %d группу(ы), режим %s",
+		debuglog.DebugLog("SPEC 118: folder %d folded into %d group(s), mode %s",
 			i+1, len(groups), ps.Canonical.Replace.Mode)
 	}
 }
@@ -61,7 +61,7 @@ func PrepareFolderReplaces(parserConfig *ParserConfig, tmplAutoOptions map[strin
 func buildReplaceGroups(replace configtypes.FolderReplace, tmplAutoOptions map[string]interface{}) []configtypes.Direction {
 	selectTag := replace.Tag
 	if selectTag == "" {
-		debuglog.WarnLog("replace: свёртка без тега — замена не создаётся")
+		debuglog.WarnLog("replace: fold without a tag — no replacement created")
 		return nil
 	}
 	autoTag := selectTag

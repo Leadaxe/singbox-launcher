@@ -276,7 +276,7 @@ func FeedBuildReportFromSanitizer(gen config.BuildGeneration, list []build.Sourc
 	}
 	entries := make([]config.BuildReportEntry, 0, len(list)*2)
 	for _, e := range list {
-		debuglog.WarnLog("build report: у источника %q снято %d узлов: %s",
+		debuglog.WarnLog("build report: source %q had %d node(s) removed: %s",
 			e.SourceLabel, e.DroppedNodes, e.Reason)
 		entries = append(entries, config.BuildReportEntry{
 			Kind:        config.BuildReportNodesDropped,

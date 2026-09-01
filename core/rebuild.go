@@ -138,7 +138,7 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	}
 
 	if cacheMissing {
-		debuglog.InfoLog("RebuildConfigIfDirty: подписки без материализованных узлов — сначала Update")
+		debuglog.InfoLog("RebuildConfigIfDirty: subscriptions have no materialized nodes — run Update first")
 		if ac.ConfigService == nil {
 			return fmt.Errorf("no materialized nodes and ConfigService not initialized")
 		}

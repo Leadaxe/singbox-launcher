@@ -99,7 +99,7 @@ func EmitCanonicalSource(ps ProxySource, sourceIndex int, tagCounts map[string]i
 			if cn.Enabled {
 				res.Warnings = append(res.Warnings,
 					locale.Tf(emitNodeNotEmittableText, cn.Tag, err))
-				debuglog.WarnLog("canonical: узел %q не эмитируется: %v", cn.Tag, err)
+				debuglog.WarnLog("canonical: node %q is not emitted: %v", cn.Tag, err)
 			}
 			continue
 		}
@@ -108,7 +108,7 @@ func EmitCanonicalSource(ps ProxySource, sourceIndex int, tagCounts map[string]i
 			// Тег-машина уже отработала (номер и слот уникализации
 			// потреблены) — узел выбрасывается ровно здесь, как в старом
 			// движке.
-			debuglog.DebugLog("canonical: узел %q выключен — в конфиг не идёт (финальный тег %q съеден)", cn.Tag, node.Tag)
+			debuglog.DebugLog("canonical: node %q is disabled — not going into the config (final tag %q consumed)", cn.Tag, node.Tag)
 			continue
 		}
 		node.SourceIndex = sourceIndex

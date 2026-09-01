@@ -110,7 +110,7 @@ func convertFilterToStringMap(filter map[string]interface{}) map[string]string {
 			continue
 		}
 		if !configtypes.PatternCompiles(str) {
-			debuglog.WarnLog("filters: %q=%q — некорректное выражение, ключ пропущен", k, str)
+			debuglog.WarnLog("filters: %q=%q — malformed expression, key skipped", k, str)
 			continue
 		}
 		result[k] = str

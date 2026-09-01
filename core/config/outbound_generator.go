@@ -241,7 +241,7 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 // обратно (подпись содержимого, миграция legacy-ключей). Раньше они звали
 // GenerateNodeJSON и резали обёртку строковым поиском первой `{` — а она
 // находилась внутри имени узла («SG {премиум} 1») и разбор молча ломался.
-// Формой обёртки владеет ТОЛЬКО сборка конфига, потребители подписи её не
+// Формой обёртки владеет ТОЛЬКО config build, потребители подписи её не
 // видят.
 func GenerateNodeJSONBare(node *ParsedNode) (string, error) {
 	// SPEC 094 A5: a group imported from a sing-box config is a node in the
@@ -896,8 +896,8 @@ func GenerateSelectorWithFilteredAddOutbounds(
 			}
 		}
 		if !inList {
-			debuglog.WarnLog("Parser: default %q группы %q не входит в её состав — ключ снят "+
-				"(иначе ядро не стартует)", defaultTag, outboundConfig.Tag)
+			debuglog.WarnLog("Parser: default %q of group %q is not among its members — key removed "+
+				"(otherwise the core will not start)", defaultTag, outboundConfig.Tag)
 			defaultTag = ""
 		}
 	}
@@ -962,8 +962,8 @@ func GenerateSelectorWithFilteredAddOutbounds(
 				}
 			}
 			if !inList {
-				debuglog.WarnLog("Parser: default %q группы %q не входит в её состав — ключ снят "+
-					"(иначе ядро не стартует)", val, outboundConfig.Tag)
+				debuglog.WarnLog("Parser: default %q of group %q is not among its members — key removed "+
+					"(otherwise the core will not start)", val, outboundConfig.Tag)
 				continue
 			}
 		}
@@ -1715,7 +1715,7 @@ func sanitizeNodeDetours(nodes []*ParsedNode) []*ParsedNode {
 			continue
 		}
 		if d == n.Tag {
-			debuglog.WarnLog("Parser: у узла %q detour указывает на него самого — узел исключён (fail-closed: снять detour значило бы пустить его трафик напрямую)", n.Tag)
+			debuglog.WarnLog("Parser: node %q has a detour pointing at itself — node excluded (fail-closed: dropping the detour would send its traffic direct)", n.Tag)
 			dropped[n.Tag] = true
 			continue
 		}
@@ -1754,7 +1754,7 @@ func sanitizeNodeDetours(nodes []*ParsedNode) []*ParsedNode {
 				}
 				if at >= 0 {
 					for _, v := range path[at:] {
-						debuglog.WarnLog("Parser: кольцо detour через узел %q — узел исключён (fail-closed, все участники кольца)", v)
+						debuglog.WarnLog("Parser: detour ring through node %q — node excluded (fail-closed, all ring members)", v)
 						dropped[v] = true
 						delete(detourOf, v)
 					}
@@ -1786,7 +1786,7 @@ func sanitizeNodeDetours(nodes []*ParsedNode) []*ParsedNode {
 		changed = false
 		for tag, target := range detourOf {
 			if !dropped[tag] && dropped[target] {
-				debuglog.WarnLog("Parser: узел %q ходил через исключённый %q — исключён следом (fail-closed)", tag, target)
+				debuglog.WarnLog("Parser: node %q dialed through excluded %q — excluded as well (fail-closed)", tag, target)
 				dropped[tag] = true
 				changed = true
 			}

@@ -80,7 +80,7 @@ func migrateSourceFolds(cs *ConnectionsSection) {
 				// на шаблонные молча.
 				src.Fold.Auto = autoFromLegacyGroup(src.Outbounds)
 			}
-			debuglog.DebugLog("SPEC 108: подписка %q свёрнута в группу (режим %s) из прежних флагов", src.ID, mode)
+			debuglog.DebugLog("SPEC 108: subscription %q folded into a group (mode %s) from the old flags", src.ID, mode)
 		}
 
 		// Группы больше не хранятся в состоянии независимо от исхода:

@@ -153,7 +153,7 @@ func ResolveChainSources(
 		}
 
 		degrade := func(reason string) {
-			debuglog.WarnLog("chain: источник %q не стал узлом: %s", tag, reason)
+			debuglog.WarnLog("chain: source %q did not become a node: %s", tag, reason)
 			broken = append(broken, ChainDegradation{Tag: tag, Name: name, Reason: reason})
 		}
 
@@ -219,7 +219,7 @@ func ResolveChainSources(
 		known[tag] = true
 		chainTags[tag] = true
 		nodesByTag[tag] = node
-		debuglog.DebugLog("chain: источник %q стал узлом из %d позиций", tag, len(src.Chain.Hops))
+		debuglog.DebugLog("chain: source %q became a node of %d positions", tag, len(src.Chain.Hops))
 	}
 	return allNodes, broken
 }

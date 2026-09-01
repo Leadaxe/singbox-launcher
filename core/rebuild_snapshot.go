@@ -60,7 +60,7 @@ func buildSnapshotFromState(s *state.State, execDir string, subst config.VarSubs
 	}
 	var partialWarnings []string
 	for _, url := range empty {
-		debuglog.WarnLog("buildSnapshotFromState: подписка %s без узлов — источник деградирован (fetch падает?), конфиг собирается из остальных", url)
+		debuglog.WarnLog("buildSnapshotFromState: subscription %s has no nodes — source degraded (fetch failing?), config is built from the rest", url)
 		partialWarnings = append(partialWarnings, fmt.Sprintf("subscription %s has no nodes yet (last fetch failed?) — built without it", url))
 	}
 

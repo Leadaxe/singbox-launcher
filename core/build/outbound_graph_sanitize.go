@@ -142,7 +142,7 @@ func sanitizeOutboundGraph(cache *ParsedCache, finalTags map[string]bool) (*Pars
 		}
 		e.dropped = true
 		delete(finalTags, e.tag)
-		debuglog.WarnLog("build: outbound %q удалён из конфига: %s", e.tag, why)
+		debuglog.WarnLog("build: outbound %q removed from the config: %s", e.tag, why)
 	}
 
 	// dropDetourCarrier — выброс носителя недоступного перехода плюс запись в
@@ -225,7 +225,7 @@ func sanitizeEntryRefs(e *graphEntry, byTag map[string]*graphEntry, finalTags ma
 
 	// SPEC 113-B: висячий detour — не повод снять ключ. Носитель выбрасывается.
 	if d, _ := e.m["detour"].(string); d != "" && !finalTags[d] {
-		debuglog.WarnLog("build: у %q цель detour %q отсутствует в финальном конфиге — узел исключён (fail-closed, тихий прямой дозвон запрещён)", e.tag, d)
+		debuglog.WarnLog("build: %q has detour target %q missing from the final config — node excluded (fail-closed, a silent direct dial is not allowed)", e.tag, d)
 		dropDetourCarrier(e, "detour target “"+d+"” does not exist in the config", d)
 		return true
 	}
@@ -259,7 +259,7 @@ func sanitizeEntryRefs(e *graphEntry, byTag map[string]*graphEntry, finalTags ma
 			}
 		}
 		if len(lost) > 0 {
-			debuglog.WarnLog("build: группа %q: участники %v не существуют в финальном конфиге — исключены из состава", e.tag, lost)
+			debuglog.WarnLog("build: group %q: members %v do not exist in the final config — excluded from the members", e.tag, lost)
 			e.setMembers(kept)
 			changed = true
 		}
@@ -268,7 +268,7 @@ func sanitizeEntryRefs(e *graphEntry, byTag map[string]*graphEntry, finalTags ma
 			return true
 		}
 		if def, _ := e.m["default"].(string); def != "" && !containsString(kept, def) {
-			debuglog.WarnLog("build: группа %q: default %q вне состава — заменён на %q", e.tag, def, kept[0])
+			debuglog.WarnLog("build: group %q: default %q is outside the members — replaced with %q", e.tag, def, kept[0])
 			e.m["default"] = kept[0]
 			e.dirty = true
 			changed = true
@@ -322,7 +322,7 @@ func pruneChainLeavesUnderGroups(entries []*graphEntry, byTag map[string]*graphE
 			kept = append(kept, ref)
 		}
 		if len(lost) > 0 {
-			debuglog.WarnLog("build: группа %q стоит позицией ≥ 1 цепочки — цепочки %v исключены из её состава (ядро допускает вложенную цепочку только первой позицией)", tag, lost)
+			debuglog.WarnLog("build: group %q sits at chain position ≥ 1 — chains %v excluded from its members (the core allows a nested chain only as the first position)", tag, lost)
 			g.setMembers(kept)
 			changed = true
 			// Пустая группа и default вне состава доработаются правилом 2
@@ -403,7 +403,7 @@ func breakDependencyCycle(entries []*graphEntry, byTag map[string]*graphEntry, d
 	case "detour":
 		// SPEC 113-B: снять detour значило бы отправить трафик носителя напрямую
 		// — молча и вопреки настройке. Выбрасывается носитель.
-		debuglog.WarnLog("build: кольцо зависимостей через detour %q → %q — узел исключён (fail-closed)", found.from.tag, found.ref)
+		debuglog.WarnLog("build: dependency ring through detour %q → %q — node excluded (fail-closed)", found.from.tag, found.ref)
 		dropDetourCarrier(found.from, "circular link: the hop to “"+found.ref+"” comes back around the chain", "")
 	case "chain":
 		drop(found.from, "dependency ring through position “"+found.ref+"”")
@@ -415,7 +415,7 @@ func breakDependencyCycle(entries []*graphEntry, byTag map[string]*graphEntry, d
 				kept = append(kept, ref)
 			}
 		}
-		debuglog.WarnLog("build: кольцо зависимостей: %q исключён из состава группы %q", found.ref, found.from.tag)
+		debuglog.WarnLog("build: dependency ring: %q excluded from the members of group %q", found.ref, found.from.tag)
 		found.from.setMembers(kept)
 	}
 	return true

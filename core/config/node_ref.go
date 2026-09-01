@@ -89,7 +89,7 @@ func buildNodeRefIndex(parserConfig *ParserConfig, nodesBySource map[int][]*Pars
 		// Первый выигрывает: одинаковые ULID у двух источников — битое
 		// состояние, но резолв обязан остаться детерминированным.
 		if _, dup := idx.sourceIndexByID[id]; dup {
-			debuglog.WarnLog("Parser: два источника с одним id — ссылки разрешаются по первому (%s)", sourceDisplayName(ps, i))
+			debuglog.WarnLog("Parser: two sources share one id — links resolve to the first (%s)", sourceDisplayName(ps, i))
 			continue
 		}
 		idx.sourceIndexByID[id] = i

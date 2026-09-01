@@ -4159,5 +4159,8 @@
   },
   "Some providers route a node through an intermediate relay. The relay is always part of the route — it shows in the node list with a gear and can be picked as a chain hop. Turn this on to also offer it in Directions, alongside regular nodes.": {
     "value": "Некоторые провайдеры ведут узел через промежуточный релей. Релей всегда часть маршрута — он виден в списке узлов с шестерёнкой и доступен позицией цепочки. Включите, чтобы предлагать его ещё и в Направлениях, наравне с обычными узлами."
+  },
+  "%d node(s) dial through %d provider relay(s)": {
+    "value": "%d узл(ов) ходят через %d релей(ев) провайдера"
   }
 }
