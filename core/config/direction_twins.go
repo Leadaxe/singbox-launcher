@@ -271,7 +271,7 @@ func warnEmptyDirection(d configtypes.Direction, poolSize int) bool {
 		return false
 	}
 	debuglog.WarnLog(
-		"directions: %q (%s) — фильтр %q не поймал ни одного узла из %d; трафик будет заблокирован (default). Проверьте отбор узлов.",
+		"directions: %q (%s) — filter %q matched none of the %d nodes; traffic will be blocked (default). Check the node selection.",
 		d.DisplayName(), d.Tag, body, poolSize)
 	return true
 }

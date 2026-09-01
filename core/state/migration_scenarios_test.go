@@ -297,7 +297,7 @@ func TestMigrationScenario3Tags(t *testing.T) {
 		t.Errorf("tag policy потеряна: %+v", sub.TagPolicy)
 	}
 
-	// Маска-шаблон подписки — предупреждение (фича упразднена).
+	// Маска-шаблон подписки — предупреждение (фича is gone).
 	maskFixture := `{
 	  "meta": {"version": 6, "created_at": "2026-08-01T00:00:00Z", "updated_at": "2026-08-01T00:00:00Z"},
 	  "connections": {"sources": [
@@ -311,7 +311,7 @@ func TestMigrationScenario3Tags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ms.Migration.HasWarnings() || !hasWarningContaining(ms.Migration, "маск") {
+	if !ms.Migration.HasWarnings() || !hasWarningContaining(ms.Migration, "tag mask") {
 		t.Errorf("mask-шаблон подписки без предупреждения: %v", ms.Migration.Warnings)
 	}
 }
@@ -491,7 +491,7 @@ func TestMigrationScenario7Losses(t *testing.T) {
 	if !hasWarningContaining(s.Migration, "local-video") {
 		t.Errorf("произвольное локальное Направление не в отчёте: %v", s.Migration.Warnings)
 	}
-	if !hasWarningContaining(s.Migration, "исключить из общего списка") {
+	if !hasWarningContaining(s.Migration, "exclude from the global list") {
 		t.Errorf("exclude_from_global не в отчёте: %v", s.Migration.Warnings)
 	}
 }

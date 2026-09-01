@@ -156,7 +156,7 @@ func sanitizeOutboundGraph(cache *ParsedCache, finalTags map[string]bool) (*Pars
 			return
 		}
 		origin := cache.NodeOrigins[e.tag]
-		drop(e, reason+" — переход настроен ради анонимности и не имеет права стать прямым дозвоном")
+		drop(e, reason+" — the hop exists for anonymity and must not silently become a direct dial")
 		key := origin.SourceID
 		if key == "" {
 			key = origin.SourceLabel
@@ -226,7 +226,7 @@ func sanitizeEntryRefs(e *graphEntry, byTag map[string]*graphEntry, finalTags ma
 	// SPEC 113-B: висячий detour — не повод снять ключ. Носитель выбрасывается.
 	if d, _ := e.m["detour"].(string); d != "" && !finalTags[d] {
 		debuglog.WarnLog("build: у %q цель detour %q отсутствует в финальном конфиге — узел исключён (fail-closed, тихий прямой дозвон запрещён)", e.tag, d)
-		dropDetourCarrier(e, "цель detour «"+d+"» не существует в конфиге", d)
+		dropDetourCarrier(e, "detour target “"+d+"” does not exist in the config", d)
 		return true
 	}
 
@@ -234,7 +234,7 @@ func sanitizeEntryRefs(e *graphEntry, byTag map[string]*graphEntry, finalTags ma
 	case e.isChain():
 		for i, ref := range e.members() {
 			if !finalTags[ref] {
-				drop(e, "позиция «"+ref+"» не существует в финальном конфиге — маршрут без хопа был бы другим маршрутом")
+				drop(e, "position “"+ref+"” does not exist in the final config — a route without the hop is a different route")
 				return true
 			}
 			if i >= 1 {
@@ -242,7 +242,7 @@ func sanitizeEntryRefs(e *graphEntry, byTag map[string]*graphEntry, finalTags ma
 				// (инвариант ядра, protocol/chain). Группы с цепочками в
 				// листьях чистит pruneChainLeavesUnderGroups.
 				if t := byTag[ref]; t != nil && !t.dropped && t.isChain() {
-					drop(e, "цепочка «"+ref+"» на позиции ≥ 1 — ядро допускает вложенную цепочку только первой позицией")
+					drop(e, "chain “"+ref+"” sits at position ≥ 1 — the core allows a nested chain only as the first position")
 					return true
 				}
 			}
@@ -264,7 +264,7 @@ func sanitizeEntryRefs(e *graphEntry, byTag map[string]*graphEntry, finalTags ma
 			changed = true
 		}
 		if len(kept) == 0 {
-			drop(e, "не осталось ни одного участника")
+			drop(e, "no members left")
 			return true
 		}
 		if def, _ := e.m["default"].(string); def != "" && !containsString(kept, def) {
@@ -404,9 +404,9 @@ func breakDependencyCycle(entries []*graphEntry, byTag map[string]*graphEntry, d
 		// SPEC 113-B: снять detour значило бы отправить трафик носителя напрямую
 		// — молча и вопреки настройке. Выбрасывается носитель.
 		debuglog.WarnLog("build: кольцо зависимостей через detour %q → %q — узел исключён (fail-closed)", found.from.tag, found.ref)
-		dropDetourCarrier(found.from, "циклическая ссылка: переход на «"+found.ref+"» по цепочке возвращается обратно", "")
+		dropDetourCarrier(found.from, "circular link: the hop to “"+found.ref+"” comes back around the chain", "")
 	case "chain":
-		drop(found.from, "кольцо зависимостей через позицию «"+found.ref+"»")
+		drop(found.from, "dependency ring through position “"+found.ref+"”")
 	default: // member
 		members := found.from.members()
 		kept := members[:0]

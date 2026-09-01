@@ -4003,5 +4003,155 @@
   },
   "Some providers route a node through an intermediate relay. Off: the relay lives inside its node and stays invisible. On: it becomes a separate node marked with a gear — you can see it, switch it off, and pick it as a chain hop. It is never offered in Directions.": {
     "value": "Некоторые провайдеры ведут узел через промежуточный релей. Выключено: релей живёт внутри своего узла и не виден. Включено: он становится отдельным узлом с шестерёнкой — его видно, можно выключить и выбрать позицией цепочки. В Направлениях он не предлагается никогда."
+  },
+  "subscription %q: tag mask %q is gone — only prefix/postfix apply after the update": {
+    "value": "подписка %q: маска тегов %q упразднена — после обновления будут действовать только префикс/постфикс"
+  },
+  "source %s (%s): the node has neither tag nor name — tag not carried over": {
+    "value": "источник %s (%s): у узла нет ни тега, ни имени — тег не перенесён"
+  },
+  "node %q renamed to %q: the tag is taken by an earlier source (root node collision); source_id references were repointed": {
+    "value": "узел %q переименован в %q: тег занят более ранним источником (коллизия верхних узлов); ссылки по source_id переписаны"
+  },
+  "server %q: node body could not be parsed (%v) — source disabled, set the URI or JSON again": {
+    "value": "server %q: тело узла не разобрано (%v) — источник выключен, задайте URI или JSON заново"
+  },
+  "subscription %q: raw cache unavailable (load without a path) — nodes will appear after the first update": {
+    "value": "подписка %q: raw-кэш недоступен (загрузка без пути) — узлы появятся после первого обновления"
+  },
+  "subscription %q: materialization parser unavailable — nodes will appear after the first update": {
+    "value": "подписка %q: парсер материализации недоступен — узлы появятся после первого обновления"
+  },
+  "subscription %q: no raw cache — nodes will appear after the first update": {
+    "value": "подписка %q: raw-кэша нет — узлы появятся после первого обновления"
+  },
+  "subscription %q: raw cache could not be parsed (%v) — nodes will appear after the first update": {
+    "value": "подписка %q: raw-кэш не разобран (%v) — узлы появятся после первого обновления"
+  },
+  "subscription %q: disable mark (legacy hash %s…) matched no node": {
+    "value": "подписка %q: отметка выключения (legacy-хэш %s…) не сматчена ни с одним узлом"
+  },
+  "subscription %q: disable mark %q matched no node": {
+    "value": "подписка %q: отметка выключения %q не сматчена ни с одним узлом"
+  },
+  "subscription %q: %d disable mark(s) not carried over — no materialized nodes": {
+    "value": "подписка %q: %d отметк(и) выключения не перенесены — нет материализованных узлов"
+  },
+  "chain %q: hop %q does not resolve — the chain degrades fail-closed": {
+    "value": "цепочка %q: хоп %q не резолвится — цепочка деградирует fail-closed"
+  },
+  "chain %q: the detour link is gone in the v7 model — dropped": {
+    "value": "цепочка %q: detour-ссылка упразднена моделью v7 — отброшена"
+  },
+  "source %q: detour link to a missing source %s — degrades fail-closed": {
+    "value": "источник %q: detour-ссылка на несуществующий источник %s — деградирует fail-closed"
+  },
+  "source %q: legacy-hash detour matched no subscription node — the link is lost, set it again": {
+    "value": "источник %q: detour по legacy-хэшу не сматчен с узлом подписки — ссылка потеряна, назначьте её заново"
+  },
+  "source %q: detour node %q not found in the subscription — degrades fail-closed": {
+    "value": "источник %q: detour-узел %q не найден в подписке — деградирует fail-closed"
+  },
+  "source %q: legacy-hash detour matched no node — the link is lost, set it again": {
+    "value": "источник %q: detour по legacy-хэшу не сматчен ни с одним узлом — ссылка потеряна, назначьте её заново"
+  },
+  "fold %q: auto group renamed %q → %q (v7 model); references were repointed, and the core's cached pick for it will reset": {
+    "value": "свёртка %q: авто-группа переименована %q → %q (модель v7); ссылки переписаны, выбор в кэше ядра для неё будет сброшен"
+  },
+  "source %q: per-source Directions are gone — %s will be lost (create global Directions with filters instead)": {
+    "value": "источник %q: локальные Направления источника упразднены — %s будут потеряны (создайте глобальные Направления с фильтрами)"
+  },
+  "source %q: the “exclude from the global list” flag is gone — its nodes stay in the candidate pool (fold the source into a group for the previous behaviour)": {
+    "value": "источник %q: флаг «исключить из общего списка» упразднён — узлы останутся в пуле кандидатов (сверните источник в группу, если нужна прежняя картина)"
+  },
+  "subscription %q: %s": {
+    "value": "подписка %q: %s"
+  },
+  "no members left": {
+    "value": "не осталось ни одного участника"
+  },
+  "the link is empty": {
+    "value": "ссылка пуста"
+  },
+  "node %q is not among the config nodes": {
+    "value": "узла %q нет среди узлов конфига"
+  },
+  "the link's source was not found": {
+    "value": "источник ссылки не найден"
+  },
+  "the link carries no node tag": {
+    "value": "в ссылке нет тега узла"
+  },
+  "node %q is not in it": {
+    "value": "узла %q в нём нет"
+  },
+  "strip removes tls.utls while positions ": {
+    "value": "strip снимает tls.utls, а позиции "
+  },
+  " are reality nodes: the core refuses to start with such a config": {
+    "value": " — reality-узлы: ядро отказывается стартовать с таким конфигом"
+  },
+  " are not in the first position — the core allows a nested chain only at position 0": {
+    "value": " стоят не первой позицией — ядро допускает вложенную цепочку только позицией 0"
+  },
+  "the hop's source (%s) is excluded from the config": {
+    "value": "источник хопа (%s) исключён из конфига"
+  },
+  "hop %q lived in source %q, which is excluded from the config": {
+    "value": "хоп %q находился в источнике %q, который исключён из конфига"
+  },
+  "circular link: %q dials through %q, and the hop chain brings traffic back to %q": {
+    "value": "циклическая ссылка: %q ходит через %q, и по цепочке переходов трафик возвращается к %q"
+  },
+  "unresolved @var in rule_set %q — fragment dropped": {
+    "value": "unresolved @var in rule_set %q — фрагмент выброшен"
+  },
+  "unresolved @var in rules[%d] — rule dropped": {
+    "value": "unresolved @var in rules[%d] — правило выброшено"
+  },
+  "unresolved @var in dns_server %q — server dropped": {
+    "value": "unresolved @var in dns_server %q — сервер выброшен"
+  },
+  "unresolved @var in dns_rule — rule dropped": {
+    "value": "unresolved @var in dns_rule — правило выброшено"
+  },
+  "Direction auto group": {
+    "value": "авто-группа Направления"
+  },
+  "folder replacement": {
+    "value": "замена папки"
+  },
+  "template system tag": {
+    "value": "системный тег шаблона"
+  },
+  "directions: %q (%s) — filter %q matched none of the %d nodes; traffic will be blocked (default). Check the node selection.": {
+    "value": "directions: %q (%s) — фильтр %q не поймал ни одного узла из %d; трафик будет заблокирован (default). Проверьте отбор узлов."
+  },
+  "source %s (kind=%s): field %q is not legal for this kind — dropped": {
+    "value": "source %s (kind=%s): поле %q нелегально для этого kind — отброшено"
+  },
+  "state: source %s: node %q carries an unknown kind %q — the file comes from a newer schema, update the app": {
+    "value": "state: source %s: node %q несёт неизвестный kind %q — файл от более новой схемы, обновите приложение"
+  },
+  "state: source %s: kind=unsupported is legal only inside a container": {
+    "value": "state: source %s: kind=unsupported легален только внутри контейнера"
+  },
+  "state: source %s carries an unknown kind %q — the file comes from a newer schema, update the app": {
+    "value": "state: source %s несёт неизвестный kind %q — файл от более новой схемы, обновите приложение"
+  },
+  "node %s (kind=%s): field %q is not legal for this kind — dropped": {
+    "value": "node %s (kind=%s): поле %q нелегально для этого kind — отброшено"
+  },
+  "node %s: kind=auto without group — the group is not emitted": {
+    "value": "node %s: kind=auto без group — группа не эмитится"
+  },
+  "node %s: kind=unsupported without origin — the record source is lost": {
+    "value": "node %s: kind=unsupported без origin — исходник записи потерян"
+  },
+  "<file root>": {
+    "value": "<корень файла>"
+  },
+  "user_agents.json: empty user_agents list": {
+    "value": "user_agents.json: пустой список user_agents"
   }
 }

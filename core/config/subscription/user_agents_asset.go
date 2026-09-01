@@ -35,7 +35,7 @@ func init() {
 	// Fail loud: пустой список означал бы молча пустой комбобокс — ошибку
 	// сборки ассета лучше увидеть сразу.
 	if len(a.UserAgents) == 0 {
-		panic("user_agents.json: пустой список user_agents")
+		panic("user_agents.json: empty user_agents list")
 	}
 	UserAgentPresets = a.UserAgents
 }

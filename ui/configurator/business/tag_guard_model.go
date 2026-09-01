@@ -45,19 +45,19 @@ func ModelTagOwners(model *wizardmodels.WizardModel) map[string]string {
 
 	for i := range model.GlobalOutbounds {
 		d := &model.GlobalOutbounds[i]
-		claim(d.Tag, "Направление")
+		claim(d.Tag, "Direction")
 		if d.Auto != nil && d.Tag != "" {
-			claim(d.AutoTag(), "авто-группа Направления")
+			claim(d.AutoTag(), "Direction auto group")
 		}
 	}
 	for _, tag := range ModelReplaceTags(model) {
-		claim(tag, "замена папки")
+		claim(tag, "folder replacement")
 	}
 	for _, tag := range ModelRootNodeTags(model) {
-		claim(tag, "узел")
+		claim(tag, "node")
 	}
 	for _, tag := range GetAvailableOutbounds(model) {
-		claim(tag, "системный тег шаблона")
+		claim(tag, "template system tag")
 	}
 	return owners
 }

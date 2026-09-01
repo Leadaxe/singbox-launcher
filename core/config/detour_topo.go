@@ -131,13 +131,13 @@ func detourSourceOrder(refSources []int, edges map[int]detourEdge) (order []int,
 // выглядит как случайная пропажа.
 func detourCascadeReason(hopName, targetSourceName string) string {
 	if hopName == "" {
-		return fmt.Sprintf("источник хопа (%s) исключён из конфига", targetSourceName)
+		return fmt.Sprintf("the hop's source (%s) is excluded from the config", targetSourceName)
 	}
-	return fmt.Sprintf("хоп %q находился в источнике %q, который исключён из конфига", hopName, targetSourceName)
+	return fmt.Sprintf("hop %q lived in source %q, which is excluded from the config", hopName, targetSourceName)
 }
 
 // detourCycleReason — причина выпадения участника кольца.
 func detourCycleReason(selfName, targetName string) string {
-	return fmt.Sprintf("циклическая ссылка: %q ходит через %q, и по цепочке переходов трафик возвращается к %q",
+	return fmt.Sprintf("circular link: %q dials through %q, and the hop chain brings traffic back to %q",
 		selfName, targetName, selfName)
 }

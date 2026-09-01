@@ -180,7 +180,7 @@ func (m *migrationV7) materializeSources() {
 			// Шаг 3: маска-шаблон подписки упразднена (Т2: TagPolicy — только
 			// prefix/postfix).
 			if leg.TagMask != "" {
-				m.rep.add("подписка %q: маска тегов %q упразднена — после обновления будут действовать только префикс/постфикс", m.sourceName(src, leg), leg.TagMask)
+				m.rep.add("subscription %q: tag mask %q is gone — only prefix/postfix apply after the update", m.sourceName(src, leg), leg.TagMask)
 			}
 			m.materializeSubscription(src, leg)
 		}
@@ -211,7 +211,7 @@ func legacyNodeTag(src *Source, leg *legacySourceV6) string {
 func (m *migrationV7) stampRootTag(src *Source, leg *legacySourceV6) {
 	raw := strings.TrimSpace(legacyNodeTag(src, leg))
 	if raw == "" {
-		m.rep.add("источник %s (%s): у узла нет ни тега, ни имени — тег не перенесён", src.ID, src.Kind)
+		m.rep.add("source %s (%s): the node has neither tag nor name — tag not carried over", src.ID, src.Kind)
 		return
 	}
 	normalized := textnorm.NormalizeProxyDisplay(raw)
@@ -223,7 +223,7 @@ func (m *migrationV7) stampRootTag(src *Source, leg *legacySourceV6) {
 	}
 	final := uniquifyTagAgainstCounts(normalized, m.tagCounts)
 	if final != normalized {
-		m.rep.add("узел %q переименован в %q: тег занят более ранним источником (коллизия верхних узлов); ссылки по source_id переписаны", normalized, final)
+		m.rep.add("node %q renamed to %q: the tag is taken by an earlier source (root node collision); source_id references were repointed", normalized, final)
 	}
 	src.Node.Tag = final
 	m.rootFinalByID[src.ID] = final
@@ -261,7 +261,7 @@ func (m *migrationV7) materializeServer(src *Source, leg *legacySourceV6) {
 		// и молча уронить его в конфиг нельзя — источник остаётся в состоянии
 		// выключенным, с явной строкой в отчёте.
 		src.Enabled = false
-		m.rep.add("server %q: тело узла не разобрано (%v) — источник выключен, задайте URI или JSON заново", legacyNodeTag(src, leg), err)
+		m.rep.add("server %q: node body could not be parsed (%v) — source disabled, set the URI or JSON again", legacyNodeTag(src, leg), err)
 		return
 	}
 	src.Body = res.Body
@@ -295,12 +295,12 @@ func (m *migrationV7) materializeSubscription(src *Source, leg *legacySourceV6) 
 	}
 
 	if m.lc.SubsDir == "" {
-		m.rep.add("подписка %q: raw-кэш недоступен (загрузка без пути) — узлы появятся после первого обновления", subName)
+		m.rep.add("subscription %q: raw cache unavailable (load without a path) — nodes will appear after the first update", subName)
 		m.reportUnappliedMarks(leg, subName)
 		return
 	}
 	if migrationHooks.MaterializeSubscription == nil {
-		m.rep.add("подписка %q: парсер материализации недоступен — узлы появятся после первого обновления", subName)
+		m.rep.add("subscription %q: materialization parser unavailable — nodes will appear after the first update", subName)
 		m.reportUnappliedMarks(leg, subName)
 		return
 	}
@@ -309,7 +309,7 @@ func (m *migrationV7) materializeSubscription(src *Source, leg *legacySourceV6) 
 	if err != nil {
 		// Кэша нет → nodes[] пуст, подписка ждёт первого fetch (Т7 шаг 1);
 		// сопутствующие карты отбрасываются с предупреждением (снос — шаг 8).
-		m.rep.add("подписка %q: raw-кэша нет — узлы появятся после первого обновления", subName)
+		m.rep.add("subscription %q: no raw cache — nodes will appear after the first update", subName)
 		m.reportUnappliedMarks(leg, subName)
 		return
 	}
@@ -342,12 +342,12 @@ func (m *migrationV7) materializeSubscription(src *Source, leg *legacySourceV6) 
 		TagCounts:  counts,
 	})
 	if err != nil {
-		m.rep.add("подписка %q: raw-кэш не разобран (%v) — узлы появятся после первого обновления", subName, err)
+		m.rep.add("subscription %q: raw cache could not be parsed (%v) — nodes will appear after the first update", subName, err)
 		m.reportUnappliedMarks(leg, subName)
 		return
 	}
 	for _, w := range res.Warnings {
-		m.rep.add("подписка %q: %s", subName, w)
+		m.rep.add("subscription %q: %s", subName, w)
 	}
 
 	rawSet := make(map[string]bool, len(res.Nodes))
@@ -400,10 +400,10 @@ func (m *migrationV7) materializeSubscription(src *Source, leg *legacySourceV6) 
 				if rawTag, ok := hashByRaw[key]; ok {
 					markDisabled(rawTag)
 				} else {
-					m.rep.add("подписка %q: отметка выключения (legacy-хэш %s…) не сматчена ни с одним узлом", subName, key[:8])
+					m.rep.add("subscription %q: disable mark (legacy hash %s…) matched no node", subName, key[:8])
 				}
 			default:
-				m.rep.add("подписка %q: отметка выключения %q не сматчена ни с одним узлом", subName, key)
+				m.rep.add("subscription %q: disable mark %q matched no node", subName, key)
 				pending = append(pending, key)
 			}
 		}
@@ -418,7 +418,7 @@ func (m *migrationV7) materializeSubscription(src *Source, leg *legacySourceV6) 
 // снос — шаг 8 под гейтом).
 func (m *migrationV7) reportUnappliedMarks(leg *legacySourceV6, subName string) {
 	if len(leg.DisabledNodes) > 0 {
-		m.rep.add("подписка %q: %d отметк(и) выключения не перенесены — нет материализованных узлов", subName, len(leg.DisabledNodes))
+		m.rep.add("subscription %q: %d disable mark(s) not carried over — no materialized nodes", subName, len(leg.DisabledNodes))
 	}
 }
 
@@ -477,7 +477,7 @@ func (m *migrationV7) migrateChainHops() {
 			if !known[hop] {
 				// Нерезолвящийся хоп остаётся ссылкой на несуществующий тег —
 				// fail-closed на сборке (Т7 шаг 4).
-				m.rep.add("цепочка %q: хоп %q не резолвится — цепочка деградирует fail-closed", legacyNodeTag(src, leg), hop)
+				m.rep.add("chain %q: hop %q does not resolve — the chain degrades fail-closed", legacyNodeTag(src, leg), hop)
 			}
 			links = append(links, NodeLink{Tag: hop})
 		}
@@ -540,7 +540,7 @@ func (m *migrationV7) migrateDetours() {
 		case SourceKindChain:
 			// detour у Chain не существует типом (SPEC Т2); старый build
 			// его и не собирал.
-			m.rep.add("цепочка %q: detour-ссылка упразднена моделью v7 — отброшена", legacyNodeTag(src, leg))
+			m.rep.add("chain %q: the detour link is gone in the v7 model — dropped", legacyNodeTag(src, leg))
 		}
 	}
 }
@@ -556,7 +556,7 @@ func (m *migrationV7) resolveLegacyDetour(src *Source, leg *legacySourceV6) *Nod
 	case sid != "":
 		target := m.s.FindSource(sid)
 		if target == nil {
-			m.rep.add("источник %q: detour-ссылка на несуществующий источник %s — деградирует fail-closed", m.sourceName(src, leg), sid)
+			m.rep.add("source %q: detour link to a missing source %s — degrades fail-closed", m.sourceName(src, leg), sid)
 			if dtag != "" {
 				return &NodeLink{Tag: dtag}
 			}
@@ -568,14 +568,14 @@ func (m *migrationV7) resolveLegacyDetour(src *Source, leg *legacySourceV6) *Nod
 				if link, ok := m.hashLinkBySub[sid][hash]; ok {
 					return &NodeLink{FolderID: link.FolderID, Tag: link.Tag}
 				}
-				m.rep.add("источник %q: detour по legacy-хэшу не сматчен с узлом подписки — ссылка потеряна, назначьте её заново", m.sourceName(src, leg))
+				m.rep.add("source %q: legacy-hash detour matched no subscription node — the link is lost, set it again", m.sourceName(src, leg))
 				return nil
 			}
 			if raw == "" {
 				return nil
 			}
 			if tags, materialized := m.subRawTags[sid]; materialized && !tags[raw] {
-				m.rep.add("источник %q: detour-узел %q не найден в подписке — деградирует fail-closed", m.sourceName(src, leg), raw)
+				m.rep.add("source %q: detour node %q not found in the subscription — degrades fail-closed", m.sourceName(src, leg), raw)
 			}
 			return &NodeLink{FolderID: sid, Tag: raw}
 		}
@@ -599,7 +599,7 @@ func (m *migrationV7) resolveLegacyDetour(src *Source, leg *legacySourceV6) *Nod
 		if link, ok := m.hashLinkGlobal[hash]; ok {
 			return &NodeLink{FolderID: link.FolderID, Tag: link.Tag}
 		}
-		m.rep.add("источник %q: detour по legacy-хэшу не сматчен ни с одним узлом — ссылка потеряна, назначьте её заново", m.sourceName(src, leg))
+		m.rep.add("source %q: legacy-hash detour matched no node — the link is lost, set it again", m.sourceName(src, leg))
 		return nil
 
 	case strings.TrimSpace(leg.DetourTag) != "":
@@ -649,7 +649,7 @@ func (m *migrationV7) migrateFolds() {
 			newAuto := rep.Tag + "-auto"
 			if autoTag != newAuto {
 				m.renames[autoTag] = newAuto
-				m.rep.add("свёртка %q: авто-группа переименована %q → %q (модель v7); ссылки переписаны, выбор в кэше ядра для неё будет сброшен", m.sourceName(src, leg), autoTag, newAuto)
+				m.rep.add("fold %q: auto group renamed %q → %q (v7 model); references were repointed, and the core's cached pick for it will reset", m.sourceName(src, leg), autoTag, newAuto)
 			}
 		default: // select
 			rep.Mode = FolderReplaceManual
@@ -675,7 +675,7 @@ func (m *migrationV7) reportLocalDirections() {
 		for _, ob := range leg.Outbounds {
 			tags = append(tags, ob.Tag)
 		}
-		m.rep.add("источник %q: локальные Направления источника упразднены — %s будут потеряны (создайте глобальные Направления с фильтрами)", m.sourceName(src, leg), strings.Join(tags, ", "))
+		m.rep.add("source %q: per-source Directions are gone — %s will be lost (create global Directions with filters instead)", m.sourceName(src, leg), strings.Join(tags, ", "))
 	}
 }
 
@@ -687,7 +687,7 @@ func (m *migrationV7) reportExcludes() {
 		if !leg.ExcludeFromGlobal || leg.Fold != nil || src.Replace != nil {
 			continue
 		}
-		m.rep.add("источник %q: флаг «исключить из общего списка» упразднён — узлы останутся в пуле кандидатов (сверните источник в группу, если нужна прежняя картина)", m.sourceName(src, leg))
+		m.rep.add("source %q: the “exclude from the global list” flag is gone — its nodes stay in the candidate pool (fold the source into a group for the previous behaviour)", m.sourceName(src, leg))
 	}
 }
 

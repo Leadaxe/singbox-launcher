@@ -394,7 +394,7 @@ func (sc *unknownScan) note(where, key string) {
 		}
 		place := where
 		if place == "" {
-			place = "<корень файла>"
+			place = "<file root>"
 		}
 		if !sc.seenExtension[place] {
 			sc.seenExtension[place] = true

@@ -171,7 +171,7 @@ func ResolveChainSources(
 		// это не проходят (MakeTagUnique), цепочки шли в обход. После
 		// ChainEmitError: собственные диагностики цепочки информативнее.
 		if known[tag] {
-			degrade("имя «" + tag + "» уже занято другим узлом, Направлением или цепочкой")
+			degrade("the name “" + tag + "” is already taken by another node, Direction or chain")
 			continue
 		}
 		// Позиция, которой нет среди известных тегов, — ссылка в никуда, на
@@ -190,13 +190,13 @@ func ResolveChainSources(
 			continue
 		}
 		if conflicts := ChainRealityConflict(src.Chain, nodesByTag); len(conflicts) > 0 {
-			degrade("strip снимает tls.utls, а позиции " + strings.Join(conflicts, ", ") +
-				" — reality-узлы: ядро отказывается стартовать с таким конфигом")
+			degrade("strip removes tls.utls while positions " + strings.Join(conflicts, ", ") +
+				" are reality nodes: the core refuses to start with such a config")
 			continue
 		}
 		if nested := ChainNestedConflict(src.Chain, chainTags); len(nested) > 0 {
-			degrade("цепочки " + strings.Join(nested, ", ") +
-				" стоят не первой позицией — ядро допускает вложенную цепочку только позицией 0")
+			degrade("chains " + strings.Join(nested, ", ") +
+				" are not in the first position — the core allows a nested chain only at position 0")
 			continue
 		}
 

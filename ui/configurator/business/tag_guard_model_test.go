@@ -77,11 +77,11 @@ func TestKnownRuleTargets_KeepsReplaceTagsAndRootNodes(t *testing.T) {
 func TestModelTagOwners_NamesTheOwnerKind(t *testing.T) {
 	owners := ModelTagOwners(migratedLikeModel())
 	cases := map[string]string{
-		"video-out":      "Направление",
-		"video-out-auto": "авто-группа Направления",
-		"[P]select":      "замена папки",
-		"[P]select-auto": "замена папки",
-		"Tokyo":          "узел",
+		"video-out":      "Direction",
+		"video-out-auto": "Direction auto group",
+		"[P]select":      "folder replacement",
+		"[P]select-auto": "folder replacement",
+		"Tokyo":          "node",
 	}
 	for tag, want := range cases {
 		if got := owners[tag]; got != want {

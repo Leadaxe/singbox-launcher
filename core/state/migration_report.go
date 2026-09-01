@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/locale"
 )
 
 // MigrationReportFileName — имя файла отчёта в bin/.
@@ -55,7 +56,10 @@ func (r *MigrationReport) add(format string, args ...interface{}) {
 	if r == nil {
 		return
 	}
-	msg := fmt.Sprintf(format, args...)
+	// Перевод ЗДЕСЬ, одной точкой: сообщения отчёта — английские ключи (SPEC
+	// 111), а переводы живут в bin/locale/ru.json. Раньше они были зашиты
+	// по-русски и лезли поверх английского интерфейса.
+	msg := locale.Tf(format, args...)
 	r.Warnings = append(r.Warnings, msg)
 	debuglog.WarnLog("state migration v%d→v7: %s", r.FromVersion, msg)
 }

@@ -166,17 +166,17 @@ func (idx *nodeRefIndex) resolve(sourceID, tag string) nodeRefResolution {
 
 	if sourceID == "" {
 		if tag == "" {
-			return nodeRefResolution{problem: "ссылка пуста"}
+			return nodeRefResolution{problem: "the link is empty"}
 		}
 		if n := idx.byFinalTag[tag]; n != nil {
 			return nodeRefResolution{node: n}
 		}
-		return nodeRefResolution{problem: fmt.Sprintf("узла %q нет среди узлов конфига", tag)}
+		return nodeRefResolution{problem: fmt.Sprintf("node %q is not among the config nodes", tag)}
 	}
 
 	nodes, known := idx.bySourceID[sourceID]
 	if !known {
-		return nodeRefResolution{problem: "источник ссылки не найден"}
+		return nodeRefResolution{problem: "the link's source was not found"}
 	}
 	if tag == "" {
 		// Ссылка без identity-тега на источник из одного узла — им она и есть.
@@ -184,12 +184,12 @@ func (idx *nodeRefIndex) resolve(sourceID, tag string) nodeRefResolution {
 		if only := idx.singleNodeBySourceID[sourceID]; only != nil {
 			return nodeRefResolution{node: only}
 		}
-		return nodeRefResolution{problem: "в ссылке нет тега узла"}
+		return nodeRefResolution{problem: "the link carries no node tag"}
 	}
 	if n := nodes[tag]; n != nil {
 		return nodeRefResolution{node: n}
 	}
-	return nodeRefResolution{problem: fmt.Sprintf("узла %q в нём нет", tag)}
+	return nodeRefResolution{problem: fmt.Sprintf("node %q is not in it", tag)}
 }
 
 // sourceDisplayName — как источник зовут в сообщениях (SPEC 112-A, «Понятные

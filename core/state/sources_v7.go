@@ -388,7 +388,7 @@ func normalizeSourceShape(s *Source) ([]string, error) {
 	}
 	var warns []string
 	drop := func(field string) {
-		warns = append(warns, fmt.Sprintf("source %s (kind=%s): поле %q нелегально для этого kind — отброшено", sourceShapeName(s), s.Kind, field))
+		warns = append(warns, fmt.Sprintf("source %s (kind=%s): field %q is not legal for this kind — dropped", sourceShapeName(s), s.Kind, field))
 	}
 
 	switch s.Kind {
@@ -457,7 +457,7 @@ func normalizeSourceShape(s *Source) ([]string, error) {
 					warns = append(warns, ws...)
 				}
 			default:
-				return warns, fmt.Errorf("state: source %s: node %q несёт неизвестный kind %q — файл от более новой схемы, обновите приложение", sourceShapeName(s), n.Tag, n.Kind)
+				return warns, fmt.Errorf("state: source %s: node %q carries an unknown kind %q — the file comes from a newer schema, update the app", sourceShapeName(s), n.Tag, n.Kind)
 			}
 		}
 
@@ -465,10 +465,10 @@ func normalizeSourceShape(s *Source) ([]string, error) {
 		// Неразобранная запись живёт только внутри контейнера: её родил разбор
 		// тела, а у корневого источника тела нет. В корне она бы ничего не
 		// значила — и никакой fetch её оттуда не починил бы.
-		return warns, fmt.Errorf("state: source %s: kind=unsupported легален только внутри контейнера", sourceShapeName(s))
+		return warns, fmt.Errorf("state: source %s: kind=unsupported is legal only inside a container", sourceShapeName(s))
 
 	default:
-		return warns, fmt.Errorf("state: source %s несёт неизвестный kind %q — файл от более новой схемы, обновите приложение", sourceShapeName(s), s.Kind)
+		return warns, fmt.Errorf("state: source %s carries an unknown kind %q — the file comes from a newer schema, update the app", sourceShapeName(s), s.Kind)
 	}
 	return warns, nil
 }
@@ -480,7 +480,7 @@ func normalizeSourceShape(s *Source) ([]string, error) {
 func normalizeNodeShape(n *Node, name string) []string {
 	var warns []string
 	drop := func(field string) {
-		warns = append(warns, fmt.Sprintf("node %s (kind=%s): поле %q нелегально для этого kind — отброшено", name, n.Kind, field))
+		warns = append(warns, fmt.Sprintf("node %s (kind=%s): field %q is not legal for this kind — dropped", name, n.Kind, field))
 	}
 	// Причина живёт только у неразобранной записи: у собравшегося узла ей
 	// нечего объяснять, а показанная строкой «⚠ …» она соврала бы.
@@ -523,7 +523,7 @@ func normalizeNodeShape(n *Node, name string) []string {
 			n.Hops = nil
 		}
 		if n.Group == nil {
-			warns = append(warns, fmt.Sprintf("node %s: kind=auto без group — группа не эмитится", name))
+			warns = append(warns, fmt.Sprintf("node %s: kind=auto without group — the group is not emitted", name))
 		}
 	case SourceKindUnsupported:
 		// Собирать из неразобранной записи нечего: тела, маршрута и состава у
@@ -552,7 +552,7 @@ func normalizeNodeShape(n *Node, name string) []string {
 		if n.Origin == nil {
 			// Исходник — единственное, что у такой записи есть. Без него узел
 			// не рассказывает ни что это было, ни как это чинить.
-			warns = append(warns, fmt.Sprintf("node %s: kind=unsupported без origin — исходник записи потерян", name))
+			warns = append(warns, fmt.Sprintf("node %s: kind=unsupported without origin — the record source is lost", name))
 		}
 	}
 	return warns
