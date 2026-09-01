@@ -118,8 +118,16 @@ func TestApplyServerBodyJSON(t *testing.T) {
 		if !strings.HasPrefix(string(src.Body), `{"type":"trojan","server":"b.example"`) {
 			t.Errorf("порядок ключей не сохранён: %s", src.Body)
 		}
-		if src.Origin == nil || src.Origin.Kind != wizardmodels.OriginKindJSON {
-			t.Errorf("происхождение = %+v, ожидали json — узел собран руками", src.Origin)
+		// Происхождение ПЕРЕЖИВАЕТ правку тела: правка тела — это правка
+		// тела, а не смена того, откуда узел взялся. Иначе узел из wg-quick
+		// INI после первой же правки JSON терял исходник со всеми
+		// комментариями, и «Regen from raw» пересобирал его уже из нашего
+		// собственного вывода.
+		if src.Origin == nil || src.Origin.Kind != wizardmodels.OriginKindURI {
+			t.Errorf("происхождение = %+v, ожидали прежний uri — правка тела его не меняет", src.Origin)
+		}
+		if src.Origin != nil && src.Origin.Raw != "vless://x" {
+			t.Errorf("исходник переписан: %q", src.Origin.Raw)
 		}
 	})
 }

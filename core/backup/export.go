@@ -278,7 +278,15 @@ func exportServer(src state.Source) Server {
 	}
 	// Форма хранения узла в v7 одна — тело; исходный URI живёт в origin и
 	// едет тем же ключом, что и раньше, когда он был единственной формой.
-	if src.Origin != nil && src.Origin.Kind == state.OriginKindURI {
+	//
+	// Блок wg-quick едет ТЕМ ЖЕ ключом `uri`: контракт (общий с LxBox) знает
+	// только uri/config_json, а материализация принимает и ссылку, и текст
+	// [Interface]/[Peer] — распознаёт по форме и возвращает origin.kind
+	// wg_ini. Без этой ветки INI-узел экспортировался телом, и на импорте
+	// исходник со всеми комментариями (включая имя пира) исчезал: узел терял
+	// «Regen from raw» и приезжал безымянным.
+	if src.Origin != nil &&
+		(src.Origin.Kind == state.OriginKindURI || src.Origin.Kind == state.OriginKindWGIni) {
 		out.URI = src.Origin.Raw
 	} else if len(src.Body) > 0 {
 		out.ConfigJSON = append(json.RawMessage(nil), src.Body...)

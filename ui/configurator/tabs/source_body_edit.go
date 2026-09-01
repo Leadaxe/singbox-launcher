@@ -64,7 +64,34 @@ func applyServerBodyJSON(node *wizardmodels.Node, text string) error {
 		return err
 	}
 	node.Body = mat.Body
-	node.Origin = &wizardmodels.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw}
+
+	// ВИД и ИСХОДНИК происхождения переживают правку тела.
+	//
+	// Правка тела — это правка тела, а не смена того, откуда узел взялся.
+	// Раньше здесь безусловно писался origin материализации, и узел,
+	// заведённый из wg-quick INI, после первой же правки JSON терял исходник:
+	// kind ехал в "json", а блок [Interface]/[Peer] со всеми комментариями
+	// (включая имя пира) пропадал навсегда — «Regen from raw» после этого
+	// пересобирал узел уже из нашего собственного вывода.
+	//
+	// А вот СВЯЗЬ С ПОДПИСКОЙ ручная правка рвёт (Д5, разыменование): тело
+	// теперь наше, и следующий fetch не имеет права его переписать. Поэтому
+	// origin.SubURL снимается — это ровно то, что делает
+	// business.DereferenceNodeOrigin.
+	if node.Origin == nil {
+		// Узла без происхождения не было — он собран прямо здесь из
+		// вставленного JSON и честно происходит из него.
+		node.Origin = &wizardmodels.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw}
+		return nil
+	}
+	if node.Origin.SubURL != "" {
+		// Origin ПЕРЕСАЖИВАЕТСЯ на новый экземпляр: Node несёт *Origin, и
+		// копии узла делят его с оригиналом (тот же довод, что в
+		// DereferenceNodeOrigin).
+		o := *node.Origin
+		o.SubURL = ""
+		node.Origin = &o
+	}
 	return nil
 }
 

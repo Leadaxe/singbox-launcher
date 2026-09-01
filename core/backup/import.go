@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/state"
 )
 
@@ -398,7 +399,15 @@ func importServer(srv Server) state.Source {
 		src.Body = append(json.RawMessage(nil), srv.ConfigJSON...)
 		src.Origin = &state.Origin{Kind: state.OriginKindJSON, Raw: string(srv.ConfigJSON)}
 	case strings.TrimSpace(srv.URI) != "":
-		src.Origin = &state.Origin{Kind: state.OriginKindURI, Raw: srv.URI}
+		// Вид определяется ФОРМОЙ текста: в поле `uri` контракта едет и
+		// ссылка, и блок wg-quick (контракт общий с LxBox, третьего ключа в
+		// нём нет). Записать блоку kind=uri значило бы потерять вид на первом
+		// же Save — узел перестал бы пересобираться из исходника провайдера.
+		kind := state.OriginKindURI
+		if len(subscription.WGConfBlocksOf(srv.URI)) > 0 {
+			kind = state.OriginKindWGIni
+		}
+		src.Origin = &state.Origin{Kind: kind, Raw: srv.URI}
 	}
 	return src
 }

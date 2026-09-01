@@ -46,16 +46,61 @@ func ExtractWGConfBlocks(input string) (rest string, blocks []string) {
 }
 
 // ConvertWGConfText converts one [Interface]/[Peer] block to the canonical
-// wireguard:// URI accepted by ParseNode. The URI fragment (node label) is the
-// Endpoint host: a pasted .conf carries no display name, and a fixed fallback
-// would give every pasted node the same tag.
+// wireguard:// URI accepted by ParseNode.
+//
+// The URI fragment (node label) comes from the peer's own name comment when
+// the file carries one, and falls back to the Endpoint host otherwise.
+// Providers write the location right under [Peer] as a bare comment:
+//
+//	[Peer]
+//	# US-FREE#137
+//	PublicKey = ...
+//
+// That comment is the only human-readable name in a .conf, so a node named
+// "US-FREE#137" must not end up tagged "194.180.34.8".
 func ConvertWGConfText(confText string) (string, error) {
 	_, peer := parseWGConfSections(confText)
-	label := wgEndpointHost(peer["endpoint"])
+	label := wgPeerNameComment(confText)
+	if label == "" {
+		label = wgEndpointHost(peer["endpoint"])
+	}
 	if label == "" {
 		return "", fmt.Errorf("missing required fields: [Peer] endpoint")
 	}
 	return wgConfToURI(confText, label)
+}
+
+// wgPeerNameComment — имя пира из комментария сразу после [Peer].
+//
+// Берётся ПЕРВЫЙ комментарий секции, и только если он не содержит «=»:
+// строки вида «# Bouncing = 0» — это отключённые настройки, а не имя. Сам
+// «#» в значении допустим («US-FREE#137»), поэтому режется лишь ведущий
+// маркер комментария.
+func wgPeerNameComment(confText string) string {
+	inPeer := false
+	for _, raw := range strings.Split(confText, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "[") {
+			inPeer = strings.EqualFold(strings.TrimSpace(line), "[Peer]")
+			continue
+		}
+		if !inPeer {
+			continue
+		}
+		if !strings.HasPrefix(line, "#") {
+			// Дошли до настоящего поля — имени в этой секции нет.
+			return ""
+		}
+		name := strings.TrimSpace(strings.TrimPrefix(line, "#"))
+		if name == "" || strings.Contains(name, "=") {
+			continue
+		}
+		return name
+	}
+	return ""
 }
 
 // wgEndpointHost extracts the host from a host:port endpoint ("" if malformed).

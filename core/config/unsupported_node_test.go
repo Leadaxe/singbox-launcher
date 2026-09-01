@@ -79,14 +79,17 @@ func TestUnsupportedNodeDoesNotShiftEmittedTags(t *testing.T) {
 // Слот глобальной уникализации тоже принадлежит только собравшимся: тёзки
 // получают «-2» подряд, независимо от битых строк между ними.
 func TestUnsupportedNodeDoesNotEatUniquenessSlot(t *testing.T) {
-	// Сырые теги уникальны (их уникализировал парсер тела), а вот подпись во
-	// фрагменте у провайдера одна и та же — так рождается «A» и «A-2» на
-	// эмиссии. Между ними стоит битая строка с тегом «A-2»: займи она слот,
-	// второй узел уехал бы в «A-3».
+	// Тёзки: два узла с ОДНИМ сырым тегом (так бывает у папки, куда принесли
+	// узлы из разных мест) — на эмиссии второй получает «A-2». Между ними
+	// стоит битая строка, которая тоже зовётся «A»: займи она слот, второй
+	// живой узел уехал бы в «A-3».
+	//
+	// Имя узла — его ТЕГ, а не подпись из `#fragment`: фрагмент подставляется
+	// только явной переменной {$label} в префиксе/постфиксе.
 	src := subWithNodes("",
-		serverNodeLabelled("A", "A", "a.example"),
-		state.NewUnsupportedNode("A-2", "record rejected", state.OriginKindURI, "wtf://x"),
-		serverNodeLabelled("A-3", "A", "b.example"),
+		serverNodeLabelled("A", "ярлык-1", "a.example"),
+		state.NewUnsupportedNode("A", "record rejected", state.OriginKindURI, "wtf://x"),
+		serverNodeLabelled("A", "ярлык-2", "b.example"),
 	)
 	tags := emitTags(t, src)
 	if len(tags) != 2 || tags[0] != "A" || tags[1] != "A-2" {

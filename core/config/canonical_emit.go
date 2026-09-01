@@ -336,7 +336,23 @@ func applyCanonicalDisplay(node *ParsedNode, cn *configtypes.CanonicalNode) {
 	}
 	node.Label = label
 	node.Comment = subscription.CommentFromLabel(label)
-	node.Tag = providerTag
+	// Тег узла — ЕГО СОБСТВЕННОЕ имя (cn.Tag), а не то, что выведено из
+	// `#fragment` исходной ссылки. Фрагмент участвует только как {$label} в
+	// тег-политике и в подписи.
+	//
+	// Раньше здесь стоял providerTag, и у контейнера он побеждал: вход
+	// тег-политики берёт node.Tag (canonicalPolicyInput), то есть уже
+	// переписанное значение. Узел, перенесённый в папку, терял имя — у
+	// Proton-ссылок фрагмент это IP, и «Proton NL» превращался в
+	// «185.107.56.148», а ссылки на прежнее имя рвались.
+	//
+	// У КОРНЕВОГО узла политики нет и вход брался из cn.Tag, поэтому в корне
+	// имя держалось — отсюда и «сломалось при переносе в папку».
+	if strings.TrimSpace(cn.Tag) != "" {
+		node.Tag = cn.Tag
+	} else {
+		node.Tag = providerTag
+	}
 }
 
 // originKindURI — значение state.OriginKindURI (строкой: state сюда не
