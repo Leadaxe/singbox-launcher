@@ -410,12 +410,13 @@ func (st *bodyParseState) accept(node *configtypes.ParsedNode, originKind, origi
 			st.reject(reason, originKind, originRaw)
 			return
 		}
-		if len(node.Chain) > 0 {
-			// Xray Jump / вложенная цепочка провайдера: перенос в модель v7
-			// делает эмиттер/резолв (W4); каркас W2 фиксирует факт, чтобы
-			// потеря не была молчаливой.
-			st.warn(fmt.Sprintf("node %q carries provider chain hops — materialized without them (W4)", entry.RawTag))
-		}
+		// Хопы провайдера (`node.Chain`) здесь НЕ теряются и предупреждения
+		// не требуют: материализация выделяет их служебными узлами и связывает
+		// с владельцем полем Detour (relay_materialize.go, SPEC 120). Прежний
+		// warning «materialized without them (W4)» стоял заглушкой, пока
+		// переноса не было, и после его появления стал ложной тревогой —
+		// пользователь видел предупреждение о потере там, где ничего не
+		// терялось.
 	}
 
 	st.accepted++
