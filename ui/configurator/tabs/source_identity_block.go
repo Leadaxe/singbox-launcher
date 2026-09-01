@@ -47,7 +47,7 @@ const (
 	// sourceIdentityAsSystemText — подпись галки наследования.
 	sourceIdentityAsSystemText = "as in system"
 	// sourceRelaysHintText — что даёт выделение служебных узлов.
-	sourceRelaysHintText = "Some providers route a node through an intermediate relay. Off: the relay lives inside its node and stays invisible. On: it becomes a separate node marked with a gear — you can see it, switch it off, and pick it as a chain hop. It is never offered in Directions."
+	sourceRelaysHintText = "Some providers route a node through an intermediate relay. The relay is always part of the route — it shows in the node list with a gear and can be picked as a chain hop. Turn this on to also offer it in Directions, alongside regular nodes."
 )
 
 // sourceIdentityBlock — виджеты блока и их привязка к рабочей копии формы.
@@ -185,12 +185,13 @@ func newSourceIdentityBlock(srcRef func() *corestate.Source) *sourceIdentityBloc
 	// --- Служебные узлы (релеи BYPASS) --------------------------------------
 	//
 	// Провайдер отдаёт конфиги, где путь к серверу идёт через промежуточный
-	// socks5-релей. Выключено: релей живёт внутри тела своего узла и человеку
-	// невидим. Включено: он становится отдельным узлом с шестерёнкой — его
-	// видно, можно выключить и выбрать позицией цепочки.
-	b.relaysCheck = widget.NewCheck(locale.T("Show provider relays as separate nodes"), func(on bool) {
+	// socks5-релей. Сам релей существует ВСЕГДА: он часть маршрута, виден в
+	// составе подписки шестерёнкой и доступен позицией цепочки. Галка решает
+	// только одно — предлагать ли его в выборе Направлений наравне со
+	// странами.
+	b.relaysCheck = widget.NewCheck(locale.T("Offer provider relays in Directions"), func(on bool) {
 		if p := srcRef(); p != nil {
-			p.ExposeRelays = on
+			p.RelaysInDirections = on
 		}
 	})
 	relaysHint := widget.NewLabel(locale.T(sourceRelaysHintText))
@@ -277,7 +278,7 @@ func (b *sourceIdentityBlock) syncFromModel(src *corestate.Source, global source
 		b.hashValue.Enable()
 	}
 
-	b.relaysCheck.SetChecked(src.ExposeRelays)
+	b.relaysCheck.SetChecked(src.RelaysInDirections)
 
 	hw := strings.TrimSpace(src.HWID)
 	b.hwidCheck.SetChecked(hw == "")

@@ -167,17 +167,12 @@ func ShowEditDialog(
 				// возможно nodes окажется stale/empty (юзер увидит чипы 0
 				// или пустой список).
 				_, _ = wizardbusiness.RebuildNodePool(m)
-				// Служебные узлы (релеи провайдера, SPEC 120) в выбор
-				// Направления не идут: они существуют ради чужого узла, а
-				// не как самостоятельная страна. В конфиге и в хопах
-				// цепочки они при этом остаются.
-				nodes = make([]*config.ParsedNode, 0, len(m.NodePool))
-				for _, n := range m.NodePool {
-					if n != nil && n.Service {
-						continue
-					}
-					nodes = append(nodes, n)
-				}
+				// Служебные узлы (релеи провайдера, SPEC 120) по умолчанию
+				// в выбор Направления не идут: релей — дозвонщик, а не
+				// «страна». Подписка может это переопределить галкой
+				// RelaysInDirections: тогда её релеи предлагаются как обычные узлы.
+				// В конфиге и в хопах цепочки они есть при любом значении.
+				nodes = wizardbusiness.NodesForDirectionPicker(m)
 			}
 		}
 		showFlagPickerPopup(parent, nodes, filterValEntry.Text, filterInvertCheck.Checked,

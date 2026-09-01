@@ -48,10 +48,7 @@ type SubscriptionFetchMaterial struct {
 // приложения); ≤0 → аварийный потолок-константа (клэмп 3000 — внутри
 // парсера). Ошибка (пустое тело / обрыв разбора) возвращается вызывающему —
 // это признак НЕДОСТОВЕРНОГО ответа: nodes[] трогать нельзя (SPEC 113-A).
-// exposeRelays — выделять ли служебные узлы (релеи `sockopt.dialerProxy`)
-// отдельными записями состава; false = прежнее поведение, релей живёт внутри
-// тела своего узла.
-func MaterializeSubscriptionBody(subID string, decodedBody []byte, skip []map[string]string, capN int, exposeRelays bool) (*SubscriptionFetchMaterial, error) {
+func MaterializeSubscriptionBody(subID string, decodedBody []byte, skip []map[string]string, capN int) (*SubscriptionFetchMaterial, error) {
 	pb, parseErr := subscription.ParseSubscriptionBody(decodedBody, skip, capN)
 	if pb == nil {
 		return nil, parseErr
@@ -109,11 +106,12 @@ func MaterializeSubscriptionBody(subID string, decodedBody []byte, skip []map[st
 			flushRejected()
 			continue
 		}
-		// Служебные узлы записи (релеи BYPASS) — ОТДЕЛЬНЫМИ узлами, если
-		// подписка так настроена: иначе они остаются внутри тела и человеку
-		// невидимы. Владелец дозванивается через первый из них полем Detour.
-		if exposeRelays {
-			relays, detour := relayNodesFromEntry(subID, e, node.Tag)
+		// Служебные узлы записи (релеи BYPASS) — ВСЕГДА отдельными узлами:
+		// релей часть маршрута, и без него узел пошёл бы напрямую, то есть в
+		// блокировку. Владелец дозванивается через первый из них полем Detour.
+		// Видимость релея в выборе Направлений — отдельный вопрос, за него
+		// отвечает Source.RelaysInDirections на стороне UI.
+		if relays, detour := relayNodesFromEntry(subID, e, node.Tag); len(relays) > 0 {
 			if detour != nil {
 				node.Detour = detour
 			}

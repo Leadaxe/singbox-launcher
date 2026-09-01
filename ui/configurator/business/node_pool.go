@@ -160,3 +160,38 @@ func InvalidateNodePool(model *wizardmodels.WizardModel) {
 	// Sources показывал бы числа от прошлого состава.
 	model.SourceNodeCounts = nil
 }
+
+// NodesForDirectionPicker — узлы, которые предлагаются в выборе НАПРАВЛЕНИЯ.
+//
+// Отличается от полного пула ровно одним: служебные узлы (релеи провайдера,
+// SPEC 120) по умолчанию не предлагаются — релей это дозвонщик внутри чужого
+// маршрута, а не «страна», которую выбирают. Подписка может это
+// переопределить своей галкой `RelaysInDirections`: тогда её релеи идут в выбор как
+// обычные узлы.
+//
+// Пул при этом НЕ фильтруется: в конфиг релей попадает всегда (иначе detour
+// на него повис бы), и в позициях цепочки он виден тоже всегда — там он и
+// нужен. Отсюда отдельная функция, а не правка RebuildNodePool.
+func NodesForDirectionPicker(model *wizardmodels.WizardModel) []*config.ParsedNode {
+	if model == nil {
+		return nil
+	}
+	// Какие источники разрешили свои релеи в выборе.
+	exposed := make(map[int]bool, len(model.Sources))
+	for i := range model.Sources {
+		if model.Sources[i].RelaysInDirections {
+			exposed[i] = true
+		}
+	}
+	out := make([]*config.ParsedNode, 0, len(model.NodePool))
+	for _, n := range model.NodePool {
+		if n == nil {
+			continue
+		}
+		if n.Service && !exposed[n.SourceIndex] {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
+}
