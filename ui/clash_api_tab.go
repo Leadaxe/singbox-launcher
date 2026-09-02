@@ -583,9 +583,17 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			if platform.IsSleeping() {
 				return
 			}
-			fyne.Do(func() { button.SetText("...") })
+			// Индикация ожидания: ставится ДО запроса и держится минимум
+			// пару кадров. Ошибка вроде «outbound not found» приходит за
+			// единицы миллисекунд — без этой паузы «…» не успевало
+			// отрисоваться, и нажатие выглядело как промах по кнопке.
+			fyne.Do(func() { button.SetText(serversDelayPendingText) })
+			started := time.Now()
 			transport := EffectiveProxyTransportIn(ac, scope)
 			delay, err := transport.Delay(proxyName)
+			if d := time.Since(started); d < serversDelayMinPending {
+				time.Sleep(serversDelayMinPending - d)
+			}
 			fyne.Do(func() {
 				proxies := ac.GetProxiesList()
 				for i := range proxies {

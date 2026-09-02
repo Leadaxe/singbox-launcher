@@ -140,3 +140,43 @@ func TestMergeOutboundUpdatesInPlace_NilTemplateKeepsLegacyBodies(t *testing.T) 
 		t.Fatalf("legacy inline-body entry must survive td==nil merge, got %v", pc.ParserConfig.Outbounds)
 	}
 }
+
+// Выключение — свойство thin-записи (тумблер в списке Направлений пишет его
+// в саму запись, не в USER-патч). Резолв тела из шаблона/пресета обязан его
+// сохранить: терялось вместе с телом, и генератор собирал «(off)» Направление
+// как включённое (группа оставалась в config.json и в «Selector group»).
+func TestResolveKeepsRecordDisabled(t *testing.T) {
+	td := &template.TemplateData{
+		ParserConfig: `{"ParserConfig":{"outbounds":[
+			{"tag":"vpn ②","type":"selector"},
+			{"tag":"vpn ①","type":"selector"}
+		]}}`,
+		Presets: []template.Preset{{
+			ID:        "russian",
+			Outbounds: []template.PresetOutbound{{Mode: "add", Tag: "ru VPN", Type: "selector"}},
+		}},
+	}
+	pc := &configtypes.ParserConfig{}
+	pc.ParserConfig.Outbounds = []configtypes.Direction{
+		{Tag: "vpn ②", Ref: configtypes.RefTemplate, Disabled: true,
+			Updates: []configtypes.OutboundUpdate{{Ref: configtypes.RefUser,
+				Patch: map[string]interface{}{"addOutbounds": []interface{}{"direct-out"}}}}},
+		{Tag: "ru VPN", Ref: "russian", Disabled: true},
+		{Tag: "vpn ①", Ref: configtypes.RefTemplate},
+	}
+	MergeOutboundUpdatesInPlace(pc, td, template.LocalTarget())
+
+	got := map[string]configtypes.Direction{}
+	for _, d := range pc.ParserConfig.Outbounds {
+		got[d.Tag] = d
+	}
+	if d, ok := got["vpn ②"]; !ok || !d.Disabled || d.Type != "selector" {
+		t.Fatalf("шаблонная thin-запись потеряла выключение при резолве: %+v", d)
+	}
+	if d, ok := got["ru VPN"]; !ok || !d.Disabled {
+		t.Fatalf("пресетная thin-запись потеряла выключение при резолве: %+v", d)
+	}
+	if d := got["vpn ①"]; d.Disabled {
+		t.Fatalf("включённая запись стала выключенной: %+v", d)
+	}
+}

@@ -3,7 +3,9 @@ package ui
 import (
 	"fmt"
 	"image/color"
+	"strconv"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/theme"
@@ -107,13 +109,51 @@ type canvasTextSetter struct {
 }
 
 // SetText обновляет текст и перерисовывает его.
+//
+// Цвет ставится ПО СОДЕРЖИМОМУ: без этого «…» на месте прошлой ошибки
+// оставался красным, и нажатие выглядело так, будто ничего не произошло —
+// человек жал ещё раз, думая, что промахнулся мимо кликабельной зоны.
 func (s *canvasTextSetter) SetText(v string) {
 	if s == nil || s.text == nil {
 		return
 	}
 	s.text.Text = v
+	// Цвет ставится ПО СОДЕРЖИМОМУ, иначе прежний остаётся на новом тексте:
+	// «…» после ошибки было красным (нажатие выглядело как промах), а
+	// свежий замер после ошибки — тоже красным, хотя узел ожил.
+	switch {
+	case v == serversDelayPendingText:
+		s.text.Color = theme.Color(theme.ColorNamePlaceHolder)
+	case strings.HasSuffix(v, "ms"):
+		s.text.Color = serversDelayColor(parseDelayMs(v))
+	default:
+		s.text.Color = serversDelayColor(-1)
+	}
 	s.text.Refresh()
 }
+
+// parseDelayMs — число миллисекунд из подписи «123 ms»; 0, если не разобрать.
+// Нужен только для выбора цвета: сам замер живёт в модели.
+func parseDelayMs(v string) int64 {
+	n, err := strconv.Atoi(strings.TrimSpace(strings.TrimSuffix(v, "ms")))
+	if err != nil {
+		return 0
+	}
+	return int64(n)
+}
+
+// serversDelayPendingText — что стоит в ячейке, пока идёт замер. Отдельная
+// константа, потому что по ней же canvasTextSetter узнаёт состояние ожидания
+// и красит его нейтрально.
+const serversDelayPendingText = "…"
+
+// serversDelayMinPending — сколько «…» держится на экране минимум.
+//
+// Мгновенный отказ (узла нет в конфиге, транспорт недоступен) возвращается за
+// единицы миллисекунд, и без нижней границы индикация не успевала
+// отрисоваться: человек видел прежнее значение и не понимал, приняли ли его
+// нажатие. 180 мс — заметно глазу и не воспринимается как задержка.
+const serversDelayMinPending = 180 * time.Millisecond
 
 // serversDelayText форматирует замер для колонки.
 //
