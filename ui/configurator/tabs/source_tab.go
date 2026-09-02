@@ -402,25 +402,37 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 			if mm == nil || !drill.nodesAreFree(mm.Sources) {
 				return
 			}
+			// Механика наполнения папки берётся целиком из её окна
+			// (folder_add_nodes.go) — второй не заводим: drill-down не должен
+			// знать про наполнение папки меньше, чем окно папки.
+			var fill *folderAddNodes
+			if idx := folderDrillIndex(mm.Sources, drill.folderID); idx >= 0 {
+				ops := newFolderDrillNodeOps(presenter, guiState, idx, mm.Sources[idx].Kind)
+				fill = newFolderAddNodes(ops, guiState.Window)
+			}
+			// «Add from file» в папке — МУЛЬТИВЫБОР, как в окне папки
+			// (features/sources.md §«Наполнение папки» п.1): каждый файл —
+			// свои узлы со своим именем. Раньше здесь стоял одиночный пикер
+			// вкладки Sources, и панель не давала выделить второй файл.
+			addFromFile := addFromFileAction
+			if fill != nil {
+				addFromFile = fill.addFromFiles
+			}
 			items = []*fyne.MenuItem{
 				fyne.NewMenuItem(locale.T("Add server"), addServerAction),
 				fyne.NewMenuItem(locale.T("Add WARP"), addWarpAction),
-				fyne.NewMenuItem(locale.T("Add from file"), addFromFileAction),
+				fyne.NewMenuItem(locale.T("Add from file"), addFromFile),
 			}
 			// Обкатка заход 3: «Fill from subscription…» — ТОТ ЖЕ пункт, что
-			// в окне папки (folder_fill_from_sub.go). Без него drill-down знал
-			// про наполнение папки меньше, чем её окно, а на попытку вставить
-			// URL подписки прямо в папку отвечал отказом, не показав законного
-			// пути. Механика берётся целиком — второй заливки не заводим.
-			if idx := folderDrillIndex(mm.Sources, drill.folderID); idx >= 0 {
-				ops := newFolderDrillNodeOps(presenter, guiState, idx, mm.Sources[idx].Kind)
-				if fill := newFolderAddNodes(ops, guiState.Window); fill != nil {
-					items = append(items,
-						fyne.NewMenuItemSeparator(),
-						fyne.NewMenuItem(locale.T("Fill from subscription…"),
-							fill.showFillFromSubscriptionDialog),
-					)
-				}
+			// в окне папки (folder_fill_from_sub.go). Без него на попытку
+			// вставить URL подписки прямо в папку drill-down отвечал отказом,
+			// не показав законного пути.
+			if fill != nil {
+				items = append(items,
+					fyne.NewMenuItemSeparator(),
+					fyne.NewMenuItem(locale.T("Fill from subscription…"),
+						fill.showFillFromSubscriptionDialog),
+				)
 			}
 		} else {
 			items = []*fyne.MenuItem{
