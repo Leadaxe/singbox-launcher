@@ -258,12 +258,11 @@ func ApplyCanonicalNodeLinks(
 	// отсутствие и роняет тех, кто на них ссылался (каскад).
 	dropped := make(map[*ParsedNode]bool)
 
-	// WireGuard с висячей целью — до фикспойнта и ровно один раз: сама
-	// проверка живёт внутри фикспойнтного цикла и повторила бы warning на
-	// каждом проходе.
-	for _, wg := range warnWireguardDanglingDetours(allNodes, targets) {
-		warnings = append(warnings, addr(wg.node, wg.text))
-	}
+	// Отдельной проверки WireGuard здесь БОЛЬШЕ НЕТ: раньше detour у WG
+	// снимался молча, и о висячей цели приходилось предупреждать своим
+	// проходом. Теперь WG идёт общим путём резолва — непойманная цель даёт
+	// ту же ошибку, что у остальных узлов, и второе сообщение о том же было
+	// бы дублем.
 
 	// Итерация до фикспойнта: каждое выпадение может открыть следующее.
 	// Верхняя граница защитная — каждый содержательный проход что-то
@@ -328,36 +327,6 @@ func ApplyCanonicalNodeLinks(
 	return kept, warnings
 }
 
-// wireguardScheme — схема, у которой detour не применяется вовсе (правило
-// модели: у WG-endpoint нет dial-полей, канал задаёт сам туннель).
-const wireguardScheme = "wireguard"
-
-// warnWireguardDanglingDetours — WG-узел с detour на НЕСУЩЕСТВУЮЩУЮ цель.
-//
-// Носитель не роняется: у WireGuard detour не применяется по правилу модели,
-// поэтому висячая цель не превращает анонимный переход в прямой дозвон — и
-// fail-closed тут был бы наказанием за поле, которое всё равно не работает.
-// Но проглатывать это молча тоже нельзя: у пользователя настроены сразу две
-// вещи, ни одна из которых не действует, — переход, который ядро не умеет, и
-// цель, которой в сборке нет. Дешевле сказать, чем оставить гадать, почему
-// трафик идёт не туда.
-func warnWireguardDanglingDetours(allNodes []*ParsedNode, targets *NodeLinkTargets) []nodeWarning {
-	var warnings []nodeWarning
-	for _, n := range allNodes {
-		if n == nil || n.Scheme != wireguardScheme || n.CanonicalDetour == nil {
-			continue
-		}
-		res := targets.Resolve(*n.CanonicalDetour)
-		if res.Problem == "" {
-			continue
-		}
-		w := locale.Tf(emitWireguardDetourText, n.Tag, n.CanonicalDetour.Tag, res.Problem)
-		warnings = append(warnings, nodeWarning{node: n, text: w})
-		debuglog.WarnLog("nodelink: %s", w)
-	}
-	return warnings
-}
-
 // nodeWarning — фраза и узел, к которому она относится: адресата ставит
 // вызывающий, у которого на руках список источников.
 type nodeWarning struct {
@@ -371,14 +340,15 @@ func resolveCanonicalDetour(n *ParsedNode, targets *NodeLinkTargets, dropped map
 	if n.CanonicalDetour == nil {
 		return ""
 	}
-	// Исключение ядра: WireGuard detour не получает (правило модели).
-	// Проверяется ЗДЕСЬ, в точке применения: тело узла обязано оставаться
-	// чистым, и запекать исключение в fetch значило бы решать за эмиссию.
-	// Узел при этом НЕ роняется — детур для него не значим, — но и молчать
-	// про него нельзя: за это отвечает warnWireguardDanglingDetours.
-	if n.Scheme == wireguardScheme {
-		return ""
-	}
+	// Исключения для WireGuard ЗДЕСЬ НЕТ (проверено запуском ядра
+	// 1.14.0-lx.28: endpoint/wireguard с `detour` стартует и честно
+	// дозванивается через указанный outbound).
+	//
+	// Раньше detour у WG снимался молча «правилом модели», и настройка,
+	// выставленная в форме — хоть личная у узла, хоть общая у папки, —
+	// пропадала между состоянием и конфигом без единого слова. Для узлов
+	// Proton поверх WARP это означало, что заданный маршрут просто не
+	// работал.
 	res := targets.Resolve(*n.CanonicalDetour)
 	if res.Problem != "" {
 		return locale.Tf(emitDetourUnresolvedText, n.Tag, res.Problem)

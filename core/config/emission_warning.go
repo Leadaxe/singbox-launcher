@@ -34,11 +34,10 @@ const (
 	emitLinkNodeMissingText   = "it has no node %q"
 	emitLinkTargetUnknownText = "target %q is not among nodes, Directions and folder replacements"
 
-	emitDetourUnresolvedText   = "node %q dropped: the detour target did not resolve (%s) — a hop set up for anonymity may not silently become a direct dial"
+	emitDetourUnresolvedText    = "node %q dropped: the detour target did not resolve (%s) — a hop set up for anonymity may not silently become a direct dial"
 	emitDetourTargetDroppedText = "node %q dropped: its detour target %q fell out of the config itself"
-	emitDetourSelfText         = "node %q dropped: its detour points at itself"
-	emitDetourCycleText        = "node %q dropped: detour loop — the chain of hops leads traffic back to itself"
-	emitWireguardDetourText    = "node %q (wireguard): detour does not apply to WireGuard, and its target %q did not resolve either (%s)"
+	emitDetourSelfText          = "node %q dropped: its detour points at itself"
+	emitDetourCycleText         = "node %q dropped: detour loop — the chain of hops leads traffic back to itself"
 
 	emitGroupMemberLostText     = "group %q: member %q left the group (%s)"
 	emitMemberDroppedReasonText = "the node fell out of the config"

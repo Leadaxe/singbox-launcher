@@ -258,26 +258,31 @@ func TestEmitE2_DetourCycleIsFailClosed(t *testing.T) {
 }
 
 // Исключение ядра: WireGuard detour не получает — правило модели.
-func TestEmitE2_WireGuardTakesNoDetour(t *testing.T) {
+func TestEmitE2_WireGuardTakesDetourLikeAnyNode(t *testing.T) {
+	// Ядро (1.14.0-lx.28) принимает `detour` у endpoint/wireguard — проверено
+	// запуском. Поэтому WG идёт ОБЩИМ путём резолва: рабочая цель
+	// проставляется, висячая роняет узел fail-closed, как у всех остальных.
+	//
+	// Раньше здесь стояло исключение «WireGuard detour не получает», и
+	// настройка из формы молча пропадала между состоянием и конфигом.
 	wg := configtypes.CanonicalNode{
 		Kind:    "server",
 		Tag:     "wg-1",
 		Enabled: true,
 		Body:    json.RawMessage(`{"type":"wireguard","address":["10.0.0.2/32"],"private_key":"k"}`),
-		Detour:  &configtypes.NodeLink{Tag: "ghost"},
+		Detour:  &configtypes.NodeLink{Tag: "C"},
 	}
 	res := runCanonicalBuild(t, []ProxySource{
 		canonRoot("S1", "wg-1", wg),
 		canonRoot("S2", "C", canonServerNode("C", "C", "c.example", 443)),
 	}, nil)
 
-	// Узел жив (висячая ссылка его не уронила) и detour ему не проставлен.
 	found := false
 	for _, ep := range res.EndpointsJSON {
 		if strings.Contains(ep, `"wg-1"`) {
 			found = true
-			if strings.Contains(ep, `"detour"`) {
-				t.Error("WireGuard получил detour — правило модели нарушено")
+			if !strings.Contains(ep, `"detour"`) {
+				t.Errorf("WireGuard остался без detour: %s", ep)
 			}
 		}
 	}
@@ -736,13 +741,14 @@ func TestEmitDisabledNodeConsumesNumVariable(t *testing.T) {
 // TestEmitRetiredMaskIsReported / TestEmitRootNodeTagIsNotReportedAsMask
 // удалены вместе с предметом.
 
-
 // ── Фикс-раунд W4: WG с висячим detour не молчит ─────────────────────
 
 // WireGuard detour не применяется по правилу модели, поэтому носитель не
 // роняется. Но если цель ещё и не существует, у пользователя настроены две
 // неработающие вещи сразу — молчать нельзя.
-func TestEmitWireguardDanglingDetourWarns(t *testing.T) {
+func TestEmitWireguardDanglingDetourDropsNode(t *testing.T) {
+	// Висячая цель у WG — тот же fail-closed, что у любого узла: тихий
+	// прямой дозвон вместо заданного маршрута недопустим.
 	wg := configtypes.CanonicalNode{
 		Kind:       "server",
 		Tag:        "WG",
@@ -757,14 +763,8 @@ func TestEmitWireguardDanglingDetourWarns(t *testing.T) {
 		canonRoot("S1", "WG", wg),
 	}, nil)
 
-	// Носитель жив: detour для WG незначим, ронять его было бы наказанием
-	// за неработающее поле. WireGuard едет в endpoints, не в outbounds.
-	endpoints := strings.Join(res.EndpointsJSON, "\n")
-	if !strings.Contains(endpoints, `"WG"`) {
-		t.Fatalf("WG-узел выпал из конфига: endpoints=%v outbounds=%v", res.EndpointsJSON, emittedTags(res))
-	}
-	if strings.Contains(endpoints, `"detour"`) {
-		t.Errorf("WG-узлу проштампован detour — ядро такого не принимает: %v", res.EndpointsJSON)
+	if strings.Contains(strings.Join(res.EndpointsJSON, "\n"), `"WG"`) {
+		t.Errorf("узел с висячим detour попал в конфиг: %v", res.EndpointsJSON)
 	}
 	found := false
 	for _, w := range EmissionWarningTexts(res.EmissionWarnings) {
@@ -798,5 +798,10 @@ func TestEmitWireguardResolvableDetourStaysQuiet(t *testing.T) {
 		if strings.Contains(w, "wireguard") {
 			t.Errorf("рабочая конфигурация названа деградацией: %q", w)
 		}
+	}
+	// И сам detour обязан доехать: тишина без результата означала бы, что
+	// настройка снова теряется молча.
+	if !strings.Contains(strings.Join(res.EndpointsJSON, "\n"), `"detour"`) {
+		t.Errorf("рабочий detour не проставлен: %v", res.EndpointsJSON)
 	}
 }
