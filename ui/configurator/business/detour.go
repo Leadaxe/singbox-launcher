@@ -143,6 +143,18 @@ func detourOptionsFor(model *wizardmodels.WizardModel, holder detourHolder, none
 			if s.Kind != wizardmodels.SourceKindServer {
 				continue
 			}
+			// Выключенный узел в конфиг не идёт, и целью detour быть не может:
+			// выбор указал бы в пустоту, а сборка уронила бы носителя
+			// fail-closed. Список целей обязан совпадать с тем, что реально
+			// попадёт в config.json — то же правило, что у Направлений
+			// (GetAvailableOutbounds пропускает Disabled).
+			//
+			// Действующий выбор при этом не теряется: ветка ниже показывает
+			// его отдельной строкой, даже если цель погасла, — иначе человек
+			// не узнал бы, куда ведёт fail-closed на сборке.
+			if !s.Enabled {
+				continue
+			}
 			if holder.selfID != "" && s.ID == holder.selfID {
 				continue // цепочка через самого себя
 			}
