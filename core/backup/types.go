@@ -281,7 +281,14 @@ type Direction struct {
 	// иначе общий разбор неизвестных ключей давал бы backup_unknown_field
 	// на каждом Направлении чужого файла. Экспорт его не пишет: `json:"-"`
 	// тут не годится, потому что снял бы и чтение.
-	Label                     string         `json:"label,omitempty"`
+	Label string `json:"label,omitempty"`
+	// PingURL и PingTimeoutMs — Поддержка: LxBox (контракт 0.12.6, D-096):
+	// бюджет замера узлов Направления в приложении. Лаунчер такой настройки
+	// не имеет: читает молча, на экспорте не пишет. Объявлены по той же
+	// причине, что Label — иначе backup_unknown_field на каждом Направлении
+	// файла LxBox. Не путать с DirectionAuto.URL/IdleTimeout (urltest ядра).
+	PingURL                   string         `json:"ping_url,omitempty"`
+	PingTimeoutMs             int            `json:"ping_timeout_ms,omitempty"`
 	Enabled                   *bool          `json:"enabled,omitempty"`
 	Filter                    string         `json:"filter,omitempty"`
 	Invert                    bool           `json:"invert,omitempty"`

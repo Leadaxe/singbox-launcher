@@ -276,8 +276,11 @@ var (
 	// он его пишет и читает, лаунчер игнорирует молча. Неизвестным ключом
 	// поле больше не считается — иначе каждый импорт файла LxBox давал бы
 	// backup_unknown_field на каждом Направлении.
+	// ping_url/ping_timeout_ms — то же с 0.12.6 (D-096): бюджет замера
+	// Направления у LxBox, лаунчер игнорирует молча.
 	directionKeys = map[string]bool{
-		"tag": true, "label": true, "enabled": true, "filter": true,
+		"tag": true, "label": true, "ping_url": true, "ping_timeout_ms": true,
+		"enabled": true, "filter": true,
 		"invert": true, "default": true, "include_direct": true,
 		"include_block": true, "include": true,
 		"interrupt_exist_connections": true, "auto": true,

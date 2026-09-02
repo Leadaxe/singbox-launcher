@@ -1,0 +1,21 @@
+{
+  "rules": [
+    {
+      "name": "DE",
+      "enabled": true
+    }
+  ],
+  "warnings": [],
+  "directions": [
+    {
+      "tag": "vpn-de",
+      "filter": "🇩🇪",
+      "invert": false,
+      "include_direct": false,
+      "include_block": false,
+      "has_auto": false,
+      "ping_url": "https://cp.cloudflare.com/generate_204",
+      "ping_timeout_ms": 3000
+    }
+  ]
+}
