@@ -10,7 +10,7 @@
 
 ### Выжимка (RU) — v1.5.4
 
-**Папки — свои контейнеры для узлов.** Заводите папку, наполняйте её вставкой ссылок, импортом файлов или заливкой из подписки — и правьте состав как хотите: выключенный узел останется выключенным, а повторная заливка сливает, а не переписывает. Узел, который провайдер прислал, но мы не разобрали, больше не исчезает: он виден на своём месте с причиной и исходной строкой.
+**Папки — свои контейнеры для узлов.** Заводите папку, наполняйте её вставкой ссылок, импортом файлов или заливкой из подписки — и правьте состав как хотите: выключенный узел останется выключенным, а повторная заливка сливает, а не переписывает. Узел, который провайдер прислал, но мы не разобрали, больше не исчезает: он виден на своём месте с причиной и исходной строкой. Запись источника из «Copy JSON» вставляется обратно в поле Add, а сама кнопка Add теперь всегда отчитывается об итоге.
 
 **Модель источников переписана (схема v7).** Узлы подписки хранятся явно, а не разбираются заново из кэша ответа на каждой сборке; отметки «выключен» и ссылки живут на самих узлах. Состояние мигрирует само при первом запуске, прежний файл остаётся рядом как `state.json.v6.bak`, а отчёт миграции называет поимённо всё, что не удалось перенести один-в-один.
 
@@ -20,7 +20,7 @@
 
 ### Highlights (EN) — v1.5.4
 
-**Folders — your own containers for nodes.** Create a folder, fill it by pasting links, importing files or copying from a subscription — and edit it freely: a node you turned off stays off, and re-filling merges instead of overwriting. An entry the provider sent that we could not parse no longer disappears: it stays on its position with the reason and the original line.
+**Folders — your own containers for nodes.** Create a folder, fill it by pasting links, importing files or copying from a subscription — and edit it freely: a node you turned off stays off, and re-filling merges instead of overwriting. An entry the provider sent that we could not parse no longer disappears: it stays on its position with the reason and the original line. A source record from "Copy JSON" pastes back into the Add field, and the Add button now always reports its outcome.
 
 **The source model was rebuilt (schema v7).** A subscription's nodes are stored explicitly instead of being re-parsed from a cached response on every build; on/off marks and links live on the nodes themselves. State migrates automatically on first launch, the previous file is kept as `state.json.v6.bak`, and a migration report names everything that could not be carried over one-to-one.
 
