@@ -28,7 +28,7 @@
 //   - «Copy JSON» / «Copy tag» — то же, что у одноимённых пунктов строки узла
 //     контейнера: тело, которое уедет в конфиг, и имя, которым узел зовут
 //     правила.
-//   - «Copy to folder…» / «Move to folder…» → `previewNodeOps`
+//   - «Copy to…» / «Move to…» → `previewNodeOps`
 //     (showMoveOrCopyDialog / applyMoveOrCopy) — тот же диалог, тот же
 //     showStaleSelectionDialog и тот же showDetourRefsResetDialog, что в
 //     Preview. Второй набор диалогов разъехался бы с первым текстами и
@@ -103,6 +103,12 @@ func showSourceRowNodeContextMenu(
 		win:         guiState.Window,
 		sourceIndex: sourceIndex,
 		kind:        kind,
+		// rootNode — строка списка Sources: sourceIndex указывает на САМ узел,
+		// а не на контейнер с составом. Из kind это и так следует (сюда пускают
+		// только server/chain/auto), но проверять адрес через вид узла значит
+		// держать инвариант двумя разными способами: у move на этом стоит показ
+		// цели «верхний уровень», которой корневому узлу не полагается.
+		rootNode: true,
 		// reloadScratch/refreshPreview — nil: окна источника здесь нет, а
 		// список перестраивает applySourceMutation внутри applyMoveOrCopy.
 	}
@@ -126,10 +132,10 @@ func showSourceRowNodeContextMenu(
 			fynewidget.SetClipboard(rawTag)
 		}),
 		fyne.NewMenuItemSeparator(),
-		fyne.NewMenuItem(locale.T("Copy to folder…"), func() {
+		fyne.NewMenuItem(locale.T("Copy to…"), func() {
 			ops.showMoveOrCopyDialog(rawTag, false)
 		}),
-		fyne.NewMenuItem(locale.T("Move to folder…"), func() {
+		fyne.NewMenuItem(locale.T("Move to…"), func() {
 			ops.showMoveOrCopyDialog(rawTag, true)
 		}),
 		// Отдельного «Rename…» нет (обкатка заход 3): он вёл в то же окно, что

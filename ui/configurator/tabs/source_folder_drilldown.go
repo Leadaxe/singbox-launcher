@@ -147,7 +147,7 @@ const (
 	// Поле Add там выключено: состав подписки приезжает от провайдера, и узел,
 	// добавленный руками, исчез бы на первом же обновлении. Сказать это словами
 	// обязательно — выключенное поле без объяснения читается как поломка.
-	subDrillHintText = "Nodes of a subscription come from the provider and cannot be added by hand — an entry added here would be gone on the next update. Use “Copy to folder…” on a node to take it for yourself."
+	subDrillHintText = "Nodes of a subscription come from the provider and cannot be added by hand — an entry added here would be gone on the next update. Use “Copy to…” on a node to take it for yourself."
 )
 
 // folderDrillState — состояние вкладки «мы внутри контейнера».

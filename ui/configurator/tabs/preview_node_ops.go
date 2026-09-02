@@ -27,7 +27,8 @@
 //
 // Реестр переписи ссылок и предупреждения — существующие, своих не заводим:
 //
-//   - Move/Copy → business.MoveNodeToFolder / CopyNodeToFolder (W2), они же
+//   - Move/Copy → business.MoveNodeToFolder / CopyNodeToFolder, а с целью
+//     «верхний уровень» — MoveNodeToRoot / CopyNodeToRoot (W2); все четыре
 //     переписывают NodeLink и возвращают имена задетых источников;
 //   - смена финального тега → showStaleSelectionDialog (выбор в кэше ядра);
 //   - сброшенные ссылки при переименовании → resetRefsAfterNodeRename +
@@ -102,7 +103,7 @@ type previewNodeOps struct {
 //     разъехался бы с первым (у формы есть сброс ссылок на Save, у меню его
 //     не было бы).
 //
-// «Copy to folder…» при этом есть ВЕЗДЕ: копия ничего в источнике не меняет —
+// «Copy to…» при этом есть ВЕЗДЕ: копия ничего в источнике не меняет —
 // это ровно требование П2 «забрать узел провайдера себе».
 func (o *previewNodeOps) nodeOpsAllowed() bool {
 	if o == nil {
@@ -210,19 +211,33 @@ func nodeIndexByTag(nodes []corestate.Node, tag string) int {
 	return -1
 }
 
-// folderTargets — папки, доступные целью move/copy, кроме самой себя.
+// moveTargets — куда можно деть узел: верхний уровень и все папки модели.
 //
 // Возвращает параллельные срезы (подписи для селекта, ULID'ы) — Fyne'овский
 // widget.Select работает строками, а адресовать папку строкой имени нельзя:
-// имена не уникальны, а ULID уникален по построению.
-func (o *previewNodeOps) folderTargets() (labels []string, ids []string) {
+// имена не уникальны, а ULID уникален по построению. Пустой ULID = корневое
+// пространство, ровно как у NodeLink{FolderID: ""}.
+//
+// Собственная папка узла из списка НЕ исключается: обе операции в свой же
+// контейнер осмысленны и обе тихие — copy даёт дубликат с суффиксом в теге
+// (placeNodeIntoFolder уникализирует), move не делает ничего. Прятать цель
+// значило бы объяснять пользователю, почему список зависит от того, откуда он
+// пришёл, — а никакой разницы для него нет.
+//
+// «Верхний уровень» первой строкой, и показывается он не всегда:
+//
+//   - copy — всегда: копия в корень законна откуда угодно, включая сам корень
+//     (там это дубликат узла);
+//   - move — только из папки: корневому узлу переезжать в корень некуда, и
+//     пункт, который ничего не делает, хуже отсутствующего.
+func (o *previewNodeOps) moveTargets(move bool) (labels []string, ids []string) {
 	m := o.presenter.Model()
 	if m == nil {
 		return nil, nil
 	}
-	selfID := ""
-	if o.sourceIndex >= 0 && o.sourceIndex < len(m.Sources) {
-		selfID = strings.TrimSpace(m.Sources[o.sourceIndex].ID)
+	if !move || o.inFolder() {
+		labels = append(labels, locale.T("Top level"))
+		ids = append(ids, "")
 	}
 	seen := map[string]int{}
 	for i := range m.Sources {
@@ -231,7 +246,7 @@ func (o *previewNodeOps) folderTargets() (labels []string, ids []string) {
 			continue
 		}
 		id := strings.TrimSpace(s.ID)
-		if id == "" || id == selfID {
+		if id == "" {
 			continue
 		}
 		label := wizardbusiness.SourceDisplayName(*s)
@@ -248,7 +263,17 @@ func (o *previewNodeOps) folderTargets() (labels []string, ids []string) {
 	return labels, ids
 }
 
-// showMoveOrCopyDialog — выбор целевой папки для move/copy.
+// inFolder — узел лежит ВНУТРИ папки, то есть у него есть куда «выйти».
+//
+// Не то же, что kind == SourceKindFolder: у корневого узла (rootNode)
+// sourceIndex указывает на сам Source, и kind там — вид этого узла, а не
+// контейнера. Различие важно ровно в одном месте — показывать ли «Верхний
+// уровень» у move.
+func (o *previewNodeOps) inFolder() bool {
+	return o != nil && !o.rootNode && o.kind == corestate.SourceKindFolder
+}
+
+// showMoveOrCopyDialog — выбор цели для move/copy: папка или верхний уровень.
 //
 // Один диалог на обе операции: они отличаются ровно вызовом бизнес-функции и
 // заголовком, а разводить два почти одинаковых окна значило бы получить два
@@ -257,10 +282,11 @@ func (o *previewNodeOps) folderTargets() (labels []string, ids []string) {
 // Ловушка Fyne (fyne-label-minwidth-trap): подпись обязана быть Wrapping —
 // без него длинный тег узла в одну строку задаёт диалогу min-width.
 func (o *previewNodeOps) showMoveOrCopyDialog(rawTag string, move bool) {
-	labels, ids := o.folderTargets()
+	labels, ids := o.moveTargets(move)
 	if len(labels) == 0 {
-		// Папок нет вовсе — операция бессмысленна, но молчать нельзя: иначе
-		// пункт меню выглядит сломанным.
+		// Целей нет вовсе. Единственный оставшийся случай — move КОРНЕВОГО узла
+		// при полном отсутствии папок: корень ему не цель, а папок нет. Молчать
+		// нельзя, иначе пункт меню выглядит сломанным.
 		dialog.ShowInformation(
 			locale.T("No folders yet"),
 			locale.T("Create a folder first: Sources → ⋮ → Add folder."),
@@ -268,12 +294,12 @@ func (o *previewNodeOps) showMoveOrCopyDialog(rawTag string, move bool) {
 		return
 	}
 
-	title := locale.T("Copy node to folder")
+	title := locale.T("Copy node")
 	if move {
-		title = locale.T("Move node to folder")
+		title = locale.T("Move node")
 	}
 
-	body := widget.NewLabel(locale.Tf("Node %q — pick the destination folder:", rawTag))
+	body := widget.NewLabel(locale.Tf("Node %q — pick the destination:", rawTag))
 	body.Wrapping = fyne.TextWrapWord
 
 	sel := widget.NewSelect(labels, nil)
@@ -298,23 +324,41 @@ func (o *previewNodeOps) showMoveOrCopyDialog(rawTag string, move bool) {
 
 // applyMoveOrCopy выполняет перенос/копирование и разгребает последствия.
 //
+// dstID == "" — верхний уровень (MoveNodeToRoot / CopyNodeToRoot); иначе ULID
+// целевой папки. Пустой ULID здесь не «не выбрано»: селект всегда отдаёт
+// выбранный элемент, а корень адресуется именно пустым FolderID.
+//
 // Порядок обязателен: сначала мутация модели (W2), потом побочки
 // (applySourceMutation), потом перечитывание scratch'а окна, и только затем
 // диалоги — они модальные, и показать их до перечитывания значило бы дать
 // пользователю нажать Save по устаревшему снимку.
-func (o *previewNodeOps) applyMoveOrCopy(rawTag, dstFolderID string, move bool) {
+func (o *previewNodeOps) applyMoveOrCopy(rawTag, dstID string, move bool) {
 	m := o.presenter.Model()
 	if m == nil {
+		return
+	}
+	// Перенос узла туда, где он уже лежит, — ничего не делает, и весь хвост
+	// (побочки, перечитывание scratch'а, диалог о протухшем выборе) обязан
+	// отпасть вместе с ним: бизнес-слой на такой вызов вернёт (nil, nil), но
+	// отличить это от «перенесли, ссылок не задето» по возврату нельзя.
+	// Поэтому решаем ЗДЕСЬ, по адресу, и одним способом на оба вида цели —
+	// второй признак (флаг из бизнес-функций) означал бы две правды об одном.
+	if move && o.moveIsNoop(m, dstID) {
 		return
 	}
 	var (
 		affected []string
 		err      error
 	)
-	if move {
-		affected, err = wizardbusiness.MoveNodeToFolder(m, o.sourceIndex, rawTag, dstFolderID)
-	} else {
-		affected, err = wizardbusiness.CopyNodeToFolder(m, o.sourceIndex, rawTag, dstFolderID)
+	switch {
+	case move && dstID == "":
+		affected, err = wizardbusiness.MoveNodeToRoot(m, o.sourceIndex, rawTag)
+	case move:
+		affected, err = wizardbusiness.MoveNodeToFolder(m, o.sourceIndex, rawTag, dstID)
+	case dstID == "":
+		affected, err = wizardbusiness.CopyNodeToRoot(m, o.sourceIndex, rawTag)
+	default:
+		affected, err = wizardbusiness.CopyNodeToFolder(m, o.sourceIndex, rawTag, dstID)
 	}
 	if err != nil {
 		dialog.ShowError(err, o.win)
@@ -340,6 +384,28 @@ func (o *previewNodeOps) applyMoveOrCopy(rawTag, dstFolderID string, move bool) 
 	if len(affected) > 0 {
 		showDetourRefsResetDialog(o.win, rawTag, affected)
 	}
+}
+
+// moveIsNoop — перенос в контейнер, где узел уже лежит.
+//
+// Два случая, оба тихие:
+//
+//   - цель = собственная папка узла (ULID контейнера совпал с выбранным);
+//   - цель = верхний уровень, а узел и так корневой.
+//
+// Второй в UI недостижим — moveTargets не показывает «Верхний уровень» у
+// корневого узла, — но проверка стоит здесь, а не там: список целей строится
+// для показа, а не для защиты, и завязывать на его состав корректность мутации
+// значит потерять её при первой же правке фильтра.
+func (o *previewNodeOps) moveIsNoop(m *wizardmodels.WizardModel, dstID string) bool {
+	if o.sourceIndex < 0 || o.sourceIndex >= len(m.Sources) {
+		return false
+	}
+	dstID = strings.TrimSpace(dstID)
+	if dstID == "" {
+		return !o.inFolder()
+	}
+	return o.inFolder() && strings.TrimSpace(m.Sources[o.sourceIndex].ID) == dstID
 }
 
 // applyRename переименовывает узел контейнера и переписывает ссылки на него.
@@ -459,6 +525,12 @@ func (o *previewNodeOps) applyDelete(rawTag string) {
 //
 // Без перечитывания следующий Save окна записал бы снимок, снятый ДО
 // операции, и молча откатил её (см. шапку файла).
+//
+// Про sourceIndex после выноса узла в корень: новый верхний Source встаёт
+// СРАЗУ ЗА контейнером (business.insertSourceAfter), поэтому индекс самого
+// контейнера не меняется — сдвигаются только источники ПОСЛЕ него. И окно
+// источника, и drill-down списка продолжают адресовать свой контейнер тем же
+// o.sourceIndex, и перечитывание ниже попадает в него, а не в вынесенный узел.
 func (o *previewNodeOps) afterModelMutation() {
 	if o.reloadScratch != nil {
 		o.reloadScratch()

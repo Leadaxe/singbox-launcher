@@ -518,3 +518,147 @@ func TestRepointContainerNodeLinks_RenameFolderNodeMovesRootDetour(t *testing.T)
 		t.Fatalf("перепись обязана снять кэши состава: counts=%v pool=%v", m.SourceNodeCounts, m.NodePool)
 	}
 }
+
+// Выход из папки в корень поштучно: узел встаёт верхним Source сразу за
+// папкой (индекс самой папки не сдвигается — на этом стоит адресация
+// открытого окна источника), ссылка на него уходит в корневое пространство, а
+// имя, занятое в корне, разрешается суффиксом.
+func TestMoveNodeToRoot_RepointsLinksAndKeepsFolderIndex(t *testing.T) {
+	moving := moveTestNode("NL-1", false, "https://example.com/sub")
+	moving.Detour = &corestate.NodeLink{Tag: "warp"}
+
+	m := &wizardmodels.WizardModel{Sources: []corestate.Source{
+		// Корневой тёзка — переносимый узел обязан уникализироваться об него.
+		{ID: "01TOP", Node: corestate.Node{Kind: corestate.SourceKindServer, Tag: "NL-1", Enabled: true}},
+		moveTestFolder("01SRC", "Source folder", moving, moveTestNode("NL-2", true, "")),
+		{
+			ID:    "01CHAIN",
+			Label: "Chain to NL",
+			Node: corestate.Node{
+				Kind: corestate.SourceKindChain, Tag: "chain-nl", Enabled: true,
+				Hops: []corestate.NodeLink{{FolderID: "01SRC", Tag: "NL-1"}},
+			},
+		},
+	}}
+
+	affected, err := MoveNodeToRoot(m, 1, "NL-1")
+	if err != nil {
+		t.Fatalf("move в корень: %v", err)
+	}
+
+	if len(m.Sources) != 4 {
+		t.Fatalf("ожидалось 4 источника, получено %d", len(m.Sources))
+	}
+	// Папка на месте по своему индексу: вставка идёт ЗА ней.
+	if m.Sources[1].ID != "01SRC" {
+		t.Fatalf("индекс папки-источника сдвинулся: Sources[1].ID=%q", m.Sources[1].ID)
+	}
+	folder := findFolder(t, m, "01SRC")
+	if len(folder.Nodes) != 1 || folder.Nodes[0].Tag != "NL-2" {
+		t.Fatalf("из папки ушёл не тот узел: %+v", folder.Nodes)
+	}
+
+	promoted := m.Sources[2]
+	if promoted.Kind != corestate.SourceKindServer {
+		t.Fatalf("вынесенный узел не стал верхним server: kind=%q", promoted.Kind)
+	}
+	if promoted.Tag != "NL-1-2" {
+		t.Fatalf("коллизия с корневым тегом не разрешена суффиксом: %q", promoted.Tag)
+	}
+	if promoted.ID == "" {
+		t.Fatalf("вынесенному узлу не выдан ULID")
+	}
+	if promoted.Enabled {
+		t.Fatalf("enabled=false не переехал вместе с узлом")
+	}
+	if promoted.Detour == nil || promoted.Detour.Tag != "warp" {
+		t.Fatalf("личный detour не переехал: %+v", promoted.Detour)
+	}
+	if promoted.Origin == nil || promoted.Origin.SubURL != "https://example.com/sub" {
+		t.Fatalf("move не должен разыменовывать узел: %+v", promoted.Origin)
+	}
+
+	if h := m.Sources[3].Hops[0]; h.FolderID != "" || h.Tag != "NL-1-2" {
+		t.Fatalf("хоп не переписан в корневое пространство: %+v", h)
+	}
+	if len(affected) != 1 || affected[0] != "Chain to NL" {
+		t.Fatalf("список переписи = %v, ожидался [Chain to NL]", affected)
+	}
+}
+
+// Границы move в корень: из подписки отказ (состав принадлежит провайдеру),
+// у корневого узла — тихий no-op, а не «перенос самого себя».
+func TestMoveNodeToRoot_RefusesSubscriptionAndNoopsAtRoot(t *testing.T) {
+	m := &wizardmodels.WizardModel{Sources: []corestate.Source{
+		{
+			Node:  corestate.Node{Kind: corestate.SourceKindSubscription, Enabled: true},
+			ID:    "01SUB",
+			Nodes: []corestate.Node{moveTestNode("NL-1", true, "https://example.com/sub")},
+		},
+		{ID: "01TOP", Node: corestate.Node{Kind: corestate.SourceKindServer, Tag: "Entry", Enabled: true}},
+	}}
+
+	if _, err := MoveNodeToRoot(m, 0, "NL-1"); err == nil {
+		t.Fatalf("move из подписки в корень обязан отказывать")
+	}
+	if len(m.Sources[0].Nodes) != 1 {
+		t.Fatalf("отказавший move всё-таки унёс узел из подписки")
+	}
+	if len(m.Sources) != 2 {
+		t.Fatalf("отказавший move всё-таки положил узел в корень: %d источников", len(m.Sources))
+	}
+
+	affected, err := MoveNodeToRoot(m, 1, "Entry")
+	if err != nil {
+		t.Fatalf("no-op обязан быть тихим, получена ошибка: %v", err)
+	}
+	if affected != nil {
+		t.Fatalf("no-op не переписывает ссылок, получено %v", affected)
+	}
+	if len(m.Sources) != 2 || m.Sources[1].Tag != "Entry" {
+		t.Fatalf("no-op тронул модель: %d источников, [1].Tag=%q", len(m.Sources), m.Sources[1].Tag)
+	}
+}
+
+// copy из подписки в корень — оригинал на месте, у копии свой ULID и
+// сохранённый subUrl (она участвует в merge-заливке той же подписки).
+func TestCopyNodeToRoot_KeepsSubURLAndOriginal(t *testing.T) {
+	m := &wizardmodels.WizardModel{Sources: []corestate.Source{
+		{
+			Node:  corestate.Node{Kind: corestate.SourceKindSubscription, Enabled: true},
+			ID:    "01SUB",
+			Name:  "Proton",
+			URL:   "https://example.com/sub",
+			Nodes: []corestate.Node{moveTestNode("NL-1", true, "https://example.com/sub")},
+		},
+	}}
+
+	affected, err := CopyNodeToRoot(m, 0, "NL-1")
+	if err != nil {
+		t.Fatalf("copy в корень: %v", err)
+	}
+	if affected != nil {
+		t.Fatalf("copy ничего не переписывает, получено %v", affected)
+	}
+	if len(m.Sources[0].Nodes) != 1 || m.Sources[0].Nodes[0].Tag != "NL-1" {
+		t.Fatalf("copy унесла оригинал из подписки: %+v", m.Sources[0].Nodes)
+	}
+	if len(m.Sources) != 2 {
+		t.Fatalf("ожидалось 2 источника (подписка + копия), получено %d", len(m.Sources))
+	}
+	got := m.Sources[1]
+	if got.Tag != "NL-1" {
+		t.Fatalf("тег копии = %q, ожидался NL-1", got.Tag)
+	}
+	if got.ID == "" || got.ID == "01SUB" {
+		t.Fatalf("копии не выдан свой ULID: %q", got.ID)
+	}
+	if got.Origin == nil || got.Origin.SubURL != "https://example.com/sub" {
+		t.Fatalf("copy обязана сохранять subUrl: %+v", got.Origin)
+	}
+	// Origin разделяться не должен: разыменование копии не смеет отвязать от
+	// подписки оригинал (та же ловушка, что у copy в папку).
+	if got.Origin == m.Sources[0].Nodes[0].Origin {
+		t.Fatalf("копия делит Origin с оригиналом")
+	}
+}

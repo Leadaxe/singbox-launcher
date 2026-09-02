@@ -1065,7 +1065,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					},
 				})
 				// SPEC 116 W13: правый клик по строке ВЕРХНЕГО узла —
-				// «Move to folder…» / «Copy to folder…». Механика W2 и
+				// «Move to…» / «Copy to…». Механика W2 и
 				// диалоги W5 берутся целиком (source_row_node_ops.go), здесь
 				// только точка входа.
 				//

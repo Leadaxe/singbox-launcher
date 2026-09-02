@@ -3692,23 +3692,26 @@
   "Read-only: the sing-box outbounds this folder is built from. Edit a node through its own entry on the Preview tab.": {
     "value": "Только чтение: outbound'ы sing-box, из которых собирается папка. Узел правится своей записью на вкладке «Просмотр»."
   },
-  "Copy to folder…": {
-    "value": "Скопировать в папку…"
+  "Copy to…": {
+    "value": "Скопировать в…"
   },
-  "Move to folder…": {
-    "value": "Перенести в папку…"
+  "Move to…": {
+    "value": "Перенести в…"
   },
   "Rename…": {
     "value": "Переименовать…"
   },
-  "Copy node to folder": {
-    "value": "Копировать узел в папку"
+  "Copy node": {
+    "value": "Копировать узел"
   },
-  "Move node to folder": {
-    "value": "Перенести узел в папку"
+  "Move node": {
+    "value": "Перенести узел"
   },
-  "Node %q — pick the destination folder:": {
-    "value": "Узел %q — выберите папку назначения:"
+  "Node %q — pick the destination:": {
+    "value": "Узел %q — выберите, куда:"
+  },
+  "Top level": {
+    "value": "Верхний уровень"
   },
   "No folders yet": {
     "value": "Папок пока нет"
@@ -3932,14 +3935,14 @@
   "The sing-box outbound this node is built from. Edit and press Apply; Regen from raw rebuilds it from the origin below. Tag and detour are restamped by the launcher at build time.": {
     "value": "Outbound sing-box, из которого собран этот узел. Правьте и нажмите Apply; «Пересобрать из исходника» вернёт его к исходнику ниже. Тег и detour лаунчер проставляет заново на сборке."
   },
-  "Read-only: nodes of a subscription are refreshed from the provider, so an edit here would be lost on the next update. Use “Copy to folder…” to take this node for yourself.": {
-    "value": "Только чтение: узлы подписки обновляются у провайдера, и правка здесь пропала бы на следующем обновлении. Заберите узел себе через «Скопировать в папку…»."
+  "Read-only: nodes of a subscription are refreshed from the provider, so an edit here would be lost on the next update. Use “Copy to…” to take this node for yourself.": {
+    "value": "Только чтение: узлы подписки обновляются у провайдера, и правка здесь пропала бы на следующем обновлении. Заберите узел себе через «Скопировать в…»."
   },
   "This entry could not be parsed, so it has no outbound body — only the original line below. Fix it by pasting a corrected link into a folder.": {
     "value": "Эту запись не удалось разобрать, тела у неё нет — только исходная строка ниже. Починить можно, вставив исправленную ссылку в папку."
   },
-  "Nodes of a subscription come from the provider and cannot be added by hand — an entry added here would be gone on the next update. Use “Copy to folder…” on a node to take it for yourself.": {
-    "value": "Узлы подписки приезжают от провайдера, и добавить их руками нельзя — запись пропала бы на следующем обновлении. Заберите нужный узел себе через «Скопировать в папку…»."
+  "Nodes of a subscription come from the provider and cannot be added by hand — an entry added here would be gone on the next update. Use “Copy to…” on a node to take it for yourself.": {
+    "value": "Узлы подписки приезжают от провайдера, и добавить их руками нельзя — запись пропала бы на следующем обновлении. Заберите нужный узел себе через «Скопировать в…»."
   },
   "No nodes yet — refresh this subscription in the sources list.": {
     "value": "Узлов пока нет — обновите подписку в списке источников."

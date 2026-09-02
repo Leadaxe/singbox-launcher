@@ -92,10 +92,10 @@ func showPreviewNodeContextMenu(
 		if len(items) > 0 {
 			items = append(items, fyne.NewMenuItemSeparator())
 		}
-		// «Copy to folder…» есть ВСЕГДА, в том числе у подписки: копия ничего
+		// «Copy to…» есть ВСЕГДА, в том числе у подписки: копия ничего
 		// в источнике не меняет, а это ровно требование П2 — забрать узел
 		// провайдера себе.
-		items = append(items, fyne.NewMenuItem(locale.T("Copy to folder…"), func() {
+		items = append(items, fyne.NewMenuItem(locale.T("Copy to…"), func() {
 			ops.showMoveOrCopyDialog(rawTag, false)
 		}))
 		// Move / Delete правят СОСТАВ контейнера, а состав подписки принадлежит
@@ -109,7 +109,7 @@ func showPreviewNodeContextMenu(
 		// свой диалог поверх того же действия — второй путь к одному и тому же.
 		if ops.nodeOpsAllowed() {
 			items = append(items,
-				fyne.NewMenuItem(locale.T("Move to folder…"), func() {
+				fyne.NewMenuItem(locale.T("Move to…"), func() {
 					ops.showMoveOrCopyDialog(rawTag, true)
 				}),
 				fyne.NewMenuItem(locale.T("Delete"), func() {

@@ -19,6 +19,11 @@
 // оставляет — переписывать нечего, старые ссылки продолжают вести к
 // оригиналу; список переписи у copy пуст по построению, а не «забыт».
 //
+// Целей у переноса две, и корень — полноправная из них: MoveNodeToRoot /
+// CopyNodeToRoot делают с ОДНИМ узлом то же, что ExtractFolderNodesToRoot со
+// всей папкой, и механика у них общая (promoteNodeToRoot) — две реализации
+// одного выноса разъехались бы на первой же правке уникализации тега.
+//
 // Побочки, ВИДИМЫЕ пользователю (BumpRevision / MarkAsChanged / диалоги),
 // делает ВЫЗЫВАЮЩИЙ UI: одна пользовательская операция может звать несколько
 // функций отсюда (удаление папки = вынос узлов + удаление источника), и
@@ -246,21 +251,18 @@ func ExtractFolderNodesToRoot(m *wizardmodels.WizardModel, folderIndex int) []st
 	repoints := make([][2]nodeContainerRef, 0, len(folder.Nodes))
 
 	for i := range folder.Nodes {
-		n := cloneCanonicalNodeForMove(folder.Nodes[i])
-		oldTag := n.Tag
-		n.Tag = uniqueTagIn(taken, n.Tag)
-		taken[n.Tag] = true
-		promoted = append(promoted, corestate.Source{Node: n, ID: corestate.MakeULID()})
-		repoints = append(repoints, [2]nodeContainerRef{
-			{folderID: folderID, tag: oldTag},
-			{folderID: "", tag: n.Tag},
-		})
+		src, from, to := promoteNodeToRoot(folder.Nodes[i], folderID, taken)
+		promoted = append(promoted, src)
+		repoints = append(repoints, [2]nodeContainerRef{from, to})
 	}
 
 	folder.Nodes = nil
 
 	// Вставляем сразу ЗА папкой: в списке Sources вынесенные узлы окажутся
-	// там, где пользователь их и оставил, а не в конце за подписками.
+	// там, где пользователь их и оставил, а не в конце за подписками. Свой
+	// цикл, а не insertSourceAfter по разу на узел: пакетная вставка обязана
+	// быть одной — поштучная переливала бы слайс на каждом узле и требовала
+	// поправки индекса на уже вставленных.
 	//
 	// go1.20-гард: без slices.Insert — ручная сборка нового слайса.
 	rest := append([]corestate.Source(nil), m.Sources[folderIndex+1:]...)
@@ -282,6 +284,120 @@ func ExtractFolderNodesToRoot(m *wizardmodels.WizardModel, folderIndex int) []st
 	}
 	InvalidateNodePool(m)
 	return affected
+}
+
+// promoteNodeToRoot готовит ОДИН узел контейнера к жизни верхним Source:
+// клонирует его, уникализирует тег в корневом пространстве (занимая имя в
+// taken, чтобы следующий вызов с тем же набором не повторил его) и заворачивает
+// в новый Source со своим ULID.
+//
+// Общая механика выноса для обеих операций «папка → корень»: пакетной
+// (ExtractFolderNodesToRoot) и поштучной (MoveNodeToRoot). Держится одной
+// функцией именно потому, что расхождение здесь незаметно: две реализации
+// уникализации разошлись бы на первой же правке суффикса, и вынесенный поштучно
+// узел встал бы в корень под именем, которое пакетный вынос считает занятым.
+//
+// Модель НЕ трогает: вставку в m.Sources и удаление оригинала делает
+// вызывающий — у пакетного выноса это одна вставка на все узлы разом.
+// Возвращает готовый Source и пару адресов для переписи ссылок.
+func promoteNodeToRoot(node corestate.Node, folderID string, taken map[string]bool) (corestate.Source, nodeContainerRef, nodeContainerRef) {
+	n := cloneCanonicalNodeForMove(node)
+	oldTag := n.Tag
+	n.Tag = uniqueTagIn(taken, n.Tag)
+	taken[n.Tag] = true
+	return corestate.Source{Node: n, ID: corestate.MakeULID()},
+		nodeContainerRef{folderID: folderID, tag: oldTag},
+		nodeContainerRef{folderID: "", tag: n.Tag}
+}
+
+// insertSourceAfter вставляет источник сразу ЗА позицией at.
+//
+// Сразу за исходным контейнером, а не в хвост списка: узел обязан остаться там,
+// где пользователь его видел, а не уехать под подписки в конец. Побочное
+// свойство, на которое опирается UI: индекс самого контейнера НЕ меняется —
+// сдвигаются только источники ПОСЛЕ него, поэтому открытое окно источника и
+// drill-down списка продолжают адресовать свой контейнер прежним индексом.
+//
+// go1.20-гард: без slices.Insert — ручная сборка нового слайса.
+func insertSourceAfter(m *wizardmodels.WizardModel, at int, src corestate.Source) {
+	rest := append([]corestate.Source(nil), m.Sources[at+1:]...)
+	m.Sources = append(m.Sources[:at+1], src)
+	m.Sources = append(m.Sources, rest...)
+}
+
+// MoveNodeToRoot выносит ОДИН узел (srcIndex, rawTag) из папки в корень
+// sources[]: узел становится верхним Source со своим ULID, встающим сразу за
+// папкой-источником.
+//
+// То же, что ExtractFolderNodesToRoot делает со всем составом папки, но по
+// одному узлу — и той же механикой (promoteNodeToRoot).
+//
+// ОТКАЗ, если исходный контейнер — подписка: её состав принадлежит провайдеру
+// (features/sources.md §«Свобода и несвобода узлов») — ровно как у
+// MoveNodeToFolder. Из подписки существует только copy.
+//
+// NO-OP, если исходный Source — не папка: корневой узел уже лежит в корне, и
+// «перенести в корень» ему нечего. Возвращается (nil, nil) — вызывающий по
+// пустому результату и отсутствию ошибки понимает, что показывать диалог о
+// протухшем выборе не за что.
+//
+// Возвращает имена задетых переписью источников.
+func MoveNodeToRoot(m *wizardmodels.WizardModel, srcIndex int, rawTag string) ([]string, error) {
+	srcSource, node, err := lookupNodeForMove(m, srcIndex, rawTag)
+	if err != nil {
+		return nil, err
+	}
+	if srcSource.Kind == corestate.SourceKindSubscription {
+		return nil, fmt.Errorf("move: node %q belongs to a subscription — its content is owned by the provider (copy only)", rawTag)
+	}
+	if srcSource.Kind != corestate.SourceKindFolder {
+		return nil, nil // узел и так корневой — переносить некуда
+	}
+
+	folderID := strings.TrimSpace(srcSource.ID)
+	promotedSrc, from, to := promoteNodeToRoot(*node, folderID, rootTagSet(m))
+
+	// Кладём ДО удаления — то же правило, что у MoveNodeToFolder: если что-то
+	// откажет посередине, узел не должен пропасть из папки.
+	insertSourceAfter(m, srcIndex, promotedSrc)
+	if err := removeNodeFromSource(m, srcIndex, rawTag); err != nil {
+		return nil, err
+	}
+
+	// Перепись — ПОСЛЕ вставки: repointNodeLinks обходит живую модель, и ссылки
+	// самого вынесенного узла (его хопы на соседей по папке) обязаны попасть под
+	// обход тоже.
+	affected := repointNodeLinks(m, from, to)
+	InvalidateNodePool(m)
+	return affected, nil
+}
+
+// CopyNodeToRoot кладёт КОПИЮ узла (srcIndex, rawTag) в корень sources[]
+// отдельным верхним Source, сразу за исходным источником.
+//
+// Разрешено из ЛЮБОГО контейнера, включая подписку, — как и CopyNodeToFolder:
+// копия ничего в источнике не меняет, это ровно требование «забрать узел
+// провайдера себе». origin.subUrl копии СОХРАНЯЕТСЯ (features/sources.md
+// §«Наполнение папки» п.2): копия участвует в merge-заливке той же подписки.
+//
+// Копия узла В СВОЁМ ЖЕ контейнере (корневой узел → корень) законна и даёт
+// дубликат с суффиксом в теге — то же поведение, что у copy в собственную
+// папку.
+//
+// Возвращает (nil, nil): переписывать нечего по построению — оригинал остался
+// на месте под прежним адресом, ни одна ссылка цели не сменила.
+func CopyNodeToRoot(m *wizardmodels.WizardModel, srcIndex int, rawTag string) ([]string, error) {
+	srcSource, node, err := lookupNodeForMove(m, srcIndex, rawTag)
+	if err != nil {
+		return nil, err
+	}
+	copySrc, _, _ := promoteNodeToRoot(*node, strings.TrimSpace(srcSource.ID), rootTagSet(m))
+	if copySrc.Tag == "" {
+		return nil, fmt.Errorf("node move: node has no tag")
+	}
+	insertSourceAfter(m, srcIndex, copySrc)
+	InvalidateNodePool(m)
+	return nil, nil
 }
 
 // DereferenceNodeOrigin обнуляет origin.subUrl узла — «разыменование»
@@ -547,9 +663,12 @@ func lookupNodeForMove(m *wizardmodels.WizardModel, srcIndex int, rawTag string)
 	}
 }
 
-// lookupFolderIndex — индекс папки по ULID. Целью переноса может быть только
-// папка: подписка чужая (её состав принадлежит провайдеру), а корень — это
-// не folderID, а отдельная операция (ExtractFolderNodesToRoot).
+// lookupFolderIndex — индекс папки по ULID. Целью *этих* переносов может быть
+// только папка: подписка чужая (её состав принадлежит провайдеру), а корень
+// адресуется не folderID (там он пуст у всех сразу), а отдельными операциями —
+// MoveNodeToRoot / CopyNodeToRoot. Поэтому пустой ULID здесь — ошибка, а не
+// «корень»: тихо принять его значило бы положить узел в первую попавшуюся
+// папку.
 func lookupFolderIndex(m *wizardmodels.WizardModel, folderID string) (int, error) {
 	folderID = strings.TrimSpace(folderID)
 	if m == nil || folderID == "" {
