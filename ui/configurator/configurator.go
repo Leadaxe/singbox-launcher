@@ -986,23 +986,18 @@ func handleCloseButton(presenter *wizardpresentation.WizardPresenter, guiState *
 			if d != nil {
 				d.Hide()
 			}
-			// Save to state.json + rebuild — тот же flow что и in-wizard
-			// Save кнопка (presenter.SaveConfig). Здесь короткий путь
-			// SaveCurrentState (без progress UI, окно всё равно закрывается)
-			// + явный rebuild в фоне.
+			// Save to state.json + материализация — тот же flow, что у
+			// in-wizard Save (presenter.SaveConfig), но без progress UI:
+			// окно всё равно закрывается. Развилка по цели живёт в
+			// MaterializeAfterClose: удалённой машине пишется ЕЁ config.json,
+			// локальной — пересобирается bin/config.json. Раньше тут
+			// безусловно шёл локальный rebuild, и config.json машины
+			// отставал от её state.json — Deploy уносил прошлую сборку.
 			if err := presenter.SaveCurrentState(); err != nil {
 				dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to save state"), err))
 				return
 			}
-			go func() {
-				ac := core.GetController()
-				if ac == nil {
-					return
-				}
-				if err := ac.RebuildConfigIfDirty(); err != nil {
-					debuglog.WarnLog("Close→Save: auto-rebuild failed: %v", err)
-				}
-			}()
+			go presenter.MaterializeAfterClose()
 			wizardWindow.Close()
 		})
 		saveButton.Importance = widget.HighImportance

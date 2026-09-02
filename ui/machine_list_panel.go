@@ -511,6 +511,17 @@ func (p *machineListPanel) connectMachine(d services.RemoteDaemon) {
 			}
 		}
 		fyne.Do(func() {
+			// Пока шли повторы, пользователь мог нажать Connect у другой
+			// машины: connectMachine уже переключил транспорт и стёр наши
+			// карты. Результат прежней машины к текущей строке отношения не
+			// имеет — выбрасываем, как это делает heartbeat. Иначе исход
+			// чужой попытки (unreachable → SetEnabled(false)+Clear) гасил бы
+			// шапку и список уже подключённой машины, а health воскрешал бы
+			// удалённую запись.
+			if nowID, _, stillOK := GetLxdRemoteOverride(); !stillOK || nowID != d.ID {
+				debuglog.InfoLog("machine list: %q connect result discarded — active machine is now %q", d.ID, nowID)
+				return
+			}
 			p.connectAttempt[d.ID] = 0
 			p.health[d.ID] = h
 			// Connect — точка отсчёта для heartbeat: его вердикт заменяет
@@ -676,6 +687,9 @@ func (p *machineListPanel) loadNodes() {
 	if p.ac.UIService != nil && p.ac.UIService.ResetAPIStateFunc != nil {
 		p.ac.UIService.ResetAPIStateFunc()
 	}
+	// Чьи узлы грузим — фиксируем сейчас: ретраи ниже длятся до 15 с, и за
+	// это время активная машина может смениться.
+	loadID, _, _ := GetLxdRemoteOverride()
 	// Порядок обязателен: сначала узнать группы ЭТОЙ машины, потом грузить
 	// узлы. Иначе запрос уходит с пустой группой, и ядро отвечает
 	// «group "" not found» на штатное подключение.
@@ -699,6 +713,11 @@ func (p *machineListPanel) loadNodes() {
 			time.Sleep(time.Second)
 		}
 		fyne.Do(func() {
+			// Машина сменилась, пока ждали группы: и очистка, и заполнение
+			// относились бы уже к другой машине.
+			if nowID, _, stillOK := GetLxdRemoteOverride(); !stillOK || nowID != loadID {
+				return
+			}
 			// Машина не ответила за отведённое время — список ОСТАЁТСЯ ПУСТЫМ
 			// и говорит об этом.
 			//
@@ -715,6 +734,11 @@ func (p *machineListPanel) loadNodes() {
 				}
 				return
 			}
+			// Список заполняется — шапка обязана быть включена той же
+			// рукой: любая ветка, которая кладёт узлы, открывает и органы
+			// управления. Иначе «список есть, кнопки серые» возможно по
+			// конструкции (так и случилось после гонки Connect).
+			p.proxies.SetEnabled(true)
 			p.proxies.ReloadGroups()
 			p.proxies.Refresh()
 		})

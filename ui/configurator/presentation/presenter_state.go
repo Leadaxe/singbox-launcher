@@ -22,7 +22,6 @@ package presentation
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"time"
 
 	"singbox-launcher/core"
@@ -33,6 +32,7 @@ import (
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/platform"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -223,9 +223,10 @@ func (p *WizardPresenter) SaveCurrentState() error {
 	stateStore := p.GetStateStore()
 
 	ac := core.GetController()
-	// Получаем путь к state.json для логирования
-	statesDir := filepath.Join(ac.FileService.ExecDir, "bin", wizardbusiness.WizardStatesDir)
-	statePath := filepath.Join(statesDir, wizardmodels.StateFileName)
+	// Путь — только для лога, но ЧЕСТНЫЙ: по цели и машине. Раньше здесь
+	// печатался локальный bin/wizard_states/state.json, тогда как файл
+	// уходил в папку удалённой машины, — лог врал при разборе инцидентов.
+	statePath := platform.GetWizardStatePathFor(ac.FileService.ExecDir, p.ConfigTarget(), p.ConfigMachineID())
 
 	debuglog.InfoLog("SaveCurrentState: saving to state.json at %s", statePath)
 	if err := stateStore.SaveCurrentState(state); err != nil {

@@ -343,10 +343,29 @@ func (p *WizardPresenter) completeSaveOperation() {
 // поднимаются: они означают «локальный config.json устарел», а remote-Save
 // его не касается.
 func (p *WizardPresenter) exportRemoteConfig() {
+	outPath, err := p.writeRemoteConfig()
+	if err != nil {
+		p.UpdateUI(func() {
+			dialog.ShowError(err, p.guiState.Window)
+		})
+		return
+	}
+	p.UpdateUI(func() {
+		p.showRemoteExportDialog(outPath)
+	})
+}
+
+// writeRemoteConfig — тело exportRemoteConfig без UI: разбор нод при
+// необходимости, проверки, сборка и запись config.json машины. Возвращает
+// путь записанного файла. Выделено, чтобы тот же шаг звался и из Save при
+// закрытии окна, где диалоги на уже закрытом окне визарда показывать некому.
+//
+// Блокирующая (разбор подписок, сборка) — звать из горутины.
+func (p *WizardPresenter) writeRemoteConfig() (string, error) {
 	ac := core.GetController()
 	if ac == nil || ac.FileService == nil {
 		debuglog.WarnLog("exportRemoteConfig: controller/FileService unavailable")
-		return
+		return "", errors.New(locale.T("controller not available"))
 	}
 	// Ноды разбирает парсер подписок; после смены таргета (или до первого
 	// разбора) их ещё нет, и конфиг ушёл бы с ПУСТЫМИ секциями между
@@ -359,10 +378,7 @@ func (p *WizardPresenter) exportRemoteConfig() {
 		debuglog.InfoLog("exportRemoteConfig: nodes not parsed yet (needsParse=%v, outbounds=%d) — parsing now",
 			p.model.PreviewNeedsParse, len(p.model.GeneratedOutbounds))
 		if !p.parseOutboundsForSave() {
-			p.UpdateUI(func() {
-				dialog.ShowError(errors.New(locale.T(saveRemoteNeedsParseText)), p.guiState.Window)
-			})
-			return
+			return "", errors.New(locale.T(saveRemoteNeedsParseText))
 		}
 	}
 	// Страховка на случай, если визард для машины открыли в обход строки
@@ -371,18 +387,12 @@ func (p *WizardPresenter) exportRemoteConfig() {
 	// конфиг хуже, чем отказаться: сбой всплыл бы только после Deploy.
 	if p.model.ResourceDir == "" && p.modelHasRuleSetFiles() {
 		debuglog.WarnLog("exportRemoteConfig: no resource dir for machine %q — connect first", p.ConfigMachineID())
-		p.UpdateUI(func() {
-			dialog.ShowError(errors.New(locale.T(saveRemoteNeedsConnectText)), p.guiState.Window)
-		})
-		return
+		return "", errors.New(locale.T(saveRemoteNeedsConnectText))
 	}
 	configText, err := wizardbusiness.BuildRemoteConfig(p.model)
 	if err != nil {
 		debuglog.ErrorLog("exportRemoteConfig: build failed: %v", err)
-		p.UpdateUI(func() {
-			dialog.ShowError(err, p.guiState.Window)
-		})
-		return
+		return "", err
 	}
 	outPath := platform.GetRemoteConfigPathFor(ac.FileService.ExecDir, p.ConfigMachineID())
 	// Директория машины могла ещё не существовать: состояние сохраняется
@@ -390,22 +400,47 @@ func (p *WizardPresenter) exportRemoteConfig() {
 	// гарантирован, а WriteFile каталоги не создаёт.
 	if err := os.MkdirAll(filepath.Dir(outPath), platform.DefaultDirMode); err != nil {
 		debuglog.ErrorLog("exportRemoteConfig: mkdir %s: %v", filepath.Dir(outPath), err)
-		p.UpdateUI(func() {
-			dialog.ShowError(err, p.guiState.Window)
-		})
-		return
+		return "", err
 	}
 	if err := os.WriteFile(outPath, []byte(configText), platform.DefaultFileMode); err != nil {
 		debuglog.ErrorLog("exportRemoteConfig: write %s: %v", outPath, err)
-		p.UpdateUI(func() {
-			dialog.ShowError(err, p.guiState.Window)
-		})
-		return
+		return "", err
 	}
 	debuglog.InfoLog("exportRemoteConfig: wrote %s (%d bytes)", outPath, len(configText))
-	p.UpdateUI(func() {
-		p.showRemoteExportDialog(outPath)
-	})
+	return outPath, nil
+}
+
+// MaterializeAfterClose — материализация только что сохранённого state
+// после закрытия окна визарда: та же развилка по цели, что у Save внутри
+// визарда (executeSaveOperation), но без диалогов на закрытом окне.
+//
+// Удалённая машина → её config.json (иначе Deploy отправил бы предыдущую
+// сборку: state.json свежий, а config.json — от прошлого Save). Локальные
+// маркеры и bin/config.json при этом не трогаются — локальное ядро к чужой
+// машине отношения не имеет. Локальная цель → пересборка bin/config.json,
+// как и раньше.
+//
+// Блокирующая — звать из горутины. Ошибка экспорта — на главном окне: окна
+// визарда уже нет, а молчать нельзя, иначе Deploy унесёт старую сборку.
+func (p *WizardPresenter) MaterializeAfterClose() {
+	ac := core.GetController()
+	if ac == nil {
+		return
+	}
+	if p.ConfigTarget() == constants.ConfigTargetRemote {
+		if _, err := p.writeRemoteConfig(); err != nil {
+			debuglog.WarnLog("Close→Save: remote config for machine %q not written: %v", p.ConfigMachineID(), err)
+			if ac.UIService != nil && ac.UIService.MainWindow != nil {
+				p.UpdateUI(func() {
+					dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Failed to build the machine's config"), err), ac.UIService.MainWindow)
+				})
+			}
+		}
+		return
+	}
+	if err := ac.RebuildConfigIfDirty(); err != nil {
+		debuglog.WarnLog("Close→Save: auto-rebuild failed: %v", err)
+	}
 }
 
 // showRemoteExportDialog — диалог успешного экспорта remote-конфига.
