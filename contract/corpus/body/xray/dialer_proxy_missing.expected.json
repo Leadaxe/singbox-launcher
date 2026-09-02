@@ -1,0 +1,13 @@
+{
+  "dropped": [
+    {
+      "reason": "outbound rejected: dialerProxy \"ghost\" not found",
+      "ref": "proxy"
+    }
+  ],
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [],
+  "v": 1
+}

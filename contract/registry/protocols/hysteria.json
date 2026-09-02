@@ -5,7 +5,8 @@
   "singbox_type": "hysteria",
   "aliases": ["hy"],
   "sources": ["uri", "singbox", "xray"],
-  "extension": null,
+  "extension": "desktop",
+  "note": "Hysteria v1 разбирает ТОЛЬКО лаунчер: у LxBox парсера для него нет. По правилу 3 контракта различие обязано быть помечено, а не остаться бесхозным — отсюда extension:desktop. Следствие для корпуса: раннер стороны пропускает каталоги и кейсы с чужим extension, иначе мобильная сторона падала бы на фикстурах протокола, которого не поддерживает (кейс hysteria_bandwidth помечен meta.extension:desktop в expected). Сам протокол при этом жив и развивается: hysteria2 — отдельный файл реестра, поддержан обеими сторонами.",
   "uri": {
     "userinfo": {
       "meaning": "auth",

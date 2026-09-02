@@ -1,0 +1,19 @@
+# sing-box: hysteria v1 с полосой ЧИСЛАМИ и server_ports МАССИВОМ.
+# JSON отдаёт float64 и []interface{}, а не Go-типы: жёсткое приведение
+# (int / []string) молча теряло up_mbps/down_mbps/server_ports, а hysteria v1
+# без полосы не даёт ядру стартовать вообще (contract/TASKS_LXBOX.md п.6).
+# У LxBox парсера hysteria v1 нет — кейс помечен meta.extension=desktop.
+[
+  {
+    "type": "hysteria",
+    "tag": "hy1-bw",
+    "server": "example-1.com",
+    "server_port": 443,
+    "server_ports": ["1000:2000"],
+    "auth_str": "testpass123",
+    "up_mbps": 50,
+    "down_mbps": 100,
+    "obfs": "testobfs123",
+    "tls": {"enabled": true, "server_name": "example-1.com"}
+  }
+]

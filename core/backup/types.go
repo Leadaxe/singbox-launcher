@@ -1,4 +1,4 @@
-// Package backup — переносимый формат LX Backup (контракт 0.11.0).
+// Package backup — переносимый формат LX Backup (контракт 0.12.0).
 //
 // Назначение: перенести подписки, серверы, цепочки, Направления, правила, DNS
 // и переменные между лаунчером и LxBox. Формат общий, схема нормативна —
@@ -21,6 +21,7 @@ package backup
 
 import (
 	"encoding/json"
+	"sort"
 
 	"singbox-launcher/core/config/configtypes"
 )
@@ -83,13 +84,20 @@ type Subscription struct {
 	// ID — стабильный идентификатор источника: цель ссылок
 	// detour_node_source_id. Без него ссылка на узел этого источника приехала
 	// бы мёртвой.
-	ID       string        `json:"id,omitempty"`
-	URL      string        `json:"url"`
-	Label    string        `json:"label,omitempty"`
-	Enabled  *bool         `json:"enabled,omitempty"`
-	MaxNodes int           `json:"max_nodes,omitempty"`
-	Tag      *TagPolicy    `json:"tag,omitempty"`
-	Update   *UpdatePolicy `json:"update,omitempty"`
+	ID  string `json:"id,omitempty"`
+	URL string `json:"url"`
+	// Label — имя ИСТОЧНИКА, а не узла: у подписки ссылочного тега в паре с
+	// подписью нет, поэтому снос label из servers[]/chains[] (контракт 0.12)
+	// её не касается — переименовать источник и ничего не сломать можно.
+	Label string `json:"label,omitempty"`
+	// Identity — чем подписка представляется провайдеру (контракт 0.12.0).
+	// Указатель: отсутствие объекта и объект со всеми пустыми ключами — это
+	// разные вещи, и экспорт не должен писать пустышку в каждый файл.
+	Identity *SubscriptionIdentity `json:"identity,omitempty"`
+	Enabled  *bool                 `json:"enabled,omitempty"`
+	MaxNodes int                   `json:"max_nodes,omitempty"`
+	Tag      *TagPolicy            `json:"tag,omitempty"`
+	Update   *UpdatePolicy         `json:"update,omitempty"`
 	// Disabled — отметки выключенных нод: идентичность узла → unix seconds.
 	// Ключ для формата обмена непрозрачен и копируется как есть (BACKUP.md §5).
 	Disabled map[string]int64 `json:"disabled,omitempty"`
@@ -118,6 +126,131 @@ type Subscription struct {
 	ExcludeFromGlobal       bool  `json:"exclude_from_global,omitempty"`
 	ExposeGroupTagsToGlobal bool  `json:"expose_group_tags_to_global,omitempty"`
 	SourceRef
+}
+
+// SubscriptionIdentity — чем подписка представляется провайдеру при запросе
+// тела: UA, идентификатор устройства и режим его отправки (контракт 0.12.0).
+//
+// Вложенный объект, а не плоские ключи записи: это ОДНА настройка из
+// нескольких частей, и вложенность не даёт им расползтись по корню подписки,
+// где они смешались бы с полями самого источника.
+//
+// Все поля — указатели, включая строки: у этой настройки «не задано» и
+// «задано пустым» значат разное. Пустой user_agent — это «слать дефолт
+// приложения», а отсутствие ключа — «настройки нет вовсе»; принимающая
+// сторона, применив пустую строку как значение, затёрла бы свой дефолт. У
+// булевых полей то же самое обязательно: nil = «как в системе», false =
+// «явно не отправлять».
+//
+// DeviceOS/VerOS/DeviceModel лаунчер не применяет (per-source их у него нет)
+// и не пишет — они в схеме ради LxBox-стороны; на импорте они дают
+// backup_source_identity_dropped, как любой неприменённый ключ.
+type SubscriptionIdentity struct {
+	UserAgent       *string `json:"user_agent,omitempty"`
+	SendHWID        *bool   `json:"send_hwid,omitempty"`
+	HWID            *string `json:"hwid,omitempty"`
+	DeviceOS        *string `json:"device_os,omitempty"`
+	VerOS           *string `json:"ver_os,omitempty"`
+	DeviceModel     *string `json:"device_model,omitempty"`
+	HashDeviceModel *bool   `json:"hash_device_model,omitempty"`
+
+	// presentKeys — какие ключи реально стояли в файле, в порядке объявления
+	// в схеме. Нужны ровно для одного: перечислить в предупреждении те, что
+	// лаунчер не применил. Без этого списка пришлось бы либо гадать по
+	// значениям (не отличив «не было ключа» от «был пустым»), либо разбирать
+	// объект вторым проходом по сырому JSON.
+	//
+	// Общий обход неизвестных ключей (scanUnknown) внутрь identity не
+	// спускается намеренно, иначе одна потеря давала бы два предупреждения:
+	// своё и backup_unknown_field.
+	presentKeys []string
+}
+
+// identityKeyOrder — ключи объекта в порядке схемы. Порядок фиксирован, а не
+// взят из обхода map: перечень в предупреждении обязан быть воспроизводимым,
+// иначе два импорта одного файла дают разный текст.
+var identityKeyOrder = []string{
+	"user_agent", "send_hwid", "hwid",
+	"device_os", "ver_os", "device_model", "hash_device_model",
+}
+
+// identityAppliedKeys — то, что лаунчер умеет применить. Остальное (включая
+// незнакомое) отбрасывается с backup_source_identity_dropped.
+var identityAppliedKeys = map[string]bool{
+	"user_agent": true, "send_hwid": true, "hwid": true, "hash_device_model": true,
+}
+
+// UnmarshalJSON — обычный разбор плюс запоминание СОСТАВА ключей.
+//
+// Свой разбор здесь потому, что стандартный теряет разницу между
+// отсутствующим ключом и ключом-пустышкой на уровне, который нам нужен для
+// текста предупреждения: указатели различают это для четырёх применяемых
+// полей, но про неизвестные ключи в структуре не остаётся ничего.
+func (i *SubscriptionIdentity) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	type plain SubscriptionIdentity
+	var p plain
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+	*i = SubscriptionIdentity(p)
+	// Сначала известные ключи в порядке схемы, затем чужие — в
+	// лексикографическом: у map порядка нет, а текст обязан быть стабильным.
+	for _, k := range identityKeyOrder {
+		if _, ok := raw[k]; ok {
+			i.presentKeys = append(i.presentKeys, k)
+		}
+	}
+	var extra []string
+	for k := range raw {
+		if !identityKeyInSchema(k) {
+			extra = append(extra, k)
+		}
+	}
+	sort.Strings(extra)
+	i.presentKeys = append(i.presentKeys, extra...)
+	return nil
+}
+
+// identityKeyInSchema — объявлен ли ключ схемой 0.12.
+func identityKeyInSchema(key string) bool {
+	for _, k := range identityKeyOrder {
+		if k == key {
+			return true
+		}
+	}
+	return false
+}
+
+// UnappliedKeys — ключи, приехавшие в файле, но лаунчером не применяемые:
+// mobile-only тройка device_os/ver_os/device_model и всё незнакомое.
+// Порядок — как в presentKeys, то есть воспроизводимый.
+func (i *SubscriptionIdentity) UnappliedKeys() []string {
+	if i == nil {
+		return nil
+	}
+	var out []string
+	for _, k := range i.presentKeys {
+		if !identityAppliedKeys[k] {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// IsEmpty — объект не несёт ни одного заданного ключа: писать его в файл
+// незачем (экспорт — чистая функция состояния, П1: пустышка в каждом файле
+// была бы шумом, отличающим два одинаковых состояния).
+func (i *SubscriptionIdentity) IsEmpty() bool {
+	if i == nil {
+		return true
+	}
+	return i.UserAgent == nil && i.SendHWID == nil && i.HWID == nil &&
+		i.DeviceOS == nil && i.VerOS == nil && i.DeviceModel == nil &&
+		i.HashDeviceModel == nil
 }
 
 // Fold — свёртка подписки контракта 0.11 (прежний configtypes.SourceFold).
@@ -176,8 +309,11 @@ type DirectionAuto struct {
 // Порядок записей нормативен — вложенная цепочка объявляется раньше
 // использующей; секция не сортируется ни на экспорте, ни на импорте.
 type Chain struct {
-	ID      string `json:"id,omitempty"`
-	Tag     string `json:"tag"`
+	ID  string `json:"id,omitempty"`
+	Tag string `json:"tag"`
+	// Label — LEGACY-ВХОД: в схеме 0.12 поля нет; читается для файлов 0.11 и
+	// раньше. У цепочки имя одно — тег; разошедшаяся подпись даёт warning
+	// backup_label_dropped. Экспорт его не пишет.
 	Label   string `json:"label,omitempty"`
 	Enabled *bool  `json:"enabled,omitempty"`
 	// Chain — канон цепочки (contract/schema/source_chain.schema.json).
@@ -206,11 +342,20 @@ type Server struct {
 	ID         string          `json:"id,omitempty"`
 	URI        string          `json:"uri,omitempty"`
 	ConfigJSON json.RawMessage `json:"config_json,omitempty"`
-	Label      string          `json:"label,omitempty"`
+	// Label — LEGACY-ВХОД: в схеме 0.12 поля нет; читается для файлов 0.11 и
+	// раньше. У сервера без node_tag подпись становится тегом, иначе —
+	// warning backup_label_dropped. Экспорт его не пишет.
+	Label string `json:"label,omitempty"`
 	// NodeTag — ТЕГ узла, а не подпись: на него ссылаются rules[].outbound,
 	// фильтры Направлений и позиции цепочек. Отдельно от Label, потому что
 	// переименование в списке не должно уводить тег из-под ссылок.
-	NodeTag           string `json:"node_tag,omitempty"`
+	NodeTag string `json:"node_tag,omitempty"`
+	// Folder — имя папки, в которой лежит запись; пусто = корень списка.
+	// Папка не имеет отдельной секции: собственных данных, кроме имени, у
+	// неё нет, а вторая секция потребовала бы держать два места в согласии.
+	// Обе стороны собирают её по этому имени, порядок членов = порядок
+	// записей в файле.
+	Folder            string `json:"folder,omitempty"`
 	Enabled           *bool  `json:"enabled,omitempty"`
 	ExcludeFromGlobal bool   `json:"exclude_from_global,omitempty"`
 	SourceRef

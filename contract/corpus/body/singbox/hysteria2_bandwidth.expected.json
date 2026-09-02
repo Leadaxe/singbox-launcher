@@ -1,0 +1,32 @@
+{
+  "meta": {
+    "body_kind": "singbox-outbound-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "down_mbps": 60,
+        "obfs": {
+          "password": "testobfs123",
+          "type": "salamander"
+        },
+        "password": "testpass123",
+        "server": "example-2.com",
+        "server_port": 8443,
+        "server_ports": [
+          "3000:4000"
+        ],
+        "tls": {
+          "enabled": true,
+          "server_name": "example-2.com"
+        },
+        "type": "hysteria2",
+        "up_mbps": 30
+      },
+      "kind": "outbound",
+      "label": "hy2-bw",
+      "scheme": "hysteria2"
+    }
+  ],
+  "v": 1
+}

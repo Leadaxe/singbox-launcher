@@ -252,15 +252,21 @@ var (
 		"detour_tag": true, "detour_node_source_id": true,
 		"detour_node_tag": true, "detour_node_label": true,
 	}
+	// identity объявлен ЗДЕСЬ, но внутрь него общий обход не спускается:
+	// неприменённые ключи объекта считает сам импорт (importSourceIdentity)
+	// и выдаёт ОДИН backup_source_identity_dropped на подписку с перечнем.
+	// Спустись сюда scanUnknown — device_os дал бы вдобавок
+	// backup_unknown_field, то есть два предупреждения об одной потере.
 	subscriptionKeys = mergeKeys(sourceRefKeys, map[string]bool{
 		"id": true, "url": true, "label": true, "enabled": true,
 		"max_nodes": true, "tag": true, "update": true, "disabled": true,
-		"skip": true, "outbounds": true, "fold": true,
+		"skip": true, "outbounds": true, "fold": true, "identity": true,
 		"exclude_from_global": true, "expose_group_tags_to_global": true,
 	})
 	serverKeys = mergeKeys(sourceRefKeys, map[string]bool{
 		"id": true, "uri": true, "config_json": true, "label": true,
 		"node_tag": true, "enabled": true, "exclude_from_global": true,
+		"folder": true,
 	})
 	chainKeys = mergeKeys(sourceRefKeys, map[string]bool{
 		"id": true, "tag": true, "label": true, "enabled": true,

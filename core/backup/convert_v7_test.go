@@ -567,11 +567,13 @@ func TestImportChainLabelDroppedWithWarning(t *testing.T) {
 	}
 }
 
-// П6 на per-source настройках подписки: UA/HWID и компания описывают, каким
-// устройством подписка представляется провайдеру, а провайдер ВЕТВИТ по ним
-// выдачу. В контракт 0.11 они не входят (поля общие с LxBox), и восстановление
-// на новой машине даст ДРУГОЙ набор узлов — молчать об этом нельзя.
-func TestExportNamesDroppedSourceIdentity(t *testing.T) {
+// П6 на per-source настройках подписки, контракт 0.12: UA и HWID-семейство
+// теперь ЕДУТ (объект identity), а бездомным остался единственный ключ
+// relays_in_directions — у LxBox такой развилки нет вовсе. Он идёт кодом
+// backup_local_only_dropped («такого поля в общем формате нет»), тогда как
+// identity-код остался за ключами identity («поле есть, здесь не
+// применяется»). О том, что уехало, предупреждать нечего.
+func TestExportNamesLocalOnlySourceFields(t *testing.T) {
 	send := true
 	s := &state.State{Sources: []state.Source{{
 		ID:                 "01SUB0000000000000000000",
@@ -582,40 +584,64 @@ func TestExportNamesDroppedSourceIdentity(t *testing.T) {
 		SendHWID:           &send,
 		RelaysInDirections: true,
 	}}}
-	_, warns, err := Export(s, ExportOptions{AppVersion: "test"})
+	b, warns, err := Export(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
 	var detail string
 	for _, w := range warns {
-		if w.Code == WarnBackupSourceIdentityDropped {
+		if w.Code == WarnBackupLocalOnlyDropped {
 			detail = w.Detail
 		}
 	}
 	if detail == "" {
-		t.Fatalf("настройки представления выпали молча: %v", warns)
+		t.Fatalf("бездомный relays_in_directions выпал молча: %v", warns)
 	}
-	// Перечисляются ровно ЗАДАННЫЕ поля: список «всего, что бывает» не
-	// помогает понять, что именно пропало у этой подписки.
-	for _, want := range []string{"Liberty", "user_agent", "send_hwid", "relays_in_directions"} {
-		if !strings.Contains(detail, want) {
-			t.Errorf("предупреждение не называет %q: %q", want, detail)
+	// Ключи identity своим кодом не помечаются: он остался за объектом
+	// identity, и смешение двух разговоров запутало бы UI.
+	if hasWarn(warns, WarnBackupSourceIdentityDropped) {
+		t.Errorf("бездомное поле помечено кодом ключей identity: %v", warns)
+	}
+	if !strings.Contains(detail, "Liberty") || !strings.Contains(detail, "relays_in_directions") {
+		t.Errorf("предупреждение не называет подписку и поле: %q", detail)
+	}
+	// Уехавшее в identity потерей НЕ объявляется — иначе пользователь ищет
+	// пропажу того, что на самом деле в файле.
+	for _, gone := range []string{"user_agent", "send_hwid", "hwid", "hash_device_model"} {
+		if strings.Contains(detail, gone) {
+			t.Errorf("уехавшее поле %q названо потерей: %q", gone, detail)
 		}
 	}
-	if strings.Contains(detail, ": hwid,") {
-		t.Errorf("названо незаданное поле hwid: %q", detail)
+	if len(b.Subscriptions) != 1 || b.Subscriptions[0].Identity == nil {
+		t.Fatalf("identity не собран: %+v", b.Subscriptions)
+	}
+	id := b.Subscriptions[0].Identity
+	if id.UserAgent == nil || *id.UserAgent != "Happ/1.0" {
+		t.Errorf("user_agent не уехал: %+v", id)
+	}
+	if id.SendHWID == nil || !*id.SendHWID {
+		t.Errorf("send_hwid не уехал: %+v", id)
+	}
+	// Незаданное остаётся НЕ заданным: пустая строка на приёмнике затёрла бы
+	// дефолт приложения, а nil означает «настройки нет».
+	if id.HWID != nil || id.HashDeviceModel != nil {
+		t.Errorf("незаданные ключи материализовались: %+v", id)
 	}
 
-	// Подписка без этих настроек предупреждения не вызывает.
+	// Подписка без этих настроек: ни предупреждения, ни объекта identity.
 	s.Sources[0] = state.Source{
 		ID:   "01SUB0000000000000000000",
 		Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true},
 		URL:  "https://example.invalid/s",
 	}
-	if _, warns, err = Export(s, ExportOptions{AppVersion: "test"}); err != nil {
+	b, warns, err = Export(s, ExportOptions{AppVersion: "test"})
+	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
-	if hasWarn(warns, WarnBackupSourceIdentityDropped) {
+	if hasWarn(warns, WarnBackupLocalOnlyDropped) {
 		t.Errorf("незаданные настройки объявлены потерей: %v", warns)
+	}
+	if b.Subscriptions[0].Identity != nil {
+		t.Errorf("пустой identity уехал в файл: %+v", b.Subscriptions[0].Identity)
 	}
 }

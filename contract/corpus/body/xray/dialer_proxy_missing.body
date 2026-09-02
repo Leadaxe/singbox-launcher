@@ -1,0 +1,5 @@
+# Xray: dialerProxy ссылается на outbound "ghost", которого в теле НЕТ.
+# Цепочка объявлена, но непригодна — узел не выпускается вовсе и уезжает
+# в отбраковку (dropped). Ключевое свойство кейса: владелец НЕ приезжает
+# узлом с прямым путём, иначе трафик молча пошёл бы мимо релея.
+[{"remarks":"chain-owner","outbounds":[{"protocol":"vless","tag":"proxy","settings":{"vnext":[{"address":"example-1.com","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","encryption":"none"}]}]},"streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"serverName":"example-1.com"},"sockopt":{"dialerProxy":"ghost"}}},{"protocol":"freedom","tag":"direct"}]}]

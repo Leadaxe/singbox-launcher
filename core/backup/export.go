@@ -1,6 +1,6 @@
 package backup
 
-// Экспорт состояния лаунчера в переносимый LX Backup (контракт 0.11.0).
+// Экспорт состояния лаунчера в переносимый LX Backup (контракт 0.12.0).
 
 import (
 	"encoding/json"
@@ -107,13 +107,16 @@ func Export(s *state.State, opts ExportOptions) (*Backup, []Warning, error) {
 					Detail: sourceExportName(src) + ": " + src.Replace.Tag + " → " + derived,
 				})
 			}
-			// Настройки, которыми подписка представляется провайдеру
-			// (UA, HWID и компания), контракт 0.11 не выражает: поля общие
-			// с LxBox, а этих у него нет. Заводить их односторонне нельзя,
-			// поэтому единственный честный ход — назвать потерю вслух.
-			if fields := droppedSourceIdentityFields(src); fields != "" {
+			// UA/HWID подписки контракт 0.12 везёт объектом identity
+			// (см. exportSourceIdentity). Здесь остался единственный
+			// per-source ключ, которому в схеме дома по-прежнему нет, —
+			// relays_in_directions: он про СПИСОК ЦЕЛЕЙ Направлений, а у
+			// LxBox этой развилки нет вовсе, и заводить её односторонне
+			// значило бы вернуть тайный груз, ради сноса которого убран
+			// extensions. Потеря обязана быть названа вслух.
+			if fields := droppedLocalOnlyFields(src); fields != "" {
 				warnings = append(warnings, Warning{
-					Code:   WarnBackupSourceIdentityDropped,
+					Code:   WarnBackupLocalOnlyDropped,
 					Detail: sourceExportName(src) + ": " + fields,
 				})
 			}
@@ -122,18 +125,32 @@ func Export(s *state.State, opts ExportOptions) (*Backup, []Warning, error) {
 			b.Servers = append(b.Servers, exportServer(src))
 		case state.SourceKindChain:
 			b.Chains = append(b.Chains, exportChain(src, i))
-		case state.SourceKindFolder, state.SourceKindAuto:
-			// Контракт 0.11 не знает ни папок, ни провайдерских групп
-			// (секция folders[] — отдельный трек с LxBox-стороной, SPEC 118
-			// §2 «НЕ в этапе 2»). Молча выронить их из файла нельзя: это
-			// ровно та ловушка, из-за которой SPEC 116 потерял бы состав
-			// папки без единого слова.
+		case state.SourceKindFolder:
+			// Папка едет СОСТАВОМ (контракт 0.12): её члены-серверы
+			// выгружаются обычными записями servers[] с пометкой folder —
+			// именем папки. Отдельной секции у папки нет намеренно:
+			// собственных данных, кроме имени, она не несёт, а вторая
+			// секция потребовала бы держать два места в согласии.
 			//
-			// SPEC 116 W9 (§O1=А): вид и объём — отдельными полями. Папка
-			// уезжает НЕ ОДНА, а со своим составом, и пользователю нужно
-			// число: «папка Рабочая и её 12 узлов в файл не попали» — это
-			// решение не восстанавливаться из этого файла, а «папка не
-			// поддержана» — нет.
+			// Раньше папка целиком объявлялась неподдержанной и её состав
+			// в файл не попадал — именно та потеря, из-за которой SPEC 116
+			// лишался узлов без единого слова.
+			members, lost := exportFolder(src)
+			b.Servers = append(b.Servers, members...)
+			// Настройки самой папки и члены, которых servers[] выразить не
+			// может (цепочки, неразобранные записи), остаются здесь —
+			// ОДНИМ warning'ом на папку с перечнем, а не строкой на каждый.
+			if lost != "" {
+				warnings = append(warnings, Warning{
+					Code:   WarnBackupLocalOnlyDropped,
+					Detail: sourceExportName(src) + ": " + lost,
+				})
+			}
+		case state.SourceKindAuto:
+			// Провайдерская группа — по-прежнему вид, которого контракт не
+			// знает. Молча выронить её нельзя (SPEC 116 W9, §O1=А): вид и
+			// объём идут отдельными полями, потому что группа уезжает НЕ
+			// ОДНА, а со своим составом, и пользователю нужно число.
 			dropped = append(dropped, Warning{
 				Code:   WarnBackupSourceKindUnsupported,
 				Detail: sourceExportName(src),
@@ -268,6 +285,7 @@ func exportSubscription(src state.Source, index int) Subscription {
 		ID:        src.ID,
 		URL:       src.URL,
 		Label:     src.Name,
+		Identity:  exportSourceIdentity(src),
 		MaxNodes:  src.MaxNodes,
 		Skip:      src.Skip,
 		Fold:      exportFold(src.Replace),
@@ -289,29 +307,53 @@ func exportSubscription(src state.Source, index int) Subscription {
 	return out
 }
 
-// droppedSourceIdentityFields — перечень per-source настроек подписки,
-// которые в контракт 0.11 не едут, в порядке объявления в модели
-// (core/state/sources_v7.go). Пусто = терять нечего.
+// exportSourceIdentity — чем подписка представляется провайдеру, в форме
+// контракта 0.12 (объект identity). nil, если не задано НИЧЕГО.
 //
-// Это НЕ «поля, о которых забыли»: UA и HWID описывают, каким устройством
-// подписка представляется провайдеру, а провайдер ветвит выдачу по ним
-// (одна ссылка отдаёт разным клиентам разные тела). Восстановившись из
-// бэкапа, пользователь получит ДРУГОЙ набор узлов и не поймёт, почему —
-// поэтому потеря обязана быть названа поимённо, а не общим «часть настроек».
-func droppedSourceIdentityFields(src state.Source) string {
-	var fields []string
-	if strings.TrimSpace(src.UserAgent) != "" {
-		fields = append(fields, "user_agent")
+// Пишутся только заданные ключи: у этой настройки «не задано» и «задано
+// пустым» значат разное — пустой UA означает «слать дефолт приложения», и
+// приехав ключом с пустой строкой, он затёр бы дефолт принимающей стороны.
+// Отсюда указатели и проверка на пустоту перед записью.
+//
+// device_os / ver_os / device_model лаунчер не пишет: per-source их в модели
+// v7 нет, а выдумывать значения из системных — значит везти в файл то, чего
+// пользователь не настраивал (П1: экспорт — чистая функция состояния).
+func exportSourceIdentity(src state.Source) *SubscriptionIdentity {
+	out := &SubscriptionIdentity{}
+	if ua := strings.TrimSpace(src.UserAgent); ua != "" {
+		out.UserAgent = &ua
 	}
-	if strings.TrimSpace(src.HWID) != "" {
-		fields = append(fields, "hwid")
+	if hwid := strings.TrimSpace(src.HWID); hwid != "" {
+		out.HWID = &hwid
 	}
 	if src.SendHWID != nil {
-		fields = append(fields, "send_hwid")
+		v := *src.SendHWID
+		out.SendHWID = &v
 	}
 	if src.HashDeviceModel != nil {
-		fields = append(fields, "hash_device_model")
+		v := *src.HashDeviceModel
+		out.HashDeviceModel = &v
 	}
+	if out.IsEmpty() {
+		return nil
+	}
+	return out
+}
+
+// droppedLocalOnlyFields — перечень per-source настроек подписки, у которых
+// в схеме дома нет. Пусто = терять нечего.
+//
+// С контрактом 0.12 здесь остался ОДИН ключ: UA и HWID-семейство уехали в
+// объект identity, а relays_in_directions — нет. Он про то, предлагать ли
+// служебные узлы (релеи BYPASS) в списке целей Направлений; у LxBox такой
+// развилки нет вовсе, и односторонний ключ в общей схеме был бы ровно тем
+// тайным грузом, ради сноса которого убран механизм extensions.
+//
+// Потеря не косметическая: на маршрут галка не влияет (релей материализуется
+// всегда), но после restore список целей будет другим, и пользователь не
+// поймёт, куда делся выбор, — поэтому её называют поимённо.
+func droppedLocalOnlyFields(src state.Source) string {
+	var fields []string
 	if src.RelaysInDirections {
 		fields = append(fields, "relays_in_directions")
 	}
@@ -323,10 +365,59 @@ func droppedSourceIdentityFields(src state.Source) string {
 // `label` контракта не заполняется (та же причина, что у exportChain): имя
 // одиночного узла в v7 — его тег, и он уезжает ключом node_tag.
 func exportServer(src state.Source) Server {
+	out := exportServerNode(src.Node)
+	out.ID = src.ID
+	return out
+}
+
+// exportFolder — папка контракта 0.12: члены-серверы обычными записями
+// servers[] с пометкой folder, плюс перечень того, что осталось здесь.
+//
+// Второй возврат — не «список ошибок», а цена формы: у папки в схеме есть
+// ровно имя, поэтому её собственные настройки (политика тегов, свёртка,
+// общий detour) и члены, которых servers[] выразить не может, в файл не
+// едут. Перечисляются ОДНОЙ строкой на папку: пользователю нужно понять,
+// что именно он донастроит руками, а не получить строку на каждый ключ.
+//
+// Порядок членов сохраняется: он нормативен для сборки папки на приёмнике —
+// обе стороны собирают её по имени, в порядке записей файла.
+func exportFolder(src state.Source) ([]Server, string) {
+	var out []Server
+	var lost []string
+	if src.TagPolicy != nil && !src.TagPolicy.IsZero() {
+		lost = append(lost, "tag_policy")
+	}
+	if src.Replace != nil {
+		lost = append(lost, "replace")
+	}
+	// Общий detour ПАПКИ (у kind=folder тем же ключом, что личный detour
+	// узла) — настройка контейнера, а контейнера в схеме нет. Личные detour
+	// членов, наоборот, едут: они поля самой записи.
+	if src.Detour != nil {
+		lost = append(lost, "detour")
+	}
+	for _, n := range src.Nodes {
+		if n.Kind != state.SourceKindServer {
+			// Цепочка внутри папки и неразобранная запись: секция servers[]
+			// их не выражает, а положить цепочку в chains[] значило бы
+			// вынуть её из папки молча — вид и тег называем вслух.
+			lost = append(lost, string(n.Kind)+" "+n.Tag)
+			continue
+		}
+		m := exportServerNode(n)
+		m.Folder = src.Name
+		out = append(out, m)
+	}
+	return out, strings.Join(lost, ", ")
+}
+
+// exportServerNode — общая часть одиночного сервера: и корневого, и лежащего
+// в папке. Вынесена потому, что запись в файле у них одна и та же — разной
+// была бы только забытая половина полей, если писать её дважды.
+func exportServerNode(src state.Node) Server {
 	out := Server{
-		ID:        src.ID,
 		NodeTag:   src.Tag,
-		SourceRef: exportSourceRef(src),
+		SourceRef: exportNodeLinkRef(src.Detour),
 	}
 	// Форма хранения узла в v7 одна — тело; исходный URI живёт в origin и
 	// едет тем же ключом, что и раньше, когда он был единственной формой.

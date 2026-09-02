@@ -744,7 +744,20 @@ func attachXrayDialerChain(
 			hopTag = fmt.Sprintf("%s%s%d", ownerTag, xrayJumpOutboundTagSuffix, depth+1)
 		}
 
-		hop, err := xrayChainHopFromOutbound(hopOb, hopTag, label)
+		// D-085: подпись хопа — СОБСТВЕННЫЙ тег релея из конфига провайдера
+		// (`ru-upstream`), а не подпись владельца. Владелец и релей — разные
+		// серверы: копия подписи владельца делала цепочку в канон-выходе
+		// неотличимой от прямого пути и прятала, через кого узел на самом деле
+		// ходит. Тег лаунчера (`<owner>_jump_server`) остаётся отдельно — это
+		// имя в конфиге, а не имя от провайдера.
+		hopLabel := strings.TrimSpace(xrayMapString(hopOb, "tag"))
+		if hopLabel == "" {
+			// Безымянный релей: подписи от провайдера нет вовсе, и оставить
+			// хоп без подписи хуже, чем унаследовать владельца.
+			hopLabel = label
+		}
+
+		hop, err := xrayChainHopFromOutbound(hopOb, hopTag, hopLabel)
 		if err != nil {
 			return fmt.Errorf("dialerProxy %q: %w", ref, err)
 		}

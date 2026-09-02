@@ -1,6 +1,6 @@
 package backup
 
-// Конформанс-раннер корпуса LX Backup (контракт 0.11.0).
+// Конформанс-раннер корпуса LX Backup (контракт 0.12.0).
 //
 // Гоняет contract/corpus/backup/*.backup.json через Import и сверяет с
 // <case>.expected.json. Тот же набор обязана проходить сторона LxBox: перенос
@@ -39,6 +39,29 @@ type corpusExpectation struct {
 	// относительно импортёра и одинаково для обеих сторон.
 	ExtensionsDropped bool     `json:"extensions_dropped"`
 	DisabledHashes    []string `json:"disabled_hashes"`
+
+	// ReplaceTags — URL подписки → имя группы, которым свёртка обязана
+	// материализоваться после импорта (D-081). Тега замены контракт не
+	// несёт: он ПОЗИЦИОННЫЙ ДЕРИВАТИВ префикса тегов, а при пустом
+	// префиксе — «<номер записи в subscriptions[]>:» плюс `select`.
+	// Номер считается по секции subscriptions[], а НЕ по позиции среди
+	// всех источников файла: разошедшийся счёт даёт двум сторонам разные
+	// имена одной группы, и правила файла, метящие в неё, повисают.
+	//
+	// Поле необязательное: отсутствие ключа значит «не проверяем».
+	ReplaceTags map[string]string `json:"replace_tags"`
+
+	// Folders — папки, которые импорт обязан собрать: имя → теги членов В
+	// ПОРЯДКЕ файла (контракт 0.12). Папка не имеет секции в файле и
+	// собирается ПО ИМЕНИ из записей servers[] с полем folder, поэтому
+	// проверять надо именно результат сборки: потеря пометки у одной записи
+	// растащила бы состав по корню списка молча.
+	//
+	// Порядок членов нормативен — обе стороны собирают папку в порядке
+	// записей файла, иначе состав после переноса перетасовывается.
+	//
+	// Поле необязательное: отсутствие ключа значит «не проверяем».
+	Folders map[string][]string `json:"folders"`
 
 	// Directions — Направления, которые импорт обязан СОЗДАТЬ (SPEC 104,
 	// схема v1.1). Проверяется каноническая форма, а не внутренняя: она и
@@ -133,6 +156,8 @@ func TestBackupCorpus(t *testing.T) {
 			checkDisabledHashes(t, dst, exp)
 			checkDirections(t, dst, exp)
 			checkChains(t, dst, exp)
+			checkReplaceTags(t, dst, exp)
+			checkFolders(t, dst, exp)
 		})
 	}
 }
@@ -166,6 +191,45 @@ func checkRules(t *testing.T, dst *state.State, exp corpusExpectation) {
 		}
 		if all[i].enabled != want.Enabled {
 			t.Errorf("правило %q: enabled=%v, ожидалось %v", want.Name, all[i].enabled, want.Enabled)
+		}
+	}
+}
+
+// checkFolders — папки собраны по имени, с тем же составом и порядком.
+func checkFolders(t *testing.T, dst *state.State, exp corpusExpectation) {
+	t.Helper()
+	if exp.Folders == nil {
+		return
+	}
+	have := map[string][]string{}
+	for _, src := range dst.Sources {
+		if src.Kind != state.SourceKindFolder {
+			continue
+		}
+		if _, dup := have[src.Name]; dup {
+			t.Errorf("папка %q собрана дважды — одно имя = одна папка", src.Name)
+		}
+		tags := []string{}
+		for i := range src.Nodes {
+			tags = append(tags, src.Nodes[i].Tag)
+		}
+		have[src.Name] = tags
+	}
+	for name, want := range exp.Folders {
+		got, ok := have[name]
+		if !ok {
+			t.Errorf("папка %q не собрана: есть %v", name, have)
+			continue
+		}
+		// equalStrings сравнивает В ПОРЯДКЕ, без сортировки: порядок членов
+		// папки нормативен, и перетасованный состав — это расхождение.
+		if !equalStrings(got, want) {
+			t.Errorf("папка %q: члены %v, ожидались %v (порядок нормативен)", name, got, want)
+		}
+	}
+	for name := range have {
+		if _, ok := exp.Folders[name]; !ok {
+			t.Errorf("собрана папка %q, которой в ожиданиях нет", name)
 		}
 	}
 }
@@ -252,6 +316,38 @@ func checkDisabledHashes(t *testing.T, dst *state.State, exp corpusExpectation) 
 	for _, want := range exp.DisabledHashes {
 		if !found[want] {
 			t.Errorf("отметка выключенной ноды %s не перенесена", want)
+		}
+	}
+}
+
+// checkReplaceTags — имя группы свёрнутой подписки после импорта (D-081).
+//
+// Проверяется ровно тот тег, на который ссылаются правила и route.final того
+// же файла: если стороны считают позиционный дериватив по-разному, здесь
+// разъезд виден сразу, а не у пользователя выключенным правилом.
+func checkReplaceTags(t *testing.T, dst *state.State, exp corpusExpectation) {
+	t.Helper()
+	if len(exp.ReplaceTags) == 0 {
+		return
+	}
+	byURL := map[string]*state.Source{}
+	for i := range dst.Sources {
+		if dst.Sources[i].Kind == state.SourceKindSubscription {
+			byURL[dst.Sources[i].URL] = &dst.Sources[i]
+		}
+	}
+	for url, want := range exp.ReplaceTags {
+		src, ok := byURL[url]
+		if !ok {
+			t.Errorf("подписка %s не приехала — тег замены проверять не на чем", url)
+			continue
+		}
+		if src.Replace == nil {
+			t.Errorf("%s: свёртка не стала заменой — группы, в которую метят правила файла, нет", url)
+			continue
+		}
+		if src.Replace.Tag != want {
+			t.Errorf("%s: тег замены %q, ожидался %q", url, src.Replace.Tag, want)
 		}
 	}
 }

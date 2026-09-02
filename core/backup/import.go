@@ -1,6 +1,6 @@
 package backup
 
-// Импорт LX Backup в состояние лаунчера (контракт 0.11.0).
+// Импорт LX Backup в состояние лаунчера (контракт 0.12.0).
 
 import (
 	"encoding/json"
@@ -104,15 +104,37 @@ const (
 	// цепочки, одинаково названные на разных устройствах, склеиваются в
 	// одну, и пользователь обязан узнать об этом (BACKUP.md §4).
 	WarnBackupChainExists = "backup_chain_exists"
-	// WarnBackupSourceIdentityDropped — per-source настройки подписки,
-	// которыми она представляется провайдеру (user_agent, hwid, send_hwid,
-	// hash_device_model, relays_in_directions), в контракт 0.11 не входят:
-	// поля общие с LxBox, а у него их нет, и заводить их односторонне —
-	// значит вернуть тайный груз, ради сноса которого убран extensions.
-	// Потеря не косметическая: провайдеры ВЕТВЯТ выдачу по UA, и на новой
-	// машине та же ссылка отдаст другой набор узлов. Ставится на ЭКСПОРТЕ —
-	// там, где ещё видно, какие именно поля были заданы.
+	// WarnBackupSourceIdentityDropped — ключи ОБЪЕКТА identity, которые
+	// принимающая сторона не применяет: mobile-only device_os / ver_os /
+	// device_model и всё незнакомое. Код один на оба направления и обе
+	// стороны — потеря для пользователя одна и та же («подписка спросит
+	// провайдера не тем, чем спрашивала»), и разные коды заставили бы UI
+	// объяснять два раза одно.
+	//
+	// Ставится ОДИН на подписку, с перечнем неприменённых ключей: потеря у
+	// пользователя одна, а не по строке на ключ. Потеря не косметическая —
+	// провайдеры ВЕТВЯТ выдачу по UA, и на новой машине та же ссылка отдаст
+	// другой набор узлов.
+	//
+	// Для настроек, которым в схеме дома нет вовсе, код другой —
+	// WarnBackupLocalOnlyDropped: «ключ есть, но здесь не применяется» и
+	// «такого поля в общем формате нет» — разные разговоры с пользователем.
 	WarnBackupSourceIdentityDropped = "backup_source_identity_dropped"
+	// WarnBackupLocalOnlyDropped — настройки СВОЕЙ стороны, которым в общей
+	// схеме дома нет: они остаются здесь и в файл не едут.
+	//
+	// Один код на оба направления и обе стороны. У лаунчера это
+	// relays_in_directions подписки (у LxBox такой развилки нет вовсе),
+	// настройки самой папки (tag_policy, replace, detour) и её члены,
+	// которых секция servers[] выразить не может (цепочки, неразобранные
+	// записи); у LxBox — import_rules, свои настройки папки и политика
+	// detour источника.
+	//
+	// Почему не «завести поля в схеме»: односторонний ключ в общем формате —
+	// это возвращённый тайный груз, ради сноса которого убран механизм
+	// extensions (П1/П3). Честный ход — объявить потерю вслух (П6), а не
+	// возить непонятное чужой стороне. Detail: `<сущность>: <поля>`.
+	WarnBackupLocalOnlyDropped = "backup_local_only_dropped"
 	// WarnBackupSourceFlagDropped — `exclude_from_global` /
 	// `expose_group_tags_to_global` приехали из бэкапа v1.5.x: класс флагов
 	// упразднён (SPEC 118), узлы источника остаются в общем пуле кандидатов.
@@ -191,10 +213,12 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 		res.Warnings = append(res.Warnings, warns...)
 		res.AppliedSources++
 	}
-	for _, srv := range b.Servers {
-		src, warns := importServer(srv)
+	// Серверы: запись с пометкой folder уходит не в корень списка, а в
+	// папку с этим именем (контракт 0.12). Порядок и записей, и папок —
+	// порядок файла: он нормативен, иначе состав папки после переноса
+	// перетасовывается без причины.
+	for _, src := range importServers(b.Servers, &res.Warnings) {
 		s.Sources = append(s.Sources, src)
-		res.Warnings = append(res.Warnings, warns...)
 		res.AppliedSources++
 	}
 
@@ -209,6 +233,18 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 		existing[d.Tag] = true
 	}
 	knownTags := append([]string(nil), opts.KnownOutbounds...)
+	// Группы, которые породит свёртка приехавших подписок (D-081): правила и
+	// route.final ТОГО ЖЕ файла ссылаются на позиционный дериватив
+	// `<N>:select` / `<N>:auto`, а принимающая сторона о нём знать не может —
+	// её список известных целей снят ДО импорта. Без этого пополнения перенос
+	// свёрнутой подписки приезжал маршрутизацией в никуда: правило
+	// выключалось `backup_unknown_outbound`, final отбрасывался, и оба —
+	// по причине «цель не существует», хотя цель приехала этим же файлом.
+	for i, sub := range b.Subscriptions {
+		for tag := range foldDerivedDirectionTags(sub, i) {
+			knownTags = append(knownTags, tag)
+		}
+	}
 	for _, in := range b.Directions {
 		if in.Tag == "" {
 			continue
@@ -345,6 +381,12 @@ func importSubscription(sub Subscription, index int) (state.Source, []Warning) {
 		Skip:     sub.Skip,
 	}
 	importSourceRef(&src, sub.SourceRef)
+	// Чем подписка представляется провайдеру (контракт 0.12). Применяются
+	// четыре ключа, которые у модели v7 есть; mobile-only тройка и любое
+	// незнакомое — отбрасываются ОДНИМ warning'ом с перечнем.
+	if w, ok := importSourceIdentity(&src, sub); ok {
+		warns = append(warns, w)
+	}
 	if sub.Tag != nil {
 		if sub.Tag.Prefix != "" || sub.Tag.Postfix != "" {
 			src.TagPolicy = &state.TagPolicy{Prefix: sub.Tag.Prefix, Postfix: sub.Tag.Postfix}
@@ -399,6 +441,47 @@ func subscriptionLabel(sub Subscription) string {
 	return sub.URL
 }
 
+// importSourceIdentity применяет к источнику приехавший объект identity и
+// возвращает предупреждение о том, что применить не удалось.
+//
+// Применяются ровно те четыре ключа, которым в модели v7 есть куда лечь.
+// Остальные (mobile-only device_os/ver_os/device_model и любые незнакомые)
+// НЕ применяются и НЕ провозятся дальше: провоз непонятого создаёт
+// состояние-призрак, ради сноса которого убран механизм extensions (П1/П3).
+//
+// Warning ровно один на подписку, с перечнем ключей: потеря у пользователя
+// одна, и строка на каждый ключ утопила бы её в списке. Пустой объект
+// identity (или объект с одними применёнными ключами) не даёт ничего —
+// предупреждают о потере, а не о факте наличия поля.
+func importSourceIdentity(src *state.Source, sub Subscription) (Warning, bool) {
+	id := sub.Identity
+	if id == nil {
+		return Warning{}, false
+	}
+	if id.UserAgent != nil {
+		src.UserAgent = *id.UserAgent
+	}
+	if id.HWID != nil {
+		src.HWID = *id.HWID
+	}
+	if id.SendHWID != nil {
+		v := *id.SendHWID
+		src.SendHWID = &v
+	}
+	if id.HashDeviceModel != nil {
+		v := *id.HashDeviceModel
+		src.HashDeviceModel = &v
+	}
+	dropped := id.UnappliedKeys()
+	if len(dropped) == 0 {
+		return Warning{}, false
+	}
+	return Warning{
+		Code:   WarnBackupSourceIdentityDropped,
+		Detail: subscriptionLabel(sub) + ": " + strings.Join(dropped, ", "),
+	}, true
+}
+
 // backupReplaceTag — тег замены свёрнутой подписки, приехавшей из бэкапа:
 // префикс тегов подписки с позиционным умолчанием «<номер>:» плюс `select`.
 // Формула та же, что у старой свёртки, — по этим тегам ссылаются правила
@@ -409,6 +492,46 @@ func backupReplaceTag(sub Subscription, index int) string {
 		prefix = sub.Tag.Prefix
 	}
 	return legacyFoldPrefix(prefix, index) + "select"
+}
+
+// importServers собирает секцию servers[] в источники v7: записи без пометки
+// folder становятся корневыми узлами, записи с одинаковым folder — ОДНОЙ
+// папкой с этим именем.
+//
+// Папка не имеет отдельной секции в файле, и собирается она здесь по имени —
+// так же, как на другой стороне. Порядок нормативен дважды: папка встаёт на
+// место ПЕРВОГО своего члена (иначе список после переноса перетасовывается),
+// а члены внутри неё идут в порядке записей файла.
+//
+// Одно имя = одна папка: второй встреченный `folder: "Proton"` дополняет уже
+// собранную, а не заводит тёзку. Пустое имя — это корень, а не папка без
+// имени: у безымянной папки не было бы способа адресовать её членов.
+func importServers(list []Server, warns *[]Warning) []state.Source {
+	var out []state.Source
+	// folderAt — позиция уже начатой папки в out, по имени. Индекс, а не
+	// указатель: срез растёт и переезжает в памяти, указатель бы протух.
+	folderAt := map[string]int{}
+	for _, srv := range list {
+		src, w := importServer(srv)
+		*warns = append(*warns, w...)
+		name := strings.TrimSpace(srv.Folder)
+		if name == "" {
+			out = append(out, src)
+			continue
+		}
+		if at, ok := folderAt[name]; ok {
+			out[at].Nodes = append(out[at].Nodes, src.Node)
+			continue
+		}
+		folderAt[name] = len(out)
+		out = append(out, state.Source{
+			Node:  state.Node{Kind: state.SourceKindFolder, Enabled: true},
+			ID:    state.MakeULID(),
+			Name:  name,
+			Nodes: []state.Node{src.Node},
+		})
+	}
+	return out
 }
 
 // importServer — одиночный узел контракта в источник v7.
