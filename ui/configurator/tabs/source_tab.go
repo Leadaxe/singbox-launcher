@@ -600,7 +600,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					folderDrillHeader(
 						presenter, guiState,
 						&m.Sources[input.SourceIndex], input.SourceIndex,
-						input.Name, previewRowsBroken(input.Rows),
+						input.Name, input.Rows, previewRowsBroken(input.Rows),
 						drill.announceOpen,
 						func() {
 							drill.announceOpen = !drill.announceOpen

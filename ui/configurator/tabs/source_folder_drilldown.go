@@ -453,6 +453,7 @@ func folderDrillHeader(
 	src *corestate.Source,
 	sourceIndex int,
 	name string,
+	rows []previewRow,
 	warnCount int,
 	announceOpen bool,
 	onToggleAnnounce func(),
@@ -538,8 +539,16 @@ func folderDrillHeader(
 		components.NewScrollGutter(),
 	)
 
+	// Слева — стрелка выхода и мастер-галка состава (когда есть что
+	// переключать). Галка стоит в колонке галок строк: заголовок таблицы с
+	// «выбрать всё» читается без объяснений. Свой клик она съедает сама, как
+	// кнопки справа; клик по остальной строке — выход.
+	leftItems := []fyne.CanvasObject{widget.NewIcon(theme.NavigateBackIcon())}
+	if master := folderDrillMasterCheck(presenter, guiState, src.ID, rows); master != nil {
+		leftItems = append(leftItems, master)
+	}
 	row = fynewidget.NewHoverRow(
-		container.NewBorder(nil, nil, widget.NewIcon(theme.NavigateBackIcon()), rightControls, lbl),
+		container.NewBorder(nil, nil, container.NewHBox(leftItems...), rightControls, lbl),
 		fynewidget.HoverRowConfig{IsSelected: func() bool { return false }},
 	)
 	wrap := fynewidget.NewSecondaryTapWrap(row)
@@ -1090,4 +1099,89 @@ func folderDrillSetNodeEnabled(
 		}
 	}
 	return false
+}
+
+// folderDrillMasterCheck — галка «все вкл / все выкл» в шапке контейнера.
+//
+// Считает только те записи, у которых есть своя галка в строке (разобранные
+// и с идентичностью): неразобранным включаться не во что, а узел без тега
+// пометить некуда. Три состояния: все включены — отмечена, никто — пустая,
+// часть — Partial. Клик по Partial включает всех (Fyne снимает Partial в
+// сторону «отмечена»), клик по отмеченной — выключает всех: ровно как у
+// заголовка таблицы. Возвращает nil, когда переключать нечего — пустая
+// галка над пустым составом обещала бы действие без результата.
+//
+// Мутация одна на весь состав, а не по узлу: applySourceMutation поднимает
+// ревизию и пересобирает производные, и сто подъёмов подряд на один клик
+// означали бы сто пересборок пула кандидатов.
+func folderDrillMasterCheck(
+	presenter *wizardpresentation.WizardPresenter,
+	guiState *wizardpresentation.GUIState,
+	folderID string,
+	rows []previewRow,
+) fyne.CanvasObject {
+	tags := make([]string, 0, len(rows))
+	enabled := 0
+	for _, pr := range rows {
+		if pr.Unsupported || pr.RawTag == "" {
+			continue
+		}
+		tags = append(tags, pr.RawTag)
+		if folderDrillNodeEnabled(presenter, folderID, pr.RawTag) {
+			enabled++
+		}
+	}
+	if len(tags) == 0 {
+		return nil
+	}
+	check := widget.NewCheck("", nil)
+	switch {
+	case enabled == len(tags):
+		check.Checked = true
+		fynewidget.SetToolTipSafe(check, locale.T("Disable all nodes"))
+	case enabled == 0:
+		fynewidget.SetToolTipSafe(check, locale.T("Enable all nodes"))
+	default:
+		check.Partial = true
+		fynewidget.SetToolTipSafe(check, locale.T("Enable all nodes"))
+	}
+	check.OnChanged = func(on bool) {
+		if !folderDrillSetNodesEnabled(presenter, folderID, tags, on) {
+			return
+		}
+		applySourceMutation(presenter, guiState)
+	}
+	return check
+}
+
+// folderDrillSetNodesEnabled ставит одну отметку сразу нескольким узлам
+// контейнера. Возвращает true, если хоть один узел сменил состояние.
+func folderDrillSetNodesEnabled(
+	presenter *wizardpresentation.WizardPresenter,
+	folderID string,
+	tags []string,
+	enabled bool,
+) bool {
+	m := presenter.Model()
+	if m == nil {
+		return false
+	}
+	idx := folderDrillIndex(m.Sources, folderID)
+	if idx < 0 {
+		return false
+	}
+	want := make(map[string]bool, len(tags))
+	for _, t := range tags {
+		want[t] = true
+	}
+	changed := false
+	nodes := m.Sources[idx].Nodes
+	for i := range nodes {
+		if !want[nodes[i].Tag] || nodes[i].Enabled == enabled {
+			continue
+		}
+		nodes[i].Enabled = enabled
+		changed = true
+	}
+	return changed
 }
