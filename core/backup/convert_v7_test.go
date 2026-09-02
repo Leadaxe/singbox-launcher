@@ -348,9 +348,11 @@ func TestImportLegacyServerMaskArrivesAsNodeTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
-	// Тег доезжает молча; а вот `label`, разошедшийся с тегом, — потеря:
-	// у канона v7 имени, кроме тега, нет (SPEC 112), и Source.Label — поле
-	// `json:"-"`, которое умерло бы на первом Save беззвучно.
+	// Тег доезжает молча; а вот `label` СЕРВЕРА, разошедшийся с тегом, —
+	// потеря: у канона v7 имени, кроме тега, нет (SPEC 112), и Source.Label —
+	// поле `json:"-"`, которое умерло бы на первом Save беззвучно.
+	// Предупреждение РОВНО одно: у цепочки в том же файле label тоже есть, но
+	// это объявленное поле LxBox (D-094) — оно игнорируется молча.
 	warns := warnCodes(append(parseWarns, res.Warnings...))
 	wantWarns := []string{WarnBackupLabelDropped}
 	if !equalStrings(warns, wantWarns) {
@@ -519,10 +521,12 @@ func TestImportNamesDroppedSourceFlags(t *testing.T) {
 	}
 }
 
-// П6 на подписи одиночного узла: `label`, разошедшийся с тегом, применён не
-// будет — у канона v7 имени, кроме тега, нет. Раньше он клался в Source.Label
-// (`json:"-"`) и умирал на первом же Save беззвучно.
-func TestImportChainLabelDroppedWithWarning(t *testing.T) {
+// Подпись цепочки: с контракта 0.12.4 (D-094) `label` — объявленное поле
+// LxBox. Лаунчер зовёт цепочку тегом (SPEC 112), поэтому приехавшее значение
+// он не применяет и МОЛЧА отбрасывает (BACKUP.md §1): это не потеря, о
+// которой надо говорить, а чужое объявленное поле, и warning шумел бы на
+// каждом импорте файла LxBox.
+func TestImportChainLabelIgnoredSilently(t *testing.T) {
 	raw := []byte(`{
   "lx_backup": 1,
   "exported_by": {"app": "lxbox", "version": "2.2.0"},
@@ -548,8 +552,8 @@ func TestImportChainLabelDroppedWithWarning(t *testing.T) {
 	if chain.Label != "" {
 		t.Errorf("импорт заполнил Label (json:\"-\"): %q", chain.Label)
 	}
-	if !hasWarn(res.Warnings, WarnBackupLabelDropped) {
-		t.Fatalf("подпись выпала молча: %v", res.Warnings)
+	if hasWarn(res.Warnings, WarnBackupLabelDropped) {
+		t.Fatalf("объявленное поле LxBox дало предупреждение: %v", res.Warnings)
 	}
 
 	// После Save→Load терять больше нечего: то, что уцелело, уцелело.

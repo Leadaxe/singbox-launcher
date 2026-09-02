@@ -139,10 +139,12 @@ func TestDirectionRoundTrip(t *testing.T) {
 	}
 }
 
-// Контракт 0.9.0 снёс у Направления поле label: имя ровно одно — tag.
-// Приехавший label чужой стороны — обычный неизвестный ключ (П3): warning,
-// именем остаётся тег, ничего никуда не провозится.
-func TestDirectionForeignLabelDroppedWithWarning(t *testing.T) {
+// Контракт 0.12.4 (D-094) вернул у Направления объявленное поле label —
+// подпись LxBox. Лаунчер зовёт Направление тегом, поэтому приехавшее значение
+// он МОЛЧА игнорирует: неизвестным ключом поле больше не считается (warning
+// шумел бы на каждом импорте файла LxBox), провоза тоже нет — экспорт его не
+// пишет.
+func TestDirectionForeignLabelIgnoredSilently(t *testing.T) {
 	raw := []byte(`{"lx_backup":1,"exported_by":{"app":"lxbox","version":"2.1.0"},` +
 		`"exported_at":"2026-08-22T00:00:00Z",` +
 		`"directions":[{"tag":"vpn-3","label":"Германия","filter":"🇩🇪"}]}`)
@@ -150,14 +152,10 @@ func TestDirectionForeignLabelDroppedWithWarning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	named := false
 	for _, w := range warns {
 		if w.Code == WarnBackupUnknownField && w.Detail == "directions[vpn-3].label" {
-			named = true
+			t.Fatalf("объявленный label Направления назван неизвестным ключом: %v", warns)
 		}
-	}
-	if !named {
-		t.Fatalf("чужой label Направления отброшен молча: %v", warns)
 	}
 
 	dst := &state.State{}
@@ -167,7 +165,8 @@ func TestDirectionForeignLabelDroppedWithWarning(t *testing.T) {
 	if len(dst.Directions) != 1 || dst.Directions[0].Tag != "vpn-3" {
 		t.Fatalf("Направление не создано или переименовано: %+v", dst.Directions)
 	}
-	// Провоза больше нет: обратный экспорт обязан быть без чужого имени.
+	// Провоза нет: у лаунчера имя одно, и обратный экспорт обязан быть без
+	// чужой подписи.
 	back, _, err := Export(dst, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)

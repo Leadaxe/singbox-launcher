@@ -272,10 +272,15 @@ var (
 		"id": true, "tag": true, "label": true, "enabled": true,
 		"chain": true, "exclude_from_global": true,
 	})
+	// label объявлен в схеме с контракта 0.12.4 (D-094) как поле LxBox:
+	// он его пишет и читает, лаунчер игнорирует молча. Неизвестным ключом
+	// поле больше не считается — иначе каждый импорт файла LxBox давал бы
+	// backup_unknown_field на каждом Направлении.
 	directionKeys = map[string]bool{
-		"tag": true, "enabled": true, "filter": true, "invert": true,
-		"default": true, "include_direct": true, "include_block": true,
-		"include": true, "interrupt_exist_connections": true, "auto": true,
+		"tag": true, "label": true, "enabled": true, "filter": true,
+		"invert": true, "default": true, "include_direct": true,
+		"include_block": true, "include": true,
+		"interrupt_exist_connections": true, "auto": true,
 	}
 	ruleKeys = map[string]bool{
 		"kind": true, "name": true, "enabled": true, "num": true,

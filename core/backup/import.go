@@ -141,11 +141,12 @@ const (
 	// Поля объявлены в типах контракта, поэтому scanUnknown их не ловит —
 	// без этого кода они пропадали бы совсем молча.
 	WarnBackupSourceFlagDropped = "backup_source_flag_dropped"
-	// WarnBackupLabelDropped — `label` одиночного узла (сервер/цепочка)
-	// разошёлся с тегом и применён не будет: у канона v7 имени, кроме тега,
-	// нет (SPEC 112, «идентичность узла = тег»). Раньше label клался в
-	// Source.Label — поле с `json:"-"`, то есть умирал на первом же Save,
-	// а пользователю об этом не говорили.
+	// WarnBackupLabelDropped — `label` одиночного СЕРВЕРА разошёлся с тегом
+	// и применён не будет: у канона v7 имени, кроме тега, нет (SPEC 112,
+	// «идентичность узла = тег»). Раньше label клался в Source.Label — поле
+	// с `json:"-"`, то есть умирал на первом же Save, а пользователю об этом
+	// не говорили. У цепочек и Направлений кода нет: там `label` с контракта
+	// 0.12.4 — объявленное поле LxBox, игнорируемое МОЛЧА (D-094).
 	WarnBackupLabelDropped = "backup_label_dropped"
 )
 
@@ -607,11 +608,11 @@ func importChain(in Chain) (state.Source, []Warning) {
 		},
 		ID: ensureSourceID(in.ID),
 	}
-	// Label в Source.Label не кладётся — поле `json:"-"`, подпись исчезала
-	// на первом Save беззвучно. У цепочки, как и у узла, имя одно — тег.
-	if l := strings.TrimSpace(in.Label); l != "" && l != src.Tag {
-		warns = append(warns, Warning{Code: WarnBackupLabelDropped, Detail: l + " → " + src.Tag})
-	}
+	// Label не применяется и предупреждения НЕ даёт: с контракта 0.12.4
+	// (D-094) это объявленное поле LxBox — он подпись цепочки пишет и
+	// читает, у лаунчера имя одно, тег (SPEC 112). Чужое объявленное
+	// игнорируется молча (BACKUP.md §1), иначе warning шумел бы на каждом
+	// импорте файла LxBox.
 	if in.ExcludeFromGlobal {
 		warns = append(warns, Warning{Code: WarnBackupSourceFlagDropped, Detail: in.Tag})
 	}

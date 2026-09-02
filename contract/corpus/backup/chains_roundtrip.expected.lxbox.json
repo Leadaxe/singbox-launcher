@@ -19,6 +19,7 @@
   "chains": [
     {
       "tag": "relay",
+      "label": "Мой маршрут",
       "chain": {
         "hops": [
           "vpn-de",
