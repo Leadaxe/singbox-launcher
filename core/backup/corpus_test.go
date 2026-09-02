@@ -63,6 +63,39 @@ type corpusExpectation struct {
 	// Поле необязательное: отсутствие ключа значит «не проверяем».
 	Folders map[string][]string `json:"folders"`
 
+	// Subscriptions — подписки после импорта: URL → её настройки (D-095).
+	// Ключ тот же, по которому идёт слияние, — `url` как есть.
+	//
+	// Список ИСЧЕРПЫВАЮЩИЙ: подписка, которой в ожиданиях нет, — это либо
+	// не оставленная локальная, либо задвоенная, и обе ошибки видны только
+	// сверкой всего набора.
+	//
+	// Enabled — указатель: умолчание схемы true, и отсутствие ключа обязано
+	// значить «не проверяем», а не «ожидаем выключенной».
+	//
+	// Поле необязательное: отсутствие ключа значит «не проверяем».
+	Subscriptions map[string]struct {
+		Label   string `json:"label"`
+		Prefix  string `json:"prefix"`
+		Postfix string `json:"postfix"`
+		Enabled *bool  `json:"enabled"`
+		// Nodes — сырые теги узлов, которые обязаны пережить слияние:
+		// состав локальной подписки в файл не едет и потеряться не вправе.
+		Nodes []string `json:"nodes"`
+		// PendingDisabled — отметки выключения, ждущие первого fetch.
+		// Проверяются отсортированными: они объединение двух множеств, и
+		// порядок в нём смысла не несёт.
+		PendingDisabled []string `json:"pending_disabled"`
+	} `json:"subscriptions"`
+
+	// RootServers — теги корневых одиночных узлов В ПОРЯДКЕ состояния
+	// (D-095 §9 п. 7: совпавшие держат локальную позицию, новые встают в
+	// конец). Сверяется и порядок, и состав: дедуп по телу проверяется
+	// именно отсутствием второй записи.
+	//
+	// Поле необязательное: отсутствие ключа значит «не проверяем».
+	RootServers []string `json:"root_servers"`
+
 	// Directions — Направления, которые импорт обязан СОЗДАТЬ (SPEC 104,
 	// схема v1.1). Проверяется каноническая форма, а не внутренняя: она и
 	// есть предмет договорённости между приложениями.
@@ -103,6 +136,12 @@ func TestBackupCorpus(t *testing.T) {
 
 	var cases []string
 	for _, e := range entries {
+		// `<case>.pre.backup.json` — предсостояние своего кейса, а не кейс:
+		// без этого отсева оно гонялось бы отдельным прогоном и искало бы
+		// несуществующий `<case>.pre.expected.json`.
+		if strings.HasSuffix(e.Name(), ".pre.backup.json") {
+			continue
+		}
 		if strings.HasSuffix(e.Name(), ".backup.json") {
 			cases = append(cases, strings.TrimSuffix(e.Name(), ".backup.json"))
 		}
@@ -132,7 +171,18 @@ func TestBackupCorpus(t *testing.T) {
 				t.Fatalf("Parse: %v", err)
 			}
 
+			// Предсостояние: `<case>.pre.backup.json` импортируется в ПУСТОЕ
+			// состояние первым, и уже в него сливается сам кейс. Иначе
+			// проверить слияние нечем — импорт в пустоту у слияния и у
+			// замены даёт один и тот же итог, и разошедшиеся стороны здесь
+			// были бы неразличимы. Предупреждения предсостояния в сверку не
+			// идут: оно декорация сцены, а не предмет кейса.
 			dst := &state.State{}
+			if pre := loadCorpusPre(t, name); pre != nil {
+				if _, err := Import(dst, pre, ImportOptions{}); err != nil {
+					t.Fatalf("Import предсостояния: %v", err)
+				}
+			}
 			res, err := Import(dst, b, ImportOptions{
 				// Принимающая сторона знает эти цели; всё прочее —
 				// символическая ссылка в никуда.
@@ -158,7 +208,108 @@ func TestBackupCorpus(t *testing.T) {
 			checkChains(t, dst, exp)
 			checkReplaceTags(t, dst, exp)
 			checkFolders(t, dst, exp)
+			checkSubscriptions(t, dst, exp)
+			checkRootServers(t, dst, exp)
 		})
+	}
+}
+
+// loadCorpusPre читает предсостояние кейса; nil = его нет (тогда импорт идёт
+// в пустое состояние, как было до конвенции pre).
+func loadCorpusPre(t *testing.T, name string) *Backup {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(backupCorpusRelPath, name+".pre.backup.json"))
+	if err != nil {
+		return nil
+	}
+	pre, _, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("разбор предсостояния: %v", err)
+	}
+	return pre
+}
+
+// checkSubscriptions — подписки после слияния (D-095).
+//
+// Проверяет ровно то, ради чего заведено слияние: локальная запись пережила
+// импорт вместе с составом, а настройки на ней — из файла.
+func checkSubscriptions(t *testing.T, dst *state.State, exp corpusExpectation) {
+	t.Helper()
+	if exp.Subscriptions == nil {
+		return
+	}
+	have := map[string]*state.Source{}
+	for i := range dst.Sources {
+		if dst.Sources[i].Kind != state.SourceKindSubscription {
+			continue
+		}
+		url := dst.Sources[i].URL
+		if _, dup := have[url]; dup {
+			t.Errorf("подписка %s задвоена — слияние по URL не сработало", url)
+		}
+		have[url] = &dst.Sources[i]
+	}
+	for url, want := range exp.Subscriptions {
+		got, ok := have[url]
+		if !ok {
+			t.Errorf("подписки %s нет после импорта", url)
+			continue
+		}
+		if got.Name != want.Label {
+			t.Errorf("%s: имя %q, ожидалось %q", url, got.Name, want.Label)
+		}
+		prefix, postfix := "", ""
+		if got.TagPolicy != nil {
+			prefix, postfix = got.TagPolicy.Prefix, got.TagPolicy.Postfix
+		}
+		if prefix != want.Prefix || postfix != want.Postfix {
+			t.Errorf("%s: политика тегов (%q, %q), ожидалась (%q, %q)",
+				url, prefix, postfix, want.Prefix, want.Postfix)
+		}
+		if want.Enabled != nil && got.Enabled != *want.Enabled {
+			t.Errorf("%s: enabled=%v, ожидалось %v", url, got.Enabled, *want.Enabled)
+		}
+		if want.Nodes != nil {
+			tags := []string{}
+			for i := range got.Nodes {
+				tags = append(tags, got.Nodes[i].Tag)
+			}
+			if !equalStrings(tags, want.Nodes) {
+				t.Errorf("%s: состав %v, ожидался %v — узлы локальной подписки слияние терять не вправе",
+					url, tags, want.Nodes)
+			}
+		}
+		if want.PendingDisabled != nil {
+			pending := append([]string(nil), got.PendingDisabled...)
+			sort.Strings(pending)
+			wantPending := append([]string(nil), want.PendingDisabled...)
+			sort.Strings(wantPending)
+			if !equalStrings(pending, wantPending) {
+				t.Errorf("%s: отметки выключения %v, ожидались %v", url, pending, wantPending)
+			}
+		}
+	}
+	for url := range have {
+		if _, ok := exp.Subscriptions[url]; !ok {
+			t.Errorf("после импорта есть подписка %s, которой в ожиданиях нет", url)
+		}
+	}
+}
+
+// checkRootServers — корневые одиночные узлы: состав и ПОРЯДОК.
+func checkRootServers(t *testing.T, dst *state.State, exp corpusExpectation) {
+	t.Helper()
+	if exp.RootServers == nil {
+		return
+	}
+	var got []string
+	for i := range dst.Sources {
+		if dst.Sources[i].Kind == state.SourceKindServer {
+			got = append(got, dst.Sources[i].NodeTagOrLabel())
+		}
+	}
+	if !equalStrings(got, exp.RootServers) {
+		t.Errorf("корневые серверы %v, ожидались %v (порядок нормативен)", got, exp.RootServers)
 	}
 }
 

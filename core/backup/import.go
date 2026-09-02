@@ -157,12 +157,16 @@ var errSkipRule = errors.New("rule skipped")
 
 // ImportOptions — контекст принимающей стороны.
 //
-// Режим импорта один — replace (BACKUP.md §9): разделы источников и правил
-// замещаются приехавшими. Прежний ImportMerge удалён — он не был достижим
-// ни из одного UI и потому не проверялся ничем, кроме собственных тестов, а
-// его перенумерация оси переписывала номера уже стоявших правил, включая
-// якорные зоны шаблона. Возвращать merge следует не флагом, а вместе с
-// инвариантом «файл = ось» из SPEC 113-C.
+// Режима «заменить всё» нет и флага режима нет (BACKUP.md §9, D-095):
+// ИСТОЧНИКИ всегда сливаются по идентичности — подписки по URL, одиночные
+// серверы по телу, цепочки и Направления по тегу; DNS сливается «своё
+// сильнее», warp[] добавляется. Полной замене подлежит ровно одна секция —
+// rules[].
+//
+// Почему у правил слияния нет: у сторон свои абсолютные номера оси порядка,
+// и «долить» чужие правила означало бы перенумеровать уже стоявшие, включая
+// якорные зоны шаблона (SPEC 113-C, инвариант «файл = ось»). У остальных
+// секций такой оси нет — там идентичность есть у каждой записи.
 type ImportOptions struct {
 	// KnownOutbounds — теги, на которые правилу разрешено ссылаться.
 	// Пустой список означает «проверять нечем» — тогда ссылки не режутся:
@@ -180,6 +184,22 @@ type ImportResult struct {
 	AppliedRules      int
 	AppliedSources    int
 	AppliedDirections int
+
+	// Раскладка применённого по видам события — для отчёта UI (§9 п. 8).
+	//
+	// Одного числа «применено» после перехода на слияние мало: «добавлено 3»
+	// и «обновлено 3» для пользователя — разные новости (в первом случае у
+	// него стало больше источников, во втором переписаны настройки уже
+	// стоявших), а «пропущено» вообще не потеря и не повод для warning'а —
+	// это «такой сервер у тебя уже есть».
+	AddedSubscriptions   int
+	UpdatedSubscriptions int
+	AddedServers         int
+	// SkippedServers — записи servers[], чьё тело уже лежит здесь: дубли
+	// пропущены МОЛЧА, без warning (§9 п. 2).
+	SkippedServers int
+	AddedFolders   int
+	AddedChains    int
 }
 
 // Import применяет бэкап к state.
@@ -205,23 +225,29 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 
 	res := &ImportResult{}
 
-	s.Sources = nil
+	// Источники СЛИВАЮТСЯ по идентичности, а не замещаются (D-095, §9):
+	// локальное, чего в файле нет, остаётся жить; совпавшее получает
+	// настройки файла, не теряя истории; несовпавшее дописывается в конец.
+	//
+	// rules[] — ЕДИНСТВЕННАЯ секция полной замены (§9 п. 7): ось порядка у
+	// сторон своя, и «долить» чужие номера в неё нечем. DNS и warp[] ниже
+	// сливаются, каждая по своему ключу.
 	s.Rules = nil
 
-	for i, sub := range b.Subscriptions {
-		src, warns := importSubscription(sub, i)
-		s.Sources = append(s.Sources, src)
-		res.Warnings = append(res.Warnings, warns...)
-		res.AppliedSources++
-	}
+	var cnt mergeCounters
+	mergeSubscriptions(s, b.Subscriptions, &res.Warnings, &cnt)
 	// Серверы: запись с пометкой folder уходит не в корень списка, а в
-	// папку с этим именем (контракт 0.12). Порядок и записей, и папок —
-	// порядок файла: он нормативен, иначе состав папки после переноса
-	// перетасовывается без причины.
-	for _, src := range importServers(b.Servers, &res.Warnings) {
-		s.Sources = append(s.Sources, src)
-		res.AppliedSources++
-	}
+	// папку с этим именем (контракт 0.12). Порядок записей в файле
+	// нормативен, дедуп — по ТЕЛУ записи (§9 пп. 2–3).
+	mergeServers(s, b.Servers, &res.Warnings, &cnt)
+
+	res.AddedSubscriptions = cnt.AddedSubscriptions
+	res.UpdatedSubscriptions = cnt.UpdatedSubscriptions
+	res.AddedServers = cnt.AddedServers
+	res.SkippedServers = cnt.SkippedServers
+	res.AddedFolders = cnt.AddedFolders
+	res.AppliedSources += cnt.AddedSubscriptions + cnt.UpdatedSubscriptions +
+		cnt.AddedServers + cnt.AddedFolders
 
 	// SPEC 104: Направления импортируются ДО правил и пополняют список
 	// известных целей — иначе правило, чья цель приехала в этом же файле,
@@ -273,6 +299,7 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 			existingChains[src.NodeTagOrLabel()] = true
 		}
 	}
+	chainIDs := takenSourceIDs(s.Sources)
 	for _, in := range b.Chains {
 		if in.Tag == "" || in.Chain == nil {
 			continue
@@ -283,11 +310,17 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 			continue
 		}
 		src, warns := importChain(in)
+		// id из файла держится, пока он свободен: при коллизии с уже
+		// живущим источником — свежий ULID (§9 п. 7). Два источника с одним
+		// id дали бы двух владельцев одной адресации.
+		src.ID = freshIDIfTaken(src.ID, chainIDs)
+		chainIDs[src.ID] = true
 		s.Sources = append(s.Sources, src)
 		res.Warnings = append(res.Warnings, warns...)
 		existingChains[in.Tag] = true
 		knownTags = append(knownTags, in.Tag)
 		res.AppliedSources++
+		res.AddedChains++
 	}
 
 	// Позиции цепочек приехали строками (контракт 0.11 адреса папок не несёт):
@@ -493,46 +526,6 @@ func backupReplaceTag(sub Subscription, index int) string {
 		prefix = sub.Tag.Prefix
 	}
 	return legacyFoldPrefix(prefix, index) + "select"
-}
-
-// importServers собирает секцию servers[] в источники v7: записи без пометки
-// folder становятся корневыми узлами, записи с одинаковым folder — ОДНОЙ
-// папкой с этим именем.
-//
-// Папка не имеет отдельной секции в файле, и собирается она здесь по имени —
-// так же, как на другой стороне. Порядок нормативен дважды: папка встаёт на
-// место ПЕРВОГО своего члена (иначе список после переноса перетасовывается),
-// а члены внутри неё идут в порядке записей файла.
-//
-// Одно имя = одна папка: второй встреченный `folder: "Proton"` дополняет уже
-// собранную, а не заводит тёзку. Пустое имя — это корень, а не папка без
-// имени: у безымянной папки не было бы способа адресовать её членов.
-func importServers(list []Server, warns *[]Warning) []state.Source {
-	var out []state.Source
-	// folderAt — позиция уже начатой папки в out, по имени. Индекс, а не
-	// указатель: срез растёт и переезжает в памяти, указатель бы протух.
-	folderAt := map[string]int{}
-	for _, srv := range list {
-		src, w := importServer(srv)
-		*warns = append(*warns, w...)
-		name := strings.TrimSpace(srv.Folder)
-		if name == "" {
-			out = append(out, src)
-			continue
-		}
-		if at, ok := folderAt[name]; ok {
-			out[at].Nodes = append(out[at].Nodes, src.Node)
-			continue
-		}
-		folderAt[name] = len(out)
-		out = append(out, state.Source{
-			Node:  state.Node{Kind: state.SourceKindFolder, Enabled: true},
-			ID:    state.MakeULID(),
-			Name:  name,
-			Nodes: []state.Node{src.Node},
-		})
-	}
-	return out
 }
 
 // importServer — одиночный узел контракта в источник v7.
@@ -805,23 +798,39 @@ func (t tagSet) has(tag string) bool {
 	return ok
 }
 
-// importDNS применяет секцию DNS: списки замещаются приехавшими.
+// importDNS СЛИВАЕТ секцию DNS: своё сильнее, новое дописывается в конец.
+//
+// Не замена (уточнение D-095): список DNS-серверов у пользователя собран под
+// его сеть — корпоративный резолвер, локальный DoH, порядок как рубеж
+// утечки, — и снести его целиком чужим файлом значило бы поменять человеку
+// разрешение имён, ничего об этом не сказав. Совпавшая запись остаётся
+// ЛОКАЛЬНОЙ (её тело и включённость — решение этой машины), несовпавшая
+// дописывается в конец в порядке файла.
+//
+// Ключ сервера — kind+tag: имя DNS-сервера и есть его идентичность (на него
+// метят detour и dns-правила), а тело за ним — настройка, которую здесь
+// правили. Ключ dns-правила — kind+ref+тело: своего имени у правила нет,
+// и различить два правила можно только тем, что они делают.
 //
 // Тела переносятся только у kind=user (симметрия с exportDNS: тело
 // template/preset принадлежит шаблону принимающей стороны).
+//
+// final и strategy — ЗАМЕЩАЮТСЯ файлом: это одиночные значения, а не список,
+// и «слить» два взаимоисключающих ответа нечем.
 func importDNS(s *state.State, dns *DNS) {
 	if dns == nil {
 		return
 	}
-	s.DNS.Servers = nil
-	s.DNS.Rules = nil
 
-	serverKey := func(kind, tag, ref string) string { return kind + "\x00" + tag + "\x00" + ref }
+	serverKey := func(kind, tag string) string { return kind + "\x00" + tag }
 	haveServers := map[string]bool{}
+	for _, srv := range s.DNS.Servers {
+		haveServers[serverKey(string(srv.Kind), srv.Tag)] = true
+	}
 	for _, ref := range dns.Servers {
-		key := serverKey(ref.Kind, ref.Name, ref.Ref)
+		key := serverKey(ref.Kind, ref.Name)
 		if haveServers[key] {
-			continue
+			continue // своё сильнее
 		}
 		srv := state.DNSServer{
 			Kind:    state.DNSServerKind(ref.Kind),
@@ -840,10 +849,13 @@ func importDNS(s *state.State, dns *DNS) {
 	}
 
 	ruleKey := func(kind, ref string, body map[string]interface{}) string {
-		raw, _ := json.Marshal(body)
+		raw, _ := json.Marshal(canonicalJSONValue(body))
 		return kind + "\x00" + ref + "\x00" + string(raw)
 	}
 	haveRules := map[string]bool{}
+	for _, r := range s.DNS.Rules {
+		haveRules[ruleKey(string(r.Kind), r.Ref, r.Body)] = true
+	}
 	for _, ref := range dns.Rules {
 		var body map[string]interface{}
 		if ref.Kind == "user" && len(ref.Value) > 0 {
@@ -851,7 +863,7 @@ func importDNS(s *state.State, dns *DNS) {
 		}
 		key := ruleKey(ref.Kind, ref.Ref, body)
 		if haveRules[key] {
-			continue
+			continue // своё сильнее
 		}
 		s.DNS.Rules = append(s.DNS.Rules, state.DNSRule{
 			Kind:    state.DNSRuleKind(ref.Kind),
@@ -870,6 +882,17 @@ func importDNS(s *state.State, dns *DNS) {
 }
 
 // importWarp восстанавливает WG/MASQUE-регистрации из warp[].
+//
+// ДОБАВЛЕНИЕ, а не замена (§9 п. 6): аккаунт WARP — это выданная Cloudflare
+// регистрация, привязанная к ключу, и затереть здешнюю приехавшей значило бы
+// осиротить узлы, которые на ней стоят. У лаунчера слот один на тип (WG и
+// MASQUE), поэтому «добавить» здесь и значит «занять пустой слот»: занятый
+// остаётся своим, дубль пропускается молча.
+//
+// Ключ аккаунта — device_id, а при его отсутствии приватный ключ: это то, чем
+// регистрация опознаётся у Cloudflare. Сравнение нужно и при занятом слоте:
+// свой и приехавший могут оказаться ОДНОЙ регистрацией (файл с этой же
+// машины), и тогда «пропущено» — правда, а не потеря.
 func importWarp(s *state.State, warp []json.RawMessage) {
 	for _, raw := range warp {
 		var head struct {
@@ -887,7 +910,11 @@ func importWarp(s *state.State, warp []json.RawMessage) {
 			if s.WarpAccounts == nil {
 				s.WarpAccounts = &state.WarpAccountsSection{}
 			}
-			s.WarpAccounts.WG = &acc
+			// Занятый слот остаётся своим: локальная регистрация уже могла
+			// раздать адреса живущим узлам.
+			if s.WarpAccounts.WG == nil {
+				s.WarpAccounts.WG = &acc
+			}
 		case "masque":
 			var acc state.WarpMasqueAccount
 			if json.Unmarshal(raw, &acc) != nil || acc.PrivateKeyDER == "" {
@@ -896,7 +923,9 @@ func importWarp(s *state.State, warp []json.RawMessage) {
 			if s.WarpAccounts == nil {
 				s.WarpAccounts = &state.WarpAccountsSection{}
 			}
-			s.WarpAccounts.Masque = &acc
+			if s.WarpAccounts.Masque == nil {
+				s.WarpAccounts.Masque = &acc
+			}
 		}
 	}
 }

@@ -37,6 +37,14 @@ const (
 	settingsBackupExportDoneText    = "Saved to:\n%s\n\nThe file stores passwords and keys as plain text — keep it somewhere safe."
 	settingsBackupHintText          = "Export settings to a file to move them between this launcher and LxBox on your phone. Subscriptions, servers, rules, DNS and portable variables are carried over."
 	settingsBackupSummaryCountsText = "Subscriptions: %d\nServers: %d\nRules: %d\nVariables: %d"
+
+	// Что импорт сделает с тем, что уже настроено. Раньше здесь стояло
+	// «Importing replaces the current sources and rules» — с переходом на
+	// слияние (D-095) это была бы прямая неправда о самом страшном исходе:
+	// пользователь отказывался бы от импорта, боясь потерять свои источники.
+	// Про правила сказано отдельно и честно — они единственные замещаются
+	// целиком; DNS сливается, и обещать его замену тоже было бы неправдой.
+	settingsBackupImportMergeNoteText = "Settings are merged, not replaced: subscriptions match by address, servers by what they connect to, and anything of yours that is not in the file stays. Routing rules are the exception — they are replaced by the file."
 )
 
 // knownPresetIDs — id пресетов текущего шаблона. Пустой список означает
@@ -154,7 +162,9 @@ func handleBackupImport(presenter *wizardpresentation.WizardPresenter, win fyne.
 		return
 	}
 
-	// Импорт заменяет состояние целиком — спрашиваем ДО, а не после.
+	// Импорт меняет состояние — спрашиваем ДО, а не после: слияние
+	// оставляет своё, но правила и DNS замещает, и знать об этом надо
+	// заранее.
 	summary := backupSummary(b, parseWarns)
 	dialog.ShowCustomConfirm(
 		locale.T("Import backup"),
@@ -224,7 +234,7 @@ func backupSummary(b *backup.Backup, warns []backup.Warning) string {
 		sb.WriteString(warnLines(warns, backupSummaryWarnLimit))
 	}
 	sb.WriteString("\n\n")
-	sb.WriteString(locale.T("Importing replaces the current sources and rules."))
+	sb.WriteString(locale.T(settingsBackupImportMergeNoteText))
 	return sb.String()
 }
 

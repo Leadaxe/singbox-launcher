@@ -208,14 +208,25 @@ func TestRoundTripV7ResolvesHopIntoContainer(t *testing.T) {
 	if _, err := Import(live, b, ImportOptions{KnownOutbounds: []string{"relay"}}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
-	// Импорт замещает sources[] приехавшими (режим replace) — папка приёмника
-	// в набор не попадает, и это тоже результат: адрес не поднимается.
-	// Утверждение фиксирует ФАКТ, а не желание: replace-семантика описана в
-	// BACKUP.md §9, и молчаливое исключение из неё было бы хуже.
+	// Импорт СЛИВАЕТ источники (D-095, BACKUP.md §9): папка приёмника, которой
+	// в файле нет, остаётся жить — и именно поэтому адрес хопа поднимается.
+	// Прежде здесь стоял обратный вердикт: replace сносил папку, живого
+	// набора не оставалось и резолвить было не по чему.
+	var folder *state.Source
 	for i := range live.Sources {
 		if live.Sources[i].Kind == state.SourceKindFolder {
-			t.Fatalf("режим replace оставил папку приёмника — семантика импорта изменилась")
+			folder = &live.Sources[i]
 		}
+	}
+	if folder == nil {
+		t.Fatalf("слияние потеряло папку приёмника, которой в файле не было")
+	}
+	merged := findSourceByID(t, live, "01CHN0000000000000000000")
+	if len(merged.Hops) != 2 {
+		t.Fatalf("хопы: %v", merged.Hops)
+	}
+	if merged.Hops[0].FolderID != folder.ID || merged.Hops[0].Tag != "NL-1" {
+		t.Errorf("адрес хопа не поднялся по живому набору: %+v", merged.Hops[0])
 	}
 }
 

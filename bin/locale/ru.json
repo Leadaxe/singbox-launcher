@@ -4228,5 +4228,17 @@
   },
   "%s — label dropped, a node is named by its tag": {
     "value": "%s — подпись отброшена: имя узла — это его тег"
+  },
+  "Settings are merged, not replaced: subscriptions match by address, servers by what they connect to, and anything of yours that is not in the file stays. Routing rules are the exception — they are replaced by the file.": {
+    "value": "Настройки сливаются, а не заменяются: подписки сходятся по адресу, серверы — по тому, куда они подключаются, и всё ваше, чего нет в файле, остаётся. Исключение — правила маршрутизации: они замещаются файлом."
+  },
+  "Added: %d": {
+    "value": "Добавлено: %d"
+  },
+  "Updated subscriptions: %d": {
+    "value": "Обновлено подписок: %d"
+  },
+  "Already here, skipped: %d server(s)": {
+    "value": "Уже есть, пропущено: %d серв."
   }
 }

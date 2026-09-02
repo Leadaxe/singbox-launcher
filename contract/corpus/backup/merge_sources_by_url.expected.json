@@ -1,0 +1,41 @@
+{
+  "warnings": [],
+  "subscriptions": {
+    "https://example-1.com/sub-a": {
+      "label": "A",
+      "prefix": "a:",
+      "postfix": "",
+      "enabled": true,
+      "pending_disabled": []
+    },
+    "https://example-2.com/sub-b": {
+      "label": "B new",
+      "prefix": "bb:",
+      "postfix": "",
+      "enabled": true,
+      "pending_disabled": [
+        "local-mark",
+        "x"
+      ]
+    },
+    "https://example-5.com/sub-c": {
+      "label": "C",
+      "prefix": "c:",
+      "postfix": "",
+      "enabled": true,
+      "pending_disabled": []
+    }
+  },
+  "root_servers": [
+    "S1",
+    "S3",
+    "S2"
+  ],
+  "folders": {
+    "Proton": [
+      "P1",
+      "P2"
+    ]
+  },
+  "rules": []
+}

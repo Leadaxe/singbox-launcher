@@ -2,7 +2,7 @@ package tabs
 
 // Окно «Отчёт импорта» — что применилось и что НЕ смогло приехать.
 //
-// Импорт заменяет состояние целиком, и его потери — не мелочь на полях:
+// Импорт правит состояние, и его потери — не мелочь на полях:
 // выключенное правило или пропущенная переменная всплывут через неделю, когда
 // связать их с импортом уже некому. Раньше отчёт показывался через
 // dialog.ShowInformation, а список потерь резался на 12 строках («… +N») —
@@ -149,9 +149,31 @@ func exportReportText(path string, warns []backup.Warning) string {
 }
 
 // importReportHead — шапка отчёта: что применилось.
+//
+// После перехода на слияние (D-095) одного числа «применено» мало: «добавлено
+// 3» и «обновлено 3» — разные новости, а «пропущено» вообще не потеря, а «у
+// тебя уже есть». Поэтому строки раскладки идут отдельно и ТОЛЬКО когда есть
+// что сказать: в обычном импорте на чистую машину обновлять и пропускать
+// нечего, и нули в отчёте были бы шумом.
 func importReportHead(res *backup.ImportResult) string {
-	return fmt.Sprintf(locale.T("Applied: %d source(s), %d rule(s)."),
+	var sb strings.Builder
+	fmt.Fprintf(&sb, locale.T("Applied: %d source(s), %d rule(s)."),
 		res.AppliedSources, res.AppliedRules)
+
+	added := res.AddedSubscriptions + res.AddedServers + res.AddedFolders + res.AddedChains
+	if added > 0 {
+		sb.WriteString("\n")
+		fmt.Fprintf(&sb, locale.T("Added: %d"), added)
+	}
+	if res.UpdatedSubscriptions > 0 {
+		sb.WriteString("\n")
+		fmt.Fprintf(&sb, locale.T("Updated subscriptions: %d"), res.UpdatedSubscriptions)
+	}
+	if res.SkippedServers > 0 {
+		sb.WriteString("\n")
+		fmt.Fprintf(&sb, locale.T("Already here, skipped: %d server(s)"), res.SkippedServers)
+	}
+	return sb.String()
 }
 
 // importReportText — весь отчёт одним текстом, без обрезки: то, что уезжает в
