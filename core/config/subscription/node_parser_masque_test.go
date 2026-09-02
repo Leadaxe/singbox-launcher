@@ -67,6 +67,12 @@ func TestMasque_VHTTPDefaultAndValidation(t *testing.T) {
 	// h2 honored
 	n3, _ := ParseNode(base+"&vhttp=h2#x", nil)
 	assertEq(t, n3.Outbound["vhttp"], "h2")
+	// auto — ядро с lx.27 (h3 с откатом на h2): не деградируется
+	n4, _ := ParseNode(base+"&vhttp=auto#x", nil)
+	assertEq(t, n4.Outbound["vhttp"], "auto")
+	if len(n4.Warnings) != 0 {
+		t.Errorf("vhttp=auto must not warn, got %v", n4.Warnings)
+	}
 }
 
 // Legacy-алиасы ?network= / ?server_name= больше не читаются (0.8.0, D-078):

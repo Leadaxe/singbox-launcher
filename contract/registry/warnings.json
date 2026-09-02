@@ -256,7 +256,7 @@
       "params": [
         "value"
       ],
-      "desc": "MASQUE vhttp вне {h3, h2} — принудительно h3. Есть в ОБОИХ проектах (прежняя пометка «Desktop-протокол, в LxBox нет» протухла: masque в LxBox поддержан). Контракт 0.8.0 (D-078) снёс приём legacy-алиаса `network=` — параметр игнорируется, дефолт h3.",
+      "desc": "MASQUE vhttp вне {h3, h2, auto} — принудительно h3 (auto принимается с 0.11.1: ядро >= lx.27, h3 с откатом на h2). Есть в ОБОИХ проектах (прежняя пометка «Desktop-протокол, в LxBox нет» протухла: masque в LxBox поддержан). Контракт 0.8.0 (D-078) снёс приём legacy-алиаса `network=` — параметр игнорируется, дефолт h3.",
       "dart": "MasqueVhttpInvalidWarning",
       "go": "core/config/subscription/node_parser_masque.go:100"
     },

@@ -19,7 +19,7 @@ import (
 //	masque://<privKeyDer>@<server>:<port>?publickey=<serverPubDer>&address=<v4,v6>
 //	   &profile=cloudflare&vhttp=h3[&sni=][&mtu=1280][&idle_timeout=][&keep_alive=]#label
 //
-// `vhttp` (HTTP version h3/h2) and `sni` are the only accepted names. The
+// `vhttp` (HTTP version h3/h2/auto) and `sni` are the only accepted names. The
 // legacy aliases `network` / `server_name` are no longer read (contract
 // 0.8.0, D-078) — they are ignored like any unknown query parameter.
 //
@@ -90,14 +90,16 @@ func parseMasqueURI(uri string, skipFilters []map[string]string) (*configtypes.P
 	// HTTP version: `vhttp` only. The legacy `network=` alias (deprecated by
 	// the core in SPEC 062 — it meant the opposite of `network` everywhere
 	// else) is no longer read (0.8.0, D-078): a URI carrying only `network=`
-	// gets the h3 default.
-	vhttp := strings.TrimSpace(q.Get("vhttp"))
+	// gets the h3 default. Accepted values mirror the core enum
+	// (option/masque.go: h3, h2, auto — auto = h3 with an h2 fallback when
+	// the QUIC handshake stalls, core >= lx.27).
+	vhttp := strings.ToLower(strings.TrimSpace(q.Get("vhttp")))
 	if vhttp == "" {
 		vhttp = "h3"
 	}
 	vhttpDegraded := false
-	if vhttp != "h3" && vhttp != "h2" {
-		debuglog.WarnLog("Parser: MASQUE vhttp %q invalid (want h3/h2), forcing h3.", vhttp)
+	if vhttp != "h3" && vhttp != "h2" && vhttp != "auto" {
+		debuglog.WarnLog("Parser: MASQUE vhttp %q invalid (want h3/h2/auto), forcing h3.", vhttp)
 		vhttp = "h3"
 		vhttpDegraded = true
 	}

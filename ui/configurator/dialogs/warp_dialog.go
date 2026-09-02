@@ -273,8 +273,10 @@ type warpMasqueSection struct {
 }
 
 func newWarpMasqueSection() *warpMasqueSection {
-	vhttp := widget.NewSelect([]string{"h3", "h2"}, nil)
-	vhttp.SetSelected("h3")
+	// auto — h3 с откатом на h2, когда QUIC-рукопожатие виснет (ядро с
+	// lx.27, дефолт ядра с lx.28); фиксированные h3/h2 — для ручного выбора.
+	vhttp := widget.NewSelect([]string{"auto", "h3", "h2"}, nil)
+	vhttp.SetSelected("auto")
 
 	// Пустой sni → ядро подставляет consumer-masque.cloudflareclient.com, туннель
 	// встаёт, но данные не идут (DPI глушит фирменный SNI). Дефолт обязателен —
@@ -289,7 +291,8 @@ func newWarpMasqueSection() *warpMasqueSection {
 	keep.SetPlaceHolder("30")
 	keepRow := labeledRow(locale.T("Keep-alive (sec)"), keep)
 	vhttp.OnChanged = func(v string) {
-		if v == "h3" {
+		// keep-alive — параметр QUIC-ноги: есть у h3 и у auto (её первая нога).
+		if v == "h3" || v == "auto" {
 			keepRow.Show()
 		} else {
 			keepRow.Hide()

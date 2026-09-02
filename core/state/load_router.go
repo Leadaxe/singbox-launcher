@@ -58,6 +58,16 @@ func Load(path string) (*State, error) {
 	if s.Migration != nil && s.Migration.BackupPath == "" {
 		s.Migration.BackupPath = legacyBackupPath(path)
 	}
+	// Разовая правка masque-URI со старым `?network=` (masque_uri_migration.go).
+	// Персистится сразу: иначе тело узла пересобиралось бы на каждом старте,
+	// а файл так и нёс бы legacy-форму.
+	if n := rewriteLegacyMasqueURIs(s); n > 0 {
+		if err := s.Save(path); err != nil {
+			debuglog.WarnLog("state: masque uri migration (%d nodes) not persisted: %v", n, err)
+		} else {
+			debuglog.InfoLog("state: masque uri migration persisted (%d nodes) to %s", n, path)
+		}
+	}
 	// SPEC 118 W6 (хвост W2): отчёт — на диск. Мигрирует ПЕРВЫЙ, кто откроет
 	// состояние, а на старте лаунчера это фоновая загрузка без окна: к
 	// открытию конфигуратора файл уже v7, и отчёта в памяти нет ни у кого.
@@ -84,7 +94,12 @@ func Load(path string) (*State, error) {
 // легаси-схемы выполняется без материализации raw-кэша (nodes[] остаются
 // пустыми с предупреждением) и без бэкап-копии.
 func Parse(data []byte) (*State, error) {
-	return parseWithContext(data, LoadContext{})
+	s, err := parseWithContext(data, LoadContext{})
+	if err != nil {
+		return nil, err
+	}
+	rewriteLegacyMasqueURIs(s)
+	return s, nil
 }
 
 func parseWithContext(data []byte, lc LoadContext) (*State, error) {
