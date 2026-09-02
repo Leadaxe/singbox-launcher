@@ -68,6 +68,26 @@ func AppendURLsToSources(ctx UIUpdater, input string) (AddSourcesResult, error) 
 	startIndex := len(model.Sources) + 1
 	added := 0
 
+	// Корневой тег обязан быть уникален (features/sources.md §«Сырой тег
+	// корневого узла обязан быть уникален»): в корне тег-политики нет, и
+	// сырой тег узла и есть его финальное имя, которым его адресуют detour,
+	// хопы цепочки и правила. Дедупа по URL/URI тут мало — «Copy JSON» → Add
+	// даёт второй `US-1` с другим телом, и две строки в пикере становятся
+	// неразличимы.
+	//
+	// Реестр — общий (rootTagSet → ModelTagOwners): считать своё сокращённое
+	// множество здесь значило бы разъехаться с гардом сборки. Теги, выданные
+	// в ЭТОМ же вызове, тоже занимают место — иначе одна вставка из десяти
+	// одинаковых имён дала бы десять `US-1`.
+	rootTaken := rootTagSet(model)
+	claimRootTag := func(tag string) string {
+		tag = uniqueTagIn(rootTaken, tag)
+		if tag != "" {
+			rootTaken[tag] = true
+		}
+		return tag
+	}
+
 	for _, subURL := range subs {
 		if _, ok := existingURLs[subURL]; ok {
 			res.Duplicates++
@@ -108,8 +128,10 @@ func AppendURLsToSources(ctx UIUpdater, input string) (AddSourcesResult, error) 
 			}
 			existingURIs[uri] = struct{}{}
 		}
+		node := parsed.Nodes[i]
+		node.Tag = claimRootTag(strings.TrimSpace(node.Tag))
 		model.Sources = append(model.Sources, corestate.Source{
-			Node: parsed.Nodes[i],
+			Node: node,
 			ID:   corestate.MakeULID(),
 		})
 		res.Nodes++
@@ -140,6 +162,18 @@ func AppendURLsToSources(ctx UIUpdater, input string) (AddSourcesResult, error) 
 			res.Folders++
 		default:
 			continue
+		}
+		// Тег замены свёрнутого контейнера живёт в ТОМ ЖЕ корневом
+		// пространстве, что и теги узлов: вставленная запись папки, свёрнутой
+		// под именем уже занятым, спорила бы за него с существующей
+		// сущностью. Уникализируется той же формой суффикса.
+		if c.Replace != nil && strings.TrimSpace(c.Replace.Tag) != "" {
+			r := *c.Replace
+			r.Tag = claimRootTag(strings.TrimSpace(r.Tag))
+			if r.Mode == corestate.FolderReplaceBoth {
+				rootTaken[r.Tag+"-auto"] = true
+			}
+			c.Replace = &r
 		}
 		model.Sources = append(model.Sources, c)
 		added++

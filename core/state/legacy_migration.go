@@ -205,4 +205,3 @@ func cloneCustomRules(in []CustomRule) []CustomRule {
 	copy(out, in)
 	return out
 }
-

@@ -35,7 +35,7 @@ type v4File struct {
 
 // v4ParserConfig — упрощённый layout (без обёртки configtypes.ParserConfig).
 type v4ParserConfig struct {
-	Version   int                       `json:"version,omitempty"`
+	Version   int                     `json:"version,omitempty"`
 	Proxies   []legacyProxyV4         `json:"proxies"`
 	Outbounds []configtypes.Direction `json:"outbounds"`
 	Parser    v4Parser                `json:"parser,omitempty"`

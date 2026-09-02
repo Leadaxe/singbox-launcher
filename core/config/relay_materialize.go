@@ -31,6 +31,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"singbox-launcher/core/config/configtypes"
@@ -50,17 +51,36 @@ const relayTagSuffix = " · relay"
 //
 // Возвращает (узлы, detour владельца). Пустой результат = у записи релеев
 // нет, владельца трогать не надо.
+//
+// idCounts — счётчик идентичности КОНТЕЙНЕРА (тот же, которым уникализируются
+// принятые и отбракованные записи). Тег релея выводится из тега владельца и
+// потому вполне может столкнуться с настоящим именем из тела: подписка,
+// где рядом с `X` лежит запись, названная `X · relay`, дала бы два узла с
+// одним тегом — а на дубле тега ядро отвергает весь outbounds. Гонять тег
+// релея своим, вторым правилом нельзя: столкновение обязана разводить одна
+// машина на контейнер.
+//
+// # Два прохода
+//
+// Сначала собираются ВЫЖИВШИЕ хопы (те, чьё тело эмитится), и только потом
+// им раздаются теги и Detour. Одним проходом это не считается: номер в теге
+// и ссылка «на следующего» брались бы от индекса в исходном Chain, а
+// пропуск несобравшегося хопа оставлял бы у предыдущего релея Detour на тег,
+// которого в контейнере нет, — и fail-closed резолва ронял бы владельца,
+// то есть ровно то, что этот `continue` обещал предотвратить.
 func relayNodesFromEntry(
 	subID string,
 	e *subscription.ParsedBodyEntry,
 	ownerTag string,
+	idCounts map[string]int,
 ) ([]state.Node, *state.NodeLink) {
 	if e == nil || e.Node == nil || len(e.Node.Chain) == 0 {
 		return nil, nil
 	}
 
-	out := make([]state.Node, 0, len(e.Node.Chain))
-	for i, hop := range e.Node.Chain {
+	// Проход 1: тела выживших хопов, в порядке Chain.
+	bodies := make([]json.RawMessage, 0, len(e.Node.Chain))
+	for _, hop := range e.Node.Chain {
 		if hop == nil {
 			continue
 		}
@@ -70,30 +90,47 @@ func relayNodesFromEntry(
 		if hop.Scheme == configtypes.SchemeGroup {
 			continue
 		}
-		tag := relayTagFor(ownerTag, i, len(e.Node.Chain))
 		body, err := emitMigrationBody(hop)
 		if err != nil {
-			// Релей не собрался — владелец останется БЕЗ detour и пойдёт
-			// напрямую. Это честнее, чем ссылка в никуда: прямой путь может
-			// не работать, но fail-closed на служебном узле оставил бы
-			// человека вообще без узла и без объяснения.
+			// Релей не собрался — маршрут строится по ОСТАВШИМСЯ, а если не
+			// осталось никого, владелец идёт напрямую без detour. Это честнее
+			// ссылки в никуда: прямой путь может не работать, но fail-closed
+			// на служебном узле оставил бы человека вообще без узла и без
+			// объяснения.
 			continue
+		}
+		bodies = append(bodies, body)
+	}
+	if len(bodies) == 0 {
+		return nil, nil
+	}
+
+	// Проход 2: теги и Detour — по фактическому порядку выживших. Теги
+	// считаются ВПЕРЁД целиком: Detour предыдущего ссылается на тег
+	// следующего, а тот известен только после уникализации.
+	tags := make([]string, len(bodies))
+	for i := range bodies {
+		tags[i] = subscription.MakeIdentityUnique(relayTagFor(ownerTag, i, len(bodies)), idCounts)
+	}
+
+	out := make([]state.Node, 0, len(bodies))
+	for i := range bodies {
+		var detour *state.NodeLink
+		// Каждый следующий релей — дозвон предыдущего; последний идёт
+		// напрямую, поэтому Detour у него пуст.
+		if i+1 < len(tags) {
+			detour = &state.NodeLink{FolderID: subID, Tag: tags[i+1]}
 		}
 		out = append(out, state.Node{
 			Kind:    state.SourceKindServer,
-			Tag:     tag,
+			Tag:     tags[i],
 			Enabled: true,
 			Service: true,
-			Body:    body,
-			// Каждый следующий релей — дозвон предыдущего; последний идёт
-			// напрямую, поэтому Detour у него пуст.
-			Detour: relayNextLink(subID, ownerTag, i, len(e.Node.Chain)),
+			Body:    bodies[i],
+			Detour:  detour,
 		})
 	}
-	if len(out) == 0 {
-		return nil, nil
-	}
-	return out, &state.NodeLink{FolderID: subID, Tag: out[0].Tag}
+	return out, &state.NodeLink{FolderID: subID, Tag: tags[0]}
 }
 
 // relayTagFor — имя служебного узла: от владельца, с номером при нескольких.
@@ -102,12 +139,4 @@ func relayTagFor(ownerTag string, idx, total int) string {
 		return ownerTag + relayTagSuffix
 	}
 	return fmt.Sprintf("%s%s %d", ownerTag, relayTagSuffix, idx+1)
-}
-
-// relayNextLink — ссылка на следующий релей цепочки; nil у последнего.
-func relayNextLink(subID, ownerTag string, idx, total int) *state.NodeLink {
-	if idx+1 >= total {
-		return nil
-	}
-	return &state.NodeLink{FolderID: subID, Tag: relayTagFor(ownerTag, idx+1, total)}
 }

@@ -17,9 +17,15 @@
 //   - `Source.ID` узлам не выдаётся: ULID есть только у Source, а узел папки
 //     адресуется парой (FolderID, сырой тег).
 //
-// Побочки (BumpRevision / InvalidateNodePool / MarkAsChanged) — на вызывающем
-// UI, как у node_move.go: одна пользовательская операция (мультивыбор файлов)
-// зовёт эту функцию по разу на файл, а ревизия обязана дёрнуться один раз.
+// Побочки, ВИДИМЫЕ пользователю (BumpRevision / MarkAsChanged / диалоги), —
+// на вызывающем UI, как у node_move.go: одна пользовательская операция
+// (мультивыбор файлов) зовёт эту функцию по разу на файл, а ревизия обязана
+// дёрнуться один раз.
+//
+// Инвалидация кэшей — наоборот, ЗДЕСЬ: пул узлов и счётчики строк выведены из
+// состава, и оставлять их снятие вызывающему значило раз за разом получать
+// «0 nodes» у наполненной папки (ловушка cache-invalidation-pairs). Вызов
+// идемпотентен, лишний раз из UI ничего не стоит.
 package business
 
 import (
@@ -119,6 +125,9 @@ func AppendNodesToFolder(m *wizardmodels.WizardModel, folderID, input string, de
 
 	if res.Added == 0 && res.SkippedSubscriptions > 0 {
 		return FolderFillResult{}, ErrSubscriptionInFolder
+	}
+	if res.Added > 0 {
+		InvalidateNodePool(m)
 	}
 	return res, nil
 }

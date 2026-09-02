@@ -308,34 +308,48 @@ func buildSubscriptionDefaultsBlock(binDir string) fyne.CanvasObject {
 	// Ошибка ввода показывается строкой под полями, а не диалогом: диалог
 	// на каждый недописанный «4» посреди набора «4h» — это модальное окно
 	// поперёк ввода. Некорректное значение просто не сохраняется.
-	errLabel := widget.NewLabel("")
-	errLabel.Wrapping = fyne.TextWrapWord
-	errLabel.Importance = widget.WarningImportance
-	errLabel.Hide()
+	//
+	// Подписи ДВЕ, по одной на поле: с общей строкой удачное сохранение
+	// одного поля стирало жалобу на другое — человек вводил «4x» в интервал,
+	// поправлял max nodes, ⚠ пропадало, а «4x» так и оставался
+	// несохранённым, причём молча.
+	newErrLabel := func() *widget.Label {
+		l := widget.NewLabel("")
+		l.Wrapping = fyne.TextWrapWord
+		l.Importance = widget.WarningImportance
+		l.Hide()
+		return l
+	}
+	reloadErr := newErrLabel()
+	maxNodesErr := newErrLabel()
 	// fyne.Do обязателен: сохранение приходит и с UI-потока (OnSubmitted), и
 	// из таймера дебаунса — тот работает на своей горутине, а виджеты Fyne
 	// правятся только на UI-потоке.
-	setErr := func(msg string) {
-		fyne.Do(func() {
-			if msg == "" {
-				errLabel.Hide()
-				return
-			}
-			errLabel.SetText("⚠️ " + msg)
-			errLabel.Show()
-		})
+	setErrOn := func(l *widget.Label) func(string) {
+		return func(msg string) {
+			fyne.Do(func() {
+				if msg == "" {
+					l.Hide()
+					return
+				}
+				l.SetText("⚠️ " + msg)
+				l.Show()
+			})
+		}
 	}
+	setReloadErr := setErrOn(reloadErr)
+	setMaxNodesErr := setErrOn(maxNodesErr)
 
 	saveReload := func(text string) {
 		text = strings.TrimSpace(text)
 		if text != "" {
 			d, err := time.ParseDuration(text)
 			if err != nil || d <= 0 {
-				setErr(locale.Tf("Update interval %q is not a duration — use forms like 4h or 30m.", text))
+				setReloadErr(locale.Tf("Update interval %q is not a duration — use forms like 4h or 30m.", text))
 				return
 			}
 		}
-		setErr("")
+		setReloadErr("")
 		cur := locale.LoadSettings(binDir)
 		if cur.DefaultSubscriptionReload == text {
 			return
@@ -348,10 +362,11 @@ func buildSubscriptionDefaultsBlock(binDir string) fyne.CanvasObject {
 	saveMaxNodes := func(text string) {
 		text = strings.TrimSpace(text)
 		n := 0
+		clamped := false
 		if text != "" {
 			parsed, err := strconv.Atoi(text)
 			if err != nil || parsed <= 0 {
-				setErr(locale.Tf("Max nodes %q is not a positive number.", text))
+				setMaxNodesErr(locale.Tf("Max nodes %q is not a positive number.", text))
 				return
 			}
 			n = parsed
@@ -360,9 +375,23 @@ func buildSubscriptionDefaultsBlock(binDir string) fyne.CanvasObject {
 				// обрежет — молча принять большее число значило бы обещать
 				// то, чего не будет.
 				n = configtypes.MaxNodesPerSubscription
+				clamped = true
 			}
 		}
-		setErr("")
+		if clamped {
+			// Клэмп обязан быть виден: раньше в settings.json уезжало 3000, а
+			// в поле оставалось введённое «5000» — экран уверял в одном,
+			// файл содержал другое. Показываем и подпись, и правим само поле.
+			setMaxNodesErr(locale.Tf("Max nodes clamped to %d — that is the hard ceiling.", configtypes.MaxNodesPerSubscription))
+			clampedText := strconv.Itoa(n)
+			fyne.Do(func() {
+				if maxNodesEntry.Text != clampedText {
+					maxNodesEntry.SetText(clampedText)
+				}
+			})
+		} else {
+			setMaxNodesErr("")
+		}
 		cur := locale.LoadSettings(binDir)
 		if cur.DefaultSubscriptionMaxNodes == n {
 			return
@@ -393,10 +422,11 @@ func buildSubscriptionDefaultsBlock(binDir string) fyne.CanvasObject {
 		container.NewHBox(widget.NewLabel(locale.T("Default update interval:")),
 			shortEntry(reloadEntry, 90), layout.NewSpacer()),
 		reloadHint,
+		reloadErr,
 		container.NewHBox(widget.NewLabel(locale.T("Default max nodes:")),
 			shortEntry(maxNodesEntry, 90), layout.NewSpacer()),
 		maxNodesHint,
-		errLabel,
+		maxNodesErr,
 	)
 }
 

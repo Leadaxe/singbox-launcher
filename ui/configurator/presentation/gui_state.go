@@ -88,6 +88,20 @@ type GUIState struct {
 	// входы схлопываются.
 	RunFinalBuild func()
 
+	// SaveGateAllows — ГЕЙТ кнопки Save (SPEC 115 §1: Save появляется только
+	// после показа отчёта сборки). Ставится CreateFinalTab тем же предикатом,
+	// каким вкладка «Итог» открывает свою кнопку: saveButtonVisible по
+	// состоянию попытки и реестру отчёта.
+	//
+	// Хук, а не флаг: гейт обязан быть ФУНКЦИЕЙ состояния, иначе всякий, кто
+	// зовёт UpdateSaveButtonText("Save") мимо вкладки (разбор источников это
+	// делает безусловно), молча открывал бы кнопку поверх закрытого гейта —
+	// ровно так Save и всплывал у конфигурации, которую никто не собирал.
+	//
+	// nil означает «гейта нет» (вкладка «Итог» ещё не построена или её нет
+	// вовсе) — поведение тогда прежнее, безусловное.
+	SaveGateAllows func() bool
+
 	// Optional refresh for Outbounds configurator list (set by CreateDirectionsTab).
 	// Must run after sources/directions change from Sources Edit or tab switch.
 	RefreshOutboundsConfiguratorList func()

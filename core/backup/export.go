@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"singbox-launcher/core/config/configtypes"
@@ -82,20 +83,41 @@ func Export(s *state.State, opts ExportOptions) (*Backup, []Warning, error) {
 	// Цепочки — корневая секция chains[], у обеих сторон общая. Порядок
 	// записей нормативен (вложенная цепочка объявлена раньше использующей) —
 	// сохраняется порядок списка источников.
+	//
+	// subIndex — порядковый номер ПОДПИСКИ в b.Subscriptions, а не позиция
+	// источника в общем списке. Позиционный дериватив тега замены («<N>:»)
+	// импорт считает по индексу внутри секции subscriptions[]
+	// (importSubscription → backupReplaceTag), и экспорт обязан говорить о
+	// том же числе. Пока здесь стоял общий индекс, подписка без префикса,
+	// стоящая после сервера, экспортировалась молча: `2:select` совпадал с
+	// «деривативом», а импорт восстанавливал `1:select` — правила того же
+	// файла повисали, и предупреждения об этом не было.
+	subIndex := 0
 	for i, src := range s.Sources {
 		switch src.Kind {
 		case state.SourceKindSubscription:
-			b.Subscriptions = append(b.Subscriptions, exportSubscription(src, i))
+			b.Subscriptions = append(b.Subscriptions, exportSubscription(src, subIndex))
 			// Тег замены — единственное поле v7, у которого в контракте нет
 			// дома: 0.11 выводила имя группы формулой из префикса. Явное имя,
 			// с формулой не совпавшее, на приёмнике станет другим, и правила
 			// этого же файла метят мимо — молчать здесь нельзя.
-			if derived, ok := replaceTagSurvivesExport(src, i); !ok {
+			if derived, ok := replaceTagSurvivesExport(src, subIndex); !ok {
 				warnings = append(warnings, Warning{
 					Code:   WarnBackupReplaceTagDerived,
 					Detail: sourceExportName(src) + ": " + src.Replace.Tag + " → " + derived,
 				})
 			}
+			// Настройки, которыми подписка представляется провайдеру
+			// (UA, HWID и компания), контракт 0.11 не выражает: поля общие
+			// с LxBox, а этих у него нет. Заводить их односторонне нельзя,
+			// поэтому единственный честный ход — назвать потерю вслух.
+			if fields := droppedSourceIdentityFields(src); fields != "" {
+				warnings = append(warnings, Warning{
+					Code:   WarnBackupSourceIdentityDropped,
+					Detail: sourceExportName(src) + ": " + fields,
+				})
+			}
+			subIndex++
 		case state.SourceKindServer:
 			b.Servers = append(b.Servers, exportServer(src))
 		case state.SourceKindChain:
@@ -190,23 +212,21 @@ func sourceExportName(src state.Source) string {
 // exportChain — запись секции chains[] (SPEC 110).
 //
 // Tag — эффективный тег outbound'а цепочки (NodeTagOrLabel), на который
-// ссылаются правила и позиции других цепочек; Label — отображаемое имя.
+// ссылаются правила и позиции других цепочек.
 // index — позиция источника в общем списке: у безымянной цепочки тег на
 // сборке получается позиционным (chainSourceTag), и в файл обязан уехать тот
 // же эффективный тег — схема требует tag, а импорт зафиксирует его именем
 // (нормализация той же категории, что перенумерация правил).
+//
+// `label` контракта остаётся ПУСТЫМ и заполняться не будет: у канона v7 имя
+// узла одно — тег (SPEC 112, «идентичность узла = тег»), второго источника
+// подписи в состоянии нет. Поле живо в схеме ради LxBox-стороны; писать в
+// него копию тега значило бы гонять шум, который импорт всё равно отбросит.
 func exportChain(src state.Source, index int) Chain {
 	out := Chain{
 		ID:    src.ID,
 		Tag:   src.NodeTagOrLabel(),
-		Label: src.Label,
 		Chain: exportChainSpec(src),
-	}
-	// Подпись, совпадающая с тегом, — это не подпись, а прежнее состояние
-	// без разделения ролей: писать её отдельным полем значит плодить шум,
-	// который на импорте не несёт информации.
-	if out.Label == out.Tag {
-		out.Label = ""
 	}
 	if out.Tag == "" {
 		out.Tag = "chain-" + strconv.Itoa(index+1)
@@ -269,10 +289,42 @@ func exportSubscription(src state.Source, index int) Subscription {
 	return out
 }
 
+// droppedSourceIdentityFields — перечень per-source настроек подписки,
+// которые в контракт 0.11 не едут, в порядке объявления в модели
+// (core/state/sources_v7.go). Пусто = терять нечего.
+//
+// Это НЕ «поля, о которых забыли»: UA и HWID описывают, каким устройством
+// подписка представляется провайдеру, а провайдер ветвит выдачу по ним
+// (одна ссылка отдаёт разным клиентам разные тела). Восстановившись из
+// бэкапа, пользователь получит ДРУГОЙ набор узлов и не поймёт, почему —
+// поэтому потеря обязана быть названа поимённо, а не общим «часть настроек».
+func droppedSourceIdentityFields(src state.Source) string {
+	var fields []string
+	if strings.TrimSpace(src.UserAgent) != "" {
+		fields = append(fields, "user_agent")
+	}
+	if strings.TrimSpace(src.HWID) != "" {
+		fields = append(fields, "hwid")
+	}
+	if src.SendHWID != nil {
+		fields = append(fields, "send_hwid")
+	}
+	if src.HashDeviceModel != nil {
+		fields = append(fields, "hash_device_model")
+	}
+	if src.RelaysInDirections {
+		fields = append(fields, "relays_in_directions")
+	}
+	return strings.Join(fields, ", ")
+}
+
+// exportServer — запись секции servers[].
+//
+// `label` контракта не заполняется (та же причина, что у exportChain): имя
+// одиночного узла в v7 — его тег, и он уезжает ключом node_tag.
 func exportServer(src state.Source) Server {
 	out := Server{
 		ID:        src.ID,
-		Label:     src.Label,
 		NodeTag:   src.Tag,
 		SourceRef: exportSourceRef(src),
 	}

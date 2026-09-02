@@ -189,6 +189,14 @@ func CreateFinalTab(presenter *wizardpresentation.WizardPresenter, guiState *wiz
 		updateGlobalSaveGate(guiState, visible)
 	}
 	guiState.RunFinalBuild = runner.Request
+	// SPEC 115 §1: гейт Save — ФУНКЦИЯ состояния, а не разовое решение onDone.
+	// Кнопку внизу окна показывают и другие пути (разбор источников зовёт
+	// UpdateSaveButtonText("Save") на каждом успешном проходе), и без общего
+	// предиката они открывали её поверх закрытого гейта. Предикат тот же, что
+	// у кнопки на самой вкладке: одна проверка на оба места.
+	guiState.SaveGateAllows = func() bool {
+		return saveButtonVisible(runner.State(), config.BuildReportReadyFor)
+	}
 
 	buttons := container.NewHBox(
 		layout.NewSpacer(),
@@ -291,15 +299,20 @@ func modelSourceIDs(presenter *wizardpresentation.WizardPresenter) []string {
 // Глобальная кнопка живёт на последней вкладке — то есть на «Итоге», — и
 // оставить её открытой, спрятав кнопку на самой вкладке, значило бы обойти
 // гейт одним движением мыши ниже.
+// Enable/Disable идут парой с Show/Hide: закрытый гейт кнопку ещё и гасит
+// (UpdateSaveButtonText в закрытом состоянии делает то же), и открыть её одним
+// Show значило бы показать неактивную кнопку.
 func updateGlobalSaveGate(guiState *wizardpresentation.GUIState, visible bool) {
 	if guiState == nil || guiState.SaveButton == nil {
 		return
 	}
 	if visible {
 		guiState.SaveButton.Show()
+		guiState.SaveButton.Enable()
 		return
 	}
 	guiState.SaveButton.Hide()
+	guiState.SaveButton.Disable()
 }
 
 // finalBuildRunner сериализует сборки вкладки «Итог».

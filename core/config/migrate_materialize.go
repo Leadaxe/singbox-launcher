@@ -55,6 +55,23 @@ func materializeSubscriptionForMigration(req state.MigrationSubRequest) (*state.
 		res.Warnings = append(res.Warnings, err.Error())
 	}
 
+	// Счётчик идентичности контейнера — ТОТ ЖЕ, что у fetch
+	// (MaterializeSubscriptionBody): теги релеев выводятся из тега владельца
+	// и обязаны разводиться с настоящими именами тела одной машиной. Здесь он
+	// собирается из принятых записей и отбракованных — миграция узлов
+	// kind=unsupported не рождает, но их имена в контейнере всё равно заняты.
+	idCounts := make(map[string]int, len(pb.Entries))
+	for _, e := range pb.Entries {
+		if e != nil {
+			idCounts[e.RawTag] = 1
+		}
+	}
+	for _, r := range pb.Rejected {
+		if tag := nameFromRejectedRecord(r); tag != "" {
+			idCounts[tag] = 1
+		}
+	}
+
 	for _, e := range pb.Entries {
 		if e == nil || e.Node == nil {
 			continue
@@ -71,11 +88,30 @@ func materializeSubscriptionForMigration(req state.MigrationSubRequest) (*state.
 			res.Warnings = append(res.Warnings, fmt.Sprintf("node %q not emittable — dropped: %v", e.RawTag, convErr))
 			continue
 		}
+		// Служебные узлы записи (релеи BYPASS) — ВСЕГДА отдельными узлами,
+		// ровно как на fetch-пути. Не делай миграция этого, первый же fetch
+		// после апгрейда добавил бы релеи как «новые узлы», а до него
+		// BYPASS-подписка шла бы напрямую, то есть в блокировку.
+		relays, detour := relayNodesFromEntry(req.SubID, e, node.Tag, idCounts)
+		if detour != nil {
+			node.Detour = detour
+		}
 		mat := state.MigrationMaterializedNode{Node: node, FinalTag: finalTag}
 		if node.Kind == state.SourceKindServer {
 			mat.LegacyHash = LegacyNodeIdentityHash(e.Node)
 		}
 		res.Nodes = append(res.Nodes, mat)
+		for _, relay := range relays {
+			// Финальный тег релея — ЕГО СОБСТВЕННЫЙ: в старой тег-машине
+			// служебных узлов не существовало вовсе, поэтому ни правило,
+			// ни хоп, ни отметка выключения на них не ссылаются, и
+			// переписывать под старое имя нечего. LegacyHash по той же
+			// причине пуст: legacy-ключа у релея никогда не было.
+			res.Nodes = append(res.Nodes, state.MigrationMaterializedNode{
+				Node:     relay,
+				FinalTag: relay.Tag,
+			})
+		}
 	}
 	return res, nil
 }

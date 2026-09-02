@@ -283,7 +283,26 @@ func warnText(w backup.Warning) string {
 		return unsupportedSourceWarnText(w)
 	case backup.WarnBackupChainExists:
 		return fmt.Sprintf(locale.T("%s — a chain with this name already exists here, the incoming one is skipped"), w.Detail)
+	case backup.WarnBackupDirectionExists:
+		return fmt.Sprintf(locale.T("%s — a Direction with this tag already exists here, the incoming one is skipped"), w.Detail)
+	case backup.WarnBackupTagMaskDropped:
+		return fmt.Sprintf(locale.T("%s — the tag mask is gone, only prefix and postfix apply now"), w.Detail)
+	case backup.WarnBackupLocalDirectionDropped:
+		return fmt.Sprintf(locale.T("%s — per-source Directions are gone, this one is not imported (create a global Direction with a filter instead)"), w.Detail)
+	case backup.WarnBackupReplaceTagDerived:
+		// Detail несёт оба имени («тег → дериватив»): пользователь обязан
+		// увидеть, под каким именем группа окажется на приёмнике.
+		return fmt.Sprintf(locale.T("%s — the shared format has no field for the replacement tag: after import the group will carry the derived name, and rules aimed at the old one arrive turned off"), w.Detail)
+	case backup.WarnBackupSourceIdentityDropped:
+		return fmt.Sprintf(locale.T("%s — these subscription settings are not part of the shared format and did not go into the file; the provider may return a different set of nodes on the other machine"), w.Detail)
+	case backup.WarnBackupSourceFlagDropped:
+		return fmt.Sprintf(locale.T("%s — the \"exclude from the global list\" flag is gone; its nodes stay in the candidate pool (fold the source into a group for the previous behaviour)"), w.Detail)
+	case backup.WarnBackupLabelDropped:
+		return fmt.Sprintf(locale.T("%s — label dropped, a node is named by its tag"), w.Detail)
 	default:
+		// Сюда попадать не должно: каждый код обязан иметь свою фразу выше.
+		// Сырой код остаётся последним рубежом, чтобы новое предупреждение
+		// не пропало молча, если фразу забыли.
 		return w.Code + ": " + w.Detail
 	}
 }

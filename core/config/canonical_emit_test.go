@@ -185,7 +185,7 @@ func TestEmitE1_DisabledNodeNotEmitted(t *testing.T) {
 	}
 }
 
-// ── §4.E.2 — detour fail-closed + исключение WireGuard ───────────────
+// ── §4.E.2 — detour fail-closed, единой строгостью для всех типов ────
 
 func TestEmitE2_DanglingDetourDropsCarrier(t *testing.T) {
 	carrier := canonServerNode("Tokyo", "Tokyo", "h.example", 443)
@@ -257,7 +257,7 @@ func TestEmitE2_DetourCycleIsFailClosed(t *testing.T) {
 	}
 }
 
-// Исключение ядра: WireGuard detour не получает — правило модели.
+// WireGuard берёт detour как любой другой узел — исключения больше нет.
 func TestEmitE2_WireGuardTakesDetourLikeAnyNode(t *testing.T) {
 	// Ядро (1.14.0-lx.28) принимает `detour` у endpoint/wireguard — проверено
 	// запуском. Поэтому WG идёт ОБЩИМ путём резолва: рабочая цель
@@ -743,9 +743,8 @@ func TestEmitDisabledNodeConsumesNumVariable(t *testing.T) {
 
 // ── Фикс-раунд W4: WG с висячим detour не молчит ─────────────────────
 
-// WireGuard detour не применяется по правилу модели, поэтому носитель не
-// роняется. Но если цель ещё и не существует, у пользователя настроены две
-// неработающие вещи сразу — молчать нельзя.
+// Висячий detour у WG роняет носитель ровно так же, как у любого другого
+// узла: единая строгость detour, исключений по типу нет.
 func TestEmitWireguardDanglingDetourDropsNode(t *testing.T) {
 	// Висячая цель у WG — тот же fail-closed, что у любого узла: тихий
 	// прямой дозвон вместо заданного маршрута недопустим.

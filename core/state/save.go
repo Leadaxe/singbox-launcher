@@ -14,9 +14,11 @@ import (
 
 // Save атомарно записывает s в path.
 //
-// SPEC 060 Phase 5: single write path. После collapse v5/v6 namespaces и
-// migration с SPEC 053/056/058 все state'ы пишутся в canonical (v6) shape.
-// `useV6` gate и dual marshalDisk удалены.
+// Единственный формат записи — v7 (SPEC 118 W1). Ветвления по версии схемы
+// нет и быть не может: старые формы существуют только на чтении (Load
+// роутит их в миграцию), а на диск состояние уходит всегда каноническим —
+// иначе один и тот же state давал бы разные файлы в зависимости от того,
+// откуда он приехал.
 //
 // SPEC 058-R-N: backup перед первым перезаписыванием когда outbounds содержат
 // referenced entries (post-migration shape). Lossless rollback гарантирован.

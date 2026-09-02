@@ -281,9 +281,17 @@ func ResolveCanonicalChainHops(parserConfig *ParserConfig, targets *NodeLinkTarg
 			for _, link := range cn.Hops {
 				res := targets.Resolve(link)
 				if res.Problem != "" {
-					// Сырой тег доедет до ChainEmitError/ResolveChainSources
-					// и уронит цепочку с внятной причиной (fail-closed).
-					hops = append(hops, link.Tag)
+					// Позиция помечается НЕРЕЗОЛВИМОЙ, а не оставляется сырым
+					// тегом: `known` в ResolveChainSources — пространство
+					// ФИНАЛЬНЫХ тегов корня, и сырой тег в нём вполне может
+					// совпасть по имени с чужим узлом. Хоп {FolderID:"F1",
+					// Tag:"US-1"} при выключенной папке F1 и корневом узле
+					// `US-1` так и уводил цепочку через чужой сервер — молча
+					// и без единого слова о подмене. Маркер `known` не
+					// содержит НИКОГДА, поэтому деградация fail-closed
+					// наступает независимо от совпадений имён; в тексте
+					// причины маркер снимается (chainHopDisplayTag).
+					hops = append(hops, markChainHopUnresolved(link.Tag))
 					w := locale.Tf(emitChainHopUnresolvedText, cn.Tag, link.Tag, res.Problem)
 					// Адресат — сам источник-цепочка: чинят позицию в его окне.
 					warnings = append(warnings, EmissionWarning{

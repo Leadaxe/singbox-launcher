@@ -236,6 +236,21 @@ func TestMigrationScenario1Materialization(t *testing.T) {
 	if !hasWarningContaining(s.Migration, "No cache") {
 		t.Fatalf("нет предупреждения об отсутствии кэша: %v", s.Migration.Warnings)
 	}
+	// Отметка выключения материализовать было не к чему, но выбрасывать её
+	// нельзя: узлы появятся первым fetch'ем, и отметка обязана дожить до него
+	// в PendingDisabled (вердикт O2) — ровно как у импорта бэкапа.
+	if !containsString(sub2.PendingDisabled, "orphan") {
+		t.Fatalf("отметка потеряна вместо PendingDisabled: %v", sub2.PendingDisabled)
+	}
+}
+
+func containsString(list []string, want string) bool {
+	for _, v := range list {
+		if v == want {
+			return true
+		}
+	}
+	return false
 }
 
 // §4.B.2 — отметки: enabled=false по сырым тегам и legacy-hex; несматченные
@@ -580,6 +595,37 @@ func TestMigrationScenario8PurgeAndIdempotency(t *testing.T) {
 	settings = locale.LoadSettings(lc.BinDir)
 	if settings.DefaultSubscriptionReload != "4h" || settings.DefaultSubscriptionMaxNodes != 700 {
 		t.Errorf("явные настройки перетёрты повторным переносом: %+v", settings)
+	}
+}
+
+// Шаг 8, обратная сторона: подписке, у которой материализация не дала ни
+// одного узла, raw-кэш НЕ сносят. Тело больше взять неоткуда (URL мог
+// умереть), и снос превратил бы «узлы появятся после обновления» в
+// безвозвратную потерю.
+func TestMigrationKeepsRawCacheWhenNothingMaterialized(t *testing.T) {
+	fixture := strings.Replace(mainFixture, "%HEX%", legacyHashForURI(t, nl1URI), 1)
+	statePath := writeStateWithRaw(t, fixture, map[string]string{
+		subID: rawBody,
+		// Тело, из которого парсер не соберёт ни одного узла: ни одной
+		// известной схемы, ни base64-обёртки.
+		sub2ID: "не ссылка и не конфиг\nтоже не ссылка\n",
+	})
+	s, err := state.Load(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub2 := findSource(t, s, sub2ID); len(sub2.Nodes) != 0 {
+		t.Fatalf("фикстура протухла: парсер собрал %d узлов из мусора", len(sub2.Nodes))
+	}
+
+	lc := state.DeriveLoadContextForTest(statePath)
+	state.PurgeLegacyForTest(s, lc)
+	if _, err := os.Stat(filepath.Join(lc.SubsDir, sub2ID+".raw")); err != nil {
+		t.Errorf("raw-кэш неразобранной подписки снесён — тело не восстановить: %v", err)
+	}
+	// У материализованной подписки снос при этом отработал как прежде.
+	if _, err := os.Stat(filepath.Join(lc.SubsDir, subID+".raw")); !os.IsNotExist(err) {
+		t.Error("raw-кэш материализованной подписки не удалён")
 	}
 }
 

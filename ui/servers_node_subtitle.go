@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"image/color"
-	"strconv"
 	"strings"
 	"time"
 
@@ -108,38 +107,42 @@ type canvasTextSetter struct {
 	text *canvas.Text
 }
 
+// SetDelay показывает удачный замер: текст и цвет строятся из ЧИСЛА.
+//
+// Отдельный вход, потому что по тексту качество связи не восстановить:
+// подпись локализована («%d ms» → «123 мс»), и любой разбор строки ломается
+// на первом же переводе. Раньше так и было — русский «123 мс» не подходил под
+// суффикс «ms» и красился как ошибка, то есть здоровый узел горел красным.
+func (s *canvasTextSetter) SetDelay(delay int64) {
+	if s == nil || s.text == nil {
+		return
+	}
+	s.text.Text = serversDelayText(delay)
+	s.text.Color = serversDelayColor(delay)
+	s.text.Refresh()
+}
+
 // SetText обновляет текст и перерисовывает его.
 //
-// Цвет ставится ПО СОДЕРЖИМОМУ: без этого «…» на месте прошлой ошибки
-// оставался красным, и нажатие выглядело так, будто ничего не произошло —
-// человек жал ещё раз, думая, что промахнулся мимо кликабельной зоны.
+// Цвет ставится ПО СОДЕРЖИМОМУ, иначе прежний остаётся на новом тексте: «…»
+// после ошибки было красным (нажатие выглядело как промах). Различаются
+// ровно два известных состояния — ожидание и ошибка; всё прочее (в том числе
+// «Ping»/«Пинг» — приглашение к замеру) нейтрально и НИКОГДА не красное.
+// Числовой замер сюда не приходит: для него есть SetDelay.
 func (s *canvasTextSetter) SetText(v string) {
 	if s == nil || s.text == nil {
 		return
 	}
 	s.text.Text = v
-	// Цвет ставится ПО СОДЕРЖИМОМУ, иначе прежний остаётся на новом тексте:
-	// «…» после ошибки было красным (нажатие выглядело как промах), а
-	// свежий замер после ошибки — тоже красным, хотя узел ожил.
-	switch {
-	case v == serversDelayPendingText:
+	switch v {
+	case serversDelayPendingText:
 		s.text.Color = theme.Color(theme.ColorNamePlaceHolder)
-	case strings.HasSuffix(v, "ms"):
-		s.text.Color = serversDelayColor(parseDelayMs(v))
-	default:
+	case locale.T("Error"):
 		s.text.Color = serversDelayColor(-1)
+	default:
+		s.text.Color = theme.Color(theme.ColorNamePlaceHolder)
 	}
 	s.text.Refresh()
-}
-
-// parseDelayMs — число миллисекунд из подписи «123 ms»; 0, если не разобрать.
-// Нужен только для выбора цвета: сам замер живёт в модели.
-func parseDelayMs(v string) int64 {
-	n, err := strconv.Atoi(strings.TrimSpace(strings.TrimSuffix(v, "ms")))
-	if err != nil {
-		return 0
-	}
-	return int64(n)
 }
 
 // serversDelayPendingText — что стоит в ячейке, пока идёт замер. Отдельная

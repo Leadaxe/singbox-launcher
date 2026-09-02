@@ -60,6 +60,16 @@ func (p *WizardPresenter) HasUnsavedChanges() bool {
 func (p *WizardPresenter) MarkAsChanged() {
 	p.hasChanges = true
 	config.ResetBuildReport()
+	// Реестр сброшен — гейт закрылся, и кнопка обязана уйти ВМЕСТЕ с ним.
+	// Раньше уходил только реестр: кнопка, открытая прошлой сборкой, оставалась
+	// на экране и предлагала сохранить конфигурацию, отчёта по которой уже нет.
+	//
+	// Через тот же updater, что и открытие: прятать виджет напрямую отсюда
+	// значило бы завести второй путь к одной кнопке (и мутацию виджета мимо
+	// UpdateUI — MarkAsChanged зовут в том числе из фоновых заходов).
+	if p.guiState != nil && p.guiState.SaveGateAllows != nil {
+		p.UpdateSaveButtonText("")
+	}
 	debuglog.DebugLog("MarkAsChanged: hasChanges set to true")
 }
 

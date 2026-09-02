@@ -719,20 +719,46 @@ func showSourceEditWindowAt(
 	// снимок scratch их не переносит (см. mergeEditedSourceIntoModel).
 	enabledEdits := make(map[string]bool)
 	// SPEC 112-A: имя узла на момент открытия формы. Переименование меняет
-	// ИДЕНТИЧНОСТЬ узла, а резолв ссылок на сборке строгий — значит на
-	// сохранении надо сбросить ссылки на прежнее имя и сказать об этом
-	// пользователю (иначе ссылающиеся источники выпали бы fail-closed молча).
-	// Сравнивается именно исходное значение, а не то, что было в поле секунду
-	// назад: nodeTagEntry.OnChanged срабатывает на каждый символ.
-	nodeTagAtOpen := strings.TrimSpace(m.Sources[sourceIndex].NodeTagOrLabel())
-	sourceIDAtOpen := m.Sources[sourceIndex].ID
-	nodeIdentityOwner := m.Sources[sourceIndex].Kind == wizardmodels.SourceKindServer ||
-		m.Sources[sourceIndex].Kind == wizardmodels.SourceKindChain
-	// SPEC 118 Т8: форма тегов на момент открытия. Правка тег-политики или
-	// тега замены переименовывает то, чем адресован ручной выбор в кэше
-	// живого ядра (cache.db) — переписать его лаунчер не может и обязан
-	// предупредить (features/directions.md §10).
-	tagShapeAtOpen := tagShapeOf(&m.Sources[sourceIndex])
+	// ИДЕНТИЧНОСТЬ узла (SPEC 112), а резолв ссылок на сборке строгий — значит
+	// на сохранении ссылки на прежнее имя обязаны быть обработаны здесь, а не
+	// молча провалиться на следующей сборке. Сравнивается именно исходное
+	// значение, а не то, что было в поле секунду назад: nodeTagEntry.OnChanged
+	// срабатывает на каждый символ.
+	//
+	// У окна, открытого на УЗЕЛ контейнера, все три снимка берутся у САМОГО
+	// УЗЛА, а не у строки-контейнера: sourceIndex указывает на папку, и
+	// прежний код спрашивал у неё и имя, и вид, и форму тегов. Отсюда шли обе
+	// поломки — переименование узла папки не гасило ссылок (kind папки ⇒
+	// nodeIdentityOwner=false), а диалог «выбор в ядре протухнет» вылезал на
+	// КАЖДЫЙ Save (scratch узла тег-политики и свёртки не несёт вовсе, и
+	// сравнение с формой папки всегда объявляло различие).
+	//
+	// Идентификатор контейнера для реестра ссылок — тоже адрес узла
+	// (nodeLink.FolderID), а не ULID папки из строки: у корневого узла он пуст
+	// по построению, и подмена его чужим ULID увела бы перепись мимо цели.
+	var (
+		nodeTagAtOpen     string
+		containerIDAtOpen string
+		nodeIdentityOwner bool
+		tagShapeAtOpen    sourceTagShape
+	)
+	if editingNode {
+		nodeTagAtOpen = strings.TrimSpace(scratch.Tag)
+		containerIDAtOpen = strings.TrimSpace(nodeLink.FolderID)
+		nodeIdentityOwner = scratch.Kind == wizardmodels.SourceKindServer ||
+			scratch.Kind == wizardmodels.SourceKindChain
+	} else {
+		nodeTagAtOpen = strings.TrimSpace(m.Sources[sourceIndex].NodeTagOrLabel())
+		containerIDAtOpen = m.Sources[sourceIndex].ID
+		nodeIdentityOwner = m.Sources[sourceIndex].Kind == wizardmodels.SourceKindServer ||
+			m.Sources[sourceIndex].Kind == wizardmodels.SourceKindChain
+		// SPEC 118 Т8: форма тегов на момент открытия. Правка тег-политики или
+		// тега замены переименовывает то, чем адресован ручной выбор в кэше
+		// живого ядра (cache.db) — переписать его лаунчер не может и обязан
+		// предупредить (features/directions.md §10). У узла контейнера этой
+		// формы нет: тег-политика принадлежит папке, и её окно узла не правит.
+		tagShapeAtOpen = tagShapeOf(&m.Sources[sourceIndex])
+	}
 	// srcRef — рабочая копия, если источник ещё существует в модели (список
 	// могли перестроить, пока окно открыто); nil — форме больше некого править.
 	srcRef := func() *wizardmodels.Source {
@@ -2170,25 +2196,78 @@ func showSourceEditWindowAt(
 		// Узел контейнера пишется по СВОЕМУ адресу: строка-контейнер окну
 		// узла не принадлежит, и запись её снимком снесла бы состав и
 		// runtime fetch'а.
+		var (
+			affected     []string
+			repointed    bool
+			renamed      bool
+			dereferenced bool
+			stale        staleSelectionScope
+		)
 		if editingNode {
+			newTag := strings.TrimSpace(scratch.Tag)
+			// Сырой тег — идентичность узла В РАМКАХ контейнера (SPEC 112):
+			// двух одинаковых там быть не может, и Save обязан отказать так
+			// же, как отказывает команда Rename в списке узлов. Без этой
+			// проверки форма молча заводила второй узел с чужим именем, а
+			// перепись ссылок уводила их на произвольный из двух.
+			if newTag != "" && newTag != nodeTagAtOpen && nodeTagTakenInContainer(presenter.Model(), nodeLink, newTag) {
+				dialog.ShowError(fmt.Errorf("%s", locale.Tf(
+					"Tag %q is already taken in this container.", newTag)), win)
+				return
+			}
+			renamed = nodeIdentityOwner && nodeTagAtOpen != "" && newTag != "" && newTag != nodeTagAtOpen
+			// Д5, критерий A4: ручная правка тега — «ручной чих» по копии узла
+			// подписки, и она разыменовывает её НЕМЕДЛЕННО, иначе следующая
+			// заливка не нашла бы узел по прежнему сырому тегу и завела рядом
+			// второй экземпляр. Разыменование по буферу — до записи в модель,
+			// чтобы оно уехало туда одной записью вместе с правкой.
+			if renamed {
+				dereferenced = wizardbusiness.DereferenceNodeOrigin(&scratch.Node)
+			}
 			applyNodeEditToModel(presenter, guiState, presenter.Model(), nodeLink, &scratch)
+			// Переименование узла контейнера идёт ТЕМ ЖЕ путём, что команда
+			// Rename в списке узлов (preview_node_ops.applyRename): реестр
+			// переписи ведёт ссылки на новый адрес, а не гасит их вслепую —
+			// узел никуда не делся, у него сменилось имя.
+			if renamed {
+				if mm := presenter.Model(); mm != nil {
+					affected = wizardbusiness.RepointContainerNodeLinks(mm, containerIDAtOpen, nodeTagAtOpen, newTag)
+					repointed = true
+				}
+			}
 		} else {
 			applySourceEditToModel(presenter, guiState, presenter.Model(), sourceIndex, &scratch, enabledEdits)
+			// SPEC 112-A: корневой узел переименован — его прежней идентичности
+			// больше нет, и ссылки на неё обязаны погаснуть здесь, а не молча
+			// провалиться на следующей сборке. Порядок важен: сначала запись
+			// формы (тег уже новый), потом сброс ссылок на СТАРОЕ имя.
+			affected = resetRefsAfterNodeRename(presenter, guiState,
+				nodeIdentityOwner, sourceIndex, containerIDAtOpen, nodeTagAtOpen)
+			// SPEC 118 Т8: сменились финальные теги — ручной выбор в
+			// селекторах живого ядра адресован прежними именами и собьётся на
+			// умолчание. У окна узла спрашивать нечего: тег-политика и свёртка
+			// принадлежат контейнеру, а его форму это окно не правит (прежде
+			// сравнение scratch-узла с формой папки давало «различие» на
+			// каждый Save и диалог всплывал впустую).
+			stale = staleSelectionAfterEdit(tagShapeAtOpen, tagShapeOf(&scratch))
 		}
-		// SPEC 112-A: узел переименован — его прежней идентичности больше нет,
-		// и ссылки на неё обязаны погаснуть здесь, а не молча провалиться на
-		// следующей сборке. Порядок важен: сначала запись формы (тег уже
-		// новый), потом сброс ссылок на СТАРОЕ имя.
-		affected := resetRefsAfterNodeRename(presenter, guiState,
-			nodeIdentityOwner, sourceIndex, sourceIDAtOpen, nodeTagAtOpen)
-		// SPEC 118 Т8: сменились финальные теги — ручной выбор в селекторах
-		// живого ядра адресован прежними именами и собьётся на умолчание.
-		stale := staleSelectionAfterEdit(tagShapeAtOpen, tagShapeOf(&scratch))
+		if renamed {
+			// Финальный тег узла сменился — ручной выбор в селекторах живого
+			// ядра адресован СТАРЫМ именем; переписать его лаунчер не может.
+			stale.NodesRenamed = true
+		}
 		win.Close()
 		if len(affected) > 0 {
 			// Владелец окна — родительское, а не win: то закрывается прямо
 			// сейчас, и диалог на нём умер бы вместе с ним, не показавшись.
-			showDetourRefsResetDialog(parent, nodeTagAtOpen, affected)
+			if repointed {
+				showNodeRefsRepointedDialog(parent, affected)
+			} else {
+				showDetourRefsResetDialog(parent, nodeTagAtOpen, affected)
+			}
+		}
+		if dereferenced {
+			notifyNodeDereferenced(parent, strings.TrimSpace(scratch.Tag))
 		}
 		if !stale.Empty() {
 			showStaleSelectionDialog(parent, stale)
@@ -2282,6 +2361,53 @@ func showDetourRefsResetDialog(parent fyne.Window, nodeTag string, affected []st
 	content := container.NewVScroll(body)
 	content.SetMinSize(fyne.NewSize(460, 120))
 	dialog.ShowCustom(locale.T("Detour links cleared"), locale.T("OK"), content, parent)
+}
+
+// nodeTagTakenInContainer — занят ли сырой тег другим узлом того же
+// контейнера.
+//
+// Проверяется соседями по nodes[], а не корневым реестром: у узла контейнера
+// финальный тег считает тег-политика папки, а уникальным обязан быть именно
+// сырой — он и есть адрес узла в NodeLink. Сам переименовываемый узел из
+// сравнения исключён (его прежний тег ещё лежит в модели по адресу link).
+func nodeTagTakenInContainer(m *wizardmodels.WizardModel, link wizardmodels.NodeLink, tag string) bool {
+	if m == nil || tag == "" {
+		return false
+	}
+	idx := wizardbusiness.SourceIndexByLink(m, link)
+	if idx < 0 || idx >= len(m.Sources) {
+		return false
+	}
+	nodes := m.Sources[idx].Nodes
+	for i := range nodes {
+		if nodes[i].Tag == tag && nodes[i].Tag != link.Tag {
+			return true
+		}
+	}
+	return false
+}
+
+// showNodeRefsRepointedDialog сообщает, чьи ссылки ПЕРЕЕХАЛИ вслед за узлом.
+//
+// Отдельный текст, а не showDetourRefsResetDialog: там ссылки погасли
+// (переименование = другой узел, вести некуда), здесь реестр переписи довёл их
+// до нового адреса и ничего не потеряно. Сказать «links have been cleared» про
+// удавшийся перенос значило бы отправить пользователя чинить целое.
+//
+// Ловушка Fyne (fyne-label-minwidth-trap): Label без Wrapping задаёт окну
+// min-width своей строкой в одну линию — список имён растянул бы диалог.
+func showNodeRefsRepointedDialog(parent fyne.Window, affected []string) {
+	if parent == nil || len(affected) == 0 {
+		return
+	}
+	body := widget.NewLabel(locale.Tf(
+		"Nodes moved, so their tags changed. Links to them were updated in: %s",
+		strings.Join(affected, ", ")))
+	body.Wrapping = fyne.TextWrapWord
+
+	content := container.NewVScroll(body)
+	content.SetMinSize(fyne.NewSize(460, 120))
+	dialog.ShowCustom(locale.T("Links updated"), locale.T("OK"), content, parent)
 }
 
 // showStaleSelectionDialog предупреждает о протухании ручного выбора в

@@ -69,8 +69,9 @@ type FolderSubscriptionFillResult struct {
 // папку» не существует: merge идемпотентен, и второй вызов на том же материале
 // не меняет ничего (folder_merge_test.go).
 //
-// Побочки (BumpRevision / InvalidateNodePool / MarkAsChanged) — на вызывающем
-// UI, как у AppendNodesToFolder и node_move.go.
+// Побочки, видимые пользователю (BumpRevision / MarkAsChanged / сообщение об
+// исходе), — на вызывающем UI, как у AppendNodesToFolder и node_move.go;
+// инвалидацию кэшей состава функция делает сама (см. AppendNodesToFolder).
 func FillFolderFromSubscription(m *wizardmodels.WizardModel, folderID, subID string) (FolderSubscriptionFillResult, error) {
 	var res FolderSubscriptionFillResult
 	if m == nil {
@@ -132,6 +133,9 @@ func FillFolderFromSubscription(m *wizardmodels.WizardModel, folderID, subID str
 		&m.Sources[folderIdx], subURL, material, true)
 	res.Changed = changed
 	res.Warnings = warns
+	if changed {
+		InvalidateNodePool(m)
+	}
 	return res, nil
 }
 

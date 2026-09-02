@@ -100,6 +100,10 @@ func (s *Source) canonicalProjection() *configtypes.CanonicalSource {
 			IsContainer:  true,
 			FolderDetour: canonicalLink(s.Detour),
 			Replace:      canonicalReplace(s.Replace),
+			// Галка «релеи в Направлениях» нужна не только пикеру формы:
+			// состав Направления считает ещё и сборка (по фильтрам), и без
+			// этого поля она забирала бы служебные узлы вопреки настройке.
+			RelaysInDirections: s.RelaysInDirections,
 		}
 		if s.TagPolicy != nil {
 			cs.TagPrefix = s.TagPolicy.Prefix
@@ -210,6 +214,15 @@ func canonicalReplace(r *FolderReplace) *configtypes.FolderReplace {
 // AutoStrategyOptions разворачивает AutoStrategy провайдерской группы в опции
 // sing-box-группы — тем же allowlist'ом, каким миграция/fetch их собирали
 // (config.autoStrategyFromGroupOptions, обратная сторона).
+//
+// Симметрия НЕ полная, и это надо знать при правках. Пул-поля AutoStrategy —
+// `mode`, `pool`, `pool_tolerance`, `sticky_hash` — не выражаются ни в одну
+// сторону: провайдерская группа их не приносит (autoStrategyFromGroupOptions
+// их не читает), и в опции sing-box-группы они тоже не уезжают. Это не
+// пропуск: они настройка НАШЕГО отбора внутри Направления, а не ключ
+// outbound'а ядра — положи мы их сюда, ядро отвергло бы группу на неизвестном
+// поле. Общими у двух функций остаются ровно url / interval / idle_timeout /
+// tolerance / interrupt_exist_connections.
 //
 // Живёт здесь, а не в config: проекция обязана быть рядом с типом, из
 // которого читает, иначе пакет config получил бы вторую точку знания о форме

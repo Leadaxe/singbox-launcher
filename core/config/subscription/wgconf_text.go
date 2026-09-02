@@ -128,6 +128,12 @@ func WGConfBodyToURIs(body string) (uris []string, skipped int) {
 	converted, skipped := WGConfBodyToConvertedBlocks(body)
 	uris = make([]string, 0, len(converted))
 	for _, c := range converted {
+		// Битый блок остаётся в списке блоков (у него свой Raw и причина —
+		// они нужны разбору тела), но ССЫЛКОЙ он не стал: сюда ему нечего
+		// отдать, и число потерянных вызывающий получает через skipped.
+		if c.Err != nil || c.URI == "" {
+			continue
+		}
 		uris = append(uris, c.URI)
 	}
 	return uris, skipped
@@ -159,14 +165,25 @@ func WGConfBlocksOf(text string) []string {
 // выводу, а не по источнику.
 type ConvertedWGBlock struct {
 	// URI — канонический wireguard://, которым узел разбирается дальше.
+	// Пусто у блока, который в ссылку не превратился (см. Err).
 	URI string
 	// Raw — блок [Interface]…[Peer] БАЙТ В БАЙТ, как он стоял в теле.
 	Raw string
+	// Err — почему блок не стал ссылкой; nil у собравшихся.
+	//
+	// Блок с ошибкой ОСТАЁТСЯ в списке, на своём месте: разбор тела обязан
+	// материализовать каждую запись, не ставшую узлом, — на её позиции, с
+	// исходником и причиной (SPEC 116 W11). Молчаливый пропуск оставлял бы
+	// человека с телом из трёх блоков и двумя узлами без объяснения, куда
+	// делся третий.
+	Err error
 }
 
 // WGConfBodyToConvertedBlocks конвертирует тело wg-quick, сохраняя за каждым
-// URI его исходный блок. Битые блоки пропускаются и считаются в skipped —
-// политика та же, что у WGConfBodyToURIs.
+// URI его исходный блок.
+//
+// Битые блоки возвращаются НАРАВНЕ с собравшимися — со своим Raw и причиной
+// в Err, на своих местах; skipped считает их для сводного warning'а.
 func WGConfBodyToConvertedBlocks(body string) (converted []ConvertedWGBlock, skipped int) {
 	_, blocks := ExtractWGConfBlocks(body)
 	converted = make([]ConvertedWGBlock, 0, len(blocks))
@@ -174,6 +191,7 @@ func WGConfBodyToConvertedBlocks(body string) (converted []ConvertedWGBlock, ski
 		uri, err := ConvertWGConfText(block)
 		if err != nil {
 			skipped++
+			converted = append(converted, ConvertedWGBlock{Raw: block, Err: err})
 			continue
 		}
 		converted = append(converted, ConvertedWGBlock{URI: uri, Raw: block})

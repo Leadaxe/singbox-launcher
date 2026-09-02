@@ -104,6 +104,27 @@ const (
 	// цепочки, одинаково названные на разных устройствах, склеиваются в
 	// одну, и пользователь обязан узнать об этом (BACKUP.md §4).
 	WarnBackupChainExists = "backup_chain_exists"
+	// WarnBackupSourceIdentityDropped — per-source настройки подписки,
+	// которыми она представляется провайдеру (user_agent, hwid, send_hwid,
+	// hash_device_model, relays_in_directions), в контракт 0.11 не входят:
+	// поля общие с LxBox, а у него их нет, и заводить их односторонне —
+	// значит вернуть тайный груз, ради сноса которого убран extensions.
+	// Потеря не косметическая: провайдеры ВЕТВЯТ выдачу по UA, и на новой
+	// машине та же ссылка отдаст другой набор узлов. Ставится на ЭКСПОРТЕ —
+	// там, где ещё видно, какие именно поля были заданы.
+	WarnBackupSourceIdentityDropped = "backup_source_identity_dropped"
+	// WarnBackupSourceFlagDropped — `exclude_from_global` /
+	// `expose_group_tags_to_global` приехали из бэкапа v1.5.x: класс флагов
+	// упразднён (SPEC 118), узлы источника остаются в общем пуле кандидатов.
+	// Поля объявлены в типах контракта, поэтому scanUnknown их не ловит —
+	// без этого кода они пропадали бы совсем молча.
+	WarnBackupSourceFlagDropped = "backup_source_flag_dropped"
+	// WarnBackupLabelDropped — `label` одиночного узла (сервер/цепочка)
+	// разошёлся с тегом и применён не будет: у канона v7 имени, кроме тега,
+	// нет (SPEC 112, «идентичность узла = тег»). Раньше label клался в
+	// Source.Label — поле с `json:"-"`, то есть умирал на первом же Save,
+	// а пользователю об этом не говорили.
+	WarnBackupLabelDropped = "backup_label_dropped"
 )
 
 // errSkipRule — правило пропущено осознанно (чужой kind), а не сломалось.
@@ -171,7 +192,9 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 		res.AppliedSources++
 	}
 	for _, srv := range b.Servers {
-		s.Sources = append(s.Sources, importServer(srv))
+		src, warns := importServer(srv)
+		s.Sources = append(s.Sources, src)
+		res.Warnings = append(res.Warnings, warns...)
 		res.AppliedSources++
 	}
 
@@ -222,7 +245,9 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 			knownTags = append(knownTags, in.Tag)
 			continue
 		}
-		s.Sources = append(s.Sources, importChain(in))
+		src, warns := importChain(in)
+		s.Sources = append(s.Sources, src)
+		res.Warnings = append(res.Warnings, warns...)
 		existingChains[in.Tag] = true
 		knownTags = append(knownTags, in.Tag)
 		res.AppliedSources++
@@ -346,6 +371,13 @@ func importSubscription(sub Subscription, index int) (state.Source, []Warning) {
 			warns = append(warns, Warning{Code: WarnBackupLocalDirectionDropped, Detail: subscriptionLabel(sub) + " → " + tag})
 		}
 	}
+	// Флаги «убрать из общего списка» / «показывать теги группы»: класс
+	// упразднён (SPEC 118), узлы источника остаются в пуле кандидатов.
+	// Поля объявлены в типах контракта, поэтому общий scanUnknown их не
+	// видит — без явного warning'а они пропали бы молча (П6).
+	if sub.ExcludeFromGlobal || sub.ExposeGroupTagsToGlobal {
+		warns = append(warns, Warning{Code: WarnBackupSourceFlagDropped, Detail: subscriptionLabel(sub)})
+	}
 	// Отметки выключения: узлов у только что импортированной подписки нет
 	// (nodes[] в контракт не едут), поэтому они ждут первого достоверного
 	// fetch в PendingDisabled — вердикт O2.
@@ -384,14 +416,24 @@ func backupReplaceTag(sub Subscription, index int) string {
 // Тело материализуется не здесь: URI приезжает в origin.raw, и узел
 // становится собираемым после первого прохода материализации (Regen from raw
 // в окне источника либо сборка). ConfigJSON — уже готовое тело.
-func importServer(srv Server) state.Source {
+func importServer(srv Server) (state.Source, []Warning) {
+	var warns []Warning
 	src := state.Source{
-		Node:  state.Node{Kind: state.SourceKindServer, Enabled: srv.Enabled == nil || *srv.Enabled, Tag: srv.NodeTag},
-		ID:    ensureSourceID(srv.ID),
-		Label: srv.Label,
+		Node: state.Node{Kind: state.SourceKindServer, Enabled: srv.Enabled == nil || *srv.Enabled, Tag: srv.NodeTag},
+		ID:   ensureSourceID(srv.ID),
 	}
+	// Label НЕ кладётся в Source.Label: у того поля `json:"-"`, и подпись
+	// умирала на первом же Save, а экспорт потом писал пустую строку. У
+	// канона v7 у узла одно имя — тег (SPEC 112). Пустой тег label ещё
+	// может спасти (иначе узел приехал бы безымянным), но разошедшаяся
+	// подпись — потеря, и её называют вслух.
 	if src.Tag == "" {
-		src.Tag = srv.Label
+		src.Tag = strings.TrimSpace(srv.Label)
+	} else if l := strings.TrimSpace(srv.Label); l != "" && l != src.Tag {
+		warns = append(warns, Warning{Code: WarnBackupLabelDropped, Detail: l + " → " + src.Tag})
+	}
+	if srv.ExcludeFromGlobal {
+		warns = append(warns, Warning{Code: WarnBackupSourceFlagDropped, Detail: serverLabel(srv)})
 	}
 	importSourceRef(&src, srv.SourceRef)
 	switch {
@@ -409,7 +451,19 @@ func importServer(srv Server) state.Source {
 		}
 		src.Origin = &state.Origin{Kind: kind, Raw: srv.URI}
 	}
-	return src
+	return src, warns
+}
+
+// serverLabel — как назвать одиночный узел в предупреждении: тег, а если
+// его нет — подпись; и то и другое пусто у безымянной записи, тогда URI.
+func serverLabel(srv Server) string {
+	if t := strings.TrimSpace(srv.NodeTag); t != "" {
+		return t
+	}
+	if l := strings.TrimSpace(srv.Label); l != "" {
+		return l
+	}
+	return srv.URI
 }
 
 // importChain переводит каноническую запись chains[] во внутренний источник.
@@ -418,7 +472,8 @@ func importServer(srv Server) state.Source {
 // поле. Раньше тег клался в Label (другого места не было), из-за чего импорт
 // чужого label разъехался бы со ссылками правил, route.final и позиций других
 // цепочек.
-func importChain(in Chain) state.Source {
+func importChain(in Chain) (state.Source, []Warning) {
+	var warns []Warning
 	src := state.Source{
 		Node: state.Node{
 			Kind:    state.SourceKindChain,
@@ -427,10 +482,17 @@ func importChain(in Chain) state.Source {
 			Body:    importChainBody(in.Chain),
 			Hops:    importHops(in.Chain.HopsOrNil()),
 		},
-		ID:    ensureSourceID(in.ID),
-		Label: in.Label,
+		ID: ensureSourceID(in.ID),
 	}
-	return src
+	// Label в Source.Label не кладётся — поле `json:"-"`, подпись исчезала
+	// на первом Save беззвучно. У цепочки, как и у узла, имя одно — тег.
+	if l := strings.TrimSpace(in.Label); l != "" && l != src.Tag {
+		warns = append(warns, Warning{Code: WarnBackupLabelDropped, Detail: l + " → " + src.Tag})
+	}
+	if in.ExcludeFromGlobal {
+		warns = append(warns, Warning{Code: WarnBackupSourceFlagDropped, Detail: in.Tag})
+	}
+	return src, warns
 }
 
 func importRule(r Rule, known, presets tagSet) (state.Rule, []Warning, error) {

@@ -4192,5 +4192,41 @@
   },
   "Re-test now": {
     "value": "Замерить сейчас"
+  },
+  "Device ID (HWID)": {
+    "value": "Идентификатор устройства (HWID)"
+  },
+  "Origin (wg-quick config)": {
+    "value": "Происхождение (конфиг wg-quick)"
+  },
+  "Nodes moved, so their tags changed. Links to them were updated in: %s": {
+    "value": "Узлы переехали, поэтому их теги изменились. Ссылки на них обновлены в: %s"
+  },
+  "Links updated": {
+    "value": "Ссылки обновлены"
+  },
+  "Max nodes clamped to %d — that is the hard ceiling.": {
+    "value": "Максимум узлов урезан до %d — это жёсткий потолок."
+  },
+  "%s — a Direction with this tag already exists here, the incoming one is skipped": {
+    "value": "%s — Направление с таким тегом здесь уже есть, приехавшее пропущено"
+  },
+  "%s — the tag mask is gone, only prefix and postfix apply now": {
+    "value": "%s — маска тегов упразднена, теперь действуют только префикс и постфикс"
+  },
+  "%s — per-source Directions are gone, this one is not imported (create a global Direction with a filter instead)": {
+    "value": "%s — локальных Направлений источника больше нет, это не импортировано (заведите глобальное Направление с фильтром)"
+  },
+  "%s — the shared format has no field for the replacement tag: after import the group will carry the derived name, and rules aimed at the old one arrive turned off": {
+    "value": "%s — у формата обмена нет поля для тега замены: после импорта группа получит производное имя, а правила на прежнее приедут выключенными"
+  },
+  "%s — these subscription settings are not part of the shared format and did not go into the file; the provider may return a different set of nodes on the other machine": {
+    "value": "%s — эти настройки подписки формат обмена не переносит, в файл они не попали; провайдер на другой машине может отдать другой набор узлов"
+  },
+  "%s — the \"exclude from the global list\" flag is gone; its nodes stay in the candidate pool (fold the source into a group for the previous behaviour)": {
+    "value": "%s — галки «убрать из общего списка» больше нет, узлы остаются в общем пуле кандидатов (прежнее поведение даёт свёртка источника в группу)"
+  },
+  "%s — label dropped, a node is named by its tag": {
+    "value": "%s — подпись отброшена: имя узла — это его тег"
   }
 }

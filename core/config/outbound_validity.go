@@ -9,7 +9,6 @@
 package config
 
 import (
-
 	"singbox-launcher/internal/debuglog"
 )
 

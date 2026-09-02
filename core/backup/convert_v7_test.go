@@ -11,6 +11,7 @@ package backup
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -347,15 +348,20 @@ func TestImportLegacyServerMaskArrivesAsNodeTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
-	if warns := append(parseWarns, res.Warnings...); len(warns) != 0 {
-		t.Errorf("имя одиночного узла — не потеря, а перенос; предупреждения: %v", warns)
+	// Тег доезжает молча; а вот `label`, разошедшийся с тегом, — потеря:
+	// у канона v7 имени, кроме тега, нет (SPEC 112), и Source.Label — поле
+	// `json:"-"`, которое умерло бы на первом Save беззвучно.
+	warns := warnCodes(append(parseWarns, res.Warnings...))
+	wantWarns := []string{WarnBackupLabelDropped}
+	if !equalStrings(warns, wantWarns) {
+		t.Errorf("предупреждения: получено %v, ожидалось %v", warns, wantWarns)
 	}
 	srv := findSourceByID(t, dst, "01SRV0000000000000000000")
 	if srv.Tag != "🔥 WARP" {
 		t.Errorf("имя узла не стало Node.tag: %q", srv.Tag)
 	}
-	if srv.Label != "WARP hop" {
-		t.Errorf("подпись узла потеряна: %q", srv.Label)
+	if srv.Label != "" {
+		t.Errorf("импорт заполнил Label (json:\"-\"): %q", srv.Label)
 	}
 	chain := findSourceByID(t, dst, "01CHN0000000000000000000")
 	if chain.Tag != "relay" {
@@ -365,8 +371,6 @@ func TestImportLegacyServerMaskArrivesAsNodeTag(t *testing.T) {
 		t.Errorf("хопы цепочки: %v", chain.Hops)
 	}
 }
-
-
 
 // §4.F.2, названная потеря: ЯВНЫЙ тег замены, не совпавший с деривативом
 // контракта, круг не переживает — и экспорт обязан сказать это вслух.
@@ -407,5 +411,211 @@ func TestExportNamesUnrepresentableReplaceTag(t *testing.T) {
 	}
 	if hasWarn(warns, WarnBackupReplaceTagDerived) {
 		t.Errorf("совпавший с деривативом тег объявлен потерей: %v", warns)
+	}
+}
+
+// Позиционный дериватив считают по одному и тому же числу обе стороны:
+// экспорт — по номеру записи в subscriptions[], импорт — по индексу в той же
+// секции. Пока экспорт брал позицию источника в ОБЩЕМ списке, подписка без
+// префикса, стоящая после сервера, уезжала молча: `2:select` считался
+// «деривативом», а импорт восстанавливал `1:select` — и правила того же
+// файла, метившие в старое имя, повисали без единого слова.
+func TestReplaceTagDerivativeCountsSubscriptionsOnly(t *testing.T) {
+	mkSub := func(id, tag string) state.Source {
+		return state.Source{
+			ID:      id,
+			Node:    state.Node{Kind: state.SourceKindSubscription, Enabled: true},
+			URL:     "https://example.invalid/" + id,
+			Name:    id,
+			Replace: &state.FolderReplace{Mode: state.FolderReplaceManual, Tag: tag},
+		}
+	}
+	mkServer := func(id string) state.Source {
+		return state.Source{
+			ID:   id,
+			Node: state.Node{Kind: state.SourceKindServer, Enabled: true, Tag: id},
+		}
+	}
+
+	// Сервер впереди: подписка первая в своей секции, значит дериватив —
+	// `1:select`, а не `2:select`.
+	after := &state.State{Sources: []state.Source{mkServer("srv"), mkSub("sub", "2:select")}}
+	_, warns, err := Export(after, ExportOptions{AppVersion: "test"})
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	if !hasWarn(warns, WarnBackupReplaceTagDerived) {
+		t.Fatalf("подмена тега замены прошла молча: %v", warns)
+	}
+	var detail string
+	for _, w := range warns {
+		if w.Code == WarnBackupReplaceTagDerived {
+			detail = w.Detail
+		}
+	}
+	if !strings.Contains(detail, "1:select") {
+		t.Errorf("предупреждение называет чужой дериватив: %q", detail)
+	}
+
+	// Та же подписка первой в списке: `1:select` — это и есть дериватив,
+	// и после круга экспорт→импорт тег обязан остаться тем же.
+	before := &state.State{Sources: []state.Source{mkSub("sub", "1:select"), mkServer("srv")}}
+	b, warns, err := Export(before, ExportOptions{AppVersion: "test"})
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	if hasWarn(warns, WarnBackupReplaceTagDerived) {
+		t.Errorf("дериватив объявлен потерей: %v", warns)
+	}
+	dst := &state.State{}
+	if _, err := Import(dst, b, ImportOptions{}); err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	got := findSourceByID(t, dst, "sub")
+	if got.Replace == nil || got.Replace.Tag != "1:select" {
+		t.Errorf("тег замены после круга: %+v, ожидался 1:select", got.Replace)
+	}
+}
+
+// П6 на полях, которые схема ЗНАЕТ, а модель v7 больше нет: флаг
+// `exclude_from_global` объявлен в типах контракта, поэтому общий scanUnknown
+// его не видит — без явного кода он пропадал бы совсем молча, и узлы
+// источника молча возвращались бы в общий пул кандидатов.
+func TestImportNamesDroppedSourceFlags(t *testing.T) {
+	raw := []byte(`{
+  "lx_backup": 1,
+  "exported_by": {"app": "launcher", "version": "1.5.2"},
+  "exported_at": "2025-03-01T00:00:00Z",
+  "subscriptions": [
+    {"id": "01SUB0000000000000000000", "url": "https://example.invalid/s",
+     "label": "WL", "exclude_from_global": true}
+  ],
+  "servers": [
+    {"id": "01SRV0000000000000000000", "node_tag": "Tokyo",
+     "uri": "vless://11111111-1111-1111-1111-111111111111@example-2.com:443?type=tcp#s",
+     "exclude_from_global": true}
+  ]
+}`)
+	b, parseWarns, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(parseWarns) != 0 {
+		t.Fatalf("поля объявлены в схеме, лишних предупреждений разбора быть не должно: %v", parseWarns)
+	}
+	dst := &state.State{}
+	res, err := Import(dst, b, ImportOptions{})
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	got := 0
+	for _, w := range res.Warnings {
+		if w.Code == WarnBackupSourceFlagDropped {
+			got++
+		}
+	}
+	if got != 2 {
+		t.Fatalf("предупреждений о снятом флаге %d, ожидалось 2 (подписка + сервер): %v", got, res.Warnings)
+	}
+}
+
+// П6 на подписи одиночного узла: `label`, разошедшийся с тегом, применён не
+// будет — у канона v7 имени, кроме тега, нет. Раньше он клался в Source.Label
+// (`json:"-"`) и умирал на первом же Save беззвучно.
+func TestImportChainLabelDroppedWithWarning(t *testing.T) {
+	raw := []byte(`{
+  "lx_backup": 1,
+  "exported_by": {"app": "lxbox", "version": "2.2.0"},
+  "exported_at": "2025-03-01T00:00:00Z",
+  "chains": [
+    {"id": "01CHN0000000000000000000", "tag": "my-chain", "label": "Моя цепочка",
+     "chain": {"hops": ["direct"]}}
+  ]
+}`)
+	b, _, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	dst := &state.State{}
+	res, err := Import(dst, b, ImportOptions{})
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	chain := findSourceByID(t, dst, "01CHN0000000000000000000")
+	if chain.Tag != "my-chain" {
+		t.Errorf("тег цепочки потерян: %q", chain.Tag)
+	}
+	if chain.Label != "" {
+		t.Errorf("импорт заполнил Label (json:\"-\"): %q", chain.Label)
+	}
+	if !hasWarn(res.Warnings, WarnBackupLabelDropped) {
+		t.Fatalf("подпись выпала молча: %v", res.Warnings)
+	}
+
+	// После Save→Load терять больше нечего: то, что уцелело, уцелело.
+	path := filepath.Join(t.TempDir(), "state.json")
+	if err := dst.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	back, err := state.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := findSourceByID(t, back, "01CHN0000000000000000000")
+	if got.Tag != "my-chain" {
+		t.Errorf("тег цепочки не пережил Save→Load: %q", got.Tag)
+	}
+}
+
+// П6 на per-source настройках подписки: UA/HWID и компания описывают, каким
+// устройством подписка представляется провайдеру, а провайдер ВЕТВИТ по ним
+// выдачу. В контракт 0.11 они не входят (поля общие с LxBox), и восстановление
+// на новой машине даст ДРУГОЙ набор узлов — молчать об этом нельзя.
+func TestExportNamesDroppedSourceIdentity(t *testing.T) {
+	send := true
+	s := &state.State{Sources: []state.Source{{
+		ID:                 "01SUB0000000000000000000",
+		Node:               state.Node{Kind: state.SourceKindSubscription, Enabled: true},
+		URL:                "https://example.invalid/s",
+		Name:               "Liberty",
+		UserAgent:          "Happ/1.0",
+		SendHWID:           &send,
+		RelaysInDirections: true,
+	}}}
+	_, warns, err := Export(s, ExportOptions{AppVersion: "test"})
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	var detail string
+	for _, w := range warns {
+		if w.Code == WarnBackupSourceIdentityDropped {
+			detail = w.Detail
+		}
+	}
+	if detail == "" {
+		t.Fatalf("настройки представления выпали молча: %v", warns)
+	}
+	// Перечисляются ровно ЗАДАННЫЕ поля: список «всего, что бывает» не
+	// помогает понять, что именно пропало у этой подписки.
+	for _, want := range []string{"Liberty", "user_agent", "send_hwid", "relays_in_directions"} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("предупреждение не называет %q: %q", want, detail)
+		}
+	}
+	if strings.Contains(detail, ": hwid,") {
+		t.Errorf("названо незаданное поле hwid: %q", detail)
+	}
+
+	// Подписка без этих настроек предупреждения не вызывает.
+	s.Sources[0] = state.Source{
+		ID:   "01SUB0000000000000000000",
+		Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true},
+		URL:  "https://example.invalid/s",
+	}
+	if _, warns, err = Export(s, ExportOptions{AppVersion: "test"}); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	if hasWarn(warns, WarnBackupSourceIdentityDropped) {
+		t.Errorf("незаданные настройки объявлены потерей: %v", warns)
 	}
 }

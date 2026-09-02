@@ -19,12 +19,16 @@
 // оставляет — переписывать нечего, старые ссылки продолжают вести к
 // оригиналу; список переписи у copy пуст по построению, а не «забыт».
 //
-// Побочки (BumpRevision / InvalidateNodePool / MarkAsChanged / диалоги)
-// делает ВЫЗЫВАЮЩИЙ UI — здесь чистые операции над моделью, как у
-// ResetDetourNodeRefs (detour_refs.go). Это не стиль ради стиля: одна
-// пользовательская операция может звать несколько функций отсюда (удаление
-// папки = вынос узлов + удаление источника), и ревизия обязана дёрнуться
-// один раз в конце, а не по разу на каждый шаг.
+// Побочки, ВИДИМЫЕ пользователю (BumpRevision / MarkAsChanged / диалоги),
+// делает ВЫЗЫВАЮЩИЙ UI: одна пользовательская операция может звать несколько
+// функций отсюда (удаление папки = вынос узлов + удаление источника), и
+// ревизия обязана дёрнуться один раз в конце, а не по разу на каждый шаг.
+//
+// А вот инвалидация кэшей (пул узлов и выведенные из него счётчики строк) —
+// ЗДЕСЬ, у самой мутации: кэш переживший смену состава показывает числа и
+// теги от прошлого состояния, и «забытый сброс = вечный 0 nodes» уже стоил
+// нам бага (ловушка cache-invalidation-pairs). InvalidateNodePool
+// идемпотентен, поэтому повторный вызов из UI ничего не ломает.
 package business
 
 import (
@@ -72,6 +76,7 @@ func CopyNodeToFolder(m *wizardmodels.WizardModel, srcIndex int, rawTag, dstFold
 	if _, err := placeNodeIntoFolder(m, dstIndex, cloneCanonicalNodeForMove(*node)); err != nil {
 		return nil, err
 	}
+	InvalidateNodePool(m)
 	return nil, nil
 }
 
@@ -126,7 +131,9 @@ func MoveNodeToFolder(m *wizardmodels.WizardModel, srcIndex int, rawTag, dstFold
 	}
 
 	to := nodeContainerRef{folderID: strings.TrimSpace(dstFolderID), tag: newTag}
-	return append(repointNodeLinks(m, from, to), orphans...), nil
+	affected := append(repointNodeLinks(m, from, to), orphans...)
+	InvalidateNodePool(m)
+	return affected, nil
 }
 
 // rootOnlyRefsToTag — ссылки КОРНЕВОГО пространства на тег уезжающего узла,
@@ -273,6 +280,7 @@ func ExtractFolderNodesToRoot(m *wizardmodels.WizardModel, folderIndex int) []st
 			}
 		}
 	}
+	InvalidateNodePool(m)
 	return affected
 }
 
@@ -310,9 +318,13 @@ func DereferenceNodeOrigin(node *corestate.Node) bool {
 //
 // Возвращает имена задетых источников (для предупреждения пользователю).
 func RepointContainerNodeLinks(m *wizardmodels.WizardModel, folderID, oldTag, newTag string) []string {
-	return repointNodeLinks(m,
+	affected := repointNodeLinks(m,
 		nodeContainerRef{folderID: strings.TrimSpace(folderID), tag: oldTag},
 		nodeContainerRef{folderID: strings.TrimSpace(folderID), tag: newTag})
+	// Переименование = смена идентичности узла (SPEC 112), а значит и его
+	// финального тега в пуле: кэш обязан пересобраться.
+	InvalidateNodePool(m)
+	return affected
 }
 
 // ClearContainerNodeLinks гасит ссылки на узел контейнера, которого БОЛЬШЕ НЕТ
@@ -399,6 +411,7 @@ func ClearContainerNodeLinks(m *wizardmodels.WizardModel, folderID, tag string) 
 			}
 		}
 	}
+	InvalidateNodePool(m)
 	return affected
 }
 
@@ -600,26 +613,23 @@ func containerRefOf(s *corestate.Source, node *corestate.Node) nodeContainerRef 
 	}
 }
 
-// rootTagSet — занятые имена корневого пространства: теги верхних узлов и
-// теги Направлений (последние живут в том же пространстве финальных тегов).
+// rootTagSet — занятые имена корневого пространства.
+//
+// Реестр здесь ОДИН — ModelTagOwners (tag_guard_model.go): теги верхних узлов,
+// Направления и их `-auto`-твины, replace-теги свёрнутых папок с их
+// двойниками, системные теги шаблона и пресетов. Свой сокращённый список
+// (только узлы и включённые Направления) стоил уникальности: узел, вынесенный
+// из папки под именем свёрнутой соседки, вставал в корень её тегом — и в
+// сборке две сущности спорили за одно имя.
+//
+// Выключенные Направления добавляются сверху тем же списком, что у
+// KnownRuleTargetTags: тег временно снятого Направления занят — включат
+// обратно, и столкновение всплывёт уже задним числом.
 func rootTagSet(m *wizardmodels.WizardModel) map[string]bool {
-	taken := make(map[string]bool, len(m.Sources))
-	for i := range m.Sources {
-		switch m.Sources[i].Kind {
-		case corestate.SourceKindFolder, corestate.SourceKindSubscription:
-			continue
-		default:
-			if tag := m.Sources[i].NodeTagOrLabel(); tag != "" {
-				taken[tag] = true
-			}
-		}
+	if m == nil {
+		return map[string]bool{}
 	}
-	for _, d := range m.GlobalOutbounds {
-		if d.Tag != "" {
-			taken[d.Tag] = true
-		}
-	}
-	return taken
+	return KnownRuleTargetTags(m)
 }
 
 // uniqueTagIn подбирает свободное имя вида `X`, `X-2`, `X-3` — та же форма

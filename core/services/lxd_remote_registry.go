@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -724,11 +725,29 @@ type RemoteHealth struct {
 // Блокирующий вызов по сети — вызывающий обязан звать из горутины, иначе
 // недоступный роутер подвесит UI на таймаут REST-клиента.
 func (r *RemoteRegistry) Health(id string) RemoteHealth {
+	return r.healthCtx(context.Background(), id)
+}
+
+// HealthWithin — тот же опрос, но целиком укладывается в отведённый срок.
+//
+// Отдельный вход по образцу HostInterfacesWithin: у Health два потребителя с
+// противоположной ценой ожидания. Ручной Reload/Connect готов ждать столько,
+// сколько нужно, а фоновый heartbeat — нет: Status() и Info() идут ПОДРЯД,
+// каждый на общем restTimeout (30 с), и на зависшей машине один тик жил до
+// минуты, переживая свой же период опроса. Срок здесь общий на оба вызова,
+// поэтому паспорт не может продлить ожидание сверх заявленного.
+func (r *RemoteRegistry) HealthWithin(id string, timeout time.Duration) RemoteHealth {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return r.healthCtx(ctx, id)
+}
+
+func (r *RemoteRegistry) healthCtx(ctx context.Context, id string) RemoteHealth {
 	client, err := r.adminClient(id)
 	if err != nil {
 		return RemoteHealth{Err: err.Error()}
 	}
-	status, err := client.Status()
+	status, err := client.StatusCtx(ctx)
 	if err != nil {
 		return RemoteHealth{Err: err.Error()}
 	}
@@ -742,7 +761,7 @@ func (r *RemoteRegistry) Health(id string) RemoteHealth {
 	}
 	// Паспорт — best-effort: машина уже отвечает, и отсутствие /admin/info
 	// (старый демон) не повод считать её недоступной.
-	if info, infoErr := client.Info(); infoErr == nil {
+	if info, infoErr := client.InfoCtx(ctx); infoErr == nil {
 		out.Version = info.Version
 		out.StateDir = info.StateDir
 		// Кешируем в реестр: генерация конфига берёт отсюда путь ресурс-стора

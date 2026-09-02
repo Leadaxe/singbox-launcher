@@ -614,7 +614,17 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 							if ac.APIService != nil {
 								ac.APIService.SetLastPingError(proxyName, "")
 							}
-							button.SetText(locale.Tf("%d ms", delay))
+							// Через SetDelay, а не SetText: цвет замера обязан
+							// считаться по ЧИСЛУ. Подпись локализована
+							// («123 мс»), и получатель, разбирающий её обратно,
+							// в русском интерфейсе принимал здоровый узел за
+							// ошибку. SetText остаётся для тех приёмников,
+							// которым цвет не нужен вовсе.
+							if ds, ok := button.(interface{ SetDelay(int64) }); ok {
+								ds.SetDelay(delay)
+							} else {
+								button.SetText(locale.Tf("%d ms", delay))
+							}
 							if tb, ok := button.(interface{ SetToolTip(string) }); ok {
 								tb.SetToolTip("")
 							}

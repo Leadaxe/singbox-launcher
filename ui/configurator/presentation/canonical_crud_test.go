@@ -86,7 +86,6 @@ func TestDirectionsCRUD_CanonicalThroughSaveLoad(t *testing.T) {
 		t.Fatalf("reorder не отразился: %v", got)
 	}
 
-
 	// --- toggle: выключить vpn-1.
 	for i := range m.GlobalOutbounds {
 		if m.GlobalOutbounds[i].Tag == "vpn-1" {

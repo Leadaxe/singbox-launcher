@@ -76,17 +76,3 @@ func TestSanitizeDNSDetours_MalformedSectionUntouched(t *testing.T) {
 		t.Errorf("нечитаемая секция переписана: %s", got)
 	}
 }
-
-// Реестр известных целей обязан ВИДЕТЬ ссылку dns.detour: без этого
-// переименование Направления оставило бы у DNS-сервера ссылку в никуда.
-func TestDNSDetourTags_CollectsReferences(t *testing.T) {
-	raw := dnsSectionWithDetours("proxy-out", "", "proxy-out", "vpn-out")
-	got := DNSDetourTags(raw)
-	if len(got) != 2 {
-		t.Fatalf("DNSDetourTags = %v, want 2 уникальных", got)
-	}
-	seen := map[string]bool{got[0]: true, got[1]: true}
-	if !seen["proxy-out"] || !seen["vpn-out"] {
-		t.Errorf("DNSDetourTags = %v, want [proxy-out vpn-out]", got)
-	}
-}

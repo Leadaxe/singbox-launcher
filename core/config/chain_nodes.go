@@ -53,6 +53,42 @@ func canonicalChainTag(src ProxySource) string {
 	return ""
 }
 
+// chainHopUnresolvedMark — префикс позиции цепочки, ссылка которой НЕ
+// резолвнулась на проходе 2 (ResolveCanonicalChainHops).
+//
+// Зачем маркер, а не сырой тег. Проход 2 знает точно, что позиция не
+// разрешилась: цель выключена, папки нет, узла в ней нет. Но раньше он
+// оставлял в hops сырой тег «в расчёте на то, что ResolveChainSources
+// уронит цепочку», а тот проверяет позиции по `known` — пространству
+// ФИНАЛЬНЫХ тегов КОРНЯ. Совпадение имён там не редкость: хоп
+// {FolderID:"F1", Tag:"US-1"} при выключенной папке F1 и корневом узле с
+// финальным тегом `US-1` проходил проверку, и цепочка молча собиралась
+// через ЧУЖОЙ сервер — то есть настройка анонимности подменялась другим
+// маршрутом без предупреждения.
+//
+// Символы взяты заведомо непечатные: тег узла приходит из подписки и из
+// формы, и оба пути прогоняют его через нормализацию имени — совпасть с
+// маркером он не может, поэтому `known[маркированный]` ложен ВСЕГДА, а
+// деградация fail-closed наступает независимо от имён в корне.
+const chainHopUnresolvedMark = "\x00unresolved\x00"
+
+// markChainHopUnresolved помечает позицию нерезолвимой, сохраняя внутри
+// исходный тег: он нужен текстам причин.
+func markChainHopUnresolved(tag string) string {
+	return chainHopUnresolvedMark + tag
+}
+
+// chainHopDisplayTag снимает маркер: человеку в причине показывают тег
+// позиции, каким он стоит в цепочке, а не наш служебный префикс.
+func chainHopDisplayTag(hop string) string {
+	return strings.TrimPrefix(hop, chainHopUnresolvedMark)
+}
+
+// chainHopIsUnresolved — позиция помечена нерезолвимой проходом 2.
+func chainHopIsUnresolved(hop string) bool {
+	return strings.HasPrefix(hop, chainHopUnresolvedMark)
+}
+
 // ResolveChainSources строит узлы для источников-цепочек и дописывает их к
 // пулу.
 //
@@ -180,8 +216,11 @@ func ResolveChainSources(
 		// молча нельзя.
 		missing := ""
 		for _, hop := range src.Chain.Hops {
-			if !known[hop] {
-				missing = hop
+			// Маркер проверяется ПЕРВЫМ: позиция, про которую проход 2 уже
+			// знает, что её цель не нашлась, роняет цепочку независимо от
+			// того, носит ли кто-то в корне такое же имя.
+			if chainHopIsUnresolved(hop) || !known[hop] {
+				missing = chainHopDisplayTag(hop)
 				break
 			}
 		}

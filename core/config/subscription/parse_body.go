@@ -198,6 +198,18 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 			if st.capReached() {
 				continue
 			}
+			// Блок, не ставший даже ссылкой (у [Peer] нет Endpoint), —
+			// такая же запись состава, как битая строка URI-списка: узлом
+			// kind=unsupported на СВОЕЙ позиции, с исходным текстом блока и
+			// причиной (SPEC 116 W11). Раньше он лишь увеличивал счётчик
+			// skippedBlocks и исчезал: в составе на одну запись меньше, в
+			// origin.raw ничего, и починить провайдерский конфиг было не по
+			// чему.
+			if block.Err != nil {
+				st.warn(fmt.Sprintf("record rejected: %v", block.Err))
+				st.reject(block.Err.Error(), OriginKindWGIni, block.Raw)
+				continue
+			}
 			node, err := ParseNode(block.URI, skip)
 			if err != nil {
 				// Блок разобрался в URI, но узлом не стал: запись остаётся в
@@ -283,9 +295,6 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 			if line == "" {
 				continue
 			}
-			if st.capReached() {
-				continue
-			}
 			// `#`-строка — КОММЕНТАРИЙ тела, а не запись состава: заголовки
 			// подписки (`# profile-title:`, `# profile-update-interval:`) уже
 			// вычитаны в SubMeta (ParseInlineComments), прочие — просто текст
@@ -304,6 +313,15 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 			if isProviderBannerLine(line) {
 				st.warn(fmt.Sprintf("record rejected: %s", RejectReasonProviderBanner))
 				st.reject(RejectReasonProviderBanner, OriginKindURI, line)
+				continue
+			}
+			// Кап проверяется ПОСЛЕ отсечек комментария и баннера: он
+			// считает ЗАПИСИ состава, а ни `#`-строка, ни анонс провайдера
+			// записью не являются. Стоя выше, он засчитывал каждый заголовок
+			// и каждый баннер после капа в «beyond the cap», и пользователь
+			// читал, что подписка обрезала на десятки узлов больше, чем
+			// узлов в теле вообще есть.
+			if st.capReached() {
 				continue
 			}
 			node, err := ParseNode(line, skip)

@@ -383,3 +383,138 @@ func TestDereferenceNodeOrigin(t *testing.T) {
 		t.Fatalf("nil-узел — no-op")
 	}
 }
+
+// Единый реестр корневого пространства (п.2 ревью diff v1.5.3..HEAD).
+//
+// Свой сокращённый rootTagSet не знал replace-тегов свёрнутых папок, и узел,
+// вынесенный из соседней папки под тем же именем, вставал в корень тегом
+// свёртки — две сущности спорили за одно имя уже на сборке.
+func TestExtractFolderNodesToRoot_UniqueAgainstFolderReplaceTag(t *testing.T) {
+	f2 := moveTestFolder("01F2", "Collapsed")
+	f2.Nodes = []corestate.Node{moveTestNode("DE-1", true, "")}
+	f2.Replace = &corestate.FolderReplace{Tag: "NL", Mode: corestate.FolderReplaceManual}
+
+	m := &wizardmodels.WizardModel{Sources: []corestate.Source{
+		moveTestFolder("01F1", "Manual", moveTestNode("NL", true, "")),
+		f2,
+	}}
+
+	ExtractFolderNodesToRoot(m, 0)
+
+	var promoted *corestate.Source
+	for i := range m.Sources {
+		if m.Sources[i].Kind == corestate.SourceKindServer {
+			promoted = &m.Sources[i]
+			break
+		}
+	}
+	if promoted == nil {
+		t.Fatalf("узел не вынесен в корень: %+v", m.Sources)
+	}
+	if promoted.Tag != "NL-2" {
+		t.Fatalf("тег вынесенного узла = %q, ожидался NL-2 (NL занят заменой свёрнутой папки)", promoted.Tag)
+	}
+}
+
+// Тот же реестр — у `-auto`-двойника режима both и у твина Направления.
+func TestExtractFolderNodesToRoot_UniqueAgainstAutoTwins(t *testing.T) {
+	f2 := moveTestFolder("01F2", "Collapsed")
+	f2.Nodes = []corestate.Node{moveTestNode("DE-1", true, "")}
+	f2.Replace = &corestate.FolderReplace{Tag: "NL", Mode: corestate.FolderReplaceBoth}
+
+	m := &wizardmodels.WizardModel{Sources: []corestate.Source{
+		moveTestFolder("01F1", "Manual", moveTestNode("NL-auto", true, "")),
+		f2,
+	}}
+
+	ExtractFolderNodesToRoot(m, 0)
+
+	var promoted *corestate.Source
+	for i := range m.Sources {
+		if m.Sources[i].Kind == corestate.SourceKindServer {
+			promoted = &m.Sources[i]
+			break
+		}
+	}
+	if promoted == nil {
+		t.Fatalf("узел не вынесен в корень: %+v", m.Sources)
+	}
+	if promoted.Tag != "NL-auto-2" {
+		t.Fatalf("тег вынесенного узла = %q, ожидался NL-auto-2 (NL-auto занят двойником свёртки)", promoted.Tag)
+	}
+}
+
+// Корневой Add уникализирует тег добавляемого узла (п.1 ревью).
+//
+// Дедуп по URL/URI мимо: «Copy JSON» → Add кладёт другое тело под тем же
+// именем, и в пикере detour две строки становятся неразличимы.
+func TestAppendURLsToSources_UniquifiesRootNodeTag(t *testing.T) {
+	m := &wizardmodels.WizardModel{Sources: []corestate.Source{
+		{Node: moveTestNode("US-1", true, ""), ID: "01EXISTING"},
+	}}
+	ctx := stubStaleUIUpdater{model: m}
+
+	input := `{"type":"vless","tag":"US-1","server":"5.6.7.8","server_port":443,"uuid":"a"}`
+	res, err := AppendURLsToSources(ctx, input)
+	if err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	if res.Nodes != 1 {
+		t.Fatalf("узлов добавлено %d, ожидался 1 (res=%+v)", res.Nodes, res)
+	}
+	if len(m.Sources) != 2 {
+		t.Fatalf("источников %d, ожидалось 2", len(m.Sources))
+	}
+	if got := m.Sources[1].Tag; got != "US-1-2" {
+		t.Fatalf("тег добавленного узла = %q, ожидался US-1-2", got)
+	}
+}
+
+// Два одинаковых имени В ОДНОМ входе тоже расходятся: реестр учитывает теги,
+// выданные этим же вызовом.
+func TestAppendURLsToSources_UniquifiesWithinOneCall(t *testing.T) {
+	m := &wizardmodels.WizardModel{}
+	ctx := stubStaleUIUpdater{model: m}
+
+	input := `[{"type":"vless","tag":"X","server":"1.1.1.1","server_port":443,"uuid":"a"},` +
+		`{"type":"vless","tag":"X","server":"2.2.2.2","server_port":443,"uuid":"b"}]`
+	if _, err := AppendURLsToSources(ctx, input); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	if len(m.Sources) != 2 {
+		t.Fatalf("источников %d, ожидалось 2: %+v", len(m.Sources), m.Sources)
+	}
+	if m.Sources[0].Tag != "X" || m.Sources[1].Tag != "X-2" {
+		t.Fatalf("теги = %q,%q; ожидались X,X-2", m.Sources[0].Tag, m.Sources[1].Tag)
+	}
+}
+
+// Переименование узла ПАПКИ переписывает detour корневого источника,
+// ссылавшегося на пару {FolderID, oldTag} (п.5 ревью: окно узла брало kind и
+// ULID у контейнера, поэтому перепись не запускалась вовсе).
+func TestRepointContainerNodeLinks_RenameFolderNodeMovesRootDetour(t *testing.T) {
+	m := &wizardmodels.WizardModel{Sources: []corestate.Source{
+		moveTestFolder("01FOLDER", "Manual", moveTestNode("NL-1", true, "")),
+		{
+			Node: corestate.Node{
+				Kind:    corestate.SourceKindServer,
+				Tag:     "Entry",
+				Enabled: true,
+				Detour:  &corestate.NodeLink{FolderID: "01FOLDER", Tag: "NL-1"},
+			},
+			ID: "01ROOT",
+		},
+	}}
+
+	affected := RepointContainerNodeLinks(m, "01FOLDER", "NL-1", "NL-9")
+	if len(affected) != 1 {
+		t.Fatalf("задетых источников %d, ожидался 1: %v", len(affected), affected)
+	}
+	d := m.Sources[1].Detour
+	if d == nil || d.FolderID != "01FOLDER" || d.Tag != "NL-9" {
+		t.Fatalf("detour корневого узла = %+v, ожидался {01FOLDER, NL-9}", d)
+	}
+	if m.SourceNodeCounts != nil || m.NodePool != nil {
+		t.Fatalf("перепись обязана снять кэши состава: counts=%v pool=%v", m.SourceNodeCounts, m.NodePool)
+	}
+}

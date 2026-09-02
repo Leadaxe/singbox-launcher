@@ -192,7 +192,16 @@ func decodeError(resp *http.Response) string {
 
 // Status возвращает состояние демона.
 func (c *Client) Status() (StatusInfo, error) {
-	resp, err := c.do(http.MethodGet, "/admin/status", nil, "")
+	return c.StatusCtx(context.Background())
+}
+
+// StatusCtx — тот же запрос со своим сроком вместо общего restTimeout.
+//
+// Нужен фоновому опросу: тик heartbeat идёт раз в 5 секунд, и вызов, который
+// на зависшей машине живёт полминуты, переживает собственный тик — маркер
+// тогда реагирует на отказ минутами вместо задуманных секунд.
+func (c *Client) StatusCtx(ctx context.Context) (StatusInfo, error) {
+	resp, err := c.doCtx(ctx, http.MethodGet, "/admin/status", nil, "")
 	if err != nil {
 		return StatusInfo{}, err
 	}
@@ -540,7 +549,12 @@ type InfoData struct {
 
 // Info возвращает паспорт демона.
 func (c *Client) Info() (InfoData, error) {
-	resp, err := c.do(http.MethodGet, "/admin/info", nil, "")
+	return c.InfoCtx(context.Background())
+}
+
+// InfoCtx — то же со своим сроком (см. StatusCtx).
+func (c *Client) InfoCtx(ctx context.Context) (InfoData, error) {
+	resp, err := c.doCtx(ctx, http.MethodGet, "/admin/info", nil, "")
 	if err != nil {
 		return InfoData{}, err
 	}

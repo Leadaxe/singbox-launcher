@@ -5,7 +5,9 @@
       "enabled": true
     }
   ],
-  "warnings": [],
+  "warnings": [
+    "backup_label_dropped"
+  ],
   "directions": [
     {
       "tag": "vpn-de",
@@ -19,7 +21,6 @@
   "chains": [
     {
       "tag": "relay",
-      "label": "Мой маршрут",
       "chain": {
         "hops": [
           "vpn-de",

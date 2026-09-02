@@ -132,7 +132,7 @@ type legacySubMeta struct {
 
 	NodesCountFetched int      `json:"nodes_count_fetched,omitempty"`
 	Truncated         bool     `json:"truncated,omitempty"`
-	NodePool      []string `json:"preview_nodes,omitempty"`
+	NodePool          []string `json:"preview_nodes,omitempty"`
 
 	ProviderAnnounce *ProviderAnnounce `json:"provider_announce,omitempty"`
 

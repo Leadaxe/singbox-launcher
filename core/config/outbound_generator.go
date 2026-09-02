@@ -40,6 +40,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/subscription"
@@ -320,7 +321,7 @@ func GenerateNodeJSONBare(node *ParsedNode) (string, error) {
 			parts = append(parts, fmt.Sprintf(`"password":%s`, string(passwordJSON)))
 		}
 		// server_ports (optional): sing-box expects each entry as low:high; normalize bare ports from sources.
-		if serverPorts, ok := node.Outbound["server_ports"].([]string); ok && len(serverPorts) > 0 {
+		if serverPorts := tolerantStringSlice(node.Outbound["server_ports"]); len(serverPorts) > 0 {
 			serverPorts = subscription.NormalizeHysteria2ServerPortsSlice(serverPorts)
 			serverPortsJSON, err := json.Marshal(serverPorts)
 			if err != nil {
@@ -329,11 +330,11 @@ func GenerateNodeJSONBare(node *ParsedNode) (string, error) {
 			parts = append(parts, fmt.Sprintf(`"server_ports":%s`, string(serverPortsJSON)))
 		}
 		// up_mbps (optional)
-		if upMbps, ok := node.Outbound["up_mbps"].(int); ok && upMbps > 0 {
+		if upMbps := tolerantInt(node.Outbound["up_mbps"]); upMbps > 0 {
 			parts = append(parts, fmt.Sprintf(`"up_mbps":%d`, upMbps))
 		}
 		// down_mbps (optional)
-		if downMbps, ok := node.Outbound["down_mbps"].(int); ok && downMbps > 0 {
+		if downMbps := tolerantInt(node.Outbound["down_mbps"]); downMbps > 0 {
 			parts = append(parts, fmt.Sprintf(`"down_mbps":%d`, downMbps))
 		}
 		// obfs (optional)
@@ -373,7 +374,7 @@ func GenerateNodeJSONBare(node *ParsedNode) (string, error) {
 			}
 			parts = append(parts, fmt.Sprintf(`"auth_str":%s`, string(authJSON)))
 		}
-		if serverPorts, ok := node.Outbound["server_ports"].([]string); ok && len(serverPorts) > 0 {
+		if serverPorts := tolerantStringSlice(node.Outbound["server_ports"]); len(serverPorts) > 0 {
 			serverPorts = subscription.NormalizeHysteria2ServerPortsSlice(serverPorts)
 			serverPortsJSON, err := json.Marshal(serverPorts)
 			if err != nil {
@@ -381,10 +382,14 @@ func GenerateNodeJSONBare(node *ParsedNode) (string, error) {
 			}
 			parts = append(parts, fmt.Sprintf(`"server_ports":%s`, string(serverPortsJSON)))
 		}
-		if upMbps, ok := node.Outbound["up_mbps"].(int); ok && upMbps > 0 {
+		// Полоса у v1 ОБЯЗАТЕЛЬНА: ядро отвергает outbound без неё («missing
+		// upload speed») и роняет весь config.json. Импорт JSON-тела ставит
+		// дефолт (sanitizeSingboxHysteria), но читает его float64 — эмиттер
+		// обязан читать так же, иначе дефолт есть в Outbound и нет в конфиге.
+		if upMbps := tolerantInt(node.Outbound["up_mbps"]); upMbps > 0 {
 			parts = append(parts, fmt.Sprintf(`"up_mbps":%d`, upMbps))
 		}
-		if downMbps, ok := node.Outbound["down_mbps"].(int); ok && downMbps > 0 {
+		if downMbps := tolerantInt(node.Outbound["down_mbps"]); downMbps > 0 {
 			parts = append(parts, fmt.Sprintf(`"down_mbps":%d`, downMbps))
 		}
 		if obfs, ok := node.Outbound["obfs"].(string); ok && obfs != "" {
@@ -1669,7 +1674,6 @@ func normalizeChainHop(hop, owner *ParsedNode) *ParsedNode {
 	return out
 }
 
-
 // sanitizeNodeDetours выбрасывает узлы, чей detour сломал бы sing-box
 // (SPEC 077 → SPEC 113-B). Fail-closed: выбрасывается УЗЕЛ-носитель, а не поле
 // detour. Снятие поля — тихий переход на прямой дозвон, запрещённый на всех
@@ -1832,11 +1836,62 @@ func pruneNodesBySource(nodesBySource map[int][]*ParsedNode, allNodes []*ParsedN
 // obfsIntField reads an integer obfs field regardless of whether it arrived as
 // an int (URI parser) or a float64 (JSON import). Returns 0 when absent.
 func obfsIntField(v interface{}) int {
+	return tolerantInt(v)
+}
+
+// tolerantInt — целое поле outbound'а, каким бы числовым типом оно ни
+// приехало.
+//
+// Один и тот же ключ попадает в Outbound из ДВУХ разных источников: URI-парсер
+// кладёт `int`, а разбор JSON-тела (sing-box/Xray) — `float64` либо
+// `json.Number`. Жёсткий `.(int)` в эмиттере молча роняет поле у половины
+// источников — так у hysteria/hysteria2 терялась полоса, а без неё ядро
+// отвергает весь config.json («missing upload speed»).
+func tolerantInt(v interface{}) int {
 	switch t := v.(type) {
 	case int:
 		return t
+	case int64:
+		return int(t)
 	case float64:
 		return int(t)
+	case json.Number:
+		n, err := t.Int64()
+		if err != nil {
+			return 0
+		}
+		return int(n)
 	}
 	return 0
+}
+
+// tolerantStringSlice — список строк outbound'а из любой формы, в которой он
+// приехал: `[]string` от URI-парсера или `[]interface{}` от разбора JSON.
+//
+// Элемент-число принимается тоже: `server_ports` в чужом JSON пишут и как
+// ["1000:2000"], и как [8443] — второе после разбора становится float64, и
+// отбрасывать его значило бы потерять порт, который провайдер задал.
+func tolerantStringSlice(v interface{}) []string {
+	switch t := v.(type) {
+	case []string:
+		return t
+	case []interface{}:
+		out := make([]string, 0, len(t))
+		for _, item := range t {
+			switch s := item.(type) {
+			case string:
+				if s != "" {
+					out = append(out, s)
+				}
+			case float64:
+				out = append(out, strconv.Itoa(int(s)))
+			case int:
+				out = append(out, strconv.Itoa(s))
+			case json.Number:
+				out = append(out, s.String())
+			}
+		}
+		return out
+	}
+	return nil
 }

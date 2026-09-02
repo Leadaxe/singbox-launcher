@@ -27,7 +27,7 @@ func TestStateJSONRoundTrip(t *testing.T) {
 					Type:    SourceKindSubscription,
 					Enabled: true,
 					URL:     "https://example.com/sub",
-					Tag: &legacyTagSpec{Prefix: "T:"},
+					Tag:     &legacyTagSpec{Prefix: "T:"},
 					Meta: &legacySubMeta{
 						ProfileTitle: "Test",
 						UserInfo: &UserInfo{

@@ -214,10 +214,25 @@ func AddBuildReportEntries(gen BuildGeneration, list []BuildReportEntry) {
 }
 
 // buildReportHasLocked — есть ли уже такая запись. Вызывать под замком.
+//
+// Reason входит в равенство у ВСЕХ видов, кроме nodes_dropped. Причина в
+// форме субъекта: у `emit_degraded` Subject — это ИМЯ ИСТОЧНИКА, одно на все
+// его деградации, и без сравнения причин у источника с тремя выпавшими
+// узлами в отчёте оставалась только первая. Человек чинил её, пересобирал и
+// получал следующую — по одной за прогон.
+//
+// nodes_dropped исключён намеренно: он не перечисляет деградации, а
+// АГРЕГИРУЕТ их одной строкой с числом узлов (см. его описание выше). У
+// подписки на 500 узлов один сломанный переход снимает их все, и сравнение
+// причин развернуло бы этот вид обратно в 500 строк шума — ровно то, ради
+// чего он и группируется по источнику.
 func buildReportHasLocked(e BuildReportEntry) bool {
 	for _, have := range buildReport {
-		if have.Kind == e.Kind && have.SourceID == e.SourceID &&
-			have.SourceLabel == e.SourceLabel && have.Subject == e.Subject {
+		if have.Kind != e.Kind || have.SourceID != e.SourceID ||
+			have.SourceLabel != e.SourceLabel || have.Subject != e.Subject {
+			continue
+		}
+		if e.Kind == BuildReportNodesDropped || have.Reason == e.Reason {
 			return true
 		}
 	}

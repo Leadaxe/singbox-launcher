@@ -19,13 +19,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/textnorm"
 )
-
 
 // LoadContext — контекст загрузки состояния: пути, которых нет у голых
 // байтов. Load выводит их из пути state-файла (deriveLoadContext); Parse
@@ -296,12 +297,12 @@ func (m *migrationV7) materializeSubscription(src *Source, leg *legacySourceV6) 
 
 	if m.lc.SubsDir == "" {
 		m.rep.add("subscription %q: raw cache unavailable (load without a path) — nodes will appear after the first update", subName)
-		m.reportUnappliedMarks(leg, subName)
+		m.reportUnappliedMarks(src, leg, subName)
 		return
 	}
 	if migrationHooks.MaterializeSubscription == nil {
 		m.rep.add("subscription %q: materialization parser unavailable — nodes will appear after the first update", subName)
-		m.reportUnappliedMarks(leg, subName)
+		m.reportUnappliedMarks(src, leg, subName)
 		return
 	}
 
@@ -310,7 +311,7 @@ func (m *migrationV7) materializeSubscription(src *Source, leg *legacySourceV6) 
 		// Кэша нет → nodes[] пуст, подписка ждёт первого fetch (Т7 шаг 1);
 		// сопутствующие карты отбрасываются с предупреждением (снос — шаг 8).
 		m.rep.add("subscription %q: no raw cache — nodes will appear after the first update", subName)
-		m.reportUnappliedMarks(leg, subName)
+		m.reportUnappliedMarks(src, leg, subName)
 		return
 	}
 
@@ -343,7 +344,7 @@ func (m *migrationV7) materializeSubscription(src *Source, leg *legacySourceV6) 
 	})
 	if err != nil {
 		m.rep.add("subscription %q: raw cache could not be parsed (%v) — nodes will appear after the first update", subName, err)
-		m.reportUnappliedMarks(leg, subName)
+		m.reportUnappliedMarks(src, leg, subName)
 		return
 	}
 	for _, w := range res.Warnings {
@@ -413,12 +414,37 @@ func (m *migrationV7) materializeSubscription(src *Source, leg *legacySourceV6) 
 	}
 }
 
-// reportUnappliedMarks — предупреждение о картах, которые не к чему
-// применить (Т7 шаг 1: «карты отбрасываются с предупреждением»; физический
-// снос — шаг 8 под гейтом).
-func (m *migrationV7) reportUnappliedMarks(leg *legacySourceV6, subName string) {
-	if len(leg.DisabledNodes) > 0 {
-		m.rep.add("subscription %q: %d disable mark(s) not carried over — no materialized nodes", subName, len(leg.DisabledNodes))
+// reportUnappliedMarks — карты выключения подписки, у которой nodes[] так и
+// не появились (нет raw-кэша, парсер недоступен, разбор упал, Load без пути).
+//
+// Отбрасывать их нельзя: узлов ещё нет не потому, что пользователь их удалил,
+// а потому что материализовать было нечем — ровно тот случай, ради которого
+// заведён PendingDisabled (вердикт O2, закон чисток). Ключи ждут первого
+// ДОСТОВЕРНОГО fetch, как и у импорта бэкапа (importSubscription).
+//
+// Исключение — legacy-64hex: это упразднённый контент-хэш, а PendingDisabled
+// сматчивается по СЫРОМУ тегу узла. Положить туда хэш значило бы завести
+// вечно несматчиваемый ключ; такие отметки остаются только в отчёте числом.
+func (m *migrationV7) reportUnappliedMarks(src *Source, leg *legacySourceV6, subName string) {
+	if len(leg.DisabledNodes) == 0 {
+		return
+	}
+	var pending []string
+	hashes := 0
+	for key := range leg.DisabledNodes {
+		if isLegacyDisabledHash(key) {
+			hashes++
+			continue
+		}
+		pending = append(pending, key)
+	}
+	if len(pending) > 0 {
+		sort.Strings(pending) // порядок карты случаен, а состояние обязано быть детерминированным
+		src.PendingDisabled = appendUniqueStrings(src.PendingDisabled, pending)
+		m.rep.add("subscription %q: %d disable mark(s) kept aside — they will apply after the first update", subName, len(pending))
+	}
+	if hashes > 0 {
+		m.rep.add("subscription %q: %d disable mark(s) not carried over — they addressed nodes by a hash that no longer exists", subName, hashes)
 	}
 }
 
@@ -860,6 +886,17 @@ func purgeLegacyAfterMigration(s *State, lc LoadContext) {
 	for i := range s.Sources {
 		src := &s.Sources[i]
 		if src.Kind != SourceKindSubscription {
+			continue
+		}
+		// Кэш сносится ТОЛЬКО у подписки, чьё тело реально стало узлами.
+		// Пустой nodes[] означает, что материализация не состоялась (парсер
+		// не взял тело, разбор упал, кэша не было вовсе), а тело подписки
+		// больше взять неоткуда: URL мог умереть, и снос превратил бы
+		// «узлы появятся после обновления» в безвозвратную потерю. Файл
+		// остаётся лежать — читателей у него больше нет, места он занимает
+		// килобайты, а цена ошибки несопоставима (П6: нет молчаливых потерь).
+		if len(src.Nodes) == 0 {
+			debuglog.InfoLog("state: raw cache of subscription %s kept — materialization produced no nodes", src.ID)
 			continue
 		}
 		if p, err := legacyRawPath(lc.SubsDir, src.ID); err == nil {

@@ -1237,12 +1237,12 @@ func applySourceMutation(presenter *wizardpresentation.WizardPresenter, guiState
 	presenter.MarkAsChanged()
 	m.BumpRevision()
 	m.PreviewNeedsParse = true
+	// Счётчики узлов — производная того же состава, что и пул: кэш,
+	// построенный до мутации, иначе живёт вечно, и папка, наполненная после
+	// создания, навсегда показывала «0 nodes» (обкатка заход 3). Оба кэша
+	// снимает InvalidateNodePool — вызов ниже дублирует его намеренно
+	// избыточно только для читаемости цепочки, второго такого не нужно.
 	wizardbusiness.InvalidateNodePool(m)
-	wizardbusiness.InvalidateSourceNodeCounts(m)
-	// Счётчики узлов — тоже производная состава: без сброса кэш, построенный
-	// до мутации, живёт вечно, и папка, наполненная после создания, навсегда
-	// показывала «0 nodes» (обкатка заход 3). Инвалидация стоит РЯДОМ с
-	// пулом — оба кэша снимает одно и то же событие.
 	wizardbusiness.InvalidateSourceNodeCounts(m)
 	presenter.RefreshOutboundsConfiguratorList()
 	presenter.RefreshOutboundOptions()
@@ -1398,9 +1398,19 @@ func showFolderDeleteDialog(
 		// индексу и вставляет узлы сразу ЗА ней), потом удалить опустевшую —
 		// иначе вставлять было бы некуда и позиция узлов в списке уехала бы
 		// в конец, за все подписки.
-		wizardbusiness.ExtractFolderNodesToRoot(m, idx)
+		// Список задетых источников — не побочный продукт, а вторая половина
+		// критерия A3: ссылка, чья цель сменила финальный тег, либо
+		// переписана реестром, либо названа. Реестр её переписал — и
+		// пользователь обязан узнать, где именно, а не обнаружить чужую
+		// правку в чужом источнике при следующем открытии.
+		affected := wizardbusiness.ExtractFolderNodesToRoot(m, idx)
 		m.Sources = append(m.Sources[:idx], m.Sources[idx+1:]...)
 		applySourceMutation(presenter, guiState)
+		if len(affected) > 0 {
+			showNodeRefsRepointedDialog(guiState.Window, affected)
+		}
+		// Протухший выбор в ядре — только при тег-политике: без неё сырой тег
+		// узла и был его финальным именем, вынос в корень его не менял.
 		if hadTagPolicy {
 			showStaleSelectionDialog(guiState.Window, staleSelectionScope{NodesRenamed: true})
 		}

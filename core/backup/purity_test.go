@@ -64,7 +64,6 @@ func richState() *state.State {
 				Origin: &state.Origin{Kind: state.OriginKindURI, Raw: "vless://11111111-1111-1111-1111-111111111111@example-2.com:443?type=tcp#s"},
 				Detour: &state.NodeLink{Tag: "hop-1"},
 			},
-			Label: "WARP hop",
 		},
 		{
 			ID: "01CHN0000000000000000000",
@@ -78,7 +77,6 @@ func richState() *state.State {
 				}),
 				Hops: []state.NodeLink{{Tag: "vpn-de"}, {Tag: "🔥 WARP"}},
 			},
-			Label: "Мой маршрут",
 		},
 	}
 	// Номера — из своей же зоны оси (UserRuleNumStart и дальше): состояние,
@@ -191,8 +189,10 @@ func TestRoundTripAllEntitiesByteIdentical(t *testing.T) {
 	if chain.Tag != "relay" {
 		t.Errorf("тег цепочки после импорта %q, ожидался %q — ссылки правил и позиций разъедутся", chain.Tag, "relay")
 	}
-	if chain.Label != "Мой маршрут" {
-		t.Errorf("подпись цепочки после импорта %q", chain.Label)
+	// Source.Label — поле `json:"-"`: подпись, положенная импортом, умерла бы
+	// на первом Save. Имя цепочки в v7 одно — тег, и он проверен выше.
+	if chain.Label != "" {
+		t.Errorf("импорт заполнил Label (json:\"-\") — подпись умрёт на первом Save: %q", chain.Label)
 	}
 	if chain.ID != "01CHN0000000000000000000" {
 		t.Errorf("id цепочки потерян: %q", chain.ID)

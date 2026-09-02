@@ -92,34 +92,3 @@ func SanitizeDNSDetours(dnsRaw json.RawMessage, finalTags map[string]bool) json.
 	}
 	return out
 }
-
-// DNSDetourTags — теги, на которые ссылаются `detour` DNS-серверов секции.
-//
-// Нужен реестру известных целей: тег, на который смотрит DNS, — такая же
-// ссылка, как цель правила, и переименование обязано её переписывать
-// (features/directions.md §9).
-func DNSDetourTags(dnsRaw json.RawMessage) []string {
-	if len(dnsRaw) == 0 {
-		return nil
-	}
-	var dnsObj struct {
-		Servers []map[string]interface{} `json:"servers"`
-	}
-	if err := json.Unmarshal(dnsRaw, &dnsObj); err != nil {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(dnsObj.Servers))
-	var out []string
-	for _, srv := range dnsObj.Servers {
-		detour, ok := srv["detour"].(string)
-		if !ok || detour == "" {
-			continue
-		}
-		if _, dup := seen[detour]; dup {
-			continue
-		}
-		seen[detour] = struct{}{}
-		out = append(out, detour)
-	}
-	return out
-}

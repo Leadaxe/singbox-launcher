@@ -38,7 +38,7 @@ func TestWGIniSurvivesExportImport(t *testing.T) {
 		t.Fatalf("экспорт потерял блок INI: uri=%q config_json=%q", exported.URI, exported.ConfigJSON)
 	}
 
-	back := importServer(exported)
+	back, _ := importServer(exported)
 	if back.Origin == nil {
 		t.Fatal("импорт вернул узел без origin")
 	}

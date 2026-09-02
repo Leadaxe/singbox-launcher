@@ -111,7 +111,7 @@ func MaterializeSubscriptionBody(subID string, decodedBody []byte, skip []map[st
 		// блокировку. Владелец дозванивается через первый из них полем Detour.
 		// Видимость релея в выборе Направлений — отдельный вопрос, за него
 		// отвечает Source.RelaysInDirections на стороне UI.
-		if relays, detour := relayNodesFromEntry(subID, e, node.Tag); len(relays) > 0 {
+		if relays, detour := relayNodesFromEntry(subID, e, node.Tag, idCounts); len(relays) > 0 {
 			if detour != nil {
 				node.Detour = detour
 			}

@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
 )
 
 // fixedIDGen возвращает детерминированный счётчик "id-1", "id-2", …
