@@ -680,14 +680,35 @@ func (p *machineListPanel) loadNodes() {
 	// («Reading the machine's selector groups…») до случайного тика
 	// health-опроса. Заодно сетевой Groups() уходит с UI-потока.
 	go func() {
+		// ok — группы машины получены. Отдельный признак, потому что выход из
+		// цикла бывает двух видов: успех и исчерпание попыток, и вести себя
+		// они обязаны по-разному.
+		ok := false
 		for attempt := 0; attempt < 15; attempt++ {
 			groups, isRemote, err := RemoteDaemonGroups()
 			if !isRemote || (err == nil && len(groups) > 0) {
+				ok = true
 				break
 			}
 			time.Sleep(time.Second)
 		}
 		fyne.Do(func() {
+			// Машина не ответила за отведённое время — список ОСТАЁТСЯ ПУСТЫМ
+			// и говорит об этом.
+			//
+			// Раньше здесь безусловно шёл Refresh: он уходил в сеть с пустой
+			// группой, возвращался с ошибкой и молча оставлял на экране
+			// ПРЕДЫДУЩИЙ список — узлы локальной машины под шапкой удалённой.
+			// Человек видел рабочий на вид список, который на самом деле не
+			// про ту машину, к которой он подключён.
+			if !ok {
+				p.proxies.Clear()
+				if p.ac.UIService != nil && p.ac.UIService.ListStatusLabel != nil {
+					p.ac.UIService.ListStatusLabel.SetText(
+						locale.T("The machine did not return its groups — press ↻ to retry"))
+				}
+				return
+			}
 			p.proxies.ReloadGroups()
 			p.proxies.Refresh()
 		})

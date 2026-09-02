@@ -4162,5 +4162,8 @@
   },
   "%d node(s) dial through %d provider relay(s)": {
     "value": "%d узл(ов) ходят через %d релей(ев) провайдера"
+  },
+  "The machine did not return its groups — press ↻ to retry": {
+    "value": "Машина не вернула свои группы — нажмите ↻ для повтора"
   }
 }
