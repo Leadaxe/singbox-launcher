@@ -686,12 +686,15 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// половина выключена галками, выглядит в списке так же,
 				// как полная. Показываем «сколько пойдёт в конфиг», а при
 				// расхождении — и сколько всего.
-				// kind=server (в том числе WG/AWG INI: это тот же server с
-				// origin.kind=wg_ini) — всегда ровно один узел, и «1 nodes» /
-				// «0 of 1 nodes» в строке ничего не сообщают: сущность одна,
-				// а её включённость видна по галке и приглушённому тексту.
-				// У chain/auto/контейнеров число — это состав, оно нужно.
-				singleNode := src.Kind == corestate.SourceKindServer
+				// Счётчик — только у КОНТЕЙНЕРОВ (папка, подписка): там он
+				// говорит о составе. У узловых источников (server — включая
+				// WG/AWG INI, chain, auto) узел ровно один, и «1 nodes» /
+				// «0 of 1 nodes» не сообщают ничего: сущность одна, а её
+				// включённость видна по галке и приглушённому тексту.
+				// У цепочки состав её позиций показан отдельной меткой
+				// «[chain: N]» — счётчик рядом с ней был лишним блоком.
+				singleNode := src.Kind != corestate.SourceKindFolder &&
+					src.Kind != corestate.SourceKindSubscription
 				if c, ok := m.SourceNodeCounts[sourceIndex]; ok && c.Total > 0 && !singleNode {
 					if c.Enabled == c.Total {
 						label += "  " + locale.Tf("· %d nodes", c.Total)
