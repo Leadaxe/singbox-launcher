@@ -4189,5 +4189,8 @@
   },
   "%d item(s) skipped — already in the list.": {
     "value": "Пропущено (уже в списке): %d."
+  },
+  "Re-test now": {
+    "value": "Замерить сейчас"
   }
 }

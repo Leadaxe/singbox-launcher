@@ -806,7 +806,12 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			}
 
 			win := ac.UIService.MainWindow
-			menu := serversProxyContextMenu(ac, status, win, proxyInfo, scope)
+			// Ретест из меню идёт ТЕМ ЖЕ путём, что клик по числу задержки:
+			// одна точка замера, один способ показать «…», ошибку и итог.
+			retestSetter := &canvasTextSetter{text: delayText}
+			menu := serversProxyContextMenu(ac, status, win, proxyInfo, scope, func() {
+				pingProxy(proxyInfo.Name, retestSetter)
+			})
 			pop := widget.NewPopUpMenu(menu, win.Canvas())
 			pop.ShowAtPosition(pe.AbsolutePosition)
 		}
