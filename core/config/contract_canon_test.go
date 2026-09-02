@@ -34,8 +34,16 @@ type contractNode struct {
 	Warnings []string       `json:"warnings,omitempty"`
 }
 
+// contractDrop — запись отбраковки в конверте (D-088).
+//
+// Нормативны `ref` (что именно отвергнуто) и `code` (машинная причина из
+// registry/warnings.json). `reason` — человеческий текст СТОРОНЫ: у нас это
+// формат ошибки Go, у LxBox — свой; сравнением он не покрывается, иначе
+// вторая сторона была бы обязана копировать наши строки. `code` необязателен:
+// в старых URI-ожиданиях его нет, там нормативен только `ref`.
 type contractDrop struct {
 	Ref    string `json:"ref"`
+	Code   string `json:"code,omitempty"`
 	Reason string `json:"reason"`
 }
 

@@ -59,6 +59,10 @@ const (
 	// WarnWSEarlyDataEDConverted — Xray-хвост ?ed=N разложен в
 	// max_early_data + early_data_header_name.
 	WarnWSEarlyDataEDConverted = "ws_early_data_converted"
+	// WarnDialerProxyUnusable — цель streamSettings.sockopt.dialerProxy
+	// непригодна: узел-владелец отбраковывается ЦЕЛИКОМ. Кода на узле не
+	// бывает (узла не будет) — он едет в отбраковке, поэтому severity=error.
+	WarnDialerProxyUnusable = "dialer_proxy_unusable"
 )
 
 // realityShortIDWouldDegrade сообщает, что нормализация ПОТЕРЯЕТ данные

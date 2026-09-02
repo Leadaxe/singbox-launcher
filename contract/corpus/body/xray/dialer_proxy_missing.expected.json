@@ -1,6 +1,7 @@
 {
   "dropped": [
     {
+      "code": "dialer_proxy_unusable",
       "reason": "outbound rejected: dialerProxy \"ghost\" not found",
       "ref": "proxy"
     }

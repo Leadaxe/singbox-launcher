@@ -650,8 +650,10 @@ func parseXrayJSONArrayElementNodes(
 		if err := attachXrayDialerChain(node, ob, byTag, node.Tag, label); err != nil {
 			// Цепочка объявлена, но непригодна: узла не будет — значит,
 			// запись обязана остаться в составе неразобранной (W11).
+			// Код причины нормативен (D-088): текст ошибки у сторон свой,
+			// а сверять конверты корпуса нужно по коду.
 			reason := fmt.Sprintf("outbound rejected: %v", err)
-			records.add(len(out), reason, marshalRawJSONElement(ob))
+			records.addCoded(len(out), reason, WarnDialerProxyUnusable, marshalRawJSONElement(ob))
 			debuglog.WarnLog("Parser: Xray element %d: %v — skipping node %q", elemIndex, err, node.Tag)
 			continue
 		}

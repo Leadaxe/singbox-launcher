@@ -438,6 +438,16 @@
       "dart": "services/builder/chain_nodes.dart (T9) + screens/chain_edit/chain_form_validation.dart",
       "go": "core/config/chain_cycle.go:84"
     },
+    "dialer_proxy_unusable": {
+      "severity": "error",
+      "params": [
+        "target",
+        "cause"
+      ],
+      "desc": "Цель `streamSettings.sockopt.dialerProxy` непригодна: узел-владелец отбраковывается целиком (иначе он ушёл бы напрямую — тихая деанонимизация). cause \u2208 not_found | service_outbound | group | not_convertible | cycle | depth. Лаунчер сегодня даёт not_found (остальные причины режутся раньше другими путями), LxBox — все шесть.",
+      "dart": "DialerProxyUnusableWarning",
+      "go": "core/config/subscription/xray_json_array.go (attachXrayDialerChain)"
+    },
     "ws_early_data_converted": {
       "severity": "info",
       "params": [

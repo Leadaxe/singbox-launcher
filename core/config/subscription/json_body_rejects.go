@@ -40,6 +40,9 @@ type jsonRejectedRecord struct {
 	// Reason — почему запись не стала узлом (текст парсера, английский: он же
 	// едет в диагностику).
 	Reason string
+	// Code — машинный код причины из contract/registry/warnings.json (D-088);
+	// пустой у путей, которым код ещё не назначен.
+	Code string
 	// OriginRaw — исходник записи. У JSON-веток это канонический маршал самого
 	// элемента — единственная форма «как пришло», которая у них есть
 	// пофрагментно.
@@ -61,6 +64,12 @@ type jsonRejectSink struct {
 // `bodyParseState.reject`: «unsupported без origin» — форма, которую модель не
 // держит, и показать пользователю было бы нечего.
 func (s *jsonRejectSink) add(afterNodes int, reason, originRaw string) {
+	s.addCoded(afterNodes, reason, "", originRaw)
+}
+
+// addCoded — та же отбраковка с машинным кодом причины (D-088). Код везут
+// только те пути, которым он назначен; остальные зовут add.
+func (s *jsonRejectSink) addCoded(afterNodes int, reason, code, originRaw string) {
 	if s == nil {
 		return
 	}
@@ -70,6 +79,7 @@ func (s *jsonRejectSink) add(afterNodes int, reason, originRaw string) {
 	s.records = append(s.records, jsonRejectedRecord{
 		AfterNodes: afterNodes,
 		Reason:     reason,
+		Code:       code,
 		OriginRaw:  originRaw,
 	})
 }
@@ -121,7 +131,7 @@ func newJSONRejectFlusher(st *bodyParseState, records []jsonRejectedRecord) func
 			r := records[next]
 			next++
 			st.warn(fmt.Sprintf("record rejected: %s", r.Reason))
-			st.reject(r.Reason, OriginKindJSON, r.OriginRaw)
+			st.rejectCoded(r.Reason, r.Code, OriginKindJSON, r.OriginRaw)
 		}
 	}
 }

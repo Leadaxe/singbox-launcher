@@ -118,7 +118,11 @@ func corpusXrayDrops(body string) []contractDrop {
 	for _, rec := range pb.Rejected {
 		// Ref у JSON-ветки — тег отбракованного outbound'а: он же связывает
 		// отбраковку с записью тела, которую видно глазами.
-		out = append(out, contractDrop{Ref: corpusRejectRef(rec.OriginRaw), Reason: rec.Reason})
+		out = append(out, contractDrop{
+			Ref:    corpusRejectRef(rec.OriginRaw),
+			Code:   rec.Code,
+			Reason: rec.Reason,
+		})
 	}
 	return out
 }
@@ -242,7 +246,7 @@ func TestContractCorpusBody(t *testing.T) {
 			if err != nil {
 				t.Skipf("нет expected (%s) — сгенерируйте флагом -update", filepath.Base(expPath))
 			}
-			if !equalJSON(t, got, want) {
+			if !equalEnvelopeJSON(t, got, want) {
 				t.Errorf("расхождение с контрактом\n--- got ---\n%s\n--- want ---\n%s", got, want)
 			}
 		})

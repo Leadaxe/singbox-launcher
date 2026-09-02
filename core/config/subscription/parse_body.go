@@ -105,6 +105,14 @@ type RejectedBodyRecord struct {
 	After int
 	// Reason — почему не разобрали (текст парсера, он же едет в диагностику).
 	Reason string
+	// Code — машинный код причины из contract/registry/warnings.json (D-088).
+	//
+	// Необязателен: текст причины у каждой стороны свой (у нас это формат
+	// ошибки Go), сравнивать его между приложениями бессмысленно, а код —
+	// нормативен. Пути отбраковки, которым код ещё не назначен, оставляют
+	// поле пустым — старые потребители (UI, материализация) читают Reason и
+	// про Code не знают.
+	Code string
 	// OriginKind / OriginRaw — исходник записи байт в байт: «uri» — строка
 	// списка. Запись без пофрагментного исходника сюда не попадает вовсе —
 	// показывать было бы нечего.
@@ -365,12 +373,22 @@ func (st *bodyParseState) warn(msg string) {
 // просто исчезала. Запись без исходника не запоминается: показать было бы
 // нечего, а «unsupported без origin» — форма, которую модель не держит.
 func (st *bodyParseState) reject(reason, originKind, originRaw string) {
+	st.rejectCoded(reason, "", originKind, originRaw)
+}
+
+// rejectCoded — та же отбраковка с машинным кодом причины (D-088).
+//
+// Отдельный метод, а не пятый параметр у reject: код сегодня назначен ровно
+// одному пути (недостижимый dialerProxy), а reject зовут пять раз — добавлять
+// всем пустую строку значило бы шуметь в местах, которых правка не касается.
+func (st *bodyParseState) rejectCoded(reason, code, originKind, originRaw string) {
 	if strings.TrimSpace(originRaw) == "" {
 		return
 	}
 	st.res.Rejected = append(st.res.Rejected, RejectedBodyRecord{
 		After:      st.accepted,
 		Reason:     reason,
+		Code:       code,
 		OriginKind: originKind,
 		OriginRaw:  originRaw,
 	})
