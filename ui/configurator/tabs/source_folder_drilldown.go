@@ -60,14 +60,55 @@
 // подписки порядок задаёт тело провайдера, и захват там не показывается.
 // Выход возвращает корень ровно таким, каким он был: порядок `m.Sources` режим
 // не трогает вовсе.
+//
+// # Окно строк на больших контейнерах
+//
+// Подписка на CIDR-диапазон даёт 500+ узлов, и до этой волны каждая
+// перерисовка строила ВСЕ строки: снятая галка → applySourceMutation →
+// RefreshSourcesList → пятьсот HoverRow заново, плюс эмиссия всего состава.
+// Один клик замораживал окно.
+//
+// Лечится ОКНОМ строк: строятся только те, что видны, плюс запас сверху и
+// снизу (folderDrillWindowMargin), а место скрытых держат две прозрачные
+// распорки. Арифметика диапазона и высот — в source_folder_drill_window.go,
+// чистыми функциями с таблицей: распорки обязаны дать ровно ту же высоту
+// содержимого и те же позиции строк, что полная отрисовка, иначе смещение
+// прокрутки после перестройки указывает не туда.
+//
+// Порог — folderDrillWindowThreshold: до него состав рисуется целиком, как
+// раньше, до единой строки. Ниже порога поведение не меняется вовсе; окно —
+// только для тех контейнеров, где полная отрисовка уже не работает.
+//
+// ПОЧЕМУ НЕ widget.List. Он переиспользует объекты строк, и это ломает сразу
+// два инварианта режима: строки контейнера живут в ТОМ ЖЕ VBox, что строки
+// корня (второго списка не заводим — см. выше), а группа перетаскивания у них
+// общая, и переиспользуемая строка держала бы в ней сразу два индекса
+// (RegisterRecycled лечит это только внутри своего List). Окно оставляет
+// строки обычными: каждая построена под свой индекс и живёт до следующей
+// перестройки.
+//
+// ЗАМОРОЗКА НА БРОСКЕ. Пока `dragGroup.Dragging()`, окно не сдвигается:
+// autoScroll во время перетаскивания сам крутит список, и перестройка выдернула
+// бы из-под пальца и перетаскиваемую строку, и полосы, по которым считается
+// точка вставки. После броска OnReorder ведёт в applySourceMutation, и окно
+// пересчитывается на общих основаниях.
+//
+// ИНДЕКСЫ. В оконном режиме строка регистрируется под АБСОЛЮТНЫМ номером узла
+// в составе (тем же, что в `input.Rows`), а группе выставляется `Total` = весь
+// состав: без него бросок за нижний край окна упёрся бы в индекс последней
+// ПОСТРОЕННОЙ строки. Вне окна `Total` возвращается в 0 — группа общая с
+// корневым списком, поэтому выставляется он явно на КАЖДОЙ перерисовке в обе
+// стороны.
 package tabs
 
 import (
 	"errors"
 	"fmt"
+	"image/color"
 	"strings"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
@@ -128,6 +169,84 @@ type folderDrillState struct {
 	// сюда и заходят. Сбрасывается на выходе: раскрыв анонс одной подписки,
 	// человек не просил раскрывать его у следующей.
 	announceOpen bool
+
+	// Кэш эмиссии состава. `buildFolderDrillRows` зовёт
+	// config.EmitCanonicalSource на ВЕСЬ контейнер, и на подписке в 500+ узлов
+	// это самая дорогая часть перерисовки. Состав меняется только вместе с
+	// моделью, а модель об этом честно сообщает двумя счётчиками
+	// (Revision бампает applySourceMutation, NodePoolGeneration —
+	// InvalidateNodePool в той же цепочке), поэтому ключ = (контейнер,
+	// ревизия, поколение пула). Кэш работает НЕЗАВИСИМО от порога: он дёшев и
+	// полезен любому контейнеру.
+	cacheFolderID string
+	cacheRevision uint64
+	cacheNodeGen  int
+	cacheValid    bool
+	cacheInput    folderDrillRowsInput
+
+	// Текущее окно строк: [winStart, winEnd) в номерах узлов состава.
+	// winTotal — размер состава, под который окно посчитано; winActive —
+	// «окно вообще применяется» (состав больше порога). Всё вместе живёт в
+	// состоянии ВКЛАДКИ, а не в модели: это положение экрана.
+	winStart, winEnd, winTotal int
+	winActive                  bool
+
+	// rowHeight — измеренная высота строки узла. Шаблон строки один на все
+	// (source_node_row.go), поэтому одного замера хватает на весь список; 0 =
+	// «ещё не мерили», тогда окно строится от начала.
+	rowHeight float32
+
+	// rebuilding — идёт перестройка окна. Защита от повторного входа:
+	// перестройка трогает содержимое того же VScroll, чей OnScrolled её и
+	// позвал, и Refresh изнутри колбэка вернулся бы сюда же.
+	rebuilding bool
+}
+
+// invalidateCache снимает кэш эмиссии и забывает окно.
+//
+// Зовётся на выходе из контейнера: следующий вход может быть в другой
+// контейнер, а окно от прошлого состава указывало бы в чужие строки.
+func (d *folderDrillState) invalidateCache() {
+	if d == nil {
+		return
+	}
+	d.cacheValid = false
+	d.cacheInput = folderDrillRowsInput{}
+	d.cacheFolderID = ""
+	d.winStart, d.winEnd, d.winTotal = 0, 0, 0
+	d.winActive = false
+}
+
+// rowsFor отдаёт состав контейнера, переиспользуя кэш при совпадении ключа.
+//
+// Второй результат — то же «контейнер ещё существует», что у
+// buildFolderDrillRows: пропавший контейнер не кэшируется, вызывающий по нему
+// возвращается в корень.
+func (d *folderDrillState) rowsFor(
+	sources []corestate.Source,
+	folderID string,
+	revision uint64,
+	nodeGen int,
+) (folderDrillRowsInput, bool) {
+	if d != nil && d.cacheValid &&
+		d.cacheFolderID == folderID && d.cacheRevision == revision && d.cacheNodeGen == nodeGen {
+		return d.cacheInput, true
+	}
+	input, ok := buildFolderDrillRows(sources, folderID)
+	if !ok {
+		if d != nil {
+			d.cacheValid = false
+		}
+		return folderDrillRowsInput{}, false
+	}
+	if d != nil {
+		d.cacheFolderID = folderID
+		d.cacheRevision = revision
+		d.cacheNodeGen = nodeGen
+		d.cacheInput = input
+		d.cacheValid = true
+	}
+	return input, true
 }
 
 // active — вкладка сейчас показывает состав контейнера.
@@ -139,12 +258,21 @@ func (d *folderDrillState) active() bool {
 // вызывающий: обе операции меняют ровно одно поле, и лишний refresh при
 // повторном клике по той же строке был бы мельканием списка.
 func (d *folderDrillState) enter(folderID string) {
-	d.folderID = strings.TrimSpace(folderID)
+	id := strings.TrimSpace(folderID)
+	if id != d.folderID {
+		// Вход в ДРУГОЙ контейнер: окно от прошлого состава указывает в чужие
+		// строки, а прокрутку тут же обнулит resetScrollOnModeChange.
+		d.invalidateCache()
+	}
+	d.folderID = id
 	d.announceOpen = false
 }
 func (d *folderDrillState) leave() {
 	d.folderID = ""
 	d.announceOpen = false
+	// Кэш и окно — про КОНКРЕТНЫЙ состав: следующий вход может быть в другой
+	// контейнер, и старое окно указывало бы в чужие строки.
+	d.invalidateCache()
 }
 
 // nodesAreFree — в открытый контейнер можно КЛАСТЬ узлы руками.
@@ -591,12 +719,17 @@ func applyFolderDrillChrome(
 // закреплённая шапка секции (folderDrillHeader вместо заголовка «Sources»),
 // её строит вызывающий из возвращённого input. Здесь — только строки узлов;
 // захват перетаскивания регистрируется по индексу строки узла как и раньше.
+//
+// На большом составе строки кладутся ОКНОМ (см. раздел шапки «Окно строк на
+// больших контейнерах»): окно считается от ТЕКУЩЕГО смещения прокрутки, а не
+// всегда от начала, — иначе после снятой галки список прыгал бы в начало.
 func renderFolderDrillRows(
 	presenter *wizardpresentation.WizardPresenter,
 	guiState *wizardpresentation.GUIState,
 	drill *folderDrillState,
 	dragGroup *fynewidget.DragReorderGroup,
 	sourcesBox *fyne.Container,
+	sourcesScroll *container.Scroll,
 	reorder *func(from, to int),
 	refresh func(),
 ) (folderDrillRowsInput, bool) {
@@ -604,7 +737,7 @@ func renderFolderDrillRows(
 	if m == nil {
 		return folderDrillRowsInput{}, false
 	}
-	input, ok := buildFolderDrillRows(m.Sources, drill.folderID)
+	input, ok := drill.rowsFor(m.Sources, drill.folderID, m.Revision, m.NodePoolGeneration)
 	if !ok {
 		return folderDrillRowsInput{}, false
 	}
@@ -641,30 +774,206 @@ func renderFolderDrillRows(
 		hint.Wrapping = fyne.TextWrapWord
 		hint.Importance = widget.LowImportance
 		sourcesBox.Add(hint)
+		drill.winStart, drill.winEnd, drill.winTotal = 0, 0, 0
+		drill.winActive = false
+		// Пустой контейнер — не виртуальный список: Total обязан вернуться в 0
+		// (группа общая с корнем, см. ниже).
+		dragGroup.Total = 0
 		return input, true
 	}
 
-	// Total намеренно НЕ ставится: строки живут в том же VBox, что и строки
-	// источников, и регистрируются все до одной (виртуализации тут нет).
-	// Total нужен только виртуализированному widget.List, а оставшись
-	// ненулевым, он разрешил бы бросок в слот, которого в корне нет.
+	total := len(input.Rows)
+	// Свежий вход в контейнер: окна ещё нет (invalidateCache обнулил его в
+	// enter/leave), а смещение прокрутки на этот момент ещё от ПРОШЛОГО
+	// списка — resetScrollOnModeChange обнулит его сразу после нас. Читать
+	// его здесь значило бы построить окно вокруг чужой позиции; строим от
+	// начала, куда список и встанет.
+	fresh := drill.winTotal == 0
+	drill.winTotal = total
+	drill.winActive = total > folderDrillWindowThreshold
+
+	start, end := 0, total
+	if drill.winActive {
+		first, last := 0, 0
+		if !fresh {
+			// Окно считается от ТЕКУЩЕГО смещения: полная перерисовка после
+			// мутации (снятая галка, бросок) обязана оставить человека там же,
+			// где он стоял, а не увезти в начало списка.
+			first, last = folderDrillVisibleRowsForScroll(sourcesScroll, drill.rowHeight)
+		}
+		start, end = folderDrillWindowRange(total, first, last, folderDrillWindowMargin)
+	}
+	fillFolderDrillWindow(presenter, guiState, drill, ops, dragGroup, sourcesBox, input, start, end)
+	return input, true
+}
+
+// folderDrillVisibleRowsForScroll — видимый диапазон строк по состоянию
+// прокрутки.
+//
+// Вынесено из renderFolderDrillRows, потому что то же самое нужно хуку
+// прокрутки. Пока строка не измерена (rowHeight == 0) отдаёт первый экран:
+// до первой раскладки честного ответа нет, а окно от начала — ровно то, что
+// нужно показать первым кадром.
+func folderDrillVisibleRowsForScroll(sourcesScroll *container.Scroll, rowHeight float32) (int, int) {
+	if sourcesScroll == nil || rowHeight <= 0 {
+		return 0, 0
+	}
+	return folderDrillVisibleRows(
+		sourcesScroll.Offset.Y, sourcesScroll.Size().Height, rowHeight+theme.Padding())
+}
+
+// fillFolderDrillWindow кладёт в список распорки и строки окна [start, end).
+//
+// ОДНА функция и для полной отрисовки, и для сдвига окна по прокрутке: две
+// реализации одного раскладки разъехались бы на первой же правке шаблона
+// строки, а расхождение здесь видно не сразу — списком, который «немного
+// прыгает».
+//
+// Вызывающий обязан очистить sourcesBox и сбросить группу перетаскивания до
+// вызова: строки регистрируются под своими АБСОЛЮТНЫМИ индексами, и записи
+// прошлого окна иначе заявляли бы полосы уже мёртвых виджетов.
+func fillFolderDrillWindow(
+	presenter *wizardpresentation.WizardPresenter,
+	guiState *wizardpresentation.GUIState,
+	drill *folderDrillState,
+	ops *previewNodeOps,
+	dragGroup *fynewidget.DragReorderGroup,
+	sourcesBox *fyne.Container,
+	input folderDrillRowsInput,
+	start, end int,
+) {
+	total := len(input.Rows)
+	if start < 0 {
+		start = 0
+	}
+	if end > total {
+		end = total
+	}
+	if end < start {
+		end = start
+	}
+	drill.winStart, drill.winEnd = start, end
+	// Total — в обе стороны и на КАЖДОЙ перерисовке: группа общая с корневым
+	// списком, и значение от контейнера иначе пережило бы выход в корень.
+	if drill.winActive {
+		dragGroup.Total = total
+	} else {
+		dragGroup.Total = 0
+	}
+
+	// Строки строятся ДО распорок: высота строки меряется у первой
+	// построенной, а от неё зависят высоты распорок. Иначе на первом входе
+	// в контейнер (высота ещё не известна) нижняя распорка не ставилась бы,
+	// и полоса прокрутки показывала бы список из сотни строк вместо
+	// полутысячи, пока пользователь не докрутит до края окна.
 	reorderable := ops.reorderAllowed()
-	for i := range input.Rows {
+	rows := make([]fyne.CanvasObject, 0, end-start)
+	for i := start; i < end; i++ {
 		rowObj := folderDrillNodeRow(
 			presenter, guiState, ops, dragGroup, drill.folderID, i, input.Rows[i])
 		if reorderable {
-			// Регистрируем КАЖДУЮ строку: вычисление точки вставки просматривает
-			// полосы всех строк, не только перетаскиваемой (контракт
-			// DragReorderGroup, тот же, что у списка источников).
-			//
-			// У подписки не регистрируем ни одной: захвата там нет, бросок
-			// начаться не может, а строки, заявившие полосы экрана в группе,
-			// пережили бы выход в корень записями с чужими индексами.
+			// Индекс АБСОЛЮТНЫЙ — номер узла в контейнере, а не в окне:
+			// точка вставки и applyReorder адресуют полный состав.
 			dragGroup.Register(i, rowObj)
 		}
+		rows = append(rows, rowObj)
+		if i == start {
+			if h := rowObj.MinSize().Height; h > 0 {
+				drill.rowHeight = h
+			}
+		}
+	}
+
+	topH, bottomH := float32(0), float32(0)
+	if drill.winActive && drill.rowHeight > 0 {
+		topH, bottomH = folderDrillSpacerHeights(
+			start, end, total, drill.rowHeight, theme.Padding())
+	}
+	if topH > 0 {
+		sourcesBox.Add(folderDrillSpacer(topH))
+	}
+	for _, rowObj := range rows {
 		sourcesBox.Add(rowObj)
 	}
-	return input, true
+	if bottomH > 0 {
+		sourcesBox.Add(folderDrillSpacer(bottomH))
+	}
+}
+
+// folderDrillSpacer — прозрачная распорка на месте непостроенных строк.
+//
+// Прямоугольник, а не layout.NewSpacer(): спейсер VBox делит между собой
+// ОСТАТОК высоты, а нам нужна ровно заданная (см. арифметику в
+// folderDrillSpacerHeights). Ширина нулевая намеренно — распорка не должна
+// расширять список.
+func folderDrillSpacer(h float32) fyne.CanvasObject {
+	r := canvas.NewRectangle(color.Transparent)
+	r.SetMinSize(fyne.NewSize(0, h))
+	return r
+}
+
+// folderDrillScrollHook — сдвиг окна строк вслед за прокруткой.
+//
+// Возвращает функцию для `container.Scroll.OnScrolled`; nil-состояние и режим
+// корня она отрабатывает молча. Перестройка меняет ТОЛЬКО строки и распорки в
+// sourcesBox — шапка секции живёт вне списка (sourcesTitleSwap) и не трогается,
+// поэтому «где я» не мигает.
+//
+// Смещение прокрутки не трогаем: распорки держат общую высоту содержимого
+// неизменной (тест TestFolderDrillSpacerHeightsMatchFullRender), и текущая
+// позиция остаётся валидной.
+func folderDrillScrollHook(
+	presenter *wizardpresentation.WizardPresenter,
+	guiState *wizardpresentation.GUIState,
+	drill *folderDrillState,
+	dragGroup *fynewidget.DragReorderGroup,
+	sourcesBox *fyne.Container,
+	sourcesScroll *container.Scroll,
+) func(fyne.Position) {
+	return func(fyne.Position) {
+		if drill == nil || !drill.active() || !drill.winActive || drill.rebuilding {
+			return
+		}
+		// Пока тащат строку — не трогаем список: autoScroll сам крутит
+		// прокрутку во время броска, и перестройка выдернула бы из-под пальца
+		// и строку, и полосы, по которым считается точка вставки.
+		if dragGroup.Dragging() {
+			return
+		}
+		if presenter == nil || sourcesBox == nil || sourcesScroll == nil {
+			return
+		}
+		m := presenter.Model()
+		if m == nil {
+			return
+		}
+		input, ok := drill.rowsFor(m.Sources, drill.folderID, m.Revision, m.NodePoolGeneration)
+		if !ok || len(input.Rows) == 0 {
+			return
+		}
+		total := len(input.Rows)
+		first, last := folderDrillVisibleRowsForScroll(sourcesScroll, drill.rowHeight)
+		if !folderDrillWindowNeedsShift(
+			drill.winStart, drill.winEnd, total, first, last, folderDrillWindowSlack) {
+			return
+		}
+		start, end := folderDrillWindowRange(total, first, last, folderDrillWindowMargin)
+		if start == drill.winStart && end == drill.winEnd {
+			return
+		}
+
+		drill.rebuilding = true
+		defer func() { drill.rebuilding = false }()
+
+		ops := newFolderDrillNodeOps(presenter, guiState, input.SourceIndex, input.Kind)
+		// Группа держит полосы ПОСТРОЕННЫХ строк: после подмены окна прежние
+		// записи указывают на виджеты, которых в списке уже нет.
+		dragGroup.Reset()
+		sourcesBox.Objects = sourcesBox.Objects[:0]
+		fillFolderDrillWindow(
+			presenter, guiState, drill, ops, dragGroup, sourcesBox, input, start, end)
+		sourcesBox.Refresh()
+	}
 }
 
 // applyAddedSourcesToFolderNamed — путь Add в режиме папки, с ИМЕНЕМ для

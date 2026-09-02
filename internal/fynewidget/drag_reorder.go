@@ -107,6 +107,22 @@ type DragReorderGroup struct {
 	canvas    fyne.Canvas
 
 	dropTarget int
+
+	// dragging — сейчас тащат строку ЭТОЙ группы.
+	//
+	// Нужен списку, который перестраивает свои строки по прокрутке (окно строк
+	// у больших контейнеров, см. source_folder_drilldown.go): пересобрать
+	// строки посреди броска значило бы выдернуть из-под пальца и саму
+	// перетаскиваемую строку, и полосы, по которым считается точка вставки —
+	// autoScroll во время перетаскивания как раз двигает прокрутку. Флаг живёт
+	// в ГРУППЕ, а не в захвате: спрашивает его не захват, а список, и до
+	// конкретного DragHandle ему не дотянуться.
+	dragging bool
+}
+
+// Dragging — идёт ли сейчас перетаскивание в этой группе.
+func (g *DragReorderGroup) Dragging() bool {
+	return g != nil && g.dragging
 }
 
 // NewDragReorderGroup builds the coordinator for one reorderable list.
@@ -458,6 +474,9 @@ func (h *DragHandle) Dragged(e *fyne.DragEvent) {
 	}
 	if !h.dragging {
 		h.dragging = true
+		// Группа тоже узнаёт о начале броска: по этому флагу список с окном
+		// строк замораживает перестройку (см. поле dragging).
+		h.group.dragging = true
 		h.group.dropTarget = h.index
 		h.refreshGrip()
 	}
@@ -479,6 +498,9 @@ func (h *DragHandle) DragEnd() {
 		return
 	}
 	h.dragging = false
+	// Снимаем флаг группы ДО OnReorder: колбэк перестраивает список целиком,
+	// и оставленный флаг заморозил бы окно строк навсегда.
+	h.group.dragging = false
 	h.refreshGrip()
 	h.group.hideIndicator()
 

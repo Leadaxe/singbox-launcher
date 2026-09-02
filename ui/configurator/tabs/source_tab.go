@@ -573,7 +573,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		// строк источников нет вовсе, а не «есть, но других».
 		if drill.active() {
 			input, ok := renderFolderDrillRows(presenter, guiState, drill, dragGroup, sourcesBox,
-				&folderDrillReorder, refreshSourcesListRef)
+				sourcesScrollRef, &folderDrillReorder, refreshSourcesListRef)
 			if ok {
 				// Подсказка и доступность Add — те же виджеты, у них меняется
 				// только текст и состояние: «не меняя интерфейса» значит
@@ -614,6 +614,11 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		}
 		applyFolderDrillChrome(wireguardHelpButton, previewAllBtn,
 			guiState.SourceURLEntry, addURLButton, overflowBtn, "", false)
+		// Список корня строится ЦЕЛИКОМ, и Total обязан быть нулём: группа
+		// перетаскивания общая с режимом контейнера, где на большом составе
+		// он выставляется под весь состав (окно строк). Оставшись ненулевым,
+		// он разрешил бы бросок источника в слот, которого в корне нет.
+		dragGroup.Total = 0
 		sourcesTitleSwap.Objects = []fyne.CanvasObject{sourcesLabel}
 		sourcesTitleSwap.Refresh()
 		resetScrollOnModeChange("")
@@ -1152,6 +1157,14 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// (первый вызов идёт выше), и сброс там просто ничего не делал — на
 	// открытии вкладки список и так стоит в начале.
 	sourcesScrollRef = sourcesScroll
+
+	// Окно строк на большом контейнере (SPEC 116, раздел «Окно строк на
+	// больших контейнерах» в source_folder_drilldown.go): по прокрутке
+	// достраиваются подходящие строки, а место остальных держат распорки. Хук
+	// сам молчит в режиме корня, на маленьком составе и во время броска —
+	// развилку сюда не выносим, она одна и живёт рядом с окном.
+	sourcesScroll.OnScrolled = folderDrillScrollHook(
+		presenter, guiState, drill, dragGroup, sourcesBox, sourcesScroll)
 
 	// SPEC 115 §3: переход «показать источник» из отчёта «Итога».
 	//
