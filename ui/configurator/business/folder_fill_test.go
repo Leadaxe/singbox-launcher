@@ -234,7 +234,7 @@ func TestParseSourceInput_SameNodesForRootAndFolder(t *testing.T) {
 
 	// Корневой путь.
 	rootModel := &wizardmodels.WizardModel{}
-	if err := AppendURLsToSources(stubStaleUIUpdater{model: rootModel}, input); err != nil {
+	if _, err := AppendURLsToSources(stubStaleUIUpdater{model: rootModel}, input); err != nil {
 		t.Fatalf("root add: %v", err)
 	}
 	if len(rootModel.Sources) != 1 {

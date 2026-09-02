@@ -8,6 +8,26 @@
 
 ---
 
+### Выжимка (RU) — v1.5.4
+
+**Папки — свои контейнеры для узлов.** Заводите папку, наполняйте её вставкой ссылок, импортом файлов или заливкой из подписки — и правьте состав как хотите: выключенный узел останется выключенным, а повторная заливка сливает, а не переписывает. Узел, который провайдер прислал, но мы не разобрали, больше не исчезает: он виден на своём месте с причиной и исходной строкой.
+
+**Модель источников переписана (схема v7).** Узлы подписки хранятся явно, а не разбираются заново из кэша ответа на каждой сборке; отметки «выключен» и ссылки живут на самих узлах. Состояние мигрирует само при первом запуске, прежний файл остаётся рядом как `state.json.v6.bak`, а отчёт миграции называет поимённо всё, что не удалось перенести один-в-один.
+
+**Подписки провайдеров.** У каждой подписки теперь свои User-Agent и идентификатор устройства (провайдеры ветвят выдачу по клиенту и считают устройства по HWID). Промежуточные socks5-релеи провайдера стали видимыми узлами, через которые дозванивается владелец. Вставленный конфиг wg-quick хранится в исходном виде, а имя узла берётся из комментария пира. Detour у WireGuard-узла больше не пропадает молча между настройками и конфигом.
+
+Подробнее: [docs/release_notes/1-5-4.md](docs/release_notes/1-5-4.md).
+
+### Highlights (EN) — v1.5.4
+
+**Folders — your own containers for nodes.** Create a folder, fill it by pasting links, importing files or copying from a subscription — and edit it freely: a node you turned off stays off, and re-filling merges instead of overwriting. An entry the provider sent that we could not parse no longer disappears: it stays on its position with the reason and the original line.
+
+**The source model was rebuilt (schema v7).** A subscription's nodes are stored explicitly instead of being re-parsed from a cached response on every build; on/off marks and links live on the nodes themselves. State migrates automatically on first launch, the previous file is kept as `state.json.v6.bak`, and a migration report names everything that could not be carried over one-to-one.
+
+**Provider subscriptions.** Each subscription now has its own User-Agent and device ID (providers branch their response by client and count devices by HWID). A provider's intermediate socks5 relays became visible nodes that their owner dials through. A pasted wg-quick config is stored as it came, and the node's name is taken from the peer comment. A detour on a WireGuard node no longer vanishes silently between the settings and the config.
+
+Details: [docs/release_notes/1-5-4.md](docs/release_notes/1-5-4.md).
+
 ### Выжимка (RU) — v1.5.3
 
 Хотфикс к v1.5.2. Дубли записей подписки снова схлопываются: подписка, перечисляющая один сервер 32 раза с разным только `#именем`, опять даёт один узел — при этом разные SNI или транспорты одного сервера остаются разными узлами, потому что это разные схемы обхода. Порядок правил наконец переживает перезаход в Мастер: перетаскивание записывает номера на ось порядка, системные правила остаются закреплёнными, а безымянные inline-правила не уезжают в конец. Stop в daemon-режиме больше не зависает на «Stopping…». Источник, выпавший из конфига из-за ненайденного detour-хопа, перестал молчать: пометка ⚠ с причиной в строке источника и уведомление на вкладке Local. Подробнее: [docs/release_notes/1-5-3.md](docs/release_notes/1-5-3.md).

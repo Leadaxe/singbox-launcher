@@ -32,7 +32,12 @@ import (
 // SPEC 116 W6: сам РАЗБОР текста живёт в `parseSourceInput`
 // (source_input.go) — он же обслуживает наполнение папки. Здесь остался
 // только адрес назначения: «каждый узел — отдельным Source в корень».
-func AppendURLsToSources(ctx UIUpdater, input string) error {
+//
+// Возвращает счёт того, что легло и что отброшено дубликатом: кнопка Add
+// обязана отчитаться при любом исходе, и «ничего не добавлено, всё уже есть»
+// — тоже исход, а не молчание.
+func AppendURLsToSources(ctx UIUpdater, input string) (AddSourcesResult, error) {
+	var res AddSourcesResult
 	model := ctx.Model()
 	updater := ctx
 	timing := debuglog.StartTiming("appendURLsToSources")
@@ -40,7 +45,7 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 
 	parsed, err := parseSourceInput(input, len(model.Sources))
 	if err != nil {
-		return err
+		return res, err
 	}
 	subs := parsed.Subscriptions
 
@@ -65,8 +70,10 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 
 	for _, subURL := range subs {
 		if _, ok := existingURLs[subURL]; ok {
+			res.Duplicates++
 			continue
 		}
+		res.Subscriptions++
 		idx := startIndex + added
 		newSrc := corestate.Source{
 			Node: corestate.Node{Kind: corestate.SourceKindSubscription, Enabled: true},
@@ -96,6 +103,7 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 		uri := parsed.URIOf[i]
 		if uri != "" {
 			if _, ok := existingURIs[uri]; ok {
+				res.Duplicates++
 				continue
 			}
 			existingURIs[uri] = struct{}{}
@@ -104,11 +112,41 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 			Node: parsed.Nodes[i],
 			ID:   corestate.MakeULID(),
 		})
+		res.Nodes++
+		added++
+	}
+
+	// Контейнеры из вставленной записи хранения (source_record_paste.go):
+	// папка ложится папкой (ULID уже свежий, ссылки внутри переписаны),
+	// подписка — подпиской с дедупом по URL, как у подписочной строки.
+	for i := range parsed.Containers {
+		c := parsed.Containers[i]
+		switch c.Kind {
+		case corestate.SourceKindSubscription:
+			u := strings.TrimSpace(c.URL)
+			if u == "" {
+				continue
+			}
+			if _, ok := existingURLs[u]; ok {
+				res.Duplicates++
+				continue
+			}
+			existingURLs[u] = struct{}{}
+			res.Subscriptions++
+		case corestate.SourceKindFolder:
+			if strings.TrimSpace(c.Name) == "" {
+				c.Name = NextFolderName(model.Sources)
+			}
+			res.Folders++
+		default:
+			continue
+		}
+		model.Sources = append(model.Sources, c)
 		added++
 	}
 
 	if added == 0 {
-		return nil
+		return res, nil
 	}
 
 	// Bump revision & refresh UI.
@@ -117,8 +155,28 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 	InvalidateNodePool(model)
 	updater.RefreshOutboundsConfiguratorList()
 	timing.LogTiming("append sources", time.Since(time.Now()))
-	return nil
+	return res, nil
 }
+
+// AddSourcesResult — исход одного корневого Add: что легло и что отброшено.
+//
+// Нужен для отчёта пользователю: раньше нажатие Add при дубликате или при
+// ошибке разбора проходило молча (ошибка уезжала в debug-лог), и человек не
+// понимал, сработала кнопка или нет.
+type AddSourcesResult struct {
+	// Subscriptions — сколько подписок добавлено (строкой или записью).
+	Subscriptions int
+	// Nodes — сколько узлов добавлено отдельными источниками в корень.
+	Nodes int
+	// Folders — сколько папок добавлено (из вставленных записей хранения).
+	Folders int
+	// Duplicates — сколько записей отброшено как уже присутствующие (по URL
+	// подписки или по исходному share-URI узла).
+	Duplicates int
+}
+
+// Added — сколько источников легло в модель.
+func (r AddSourcesResult) Added() int { return r.Subscriptions + r.Nodes + r.Folders }
 
 // NextChainLabel — свободный ТЕГ для новой цепочки (SPEC 110).
 //

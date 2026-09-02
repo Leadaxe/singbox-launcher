@@ -328,6 +328,9 @@ func (f *folderAddNodes) finish(res wizardbusiness.FolderFillResult, failed []st
 		return
 	}
 	if res.Added == 0 {
+		// Нажатие без результата — тоже результат, о нём говорят.
+		dialogs.ShowAutoHideInfo(fyne.CurrentApp(), f.win,
+			locale.T("Nothing added"), locale.T(addNothingAddedText))
 		return
 	}
 	dialogs.ShowAutoHideInfo(fyne.CurrentApp(), f.win,

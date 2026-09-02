@@ -54,6 +54,12 @@ type parsedSourceInput struct {
 	// вправе дать имя извне — например, из имени импортируемого файла
 	// (features/sources.md §«Наполнение папки» п.1).
 	Unnamed []bool
+	// Containers — папки и подписки, вставленные ЗАПИСЬЮ ХРАНЕНИЯ
+	// (source_record_paste.go): «Copy JSON» строки источника отдаёт запись
+	// целиком, и она возвращается сюда контейнером, а не узлом. Куда её
+	// положить, решает вызывающий: корень — новым источником, папка —
+	// узлами (вложенных папок нет).
+	Containers []corestate.Source
 }
 
 // parseSourceInput — текст → узлы. Единственный разбор на все пути Add.
@@ -72,6 +78,24 @@ func parseSourceInput(input string, fallbackIndex int) (*parsedSourceInput, erro
 		return nil, fmt.Errorf("input is empty")
 	}
 
+	res := &parsedSourceInput{}
+	next := fallbackIndex
+
+	// Запись хранения (kind: folder/server/…) — раньше sing-box JSON: у неё
+	// нет `type`, и carveSingboxJSON отдал бы её построчному классификатору,
+	// где ни одна строка не ссылка.
+	records, isRecord, recErr := carveSourceRecords(input)
+	if recErr != nil {
+		return nil, recErr
+	}
+	if isRecord {
+		splitPastedRecords(records, res, &next)
+		if len(res.Nodes) == 0 && len(res.Containers) == 0 {
+			return nil, fmt.Errorf("no sources found in the pasted record")
+		}
+		return res, nil
+	}
+
 	// isJSON отделяет «не JSON» от «битый JSON»: второе обязано дойти до
 	// пользователя ошибкой, а не общим «no valid URLs to add».
 	jsonNodes, isJSON, jsonErr := carveSingboxJSON(input)
@@ -79,7 +103,6 @@ func parseSourceInput(input string, fallbackIndex int) (*parsedSourceInput, erro
 		return nil, jsonErr
 	}
 
-	res := &parsedSourceInput{}
 	var conns, rawOf []string
 	if !isJSON {
 		res.Subscriptions, conns, rawOf = classifyInputLines(input, silentTiming{})
@@ -87,8 +110,6 @@ func parseSourceInput(input string, fallbackIndex int) (*parsedSourceInput, erro
 	if len(res.Subscriptions) == 0 && len(conns) == 0 && len(jsonNodes) == 0 {
 		return nil, fmt.Errorf("no valid URLs to add")
 	}
-
-	next := fallbackIndex
 
 	for i, uri := range conns {
 		// Фрагмент ссылки (#имя) — это тег outbound'а: именно под ним узел

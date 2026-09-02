@@ -707,7 +707,11 @@ func applyAddedSourcesToFolderNamed(
 		if res.SkippedSubscriptions > 0 {
 			dialog.ShowError(
 				fmt.Errorf("%s", locale.T(folderAddNodesSubscriptionText)), guiState.Window)
+			return false
 		}
+		// Нажатие без результата — тоже результат, о нём говорят.
+		dialogs.ShowAutoHideInfo(fyne.CurrentApp(), guiState.Window,
+			locale.T("Nothing added"), locale.T(addNothingAddedText))
 		return false
 	}
 	applySourceMutation(presenter, guiState)

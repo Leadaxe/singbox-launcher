@@ -141,8 +141,17 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 			guiState.SourceURLsProgrammatic = false
 			return
 		}
-		if err := wizardbusiness.AppendURLsToSources(presenter, strings.TrimSpace(text)); err != nil {
+		// Кнопка Add отчитывается ВСЕГДА: ошибка — диалогом, итог — коротким
+		// сообщением. Раньше ошибка уезжала только в debug-лог, и нажатие
+		// на непонятный текст выглядело как «кнопка не работает».
+		addRes, err := wizardbusiness.AppendURLsToSources(presenter, strings.TrimSpace(text))
+		if err != nil {
 			debuglog.ErrorLog("source_tab: Add error: %v", err)
+			dialog.ShowError(err, guiState.Window)
+			return
+		}
+		reportAddSourcesResult(guiState.Window, addRes)
+		if addRes.Added() == 0 {
 			return
 		}
 		m := presenter.Model()
@@ -268,8 +277,13 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					return
 				}
 			} else {
-				if err := wizardbusiness.AppendURLsToSources(presenter, strings.TrimSpace(res.Text)); err != nil {
+				addRes, err := wizardbusiness.AppendURLsToSources(presenter, strings.TrimSpace(res.Text))
+				if err != nil {
 					dialog.ShowError(err, guiState.Window)
+					return
+				}
+				reportAddSourcesResult(guiState.Window, addRes)
+				if addRes.Added() == 0 {
 					return
 				}
 				wizardbusiness.RelabelLastSources(presenter, before, res.Label)

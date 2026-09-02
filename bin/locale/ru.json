@@ -4165,5 +4165,29 @@
   },
   "The machine did not return its groups — press ↻ to retry": {
     "value": "Машина не вернула свои группы — нажмите ↻ для повтора"
+  },
+  "The input was recognized, but nothing was added.": {
+    "value": "Ввод распознан, но добавлять оказалось нечего."
+  },
+  "Nothing added": {
+    "value": "Ничего не добавлено"
+  },
+  "Sources added": {
+    "value": "Источники добавлены"
+  },
+  "%d subscription(s)": {
+    "value": "подписок: %d"
+  },
+  "%d folder(s)": {
+    "value": "папок: %d"
+  },
+  "%d item(s) are already in the list.": {
+    "value": "Уже в списке: %d."
+  },
+  "Added: %s.": {
+    "value": "Добавлено: %s."
+  },
+  "%d item(s) skipped — already in the list.": {
+    "value": "Пропущено (уже в списке): %d."
   }
 }

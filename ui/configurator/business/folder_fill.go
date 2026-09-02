@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"strings"
 
+	corestate "singbox-launcher/core/state"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -66,13 +67,33 @@ func AppendNodesToFolder(m *wizardmodels.WizardModel, folderID, input string, de
 	if err != nil {
 		return res, err
 	}
+	// Контейнеры из вставленной записи хранения (source_record_paste.go):
+	// вложенных папок нет, поэтому папка-запись высыпается в эту папку своими
+	// узлами (внутренние ссылки переезжают на ULID адресата), а подписка-запись
+	// — тот же отказ, что и подписочная строка.
+	subscriptions := len(parsed.Subscriptions)
+	for i := range parsed.Containers {
+		c := parsed.Containers[i]
+		switch c.Kind {
+		case corestate.SourceKindFolder:
+			flat := flattenRecordNodesInto(c, folderID)
+			parsed.Nodes = append(parsed.Nodes, flat...)
+			for range flat {
+				parsed.URIOf = append(parsed.URIOf, "")
+				parsed.Unnamed = append(parsed.Unnamed, false)
+			}
+		case corestate.SourceKindSubscription:
+			subscriptions++
+		}
+	}
+
 	// Подписка в папку не кладётся ни узлом, ни вложенным контейнером.
 	// Сказать об этом обязательно: пользователь вставил строку и вправе знать,
 	// почему она не превратилась ни во что.
-	if len(parsed.Nodes) == 0 && len(parsed.Subscriptions) > 0 {
+	if len(parsed.Nodes) == 0 && subscriptions > 0 {
 		return res, ErrSubscriptionInFolder
 	}
-	res.SkippedSubscriptions = len(parsed.Subscriptions)
+	res.SkippedSubscriptions = subscriptions
 
 	taken := make(map[string]bool, len(folder.Nodes)+len(parsed.Nodes))
 	for i := range folder.Nodes {

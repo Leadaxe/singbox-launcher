@@ -40,7 +40,7 @@ func TestAppendURLsToSources_IssuesULIDs(t *testing.T) {
 
 	input := "https://example.invalid/sub\n" +
 		"vless://uuid@host.example:443?security=tls#node-a\n"
-	if err := AppendURLsToSources(ctx, input); err != nil {
+	if _, err := AppendURLsToSources(ctx, input); err != nil {
 		t.Fatalf("AppendURLsToSources: %v", err)
 	}
 	if len(model.Sources) != 2 {
@@ -54,7 +54,7 @@ func TestAppendURLsToSources_JSONNodes_IssueULIDs(t *testing.T) {
 	ctx := stubStaleUIUpdater{model: model}
 
 	input := `{"outbounds":[{"type":"vless","tag":"js-node","server":"1.2.3.4","server_port":443,"uuid":"u"}]}`
-	if err := AppendURLsToSources(ctx, input); err != nil {
+	if _, err := AppendURLsToSources(ctx, input); err != nil {
 		t.Fatalf("AppendURLsToSources(json): %v", err)
 	}
 	if len(model.Sources) == 0 {
