@@ -223,6 +223,20 @@
    *За LxBox:* **ничего** — их §410 закрыт; нужен только sync копии контракта
    на 0.12.7 и прогон корпуса с двумя новыми кейсами.
 
+### §416 — XHTTP: пара `mode`/`uplink_data_placement` (04.09.2026, ОБЕ СТОРОНЫ СДЕЛАНО)
+
+   Ядро отвергает весь конфиг на `header` вне `packet-up`. Норма одна на обе
+   стороны, в точке эмиссии узла, с предупреждением пользователю: `header` без
+   режима → дописать `mode: packet-up`; `header` при явном другом режиме →
+   снять placement, режим не трогать (§217); `packet-up` — не трогать.
+   Лаунчер: `xhttpGuardUplinkPlacement`, корпус 5ff6a7a — новый кейс
+   `xhttp_uplink_header_placement_adds_packet_up`, ожидание
+   `xhttp_uplink_header_placement_reset` приведено к сбросу placement. LxBox:
+   guard в эмиссии (develop 7ef5b20d). Note у `uplink_data_placement` в
+   `registry/transports.json` обновлён, входит в 0.12.8.
+
+   *За LxBox:* sync копии контракта, прогон корпуса, релиз.
+
 ### Статус LxBox (02.09.2026)
 
 | Раздел | Статус |

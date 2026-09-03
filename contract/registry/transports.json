@@ -152,7 +152,7 @@
           "values": ["body", "auto", "header", "cookie"],
           "default": "",
           "aliases": ["uplinkDataPlacement"],
-          "note": "Оба; header/cookie валидны только в packet-up (Dart чинит на эмите с warning, Go отдаёт ядру)."
+          "note": "Оба; header валиден только в packet-up — ядро отвергает ВЕСЬ конфиг (`uplink_data_placement can be header only in packet-up mode`). Норма §416/§217, обе стороны, в точке эмиссии узла с warning: header при ОТСУТСТВУЮЩЕМ режиме → дописать mode=packet-up (кейс xhttp_uplink_header_placement_adds_packet_up); header при ЯВНОМ другом режиме → снять placement, режим не трогать (кейс xhttp_uplink_header_placement_reset); packet-up — не трогать. Go: xhttpGuardUplinkPlacement."
         },
         "uplink_data_key": {
           "type": "string",
