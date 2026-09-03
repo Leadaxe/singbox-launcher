@@ -270,7 +270,7 @@ Pre-built binaries are not distributed. Build from source — see [Building from
 
 ### Windows
 
-1. Download from [Releases](https://github.com/Leadaxe/singbox-launcher/releases) — regular archive for Win 10/11, `singbox-launcher-<version>-win7-32.zip` for Windows 7.
+1. Download from [Releases](https://github.com/Leadaxe/singbox-launcher/releases) — regular archive for Win 10/11, `singbox-launcher-<version>-win64-full.zip` if you want everything inside (core, `wintun.dll`, template, Mesa3D for RDP/VMs without a GPU — nothing is downloaded on first launch), `singbox-launcher-<version>-win7-32.zip` for Windows 7.
 2. Extract to any folder (e.g. `C:\Program Files\singbox-launcher`).
 3. Run `singbox-launcher.exe`.
 4. **Local** tab → **Download** to fetch `sing-box.exe`, then **Download wintun.dll** if needed.

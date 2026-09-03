@@ -100,7 +100,7 @@ gh run watch <RUN_ID> --exit-status
 ```
 
 At the finish line expect:
-- 4 artifacts: `macos.zip`, `macos-catalina.zip`, `win64.zip`, `win7-32.zip` + `checksums.txt`.
+- 5 artifacts: `macos.zip`, `macos-catalina.zip`, `win64.zip`, `win64-full.zip` (exe + pinned core + wintun + template + Mesa3D in `mesa3d/`, assembled by the release job from the source constants), `win7-32.zip` + `checksums.txt`.
 - The release is published (`isDraft=false`, `isPrerelease=false`).
 - The body contains Downloads + Checksums + your `X-Y-Z.md` and no foreign blocks.
 

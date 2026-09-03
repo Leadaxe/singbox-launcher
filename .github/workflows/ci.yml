@@ -661,6 +661,46 @@ jobs:
             find . -name "*.exe" -type f || echo "No .exe files found"
           fi
 
+          # ---- Windows "full": exe + ядро + wintun + шаблон + Mesa3D ----
+          # Для машин без интернета к GitHub и для RDP/ВМ без GPU: первый запуск
+          # ничего не качает. Версии берутся из констант кода той же ревизии,
+          # чтобы архив не разошёлся с тем, что лаунчер требует сам.
+          if [ -n "${WIN_EXE:-}" ]; then
+            echo ""
+            echo "=== Creating win64-full bundle ==="
+            REPO_ROOT="$(cd .. && pwd)"
+            CORE_VER=$(sed -n 's/.*RequiredCoreVersion = "\([^"]*\)".*/\1/p' "$REPO_ROOT/internal/constants/constants.go" | head -1)
+            WINTUN_VER=$(sed -n 's/.*WinTunVersion = "\([^"]*\)".*/\1/p' "$REPO_ROOT/core/wintun_downloader.go" | head -1)
+            MESA_TAG=$(sed -n 's/.*mesaReleaseTag *= *"\([^"]*\)".*/\1/p' "$REPO_ROOT/internal/platform/glprobe_windows.go" | head -1)
+            MESA_ASSET=$(sed -n 's/.*mesaAssetName *= *"\([^"]*\)".*/\1/p' "$REPO_ROOT/internal/platform/glprobe_windows.go" | head -1)
+            echo "core=$CORE_VER wintun=$WINTUN_VER mesa=$MESA_TAG/$MESA_ASSET"
+            if [ -z "$CORE_VER" ] || [ -z "$WINTUN_VER" ] || [ -z "$MESA_TAG" ] || [ -z "$MESA_ASSET" ]; then
+              echo "::error::win64-full: cannot resolve pinned versions from source constants"
+              exit 1
+            fi
+            FULL_DIR="$(pwd)/win64-full"
+            rm -rf "$FULL_DIR"
+            mkdir -p "$FULL_DIR/bin" "$FULL_DIR/mesa3d"
+            cp "$WIN_EXE" "$FULL_DIR/singbox-launcher.exe"
+            DL_TMP="$(mktemp -d)"
+            curl -fsSL --retry 3 -o "$DL_TMP/core.zip" \
+              "https://github.com/Leadaxe/sing-box-lx/releases/download/v${CORE_VER}/sing-box-${CORE_VER}-windows-amd64.zip"
+            unzip -q -j "$DL_TMP/core.zip" '*/sing-box.exe' -d "$FULL_DIR/bin"
+            # libcronet.dll — спутник naive-outbound; в архиве может и не быть.
+            unzip -q -j "$DL_TMP/core.zip" '*/libcronet.dll' -d "$FULL_DIR/bin" || true
+            unzip -q -j "$REPO_ROOT/assets/wintun-${WINTUN_VER}.zip" "wintun/bin/amd64/wintun.dll" -d "$FULL_DIR/bin"
+            cp "$REPO_ROOT/bin/wizard_template.json" "$FULL_DIR/bin/wizard_template.json"
+            printf '%s\n' "$VERSION" > "$FULL_DIR/bin/wizard_template.version"
+            curl -fsSL --retry 3 -o "$DL_TMP/mesa.zip" \
+              "https://github.com/Leadaxe/singbox-launcher/releases/download/${MESA_TAG}/${MESA_ASSET}"
+            unzip -q -j "$DL_TMP/mesa.zip" '*.dll' -d "$FULL_DIR/mesa3d"
+            rm -rf "$DL_TMP"
+            ( cd "$FULL_DIR" && zip -qr "../singbox-launcher-${VERSION}-win64-full.zip" . )
+            rm -rf "$FULL_DIR"
+            echo "✓ Created: singbox-launcher-${VERSION}-win64-full.zip"
+            unzip -l "singbox-launcher-${VERSION}-win64-full.zip" || true
+          fi
+
           WIN7_EXE=$(find . -name "singbox-launcher-win7-32.exe" -type f -size +0 | head -1 || true)
           if [ -n "${WIN7_EXE:-}" ]; then
             echo "✓ Found singbox-launcher-win7-32.exe at: $WIN7_EXE"
@@ -793,10 +833,11 @@ jobs:
             #### Windows (amd64)
 
             1. Download: `singbox-launcher-${{ needs.meta.outputs.version }}-win64.zip`
+               - or `singbox-launcher-${{ needs.meta.outputs.version }}-win64-full.zip` — **full** bundle: `sing-box.exe`, `wintun.dll`, the config template and Mesa3D (`mesa3d/`, used only when no hardware OpenGL — RDP, VMs) are already inside, nothing is downloaded on first launch
             2. Extract the ZIP file to a folder, for example: `C:\Program Files\singbox-launcher\`
             3. Run `singbox-launcher.exe` from that folder
                - You may need administrator rights to install to Program Files
-               - The launcher will automatically download `sing-box` and `wintun.dll` on first launch
+               - The regular archive downloads `sing-box` and `wintun.dll` on first launch
 
             #### Windows 7 (x86, legacy)
 
@@ -817,6 +858,7 @@ jobs:
             release-artifacts/singbox-launcher-${{ needs.meta.outputs.version }}-macos.zip
             release-artifacts/singbox-launcher-${{ needs.meta.outputs.version }}-macos-catalina.zip
             release-artifacts/singbox-launcher-${{ needs.meta.outputs.version }}-win64.zip
+            release-artifacts/singbox-launcher-${{ needs.meta.outputs.version }}-win64-full.zip
             release-artifacts/singbox-launcher-${{ needs.meta.outputs.version }}-win7-32.zip
             release-artifacts/checksums.txt
           # Publish immediately. RELEASE_PROCESS §1.6 / §2.4 promise the release is

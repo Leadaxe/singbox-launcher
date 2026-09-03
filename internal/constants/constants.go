@@ -9,6 +9,17 @@ const (
 	ConfigFileName         = "config.json"
 	SingBoxExecName        = "sing-box"
 	WizardTemplateFileName = "wizard_template.json"
+	// WizardTemplateVersionFileName — маркер рядом с шаблоном: версия лаунчера,
+	// под которую шаблон положил УСТАНОВЩИК (архив win64-full, install-macos.sh).
+	// Совпал с AppVersion — шаблон свежий, и первый запуск его не сносит
+	// (core.InvalidateTemplateIfStale). Сам лаунчер маркер не пишет.
+	WizardTemplateVersionFileName = "wizard_template.version"
+	// MesaBundleDirName — папка рядом с exe, куда архив win64-full кладёт DLL
+	// Mesa3D. Не рядом с exe напрямую: лежащий рядом opengl32.dll загрузчик
+	// Windows взял бы всегда, и машина с живым GPU рисовала бы через llvmpipe.
+	// Из папки DLL копируются только когда проба показала, что аппаратного
+	// OpenGL нет (platform.EnsureDesktopOpenGL).
+	MesaBundleDirName = "mesa3d"
 	// LegacyRemoteConfigFileName — bin/remote-config.json, единственный
 	// конфиг удалённой машины до SPEC 098.
 	//

@@ -276,6 +276,21 @@ func EnsureDesktopOpenGL(execDir string) {
 		return
 	}
 
+	// Архив win64-full кладёт DLL Mesa3D в папку mesa3d/ рядом с exe: без сети
+	// и без вопроса — качать нечего, а окно иначе не отрисуется вовсе.
+	if found, err := installMesaFromBundle(execDir); found {
+		if err != nil {
+			debuglog.ErrorLog("gl: bundled Mesa3D install failed: %v", err)
+			messageBox("Singbox Launcher",
+				fmt.Sprintf("Не удалось установить Mesa3D из папки mesa3d: %v\nРучная установка: %s\n\nBundled Mesa3D install failed. Manual guide:\n%s",
+					err, rdpOpenGLDocURL, rdpOpenGLDocURL),
+				mbOK|mbIconError|mbTopmost|mbSetForeground)
+			return
+		}
+		debuglog.InfoLog(mesaInstalledNote)
+		return
+	}
+
 	if messageBox("Singbox Launcher", mesaConsentText, mbYesNo|mbIconWarning|mbTopmost|mbSetForeground) != idYes {
 		debuglog.WarnLog("gl: user declined Mesa3D install — window will likely not render")
 		return
@@ -383,6 +398,65 @@ func installMesa(execDir string) error {
 	// Если системный opengl32.dll уже успел загрузиться в процесс (не должен —
 	// гейт стоит до инициализации GL-части Fyne), подменить его в этой сессии
 	// нельзя: просим перезапуститься, дальше DLL подхватит загрузчик Windows.
+	return preloadMesa(execDir)
+}
+
+// installMesaFromBundle ставит Mesa3D из папки mesa3d/ рядом с exe (архив
+// win64-full). found=false — папки или opengl32.dll в ней нет, и вызывающий
+// идёт обычным путём с согласием и скачиванием. DLL копируются рядом с exe
+// через .tmp и rename, как при распаковке архива.
+func installMesaFromBundle(execDir string) (found bool, err error) {
+	srcDir := filepath.Join(execDir, constants.MesaBundleDirName)
+	if _, statErr := os.Stat(filepath.Join(srcDir, "opengl32.dll")); statErr != nil {
+		return false, nil
+	}
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return true, fmt.Errorf("read %s: %w", srcDir, err)
+	}
+	var names []string
+	for _, ent := range entries {
+		base := ent.Name()
+		if ent.IsDir() || !strings.EqualFold(filepath.Ext(base), ".dll") {
+			continue
+		}
+		tmpPath := filepath.Join(execDir, base+".tmp")
+		if copyErr := copyFile(filepath.Join(srcDir, base), tmpPath); copyErr != nil {
+			_ = os.Remove(tmpPath)
+			return true, fmt.Errorf("%s: %w", base, copyErr)
+		}
+		finalPath := filepath.Join(execDir, base)
+		_ = os.Remove(finalPath)
+		if renameErr := os.Rename(tmpPath, finalPath); renameErr != nil {
+			_ = os.Remove(tmpPath)
+			return true, fmt.Errorf("%s: %w", base, renameErr)
+		}
+		names = append(names, base)
+	}
+	debuglog.InfoLog("gl: copied %d bundled Mesa3D DLLs from %s next to exe: %s", len(names), constants.MesaBundleDirName, strings.Join(names, ", "))
+	return true, preloadMesa(execDir)
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close() //nolint:errcheck // read-only source
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
+}
+
+// preloadMesa грузит распакованный рядом с exe opengl32.dll в текущий процесс
+// (общий хвост скачанной и вложенной установки).
+func preloadMesa(execDir string) error {
 	kernel32 := windows.NewLazySystemDLL("kernel32.dll")
 	getModuleHandleW := kernel32.NewProc("GetModuleHandleW")
 	namePtr, _ := windows.UTF16PtrFromString("opengl32.dll")
