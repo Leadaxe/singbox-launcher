@@ -909,7 +909,6 @@ func handleCloneFromButton(presenter *wizardpresentation.WizardPresenter, wizard
 // выполнить действие.
 func applyClone(presenter *wizardpresentation.WizardPresenter, wizardWindow fyne.Window,
 	src wizardbusiness.CloneSource, state *wizardmodels.WizardStateFile) {
-
 	snapshotID := cloneSnapshotID()
 	if err := presenter.SaveStateAs(locale.Tf("before cloning from %s", src.Name), snapshotID); err != nil {
 		debuglog.WarnLog("clone: snapshot %q failed: %v", snapshotID, err)

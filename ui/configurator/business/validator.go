@@ -69,7 +69,6 @@ func ValidateParserConfig(parserConfig *config.ParserConfig) error {
 				return fmt.Errorf("proxy %d connection %d: invalid URI: %w", i, j, err)
 			}
 		}
-
 	}
 
 	// Validate global outbounds
