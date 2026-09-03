@@ -1,0 +1,8 @@
+# D-097: host/path/mode берутся ТОЛЬКО из плоских параметров ссылки; одноимённые ключи
+# extra игнорируются даже когда они непустые, и тем более когда пустые (Xray,
+# infra/conf/transport_method.go, SplitHTTPConfig.Build: extra.Host/Path/Mode = c.Host/Path/Mode).
+# Живой кейс 4PDA #1755: extra отдавал path="/" (сервер: unexpected upload status 404)
+# и пустой mode (auto), из-за чего ядро падало на
+# "uplink_data_placement can be header only in packet-up mode".
+# Прочие ключи extra остаются базой: xPaddingBytes и uplinkDataPlacement приходят из него.
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?type=xhttp&security=tls&sni=example-1.com&encryption=none&fp=chrome&mode=packet-up&path=%2Fhls%2Fv2%2Ftrack%2F8e31c750%2F&host=media.example-1.com&extra=%7B%22host%22%3A%22%22%2C%22path%22%3A%22%2F%22%2C%22mode%22%3A%22%22%2C%22xPaddingBytes%22%3A%22100-1000%22%2C%22uplinkDataPlacement%22%3A%22header%22%7D#xhttp-flat-wins

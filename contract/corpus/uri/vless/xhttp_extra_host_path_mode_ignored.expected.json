@@ -1,0 +1,31 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-2.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-2.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "random"
+          }
+        },
+        "transport": {
+          "host": "flat.example-2.com",
+          "mode": "packet-up",
+          "path": "/flat",
+          "type": "xhttp",
+          "x_padding_bytes": "200-400"
+        },
+        "type": "vless",
+        "uuid": "22222222-2222-2222-2222-222222222222"
+      },
+      "kind": "outbound",
+      "label": "xhttp-extra-trio-ignored",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

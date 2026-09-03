@@ -1,0 +1,4 @@
+# D-097: непустые host/path/mode в extra не побеждают плоские — базовая тройка читается
+# только из плоских параметров (Xray SplitHTTPConfig.Build перезаписывает extra внешними).
+# Прочие ключи extra по-прежнему база: xPaddingBytes приходит из extra.
+vless://22222222-2222-2222-2222-222222222222@example-2.com:443?type=xhttp&security=tls&sni=example-2.com&encryption=none&mode=packet-up&path=%2Fflat&host=flat.example-2.com&extra=%7B%22host%22%3A%22extra.example-2.com%22%2C%22path%22%3A%22%2Ffrom-extra%22%2C%22mode%22%3A%22stream-one%22%2C%22xPaddingBytes%22%3A%22200-400%22%7D#xhttp-extra-trio-ignored
