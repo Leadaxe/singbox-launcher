@@ -21,7 +21,7 @@
         "uuid": "11111111-1111-1111-1111-111111111111"
       },
       "kind": "outbound",
-      "label": "xhttp-get-reset",
+      "label": "xhttp-get-kept",
       "scheme": "vless"
     }
   ],
