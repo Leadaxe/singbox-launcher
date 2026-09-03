@@ -21,7 +21,10 @@
       },
       "kind": "outbound",
       "label": "xhttp-plc-reset",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        "xhttp_param_reset"
+      ]
     }
   ],
   "v": 1

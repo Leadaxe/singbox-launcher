@@ -666,6 +666,7 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 		if hasTransport {
 			outbound["transport"] = transport
 			noteWSEarlyDataConverted(node, transport)
+			noteXHTTPPlacementGuard(node, transport)
 		}
 		if node.Flow != "" {
 			// Convert xtls-rprx-vision-udp443 to compatible format
@@ -843,6 +844,7 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 		if t, ok := uriTransportFromQuery(node.Query); ok {
 			outbound["transport"] = t
 			noteWSEarlyDataConverted(node, t)
+			noteXHTTPPlacementGuard(node, t)
 		}
 		if tlsData, ok := trojanTLSFromNode(node); ok {
 			outbound["tls"] = tlsData

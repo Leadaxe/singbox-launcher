@@ -186,6 +186,11 @@ func xrayBuildVLESSFromOutbound(ob map[string]interface{}, label string) (*confi
 		Label:    label,
 		Outbound: outbound,
 	}
+	// Гард пары mode/uplink_data_placement — ПОСЛЕ создания узла: он и правит
+	// транспорт, и вешает пометку, а узел до этой точки не существует.
+	if tr, ok := outbound["transport"].(map[string]interface{}); ok {
+		noteXHTTPPlacementGuard(node, tr)
+	}
 	return node, nil
 }
 

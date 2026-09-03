@@ -33,6 +33,19 @@ const (
 	WarnObfsPasswordMissing = "obfs_password_missing"
 	// WarnPacketEncodingUnknown — packet_encoding вне словаря снят.
 	WarnPacketEncodingUnknown = "packet_encoding_unknown"
+	// WarnXHTTPModeForcedPacketUp — у XHTTP-узла был `uplink_data_placement:
+	// header` без режима, и режим доопределён в `packet-up`.
+	//
+	// Молчать нельзя: пара «header вне packet-up» роняет ВЕСЬ конфиг ядра
+	// (проверено на 1.14.0-lx.30), то есть без правки человек остаётся без
+	// VPN, — но и правка меняет проволочный протокол узла, и он вправе об
+	// этом знать.
+	WarnXHTTPModeForcedPacketUp = "xhttp_mode_forced_packet_up"
+	// WarnXHTTPParamReset — XHTTP-параметр снят, потому что ядро отвергает
+	// его в заданном режиме. Сегодня это `uplink_data_placement: header` при
+	// явном режиме, отличном от packet-up: режим пользователя мы не
+	// переписываем, снимается одно поле.
+	WarnXHTTPParamReset = "xhttp_param_reset"
 	// WarnSSMethodInvalid — метод shadowsocks вне словаря ядра.
 	WarnSSMethodInvalid = "ss_method_invalid"
 	// WarnPortInvalid — порт вне 1..65535 заменён значением по умолчанию.

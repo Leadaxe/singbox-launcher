@@ -22,7 +22,10 @@
       },
       "kind": "outbound",
       "label": "xhttp-plc-adds-mode",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        "xhttp_mode_forced_packet_up"
+      ]
     }
   ],
   "v": 1

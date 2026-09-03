@@ -412,7 +412,6 @@ func xhttpBuildTransport(primary, fallback map[string]string) map[string]interfa
 	if xmux := xhttpXmuxFromSource(primary, fallback); len(xmux) > 0 {
 		t["xmux"] = xmux
 	}
-	xhttpGuardUplinkPlacement(t)
 	return t
 }
 
@@ -437,22 +436,44 @@ func xhttpBuildTransport(primary, fallback map[string]string) map[string]interfa
 //     трогаем. Переписать явный режим значило бы сменить проволочный
 //     протокол узла — это хуже, чем снять одно поле (правило «не
 //     переписывать явное значение пользователя»).
-func xhttpGuardUplinkPlacement(t map[string]interface{}) {
+//
+// Возвращает код предупреждения для узла (пусто = ничего не делали):
+// сам гард узла не видит — он собирает транспорт из голых карт, — поэтому
+// сообщает вызывающему, что произошло, а тот вешает пометку на узел.
+func xhttpGuardUplinkPlacement(t map[string]interface{}) string {
 	if t == nil {
-		return
+		return ""
 	}
 	placement, _ := t["uplink_data_placement"].(string)
 	if placement != "header" {
-		return
+		return ""
 	}
 	mode, _ := t["mode"].(string)
 	switch mode {
 	case "packet-up":
-		// Рабочая пара — не трогаем.
+		// Рабочая пара — не трогаем и молчим.
+		return ""
 	case "":
 		t["mode"] = "packet-up"
+		return WarnXHTTPModeForcedPacketUp
 	default:
 		delete(t, "uplink_data_placement")
+		return WarnXHTTPParamReset
+	}
+}
+
+// noteXHTTPPlacementGuard вешает на узел пометку о правке, сделанной гардом.
+//
+// Отдельная функция по образцу noteWSEarlyDataConverted: точек, где транспорт
+// уже собран, а узел под рукой, несколько (URI vless/trojan, Xray
+// streamSettings), и правило «что показать пользователю» должно жить в одном
+// месте.
+func noteXHTTPPlacementGuard(node *configtypes.ParsedNode, transport map[string]interface{}) {
+	if node == nil || transport == nil {
+		return
+	}
+	if code := xhttpGuardUplinkPlacement(transport); code != "" {
+		node.AddWarning(code)
 	}
 }
 
