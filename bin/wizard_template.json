@@ -125,6 +125,18 @@
    ]
   },
   {
+   "name": "tun_address_exclude",
+   "type": "text_list",
+   "wizard_ui": "edit",
+   "title": "TUN route exclude addresses (route_exclude_address)",
+   "tooltip": "sing-box tun route_exclude_address — CIDR prefixes that auto_route leaves out of the tunnel at the OS routing level, one per line (for example 10.0.0.0/8 or fd00::/8). Traffic to these networks never enters the core: no rules, no sniffing, not visible in the profiler. Empty means nothing is excluded — LAN access is normally covered by the Private IPs rule preset inside the core. Use this only when traffic must not touch the tunnel at all: strict_route on Windows, the subnet of a second VPN, management access to a router. Whatever is listed here can no longer be reached through the VPN.",
+   "default_value": "",
+   "#enable": [
+    "@tun",
+    "@auto_route"
+   ]
+  },
+  {
    "name": "ipv6_enabled",
    "type": "bool",
    "wizard_ui": "edit",
@@ -1931,6 +1943,7 @@
      "type": "tun",
      "tag": "tun-in",
      "auto_route": "@auto_route",
+     "route_exclude_address": "@tun_address_exclude",
      "address": [
       "@tun_address",
       {

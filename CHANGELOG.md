@@ -10,6 +10,10 @@
 
 Подробные заметки: [docs/release_notes/1-5-5.md](docs/release_notes/1-5-5.md) (черновик).
 
+### Возможности (1)
+
+- feat(wizard): поле «TUN route exclude addresses» в Settings — CIDR-префиксы (по одному на строку), которые auto_route оставляет вне туннеля на уровне маршрутов ОС (`tun.route_exclude_address`); default пустой, видно при включённых TUN и auto_route; контракт 0.12.8. Идея и первый вариант — PR #114 (alexandersafin)
+
 ### Исправления (1)
 
 - fix(xhttp): host/path/mode только из плоских параметров ссылки — одноимённые ключи в extra игнорируются, как в Xray (контракт 0.12.7, D-097; кейс 4PDA #1755) (`dd16ca0`)
