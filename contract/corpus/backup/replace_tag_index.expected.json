@@ -1,0 +1,12 @@
+{
+  "rules": [
+    {
+      "name": "Work",
+      "enabled": true
+    }
+  ],
+  "route_final_applied": true,
+  "replace_tags": {
+    "https://example-1.com/sub": "1:select"
+  }
+}

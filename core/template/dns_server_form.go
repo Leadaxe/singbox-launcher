@@ -98,16 +98,16 @@ func NormalizeDNSOptions(raw json.RawMessage) (json.RawMessage, []TemplateVar) {
 	}
 	encoded, err := json.Marshal(out)
 	if err != nil {
-		debuglog.WarnLog("template: dns_options: не удалось перекодировать серверы: %v", err)
+		debuglog.WarnLog("template: dns_options: could not re-encode the servers: %v", err)
 		return raw, nil
 	}
 	root["servers"] = encoded
 	normalized, err := json.Marshal(root)
 	if err != nil {
-		debuglog.WarnLog("template: dns_options: не удалось собрать секцию: %v", err)
+		debuglog.WarnLog("template: dns_options: could not assemble the section: %v", err)
 		return raw, nil
 	}
-	debuglog.DebugLog("template: dns_options: развёрнуто вложенных записей, объявлено %d переменных", len(vars))
+	debuglog.DebugLog("template: dns_options: nested entries expanded, %d variables declared", len(vars))
 	return normalized, vars
 }
 
@@ -130,7 +130,7 @@ func dnsEntryVars(entry map[string]interface{}, tag string) []dnsEntryVar {
 	}
 	var parsed []TemplateVar
 	if err := json.Unmarshal(encoded, &parsed); err != nil {
-		debuglog.WarnLog("template: dns_options: запись %q: не читаются vars: %v", tag, err)
+		debuglog.WarnLog("template: dns_options: entry %q: vars unreadable: %v", tag, err)
 		return nil
 	}
 

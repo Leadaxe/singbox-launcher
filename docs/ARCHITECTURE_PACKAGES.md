@@ -149,7 +149,7 @@ handlers + the `ResolveDNS`/`ResolveRoute`/`ExpandPreset` resolvers.
 | `chain_nodes.go` | **SPEC 110.** Chain sources become nodes here, once the whole pool is loaded: positions reference tags that are only final after every source is parsed. A chain may only reference a chain declared **above** it, so cycles are impossible by construction. A chain failing validation does not become a node at all. |
 | `chain_generator.go` | Emission of the `type: chain` object (positions in packet order, `strip`, `rewrite`, `idle_timeout`). |
 | `chain_validate.go` | The invariants `sing-box check` misses (only `run` fails): reality plus a stripped `tls.utls`, a nested chain off position 0. Also `ChainLayerTag` — the `<chain>#<i>` service-tag scheme used by the layered probe. |
-| `chain_cycle.go` / `detour_group_cycle.go` | Direction↔chain and node↔group-it-dials-through cycles: fail-open, the element drops out of the members rather than taking the config down. |
+| `chain_cycle.go` / `detour_group_cycle.go` | Direction↔chain and node↔group-it-dials-through cycles: the element drops out of the group's **members** rather than taking the config down. The detour itself is **never stripped** — the node stays in the config and keeps dialling through its hop (SPEC 113-B: removing the key is a silent direct dial, which is forbidden). This is not fail-open for the detour: an unreachable detour target is handled separately and drops the carrier. |
 | `source_folds.go` | **SPEC 108.** Expands a subscription's fold into groups at build time (they are not stored in state). |
 | `outbound_share.go` | Share-URI lookup from a written `config.json` (`GetOutboundMapByTag`, `ShareProxyURIForOutboundTag`). |
 | `config_loader.go` | Read `config.json` (JSONC-aware): selector groups, TUN interface name, `experimental.cache_file`. |
@@ -203,9 +203,9 @@ semantics: `contract/docs/BACKUP.md`.
 
 | File | Purpose |
 |------|---------|
-| `types.go` | The file's shape: subscriptions, servers, rules, DNS, portable vars, plus per-app `extensions` blobs. |
-| `export.go` | `State` → backup. Non-portable per-source fields (skip filters, local outbounds, detour, id) go into `extensions.launcher`; without that, an export-import cycle on the *same* machine would lose settings. |
-| `import.go` | Backup → `State`. A rule whose target does not exist here is imported **switched off** rather than lost or silently enabled: an enabled rule with a dead target makes the core reject the whole config. Foreign `extensions` blobs are kept untouched for the next export. |
+| `types.go` | The file's shape: subscriptions, servers, chains, directions, rules, DNS, portable vars. There is no `extensions` mechanism (contract 0.11.0): the file is a serialisation of state and nothing else. |
+| `export.go` | `State` → backup, a **pure function of state**: per-source fields (skip filters, local outbounds, detour, id, node tag, fold) are plain optional keys of the entity record. Two indistinguishable states must produce byte-identical files, so nothing about where the state came from may leak in. |
+| `import.go` | Backup → `State`. A rule whose target does not exist here is imported **switched off** rather than lost or silently enabled: an enabled rule with a dead target makes the core reject the whole config. Anything the importer does not understand is dropped with a warning — never carried through — so the imported state is indistinguishable from one configured by hand. |
 | `portable_vars.go` | Generated from `contract/registry/vars.json` (portable=true) and checked against it by a test — a drifted list would either lose a setting or carry a value that means something else on the other machine. |
 | `file.go` | Atomic write with 0600 permissions (the file stores secrets as plain text), size cap, and default-deny reporting of unknown top-level keys. |
 

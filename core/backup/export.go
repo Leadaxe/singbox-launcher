@@ -1,13 +1,15 @@
 package backup
 
-// Экспорт состояния лаунчера в переносимый LX Backup (SPEC 103, фаза 4).
+// Экспорт состояния лаунчера в переносимый LX Backup (контракт 0.12.0).
 
 import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
 )
 
@@ -24,20 +26,36 @@ type ExportOptions struct {
 
 // Export переносит state в формат бэкапа.
 //
-// Что НЕ едет в переносимую часть и почему:
+// Экспорт — ЧИСТАЯ ФУНКЦИЯ СОСТОЯНИЯ (П1): всё, что пишется в файл, читается
+// из полей state, и ничего кроме. Ни блобов «на провоз», ни следов того,
+// откуда состояние взялось: два неотличимых состояния обязаны давать
+// байт-идентичные файлы, а состояние, приехавшее импортом, — тот же файл,
+// что и настроенное руками.
+//
+// Что НЕ едет и почему:
 //   - runtime-данные подписок (Meta: когда обновлялась, сколько нод) —
 //     они принадлежат машине, а не пользовательской настройке;
-//   - local outbounds источника, exclude_from_global и прочее, чему нет
-//     места в схеме, — уезжает в extensions.launcher, чтобы round-trip
-//     остался lossless.
+//   - финальные конфиговые теги (П5) — они вычисляются каждой сборкой на
+//     принимающей стороне, и хранимый приехал бы мёртвым;
+//   - упразднённый detour_node_hash — его нет в схеме 0.11.0.
 //
-// Чужой блоб extensions.lxbox, если он пришёл с импортом, возвращается в
-// файл нетронутым: бэкап, побывавший на десктопе, не должен вернуться на
-// телефон обеднённым (BACKUP.md §1).
-func Export(s *state.State, opts ExportOptions) (*Backup, error) {
+// Пустые и нулевые поля опускаются: значение по умолчанию, записанное явно, —
+// это лишний шум, из-за которого «одно и то же состояние» перестаёт давать
+// один и тот же файл.
+// Второй возврат — предупреждения экспорта: то, что состояние несёт, а
+// контракт 0.11 выразить не умеет (папки, провайдерские группы). Молчаливое
+// выпадение здесь запрещено: пользователь обязан узнать, что часть настройки
+// в файл не поехала, ДО того как восстановится на новой машине. Записи,
+// выпавшие ЦЕЛИКОМ, идут в начале списка (SPEC 116 §O1=А) — UI показывает
+// его в том же порядке.
+func Export(s *state.State, opts ExportOptions) (*Backup, []Warning, error) {
 	if s == nil {
-		return nil, fmt.Errorf("nil state")
+		return nil, nil, fmt.Errorf("nil state")
 	}
+	var warnings []Warning
+	// dropped — записи, которых в файле не будет вовсе (папки, провайдерские
+	// группы). Копятся отдельно, чтобы встать в начало общего списка.
+	var dropped []Warning
 	now := opts.Now
 	if now.IsZero() {
 		now = time.Now()
@@ -55,31 +73,104 @@ func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 
 	// SPEC 104: Направления едут вместе с правилами — иначе правило,
 	// сославшееся на `vpn-3`, приезжало бы в никуда.
-	for _, d := range s.Connections.Outbounds {
+	for _, d := range s.Directions {
 		if d.Tag == "" {
 			continue
 		}
 		b.Directions = append(b.Directions, exportDirection(d))
 	}
 
-	// SPEC 110 (схема v1.2): цепочки — корневая секция chains[], у обеих
-	// сторон общая. Порядок записей нормативен (вложенная цепочка объявлена
-	// раньше использующей) — сохраняется порядок списка источников.
-	for i, src := range s.Connections.Sources {
-		switch src.Type {
-		case state.SourceTypeSubscription:
-			b.Subscriptions = append(b.Subscriptions, exportSubscription(src))
-		case state.SourceTypeServer:
+	// Цепочки — корневая секция chains[], у обеих сторон общая. Порядок
+	// записей нормативен (вложенная цепочка объявлена раньше использующей) —
+	// сохраняется порядок списка источников.
+	//
+	// subIndex — порядковый номер ПОДПИСКИ в b.Subscriptions, а не позиция
+	// источника в общем списке. Позиционный дериватив тега замены («<N>:»)
+	// импорт считает по индексу внутри секции subscriptions[]
+	// (importSubscription → backupReplaceTag), и экспорт обязан говорить о
+	// том же числе. Пока здесь стоял общий индекс, подписка без префикса,
+	// стоящая после сервера, экспортировалась молча: `2:select` совпадал с
+	// «деривативом», а импорт восстанавливал `1:select` — правила того же
+	// файла повисали, и предупреждения об этом не было.
+	subIndex := 0
+	for i, src := range s.Sources {
+		switch src.Kind {
+		case state.SourceKindSubscription:
+			b.Subscriptions = append(b.Subscriptions, exportSubscription(src, subIndex))
+			// Тег замены — единственное поле v7, у которого в контракте нет
+			// дома: 0.11 выводила имя группы формулой из префикса. Явное имя,
+			// с формулой не совпавшее, на приёмнике станет другим, и правила
+			// этого же файла метят мимо — молчать здесь нельзя.
+			if derived, ok := replaceTagSurvivesExport(src, subIndex); !ok {
+				warnings = append(warnings, Warning{
+					Code:   WarnBackupReplaceTagDerived,
+					Detail: sourceExportName(src) + ": " + src.Replace.Tag + " → " + derived,
+				})
+			}
+			// UA/HWID подписки контракт 0.12 везёт объектом identity
+			// (см. exportSourceIdentity). Здесь остался единственный
+			// per-source ключ, которому в схеме дома по-прежнему нет, —
+			// relays_in_directions: он про СПИСОК ЦЕЛЕЙ Направлений, а у
+			// LxBox этой развилки нет вовсе, и заводить её односторонне
+			// значило бы вернуть тайный груз, ради сноса которого убран
+			// extensions. Потеря обязана быть названа вслух.
+			if fields := droppedLocalOnlyFields(src); fields != "" {
+				warnings = append(warnings, Warning{
+					Code:   WarnBackupLocalOnlyDropped,
+					Detail: sourceExportName(src) + ": " + fields,
+				})
+			}
+			subIndex++
+		case state.SourceKindServer:
 			b.Servers = append(b.Servers, exportServer(src))
-		case state.SourceTypeChain:
+		case state.SourceKindChain:
 			b.Chains = append(b.Chains, exportChain(src, i))
+		case state.SourceKindFolder:
+			// Папка едет СОСТАВОМ (контракт 0.12): её члены-серверы
+			// выгружаются обычными записями servers[] с пометкой folder —
+			// именем папки. Отдельной секции у папки нет намеренно:
+			// собственных данных, кроме имени, она не несёт, а вторая
+			// секция потребовала бы держать два места в согласии.
+			//
+			// Раньше папка целиком объявлялась неподдержанной и её состав
+			// в файл не попадал — именно та потеря, из-за которой SPEC 116
+			// лишался узлов без единого слова.
+			members, lost := exportFolder(src)
+			b.Servers = append(b.Servers, members...)
+			// Настройки самой папки и члены, которых servers[] выразить не
+			// может (цепочки, неразобранные записи), остаются здесь —
+			// ОДНИМ warning'ом на папку с перечнем, а не строкой на каждый.
+			if lost != "" {
+				warnings = append(warnings, Warning{
+					Code:   WarnBackupLocalOnlyDropped,
+					Detail: sourceExportName(src) + ": " + lost,
+				})
+			}
+		case state.SourceKindAuto:
+			// Провайдерская группа — по-прежнему вид, которого контракт не
+			// знает. Молча выронить её нельзя (SPEC 116 W9, §O1=А): вид и
+			// объём идут отдельными полями, потому что группа уезжает НЕ
+			// ОДНА, а со своим составом, и пользователю нужно число.
+			dropped = append(dropped, Warning{
+				Code:   WarnBackupSourceKindUnsupported,
+				Detail: sourceExportName(src),
+				Kind:   string(src.Kind),
+				Nodes:  len(src.Nodes),
+			})
 		}
 	}
+
+	// Потерянные целиком записи — В НАЧАЛО списка (§O1=А, «первой строкой»).
+	// Прочие предупреждения экспорта говорят «приехало иначе»; эти — «не
+	// приехало вовсе», и утонуть под двумя десятками переименованных тегов
+	// замены они не должны: сортировка здесь — не косметика, а разница между
+	// «прочитал и передумал восстанавливаться» и «узнал после restore».
+	warnings = append(dropped, warnings...)
 
 	for _, r := range s.Rules {
 		rule, err := exportRule(r)
 		if err != nil {
-			return nil, fmt.Errorf("rule %s: %w", r.Kind, err)
+			return nil, warnings, fmt.Errorf("rule %s: %w", r.Kind, err)
 		}
 		b.Rules = append(b.Rules, rule)
 	}
@@ -94,59 +185,71 @@ func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 		b.DNS = dns
 	}
 
-	// Чужие расширения, сохранённые прошлым импортом.
-	if len(s.ForeignBackupExtensions) > 0 {
-		b.Extensions = Extensions{}
-		for app, blob := range s.ForeignBackupExtensions {
-			b.Extensions[app] = append(json.RawMessage(nil), blob...)
-		}
-	}
-
 	// Warp-аккаунты (BACKUP.md §2): канонические snake_case-поля плюс
 	// дискриминатор type. Без этого регистрация не переезжала вовсе, и на
 	// новой машине «Add WARP» плодил лишние device-записи в Cloudflare.
 	b.Warp = exportWarp(s)
 
-	return b, nil
+	return b, warnings, nil
 }
 
-// exportChain — запись секции chains[] (SPEC 110, схема v1.2).
+// exportDirections — список Направлений в канонической форме.
+func exportDirections(list []configtypes.Direction) []Direction {
+	var out []Direction
+	for _, d := range list {
+		if d.Tag == "" {
+			continue
+		}
+		out = append(out, exportDirection(d))
+	}
+	return out
+}
+
+// exportSourceRef — ссылка источника на цель дозвона.
+//
+// Упразднённый detour_node_hash не пишется никогда: в схеме 0.11.0 его нет.
+// Источник, ещё не прошедший миграцию, отдаёт пустую ссылку — она
+// восстановится на приёмнике первой же сборкой из своего состояния, а вывозить
+// протухающий хеш значило бы вернуть в формат ровно то, ради чего он снесён.
+func exportSourceRef(src state.Source) SourceRef {
+	return exportNodeLinkRef(src.Detour)
+}
+
+// sourceExportName — как назвать источник в предупреждении экспорта.
+func sourceExportName(src state.Source) string {
+	if src.Name != "" {
+		return src.Name
+	}
+	if n := src.NodeTagOrLabel(); n != "" {
+		return n
+	}
+	return src.ID
+}
+
+// exportChain — запись секции chains[] (SPEC 110).
 //
 // Tag — эффективный тег outbound'а цепочки (NodeTagOrLabel), на который
-// ссылаются правила и позиции других цепочек; Label — отображаемое имя,
-// теперь у лаунчера своё (прежде эти роли делило одно поле). index —
-// позиция источника в общем списке: у безымянной цепочки тег на сборке
-// получается позиционным (chainSourceTag), и в файл обязан уехать тот же
-// эффективный тег — схема требует tag, а импорт зафиксирует его именем
+// ссылаются правила и позиции других цепочек.
+// index — позиция источника в общем списке: у безымянной цепочки тег на
+// сборке получается позиционным (chainSourceTag), и в файл обязан уехать тот
+// же эффективный тег — схема требует tag, а импорт зафиксирует его именем
 // (нормализация той же категории, что перенумерация правил).
+//
+// `label` контракта остаётся ПУСТЫМ и заполняться не будет: у канона v7 имя
+// узла одно — тег (SPEC 112, «идентичность узла = тег»), второго источника
+// подписи в состоянии нет. Поле живо в схеме ради LxBox-стороны; писать в
+// него копию тега значило бы гонять шум, который импорт всё равно отбросит.
 func exportChain(src state.Source, index int) Chain {
 	out := Chain{
+		ID:    src.ID,
 		Tag:   src.NodeTagOrLabel(),
-		Label: src.Label,
-		Chain: src.Chain,
-	}
-	// Подпись, совпадающая с тегом, — это не подпись, а прежнее состояние
-	// без разделения ролей: писать её отдельным полем значит плодить шум,
-	// который на импорте не несёт информации.
-	if out.Label == out.Tag {
-		out.Label = ""
+		Chain: exportChainSpec(src),
 	}
 	if out.Tag == "" {
 		out.Tag = "chain-" + strconv.Itoa(index+1)
 	}
 	if !src.Enabled {
 		out.Enabled = boolPtr(false)
-	}
-	if ext := launcherSourceExtensions(src); ext != nil {
-		out.Extensions = Extensions{AppLauncher: ext}
-	}
-	// Непонятые поля записи возвращаются на место (BACKUP.md §2). Чужой
-	// label подставляется только когда своего нет: теперь у цепочки есть
-	// собственное отображаемое имя, и затирать его провезённым значением
-	// было бы потерей пользовательской правки.
-	foreignFields := attachForeignEntityExtensions(&out.Extensions, src.ForeignExtensions)
-	if raw, ok := foreignFields["label"]; ok && out.Label == "" {
-		_ = json.Unmarshal(raw, &out.Label)
 	}
 	return out
 }
@@ -177,151 +280,164 @@ func exportWarp(s *state.State) []json.RawMessage {
 	return out
 }
 
-func exportSubscription(src state.Source) Subscription {
+func exportSubscription(src state.Source, index int) Subscription {
 	out := Subscription{
-		URL:      src.URL,
-		Label:    src.Label,
-		MaxNodes: src.MaxNodes,
+		ID:        src.ID,
+		URL:       src.URL,
+		Label:     src.Name,
+		Identity:  exportSourceIdentity(src),
+		MaxNodes:  src.MaxNodes,
+		Skip:      src.Skip,
+		Fold:      exportFold(src.Replace),
+		Disabled:  exportDisabledMap(src),
+		SourceRef: exportSourceRef(src),
+	}
+	if out.Label == "" {
+		out.Label = src.Label
 	}
 	if !src.Enabled {
 		out.Enabled = boolPtr(false)
 	}
-	if src.Tag != nil && !src.Tag.IsZero() {
-		out.Tag = &TagPolicy{Prefix: src.Tag.Prefix, Postfix: src.Tag.Postfix, Mask: src.Tag.Mask}
+	if src.TagPolicy != nil && !src.TagPolicy.IsZero() {
+		out.Tag = &TagPolicy{Prefix: src.TagPolicy.Prefix, Postfix: src.TagPolicy.Postfix}
 	}
 	if src.Update != nil {
 		out.Update = &UpdatePolicy{IntervalHours: src.Update.IntervalHours, Auto: src.Update.AutoRefresh}
 	}
-	if len(src.DisabledNodes) > 0 {
-		out.Disabled = make(map[string]int64, len(src.DisabledNodes))
-		for hash, ts := range src.DisabledNodes {
-			out.Disabled[hash] = ts
-		}
+	return out
+}
+
+// exportSourceIdentity — чем подписка представляется провайдеру, в форме
+// контракта 0.12 (объект identity). nil, если не задано НИЧЕГО.
+//
+// Пишутся только заданные ключи: у этой настройки «не задано» и «задано
+// пустым» значат разное — пустой UA означает «слать дефолт приложения», и
+// приехав ключом с пустой строкой, он затёр бы дефолт принимающей стороны.
+// Отсюда указатели и проверка на пустоту перед записью.
+//
+// device_os / ver_os / device_model лаунчер не пишет: per-source их в модели
+// v7 нет, а выдумывать значения из системных — значит везти в файл то, чего
+// пользователь не настраивал (П1: экспорт — чистая функция состояния).
+func exportSourceIdentity(src state.Source) *SubscriptionIdentity {
+	out := &SubscriptionIdentity{}
+	if ua := strings.TrimSpace(src.UserAgent); ua != "" {
+		out.UserAgent = &ua
 	}
-	if ext := launcherSourceExtensions(src); ext != nil {
-		out.Extensions = Extensions{AppLauncher: ext}
+	if hwid := strings.TrimSpace(src.HWID); hwid != "" {
+		out.HWID = &hwid
 	}
-	// Чужие per-entity блобы и непонятые нам поля схемы (skip/detour другой
-	// стороны) возвращаются в запись нетронутыми (BACKUP.md §1).
-	foreignFields := attachForeignEntityExtensions(&out.Extensions, src.ForeignExtensions)
-	if raw, ok := foreignFields["skip"]; ok {
-		_ = json.Unmarshal(raw, &out.Skip)
+	if src.SendHWID != nil {
+		v := *src.SendHWID
+		out.SendHWID = &v
 	}
-	if raw, ok := foreignFields["detour"]; ok {
-		out.Detour = append(json.RawMessage(nil), raw...)
+	if src.HashDeviceModel != nil {
+		v := *src.HashDeviceModel
+		out.HashDeviceModel = &v
+	}
+	if out.IsEmpty() {
+		return nil
 	}
 	return out
 }
 
-// attachForeignEntityExtensions переносит сохранённые per-entity блобы чужих
-// приложений обратно в запись. Служебный ключ backupFieldsKey не блоб, а
-// непонятые поля схемы — возвращается вызывающему для распаковки на верхний
-// уровень записи.
-func attachForeignEntityExtensions(dst *Extensions, foreign map[string]json.RawMessage) map[string]json.RawMessage {
-	if len(foreign) == 0 {
-		return nil
+// droppedLocalOnlyFields — перечень per-source настроек подписки, у которых
+// в схеме дома нет. Пусто = терять нечего.
+//
+// С контрактом 0.12 здесь остался ОДИН ключ: UA и HWID-семейство уехали в
+// объект identity, а relays_in_directions — нет. Он про то, предлагать ли
+// служебные узлы (релеи BYPASS) в списке целей Направлений; у LxBox такой
+// развилки нет вовсе, и односторонний ключ в общей схеме был бы ровно тем
+// тайным грузом, ради сноса которого убран механизм extensions.
+//
+// Потеря не косметическая: на маршрут галка не влияет (релей материализуется
+// всегда), но после restore список целей будет другим, и пользователь не
+// поймёт, куда делся выбор, — поэтому её называют поимённо.
+func droppedLocalOnlyFields(src state.Source) string {
+	var fields []string
+	if src.RelaysInDirections {
+		fields = append(fields, "relays_in_directions")
 	}
-	var fields map[string]json.RawMessage
-	for app, blob := range foreign {
-		if app == backupFieldsKey {
-			_ = json.Unmarshal(blob, &fields)
-			continue
-		}
-		if *dst == nil {
-			*dst = Extensions{}
-		}
-		(*dst)[app] = append(json.RawMessage(nil), blob...)
-	}
-	return fields
+	return strings.Join(fields, ", ")
 }
 
+// exportServer — запись секции servers[].
+//
+// `label` контракта не заполняется (та же причина, что у exportChain): имя
+// одиночного узла в v7 — его тег, и он уезжает ключом node_tag.
 func exportServer(src state.Source) Server {
-	out := Server{
-		URI:   src.URI,
-		Label: src.Label,
+	out := exportServerNode(src.Node)
+	out.ID = src.ID
+	return out
+}
+
+// exportFolder — папка контракта 0.12: члены-серверы обычными записями
+// servers[] с пометкой folder, плюс перечень того, что осталось здесь.
+//
+// Второй возврат — не «список ошибок», а цена формы: у папки в схеме есть
+// ровно имя, поэтому её собственные настройки (политика тегов, свёртка,
+// общий detour) и члены, которых servers[] выразить не может, в файл не
+// едут. Перечисляются ОДНОЙ строкой на папку: пользователю нужно понять,
+// что именно он донастроит руками, а не получить строку на каждый ключ.
+//
+// Порядок членов сохраняется: он нормативен для сборки папки на приёмнике —
+// обе стороны собирают её по имени, в порядке записей файла.
+func exportFolder(src state.Source) ([]Server, string) {
+	var out []Server
+	var lost []string
+	if src.TagPolicy != nil && !src.TagPolicy.IsZero() {
+		lost = append(lost, "tag_policy")
 	}
-	if len(src.ConfigJSON) > 0 {
-		out.ConfigJSON = append(json.RawMessage(nil), src.ConfigJSON...)
+	if src.Replace != nil {
+		lost = append(lost, "replace")
+	}
+	// Общий detour ПАПКИ (у kind=folder тем же ключом, что личный detour
+	// узла) — настройка контейнера, а контейнера в схеме нет. Личные detour
+	// членов, наоборот, едут: они поля самой записи.
+	if src.Detour != nil {
+		lost = append(lost, "detour")
+	}
+	for _, n := range src.Nodes {
+		if n.Kind != state.SourceKindServer {
+			// Цепочка внутри папки и неразобранная запись: секция servers[]
+			// их не выражает, а положить цепочку в chains[] значило бы
+			// вынуть её из папки молча — вид и тег называем вслух.
+			lost = append(lost, string(n.Kind)+" "+n.Tag)
+			continue
+		}
+		m := exportServerNode(n)
+		m.Folder = src.Name
+		out = append(out, m)
+	}
+	return out, strings.Join(lost, ", ")
+}
+
+// exportServerNode — общая часть одиночного сервера: и корневого, и лежащего
+// в папке. Вынесена потому, что запись в файле у них одна и та же — разной
+// была бы только забытая половина полей, если писать её дважды.
+func exportServerNode(src state.Node) Server {
+	out := Server{
+		NodeTag:   src.Tag,
+		SourceRef: exportNodeLinkRef(src.Detour),
+	}
+	// Форма хранения узла в v7 одна — тело; исходный URI живёт в origin и
+	// едет тем же ключом, что и раньше, когда он был единственной формой.
+	//
+	// Блок wg-quick едет ТЕМ ЖЕ ключом `uri`: контракт (общий с LxBox) знает
+	// только uri/config_json, а материализация принимает и ссылку, и текст
+	// [Interface]/[Peer] — распознаёт по форме и возвращает origin.kind
+	// wg_ini. Без этой ветки INI-узел экспортировался телом, и на импорте
+	// исходник со всеми комментариями (включая имя пира) исчезал: узел терял
+	// «Regen from raw» и приезжал безымянным.
+	if src.Origin != nil &&
+		(src.Origin.Kind == state.OriginKindURI || src.Origin.Kind == state.OriginKindWGIni) {
+		out.URI = src.Origin.Raw
+	} else if len(src.Body) > 0 {
+		out.ConfigJSON = append(json.RawMessage(nil), src.Body...)
 	}
 	if !src.Enabled {
 		out.Enabled = boolPtr(false)
 	}
-	if ext := launcherSourceExtensions(src); ext != nil {
-		out.Extensions = Extensions{AppLauncher: ext}
-	}
-	foreignFields := attachForeignEntityExtensions(&out.Extensions, src.ForeignExtensions)
-	if raw, ok := foreignFields["detour"]; ok {
-		out.Detour = append(json.RawMessage(nil), raw...)
-	}
 	return out
-}
-
-// launcherSourceExtensions собирает непереносимые поля источника.
-//
-// Без этого round-trip терял бы detour, skip-фильтры и локальные outbound'ы:
-// экспорт-импорт на одной машине обязан быть тождественным (BACKUP.md §1).
-func launcherSourceExtensions(src state.Source) json.RawMessage {
-	ext := map[string]any{}
-	if src.ID != "" {
-		ext["id"] = src.ID
-	}
-	if len(src.Skip) > 0 {
-		ext["skip"] = src.Skip
-	}
-	if len(src.Outbounds) > 0 {
-		ext["outbounds"] = src.Outbounds
-	}
-	// Тег узла server-источника: в схеме servers[] поля под него нет (там
-	// только label), а роль у него не декоративная — на тег ссылаются
-	// правила и фильтры Направлений. Без провоза round-trip на одной
-	// машине переименовывал бы узел в подпись (BACKUP.md §1). У цепочек
-	// иначе: там тег — поле схемы chains[].tag.
-	if src.Type == state.SourceTypeServer && src.NodeTag != "" {
-		ext["node_tag"] = src.NodeTag
-	}
-	if src.ExcludeFromGlobal {
-		ext["exclude_from_global"] = true
-	}
-	if src.ExposeGroupTagsToGlobal {
-		ext["expose_group_tags_to_global"] = true
-	}
-	// SPEC 108: свёртка подписки в группу. Без неё перенос обеднил бы
-	// подписку — на другой машине она развернулась бы всеми узлами.
-	if src.Fold != nil {
-		ext["fold"] = src.Fold
-	}
-	if src.DetourTag != "" {
-		ext["detour_tag"] = src.DetourTag
-	}
-	// SPEC 112-A: наружу едет ссылка-ОБЪЕКТ — id источника-цели плюс
-	// identity-тег узла внутри него. Финальный конфиговый тег не вывозится: на
-	// приёмнике он другой (свои tag_prefix/tag_mask), и ссылка приехала бы
-	// мёртвой. Id источников roundtrip переживают — они пишутся сюда же
-	// (ext["id"]) и читаются импортом.
-	//
-	// Упразднённый detour_node_hash не пишется, пока ссылка жива: он мигрирует
-	// на первой сборке, и вывозить его значило бы вывозить протухающее.
-	if src.DetourNodeTag != "" || src.DetourNodeSourceID != "" {
-		if src.DetourNodeSourceID != "" {
-			ext["detour_node_source_id"] = src.DetourNodeSourceID
-		}
-		ext["detour_node_tag"] = src.DetourNodeTag
-		ext["detour_node_label"] = src.DetourNodeLabel
-	} else if src.DetourNodeHash != "" {
-		// Ещё не мигрировавший источник (бэкап снят до первой сборки):
-		// хеш едет как есть и мигрирует уже на приёмнике — терять ссылку
-		// из-за момента снятия бэкапа нельзя.
-		ext["detour_node_hash"] = src.DetourNodeHash
-		ext["detour_node_label"] = src.DetourNodeLabel
-	}
-	if len(ext) == 0 {
-		return nil
-	}
-	raw, err := json.Marshal(ext)
-	if err != nil {
-		return nil
-	}
-	return raw
 }
 
 func exportRule(r state.Rule) (Rule, error) {

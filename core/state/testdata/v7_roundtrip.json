@@ -1,0 +1,264 @@
+{
+  "meta": {
+    "version": 7,
+    "schema": "sources_v7",
+    "comment": "SPEC 118 v7 roundtrip fixture",
+    "created_at": "2026-08-01T00:00:00Z",
+    "updated_at": "2026-08-01T00:00:00Z"
+  },
+  "sources": [
+    {
+      "kind": "server",
+      "tag": "🇯🇵 Tokyo",
+      "enabled": true,
+      "origin": {
+        "kind": "uri",
+        "raw": "vless://uuid@h.example:443?security=reality&pbk=k#Tokyo"
+      },
+      "body": {
+        "type": "vless",
+        "server": "h.example",
+        "server_port": 443
+      },
+      "detour": {
+        "folder_id": "01J00000000000000000000SUB",
+        "tag": "NL-1"
+      },
+      "id": "01J00000000000000000000SRV"
+    },
+    {
+      "kind": "folder",
+      "tag": "",
+      "enabled": true,
+      "id": "01J00000000000000000000FLD",
+      "name": "Личные",
+      "tag_policy": {
+        "prefix": "[F] "
+      },
+      "nodes": [
+        {
+          "kind": "server",
+          "tag": "DE-1",
+          "enabled": true,
+          "origin": {
+            "kind": "uri",
+            "raw": "ss://Y2hhY2hh@de.example:8388#DE-1"
+          },
+          "body": {
+            "type": "shadowsocks",
+            "server": "de.example",
+            "server_port": 8388
+          }
+        },
+        {
+          "kind": "auto",
+          "tag": "быстрые",
+          "enabled": true,
+          "group": {
+            "group_type": "urltest",
+            "members": [
+              {
+                "tag": "DE-1"
+              }
+            ],
+            "strategy": {
+              "interval": "5m"
+            }
+          }
+        }
+      ],
+      "replace": {
+        "mode": "both",
+        "tag": "личные",
+        "strategy": {
+          "mode": "least_test"
+        }
+      }
+    },
+    {
+      "kind": "subscription",
+      "tag": "",
+      "enabled": true,
+      "id": "01J00000000000000000000SUB",
+      "name": "Proton NL",
+      "tag_policy": {
+        "prefix": "[P] ",
+        "postfix": " •"
+      },
+      "nodes": [
+        {
+          "kind": "server",
+          "tag": "NL-1",
+          "enabled": true,
+          "origin": {
+            "kind": "uri",
+            "raw": "vless://uuid@nl.example:443#NL-1"
+          },
+          "body": {
+            "type": "vless",
+            "server": "nl.example",
+            "server_port": 443
+          }
+        },
+        {
+          "kind": "server",
+          "tag": "DE-2",
+          "enabled": false,
+          "origin": {
+            "kind": "uri",
+            "raw": "vless://uuid@de2.example:443#DE-2"
+          },
+          "body": {
+            "type": "vless",
+            "server": "de2.example",
+            "server_port": 443
+          }
+        },
+        {
+          "kind": "auto",
+          "tag": "Auto",
+          "enabled": true,
+          "origin": {
+            "kind": "json",
+            "raw": "{\"type\":\"urltest\",\"tag\":\"Auto\"}"
+          },
+          "group": {
+            "group_type": "urltest",
+            "members": [
+              {
+                "tag": "NL-1"
+              },
+              {
+                "tag": "DE-2"
+              }
+            ],
+            "strategy": {}
+          }
+        }
+      ],
+      "url": "https://example.invalid/sub?token=abc&kind=all",
+      "skip": [
+        {
+          "tag": "/(RU)/i"
+        }
+      ],
+      "max_nodes": 500,
+      "update": {
+        "interval_hours": 6,
+        "auto_refresh": false
+      },
+      "meta": {
+        "profile_title": "Proton",
+        "userinfo": {
+          "upload_bytes": 10,
+          "download_bytes": 20,
+          "total_bytes": 100
+        }
+      },
+      "update_status": {
+        "url_at_fetch": "https://example.invalid/sub?token=abc&kind=all",
+        "last_attempt_at": "2026-08-01T00:00:00Z",
+        "last_success_at": "2026-08-01T00:00:00Z",
+        "last_status": "ok",
+        "nodes_count_fetched": 3,
+        "warnings": [
+          {
+            "kind": "skip",
+            "count": 2
+          }
+        ]
+      }
+    },
+    {
+      "kind": "chain",
+      "tag": "chain-1",
+      "enabled": true,
+      "hops": [
+        {
+          "tag": "🇯🇵 Tokyo"
+        },
+        {
+          "folder_id": "01J00000000000000000000SUB",
+          "tag": "NL-1"
+        }
+      ],
+      "id": "01J0000000000000000000CHN0"
+    }
+  ],
+  "directions": [
+    {
+      "tag": "proxy-out",
+      "auto": {
+        "mode": "least_test"
+      },
+      "ref": "#TEMPLATE#",
+      "updates": [
+        {
+          "ref": "#USER#",
+          "patch": {
+            "filters": {
+              "tag": "!/(🇷🇺)/i"
+            }
+          },
+          "explicit": true
+        }
+      ]
+    },
+    {
+      "tag": "video-out",
+      "type": "selector",
+      "filters": {
+        "tag": "/(NL)/"
+      }
+    }
+  ],
+  "rules": [
+    {
+      "kind": "preset",
+      "ref": "ru-direct",
+      "enabled": true,
+      "body": {
+        "vars": {}
+      }
+    },
+    {
+      "kind": "inline",
+      "enabled": true,
+      "body": {
+        "name": "X",
+        "match": {
+          "port": [
+            443
+          ]
+        },
+        "outbound": "proxy-out"
+      }
+    }
+  ],
+  "vars": [
+    {
+      "name": "log_level",
+      "value": "warn"
+    }
+  ],
+  "dns_options": {
+    "strategy": "prefer_ipv4",
+    "final": "google_doh",
+    "servers": [
+      {
+        "enabled": true,
+        "kind": "template",
+        "tag": "cloudflare_udp"
+      }
+    ]
+  },
+  "warp_accounts": {
+    "wg": {
+      "private_key": "priv",
+      "peer_public": "pub",
+      "client_v4": "172.16.0.2",
+      "client_v6": "fd00::2",
+      "created_at": "2026-08-01T00:00:00Z"
+    }
+  }
+}

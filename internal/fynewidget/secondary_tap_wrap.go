@@ -4,19 +4,26 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
+	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 )
 
 var (
 	_ fyne.Tappable          = (*SecondaryTapWrap)(nil)
 	_ fyne.SecondaryTappable = (*SecondaryTapWrap)(nil)
 	_ desktop.Mouseable      = (*SecondaryTapWrap)(nil)
+	_ desktop.Hoverable      = (*SecondaryTapWrap)(nil)
 )
 
 // SecondaryTapWrap is a thin widget around content that receives secondary (right) taps.
 // Primary taps on non-button areas hit this widget before the List row (Fyne hit-test
 // prefers SecondaryTappable here); OnPrimary runs so the row can still be selected.
+//
+// Tooltip: the wrap embeds ttwidget.ToolTipWidget, so SetToolTip on it shows the
+// text anywhere over the wrapped row — the row's own children are canvas objects
+// with no hover of their own, and giving each of them a tooltip would mean one
+// tooltip per column instead of one per row. Empty text = no tooltip at all.
 type SecondaryTapWrap struct {
-	widget.BaseWidget
+	ttwidget.ToolTipWidget
 
 	Content fyne.CanvasObject
 
@@ -27,6 +34,11 @@ type SecondaryTapWrap struct {
 	// OnPrimary is invoked on left-click when this widget receives the primary tap
 	// (e.g. label / padding in a List row). Modifier is from the press event; use 0 if unknown.
 	OnPrimary func(mods fyne.KeyModifier)
+
+	// OnPrimaryEvent is like OnPrimary but receives the tap's PointEvent — for
+	// handlers that anchor a popup at the click position. When set, it runs
+	// INSTEAD of OnPrimary.
+	OnPrimaryEvent func(*fyne.PointEvent)
 
 	// OnSecondary is invoked on right-click / long-press secondary tap.
 	OnSecondary func(*fyne.PointEvent)
@@ -55,9 +67,13 @@ func (w *SecondaryTapWrap) MouseDown(e *desktop.MouseEvent) {
 func (w *SecondaryTapWrap) MouseUp(_ *desktop.MouseEvent) {}
 
 // Tapped implements fyne.Tappable (primary tap on the wrap itself, not on child buttons).
-func (w *SecondaryTapWrap) Tapped(_ *fyne.PointEvent) {
+func (w *SecondaryTapWrap) Tapped(pe *fyne.PointEvent) {
 	mods := w.lastPrimaryPressMods
 	w.lastPrimaryPressMods = 0
+	if w.OnPrimaryEvent != nil {
+		w.OnPrimaryEvent(pe)
+		return
+	}
 	if w.OnPrimary != nil {
 		w.OnPrimary(mods)
 	}

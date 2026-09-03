@@ -40,6 +40,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/subscription"
@@ -104,6 +105,45 @@ type OutboundGenerationResult struct {
 	// («галка + N nodes») — ровно парадокс Proton NL: настройка на месте,
 	// трафика нет, и связи между этими фактами пользователю не показывали.
 	ExcludedSources []SourceExclusion
+
+	// ParseFailedSources — источники, которые не дали конфигу НИ ОДНОГО узла:
+	// не фетчнулись, или фетчнулись и разобрались в ноль (SPEC 115).
+	//
+	// Отдельно от ExcludedSources, потому что это разные события с разной
+	// подсказкой пользователю: исключённый источник узлы дал, но выпал из
+	// конфига из-за ссылки; этот не дал ничего, и чинить надо саму подписку.
+	// До SPEC 115 второе жило одним WARN «source returned zero nodes (counted
+	// as failed)» — в UI не было ничего, и строка Sources выглядела здоровой.
+	//
+	// Reason у записи — компактная человекочитаемая причина от разбора
+	// (первые несколько РАЗНЫХ), а не стенограмма на 500 строк.
+	ParseFailedSources []SourceExclusion
+
+	// EmissionWarnings — деградации ЭМИССИИ из материализованных nodes[]
+	// (SPEC 118 W4): битое тело узла, выпавший член Auto-группы, снятое
+	// умолчание, непойманная позиция цепочки, столкновение тегов в гарде.
+	//
+	// Отдельно от ParseFailedSources: там причины РАЗБОРА тела (он теперь
+	// живёт только в fetch и пишет свои строки в updateStatus), здесь —
+	// причины сборки. Оба потока сходятся в отчёте «Итога».
+	//
+	// SPEC 116 W12 (фикс 3): запись, а не строка — у деградации эмиссии есть
+	// адресат (источник или Направление), и отчёт обязан его знать, чтобы ⚠
+	// встал у виновной строки, а не под общим субъектом "emission".
+	EmissionWarnings []EmissionWarning
+
+	// NodeOrigins — финальный тег узла → источник, из которого он приехал
+	// (SPEC 113-B). Нужен последнему рубежу: граф-санитайзер (core/build)
+	// видит только теги, а выбросив узел за висячий detour, обязан назвать
+	// пользователю ИСТОЧНИК, у которого сломался переход. Селекторы и
+	// Направления сюда не попадают — у них источника нет.
+	NodeOrigins map[string]NodeOrigin
+}
+
+// NodeOrigin — чей это узел: ULID источника и его человеческая подпись.
+type NodeOrigin struct {
+	SourceID    string
+	SourceLabel string
 }
 
 // SourceExclusion — один исключённый источник и почему.
@@ -117,22 +157,108 @@ type SourceExclusion struct {
 	Reason      string
 }
 
+// unknownParseFailureReason — что показать, когда источник дал ноль узлов, а
+// причин разбор не назвал.
+//
+// Такое бывает штатно: тело прочиталось, но всё содержимое отсеяли skip-правила
+// или отметки выключения узлов. Молчать тут нельзя — пользователь всё равно
+// видит источник без узлов, — но и выдумывать причину тоже: формулировка
+// говорит ровно то, что известно.
+const unknownParseFailureReason = "the source produced no nodes (nothing left after parsing and filters)"
+
+// sourceParseFailure собирает запись о источнике, не давшем ни одного узла.
+//
+// Причины склеиваются в ОДНУ строку: адресат — строка списка Sources и строка
+// отчёта, а там место под одну фразу. Компактность гарантирована выше
+// (ParseFailureReasons), поэтому склейка не может разрастись.
+func sourceParseFailure(ps ProxySource, reasons []string) SourceExclusion {
+	label := strings.TrimSpace(ps.Label)
+	if label == "" {
+		label = strings.TrimSpace(ps.Source)
+	}
+	reason := strings.Join(prependProviderAnnounce(ps.ProviderAnnounce, reasons), "; ")
+	if strings.TrimSpace(reason) == "" {
+		reason = unknownParseFailureReason
+	}
+	return SourceExclusion{SourceID: ps.ID, SourceLabel: label, Reason: reason}
+}
+
+// prependProviderAnnounce ставит сообщение провайдера ПЕРВОЙ причиной.
+//
+// Когда подписка отдаёт ноль узлов, лучший диагноз обычно уже написан самим
+// провайдером («⚠️ Произошла ошибка при получении подписки. Попробуйте позже
+// или обратитесь в службу поддержки») — наши синтезированные причины («empty
+// user id…») объясняют, ЧТО мы увидели в теле, а провайдер объясняет, ПОЧЕМУ
+// тело такое. Второе ближе к корню, поэтому идёт первым.
+//
+// ГРАНИЦА ДОВЕРИЯ: текст чужой и вставляется как ДАННЫЕ, помеченные
+// источником. Он ничего не решает — ни состав узлов, ни достоверность разбора
+// (SPEC 113-A), — и только показывается.
+func prependProviderAnnounce(announce string, reasons []string) []string {
+	announce = strings.TrimSpace(announce)
+	if announce == "" {
+		return reasons
+	}
+	head := fmt.Sprintf("provider says: %s", announce)
+	return append([]string{head}, reasons...)
+}
+
+// appendReason доливает причину к уже собранным, не плодя дублей.
+func appendReason(reasons []string, extra string) []string {
+	extra = strings.TrimSpace(extra)
+	if extra == "" {
+		return reasons
+	}
+	for _, r := range reasons {
+		if r == extra {
+			return reasons
+		}
+	}
+	return append(append([]string(nil), reasons...), extra)
+}
+
 // NaiveSupportProbe — hook installed by the app layer (core.AppController):
 // reports whether the running sing-box core supports naive outbounds and why
 // not. nil (parser-level tests, standalone use) → assume supported. Same
-// package-level-hook pattern as subscription.LookupCachedBody.
+// package-level-hook pattern used across the parser package.
 var NaiveSupportProbe func() (supported bool, reason string)
 
 // GenerateNodeJSON returns a single JSON object string for one proxy node (sing-box outbound).
-// Field order and presence follow sing-box expectations. Supports: vless, vmess, trojan, shadowsocks, hysteria2, tuic, naive, masque, anytls, ssh, socks.
+// Field order and presence follow sing-box expectations. Supports: vless, vmess, trojan, shadowsocks, hysteria, hysteria2, tuic, naive, masque, anytls, ssh, socks.
 // Includes optional TLS (including reality), transport (ws/http/grpc), and protocol-specific options.
 // Returned string ends with a trailing comma and may include a leading comment line (node label) for readability.
 func GenerateNodeJSON(node *ParsedNode) (string, error) {
+	body, err := GenerateNodeJSONBare(node)
+	if err != nil {
+		return "", err
+	}
+	return wrapOutboundForConfig(body, node.Label, node.Scheme != SchemeGroup && !node.EmitRaw), nil
+}
+
+// GenerateNodeJSONBare — тот же outbound, но ГОЛЫМ JSON-объектом: без строки
+// комментария с именем узла, без обёрточного таба и без хвостовой запятой.
+//
+// Нужен всем, кто не собирает config.json, а разбирает результат эмиссии
+// обратно (подпись содержимого, миграция legacy-ключей). Раньше они звали
+// GenerateNodeJSON и резали обёртку строковым поиском первой `{` — а она
+// находилась внутри имени узла («SG {премиум} 1») и разбор молча ломался.
+// Формой обёртки владеет ТОЛЬКО config build, потребители подписи её не
+// видят.
+func GenerateNodeJSONBare(node *ParsedNode) (string, error) {
 	// SPEC 094 A5: a group imported from a sing-box config is a node in the
 	// subscription's own list, not a separate entry in the wizard's outbound
 	// configurator. It carries no server/server_port, so it gets its own
 	// emitter rather than threading "skip these fields" through the whole
 	// per-scheme switch below.
+	// SPEC 118 W4: узел из материализованных nodes[] несёт ГОТОВОЕ тело —
+	// ровно то, что эмиттер написал в момент материализации, минус tag и
+	// detour. Возвращаем их на прежние места и отдаём как есть: второй
+	// проход через per-scheme ветку был бы вторым источником правды о форме
+	// outbound'а и разъехался бы при первой правке эмиттера.
+	if len(node.EmitBody) > 0 {
+		return generateCanonicalBodyJSON(node)
+	}
+
 	if node.Scheme == SchemeGroup {
 		return generateGroupNodeJSON(node)
 	}
@@ -195,7 +321,7 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 			parts = append(parts, fmt.Sprintf(`"password":%s`, string(passwordJSON)))
 		}
 		// server_ports (optional): sing-box expects each entry as low:high; normalize bare ports from sources.
-		if serverPorts, ok := node.Outbound["server_ports"].([]string); ok && len(serverPorts) > 0 {
+		if serverPorts := tolerantStringSlice(node.Outbound["server_ports"]); len(serverPorts) > 0 {
 			serverPorts = subscription.NormalizeHysteria2ServerPortsSlice(serverPorts)
 			serverPortsJSON, err := json.Marshal(serverPorts)
 			if err != nil {
@@ -204,11 +330,11 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 			parts = append(parts, fmt.Sprintf(`"server_ports":%s`, string(serverPortsJSON)))
 		}
 		// up_mbps (optional)
-		if upMbps, ok := node.Outbound["up_mbps"].(int); ok && upMbps > 0 {
+		if upMbps := tolerantInt(node.Outbound["up_mbps"]); upMbps > 0 {
 			parts = append(parts, fmt.Sprintf(`"up_mbps":%d`, upMbps))
 		}
 		// down_mbps (optional)
-		if downMbps, ok := node.Outbound["down_mbps"].(int); ok && downMbps > 0 {
+		if downMbps := tolerantInt(node.Outbound["down_mbps"]); downMbps > 0 {
 			parts = append(parts, fmt.Sprintf(`"down_mbps":%d`, downMbps))
 		}
 		// obfs (optional)
@@ -236,6 +362,42 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 				obfsJSON := "{" + strings.Join(obfsParts, ",") + "}"
 				parts = append(parts, fmt.Sprintf(`"obfs":%s`, obfsJSON))
 			}
+		}
+	} else if node.Scheme == "hysteria" {
+		// Hysteria v1: секрет — auth_str (не password), obfs — ПЛОСКАЯ строка
+		// (option/hysteria.go, HysteriaOutboundOptions.Obfs), а не объект
+		// {type,password}, как у hysteria2. TLS-блок печатает общая секция ниже.
+		if auth, ok := node.Outbound["auth_str"].(string); ok && auth != "" {
+			authJSON, err := json.Marshal(auth)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal hysteria auth_str: %w", err)
+			}
+			parts = append(parts, fmt.Sprintf(`"auth_str":%s`, string(authJSON)))
+		}
+		if serverPorts := tolerantStringSlice(node.Outbound["server_ports"]); len(serverPorts) > 0 {
+			serverPorts = subscription.NormalizeHysteria2ServerPortsSlice(serverPorts)
+			serverPortsJSON, err := json.Marshal(serverPorts)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal hysteria server_ports: %w", err)
+			}
+			parts = append(parts, fmt.Sprintf(`"server_ports":%s`, string(serverPortsJSON)))
+		}
+		// Полоса у v1 ОБЯЗАТЕЛЬНА: ядро отвергает outbound без неё («missing
+		// upload speed») и роняет весь config.json. Импорт JSON-тела ставит
+		// дефолт (sanitizeSingboxHysteria), но читает его float64 — эмиттер
+		// обязан читать так же, иначе дефолт есть в Outbound и нет в конфиге.
+		if upMbps := tolerantInt(node.Outbound["up_mbps"]); upMbps > 0 {
+			parts = append(parts, fmt.Sprintf(`"up_mbps":%d`, upMbps))
+		}
+		if downMbps := tolerantInt(node.Outbound["down_mbps"]); downMbps > 0 {
+			parts = append(parts, fmt.Sprintf(`"down_mbps":%d`, downMbps))
+		}
+		if obfs, ok := node.Outbound["obfs"].(string); ok && obfs != "" {
+			obfsJSON, err := json.Marshal(obfs)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal hysteria obfs: %w", err)
+			}
+			parts = append(parts, fmt.Sprintf(`"obfs":%s`, string(obfsJSON)))
 		}
 	} else if node.Scheme == "ss" {
 		// Extract method and password from outbound
@@ -548,8 +710,23 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 	}
 
 	// Build final JSON
-	jsonStr := "{" + strings.Join(parts, ",") + "}"
-	return fmt.Sprintf("\t// %s\n\t%s,", sanitizeOutboundLineComment(node.Label), jsonStr), nil
+	return "{" + strings.Join(parts, ",") + "}", nil
+}
+
+// wrapOutboundForConfig одевает голый outbound в форму строки config.json:
+// таб, необязательная строка-комментарий с именем узла и хвостовая запятая для
+// сборки массива.
+//
+// alwaysComment сохраняет исторический вид per-scheme узлов: у них комментарий
+// печатался даже при пустом имени (пустая `// `-строка), а у групп и ручного
+// JSON — только когда имя есть. Формат конфига руками правят и глазами читают,
+// поэтому расхождение оставлено как было.
+func wrapOutboundForConfig(body, label string, alwaysComment bool) string {
+	comment := sanitizeOutboundLineComment(label)
+	if comment == "" && !alwaysComment {
+		return "\t" + body + ","
+	}
+	return fmt.Sprintf("\t// %s\n\t%s,", comment, body)
 }
 
 // GenerateSelectorWithFilteredAddOutbounds builds one selector/urltest outbound as a JSON string.
@@ -724,8 +901,8 @@ func GenerateSelectorWithFilteredAddOutbounds(
 			}
 		}
 		if !inList {
-			debuglog.WarnLog("Parser: default %q группы %q не входит в её состав — ключ снят "+
-				"(иначе ядро не стартует)", defaultTag, outboundConfig.Tag)
+			debuglog.WarnLog("Parser: default %q of group %q is not among its members — key removed "+
+				"(otherwise the core will not start)", defaultTag, outboundConfig.Tag)
 			defaultTag = ""
 		}
 	}
@@ -790,8 +967,8 @@ func GenerateSelectorWithFilteredAddOutbounds(
 				}
 			}
 			if !inList {
-				debuglog.WarnLog("Parser: default %q группы %q не входит в её состав — ключ снят "+
-					"(иначе ядро не стартует)", val, outboundConfig.Tag)
+				debuglog.WarnLog("Parser: default %q of group %q is not among its members — key removed "+
+					"(otherwise the core will not start)", val, outboundConfig.Tag)
 				continue
 			}
 		}
@@ -861,7 +1038,21 @@ func sanitizeBalancerOptions(opts map[string]interface{}) {
 // Uses node.Tag (with tag_prefix applied by source) for the endpoint "tag" so selectors can reference it.
 // Returned string is pretty-printed (multi-line); trailing comma is added by the caller when inserting into the array.
 func GenerateEndpointJSON(node *ParsedNode) (string, error) {
-	if node.Scheme != "wireguard" || node.Outbound == nil {
+	body, err := GenerateEndpointJSONBare(node)
+	if err != nil {
+		return "", err
+	}
+	if node.Comment != "" {
+		return "// " + sanitizeOutboundLineComment(node.Comment) + "\n" + body, nil
+	}
+	return body, nil
+}
+
+// GenerateEndpointJSONBare — endpoint ГОЛЫМ JSON-объектом, без строки
+// комментария. Парная к GenerateNodeJSONBare: подпись содержимого и миграция
+// legacy-ключей разбирают эмиссию обратно и обёртку видеть не должны.
+func GenerateEndpointJSONBare(node *ParsedNode) (string, error) {
+	if node == nil || node.Scheme != "wireguard" || node.Outbound == nil {
 		return "", fmt.Errorf("GenerateEndpointJSON requires wireguard node with Outbound set")
 	}
 	// Use node.Tag (includes tag_prefix, e.g. "4:wg-parnas") so endpoint tag matches outbound references
@@ -876,12 +1067,7 @@ func GenerateEndpointJSON(node *ParsedNode) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal wireguard endpoint: %w", err)
 	}
-	result := ""
-	if node.Comment != "" {
-		result = "// " + sanitizeOutboundLineComment(node.Comment) + "\n"
-	}
-	result += string(jsonBytes)
-	return result, nil
+	return string(jsonBytes), nil
 }
 
 // EmitNodeJSONs renders one parsed node exactly as the final config carries
@@ -937,15 +1123,19 @@ func EmitNodeJSONs(node *ParsedNode) (outboundJSONs []string, endpointJSON strin
 	return append(jsons, mainJSON), "", nil
 }
 
-// GenerateOutboundsFromParserConfig is the main entry point: loads nodes from all proxy sources via loadNodesFunc,
-// generates node JSONs, then runs the three passes (buildOutboundsInfo, computeOutboundValidity, generateSelectorJSONs)
-// and returns the concatenated JSON strings (nodes, then local selectors, then global selectors) plus counts.
-// progressCallback(0–100, message) is optional for UI progress. tagCounts is passed to loadNodesFunc for deduplication.
+// GenerateOutboundsFromParserConfig is the main entry point: эмитит узлы из
+// МАТЕРИАЛИЗОВАННОГО канона каждого источника (SPEC 118 Т5 — конвейер сборки
+// тела подписок не парсит), затем прогоняет три прохода (buildOutboundsInfo,
+// computeOutboundValidity, generateSelectorJSONs) и возвращает
+// сконкатенированные JSON-строки (узлы, локальные селекторы, глобальные
+// селекторы) со счётчиками.
+//
+// progressCallback(0–100, message) необязателен. tagCounts — общий счётчик
+// уникализации финальных тегов на всю сборку.
 func GenerateOutboundsFromParserConfig(
 	parserConfig *ParserConfig,
 	tagCounts map[string]int,
 	progressCallback func(float64, string),
-	loadNodesFunc func(ProxySource, map[string]int, func(float64, string), int, int) ([]*ParsedNode, error),
 	directions DirectionBuildOptions,
 ) (*OutboundGenerationResult, error) {
 	// SPEC 104, проход 0 — раскрываем Направления: выключенные выпадают,
@@ -954,10 +1144,10 @@ func GenerateOutboundsFromParserConfig(
 	// подставились штатно, без отдельной ветки для них.
 	PrepareDirections(parserConfig, directions.TwinOptions)
 
-	// SPEC 108, тот же проход 0 — разворачиваем свёрнутые подписки в
+	// SPEC 118 W4, тот же проход 0 — разворачиваем свёртки папок (replace) в
 	// локальные группы. После Направлений и до подстановки переменных: у
-	// автогруппы подписки те же `@urltest_*` в опциях.
-	PrepareSourceFolds(parserConfig, directions.TwinOptions)
+	// авто-группы замены те же `@urltest_*` в опциях.
+	PrepareFolderReplaces(parserConfig, directions.TwinOptions)
 
 	// Hotfix v0.8.8.1 — substitute `@varname` placeholders in
 	// parser_config.outbounds[].options before generating selector JSONs. See
@@ -992,9 +1182,15 @@ func GenerateOutboundsFromParserConfig(
 	}
 	skippedNaive := 0
 
+	// SPEC 118 W4: эмиссионные деградации канонического пути (битое тело,
+	// пустая группа, снятое умолчание) — тот же адресат, что у причин
+	// разбора: отчёт сборки. Ключ — позиция источника, как и там.
+	emissionWarningsBySource := make(map[int][]string)
+
 	processedIdx := 0
 	succeededSources := 0
 	failedSources := 0
+	var parseFailedSources []SourceExclusion
 	for i, proxySource := range parserConfig.ParserConfig.Proxies {
 		if proxySource.Disabled {
 			debuglog.DebugLog("GenerateOutboundsFromParserConfig: skipping source %d (disabled)", i+1)
@@ -1006,14 +1202,18 @@ func GenerateOutboundsFromParserConfig(
 		}
 		processedIdx++
 
-		// SPEC 094 A5: группы из импортированного sing-box конфига приходят
-		// В ЭТОМ ЖЕ списке как обычные узлы (SchemeGroup). Отдельного канала
-		// для них нет — вкладка Outbounds остаётся за каналами лаунчера.
-		nodesFromSource, err := loadNodesFunc(proxySource, tagCounts, progressCallback, i, totalSources)
-		if err != nil {
-			debuglog.ErrorLog("GenerateOutboundsFromParserConfig: Error processing source %d/%d: %v", i+1, totalSources, err)
-			failedSources++
-			continue
+		// SPEC 118 Т5: источник эмитится из МАТЕРИАЛИЗОВАННОГО канона —
+		// конвейер сборки тело подписки не читает и парсеры по подпискам не
+		// зовёт. Канона нет = собирать не из чего (узел без тела, подписку
+		// ещё ни разу не обновляли): это состояние источника, а не вторая
+		// ветка конвейера.
+		var nodesFromSource []*ParsedNode
+		if proxySource.Canonical != nil {
+			emitted := EmitCanonicalSource(proxySource, i, tagCounts)
+			nodesFromSource = emitted.Nodes
+			if len(emitted.Warnings) > 0 {
+				emissionWarningsBySource[i] = emitted.Warnings
+			}
 		}
 
 		skippedNaiveHere := 0
@@ -1049,19 +1249,55 @@ func GenerateOutboundsFromParserConfig(
 			// Silent-empty: source fetched OK but parsed zero nodes. From
 			// the user's perspective this is indistinguishable from a hard
 			// failure — they expected nodes, got none.
-			debuglog.WarnLog("GenerateOutboundsFromParserConfig: source %d/%d returned zero nodes (counted as failed)", i+1, totalSources)
+			//
+			// SPEC 115: до этого место кончалось WARN'ом — в UI не было
+			// НИЧЕГО, и строка Sources показывала здоровый источник. Причины
+			// разбора уже собраны (хук выше), и здесь они становятся записью
+			// отчёта: пользователю нужен ответ «почему пусто», а не факт
+			// пустоты.
+			// Причина «почему пусто» приезжает НЕ из разбора (его тут нет —
+			// SPEC 118 Т5), а из состояния источника: warnings последнего
+			// fetch'а кладёт в отчёт FeedBuildReportFromFetchStatus, а
+			// эмиссионные деградации — emissionWarningsBySource.
+			failure := sourceParseFailure(proxySource, emissionWarningsBySource[i])
+			debuglog.WarnLog("GenerateOutboundsFromParserConfig: source %d/%d returned zero nodes (counted as failed): %s",
+				i+1, totalSources, failure.Reason)
 			failedSources++
+			parseFailedSources = append(parseFailedSources, failure)
 		}
 	}
 
 	if len(allNodes) == 0 {
+		// Узлов не набралось ни одного — конфига не будет. Но причины УЖЕ
+		// собраны выше (parseFailedSources), и возвращать их некому:
+		// раньше здесь стоял голый `return nil, err`, и вместе с результатом
+		// на пол летела вся диагностика. Наружу это выглядело так, что
+		// подписка с внятным ответом провайдера («подписка неактивна»)
+		// молчала в строке Sources, хотя Preview ту же причину показывал:
+		// Preview разбирает источник сам, а строку красит отчёт сборки.
+		//
+		// Поэтому результат возвращается ВМЕСТЕ с ошибкой. Ошибка по-прежнему
+		// не даёт собрать конфиг — вызывающий обязан её уважать; результат
+		// несёт только диагностику (узлов в нём нет по определению), и его
+		// единственный потребитель — фид отчёта.
+		diag := &OutboundGenerationResult{
+			TotalSources:       totalSources,
+			SucceededSources:   succeededSources,
+			FailedSources:      failedSources,
+			SkippedNaiveNodes:  skippedNaive,
+			SkippedNaiveReason: naiveReason,
+			// ExcludedSources здесь пуст по существу, а не по недосмотру:
+			// исключения считает резолв графа ссылок ниже, и при нулевом наборе
+			// узлов исключать нечего — до графа ссылок дело не дошло.
+			ParseFailedSources: parseFailedSources,
+		}
 		if totalSources == 0 {
-			return nil, fmt.Errorf("no enabled sources (all subscriptions disabled in wizard)")
+			return diag, fmt.Errorf("no enabled sources (all subscriptions disabled in wizard)")
 		}
 		if skippedNaive > 0 {
-			return nil, fmt.Errorf("no usable nodes: %d naive node(s) skipped (%s)", skippedNaive, naiveReason)
+			return diag, fmt.Errorf("no usable nodes: %d naive node(s) skipped (%s)", skippedNaive, naiveReason)
 		}
-		return nil, fmt.Errorf("no nodes parsed from any source")
+		return diag, fmt.Errorf("no nodes parsed from any source")
 	}
 
 	// SPEC 110: источники-цепочки становятся узлами здесь — их позиции
@@ -1075,30 +1311,69 @@ func GenerateOutboundsFromParserConfig(
 			directionTagsForChains[d.Tag] = true
 		}
 	}
+
+	// SPEC 118 W4: ЕДИНЫЙ резолв NodeLink. Строится один словарь целей на всю
+	// сборку — узлы папок по сырым тегам + корневое пространство финальных
+	// тегов (верхние узлы, Направления, replace-теги, системные) — и только
+	// после него материализуется хоть одна ссылка (тот же инвариант
+	// двухпроходности, что у node_ref.go).
+	linkTargets := BuildNodeLinkTargets(parserConfig.ParserConfig.Proxies, nodesBySource, allRootLinkTargets(parserConfig, directionTagsForChains))
+	// Позиции цепочек — до ResolveChainSources: она строит узел по строковым
+	// тегам и о ссылках не знает.
+	// SPEC 116 W12 фикс 3: предупреждения эмиссии едут с адресатом
+	// (SourceID/Направление), чтобы ⚠ встал у виновной строки Sources — так же,
+	// как у деградаций подписок.
+	emissionWarnings := ResolveCanonicalChainHops(parserConfig, linkTargets)
+
 	allNodes, brokenChains := ResolveChainSources(parserConfig, allNodes, nodesBySource, directionTagsForChains)
 
-	// ПРОХОД 2 (SPEC 112-A, инвариант двухпроходности): выше закончился проход
-	// 1 — каждый узел каждого источника получил ФИНАЛЬНЫЙ тег. Только теперь
-	// материализуются ссылки на узлы: строится единая карта резолва
-	// «источник + identity-тег → узел», и ссылки-объекты
-	// (detour_node_source_id + detour_node_tag) превращаются в теги. Легаси
-	// detour_node_hash мигрирует на этом же проходе.
-	//
-	// Резолв обязан идти ДО sanitizeNodeDetours, чтобы проставленные теги
-	// попали в проверку циклов и самоссылок, и до граф-санитайзера ниже по
-	// потоку — финального рубежа по всем рёбрам outbound-графа.
-	allNodes, excludedSources := resolveNodeDetours(parserConfig, nodesBySource, allNodes)
-	if len(allNodes) == 0 {
-		return nil, fmt.Errorf("no usable nodes: every source was dropped (detour node not found)")
+	// Detour узлов и состав Auto-групп канона: fail-closed по detour (с
+	// каскадом и кольцами), prune по членам.
+	var linkWarnings []EmissionWarning
+	allNodes, linkWarnings = ApplyCanonicalNodeLinks(parserConfig.ParserConfig.Proxies, nodesBySource, allNodes, linkTargets)
+	emissionWarnings = append(emissionWarnings, linkWarnings...)
+	for i := 0; i < len(parserConfig.ParserConfig.Proxies); i++ {
+		if ws := emissionWarningsBySource[i]; len(ws) > 0 {
+			emissionWarnings = append(emissionWarnings,
+				emissionWarningsFor(parserConfig.ParserConfig.Proxies[i], i, ws)...)
+		}
 	}
 
-	// SPEC 077: sanitize source-level detours that would break sing-box —
-	// self-reference and detour cycles among nodes. Fail-open: the offending
-	// detour field is dropped (the node dials directly), generation continues.
-	// Dangling detours onto template/preset group tags are NOT pruned here:
-	// those tags are merged in only at final config assembly, so they are
-	// unknown at this point and pruning them would be a false positive.
-	sanitizeNodeDetours(allNodes)
+	// SPEC 118 W4: ЕДИНЫЙ гард занятости тегов (features/directions.md §8).
+	// Столкновение «Направление x + replace-тег x» дало бы два `x-auto` и
+	// отказ ядра на всём конфиге — здесь оно становится внятным
+	// предупреждением сборки, адресованным пользователю.
+	tagGuard := BuildTagGuard(
+		parserConfig.ParserConfig.Outbounds,
+		parserConfig.ParserConfig.Proxies,
+		rootNodeTagsForGuard(parserConfig, nodesBySource),
+		directions.SystemTags,
+	)
+	// Адресат столкновения: если спорный тег принадлежит узлу — это строка
+	// Sources его источника; если Направлению или его твину — вкладка
+	// Направлений. Без адресата пользователь читал бы «тег занят дважды» и не
+	// знал, где именно чинить (фикс 3).
+	for _, c := range tagGuard.Conflicts() {
+		w := EmissionWarning{Text: c.Text()}
+		if src, index, ok := sourceOfNodeTag(parserConfig.ParserConfig.Proxies, nodesBySource, c.Tag); ok {
+			w.SourceID = strings.TrimSpace(src.ID)
+			w.SourceLabel = sourceDisplayName(src, index)
+		} else if dir := directionOwningTag(parserConfig.ParserConfig.Outbounds, c.Tag); dir != "" {
+			w.DirectionTag = dir
+		}
+		emissionWarnings = append(emissionWarnings, w)
+		debuglog.WarnLog("tag guard: %s", w.Text)
+	}
+
+	// SPEC 077 → SPEC 113-B: самоссылка и кольцо detour среди узлов. Fail-closed:
+	// выбрасывается УЗЕЛ-носитель, а не ключ detour, — снятие ключа отправило бы
+	// его трафик напрямую молча. Висячие detour на теги шаблонных/preset-групп
+	// здесь не трогаются: они сводятся только при финальной сборке, и решение
+	// принимает граф-санитайзер (core/build), которому виден полный набор тегов.
+	allNodes = sanitizeNodeDetours(allNodes)
+	// Локальные селекторы собираются по nodesBySource — выброшенный узел не
+	// должен остаться в составе группы призраком.
+	pruneNodesBySource(nodesBySource, allNodes)
 
 	// Step 2: Generate JSON for all nodes
 	if progressCallback != nil {
@@ -1109,6 +1384,23 @@ func GenerateOutboundsFromParserConfig(
 	endpointsJSON := make([]string, 0)
 	nodesCount := 0
 	endpointsCount := 0
+
+	// SPEC 113-B: карта «тег узла → источник». Строится здесь, потому что это
+	// последнее место, где узел и его источник видны вместе: дальше по конвейеру
+	// от узла остаётся строка JSON.
+	nodeOrigins := make(map[string]NodeOrigin, len(allNodes))
+	for _, node := range allNodes {
+		if node == nil || node.Tag == "" ||
+			node.SourceIndex == UnsetSourceIndex ||
+			node.SourceIndex >= len(parserConfig.ParserConfig.Proxies) {
+			continue
+		}
+		ps := parserConfig.ParserConfig.Proxies[node.SourceIndex]
+		nodeOrigins[node.Tag] = NodeOrigin{
+			SourceID:    strings.TrimSpace(ps.ID),
+			SourceLabel: sourceDisplayName(ps, node.SourceIndex),
+		}
+	}
 
 	for _, node := range allNodes {
 		outJSONs, epJSON, err := EmitNodeJSONs(node)
@@ -1125,7 +1417,7 @@ func GenerateOutboundsFromParserConfig(
 		}
 	}
 
-	globalPool := FilterNodesExcludeFromGlobal(allNodes, parserConfig.ParserConfig.Proxies)
+	globalPool := FilterDirectionCandidatePool(allNodes, parserConfig.ParserConfig.Proxies)
 	exposeCandidates := collectExposeTagCandidates(parserConfig)
 	outboundsInfo, chainCycles, detourCycles := buildOutboundsInfo(parserConfig, nodesBySource, globalPool, progressCallback)
 	computeOutboundValidity(outboundsInfo, parserConfig, exposeCandidates, progressCallback)
@@ -1148,23 +1440,13 @@ func GenerateOutboundsFromParserConfig(
 		BrokenChains:         brokenChains,
 		ChainCycles:          chainCycles,
 		DetourCycles:         detourCycles,
-		ExcludedSources:      excludedSources,
+		ParseFailedSources:   parseFailedSources,
+		EmissionWarnings:     emissionWarnings,
+		NodeOrigins:          nodeOrigins,
 		SkippedNaiveReason:   naiveReason,
 	}, nil
 }
 
-// sanitizeNodeDetours removes source-level detour fields that would break
-// sing-box (SPEC 077), fail-open: the field is dropped and the node dials
-// directly. Two cases are handled, both decidable from the node set alone:
-//
-//   - self-reference: node.detour == node.tag;
-//   - cycle among nodes: following node.detour from node to node returns to an
-//     already-visited node (A→B→A, longer rings, …). The detour on the node
-//     that closes the ring is dropped, which breaks every cycle it belongs to.
-//
-// Detours pointing at tags outside the node set (template/preset group tags,
-// built-in outbounds) are left untouched — those are resolved only at final
-// config assembly and are not knowable here.
 // generateGroupNodeJSON emits a selector/urltest node imported from a sing-box
 // config (SPEC 094 A5).
 //
@@ -1175,6 +1457,9 @@ func GenerateOutboundsFromParserConfig(
 // Emitting an empty group is not allowed: sing-box refuses to start on an
 // urltest with no outbounds, so a group that lost all its members must have
 // been dropped earlier. Returning an error here is the last line of defence.
+//
+// Возвращает ГОЛЫЙ объект: комментарий и запятую добавляет
+// wrapOutboundForConfig, когда эмиссия идёт в config.json.
 func generateGroupNodeJSON(node *ParsedNode) (string, error) {
 	if node.Outbound == nil {
 		return "", fmt.Errorf("group node %q has no outbound data", node.Tag)
@@ -1222,20 +1507,19 @@ func generateGroupNodeJSON(node *ParsedNode) (string, error) {
 		parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(k), string(encoded)))
 	}
 
-	body := fmt.Sprintf("\t{%s},", strings.Join(parts, ","))
-	if comment := sanitizeOutboundLineComment(node.Label); comment != "" {
-		return fmt.Sprintf("\t// %s\n%s", comment, body), nil
-	}
-	return body, nil
+	return "{" + strings.Join(parts, ",") + "}", nil
 }
 
 // generateRawNodeJSON emits a manual config_json node (ParsedNode.EmitRaw):
 // the Outbound map goes into the config verbatim, except tag (restamped with
 // the node's final tag — label/mask/uniquify already applied) and detour
-// (stamped by subscription.ApplySourceDetour / the chain logic into the map itself).
+// (stamped into the map itself by the canonical link resolve / chain logic).
 //
 // tag and type lead for readability, the rest is sorted: determinism is
 // needed by the node identity hash, which is computed from the emitted JSON.
+//
+// Возвращает ГОЛЫЙ объект — обёртку для config.json ставит
+// wrapOutboundForConfig.
 func generateRawNodeJSON(node *ParsedNode) (string, error) {
 	if node.Outbound == nil {
 		return "", fmt.Errorf("manual node %q has no outbound data", node.Tag)
@@ -1269,11 +1553,33 @@ func generateRawNodeJSON(node *ParsedNode) (string, error) {
 		parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(k), string(encoded)))
 	}
 
-	body := fmt.Sprintf("\t{%s},", strings.Join(parts, ","))
-	if comment := sanitizeOutboundLineComment(node.Label); comment != "" {
-		return fmt.Sprintf("\t// %s\n%s", comment, body), nil
+	return "{" + strings.Join(parts, ",") + "}", nil
+}
+
+// generateCanonicalBodyJSON эмитит узел из материализованного тела канона v7
+// (SPEC 118 W4).
+//
+// Тело хранится БЕЗ ключей tag и detour — их владелец модель, а не тело
+// (SPEC Т2: «body чист от detour»). Здесь они возвращаются на прежние места:
+// `tag` первым, `detour` последним — ровно там, где их писал per-scheme
+// эмиттер, из которого тело и получилось. Порядок остальных ключей не
+// трогается вовсе, поэтому байты совпадают со старым движком.
+func generateCanonicalBodyJSON(node *ParsedNode) (string, error) {
+	obj, err := decodeOrderedJSONObject(node.EmitBody)
+	if err != nil {
+		return "", fmt.Errorf("canonical node %q: %w", node.Tag, err)
 	}
-	return body, nil
+	obj.setFirst("tag", marshalJSONStringRaw(node.Tag))
+	// Detour приезжает резолвом (проход 2) через ту же карту Outbound, что
+	// и у остальных узлов: единая точка, а не отдельный канал.
+	if node.Outbound != nil {
+		if d, ok := node.Outbound["detour"].(string); ok {
+			if d = strings.TrimSpace(d); d != "" {
+				obj.setLast("detour", marshalJSONStringRaw(d))
+			}
+		}
+	}
+	return string(obj.encode()), nil
 }
 
 // groupMemberTags returns the group's member tags in order.
@@ -1368,237 +1674,28 @@ func normalizeChainHop(hop, owner *ParsedNode) *ParsedNode {
 	return out
 }
 
-// resolveNodeDetours implements SPEC 101 → SPEC 112 → SPEC 112-A — a source
-// chained through ONE concrete node, the node-level sibling of the
-// tag-addressed group detour (SPEC 077).
+// sanitizeNodeDetours выбрасывает узлы, чей detour сломал бы sing-box
+// (SPEC 077 → SPEC 113-B). Fail-closed: выбрасывается УЗЕЛ-носитель, а не поле
+// detour. Снятие поля — тихий переход на прямой дозвон, запрещённый на всех
+// уровнях: переход выбирали, чтобы спрятать за ним трафик.
 //
-// Ссылка на узел — объект «source_id + identity-тег» (см. node_ref.go); тут
-// она материализуется в финальный тег. Это ПРОХОД 2 сборки: карта резолва
-// строится одним местом (buildNodeRefIndex), и только после неё резолвится
-// хоть что-нибудь. Резолв из прохода 1 запрещён по построению — там финальных
-// тегов у части узлов ещё нет.
+// Два случая, оба разрешимые по одному лишь набору узлов:
 //
-// Группы кандидатами не являются: дозвон через selector — задача DetourTag.
+//   - самоссылка: node.detour == node.tag;
+//   - кольцо среди узлов: идя по node.detour от узла к узлу, возвращаемся к уже
+//     пройденному (A→B→A и длиннее). Выпадают ВСЕ участники кольца, а не один
+//     замкнувший его: у кольца нет виноватого, и оставить часть значило бы
+//     решить за пользователя, чей переход не важен.
 //
-// Fail-closed: ссылка не разрешилась (источник-цель удалён, узел исчез из
-// подписки, провайдер его переименовал) — узлы зависимого источника ВЫПАДАЮТ
-// из конфига с предупреждением. Групповой detour падает fail-open (снять
-// detour, звонить напрямую) — и для потерявшей участника группы это правильно,
-// но пропавший хоп цепочки не имеет права молча превратиться в прямой звонок:
-// хоп выбирали, чтобы спрятать за ним трафик источника.
+// Выпадение каскадирует до фикспойнта: узел, ходивший через выброшенного,
+// выбрасывается следом — иначе у него остался бы detour в никуда.
 //
-// Когда заданы и DetourNodeTag, и DetourTag (UI это запрещает, ручная правка
-// состояния — нет), побеждает ссылка на узел: LoadNodesFromSource у такого
-// источника групповой тег не штампует, штамп происходит здесь.
+// Detour на теги вне набора узлов (шаблонные/preset-группы, служебные
+// outbound'ы) здесь не трогается — они сводятся только при финальной сборке, и
+// решение принимает граф-санитайзер (core/build).
 //
-// Миграция SPEC 112: источник, у которого остался упразднённый
-// `detour_node_hash`, переезжает на ссылку-объект тут же — см.
-// migrateLegacyDetourNodeHash.
-//
-// Второе возвращаемое значение — реестр исключений (SPEC 112-B часть B): те же
-// drop'ы, но пригодные для показа. Молчаливое исключение по логу и было
-// парадоксом Proton NL — строка источника оставалась здоровой на вид.
-func resolveNodeDetours(
-	parserConfig *ParserConfig,
-	nodesBySource map[int][]*ParsedNode,
-	allNodes []*ParsedNode,
-) ([]*ParsedNode, []SourceExclusion) {
-	var refSources []int
-	for i, ps := range parserConfig.ParserConfig.Proxies {
-		if len(nodesBySource[i]) == 0 {
-			continue
-		}
-		if strings.TrimSpace(ps.DetourNodeTag) != "" ||
-			strings.TrimSpace(ps.DetourNodeSourceID) != "" ||
-			strings.TrimSpace(ps.DetourNodeHash) != "" {
-			refSources = append(refSources, i)
-		}
-	}
-	if len(refSources) == 0 {
-		return allNodes, nil
-	}
-
-	// Карта резолва — ОДНА на сборку и строится здесь, на проходе 2. Любой
-	// будущий вид ссылки на узел обязан ходить через неё, а не заводить свой
-	// поиск (см. развёрнутое обоснование в node_ref.go).
-	idx := buildNodeRefIndex(parserConfig, nodesBySource, allNodes)
-
-	dropSource := make(map[int]bool)
-	var excluded []SourceExclusion
-	for _, i := range refSources {
-		ps := parserConfig.ParserConfig.Proxies[i]
-		if strings.TrimSpace(ps.DetourNodeHash) != "" &&
-			strings.TrimSpace(ps.DetourNodeTag) == "" && strings.TrimSpace(ps.DetourNodeSourceID) == "" {
-			// Состояние до SPEC 112 — ссылка живёт хешем; переводим на объект.
-			migrateLegacyDetourNodeHash(&parserConfig.ParserConfig.Proxies[i], idx, allNodes, i)
-			ps = parserConfig.ParserConfig.Proxies[i]
-		}
-
-		res := idx.resolve(ps.DetourNodeSourceID, ps.DetourNodeTag)
-		if res.node == nil {
-			debuglog.WarnLog("%s", detourFailureMessage(parserConfig, idx, ps, i))
-			dropSource[i] = true
-			excluded = append(excluded, SourceExclusion{
-				SourceID:    strings.TrimSpace(ps.ID),
-				SourceLabel: sourceDisplayName(ps, i),
-				Reason:      detourFailureReason(parserConfig, idx, ps),
-			})
-			continue
-		}
-		target := res.node
-		for _, n := range nodesBySource[i] {
-			if n == nil || n == target {
-				continue // the hop itself dials direct
-			}
-			// Same eligibility as subscription.ApplySourceDetour (SPEC 077).
-			if n.Jump != nil {
-				debuglog.DebugLog("resolveNodeDetours: node %q has an Xray Jump — detour %q not applied", n.Tag, target.Tag)
-				continue
-			}
-			if _, hasLP := n.Outbound["listen_port"]; hasLP && n.Scheme == "wireguard" {
-				debuglog.WarnLog("Parser: node %q has listen_port — detour %q not applied (core rejects detour+listen_port)", n.Tag, target.Tag)
-				continue
-			}
-			if n.Outbound == nil {
-				n.Outbound = map[string]interface{}{}
-			}
-			n.Outbound["detour"] = target.Tag
-		}
-	}
-
-	if len(dropSource) == 0 {
-		return allNodes, nil
-	}
-	kept := allNodes[:0]
-	for _, n := range allNodes {
-		if n != nil && dropSource[n.SourceIndex] {
-			continue
-		}
-		kept = append(kept, n)
-	}
-	for i := range dropSource {
-		delete(nodesBySource, i)
-	}
-	return kept, excluded
-}
-
-// detourFailureMessage — строка предупреждения в лог: причина плюс имя
-// источника, который из-за неё выпал.
-func detourFailureMessage(parserConfig *ParserConfig, idx *nodeRefIndex, ps ProxySource, index int) string {
-	return fmt.Sprintf("Detour: %s — источник %q исключён из конфига (fail-closed)",
-		detourFailureReason(parserConfig, idx, ps), sourceDisplayName(ps, index))
-}
-
-// detourFailureReason — ПОЧЕМУ ссылка не разрешилась, без упоминания
-// зависимого источника.
-//
-// Отдельно от detourFailureMessage, потому что у причины теперь два
-// потребителя: лог (там она обрамляется именем выпавшего источника) и UI —
-// пометка в строке Wizard → Sources и тост после сборки (SPEC 112-B часть B),
-// где источник и так известен из контекста и повтор его имени только съедал бы
-// место.
-//
-// SPEC 112-A («Понятные ошибки»): текст обязан называть обе стороны — где
-// искали и что — человеческими именами. Источники зовутся подписью, за ней
-// тегом узла или URL; ULID выносится в текст только когда другого имени нет
-// (источник удалён — от него остался лишь id в ссылке).
-func detourFailureReason(parserConfig *ParserConfig, idx *nodeRefIndex, ps ProxySource) string {
-	nodeName := strings.TrimSpace(ps.DetourNodeTag)
-	if nodeName == "" {
-		nodeName = strings.TrimSpace(ps.DetourNodeLabel)
-	}
-
-	if target := idx.detourTargetName(parserConfig, ps.DetourNodeSourceID); target != "" {
-		if _, known := idx.sourceIndexByID[strings.TrimSpace(ps.DetourNodeSourceID)]; !known {
-			return fmt.Sprintf("источник ссылки (%s) не найден", target)
-		}
-		if nodeName == "" {
-			return fmt.Sprintf("в источнике %q не указан узел", target)
-		}
-		return fmt.Sprintf("в источнике %q не нашлось узла %q", target, nodeName)
-	}
-
-	if nodeName == "" {
-		return "ссылка на узел пуста"
-	}
-	return fmt.Sprintf("узла %q нет среди узлов конфига", nodeName)
-}
-
-// migrateLegacyDetourNodeHash переводит ссылку detour-на-узел с упразднённого
-// контент-хеша на ссылку-объект «source_id + identity-тег» (SPEC 112 → 112-A).
-//
-// Порядок проб:
-//  1. Прогнать LegacyNodeIdentityHash по всем узлам конфига; хеш совпал —
-//     ссылка едет на ПОЛНЫЙ ref найденного узла: ULID его источника плюс его
-//     identity-тег.
-//  2. Не совпал — взять DetourNodeLabel как тег, но уже БЕЗ source_id: узел
-//     под ним не опознан, и приписывать ссылке чужой источник нельзя. Пикер
-//     писал в label финальный тег узла на момент выбора, поэтому для узла,
-//     живого под тем же именем, глобальный поиск по тегу даст верную цель.
-//     Именно этот путь лечит стейт, где хеш протух из-за смены формы хранения
-//     узла (uri ↔ config_json дают разные хеши одного узла): узел на месте, а
-//     ссылка мертва, и источник fail-closed выпадал из конфига целиком.
-//
-// detour_node_hash гасится в любом исходе: повторно мигрировать нечего, и поле
-// больше не пишется. Ничего не найдено — ссылка остаётся пустой, и вызывающий
-// отработает fail-closed ровно так же, как для потерянной.
-func migrateLegacyDetourNodeHash(ps *ProxySource, idx *nodeRefIndex, allNodes []*ParsedNode, index int) {
-	hash := strings.TrimSpace(ps.DetourNodeHash)
-	ps.DetourNodeHash = ""
-	if hash == "" {
-		return
-	}
-
-	for _, n := range allNodes {
-		if n == nil || n.Scheme == SchemeGroup || n.Tag == "" {
-			continue
-		}
-		if LegacyNodeIdentityHash(n) != hash {
-			continue
-		}
-		if srcID := sourceIDOfNode(idx, n); srcID != "" {
-			ps.DetourNodeSourceID = srcID
-			ps.DetourNodeTag = nodeIdentityTag(n)
-		} else {
-			// У источника узла нет ULID (конфиг собран не из состояния):
-			// пишем tag-only ref, и он обязан нести ФИНАЛЬНЫЙ тег — именно по
-			// нему идёт глобальный поиск.
-			ps.DetourNodeSourceID = ""
-			ps.DetourNodeTag = n.Tag
-		}
-		debuglog.DebugLog("SPEC 112-A: ссылка источника %q переехала с упразднённого хеша на узел %q",
-			sourceDisplayName(*ps, index), n.Tag)
-		return
-	}
-
-	if label := strings.TrimSpace(ps.DetourNodeLabel); label != "" {
-		ps.DetourNodeSourceID = ""
-		ps.DetourNodeTag = label
-		debuglog.DebugLog("SPEC 112-A: хеш-ссылка источника %q не опознана — цель взята из подписи %q (поиск по финальному тегу)",
-			sourceDisplayName(*ps, index), label)
-		return
-	}
-
-	debuglog.WarnLog("Detour: устаревшая ссылка источника %q не опознана и подписи нет — ссылка потеряна, источник будет исключён из конфига (fail-closed)",
-		sourceDisplayName(*ps, index))
-}
-
-// sourceIDOfNode — ULID источника, которому принадлежит узел. Пусто, если у
-// источника ULID нет (конфиг собран не из состояния) — тогда мигрированная
-// ссылка останется tag-only и разрешится глобальным поиском.
-func sourceIDOfNode(idx *nodeRefIndex, n *ParsedNode) string {
-	if idx == nil || n == nil {
-		return ""
-	}
-	for id, i := range idx.sourceIndexByID {
-		if i == n.SourceIndex {
-			return id
-		}
-	}
-	return ""
-}
-
-func sanitizeNodeDetours(nodes []*ParsedNode) {
+// Возвращает отфильтрованный список узлов.
+func sanitizeNodeDetours(nodes []*ParsedNode) []*ParsedNode {
 	// detourOf[tag] = the detour target of the node with that tag, but only
 	// when the target is itself a node (intra-node edge). Also drop self-refs.
 	nodeByTag := make(map[string]*ParsedNode, len(nodes))
@@ -1607,6 +1704,9 @@ func sanitizeNodeDetours(nodes []*ParsedNode) {
 			nodeByTag[n.Tag] = n
 		}
 	}
+
+	// dropped — теги узлов-носителей, выброшенных fail-closed (SPEC 113-B).
+	dropped := make(map[string]bool)
 
 	detourOf := make(map[string]string)
 	for _, n := range nodes {
@@ -1619,8 +1719,8 @@ func sanitizeNodeDetours(nodes []*ParsedNode) {
 			continue
 		}
 		if d == n.Tag {
-			debuglog.WarnLog("Parser: node %q detour points at itself — dropping detour (direct dial)", n.Tag)
-			delete(n.Outbound, "detour")
+			debuglog.WarnLog("Parser: node %q has a detour pointing at itself — node excluded (fail-closed: dropping the detour would send its traffic direct)", n.Tag)
+			dropped[n.Tag] = true
 			continue
 		}
 		if _, isNode := nodeByTag[d]; isNode {
@@ -1646,12 +1746,23 @@ func sanitizeNodeDetours(nodes []*ParsedNode) {
 		cur := start
 		for {
 			if color[cur] == gray {
-				// back-edge: cur is on the current path → break the ring here
-				if n := nodeByTag[cur]; n != nil && n.Outbound != nil {
-					debuglog.WarnLog("Parser: detour cycle through node %q — dropping its detour to break the chain", cur)
-					delete(n.Outbound, "detour")
+				// Back-edge: cur лежит на текущем пути. SPEC 113-B — кольцо
+				// fail-closed для ВСЕХ участников: разорвать его снятием detour
+				// значило бы отправить трафик одного из узлов напрямую, молча.
+				at := -1
+				for k, v := range path {
+					if v == cur {
+						at = k
+						break
+					}
 				}
-				delete(detourOf, cur)
+				if at >= 0 {
+					for _, v := range path[at:] {
+						debuglog.WarnLog("Parser: detour ring through node %q — node excluded (fail-closed, all ring members)", v)
+						dropped[v] = true
+						delete(detourOf, v)
+					}
+				}
 				break
 			}
 			if color[cur] == black {
@@ -1669,16 +1780,118 @@ func sanitizeNodeDetours(nodes []*ParsedNode) {
 			color[t] = black
 		}
 	}
+
+	if len(dropped) == 0 {
+		return nodes
+	}
+	// Выпадение носителя делает висячими ссылки тех, кто ходил через него.
+	// Каскад до фикспойнта: цель исчезла — исчезает и ссылающийся.
+	for changed := true; changed; {
+		changed = false
+		for tag, target := range detourOf {
+			if !dropped[tag] && dropped[target] {
+				debuglog.WarnLog("Parser: node %q dialed through excluded %q — excluded as well (fail-closed)", tag, target)
+				dropped[tag] = true
+				changed = true
+			}
+		}
+	}
+
+	kept := make([]*ParsedNode, 0, len(nodes))
+	for _, n := range nodes {
+		if n != nil && n.Tag != "" && dropped[n.Tag] {
+			continue
+		}
+		kept = append(kept, n)
+	}
+	return kept
+}
+
+// pruneNodesBySource приводит per-source карту в соответствие с оставшимся
+// набором узлов (SPEC 113-B). Узел, выброшенный fail-closed, иначе доехал бы
+// до состава локального селектора и остался бы там ссылкой-призраком.
+func pruneNodesBySource(nodesBySource map[int][]*ParsedNode, allNodes []*ParsedNode) {
+	alive := make(map[*ParsedNode]bool, len(allNodes))
+	for _, n := range allNodes {
+		alive[n] = true
+	}
+	for i, list := range nodesBySource {
+		kept := make([]*ParsedNode, 0, len(list))
+		for _, n := range list {
+			if alive[n] {
+				kept = append(kept, n)
+			}
+		}
+		if len(kept) == len(list) {
+			continue
+		}
+		if len(kept) == 0 {
+			delete(nodesBySource, i)
+			continue
+		}
+		nodesBySource[i] = kept
+	}
 }
 
 // obfsIntField reads an integer obfs field regardless of whether it arrived as
 // an int (URI parser) or a float64 (JSON import). Returns 0 when absent.
 func obfsIntField(v interface{}) int {
+	return tolerantInt(v)
+}
+
+// tolerantInt — целое поле outbound'а, каким бы числовым типом оно ни
+// приехало.
+//
+// Один и тот же ключ попадает в Outbound из ДВУХ разных источников: URI-парсер
+// кладёт `int`, а разбор JSON-тела (sing-box/Xray) — `float64` либо
+// `json.Number`. Жёсткий `.(int)` в эмиттере молча роняет поле у половины
+// источников — так у hysteria/hysteria2 терялась полоса, а без неё ядро
+// отвергает весь config.json («missing upload speed»).
+func tolerantInt(v interface{}) int {
 	switch t := v.(type) {
 	case int:
 		return t
+	case int64:
+		return int(t)
 	case float64:
 		return int(t)
+	case json.Number:
+		n, err := t.Int64()
+		if err != nil {
+			return 0
+		}
+		return int(n)
 	}
 	return 0
+}
+
+// tolerantStringSlice — список строк outbound'а из любой формы, в которой он
+// приехал: `[]string` от URI-парсера или `[]interface{}` от разбора JSON.
+//
+// Элемент-число принимается тоже: `server_ports` в чужом JSON пишут и как
+// ["1000:2000"], и как [8443] — второе после разбора становится float64, и
+// отбрасывать его значило бы потерять порт, который провайдер задал.
+func tolerantStringSlice(v interface{}) []string {
+	switch t := v.(type) {
+	case []string:
+		return t
+	case []interface{}:
+		out := make([]string, 0, len(t))
+		for _, item := range t {
+			switch s := item.(type) {
+			case string:
+				if s != "" {
+					out = append(out, s)
+				}
+			case float64:
+				out = append(out, strconv.Itoa(int(s)))
+			case int:
+				out = append(out, strconv.Itoa(s))
+			case json.Number:
+				out = append(out, s.String())
+			}
+		}
+		return out
+	}
+	return nil
 }

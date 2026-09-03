@@ -1,0 +1,19 @@
+# sing-box: hysteria2 с полосой ЧИСЛАМИ и server_ports МАССИВОМ.
+# JSON отдаёт float64 и []interface{}, а не Go-типы: жёсткое приведение
+# (int / []string) молча теряло up_mbps/down_mbps/server_ports
+# (contract/TASKS_LXBOX.md п.6). Обфускация здесь — объект salamander,
+# в отличие от строкового obfs у hysteria v1.
+[
+  {
+    "type": "hysteria2",
+    "tag": "hy2-bw",
+    "server": "example-2.com",
+    "server_port": 8443,
+    "server_ports": ["3000:4000"],
+    "password": "testpass123",
+    "up_mbps": 30,
+    "down_mbps": 60,
+    "obfs": {"type": "salamander", "password": "testobfs123"},
+    "tls": {"enabled": true, "server_name": "example-2.com"}
+  }
+]

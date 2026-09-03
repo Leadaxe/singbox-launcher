@@ -20,7 +20,9 @@ import (
 	"fmt"
 	"strings"
 
+	corepkg "singbox-launcher/core"
 	"singbox-launcher/core/build"
+	"singbox-launcher/core/config"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -55,16 +57,27 @@ func BuildPreviewConfig(model *wizardmodels.WizardModel) (string, error) {
 // пресеты, DNS-порядок) одинаково, поэтому экспортируемый конфиг гарантированно
 // совпадает с тем, что показано в превью.
 func buildConfigFromModel(model *wizardmodels.WizardModel, forPreview bool) (string, error) {
+	text, _, err := buildConfigWithExclusions(model, forPreview)
+	return text, err
+}
+
+// buildConfigWithExclusions — то же тело, но отдаёт ещё и потери последнего
+// рубежа (SPEC 115). Отдельная функция, а не третий возврат у всех вызывающих:
+// исключения нужны ровно одному пути — сборке для отчёта «Итога», и навязывать
+// их превью с remote-экспортом значило бы заставить их молча их выбрасывать.
+func buildConfigWithExclusions(model *wizardmodels.WizardModel, forPreview bool) (string, []build.SourceExclusion, error) {
 	if model == nil || model.TemplateData == nil {
-		return "", fmt.Errorf("template data not available")
+		return "", nil, fmt.Errorf("template data not available")
 	}
 
 	// Mutates model.SettingsVars: материализует dns_* + секреты.
 	SyncDNSModelToSettingsVars(model)
 	MaterializeSecretsIfNeeded(model)
 
-	if strings.TrimSpace(model.ParserConfigJSON) == "" {
-		return "", fmt.Errorf("ParserConfig is empty and no template available")
+	// Гейт «нечего собирать» — по canonical-модели, не по строковому кэшу
+	// (SPEC 117 C6).
+	if len(model.Sources) == 0 {
+		return "", nil, fmt.Errorf("ParserConfig is empty and no template available")
 	}
 
 	ctx := build.BuildContext{
@@ -107,7 +120,7 @@ func buildConfigFromModel(model *wizardmodels.WizardModel, forPreview bool) (str
 	// Reconcile model.RuleOrder → v6.Rule[] via same Sync helpers that
 	// CreateStateFromModel uses on Save.
 	wizardmodels.ReconcileRuleOrder(model)
-	rulesV6 := wizardmodels.SyncRulesByOrderToStateRulesV6(
+	rulesV6 := wizardmodels.EmitStateRulesInAxisOrder(
 		model.RuleOrder, model.PresetRefs, model.CustomRules,
 	)
 	templateDNSTags := ExtractTemplateDNSTags(model.TemplateData)
@@ -154,9 +167,60 @@ func buildConfigFromModel(model *wizardmodels.WizardModel, forPreview bool) (str
 
 	res, err := build.BuildConfig(ctx)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	return string(res.ConfigJSON), nil
+	return string(res.ConfigJSON), res.ExcludedSources, nil
+}
+
+// BuildFinalReportConfig — сборка В ПАМЯТИ для вкладки «Итог» (SPEC 115 §1).
+//
+// Полный конвейер БЕЗ записи config.json и без перезапуска ядра: тот же
+// build.BuildConfig, что у боевой сборки, ForPreview=false. Именно
+// ForPreview=false здесь принципиален — preview-режим пропускает
+// граф-санитайзер (последний рубеж), а половина записей отчёта родом как раз
+// оттуда: «Итог» с усечённым конвейером обещал бы чистую сборку там, где
+// боевая снимает узлы. Параллельной реализации конвейера тут нет и быть не
+// может (память проекта: расхождение превью и боевой сборки — свой класс
+// багов).
+//
+// Записи отчёта доливаются здесь же: парсерная стадия свои уже положила
+// (ParseAndPreview), последний рубеж отдаёт исключения только сейчас. Признак
+// «отчёт готов» ставится в самом конце — сборка, упавшая по дороге, отчёта не
+// даёт, и Save на «Итоге» остаётся закрытой.
+//
+// Обе половины конвейера пишут в ОДНУ попытку — ту, что открыла парсерная
+// стадия (model.BuildReportGen). Своей попытки здесь не открывается: она
+// стёрла бы парсерные записи (source_excluded, chain_failed, naive_degraded), и
+// отчёт объявил бы готовой свою половину причин. Нулевой номер — признак того,
+// что парсерной стадии не было вовсе; сборка на нём отказывается, а не молча
+// показывает половинчатый отчёт.
+//
+// Возвращает номер попытки: гейт Save обязан сверять его с реестром, иначе
+// «готов» может относиться уже к чужой сборке (фоновое авто-обновление
+// подписок — параллельный писатель того же реестра).
+//
+// Функция ходит по всему конвейеру и на большой подписке занимает секунды —
+// звать её с UI-потока нельзя.
+func BuildFinalReportConfig(model *wizardmodels.WizardModel) (string, config.BuildGeneration, error) {
+	if model == nil {
+		return "", 0, fmt.Errorf("no wizard model")
+	}
+	gen := model.BuildReportGen
+	if gen == 0 {
+		return "", 0, fmt.Errorf("subscriptions were not parsed for this build attempt")
+	}
+	text, excluded, err := buildConfigWithExclusions(model, false)
+	if err != nil {
+		return "", gen, err
+	}
+	corepkg.FeedBuildReportFromSanitizer(gen, excluded)
+	if !config.FinishBuildReport(gen) {
+		// Попытку обогнали, пока шла сборка: правка модели (инвалидация) или
+		// другой писатель реестра. Показывать её отчёт нельзя — в реестре лежит
+		// уже не он.
+		return "", gen, fmt.Errorf("build report superseded by a newer attempt")
+	}
+	return text, gen, nil
 }
 
 // BuildRemoteConfig собирает config.json для УДАЛЁННОЙ машины (SPEC 097).

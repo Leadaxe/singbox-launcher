@@ -64,7 +64,7 @@ func TestBuildShareURILinesForOutboundTags(t *testing.T) {
 func TestShareProxyURIForOutboundTag_WireGuardEndpoint(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "config.json")
-	body := []byte(`{"endpoints":[{"type":"wireguard","tag":"wg1","name":"singbox-wg0","system":false,"mtu":1420,"address":["10.10.10.2/32"],"private_key":"aDHCHnkcdMjnq0bF+V4fARkbJBW8cWjuYoVjKfUwsXo=","peers":[{"address":"212.232.78.237","port":51820,"public_key":"fiK9ZG990zunr5cpRnx+SOVW2rVKKqFoVxmHMHAvAFk=","allowed_ips":["0.0.0.0/0","::/0"]}]}]}`)
+	body := []byte(`{"endpoints":[{"type":"wireguard","tag":"wg1","name":"singbox-wg0","system":false,"mtu":1420,"address":["10.10.10.2/32"],"private_key":"RAUTG+IXUH+KW8Ocva7RTpv6y/gdVQIIgh9MeuzeMtU=","peers":[{"address":"198.51.100.7","port":51820,"public_key":"CY6LY0SWr69h/WZokDYecQlTfIsZs8EhdSMd+NuaWJ4=","allowed_ips":["0.0.0.0/0","::/0"]}]}]}`)
 	if err := os.WriteFile(p, body, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestShareMainURIForOutboundTag_ContainsDetourLiteral(t *testing.T) {
 // WireGuard/AmneziaWG узлы лежат в endpoints[], а не в outbounds[]: до фикса
 // «Копировать ссылку сервера» падало на них с `outbound with tag ... not found`.
 func TestShareMainURIForOutboundTag_WireGuardEndpoint(t *testing.T) {
-	uri := "wireguard://aDHCHnkcdMjnq0bF+V4fARkbJBW8cWjuYoVjKfUwsXo=@212.232.78.237:51820?publickey=fiK9ZG990zunr5cpRnx%2BSOVW2rVKKqFoVxmHMHAvAFk%3D&address=10.10.10.2%2F32&allowedips=0.0.0.0%2F0%2C%3A%3A%2F0#server-13"
+	uri := "wireguard://RAUTG+IXUH+KW8Ocva7RTpv6y/gdVQIIgh9MeuzeMtU=@198.51.100.7:51820?publickey=CY6LY0SWr69h%2FWZokDYecQlTfIsZs8EhdSMd%2BNuaWJ4%3D&address=10.10.10.2%2F32&allowedips=0.0.0.0%2F0%2C%3A%3A%2F0#server-13"
 	n, err := subscription.ParseNode(uri, nil)
 	if err != nil || n == nil {
 		t.Fatalf("ParseNode: %v", err)

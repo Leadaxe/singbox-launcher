@@ -1,0 +1,7 @@
+# Xray: цепочка через streamSettings.sockopt.dialerProxy (SPEC 094 C4).
+# Владелец-vless ходит наружу через socks-релей "relay" из того же элемента:
+# релей САМОСТОЯТЕЛЬНЫМ узлом не становится (в nodes[] его нет), он живёт
+# звеном chain[]. Подпись звена (D-085) — собственный тег релея, а не
+# подпись владельца: иначе цепочка неотличима от прямого пути.
+# Источник формы: core/config/subscription/testdata/xray_provider_anon.json.
+[{"remarks":"chain-owner","outbounds":[{"protocol":"vless","tag":"proxy","settings":{"vnext":[{"address":"example-1.com","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","encryption":"none"}]}]},"streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"serverName":"example-1.com"},"sockopt":{"dialerProxy":"relay"}}},{"protocol":"socks","tag":"relay","settings":{"servers":[{"address":"192.0.2.10","port":61000,"users":[{"user":"testuser","pass":"testpass123"}]}]}},{"protocol":"freedom","tag":"direct"}]}]

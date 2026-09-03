@@ -56,6 +56,23 @@ func InvalidateTemplateIfStale(execDir string) error {
 	}
 
 	templatePath := filepath.Join(binDir, constants.WizardTemplateFileName)
+
+	// Шаблон, положенный установщиком под ЭТУ версию (архив win64-full,
+	// install-macos.sh), несёт рядом маркер с версией лаунчера. Совпал — шаблон
+	// свежий, и сносить его ради перекачки того же файла незачем: весь смысл
+	// вложения в том, чтобы первый запуск не ходил в сеть. Маркер только
+	// читается; штамп в settings ставится, как при любом другом исходе.
+	if raw, rerr := os.ReadFile(filepath.Join(binDir, constants.WizardTemplateVersionFileName)); rerr == nil &&
+		strings.TrimSpace(string(raw)) == constants.AppVersion {
+		if _, serr := os.Stat(templatePath); serr == nil {
+			debuglog.InfoLog("template: bundled by the installer for %q — kept", constants.AppVersion)
+			if err := locale.MarkTemplateInstalled(binDir, constants.AppVersion); err != nil {
+				debuglog.WarnLog("template: failed to record stale-check version: %v", err)
+			}
+			return nil
+		}
+	}
+
 	switch _, err := os.Stat(templatePath); {
 	case err == nil:
 		if rmErr := os.Remove(templatePath); rmErr != nil {

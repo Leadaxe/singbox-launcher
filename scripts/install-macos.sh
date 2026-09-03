@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 echo "--------------------------------------------------------------"
 echo " "
-echo "Singbox-launcher MacOS Installer Script (0.3)"
+echo "Singbox-launcher MacOS Installer Script (0.4)"
 echo "Project url: https://github.com/Leadaxe/singbox-launcher/"
 echo " "
 echo "--------------------------------------------------------------"
@@ -54,7 +54,7 @@ APP_NAME="singbox-launcher.app"
 BIN_REL="Contents/MacOS/singbox-launcher"
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing: $1"; exit 1; }; }
-need curl; need unzip; need xattr; need chmod; need open; need mktemp; need find; need sw_vers; need grep; need sed
+need curl; need unzip; need xattr; need chmod; need open; need mktemp; need find; need sw_vers; need grep; need sed; need tar; need uname
 
 # Check write permissions to /Applications
 if [[ ! -w "$INSTALL_DIR" ]]; then
@@ -178,6 +178,49 @@ fi
 
 echo "Installing..."
 cp -R "$app_path" "$target"
+
+# Ядро и шаблон ЭТОГО релиза — сразу в bin/, чтобы первый запуск не ходил
+# в сеть. Версия ядра берётся из констант кода на теге релиза (то, что
+# лаунчер и так потребовал бы), шаблон — из того же тега. Маркер
+# wizard_template.version говорит лаунчеру, что шаблон свежий, и он не сносит
+# его при первом запуске новой версии. Всё best-effort: не вышло — лаунчер
+# докачает сам, как раньше.
+bin_dir="$target/Contents/MacOS/bin"
+mkdir -p "$bin_dir"
+raw_base="https://raw.githubusercontent.com/${REPO}/${VERSION}"
+core_ver="$(curl -fsSL "${raw_base}/internal/constants/constants.go" 2>/dev/null | sed -n 's/.*RequiredCoreVersion = "\([^"]*\)".*/\1/p' | head -n 1 || true)"
+arch="$(uname -m)"
+case "$arch" in
+  arm64)  core_suffix="darwin-arm64" ;;
+  x86_64) core_suffix="darwin-amd64" ;;
+  *)      core_suffix="" ;;
+esac
+if [[ -n "$core_ver" && -n "$core_suffix" ]]; then
+  core_url="https://github.com/Leadaxe/sing-box-lx/releases/download/v${core_ver}/sing-box-${core_ver}-${core_suffix}.tar.gz"
+  echo "Downloading core sing-box ${core_ver} (${core_suffix})..."
+  if curl -fsSL "$core_url" -o "$tmp/core.tgz" && tar -xzf "$tmp/core.tgz" -C "$tmp" 2>/dev/null; then
+    core_bin="$(find "$tmp" -maxdepth 2 -type f -name sing-box | head -n 1 || true)"
+    if [[ -n "$core_bin" ]]; then
+      cp "$core_bin" "$bin_dir/sing-box"
+      chmod +x "$bin_dir/sing-box"
+      echo "Core installed: bin/sing-box ${core_ver}"
+    else
+      echo "Warning: sing-box not found in the core archive — the launcher will download it on first start"
+    fi
+  else
+    echo "Warning: core download failed (${core_url}) — the launcher will download it on first start"
+  fi
+else
+  echo "Note: core is not pre-installed for this machine (${arch}) — the launcher will download it on first start"
+fi
+echo "Downloading config template..."
+if curl -fsSL "${raw_base}/bin/wizard_template.json" -o "$tmp/wizard_template.json" && [[ -s "$tmp/wizard_template.json" ]]; then
+  cp "$tmp/wizard_template.json" "$bin_dir/wizard_template.json"
+  printf '%s\n' "$VERSION" > "$bin_dir/wizard_template.version"
+  echo "Template installed: bin/wizard_template.json"
+else
+  echo "Warning: template download failed — the launcher will download it on first start"
+fi
 
 # Restore user data (automatically, no questions). --ignore-existing: файлы
 # из нового архива всегда важнее одноимённых старых.

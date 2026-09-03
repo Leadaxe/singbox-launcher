@@ -2,7 +2,6 @@ package business
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 
 	"singbox-launcher/core/config"
@@ -18,41 +17,28 @@ func TestGetAvailableOutbounds(t *testing.T) {
 		expectedTags   []string
 	}{
 		{
-			name: "Model with ParserConfig",
+			// SPEC 117: теги Направлений читаются из canonical GlobalOutbounds.
+			name: "Model with GlobalOutbounds",
 			model: &wizardmodels.WizardModel{
-				ParserConfig: &config.ParserConfig{
-					ParserConfig: struct {
-						Version   int                  `json:"version,omitempty"`
-						Proxies   []config.ProxySource `json:"proxies"`
-						Outbounds []config.Direction   `json:"outbounds"`
-						Parser    struct {
-							Reload      string `json:"reload,omitempty"`
-							LastUpdated string `json:"last_updated,omitempty"`
-						} `json:"parser,omitempty"`
-					}{
-						Outbounds: []config.Direction{
-							{Tag: "selector-1", Type: "selector"},
-							{Tag: "selector-2", Type: "selector"},
-						},
-					},
+				GlobalOutbounds: []config.Direction{
+					{Tag: "selector-1", Type: "selector"},
+					{Tag: "selector-2", Type: "selector"},
 				},
 			},
 			expectedMinLen: 5, // direct-out, reject, drop, selector-1, selector-2
 			expectedTags:   []string{"direct-out", "reject", "drop", "selector-1", "selector-2"},
 		},
 		{
-			name: "Model with ParserConfigJSON",
+			// Выключенное Направление в цели не попадает.
+			name: "Disabled direction skipped",
 			model: &wizardmodels.WizardModel{
-				ParserConfigJSON: `{
-					"ParserConfig": {
-						"outbounds": [
-							{"tag": "test-outbound", "type": "selector"}
-						]
-					}
-				}`,
+				GlobalOutbounds: []config.Direction{
+					{Tag: "alive", Type: "selector"},
+					{Tag: "paused", Type: "selector", Disabled: true},
+				},
 			},
-			expectedMinLen: 4, // direct-out, reject, drop, test-outbound
-			expectedTags:   []string{"direct-out", "reject", "drop", "test-outbound"},
+			expectedMinLen: 4, // direct-out, reject, drop, alive
+			expectedTags:   []string{"direct-out", "reject", "drop", "alive"},
 		},
 		{
 			name:           "Empty model",
@@ -82,26 +68,22 @@ func TestGetAvailableOutbounds(t *testing.T) {
 	}
 }
 
-func TestGetAvailableOutbounds_MemoJSONPath(t *testing.T) {
-	jsonText := `{
-					"ParserConfig": {
-						"outbounds": [
-							{"tag": "memo-test-out", "type": "selector"}
-						]
-					}
-				}`
-	model := &wizardmodels.WizardModel{ParserConfigJSON: jsonText}
+func TestGetAvailableOutbounds_MemoByRevision(t *testing.T) {
+	model := &wizardmodels.WizardModel{
+		GlobalOutbounds: []config.Direction{{Tag: "memo-test-out", Type: "selector"}},
+	}
+	model.BumpRevision() // ревизия 0 = «мемо пусто», поэтому поднимаем
 	a := GetAvailableOutbounds(model)
 	b := GetAvailableOutbounds(model)
 	if !reflect.DeepEqual(a, b) {
 		t.Fatalf("second call should return same tags as memo hit: a=%v b=%v", a, b)
 	}
-	if model.AvailableOutboundsMemoKey != strings.TrimSpace(jsonText) {
-		t.Fatalf("memo key not set: got %q", model.AvailableOutboundsMemoKey)
+	if model.AvailableOutboundsMemoRev != model.Revision {
+		t.Fatalf("memo rev not set: got %d, want %d", model.AvailableOutboundsMemoRev, model.Revision)
 	}
-	InvalidatePreviewCache(model)
-	if model.AvailableOutboundsMemoKey != "" {
-		t.Fatal("InvalidatePreviewCache should clear outbound memo")
+	InvalidateNodePool(model)
+	if model.AvailableOutboundsMemoRev != 0 {
+		t.Fatal("InvalidateNodePool should clear outbound memo")
 	}
 }
 

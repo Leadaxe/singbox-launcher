@@ -43,18 +43,21 @@ func (p *WizardPresenter) resetForeignRuleTargets() {
 	if p.model.TemplateData == nil {
 		return
 	}
-	known := make(map[string]bool)
+	// SPEC 118 W4 (§4.B.10): множество известных целей — ЕДИНЫЙ гард
+	// занятости тегов, а не только Направления. В него входят replace-теги
+	// свёрнутых папок, их `-auto`-двойники и верхние узлы. Без них первая же
+	// загрузка мигрированного состояния приняла бы живое правило на
+	// `[P]select` за осиротевшее и необратимо сбросила его на direct
+	// (deps-К2) — правило блока: новый вид тега сначала в гард, потом в
+	// модель.
+	//
+	// ВЫКЛЮЧЕННОЕ Направление тоже известно (KnownRuleTargetTags): это не
+	// «чужая цель», а временно снятая своя — сброс тут необратим, а правило
+	// на отсутствующий в конфиге тег и так чистится на сборке.
+	known := wizardbusiness.KnownRuleTargetTags(p.model)
 	for _, tag := range wizardbusiness.EnsureDefaultAvailableOutbounds(
 		wizardbusiness.GetAvailableOutbounds(p.model)) {
 		known[tag] = true
-	}
-	// ВЫКЛЮЧЕННОЕ Направление — не «чужая цель», а временно снятая своя:
-	// сброс тут необратим (повторное включение Направления правило назад
-	// не вернёт), а правило на отсутствующий в конфиге тег и так чистится
-	// на сборке. Reset существует ради целей ЧУЖОГО жизненного цикла
-	// (локальные группы подписок), не ради паузы Направления.
-	for _, d := range wizardbusiness.AllDirectionTags(p.model) {
-		known[d] = true
 	}
 
 	for _, rs := range p.model.CustomRules {
@@ -65,7 +68,7 @@ func (p *WizardPresenter) resetForeignRuleTargets() {
 		if target == "" || known[target] {
 			continue
 		}
-		debuglog.WarnLog("SPEC 108: правило %q целилось в %q — такой цели нет, сброшено на %q",
+		debuglog.WarnLog("SPEC 108: rule %q targeted %q — no such target, reset to %q",
 			rs.Rule.Label, target, wizardmodels.DefaultOutboundTag)
 		rs.SelectedOutbound = wizardmodels.DefaultOutboundTag
 	}
@@ -73,7 +76,7 @@ func (p *WizardPresenter) resetForeignRuleTargets() {
 	// route.final: осиротевшая цель здесь увела бы ВЕСЬ трафик по умолчанию
 	// в никуда — это хуже, чем одно правило.
 	if f := p.model.SelectedFinalOutbound; f != "" && !known[f] {
-		debuglog.WarnLog("SPEC 108: route.final целился в %q — такой цели нет, сброшен на %q",
+		debuglog.WarnLog("SPEC 108: route.final targeted %q — no such target, reset to %q",
 			f, wizardmodels.DefaultOutboundTag)
 		p.model.SelectedFinalOutbound = wizardmodels.DefaultOutboundTag
 		if p.model.SettingsVars != nil {

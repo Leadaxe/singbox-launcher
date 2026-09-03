@@ -25,6 +25,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	corepkg "singbox-launcher/core"
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/subscription"
@@ -38,6 +39,10 @@ import (
 func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 	model := ctx.Model()
 	updater := ctx
+	// Снапшот ревизии модели на старте: результат генерации применим, только
+	// если модель не мутировала, пока шла работа (features/state.md
+	// «Ревизия модели»).
+	revAtStart := model.Revision
 	timing := debuglog.StartTiming("parseAndPreview")
 	defer func() {
 		timing.End()
@@ -46,30 +51,17 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 
 	// Save остаётся доступной; при сохранении presenter_save.ensureOutboundsParsed ждёт AutoParseInProgress и при необходимости вызывает ParseAndPreview.
 
-	// Parse ParserConfig from field
+	// SPEC 117: одноразовая проекция canonical → legacy-форма парсера.
+	// Строится непосредственно на входе и выбрасывается после генерации —
+	// двойная конвертация canonical→строка→legacy умерла вместе со строковым
+	// транспортом ParserConfigJSON.
 	parseStartTime := time.Now()
-	parserConfigJSON := strings.TrimSpace(model.ParserConfigJSON)
-	debuglog.DebugLog("parseAndPreview: ParserConfig text length: %d bytes", len(parserConfigJSON))
-	if parserConfigJSON == "" {
-		debuglog.DebugLog("parseAndPreview: ParserConfig is empty, returning early")
+	if len(model.Sources) == 0 && len(model.GlobalOutbounds) == 0 {
+		debuglog.DebugLog("parseAndPreview: model has no sources/outbounds, returning early")
 		updater.UpdateSaveButtonText("Save")
 		return fmt.Errorf("parserConfig is empty")
 	}
-
-	// Validate JSON size before parsing
-	if err := ValidateJSONSize([]byte(parserConfigJSON)); err != nil {
-		debuglog.DebugLog("parseAndPreview: ParserConfig JSON size validation failed: %v", err)
-		updater.UpdateSaveButtonText("Save")
-		return err
-	}
-
-	var parserConfig config.ParserConfig
-	if err := json.Unmarshal([]byte(parserConfigJSON), &parserConfig); err != nil {
-		timing.LogTiming("parse ParserConfig JSON", time.Since(parseStartTime))
-		debuglog.DebugLog("parseAndPreview: Failed to parse ParserConfig JSON: %v", err)
-		updater.UpdateSaveButtonText("Save")
-		return fmt.Errorf("failed to parse ParserConfig JSON: %w", err)
-	}
+	parserConfig := *model.AsParserConfig()
 
 	// Validate ParserConfig structure
 	if err := ValidateParserConfig(&parserConfig); err != nil {
@@ -89,18 +81,18 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 	//   2. Merge — flatten Updates[] стек в финальное body. **Это
 	//      destructive** для state shape (теряется Updates[] стек).
 	//
-	// Generator знает только base body — поэтому Merge нужен для нужно ему.
-	// НО результат Merge **не должен** попасть обратно в model.ParserConfig
-	// (иначе Save запишет merged body без updates[] стека, и при следующем
-	// Sync preset patches применятся вторично — двойной merge).
+	// Generator знает только base body — поэтому Merge нужен именно ему.
+	// НО результат Merge **не должен** попасть в модель (иначе Save записал
+	// бы merged body без updates[] стека, и при следующем Sync preset patches
+	// применились бы вторично — двойной merge).
 	//
-	// Решение: после Sync копируем parserConfig в parserConfigForGen,
-	// Merge только на копии, generator работает с копией, в model.ParserConfig
-	// уходит несмерженная версия с Updates[] стеком intact.
+	// Решение: обе структуры — одноразовая проекция (SPEC 117). Sync и Merge
+	// работают на локальных копиях и выбрасываются вместе с ними; canonical
+	// GlobalOutbounds синхронизируется своим путём (presenter_sync/state).
 	parserConfigForGen := parserConfig
 	if model.TemplateData != nil {
 		wizardmodels.ReconcileRuleOrder(model)
-		rulesV6 := wizardmodels.SyncRulesByOrderToStateRulesV6(
+		rulesV6 := wizardmodels.EmitStateRulesInAxisOrder(
 			model.RuleOrder, model.PresetRefs, model.CustomRules,
 		)
 		// SPEC 058-R-N: migration legacy direct→referenced. Idempotent.
@@ -148,23 +140,61 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 	if err != nil {
 		timing.LogTiming("generate outbounds", time.Since(generateStartTime))
 		debuglog.DebugLog("parseAndPreview: Failed to generate outbounds: %v", err)
+		// Конфига не будет, но причины по источникам — есть: генератор отдаёт
+		// их вместе с ошибкой, когда ни один источник не дал узлов. Без этой
+		// ветки единственная подписка, ответившая «подписка неактивна»,
+		// оставалась в списке без пометки: Preview причину показывал (он
+		// разбирает источник сам), а строку красит отчёт сборки, до которого
+		// управление не доходило.
+		if result != nil {
+			gen := config.StartBuildReport()
+			model.BuildReportGen = gen
+			corepkg.FeedBuildReportFromParser(gen, result)
+		}
 		updater.UpdateSaveButtonText("Save")
 		return fmt.Errorf("failed to generate outbounds: %w", err)
 	}
 
-	// Риск: пока шла генерация, пользователь мог изменить ParserConfig (OnChanged → MergeGUIToModel).
-	// Запись outbounds от старого снимка при новом JSON даёт несогласованный config при Save
+	// Риск: пока шла генерация, пользователь мог изменить модель (любая
+	// canonical-мутация поднимает ревизию). Запись outbounds от старого
+	// снимка при новой модели даёт несогласованный config при Save
 	// (ensureOutboundsParsed увидит непустые outbounds и не перепарсит).
-	if strings.TrimSpace(model.ParserConfigJSON) != parserConfigJSON {
-		debuglog.InfoLog("parseAndPreview: ParserConfigJSON changed during generation, discarding outbound results")
+	if model.Revision != revAtStart {
+		debuglog.InfoLog("parseAndPreview: model revision changed during generation, discarding outbound results")
 		model.GeneratedOutbounds = nil
 		model.GeneratedEndpoints = nil
 		model.PreviewNeedsParse = true
+		// Попытки не было: результат выброшен, и оставленный номер разрешил бы
+		// сборке «Итога» дописать санитайзерные записи в чужую попытку.
+		model.BuildReportGen = 0
 		updater.UpdateSaveButtonText("Save")
 		return nil
 	}
 
 	subscription.LogDuplicateTagStatistics(tagCounts, "ConfigWizard")
+
+	// SPEC 113-B (M3) / SPEC 115: отчёт сборки переписывается КАЖДОЙ сборкой,
+	// и preview-сборка Мастера — сборка. Пока этот путь результат выбрасывал,
+	// ⚠ в списке источников показывал итог чужой, предыдущей сборки: починил
+	// хоп, нажал Preview — узлы вернулись, а пометка осталась висеть до
+	// полного Rebuild. Пустой список тут так же обязателен, как непустой.
+	//
+	// Признак «отчёт готов» здесь НЕ ставится: парсерная стадия — половина
+	// конвейера, последнего рубежа она не проходила. Его ставит тот, кто
+	// довёл сборку до конца (вкладка «Итог», боевой rebuild).
+	//
+	// Номер открытой попытки уезжает в модель: вторая половина конвейера
+	// (сборка «Итога») доливает свои записи и ставит «готов» ИМЕННО этой
+	// попытке. Без номера её Finish объявил бы готовым чужой отчёт, если между
+	// половинами успел вклиниться другой писатель — например, фоновое
+	// авто-обновление подписок.
+	gen := config.StartBuildReport()
+	model.BuildReportGen = gen
+	corepkg.FeedBuildReportFromParser(gen, result)
+	// SPEC 118 W4: деградации последнего fetch — из состояния (тела сборка не
+	// читает). Тот же вызов, что у боевой сборки: разъехавшись, «Итог» и
+	// config.json дали бы разные ответы про одну конфигурацию.
+	corepkg.FeedBuildReportFromFetchStatus(gen, model.Sources)
 
 	model.OutboundStats.NodesCount = result.NodesCount
 	model.OutboundStats.EndpointsCount = result.EndpointsCount
@@ -176,7 +206,6 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 	timing.LogTiming("total outbound generation", time.Since(generateStartTime))
 
 	updater.UpdateSaveButtonText("Save")
-	model.ParserConfig = &parserConfig
 	model.PreviewNeedsParse = false
 	// RefreshOutboundOptions will be called by presenter
 	if model.TemplateData != nil && (len(model.GeneratedOutbounds) > 0 || len(model.GeneratedEndpoints) > 0) {
@@ -186,7 +215,14 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 }
 
 // classifyInputLines классифицирует входные строки на подписки и прямые ссылки.
-func classifyInputLines(input string, timing interface{ LogTiming(string, time.Duration) }) (subscriptions []string, connections []string) {
+//
+// rawOf — исходник строки connections[i], когда он ОТЛИЧАЕТСЯ от самой строки.
+// Пуст у обычных ссылок (там исходник и есть строка) и несёт блок
+// `[Interface]`…`[Peer]` у вставленного конфига wg-quick: узел разбирается из
+// выведенного нами URI, а происхождением обязан стать блок провайдера
+// (SPEC 119). Без этой пары вставка руками теряла комментарии блока ровно
+// так же, как их терял разбор тела подписки.
+func classifyInputLines(input string, timing interface{ LogTiming(string, time.Duration) }) (subscriptions []string, connections []string, rawOf []string) {
 	splitStartTime := time.Now()
 
 	// SPEC 076: pasted [Interface]/[Peer] conf text (WireGuard/AmneziaWG .conf)
@@ -197,6 +233,7 @@ func classifyInputLines(input string, timing interface{ LogTiming(string, time.D
 	// conf text can be pasted together.
 	input, confBlocks := subscription.ExtractWGConfBlocks(input)
 	confURIs := make([]string, 0, len(confBlocks))
+	confRaws := make([]string, 0, len(confBlocks))
 	for _, block := range confBlocks {
 		uri, err := subscription.ConvertWGConfText(block)
 		if err != nil {
@@ -204,6 +241,7 @@ func classifyInputLines(input string, timing interface{ LogTiming(string, time.D
 			continue
 		}
 		confURIs = append(confURIs, uri)
+		confRaws = append(confRaws, block)
 	}
 
 	lines := strings.Split(input, "\n")
@@ -211,6 +249,7 @@ func classifyInputLines(input string, timing interface{ LogTiming(string, time.D
 
 	subscriptions = make([]string, 0)
 	connections = make([]string, 0)
+	rawOf = make([]string, 0)
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -221,14 +260,17 @@ func classifyInputLines(input string, timing interface{ LogTiming(string, time.D
 			subscriptions = append(subscriptions, line)
 		} else if subscription.IsDirectLink(line) {
 			connections = append(connections, line)
+			// Исходник ссылки — она сама; отдельного raw у неё нет.
+			rawOf = append(rawOf, "")
 		}
 	}
 	connections = append(connections, confURIs...)
+	rawOf = append(rawOf, confRaws...)
 
 	timing.LogTiming("classify lines", time.Since(splitStartTime))
 	debuglog.DebugLog("applyURLToParserConfig: Classified lines: %d subscriptions, %d connections",
 		len(subscriptions), len(connections))
-	return subscriptions, connections
+	return subscriptions, connections, rawOf
 }
 
 // SerializeParserConfig serializes ParserConfig to JSON string.

@@ -120,7 +120,7 @@ func (b *DaemonBackend) superviseDNS(
 			// а не тишина. Повторять подписку смысла нет: пересборкой ядра
 			// это не лечится на ходу.
 			if isUnimplemented(err) {
-				debuglog.WarnLog("daemon.dns: ядро без SubscribeDNSQueries: %v", err)
+				debuglog.WarnLog("daemon.dns: core without SubscribeDNSQueries: %v", err)
 				if onUnsupported != nil {
 					onUnsupported()
 				}

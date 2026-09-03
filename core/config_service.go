@@ -139,31 +139,12 @@ func parserSuccessToastMessage(result *config.OutboundGenerationResult) string {
 	for _, c := range result.BrokenChains {
 		msg += fmt.Sprintf(" Chain %q is not built: %s.", c.Name, c.Reason)
 	}
-	// SPEC 112-B часть B: то же и для источника, выпавшего fail-closed. До
-	// этого исключение уходило только в лог, а строка источника в Wizard
-	// выглядела здоровой — парадокс Proton NL.
-	if s := excludedSourcesToastPart(result.ExcludedSources); s != "" {
-		msg += " " + s
-	}
+	// SPEC 115 §3: хвоста про исключённые источники здесь больше НЕТ (решение
+	// пользователя). Тост живёт секунды и вмещает одну строку, а список
+	// исключений на конфиге с десятком зависимых подписок в неё не влезал —
+	// сообщение, которое не успевали дочитать. Роль забрали отчёт вкладки
+	// «Итог» и стойкие пометки в строках Wizard → Sources.
 	return msg
-}
-
-// excludedSourcesToastPart — хвост тоста про источники, выпавшие fail-closed.
-// Пустой реестр — пустая строка: молчание тут и есть «всё собралось».
-//
-// Несколько источников перечисляются через запятую одной фразой: отдельная
-// строка на каждый вытеснила бы из тоста всё остальное на конфиге с десятком
-// зависимых подписок.
-func excludedSourcesToastPart(list []config.SourceExclusion) string {
-	if len(list) == 0 {
-		return ""
-	}
-	names := make([]string, 0, len(list))
-	for _, e := range list {
-		names = append(names, fmt.Sprintf("%q — %s", e.SourceLabel, e.Reason))
-	}
-	return locale.Tf("Source excluded from the config: %s. Details in Wizard → Sources.",
-		strings.Join(names, ", "))
 }
 
 // updateParserProgress safely calls UpdateParserProgressFunc if it's not nil
@@ -196,10 +177,7 @@ func (svc *ConfigService) GenerateOutboundsFromParserConfig(
 	subst := config.BuildVarSubstituterFromDisk(execDir)
 	config.SubstituteParserConfigPlaceholders(parserConfig, subst)
 
-	loadNodesFunc := func(ps config.ProxySource, tc map[string]int, pc func(float64, string), idx, total int) ([]*config.ParsedNode, error) {
-		return svc.ProcessProxySource(ps, tc, pc, idx, total)
-	}
-	return config.GenerateOutboundsFromParserConfig(parserConfig, tagCounts, progressCallback, loadNodesFunc,
+	return config.GenerateOutboundsFromParserConfig(parserConfig, tagCounts, progressCallback,
 		directionBuildOptions(execDir))
 }
 
@@ -276,34 +254,29 @@ func (svc *ConfigService) updateConfigFromSubscriptions(triggerRebuild bool) (*c
 		updateParserProgress(ac, p, s)
 	}
 
-	loadNodesFunc := func(ps config.ProxySource, tc map[string]int, pc func(float64, string), idx, total int) ([]*config.ParsedNode, error) {
-		return svc.ProcessProxySource(ps, tc, pc, idx, total)
-	}
-	// SPEC 052 phase 6: parser использует pre-fetched .raw bodies через
-	// LookupCachedBody hook. Это устраняет double-fetch — refreshSubscriptionsMetaAndCache
-	// уже сходил в сеть и записал bin/subscriptions/<id>.raw; парсер
-	// читает оттуда без повторного network call'а.
-	subsDir := platform.GetSubscriptionsDir(execDir)
-	bodyByURL := buildBodyLookup(stateRef, subsDir)
-	prevHook := subscription.LookupCachedBody
-	subscription.LookupCachedBody = func(url string) ([]byte, bool) {
-		b, ok := bodyByURL[url]
-		return b, ok
-	}
-
+	// SPEC 118 Т5: сборка идёт из МАТЕРИАЛИЗОВАННЫХ nodes[] — тела подписок
+	// здесь не читаются и не парсятся, поэтому и подставлять их некуда.
 	tagCounts := make(map[string]int)
-	result, err := config.GenerateOutboundsFromParserConfig(parserConfig, tagCounts, progressCallback, loadNodesFunc,
+	result, err := config.GenerateOutboundsFromParserConfig(parserConfig, tagCounts, progressCallback,
 		directionBuildOptions(execDir))
-	subscription.LookupCachedBody = prevHook
 	if err != nil {
 		progressCallback(-1, fmt.Sprintf("Error: %v", err))
+		// Причины по источникам приезжают вместе с ошибкой (генератор отдаёт
+		// диагностический результат, когда узлов не набралось ни одного).
+		// Иначе обновление единственной сломанной подписки снимало бы прежние
+		// пометки и не ставило новых — источник выглядел бы здоровым.
+		feedParserDiagnosticsOnFailure(result)
 		return result, fmt.Errorf("failed to generate outbounds: %w", err)
 	}
 	subscription.LogDuplicateTagStatistics(tagCounts, "Parser")
 
-	// SPEC 112-B часть B: реестр исключений — итог ПОСЛЕДНЕЙ сборки.
+	// SPEC 112-B часть B / SPEC 115: отчёт сборки — итог ПОСЛЕДНЕЙ попытки.
 	// Переписывается и пустым списком: чистая сборка снимает прежние ⚠.
-	config.SetExcludedSources(result.ExcludedSources)
+	//
+	// Finish здесь НЕ зовётся: обновление подписок — парсерная стадия, до
+	// последнего рубежа она не доходила. Открытая тут попытка закрывает гейт
+	// Save, и это верно: пока конвейер не пройден целиком, сохранять нечего.
+	FeedBuildReportFromParser(config.StartBuildReport(), result)
 
 	// SPEC 052 phase 6: bin/outbounds.cache.json больше не пишем.
 	// Per-source resilience приходит из bin/subscriptions/<id>.raw —

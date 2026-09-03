@@ -1,0 +1,27 @@
+{
+  "lx_backup": 1,
+  "exported_by": {
+    "app": "launcher",
+    "version": "1.5.4"
+  },
+  "exported_at": "2026-09-02T00:00:00Z",
+  "servers": [
+    {
+      "id": "01SRV0000000000000000001",
+      "node_tag": "Amsterdam",
+      "folder": "Proton",
+      "uri": "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?type=tcp&security=tls&sni=example-1.com#Amsterdam"
+    },
+    {
+      "id": "01SRV0000000000000000002",
+      "node_tag": "Zurich",
+      "folder": "Proton",
+      "uri": "vless://11111111-1111-1111-1111-111111111111@example-2.com:443?type=tcp&security=tls&sni=example-2.com#Zurich"
+    },
+    {
+      "id": "01SRV0000000000000000003",
+      "node_tag": "Tokyo",
+      "uri": "vless://11111111-1111-1111-1111-111111111111@example-3.com:443?type=tcp&security=tls&sni=example-3.com#Tokyo"
+    }
+  ]
+}

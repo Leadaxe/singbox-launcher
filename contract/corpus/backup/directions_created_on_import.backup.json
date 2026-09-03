@@ -8,7 +8,6 @@
   "directions": [
     {
       "tag": "vpn-3",
-      "label": "Германия",
       "filter": "🇩🇪",
       "include_direct": true,
       "auto": {

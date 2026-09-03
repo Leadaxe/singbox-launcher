@@ -1,12 +1,12 @@
 package backup
 
-// Конформанс-раннер корпуса LX Backup (SPEC 103, фаза 4).
+// Конформанс-раннер корпуса LX Backup (контракт 0.12.0).
 //
 // Гоняет contract/corpus/backup/*.backup.json через Import и сверяет с
 // <case>.expected.json. Тот же набор обязана проходить сторона LxBox: перенос
 // настроек между приложениями имеет смысл ровно настолько, насколько обе
-// стороны одинаково понимают битую ссылку, непереносимую переменную и чужой
-// блок extensions.
+// стороны одинаково понимают битую ссылку, непереносимую переменную и
+// упразднённый карман extensions.
 
 import (
 	"encoding/json"
@@ -32,12 +32,69 @@ type corpusExpectation struct {
 	Vars              map[string]string `json:"vars"`
 	Warnings          []string          `json:"warnings"`
 	RouteFinalApplied *bool             `json:"route_final_applied"`
-	// ForeignKeptOtherApp — импортёр обязан сохранить блоб extensions ДРУГОГО
-	// приложения. Ожидание сформулировано относительно импортёра, а не по
-	// имени приложения: для лаунчера чужой — lxbox, для LxBox — launcher, и
-	// фикстура остаётся одна на обе стороны.
-	ForeignKeptOtherApp bool     `json:"foreign_extensions_kept_other_app"`
-	DisabledHashes      []string `json:"disabled_hashes"`
+	// ExtensionsDropped — файл несёт упразднённый механизм extensions
+	// (схема 0.10.x). Импортёр обязан его ОТБРОСИТЬ и назвать одним
+	// warning'ом на файл (BACKUP_PRINCIPLES.md П3/П4), а не провозить:
+	// провоз непонятого создавал состояние-призрак. Ожидание сформулировано
+	// относительно импортёра и одинаково для обеих сторон.
+	ExtensionsDropped bool     `json:"extensions_dropped"`
+	DisabledHashes    []string `json:"disabled_hashes"`
+
+	// ReplaceTags — URL подписки → имя группы, которым свёртка обязана
+	// материализоваться после импорта (D-081). Тега замены контракт не
+	// несёт: он ПОЗИЦИОННЫЙ ДЕРИВАТИВ префикса тегов, а при пустом
+	// префиксе — «<номер записи в subscriptions[]>:» плюс `select`.
+	// Номер считается по секции subscriptions[], а НЕ по позиции среди
+	// всех источников файла: разошедшийся счёт даёт двум сторонам разные
+	// имена одной группы, и правила файла, метящие в неё, повисают.
+	//
+	// Поле необязательное: отсутствие ключа значит «не проверяем».
+	ReplaceTags map[string]string `json:"replace_tags"`
+
+	// Folders — папки, которые импорт обязан собрать: имя → теги членов В
+	// ПОРЯДКЕ файла (контракт 0.12). Папка не имеет секции в файле и
+	// собирается ПО ИМЕНИ из записей servers[] с полем folder, поэтому
+	// проверять надо именно результат сборки: потеря пометки у одной записи
+	// растащила бы состав по корню списка молча.
+	//
+	// Порядок членов нормативен — обе стороны собирают папку в порядке
+	// записей файла, иначе состав после переноса перетасовывается.
+	//
+	// Поле необязательное: отсутствие ключа значит «не проверяем».
+	Folders map[string][]string `json:"folders"`
+
+	// Subscriptions — подписки после импорта: URL → её настройки (D-095).
+	// Ключ тот же, по которому идёт слияние, — `url` как есть.
+	//
+	// Список ИСЧЕРПЫВАЮЩИЙ: подписка, которой в ожиданиях нет, — это либо
+	// не оставленная локальная, либо задвоенная, и обе ошибки видны только
+	// сверкой всего набора.
+	//
+	// Enabled — указатель: умолчание схемы true, и отсутствие ключа обязано
+	// значить «не проверяем», а не «ожидаем выключенной».
+	//
+	// Поле необязательное: отсутствие ключа значит «не проверяем».
+	Subscriptions map[string]struct {
+		Label   string `json:"label"`
+		Prefix  string `json:"prefix"`
+		Postfix string `json:"postfix"`
+		Enabled *bool  `json:"enabled"`
+		// Nodes — сырые теги узлов, которые обязаны пережить слияние:
+		// состав локальной подписки в файл не едет и потеряться не вправе.
+		Nodes []string `json:"nodes"`
+		// PendingDisabled — отметки выключения, ждущие первого fetch.
+		// Проверяются отсортированными: они объединение двух множеств, и
+		// порядок в нём смысла не несёт.
+		PendingDisabled []string `json:"pending_disabled"`
+	} `json:"subscriptions"`
+
+	// RootServers — теги корневых одиночных узлов В ПОРЯДКЕ состояния
+	// (D-095 §9 п. 7: совпавшие держат локальную позицию, новые встают в
+	// конец). Сверяется и порядок, и состав: дедуп по телу проверяется
+	// именно отсутствием второй записи.
+	//
+	// Поле необязательное: отсутствие ключа значит «не проверяем».
+	RootServers []string `json:"root_servers"`
 
 	// Directions — Направления, которые импорт обязан СОЗДАТЬ (SPEC 104,
 	// схема v1.1). Проверяется каноническая форма, а не внутренняя: она и
@@ -52,13 +109,12 @@ type corpusExpectation struct {
 		HasAuto       bool   `json:"has_auto"`
 	} `json:"directions"`
 
-	// Chains — цепочки после импорта (SPEC 110, схема v1.2). Список
-	// ИСЧЕРПЫВАЮЩИЙ: запись, пропущенная merge'м по занятому тегу, не должна
-	// материализоваться второй копией. chain сверяется deep-equal канона —
-	// включая null-значения rewrite (RFC 7396: null удаляет ключ и обязан
-	// пережить перенос как есть). label, если задан, проверяется через
-	// re-export: сторона без отдельного отображаемого имени (лаунчер)
-	// обязана вернуть чужое значение нетронутым (BACKUP.md §2).
+	// Chains — цепочки после импорта (SPEC 110). Список ИСЧЕРПЫВАЮЩИЙ:
+	// запись, пропущенная по занятому тегу, не должна материализоваться
+	// второй копией. chain сверяется deep-equal канона — включая
+	// null-значения rewrite (RFC 7396: null удаляет ключ и обязан пережить
+	// перенос как есть). label, если задан, проверяется через re-export:
+	// это общее поле схемы, и обе стороны обязаны вернуть его на место.
 	//
 	// Enabled — указатель, а не bool: умолчание схемы true, и отсутствие
 	// ключа в ожиданиях обязано значить «не проверяем», а не «ожидаем
@@ -80,6 +136,12 @@ func TestBackupCorpus(t *testing.T) {
 
 	var cases []string
 	for _, e := range entries {
+		// `<case>.pre.backup.json` — предсостояние своего кейса, а не кейс:
+		// без этого отсева оно гонялось бы отдельным прогоном и искало бы
+		// несуществующий `<case>.pre.expected.json`.
+		if strings.HasSuffix(e.Name(), ".pre.backup.json") {
+			continue
+		}
 		if strings.HasSuffix(e.Name(), ".backup.json") {
 			cases = append(cases, strings.TrimSuffix(e.Name(), ".backup.json"))
 		}
@@ -109,9 +171,19 @@ func TestBackupCorpus(t *testing.T) {
 				t.Fatalf("Parse: %v", err)
 			}
 
+			// Предсостояние: `<case>.pre.backup.json` импортируется в ПУСТОЕ
+			// состояние первым, и уже в него сливается сам кейс. Иначе
+			// проверить слияние нечем — импорт в пустоту у слияния и у
+			// замены даёт один и тот же итог, и разошедшиеся стороны здесь
+			// были бы неразличимы. Предупреждения предсостояния в сверку не
+			// идут: оно декорация сцены, а не предмет кейса.
 			dst := &state.State{}
+			if pre := loadCorpusPre(t, name); pre != nil {
+				if _, err := Import(dst, pre, ImportOptions{}); err != nil {
+					t.Fatalf("Import предсостояния: %v", err)
+				}
+			}
 			res, err := Import(dst, b, ImportOptions{
-				Mode: ImportReplace,
 				// Принимающая сторона знает эти цели; всё прочее —
 				// символическая ссылка в никуда.
 				KnownOutbounds: []string{"proxy", "direct"},
@@ -130,11 +202,114 @@ func TestBackupCorpus(t *testing.T) {
 			checkRules(t, dst, exp)
 			checkVars(t, dst, exp)
 			checkRouteFinal(t, dst, exp)
-			checkForeignExtensions(t, dst, exp)
+			checkExtensionsDropped(t, dst, exp)
 			checkDisabledHashes(t, dst, exp)
 			checkDirections(t, dst, exp)
 			checkChains(t, dst, exp)
+			checkReplaceTags(t, dst, exp)
+			checkFolders(t, dst, exp)
+			checkSubscriptions(t, dst, exp)
+			checkRootServers(t, dst, exp)
 		})
+	}
+}
+
+// loadCorpusPre читает предсостояние кейса; nil = его нет (тогда импорт идёт
+// в пустое состояние, как было до конвенции pre).
+func loadCorpusPre(t *testing.T, name string) *Backup {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(backupCorpusRelPath, name+".pre.backup.json"))
+	if err != nil {
+		return nil
+	}
+	pre, _, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("разбор предсостояния: %v", err)
+	}
+	return pre
+}
+
+// checkSubscriptions — подписки после слияния (D-095).
+//
+// Проверяет ровно то, ради чего заведено слияние: локальная запись пережила
+// импорт вместе с составом, а настройки на ней — из файла.
+func checkSubscriptions(t *testing.T, dst *state.State, exp corpusExpectation) {
+	t.Helper()
+	if exp.Subscriptions == nil {
+		return
+	}
+	have := map[string]*state.Source{}
+	for i := range dst.Sources {
+		if dst.Sources[i].Kind != state.SourceKindSubscription {
+			continue
+		}
+		url := dst.Sources[i].URL
+		if _, dup := have[url]; dup {
+			t.Errorf("подписка %s задвоена — слияние по URL не сработало", url)
+		}
+		have[url] = &dst.Sources[i]
+	}
+	for url, want := range exp.Subscriptions {
+		got, ok := have[url]
+		if !ok {
+			t.Errorf("подписки %s нет после импорта", url)
+			continue
+		}
+		if got.Name != want.Label {
+			t.Errorf("%s: имя %q, ожидалось %q", url, got.Name, want.Label)
+		}
+		prefix, postfix := "", ""
+		if got.TagPolicy != nil {
+			prefix, postfix = got.TagPolicy.Prefix, got.TagPolicy.Postfix
+		}
+		if prefix != want.Prefix || postfix != want.Postfix {
+			t.Errorf("%s: политика тегов (%q, %q), ожидалась (%q, %q)",
+				url, prefix, postfix, want.Prefix, want.Postfix)
+		}
+		if want.Enabled != nil && got.Enabled != *want.Enabled {
+			t.Errorf("%s: enabled=%v, ожидалось %v", url, got.Enabled, *want.Enabled)
+		}
+		if want.Nodes != nil {
+			tags := []string{}
+			for i := range got.Nodes {
+				tags = append(tags, got.Nodes[i].Tag)
+			}
+			if !equalStrings(tags, want.Nodes) {
+				t.Errorf("%s: состав %v, ожидался %v — узлы локальной подписки слияние терять не вправе",
+					url, tags, want.Nodes)
+			}
+		}
+		if want.PendingDisabled != nil {
+			pending := append([]string(nil), got.PendingDisabled...)
+			sort.Strings(pending)
+			wantPending := append([]string(nil), want.PendingDisabled...)
+			sort.Strings(wantPending)
+			if !equalStrings(pending, wantPending) {
+				t.Errorf("%s: отметки выключения %v, ожидались %v", url, pending, wantPending)
+			}
+		}
+	}
+	for url := range have {
+		if _, ok := exp.Subscriptions[url]; !ok {
+			t.Errorf("после импорта есть подписка %s, которой в ожиданиях нет", url)
+		}
+	}
+}
+
+// checkRootServers — корневые одиночные узлы: состав и ПОРЯДОК.
+func checkRootServers(t *testing.T, dst *state.State, exp corpusExpectation) {
+	t.Helper()
+	if exp.RootServers == nil {
+		return
+	}
+	var got []string
+	for i := range dst.Sources {
+		if dst.Sources[i].Kind == state.SourceKindServer {
+			got = append(got, dst.Sources[i].NodeTagOrLabel())
+		}
+	}
+	if !equalStrings(got, exp.RootServers) {
+		t.Errorf("корневые серверы %v, ожидались %v (порядок нормативен)", got, exp.RootServers)
 	}
 }
 
@@ -167,6 +342,45 @@ func checkRules(t *testing.T, dst *state.State, exp corpusExpectation) {
 		}
 		if all[i].enabled != want.Enabled {
 			t.Errorf("правило %q: enabled=%v, ожидалось %v", want.Name, all[i].enabled, want.Enabled)
+		}
+	}
+}
+
+// checkFolders — папки собраны по имени, с тем же составом и порядком.
+func checkFolders(t *testing.T, dst *state.State, exp corpusExpectation) {
+	t.Helper()
+	if exp.Folders == nil {
+		return
+	}
+	have := map[string][]string{}
+	for _, src := range dst.Sources {
+		if src.Kind != state.SourceKindFolder {
+			continue
+		}
+		if _, dup := have[src.Name]; dup {
+			t.Errorf("папка %q собрана дважды — одно имя = одна папка", src.Name)
+		}
+		tags := []string{}
+		for i := range src.Nodes {
+			tags = append(tags, src.Nodes[i].Tag)
+		}
+		have[src.Name] = tags
+	}
+	for name, want := range exp.Folders {
+		got, ok := have[name]
+		if !ok {
+			t.Errorf("папка %q не собрана: есть %v", name, have)
+			continue
+		}
+		// equalStrings сравнивает В ПОРЯДКЕ, без сортировки: порядок членов
+		// папки нормативен, и перетасованный состав — это расхождение.
+		if !equalStrings(got, want) {
+			t.Errorf("папка %q: члены %v, ожидались %v (порядок нормативен)", name, got, want)
+		}
+	}
+	for name := range have {
+		if _, ok := exp.Folders[name]; !ok {
+			t.Errorf("собрана папка %q, которой в ожиданиях нет", name)
 		}
 	}
 }
@@ -208,18 +422,26 @@ func checkRouteFinal(t *testing.T, dst *state.State, exp corpusExpectation) {
 	}
 }
 
-func checkForeignExtensions(t *testing.T, dst *state.State, exp corpusExpectation) {
+// checkExtensionsDropped — упразднённый карман не возвращается в экспорт.
+//
+// Warning об этом уже сверен общим сравнением кодов; здесь проверяется вторая
+// половина П1: состояние после импорта неотличимо от настроенного руками, то
+// есть следа от extensions в нём нет и повторный экспорт его не воскрешает.
+func checkExtensionsDropped(t *testing.T, dst *state.State, exp corpusExpectation) {
 	t.Helper()
-	if !exp.ForeignKeptOtherApp {
+	if !exp.ExtensionsDropped {
 		return
 	}
-	// Своё приложение блоб применяет полями, чужое — хранит нетронутым.
-	blob, ok := dst.ForeignBackupExtensions[AppLxBox]
-	if !ok || len(blob) == 0 {
-		t.Errorf("блоб extensions.%s не сохранён — при обратном экспорте данные пропадут", AppLxBox)
+	back, _, err := Export(dst, ExportOptions{AppVersion: "corpus"})
+	if err != nil {
+		t.Fatalf("re-export: %v", err)
 	}
-	if _, wrong := dst.ForeignBackupExtensions[AppLauncher]; wrong {
-		t.Errorf("собственный блоб extensions.%s положен в чужие — он должен применяться полями", AppLauncher)
+	raw, err := json.Marshal(back)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "extensions") {
+		t.Errorf("extensions вернулся в экспорт — карман провоза не закрыт: %s", raw)
 	}
 }
 
@@ -228,15 +450,55 @@ func checkDisabledHashes(t *testing.T, dst *state.State, exp corpusExpectation) 
 	if len(exp.DisabledHashes) == 0 {
 		return
 	}
+	// SPEC 118 W5: отметка выключения живёт полем node.enabled; у только что
+	// импортированной подписки узлов ещё нет (nodes[] в контракт не едут),
+	// поэтому отметка ждёт первого достоверного fetch в PendingDisabled.
 	found := map[string]bool{}
-	for _, src := range dst.Connections.Sources {
-		for hash := range src.DisabledNodes {
-			found[hash] = true
+	for _, src := range dst.Sources {
+		for _, tag := range src.PendingDisabled {
+			found[tag] = true
+		}
+		for i := range src.Nodes {
+			if !src.Nodes[i].Enabled {
+				found[src.Nodes[i].Tag] = true
+			}
 		}
 	}
 	for _, want := range exp.DisabledHashes {
 		if !found[want] {
 			t.Errorf("отметка выключенной ноды %s не перенесена", want)
+		}
+	}
+}
+
+// checkReplaceTags — имя группы свёрнутой подписки после импорта (D-081).
+//
+// Проверяется ровно тот тег, на который ссылаются правила и route.final того
+// же файла: если стороны считают позиционный дериватив по-разному, здесь
+// разъезд виден сразу, а не у пользователя выключенным правилом.
+func checkReplaceTags(t *testing.T, dst *state.State, exp corpusExpectation) {
+	t.Helper()
+	if len(exp.ReplaceTags) == 0 {
+		return
+	}
+	byURL := map[string]*state.Source{}
+	for i := range dst.Sources {
+		if dst.Sources[i].Kind == state.SourceKindSubscription {
+			byURL[dst.Sources[i].URL] = &dst.Sources[i]
+		}
+	}
+	for url, want := range exp.ReplaceTags {
+		src, ok := byURL[url]
+		if !ok {
+			t.Errorf("подписка %s не приехала — тег замены проверять не на чем", url)
+			continue
+		}
+		if src.Replace == nil {
+			t.Errorf("%s: свёртка не стала заменой — группы, в которую метят правила файла, нет", url)
+			continue
+		}
+		if src.Replace.Tag != want {
+			t.Errorf("%s: тег замены %q, ожидался %q", url, src.Replace.Tag, want)
 		}
 	}
 }
@@ -285,12 +547,11 @@ func equalStrings(a, b []string) bool {
 	return true
 }
 
-// checkChains проверяет цепочки после импорта (SPEC 110, схема v1.2).
+// checkChains проверяет цепочки после импорта (SPEC 110).
 //
 // Сверяется канон chain (deep-equal, включая null внутри rewrite) и число
-// записей; label — через re-export, потому что лаунчер его не применяет, а
-// только провозит (BACKUP.md §2). Раннер LxBox читает те же ожидания, но
-// label там — хранимое поле модели.
+// записей; label — через re-export: он общее поле схемы, у лаунчера живёт в
+// Source.Label и обязан вернуться на место (П1).
 func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
 	t.Helper()
 	if len(exp.Chains) == 0 {
@@ -298,8 +559,8 @@ func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
 	}
 	byTag := map[string]state.Source{}
 	count := 0
-	for _, src := range dst.Connections.Sources {
-		if src.Type == state.SourceTypeChain {
+	for _, src := range dst.Sources {
+		if src.Kind == state.SourceKindChain {
 			byTag[src.NodeTagOrLabel()] = src
 			count++
 		}
@@ -314,7 +575,9 @@ func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
 		if !ok {
 			t.Fatalf("цепочка %q не создана импортом", want.Tag)
 		}
-		gotRaw, err := json.Marshal(src.Chain)
+		// SPEC 118 W5: канон цепочки в модели разложен по узлу (body + hops);
+		// сверяем ту же форму контракта, что уедет в файл.
+		gotRaw, err := json.Marshal(exportChainSpec(src))
 		if err != nil {
 			t.Fatalf("%s: marshal канона: %v", want.Tag, err)
 		}
@@ -334,7 +597,7 @@ func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
 	if !needExport {
 		return
 	}
-	b, err := Export(dst, ExportOptions{AppVersion: "corpus"})
+	b, _, err := Export(dst, ExportOptions{AppVersion: "corpus"})
 	if err != nil {
 		t.Fatalf("re-export: %v", err)
 	}
@@ -347,7 +610,7 @@ func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
 			continue
 		}
 		if got := exported[want.Tag].Label; got != want.Label {
-			t.Errorf("%s: label в re-export %q, ожидалось %q — чужое имя потеряно", want.Tag, got, want.Label)
+			t.Errorf("%s: label в re-export %q, ожидалось %q — подпись потеряна", want.Tag, got, want.Label)
 		}
 	}
 }
@@ -371,8 +634,8 @@ func checkDirections(t *testing.T, dst *state.State, exp corpusExpectation) {
 	if len(exp.Directions) == 0 {
 		return
 	}
-	byTag := make(map[string]configtypes.Direction, len(dst.Connections.Outbounds))
-	for _, d := range dst.Connections.Outbounds {
+	byTag := make(map[string]configtypes.Direction, len(dst.Directions))
+	for _, d := range dst.Directions {
 		byTag[d.Tag] = d
 	}
 	for _, want := range exp.Directions {

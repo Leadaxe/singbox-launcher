@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,20 +57,23 @@ const testNodeHash = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d
 func mkState() *state.State {
 	enabled := true
 	return &state.State{
-		Connections: state.ConnectionsSection{
-			Sources: []state.Source{
-				{
-					ID: "src-1", Type: state.SourceTypeSubscription, Enabled: true,
-					URL: "https://example-1.com/sub", Label: "Main", MaxNodes: 200,
-					Tag:           &state.TagSpec{Prefix: "[A] "},
-					Update:        &state.UpdateSpec{IntervalHours: 12, AutoRefresh: &enabled},
-					DisabledNodes: map[string]int64{testNodeHash: 1750000000},
-					Skip:          []map[string]string{{"field": "tag", "contains": "trial"}},
-					DetourTag:     "hop-1",
+		Sources: []state.Source{
+			{
+				ID: "src-1",
+				Node: state.Node{
+					Kind: state.SourceKindSubscription, Enabled: true,
+					Detour: &state.NodeLink{Tag: "hop-1"},
 				},
-				{
-					ID: "src-2", Type: state.SourceTypeServer, Enabled: true,
-					URI: "vless://11111111-1111-1111-1111-111111111111@example-2.com:443?type=tcp#s",
+				URL: "https://example-1.com/sub", Name: "Main", MaxNodes: 200,
+				TagPolicy:       &state.TagPolicy{Prefix: "[A] "},
+				Update:          &state.UpdateSpec{IntervalHours: 12, AutoRefresh: &enabled},
+				PendingDisabled: []string{testNodeHash},
+				Skip:            []map[string]string{{"field": "tag", "contains": "trial"}},
+			},
+			{
+				ID: "src-2", Node: state.Node{
+					Kind: state.SourceKindServer, Enabled: true, Tag: "s",
+					Origin: &state.Origin{Kind: state.OriginKindURI, Raw: "vless://11111111-1111-1111-1111-111111111111@example-2.com:443?type=tcp#s"},
 				},
 			},
 		},
@@ -103,14 +107,13 @@ func mkInlineRule(name, outbound string, num int) state.Rule {
 // Инвариант §1: import(export(x)) == x в том же приложении.
 func TestRoundTripLossless(t *testing.T) {
 	src := mkState()
-	b, err := Export(src, ExportOptions{AppVersion: "1.4.2", Platform: "darwin", Now: time.Unix(1750000000, 0)})
+	b, _, err := Export(src, ExportOptions{AppVersion: "1.4.2", Platform: "darwin", Now: time.Unix(1750000000, 0)})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
 
 	dst := &state.State{}
 	res, err := Import(dst, b, ImportOptions{
-		Mode:           ImportReplace,
 		KnownOutbounds: []string{"proxy", "hop-1"},
 		KnownPresets:   []string{"traffic-processing"},
 	})
@@ -118,29 +121,32 @@ func TestRoundTripLossless(t *testing.T) {
 		t.Fatalf("Import: %v", err)
 	}
 
-	if len(dst.Connections.Sources) != 2 {
-		t.Fatalf("источников %d, ожидалось 2", len(dst.Connections.Sources))
+	if len(dst.Sources) != 2 {
+		t.Fatalf("источников %d, ожидалось 2", len(dst.Sources))
 	}
-	sub := dst.Connections.Sources[0]
-	if sub.URL != "https://example-1.com/sub" || sub.Label != "Main" || sub.MaxNodes != 200 {
+	sub := dst.Sources[0]
+	if sub.URL != "https://example-1.com/sub" || sub.Name != "Main" || sub.MaxNodes != 200 {
 		t.Errorf("подписка приехала искажённой: %+v", sub)
 	}
-	if sub.Tag == nil || sub.Tag.Prefix != "[A] " {
-		t.Errorf("tag-политика потеряна: %+v", sub.Tag)
+	if sub.TagPolicy == nil || sub.TagPolicy.Prefix != "[A] " {
+		t.Errorf("tag-политика потеряна: %+v", sub.TagPolicy)
 	}
 	if sub.Update == nil || sub.Update.IntervalHours != 12 {
 		t.Errorf("политика обновления потеряна: %+v", sub.Update)
 	}
-	if got := sub.DisabledNodes[testNodeHash]; got != 1750000000 {
-		t.Errorf("отметка выключенной ноды потеряна: %v", sub.DisabledNodes)
+	// SPEC 118 W5: отметка выключения едет по СЫРОМУ тегу узла; узлов у
+	// импортированной подписки ещё нет (nodes[] в контракт не едут), поэтому
+	// она ждёт первого достоверного fetch в PendingDisabled (вердикт O2).
+	if len(sub.PendingDisabled) != 1 || sub.PendingDisabled[0] != testNodeHash {
+		t.Errorf("отметка выключенной ноды потеряна: %v", sub.PendingDisabled)
 	}
-	// Непереносимые поля обязаны вернуться через extensions.launcher —
-	// иначе round-trip на своей же машине теряет настройку.
+	// Прежде эти поля ездили карманом extensions.launcher; теперь они —
+	// обычные поля записи, и roundtrip на своей же машине обязан их вернуть.
 	if len(sub.Skip) != 1 || sub.Skip[0]["contains"] != "trial" {
 		t.Errorf("skip-фильтр потерян: %+v", sub.Skip)
 	}
-	if sub.DetourTag != "hop-1" {
-		t.Errorf("detour потерян: %q", sub.DetourTag)
+	if sub.Detour == nil || sub.Detour.Tag != "hop-1" {
+		t.Errorf("detour потерян: %+v", sub.Detour)
 	}
 	if sub.ID != "src-1" {
 		t.Errorf("id источника потерян: %q", sub.ID)
@@ -163,7 +169,7 @@ func TestRoundTripLossless(t *testing.T) {
 // говорится вслух.
 func TestImportVarsPortableOnly(t *testing.T) {
 	src := mkState()
-	b, _ := Export(src, ExportOptions{})
+	b, _, _ := Export(src, ExportOptions{})
 	if _, ok := b.Vars["tun_interface"]; ok {
 		t.Error("непереносимая переменная попала в бэкап")
 	}
@@ -252,28 +258,34 @@ func TestReservedOutboundsAlwaysKnown(t *testing.T) {
 	}
 }
 
-// Чужой блоб extensions обязан пережить импорт и вернуться в экспорт:
-// бэкап, побывавший на десктопе, не должен вернуться на телефон обеднённым.
-func TestForeignExtensionsSurviveRoundTrip(t *testing.T) {
-	foreign := json.RawMessage(`{"folders":["work","home"],"import_rules":[{"x":1}]}`)
-	b := &Backup{
-		LxBackup:   FormatVersion,
-		Extensions: Extensions{AppLxBox: foreign},
+// П3: чужой блоб extensions больше НЕ провозится — он отбрасывается с
+// warning'ом при разборе файла. Провоз непонятого создавал состояние-призрак,
+// которое протухало, когда каноническую часть правили на другой стороне.
+func TestForeignExtensionsDroppedWithWarning(t *testing.T) {
+	raw := []byte(`{"lx_backup":1,"exported_by":{"app":"lxbox","version":"2.0.0"},` +
+		`"exported_at":"2026-08-22T00:00:00Z",` +
+		`"extensions":{"lxbox":{"folders":["work"]}}}`)
+	b, warns, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !hasWarn(warns, WarnBackupExtensionsDropped) {
+		t.Fatalf("отброшенный extensions не назван: %v", warns)
 	}
 	dst := &state.State{}
 	if _, err := Import(dst, b, ImportOptions{}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
-	back, err := Export(dst, ExportOptions{})
+	back, _, err := Export(dst, ExportOptions{})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
-	got, ok := back.Extensions[AppLxBox]
-	if !ok {
-		t.Fatal("чужой блоб extensions потерян при обратном экспорте")
+	out, err := json.Marshal(back)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if string(got) != string(foreign) {
-		t.Errorf("чужой блоб изменён:\n  было %s\n  стало %s", foreign, got)
+	if strings.Contains(string(out), "extensions") {
+		t.Fatalf("extensions вернулся в экспорт — карман провоза не закрыт: %s", out)
 	}
 }
 
@@ -418,112 +430,104 @@ func hasWarn(list []Warning, code string) bool {
 func TestRoundTripChainSources(t *testing.T) {
 	stripOff := false
 	s := &state.State{}
-	s.Connections.Sources = []state.Source{
-		{Type: state.SourceTypeSubscription, URL: "https://example.com/sub", Enabled: true},
+	s.Sources = []state.Source{
+		{Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true}, URL: "https://example.com/sub"},
 		{
-			Type:    state.SourceTypeChain,
-			Label:   "chain-1",
-			Enabled: true,
-			Chain: &configtypes.SourceChain{
-				Hops:         []string{"warp", "vpn ②"},
-				IdleTimeout:  "0s",
-				StripEvasion: &stripOff,
-				Strip:        map[string]bool{"tls.utls": false},
-				// null-значение — RFC 7396 (удаление ключа), обязано
-				// пережить перенос как есть.
-				Rewrite: map[string]interface{}{
-					"vless": map[string]interface{}{"flow": nil},
-				},
+			// SPEC 118 W5: цепочка — узел канона: настройки маршрута в body,
+			// позиции отдельным полем hops.
+			Node: state.Node{
+				Kind: state.SourceKindChain, Enabled: true, Tag: "chain-1",
+				Body: configtypes.ChainBody(&configtypes.SourceChain{
+					IdleTimeout:  "0s",
+					StripEvasion: &stripOff,
+					Strip:        map[string]bool{"tls.utls": false},
+					// null-значение — RFC 7396 (удаление ключа), обязано
+					// пережить перенос как есть.
+					Rewrite: map[string]interface{}{
+						"vless": map[string]interface{}{"flow": nil},
+					},
+				}),
+				Hops: []state.NodeLink{{Tag: "warp"}, {Tag: "vpn ②"}},
 			},
+			Label: "chain-1",
 		},
 	}
 
-	b, err := Export(s, ExportOptions{AppVersion: "test"})
+	b, _, err := Export(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(b.Chains) != 1 || b.Chains[0].Tag != "chain-1" {
 		t.Fatalf("секция chains[] не собрана: %+v", b.Chains)
 	}
-	if _, ok := b.Extensions[AppLauncher]; ok {
-		t.Fatal("цепочки снова уехали в extensions.launcher — это место закрыто (BACKUP.md §2)")
-	}
 
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+	if _, err := Import(restored, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	var chain *state.Source
-	for i := range restored.Connections.Sources {
-		if restored.Connections.Sources[i].Type == state.SourceTypeChain {
-			chain = &restored.Connections.Sources[i]
+	for i := range restored.Sources {
+		if restored.Sources[i].Kind == state.SourceKindChain {
+			chain = &restored.Sources[i]
 		}
 	}
 	if chain == nil {
 		t.Fatal("цепочка потеряна на roundtrip")
 	}
-	if chain.NodeTagOrLabel() != "chain-1" || chain.Chain == nil {
+	if chain.NodeTagOrLabel() != "chain-1" || len(chain.Hops) != 2 {
 		t.Fatalf("состав цепочки искажён: %+v", chain)
 	}
-	want, _ := json.Marshal(s.Connections.Sources[1].Chain)
-	got, _ := json.Marshal(chain.Chain)
-	if string(want) != string(got) {
-		t.Fatalf("канон цепочки искажён: %s, ожидалось %s", got, want)
+	if string(chain.Body) != string(s.Sources[1].Body) {
+		t.Fatalf("тело цепочки искажено: %s, ожидалось %s", chain.Body, s.Sources[1].Body)
+	}
+	if chain.Hops[0].Tag != "warp" || chain.Hops[1].Tag != "vpn ②" {
+		t.Fatalf("позиции цепочки искажены: %+v", chain.Hops)
 	}
 }
 
-// TestImportLegacyExtensionsChains — файлы релизов v1.5.0–v1.5.1 несли
-// цепочки блобом extensions.launcher (внутренняя структура state.Source).
-// Читать это место обязаны и после переезда в секцию chains[] — иначе
-// восстановление старого бэкапа молча теряет цепочки.
-func TestImportLegacyExtensionsChains(t *testing.T) {
-	old := []state.Source{{
-		Type: state.SourceTypeChain, Label: "old-relay", Enabled: true,
-		Chain: &configtypes.SourceChain{Hops: []string{"a", "b"}},
-	}}
-	blob, err := json.Marshal(map[string]any{"chains": old})
+// П4: legacy-развилки чтения нет. Файл релизов v1.5.0–v1.5.1 нёс цепочки
+// блобом extensions.launcher; теперь этот карман — обычное неизвестное поле:
+// отбрасывается с warning'ом, цепочки из него не материализуются. Цена
+// разрыва задокументирована (BACKUP.md §10), молчания нет.
+func TestLegacyExtensionsChainsNotRead(t *testing.T) {
+	raw := []byte(`{"lx_backup":1,"exported_by":{"app":"launcher","version":"1.5.1"},` +
+		`"exported_at":"2026-08-22T00:00:00Z","extensions":{"launcher":{"chains":` +
+		`[{"type":"chain","label":"old-relay","enabled":true,"chain":{"hops":["a","b"]}}]}}}`)
+	b, warns, err := Parse(raw)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Parse: %v", err)
 	}
-	b := &Backup{
-		LxBackup:   FormatVersion,
-		Extensions: Extensions{AppLauncher: blob},
+	if !hasWarn(warns, WarnBackupExtensionsDropped) {
+		t.Fatalf("legacy-блоб отброшен молча: %v", warns)
 	}
-
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
-		t.Fatal(err)
+	if _, err := Import(restored, b, ImportOptions{}); err != nil {
+		t.Fatalf("Import: %v", err)
 	}
-	found := false
-	for _, src := range restored.Connections.Sources {
-		if src.Type == state.SourceTypeChain && src.Label == "old-relay" &&
-			src.Chain != nil && len(src.Chain.Hops) == 2 {
-			found = true
+	for _, src := range restored.Sources {
+		if src.Kind == state.SourceKindChain {
+			t.Fatalf("цепочка прочитана из упразднённого кармана: %+v", src)
 		}
 	}
-	if !found {
-		t.Fatal("legacy-цепочка из extensions.launcher не восстановлена")
-	}
 }
 
-// TestImportChainTagBusy — занятый тег: своя цепочка сильнее, приехавшая
-// пропускается, и это ВСЕГДА предъявляется warning'ом — молчаливое «своя
-// победила» скрыло бы случайных тёзок (BACKUP.md §2).
+// TestImportChainTagBusy — занятый тег: первая запись побеждает, вторая
+// пропускается, и это ВСЕГДА предъявляется warning'ом — молчаливое «одна
+// победила» скрыло бы случайных тёзок (BACKUP.md §4).
+//
+// Тёзки проверяются ВНУТРИ одного файла: режим импорта один — replace, и
+// коллизия «своя против приехавшей» в нём невозможна по построению.
 func TestImportChainTagBusy(t *testing.T) {
-	s := &state.State{}
-	s.Connections.Sources = []state.Source{{
-		Type: state.SourceTypeChain, Label: "relay", Enabled: true,
-		Chain: &configtypes.SourceChain{Hops: []string{"mine-1", "mine-2"}},
-	}}
 	b := &Backup{
 		LxBackup: FormatVersion,
-		Chains: []Chain{{
-			Tag:   "relay",
-			Chain: &configtypes.SourceChain{Hops: []string{"theirs-1", "theirs-2"}},
-		}},
+		Chains: []Chain{
+			{Tag: "relay", Chain: &configtypes.SourceChain{Hops: []string{"first-1", "first-2"}}},
+			{Tag: "relay", Chain: &configtypes.SourceChain{Hops: []string{"second-1", "second-2"}}},
+		},
 	}
 
-	res, err := Import(s, b, ImportOptions{Mode: ImportMerge})
+	s := &state.State{}
+	res, err := Import(s, b, ImportOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -531,11 +535,11 @@ func TestImportChainTagBusy(t *testing.T) {
 		t.Fatal("занятый тег не предъявлен warning'ом")
 	}
 	count := 0
-	for _, src := range s.Connections.Sources {
-		if src.Type == state.SourceTypeChain {
+	for _, src := range s.Sources {
+		if src.Kind == state.SourceKindChain {
 			count++
-			if src.Chain == nil || src.Chain.Hops[0] != "mine-1" {
-				t.Fatal("приехавшая цепочка перезаписала свою")
+			if len(src.Hops) == 0 || src.Hops[0].Tag != "first-1" {
+				t.Fatalf("вторая запись перезаписала первую: %+v", src.Hops)
 			}
 		}
 	}
@@ -560,12 +564,12 @@ func TestRoundTripDNSSection(t *testing.T) {
 			Body: map[string]interface{}{"domain_suffix": "example.com", "server": "my_dns"}},
 	}
 
-	b, err := Export(s, ExportOptions{AppVersion: "test"})
+	b, _, err := Export(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+	if _, err := Import(restored, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -583,32 +587,9 @@ func TestRoundTripDNSSection(t *testing.T) {
 	}
 }
 
-// TestRoundTripLocalOutbounds — локальные outbound'ы подписки: экспорт писал
-// их в extensions.launcher с самого начала, а импорт не читал.
-func TestRoundTripLocalOutbounds(t *testing.T) {
-	s := &state.State{}
-	s.Connections.Sources = []state.Source{{
-		Type:    state.SourceTypeSubscription,
-		URL:     "https://example.com/sub",
-		Enabled: true,
-		Outbounds: []configtypes.Direction{
-			{Tag: "local-select", Type: "selector"},
-		},
-	}}
-
-	b, err := Export(s, ExportOptions{AppVersion: "test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
-		t.Fatal(err)
-	}
-	src := restored.Connections.Sources[0]
-	if len(src.Outbounds) != 1 || src.Outbounds[0].Tag != "local-select" {
-		t.Fatalf("локальные outbound'ы потеряны: %+v", src.Outbounds)
-	}
-}
+// TestRoundTripLocalOutbounds удалён вместе с предметом: локальных
+// Направлений источника в модели v7 нет (SPEC 118 W5). Их наследник —
+// FolderReplace, и его перенос проверяет корпус контракта (fold ⇄ replace).
 
 // TestRoundTripWarpAccounts — warp[] едет и возвращается.
 func TestRoundTripWarpAccounts(t *testing.T) {
@@ -616,7 +597,7 @@ func TestRoundTripWarpAccounts(t *testing.T) {
 	s.WarpAccounts = &state.WarpAccountsSection{
 		WG: &state.WarpWGAccount{PrivateKey: "priv", PeerPublic: "pub", ClientV4: "172.16.0.2"},
 	}
-	b, err := Export(s, ExportOptions{AppVersion: "test"})
+	b, _, err := Export(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -624,7 +605,7 @@ func TestRoundTripWarpAccounts(t *testing.T) {
 		t.Fatalf("warp не экспортирован: %v", b.Warp)
 	}
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+	if _, err := Import(restored, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if restored.WarpAccounts == nil || restored.WarpAccounts.WG == nil ||
@@ -633,32 +614,42 @@ func TestRoundTripWarpAccounts(t *testing.T) {
 	}
 }
 
-// TestPerEntityForeignExtensionsSurvive — блоб extensions.lxbox ВНУТРИ записи
-// подписки (BACKUP.md §1 разрешает и такое размещение) переживает
-// импорт→экспорт, а не выбрасывается.
-func TestPerEntityForeignExtensionsSurvive(t *testing.T) {
-	blob := json.RawMessage(`{"import_rules":true,"folder":"work"}`)
-	b := &Backup{
-		LxBackup: FormatVersion,
-		Subscriptions: []Subscription{{
-			URL:        "https://example.com/sub",
-			Extensions: Extensions{AppLxBox: blob},
-		}},
+// П3 на уровне записи: extensions ВНУТРИ подписки тоже отбрасывается — и
+// одним общим warning'ом с корневым, а не отдельной строкой на каждую запись.
+func TestPerEntityForeignExtensionsDropped(t *testing.T) {
+	raw := []byte(`{"lx_backup":1,"exported_by":{"app":"lxbox","version":"2.0.0"},` +
+		`"exported_at":"2026-08-22T00:00:00Z","subscriptions":[{"url":"https://example.com/sub",` +
+		`"extensions":{"lxbox":{"import_rules":true}}}]}`)
+	b, warns, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	n := 0
+	for _, w := range warns {
+		if w.Code == WarnBackupExtensionsDropped {
+			n++
+			if !strings.Contains(w.Detail, "https://example.com/sub") {
+				t.Errorf("warning не называет затронутую запись: %q", w.Detail)
+			}
+		}
+	}
+	if n != 1 {
+		t.Fatalf("warning'ов об extensions %d, ожидался ровно один на файл: %v", n, warns)
 	}
 	s := &state.State{}
-	if _, err := Import(s, b, ImportOptions{Mode: ImportReplace}); err != nil {
+	if _, err := Import(s, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	out, err := Export(s, ExportOptions{AppVersion: "test"})
+	out, _, err := Export(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Subscriptions) != 1 {
-		t.Fatalf("subscriptions: %+v", out.Subscriptions)
+	enc, err := json.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
 	}
-	got := out.Subscriptions[0].Extensions[AppLxBox]
-	if string(got) != string(blob) {
-		t.Fatalf("lxbox-блоб записи потерян: %s", got)
+	if strings.Contains(string(enc), "import_rules") {
+		t.Fatalf("mobile-блоб записи провезён вопреки П3: %s", enc)
 	}
 }
 
@@ -667,33 +658,40 @@ func TestPerEntityForeignExtensionsSurvive(t *testing.T) {
 // сами id источников: без них ссылка на приёмнике мертва.
 func TestRoundTripDetourNodeRef(t *testing.T) {
 	s := &state.State{}
-	s.Connections.Sources = []state.Source{
+	s.Sources = []state.Source{
 		{
-			ID:      "01WARP00000000000000000",
-			Type:    state.SourceTypeServer,
-			URI:     "vless://u@h:443",
-			NodeTag: "🔥🎭 WARP (MASQUE)",
-			Label:   "WARP hop",
-			Enabled: true,
+			ID: "01WARP00000000000000000",
+			Node: state.Node{
+				Kind: state.SourceKindServer, Enabled: true, Tag: "🔥🎭 WARP (MASQUE)",
+				Origin: &state.Origin{Kind: state.OriginKindURI, Raw: "vless://u@h:443"},
+			},
+			Label: "WARP hop",
 		},
 		{
-			ID:                 "01PROTON0000000000000000",
-			Type:               state.SourceTypeSubscription,
-			URL:                "https://example.com/sub",
-			Enabled:            true,
-			DetourNodeSourceID: "01WARP00000000000000000",
-			DetourNodeTag:      "🔥🎭 WARP (MASQUE)",
-			DetourNodeLabel:    "WARP hop",
+			ID: "01PROTON0000000000000000",
+			Node: state.Node{
+				Kind: state.SourceKindSubscription, Enabled: true,
+				Detour: &state.NodeLink{
+					FolderID: "01WARP00000000000000000",
+					Tag:      "🔥🎭 WARP (MASQUE)",
+				},
+			},
+			URL: "https://example.com/sub",
 		},
 	}
 
-	b, err := Export(s, ExportOptions{AppVersion: "test"})
+	b, _, err := Export(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	blob := b.Subscriptions[0].Extensions[AppLauncher]
+	// Ссылка едет ОБЩИМИ полями записи, а не карманом: extensions больше
+	// не существует (П3), и ключи обязаны лежать прямо в subscriptions[0].
+	raw, err := json.Marshal(b.Subscriptions[0])
+	if err != nil {
+		t.Fatal(err)
+	}
 	var ext map[string]interface{}
-	if err := json.Unmarshal(blob, &ext); err != nil {
+	if err := json.Unmarshal(raw, &ext); err != nil {
 		t.Fatal(err)
 	}
 	if ext["detour_node_source_id"] != "01WARP00000000000000000" {
@@ -707,31 +705,31 @@ func TestRoundTripDetourNodeRef(t *testing.T) {
 	}
 
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+	if _, err := Import(restored, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	var hop, dep *state.Source
-	for i := range restored.Connections.Sources {
-		switch restored.Connections.Sources[i].Type {
-		case state.SourceTypeServer:
-			hop = &restored.Connections.Sources[i]
-		case state.SourceTypeSubscription:
-			dep = &restored.Connections.Sources[i]
+	for i := range restored.Sources {
+		switch restored.Sources[i].Kind {
+		case state.SourceKindServer:
+			hop = &restored.Sources[i]
+		case state.SourceKindSubscription:
+			dep = &restored.Sources[i]
 		}
 	}
 	if hop == nil || dep == nil {
-		t.Fatalf("источники не восстановились: %+v", restored.Connections.Sources)
+		t.Fatalf("источники не восстановились: %+v", restored.Sources)
 	}
 	// Ключ вопроса из ТЗ: id источника-цели обязан пережить roundtrip, иначе
 	// ссылка на приёмнике указывает в никуда.
 	if hop.ID != "01WARP00000000000000000" {
 		t.Fatalf("id источника-цели потерян: %q", hop.ID)
 	}
-	if dep.DetourNodeSourceID != hop.ID {
-		t.Fatalf("DetourNodeSourceID после импорта = %q, ожидался %q", dep.DetourNodeSourceID, hop.ID)
+	if dep.Detour == nil || dep.Detour.FolderID != hop.ID {
+		t.Fatalf("ссылка после импорта = %+v, ожидалась на %q", dep.Detour, hop.ID)
 	}
-	if dep.DetourNodeTag != "🔥🎭 WARP (MASQUE)" {
-		t.Fatalf("DetourNodeTag после импорта = %q", dep.DetourNodeTag)
+	if dep.Detour.Tag != "🔥🎭 WARP (MASQUE)" {
+		t.Fatalf("тег ссылки после импорта = %q", dep.Detour.Tag)
 	}
 }
 
@@ -740,54 +738,68 @@ func TestRoundTripDetourNodeRef(t *testing.T) {
 // глобальный поиск по финальному тегу.
 func TestRoundTripDetourNodeTagOnlyRef(t *testing.T) {
 	s := &state.State{}
-	s.Connections.Sources = []state.Source{{
-		Type:            state.SourceTypeSubscription,
-		URL:             "https://example.com/sub",
-		Enabled:         true,
-		DetourNodeTag:   "🔥🎭 WARP (MASQUE)",
-		DetourNodeLabel: "WARP hop",
+	s.Sources = []state.Source{{
+		Node: state.Node{
+			Kind: state.SourceKindSubscription, Enabled: true,
+			Detour: &state.NodeLink{Tag: "🔥🎭 WARP (MASQUE)"},
+		},
+		URL: "https://example.com/sub",
 	}}
 
-	b, err := Export(s, ExportOptions{AppVersion: "test"})
+	b, _, err := Export(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+	if _, err := Import(restored, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	got := restored.Connections.Sources[0]
-	if got.DetourNodeTag != "🔥🎭 WARP (MASQUE)" || got.DetourNodeSourceID != "" {
-		t.Fatalf("tag-only ссылка искажена: source_id=%q tag=%q", got.DetourNodeSourceID, got.DetourNodeTag)
+	got := restored.Sources[0]
+	if got.Detour == nil || got.Detour.Tag != "🔥🎭 WARP (MASQUE)" || got.Detour.FolderID != "" {
+		t.Fatalf("ссылка корневого пространства искажена: %+v", got.Detour)
 	}
 }
 
-// Бэкап, снятый ДО первой сборки (миграция ещё не отработала), везёт
-// legacy-хеш как есть — иначе ссылка потерялась бы из-за момента снятия.
-// На приёмнике его мигрирует первый же парс.
-func TestRoundTripLegacyDetourNodeHashSurvives(t *testing.T) {
-	s := &state.State{}
-	s.Connections.Sources = []state.Source{{
-		Type:            state.SourceTypeSubscription,
-		URL:             "https://example.com/sub",
-		Enabled:         true,
-		DetourNodeHash:  "62bff800aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		DetourNodeLabel: "🔥🎭 WARP (MASQUE)",
-	}}
+// TestLegacyDetourNodeHashNotExported удалён вместе с предметом: поля
+// detour_node_hash в модели v7 нет вовсе (SPEC 118 W5), и «вывезти» его
+// стало невыразимо по построению. Что хеш не пишется в файл — по-прежнему
+// держит TestRoundTripDetourNodeRef.
 
-	b, err := Export(s, ExportOptions{AppVersion: "test"})
+// Старый файл, где ссылка лежала хешем в extensions: общие поля читаются,
+// карман отбрасывается с warning'ом, ссылка по хешу теряется — это
+// задокументированная цена разрыва (П4), а не молчаливая потеря.
+func TestLegacyDetourNodeHashFileReadsWithWarning(t *testing.T) {
+	raw := []byte(`{"lx_backup":1,"exported_by":{"app":"launcher","version":"1.5.3"},` +
+		`"exported_at":"2026-08-22T00:00:00Z","subscriptions":[{"url":"https://example.com/sub",` +
+		`"label":"Main","max_nodes":150,"extensions":{"launcher":{"id":"src-1",` +
+		`"detour_node_hash":"62bff800aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",` +
+		`"detour_node_label":"WARP hop"}}}]}`)
+	b, warns, err := Parse(raw)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Parse: %v", err)
 	}
-	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
-		t.Fatal(err)
+	if !hasWarn(warns, WarnBackupExtensionsDropped) {
+		t.Fatalf("потеря кармана не названа: %v", warns)
 	}
-	src := restored.Connections.Sources[0]
-	if src.DetourNodeHash != s.Connections.Sources[0].DetourNodeHash {
-		t.Fatalf("legacy-хеш потерян на переносе: %q", src.DetourNodeHash)
+	dst := &state.State{}
+	if _, err := Import(dst, b, ImportOptions{}); err != nil {
+		t.Fatalf("старый файл уронил импорт: %v", err)
 	}
-	if src.DetourNodeLabel != "🔥🎭 WARP (MASQUE)" {
-		t.Fatalf("подпись потеряна — миграция по label-fallback не сработает: %q", src.DetourNodeLabel)
+	if len(dst.Sources) != 1 {
+		t.Fatalf("источников %d, ожидался 1", len(dst.Sources))
+	}
+	src := dst.Sources[0]
+	// Общие поля применились...
+	if src.URL != "https://example.com/sub" || src.Name != "Main" || src.MaxNodes != 150 {
+		t.Errorf("общие поля старого файла не применились: %+v", src)
+	}
+	// ...а содержимое кармана не применилось и не осело в состоянии.
+	// ID при этом НЕ пуст: SPEC 117 (Р3) — импорт как создатель Source
+	// минтит свежий ULID, но именно свежий, а не id из кармана.
+	if src.Detour != nil || src.ID == "src-1" {
+		t.Errorf("содержимое extensions просочилось в состояние: %+v", src)
+	}
+	if len(src.ID) != 26 {
+		t.Errorf("импорт обязан выдать источнику свежий ULID (Р3): id=%q", src.ID)
 	}
 }

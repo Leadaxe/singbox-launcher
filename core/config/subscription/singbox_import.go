@@ -36,6 +36,25 @@ type SingboxImportResult struct {
 	IgnoredSections []string
 	// UnsupportedTypes — типы outbound'ов, которые импорт не смог разобрать.
 	UnsupportedTypes []string
+	// Warnings — per-record деградации импорта (потерянные члены групп и
+	// т.п.): SPEC 118 Т3 требует «не молча» — fetch персистит их в
+	// updateStatus, лог сам по себе пользователя не достигает.
+	Warnings []string
+	// rejected — записи, которые узлом не стали, с их местом в Nodes
+	// (SPEC 116 W11). Не экспортируется: единственный читатель — чистый парсер
+	// тела в этом же пакете, а `UnsupportedTypes` выше отвечает на другой
+	// вопрос («какие типы мы не умеем») и записей поштучно не хранит.
+	rejected jsonRejectSink
+}
+
+// RejectedRecords — неразобранные записи импорта в порядке появления
+// (SPEC 116 W11): каждая обязана материализоваться узлом kind=unsupported на
+// своей позиции. Возвращается парой (позиция в Nodes, причина, исходник).
+func (r *SingboxImportResult) RejectedRecords() []jsonRejectedRecord {
+	if r == nil {
+		return nil
+	}
+	return r.rejected.list()
 }
 
 // ParseSingboxBody разбирает тело подписки, классифицированное как sing-box JSON.
@@ -170,6 +189,10 @@ func parseSingboxConfig(
 	for entryIdx, entry := range entries {
 		entryType := strings.ToLower(strings.TrimSpace(mapString(entry, "type")))
 		if entryType == "" {
+			// Запись без типа — тоже неразобранная запись, а не пустое место
+			// (W11): собрать из неё нечего, но провайдер её прислал.
+			result.rejected.add(len(result.Nodes),
+				"outbound rejected: missing type", marshalRawJSONElement(entry))
 			continue
 		}
 		if IsSingboxServiceType(entryType) {
@@ -190,9 +213,14 @@ func parseSingboxConfig(
 		node, err := parseSingboxEntry(entry, cfgIdx, entryIdx)
 		if err != nil {
 			// A6: гранулярность узла — соседи и остальная подписка живут.
+			// W11: и не молчаливая пропажа — запись остаётся в составе узлом
+			// kind=unsupported на своей позиции, со своим исходником.
 			debuglog.WarnLog("Parser: singbox import: config %d entry %d (%s): %v",
 				cfgIdx, entryIdx, entryType, err)
 			unsupported[entryType] = struct{}{}
+			result.rejected.add(len(result.Nodes),
+				fmt.Sprintf("%s outbound rejected: %v", entryType, err),
+				marshalRawJSONElement(entry))
 			continue
 		}
 
@@ -211,8 +239,13 @@ func parseSingboxConfig(
 	// A5/A7: группы идут ПОСЛЕ узлов — и в тот же список. Это рядовые узлы
 	// без привилегий, а не записи вкладки Outbounds (см. singbox_groups.go).
 	for _, groupEntry := range groupEntries {
-		groupNode, ok := singboxGroupToNode(groupEntry, nodeByTag)
-		if !ok {
+		groupNode, rejectReason := singboxGroupToNode(groupEntry, nodeByTag, &result.Warnings)
+		if rejectReason != "" {
+			// Пустая или безымянная группа — не молчаливая пропажа, а
+			// неразобранная запись на своей позиции (обкатка W13 заход 3:
+			// «пустые сломанные узлы — как сломанный узел hysteria»).
+			result.rejected.add(len(result.Nodes), rejectReason,
+				marshalRawJSONElement(groupEntry))
 			continue
 		}
 		result.Nodes = append(result.Nodes, groupNode)
@@ -312,6 +345,7 @@ var singboxSchemeByType = map[string]string{
 	"vmess":       "vmess",
 	"trojan":      "trojan",
 	"shadowsocks": "ss",
+	"hysteria":    "hysteria",
 	"hysteria2":   "hysteria2",
 	"tuic":        "tuic",
 	"anytls":      "anytls",
@@ -326,6 +360,13 @@ var singboxSchemeByType = map[string]string{
 func singboxTypeToScheme(t string) (string, bool) {
 	s, ok := singboxSchemeByType[t]
 	return s, ok
+}
+
+// SchemeFromSingboxType — тот же словарь наружу (SPEC 118 W4): эмиссия из
+// материализованных nodes[] определяет схему узла по типу его тела, и второй
+// таблицы соответствий заводить нельзя — она разъехалась бы с этой.
+func SchemeFromSingboxType(t string) (string, bool) {
+	return singboxTypeToScheme(strings.ToLower(strings.TrimSpace(t)))
 }
 
 // singboxTypeIsAddressless — типы без server/server_port на верхнем уровне.
@@ -343,6 +384,9 @@ func singboxCredentialFromMap(ob map[string]interface{}, scheme string) string {
 		return mapString(ob, "uuid")
 	case "trojan", "hysteria2", "anytls", "ss":
 		return mapString(ob, "password")
+	case "hysteria":
+		// v1 хранит секрет в auth_str (а не password): см. option/hysteria.go.
+		return mapString(ob, "auth_str")
 	default:
 		return ""
 	}

@@ -246,7 +246,7 @@ func GetTemplateURL() string {
 // Применяет params для текущей платформы, фильтрует selectable_rules.
 func LoadTemplateData(execDir string) (*TemplateData, error) {
 	templatePath := platform.GetWizardTemplatePath(execDir)
-	debuglog.InfoLog("TemplateLoader: загрузка шаблона из: %s", templatePath)
+	debuglog.InfoLog("TemplateLoader: loading template from: %s", templatePath)
 
 	raw, err := os.ReadFile(templatePath)
 	if err != nil {
@@ -307,7 +307,7 @@ func LoadTemplateData(execDir string) (*TemplateData, error) {
 			parserConfigStr = fmt.Sprintf("{\n  \"ParserConfig\": %s\n}", string(root.ParserConfig))
 		}
 	}
-	debuglog.DebugLog("TemplateLoader: ParserConfig длина: %d", len(parserConfigStr))
+	debuglog.DebugLog("TemplateLoader: ParserConfig length: %d", len(parserConfigStr))
 
 	// 2. Сохраняем сырой config и params; применяем params + vars (дефолты шаблона, state пуст)
 	rawConfig := root.Config
@@ -322,7 +322,7 @@ func LoadTemplateData(execDir string) (*TemplateData, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error parsing config: %w", err)
 	}
-	debuglog.DebugLog("TemplateLoader: секции конфига: %v", configOrder)
+	debuglog.DebugLog("TemplateLoader: config sections: %v", configOrder)
 
 	// 4. Извлечение defaultFinal; default_domain_resolver — dns_options, затем route
 	defaultFinal := extractDefaultFinal(configSections)
@@ -423,7 +423,7 @@ func applyParamsFiltered(configJSON json.RawMessage, params []TemplateParam, tar
 		if mode == "" {
 			mode = "replace"
 		}
-		debuglog.DebugLog("TemplateLoader: применение param '%s' (mode=%s) для платформы %s", param.Name, mode, goos)
+		debuglog.DebugLog("TemplateLoader: applying param '%s' (mode=%s) for platform %s", param.Name, mode, goos)
 
 		if err := applyParam(config, param.Name, param.Value, mode); err != nil {
 			return nil, fmt.Errorf("error applying param '%s': %w", param.Name, err)

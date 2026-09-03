@@ -7,6 +7,7 @@ import (
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/ctxutil"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 )
 
@@ -14,7 +15,7 @@ import (
 //
 // Старая модель (одна попытка на ВСЕ подписки + 2 retry × 20 сек) заменена на:
 //
-//   - **Heartbeat 1 час**: на каждом тике пробег по `state.Connections.Sources[]`.
+//   - **Heartbeat 1 час**: на каждом тике пробег по `state.Sources[]`.
 //     Для каждой enabled subscription смотрим `meta.last_fetched_at`. Если
 //     `now - last_fetched_at >= effective_reload` (per-source override или
 //     `defaults.reload`) → fetch только этого source через
@@ -122,14 +123,18 @@ func (ac *AppController) runScheduledRefresh(trigger string) {
 		return
 	}
 
+	// Дефолт интервала — настройки приложения (SPEC 118 Т1); читаются один
+	// раз на sweep.
+	settings := locale.LoadSettings(platform.GetBinDir(ac.FileService.ExecDir))
+
 	now := time.Now().UTC()
 	stale := 0
 	skipped := 0
-	for _, src := range s.Connections.Sources {
-		if src.Type != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
+	for _, src := range s.Sources {
+		if src.Kind != state.SourceKindSubscription || !src.Enabled || src.URL == "" {
 			continue
 		}
-		if !sourceIsStale(&src, s.Connections.Defaults, now) {
+		if !sourceIsStale(&src, settings, now) {
 			skipped++
 			continue
 		}
@@ -140,28 +145,38 @@ func (ac *AppController) runScheduledRefresh(trigger string) {
 		trigger, stale, skipped)
 }
 
-// sourceIsStale — true если `now - meta.last_fetched_at >= effective_reload`.
-// Source без meta или с пустым LastFetchedAt считается stale.
-func sourceIsStale(src *state.Source, defaults state.Defaults, now time.Time) bool {
-	if src.Meta == nil || src.Meta.LastFetchedAt == "" {
+// sourceIsStale — true если с последней попытки fetch прошло >=
+// effective_reload. Время попытки — канонический updateStatus.last_attempt_at.
+// Source без единой попытки считается stale.
+func sourceIsStale(src *state.Source, settings locale.Settings, now time.Time) bool {
+	lastAttempt := ""
+	if src.UpdateStatus != nil {
+		lastAttempt = src.UpdateStatus.LastAttemptAt
+	}
+	if lastAttempt == "" {
 		return true
 	}
-	t, err := time.Parse(time.RFC3339, src.Meta.LastFetchedAt)
+	t, err := time.Parse(time.RFC3339, lastAttempt)
 	if err != nil {
 		return true
 	}
-	effective := effectiveReload(src.Update, defaults.Reload)
+	effective := effectiveReload(src, settings)
 	return now.Sub(t.UTC()) >= effective
 }
 
-// effectiveReload — выбирает интервал: per-source `update.interval_hours`,
-// затем global `defaults.reload`, fallback `autoUpdateDefaultReload`.
-func effectiveReload(update *state.UpdateSpec, defaultReload string) time.Duration {
-	if update != nil && update.IntervalHours > 0 {
-		return time.Duration(update.IntervalHours) * time.Hour
+// effectiveReload — резолв интервала обновления (SPEC Т1, три ступени):
+// настройка подписки `update.interval_hours` → заголовок провайдера
+// `profile-update-interval` → дефолт настроек приложения; последним — свой
+// встроенный fallback.
+func effectiveReload(src *state.Source, settings locale.Settings) time.Duration {
+	if src.Update != nil && src.Update.IntervalHours > 0 {
+		return time.Duration(src.Update.IntervalHours) * time.Hour
 	}
-	if defaultReload != "" {
-		if d, err := time.ParseDuration(defaultReload); err == nil && d > 0 {
+	if src.Meta != nil && src.Meta.ProfileUpdateIntervalHours > 0 {
+		return time.Duration(src.Meta.ProfileUpdateIntervalHours) * time.Hour
+	}
+	if settings.DefaultSubscriptionReload != "" {
+		if d, err := time.ParseDuration(settings.DefaultSubscriptionReload); err == nil && d > 0 {
 			return d
 		}
 	}
@@ -261,11 +276,11 @@ func (ac *AppController) triggerRetryForFailedSources(trigger string) {
 		return
 	}
 	now := time.Now()
-	for _, src := range s.Connections.Sources {
-		if src.Type != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
+	for _, src := range s.Sources {
+		if src.Kind != state.SourceKindSubscription || !src.Enabled || src.URL == "" {
 			continue
 		}
-		if src.Meta == nil || src.Meta.LastStatus != "err" {
+		if src.UpdateStatus == nil || src.UpdateStatus.LastStatus != "err" {
 			continue
 		}
 		if !ac.eventCooldownAllow(src.ID, now) {

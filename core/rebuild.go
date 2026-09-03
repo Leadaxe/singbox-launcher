@@ -118,37 +118,43 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	}
 
 	// Step 1.5: load template — нужен раньше (SPEC 056) для preset.outbounds
-	// pre-patch внутри buildSnapshotFromRawCache. Это лёгкая операция (file
+	// pre-patch внутри buildSnapshotFromState. Это лёгкая операция (file
 	// read + JSON parse), переиспользуется в Step 4 для BuildConfig.
 	td, err := template.LoadTemplateData(execDir)
 	if err != nil {
 		return fmt.Errorf("load template: %w", err)
 	}
 
-	// Step 2: попытаться построить snapshot из raw cache.
-	cacheSnap, snapErr := buildSnapshotFromRawCache(s, execDir, nil, td)
-	cacheMissing := errors.Is(snapErr, ErrRawCacheIncomplete)
+	// Step 2: попытаться построить snapshot из материализованных узлов.
+	cacheSnap, parserRes, snapErr := buildSnapshotFromState(s, execDir, nil, td)
+	cacheMissing := errors.Is(snapErr, ErrNoMaterializedNodes)
 	if snapErr != nil && !cacheMissing {
-		return fmt.Errorf("build snapshot from raw cache: %w", snapErr)
+		// Сборка не состоялась — но если разбор успел объяснить, почему
+		// (все источники пусты, провайдер ответил отказом), это объяснение
+		// обязано доехать до списка источников. Молчаливый выход оставлял бы
+		// сломанную подписку с виду здоровой.
+		feedParserDiagnosticsOnFailure(parserRes)
+		return fmt.Errorf("build snapshot from materialized nodes: %w", snapErr)
 	}
 
 	if cacheMissing {
-		debuglog.InfoLog("RebuildConfigIfDirty: raw cache incomplete — triggering Update first")
+		debuglog.InfoLog("RebuildConfigIfDirty: subscriptions have no materialized nodes — run Update first")
 		if ac.ConfigService == nil {
-			return fmt.Errorf("raw cache incomplete and ConfigService not initialized")
+			return fmt.Errorf("no materialized nodes and ConfigService not initialized")
 		}
 		// triggerRebuild=false: мы УЖЕ внутри Rebuild — хвостовой rebuild
 		// из Update замыкал бы взаимную рекурсию (см. updateConfigFromSubscriptions).
 		if _, updErr := ac.ConfigService.updateConfigFromSubscriptions(false); updErr != nil {
-			return fmt.Errorf("auto-update for empty raw cache failed: %w", updErr)
+			return fmt.Errorf("auto-update for empty node set failed: %w", updErr)
 		}
 		// Перечитываем state (Update сохраняет meta) и снова строим snapshot.
 		s, err = state.Load(statePath)
 		if err != nil {
 			return fmt.Errorf("reload state after auto-update: %w", err)
 		}
-		cacheSnap, snapErr = buildSnapshotFromRawCache(s, execDir, nil, td)
+		cacheSnap, parserRes, snapErr = buildSnapshotFromState(s, execDir, nil, td)
 		if snapErr != nil {
+			feedParserDiagnosticsOnFailure(parserRes)
 			return fmt.Errorf("rebuild snapshot after auto-update: %w", snapErr)
 		}
 	}
@@ -163,13 +169,34 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	debuglog.InfoLog("RebuildConfigIfDirty: rebuilding config.json (forced=%v update_dirty=%v restart_dirty=%v cache_missing_initially=%v)",
 		isForced, ac.StateService.IsCacheStale(), ac.StateService.IsConfigStale(), cacheMissing)
 
+	// SPEC 112-B часть B / SPEC 115: попытка сборки открывается ЗДЕСЬ, за
+	// noop-развилкой, а не в эмиссии выше. Разбор идёт до развилки, и
+	// открытая там попытка на холостом вызове (dirty-маркеры чисты, кэш на
+	// месте) осталась бы без санитайзерных записей и без Finish: холостой
+	// Rebuild стирал бы пометки «снято N» прошлой полной сборки, не дав взамен
+	// ничего. Начиная попытку тут, мы начинаем её ровно тогда, когда сборка
+	// действительно идёт.
+	//
+	// Записи парсерной стадии кладутся сразу, включая ПУСТОЙ итог: чистая
+	// сборка обязана снять прежние ⚠, иначе пометка переживёт свою причину.
+	gen := config.StartBuildReport()
+	FeedBuildReportFromParser(gen, parserRes)
+	// SPEC 118 W4: деградации последнего fetch — из состояния, не из разбора
+	// (тела сборка не читает). Кладутся в ту же попытку: пользователю нужен
+	// один список причин, а не два по стадиям конвейера.
+	FeedBuildReportFromFetchStatus(gen, s.Sources)
+
 	// Step 4: build.
-	parserCfg := s.ParserConfig
-	ctx := ac.buildContextFromState(s, cacheSnap, td, &parserCfg)
+	ctx := ac.buildContextFromState(s, cacheSnap, td)
 	res, err := build.BuildConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("build: %w", err)
 	}
+
+	// SPEC 113-B: последний рубеж мог выбросить узлы источника за недоступную
+	// цель detour (исчез селектор шаблона — выключили мульти-VPN). Парсер про
+	// это не знал, поэтому записи доливаются в отчёт поверх его собственных.
+	FeedBuildReportFromSanitizer(gen, res.ExcludedSources)
 
 	// Parser-stage warnings (e.g. naive nodes degraded on a core without
 	// naive support, SPEC 044 feature-probe) ride along with the build
@@ -185,6 +212,11 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	if err := atomicWriteConfig(ac.FileService.ConfigPath, res.ConfigJSON); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
+
+	// Имя собственного TUN могло смениться этой пересборкой. Реестр netiface
+	// обязан догнать её сразу: по нему пикер аплинков прячет наш TUN, а всё
+	// прочее туннельное — теперь законный выбор (SPEC 113-F).
+	ac.refreshOwnTunNames()
 
 	// Step 5.4: sing-box check — валидация только что записанного config.json
 	// через сам sing-box (`sing-box check -c config.json`). Catches schema
@@ -235,6 +267,14 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	// перепроверил. CacheStale НЕ трогаем: rebuild не делал network fetch (при
 	// cacheMissing Update уже его сбросил; иначе CacheStale остаётся как был).
 	if configValid {
+		// SPEC 115 (фикс-раунд): «отчёт готов» ставится ТОЛЬКО здесь — после
+		// того как конфиг записан и принят sing-box'ом. Раньше признак стоял
+		// сразу за BuildConfig, и сборка, отвергнутая валидацией, объявляла свой
+		// отчёт готовым: гейт Save открывался на конфиге, который ядро не
+		// возьмёт. Упавшая сборка Finish не зовёт вовсе, и попытка остаётся
+		// незавершённой — записи в отчёте есть (их видно), но готовым он не
+		// считается.
+		config.FinishBuildReport(gen)
 		ac.StateService.ClearConfigStale()
 		if ac.EventBus != nil {
 			ac.EventBus.Publish(events.Event{
@@ -256,32 +296,16 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		}
 	}
 
-	// SPEC 112-B часть B: источник, выпавший fail-closed, обязан быть виден не
-	// только в логе. Тост идёт тем же каналом, что «Subscriptions partially
-	// refreshed» — ShowSubsResultFunc сам заворачивает показ в fyne.Do, и
-	// сборка вправе звать его из своей горутины.
-	//
-	// Update поверх этого показывает СВОЙ финальный тост, и тот несёт ту же
-	// фразу (parserSuccessToastMessage): порядок «сборка → Update» оставляет
-	// на экране актуальное сообщение, а не устаревшее.
-	ac.showExcludedSourcesToast()
+	// SPEC 115 §3: тоста об исключённых источниках здесь больше НЕТ (решение
+	// пользователя). Тост исчезает через несколько секунд, а список
+	// исключений на конфиге с десятком зависимых подписок в одну строку не
+	// помещался — то есть ровно тот случай, ради которого сообщение и
+	// показывали, пользователь дочитать не успевал. Роль забрали отчёт
+	// вкладки «Итог» (полный, со скроллом и копированием) и стойкие пометки в
+	// строках Wizard → Sources, которые живут, пока живёт причина.
 
 	debuglog.InfoLog("RebuildConfigIfDirty: config.json written (%d bytes)", len(res.ConfigJSON))
 	return nil
-}
-
-// showExcludedSourcesToast показывает тост об источниках, выпавших fail-closed
-// на только что законченной сборке. Пустой реестр — молчание: тост «всё
-// хорошо» здесь не нужен, о самой сборке пользователь и так знает.
-func (ac *AppController) showExcludedSourcesToast() {
-	if ac == nil || ac.UIService == nil || ac.UIService.ShowSubsResultFunc == nil {
-		return
-	}
-	msg := excludedSourcesToastPart(config.ExcludedSources())
-	if msg == "" {
-		return
-	}
-	ac.UIService.ShowSubsResultFunc(false, msg)
 }
 
 // CleanOrphanRuleSets removes bin/rule-sets/*.srs files not referenced by any

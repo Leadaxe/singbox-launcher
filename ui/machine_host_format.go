@@ -159,47 +159,110 @@ func hostMountFlags(m lxdclient.HostMount) string {
 	}
 }
 
-// Значения интерфейса отдаются БЕЗ стрелок: направление задаёт колонка, в
-// шапке которой стрелка стоит один раз. Стрелка в каждой ячейке — это шум,
-// который ещё и мешает выровнять числа по правому краю.
+// Интерфейс показывается КАРТОЧКОЙ в три строки, а не строкой таблицы: в семь
+// колонок не влезала и половина того, что приезжает с машины — MAC, адреса и
+// пакеты не показывались вовсе, а MTU ради ширины окна стоял без подписи.
+// Поэтому величины ниже подписаны при себе («MTU 1500», «pkt 1.2M/948K»), а не
+// опознаются по шапке колонки над ними.
+
+// hostCount — счётчик штук в коротком виде: 1.2M, 948K, 512.
 //
-// Отдельно: пробел ПОСЛЕ ↑/↓ рвёт отрисовку в этом шрифте (в тексте вылезает
-// тофу вместо стрелки), поэтому в шапке стрелка приклеена к слову вплотную.
-
-// hostIfaceRxRate — входящая скорость; прочерк до второго замера.
-func hostIfaceRxRate(i lxdclient.HostInterface) string { return hostRate(i.RxBytesPerSecond) }
-
-// hostIfaceTxRate — исходящая скорость; прочерк до второго замера.
-func hostIfaceTxRate(i lxdclient.HostInterface) string { return hostRate(i.TxBytesPerSecond) }
-
-// hostIfaceRxTotal — сырой счётчик приёма. Он переживает рестарты и разрывы,
-// и именно по нему строят график; скорость рядом — для чтения глазами.
-func hostIfaceRxTotal(i lxdclient.HostInterface) string { return hostBytes(i.RxBytes) }
-
-// hostIfaceTxTotal — сырой счётчик передачи.
-func hostIfaceTxTotal(i lxdclient.HostInterface) string { return hostBytes(i.TxBytes) }
-
-// hostIfaceErrors — «120 / 52210» для колонки «ошиб/дроп».
-//
-// Пусто, когда всё чисто: ноль ошибок — норма, и печатать его в каждой строке
-// значит приучить глаз пролистывать колонку, в которой однажды появится
-// ненулевое число.
-func hostIfaceErrors(i lxdclient.HostInterface) string {
-	errs := i.RxErrors + i.TxErrors
-	drops := i.RxDropped + i.TxDropped
-	if errs == 0 && drops == 0 {
-		return ""
+// Отдельно от hostBytes, потому что делитель другой: пакеты считаются
+// десятичными тысячами, и «1.1M пакетов» от деления на 1024 было бы просто
+// неверным числом. Одна дробная цифра — предел полезного: между 1.2M и 1.24M
+// пакетов разницы для диагноза нет, а ширину строки вторая цифра съедает.
+func hostCount(n uint64) string {
+	switch {
+	case n >= 1_000_000_000:
+		return fmt.Sprintf("%.1fG", float64(n)/1_000_000_000)
+	case n >= 1_000_000:
+		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+	case n >= 1_000:
+		return fmt.Sprintf("%.0fK", float64(n)/1_000)
+	default:
+		return fmt.Sprintf("%d", n)
 	}
-	return fmt.Sprintf("%d / %d", errs, drops)
 }
 
-// hostIfaceMTU — MTU строкой; ноль показывается прочерком, а не «0»: MTU=0
-// не бывает, это «не знаем».
-func hostIfaceMTU(i lxdclient.HostInterface) string {
-	if i.MTU <= 0 {
-		return hostDash
+// hostIfaceSpeeds — скорости первой строки карточки: «↓ 39 KB/s   ↑ 294 KB/s».
+//
+// У лежачего интерфейса скоростей нет по построению, и вместо двух прочерков
+// стоит причина: «— down —» отвечает на вопрос «почему пусто» прямо там, где
+// его задают. Стрелки здесь, в отличие от старой таблицы, законны: колонок с
+// шапкой больше нет, и направление задать больше нечем.
+//
+// Пробел после ↑/↓ в этом шрифте рвал отрисовку в подписи ШАПКИ (жирный
+// стиль); в обычном тексте карточки стрелка со следующим за ней пробелом
+// рисуется. Разделитель между парой — три пробела, а не «·»: это две величины
+// одного показателя, а не два разных пункта перечисления.
+func hostIfaceSpeeds(i lxdclient.HostInterface) string {
+	if !i.Up {
+		return locale.T("— down —")
 	}
-	return fmt.Sprintf("%d", i.MTU)
+	return "↓ " + hostRate(i.RxBytesPerSecond) + "   ↑ " + hostRate(i.TxBytesPerSecond)
+}
+
+// hostIfaceAddresses — вторая строка: все адреса через « · ».
+//
+// ВСЕ, включая link-local v6: карточка обещает показать всё, что приехало с
+// машины, а «лишний» fe80:: — ровно тот адрес, по которому опознают
+// интерфейс без конфигурации. Пусто — законное состояние (радиоинтерфейс в
+// мосте), и о нём говорится словами, а не пустым местом.
+func hostIfaceAddresses(i lxdclient.HostInterface) string {
+	if len(i.Addresses) == 0 {
+		return locale.T("(no address)")
+	}
+	return strings.Join(i.Addresses, " · ")
+}
+
+// hostIfaceMAC — хвост второй строки.
+//
+// Пустой MAC у туннеля — не ошибка, и подписи «MAC —» он не заслуживает:
+// у tun-устройства канального адреса нет вовсе, и прочерк намекал бы, что его
+// не смогли прочитать.
+func hostIfaceMAC(i lxdclient.HostInterface) string {
+	mac := strings.TrimSpace(i.Mac)
+	if mac == "" {
+		return ""
+	}
+	return locale.Tf("MAC %s", mac)
+}
+
+// hostIfaceTotals — третья строка: суммарные байты, пакеты, ошибки, потери.
+//
+// Всё в одной строке через « · », потому что это один ответ на один вопрос —
+// «что этот интерфейс насчитал за свою жизнь». Ошибки и потери печатаются
+// ВСЕГДА, даже нулями: в таблице их прятали, чтобы не пустела колонка, но в
+// карточке пропавшая пара читается как «не измеряли». Приглушает их вызывающая
+// сторона стилем, а не мы отсутствием текста.
+func hostIfaceTotals(i lxdclient.HostInterface) string {
+	return "Σ ↓" + hostBytes(i.RxBytes) + " ↑" + hostBytes(i.TxBytes) +
+		"  ·  " + locale.Tf("pkt %s/%s", hostCount(i.RxPackets), hostCount(i.TxPackets)) +
+		"  ·  " + locale.Tf("err %d/%d", i.RxErrors, i.TxErrors) +
+		"  ·  " + locale.Tf("drop %d/%d", i.RxDropped, i.TxDropped)
+}
+
+// hostIfaceClean — нечего тревожиться: ни ошибок, ни потерь.
+//
+// Служит выбором стиля третьей строки: чистый интерфейс показывается
+// приглушённо и не спорит за внимание с тем, у которого дропы растут.
+func hostIfaceClean(i lxdclient.HostInterface) bool {
+	return i.RxErrors == 0 && i.TxErrors == 0 && i.RxDropped == 0 && i.TxDropped == 0
+}
+
+// hostIfaceMTUText — правый край первой строки: «MTU 1500».
+//
+// С подписью, а не голым числом: в строке рядом со скоростями «1500» без слова
+// читалось бы как ещё одна величина трафика.
+//
+// Неизвестный MTU (ноль — такого не бывает) не показывается вовсе, а не
+// прочерком: подписанное «MTU —» утверждало бы, что значение пытались прочесть
+// и не смогли, тогда как в карточке пустое место говорит ровно столько же.
+func hostIfaceMTUText(i lxdclient.HostInterface) string {
+	if i.MTU <= 0 {
+		return ""
+	}
+	return locale.Tf("MTU %d", i.MTU)
 }
 
 // hostCPUSummary — заголовок блока CPU.

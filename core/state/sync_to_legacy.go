@@ -4,81 +4,25 @@ import (
 	"singbox-launcher/core/config/configtypes"
 )
 
-// syncLegacyFromConnections — обратная операция: используется на Load v5,
-// чтобы заполнить ParserConfig.Proxies из Connections.Sources для backward-
-// compat callsite'ов.
+// syncLegacyFromCanonical — заполняет read-only Load-проекцию
+// ParserConfig.Proxies из canonical s.Sources (SPEC 117: проекция строится
+// один раз на Load; SPEC 118 W1: canonical — плоский v7-корень).
 //
-//   - Subscription Source → ProxySource{source, skip, outbounds, tag_*, ...}
-//   - Server Source → ProxySource{connections:[uri], tag_mask=label}
-//
-// tag_mask=label на server — гарантирует, что parser выставит итоговый tag
-// строго равным label (без вычислений prefix+fragment, как на migration v4→v5).
-func syncLegacyFromConnections(s *State) {
-	proxies := make([]configtypes.ProxySource, 0, len(s.Connections.Sources))
-	for _, src := range s.Connections.Sources {
-		switch src.Type {
-		case SourceTypeSubscription:
-			ps := configtypes.ProxySource{
-				ID:                      src.ID,    // SPEC 112-A: адресат ссылок на узлы
-				Label:                   src.Label, // только для текстов диагностики
-				Source:                  src.URL,
-				Skip:                    src.Skip,
-				Outbounds:               src.Outbounds,
-				ExcludeFromGlobal:       src.ExcludeFromGlobal,
-				ExposeGroupTagsToGlobal: src.ExposeGroupTagsToGlobal,
-				Fold:                    src.Fold, // SPEC 108
-				Disabled:                !src.Enabled,
-				DetourTag:               src.DetourTag,
-				DetourNodeSourceID:      src.DetourNodeSourceID, // SPEC 112-A
-				DetourNodeTag:           src.DetourNodeTag,      // SPEC 112
-				DetourNodeHash:          src.DetourNodeHash,     // legacy, мигрирует на сборке
-				DetourNodeLabel:         src.DetourNodeLabel,    // SPEC 101
-			}
-			if src.Tag != nil {
-				ps.TagPrefix = src.Tag.Prefix
-				ps.TagPostfix = src.Tag.Postfix
-				ps.TagMask = src.Tag.Mask
-			}
-			proxies = append(proxies, ps)
-
-		case SourceTypeServer:
-			ps := configtypes.ProxySource{
-				ID:                 src.ID,    // SPEC 112-A: адресат ссылок на узлы
-				Label:              src.Label, // только для текстов диагностики
-				Connections:        []string{src.URI},
-				TagMask:            src.NodeTagOrLabel(), // тег узла, не подпись
-				ExcludeFromGlobal:  src.ExcludeFromGlobal,
-				Disabled:           !src.Enabled,
-				DetourTag:          src.DetourTag,
-				DetourNodeSourceID: src.DetourNodeSourceID, // SPEC 112-A
-				DetourNodeTag:      src.DetourNodeTag,      // SPEC 112
-				DetourNodeHash:     src.DetourNodeHash,     // legacy, мигрирует на сборке
-				DetourNodeLabel:    src.DetourNodeLabel,    // SPEC 101
-				ConfigJSON:         src.ConfigJSON,         // ручной outbound JSON
-			}
-			proxies = append(proxies, ps)
-
-		case SourceTypeChain:
-			// SPEC 110: у цепочки нет ни URL, ни URI — TagMask несёт ТЕГ
-			// её узла (NodeTag), на который ссылаются фильтры Направлений
-			// и позиции других цепочек.
-			proxies = append(proxies, configtypes.ProxySource{
-				ID:                src.ID,    // SPEC 112-A: адресат ссылок на узлы
-				Label:             src.Label, // только для текстов диагностики
-				TagMask:           src.NodeTagOrLabel(),
-				ExcludeFromGlobal: src.ExcludeFromGlobal,
-				Disabled:          !src.Enabled,
-				Chain:             src.Chain,
-			})
-		}
+// Конверсия каждого Source — через (*Source).ToProxySourceV4
+// (adapter_source.go): единственный производитель сборочной формы, чтобы
+// проекция не расходилась между Load-проекцией и AsParserConfig визарда. Индексный инвариант: Proxies[i] строится из
+// Sources[i] один к одному, без фильтрации и переупорядочивания.
+func syncLegacyFromCanonical(s *State) {
+	proxies := make([]configtypes.ProxySource, 0, len(s.Sources))
+	for i := range s.Sources {
+		proxies = append(proxies, s.Sources[i].ToProxySourceV4())
 	}
 
 	s.ParserConfig.ParserConfig.Version = configtypes.ParserConfigVersion
 	s.ParserConfig.ParserConfig.Proxies = proxies
-	if s.Connections.Outbounds != nil {
-		s.ParserConfig.ParserConfig.Outbounds = append([]configtypes.Direction(nil), s.Connections.Outbounds...)
+	if s.Directions != nil {
+		s.ParserConfig.ParserConfig.Outbounds = append([]configtypes.Direction(nil), s.Directions...)
 	} else {
 		s.ParserConfig.ParserConfig.Outbounds = []configtypes.Direction{}
 	}
-	s.ParserConfig.ParserConfig.Parser.Reload = s.Connections.Defaults.Reload
 }

@@ -1,5 +1,10 @@
 // Package outbounds_configurator provides reusable UI for configuring outbounds in the wizard:
-// list of all outbounds (global + per-source), Edit/Delete/Add, and helpers to apply changes back to ParserConfig.
+// list of all outbounds (global + per-source) with Edit/Delete/Add.
+//
+// SPEC 117: все операции пакета выполняются на canonical-модели
+// (model.GlobalOutbounds); каждая мутация
+// завершается model.BumpRevision(). Legacy-проекция ParserConfig не
+// читается и не пишется.
 package outbounds_configurator
 
 import (
@@ -39,17 +44,17 @@ type OutboundEditPresenter interface {
 }
 
 // NewConfiguratorContent builds a reusable outbounds configurator content for embedding into tabs.
-// ParserConfig is taken from the model (editPresenter.Model()) so the configurator always edits the current config.
-// onApply is called after each mutation (Edit/Add/Delete/Up/Down) so the caller can serialize and sync.
-// editPresenter is required (Model() is used to get ParserConfig); when set, the Edit/Add window is registered for overlay.
-// The returned refresh function rebuilds the list from the current model (call after ParserConfig changes outside the list, e.g. Sources → Edit).
+// Направления берутся из canonical-модели (editPresenter.Model().GlobalOutbounds), её же мутируют все операции.
+// onApply is called after each mutation (Edit/Add/Delete/drag) so the caller can invalidate caches and sync UI.
+// editPresenter is required (Model() supplies the canonical model); when set, the Edit/Add window is registered for overlay.
+// The returned refresh function rebuilds the list from the current model (call after outbounds change outside the list, e.g. Sources → Edit).
 func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresenter, onApply func()) (fyne.CanvasObject, func()) {
 	listContent := container.NewVBox()
 
 	var refreshList func()
 	refreshList = func() {
 		model := editPresenter.Model()
-		if getParserConfig(model) == nil {
+		if model == nil {
 			listContent.Objects = nil
 			listContent.Refresh()
 			return
@@ -67,11 +72,11 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 		// сортирует топологически по addOutbounds), но он определяет, что
 		// форма предложит в addOutbounds: только записи выше текущей.
 		dragGroup := fynewidget.NewDragReorderGroup(func(from, to int) {
-			pc := getParserConfig(editPresenter.Model())
-			if pc == nil {
+			model := editPresenter.Model()
+			if model == nil {
 				return
 			}
-			outs := pc.ParserConfig.Outbounds
+			outs := model.GlobalOutbounds
 			if from < 0 || from >= len(outs) || to < 0 || to >= len(outs) || from == to {
 				return
 			}
@@ -81,8 +86,8 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			out = append(out, rest[:to]...)
 			out = append(out, moved)
 			out = append(out, rest[to:]...)
-			pc.ParserConfig.Outbounds = out
-			editPresenter.Model().GlobalOutbounds = out
+			model.GlobalOutbounds = out
+			model.BumpRevision()
 			refreshList()
 			if onApply != nil {
 				onApply()
@@ -159,42 +164,25 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 				}
 				r2 := rowsNow[rowIdx]
 				tagsForAdd := tagsAbove(rowsNow, rowIdx)
-				wasGlobal := r2.IsGlobal
-				wasSourceIndex := r2.SourceIndex
-				parserConfig := getParserConfig(editPresenter.Model())
 				ShowEditDialog(parent, editPresenter, r2.Outbound, r2.IsGlobal, r2.SourceIndex, tagsForAdd, func(updated *config.Direction, scopeKind string, sourceIndex int) {
-					newGlobal := scopeKind == "global" || sourceIndex < 0
-					scopeChanged := wasGlobal != newGlobal || (!newGlobal && wasSourceIndex != sourceIndex)
-					// Preset entries: scope locked (preset должен оставаться
-					// global, иначе Sync создаст дубль при следующем вызове —
-					// per-source entry останется, plus новый global появится).
-					if r2.IsPreset {
-						scopeChanged = false
+					model := editPresenter.Model()
+					if model == nil {
+						return
 					}
-					if scopeChanged {
-						if wasGlobal {
-							parserConfig.ParserConfig.Outbounds = append(parserConfig.ParserConfig.Outbounds[:r2.IndexInSlice], parserConfig.ParserConfig.Outbounds[r2.IndexInSlice+1:]...)
-						} else {
-							prox := &parserConfig.ParserConfig.Proxies[wasSourceIndex]
-							prox.Outbounds = append(prox.Outbounds[:r2.IndexInSlice], prox.Outbounds[r2.IndexInSlice+1:]...)
-						}
-						if newGlobal {
-							parserConfig.ParserConfig.Outbounds = append(parserConfig.ParserConfig.Outbounds, *updated)
-						} else {
-							for sourceIndex >= len(parserConfig.ParserConfig.Proxies) {
-								parserConfig.ParserConfig.Proxies = append(parserConfig.ParserConfig.Proxies, config.ProxySource{})
-							}
-							parserConfig.ParserConfig.Proxies[sourceIndex].Outbounds = append(parserConfig.ParserConfig.Proxies[sourceIndex].Outbounds, *updated)
-						}
-					} else {
+					// SPEC 118 W5: локальных Направлений источника больше нет —
+					// Направление всегда глобальное, и scope выбирать не из
+					// чего. Осталась одна ветка: правка тела на месте.
+					{
 						// In-place body update. SPEC 058-R-N: для referenced
 						// entries Edit dialog (Phase 4 applyEditedConfig) уже
 						// вычислил USER patch и put его в updated.Updates +
 						// strip'нул body. Для direct entries — updated имеет
 						// full body inline + сохранённые Updates. В обоих
-						// случаях просто перезаписываем r2.Outbound = *updated.
+						// случаях просто перезаписываем r2.Outbound = *updated
+						// (указатель смотрит в canonical-слайс).
 						*r2.Outbound = *updated
 					}
+					model.BumpRevision()
 					refreshList()
 					if onApply != nil {
 						onApply()
@@ -208,13 +196,14 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 					return
 				}
 				r2 := rowsNow[rowIdx]
-				pc := getParserConfig(editPresenter.Model())
-				if r2.IsGlobal {
-					pc.ParserConfig.Outbounds = append(pc.ParserConfig.Outbounds[:r2.IndexInSlice], pc.ParserConfig.Outbounds[r2.IndexInSlice+1:]...)
-				} else {
-					prox := &pc.ParserConfig.Proxies[r2.SourceIndex]
-					prox.Outbounds = append(prox.Outbounds[:r2.IndexInSlice], prox.Outbounds[r2.IndexInSlice+1:]...)
+				model := editPresenter.Model()
+				if model == nil {
+					return
 				}
+				if r2.IsGlobal {
+					model.GlobalOutbounds = append(model.GlobalOutbounds[:r2.IndexInSlice], model.GlobalOutbounds[r2.IndexInSlice+1:]...)
+				}
+				model.BumpRevision()
 				refreshList()
 				if onApply != nil {
 					onApply()
@@ -237,16 +226,17 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 					if !(r2.IsTemplate || r2.IsPreset) || !r2.IsGlobal || r2.IndexInSlice < 0 {
 						return
 					}
-					pc := getParserConfig(editPresenter.Model())
-					if pc == nil || r2.IndexInSlice >= len(pc.ParserConfig.Outbounds) {
+					model := editPresenter.Model()
+					if model == nil || r2.IndexInSlice >= len(model.GlobalOutbounds) {
 						return
 					}
 					// Strip USER patch из Updates[]; preset patches preserve.
-					pc.ParserConfig.Outbounds[r2.IndexInSlice].Updates = build.UpsertUserPatch(
-						pc.ParserConfig.Outbounds[r2.IndexInSlice].Updates,
+					model.GlobalOutbounds[r2.IndexInSlice].Updates = build.UpsertUserPatch(
+						model.GlobalOutbounds[r2.IndexInSlice].Updates,
 						nil,
 						false, // Reset снимает патч целиком — признак не при чём
 					)
+					model.BumpRevision()
 					refreshList()
 					if onApply != nil {
 						onApply()
@@ -283,22 +273,23 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 				enableCheck = widget.NewCheck("", nil)
 				enableCheck.SetChecked(!r.Outbound.Disabled)
 				enableCheck.OnChanged = func(on bool) {
-					pc := getParserConfig(editPresenter.Model())
-					if pc == nil {
+					model := editPresenter.Model()
+					if model == nil {
 						return
 					}
-					rowsNow := collectRowsForUI(editPresenter.Model())
+					rowsNow := collectRowsForUI(model)
 					if rowIdx >= len(rowsNow) {
 						return
 					}
 					idx := rowsNow[rowIdx].IndexInSlice
-					if idx < 0 || idx >= len(pc.ParserConfig.Outbounds) {
+					if idx < 0 || idx >= len(model.GlobalOutbounds) {
 						return
 					}
-					if pc.ParserConfig.Outbounds[idx].Disabled == !on {
+					if model.GlobalOutbounds[idx].Disabled == !on {
 						return // значение уже такое — перестраивать нечего
 					}
-					pc.ParserConfig.Outbounds[idx].Disabled = !on
+					model.GlobalOutbounds[idx].Disabled = !on
+					model.BumpRevision()
 					refreshList()
 					if onApply != nil {
 						onApply()
@@ -334,20 +325,19 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 	refreshList()
 
 	addBtn := widget.NewButtonWithIcon(locale.T("Add"), theme.ContentAddIcon(), func() {
-		parserConfig := getParserConfig(editPresenter.Model())
-		if parserConfig == nil {
+		model := editPresenter.Model()
+		if model == nil {
 			return
 		}
-		existingTags := collectAllTags(parserConfig)
+		existingTags := collectAllTags(model)
 		ShowEditDialog(parent, editPresenter, nil, true, -1, existingTags, func(updated *config.Direction, scopeKind string, sourceIndex int) {
-			if scopeKind == "global" || sourceIndex < 0 {
-				parserConfig.ParserConfig.Outbounds = append(parserConfig.ParserConfig.Outbounds, *updated)
-			} else {
-				for sourceIndex >= len(parserConfig.ParserConfig.Proxies) {
-					parserConfig.ParserConfig.Proxies = append(parserConfig.ParserConfig.Proxies, config.ProxySource{})
-				}
-				parserConfig.ParserConfig.Proxies[sourceIndex].Outbounds = append(parserConfig.ParserConfig.Proxies[sourceIndex].Outbounds, *updated)
+			model := editPresenter.Model()
+			if model == nil {
+				return
 			}
+			// Направление всегда глобальное (SPEC 118 W5).
+			model.GlobalOutbounds = append(model.GlobalOutbounds, *updated)
+			model.BumpRevision()
 			refreshList()
 			if onApply != nil {
 				onApply()
@@ -367,12 +357,11 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 	// Кнопка standalone (вне row) — hover forwarding не нужен.
 	restoreBtn := ttwidget.NewButtonWithIcon("", theme.ViewRefreshIcon(), func() {
 		model := editPresenter.Model()
-		pc := getParserConfig(model)
-		if pc == nil {
+		if model == nil {
 			return
 		}
-		existing := make(map[string]bool, len(pc.ParserConfig.Outbounds))
-		for _, ob := range pc.ParserConfig.Outbounds {
+		existing := make(map[string]bool, len(model.GlobalOutbounds))
+		for _, ob := range model.GlobalOutbounds {
 			existing[ob.Tag] = true
 		}
 		tmplOutbounds := templateGlobalOutbounds(model)
@@ -383,7 +372,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			}
 			// SPEC 058-R-N: добавляем thin referenced entry (только tag + ref),
 			// body live из template на render. Не копируем полный body.
-			pc.ParserConfig.Outbounds = append(pc.ParserConfig.Outbounds, config.Direction{
+			model.GlobalOutbounds = append(model.GlobalOutbounds, config.Direction{
 				Tag: tmplOb.Tag,
 				Ref: config.RefTemplate,
 			})
@@ -391,6 +380,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			added++
 		}
 		if added > 0 {
+			model.BumpRevision()
 			refreshList()
 			if onApply != nil {
 				onApply()

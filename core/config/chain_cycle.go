@@ -108,7 +108,7 @@ func dropChainsThroughDirection(nodes []*ParsedNode, directionTag string, hopsBy
 	var dropped []string
 	for _, n := range nodes {
 		if n != nil && cyclic[n.Tag] {
-			debuglog.WarnLog("chain: цепочка %q не входит в %q — она через него проходит",
+			debuglog.WarnLog("chain: chain %q is not among %q members — it passes through it",
 				n.Tag, directionTag)
 			dropped = append(dropped, n.Tag)
 			continue

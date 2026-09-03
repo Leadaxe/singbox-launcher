@@ -6,6 +6,17 @@ import (
 	"singbox-launcher/core/config/configtypes"
 )
 
+// legacyParserConfigV4 — форма `parser_config` схем v2–v4 (вход миграции).
+// Приватная: сборочная configtypes.ParserConfig легаси-полей больше не несёт.
+type legacyParserConfigV4 struct {
+	ParserConfig struct {
+		Version   int                     `json:"version,omitempty"`
+		Proxies   []legacyProxyV4         `json:"proxies"`
+		Outbounds []configtypes.Direction `json:"outbounds"`
+		Parser    v4Parser                `json:"parser,omitempty"`
+	} `json:"ParserConfig"`
+}
+
 // v4File — on-disk форма state.json v4. Только input для migrateV4ToV5.
 type v4File struct {
 	Version              int                  `json:"version"`
@@ -24,10 +35,10 @@ type v4File struct {
 
 // v4ParserConfig — упрощённый layout (без обёртки configtypes.ParserConfig).
 type v4ParserConfig struct {
-	Version   int                       `json:"version,omitempty"`
-	Proxies   []configtypes.ProxySource `json:"proxies"`
-	Outbounds []configtypes.Direction   `json:"outbounds"`
-	Parser    v4Parser                  `json:"parser,omitempty"`
+	Version   int                     `json:"version,omitempty"`
+	Proxies   []legacyProxyV4         `json:"proxies"`
+	Outbounds []configtypes.Direction `json:"outbounds"`
+	Parser    v4Parser                `json:"parser,omitempty"`
 }
 
 // v4Parser — параметры обновления (только Reload остаётся в v5).

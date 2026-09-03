@@ -30,7 +30,7 @@ type MasqueAccount struct {
 	Port          int    // default 443
 	DeviceID      string
 	Token         string // Bearer (secret)
-	VHTTP         string // HTTP version carrying the tunnel: "h3" (default) | "h2"
+	VHTTP         string // HTTP version carrying the tunnel: "h3" (default) | "h2" | "auto" (h3, h2 fallback; core >= lx.27)
 	SNI           string // optional
 	IdleTimeout   string // optional Go duration
 	KeepAlive     string // optional Go duration
@@ -232,9 +232,10 @@ func (c *Client) RegisterMasque(ctx context.Context, now time.Time, vhttp, sni s
 // туннель встанет, но данные не пойдут — DPI пропускает MASQUE только под
 // нейтральным именем. Вызов без SNI → берём случайное из пула.
 func (a *MasqueAccount) ApplyNodeOptions(vhttp, sni string) {
-	if vhttp == "h2" {
-		a.VHTTP = "h2"
-	} else {
+	switch vhttp {
+	case "h2", "auto":
+		a.VHTTP = vhttp
+	default:
 		a.VHTTP = "h3"
 	}
 	a.SNI = strings.TrimSpace(sni)

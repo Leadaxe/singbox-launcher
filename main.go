@@ -266,10 +266,12 @@ func main() {
 					debuglog.WarnLog("Application startup: state.json not loaded: %v", err)
 					return
 				}
-				debuglog.InfoLog("Application startup: state.json loaded (parser_config v%d, %d proxy sources, %d outbounds, %d custom rules)",
-					s.ParserConfig.ParserConfig.Version,
-					len(s.ParserConfig.ParserConfig.Proxies),
-					len(s.ParserConfig.ParserConfig.Outbounds),
+				// Счётчики — из canonical s.Connections (SPEC 117): Load-проекция
+				// s.ParserConfig — только для build-путей, читать её здесь незачем.
+				debuglog.InfoLog("Application startup: state.json loaded (schema v%d, %d sources, %d outbounds, %d custom rules)",
+					s.Version,
+					len(s.Sources),
+					len(s.Directions),
 					len(s.CustomRules))
 			}()
 

@@ -36,12 +36,21 @@ const (
 
 // ShowAddWarpDialog открывает WARP-конфигуратор. onURI получает готовый URI
 // (wireguard:// или masque://) в главном потоке Fyne — обычно applyAddedSources.
-func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func(string)) {
+//
+// owner — окно, которому принадлежит диалог; nil означает главное окно
+// визарда. Параметр появился в SPEC 116 W6: наполнение папки зовёт эту же
+// форму из ОТДЕЛЬНОГО окна источника (app.NewWindow), и диалог, прибитый к
+// главному окну, всплыл бы за спиной у пользователя — он нажал бы «Add WARP»
+// и не увидел ничего.
+func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, owner fyne.Window, onURI func(string)) {
 	guiState := presenter.GUIState()
 	if guiState == nil || guiState.Window == nil || onURI == nil {
 		return
 	}
 	win := guiState.Window
+	if owner != nil {
+		win = owner
+	}
 
 	wg := newWarpWGSection()
 	mq := newWarpMasqueSection()
@@ -264,8 +273,10 @@ type warpMasqueSection struct {
 }
 
 func newWarpMasqueSection() *warpMasqueSection {
-	vhttp := widget.NewSelect([]string{"h3", "h2"}, nil)
-	vhttp.SetSelected("h3")
+	// auto — h3 с откатом на h2, когда QUIC-рукопожатие виснет (ядро с
+	// lx.27, дефолт ядра с lx.28); фиксированные h3/h2 — для ручного выбора.
+	vhttp := widget.NewSelect([]string{"auto", "h3", "h2"}, nil)
+	vhttp.SetSelected("auto")
 
 	// Пустой sni → ядро подставляет consumer-masque.cloudflareclient.com, туннель
 	// встаёт, но данные не идут (DPI глушит фирменный SNI). Дефолт обязателен —
@@ -280,7 +291,8 @@ func newWarpMasqueSection() *warpMasqueSection {
 	keep.SetPlaceHolder("30")
 	keepRow := labeledRow(locale.T("Keep-alive (sec)"), keep)
 	vhttp.OnChanged = func(v string) {
-		if v == "h3" {
+		// keep-alive — параметр QUIC-ноги: есть у h3 и у auto (её первая нога).
+		if v == "h3" || v == "auto" {
 			keepRow.Show()
 		} else {
 			keepRow.Hide()

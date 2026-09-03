@@ -3,6 +3,7 @@ package debugapi
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -12,10 +13,24 @@ import (
 	"singbox-launcher/core/template"
 )
 
-// TestStateFull — GET returns marshalled state including all SPEC 053/056/057/058
-// surfaces (Rules, DNS, Connections.Outbounds with Ref/Updates).
+// TestStateFull — GET /state/full отдаёт состояние в форме v7 (SPEC 118 Т10).
+//
+// Проверяется именно ФОРМА, а не «поля доехали»: ответ обязан быть той же
+// сериализацией, что лежит в файле — плоский корень
+// meta/sources/directions/rules/dns_options. Раньше здесь марашлилась Go-
+// структура State (json-тегов у неё нет), и наружу текли PascalCase-ключи
+// вместе с мёртвыми полями загрузчика; совпадение по `Rules`/`Directions`
+// было случайным — имена полей и ключей просто сошлись.
 func TestStateFull(t *testing.T) {
 	st := state.New()
+	st.Sources = []state.Source{{
+		ID:   "01SUB0000000000000000000",
+		Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true},
+		URL:  "https://example-1.com/sub",
+		Nodes: []state.Node{
+			{Kind: state.SourceKindServer, Tag: "NL-1", Enabled: true},
+		},
+	}}
 	st.Rules = []state.Rule{
 		{Kind: state.RuleKindPreset, Ref: "ru-direct", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 	}
@@ -25,7 +40,7 @@ func TestStateFull(t *testing.T) {
 			{Kind: state.DNSServerKindTemplate, Tag: "google_doh", Enabled: true},
 		},
 	}
-	st.Connections.Outbounds = []configtypes.Direction{
+	st.Directions = []configtypes.Direction{
 		{Tag: "proxy-out", Ref: configtypes.RefTemplate},
 	}
 	ff := &fakeFacade{stateValue: st}
@@ -39,19 +54,55 @@ func TestStateFull(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("status: %d", resp.StatusCode)
 	}
-	var got state.State
-	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
-		t.Fatalf("decode: %v", err)
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read: %v", err)
 	}
-	// Verify all new surfaces survived round-trip.
+
+	// Ответ обязан читаться тем же парсером, что и файл: это и есть «одна
+	// сериализация». Расхождение всплывёт ошибкой разбора, а не молчанием.
+	got, err := state.Parse(raw)
+	if err != nil {
+		t.Fatalf("ответ /state/full не разбирается парсером v7: %v\n%s", err, raw)
+	}
+	if got.Version != state.SchemaVersionV7 {
+		t.Errorf("meta.version = %d, want %d", got.Version, state.SchemaVersionV7)
+	}
+	if len(got.Sources) != 1 || got.Sources[0].Kind != state.SourceKindSubscription {
+		t.Fatalf("sources[] потеряны: %+v", got.Sources)
+	}
+	// Материализованные узлы — сердце v7: ответ обязан их нести.
+	if len(got.Sources[0].Nodes) != 1 || got.Sources[0].Nodes[0].Tag != "NL-1" {
+		t.Errorf("nodes[] потеряны: %+v", got.Sources[0].Nodes)
+	}
 	if len(got.Rules) != 1 || got.Rules[0].Ref != "ru-direct" {
 		t.Errorf("rules lost: %+v", got.Rules)
 	}
 	if got.DNS.Final != "google_doh" || len(got.DNS.Servers) != 1 {
 		t.Errorf("dns lost: %+v", got.DNS)
 	}
-	if len(got.Connections.Outbounds) != 1 || got.Connections.Outbounds[0].Ref != configtypes.RefTemplate {
-		t.Errorf("outbounds.ref lost: %+v", got.Connections.Outbounds)
+	if len(got.Directions) != 1 || got.Directions[0].Ref != configtypes.RefTemplate {
+		t.Errorf("directions lost: %+v", got.Directions)
+	}
+
+	// Легаси-ключи и внутренности загрузчика наружу не текут: ответ — это
+	// состояние, а не дамп Go-структуры.
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &keys); err != nil {
+		t.Fatalf("unmarshal keys: %v", err)
+	}
+	for _, dead := range []string{
+		"Defaults", "SelectableRuleStates", "RulesLibraryMerged",
+		"ParserConfig", "CustomRules", "DNSOptions", "Migration", "Version",
+	} {
+		if _, ok := keys[dead]; ok {
+			t.Errorf("наружу течёт поле Go-структуры %q — форма ответа не v7", dead)
+		}
+	}
+	for _, want := range []string{"meta", "sources", "directions", "rules", "dns_options"} {
+		if _, ok := keys[want]; !ok {
+			t.Errorf("в ответе нет ключа v7 %q", want)
+		}
 	}
 }
 
@@ -374,7 +425,7 @@ func TestStateDNSRulesPatchBadJSON(t *testing.T) {
 // tests under core/build/), just verify the endpoint shape.
 func TestStateOutboundsResolved(t *testing.T) {
 	st := state.New()
-	st.Connections.Outbounds = []configtypes.Direction{
+	st.Directions = []configtypes.Direction{
 		{Tag: "my-direct", Type: "direct"},
 	}
 	ff := &fakeFacade{stateValue: st, templateValue: &template.TemplateData{}}

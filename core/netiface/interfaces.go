@@ -28,6 +28,19 @@ type Iface struct {
 	// Up — интерфейс поднят (FlagUp && FlagRunning).
 	Up bool
 
+	// IsTunnel — это ЧУЖОЙ туннель (системный WireGuard/AmneziaWG, IPsec,
+	// utun чужого клиента) с собственным юникастовым адресом.
+	//
+	// SPEC 113-F: такой интерфейс — законный аплинк. Привязка к нему значит
+	// «выйти в интернет через уже поднятый туннель», и ровно этого хочет
+	// пользователь, у которого на роутере поднят awg1. Петля возможна только
+	// через СОБСТВЕННЫЙ TUN ядра sing-box — он в список не попадает вовсе.
+	//
+	// Флаг несёт не запрет, а предупреждение: выбор честный, но последствие
+	// нетривиальное (трафик уйдёт в чужой туннель, а не в физическую сеть), и
+	// подпись под полем обязана это сказать.
+	IsTunnel bool
+
 	// index — системный индекс интерфейса, только для стабильной сортировки.
 	index int
 }
@@ -53,14 +66,17 @@ func (i Iface) Label() string {
 	return b.String()
 }
 
-// tunnelPrefixes — юниксовые имена туннельных интерфейсов. Привязка аплинка к
-// ним означала бы петлю: ядро отправляет исходящий пакет в собственный же TUN.
+// tunnelPrefixes — юниксовые имена туннельных интерфейсов.
 //
-// Имя — только ОДИН из трёх признаков, и самый слабый: на Windows адаптер
-// Wintun не называется ни singbox-tun0, ни Wintun. По логу реального
-// пользователя (см. wintun_cleanup_windows_device.go) его NetConnectionID был
-// «Подключение по локальной сети 2» — то есть неотличим от обычной сетевой
-// карты. Поэтому ниже проверяются ещё флаг POINTOPOINT и собственный адрес TUN.
+// SPEC 113-F: имя туннеля НЕ означает запрета. Системный WireGuard/AmneziaWG
+// (wg0, awg1 на роутере), IPsec, чужой utun — это уже поднятый аплинк, и
+// привязка к нему легальна: трафик ядра уйдёт наружу через чужой туннель.
+// Петля возможна только через СОБСТВЕННЫЙ TUN ядра sing-box, а его ловят
+// другие признаки (собственная подсеть TUN и имя из конфига).
+//
+// Имя здесь нужно ровно для двух вещей: пометить чужой туннель флагом
+// IsTunnel (чтобы подпись честно предупредила о последствии) и отсечь
+// туннель БЕЗ адреса — мёртвый маршрут.
 var tunnelPrefixes = []string{"utun", "tun", "tap", "ppp", "ipsec", "gif", "stf", "wg", "awg", "singbox"}
 
 func hasTunnelName(name string) bool {
@@ -96,14 +112,17 @@ func isTunnelAddr(ip net.IP) bool {
 	return false
 }
 
-// isTunnel — три независимых признака туннеля. Достаточно любого: имя ловит
-// юниксовые utun/wg, флаг POINTOPOINT ловит туннели без узнаваемого имени,
-// адрес ловит наш собственный TUN на Windows, где не срабатывают первые два.
-func isTunnel(name string, flags net.Flags, addrs []net.IP) bool {
-	if hasTunnelName(name) {
-		return true
-	}
-	if flags&net.FlagPointToPoint != 0 {
+// isOwnTun — это ТОТ САМЫЙ TUN, который поднимает наше ядро. Привязка аплинка
+// к нему = петля: ядро отправило бы исходящий пакет в собственный же вход.
+//
+// Два признака, и оба нужны. Адрес из tunSubnets ловит безымянный
+// Wintun-адаптер на Windows: по логу реального пользователя его
+// NetConnectionID был «Подключение по локальной сети 2» — неотличим от обычной
+// сетевой карты (см. wintun_cleanup_windows_device.go). Имя из конфига ловит
+// обратный случай — TUN, которому пользователь сдвинул адрес за пределы нашей
+// /30, но оставил штатное имя (singbox-tun0 / lxd-tun0).
+func isOwnTun(name string, addrs []net.IP) bool {
+	if isOwnTunName(name) {
 		return true
 	}
 	for _, ip := range addrs {
@@ -114,10 +133,38 @@ func isTunnel(name string, flags net.Flags, addrs []net.IP) bool {
 	return false
 }
 
+// isDeadTunnel — туннель, через который трафик не пойдёт: адреса нет.
+//
+// SPEC 113-E: POINTOPOINT считается признаком туннеля ТОЛЬКО у интерфейса без
+// адреса. Флаг несут не одни туннели: PPPoE и мобильные WAN-модемы — это
+// точка-точка по своей природе, и они же бывают единственным аплинком машины.
+// Отсекая их, List() прятала настоящий аплинк, а диагностика bind_interface
+// объявляла его «без IP-адреса», хотя адрес у него был.
+//
+// Туннель по имени, но без адреса, отсекается по той же причине, что и любой
+// безадресный интерфейс: предлагать его значит предлагать мёртвый маршрут.
+func isDeadTunnel(name string, flags net.Flags, addrs []net.IP) bool {
+	if len(addrs) > 0 {
+		return false
+	}
+	return hasTunnelName(name) || flags&net.FlagPointToPoint != 0
+}
+
+// isForeignTunnel — ЧУЖОЙ туннель с адресом: законный аплинк, но с пометкой.
+//
+// Собственный TUN сюда не попадает — его проверяют раньше и отсекают.
+func isForeignTunnel(name string, addrs []net.IP) bool {
+	return len(addrs) > 0 && hasTunnelName(name)
+}
+
 // List возвращает интерфейсы, пригодные на роль аплинка: не loopback, не
-// туннель, с хотя бы одним юникастовым адресом. Поднятые идут первыми, внутри
-// группы — в порядке системного индекса (на macOS/Linux он отражает порядок
-// появления, что близко к ожиданиям пользователя).
+// собственный TUN ядра, с хотя бы одним юникастовым адресом. Поднятые идут
+// первыми, внутри группы — в порядке системного индекса (на macOS/Linux он
+// отражает порядок появления, что близко к ожиданиям пользователя).
+//
+// SPEC 113-F: ЧУЖОЙ туннель с адресом остаётся в списке и помечается
+// IsTunnel. Прежде утунели резались скопом, и пользователь с поднятым awg1 не
+// мог выбрать его аплинком — хотя это ровно то, чего он хотел.
 //
 // Интерфейс без адреса отбрасывается намеренно: воткнутый, но не получивший IP
 // кабель — ровно тот случай, ради которого пользователь сюда и пришёл, и
@@ -147,9 +194,9 @@ func List() ([]Iface, error) {
 				v6 = append(v6, ipn.IP.String())
 			}
 		}
-		// Проверка туннеля — ПОСЛЕ сбора адресов: один из трёх её признаков
-		// (собственная подсеть TUN) без них не вычисляется.
-		if isTunnel(si.Name, si.Flags, ips) {
+		// Проверки — ПОСЛЕ сбора адресов: и «наша подсеть TUN», и «туннель без
+		// адреса» без них не вычисляются.
+		if isOwnTun(si.Name, ips) || isDeadTunnel(si.Name, si.Flags, ips) {
 			continue
 		}
 		joined := append(v4, v6...)
@@ -161,6 +208,7 @@ func List() ([]Iface, error) {
 			FriendlyName: friendlyName(si.Name),
 			Addrs:        joined,
 			Up:           si.Flags&net.FlagUp != 0 && si.Flags&net.FlagRunning != 0,
+			IsTunnel:     isForeignTunnel(si.Name, ips),
 			index:        si.Index,
 		})
 	}
@@ -181,7 +229,9 @@ func List() ([]Iface, error) {
 // правила на стороне UI нельзя: разъехавшись, они начнут предлагать для
 // роутера то, что для своей машины запрещено.
 //
-// ok=false означает «не годится в аплинки» — loopback, туннель или нет адреса.
+// ok=false означает «не годится в аплинки» — loopback, собственный TUN демона
+// или нет адреса. Чужой туннель роутера (awg1, wg0 с адресом) годится и
+// приезжает с IsTunnel=true: на роутере это самый частый осмысленный выбор.
 func FromRemote(name string, up bool, addrs []string) (Iface, bool) {
 	name = strings.TrimSpace(name)
 	if name == "" || strings.EqualFold(name, "lo") || strings.EqualFold(name, "lo0") {
@@ -207,16 +257,143 @@ func FromRemote(name string, up bool, addrs []string) (Iface, bool) {
 		}
 	}
 	// Флагов чужой машины у нас нет — POINTOPOINT не проверить, остаются имя
-	// и адрес. Для linux-роутера имени достаточно: там туннели называются
-	// предсказуемо (tun/wg/lxd-tun0 ловится префиксом "tun"/"wg"/…).
-	if isTunnel(name, 0, ips) {
+	// и адрес. Собственный TUN демона (lxd-tun0 в подсети 172.16.0.0/30) ловят
+	// оба признака; чужой туннель роутера остаётся с пометкой.
+	if isOwnTun(name, ips) || isDeadTunnel(name, 0, ips) {
 		return Iface{}, false
 	}
 	joined := append(v4, v6...)
 	if len(joined) == 0 {
 		return Iface{}, false
 	}
-	return Iface{Name: name, Addrs: joined, Up: up}, true
+	return Iface{Name: name, Addrs: joined, Up: up, IsTunnel: isForeignTunnel(name, ips)}, true
+}
+
+// LAN-сторона: отбор МЯГЧЕ аплинкового.
+//
+// tun.include_interface перечисляет интерфейсы, трафик КОТОРЫХ заворачивается в
+// TUN, — это порты, смотрящие в локальную сеть, а не путь наружу. Отсюда два
+// расхождения с List():
+//
+//   - Интерфейс БЕЗ адреса легален. LAN-порт роутера (lan1, lan2) часто не
+//     несёт собственного IP вовсе — адрес живёт на мосту, — а иногда в него
+//     просто ещё никто не воткнулся. Для аплинка это мёртвый маршрут, для
+//     LAN-стороны — штатное состояние.
+//   - Туннель нелегален ЛЮБОЙ. Собственный TUN ядра — обязательно (завернуть
+//     TUN сам в себя = петля), но и чужой awg1 смысла здесь не имеет: в него
+//     приходит уже маршрутизированный трафик, а не запросы устройств LAN.
+//     Для аплинка чужой туннель — законный выбор (SPEC 113-F), здесь — нет.
+//
+// Общее с List() ровно одно: петля отсекается всегда.
+
+// lanCandidate — общее правило отбора LAN-стороны для обоих путей (локального
+// и удалённого). Держится одной функцией намеренно: разъехавшись, локальный
+// список и список роутера начали бы предлагать разное для одной и той же роли.
+//
+// loopback приходит признаком, а не именем: локально его несут флаги, у демона
+// флагов нет и остаётся имя (lo/lo0).
+func lanCandidate(name string, loopback bool, addrs []net.IP) bool {
+	if strings.TrimSpace(name) == "" || loopback {
+		return false
+	}
+	// Туннель любого рода: собственный TUN ядра, мёртвый (безадресный
+	// туннельный) и чужой с адресом. Отдельные предикаты, а не своя эвристика:
+	// именам туннелей здесь одно место на пакет.
+	if isOwnTun(name, addrs) || hasTunnelName(name) || isForeignTunnel(name, addrs) {
+		return false
+	}
+	return true
+}
+
+// ListLANCandidates возвращает интерфейсы, годные на роль LAN-порта в
+// tun.include_interface: не петля и не туннель, адрес НЕ обязателен.
+//
+// Порядок тот же, что у List: поднятые первыми, внутри группы — по системному
+// индексу.
+func ListLANCandidates() ([]Iface, error) {
+	sys, err := net.Interfaces()
+	if err != nil {
+		return nil, fmt.Errorf("enumerate interfaces: %w", err)
+	}
+	out := make([]Iface, 0, len(sys))
+	for _, si := range sys {
+		addrs, _ := si.Addrs()
+		v4, v6 := []string{}, []string{}
+		ips := make([]net.IP, 0, len(addrs))
+		for _, a := range addrs {
+			ipn, ok := a.(*net.IPNet)
+			if !ok || ipn.IP == nil || ipn.IP.IsLinkLocalUnicast() {
+				continue
+			}
+			ips = append(ips, ipn.IP)
+			if ipn.IP.To4() != nil {
+				v4 = append(v4, ipn.IP.String())
+			} else {
+				v6 = append(v6, ipn.IP.String())
+			}
+		}
+		if !lanCandidate(si.Name, si.Flags&net.FlagLoopback != 0, ips) {
+			continue
+		}
+		out = append(out, Iface{
+			Name:         si.Name,
+			FriendlyName: friendlyName(si.Name),
+			Addrs:        append(v4, v6...),
+			Up:           si.Flags&net.FlagUp != 0 && si.Flags&net.FlagRunning != 0,
+			index:        si.Index,
+		})
+	}
+	sort.SliceStable(out, func(a, b int) bool {
+		if out[a].Up != out[b].Up {
+			return out[a].Up
+		}
+		return out[a].index < out[b].index
+	})
+	return out, nil
+}
+
+// ListLANCandidatesOrEmpty — ListLANCandidates без ошибки, по тем же
+// соображениям, что ListOrEmpty.
+func ListLANCandidatesOrEmpty() []Iface {
+	list, err := ListLANCandidates()
+	if err != nil {
+		debuglog.WarnLog("netiface: enumerate LAN candidates failed: %v", err)
+		return nil
+	}
+	return list
+}
+
+// FromRemoteLAN — LAN-кандидат по данным ДРУГОЙ машины (демон отдаёт имя, флаг
+// up и адреса строками).
+//
+// Парная к FromRemote и с тем же контрактом: демон присылает всё подряд, отбор
+// — задача вызывающего. Расходятся они ровно фильтром: здесь безадресный порт
+// проходит, а туннель — нет.
+func FromRemoteLAN(name string, up bool, addrs []string) (Iface, bool) {
+	name = strings.TrimSpace(name)
+	loopback := strings.EqualFold(name, "lo") || strings.EqualFold(name, "lo0")
+	v4, v6 := []string{}, []string{}
+	ips := make([]net.IP, 0, len(addrs))
+	for _, a := range addrs {
+		s := strings.TrimSpace(a)
+		if i := strings.IndexByte(s, '/'); i >= 0 {
+			s = s[:i]
+		}
+		ip := net.ParseIP(s)
+		if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+			continue
+		}
+		ips = append(ips, ip)
+		if ip.To4() != nil {
+			v4 = append(v4, ip.String())
+		} else {
+			v6 = append(v6, ip.String())
+		}
+	}
+	if !lanCandidate(name, loopback, ips) {
+		return Iface{}, false
+	}
+	return Iface{Name: name, Addrs: append(v4, v6...), Up: up}, true
 }
 
 // ListOrEmpty — List без ошибки: перечисление интерфейсов падает только при
@@ -242,6 +419,95 @@ func Names() []string {
 		names = append(names, i.Name)
 	}
 	return names
+}
+
+// Unfitness — почему существующий интерфейс не годится в аплинки.
+//
+// SPEC 113-E: раньше вызывающие знали ровно два состояния — «в списке» и «нет
+// вовсе», — и всё остальное объявляли отсутствием IP-адреса. Для туннеля это
+// прямая ложь: адрес у него есть, чинить нечего, а совет «получите адрес»
+// уводит не туда. Диагностика обязана говорить по фактам.
+type Unfitness int
+
+const (
+	// UnfitUnknown — интерфейса с таким именем на машине нет.
+	UnfitUnknown Unfitness = iota
+	// UnfitFit — интерфейс годится (есть в List).
+	UnfitFit
+	// UnfitLoopback — петля: трафик наружу через неё не пойдёт по определению.
+	UnfitLoopback
+	// UnfitTunnel — СОБСТВЕННЫЙ TUN ядра или туннель без адреса. Первый
+	// замкнул бы ядро само на себя, через второй трафик не пойдёт вовсе.
+	//
+	// SPEC 113-F: чужой туннель сюда больше не попадает — для него есть
+	// UnfitFitTunnel. Прежде оба состояния звались одинаково, и подпись
+	// «ядро не может выйти через него наружу» врала пользователю с поднятым
+	// системным awg1: как раз может, и именно этого он и хотел.
+	UnfitTunnel
+	// UnfitNoAddress — интерфейс есть и не туннель, но адреса у него нет.
+	UnfitNoAddress
+	// UnfitFitTunnel — ГОДИТСЯ, но это чужой туннель с адресом.
+	//
+	// Подвид пригодности, а не отказа: выбор законный и ядро через него
+	// выйдет. Отдельное значение нужно подписи — последствие нетривиальное
+	// («трафик уйдёт в этот туннель, а не в физическую сеть»), и молчать о нём
+	// значит оставить пользователя гадать, почему адрес на выходе чужой.
+	UnfitFitTunnel
+)
+
+// Fit сообщает, годится ли интерфейс в аплинки. Оба «годных» состояния
+// (обычный интерфейс и чужой туннель) отвечают да — иначе каждый вызывающий
+// перечислял бы их сам и однажды забыл бы одно.
+func (u Unfitness) Fit() bool {
+	return u == UnfitFit || u == UnfitFitTunnel
+}
+
+// Fitness сообщает, годится ли интерфейс в аплинки, а если нет — по какой
+// причине. Смотрит на систему СЕЙЧАС, тем же фильтром, что List.
+//
+// Два «годных» исхода: UnfitFit — обычный интерфейс, UnfitFitTunnel — чужой
+// туннель с адресом. Оба попадают в List, и проверять пригодность нужно через
+// Unfitness.Fit(), а не сравнением с UnfitFit: иначе законный туннель
+// объявился бы негодным в одном месте и предлагался в другом.
+func Fitness(name string) Unfitness {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return UnfitUnknown
+	}
+	sys, err := net.Interfaces()
+	if err != nil {
+		return UnfitUnknown
+	}
+	for _, si := range sys {
+		if !strings.EqualFold(si.Name, name) {
+			continue
+		}
+		if si.Flags&net.FlagLoopback != 0 {
+			return UnfitLoopback
+		}
+		addrs, _ := si.Addrs()
+		ips := make([]net.IP, 0, len(addrs))
+		for _, a := range addrs {
+			ipn, ok := a.(*net.IPNet)
+			if !ok || ipn.IP == nil || ipn.IP.IsLinkLocalUnicast() {
+				continue
+			}
+			ips = append(ips, ipn.IP)
+		}
+		// Порядок тот же, что в List: проверки идут по собранным адресам,
+		// иначе ни «наша подсеть TUN», ни «туннель без адреса» не вычислить.
+		if isOwnTun(si.Name, ips) || isDeadTunnel(si.Name, si.Flags, ips) {
+			return UnfitTunnel
+		}
+		if len(ips) == 0 {
+			return UnfitNoAddress
+		}
+		if isForeignTunnel(si.Name, ips) {
+			return UnfitFitTunnel
+		}
+		return UnfitFit
+	}
+	return UnfitUnknown
 }
 
 // Exists сообщает, есть ли на машине интерфейс с таким именем СЕЙЧАС —

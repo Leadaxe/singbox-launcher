@@ -44,6 +44,8 @@ const realisticXraySubscription = `[
 // Право назвать сервер достаётся элементу с наименьшим числом узлов: имя
 // страны осмысленнее технического тега из пула.
 func TestXrayOwnershipGivesNamesToSpecificElements(t *testing.T) {
+	withContentSignatureHook(t)
+
 	nodes, err := ParseNodesFromXrayJSONArray(realisticXraySubscription, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -105,6 +107,8 @@ func TestXrayBalancerBecomesGroupNode(t *testing.T) {
 // Группа ссылается на ИТОГОВЫЕ теги членов, даже если те уехали к другим
 // элементам. Висячая ссылка роняет старт ядра.
 func TestXrayBalancerGroupReferencesSurvivingTags(t *testing.T) {
+	withContentSignatureHook(t)
+
 	nodes, err := ParseNodesFromXrayJSONArray(realisticXraySubscription, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -138,6 +142,8 @@ func TestXrayBalancerGroupReferencesSurvivingTags(t *testing.T) {
 // Порядок элементов остаётся авторским: пул стоит в подписке первым и
 // обязан остаться первым.
 func TestXrayOwnershipKeepsAuthorOrder(t *testing.T) {
+	withContentSignatureHook(t)
+
 	nodes, err := ParseNodesFromXrayJSONArray(realisticXraySubscription, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -151,10 +157,12 @@ func TestXrayOwnershipKeepsAuthorOrder(t *testing.T) {
 	}
 }
 
-// SPEC 112: владение серверами больше не зависит от хука идентичности — оно
-// считается своим локальным ключом подключения (xrayServerKey) и работает
-// всегда. Раньше без хука пул съедал страны.
+// Владение не зависит от хука ИДЕНТИЧНОСТИ (NodeIdentityFunc): оно считается
+// подписью содержимого. Хук идентичности тут ни при чём — пин на то, что эти
+// две вещи не перепутали снова.
 func TestXrayOwnershipWorksWithoutIdentityHook(t *testing.T) {
+	withContentSignatureHook(t)
+
 	prev := NodeIdentityFunc
 	NodeIdentityFunc = nil
 	t.Cleanup(func() { NodeIdentityFunc = prev })
@@ -178,13 +186,15 @@ func TestXrayOwnershipWorksWithoutIdentityHook(t *testing.T) {
 	}
 }
 
-// xrayServerKey — ключ разбора, а не идентичность: один адрес под двумя
+// xrayServerKey — ключ разбора, а не идентичность: один узел под двумя
 // именами внутри массива это одна запись, и владение обязано их свести.
 func TestXrayServerKeyIsIndependentOfTag(t *testing.T) {
+	withContentSignatureHook(t)
+
 	a := &configtypes.ParsedNode{Tag: "🇩🇪 Германия", Scheme: "vless", Server: "1.1.1.1", Port: 443, UUID: "u1"}
 	b := &configtypes.ParsedNode{Tag: "proxy-1-1-1-1-direct", Scheme: "vless", Server: "1.1.1.1", Port: 443, UUID: "u1"}
 	if xrayServerKey(a) != xrayServerKey(b) {
-		t.Fatalf("один адрес под двумя именами дал разные ключи: %q и %q",
+		t.Fatalf("один узел под двумя именами дал разные ключи: %q и %q",
 			xrayServerKey(a), xrayServerKey(b))
 	}
 	other := &configtypes.ParsedNode{Tag: "🇩🇪 Германия", Scheme: "vless", Server: "2.2.2.2", Port: 443, UUID: "u1"}
@@ -225,6 +235,8 @@ func indexOf(s, sub string) int {
 // ловит (существование членов он не проверяет), но в рантайме такая группа
 // мертва: ядру некуда балансировать.
 func TestXrayGroupMembersSurviveTagPrefix(t *testing.T) {
+	withContentSignatureHook(t)
+
 	res := loadFromInlineBody(t, realisticXraySubscription, configtypes.ProxySource{
 		TagPrefix: "AL:",
 	})

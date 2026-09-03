@@ -73,8 +73,37 @@ type GUIState struct {
 	// Optional refresh for Sources list (set by CreateSourcesTab); called from SyncModelToGUI.
 	RefreshSourcesList func()
 
-	// Optional refresh for Outbounds configurator list (set by CreateOutboundsAndParserConfigTab).
-	// Must run after ParserConfig/proxies change from Sources Edit, UpdateParserConfig, or tab switch.
+	// RevealSource подсвечивает и прокручивает к строке источника с данным
+	// ULID (SPEC 115 §3, переход «показать источник» из отчёта «Итога»).
+	// Ставится CreateSourcesTab; nil до её постройки. Переключение самой
+	// вкладки — забота вызывающего: список не знает, показан ли он.
+	//
+	// Неизвестный ULID — законный исход, а не ошибка: источник могли удалить
+	// между сборкой и кликом по строке отчёта.
+	RevealSource func(sourceID string)
+
+	// RunFinalBuild запускает сборку в памяти для вкладки «Итог»
+	// (SPEC 115 §1). Ставится CreateFinalTab; зовётся из обработчика смены
+	// вкладок. Возврат мгновенный — сама сборка уходит в горутину, повторные
+	// входы схлопываются.
+	RunFinalBuild func()
+
+	// SaveGateAllows — ГЕЙТ кнопки Save (SPEC 115 §1: Save появляется только
+	// после показа отчёта сборки). Ставится CreateFinalTab тем же предикатом,
+	// каким вкладка «Итог» открывает свою кнопку: saveButtonVisible по
+	// состоянию попытки и реестру отчёта.
+	//
+	// Хук, а не флаг: гейт обязан быть ФУНКЦИЕЙ состояния, иначе всякий, кто
+	// зовёт UpdateSaveButtonText("Save") мимо вкладки (разбор источников это
+	// делает безусловно), молча открывал бы кнопку поверх закрытого гейта —
+	// ровно так Save и всплывал у конфигурации, которую никто не собирал.
+	//
+	// nil означает «гейта нет» (вкладка «Итог» ещё не построена или её нет
+	// вовсе) — поведение тогда прежнее, безусловное.
+	SaveGateAllows func() bool
+
+	// Optional refresh for Outbounds configurator list (set by CreateDirectionsTab).
+	// Must run after sources/directions change from Sources Edit or tab switch.
 	RefreshOutboundsConfiguratorList func()
 
 	// DNS tab
@@ -99,8 +128,6 @@ type GUIState struct {
 	// Нужна, потому что состав вкладки зависит от таргета (поля платформы)
 	// и от её собственных vars (gateway_mode → LAN-интерфейсы).
 	RefreshTargetTabFromModel func()
-
-	// Last valid ParserConfig JSON for revert on validation error (e.g. on tab switch from Outbounds tab).
 
 	// UI-флаги состояния операций
 	SaveInProgress          bool

@@ -19,8 +19,6 @@
 package presentation
 
 import (
-	"strings"
-
 	"singbox-launcher/core"
 	"singbox-launcher/internal/debuglog"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
@@ -41,8 +39,9 @@ func (p *WizardPresenter) TriggerParseForPreview() {
 		return
 	}
 	p.MergeGUIToModel()
-	// Only ParserConfig is required; SourceURLs is not used (sources come from ParserConfig.Proxies).
-	if strings.TrimSpace(p.model.ParserConfigJSON) == "" {
+	// Гейт «нечего собирать» — по canonical-модели (SPEC 117 C6); SourceURLs
+	// не участвует (источники живут в model.Sources).
+	if len(p.model.Sources) == 0 {
 		return
 	}
 

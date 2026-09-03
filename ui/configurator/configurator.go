@@ -30,6 +30,7 @@
 package configurator
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"image/color"
@@ -100,6 +101,10 @@ func ShowConfigWizardForMachine(parent fyne.Window, machine services.RemoteDaemo
 	showConfigWizardFor(parent, tgt, machine.ResourceDir())
 }
 
+// showConfigWizardFor — общая точка обоих входов Мастера (Local и
+// Remote → Configure). Всё, что делается до появления окна, обязано вести
+// себя одинаково у обоих: раньше это было не так только потому, что
+// автоскачивание шаблона жило в UI вкладки Local, а не здесь.
 func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, resourceDir string) {
 	ac := core.GetController()
 	if ac == nil {
@@ -113,24 +118,98 @@ func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, r
 		return
 	}
 
+	// Шаблон читается ЗДЕСЬ, до всякой сборки окна, и его отсутствие больше
+	// не является приговором: сначала пробуем скачать (тот же механизм, что
+	// у кнопки на вкладке Local — wizardtemplate.EnsureTemplate), и только
+	// реальный сбой скачивания даёт диалог «скачайте вручную» — теперь с
+	// конкретной причиной, а не с «см. лог», которого в логе не было.
+	//
+	// Быстрый путь: файл на месте — открываем синхронно, как и раньше, без
+	// мигания прелоадера.
+	templateLoader := &wizardbusiness.DefaultTemplateLoader{}
+	templateData, loadErr := templateLoader.LoadTemplateData(ac.FileService.ExecDir)
+	if loadErr == nil {
+		buildWizardWindow(ac, templateLoader, templateData, target, resourceDir)
+		return
+	}
+	templateFileName := wizardtemplate.GetTemplateFileName()
+	debuglog.InfoLog("ConfigWizard: %s unreadable at %s (%v) — trying to download it",
+		templateFileName, filepath.Join(ac.FileService.ExecDir, constants.BinDirName, templateFileName), loadErr)
+
+	// Сеть — не на UI-потоке: сюда приходят из OnTapped кнопок Local и
+	// Remote → Configure. Всё, что трогает виджеты после, идёт через fyne.Do.
+	progress := showTemplateDownloadProgress(parent)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), wizardtemplate.DownloadTimeout)
+		defer cancel()
+
+		fetched, _, err := wizardtemplate.EnsureTemplate(ctx, ac.FileService.ExecDir, ac.GetURLBytes)
+
+		fyne.Do(func() {
+			if progress != nil {
+				progress.Hide()
+			}
+			if err != nil {
+				debuglog.ErrorLog("ConfigWizard: template download failed: %v", err)
+				binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
+				dialogs.ShowDownloadFailedManualWithReason(parent,
+					locale.T("Config template failed to load"), err.Error(),
+					wizardtemplate.GetTemplateURL(), binDir)
+				if ac.UIService != nil && ac.UIService.UpdateConfigStatusFunc != nil {
+					ac.UIService.UpdateConfigStatusFunc()
+				}
+				return
+			}
+			debuglog.InfoLog("ConfigWizard: template downloaded on demand — opening wizard")
+			if ac.UIService != nil && ac.UIService.UpdateConfigStatusFunc != nil {
+				ac.UIService.UpdateConfigStatusFunc()
+			}
+			// Пока качали, Мастер мог открыть кто-то ещё — второго окна быть
+			// не должно (тот же инвариант, что и в начале функции).
+			if ac.UIService != nil && ac.UIService.WizardWindow != nil {
+				ac.UIService.WizardWindow.RequestFocus()
+				return
+			}
+			buildWizardWindow(ac, templateLoader, fetched, target, resourceDir)
+		})
+	}()
+}
+
+// showTemplateDownloadProgress показывает модальный прелоадер на время
+// скачивания шаблона. Возвращает диалог (его обязан скрыть вызывающий) или
+// nil, если родительского окна нет.
+func showTemplateDownloadProgress(parent fyne.Window) dialog.Dialog {
+	if parent == nil {
+		return nil
+	}
+	bar := widget.NewProgressBarInfinite()
+	// Wrapping обязателен: Label без переноса отдаёт всю строку как
+	// min-width и раздувает диалог ([[fyne-label-minwidth-trap]]).
+	label := widget.NewLabel(locale.T("Downloading config template…"))
+	label.Wrapping = fyne.TextWrapWord
+	// Ширину задаёт распорка, а не текст: с Wrapping у Label min-width
+	// нулевая, и диалог схлопывается в полоску.
+	spacer := canvas.NewRectangle(color.Transparent)
+	spacer.SetMinSize(fyne.NewSize(280, 1))
+	content := container.NewVBox(label, bar, spacer)
+	d := dialog.NewCustomWithoutButtons(locale.T("Config Template"), content, parent)
+	d.Show()
+	return d
+}
+
+// buildWizardWindow собирает и показывает окно Мастера на уже загруженном
+// шаблоне. Только UI-поток.
+func buildWizardWindow(
+	ac *core.AppController,
+	templateLoader *wizardbusiness.DefaultTemplateLoader,
+	templateData *wizardtemplate.TemplateData,
+	target wizardtemplate.TargetSpec,
+	resourceDir string,
+) {
 	// Create model and GUI state
 	model := wizardmodels.NewWizardModel()
 	guiState := &wizardpresentation.GUIState{}
 
-	// Load template data
-	templateLoader := &wizardbusiness.DefaultTemplateLoader{}
-	templateData, err := templateLoader.LoadTemplateData(ac.FileService.ExecDir)
-	if err != nil {
-		templateFileName := wizardtemplate.GetTemplateFileName()
-		debuglog.ErrorLog("ConfigWizard: failed to load %s from %s: %v", templateFileName, filepath.Join(ac.FileService.ExecDir, "bin", templateFileName), err)
-		debuglog.DebugLog("wizard: showing download failed manual (template load on open)")
-		binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
-		dialogs.ShowDownloadFailedManual(parent, locale.T("Config template failed to load"), wizardtemplate.GetTemplateURL(), binDir)
-		if ac.UIService != nil && ac.UIService.UpdateConfigStatusFunc != nil {
-			ac.UIService.UpdateConfigStatusFunc()
-		}
-		return
-	}
 	model.TemplateData = templateData
 	model.ExecDir = ac.FileService.ExecDir
 	// Таргет ставится ДО чтения состояния: от него зависит, из чьей
@@ -216,6 +295,8 @@ func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, r
 				loadConfigFromFile(presenter, fileServiceAdapter, templateData, model, wizardWindow)
 			} else {
 				debuglog.InfoLog("ShowConfigWizard: loaded state from state.json")
+				maybeShowMigrationReport(wizardWindow, stateFile,
+					filepath.Join(ac.FileService.ExecDir, constants.BinDirName))
 			}
 			// LoadState восстанавливает Target из meta файла. Для машины id и
 			// каталоги всегда из реестра (§5.8 — их в файле нет и быть не
@@ -264,15 +345,17 @@ func loadConfigFromFile(presenter *wizardpresentation.WizardPresenter, fileServi
 		dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to load existing config"), err))
 	}
 	if loadedConfig {
-		model.ParserConfigJSON = parserConfigJSON
 		model.SourceURLs = sourceURLs
-		// SPEC 052 fix: ParserConfigJSON это derived view; canonical для
-		// outbounds — model.GlobalOutbounds. Если оставить пустым, на первом
-		// Save в state.json уедут пустые connections.outbounds, и Rebuild
-		// сгенерирует config.json без proxy-out / auto-proxy-out / других
-		// селекторов из шаблона — sing-box упадёт с FATAL "default outbound
-		// not found: proxy-out". Парсим JSON один раз, копируем outbounds
-		// в canonical place.
+		// Сид из шаблона — мутация модели: производные результаты обязаны
+		// перечитаться (features/state.md «Ревизия модели»).
+		model.BumpRevision()
+		// SPEC 117: сид шаблона парсится сразу в canonical
+		// model.GlobalOutbounds — промежуточного model.ParserConfigJSON
+		// больше нет. Если оставить пустым, на первом Save в state.json
+		// уедут пустые connections.outbounds, и Rebuild сгенерирует
+		// config.json без proxy-out / auto-proxy-out / других селекторов из
+		// шаблона — sing-box упадёт с FATAL "default outbound not found:
+		// proxy-out". Парсим JSON один раз, копируем outbounds в canonical.
 		var parsed config.ParserConfig
 		if err := json.Unmarshal([]byte(parserConfigJSON), &parsed); err != nil {
 			debuglog.WarnLog("loadConfigFromFile: failed to parse template parser_config for GlobalOutbounds seed: %v", err)
@@ -394,12 +477,16 @@ func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *w
 		dnsTabItem := container.NewTabItem(locale.T("DNS"), dnsTab)
 		settingsTab := wizardtabs.CreateSettingsTab(presenter)
 		settingsTabItem := container.NewTabItem(locale.T("Settings"), settingsTab)
-		filesTab := wizardtabs.CreateFilesTab(presenter, guiState)
-		filesTabItem := container.NewTabItem(locale.T("Files"), filesTab)
+		// SPEC 115 §1: Files → «Итог». Вкладка перестала быть складом трёх
+		// файловых действий и стала стадией сборки — имя обязано это
+		// говорить, иначе пользователь не поймёт, почему вход на неё что-то
+		// считает.
+		finalTab := wizardtabs.CreateFinalTab(presenter, guiState)
+		finalTabItem := container.NewTabItem(locale.T("Final"), finalTab)
 		tabs.Append(rulesTabItem)
 		tabs.Append(dnsTabItem)
 		tabs.Append(settingsTabItem)
-		tabs.Append(filesTabItem)
+		tabs.Append(finalTabItem)
 	}
 
 	return tabs, rulesTabItem
@@ -554,10 +641,10 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 		// убран, и править руками там нечего; отслеживать предыдущую
 		// вкладку стало незачем.
 
-		// Вкладка Направлений: пересобрать структуру из JSON и перестроить
-		// список (правки на Sources меняют только JSON модели).
+		// Вкладка Направлений: перестроить список — конфигуратор читает
+		// canonical (model.GlobalOutbounds) напрямую
+		// (SPEC 117), пересборка структуры из JSON упразднена.
 		if item.Text == locale.T("Directions") {
-			presenter.ApplyParserConfigFromCurrentJSON()
 			if guiState.RefreshOutboundsConfiguratorList != nil {
 				guiState.RefreshOutboundsConfiguratorList()
 			}
@@ -579,6 +666,29 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 					}
 				})
 			}()
+		}
+
+		// SPEC 115 §1: вход на «Итог» = запуск сборки в памяти. Именно вход,
+		// а не кнопка: вкладка и есть стадия сборки, и требовать на ней
+		// лишнего клика значило бы разрешить смотреть отчёт, которого никто
+		// не строил.
+		//
+		// Кнопка Save гасится ДО запуска: пока сборка идёт, сохранять нечего,
+		// а оставшаяся с прошлого захода открытая кнопка предлагала бы
+		// сохранить итог, к которому отчёт на экране уже не относится.
+		if item.Text == locale.T("Final") {
+			if guiState.SaveButton != nil {
+				guiState.SaveButton.Hide()
+			}
+			if guiState.RunFinalBuild != nil {
+				guiState.RunFinalBuild()
+			}
+		} else if guiState.SaveButton != nil {
+			// Уходя с «Итога», кнопку возвращаем: на остальных вкладках она
+			// не показывается вовсе (updateNavigationButtons кладёт её только
+			// на последнюю), и оставить её скрытой значило бы получить пустое
+			// место после следующего Save-гейта.
+			guiState.SaveButton.Show()
 		}
 
 		// Handle tab-specific actions
@@ -670,9 +780,16 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 				templateLoader := &wizardbusiness.DefaultTemplateLoader{}
 				templateData, err := templateLoader.LoadTemplateData(ac.FileService.ExecDir)
 				if err != nil {
+					// Страховочная ветка: окно Мастера не открывается без
+					// шаблона (showConfigWizardFor его гарантирует, при
+					// необходимости скачав), так что сюда попадают, только
+					// если файл унесли из-под работающего окна. Причина —
+					// текстом ошибки, а не «см. лог».
 					binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
-					debuglog.DebugLog("wizard: showing download failed manual (template load on New)")
-					dialogs.ShowDownloadFailedManual(wizardWindow, locale.T("Config template failed to load"), wizardtemplate.GetTemplateURL(), binDir)
+					debuglog.ErrorLog("wizard: template load on New failed: %v", err)
+					dialogs.ShowDownloadFailedManualWithReason(wizardWindow,
+						locale.T("Config template failed to load"), err.Error(),
+						wizardtemplate.GetTemplateURL(), binDir)
 					return
 				}
 				model.TemplateData = templateData
@@ -718,6 +835,8 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 			dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to restore state"), err))
 			return
 		}
+		maybeShowMigrationReport(wizardWindow, stateFile,
+			filepath.Join(presenter.Model().ExecDir, constants.BinDirName))
 
 		// Синхронизируем GUI
 		presenter.SyncModelToGUI()
@@ -867,23 +986,18 @@ func handleCloseButton(presenter *wizardpresentation.WizardPresenter, guiState *
 			if d != nil {
 				d.Hide()
 			}
-			// Save to state.json + rebuild — тот же flow что и in-wizard
-			// Save кнопка (presenter.SaveConfig). Здесь короткий путь
-			// SaveCurrentState (без progress UI, окно всё равно закрывается)
-			// + явный rebuild в фоне.
+			// Save to state.json + материализация — тот же flow, что у
+			// in-wizard Save (presenter.SaveConfig), но без progress UI:
+			// окно всё равно закрывается. Развилка по цели живёт в
+			// MaterializeAfterClose: удалённой машине пишется ЕЁ config.json,
+			// локальной — пересобирается bin/config.json. Раньше тут
+			// безусловно шёл локальный rebuild, и config.json машины
+			// отставал от её state.json — Deploy уносил прошлую сборку.
 			if err := presenter.SaveCurrentState(); err != nil {
 				dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to save state"), err))
 				return
 			}
-			go func() {
-				ac := core.GetController()
-				if ac == nil {
-					return
-				}
-				if err := ac.RebuildConfigIfDirty(); err != nil {
-					debuglog.WarnLog("Close→Save: auto-rebuild failed: %v", err)
-				}
-			}()
+			go presenter.MaterializeAfterClose()
 			wizardWindow.Close()
 		})
 		saveButton.Importance = widget.HighImportance

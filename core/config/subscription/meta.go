@@ -61,7 +61,7 @@ func truthyHeaderValue(v string) bool {
 
 // ProviderAnnounce is re-exported from state for callsites that historically
 // referenced subscription.ProviderAnnounce. The struct lives in state so
-// SubscriptionMeta can carry it without circular imports — see
+// SubMeta can carry it without circular imports — see
 // state/provider_announce.go for full semantics.
 type ProviderAnnounce = state.ProviderAnnounce
 
@@ -109,14 +109,14 @@ func ParseAnnounce(h http.Header) state.ProviderAnnounce {
 
 // ParseHeaders — извлекает метаданные подписки из HTTP response headers.
 //
-// Возвращает SubscriptionMeta с заполненными только header-derived полями
+// Возвращает SubMeta с заполненными только header-derived полями
 // (UserInfo / ProfileTitle / SupportURL / ...). Fetch history, preview
 // заполняются вызывающим уровнем (fetcher.go).
 //
 // Headers контракт: см. SPEC 052 §"Headers контракт"
 // (https://github.com/Leadaxe/LxBox/blob/main/docs/PROTOCOLS.md).
-func ParseHeaders(h http.Header) state.SubscriptionMeta {
-	var m state.SubscriptionMeta
+func ParseHeaders(h http.Header) state.SubMeta {
+	var m state.SubMeta
 	if h == nil {
 		return m
 	}
@@ -160,8 +160,8 @@ func ParseHeaders(h http.Header) state.SubscriptionMeta {
 // Останавливается при первой непустой строке без `#` префикса (это уже
 // нодовая часть). Headers здесь те же что в HTTP, но без Title-case
 // (case-insensitive matching).
-func ParseInlineComments(body []byte) state.SubscriptionMeta {
-	var m state.SubscriptionMeta
+func ParseInlineComments(body []byte) state.SubMeta {
+	var m state.SubMeta
 	if len(body) == 0 {
 		return m
 	}
@@ -241,12 +241,12 @@ func ParseInlineComments(body []byte) state.SubscriptionMeta {
 	return m
 }
 
-// MergeMeta мерджит два SubscriptionMeta: headers (HTTP) выигрывают,
+// MergeMeta мерджит два SubMeta: headers (HTTP) выигрывают,
 // inline (#-comments в body) — fallback для пустых полей.
 //
 // Поля fetch history (LastFetchedAt, ErrorCount, ...) не трогаются —
 // они никогда не приходят из header'ов.
-func MergeMeta(headers, inline state.SubscriptionMeta) state.SubscriptionMeta {
+func MergeMeta(headers, inline state.SubMeta) state.SubMeta {
 	out := headers // copy by value
 	if out.UserInfo == nil && inline.UserInfo != nil {
 		out.UserInfo = inline.UserInfo

@@ -591,7 +591,7 @@ func condEntryTrue(expr string, varByName map[string]TemplateVar, resolved map[s
 	}
 	var node interface{}
 	if err := json.Unmarshal([]byte(trimmed), &node); err != nil {
-		debuglog.WarnLog("template: if-предикат %q — невалидный JSON: %v; считаем false", trimmed, err)
+		debuglog.WarnLog("template: if predicate %q — invalid JSON: %v; treating as false", trimmed, err)
 		return false
 	}
 	varTypes := make(map[string]string, len(varByName))

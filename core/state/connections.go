@@ -1,6 +1,11 @@
-// File connections.go — раздел "connections" в state.json (SPEC 052).
-// Types: ConnectionsSection, Source, Defaults, SourceType, TagSpec, UpdateSpec,
-// SubscriptionMeta, UserInfo.
+// File connections.go — раздел "connections" схем v5/v6 (SPEC 052) и общие
+// типы Defaults/UpdateSpec/UserInfo.
+//
+// SPEC 118 (этап 2): ConnectionsSection и sourceV6 — ПРИВАТНАЯ форма
+// парсеров старых схем (v2–v6) и миграции. Канонический тип источника —
+// state.Source (sources_v7.go); загрузка старого состояния переносит
+// sourceV6 в v7-форму (adoptConnectionsV6), а легаси-поля уезжают в сайдкар
+// миграции (legacySourceV6, migration_legacy_source.go) и умирают с ней.
 package state
 
 import (
@@ -9,20 +14,17 @@ import (
 	"singbox-launcher/core/config/configtypes"
 )
 
-// ConnectionsSection — раздел подключений: sources + направления + defaults.
+// ConnectionsSection — раздел подключений старых схем: sources + Направления +
+// defaults. Живёт только в парсерах v2–v6 и миграции; State её больше не несёт.
 type ConnectionsSection struct {
-	Sources []Source `json:"sources"`
+	Sources []sourceV6 `json:"sources"`
 
-	// Outbounds — глобальные Направления (SPEC 104). Имя поля в Go
-	// сохранено намеренно: это те же записи, что и раньше, и ~40 callsite'ов
-	// `Connections.Outbounds` описывают именно outbound-секцию конфига.
+	// Outbounds — глобальные Направления (SPEC 104).
 	Outbounds []configtypes.Direction `json:"direction_outbounds"`
 
 	// LegacyOutbounds — прежний ключ `outbounds`. ТОЛЬКО чтение: состояния,
 	// записанные до SPEC 104, переносятся в Outbounds при загрузке
-	// (`adoptLegacyDirections`) и больше никогда не пишутся. Поле обязано
-	// быть пустым к моменту сериализации — иначе state.json получил бы обе
-	// секции и следующая загрузка выбрала бы старую.
+	// (`adoptLegacyDirections`) и больше никогда не пишутся.
 	LegacyOutbounds []configtypes.Direction `json:"outbounds,omitempty"`
 
 	Defaults Defaults `json:"defaults"`
@@ -44,205 +46,75 @@ func (c *ConnectionsSection) adoptLegacyDirections() {
 	c.LegacyOutbounds = nil
 }
 
-// Defaults — настройки по умолчанию для всех source'ов (могут переопределяться
-// per-source).
+// Defaults — прежние умолчания подключений схем v2–v6.
+//
+// В каноне v7 умолчаний в состоянии НЕТ (SPEC Т1): они переехали в настройки
+// приложения (bin/settings.json). Тип читается только парсерами старых схем
+// и шагом 8 миграции, который их туда и перекладывает.
 type Defaults struct {
 	Reload   string `json:"reload,omitempty"`
 	MaxNodes int    `json:"max_nodes,omitempty"`
 }
 
-// SourceType — дискриминатор: "subscription" (URL → пачка нод) или
-// "server" (один URI → один outbound).
-type SourceType string
-
-const (
-	SourceTypeSubscription SourceType = "subscription"
-	SourceTypeServer       SourceType = "server"
-	// SourceTypeChain — цепочка хопов (SPEC 110): маршрут через несколько
-	// позиций подряд. Третий тип рядом с подпиской и сервером, потому что
-	// цепочка это МАРШРУТ; точка выбора между маршрутами — Направление, и
-	// цепочка попадает в него узлом, наравне с серверами подписки.
-	SourceTypeChain SourceType = "chain"
-)
-
-// Source — единица подключения. Тип определяет, какие поля используются:
-//
-//   - SourceTypeSubscription: URL/Skip/Tag/Outbounds/Update/MaxNodes/Meta
-//   - SourceTypeServer:       URI; Tag/Update/Meta не используются
-//   - SourceTypeChain:        Chain; URL/URI/Tag/Update/Meta не используются
-//
-// Поля identity (ID/Type/Enabled/Label/ExcludeFromGlobal) — общие.
-// Тег узла у server/chain — в NodeTag (см. там); Label только отображает.
-type Source struct {
+// sourceV6 — единица подключения схем v5/v6 (бывший экспортируемый Source).
+// Точная on-disk-форма старых файлов; используется ТОЛЬКО парсерами старых
+// схем и миграцией. Семантику полей см. в истории (SPEC 052/077/094/108/
+// 110/112); канонические собратья — в sources_v7.go.
+type sourceV6 struct {
 	// identity
 	ID                string     `json:"id"`
-	Type              SourceType `json:"type"`
+	Type              SourceKind `json:"type"`
 	Enabled           bool       `json:"enabled"`
 	Label             string     `json:"label,omitempty"`
 	ExcludeFromGlobal bool       `json:"exclude_from_global,omitempty"`
 
-	// NodeTag — системный тег узла для type=server и type=chain.
-	//
-	// Заведён отдельно от Label, потому что раньше этих двух ролей у
-	// источника не различали: adapter_source.go клал `TagMask: s.Label`
-	// («force tag = label»), то есть переименование в списке молча меняло
-	// тег, на который ссылаются фильтры Направлений, позиции других цепочек
-	// и rules[].outbound. Пользователь правил подпись — и терял маршрут.
-	//
-	// Теперь роли разведены ровно как у Направления (Direction.Tag /
-	// Direction.Label): тег — идентификатор, на него ссылаются; Label —
-	// отображаемое имя, правится свободно. Пусто → NodeTagOrLabel
-	// откатывается на Label, чем и держится совместимость с состояниями,
-	// записанными до этого разделения (миграция их не переписывает: пустой
-	// NodeTag читается как «тег = Label», ровно прежнее поведение).
-	//
-	// Для type=subscription не используется: там именами узлов управляет
-	// Tag (*TagSpec) — prefix/postfix/mask.
+	// NodeTag — системный тег узла для type=server и type=chain
+	// (пусто → тег = Label; см. Source.NodeTagOrLabel).
 	NodeTag string `json:"node_tag,omitempty"`
 
 	// type=subscription only
 	URL                     string                  `json:"url,omitempty"`
 	Skip                    []map[string]string     `json:"skip,omitempty"`
-	Tag                     *TagSpec                `json:"tag,omitempty"`
+	Tag                     *legacyTagSpec          `json:"tag,omitempty"`
 	Outbounds               []configtypes.Direction `json:"outbounds,omitempty"`
 	ExposeGroupTagsToGlobal bool                    `json:"expose_group_tags_to_global,omitempty"`
-
-	// Fold — свёртка подписки в группу (SPEC 108). nil = не свёрнута:
-	// узлы попадают в Направления по отдельности.
-	//
-	// Заменяет прежнюю четвёрку флагов. Сами группы (`<PFX>auto`,
-	// `<PFX>select`) в Outbounds больше не хранятся — они разворачиваются
-	// на сборке (config.PrepareSourceFolds) ровно так же, как парные
-	// auto-группы Направлений: пользователь настраивает одну свёртку, а не
-	// два объекта, которые обязаны оставаться синхронными.
-	Fold     *configtypes.SourceFold `json:"fold,omitempty"`
-	Update   *UpdateSpec             `json:"update,omitempty"`
-	MaxNodes int                     `json:"max_nodes,omitempty"`
-	Meta     *SubscriptionMeta       `json:"meta,omitempty"`
+	Fold                    *legacyFold             `json:"fold,omitempty"`
+	Update                  *UpdateSpec             `json:"update,omitempty"`
+	MaxNodes                int                     `json:"max_nodes,omitempty"`
+	Meta                    *legacySubMeta          `json:"meta,omitempty"`
 
 	// type=server only
-	URI string `json:"uri,omitempty"`
-
-	// Chain — type=chain only (SPEC 110): позиции маршрута и настройки
-	// звеньев. Материализуется в один outbound типа `chain`.
-	Chain *configtypes.SourceChain `json:"chain,omitempty"`
-
-	// ConfigJSON — type=server only: ручной sing-box outbound/endpoint объект.
-	// Если задан, при сборке конфига он вставляется passthrough (URI не
-	// парсится): для нод, которые не выражаются share-URI (нет протокола /
-	// парсера / конвертера) и собраны руками. Лаунчер перештамповывает только
-	// tag (= Label) и detour; остальные поля уходят в config.json как есть.
+	URI        string          `json:"uri,omitempty"`
 	ConfigJSON json.RawMessage `json:"config_json,omitempty"`
 
-	// DetourTag — SPEC 077: tag of another outbound this source's nodes dial
-	// through (proxy chain / hop). Empty = direct dial. Applies to both server
-	// and subscription sources. Stored by tag (consistent with rules/selectors);
-	// a dangling/cyclic/self target is dropped at build time (fail-open), the
-	// node then dials directly. Not applied to WireGuard nodes.
-	DetourTag string `json:"detour_tag,omitempty"`
+	// type=chain only (SPEC 110)
+	Chain *configtypes.SourceChain `json:"chain,omitempty"`
 
-	// DetourNodeSourceID / DetourNodeTag — SPEC 112-A: ссылка на ОДИН узел,
-	// через который дозваниваются узлы этого источника. Ссылка — ОБЪЕКТ:
-	// ULID источника-цели плюс identity-тег узла ВНУТРИ него (SPEC 112).
-	//
-	// Финальный конфиговый тег в состоянии не хранится намеренно: он —
-	// производная от tag_prefix/tag_mask источника-цели и вычисляется на каждой
-	// сборке, а хранимый протухал бы от правки этих полей (тот же класс багов,
-	// из-за которого до SPEC 112 протухал контент-хеш).
-	//
-	// Резолв строгий: обе части обязаны сойтись, иначе источник выпадает из
-	// конфига fail-closed (трафик не уходит напрямую) — см.
-	// config.resolveNodeDetours. Смену идентичности узла (переименование
-	// node_tag) UI отрабатывает сам: сбрасывает ссылки и сообщает об этом.
-	//
-	// Пустой DetourNodeSourceID при непустом DetourNodeTag — переходная форма
-	// (dev-состояния между SPEC 112 и 112-A): тег трактуется как ФИНАЛЬНЫЙ и
-	// ищется глобально.
-	//
-	// Взаимоисключимы с DetourTag — пикер ставит одно и гасит другое; при
-	// ручной правке, оставившей оба, побеждает ссылка на узел. DetourNodeLabel
-	// — снимок подписи узла на момент выбора, только для показа.
+	// detour (SPEC 077 / 101 / 112 / 112-A)
+	DetourTag          string `json:"detour_tag,omitempty"`
 	DetourNodeSourceID string `json:"detour_node_source_id,omitempty"`
 	DetourNodeTag      string `json:"detour_node_tag,omitempty"`
+	DetourNodeHash     string `json:"detour_node_hash,omitempty"`
+	DetourNodeLabel    string `json:"detour_node_label,omitempty"`
 
-	// DetourNodeHash — УПРАЗДНЁННАЯ ссылка по контент-хешу (SPEC 101).
-	// Читается только ради миграции состояний, записанных до SPEC 112:
-	// генератор опознаёт по нему узел и переписывает ссылку в пару
-	// DetourNodeSourceID+DetourNodeTag, а не опознав — берёт DetourNodeLabel
-	// как тег (уже без source_id). После миграции не пишется.
-	DetourNodeHash  string `json:"detour_node_hash,omitempty"`
-	DetourNodeLabel string `json:"detour_node_label,omitempty"`
-
-	// DisabledNodes — SPEC 094 D4: per-node off switch, keyed by the node's
-	// IDENTITY and valued with the unix time the mark was last confirmed.
-	//
-	// Identity is the node's raw provider tag, uniquified within the source and
-	// taken before this source's tag_prefix / tag_mask (SPEC 112). The tag is
-	// the name the provider manages the node by, so the mark survives the
-	// provider rotating the server behind that name, and editing the source's
-	// tag policy does not move the marks. Keys written before SPEC 112 (64
-	// lowercase hex of the abolished content hash) are migrated to tag keys on
-	// the first parse. Marks for nodes gone from the subscription longer than
-	// the TTL are garbage-collected, otherwise the map would grow forever.
+	// DisabledNodes — SPEC 094 D4: карта выключенных узлов по identity-ключам.
 	DisabledNodes map[string]int64 `json:"disabled_nodes,omitempty"`
-
-	// ForeignExtensions — per-entity блобы ЧУЖИХ приложений из LX Backup
-	// (BACKUP.md §1: `extensions.lxbox` может лежать и внутри записи
-	// подписки/сервера). Хранятся нетронутыми до следующего экспорта и
-	// возвращаются в ту же запись: бэкап, побывавший на десктопе, не должен
-	// вернуться на телефон без mobile-only полей (import_rules,
-	// identity_override, папки).
-	ForeignExtensions map[string]json.RawMessage `json:"foreign_extensions,omitempty"`
 }
 
-// TagSpec — правила преобразования тэгов нод подписки.
-//
-//	tag = mask           если mask != ""
-//	tag = prefix + tag + postfix  иначе
-//
-// Поддерживаются переменные (`{$tag}`, `{$server}`, ...) — обрабатываются
-// в core/config/subscription.applyTagPrefixPostfix.
-type TagSpec struct {
+// legacyTagSpec — прежняя «tag»-спека v6: prefix/postfix плюс УПРАЗДНЁННАЯ
+// маска. Канон v7 несёт только TagPolicy{prefix,postfix} (SPEC Т2); mask у
+// server/chain хранила тег узла (переезжает в Node.Tag), у подписки была
+// шаблоном (упраздняется с warning).
+type legacyTagSpec struct {
 	Prefix  string `json:"prefix,omitempty"`
 	Postfix string `json:"postfix,omitempty"`
 	Mask    string `json:"mask,omitempty"`
 }
 
-// IsZero возвращает true, если все три поля пустые (нечего применять).
-func (t *TagSpec) IsZero() bool {
-	if t == nil {
-		return true
-	}
-	return t.Prefix == "" && t.Postfix == "" && t.Mask == ""
-}
-
-// NodeTagOrLabel — системный тег узла источника (type=server / type=chain).
-//
-// Откат на Label при пустом NodeTag — не удобство, а миграция: состояния,
-// записанные до разделения ролей, несут тег именно в Label, и переписывать
-// их на загрузке нельзя (файл делят с более старыми сборками). Пустой
-// NodeTag поэтому читается как «тег равен Label» — прежнее поведение слово
-// в слово, — а заполненный побеждает.
-func (s Source) NodeTagOrLabel() string {
-	if s.NodeTag != "" {
-		return s.NodeTag
-	}
-	return s.Label
-}
-
-// UpdateSpec — настройки авто-обновления per-subscription. nil → используются
-// global defaults (Connections.Defaults.Reload).
-type UpdateSpec struct {
-	IntervalHours int   `json:"interval_hours,omitempty"`
-	AutoRefresh   *bool `json:"auto_refresh,omitempty"` // nil → true (default включён)
-}
-
-// SubscriptionMeta — runtime-данные подписки, заполняются Update'ом.
-//
-// Headers parsed из HTTP response + inline "#header: value" в первых строках
-// тела (LxBox-совместимый контракт; см. SPEC 052 §"Headers контракт").
-type SubscriptionMeta struct {
-	// headers (HTTP response + inline #-comments в body первой строкой)
+// legacySubMeta — прежние метаданные подписки v6: канонические заголовки
+// плюс fetch-история и превью, которых в v7-мете нет (история → SubUpdateStatus,
+// превью упразднено).
+type legacySubMeta struct {
 	ProfileTitle               string    `json:"profile_title,omitempty"`
 	ProfileUpdateIntervalHours int       `json:"profile_update_interval_hours,omitempty"`
 	SupportURL                 string    `json:"support_url,omitempty"`
@@ -250,31 +122,110 @@ type SubscriptionMeta struct {
 	ContentDispositionFilename string    `json:"content_disposition_filename,omitempty"`
 	UserInfo                   *UserInfo `json:"userinfo,omitempty"`
 
-	// fetch history
-	URLAtFetch     string `json:"url_at_fetch,omitempty"`    // URL на момент fetch'а
-	LastFetchedAt  string `json:"last_fetched_at,omitempty"` // RFC3339 UTC
-	LastStatus     string `json:"last_status,omitempty"`     // "ok" | "err"
-	ErrorCount     int    `json:"error_count,omitempty"`     // подряд (resets на success)
+	URLAtFetch     string `json:"url_at_fetch,omitempty"`
+	LastFetchedAt  string `json:"last_fetched_at,omitempty"`
+	LastStatus     string `json:"last_status,omitempty"`
+	ErrorCount     int    `json:"error_count,omitempty"`
 	LastErrorMsg   string `json:"last_error_msg,omitempty"`
 	HTTPStatusCode int    `json:"http_status_code,omitempty"`
 	RawBodyBytes   int64  `json:"raw_body_bytes,omitempty"`
 
-	// nodes
 	NodesCountFetched int      `json:"nodes_count_fetched,omitempty"`
-	Truncated         bool     `json:"truncated,omitempty"` // обрезали по max_nodes
-	PreviewNodes      []string `json:"preview_nodes,omitempty"`
+	Truncated         bool     `json:"truncated,omitempty"`
+	NodePool          []string `json:"preview_nodes,omitempty"`
 
-	// SPEC 061: provider sent announce headers (success **or** failure).
-	// nil → no announce on last fetch. UI renders ⚠ icon when LastStatus="err"
-	// and 📢 icon when LastStatus="ok" but this field is non-nil. Cleared on
-	// a clean successful refresh with no announce headers.
 	ProviderAnnounce *ProviderAnnounce `json:"provider_announce,omitempty"`
 
-	// LastErrorURL — convenience snapshot of ProviderAnnounce.URL (or other
-	// actionable URL on the last error). Surfaces in simpler UI affordances
-	// (status tooltip, log message) without having to dereference
-	// ProviderAnnounce. Empty on success or when provider gave no URL.
 	LastErrorURL string `json:"last_error_url,omitempty"`
+}
+
+// toV7 — структурный перенос sourceV6 в каноническую v7-форму: раскладка по
+// новым домам (type → kind, tag-спека → tag_policy, канонические поля меты).
+// Семантическая миграция (материализация nodes[], отметки, теги, хопы,
+// тройня, fold → replace) идёт следом, из сайдкара legacySourceV6.
+func (v sourceV6) toV7() (Source, legacySourceV6) {
+	out := Source{
+		Node: Node{
+			Kind:    v.Type,
+			Enabled: v.Enabled,
+		},
+		ID:       v.ID,
+		URL:      v.URL,
+		Skip:     v.Skip,
+		MaxNodes: v.MaxNodes,
+		Update:   v.Update,
+	}
+	if v.Tag != nil && (v.Tag.Prefix != "" || v.Tag.Postfix != "") {
+		out.TagPolicy = &TagPolicy{Prefix: v.Tag.Prefix, Postfix: v.Tag.Postfix}
+	}
+
+	legacy := legacySourceV6{
+		Label:                   v.Label,
+		NodeTag:                 v.NodeTag,
+		URI:                     v.URI,
+		ConfigJSON:              v.ConfigJSON,
+		Chain:                   v.Chain,
+		Outbounds:               v.Outbounds,
+		ExcludeFromGlobal:       v.ExcludeFromGlobal,
+		ExposeGroupTagsToGlobal: v.ExposeGroupTagsToGlobal,
+		Fold:                    v.Fold,
+		DetourTag:               v.DetourTag,
+		DetourNodeSourceID:      v.DetourNodeSourceID,
+		DetourNodeTag:           v.DetourNodeTag,
+		DetourNodeHash:          v.DetourNodeHash,
+		DetourNodeLabel:         v.DetourNodeLabel,
+		DisabledNodes:           v.DisabledNodes,
+	}
+	if v.Tag != nil {
+		legacy.TagMask = v.Tag.Mask
+	}
+	if v.Meta != nil {
+		out.Meta = &SubMeta{
+			ProfileTitle:               v.Meta.ProfileTitle,
+			ProfileUpdateIntervalHours: v.Meta.ProfileUpdateIntervalHours,
+			SupportURL:                 v.Meta.SupportURL,
+			ProfileWebPageURL:          v.Meta.ProfileWebPageURL,
+			ContentDispositionFilename: v.Meta.ContentDispositionFilename,
+			UserInfo:                   v.Meta.UserInfo,
+			ProviderAnnounce:           v.Meta.ProviderAnnounce,
+		}
+		legacy.MetaHistory = legacySubMetaHistory{
+			URLAtFetch:        v.Meta.URLAtFetch,
+			LastFetchedAt:     v.Meta.LastFetchedAt,
+			LastStatus:        v.Meta.LastStatus,
+			ErrorCount:        v.Meta.ErrorCount,
+			LastErrorMsg:      v.Meta.LastErrorMsg,
+			LastErrorURL:      v.Meta.LastErrorURL,
+			HTTPStatusCode:    v.Meta.HTTPStatusCode,
+			RawBodyBytes:      v.Meta.RawBodyBytes,
+			NodesCountFetched: v.Meta.NodesCountFetched,
+			Truncated:         v.Meta.Truncated,
+		}
+	}
+	return out, legacy
+}
+
+// adoptConnectionsV6 — перенос секции connections старых схем в плоский
+// v7-корень State. Возвращает сайдкар легаси-полей (вход миграции), который
+// живёт ровно до конца Load.
+func adoptConnectionsV6(s *State, cs ConnectionsSection) []legacySourceV6 {
+	s.Sources = make([]Source, 0, len(cs.Sources))
+	legacy := make([]legacySourceV6, 0, len(cs.Sources))
+	for _, src := range cs.Sources {
+		v7, leg := src.toV7()
+		s.Sources = append(s.Sources, v7)
+		legacy = append(legacy, leg)
+	}
+	s.Directions = cs.Outbounds
+	s.Defaults = cs.Defaults
+	return legacy
+}
+
+// UpdateSpec — настройки авто-обновления per-subscription. nil → используются
+// умолчания настроек приложения (bin/settings.json).
+type UpdateSpec struct {
+	IntervalHours int   `json:"interval_hours,omitempty"`
+	AutoRefresh   *bool `json:"auto_refresh,omitempty"` // nil → true (default включён)
 }
 
 // UserInfo — раскрытый subscription-userinfo header (V2Board / Xboard).

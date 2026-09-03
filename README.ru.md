@@ -278,7 +278,7 @@ User Agent: `singbox-launcher/<version> (<os> <arch>)`. Контроли при�
 
 ### Windows
 
-1. Скачайте релиз с [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases) — обычный архив для Win 10/11, `singbox-launcher-<version>-win7-32.zip` для Windows 7.
+1. Скачайте релиз с [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases) — обычный архив для Win 10/11, `singbox-launcher-<version>-win64-full.zip`, если нужно всё сразу (ядро, `wintun.dll`, шаблон, Mesa3D для RDP/ВМ без GPU — первый запуск ничего не качает), `singbox-launcher-<version>-win7-32.zip` для Windows 7.
 2. Распакуйте в любую папку (например, `C:\Program Files\singbox-launcher`).
 3. Запустите `singbox-launcher.exe`.
 4. Вкладка **Локально** → **Download** скачает `sing-box.exe`, затем **Download wintun.dll** при необходимости.

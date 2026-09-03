@@ -1,0 +1,2 @@
+# obfs у v1 — плоская строка-секрет; тип xplus объявляется отдельно
+hysteria://example-1.com:36712?auth=a&obfs=xplus&obfsParam=s3cr3t&upmbps=50&downmbps=50#Obfs

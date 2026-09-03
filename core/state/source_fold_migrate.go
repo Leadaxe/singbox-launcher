@@ -42,13 +42,16 @@ func commentIsWizardSelect(comment string) bool {
 //
 // Идемпотентна: у подписки с уже выставленным Fold только вычищаются
 // остатки групп.
-func migrateSourceFolds(s *State) {
-	if s == nil {
+//
+// SPEC 118 (W1): работает на v6-форме секции connections (до структурного
+// переноса в v7-корень) — fold-флаги живут именно там.
+func migrateSourceFolds(cs *ConnectionsSection) {
+	if cs == nil {
 		return
 	}
-	for i := range s.Connections.Sources {
-		src := &s.Connections.Sources[i]
-		if src.Type != SourceTypeSubscription {
+	for i := range cs.Sources {
+		src := &cs.Sources[i]
+		if src.Type != SourceKindSubscription {
 			continue
 		}
 
@@ -63,21 +66,21 @@ func migrateSourceFolds(s *State) {
 		}
 
 		if src.Fold == nil && (hasAuto || hasSelect) && src.ExposeGroupTagsToGlobal {
-			mode := configtypes.FoldModeSelect
+			mode := legacyFoldModeSelect
 			switch {
 			case hasAuto && hasSelect:
-				mode = configtypes.FoldModeSelectAuto
+				mode = legacyFoldModeSelectAuto
 			case hasAuto:
-				mode = configtypes.FoldModeAuto
+				mode = legacyFoldModeAuto
 			}
-			src.Fold = &configtypes.SourceFold{Mode: mode}
+			src.Fold = &legacyFold{Mode: mode}
 			if hasAuto {
 				// Параметры прежней urltest-группы переносим, чтобы
 				// пользовательские url/interval/tolerance не сбросились
 				// на шаблонные молча.
 				src.Fold.Auto = autoFromLegacyGroup(src.Outbounds)
 			}
-			debuglog.DebugLog("SPEC 108: подписка %q свёрнута в группу (режим %s) из прежних флагов", src.ID, mode)
+			debuglog.DebugLog("SPEC 108: subscription %q folded into a group (mode %s) from the old flags", src.ID, mode)
 		}
 
 		// Группы больше не хранятся в состоянии независимо от исхода:

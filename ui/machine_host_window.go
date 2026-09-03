@@ -8,6 +8,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
@@ -60,9 +61,6 @@ const (
 	hostColBytes   = 78  // «213.4 MB»
 	hostColFS      = 84  // «squashfs» — под самое длинное имя ФС целиком
 	hostColFlags   = 132 // «[🔒 ro · ★ state]»
-	hostColRate    = 72  // «229 B/s»
-	hostColErrors  = 84  // «120 / 52210»
-	hostColMTU     = 48  // «65536»
 	hostColCore    = 20  // номер ядра
 	// Имя — тоже фиксированное. Растягивающийся центр Border забирал всю
 	// свободную ширину, из-за чего строка всегда была шире окна и таблицу
@@ -81,16 +79,23 @@ const (
 
 	// hostWindowWidth — ширина окна по самой широкой строке, а не «с запасом».
 	//
-	// Самая широкая — таблица интерфейсов: семь колонок ниже плюс отступы
-	// HBox между ними и поля прокрутки. Считается из тех же констант, что и
-	// сами колонки, поэтому не разъезжается при их правке: подобранное на
-	// глаз число пережило бы ровно одну правку ширины колонки.
-	hostWindowWidth = hostColName + 2*hostColRate + 2*hostColBytes +
-		hostColErrors + hostColMTU + hostWindowChrome
+	// После перехода интерфейсов на карточки самая широкая жёсткая строка —
+	// таблица дисков: у карточки жёстких колонок всего две (имя и отступ), а
+	// адреса и суммы переносятся по словам и подстраиваются под любую ширину.
+	// Считается из тех же констант, что и сами колонки, поэтому не разъезжается
+	// при их правке: подобранное на глаз число пережило бы ровно одну правку.
+	hostWindowWidth = hostColName + hostColFS + hostColPercent + hostColBar +
+		hostColBytes + hostColFlags + hostWindowChrome
 
-	// hostWindowChrome — отступы между семью ячейками, поля Padded-контейнера
-	// и полоса прокрутки справа.
+	// hostWindowChrome — отступы между ячейками, поля Padded-контейнера и
+	// полоса прокрутки справа.
 	hostWindowChrome = 64
+
+	// hostIfaceIndent — отступ продолжающих строк карточки интерфейса.
+	//
+	// Ровно под маркер и пробел за ним: имя и адреса под ним начинаются с
+	// одного отступа, и три строки читаются как один блок.
+	hostIfaceIndent = 20
 
 	// hostIfacesTitleWidth — ширина заголовка «Интерфейсы (12 из 19)».
 	// Задана явно, потому что в голом HBox выпадающий список фильтра садился
@@ -262,6 +267,32 @@ type hostView struct {
 	// следующего опроса: фильтр обязан отвечать мгновенно.
 	lastIfaces lxdclient.HostInterfaces
 	hasIfaces  bool
+
+	// ifaceCards — карточка на интерфейс, по имени. Пересобираются ТОЛЬКО при
+	// смене состава видимых интерфейсов; на каждом тике значения переписываются
+	// на месте. RemoveAll на пол-секундном тике заставлял список моргать и
+	// сбрасывал прокрутку — тот же класс бага, что недавно чинили в панели
+	// машин.
+	ifaceCards map[string]*hostIfaceCard
+	// ifaceOrder — состав и порядок нарисованных карточек; смена этого списка
+	// (а не значений в нём) — единственная причина пересобирать контейнер.
+	ifaceOrder []string
+}
+
+// hostIfaceCard — многострочная карточка одного интерфейса.
+//
+// Три строки на своих вопросах: «жив ли и как быстро идёт», «кто он в сети»,
+// «что насчитал за жизнь». Табличная строка на семь колонок не вмещала и
+// половины того, что приезжает с машины: MAC, адреса и пакеты не показывались
+// вовсе, а MTU ради ширины окна стоял без подписи.
+type hostIfaceCard struct {
+	root   *fyne.Container
+	name   *widget.Label
+	speeds *widget.Label
+	mtu    *widget.Label
+	addrs  *widget.Label
+	mac    *widget.Label
+	totals *widget.Label
 }
 
 // Режимы фильтра интерфейсов.
@@ -297,6 +328,7 @@ func newHostView() *hostView {
 		ifacesTitle: hostBoldLabel(""),
 		ifaces:      container.NewVBox(),
 		ifacesHint:  hostDimLabel(""),
+		ifaceCards:  map[string]*hostIfaceCard{},
 	}
 	v.errBar.Wrapping = fyne.TextWrapWord
 	// Шапка машины НЕ переносится: это одна опознавательная строка
@@ -573,7 +605,6 @@ func (v *hostView) content() fyne.CanvasObject {
 		fdRow,
 		widget.NewSeparator(),
 		ifacesHead,
-		hostIfacesHeader(),
 		v.ifaces,
 		v.ifacesHint,
 	)
@@ -607,22 +638,9 @@ func hostDisksHeader() fyne.CanvasObject {
 	)
 }
 
-// hostIfacesHeader — шапка таблицы интерфейсов.
-//
-// Стрелки живут ЗДЕСЬ, по одной на колонку, а не в каждой ячейке. Приклеены к
-// слову вплотную: пробел после ↑/↓ в этом шрифте рвёт отрисовку и вместо
-// стрелки показывается тофу.
-func hostIfacesHeader() fyne.CanvasObject {
-	return container.NewHBox(
-		hostHead(locale.T("Interface"), hostColName, false),
-		hostHead(locale.T("↓rate"), hostColRate, true),
-		hostHead(locale.T("↑rate"), hostColRate, true),
-		hostHead(locale.T("↓total"), hostColBytes, true),
-		hostHead(locale.T("↑total"), hostColBytes, true),
-		hostHead(locale.T("err / drop"), hostColErrors, true),
-		hostHead(locale.T("MTU"), hostColMTU, true),
-	)
-}
+// Шапки у интерфейсов больше нет: карточка называет каждую величину при ней
+// самой («MTU 1500», «pkt 1.2M/948K»), и колонок, над которыми могла бы стоять
+// подпись, не осталось.
 
 // update перерисовывает окно по свежему ответу.
 //
@@ -834,30 +852,39 @@ func (v *hostView) redrawInterfaces() {
 		v.ifacesTitle.SetText(locale.Tf("Interfaces (%d of %d)", shown, len(ifs.Interfaces)))
 	}
 
-	v.ifaces.RemoveAll()
+	// Состав пересобирается, только когда он ИЗМЕНИЛСЯ. Значения на каждом тике
+	// переписываются в тех же Label: пересборка контейнера на пол-секундном
+	// тике даёт моргание и сбрасывает прокрутку.
+	visible := make([]lxdclient.HostInterface, 0, len(ifs.Interfaces))
+	order := make([]string, 0, len(ifs.Interfaces))
 	for _, i := range ifs.Interfaces {
 		if !hostIfaceVisible(i, mode) {
 			continue
 		}
-		// Лежачие гаснут кружком и не жирные: строка остаётся на месте, но
-		// перестаёт спорить за внимание с работающими.
-		marker := "○"
-		if i.Up {
-			marker = "●"
+		visible = append(visible, i)
+		order = append(order, i.Name)
+	}
+	if !hostSameOrder(v.ifaceOrder, order) {
+		v.ifaces.RemoveAll()
+		// Карточки исчезнувших интерфейсов выбрасываются: иначе кэш растёт на
+		// каждом переключении фильтра и держит виджеты, которых нет на экране.
+		kept := make(map[string]*hostIfaceCard, len(visible))
+		for _, i := range visible {
+			c, ok := v.ifaceCards[i.Name]
+			if !ok {
+				c = newHostIfaceCard()
+			}
+			kept[i.Name] = c
+			v.ifaces.Add(c.root)
 		}
-		name := widget.NewLabelWithStyle(marker+" "+i.Name,
-			fyne.TextAlignLeading, fyne.TextStyle{Bold: i.Up})
-		name.Truncation = fyne.TextTruncateEllipsis
-
-		v.ifaces.Add(container.NewHBox(
-			hostFixedWidth(name, hostColName),
-			hostNum(hostIfaceRxRate(i), hostColRate),
-			hostNum(hostIfaceTxRate(i), hostColRate),
-			hostNum(hostIfaceRxTotal(i), hostColBytes),
-			hostNum(hostIfaceTxTotal(i), hostColBytes),
-			hostNum(hostIfaceErrors(i), hostColErrors),
-			hostNum(hostIfaceMTU(i), hostColMTU),
-		))
+		v.ifaceCards = kept
+		v.ifaceOrder = order
+		v.ifaces.Refresh()
+	}
+	for _, i := range visible {
+		if c, ok := v.ifaceCards[i.Name]; ok {
+			c.set(i)
+		}
 	}
 	// Окно дельты общее на весь ответ: интерфейсы снимаются одним проходом.
 	hint := locale.T("Graph the counter, read the rate: a counter survives restarts and gaps, a rate lies across them.")
@@ -865,7 +892,117 @@ func (v *hostView) redrawInterfaces() {
 		hint += " · " + iv
 	}
 	v.ifacesHint.SetText(hint)
-	v.ifaces.Refresh()
+}
+
+// hostSameOrder — совпал ли состав и порядок видимых интерфейсов.
+//
+// Именно порядок, а не множество: демон отдаёт их в своём порядке, карточки
+// стоят в том же, и перестановка обязана перерисовать список.
+func hostSameOrder(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// newHostIfaceCard собирает пустую карточку; значения приезжают в set.
+//
+// Пустой она создаётся ровно затем, чтобы её можно было переиспользовать на
+// следующем тике: виджеты создаются один раз на интерфейс, а не на каждый
+// ответ демона.
+func newHostIfaceCard() *hostIfaceCard {
+	c := &hostIfaceCard{
+		name:   widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		speeds: widget.NewLabel(""),
+		mtu:    widget.NewLabelWithStyle("", fyne.TextAlignTrailing, fyne.TextStyle{}),
+		addrs:  widget.NewLabel(""),
+		mac:    widget.NewLabelWithStyle("", fyne.TextAlignTrailing, fyne.TextStyle{}),
+		totals: widget.NewLabel(""),
+	}
+	// Имя не переносится: это одно слово-идентификатор, и разорванное пополам
+	// оно перестаёт быть именем.
+	c.name.Wrapping = fyne.TextWrapOff
+	c.name.Truncation = fyne.TextTruncateEllipsis
+	c.speeds.Wrapping = fyne.TextWrapOff
+	c.mtu.Wrapping = fyne.TextWrapOff
+	// Адреса — единственная строка неограниченной длины: у v6-интерфейса их
+	// бывает четыре по 39 символов. Без переноса Label отдал бы минимальной
+	// шириной всю строку и распёр окно шире экрана — та же ловушка, что
+	// раздувает диалоги.
+	c.addrs.Wrapping = fyne.TextWrapWord
+	c.mac.Wrapping = fyne.TextWrapOff
+	c.totals.Wrapping = fyne.TextWrapWord
+
+	// Первая строка: имя слева, скорости следом, MTU прижат вправо. Border, а
+	// не HBox: только он отдаёт правому краю его место, не растягивая центр.
+	head := container.NewBorder(nil, nil,
+		container.NewHBox(hostFixedWidth(c.name, hostColName), c.speeds),
+		c.mtu, layout.NewSpacer())
+	// Вторая строка тем же приёмом: MAC у правого края, адреса занимают всё
+	// оставшееся и переносятся внутри него.
+	addrRow := container.NewBorder(nil, nil, nil, c.mac, c.addrs)
+
+	// Отступ слева у строк 2 и 3: он и делает три строки одной карточкой, а не
+	// тремя подряд идущими строками списка.
+	c.root = container.NewVBox(
+		head,
+		container.NewBorder(nil, nil, hostIndent(), nil, addrRow),
+		container.NewBorder(nil, nil, hostIndent(), nil, c.totals),
+	)
+	return c
+}
+
+// hostIndent — пустая колонка слева у продолжающих строк карточки.
+func hostIndent() fyne.CanvasObject {
+	return hostFixedWidth(widget.NewLabel(""), hostIfaceIndent)
+}
+
+// set переписывает значения карточки на месте.
+//
+// Именно переписывает, а не пересоздаёт: карточка живёт столько же, сколько
+// интерфейс в списке, и опрос идёт каждые полсекунды.
+func (c *hostIfaceCard) set(i lxdclient.HostInterface) {
+	// Лежачие гаснут кружком и не жирные: карточка остаётся на месте, но
+	// перестаёт спорить за внимание с работающими.
+	marker := "○"
+	if i.Up {
+		marker = "●"
+	}
+	hostSetLabel(c.name, marker+" "+i.Name, fyne.TextStyle{Bold: i.Up})
+	// Лежачий гасит и скорости: «— down —» курсивом читается как пояснение, а
+	// не как значение.
+	hostSetLabel(c.speeds, hostIfaceSpeeds(i), fyne.TextStyle{Italic: !i.Up})
+	hostSetLabel(c.mtu, hostIfaceMTUText(i), fyne.TextStyle{})
+	// «(без адреса)» — курсивом: это объяснение пустоты, а не адрес.
+	hostSetLabel(c.addrs, hostIfaceAddresses(i), fyne.TextStyle{Italic: len(i.Addresses) == 0})
+	hostSetLabel(c.mac, hostIfaceMAC(i), fyne.TextStyle{})
+	// Чистая статистика приглушается: нули ошибок и потерь показать надо
+	// (пропавшая пара читалась бы как «не измеряли»), но тревожить ими нечего.
+	hostSetLabel(c.totals, hostIfaceTotals(i), fyne.TextStyle{Italic: hostIfaceClean(i)})
+}
+
+// hostSetLabel обновляет текст и стиль подписи, НЕ трогая её, когда ни то ни
+// другое не изменилось.
+//
+// Сравнение перед записью здесь не микрооптимизация: опрос идёт каждые
+// полсекунды, а из двух десятков интерфейсов роутера меняются единицы.
+// Безусловный Refresh() перерисовывал бы весь список по три Label на карточку
+// два раза в секунду — ровно то дёрганье, от которого лечили панель машин.
+//
+// Стиль отдельной строкой, потому что SetText обновляет только текст: смена
+// TextStyle без Refresh() осталась бы невидимой до следующей чужой отрисовки.
+func hostSetLabel(l *widget.Label, text string, style fyne.TextStyle) {
+	if l.Text == text && l.TextStyle == style {
+		return
+	}
+	l.TextStyle = style
+	l.Text = text
+	l.Refresh()
 }
 
 // hostThermalZones — датчики в одну строку через разделитель.

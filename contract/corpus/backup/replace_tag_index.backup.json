@@ -1,0 +1,41 @@
+{
+  "lx_backup": 1,
+  "exported_by": {
+    "app": "launcher",
+    "version": "1.5.4"
+  },
+  "exported_at": "2026-09-02T00:00:00Z",
+  "servers": [
+    {
+      "id": "01SRV0000000000000000000",
+      "node_tag": "Tokyo",
+      "uri": "vless://11111111-1111-1111-1111-111111111111@example-2.com:443?type=tcp&security=tls&sni=example-2.com#Tokyo"
+    }
+  ],
+  "subscriptions": [
+    {
+      "id": "01SUB0000000000000000000",
+      "url": "https://example-1.com/sub",
+      "label": "Main",
+      "fold": {
+        "mode": "select"
+      }
+    }
+  ],
+  "rules": [
+    {
+      "kind": "inline",
+      "name": "Work",
+      "outbound": "1:select",
+      "num": 1000,
+      "match": {
+        "domain_suffix": [
+          "work.example-1.com"
+        ]
+      }
+    }
+  ],
+  "route": {
+    "final": "1:select"
+  }
+}

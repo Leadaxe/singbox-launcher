@@ -1,6 +1,7 @@
 package subscription
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -17,6 +18,26 @@ import (
 // xrayVLESSTLSFromStreamSettings / xrayTransportFromStreamSettings: они не
 // протокол-специфичны, несмотря на историческое имя первого.
 
+// Причины отбраковки элемента — тексты для ЧЕЛОВЕКА, а не для лога.
+//
+// Раньше здесь стояли лаконичные «missing user id» / «missing vnext»: они
+// точно называют отсутствующее поле и ничего не говорят о том, что пошло не
+// так у пользователя. Самый частый живой случай — сервер отдал заглушку вместо
+// креденшла (подписка протухла); формулировка обязана вести к этому выводу, а
+// не к чтению JSON-схемы Xray.
+//
+// Английские строки: причина уезжает и в лог, и в отчёт сборки, и в отчёт её
+// переводит слой UI (locale) — парсер про локаль не знает.
+const (
+	xrayReasonEmptyUserID = "empty user id — the server returned a placeholder, subscription may be expired"
+	xrayReasonNoVNext     = "no server section (settings.vnext) — the element carries no endpoint"
+	xrayReasonNoServers   = "no server section (settings.servers) — the element carries no endpoint"
+	xrayReasonNoSettings  = "no settings section — the element carries no endpoint"
+	xrayReasonNoAddress   = "empty server address"
+	xrayReasonBadPort     = "server port is missing or out of range"
+	xrayReasonNoPassword  = "empty password — the server returned a placeholder, subscription may be expired"
+)
+
 // xrayServiceProtocols — служебные Xray-протоколы, не являющиеся узлами.
 // Собственный набор, не пересекающийся с sing-box (direct/block/dns).
 var xrayServiceProtocols = map[string]struct{}{
@@ -29,11 +50,41 @@ func IsXrayServiceProtocol(p string) bool {
 	return ok
 }
 
+// xrayUnsupportedProtocolError — «этот протокол лаунчер не умеет».
+//
+// Отдельный тип, а не текст ошибки, потому что вызывающий обязан РАЗЛИЧАТЬ два
+// класса отбраковки, и различать их подстрокой значило бы поставить диагностику
+// в зависимость от формулировки. Класс «протокол не поддержан» — свойство
+// лаунчера, чинить его пользователю нечем; класс «поддерживаемый протокол,
+// битый элемент» (пустой id, нет vnext, кривой порт) — свойство ПОДПИСКИ, и
+// пользователь обязан увидеть настоящую причину. До этого разделения любая
+// ошибка конверсии превращалась в «unsupported protocol "vless" skipped» —
+// сообщение, которое врало и уводило от протухшей подписки.
+type xrayUnsupportedProtocolError struct {
+	Protocol string
+}
+
+func (e *xrayUnsupportedProtocolError) Error() string {
+	return fmt.Sprintf("unsupported protocol %q", e.Protocol)
+}
+
+// xrayUnsupportedProtocol возвращает имя протокола, если ошибка именно этого
+// класса; иначе пусто.
+func xrayUnsupportedProtocol(err error) (string, bool) {
+	var e *xrayUnsupportedProtocolError
+	if errors.As(err, &e) {
+		return e.Protocol, true
+	}
+	return "", false
+}
+
 // xrayNodeFromOutbound конвертирует любой поддерживаемый Xray outbound в узел.
 //
 // Возвращает (nil, nil) для служебных протоколов — это не ошибка, они просто
-// не узлы. Для неподдерживаемых возвращает ошибку, чтобы вызывающий записал
-// протокол в список пропущенных, а не потерял его молча (C1).
+// не узлы. Для неподдерживаемых возвращает *xrayUnsupportedProtocolError, чтобы
+// вызывающий записал протокол в список пропущенных, а не потерял его молча (C1);
+// для поддерживаемого протокола с битым содержимым — обычную ошибку с настоящей
+// причиной.
 func xrayNodeFromOutbound(ob map[string]interface{}, label string) (*configtypes.ParsedNode, error) {
 	protocol := strings.ToLower(strings.TrimSpace(xrayMapString(ob, "protocol")))
 	if protocol == "" {
@@ -52,10 +103,12 @@ func xrayNodeFromOutbound(ob map[string]interface{}, label string) (*configtypes
 		return xrayBuildTrojanFromOutbound(ob, label)
 	case "shadowsocks":
 		return xrayBuildShadowsocksFromOutbound(ob, label)
+	case "hysteria":
+		return xrayBuildHysteriaFromOutbound(ob, label)
 	case "hysteria2":
 		return xrayBuildHysteria2FromOutbound(ob, label)
 	default:
-		return nil, fmt.Errorf("unsupported protocol %q", protocol)
+		return nil, &xrayUnsupportedProtocolError{Protocol: protocol}
 	}
 }
 
@@ -63,31 +116,31 @@ func xrayNodeFromOutbound(ob map[string]interface{}, label string) (*configtypes
 func xrayVNextEndpoint(ob map[string]interface{}) (addr string, port int, user map[string]interface{}, err error) {
 	settings, _ := ob["settings"].(map[string]interface{})
 	if settings == nil {
-		return "", 0, nil, fmt.Errorf("missing settings")
+		return "", 0, nil, errors.New(xrayReasonNoSettings)
 	}
 	vnextRaw, ok := settings["vnext"].([]interface{})
 	if !ok || len(vnextRaw) == 0 {
-		return "", 0, nil, fmt.Errorf("missing vnext")
+		return "", 0, nil, errors.New(xrayReasonNoVNext)
 	}
 	vn0, ok := vnextRaw[0].(map[string]interface{})
 	if !ok {
-		return "", 0, nil, fmt.Errorf("invalid vnext[0]")
+		return "", 0, nil, errors.New(xrayReasonNoVNext)
 	}
 	addr = xrayMapString(vn0, "address")
 	if addr == "" {
-		return "", 0, nil, fmt.Errorf("missing vnext address")
+		return "", 0, nil, errors.New(xrayReasonNoAddress)
 	}
 	port = xrayJSONInt(vn0["port"])
 	if port <= 0 || port > 65535 {
-		return "", 0, nil, fmt.Errorf("invalid vnext port")
+		return "", 0, nil, errors.New(xrayReasonBadPort)
 	}
 	users, _ := vn0["users"].([]interface{})
 	if len(users) == 0 {
-		return "", 0, nil, fmt.Errorf("missing vnext users")
+		return "", 0, nil, errors.New("no users in the server section — the element carries no credentials")
 	}
 	u0, ok := users[0].(map[string]interface{})
 	if !ok {
-		return "", 0, nil, fmt.Errorf("invalid vnext user")
+		return "", 0, nil, errors.New("malformed user record in the server section")
 	}
 	return addr, port, u0, nil
 }
@@ -97,23 +150,23 @@ func xrayVNextEndpoint(ob map[string]interface{}) (addr string, port int, user m
 func xrayServerEndpoint(ob map[string]interface{}) (addr string, port int, server map[string]interface{}, err error) {
 	settings, _ := ob["settings"].(map[string]interface{})
 	if settings == nil {
-		return "", 0, nil, fmt.Errorf("missing settings")
+		return "", 0, nil, errors.New(xrayReasonNoSettings)
 	}
 	serversRaw, ok := settings["servers"].([]interface{})
 	if !ok || len(serversRaw) == 0 {
-		return "", 0, nil, fmt.Errorf("missing servers")
+		return "", 0, nil, errors.New(xrayReasonNoServers)
 	}
 	s0, ok := serversRaw[0].(map[string]interface{})
 	if !ok {
-		return "", 0, nil, fmt.Errorf("invalid servers[0]")
+		return "", 0, nil, errors.New(xrayReasonNoServers)
 	}
 	addr = xrayMapString(s0, "address")
 	if addr == "" {
-		return "", 0, nil, fmt.Errorf("missing server address")
+		return "", 0, nil, errors.New(xrayReasonNoAddress)
 	}
 	port = xrayJSONInt(s0["port"])
 	if port <= 0 || port > 65535 {
-		return "", 0, nil, fmt.Errorf("invalid server port")
+		return "", 0, nil, errors.New(xrayReasonBadPort)
 	}
 	return addr, port, s0, nil
 }
@@ -138,7 +191,7 @@ func xrayBuildVMessFromOutbound(ob map[string]interface{}, label string) (*confi
 	}
 	uuid := xrayMapString(user, "id")
 	if uuid == "" {
-		return nil, fmt.Errorf("missing user id")
+		return nil, errors.New(xrayReasonEmptyUserID)
 	}
 
 	outbound := map[string]interface{}{
@@ -186,7 +239,7 @@ func xrayBuildTrojanFromOutbound(ob map[string]interface{}, label string) (*conf
 	}
 	password := xrayMapString(server, "password")
 	if password == "" {
-		return nil, fmt.Errorf("missing trojan password")
+		return nil, errors.New(xrayReasonNoPassword)
 	}
 
 	outbound := map[string]interface{}{
@@ -227,7 +280,7 @@ func xrayBuildShadowsocksFromOutbound(ob map[string]interface{}, label string) (
 	method := strings.TrimSpace(xrayMapString(server, "method"))
 	password := xrayMapString(server, "password")
 	if method == "" || password == "" {
-		return nil, fmt.Errorf("missing shadowsocks method/password")
+		return nil, errors.New("empty shadowsocks method or password — the server returned a placeholder, subscription may be expired")
 	}
 	if !isValidShadowsocksMethod(method) {
 		// Неподдерживаемый метод роняет весь конфиг — узел отбрасывается,

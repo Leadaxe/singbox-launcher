@@ -27,15 +27,22 @@ import (
 // Для backward-compat UI callsite'ов (DNS tab пока на v5-моделях) генерируется
 // legacy CustomRules view (preset-ref пропускается — UI Phase 6 покажет
 // через новый dialog).
-func parseCurrent(data []byte) (*State, error) {
+//
+// SPEC 118: v6 — легаси-формат. Секция connections читается в приватную
+// v6-форму и переносится в плоский v7-корень СТРУКТУРНО (adoptConnectionsV6);
+// легаси-значения уезжают сайдкаром legacySourceV6, который читает только
+// миграция. Поверх переноса работает семантическая миграция
+// (migrateLegacyStateToV7 — 8 шагов features/state.md: материализация
+// nodes[], отметки, теги, хопы, тройня, fold→replace, отчёт потерь); снос
+// легаси (шаг 8) идёт после успешной записи v7-файла.
+func parseV6Legacy(data []byte, lc LoadContext) (*State, error) {
 	var raw struct {
-		Meta         MetaSection                `json:"meta"`
-		Connections  ConnectionsSection         `json:"connections"`
-		Rules        []Rule                     `json:"rules"`
-		ForeignExt   map[string]json.RawMessage `json:"foreign_backup_extensions,omitempty"`
-		Vars         []SettingVar               `json:"vars"`
-		DNSOptions   DNSOptions                 `json:"dns_options"`
-		WarpAccounts *WarpAccountsSection       `json:"warp_accounts"`
+		Meta         MetaSection          `json:"meta"`
+		Connections  ConnectionsSection   `json:"connections"`
+		Rules        []Rule               `json:"rules"`
+		Vars         []SettingVar         `json:"vars"`
+		DNSOptions   DNSOptions           `json:"dns_options"`
+		WarpAccounts *WarpAccountsSection `json:"warp_accounts"`
 		// Legacy dev-shape (SPEC 053). Читаем для одноразовой in-place миграции.
 		LegacyDNS json.RawMessage `json:"dns"`
 	}
@@ -52,18 +59,16 @@ func parseCurrent(data []byte) (*State, error) {
 	}
 
 	s := &State{
-		Version:                 raw.Meta.Version,
-		Comment:                 raw.Meta.Comment,
-		Target:                  raw.Meta.Target,
-		TargetPlatform:          raw.Meta.TargetPlatform,
-		TargetArch:              raw.Meta.TargetArch,
-		Connections:             raw.Connections,
-		Vars:                    raw.Vars,
-		Rules:                   raw.Rules,
-		DNS:                     dnsOpts,
-		WarpAccounts:            raw.WarpAccounts,
-		ForeignBackupExtensions: raw.ForeignExt,
-		RulesLibraryMerged:      true,
+		Version:            raw.Meta.Version,
+		Comment:            raw.Meta.Comment,
+		Target:             raw.Meta.Target,
+		TargetPlatform:     raw.Meta.TargetPlatform,
+		TargetArch:         raw.Meta.TargetArch,
+		Vars:               raw.Vars,
+		Rules:              raw.Rules,
+		DNS:                dnsOpts,
+		WarpAccounts:       raw.WarpAccounts,
+		RulesLibraryMerged: true,
 	}
 	if t, err := time.Parse(time.RFC3339, raw.Meta.CreatedAt); err == nil {
 		s.CreatedAt = t
@@ -72,15 +77,22 @@ func parseCurrent(data []byte) (*State, error) {
 		s.UpdatedAt = t
 	}
 
-	// SPEC 108: прежние флаги подписки → Fold. Строго ДО
-	// syncLegacyFromConnections и до построения legacy-вида правил: и то и
-	// другое читает уже мигрированное состояние.
-	migrateSourceFolds(s)
+	// SPEC 108: прежние флаги подписки → Fold. Строго ДО переноса в v7 и
+	// до построения legacy-вида: и то и другое читает уже мигрированное.
+	migrateSourceFolds(&raw.Connections)
+
+	// SPEC 118 (W1): структурный перенос v6-секции в плоский v7-корень.
+	legacySources := adoptConnectionsV6(s, raw.Connections)
+
+	// SPEC 118 (W2): семантическая миграция — СТРОГО до построения
+	// legacy-видов (CustomRules и проекция обязаны видеть уже переписанные
+	// ссылки и мигрированный канон).
+	migrateLegacyStateToV7(s, 6, lc, legacySources)
 
 	// Generate legacy CustomRules view for backward-compat UI (Phase 6 will use RulesV6 directly).
-	s.CustomRules = legacyCustomRulesFromV6(raw.Rules)
+	s.CustomRules = legacyCustomRulesFromV6(s.Rules)
 
-	syncLegacyFromConnections(s)
+	syncLegacyFromCanonical(s)
 	normalizeNilSlices(s)
 	return s, nil
 }

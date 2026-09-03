@@ -360,6 +360,74 @@ func bindRowGate(
 	})
 }
 
+// bindInterfaceAutoDetect подписывает строку выбора аплинка на галку
+// автоопределения.
+//
+// Отдельно от bindRowGate, потому что зависимость здесь не шаблонная: в
+// wizard_template.json у bind_interface гейта нет (и требовать его от
+// пользовательского шаблона нельзя — файл живёт на диске и переживает
+// обновления), а приоритет auto_detect_interface над default_interface — это
+// свойство самого sing-box. Через GateDeps такая строка не подписалась бы ни на
+// что, и клик по галке не гасил бы дропдаун до пересборки вкладки.
+//
+// Значение поля при гашении НЕ стирается: пользователь вернётся к нему, сняв
+// галку, и терять выбранное имя из-за временного включения автоопределения —
+// худшее, что можно сделать.
+func bindInterfaceAutoDetect(
+	gs *wizardpresentation.GUIState,
+	vd wizardtemplate.TemplateVar,
+	model *wizardmodels.WizardModel,
+	td *wizardtemplate.TemplateData,
+	rowEnabled bool,
+	titleLab *ttwidget.Label,
+	resetBtn *ttwidget.Button,
+	se *widget.SelectEntry,
+	hint *widget.Label,
+) {
+	if gs == nil || gs.SettingsGates == nil || td == nil {
+		return
+	}
+	idx, ok := gs.SettingsGates.(*gateIndex)
+	if !ok {
+		return
+	}
+	target := model.Target.Normalized()
+	varByName := wizardtemplate.VarIndex(td.Vars)
+
+	// Состояние строки = гейт шаблона И отсутствие подавления. Гейт
+	// пересчитывается здесь же: он мог измениться тем же батчем.
+	recalc := func(resolved map[string]wizardtemplate.ResolvedVar) bool {
+		gate := wizardtemplate.VarUISatisfiedFor(vd, varByName, resolved, target)
+		return interfaceRowEnabled(gate, resolved)
+	}
+
+	// Подписка идёт и на auto_detect_interface, и на переменные гейта шаблона:
+	// иначе строка с гейтом получила бы две несогласованные точки пересчёта.
+	deps := append([]string{autoDetectInterfaceVar}, vd.GateDeps()...)
+
+	idx.subscribeOn(deps, rowEnabled, recalc, func(enabled bool) {
+		setRowEnabled(enabled, resetBtn, se)
+		if titleLab != nil {
+			if enabled {
+				titleLab.Importance = widget.MediumImportance
+			} else {
+				titleLab.Importance = widget.LowImportance
+			}
+			titleLab.Refresh()
+		}
+		if hint != nil {
+			// Подпись обязана меняться вместе с полем: «Traffic will go through
+			// this interface» под погашенным дропдауном — прямая ложь.
+			resolved := wizardtemplate.ResolveTemplateVarsFor(
+				td.Vars, model.SettingsVars, td.RawTemplate, target)
+			suppressed := interfacePickSuppressed(resolved)
+			_, hints, pending := interfacePickOptions(model, se.Text)
+			hint.SetText(interfaceHintForRow(
+				model, strings.TrimSpace(se.Text), hints, pending, suppressed))
+		}
+	})
+}
+
 func newSettingsTitleLabel(text string) *ttwidget.Label {
 	l := ttwidget.NewLabel(text)
 	// В container.NewBorder лейбл в позиции leading получает свою MinSize; при TextWrapWord
@@ -420,6 +488,12 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 	model := presenter.Model()
 	gs := presenter.GUIState()
 	box := container.NewVBox()
+
+	// SPEC 113-E (M6): подсказки для поля аплинка греем ЗАРАНЕЕ и в фоне —
+	// у локального пути это подпроцесс `networksetup`, у remote — REST к
+	// машине. Строки вкладки при этом строятся из кэша и не ждут ни того,
+	// ни другого.
+	WarmUpInterfaceHints(model)
 
 	refresh := func() {
 		// SPEC 097: платформа ЦЕЛЕВОЙ машины, не той, где запущен лаунчер.
@@ -640,6 +714,14 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 		// отсюда не перечислить, и без ручного ввода настройка была бы там
 		// недоступна вовсе. Тот же ввод спасает, когда адаптер временно
 		// вынут, а настроить его нужно заранее.
+		// auto_detect_interface перебивает default_interface в самом ядре:
+		// при включённом автоопределении выбранное здесь имя игнорируется.
+		// Поэтому состояние строки = гейт шаблона И отсутствие подавления —
+		// иначе активный дропдаун обещал бы то, чего не будет.
+		resolvedNow := wizardtemplate.ResolveTemplateVarsFor(vars, st, raw, rowTarget)
+		suppressed := interfacePickSuppressed(resolvedNow)
+		rowEnabled = interfaceRowEnabled(rowEnabled, resolvedNow)
+
 		titleLab := newSettingsTitleLabelFor(title, rowEnabled)
 		disp := wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)
 		if v, ok := model.SettingsVars[name]; ok {
@@ -650,28 +732,51 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 		// В выпадающем списке — ЧИСТЫЕ имена: SelectEntry подставляет
 		// выбранный пункт в поле дословно, и подпись вида «en0 — Wi-Fi»
 		// уехала бы в конфиг целиком. Расшифровка живёт строкой ниже.
-		names, hints := interfacePickOptions(model, disp)
+		//
+		// SPEC 113-E (M6): ряд строится из того, что известно СЕЙЧАС. На
+		// remote-таргете это кэш машины: раньше здесь синхронно ходил REST с
+		// mTLS и дедлайном в десятки секунд — на каждый refresh вкладки, — и
+		// неотвечающая машина вешала приложение целиком.
+		names, hints, pending := interfacePickOptions(model, disp)
 		se := widget.NewSelectEntry(names)
 		se.SetText(disp)
 		se.PlaceHolder = locale.T("empty — follow system default route")
 
 		hint := newInterfaceHintLabel()
-		hint.SetText(interfaceHintFor(model, disp, hints))
+		hint.SetText(interfaceHintForRow(model, disp, hints, pending, suppressed))
 
 		se.OnChanged = func(s string) {
 			s = strings.TrimSpace(s)
 			model.SettingsVars[name] = s
-			hint.SetText(interfaceHintFor(model, s, hints))
+			hint.SetText(interfaceHintForRow(model, s, hints, pending, suppressed))
 			presenter.MarkAsChanged()
 			applyOnChangeAndRefresh(presenter, td, model, name)
 			maybeRefreshSettingsAfterVarChange(gs, td, name)
 		}
+
+		// Ответ доехал — дозаполняем список и подпись на месте, не пересобирая
+		// вкладку: пользователь мог уже что-то печатать в поле. Подписка одна
+		// на приложение и вытесняется следующей пересборкой строки.
+		subscribeInterfaceHints(func() {
+			fyne.Do(func() {
+				freshNames, freshHints, stillPending := interfacePickOptions(model, se.Text)
+				hints, pending = freshHints, stillPending
+				se.SetOptions(freshNames)
+				hint.SetText(interfaceHintForRow(model, strings.TrimSpace(se.Text), freshHints, stillPending, suppressed))
+			})
+		})
 
 		field := container.NewVBox(se, hint)
 		row := container.NewBorder(nil, nil, titleLab, resetBtn, field)
 		setVarFieldToolTip(toolTip, titleLab, se)
 		applySettingsRowDisabled(rowEnabled, resetBtn, se)
 		bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, se)
+		// Строка гаснет не только по гейту шаблона, но и по галке
+		// автоопределения — на неё подписываемся отдельно. Без этого клик по
+		// галке оставлял бы дропдаун в прежнем состоянии до пересборки вкладки:
+		// у bind_interface в шаблоне гейта нет вовсе, и в индекс гейтов строка
+		// не попадает.
+		bindInterfaceAutoDetect(gs, vd, model, td, rowEnabled, titleLab, resetBtn, se, hint)
 		return row
 
 	case "outbound", "dns_server":
@@ -723,6 +828,17 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 			model.SettingsVars[name] = s
 			presenter.MarkAsChanged()
 			applyOnChangeAndRefresh(presenter, td, model, name)
+		}
+		// LAN-порты для tun.include_interface — тот же список интерфейсов, что
+		// у пикера аплинка, но мягче отфильтрованный. Поле остаётся источником
+		// правды и принимает ручной ввод: интерфейс может ещё не существовать.
+		if lanIfacePickApplies(name) {
+			field, addBtn := buildLANIfacePickField(gs, model, e)
+			row := container.NewBorder(nil, nil, titleLab, resetBtn, field)
+			setVarFieldToolTip(toolTip, titleLab, e)
+			applySettingsRowDisabled(rowEnabled, resetBtn, e, addBtn)
+			bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, e, addBtn)
+			return row
 		}
 		row := container.NewBorder(nil, nil, titleLab, resetBtn, e)
 		setVarFieldToolTip(toolTip, titleLab, e)

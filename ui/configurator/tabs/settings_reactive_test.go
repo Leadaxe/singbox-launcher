@@ -100,6 +100,51 @@ func TestGateIndexAppliesBothDirections(t *testing.T) {
 	}
 }
 
+// subscribeOn: строка без гейта в шаблоне всё равно обязана пересчитываться по
+// внешней зависимости. Так подписан bind_interface на auto_detect_interface —
+// приоритет диктует ядро, а не шаблон, и через GateDeps эта строка не
+// подписалась бы ни на что.
+func TestGateIndexSubscribeOnExternalDep(t *testing.T) {
+	idx := newGateIndex()
+	var states []bool
+	recalc := func(res map[string]wizardtemplate.ResolvedVar) bool {
+		return interfaceRowEnabled(true, res)
+	}
+	idx.subscribeOn([]string{"auto_detect_interface"}, false, recalc,
+		func(on bool) { states = append(states, on) })
+
+	vars := map[string]wizardtemplate.TemplateVar{
+		"auto_detect_interface": {Name: "auto_detect_interface", Type: "bool"},
+	}
+	off := map[string]wizardtemplate.ResolvedVar{"auto_detect_interface": {Scalar: "false"}}
+	on := map[string]wizardtemplate.ResolvedVar{"auto_detect_interface": {Scalar: "true"}}
+	tgt := wizardtemplate.LocalTarget()
+
+	// Галку сняли — поле включается; поставили обратно — гаснет.
+	idx.recompute([]string{"auto_detect_interface"}, vars, off, tgt)
+	idx.recompute([]string{"auto_detect_interface"}, vars, on, tgt)
+	if len(states) != 2 || !states[0] || states[1] {
+		t.Fatalf("последовательность состояний %v, ожидалась [true false]", states)
+	}
+}
+
+// Регрессия: subscribeOn-подписчик не имеет varName, и общий пересчёт по
+// varByName выбросил бы его молча (`continue` на отсутствующей переменной).
+func TestGateIndexSubscribeOnIgnoresVarByName(t *testing.T) {
+	idx := newGateIndex()
+	calls := 0
+	idx.subscribeOn([]string{"a"}, false,
+		func(map[string]wizardtemplate.ResolvedVar) bool { return true },
+		func(bool) { calls++ })
+
+	// varByName ПУСТ: у подписки собственной переменной нет вовсе.
+	idx.recompute([]string{"a"}, map[string]wizardtemplate.TemplateVar{},
+		map[string]wizardtemplate.ResolvedVar{}, wizardtemplate.LocalTarget())
+	if calls != 1 {
+		t.Fatalf("подписчик обновлён %d раз(а), ожидался 1 — recalc не вызвана", calls)
+	}
+}
+
 // Живой шаблон: gateway_include_interface зависит ровно от tun и gateway_mode.
 func TestBundledTemplateGateDeps(t *testing.T) {
 	td := loadBundledTemplate(t)

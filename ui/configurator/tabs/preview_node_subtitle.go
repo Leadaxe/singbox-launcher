@@ -55,6 +55,12 @@ func previewNodeSubtitle(node *config.ParsedNode) string {
 
 // previewGroupSubtitle описывает группу: режим отбора и размер пула.
 func previewGroupSubtitle(node *config.ParsedNode) string {
+	return previewGroupSubtitleCounted(node, -1)
+}
+
+// previewGroupSubtitleCounted — то же с внешним счётчиком живых членов
+// (annotatePreviewGroupRows); alive < 0 = счёта не было, размер из узла.
+func previewGroupSubtitleCounted(node *config.ParsedNode, alive int) string {
 	groupType, _ := node.Outbound["type"].(string)
 
 	// Тип говорит лишь «ядро выбирает само», но не КАК: у urltest есть своё
@@ -78,9 +84,19 @@ func previewGroupSubtitle(node *config.ParsedNode) string {
 		}
 	}
 
-	members := 0
-	if raw, ok := node.Outbound[configtypes.GroupMembersKey].([]interface{}); ok {
-		members = len(raw)
+	members := alive
+	if members < 0 {
+		members = 0
+		if raw, ok := node.Outbound[configtypes.GroupMembersKey].([]interface{}); ok {
+			members = len(raw)
+		}
+		if members == 0 && len(node.CanonicalGroupMembers) > 0 {
+			// Превью зовёт эмиссию БЕЗ прохода 2: состав канонической группы
+			// там ещё ссылки NodeLink, а не outbounds, и без этой ветки любая
+			// живая авто-группа подписки показывала бы «[0]». Заявленный
+			// размер — fallback для мест без annotatePreviewGroupRows.
+			members = len(node.CanonicalGroupMembers)
+		}
 	}
 
 	label := fmt.Sprintf("%s [%d]", icon, members)
@@ -102,7 +118,7 @@ func previewTransportName(node *config.ParsedNode) string {
 	// «tcp» значит соврать. WireGuard и MASQUE ходят по UDP, QUIC-протоколы
 	// несут транспорт внутри себя.
 	switch node.Scheme {
-	case "wireguard", "masque", "hysteria2", "tuic":
+	case "wireguard", "masque", "hysteria", "hysteria2", "tuic":
 		return ""
 	}
 	tr, ok := node.Outbound["transport"].(map[string]interface{})

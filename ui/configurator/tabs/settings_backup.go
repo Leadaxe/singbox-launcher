@@ -23,6 +23,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/backup"
+	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
@@ -36,6 +37,14 @@ const (
 	settingsBackupExportDoneText    = "Saved to:\n%s\n\nThe file stores passwords and keys as plain text — keep it somewhere safe."
 	settingsBackupHintText          = "Export settings to a file to move them between this launcher and LxBox on your phone. Subscriptions, servers, rules, DNS and portable variables are carried over."
 	settingsBackupSummaryCountsText = "Subscriptions: %d\nServers: %d\nRules: %d\nVariables: %d"
+
+	// Что импорт сделает с тем, что уже настроено. Раньше здесь стояло
+	// «Importing replaces the current sources and rules» — с переходом на
+	// слияние (D-095) это была бы прямая неправда о самом страшном исходе:
+	// пользователь отказывался бы от импорта, боясь потерять свои источники.
+	// Про правила сказано отдельно и честно — они единственные замещаются
+	// целиком; DNS сливается, и обещать его замену тоже было бы неправдой.
+	settingsBackupImportMergeNoteText = "Settings are merged, not replaced: subscriptions match by address, servers by what they connect to, and anything of yours that is not in the file stays. Routing rules are the exception — they are replaced by the file."
 )
 
 // knownPresetIDs — id пресетов текущего шаблона. Пустой список означает
@@ -85,7 +94,7 @@ func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.
 		return
 	}
 
-	b, err := backup.Export(st, backup.ExportOptions{
+	b, exportWarns, err := backup.Export(st, backup.ExportOptions{
 		AppVersion: constants.AppVersion,
 		Platform:   runtime.GOOS,
 	})
@@ -119,10 +128,13 @@ func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.
 
 	// Секреты в файле лежат открытым текстом (BACKUP.md §5) — пользователь
 	// должен знать об этом ДО того, как отправит файл куда-нибудь.
-	dialog.ShowInformation(
-		locale.T("Backup saved"),
-		fmt.Sprintf(locale.T(settingsBackupExportDoneText), path),
-		win)
+	//
+	// Предупреждения экспорта — тем же окном, что у импорта, и БЕЗ обрезки
+	// (SPEC 116 W9, критерий A9): то, что состояние несёт, а формат выразить
+	// не умеет (папки, провайдерские группы), обязано быть названо целиком.
+	// Прежняя модалка резала список на десяти строках и отсылала за
+	// продолжением в отчёт импорта, которого при экспорте не существует.
+	showExportReport(win, path, exportWarns)
 }
 
 // handleBackupImport читает файл, показывает, что приедет, и применяет
@@ -150,7 +162,9 @@ func handleBackupImport(presenter *wizardpresentation.WizardPresenter, win fyne.
 		return
 	}
 
-	// Импорт заменяет состояние целиком — спрашиваем ДО, а не после.
+	// Импорт меняет состояние — спрашиваем ДО, а не после: слияние
+	// оставляет своё, но правила и DNS замещает, и знать об этом надо
+	// заранее.
 	summary := backupSummary(b, parseWarns)
 	dialog.ShowCustomConfirm(
 		locale.T("Import backup"),
@@ -173,7 +187,6 @@ func applyBackup(presenter *wizardpresentation.WizardPresenter, win fyne.Window,
 	}
 
 	res, err := backup.Import(st, b, backup.ImportOptions{
-		Mode: backup.ImportReplace,
 		// Известные цели берём из модели: правило, ссылающееся в никуда,
 		// приедет выключенным, а не уронит конфиг ядра.
 		KnownOutbounds: wizardbusiness.GetAvailableOutbounds(presenter.Model()),
@@ -191,11 +204,21 @@ func applyBackup(presenter *wizardpresentation.WizardPresenter, win fyne.Window,
 	presenter.SyncModelToGUI()
 	presenter.MarkAsChanged()
 
+	// SPEC 115: импорт — единственная правка модели, которую делают, СТОЯ на
+	// вкладке «Итог» (блок импорта живёт на ней). MarkAsChanged выше уже
+	// стёр отчёт, но экран и кнопка Save остались от прошлой сборки: без
+	// пересборки пользователь смотрел бы на отчёт чужого состояния и мог бы
+	// его сохранить. Остальные вкладки такой проводки не требуют — на «Итог»
+	// с них попадают входом, а вход и есть сборка.
+	if guiState := presenter.GUIState(); guiState != nil && guiState.RunFinalBuild != nil {
+		guiState.RunFinalBuild()
+	}
+
 	all := append(append([]backup.Warning(nil), parseWarns...), res.Warnings...)
-	dialog.ShowInformation(
-		locale.T("Backup imported"),
-		importReport(res, all),
-		win)
+	// Отчёт — не «ок, понял»: потери надо прочитать целиком, поэтому список
+	// уезжает в своё окно без обрезки (settings_backup_report_window.go).
+	// Вызов идёт с UI-потока (обработчик подтверждения), fyne.Do не нужен.
+	showImportReport(win, res, all)
 }
 
 // backupSummary — что лежит в файле, до применения.
@@ -208,34 +231,34 @@ func backupSummary(b *backup.Backup, warns []backup.Warning) string {
 		len(b.Subscriptions), len(b.Servers), len(b.Rules), len(b.Vars))
 	if len(warns) > 0 {
 		sb.WriteString("\n\n")
-		sb.WriteString(warnLines(warns))
+		sb.WriteString(warnLines(warns, backupSummaryWarnLimit))
 	}
 	sb.WriteString("\n\n")
-	sb.WriteString(locale.T("Importing replaces the current sources and rules."))
+	sb.WriteString(locale.T(settingsBackupImportMergeNoteText))
 	return sb.String()
 }
 
-// importReport — что применилось и что нет.
-func importReport(res *backup.ImportResult, warns []backup.Warning) string {
-	var sb strings.Builder
-	fmt.Fprintf(&sb, locale.T("Applied: %d source(s), %d rule(s)."),
-		res.AppliedSources, res.AppliedRules)
-	if len(warns) > 0 {
-		sb.WriteString("\n\n")
-		sb.WriteString(warnLines(warns))
-	}
-	return sb.String()
-}
+// backupSummaryWarnLimit — сколько потерь показываем в модалке подтверждения.
+//
+// Модалка отвечает на «стоит ли вообще импортировать», а не «что именно
+// потеряется»: полный список живёт в окне отчёта после импорта, куда обрезка и
+// отсылает. Ограничение здесь не косметика — высокий модальный попап в Fyne
+// раздувает окно ([[fyne-label-minwidth-trap]]).
+const backupSummaryWarnLimit = 20
 
 // warnLines превращает коды в читаемые строки. Код без пояснения ничего не
 // говорит пользователю — он не читал реестр.
-func warnLines(warns []backup.Warning) string {
+//
+// limit <= 0 означает «без обрезки».
+func warnLines(warns []backup.Warning, limit int) string {
 	var sb strings.Builder
 	sb.WriteString(locale.T("Not applied as-is:"))
 	shown := 0
 	for _, w := range warns {
-		if shown >= 12 {
+		if limit > 0 && shown >= limit {
 			fmt.Fprintf(&sb, "\n… +%d", len(warns)-shown)
+			sb.WriteString("\n")
+			sb.WriteString(locale.T(settingsBackupReportMoreText))
 			break
 		}
 		sb.WriteString("\n• ")
@@ -257,10 +280,79 @@ func warnText(w backup.Warning) string {
 		return fmt.Sprintf(locale.T("%s — this setting means something else on this machine, skipped"), w.Detail)
 	case backup.WarnBackupUnknownField:
 		return fmt.Sprintf(locale.T("%s — not supported here, skipped"), w.Detail)
+	case backup.WarnBackupFieldTypeMismatch:
+		// Ключ знакомый, а тип чужой: сказать «не поддержано» было бы
+		// неправдой — поле есть, разошлась его форма.
+		return fmt.Sprintf(locale.T("%s — this field means something different here, its value is skipped"), w.Detail)
+	case backup.WarnBackupExtensionsDropped:
+		// Один warning на файл: extensions — упразднённый карман, а не
+		// лишний ключ, и перечислять его внутренности значило бы утопить
+		// пользователя в списке вместо объяснения.
+		return fmt.Sprintf(locale.T("this backup was made by an older version and carries an \"extensions\" section (%s); the shared fields were imported, the rest is dropped"), w.Detail)
+	case backup.WarnBackupSourceKindUnsupported:
+		return unsupportedSourceWarnText(w)
 	case backup.WarnBackupChainExists:
 		return fmt.Sprintf(locale.T("%s — a chain with this name already exists here, the incoming one is skipped"), w.Detail)
+	case backup.WarnBackupDirectionExists:
+		return fmt.Sprintf(locale.T("%s — a Direction with this tag already exists here, the incoming one is skipped"), w.Detail)
+	case backup.WarnBackupTagMaskDropped:
+		return fmt.Sprintf(locale.T("%s — the tag mask is gone, only prefix and postfix apply now"), w.Detail)
+	case backup.WarnBackupLocalDirectionDropped:
+		return fmt.Sprintf(locale.T("%s — per-source Directions are gone, this one is not imported (create a global Direction with a filter instead)"), w.Detail)
+	case backup.WarnBackupReplaceTagDerived:
+		// Detail несёт оба имени («тег → дериватив»): пользователь обязан
+		// увидеть, под каким именем группа окажется на приёмнике.
+		return fmt.Sprintf(locale.T("%s — the shared format has no field for the replacement tag: after import the group will carry the derived name, and rules aimed at the old one arrive turned off"), w.Detail)
+	case backup.WarnBackupSourceIdentityDropped:
+		return fmt.Sprintf(locale.T("%s — these subscription settings are not part of the shared format and did not go into the file; the provider may return a different set of nodes on the other machine"), w.Detail)
+	case backup.WarnBackupSourceFlagDropped:
+		return fmt.Sprintf(locale.T("%s — the \"exclude from the global list\" flag is gone; its nodes stay in the candidate pool (fold the source into a group for the previous behaviour)"), w.Detail)
+	case backup.WarnBackupLabelDropped:
+		return fmt.Sprintf(locale.T("%s — label dropped, a node is named by its tag"), w.Detail)
 	default:
+		// Сюда попадать не должно: каждый код обязан иметь свою фразу выше.
+		// Сырой код остаётся последним рубежом, чтобы новое предупреждение
+		// не пропало молча, если фразу забыли.
 		return w.Code + ": " + w.Detail
+	}
+}
+
+// unsupportedSourceWarnText — запись, которой в файле не будет вовсе
+// (SPEC 116 W9, §O1=А).
+//
+// Три вещи обязаны прозвучать в одной строке: ЧТО потеряно (папка или
+// провайдерская группа — код у них общий, а слова разные), КАК её зовут и
+// СКОЛЬКО узлов уехало вместе с ней. Без числа «папка не поддержана»
+// читается как мелкая оговорка формата, хотя на деле это решение не
+// восстанавливаться из этого файла.
+//
+// Ноль узлов — не «нет данных», а пустая папка: числа тогда нет, потому что
+// терять нечего кроме самой папки.
+func unsupportedSourceWarnText(w backup.Warning) string {
+	name := w.Detail
+	if name == "" {
+		name = locale.T("unnamed")
+	}
+	switch w.Kind {
+	case string(corestate.SourceKindFolder):
+		if w.Nodes > 0 {
+			return fmt.Sprintf(
+				locale.T("folder \"%s\" and its %d node(s) did not make it into the file: this backup format cannot carry folders yet"),
+				name, w.Nodes)
+		}
+		return fmt.Sprintf(
+			locale.T("folder \"%s\" did not make it into the file: this backup format cannot carry folders yet"),
+			name)
+	case string(corestate.SourceKindAuto):
+		return fmt.Sprintf(
+			locale.T("group \"%s\" did not make it into the file: this backup format cannot carry provider groups yet"),
+			name)
+	default:
+		// Новый вид источника без своей ветки: сказать «не поехало» честнее,
+		// чем показать машинный код. Ветка обязана появиться вместе с видом.
+		return fmt.Sprintf(
+			locale.T("%s — this backup format cannot carry it, the record did not make it into the file"),
+			name)
 	}
 }
 

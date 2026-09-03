@@ -13,8 +13,32 @@ import (
 
 // filterNodesForSelector returns nodes that match the filter. filter may be nil (all nodes),
 // a single map (AND of key/pattern), or a slice of maps (OR of maps). Empty map = no filter.
-// FilterNodesExcludeFromGlobal drops nodes whose source has exclude_from_global (SPEC 026).
-func FilterNodesExcludeFromGlobal(allNodes []*ParsedNode, proxies []ProxySource) []*ParsedNode {
+//
+// FilterDirectionCandidatePool — ПУЛ КАНДИДАТОВ Направлений
+// (SPEC 118 W4, Т5; features/directions.md §2).
+//
+// Правило пула, и ничего кроме него:
+//
+//   - верхние узлы — все до единого;
+//   - узлы папок БЕЗ replace — под финальными тегами;
+//   - у папок С replace вместо узлов пул видит только теги замены (их
+//     подмешивает генератор селекторов, см. collectExposeTagCandidates);
+//   - служебные узлы (релеи BYPASS, SPEC 120) — только если их источник
+//     это разрешил галкой `RelaysInDirections`.
+//
+// Про релеи. Релей — дозвонщик внутри чужого маршрута, а не «страна»,
+// которую выбирают, и по умолчанию Направлению он не кандидат. Раньше это
+// правило жило ТОЛЬКО в пикере формы (business.NodesForDirectionPicker), а
+// сборка считала состав заново по фильтрам — и Направление с фильтром по
+// `scheme` или `host` молча забирало релеи, хотя в списке их не показывали.
+// Два разных ответа на «кто входит в Направление» — это и есть дефект;
+// правило обязано быть одно, и оно здесь.
+//
+// Механизма «спрятать узел из пула поштучно» не существует: кому служебный
+// транспорт мешает — заводит фильтр или убирает транспорт в папку. Узел вне
+// пула по-прежнему эмитится в outbounds и легален как хоп цепочки, цель
+// detour и член Auto — пул это видимость для Направлений, не для конфига.
+func FilterDirectionCandidatePool(allNodes []*ParsedNode, proxies []ProxySource) []*ParsedNode {
 	if len(allNodes) == 0 {
 		return allNodes
 	}
@@ -25,7 +49,13 @@ func FilterNodesExcludeFromGlobal(allNodes []*ParsedNode, proxies []ProxySource)
 			out = append(out, n)
 			continue
 		}
-		if proxies[idx].ExcludeFromGlobal {
+		cs := proxies[idx].Canonical
+		// Свёрнутая папка представлена в пуле только тегами замены.
+		if cs != nil && cs.IsContainer && cs.Replace != nil {
+			continue
+		}
+		// Служебный узел — только с разрешения своего источника.
+		if n.Service && (cs == nil || !cs.RelaysInDirections) {
 			continue
 		}
 		out = append(out, n)
@@ -93,7 +123,7 @@ func convertFilterToStringMap(filter map[string]interface{}) map[string]string {
 			continue
 		}
 		if !configtypes.PatternCompiles(str) {
-			debuglog.WarnLog("filters: %q=%q — некорректное выражение, ключ пропущен", k, str)
+			debuglog.WarnLog("filters: %q=%q — malformed expression, key skipped", k, str)
 			continue
 		}
 		result[k] = str
@@ -162,7 +192,7 @@ func matchesPattern(value, pattern string) bool {
 // (i.e. result of the same LoadNodesFromSource pipeline that GenerateOutboundsFromParserConfig uses).
 // PreviewGlobalSelectorNodes applies exclude_from_global, then the same filter logic as PreviewSelectorNodes.
 func PreviewGlobalSelectorNodes(allNodes []*ParsedNode, proxies []ProxySource, outboundConfig Direction) ([]*ParsedNode, string) {
-	pool := FilterNodesExcludeFromGlobal(allNodes, proxies)
+	pool := FilterDirectionCandidatePool(allNodes, proxies)
 	return PreviewSelectorNodes(pool, outboundConfig)
 }
 

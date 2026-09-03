@@ -30,6 +30,8 @@ func ShareURIFromOutbound(out map[string]interface{}) (string, error) {
 		return shareURIFromShadowsocks(out)
 	case "socks":
 		return shareURIFromSocks(out)
+	case "hysteria":
+		return shareURIFromHysteria(out)
 	case "hysteria2":
 		return shareURIFromHysteria2(out)
 	case "tuic":

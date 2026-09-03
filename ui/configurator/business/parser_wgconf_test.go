@@ -27,7 +27,7 @@ func TestClassifyInputLines_WGConfText(t *testing.T) {
 		"AllowedIPs = 0.0.0.0/0\n" +
 		"Endpoint = 203.0.113.7:38291\n"
 
-	subs, conns := classifyInputLines(input, noopTiming{})
+	subs, conns, rawOf := classifyInputLines(input, noopTiming{})
 	if len(subs) != 1 || subs[0] != "https://example.com/sub" {
 		t.Errorf("subscriptions = %v, want the single sub URL", subs)
 	}
@@ -40,12 +40,24 @@ func TestClassifyInputLines_WGConfText(t *testing.T) {
 	if !strings.HasPrefix(conns[1], "wireguard://") || !strings.Contains(conns[1], "jc=4") {
 		t.Errorf("conns[1] = %q, want converted wireguard:// URI with AWG params", conns[1])
 	}
+	// SPEC 119: у конвертированного блока исходником остаётся сам блок —
+	// иначе вставленный конфиг теряет комментарии, а Regen пересобирает узел
+	// из нашей же ссылки.
+	if len(rawOf) != len(conns) {
+		t.Fatalf("rawOf = %v, must be parallel to connections", rawOf)
+	}
+	if rawOf[0] != "" {
+		t.Errorf("rawOf[0] = %q, want empty: a link is its own origin", rawOf[0])
+	}
+	if !strings.Contains(rawOf[1], "[Interface]") || !strings.Contains(rawOf[1], "Jc = 4") {
+		t.Errorf("rawOf[1] = %q, want the pasted [Interface] block verbatim", rawOf[1])
+	}
 }
 
 // Невалидный блок пропускается, остальной ввод обрабатывается.
 func TestClassifyInputLines_BrokenWGConfBlock(t *testing.T) {
 	input := "vless://uuid@host:443#srv\n[Interface]\nPrivateKey = x\n"
-	subs, conns := classifyInputLines(input, noopTiming{})
+	subs, conns, _ := classifyInputLines(input, noopTiming{})
 	if len(subs) != 0 || len(conns) != 1 || !strings.HasPrefix(conns[0], "vless://") {
 		t.Errorf("broken conf block must not break the paste: subs=%v conns=%v", subs, conns)
 	}

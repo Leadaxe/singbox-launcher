@@ -14,9 +14,11 @@ import (
 
 // Save атомарно записывает s в path.
 //
-// SPEC 060 Phase 5: single write path. После collapse v5/v6 namespaces и
-// migration с SPEC 053/056/058 все state'ы пишутся в canonical (v6) shape.
-// `useV6` gate и dual marshalDisk удалены.
+// Единственный формат записи — v7 (SPEC 118 W1). Ветвления по версии схемы
+// нет и быть не может: старые формы существуют только на чтении (Load
+// роутит их в миграцию), а на диск состояние уходит всегда каноническим —
+// иначе один и тот же state давал бы разные файлы в зависимости от того,
+// откуда он приехал.
 //
 // SPEC 058-R-N: backup перед первым перезаписыванием когда outbounds содержат
 // referenced entries (post-migration shape). Lossless rollback гарантирован.
@@ -32,10 +34,11 @@ func (s *State) Save(path string) error {
 	}
 	s.UpdatedAt = now
 
-	// Sync legacy → canonical перед сериализацией.
-	syncConnectionsFromLegacy(s)
-
-	s.Version = SchemaVersionV6
+	// SPEC 117 (W4): обратного синка legacy → canonical больше нет. Save
+	// сериализует ТОЛЬКО canonical (s.Sources/s.Directions/...); s.ParserConfig
+	// — read-only Load-проекция, Save её не читает. Все мутации обязаны идти
+	// в canonical-поля. SPEC 118 (W1): единственный формат записи — v7.
+	s.Version = SchemaVersionV7
 
 	// SPEC 058-R-N: backup перед первым перезаписыванием когда outbounds
 	// содержат referenced entries (post-migration shape). Gate idempotent
@@ -85,27 +88,45 @@ func (s *State) Save(path string) error {
 	return nil
 }
 
-// marshalDisk — сериализация State в canonical (v6) shape (SPEC 053 + SPEC 056-R-N).
+// MarshalV7 — состояние в форме v7, БЕЗ записи на диск и без мутаций
+// (SPEC 118 Т10).
+//
+// Нужна отладочным поверхностям (`GET /state/full` и близнец машины). Без неё
+// они отдавали Go-структуру `State` как есть: PascalCase-ключи, мёртвые
+// легаси-поля (`Defaults`, `SelectableRuleStates`, `RulesLibraryMerged`,
+// `DNSOptions:null`) и read-only Load-проекция `ParserConfig`. То есть ответ
+// показывал ВНУТРЕННОСТИ загрузчика, а не состояние, и расходился с тем, что
+// лежит в файле, — при отладке миграции v7 это худшая из возможных подмен.
+//
+// Форма следует за схемой без обязательств совместимости: это локальный
+// интерфейс, а контракт переноса — бэкап 0.11.
+func (s *State) MarshalV7() ([]byte, error) {
+	if s == nil {
+		return nil, fmt.Errorf("state: MarshalV7 called on nil receiver")
+	}
+	return s.marshalDisk()
+}
+
+// marshalDisk — сериализация State в canonical (v7) shape (SPEC 118).
 //
 //	{
-//	  "meta":        { version: 6, schema: "presets_v1", ... },
-//	  "connections": { ... },
-//	  "rules":       [ {kind, ref|id, enabled, body} ],
-//	  "vars":        [ ... ],                                  // dns_* scalars живут здесь
-//	  "dns_options": {                                          // SPEC 056-R-N
-//	    "servers": [ {kind:template|preset|user, tag|ref, enabled, ...body} ],
-//	    "rules":   [ {kind:preset|user, ref|..., enabled, ...body} ]
-//	  }
+//	  "meta":          { version: 7, schema: "sources_v7", ... },
+//	  "sources":       [ {kind, tag, enabled, ...} ],
+//	  "directions":    [ ... ],
+//	  "rules":         [ {kind, ref|id, enabled, body} ],
+//	  "vars":          [ ... ],                                 // dns_* scalars
+//	  "dns_options":   { servers: [...], rules: [...] },        // SPEC 056-R-N
+//	  "warp_accounts": { ... }
 //	}
 //
-// SPEC 060 Phase 5: единственный write path — `marshalDiskV6` rename'нут в
-// `marshalDisk`, старый v5-marshaller удалён. Legacy `s.CustomRules` /
-// `s.DNSOptions` НЕ сериализуются — источник истины Rules / DNS.
+// Legacy `s.CustomRules` / `s.DNSOptions` НЕ сериализуются — источник истины
+// Rules / DNS. Легаси-ключей v6 нет ни в корне, ни внутри sources[]: их
+// читает только вход миграции, и записывать их некуда (SPEC Т1).
 func (s *State) marshalDisk() ([]byte, error) {
-	out := diskStateV6{
+	out := diskStateV7{
 		Meta: MetaSection{
-			Version:   SchemaVersionV6,
-			Schema:    SchemaName,
+			Version:   SchemaVersionV7,
+			Schema:    SchemaNameV7,
 			Comment:   s.Comment,
 			CreatedAt: s.CreatedAt.Format(time.RFC3339),
 			UpdatedAt: s.UpdatedAt.Format(time.RFC3339),
@@ -114,28 +135,22 @@ func (s *State) marshalDisk() ([]byte, error) {
 			TargetPlatform: s.TargetPlatform,
 			TargetArch:     s.TargetArch,
 		},
-		Connections:  s.Connections,
+		Sources:      s.Sources,
+		Directions:   s.Directions,
 		Rules:        s.Rules,
 		Vars:         s.Vars,
 		DNSOptions:   s.DNS,
 		WarpAccounts: s.WarpAccounts,
-
-		// Чужие блобы бэкапа пишутся как есть.
-		ForeignBackupExtensions: s.ForeignBackupExtensions,
 	}
 	if out.Rules == nil {
 		out.Rules = []Rule{}
 	}
-	if out.Connections.Sources == nil {
-		out.Connections.Sources = []Source{}
+	if out.Sources == nil {
+		out.Sources = []Source{}
 	}
-	if out.Connections.Outbounds == nil {
-		out.Connections.Outbounds = []configtypes.Direction{}
+	if out.Directions == nil {
+		out.Directions = []configtypes.Direction{}
 	}
-	// Прежний ключ `outbounds` не пишем никогда (SPEC 104): он читается для
-	// совместимости, но два набора направлений в одном файле означали бы,
-	// что следующая загрузка может выбрать не тот.
-	out.Connections.LegacyOutbounds = nil
 	// SetEscapeHTML(false): по умолчанию encoding/json экранирует «&», «<» и
 	// «>» в & и подобное — защита для вставки JSON в HTML-страницу,
 	// которая здесь не нужна. В state.json попадают URL подписок и строки
@@ -154,10 +169,10 @@ func (s *State) marshalDisk() ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
-// hasReferencedOutbounds — true если хотя бы один outbound в state.Connections.Outbounds
+// hasReferencedOutbounds — true если хотя бы одно Направление в s.Directions
 // имеет непустой Ref (referenced shape, SPEC 058).
 func hasReferencedOutbounds(s *State) bool {
-	for _, ob := range s.Connections.Outbounds {
+	for _, ob := range s.Directions {
 		if ob.Ref != "" {
 			return true
 		}

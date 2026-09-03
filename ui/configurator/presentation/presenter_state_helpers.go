@@ -28,14 +28,13 @@ func (p *WizardPresenter) extractConfigParams() []wizardmodels.ConfigParam {
 	return []wizardmodels.ConfigParam{}
 }
 
-// restoreParserConfig — SPEC 052 phase 8: переносит state.Connections в
-// model.{Sources,GlobalOutbounds,Defaults} (canonical) и обновляет derived
-// `ParserConfig`/`ParserConfigJSON` для UI/parser callsite'ов.
+// restoreParserConfig — переносит state.Connections в
+// model.{Sources,GlobalOutbounds,Defaults} (canonical) и поднимает ревизию
+// модели: производные результаты перечитаются от свежезагруженного состава.
 func (p *WizardPresenter) restoreParserConfig(stateFile *wizardmodels.WizardStateFile) error {
 	// Sources canonical из v5 Connections.
-	p.model.Sources = append([]wizardmodels.Source(nil), stateFile.Connections.Sources...)
-	p.model.GlobalOutbounds = append([]configtypes.Direction(nil), stateFile.Connections.Outbounds...)
-	p.model.Defaults = stateFile.Connections.Defaults
+	p.model.Sources = append([]wizardmodels.Source(nil), stateFile.Sources...)
+	p.model.GlobalOutbounds = append([]configtypes.Direction(nil), stateFile.Directions...)
 	p.model.WarpAccounts = stateFile.WarpAccounts
 
 	// Validate: на свежей миграции должна быть хотя бы пустая slice.
@@ -62,9 +61,10 @@ func (p *WizardPresenter) restoreParserConfig(stateFile *wizardmodels.WizardStat
 		}
 	}
 
-	// Refresh derived view (ParserConfig + ParserConfigJSON) для UI.
-	p.model.RefreshDerivedParserConfig()
-	wizardbusiness.InvalidatePreviewCache(p.model)
+	// Restore на Load — тоже мутация модели: производные результаты
+	// (генерация, мемо) обязаны перечитаться от свежезагруженного состава.
+	p.model.BumpRevision()
+	wizardbusiness.InvalidateNodePool(p.model)
 	return nil
 }
 
@@ -99,9 +99,9 @@ func (p *WizardPresenter) restorePresetRefs(state *wizardmodels.WizardStateFile)
 
 	// Restore RuleOrder из state.Rules (preserve порядок between save/load).
 	// Порядок задаёт ось (OrderNum), а не позиция в слайсе — сортировку и
-	// раздачу номеров в модель делает RuleOrderFromStateRulesV6 (SPEC 106).
+	// раздачу номеров в модель делает RuleOrderFromAxis (SPEC 106).
 	// Fallback на дефолтную последовательность если state v5 (нет RulesV6).
-	order := wizardmodels.RuleOrderFromStateRulesV6(state.Rules, p.model.PresetRefs, p.model.CustomRules)
+	order := wizardmodels.RuleOrderFromAxis(state.Rules, p.model.PresetRefs, p.model.CustomRules)
 	if len(order) == 0 {
 		wizardmodels.RebuildRuleOrder(p.model)
 	} else {

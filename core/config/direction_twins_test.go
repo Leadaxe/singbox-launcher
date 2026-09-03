@@ -43,8 +43,7 @@ func directionTestOptions() DirectionBuildOptions {
 // разобранные группы по тегу. Тест проверяет то же, что увидит ядро.
 func generateDirections(t *testing.T, pc *ParserConfig, nodes []*ParsedNode, opts DirectionBuildOptions) map[string]map[string]interface{} {
 	t.Helper()
-	res, err := GenerateOutboundsFromParserConfig(
-		pc, map[string]int{}, nil, naiveDegradeLoadNodes(nodes), opts)
+	res, err := generateWithCanonicalNodes(t, pc, nodes, opts)
 	if err != nil {
 		t.Fatalf("генерация: %v", err)
 	}
@@ -388,8 +387,7 @@ func TestEmptyDirectionReportedToUI(t *testing.T) {
 		Tag: "vpn-1", Type: "selector",
 		Filters: map[string]interface{}{"tag": configtypes.DirectionFilterPattern("НЕТ-ТАКИХ", false)},
 	})
-	res, err := GenerateOutboundsFromParserConfig(pc, map[string]int{}, nil,
-		naiveDegradeLoadNodes(directionTestNodes("DE-1")), directionTestOptions())
+	res, err := generateWithCanonicalNodes(t, pc, directionTestNodes("DE-1"), directionTestOptions())
 	if err != nil {
 		t.Fatalf("генерация: %v", err)
 	}
@@ -403,8 +401,7 @@ func TestEmptyDirectionReportedToUI(t *testing.T) {
 func TestNoWarningWhenFilterIsNotToBlame(t *testing.T) {
 	// Узлы есть, фильтра нет — направление непустое, предупреждать не о чем.
 	pc := directionTestConfig(configtypes.Direction{Tag: "vpn-1", Type: "selector"})
-	res, err := GenerateOutboundsFromParserConfig(pc, map[string]int{}, nil,
-		naiveDegradeLoadNodes(directionTestNodes("DE-1")), directionTestOptions())
+	res, err := generateWithCanonicalNodes(t, pc, directionTestNodes("DE-1"), directionTestOptions())
 	if err != nil {
 		t.Fatalf("генерация: %v", err)
 	}

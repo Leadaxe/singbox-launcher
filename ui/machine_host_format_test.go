@@ -134,56 +134,87 @@ func TestHostMountFlags(t *testing.T) {
 	}
 }
 
-func TestHostIfaceErrorsQuietWhenClean(t *testing.T) {
-	// Ноль ошибок — норма; печатать его в каждой строке значит приучить глаз
-	// пролистывать колонку, в которой однажды появится ненулевое число.
-	if got := hostIfaceErrors(lxdclient.HostInterface{}); got != "" {
-		t.Fatalf("hostIfaceErrors на чистом интерфейсе = %q, хотели пусто", got)
+// Ошибки и потери в карточке печатаются ВСЕГДА, нулями в том числе: пропавшая
+// пара читалась бы как «не измеряли». Тревожность отделена от наличия —
+// её решает hostIfaceClean, а не отсутствие текста.
+func TestHostIfaceTotalsAlwaysCarryErrorsAndDrops(t *testing.T) {
+	clean := lxdclient.HostInterface{RxBytes: 100, TxBytes: 200}
+	if !hostIfaceClean(clean) {
+		t.Fatalf("hostIfaceClean на интерфейсе без ошибок = false")
+	}
+	got := hostIfaceTotals(clean)
+	if !strings.Contains(got, "0/0") {
+		t.Fatalf("hostIfaceTotals чистого = %q: нули обязаны быть видны", got)
 	}
 	// Реальные цифры eth1 роутера: дропы без единой ошибки.
 	dirty := lxdclient.HostInterface{RxErrors: 120, RxDropped: 51870}
-	got := hostIfaceErrors(dirty)
+	if hostIfaceClean(dirty) {
+		t.Fatalf("hostIfaceClean с дропами = true")
+	}
+	got = hostIfaceTotals(dirty)
 	if !strings.Contains(got, "120") || !strings.Contains(got, "51870") {
-		t.Fatalf("hostIfaceErrors = %q, ждали обе цифры", got)
+		t.Fatalf("hostIfaceTotals = %q, ждали обе цифры", got)
 	}
 }
 
-func TestHostIfaceRatesFirstSample(t *testing.T) {
-	// До второго замера скоростей нет — в обеих колонках прочерк.
-	first := lxdclient.HostInterface{RxBytes: 100, TxBytes: 200}
-	if got := hostIfaceRxRate(first); got != hostDash {
-		t.Fatalf("hostIfaceRxRate на первом замере = %q, хотели прочерк", got)
+func TestHostIfaceSpeedsFirstSample(t *testing.T) {
+	// До второго замера скоростей нет — в обоих направлениях прочерк.
+	first := lxdclient.HostInterface{Up: true, RxBytes: 100, TxBytes: 200}
+	if got := hostIfaceSpeeds(first); !strings.Contains(got, hostDash) {
+		t.Fatalf("hostIfaceSpeeds на первом замере = %q, хотели прочерки", got)
 	}
-	if got := hostIfaceTxRate(first); got != hostDash {
-		t.Fatalf("hostIfaceTxRate на первом замере = %q, хотели прочерк", got)
+	// У лежачего вместо прочерков — причина: скоростей нет по построению.
+	down := lxdclient.HostInterface{RxBytes: 100}
+	if got := hostIfaceSpeeds(down); !strings.Contains(got, "down") {
+		t.Fatalf("hostIfaceSpeeds лежачего = %q, хотели причину", got)
 	}
-	// Счётчики при этом уже есть: именно они переживают разрывы.
+	// Счётчики при этом есть сразу: именно они переживают разрывы.
 	live := lxdclient.HostInterface{RxBytes: 24059590498, TxBytes: 24263091456}
-	if got := hostIfaceRxTotal(live); strings.Contains(got, hostDash) {
-		t.Fatalf("hostIfaceRxTotal = %q: счётчики доступны сразу", got)
-	}
-	if got := hostIfaceTxTotal(live); strings.Contains(got, hostDash) {
-		t.Fatalf("hostIfaceTxTotal = %q: счётчики доступны сразу", got)
+	if got := hostIfaceTotals(live); strings.Contains(got, hostDash) {
+		t.Fatalf("hostIfaceTotals = %q: счётчики доступны сразу", got)
 	}
 }
 
-// Значения ячеек не несут стрелок: направление задаёт колонка, а пробел после
-// ↑/↓ в этом шрифте рвёт отрисовку.
-func TestHostIfaceCellsCarryNoArrows(t *testing.T) {
-	i := lxdclient.HostInterface{RxBytes: 1 << 20, TxBytes: 1 << 21, MTU: 1500}
-	for name, got := range map[string]string{
-		"rx_total": hostIfaceRxTotal(i),
-		"tx_total": hostIfaceTxTotal(i),
-		"rx_rate":  hostIfaceRxRate(i),
-		"tx_rate":  hostIfaceTxRate(i),
-		"mtu":      hostIfaceMTU(i),
-	} {
-		if strings.ContainsAny(got, "↑↓") {
-			t.Fatalf("%s = %q: стрелка живёт в шапке колонки, не в ячейке", name, got)
+// hostCount считает штуки десятичными тысячами: пакеты — не байты, и деление
+// на 1024 дало бы просто неверное число.
+func TestHostCountDecimalThousands(t *testing.T) {
+	cases := []struct {
+		in   uint64
+		want string
+	}{
+		{0, "0"},
+		{999, "999"},
+		{1000, "1K"},
+		{948_000, "948K"},
+		{1_200_000, "1.2M"},
+		{2_500_000_000, "2.5G"},
+	}
+	for _, c := range cases {
+		if got := hostCount(c.in); got != c.want {
+			t.Fatalf("hostCount(%d) = %q, хотели %q", c.in, got, c.want)
 		}
 	}
-	if got := hostIfaceMTU(lxdclient.HostInterface{}); got != hostDash {
-		t.Fatalf("hostIfaceMTU без MTU = %q: нулевого MTU не бывает", got)
+}
+
+// Пустые поля интерфейса — законные состояния, а не ошибка чтения: у туннеля
+// нет MAC вовсе, у радиоинтерфейса в мосте нет адресов.
+func TestHostIfaceEmptyFieldsAreLegal(t *testing.T) {
+	bare := lxdclient.HostInterface{Name: "tun0"}
+	if got := hostIfaceMAC(bare); got != "" {
+		t.Fatalf("hostIfaceMAC без MAC = %q: у туннеля канального адреса нет", got)
+	}
+	if got := hostIfaceAddresses(bare); got == "" {
+		t.Fatalf("hostIfaceAddresses без адресов = пусто: о пустоте надо сказать словами")
+	}
+	if got := hostIfaceMTUText(bare); got != "" {
+		t.Fatalf("hostIfaceMTUText без MTU = %q: нулевого MTU не бывает", got)
+	}
+	// Все адреса, включая link-local v6: по нему опознают интерфейс без
+	// конфигурации, и прятать его значило бы врать про «показываем всё».
+	full := lxdclient.HostInterface{Addresses: []string{"93.100.173.230/24", "fe80::a1b2/64"}}
+	got := hostIfaceAddresses(full)
+	if !strings.Contains(got, "93.100.173.230/24") || !strings.Contains(got, "fe80::a1b2/64") {
+		t.Fatalf("hostIfaceAddresses = %q, ждали оба адреса", got)
 	}
 }
 

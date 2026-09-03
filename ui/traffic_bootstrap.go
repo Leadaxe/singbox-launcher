@@ -141,7 +141,7 @@ func applyDNSSource(ac *core.AppController, p *tprof.TrafficProfiler) {
 	}
 	subscribe, ok := subAny.(func(func(services.DNSQuery), func()) (func(), error))
 	if !ok {
-		debuglog.WarnLog("traffic: неожиданный тип источника DNS %T", subAny)
+		debuglog.WarnLog("traffic: unexpected DNS source type %T", subAny)
 		return
 	}
 	cancel, err := subscribe(

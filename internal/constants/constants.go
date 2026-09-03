@@ -9,6 +9,17 @@ const (
 	ConfigFileName         = "config.json"
 	SingBoxExecName        = "sing-box"
 	WizardTemplateFileName = "wizard_template.json"
+	// WizardTemplateVersionFileName — маркер рядом с шаблоном: версия лаунчера,
+	// под которую шаблон положил УСТАНОВЩИК (архив win64-full, install-macos.sh).
+	// Совпал с AppVersion — шаблон свежий, и первый запуск его не сносит
+	// (core.InvalidateTemplateIfStale). Сам лаунчер маркер не пишет.
+	WizardTemplateVersionFileName = "wizard_template.version"
+	// MesaBundleDirName — папка рядом с exe, куда архив win64-full кладёт DLL
+	// Mesa3D. Не рядом с exe напрямую: лежащий рядом opengl32.dll загрузчик
+	// Windows взял бы всегда, и машина с живым GPU рисовала бы через llvmpipe.
+	// Из папки DLL копируются только когда проба показала, что аппаратного
+	// OpenGL нет (platform.EnsureDesktopOpenGL).
+	MesaBundleDirName = "mesa3d"
 	// LegacyRemoteConfigFileName — bin/remote-config.json, единственный
 	// конфиг удалённой машины до SPEC 098.
 	//
@@ -117,7 +128,7 @@ const SingboxCoreRepo = "Leadaxe/sing-box-lx" // core for all platforms (XHTTP +
 // `sing-box version`, so the strict-equality reinstall check still holds.
 // Manually bumped per release; source-of-truth here. See
 // docs/RELEASE_PROCESS.md §5.1.
-const RequiredCoreVersion = "1.14.0-lx.27"
+const RequiredCoreVersion = "1.14.0-lx.30"
 
 // AppVersion — git describe output. Set by build scripts via -ldflags.
 //
@@ -131,7 +142,7 @@ const RequiredCoreVersion = "1.14.0-lx.27"
 // HEAD. See docs/RELEASE_PROCESS.md §5.2.
 var (
 	AppVersion          = "v-local-test"
-	RequiredTemplateRef = "7a8e1e426f5ffcd0e7903b56234e597512f201d7"
+	RequiredTemplateRef = "f3fcd0d654632662679d0d31b465d8d6cc83359c"
 )
 
 // GetMyBranch возвращает ветку репозитория для загрузки ассетов, у которых нет

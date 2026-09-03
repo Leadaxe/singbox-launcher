@@ -1,10 +1,12 @@
 package lxdclient
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 // Телеметрия ХОСТА машины: GET /admin/host и GET /admin/host/interfaces
@@ -180,7 +182,7 @@ var ErrHostUnsupported = fmt.Errorf("lxdclient: host telemetry not supported by 
 // замерами и до накопления пина честно отдаёт null.
 func (c *Client) Host() (HostInfo, error) {
 	var out HostInfo
-	if err := c.getHostJSON("/admin/host", &out); err != nil {
+	if err := c.getHostJSON(context.Background(), "/admin/host", &out); err != nil {
 		return HostInfo{}, err
 	}
 	return out, nil
@@ -192,15 +194,33 @@ func (c *Client) Host() (HostInfo, error) {
 // увидеть. Фильтрация — задача UI.
 func (c *Client) HostInterfaces() (HostInterfaces, error) {
 	var out HostInterfaces
-	if err := c.getHostJSON("/admin/host/interfaces", &out); err != nil {
+	if err := c.getHostJSON(context.Background(), "/admin/host/interfaces", &out); err != nil {
+		return HostInterfaces{}, err
+	}
+	return out, nil
+}
+
+// HostInterfacesWithin — тот же запрос, но со своим сроком вместо общего
+// restTimeout.
+//
+// Отдельный вход, потому что у этой ручки два разных потребителя с
+// противоположной ценой ожидания: окну машины список нужен любой ценой, а
+// пикеру интерфейсов в конфигураторе — только пока пользователь готов его
+// ждать. Тридцать секунд там означали бы, что неотвечающая машина держит
+// single-flight слот пикера всё это время (SPEC 113-E M6).
+func (c *Client) HostInterfacesWithin(timeout time.Duration) (HostInterfaces, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	var out HostInterfaces
+	if err := c.getHostJSON(ctx, "/admin/host/interfaces", &out); err != nil {
 		return HostInterfaces{}, err
 	}
 	return out, nil
 }
 
 // getHostJSON — общий GET+разбор для обеих ручек телеметрии.
-func (c *Client) getHostJSON(path string, dst any) error {
-	resp, err := c.do(http.MethodGet, path, nil, "")
+func (c *Client) getHostJSON(ctx context.Context, path string, dst any) error {
+	resp, err := c.doCtx(ctx, http.MethodGet, path, nil, "")
 	if err != nil {
 		return err
 	}

@@ -13,7 +13,7 @@ type stubStaleUIUpdater struct {
 }
 
 func (s stubStaleUIUpdater) Model() *wizardmodels.WizardModel { return s.model }
-func (stubStaleUIUpdater) UpdateParserConfig(string)          {}
+func (stubStaleUIUpdater) RefreshOutboundsConfiguratorList()  {}
 func (stubStaleUIUpdater) UpdateTemplatePreview(string)       {}
 func (stubStaleUIUpdater) UpdateSaveProgress(float64)         {}
 func (stubStaleUIUpdater) UpdateSaveButtonText(string)        {}
@@ -46,10 +46,22 @@ func (m *blockingGenMock) RefreshSourceInPlace(*corestate.Source) (bool, error) 
 	return false, nil
 }
 
-const staleTestJSONA = `{"ParserConfig":{"version":1,"proxies":[{"source":"https://example.com/a"}],"outbounds":[]}}`
-const staleTestJSONB = `{"ParserConfig":{"version":1,"proxies":[{"source":"https://example.org/b"}],"outbounds":[]}}`
+// newStaleTestModel — модель с одним источником-подпиской: минимум, при
+// котором ParseAndPreview доходит до генерации.
+func newStaleTestModel() *wizardmodels.WizardModel {
+	model := wizardmodels.NewWizardModel()
+	model.Sources = append(model.Sources, corestate.Source{
+		ID:   corestate.MakeULID(),
+		Node: corestate.Node{Kind: corestate.SourceKindSubscription, Enabled: true},
+		URL:  "https://example.com/a",
+	})
+	model.BumpRevision()
+	return model
+}
 
-func TestParseAndPreview_DiscardsWhenJSONChangesDuringGeneration(t *testing.T) {
+// SPEC 117 (сценарий C5): генерация, начатая на ревизии R, при любой мутации
+// модели (ревизия R+1) до завершения выбрасывает результат.
+func TestParseAndPreview_DiscardsWhenModelMutatesDuringGeneration(t *testing.T) {
 	entered := make(chan struct{})
 	proceed := make(chan struct{})
 	mock := &blockingGenMock{
@@ -60,8 +72,7 @@ func TestParseAndPreview_DiscardsWhenJSONChangesDuringGeneration(t *testing.T) {
 		},
 	}
 
-	model := wizardmodels.NewWizardModel()
-	model.ParserConfigJSON = staleTestJSONA
+	model := newStaleTestModel()
 	up := stubStaleUIUpdater{model: model}
 
 	errCh := make(chan error, 1)
@@ -70,7 +81,9 @@ func TestParseAndPreview_DiscardsWhenJSONChangesDuringGeneration(t *testing.T) {
 	}()
 
 	<-entered
-	model.ParserConfigJSON = staleTestJSONB
+	// Любая canonical-мутация поднимает ревизию — этого достаточно, чтобы
+	// результат стартовавшей раньше генерации протух.
+	model.BumpRevision()
 	close(proceed)
 
 	if err := <-errCh; err != nil {
@@ -82,9 +95,12 @@ func TestParseAndPreview_DiscardsWhenJSONChangesDuringGeneration(t *testing.T) {
 	if !model.PreviewNeedsParse {
 		t.Fatal("expected PreviewNeedsParse after stale discard")
 	}
+	if model.BuildReportGen != 0 {
+		t.Fatalf("expected BuildReportGen reset to 0 after discard, got %v", model.BuildReportGen)
+	}
 }
 
-func TestParseAndPreview_AppliesWhenJSONUnchangedDuringGeneration(t *testing.T) {
+func TestParseAndPreview_AppliesWhenModelUnchangedDuringGeneration(t *testing.T) {
 	entered := make(chan struct{})
 	proceed := make(chan struct{})
 	wantLine := `{"type":"direct","tag":"kept"}`
@@ -96,8 +112,7 @@ func TestParseAndPreview_AppliesWhenJSONUnchangedDuringGeneration(t *testing.T) 
 		},
 	}
 
-	model := wizardmodels.NewWizardModel()
-	model.ParserConfigJSON = staleTestJSONA
+	model := newStaleTestModel()
 	up := stubStaleUIUpdater{model: model}
 
 	errCh := make(chan error, 1)

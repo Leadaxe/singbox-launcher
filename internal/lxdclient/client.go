@@ -40,6 +40,10 @@ type Config struct {
 	// владеет демон, и лаунчер его не знает. Слать заголовок при mTLS
 	// безвредно (демон его игнорирует).
 	Secret string
+	// LogKey — под каким ключом писать журнал обмена (обычно ID записи
+	// реестра). Пусто = не журналировать: клиента к демону строят и разовые
+	// сценарии (проба канала, enroll), которым журнал ни к чему.
+	LogKey string
 }
 
 // TLSEnabled — включён ли TLS-канал (установлен пин сервера).
@@ -50,8 +54,9 @@ func (c *Client) AddrString() string { return c.cfg.Addr }
 
 // Client — REST-клиент admin-плоскости + фабрика gRPC-соединений.
 type Client struct {
-	cfg   Config
-	httpc *http.Client
+	cfg    Config
+	httpc  *http.Client
+	logKey string
 }
 
 const restTimeout = 30 * time.Second
@@ -64,8 +69,9 @@ func New(cfg Config) *Client {
 		transport.TLSClientConfig = cfg.tlsConfig()
 	}
 	return &Client{
-		cfg:   cfg,
-		httpc: &http.Client{Timeout: restTimeout, Transport: transport},
+		cfg:    cfg,
+		httpc:  &http.Client{Timeout: restTimeout, Transport: transport},
+		logKey: cfg.LogKey,
 	}
 }
 
@@ -132,9 +138,30 @@ func (e *ApplyError) Error() string {
 // Rejected — конфиг не прошёл валидацию (422): работающий инстанс не тронут.
 func (e *ApplyError) Rejected() bool { return e.StatusCode == http.StatusUnprocessableEntity }
 
+// do — единственная точка выхода REST-плоскости наружу, поэтому журнал
+// обмена ведётся здесь: любой новый вызов попадает в него сам, без правки
+// в каждом методе.
+//
+// Пишется только конверт (метод, путь, код, длительность, ошибка). Тела не
+// журналируются by design: через /admin/apply едет конфиг с приватными
+// ключами узлов, а журнал открывается кнопкой и копируется в тикет.
 func (c *Client) do(method, path string, body io.Reader, contentType string) (*http.Response, error) {
-	req, err := http.NewRequest(method, c.baseURL()+path, body)
+	return c.doCtx(context.Background(), method, path, body, contentType)
+}
+
+// doCtx — то же, но с собственным сроком вызова. Нужен там, где общий
+// restTimeout заведомо велик: у рабочих вызовов (apply, ресурсы) тридцать
+// секунд — запас на медленный канал, а у справочных запросов ровно наоборот
+// цена ожидания выше цены ответа (SPEC 113-E M6: пикер интерфейсов).
+//
+// Дедлайн задаётся контекстом, а не подменой c.httpc.Timeout: клиент один на
+// вызов, но Transport в нём общий, и трогать поле http.Client параллельным
+// вызовам нельзя.
+func (c *Client) doCtx(ctx context.Context, method, path string, body io.Reader, contentType string) (*http.Response, error) {
+	started := time.Now()
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL()+path, body)
 	if err != nil {
+		c.record(method+" "+path, started, 0, err)
 		return nil, err
 	}
 	if contentType != "" {
@@ -143,7 +170,13 @@ func (c *Client) do(method, path string, body io.Reader, contentType string) (*h
 	if c.cfg.Secret != "" {
 		req.Header.Set("Authorization", "Bearer "+c.cfg.Secret)
 	}
-	return c.httpc.Do(req)
+	resp, err := c.httpc.Do(req)
+	status := 0
+	if resp != nil {
+		status = resp.StatusCode
+	}
+	c.record(method+" "+path, started, status, err)
+	return resp, err
 }
 
 func decodeError(resp *http.Response) string {
@@ -159,7 +192,16 @@ func decodeError(resp *http.Response) string {
 
 // Status возвращает состояние демона.
 func (c *Client) Status() (StatusInfo, error) {
-	resp, err := c.do(http.MethodGet, "/admin/status", nil, "")
+	return c.StatusCtx(context.Background())
+}
+
+// StatusCtx — тот же запрос со своим сроком вместо общего restTimeout.
+//
+// Нужен фоновому опросу: тик heartbeat идёт раз в 5 секунд, и вызов, который
+// на зависшей машине живёт полминуты, переживает собственный тик — маркер
+// тогда реагирует на отказ минутами вместо задуманных секунд.
+func (c *Client) StatusCtx(ctx context.Context) (StatusInfo, error) {
+	resp, err := c.doCtx(ctx, http.MethodGet, "/admin/status", nil, "")
 	if err != nil {
 		return StatusInfo{}, err
 	}
@@ -507,7 +549,12 @@ type InfoData struct {
 
 // Info возвращает паспорт демона.
 func (c *Client) Info() (InfoData, error) {
-	resp, err := c.do(http.MethodGet, "/admin/info", nil, "")
+	return c.InfoCtx(context.Background())
+}
+
+// InfoCtx — то же со своим сроком (см. StatusCtx).
+func (c *Client) InfoCtx(ctx context.Context) (InfoData, error) {
+	resp, err := c.doCtx(ctx, http.MethodGet, "/admin/info", nil, "")
 	if err != nil {
 		return InfoData{}, err
 	}

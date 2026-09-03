@@ -54,6 +54,14 @@ func resolveBaseBody(
 				base := t
 				base.Ref = ob.Ref         // preserve ref в merged для UI metadata
 				base.Updates = ob.Updates // preserve updates stack (will be applied)
+				// SPEC 104: выключение — свойство ЗАПИСИ, а не тела. Тумблер в
+				// списке Направлений пишет его в саму thin-запись, и терять его
+				// вместе с телом нельзя: генератор увидел бы шаблонное «включено»
+				// и собрал выключенное Направление (симптом: «(off) vpn ②» в
+				// мастере, но группа в config.json и в Selector group). Патчи
+				// (пресет/USER) применяются поверх штатно — ключ `disabled` в них
+				// по-прежнему сильнее.
+				base.Disabled = ob.Disabled
 				return base, true
 			}
 		}
@@ -72,6 +80,8 @@ func resolveBaseBody(
 				base := entry.Config
 				base.Ref = ob.Ref
 				base.Updates = ob.Updates
+				// SPEC 104: выключение — свойство записи, см. ветку #TEMPLATE# выше.
+				base.Disabled = ob.Disabled
 				return base, true
 			}
 		}

@@ -1,0 +1,29 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "auth_str": "a",
+        "down_mbps": 10,
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "alpn": [
+            "h3"
+          ],
+          "certificate_public_key_sha256": [
+            "deadbeef"
+          ],
+          "enabled": true,
+          "insecure": true,
+          "server_name": "example-1.com"
+        },
+        "type": "hysteria",
+        "up_mbps": 10
+      },
+      "kind": "outbound",
+      "label": "Tls",
+      "scheme": "hysteria"
+    }
+  ],
+  "v": 1
+}

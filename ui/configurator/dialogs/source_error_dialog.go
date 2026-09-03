@@ -1,7 +1,7 @@
 // Package dialogs — File source_error_dialog.go.
 //
 // Modal opened from the Sources tab when a subscription source has a
-// non-empty `meta.LastErrorMsg` OR a `meta.ProviderAnnounce` (the latter
+// non-empty `meta.Status.LastErrorMsg` OR a `meta.Meta.ProviderAnnounce` (the latter
 // is the success-with-notice path — provider sent contentful body PLUS
 // an Announce header). SPEC 061 Phase 3.
 //
@@ -50,12 +50,23 @@ import (
 // ShowSourceErrorDialog renders the error/notice modal for a single
 // subscription source. `sourceLabel` is the row's display name (e.g.
 // "NashVPN" or first 32 chars of URL) used as the dialog title fallback
-// when `meta.ProviderAnnounce.ProfileTitle` is empty. `meta` must be
+// when `meta.Meta.ProviderAnnounce.ProfileTitle` is empty. `meta` must be
 // non-nil; caller checks for emptiness before opening.
 //
 // Safe to call with meta == nil (silently skips); UI just falls through
 // without a popup. Same with parent == nil.
-func ShowSourceErrorDialog(parent fyne.Window, sourceLabel string, meta *state.SubscriptionMeta) {
+// SourceDiag — то, что диалог показывает про источник: заголовки провайдера
+// (SubMeta) и диагностика последней попытки (SubUpdateStatus).
+//
+// SPEC 118 W5: две половины прежней «мостовой Meta» разъехались по своим
+// домам — заголовки к заголовкам, история к истории. Диалог берёт снимок
+// обеих: он рисуется вне UI-потока владельца модели.
+type SourceDiag struct {
+	Meta   state.SubMeta
+	Status state.SubUpdateStatus
+}
+
+func ShowSourceErrorDialog(parent fyne.Window, sourceLabel string, meta *SourceDiag) {
 	if parent == nil || meta == nil {
 		return
 	}
@@ -72,17 +83,17 @@ func ShowSourceErrorDialog(parent fyne.Window, sourceLabel string, meta *state.S
 // ProviderAnnounce.ProfileTitle wins (provider-supplied display name);
 // fallback to the source row's own label; final fallback to a generic
 // string so the title bar is never blank.
-func dialogTitle(sourceLabel string, meta *state.SubscriptionMeta) string {
+func dialogTitle(sourceLabel string, meta *SourceDiag) string {
 	prefix := "⚠ "
-	if meta.LastStatus != "err" && meta.ProviderAnnounce != nil && !meta.ProviderAnnounce.IsEmpty() {
+	if meta.Status.LastStatus != "err" && meta.Meta.ProviderAnnounce != nil && !meta.Meta.ProviderAnnounce.IsEmpty() {
 		// Success-with-notice path → info, not warning.
 		prefix = "📢 "
 	}
-	if meta.ProviderAnnounce != nil && meta.ProviderAnnounce.ProfileTitle != "" {
-		return prefix + meta.ProviderAnnounce.ProfileTitle
+	if meta.Meta.ProviderAnnounce != nil && meta.Meta.ProviderAnnounce.ProfileTitle != "" {
+		return prefix + meta.Meta.ProviderAnnounce.ProfileTitle
 	}
-	if meta.ProfileTitle != "" {
-		return prefix + meta.ProfileTitle
+	if meta.Meta.ProfileTitle != "" {
+		return prefix + meta.Meta.ProfileTitle
 	}
 	if sourceLabel != "" {
 		return prefix + sourceLabel
@@ -93,7 +104,7 @@ func dialogTitle(sourceLabel string, meta *state.SubscriptionMeta) string {
 // buildSourceErrorBody assembles the scrollable content area. Sections
 // are conditionally added so a sparse meta (e.g. just LastErrorMsg, no
 // announce) renders cleanly without empty placeholders.
-func buildSourceErrorBody(parent fyne.Window, meta *state.SubscriptionMeta) fyne.CanvasObject {
+func buildSourceErrorBody(parent fyne.Window, meta *SourceDiag) fyne.CanvasObject {
 	rows := container.NewVBox()
 
 	// 1. HTTP status line — always shown if we have a status code.
@@ -134,18 +145,18 @@ func buildSourceErrorBody(parent fyne.Window, meta *state.SubscriptionMeta) fyne
 // formatHTTPStatusLine returns "HTTP 200 · empty body" / "HTTP 403 ·
 // forbidden" / etc. Empty when neither HTTPStatusCode nor a meaningful
 // hint can be assembled.
-func formatHTTPStatusLine(meta *state.SubscriptionMeta) string {
-	if meta.HTTPStatusCode == 0 {
+func formatHTTPStatusLine(meta *SourceDiag) string {
+	if meta.Status.HTTPStatusCode == 0 {
 		return ""
 	}
-	hint := httpStatusHint(meta.HTTPStatusCode)
+	hint := httpStatusHint(meta.Status.HTTPStatusCode)
 	switch {
-	case meta.HTTPStatusCode == 200 && meta.RawBodyBytes == 0:
+	case meta.Status.HTTPStatusCode == 200 && meta.Status.RawBodyBytes == 0:
 		return "HTTP 200 · empty body"
 	case hint != "":
-		return fmt.Sprintf("HTTP %d · %s", meta.HTTPStatusCode, hint)
+		return fmt.Sprintf("HTTP %d · %s", meta.Status.HTTPStatusCode, hint)
 	default:
-		return fmt.Sprintf("HTTP %d", meta.HTTPStatusCode)
+		return fmt.Sprintf("HTTP %d", meta.Status.HTTPStatusCode)
 	}
 }
 
@@ -177,15 +188,15 @@ func httpStatusHint(code int) string {
 
 // pickBodyText returns the most user-actionable message body, in order:
 // provider's decoded announce → LastErrorMsg → generic "no details".
-func pickBodyText(meta *state.SubscriptionMeta) string {
-	if meta.ProviderAnnounce != nil && meta.ProviderAnnounce.Message != "" {
-		return meta.ProviderAnnounce.Message
+func pickBodyText(meta *SourceDiag) string {
+	if meta.Meta.ProviderAnnounce != nil && meta.Meta.ProviderAnnounce.Message != "" {
+		return meta.Meta.ProviderAnnounce.Message
 	}
-	if meta.LastErrorMsg != "" {
-		return meta.LastErrorMsg
+	if meta.Status.LastErrorMsg != "" {
+		return meta.Status.LastErrorMsg
 	}
 	// Even without text, the HWID flag is itself informative.
-	if meta.ProviderAnnounce != nil && (meta.ProviderAnnounce.HWIDLimit || meta.ProviderAnnounce.HWIDMaxDevicesReached) {
+	if meta.Meta.ProviderAnnounce != nil && (meta.Meta.ProviderAnnounce.HWIDLimit || meta.Meta.ProviderAnnounce.HWIDMaxDevicesReached) {
 		return "Provider reports the device limit has been reached. Open the support link below to free a slot."
 	}
 	return ""
@@ -193,11 +204,11 @@ func pickBodyText(meta *state.SubscriptionMeta) string {
 
 // pickURL returns the announce URL (preferred) or the meta convenience
 // snapshot, whichever is set.
-func pickURL(meta *state.SubscriptionMeta) string {
-	if meta.ProviderAnnounce != nil && meta.ProviderAnnounce.URL != "" {
-		return meta.ProviderAnnounce.URL
+func pickURL(meta *SourceDiag) string {
+	if meta.Meta.ProviderAnnounce != nil && meta.Meta.ProviderAnnounce.URL != "" {
+		return meta.Meta.ProviderAnnounce.URL
 	}
-	return meta.LastErrorURL
+	return meta.Status.LastErrorURL
 }
 
 // buildURLAffordance returns either an OpenURL button (safe scheme) or
@@ -247,13 +258,13 @@ func hostnameForButton(raw string) string {
 
 // formatFooterMeta returns "Last attempt: <ts>" + error-streak line.
 // Either may be missing; returns "" only when both are.
-func formatFooterMeta(meta *state.SubscriptionMeta) string {
+func formatFooterMeta(meta *SourceDiag) string {
 	var lines []string
-	if meta.LastFetchedAt != "" {
-		lines = append(lines, "Last attempt: "+meta.LastFetchedAt)
+	if meta.Status.LastAttemptAt != "" {
+		lines = append(lines, "Last attempt: "+meta.Status.LastAttemptAt)
 	}
-	if meta.ErrorCount > 1 {
-		lines = append(lines, fmt.Sprintf("Errors in a row: %d", meta.ErrorCount))
+	if meta.Status.ErrorCount > 1 {
+		lines = append(lines, fmt.Sprintf("Errors in a row: %d", meta.Status.ErrorCount))
 	}
 	return strings.Join(lines, "\n")
 }

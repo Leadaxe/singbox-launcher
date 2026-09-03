@@ -206,7 +206,7 @@ func (m *Manager) build() {
 	// Счётчик соединений и «разорвать все» кладём В полосу вкладок, справа:
 	// своя строка стоила бы ещё одного ряда высоты, а место там пустует.
 	var tabsRow fyne.CanvasObject
-	if stopCounter := m.attachConnCounter(deps, win, tabs); stopCounter != nil {
+	if stopCounter := m.attachConnCounter(deps, win, tabs, live); stopCounter != nil {
 		tabsRow = stopCounter.content
 		prevStop := stopSecond
 		stopSecond = func() {
@@ -217,7 +217,7 @@ func (m *Manager) build() {
 		// Счётчика нет (локальное окно) — ⋮ всё равно живёт в полосе вкладок.
 		// Иначе он оставался бы единственным жильцом тулбара, и целая строка
 		// уходила бы под одну кнопку.
-		tabsRow = overlayOnTabs(tabs, buildOverflowButton(deps, win))
+		tabsRow = overlayOnTabs(tabs, buildOverflowButton(deps, win, live))
 	}
 	root := container.NewBorder(toolbar, nil, nil, nil, tabsRow)
 
@@ -349,7 +349,7 @@ type connCounter struct {
 // Только для окна машины: рвать соединения своего ядра из профайлера нечем —
 // CloseConns есть лишь у remote-окна, где это осмысленное действие после
 // смены правила.
-func (m *Manager) attachConnCounter(deps WindowDeps, win fyne.Window, tabs *container.AppTabs) *connCounter {
+func (m *Manager) attachConnCounter(deps WindowDeps, win fyne.Window, tabs *container.AppTabs, live *liveView) *connCounter {
 	if deps.CloseConns == nil || deps.Profiler == nil {
 		return nil
 	}
@@ -406,7 +406,7 @@ func (m *Manager) attachConnCounter(deps WindowDeps, win fyne.Window, tabs *cont
 	}()
 
 	return &connCounter{
-		content: overlayOnTabs(tabs, countL, killBtn, buildOverflowButton(deps, win)),
+		content: overlayOnTabs(tabs, countL, killBtn, buildOverflowButton(deps, win, live)),
 		stop:    func() { close(stopCh) },
 	}
 }

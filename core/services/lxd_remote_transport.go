@@ -804,6 +804,16 @@ func (t *LxdRemoteTransport) HostInterfaces() (lxdclient.HostInterfaces, error) 
 	return t.client.HostInterfaces()
 }
 
+// HostInterfacesWithin — тот же список, но со своим сроком ожидания вместо
+// общего REST-дедлайна клиента.
+//
+// Для справочных потребителей (пикер интерфейсов в конфигураторе): там ответ
+// нужен, только пока пользователь готов его ждать, а неотвечающая машина
+// иначе держит очередь запроса десятки секунд (SPEC 113-E M6).
+func (t *LxdRemoteTransport) HostInterfacesWithin(timeout time.Duration) (lxdclient.HostInterfaces, error) {
+	return t.client.HostInterfacesWithin(timeout)
+}
+
 // CloseConnection обрывает одно соединение машины по его UUID.
 func (t *LxdRemoteTransport) CloseConnection(id string) error {
 	client, ctx, cancel, err := t.rpc()

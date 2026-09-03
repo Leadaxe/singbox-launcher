@@ -137,10 +137,10 @@ func TestParseInlineComments_Empty(t *testing.T) {
 
 // TestMergeMeta_HeadersWin — HTTP headers приоритетнее inline.
 func TestMergeMeta_HeadersWin(t *testing.T) {
-	headers := state.SubscriptionMeta{
+	headers := state.SubMeta{
 		ProfileTitle: "FromHeader",
 	}
-	inline := state.SubscriptionMeta{
+	inline := state.SubMeta{
 		ProfileTitle: "FromInline",
 		SupportURL:   "https://inline.example/",
 	}
@@ -156,8 +156,8 @@ func TestMergeMeta_HeadersWin(t *testing.T) {
 // TestMergeMeta_UserInfoFallback — UserInfo берётся из inline, если
 // в headers nil.
 func TestMergeMeta_UserInfoFallback(t *testing.T) {
-	headers := state.SubscriptionMeta{}
-	inline := state.SubscriptionMeta{
+	headers := state.SubMeta{}
+	inline := state.SubMeta{
 		UserInfo: &state.UserInfo{TotalBytes: 100},
 	}
 	got := MergeMeta(headers, inline)
@@ -436,23 +436,12 @@ func TestParseInlineComments_Announce(t *testing.T) {
 	}
 }
 
-func isEmptyMeta(m state.SubscriptionMeta) bool {
+func isEmptyMeta(m state.SubMeta) bool {
 	return m.UserInfo == nil &&
 		m.ProfileTitle == "" &&
 		m.ProfileUpdateIntervalHours == 0 &&
 		m.SupportURL == "" &&
 		m.ProfileWebPageURL == "" &&
 		m.ContentDispositionFilename == "" &&
-		m.URLAtFetch == "" &&
-		m.LastFetchedAt == "" &&
-		m.LastStatus == "" &&
-		m.ErrorCount == 0 &&
-		m.LastErrorMsg == "" &&
-		m.LastErrorURL == "" &&
-		m.HTTPStatusCode == 0 &&
-		m.RawBodyBytes == 0 &&
-		m.NodesCountFetched == 0 &&
-		!m.Truncated &&
-		len(m.PreviewNodes) == 0 &&
 		m.ProviderAnnounce.IsEmpty()
 }

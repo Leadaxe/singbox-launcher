@@ -1,0 +1,2 @@
+# alpn + insecure + пин сертификата
+hysteria://example-1.com:443?auth=a&alpn=h3&insecure=1&pinSHA256=deadbeef&upmbps=10&downmbps=10#Tls

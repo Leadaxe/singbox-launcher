@@ -100,7 +100,7 @@ gh run watch <RUN_ID> --exit-status
 ```
 
 На финише ожидаем:
-- 4 артефакта: `macos.zip`, `macos-catalina.zip`, `win64.zip`, `win7-32.zip` + `checksums.txt`.
+- 5 артефактов: `macos.zip`, `macos-catalina.zip`, `win64.zip`, `win64-full.zip` (exe + запиненное ядро + wintun + шаблон + Mesa3D в `mesa3d/`; собирает job release из констант кода), `win7-32.zip` + `checksums.txt`.
 - Release опубликован (`isDraft=false`, `isPrerelease=false`).
 - Тело содержит Downloads + Checksums + вашу `X-Y-Z.md` без посторонних блоков.
 

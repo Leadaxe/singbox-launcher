@@ -122,7 +122,7 @@ func TestContractCorpusURI(t *testing.T) {
 			if err != nil {
 				t.Skipf("нет expected (%s) — сгенерируйте флагом -update", filepath.Base(expPath))
 			}
-			if !equalJSON(t, got, want) {
+			if !equalEnvelopeJSON(t, got, want) {
 				t.Errorf("расхождение с контрактом\n--- got ---\n%s\n--- want ---\n%s", got, want)
 			}
 		})
@@ -158,6 +158,86 @@ func marshalEnvelopePretty(env contractEnvelope) ([]byte, error) {
 	}
 	pretty.WriteByte('\n')
 	return pretty.Bytes(), nil
+}
+
+// equalEnvelopeJSON сравнивает конверты корпуса с поправкой на D-088:
+// в записях `dropped[]` нормативны `ref` и `code`, а `reason` — нет.
+//
+// Почему нормализация перед сравнением, а не отдельный обход двух конвертов:
+// сравнение по значению после канонизации (CANON §7) — единственная точка
+// правды раннеров, и второй, «почти такой же» путь сверки рано или поздно
+// разъехался бы с ней. Поэтому из обеих сторон вычёркивается ровно то, что
+// ненормативно: `reason` — всегда, `code` — только если ожидание его не
+// объявило (старые URI-golden кодов не знают, и требовать их сейчас значило бы
+// перегенерировать весь корпус).
+func equalEnvelopeJSON(t *testing.T, got, want []byte) bool {
+	t.Helper()
+	gv := parseEnvelopeJSON(t, "got", got)
+	wv := parseEnvelopeJSON(t, "want", want)
+	normalizeDropsForCompare(gv, wv)
+	return canonJSONString(t, gv) == canonJSONString(t, wv)
+}
+
+// parseEnvelopeJSON разбирает конверт в generic-значение.
+func parseEnvelopeJSON(t *testing.T, side string, data []byte) any {
+	t.Helper()
+	var v any
+	if err := json.Unmarshal(data, &v); err != nil {
+		t.Fatalf("разбор %s: %v", side, err)
+	}
+	return v
+}
+
+// canonJSONString — канонический текст значения (тот же канон, что у файла).
+func canonJSONString(t *testing.T, v any) string {
+	t.Helper()
+	b, err := canonMarshal(canonValue(v))
+	if err != nil {
+		t.Fatalf("канонизация: %v", err)
+	}
+	return string(b)
+}
+
+// normalizeDropsForCompare вычёркивает из `dropped[]` обеих сторон поля,
+// сравнением не покрытые (D-088): `reason` всегда, `code` — когда ожидание
+// его не объявляет.
+func normalizeDropsForCompare(got, want any) {
+	gotDrops := envelopeDrops(got)
+	wantDrops := envelopeDrops(want)
+	for i, d := range gotDrops {
+		delete(d, "reason")
+		// Ожидание без code — контракт на этот кейс кода не требует; чтобы
+		// прогон не падал на «лишнем» поле, снимаем его и у результата.
+		if i < len(wantDrops) {
+			if _, ok := wantDrops[i]["code"]; !ok {
+				delete(d, "code")
+			}
+			continue
+		}
+		delete(d, "code")
+	}
+	for _, d := range wantDrops {
+		delete(d, "reason")
+	}
+}
+
+// envelopeDrops достаёт записи `dropped[]` конверта как изменяемые карты.
+func envelopeDrops(v any) []map[string]any {
+	root, ok := v.(map[string]any)
+	if !ok {
+		return nil
+	}
+	list, ok := root["dropped"].([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		if m, ok := item.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // equalJSON сравнивает по значению (CANON §7), не по байтам файла.

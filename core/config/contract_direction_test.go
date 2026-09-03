@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -164,12 +165,34 @@ func TestContractCorpusDirection(t *testing.T) {
 		caseName := strings.TrimSuffix(name, ".direction.json")
 		cases++
 		t.Run(caseName, func(t *testing.T) {
+			if reason := corpusDivergence[caseName]; reason != "" {
+				t.Skip(reason)
+			}
 			runDirectionCorpusCase(t, dir, caseName)
 		})
 	}
 	if cases == 0 {
 		t.Fatal("корпус направлений пуст — раннер молча проходил бы всегда")
 	}
+}
+
+// corpusDivergence — кейсы корпуса, ожидания которых относятся к УПРАЗДНЁННОЙ
+// свёртке (`fold` с позиционным тегом), а не к её наследнику в модели v7
+// (`FolderReplace` с ЯВНЫМ тегом).
+//
+// SPEC 118, расхождение Р2 (задекларировано в etalon/README.md и утверждено
+// капитаном): в режиме «селектор + автогруппа» пара тегов перестала быть
+// `<PFX>select` + `<PFX>auto` — автогруппа стала ДВОЙНИКОМ селектора и носит
+// производный тег `<tag>-auto`, той же формулой, что твины Направлений. На
+// совпадении формулы держится узнавание пар, и второй схемы имён быть не
+// может.
+//
+// Корпус — общий контракт с LxBox-стороной и в этой кампании не меняется
+// (SPEC 118 §2). Поэтому кейс не «подгоняется» и не удаляется: он назван
+// здесь вслух и вернётся, когда контракт догонит модель (этап 4).
+var corpusDivergence = map[string]string{
+	"fold_select_auto": "SPEC 118 Р2: пара тегов свёртки both стала `<tag>` + `<tag>-auto` " +
+		"(двойник), корпус ждёт прежние `<PFX>select` + `<PFX>auto`; контракт догоняет модель на этапе 4",
 }
 
 func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
@@ -187,18 +210,42 @@ func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
 	pc := &ParserConfig{}
 	pc.ParserConfig.Version = ParserConfigVersion
 	src := ProxySource{Source: "https://example.com/sub", TagPrefix: in.TagPrefix}
+	var folderReplace *configtypes.FolderReplace
+	// SPEC 118 W5: свёртка контракта (fold) переводится в замену канона
+	// (FolderReplace) — тем же соответствием, что конвертеры бэкапа. Тег
+	// замены материализуем прежним позиционным деривативом: корпус ссылается
+	// на `<PFX>select`/`<PFX>auto` из своих Направлений.
 	if in.Fold != nil {
-		src.Fold = &configtypes.SourceFold{Mode: in.Fold.Mode}
-		if in.Fold.Auto != nil {
-			src.Fold.Auto = in.Fold.Auto.toDirectionAuto()
+		prefix := strings.TrimSpace(in.TagPrefix)
+		if prefix == "" {
+			prefix = "1:"
 		}
+		rep := &configtypes.FolderReplace{}
+		switch in.Fold.Mode {
+		case "auto":
+			rep.Mode = configtypes.FolderReplaceAuto
+			rep.Tag = prefix + "auto"
+		case "select_auto":
+			rep.Mode = configtypes.FolderReplaceBoth
+			rep.Tag = prefix + "select"
+		default:
+			rep.Mode = configtypes.FolderReplaceManual
+			rep.Tag = prefix + "select"
+		}
+		if in.Fold.Auto != nil {
+			rep.Strategy = in.Fold.Auto.toDirectionAuto()
+		}
+		folderReplace = rep
 	}
 	pc.ParserConfig.Proxies = []ProxySource{src}
 	// SPEC 110: источники-цепочки идут отдельными записями, в порядке
 	// объявления кейса — от него зависит, разрешится ли вложенная цепочка.
 	for _, cc := range in.Chains {
 		pc.ParserConfig.Proxies = append(pc.ParserConfig.Proxies, ProxySource{
-			TagMask: cc.Tag,
+			Label: cc.Tag,
+			Canonical: &configtypes.CanonicalSource{
+				Nodes: []configtypes.CanonicalNode{{Kind: "chain", Tag: cc.Tag, Enabled: true}},
+			},
 			Chain: &configtypes.SourceChain{
 				Hops:         cc.Hops,
 				IdleTimeout:  cc.IdleTimeout,
@@ -246,15 +293,29 @@ func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
 		BlockTag:  in.Magic["block"],
 		DirectTag: in.Magic["direct"],
 	}
-	res, err := GenerateOutboundsFromParserConfig(pc, map[string]int{}, nil,
-		func(_ ProxySource, _ map[string]int, _ func(float64, string), idx, _ int) ([]*ParsedNode, error) {
-			if idx != 0 {
-				// Источники-цепочки узлов не загружают: их узел строит
-				// ResolveChainSources, когда весь пул уже известен.
-				return nil, nil
-			}
-			return nodes, nil
-		}, opts)
+	// SPEC 118 Т5: узлы приезжают КАНОНОМ, а не загрузчиком тел — конвейер
+	// сборки парсер подписок больше не зовёт вовсе.
+	canonNodes := make([]configtypes.CanonicalNode, 0, len(nodes))
+	for _, n := range nodes {
+		if n.Scheme == SchemeGroup {
+			// Группа выбора внутри подписки — узел kind=auto канона: в
+			// импортированном теле группа приезжает ровно так (SPEC 094 A5).
+			canonNodes = append(canonNodes, configtypes.CanonicalNode{
+				Kind: "auto", Tag: n.Tag, Enabled: true,
+				Group: &configtypes.CanonicalAutoGroup{GroupType: "urltest"},
+			})
+			continue
+		}
+		body := `{"type":"socks","server":"` + n.Server + `","server_port":` + strconv.Itoa(n.Port) + `}`
+		canonNodes = append(canonNodes, configtypes.CanonicalNode{
+			Kind: "server", Tag: n.Tag, Enabled: true, Body: json.RawMessage(body),
+		})
+	}
+	pc.ParserConfig.Proxies[0].Canonical = &configtypes.CanonicalSource{
+		FolderID: "F1", IsContainer: true, Nodes: canonNodes, Replace: folderReplace,
+	}
+
+	res, err := GenerateOutboundsFromParserConfig(pc, map[string]int{}, nil, opts)
 	if err != nil && len(in.NodeTags) > 0 {
 		t.Fatalf("генерация: %v", err)
 	}

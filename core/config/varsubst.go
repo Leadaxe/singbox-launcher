@@ -52,8 +52,8 @@ func SubstituteParserConfigPlaceholders(parserConfig *ParserConfig, subst VarSub
 		substituteOptionsMap(parserConfig.ParserConfig.Outbounds[i].Options, subst, parserConfig.ParserConfig.Outbounds[i].Tag)
 	}
 	for pi := range parserConfig.ParserConfig.Proxies {
-		for oi := range parserConfig.ParserConfig.Proxies[pi].Outbounds {
-			substituteOptionsMap(parserConfig.ParserConfig.Proxies[pi].Outbounds[oi].Options, subst, parserConfig.ParserConfig.Proxies[pi].Outbounds[oi].Tag)
+		for oi := range parserConfig.ParserConfig.Proxies[pi].LocalGroups {
+			substituteOptionsMap(parserConfig.ParserConfig.Proxies[pi].LocalGroups[oi].Options, subst, parserConfig.ParserConfig.Proxies[pi].LocalGroups[oi].Tag)
 		}
 	}
 }

@@ -6,7 +6,6 @@ import (
 
 	"fyne.io/fyne/v2/widget"
 
-	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/platform"
@@ -25,13 +24,13 @@ import (
 //   - Click: opens the URL for safe schemes (http/https/tg, per urlsafe); an
 //     unsafe-but-present URL still shows the icon + tooltip but does not open.
 //   - Nothing present → nil (caller omits the button).
-func supportLinkButton(meta *corestate.SubscriptionMeta, rowGetter func() *fynewidget.HoverRow) *fynewidget.HoverForwardButton {
+func supportLinkButton(meta *sourceDiag, rowGetter func() *fynewidget.HoverRow) *fynewidget.HoverForwardButton {
 	if meta == nil {
 		return nil
 	}
-	raw := strings.TrimSpace(meta.SupportURL)
+	raw := strings.TrimSpace(meta.supportURL())
 	if raw == "" {
-		raw = strings.TrimSpace(meta.ProfileWebPageURL)
+		raw = strings.TrimSpace(meta.profileWebPageURL())
 	}
 	if raw == "" {
 		return nil

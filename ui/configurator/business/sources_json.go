@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strings"
 
+	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/subscription"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
@@ -134,18 +135,28 @@ func AppendManualConfigJSON(ctx UIUpdater, body []byte, label string) error {
 		label = fmt.Sprintf("server-%d", len(model.Sources)+1)
 	}
 
+	// SPEC 118 Т2: тело узла материализуется сразу — тем же путём, что у
+	// миграции и fetch (config.MaterializeServerNode).
+	mat, matErr := config.MaterializeServerNode("", compact)
+	if matErr != nil {
+		return fmt.Errorf("outbound JSON: %w", matErr)
+	}
 	model.Sources = append(model.Sources, corestate.Source{
-		ID:         corestate.MakeULID(),
-		Type:       corestate.SourceTypeServer,
-		Enabled:    true,
-		Label:      label,
-		ConfigJSON: compact,
+		Node: corestate.Node{
+			Kind:    corestate.SourceKindServer,
+			Enabled: true,
+			Tag:     label,
+			Body:    mat.Body,
+			Origin:  &corestate.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw},
+		},
+		ID:    corestate.MakeULID(),
+		Label: label,
 	})
 
-	model.RefreshDerivedParserConfig()
+	model.BumpRevision()
 	model.PreviewNeedsParse = true
-	InvalidatePreviewCache(model)
-	ctx.UpdateParserConfig(model.ParserConfigJSON)
+	InvalidateNodePool(model)
+	ctx.RefreshOutboundsConfiguratorList()
 	return nil
 }
 
@@ -160,6 +171,6 @@ func RelabelLastSources(ctx UIUpdater, before int, label string) {
 		return
 	}
 	model.Sources[len(model.Sources)-1].Label = label
-	model.RefreshDerivedParserConfig()
-	ctx.UpdateParserConfig(model.ParserConfigJSON)
+	model.BumpRevision()
+	ctx.RefreshOutboundsConfiguratorList()
 }

@@ -35,6 +35,33 @@ func TestChainPositionTextResolved(t *testing.T) {
 	}
 }
 
+// SPEC 113-E, регресс: при ДВОЙНОМ сбое (ядро отвергло переключение и состав
+// перечитать не удалось) галочку возвращаем сами.
+//
+// Раньше в этом случае не делалось ничего: refresh не звался (ok=false),
+// приводить состояние было нечем, и чекбокс оставался в положении, которое
+// ядро отвергло, — пульт врал про состояние ядра.
+func TestChainToggleRevertsOnlyOnDoubleFailure(t *testing.T) {
+	failed := testErr("core rejected")
+
+	if !chainToggleNeedsRevert(failed, "", false) {
+		t.Error("отказ ядра без перечитанного состава обязан откатывать галочку")
+	}
+	// Состав перечитан — приведёт applyChainRows; второй источник правды здесь
+	// только мешал бы.
+	if chainToggleNeedsRevert(failed, "", true) {
+		t.Error("состав перечитан — откатывать вручную нельзя")
+	}
+	// Ядро приняло переключение: галочка права независимо от refresh.
+	if chainToggleNeedsRevert(nil, "", false) {
+		t.Error("принятое переключение откатывать нечего")
+	}
+	// Флаг применён, не поднялось звено — это диагноз узла, а не отказ.
+	if chainToggleNeedsRevert(nil, "warmup failed", false) {
+		t.Error("сбой прогрева не отменяет применённый флаг")
+	}
+}
+
 // TestChainPositionTextFollowsGroupPick — строка позиции обязана меняться
 // вслед за выбором группы.
 //

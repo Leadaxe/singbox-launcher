@@ -1,0 +1,589 @@
+// File parse_body.go — ЧИСТЫЙ парсер тела подписки (SPEC 118, PLAN §3.1).
+//
+// Единственное место разбора тела подписки в модели v7: fetch скачал тело —
+// этот парсер разбирает его один раз, результат материализуется в
+// Subscription.nodes[]. Без сети, без состояния, без тег-политики.
+//
+// Стадии в порядке применения к каждой записи (features/sources.md):
+//  1. skip[] — отсечка до рождения узла (внутри per-format парсеров, как и
+//     раньше);
+//  2. дедуп по подписи полной эмиссии (dedup.accept, без тега и detour) —
+//     строго ДО тегов; члены групп перепривязываются на выжившего
+//     (collapsedInto);
+//  3. уникализация СЫРЫХ тегов внутри тела (X, X-2) — StampNodeIdentity;
+//     кап capN ограничивает число ПРИНЯТЫХ узлов по ходу стадий — реальный
+//     предел разбора, не бейдж; достижение = Truncated.
+//
+// Здесь НЕТ (переезжает в эмиссию волны W4 или умирает):
+//   - тег-политики prefix/postfix/mask (эмиссия);
+//   - глобального MakeTagUnique (эмиссия);
+//   - штамповку detour в тело (body чист от detour — роль у NodeLink);
+//   - отбор выключенных узлов (роль у node.enabled).
+//
+// Волна W2 создаёт каркас как библиотеку (им пользуется миграция v6→v7);
+// fetch-сервис переключается сюда в W3.
+package subscription
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/state"
+	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/textnorm"
+)
+
+// Словарь Origin.Kind — единый со схемой v7 (state.OriginKind*): парсер
+// порождает происхождение ровно в той форме, в которой оно хранится.
+const (
+	OriginKindURI   = state.OriginKindURI
+	OriginKindJSON  = state.OriginKindJSON
+	OriginKindWGIni = state.OriginKindWGIni
+)
+
+// ParsedBodyEntry — одна принятая запись тела: узел или провайдерская группа.
+type ParsedBodyEntry struct {
+	// RawTag — сырой тег, уникализированный в пределах тела (идентичность
+	// узла в контейнере; merge-ключ волны W3).
+	RawTag string
+	// Num — порядковый номер принятой записи (1-based) — вход {$num}
+	// эмиссионной тег-машины.
+	Num int
+	// Node — разобранный узел. У группы Scheme == configtypes.SchemeGroup.
+	Node *configtypes.ParsedNode
+	// OriginKind / OriginRaw — происхождение записи ("uri" — строка
+	// URI-списка, "json" — объект sing-box/Xray-тела). Пустой kind =
+	// пофрагментного происхождения нет (синтезированные группы Xray,
+	// vpn://-контейнеры).
+	OriginKind string
+	OriginRaw  string
+	// Группа: тип, default и члены ПО СЫРЫМ тегам (после дедупа и
+	// перепривязки collapsedInto). У обычных узлов пусто.
+	GroupType       string
+	GroupDefaultRaw string
+	MemberRawTags   []string
+}
+
+// RejectReasonProviderBanner — причина отбраковки записи-АНОНСА провайдера
+// (SPEC 116 W13).
+//
+// Провайдеры вставляют в тело подписки строки-баннеры («Лучшие сервера»,
+// «БЕЛЫЕ СПИСКИ В САМОМ НИЗУ»): это не узлы и никогда ими не были — это
+// рубрикатор списка, написанный человеком для человека. Прежде такая строка
+// отбраковывалась общим «unsupported scheme», и пользователь читал у своего
+// же оглавления диагноз про схему, которой там нет и не подразумевалось.
+//
+// Ключ АНГЛИЙСКИЙ — как фразы эмиссионных деградаций: перевод живёт в
+// `bin/locale/ru.json`, а в состоянии хранится ключ (иначе смена языка
+// переписывала бы `nodes[]`).
+const RejectReasonProviderBanner = "provider banner, not a server"
+
+// isProviderBannerLine — строка тела, которая узлом не притворялась вовсе.
+//
+// Признак ровно один и намеренно узкий: в строке нет разделителя схемы
+// `://`. Всё, что схему заявило, но не разобралось (`vless://` с пустым
+// uuid, неизвестная схема `wtf://`), — это СЛОМАННЫЙ узел, и его причина
+// обязана остаться технической: пользователю там нужно чинить, а не читать
+// «это баннер».
+func isProviderBannerLine(line string) bool {
+	return !strings.Contains(line, "://")
+}
+
+// RejectedBodyRecord — запись тела, которую разобрать не удалось
+// (SPEC 116 W11). Материализуется узлом kind=unsupported на СВОЕЙ позиции:
+// пользователь видит, что провайдер прислал строку, которую мы не поняли, — и
+// видит саму строку.
+//
+// Принятой записью она НЕ становится: `Num` не потребляет (нумерация {$num}
+// считает принятые), кап не занимает, слот уникализации сырых тегов не берёт.
+// Позиция запоминается индексом того места, где запись стояла среди ПРИНЯТЫХ:
+// материализация вставляет её обратно ровно туда.
+type RejectedBodyRecord struct {
+	// After — сколько записей было принято ДО этой (0 = запись стояла первой).
+	After int
+	// Reason — почему не разобрали (текст парсера, он же едет в диагностику).
+	Reason string
+	// Code — машинный код причины из contract/registry/warnings.json (D-088).
+	//
+	// Необязателен: текст причины у каждой стороны свой (у нас это формат
+	// ошибки Go), сравнивать его между приложениями бессмысленно, а код —
+	// нормативен. Пути отбраковки, которым код ещё не назначен, оставляют
+	// поле пустым — старые потребители (UI, материализация) читают Reason и
+	// про Code не знают.
+	Code string
+	// OriginKind / OriginRaw — исходник записи байт в байт: «uri» — строка
+	// списка. Запись без пофрагментного исходника сюда не попадает вовсе —
+	// показывать было бы нечего.
+	OriginKind string
+	OriginRaw  string
+}
+
+// ParsedBody — результат чистого разбора тела.
+type ParsedBody struct {
+	Entries []*ParsedBodyEntry
+	// Rejected — записи, которые разобрать не удалось, в порядке тела.
+	Rejected []RejectedBodyRecord
+	// Truncated — разбор упёрся в кап: удалять «исчезнувшие» узлы при merge
+	// запрещено (SPEC 113-A).
+	Truncated bool
+	// Warnings — per-record деградации (битые записи, потерянные
+	// группы-члены, пустые группы). Персистятся в updateStatus (W3).
+	Warnings []string
+	// IgnoredSections — секции целого sing-box-конфига, которые импорт не
+	// читает (route/dns/inbounds/...).
+	IgnoredSections []string
+}
+
+// ParseSubscriptionBody разбирает ДЕКОДИРОВАННОЕ тело подписки.
+//
+// capN — реальный кап принятых записей (резолв «настройка подписки → дефолт
+// настроек приложения» делает вызывающий); ≤0 → аварийный потолок. Сверху
+// всегда клэмпится константой configtypes.MaxNodesPerSubscription.
+func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*ParsedBody, error) {
+	if capN <= 0 || capN > configtypes.MaxNodesPerSubscription {
+		capN = configtypes.MaxNodesPerSubscription
+	}
+
+	res := &ParsedBody{}
+	if len(body) == 0 {
+		return res, fmt.Errorf("subscription: empty body")
+	}
+
+	contentStr := string(body)
+	contentStr = strings.ReplaceAll(contentStr, "\r\n", "\n")
+	contentStr = strings.ReplaceAll(contentStr, "\r", "\n")
+	contentStr = strings.TrimSpace(contentStr)
+
+	st := &bodyParseState{
+		res:      res,
+		capN:     capN,
+		idCounts: make(map[string]int),
+		dedup:    newSourceDedup(),
+	}
+
+	bodyKind := ClassifySubscriptionBody(contentStr)
+
+	// vpn:// — Amnezia-профиль: все WG/AWG-контейнеры (SPEC 103 §9.B12).
+	// Пофрагментного raw у контейнеров нет — origin остаётся пустым.
+	if bodyKind == BodyKindVPNLink {
+		vpnNodes, skippedContainers, vpnErr := ParseAmneziaVPNLinkAll(contentStr, skip)
+		if vpnErr != nil {
+			st.warn(fmt.Sprintf("vpn:// body rejected: %v", vpnErr))
+		} else {
+			if skippedContainers > 0 {
+				st.warn(fmt.Sprintf("vpn:// body: %d container(s) skipped", skippedContainers))
+			}
+			for _, node := range vpnNodes {
+				st.accept(node, "", "")
+			}
+		}
+		st.finish()
+		return res, nil
+	}
+
+	// wg-quick .conf → канонические wireguard://-URI (SPEC 103 B11): разбор
+	// INI один, в parseWireGuardURI.
+	//
+	// Ветка своя, а не подмена contentStr на строки URI, потому что
+	// происхождением узла обязан стать ИСХОДНЫЙ блок INI, а не ссылка,
+	// которую мы из него вывели (SPEC 119). При подмене origin штамповала
+	// общая URI-ветка — и записывала туда наш собственный вывод: без
+	// комментариев блока (метка локации, выключенные опции, запасной
+	// Endpoint под решёткой) и без исходного порядка ключей. Такой узел
+	// нельзя пересобрать из конфига провайдера: Regen разбирал бы нашу же
+	// ссылку.
+	if bodyKind == BodyKindWGConf {
+		converted, skippedBlocks := WGConfBodyToConvertedBlocks(contentStr)
+		if skippedBlocks > 0 {
+			st.warn(fmt.Sprintf("wg-quick body: %d block(s) skipped (no [Peer] endpoint)", skippedBlocks))
+		}
+		if len(converted) == 0 {
+			st.warn("wg-quick body: no usable [Interface] block")
+		}
+		for _, block := range converted {
+			if st.capReached() {
+				continue
+			}
+			// Блок, не ставший даже ссылкой (у [Peer] нет Endpoint), —
+			// такая же запись состава, как битая строка URI-списка: узлом
+			// kind=unsupported на СВОЕЙ позиции, с исходным текстом блока и
+			// причиной (SPEC 116 W11). Раньше он лишь увеличивал счётчик
+			// skippedBlocks и исчезал: в составе на одну запись меньше, в
+			// origin.raw ничего, и починить провайдерский конфиг было не по
+			// чему.
+			if block.Err != nil {
+				st.warn(fmt.Sprintf("record rejected: %v", block.Err))
+				st.reject(block.Err.Error(), OriginKindWGIni, block.Raw)
+				continue
+			}
+			node, err := ParseNode(block.URI, skip)
+			if err != nil {
+				// Блок разобрался в URI, но узлом не стал: запись остаётся в
+				// составе со СВОИМ исходником — показывать надо блок, а не
+				// промежуточную ссылку.
+				st.warn(fmt.Sprintf("record rejected: %v", err))
+				st.reject(err.Error(), OriginKindWGIni, block.Raw)
+				continue
+			}
+			if node == nil {
+				continue // отсечено skip-фильтром
+			}
+			st.accept(node, OriginKindWGIni, block.Raw)
+		}
+		st.finish()
+		return res, nil
+	}
+
+	switch {
+	case bodyKind.IsSingbox():
+		importRes, err := ParseSingboxBody(contentStr, bodyKind, skip)
+		if err != nil {
+			st.warn(fmt.Sprintf("sing-box JSON body rejected: %v", err))
+			break
+		}
+		res.IgnoredSections = importRes.IgnoredSections
+		// Per-record деградации импорта (потерянные члены групп) — в общий
+		// поток warnings разбора: fetch персистит их в updateStatus (Т3).
+		for _, w := range importRes.Warnings {
+			st.warn(w)
+		}
+		// Неразобранные записи импорта встают на СВОИ места между принятыми
+		// (SPEC 116 W11): позиции ветка посчитала по своему списку узлов,
+		// здесь они переводятся в нумерацию принятых.
+		flushJSON := newJSONRejectFlusher(st, importRes.RejectedRecords())
+		flushJSON(0)
+		for i, node := range importRes.Nodes {
+			// Исходный тег нужен группам для перепривязки состава на сырые
+			// теги (тот же приём, что applyTagsToSingboxNode → SourceTag).
+			if node != nil && node.SourceTag == "" {
+				node.SourceTag = node.Tag
+			}
+			st.accept(node, OriginKindJSON, marshalNodeOriginJSON(node))
+			flushJSON(i + 1)
+		}
+
+	case bodyKind == BodyKindXrayArray:
+		arrayNodes, xrayReasons, xrayRejects, err := parseNodesFromXrayJSONArrayFull(contentStr, skip)
+		for _, r := range xrayReasons {
+			st.warn(r)
+		}
+		if err != nil {
+			st.warn(fmt.Sprintf("Xray JSON array body rejected: %v", err))
+			break
+		}
+		// Неразобранные outbound'ы Xray-тела (неподдержанный протокол, битая
+		// цепочка dialerProxy) встают на СВОИ места между принятыми узлами
+		// (SPEC 116 W11). До этого они исчезали внутри ветки за WARN'ом в
+		// логе, и на Xray-теле узлы kind=unsupported не рождались вовсе.
+		flushJSON := newJSONRejectFlusher(st, xrayRejects)
+		flushJSON(0)
+		for i, node := range arrayNodes {
+			if node != nil {
+				if node.SourceTag == "" {
+					node.SourceTag = node.Tag
+				}
+				// Синтезированные Xray-группы происхождения не имеют
+				// (origin=null — warp-К1/группы); обычные узлы — kind=json.
+				originKind, originRaw := OriginKindJSON, marshalNodeOriginJSON(node)
+				if node.Scheme == configtypes.SchemeGroup {
+					originKind, originRaw = "", ""
+				}
+				st.accept(node, originKind, originRaw)
+			}
+			// Сдача отбраковок идёт и для nil-элемента: позиции считались по
+			// ИНДЕКСУ списка, и пропуск шага увёл бы запись за конец состава.
+			flushJSON(i + 1)
+		}
+
+	default: // URI-список
+		for _, line := range strings.Split(contentStr, "\n") {
+			line = NormalizeSubscriptionTextLine(line)
+			if line == "" {
+				continue
+			}
+			// `#`-строка — КОММЕНТАРИЙ тела, а не запись состава: заголовки
+			// подписки (`# profile-title:`, `# profile-update-interval:`) уже
+			// вычитаны в SubMeta (ParseInlineComments), прочие — просто текст
+			// автора списка. Показывать их ещё и строками состава значило бы
+			// разобрать одно и то же дважды и объявить ошибкой то, что мы уже
+			// успешно поняли (обкатка заход 3: «8 node error(s)» на пяти
+			// заголовках и дате).
+			if strings.HasPrefix(line, "#") {
+				continue
+			}
+			// Анонс провайдера («Лучшие сервера», «ПОДХОДЯТ ДЛЯ ИГР») — тоже
+			// запись состава, но узлом она не притворялась (SPEC 116 W13):
+			// разбирать её незачем, а причина у неё своя, не «unsupported
+			// scheme». Тегом станет сама подпись — так один и тот же баннер
+			// матчится при повторном fetch и не плодит копий.
+			if isProviderBannerLine(line) {
+				st.warn(fmt.Sprintf("record rejected: %s", RejectReasonProviderBanner))
+				st.reject(RejectReasonProviderBanner, OriginKindURI, line)
+				continue
+			}
+			// Кап проверяется ПОСЛЕ отсечек комментария и баннера: он
+			// считает ЗАПИСИ состава, а ни `#`-строка, ни анонс провайдера
+			// записью не являются. Стоя выше, он засчитывал каждый заголовок
+			// и каждый баннер после капа в «beyond the cap», и пользователь
+			// читал, что подписка обрезала на десятки узлов больше, чем
+			// узлов в теле вообще есть.
+			if st.capReached() {
+				continue
+			}
+			node, err := ParseNode(line, skip)
+			if err != nil {
+				// Битая запись — деградация записи с warning, не подписки.
+				// SPEC 116 W11: и не молчаливая пропажа — запись остаётся в
+				// составе узлом kind=unsupported со своим исходником.
+				st.warn(fmt.Sprintf("record rejected: %v", err))
+				st.reject(err.Error(), OriginKindURI, line)
+				continue
+			}
+			if node == nil {
+				continue // отсечено skip-фильтром
+			}
+			st.accept(node, OriginKindURI, line)
+		}
+	}
+
+	st.finish()
+	return res, nil
+}
+
+// bodyParseState — счётчики одного разбора: кап, дедуп, уникализация.
+type bodyParseState struct {
+	res      *ParsedBody
+	capN     int
+	accepted int
+	skipped  int // отброшено капом
+	idCounts map[string]int
+	dedup    *sourceDedup
+}
+
+func (st *bodyParseState) warn(msg string) {
+	st.res.Warnings = append(st.res.Warnings, msg)
+}
+
+// reject запоминает неразобранную запись на её позиции (SPEC 116 W11).
+//
+// Счётчик принятых НЕ трогается: отбракованная запись не занимает ни номер
+// {$num}, ни слот уникализации, ни место в капе — ровно как раньше, когда она
+// просто исчезала. Запись без исходника не запоминается: показать было бы
+// нечего, а «unsupported без origin» — форма, которую модель не держит.
+func (st *bodyParseState) reject(reason, originKind, originRaw string) {
+	st.rejectCoded(reason, "", originKind, originRaw)
+}
+
+// rejectCoded — та же отбраковка с машинным кодом причины (D-088).
+//
+// Отдельный метод, а не пятый параметр у reject: код сегодня назначен ровно
+// одному пути (недостижимый dialerProxy), а reject зовут пять раз — добавлять
+// всем пустую строку значило бы шуметь в местах, которых правка не касается.
+func (st *bodyParseState) rejectCoded(reason, code, originKind, originRaw string) {
+	if strings.TrimSpace(originRaw) == "" {
+		return
+	}
+	st.res.Rejected = append(st.res.Rejected, RejectedBodyRecord{
+		After:      st.accepted,
+		Reason:     reason,
+		Code:       code,
+		OriginKind: originKind,
+		OriginRaw:  originRaw,
+	})
+}
+
+func (st *bodyParseState) capReached() bool {
+	if st.accepted >= st.capN {
+		st.skipped++
+		return true
+	}
+	return false
+}
+
+// accept проводит запись через кап → дедуп → уникализацию сырого тега и
+// кладёт её в результат. Порядок стадий обязателен (риск Р6): дедуп ДО
+// тегов, иначе дубль получил бы уникализованный тег и собственную
+// идентичность.
+func (st *bodyParseState) accept(node *configtypes.ParsedNode, originKind, originRaw string) {
+	if node == nil {
+		return
+	}
+	if st.accepted >= st.capN {
+		st.skipped++
+		return
+	}
+	if !st.dedup.accept(node) {
+		return
+	}
+
+	entry := &ParsedBodyEntry{
+		Node:       node,
+		OriginKind: originKind,
+		OriginRaw:  originRaw,
+	}
+	if node.Scheme == configtypes.SchemeGroup {
+		// Группы идентичности SPEC 112 не имеют, но сырой тег в контейнере
+		// v7 обязан быть уникален среди ВСЕХ узлов — уникализируем той же
+		// машиной; группа без тега не рождается (features/sources.md).
+		raw := strings.TrimSpace(node.Tag)
+		if raw == "" {
+			st.warn("group without tag skipped")
+			return
+		}
+		entry.RawTag = makeIdentityUnique(raw, st.idCounts)
+		if t, ok := node.Outbound["type"].(string); ok {
+			entry.GroupType = t
+		}
+	} else {
+		entry.RawTag = StampNodeIdentity(node, st.idCounts)
+		if entry.RawTag == "" {
+			// Узел без тега: сырой тег — идентичность, без неё узлу не жить
+			// в nodes[] (merge-ключа нет). Деградация записи.
+			reason := fmt.Sprintf("record without tag (%s://%s)", node.Scheme, node.Server)
+			st.warn(reason + " skipped")
+			st.reject(reason, originKind, originRaw)
+			return
+		}
+		// Хопы провайдера (`node.Chain`) здесь НЕ теряются и предупреждения
+		// не требуют: материализация выделяет их служебными узлами и связывает
+		// с владельцем полем Detour (relay_materialize.go, SPEC 120). Прежний
+		// warning «materialized without them (W4)» стоял заглушкой, пока
+		// переноса не было, и после его появления стал ложной тревогой —
+		// пользователь видел предупреждение о потере там, где ничего не
+		// терялось.
+	}
+
+	st.accepted++
+	entry.Num = st.accepted
+	st.res.Entries = append(st.res.Entries, entry)
+}
+
+// finish дорезолвливает группы (члены → сырые теги выживших) и ставит
+// Truncated. Группа, потерявшая всех членов, выбрасывается: пустой urltest
+// роняет старт ядра.
+func (st *bodyParseState) finish() {
+	if st.skipped > 0 {
+		st.res.Truncated = true
+		st.warn(fmt.Sprintf("body truncated: %d record(s) beyond the cap of %d", st.skipped, st.capN))
+	}
+
+	// Исходный тег (SourceTag) → сырой тег принятой записи.
+	rawByOriginal := make(map[string]string, len(st.res.Entries))
+	for _, e := range st.res.Entries {
+		if e.Node == nil {
+			continue
+		}
+		orig := e.Node.SourceTag
+		if orig == "" {
+			orig = strings.TrimSpace(e.Node.Tag)
+		}
+		if orig == "" {
+			continue
+		}
+		if _, taken := rawByOriginal[orig]; !taken {
+			rawByOriginal[orig] = e.RawTag
+		}
+	}
+	collapsed := st.dedup.collapsedTags()
+	resolveMember := func(memberTag string) (string, bool) {
+		if raw, ok := rawByOriginal[memberTag]; ok {
+			return raw, true
+		}
+		if survivor, ok := collapsed[memberTag]; ok {
+			if raw, ok := rawByOriginal[survivor]; ok {
+				return raw, true
+			}
+		}
+		return "", false
+	}
+
+	kept := st.res.Entries[:0]
+	for _, e := range st.res.Entries {
+		if e.Node == nil || e.Node.Scheme != configtypes.SchemeGroup {
+			kept = append(kept, e)
+			continue
+		}
+		members := make([]string, 0)
+		seen := make(map[string]struct{})
+		if rawMembers, ok := e.Node.Outbound[configtypes.GroupMembersKey].([]interface{}); ok {
+			for _, item := range rawMembers {
+				memberTag, ok := item.(string)
+				if !ok {
+					continue
+				}
+				raw, found := resolveMember(memberTag)
+				if !found {
+					// Вложенная группа-член или потерянный узел — потеря с
+					// warning, не молча (SPEC Т3).
+					st.warn(fmt.Sprintf("group %q: member %q not resolvable — dropped", e.RawTag, memberTag))
+					continue
+				}
+				if _, dup := seen[raw]; dup {
+					continue
+				}
+				seen[raw] = struct{}{}
+				members = append(members, raw)
+			}
+		}
+		if len(members) == 0 {
+			st.warn(fmt.Sprintf("group %q lost all members — dropped", e.RawTag))
+			continue
+		}
+		e.MemberRawTags = members
+		if def, ok := e.Node.Outbound["default"].(string); ok && def != "" {
+			if raw, found := resolveMember(def); found {
+				e.GroupDefaultRaw = raw
+			} else {
+				st.warn(fmt.Sprintf("group %q: default %q not in members — dropped", e.RawTag, def))
+			}
+		}
+		kept = append(kept, e)
+	}
+	st.res.Entries = kept
+
+	st.dedup.logSummary("(body)")
+	debuglog.DebugLog("ParseSubscriptionBody: %d entr(ies), truncated=%v, %d warning(s)",
+		len(st.res.Entries), st.res.Truncated, len(st.res.Warnings))
+}
+
+// ApplyLegacyTagMachine — СТАРАЯ тег-машина одним вызовом: политика
+// prefix/postfix/mask с переменными → нормализация → глобальная
+// уникализация.
+//
+// Экспортирована для миграции v6→v7 (шаги 4–5 строят индекс «финальный тег →
+// (folderId, сырой тег)» по старой машине — только так строковые хопы и
+// detour-ссылки резолвятся честно, PLAN §5). Эмиссионная тег-машина W4
+// воспроизводит тот же порядок применения — на ней держится
+// байт-эквивалентность эталонов.
+func ApplyLegacyTagMachine(node *configtypes.ParsedNode, prefix, postfix, mask string, nodeNum int, tagCounts map[string]int) string {
+	if node == nil {
+		return ""
+	}
+	// Маска — упразднённая форма (SPEC 118 W5): читает её только миграция,
+	// поэтому её ветка живёт здесь, а не в прод-машине тегов.
+	var tag string
+	if mask != "" {
+		tag = replaceTagVariables(mask, node, nodeNum)
+	} else {
+		tag = applyTagPrefixPostfix(node, prefix, postfix, nodeNum)
+	}
+	tag = textnorm.NormalizeProxyDisplay(tag)
+	return MakeTagUnique(tag, tagCounts, "Migration")
+}
+
+// marshalNodeOriginJSON — диагностическое происхождение записи JSON-тела:
+// канонический маршал Outbound-карты (encoding/json сортирует ключи карт —
+// стабильно между запусками). Не «сырое тело провайдера» — его пофрагментно
+// не существует; этого достаточно для показа per-node raw в Overview.
+func marshalNodeOriginJSON(node *configtypes.ParsedNode) string {
+	if node == nil || node.Outbound == nil {
+		return ""
+	}
+	b, err := json.Marshal(node.Outbound)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}

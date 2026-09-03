@@ -43,54 +43,63 @@ func ResetDetourNodeRefs(m *wizardmodels.WizardModel, sourceID, nodeTag string) 
 		return nil
 	}
 
-	// Тег узла уникален среди серверов? Только тогда tag-only ссылку можно
+	// Тег узла был уникален среди серверов? Только тогда tag-only ссылку можно
 	// уверенно приписать этому узлу.
+	//
+	// Считаем ДО перезаписи, то есть по состоянию «переименованный источник ещё
+	// носит nodeTag»: сам он в подсчёт не входит, а любой ДРУГОЙ носитель того
+	// же имени делает тег неоднозначным (SPEC 113-E). Раньше подсчёт шёл по уже
+	// изменённой модели — переименованный источник тег сменил, тёзка оставался
+	// один, тег объявлялся уникальным, и сброс гасил ЧУЖИЕ tag-only ссылки.
 	tagIsUnique := nodeTag != ""
 	if tagIsUnique {
-		seen := 0
 		for i := range m.Sources {
 			s := &m.Sources[i]
-			if s.Type != wizardmodels.SourceTypeServer && s.Type != wizardmodels.SourceTypeChain {
+			if s.Kind != wizardmodels.SourceKindServer && s.Kind != wizardmodels.SourceKindChain {
+				continue
+			}
+			// Переименованный источник — это и есть прежний носитель имени;
+			// сравнивать его текущий (уже новый) тег бессмысленно.
+			if sourceID != "" && strings.TrimSpace(s.ID) == sourceID {
 				continue
 			}
 			if strings.TrimSpace(s.NodeTagOrLabel()) == nodeTag {
-				seen++
+				tagIsUnique = false
+				break
 			}
 		}
-		tagIsUnique = seen <= 1
 	}
 
 	var affected []string
 	for i := range m.Sources {
 		s := &m.Sources[i]
-		refID := strings.TrimSpace(s.DetourNodeSourceID)
-		refTag := strings.TrimSpace(s.DetourNodeTag)
-		if refID == "" && refTag == "" && strings.TrimSpace(s.DetourNodeHash) == "" {
+		link := s.Detour
+		if link == nil {
+			continue
+		}
+		refID := strings.TrimSpace(link.FolderID)
+		refTag := strings.TrimSpace(link.Tag)
+		if refID == "" && refTag == "" {
 			continue
 		}
 
 		hit := false
 		switch {
 		case refID != "" && sourceID != "":
-			// Полная ссылка: сброс нужен только если она ведёт именно сюда и
-			// именно на прежнее имя. Ссылка на другой узел того же источника
-			// (источник-подписка) переименования не заметила.
+			// Ссылка на узел ПАПКИ: сброс нужен только если она ведёт именно
+			// сюда и именно на прежнее имя. Ссылка на другой узел той же
+			// папки переименования не заметила.
 			hit = refID == sourceID && (nodeTag == "" || refTag == nodeTag)
 		case refID == "" && tagIsUnique:
-			// Переходная ссылка по финальному тегу: она указывает на этот узел,
-			// раз имя было его и ничьим больше.
+			// Ссылка корневого пространства: она указывает на этот узел, раз
+			// имя было его и ничьим больше.
 			hit = refTag == nodeTag
 		}
 		if !hit {
 			continue
 		}
 
-		s.DetourNodeSourceID = ""
-		s.DetourNodeTag = ""
-		s.DetourNodeLabel = ""
-		// Упразднённый хеш гасится заодно: иначе миграция на сборке воскресила
-		// бы ссылку, которую пользователю только что показали сброшенной.
-		s.DetourNodeHash = ""
+		s.Detour = nil
 		affected = append(affected, SourceDisplayName(*s))
 	}
 	return affected
@@ -100,17 +109,31 @@ func ResetDetourNodeRefs(m *wizardmodels.WizardModel, sourceID, nodeTag string) 
 // узла, за ним URL/URI. Тот же порядок, что у диагностики сборки
 // (config.sourceDisplayName), чтобы имя в окне и имя в логе совпадали.
 func SourceDisplayName(s wizardmodels.Source) string {
+	// SPEC 116 W4: у КОНТЕЙНЕРА имя канонически живёт в Name (Label —
+	// отображаемое имя узловых kind'ов, sources_v7.go:181). Порядок здесь
+	// обязан совпадать с corestate.displayName(), иначе папка со старевшим
+	// Label звалась бы в диалогах одним именем, а в списке — другим.
+	if s.Kind == wizardmodels.SourceKindFolder || s.Kind == wizardmodels.SourceKindSubscription {
+		if v := strings.TrimSpace(s.Name); v != "" {
+			return v
+		}
+	}
 	if v := strings.TrimSpace(s.Label); v != "" {
 		return v
 	}
-	if v := strings.TrimSpace(s.NodeTag); v != "" {
+	if v := strings.TrimSpace(s.Name); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(s.Tag); v != "" {
 		return v
 	}
 	if v := strings.TrimSpace(s.URL); v != "" {
 		return v
 	}
-	if v := strings.TrimSpace(s.URI); v != "" {
-		return v
+	if s.Origin != nil {
+		if v := strings.TrimSpace(s.Origin.Raw); v != "" {
+			return v
+		}
 	}
 	return s.ID
 }

@@ -9,15 +9,112 @@ import (
 	"singbox-launcher/internal/locale"
 )
 
+// sourceDiag — то, что строка списка знает про подписку: заголовки
+// провайдера (SubMeta) и диагностика последней попытки (SubUpdateStatus).
+//
+// SPEC 118 W5: прежняя «мостовая Meta» держала обе половины в одной
+// структуре; в каноне у них разные дома, и форматтеры берут снимок обеих.
+// Указатели — потому что любая половина может отсутствовать (подписку ещё
+// не обновляли; провайдер не прислал заголовков).
+type sourceDiag struct {
+	meta   *corestate.SubMeta
+	status *corestate.SubUpdateStatus
+}
+
+// diagOf — снимок диагностики источника.
+func diagOf(src *corestate.Source) *sourceDiag {
+	if src == nil {
+		return nil
+	}
+	if src.Meta == nil && src.UpdateStatus == nil {
+		return nil
+	}
+	return &sourceDiag{meta: src.Meta, status: src.UpdateStatus}
+}
+
+func (d *sourceDiag) lastStatus() string {
+	if d == nil || d.status == nil {
+		return ""
+	}
+	return d.status.LastStatus
+}
+
+func (d *sourceDiag) errorCount() int {
+	if d == nil || d.status == nil {
+		return 0
+	}
+	return d.status.ErrorCount
+}
+
+func (d *sourceDiag) lastErrorMsg() string {
+	if d == nil || d.status == nil {
+		return ""
+	}
+	return d.status.LastErrorMsg
+}
+
+func (d *sourceDiag) lastAttemptAt() string {
+	if d == nil || d.status == nil {
+		return ""
+	}
+	return d.status.LastAttemptAt
+}
+
+func (d *sourceDiag) nodesCount() int {
+	if d == nil || d.status == nil {
+		return 0
+	}
+	return d.status.NodesCountFetched
+}
+
+func (d *sourceDiag) truncated() bool {
+	return d != nil && d.status != nil && d.status.Truncated
+}
+
+func (d *sourceDiag) userInfo() *corestate.UserInfo {
+	if d == nil || d.meta == nil {
+		return nil
+	}
+	return d.meta.UserInfo
+}
+
+func (d *sourceDiag) profileTitle() string {
+	if d == nil || d.meta == nil {
+		return ""
+	}
+	return d.meta.ProfileTitle
+}
+
+func (d *sourceDiag) profileWebPageURL() string {
+	if d == nil || d.meta == nil {
+		return ""
+	}
+	return d.meta.ProfileWebPageURL
+}
+
+func (d *sourceDiag) supportURL() string {
+	if d == nil || d.meta == nil {
+		return ""
+	}
+	return d.meta.SupportURL
+}
+
+func (d *sourceDiag) providerAnnounce() *corestate.ProviderAnnounce {
+	if d == nil || d.meta == nil {
+		return nil
+	}
+	return d.meta.ProviderAnnounce
+}
+
 // formatStatusBadge возвращает текст статуса fetch для подписки.
 //   - meta == nil или Empty → "● never"
 //   - last_status == "ok" → "● ok"
 //   - last_status == "err" → "● err"
-func formatStatusBadge(meta *corestate.SubscriptionMeta) string {
-	if meta == nil || meta.LastStatus == "" {
+func formatStatusBadge(meta *sourceDiag) string {
+	if meta.lastStatus() == "" {
 		return locale.T("● never")
 	}
-	switch meta.LastStatus {
+	switch meta.lastStatus() {
 	case "ok":
 		return locale.T("● ok")
 	case "err":
@@ -30,11 +127,11 @@ func formatStatusBadge(meta *corestate.SubscriptionMeta) string {
 //   - "" → "never fetched"
 //   - < 1 минуты → "just fetched"
 //   - иначе → "fetched 5m ago" / "fetched 2h ago" / "fetched 3d ago"
-func formatLastFetched(meta *corestate.SubscriptionMeta) string {
-	if meta == nil || meta.LastFetchedAt == "" {
+func formatLastFetched(meta *sourceDiag) string {
+	if meta.lastAttemptAt() == "" {
 		return locale.T("never fetched")
 	}
-	t, err := time.Parse(time.RFC3339, meta.LastFetchedAt)
+	t, err := time.Parse(time.RFC3339, meta.lastAttemptAt())
 	if err != nil {
 		return locale.T("never fetched")
 	}
@@ -46,11 +143,11 @@ func formatLastFetched(meta *corestate.SubscriptionMeta) string {
 }
 
 // formatQuota — "1.2 GB / 50 GB used" если total > 0, иначе "".
-func formatQuota(meta *corestate.SubscriptionMeta) string {
-	if meta == nil || meta.UserInfo == nil {
+func formatQuota(meta *sourceDiag) string {
+	ui := meta.userInfo()
+	if ui == nil {
 		return ""
 	}
-	ui := meta.UserInfo
 	if ui.TotalBytes <= 0 {
 		return ""
 	}
@@ -61,12 +158,13 @@ func formatQuota(meta *corestate.SubscriptionMeta) string {
 }
 
 // quotaPercentage — used/total в [0..1]; 0 если нет квоты.
-func quotaPercentage(meta *corestate.SubscriptionMeta) float64 {
-	if meta == nil || meta.UserInfo == nil || meta.UserInfo.TotalBytes <= 0 {
+func quotaPercentage(meta *sourceDiag) float64 {
+	ui := meta.userInfo()
+	if ui == nil || ui.TotalBytes <= 0 {
 		return 0
 	}
-	used := float64(meta.UserInfo.UploadBytes + meta.UserInfo.DownloadBytes)
-	total := float64(meta.UserInfo.TotalBytes)
+	used := float64(ui.UploadBytes + ui.DownloadBytes)
+	total := float64(ui.TotalBytes)
 	if total == 0 {
 		return 0
 	}
@@ -81,11 +179,12 @@ func quotaPercentage(meta *corestate.SubscriptionMeta) float64 {
 }
 
 // formatExpire — "expires in 12 days" / "expired" / "" если нет данных.
-func formatExpire(meta *corestate.SubscriptionMeta) string {
-	if meta == nil || meta.UserInfo == nil || meta.UserInfo.ExpireUnix <= 0 {
+func formatExpire(meta *sourceDiag) string {
+	ui := meta.userInfo()
+	if ui == nil || ui.ExpireUnix <= 0 {
 		return ""
 	}
-	expireAt := time.Unix(meta.UserInfo.ExpireUnix, 0)
+	expireAt := time.Unix(ui.ExpireUnix, 0)
 	d := time.Until(expireAt)
 	if d < 0 {
 		return locale.T("expired")
@@ -94,17 +193,15 @@ func formatExpire(meta *corestate.SubscriptionMeta) string {
 }
 
 // formatNodesCount — "150 nodes" или "20000 nodes (truncated, max 3000)".
-func formatNodesCount(meta *corestate.SubscriptionMeta, effectiveMax int) string {
-	if meta == nil {
+func formatNodesCount(meta *sourceDiag, effectiveMax int) string {
+	n := meta.nodesCount()
+	if n == 0 {
 		return ""
 	}
-	if meta.NodesCountFetched == 0 {
-		return ""
+	if meta.truncated() && effectiveMax > 0 {
+		return locale.Tf("%d nodes (truncated, max %d)", n, effectiveMax)
 	}
-	if meta.Truncated && effectiveMax > 0 {
-		return locale.Tf("%d nodes (truncated, max %d)", meta.NodesCountFetched, effectiveMax)
-	}
-	return locale.Tf("%d nodes", meta.NodesCountFetched)
+	return locale.Tf("%d nodes", n)
 }
 
 // humanizeBytes — "1.2 GB" / "150 MB" / "5 KB". Используем 1024-base.
@@ -152,13 +249,13 @@ func humanizeDuration(d time.Duration) string {
 
 // metaTooltip собирает многострочный tooltip для meta-info. "Status: ok"
 // не дублируется (subtitle и так показывает fetched-time + ⚠ при ошибках).
-func metaTooltip(meta *corestate.SubscriptionMeta) string {
+func metaTooltip(meta *sourceDiag) string {
 	if meta == nil {
 		return ""
 	}
 	lines := []string{}
-	if meta.ProfileTitle != "" {
-		lines = append(lines, "Title: "+meta.ProfileTitle)
+	if t := meta.profileTitle(); t != "" {
+		lines = append(lines, "Title: "+t)
 	}
 	if fetched := formatLastFetched(meta); fetched != "" {
 		lines = append(lines, "Fetched: "+fetched)
@@ -169,19 +266,19 @@ func metaTooltip(meta *corestate.SubscriptionMeta) string {
 	if expires := formatExpire(meta); expires != "" {
 		lines = append(lines, "Expires: "+expires)
 	}
-	if meta.NodesCountFetched > 0 {
-		lines = append(lines, fmt.Sprintf("Nodes: %d", meta.NodesCountFetched))
-		if meta.Truncated {
+	if n := meta.nodesCount(); n > 0 {
+		lines = append(lines, fmt.Sprintf("Nodes: %d", n))
+		if meta.truncated() {
 			lines = append(lines, "(truncated)")
 		}
 	}
-	if meta.SupportURL != "" {
-		lines = append(lines, "Support: "+meta.SupportURL)
+	if u := meta.supportURL(); u != "" {
+		lines = append(lines, "Support: "+u)
 	}
-	if meta.LastStatus == "err" && meta.LastErrorMsg != "" {
-		lines = append(lines, "⚠ Last error: "+meta.LastErrorMsg)
-		if meta.ErrorCount > 0 {
-			lines = append(lines, fmt.Sprintf("Error count: %d", meta.ErrorCount))
+	if meta.lastStatus() == "err" && meta.lastErrorMsg() != "" {
+		lines = append(lines, "⚠ Last error: "+meta.lastErrorMsg())
+		if c := meta.errorCount(); c > 0 {
+			lines = append(lines, fmt.Sprintf("Error count: %d", c))
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -193,22 +290,22 @@ func metaTooltip(meta *corestate.SubscriptionMeta) string {
 // Возвращает "" если нет полезной информации (для server-type / новой
 // подписки без meta — subtitle строка не рендерится). Error-case ставится
 // первым с ⚠ и сообщением — чтобы пользователь сразу видел проблему.
-func formatSourceSubtitle(meta *corestate.SubscriptionMeta, update *corestate.UpdateSpec, defaultReload string) string {
+func formatSourceSubtitle(meta *sourceDiag, update *corestate.UpdateSpec, defaultReload string) string {
 	if meta == nil {
 		return ""
 	}
 	parts := []string{}
 
-	if meta.LastStatus == "err" {
+	if meta.lastStatus() == "err" {
 		errMsg := "⚠"
-		if meta.ErrorCount > 0 {
-			errMsg = fmt.Sprintf("⚠ %d", meta.ErrorCount)
+		if c := meta.errorCount(); c > 0 {
+			errMsg = fmt.Sprintf("⚠ %d", c)
 		}
 		parts = append(parts, errMsg)
 	}
 
-	if meta.NodesCountFetched > 0 {
-		parts = append(parts, fmt.Sprintf("⁙ %d", meta.NodesCountFetched))
+	if n := meta.nodesCount(); n > 0 {
+		parts = append(parts, fmt.Sprintf("⁙ %d", n))
 	}
 
 	interval := ""
@@ -221,7 +318,7 @@ func formatSourceSubtitle(meta *corestate.SubscriptionMeta, update *corestate.Up
 		parts = append(parts, "↻ "+interval)
 	}
 
-	if fetched := formatLastFetched(meta); fetched != "" && meta.LastFetchedAt != "" {
+	if fetched := formatLastFetched(meta); fetched != "" && meta.lastAttemptAt() != "" {
 		parts = append(parts, "🕒 "+fetched)
 	}
 
@@ -233,4 +330,37 @@ func formatSourceSubtitle(meta *corestate.SubscriptionMeta, update *corestate.Up
 	}
 
 	return strings.Join(parts, "  •  ")
+}
+
+// fetchWarningTexts — per-record деградации последнего fetch'а строками
+// (SPEC 118 Т3: они персистятся в updateStatus, и UI читает их ИЗ СОСТОЯНИЯ,
+// ничего не перепарсивая).
+//
+// Это и есть ответ на «почему узлов столько»: пропущенные skip'ом записи,
+// битые элементы тела, потерянные группы-члены. До SPEC 118 их знал только
+// разбор, который вкладка Preview делала повторно своим кодом; теперь тела
+// разбираются один раз, и второго источника этих строк не существует.
+//
+// Формат — тот же, что у отчёта сборки (build_report_feed): адресация тегом
+// узла, счётчик у агрегируемых видов. Расходиться им нельзя: пользователь
+// читает про одно и то же событие в двух местах.
+func fetchWarningTexts(st *corestate.SubUpdateStatus) []string {
+	if st == nil || len(st.Warnings) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(st.Warnings))
+	for _, w := range st.Warnings {
+		reason := w.Message
+		if reason == "" {
+			reason = w.Kind
+		}
+		if w.Tag != "" {
+			reason = w.Tag + ": " + reason
+		}
+		if w.Count > 1 {
+			reason = fmt.Sprintf("%s (×%d)", reason, w.Count)
+		}
+		out = append(out, reason)
+	}
+	return out
 }

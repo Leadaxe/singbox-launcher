@@ -51,7 +51,7 @@ func PrepareDirections(parserConfig *ParserConfig, twinOptions map[string]interf
 		if d.Disabled {
 			// Выключенное Направление не материализуется вовсе. Правила,
 			// на него ссылавшиеся, чистит CleanDanglingOutboundsInRouteRules.
-			debuglog.DebugLog("directions: %q выключено — пропускаем", d.Tag)
+			debuglog.DebugLog("directions: %q is disabled — skipping", d.Tag)
 			continue
 		}
 		out = append(out, d)
@@ -97,7 +97,7 @@ func ExpandDirectionTwins(directions []configtypes.Direction, tmplAutoOptions ma
 		}
 		twinTag := d.Tag + twinSuffix
 		if used[twinTag] {
-			debuglog.WarnLog("directions: %q уже занят — автогруппа для %q не создаётся", twinTag, d.Tag)
+			debuglog.WarnLog("directions: %q is already taken — no auto group created for %q", twinTag, d.Tag)
 			out = append(out, d)
 			continue
 		}
@@ -216,6 +216,12 @@ type DirectionBuildOptions struct {
 	// зашивать их в код значило бы сломать чужой шаблон.
 	BlockTag  string
 	DirectTag string
+
+	// SystemTags — ВСЕ теги, объявленные шаблоном и активными пресетами
+	// (SPEC 118 W4): вход единого гарда занятости и словаря законных целей
+	// ссылок. Без них гард считал бы `direct-out` свободным, а хоп цепочки
+	// на него — висячим.
+	SystemTags []string
 }
 
 // isSelectorType — тип, у которого пустой состав можно заменить запасным.
@@ -265,7 +271,7 @@ func warnEmptyDirection(d configtypes.Direction, poolSize int) bool {
 		return false
 	}
 	debuglog.WarnLog(
-		"directions: %q (%s) — фильтр %q не поймал ни одного узла из %d; трафик будет заблокирован (default). Проверьте отбор узлов.",
+		"directions: %q (%s) — filter %q matched none of the %d nodes; traffic will be blocked (default). Check the node selection.",
 		d.DisplayName(), d.Tag, body, poolSize)
 	return true
 }

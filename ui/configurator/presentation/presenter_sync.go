@@ -40,11 +40,9 @@ package presentation
     internal/wizardsync (GuiTextAwaitingProgrammaticFill, FinalOutboundSelectReadLooksStale), юнит-тесты без Fyne.
 */
 import (
-	"encoding/json"
 	"strings"
 
 	"singbox-launcher/core/build"
-	"singbox-launcher/core/config"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/wizardsync"
@@ -248,15 +246,13 @@ func (p *WizardPresenter) RefreshAfterPresetToggle() {
 	// === 2. Outbounds eager sync ===
 	if p.model.TemplateData != nil {
 		wizardmodels.ReconcileRuleOrder(p.model)
-		rulesV6 := wizardmodels.SyncRulesByOrderToStateRulesV6(
+		rulesV6 := wizardmodels.EmitStateRulesInAxisOrder(
 			p.model.RuleOrder, p.model.PresetRefs, p.model.CustomRules,
 		)
+		// SPEC 117: запись одна — canonical GlobalOutbounds; legacy-вида в
+		// модели больше нет, производные перечитаются по ревизии.
 		build.SyncOutboundsWithTemplate(rulesV6, &p.model.GlobalOutbounds, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
-		if p.model.ParserConfig != nil {
-			build.SyncOutboundsWithTemplate(rulesV6, &p.model.ParserConfig.ParserConfig.Outbounds, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
-		}
-		p.model.RefreshDerivedParserConfig()
-		p.UpdateParserConfig(p.model.ParserConfigJSON)
+		p.model.BumpRevision()
 	}
 
 	// === 3. Outbounds tab UI refresh ===
@@ -433,31 +429,4 @@ func (p *WizardPresenter) syncGUIToModelDNS(ready bool) bool {
 		}
 	}
 	return changed
-}
-
-// ApplyParserConfigFromCurrentJSON replaces model.ParserConfig from model.ParserConfigJSON when JSON parses and validates,
-// normalizes via SerializeParserConfig, and updates the Outbounds entry. Used when opening the Outbounds tab so the
-// configurator list matches JSON after edits on Sources (local outbounds) or other tabs.
-func (p *WizardPresenter) ApplyParserConfigFromCurrentJSON() {
-	if p.guiState == nil {
-		return
-	}
-	raw := strings.TrimSpace(p.model.ParserConfigJSON)
-	if raw == "" {
-		p.model.ParserConfig = nil
-		return
-	}
-	var pc config.ParserConfig
-	if err := json.Unmarshal([]byte(raw), &pc); err != nil {
-		return
-	}
-	if err := wizardbusiness.ValidateParserConfig(&pc); err != nil {
-		return
-	}
-	serialized, err := wizardbusiness.SerializeParserConfig(&pc)
-	if err != nil {
-		return
-	}
-	p.model.ParserConfig = &pc
-	p.model.ParserConfigJSON = serialized
 }

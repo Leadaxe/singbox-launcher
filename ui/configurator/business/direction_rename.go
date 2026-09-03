@@ -41,12 +41,9 @@ func DirectionTagTaken(model *wizardmodels.WizardModel, tag, exceptTag string) b
 	if tag == exceptTag {
 		return false
 	}
-	// Форма правит legacy-вид (model.ParserConfig), а canonical список
-	// подтягивается позже — при вводе нового тега актуален именно он.
+	// Canonical список Направлений — единственный актуальный (SPEC 117):
+	// формы правят его же, отдельного «более свежего» вида больше нет.
 	dirs := model.GlobalOutbounds
-	if model.ParserConfig != nil && len(model.ParserConfig.ParserConfig.Outbounds) > 0 {
-		dirs = model.ParserConfig.ParserConfig.Outbounds
-	}
 	for i := range dirs {
 		if dirs[i].Tag == exceptTag {
 			continue
@@ -60,6 +57,28 @@ func DirectionTagTaken(model *wizardmodels.WizardModel, tag, exceptTag string) b
 		if dirs[i].Auto != nil && dirs[i].AutoTag() == tag {
 			return true
 		}
+	}
+	// SPEC 118 W4: ЕДИНЫЙ гард занятости (features/directions.md §8) —
+	// replace-теги свёрнутых папок, их `-auto`-двойники и верхние узлы.
+	// Направление `x` рядом с папкой, чья замена зовётся `x`, дало бы два
+	// `x-auto`, и ядро отвергло бы весь конфиг: частная проверка «занят ли
+	// тег среди Направлений» этого не видит по построению.
+	//
+	// Твин проверяем парой: занять `x`, когда чужой `x-auto` уже есть,
+	// значит завести вторую группу с тем же именем на следующей сборке.
+	owners := ModelTagOwners(model)
+	// Собственные притязания владельца снимаем: открыть форму `x` и
+	// сохранить, не трогая тег, — обычный сценарий, а не конфликт с самим
+	// собой (то же и для его твина `x-auto`).
+	if exceptTag != "" {
+		delete(owners, exceptTag)
+		delete(owners, exceptTag+"-auto")
+	}
+	if _, taken := owners[tag]; taken {
+		return true
+	}
+	if _, taken := owners[tag+"-auto"]; taken {
+		return true
 	}
 	// Служебные цели и всё, что уже предлагается целью правил (узлы,
 	// теги пресетов, объявления шаблона).
@@ -95,10 +114,10 @@ func RenameDirection(model *wizardmodels.WizardModel, oldTag, newTag string) int
 	// из тега на каждой сборке, и ссылка на старое имя двойника осталась
 	// бы висеть на несуществующей группе.
 	//
-	// Правим ОБА представления Направлений: canonical GlobalOutbounds и
-	// legacy-вид model.ParserConfig, с которым работает форма. Они
-	// синхронизируются в одну сторону уже после этого вызова, и
-	// переименовать только один значило бы, что второй перетрёт правку.
+	// Правки ровно две и обе canonical (SPEC 117): GlobalOutbounds и
+	// ссылки модели (хопы, detour, DNS). Legacy-вид
+	// model.ParserConfig — одноразовая проекция и здесь не трогается:
+	// четвёртой копии имени больше не существует.
 	renameIn := func(dirs []configtypes.Direction) {
 		for i := range dirs {
 			d := &dirs[i]
@@ -118,16 +137,6 @@ func RenameDirection(model *wizardmodels.WizardModel, oldTag, newTag string) int
 		}
 	}
 	renameIn(model.GlobalOutbounds)
-	if model.ParserConfig != nil {
-		renameIn(model.ParserConfig.ParserConfig.Outbounds)
-		// Per-source группы тоже могут предлагать Направление опцией.
-		for i := range model.ParserConfig.ParserConfig.Proxies {
-			renameIn(model.ParserConfig.ParserConfig.Proxies[i].Outbounds)
-		}
-	}
-	for i := range model.Sources {
-		renameIn(model.Sources[i].Outbounds)
-	}
 
 	// 2. Цели правил.
 	for _, rs := range model.CustomRules {
@@ -185,25 +194,46 @@ func RenameDirection(model *wizardmodels.WizardModel, oldTag, newTag string) int
 		}
 	}
 
-	// 5. Позиции цепочек: хоп может вести в Направление.
+	// 5. Позиции цепочек: хоп может вести в Направление. Ссылка корневого
+	// пространства (FolderID пуст) — единственная форма, которой это
+	// касается: хоп на узел папки адресуется её id и от переименования
+	// Направления не зависит.
 	for i := range model.Sources {
-		ch := model.Sources[i].Chain
-		if ch == nil {
-			continue
-		}
-		for j, hop := range ch.Hops {
-			switch hop {
+		hops := model.Sources[i].Hops
+		for j := range hops {
+			if hops[j].FolderID != "" {
+				continue
+			}
+			switch hops[j].Tag {
 			case oldTag:
-				ch.Hops[j] = newTag
+				hops[j].Tag = newTag
 				renamed++
 			case oldAuto:
-				ch.Hops[j] = newAuto
+				hops[j].Tag = newAuto
 				renamed++
 			}
 		}
 	}
 
-	// 6. detour DNS-серверов.
+	// 6. Ссылки detour источников: цель дозвона тоже может быть
+	// Направлением, и после переименования она повисла бы — на сборке это
+	// fail-closed, то есть источник молча выпал бы из конфига.
+	for i := range model.Sources {
+		link := model.Sources[i].Detour
+		if link == nil || link.FolderID != "" {
+			continue
+		}
+		switch link.Tag {
+		case oldTag:
+			link.Tag = newTag
+			renamed++
+		case oldAuto:
+			link.Tag = newAuto
+			renamed++
+		}
+	}
+
+	// 7. detour DNS-серверов.
 	renamed += renameDNSDetour(model, oldTag, newTag, oldAuto, newAuto)
 
 	return renamed

@@ -19,8 +19,10 @@ import wizardmodels "singbox-launcher/ui/configurator/models"
 type UIUpdater interface {
 	// Model возвращает текущую модель визарда (business читает данные из неё, не получая модель аргументом).
 	Model() *wizardmodels.WizardModel
-	// UpdateParserConfig обновляет текст ParserConfig
-	UpdateParserConfig(text string)
+	// RefreshOutboundsConfiguratorList пересобирает список конфигуратора
+	// Направлений (вкладка Directions) после мутации модели. Остаток
+	// снесённого транспорта UpdateParserConfig(text) (SPEC 117 W5).
+	RefreshOutboundsConfiguratorList()
 	// UpdateSaveProgress обновляет прогресс сохранения (0.0-1.0, -1 для скрытия)
 	UpdateSaveProgress(progress float64)
 	// UpdateSaveButtonText обновляет текст кнопки Save (пустая строка для скрытия)

@@ -100,6 +100,21 @@ type Settings struct {
 	// UX-преимущество daemon-режима.
 	DaemonStopVPNOnExit bool `json:"daemon_stop_vpn_on_exit,omitempty"`
 
+	// --- Умолчания подписок (SPEC 118 Т1) ---------------------------------
+	//
+	// Умолчания reload/max_nodes — поведение лаунчера, одни на все состояния
+	// мастера: с v7 они живут здесь, а не в state.json. Первый перенос из
+	// старого состояния (миграция v6→v7, шаг 8) заполняет их, только если
+	// пользователь ещё не выставил свои.
+	//
+	// DefaultSubscriptionReload — интервал автообновления подписки по
+	// умолчанию (форма прежнего Defaults.Reload, например "4h"); пусто =
+	// встроенный дефолт.
+	DefaultSubscriptionReload string `json:"default_subscription_reload,omitempty"`
+	// DefaultSubscriptionMaxNodes — кап узлов подписки по умолчанию;
+	// 0 = встроенный потолок (3000).
+	DefaultSubscriptionMaxNodes int `json:"default_subscription_max_nodes,omitempty"`
+
 	// SubscriptionUserAgent — пользовательский User-Agent для subscription
 	// requests. Пустая строка / отсутствие поля → fallback на
 	// configtypes.BuildSubscriptionUserAgent() (default, например

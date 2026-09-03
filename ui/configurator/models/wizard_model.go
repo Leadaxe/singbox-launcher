@@ -3,7 +3,7 @@
 // Файл wizard_model.go определяет WizardModel — чистую модель данных визарда без GUI зависимостей.
 //
 // WizardModel содержит только бизнес-данные (без Fyne виджетов):
-//   - ParserConfig данные (ParserConfigJSON, ParserConfig) — источник истины для списка источников (Proxies)
+//   - Sources + GlobalOutbounds + Defaults — canonical источник истины (SPEC 117)
 //   - SourceURLs — поле ввода для добавления новых URL (кнопка Add); не источник истины для существующих источников
 //   - Сгенерированные outbounds (GeneratedOutbounds, OutboundStats)
 //   - Template данные (TemplateData)
@@ -48,14 +48,11 @@ type OutboundStats struct {
 
 // WizardModel — модель данных визарда конфигурации.
 //
-// SPEC 052 phase 8 cleanup: канонический источник истины для списка
-// подключений — `Sources []corestate.Source`. Старые поля
-// `ParserConfig`/`ParserConfigJSON` остаются как ДЕРИВНЫЕ:
-//   - `AsParserConfig()` — собирает `*config.ParserConfig` для парсера на лету
-//     из `Sources` + `GlobalOutbounds` + `Defaults`.
-//   - `ParserConfigJSON` — кэш сериализации того же на момент последнего
-//     RefreshSerializedParserConfig (для JSON-editor вкладки и как
-//     дешёвый fingerprint для stale-detection в ParseAndPreview).
+// SPEC 117: канонический источник истины — `Sources []corestate.Source` +
+// `GlobalOutbounds` + `Defaults`. Legacy-форма `*config.ParserConfig` в
+// модели НЕ хранится: `AsParserConfig()` собирает её одноразовой проекцией
+// непосредственно на входе parse/generate/валидации, и проекция
+// выбрасывается. Stale-detection и мемо-кэши привязаны к `Revision`.
 //
 // SourceNodeCount — счёт узлов одного источника для списка Sources.
 type SourceNodeCount struct {
@@ -78,30 +75,10 @@ type WizardModel struct {
 	// outbounds-конфигуратора и парсера. Зеркалит state.connections.outbounds.
 	GlobalOutbounds []configtypes.Direction
 
-	// Defaults — глобальные defaults подключений (reload interval, max_nodes
-	// fallback). Зеркалит state.connections.defaults.
-	Defaults corestate.Defaults
-
 	// WarpAccounts — кеш выданных Cloudflare регистраций WARP (nil = пусто).
 	// Зеркалит state.warp_accounts. Диалог Add WARP переиспользует запись
 	// вместо новой регистрации, поэтому MASQUE H2/H3 ложатся на один ключ.
 	WarpAccounts *corestate.WarpAccountsSection
-
-	// ForeignBackupExtensions — блобы чужих приложений из LX Backup
-	// (SPEC 103, фаза 4). Модель их не читает и не показывает: она лишь
-	// проносит их между загрузкой и сохранением, иначе импортированный
-	// бэкап терял бы чужую часть при первом же сохранении состояния.
-	ForeignBackupExtensions map[string]json.RawMessage
-
-	// ParserConfigJSON — derived: кэш сериализации `AsParserConfig()` в
-	// строку для JSON-editor виджета. Refresh в `RefreshSerializedParserConfig`
-	// после любой мутации Sources/GlobalOutbounds. Не источник истины.
-	ParserConfigJSON string
-
-	// ParserConfig — derived: кэш `AsParserConfig()` для callsite'ов которые
-	// не получают модель напрямую (preview cache, parser pipeline). Заполняется
-	// `RefreshDerivedParserConfig`. Не источник истины.
-	ParserConfig *config.ParserConfig
 
 	// SourceURLs — текст в поле "Subscription URL or Direct Links" (ввод для кнопки Add); не используется для замены Proxies
 	SourceURLs string
@@ -174,35 +151,50 @@ type WizardModel struct {
 	PreviewNeedsParse   bool
 	AutoParseInProgress bool
 
-	// Preview кеш для распарсенных нод (используется всеми Preview/View, включая вкладку Preview в Edit Outbound)
-	PreviewNodes         []*config.ParsedNode
-	PreviewNodesBySource map[int][]*config.ParsedNode
+	// BuildReportGen — номер попытки сборки (core/config), открытой парсерной
+	// стадией Мастера (SPEC 115). Конвейер «Итога» состоит из двух половин,
+	// идущих в разное время: разбор подписок кладёт свои причины
+	// (source_excluded, chain_failed, naive_degraded), последний рубеж —
+	// свои. Обе обязаны попасть в ОДНУ попытку, иначе отчёт покажет половину
+	// причин; номер и есть то, чем вторая половина опознаёт первую.
+	//
+	// Ноль — «парсерной стадии не было»: с ним не совпадает ни одна живая
+	// попытка, и сборка «Итога» на таком номере отчёта не соберёт.
+	BuildReportGen config.BuildGeneration `json:"-"`
+
+	// NodePool — пул узлов, который увидит сборка: результат ЭМИССИИ из
+	// материализованных nodes[] (SPEC 118 W5), а не разбора тел.
+	//
+	// Прежний «кэш превью» умер вместе с ленивым разбором подписок: узлы
+	// разобраны один раз при fetch и лежат в состоянии, поэтому здесь
+	// остаётся только применить тег-политику и собрать цепочки — ровно то
+	// же, что делает сборка, и теми же функциями.
+	NodePool         []*config.ParsedNode
+	NodePoolBySource map[int][]*config.ParsedNode
 
 	// SourceNodeCounts — сколько узлов даст каждый источник (по индексу в
-	// Sources): всего распарсено и сколько из них пойдёт в конфиг после
-	// skip-фильтров и снятых галок.
-	//
-	// Кэш, а не вычисление на месте: разбор всех подписок занимает секунды
-	// на живых конфигах (сотни узлов), а строка списка перерисовывается на
-	// каждое движение мыши. nil = ещё не считали.
+	// Sources): всего в составе и сколько из них пойдёт в конфиг после
+	// снятых галок.
 	SourceNodeCounts map[int]SourceNodeCount
 
-	// PreviewCacheGeneration растёт на каждую инвалидцию кэша превью.
-	// Фоновый счёт (EnsureSourceNodeCounts) снимает значение до разбора и
-	// сверяет после: если источники менялись, пока шёл счёт, результат
-	// относится к СТАРОМУ списку (ключи — индексы!) и выбрасывается, а не
-	// пишется поверх — иначе счётчики съезжали на чужие строки.
-	PreviewCacheGeneration int
+	// NodePoolGeneration растёт на каждую инвалидацию пула. Фоновый счёт
+	// (EnsureSourceNodeCounts) снимает значение до прохода и сверяет после:
+	// если источники менялись, пока шёл счёт, результат относится к СТАРОМУ
+	// списку (ключи — индексы!) и выбрасывается, а не пишется поверх —
+	// иначе счётчики съезжали на чужие строки.
+	NodePoolGeneration int
 
-	// PreviewIgnoredSectionsBySource — секции импортированного sing-box конфига,
-	// которые парсер намеренно не читает (route/dns/inbounds/experimental),
-	// по индексу источника (SPEC 094 A4). Показывается в превью, чтобы
-	// пропущенное не выглядело как потеря данных. nil, если ни один источник
-	// не отдал целый конфиг.
-	PreviewIgnoredSectionsBySource map[int][]string
+	// Revision — монотонная ревизия модели (features/state.md «Ревизия
+	// модели»). Растёт при каждой мутации Sources/GlobalOutbounds/Defaults и
+	// прочих полей, влияющих на сборку. Не сериализуется. Заменяет прежний
+	// строковый fingerprint сериализованной модели: производный результат
+	// (генерация, мемо-кэши) привязывается к ревизии на старте и
+	// выбрасывается, если модель успела уйти вперёд.
+	Revision uint64 `json:"-"`
 
-	// Мемо для GetAvailableOutbounds при чтении только из ParserConfigJSON (ParserConfig == nil); сброс в InvalidatePreviewCache.
-	AvailableOutboundsMemoKey  string   `json:"-"`
+	// Мемо для GetAvailableOutbounds; ключ — ревизия модели на момент счёта
+	// (0 = пусто); сброс в InvalidateNodePool.
+	AvailableOutboundsMemoRev  uint64   `json:"-"`
 	AvailableOutboundsMemoTags []string `json:"-"`
 
 	// ExecDir — директория исполняемого файла (для путей к SRS и т.д.)
@@ -244,19 +236,24 @@ func NewWizardModel() *WizardModel {
 		GeneratedEndpoints:   make([]string, 0),
 		Sources:              make([]corestate.Source, 0),
 		GlobalOutbounds:      make([]configtypes.Direction, 0),
-		Defaults:             corestate.Defaults{Reload: "4h", MaxNodes: corestate.DefaultMaxNodes},
 	}
 }
 
-// AsParserConfig собирает legacy-форму parser config для парсера/preview
-// из канонических Sources + GlobalOutbounds + Defaults.
+// AsParserConfig собирает сборочную форму parser config из канонических
+// Sources + GlobalOutbounds.
 //
-// Каждый Source конвертится через v5.(*Source).ToProxySourceV4():
-//   - subscription → ProxySource{Source, Skip, Outbounds, Tag*, Disabled, ...}
-//   - server       → ProxySource{Connections:[URI], TagMask=Label, Disabled}
+// Каждый Source конвертится через (*Source).ToProxySourceV4(): узлы едут
+// каноном (Canonical), а в самой ProxySource остаётся вход fetch и тексты
+// диагностики (SPEC 118 W5).
 //
 // Возвращаемый pointer указывает на свежий объект — caller может его
 // мутировать (substitute placeholders) без побочных эффектов на модель.
+//
+// Индексный инвариант (SPEC 117, риск Р1): Proxies[i] строится из Sources[i]
+// один к одному, и это ЕДИНСТВЕННЫЙ производитель проекции. На инварианте
+// висят карты пула NodePoolBySource / SourceNodeCounts (map[int] по
+// индексу источника) — не переупорядочивать
+// и не фильтровать элементы при построении.
 func (m *WizardModel) AsParserConfig() *config.ParserConfig {
 	if m == nil {
 		return &config.ParserConfig{}
@@ -272,21 +269,19 @@ func (m *WizardModel) AsParserConfig() *config.ParserConfig {
 	} else {
 		pc.ParserConfig.Outbounds = []configtypes.Direction{}
 	}
-	pc.ParserConfig.Parser.Reload = m.Defaults.Reload
 	return pc
 }
 
-// RefreshDerivedParserConfig — вызывается после мутации Sources/GlobalOutbounds
-// для синхронизации деривных кэшей (`ParserConfig` + `ParserConfigJSON`).
-// Идемпотентна; ошибки сериализации тихие (для JSON-editor display'а).
-func (m *WizardModel) RefreshDerivedParserConfig() {
+// BumpRevision — пометить модель изменённой (features/state.md «Ревизия
+// модели»). Зовётся после каждой canonical-мутации. Только UI-поток, без
+// атомиков: у модели нет внутренней синхронизации, как и у остальных полей
+// WizardModel; фоновые конвейеры снимают снапшот ревизии до старта и
+// сверяют после через существующие UI-обёртки.
+func (m *WizardModel) BumpRevision() {
 	if m == nil {
 		return
 	}
-	m.ParserConfig = m.AsParserConfig()
-	if data, err := json.MarshalIndent(map[string]interface{}{"ParserConfig": m.ParserConfig.ParserConfig}, "", "  "); err == nil {
-		m.ParserConfigJSON = string(data)
-	}
+	m.Revision++
 }
 
 // SrsDir — каталог, куда качать .srs для текущего таргета (SPEC 098 §2.3).

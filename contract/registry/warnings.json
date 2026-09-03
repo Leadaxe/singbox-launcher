@@ -256,7 +256,7 @@
       "params": [
         "value"
       ],
-      "desc": "MASQUE vhttp вне {h3, h2} — принудительно h3. Есть в ОБОИХ проектах (прежняя пометка «Desktop-протокол, в LxBox нет» протухла: masque в LxBox поддержан). Контракт 0.8.0 (D-078) снёс приём legacy-алиаса `network=` — параметр игнорируется, дефолт h3.",
+      "desc": "MASQUE vhttp вне {h3, h2, auto} — принудительно h3 (auto принимается с 0.11.1: ядро >= lx.27, h3 с откатом на h2). Есть в ОБОИХ проектах (прежняя пометка «Desktop-протокол, в LxBox нет» протухла: masque в LxBox поддержан). Контракт 0.8.0 (D-078) снёс приём legacy-алиаса `network=` — параметр игнорируется, дефолт h3.",
       "dart": "MasqueVhttpInvalidWarning",
       "go": "core/config/subscription/node_parser_masque.go:100"
     },
@@ -437,6 +437,16 @@
       "desc": "Направление не взяло в состав цепочку, которая через это же Направление проходит (SPEC 110 T9). Самый частый случай: цепочка [proxy-out, exit] при фильтре «все узлы» у proxy-out. Ядро на таком не падает — оно развернёт позицию в то, что группа выбрала сейчас, — но пользователь получил бы маршрут, которого не задумывал: выбрав цепочку внутри группы, он замкнул бы трафик на неё же. Проверяется транзитивно, включая цепочку через цепочку. МЕХАНИЗМ DART: не NodeWarning-класс, а строковый код в ChainDegradation (цепочка деградирует ЦЕЛИКОМ до сборки конфига, а не помечается предупреждением на живом узле) и/или находка формы ChainIssueCode. Прежняя запись называла *Warning-класс, которого в коде нет.",
       "dart": "services/builder/chain_nodes.dart (T9) + screens/chain_edit/chain_form_validation.dart",
       "go": "core/config/chain_cycle.go:84"
+    },
+    "dialer_proxy_unusable": {
+      "severity": "error",
+      "params": [
+        "target",
+        "cause"
+      ],
+      "desc": "Цель `streamSettings.sockopt.dialerProxy` непригодна: узел-владелец отбраковывается целиком (иначе он ушёл бы напрямую — тихая деанонимизация). cause \u2208 not_found | service_outbound | group | not_convertible | cycle | depth. Лаунчер сегодня даёт not_found (остальные причины режутся раньше другими путями), LxBox — все шесть.",
+      "dart": "DialerProxyUnusableWarning",
+      "go": "core/config/subscription/xray_json_array.go (attachXrayDialerChain)"
     },
     "ws_early_data_converted": {
       "severity": "info",

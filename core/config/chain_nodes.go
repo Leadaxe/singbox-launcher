@@ -29,14 +29,64 @@ type ChainDegradation struct {
 
 // chainSourceTag — тег будущего узла цепочки.
 //
-// Имя источника, а при пустом — запасное `chain-<N>` по позиции в списке:
-// пустой тег в конфиге валит `sing-box check`, и оставить его нельзя даже
-// когда пользователь не удосужился назвать цепочку.
+// Берётся из канона (сырой тег chain-узла = его финальный тег: у корневого
+// узла тег-политики нет), а при пустом — запасное `chain-<N>` по позиции в
+// списке: пустой тег в конфиге валит `sing-box check`, и оставить его нельзя
+// даже когда пользователь не удосужился назвать цепочку.
 func chainSourceTag(src ProxySource, index int) string {
-	if t := src.TagMask; t != "" {
+	if t := canonicalChainTag(src); t != "" {
 		return t
 	}
 	return "chain-" + strconv.Itoa(index+1)
+}
+
+// canonicalChainTag — тег chain-узла источника (пусто, если такого узла нет).
+func canonicalChainTag(src ProxySource) string {
+	if src.Canonical == nil {
+		return ""
+	}
+	for i := range src.Canonical.Nodes {
+		if src.Canonical.Nodes[i].Kind == canonicalKindChain {
+			return strings.TrimSpace(src.Canonical.Nodes[i].Tag)
+		}
+	}
+	return ""
+}
+
+// chainHopUnresolvedMark — префикс позиции цепочки, ссылка которой НЕ
+// резолвнулась на проходе 2 (ResolveCanonicalChainHops).
+//
+// Зачем маркер, а не сырой тег. Проход 2 знает точно, что позиция не
+// разрешилась: цель выключена, папки нет, узла в ней нет. Но раньше он
+// оставлял в hops сырой тег «в расчёте на то, что ResolveChainSources
+// уронит цепочку», а тот проверяет позиции по `known` — пространству
+// ФИНАЛЬНЫХ тегов КОРНЯ. Совпадение имён там не редкость: хоп
+// {FolderID:"F1", Tag:"US-1"} при выключенной папке F1 и корневом узле с
+// финальным тегом `US-1` проходил проверку, и цепочка молча собиралась
+// через ЧУЖОЙ сервер — то есть настройка анонимности подменялась другим
+// маршрутом без предупреждения.
+//
+// Символы взяты заведомо непечатные: тег узла приходит из подписки и из
+// формы, и оба пути прогоняют его через нормализацию имени — совпасть с
+// маркером он не может, поэтому `known[маркированный]` ложен ВСЕГДА, а
+// деградация fail-closed наступает независимо от имён в корне.
+const chainHopUnresolvedMark = "\x00unresolved\x00"
+
+// markChainHopUnresolved помечает позицию нерезолвимой, сохраняя внутри
+// исходный тег: он нужен текстам причин.
+func markChainHopUnresolved(tag string) string {
+	return chainHopUnresolvedMark + tag
+}
+
+// chainHopDisplayTag снимает маркер: человеку в причине показывают тег
+// позиции, каким он стоит в цепочке, а не наш служебный префикс.
+func chainHopDisplayTag(hop string) string {
+	return strings.TrimPrefix(hop, chainHopUnresolvedMark)
+}
+
+// chainHopIsUnresolved — позиция помечена нерезолвимой проходом 2.
+func chainHopIsUnresolved(hop string) bool {
+	return strings.HasPrefix(hop, chainHopUnresolvedMark)
 }
 
 // ResolveChainSources строит узлы для источников-цепочек и дописывает их к
@@ -98,6 +148,20 @@ func ResolveChainSources(
 	for _, tag := range ChainBuiltinHopTags {
 		known[tag] = true
 	}
+	// SPEC 118 W4: теги ЗАМЕН свёрнутых папок — законные позиции
+	// (features/directions.md §5: «резолв NodeLink видит replace-теги наравне
+	// с узлами»). Узлом такая цель не является: замена разворачивается
+	// локальной группой на проходе 0, и без этой добавки хоп на неё
+	// деградировал бы цепочку, хотя цель в конфиге есть.
+	for i := range parserConfig.ParserConfig.Proxies {
+		ps := parserConfig.ParserConfig.Proxies[i]
+		if ps.Disabled || ps.Canonical == nil {
+			continue
+		}
+		for _, tag := range FolderReplaceTags(ps.Canonical.Replace) {
+			known[tag] = true
+		}
+	}
 
 	// Для проверок состава: узлы по тегам (reality) и уже разрешённые
 	// цепочки (вложенность). Раньше эти валидаторы существовали, но
@@ -120,12 +184,12 @@ func ResolveChainSources(
 		}
 		tag := chainSourceTag(src, i)
 		name := tag
-		if src.TagMask == "" && src.Source != "" {
-			name = src.Source
+		if s := strings.TrimSpace(src.Label); s != "" {
+			name = s
 		}
 
 		degrade := func(reason string) {
-			debuglog.WarnLog("chain: источник %q не стал узлом: %s", tag, reason)
+			debuglog.WarnLog("chain: source %q did not become a node: %s", tag, reason)
 			broken = append(broken, ChainDegradation{Tag: tag, Name: name, Reason: reason})
 		}
 
@@ -143,7 +207,7 @@ func ResolveChainSources(
 		// это не проходят (MakeTagUnique), цепочки шли в обход. После
 		// ChainEmitError: собственные диагностики цепочки информативнее.
 		if known[tag] {
-			degrade("имя «" + tag + "» уже занято другим узлом, Направлением или цепочкой")
+			degrade("the name “" + tag + "” is already taken by another node, Direction or chain")
 			continue
 		}
 		// Позиция, которой нет среди известных тегов, — ссылка в никуда, на
@@ -152,8 +216,11 @@ func ResolveChainSources(
 		// молча нельзя.
 		missing := ""
 		for _, hop := range src.Chain.Hops {
-			if !known[hop] {
-				missing = hop
+			// Маркер проверяется ПЕРВЫМ: позиция, про которую проход 2 уже
+			// знает, что её цель не нашлась, роняет цепочку независимо от
+			// того, носит ли кто-то в корне такое же имя.
+			if chainHopIsUnresolved(hop) || !known[hop] {
+				missing = chainHopDisplayTag(hop)
 				break
 			}
 		}
@@ -162,13 +229,13 @@ func ResolveChainSources(
 			continue
 		}
 		if conflicts := ChainRealityConflict(src.Chain, nodesByTag); len(conflicts) > 0 {
-			degrade("strip снимает tls.utls, а позиции " + strings.Join(conflicts, ", ") +
-				" — reality-узлы: ядро отказывается стартовать с таким конфигом")
+			degrade("strip removes tls.utls while positions " + strings.Join(conflicts, ", ") +
+				" are reality nodes: the core refuses to start with such a config")
 			continue
 		}
 		if nested := ChainNestedConflict(src.Chain, chainTags); len(nested) > 0 {
-			degrade("цепочки " + strings.Join(nested, ", ") +
-				" стоят не первой позицией — ядро допускает вложенную цепочку только позицией 0")
+			degrade("chains " + strings.Join(nested, ", ") +
+				" are not in the first position — the core allows a nested chain only at position 0")
 			continue
 		}
 
@@ -191,7 +258,7 @@ func ResolveChainSources(
 		known[tag] = true
 		chainTags[tag] = true
 		nodesByTag[tag] = node
-		debuglog.DebugLog("chain: источник %q стал узлом из %d позиций", tag, len(src.Chain.Hops))
+		debuglog.DebugLog("chain: source %q became a node of %d positions", tag, len(src.Chain.Hops))
 	}
 	return allNodes, broken
 }

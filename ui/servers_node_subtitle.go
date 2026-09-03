@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/theme"
@@ -106,14 +107,56 @@ type canvasTextSetter struct {
 	text *canvas.Text
 }
 
+// SetDelay показывает удачный замер: текст и цвет строятся из ЧИСЛА.
+//
+// Отдельный вход, потому что по тексту качество связи не восстановить:
+// подпись локализована («%d ms» → «123 мс»), и любой разбор строки ломается
+// на первом же переводе. Раньше так и было — русский «123 мс» не подходил под
+// суффикс «ms» и красился как ошибка, то есть здоровый узел горел красным.
+func (s *canvasTextSetter) SetDelay(delay int64) {
+	if s == nil || s.text == nil {
+		return
+	}
+	s.text.Text = serversDelayText(delay)
+	s.text.Color = serversDelayColor(delay)
+	s.text.Refresh()
+}
+
 // SetText обновляет текст и перерисовывает его.
+//
+// Цвет ставится ПО СОДЕРЖИМОМУ, иначе прежний остаётся на новом тексте: «…»
+// после ошибки было красным (нажатие выглядело как промах). Различаются
+// ровно два известных состояния — ожидание и ошибка; всё прочее (в том числе
+// «Ping»/«Пинг» — приглашение к замеру) нейтрально и НИКОГДА не красное.
+// Числовой замер сюда не приходит: для него есть SetDelay.
 func (s *canvasTextSetter) SetText(v string) {
 	if s == nil || s.text == nil {
 		return
 	}
 	s.text.Text = v
+	switch v {
+	case serversDelayPendingText:
+		s.text.Color = theme.Color(theme.ColorNamePlaceHolder)
+	case locale.T("Error"):
+		s.text.Color = serversDelayColor(-1)
+	default:
+		s.text.Color = theme.Color(theme.ColorNamePlaceHolder)
+	}
 	s.text.Refresh()
 }
+
+// serversDelayPendingText — что стоит в ячейке, пока идёт замер. Отдельная
+// константа, потому что по ней же canvasTextSetter узнаёт состояние ожидания
+// и красит его нейтрально.
+const serversDelayPendingText = "…"
+
+// serversDelayMinPending — сколько «…» держится на экране минимум.
+//
+// Мгновенный отказ (узла нет в конфиге, транспорт недоступен) возвращается за
+// единицы миллисекунд, и без нижней границы индикация не успевала
+// отрисоваться: человек видел прежнее значение и не понимал, приняли ли его
+// нажатие. 180 мс — заметно глазу и не воспринимается как задержка.
+const serversDelayMinPending = 180 * time.Millisecond
 
 // serversDelayText форматирует замер для колонки.
 //

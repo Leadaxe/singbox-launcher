@@ -28,6 +28,11 @@ func warnBindInterface(vars map[string]string, target template.TargetSpec, res *
 	}
 	for _, ifc := range netiface.ListOrEmpty() {
 		if strings.EqualFold(ifc.Name, name) {
+			// SPEC 113-F: чужой туннель (системный WireGuard/AmneziaWG) —
+			// ВАЛИДНЫЙ выбор, и warning ему не полагается: ядро через него
+			// выйдет, а лишнее предупреждение в отчёте сборки заставляло бы
+			// искать поломку там, где всё сделано намеренно. Единственное, что
+			// остаётся проверить, — поднят ли он, ровно как у любого другого.
 			if !ifc.Up {
 				res.Validation.Warnings = append(res.Validation.Warnings, fmt.Sprintf(
 					"outbound interface %q is down — sing-box will have no uplink until it comes up", name))
@@ -35,10 +40,19 @@ func warnBindInterface(vars map[string]string, target template.TargetSpec, res *
 			return
 		}
 	}
-	// Интерфейс есть, но не прошёл фильтр пригодности — почти всегда это
-	// воткнутый кабель без адреса. Формулировка разделяет два случая, потому
-	// что действия у них разные: получить адрес против исправить имя.
-	if netiface.Exists(name) {
+	// Интерфейс есть, но не прошёл фильтр пригодности. Причину называем по
+	// факту: действия у них разные, а прежняя формулировка «нет IP-адреса»
+	// была для собственного TUN прямой ложью — адрес у него есть.
+	switch fit := netiface.Fitness(name); {
+	case fit == netiface.UnfitTunnel:
+		res.Validation.Warnings = append(res.Validation.Warnings, fmt.Sprintf(
+			"outbound interface %q is the core's own tunnel or a tunnel without an address — sing-box cannot use it as an uplink", name))
+		return
+	case fit == netiface.UnfitLoopback:
+		res.Validation.Warnings = append(res.Validation.Warnings, fmt.Sprintf(
+			"outbound interface %q is loopback — no traffic will leave the machine through it", name))
+		return
+	case netiface.Exists(name):
 		res.Validation.Warnings = append(res.Validation.Warnings, fmt.Sprintf(
 			"outbound interface %q has no IP address — sing-box will have no uplink through it", name))
 		return

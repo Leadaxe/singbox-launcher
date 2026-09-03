@@ -70,12 +70,6 @@ func ValidateParserConfig(parserConfig *config.ParserConfig) error {
 			}
 		}
 
-		// Validate outbounds
-		for j, outbound := range proxy.Outbounds {
-			if err := ValidateOutbound(&outbound); err != nil {
-				return fmt.Errorf("proxy %d outbound %d: %w", i, j, err)
-			}
-		}
 	}
 
 	// Validate global outbounds
@@ -215,23 +209,4 @@ func ValidateSize(size int64, maxSize int64, entityName string) error {
 // Uses ValidateSize internally for consistency.
 func ValidateHTTPResponseSize(size int64) error {
 	return ValidateSize(size, wizardutils.MaxSubscriptionSize, "HTTP response")
-}
-
-// ValidateParserConfigJSON validates ParserConfig JSON text.
-func ValidateParserConfigJSON(jsonText string) error {
-	if jsonText == "" {
-		return fmt.Errorf("ParserConfig JSON is empty")
-	}
-
-	jsonBytes := []byte(jsonText)
-	if err := ValidateJSON(jsonBytes); err != nil {
-		return fmt.Errorf("invalid ParserConfig JSON: %w", err)
-	}
-
-	var parserConfig config.ParserConfig
-	if err := json.Unmarshal(jsonBytes, &parserConfig); err != nil {
-		return fmt.Errorf("failed to parse ParserConfig JSON: %w", err)
-	}
-
-	return ValidateParserConfig(&parserConfig)
 }

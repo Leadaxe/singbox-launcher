@@ -15,12 +15,18 @@ func normalizeNilSlices(s *State) {
 	if s.CustomRules == nil {
 		s.CustomRules = []CustomRule{}
 	}
-	if s.Connections.Sources == nil {
-		s.Connections.Sources = []Source{}
+	if s.Sources == nil {
+		s.Sources = []Source{}
 	}
-	sanitizeOutboundRefs(&s.Connections.Outbounds)
-	for i := range s.Connections.Sources {
-		sanitizeOutboundRefs(&s.Connections.Sources[i].Outbounds)
+	sanitizeOutboundRefs(&s.Directions)
+	for i := range s.Sources {
+		// Источник без id — рукописный state.json: приложение минтит ULID
+		// при создании (SPEC 117 W4, Р3). Долечиваем на Load, иначе
+		// NodeLink.FolderID на такую папку не сможет родиться вовсе.
+		// Симметрично ensureSourceID импорта бэкапа.
+		if s.Sources[i].ID == "" {
+			s.Sources[i].ID = MakeULID()
+		}
 	}
 }
 

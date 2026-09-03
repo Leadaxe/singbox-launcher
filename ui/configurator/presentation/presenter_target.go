@@ -237,9 +237,9 @@ func targetSpecFromStateMeta(sf *wizardmodels.WizardStateFile,
 //
 // У каждого таргета свой набор источников и outbound-групп, поэтому ноды,
 // разобранные для предыдущего, к новому отношения не имеют. Парсер и так
-// выбрасывает их при расхождении ParserConfigJSON, но флаг «нужен разбор»
-// при этом не взводился — и Save экспортировал конфиг с ПУСТЫМИ секциями
-// между парсер-маркерами (2 статических outbound вместо 43 нод).
+// выбрасывает результат при уходе ревизии модели вперёд, но флаг «нужен
+// разбор» при этом не взводился — и Save экспортировал конфиг с ПУСТЫМИ
+// секциями между парсер-маркерами (2 статических outbound вместо 43 нод).
 //
 // Ставим флаг явно: превью и Save увидят, что данные надо перечитать.
 func (p *WizardPresenter) invalidateParsedNodes() {
@@ -249,9 +249,9 @@ func (p *WizardPresenter) invalidateParsedNodes() {
 	p.model.GeneratedOutbounds = nil
 	p.model.GeneratedEndpoints = nil
 	p.model.OutboundStats = wizardmodels.OutboundStats{}
-	p.model.ParserConfig = nil
+	p.model.BumpRevision()
 	p.model.PreviewNeedsParse = true
-	wizardbusiness.InvalidatePreviewCache(p.model)
+	wizardbusiness.InvalidateNodePool(p.model)
 }
 
 // ApplyClonedState применяет состояние, склонированное с ДРУГОЙ машины.

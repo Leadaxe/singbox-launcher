@@ -1,0 +1,13 @@
+{
+  "rules": [
+    {
+      "name": "Work",
+      "enabled": false
+    }
+  ],
+  "route_final_applied": false,
+  "warnings": [
+    "backup_final_dropped",
+    "backup_unknown_outbound"
+  ]
+}

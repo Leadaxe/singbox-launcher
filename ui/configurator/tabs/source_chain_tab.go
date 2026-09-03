@@ -17,9 +17,9 @@
 package tabs
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -30,6 +30,7 @@ import (
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
+	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -46,7 +47,10 @@ const (
 
 // chainForm — состояние вкладки «Цепочка».
 type chainForm struct {
-	hops   []string
+	// hops — позиции ССЫЛКАМИ (SPEC 118 Т8). Строкой позицию хранить нельзя:
+	// финальный тег узла папки вычисляется её тег-политикой на сборке, и
+	// сохранённый протух бы от правки префикса.
+	hops   []corestate.NodeLink
 	lookup map[string]chainHopCandidate
 	cands  []chainHopCandidate
 
@@ -92,7 +96,7 @@ type chainForm struct {
 	nodesKnown bool
 
 	// realityTags — позиции, чьи узлы поднимают reality: у них нельзя
-	// снимать tls.utls, иначе ядро не стартует (T4). Считается по узлам,
+	// снимать tls.utls, otherwise the core will not start (T4). Считается по узлам,
 	// которых сама цепочка не видит, — потому и приезжает снаружи.
 	realityTags map[string]bool
 
@@ -142,7 +146,7 @@ func (f *chainForm) SetTag(tag string) {
 // дозагрузился уже после открытия окна.
 //
 // realityTags/detourTags обновляются ВМЕСТЕ с кандидатами: они считаются из
-// тех же PreviewNodes, и прежняя сигнатура их выбрасывала — окно, открытое
+// тех же NodePool, и прежняя сигнатура их выбрасывала — окно, открытое
 // до разбора подписок, навсегда оставалось с пустыми множествами, и
 // предупреждения T4 (reality + strip utls) и T7 (detour на позиции) молчали
 // именно в том сценарии, где они нужнее всего.
@@ -168,11 +172,13 @@ func (f *chainForm) Tag() string {
 }
 
 // Load заполняет форму содержимым цепочки. nil = пустая цепочка.
-func (f *chainForm) Load(c *configtypes.SourceChain) {
-	f.hops = nil
+//
+// hops приходят отдельно от настроек: в каноне v7 позиции — ссылки модели,
+// а `configtypes.SourceChain` это форма ЯДРА, где позиция уже строка.
+func (f *chainForm) Load(c *configtypes.SourceChain, hops []corestate.NodeLink) {
+	f.hops = append([]corestate.NodeLink(nil), hops...)
 	var rewrite map[string]interface{}
 	if c != nil {
-		f.hops = append([]string(nil), c.Hops...)
 		rewrite = c.Rewrite
 	}
 	if f.rewrite != nil {
@@ -235,13 +241,34 @@ func (f *chainForm) syncStripChecks(c *configtypes.SourceChain) {
 	}
 }
 
-// Collect возвращает цепочку из формы. nil, если позиций нет вовсе —
-// пустая цепочка это не настройка, а её отсутствие.
+// CollectLinks — позиции формы в том виде, в каком их хранит модель.
+//
+// Это ЕДИНСТВЕННЫЙ источник позиций для сохранения: Collect ниже отдаёт
+// форму ядра, где позиция уже развёрнута в финальный тег — годится для
+// валидации и превью JSON, но не для записи в состояние.
+func (f *chainForm) CollectLinks() []corestate.NodeLink {
+	out := make([]corestate.NodeLink, 0, len(f.hops))
+	for _, h := range f.hops {
+		if strings.TrimSpace(h.Tag) != "" {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// Collect возвращает цепочку из формы в форме ЯДРА: позиции развёрнуты в
+// финальные теги (так их видит эмиттер и валидатор). nil, если позиций нет
+// вовсе — пустая цепочка это не настройка, а её отсутствие.
+//
+// Ссылка, которой нет среди кандидатов (узел исчез из подписки), разворачивается
+// в свой сырой тег: показать её потерянной честнее, чем выбросить — цепочка
+// с висячей позицией всё равно не соберётся, и пользователь обязан увидеть, что
+// именно пропало.
 func (f *chainForm) Collect() *configtypes.SourceChain {
 	hops := make([]string, 0, len(f.hops))
 	for _, h := range f.hops {
-		if strings.TrimSpace(h) != "" {
-			hops = append(hops, h)
+		if tag := f.displayTag(h); tag != "" {
+			hops = append(hops, tag)
 		}
 	}
 	if len(hops) == 0 {
@@ -281,6 +308,18 @@ func (f *chainForm) Collect() *configtypes.SourceChain {
 	return c
 }
 
+// displayTag — финальный тег позиции: как её зовут в конфиге.
+//
+// Проверки формы (reality, свой detour, тип протокола) считаются по
+// эмитированному пулу, где ключ — финальный тег, а не ссылка модели: одну и ту
+// же папку под другим префиксом ядро увидит под другими именами.
+func (f *chainForm) displayTag(link corestate.NodeLink) string {
+	if c, ok := f.lookup[hopLinkKey(link)]; ok {
+		return c.Tag
+	}
+	return strings.TrimSpace(link.Tag)
+}
+
 // syncRewriteTypes отдаёт редактору типы протоколов, реально стоящих в
 // цепочке.
 //
@@ -297,12 +336,12 @@ func (f *chainForm) syncRewriteTypes() {
 	}
 	seen := make(map[string]bool, len(f.hops))
 	var types []string
-	for _, tag := range f.hops {
-		c, ok := f.lookup[tag]
+	for _, link := range f.hops {
+		c, ok := f.lookup[hopLinkKey(link)]
 		if !ok || c.Kind != hopKindNode {
 			continue
 		}
-		t := f.nodeTypes[tag]
+		t := f.nodeTypes[c.Tag]
 		if t == "" || seen[t] {
 			continue
 		}
@@ -438,9 +477,9 @@ func (f *chainForm) rebuildHops() {
 		f.moveHop(from, to)
 	})
 
-	for i, tag := range f.hops {
+	for i, link := range f.hops {
 		idx := i
-		cand := describeChainHop(tag, f.lookup, f.nodesKnown)
+		cand := describeChainHop(link, f.lookup, f.nodesKnown)
 
 		num := widget.NewLabel(fmt.Sprintf("%d.", idx+1))
 		name := widget.NewLabel(cand.Display())
@@ -502,14 +541,21 @@ func (f *chainForm) rebuildHops() {
 func (f *chainForm) conflicts() []string {
 	var out []string
 
+	// Финальные теги позиций: множества reality/detour и типы протоколов
+	// ключуются именно ими (они считаются по эмитированному пулу).
+	tags := make([]string, len(f.hops))
+	for i, link := range f.hops {
+		tags[i] = f.displayTag(link)
+	}
+
 	// T4: снятый отпечаток ClientHello на reality-узле. Проверяются позиции
 	// с индексом ≥ 1 — strip применяется к звеньям, а первая позиция идёт в
 	// сеть как есть.
 	if f.stripsUTLS() {
 		var bad []string
-		for i := 1; i < len(f.hops); i++ {
-			if f.realityTags[f.hops[i]] {
-				bad = append(bad, f.hops[i])
+		for i := 1; i < len(tags); i++ {
+			if f.realityTags[tags[i]] {
+				bad = append(bad, tags[i])
 			}
 		}
 		if len(bad) > 0 {
@@ -521,8 +567,8 @@ func (f *chainForm) conflicts() []string {
 	// «узел через предыдущую позицию», а цепочка не узел.
 	var nested []string
 	for i := 1; i < len(f.hops); i++ {
-		if c, ok := f.lookup[f.hops[i]]; ok && c.Kind == hopKindChain {
-			nested = append(nested, f.hops[i])
+		if c, ok := f.lookup[hopLinkKey(f.hops[i])]; ok && c.Kind == hopKindChain {
+			nested = append(nested, tags[i])
 		}
 	}
 	if len(nested) > 0 {
@@ -535,8 +581,8 @@ func (f *chainForm) conflicts() []string {
 	// деградировала на сборке с причиной «позиция не найдена».
 	var forward []string
 	for _, hop := range f.hops {
-		if c, ok := f.lookup[hop]; ok && c.Kind == hopKindChain && c.Below {
-			forward = append(forward, hop)
+		if c, ok := f.lookup[hopLinkKey(hop)]; ok && c.Kind == hopKindChain && c.Below {
+			forward = append(forward, c.Tag)
 		}
 	}
 	if len(forward) > 0 {
@@ -547,7 +593,7 @@ func (f *chainForm) conflicts() []string {
 	// или другая цепочка, даёт два outbound'а с одним тегом — сборка её
 	// деградирует, и предупредить нужно в момент переименования.
 	if tag := f.Tag(); tag != "" && tag != f.originalTag {
-		if _, taken := f.lookup[tag]; taken {
+		if _, taken := f.lookup[hopLinkKey(corestate.NodeLink{Tag: tag})]; taken {
 			out = append(out, locale.Tf(chainConflictTagTakenText, tag))
 		}
 	}
@@ -579,13 +625,13 @@ func (f *chainForm) conflicts() []string {
 	// Первое — предупреждение (пользователь получит не тот путь), второе —
 	// справка (всё работает, но настройка узла здесь не действует; советовать
 	// «уберите detour» бессмысленно, он и так игнорируется).
-	if len(f.hops) > 0 && f.detourTags[f.hops[0]] {
-		out = append(out, locale.Tf(chainConflictDetourEntryText, f.hops[0]))
+	if len(tags) > 0 && f.detourTags[tags[0]] {
+		out = append(out, locale.Tf(chainConflictDetourEntryText, tags[0]))
 	}
 	var detouredLinks []string
-	for i := 1; i < len(f.hops); i++ {
-		if f.detourTags[f.hops[i]] {
-			detouredLinks = append(detouredLinks, f.hops[i])
+	for i := 1; i < len(tags); i++ {
+		if f.detourTags[tags[i]] {
+			detouredLinks = append(detouredLinks, tags[i])
 		}
 	}
 	if len(detouredLinks) > 0 {
@@ -599,9 +645,9 @@ func (f *chainForm) conflicts() []string {
 	// цепочке.
 	var missing []string
 	if f.nodesKnown {
-		for _, tag := range f.hops {
-			if _, ok := f.lookup[tag]; !ok {
-				missing = append(missing, tag)
+		for i, hop := range f.hops {
+			if _, ok := f.lookup[hopLinkKey(hop)]; !ok {
+				missing = append(missing, tags[i])
 			}
 		}
 	}
@@ -624,11 +670,11 @@ func (f *chainForm) moveHop(from, to int) {
 	if from == to || from < 0 || to < 0 || from >= len(f.hops) || to >= len(f.hops) {
 		return
 	}
-	tag := f.hops[from]
+	moved := f.hops[from]
 	rest := append(f.hops[:from:from], f.hops[from+1:]...)
-	out := make([]string, 0, len(f.hops))
+	out := make([]corestate.NodeLink, 0, len(f.hops))
 	out = append(out, rest[:to]...)
-	out = append(out, tag)
+	out = append(out, moved)
 	out = append(out, rest[to:]...)
 	f.hops = out
 	f.rebuildHops()
@@ -641,18 +687,27 @@ func (f *chainForm) moveHop(from, to int) {
 // (`protocol/chain/chain.go:96`).
 func (f *chainForm) pickHop() {
 	chosen := make(map[string]bool, len(f.hops))
-	for _, t := range f.hops {
-		chosen[t] = true
+	for _, h := range f.hops {
+		chosen[hopLinkKey(h)] = true
 	}
 	var options []string
-	byLabel := make(map[string]string, len(f.cands))
+	byLabel := make(map[string]corestate.NodeLink, len(f.cands))
 	for _, c := range f.cands {
-		if chosen[c.Tag] {
+		if chosen[hopLinkKey(c.Link)] {
 			continue
 		}
 		label := c.Display() + "   —   " + c.KindText()
+		// Две папки вправе нести узел под одним финальным тегом (уникализация
+		// живёт на сборке, не в модели) — подпись тогда одна, а ссылки разные.
+		// Разводим суффиксом, иначе вторая опция была бы недостижима.
+		for n := 2; ; n++ {
+			if _, dup := byLabel[label]; !dup {
+				break
+			}
+			label = c.Display() + " (" + strconv.Itoa(n) + ")   —   " + c.KindText()
+		}
 		options = append(options, label)
-		byLabel[label] = c.Tag
+		byLabel[label] = c.Link
 	}
 	if len(options) == 0 {
 		dialog.ShowInformation(locale.T("Add hop"),
@@ -670,11 +725,11 @@ func (f *chainForm) pickHop() {
 			if !ok || sel.Selected == "" {
 				return
 			}
-			tag, exists := byLabel[sel.Selected]
+			link, exists := byLabel[sel.Selected]
 			if !exists {
 				return
 			}
-			f.hops = append(f.hops, tag)
+			f.hops = append(f.hops, link)
 			f.rebuildHops()
 			f.changed()
 		}, f.parent)
@@ -709,27 +764,6 @@ func chainFormRow(label string, field fyne.CanvasObject) fyne.CanvasObject {
 	return container.NewBorder(nil, nil, box, nil, field)
 }
 
-// getParserConfigForChain — ParserConfig модели для сбора кандидатов.
-//
-// Направления берутся оттуда: в Sources их нет, а позицией цепочки
-// Направление быть обязано — это главное, чего не умеет detour.
-func getParserConfigForChain(m *wizardmodels.WizardModel) *config.ParserConfig {
-	if m == nil {
-		return nil
-	}
-	if m.ParserConfig != nil {
-		return m.ParserConfig
-	}
-	if strings.TrimSpace(m.ParserConfigJSON) == "" {
-		return nil
-	}
-	var parsed config.ParserConfig
-	if err := json.Unmarshal([]byte(m.ParserConfigJSON), &parsed); err != nil {
-		return nil
-	}
-	return &parsed
-}
-
 // chainNodeFlags — то, что форма знает об узлах, но сама увидеть не может:
 // кто поднимает reality (у них нельзя снимать tls.utls), кто уже ходит
 // через свой detour, и какого типа каждый узел (для таблицы переопределений).
@@ -740,7 +774,7 @@ func chainNodeFlags(m *wizardmodels.WizardModel) (reality, detoured map[string]b
 	if m == nil {
 		return reality, detoured, types
 	}
-	for _, n := range m.PreviewNodes {
+	for _, n := range m.NodePool {
 		if n == nil {
 			continue
 		}
@@ -757,4 +791,83 @@ func chainNodeFlags(m *wizardmodels.WizardModel) (reality, detoured map[string]b
 		}
 	}
 	return reality, detoured, types
+}
+
+// chainLinksFromTags — финальные теги вкладки JSON обратно в ссылки модели.
+//
+// Вкладка JSON говорит формой ядра: там позиция — строка `outbounds[i]`,
+// финальный тег. Модель хранит ССЫЛКУ, и перевод возможен только через
+// кандидатов формы: тег `[NL] 🇳🇱-1` может принадлежать узлу папки, и
+// корневая ссылка на него ведёт в никуда (fail-closed на сборке).
+//
+// Тег без кандидата остаётся корневой ссылкой: пользователь вправе вписать
+// цель, которой ещё нет (подписка обновится), и переписывать его ввод форма
+// не должна — судьбу такой позиции решит резолв сборки.
+func chainLinksFromTags(f *chainForm, tags []string) []corestate.NodeLink {
+	byTag := map[string]corestate.NodeLink{}
+	if f != nil {
+		for _, c := range f.cands {
+			if _, dup := byTag[c.Tag]; !dup {
+				byTag[c.Tag] = c.Link
+			}
+		}
+	}
+	out := make([]corestate.NodeLink, 0, len(tags))
+	for _, t := range tags {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		if link, ok := byTag[t]; ok {
+			out = append(out, link)
+			continue
+		}
+		out = append(out, corestate.NodeLink{Tag: t})
+	}
+	return out
+}
+
+// chainFormSettings — НАСТРОЙКИ маршрута цепочки из канонического узла
+// (SPEC 118 W5): idle_timeout, strip_evasion, каталог strip, rewrite.
+//
+// В модели v7 цепочка хранится узлом: настройки — в `body`, позиции —
+// отдельным полем `hops []NodeLink`. Форма же говорит формой ядра
+// (configtypes.SourceChain), потому что именно её проверяют валидаторы и
+// эмиттер. Перевод — здесь, в одной точке на обе стороны.
+//
+// Позиции сюда НЕ кладутся: у формы они живут ссылками, и развернуть их в
+// финальные теги может только она сама (по своим кандидатам).
+func chainFormSettings(src *wizardmodels.Source) *configtypes.SourceChain {
+	if src == nil {
+		return nil
+	}
+	return configtypes.ChainFromBody(src.Body, nil)
+}
+
+// chainFormHops — позиции канонического узла как есть.
+func chainFormHops(src *wizardmodels.Source) []corestate.NodeLink {
+	if src == nil {
+		return nil
+	}
+	return src.Hops
+}
+
+// applyChainFormToSource — обратная сторона: форма → канонический узел.
+//
+// Настройки маршрута едут в `body`, позиции — ССЫЛКАМИ как есть (SPEC 118 Т8).
+// Прежняя версия складывала их корневыми ссылками по финальному тегу и тем
+// самым ломала хопы на узлы папок: ссылка `{folder, "🇳🇱-1"}` превращалась в
+// `{"", "[NL] 🇳🇱-1"}` — тег, за которым в корне никого нет, — и цепочка
+// молча деградировала fail-closed на первой же пересборке.
+func applyChainFormToSource(src *wizardmodels.Source, c *configtypes.SourceChain, hops []corestate.NodeLink) {
+	if src == nil {
+		return
+	}
+	if c == nil && len(hops) == 0 {
+		src.Body = nil
+		src.Hops = nil
+		return
+	}
+	src.Body = configtypes.ChainBody(c)
+	src.Hops = append([]corestate.NodeLink(nil), hops...)
 }

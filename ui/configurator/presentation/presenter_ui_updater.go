@@ -3,13 +3,13 @@
 // Файл presenter_ui_updater.go содержит реализацию UIUpdater интерфейса в WizardPresenter.
 //
 // Методы UIUpdater:
-//   - UpdateParserConfig - обновляет текст ParserConfig
+//   - RefreshOutboundsConfiguratorList - пересобирает список конфигуратора Направлений
 //   - UpdateTemplatePreview - обновляет preview шаблона (с обработкой больших текстов)
 //   - UpdateSaveProgress, UpdateSaveButtonText - управление прогрессом и кнопкой Save
 //
 // UIUpdater позволяет бизнес-логике обновлять GUI без прямой зависимости от Fyne виджетов.
 // Большинство методов шлют работу в UI через SafeFyneDo (presenter.go). Исключение:
-// UpdateParserConfig обновляет entry синхронно на потоке вызывающего кода (см. комментарий у метода).
+// RefreshOutboundsConfiguratorList работает синхронно на потоке вызывающего кода (см. комментарий у метода).
 //
 // Реализация UIUpdater - это отдельная ответственность от других методов презентера.
 // Содержит много однотипных методов обновления разных виджетов.
@@ -20,15 +20,13 @@
 //   - business/loader.go - вызывает методы UIUpdater при загрузке конфигурации
 package presentation
 
-// UpdateParserConfig обновляет текст поля ParserConfig и список конфигуратора outbounds.
+// RefreshOutboundsConfiguratorList пересобирает список конфигуратора
+// Направлений (SPEC 117 W5: полезный остаток снесённого транспорта
+// UpdateParserConfig(text) — сам текстовый транспорт мёртв с SPEC 104).
 //
-// Выполняется синхронно на потоке вызывающего кода. Нельзя откладывать через fyne.Do без ожидания:
-// иначе следующий MergeGUIToModel (например второе нажатие Add подряд) прочитает устаревший текст
-// entry и затрёт model.ParserConfigJSON — append снова посчитает len(proxies) как до первого Add
-// и выдаст тот же числовой tag_prefix.
-//
-// Все текущие вызовы идут из обработчиков UI Fyne (главный поток).
-func (p *WizardPresenter) UpdateParserConfig(text string) {
+// Выполняется синхронно на потоке вызывающего кода; все текущие вызовы идут
+// из обработчиков UI Fyne (главный поток).
+func (p *WizardPresenter) RefreshOutboundsConfiguratorList() {
 	if p.guiState == nil {
 		return
 	}
@@ -72,6 +70,16 @@ func (p *WizardPresenter) UpdateSaveStatusText(text string) {
 }
 
 // UpdateSaveButtonText обновляет текст кнопки Save (пустая строка для скрытия).
+//
+// SPEC 115 §1: показать кнопку вправе только ГЕЙТ — конфигурацию сначала
+// собирают и показывают отчёт, и лишь потом разрешают сохранить. Текст
+// проставляется всегда (кнопка обязана быть подписана к моменту, когда гейт
+// откроется), а вот Show/Enable спрашивают guiState.SaveGateAllows. Без этого
+// разбор источников (business/parser.go зовёт "Save" на каждом успешном
+// проходе) открывал кнопку мимо гейта, и сохранить можно было то, чего не
+// собирали.
+//
+// Хук nil — гейта нет (вкладка «Итог» не построена): поведение прежнее.
 func (p *WizardPresenter) UpdateSaveButtonText(text string) {
 	p.UpdateUI(func() {
 		if p.guiState.SaveButton == nil {
@@ -80,10 +88,15 @@ func (p *WizardPresenter) UpdateSaveButtonText(text string) {
 		if text == "" {
 			p.guiState.SaveButton.Hide()
 			p.guiState.SaveButton.Disable()
-		} else {
-			p.guiState.SaveButton.SetText(text)
-			p.guiState.SaveButton.Show()
-			p.guiState.SaveButton.Enable()
+			return
 		}
+		p.guiState.SaveButton.SetText(text)
+		if gate := p.guiState.SaveGateAllows; gate != nil && !gate() {
+			p.guiState.SaveButton.Hide()
+			p.guiState.SaveButton.Disable()
+			return
+		}
+		p.guiState.SaveButton.Show()
+		p.guiState.SaveButton.Enable()
 	})
 }

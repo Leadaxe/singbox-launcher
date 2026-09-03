@@ -1,0 +1,80 @@
+{
+  "outbounds": [
+    {
+      "tag": "[P] NL-1 •",
+      "type": "vless",
+      "server": "nl.example",
+      "server_port": 443,
+      "uuid": "11111111-1111-4111-8111-111111111111",
+      "transport": {
+        "type": "ws",
+        "path": "/ws",
+        "headers": {
+          "Host": "nl.example"
+        }
+      },
+      "tls": {
+        "enabled": true,
+        "server_name": "nl.example",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "random"
+        }
+      }
+    },
+    {
+      "tag": "[P] NL-1 •-2",
+      "type": "shadowsocks",
+      "server": "nl3.example",
+      "server_port": 8388,
+      "method": "aes-128-gcm",
+      "password": "password"
+    },
+    {
+      "tag": "Tokyo",
+      "type": "vless",
+      "server": "h.example",
+      "server_port": 443,
+      "uuid": "33333333-3333-4333-8333-333333333333",
+      "tls": {
+        "enabled": true,
+        "server_name": "h.example",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "random"
+        }
+      },
+      "detour": "[P] NL-1 •"
+    },
+    {
+      "tag": "chain-1",
+      "type": "chain",
+      "idle_timeout": "2m",
+      "outbounds": [
+        "Tokyo",
+        "[P] NL-1 •"
+      ]
+    },
+    {
+      "tag": "[P]select-auto",
+      "type": "urltest",
+      "outbounds": [
+        "[P] NL-1 •",
+        "[P] NL-1 •-2"
+      ],
+      "interval": "5m"
+    },
+    {
+      "tag": "[P]select",
+      "type": "selector",
+      "outbounds": [
+        "[P]select-auto",
+        "[P] NL-1 •",
+        "[P] NL-1 •-2"
+      ],
+      "interrupt_exist_connections": true,
+      "default": "[P]select-auto"
+    }
+  ],
+  "endpoints": null
+}

@@ -110,18 +110,22 @@ func LegacyNodeIdentityHash(node *ParsedNode) string {
 	var emitted string
 	var err error
 	if node.Scheme == "wireguard" {
-		emitted, err = GenerateEndpointJSON(node)
+		emitted, err = GenerateEndpointJSONBare(node)
 	} else {
-		emitted, err = GenerateNodeJSON(node)
+		emitted, err = GenerateNodeJSONBare(node)
 	}
 	if err != nil {
 		debuglog.DebugLog("LegacyNodeIdentityHash: cannot emit node %q: %v", node.Tag, err)
 		return ""
 	}
 
-	obj, ok := decodeEmittedOutbound(emitted)
-	if !ok {
-		debuglog.DebugLog("LegacyNodeIdentityHash: emitted outbound for %q is not decodable JSON", node.Tag)
+	// Голый режим эмиттера, а не вырезание обёртки строковым поиском первой
+	// `{`: имя узла печаталось комментарием ПЕРЕД объектом, и «SG {премиум} 1»
+	// уводил разбор внутрь имени — подписи у таких узлов просто не было
+	// (SPEC 113-A, находка аудита C3).
+	var obj map[string]interface{}
+	if err := json.Unmarshal([]byte(emitted), &obj); err != nil {
+		debuglog.DebugLog("LegacyNodeIdentityHash: emitted outbound for %q is not decodable JSON: %v", node.Tag, err)
 		return ""
 	}
 
@@ -137,26 +141,6 @@ func LegacyNodeIdentityHash(node *ParsedNode) string {
 
 	sum := sha256.Sum256(canonical)
 	return hex.EncodeToString(sum[:])
-}
-
-// decodeEmittedOutbound strips the generator's wrapping and decodes the object.
-//
-// GenerateNodeJSON returns a fragment shaped like "\t// <label>\n\t{...},":
-// a leading line comment (the node label, which is display text and must not
-// reach the hash) and a trailing comma for list assembly.
-func decodeEmittedOutbound(emitted string) (map[string]interface{}, bool) {
-	start := strings.Index(emitted, "{")
-	if start < 0 {
-		return nil, false
-	}
-	body := strings.TrimSpace(emitted[start:])
-	body = strings.TrimSuffix(body, ",")
-
-	var obj map[string]interface{}
-	if err := json.Unmarshal([]byte(body), &obj); err != nil {
-		return nil, false
-	}
-	return obj, true
 }
 
 // marshalCanonicalJSON serializes v with every object key sorted, recursively.

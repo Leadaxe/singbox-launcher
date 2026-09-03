@@ -23,6 +23,8 @@ func IsDirectLink(input string) bool {
 		strings.HasPrefix(trimmed, "ss://") ||
 		strings.HasPrefix(trimmed, "hysteria2://") ||
 		strings.HasPrefix(trimmed, "hy2://") ||
+		strings.HasPrefix(trimmed, "hysteria://") ||
+		strings.HasPrefix(trimmed, "hy://") ||
 		strings.HasPrefix(trimmed, "tuic://") ||
 		strings.HasPrefix(trimmed, "anytls://") ||
 		strings.HasPrefix(trimmed, "ssh://") ||
@@ -241,6 +243,19 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 			}
 		}
 
+	case strings.HasPrefix(uri, "hysteria://"), strings.HasPrefix(uri, "hy://"):
+		// Hysteria v1 (ядро: type "hysteria"). Отдельный протокол, не «старая
+		// запись hysteria2»: учётные данные в query (auth=), obfs — плоская
+		// строка, bandwidth согласуется с сервером. Схема hy:// — короткий
+		// алиас клиентов 1.x, нормализуем к hysteria:// для net/url.
+		scheme = "hysteria"
+		defaultPort = 443
+		if strings.HasPrefix(uri, "hy://") {
+			uriToParse = strings.Replace(uri, "hy://", "hysteria://", 1)
+		} else {
+			uriToParse = uri
+		}
+
 	case strings.HasPrefix(uri, "tuic://"):
 		// TUIC v5 (uuid:password@host:port). Runs over QUIC; default port 443.
 		scheme = "tuic"
@@ -317,7 +332,7 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	// Parse URI
 	parsedURL, err := url.Parse(uriToParse)
 	hy2AuthPortList := ""
-	if err != nil && scheme == "hysteria2" {
+	if err != nil && (scheme == "hysteria2" || scheme == "hysteria") {
 		if u, plist, recErr := hysteria2RecoverMultiPortAuthority(uriToParse); recErr == nil && u != nil {
 			parsedURL, err, hy2AuthPortList = u, nil, plist
 		}
@@ -335,6 +350,11 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 			return nil, fmt.Errorf("invalid %s URI: missing userinfo (UUID/password/user)", scheme)
 		}
 	}
+	// Hysteria v1: хост обязателен, учётные данные живут в query (auth=),
+	// поэтому userinfo здесь не требуем — в отличие от блока выше.
+	if scheme == "hysteria" && parsedURL.Hostname() == "" {
+		return nil, fmt.Errorf("invalid hysteria URI: missing hostname")
+	}
 	// Validate SOCKS / SOCKS5: hostname required, user/password optional
 	if (scheme == "socks" || scheme == "socks5") && parsedURL.Hostname() == "" {
 		return nil, fmt.Errorf("invalid socks URI: missing hostname")
@@ -347,7 +367,7 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		Query:  parsedURL.Query(),
 	}
 
-	if scheme == "hysteria2" && hy2AuthPortList != "" {
+	if (scheme == "hysteria2" || scheme == "hysteria") && hy2AuthPortList != "" {
 		if ex := strings.TrimSpace(queryGetFold(node.Query, "mport")); ex != "" {
 			node.Query.Set("mport", hy2AuthPortList+","+ex)
 		} else {
@@ -836,6 +856,8 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 		}
 	} else if node.Scheme == "hysteria2" {
 		buildHysteria2Outbound(node, outbound)
+	} else if node.Scheme == "hysteria" {
+		buildHysteriaOutbound(node, outbound)
 	} else if node.Scheme == "tuic" {
 		buildTuicOutbound(node, outbound)
 	} else if node.Scheme == "anytls" {

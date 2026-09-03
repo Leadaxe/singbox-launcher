@@ -77,11 +77,35 @@ type SubscriptionRequestSettings struct {
 // that's the same behavior as `subscription_send_hwid=false`).
 var LoadSubscriptionSettingsFunc func() SubscriptionRequestSettings
 
+// SourceIdentity — переопределения идентификации КОНКРЕТНОЙ подписки.
+//
+// Пустые поля = наследовать глобальную настройку. Нужно потому, что
+// провайдеры и ветвят выдачу по User-Agent, и привязывают подписку к
+// устройству по HWID: одна глобальная пара на все подписки не даёт ни
+// выбрать нужную ветку у одного провайдера, ни развести устройства между
+// разными. `SendHWID`/`HashModel` — тройное состояние (nil = как глобально),
+// иначе «не отправлять» было бы неотличимо от «не задано».
+type SourceIdentity struct {
+	UserAgent string
+	HWID      string
+	SendHWID  *bool
+	HashModel *bool
+}
+
 // applySubscriptionRequestHeaders sets User-Agent + (when enabled) the four
 // X-Hwid-family headers on an outbound subscription request. Centralized so
 // FetchSubscriptionWithMeta and the legacy FetchSubscription wrapper stay
 // in lockstep — see SPEC 061 §"Request headers".
 func applySubscriptionRequestHeaders(req *http.Request) {
+	applySubscriptionRequestHeadersFor(req, SourceIdentity{})
+}
+
+// applySubscriptionRequestHeadersFor — заголовки с переопределениями
+// КОНКРЕТНОГО источника.
+//
+// Приоритет каждого поля: значение источника → глобальная настройка →
+// дефолт. Пустое поле источника ничего не «выключает», а именно наследует.
+func applySubscriptionRequestHeadersFor(req *http.Request, id SourceIdentity) {
 	// User-Agent: load settings ONCE here so we can let the user override
 	// the default UA via Settings tab. Empty user value → default helper
 	// (current launcher version + OS/arch). Both branches Set() once —
@@ -90,19 +114,35 @@ func applySubscriptionRequestHeaders(req *http.Request) {
 	if LoadSubscriptionSettingsFunc != nil {
 		s = LoadSubscriptionSettingsFunc()
 	}
-	ua := strings.TrimSpace(s.UserAgent)
+	ua := strings.TrimSpace(id.UserAgent)
+	if ua == "" {
+		ua = strings.TrimSpace(s.UserAgent)
+	}
 	if ua == "" {
 		ua = configtypes.BuildSubscriptionUserAgent()
 	}
 	req.Header.Set("User-Agent", ua)
-	if !s.SendHWID || s.HWID == "" {
+
+	send := s.SendHWID
+	if id.SendHWID != nil {
+		send = *id.SendHWID
+	}
+	hwid := strings.TrimSpace(id.HWID)
+	if hwid == "" {
+		hwid = s.HWID
+	}
+	if !send || hwid == "" {
 		return
 	}
-	req.Header.Set("X-Hwid", s.HWID)
+	req.Header.Set("X-Hwid", hwid)
 	req.Header.Set("X-Device-OS", platform.DeviceOS())
 	req.Header.Set("X-Ver-OS", platform.DeviceOSVersion())
+	hashModel := s.DeviceModelHashed
+	if id.HashModel != nil {
+		hashModel = *id.HashModel
+	}
 	model := platform.DeviceModel()
-	if s.DeviceModelHashed && model != "" {
+	if hashModel && model != "" {
 		sum := sha256.Sum256([]byte(model))
 		// 8 bytes = 16 hex chars — stable opaque ID per Remnawave HWID docs
 		// "hashed model" mode (caller knows exactly the field width).
@@ -128,7 +168,7 @@ const MaxSubscriptionResponseSize = 10 * 1024 * 1024 // 10 MB
 type FetchResult struct {
 	Body         []byte
 	RawBody      []byte
-	Meta         state.SubscriptionMeta
+	Meta         state.SubMeta
 	HTTPStatus   int
 	RawBodyBytes int64
 }
@@ -224,6 +264,12 @@ func (e *FetchAnnounceError) Error() string {
 // На любой ошибке (network/HTTP/decode) возвращает (*FetchResult с
 // HTTPStatus заполненным если был ответ, без Body, без Meta) + error.
 func FetchSubscriptionWithMeta(url string) (*FetchResult, error) {
+	return FetchSubscriptionWithMetaFor(url, SourceIdentity{})
+}
+
+// FetchSubscriptionWithMetaFor — загрузка с идентификацией КОНКРЕТНОГО
+// источника. Нулевая SourceIdentity = прежнее поведение (всё глобальное).
+func FetchSubscriptionWithMetaFor(url string, id SourceIdentity) (*FetchResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), NetworkRequestTimeout)
 	defer cancel()
 
@@ -232,7 +278,7 @@ func FetchSubscriptionWithMeta(url string) (*FetchResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-	applySubscriptionRequestHeaders(req)
+	applySubscriptionRequestHeadersFor(req, id)
 
 	resp, err := client.Do(req)
 	if err != nil {

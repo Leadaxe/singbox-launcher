@@ -15,6 +15,7 @@ package config
 //	go test ./core/config -run TestContractCorpusBody -update
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"sort"
@@ -50,8 +51,14 @@ func readCorpusBody(t *testing.T, path string) string {
 }
 
 // parseCorpusBody повторяет решения боевого загрузчика (source_loader.go)
-// по одному телу и возвращает разобранные узлы.
-func parseCorpusBody(t *testing.T, body string) ([]*configtypes.ParsedNode, subscription.BodyKind) {
+// по одному телу и возвращает разобранные узлы вместе с отбраковками.
+//
+// Отбраковки — часть контракта тела, а не деталь реализации: тело, где запись
+// объявлена, но непригодна (dialerProxy на несуществующий outbound), обязано
+// дать НОЛЬ узлов и одну отбраковку. Без них конверт «пустой nodes[]» был бы
+// неотличим от конверта «тело не распознано» — а разница ровно в том, узнала
+// ли сторона запись и осознанно её отвергла.
+func parseCorpusBody(t *testing.T, body string) ([]*configtypes.ParsedNode, []contractDrop, subscription.BodyKind) {
 	t.Helper()
 
 	// Декодирование base64 идёт до классификации — ровно как в fetcher'е.
@@ -68,31 +75,67 @@ func parseCorpusBody(t *testing.T, body string) ([]*configtypes.ParsedNode, subs
 	case kind == subscription.BodyKindVPNLink:
 		nodes, _, err := subscription.ParseAmneziaVPNLinkAll(body, nil)
 		if err != nil {
-			return nil, kind
+			return nil, nil, kind
 		}
-		return nodes, kind
+		return nodes, nil, kind
 
 	case kind == subscription.BodyKindWGConf:
 		uris, _ := subscription.WGConfBodyToURIs(body)
-		return parseURILines(strings.Join(uris, "\n")), kind
+		return parseURILines(strings.Join(uris, "\n")), nil, kind
 
 	case kind.IsSingbox():
 		res, err := subscription.ParseSingboxBody(body, kind, nil)
 		if err != nil || res == nil {
-			return nil, kind
+			return nil, nil, kind
 		}
-		return res.Nodes, kind
+		return res.Nodes, nil, kind
 
 	case kind == subscription.BodyKindXrayArray:
 		nodes, err := subscription.ParseNodesFromXrayJSONArray(body, nil)
 		if err != nil {
-			return nil, kind
+			return nil, nil, kind
 		}
-		return nodes, kind
+		return nodes, corpusXrayDrops(body), kind
 
 	default:
-		return parseURILines(body), kind
+		return parseURILines(body), nil, kind
 	}
+}
+
+// corpusXrayDrops достаёт поштучные отбраковки Xray-тела.
+//
+// Сам разбор идёт через ParseNodesFromXrayJSONArray — тем же входом, что у
+// боевого загрузчика; отбраковки этот вход не отдаёт (они нужны только
+// материализации), поэтому за ними раннер ходит вторым проходом через
+// ParseSubscriptionBody. Второй проход детерминирован и дешевле, чем
+// расширение публичной сигнатуры парсера ради одного корпуса.
+func corpusXrayDrops(body string) []contractDrop {
+	pb, err := subscription.ParseSubscriptionBody([]byte(body), nil, 0)
+	if err != nil || pb == nil {
+		return nil
+	}
+	var out []contractDrop
+	for _, rec := range pb.Rejected {
+		// Ref у JSON-ветки — тег отбракованного outbound'а: он же связывает
+		// отбраковку с записью тела, которую видно глазами.
+		out = append(out, contractDrop{
+			Ref:    corpusRejectRef(rec.OriginRaw),
+			Code:   rec.Code,
+			Reason: rec.Reason,
+		})
+	}
+	return out
+}
+
+// corpusRejectRef достаёт тег из исходника отбракованной JSON-записи.
+func corpusRejectRef(originRaw string) string {
+	var ob struct {
+		Tag string `json:"tag"`
+	}
+	if err := json.Unmarshal([]byte(originRaw), &ob); err != nil {
+		return ""
+	}
+	return ob.Tag
 }
 
 // parseURILines разбирает построчный URI-список, пропуская пустые строки и
@@ -111,6 +154,28 @@ func parseURILines(body string) []*configtypes.ParsedNode {
 		out = append(out, node)
 	}
 	return out
+}
+
+// corpusExtensionMark читает пометку meta.extension из существующего ожидания.
+//
+// Ожидания генерирует раннер, но эта пометка приходит не из разбора, а от
+// автора кейса, поэтому единственный способ её не потерять — прочитать из
+// файла, который сейчас будет перезаписан. Файла нет (новый кейс) — пометки
+// нет: заводится она правкой ожидания руками, один раз.
+func corpusExtensionMark(expPath string) string {
+	data, err := os.ReadFile(expPath)
+	if err != nil {
+		return ""
+	}
+	var envelope struct {
+		Meta struct {
+			Extension string `json:"extension"`
+		} `json:"meta"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return ""
+	}
+	return envelope.Meta.Extension
 }
 
 func TestContractCorpusBody(t *testing.T) {
@@ -143,9 +208,17 @@ func TestContractCorpusBody(t *testing.T) {
 			body := readCorpusBody(t, casePath)
 			base := strings.TrimSuffix(casePath, ".body")
 
-			nodes, kind := parseCorpusBody(t, body)
+			nodes, drops, kind := parseCorpusBody(t, body)
 
 			env := contractEnvelope{V: 1, Meta: map[string]any{"body_kind": kind.String()}}
+			// meta.extension — свойство КЕЙСА, а не результата разбора: им
+			// помечено тело со схемой, которой у одной из сторон нет (раннер
+			// той стороны кейс пропускает). Раннер лаунчера его не вычисляет,
+			// поэтому переносит из существующего ожидания — иначе -update
+			// стирал бы метку, а обычный прогон падал бы на «лишнем» поле.
+			if ext := corpusExtensionMark(expectedPathFor(base)); ext != "" {
+				env.Meta["extension"] = ext
+			}
 			for _, node := range nodes {
 				cn, err := canonNode(node)
 				if err != nil {
@@ -154,6 +227,7 @@ func TestContractCorpusBody(t *testing.T) {
 				}
 				env.Nodes = append(env.Nodes, cn)
 			}
+			env.Dropped = append(env.Dropped, drops...)
 
 			got, err := marshalEnvelopePretty(env)
 			if err != nil {
@@ -172,7 +246,7 @@ func TestContractCorpusBody(t *testing.T) {
 			if err != nil {
 				t.Skipf("нет expected (%s) — сгенерируйте флагом -update", filepath.Base(expPath))
 			}
-			if !equalJSON(t, got, want) {
+			if !equalEnvelopeJSON(t, got, want) {
 				t.Errorf("расхождение с контрактом\n--- got ---\n%s\n--- want ---\n%s", got, want)
 			}
 		})

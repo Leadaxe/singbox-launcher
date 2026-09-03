@@ -1,0 +1,2 @@
+# obfs=xplus без секрета обфускацией не является — блок снимается
+hysteria://example-1.com:36712?auth=a&obfs=xplus&upmbps=50&downmbps=50#NoObfs

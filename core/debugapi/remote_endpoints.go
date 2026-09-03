@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"singbox-launcher/core/services"
+	"singbox-launcher/core/state"
 	"singbox-launcher/internal/lxdclient"
 	"singbox-launcher/internal/platform"
 )
@@ -431,6 +432,34 @@ func (s *Server) handleRemoteProfileCopyFrom(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "source_id is required"})
 		return
 	}
+	// Гейт мажора схемы (SPEC 118 Т10, §4.G). Копия — это ПЕРЕНОС состояния
+	// между машинами: файл-исходник читается, ретаргетится под платформу
+	// приёмника и кладётся приёмнику. Если исходник написан более новой
+	// схемой, эта сборка не понимает его форму, и перенос дал бы приёмнику
+	// файл, который его визард молча урежет при первой же загрузке. Отказ
+	// называет обе версии — видно, какая сторона отстала.
+	if err := state.CheckSchemaCompatible(s.machineStatePath(req.SourceID)); err != nil {
+		var mism *state.SchemaMismatchError
+		switch {
+		case errors.Is(err, state.ErrSchemaFileMissing):
+			// Нечего копировать — это не расхождение схем; ниже CopyProfileFrom
+			// даст свой, более точный текст («configure it first»).
+		case errors.As(err, &mism):
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"error":            mism.Error(),
+				"schema_found":     mism.Found,
+				"schema_supported": mism.Supported,
+			})
+			return
+		default:
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"error":            "state schema check failed: " + err.Error(),
+				"schema_supported": state.SchemaMajor,
+			})
+			return
+		}
+	}
+
 	// Копия перезаписывает state приёмника целиком — UI спрашивает
 	// подтверждение, API требует явного overwrite=true (SPEC 100 §3.1).
 	dstPath := s.machineStatePath(id)

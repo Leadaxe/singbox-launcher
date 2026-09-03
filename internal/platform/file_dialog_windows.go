@@ -32,6 +32,31 @@ func pickOpenFileNative(prompt string, exts []string) (string, bool, error) {
 	return path, true, nil
 }
 
+// pickOpenFilesNative — тот же OpenFileDialog с `Multiselect = $true`.
+// Выбранное лежит в `$d.FileNames` (множественное число, отдельное свойство):
+// печатаем через перевод строки, как договорено в splitPickedPaths.
+func pickOpenFilesNative(prompt string, exts []string) ([]string, bool, error) {
+	filter := winFilter(exts)
+	ps := fmt.Sprintf(
+		`Add-Type -AssemblyName System.Windows.Forms;`+
+			`$d = New-Object System.Windows.Forms.OpenFileDialog;`+
+			`$d.Title = %s;`+
+			`$d.Filter = %s;`+
+			`$d.Multiselect = $true;`+
+			`if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $d.FileNames | ForEach-Object { [Console]::Out.WriteLine($_) } }`,
+		psSingleQuote(prompt), psSingleQuote(filter),
+	)
+	out, err := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-STA", "-Command", ps).Output()
+	if err != nil {
+		return nil, false, err
+	}
+	paths := splitPickedPaths(string(out))
+	if len(paths) == 0 {
+		return nil, false, nil
+	}
+	return paths, true, nil
+}
+
 // winFilter builds an OpenFileDialog.Filter string, e.g.
 // "Configs (*.conf;*.vpn)|*.conf;*.vpn|All files (*.*)|*.*".
 func winFilter(exts []string) string {

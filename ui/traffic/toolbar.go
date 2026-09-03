@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -119,11 +120,11 @@ func buildWindowToolbar(deps WindowDeps, win fyne.Window) fyne.CanvasObject {
 //
 // Отдельно от тулбара: в окне машины тулбара нет, и кнопка живёт в ряду
 // вкладок.
-func buildOverflowButton(deps WindowDeps, win fyne.Window) *widget.Button {
+func buildOverflowButton(deps WindowDeps, win fyne.Window, live *liveView) *widget.Button {
 	overflow := widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), nil)
 	overflow.Importance = widget.LowImportance
 	overflow.OnTapped = func() {
-		menu := buildOverflowMenu(deps, win)
+		menu := buildOverflowMenu(deps, win, live)
 		pop := widget.NewPopUpMenu(menu, win.Canvas())
 		// Anchor under the overflow button.
 		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(overflow)
@@ -143,8 +144,20 @@ func isCurrentlyVerbose(deps WindowDeps) bool {
 	return level == "debug" || level == "trace"
 }
 
-func buildOverflowMenu(deps WindowDeps, win fyne.Window) *fyne.Menu {
-	items := []*fyne.MenuItem{
+func buildOverflowMenu(deps WindowDeps, win fyne.Window, live *liveView) *fyne.Menu {
+	items := []*fyne.MenuItem{}
+	// Буфер вкладки Live — то, на что пользователь смотрит прямо сейчас.
+	// Раньше в меню были только пункты записи, и на полном экране событий
+	// экспорт отвечал «no session to export»: сессия — это запись по
+	// процессу со вкладки By client, к живому потоку отношения не имеющая.
+	if live != nil {
+		items = append(items,
+			fyne.NewMenuItem("Copy live buffer JSON", func() { copyLiveJSON(live, win) }),
+			fyne.NewMenuItem("Export live buffer JSON…", func() { exportLiveJSON(live, win) }),
+			fyne.NewMenuItemSeparator(),
+		)
+	}
+	items = append(items,
 		fyne.NewMenuItem("Copy session JSON", func() { copySessionJSON(deps, win) }),
 		fyne.NewMenuItem("Export session JSON…", func() { exportSessionJSON(deps, win) }),
 		fyne.NewMenuItem("Clear completed sessions", func() {
@@ -156,7 +169,7 @@ func buildOverflowMenu(deps WindowDeps, win fyne.Window) *fyne.Menu {
 		}),
 		fyne.NewMenuItemSeparator(),
 		fyne.NewMenuItem("Help / about", func() { showHelpDialog(deps, win) }),
-	}
+	)
 	return fyne.NewMenu("", items...)
 }
 
@@ -279,4 +292,101 @@ func showHelpDialog(deps WindowDeps, win fyne.Window) {
 	d := dialog.NewCustom("Traffic Profiler", "Close", body, win)
 	d.Resize(fyne.NewSize(440, 360))
 	d.Show()
+}
+
+// liveExport — полезная нагрузка выгрузки живого буфера. Отдельный тип от
+// sessionExport: у буфера нет ни цели, ни границ записи, зато есть признак
+// «выгружено с фильтром» — без него отчёт с 30 строками из 5000 выглядел бы
+// потерей данных.
+type liveExport struct {
+	Kind       string               `json:"kind"`
+	CapturedAt time.Time            `json:"captured_at"`
+	Filtered   bool                 `json:"filtered"`
+	Events     []tprof.TrafficEvent `json:"events"`
+}
+
+func marshalLive(live *liveView, onlyFiltered bool) ([]byte, int, error) {
+	ev := live.ExportSnapshot(onlyFiltered)
+	data, err := json.MarshalIndent(liveExport{
+		Kind:       "live-buffer",
+		CapturedAt: time.Now(),
+		Filtered:   onlyFiltered,
+		Events:     ev,
+	}, "", "  ")
+	return data, len(ev), err
+}
+
+// askLiveScope спрашивает про охват только когда фильтр что-то прячет:
+// при чистом фильтре «видимое» и «весь буфер» — одно и то же, и вопрос был
+// бы лишним кликом на пути к файлу.
+//
+// Не ShowCustomConfirm: у confirm-диалога Esc неотличим от dismiss-кнопки,
+// и «Whole buffer» на её месте превращал бы отмену в молчаливую выгрузку
+// всего буфера. Свои три кнопки, закрытие = отмена.
+func askLiveScope(live *liveView, win fyne.Window, done func(onlyFiltered bool)) {
+	if !live.FilterActive() {
+		done(false)
+		return
+	}
+	var d *dialog.CustomDialog
+	pick := func(onlyFiltered bool) func() {
+		return func() {
+			d.Hide()
+			done(onlyFiltered)
+		}
+	}
+	visibleBtn := widget.NewButton(locale.T("Visible rows only"), pick(true))
+	visibleBtn.Importance = widget.HighImportance
+	wholeBtn := widget.NewButton(locale.T("Whole buffer"), pick(false))
+	cancelBtn := widget.NewButton(locale.T("Cancel"), func() { d.Hide() })
+	content := container.NewVBox(
+		widget.NewLabel(locale.T("A filter is active. Export what's on screen, or every event in the buffer?")),
+		container.NewHBox(layout.NewSpacer(), cancelBtn, wholeBtn, visibleBtn),
+	)
+	d = dialog.NewCustomWithoutButtons(locale.T("Export live buffer"), content, win)
+	d.Show()
+}
+
+func copyLiveJSON(live *liveView, win fyne.Window) {
+	askLiveScope(live, win, func(onlyFiltered bool) {
+		data, n, err := marshalLive(live, onlyFiltered)
+		if err != nil {
+			dialog.ShowError(err, win)
+			return
+		}
+		if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
+			app.Clipboard().SetContent(string(data))
+		}
+		dialog.ShowInformation(locale.T("Copied"), fmt.Sprintf("Live buffer JSON copied (%d events).", n), win)
+	})
+}
+
+func exportLiveJSON(live *liveView, win fyne.Window) {
+	askLiveScope(live, win, func(onlyFiltered bool) {
+		data, _, err := marshalLive(live, onlyFiltered)
+		if err != nil {
+			dialog.ShowError(err, win)
+			return
+		}
+		fd := dialog.NewFileSave(func(uc fyne.URIWriteCloser, err error) {
+			if err != nil {
+				dialog.ShowError(err, win)
+				return
+			}
+			if uc == nil {
+				return
+			}
+			defer func() { _ = uc.Close() }()
+			if _, werr := uc.Write(data); werr != nil {
+				dialog.ShowError(werr, win)
+			}
+		}, win)
+		fd.SetFileName(fmt.Sprintf("traffic-live-%s.json", time.Now().Format("20060102T150405")))
+		if home, err := os.UserHomeDir(); err == nil {
+			if uri, lerr := storage.ListerForURI(storage.NewFileURI(filepath.Clean(home))); lerr == nil {
+				fd.SetLocation(uri)
+			}
+		}
+		fd.Show()
+	})
 }

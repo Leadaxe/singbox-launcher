@@ -22,16 +22,17 @@ package presentation
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"time"
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/build"
+	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/platform"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -45,8 +46,30 @@ func (p *WizardPresenter) HasUnsavedChanges() bool {
 }
 
 // MarkAsChanged устанавливает флаг изменений.
+//
+// SPEC 115 §2: он же — сигнал инвалидации отчёта сборки. Отчёт описывает
+// КОНКРЕТНУЮ конфигурацию, и после правки описывает уже не ту: пользователь
+// чинит источник и смотрит, ушла ли пометка ⚠, а устаревший отчёт отвечает на
+// этот вопрос неправильно. Заодно закрывается кнопка Save на вкладке «Итог» —
+// сохранять то, чего не собирали, нельзя.
+//
+// Вешается именно сюда, а не на каждую правку по отдельности: MarkAsChanged —
+// единственный сигнал «модель изменилась», через который проходят ВСЕ правки
+// Мастера (источники, правила, DNS, настройки). Своя инвалидация у каждой
+// формы разъехалась бы с первой же новой формой.
 func (p *WizardPresenter) MarkAsChanged() {
 	p.hasChanges = true
+	config.ResetBuildReport()
+	// Реестр сброшен — гейт закрылся, и кнопка обязана уйти ВМЕСТЕ с ним.
+	// Раньше уходил только реестр: кнопка, открытая прошлой сборкой, оставалась
+	// на экране и предлагала сохранить конфигурацию, отчёта по которой уже нет.
+	//
+	// Через тот же updater, что и открытие: прятать виджет напрямую отсюда
+	// значило бы завести второй путь к одной кнопке (и мутацию виджета мимо
+	// UpdateUI — MarkAsChanged зовут в том числе из фоновых заходов).
+	if p.guiState != nil && p.guiState.SaveGateAllows != nil {
+		p.UpdateSaveButtonText("")
+	}
 	debuglog.DebugLog("MarkAsChanged: hasChanges set to true")
 }
 
@@ -58,17 +81,13 @@ func (p *WizardPresenter) MarkAsSaved() {
 
 // CreateStateFromModel создает state.State из текущей модели.
 //
-// SPEC 052 phase 8: канонический список — model.Sources, model.GlobalOutbounds,
-// model.Defaults. ParserConfig (legacy view) синхронизируется в core/state.Save
-// через syncConnectionsFromLegacy, но здесь мы пишем напрямую в Connections —
-// это короче и нет потери информации (Sources уже содержит все ID/Meta).
+// SPEC 117 (W4): пишет ТОЛЬКО canonical — Connections (model.Sources,
+// model.GlobalOutbounds) + остальные секции. Legacy-проекция
+// state.ParserConfig здесь не заполняется: она наполняется исключительно на
+// Load (syncLegacyFromConnections), а Save её не читает.
 func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels.WizardStateFile {
 	// Синхронизируем GUI с моделью перед созданием состояния
 	p.SyncGUIToModel()
-
-	// Создаём состояние с v5 layout: Connections — canonical, ParserConfig
-	// — derived (заполняется через syncLegacyFromConnections при Load,
-	// либо просто игнорируется на следующем сохранении).
 	state := &wizardmodels.WizardStateFile{
 		Version:   wizardmodels.WizardStateVersion,
 		ID:        id,
@@ -84,23 +103,13 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 		state.TargetPlatform = tgt.GOOS
 		state.TargetArch = tgt.GOARCH
 	}
-	state.Connections.Sources = append([]wizardmodels.Source(nil), p.model.Sources...)
+	state.Sources = append([]wizardmodels.Source(nil), p.model.Sources...)
 	if len(p.model.GlobalOutbounds) > 0 {
-		state.Connections.Outbounds = append([]configtypes.Direction(nil), p.model.GlobalOutbounds...)
+		state.Directions = append([]configtypes.Direction(nil), p.model.GlobalOutbounds...)
 	} else {
-		state.Connections.Outbounds = []configtypes.Direction{}
+		state.Directions = []configtypes.Direction{}
 	}
-	state.Connections.Defaults = p.model.Defaults
 	state.WarpAccounts = p.model.WarpAccounts
-	state.ForeignBackupExtensions = p.model.ForeignBackupExtensions
-
-	// Заполняем legacy ParserConfig view ради совместимости тех тестов /
-	// callsite'ов, что читают state.ParserConfig.ParserConfig.Proxies сразу
-	// после CreateStateFromModel (без round-trip через диск).
-	derivedPC := p.model.AsParserConfig()
-	if derivedPC != nil {
-		state.ParserConfig = *derivedPC
-	}
 
 	// Извлекаем config_params из модели
 	state.ConfigParams = p.extractConfigParams()
@@ -120,7 +129,7 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	// (включая drag-reordering). Build pipeline затем эмитит fragments
 	// в config.json::route.rules[] в этом же порядке.
 	wizardmodels.ReconcileRuleOrder(p.model)
-	state.Rules = wizardmodels.SyncRulesByOrderToStateRulesV6(
+	state.Rules = wizardmodels.EmitStateRulesInAxisOrder(
 		p.model.RuleOrder, p.model.PresetRefs, p.model.CustomRules,
 	)
 
@@ -161,15 +170,11 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	// и mode=update patches (в Updates стеке) синхронизируются с active
 	// preset-ref'ами. Idempotent.
 	//
-	// **Важно — Sync на BOTH viewах:** state.Save() вызывает
-	// syncConnectionsFromLegacy (core/state/adapter.go), который копирует
-	// state.ParserConfig.Outbounds → state.Connections.Outbounds. Если
-	// Sync'нуть только Connections — адаптер затрёт изменения. Sync'аем оба
-	// view'а (или хотя бы ParserConfig — тогда адаптер скопирует корректную
-	// версию в Connections).
+	// SPEC 117: Sync ровно один — по canonical Connections.Outbounds.
+	// Обратный синк Save удалён (W4): Save сериализует Connections как есть,
+	// выравнивать проекцию больше не нужно.
 	if p.model.TemplateData != nil {
-		build.SyncOutboundsWithTemplate(state.Rules, &state.Connections.Outbounds, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
-		build.SyncOutboundsWithTemplate(state.Rules, &state.ParserConfig.ParserConfig.Outbounds, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
+		build.SyncOutboundsWithTemplate(state.Rules, &state.Directions, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
 	}
 
 	// dns_options в state — только servers и rules; скаляры DNS — в state.vars (dns_*).
@@ -218,9 +223,10 @@ func (p *WizardPresenter) SaveCurrentState() error {
 	stateStore := p.GetStateStore()
 
 	ac := core.GetController()
-	// Получаем путь к state.json для логирования
-	statesDir := filepath.Join(ac.FileService.ExecDir, "bin", wizardbusiness.WizardStatesDir)
-	statePath := filepath.Join(statesDir, wizardmodels.StateFileName)
+	// Путь — только для лога, но ЧЕСТНЫЙ: по цели и машине. Раньше здесь
+	// печатался локальный bin/wizard_states/state.json, тогда как файл
+	// уходил в папку удалённой машины, — лог врал при разборе инцидентов.
+	statePath := platform.GetWizardStatePathFor(ac.FileService.ExecDir, p.ConfigTarget(), p.ConfigMachineID())
 
 	debuglog.InfoLog("SaveCurrentState: saving to state.json at %s", statePath)
 	if err := stateStore.SaveCurrentState(state); err != nil {
@@ -261,6 +267,12 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 
 	timing := debuglog.StartTiming("loadState")
 	defer timing.EndWithDefer()
+
+	// SPEC 115 §2: загрузка состояния — самая крупная правка модели, какая
+	// бывает, но через MarkAsChanged она не проходит (загруженное состояние
+	// не считается несохранённым изменением). Без явного сброса отчёт
+	// прошлой конфигурации раскрасил бы источники ЧУЖОГО состояния.
+	config.ResetBuildReport()
 
 	// Валидация шаблона (шаг 1)
 	if p.model.TemplateData == nil {
@@ -305,8 +317,6 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 	p.model.RulesLibraryMerged = true
 	p.model.SelectableRuleStates = nil
 
-	p.model.ForeignBackupExtensions = stateFile.ForeignBackupExtensions
-
 	p.restoreCustomRules(stateFile.CustomRules)
 	// Fill SelectedOutbound for any custom rules missing it (single-pass after restore).
 	{
@@ -339,7 +349,7 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 		// preset edits которые УЖЕ были materialized в legacy body).
 		_ = build.MigrateOutboundsToReferencedShape(&p.model.GlobalOutbounds, stateFile.Rules, p.model.TemplateData, p.model.Target)
 		build.SyncOutboundsWithTemplate(stateFile.Rules, &p.model.GlobalOutbounds, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
-		p.model.RefreshDerivedParserConfig()
+		p.model.BumpRevision()
 	}
 
 	// Установка флага для парсинга (шаг 7)

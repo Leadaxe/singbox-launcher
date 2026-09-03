@@ -164,7 +164,7 @@ func TestShareURIFromOutbound_Socks(t *testing.T) {
 }
 
 func TestShareURIFromWireGuardEndpoint_RoundTrip(t *testing.T) {
-	uri := "wireguard://aDHCHnkcdMjnq0bF+V4fARkbJBW8cWjuYoVjKfUwsXo=@212.232.78.237:51820?publickey=fiK9ZG990zunr5cpRnx%2BSOVW2rVKKqFoVxmHMHAvAFk%3D&address=10.10.10.2%2F32&allowedips=0.0.0.0%2F0%2C%3A%3A%2F0#wgtest"
+	uri := "wireguard://RAUTG+IXUH+KW8Ocva7RTpv6y/gdVQIIgh9MeuzeMtU=@198.51.100.7:51820?publickey=CY6LY0SWr69h%2FWZokDYecQlTfIsZs8EhdSMd%2BNuaWJ4%3D&address=10.10.10.2%2F32&allowedips=0.0.0.0%2F0%2C%3A%3A%2F0#wgtest"
 	n, err := ParseNode(uri, nil)
 	if err != nil || n == nil {
 		t.Fatalf("ParseNode: %v", err)

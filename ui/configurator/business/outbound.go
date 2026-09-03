@@ -1,7 +1,7 @@
 // Package business содержит бизнес-логику визарда конфигурации.
 //
 // Файл outbound.go содержит функции для работы с outbounds:
-//   - GetAvailableOutbounds - список доступных outbound тегов (ParserConfig или JSON); мемо по trimmed ParserConfigJSON при ParserConfig == nil
+//   - GetAvailableOutbounds - список доступных outbound тегов из canonical (GlobalOutbounds); мемо по ревизии модели
 //   - EnsureDefaultAvailableOutbounds - обеспечивает наличие обязательных outbounds (direct-out, reject, drop)
 //   - EnsureFinalSelected - обеспечивает выбранный final outbound в модели
 //
@@ -14,7 +14,6 @@
 package business
 
 import (
-	"encoding/json"
 	"sort"
 	"strings"
 
@@ -65,7 +64,8 @@ func ResolveMergedOutbound(model *wizardmodels.WizardModel, tag string) *config.
 }
 
 // GetAvailableOutbounds возвращает список доступных outbound тегов из модели.
-// При model.ParserConfig == nil и непустом ParserConfigJSON результат кэшируется по строке JSON (сброс — InvalidatePreviewCache).
+// Читает canonical `model.GlobalOutbounds` (SPEC 117); результат кэшируется
+// по ревизии модели (сброс — InvalidateNodePool / любая мутация).
 func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 	tags := map[string]struct{}{
 		wizardmodels.DefaultOutboundTag: {},
@@ -77,70 +77,46 @@ func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 		return sortedOutboundTagSlice(tags)
 	}
 
-	jsonKey := strings.TrimSpace(model.ParserConfigJSON)
-	if model.ParserConfig == nil && jsonKey != "" {
-		if model.AvailableOutboundsMemoKey == jsonKey && len(model.AvailableOutboundsMemoTags) > 0 {
-			out := make([]string, len(model.AvailableOutboundsMemoTags))
-			copy(out, model.AvailableOutboundsMemoTags)
-			return out
-		}
-	} else if model.ParserConfig != nil {
-		model.AvailableOutboundsMemoKey = ""
-		model.AvailableOutboundsMemoTags = nil
+	// Мемо валидно, пока ревизия модели не ушла вперёд (0 = пусто): любая
+	// правка Направлений и preset-ref'ов поднимает ревизию, поэтому один
+	// ключ покрывает все входы.
+	if model.AvailableOutboundsMemoRev != 0 && model.AvailableOutboundsMemoRev == model.Revision && len(model.AvailableOutboundsMemoTags) > 0 {
+		out := make([]string, len(model.AvailableOutboundsMemoTags))
+		copy(out, model.AvailableOutboundsMemoTags)
+		return out
 	}
 
-	var parserCfg *config.ParserConfig
-	if model.ParserConfig != nil {
-		parserCfg = model.ParserConfig
-	} else if jsonKey != "" {
-		var parsed config.ParserConfig
-		if err := json.Unmarshal([]byte(model.ParserConfigJSON), &parsed); err == nil {
-			parserCfg = &parsed
+	// Направления (SPEC 104). Выключенные пропускаем: список целей обязан
+	// совпадать с тем, что реально попадёт в config.json, иначе правило
+	// укажет в никуда.
+	//
+	// Парные auto-группы (`<tag>-auto`) в список НЕ идут: двойник —
+	// опция внутри своего направления, а не самостоятельная цель
+	// (решение D-9А). В addOutbounds его тоже нет — он разворачивается
+	// только на сборке.
+	for i := range model.GlobalOutbounds {
+		outbound := &model.GlobalOutbounds[i]
+		if outbound.Disabled {
+			continue
 		}
-		// Note: silently ignore parse errors - ParserConfigJSON might be invalid or incomplete
-		// This is expected behavior when user is typing ParserConfig
-	}
-
-	if parserCfg != nil {
-		// Направления (SPEC 104). Выключенные пропускаем по той же причине,
-		// что и выключенные подписки ниже: список целей обязан совпадать с
-		// тем, что реально попадёт в config.json, иначе правило укажет в
-		// никуда.
-		//
-		// Парные auto-группы (`<tag>-auto`) в список НЕ идут: двойник —
-		// опция внутри своего направления, а не самостоятельная цель
-		// (решение D-9А). В addOutbounds его тоже нет — он разворачивается
-		// только на сборке.
-		for _, outbound := range parserCfg.ParserConfig.Outbounds {
-			if outbound.Disabled {
-				continue
-			}
-			if outbound.Tag != "" {
-				tags[outbound.Tag] = struct{}{}
-			}
-			for _, extra := range outbound.AddOutbounds {
-				tags[extra] = struct{}{}
-			}
+		if outbound.Tag != "" {
+			tags[outbound.Tag] = struct{}{}
 		}
-		// SPEC 108: локальные группы подписок целями правил НЕ предлагаются.
-		//
-		// Раньше сюда добавлялись все `proxies[].outbounds[]` — то есть
-		// `AL:select` и `AL:auto`. Такая цель живёт по чужим правилам
-		// жизненного цикла: исчезает вместе с подпиской и переименовывается
-		// вместе с её префиксом, а правило молча указывает в никуда.
-		// Группа подписки — это группировка и сахар к Направлению, а не
-		// самостоятельная цель (S3). Осиротевшие ссылки из старых состояний
-		// сбрасываются на direct при загрузке (state.resetForeignRuleTargets).
+		for _, extra := range outbound.AddOutbounds {
+			tags[extra] = struct{}{}
+		}
 	}
+	// Теги ЗАМЕН свёрнутых папок целями правил не предлагаются: такая цель
+	// живёт по чужим правилам жизненного цикла — исчезает вместе с папкой, а
+	// правило молча указывает в никуда. Замена это группировка и сахар к
+	// Направлению, а не самостоятельная цель (SPEC 108 S3). Осиротевшие
+	// ссылки из старых состояний сбрасываются при загрузке
+	// (state.resetForeignRuleTargets).
 
 	// SPEC 056: добавляем теги от preset.outbounds[] mode=add активных
 	// preset-ref'ов (mode=update не вводит новых тегов, только патчит
 	// существующие). Без этого UI Rules tab не предложит "ru VPN 🇷🇺" из
 	// ru-inside, и пользователь не сможет выбрать его в своих правилах.
-	//
-	// Bypass memo: preset-refs меняются независимо от ParserConfigJSON, и
-	// мемо по jsonKey может прокэшировать stale set. На UI стороне это
-	// дёшево (несколько preset'ов, без I/O).
 	for _, tag := range collectActivePresetOutboundTags(model) {
 		tags[tag] = struct{}{}
 	}
@@ -164,10 +140,8 @@ func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 	}
 
 	result := sortedOutboundTagSlice(tags)
-	if model.ParserConfig == nil && jsonKey != "" {
-		model.AvailableOutboundsMemoKey = jsonKey
-		model.AvailableOutboundsMemoTags = append([]string(nil), result...)
-	}
+	model.AvailableOutboundsMemoRev = model.Revision
+	model.AvailableOutboundsMemoTags = append([]string(nil), result...)
 	return result
 }
 
@@ -268,24 +242,16 @@ func AllDirectionTags(model *wizardmodels.WizardModel) []string {
 	if model == nil {
 		return nil
 	}
-	parserCfg := model.ParserConfig
-	if parserCfg == nil {
-		jsonKey := strings.TrimSpace(model.ParserConfigJSON)
-		if jsonKey == "" {
-			return nil
-		}
-		var parsed config.ParserConfig
-		if err := json.Unmarshal([]byte(model.ParserConfigJSON), &parsed); err != nil {
-			return nil
-		}
-		parserCfg = &parsed
-	}
 	var out []string
-	for _, d := range parserCfg.ParserConfig.Outbounds {
-		if d.Tag != "" {
-			out = append(out, d.Tag)
+	for i := range model.GlobalOutbounds {
+		if tag := model.GlobalOutbounds[i].Tag; tag != "" {
+			out = append(out, tag)
 		}
 	}
+	// Теги ЗАМЕН свёрнутых папок сюда НЕ входят намеренно: цели чужого
+	// жизненного цикла — ровно то, ради чьего сброса resetForeignRuleTargets
+	// и существует (SPEC 108 S5). Включить их значило бы защитить от сброса
+	// осиротевшие ссылки на `AL:select`.
 	return out
 }
 

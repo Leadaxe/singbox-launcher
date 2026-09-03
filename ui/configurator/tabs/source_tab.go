@@ -15,7 +15,6 @@
 package tabs
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -32,7 +31,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/config"
-	"singbox-launcher/core/config/configtypes"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
@@ -52,7 +50,7 @@ import (
 
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
-	sourceHintText = "Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://). For multiple links, use a new line for each."
+	sourceHintText = "Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://, hysteria://, hysteria2://, ssh://, wireguard://). For multiple links, use a new line for each."
 )
 
 // CreateSourcesTab creates the Sources tab UI (URLs, URL status and preview).
@@ -60,12 +58,19 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	guiState := presenter.GUIState()
 	const directLinksDocURL = "https://github.com/Leadaxe/singbox-launcher/blob/6beb136b9082823699c6509d32e62f212fd7ff90/docs/ParserConfig.md#%D1%84%D0%BE%D1%80%D0%BC%D0%B0%D1%82%D1%8B-uri-%D0%B4%D0%BB%D1%8F-%D0%BF%D1%80%D1%8F%D0%BC%D1%8B%D1%85-%D1%81%D1%81%D1%8B%D0%BB%D0%BE%D0%BA"
 
-	// Section 1: Subscription URL or Direct Links
-	urlLabel := widget.NewLabel(locale.T("Subscription URL, Direct Links or sing-box JSON:"))
-	urlLabel.Importance = widget.MediumImportance
-
+	// Section 1: Subscription URL or Direct Links.
+	//
+	// Заголовка над полем нет намеренно (обкатка заход 3): он дословно
+	// повторял плейсхолдер самого поля.
 	guiState.SourceURLEntry = widget.NewMultiLineEntry()
-	guiState.SourceURLEntry.SetPlaceHolder(locale.T("https://your-subscription-url-here"))
+	// Плейсхолдер называет ФОРМАТЫ, а не пример URL: заголовок над полем снят
+	// (обкатка заход 3), и подпись «что сюда вставлять» осталась только здесь.
+	// Перечень — виды тела из body_classify.go: URI-список, Xray-массив,
+	// sing-box JSON (4 формы), INI wg-quick ([Interface]/[Peer],
+	// BodyKindWGConf — вместе с AWG-полями Jc/Jmin/…/I1-I5) и Amnezia vpn://,
+	// которое и стоит за «…».
+	guiState.SourceURLEntry.SetPlaceHolder(
+		locale.T("Subscription URL, Direct Links, JSON, WG/AWG INI ..."))
 	guiState.SourceURLEntry.Wrapping = fyne.TextWrapOff
 	// No automatic application: URLs are applied only when the user clicks Add.
 	guiState.SourceURLEntry.OnChanged = func(value string) {
@@ -76,29 +81,82 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		presenter.MarkAsChanged()
 	}
 
-	hintLabel := widget.NewLabel(locale.T(sourceHintText))
-	hintLabel.Wrapping = fyne.TextWrapWord
-	wireguardHelpButton := widget.NewButton("?", func() {
+	// Подсказка о принимаемых форматах — ТУЛТИПОМ кнопки «?», а не строкой под
+	// полем (обкатка заход 3: «в верхней части слишком много текста»). Три
+	// строки перечисления схем занимали высоту постоянно, а нужны они один
+	// раз — пока человек не понял, что сюда вставлять.
+	//
+	// Именно кнопка, а не само поле: `widget.Entry` тултипов не умеет
+	// (fyne-tooltip даёт обёртки только для Button/Label/Check/Select и т.п.),
+	// а заводить свой ttwidget.Entry ради подсказки — лишний виджет в дереве.
+	// Клик по той же кнопке открывает документацию: наведение объясняет,
+	// нажатие ведёт подробнее.
+	//
+	// Текст переключает applyFolderDrillChrome — между корнем, папкой и
+	// подпиской, как раньше переключал текст метки.
+	wireguardHelpButton := ttwidget.NewButton("?", func() {
 		if err := platform.OpenURL(directLinksDocURL); err != nil {
 			dialog.ShowError(fmt.Errorf("failed to open docs: %w", err), guiState.Window)
 		}
 	})
 	wireguardHelpButton.Importance = widget.LowImportance
+	fynewidget.SetToolTipSafe(wireguardHelpButton, locale.T(sourceHintText))
 	// Keep help button compact (single-symbol width) and pinned to the right.
 	helpButtonCompact := container.NewGridWrap(fyne.NewSize(24, 24), wireguardHelpButton)
-	hintRow := container.NewBorder(nil, nil, nil, helpButtonCompact, hintLabel)
+	// SPEC 116 W13 (обкатка Саши): вкладка умеет показывать не только корень,
+	// но и состав ОДНОЙ папки — тем же списком, теми же строками. Состояние
+	// живёт в замыкании вкладки, как и подсветка перехода из «Итога»: это
+	// состояние ЭКРАНА, оно не имеет смысла ни для сборки, ни для сохранения и
+	// не переживает пересоздание вкладки.
+	drill := &folderDrillState{}
+
 	// applyAddedSources runs the shared Add path: parse `text` (URI links /
 	// vpn:// / [Interface]/[Peer] conf) into sources, refresh UI, clear the
 	// field. Used by both the Add button and Add-from-file (SPEC 079).
-	applyAddedSources := func(text string) {
+	//
+	// SPEC 116 W13: в режиме папки тот же текст едет НЕ в корень, а в открытую
+	// папку — путь наполнения W6 (business.AppendNodesToFolder → тот же
+	// parseSourceInput). Второго разбора здесь нет и быть не может (дыра Д6).
+	// applyAddedSourcesNamed — тот же путь, но с именем для БЕЗЫМЯННЫХ узлов
+	// (имя файла у импорта). В корне имя ставит RelabelLastSources, в папке —
+	// ядро наполнения; здесь только развилка адреса.
+	var applyAddedSourcesNamed func(text, defaultTag string)
+	applyAddedSources := func(text string) { applyAddedSourcesNamed(text, "") }
+	applyAddedSourcesNamed = func(text, defaultTag string) {
 		presenter.MergeGUIToModel()
-		if err := wizardbusiness.AppendURLsToSources(presenter, strings.TrimSpace(text)); err != nil {
+		if drill.active() {
+			// Заход 2: в режиме ПОДПИСКИ Add выключен целиком (поле, кнопка и
+			// пункты ⋮). Тихий возврат — последний рубеж: если какой-то путь
+			// всё же дошёл сюда, узел не должен уехать в состав, который
+			// принадлежит провайдеру.
+			if m := presenter.Model(); m == nil || !drill.nodesAreFree(m.Sources) {
+				return
+			}
+			if !applyAddedSourcesToFolderNamed(
+				presenter, guiState, drill.folderID, text, defaultTag) {
+				return
+			}
+			guiState.SourceURLsProgrammatic = true
+			guiState.SourceURLEntry.SetText("")
+			guiState.SourceURLsProgrammatic = false
+			return
+		}
+		// Кнопка Add отчитывается ВСЕГДА: ошибка — диалогом, итог — коротким
+		// сообщением. Раньше ошибка уезжала только в debug-лог, и нажатие
+		// на непонятный текст выглядело как «кнопка не работает».
+		addRes, err := wizardbusiness.AppendURLsToSources(presenter, strings.TrimSpace(text))
+		if err != nil {
 			debuglog.ErrorLog("source_tab: Add error: %v", err)
+			dialog.ShowError(err, guiState.Window)
+			return
+		}
+		reportAddSourcesResult(guiState.Window, addRes)
+		if addRes.Added() == 0 {
 			return
 		}
 		m := presenter.Model()
 		m.PreviewNeedsParse = true
-		presenter.UpdateParserConfig(m.ParserConfigJSON)
+		presenter.RefreshOutboundsConfiguratorList()
 		if guiState.RefreshSourcesList != nil {
 			guiState.RefreshSourcesList()
 		}
@@ -131,7 +189,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				return
 			}
 			if text != "" {
-				applyAddedSources(text)
+				applyAddedSourcesNamed(text, wizardbusiness.TagFromFileName(rc.URI().Name()))
 			}
 		}, guiState.Window)
 		fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".conf", ".vpn", ".txt"}))
@@ -167,7 +225,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 			return
 		}
 		if text != "" {
-			applyAddedSources(text)
+			applyAddedSourcesNamed(text, wizardbusiness.TagFromFileName(path))
 		}
 	}
 
@@ -181,7 +239,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// SPEC 084.1: «Add WARP» — генератор Cloudflare WARP. Регистрирует аккаунт и
 	// отдаёт готовый wireguard://-URI в тот же Add-путь, что и ручная вставка.
 	addWarpAction := func() {
-		wizarddialogs.ShowAddWarpDialog(presenter, applyAddedSources)
+		wizarddialogs.ShowAddWarpDialog(presenter, nil, applyAddedSources)
 	}
 
 	// «Add server» — ручная форма: SOCKS5/HTTP по полям либо Source (любой
@@ -190,8 +248,27 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// подсмотреть. Форма собирает вход и отдаёт в тот же путь Add; вручную
 	// отредактированный JSON идёт своей веткой, чтобы сохраниться побайтово.
 	addServerAction := func() {
-		wizarddialogs.ShowAddServerDialog(presenter, func(res wizarddialogs.AddServerResult) {
+		wizarddialogs.ShowAddServerDialog(presenter, nil, func(res wizarddialogs.AddServerResult) {
 			presenter.MergeGUIToModel()
+			// SPEC 116 W13: в режиме папки оба исхода формы едут в ПАПКУ, и
+			// оба одним путём — ядром разбора (carveSingboxJSON узнаёт
+			// одиночный outbound и кладёт его тело побайтово). Ровно так же
+			// поступает та же форма в окне папки (folder_add_nodes.go:addServer).
+			if drill.active() {
+				// Заход 2: в подписку руками не льют — форма туда не доедет
+				// (пункта в ⋮ нет), но проверка стоит и здесь: диалог
+				// асинхронный, и режим мог смениться, пока он висел.
+				if mm := presenter.Model(); mm == nil || !drill.nodesAreFree(mm.Sources) {
+					return
+				}
+				text := strings.TrimSpace(res.Text)
+				if len(res.ConfigJSON) > 0 {
+					text = string(res.ConfigJSON)
+				}
+				applyAddedSourcesToFolderNamed(
+					presenter, guiState, drill.folderID, text, strings.TrimSpace(res.Label))
+				return
+			}
 			before := len(presenter.Model().Sources)
 
 			if len(res.ConfigJSON) > 0 {
@@ -200,8 +277,13 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					return
 				}
 			} else {
-				if err := wizardbusiness.AppendURLsToSources(presenter, strings.TrimSpace(res.Text)); err != nil {
+				addRes, err := wizardbusiness.AppendURLsToSources(presenter, strings.TrimSpace(res.Text))
+				if err != nil {
 					dialog.ShowError(err, guiState.Window)
+					return
+				}
+				reportAddSourcesResult(guiState.Window, addRes)
+				if addRes.Added() == 0 {
 					return
 				}
 				wizardbusiness.RelabelLastSources(presenter, before, res.Label)
@@ -209,7 +291,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 
 			m := presenter.Model()
 			m.PreviewNeedsParse = true
-			presenter.UpdateParserConfig(m.ParserConfigJSON)
+			presenter.RefreshOutboundsConfiguratorList()
 			if guiState.RefreshSourcesList != nil {
 				guiState.RefreshSourcesList()
 			}
@@ -225,19 +307,18 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		presenter.MergeGUIToModel()
 		m := presenter.Model()
 		m.Sources = append(m.Sources, corestate.Source{
-			ID:      corestate.MakeULID(),
-			Type:    corestate.SourceTypeChain,
-			Enabled: true,
 			// Выданное имя — ТЕГ узла: на него сошлются фильтры и позиции.
 			// Подпись остаётся пустой, и список показывает тег, пока
 			// пользователь не задаст своё отображаемое имя.
-			NodeTag: wizardbusiness.NextChainLabel(m.Sources),
-			Chain:   &configtypes.SourceChain{},
+			Node: corestate.Node{Kind: corestate.SourceKindChain, Enabled: true},
+			ID:   corestate.MakeULID(),
 		})
-		m.RefreshDerivedParserConfig()
+		m.Sources[len(m.Sources)-1].Tag = wizardbusiness.NextChainLabel(m.Sources)
+		m.BumpRevision()
 		m.PreviewNeedsParse = true
-		wizardbusiness.InvalidatePreviewCache(m)
-		presenter.UpdateParserConfig(m.ParserConfigJSON)
+		wizardbusiness.InvalidateNodePool(m)
+		wizardbusiness.InvalidateSourceNodeCounts(m)
+		presenter.RefreshOutboundsConfiguratorList()
 		if guiState.RefreshSourcesList != nil {
 			guiState.RefreshSourcesList()
 		}
@@ -251,17 +332,47 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		showSourceEditWindow(presenter, guiState, guiState.Window, idx, m.Sources[idx].Label)
 	}
 
+	// SPEC 116 этап 3 (сценарий С1): «Add folder» — пустой контейнер под
+	// собственные узлы пользователя. Папка создаётся ПУСТОЙ и окно правки
+	// НЕ открывается: в отличие от цепочки, пустая папка — законное
+	// состояние (её наполняют потом, узел за узлом), и открывать форму
+	// значило бы требовать настройки там, где настраивать нечего.
+	//
+	// Конструктор — существующий corestate.NewFolderSource: он же минтит
+	// ULID, а ULID у папки единственная идентификация (на него смотрит
+	// NodeLink.FolderID). Своего создания папки не заводить.
+	addFolderAction := func() {
+		presenter.MergeGUIToModel()
+		m := presenter.Model()
+		if m == nil {
+			return
+		}
+		folder := corestate.NewFolderSource(wizardbusiness.NextFolderName(m.Sources))
+		m.Sources = append(m.Sources, folder)
+		// Созданная папка ОТКРЫВАЕТСЯ сразу (обкатка заход 3): её заводят,
+		// чтобы тут же наполнить, и лишний клик по строке был работой на
+		// пустом месте. drill.enter только меняет состояние — список
+		// перерисовывает applySourceMutation ниже.
+		drill.enter(folder.ID)
+		applySourceMutation(presenter, guiState)
+	}
+
 	// Limit width and height of URL input field (3 lines)
 	// Wrap MultiLineEntry in Scroll container to show scrollbars; right gutter for scrollbar strip
 	urlURIGutter := components.NewScrollGutter()
 	urlEntryScrollInner := container.NewBorder(nil, nil, nil, urlURIGutter, guiState.SourceURLEntry)
 	urlEntryScroll := container.NewScroll(urlEntryScrollInner)
 	urlEntryScroll.Direction = container.ScrollBoth
-	// Create dummy Rectangle to set size (height 3 lines, width limited)
+	// Прямоугольник задаёт МИНИМУМ (три строки), а не фиксированную высоту:
+	// поле живёт в половине VSplit и обязано расти вместе с ней. Раньше тот
+	// же Stack держал ровно 60px — при перетаскивании полоски росла половина,
+	// а скролл внутри оставался прежним, и поле визуально не увеличивалось.
+	//
+	// Stack растягивает ВСЕ свои элементы по размеру контейнера, поэтому
+	// скролл занимает всю выданную высоту, а прямоугольник продолжает
+	// работать нижней границей через MinSize.
 	urlEntrySizeRect := canvas.NewRectangle(color.Transparent)
-	urlEntrySizeRect.SetMinSize(fyne.NewSize(0, 60)) // Width 900px, height ~3 lines (approx 20px per line)
-	// Wrap in Max container with Rectangle to fix size
-	// Scroll container will be limited by this size and show scrollbars when content doesn't fit
+	urlEntrySizeRect.SetMinSize(fyne.NewSize(0, 60)) // ~3 строки (≈20px на строку)
 	urlEntryWithSize := container.NewStack(
 		urlEntrySizeRect,
 		urlEntryScroll,
@@ -272,25 +383,86 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// menu (same pattern as ui/traffic/toolbar.go) so the header stays clean.
 	var overflowBtn *widget.Button
 	overflowBtn = widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
-		menu := fyne.NewMenu("",
-			fyne.NewMenuItem(locale.T("Add server"), addServerAction),
-			fyne.NewMenuItem(locale.T("Add hop chain"), addChainAction),
-			fyne.NewMenuItem(locale.T("Add WARP"), addWarpAction),
-			fyne.NewMenuItem(locale.T("Add from file"), addFromFileAction),
-			fyne.NewMenuItem(locale.T("Free community servers"), getFreeVPNAction),
-		)
+		var items []*fyne.MenuItem
+		if drill.active() {
+			// SPEC 116 W13, режим папки: остаются ровно те пункты, чей
+			// результат — УЗЕЛ, и они кладут его в открытую папку (тот же
+			// состав, что у «Add nodes…» в окне папки). «Add folder» и «Add
+			// hop chain» создают КОНТЕЙНЕР и Source корня: показывать их,
+			// глядя внутрь папки, значило бы предложить действие, результат
+			// которого пользователь тут же не увидит (вложенных папок нет —
+			// features/sources.md). «Free community servers» подставляет
+			// подписочный URL, а подписка в папку не кладётся.
+			//
+			// Заход 2: в режиме ПОДПИСКИ не остаётся ни одного — её состав
+			// принадлежит провайдеру, и любой из этих пунктов положил бы узел,
+			// который унесёт первое же обновление. Меню при этом не
+			// показывается вовсе: пустая рамка под курсором читается как сбой.
+			mm := presenter.Model()
+			if mm == nil || !drill.nodesAreFree(mm.Sources) {
+				return
+			}
+			// Механика наполнения папки берётся целиком из её окна
+			// (folder_add_nodes.go) — второй не заводим: drill-down не должен
+			// знать про наполнение папки меньше, чем окно папки.
+			var fill *folderAddNodes
+			if idx := folderDrillIndex(mm.Sources, drill.folderID); idx >= 0 {
+				ops := newFolderDrillNodeOps(presenter, guiState, idx, mm.Sources[idx].Kind)
+				fill = newFolderAddNodes(ops, guiState.Window)
+			}
+			// «Add from file» в папке — МУЛЬТИВЫБОР, как в окне папки
+			// (features/sources.md §«Наполнение папки» п.1): каждый файл —
+			// свои узлы со своим именем. Раньше здесь стоял одиночный пикер
+			// вкладки Sources, и панель не давала выделить второй файл.
+			addFromFile := addFromFileAction
+			if fill != nil {
+				addFromFile = fill.addFromFiles
+			}
+			items = []*fyne.MenuItem{
+				fyne.NewMenuItem(locale.T("Add server"), addServerAction),
+				fyne.NewMenuItem(locale.T("Add WARP"), addWarpAction),
+				fyne.NewMenuItem(locale.T("Add from file"), addFromFile),
+			}
+			// Обкатка заход 3: «Fill from subscription…» — ТОТ ЖЕ пункт, что
+			// в окне папки (folder_fill_from_sub.go). Без него на попытку
+			// вставить URL подписки прямо в папку drill-down отвечал отказом,
+			// не показав законного пути.
+			if fill != nil {
+				items = append(items,
+					fyne.NewMenuItemSeparator(),
+					fyne.NewMenuItem(locale.T("Fill from subscription…"),
+						fill.showFillFromSubscriptionDialog),
+				)
+			}
+		} else {
+			items = []*fyne.MenuItem{
+				// SPEC 116 §O6: «Add folder» первым пунктом — папка это
+				// контейнер, в который потом кладут всё остальное из этого же
+				// меню; порядок читается как «сначала куда, потом что».
+				fyne.NewMenuItem(locale.T("Add folder"), addFolderAction),
+				fyne.NewMenuItem(locale.T("Add server"), addServerAction),
+				fyne.NewMenuItem(locale.T("Add hop chain"), addChainAction),
+				fyne.NewMenuItem(locale.T("Add WARP"), addWarpAction),
+				fyne.NewMenuItem(locale.T("Add from file"), addFromFileAction),
+				fyne.NewMenuItem(locale.T("Free community servers"), getFreeVPNAction),
+			}
+		}
+		menu := fyne.NewMenu("", items...)
 		pop := widget.NewPopUpMenu(menu, guiState.Window.Canvas())
 		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(overflowBtn)
 		pop.ShowAtPosition(fyne.NewPos(pos.X, pos.Y+overflowBtn.MinSize().Height))
 	})
-	// Header: только label (⋮ переехал в строку ввода, вплотную к Add).
-	urlHeader := container.NewHBox(urlLabel)
-
-	// URL field: [entry .......] [Add] [⋮]. Add и overflow-меню стоят рядом справа
-	// от поля — ⋮ сразу за кнопкой Add, а не в дальнем углу заголовка.
+	// URL field: [entry .......] [Add] [⋮] [?]. Все кнопки строки ввода стоят
+	// рядом справа от поля.
+	//
+	// Заголовка над полем больше нет (обкатка заход 3): «Subscription URL,
+	// Direct Links or sing-box JSON:» слово в слово повторял плейсхолдер того
+	// же поля, а строку высоты занимал постоянно. Подсказка о форматах уехала
+	// в тултип поля, «?» — сюда же, к остальным кнопкам.
 	addCluster := container.NewHBox(
 		container.NewCenter(addURLButton),
 		container.NewCenter(overflowBtn),
+		container.NewCenter(helpButtonCompact),
 	)
 	urlEntryRow := container.NewBorder(
 		nil, nil,
@@ -299,24 +471,55 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		urlEntryWithSize,
 	)
 
-	urlContainer := container.NewVBox(
-		urlHeader,   // Header with Get free VPN
-		urlEntryRow, // Input field + Add button on the right
-		hintRow,     // Hint + docs button
-	)
+	// Без VBox: он выдаёт детям РОВНО их MinSize и не растягивает по высоте —
+	// половина VSplit росла, а строка ввода внутри оставалась в три строки.
+	// Border-строка сама занимает всю выданную высоту, кнопки Add/⋮/? при
+	// этом прижаты вправо и по высоте не тянутся (они в Center).
+	urlContainer := urlEntryRow
 
 	// Section 2: Sources list (based on ParserConfig.ParserConfig.Proxies)
 	sourcesLabel := widget.NewLabel(locale.T("Sources"))
 	sourcesLabel.Importance = widget.MediumImportance
+	// Шапка секции сменная (обкатка заход 3): в корне — «Sources», в режиме
+	// контейнера — закреплённая кликабельная строка возврата «← Подписка: имя».
+	// Первой строкой списка она была плоха тем, что уезжала за прокрутку
+	// вместе с составом — «где я» пропадало с экрана.
+	sourcesTitleSwap := container.NewVBox(sourcesLabel)
 
 	sourcesBox := container.NewVBox()
+
+	// Объявлена здесь, а не рядом со своей шапкой: пересборка списка гасит её
+	// в режиме папки (SPEC 116 W13), а замыкание не может сослаться на
+	// переменную, объявленную ниже.
+	previewAllBtn := widget.NewButton(locale.T("Preview all servers…"), func() {
+		showSourcePreviewAllWindow(presenter)
+	})
+
+	// SPEC 115 §3: какой источник подсвечен переходом из отчёта «Итога» и
+	// какая строка его несёт. Живут в замыкании вкладки, а не в модели:
+	// подсветка — состояние ЭТОГО экрана, оно не переживает пересоздание
+	// вкладки и не имеет смысла ни для сборки, ни для сохранения.
+	revealedSourceID := ""
+	var revealedRow fyne.CanvasObject
 
 	// SPEC 109: перетаскивание вместо ↑/↓ — тот же механизм, что на Rules,
 	// DNS и Направлениях. Порядок источников — обычный порядок слайса
 	// model.Sources; на конфиг он не влияет (узлы собираются из всех
 	// включённых подписок), но определяет вид списка и нумерацию
 	// префиксов по умолчанию.
+	// SPEC 116 W13: в режиме папки ТОТ ЖЕ захват переставляет узлы ВНУТРИ
+	// папки (механика W5 — previewNodeOps.applyReorder), а не источники.
+	// Второй группы перетаскивания не заводим: список один, и две группы на
+	// один VBox спорили бы за полосы строк. Порядок m.Sources режим не трогает
+	// вовсе — выход возвращает корень ровно таким, каким он был.
+	var folderDrillReorder func(from, to int)
 	dragGroup := fynewidget.NewDragReorderGroup(func(from, to int) {
+		if drill.active() {
+			if folderDrillReorder != nil {
+				folderDrillReorder(from, to)
+			}
+			return
+		}
 		m := presenter.Model()
 		if m == nil || from < 0 || from >= len(m.Sources) || to < 0 || to >= len(m.Sources) || from == to {
 			return
@@ -334,20 +537,113 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		applySourceMutation(presenter, guiState)
 	})
 
-	refreshSourcesList := func() {
+	// Пересборка списка зовётся изнутри самой себя (строка папки и строка
+	// возврата переключают режим и тут же перерисовываются), поэтому имя
+	// объявлено вперёд: замыкание не может сослаться на переменную, которой
+	// ещё нет.
+	var refreshSourcesList func()
+	refreshSourcesListRef := func() {
+		if refreshSourcesList != nil {
+			refreshSourcesList()
+		}
+	}
+	// Прокрутка списка. Указатель, потому что сам VScroll создаётся ниже (ему
+	// нужен собранный sourcesBox), а сбрасывать смещение надо изнутри
+	// пересборки — при СМЕНЕ РЕЖИМА.
+	//
+	// Без сброса выход из контейнера оставлял смещение от его состава: список
+	// корня короче, и человек видел пустоту, пока не тронет колесо (обкатка
+	// заход 3). Обратный вход — та же беда наоборот.
+	var sourcesScrollRef *container.Scroll
+	// lastDrillID — на состав какого контейнера смотрел прошлый показ; пусто =
+	// корень. Сравнение именно с ним, а не с флагом «в контейнере»: переход
+	// «папка A → папка B» тоже меняет список целиком.
+	lastDrillID := ""
+	resetScrollOnModeChange := func(now string) {
+		if now == lastDrillID {
+			return
+		}
+		lastDrillID = now
+		if sourcesScrollRef != nil {
+			sourcesScrollRef.ScrollToOffset(fyne.NewPos(0, 0))
+		}
+	}
+	refreshSourcesList = func() {
 		sourcesBox.Objects = sourcesBox.Objects[:0]
+		// Ссылка на подсвеченную строку живёт ровно один набор строк:
+		// пересборка списка делает прежний виджет мусором, и прокрутка к
+		// нему увезла бы список в никуда.
+		revealedRow = nil
 		// Группа перетаскивания живёт вместе со строками (контракт
 		// DragReorderGroup): без сброса запись удалённой строки со старшим
 		// индексом оставалась бы навсегда — перетаскивание в конец списка
 		// «не срабатывало», а полоса могла разрешиться в чужой индекс.
 		dragGroup.Reset()
 		m := presenter.Model()
+		// SPEC 116 W13 — режим папки: ТОТ ЖЕ список показывает состав одной
+		// папки. Ветка стоит до всего остального, потому что в этом режиме
+		// строк источников нет вовсе, а не «есть, но других».
+		if drill.active() {
+			input, ok := renderFolderDrillRows(presenter, guiState, drill, dragGroup, sourcesBox,
+				sourcesScrollRef, &folderDrillReorder, refreshSourcesListRef)
+			if ok {
+				// Подсказка и доступность Add — те же виджеты, у них меняется
+				// только текст и состояние: «не меняя интерфейса» значит
+				// именно это. Кнопка «Preview all servers…» гаснет — она про
+				// ВСЕ источники сразу, и внутри одного контейнера обещала бы
+				// не то, что покажет.
+				applyFolderDrillChrome(wireguardHelpButton, previewAllBtn,
+					guiState.SourceURLEntry, addURLButton, overflowBtn, input.Kind, true)
+				// «Где я» — закреплённая шапка секции вместо «Sources»: она
+				// не уезжает за прокрутку и она же выход из контейнера.
+				sourcesTitleSwap.Objects = []fyne.CanvasObject{
+					folderDrillHeader(
+						presenter, guiState,
+						&m.Sources[input.SourceIndex], input.SourceIndex,
+						input.Name, input.Rows, previewRowsBroken(input.Rows),
+						drill.announceOpen,
+						func() {
+							drill.announceOpen = !drill.announceOpen
+							refreshSourcesListRef()
+						},
+						func() {
+							drill.leave()
+							folderDrillReorder = nil
+							refreshSourcesListRef()
+						}),
+				}
+				sourcesTitleSwap.Refresh()
+				sourcesBox.Refresh()
+				// Смена режима обнуляет прокрутку: смещение от прошлого
+				// списка в новом указывает в пустоту.
+				resetScrollOnModeChange(drill.folderID)
+				return
+			}
+			// Контейнера не стало, пока на него смотрели, — молча возвращаемся
+			// в корень: показывать состав того, чего нет, не из чего.
+			drill.leave()
+			folderDrillReorder = nil
+		}
+		applyFolderDrillChrome(wireguardHelpButton, previewAllBtn,
+			guiState.SourceURLEntry, addURLButton, overflowBtn, "", false)
+		// Список корня строится ЦЕЛИКОМ, и Total обязан быть нулём: группа
+		// перетаскивания общая с режимом контейнера, где на большом составе
+		// он выставляется под весь состав (окно строк). Оставшись ненулевым,
+		// он разрешил бы бросок источника в слот, которого в корне нет.
+		dragGroup.Total = 0
+		sourcesTitleSwap.Objects = []fyne.CanvasObject{sourcesLabel}
+		sourcesTitleSwap.Refresh()
+		resetScrollOnModeChange("")
 		if len(m.Sources) == 0 {
 			emptyGutter := components.NewScrollGutter()
 			sourcesBox.Add(container.NewHBox(widget.NewLabel(locale.T("No sources defined in ParserConfig.")), layout.NewSpacer(), emptyGutter))
 			sourcesBox.Refresh()
 			return
 		}
+
+		// Дефолт интервала обновления — настройки приложения (SPEC 118 Т1);
+		// читается один раз на перерисовку списка, а не на строку.
+		defaultReload := locale.LoadSettings(platform.GetBinDir(m.ExecDir)).DefaultSubscriptionReload
 
 		for i := range m.Sources {
 			// IIFE so each row's closures capture the correct index (avoids loop variable capture bug)
@@ -358,8 +654,9 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				srcPtr := &m.Sources[sourceIndex]
 				src := *srcPtr
 
-				isSubscription := src.Type == corestate.SourceTypeSubscription
-				meta := src.Meta
+				isSubscription := src.Kind == corestate.SourceKindSubscription
+				isFolder := src.Kind == corestate.SourceKindFolder
+				meta := diagOf(&src)
 				sourceID := src.ID
 
 				// Label / tooltip data из v5 Source (canonical).
@@ -367,9 +664,23 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// для человека), URL уходит в tooltip + Edit-окно. Для server —
 				// label или URI fragment.
 				label := ""
-				if isSubscription {
-					if meta != nil && strings.TrimSpace(meta.ProfileTitle) != "" {
-						label = strings.TrimSpace(meta.ProfileTitle)
+				if isFolder {
+					// SPEC 116 §O5 (вердикт А): строку папки НЕ декорируем —
+					// ни метки, ни иконки. Отличие от подписки читается само:
+					// у папки нет URL в подстроке и нет кнопки обновления.
+					//
+					// Имя папки живёт в Source.Name (не в Label — это
+					// контейнер, а не узел); своего имени пользователь мог
+					// ещё не дать только у папок из чужого состояния.
+					label = strings.TrimSpace(src.Name)
+					if label == "" {
+						label = locale.Tf("Source %d", sourceIndex+1)
+					}
+				} else if isSubscription {
+					if t := strings.TrimSpace(meta.profileTitle()); t != "" {
+						label = t
+					} else if src.Name != "" {
+						label = src.Name
 					} else {
 						label = src.URL
 					}
@@ -380,17 +691,17 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					// прятать единственный опознавательный признак.
 					label = src.Label
 					if label == "" {
-						label = src.NodeTag
+						label = src.Tag
 					}
-					if label == "" {
-						label = src.URI
+					if label == "" && src.Origin != nil {
+						label = src.Origin.Raw
 					}
 					if label == "" {
 						// Fallback: первый node tag из preview (если есть).
-						if m.PreviewNodesBySource != nil &&
-							sourceIndex < len(m.PreviewNodesBySource) &&
-							len(m.PreviewNodesBySource[sourceIndex]) > 0 {
-							first := m.PreviewNodesBySource[sourceIndex][0]
+						if m.NodePoolBySource != nil &&
+							sourceIndex < len(m.NodePoolBySource) &&
+							len(m.NodePoolBySource[sourceIndex]) > 0 {
+							first := m.NodePoolBySource[sourceIndex][0]
 							if first.Tag != "" {
 								label = first.Tag
 							} else if first.Label != "" {
@@ -406,12 +717,28 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// половина выключена галками, выглядит в списке так же,
 				// как полная. Показываем «сколько пойдёт в конфиг», а при
 				// расхождении — и сколько всего.
-				if c, ok := m.SourceNodeCounts[sourceIndex]; ok && c.Total > 0 {
+				// Счётчик — только у КОНТЕЙНЕРОВ (папка, подписка): там он
+				// говорит о составе. У узловых источников (server — включая
+				// WG/AWG INI, chain, auto) узел ровно один, и «1 nodes» /
+				// «0 of 1 nodes» не сообщают ничего: сущность одна, а её
+				// включённость видна по галке и приглушённому тексту.
+				// У цепочки состав её позиций показан отдельной меткой
+				// «[chain: N]» — счётчик рядом с ней был лишним блоком.
+				singleNode := src.Kind != corestate.SourceKindFolder &&
+					src.Kind != corestate.SourceKindSubscription
+				if c, ok := m.SourceNodeCounts[sourceIndex]; ok && c.Total > 0 && !singleNode {
 					if c.Enabled == c.Total {
 						label += "  " + locale.Tf("· %d nodes", c.Total)
 					} else {
 						label += "  " + locale.Tf("· %d of %d nodes", c.Enabled, c.Total)
 					}
+				} else if isFolder {
+					// SPEC 116 A1: у пустой папки счётчик показывается явным
+					// «0 nodes», а не пропадает. Пустота папки — это её
+					// нормальное начальное состояние (только что создали,
+					// ещё не наполнили), и молчание строки читалось бы как
+					// «счётчик ещё не посчитан».
+					label += "  " + locale.Tf("· %d nodes", 0)
 				}
 
 				// SPEC 110: цепочку видно по строке — иначе она неотличима
@@ -419,10 +746,9 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// вместо метки идёт предупреждение: узел в конфиг не
 				// попадёт, и узнать об этом по факту пропавшего маршрута —
 				// худший из способов.
-				if src.Type == corestate.SourceTypeChain {
+				if src.Kind == corestate.SourceKindChain {
 					if supported, _ := config.ChainSupportedByCore(); supported {
-						label += "  " + locale.Tf("[chain: %d]",
-							len(src.Chain.HopsOrNil()))
+						label += "  " + locale.Tf("[chain: %d]", len(src.Hops))
 					} else {
 						label += "  " + locale.T("[chain] ⚠️ core has no chain support")
 					}
@@ -438,41 +764,72 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// живёт причина: реестр целиком переписывается каждой
 				// сборкой, и чистая сборка её снимает.
 				exclusionReason := config.ExcludedSourceReason(sourceID)
+				// SPEC 115 §3: у источника, который в конфиг попал, но
+				// потерял часть узлов на последнем рубеже, — МЯГКАЯ пометка,
+				// не ⚠-исключение. Разница содержательная: исключённый
+				// источник не работает вовсе, а этот работает урезанным, и
+				// показать второе как первое значило бы объявить потерянным
+				// то, что живо.
+				//
+				// До первой сборки и после правки модели реестр пуст, и обе
+				// пометки молчат — раскраска не имеет права врать о
+				// конфигурации, которую никто не собирал.
+				droppedNodes, droppedReason := config.DroppedNodesForSource(sourceID)
+				// SPEC 115: источник, не давший конфигу ни одного узла
+				// (не фетчнулся, или разобрался в ноль). Раньше это жило
+				// одним WARN в логе — «source returned zero nodes» — и
+				// пользователь не видел НИЧЕГО: строка показывала галку и
+				// счётчик узлов от прошлой удачной сборки. Пометка та же
+				// ⚠, что у исключения, но причина принципиально другая:
+				// чинить надо саму подписку, а не ссылку на узел.
+				parseFailedReason := config.ParseFailedSourceReason(sourceID)
+				// SPEC 116 A1: ПУСТАЯ ПАПКА — не сбой. У подписки ноль узлов
+				// значит «что-то не так с провайдером»; у папки это воля
+				// пользователя: он её создал и ещё не наполнил. Сборка
+				// считает контейнер без узлов не давшим ни одного (общее
+				// правило генератора), но объявлять папку сломанной здесь
+				// нельзя — чинить в ней нечего.
+				if isFolder && len(src.Nodes) == 0 {
+					parseFailedReason = ""
+				}
+				// SPEC 116 W12 фикс 3: деградации ЭМИССИИ этого источника
+				// (выпавший член Auto, нерезолвнутая позиция цепочки, снятое
+				// умолчание, столкновение тегов). Раньше они уходили в отчёт
+				// «Итога» без адресата, и строка списка про них молчала —
+				// починить их можно только зная, у кого именно.
+				emitWarnings := config.EmitWarningsForSource(sourceID)
 
 				fullURL := src.URL
-				var tagPrefix, tagPostfix, tagMask string
-				if src.Tag != nil {
-					tagPrefix = src.Tag.Prefix
-					tagPostfix = src.Tag.Postfix
-					tagMask = src.Tag.Mask
+				var tagPrefix, tagPostfix string
+				if src.TagPolicy != nil {
+					tagPrefix = src.TagPolicy.Prefix
+					tagPostfix = src.TagPolicy.Postfix
 				}
 
-				localTags := make([]string, 0, len(src.Outbounds))
-				for _, ob := range src.Outbounds {
-					if ob.Tag != "" {
-						localTags = append(localTags, ob.Tag)
+				// W13, обкатка: тултип показывает ТОЛЬКО заполненные поля.
+				// Раньше три строки печатались всегда, и у папки (URL нет,
+				// политики нет) под курсором висело «URL: / tag_prefix: /
+				// tag_postfix:» — три пустых двоеточия вместо подсказки.
+				// Пустой тултип не показывается вовсе: рамка без текста
+				// читается как сбой отрисовки.
+				var tooltipLines []string
+				addTip := func(key, val string) {
+					if strings.TrimSpace(val) != "" {
+						tooltipLines = append(tooltipLines, fmt.Sprintf("%s: %s", key, val))
 					}
 				}
-
-				tooltipLines := []string{
-					fmt.Sprintf("URL: %s", fullURL),
-					fmt.Sprintf("tag_prefix: %s", tagPrefix),
-					fmt.Sprintf("tag_postfix: %s", tagPostfix),
-					fmt.Sprintf("tag_mask: %s", tagMask),
-					fmt.Sprintf("local outbounds: %d", len(localTags)),
-				}
-				if len(localTags) > 0 {
-					tooltipLines = append(tooltipLines, "tags: "+strings.Join(localTags, ", "))
+				addTip("URL", fullURL)
+				addTip("tag_prefix", tagPrefix)
+				addTip("tag_postfix", tagPostfix)
+				if src.Replace != nil && strings.TrimSpace(src.Replace.Tag) != "" {
+					tooltipLines = append(tooltipLines,
+						fmt.Sprintf("replace: %s (%s)", src.Replace.Tag, src.Replace.Mode))
 				}
 				if metaTip := metaTooltip(meta); metaTip != "" {
 					tooltipLines = append(tooltipLines, "—— meta ——", metaTip)
 				}
 				tooltipText := strings.Join(tooltipLines, "\n")
 
-				copyText := fullURL
-				if copyText == "" {
-					copyText = src.URI
-				}
 				sourceLabel := ttwidget.NewLabel(shortLabel)
 				sourceLabel.Wrapping = fyne.TextWrapOff
 				sourceLabel.Truncation = fyne.TextTruncateEllipsis
@@ -516,18 +873,11 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					applySourceMutation(presenter, guiState)
 				}
 
-				copyBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.ContentCopyIcon(), func() {
-					if copyText == "" {
-						return
-					}
-					if guiState.Window != nil {
-						fyne.CurrentApp().Clipboard().SetContent(copyText)
-						dialogs.ShowAutoHideInfo(fyne.CurrentApp(), guiState.Window, locale.T("Copied"), locale.T("Source copied to clipboard."))
-					}
-				}, rowGetter)
-				copyBtn.Importance = widget.LowImportance
+				// Кнопки копирования в строке НЕТ (обкатка заход 3): у папки
+				// копировать нечего — URL у неё не бывает, и кнопка молча ничего
+				// не делала; у подписки URL виден в её окне, а «Copy JSON» есть
+				// в меню строки по правому клику — этого достаточно.
 				sourceLabel.SetToolTip(tooltipText)
-				fynewidget.SetToolTipSafe(copyBtn, tooltipText)
 
 				editBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DocumentCreateIcon(), func() {
 					presenter.MergeGUIToModel()
@@ -540,25 +890,13 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				editBtn.Importance = widget.LowImportance
 				fynewidget.SetToolTipSafe(editBtn, locale.T("Edit"))
 
+				folderNodeCount := 0
+				if isFolder {
+					folderNodeCount = len(src.Nodes)
+				}
 				delBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DeleteIcon(), func() {
-					// Confirm before removing — deletion drops the source (and its
-					// nodes) from the config; matches the Rules-tab delete UX.
-					dialog.ShowConfirm(
-						locale.T("Confirmation"),
-						locale.Tf("Delete \"%s\"? The source and its nodes are removed from the configuration.", shortLabel),
-						func(ok bool) {
-							if !ok {
-								return
-							}
-							m := presenter.Model()
-							if sourceIndex >= len(m.Sources) {
-								return
-							}
-							m.Sources = append(m.Sources[:sourceIndex], m.Sources[sourceIndex+1:]...)
-							applySourceMutation(presenter, guiState)
-						},
-						guiState.Window,
-					)
+					showSourceRowDeleteDialog(
+						presenter, guiState, sourceIndex, sourceID, shortLabel, folderNodeCount)
 				}, rowGetter)
 				delBtn.Importance = widget.LowImportance
 				fynewidget.SetToolTipSafe(delBtn, locale.T("Del"))
@@ -579,10 +917,10 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// provider announce. Placed to the LEFT of copy/edit so the
 				// row's edit/delete cluster keeps a stable visual position.
 				var noticeBtn *fynewidget.HoverForwardButton
-				if isSubscription && meta != nil && (meta.LastStatus == "err" || (meta.ProviderAnnounce != nil && !meta.ProviderAnnounce.IsEmpty())) {
+				if isSubscription && meta != nil && (meta.lastStatus() == "err" || (meta.providerAnnounce() != nil && !meta.providerAnnounce().IsEmpty())) {
 					icon := theme.WarningIcon()
 					tooltipKey := "Subscription update failed — click for details" // l10n-key
-					if meta.LastStatus != "err" {
+					if meta.lastStatus() != "err" {
 						// Success-with-notice path: provider sent content + announce.
 						// Use info-styled icon. We don't have an info-theme icon
 						// in our minimal set, fall back to QuestionIcon (📢-ish).
@@ -590,9 +928,17 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 						tooltipKey = "Provider sent a notice — click to read" // l10n-key
 					}
 					srcLabel := shortLabel
-					metaCopy := meta // capture by value for closure (meta is *SubscriptionMeta, stable)
+					// Снимок обеих половин диагностики — диалог рисуется
+					// вне владельца модели, разделять указатели нельзя.
+					diagCopy := &wizarddialogs.SourceDiag{}
+					if src.Meta != nil {
+						diagCopy.Meta = *src.Meta
+					}
+					if src.UpdateStatus != nil {
+						diagCopy.Status = *src.UpdateStatus
+					}
 					noticeBtn = fynewidget.NewHoverForwardButtonWithIcon("", icon, func() {
-						wizarddialogs.ShowSourceErrorDialog(guiState.Window, srcLabel, metaCopy)
+						wizarddialogs.ShowSourceErrorDialog(guiState.Window, srcLabel, diagCopy)
 					}, rowGetter)
 					noticeBtn.Importance = widget.LowImportance
 					fynewidget.SetToolTipSafe(noticeBtn, locale.T(tooltipKey))
@@ -614,7 +960,17 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				if supportBtn := supportLinkButton(meta, rowGetter); supportBtn != nil {
 					rightControlsItems = append(rightControlsItems, supportBtn)
 				}
-				rightControlsItems = append(rightControlsItems, copyBtn, editBtn)
+				// У СТРОКИ-УЗЛА карандаша и копирования нет: обе команды
+				// живут внутри его окна, которое открывается кликом по
+				// строке. Иконка, дублирующая клик, занимала место и делала
+				// строку узла шумнее строки контейнера, где клик значит
+				// другое (провал в состав) и кнопки поэтому нужны.
+				//
+				// Правое меню строки остаётся: там есть то, чего в окне нет
+				// (копировать тег, перенос в папку).
+				if !sourceRowNodeOpsAllowed(src.Kind) {
+					rightControlsItems = append(rightControlsItems, editBtn)
+				}
 				if refreshBtn != nil {
 					rightControlsItems = append(rightControlsItems, refreshBtn)
 				}
@@ -646,7 +1002,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				}
 				lines := []fyne.CanvasObject{titleRow}
 				if isSubscription {
-					if subtitle := formatSourceSubtitle(meta, srcPtr.Update, m.Defaults.Reload); subtitle != "" {
+					if subtitle := formatSourceSubtitle(meta, srcPtr.Update, defaultReload); subtitle != "" {
 						subtitleText := canvas.NewText(subtitle, theme.Color(theme.ColorNamePlaceHolder))
 						subtitleText.TextSize = theme.CaptionTextSize()
 						lines = append(lines, container.NewBorder(nil, nil, leftPad(), nil, subtitleText))
@@ -662,21 +1018,141 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					warn.Importance = widget.WarningImportance
 					warn.TextStyle = fyne.TextStyle{Italic: true}
 					lines = append(lines, container.NewBorder(nil, nil, leftPad(), nil, warn))
+				} else if parseFailedReason != "" {
+					// После исключения, но ДО «снято N»: источник без узлов
+					// снятых узлов не имеет, а исключение (ссылка не
+					// разрешилась) ближе к корню, если случилось и то и другое.
+					empty := widget.NewLabel(locale.Tf("⚠ No nodes from this source: %s", parseFailedReason))
+					empty.Wrapping = fyne.TextWrapWord
+					empty.Importance = widget.WarningImportance
+					empty.TextStyle = fyne.TextStyle{Italic: true}
+					lines = append(lines, container.NewBorder(nil, nil, leftPad(), nil, empty))
+				} else if droppedNodes > 0 {
+					// else if: источник, выпавший целиком, узлов уже не имеет —
+					// вторая строка про «снято N» рядом с «исключён» была бы
+					// про один и тот же факт дважды.
+					dropped := widget.NewLabel(locale.Tf("⚠ %d node(s) dropped: %s", droppedNodes, droppedReason))
+					dropped.Wrapping = fyne.TextWrapWord
+					dropped.Importance = widget.MediumImportance
+					dropped.TextStyle = fyne.TextStyle{Italic: true}
+					lines = append(lines, container.NewBorder(nil, nil, leftPad(), nil, dropped))
+				}
+				// Эмиссионные деградации — ОТДЕЛЬНОЙ строкой, а не в общей
+				// цепочке else if: источник, потерявший члена группы, при этом
+				// вполне может быть и урезанным на последнем рубеже, и это
+				// разные факты. Мягкая пометка: узлы источник дал, работает он
+				// частично.
+				for _, w := range emitWarnings {
+					// Причина уже переведена движком — здесь только знак.
+					emitLabel := widget.NewLabel("⚠ " + w)
+					emitLabel.Wrapping = fyne.TextWrapWord
+					emitLabel.Importance = widget.MediumImportance
+					emitLabel.TextStyle = fyne.TextStyle{Italic: true}
+					lines = append(lines, container.NewBorder(nil, nil, leftPad(), nil, emitLabel))
 				}
 				var rowInner fyne.CanvasObject = titleRow
 				if len(lines) > 1 {
 					rowInner = container.New(tightVBox{}, lines...)
 				}
 
-				row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
+				// Подсветка строки — половина перехода «показать источник» из
+				// отчёта «Итога» (SPEC 115 §3): прокрутки мало, в списке из
+				// сорока подписок глаз без выделения не находит нужную.
+				rowSourceID := sourceID
+				row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{
+					IsSelected: func() bool {
+						return rowSourceID != "" && rowSourceID == revealedSourceID
+					},
+				})
+				// SPEC 116 W13: правый клик по строке ВЕРХНЕГО узла —
+				// «Move to…» / «Copy to…». Механика W2 и
+				// диалоги W5 берутся целиком (source_row_node_ops.go), здесь
+				// только точка входа.
+				//
+				// Обёртка снаружи HoverRow, а не внутри: Fyne отдаёт событие
+				// САМОМУ ГЛУБОКОМУ подходящему объекту (FindObjectAtPositionMatching
+				// перезаписывает найденное по мере спуска). Снаружи HoverRow
+				// остаётся глубже и продолжает получать hover сам, а правый
+				// клик достаётся обёртке — она единственная SecondaryTappable
+				// на этой ветке. Внутри обёртка перехватила бы hover и
+				// погасила подсветку строки.
+				var rowOuter fyne.CanvasObject = row
+				if drillContainerKind(src.Kind) {
+					// SPEC 116 W13 (требование Саши дословно): «нажать на папку
+					// и в том же окне, не меняя интерфейса, провалиться в
+					// папку». Заход 2 распространил то же на ПОДПИСКУ: у неё
+					// тоже не узел, а состав, и смотреть на него строкой
+					// контейнера негде. Права над узлами при этом другие, и
+					// знает о них модель (previewNodeOps.nodeOpsAllowed), а не
+					// эта развилка.
+					//
+					// Клик по СТРОКЕ, не по иконкам действий: кнопки
+					// (copy/edit/del/↻) лежат глубже обёртки и получают свой
+					// tap сами — Fyne отдаёт событие самому глубокому
+					// подходящему объекту, и до обёртки оно не доходит.
+					//
+					// Та же обёртка снаружи HoverRow, что у меню верхнего узла:
+					// внутри она перехватила бы hover и погасила подсветку.
+					enterID := sourceID
+					wrap := fynewidget.NewSecondaryTapWrap(row)
+					// Обкатка, заход 3: ЛЕВЫЙ клик — провал в состав (как у
+					// всех строк-контейнеров с W13), ПРАВЫЙ — меню Open / Edit /
+					// Copy JSON / Delete. Один механизм на папку и подписку.
+					openContainer := func() {
+						if strings.TrimSpace(enterID) == "" {
+							return
+						}
+						drill.enter(enterID)
+						refreshSourcesList()
+					}
+					menuIndex := sourceIndex
+					menuLabel := shortLabel
+					wrap.OnPrimary = func(fyne.KeyModifier) {
+						openContainer()
+					}
+					wrap.OnSecondary = func(pe *fyne.PointEvent) {
+						showSourceContainerContextMenu(
+							presenter, guiState, menuIndex, menuLabel, pe, openContainer)
+					}
+					rowOuter = wrap
+				} else if sourceRowNodeOpsAllowed(src.Kind) {
+					// Адрес узла в корне: у корневого пространства тег-политики
+					// нет, поэтому сырой тег равен финальному.
+					rawTag := src.NodeTagOrLabel()
+					rowIndex := sourceIndex
+					rowKind := src.Kind
+					rowLabel := shortLabel
+					wrap := fynewidget.NewSecondaryTapWrap(row)
+					// ЛЕВЫЙ клик открывает узел — как в составе папки, где он
+					// это делает с W13. Раньше строка узла в корне на клик не
+					// отвечала вовсе, и одно и то же действие в двух списках
+					// работало по-разному: в папке кликом, в корне только
+					// карандашом.
+					wrap.OnPrimary = func(fyne.KeyModifier) {
+						presenter.MergeGUIToModel()
+						mm := presenter.Model()
+						if mm == nil || rowIndex >= len(mm.Sources) {
+							return
+						}
+						showSourceEditWindow(presenter, guiState, guiState.Window, rowIndex, rowLabel)
+					}
+					wrap.OnSecondary = func(pe *fyne.PointEvent) {
+						showSourceRowNodeContextMenu(
+							presenter, guiState, rowIndex, rowKind, rawTag, rowLabel, pe)
+					}
+					rowOuter = wrap
+				}
+				if rowSourceID != "" && rowSourceID == revealedSourceID {
+					revealedRow = rowOuter
+				}
 				// Регистрируем КАЖДУЮ строку: вычисление точки вставки
 				// просматривает полосы всех строк, не только перетаскиваемой.
-				dragGroup.Register(sourceIndex, row)
+				dragGroup.Register(sourceIndex, rowOuter)
 				row.WireTooltipLabelHover(sourceLabel)
 				if prefixLabel != nil {
 					row.WireTooltipLabelHover(prefixLabel)
 				}
-				sourcesBox.Add(row)
+				sourcesBox.Add(rowOuter)
 			}(i)
 		}
 
@@ -689,49 +1165,89 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 
 	sourcesScroll := container.NewVScroll(sourcesBox)
 	sourcesScroll.SetMinSize(fyne.NewSize(0, 80))
+	// Связываем указатель: до этой строки пересборки уже могли отработать
+	// (первый вызов идёт выше), и сброс там просто ничего не делал — на
+	// открытии вкладки список и так стоит в начале.
+	sourcesScrollRef = sourcesScroll
 
-	previewAllBtn := widget.NewButton(locale.T("Preview all servers…"), func() {
-		showSourcePreviewAllWindow(presenter)
-	})
-	sourcesHeader := container.NewHBox(
-		sourcesLabel,
-		layout.NewSpacer(),
-		previewAllBtn,
-	)
+	// Окно строк на большом контейнере (SPEC 116, раздел «Окно строк на
+	// больших контейнерах» в source_folder_drilldown.go): по прокрутке
+	// достраиваются подходящие строки, а место остальных держат распорки. Хук
+	// сам молчит в режиме корня, на маленьком составе и во время броска —
+	// развилку сюда не выносим, она одна и живёт рядом с окном.
+	sourcesScroll.OnScrolled = folderDrillScrollHook(
+		presenter, guiState, drill, dragGroup, sourcesBox, sourcesScroll)
 
-	// Без ведущего разделителя: AppTabs уже рисует свой divider под строкой
-	// вкладок (container/apptabs.go), и собственная линия первым элементом
-	// давала две полоски подряд. Разделитель между URL и списком остаётся —
-	// он делит блоки, а не дублирует рамку вкладки.
-	topBlock := container.NewVBox(
-		urlContainer,
-		widget.NewSeparator(),
+	// SPEC 115 §3: переход «показать источник» из отчёта «Итога».
+	//
+	// Список пересобирается целиком (строки — не переиспользуемые ячейки
+	// widget.List), поэтому подсветка ставится ДО пересборки, а прокрутка —
+	// после: только тогда на руках свежий виджет строки.
+	guiState.RevealSource = func(sourceID string) {
+		revealedSourceID = strings.TrimSpace(sourceID)
+		// Переход из отчёта адресует ИСТОЧНИК, а источники живут в корне:
+		// оставшись внутри папки, список показал бы её состав и молча
+		// проигнорировал переход.
+		drill.leave()
+		folderDrillReorder = nil
+		refreshSourcesList()
+		if revealedRow == nil {
+			// Источник могли удалить между сборкой и кликом по строке
+			// отчёта — законный исход: вкладку показали, прокручивать не к
+			// чему.
+			return
+		}
+		sourcesScroll.ScrollToOffset(fyne.NewPos(0, rowOffsetInBox(sourcesBox, revealedRow)))
+	}
+
+	// Border, а не HBox: HBox даёт центру только MinSize, а у строки возврата
+	// с Truncation он крошечный — имя контейнера схлопывалось в «…».
+	sourcesHeader := container.NewBorder(nil, nil, nil, previewAllBtn, sourcesTitleSwap)
+
+	// Sources list fills remaining tab height (preview all servers moved to a
+	// separate window).
+	//
+	// Внешнего ScrollGutter здесь НЕТ (обкатка заход 3): полосу прокрутки
+	// резервируют сами строки — и корневые (rowGutter), и строки drill-down.
+	// Второй отступ снаружи складывался с первым и отодвигал весь список от
+	// правого края на двойную ширину полосы.
+	listBlock := container.NewBorder(
 		sourcesHeader,
-	)
-
-	tabScrollGutter := components.NewScrollGutter()
-
-	// Sources list fills remaining tab height (preview all servers moved to a separate window).
-	body := container.NewBorder(
-		topBlock,
 		nil,
 		nil,
-		tabScrollGutter,
+		nil,
 		sourcesScroll,
 	)
 
-	return body
+	// Поле ввода и список делит ТАСКАЕМЫЙ разделитель, а не приклеенная к
+	// верху полоска: в поле вставляют не только ссылку в строку, но и
+	// многострочный конфиг wg-quick — в трёх фиксированных строках такой
+	// текст не разглядеть и не отредактировать. Ведущего разделителя по
+	// прежнему нет: AppTabs уже рисует свой divider под строкой вкладок, и
+	// собственная линия первым элементом давала две полоски подряд.
+	//
+	// Минимальная высота половин — их же MinSize (у поля это те самые 60px
+	// от urlEntrySizeRect), поэтому схлопнуть поле в ноль нельзя.
+	//
+	// Позиция не запоминается между запусками намеренно: это состояние
+	// ЭТОГО экрана, как и подсветка источника, — не настройка приложения.
+	split := container.NewVSplit(urlContainer, listBlock)
+	// Поле ввода занимает свой минимум, всё остальное — списку: он и есть
+	// содержимое вкладки, а поле разворачивают под задачу.
+	split.SetOffset(0)
+
+	return split
 }
 
 // applySourceMutation is the single refresh chain every Sources-list mutation
 // runs after editing model.Sources (перетаскивание, enable toggle, delete):
-// mark dirty → re-derive ParserConfig → invalidate preview cache →
-// UpdateParserConfig → refresh outbound options → rebuild the list.
+// mark dirty → bump revision → invalidate preview cache →
+// refresh configurator list → refresh outbound options → rebuild the list.
 //
-// MarkAsChanged is called explicitly (and first) on purpose: UpdateParserConfig
-// below suppresses the ParserConfig text widget's OnChanged → MarkAsChanged
-// (see UpdateParserConfig), so without this the mutation would be silently
-// lost on close and the Save button wouldn't light up.
+// MarkAsChanged is called explicitly (and first) on purpose: the refresh
+// chain below does not touch widgets whose OnChanged marks the state dirty,
+// so without this the mutation would be silently lost on close and the Save
+// button wouldn't light up.
 //
 // Keeping all source mutations on this one helper is deliberate — the chain
 // drifted before (the enable toggle used to skip RefreshOutboundOptions, so a
@@ -742,11 +1258,18 @@ func applySourceMutation(presenter *wizardpresentation.WizardPresenter, guiState
 	if m == nil {
 		return
 	}
+	// MarkAsChanged — первым, намеренно (см. комментарий к функции выше).
 	presenter.MarkAsChanged()
-	m.RefreshDerivedParserConfig()
+	m.BumpRevision()
 	m.PreviewNeedsParse = true
-	wizardbusiness.InvalidatePreviewCache(m)
-	presenter.UpdateParserConfig(m.ParserConfigJSON)
+	// Счётчики узлов — производная того же состава, что и пул: кэш,
+	// построенный до мутации, иначе живёт вечно, и папка, наполненная после
+	// создания, навсегда показывала «0 nodes» (обкатка заход 3). Оба кэша
+	// снимает InvalidateNodePool — вызов ниже дублирует его намеренно
+	// избыточно только для читаемости цепочки, второго такого не нужно.
+	wizardbusiness.InvalidateNodePool(m)
+	wizardbusiness.InvalidateSourceNodeCounts(m)
+	presenter.RefreshOutboundsConfiguratorList()
 	presenter.RefreshOutboundOptions()
 	if guiState != nil && guiState.RefreshSourcesList != nil {
 		guiState.RefreshSourcesList()
@@ -765,6 +1288,172 @@ func applySourceMutation(presenter *wizardpresentation.WizardPresenter, guiState
 			}
 		})
 	}()
+}
+
+// showSourceRowDeleteDialog — удаление источника кнопкой-корзиной строки.
+//
+// Вынесено из замыкания строки (W13 заход 2, пункт 5): тот же путь зовёт и
+// пункт «Delete» контекстного меню верхнего узла — принцип «меню = кнопки»
+// требует ОДНОЙ реализации на оба входа, иначе меню и корзина разъедутся
+// текстами подтверждения и веткой непустой папки.
+//
+// `folderNodeCount > 0` = непустая папка: у неё удаление не «да/нет», а выбор
+// судьбы узлов (сценарий С7) — своим диалогом, showFolderDeleteDialog.
+func showSourceRowDeleteDialog(
+	presenter *wizardpresentation.WizardPresenter,
+	guiState *wizardpresentation.GUIState,
+	sourceIndex int,
+	sourceID string,
+	shortLabel string,
+	folderNodeCount int,
+) {
+	if presenter == nil || guiState == nil || guiState.Window == nil {
+		return
+	}
+	// SPEC 116 сценарий С7: у НЕПУСТОЙ папки удаление — не «да/нет», а выбор
+	// судьбы её узлов: снести вместе с папкой либо вынести в корень. Обычное
+	// подтверждение здесь предлагало бы ровно один исход и молча уносило
+	// десяток настроенных узлов.
+	if folderNodeCount > 0 {
+		showFolderDeleteDialog(presenter, guiState, sourceID, shortLabel, folderNodeCount)
+		return
+	}
+	// Confirm before removing — deletion drops the source (and its nodes) from
+	// the config; matches the Rules-tab delete UX.
+	dialog.ShowConfirm(
+		locale.T("Confirmation"),
+		locale.Tf("Delete \"%s\"? The source and its nodes are removed from the configuration.", shortLabel),
+		func(ok bool) {
+			if !ok {
+				return
+			}
+			m := presenter.Model()
+			if m == nil || sourceIndex < 0 || sourceIndex >= len(m.Sources) {
+				return
+			}
+			m.Sources = append(m.Sources[:sourceIndex], m.Sources[sourceIndex+1:]...)
+			applySourceMutation(presenter, guiState)
+		},
+		guiState.Window,
+	)
+}
+
+// showFolderDeleteDialog — удаление НЕПУСТОЙ папки (SPEC 116 сценарий С7).
+//
+// Два исхода, а не «да/нет»: узлы в папке — собственность пользователя, и
+// молча унести их вместе с контейнером нельзя.
+//
+//   - «Delete with nodes» — папка и её узлы уходят из конфигурации;
+//   - «Move nodes to root» — каждый узел становится верхним Source
+//     (business.ExtractFolderNodesToRoot, волна W2), после чего опустевшая
+//     папка удаляется.
+//
+// Ссылки НА вынесенные узлы (detour, хопы, члены Auto) переписывает реестр
+// W2 — они не рвутся, и сообщать о них нечего. А вот ФИНАЛЬНЫЙ тег узла у
+// папки с тег-политикой меняется (в корне политики нет), и ручной выбор в
+// селекторах живого ядра по нему протухает — про это предупреждает
+// существующий showStaleSelectionDialog, своего диалога не заводим.
+//
+// Три кнопки не влезают в dialog.ShowConfirm, поэтому окно собрано
+// NewCustomWithoutButtons — тем же приёмом, что диалог WARP.
+//
+// Ловушка Fyne (fyne-label-minwidth-trap): текст обязан быть Wrapping, иначе
+// имя папки в одну строку задаёт окну min-width и раздувает диалог.
+func showFolderDeleteDialog(
+	presenter *wizardpresentation.WizardPresenter,
+	guiState *wizardpresentation.GUIState,
+	folderID string,
+	folderLabel string,
+	nodeCount int,
+) {
+	if presenter == nil || guiState == nil || guiState.Window == nil || folderID == "" {
+		return
+	}
+
+	body := widget.NewLabel(locale.Tf(
+		"Folder %q holds %d node(s). Delete them together with the folder, or move them to the root of the sources list?",
+		folderLabel, nodeCount))
+	body.Wrapping = fyne.TextWrapWord
+
+	var d *dialog.CustomDialog
+
+	// Позиция папки ищется по ULID НА КЛИКЕ, а не берётся индексом из строки
+	// списка: пока висел диалог, порядок Sources мог поменяться (фоновый
+	// fetch, перетаскивание, второе окно), и удаление по устаревшему индексу
+	// снесло бы чужой источник. ULID — единственная идентификация папки.
+	folderIndex := func() int {
+		m := presenter.Model()
+		if m == nil {
+			return -1
+		}
+		for i := range m.Sources {
+			if m.Sources[i].ID == folderID && m.Sources[i].Kind == corestate.SourceKindFolder {
+				return i
+			}
+		}
+		return -1
+	}
+
+	deleteBtn := widget.NewButton(locale.T("Delete with nodes"), func() {
+		if d != nil {
+			d.Hide()
+		}
+		m := presenter.Model()
+		idx := folderIndex()
+		if m == nil || idx < 0 {
+			return
+		}
+		m.Sources = append(m.Sources[:idx], m.Sources[idx+1:]...)
+		applySourceMutation(presenter, guiState)
+	})
+	deleteBtn.Importance = widget.DangerImportance
+
+	extractBtn := widget.NewButton(locale.T("Move nodes to root"), func() {
+		if d != nil {
+			d.Hide()
+		}
+		m := presenter.Model()
+		idx := folderIndex()
+		if m == nil || idx < 0 {
+			return
+		}
+		// Политика читается ДО выноса: после него папки в модели уже нет.
+		hadTagPolicy := m.Sources[idx].TagPolicy != nil && !m.Sources[idx].TagPolicy.IsZero()
+		// Порядок обязателен: сначала вынести (функция W2 адресует папку по
+		// индексу и вставляет узлы сразу ЗА ней), потом удалить опустевшую —
+		// иначе вставлять было бы некуда и позиция узлов в списке уехала бы
+		// в конец, за все подписки.
+		// Список задетых источников — не побочный продукт, а вторая половина
+		// критерия A3: ссылка, чья цель сменила финальный тег, либо
+		// переписана реестром, либо названа. Реестр её переписал — и
+		// пользователь обязан узнать, где именно, а не обнаружить чужую
+		// правку в чужом источнике при следующем открытии.
+		affected := wizardbusiness.ExtractFolderNodesToRoot(m, idx)
+		m.Sources = append(m.Sources[:idx], m.Sources[idx+1:]...)
+		applySourceMutation(presenter, guiState)
+		if len(affected) > 0 {
+			showNodeRefsRepointedDialog(guiState.Window, affected)
+		}
+		// Протухший выбор в ядре — только при тег-политике: без неё сырой тег
+		// узла и был его финальным именем, вынос в корень его не менял.
+		if hadTagPolicy {
+			showStaleSelectionDialog(guiState.Window, staleSelectionScope{NodesRenamed: true})
+		}
+	})
+
+	cancelBtn := widget.NewButton(locale.T("Cancel"), func() {
+		if d != nil {
+			d.Hide()
+		}
+	})
+
+	content := container.NewVBox(
+		body,
+		container.NewHBox(layout.NewSpacer(), cancelBtn, extractBtn, deleteBtn),
+	)
+	d = dialog.NewCustomWithoutButtons(locale.T("Delete folder"), content, guiState.Window)
+	d.Resize(fyne.NewSize(520, 200))
+	d.Show()
 }
 
 // showSourcePreviewAllWindow opens a window with the combined server list from all sources (uses View window slot).
@@ -810,7 +1499,7 @@ func showSourcePreviewAllWindow(presenter *wizardpresentation.WizardPresenter) {
 
 	refreshPreview := func() {
 		m := presenter.Model()
-		if m.ParserConfig == nil || len(m.ParserConfig.ParserConfig.Proxies) == 0 {
+		if len(m.Sources) == 0 {
 			previewNodes = nil
 			previewList.Refresh()
 			previewStatusLabel.SetText(locale.T("No sources. Add URLs and click Refresh."))
@@ -820,7 +1509,7 @@ func showSourcePreviewAllWindow(presenter *wizardpresentation.WizardPresenter) {
 
 		go func() {
 			mm := m
-			errorCount, err := wizardbusiness.RebuildPreviewCache(mm)
+			errorCount, err := wizardbusiness.RebuildNodePool(mm)
 			presenter.UpdateUI(func() {
 				if err != nil {
 					previewNodes = nil
@@ -828,12 +1517,9 @@ func showSourcePreviewAllWindow(presenter *wizardpresentation.WizardPresenter) {
 					previewStatusLabel.SetText(locale.Tf("Error: %s", err.Error()))
 					return
 				}
-				previewNodes = mm.PreviewNodes
+				previewNodes = mm.NodePool
 				previewList.Refresh()
-				sourcesCount := 0
-				if mm.ParserConfig != nil {
-					sourcesCount = len(mm.ParserConfig.ParserConfig.Proxies)
-				}
+				sourcesCount := len(mm.Sources)
 				status := locale.Tf("%d server(s) from %d source(s)", len(previewNodes), sourcesCount)
 				if errorCount > 0 {
 					status += locale.Tf("  ⚠️ %d error(s)", errorCount)
@@ -902,49 +1588,23 @@ func nodeDisplayLine(node *config.ParsedNode) string {
 func CreateDirectionsTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObject {
 	guiState := presenter.GUIState()
 
-	// Ensure model.ParserConfig is set so configurator can edit it (configurator reads via editPresenter.Model()).
-	m := presenter.Model()
-	if m.ParserConfig == nil {
-		pc := &config.ParserConfig{}
-		raw := strings.TrimSpace(m.ParserConfigJSON)
-		if raw != "" {
-			if err := json.Unmarshal([]byte(raw), pc); err != nil {
-				debuglog.DebugLog("source_tab: initial parse of ParserConfigJSON failed: %v", err)
-			}
-		}
-		m.ParserConfig = pc
-	}
-
 	onConfiguratorApply := func() {
 		m := presenter.Model()
-		// SPEC 052 phase 8: outbounds-configurator мутирует m.ParserConfig
-		// (legacy view); переносим назад в canonical Sources/GlobalOutbounds,
-		// потом re-derive ParserConfig (round-trip).
-		if m.ParserConfig != nil {
-			m.GlobalOutbounds = append([]configtypes.Direction(nil), m.ParserConfig.ParserConfig.Outbounds...)
-			// Per-source outbounds: ParserConfig.Proxies[i] построен из
-			// m.Sources[i] через AsParserConfig (1:1 порядок), поэтому
-			// обратный sync безопасен по тому же индексу. Без этого правки
-			// при Scope ≠ "For All" терялись на Save — state.json пишет
-			// m.Sources[i].Outbounds, а они не обновлялись.
-			proxies := m.ParserConfig.ParserConfig.Proxies
-			for i := range m.Sources {
-				if i >= len(proxies) {
-					break
-				}
-				m.Sources[i].Outbounds = append([]configtypes.Direction(nil), proxies[i].Outbounds...)
-			}
-		}
-		m.RefreshDerivedParserConfig()
+		// SPEC 117: конфигуратор мутирует canonical
+		// (model.GlobalOutbounds) напрямую —
+		// копировать назад больше нечего. Здесь остаются только производные
+		// эффекты правки: протухание превью и обновление зависимых списков.
+		m.BumpRevision()
 		m.PreviewNeedsParse = true
-		wizardbusiness.InvalidatePreviewCache(m)
-		presenter.UpdateParserConfig(m.ParserConfigJSON)
+		wizardbusiness.InvalidateNodePool(m)
+		wizardbusiness.InvalidateSourceNodeCounts(m)
+		presenter.RefreshOutboundsConfiguratorList()
 		presenter.RefreshOutboundOptions()
 		if guiState.RefreshSourcesList != nil {
 			guiState.RefreshSourcesList()
 		}
 		// Мутации списка (Edit/Add/Delete, ↑/↓) обязаны помечать состояние
-		// изменённым явно: UpdateParserConfig подавляет OnChanged.
+		// изменённым явно: refresh-цепочка выше OnChanged-виджеты не трогает.
 		presenter.MarkAsChanged()
 	}
 
@@ -997,10 +1657,14 @@ func refreshOneSourceFromUI(
 	for i := range m.Sources {
 		if m.Sources[i].ID == sourceID {
 			snapshot = m.Sources[i]
-			if snapshot.Meta != nil {
-				metaCopy := *snapshot.Meta
-				snapshot.Meta = &metaCopy
-			}
+			// SPEC 116 W13: снимок обязан быть ГЛУБОКИМ по всем полям, которые
+			// горутина читает или переписывает. Прежде копировалась одна Meta,
+			// а Skip/Nodes/PendingDisabled уезжали в горутину общими с моделью
+			// backing-массивами — ровно то, от чего окно источника уже
+			// защищается в triggerOneShotFetch. Два пути одной кнопки не имеют
+			// права расходиться в этом: merge ходит по Nodes и по
+			// PendingDisabled, а UI-поток в это же время рисует список.
+			deepCopySourceForFetch(&snapshot)
 			found = true
 			break
 		}
@@ -1008,6 +1672,10 @@ func refreshOneSourceFromUI(
 	if !found {
 		return
 	}
+	// SPEC 118 W6 (хвост ревью W3): ревизия модели на момент снятия снимка.
+	// Пока горутина качает, пользователь вправе править ту же запись —
+	// запись снимка целиком откатила бы его правки (см. ApplyFetchSnapshot).
+	revAtStart := m.Revision
 
 	configService := presenter.ConfigServiceAdapter()
 	go func() {
@@ -1022,18 +1690,18 @@ func refreshOneSourceFromUI(
 				return
 			}
 			// Snapshot обратно в model. Slice мог reallocate'нуться (Add /
-			// Del между snapshot-таймом и сейчас), поэтому ищем по ID заново.
+			// Del между snapshot-таймом и сейчас) — поиск по ID; а если
+			// модель успели ПРАВИТЬ, заносятся только поля результата
+			// fetch'а, а не снимок целиком (SPEC 118 W6, хвост ревью W3).
 			m := presenter.Model()
-			for i := range m.Sources {
-				if m.Sources[i].ID == sourceID {
-					m.Sources[i] = snapshot
-					break
-				}
+			if !wizardbusiness.ApplyFetchSnapshot(m, &snapshot, revAtStart) {
+				return
 			}
 			// Обновление меняет СОСТАВ узлов — кэш превью и счётчики на
 			// строках обязаны пересчитаться, иначе кандидаты позиций
 			// цепочки и «50 nodes» живут телом до обновления.
-			wizardbusiness.InvalidatePreviewCache(m)
+			wizardbusiness.InvalidateNodePool(m)
+			wizardbusiness.InvalidateSourceNodeCounts(m)
 			if guiState != nil && guiState.RefreshSourcesList != nil {
 				guiState.RefreshSourcesList()
 			}
@@ -1046,6 +1714,44 @@ func refreshOneSourceFromUI(
 			// эти изменения уедут в state.json. Это пользовательский edit-ish
 			// — даём ему dirty marker, чтобы Save-кнопка светилась.
 			presenter.MarkAsChanged()
+			// SPEC 118 W3: fetch-merge наполнил канонические nodes[] —
+			// это мутация модели, производные конвейеры обязаны увидеть
+			// новую ревизию («конфиг устарел», не автозапуск сборки).
+			m.BumpRevision()
 		})
 	}()
+}
+
+// rowOffsetInBox — вертикальное смещение строки внутри вертикального
+// контейнера, посчитанное по МИНИМАЛЬНЫМ размерам предыдущих строк, а не по
+// Position().Y самой строки.
+//
+// Position().Y здесь не годится: список пересобирается целиком, и прокрутка
+// зовётся сразу за пересборкой — layout к этому моменту ещё не отработал, у
+// свежесозданных виджетов Position нулевая, и «прокрутка к источнику»
+// молча уезжала в начало списка. Ждать layout'а вторым fyne.Do — гонка с
+// неизвестным числом кадров: разложиться контейнер может и позже.
+//
+// VBox выкладывает детей подряд с одним отступом между ними и берёт высоту
+// каждого из MinSize — те же слагаемые, что суммируются здесь. MinSize
+// считается по требованию, до всякого layout'а, поэтому ответ верен уже в
+// момент пересборки. Невидимые дети пропускаются: VBox им места не отводит.
+func rowOffsetInBox(box *fyne.Container, row fyne.CanvasObject) float32 {
+	if box == nil || row == nil {
+		return 0
+	}
+	pad := theme.Padding()
+	var y float32
+	for _, o := range box.Objects {
+		if o == row {
+			return y
+		}
+		if o == nil || !o.Visible() {
+			continue
+		}
+		y += o.MinSize().Height + pad
+	}
+	// Строки нет в контейнере — прокручивать не к чему; ноль честнее
+	// произвольной точки.
+	return 0
 }

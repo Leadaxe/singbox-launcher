@@ -3,9 +3,30 @@
 **🌐 Language**: English | [Русский](WIZARD_STATE.ru.md)
 
 The Configurator's declarative model: where it lives, how it is loaded, how it is
-saved, where it goes at build time. This file is written against schema v6
-(SPEC 053 + SPEC 056-R-N + SPEC 057-R-N + SPEC 058-R-N); v5 is covered only in
-the "Migrations" section.
+saved, where it goes at build time.
+
+> **Schema v7 (SPEC 118) is what the launcher writes today.** The per-section
+> descriptions below still document **v6** and are kept because v6 files are
+> read and migrated forever. The shape changed as follows; the sections marked
+> v6 should be read with this in mind:
+>
+> - `meta.version` is `7`, `meta.schema` is `"sources_v7"`;
+> - sources moved to the top level: `sources[]` instead of `connections.sources[]`,
+>   and Directions to `directions[]` instead of `connections.direction_outbounds[]`;
+> - a source is a flat union with a `kind` discriminator — `server`, `chain`,
+>   `auto`, `folder`, `subscription`;
+> - a container's nodes are stored explicitly in `nodes[]`, each with its own
+>   `tag`, `enabled`, `origin` and ready-to-emit `body`. Subscription bodies are
+>   no longer re-parsed at build time, and the raw-response cache
+>   (`bin/subscriptions/*.raw`) is gone;
+> - per-node on/off lives on the node (`enabled`) instead of a separate
+>   `disabled_nodes` map of hashed keys; links (`detour`, chain hops, group
+>   members) are `NodeLink` objects — `{folder_id, tag}`;
+> - a subscription carries its own request identity: `user_agent`, `hwid`,
+>   `send_hwid`, `hash_device_model`, plus `relays_in_directions`.
+>
+> v6 files migrate automatically on first launch; the previous file is kept
+> next to the new one as `state.json.v6.bak`.
 
 ---
 
@@ -90,17 +111,17 @@ in a dev build it sits next to the binary.
       { "kind": "preset", "ref": "<pid>", "enabled": true },
       { "kind": "user",   "enabled": true, ... }
     ]
-  },
-
-  "foreign_backup_extensions": {         // SPEC 103 phase 4; other apps' blobs
-    "lxbox": { ... }                     // kept verbatim, never interpreted
   }
 }
 ```
 
 Top-level keys absent from v6 (compared with earlier revisions):
 `id` (the snapshot name lives in the filename), `config_params`, `custom_rules`,
-`selectable_rule_states`, `rules_library_merged`, `dns_options.independent_cache`.
+`selectable_rule_states`, `rules_library_merged`, `dns_options.independent_cache`,
+`foreign_backup_extensions` (the LX Backup `extensions` carry-through mechanism
+was abolished with contract 0.11.0 — see `contract/docs/BACKUP_PRINCIPLES.md`
+П3: state after an import is indistinguishable from state configured by hand,
+so there is nothing left to store verbatim).
 
 ---
 
@@ -581,20 +602,6 @@ together with duplicate tags.
 Shape: `core/config/configtypes/types.go`. Materialization:
 `core/config/direction_twins.go` + the three-pass generator. Filter helpers:
 `core/config/configtypes/direction_filter.go`.
-
----
-
-### 3.8 `foreign_backup_extensions` — other apps' data (SPEC 103 phase 4)
-
-When an LX Backup created by another app is imported, its `extensions.<app>`
-blobs are stored here **verbatim** and written back into the next export.
-
-The launcher never reads or interprets them — it cannot: the contents belong to
-the other side's model. Without this field a backup that passed through the
-desktop would return to the phone impoverished, having silently lost everything
-the desktop had no place for.
-
-Keys are app identifiers (`lxbox`); values are opaque JSON.
 
 ---
 

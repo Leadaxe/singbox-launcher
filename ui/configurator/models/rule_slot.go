@@ -40,7 +40,7 @@ type RuleSlot struct {
 //   - load state.json v6 без сохранённого порядка (defensive)
 //
 // По умолчанию: сначала все CustomRules в их текущем порядке, затем PresetRefs.
-// Для restore из v6 с сохранённым порядком — см. ApplyRuleOrderFromV6Rules.
+// Для restore с сохранённым порядком оси — см. RuleOrderFromAxis.
 func RebuildRuleOrder(m *WizardModel) {
 	if m == nil {
 		return

@@ -193,7 +193,7 @@ func ExpandPresetWithGlobals(
 			// dns_servers того же пресета (у russian это фильтр «исключить
 			// 🇷🇺-узлы», и его молчаливая потеря опаснее недостающего rule_set).
 			warnings = append(warnings, ExpandWarning{preset.ID,
-				fmt.Sprintf("unresolved @var in rule_set %q — фрагмент выброшен", rs.Tag)})
+				fmt.Sprintf("unresolved @var in rule_set %q — fragment dropped", rs.Tag)})
 			continue
 		}
 		m, _ := substituted.(map[string]interface{})
@@ -230,7 +230,7 @@ func ExpandPresetWithGlobals(
 		if !ok {
 			// Dropped-каскад: выпадает одно правило, остальной пресет живёт.
 			warnings = append(warnings, ExpandWarning{preset.ID,
-				fmt.Sprintf("unresolved @var in rules[%d] — правило выброшено", idx)})
+				fmt.Sprintf("unresolved @var in rules[%d] — rule dropped", idx)})
 			continue
 		}
 		m, _ := substituted.(map[string]interface{})
@@ -286,7 +286,7 @@ func ExpandPresetWithGlobals(
 		if !ok {
 			// Dropped-каскад: выпадает один сервер, остальной пресет живёт.
 			warnings = append(warnings, ExpandWarning{preset.ID,
-				fmt.Sprintf("unresolved @var in dns_server %q — сервер выброшен", ds.Tag)})
+				fmt.Sprintf("unresolved @var in dns_server %q — server dropped", ds.Tag)})
 			continue
 		}
 		m, _ := substituted.(map[string]interface{})
@@ -605,7 +605,7 @@ func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{},
 	}
 	substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, target)
 	if !ok {
-		*warnings = append(*warnings, ExpandWarning{preset.ID, "unresolved @var in dns_rule — правило выброшено"})
+		*warnings = append(*warnings, ExpandWarning{preset.ID, "unresolved @var in dns_rule — rule dropped"})
 		return nil, false
 	}
 	m, _ := substituted.(map[string]interface{})

@@ -1,0 +1,2 @@
+# Базовый Hysteria v1: секрет в query (auth=), не в userinfo
+hysteria://example-1.com:36712?auth=pass123&peer=example-1.com&upmbps=100&downmbps=200#Test HY1

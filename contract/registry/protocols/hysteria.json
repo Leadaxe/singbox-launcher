@@ -1,0 +1,112 @@
+{
+  "v": 1,
+  "scheme": "hysteria",
+  "kind": "outbound",
+  "singbox_type": "hysteria",
+  "aliases": ["hy"],
+  "sources": ["uri", "singbox", "xray"],
+  "extension": "desktop",
+  "note": "Hysteria v1 разбирает ТОЛЬКО лаунчер: у LxBox парсера для него нет. По правилу 3 контракта различие обязано быть помечено, а не остаться бесхозным — отсюда extension:desktop. Следствие для корпуса: раннер стороны пропускает каталоги и кейсы с чужим extension, иначе мобильная сторона падала бы на фикстурах протокола, которого не поддерживает (кейс hysteria_bandwidth помечен meta.extension:desktop в expected). Сам протокол при этом жив и развивается: hysteria2 — отдельный файл реестра, поддержан обеими сторонами.",
+  "uri": {
+    "userinfo": {
+      "meaning": "auth",
+      "note": "Запасной слот. У Hysteria 1.x секрет канонически едет в query (auth=), а не перед '@' — этим v1 отличается от hysteria2. Userinfo принимается на входе, потому что часть панелей выписывает hysteria://auth@host:port; эмиссия его НЕ использует (shareuri_hysteria.go)."
+    },
+    "query": {
+      "auth": {
+        "type": "string",
+        "aliases": ["auth_str", "authStr", "password"],
+        "default": null,
+        "note": "→ auth_str. Пусто → warning, нода живёт (ядро поднимет outbound, сервер откажет на рукопожатии) — та же строгость, что у hysteria2 без password."
+      },
+      "upmbps": {
+        "type": "int",
+        "aliases": ["up_mbps", "up"],
+        "default": 100,
+        "note": "→ up_mbps. ОБЯЗАТЕЛЬНО для ядра: без него initialize outbound падает с «missing upload speed», и это fatal для ВСЕГО config.json, а не для узла. Ссылки его сплошь и рядом не несут, поэтому отсутствие добирается дефолтом 100 (hysteriaBandwidthOrDefault) на всех трёх путях — URI, singbox-импорт (sanitizeSingboxHysteriaBandwidth), xray. Значение с суффиксом единицы («100 mbps») режется до числа."
+      },
+      "downmbps": {
+        "type": "int",
+        "aliases": ["down_mbps", "down"],
+        "default": 100,
+        "note": "→ down_mbps. То же обязательное поле, «missing download speed»."
+      },
+      "obfs": {
+        "type": "string",
+        "default": null,
+        "note": "У v1 obfs — ПЛОСКАЯ строка-секрет (option/hysteria.go, HysteriaOutboundOptions.Obfs string), а НЕ объект {type,password}, как у hysteria2. В оригинальном Hysteria 1.x obfs объявлял тип (xplus), а секрет ехал в obfsParam — поэтому голый obfs=xplus без секрета отбрасывается: строка «xplus» стала бы ключом обфускации и узел молча перестал бы соединяться."
+      },
+      "obfsParam": {
+        "type": "string",
+        "aliases": ["obfs-password"],
+        "default": null,
+        "note": "Секрет обфускации → obfs (плоская строка). Приоритетнее obfs=, если заданы оба."
+      },
+      "mport": {
+        "type": "string",
+        "aliases": ["ports"],
+        "default": null,
+        "note": "Port hopping, тот же синтаксис и то же восстановление из authority, что у hysteria2 (hysteria2RecoverMultiPortAuthority обобщён на оба префикса) → server_ports [\"low:high\"]."
+      },
+      "sni": {
+        "type": "string",
+        "aliases": ["peer"],
+        "default": null,
+        "note": "→ tls.server_name. peer= — историческое написание клиентов 1.x. Мусор (без точки/двоеточия, '🔒') → fallback на server, как у hysteria2."
+      },
+      "alpn": {
+        "type": "string",
+        "default": null,
+        "note": "Список через запятую → tls.alpn []string (обычно h3)."
+      },
+      "insecure": {
+        "type": "bool",
+        "aliases": ["allowInsecure", "allowinsecure", "allow_insecure", "skip-cert-verify"],
+        "default": null,
+        "note": "tls.insecure. Значения 1/true/yes."
+      },
+      "pinSHA256": {
+        "type": "string",
+        "default": null,
+        "ext": "desktop",
+        "note": "→ tls.certificate_public_key_sha256 ([значение])."
+      },
+      "fp": {
+        "type": "ignored",
+        "default": null,
+        "note": "НЕ читается: v1 живёт поверх QUIC, uTLS ядро на нём не примет (quicOutboundTypes включает hysteria). Тот же принцип, что у hysteria2 после SPEC 103 D-033."
+      }
+    },
+    "fragment": "label"
+  },
+  "emit": {
+    "share_uri": true,
+    "param_order": ["alpn", "auth", "downmbps", "insecure", "mport", "obfs", "obfsParam", "pinSHA256", "sni", "upmbps"],
+    "note": "Порядок лексикографический (url.Values.Encode()). Секрет эмитится в auth=, НЕ в userinfo. obfs эмитится парой obfs=xplus&obfsParam=<секрет> — так ссылку понимают сторонние клиенты 1.x и собственный парсер (плоская строка восстанавливается из obfsParam)."
+  },
+  "degrade": [
+    "нет up/down → подставляется 100 Мбит/с (иначе fatal ядра на весь конфиг)",
+    "obfs=xplus без obfsParam → обфускация снята (строка-тип не является секретом)",
+    "obfs пришёл объектом {type,password} из singbox-тела → берётся password как строка, иначе блок снят",
+    "sni-мусор → server_name = server",
+    "utls/reality в теле → сняты (QUIC, quicOutboundTypes)",
+    "невалидный порт в authority → нода дропается"
+  ],
+  "xray_dialect": {
+    "protocol": "hysteria",
+    "note": "Форки Xray (сборки с «finalmask») отдают И v1, И hysteria2 под одним protocol:\"hysteria\", различая версии полем version — в streamSettings.hysteriaSettings.version либо в settings.version. version=2 → sing-box type hysteria2 (секрет в password), version=1 или отсутствует → hysteria (секрет в auth_str). Адрес лежит ПЛОСКО в settings.address/port, а не в settings.servers[] — общий xrayServerEndpoint такую форму не берёт, отсюда собственная выемка xrayHysteriaEndpoint. alpn дочитывается из tlsSettings: общая TLS-выемка его не читает, а на QUIC alpn=h3 — рабочая часть рукопожатия.",
+    "go": "core/config/subscription/xray_hysteria.go"
+  },
+  "refs": {
+    "go": [
+      "core/config/subscription/node_parser_core.go (ветка hysteria:// / hy://)",
+      "core/config/subscription/node_parser_hysteria.go",
+      "core/config/subscription/hysteria2_ports.go (общее восстановление authority)",
+      "core/config/subscription/shareuri_hysteria.go",
+      "core/config/subscription/xray_hysteria.go",
+      "core/config/subscription/singbox_sanitize.go (obfs-форма, обязательная полоса)",
+      "core/config/outbound_generator.go (ветка эмиссии hysteria)"
+    ],
+    "dart": []
+  }
+}

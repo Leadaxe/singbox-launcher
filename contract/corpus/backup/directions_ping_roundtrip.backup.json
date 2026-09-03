@@ -1,0 +1,29 @@
+{
+  "lx_backup": 1,
+  "exported_by": {
+    "app": "lxbox",
+    "version": "2.2.0"
+  },
+  "exported_at": "2026-09-03T00:00:00Z",
+  "directions": [
+    {
+      "tag": "vpn-de",
+      "filter": "🇩🇪",
+      "ping_url": "https://cp.cloudflare.com/generate_204",
+      "ping_timeout_ms": 3000
+    }
+  ],
+  "rules": [
+    {
+      "kind": "inline",
+      "name": "DE",
+      "outbound": "vpn-de",
+      "num": 1000,
+      "match": {
+        "domain_suffix": [
+          "de.example-1.com"
+        ]
+      }
+    }
+  ]
+}

@@ -1,81 +1,271 @@
-// File adapter_source.go — Source → ProxySource (legacy view) helper.
+// File adapter_source.go — проекция canonical v7 Source → сборочная форма
+// configtypes.ProxySource.
 //
-// Note: основной адаптер ParserConfig ↔ Connections живёт в adapter.go.
-// Эта функция — single-source конверсия (один Source → ProxySource) для
-// callsite'ов которые работают с одиночными Source.
+// SPEC 118 W5: моста больше нет. Проекция ничего не деривирует из легаси —
+// она ПЕРЕКЛАДЫВАЕТ канон в форму, которую понимает конвейер сборки:
+//
+//   - узлы (server/chain/auto) и контейнеры (folder/subscription) едут
+//     Canonical-проекцией — из неё эмиссия строит outbound'ы, не читая тел;
+//   - в самой ProxySource остаётся ровно то, что каноном не описывается:
+//     вход fetch (URL, skip) и тексты диагностики (Label, announce).
+//
+// Индексный инвариант жив: Proxies[i] строится из Sources[i] один к одному,
+// без фильтрации и переупорядочивания.
 package state
 
 import (
 	"singbox-launcher/core/config/configtypes"
 )
 
-// ToProxySourceV4 — конвертит Source в legacy configtypes.ProxySource
-// для совместимости с существующим парсером (core/config/subscription).
+// ToProxySourceV4 — конвертит Source (v7) в сборочную configtypes.ProxySource.
 //
-//   - subscription → ProxySource{Source, Skip, Outbounds, Tag*, Disabled, ...}
-//   - server       → ProxySource{Connections:[URI], TagMask=Label, Disabled, ExcludeFromGlobal}
-//
-// Для server-source форсим TagMask = Label, чтобы парсер выставил итоговый
-// node tag строго равным label (без вычислений prefix+fragment как раньше).
+//   - subscription / folder → контейнер: Canonical.Nodes + tag-политика,
+//     replace и общий detour папки;
+//   - server / chain / auto → одиночный узел канона под своим тегом.
 func (s *Source) ToProxySourceV4() configtypes.ProxySource {
 	if s == nil {
 		return configtypes.ProxySource{}
 	}
-	switch s.Type {
-	case SourceTypeSubscription:
+	switch s.Kind {
+	case SourceKindSubscription:
 		ps := configtypes.ProxySource{
-			ID:                      s.ID,    // SPEC 112-A: адресат ссылок на узлы
-			Label:                   s.Label, // только для текстов диагностики
-			Source:                  s.URL,
-			Skip:                    s.Skip,
-			Outbounds:               s.Outbounds,
-			ExcludeFromGlobal:       s.ExcludeFromGlobal,
-			ExposeGroupTagsToGlobal: s.ExposeGroupTagsToGlobal,
-			Fold:                    s.Fold, // SPEC 108
-			Disabled:                !s.Enabled,
-			DetourTag:               s.DetourTag,
-			DetourNodeSourceID:      s.DetourNodeSourceID, // SPEC 112-A
-			DetourNodeTag:           s.DetourNodeTag,      // SPEC 112
-			DetourNodeHash:          s.DetourNodeHash,     // legacy, мигрирует на сборке
-			DetourNodeLabel:         s.DetourNodeLabel,    // SPEC 101
-			DisabledNodes:           s.DisabledNodes,      // SPEC 094 D4
+			ID:     s.ID,            // адресат NodeLink.FolderID
+			Label:  s.displayName(), // только для текстов диагностики
+			Source: s.URL,
+			Skip:   s.Skip,
+			// SPEC 115: сообщение провайдера — тоже только для диагностики.
+			// Провозится ЗДЕСЬ, потому что дальше по конвейеру метаданных
+			// источника уже нет: разбору достаётся только сборочная форма.
+			ProviderAnnounce: s.announceMessage(),
+			Disabled:         !s.Enabled,
 		}
-		if s.Tag != nil {
-			ps.TagPrefix = s.Tag.Prefix
-			ps.TagPostfix = s.Tag.Postfix
-			ps.TagMask = s.Tag.Mask
+		if s.TagPolicy != nil {
+			ps.TagPrefix = s.TagPolicy.Prefix
+			ps.TagPostfix = s.TagPolicy.Postfix
 		}
+		ps.Canonical = s.canonicalProjection()
 		return ps
 
-	case SourceTypeServer:
-		return configtypes.ProxySource{
-			ID:                 s.ID,    // SPEC 112-A: адресат ссылок на узлы
-			Label:              s.Label, // только для текстов диагностики
-			Connections:        []string{s.URI},
-			TagMask:            s.NodeTagOrLabel(),
-			ExcludeFromGlobal:  s.ExcludeFromGlobal,
-			Disabled:           !s.Enabled,
-			DetourTag:          s.DetourTag,
-			DetourNodeSourceID: s.DetourNodeSourceID, // SPEC 112-A
-			DetourNodeTag:      s.DetourNodeTag,      // SPEC 112
-			DetourNodeHash:     s.DetourNodeHash,     // legacy, мигрирует на сборке
-			DetourNodeLabel:    s.DetourNodeLabel,    // SPEC 101
-			ConfigJSON:         s.ConfigJSON,         // ручной outbound JSON
+	case SourceKindFolder:
+		ps := configtypes.ProxySource{
+			ID:       s.ID,
+			Label:    s.displayName(),
+			Disabled: !s.Enabled,
 		}
+		if s.TagPolicy != nil {
+			ps.TagPrefix = s.TagPolicy.Prefix
+			ps.TagPostfix = s.TagPolicy.Postfix
+		}
+		ps.Canonical = s.canonicalProjection()
+		return ps
 
-	case SourceTypeChain:
-		// SPEC 110: цепочка не имеет ни URL, ни URI — только позиции.
-		// TagMask несёт ТЕГ узла (NodeTag), а не подпись: на тег цепочки
-		// ссылаются фильтры Направлений и позиции других цепочек, поэтому
-		// переименование в списке его менять не должно.
-		return configtypes.ProxySource{
-			ID:                s.ID,    // SPEC 112-A: адресат ссылок на узлы
-			Label:             s.Label, // только для текстов диагностики
-			TagMask:           s.NodeTagOrLabel(),
-			ExcludeFromGlobal: s.ExcludeFromGlobal,
-			Disabled:          !s.Enabled,
-			Chain:             s.Chain,
+	case SourceKindServer, SourceKindChain, SourceKindAuto:
+		ps := configtypes.ProxySource{
+			ID:       s.ID,
+			Label:    s.displayName(),
+			Disabled: !s.Enabled,
+		}
+		ps.Canonical = s.canonicalProjection()
+		if ps.Canonical == nil {
+			// Узел без тела/хопов/группы собирать не из чего: в конфиг он не
+			// едет, но позицию в индексном инварианте держит.
+			ps.Disabled = true
+		}
+		return ps
+	}
+
+	// Неизвестный kind сюда не доходит (normalizeSourceShape отвергает файл),
+	// но позиция обязана существовать в любом случае.
+	return configtypes.ProxySource{
+		ID:       s.ID,
+		Label:    s.displayName(),
+		Disabled: true,
+	}
+}
+
+// canonicalProjection — проекция канона v7 в сборочную форму.
+//
+// У контейнера (папка/подписка) проекция есть ВСЕГДА, даже когда nodes[]
+// пуст: «подписку ещё ни разу не обновляли» — это состояние источника, а не
+// повод собирать его каким-то другим путём (warning отчёта сборки — SPEC Т3).
+// nil бывает только у узла, которому нечего эмитить.
+func (s *Source) canonicalProjection() *configtypes.CanonicalSource {
+	if s == nil {
+		return nil
+	}
+	switch s.Kind {
+	case SourceKindFolder, SourceKindSubscription:
+		cs := &configtypes.CanonicalSource{
+			FolderID:     s.ID,
+			IsContainer:  true,
+			FolderDetour: canonicalLink(s.Detour),
+			Replace:      canonicalReplace(s.Replace),
+			// Галка «релеи в Направлениях» нужна не только пикеру формы:
+			// состав Направления считает ещё и сборка (по фильтрам), и без
+			// этого поля она забирала бы служебные узлы вопреки настройке.
+			RelaysInDirections: s.RelaysInDirections,
+		}
+		if s.TagPolicy != nil {
+			cs.TagPrefix = s.TagPolicy.Prefix
+			cs.TagPostfix = s.TagPolicy.Postfix
+		}
+		cs.Nodes = make([]configtypes.CanonicalNode, 0, len(s.Nodes))
+		for i := range s.Nodes {
+			// Неразобранная запись (kind=unsupported) в сборочную форму не
+			// едет ВООБЩЕ — SPEC 116 W11. Пропуск ровно здесь, ДО тег-машины:
+			// пройди она эмиссию хотя бы «выключенным узлом», она съела бы
+			// номер {$num} и слот глобальной уникализации, и у соседей
+			// поменялись бы финальные теги — то есть протухли бы выборы в
+			// кэше ядра и ссылки, адресующие финальный тег. Старый движок
+			// такую запись узлом не считал вовсе, и этот пропуск — ровно то
+			// же поведение.
+			if s.Nodes[i].IsUnsupported() {
+				continue
+			}
+			cs.Nodes = append(cs.Nodes, canonicalNodeProjection(&s.Nodes[i]))
+		}
+		return cs
+
+	case SourceKindServer, SourceKindChain, SourceKindAuto:
+		if !s.Node.materialized() {
+			return nil
+		}
+		n := canonicalNodeProjection(&s.Node)
+		// Тег корневого узла — тот, под которым его знает конфиг.
+		n.Tag = s.NodeTagOrLabel()
+		return &configtypes.CanonicalSource{
+			Nodes: []configtypes.CanonicalNode{n},
 		}
 	}
-	return configtypes.ProxySource{}
+	return nil
+}
+
+// materialized — узел несёт данные, из которых его можно собрать.
+func (n *Node) materialized() bool {
+	if n == nil {
+		return false
+	}
+	switch n.Kind {
+	case SourceKindServer:
+		return len(n.Body) > 0
+	case SourceKindChain:
+		return len(n.Hops) > 0
+	case SourceKindAuto:
+		return n.Group != nil
+	}
+	return false
+}
+
+// canonicalNodeProjection — Node (канон) → сборочная форма.
+func canonicalNodeProjection(n *Node) configtypes.CanonicalNode {
+	out := configtypes.CanonicalNode{
+		Kind:    string(n.Kind),
+		Tag:     n.Tag,
+		Enabled: n.Enabled,
+		Body:    n.Body,
+		Detour:  canonicalLink(n.Detour),
+		Service: n.Service,
+	}
+	if n.Origin != nil {
+		out.OriginKind = n.Origin.Kind
+		out.OriginRaw = n.Origin.Raw
+	}
+	if len(n.Hops) > 0 {
+		out.Hops = make([]configtypes.NodeLink, 0, len(n.Hops))
+		for _, h := range n.Hops {
+			out.Hops = append(out.Hops, configtypes.NodeLink{FolderID: h.FolderID, Tag: h.Tag})
+		}
+	}
+	if n.Group != nil {
+		g := &configtypes.CanonicalAutoGroup{
+			GroupType: n.Group.GroupType,
+			Default:   n.Group.Default,
+			Options:   AutoStrategyOptions(n.Group.Strategy),
+		}
+		g.Members = make([]configtypes.NodeLink, 0, len(n.Group.Members))
+		for _, m := range n.Group.Members {
+			g.Members = append(g.Members, configtypes.NodeLink{FolderID: m.FolderID, Tag: m.Tag})
+		}
+		out.Group = g
+	}
+	return out
+}
+
+// canonicalLink — NodeLink канона → сборочная форма.
+func canonicalLink(l *NodeLink) *configtypes.NodeLink {
+	if l == nil {
+		return nil
+	}
+	return &configtypes.NodeLink{FolderID: l.FolderID, Tag: l.Tag}
+}
+
+// canonicalReplace — FolderReplace канона → сборочная форма.
+func canonicalReplace(r *FolderReplace) *configtypes.FolderReplace {
+	if r == nil {
+		return nil
+	}
+	return &configtypes.FolderReplace{
+		Mode:     r.Mode,
+		Tag:      r.Tag,
+		Strategy: r.Strategy.Clone(),
+	}
+}
+
+// AutoStrategyOptions разворачивает AutoStrategy провайдерской группы в опции
+// sing-box-группы — тем же allowlist'ом, каким миграция/fetch их собирали
+// (config.autoStrategyFromGroupOptions, обратная сторона).
+//
+// Симметрия НЕ полная, и это надо знать при правках. Пул-поля AutoStrategy —
+// `mode`, `pool`, `pool_tolerance`, `sticky_hash` — не выражаются ни в одну
+// сторону: провайдерская группа их не приносит (autoStrategyFromGroupOptions
+// их не читает), и в опции sing-box-группы они тоже не уезжают. Это не
+// пропуск: они настройка НАШЕГО отбора внутри Направления, а не ключ
+// outbound'а ядра — положи мы их сюда, ядро отвергло бы группу на неизвестном
+// поле. Общими у двух функций остаются ровно url / interval / idle_timeout /
+// tolerance / interrupt_exist_connections.
+//
+// Живёт здесь, а не в config: проекция обязана быть рядом с типом, из
+// которого читает, иначе пакет config получил бы вторую точку знания о форме
+// AutoStrategy.
+func AutoStrategyOptions(a AutoStrategy) map[string]interface{} {
+	opts := make(map[string]interface{}, 5)
+	if a.URL != "" {
+		opts["url"] = a.URL
+	}
+	if a.Interval != "" {
+		opts["interval"] = a.Interval
+	}
+	if a.IdleTimeout != "" {
+		opts["idle_timeout"] = a.IdleTimeout
+	}
+	if v := a.Tolerance.Value(); v != nil {
+		opts["tolerance"] = v
+	}
+	if a.InterruptExistConnections != nil {
+		opts["interrupt_exist_connections"] = *a.InterruptExistConnections
+	}
+	if len(opts) == 0 {
+		return nil
+	}
+	return opts
+}
+
+// displayName — отображаемое имя источника: канонический Name папки/подписки,
+// иначе Label узловых kind'ов.
+func (s *Source) displayName() string {
+	if s.Name != "" {
+		return s.Name
+	}
+	return s.Label
+}
+
+// announceMessage — сообщение провайдера из метаданных источника, обрезанное
+// общим правилом (AnnounceMessage); пусто, если провайдер молчал.
+//
+// Только для подписок: у источника-сервера и цепочки метаданных нет.
+func (s *Source) announceMessage() string {
+	if s == nil || s.Meta == nil {
+		return ""
+	}
+	return s.Meta.ProviderAnnounce.AnnounceMessage()
 }

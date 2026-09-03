@@ -9,6 +9,7 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
+	configuratortabs "singbox-launcher/ui/configurator/tabs"
 )
 
 // SPEC 097 — подключение вкладки Servers к УДАЛЁННОМУ демону `sing-box lxd`.
@@ -114,11 +115,24 @@ func ClearLxdRemoteOverride(ac *core.AppController) {
 
 	lxdOverrideMu.Lock()
 	prev := lxdOverrideTransport
+	prevID := lxdOverrideID
 	lxdOverrideID = ""
 	lxdOverrideName = ""
 	lxdOverrideTransport = nil
 	lxdOverrideActive = false
 	lxdOverrideMu.Unlock()
+
+	// Имена интерфейсов машины описывают её железо на момент подключения. За
+	// время, пока машина отключена, у неё мог смениться адаптер (или это
+	// вообще другая машина под тем же ID после переустановки) — а кэш пикера
+	// живёт весь запуск лаунчера и переезжал бы через переподключение.
+	// Отключение — единственный момент, когда об этом точно известно.
+	//
+	// Пустой prevID (машина и не была выбрана) НЕ передаём: там это значит «всё
+	// сразу», и повторный Clear на пустом состоянии сносил бы кэш чужих машин.
+	if prevID != "" {
+		configuratortabs.InvalidateRemoteInterfaceCache(prevID)
+	}
 
 	if prev != nil {
 		_ = prev.Close()

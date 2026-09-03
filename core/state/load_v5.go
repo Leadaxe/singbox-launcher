@@ -9,7 +9,7 @@ import (
 // parseV5Legacy — прямой read v5-формата (legacy). После SPEC 060 Phase 5
 // canonical write всегда v6, но v5-файлы юзеров читаются здесь и нормализуются
 // в State. На следующем Save перезаписываются в v6 shape.
-func parseV5Legacy(data []byte) (*State, error) {
+func parseV5Legacy(data []byte, lc LoadContext) (*State, error) {
 	var raw struct {
 		Meta         metaSectionV5       `json:"meta"`
 		Connections  ConnectionsSection  `json:"connections"`
@@ -25,7 +25,6 @@ func parseV5Legacy(data []byte) (*State, error) {
 	s := &State{
 		Version:      raw.Meta.Version,
 		Comment:      raw.Meta.Comment,
-		Connections:  raw.Connections,
 		ConfigParams: raw.ConfigParams,
 		CustomRules:  raw.CustomRules,
 		Vars:         raw.Vars,
@@ -41,13 +40,25 @@ func parseV5Legacy(data []byte) (*State, error) {
 		s.UpdatedAt = t
 	}
 
+	// SPEC 118 (W1): структурный перенос v5-секции connections в v7-корень
+	// (форма секции та же, что у v6). adoptLegacyDirections здесь НЕ зовётся
+	// — ровно как до W1 (v5-путь никогда не переносил прежний ключ
+	// `outbounds` в направления; менять это — не дело компиляционной волны).
+	legacySources := adoptConnectionsV6(s, raw.Connections)
+
 	// BUG1 fix: derive canonical v6 Rules/DNS from legacy v5 CustomRules/
 	// DNSOptions так, чтобы headless Save (сериализует только v6) их не терял.
 	deriveV6FromLegacy(s)
 
-	// Заполняем legacy proxies-view из Connections для backward-compat
+	// SPEC 118 (W2): семантическая миграция v6→v7 поверх структурного
+	// переноса — до построения legacy-проекции (она обязана видеть
+	// мигрированный канон). Маркерные fold-флаги v5-эпохи разворачивает
+	// сама миграция (adoptWizardMarkerFolds).
+	migrateLegacyStateToV7(s, 5, lc, legacySources)
+
+	// Заполняем legacy proxies-view из canonical для backward-compat
 	// callsite'ов (UI source_tab, dashboard counters, parser).
-	syncLegacyFromConnections(s)
+	syncLegacyFromCanonical(s)
 	normalizeNilSlices(s)
 	return s, nil
 }

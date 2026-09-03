@@ -105,11 +105,25 @@ func TestMarkOrderUsesTemplateNumForPresets(t *testing.T) {
 	if !MarkRuleOrder(rules, testSpecs()) {
 		t.Fatal("разметка не сообщила об изменении")
 	}
-	if *rules[0].OrderNum != 1120 {
-		t.Errorf("пресет получил номер %d, ожидался 1120 из шаблона", *rules[0].OrderNum)
+	// Позиции после разметки не фиксируем: MarkRuleOrder приводит массив к оси
+	// (SPEC 113-C §1), и пользовательское правило 1000 встаёт перед пресетом
+	// 1120. Проверяем номера, а не индексы.
+	nums := map[string]int{}
+	for _, r := range rules {
+		key := r.Ref
+		if key == "" {
+			key = "inline"
+		}
+		if r.OrderNum == nil {
+			t.Fatalf("правило %q осталось без номера", key)
+		}
+		nums[key] = *r.OrderNum
 	}
-	if *rules[1].OrderNum != UserRuleNumStart {
-		t.Errorf("пользовательское правило получило %d, ожидалось %d", *rules[1].OrderNum, UserRuleNumStart)
+	if nums["ru-direct"] != 1120 {
+		t.Errorf("пресет получил номер %d, ожидался 1120 из шаблона", nums["ru-direct"])
+	}
+	if nums["inline"] != UserRuleNumStart {
+		t.Errorf("пользовательское правило получило %d, ожидалось %d", nums["inline"], UserRuleNumStart)
 	}
 }
 

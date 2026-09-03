@@ -6,7 +6,6 @@ import (
 
 	corestate "singbox-launcher/core/state"
 
-	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -31,17 +30,13 @@ func renameTestModel() *wizardmodels.WizardModel {
 			{Ref: "russian", Enabled: true, Vars: map[string]string{"out": "vpn-1"}},
 		},
 		Sources: []corestate.Source{
-			{Type: corestate.SourceTypeChain, Chain: &configtypes.SourceChain{
-				Hops: []string{"node-a", "vpn-1"},
-			}},
+			{Node: corestate.Node{Kind: corestate.SourceKindChain, Hops: []corestate.NodeLink{{Tag: "node-a"}, {Tag: "vpn-1"}}}},
 		},
 		DNSServers: []json.RawMessage{
 			json.RawMessage(`{"tag":"dns-proxy","type":"udp","server":"1.1.1.1","detour":"vpn-1"}`),
 			json.RawMessage(`{"tag":"dns-direct","type":"udp","server":"8.8.8.8","detour":"direct-out"}`),
 		},
 	}
-	m.ParserConfig = &config.ParserConfig{}
-	m.ParserConfig.ParserConfig.Outbounds = append([]configtypes.Direction(nil), m.GlobalOutbounds...)
 	return m
 }
 
@@ -77,11 +72,11 @@ func TestRenameDirectionRewritesEveryReference(t *testing.T) {
 	if m.PresetRefs[0].Vars["out"] != "Германия" {
 		t.Errorf("outbound-переменная пресета не переписана: %q", m.PresetRefs[0].Vars["out"])
 	}
-	if m.Sources[0].Chain.Hops[1] != "Германия" {
-		t.Errorf("позиция цепочки не переписана: %v", m.Sources[0].Chain.Hops)
+	if m.Sources[0].Hops[1].Tag != "Германия" {
+		t.Errorf("позиция цепочки не переписана: %v", m.Sources[0].Hops)
 	}
-	if m.Sources[0].Chain.Hops[0] != "node-a" {
-		t.Errorf("чужая позиция задета: %v", m.Sources[0].Chain.Hops)
+	if m.Sources[0].Hops[0].Tag != "node-a" {
+		t.Errorf("чужая позиция задета: %v", m.Sources[0].Hops)
 	}
 
 	var srv map[string]any
@@ -99,18 +94,31 @@ func TestRenameDirectionRewritesEveryReference(t *testing.T) {
 	}
 }
 
-// Legacy-вид, с которым работает форма, обязан переименоваться вместе с
-// canonical: он синхронизируется в одну сторону уже ПОСЛЕ вызова, и правка
-// только одного из двух была бы затёрта.
-func TestRenameDirectionTouchesBothViews(t *testing.T) {
+// SPEC 118 W5: локальных Направлений источника нет — переименование правит
+// ОДНО canonical-место списка Направлений (GlobalOutbounds) плюс ссылки
+// модели (хопы цепочек, detour источников, DNS). Проверяем, что ссылка
+// detour источника тоже переписывается: повисшая цель = fail-closed, то есть
+// источник молча выпал бы из конфига.
+func TestRenameDirection_CanonicalOnly(t *testing.T) {
 	m := renameTestModel()
+	m.Sources = append(m.Sources, corestate.Source{
+		Node: corestate.Node{
+			Kind: corestate.SourceKindSubscription, Enabled: true,
+			Detour: &corestate.NodeLink{Tag: "vpn-1"},
+		},
+		URL: "https://example.com/sub",
+	})
+
 	RenameDirection(m, "vpn-1", "vpn-9")
 
-	if m.ParserConfig.ParserConfig.Outbounds[0].Tag != "vpn-9" {
-		t.Errorf("legacy-вид не переименован: %q", m.ParserConfig.ParserConfig.Outbounds[0].Tag)
+	if m.GlobalOutbounds[0].Tag != "vpn-9" {
+		t.Errorf("canonical-тег не переименован: %q", m.GlobalOutbounds[0].Tag)
 	}
-	if got := m.ParserConfig.ParserConfig.Outbounds[1].AddOutbounds; got[0] != "vpn-9" {
-		t.Errorf("ссылки в legacy-виде не переписаны: %v", got)
+	if got := m.GlobalOutbounds[1].AddOutbounds; got[0] != "vpn-9" || got[1] != "vpn-9-auto" {
+		t.Errorf("ссылки в GlobalOutbounds не переписаны: %v", got)
+	}
+	if d := m.Sources[len(m.Sources)-1].Detour; d == nil || d.Tag != "vpn-9" {
+		t.Errorf("ссылка detour источника не переписана: %+v", d)
 	}
 }
 

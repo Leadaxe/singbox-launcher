@@ -1,6 +1,7 @@
 package subscription
 
 import (
+	"fmt"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
@@ -44,16 +45,28 @@ var singboxGroupOptionKeys = []string{
 // файла, иначе ссылки на отброшенные/переименованные узлы дали бы группу,
 // указывающую в пустоту.
 //
-// Возвращает false, если группу эмитить нельзя.
+// warns — коллектор per-record деградаций импорта (SPEC 118 Т3: потеря
+// члена группы не молча — fetch персистит её в updateStatus); nil легален.
+//
+// Возвращает пустую rejectReason при успехе; непустую — когда группу эмитить
+// нельзя, и тогда запись становится неразобранной (unsupported) на своей
+// позиции, а не молчаливой пропажей (обкатка W13 заход 3: «пустая группа —
+// как сломанный узел»).
 func singboxGroupToNode(
 	entry map[string]interface{},
 	nodeByTag map[string]*configtypes.ParsedNode,
-) (*configtypes.ParsedNode, bool) {
+	warns *[]string,
+) (*configtypes.ParsedNode, string) {
+	warn := func(msg string) {
+		if warns != nil {
+			*warns = append(*warns, msg)
+		}
+	}
 	groupType := strings.ToLower(strings.TrimSpace(mapString(entry, "type")))
 	tag := strings.TrimSpace(mapString(entry, "tag"))
 	if tag == "" {
 		debuglog.WarnLog("Parser: singbox import: %s group without tag — skipped", groupType)
-		return nil, false
+		return nil, fmt.Sprintf("%s group rejected: missing tag", groupType)
 	}
 
 	membersRaw, _ := entry["outbounds"].([]interface{})
@@ -87,12 +100,17 @@ func singboxGroupToNode(
 
 	if lost > 0 {
 		debuglog.WarnLog("Parser: singbox import: group %q: %d member(s) could not be resolved", tag, lost)
+		// Вложенная группа-член, служебный тип, битый узел — потеря не молча
+		// (SPEC 118 Т3): текст совпадает по форме с warning'ом резолва
+		// parse_body («not resolvable»), читатели updateStatus видят один язык.
+		warn(fmt.Sprintf("group %q: %d member(s) not resolvable — dropped (nested group, unsupported or broken node)", tag, lost))
 	}
 
 	if len(members) == 0 {
 		// Пустой urltest роняет старт ядра — не эмитим вовсе (A5).
 		debuglog.WarnLog("Parser: singbox import: group %q has no resolvable members — skipped", tag)
-		return nil, false
+		warn(fmt.Sprintf("group %q lost all members — dropped", tag))
+		return nil, fmt.Sprintf("%s group rejected: no resolvable members", groupType)
 	}
 
 	// Состав хранится как []interface{} — та же форма, в которой он приходит
@@ -131,5 +149,5 @@ func singboxGroupToNode(
 		Label:       tag,
 		Outbound:    outbound,
 		SourceIndex: configtypes.UnsetSourceIndex,
-	}, true
+	}, ""
 }

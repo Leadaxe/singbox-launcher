@@ -38,11 +38,26 @@ func effectiveNodeConfigPath(ac *core.AppController, scope services.ProxyScope) 
 }
 
 // serversProxyContextMenu is the ПКМ menu for one proxy row: type line + copy link actions.
-func serversProxyContextMenu(ac *core.AppController, status *widget.Label, win fyne.Window, proxy api.ProxyInfo, scope services.ProxyScope) *fyne.Menu {
+//
+// retest — принудительный замер этой строки (тот же путь, что клик по числу
+// задержки). nil у вызывающих, которым замерять нечем: пункт тогда не
+// показывается вовсе, а не стоит мёртвым.
+func serversProxyContextMenu(ac *core.AppController, status *widget.Label, win fyne.Window, proxy api.ProxyInfo, scope services.ProxyScope, retest func()) *fyne.Menu {
 	cfgPath := effectiveNodeConfigPath(ac, scope)
-	hint := proxy.ContextMenuTypeLine(locale.T("Unknown type"))
-	items := []*fyne.MenuItem{
-		fyne.NewMenuItem(hint, nil),
+	// Первая строка — ПОДПИСЬ с типом outbound'а, а не действие. Без
+	// Disabled она подсвечивалась под курсором и закрывала меню по клику,
+	// ничего не сделав: ровно то, что человек читает как «кнопка не
+	// работает».
+	typeLine := fyne.NewMenuItem(proxy.ContextMenuTypeLine(locale.T("Unknown type")), nil)
+	typeLine.Disabled = true
+	items := []*fyne.MenuItem{typeLine}
+	// Принудительный замер — первым действием: у группы urltest он тот же
+	// url-тест, что ядро гоняет по интервалу, и человеку нужен именно он,
+	// когда результат протух, а ждать следующего цикла незачем.
+	if retest != nil {
+		items = append(items, fyne.NewMenuItem(locale.T("Re-test now"), retest))
+	}
+	items = append(items,
 		// SPEC 095 — карточка узла: сервер, транспорт, TLS, состав группы и
 		// полный JSON. Пунктом меню, а не кнопкой в строке: строка плотная,
 		// а Info нужен изредка.
@@ -52,7 +67,7 @@ func serversProxyContextMenu(ac *core.AppController, status *widget.Label, win f
 		fyne.NewMenuItem(locale.T("Copy server link"), func() {
 			serversRunCopyShareURIToClipboard(ac, status, win, proxy.Name, cfgPath)
 		}),
-	}
+	)
 	if ac != nil && ac.FileService != nil {
 		if detourTag, err := config.GetDetourTagForOutboundTag(cfgPath, proxy.Name); err == nil && detourTag != "" {
 			items = append(items, fyne.NewMenuItem(locale.T("Copy jump server link"), func() {

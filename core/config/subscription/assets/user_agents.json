@@ -1,0 +1,15 @@
+{
+  "_comment": "User-Agent presets for subscription requests. Providers branch their response by client: the same link returns different bodies to different UAs (Liberty answers the launcher UA with a sing-box branch of direct nodes, and Happ's UA with Xray configs including working BYPASS entries). The list is open-ended — the form field stays editable, these values only save typing. Keep roughly by popularity; refresh versions as clients ship.",
+  "user_agents": [
+    "Happ/3.3.6",
+    "v2rayNG/1.8.23",
+    "v2rayN/6.42",
+    "Hiddify/2.0.5",
+    "Streisand/1.6.16",
+    "Shadowrocket/2.2.65",
+    "sing-box/1.14.0",
+    "clash-verge/1.6.6",
+    "NekoBox/1.3.6",
+    "Clash/2023.08.17"
+  ]
+}

@@ -548,3 +548,36 @@ func hostOfAddr(addr string) string {
 	}
 	return addr
 }
+
+// ExportSnapshot returns a copy of the live buffer in display order
+// (newest first). When onlyFiltered is true, the current filter chips /
+// search / route selectors are applied — i.e. exactly the rows on screen.
+//
+// Копия, а не срез: буфер живёт под v.mu и продолжает расти, пока
+// вызывающий сериализует JSON.
+func (v *liveView) ExportSnapshot(onlyFiltered bool) []tprof.TrafficEvent {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	var idxs []int
+	if onlyFiltered {
+		idxs = v.filteredIndices()
+	} else {
+		idxs = make([]int, len(v.events))
+		for i := range v.events {
+			idxs[i] = i
+		}
+	}
+	out := make([]tprof.TrafficEvent, 0, len(idxs))
+	for i := len(idxs) - 1; i >= 0; i-- {
+		out = append(out, v.events[idxs[i]])
+	}
+	return out
+}
+
+// FilterActive reports whether the live view currently hides anything —
+// решает, предлагать ли выбор «видимое / весь буфер» при экспорте.
+func (v *liveView) FilterActive() bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.filter != defaultLiveFilter()
+}

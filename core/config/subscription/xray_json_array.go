@@ -27,12 +27,51 @@ func IsXrayJSONArrayBody(s string) bool {
 // ParseNodesFromXrayJSONArray parses a JSON array of Xray-style full configs into ParsedNode list.
 // Non-Xray elements (e.g. sing-box-only outbounds) are skipped with a debug log.
 // skip uses the same rules as URI subscriptions (shouldSkipNode).
+//
+// Тонкая обёртка над ParseNodesFromXrayJSONArrayEx для вызывающих, которым
+// причины отбраковки не нужны (тесты разбора, точечные прогоны).
 func ParseNodesFromXrayJSONArray(jsonBody string, skip []map[string]string) ([]*configtypes.ParsedNode, error) {
+	nodes, _, err := ParseNodesFromXrayJSONArrayEx(jsonBody, skip)
+	return nodes, err
+}
+
+// ParseNodesFromXrayJSONArrayEx — тот же разбор, но вторым значением отдаёт
+// КОМПАКТНЫЙ список причин, по которым элементы были отбракованы.
+//
+// Причины нужны наверху (SPEC 115, вид записи source_parse_failed): подписка,
+// разобравшаяся в ноль узлов, до этого объявлялась пользователю никак — WARN
+// «source returned zero nodes» жил только в логе, а строка Sources выглядела
+// здоровой. Список компактный по построению (ParseFailureReasons): у подписки
+// на 500 узлов одна и та же причина повторяется 500 раз, и стенограмма
+// заменила бы сообщение шумом.
+func ParseNodesFromXrayJSONArrayEx(
+	jsonBody string,
+	skip []map[string]string,
+) ([]*configtypes.ParsedNode, []string, error) {
+	nodes, reasons, _, err := parseNodesFromXrayJSONArrayFull(jsonBody, skip)
+	return nodes, reasons, err
+}
+
+// parseNodesFromXrayJSONArrayFull — тот же разбор, но третьим значением отдаёт
+// ПОШТУЧНЫЕ неразобранные записи с их позициями в возвращаемом списке узлов
+// (SPEC 116 W11).
+//
+// Отдельный (непубличный) вход, а не расширение `Ex`: причины (`[]string`) и
+// неразобранные записи — разные сущности с разными адресатами (см.
+// json_body_rejects.go), и единственный, кому нужны обе, — чистый парсер тела
+// `ParseSubscriptionBody`. Полутора десяткам точек вызова `Ex` четвёртое
+// значение не нужно.
+func parseNodesFromXrayJSONArrayFull(
+	jsonBody string,
+	skip []map[string]string,
+) ([]*configtypes.ParsedNode, []string, []jsonRejectedRecord, error) {
 	jsonBody = strings.TrimSpace(jsonBody)
 	var elems []json.RawMessage
 	if err := json.Unmarshal([]byte(jsonBody), &elems); err != nil {
-		return nil, fmt.Errorf("subscription JSON array: %w", err)
+		return nil, nil, nil, fmt.Errorf("subscription JSON array: %w", err)
 	}
+
+	rejected := &ParseFailureReasons{}
 
 	// SPEC 094 §342 — ДВА прохода: «кто даёт узлу имя» и «в каком порядке узлы
 	// идут» — разные задачи.
@@ -61,14 +100,23 @@ func ParseNodesFromXrayJSONArray(jsonBody string, skip []map[string]string) ([]*
 	finalTagByServer := make(map[string]string)
 
 	var out []*configtypes.ParsedNode
+	var rejectedRecords []jsonRejectedRecord
 	for i, raw := range elems {
-		nodes, err := parseXrayJSONArrayElementNodes(raw, i, skip)
+		elemSink := &jsonRejectSink{}
+		nodes, err := parseXrayJSONArrayElementNodes(raw, i, skip, rejected, elemSink)
 		if err != nil {
 			debuglog.WarnLog("Parser: Xray JSON array element %d: %v", i, err)
 			continue
 		}
 		rememberGroupMemberServers(nodes, memberServers)
-		out = append(out, filterByServerOwner(nodes, i, owner, seen, finalTagByServer)...)
+		kept := filterByServerOwner(nodes, i, owner, seen, finalTagByServer)
+		// Позиции отбраковок элемент считал по СВОЕМУ черновому списку, а
+		// владение только что выбросило из него часть узлов. Пересчитываем на
+		// выживших — иначе неразобранная запись встала бы в составе не на своё
+		// место (или за его пределы).
+		rejectedRecords = append(rejectedRecords,
+			shiftJSONRejects(remapRejectsToKeptNodes(elemSink.list(), nodes, kept), len(out))...)
+		out = append(out, kept...)
 	}
 
 	// Элемент, от которого после дедупа остался ровно один сервер, отдаёт ему
@@ -83,7 +131,57 @@ func ParseNodesFromXrayJSONArray(jsonBody string, skip []map[string]string) ([]*
 
 	// Состав групп резолвится ПОСЛЕ всех элементов: член мог достаться
 	// элементу, который ещё не разобран.
-	return resolveGroupMembers(out, memberServers, finalTagByServer), nil
+	resolved := resolveGroupMembers(out, memberServers, finalTagByServer)
+	// Резолв мог выбросить группы, потерявшие всех членов, — позиции считаются
+	// по ИТОГОВОМУ списку, поэтому пересчитываем ещё раз. Группа, которую
+	// выбросили здесь, неразобранной записью не становится: это не запись
+	// провайдера, а синтезированный лаунчером узел (origin у неё пуст).
+	rejectedRecords = remapRejectsToKeptNodes(rejectedRecords, out, resolved)
+	return resolved, rejected.List(), rejectedRecords, nil
+}
+
+// remapRejectsToKeptNodes пересчитывает позиции отбраковок с чернового списка
+// узлов на список выживших.
+//
+// Отбраковка помнит «после скольких узлов черновика я стояла»; фильтры (правило
+// владения §342, резолв состава групп) часть узлов выбрасывают, и без
+// пересчёта неразобранная запись встала бы в составе не на своё место. Правило
+// пересчёта: считаем, сколько из первых AfterNodes узлов черновика дожило.
+// Сравнение по УКАЗАТЕЛЮ — фильтры узлы не копируют, а теги на этом этапе ещё
+// переписываются (simplifySoloElementTags).
+func remapRejectsToKeptNodes(
+	records []jsonRejectedRecord,
+	draft, kept []*configtypes.ParsedNode,
+) []jsonRejectedRecord {
+	if len(records) == 0 {
+		return nil
+	}
+	alive := make(map[*configtypes.ParsedNode]struct{}, len(kept))
+	for _, n := range kept {
+		alive[n] = struct{}{}
+	}
+	// survivedBefore[i] — сколько из первых i узлов черновика выжило.
+	survivedBefore := make([]int, len(draft)+1)
+	for i, n := range draft {
+		survivedBefore[i+1] = survivedBefore[i]
+		if _, ok := alive[n]; ok {
+			survivedBefore[i+1]++
+		}
+	}
+
+	out := make([]jsonRejectedRecord, 0, len(records))
+	for _, r := range records {
+		idx := r.AfterNodes
+		if idx < 0 {
+			idx = 0
+		}
+		if idx > len(draft) {
+			idx = len(draft)
+		}
+		r.AfterNodes = survivedBefore[idx]
+		out = append(out, r)
+	}
+	return out
 }
 
 // simplifySoloElementTags убирает различитель у элементов, от которых выжил
@@ -122,15 +220,20 @@ func simplifySoloElementTags(
 			continue // базовое имя уже занято другим узлом или группой
 		}
 		node := group[0]
+		oldTag := node.Tag
 		delete(taken, node.Tag)
 		node.Tag = base
 		taken[base] = struct{}{}
 		if node.Outbound != nil {
 			node.Outbound["tag"] = base
 		}
-		// Группы ссылаются на членов по серверному ключу — обновляем и его.
+		// Группы ссылаются на членов по ключу разбора — обновляем и его.
+		// Подпись содержимого от тега не зависит; запасной тег-ключ, наоборот,
+		// снят со СТАРОГО тега, поэтому переписывается именно он.
 		if key := xrayServerKey(node); key != "" {
 			finalTagByServer[key] = base
+		} else {
+			finalTagByServer["\x00tag\x00"+oldTag] = base
 		}
 	}
 }
@@ -148,7 +251,11 @@ func rememberGroupMemberServers(
 		}
 		if key := xrayServerKey(n); key != "" {
 			byTag[n.Tag] = key
+			continue
 		}
+		// Без подписи член ищется по запасному тег-ключу — см.
+		// xrayFallbackMemberKey.
+		byTag[n.Tag] = xrayFallbackMemberKey(n)
 	}
 
 	for _, n := range nodes {
@@ -252,7 +359,7 @@ func computeXrayServerOwners(elems []json.RawMessage, skip []map[string]string) 
 
 	owner := make(map[string]int)
 	for _, idx := range order {
-		nodes, err := parseXrayJSONArrayElementNodes(elems[idx], idx, skip)
+		nodes, err := parseXrayJSONArrayElementNodes(elems[idx], idx, skip, nil, nil)
 		if err != nil {
 			continue
 		}
@@ -303,6 +410,10 @@ func filterByServerOwner(
 
 		key := xrayServerKey(node)
 		if key == "" {
+			// Подписи нет — владения тоже (см. xrayServerKey). Узел проходит,
+			// но состав групп обязан его найти: регистрируем запасной ключ по
+			// тегу, иначе группа теряет всех членов и удаляется целиком.
+			finalTagByServer[xrayFallbackMemberKey(node)] = node.Tag
 			kept = append(kept, node)
 			continue
 		}
@@ -322,28 +433,39 @@ func filterByServerOwner(
 	return kept
 }
 
-// xrayServerKey — ключ «тот же сервер» ВНУТРИ разбора Xray-массива.
+// xrayServerKey — ключ «та же запись» ВНУТРИ разбора Xray-массива.
 //
 // Это НЕ идентичность узла (та с SPEC 112 — тег, config.NodeIdentity). Здесь
 // решается другая задача: провайдер намеренно перечисляет один и тот же адрес
 // в нескольких элементах — как «🇩🇪 Германия» и внутри пула «Авто | Лучший
 // сервер», — и надо понять, что это одна запись, ДО того как теги вообще
 // назначены. Теги на этом этапе как раз разные (у пула технические, у страны
-// осмысленные), поэтому ключом взято подключение.
+// осмысленные), поэтому ключом взято содержимое.
 //
-// Ключ намеренно узкий и локальный: `схема|сервер|порт|креденшл`. Транспорт и
-// TLS в него не входят — внутри одного элемента разные SNI одного адреса это
-// decoy-дубли пула, а не самостоятельные способы пройти фильтрацию. Наружу
-// пакета ключ не отдаётся и на пользовательские отметки не влияет.
+// SPEC 113-A §2: ключ по кредам (`схема|сервер|порт|креденшл`) упразднён.
+// Он игнорировал транспорт и TLS, и grpc-вариант сервера отбирал элемент у
+// своего же xhttp-варианта — узел молча пропадал из подписки. Ключ теперь тот
+// же, что у дедупа записей: подпись содержимого (dedupSignature). Семантика
+// возвращается к v1.5.0 — «страна» и пул с БАЙТ-ИДЕНТИЧНЫМ сервером
+// схлопываются, grpc/xhttp одного адреса выживают оба.
 //
-// Пустая строка — «сервер не определён»: узел проходит без владения.
-//
-// SPEC 112-B: тело переехало в serverConnKey (server_conn_key.go) — то же
-// семейство ключей теперь схлопывает и байтовые дубли записей источника.
-// Здесь requireCred=false: узел без опознанного секрета всё равно закрепляется
-// за элементом, ownership решает «чей адрес», а не «та же ли это запись».
+// Пустая строка — «подписи нет» (группа, хук не установлен): узел проходит
+// без владения.
 func xrayServerKey(node *configtypes.ParsedNode) string {
-	return buildServerConnKey(node)
+	return dedupSignature(node)
+}
+
+// xrayFallbackMemberKey — запасной ключ члена группы, когда подписи нет
+// (хук эмиттера не установлен: прогон парсера в изоляции).
+//
+// Владения он не даёт — только позволяет составу группы найти члена по его
+// тегу внутри разбора. Префикс с нулевым байтом делает его несовместимым с
+// hex-подписью, так что перепутать их нельзя.
+func xrayFallbackMemberKey(node *configtypes.ParsedNode) string {
+	if node == nil {
+		return ""
+	}
+	return "\x00tag\x00" + node.Tag
 }
 
 // xrayElementPayloadCount — сколько непослужебных outbound'ов в элементе.
@@ -382,7 +504,21 @@ func xrayElementPayloadCount(raw json.RawMessage) int {
 // Именование (C3) сохраняет обратную совместимость тегов: единственный узел
 // элемента получает чистое имя из remarks — ровно как раньше, — и лишь при
 // нескольких узлах добавляется различитель.
-func parseXrayJSONArrayElementNodes(raw json.RawMessage, elemIndex int, skip []map[string]string) ([]*configtypes.ParsedNode, error) {
+// rejected (может быть nil) собирает причины отбраковки ПОДДЕРЖИВАЕМЫХ
+// протоколов — их адресат пользователь, а не лог. Чёрновой проход владения
+// (computeXrayServerOwners) передаёт nil: он разбирает те же элементы второй
+// раз, и его причины были бы дублями боевого прохода.
+// records (может быть nil) — позиционный сток НЕРАЗОБРАННЫХ записей элемента
+// (SPEC 116 W11): каждый outbound, не ставший узлом, обязан доехать наверх
+// узлом kind=unsupported на своём месте, а не исчезнуть за WARN'ом в логе.
+// Позиции считаются от начала ЭТОГО элемента — склейка сдвигает их выше.
+func parseXrayJSONArrayElementNodes(
+	raw json.RawMessage,
+	elemIndex int,
+	skip []map[string]string,
+	rejected *ParseFailureReasons,
+	records *jsonRejectSink,
+) ([]*configtypes.ParsedNode, error) {
 	var root map[string]interface{}
 	if err := json.Unmarshal(raw, &root); err != nil {
 		return nil, fmt.Errorf("invalid element JSON: %w", err)
@@ -453,6 +589,11 @@ func parseXrayJSONArrayElementNodes(raw json.RawMessage, elemIndex int, skip []m
 	out := make([]*configtypes.ParsedNode, 0, len(payload))
 	memberTags := make([]string, 0, len(payload))
 	unsupported := make(map[string]struct{})
+	if rejected == nil {
+		// Локальный сток: ветки ниже пишут причины безусловно, и проверка на
+		// nil в каждой из них была бы приглашением однажды её забыть.
+		rejected = &ParseFailureReasons{}
+	}
 
 	for idx, ob := range payload {
 		label := remarksRaw
@@ -465,12 +606,35 @@ func parseXrayJSONArrayElementNodes(raw json.RawMessage, elemIndex int, skip []m
 
 		node, err := xrayNodeFromOutbound(ob, label)
 		if err != nil {
-			// C1: протокол не исчезает молча.
-			protocol := strings.ToLower(strings.TrimSpace(xrayMapString(ob, "protocol")))
-			if protocol != "" {
+			// Два РАЗНЫХ класса отбраковки, и сваливать их в один список
+			// нельзя: до этого разделения элемент vless с пустым id объявлялся
+			// «unsupported protocol "vless"» — сообщение, которое отправляло
+			// пользователя искать несуществующую нехватку поддержки протокола
+			// вместо протухшей подписки.
+			if protocol, isUnsupported := xrayUnsupportedProtocol(err); isUnsupported {
+				// C1: протокол не исчезает молча. Чинить тут пользователю
+				// нечем — это свойство лаунчера, поэтому и причина общая.
+				//
+				// W11: и из СОСТАВА он тоже не исчезает — запись едет наверх
+				// на своей позиции (см. jsonRejectSink). Список причин
+				// (`rejected`) при этом не трогаем: там класс «протокол не
+				// поддержан» намеренно отсутствует — он не объясняет
+				// «почему источник пуст» и уводил бы от протухшей подписки.
 				unsupported[protocol] = struct{}{}
+				records.add(len(out), err.Error(), marshalRawJSONElement(ob))
+				debuglog.DebugLog("Parser: Xray element %d outbound %d: %v", elemIndex, idx, err)
+				continue
 			}
-			debuglog.DebugLog("Parser: Xray element %d outbound %d: %v", elemIndex, idx, err)
+			// Поддерживаемый протокол, битый элемент: причина — свойство
+			// ПОДПИСКИ, и она обязана доехать до пользователя как есть.
+			protocol := strings.ToLower(strings.TrimSpace(xrayMapString(ob, "protocol")))
+			if protocol == "" {
+				protocol = "?"
+			}
+			reason := fmt.Sprintf("%s outbound rejected: %v", protocol, err)
+			rejected.Add(reason)
+			records.add(len(out), reason, marshalRawJSONElement(ob))
+			debuglog.WarnLog("Parser: Xray element %d: %s", elemIndex, reason)
 			continue
 		}
 		if node == nil {
@@ -484,6 +648,12 @@ func parseXrayJSONArrayElementNodes(raw json.RawMessage, elemIndex int, skip []m
 
 		// dialerProxy → цепочка (C4). Глубина берётся из фазы B.
 		if err := attachXrayDialerChain(node, ob, byTag, node.Tag, label); err != nil {
+			// Цепочка объявлена, но непригодна: узла не будет — значит,
+			// запись обязана остаться в составе неразобранной (W11).
+			// Код причины нормативен (D-088): текст ошибки у сторон свой,
+			// а сверять конверты корпуса нужно по коду.
+			reason := fmt.Sprintf("outbound rejected: %v", err)
+			records.addCoded(len(out), reason, WarnDialerProxyUnusable, marshalRawJSONElement(ob))
 			debuglog.WarnLog("Parser: Xray element %d: %v — skipping node %q", elemIndex, err, node.Tag)
 			continue
 		}
@@ -576,7 +746,20 @@ func attachXrayDialerChain(
 			hopTag = fmt.Sprintf("%s%s%d", ownerTag, xrayJumpOutboundTagSuffix, depth+1)
 		}
 
-		hop, err := xrayChainHopFromOutbound(hopOb, hopTag, label)
+		// D-085: подпись хопа — СОБСТВЕННЫЙ тег релея из конфига провайдера
+		// (`ru-upstream`), а не подпись владельца. Владелец и релей — разные
+		// серверы: копия подписи владельца делала цепочку в канон-выходе
+		// неотличимой от прямого пути и прятала, через кого узел на самом деле
+		// ходит. Тег лаунчера (`<owner>_jump_server`) остаётся отдельно — это
+		// имя в конфиге, а не имя от провайдера.
+		hopLabel := strings.TrimSpace(xrayMapString(hopOb, "tag"))
+		if hopLabel == "" {
+			// Безымянный релей: подписи от провайдера нет вовсе, и оставить
+			// хоп без подписи хуже, чем унаследовать владельца.
+			hopLabel = label
+		}
+
+		hop, err := xrayChainHopFromOutbound(hopOb, hopTag, hopLabel)
 		if err != nil {
 			return fmt.Errorf("dialerProxy %q: %w", ref, err)
 		}

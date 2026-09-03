@@ -123,6 +123,14 @@ type Result struct {
 	// Validation — non-fatal предупреждения (например, GetEffectiveConfig упал
 	// на substitution и мы откатились на template defaults).
 	Validation ValidationResult
+
+	// ExcludedSources — источники, чьи узлы выброшены последним рубежом за
+	// недоступную цель detour (SPEC 113-B). Парсер о таких целях не знает:
+	// селектор шаблона появляется и исчезает от переключателей (мульти-VPN),
+	// и полный набор финальных тегов складывается только здесь. Вызывающий
+	// доливает записи в реестр исключений поверх парсерных — иначе выпадение
+	// источника снова становится молчаливым.
+	ExcludedSources []SourceExclusion
 }
 
 // ValidationResult — структура для накопления fatal/warning'ов.
@@ -178,10 +186,11 @@ func BuildConfig(ctx BuildContext) (Result, error) {
 	warnBindInterface(ctx.Vars, ctx.Target, &res)
 
 	// Шаг 2: build sections.
-	sections, err := buildOrderedSections(ctx, cfg, order)
+	sections, excluded, err := buildOrderedSections(ctx, cfg, order)
 	if err != nil {
 		return Result{}, err
 	}
+	res.ExcludedSources = excluded
 
 	// Шаг 3: финальная конкатенация. Раньше тут ещё писался блок-комментарий
 	// /** @ParserConfig ... */ с дублем parser_config — удалён в SPEC 045
@@ -230,10 +239,11 @@ func effectiveConfig(td *template.TemplateData, vars map[string]string, target t
 // нужно route-секции для cleanup'а dangling outbound refs. В preview режиме
 // skipping: cache может быть неполный, false-positive drop'ы хуже чем
 // dangling в неприменяемом preview.
-func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, order []string) ([]string, error) {
+func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, order []string) ([]string, []SourceExclusion, error) {
 	out := make([]string, 0, len(order))
 
 	var finalOutboundTags map[string]bool
+	var excluded []SourceExclusion
 	if !ctx.ForPreview {
 		finalOutboundTags = collectAllFinalOutboundTags(ctx, cfg)
 		// Финальный рубеж по всему графу зависимостей (висячие ссылки,
@@ -241,8 +251,17 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 		// шаблоне раньше outbounds, и чистка внутри одной секции не увидела
 		// бы ссылку из другой. finalOutboundTags мутируется — route-секция
 		// собирается по уже итоговому множеству тегов.
-		ctx.Cache = sanitizeOutboundGraph(ctx.Cache, finalOutboundTags)
+		ctx.Cache, excluded = sanitizeOutboundGraph(ctx.Cache, finalOutboundTags)
 	}
+
+	// SPEC 118 (Р-DNS-2): множество тегов, реально уезжающих в
+	// `route.rule_set` — ДО обхода секций. Секция dns собирается раньше
+	// route, а её чистка висячих `rule_set`-ссылок судит именно по этому
+	// множеству; посчитанное в одной секции по её собственным данным, оно
+	// было неполным и снимало живые ссылки (DNS-правило теряло ограничение
+	// и начинало матчить всё). Считается и для preview: чистка работает там
+	// так же, и неполное множество врало бы и в превью.
+	ctx.Preset.EmittedRuleSetTags = CollectEmittedRouteRuleSetTags(cfg["route"], ctx.Route, ctx.Preset)
 
 	for _, key := range order {
 		raw, ok := cfg[key]
@@ -251,11 +270,11 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 		}
 		formatted, err := buildSection(ctx, key, raw, finalOutboundTags)
 		if err != nil {
-			return nil, fmt.Errorf("build: section %q: %w", key, err)
+			return nil, nil, fmt.Errorf("build: section %q: %w", key, err)
 		}
 		out = append(out, fmt.Sprintf(`  "%s": %s`, key, formatted))
 	}
-	return out, nil
+	return out, excluded, nil
 }
 
 // buildSection — диспетчер для одной секции. Pure: state хранится только
@@ -294,6 +313,14 @@ func buildSection(ctx BuildContext, key string, raw json.RawMessage, finalOutbou
 		merged, err = MergePresetsIntoDNS(merged, ctx.Preset)
 		if err != nil {
 			return "", err
+		}
+		// SPEC 118 W4: `dns.detour` — полноправное ребро outbound-графа
+		// (features/directions.md §9). Висячий detour DNS-сервера обязан
+		// ловиться ЗДЕСЬ, а не падением ядра на старте. В preview
+		// (finalOutboundTags=nil) не трогаем: набор тегов там неполон, и
+		// false-positive хуже висячей ссылки в неприменяемом превью.
+		if !ctx.ForPreview && len(finalOutboundTags) > 0 {
+			merged = SanitizeDNSDetours(merged, finalOutboundTags)
 		}
 		return FormatSectionJSON(merged, 2)
 	case "route":
@@ -418,55 +445,4 @@ func splitEntryComment(entry string) (prefix, jsonPart string) {
 		}
 		rest = rest[nl+1:]
 	}
-}
-
-// dropDanglingNodeDetours — final-assembly половина контракта SPEC 077:
-// sanitizeNodeDetours на этапе парсинга сознательно НЕ трогает detour'ы на
-// template/preset-теги (их ещё нет в поле зрения), а здесь полный набор тегов
-// известен — и detour на несуществующий тег дропается fail-open (нода dials
-// directly, с warning'ом). Без этого один осиротевший detour_tag источника
-// (группу переименовали/удалили) валит ВЕСЬ конфиг на sing-box check/apply:
-// «dependency[X] not found for outbound[Y]».
-//
-// compact=true — outbounds (однострочные entries), false — endpoints
-// (pretty-printed). Entries, которые не парсятся или чей detour резолвится,
-// возвращаются нетронутыми (byte-for-byte).
-func dropDanglingNodeDetours(entries []string, finalTags map[string]bool, compact bool) []string {
-	out := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		prefix, jsonPart := splitEntryComment(entry)
-		body := strings.TrimRight(strings.TrimSpace(jsonPart), ",")
-		if body == "" {
-			out = append(out, entry)
-			continue
-		}
-		dec := json.NewDecoder(strings.NewReader(body))
-		dec.UseNumber()
-		var m map[string]interface{}
-		if err := dec.Decode(&m); err != nil {
-			out = append(out, entry)
-			continue
-		}
-		d, _ := m["detour"].(string)
-		if d == "" || finalTags[d] {
-			out = append(out, entry)
-			continue
-		}
-		tag, _ := m["tag"].(string)
-		debuglog.WarnLog("build: node %q detour %q not found in final config — dropping detour (direct dial)", tag, d)
-		delete(m, "detour")
-		var rebuilt []byte
-		var err error
-		if compact {
-			rebuilt, err = json.Marshal(m)
-		} else {
-			rebuilt, err = json.MarshalIndent(m, "", IndentBase)
-		}
-		if err != nil {
-			out = append(out, entry)
-			continue
-		}
-		out = append(out, prefix+string(rebuilt))
-	}
-	return out
 }

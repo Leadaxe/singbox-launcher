@@ -1,0 +1,57 @@
+{
+  "lx_backup": 1,
+  "exported_by": {
+    "app": "launcher",
+    "version": "1.5.4"
+  },
+  "exported_at": "2026-09-02T00:00:00Z",
+  "subscriptions": [
+    {
+      "id": "01SUBA000000000000000000",
+      "url": "https://example-1.com/sub-a",
+      "label": "A",
+      "tag": {
+        "prefix": "a:"
+      }
+    },
+    {
+      "id": "01SUBB000000000000000000",
+      "url": "https://example-2.com/sub-b",
+      "label": "B",
+      "enabled": true,
+      "tag": {
+        "prefix": "b:"
+      },
+      "disabled": {
+        "local-mark": 1750000000
+      }
+    }
+  ],
+  "servers": [
+    {
+      "id": "01SRV0000000000000000001",
+      "node_tag": "S1",
+      "uri": "vless://11111111-1111-1111-1111-111111111111@example-3.com:443?type=tcp&security=tls&sni=example-3.com#S1"
+    },
+    {
+      "id": "01SRV0000000000000000002",
+      "node_tag": "P1",
+      "folder": "Proton",
+      "uri": "vless://11111111-1111-1111-1111-111111111111@example-4.com:443?type=tcp&security=tls&sni=example-4.com#P1"
+    },
+    {
+      "id": "01SRV0000000000000000006",
+      "node_tag": "S3",
+      "config_json": {
+        "type": "trojan",
+        "server": "example-8.com",
+        "server_port": 443,
+        "password": "testpass123",
+        "tls": {
+          "enabled": true,
+          "server_name": "example-8.com"
+        }
+      }
+    }
+  ]
+}

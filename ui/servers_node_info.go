@@ -105,11 +105,41 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 		// а окно открывают для любой, в том числе вложенной. Запрос уходит в
 		// горутину — сеть, и для удалённой машины это RTT до роутера.
 		memberRows := make(map[string]*widget.Label, len(node.GroupMembers))
+		memberDelays := make(map[string]*widget.Label, len(node.GroupMembers))
 		for _, member := range node.GroupMembers {
 			row := memberRow(member, nodes)
 			memberRows[member] = row
-			body.Add(row)
+			// Задержка участника — своей меткой справа: в текст строки её
+			// класть нельзя, маркер выбора переписывает этот текст целиком
+			// (markSelected работает подстановкой), и число бы затиралось.
+			delay := widget.NewLabel(formatDelay(0))
+			delay.Alignment = fyne.TextAlignTrailing
+			memberDelays[member] = delay
+			body.Add(container.NewBorder(nil, nil, nil, delay, row))
 		}
+
+		// Последние известные задержки участников — из того же списка, что
+		// рисует вкладка «Серверы»: ядро отдаёт их в GroupProxies, второго
+		// замера ради показа не заводим (участников бывают сотни, и веер
+		// проб по открытию окна ударил бы по сетевому стеку — правило
+		// [[subscription_scale_fanout]]).
+		applyMemberDelays := func(list []api.ProxyInfo) {
+			for i := range list {
+				lbl, ok := memberDelays[list[i].Name]
+				if !ok {
+					continue
+				}
+				lbl.SetText(formatDelay(list[i].Delay))
+			}
+		}
+		applyMemberDelays(ac.GetProxiesList())
+		go func(group string) {
+			list, _, err := EffectiveProxyTransport(ac).GroupProxies(group)
+			if err != nil || len(list) == 0 {
+				return
+			}
+			fyne.Do(func() { applyMemberDelays(list) })
+		}(proxy.Name)
 		// Перерисовка метки: снимаем её со старого участника и ставим новому.
 		// Идемпотентна — приходит на каждый кадр подписки, включая повтор
 		// того же значения.

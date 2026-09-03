@@ -12,7 +12,7 @@ import (
 // `!/(🇷🇺)/i` от пресета russian).
 func TestLoadDropsEmptyUserPatchButKeepsPresetAndRealOnes(t *testing.T) {
 	raw := `{
-	  "meta": {"version": 6, "schema": "` + SchemaName + `", "created_at": "2026-08-22T00:00:00Z", "updated_at": "2026-08-22T00:00:00Z"},
+	  "meta": {"version": 6, "schema": "` + SchemaNameV6 + `", "created_at": "2026-08-22T00:00:00Z", "updated_at": "2026-08-22T00:00:00Z"},
 	  "connections": {"sources": [], "defaults": {},
 	    "direction_outbounds": [
 	      {"tag": "proxy-out", "ref": "#TEMPLATE#", "updates": [
@@ -28,12 +28,12 @@ func TestLoadDropsEmptyUserPatchButKeepsPresetAndRealOnes(t *testing.T) {
 	    ]},
 	  "rules": [], "dns_options": {}
 	}`
-	s, err := parseCurrent([]byte(raw))
+	s, err := parseV6Legacy([]byte(raw), LoadContext{})
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 	byTag := map[string]configtypes.Direction{}
-	for _, o := range s.Connections.Outbounds {
+	for _, o := range s.Directions {
 		byTag[o.Tag] = o
 	}
 	if got := byTag["proxy-out"].Updates; len(got) != 1 || got[0].Ref != "russian" {

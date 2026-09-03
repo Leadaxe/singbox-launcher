@@ -1,0 +1,12 @@
+{
+  "rules": [
+    {
+      "name": "Work",
+      "enabled": true
+    }
+  ],
+  "warnings": [
+    "backup_extensions_dropped"
+  ],
+  "extensions_dropped": true
+}

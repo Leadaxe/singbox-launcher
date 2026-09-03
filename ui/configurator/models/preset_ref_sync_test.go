@@ -8,19 +8,19 @@ import (
 	wizardtemplate "singbox-launcher/core/template"
 )
 
-// TestSyncAllRulesToStateRulesV6_PresetOnly — только preset-ref'ы в model.
-func TestSyncAllRulesToStateRulesV6_PresetOnly(t *testing.T) {
+// TestEmitStateRulesWithoutOrder_PresetOnly — только preset-ref'ы в model.
+func TestEmitStateRulesWithoutOrder_PresetOnly(t *testing.T) {
 	prs := []*PresetRefState{
 		{Ref: "ru-direct", Enabled: true, Vars: map[string]string{"dns_ip": "77.88.8.7"}},
 	}
-	out := SyncAllRulesToStateRulesV6(prs, nil)
+	out := EmitStateRulesWithoutOrder(prs, nil)
 	if len(out) != 1 || out[0].Kind != state.RuleKindPreset || out[0].Ref != "ru-direct" {
 		t.Errorf("preset sync: %+v", out)
 	}
 }
 
-// TestSyncAllRulesToStateRulesV6_InlineFromCustomRule — kind=inline из legacy CustomRule.
-func TestSyncAllRulesToStateRulesV6_InlineFromCustomRule(t *testing.T) {
+// TestEmitStateRulesWithoutOrder_InlineFromCustomRule — kind=inline из legacy CustomRule.
+func TestEmitStateRulesWithoutOrder_InlineFromCustomRule(t *testing.T) {
 	cr := []*RuleState{
 		{
 			Rule: wizardtemplate.TemplateSelectableRule{
@@ -34,7 +34,7 @@ func TestSyncAllRulesToStateRulesV6_InlineFromCustomRule(t *testing.T) {
 			SelectedOutbound: "proxy-out",
 		},
 	}
-	out := SyncAllRulesToStateRulesV6(nil, cr)
+	out := EmitStateRulesWithoutOrder(nil, cr)
 	if len(out) != 1 {
 		t.Fatalf("expected 1 rule, got %d", len(out))
 	}
@@ -59,8 +59,8 @@ func TestSyncAllRulesToStateRulesV6_InlineFromCustomRule(t *testing.T) {
 	}
 }
 
-// TestSyncAllRulesToStateRulesV6_SrsFromCustomRule — kind=srs детектится по remote rule_set.
-func TestSyncAllRulesToStateRulesV6_SrsFromCustomRule(t *testing.T) {
+// TestEmitStateRulesWithoutOrder_SrsFromCustomRule — kind=srs детектится по remote rule_set.
+func TestEmitStateRulesWithoutOrder_SrsFromCustomRule(t *testing.T) {
 	rsRaw := json.RawMessage(`{"type":"remote","url":"https://example.com/list.srs"}`)
 	cr := []*RuleState{
 		{
@@ -73,7 +73,7 @@ func TestSyncAllRulesToStateRulesV6_SrsFromCustomRule(t *testing.T) {
 			SelectedOutbound: "reject",
 		},
 	}
-	out := SyncAllRulesToStateRulesV6(nil, cr)
+	out := EmitStateRulesWithoutOrder(nil, cr)
 	if len(out) != 1 || out[0].Kind != state.RuleKindSrs {
 		t.Errorf("kind: %+v", out)
 	}
@@ -87,8 +87,8 @@ func TestSyncAllRulesToStateRulesV6_SrsFromCustomRule(t *testing.T) {
 	}
 }
 
-// TestSyncAllRulesToStateRulesV6_Mixed — preset + inline + srs одновременно.
-func TestSyncAllRulesToStateRulesV6_Mixed(t *testing.T) {
+// TestEmitStateRulesWithoutOrder_Mixed — preset + inline + srs одновременно.
+func TestEmitStateRulesWithoutOrder_Mixed(t *testing.T) {
 	prs := []*PresetRefState{{Ref: "x", Enabled: true, Vars: map[string]string{}}}
 	cr := []*RuleState{
 		{
@@ -106,7 +106,7 @@ func TestSyncAllRulesToStateRulesV6_Mixed(t *testing.T) {
 			SelectedOutbound: "proxy-out",
 		},
 	}
-	out := SyncAllRulesToStateRulesV6(prs, cr)
+	out := EmitStateRulesWithoutOrder(prs, cr)
 	if len(out) != 3 {
 		t.Fatalf("expected 3 rules, got %d", len(out))
 	}

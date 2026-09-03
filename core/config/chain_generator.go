@@ -68,7 +68,9 @@ func ChainEmitError(tag string, c *configtypes.SourceChain) string {
 			return fmt.Sprintf("position %d references the chain itself", i+1)
 		}
 		if seen[hop] {
-			return fmt.Sprintf("position %d repeats %q", i+1, hop)
+			// Маркер нерезолвимости снимается: человеку показывают тег
+			// позиции, а не служебный префикс сборки.
+			return fmt.Sprintf("position %d repeats %q", i+1, chainHopDisplayTag(hop))
 		}
 		seen[hop] = true
 	}

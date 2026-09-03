@@ -1,0 +1,125 @@
+{
+  "meta": {
+    "version": 6,
+    "schema": "presets_v1",
+    "comment": "SPEC 118 W2: v6-фикстура с raw-кэшем для эталона старого движка",
+    "created_at": "2026-08-01T00:00:00Z",
+    "updated_at": "2026-08-01T00:00:00Z"
+  },
+  "connections": {
+    "sources": [
+      {
+        "id": "01J00000000000000000000SUB",
+        "type": "subscription",
+        "enabled": true,
+        "label": "Proton NL",
+        "url": "https://example.invalid/sub?token=abc&kind=all",
+        "skip": [
+          {
+            "tag": "/(RU)/i"
+          }
+        ],
+        "tag": {
+          "prefix": "[P] ",
+          "postfix": " •"
+        },
+        "fold": {
+          "mode": "select_auto",
+          "auto": {
+            "interval": "5m"
+          }
+        },
+        "update": {
+          "interval_hours": 6,
+          "auto_refresh": false
+        },
+        "max_nodes": 500,
+        "meta": {
+          "profile_title": "Proton",
+          "last_fetched_at": "2026-08-01T00:00:00Z",
+          "last_status": "ok",
+          "nodes_count_fetched": 3
+        },
+        "disabled_nodes": {
+          "DE-2": 1750000000
+        }
+      },
+      {
+        "id": "01J00000000000000000000SRV",
+        "type": "server",
+        "enabled": true,
+        "label": "Tokyo",
+        "node_tag": "Tokyo",
+        "uri": "vless://33333333-3333-4333-8333-333333333333@h.example:443?security=tls&sni=h.example#Tokyo",
+        "detour_node_source_id": "01J00000000000000000000SUB",
+        "detour_node_tag": "NL-1",
+        "detour_node_label": "NL-1"
+      },
+      {
+        "id": "01J0000000000000000000CHN0",
+        "type": "chain",
+        "enabled": true,
+        "label": "Двойной хоп",
+        "node_tag": "chain-1",
+        "chain": {
+          "hops": [
+            "Tokyo",
+            "[P] NL-1 •"
+          ],
+          "idle_timeout": "2m"
+        }
+      }
+    ],
+    "direction_outbounds": [
+      {
+        "tag": "video-out",
+        "type": "selector",
+        "filters": {
+          "tag": "/(NL)/"
+        }
+      }
+    ],
+    "defaults": {
+      "reload": "4h",
+      "max_nodes": 700
+    }
+  },
+  "rules": [
+    {
+      "kind": "inline",
+      "enabled": true,
+      "body": {
+        "name": "fold-target",
+        "match": {
+          "port": [
+            8443
+          ]
+        },
+        "outbound": "[P]select"
+      }
+    },
+    {
+      "kind": "inline",
+      "enabled": true,
+      "body": {
+        "name": "fold-auto-target",
+        "match": {
+          "port": [
+            8444
+          ]
+        },
+        "outbound": "[P]auto"
+      }
+    }
+  ],
+  "vars": [
+    {
+      "name": "log_level",
+      "value": "warn"
+    }
+  ],
+  "dns_options": {
+    "strategy": "prefer_ipv4",
+    "final": "google_doh"
+  }
+}

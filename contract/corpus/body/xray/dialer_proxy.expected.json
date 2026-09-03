@@ -1,0 +1,38 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "chain": [
+        {
+          "entry": {
+            "password": "testpass123",
+            "server": "192.0.2.10",
+            "server_port": 61000,
+            "type": "socks",
+            "username": "testuser",
+            "version": "5"
+          },
+          "kind": "outbound",
+          "label": "relay",
+          "scheme": "socks"
+        }
+      ],
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com"
+        },
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "chain-owner",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

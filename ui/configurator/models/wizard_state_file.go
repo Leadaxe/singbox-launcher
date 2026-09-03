@@ -38,22 +38,41 @@ type (
 	// state.LegacyDNSOptionsV5 to preserve callsite expectations.
 	PersistedDNSState = corestate.LegacyDNSOptionsV5
 
-	// SPEC 052 phase 7: v5-источники в wizard model.
-	Source             = corestate.Source
-	SourceType         = corestate.SourceType
-	SubscriptionMeta   = corestate.SubscriptionMeta
-	UserInfo           = corestate.UserInfo
-	ConnectionsSection = corestate.ConnectionsSection
-	TagSpec            = corestate.TagSpec
-	UpdateSpec         = corestate.UpdateSpec
-	Defaults           = corestate.Defaults
+	// SPEC 052 phase 7 / SPEC 118 W1: канонические источники v7 в wizard
+	// model. ConnectionsSection из алиасов удалена — секция стала приватной
+	// формой v6-парсера core/state; модель живёт на плоском корне
+	// (Sources/Directions).
+	Source          = corestate.Source
+	SourceKind      = corestate.SourceKind
+	Node            = corestate.Node
+	NodeLink        = corestate.NodeLink
+	Origin          = corestate.Origin
+	AutoGroup       = corestate.AutoGroup
+	FolderReplace   = corestate.FolderReplace
+	TagPolicy       = corestate.TagPolicy
+	FetchWarning    = corestate.FetchWarning
+	SubUpdateStatus = corestate.SubUpdateStatus
+	SubMeta         = corestate.SubMeta
+	UserInfo        = corestate.UserInfo
+	UpdateSpec      = corestate.UpdateSpec
 )
 
-// Re-export of v5 SourceType constants for UI.
+// Re-export SourceKind constants for UI.
 const (
-	SourceTypeSubscription = corestate.SourceTypeSubscription
-	SourceTypeServer       = corestate.SourceTypeServer
-	SourceTypeChain        = corestate.SourceTypeChain
+	OriginKindURI   = corestate.OriginKindURI
+	OriginKindWGIni = corestate.OriginKindWGIni
+	OriginKindJSON  = corestate.OriginKindJSON
+
+	SourceKindServer       = corestate.SourceKindServer
+	SourceKindChain        = corestate.SourceKindChain
+	SourceKindAuto         = corestate.SourceKindAuto
+	SourceKindFolder       = corestate.SourceKindFolder
+	SourceKindSubscription = corestate.SourceKindSubscription
+	// SourceKindUnsupported — запись тела, которую не удалось разобрать.
+	// Живёт только в составе контейнера, но реестр видов окна источника
+	// обязан называть её явно: вид, не названный ни одной веткой, достаётся
+	// чужой по остаточному принципу (дыра Д3).
+	SourceKindUnsupported = corestate.SourceKindUnsupported
 )
 
 // WizardStateVersion — для callsite'ов которые используют это для

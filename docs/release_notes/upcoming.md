@@ -6,14 +6,10 @@
 
 ## EN
 ### Highlights
--
 
 ### Technical / Internal
--
 
 ## RU
 ### Основное
--
 
 ### Техническое / Внутреннее
--

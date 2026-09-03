@@ -326,6 +326,11 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	// APIService (транспорт-override ставится в конструкторе).
 	ac.initBackendFromSettings()
 
+	// Имя собственного TUN — из конфига, лежащего с прошлого запуска. Без него
+	// пикер аплинков не отличил бы наш singbox-tun0 от чужого системного
+	// туннеля, который теперь законно предлагается к выбору (SPEC 113-F).
+	ac.refreshOwnTunNames()
+
 	// Check if config file exists before starting auto-update
 	if _, err := os.Stat(ac.FileService.ConfigPath); os.IsNotExist(err) {
 		debuglog.InfoLog("Auto-update: Config file does not exist (%s), auto-update disabled", ac.FileService.ConfigPath)
@@ -727,6 +732,30 @@ func CleanupStaleTunAtStartUtil() {
 		return
 	}
 	ac.ProcessService.CleanupStaleTunAtStart()
+	cleanupOrphanSingTunFirewallRulesAtStart()
+}
+
+// cleanupOrphanSingTunFirewallRulesAtStart убирает накопившиеся правила
+// брандмауэра `sing-tun (<путь>)` от старых установок (Windows; no-op иначе).
+// Без гейта на запущенное ядро: удаляются только правила с несуществующим
+// бинарём, правило живого пути не трогается, а своё ядро пересоздаёт правило
+// само при следующем поднятии TUN.
+func cleanupOrphanSingTunFirewallRulesAtStart() {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				debuglog.WarnLog("cleanupOrphanSingTunFirewallRulesAtStart: recovered from panic: %v", r)
+			}
+		}()
+		removed, err := platform.CleanupOrphanSingTunFirewallRules()
+		if err != nil {
+			debuglog.WarnLog("cleanupOrphanSingTunFirewallRulesAtStart: %v", err)
+			return
+		}
+		if removed > 0 {
+			debuglog.WarnLog("cleanupOrphanSingTunFirewallRulesAtStart: removed %d orphan firewall rule(s)", removed)
+		}
+	}()
 }
 
 // CheckConfigFileExists checks if config.json exists and shows a warning if it doesn't

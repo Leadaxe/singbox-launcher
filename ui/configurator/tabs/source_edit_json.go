@@ -31,6 +31,42 @@ func stripEmittedDecorations(s string) string {
 	return strings.TrimSuffix(out, ",")
 }
 
+// withPendingDetour дописывает в тело узла ссылку detour, которую эмиссия
+// одного источника ещё не разрешила.
+//
+// Вкладка обещает «JSON как он уйдёт в конфиг», а `detour` появляется только
+// на проходе 2 полной сборки (ApplyCanonicalNodeLinks) — его здесь нет. Без
+// этой подстановки узел с релеем показывался как прямой, хотя в config.json у
+// него стоит переход (SPEC 120: «хочу видеть JSON в точности как в конфиге»).
+//
+// Подставляется СЫРОЙ тег цели: финальный (с префиксом источника) знает
+// только полная сборка. Это честнее пустоты — видно и факт перехода, и через
+// кого он идёт.
+func withPendingDetour(body string, node *config.ParsedNode) string {
+	if node == nil || node.CanonicalDetour == nil {
+		return body
+	}
+	tag := strings.TrimSpace(node.CanonicalDetour.Tag)
+	if tag == "" {
+		return body
+	}
+	// Уже проставлен полной сборкой — не дублируем.
+	if node.Outbound != nil {
+		if _, ok := node.Outbound["detour"]; ok {
+			return body
+		}
+	}
+	trimmed := strings.TrimSpace(body)
+	if !strings.HasPrefix(trimmed, "{") {
+		return body
+	}
+	enc, err := json.Marshal(tag)
+	if err != nil {
+		return body
+	}
+	return "{\"detour\": " + string(enc) + "," + trimmed[1:]
+}
+
 // emittedToEditableJSON превращает строку эмиттера в pretty JSON-объект.
 //
 // json.Indent (а не Unmarshal→MarshalIndent): работает на токенах и сохраняет
@@ -44,13 +80,32 @@ func emittedToEditableJSON(s string) string {
 	return buf.String()
 }
 
-// renderUnpackedNodes эмитит узлы подписки тем же кодом, что и сборка, и
-// собирает их в один читаемый документ {"outbounds":[...],"endpoints":[...]}
-// — те самые записи, которые источник добавит в config.json.
+// unpackedNodesResult — итог сборки документа из эмитированных узлов.
+type unpackedNodesResult struct {
+	// Text — документ {"outbounds":[...],"endpoints":[...]} или "" при
+	// ошибке сериализации (тогда заполнен Err).
+	Text string
+	// Emitted — сколько узлов реально попало в документ.
+	Emitted int
+	// Dropped — сколько узлов эмиттер отверг (он сам пишет warn в лог, так
+	// же ведёт себя сборка). Считаются только те, до которых дошли: после
+	// обрыва по лимиту остаток не разбирался.
+	Dropped int
+	// Truncated — вывод оборван лимитом (в состав узлов это не вносит
+	// изменений: обрезается ТЕКСТ, а не папка).
+	Truncated bool
+	Err       error
+}
+
+// unpackNodesDoc эмитит узлы тем же кодом, что и сборка (config.EmitNodeJSONs
+// — единственная точка эмиссии, SPEC 116 §O2 вариант А), и собирает их в один
+// документ {"outbounds":[...],"endpoints":[...]} — те самые записи, которые
+// источник добавит в config.json, с ФИНАЛЬНЫМИ тегами (тег-машина отработала
+// в EmitCanonicalSource у вызывающего).
 //
-// Возвращает (текст, статус-строка). Узлы, которые эмиттер отверг, молча
-// пропускаются (он сам пишет warn в лог) — так же ведёт себя сборка.
-func renderUnpackedNodes(nodes []*config.ParsedNode) (string, string) {
+// limit <= 0 означает «без лимита»: показ в MultiLineEntry обрезается, а
+// выгрузка в буфер — нет, иначе «взять всю папку» отдало бы не всю папку.
+func unpackNodesDoc(nodes []*config.ParsedNode, limit int) unpackedNodesResult {
 	// json.RawMessage, а не map: MarshalIndent переиндентирует вложенные
 	// объекты, не трогая порядок полей внутри них.
 	type unpackedDoc struct {
@@ -58,29 +113,53 @@ func renderUnpackedNodes(nodes []*config.ParsedNode) (string, string) {
 		Endpoints []json.RawMessage `json:"endpoints,omitempty"`
 	}
 	doc := unpackedDoc{}
-	emitted := 0
+	res := unpackedNodesResult{}
 	for _, node := range nodes {
+		if limit > 0 && res.Emitted >= limit {
+			// Обрезаем ВЫВОД, а не состав: узлы все на месте, но
+			// MultiLineEntry без виртуализации подвешивает окно на
+			// полутысяче outbound'ов (fyne-io/fyne#2935).
+			res.Truncated = true
+			break
+		}
 		outJSONs, epJSON, err := config.EmitNodeJSONs(node)
 		if err != nil {
+			res.Dropped++
 			continue
 		}
 		if epJSON != "" {
 			doc.Endpoints = append(doc.Endpoints, json.RawMessage(stripEmittedDecorations(epJSON)))
-			emitted++
+			res.Emitted++
 			continue
 		}
 		for _, oj := range outJSONs {
-			doc.Outbounds = append(doc.Outbounds, json.RawMessage(stripEmittedDecorations(oj)))
+			doc.Outbounds = append(doc.Outbounds,
+				json.RawMessage(withPendingDetour(stripEmittedDecorations(oj), node)))
 		}
-		emitted++
+		res.Emitted++
 	}
 	b, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
-		return "", err.Error()
+		res.Err = err
+		return res
 	}
-	status := locale.Tf("Unpacked nodes: %d", emitted)
-	if emitted >= previewNodeCap {
+	res.Text = string(b)
+	return res
+}
+
+// renderUnpackedNodes — вкладка JSON окна источника: тот же документ, но с
+// лимитом на длину вывода.
+//
+// Возвращает (текст, статус-строка). Узлы, которые эмиттер отверг, молча
+// пропускаются (он сам пишет warn в лог) — так же ведёт себя сборка.
+func renderUnpackedNodes(nodes []*config.ParsedNode) (string, string) {
+	res := unpackNodesDoc(nodes, previewNodeCap)
+	if res.Err != nil {
+		return "", res.Err.Error()
+	}
+	status := locale.Tf("Unpacked nodes: %d", len(nodes))
+	if res.Truncated {
 		status += " " + locale.Tf("(showing first %d)", previewNodeCap)
 	}
-	return string(b), status
+	return res.Text, status
 }

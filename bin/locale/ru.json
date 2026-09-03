@@ -468,6 +468,15 @@
   "Template saved to %s": {
     "value": "Шаблон сохранён в %s"
   },
+  "Downloading config template…": {
+    "value": "Скачивание шаблона конфига…"
+  },
+  "Config template download failed": {
+    "value": "Не удалось скачать шаблон конфига"
+  },
+  "server returned an empty file": {
+    "value": "сервер вернул пустой файл"
+  },
   "Download Complete": {
     "value": "Загрузка завершена"
   },
@@ -970,14 +979,128 @@
   "Rules": {
     "value": "Правила"
   },
-  "Files": {
-    "value": "Файлы"
-  },
-  "Save the settings: state is written and the working config.json is rebuilt — the same as the Save button below. \"Show config\" opens the built config.json in its own window without saving anything.": {
-    "value": "Сохранить настройки: записывается состояние и пересобирается рабочий config.json — то же, что кнопка Save внизу. «Показать конфиг» открывает собранный config.json в отдельном окне, ничего не сохраняя."
-  },
   "Show config": {
     "value": "Показать конфиг"
+  },
+  "Final": {
+    "value": "Итог"
+  },
+  "Entering this tab runs a full build in memory: sources are parsed, references and chains are resolved, the outbound graph is checked. Nothing is written and the core is not restarted — the build only produces the report below. Save writes the state and rebuilds the working config.json.": {
+    "value": "Вход на вкладку запускает полную сборку в памяти: разбираются источники, разрешаются ссылки и цепочки, проверяется граф outbound'ов. Ничего не записывается и ядро не перезапускается — сборка нужна только ради отчёта ниже. Кнопка «Сохранить» пишет состояние и пересобирает рабочий config.json."
+  },
+  "Building the config in memory…": {
+    "value": "Собираем конфиг в памяти…"
+  },
+  "The build passed with no warnings.": {
+    "value": "Сборка прошла без предупреждений."
+  },
+  "The sources produced no nodes, so the build would contain no proxies. Check the Sources tab.": {
+    "value": "Источники не дали ни одного узла — в сборке не оказалось бы прокси. Проверьте вкладку «Источники»."
+  },
+  "Build warnings:": {
+    "value": "Предупреждения сборки:"
+  },
+  "Build failed: %v": {
+    "value": "Сборка не удалась: %v"
+  },
+  "Show source": {
+    "value": "Показать источник"
+  },
+  "Source %q produced no nodes: %s": {
+    "value": "Источник %q не дал узлов: %s"
+  },
+  "Source %q excluded from the config: %s": {
+    "value": "Источник %q исключён из конфига: %s"
+  },
+  "Source %q: %d node(s) dropped — %s": {
+    "value": "Источник %q: снято узлов — %d — %s"
+  },
+  "Chain %q did not build: %s": {
+    "value": "Цепочка %q не собралась: %s"
+  },
+  "%d naive node(s) skipped: %s": {
+    "value": "Узлов naive пропущено: %d — %s"
+  },
+  "Detour target %q is missing from the build: %s": {
+    "value": "Цели перехода %q нет в сборке: %s"
+  },
+  "⚠ %d node(s) dropped: %s": {
+    "value": "⚠ снято узлов: %d — %s"
+  },
+  "Build OK": {
+    "value": "Сборка прошла"
+  },
+  "Build OK, %d warning(s)": {
+    "value": "Сборка прошла, предупреждений: %d"
+  },
+  "Build FAILED: %v": {
+    "value": "Сборка НЕ УДАЛАСЬ: %v"
+  },
+  "Copy config": {
+    "value": "Копировать конфиг"
+  },
+  "the reference is empty": {
+    "value": "ссылка пуста"
+  },
+  "the referenced source is gone": {
+    "value": "источник ссылки не найден"
+  },
+  "it has no node %q": {
+    "value": "узла %q в нём нет"
+  },
+  "target %q is not among nodes, Directions and folder replacements": {
+    "value": "цели %q нет среди узлов, Направлений и замен"
+  },
+  "node %q dropped: the detour target did not resolve (%s) — a hop set up for anonymity may not silently become a direct dial": {
+    "value": "узел %q исключён: цель detour не разрешилась (%s) — переход настроен ради анонимности и не имеет права стать прямым дозвоном"
+  },
+  "node %q dropped: its detour target %q fell out of the config itself": {
+    "value": "узел %q исключён: узел-цель detour %q сам выпал из конфига"
+  },
+  "node %q dropped: its detour points at itself": {
+    "value": "узел %q исключён: detour указывает на него самого"
+  },
+  "node %q dropped: detour loop — the chain of hops leads traffic back to itself": {
+    "value": "узел %q исключён: кольцо detour — по цепочке переходов трафик возвращается к нему самому"
+  },
+  "node %q (wireguard): detour does not apply to WireGuard, and its target %q did not resolve either (%s)": {
+    "value": "узел %q (wireguard): detour не применяется к WireGuard, а его цель %q к тому же не разрешилась (%s)"
+  },
+  "group %q: member %q left the group (%s)": {
+    "value": "группа %q: член %q выпал из состава (%s)"
+  },
+  "the node fell out of the config": {
+    "value": "узел выпал из конфига"
+  },
+  "group %q is not emitted: no members left (an empty group breaks core startup)": {
+    "value": "группа %q не эмитируется: не осталось ни одного члена (пустая группа роняет старт ядра)"
+  },
+  "group %q: default %q is not among the members — the key was dropped": {
+    "value": "группа %q: умолчание %q не входит в состав — ключ снят"
+  },
+  "chain %q: position %q did not resolve (%s)": {
+    "value": "цепочка %q: позиция %q не разрешилась (%s)"
+  },
+  "node %q is not emittable — dropped: %v": {
+    "value": "узел %q не эмитируется — снят: %v"
+  },
+  "tag %q is claimed twice: %s and %s": {
+    "value": "тег %q занят дважды: %s и %s"
+  },
+  "a Direction": {
+    "value": "Направление"
+  },
+  "a Direction auto-group": {
+    "value": "авто-группа Направления"
+  },
+  "a folder replacement": {
+    "value": "замена папки"
+  },
+  "a node": {
+    "value": "узел"
+  },
+  "a template system tag": {
+    "value": "системный тег шаблона"
   },
   "Generated config.json": {
     "value": "Собранный config.json"
@@ -1228,6 +1351,12 @@
   "Tag mask (overrides prefix/postfix)": {
     "value": "Маска тэга (переопределяет prefix/postfix)"
   },
+  "Tag mask (retired)": {
+    "value": "Маска тэга (упразднена)"
+  },
+  "The tag mask has been retired and is no longer applied; use prefix/postfix.": {
+    "value": "Тег-маска упразднена и не применяется; используйте prefix/postfix."
+  },
   "human-readable label": {
     "value": "человекочитаемое имя"
   },
@@ -1370,6 +1499,9 @@
   "URI does not unpack: %s. You can write the outbound JSON by hand and press Apply.": {
     "value": "URI не распаковывается: %s. Можно написать outbound JSON руками и нажать «Применить»."
   },
+  "Origin does not unpack: %s. You can write the outbound JSON by hand and press Apply.": {
+    "value": "Исходник не распаковывается: %s. Можно написать outbound JSON руками и нажать «Применить»."
+  },
   "Unpacked nodes: %d": {
     "value": "Распаковано нод: %d"
   },
@@ -1433,11 +1565,11 @@
   "[chain] ⚠️ core has no chain support": {
     "value": "[цепочка] ⚠️ ядро не умеет цепочки"
   },
+  "⚠ No nodes from this source: %s": {
+    "value": "⚠ Узлов из этого источника нет: %s"
+  },
   "⚠ Excluded from the config: %s": {
     "value": "⚠ Исключён из конфига: %s"
-  },
-  "Source excluded from the config: %s. Details in Wizard → Sources.": {
-    "value": "Источник исключён из конфига: %s. Подробности в Мастере → Источники."
   },
   "The subscription arrives as one entry instead of every node. Its nodes stay in the config as that group's members.": {
     "value": "Подписка приезжает одной записью вместо всех своих узлов. Сами узлы остаются в конфиге составом этой группы."
@@ -2536,9 +2668,6 @@
   "collapsed": {
     "value": "схлопнута"
   },
-  "off": {
-    "value": "выключена"
-  },
   "This core cannot switch chain positions on the fly — update the core.": {
     "value": "Это ядро не умеет переключать позиции цепочки на лету — обновите ядро."
   },
@@ -2894,26 +3023,26 @@
   "Flags": {
     "value": "Флаги"
   },
-  "Interface": {
-    "value": "Интерфейс"
+  "— down —": {
+    "value": "— лежит —"
   },
-  "↓rate": {
-    "value": "↓скор."
+  "(no address)": {
+    "value": "(без адреса)"
   },
-  "↑rate": {
-    "value": "↑скор."
+  "MAC %s": {
+    "value": "MAC %s"
   },
-  "↓total": {
-    "value": "↓всего"
+  "MTU %d": {
+    "value": "MTU %d"
   },
-  "↑total": {
-    "value": "↑всего"
+  "pkt %s/%s": {
+    "value": "пакетов %s/%s"
   },
-  "err / drop": {
-    "value": "ошиб. / потери"
+  "err %d/%d": {
+    "value": "ошиб. %d/%d"
   },
-  "MTU": {
-    "value": "MTU"
+  "drop %d/%d": {
+    "value": "потери %d/%d"
   },
   "— all —": {
     "value": "— все —"
@@ -3044,6 +3173,30 @@
   "Not applied as-is:": {
     "value": "Применено не полностью:"
   },
+  "Import report": {
+    "value": "Отчёт импорта"
+  },
+  "The full list is in the import report shown after the import.": {
+    "value": "Полный список — в отчёте после импорта."
+  },
+  "Export report": {
+    "value": "Отчёт экспорта"
+  },
+  "Did not make it into the file:": {
+    "value": "В файл не попало:"
+  },
+  "folder \"%s\" and its %d node(s) did not make it into the file: this backup format cannot carry folders yet": {
+    "value": "папка «%s» и её узлов — %d — в файл не попали: формат копии пока не умеет переносить папки"
+  },
+  "folder \"%s\" did not make it into the file: this backup format cannot carry folders yet": {
+    "value": "папка «%s» в файл не попала: формат копии пока не умеет переносить папки"
+  },
+  "group \"%s\" did not make it into the file: this backup format cannot carry provider groups yet": {
+    "value": "группа «%s» в файл не попала: формат копии пока не умеет переносить провайдерские группы"
+  },
+  "%s — this backup format cannot carry it, the record did not make it into the file": {
+    "value": "%s — формат копии этого не переносит, запись в файл не попала"
+  },
   "%s — target does not exist here, the rule is imported turned off": {
     "value": "%s — такой цели здесь нет, правило импортировано выключенным"
   },
@@ -3058,6 +3211,12 @@
   },
   "%s — not supported here, skipped": {
     "value": "%s — здесь не поддерживается, пропущено"
+  },
+  "%s — this field means something different here, its value is skipped": {
+    "value": "%s — это поле здесь устроено иначе, значение пропущено"
+  },
+  "this backup was made by an older version and carries an \"extensions\" section (%s); the shared fields were imported, the rest is dropped": {
+    "value": "бэкап снят более старой версией и несёт раздел «extensions» (%s); общие поля импортированы, остальное отброшено"
   },
   "%s — a chain with this name already exists here, the incoming one is skipped": {
     "value": "%s — цепочка с таким именем здесь уже есть, приехавшая пропущена"
@@ -3386,13 +3545,703 @@
   "Cannot verify: the machine's interfaces are unavailable.": {
     "value": "Проверить нельзя: интерфейсы машины недоступны."
   },
+  "Reading the machine's interfaces…": {
+    "value": "Читаем интерфейсы машины…"
+  },
+  "Add an interface from the machine's list.": {
+    "value": "Добавить интерфейс из списка машины."
+  },
+  "No interfaces to add — type the name manually.": {
+    "value": "Добавить нечего — впишите имя вручную."
+  },
   "no IP address — no traffic will go through it": {
     "value": "нет IP-адреса — трафик через него не пойдёт"
+  },
+  "this is a tunnel — the core cannot use it as an uplink": {
+    "value": "это туннель самого ядра — выйти через него наружу нельзя"
+  },
+  "Tunnel — traffic will go out through it.": {
+    "value": "Туннель — трафик выйдет через него."
+  },
+  "tunnel: traffic will go out through it": {
+    "value": "туннель: трафик выйдет через него"
+  },
+  "loopback — no traffic will leave the machine through it": {
+    "value": "петля — трафик через неё не покинет машину"
+  },
+  "Traffic will go through this interface.": {
+    "value": "Трафик пойдёт через этот интерфейс."
+  },
+  "Auto-detect is on — the core picks the interface itself.": {
+    "value": "Включено автоопределение — интерфейс выбирает ядро."
   },
   "not found on this machine": {
     "value": "на этой машине не найден"
   },
   "empty — follow system default route": {
     "value": "пусто — системный маршрут по умолчанию"
+  },
+  "The machine answers. Click to see the exchange log.": {
+    "value": "Машина отвечает. Нажмите, чтобы посмотреть журнал обмена."
+  },
+  "No answer to the last poll — retrying. Click to see the exchange log.": {
+    "value": "Ответа на последний опрос нет — идут повторы. Нажмите, чтобы посмотреть журнал обмена."
+  },
+  "The machine is not answering. Click to see the exchange log.": {
+    "value": "Машина не отвечает. Нажмите, чтобы посмотреть журнал обмена."
+  },
+  "Not connected. Click to see the exchange log.": {
+    "value": "Не подключено. Нажмите, чтобы посмотреть журнал обмена."
+  },
+  "%s — exchange log": {
+    "value": "%s — журнал обмена"
+  },
+  "No exchange with this machine yet — press Connect.": {
+    "value": "Обмена с этой машиной ещё не было — нажмите «Подключиться»."
+  },
+  "\nAnswering.": {
+    "value": "\nОтвечает."
+  },
+  "\nNo answer to the last %d poll(s) — retrying.": {
+    "value": "\nНет ответа на последние опросы (%d) — идут повторы."
+  },
+  "\nNot answering.": {
+    "value": "\nНе отвечает."
+  },
+  "\nNot connected.": {
+    "value": "\nНе подключено."
+  },
+  "  Last answer at %s.": {
+    "value": "  Последний ответ в %s."
+  },
+  "Provider message": {
+    "value": "Сообщение провайдера"
+  },
+  "Announcement": {
+    "value": "Объявление"
+  },
+  "Announcement URL": {
+    "value": "Ссылка объявления"
+  },
+  "Why nodes were rejected:": {
+    "value": "Почему узлы отбракованы:"
+  },
+  "provider says: %s": {
+    "value": "провайдер сообщает: %s"
+  },
+  "Default update interval:": {
+    "value": "Интервал обновления по умолчанию:"
+  },
+  "Default max nodes:": {
+    "value": "Максимум узлов по умолчанию:"
+  },
+  "Used when a subscription has neither its own schedule nor a profile-update-interval header. Go-duration form: 4h, 30m. Empty — built-in default (%s).": {
+    "value": "Применяется, когда у подписки нет ни своего расписания, ни заголовка profile-update-interval. Форма Go-длительности: 4h, 30m. Пусто — встроенное умолчание (%s)."
+  },
+  "Used when a subscription has no max_nodes of its own — providers do not send this one in headers. It is a real parse limit, not a badge: nodes past it are not read at all. Empty — the hard ceiling (%d).": {
+    "value": "Применяется, когда у подписки нет своего max_nodes — этот заголовок провайдеры не присылают. Это настоящий предел разбора, а не бейдж: узлы сверх него не читаются вовсе. Пусто — аварийный потолок (%d)."
+  },
+  "Update interval %q is not a duration — use forms like 4h or 30m.": {
+    "value": "Интервал обновления %q не длительность — пишите в форме 4h или 30m."
+  },
+  "Max nodes %q is not a positive number.": {
+    "value": "Максимум узлов %q не положительное число."
+  },
+  "Selector choices will reset": {
+    "value": "Выбор в селекторах сбросится"
+  },
+  "Tag prefix/postfix changed — every node of this source is renamed in the config.": {
+    "value": "Префикс/постфикс тегов изменён — все узлы этого источника переименованы в конфиге."
+  },
+  "Group tags changed: %s.": {
+    "value": "Теги групп изменены: %s."
+  },
+  "A manual pick in a selector is remembered by the running core (cache.db) by tag, and the launcher cannot rewrite it: the affected selectors fall back to their default until you pick again. On a remote machine this applies to its own core.": {
+    "value": "Ручной выбор в селекторе помнит работающее ядро (cache.db) — по тегу, и переписать его лаунчер не может: затронутые селекторы вернутся к умолчанию, пока вы не выберете заново. У удалённой машины это относится к её собственному ядру."
+  },
+  "Add folder": {
+    "value": "Добавить папку"
+  },
+  "Delete folder": {
+    "value": "Удалить папку"
+  },
+  "Folder %q holds %d node(s). Delete them together with the folder, or move them to the root of the sources list?": {
+    "value": "В папке %q — %d узл(ов). Удалить их вместе с папкой или вынести в корень списка источников?"
+  },
+  "Delete with nodes": {
+    "value": "Удалить вместе с узлами"
+  },
+  "Move nodes to root": {
+    "value": "Вынести узлы в корень"
+  },
+  "Folder — %s": {
+    "value": "Папка — %s"
+  },
+  "Folder name": {
+    "value": "Имя папки"
+  },
+  "folder name": {
+    "value": "имя папки"
+  },
+  "Fold this folder into a group": {
+    "value": "Свернуть папку в группу"
+  },
+  "This folder has no nodes yet.": {
+    "value": "В папке пока нет узлов."
+  },
+  "Read-only: the sing-box outbounds this folder is built from. Edit a node through its own entry on the Preview tab.": {
+    "value": "Только чтение: outbound'ы sing-box, из которых собирается папка. Узел правится своей записью на вкладке «Просмотр»."
+  },
+  "Copy to…": {
+    "value": "Скопировать в…"
+  },
+  "Move to…": {
+    "value": "Перенести в…"
+  },
+  "Rename…": {
+    "value": "Переименовать…"
+  },
+  "Copy node": {
+    "value": "Копировать узел"
+  },
+  "Move node": {
+    "value": "Перенести узел"
+  },
+  "Node %q — pick the destination:": {
+    "value": "Узел %q — выберите, куда:"
+  },
+  "Top level": {
+    "value": "Верхний уровень"
+  },
+  "No folders yet": {
+    "value": "Папок пока нет"
+  },
+  "Create a folder first: Sources → ⋮ → Add folder.": {
+    "value": "Сначала создайте папку: «Источники» → ⋮ → «Добавить папку»."
+  },
+  "Rename node": {
+    "value": "Переименовать узел"
+  },
+  "The node tag is its identity inside this container: links to it are repointed, and a manual pick in a selector of the running core will reset.": {
+    "value": "Тег узла — его идентичность внутри контейнера: ссылки на него будут переписаны, а ручной выбор в селекторе работающего ядра сбросится."
+  },
+  "Node tag cannot be empty.": {
+    "value": "Тег узла не может быть пустым."
+  },
+  "Tag %q is already taken in this container.": {
+    "value": "Тег %q в этом контейнере уже занят."
+  },
+  "Node %q is gone.": {
+    "value": "Узла %q больше нет."
+  },
+  "Delete node": {
+    "value": "Удалить узел"
+  },
+  "Delete node %q from this folder?": {
+    "value": "Удалить узел %q из этой папки?"
+  },
+  "Node unlinked from its subscription": {
+    "value": "Узел отвязан от подписки"
+  },
+  "Node %q was edited, so it no longer follows the subscription: the next fill will neither overwrite nor remove it.": {
+    "value": "Узел %q отредактирован и больше не следует за подпиской: следующая заливка его не перетрёт и не удалит."
+  },
+  "Add nodes…": {
+    "value": "Добавить узлы…"
+  },
+  "Folder": {
+    "value": "Папка"
+  },
+  "Folder: %s": {
+    "value": "Папка: %s"
+  },
+  "Folder is empty — paste links above to add nodes.": {
+    "value": "Папка пуста — вставьте ссылки в поле выше, чтобы добавить узлы."
+  },
+  "Adds nodes to this folder: direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://) or sing-box JSON. One per line. A subscription URL goes to Sources, not into a folder.": {
+    "value": "Добавляет узлы в эту папку: прямые ссылки (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://) либо JSON sing-box. По одной в строке. Ссылка на подписку кладётся в «Источники», а не в папку."
+  },
+  "Paste links or JSON…": {
+    "value": "Вставить ссылки или JSON…"
+  },
+  "Add nodes to folder": {
+    "value": "Добавить узлы в папку"
+  },
+  "Subscription URLs, direct links (vless://, wireguard://, …), [Interface]/[Peer] config text or a sing-box outbound JSON. One per line.": {
+    "value": "Ссылки на подписку, прямые ссылки (vless://, wireguard://, …), текст конфига [Interface]/[Peer] либо JSON outbound'а sing-box. По одной в строке."
+  },
+  "Select config files (.conf / .vpn / .txt / .json)": {
+    "value": "Выберите файлы конфигов (.conf / .vpn / .txt / .json)"
+  },
+  "a subscription URL cannot be added to a folder — add it in Sources, then fill the folder from it": {
+    "value": "ссылку на подписку в папку положить нельзя — добавьте её в «Источниках», а потом залейте из неё папку"
+  },
+  "Some files were not added": {
+    "value": "Часть файлов не добавлена"
+  },
+  "Nodes added": {
+    "value": "Узлы добавлены"
+  },
+  "%d node(s) added to the folder.": {
+    "value": "В папку добавлено узлов: %d."
+  },
+  "Fill from subscription…": {
+    "value": "Залить из подписки…"
+  },
+  "Fill folder from subscription": {
+    "value": "Залить папку из подписки"
+  },
+  "Fill": {
+    "value": "Залить"
+  },
+  "Nodes of the chosen subscription are merged into this folder by raw tag: your enabled flags, detours and order survive, and a node that disappeared at the provider stays in the folder.": {
+    "value": "Узлы выбранной подписки вливаются в папку по сырому тегу: ваши галки, detour'ы и порядок сохраняются, а узел, исчезнувший у провайдера, остаётся в папке."
+  },
+  "No subscriptions yet": {
+    "value": "Подписок пока нет"
+  },
+  "Add a subscription in Sources first, then fill the folder from it.": {
+    "value": "Сначала добавьте подписку в «Источниках», а потом залейте из неё папку."
+  },
+  "not fetched yet": {
+    "value": "ещё не обновлялась"
+  },
+  "%d node(s)": {
+    "value": "узлов: %d"
+  },
+  "Subscription %q has no nodes yet — it has never been fetched. Refresh it now?": {
+    "value": "У подписки %q ещё нет узлов — её ни разу не обновляли. Обновить сейчас?"
+  },
+  "Filled with warnings": {
+    "value": "Залито с предупреждениями"
+  },
+  "Folder filled": {
+    "value": "Папка залита"
+  },
+  "The folder is already up to date with this subscription.": {
+    "value": "Папка уже соответствует этой подписке."
+  },
+  "Folder filled from %q.": {
+    "value": "Папка залита из %q."
+  },
+  "Copy nodes as JSON": {
+    "value": "Скопировать узлы как JSON"
+  },
+  "Nothing to copy": {
+    "value": "Копировать нечего"
+  },
+  "None of the folder nodes could be built into an outbound.": {
+    "value": "Ни один узел папки не собрался в outbound."
+  },
+  "All nodes of this folder are disabled — they do not reach the config either.": {
+    "value": "Все узлы папки выключены — в конфиг они тоже не попадают."
+  },
+  "%d node(s) copied as JSON.": {
+    "value": "Скопировано узлов в JSON: %d."
+  },
+  "%d node(s) could not be built and were left out.": {
+    "value": "Не собралось и не попало в выгрузку узлов: %d."
+  },
+  "Nodes: %d": {
+    "value": "Узлов: %d"
+  },
+  " + %d unsupported": {
+    "value": " + %d не разобрано"
+  },
+  "could not be parsed": {
+    "value": "не удалось разобрать"
+  },
+  "provider banner, not a server": {
+    "value": "анонс провайдера, а не сервер"
+  },
+  "Reason": {
+    "value": "Причина"
+  },
+  "Origin": {
+    "value": "Исходник"
+  },
+  "Copy source line": {
+    "value": "Скопировать исходную строку"
+  },
+  "Raw response": {
+    "value": "Сырой ответ"
+  },
+  "Reload": {
+    "value": "Скачать заново"
+  },
+  "Not fetched — press Reload to download the body as it is now.": {
+    "value": "Не скачано — нажмите «Скачать заново», чтобы получить тело как оно есть сейчас."
+  },
+  "Fetch failed: %s": {
+    "value": "Скачать не удалось: %s"
+  },
+  "HTTP %d · %s": {
+    "value": "HTTP %d · %s"
+  },
+  "base64": {
+    "value": "base64"
+  },
+  "urldecode": {
+    "value": "urldecode"
+  },
+  "pretty-print": {
+    "value": "форматировать"
+  },
+  "A backup of the original file was saved next to it:": {
+    "value": "Рядом сохранена резервная копия исходного файла:"
+  },
+  "Configuration migration report": {
+    "value": "Отчёт о переносе конфигурации"
+  },
+  "The saved configuration was migrated to the new storage format. Some settings could not be carried over unchanged:": {
+    "value": "Сохранённая конфигурация перенесена в новый формат хранения. Часть настроек не удалось перенести без изменений:"
+  },
+  "Disabled subscriptions are not auto-fetched, so this one has no nodes yet. Click below to fetch it once without enabling it.": {
+    "value": "Выключенные подписки не обновляются автоматически, поэтому узлов пока нет. Кнопка ниже скачает её один раз, не включая."
+  },
+  "Group tag": {
+    "value": "Тег группы"
+  },
+  "MTU": {
+    "value": "MTU"
+  },
+  "Read-only: the sing-box outbounds this subscription is built from. Nodes of a subscription are not free-form — they are refreshed from the provider.": {
+    "value": "Только чтение: outbound'ы sing-box, из которых собрана эта подписка. Узлы подписки не правятся вручную — они обновляются у провайдера."
+  },
+  "Rebuild the outbound from the original URI/JSON, discarding manual edits?": {
+    "value": "Пересобрать outbound из исходного URI/JSON, отбросив ручные правки?"
+  },
+  "Regen from raw": {
+    "value": "Пересобрать из исходника"
+  },
+  "The outbound as it will reach the config.": {
+    "value": "Outbound в том виде, в каком он попадёт в конфиг."
+  },
+  "The sing-box outbound this node is built from — exactly what the build writes to config.json. Edit and press Apply to store it; Regen from raw rebuilds it from the original URI/JSON. Tag and detour are restamped by the launcher at build time.": {
+    "value": "Outbound sing-box, из которого собран этот узел, — ровно то, что сборка пишет в config.json. Правьте и нажмите Apply, чтобы сохранить; «Пересобрать из исходника» вернёт его к исходному URI/JSON. Тег и detour лаунчер проставляет заново на сборке."
+  },
+  "The source arrives as one entry instead of every node. Its nodes stay in the config as that group's members.": {
+    "value": "Источник приезжает одной записью вместо всех узлов. Его узлы остаются в конфиге членами этой группы."
+  },
+  "Variables (work in both fields): {$tag} original node tag · {$server} address · {$port} port · {$scheme} protocol (also {$protocol}) · {$label} name from the link's #fragment · {$comment} comment · {$num} node number from 1": {
+    "value": "Переменные (работают в обоих полях): {$tag} исходный тег узла · {$server} адрес · {$port} порт · {$scheme} протокол (также {$protocol}) · {$label} имя из #fragment ссылки · {$comment} комментарий · {$num} номер узла с 1"
+  },
+  "node has no body — set a URI or JSON": {
+    "value": "у узла нет тела — задайте URI или JSON"
+  },
+  "Rename": {
+    "value": "Переименовать"
+  },
+  "The sing-box outbound this node is built from. Edit and press Apply; Regen from raw rebuilds it from the origin below. Tag and detour are restamped by the launcher at build time.": {
+    "value": "Outbound sing-box, из которого собран этот узел. Правьте и нажмите Apply; «Пересобрать из исходника» вернёт его к исходнику ниже. Тег и detour лаунчер проставляет заново на сборке."
+  },
+  "Read-only: nodes of a subscription are refreshed from the provider, so an edit here would be lost on the next update. Use “Copy to…” to take this node for yourself.": {
+    "value": "Только чтение: узлы подписки обновляются у провайдера, и правка здесь пропала бы на следующем обновлении. Заберите узел себе через «Скопировать в…»."
+  },
+  "This entry could not be parsed, so it has no outbound body — only the original line below. Fix it by pasting a corrected link into a folder.": {
+    "value": "Эту запись не удалось разобрать, тела у неё нет — только исходная строка ниже. Починить можно, вставив исправленную ссылку в папку."
+  },
+  "Nodes of a subscription come from the provider and cannot be added by hand — an entry added here would be gone on the next update. Use “Copy to…” on a node to take it for yourself.": {
+    "value": "Узлы подписки приезжают от провайдера, и добавить их руками нельзя — запись пропала бы на следующем обновлении. Заберите нужный узел себе через «Скопировать в…»."
+  },
+  "No nodes yet — refresh this subscription in the sources list.": {
+    "value": "Узлов пока нет — обновите подписку в списке источников."
+  },
+  "no working members": {
+    "value": "нет живых членов"
+  },
+  "node error(s)": {
+    "value": "ошибок узлов"
+  },
+  "Regen from origin": {
+    "value": "Пересобрать из исходника"
+  },
+  "Rebuild the outbound from the origin text above, discarding manual edits to the JSON?": {
+    "value": "Пересобрать outbound из текста исходника выше, отбросив ручные правки JSON?"
+  },
+  "Regen": {
+    "value": "Пересобрать"
+  },
+  "Origin is empty.": {
+    "value": "Исходник пуст."
+  },
+  "Subscription URL, Direct Links, JSON, WG/AWG INI ...": {
+    "value": "Ссылка на подписку, прямые ссылки, JSON, WG/AWG INI ..."
+  },
+  "subscription has never been updated — no nodes yet; press Update": {
+    "value": "подписка ещё ни разу не обновлялась — узлов нет; нажмите Update"
+  },
+  "reason was not stored": {
+    "value": "причина не сохранена"
+  },
+  "last update failed: %s": {
+    "value": "последнее обновление провалилось: %s"
+  },
+  "; config built from nodes fetched at %s": {
+    "value": "; конфиг собран из узлов от %s"
+  },
+  "User-Agent": {
+    "value": "User-Agent"
+  },
+  "default (launcher UA)": {
+    "value": "по умолчанию (UA лаунчера)"
+  },
+  "Some providers return a different node list depending on the client that asks. Leave empty to use the launcher default (or the global override from Settings).": {
+    "value": "Некоторые провайдеры отдают разный список узлов в зависимости от того, какой клиент спрашивает. Пусто — использовать UA лаунчера (или глобальную подмену из настроек)."
+  },
+  "as in system": {
+    "value": "как в системе"
+  },
+  "client User-Agent": {
+    "value": "User-Agent клиента"
+  },
+  "device ID for this subscription": {
+    "value": "ID устройства для этой подписки"
+  },
+  "Some providers return a different node list depending on the client that asks, and bind the subscription to a device by its ID. Leave “as in system” to use the global settings.": {
+    "value": "Некоторые провайдеры отдают разный список узлов в зависимости от того, какой клиент спрашивает, и привязывают подписку к устройству по его ID. Оставьте «как в системе», чтобы использовать общие настройки."
+  },
+  "Show provider relays as separate nodes": {
+    "value": "Показывать релеи провайдера отдельными узлами"
+  },
+  "Some providers route a node through an intermediate relay. Off: the relay lives inside its node and stays invisible. On: it becomes a separate node marked with a gear — you can see it, switch it off, and pick it as a chain hop. It is never offered in Directions.": {
+    "value": "Некоторые провайдеры ведут узел через промежуточный релей. Выключено: релей живёт внутри своего узла и не виден. Включено: он становится отдельным узлом с шестерёнкой — его видно, можно выключить и выбрать позицией цепочки. В Направлениях он не предлагается никогда."
+  },
+  "subscription %q: tag mask %q is gone — only prefix/postfix apply after the update": {
+    "value": "подписка %q: маска тегов %q упразднена — после обновления будут действовать только префикс/постфикс"
+  },
+  "source %s (%s): the node has neither tag nor name — tag not carried over": {
+    "value": "источник %s (%s): у узла нет ни тега, ни имени — тег не перенесён"
+  },
+  "node %q renamed to %q: the tag is taken by an earlier source (root node collision); source_id references were repointed": {
+    "value": "узел %q переименован в %q: тег занят более ранним источником (коллизия верхних узлов); ссылки по source_id переписаны"
+  },
+  "server %q: node body could not be parsed (%v) — source disabled, set the URI or JSON again": {
+    "value": "server %q: тело узла не разобрано (%v) — источник выключен, задайте URI или JSON заново"
+  },
+  "subscription %q: raw cache unavailable (load without a path) — nodes will appear after the first update": {
+    "value": "подписка %q: raw-кэш недоступен (загрузка без пути) — узлы появятся после первого обновления"
+  },
+  "subscription %q: materialization parser unavailable — nodes will appear after the first update": {
+    "value": "подписка %q: парсер материализации недоступен — узлы появятся после первого обновления"
+  },
+  "subscription %q: no raw cache — nodes will appear after the first update": {
+    "value": "подписка %q: raw-кэша нет — узлы появятся после первого обновления"
+  },
+  "subscription %q: raw cache could not be parsed (%v) — nodes will appear after the first update": {
+    "value": "подписка %q: raw-кэш не разобран (%v) — узлы появятся после первого обновления"
+  },
+  "subscription %q: disable mark (legacy hash %s…) matched no node": {
+    "value": "подписка %q: отметка выключения (legacy-хэш %s…) не сматчена ни с одним узлом"
+  },
+  "subscription %q: disable mark %q matched no node": {
+    "value": "подписка %q: отметка выключения %q не сматчена ни с одним узлом"
+  },
+  "subscription %q: %d disable mark(s) not carried over — no materialized nodes": {
+    "value": "подписка %q: %d отметк(и) выключения не перенесены — нет материализованных узлов"
+  },
+  "chain %q: hop %q does not resolve — the chain degrades fail-closed": {
+    "value": "цепочка %q: хоп %q не резолвится — цепочка деградирует fail-closed"
+  },
+  "chain %q: the detour link is gone in the v7 model — dropped": {
+    "value": "цепочка %q: detour-ссылка упразднена моделью v7 — отброшена"
+  },
+  "source %q: detour link to a missing source %s — degrades fail-closed": {
+    "value": "источник %q: detour-ссылка на несуществующий источник %s — деградирует fail-closed"
+  },
+  "source %q: legacy-hash detour matched no subscription node — the link is lost, set it again": {
+    "value": "источник %q: detour по legacy-хэшу не сматчен с узлом подписки — ссылка потеряна, назначьте её заново"
+  },
+  "source %q: detour node %q not found in the subscription — degrades fail-closed": {
+    "value": "источник %q: detour-узел %q не найден в подписке — деградирует fail-closed"
+  },
+  "source %q: legacy-hash detour matched no node — the link is lost, set it again": {
+    "value": "источник %q: detour по legacy-хэшу не сматчен ни с одним узлом — ссылка потеряна, назначьте её заново"
+  },
+  "fold %q: auto group renamed %q → %q (v7 model); references were repointed, and the core's cached pick for it will reset": {
+    "value": "свёртка %q: авто-группа переименована %q → %q (модель v7); ссылки переписаны, выбор в кэше ядра для неё будет сброшен"
+  },
+  "source %q: per-source Directions are gone — %s will be lost (create global Directions with filters instead)": {
+    "value": "источник %q: локальные Направления источника упразднены — %s будут потеряны (создайте глобальные Направления с фильтрами)"
+  },
+  "source %q: the “exclude from the global list” flag is gone — its nodes stay in the candidate pool (fold the source into a group for the previous behaviour)": {
+    "value": "источник %q: флаг «исключить из общего списка» упразднён — узлы останутся в пуле кандидатов (сверните источник в группу, если нужна прежняя картина)"
+  },
+  "subscription %q: %s": {
+    "value": "подписка %q: %s"
+  },
+  "no members left": {
+    "value": "не осталось ни одного участника"
+  },
+  "the link is empty": {
+    "value": "ссылка пуста"
+  },
+  "node %q is not among the config nodes": {
+    "value": "узла %q нет среди узлов конфига"
+  },
+  "the link's source was not found": {
+    "value": "источник ссылки не найден"
+  },
+  "the link carries no node tag": {
+    "value": "в ссылке нет тега узла"
+  },
+  "node %q is not in it": {
+    "value": "узла %q в нём нет"
+  },
+  "strip removes tls.utls while positions ": {
+    "value": "strip снимает tls.utls, а позиции "
+  },
+  " are reality nodes: the core refuses to start with such a config": {
+    "value": " — reality-узлы: ядро отказывается стартовать с таким конфигом"
+  },
+  " are not in the first position — the core allows a nested chain only at position 0": {
+    "value": " стоят не первой позицией — ядро допускает вложенную цепочку только позицией 0"
+  },
+  "the hop's source (%s) is excluded from the config": {
+    "value": "источник хопа (%s) исключён из конфига"
+  },
+  "hop %q lived in source %q, which is excluded from the config": {
+    "value": "хоп %q находился в источнике %q, который исключён из конфига"
+  },
+  "circular link: %q dials through %q, and the hop chain brings traffic back to %q": {
+    "value": "циклическая ссылка: %q ходит через %q, и по цепочке переходов трафик возвращается к %q"
+  },
+  "unresolved @var in rule_set %q — fragment dropped": {
+    "value": "unresolved @var in rule_set %q — фрагмент выброшен"
+  },
+  "unresolved @var in rules[%d] — rule dropped": {
+    "value": "unresolved @var in rules[%d] — правило выброшено"
+  },
+  "unresolved @var in dns_server %q — server dropped": {
+    "value": "unresolved @var in dns_server %q — сервер выброшен"
+  },
+  "unresolved @var in dns_rule — rule dropped": {
+    "value": "unresolved @var in dns_rule — правило выброшено"
+  },
+  "Direction auto group": {
+    "value": "авто-группа Направления"
+  },
+  "folder replacement": {
+    "value": "замена папки"
+  },
+  "template system tag": {
+    "value": "системный тег шаблона"
+  },
+  "directions: %q (%s) — filter %q matched none of the %d nodes; traffic will be blocked (default). Check the node selection.": {
+    "value": "directions: %q (%s) — фильтр %q не поймал ни одного узла из %d; трафик будет заблокирован (default). Проверьте отбор узлов."
+  },
+  "source %s (kind=%s): field %q is not legal for this kind — dropped": {
+    "value": "source %s (kind=%s): поле %q нелегально для этого kind — отброшено"
+  },
+  "state: source %s: node %q carries an unknown kind %q — the file comes from a newer schema, update the app": {
+    "value": "state: source %s: node %q несёт неизвестный kind %q — файл от более новой схемы, обновите приложение"
+  },
+  "state: source %s: kind=unsupported is legal only inside a container": {
+    "value": "state: source %s: kind=unsupported легален только внутри контейнера"
+  },
+  "state: source %s carries an unknown kind %q — the file comes from a newer schema, update the app": {
+    "value": "state: source %s несёт неизвестный kind %q — файл от более новой схемы, обновите приложение"
+  },
+  "node %s (kind=%s): field %q is not legal for this kind — dropped": {
+    "value": "node %s (kind=%s): поле %q нелегально для этого kind — отброшено"
+  },
+  "node %s: kind=auto without group — the group is not emitted": {
+    "value": "node %s: kind=auto без group — группа не эмитится"
+  },
+  "node %s: kind=unsupported without origin — the record source is lost": {
+    "value": "node %s: kind=unsupported без origin — исходник записи потерян"
+  },
+  "<file root>": {
+    "value": "<корень файла>"
+  },
+  "user_agents.json: empty user_agents list": {
+    "value": "user_agents.json: пустой список user_agents"
+  },
+  "Offer provider relays in Directions": {
+    "value": "Предлагать релеи провайдера в Направлениях"
+  },
+  "Some providers route a node through an intermediate relay. The relay is always part of the route — it shows in the node list with a gear and can be picked as a chain hop. Turn this on to also offer it in Directions, alongside regular nodes.": {
+    "value": "Некоторые провайдеры ведут узел через промежуточный релей. Релей всегда часть маршрута — он виден в списке узлов с шестерёнкой и доступен позицией цепочки. Включите, чтобы предлагать его ещё и в Направлениях, наравне с обычными узлами."
+  },
+  "%d node(s) dial through %d provider relay(s)": {
+    "value": "%d узл(ов) ходят через %d релей(ев) провайдера"
+  },
+  "The machine did not return its groups — press ↻ to retry": {
+    "value": "Машина не вернула свои группы — нажмите ↻ для повтора"
+  },
+  "The input was recognized, but nothing was added.": {
+    "value": "Ввод распознан, но добавлять оказалось нечего."
+  },
+  "Nothing added": {
+    "value": "Ничего не добавлено"
+  },
+  "Sources added": {
+    "value": "Источники добавлены"
+  },
+  "%d subscription(s)": {
+    "value": "подписок: %d"
+  },
+  "%d folder(s)": {
+    "value": "папок: %d"
+  },
+  "%d item(s) are already in the list.": {
+    "value": "Уже в списке: %d."
+  },
+  "Added: %s.": {
+    "value": "Добавлено: %s."
+  },
+  "%d item(s) skipped — already in the list.": {
+    "value": "Пропущено (уже в списке): %d."
+  },
+  "Re-test now": {
+    "value": "Замерить сейчас"
+  },
+  "Device ID (HWID)": {
+    "value": "Идентификатор устройства (HWID)"
+  },
+  "Origin (wg-quick config)": {
+    "value": "Происхождение (конфиг wg-quick)"
+  },
+  "Nodes moved, so their tags changed. Links to them were updated in: %s": {
+    "value": "Узлы переехали, поэтому их теги изменились. Ссылки на них обновлены в: %s"
+  },
+  "Links updated": {
+    "value": "Ссылки обновлены"
+  },
+  "Max nodes clamped to %d — that is the hard ceiling.": {
+    "value": "Максимум узлов урезан до %d — это жёсткий потолок."
+  },
+  "%s — a Direction with this tag already exists here, the incoming one is skipped": {
+    "value": "%s — Направление с таким тегом здесь уже есть, приехавшее пропущено"
+  },
+  "%s — the tag mask is gone, only prefix and postfix apply now": {
+    "value": "%s — маска тегов упразднена, теперь действуют только префикс и постфикс"
+  },
+  "%s — per-source Directions are gone, this one is not imported (create a global Direction with a filter instead)": {
+    "value": "%s — локальных Направлений источника больше нет, это не импортировано (заведите глобальное Направление с фильтром)"
+  },
+  "%s — the shared format has no field for the replacement tag: after import the group will carry the derived name, and rules aimed at the old one arrive turned off": {
+    "value": "%s — у формата обмена нет поля для тега замены: после импорта группа получит производное имя, а правила на прежнее приедут выключенными"
+  },
+  "%s — these subscription settings are not part of the shared format and did not go into the file; the provider may return a different set of nodes on the other machine": {
+    "value": "%s — эти настройки подписки формат обмена не переносит, в файл они не попали; провайдер на другой машине может отдать другой набор узлов"
+  },
+  "%s — the \"exclude from the global list\" flag is gone; its nodes stay in the candidate pool (fold the source into a group for the previous behaviour)": {
+    "value": "%s — галки «убрать из общего списка» больше нет, узлы остаются в общем пуле кандидатов (прежнее поведение даёт свёртка источника в группу)"
+  },
+  "%s — label dropped, a node is named by its tag": {
+    "value": "%s — подпись отброшена: имя узла — это его тег"
+  },
+  "Settings are merged, not replaced: subscriptions match by address, servers by what they connect to, and anything of yours that is not in the file stays. Routing rules are the exception — they are replaced by the file.": {
+    "value": "Настройки сливаются, а не заменяются: подписки сходятся по адресу, серверы — по тому, куда они подключаются, и всё ваше, чего нет в файле, остаётся. Исключение — правила маршрутизации: они замещаются файлом."
+  },
+  "Added: %d": {
+    "value": "Добавлено: %d"
+  },
+  "Updated subscriptions: %d": {
+    "value": "Обновлено подписок: %d"
+  },
+  "Already here, skipped: %d server(s)": {
+    "value": "Уже есть, пропущено: %d серв."
   }
 }
