@@ -48,7 +48,7 @@ func DiagnoseLanDenial(hostport string) LanDenialVerdict {
 	start := time.Now()
 	conn, err := net.DialTimeout("tcp", hostport, lanProbeTimeout)
 	if err == nil {
-		conn.Close()
+		_ = conn.Close()
 		return LanDenialRecovered
 	}
 	if errors.Is(err, syscall.EHOSTUNREACH) && time.Since(start) < lanInstantFail {
