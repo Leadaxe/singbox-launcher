@@ -26,6 +26,10 @@ echo ""
 # Check for build dependencies (CGO + GL/GLFW)
 check_deps() {
     local missing=0
+    if ! command -v go &>/dev/null; then
+        echo "Missing: go (Go toolchain not found in PATH; install from https://go.dev/dl and check 'go version')"
+        missing=1
+    fi
     if ! command -v pkg-config &>/dev/null; then
         echo "Missing: pkg-config"
         missing=1

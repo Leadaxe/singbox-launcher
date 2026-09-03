@@ -412,7 +412,48 @@ func xhttpBuildTransport(primary, fallback map[string]string) map[string]interfa
 	if xmux := xhttpXmuxFromSource(primary, fallback); len(xmux) > 0 {
 		t["xmux"] = xmux
 	}
+	xhttpGuardUplinkPlacement(t)
 	return t
+}
+
+// xhttpGuardUplinkPlacement приводит пару (mode, uplink_data_placement) к
+// форме, которую ядро принимает.
+//
+// Ядро отвергает ВЕСЬ конфиг, а не узел:
+//
+//	initialize outbound[N]: create client transport: xhttp:
+//	v2ray-xhttp: uplink_data_placement can be header only in packet-up mode
+//
+// Проверено на 1.14.0-lx.30: `header` с `stream-up` и `header` без режима —
+// fatal; `header` с `packet-up` — принимается. То есть одна запись подписки
+// оставляет человека вообще без VPN, и молчать об этом нельзя.
+//
+// Два исхода, и они разные по смыслу:
+//
+//   - режима НЕТ (или пуст) → дописываем `packet-up`. `header` осмыслен
+//     только в этом режиме, значит источник его подразумевал: мы
+//     доопределяем недосказанное, а не спорим с автором ссылки;
+//   - режим задан ЯВНО и он не `packet-up` → снимаем placement, режим не
+//     трогаем. Переписать явный режим значило бы сменить проволочный
+//     протокол узла — это хуже, чем снять одно поле (правило «не
+//     переписывать явное значение пользователя»).
+func xhttpGuardUplinkPlacement(t map[string]interface{}) {
+	if t == nil {
+		return
+	}
+	placement, _ := t["uplink_data_placement"].(string)
+	if placement != "header" {
+		return
+	}
+	mode, _ := t["mode"].(string)
+	switch mode {
+	case "packet-up":
+		// Рабочая пара — не трогаем.
+	case "":
+		t["mode"] = "packet-up"
+	default:
+		delete(t, "uplink_data_placement")
+	}
 }
 
 // xhttpXmuxFromSource assembles the nested xmux object. Xray ships it as a

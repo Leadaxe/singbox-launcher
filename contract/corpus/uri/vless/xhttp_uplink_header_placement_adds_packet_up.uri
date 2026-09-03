@@ -1,0 +1,4 @@
+# §416 uplinkDataPlacement=header без режима -> дописываем mode=packet-up + warning
+# header осмыслен только в packet-up: источник его подразумевал, режима не назвал.
+# Без этого ядро падает целиком: "uplink_data_placement can be header only in packet-up mode"
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?type=xhttp&uplinkDataPlacement=header&security=tls&sni=example-1.com#xhttp-plc-adds-mode
