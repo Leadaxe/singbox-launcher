@@ -4267,5 +4267,53 @@
   },
   "Already here, skipped: %d server(s)": {
     "value": "Уже есть, пропущено: %d серв."
+  },
+  "AmneziaWG obfuscation": {
+    "value": "Обфускация AmneziaWG"
+  },
+  "Masquerade domain (id)": {
+    "value": "Домен маскировки (id)"
+  },
+  "Regen obfuscation": {
+    "value": "Перегенерировать обфускацию"
+  },
+  "domain to masquerade as, e.g. example.com": {
+    "value": "домен для маскировки, например example.com"
+  },
+  "Masquerade domain required": {
+    "value": "Нужен домен маскировки"
+  },
+  "Masquerade domain": {
+    "value": "Домен маскировки"
+  },
+  "Node has no body to edit": {
+    "value": "У узла нет тела для правки"
+  },
+  "jmin must not exceed jmax": {
+    "value": "jmin не может превышать jmax"
+  },
+  "%s is required": {
+    "value": "%s обязателен"
+  },
+  "%s must be %d..%d": {
+    "value": "%s должен быть %d..%d"
+  },
+  "longer than 253 characters": {
+    "value": "длиннее 253 символов"
+  },
+  "must contain a dot, e.g. example.com": {
+    "value": "нужна точка, например example.com"
+  },
+  "empty or too long label": {
+    "value": "пустая или слишком длинная часть"
+  },
+  "label starts or ends with a hyphen": {
+    "value": "часть начинается или заканчивается дефисом"
+  },
+  "only letters, digits and hyphens are allowed": {
+    "value": "допустимы только буквы, цифры и дефис"
+  },
+  "Junk datagrams go out before the handshake, and the first one is disguised as traffic to the domain above. Packet padding (s1-s4) and magic headers (h1-h4) stay at the WireGuard defaults — any other value there and the server stops recognising the handshake. Press the button to write these fields into the node.": {
+    "value": "Перед рукопожатием уходят мусорные датаграммы, а первая маскируется под трафик к домену выше. Набивка пакетов (s1–s4) и magic-заголовки (h1–h4) остаются дефолтными для WireGuard: любое другое значение — и сервер перестаёт узнавать рукопожатие. Кнопка записывает эти поля в узел."
   }
 }

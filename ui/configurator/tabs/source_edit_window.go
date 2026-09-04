@@ -778,6 +778,9 @@ func showSourceEditWindowAt(
 	// ниже, поэтому ссылка объявлена заранее (nil до её сборки — Regen из
 	// формы возможен только после того, как окно собрано целиком).
 	var refreshJSONAfterOriginRegen func()
+	// refreshAWGAfterRegen — перечитывание блока обфускации после пересборки
+	// тела. Как и вкладка JSON, блок строится ниже кнопки Regen.
+	var refreshAWGAfterRegen func()
 	var originBtnRow *fyne.Container
 	var setOriginMode func(editing bool)
 
@@ -944,6 +947,11 @@ func showSourceEditWindowAt(
 	// scratch.DetourTag (stamped as-is); a "» node" option sets
 	// scratch.DetourNodeTag (looked up by that tag at generation time).
 	// The two are mutually exclusive.
+	// rebuildSettingsAfterDetour — пересборка раскладки Settings после смены
+	// detour. Объявлена заранее: сама раскладка строится ниже, а обработчик
+	// выбора — выше неё.
+	var rebuildSettingsAfterDetour func()
+
 	detourNone := locale.T("(none — direct)")
 	detourSelect := widget.NewSelect(nil, nil)
 	detourHint := widget.NewLabel(locale.T(sourceDetourHintText))
@@ -967,6 +975,13 @@ func showSourceEditWindowAt(
 			p.Detour = &link
 		}
 		// SPEC 117: выбор буферизуется в копии до Save.
+		//
+		// Раскладку пересобираем: блок обфускации виден только без detour, и
+		// без пересборки он остался бы на экране у узла, которому только что
+		// назначили выход через чужой outbound.
+		if rebuildSettingsAfterDetour != nil {
+			rebuildSettingsAfterDetour()
+		}
 	}
 	detourSelect.OnChanged = detourOnChanged
 	refreshDetourOptions := func() {
@@ -1170,6 +1185,12 @@ func showSourceEditWindowAt(
 		if refreshJSONAfterOriginRegen != nil {
 			refreshJSONAfterOriginRegen()
 		}
+		// И блок обфускации тоже: новое тело могло приехать с полями AWG из
+		// ссылки — или, наоборот, без них. Форма обязана показывать то, что
+		// в узле сейчас, а не то, что было до пересборки.
+		if refreshAWGAfterRegen != nil {
+			refreshAWGAfterRegen()
+		}
 		originTextAtOpen = raw
 		setOriginMode(false)
 	})
@@ -1209,6 +1230,32 @@ func showSourceEditWindowAt(
 		settingsContent.Add(widget.NewLabel(locale.T("Detour server (chain)")))
 		settingsContent.Add(detourSelect)
 		settingsContent.Add(detourHint)
+	}
+
+	// Блок обфускации AmneziaWG (source_awg_edit.go). Живёт СРАЗУ ПОСЛЕ
+	// detour и только когда detour не выбран: узел, ходящий через чужой
+	// outbound, свой транспорт не поднимает — обфусцировать в нём нечего, и
+	// показывать поля, которые ни на что не влияют, значит врать.
+	//
+	// Запись идёт в тело рабочей копии, как и все правки этого окна, поэтому
+	// после неё нужно ровно то же, что после Regen происхождения: перерисовать
+	// вкладку JSON и пометить состояние изменённым.
+	awgUI := newAWGBlock(func() *wizardmodels.Node { return &scratch.Node }, win, func() {
+		if refreshJSONAfterOriginRegen != nil {
+			refreshJSONAfterOriginRegen()
+		}
+		presenter.MarkAsChanged()
+	})
+	awgUI.load(&scratch.Node)
+	refreshAWGAfterRegen = func() { awgUI.load(&scratch.Node) }
+
+	// awgVisibleFor — показывать ли блок: тело WireGuard и отсутствие detour.
+	awgVisibleFor := func() bool {
+		p := srcRef()
+		if p == nil || p.Detour != nil {
+			return false
+		}
+		return awgEditableNode(&scratch.Node)
 	}
 	rebuildSettingsLayout := func() {
 		settingsContent.Objects = settingsContent.Objects[:0]
@@ -1250,6 +1297,11 @@ func showSourceEditWindowAt(
 			settingsContent.Add(nodeTagEntry)
 			settingsContent.Add(widget.NewSeparator())
 			detourBlock()
+			if awgVisibleFor() {
+				settingsContent.Add(widget.NewSeparator())
+				awgUI.load(&scratch.Node)
+				settingsContent.Add(awgUI.content)
+			}
 			settingsContent.Add(widget.NewSeparator())
 			// Подпись по виду происхождения: «Server URI» над блоком
 			// wg-quick врала бы про природу текста (SPEC 119).
@@ -1323,6 +1375,7 @@ func showSourceEditWindowAt(
 		}
 		settingsContent.Refresh()
 	}
+	rebuildSettingsAfterDetour = rebuildSettingsLayout
 	rebuildSettingsLayout()
 	// Gutter — ВНУТРИ скролла (канонический приём, components.ScrollGutter
 	// call pattern): сам скролл встаёт вплотную к краю окна, а содержимое
