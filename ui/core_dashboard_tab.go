@@ -375,9 +375,11 @@ func (tab *CoreDashboardTab) createStatusRow() fyne.CanvasObject {
 	connBtn.SetToolTip(locale.T("Connection settings: core engine and daemon pairing"))
 	connBtn.Importance = widget.LowImportance
 
-	// Кружок состояния канала к демону — слева от ⚙, по нему открывается то же
-	// окно настроек подключения: маркер первым показывает, что с каналом
-	// что-то не так, и логично, что по нему же в него и идут.
+	// Кружок состояния канала к демону — в начале строки, перед «Core Status»,
+	// ровно там, где у машин на Remote он стоит перед именем: одинаковое
+	// место — одинаковое прочтение. По нему открывается то же окно настроек
+	// подключения: маркер первым показывает, что с каналом что-то не так, и
+	// логично, что по нему же в него и идут.
 	tab.daemonMarker, tab.daemonMarkerBox = newMarkerWidget(
 		theme.Color(theme.ColorNameDisabled),
 		daemonMarkerTooltip(markerIdle, core.DaemonLinkState{}, false),
@@ -387,7 +389,7 @@ func (tab *CoreDashboardTab) createStatusRow() fyne.CanvasObject {
 	tab.daemonMarkerBox.Hide()
 
 	statusContainer := container.NewBorder(nil, nil,
-		tab.statusLabel, container.NewHBox(tab.daemonMarkerBox, connBtn),
+		container.NewHBox(tab.daemonMarkerBox, tab.statusLabel), connBtn,
 	)
 
 	buttonsContainer := container.NewCenter(
