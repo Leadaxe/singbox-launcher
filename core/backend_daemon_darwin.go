@@ -57,10 +57,57 @@ type DaemonBackend struct {
 	// connTracker — накопительный снимок соединений из SubscribeConnections
 	// (traffic-график по gRPC вместо Clash /connections).
 	connTracker *connTracker
+
+	// link — состояние канала к демону для индикатора у «Core Status».
+	// Считается по кадрам статус-стрима: отдельного heartbeat нет, чтобы не
+	// добавлять трафик ради кружка.
+	linkMu sync.Mutex
+	link   DaemonLinkState
 }
 
 // daemonLogMaxLines зеркалит кольцевой буфер демона (lxd logMaxLines).
 const daemonLogMaxLines = 3000
+
+// daemonLinkFailThreshold — сколько промахов подряд превращают «моргнуло»
+// (жёлтый) в «не отвечает» (красный). Зеркалит heartbeatFailThreshold у
+// маркеров удалённых машин, чтобы индикаторы читались одинаково.
+const daemonLinkFailThreshold = 2
+
+// LinkState отдаёт снимок состояния канала (AppController.DaemonLink).
+func (b *DaemonBackend) LinkState() DaemonLinkState {
+	b.linkMu.Lock()
+	defer b.linkMu.Unlock()
+	return b.link
+}
+
+// noteLinkOK отмечает пришедший кадр статуса; возвращает true, если состояние
+// маркера изменилось и UI надо перерисовать (первый кадр, возврат после
+// промахов, смена fatal-состояния ядра).
+func (b *DaemonBackend) noteLinkOK(coreFatal bool, fatalErr string) bool {
+	b.linkMu.Lock()
+	defer b.linkMu.Unlock()
+	changed := !b.link.EverConnected || b.link.FailStreak > 0 || b.link.CoreFatal != coreFatal
+	b.link.EverConnected = true
+	b.link.FailStreak = 0
+	b.link.LastErr = ""
+	b.link.LastOK = time.Now()
+	b.link.CoreFatal = coreFatal
+	b.link.FatalErr = fatalErr
+	return changed
+}
+
+// noteLinkFail отмечает промах канала. Перерисовку просим только на смене
+// цвета маркера (первый промах — жёлтый, порог — красный), как в heartbeat
+// удалённых машин.
+func (b *DaemonBackend) noteLinkFail(err error) bool {
+	b.linkMu.Lock()
+	defer b.linkMu.Unlock()
+	b.link.FailStreak++
+	if err != nil {
+		b.link.LastErr = err.Error()
+	}
+	return b.link.FailStreak == 1 || b.link.FailStreak == daemonLinkFailThreshold
+}
 
 // DaemonIdentityDir — каталог клиентской пары сопряжения (bin/daemon).
 func DaemonIdentityDir(execDir string) string {
@@ -408,12 +455,23 @@ func (b *DaemonBackend) superviseStatus() {
 		if err == nil {
 			var stream grpc.ServerStreamingClient[daemonpb.ServiceStatus]
 			stream, err = client.SubscribeServiceStatus(b.ctx, &emptypb.Empty{})
-			if err == nil && b.consumeStatusStream(stream) {
-				backoff = time.Second
+			if err == nil {
+				var recvErr error
+				var received bool
+				received, recvErr = b.consumeStatusStream(stream)
+				if received {
+					backoff = time.Second
+				}
+				err = recvErr
 			}
 		}
 		if err != nil {
 			debuglog.DebugLog("daemon.supervisor: status stream unavailable: %v", err)
+		}
+		// Промах канала: стрим не поднялся или оборвался. Закрытие по Close
+		// (ctx отменён) промахом не считается — там уже нечего показывать.
+		if b.ctx.Err() == nil && b.isActive() && b.noteLinkFail(err) {
+			b.refreshUI()
 		}
 		select {
 		case <-b.ctx.Done():
@@ -426,21 +484,27 @@ func (b *DaemonBackend) superviseStatus() {
 	}
 }
 
-// consumeStatusStream читает стрим до обрыва; возвращает true, если был
-// получен хотя бы один кадр (стрим реально работал, а не умер на первом Recv).
-func (b *DaemonBackend) consumeStatusStream(stream grpc.ServerStreamingClient[daemonpb.ServiceStatus]) bool {
+// consumeStatusStream читает стрим до обрыва; первым значением возвращает,
+// был ли получен хотя бы один кадр (стрим реально работал, а не умер на первом
+// Recv), вторым — ошибку обрыва: supervisor показывает её в маркере канала.
+func (b *DaemonBackend) consumeStatusStream(stream grpc.ServerStreamingClient[daemonpb.ServiceStatus]) (bool, error) {
 	ac := b.ac
 	received := false
 	for {
 		status, err := stream.Recv()
 		if err != nil {
 			debuglog.DebugLog("daemon.supervisor: status stream closed: %v", err)
-			return received
+			return received, err
 		}
 		received = true
 		if !b.isActive() {
 			// Стрим вытесненного backend'а не должен дёргать общее состояние.
 			continue
+		}
+		// Кадр дошёл — демон на связи. Маркер перерисовываем только на смене
+		// состояния, а не на каждом кадре.
+		if b.noteLinkOK(status.GetStatus() == daemonpb.ServiceStatus_FATAL, status.GetErrorMessage()) {
+			b.refreshUI()
 		}
 		wasRunning := ac.RunningState.IsRunning()
 		var running bool

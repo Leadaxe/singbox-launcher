@@ -427,15 +427,23 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				lanHint := lanDenialHint(diagnoseLanDenialFromErr(err))
 				fyne.Do(func() {
 					if err != nil {
-						ac.UIService.ApiStatusLabel.SetText(locale.T("❌ gRPC unavailable"))
 						// FailedPrecondition = канал и сопряжение живы, но
-						// ядро внутри демона не запущено — сырой RPC-текст
-						// пугает, а лекарство одно: нажать Start.
+						// ядро внутри демона не запущено. Это штатное
+						// состояние, а не сбой: диалога здесь нет — он всплывал
+						// при каждом входе на вкладку. Состояние связи с
+						// демоном показывает кружок у «Core Status», а строка
+						// говорит, что канал в порядке, стоит ядро.
+						//
+						// Проверка стоит ДО «❌ gRPC unavailable»: иначе крестик
+						// успевал мигнуть перед правильным текстом.
 						if strings.Contains(err.Error(), "service is not started") {
-							ShowErrorText(ac.UIService.MainWindow, locale.T("Daemon"),
-								locale.T("The daemon is paired and reachable, but the core is not started yet. Press Start to bring the VPN up."))
+							ac.UIService.ApiStatusLabel.SetText(locale.T("✅ gRPC (daemon) · core stopped"))
+							if panel.listStatusLabel != nil {
+								panel.listStatusLabel.SetText(locale.T("The core is stopped — press Start to load the node list."))
+							}
 							return
 						}
+						ac.UIService.ApiStatusLabel.SetText(locale.T("❌ gRPC unavailable"))
 						// Машина недоступна по сети (роутер перезагружается,
 						// сменился Wi-Fi, кабель): показывать сырой
 						// «rpc error: code = Unavailable desc = transport:

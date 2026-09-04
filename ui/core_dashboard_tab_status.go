@@ -141,6 +141,11 @@ func (tab *CoreDashboardTab) updateRunningStatus() {
 		tab.statusLabel.Importance = widget.MediumImportance // Текст всегда черный
 	}
 
+	// Кружок канала к демону стоит в той же строке и обновляется вместе с
+	// текстом: он про связь с демоном, а не про состояние ядра, и в
+	// daemon-режиме «Stopped» без него читалось бы как поломка.
+	tab.updateDaemonMarker(buttonState.IsRunning)
+
 	// Update buttons based on centralized state
 	if tab.startButton != nil {
 		if buttonState.StartEnabled {

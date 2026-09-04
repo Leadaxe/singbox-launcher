@@ -80,6 +80,11 @@ type CoreDashboardTab struct {
 	parserProgressBar         *widget.ProgressBar // Progress bar for parser
 	parserStatusLabel         *widget.Label       // Status label for parser
 
+	// Маркер канала к локальному демону — тот же кружок, что у машин на
+	// вкладке Remote. Виден только в daemon-режиме (в classic демона нет).
+	daemonMarker    *machineMarker
+	daemonMarkerBox fyne.CanvasObject
+
 	// Subscription operation panel — single in-place toast under Exit
 	// button. Updates as progress changes; final state (✓/✗ + ×) auto-hides
 	// after subsToastTTL.
@@ -349,7 +354,7 @@ func (tab *CoreDashboardTab) createStatusRow() fyne.CanvasObject {
 	// Раньше кнопка жила в шапке списка прокси, который может показывать узлы
 	// роутера, — и читалась как настройка удалённой машины. Её место здесь,
 	// рядом со статусом ядра, к которому она и относится.
-	connBtn := ttwidget.NewButton("⚙", func() {
+	openConn := func() {
 		OpenConnectionWindow(tab.controller, func() {
 			// Сменился движок или сопряжение — список прокси должен перечитать
 			// данные нового транспорта.
@@ -359,13 +364,30 @@ func (tab *CoreDashboardTab) createStatusRow() fyne.CanvasObject {
 			if tab.controller.UIService != nil && tab.controller.UIService.RefreshAPIFunc != nil {
 				tab.controller.UIService.RefreshAPIFunc()
 			}
+			// Движок мог смениться classic↔daemon — маркер канала должен
+			// появиться или исчезнуть вместе с ним.
+			if tab.controller.UIService != nil && tab.controller.UIService.UpdateCoreStatusFunc != nil {
+				tab.controller.UIService.UpdateCoreStatusFunc()
+			}
 		})
-	})
+	}
+	connBtn := ttwidget.NewButton("⚙", openConn)
 	connBtn.SetToolTip(locale.T("Connection settings: core engine and daemon pairing"))
 	connBtn.Importance = widget.LowImportance
 
+	// Кружок состояния канала к демону — слева от ⚙, по нему открывается то же
+	// окно настроек подключения: маркер первым показывает, что с каналом
+	// что-то не так, и логично, что по нему же в него и идут.
+	tab.daemonMarker, tab.daemonMarkerBox = newMarkerWidget(
+		theme.Color(theme.ColorNameDisabled),
+		daemonMarkerTooltip(markerIdle, core.DaemonLinkState{}, false),
+		openConn,
+	)
+	// В classic-режиме демона нет — до первого updateDaemonMarker прячем.
+	tab.daemonMarkerBox.Hide()
+
 	statusContainer := container.NewBorder(nil, nil,
-		tab.statusLabel, connBtn,
+		tab.statusLabel, container.NewHBox(tab.daemonMarkerBox, connBtn),
 	)
 
 	buttonsContainer := container.NewCenter(
