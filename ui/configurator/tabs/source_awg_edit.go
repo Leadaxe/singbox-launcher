@@ -38,6 +38,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/internal/locale"
@@ -399,9 +400,9 @@ func newAWGBlock(
 	// в правый край одной HBox-лентой.
 	tail := container.NewHBox(
 		widget.NewLabel("ib"), b.browser,
-		widget.NewLabel("jc"), awgNumCell(b.jc),
-		widget.NewLabel("jmin"), awgNumCell(b.jmin),
-		widget.NewLabel("jmax"), awgNumCell(b.jmax),
+		widget.NewLabel("jc"), awgNumCell(b.jc, awgJCDigits),
+		widget.NewLabel("jmin"), awgNumCell(b.jmin, awgJSizeDigits),
+		widget.NewLabel("jmax"), awgNumCell(b.jmax, awgJSizeDigits),
 		b.apply,
 	)
 	b.rows = []fyne.CanvasObject{
@@ -416,16 +417,27 @@ func newAWGBlock(
 // раскладке: сам Entry своего размера не знает.
 func awgNumEntry() *widget.Entry { return widget.NewEntry() }
 
-// awgNumCell — поле числа, ужатое до awgNumFieldWidth.
-func awgNumCell(e *widget.Entry) fyne.CanvasObject {
+// awgNumCell — поле числа шириной под digits знаков.
+//
+// Ширина считается ИЗМЕРЕНИЕМ текста, а не пикселями наугад: при другом
+// шрифте или масштабе интерфейса фиксированное число обрезало бы цифры или
+// оставляло пустое место. К измеренной строке добавляется внутренний отступ
+// поля с обеих сторон — без него текст упирался бы в рамку.
+func awgNumCell(e *widget.Entry, digits int) fyne.CanvasObject {
+	sample := strings.Repeat("8", digits) // самая широкая цифра в большинстве шрифтов
+	textSize := theme.TextSize()
+	w := fyne.MeasureText(sample, textSize, fyne.TextStyle{}).Width
 	sizer := canvas.NewRectangle(color.Transparent)
-	sizer.SetMinSize(fyne.NewSize(awgNumFieldWidth, 0))
+	sizer.SetMinSize(fyne.NewSize(w+4*theme.Padding(), 0))
 	return container.NewStack(sizer, e)
 }
 
-// awgNumFieldWidth — ширина поля под jc/jmin/jmax: числа короткие (одна-три
-// цифры), и полноразмерное поле рядом с двумя такими же съедало бы строку.
-const awgNumFieldWidth = 56
+// Разрядность полей: jc — счётчик датаграмм (десятки), jmin/jmax — их размеры
+// в байтах (сотни). Поле под свою величину и никак не шире.
+const (
+	awgJCDigits    = 2
+	awgJSizeDigits = 3
+)
 
 // values — что сейчас набрано в форме.
 func (b *awgBlock) values() awgSettings {
