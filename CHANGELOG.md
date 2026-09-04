@@ -10,12 +10,16 @@
 
 Подробные заметки: [docs/release_notes/1-5-5.md](docs/release_notes/1-5-5.md) (черновик).
 
-### Возможности (1)
+### Возможности (3)
 
-- feat(wizard): поле «TUN route exclude addresses» в Settings — CIDR-префиксы (по одному на строку), которые auto_route оставляет вне туннеля на уровне маршрутов ОС (`tun.route_exclude_address`); default пустой, видно при включённых TUN и auto_route; контракт 0.12.8. Идея и первый вариант — PR #114 (alexandersafin)
+- feat(daemon): индикатор связи с демоном у строки Core Status — кружок как у машин на Remote (зелёный/жёлтый/красный, FATAL = красный), состояние по кадрам существующего стрима статуса; «служба не запущена» больше не показывает модальное окно (`d0c5933`, `3485bc0`)
+- feat(xhttp): предупреждения гарда пары mode/uplink_data_placement — правка видна пользователю в строке источника, а не молча (`297ed81`)
+- feat(wizard): поле «TUN route exclude addresses» в Settings — CIDR-префиксы (по одному на строку), которые auto_route оставляет вне туннеля на уровне маршрутов ОС (`tun.route_exclude_address`); default пустой, видно при включённых TUN и auto_route; контракт 0.12.8. Идея и первый вариант — PR #114 (alexandersafin) (`acf39e2`)
 
-### Исправления (1)
+### Исправления (3)
 
+- fix(rules): SRS-правило переживает переоткрытие Конфигуратора — legacy-вид несёт tag записи rule_set, кнопка «srs» на месте, «Итог» больше не падает на «rule-set: remote entry missing tag»; сборка визарда не дублирует правила текущего формата состояния (`230807d`)
+- fix(xhttp): guard пары mode/uplink_data_placement — `header` вне режима packet-up заставлял ядро отвергнуть весь конфиг (`5ff6a7a`)
 - fix(xhttp): host/path/mode только из плоских параметров ссылки — одноимённые ключи в extra игнорируются, как в Xray (контракт 0.12.7, D-097; кейс 4PDA #1755) (`dd16ca0`)
 
 ## v1.5.4

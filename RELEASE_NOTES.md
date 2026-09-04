@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v1.5.5
+
+Патч к v1.5.4. Правило из ссылки на SRS больше не «теряет srs» при переоткрытии Конфигуратора: раньше после перезахода у правила пропадала кнопка скачивания, а вкладка «Итог» отказывалась собирать конфиг и не пускала к Save. Ссылки XHTTP разбираются как в самом Xray: `host`, `path` и `mode` берутся из плоских параметров, а несовместимая пара `mode` / `uplink_data_placement` выправляется до ядра — одна битая запись больше не роняет весь конфиг, и правка видна предупреждением в строке источника. В Settings появилось поле «TUN route exclude addresses»: перечисленные CIDR-префиксы `auto_route` оставляет вне туннеля на уровне маршрутов ОС. В daemon-режиме у строки Core Status теперь цветной кружок связи с демоном, как у машин на Remote, а «служба не запущена» перестало быть модальным окном. Подробнее: [docs/release_notes/1-5-5.md](docs/release_notes/1-5-5.md).
+
+### Highlights (EN) — v1.5.5
+
+A patch on top of v1.5.4. A rule built from an SRS URL no longer "loses its srs" when the Configurator is reopened: previously the download button disappeared after a reopen and the Summary tab refused to build the config, blocking Save. XHTTP links are parsed the way Xray itself does: `host`, `path` and `mode` come from the flat parameters, and an incompatible `mode` / `uplink_data_placement` pair is corrected before the core sees it — one bad entry no longer brings down the whole config, and the correction shows up as a warning on the source row. Settings gained a "TUN route exclude addresses" field: the CIDR prefixes listed there are left outside the tunnel by `auto_route` at the OS routing level. In daemon mode the Core Status row now carries a coloured link indicator, like machines on the Remote tab, and "service is not started" is no longer a modal dialog. Details: [docs/release_notes/1-5-5.md](docs/release_notes/1-5-5.md).
+
 ### Выжимка (RU) — v1.5.4
 
 **Папки — свои контейнеры для узлов.** Заводите папку, наполняйте её вставкой ссылок, импортом файлов или заливкой из подписки — и правьте состав как хотите: выключенный узел останется выключенным, а повторная заливка сливает, а не переписывает. Узел, который провайдер прислал, но мы не разобрали, больше не исчезает: он виден на своём месте с причиной и исходной строкой. Запись источника из «Copy JSON» вставляется обратно в поле Add, а сама кнопка Add теперь всегда отчитывается об итоге.
