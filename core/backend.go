@@ -3,6 +3,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"singbox-launcher/core/services"
 
@@ -478,4 +479,40 @@ func (ac *AppController) initBackendFromSettings() {
 	}
 	debuglog.InfoLog("backend: daemon mode active (lxd control channel)")
 	ac.setBackend(b)
+}
+
+// DaemonLinkState — состояние канала к локальному демону (lxd) для индикатора в UI.
+//
+// Собирается из уже существующего стрима SubscribeServiceStatus, а не отдельным
+// опросом: полученный кадр = демон отвечает, обрыв/неподнявшийся стрим = промах.
+// Новых запросов в сеть индикатор не добавляет.
+type DaemonLinkState struct {
+	// EverConnected — был ли получен хотя бы один кадр статуса с момента создания бэкенда.
+	EverConnected bool
+	// FailStreak — сколько раз подряд стрим статуса оборвался/не поднялся (0 = сейчас живой).
+	FailStreak int
+	// LastErr — ошибка последнего промаха.
+	LastErr string
+	// LastOK — когда последний раз приходил кадр.
+	LastOK time.Time
+	// CoreFatal / FatalErr — демон ответил, но ядро в FATAL (последний кадр).
+	CoreFatal bool
+	FatalErr  string
+}
+
+// daemonLinkSource — бэкенд, умеющий рассказать о своём канале к демону.
+// Через интерфейс, а не через *DaemonBackend: тип есть только на darwin, а
+// UI-код общий для всех платформ.
+type daemonLinkSource interface {
+	LinkState() DaemonLinkState
+}
+
+// DaemonLink возвращает состояние канала к демону; ok=false, если активный
+// бэкенд не daemon (classic ничего про демона не знает — индикатор прячется).
+func (ac *AppController) DaemonLink() (DaemonLinkState, bool) {
+	src, ok := ac.Backend().(daemonLinkSource)
+	if !ok {
+		return DaemonLinkState{}, false
+	}
+	return src.LinkState(), true
 }

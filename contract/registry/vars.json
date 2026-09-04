@@ -134,6 +134,12 @@
       "in": "desktop",
       "note": "tun.interface_name; РАЗРЫВ N1: на mobile — tun_name; per-platform default с @runtime.target (desktop-расширение)"
     },
+    "tun_address_exclude": {
+      "type": "text_list",
+      "portable": false,
+      "in": "desktop",
+      "note": "tun.route_exclude_address; CIDR-префиксы (по одному на строку), которые auto_route оставляет вне туннеля на уровне маршрутов ОС — трафик в них в ядро не попадает вовсе. Default пустой: LAN и так уводит пресет private-ips внутри ядра; поле для случаев, когда трафик не должен касаться туннеля (strict_route на Windows, подсеть второго VPN, управляющий доступ к роутеру). Непереносима: список привязан к сети машины. Идея — PR #114 (alexandersafin), 0.12.8"
+    },
     "tun_name": {
       "type": "text",
       "portable": false,

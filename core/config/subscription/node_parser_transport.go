@@ -281,7 +281,7 @@ type xhttpStringField struct {
 
 // xhttpStringFields are the v2 string-valued XHTTP transport fields (SPEC 002 v2,
 // PARAM_MAP). mode/path/host are handled separately (path needs ?-tail trimming,
-// host falls back differently); these are pure passthrough — read as-is, emit
+// host falls back differently, и вся тройка читается только из плоского слоя — D-097); these are pure passthrough — read as-is, emit
 // under jsonKey. Value validation against the allowed sets is left to the core.
 var xhttpStringFields = []xhttpStringField{
 	{"session_placement", []string{"session_placement", "sessionPlacement"}},
@@ -342,8 +342,9 @@ var xhttpXmuxIntFields = []xhttpStringField{
 // full SPEC 002 v2 field set: the base trio (mode/path/host), padding, placement
 // and key fields, x-padding obfs, and packet-up tuning. Values come from two
 // sources merged into one lookup: flat query params and the `extra` URL-encoded
-// JSON (extra wins for its keys). Value normalization is otherwise left to the
-// core. See SPEC 071 / sing-box-lx SPEC 002.
+// JSON (extra wins for its keys — кроме базовой тройки mode/path/host, которую
+// Xray всегда берёт из плоских, см. xhttpBuildTransport). Value normalization is
+// otherwise left to the core. See SPEC 071 / sing-box-lx SPEC 002.
 func xhttpTransportFromQuery(q url.Values) map[string]interface{} {
 	return xhttpBuildTransport(xhttpMergeSource(q), xhttpFlattenQuery(q))
 }
@@ -352,7 +353,9 @@ func xhttpTransportFromQuery(q url.Values) map[string]interface{} {
 // assembled, shared by the share-URI parser and the Xray-JSON converter so both
 // branches support exactly the same field set (SPEC 102 R2). Values arrive
 // pre-stringified in two layers: `primary` wins over `fallback` for keys present
-// in both (SPEC 002 §1.5 — Xray's `extra` overrides the flat settings).
+// in both (SPEC 002 §1.5 — Xray's `extra` overrides the flat settings). Единственное
+// исключение — mode/path/host: там всё наоборот, плоский слой перекрывает extra
+// (D-097, разбор ниже у самой тройки).
 //
 // Callers are responsible for flattening their own source into these maps:
 // the URI branch decodes the `extra` JSON and folds the query string, the Xray
@@ -360,13 +363,25 @@ func xhttpTransportFromQuery(q url.Values) map[string]interface{} {
 func xhttpBuildTransport(primary, fallback map[string]string) map[string]interface{} {
 	t := map[string]interface{}{"type": "xhttp"}
 
-	if v := xhttpLookup(primary, fallback, "mode"); v != "" {
+	// Базовая тройка host/path/mode — исключение из правила «extra побеждает»:
+	// сам Xray в infra/conf/transport_method.go (SplitHTTPConfig.Build) после
+	// разбора extra безусловно затирает её внешними значениями —
+	//   extra.Host = c.Host; extra.Path = c.Path; extra.Mode = c.Mode
+	// — то есть плоские поля выигрывают ДАЖЕ будучи пустыми. Поэтому здесь
+	// читается только fallback (плоский слой), а одноимённые ключи из extra
+	// игнорируются целиком. Кейс 4PDA #1755: ссылка несла плоские
+	// mode=packet-up&path=/hls/v2/track/.../&host=media... и extra с пустыми
+	// host/path/mode; со слиянием «extra побеждает» path съезжал на "/" (сервер
+	// отвечал 404 unexpected upload status), а пустой mode давал auto → ядро
+	// падало на «uplink_data_placement can be header only in packet-up mode».
+	// Прочие ключи extra по-прежнему база (см. xhttpLookup ниже).
+	if v := xhttpMapGetFold(fallback, "mode"); v != "" {
 		t["mode"] = v
 	}
-	if p := xhttpCleanPath(xhttpLookup(primary, fallback, "path")); p != "" {
+	if p := xhttpCleanPath(xhttpMapGetFold(fallback, "path")); p != "" {
 		t["path"] = p
 	}
-	if host := xhttpLookup(primary, fallback, "host"); host != "" {
+	if host := xhttpMapGetFold(fallback, "host"); host != "" {
 		t["host"] = host
 	}
 	if pad := xhttpLookup(primary, fallback, "x_padding_bytes", "xPaddingBytes"); pad != "" {
@@ -398,6 +413,68 @@ func xhttpBuildTransport(primary, fallback map[string]string) map[string]interfa
 		t["xmux"] = xmux
 	}
 	return t
+}
+
+// xhttpGuardUplinkPlacement приводит пару (mode, uplink_data_placement) к
+// форме, которую ядро принимает.
+//
+// Ядро отвергает ВЕСЬ конфиг, а не узел:
+//
+//	initialize outbound[N]: create client transport: xhttp:
+//	v2ray-xhttp: uplink_data_placement can be header only in packet-up mode
+//
+// Проверено на 1.14.0-lx.30: `header` с `stream-up` и `header` без режима —
+// fatal; `header` с `packet-up` — принимается. То есть одна запись подписки
+// оставляет человека вообще без VPN, и молчать об этом нельзя.
+//
+// Два исхода, и они разные по смыслу:
+//
+//   - режима НЕТ (или пуст) → дописываем `packet-up`. `header` осмыслен
+//     только в этом режиме, значит источник его подразумевал: мы
+//     доопределяем недосказанное, а не спорим с автором ссылки;
+//   - режим задан ЯВНО и он не `packet-up` → снимаем placement, режим не
+//     трогаем. Переписать явный режим значило бы сменить проволочный
+//     протокол узла — это хуже, чем снять одно поле (правило «не
+//     переписывать явное значение пользователя»).
+//
+// Возвращает код предупреждения для узла (пусто = ничего не делали):
+// сам гард узла не видит — он собирает транспорт из голых карт, — поэтому
+// сообщает вызывающему, что произошло, а тот вешает пометку на узел.
+func xhttpGuardUplinkPlacement(t map[string]interface{}) string {
+	if t == nil {
+		return ""
+	}
+	placement, _ := t["uplink_data_placement"].(string)
+	if placement != "header" {
+		return ""
+	}
+	mode, _ := t["mode"].(string)
+	switch mode {
+	case "packet-up":
+		// Рабочая пара — не трогаем и молчим.
+		return ""
+	case "":
+		t["mode"] = "packet-up"
+		return WarnXHTTPModeForcedPacketUp
+	default:
+		delete(t, "uplink_data_placement")
+		return WarnXHTTPParamReset
+	}
+}
+
+// noteXHTTPPlacementGuard вешает на узел пометку о правке, сделанной гардом.
+//
+// Отдельная функция по образцу noteWSEarlyDataConverted: точек, где транспорт
+// уже собран, а узел под рукой, несколько (URI vless/trojan, Xray
+// streamSettings), и правило «что показать пользователю» должно жить в одном
+// месте.
+func noteXHTTPPlacementGuard(node *configtypes.ParsedNode, transport map[string]interface{}) {
+	if node == nil || transport == nil {
+		return
+	}
+	if code := xhttpGuardUplinkPlacement(transport); code != "" {
+		node.AddWarning(code)
+	}
 }
 
 // xhttpXmuxFromSource assembles the nested xmux object. Xray ships it as a

@@ -3,8 +3,8 @@ module singbox-launcher
 go 1.25.0
 
 require (
-	fyne.io/fyne/v2 v2.8.0
-	fyne.io/systray v1.12.2
+	fyne.io/fyne/v2 v2.8.1
+	fyne.io/systray v1.12.3-0.20260810170012-af4e8e793ec4
 	github.com/dweymouth/fyne-tooltip v0.4.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/godbus/dbus/v5 v5.2.2
@@ -13,7 +13,7 @@ require (
 	github.com/pion/stun v0.6.1
 	github.com/txthinking/socks5 v0.0.0-20251011041537-5c31f201a10e
 	golang.org/x/sys v0.47.0
-	google.golang.org/grpc v1.83.1
+	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
 )
 
@@ -23,7 +23,6 @@ require (
 	github.com/anthonynsimon/bild v0.14.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/fredbi/uri v1.1.1 // indirect
 	github.com/fyne-io/gl-js v0.2.1-0.20260315212741-029c47fd27e8 // indirect
 	github.com/fyne-io/glfw-js v0.4.0 // indirect
 	github.com/fyne-io/image v0.1.1 // indirect
@@ -50,10 +49,10 @@ require (
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/txthinking/runnergroup v0.0.0-20210608031112-152c7c4432bf // indirect
 	github.com/yuin/goldmark v1.8.2 // indirect
-	golang.org/x/crypto v0.51.0 // indirect
+	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/image v0.24.0 // indirect
-	golang.org/x/net v0.55.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/net v0.58.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

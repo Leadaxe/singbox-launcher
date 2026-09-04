@@ -9,22 +9,23 @@
           "server_name": "example-1.com",
           "utls": {
             "enabled": true,
-            "fingerprint": "random"
+            "fingerprint": "chrome"
           }
         },
         "transport": {
-          "mode": "stream-up",
-          "type": "xhttp"
+          "host": "media.example-1.com",
+          "mode": "packet-up",
+          "path": "/hls/v2/track/8e31c750/",
+          "type": "xhttp",
+          "uplink_data_placement": "header",
+          "x_padding_bytes": "100-1000"
         },
         "type": "vless",
         "uuid": "11111111-1111-1111-1111-111111111111"
       },
       "kind": "outbound",
-      "label": "xhttp-plc-reset",
-      "scheme": "vless",
-      "warnings": [
-        "xhttp_param_reset"
-      ]
+      "label": "xhttp-flat-wins",
+      "scheme": "vless"
     }
   ],
   "v": 1

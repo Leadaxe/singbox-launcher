@@ -147,6 +147,15 @@ func buildConfigWithExclusions(model *wizardmodels.WizardModel, forPreview bool)
 	if len(dnsV6.Servers) > 0 || len(dnsV6.Rules) > 0 || len(rulesV6) > 0 {
 		ctx.DNS.Servers = nil
 	}
+	// Зеркало боевого пути (core/config_service_context.go::routeConfigForUpdate):
+	// при активных v6-правилах inline/srs эмитятся ТОЛЬКО через ctx.Preset →
+	// MergePresetsIntoRoute, в порядке оси. Legacy-проекция тех же правил в
+	// ctx.Route давала бы дубль каждого пользовательского правила в
+	// route.rules[] и лишнюю remote-запись rule_set у srs-правила — превью и
+	// «Итог» расходились бы с тем, что реально пишется в config.json.
+	if len(rulesV6) > 0 {
+		ctx.Route.Rules = nil
+	}
 
 	ctx.Preset = build.PresetMergeContext{
 		Target:              model.Target,

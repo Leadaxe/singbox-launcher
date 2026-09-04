@@ -1,9 +1,9 @@
-# Задачи для LxBox — контракт 0.12.6
+# Задачи для LxBox — контракт 0.12.7
 
 ## Ответы и статус (02.09.2026)
 
-Развилки ниже закрыты обеими сторонами; контракт поднят до **0.12.6** (схема,
-`docs/BACKUP.md`, `README.md`, решения D-082…D-096). Ниже — что решено по
+Развилки ниже закрыты обеими сторонами; контракт поднят до **0.12.7** (схема,
+`docs/BACKUP.md`, `README.md`, решения D-082…D-097). Ниже — что решено по
 каждому пункту и что осталось за LxBox.
 
 1. **`label` у `servers[]`/`chains[]`** — выбран вариант **Б** (D-082):
@@ -195,6 +195,48 @@
    Направления; поля не писать пустыми (`ping_url` — только непустой,
    `ping_timeout_ms` — только > 0).
 
+15. **XHTTP: `host`/`path`/`mode` — только из плоских параметров ссылки**
+   (контракт 0.12.7, **D-097**). Запрос сессии LxBox **принят**: при разборе
+   `type=xhttp` одноимённые ключи внутри `extra=` игнорируются целиком — и
+   пустые, и непустые. Это исключение из правила «при конфликте `extra`
+   выигрывает» (SPEC 002 §1.5) и взято у самого Xray:
+   `infra/conf/transport_method.go`, `SplitHTTPConfig.Build()` после разбора
+   `extra` безусловно делает `extra.Host = c.Host; extra.Path = c.Path;
+   extra.Mode = c.Mode`, то есть внешние значения перезаписывают `extra` даже
+   будучи пустыми. Для прочих ключей `extra` остаётся базой, и пустое значение
+   из `extra` плоское не перекрывает (кейс `xhttp_v2_extra_wins_over_flat` про
+   `xPaddingBytes` в силе).
+
+   Основание — живой кейс 4PDA #1755 (регрессия LxBox v2.21.0): ссылка несла
+   плоские `mode=packet-up&path=/hls/v2/track/…/&host=media.…` и `extra` с
+   пустыми `host`/`path`/`mode`; `path` съезжал на `/` (сервер отвечал
+   `unexpected upload status 404`), а пустой `mode` давал `auto` → ядро роняло
+   ВЕСЬ конфиг на `uplink_data_placement can be header only in packet-up mode`.
+
+   **Зеркало лаунчера сделано**: правка в общей точке `xhttpBuildTransport`
+   (одна на share-URI и Xray-JSON), note у `path`/`host`/`mode`/`extra` в
+   `registry/transports.json`. Новые кейсы корпуса:
+   `corpus/uri/vless/xhttp_extra_empty_mode_keeps_flat` (пустая тройка в
+   `extra`) и `corpus/uri/vless/xhttp_extra_host_path_mode_ignored` (непустая
+   тройка в `extra`). Существующие golden не изменились, корпус зелёный.
+
+   *За LxBox:* **ничего** — их §410 закрыт; нужен только sync копии контракта
+   на 0.12.7 и прогон корпуса с двумя новыми кейсами.
+
+### §416 — XHTTP: пара `mode`/`uplink_data_placement` (04.09.2026, ОБЕ СТОРОНЫ СДЕЛАНО)
+
+   Ядро отвергает весь конфиг на `header` вне `packet-up`. Норма одна на обе
+   стороны, в точке эмиссии узла, с предупреждением пользователю: `header` без
+   режима → дописать `mode: packet-up`; `header` при явном другом режиме →
+   снять placement, режим не трогать (§217); `packet-up` — не трогать.
+   Лаунчер: `xhttpGuardUplinkPlacement`, корпус 5ff6a7a — новый кейс
+   `xhttp_uplink_header_placement_adds_packet_up`, ожидание
+   `xhttp_uplink_header_placement_reset` приведено к сбросу placement. LxBox:
+   guard в эмиссии (develop 7ef5b20d). Note у `uplink_data_placement` в
+   `registry/transports.json` обновлён, входит в 0.12.8.
+
+   *За LxBox:* sync копии контракта, прогон корпуса, релиз.
+
 ### Статус LxBox (02.09.2026)
 
 | Раздел | Статус |
@@ -209,10 +251,11 @@
 | §407 — слияние по норме §9, раннер с `<case>.pre.backup.json` | **запушено** 18e150b7; `merge_sources_by_url` зелёный, проверен четырьмя мутациями |
 | §408 — внутренняя: heal `ping_options.groups` при удалении Направления | **запушено** 859abe0a |
 | §409 — зеркало D-096: `ping_url`/`ping_timeout_ms` плоско в `directions[]` | **запушено** 8b8d6a18 (03.09.2026): пишутся только непустой URL и timeout > 0, без кармана; импорт применяет только у созданных Направлений (занятый тег — `backup_direction_exists` целиком); чужой тип поля — `backup_field_type_mismatch` с путём `directions[<tag>].ping_url`; `directions_ping_roundtrip` зелёный по `.expected.lxbox.json` |
+| §410 — XHTTP: `host`/`path`/`mode` только из плоских параметров, одноимённые ключи `extra` игнорируются (D-097) | **сделано на их стороне** (запрос сессии lxbox-13); зеркало лаунчера в 0.12.7, кейсы `xhttp_extra_empty_mode_keeps_flat` и `xhttp_extra_host_path_mode_ignored` |
 
 Заметка раннера LxBox (не норма): `subscriptions.postfix` в ожиданиях сверяется
 с пустой строкой — постфикса тегов у LxBox нет. Sync копии контракта на 0.12.6
-(355a6e0) сделан 03.09.2026, lock-коммит LxBox 3b4e2f3a (в origin). Открытых пунктов у LxBox нет (03.09.2026).
+(355a6e0) сделан 03.09.2026, lock-коммит LxBox 3b4e2f3a (в origin). Открытых пунктов у LxBox нет (03.09.2026); по 0.12.7 (D-097) за ними только sync и прогон корпуса.
 
 ### Открытые вопросы владельцу (02.09.2026)
 

@@ -77,9 +77,16 @@
         "reason",
         "value"
       ],
-      "desc": "XHTTP-параметр сброшен на дефолт (значение вне enum, header/cookie placement или GET вне packet-up режима) — иначе одна нода роняет весь конфиг в normalizeMeta ядра. Go пока НЕ нормализует — значения уходят в ядро как есть (xhttpBuildTransport: «normalization is left to the core», SPEC 102 в работе, риск №4 PLAN); фикстуры писать после закрытия 102.",
+      "desc": "XHTTP-параметр сброшен, потому что ядро отвергает его в заданном режиме. Сегодня это uplink_data_placement=header при ЯВНОМ режиме, отличном от packet-up: снимается поле, режим пользователя не переписывается (§169). Пара «header вне packet-up» — FATAL на ВЕСЬ конфиг ядра (проверено запуском 1.14.0-lx.30), поэтому гард обязателен. Обе стороны нормализуют и предупреждают: Go — xhttpGuardUplinkPlacement в сборке XHTTP-транспорта, одна точка на URI / sing-box JSON / Xray JSON / ручной редактор. NB: uplink_http_method=GET вне packet-up сюда НЕ относится — ядро само откатывает его на POST с предупреждением в лог (transport/v2rayxhttp/meta.go:122-129), конфиг живёт, гарда нет и не нужно.",
       "dart": "XhttpParamResetWarning",
-      "go": null
+      "go": "WarnXHTTPParamReset"
+    },
+    "xhttp_mode_forced_packet_up": {
+      "severity": "warning",
+      "params": [],
+      "desc": "У XHTTP-узла был uplink_data_placement=header БЕЗ режима — режим доопределён в packet-up, placement сохранён. header осмыслен только в этом режиме, значит источник его подразумевал; молчать нельзя, потому что правка меняет проволочный протокол узла, а без неё ядро роняет весь конфиг (проверено запуском 1.14.0-lx.30). Контракт 0.12.8, §416.",
+      "dart": "XhttpModeForcedPacketUpWarning",
+      "go": "WarnXHTTPModeForcedPacketUp"
     },
     "ech_ignored": {
       "severity": "info",
@@ -444,7 +451,7 @@
         "target",
         "cause"
       ],
-      "desc": "Цель `streamSettings.sockopt.dialerProxy` непригодна: узел-владелец отбраковывается целиком (иначе он ушёл бы напрямую — тихая деанонимизация). cause \u2208 not_found | service_outbound | group | not_convertible | cycle | depth. Лаунчер сегодня даёт not_found (остальные причины режутся раньше другими путями), LxBox — все шесть.",
+      "desc": "Цель `streamSettings.sockopt.dialerProxy` непригодна: узел-владелец отбраковывается целиком (иначе он ушёл бы напрямую — тихая деанонимизация). cause ∈ not_found | service_outbound | group | not_convertible | cycle | depth. Лаунчер сегодня даёт not_found (остальные причины режутся раньше другими путями), LxBox — все шесть.",
       "dart": "DialerProxyUnusableWarning",
       "go": "core/config/subscription/xray_json_array.go (attachXrayDialerChain)"
     },

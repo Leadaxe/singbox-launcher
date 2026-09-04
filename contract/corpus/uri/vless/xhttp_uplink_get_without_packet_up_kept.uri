@@ -1,0 +1,10 @@
+# §217/§416 uplinkHTTPMethod=GET без mode=packet-up -> поле СОХРАНЯЕТСЯ, гарда нет.
+# Ядро само откатывает метод на POST и пишет предупреждение, конфиг живёт:
+#   WARN v2ray-xhttp: uplink_http_method=GET is only valid in packet-up mode
+#        (mode=auto); falling back to POST
+# (transport/v2rayxhttp/meta.go:122-129; проверено запуском 1.14.0-lx.30).
+# Отличие от uplink_data_placement принципиальное: placement вне packet-up —
+# FATAL на весь конфиг, поэтому там гард обязателен; здесь ядро обезвреживает
+# поле само, и снимать его значило бы терять намерение провайдера.
+# источник: LxBox app/test/parser/xhttp_test.dart:176-183
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?type=xhttp&uplinkHTTPMethod=GET&mode=auto&security=tls&sni=example-1.com#xhttp-get-kept

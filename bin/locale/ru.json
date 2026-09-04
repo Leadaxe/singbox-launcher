@@ -2740,6 +2740,30 @@
   "The daemon is paired and reachable, but the core is not started yet. Press Start to bring the VPN up.": {
     "value": "Демон сопряжён и отвечает, но ядро ещё не запущено. Нажмите Start, чтобы поднять VPN."
   },
+  "Connecting to the daemon…": {
+    "value": "Подключение к демону…"
+  },
+  "The daemon answers; the core is running. Click for connection settings.": {
+    "value": "Демон отвечает; ядро запущено. Нажмите для настроек подключения."
+  },
+  "The daemon is paired and answers; the core is stopped. Press Start to bring the VPN up.": {
+    "value": "Демон сопряжён и отвечает; ядро остановлено. Нажмите Start, чтобы поднять VPN."
+  },
+  "The daemon stopped answering — reconnecting. Click for connection settings.": {
+    "value": "Демон перестал отвечать — переподключение. Нажмите для настроек подключения."
+  },
+  "The core inside the daemon failed: %s. Click for connection settings.": {
+    "value": "Ядро внутри демона упало: %s. Нажмите для настроек подключения."
+  },
+  "The daemon is not answering. Check that the service is running (⚙).": {
+    "value": "Демон не отвечает. Проверьте, что служба запущена (⚙)."
+  },
+  "✅ gRPC (daemon) · core stopped": {
+    "value": "✅ gRPC (демон) · ядро остановлено"
+  },
+  "The core is stopped — press Start to load the node list.": {
+    "value": "Ядро остановлено — нажмите Start, чтобы загрузить список узлов."
+  },
   "The machine is not answering. Check that it is powered on and reachable on the network, then press Connect again.": {
     "value": "Машина не отвечает. Проверьте, включена ли она и доступна ли по сети, затем нажмите Connect ещё раз."
   },

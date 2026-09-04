@@ -220,7 +220,7 @@ func xrayBuildVMessFromOutbound(ob map[string]interface{}, label string) (*confi
 		outbound["transport"] = transport
 	}
 
-	return &configtypes.ParsedNode{
+	node := &configtypes.ParsedNode{
 		Tag:      xrayTagOrDefault(ob, "vmess"),
 		Scheme:   "vmess",
 		Server:   addr,
@@ -228,7 +228,9 @@ func xrayBuildVMessFromOutbound(ob map[string]interface{}, label string) (*confi
 		UUID:     uuid,
 		Label:    label,
 		Outbound: outbound,
-	}, nil
+	}
+	noteXHTTPPlacementGuard(node, transport)
+	return node, nil
 }
 
 // xrayBuildTrojanFromOutbound — trojan через settings.servers.
@@ -258,7 +260,7 @@ func xrayBuildTrojanFromOutbound(ob map[string]interface{}, label string) (*conf
 		outbound["transport"] = transport
 	}
 
-	return &configtypes.ParsedNode{
+	node := &configtypes.ParsedNode{
 		Tag:    xrayTagOrDefault(ob, "trojan"),
 		Scheme: "trojan",
 		Server: addr,
@@ -268,7 +270,9 @@ func xrayBuildTrojanFromOutbound(ob map[string]interface{}, label string) (*conf
 		UUID:     password,
 		Label:    label,
 		Outbound: outbound,
-	}, nil
+	}
+	noteXHTTPPlacementGuard(node, transport)
+	return node, nil
 }
 
 // xrayBuildShadowsocksFromOutbound — shadowsocks через settings.servers.

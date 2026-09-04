@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"singbox-launcher/internal/srstag"
 )
 
 // parseCurrent — прямой read canonical (v6) формата (SPEC 053 + SPEC 056-R-N).
@@ -207,7 +209,14 @@ func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 			out = append(out, cr)
 		case RuleKindSrs:
 			sb := body.(*SrsBody)
+			// Тег записи — content-addressed имя файла в bin/rule-sets/, тот же,
+			// что даёт диалог правила и downloader. Без него запись невидима
+			// для UI (GetSRSEntries отбрасывает записи без tag — кнопка
+			// «✔️ srs» и гейт скачивания пропадали после переоткрытия) и
+			// валит сборку «Итога»: MergeRouteSection отвечает «remote entry
+			// missing tag» (репорт 1.5.4).
 			rsRaw, _ := json.Marshal(map[string]interface{}{
+				"tag":    srstag.TagFromURL(sb.SrsURL),
 				"type":   "remote",
 				"format": "binary",
 				"url":    sb.SrsURL,

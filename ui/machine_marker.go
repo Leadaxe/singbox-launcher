@@ -54,12 +54,27 @@ func markerTooltip(state markerState) string {
 }
 
 func newMachineMarker(state markerState, fill color.Color, onTap func()) fyne.CanvasObject {
+	_, obj := newMarkerWidget(fill, markerTooltip(state), onTap)
+	return obj
+}
+
+// newMarkerWidget — тот же маркер, но с доступом к самому виджету: там, где
+// кружок живёт постоянно (строка Core Status), его состояние обновляют, а не
+// пересоздают строку целиком, как это делает список машин.
+func newMarkerWidget(fill color.Color, tooltip string, onTap func()) (*machineMarker, fyne.CanvasObject) {
 	m := &machineMarker{fill: fill, onTap: onTap}
 	m.ExtendBaseWidget(m)
-	m.SetToolTip(markerTooltip(state))
+	m.SetToolTip(tooltip)
 	// dotLayout центрирует маркер по вертикали и оставляет поле справа,
 	// чтобы кружок не липнул к имени; сам виджет держит размер через MinSize.
-	return container.New(&dotLayout{size: 10}, m)
+	return m, container.New(&dotLayout{size: 10}, m)
+}
+
+// setState перекрашивает существующий маркер и меняет подсказку.
+func (m *machineMarker) setState(fill color.Color, tooltip string) {
+	m.fill = fill
+	m.SetToolTip(tooltip)
+	m.Refresh()
 }
 
 // ExtendBaseWidget обязана поднять обе базы: иначе подсказка не получит
