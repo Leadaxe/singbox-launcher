@@ -21,6 +21,7 @@ import (
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
@@ -951,6 +952,9 @@ func showSourceEditWindowAt(
 	// detour. Объявлена заранее: сама раскладка строится ниже, а обработчик
 	// выбора — выше неё.
 	var rebuildSettingsAfterDetour func()
+	// clearAWGAfterDetour — снятие обфускации с узла при назначении detour.
+	// Объявлено заранее по той же причине, что и пересборка раскладки.
+	var clearAWGAfterDetour func()
 
 	detourNone := locale.T("(none — direct)")
 	detourSelect := widget.NewSelect(nil, nil)
@@ -976,6 +980,15 @@ func showSourceEditWindowAt(
 		}
 		// SPEC 117: выбор буферизуется в копии до Save.
 		//
+		// Обфускация и detour несовместимы: узел, который ходит через чужой
+		// outbound, своего транспорта не поднимает — junk-датаграммы и
+		// маскировка ему не с чем применять. Поэтому назначенный detour не
+		// просто ПРЯЧЕТ блок, а снимает поля с тела: спрятанная, но живая в
+		// конфиге обфускация — ровно тот случай, когда форма показывает одно,
+		// а ядро получает другое.
+		if p.Detour != nil && clearAWGAfterDetour != nil {
+			clearAWGAfterDetour()
+		}
 		// Раскладку пересобираем: блок обфускации виден только без detour, и
 		// без пересборки он остался бы на экране у узла, которому только что
 		// назначили выход через чужой outbound.
@@ -1248,6 +1261,34 @@ func showSourceEditWindowAt(
 	})
 	awgUI.load(&scratch.Node)
 	refreshAWGAfterRegen = func() { awgUI.load(&scratch.Node) }
+	clearAWGAfterDetour = func() {
+		if !awgEditableNode(&scratch.Node) {
+			return
+		}
+		if !readAWGSettings(&scratch.Node).Enabled {
+			return // обфускации и не было — тело не трогаем
+		}
+		if err := clearAWGSettings(&scratch.Node); err != nil {
+			debuglog.WarnLog("AWG: clear on detour set: %v", err)
+			return
+		}
+		awgUI.load(&scratch.Node)
+		if refreshJSONAfterOriginRegen != nil {
+			refreshJSONAfterOriginRegen()
+		}
+		presenter.MarkAsChanged()
+	}
+
+	// awgConflictsWithDetour — у узла есть И detour, И живые поля обфускации.
+	// Состояние противоречивое: транспорт узел не поднимает, а поля в теле
+	// лежат и едут в конфиг.
+	awgConflictsWithDetour := func() bool {
+		p := srcRef()
+		if p == nil || p.Detour == nil || !awgEditableNode(&scratch.Node) {
+			return false
+		}
+		return readAWGSettings(&scratch.Node).Enabled
+	}
 
 	// awgVisibleFor — показывать ли блок: тело WireGuard и отсутствие detour.
 	awgVisibleFor := func() bool {
@@ -1301,6 +1342,15 @@ func showSourceEditWindowAt(
 				settingsContent.Add(widget.NewSeparator())
 				awgUI.load(&scratch.Node)
 				settingsContent.Add(awgUI.content)
+			} else if awgConflictsWithDetour() {
+				// Узел приехал С обфускацией И с detour — так бывает у ссылки
+				// от провайдера или у состояния, собранного до этой формы.
+				// Молчать нельзя: блок мы не показываем, а поля живут в теле и
+				// уедут в конфиг. Спрашиваем прямо, не снимая ничего сами:
+				// detour пользователь выбирал осознанно, и отменять его выбор
+				// открытием окна — не наше дело.
+				settingsContent.Add(widget.NewSeparator())
+				settingsContent.Add(awgDetourConflictNote())
 			}
 			settingsContent.Add(widget.NewSeparator())
 			// Подпись по виду происхождения: «Server URI» над блоком

@@ -47,7 +47,10 @@ import (
 
 // awgBlockNoteText — пояснение под полями блока (ключ = английский текст,
 // SPEC 111).
-const awgBlockNoteText = "Junk datagrams go out before the handshake, and the first one is disguised as traffic to the domain above. Packet padding (s1-s4) and magic headers (h1-h4) stay at the WireGuard defaults — any other value there and the server stops recognising the handshake. Press the button to write these fields into the node."
+// awgDetourConflictText — узел несёт и detour, и обфускацию.
+const awgDetourConflictText = "This node carries AmneziaWG obfuscation fields, but it dials through a detour — the transport is raised by the detour's outbound, so the fields do nothing here and still travel into the config. Clear the detour to edit or remove them."
+
+const awgBlockNoteText = "Junk datagrams go out before the handshake, and the first one is disguised as traffic to the domain above. Packet padding (s1-s4) and magic headers (h1-h4) stay at the WireGuard defaults — any other value there and the server stops recognising the handshake. Not available with a detour: a node dialled through another outbound does not raise its own transport."
 
 // awgFixedIP — протокол первого decoy-пакета. Константа, а не настройка.
 const awgFixedIP = "quic"
@@ -311,7 +314,6 @@ type awgBlock struct {
 	jc      *widget.Entry
 	jmin    *widget.Entry
 	jmax    *widget.Entry
-	apply   *widget.Button
 	note    *widget.Label
 	rows    []fyne.CanvasObject
 	// content — всё, что блок добавляет в форму, одним объектом.
@@ -346,21 +348,34 @@ func newAWGBlock(
 	b.note.Wrapping = fyne.TextWrapWord
 	b.note.Importance = widget.LowImportance
 
-	b.apply = widget.NewButton(locale.T("Regen"), func() {
+	// Правка полей пишется в узел сразу, без отдельной кнопки: узел и так
+	// живёт в рабочей копии до Save окна, и вторая кнопка «применить» внутри
+	// формы, у которой уже есть Save, только спрашивала бы дважды об одном.
+	//
+	// Негодный ввод в тело НЕ едет (validateAWGSettings внутри applyAWGSettings),
+	// но и не ругается на каждый символ: человек стирает поле, чтобы набрать
+	// новое значение, и модалка на полпути мешала бы. Ошибку он увидит на
+	// Save — там же, где и всякую другую.
+	commit := func() {
+		if b.syncing {
+			return
+		}
 		node := nodeRef()
-		if node == nil {
+		if node == nil || !b.check.Checked {
 			return
 		}
 		if err := applyAWGSettings(node, b.values()); err != nil {
-			dialog.ShowError(err, win)
 			return
 		}
-		b.load(node)
 		if onApplied != nil {
 			onApplied()
 		}
-	})
-	b.apply.Importance = widget.HighImportance
+	}
+	b.domain.OnChanged = func(string) { commit() }
+	b.browser.OnChanged = func(string) { commit() }
+	b.jc.OnChanged = func(string) { commit() }
+	b.jmin.OnChanged = func(string) { commit() }
+	b.jmax.OnChanged = func(string) { commit() }
 
 	b.check = widget.NewCheck(locale.T("AmneziaWG obfuscation"), func(on bool) {
 		if b.syncing {
@@ -384,18 +399,19 @@ func newAWGBlock(
 			}
 			return
 		}
-		// Включение НЕ пишет в тело: домен пуст, писать нечего. Показываем
-		// поля и ждём кнопку — она же и проверит ввод.
+		// Включение показывает поля; в тело они поедут, как только ввод
+		// станет годным (домен у нового узла пуст — писать пока нечего).
 		b.setRowsVisible(true)
+		commit()
 	})
 
 	// Одна строка на весь блок:
 	//
-	//	id [apteka.ru        ] ib [chrome ▾] jc [3] jmin [1] jmax [3] [Regen]
+	//	id [apteka.ru        ] ib [chrome ▾] jc [3] jmin [1] jmax [3]
 	//
 	// Тянется только домен — он один переменной длины. Остальное прижато к
-	// своему содержимому: числа узкие по своей минимальной ширине (см.
-	// awgNumEntry), кнопка и выпадающий список — по подписи. В Border
+	// своему содержимому: числа узкие по своей разрядности (awgNumCell),
+	// выпадающий список — по подписи. В Border
 	// растягивается ровно центр, поэтому домен стоит там, а всё прочее ушло
 	// в правый край одной HBox-лентой.
 	tail := container.NewHBox(
@@ -403,7 +419,6 @@ func newAWGBlock(
 		widget.NewLabel("jc"), awgNumCell(b.jc, awgJCDigits),
 		widget.NewLabel("jmin"), awgNumCell(b.jmin, awgJSizeDigits),
 		widget.NewLabel("jmax"), awgNumCell(b.jmax, awgJSizeDigits),
-		b.apply,
 	)
 	b.rows = []fyne.CanvasObject{
 		container.NewBorder(nil, nil, widget.NewLabel("id"), tail, b.domain),
@@ -479,4 +494,20 @@ func (b *awgBlock) setRowsVisible(on bool) {
 		}
 		row.Hide()
 	}
+}
+
+// awgDetourConflictNote — предупреждение для узла, у которого есть и detour,
+// и поля обфускации.
+//
+// Форму мы в этом случае не показываем (обфусцировать нечего: транспорт
+// поднимает outbound detour'а), но и молчать нельзя — поля лежат в теле и
+// уедут в конфиг. Снимать их самим тоже нельзя: узел мог приехать таким из
+// ссылки провайдера, и правка тела при одном лишь открытии окна — не то, чего
+// от окна ждут. Поэтому текст, а не действие: снять обфускацию можно, убрав
+// detour, а вернуть detour — уже после.
+func awgDetourConflictNote() fyne.CanvasObject {
+	l := widget.NewLabel(locale.T(awgDetourConflictText))
+	l.Wrapping = fyne.TextWrapWord
+	l.Importance = widget.WarningImportance
+	return l
 }

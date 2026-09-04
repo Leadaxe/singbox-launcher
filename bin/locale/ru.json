@@ -4310,7 +4310,10 @@
   "only letters, digits and hyphens are allowed": {
     "value": "допустимы только буквы, цифры и дефис"
   },
-  "Junk datagrams go out before the handshake, and the first one is disguised as traffic to the domain above. Packet padding (s1-s4) and magic headers (h1-h4) stay at the WireGuard defaults — any other value there and the server stops recognising the handshake. Press the button to write these fields into the node.": {
-    "value": "Перед рукопожатием уходят мусорные датаграммы, а первая маскируется под трафик к домену выше. Набивка пакетов (s1–s4) и magic-заголовки (h1–h4) остаются дефолтными для WireGuard: любое другое значение — и сервер перестаёт узнавать рукопожатие. Кнопка записывает эти поля в узел."
+  "Junk datagrams go out before the handshake, and the first one is disguised as traffic to the domain above. Packet padding (s1-s4) and magic headers (h1-h4) stay at the WireGuard defaults — any other value there and the server stops recognising the handshake. Not available with a detour: a node dialled through another outbound does not raise its own transport.": {
+    "value": "Перед рукопожатием уходят мусорные датаграммы, а первая маскируется под трафик к домену выше. Набивка пакетов (s1–s4) и magic-заголовки (h1–h4) остаются дефолтными для WireGuard: любое другое значение — и сервер перестаёт узнавать рукопожатие. С detour недоступно: узел, ходящий через чужой outbound, своего транспорта не поднимает."
+  },
+  "This node carries AmneziaWG obfuscation fields, but it dials through a detour — the transport is raised by the detour's outbound, so the fields do nothing here and still travel into the config. Clear the detour to edit or remove them.": {
+    "value": "У узла есть поля обфускации AmneziaWG, но он ходит через detour: транспорт поднимает outbound detour'а, поэтому поля здесь ничего не делают, а в конфиг всё равно едут. Снимите detour, чтобы их изменить или убрать."
   }
 }
