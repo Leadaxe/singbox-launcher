@@ -393,17 +393,20 @@ const (
 )
 
 // hasAWGParams reports whether the query carries any AmneziaWG obfuscation field
-// (numeric jc/jmin/jmax/s/h or string i1-i5). Drives the MTU policy: AWG
-// endpoints are clamped to awgMaxMTU; a plain WireGuard URI is left untouched.
+// (numeric jc/jmin/jmax/s/h, string i1-i5, or the masquerade sugar ip/id/ib).
+// Drives the MTU policy: AWG endpoints are clamped to awgMaxMTU; a plain
+// WireGuard URI is left untouched.
+//
+// The masquerade sugar counts on its own: a link carrying only ip/id/ib is an
+// AWG endpoint too (the core expands the sugar into i1), and leaving its MTU
+// unclamped reproduces the silent AWG failure — the handshake completes and no
+// data flows.
 func hasAWGParams(q url.Values) bool {
-	for _, k := range awgNumericFields {
-		if strings.TrimSpace(q.Get(k)) != "" {
-			return true
-		}
-	}
-	for _, k := range awgStringFields {
-		if strings.TrimSpace(q.Get(k)) != "" {
-			return true
+	for _, list := range [][]string{awgNumericFields, awgStringFields, awgMasqueradeFields} {
+		for _, k := range list {
+			if strings.TrimSpace(q.Get(k)) != "" {
+				return true
+			}
 		}
 	}
 	return false

@@ -451,6 +451,18 @@ func wgConfToURI(confText, label string) (string, error) {
 			q.Set(k, v)
 		}
 	}
+	// Masquerade-сахар ip/id/ib. Без него .conf с маскировкой терял её МОЛЧА:
+	// числа junk доезжали, узел выглядел настроенным, а первый decoy-пакет
+	// уходил без маскировки. Регистр значения сохраняем — id это домен.
+	//
+	// Явный i1 в INI и сахар несовместимы (ядро отвергает пару), и ту же
+	// проверку делает applyAWGFields на разборе получившейся ссылки: сюда
+	// кладём оба, а отбрасывает лишнее одна точка, а не две.
+	for _, k := range awgMasqueradeFields {
+		if v := iface[k]; v != "" {
+			q.Set(k, v)
+		}
+	}
 
 	u := url.URL{
 		Scheme:   "wireguard",
