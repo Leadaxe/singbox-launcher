@@ -4274,9 +4274,6 @@
   "Masquerade domain (id)": {
     "value": "Домен маскировки (id)"
   },
-  "Regen obfuscation": {
-    "value": "Перегенерировать обфускацию"
-  },
   "domain to masquerade as, e.g. example.com": {
     "value": "домен для маскировки, например example.com"
   },

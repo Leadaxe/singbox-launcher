@@ -32,7 +32,10 @@ import (
 	"strconv"
 	"strings"
 
+	"image/color"
+
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
@@ -329,24 +332,20 @@ func newAWGBlock(
 ) *awgBlock {
 	b := &awgBlock{}
 
-	num := func() *widget.Entry {
-		e := widget.NewEntry()
-		return e
-	}
 	b.domain = widget.NewEntry()
 	// Плейсхолдер — форма записи, а не готовый адрес: подставлять сюда
 	// конкретный домен значило бы выбрать за пользователя, куда маскироваться.
 	b.domain.SetPlaceHolder(locale.T("domain to masquerade as, e.g. example.com"))
 	b.browser = widget.NewSelect(awgBrowsers, nil)
-	b.jc = num()
-	b.jmin = num()
-	b.jmax = num()
+	b.jc = awgNumEntry()
+	b.jmin = awgNumEntry()
+	b.jmax = awgNumEntry()
 
 	b.note = widget.NewLabel(locale.T(awgBlockNoteText))
 	b.note.Wrapping = fyne.TextWrapWord
 	b.note.Importance = widget.LowImportance
 
-	b.apply = widget.NewButton(locale.T("Regen obfuscation"), func() {
+	b.apply = widget.NewButton(locale.T("Regen"), func() {
 		node := nodeRef()
 		if node == nil {
 			return
@@ -389,26 +388,44 @@ func newAWGBlock(
 		b.setRowsVisible(true)
 	})
 
+	// Одна строка на весь блок:
+	//
+	//	id [apteka.ru        ] ib [chrome ▾] jc [3] jmin [1] jmax [3] [Regen]
+	//
+	// Тянется только домен — он один переменной длины. Остальное прижато к
+	// своему содержимому: числа узкие по своей минимальной ширине (см.
+	// awgNumEntry), кнопка и выпадающий список — по подписи. В Border
+	// растягивается ровно центр, поэтому домен стоит там, а всё прочее ушло
+	// в правый край одной HBox-лентой.
+	tail := container.NewHBox(
+		widget.NewLabel("ib"), b.browser,
+		widget.NewLabel("jc"), awgNumCell(b.jc),
+		widget.NewLabel("jmin"), awgNumCell(b.jmin),
+		widget.NewLabel("jmax"), awgNumCell(b.jmax),
+		b.apply,
+	)
 	b.rows = []fyne.CanvasObject{
-		labeledFormRow(locale.T("Masquerade domain (id)"), b.domain),
-		labeledFormRow(locale.T("Browser (ib)"), b.browser),
-		container.NewGridWithColumns(3,
-			labeledFormRow("jc", b.jc),
-			labeledFormRow("jmin", b.jmin),
-			labeledFormRow("jmax", b.jmax),
-		),
-		container.NewBorder(nil, nil, nil, b.apply, widget.NewLabel("")),
+		container.NewBorder(nil, nil, widget.NewLabel("id"), tail, b.domain),
 		b.note,
 	}
 	b.content = container.NewVBox(append([]fyne.CanvasObject{b.check}, b.rows...)...)
 	return b
 }
 
-// labeledFormRow — подпись слева, поле справа. Тот же приём, что у остальных
-// строк формы окна источника.
-func labeledFormRow(label string, control fyne.CanvasObject) *fyne.Container {
-	return container.NewBorder(nil, nil, widget.NewLabel(label), nil, control)
+// awgNumEntry — поле под число обфускации. Ширину ему задаёт awgNumCell при
+// раскладке: сам Entry своего размера не знает.
+func awgNumEntry() *widget.Entry { return widget.NewEntry() }
+
+// awgNumCell — поле числа, ужатое до awgNumFieldWidth.
+func awgNumCell(e *widget.Entry) fyne.CanvasObject {
+	sizer := canvas.NewRectangle(color.Transparent)
+	sizer.SetMinSize(fyne.NewSize(awgNumFieldWidth, 0))
+	return container.NewStack(sizer, e)
 }
+
+// awgNumFieldWidth — ширина поля под jc/jmin/jmax: числа короткие (одна-три
+// цифры), и полноразмерное поле рядом с двумя такими же съедало бы строку.
+const awgNumFieldWidth = 56
 
 // values — что сейчас набрано в форме.
 func (b *awgBlock) values() awgSettings {
