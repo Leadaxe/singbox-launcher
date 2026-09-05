@@ -87,7 +87,7 @@ func TestDedupeRunsBeforeSeed(t *testing.T) {
 		presetRule("traffic-processing", numPtr(0)),
 		presetRule("traffic-processing", numPtr(0)),
 	}
-	out := NormalizeRuleOrder(dup, testSpecs())
+	out := NormalizeRuleOrder(dup, testSpecs(), nil)
 
 	count := 0
 	for _, r := range out {
@@ -153,7 +153,7 @@ func TestNormalizePutsHeadFirst(t *testing.T) {
 		presetRule("ru-direct", numPtr(1120)),
 		presetRule("private-ips", numPtr(950)),
 	}
-	out := NormalizeRuleOrder(rules, testSpecs())
+	out := NormalizeRuleOrder(rules, testSpecs(), nil)
 	if out[0].Ref != "traffic-processing" {
 		t.Fatalf("первым идёт %q, ожидался traffic-processing", out[0].Ref)
 	}

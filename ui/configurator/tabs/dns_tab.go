@@ -90,6 +90,9 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		bundledRows := renderPresetBundledDNSRows(m, dialogParent(), func() {
 			presenter.MarkAsChanged()
 		})
+		// SPEC 121: серверы, которые узлы носят с собой, — за пресетными, тем
+		// же приёмом «в конец общего списка».
+		bundledRows = append(bundledRows, renderNodeSectionDNSRows(m, dialogParent())...)
 
 		// Обе карты инвариантны в пределах одной пересборки — считаются ДО
 		// цикла: внутри него они заново анмаршалили весь список серверов и
@@ -371,14 +374,15 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		// Reconcile defensively — if user added/removed presets in another
 		// tab, DNSRuleOrder might have stale or missing slots.
 		wizardmodels.ReconcileDNSRuleOrder(m)
-		if len(m.DNSRuleOrder) == 0 {
+		// SPEC 121: пустой порядок ещё не значит «правил нет» — узловые
+		// правила слотов не имеют и рисуются вне DNSRuleOrder.
+		buildUnifiedDNSRuleRows(presenter, m, dialogParent(), unifiedRulesBox, func() {
+			if refreshAll != nil {
+				refreshAll()
+			}
+		})
+		if len(unifiedRulesBox.Objects) == 0 {
 			unifiedRulesBox.Add(widget.NewLabel(locale.T("No DNS rules.")))
-		} else {
-			buildUnifiedDNSRuleRows(presenter, m, dialogParent(), unifiedRulesBox, func() {
-				if refreshAll != nil {
-					refreshAll()
-				}
-			})
 		}
 		unifiedRulesBox.Refresh()
 	}

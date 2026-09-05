@@ -89,10 +89,20 @@ func (p *WizardPresenter) restorePresetRefs(state *wizardmodels.WizardStateFile)
 	// правил — пользователь видел в конфиге правила, которых нет в UI, и не
 	// мог добраться до их настроек.
 	if p.model.TemplateData != nil {
-		state.Rules = corestate.NormalizeRuleOrder(state.Rules, wizardtemplate.RuleOrderSpecs(p.model.TemplateData.Presets))
+		// SPEC 121: тем же проходом пересеваются якоря правил, которые узлы
+		// носят с собой, — иначе список правил разошёлся бы с конфигом.
+		state.Rules = corestate.NormalizeRuleOrder(state.Rules,
+			wizardtemplate.RuleOrderSpecs(p.model.TemplateData.Presets),
+			corestate.NodeSectionLinks(state.Sources))
 	}
 
 	p.model.PresetRefs = wizardmodels.SyncStateRulesToPresetRefs(state.Rules)
+	// SPEC 121: якоря узлов приезжают из тех же state.Rules (kind=node).
+	// Пересев ниже — второй рубеж: NormalizeRuleOrder выше правит state.Rules,
+	// а состав источников мог измениться и мимо него (импорт бэкапа, правка
+	// узла), и модель обязана прийти к тому же составу, что и конфиг.
+	p.model.NodeRefs = wizardmodels.SyncStateRulesToNodeRefs(state.Rules)
+	wizardmodels.SeedNodeRefsFromSources(p.model)
 	p.model.DNSTemplateOverrides = wizardmodels.SyncStateV6ToDNSOverrides(state.DNS)
 	// SPEC 056-R-N follow-up: per-server/rule preset enabled overrides → PresetRefState fields.
 	populatePresetEnabledFromState(p.model.PresetRefs, state.DNS)
@@ -101,7 +111,7 @@ func (p *WizardPresenter) restorePresetRefs(state *wizardmodels.WizardStateFile)
 	// Порядок задаёт ось (OrderNum), а не позиция в слайсе — сортировку и
 	// раздачу номеров в модель делает RuleOrderFromAxis (SPEC 106).
 	// Fallback на дефолтную последовательность если state v5 (нет RulesV6).
-	order := wizardmodels.RuleOrderFromAxis(state.Rules, p.model.PresetRefs, p.model.CustomRules)
+	order := wizardmodels.RuleOrderFromAxis(state.Rules, p.model.PresetRefs, p.model.CustomRules, p.model.NodeRefs)
 	if len(order) == 0 {
 		wizardmodels.RebuildRuleOrder(p.model)
 	} else {

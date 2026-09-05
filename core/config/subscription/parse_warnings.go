@@ -57,6 +57,10 @@ const (
 	// WarnAmneziaContainerChoice — в vpn://-профиле несколько контейнеров,
 	// одиночный путь взял дефолтный.
 	WarnAmneziaContainerChoice = "amnezia_container_choice"
+	// WarnTailscaleCoreUnsupported — узел tailscale снят: ядро собрано без
+	// with_tailscale (SPEC 122). Не пометка на живом узле, а его выброс —
+	// оставленный, он завалил бы `sing-box check` для всего конфига.
+	WarnTailscaleCoreUnsupported = "tailscale_core_unsupported"
 	// WarnAWGHeaderInvalid — AmneziaWG H1–H4 вне допустимого диапазона.
 	WarnAWGHeaderInvalid = "awg_header_invalid"
 	// WarnAWGHeadersOverlap — H1–H4 совпадают между собой.

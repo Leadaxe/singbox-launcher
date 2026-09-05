@@ -114,6 +114,10 @@ type AppController struct {
 	naiveSupportCache   *naiveSupportVerdict
 	naiveSupportCacheMu sync.Mutex
 
+	// SPEC 122: тот же кэш для гейта with_tailscale.
+	tailscaleSupportCache   *tailscaleSupportVerdict
+	tailscaleSupportCacheMu sync.Mutex
+
 	// --- Chain-support probe cache (SPEC 110) ---
 	// Тип `chain` есть только в ядрах, собранных с `with_lx_chain`, и ядро
 	// отвергает ВЕСЬ конфиг на неизвестном типе outbound'а. Кэш
@@ -254,6 +258,15 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	// целиком завалит `check` на ядре без naive-поддержки.
 	config.NaiveSupportProbe = ac.CoreSupportsNaive
 	config.ChainSupportProbe = ac.CoreSupportsChain
+	// SPEC 122: то же для tailscale — endpoint типа `tailscale` умеет только
+	// ядро с тегом with_tailscale, а один такой узел валит `check` целиком.
+	config.TailscaleSupportProbe = ac.CoreSupportsTailscale
+
+	// SPEC 122: корень каталогов состояния tailnet. Тот же корень
+	// `<execDir>/bin`, относительно которого лежат локальные .srs — эмиссия
+	// ExecDir не знает, и путь приходит сюда единственной точкой.
+	config.SetTailscaleStateDirRoot(
+		filepath.Join(platform.GetBinDir(ac.FileService.ExecDir), "tailscale"))
 
 	// SPEC 112: идентичность узла (тег) и УПРАЗДНЁННЫЙ контент-хеш для
 	// миграции legacy-отметок. Обе живут в config (эмиттер нужен второй),

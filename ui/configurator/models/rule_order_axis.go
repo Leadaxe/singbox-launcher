@@ -32,6 +32,10 @@ func (m *WizardModel) slotOrderNum(s RuleSlot) *int {
 		if s.Index >= 0 && s.Index < len(m.CustomRules) && m.CustomRules[s.Index] != nil {
 			return m.CustomRules[s.Index].OrderNum
 		}
+	case SlotKindNodeRef:
+		if s.Index >= 0 && s.Index < len(m.NodeRefs) && m.NodeRefs[s.Index] != nil {
+			return m.NodeRefs[s.Index].OrderNum
+		}
 	}
 	return nil
 }
@@ -47,6 +51,10 @@ func (m *WizardModel) setSlotOrderNum(s RuleSlot, num *int) {
 		if s.Index >= 0 && s.Index < len(m.CustomRules) && m.CustomRules[s.Index] != nil {
 			m.CustomRules[s.Index].OrderNum = num
 		}
+	case SlotKindNodeRef:
+		if s.Index >= 0 && s.Index < len(m.NodeRefs) && m.NodeRefs[s.Index] != nil {
+			m.NodeRefs[s.Index].OrderNum = num
+		}
 	}
 }
 
@@ -59,11 +67,16 @@ func (m *WizardModel) axisProxyRules() []corestate.Rule {
 	out := make([]corestate.Rule, 0, len(m.RuleOrder))
 	for _, s := range m.RuleOrder {
 		r := corestate.Rule{Kind: corestate.RuleKindInline}
-		if s.Kind == SlotKindPresetRef {
+		switch s.Kind {
+		case SlotKindPresetRef:
 			r.Kind = corestate.RuleKindPreset
 			if s.Index >= 0 && s.Index < len(m.PresetRefs) && m.PresetRefs[s.Index] != nil {
 				r.Ref = m.PresetRefs[s.Index].Ref
 			}
+		case SlotKindNodeRef:
+			// SPEC 121: якорь узла — рядовое сортируемое правило оси; тела у
+			// прокси нет и здесь не нужно (ось читает только Kind и OrderNum).
+			r.Kind = corestate.RuleKindNode
 		}
 		r.OrderNum = copyOrderNum(m.slotOrderNum(s))
 		out = append(out, r)

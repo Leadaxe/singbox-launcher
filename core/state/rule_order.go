@@ -24,7 +24,12 @@
 // (ui/configurator/models/rule_order_axis.go ссылается на этот закон).
 package state
 
-import "sort"
+import (
+	"encoding/json"
+	"sort"
+
+	"singbox-launcher/internal/debuglog"
+)
 
 // Границы пользовательской зоны оси.
 const (
@@ -42,6 +47,14 @@ const (
 	// Всё, что ВЫШЕ этой границы, — свободная территория: правило вправе встать
 	// между шаблонными якорями (950/960) или над ними.
 	MinSortableRuleNum = 1
+
+	// NodeRuleDefaultNum — стартовая позиция якоря правил узла (SPEC 121).
+	//
+	// 945 — перед шаблонным якорем private-ips (950): правила, которые узел
+	// носит с собой, адресуют его собственные подсети (tailnet 100.64.0.0/10,
+	// сети за пиром WireGuard), и общее правило про приватные адреса не
+	// должно перехватывать их раньше. Дальше пользователь двигает якорь сам.
+	NodeRuleDefaultNum = 945
 )
 
 // RuleOrderSpec — то, что ось знает о правиле из шаблона: стартовый номер и
@@ -203,13 +216,81 @@ func DedupePresetRules(rules []Rule) []Rule {
 	return out
 }
 
-// NormalizeRuleOrder — полный проход: дедуп → seed → разметка → сортировка.
+// SeedNodeRules пересевает якоря правил узлов (SPEC 121 §4 п. 6).
+//
+// links — узлы, у которых сейчас непустые `sections.rules` (NodeSectionLinks).
+// Запись kind=node заводится для каждого такого узла, которого ещё нет в
+// списке, и удаляется у всякого, кого в links не оказалось: якорь производный
+// от узла, самостоятельной жизни у него нет. Позиция и тумблер уже
+// существующей записи сохраняются — они принадлежат пользователю.
+//
+// Порядок обхода — порядок links (порядок узлов в состоянии): map здесь не
+// используется как источник порядка, потому что от него зависит содержимое
+// state.
+func SeedNodeRules(rules []Rule, links []NodeLink) []Rule {
+	want := make(map[NodeLink]bool, len(links))
+	for _, l := range links {
+		if l.Tag == "" {
+			continue
+		}
+		want[l] = true
+	}
+
+	present := make(map[NodeLink]bool, len(rules))
+	out := make([]Rule, 0, len(rules)+len(links))
+	for _, r := range rules {
+		if r.Kind != RuleKindNode {
+			out = append(out, r)
+			continue
+		}
+		body, err := r.DecodeBody()
+		if err != nil {
+			// Битая ссылка якоря — не повод ронять загрузку: узла за ней
+			// всё равно нет, а тело правил живёт у узла.
+			debuglog.WarnLog("rule order: node anchor with a broken body dropped: %v", err)
+			continue
+		}
+		link := body.(*NodeRuleBody).Link()
+		if !want[link] || present[link] {
+			continue
+		}
+		present[link] = true
+		out = append(out, r)
+	}
+
+	for _, l := range links {
+		if l.Tag == "" || present[l] {
+			continue
+		}
+		present[l] = true
+		num := NodeRuleDefaultNum
+		body, err := json.Marshal(NodeRuleBody{FolderID: l.FolderID, Tag: l.Tag})
+		if err != nil {
+			debuglog.WarnLog("rule order: cannot encode node anchor for %q: %v", l.Tag, err)
+			continue
+		}
+		out = append(out, Rule{
+			Kind:     RuleKindNode,
+			Enabled:  true,
+			OrderNum: &num,
+			Body:     body,
+		})
+	}
+	return out
+}
+
+// NormalizeRuleOrder — полный проход: дедуп → seed пресетов → seed якорей
+// узлов → разметка → сортировка.
 // Идемпотентен: повторный вызов на нормализованном списке ничего не меняет.
 // Значения переменных существующих пресетов сохраняются (seed срабатывает,
 // только если правила нет вовсе).
-func NormalizeRuleOrder(rules []Rule, specs map[string]RuleOrderSpec) []Rule {
+//
+// nodeLinks (SPEC 121) — узлы с непустыми `sections.rules`; nil означает «в
+// состоянии таких узлов нет», и все существующие якоря kind=node снимаются.
+func NormalizeRuleOrder(rules []Rule, specs map[string]RuleOrderSpec, nodeLinks []NodeLink) []Rule {
 	out := DedupePresetRules(rules)
 	out = SeedRequiredRules(out, specs)
+	out = SeedNodeRules(out, nodeLinks)
 	MarkRuleOrder(out, specs)
 	return SortRulesByNum(out)
 }

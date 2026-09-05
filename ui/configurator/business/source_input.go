@@ -166,6 +166,9 @@ func parseSourceInput(input string, fallbackIndex int) (*parsedSourceInput, erro
 			Tag:     tag,
 			Body:    mat.Body,
 			Origin:  &corestate.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw},
+			// SPEC 121: вставленный целиком конфиг с одним узлом приносит и
+			// его связку — DNS-сервер, DNS-правило, правило маршрута.
+			Sections: corestate.NodeSectionsFromConfigTypes(jn.Sections),
 		})
 		res.URIOf = append(res.URIOf, "")
 		res.Unnamed = append(res.Unnamed, unnamed)

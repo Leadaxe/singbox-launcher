@@ -40,6 +40,10 @@ type SingboxImportResult struct {
 	// т.п.): SPEC 118 Т3 требует «не молча» — fetch персистит их в
 	// updateStatus, лог сам по себе пользователя не достигает.
 	Warnings []string
+	// SectionFragments — сколько фрагментов конфига (DNS-серверы, DNS-правила,
+	// правила маршрута) поехали с узлом как его секции (SPEC 121 §6).
+	// 0 — правило извлечения не выполнено (узлов не один) либо связки нет.
+	SectionFragments int
 	// rejected — записи, которые узлом не стали, с их местом в Nodes
 	// (SPEC 116 W11). Не экспортируется: единственный читатель — чистый парсер
 	// тела в этом же пакете, а `UnsupportedTypes` выше отвечает на другой
@@ -168,6 +172,11 @@ func parseSingboxConfig(
 		return
 	}
 
+	// SPEC 121 §6: связка конфига принадлежит узлу — но только когда узел в
+	// конфиге один. Тег считается ДО разбора: ссылки внутри `dns`/`route`
+	// смотрят на тег записи, а не на тег, который выдаст лаунчер.
+	sectionCarrier := SingleSectionCarrierTag(cfg)
+
 	// Индекс по тегу нужен и группам (резолв состава), и цепочкам (фаза B).
 	byTag := make(map[string]map[string]interface{}, len(entries))
 	for _, entry := range entries {
@@ -226,6 +235,19 @@ func parseSingboxConfig(
 
 		if shouldSkipNode(node, skip) {
 			continue
+		}
+
+		// SPEC 121 §6: секции достаются ЕДИНСТВЕННОМУ узлу конфига и только
+		// ему. Узел kind=unsupported сюда не доходит — он не прошёл разбор
+		// выше, и связку без узла показывать было бы нечему.
+		if sectionCarrier != "" && rawTag == sectionCarrier {
+			if ns := ExtractNodeSections(cfg, sectionCarrier); ns != nil {
+				node.Sections = ns
+				n := len(ns.DNSServers) + len(ns.DNSRules) + len(ns.Rules)
+				result.SectionFragments += n
+				debuglog.InfoLog("Parser: singbox import: node %q carries %d config fragment(s) (%s)",
+					sectionCarrier, n, strings.Join(sortedNodeSectionKinds(ns), ", "))
+			}
 		}
 
 		chainInfo.attachChain(node, entry, byTag, cfgIdx)
@@ -355,6 +377,10 @@ var singboxSchemeByType = map[string]string{
 	"naive":       "naive",
 	"wireguard":   "wireguard",
 	"masque":      "masque",
+	// SPEC 122: endpoint tsnet в user-space. Как и wireguard — безадресный
+	// тип (см. singboxTypeIsAddressless) и эмитится в endpoints[]
+	// (config.IsEndpointScheme). URI-формы у схемы нет.
+	"tailscale": "tailscale",
 }
 
 func singboxTypeToScheme(t string) (string, bool) {
@@ -370,8 +396,13 @@ func SchemeFromSingboxType(t string) (string, bool) {
 }
 
 // singboxTypeIsAddressless — типы без server/server_port на верхнем уровне.
+//
+// wireguard описывает адрес через address[]/peers, tailscale не описывает
+// вовсе — ядро само входит в tailnet по auth_key. Общая проверка
+// server/server_port (:299-307) к ним не применима: она отвергла бы такой
+// узел даже при наличии схемы в таблице выше.
 func singboxTypeIsAddressless(t string) bool {
-	return t == "wireguard"
+	return t == "wireguard" || t == "tailscale"
 }
 
 // singboxCredentialFromMap достаёт учётные данные в поле UUID ParsedNode.

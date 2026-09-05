@@ -42,10 +42,13 @@ type (
 	// model. ConnectionsSection из алиасов удалена — секция стала приватной
 	// формой v6-парсера core/state; модель живёт на плоском корне
 	// (Sources/Directions).
-	Source          = corestate.Source
-	SourceKind      = corestate.SourceKind
-	Node            = corestate.Node
-	NodeLink        = corestate.NodeLink
+	Source     = corestate.Source
+	SourceKind = corestate.SourceKind
+	Node       = corestate.Node
+	NodeLink   = corestate.NodeLink
+	// NodeSections — секции узла (SPEC 121): DNS-серверы, DNS-правила и
+	// правила маршрута, которые узел носит с собой.
+	NodeSections    = corestate.NodeSections
 	Origin          = corestate.Origin
 	AutoGroup       = corestate.AutoGroup
 	FolderReplace   = corestate.FolderReplace

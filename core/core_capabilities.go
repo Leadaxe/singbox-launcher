@@ -110,6 +110,83 @@ func naiveVerdictFromVersionOutput(versionOutput string, libAvailable bool) (boo
 	return true, ""
 }
 
+// SPEC 122: то же самое для tailscale. Endpoint типа `tailscale` есть только
+// в ядрах, собранных с `with_tailscale` (форк с 1.14.0-lx.31); один такой
+// узел на ядре без тега валит `sing-box check` для ВСЕГО конфига, поэтому
+// генератор выбрасывает такие узлы с warning — ровно как naive.
+
+// tailscaleSupportVerdict — кэш вердикта по (mtime, size) бинаря ядра.
+type tailscaleSupportVerdict struct {
+	binMtime  time.Time
+	binSize   int64
+	supported bool
+	reason    string
+}
+
+// tailscaleBuildTag — тег сборки ядра, дающий endpoint типа tailscale.
+const tailscaleBuildTag = "with_tailscale"
+
+// CoreSupportsTailscale reports whether the installed sing-box core can create
+// tailscale endpoints, with a human-readable reason when it can't.
+func (ac *AppController) CoreSupportsTailscale() (bool, string) {
+	if ac == nil || ac.FileService == nil {
+		return true, ""
+	}
+	singboxPath := ac.FileService.SingboxPath
+	if resolved, err := exec.LookPath(singboxPath); err == nil {
+		singboxPath = resolved
+	}
+	st, err := os.Stat(singboxPath)
+	if err != nil {
+		return true, "" // no core installed — nothing to probe, check is skipped anyway
+	}
+
+	ac.tailscaleSupportCacheMu.Lock()
+	defer ac.tailscaleSupportCacheMu.Unlock()
+	if c := ac.tailscaleSupportCache; c != nil && c.binMtime.Equal(st.ModTime()) && c.binSize == st.Size() {
+		return c.supported, c.reason
+	}
+
+	supported, reason := probeTailscaleSupport(singboxPath)
+	ac.tailscaleSupportCache = &tailscaleSupportVerdict{
+		binMtime:  st.ModTime(),
+		binSize:   st.Size(),
+		supported: supported,
+		reason:    reason,
+	}
+	if !supported {
+		debuglog.WarnLog("CoreSupportsTailscale: %s", reason)
+	}
+	return supported, reason
+}
+
+// probeTailscaleSupport runs `sing-box version` and derives the verdict from
+// the build tags.
+func probeTailscaleSupport(singboxPath string) (bool, string) {
+	cmd := exec.Command(singboxPath, "version")
+	platform.PrepareCommand(cmd)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		debuglog.WarnLog("probeTailscaleSupport: sing-box version failed: %v", err)
+		return true, ""
+	}
+	return tailscaleVerdictFromVersionOutput(string(output))
+}
+
+// tailscaleVerdictFromVersionOutput — pure part of the probe, unit-testable.
+func tailscaleVerdictFromVersionOutput(versionOutput string) (bool, string) {
+	m := versionTagsRegex.FindStringSubmatch(versionOutput)
+	if m == nil {
+		return true, "" // unknown output format — don't degrade on guesswork
+	}
+	for _, t := range splitBuildTags(m[1]) {
+		if t == tailscaleBuildTag {
+			return true, ""
+		}
+	}
+	return false, fmt.Sprintf("sing-box core is built without %s (need 1.14.0-lx.31 or newer)", tailscaleBuildTag)
+}
+
 // cronetLibName — platform-specific companion library filename the cronet
 // purego loader looks for.
 func cronetLibName() string {

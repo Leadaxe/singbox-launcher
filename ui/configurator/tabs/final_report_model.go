@@ -94,9 +94,10 @@ func finalReportLines(entries []config.BuildReportEntry) []finalReportLine {
 		config.BuildReportChainFailed:       4,
 		// Деградации обновления и эмиссии — частичные потери у источника,
 		// который работает: после всего, что стоило источника целиком.
-		config.BuildReportFetchDegraded: 5,
-		config.BuildReportEmitDegraded:  6,
-		config.BuildReportNaiveDegraded: 7,
+		config.BuildReportFetchDegraded:     5,
+		config.BuildReportEmitDegraded:      6,
+		config.BuildReportNaiveDegraded:     7,
+		config.BuildReportTailscaleDegraded: 8,
 	}
 	idx := make([]int, len(entries))
 	for i := range idx {
@@ -138,6 +139,8 @@ func finalReportEntryText(e config.BuildReportEntry) string {
 		return locale.Tf("Chain %q did not build: %s", subject, e.Reason)
 	case config.BuildReportNaiveDegraded:
 		return locale.Tf("%d naive node(s) skipped: %s", e.NodeCount, e.Reason)
+	case config.BuildReportTailscaleDegraded:
+		return locale.Tf("%d tailscale node(s) skipped: %s", e.NodeCount, e.Reason)
 	case config.BuildReportTargetMissing:
 		return locale.Tf("Detour target %q is missing from the build: %s", subject, e.Reason)
 	case config.BuildReportEmitDegraded, config.BuildReportFetchDegraded:

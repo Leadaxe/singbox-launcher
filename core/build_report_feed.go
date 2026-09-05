@@ -121,6 +121,16 @@ func FeedBuildReportFromParser(gen config.BuildGeneration, res *config.OutboundG
 		})
 	}
 
+	// SPEC 122: то же для tailscale — узлы сняты, конфиг собран.
+	if res.SkippedTailscaleNodes > 0 {
+		entries = append(entries, config.BuildReportEntry{
+			Kind:      config.BuildReportTailscaleDegraded,
+			Subject:   "tailscale",
+			Reason:    res.SkippedTailscaleReason,
+			NodeCount: res.SkippedTailscaleNodes,
+		})
+	}
+
 	config.AddBuildReportEntries(gen, entries)
 }
 

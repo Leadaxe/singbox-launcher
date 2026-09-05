@@ -266,7 +266,7 @@ func syncOutboundsLocal(model *wizardmodels.WizardModel) {
 		return
 	}
 	rulesV6 := wizardmodels.EmitStateRulesInAxisOrder(
-		model.RuleOrder, model.PresetRefs, model.CustomRules,
+		model.RuleOrder, model.PresetRefs, model.CustomRules, model.NodeRefs,
 	)
 	build.SyncOutboundsWithTemplate(rulesV6, &model.GlobalOutbounds, model.TemplateData.Presets, build.TemplateOutboundTags(model.TemplateData), model.Target)
 }

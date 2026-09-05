@@ -48,13 +48,13 @@ func presetRule(ref string, num *int) corestate.Rule {
 func loadIntoModel(t *testing.T, rules []corestate.Rule, td *wizardtemplate.TemplateData) *WizardModel {
 	t.Helper()
 	specs := wizardtemplate.RuleOrderSpecs(td.Presets)
-	norm := corestate.NormalizeRuleOrder(rules, specs)
+	norm := corestate.NormalizeRuleOrder(rules, specs, nil)
 
 	m := &WizardModel{TemplateData: td}
 	m.PresetRefs = SyncStateRulesToPresetRefs(norm)
 	m.CustomRules = customRulesFromStateRules(norm)
 
-	order := RuleOrderFromAxis(norm, m.PresetRefs, m.CustomRules)
+	order := RuleOrderFromAxis(norm, m.PresetRefs, m.CustomRules, m.NodeRefs)
 	if len(order) == 0 {
 		RebuildRuleOrder(m)
 	} else {
@@ -110,7 +110,7 @@ func customRulesFromStateRules(rules []corestate.Rule) []*RuleState {
 // saveModel воспроизводит CreateStateFromModel в части state.Rules.
 func saveModel(m *WizardModel) []corestate.Rule {
 	ReconcileRuleOrder(m)
-	return EmitStateRulesInAxisOrder(m.RuleOrder, m.PresetRefs, m.CustomRules)
+	return EmitStateRulesInAxisOrder(m.RuleOrder, m.PresetRefs, m.CustomRules, m.NodeRefs)
 }
 
 // slotNames — читаемое представление порядка: ref пресета либо label правила.

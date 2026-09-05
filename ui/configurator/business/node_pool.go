@@ -15,6 +15,7 @@ package business
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 
 	"singbox-launcher/core/config"
@@ -159,6 +160,48 @@ func InvalidateNodePool(model *wizardmodels.WizardModel) {
 	// Счётчики узлов выведены из пула и пережить его не могут: иначе список
 	// Sources показывал бы числа от прошлого состава.
 	model.SourceNodeCounts = nil
+	// SPEC 121: якоря правил узлов — такая же производная от состава, и
+	// снимает их то же событие. Своей точки пересева у них нет намеренно:
+	// «правка узла» случается в дюжине мест (окно источника, папка, удаление,
+	// импорт бэкапа), и каждое из них уже зовёт инвалидацию — а вот помнить
+	// про второй вызов пришлось бы каждому (ловушка «кэши инвалидируются
+	// парой»).
+	if wizardmodels.SeedNodeRefsFromSources(model) {
+		// Состав якорей изменился — слоты обязаны прийти к нему: слот с
+		// индексом за концом списка нарисовал бы пустую строку.
+		wizardmodels.ReconcileRuleOrder(model)
+		wizardmodels.EnsureRuleOrderNums(model)
+		wizardmodels.SortRuleOrderByAxis(model)
+	}
+}
+
+// TailscaleEndpointTags — финальные теги узлов схемы `tailscale` в пуле
+// (SPEC 122 §2.4).
+//
+// DNS-сервер типа `tailscale` ссылается полем `endpoint` на ТЕГ УЗЛА в
+// собранном конфиге, то есть на финальный тег — тот, что уже прошёл
+// тег-политику контейнера. Пул его и несёт (RebuildNodePool эмитит источники
+// той же EmitCanonicalSource, что и сборка), поэтому список берётся отсюда,
+// а не из состояния.
+//
+// Пул может быть не построен (ленивый кэш) — тогда список пуст, и форма
+// показывает текстовое поле вместо выбора. Это ТРЕТЬЕ состояние, а не
+// «узлов нет»: сама форма ничего не объявляет потерянным.
+func TailscaleEndpointTags(model *wizardmodels.WizardModel) []string {
+	if model == nil {
+		return nil
+	}
+	var out []string
+	for _, n := range model.NodePool {
+		if n == nil || n.Scheme != config.SchemeTailscale {
+			continue
+		}
+		if tag := strings.TrimSpace(n.Tag); tag != "" {
+			out = append(out, tag)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // NodesForDirectionPicker — узлы, которые предлагаются в выборе НАПРАВЛЕНИЯ.
@@ -189,6 +232,12 @@ func NodesForDirectionPicker(model *wizardmodels.WizardModel) []*config.ParsedNo
 			continue
 		}
 		if n.Service && !exposed[n.SourceIndex] {
+			continue
+		}
+		// SPEC 122: вторая точка того же правила — узел tailnet без
+		// exit_node выходом в интернет не является. Первая живёт в
+		// config.FilterDirectionCandidatePool (сборка).
+		if !n.IsExitCapable() {
 			continue
 		}
 		out = append(out, n)

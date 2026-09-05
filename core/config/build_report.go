@@ -49,6 +49,10 @@ const (
 	// умеет (SPEC 044 feature-probe).
 	BuildReportNaiveDegraded BuildReportKind = "naive_degraded"
 
+	// BuildReportTailscaleDegraded — узлы tailscale сняты, потому что ядро
+	// собрано без with_tailscale (SPEC 122 feature-probe).
+	BuildReportTailscaleDegraded BuildReportKind = "tailscale_degraded"
+
 	// BuildReportSourceParseFailed — источник не дал конфигу НИ ОДНОГО узла:
 	// не фетчнулся, или фетчнулся и разобрался в ноль (SPEC 115).
 	//

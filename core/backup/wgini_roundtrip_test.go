@@ -33,7 +33,7 @@ func TestWGIniSurvivesExportImport(t *testing.T) {
 		ID: "SRV",
 	}
 
-	exported := exportServer(src)
+	exported := exportServer(src, nil)
 	if !strings.Contains(exported.URI, "[Interface]") {
 		t.Fatalf("экспорт потерял блок INI: uri=%q config_json=%q", exported.URI, exported.ConfigJSON)
 	}

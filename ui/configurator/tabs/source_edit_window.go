@@ -1894,14 +1894,22 @@ func showSourceEditWindowAt(
 		// не принимает outbound без типа НИ у сервера, ни у цепочки, и
 		// сказать это одной внятной строкой лучше, чем двумя разными из
 		// глубины каждой ветки.
-		var ob map[string]interface{}
-		if err := json.Unmarshal([]byte(text), &ob); err != nil {
-			dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
-			return
-		}
-		if t, _ := ob["type"].(string); strings.TrimSpace(t) == "" {
-			dialog.ShowError(errors.New(locale.T("The outbound object must have a non-empty \"type\" field.")), win)
-			return
+		//
+		// SPEC 121 §5.1: исключение — ДОКУМЕНТ узла (тело + секции). У него
+		// `type` на верхнем уровне и не может быть: тип живёт у записи внутри
+		// `outbounds`/`endpoints`, и проверяет его разбор документа. У цепочки
+		// документов не бывает — там своя ветка ниже.
+		isDoc := !isChainSource && config.IsNodeDocument([]byte(text))
+		if !isDoc {
+			var ob map[string]interface{}
+			if err := json.Unmarshal([]byte(text), &ob); err != nil {
+				dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
+				return
+			}
+			if t, _ := ob["type"].(string); strings.TrimSpace(t) == "" {
+				dialog.ShowError(errors.New(locale.T("The outbound object must have a non-empty \"type\" field.")), win)
+				return
+			}
 		}
 		// SPEC 110: у цепочки правится СВОЙ объект, а не ConfigJSON —
 		// последнего у неё нет, и правка ушла бы в никуда. Обратно
@@ -1959,7 +1967,13 @@ func showSourceEditWindowAt(
 		// была ли связь, уже негде.
 		hadSubURL := scratch.Origin != nil && scratch.Origin.SubURL != ""
 		if err := applyServerBodyJSON(&scratch.Node, text); err != nil {
-			dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
+			// Документ отвергается СВОЕЙ причиной («лишний ключ», «два узла»):
+			// обёртка «Invalid JSON» врала бы — JSON как раз валиден.
+			if isDoc {
+				dialog.ShowError(errors.New(locale.Tf("Node document rejected: %s", err.Error())), win)
+			} else {
+				dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
+			}
 			return
 		}
 		// Разыменование делает ОБЩАЯ точка (business.DereferenceNodeOrigin), а
@@ -2059,8 +2073,20 @@ func showSourceEditWindowAt(
 			if err := json.Indent(&buf, scratch.Body, "", "  "); err == nil {
 				text = buf.String()
 			}
+			status := locale.T("The outbound as it will reach the config.")
+			// SPEC 121 §5.1: узел с секциями показывается ДОКУМЕНТОМ — голое
+			// тело умолчало бы о половине того, что узел добавит в конфиг, и
+			// первый же Apply снёс бы её.
+			if !scratch.Sections.IsEmpty() {
+				doc, derr := config.RenderNodeDocument(
+					scratch.Body, scratch.Sections, config.NodeBodyGoesToEndpoints(scratch.Body))
+				if derr == nil {
+					text = doc
+					status = locale.T("The node and the config fragments it carries. @self is this node's tag.")
+				}
+			}
 			setJSONText(text)
-			jsonStatus.SetText(locale.T("The outbound as it will reach the config."))
+			jsonStatus.SetText(status)
 			if sourceOriginURI(&scratch) != "" {
 				jsonResetBtn.Enable()
 			} else {

@@ -43,18 +43,20 @@ import (
 	"strconv"
 	"strings"
 
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/debuglog"
 )
 
 // OutboundGenerationResult is the return value of GenerateOutboundsFromParserConfig: slice of JSON strings
 // (nodes, then local selectors, then global selectors) and counts for each category.
-// WireGuard nodes go to EndpointsJSON (sing-box endpoints), not OutboundsJSON.
+// Endpoint-scheme nodes (wireguard, tailscale — see IsEndpointScheme) go to
+// EndpointsJSON (sing-box endpoints), not OutboundsJSON.
 type OutboundGenerationResult struct {
 	OutboundsJSON        []string // Generated JSON lines for outbounds array (nodes, then local, then global selectors)
-	EndpointsJSON        []string // Generated JSON lines for endpoints array (WireGuard nodes only)
-	NodesCount           int      // Number of node outbounds (non-WireGuard)
-	EndpointsCount       int      // Number of WireGuard endpoint nodes
+	EndpointsJSON        []string // Generated JSON lines for endpoints array (endpoint-scheme nodes only)
+	NodesCount           int      // Number of node outbounds (non-endpoint schemes)
+	EndpointsCount       int      // Number of endpoint-scheme nodes
 	LocalSelectorsCount  int      // Number of local (per-source) selectors
 	GlobalSelectorsCount int      // Number of global selectors
 	// Per-source outcomes (only enabled sources are counted; disabled sources
@@ -71,6 +73,18 @@ type OutboundGenerationResult struct {
 	// SkippedNaiveReason carries the probe verdict for UI surfacing.
 	SkippedNaiveNodes  int
 	SkippedNaiveReason string
+	// SkippedTailscaleNodes — узлы `tailscale`, снятые потому, что ядро
+	// собрано без with_tailscale (SPEC 122). Причина та же, что у naive:
+	// один такой узел завалил бы `sing-box check` для всего конфига.
+	// SkippedTailscaleReason несёт вердикт пробы для показа в UI.
+	SkippedTailscaleNodes  int
+	SkippedTailscaleReason string
+
+	// NodeSections — секции узлов, ДОШЕДШИХ до эмиссии (SPEC 121), в порядке
+	// эмиссии. Собирается здесь по той же причине, что и NodeOrigins: это
+	// последнее место, где виден и узел, и его финальный тег — дальше по
+	// конвейеру от узла остаётся строка JSON.
+	NodeSections []NodeSectionSet
 
 	// EmptyDirections — Направления, чей фильтр не поймал ни одного узла
 	// (SPEC 104). Отображаемые имена, для превью и статуса: в конфиг такое
@@ -144,6 +158,20 @@ type OutboundGenerationResult struct {
 type NodeOrigin struct {
 	SourceID    string
 	SourceLabel string
+}
+
+// NodeSectionSet — секции одного узла плюс адресация (SPEC 121). Зеркалит
+// build.NodeSectionSet: core/build о core/config не знает, и общего типа у
+// них быть не может — зависимость идёт в одну сторону.
+type NodeSectionSet struct {
+	// FinalTag — тег, под которым узел уехал в конфиг.
+	FinalTag string
+	// Link — идентичность узла в состоянии ({FolderID, сырой тег}).
+	Link configtypes.NodeLink
+	// Тела фрагментов — сырые, до подстановки `@self` и префиксов.
+	DNSServers []json.RawMessage
+	DNSRules   []json.RawMessage
+	Rules      []json.RawMessage
 }
 
 // SourceExclusion — один исключённый источник и почему.
@@ -222,6 +250,12 @@ func appendReason(reasons []string, extra string) []string {
 // not. nil (parser-level tests, standalone use) → assume supported. Same
 // package-level-hook pattern used across the parser package.
 var NaiveSupportProbe func() (supported bool, reason string)
+
+// TailscaleSupportProbe — та же схема для endpoint'а типа `tailscale`
+// (SPEC 122): ядро без тега `with_tailscale` отвергает такой узел, и
+// `sing-box check` падает на ВСЁМ конфиге, а не на одном узле. nil →
+// считаем, что ядро умеет: деградировать по догадке нельзя.
+var TailscaleSupportProbe func() (supported bool, reason string)
 
 // GenerateNodeJSON returns a single JSON object string for one proxy node (sing-box outbound).
 // Field order and presence follow sing-box expectations. Supports: vless, vmess, trojan, shadowsocks, hysteria, hysteria2, tuic, naive, masque, anytls, ssh, socks.
@@ -1033,12 +1067,19 @@ func sanitizeBalancerOptions(opts map[string]interface{}) {
 	}
 }
 
-// GenerateEndpointJSON returns a single JSON object string for one WireGuard endpoint (sing-box endpoints array).
-// node.Outbound must contain the full endpoint map built by the wireguard URI parser.
+// GenerateEndpointJSON returns a single JSON object string for one endpoint-scheme
+// node (sing-box endpoints array): wireguard or tailscale, see IsEndpointScheme.
+// node.Outbound must contain the full endpoint map built by the parser.
 // Uses node.Tag (with tag_prefix applied by source) for the endpoint "tag" so selectors can reference it.
 // Returned string is pretty-printed (multi-line); trailing comma is added by the caller when inserting into the array.
+//
+// SPEC 122: only this (config-bound) form stamps `state_directory` onto a
+// tailnet node — the Bare form must not, because its callers write the node's
+// canonical BODY (materialisation, identity hash), and a filesystem path of
+// THIS machine has no place in a body that travels to backups and to another
+// machine's config.
 func GenerateEndpointJSON(node *ParsedNode) (string, error) {
-	body, err := GenerateEndpointJSONBare(node)
+	body, err := generateEndpointJSONBare(node, true)
 	if err != nil {
 		return "", err
 	}
@@ -1052,8 +1093,12 @@ func GenerateEndpointJSON(node *ParsedNode) (string, error) {
 // комментария. Парная к GenerateNodeJSONBare: подпись содержимого и миграция
 // legacy-ключей разбирают эмиссию обратно и обёртку видеть не должны.
 func GenerateEndpointJSONBare(node *ParsedNode) (string, error) {
-	if node == nil || node.Scheme != "wireguard" || node.Outbound == nil {
-		return "", fmt.Errorf("GenerateEndpointJSON requires wireguard node with Outbound set")
+	return generateEndpointJSONBare(node, false)
+}
+
+func generateEndpointJSONBare(node *ParsedNode, forConfig bool) (string, error) {
+	if node == nil || !IsEndpointScheme(node.Scheme) || node.Outbound == nil {
+		return "", fmt.Errorf("GenerateEndpointJSON requires an endpoint-scheme node with Outbound set")
 	}
 	// Use node.Tag (includes tag_prefix, e.g. "4:wg-parnas") so endpoint tag matches outbound references
 	endpoint := make(map[string]interface{})
@@ -1063,15 +1108,19 @@ func GenerateEndpointJSONBare(node *ParsedNode) (string, error) {
 	if node.Tag != "" {
 		endpoint["tag"] = node.Tag
 	}
+	if forConfig {
+		applyTailscaleStateDirectory(endpoint, node.Scheme, node.Tag)
+	}
 	jsonBytes, err := json.MarshalIndent(endpoint, "", "  ")
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal wireguard endpoint: %w", err)
+		return "", fmt.Errorf("failed to marshal %s endpoint: %w", node.Scheme, err)
 	}
 	return string(jsonBytes), nil
 }
 
 // EmitNodeJSONs renders one parsed node exactly as the final config carries
-// it: wireguard → a single endpoints entry, everything else → one or more
+// it: endpoint scheme (IsEndpointScheme) → a single endpoints entry,
+// everything else → one or more
 // outbounds entries (SPEC 094 B3 detour-chain hops first, then the main
 // outbound with "detour" stamped onto a copy of its map).
 //
@@ -1083,7 +1132,7 @@ func EmitNodeJSONs(node *ParsedNode) (outboundJSONs []string, endpointJSON strin
 		return nil, "", fmt.Errorf("nil node")
 	}
 
-	if node.Scheme == "wireguard" {
+	if IsEndpointScheme(node.Scheme) {
 		ep, err := GenerateEndpointJSON(node)
 		if err != nil {
 			return nil, "", err
@@ -1182,6 +1231,13 @@ func GenerateOutboundsFromParserConfig(
 	}
 	skippedNaive := 0
 
+	// SPEC 122: та же проба для tailscale — одна на прогон.
+	tailscaleSupported, tailscaleReason := true, ""
+	if TailscaleSupportProbe != nil {
+		tailscaleSupported, tailscaleReason = TailscaleSupportProbe()
+	}
+	skippedTailscale := 0
+
 	// SPEC 118 W4: эмиссионные деградации канонического пути (битое тело,
 	// пустая группа, снятое умолчание) — тот же адресат, что у причин
 	// разбора: отчёт сборки. Ключ — позиция источника, как и там.
@@ -1231,9 +1287,31 @@ func GenerateOutboundsFromParserConfig(
 			skippedNaive += skippedNaiveHere
 		}
 
-		// A source whose every node was a degraded naive node still fetched
-		// and parsed fine — count it as succeeded, not silent-empty.
-		if len(nodesFromSource) == 0 && skippedNaiveHere > 0 {
+		// SPEC 122: та же ветка для tailscale. Секции такого узла (SPEC 121)
+		// сами собой не эмитятся — они собираются ниже по узлам, ДОШЕДШИМ до
+		// эмиссии, а выброшенный узел туда не доходит.
+		skippedTailscaleHere := 0
+		if !tailscaleSupported {
+			kept := nodesFromSource[:0]
+			for _, n := range nodesFromSource {
+				if n.Scheme == SchemeTailscale {
+					skippedTailscaleHere++
+					// Код деградации — из реестра (contract/registry/warnings.json):
+					// узел выбрасывается, вешать пометку не на что, и код едет
+					// в лог вместе с причиной.
+					debuglog.WarnLog("GenerateOutboundsFromParserConfig: %s — skipping tailscale node %q — %s",
+						subscription.WarnTailscaleCoreUnsupported, n.Tag, tailscaleReason)
+					continue
+				}
+				kept = append(kept, n)
+			}
+			nodesFromSource = kept
+			skippedTailscale += skippedTailscaleHere
+		}
+
+		// A source whose every node was a degraded naive/tailscale node still
+		// fetched and parsed fine — count it as succeeded, not silent-empty.
+		if len(nodesFromSource) == 0 && (skippedNaiveHere > 0 || skippedTailscaleHere > 0) {
 			succeededSources++
 			continue
 		}
@@ -1281,11 +1359,13 @@ func GenerateOutboundsFromParserConfig(
 		// несёт только диагностику (узлов в нём нет по определению), и его
 		// единственный потребитель — фид отчёта.
 		diag := &OutboundGenerationResult{
-			TotalSources:       totalSources,
-			SucceededSources:   succeededSources,
-			FailedSources:      failedSources,
-			SkippedNaiveNodes:  skippedNaive,
-			SkippedNaiveReason: naiveReason,
+			TotalSources:           totalSources,
+			SucceededSources:       succeededSources,
+			FailedSources:          failedSources,
+			SkippedNaiveNodes:      skippedNaive,
+			SkippedNaiveReason:     naiveReason,
+			SkippedTailscaleNodes:  skippedTailscale,
+			SkippedTailscaleReason: tailscaleReason,
 			// ExcludedSources здесь пуст по существу, а не по недосмотру:
 			// исключения считает резолв графа ссылок ниже, и при нулевом наборе
 			// узлов исключать нечего — до графа ссылок дело не дошло.
@@ -1296,6 +1376,9 @@ func GenerateOutboundsFromParserConfig(
 		}
 		if skippedNaive > 0 {
 			return diag, fmt.Errorf("no usable nodes: %d naive node(s) skipped (%s)", skippedNaive, naiveReason)
+		}
+		if skippedTailscale > 0 {
+			return diag, fmt.Errorf("no usable nodes: %d tailscale node(s) skipped (%s)", skippedTailscale, tailscaleReason)
 		}
 		return diag, fmt.Errorf("no nodes parsed from any source")
 	}
@@ -1402,6 +1485,9 @@ func GenerateOutboundsFromParserConfig(
 		}
 	}
 
+	// SPEC 121: секции узлов, ДОШЕДШИХ до эмиссии. Заполняется в том же цикле
+	// и только на удачной ветке — фрагмент без своего узла ссылался бы в никуда.
+	var nodeSections []NodeSectionSet
 	for _, node := range allNodes {
 		outJSONs, epJSON, err := EmitNodeJSONs(node)
 		if err != nil {
@@ -1415,6 +1501,15 @@ func GenerateOutboundsFromParserConfig(
 			selectorsJSON = append(selectorsJSON, outJSONs...)
 			nodesCount++
 		}
+		if !node.Sections.IsEmpty() {
+			nodeSections = append(nodeSections, NodeSectionSet{
+				FinalTag:   node.Tag,
+				Link:       node.SectionsLink,
+				DNSServers: node.Sections.DNSServers,
+				DNSRules:   node.Sections.DNSRules,
+				Rules:      node.Sections.Rules,
+			})
+		}
 	}
 
 	globalPool := FilterDirectionCandidatePool(allNodes, parserConfig.ParserConfig.Proxies)
@@ -1426,24 +1521,27 @@ func GenerateOutboundsFromParserConfig(
 	selectorsJSON = append(selectorsJSON, selectorJSONs...)
 
 	return &OutboundGenerationResult{
-		OutboundsJSON:        selectorsJSON,
-		EndpointsJSON:        endpointsJSON,
-		NodesCount:           nodesCount,
-		EndpointsCount:       endpointsCount,
-		LocalSelectorsCount:  localSelectorsCount,
-		GlobalSelectorsCount: globalSelectorsCount,
-		TotalSources:         totalSources,
-		SucceededSources:     succeededSources,
-		FailedSources:        failedSources,
-		SkippedNaiveNodes:    skippedNaive,
-		EmptyDirections:      emptyDirections,
-		BrokenChains:         brokenChains,
-		ChainCycles:          chainCycles,
-		DetourCycles:         detourCycles,
-		ParseFailedSources:   parseFailedSources,
-		EmissionWarnings:     emissionWarnings,
-		NodeOrigins:          nodeOrigins,
-		SkippedNaiveReason:   naiveReason,
+		OutboundsJSON:          selectorsJSON,
+		EndpointsJSON:          endpointsJSON,
+		NodesCount:             nodesCount,
+		EndpointsCount:         endpointsCount,
+		LocalSelectorsCount:    localSelectorsCount,
+		GlobalSelectorsCount:   globalSelectorsCount,
+		TotalSources:           totalSources,
+		SucceededSources:       succeededSources,
+		FailedSources:          failedSources,
+		SkippedNaiveNodes:      skippedNaive,
+		SkippedTailscaleNodes:  skippedTailscale,
+		SkippedTailscaleReason: tailscaleReason,
+		EmptyDirections:        emptyDirections,
+		BrokenChains:           brokenChains,
+		ChainCycles:            chainCycles,
+		DetourCycles:           detourCycles,
+		ParseFailedSources:     parseFailedSources,
+		EmissionWarnings:       emissionWarnings,
+		NodeOrigins:            nodeOrigins,
+		NodeSections:           nodeSections,
+		SkippedNaiveReason:     naiveReason,
 	}, nil
 }
 

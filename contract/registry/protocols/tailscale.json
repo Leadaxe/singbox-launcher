@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "scheme": "tailscale",
+  "kind": "endpoint",
+  "singbox_type": "tailscale",
+  "aliases": [],
+  "sources": [
+    "singbox"
+  ],
+  "extension": null,
+  "note": "Endpoint (sing-box >= 1.12): узел живёт в endpoints[], не в outbounds[], и адреса на верхнем уровне не имеет (безадресный тип, как wireguard). Ядро поднимает tsnet в user-space и само входит в tailnet по auth_key. URI-формы нет — узел приходит только из sing-box JSON или из конструктора «Add server → Tailscale», который отдаёт документ узла (endpoint + dns + route). Одноразовый ключ (tskey-auth-…) расходуется при первом входе, дальше идентичность машины живёт в state_directory: удаление каталога регистрирует НОВОЕ устройство. Лаунчер подставляет state_directory вида <exec>/bin/tailscale/<финальный тег>, если поле не задано в теле, — дефолт ядра общий для всех узлов, и два узла tailnet сели бы в один каталог. Ядру нужен тег сборки with_tailscale (форк с 1.14.0-lx.31); на ядре без тега узел выбрасывается с warning tailscale_core_unsupported, иначе один такой узел валит sing-box check для ВСЕГО конфига. MagicDNS — отдельный DNS-сервер type=tailscale с полем endpoint (тег этого узла); маршрут в tailnet — обычное правило на 100.64.0.0/10. LxBox узел не применяет: libbox собран без tailscale.",
+  "uri": null,
+  "emit": {
+    "share_uri": false,
+    "note": "Share-URI не эмитится — URI-формы у схемы нет. Тело узла эмитится как есть (канон v7), per-scheme ветки нет; единственная правка эмиттера — подстановка state_directory при его отсутствии."
+  },
+  "degrade": [
+    "ядро без тега with_tailscale → узел выбрасывается целиком с warning tailscale_core_unsupported (severity=warning): конфиг с ним не прошёл бы sing-box check ни одним узлом",
+    "узел без непустого exit_node не предлагается в Направления: без выходного узла tailnet в интернет не выпускает, и «страной» такой узел не является (detour на него при этом законен)"
+  ],
+  "refs": {
+    "go": [
+      "core/config/subscription/singbox_import.go:344-359",
+      "core/config/subscription/singbox_import.go:371-379",
+      "core/config/outbound_generator.go:1054-1056",
+      "core/config/outbound_generator.go:1086",
+      "core/config/endpoint_schemes.go:1",
+      "core/core_capabilities.go:39",
+      "ui/configurator/dialogs/add_server_tailscale.go:1",
+      "ui/configurator/tabs/dns_server_form.go:44"
+    ],
+    "dart": []
+  }
+}

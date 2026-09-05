@@ -104,13 +104,39 @@ func buildSnapshotFromState(s *state.State, execDir string, subst config.VarSubs
 		warnings = append(warnings, fmt.Sprintf("%d naive node(s) skipped: %s",
 			result.SkippedNaiveNodes, result.SkippedNaiveReason))
 	}
+	// SPEC 122: то же для tailscale.
+	if result.SkippedTailscaleNodes > 0 {
+		warnings = append(warnings, fmt.Sprintf("%d tailscale node(s) skipped: %s",
+			result.SkippedTailscaleNodes, result.SkippedTailscaleReason))
+	}
 
 	return &build.ParsedCache{
-		Outbounds:   jsonStringsToRawMessages(result.OutboundsJSON),
-		Endpoints:   jsonStringsToRawMessages(result.EndpointsJSON),
-		Warnings:    warnings,
-		NodeOrigins: buildNodeOrigins(result.NodeOrigins),
+		Outbounds:    jsonStringsToRawMessages(result.OutboundsJSON),
+		Endpoints:    jsonStringsToRawMessages(result.EndpointsJSON),
+		Warnings:     warnings,
+		NodeOrigins:  buildNodeOrigins(result.NodeOrigins),
+		NodeSections: buildNodeSections(result.NodeSections),
 	}, result, nil
+}
+
+// buildNodeSections переводит секции узлов из формы парсера в форму сборщика
+// (SPEC 121). Два одинаковых типа в разных пакетах — та же цена, что у
+// buildNodeOrigins: core/build остаётся leaf-пакетом.
+func buildNodeSections(src []config.NodeSectionSet) []build.NodeSectionSet {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]build.NodeSectionSet, 0, len(src))
+	for _, s := range src {
+		out = append(out, build.NodeSectionSet{
+			FinalTag:   s.FinalTag,
+			Link:       build.NodeLink{FolderID: s.Link.FolderID, Tag: s.Link.Tag},
+			DNSServers: s.DNSServers,
+			DNSRules:   s.DNSRules,
+			Rules:      s.Rules,
+		})
+	}
+	return out
 }
 
 // buildNodeOrigins переводит карту происхождения узлов из формы парсера в

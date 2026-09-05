@@ -57,6 +57,56 @@ func buildUnifiedDNSRuleRows(
 			buildSingleDNSPresetRuleRow(presenter, model, parentWindow, dnsRulesBox, slot.Index, slotIdx, refreshAll, dragGroup)
 		}
 	}
+	// SPEC 121: DNS-правила, которые узлы носят с собой, — в конец списка и
+	// вне слотов. Оси порядка у DNS не существует (CODEMAP §10 п. 9), а
+	// собственного слота у них нет намеренно: двигать их некуда, порядок
+	// задаёт порядок узлов.
+	buildNodeSectionDNSRuleRows(model, parentWindow, dnsRulesBox)
+}
+
+// buildNodeSectionDNSRuleRows — read-only строки DNS-правил узлов.
+//
+// Строка — по образцу пресетной: 🔗 + имя источника правила, тултип с
+// содержимым, единственное действие — View JSON. Тумблера нет: правило живёт и
+// умирает вместе со своим узлом.
+func buildNodeSectionDNSRuleRows(
+	model *wizardmodels.WizardModel,
+	parentWindow fyne.Window,
+	dnsRulesBox *fyne.Container,
+) {
+	_, rules := wizardbusiness.NodeSectionDNSForModel(model)
+	for _, r := range rules {
+		rule := r
+		var row *fynewidget.HoverRow
+		rowGetter := func() *fynewidget.HoverRow { return row }
+
+		titleLabel := ttwidget.NewLabel("🔗 " + rule.FinalTag)
+		titleLabel.Truncation = fyne.TextTruncateClip
+		if _, tooltip := dnsRuleSummary(rule.Body); tooltip != "" {
+			titleLabel.SetToolTip(tooltip)
+		}
+
+		viewBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.SearchIcon(), func() {
+			body, _ := jsonPrettyMarshal(rule.Body)
+			header := widget.NewLabelWithStyle(
+				"🔗  "+locale.Tf("From node %q", rule.FinalTag),
+				fyne.TextAlignLeading, fyne.TextStyle{Bold: true},
+			)
+			helpLabel := widget.NewLabelWithStyle(
+				locale.T("Read-only. This DNS rule travels with the node — edit it on the node's JSON tab."),
+				fyne.TextAlignLeading, fyne.TextStyle{Italic: true},
+			)
+			helpLabel.Wrapping = fyne.TextWrapWord
+			showJSONReadOnlyDialog(parentWindow, "DNS rule details", header, helpLabel, body)
+		}, rowGetter)
+		viewBtn.Importance = widget.LowImportance
+
+		// Ни ручки, ни чекбокса: распорка на месте захвата держит колонку
+		// подписи на одной вертикали с соседними строками.
+		leftLead := container.NewHBox(fynewidget.NewDragHandleSpacer())
+		right := container.NewHBox(viewBtn)
+		row = finalizeRow(dnsRulesBox, leftLead, right, titleLabel, titleLabel)
+	}
 }
 
 // buildSingleDNSUserRuleRow — один tile для DNSUserRules[userIdx].

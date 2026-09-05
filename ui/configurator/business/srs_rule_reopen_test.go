@@ -63,7 +63,7 @@ func TestSrsRuleSurvivesReopen(t *testing.T) {
 		model.CustomRules = append(model.CustomRules, wizardmodels.PersistedCustomRuleToRuleState(&st.CustomRules[i]))
 	}
 	model.PresetRefs = wizardmodels.SyncStateRulesToPresetRefs(st.Rules)
-	model.RuleOrder = wizardmodels.RuleOrderFromAxis(st.Rules, model.PresetRefs, model.CustomRules)
+	model.RuleOrder = wizardmodels.RuleOrderFromAxis(st.Rules, model.PresetRefs, model.CustomRules, model.NodeRefs)
 	wizardmodels.ReconcileRuleOrder(model)
 
 	var srsRule *wizardmodels.RuleState

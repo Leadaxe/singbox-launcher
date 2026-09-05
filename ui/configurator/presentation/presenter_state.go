@@ -130,7 +130,7 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	// в config.json::route.rules[] в этом же порядке.
 	wizardmodels.ReconcileRuleOrder(p.model)
 	state.Rules = wizardmodels.EmitStateRulesInAxisOrder(
-		p.model.RuleOrder, p.model.PresetRefs, p.model.CustomRules,
+		p.model.RuleOrder, p.model.PresetRefs, p.model.CustomRules, p.model.NodeRefs,
 	)
 
 	// SPEC 056-R-N: full DNS sync → flat servers[]/rules[] через kind discriminator.

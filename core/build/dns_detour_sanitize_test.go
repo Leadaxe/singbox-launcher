@@ -76,3 +76,51 @@ func TestSanitizeDNSDetours_MalformedSectionUntouched(t *testing.T) {
 		t.Errorf("нечитаемая секция переписана: %s", got)
 	}
 }
+
+// SPEC 121 §8 п. 8 — ребро `dns.servers[].endpoint`: висячая ссылка
+// выбрасывает СЕРВЕР ЦЕЛИКОМ (без endpoint'а он невалиден, снять ключ
+// нельзя), а правило, ссылавшееся на него, чинится в той же точке.
+func TestSanitizeDNSDetours_DanglingEndpointDropsServerAndRepairsRule(t *testing.T) {
+	raw, err := json.Marshal(map[string]interface{}{
+		"servers": []map[string]interface{}{
+			{"tag": "ts-dns", "type": "tailscale", "endpoint": "ghost-node"},
+			{"tag": "plain-dns", "type": "udp", "server": "1.1.1.1"},
+		},
+		"rules": []map[string]interface{}{
+			{"domain_suffix": []string{".ts.net"}, "server": "ts-dns"},
+			{"domain_suffix": []string{".example"}, "server": "plain-dns"},
+		},
+		"final": "ts-dns",
+	})
+	if err != nil {
+		t.Fatalf("сборка секции: %v", err)
+	}
+
+	out := SanitizeDNSDetours(raw, map[string]bool{"direct-out": true})
+
+	var got struct {
+		Servers []map[string]interface{} `json:"servers"`
+		Rules   []map[string]interface{} `json:"rules"`
+		Final   string                   `json:"final"`
+	}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("разбор результата: %v", err)
+	}
+
+	for _, srv := range got.Servers {
+		if tag, _ := srv["tag"].(string); tag == "ts-dns" {
+			t.Fatal("сервер с висячим endpoint доехал до ядра — конфиг не стартовал бы")
+		}
+	}
+	for _, r := range got.Rules {
+		if srv, _ := r["server"].(string); srv == "ts-dns" {
+			t.Error("правило на выброшенный сервер осталось — «dns server not found» роняет конфиг целиком")
+		}
+	}
+	if got.Final == "ts-dns" {
+		t.Error("dns.final остался на выброшенном сервере")
+	}
+	if len(got.Servers) != 1 {
+		t.Errorf("живой сервер тоже пропал: осталось %d записей", len(got.Servers))
+	}
+}

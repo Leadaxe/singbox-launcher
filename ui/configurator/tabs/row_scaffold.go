@@ -42,9 +42,16 @@ func buildRowDragLead(handle fyne.CanvasObject, check *widget.Check) *fyne.Conta
 
 // buildRowEditDelCluster packs the edit + delete action icons tight.
 // del == nil — кластер из одной кнопки (системное правило не удаляется).
+// Обе nil — пустой кластер (якорь узла, SPEC 121: правится узел, а не строка).
 func buildRowEditDelCluster(edit, del fyne.CanvasObject) *fyne.Container {
+	if edit == nil && del == nil {
+		return container.New(tightHBox{spacing: rowIconGap})
+	}
 	if del == nil {
 		return container.New(tightHBox{spacing: rowIconGap}, edit)
+	}
+	if edit == nil {
+		return container.New(tightHBox{spacing: rowIconGap}, del)
 	}
 	return container.New(tightHBox{spacing: rowIconGap}, edit, del)
 }

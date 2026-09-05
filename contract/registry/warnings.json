@@ -455,6 +455,15 @@
       "dart": "DialerProxyUnusableWarning",
       "go": "core/config/subscription/xray_json_array.go (attachXrayDialerChain)"
     },
+    "tailscale_core_unsupported": {
+      "severity": "warning",
+      "params": [
+        "reason"
+      ],
+      "desc": "Узел `tailscale` снят на сборке: ядро собрано без тега with_tailscale (нужен форк 1.14.0-lx.31 или новее). Не пометка на живом узле, а его выброс — но severity=warning, а не error: конфиг СОБИРАЕТСЯ, остальные узлы на месте, и причина приезжает пользователю строкой отчёта сборки (BuildReportTailscaleDegraded). Без выброса один такой узел завалил бы `sing-box check` для ВСЕГО конфига. SPEC 122 §2.2. LxBox не применяет: libbox собран без tailscale, узлы схемы туда не доезжают.",
+      "dart": null,
+      "go": "core/config/outbound_generator.go (GenerateOutboundsFromParserConfig, ветка !tailscaleSupported); проба core/core_capabilities.go (CoreSupportsTailscale)"
+    },
     "ws_early_data_converted": {
       "severity": "info",
       "params": [

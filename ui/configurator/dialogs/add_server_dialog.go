@@ -129,6 +129,9 @@ type addServerForm struct {
 	wgDNS       *widget.Entry
 	wgBox       *fyne.Container
 
+	// Поля Tailscale.
+	ts *tailscaleFields
+
 	// formsScroll — прокручиваемая область с формами SOCKS5/HTTP/WireGuard.
 	formsScroll *container.Scroll
 
@@ -156,6 +159,9 @@ const (
 	modeSocks addServerMode = iota
 	modeHTTP
 	modeWireGuard
+	// SPEC 122: узел tailnet. Единственный вариант, который отдаёт не
+	// share-URI, а ДОКУМЕНТ узла (тело + секции) — см. add_server_tailscale.go.
+	modeTailscale
 	modeSource
 )
 
@@ -170,7 +176,7 @@ func newAddServerForm() *addServerForm {
 	tagNote.Wrapping = fyne.TextWrapWord
 
 	f.buildParamsTab()
-	f.formsScroll = container.NewScroll(container.NewVBox(f.fieldsBox, f.wgBox))
+	f.formsScroll = container.NewScroll(container.NewVBox(f.fieldsBox, f.wgBox, f.ts.box))
 	f.buildJSONTab()
 
 	tabs := container.NewAppTabs(
@@ -201,6 +207,7 @@ func (f *addServerForm) buildParamsTab() {
 	socksLabel := locale.T("SOCKS5")
 	httpLabel := locale.T("HTTP")
 	wgLabel := locale.T("WireGuard")
+	tsLabel := locale.T("Tailscale")
 	sourceLabel := locale.T("Source")
 
 	f.host = widget.NewEntry()
@@ -257,9 +264,10 @@ func (f *addServerForm) buildParamsTab() {
 	f.sourceBox.Hide()
 
 	f.buildWGFields()
+	f.ts = buildTailscaleFields(func() { f.refreshJSON() })
 
 	f.proto = widget.NewSelect(
-		[]string{socksLabel, httpLabel, wgLabel, sourceLabel}, nil)
+		[]string{socksLabel, httpLabel, wgLabel, tsLabel, sourceLabel}, nil)
 	f.proto.SetSelected(socksLabel)
 	f.proto.OnChanged = func(sel string) {
 		switch sel {
@@ -267,6 +275,8 @@ func (f *addServerForm) buildParamsTab() {
 			f.mode = modeHTTP
 		case wgLabel:
 			f.mode = modeWireGuard
+		case tsLabel:
+			f.mode = modeTailscale
 		case sourceLabel:
 			f.mode = modeSource
 		default:
@@ -324,8 +334,14 @@ func (f *addServerForm) applyModeVisibility() {
 	f.fieldsBox.Hide()
 	f.sourceBox.Hide()
 	f.wgBox.Hide()
+	f.ts.box.Hide()
 
 	switch f.mode {
+	case modeTailscale:
+		// Ни host, ни port: адреса у узла tailnet нет — в tailnet он входит
+		// сам, по auth_key.
+		f.formsScroll.Show()
+		f.ts.box.Show()
 	case modeSource:
 		f.formsScroll.Hide()
 		f.sourceBox.Show()
@@ -446,6 +462,14 @@ func (f *addServerForm) refreshJSON() {
 
 // previewJSON строит превью через ту же эмиссию, что и реальная сборка.
 func (f *addServerForm) previewJSON() (string, string) {
+	// SPEC 122: у Tailscale превью — не outbound, а ДОКУМЕНТ узла: тело
+	// вместе с DNS-сервером и правилом маршрута, которые с ним поедут.
+	// Показывается он через тот же RenderNodeDocument, которым документ
+	// рисует вкладка JSON окна источника.
+	if f.mode == modeTailscale {
+		return f.previewTailscaleDocument()
+	}
+
 	input, err := f.rawInput()
 	if err != nil {
 		return "", err.Error()
@@ -477,6 +501,27 @@ func (f *addServerForm) previewJSON() (string, string) {
 		return "", locale.T("Nothing recognized yet.")
 	}
 	return strings.Join(docs, ",\n"), locale.Tf("Unpacked nodes: %d", len(docs))
+}
+
+// previewTailscaleDocument — превью документа узла tailnet.
+//
+// Документ прогоняется через ParseNodeDocument → RenderNodeDocument, то есть
+// через тот же разбор, который применит запись: превью показывает не то, что
+// форма написала, а то, что из него получится (WYSIWYG вкладки JSON).
+func (f *addServerForm) previewTailscaleDocument() (string, string) {
+	raw, err := tailscaleDocument(f.tag.Text, f.ts)
+	if err != nil {
+		return "", err.Error()
+	}
+	body, sections, perr := config.ParseNodeDocument(raw)
+	if perr != nil {
+		return "", perr.Error()
+	}
+	text, rerr := config.RenderNodeDocument(body, sections, config.NodeBodyGoesToEndpoints(body))
+	if rerr != nil {
+		return "", rerr.Error()
+	}
+	return text, locale.Tf("Unpacked nodes: %d", 1)
 }
 
 // parseAddServerInput разбирает вход превью: сначала как sing-box JSON, потом
@@ -547,6 +592,19 @@ func (f *addServerForm) result() (AddServerResult, error) {
 		return manualJSONResult(f.jsonView.Text, label)
 	}
 
+	// SPEC 122: Tailscale отдаёт документ узла — его разберёт тот же
+	// AppendManualConfigJSON, что и вручную набранный документ.
+	if f.mode == modeTailscale {
+		doc, derr := tailscaleDocument(f.tag.Text, f.ts)
+		if derr != nil {
+			return AddServerResult{}, derr
+		}
+		if label == "" {
+			label = tailscaleDefaultTag
+		}
+		return AddServerResult{ConfigJSON: doc, Label: label}, nil
+	}
+
 	if f.mode == modeSource {
 		text := strings.TrimSpace(f.source.Text)
 		if text == "" {
@@ -573,6 +631,25 @@ func manualJSONResult(raw, label string) (AddServerResult, error) {
 		return AddServerResult{}, fmt.Errorf("%s", locale.T("JSON is empty"))
 	}
 	if strings.HasPrefix(body, "{") {
+		// SPEC 121/122: документ узла (тело + секции) — законная форма
+		// ручной правки; его разберёт AppendManualConfigJSON тем же
+		// ParseNodeDocument. Проверка здесь только на разбираемость, чтобы
+		// ошибка называлась на кнопке Add, а не ниже по течению.
+		//
+		// Условие — НЕСЁТ ЛИ документ секции, а не «похож ли на документ»:
+		// голый `{"outbounds":[…]}` формально документ тоже, но это давняя
+		// многоузловая форма, и её по-прежнему разбирает общий путь Add
+		// (ниже). Секции же общий путь потерял бы молча.
+		if config.IsNodeDocument([]byte(body)) && manualDocCarriesSections(body) {
+			if _, _, err := config.ParseNodeDocument([]byte(body)); err != nil {
+				return AddServerResult{}, err
+			}
+			var buf bytes.Buffer
+			if err := json.Compact(&buf, []byte(body)); err != nil {
+				return AddServerResult{}, err
+			}
+			return AddServerResult{ConfigJSON: buf.Bytes(), Label: label}, nil
+		}
 		kind := subscription.ClassifySubscriptionBody(body)
 		// Целый конфиг ({"outbounds":[…]}) — законная многоузловая форма,
 		// её разберёт общий путь Add. А одиночный объект, не признанный
@@ -590,6 +667,17 @@ func manualJSONResult(raw, label string) (AddServerResult, error) {
 		}
 	}
 	return AddServerResult{Text: body, Label: label}, nil
+}
+
+// manualDocCarriesSections — есть ли в документе секции узла (dns/route).
+func manualDocCarriesSections(body string) bool {
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(body), &probe); err != nil {
+		return false
+	}
+	_, hasDNS := probe["dns"]
+	_, hasRoute := probe["route"]
+	return hasDNS || hasRoute
 }
 
 // buildURI собирает share-URI из полей формы.

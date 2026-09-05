@@ -12,6 +12,7 @@ import (
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/state"
+	"singbox-launcher/internal/debuglog"
 )
 
 // Warning — то, что импортёр не смог применить дословно.
@@ -239,7 +240,7 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 	// Серверы: запись с пометкой folder уходит не в корень списка, а в
 	// папку с этим именем (контракт 0.12). Порядок записей в файле
 	// нормативен, дедуп — по ТЕЛУ записи (§9 пп. 2–3).
-	mergeServers(s, b.Servers, &res.Warnings, &cnt)
+	nodeAnchors := mergeServers(s, b.Servers, &res.Warnings, &cnt)
 
 	res.AddedSubscriptions = cnt.AddedSubscriptions
 	res.UpdatedSubscriptions = cnt.UpdatedSubscriptions
@@ -346,9 +347,22 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 		res.AppliedRules++
 	}
 
+	// SPEC 121: якоря правил узлов пересеваются ЗДЕСЬ, до перенумерации, —
+	// записи kind=node в rules[] бэкапа нет, а их позиция приехала полем
+	// servers[].sections.rule_num. Встав в общий список с этим номером, якорь
+	// участвует в той же перенумерации и сохраняет относительную позицию
+	// среди правил файла.
+	s.Rules = append(s.Rules, importedNodeAnchorRules(nodeAnchors)...)
+
 	// Ось порядка перенумеровывается: абсолютные номера у сторон свои, важен
 	// лишь относительный порядок (BACKUP.md §2).
 	renumberImportedRules(s.Rules)
+
+	// Пересев по ЖИВОМУ состоянию: узлы, чьи секции остались локальными
+	// (файл их не нёс), тоже обязаны получить якорь, а якорь узла, которого
+	// в состоянии нет, — исчезнуть. Спецификаций пресетов здесь нет, и
+	// пустая карта — верное значение: пресеты досеет первая же загрузка.
+	s.Rules = state.SortRulesByNum(state.SeedNodeRules(s.Rules, state.NodeSectionLinks(s.Sources)))
 
 	if b.Route != nil && b.Route.Final != "" {
 		if known.empty() || known.has(b.Route.Final) {
@@ -553,6 +567,16 @@ func importServer(srv Server) (state.Source, []Warning) {
 		warns = append(warns, Warning{Code: WarnBackupSourceFlagDropped, Detail: serverLabel(srv)})
 	}
 	importSourceRef(&src, srv.SourceRef)
+	// SPEC 121: секции узла. Пустой набор нормализуется в nil — третьего
+	// состояния у поля нет.
+	if srv.Sections != nil {
+		src.Node.Sections = &state.NodeSections{
+			DNSServers: srv.Sections.DNSServers,
+			DNSRules:   srv.Sections.DNSRules,
+			Rules:      srv.Sections.Rules,
+		}
+		src.Node.NormalizeNodeSections()
+	}
 	switch {
 	case len(srv.ConfigJSON) > 0:
 		src.Body = append(json.RawMessage(nil), srv.ConfigJSON...)
@@ -928,4 +952,36 @@ func importWarp(s *state.State, warp []json.RawMessage) {
 			}
 		}
 	}
+}
+
+// importedNodeAnchorRules — якоря правил узлов из секций импортированных
+// серверов (SPEC 121 §3.3).
+//
+// Записи kind=node в rules[] бэкапа нет: она производная от узла, и приехав
+// отдельно, пережила бы удаление секций. Позиция едет полем
+// servers[].sections.rule_num; её отсутствие означает «дефолт оси».
+func importedNodeAnchorRules(anchors []nodeAnchorImport) []state.Rule {
+	if len(anchors) == 0 {
+		return nil
+	}
+	out := make([]state.Rule, 0, len(anchors))
+	for _, a := range anchors {
+		body, err := json.Marshal(state.NodeRuleBody{FolderID: a.Link.FolderID, Tag: a.Link.Tag})
+		if err != nil {
+			debuglog.WarnLog("backup import: cannot encode node anchor for %q: %v", a.Link.Tag, err)
+			continue
+		}
+		num := state.NodeRuleDefaultNum
+		if a.Num != nil {
+			num = *a.Num
+		}
+		n := num
+		out = append(out, state.Rule{
+			Kind:     state.RuleKindNode,
+			Enabled:  true,
+			OrderNum: &n,
+			Body:     body,
+		})
+	}
+	return out
 }

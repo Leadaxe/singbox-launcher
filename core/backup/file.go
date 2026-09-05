@@ -266,8 +266,14 @@ var (
 	serverKeys = mergeKeys(sourceRefKeys, map[string]bool{
 		"id": true, "uri": true, "config_json": true, "label": true,
 		"node_tag": true, "enabled": true, "exclude_from_global": true,
-		"folder": true,
+		"folder": true, "sections": true,
 	})
+	// serverSectionsKeys — секции узла (SPEC 121). Внутрь фрагментов сканер
+	// не спускается намеренно: это тела sing-box, чей набор ключей ведёт
+	// схема ядра, а не таблица бэкапа.
+	serverSectionsKeys = map[string]bool{
+		"dns_servers": true, "dns_rules": true, "rules": true, "rule_num": true,
+	}
 	chainKeys = mergeKeys(sourceRefKeys, map[string]bool{
 		"id": true, "tag": true, "label": true, "enabled": true,
 		"chain": true, "exclude_from_global": true,
@@ -374,7 +380,11 @@ func scanUnknown(data []byte) []Warning {
 		// две таблицы для одной сущности разъехались бы.
 		sc.array(item, where+".outbounds", "outbounds", directionKeys, "tag", sc.scanDirectionBody)
 	})
-	sc.array(root, "servers", "servers", serverKeys, "label", nil)
+	sc.array(root, "servers", "servers", serverKeys, "label", func(where string, item map[string]json.RawMessage) {
+		// SPEC 121: секции узла — свой уровень ключей; внутрь фрагментов
+		// обход не спускается (это тела sing-box, не поля бэкапа).
+		sc.nested2(item, where, "sections", serverSectionsKeys)
+	})
 	sc.array(root, "chains", "chains", chainKeys, "tag", func(where string, item map[string]json.RawMessage) {
 		sc.nested2(item, where, "chain", chainBodyKeys)
 	})

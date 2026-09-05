@@ -100,7 +100,7 @@ func TestTrafficProcessingIsReseeded(t *testing.T) {
 	rules := []corestate.Rule{
 		{Kind: corestate.RuleKindInline, Enabled: true, Body: []byte(`{}`)},
 	}
-	out := corestate.NormalizeRuleOrder(rules, specs)
+	out := corestate.NormalizeRuleOrder(rules, specs, nil)
 
 	var found bool
 	for _, r := range out {

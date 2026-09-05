@@ -64,3 +64,44 @@ func TestNaiveVerdictFromVersionOutput(t *testing.T) {
 		})
 	}
 }
+
+// SPEC 122: тот же гейт по тегу для tailscale. Политика та же — деградируем
+// только по положительному свидетельству (строка Tags есть, тега в ней нет);
+// любая неопределённость → «умеет».
+func TestTailscaleVerdictFromVersionOutput(t *testing.T) {
+	// lx.31: тег есть.
+	const lx31Output = `sing-box version 1.14.0-lx.31
+
+Environment: go1.25.12 darwin/amd64
+Tags: with_gvisor,with_quic,with_wireguard,with_utls,with_clash_api,with_naive_outbound,with_awg,with_lx_chain,with_tailscale
+Revision: deadbeef
+CGO: disabled
+`
+	cases := []struct {
+		name          string
+		output        string
+		wantSupported bool
+		wantInReason  string
+	}{
+		{"core with with_tailscale", lx31Output, true, ""},
+		{"upstream core also carries the tag", upstreamNoNaiveOutput, true, ""},
+		{"lx core without the tag", lxVersionOutput, false, "with_tailscale"},
+		{"lx core without the tag names the release", lxVersionOutput, false, "1.14.0-lx.31"},
+		{"no Tags line at all — assume supported", "sing-box version 1.13.0\n", true, ""},
+		{"garbage output — assume supported", "flag provided but not defined", true, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			supported, reason := tailscaleVerdictFromVersionOutput(c.output)
+			if supported != c.wantSupported {
+				t.Errorf("supported = %v, want %v (reason: %q)", supported, c.wantSupported, reason)
+			}
+			if c.wantInReason != "" && !strings.Contains(reason, c.wantInReason) {
+				t.Errorf("reason = %q, want it to mention %q", reason, c.wantInReason)
+			}
+			if c.wantSupported && reason != "" {
+				t.Errorf("reason = %q, want empty when supported", reason)
+			}
+		})
+	}
+}

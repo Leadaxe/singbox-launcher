@@ -375,7 +375,27 @@ type Server struct {
 	Folder            string `json:"folder,omitempty"`
 	Enabled           *bool  `json:"enabled,omitempty"`
 	ExcludeFromGlobal bool   `json:"exclude_from_global,omitempty"`
+	// Sections — фрагменты конфига, которые узел носит с собой (SPEC 121).
+	// Поле ЛАУНЧЕРА (BACKUP.md §2, «Поддержка: launcher»): LxBox игнорирует
+	// его молча и по возможности провозит.
+	Sections *ServerSections `json:"sections,omitempty"`
 	SourceRef
+}
+
+// ServerSections — секции узла в бэкапе.
+//
+// Тела едут сырыми: контракт их не типизирует намеренно — у DNS-сервера
+// tailscale есть `endpoint`, у WireGuard-правил свои поля, и типизация
+// потеряла бы незнакомое молча.
+//
+// RuleNum — позиция якоря правил узла на общей оси (state.Rule.OrderNum
+// записи kind=node). Сама запись в `rules[]` бэкапа НЕ пишется: она
+// производная от узла, и приехав отдельно, пережила бы удаление секций.
+type ServerSections struct {
+	DNSServers []json.RawMessage `json:"dns_servers,omitempty"`
+	DNSRules   []json.RawMessage `json:"dns_rules,omitempty"`
+	Rules      []json.RawMessage `json:"rules,omitempty"`
+	RuleNum    *float64          `json:"rule_num,omitempty"`
 }
 
 // RuleKind — вид правила.

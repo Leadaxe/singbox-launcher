@@ -166,6 +166,15 @@ func canonicalNodeProjection(n *Node) configtypes.CanonicalNode {
 		Detour:  canonicalLink(n.Detour),
 		Service: n.Service,
 	}
+	// Секции (SPEC 121) — только у server: у остальных видов поле снято ещё
+	// нормализацией формы, но проекция не полагается на это молча.
+	if n.Kind == SourceKindServer && !n.Sections.IsEmpty() {
+		out.Sections = &configtypes.NodeSections{
+			DNSServers: n.Sections.DNSServers,
+			DNSRules:   n.Sections.DNSRules,
+			Rules:      n.Sections.Rules,
+		}
+	}
 	if n.Origin != nil {
 		out.OriginKind = n.Origin.Kind
 		out.OriginRaw = n.Origin.Raw
@@ -268,4 +277,22 @@ func (s *Source) announceMessage() string {
 		return ""
 	}
 	return s.Meta.ProviderAnnounce.AnnounceMessage()
+}
+
+// NodeSectionsFromConfigTypes — обратная проекция секций (SPEC 121):
+// сборочная форма → канон v7.
+//
+// Нужна пути «вставленный конфиг → узел»: секции достаёт парсер
+// (core/config/subscription), а хранит их состояние, и два зеркальных типа
+// в разных пакетах — цена того, что core/config/configtypes про core/state не
+// знает (зависимость идёт в другую сторону).
+func NodeSectionsFromConfigTypes(ns *configtypes.NodeSections) *NodeSections {
+	if ns.IsEmpty() {
+		return nil
+	}
+	return &NodeSections{
+		DNSServers: ns.DNSServers,
+		DNSRules:   ns.DNSRules,
+		Rules:      ns.Rules,
+	}
 }

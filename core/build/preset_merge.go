@@ -194,6 +194,37 @@ type PresetMergeContext struct {
 	// Это ОСЛАБЛЕННЫЙ режим — он ещё может снять живую ссылку на
 	// шаблонный тег; боевой путь обязан передавать поле.
 	EmittedRuleSetTags map[string]bool
+
+	// NodeSections (SPEC 121) — секции узлов, ДОШЕДШИХ до эмиссии, в порядке
+	// эмиссии. Из них берутся DNS-серверы и DNS-правила узлов (после
+	// пресетных) и тела route-правил под якорями kind=node.
+	//
+	// Узел, не попавший в конфиг (выключен, отброшен санитайзером), сюда не
+	// входит — и его якорь на оси эмитит пустоту, молча: правило, чья цель не
+	// собралась, не ошибка, а следствие выключенного узла.
+	NodeSections []NodeSectionSet
+}
+
+// hasNodeRouteRules — есть ли среди дошедших до эмиссии узлов хоть один с
+// правилами маршрута (SPEC 121). Гард раннего выхода MergePresetsIntoRoute.
+func (c PresetMergeContext) hasNodeRouteRules() bool {
+	for i := range c.NodeSections {
+		if len(c.NodeSections[i].Rules) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// hasNodeDNSFragments — есть ли DNS-серверы или DNS-правила у узлов.
+// Гард раннего выхода MergePresetsIntoDNS.
+func (c PresetMergeContext) hasNodeDNSFragments() bool {
+	for i := range c.NodeSections {
+		if len(c.NodeSections[i].DNSServers) > 0 || len(c.NodeSections[i].DNSRules) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // hasNonSortablePreset — есть ли в шаблоне неотчуждаемый пресет, который
@@ -220,7 +251,10 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 	// SPEC 106: пустой список правил больше не повод выйти сразу — в шаблоне
 	// могут быть неотчуждаемые пресеты, которые обязан вернуть re-seed
 	// (D-050). Выходим, только если и правил нет, и сеять нечего.
-	if !hasAnyV6Rule(ctx.Rules) && !hasNonSortablePreset(ctx.Presets) {
+	// SPEC 121: секции узлов — третья причина зайти внутрь. Пересев якорей
+	// kind=node живёт в резолве, и без этого условия узел с правилами в
+	// состоянии без единого пресета и правила отдавал бы пустой route.
+	if !hasAnyV6Rule(ctx.Rules) && !hasNonSortablePreset(ctx.Presets) && !ctx.hasNodeRouteRules() {
 		return routeRaw, nil
 	}
 
@@ -234,7 +268,7 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 
 	st := &state.State{Rules: ctx.Rules, DNS: ctx.DNS}
 	tdVal := template.TemplateData{Presets: ctx.Presets}
-	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths, ctx.Target, ctx.GlobalVars)
+	resolved := ResolveRouteWithNodeSections(st, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths, ctx.Target, ctx.GlobalVars, ctx.NodeSections)
 
 	// Dedup по tag (template уже мог эмитить rule_sets).
 	emittedTags := make(map[string]bool)
@@ -320,7 +354,9 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 	// на каждой сборке.
 	resolved := ResolveDNS(st, &tdVal, ctx.GlobalVars, ctx.Target)
 
-	if len(resolved.Servers) == 0 && len(resolved.Rules) == 0 && !hasAnyV6Rule(ctx.Rules) {
+	// SPEC 121: DNS-фрагменты узлов — ещё одна причина зайти внутрь.
+	if len(resolved.Servers) == 0 && len(resolved.Rules) == 0 && !hasAnyV6Rule(ctx.Rules) &&
+		!ctx.hasNodeDNSFragments() {
 		return dnsRaw, nil
 	}
 
@@ -361,6 +397,36 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 		}
 	}
 
+	// SPEC 121: DNS-серверы узлов — СЛЕДОМ за пресетными, в порядке эмиссии
+	// узлов. Оси порядка у DNS нет, и позиция в списке — единственное, чем
+	// порядок задаётся; ставить узловые серверы раньше пресетных значило бы
+	// менять уже сложившуюся раскладку конфига.
+	//
+	// Правила узлов копятся отдельно и дописываются к dnsRules ниже: между
+	// серверами и правилами лежит вычисление emittedRuleSetTags, и разрывать
+	// его вставкой было бы лишним переплетением.
+	var nodeDNSRules []interface{}
+	for i := range ctx.NodeSections {
+		frags, warns := ExpandNodeSections(ctx.NodeSections[i])
+		for _, w := range warns {
+			debuglog.WarnLog("dns merge: %s", w)
+		}
+		for _, srv := range frags.DNSServers {
+			tag, _ := srv["tag"].(string)
+			if tag != "" && emittedTags[tag] {
+				debuglog.WarnLog("dns merge: node DNS server %q is already in the config — the node's copy is skipped (first wins)", tag)
+				continue
+			}
+			servers = append(servers, srv)
+			if tag != "" {
+				emittedTags[tag] = true
+			}
+		}
+		for _, r := range frags.DNSRules {
+			nodeDNSRules = append(nodeDNSRules, r)
+		}
+	}
+
 	// Множество валидных rule_set-тегов для dangling-cleanup в DNS user rules.
 	// Боевой путь передаёт его готовым (посчитано по ВСЕМ источникам
 	// route.rule_set до обхода секций). Без него — вырожденный режим: то же
@@ -387,6 +453,12 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 			dnsRules = append(dnsRules, cleaned)
 		}
 	}
+
+	// SPEC 121: DNS-правила узлов — следом за пресетными, до пруна и починки
+	// ссылок: они обязаны видеть узловые фрагменты, иначе правило на узловой
+	// сервер сочли бы висячим (или наоборот, живой узловой сервер не спас бы
+	// правило).
+	dnsRules = append(dnsRules, nodeDNSRules...)
 
 	// SPEC 109: состав DNS-группы чистится ПОСЛЕ сборки всего списка —
 	// только здесь известно, что реально уехало в конфиг.
@@ -508,7 +580,7 @@ func CollectEmittedRouteRuleSetTags(routeRaw json.RawMessage, routeCfg RouteConf
 	// MergePresetsIntoRoute, с теми же фильтрами эмиссии.
 	st := &state.State{Rules: ctx.Rules, DNS: ctx.DNS}
 	tdVal := template.TemplateData{Presets: ctx.Presets}
-	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths, ctx.Target, ctx.GlobalVars)
+	resolved := ResolveRouteWithNodeSections(st, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths, ctx.Target, ctx.GlobalVars, ctx.NodeSections)
 	for _, rs := range resolved.RuleSets {
 		if rs.Skipped || !rs.Enabled {
 			continue

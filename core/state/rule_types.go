@@ -21,6 +21,15 @@ const (
 	// RuleKindSrs — user-defined srs rule.
 	// Body: {name, srs_url, outbound}. Cached .srs файл на диске.
 	RuleKindSrs RuleKind = "srs"
+
+	// RuleKindNode — ЯКОРЬ правил маршрута, которые узел носит с собой
+	// (SPEC 121). Body: {folder_id, tag} — ссылка на узел, а не правило.
+	//
+	// Запись производная: она существует ровно пока у узла непустые
+	// `sections.rules`, и её пересевает SeedNodeRules на каждой нормализации
+	// (как неотчуждаемые пресеты — D-050). Пользователю принадлежат только
+	// позиция на оси и тумблер; тела правил правятся у узла.
+	RuleKindNode RuleKind = "node"
 )
 
 // Rule — единица в state.rules[] с header/body разделением.
@@ -99,6 +108,27 @@ type SrsBody struct {
 	Outbound string `json:"outbound"` // tag | "reject" | "drop"
 }
 
+// NodeRuleBody — kind=node payload: ССЫЛКА на узел (SPEC 121 §3.1).
+//
+// Идентичность узла — пара {folder_id, tag} (SPEC 112, NodeLink): тег
+// уникален в пределах контейнера, а пустой FolderID означает корневое
+// пространство. Ref для этого вида не используется: он строка, а ссылка
+// здесь составная.
+type NodeRuleBody struct {
+	// FolderID — ULID папки/подписки; "" = узел лежит в корне списка.
+	FolderID string `json:"folder_id,omitempty"`
+	// Tag — СЫРОЙ тег узла в его контейнере.
+	Tag string `json:"tag"`
+}
+
+// Link — ссылка на узел в форме NodeLink.
+func (b *NodeRuleBody) Link() NodeLink {
+	if b == nil {
+		return NodeLink{}
+	}
+	return NodeLink{FolderID: b.FolderID, Tag: b.Tag}
+}
+
 // DecodeBody парсит Rule.Body в kind-specific тип.
 // Возвращает один из {*PresetBody, *InlineBody, *SrsBody}.
 //
@@ -156,6 +186,19 @@ func (r *Rule) DecodeBody() (interface{}, error) {
 		}
 		if body.SrsURL == "" {
 			return nil, fmt.Errorf("rule kind=srs requires body.srs_url")
+		}
+		return &body, nil
+
+	case RuleKindNode:
+		if r.Ref != "" {
+			return nil, fmt.Errorf("rule kind=node must not have ref")
+		}
+		var body NodeRuleBody
+		if err := json.Unmarshal(r.Body, &body); err != nil {
+			return nil, fmt.Errorf("decode node body: %w", err)
+		}
+		if body.Tag == "" {
+			return nil, fmt.Errorf("rule kind=node requires body.tag")
 		}
 		return &body, nil
 

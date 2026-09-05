@@ -254,6 +254,14 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 		ctx.Cache, excluded = sanitizeOutboundGraph(ctx.Cache, finalOutboundTags)
 	}
 
+	// SPEC 121: секции узлов доезжают до слияния через PresetMergeContext, и
+	// снимаются с кэша ЗДЕСЬ — после санитайзера, чтобы фрагменты выброшенного
+	// узла в конфиг не попали. Вызывающие это поле не заполняют: у них кэш
+	// ещё не очищен, и они бы врали.
+	if ctx.Cache != nil {
+		ctx.Preset.NodeSections = ctx.Cache.NodeSections
+	}
+
 	// SPEC 118 (Р-DNS-2): множество тегов, реально уезжающих в
 	// `route.rule_set` — ДО обхода секций. Секция dns собирается раньше
 	// route, а её чистка висячих `rule_set`-ссылок судит именно по этому

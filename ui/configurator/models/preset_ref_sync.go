@@ -28,11 +28,14 @@ import (
 // обходить нечего. На ось это не влияет — номера едут из модели, и выход всё
 // равно выпрямляется по ним (см. SortRulesByNum в конце). Основной путь —
 // EmitStateRulesInAxisOrder (см. ниже).
-func EmitStateRulesWithoutOrder(presetRefs []*PresetRefState, customRules []*RuleState) []state.Rule {
-	out := make([]state.Rule, 0, len(presetRefs)+len(customRules))
+func EmitStateRulesWithoutOrder(presetRefs []*PresetRefState, customRules []*RuleState, nodeRefs []*NodeRefState) []state.Rule {
+	out := make([]state.Rule, 0, len(presetRefs)+len(customRules)+len(nodeRefs))
 
 	// 1. Preset-refs
 	out = append(out, SyncPresetRefsToStateRules(presetRefs)...)
+
+	// 1a. Якоря узлов (SPEC 121): производные записи kind=node.
+	out = append(out, SyncNodeRefsToStateRules(nodeRefs)...)
 
 	// 2. Legacy custom rules → inline/srs
 	for _, cr := range customRules {
@@ -62,10 +65,10 @@ func EmitStateRulesWithoutOrder(presetRefs []*PresetRefState, customRules []*Rul
 // осевой порядок сам по себе (SortRuleOrderByAxis держит слоты в нём), но
 // закон «файл = ось» не может опираться на дисциплину вызывающих — модель
 // может подать слоты в любом порядке, поэтому сортировка стоит на выходе.
-func EmitStateRulesInAxisOrder(order []RuleSlot, presetRefs []*PresetRefState, customRules []*RuleState) []state.Rule {
+func EmitStateRulesInAxisOrder(order []RuleSlot, presetRefs []*PresetRefState, customRules []*RuleState, nodeRefs []*NodeRefState) []state.Rule {
 	if len(order) == 0 {
 		// Fallback: используем legacy concat если RuleOrder пуст.
-		return EmitStateRulesWithoutOrder(presetRefs, customRules)
+		return EmitStateRulesWithoutOrder(presetRefs, customRules, nodeRefs)
 	}
 	out := make([]state.Rule, 0, len(order))
 	for _, slot := range order {
@@ -102,6 +105,16 @@ func EmitStateRulesInAxisOrder(order []RuleSlot, presetRefs []*PresetRefState, c
 			if r != nil {
 				out = append(out, *r)
 			}
+		case SlotKindNodeRef:
+			// SPEC 121: без этой ветки Save ВЫБРАСЫВАЛ бы якоря узлов —
+			// позиция на оси терялась бы на каждом сохранении, и пересев
+			// возвращал бы якорь на значение по умолчанию.
+			if slot.Index < 0 || slot.Index >= len(nodeRefs) {
+				continue
+			}
+			if r := nodeRefToStateRule(nodeRefs[slot.Index]); r != nil {
+				out = append(out, *r)
+			}
 		}
 	}
 	return state.SortRulesByNum(out)
@@ -131,7 +144,7 @@ func jsonMarshalPreset(vars map[string]string) ([]byte, error) {
 //
 // Возвращает order. Если совпадения по ref/identity нет (e.g. legacy state v5
 // без RulesV6), возвращает пустой list → caller должен сделать RebuildRuleOrder.
-func RuleOrderFromAxis(rules []state.Rule, presetRefs []*PresetRefState, customRules []*RuleState) []RuleSlot {
+func RuleOrderFromAxis(rules []state.Rule, presetRefs []*PresetRefState, customRules []*RuleState, nodeRefs []*NodeRefState) []RuleSlot {
 	if len(rules) == 0 {
 		return nil
 	}
@@ -139,6 +152,14 @@ func RuleOrderFromAxis(rules []state.Rule, presetRefs []*PresetRefState, customR
 	for i, pr := range presetRefs {
 		if pr != nil {
 			prByRef[pr.Ref] = i
+		}
+	}
+	// SPEC 121: якорь узла адресуется парой {FolderID, Tag} — строкового ref
+	// у него нет, ссылка составная.
+	nrByLink := make(map[state.NodeLink]int, len(nodeRefs))
+	for i, nr := range nodeRefs {
+		if nr != nil && nr.Tag != "" {
+			nrByLink[nr.Link()] = i
 		}
 	}
 	// Сортировка по оси — стабильная, чтобы правила с равными номерами
@@ -170,6 +191,23 @@ func RuleOrderFromAxis(rules []state.Rule, presetRefs []*PresetRefState, customR
 			out = append(out, RuleSlot{Kind: SlotKindCustom, Index: idx})
 			if customRules[idx] != nil {
 				customRules[idx].OrderNum = copyOrderNum(r.OrderNum)
+			}
+		case state.RuleKindNode:
+			body, err := r.DecodeBody()
+			if err != nil {
+				continue
+			}
+			nb, _ := body.(*state.NodeRuleBody)
+			if nb == nil {
+				continue
+			}
+			idx, ok := nrByLink[nb.Link()]
+			if !ok {
+				continue
+			}
+			out = append(out, RuleSlot{Kind: SlotKindNodeRef, Index: idx})
+			if nodeRefs[idx] != nil {
+				nodeRefs[idx].OrderNum = copyOrderNum(r.OrderNum)
 			}
 		}
 	}

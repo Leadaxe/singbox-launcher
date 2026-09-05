@@ -29,6 +29,10 @@ const (
 
 	// RouteSourceSrs — user-defined srs rule (local .srs file).
 	RouteSourceSrs RouteSource = "srs"
+
+	// RouteSourceNode — правило, которое узел носит с собой (SPEC 121).
+	// rule_set эта ветка не создаёт: наборов правил у секций узла нет.
+	RouteSourceNode RouteSource = "node"
 )
 
 // ResolvedRouteRuleSet — одна entry финального rule_set list'а.
@@ -87,6 +91,10 @@ type ResolvedRouteRule struct {
 	InlineID string
 	SrsID    string
 
+	// NodeTag — финальный тег узла-владельца (только Source=node, SPEC 121):
+	// кем правило принесено, для диагностики и UI.
+	NodeTag string
+
 	// Active — прошёл if/if_or (только для preset; inline/srs всегда true).
 	Active bool
 
@@ -135,6 +143,26 @@ func ResolveRouteWithGlobals(
 	target template.TargetSpec,
 	globalVars map[string]string,
 ) ResolvedRoute {
+	return ResolveRouteWithNodeSections(state, td, execDir, srsCachedPaths, target, globalVars, nil)
+}
+
+// ResolveRouteWithNodeSections — ResolveRouteWithGlobals плюс секции узлов
+// (SPEC 121). Якорь kind=node находит здесь свой набор по ссылке {FolderID,
+// Tag} и эмитит его правила подряд на своей позиции оси.
+//
+// nodeSections — наборы узлов, ДОШЕДШИХ до эмиссии. Якорь, чьего узла в
+// списке нет (узел выключен, не собрался, снят санитайзером), пропускается
+// МОЛЧА: это не поломка, а следствие выключенного узла, и warning здесь
+// шумел бы на каждой сборке.
+func ResolveRouteWithNodeSections(
+	state *corestate.State,
+	td *template.TemplateData,
+	execDir string,
+	srsCachedPaths map[string]string,
+	target template.TargetSpec,
+	globalVars map[string]string,
+	nodeSections []NodeSectionSet,
+) ResolvedRoute {
 	var out ResolvedRoute
 	if state == nil || td == nil {
 		return out
@@ -145,13 +173,24 @@ func ResolveRouteWithGlobals(
 		presetByID[td.Presets[i].ID] = &td.Presets[i]
 	}
 
+	sectionsByLink := make(map[NodeLink]*NodeSectionSet, len(nodeSections))
+	nodeLinks := make([]corestate.NodeLink, 0, len(nodeSections))
+	for i := range nodeSections {
+		ns := &nodeSections[i]
+		sectionsByLink[ns.Link] = ns
+		if len(ns.Rules) > 0 {
+			nodeLinks = append(nodeLinks, corestate.NodeLink{FolderID: ns.Link.FolderID, Tag: ns.Link.Tag})
+		}
+	}
+
 	emittedTags := make(map[string]bool)
 
 	// SPEC 106: порядок правил задаёт разреженная ось (OrderNum), а не позиция
 	// в слайсе. Нормализация здесь же пере-засевает неотчуждаемые пресеты —
 	// именно re-seed на каждой сборке, а не флаг в state, делает их
 	// неотчуждаемыми (D-050): стёртое из state правило возвращается.
-	rules := corestate.NormalizeRuleOrder(state.Rules, template.RuleOrderSpecs(td.Presets))
+	// SPEC 121: тем же проходом сеются якоря правил, которые узлы носят с собой.
+	rules := corestate.NormalizeRuleOrder(state.Rules, template.RuleOrderSpecs(td.Presets), nodeLinks)
 
 	for _, rule := range rules {
 		switch rule.Kind {
@@ -161,10 +200,46 @@ func ResolveRouteWithGlobals(
 			resolveInlineRouteRule(&out, rule)
 		case corestate.RuleKindSrs:
 			resolveSrsRouteRule(&out, rule, srsCachedPaths, emittedTags)
+		case corestate.RuleKindNode:
+			resolveNodeRouteRule(&out, rule, sectionsByLink)
 		}
 	}
 
 	return out
+}
+
+// resolveNodeRouteRule — якорь kind=node → правила маршрута, которые узел
+// носит с собой (SPEC 121 §4 п. 4).
+//
+// Все правила набора эмитятся ПОДРЯД на позиции якоря: у якоря один номер на
+// оси, и раздавать вложенным правилам свои значило бы завести вторую ось
+// внутри одной позиции.
+func resolveNodeRouteRule(out *ResolvedRoute, rule corestate.Rule, sectionsByLink map[NodeLink]*NodeSectionSet) {
+	body, err := rule.DecodeBody()
+	if err != nil {
+		debuglog.WarnLog("route resolve: decode node body: %v", err)
+		return
+	}
+	nb := body.(*corestate.NodeRuleBody)
+	set, ok := sectionsByLink[NodeLink{FolderID: nb.FolderID, Tag: nb.Tag}]
+	if !ok {
+		// Узла в конфиге нет — молча: якорь остаётся на оси, фрагментов нет.
+		return
+	}
+	frags, warns := ExpandNodeSections(*set)
+	for _, w := range warns {
+		debuglog.WarnLog("route resolve: %s", w)
+	}
+	for _, rr := range frags.RoutingRules {
+		out.Rules = append(out.Rules, ResolvedRouteRule{
+			Body:     rr,
+			Source:   RouteSourceNode,
+			NodeTag:  set.FinalTag,
+			Active:   true,
+			Enabled:  rule.Enabled,
+			OrderNum: ruleOrderNum(rule),
+		})
+	}
 }
 
 // resolvePresetRouteRule — expand preset → append rule_sets + routing rule.

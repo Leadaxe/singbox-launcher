@@ -133,6 +133,10 @@ func parserSuccessToastMessage(result *config.OutboundGenerationResult) string {
 	if result.SkippedNaiveNodes > 0 {
 		msg += fmt.Sprintf(" %d naive node(s) skipped: %s.", result.SkippedNaiveNodes, result.SkippedNaiveReason)
 	}
+	// SPEC 122: то же правило для tailscale.
+	if result.SkippedTailscaleNodes > 0 {
+		msg += fmt.Sprintf(" %d tailscale node(s) skipped: %s.", result.SkippedTailscaleNodes, result.SkippedTailscaleReason)
+	}
 	// SPEC 110: то же правило для цепочек. Настроенный маршрут, молча
 	// выпавший из конфига, читается как потерянная настройка — пользователь
 	// должен узнать, что именно и почему не собралось.

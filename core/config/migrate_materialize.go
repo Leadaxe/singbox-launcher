@@ -255,12 +255,12 @@ func materializeWGConfBlock(blocks []string) (*state.MigrationServerResult, erro
 }
 
 // emitMigrationBody — канонический body узла: эмиссия существующим
-// эмиттером (wireguard → endpoint-эмиттер, SPEC 101) и зачистка tag/detour —
-// body чист от detour (SPEC Т2), тег живёт в Node.Tag.
+// эмиттером (endpoint-схемы — endpoint-эмиттером, SPEC 101/122) и зачистка
+// tag/detour — body чист от detour (SPEC Т2), тег живёт в Node.Tag.
 func emitMigrationBody(node *configtypes.ParsedNode) (json.RawMessage, error) {
 	var emitted string
 	var err error
-	if node.Scheme == "wireguard" {
+	if IsEndpointScheme(node.Scheme) {
 		emitted, err = GenerateEndpointJSONBare(node)
 	} else {
 		emitted, err = GenerateNodeJSONBare(node)

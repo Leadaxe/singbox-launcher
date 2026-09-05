@@ -57,8 +57,86 @@ func buildUnifiedRuleRows(
 				continue
 			}
 			buildSinglePresetRefRow(presenter, model, guiState, availableOutbounds, showAddRuleDialog, rulesBox, slot.Index, slotIdx, dragGroup)
+		case wizardmodels.SlotKindNodeRef:
+			if slot.Index < 0 || slot.Index >= len(model.NodeRefs) {
+				continue
+			}
+			buildSingleNodeRefRow(presenter, model, rulesBox, slot.Index, slotIdx, dragGroup)
 		}
 	}
+}
+
+// buildSingleNodeRefRow рисует строку-якорь правил узла (SPEC 121 §5.2).
+//
+// Форма строки — по образцу пресетного якоря, и отличия ровно те, что следуют
+// из природы записи:
+//
+//   - тумблер РАБОЧИЙ: включение якоря — выбор пользователя (в отличие от
+//     системной головы, где позиция часть инварианта);
+//   - ручка перетаскивания ЕСТЬ: якорь встаёт на 945, но двигать его дальше
+//     пользователь вправе;
+//   - шестерёнки и удаления НЕТ: правится узел, а якорь производный — удаление
+//     всё равно откатилось бы пересевом, а невидимая защита читается как баг
+//     («жму — не удаляется»).
+//
+// Глиф подписи — тот же 🔗, что у пресетных якорей: и там и тут строка
+// означает «правила приезжают из другой сущности», и второй глиф для того же
+// смысла заставлял бы гадать, чем они отличаются.
+func buildSingleNodeRefRow(
+	presenter *wizardpresentation.WizardPresenter,
+	model *wizardmodels.WizardModel,
+	rulesBox *fyne.Container,
+	refIdx int,
+	slotIdx int,
+	dragGroup *fynewidget.DragReorderGroup,
+) {
+	nr := model.NodeRefs[refIdx]
+	if nr == nil {
+		return
+	}
+
+	var row *fynewidget.HoverRow
+	rowGetter := func() *fynewidget.HoverRow { return row }
+
+	nodeEnabled := wizardmodels.NodeRefNodeEnabled(model, nr)
+	rulesCount := wizardmodels.NodeRefRulesCount(model, nr)
+
+	labelText := "🔗 " + nr.Tag
+	label := ttwidget.NewLabel(labelText)
+	label.Wrapping = fyne.TextWrapOff
+	label.Truncation = fyne.TextTruncateEllipsis
+	if !nodeEnabled {
+		// Выключенный узел в конфиг не едет, и его фрагментов там нет.
+		// Приглушение — то же, чем в списке помечено «есть, но не работает».
+		label.Importance = widget.LowImportance
+	}
+
+	tooltip := locale.Tf("Route rules carried by node %q (%d)", nr.Tag, rulesCount)
+	if !nodeEnabled {
+		tooltip += " — " + locale.T("node is disabled")
+	}
+	label.SetToolTip(tooltip)
+
+	// Чекбокс без OnChanged, потом Checked полем, потом обработчик — та же
+	// осторожность, что у пресетной строки (ловушка SetChecked→OnChanged).
+	enableCh := widget.NewCheck("", nil)
+	enableCh.Checked = nr.Enabled
+	enableCh.OnChanged = func(on bool) {
+		nr.Enabled = on
+		presenter.MarkAsChanged()
+	}
+	setTooltip(enableCh, locale.T("Include this rule in the generated route when enabled"))
+
+	dragHandle := fynewidget.NewDragHandle(dragGroup, slotIdx, rowGetter)
+	setTooltip(dragHandle, locale.T("Drag to reorder"))
+
+	labelTap := newRowLabelToggleTap(label, enableCh)
+
+	// Shared row scaffolding (see row_scaffold.go). Neither edit nor delete:
+	// the node owns these rules.
+	leftLead := buildRowDragLead(dragHandle, enableCh)
+	rightCluster := container.NewHBox(buildRowEditDelCluster(nil, nil))
+	row = finalizeDragRow(rulesBox, dragGroup, slotIdx, leftLead, rightCluster, labelTap, label)
 }
 
 // buildSinglePresetRefRow рисует tile для одного preset-ref'а (kind=preset).

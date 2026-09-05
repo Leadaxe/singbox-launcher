@@ -209,6 +209,13 @@ func buildCanonicalServer(cs *configtypes.CanonicalSource, cn *configtypes.Canon
 	}
 	node.UUID = canonicalCredential(outbound, scheme)
 	node.Flow = canonicalString(outbound["flow"])
+	// Секции узла (SPEC 121): едут до эмиссии сырыми. Ссылка на узел —
+	// {FolderID контейнера, СЫРОЙ тег}: именно ею адресует якорь правил, и
+	// финальный тег для этого не годится (он зависит от тег-политики).
+	if !cn.Sections.IsEmpty() {
+		node.Sections = cn.Sections
+		node.SectionsLink = configtypes.NodeLink{FolderID: cs.FolderID, Tag: cn.Tag}
+	}
 	applyCanonicalDisplay(node, cn)
 	node.Tag = applyEmissionTagMachine(node, cs, cn, num, tagCounts)
 	return node, nil

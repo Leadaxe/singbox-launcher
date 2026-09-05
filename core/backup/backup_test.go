@@ -369,7 +369,7 @@ func TestNormalizeKeepsImportedOrder(t *testing.T) {
 	}
 
 	// Шаблон пустой: у импорта нет пресетов, seed'ить нечего.
-	normalized := state.NormalizeRuleOrder(dst.Rules, map[string]state.RuleOrderSpec{})
+	normalized := state.NormalizeRuleOrder(dst.Rules, map[string]state.RuleOrderSpec{}, nil)
 	got := names(normalized)
 	want := []string{"first", "second", "third"}
 	for i := range want {
@@ -388,7 +388,7 @@ func TestNormalizeKeepsImportedOrder(t *testing.T) {
 	}
 
 	// Идемпотентность: второй проход ничего не меняет.
-	again := state.NormalizeRuleOrder(normalized, map[string]state.RuleOrderSpec{})
+	again := state.NormalizeRuleOrder(normalized, map[string]state.RuleOrderSpec{}, nil)
 	for i, name := range names(again) {
 		if name != want[i] {
 			t.Fatalf("повторный normalize переставил правила: %v", names(again))

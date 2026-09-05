@@ -44,6 +44,15 @@ func FilterDirectionCandidatePool(allNodes []*ParsedNode, proxies []ProxySource)
 	}
 	out := make([]*ParsedNode, 0, len(allNodes))
 	for _, n := range allNodes {
+		// SPEC 122: узел, не являющийся выходом в интернет (tailnet без
+		// exit_node), Направлению не кандидат. Проверка стоит ДО разбора
+		// источника: свойство узла, а не его источника, и узел без
+		// известного источника ей подчиняется так же. Предикат живёт на
+		// модели — пул считается ДВАЖДЫ, здесь и пикером формы, и признак
+		// обязан быть виден обоим (ловушка CODEMAP §10 п. 25).
+		if !n.IsExitCapable() {
+			continue
+		}
 		idx := n.SourceIndex
 		if idx < 0 || idx >= len(proxies) {
 			out = append(out, n)
