@@ -1,6 +1,6 @@
 # SPEC 123 · AmneziaWG 3.0/3.1: разбор, эмиссия, гейт ядра
 
-Статус: N (в работе). Ветка develop. Ядро: sing-box-lx `v1.14.0-lx.33` (пин; поля AWG3 есть с lx.32, lx.33 чинит приём data-пакетов при random_trailers)
+Статус: N (в работе). Ветка develop. Ядро: sing-box-lx `v1.14.0-lx.34` (пин; поля AWG3 есть с lx.32, lx.33 чинит приём data-пакетов при random_trailers)
 (релиз собран 2026-09-05, ассеты и SHA256SUMS на месте).
 
 Справочник полей ядра: `/Users/macbook/projects/sing-box-lx/docs-lx/lx-protocols-transports.ru.md`
@@ -116,7 +116,7 @@ DisableCookies = on
   `n.Scheme == "wireguard"`), считает `SkippedAWG3Nodes/Reason`, отчёт
   сборки получает `BuildReportAWG3Degraded` («%d AmneziaWG 3.x node(s)
   skipped: %s»). Код реестра `awg3_core_unsupported` (warning, build).
-- **RequiredCoreVersion** → `1.14.0-lx.33` (пин; порог гейта остаётся lx.32) (`internal/constants/constants.go:131`).
+- **RequiredCoreVersion** → `1.14.0-lx.34` (пин; порог гейта остаётся lx.32) (`internal/constants/constants.go:131`).
   Ядро в бандле и в `bin/` меняет владелец задачи руками, не агент.
 
 ## 3. Поток А — разбор, эмиссия, бейдж, контракт
@@ -301,8 +301,8 @@ wireguard:// — дописать параметры).
 
 ### 4.3 Версия, локаль, заметки
 
-- `RequiredCoreVersion = "1.14.0-lx.33"`. Core Dashboard сам покажет
-  «Reinstall v1.14.0-lx.33» (`ui/core_dashboard_tab_status.go:326-345`).
+- `RequiredCoreVersion = "1.14.0-lx.34"`. Core Dashboard сам покажет
+  «Reinstall v1.14.0-lx.34» (`ui/core_dashboard_tab_status.go:326-345`).
 - Локаль: новые `locale.T`/`Tf` ключи — в `bin/locale/ru.json`; проверить
   инструмент `tools/l10n` (README/скрипт) на предмет извлечения ключей и
   запустить его проверку, если она есть.
