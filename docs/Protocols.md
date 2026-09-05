@@ -677,6 +677,32 @@ wireguard://privkey-base64@server.example.com:51821?publickey=server-pubkey&addr
 ```
 (`i1` here is the URL-encoded `<b 0x000100002112a442><r 12>`.) Support is implemented in `applyAWGFields` / `ShareURIFromWireGuardEndpoint` (`core/config/subscription/node_parser_wireguard.go`, `shareuri_wireguard.go`); at runtime it needs a core with `with_awg`. See `SPECS/073-F-N-AMNEZIAWG_PARAMS/SPEC.md` and `sing-box-lx/docs-lx/lx-config.md`.
 
+**AmneziaWG 3.0/3.1 (optional — a sing-box-lx core **≥ 1.14.0-lx.32**):**
+
+On top of the AWG2 set, an AWG 3.x server (Amnezia exports it as the `amnezia-awg2` container with `awg.protocol_version: "3.1"`) adds these query parameters — the name is the `.conf` key lower-cased, exactly as for `jc`/`presharedkey`:
+
+| Parameter | Endpoint root key | Value |
+|---|---|---|
+| `headerprotectionkey` | `header_protection_key` | base64 of **32 bytes** (`awg genkey`), a server-side value copied verbatim |
+| `contentpaddingaddition` | `content_padding_addition` | `N` or the range `N-M` |
+| `rekeyaftertime` | `rekey_after_time` | `N` or `N-M` |
+| `rekeytimeout` | `rekey_timeout` | `N` or `N-M` |
+| `rejectaftertime` | `reject_after_time` | `N` or `N-M` |
+| `keepalivetimeout` | `keepalive_timeout` | `N` or `N-M` |
+| `maxhandshakeattempts` | `max_handshake_attempts` | `N` or `N-M` |
+| `randomtrailers` | `random_trailers` | `on` / `off` |
+| `disablecookies` | `disable_cookies` | `on` / `off` |
+
+`keepalive` (the peer's `PersistentKeepalive`) accepts a range too and reaches `peers[0].persistent_keepalive_interval`.
+
+**Value shapes.** A ranged field is emitted as a JSON **number** for `N` and as a JSON **string** `"N-M"` for a range (the core picks a value inside it). A boolean is emitted as `true` only when it is on — `off` and absent both mean the key is not written at all, never `false`.
+
+**Error policy.** A ranged field with garbage or with `N > M` is dropped from the node (the node keeps working on the core's defaults) with a warning that names the field — the bounds are **not** swapped, because a reversed range is a typo the user has to see. The node itself is dropped when `header_protection_key` is not valid base64 of 32 non-zero bytes, or when it is set while any of `s1`–`s4` is below 12: the padding carries the header cipher nonce, so without it the handshake cannot happen and the core rejects the config wholesale.
+
+**MTU.** An AWG 3.x node is clamped to 1280 like any AmneziaWG endpoint. The export's own value (Amnezia keeps it in `last_config.mtu`, outside `[Interface]`, `1376` on a live server) is read, but a value above the ceiling is lowered: on the reference server data did not flow at 1376 and did at 1280. A lower explicit value is honoured; without an MTU the AmneziaWG default applies as before. AWG2 nodes are unaffected.
+
+**Core gate.** A core older than `1.14.0-lx.32` rejects the **whole** config on any of these keys. The launcher probes `sing-box version` once per build (build tags plus version) and drops AWG 3.x nodes with a build-report line naming the installed and the required version, instead of letting one node take the config down. In the server list such a node is labelled `wireguard·awg3` or `wireguard·awg3.1` (the `.1` when `random_trailers` or `disable_cookies` is present). See `SPECS/123-F-N-AWG3/SPEC.md` and `sing-box-lx/docs-lx/lx-protocols-transports.ru.md` §2.10.
+
 ### Amnezia (`vpn://`)
 
 The **`vpn://…`** links exported by Amnezia VPN / AmneziaWG 2.0 (a `.vpn` file is one such link) are accepted directly: paste the link into Sources or Connections. The format (the reference being `amnezia-vpn/config-decoder`): `vpn://` + base64url without padding, inside it qCompress (4 big-endian length bytes + zlib), and under that the JSON of the whole Amnezia profile.

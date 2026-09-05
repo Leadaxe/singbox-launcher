@@ -41,6 +41,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/locale"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -279,6 +280,12 @@ func applyAWGSettings(node *wizardmodels.Node, s awgSettings) error {
 // Снимаются и s1–s4 с h1–h4: если они пришли из чужой ссылки, без junk и
 // маскировки они не обфускация, а ровно тот набор, который ломает рукопожатие
 // с обычным сервером.
+//
+// Поля AWG 3.x (SPEC 123) снимаются той же кнопкой, хотя в форму не выведены:
+// «обычный WireGuard» с header_protection_key ядро отвергает целиком, а
+// диапазонный persistent_keepalive_interval оно на обычном WG не разберёт —
+// поэтому диапазон схлопывается в свою нижнюю границу, а не удаляется: сам
+// keepalive это настройка соединения, а не обфускация.
 func clearAWGSettings(node *wizardmodels.Node) error {
 	if node == nil || len(node.Body) == 0 {
 		return fmt.Errorf("%s", locale.T("Node has no body to edit"))
@@ -287,19 +294,44 @@ func clearAWGSettings(node *wizardmodels.Node) error {
 	if err := json.Unmarshal(node.Body, &ob); err != nil {
 		return err
 	}
-	for _, k := range []string{
+	for _, k := range append([]string{
 		"jc", "jmin", "jmax", "ip", "id", "ib",
 		"s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4",
 		"i1", "i2", "i3", "i4", "i5",
-	} {
+	}, subscription.AWG3RootKeys()...) {
 		delete(ob, k)
 	}
+	clearRangedKeepalive(ob)
 	body, err := json.Marshal(ob)
 	if err != nil {
 		return err
 	}
 	node.Body = body
 	return nil
+}
+
+// clearRangedKeepalive заменяет диапазонный persistent_keepalive_interval
+// ("25-35", форма AWG 3.x) нижней границей: после json.Unmarshal peers — это
+// []interface{} из map[string]interface{}, а не типизированный срез парсера.
+func clearRangedKeepalive(ob map[string]interface{}) {
+	peers, _ := ob["peers"].([]interface{})
+	for _, p := range peers {
+		peer, ok := p.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		s, ok := peer["persistent_keepalive_interval"].(string)
+		if !ok || !strings.Contains(s, "-") {
+			continue
+		}
+		lo, _, _ := strings.Cut(s, "-")
+		n, err := strconv.Atoi(strings.TrimSpace(lo))
+		if err != nil || n <= 0 {
+			delete(peer, "persistent_keepalive_interval")
+			continue
+		}
+		peer["persistent_keepalive_interval"] = n
+	}
 }
 
 // awgBlock — блок обфускации в форме узла: виджеты плюс перечитывание из

@@ -284,6 +284,49 @@
       "dart": "AwgHeaderInvalidWarning",
       "go": "core/config/subscription/node_parser_wireguard.go:400"
     },
+    "awg3_field_invalid": {
+      "severity": "warning",
+      "params": [
+        "field",
+        "value"
+      ],
+      "desc": "Поле AWG 3.x (диапазон таймингов content_padding_addition/rekey_after_time/rekey_timeout/reject_after_time/keepalive_timeout/max_handshake_attempts либо булево random_trailers/disable_cookies) с мусором или с перевёрнутым диапазоном N>M — ПОЛЕ снимается, узел живёт: тайминги клиентские, ядро работает на своих дефолтах. Границы НЕ свопаются (в отличие от h1-h4): перевёрнутый диапазон — опечатка, которую человек должен увидеть. SPEC 123 §2.",
+      "dart": null,
+      "go": "core/config/subscription/awg3.go:applyAWG3Fields"
+    },
+    "awg3_header_key_invalid": {
+      "severity": "error",
+      "params": [],
+      "desc": "header_protection_key не base64, не 32 байта или все нули — УЗЕЛ выброшен на разборе (dropped), а не помечен: без верного ключа хендшейк невозможен, а ядро отвергает такой конфиг ЦЕЛИКОМ, то есть один узел лишил бы пользователя VPN. Та же политика, что у awg_headers_overlap. SPEC 123 §2.",
+      "dart": null,
+      "go": "core/config/subscription/awg3.go:validateAWG3 (parseWireGuardURI: return nil, err)"
+    },
+    "awg3_padding_too_short": {
+      "severity": "error",
+      "params": [
+        "field",
+        "min"
+      ],
+      "desc": "header_protection_key задан, но один из s1-s4 меньше 12 (или не задан = 0) — УЗЕЛ выброшен (dropped). Nonce шифра заголовка берётся из первых 12 байт паддинга сообщения, поэтому ядро отвергает такую пару на проверке конфига (docs-lx §2.9/§2.10). SPEC 123 §2.",
+      "dart": null,
+      "go": "core/config/subscription/awg3.go:validateAWG3 (parseWireGuardURI: return nil, err)"
+    },
+    "awg3_random_trailers_wide_headers": {
+      "severity": "info",
+      "params": [],
+      "desc": "random_trailers включён вместе с ШИРОКИМ диапазоном h1-h4 (ширина >= 65536). Ничего не снимается — это свойство протокола: приёмник сервера (референсная реализация) начинает принимать data-датаграммы за handshake-кандидаты с вероятностью ширина/2^32 на пакет и отбрасывать их на MAC, то есть страдает uplink. Наш приёмник к этому невосприимчив (SPEC 081 ядра). docs-lx §2.10.",
+      "dart": null,
+      "go": "core/config/subscription/awg3.go:awg3RandomTrailersWithWideHeaders"
+    },
+    "awg3_core_unsupported": {
+      "severity": "warning",
+      "params": [
+        "reason"
+      ],
+      "desc": "Узел с полями AmneziaWG 3.x снят на СБОРКЕ: ядро старше 1.14.0-lx.32 или собрано без with_awg отвергает конфиг с любым AWG3-ключом целиком («невалидный JSON»), то есть один такой узел оставил бы пользователя без VPN. Выброс, а не пометка на живом узле, но severity=warning: конфиг СОБИРАЕТСЯ, остальные узлы на месте, причина приезжает строкой отчёта сборки (BuildReportAWG3Degraded). Та же схема, что у tailscale_core_unsupported. SPEC 123 §2 «Гейт ядра». LxBox не применяет: ядро едет в AAR.",
+      "dart": null,
+      "go": "core/config/outbound_generator.go (GenerateOutboundsFromParserConfig, ветка !awg3Supported); проба core/core_capabilities.go (CoreSupportsAWG3)"
+    },
     "awg_headers_overlap": {
       "severity": "error",
       "params": [

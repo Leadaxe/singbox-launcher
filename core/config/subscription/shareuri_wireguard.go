@@ -64,8 +64,10 @@ func ShareURIFromWireGuardEndpoint(ep map[string]interface{}) (string, error) {
 	if mtu := mapGetInt(ep, "mtu"); mtu > 0 {
 		q.Set("mtu", strconv.Itoa(mtu))
 	}
-	if ka := mapGetInt(peer, "persistent_keepalive_interval"); ka > 0 {
-		q.Set("keepalive", strconv.Itoa(ka))
+	// keepalive: mapGetInt отдавал 0 на AWG3-диапазоне "25-35" и round-trip
+	// молча терял настройку — awgNumericString умеет обе формы.
+	if ka, ok := awgNumericString(peer["persistent_keepalive_interval"]); ok && ka != "" && ka != "0" {
+		q.Set("keepalive", ka)
 	}
 	if psk := mapGetString(peer, "pre_shared_key"); psk != "" {
 		q.Set("presharedkey", psk)
@@ -104,6 +106,26 @@ func ShareURIFromWireGuardEndpoint(ep map[string]interface{}) (string, error) {
 	for _, k := range awgMasqueradeFields {
 		if s := mapGetString(ep, k); s != "" {
 			q.Set(k, s)
+		}
+	}
+	// AmneziaWG 3.x (SPEC 123): ключ защиты заголовка, тайминги и булевы —
+	// эмиттер и парсер ходят парой, иначе endpoint→URI→endpoint теряет весь
+	// AWG3-набор и узел «настроен», но не соединяется.
+	if s := mapGetString(ep, awg3HeaderKeyField.JSON); s != "" {
+		q.Set(awg3HeaderKeyField.Param, s)
+	}
+	for _, f := range awg3RangeFields {
+		if raw, ok := ep[f.JSON]; ok {
+			if s, ok2 := awgNumericString(raw); ok2 && s != "" {
+				q.Set(f.Param, s)
+			}
+		}
+	}
+	for _, f := range awg3BoolFields {
+		// false/отсутствие ключа не эмитим: разбор такой формы даёт то же
+		// самое, а лишний параметр менял бы идентичность узла.
+		if v, _ := ep[f.JSON].(bool); v {
+			q.Set(f.Param, "on")
 		}
 	}
 	u := &url.URL{

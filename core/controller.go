@@ -118,6 +118,10 @@ type AppController struct {
 	tailscaleSupportCache   *tailscaleSupportVerdict
 	tailscaleSupportCacheMu sync.Mutex
 
+	// SPEC 123: тот же кэш для гейта полей AmneziaWG 3.x (тег + версия ядра).
+	awg3SupportCache   *awg3SupportVerdict
+	awg3SupportCacheMu sync.Mutex
+
 	// --- Chain-support probe cache (SPEC 110) ---
 	// Тип `chain` есть только в ядрах, собранных с `with_lx_chain`, и ядро
 	// отвергает ВЕСЬ конфиг на неизвестном типе outbound'а. Кэш
@@ -261,6 +265,9 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	// SPEC 122: то же для tailscale — endpoint типа `tailscale` умеет только
 	// ядро с тегом with_tailscale, а один такой узел валит `check` целиком.
 	config.TailscaleSupportProbe = ac.CoreSupportsTailscale
+	// SPEC 123: то же для полей AmneziaWG 3.x — ядро до 1.14.0-lx.32
+	// отвергает конфиг с любым из них целиком.
+	config.AWG3SupportProbe = ac.CoreSupportsAWG3
 
 	// SPEC 122: корень каталогов состояния tailnet. Тот же корень
 	// `<execDir>/bin`, относительно которого лежат локальные .srs — эмиссия

@@ -1,6 +1,10 @@
 package business
 
-import "strings"
+import (
+	"strings"
+
+	"singbox-launcher/core/config/subscription"
+)
 
 // SPEC 095 D2/D3 — метки транспорта и security для подзаголовка узла.
 //
@@ -67,6 +71,8 @@ func deriveTransport(nodeType string, raw map[string]interface{}) string {
 // Для WireGuard это уровень AmneziaWG, определяемый СТРУКТУРНО — по наличию
 // полей, потому что явной версии в конфиге нет:
 //
+//	awg3.1  — random_trailers / disable_cookies;
+//	awg3    — защита заголовка, тайминги или диапазонный keepalive (SPEC 123);
 //	awg2    — ranged-заголовки h1–h4 вида "N-M" либо transport-padding s3/s4;
 //	awg1.5  — signature-пакеты i1–i5;
 //	awg     — только базовые jc/jmin/jmax/s1/s2 или одиночные h1–h4;
@@ -105,6 +111,12 @@ func deriveSecurity(nodeType string, raw map[string]interface{}) string {
 func deriveAWGLevel(raw map[string]interface{}) string {
 	base := ""
 	switch {
+	// AWG 3.1 отличается от 3.0 ровно двумя полями (SPEC 123 §2): версия в
+	// теле не хранится, бейдж выводится структурно — как и у awg2.
+	case hasAnyKey(raw, "random_trailers", "disable_cookies"):
+		base = "awg3.1"
+	case subscription.HasAWG3Fields(raw):
+		base = "awg3"
 	case hasRangedHeader(raw) || hasAnyKey(raw, "s3", "s4"):
 		base = "awg2"
 	case hasAnyKey(raw, awgSignatureKeys...):
@@ -114,9 +126,10 @@ func deriveAWGLevel(raw map[string]interface{}) string {
 	}
 
 	if hasAnyKey(raw, awgMasqueradeKeys...) {
-		// masquerade сам по себе = 1.5; на уже-2.0 остаётся 2.0.
-		if base == "awg2" {
-			return "awg2+"
+		// masquerade сам по себе = 1.5; на уже-2.0 и выше уровень сохраняется.
+		switch base {
+		case "awg3.1", "awg3", "awg2":
+			return base + "+"
 		}
 		return "awg1.5+"
 	}

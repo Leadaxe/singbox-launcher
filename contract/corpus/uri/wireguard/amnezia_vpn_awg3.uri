@@ -1,0 +1,7 @@
+# SPEC 123 Amnezia AWG 3.1: контейнер amnezia-awg2, protocol_version "3.1",
+# last_config объектом рядом с config (MTU 1376 лежит ТАМ, а не в [Interface]),
+# DNS = $PRIMARY_DNS, $SECONDARY_DNS с адресами в корне профиля (dns1/dns2).
+# Ожидается: mtu 1376 из last_config клампится до 1280, dns 172.29.172.254,1.0.0.1 без плейсхолдеров,
+# persistent_keepalive_interval "25-35" строкой, тайминги строками, булевы true.
+# Все ключи СИНТЕТИЧЕСКИЕ.
+vpn://AAAEanjafVNtb9pADP4rKOq3QSAJKS1SPzAoBdqwLCGgqlTomjPlRnKXJgf0Rfz32aG026ROCJ39PD77iX1-M2IlNRMS8sJo3719ukbbYKmEV8FqbPdoG1UDD6P9ZmQq10g6DffURTTLlVaxShZbTCGUJMq0kNA5kwUFL8oQxDc8QzxhhV5gmaUo0x0t424oNeRLFsP9XHY4z6EoKhcVq2GemZbZqjv2XPbGIUInfjD0OsHtAt1q5SS87P4Y9979ufRzsWUaruEFQ6P-aDRd96Mg0v3ZpLPzel_-L-ZyFOOVJp6pkGVpMtkzmi6aoUWGi4ZNYSgndMggqknhiAwoxsKTQsinCAfP5iHzABiH3MeGQKyxWweV33fN6aDrPXmTx3qwtqKZPcriAf-2un2ZpE9XKm-x82dvG9pAKrs4IpDaZ5wL-YidEpSp1FuzGqgmgDW8dJbYzYlIoSSQsY8MgWqjSVitRdgv1PJXuIvhZxh-DZCxRGzh84pbs7ADHnseMMmLFVtDR2tIM13Oyq2VVZBS6SRnIsE3gbiSODpRsIcEukqtBRzBubzzAXIcuL95SER8aMfPaNQLLqdXQWM1Ctfam0SuH_X7YWQF02nCb2dTtfMmw9dxL7qgeQPqyIEfJz6--c-U_5l4J0nUDvjQJ0UNs_zVG9VKu13HD7mUPFNC0nfbDQc5y3LM83b59LEwPfiCRvHRJwp0aw6S-NBTvcFnbTmtU3RWqtBjlgIif6Si_SnXqUyJzkfKxRpzLsqkdIWS0goe5C5ERttqfAhGihQb91UjTgRdFxnVft8dY7_fI8VhyTaJ7n694l-q5FDEucj0YcE7syunMlYciJGFRaVatmmfm-XhNg-4TXgp0TL2vwEy414z

@@ -137,6 +137,10 @@ func parserSuccessToastMessage(result *config.OutboundGenerationResult) string {
 	if result.SkippedTailscaleNodes > 0 {
 		msg += fmt.Sprintf(" %d tailscale node(s) skipped: %s.", result.SkippedTailscaleNodes, result.SkippedTailscaleReason)
 	}
+	// SPEC 123: то же правило для узлов с полями AmneziaWG 3.x.
+	if result.SkippedAWG3Nodes > 0 {
+		msg += fmt.Sprintf(" %d AmneziaWG 3.x node(s) skipped: %s.", result.SkippedAWG3Nodes, result.SkippedAWG3Reason)
+	}
 	// SPEC 110: то же правило для цепочек. Настроенный маршрут, молча
 	// выпавший из конфига, читается как потерянная настройка — пользователь
 	// должен узнать, что именно и почему не собралось.

@@ -451,3 +451,39 @@ sing-box JSON, эмитит в `endpoints[]`, подставляет ему `sta
 **Предложение версии — 0.13.0** (новая конструкция = минор). `contract/VERSION`
 лаунчером НЕ поднят: подъём после ответа второй стороны (правило обеих
 сторон). Черновик решения — D-098 в `SPECS/103-F-O-LX_SHARED_CONTRACT/DECISIONS.md`.
+
+## 10. AmneziaWG 3.0/3.1 — разбор и эмиссия обеими сторонами (приоритет 1)
+
+Amnezia отдаёт AWG 3.x сервер контейнером `amnezia-awg2` с
+`awg.protocol_version: "3.1"`. Поверх AWG2-набора в его `.conf` стоят
+`HeaderProtectionKey`, `ContentPaddingAddition`, `RekeyAfterTime`,
+`RekeyTimeout`, `RejectAfterTime`, `KeepaliveTimeout`, `MaxHandshakeAttempts`,
+`RandomTrailers`, `DisableCookies`, а `[Peer] PersistentKeepalive` приходит
+диапазоном (`25-35`). Ядро без этих полей отвергает конфиг ЦЕЛИКОМ, поэтому
+пропустить их молча нельзя: узел выглядит настроенным и не соединяется никогда.
+
+Что сделал лаунчер (SPEC 123) и что нужно от LxBox:
+
+- **AAR пинится на `libbox-1.14.0-lx.33.aar`** — раньше поля не приняты.
+  Гейт «обновите ядро» на мобиле не нужен: ядро едет в AAR;
+- **параметры ссылки = ключ `.conf` в нижнем регистре** (как `jc`,
+  `presharedkey`): `headerprotectionkey`, `contentpaddingaddition`,
+  `rekeyaftertime`, `rekeytimeout`, `rejectaftertime`, `keepalivetimeout`,
+  `maxhandshakeattempts`, `randomtrailers`, `disablecookies`, плюс
+  `keepalive=25-35`. Канонический список — `core/config/subscription/awg3.go`;
+- **маппинг в JSON** — те же имена в snake_case на КОРНЕ endpoint'а
+  (`header_protection_key`, `content_padding_addition`, …), keepalive — у пира.
+  Формы значений: `N` → число, `N-M` → строка `"N-M"` без пробелов, булево
+  пишется ТОЛЬКО при `on` (никаких `false`), ключ защиты — base64 дословно
+  (std; url-safe привести к std, как ключи WG);
+- **бейдж уровня** структурный, версии в теле нет: `awg3.1` — есть
+  `random_trailers` или `disable_cookies`, `awg3` — любое другое AWG3-поле или
+  диапазонный keepalive; суффикс `+` при маскировке — как раньше;
+- **корпус — источник истины**: `corpus/uri/wireguard/awg3_full_params`
+  (полный набор + `mtu=1376`, клампится до 1280 как у AWG2, + `keepalive=25-35`),
+  `amnezia_vpn_awg3` (профиль целиком: MTU из `last_config.mtu`, DNS из
+  корневых `dns1`/`dns2` вместо `$PRIMARY_DNS`/`$SECONDARY_DNS`) и негатив
+  `awg3_header_key_short_dropped` (ключ 16 байт → узел выброшен). Коды
+  деградации — в `registry/warnings.json` (`awg3_*`).
+
+Подробное ТЗ для LxBox владелец пишет отдельно; здесь — контракт данных.

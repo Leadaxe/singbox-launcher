@@ -105,3 +105,65 @@ CGO: disabled
 		})
 	}
 }
+
+// SPEC 123: гейт полей AmneziaWG 3.x. Здесь одного тега мало — `with_awg`
+// есть и у старых ядер, — поэтому вердикт складывается из тега И версии.
+// Политика прежняя: деградируем только по положительному свидетельству.
+func TestAWG3VerdictFromVersionOutput(t *testing.T) {
+	const lx32Output = `sing-box version 1.14.0-lx.32
+
+Environment: go1.25.12 darwin/amd64
+Tags: with_gvisor,with_quic,with_wireguard,with_utls,with_clash_api,with_awg,with_lx_chain,with_tailscale
+Revision: deadbeef
+CGO: disabled
+`
+	const lx32rcOutput = `sing-box version 1.14.0-lx.32-rc.1
+
+Environment: go1.25.12 darwin/amd64
+Tags: with_gvisor,with_quic,with_wireguard,with_awg
+Revision: deadbeef
+CGO: disabled
+`
+	const lx31Output = `sing-box version 1.14.0-lx.31
+
+Environment: go1.25.12 darwin/amd64
+Tags: with_gvisor,with_quic,with_wireguard,with_awg,with_tailscale
+Revision: deadbeef
+CGO: disabled
+`
+	const upstream115Output = `sing-box version 1.15.0
+
+Environment: go1.25.12 darwin/arm64
+Tags: with_gvisor,with_quic,with_wireguard,with_utls,with_clash_api
+Revision: f0cd3422
+CGO: disabled
+`
+	cases := []struct {
+		name          string
+		output        string
+		wantSupported bool
+		wantInReason  string
+	}{
+		{"lx.32 — граница поддержки", lx32Output, true, ""},
+		{"rc поверх lx.32 тоже умеет", lx32rcOutput, true, ""},
+		{"lx.31 с with_awg — не умеет", lx31Output, false, "1.14.0-lx.32"},
+		{"lx.31 — причина называет версию ядра", lx31Output, false, "1.14.0-lx.31"},
+		{"upstream 1.15.0 без with_awg", upstream115Output, false, awgBuildTag},
+		{"нет строки Tags — считаем, что умеет", "sing-box version 1.13.0\n", true, ""},
+		{"мусор в выводе — считаем, что умеет", "flag provided but not defined", true, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			supported, reason := awg3VerdictFromVersionOutput(c.output)
+			if supported != c.wantSupported {
+				t.Errorf("supported = %v, want %v (reason: %q)", supported, c.wantSupported, reason)
+			}
+			if c.wantInReason != "" && !strings.Contains(reason, c.wantInReason) {
+				t.Errorf("reason = %q, want it to mention %q", reason, c.wantInReason)
+			}
+			if c.wantSupported && reason != "" {
+				t.Errorf("reason = %q, want empty when supported", reason)
+			}
+		})
+	}
+}

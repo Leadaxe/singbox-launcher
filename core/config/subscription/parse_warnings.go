@@ -65,6 +65,22 @@ const (
 	WarnAWGHeaderInvalid = "awg_header_invalid"
 	// WarnAWGHeadersOverlap — H1–H4 совпадают между собой.
 	WarnAWGHeadersOverlap = "awg_headers_overlap"
+	// AmneziaWG 3.x (SPEC 123).
+	// WarnAWG3FieldInvalid — диапазон/булево AWG3 с мусором или N>M: поле
+	// снято, узел живёт.
+	WarnAWG3FieldInvalid = "awg3_field_invalid"
+	// WarnAWG3HeaderKeyInvalid — header_protection_key не base64 32 байта
+	// или все нули: узел выброшен (без ключа хендшейк невозможен).
+	WarnAWG3HeaderKeyInvalid = "awg3_header_key_invalid"
+	// WarnAWG3PaddingTooShort — при header_protection_key один из s1–s4 < 12:
+	// узел выброшен (ядро отвергает конфиг целиком).
+	WarnAWG3PaddingTooShort = "awg3_padding_too_short"
+	// WarnAWG3RandomTrailersWideHeaders — random_trailers при широких
+	// диапазонах h1–h4: потери на data-пакетах, свойство протокола (info).
+	WarnAWG3RandomTrailersWideHeaders = "awg3_random_trailers_wide_headers"
+	// WarnAWG3CoreUnsupported — узел с AWG3-полями снят на сборке: ядро
+	// старше 1.14.0-lx.32 или без with_awg. Выброс, а не пометка.
+	WarnAWG3CoreUnsupported = "awg3_core_unsupported"
 	// WarnTuicCongestionInvalid — контроль перегрузки TUIC вне словаря.
 	WarnTuicCongestionInvalid = "tuic_congestion_invalid"
 	// WarnTuicUDPRelayModeInvalid — udp_relay_mode TUIC вне словаря.

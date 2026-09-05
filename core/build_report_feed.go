@@ -131,6 +131,16 @@ func FeedBuildReportFromParser(gen config.BuildGeneration, res *config.OutboundG
 		})
 	}
 
+	// SPEC 123: то же для узлов с полями AmneziaWG 3.x на старом ядре.
+	if res.SkippedAWG3Nodes > 0 {
+		entries = append(entries, config.BuildReportEntry{
+			Kind:      config.BuildReportAWG3Degraded,
+			Subject:   "amneziawg3",
+			Reason:    res.SkippedAWG3Reason,
+			NodeCount: res.SkippedAWG3Nodes,
+		})
+	}
+
 	config.AddBuildReportEntries(gen, entries)
 }
 

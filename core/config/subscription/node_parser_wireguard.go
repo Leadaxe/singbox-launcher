@@ -139,6 +139,9 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 	// (transport/wireguard/endpoint.go), so writing our own 1420 both contradicts
 	// the core and gave the node a different identity hash than LxBox
 	// (SPEC 103, D-026 / CANON §2.4).
+	// AWG3 (SPEC 123) клампится так же: экспорт Amnezia несёт mtu 1376, но
+	// у владельца на нём данные не шли, а на 1280 туннель заработал —
+	// решение 2026-09-05: дефолт 1280 для всего AmneziaWG.
 	isAWG := hasAWGParams(q)
 	mtu := 0
 	if isAWG {
@@ -173,9 +176,13 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 		"public_key":  publicKey,
 		"allowed_ips": allowedipsList,
 	}
-	if keepalive := q.Get("keepalive"); keepalive != "" {
+	// keepalive: число как раньше; AWG3 добавил диапазон "25-35", который ядро
+	// перевыбирает при каждом взводе таймера. Мусор пропускается (как раньше).
+	if keepalive := strings.TrimSpace(q.Get("keepalive")); keepalive != "" {
 		if ki, err := strconv.Atoi(keepalive); err == nil {
 			peer["persistent_keepalive_interval"] = ki
+		} else if rng, ok := parseAWG3Range(keepalive); ok {
+			peer["persistent_keepalive_interval"] = rng
 		}
 	}
 	psk := queryParamPreservePlus(parsedURL, "presharedkey")
@@ -221,6 +228,9 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 	// AmneziaWG (SPEC 073): promote obfuscation params from the query into the
 	// endpoint root (sing-box-lx with_awg shape). No-op for a plain WG URI.
 	awgCodes := applyAWGFields(endpoint, q)
+	// AmneziaWG 3.x (SPEC 123): защита заголовка, паддинг содержимого, хвосты
+	// и тайминги — там же, на корне endpoint.
+	awgCodes = append(awgCodes, applyAWG3Fields(endpoint, parsedURL, q)...)
 	// Пересечение magic-заголовков фатально не для узла, а для КОНФИГА:
 	// ядро отвергает такой endpoint на загрузке («headers must not
 	// overlap»), и одна подписка с h1=h2 оставляла пользователя без VPN
@@ -229,6 +239,12 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 	// а не конфиг (та же политика, что у битого ключа выше).
 	if a, b := awgHeaderOverlap(endpoint); a != "" {
 		return nil, fmt.Errorf("AWG magic headers %s and %s overlap — the core rejects such an endpoint ('headers must not overlap'); node skipped", a, b)
+	}
+	// Та же политика для AWG3: битый ключ защиты заголовка или слишком
+	// короткий паддинг роняют ВЕСЬ конфиг на загрузке — выбрасываем узел.
+	if err := validateAWG3(endpoint); err != nil {
+		debuglog.WarnLog("parseWireGuardURI: %v", err)
+		return nil, err
 	}
 
 	label := parsedURL.Fragment
@@ -401,6 +417,9 @@ const (
 // AWG endpoint too (the core expands the sugar into i1), and leaving its MTU
 // unclamped reproduces the silent AWG failure — the handshake completes and no
 // data flows.
+// An AWG3 marker (header protection, timings, ranged keepalive — SPEC 123)
+// counts too: such a link is an AmneziaWG endpoint even without a single AWG2
+// field, and its MTU is clamped like any other AmneziaWG endpoint.
 func hasAWGParams(q url.Values) bool {
 	for _, list := range [][]string{awgNumericFields, awgStringFields, awgMasqueradeFields} {
 		for _, k := range list {
@@ -409,7 +428,7 @@ func hasAWGParams(q url.Values) bool {
 			}
 		}
 	}
-	return false
+	return hasAWG3Params(q)
 }
 
 // applyAWGFields extracts AmneziaWG obfuscation params from a wireguard:// (or

@@ -45,6 +45,7 @@ import (
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
+	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 )
 
@@ -79,6 +80,12 @@ type OutboundGenerationResult struct {
 	// SkippedTailscaleReason несёт вердикт пробы для показа в UI.
 	SkippedTailscaleNodes  int
 	SkippedTailscaleReason string
+	// SkippedAWG3Nodes — wireguard-узлы с полями AmneziaWG 3.x, снятые
+	// потому, что установленное ядро старше 1.14.0-lx.32 (SPEC 123).
+	// Причина та же, что у naive/tailscale: один такой узел завалил бы
+	// `sing-box check` для всего конфига.
+	SkippedAWG3Nodes  int
+	SkippedAWG3Reason string
 
 	// NodeSections — секции узлов, ДОШЕДШИХ до эмиссии (SPEC 121), в порядке
 	// эмиссии. Собирается здесь по той же причине, что и NodeOrigins: это
@@ -168,10 +175,10 @@ type NodeSectionSet struct {
 	FinalTag string
 	// Link — идентичность узла в состоянии ({FolderID, сырой тег}).
 	Link configtypes.NodeLink
-	// Тела фрагментов — сырые, до подстановки `@self` и префиксов.
-	DNSServers []json.RawMessage
-	DNSRules   []json.RawMessage
-	Rules      []json.RawMessage
+	// Sections — записи узла в форме хранения, ДО подстановки `@self`:
+	// финальный тег известен здесь, но подставляет его сборка — одной точкой
+	// (state.SubstituteSelf), общей с показом в UI.
+	Sections *state.NodeSections
 }
 
 // SourceExclusion — один исключённый источник и почему.
@@ -256,6 +263,11 @@ var NaiveSupportProbe func() (supported bool, reason string)
 // `sing-box check` падает на ВСЁМ конфиге, а не на одном узле. nil →
 // считаем, что ядро умеет: деградировать по догадке нельзя.
 var TailscaleSupportProbe func() (supported bool, reason string)
+
+// AWG3SupportProbe — та же схема для полей AmneziaWG 3.x на wireguard-узле
+// (SPEC 123): ядро до 1.14.0-lx.32 не знает header_protection_key и соседей и
+// отвергает ВЕСЬ конфиг как невалидный JSON. nil → считаем, что ядро умеет.
+var AWG3SupportProbe func() (supported bool, reason string)
 
 // GenerateNodeJSON returns a single JSON object string for one proxy node (sing-box outbound).
 // Field order and presence follow sing-box expectations. Supports: vless, vmess, trojan, shadowsocks, hysteria, hysteria2, tuic, naive, masque, anytls, ssh, socks.
@@ -1238,6 +1250,13 @@ func GenerateOutboundsFromParserConfig(
 	}
 	skippedTailscale := 0
 
+	// SPEC 123: та же проба для полей AmneziaWG 3.x — одна на прогон.
+	awg3Supported, awg3Reason := true, ""
+	if AWG3SupportProbe != nil {
+		awg3Supported, awg3Reason = AWG3SupportProbe()
+	}
+	skippedAWG3 := 0
+
 	// SPEC 118 W4: эмиссионные деградации канонического пути (битое тело,
 	// пустая группа, снятое умолчание) — тот же адресат, что у причин
 	// разбора: отчёт сборки. Ключ — позиция источника, как и там.
@@ -1309,9 +1328,31 @@ func GenerateOutboundsFromParserConfig(
 			skippedTailscale += skippedTailscaleHere
 		}
 
-		// A source whose every node was a degraded naive/tailscale node still
-		// fetched and parsed fine — count it as succeeded, not silent-empty.
-		if len(nodesFromSource) == 0 && (skippedNaiveHere > 0 || skippedTailscaleHere > 0) {
+		// SPEC 123: та же ветка для wireguard-узлов с полями AWG 3.x —
+		// старое ядро отвергает такой конфиг целиком, а не один узел.
+		skippedAWG3Here := 0
+		if !awg3Supported {
+			kept := nodesFromSource[:0]
+			for _, n := range nodesFromSource {
+				if n.Scheme == "wireguard" && subscription.HasAWG3Fields(n.Outbound) {
+					skippedAWG3Here++
+					// Код деградации — из реестра (contract/registry/warnings.json):
+					// узел выброшен, вешать пометку не на что, и код едет в лог
+					// вместе с причиной.
+					debuglog.WarnLog("GenerateOutboundsFromParserConfig: %s — skipping AmneziaWG 3.x node %q — %s",
+						subscription.WarnAWG3CoreUnsupported, n.Tag, awg3Reason)
+					continue
+				}
+				kept = append(kept, n)
+			}
+			nodesFromSource = kept
+			skippedAWG3 += skippedAWG3Here
+		}
+
+		// A source whose every node was a degraded naive/tailscale/awg3 node
+		// still fetched and parsed fine — count it as succeeded, not
+		// silent-empty.
+		if len(nodesFromSource) == 0 && (skippedNaiveHere > 0 || skippedTailscaleHere > 0 || skippedAWG3Here > 0) {
 			succeededSources++
 			continue
 		}
@@ -1366,6 +1407,8 @@ func GenerateOutboundsFromParserConfig(
 			SkippedNaiveReason:     naiveReason,
 			SkippedTailscaleNodes:  skippedTailscale,
 			SkippedTailscaleReason: tailscaleReason,
+			SkippedAWG3Nodes:       skippedAWG3,
+			SkippedAWG3Reason:      awg3Reason,
 			// ExcludedSources здесь пуст по существу, а не по недосмотру:
 			// исключения считает резолв графа ссылок ниже, и при нулевом наборе
 			// узлов исключать нечего — до графа ссылок дело не дошло.
@@ -1379,6 +1422,9 @@ func GenerateOutboundsFromParserConfig(
 		}
 		if skippedTailscale > 0 {
 			return diag, fmt.Errorf("no usable nodes: %d tailscale node(s) skipped (%s)", skippedTailscale, tailscaleReason)
+		}
+		if skippedAWG3 > 0 {
+			return diag, fmt.Errorf("no usable nodes: %d AmneziaWG 3.x node(s) skipped (%s)", skippedAWG3, awg3Reason)
 		}
 		return diag, fmt.Errorf("no nodes parsed from any source")
 	}
@@ -1501,13 +1547,11 @@ func GenerateOutboundsFromParserConfig(
 			selectorsJSON = append(selectorsJSON, outJSONs...)
 			nodesCount++
 		}
-		if !node.Sections.IsEmpty() {
+		if decoded := state.NodeSectionsFromConfigTypes(node.Sections); decoded != nil {
 			nodeSections = append(nodeSections, NodeSectionSet{
-				FinalTag:   node.Tag,
-				Link:       node.SectionsLink,
-				DNSServers: node.Sections.DNSServers,
-				DNSRules:   node.Sections.DNSRules,
-				Rules:      node.Sections.Rules,
+				FinalTag: node.Tag,
+				Link:     node.SectionsLink,
+				Sections: decoded,
 			})
 		}
 	}
@@ -1533,6 +1577,8 @@ func GenerateOutboundsFromParserConfig(
 		SkippedNaiveNodes:      skippedNaive,
 		SkippedTailscaleNodes:  skippedTailscale,
 		SkippedTailscaleReason: tailscaleReason,
+		SkippedAWG3Nodes:       skippedAWG3,
+		SkippedAWG3Reason:      awg3Reason,
 		EmptyDirections:        emptyDirections,
 		BrokenChains:           brokenChains,
 		ChainCycles:            chainCycles,

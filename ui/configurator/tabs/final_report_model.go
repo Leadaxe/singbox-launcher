@@ -98,6 +98,7 @@ func finalReportLines(entries []config.BuildReportEntry) []finalReportLine {
 		config.BuildReportEmitDegraded:      6,
 		config.BuildReportNaiveDegraded:     7,
 		config.BuildReportTailscaleDegraded: 8,
+		config.BuildReportAWG3Degraded:      9,
 	}
 	idx := make([]int, len(entries))
 	for i := range idx {
@@ -141,6 +142,8 @@ func finalReportEntryText(e config.BuildReportEntry) string {
 		return locale.Tf("%d naive node(s) skipped: %s", e.NodeCount, e.Reason)
 	case config.BuildReportTailscaleDegraded:
 		return locale.Tf("%d tailscale node(s) skipped: %s", e.NodeCount, e.Reason)
+	case config.BuildReportAWG3Degraded:
+		return locale.Tf("%d AmneziaWG 3.x node(s) skipped: %s", e.NodeCount, e.Reason)
 	case config.BuildReportTargetMissing:
 		return locale.Tf("Detour target %q is missing from the build: %s", subject, e.Reason)
 	case config.BuildReportEmitDegraded, config.BuildReportFetchDegraded:

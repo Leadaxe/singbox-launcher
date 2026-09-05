@@ -109,6 +109,11 @@ func buildSnapshotFromState(s *state.State, execDir string, subst config.VarSubs
 		warnings = append(warnings, fmt.Sprintf("%d tailscale node(s) skipped: %s",
 			result.SkippedTailscaleNodes, result.SkippedTailscaleReason))
 	}
+	// SPEC 123: то же для узлов с полями AmneziaWG 3.x.
+	if result.SkippedAWG3Nodes > 0 {
+		warnings = append(warnings, fmt.Sprintf("%d AmneziaWG 3.x node(s) skipped: %s",
+			result.SkippedAWG3Nodes, result.SkippedAWG3Reason))
+	}
 
 	return &build.ParsedCache{
 		Outbounds:    jsonStringsToRawMessages(result.OutboundsJSON),

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
+	"strings"
 	"time"
 
 	"singbox-launcher/internal/debuglog"
@@ -185,6 +187,140 @@ func tailscaleVerdictFromVersionOutput(versionOutput string) (bool, string) {
 		}
 	}
 	return false, fmt.Sprintf("sing-box core is built without %s (need 1.14.0-lx.31 or newer)", tailscaleBuildTag)
+}
+
+// SPEC 123: то же самое для полей AmneziaWG 3.x на wireguard-узле. Здесь
+// одного тега сборки мало: `with_awg` есть и в старых ядрах, а ключи
+// header_protection_key / random_trailers / диапазонные тайминги появились
+// только в 1.14.0-lx.32. Ядро постарше отвергает конфиг ЦЕЛИКОМ («невалидный
+// JSON»), поэтому вердикт складывается из тега и версии.
+
+// awg3SupportVerdict — кэш вердикта по (mtime, size) бинаря ядра.
+type awg3SupportVerdict struct {
+	binMtime  time.Time
+	binSize   int64
+	supported bool
+	reason    string
+}
+
+const (
+	// awgBuildTag — тег сборки ядра, дающий AmneziaWG вообще.
+	awgBuildTag = "with_awg"
+	// awg3MinLxRelease — минимальный номер релиза форка в суффиксе `-lx.N`
+	// поверх базовой 1.14.0, начиная с которого ядро знает поля AWG 3.x.
+	awg3MinLxRelease = 32
+	// awg3MinCoreVersion — та же граница строкой, для текста причины и
+	// сравнения базовых версий.
+	awg3MinCoreVersion = "1.14.0-lx.32"
+)
+
+// CoreSupportsAWG3 reports whether the installed sing-box core understands
+// AmneziaWG 3.x endpoint fields, with a human-readable reason when it can't.
+func (ac *AppController) CoreSupportsAWG3() (bool, string) {
+	if ac == nil || ac.FileService == nil {
+		return true, ""
+	}
+	singboxPath := ac.FileService.SingboxPath
+	if resolved, err := exec.LookPath(singboxPath); err == nil {
+		singboxPath = resolved
+	}
+	st, err := os.Stat(singboxPath)
+	if err != nil {
+		return true, "" // ядра нет — пробовать нечего, check всё равно не запустится
+	}
+
+	ac.awg3SupportCacheMu.Lock()
+	defer ac.awg3SupportCacheMu.Unlock()
+	if c := ac.awg3SupportCache; c != nil && c.binMtime.Equal(st.ModTime()) && c.binSize == st.Size() {
+		return c.supported, c.reason
+	}
+
+	supported, reason := probeAWG3Support(singboxPath)
+	ac.awg3SupportCache = &awg3SupportVerdict{
+		binMtime:  st.ModTime(),
+		binSize:   st.Size(),
+		supported: supported,
+		reason:    reason,
+	}
+	if !supported {
+		debuglog.WarnLog("CoreSupportsAWG3: %s", reason)
+	}
+	return supported, reason
+}
+
+// probeAWG3Support runs `sing-box version` and derives the verdict from the
+// build tags plus the core version.
+func probeAWG3Support(singboxPath string) (bool, string) {
+	cmd := exec.Command(singboxPath, "version")
+	platform.PrepareCommand(cmd)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		debuglog.WarnLog("probeAWG3Support: sing-box version failed: %v", err)
+		return true, ""
+	}
+	return awg3VerdictFromVersionOutput(string(output))
+}
+
+// awg3LxReleaseRegex — номер релиза форка в суффиксе версии (`-lx.32`,
+// `-lx.32-rc.1`).
+var awg3LxReleaseRegex = regexp.MustCompile(`-lx\.(\d+)`)
+
+// awg3VerdictFromVersionOutput — чистая часть пробы, проверяемая тестом.
+//
+// Политика та же, что у naive/tailscale: деградируем только по положительному
+// свидетельству. Нет строки `Tags:`, нет разбираемой версии — считаем, что
+// ядро умеет; `sing-box check` остаётся последним рубежом.
+func awg3VerdictFromVersionOutput(versionOutput string) (bool, string) {
+	m := versionTagsRegex.FindStringSubmatch(versionOutput)
+	if m == nil {
+		return true, "" // формат неизвестен — не деградируем по догадке
+	}
+	hasAWG := false
+	for _, t := range splitBuildTags(m[1]) {
+		if t == awgBuildTag {
+			hasAWG = true
+			break
+		}
+	}
+	if !hasAWG {
+		// Ядро без AmneziaWG вообще — версия тут не при чём, и звать
+		// обновляться до lx.32 некуда: нужен другой билд.
+		return false, fmt.Sprintf("sing-box core is built without %s — AmneziaWG nodes are unavailable", awgBuildTag)
+	}
+
+	version := coreVersionFromVersionOutput(versionOutput)
+	if version == "" {
+		return true, "" // формат неизвестен — не деградируем по догадке
+	}
+	// Версия старше 1.14.0 — поля появиться не могли; новее — есть в апстриме
+	// форка вне зависимости от номера lx-релиза.
+	switch CompareVersions(strings.SplitN(version, "-", 2)[0], "1.14.0") {
+	case 1:
+		return true, ""
+	case -1:
+		return false, awg3UnsupportedReason(version)
+	}
+	// Ровно 1.14.0: решает номер релиза форка в суффиксе.
+	lx := awg3LxReleaseRegex.FindStringSubmatch(version)
+	if lx == nil {
+		return true, "" // не форк или неожиданный суффикс — не гадаем
+	}
+	release, err := strconv.Atoi(lx[1])
+	if err != nil || release >= awg3MinLxRelease {
+		return true, ""
+	}
+	return false, awg3UnsupportedReason(version)
+}
+
+// awg3UnsupportedReason — текст причины для UI и отчёта сборки. Версия в нём
+// обязательна: пользователю нужно понять, какое ядро стоит и до чего его
+// обновлять.
+func awg3UnsupportedReason(version string) string {
+	if version == "" {
+		version = "of unknown version"
+	}
+	return fmt.Sprintf("sing-box core %s does not support AmneziaWG 3.x fields (need %s or newer) — update the core in Core Dashboard",
+		version, awg3MinCoreVersion)
 }
 
 // cronetLibName — platform-specific companion library filename the cronet

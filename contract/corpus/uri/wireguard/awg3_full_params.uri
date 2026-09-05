@@ -1,0 +1,8 @@
+# SPEC 123 AWG 3.x: полный набор полей на корне endpoint.
+# Диапазон N-M едет строкой, одиночное N — числом, булево пишется только при on.
+# MTU 1376 (значение сервера из экспорта Amnezia) клампится до 1280 как у любого AWG:
+# на 1376 у владельца данные не шли, на 1280 туннель работает (решение 2026-09-05).
+# keepalive=25-35 — AWG3-форма persistent_keepalive_interval (строка).
+# HeaderProtectionKey — СИНТЕТИЧЕСКИЙ валидный 32-байтный base64 (с '+' и '/' — проверяет,
+# что параметр читается через queryParamPreservePlus, а не q.Get).
+wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@host.example.com:30565?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.8.1.7/32&allowedips=0.0.0.0/0,::/0&mtu=1376&keepalive=25-35&jc=4&jmin=10&jmax=50&s1=55&s2=42&s3=40&s4=12&h1=1&h2=2&h3=3&h4=4&headerprotectionkey=Bw4VHCMqMTg%2FRk1UW2JpcHd%2BhYyTmqGor7a9xMvS2eA%3D&contentpaddingaddition=10-100&rekeyaftertime=100-120&rekeytimeout=3-7&rejectaftertime=150-180&keepalivetimeout=5-15&maxhandshakeattempts=15-20&randomtrailers=on&disablecookies=on#awg3-server
