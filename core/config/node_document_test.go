@@ -44,20 +44,33 @@ func TestParseNodeDocument(t *testing.T) {
 				if sections == nil {
 					t.Fatal("sections are nil")
 				}
-				if len(sections.DNSServers) != 1 || len(sections.DNSRules) != 1 || len(sections.Rules) != 1 {
+				if len(sections.DNSServers()) != 1 || len(sections.DNSRules()) != 1 || len(sections.Rules) != 1 {
 					t.Fatalf("sections = %d/%d/%d, want 1/1/1",
-						len(sections.DNSServers), len(sections.DNSRules), len(sections.Rules))
+						len(sections.DNSServers()), len(sections.DNSRules()), len(sections.Rules))
+				}
+				// Записи хранимой формы: DNS — вид user, правило — inline.
+				srv := sections.DNSServers()[0]
+				if srv.Kind != state.DNSServerKindUser || srv.Tag != "ts-dns" {
+					t.Fatalf("dns server = %+v, want a user entry tagged ts-dns", srv)
 				}
 				// Реальный тег узла переписан в @self во ВСЕХ ссылках, а
 				// «.ts.net» — не ссылка и остаётся собой.
-				if got := string(sections.DNSServers[0]); !strings.Contains(got, `"detour":"@self"`) {
-					t.Fatalf("dns server = %s, want detour @self", got)
+				if got, _ := srv.Body["detour"].(string); got != state.SelfPlaceholder {
+					t.Fatalf("dns server detour = %q, want %s", got, state.SelfPlaceholder)
 				}
-				if got := string(sections.Rules[0]); !strings.Contains(got, `"outbound":"@self"`) {
-					t.Fatalf("route rule = %s, want outbound @self", got)
+				rule := sections.Rules[0]
+				if rule.Kind != state.RuleKindInline {
+					t.Fatalf("route rule kind = %q, want inline", rule.Kind)
 				}
-				if got := string(sections.DNSRules[0]); !strings.Contains(got, `".ts.net"`) {
-					t.Fatalf("dns rule = %s, want the domain suffix intact", got)
+				decoded, err := rule.DecodeBody()
+				if err != nil {
+					t.Fatalf("route rule body: %v", err)
+				}
+				if got := decoded.(*state.InlineBody).Outbound; got != state.SelfPlaceholder {
+					t.Fatalf("route rule outbound = %q, want %s", got, state.SelfPlaceholder)
+				}
+				if got := sections.DNSRules()[0].Body["domain_suffix"]; got == nil {
+					t.Fatalf("dns rule = %v, want the domain suffix intact", sections.DNSRules()[0].Body)
 				}
 			},
 		},
@@ -81,8 +94,12 @@ func TestParseNodeDocument(t *testing.T) {
 				if sections == nil || len(sections.Rules) != 1 {
 					t.Fatalf("sections = %+v", sections)
 				}
-				if got := string(sections.Rules[0]); !strings.Contains(got, `"outbound":"@self"`) {
-					t.Fatalf("route rule = %s, want outbound @self appended", got)
+				body, err := sections.Rules[0].DecodeBody()
+				if err != nil {
+					t.Fatalf("route rule body: %v", err)
+				}
+				if got := body.(*state.InlineBody).Outbound; got != state.SelfPlaceholder {
+					t.Fatalf("route rule outbound = %q, want %s to be filled in", got, state.SelfPlaceholder)
 				}
 			},
 		},

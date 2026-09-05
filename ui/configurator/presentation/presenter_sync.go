@@ -247,7 +247,7 @@ func (p *WizardPresenter) RefreshAfterPresetToggle() {
 	if p.model.TemplateData != nil {
 		wizardmodels.ReconcileRuleOrder(p.model)
 		rulesV6 := wizardmodels.EmitStateRulesInAxisOrder(
-			p.model.RuleOrder, p.model.PresetRefs, p.model.CustomRules, p.model.NodeRefs,
+			p.model.RuleOrder, p.model.PresetRefs, p.model.CustomRules,
 		)
 		// SPEC 117: запись одна — canonical GlobalOutbounds; legacy-вида в
 		// модели больше нет, производные перечитаются по ревизии.

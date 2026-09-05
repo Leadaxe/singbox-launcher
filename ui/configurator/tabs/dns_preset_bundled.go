@@ -138,11 +138,14 @@ func renderNodeSectionDNSRows(m *wizardmodels.WizardModel, parentWindow fyne.Win
 
 // buildNodeSectionDNSServerRow — одна строка DNS-сервера узла.
 func buildNodeSectionDNSServerRow(srv wizardbusiness.NodeSectionDNSServer, onView func()) fyne.CanvasObject {
+	// Тег сервера — уже с подставленным плейсхолдером (SPEC 121 §10.4):
+	// показывается ровно то, что уедет в конфиг. Имя узла рядом — чтобы было
+	// видно, чей это сервер.
 	local := srv.LocalTag
 	if local == "" {
 		local = "?"
 	}
-	titleLabel := ttwidget.NewLabel("🔗 " + srv.FinalTag + ":" + local)
+	titleLabel := ttwidget.NewLabel("🔗 " + local + " · " + srv.FinalTag)
 	titleLabel.Truncation = fyne.TextTruncateClip
 
 	tipParts := []string{}

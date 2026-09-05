@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"singbox-launcher/core/state"
+
 	"singbox-launcher/core/config/configtypes"
 )
 
@@ -71,15 +73,20 @@ func TestTailscaleEmittedAsEndpoint(t *testing.T) {
 	if !NodeBodyGoesToEndpoints(body) {
 		t.Fatalf("tailscale body must go to endpoints[], body=%s", body)
 	}
-	if sections == nil || len(sections.DNSServers) != 1 || len(sections.DNSRules) != 1 || len(sections.Rules) != 1 {
+	if sections == nil || len(sections.DNSServers()) != 1 || len(sections.DNSRules()) != 1 || len(sections.Rules) != 1 {
 		t.Fatalf("секции документа разобраны не полностью: %+v", sections)
 	}
 	// Ссылки на сам узел переписаны в @self — иначе переименование узла
 	// оборвало бы связку.
-	for _, frag := range append(append([]json.RawMessage{}, sections.DNSServers...), sections.Rules...) {
-		if !strings.Contains(string(frag), "@self") {
-			t.Errorf("фрагмент секции без @self: %s", frag)
-		}
+	if got, _ := sections.DNSServers()[0].Body["endpoint"].(string); got != state.SelfPlaceholder {
+		t.Errorf("ссылка DNS-сервера на узел = %q, ожидался %s", got, state.SelfPlaceholder)
+	}
+	ruleBody, err := sections.Rules[0].DecodeBody()
+	if err != nil {
+		t.Fatalf("тело правила секции: %v", err)
+	}
+	if got := ruleBody.(*state.InlineBody).Outbound; got != state.SelfPlaceholder {
+		t.Errorf("цель правила секции = %q, ожидался %s", got, state.SelfPlaceholder)
 	}
 
 	withTailscaleStateRoot(t, "/opt/lx/bin/tailscale")
@@ -240,12 +247,14 @@ func TestTailscaleConfigPassesSingboxCheck(t *testing.T) {
 		t.Fatalf("EmitNodeJSONs: %v", err)
 	}
 
-	// @self → финальный тег: на сборке это делает build.ExpandNodeSections,
-	// здесь достаточно той же подстановки, чтобы проверить принимаемость.
-	subst := func(frags []json.RawMessage) []json.RawMessage {
-		out := make([]json.RawMessage, 0, len(frags))
-		for _, f := range frags {
-			out = append(out, json.RawMessage(strings.ReplaceAll(string(f), `"@self"`, `"`+finalTag+`"`)))
+	// Записи хранимой формы обратно в куски sing-box (тем же переводом, что
+	// рисует вкладку JSON), затем @self → финальный тег той же подстановкой,
+	// что и на сборке.
+	frags := state.NodeSectionsToSingbox(sections)
+	subst := func(list []json.RawMessage) []json.RawMessage {
+		out := make([]json.RawMessage, 0, len(list))
+		for _, f := range list {
+			out = append(out, json.RawMessage(state.SubstituteSelf(f, finalTag)))
 		}
 		return out
 	}
@@ -255,14 +264,14 @@ func TestTailscaleConfigPassesSingboxCheck(t *testing.T) {
 		"outbounds": []map[string]string{{"type": "direct", "tag": "direct"}},
 		"dns": map[string]interface{}{
 			"servers": append([]json.RawMessage{json.RawMessage(`{"type":"local","tag":"local-dns"}`)},
-				subst(sections.DNSServers)...),
-			"rules": subst(sections.DNSRules),
+				subst(frags.DNSServers)...),
+			"rules": subst(frags.DNSRules),
 			"final": "local-dns",
 		},
 		"route": map[string]interface{}{
 			"default_domain_resolver": "local-dns",
 			"final":                   "direct",
-			"rules":                   subst(sections.Rules),
+			"rules":                   subst(frags.RouteRules),
 		},
 	}
 	raw, err := json.MarshalIndent(cfg, "", "  ")

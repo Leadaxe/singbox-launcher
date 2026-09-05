@@ -13,7 +13,7 @@ func TestEmitStateRulesWithoutOrder_PresetOnly(t *testing.T) {
 	prs := []*PresetRefState{
 		{Ref: "ru-direct", Enabled: true, Vars: map[string]string{"dns_ip": "77.88.8.7"}},
 	}
-	out := EmitStateRulesWithoutOrder(prs, nil, nil)
+	out := EmitStateRulesWithoutOrder(prs, nil)
 	if len(out) != 1 || out[0].Kind != state.RuleKindPreset || out[0].Ref != "ru-direct" {
 		t.Errorf("preset sync: %+v", out)
 	}
@@ -34,7 +34,7 @@ func TestEmitStateRulesWithoutOrder_InlineFromCustomRule(t *testing.T) {
 			SelectedOutbound: "proxy-out",
 		},
 	}
-	out := EmitStateRulesWithoutOrder(nil, cr, nil)
+	out := EmitStateRulesWithoutOrder(nil, cr)
 	if len(out) != 1 {
 		t.Fatalf("expected 1 rule, got %d", len(out))
 	}
@@ -73,7 +73,7 @@ func TestEmitStateRulesWithoutOrder_SrsFromCustomRule(t *testing.T) {
 			SelectedOutbound: "reject",
 		},
 	}
-	out := EmitStateRulesWithoutOrder(nil, cr, nil)
+	out := EmitStateRulesWithoutOrder(nil, cr)
 	if len(out) != 1 || out[0].Kind != state.RuleKindSrs {
 		t.Errorf("kind: %+v", out)
 	}
@@ -106,7 +106,7 @@ func TestEmitStateRulesWithoutOrder_Mixed(t *testing.T) {
 			SelectedOutbound: "proxy-out",
 		},
 	}
-	out := EmitStateRulesWithoutOrder(prs, cr, nil)
+	out := EmitStateRulesWithoutOrder(prs, cr)
 	if len(out) != 3 {
 		t.Fatalf("expected 3 rules, got %d", len(out))
 	}

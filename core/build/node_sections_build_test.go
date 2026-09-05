@@ -32,8 +32,8 @@ type nodeSectionsScenario struct {
 	// finalTag — под каким тегом узел уехал в конфиг (пусто = узел до
 	// эмиссии не дошёл: выключен либо снят санитайзером).
 	finalTag string
-	// anchorEnabled — состояние тумблера якоря на оси.
-	anchorEnabled bool
+	// ruleEnabled — состояние тумблера правила узла.
+	ruleEnabled bool
 	// withSections — несёт ли узел секции вообще.
 	withSections bool
 
@@ -51,25 +51,25 @@ func TestBuildWithNodeSections(t *testing.T) {
 	cases := []nodeSectionsScenario{
 		{
 			name:     "root node carries its sections", // §8 п. 1
-			finalTag: rootTag, anchorEnabled: true, withSections: true,
-			wantDNSServerTag:  rootTag + ":ts-dns",
-			wantDNSRuleServer: rootTag + ":ts-dns",
+			finalTag: rootTag, ruleEnabled: true, withSections: true,
+			wantDNSServerTag:  rootTag + "-dns",
+			wantDNSRuleServer: rootTag + "-dns",
 			wantRouteOutbound: rootTag,
 		},
 		{
 			name:     "folder tag policy feeds the final tag", // §8 п. 2
-			finalTag: folderTag, anchorEnabled: true, withSections: true,
-			wantDNSServerTag:  folderTag + ":ts-dns",
-			wantDNSRuleServer: folderTag + ":ts-dns",
+			finalTag: folderTag, ruleEnabled: true, withSections: true,
+			wantDNSServerTag:  folderTag + "-dns",
+			wantDNSRuleServer: folderTag + "-dns",
 			wantRouteOutbound: folderTag,
 		},
 		{
 			name:     "disabled node emits nothing", // §8 п. 3
-			finalTag: "", anchorEnabled: true, withSections: true,
+			finalTag: "", ruleEnabled: true, withSections: true,
 		},
 		{
 			name:     "no sections at all", // §8 п. 4
-			finalTag: rootTag, anchorEnabled: true, withSections: false,
+			finalTag: rootTag, ruleEnabled: true, withSections: false,
 		},
 	}
 
@@ -115,8 +115,8 @@ func TestBuildWithNodeSections(t *testing.T) {
 				t.Errorf("detour DNS-сервера не получил финальный тег %q", tc.finalTag)
 			}
 
-			// Якорь стоит на 945 — ниже пользовательской зоны (1000), значит
-			// правило узла обязано встать РАНЬШЕ пользовательского правила:
+			// Правило узла стоит на 945 — ниже пользовательской зоны (1000),
+			// значит оно обязано встать РАНЬШЕ пользовательского правила:
 			// подсеть за узлом должна матчиться до общих правил.
 			nodeAt := strings.Index(out, `"100.64.0.0/10"`)
 			userAt := strings.Index(out, userRuleMarkerDomain)
@@ -125,7 +125,7 @@ func TestBuildWithNodeSections(t *testing.T) {
 			}
 			if nodeAt > userAt {
 				t.Errorf("правило узла (байт %d) стоит позже пользовательского (байт %d) — "+
-					"якорь %d обязан быть выше зоны %d",
+					"позиция %d обязана быть выше зоны %d",
 					nodeAt, userAt, state.NodeRuleDefaultNum, state.UserRuleNumStart)
 			}
 		})
@@ -160,15 +160,7 @@ func buildNodeSectionsConfig(t *testing.T, tc nodeSectionsScenario) []byte {
 			cache.NodeSections = []NodeSectionSet{{
 				FinalTag: tc.finalTag,
 				Link:     link,
-				DNSServers: []json.RawMessage{
-					json.RawMessage(`{"type":"udp","tag":"ts-dns","server":"100.100.100.100","detour":"@self"}`),
-				},
-				DNSRules: []json.RawMessage{
-					json.RawMessage(`{"domain_suffix":[".ts.net"],"server":"ts-dns"}`),
-				},
-				Rules: []json.RawMessage{
-					json.RawMessage(`{"ip_cidr":["100.64.0.0/10"],"outbound":"@self"}`),
-				},
+				Sections: nodeSectionsFixture(t, tc.ruleEnabled),
 			}}
 		}
 	}
@@ -191,22 +183,6 @@ func buildNodeSectionsConfig(t *testing.T, tc nodeSectionsScenario) []byte {
 		Body:     userBody,
 	})
 
-	// Якорь на оси живёт в состоянии независимо от того, дошёл ли узел до
-	// эмиссии: выключенный узел оставляет якорь в списке (SPEC §2).
-	if tc.withSections {
-		num := state.NodeRuleDefaultNum
-		body, err := json.Marshal(state.NodeRuleBody{FolderID: link.FolderID, Tag: link.Tag})
-		if err != nil {
-			t.Fatalf("кодирование тела якоря: %v", err)
-		}
-		st.Rules = append(st.Rules, state.Rule{
-			Kind:     state.RuleKindNode,
-			Enabled:  tc.anchorEnabled,
-			OrderNum: &num,
-			Body:     body,
-		})
-	}
-
 	ctx := BuildContext{
 		Template:   td,
 		Vars:       stateVarsToMap(st),
@@ -219,10 +195,57 @@ func buildNodeSectionsConfig(t *testing.T, tc nodeSectionsScenario) []byte {
 	}
 	// Секции доезжают до слияния через кэш (buildOrderedSections снимает их
 	// после санитайзера) — контекст их не несёт, как и на боевом пути.
+	// Правила узла в state.Rules НЕ кладутся: их дом — секции узла, а в
+	// общий список их дописывает инъекция (SPEC 121 §10.2).
 
 	res, err := BuildConfig(ctx)
 	if err != nil {
 		t.Fatalf("BuildConfig: %v", err)
 	}
 	return normalizeParserTimestamp(res.ConfigJSON)
+}
+
+// nodeSectionsFixture — секции узла в форме хранения (SPEC 121 §10.1):
+// DNS-сервер с detour на себя, DNS-правило на его домены и правило маршрута
+// на его подсеть. Ссылки — плейсхолдером, как их пишет редактор.
+func nodeSectionsFixture(t *testing.T, ruleEnabled bool) *state.NodeSections {
+	t.Helper()
+	ruleBody, err := json.Marshal(state.InlineBody{
+		Name:     state.SelfPlaceholderBraced + " network",
+		Match:    map[string]interface{}{"ip_cidr": []string{"100.64.0.0/10"}},
+		Outbound: state.SelfPlaceholder,
+	})
+	if err != nil {
+		t.Fatalf("кодирование правила секции: %v", err)
+	}
+	num := state.NodeRuleDefaultNum
+	out := &state.NodeSections{
+		Rules: []state.Rule{{
+			Kind:     state.RuleKindInline,
+			Enabled:  ruleEnabled,
+			OrderNum: &num,
+			Body:     ruleBody,
+		}},
+	}
+	out.SetDNS(
+		[]state.DNSServer{{
+			Kind:    state.DNSServerKindUser,
+			Tag:     state.SelfPlaceholderBraced + "-dns",
+			Enabled: true,
+			Body: map[string]interface{}{
+				"type":   "udp",
+				"server": "100.100.100.100",
+				"detour": state.SelfPlaceholder,
+			},
+		}},
+		[]state.DNSRule{{
+			Kind:    state.DNSRuleKindUser,
+			Enabled: true,
+			Body: map[string]interface{}{
+				"domain_suffix": []interface{}{".ts.net"},
+				"server":        state.SelfPlaceholderBraced + "-dns",
+			},
+		}},
+	)
+	return out
 }

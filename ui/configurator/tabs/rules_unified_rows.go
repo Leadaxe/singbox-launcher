@@ -58,31 +58,32 @@ func buildUnifiedRuleRows(
 			}
 			buildSinglePresetRefRow(presenter, model, guiState, availableOutbounds, showAddRuleDialog, rulesBox, slot.Index, slotIdx, dragGroup)
 		case wizardmodels.SlotKindNodeRef:
-			if slot.Index < 0 || slot.Index >= len(model.NodeRefs) {
+			if slot.Index < 0 || slot.Index >= len(model.NodeRuleRefs) {
 				continue
 			}
-			buildSingleNodeRefRow(presenter, model, rulesBox, slot.Index, slotIdx, dragGroup)
+			buildSingleNodeRuleRow(presenter, model, rulesBox, slot.Index, slotIdx, dragGroup)
 		}
 	}
 }
 
-// buildSingleNodeRefRow рисует строку-якорь правил узла (SPEC 121 §5.2).
+// buildSingleNodeRuleRow рисует строку правила, которое узел носит с собой
+// (SPEC 121 §10.4).
 //
 // Форма строки — по образцу пресетного якоря, и отличия ровно те, что следуют
 // из природы записи:
 //
-//   - тумблер РАБОЧИЙ: включение якоря — выбор пользователя (в отличие от
+//   - тумблер РАБОЧИЙ: включение правила — выбор пользователя (в отличие от
 //     системной головы, где позиция часть инварианта);
-//   - ручка перетаскивания ЕСТЬ: якорь встаёт на 945, но двигать его дальше
+//   - ручка перетаскивания ЕСТЬ: правило встаёт на 945, но двигать его дальше
 //     пользователь вправе;
-//   - шестерёнки и удаления НЕТ: правится узел, а якорь производный — удаление
-//     всё равно откатилось бы пересевом, а невидимая защита читается как баг
-//     («жму — не удаляется»).
+//   - шестерёнки и удаления НЕТ: тело правится у узла, а строка производная —
+//     удаление всё равно откатилось бы пересевом, а невидимая защита читается
+//     как баг («жму — не удаляется»).
 //
 // Глиф подписи — тот же 🔗, что у пресетных якорей: и там и тут строка
-// означает «правила приезжают из другой сущности», и второй глиф для того же
+// означает «правило приезжает из другой сущности», и второй глиф для того же
 // смысла заставлял бы гадать, чем они отличаются.
-func buildSingleNodeRefRow(
+func buildSingleNodeRuleRow(
 	presenter *wizardpresentation.WizardPresenter,
 	model *wizardmodels.WizardModel,
 	rulesBox *fyne.Container,
@@ -90,7 +91,7 @@ func buildSingleNodeRefRow(
 	slotIdx int,
 	dragGroup *fynewidget.DragReorderGroup,
 ) {
-	nr := model.NodeRefs[refIdx]
+	nr := model.NodeRuleRefs[refIdx]
 	if nr == nil {
 		return
 	}
@@ -98,20 +99,23 @@ func buildSingleNodeRefRow(
 	var row *fynewidget.HoverRow
 	rowGetter := func() *fynewidget.HoverRow { return row }
 
-	nodeEnabled := wizardmodels.NodeRefNodeEnabled(model, nr)
-	rulesCount := wizardmodels.NodeRefRulesCount(model, nr)
+	nodeEnabled := wizardmodels.NodeRuleRefNodeEnabled(model, nr)
 
-	labelText := "🔗 " + nr.Tag
+	name := nr.Name
+	if strings.TrimSpace(name) == "" {
+		name = locale.T("Node rule")
+	}
+	labelText := "🔗 " + name + " · " + nr.NodeTag()
 	label := ttwidget.NewLabel(labelText)
 	label.Wrapping = fyne.TextWrapOff
 	label.Truncation = fyne.TextTruncateEllipsis
 	if !nodeEnabled {
-		// Выключенный узел в конфиг не едет, и его фрагментов там нет.
+		// Выключенный узел в конфиг не едет, и его правил там нет.
 		// Приглушение — то же, чем в списке помечено «есть, но не работает».
 		label.Importance = widget.LowImportance
 	}
 
-	tooltip := locale.Tf("Route rules carried by node %q (%d)", nr.Tag, rulesCount)
+	tooltip := locale.Tf("Route rule carried by node %q", nr.NodeTag())
 	if !nodeEnabled {
 		tooltip += " — " + locale.T("node is disabled")
 	}

@@ -239,35 +239,38 @@
           "sections": {
             "type": "object",
             "additionalProperties": true,
-            "description": "Поле ЛАУНЧЕРА (SPEC 121). Фрагменты конфига, которые узел носит с собой: DNS-серверы, DNS-правила и правила маршрута, живущие и умирающие вместе с ним. Тела едут сырыми объектами sing-box — контракт их не типизирует намеренно: у DNS-сервера tailscale есть endpoint, у правил за пиром WireGuard свои поля, и типизация потеряла бы незнакомое молча. Плейсхолдер \"@self\" в любом строковом значении означает финальный тег этого узла. Записи kind=node в rules[] НЕТ: якорь производный от узла, а его позиция на оси едет здесь полем rule_num. LxBox поле игнорирует молча и по возможности провозит (BACKUP.md §1).",
+            "description": "Поле ЛАУНЧЕРА (SPEC 121). Фрагмент конфига, который узел носит с собой: route-правила и DNS-записи, живущие и умирающие вместе с ним. Форма — записи самого лаунчера (те же, что в rules[] и dns корня состояния), а не сырые объекты sing-box: у каждой записи свои enabled и order_num, и позиция на общей оси принадлежит ей, а не узлу. Тела внутри записей контракт не типизирует намеренно: у DNS-сервера tailscale есть endpoint, у правил за пиром WireGuard свои поля, и типизация потеряла бы незнакомое молча. Плейсхолдер \"@self\" целой строкой и \"@{self}\" внутри строки означает финальный тег этого узла. В rules[] бэкапа эти правила НЕ едут — их дом здесь. LxBox поле игнорирует молча и по возможности провозит (BACKUP.md §1).",
             "properties": {
-              "dns_servers": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "additionalProperties": true
-                },
-                "description": "Записи для dns.servers[]. Локальный тег сервера на сборке префиксуется «<финальный тег узла>:»."
-              },
-              "dns_rules": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "additionalProperties": true
-                },
-                "description": "Записи для dns.rules[]. Поле server, равное локальному тегу сервера из этой же секции, получает тот же префикс; любое другое значение — ссылка на чужой сервер и остаётся как есть."
-              },
               "rules": {
                 "type": "array",
                 "items": {
                   "type": "object",
                   "additionalProperties": true
                 },
-                "description": "Записи для route.rules[]. Правило без outbound и без action получает outbound = финальный тег узла. Ключ rule_set в секциях не поддерживается — правило с ним отбрасывается с warning."
+                "description": "Записи route-правил вида inline | srs — та же форма, что у rules[] корня: kind, enabled, order_num, body. Вид preset у секции недопустим (шаблона на чужой машине может не быть); ключ rule_set в секциях не поддерживается."
               },
-              "rule_num": {
-                "type": "number",
-                "description": "Позиция якоря правил узла на общей оси порядка. Отсутствует, когда правил нет. Абсолютные номера у сторон свои — значим только относительный порядок."
+              "dns": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "DNS-половина секций узла.",
+                "properties": {
+                  "servers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "description": "Записи DNS-серверов вида user — та же плоская форма, что у dns.servers[] корня: kind, enabled, tag и поля тела рядом."
+                  },
+                  "rules": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "description": "Записи DNS-правил вида user — та же плоская форма, что у dns.rules[] корня."
+                  }
+                }
               }
             }
           }

@@ -83,27 +83,27 @@
 
 ## Волна 3 — пересмотр модели (SPEC §10)
 
-- [ ] W3.1 `state.NodeSections{Rules []Rule, DNS *NodeSectionsDNS{Servers []DNSServer, Rules []DNSRule}}`;
+- [x] W3.1 `state.NodeSections{Rules []Rule, DNS *NodeSectionsDNS{Servers []DNSServer, Rules []DNSRule}}`;
       валидация видов при чтении; конвертер старой формы (§10.3) + консьюминг
       записей `kind=node` из `rules[]`; упразднение `RuleKindNode`,
       `NodeRuleBody`, `SeedNodeRules`, параметра `nodeLinks`.
-- [ ] W3.2 `core/config/selfvar.go`: `SubstituteSelf` (`@self` целиком,
+- [x] W3.2 `core/config/selfvar.go`: `SubstituteSelf` (`@self` целиком,
       `@{self}` внутри строк) — единственная точка подстановки.
-- [ ] W3.3 Сборка: инъекция записей в `MergePresetsIntoRoute`/`MergePresetsIntoDNS`/
+- [x] W3.3 Сборка: инъекция записей в `MergePresetsIntoRoute`/`MergePresetsIntoDNS`/
       `CollectEmittedRouteRuleSetTags` (§10.2); удалить `node_sections_expand.go`,
       `resolveNodeRouteRule`, `RouteSourceNode`; `ParsedCache.NodeSectionSet`
       несёт записи новой формы.
-- [ ] W3.4 Конвертер sing-box-документа → хранимая форма (одна функция, её
+- [x] W3.4 Конвертер sing-box-документа → хранимая форма (одна функция, её
       зовут `ParseNodeDocument`, `ExtractNodeSections`, конструктор);
       `RenderNodeDocument` рисует `sections` в хранимой форме; вкладка JSON
       принимает три входа (§10.4).
-- [ ] W3.5 Rules: строки по записям, `NodeRuleRef{Link, Index}`, синхронизация
+- [x] W3.5 Rules: строки по записям, `NodeRuleRef{Link, Index}`, синхронизация
       Save в узлы, drag/toggle; DNS: подписи после `SubstituteSelf`;
       перерисовка Rules/DNS по ревизии при заходе на вкладку.
-- [ ] W3.6 Бэкап: `ServerSections` новой формы + чтение старой; `scanUnknown`;
+- [x] W3.6 Бэкап: `ServerSections` новой формы + чтение старой; `scanUnknown`;
       экспорт/импорт; схема, BACKUP.md, sources.md, TASKS_LXBOX `## 9`, D-099;
       `docs/release_notes/upcoming.md`; CODEMAP §14.
-- [ ] W3.7 Тесты (в конце): переписать существующие на новую форму, ни один
+- [x] W3.7 Тесты (в конце): переписать существующие на новую форму, ни один
       сценарий не удалять; добавить тест конвертера старой формы (state и
       бэкап) и тест `SubstituteSelf`; полный `go test ./...` + `build/test_darwin.sh`
       один раз; golden без пересчёта.

@@ -111,15 +111,16 @@ type WizardModel struct {
 	// Каждый элемент — {Ref, Enabled, Vars}.
 	PresetRefs []*PresetRefState
 
-	// NodeRefs — якоря правил маршрута, которые узлы носят с собой
-	// (SPEC 121, state.Rule вида kind=node). Хранятся третьим списком рядом с
-	// PresetRefs/CustomRules по тем же причинам: у слота своя модель, а общий
-	// порядок держит RuleOrder.
+	// NodeRuleRefs — строки правил, которые узлы носят с собой (SPEC 121
+	// §10.4): по одной на запись `sections.rules[]`. Хранятся третьим списком
+	// рядом с PresetRefs/CustomRules по тем же причинам: у слота своя модель,
+	// а общий порядок держит RuleOrder.
 	//
-	// Список ПРОИЗВОДНЫЙ от Sources: он пересевается (SeedNodeRefsFromSources)
-	// при загрузке и после каждой правки узла — пользователю принадлежат
-	// только позиция и тумблер, а не существование якоря.
-	NodeRefs []*NodeRefState
+	// Список ПРОИЗВОДНЫЙ от Sources: он пересевается (SeedNodeRuleRefs) при
+	// загрузке и после каждой правки узла — пользователю принадлежат только
+	// позиция и тумблер, а не существование строки. Сами записи живут у узла,
+	// строка держит на них обратный указатель {Link, Index}.
+	NodeRuleRefs []*NodeRuleRef
 
 	// DNSTemplateOverrides — overrides для template-defined DNS-серверов.
 	// Map tag → enabled. Только tag'и где юзер изменил default_enabled.

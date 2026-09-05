@@ -196,14 +196,13 @@ func mergeDisabledMarks(dst *state.Source, incoming []string) {
 // имя — это корень, а не папка без имени: у безымянной папки не было бы
 // способа адресовать её членов. Существующие члены остаются на местах, новые
 // дописываются в конец в порядке файла.
-func mergeServers(s *state.State, list []Server, warns *[]Warning, cnt *mergeCounters) []nodeAnchorImport {
+func mergeServers(s *state.State, list []Server, warns *[]Warning, cnt *mergeCounters) {
 	// Индекс, а не просто множество: при совпадении тела нужно дотянуться до
 	// УЖЕ ЛЕЖАЩЕЙ записи и наложить на неё секции файла (SPEC 121, §9 —
 	// настройки файла сильнее локальных, как у подписки).
 	rootBodies := map[string]int{}
 	rootTags := takenRootTags(s)
 	takenIDs := takenSourceIDs(s.Sources)
-	var anchors []nodeAnchorImport
 	for i := range s.Sources {
 		switch s.Sources[i].Kind {
 		case state.SourceKindServer:
@@ -245,8 +244,6 @@ func mergeServers(s *state.State, list []Server, warns *[]Warning, cnt *mergeCou
 				// локальных — иначе связка, ради которой бэкап и делали,
 				// пропала бы «пропуском без warning» (CODEMAP §10 п. 29).
 				applyImportedSections(&s.Sources[at].Node, srv.Sections)
-				anchors = appendNodeAnchor(anchors, s.Sources[at].Node,
-					state.NodeLink{Tag: s.Sources[at].NodeTagOrLabel()}, srv.Sections)
 				cnt.SkippedServers++
 				continue
 			}
@@ -260,8 +257,6 @@ func mergeServers(s *state.State, list []Server, warns *[]Warning, cnt *mergeCou
 			if key != "" {
 				rootBodies[key] = len(s.Sources) - 1
 			}
-			anchors = appendNodeAnchor(anchors, incoming.Node,
-				state.NodeLink{Tag: incoming.NodeTagOrLabel()}, srv.Sections)
 			cnt.AddedServers++
 			continue
 		}
@@ -280,8 +275,6 @@ func mergeServers(s *state.State, list []Server, warns *[]Warning, cnt *mergeCou
 		folder := &s.Sources[at]
 		if hit := folderNodeWithBody(folder, &incoming.Node); hit >= 0 {
 			applyImportedSections(&folder.Nodes[hit], srv.Sections)
-			anchors = appendNodeAnchor(anchors, folder.Nodes[hit],
-				state.NodeLink{FolderID: folder.ID, Tag: folder.Nodes[hit].Tag}, srv.Sections)
 			cnt.SkippedServers++
 			continue
 		}
@@ -291,34 +284,8 @@ func mergeServers(s *state.State, list []Server, warns *[]Warning, cnt *mergeCou
 		}
 		incoming.Node.Tag = uniqueTag(taken, incoming.Node.Tag)
 		folder.Nodes = append(folder.Nodes, incoming.Node)
-		anchors = appendNodeAnchor(anchors, incoming.Node,
-			state.NodeLink{FolderID: folder.ID, Tag: incoming.Node.Tag}, srv.Sections)
 		cnt.AddedServers++
 	}
-	return anchors
-}
-
-// nodeAnchorImport — узел с правилами в секциях и позиция его якоря из файла
-// (SPEC 121 §3.3). Собирается слиянием и применяется ПОСЛЕ импорта rules[]:
-// та секция замещается целиком, и записи kind=node в ней нет.
-type nodeAnchorImport struct {
-	Link state.NodeLink
-	// Num — servers[].sections.rule_num; nil = файл позиции не нёс, якорь
-	// сядет на NodeRuleDefaultNum.
-	Num *int
-}
-
-// appendNodeAnchor запоминает якорь узла, если у него есть правила маршрута.
-func appendNodeAnchor(list []nodeAnchorImport, node state.Node, link state.NodeLink, sec *ServerSections) []nodeAnchorImport {
-	if !node.Sections.HasRules() {
-		return list
-	}
-	entry := nodeAnchorImport{Link: link}
-	if sec != nil && sec.RuleNum != nil {
-		num := int(*sec.RuleNum)
-		entry.Num = &num
-	}
-	return append(list, entry)
 }
 
 // applyImportedSections накладывает секции файла на УЖЕ ЛЕЖАЩИЙ узел.
@@ -331,11 +298,7 @@ func applyImportedSections(node *state.Node, sec *ServerSections) {
 	if node == nil || sec == nil {
 		return
 	}
-	node.Sections = &state.NodeSections{
-		DNSServers: sec.DNSServers,
-		DNSRules:   sec.DNSRules,
-		Rules:      sec.Rules,
-	}
+	node.Sections = decodeBackupSections(sec, node.Tag)
 	node.NormalizeNodeSections()
 }
 

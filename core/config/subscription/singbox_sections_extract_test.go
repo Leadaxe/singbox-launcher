@@ -1,10 +1,10 @@
 package subscription
 
 import (
-	"encoding/json"
 	"testing"
 
 	"singbox-launcher/core/config/configtypes"
+	corestate "singbox-launcher/core/state"
 )
 
 // issueConfigOneNode — конфиг из пользовательского issue (SPEC 121 §6):
@@ -44,40 +44,47 @@ func TestParseSingboxBody_NodeSectionsFromWholeConfig(t *testing.T) {
 		t.Fatalf("SectionFragments = %d, want 3", res.SectionFragments)
 	}
 
-	if got := len(sections.DNSServers); got != 1 {
-		t.Fatalf("dns_servers = %d, want 1 (local-dns must not be taken)", got)
-	}
-	var srv map[string]interface{}
-	if err := json.Unmarshal(sections.DNSServers[0], &srv); err != nil {
-		t.Fatalf("dns server fragment: %v", err)
-	}
-	if srv["type"] != "udp" || srv["tag"] != "ts-dns" || srv["server"] != "100.100.100.100" {
-		t.Fatalf("dns server fragment = %v", srv)
-	}
-	if srv["detour"] != "@self" {
-		t.Fatalf("detour = %v, want @self", srv["detour"])
+	// Извлечённое приезжает в ХРАНИМОЙ форме (SPEC 121 §10.1) — тем же
+	// переводом, что у вкладки JSON узла.
+	decoded := corestate.NodeSectionsFromConfigTypes(sections)
+	if decoded == nil {
+		t.Fatal("extracted sections cannot be read back")
 	}
 
-	if got := len(sections.DNSRules); got != 1 {
-		t.Fatalf("dns_rules = %d, want 1", got)
+	if got := len(decoded.DNSServers()); got != 1 {
+		t.Fatalf("dns servers = %d, want 1 (local-dns must not be taken)", got)
 	}
-	var dnsRule map[string]interface{}
-	if err := json.Unmarshal(sections.DNSRules[0], &dnsRule); err != nil {
-		t.Fatalf("dns rule fragment: %v", err)
+	srv := decoded.DNSServers()[0]
+	if srv.Kind != corestate.DNSServerKindUser || srv.Tag != "ts-dns" {
+		t.Fatalf("dns server entry = %+v, want a user entry tagged ts-dns", srv)
 	}
-	if dnsRule["server"] != "ts-dns" {
-		t.Fatalf("dns rule server = %v, want ts-dns (local tag, prefixed on build)", dnsRule["server"])
+	if srv.Body["type"] != "udp" || srv.Body["server"] != "100.100.100.100" {
+		t.Fatalf("dns server body = %v", srv.Body)
+	}
+	if srv.Body["detour"] != corestate.SelfPlaceholder {
+		t.Fatalf("detour = %v, want %s", srv.Body["detour"], corestate.SelfPlaceholder)
 	}
 
-	if got := len(sections.Rules); got != 1 {
+	if got := len(decoded.DNSRules()); got != 1 {
+		t.Fatalf("dns rules = %d, want 1", got)
+	}
+	if got := decoded.DNSRules()[0].Body["server"]; got != "ts-dns" {
+		t.Fatalf("dns rule server = %v, want ts-dns (the node's own server)", got)
+	}
+
+	if got := len(decoded.Rules); got != 1 {
 		t.Fatalf("route rules = %d, want 1", got)
 	}
-	var routeRule map[string]interface{}
-	if err := json.Unmarshal(sections.Rules[0], &routeRule); err != nil {
-		t.Fatalf("route rule fragment: %v", err)
+	routeRule := decoded.Rules[0]
+	if routeRule.Kind != corestate.RuleKindInline {
+		t.Fatalf("route rule kind = %q, want inline", routeRule.Kind)
 	}
-	if routeRule["outbound"] != "@self" {
-		t.Fatalf("route rule outbound = %v, want @self", routeRule["outbound"])
+	routeBody, err := routeRule.DecodeBody()
+	if err != nil {
+		t.Fatalf("route rule body: %v", err)
+	}
+	if got := routeBody.(*corestate.InlineBody).Outbound; got != corestate.SelfPlaceholder {
+		t.Fatalf("route rule outbound = %v, want %s", got, corestate.SelfPlaceholder)
 	}
 }
 

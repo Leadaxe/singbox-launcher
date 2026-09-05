@@ -121,7 +121,7 @@ func buildConfigWithExclusions(model *wizardmodels.WizardModel, forPreview bool)
 	// CreateStateFromModel uses on Save.
 	wizardmodels.ReconcileRuleOrder(model)
 	rulesV6 := wizardmodels.EmitStateRulesInAxisOrder(
-		model.RuleOrder, model.PresetRefs, model.CustomRules, model.NodeRefs,
+		model.RuleOrder, model.PresetRefs, model.CustomRules,
 	)
 	templateDNSTags := ExtractTemplateDNSTags(model.TemplateData)
 	// SPEC 062-F-N: same order-aware DNS sync as CreateStateFromModel so

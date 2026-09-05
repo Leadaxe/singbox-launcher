@@ -103,6 +103,13 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 		state.TargetPlatform = tgt.GOOS
 		state.TargetArch = tgt.GOARCH
 	}
+	// SPEC 121 §10.4: у оси один порядок на всех, и ленивый сдвиг при драге
+	// мог задеть соседей любого происхождения — правила узлов в том числе.
+	// Раскладываем номера и тумблеры по домам ДО снятия копии источников:
+	// корневые правила уедут ниже в state.Rules, узловые пишутся обратно в
+	// свой узел. Без этого прохода перетаскивание жило бы до первой
+	// перезагрузки.
+	wizardmodels.SyncNodeRuleRefsToSources(p.model)
 	state.Sources = append([]wizardmodels.Source(nil), p.model.Sources...)
 	if len(p.model.GlobalOutbounds) > 0 {
 		state.Directions = append([]configtypes.Direction(nil), p.model.GlobalOutbounds...)
@@ -130,7 +137,7 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	// в config.json::route.rules[] в этом же порядке.
 	wizardmodels.ReconcileRuleOrder(p.model)
 	state.Rules = wizardmodels.EmitStateRulesInAxisOrder(
-		p.model.RuleOrder, p.model.PresetRefs, p.model.CustomRules, p.model.NodeRefs,
+		p.model.RuleOrder, p.model.PresetRefs, p.model.CustomRules,
 	)
 
 	// SPEC 056-R-N: full DNS sync → flat servers[]/rules[] через kind discriminator.

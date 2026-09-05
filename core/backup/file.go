@@ -268,11 +268,17 @@ var (
 		"node_tag": true, "enabled": true, "exclude_from_global": true,
 		"folder": true, "sections": true,
 	})
-	// serverSectionsKeys — секции узла (SPEC 121). Внутрь фрагментов сканер
-	// не спускается намеренно: это тела sing-box, чей набор ключей ведёт
-	// схема ядра, а не таблица бэкапа.
+	// serverSectionsKeys — секции узла (SPEC 121 §10.5). Внутрь записей
+	// сканер не спускается намеренно: их поля — тела sing-box плюс служебные
+	// kind/enabled/order_num, и их набор ведёт схема состояния, а не таблица
+	// бэкапа.
+	//
+	// `dns_servers`/`dns_rules`/`rule_num` — ключи ПРЕЖНЕЙ формы (волны 1–2):
+	// они читаются конвертером и потому неизвестными не считаются, иначе
+	// каждый старый файл давал бы три предупреждения на узел.
 	serverSectionsKeys = map[string]bool{
-		"dns_servers": true, "dns_rules": true, "rules": true, "rule_num": true,
+		"rules": true, "dns": true,
+		"dns_servers": true, "dns_rules": true, "rule_num": true,
 	}
 	chainKeys = mergeKeys(sourceRefKeys, map[string]bool{
 		"id": true, "tag": true, "label": true, "enabled": true,

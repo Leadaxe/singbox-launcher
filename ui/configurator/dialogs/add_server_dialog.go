@@ -669,15 +669,24 @@ func manualJSONResult(raw, label string) (AddServerResult, error) {
 	return AddServerResult{Text: body, Label: label}, nil
 }
 
-// manualDocCarriesSections — есть ли в документе секции узла (dns/route).
+// manualDocCarriesSections — есть ли в документе секции узла.
+//
+// Три формы, все три считаются документом с секциями: `sections` — хранимая
+// форма, которую рисует превью (SPEC 121 §10.4), `dns`/`route` —
+// sing-box-форма, которую пользователь вставляет готовым конфигом. Голый
+// `{"outbounds":[…]}` секций не несёт и остаётся давней многоузловой формой:
+// её по-прежнему разбирает общий путь Add.
 func manualDocCarriesSections(body string) bool {
 	var probe map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(body), &probe); err != nil {
 		return false
 	}
-	_, hasDNS := probe["dns"]
-	_, hasRoute := probe["route"]
-	return hasDNS || hasRoute
+	for _, key := range []string{"sections", "dns", "route"} {
+		if _, has := probe[key]; has {
+			return true
+		}
+	}
+	return false
 }
 
 // buildURI собирает share-URI из полей формы.

@@ -624,6 +624,11 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 	// Initialize button container
 	updateNavigationButtons(guiState, tabs, *currentTabIndex)
 
+	// Ревизии последнего показа Rules и DNS (SPEC 121 §10.4). Ноль означает
+	// «ещё не показывали»: первый заход перестраивает всегда — вкладка могла
+	// быть построена до того, как модель дочитала источники.
+	var lastRulesRevision, lastDNSRevision uint64
+
 	// Update buttons when switching tabs
 	tabs.OnSelected = func(item *container.TabItem) {
 		// Sync GUI to model before switching (без MarkAsChanged — иначе ложный «есть несохранённые» при переключении табов)
@@ -691,8 +696,32 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 			guiState.SaveButton.Show()
 		}
 
+		// SPEC 121 §10.4: правила и DNS-записи, которые узлы носят с собой,
+		// живут в дереве источников, а не в списках вкладок. Правка узла
+		// бампает ревизию модели (через инвалидацию пула), и вкладка, чей
+		// показ старше этой ревизии, обязана перестроиться при заходе —
+		// иначе строка правила узла появлялась бы только после перезапуска.
+		if item.Text == locale.T("DNS") && lastDNSRevision != model.Revision {
+			lastDNSRevision = model.Revision
+			if guiState.RefreshDNSList != nil {
+				guiState.RefreshDNSList()
+			}
+		}
+
 		// Handle tab-specific actions
 		if item == rulesTabItem {
+			// SPEC 121 §10.4: состав строк правил, которые узлы носят с
+			// собой, — производная от источников. Пересев до пересборки
+			// вкладки: иначе строка правила, добавленного узлу на соседней
+			// вкладке, появилась бы только после перезапуска.
+			if lastRulesRevision != model.Revision {
+				lastRulesRevision = model.Revision
+				if wizardmodels.SeedNodeRuleRefs(model) {
+					wizardmodels.ReconcileRuleOrder(model)
+					wizardmodels.EnsureRuleOrderNums(model)
+					wizardmodels.SortRuleOrderByAxis(model)
+				}
+			}
 			// Trigger async parsing to ensure outbounds are up-to-date
 			presenter.TriggerParseForPreview()
 			// Список целей у preset-строк — снимок availableOutbounds,

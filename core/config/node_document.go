@@ -63,11 +63,17 @@ import (
 const NodeDocumentSelfVar = state.SelfPlaceholder
 
 // nodeDocTopKeys — верхние ключи, которые документ узла признаёт.
+//
+// `sections` — ХРАНИМАЯ форма (SPEC 121 §10.1): её отдаёт RenderNodeDocument,
+// и её же вкладка принимает обратно, чтобы правка `enabled`/`order_num` в
+// тексте не терялась. `dns`/`route` — sing-box-форма, которую пишет
+// пользователь, вставляя готовый конфиг.
 var nodeDocTopKeys = map[string]bool{
 	"outbounds": true,
 	"endpoints": true,
 	"dns":       true,
 	"route":     true,
+	"sections":  true,
 }
 
 // nodeDocDNSKeys / nodeDocRouteKeys — ключи, которые разбор читает внутри
@@ -157,6 +163,26 @@ func ParseNodeDocument(raw []byte) (json.RawMessage, *state.NodeSections, error)
 	}
 	if t, _ := probe["type"].(string); strings.TrimSpace(t) == "" {
 		return nil, nil, fmt.Errorf("the node object must have a non-empty \"type\" field")
+	}
+
+	// Вход 2 (§10.4): секции уже в хранимой форме — их берём как есть.
+	// Смешивать её с sing-box-формой в одном документе нельзя: два разных
+	// описания одних и тех же записей молча перетёрли бы друг друга.
+	if raw, ok := doc["sections"]; ok {
+		if _, hasDNS := doc["dns"]; hasDNS {
+			return nil, nil, fmt.Errorf(`a node document carries either "sections" or "dns"/"route", not both`)
+		}
+		if _, hasRoute := doc["route"]; hasRoute {
+			return nil, nil, fmt.Errorf(`a node document carries either "sections" or "dns"/"route", not both`)
+		}
+		stored, err := state.ReadNodeSections(raw)
+		if err != nil {
+			return nil, nil, err
+		}
+		if stored.IsEmpty() {
+			return json.RawMessage(body.Bytes()), nil, nil
+		}
+		return json.RawMessage(body.Bytes()), stored, nil
 	}
 
 	var dnsServers, dnsRules, routeRules []json.RawMessage

@@ -52,7 +52,7 @@ func SubstituteSelf(raw []byte, finalTag string) []byte {
 	if len(raw) == 0 || finalTag == "" {
 		return raw
 	}
-	if !bytes.Contains(raw, []byte(SelfPlaceholder)) {
+	if !bytes.Contains(raw, []byte("@")) {
 		return raw
 	}
 	out, err := rewriteJSONStringValues(raw, func(s string) string {
@@ -69,13 +69,20 @@ func SubstituteSelf(raw []byte, finalTag string) []byte {
 
 // SubstituteSelfInString — подстановка в ОДНОЙ строке.
 //
-// Порядок проверок значим: `@{self}` разбирается первым, иначе `@self` внутри
-// него совпал бы с префиксом и оставил бы после себя `{...}`.
+// Порядок значим: `@{self}` заменяется ПЕРВЫМ. Иначе строка `@{self}-dns`
+// сначала осталась бы нетронутой (подстроки `@self` в ней нет), а потом
+// проверка «строка целиком» её тоже не узнала бы.
+//
+// Форма `@self` подставляется ТОЛЬКО когда занимает строку целиком: внутри
+// строки её пришлось бы отделять от следующего символа, и `@selfish` стало бы
+// `<тег>ish`. Для вставки в строку есть скобочная форма.
 func SubstituteSelfInString(s, finalTag string) string {
-	if finalTag == "" || !strings.Contains(s, SelfPlaceholder) {
+	if finalTag == "" {
 		return s
 	}
-	s = strings.ReplaceAll(s, SelfPlaceholderBraced, finalTag)
+	if strings.Contains(s, SelfPlaceholderBraced) {
+		s = strings.ReplaceAll(s, SelfPlaceholderBraced, finalTag)
+	}
 	if s == SelfPlaceholder {
 		return finalTag
 	}

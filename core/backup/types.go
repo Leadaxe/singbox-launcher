@@ -382,20 +382,33 @@ type Server struct {
 	SourceRef
 }
 
-// ServerSections — секции узла в бэкапе.
+// ServerSections — секции узла в бэкапе (SPEC 121 §10.5).
 //
-// Тела едут сырыми: контракт их не типизирует намеренно — у DNS-сервера
-// tailscale есть `endpoint`, у WireGuard-правил свои поля, и типизация
-// потеряла бы незнакомое молча.
+// Форма та же, что на диске: записи правил и DNS лаунчера со своими `enabled`
+// и `order_num`. Своего типа у бэкапа нет намеренно — переименование полей
+// завело бы вторую схему одних и тех же данных и потребовало бы держать её в
+// согласии с первой.
 //
-// RuleNum — позиция якоря правил узла на общей оси (state.Rule.OrderNum
-// записи kind=node). Сама запись в `rules[]` бэкапа НЕ пишется: она
-// производная от узла, и приехав отдельно, пережила бы удаление секций.
+// Тело едет непрозрачным блоком: разбирает его state, а не контракт. Так
+// незнакомое поле DNS-сервера (`endpoint` у tailscale) переживает round-trip,
+// и так же читается СТАРАЯ форма (сырые фрагменты + `rule_num`) — тем же
+// конвертером, что у state.json.
 type ServerSections struct {
-	DNSServers []json.RawMessage `json:"dns_servers,omitempty"`
-	DNSRules   []json.RawMessage `json:"dns_rules,omitempty"`
-	Rules      []json.RawMessage `json:"rules,omitempty"`
-	RuleNum    *float64          `json:"rule_num,omitempty"`
+	// Raw — объект `sections` как он лежит в файле.
+	Raw json.RawMessage
+}
+
+// MarshalJSON / UnmarshalJSON — секции едут блоком как есть.
+func (s ServerSections) MarshalJSON() ([]byte, error) {
+	if len(s.Raw) == 0 {
+		return []byte("null"), nil
+	}
+	return s.Raw, nil
+}
+
+func (s *ServerSections) UnmarshalJSON(data []byte) error {
+	s.Raw = append(json.RawMessage(nil), data...)
+	return nil
 }
 
 // RuleKind — вид правила.

@@ -51,12 +51,14 @@ func NodeSectionSetsFromModel(model *wizardmodels.WizardModel) []build.NodeSecti
 			if n == nil || n.Sections.IsEmpty() {
 				continue
 			}
+			decoded := corestate.NodeSectionsFromConfigTypes(n.Sections)
+			if decoded == nil {
+				continue
+			}
 			out = append(out, build.NodeSectionSet{
-				FinalTag:   n.Tag,
-				Link:       build.NodeLink{FolderID: n.SectionsLink.FolderID, Tag: n.SectionsLink.Tag},
-				DNSServers: n.Sections.DNSServers,
-				DNSRules:   n.Sections.DNSRules,
-				Rules:      n.Sections.Rules,
+				FinalTag: n.Tag,
+				Link:     build.NodeLink{FolderID: n.SectionsLink.FolderID, Tag: n.SectionsLink.Tag},
+				Sections: decoded,
 			})
 		}
 	}
@@ -84,9 +86,9 @@ type NodeSectionDNSServer struct {
 	// FinalTag — финальный тег УЗЛА (не сервера): подпись строки называет его
 	// первым, чтобы было видно, чей это сервер.
 	FinalTag string
-	// LocalTag — тег сервера внутри секции, до префикса.
+	// LocalTag — тег самого сервера, уже с подставленным `@{self}`.
 	LocalTag string
-	// Body — развёрнутое тело: `@self` подставлен, тег префиксован.
+	// Body — тело сервера с подставленным плейсхолдером.
 	Body map[string]interface{}
 }
 
@@ -96,11 +98,13 @@ type NodeSectionDNSRule struct {
 	Body     map[string]interface{}
 }
 
-// NodeSectionDNSForModel — развёрнутые DNS-фрагменты всех узлов модели.
+// NodeSectionDNSForModel — DNS-записи всех узлов модели с подставленным
+// финальным тегом.
 //
-// Разворачивание — та же функция, что на сборке (build.ExpandNodeSections):
-// показывать пользователю иначе подставленное тело значило бы завести вторую
-// реализацию правил подстановки (и разойтись с ней на первой же правке).
+// Подстановка — та же функция, что на сборке (state.SubstituteSelf через
+// NodeSectionSet): показывать пользователю иначе подставленное тело значило бы
+// завести вторую реализацию правил подстановки (и разойтись с ней на первой же
+// правке).
 func NodeSectionDNSForModel(model *wizardmodels.WizardModel) ([]NodeSectionDNSServer, []NodeSectionDNSRule) {
 	sets := NodeSectionSetsFromModel(model)
 	if len(sets) == 0 {
@@ -109,27 +113,23 @@ func NodeSectionDNSForModel(model *wizardmodels.WizardModel) ([]NodeSectionDNSSe
 	var servers []NodeSectionDNSServer
 	var rules []NodeSectionDNSRule
 	for _, set := range sets {
-		frags, _ := build.ExpandNodeSections(set)
-		for _, body := range frags.DNSServers {
-			tag, _ := body["tag"].(string)
+		for _, srv := range set.DNSServersWithSelf() {
+			body := map[string]interface{}{}
+			for k, v := range srv.Body {
+				body[k] = v
+			}
+			if srv.Tag != "" {
+				body["tag"] = srv.Tag
+			}
 			servers = append(servers, NodeSectionDNSServer{
 				FinalTag: set.FinalTag,
-				LocalTag: trimNodeTagPrefix(tag, set.FinalTag),
+				LocalTag: srv.Tag,
 				Body:     body,
 			})
 		}
-		for _, body := range frags.DNSRules {
-			rules = append(rules, NodeSectionDNSRule{FinalTag: set.FinalTag, Body: body})
+		for _, r := range set.DNSRulesWithSelf() {
+			rules = append(rules, NodeSectionDNSRule{FinalTag: set.FinalTag, Body: r.Body})
 		}
 	}
 	return servers, rules
-}
-
-// trimNodeTagPrefix снимает с префиксованного тега сервера имя его узла.
-func trimNodeTagPrefix(tag, finalTag string) string {
-	prefix := finalTag + build.TagSeparator
-	if finalTag != "" && len(tag) > len(prefix) && tag[:len(prefix)] == prefix {
-		return tag[len(prefix):]
-	}
-	return tag
 }

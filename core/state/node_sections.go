@@ -27,9 +27,8 @@
 // # Плейсхолдер
 //
 // `@self` целой строкой и `@{self}` внутри строки — единственная переменная,
-// которую знает секция. Подстановка живёт в `core/config/selfvar.go`
-// (SubstituteSelf) и происходит на сборке: финальный тег узла до эмиссии
-// неизвестен.
+// которую знает секция. Подстановка живёт рядом (selfvar.go, SubstituteSelf) и
+// происходит на сборке: финальный тег узла до эмиссии неизвестен.
 //
 // # Виды записей
 //
@@ -284,6 +283,58 @@ func normalizeSectionsOfSources(sources []Source) {
 			sources[i].Nodes[j].NormalizeNodeSections()
 		}
 	}
+}
+
+// ReadNodeSections разбирает объект `sections`, написанный человеком:
+// вкладка JSON узла принимает хранимую форму обратно (SPEC 121 §10.4).
+//
+// Старая форма (волны 1–2) читается тем же конвертером, что у state.json:
+// пользователь мог скопировать секции из прежней версии.
+//
+// Виды записей проверяются здесь, а не молча отбрасываются: в тексте, который
+// пишет человек, `kind: preset` — опечатка, и сказать о ней надо вслух.
+func ReadNodeSections(raw json.RawMessage) (*NodeSections, error) {
+	if LegacyNodeSectionsShape(raw) {
+		converted, ok := ConvertLegacyNodeSections(raw, "", nil, nil)
+		if !ok {
+			return nil, fmt.Errorf("sections: cannot be read")
+		}
+		return converted, nil
+	}
+	var out NodeSections
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("sections: %w", err)
+	}
+	for i, r := range out.Rules {
+		switch r.Kind {
+		case RuleKindInline, RuleKindSrs:
+			if _, err := r.DecodeBody(); err != nil {
+				return nil, fmt.Errorf("sections.rules[%d]: %w", i, err)
+			}
+		default:
+			return nil, fmt.Errorf(
+				"sections.rules[%d] has kind %q; node sections know only %q and %q",
+				i, string(r.Kind), string(RuleKindInline), string(RuleKindSrs))
+		}
+	}
+	for i, srv := range out.DNSServers() {
+		if srv.Kind != DNSServerKindUser {
+			return nil, fmt.Errorf(
+				"sections.dns.servers[%d] has kind %q; node sections know only %q",
+				i, string(srv.Kind), string(DNSServerKindUser))
+		}
+	}
+	for i, r := range out.DNSRules() {
+		if r.Kind != DNSRuleKindUser {
+			return nil, fmt.Errorf(
+				"sections.dns.rules[%d] has kind %q; node sections know only %q",
+				i, string(r.Kind), string(DNSRuleKindUser))
+		}
+	}
+	if out.IsEmpty() {
+		return nil, nil
+	}
+	return &out, nil
 }
 
 // ── Чтение старого формата (SPEC 121 §10.3) ────────────────────────

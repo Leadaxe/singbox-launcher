@@ -93,7 +93,7 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 	if model.TemplateData != nil {
 		wizardmodels.ReconcileRuleOrder(model)
 		rulesV6 := wizardmodels.EmitStateRulesInAxisOrder(
-			model.RuleOrder, model.PresetRefs, model.CustomRules, model.NodeRefs,
+			model.RuleOrder, model.PresetRefs, model.CustomRules,
 		)
 		// SPEC 058-R-N: migration legacy direct→referenced. Idempotent.
 		// Передаём rulesV6 для computing merged_base = template + active preset patches.

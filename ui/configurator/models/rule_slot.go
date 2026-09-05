@@ -25,8 +25,8 @@ const (
 	SlotKindCustom RuleSlotKind = iota
 	// SlotKindPresetRef — slot ссылается на model.PresetRefs[Index] (preset-ref).
 	SlotKindPresetRef
-	// SlotKindNodeRef — slot ссылается на model.NodeRefs[Index]: якорь правил,
-	// которые узел носит с собой (SPEC 121, state.Rule kind=node).
+	// SlotKindNodeRef — slot ссылается на model.NodeRuleRefs[Index]: одно
+	// правило, которое узел носит с собой (SPEC 121 §10.4).
 	SlotKindNodeRef
 )
 
@@ -48,14 +48,14 @@ func RebuildRuleOrder(m *WizardModel) {
 	if m == nil {
 		return
 	}
-	out := make([]RuleSlot, 0, len(m.CustomRules)+len(m.PresetRefs)+len(m.NodeRefs))
+	out := make([]RuleSlot, 0, len(m.CustomRules)+len(m.PresetRefs)+len(m.NodeRuleRefs))
 	for i := range m.CustomRules {
 		out = append(out, RuleSlot{Kind: SlotKindCustom, Index: i})
 	}
 	for i := range m.PresetRefs {
 		out = append(out, RuleSlot{Kind: SlotKindPresetRef, Index: i})
 	}
-	for i := range m.NodeRefs {
+	for i := range m.NodeRuleRefs {
 		out = append(out, RuleSlot{Kind: SlotKindNodeRef, Index: i})
 	}
 	m.RuleOrder = out
@@ -70,7 +70,7 @@ func ReconcileRuleOrder(m *WizardModel) {
 	}
 	customSeen := make(map[int]bool, len(m.CustomRules))
 	presetSeen := make(map[int]bool, len(m.PresetRefs))
-	nodeSeen := make(map[int]bool, len(m.NodeRefs))
+	nodeSeen := make(map[int]bool, len(m.NodeRuleRefs))
 	for _, s := range m.RuleOrder {
 		switch s.Kind {
 		case SlotKindCustom:
@@ -95,7 +95,7 @@ func ReconcileRuleOrder(m *WizardModel) {
 				kept = append(kept, s)
 			}
 		case SlotKindNodeRef:
-			if s.Index >= 0 && s.Index < len(m.NodeRefs) {
+			if s.Index >= 0 && s.Index < len(m.NodeRuleRefs) {
 				kept = append(kept, s)
 			}
 		}
@@ -112,7 +112,7 @@ func ReconcileRuleOrder(m *WizardModel) {
 			kept = append(kept, RuleSlot{Kind: SlotKindPresetRef, Index: i})
 		}
 	}
-	for i := range m.NodeRefs {
+	for i := range m.NodeRuleRefs {
 		if !nodeSeen[i] {
 			kept = append(kept, RuleSlot{Kind: SlotKindNodeRef, Index: i})
 		}

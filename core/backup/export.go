@@ -11,6 +11,7 @@ import (
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
+	"singbox-launcher/internal/debuglog"
 )
 
 // ExportOptions — что подмешать в шапку файла.
@@ -93,10 +94,6 @@ func Export(s *state.State, opts ExportOptions) (*Backup, []Warning, error) {
 	// «деривативом», а импорт восстанавливал `1:select` — правила того же
 	// файла повисали, и предупреждения об этом не было.
 
-	// SPEC 121: позиции якорей правил узлов — читаются из s.Rules и уезжают
-	// внутрь servers[].sections.rule_num.
-	anchorNums := collectNodeAnchorNums(s.Rules)
-
 	subIndex := 0
 	for i, src := range s.Sources {
 		switch src.Kind {
@@ -127,7 +124,7 @@ func Export(s *state.State, opts ExportOptions) (*Backup, []Warning, error) {
 			}
 			subIndex++
 		case state.SourceKindServer:
-			b.Servers = append(b.Servers, exportServer(src, anchorNums))
+			b.Servers = append(b.Servers, exportServer(src))
 		case state.SourceKindChain:
 			b.Chains = append(b.Chains, exportChain(src, i))
 		case state.SourceKindFolder:
@@ -140,7 +137,7 @@ func Export(s *state.State, opts ExportOptions) (*Backup, []Warning, error) {
 			// Раньше папка целиком объявлялась неподдержанной и её состав
 			// в файл не попадал — именно та потеря, из-за которой SPEC 116
 			// лишался узлов без единого слова.
-			members, lost := exportFolder(src, anchorNums)
+			members, lost := exportFolder(src)
 			b.Servers = append(b.Servers, members...)
 			// Настройки самой папки и члены, которых servers[] выразить не
 			// может (цепочки, неразобранные записи), остаются здесь —
@@ -173,12 +170,6 @@ func Export(s *state.State, opts ExportOptions) (*Backup, []Warning, error) {
 	warnings = append(dropped, warnings...)
 
 	for _, r := range s.Rules {
-		// SPEC 121: якорь правил узла в rules[] не пишется — он производная
-		// от узла, и приехав отдельной записью, пережил бы удаление секций.
-		// Его позиция едет полем servers[].sections.rule_num.
-		if r.Kind == state.RuleKindNode {
-			continue
-		}
 		rule, err := exportRule(r)
 		if err != nil {
 			return nil, warnings, fmt.Errorf("rule %s: %w", r.Kind, err)
@@ -375,33 +366,9 @@ func droppedLocalOnlyFields(src state.Source) string {
 //
 // `label` контракта не заполняется (та же причина, что у exportChain): имя
 // одиночного узла в v7 — его тег, и он уезжает ключом node_tag.
-func exportServer(src state.Source, anchors nodeAnchorNums) Server {
-	out := exportServerNode(src.Node, state.NodeLink{Tag: src.NodeTagOrLabel()}, anchors)
+func exportServer(src state.Source) Server {
+	out := exportServerNode(src.Node)
 	out.ID = src.ID
-	return out
-}
-
-// nodeAnchorNums — позиции якорей правил узлов на оси: ссылка на узел →
-// state.Rule.OrderNum записи kind=node (SPEC 121 §3.3).
-type nodeAnchorNums map[state.NodeLink]int
-
-// collectNodeAnchorNums строит эту карту по правилам состояния.
-//
-// Сама запись kind=node в `rules[]` бэкапа не пишется (она производная от
-// узла), но её позиция — выбор пользователя, и потерять её значило бы вернуть
-// якорь на дефолт при каждом восстановлении.
-func collectNodeAnchorNums(rules []state.Rule) nodeAnchorNums {
-	out := nodeAnchorNums{}
-	for _, r := range rules {
-		if r.Kind != state.RuleKindNode || r.OrderNum == nil {
-			continue
-		}
-		body, err := r.DecodeBody()
-		if err != nil {
-			continue
-		}
-		out[body.(*state.NodeRuleBody).Link()] = *r.OrderNum
-	}
 	return out
 }
 
@@ -416,7 +383,7 @@ func collectNodeAnchorNums(rules []state.Rule) nodeAnchorNums {
 //
 // Порядок членов сохраняется: он нормативен для сборки папки на приёмнике —
 // обе стороны собирают её по имени, в порядке записей файла.
-func exportFolder(src state.Source, anchors nodeAnchorNums) ([]Server, string) {
+func exportFolder(src state.Source) ([]Server, string) {
 	var out []Server
 	var lost []string
 	if src.TagPolicy != nil && !src.TagPolicy.IsZero() {
@@ -439,7 +406,7 @@ func exportFolder(src state.Source, anchors nodeAnchorNums) ([]Server, string) {
 			lost = append(lost, string(n.Kind)+" "+n.Tag)
 			continue
 		}
-		m := exportServerNode(n, state.NodeLink{FolderID: src.ID, Tag: n.Tag}, anchors)
+		m := exportServerNode(n)
 		m.Folder = src.Name
 		out = append(out, m)
 	}
@@ -449,23 +416,20 @@ func exportFolder(src state.Source, anchors nodeAnchorNums) ([]Server, string) {
 // exportServerNode — общая часть одиночного сервера: и корневого, и лежащего
 // в папке. Вынесена потому, что запись в файле у них одна и та же — разной
 // была бы только забытая половина полей, если писать её дважды.
-func exportServerNode(src state.Node, link state.NodeLink, anchors nodeAnchorNums) Server {
+func exportServerNode(src state.Node) Server {
 	out := Server{
 		NodeTag:   src.Tag,
 		SourceRef: exportNodeLinkRef(src.Detour),
 	}
-	// SPEC 121: секции узла плюс позиция его якоря на оси. Запись kind=node
-	// в rules[] при этом НЕ пишется — она производная от узла.
+	// SPEC 121 §10.5: секции узла едут своей формой хранения — с `enabled` и
+	// `order_num` у каждой записи. Отдельной позиции на оси у узла больше нет:
+	// её несёт каждое правило само.
 	if !src.Sections.IsEmpty() {
-		sec := &ServerSections{
-			DNSServers: src.Sections.DNSServers,
-			DNSRules:   src.Sections.DNSRules,
-			Rules:      src.Sections.Rules,
+		if raw, err := json.Marshal(src.Sections); err == nil {
+			out.Sections = &ServerSections{Raw: raw}
+		} else {
+			debuglog.WarnLog("backup export: node %q sections cannot be encoded (%v) — exported without them", src.Tag, err)
 		}
-		if num, ok := anchors[link]; ok && len(src.Sections.Rules) > 0 {
-			sec.RuleNum = f64Ptr(float64(num))
-		}
-		out.Sections = sec
 	}
 	// Форма хранения узла в v7 одна — тело; исходный URI живёт в origin и
 	// едет тем же ключом, что и раньше, когда он был единственной формой.

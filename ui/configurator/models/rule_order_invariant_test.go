@@ -25,7 +25,7 @@ func loadCrooked(rules []corestate.Rule, td *wizardtemplate.TemplateData) *Wizar
 	m := &WizardModel{TemplateData: td}
 	m.PresetRefs = SyncStateRulesToPresetRefs(rules)
 	m.CustomRules = customRulesFromStateRules(rules)
-	m.RuleOrder = RuleOrderFromAxis(rules, m.PresetRefs, m.CustomRules, m.NodeRefs)
+	m.RuleOrder = RuleOrderFromAxis(rules, m.PresetRefs, m.CustomRules, m.NodeRuleRefs)
 	ReconcileRuleOrder(m)
 	EnsureRuleOrderNums(m)
 	return m
@@ -316,7 +316,7 @@ func TestSaveEmitsRulesSortedByAxis(t *testing.T) {
 	for i := len(m.RuleOrder) - 1; i >= 0; i-- {
 		rev = append(rev, m.RuleOrder[i])
 	}
-	saved := EmitStateRulesInAxisOrder(rev, m.PresetRefs, m.CustomRules, m.NodeRefs)
+	saved := EmitStateRulesInAxisOrder(rev, m.PresetRefs, m.CustomRules)
 
 	assertRulesSortedByAxis(t, saved)
 	if saved[0].Ref != "traffic-processing" {
@@ -334,7 +334,7 @@ func TestSaveFallbackEmitsRulesSortedByAxis(t *testing.T) {
 		presetRule("russian", intp(1120)),
 	}, td)
 
-	saved := EmitStateRulesInAxisOrder(nil, m.PresetRefs, m.CustomRules, m.NodeRefs)
+	saved := EmitStateRulesInAxisOrder(nil, m.PresetRefs, m.CustomRules)
 	assertRulesSortedByAxis(t, saved)
 }
 

@@ -1108,6 +1108,12 @@ D-NNN живут в этом одном файле** — следующий св
 
 ## 11. Реализовано волной 1 (адреса)
 
+> **УПРАЗДНЕНО волной 3 (SPEC §10) — раздел исторический.** Хранимая форма,
+> развёртывание, якорь `kind=node` и всё, что из них следовало, заменены;
+> действующие адреса — в §14. Пометки «упразднено» стоят у отдельных строк
+> ниже; остальные строки уехали по номерам и точными адресами больше не
+> являются.
+
 Раздел ведётся исполнителем. Снимок после W1.1–W1.10; строки соответствуют
 состоянию рабочей копии на момент завершения волны.
 
@@ -1119,18 +1125,18 @@ D-NNN живут в этом одном файле** — следующий св
 | `type NodeSections` | `sources_v7.go:184` | `DNSServers`/`DNSRules`/`Rules` — `[]json.RawMessage` |
 | `NodeSections.IsEmpty()` | `sources_v7.go:196` | |
 | `NodeSections.HasRules()` | `sources_v7.go:202` | признак «узлу положен якорь» |
-| **`NodeSectionLinks(sources) []NodeLink`** | `sources_v7.go:222` | вход для `SeedNodeRules`; у корня тег = `NodeTagOrLabel()` |
+| ~~`NodeSectionLinks`~~ | — | **УПРАЗДНЕНО** (волна 3) вместе с `SeedNodeRules` |
 | `(*Node).NormalizeNodeSections()` | `sources_v7.go:252` | пустое → nil; не-server → nil |
 | `normalizeSectionsOfSources` | `sources_v7.go:208` | обход дерева, зовётся из `marshalDisk` |
 | Хук нормализации на ЧТЕНИИ | `sources_v7.go:586-592` (в `normalizeNodeShape`) | drop("sections") у чужого вида |
 | Хук нормализации на ЗАПИСИ | `core/state/save.go:126-129` (в `marshalDisk`) | |
-| **`RuleKindNode = "node"`** | `core/state/rule_types.go:32` | |
-| `type NodeRuleBody{FolderID,Tag}` | `rule_types.go:117` | |
+| ~~`RuleKindNode = "node"`~~ | — | **УПРАЗДНЕНО** (волна 3): вида `node` нет; читается только как легаси-якорь при переводе, `node_sections.go:legacyRuleKindNode` |
+| ~~`NodeRuleBody`~~ | — | **УПРАЗДНЕНО** (волна 3) |
 | `(*NodeRuleBody).Link()` | `rule_types.go:125` | |
-| `DecodeBody` ветка `node` | `rule_types.go:192-204` | ref запрещён, `tag` обязателен |
+| ~~`DecodeBody` ветка `node`~~ | — | **УПРАЗДНЕНО** (волна 3) |
 | **`NodeRuleDefaultNum = 945`** | `core/state/rule_order.go:57` | перед `private-ips` (950) |
-| **`SeedNodeRules(rules, links)`** | `rule_order.go:230` | заводит недостающие, снимает осиротевшие |
-| `NormalizeRuleOrder(rules, specs, nodeLinks)` | `rule_order.go:290` | **сигнатура расширена** |
+| ~~`SeedNodeRules`~~ | — | **УПРАЗДНЕНО** (волна 3): сеять нечего, правила живут у узла |
+| `NormalizeRuleOrder(rules, specs)` | `core/state/rule_order.go:230` | **параметр `nodeLinks` снят** (волна 3) |
 | Проекция секций в канон | `core/state/adapter_source.go:169-176` | в `canonicalNodeProjection` |
 
 ### 11.2 Сборочная проекция (`core/config/`)
@@ -1154,7 +1160,7 @@ D-NNN живут в этом одном файле** — следующий св
 | `build.NodeSectionSet` | `parsed_cache.go:52` | `FinalTag`, `Link`, три списка сырых тел |
 | `build.NodeLink` | `parsed_cache.go:68` | третье зеркало NodeLink (leaf-пакет) |
 | Заполнение кэша | `core/rebuild_snapshot.go:108-114` | + `buildNodeSections` `:120` |
-| **`ExpandNodeSections(set)`** | `core/build/node_sections_expand.go:73` | подстановка `@self`, префиксы, дефолт `outbound`, отсев `rule_set` |
+| ~~`ExpandNodeSections`~~ / ~~`node_sections_expand.go`~~ | — | **УПРАЗДНЕНО** (волна 3): файл удалён, разворачивания нет — есть инъекция (§14.2) |
 | `NodeSectionFragments` | `node_sections_expand.go:54` | `DNSServers`/`DNSRules`/`RoutingRules` как `[]map[string]interface{}` |
 | `expandNodeFragment` | `node_sections_expand.go:142` | строгая подстановка + `UseNumber` |
 | `nodeSelfVar = "self"` | `node_sections_expand.go:47` | |
@@ -1165,10 +1171,10 @@ D-NNN живут в этом одном файле** — следующий св
 | Вставка DNS-серверов узлов | `preset_merge.go:400-425` | после пресетных, dedup по тегу |
 | Вставка DNS-правил узлов | `preset_merge.go:457-461` | ДО пруна и `repairDanglingDNSRefs` |
 | Снятие секций с кэша в контекст | `core/build/build.go:257-263` | **после** `sanitizeOutboundGraph` |
-| `RouteSourceNode = "node"` | `core/build/resolve_route.go:35` | |
+| ~~`RouteSourceNode`~~ | — | **УПРАЗДНЕНО** (волна 3) |
 | `ResolvedRouteRule.NodeTag` | `resolve_route.go:96` | |
 | **`ResolveRouteWithNodeSections(...)`** | `resolve_route.go:157` | `ResolveRouteWithGlobals` делегирует сюда `:138-147` |
-| `resolveNodeRouteRule` | `resolve_route.go:217` | отсутствие набора = пропуск без warning |
+| ~~`resolveNodeRouteRule`~~ / ~~`ResolveRouteWithNodeSections`~~ | — | **УПРАЗДНЕНО** (волна 3): узловой ветки в резолве нет |
 | `keepSectionsOfPresentNodes` | `core/build/outbound_graph_sanitize.go:463` | вызов `:216` |
 | Ребро `dns.servers[].endpoint` | `core/build/dns_detour_sanitize.go:74-85` | выброс СЕРВЕРА целиком |
 | `repairAfterServerDrop` | `dns_detour_sanitize.go:135` | переиспользует `pruneDNSGroupMembers` + `repairDanglingDNSRefs` |
@@ -1224,6 +1230,12 @@ D-NNN живут в этом одном файле** — следующий св
 
 ## 12. Реализовано волной 2 (адреса)
 
+> **Частично УПРАЗДНЕНО волной 3.** Живы: разбор документа узла
+> (`ParseNodeDocument`/`RenderNodeDocument` — переписаны на хранимую форму,
+> §14.4), извлечение связки из целого конфига (§14.5), read-only показ DNS.
+> Упразднены: `NodeRefState` и вся якорная модель (заменена `NodeRuleRef`,
+> §14.6). Действующие адреса — в §14.
+
 Раздел ведётся исполнителем. Снимок после W2.1–W2.6; строки соответствуют
 состоянию рабочей копии на момент завершения волны.
 
@@ -1263,7 +1275,7 @@ D-NNN живут в этом одном файле** — следующий св
 
 | Сущность | Файл:строка | Заметка |
 |---|---|---|
-| **`NodeRefState{FolderID,Tag,Enabled,OrderNum}`** | `ui/configurator/models/node_ref_state.go:20` | |
+| ~~`NodeRefState`~~ / ~~`node_ref_state.go`~~ | — | **УПРАЗДНЕНО** (волна 3): файл удалён, заменён `NodeRuleRef` (§14.6) |
 | `(*NodeRefState).Link()` / `Clone()` | `:38` / `:46` | |
 | **`SeedNodeRefsFromSources(m) bool`** | `:68` | зеркало `state.SeedNodeRules`; true = состав изменился |
 | `SyncNodeRefsToStateRules` | `:122` | fallback-эмиссия |
@@ -1351,6 +1363,12 @@ D-NNN живут в этом одном файле** — следующий св
 ---
 
 ## 13. Реализовано SPEC 122 «Tailscale» (адреса)
+
+> **Действует.** Волна 3 SPEC 121 в этом разделе не тронула ничего, кроме
+> формы, в которой конструктор отдаёт секции: документ он по-прежнему пишет
+> sing-box-фрагментами (`dns`/`route`), а в записи их переводит общий
+> конвертер (§14.3). Гейт ядра, `IsExitCapable`, форма DNS-сервера,
+> `state_directory` и папочный путь — без изменений.
 
 Раздел ведётся исполнителем SPEC 122. Строки соответствуют состоянию рабочей
 копии на момент завершения задачи.
@@ -1479,3 +1497,150 @@ D-NNN живут в этом одном файле** — следующий св
 плейсхолдер `@self` (`core/config/subscription/singbox_sections_extract.go`,
 `refersToNode`). Проверено сквозным прогоном: документ конструктора Tailscale
 в папке даёт узел `kind=server` с тремя фрагментами секций.
+
+---
+
+## 14. Реализовано волной 3 — пересмотр модели (адреса)
+
+Раздел ведётся исполнителем. Снимок после W3.1–W3.7; строки соответствуют
+состоянию рабочей копии на момент завершения волны. **Этот раздел действующий:**
+там, где он расходится с §11–§13, прав он.
+
+### 14.1 Хранимая форма и плейсхолдер (`core/state/`)
+
+| Сущность | Файл:строка | Заметка |
+|---|---|---|
+| `Node.Sections *NodeSections` | `core/state/sources_v7.go:174` | `json:"sections,omitempty"`; только `kind=server` |
+| **`type NodeSections{Rules []Rule, DNS *NodeSectionsDNS}`** | `core/state/node_sections.go:58` | записи лаунчера, не фрагменты sing-box |
+| `type NodeSectionsDNS{Servers []DNSServer, Rules []DNSRule}` | `node_sections.go:99` | |
+| `NodeSections.UnmarshalJSON` | `node_sections.go:78` | распознаёт старую форму и откладывает её (`legacyRaw`) |
+| `HasLegacyShape()` | `node_sections.go:94` | |
+| `IsEmpty()` / `HasRules()` | `node_sections.go:107` / `:124` | непереведённая старая форма пустой НЕ считается |
+| `DNSServers()` / `DNSRules()` / `SetDNS(...)` | `node_sections.go:129` / `:136` / `:144` | доступ к DNS-половине без проверок на nil |
+| `Clone()` | `node_sections.go:157` | редактор владеет своей копией (SPEC 117) |
+| **`(*Node).NormalizeNodeSections()`** | `node_sections.go:215` | не-server → nil; чужие виды записей → WarnLog + отброс (`dropForeignKinds` `:232`) |
+| `normalizeSectionsOfSources` | `node_sections.go:275` | зовётся из `marshalDisk` (`core/state/save.go:129`) и `normalizeNodeShape` (`sources_v7.go:508`) |
+| **`ReadNodeSections(raw)`** | `node_sections.go:296` | текст, написанный человеком: вкладка JSON узла; виды проверяются с ошибкой, а не молча |
+| `SelfPlaceholder` / `SelfPlaceholderBraced` | `node_sections.go:54` / `:55` | `@self` / `@{self}` |
+| **`SubstituteSelf(raw, finalTag)`** | `core/state/selfvar.go:51` | ЕДИНСТВЕННАЯ точка подстановки; свой обход JSON-строк, порядок ключей сохраняется |
+| `SubstituteSelfInString` | `selfvar.go:79` | `@{self}` заменяется первым; `@self` — только целой строкой |
+| `SubstituteSelfInMap` | `selfvar.go:97` | для тел DNS-записей (они карты, не сырой JSON) |
+| `rewriteJSONStringValues` | `selfvar.go:129` | потоковая перезапись строковых ЗНАЧЕНИЙ (ключи не трогаются) |
+
+### 14.2 Чтение старого формата (SPEC §10.3)
+
+| Сущность | Файл:строка | Заметка |
+|---|---|---|
+| **`LegacyNodeSectionsShape(raw)`** | `core/state/node_sections.go:356` | признак: `dns_servers`/`dns_rules`/`rule_num` либо `rules` как массив объектов БЕЗ `kind` |
+| **`ConvertLegacyNodeSections(raw, nodeTag, anchorEnabled, anchorNum)`** | `node_sections.go:403` | локальный тег `X` → `@{self}:X`; `server: X` своей секции → то же; sing-box-правило → `inline` |
+| **`MigrateLegacyNodeSections(s *State)`** | `node_sections.go:527` | доперевод на уровне всего состояния: `enabled`/`order_num` из записи `kind=node`, после чего она удаляется |
+| `legacyNodeAnchors` / `dropLegacyNodeAnchors` | `node_sections.go:577` / `:604` | |
+| `legacyRuleKindNode = "node"` | `node_sections.go:620` | единственный след упразднённого вида — только для чтения |
+| Вызов на загрузке состояния | `core/state/disk_v7.go:101` | в `parseV7`, ДО `legacyCustomRulesFromV6` |
+| Чтение старой формы в бэкапе | `core/backup/node_sections.go:30` | `decodeBackupSections` — тот же конвертер |
+
+### 14.3 Единый перевод sing-box ↔ хранимая форма
+
+| Сущность | Файл:строка | Заметка |
+|---|---|---|
+| **`SingboxNodeFragments{NodeTag, DNSServers, DNSRules, RouteRules}`** | `core/state/node_sections_convert.go:36` | вход перевода |
+| **`NodeSectionsFromSingbox(in)`** | `node_sections_convert.go:55` | ЕДИНСТВЕННАЯ реализация правил перевода; ошибка = документ не годится целиком |
+| `nodeSectionRuleFromBody` | `node_sections_convert.go:119` | правило → `inline`: `match` = всё, кроме `outbound`/`action`; `name` из `@{self}` |
+| `nodeSectionFragmentBody` | `node_sections_convert.go:157` | перепись реального тега в `@self`, отказ на `rule_set` и чужую `@var` |
+| **`NodeSectionsToSingbox(sections)`** | `node_sections_convert.go:209` | обратный перевод (для `sing-box check` и показа) |
+| `nodeSectionForeignVars` / `nodeSectionVarRe` | `node_sections_convert.go:281` / `:278` | |
+| Потребитель 1 — вкладка JSON узла | `core/config/node_document.go:207` | внутри `ParseNodeDocument` |
+| Потребитель 2 — целый конфиг как источник | `core/config/subscription/singbox_sections_extract.go:120` (отбор `:80-118`) | внутри `ExtractNodeSections` |
+| Потребитель 3 — конструктор Tailscale | `ui/configurator/dialogs/add_server_tailscale.go:107` | `tailscaleDocument` пишет sing-box-документ, разбирает его тот же `ParseNodeDocument` |
+
+### 14.4 Документ узла (`core/config/node_document.go`)
+
+| Сущность | Файл:строка | Заметка |
+|---|---|---|
+| `nodeDocTopKeys` += `sections` | `core/config/node_document.go:71` | три входа §10.4 |
+| **`ParseNodeDocument(raw)`** | `node_document.go:121` | тело + `*state.NodeSections` НОВОЙ формы |
+| Вход 2 — `sections` в хранимой форме | `node_document.go:178` | `state.ReadNodeSections`; смешивать с `dns`/`route` в одном документе запрещено |
+| Вход 3 — `dns`/`route` (sing-box) | `node_document.go:200-215` | переводится `NodeSectionsFromSingbox` |
+| **`RenderNodeDocument(body, sections, isEndpoint)`** | `node_document.go:321` | рисует `{outbounds\|endpoints:[тело], sections:{хранимая форма}}` |
+| `NodeBodyGoesToEndpoints` | `node_document.go:301` | предикат тот же, что у эмиссии (`IsEndpointScheme`) |
+| Приём на вкладке | `ui/configurator/tabs/source_body_edit.go:47` | `applyServerBodyJSON`; прежняя форма (голое тело) секций не трогает |
+| Отрисовка документом | `ui/configurator/tabs/source_edit_window.go:2080` | при непустых `scratch.Sections` |
+
+### 14.5 Сборка = инъекция (`core/build/`)
+
+| Сущность | Файл:строка | Заметка |
+|---|---|---|
+| **`NodeSectionSet{FinalTag, Link, Sections}`** | `core/build/parsed_cache.go:55` | записи в форме хранения, ДО подстановки |
+| **`RulesWithSelf()`** | `parsed_cache.go:70` | подстановка по ТЕЛУ записи (порядок ключей `match` значим) |
+| `DNSServersWithSelf()` / `DNSRulesWithSelf()` | `parsed_cache.go:91` / `:106` | |
+| **`PresetMergeContext.rulesWithNodeSections()`** | `core/build/preset_merge.go:214` | конкатенация к `state.Rules` + `SortRulesByNum` |
+| **`PresetMergeContext.dnsWithNodeSections()`** | `preset_merge.go:246` | узловые записи в КОНЕЦ списков (оси у DNS нет) |
+| `hasNodeRouteRules` / `hasNodeDNSFragments` | `preset_merge.go:277` / `:288` | гарды ранних выходов; сами выходы — `:316` и `:421` |
+| Инъекция в `MergePresetsIntoRoute` | `preset_merge.go:330` | временный `state.State` из инъецированных списков |
+| Инъекция в `MergePresetsIntoDNS` | `preset_merge.go:412` | |
+| Инъекция в `CollectEmittedRouteRuleSetTags` | `preset_merge.go:608` (функция `:571`) | |
+| Резолв без узловых веток | `core/build/resolve_route.go:130` | `ResolveRouteWithGlobals` — три ветки: preset / inline / srs |
+| Снятие секций с кэша в контекст | `core/build/build.go:257-263` | после `sanitizeOutboundGraph` |
+| `keepSectionsOfPresentNodes` | `core/build/outbound_graph_sanitize.go:463` | узел снят санитайзером → его записи уходят с ним |
+| Ребро `dns.servers[].endpoint` | `core/build/dns_detour_sanitize.go:74-85` | волна 1, без изменений |
+| Проекция «канон → сборка» | `core/config/configtypes/types.go:253` | `NodeSections{Raw json.RawMessage}` — НЕПРОЗРАЧНЫЙ блок (leaf-пакет не знает `core/state`) |
+| Кодирование / декодирование блока | `core/state/adapter_source.go:175` / `:292` | `canonicalNodeProjection` / `NodeSectionsFromConfigTypes` |
+| `config.NodeSectionSet` | `core/config/outbound_generator.go:173` | несёт `*state.NodeSections` |
+| Сбор на эмиссии | `outbound_generator.go:1550` | только дошедшие до конфига узлы |
+| Перенос в кэш сборки | `core/rebuild_snapshot.go:130` | `buildNodeSections` |
+
+### 14.6 UI: строки правил узлов и перерисовка
+
+| Сущность | Файл:строка | Заметка |
+|---|---|---|
+| **`NodeRuleRef{Link, Index, Enabled, OrderNum, Name}`** | `ui/configurator/models/node_rule_ref.go:31` | обратный указатель в ПАМЯТИ модели |
+| `WizardModel.NodeRuleRefs` | `ui/configurator/models/wizard_model.go:123` | |
+| **`SeedNodeRuleRefs(m)`** | `node_rule_ref.go:80` | строка на каждую запись `sections.rules[]`; true = состав изменился |
+| `nodeRuleDisplayName` | `node_rule_ref.go:141` | подпись с подставленным тегом узла |
+| **`SyncNodeRuleRefsToSources(m)`** | `node_rule_ref.go:161` | Save: `order_num`/`enabled` обратно в запись узла |
+| `NodeRuleRefNodeEnabled` / `FindNodeByLink` | `node_rule_ref.go:186` / `:198` | |
+| Пересев на любой правке состава | `ui/configurator/business/node_pool.go:169` | внутри `InvalidateNodePool` |
+| Пересев при загрузке | `ui/configurator/presentation/presenter_state_helpers.go:100` | ДО `RuleOrderFromAxis` |
+| Слоты правил узлов дописываются | `ui/configurator/models/preset_ref_sync.go:186` | в `RuleOrderFromAxis`, дальше общая `SortRuleOrderByAxis` (`presenter_state_helpers.go:120`) |
+| Правила узлов НЕ уезжают в `state.Rules` | `preset_ref_sync.go:105` | ветка `SlotKindNodeRef` в `EmitStateRulesInAxisOrder` — `continue` |
+| Вызов синхронизации на Save | `ui/configurator/presentation/presenter_state.go:112` | ДО снятия копии `state.Sources` |
+| `SlotKindNodeRef` | `ui/configurator/models/rule_slot.go:30` | |
+| Ось: слот правила узла сортируем | `ui/configurator/models/rule_order_axis.go:76` | прокси вида `inline` |
+| **`buildSingleNodeRuleRow`** | `ui/configurator/tabs/rules_unified_rows.go:86` | `🔗 <name> · <тег узла>`; тумблер и ручка есть, edit/del нет |
+| **Перерисовка по ревизии** | `ui/configurator/configurator.go:630` (счётчики), `:704` (DNS), `:717` (Rules) | `tabs.OnSelected`: вкладка старше `model.Revision` перестраивается |
+| DNS-записи узлов для показа | `ui/configurator/business/node_sections.go:108` | `NodeSectionDNSForModel` — та же подстановка, что на сборке |
+| Строка DNS-сервера узла | `ui/configurator/tabs/dns_preset_bundled.go:140` | `🔗 <тег сервера> · <тег узла>`, только View JSON |
+| Строки DNS-правил узлов | `ui/configurator/tabs/dns_unified_rules.go:72` | в конце обхода `DNSRuleOrder` |
+
+### 14.7 Бэкап и контракт
+
+| Сущность | Файл:строка | Заметка |
+|---|---|---|
+| **`ServerSections{Raw json.RawMessage}`** | `core/backup/types.go:396` | непрозрачный блок + свои `MarshalJSON`/`UnmarshalJSON` |
+| **`decodeBackupSections(sec, nodeTag)`** | `core/backup/node_sections.go:30` | обе формы; старая — тем же конвертером, что у state.json |
+| `serverSectionsKeys` | `core/backup/file.go:279` | `rules`/`dns` + ключи прежней формы (чтобы старый файл не давал warning) |
+| Экспорт секций | `core/backup/export.go:429` | в `exportServerNode`; `rule_num` не пишется |
+| Импорт секций | `core/backup/import.go:561` | в `importServer` |
+| Замещение при совпадении тела | `core/backup/merge.go:297` | `applyImportedSections` |
+| Схема поля | `contract/schema/backup.schema.json:239-278` | `servers[].sections` |
+| Таблица `servers[]` | `contract/docs/BACKUP.md:94` | Поддержка: launcher |
+| Абзац слияния §9 | `contract/docs/BACKUP.md:410-425` | + абзац про чтение прежней формы |
+| D-099 (черновик) | `SPECS/103-F-O-LX_SHARED_CONTRACT/DECISIONS.md:107` | уточняет D-098; `contract/VERSION` не поднят |
+| Задача LxBox | `contract/TASKS_LXBOX.md:392` | `## 9`, переписан под новую форму |
+| Нормативный текст | `SPECS/features/sources.md:45-66`, `:100-107` | |
+| Release notes | `docs/release_notes/upcoming.md` | пункт «A node can now carry…» / «Узел может нести…» |
+
+### 14.8 Тесты волны
+
+| Тест | Файл:строка | Покрывает |
+|---|---|---|
+| `TestBuildWithNodeSections` | `core/build/node_sections_build_test.go:45` | SPEC §8 пп. 1–4 в новой форме (корень / папка с TagPolicy / выключенный узел / без секций = байт-в-байт) |
+| `TestSanitizeDNSDetours_DanglingEndpointDropsServerAndRepairsRule` | `core/build/dns_detour_sanitize_test.go:83` | §8 п. 8 (волна 1, без изменений) |
+| `TestBackupNodeSectionsRoundTrip` | `core/backup/node_sections_roundtrip_test.go:118` | §8 п. 5 в новой форме |
+| **`TestBackupNodeSectionsLegacyShape`** | `core/backup/node_sections_roundtrip_test.go:186` | §10.3: старая форма в бэкапе (+`rule_num`) |
+| `TestParseNodeDocument` | `core/config/node_document_test.go:13` | §5.1 в новой форме |
+| `TestParseSingboxBody_NodeSectionsFromWholeConfig` | `core/config/subscription/singbox_sections_extract_test.go:22` | §6 / §8 п. 7 |
+| `TestParseSingboxBody_NoSectionsWithTwoNodes` | `singbox_sections_extract_test.go:96` | §8 п. 7, отрицательная половина |
+| `TestTailscaleEmittedAsEndpoint` / `TestTailscaleCoreGate` / `TestTailscaleDirectionPool` / `TestTailscaleConfigPassesSingboxCheck` | `core/config/tailscale_test.go:66` / `:141` / `:189` / `:228` | SPEC 122 §4 — переписаны на новую форму, ни один сценарий не снят |
+| **`TestSubstituteSelf`** | `core/state/node_sections_test.go:16` | §10.1: обе формы, порядок ключей, чужой текст, пустой тег |
+| **`TestMigrateLegacyNodeSections`** | `core/state/node_sections_test.go:70` | §10.3: старая форма в state.json + консьюминг якоря `kind=node` |

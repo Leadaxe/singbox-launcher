@@ -134,11 +134,9 @@ func buildNodeSections(src []config.NodeSectionSet) []build.NodeSectionSet {
 	out := make([]build.NodeSectionSet, 0, len(src))
 	for _, s := range src {
 		out = append(out, build.NodeSectionSet{
-			FinalTag:   s.FinalTag,
-			Link:       build.NodeLink{FolderID: s.Link.FolderID, Tag: s.Link.Tag},
-			DNSServers: s.DNSServers,
-			DNSRules:   s.DNSRules,
-			Rules:      s.Rules,
+			FinalTag: s.FinalTag,
+			Link:     build.NodeLink{FolderID: s.Link.FolderID, Tag: s.Link.Tag},
+			Sections: s.Sections,
 		})
 	}
 	return out
