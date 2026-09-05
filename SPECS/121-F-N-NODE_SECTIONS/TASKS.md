@@ -107,3 +107,9 @@
       сценарий не удалять; добавить тест конвертера старой формы (state и
       бэкап) и тест `SubstituteSelf`; полный `go test ./...` + `build/test_darwin.sh`
       один раз; golden без пересчёта.
+- [x] W3.8 Чистка (решение владельца 2026-09-05): старая форма волн 1–2 в
+      релизы не попала, поэтому конвертер и его тесты сняты целиком —
+      `core/state/node_sections.go`, вызов в `disk_v7.go`, ветка в
+      `core/backup/node_sections.go`, ключи прежней формы в
+      `serverSectionsKeys`; SPEC §10.3, CODEMAP §14.2, BACKUP.md,
+      TASKS_LXBOX `## 9` приведены в соответствие.

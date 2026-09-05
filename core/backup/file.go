@@ -272,13 +272,8 @@ var (
 	// сканер не спускается намеренно: их поля — тела sing-box плюс служебные
 	// kind/enabled/order_num, и их набор ведёт схема состояния, а не таблица
 	// бэкапа.
-	//
-	// `dns_servers`/`dns_rules`/`rule_num` — ключи ПРЕЖНЕЙ формы (волны 1–2):
-	// они читаются конвертером и потому неизвестными не считаются, иначе
-	// каждый старый файл давал бы три предупреждения на узел.
 	serverSectionsKeys = map[string]bool{
 		"rules": true, "dns": true,
-		"dns_servers": true, "dns_rules": true, "rule_num": true,
 	}
 	chainKeys = mergeKeys(sourceRefKeys, map[string]bool{
 		"id": true, "tag": true, "label": true, "enabled": true,

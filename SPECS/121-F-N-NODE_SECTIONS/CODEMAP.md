@@ -1130,7 +1130,7 @@ D-NNN живут в этом одном файле** — следующий св
 | `normalizeSectionsOfSources` | `sources_v7.go:208` | обход дерева, зовётся из `marshalDisk` |
 | Хук нормализации на ЧТЕНИИ | `sources_v7.go:586-592` (в `normalizeNodeShape`) | drop("sections") у чужого вида |
 | Хук нормализации на ЗАПИСИ | `core/state/save.go:126-129` (в `marshalDisk`) | |
-| ~~`RuleKindNode = "node"`~~ | — | **УПРАЗДНЕНО** (волна 3): вида `node` нет; читается только как легаси-якорь при переводе, `node_sections.go:legacyRuleKindNode` |
+| ~~`RuleKindNode = "node"`~~ | — | **УПРАЗДНЕНО** (волна 3): вида `node` нет |
 | ~~`NodeRuleBody`~~ | — | **УПРАЗДНЕНО** (волна 3) |
 | `(*NodeRuleBody).Link()` | `rule_types.go:125` | |
 | ~~`DecodeBody` ветка `node`~~ | — | **УПРАЗДНЕНО** (волна 3) |
@@ -1511,33 +1511,25 @@ D-NNN живут в этом одном файле** — следующий св
 | Сущность | Файл:строка | Заметка |
 |---|---|---|
 | `Node.Sections *NodeSections` | `core/state/sources_v7.go:174` | `json:"sections,omitempty"`; только `kind=server` |
-| **`type NodeSections{Rules []Rule, DNS *NodeSectionsDNS}`** | `core/state/node_sections.go:58` | записи лаунчера, не фрагменты sing-box |
-| `type NodeSectionsDNS{Servers []DNSServer, Rules []DNSRule}` | `node_sections.go:99` | |
-| `NodeSections.UnmarshalJSON` | `node_sections.go:78` | распознаёт старую форму и откладывает её (`legacyRaw`) |
-| `HasLegacyShape()` | `node_sections.go:94` | |
-| `IsEmpty()` / `HasRules()` | `node_sections.go:107` / `:124` | непереведённая старая форма пустой НЕ считается |
-| `DNSServers()` / `DNSRules()` / `SetDNS(...)` | `node_sections.go:129` / `:136` / `:144` | доступ к DNS-половине без проверок на nil |
-| `Clone()` | `node_sections.go:157` | редактор владеет своей копией (SPEC 117) |
-| **`(*Node).NormalizeNodeSections()`** | `node_sections.go:215` | не-server → nil; чужие виды записей → WarnLog + отброс (`dropForeignKinds` `:232`) |
-| `normalizeSectionsOfSources` | `node_sections.go:275` | зовётся из `marshalDisk` (`core/state/save.go:129`) и `normalizeNodeShape` (`sources_v7.go:508`) |
-| **`ReadNodeSections(raw)`** | `node_sections.go:296` | текст, написанный человеком: вкладка JSON узла; виды проверяются с ошибкой, а не молча |
-| `SelfPlaceholder` / `SelfPlaceholderBraced` | `node_sections.go:54` / `:55` | `@self` / `@{self}` |
+| **`type NodeSections{Rules []Rule, DNS *NodeSectionsDNS}`** | `core/state/node_sections.go:57` | записи лаунчера, не фрагменты sing-box; своего `UnmarshalJSON` нет |
+| `type NodeSectionsDNS{Servers []DNSServer, Rules []DNSRule}` | `node_sections.go:66` | |
+| `IsEmpty()` / `HasRules()` | `node_sections.go:72` / `:88` | |
+| `DNSServers()` / `DNSRules()` / `SetDNS(...)` | `node_sections.go:93` / `:100` / `:108` | доступ к DNS-половине без проверок на nil |
+| `Clone()` | `node_sections.go:121` | редактор владеет своей копией (SPEC 117) |
+| **`(*Node).NormalizeNodeSections()`** | `node_sections.go:180` | не-server → nil; чужие виды записей → WarnLog + отброс (`dropForeignKinds` `:197`) |
+| `normalizeSectionsOfSources` | `node_sections.go:244` | зовётся из `marshalDisk` (`core/state/save.go:129`) и `normalizeNodeShape` (`sources_v7.go:508`) |
+| **`ReadNodeSections(raw)`** | `node_sections.go:258` | текст, написанный человеком: вкладка JSON узла; виды проверяются с ошибкой, а не молча |
+| `SelfPlaceholder` / `SelfPlaceholderBraced` | `node_sections.go:52` / `:53` | `@self` / `@{self}` |
 | **`SubstituteSelf(raw, finalTag)`** | `core/state/selfvar.go:51` | ЕДИНСТВЕННАЯ точка подстановки; свой обход JSON-строк, порядок ключей сохраняется |
 | `SubstituteSelfInString` | `selfvar.go:79` | `@{self}` заменяется первым; `@self` — только целой строкой |
 | `SubstituteSelfInMap` | `selfvar.go:97` | для тел DNS-записей (они карты, не сырой JSON) |
 | `rewriteJSONStringValues` | `selfvar.go:129` | потоковая перезапись строковых ЗНАЧЕНИЙ (ключи не трогаются) |
 
-### 14.2 Чтение старого формата (SPEC §10.3)
+### 14.2 Старая форма волн 1–2 — **УПРАЗДНЕНА**
 
-| Сущность | Файл:строка | Заметка |
-|---|---|---|
-| **`LegacyNodeSectionsShape(raw)`** | `core/state/node_sections.go:356` | признак: `dns_servers`/`dns_rules`/`rule_num` либо `rules` как массив объектов БЕЗ `kind` |
-| **`ConvertLegacyNodeSections(raw, nodeTag, anchorEnabled, anchorNum)`** | `node_sections.go:403` | локальный тег `X` → `@{self}:X`; `server: X` своей секции → то же; sing-box-правило → `inline` |
-| **`MigrateLegacyNodeSections(s *State)`** | `node_sections.go:527` | доперевод на уровне всего состояния: `enabled`/`order_num` из записи `kind=node`, после чего она удаляется |
-| `legacyNodeAnchors` / `dropLegacyNodeAnchors` | `node_sections.go:577` / `:604` | |
-| `legacyRuleKindNode = "node"` | `node_sections.go:620` | единственный след упразднённого вида — только для чтения |
-| Вызов на загрузке состояния | `core/state/disk_v7.go:101` | в `parseV7`, ДО `legacyCustomRulesFromV6` |
-| Чтение старой формы в бэкапе | `core/backup/node_sections.go:30` | `decodeBackupSections` — тот же конвертер |
+Конвертер старой формы снят 2026-09-05: релизов с ней не было (решение
+владельца). Отдельного чтения нет — незнакомые ключи `sections` отбрасываются
+штатной нормализацией (`NormalizeNodeSections` / `dropForeignKinds`).
 
 ### 14.3 Единый перевод sing-box ↔ хранимая форма
 
@@ -1617,14 +1609,14 @@ D-NNN живут в этом одном файле** — следующий св
 | Сущность | Файл:строка | Заметка |
 |---|---|---|
 | **`ServerSections{Raw json.RawMessage}`** | `core/backup/types.go:396` | непрозрачный блок + свои `MarshalJSON`/`UnmarshalJSON` |
-| **`decodeBackupSections(sec, nodeTag)`** | `core/backup/node_sections.go:30` | обе формы; старая — тем же конвертером, что у state.json |
-| `serverSectionsKeys` | `core/backup/file.go:279` | `rules`/`dns` + ключи прежней формы (чтобы старый файл не давал warning) |
-| Экспорт секций | `core/backup/export.go:429` | в `exportServerNode`; `rule_num` не пишется |
+| **`decodeBackupSections(sec, nodeTag)`** | `core/backup/node_sections.go:22` | одна форма §10.1 |
+| `serverSectionsKeys` | `core/backup/file.go:275` | `rules`/`dns` |
+| Экспорт секций | `core/backup/export.go:429` | в `exportServerNode` |
 | Импорт секций | `core/backup/import.go:561` | в `importServer` |
 | Замещение при совпадении тела | `core/backup/merge.go:297` | `applyImportedSections` |
 | Схема поля | `contract/schema/backup.schema.json:239-278` | `servers[].sections` |
 | Таблица `servers[]` | `contract/docs/BACKUP.md:94` | Поддержка: launcher |
-| Абзац слияния §9 | `contract/docs/BACKUP.md:410-425` | + абзац про чтение прежней формы |
+| Абзац слияния §9 | `contract/docs/BACKUP.md:410-419` | |
 | D-099 (черновик) | `SPECS/103-F-O-LX_SHARED_CONTRACT/DECISIONS.md:107` | уточняет D-098; `contract/VERSION` не поднят |
 | Задача LxBox | `contract/TASKS_LXBOX.md:392` | `## 9`, переписан под новую форму |
 | Нормативный текст | `SPECS/features/sources.md:45-66`, `:100-107` | |
@@ -1637,10 +1629,8 @@ D-NNN живут в этом одном файле** — следующий св
 | `TestBuildWithNodeSections` | `core/build/node_sections_build_test.go:45` | SPEC §8 пп. 1–4 в новой форме (корень / папка с TagPolicy / выключенный узел / без секций = байт-в-байт) |
 | `TestSanitizeDNSDetours_DanglingEndpointDropsServerAndRepairsRule` | `core/build/dns_detour_sanitize_test.go:83` | §8 п. 8 (волна 1, без изменений) |
 | `TestBackupNodeSectionsRoundTrip` | `core/backup/node_sections_roundtrip_test.go:118` | §8 п. 5 в новой форме |
-| **`TestBackupNodeSectionsLegacyShape`** | `core/backup/node_sections_roundtrip_test.go:186` | §10.3: старая форма в бэкапе (+`rule_num`) |
 | `TestParseNodeDocument` | `core/config/node_document_test.go:13` | §5.1 в новой форме |
 | `TestParseSingboxBody_NodeSectionsFromWholeConfig` | `core/config/subscription/singbox_sections_extract_test.go:22` | §6 / §8 п. 7 |
 | `TestParseSingboxBody_NoSectionsWithTwoNodes` | `singbox_sections_extract_test.go:96` | §8 п. 7, отрицательная половина |
 | `TestTailscaleEmittedAsEndpoint` / `TestTailscaleCoreGate` / `TestTailscaleDirectionPool` / `TestTailscaleConfigPassesSingboxCheck` | `core/config/tailscale_test.go:66` / `:141` / `:189` / `:228` | SPEC 122 §4 — переписаны на новую форму, ни один сценарий не снят |
-| **`TestSubstituteSelf`** | `core/state/node_sections_test.go:16` | §10.1: обе формы, порядок ключей, чужой текст, пустой тег |
-| **`TestMigrateLegacyNodeSections`** | `core/state/node_sections_test.go:70` | §10.3: старая форма в state.json + консьюминг якоря `kind=node` |
+| **`TestSubstituteSelf`** | `core/state/node_sections_test.go:11` | §10.1: обе формы плейсхолдера, порядок ключей, чужой текст, пустой тег |

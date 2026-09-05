@@ -390,9 +390,7 @@ type Server struct {
 // согласии с первой.
 //
 // Тело едет непрозрачным блоком: разбирает его state, а не контракт. Так
-// незнакомое поле DNS-сервера (`endpoint` у tailscale) переживает round-trip,
-// и так же читается СТАРАЯ форма (сырые фрагменты + `rule_num`) — тем же
-// конвертером, что у state.json.
+// незнакомое поле DNS-сервера (`endpoint` у tailscale) переживает round-trip.
 type ServerSections struct {
 	// Raw — объект `sections` как он лежит в файле.
 	Raw json.RawMessage

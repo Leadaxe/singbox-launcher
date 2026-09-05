@@ -140,10 +140,6 @@ func TestBackupNodeSectionsRoundTrip(t *testing.T) {
 			t.Errorf("экспортированные секции без %s: %s", want, written)
 		}
 	}
-	if strings.Contains(written, "rule_num") {
-		t.Error("экспорт написал упразднённый rule_num")
-	}
-
 	// 2. Импорт в ПУСТОЕ состояние восстанавливает записи и их позиции.
 	fresh := &state.State{}
 	exportParseImport(t, src, fresh)
@@ -181,67 +177,5 @@ func TestBackupNodeSectionsRoundTrip(t *testing.T) {
 	sec = nodeSectionsOf(t, plain)
 	if sec.IsEmpty() || sec.DNSServers()[0].Tag != "keep-me" {
 		t.Errorf("файл без sections снёс локальные секции: %v", sec)
-	}
-}
-
-// TestBackupNodeSectionsLegacyShape — файл, написанный сборкой волн 1–2
-// (SPEC 121 §10.3): сырые фрагменты sing-box плюс `rule_num`.
-//
-// Проверяется не форма записей, а то, что эмитируемый конфиг не потерян:
-// DNS-сервер узнаётся по своему префиксованному тегу, правило DNS ссылается на
-// него же, правило маршрута сохраняет цель и позицию с оси.
-func TestBackupNodeSectionsLegacyShape(t *testing.T) {
-	const legacy = `{
-	  "dns_servers": [{"type":"tailscale","tag":"ts-dns","endpoint":"@self"}],
-	  "dns_rules":   [{"domain_suffix":[".ts.net"],"server":"ts-dns"}],
-	  "rules":       [{"ip_cidr":["100.64.0.0/10"],"outbound":"@self"}],
-	  "rule_num":    960
-	}`
-
-	sections := decodeBackupSections(&ServerSections{Raw: json.RawMessage(legacy)}, "ts-node")
-	if sections.IsEmpty() {
-		t.Fatal("старая форма прочиталась пустой — секции потеряны")
-	}
-
-	if len(sections.DNSServers()) != 1 {
-		t.Fatalf("DNS-серверов после перевода: %d, ожидался 1", len(sections.DNSServers()))
-	}
-	srv := sections.DNSServers()[0]
-	// Неявная префиксация волн 1–2 давала `<финальный тег>:<локальный>` —
-	// в новой форме то же самое пишется плейсхолдером.
-	if want := state.SelfPlaceholderBraced + ":ts-dns"; srv.Tag != want {
-		t.Errorf("тег DNS-сервера после перевода %q, ожидался %q", srv.Tag, want)
-	}
-	if srv.Kind != state.DNSServerKindUser {
-		t.Errorf("вид DNS-сервера после перевода %q", srv.Kind)
-	}
-
-	if len(sections.DNSRules()) != 1 {
-		t.Fatalf("DNS-правил после перевода: %d", len(sections.DNSRules()))
-	}
-	if got, _ := sections.DNSRules()[0].Body["server"].(string); got != state.SelfPlaceholderBraced+":ts-dns" {
-		t.Errorf("ссылка DNS-правила после перевода %q — она обязана указывать на сервер своей же секции", got)
-	}
-
-	if len(sections.Rules) != 1 {
-		t.Fatalf("правил маршрута после перевода: %d", len(sections.Rules))
-	}
-	r := sections.Rules[0]
-	if r.Kind != state.RuleKindInline {
-		t.Errorf("вид правила после перевода %q, ожидался inline", r.Kind)
-	}
-	if r.OrderNum == nil || *r.OrderNum != 960 {
-		t.Errorf("rule_num=960 не стал order_num: %v", r.OrderNum)
-	}
-	body, err := r.DecodeBody()
-	if err != nil {
-		t.Fatalf("тело переведённого правила не читается: %v", err)
-	}
-	inline := body.(*state.InlineBody)
-	if inline.Outbound != state.SelfPlaceholder {
-		t.Errorf("цель правила после перевода %q", inline.Outbound)
-	}
-	if _, ok := inline.Match["ip_cidr"]; !ok {
-		t.Errorf("match правила потерял ip_cidr: %v", inline.Match)
 	}
 }

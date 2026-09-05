@@ -95,11 +95,6 @@ func parseV7(data []byte) (*State, error) {
 		s.UpdatedAt = t
 	}
 
-	// SPEC 121 §10.3: секции узла, записанные предыдущей формой (сырые
-	// фрагменты sing-box + якорь kind=node), переводятся в записи состояния
-	// ОДИН раз, здесь — до того, как их увидит кто-либо ещё.
-	MigrateLegacyNodeSections(s)
-
 	// Legacy CustomRules view — как в v6-парсе: UI-код до Phase 6 читает его.
 	s.CustomRules = legacyCustomRulesFromV6(s.Rules)
 
