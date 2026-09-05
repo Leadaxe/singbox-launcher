@@ -308,7 +308,14 @@
           },
           "ref": {
             "type": "string",
-            "description": "kind=preset: id из registry/presets.json; kind=srs: URL"
+            "description": "kind=preset: id из registry/presets.json; kind=srs: URL первого набора (= refs[0], когда refs есть)"
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "kind=srs: все URL наборов ОДНОГО правила по порядку, ref = refs[0]. Пишется только при двух и более наборах. Импортёр берёт refs, без него — ref; сторона без поддержки читает ref и получает первый набор (черновик D-099)"
           },
           "vars": {
             "type": "object",

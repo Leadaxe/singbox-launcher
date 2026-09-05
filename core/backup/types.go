@@ -418,12 +418,17 @@ type Rule struct {
 	Num *float64 `json:"num,omitempty"`
 	// Outbound — символическая ссылка на цель. Несуществующая цель не
 	// повод терять правило: импортируется выключенным с warning.
-	Outbound string            `json:"outbound,omitempty"`
-	Ref      string            `json:"ref,omitempty"`
-	Vars     map[string]string `json:"vars,omitempty"`
-	Match    json.RawMessage   `json:"match,omitempty"`
-	DNS      json.RawMessage   `json:"dns,omitempty"`
-	Resolve  json.RawMessage   `json:"resolve,omitempty"`
+	Outbound string `json:"outbound,omitempty"`
+	Ref      string `json:"ref,omitempty"`
+	// Refs — kind=srs: ВСЕ URL наборов правила по порядку, `ref` = `refs[0]`.
+	// Пишется только при двух и более. Черновое поле контракта (D-099, по
+	// образцу `sections`): сторона без поддержки читает `ref` и получает
+	// первый набор — ровно то, что было до поля.
+	Refs    []string          `json:"refs,omitempty"`
+	Vars    map[string]string `json:"vars,omitempty"`
+	Match   json.RawMessage   `json:"match,omitempty"`
+	DNS     json.RawMessage   `json:"dns,omitempty"`
+	Resolve json.RawMessage   `json:"resolve,omitempty"`
 }
 
 // DNS — секция DNS.

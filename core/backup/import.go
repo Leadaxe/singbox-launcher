@@ -684,7 +684,13 @@ func importRule(r Rule, known, presets tagSet) (state.Rule, []Warning, error) {
 		}
 		out.Body = raw
 	case RuleSRS:
-		raw, err := json.Marshal(state.SrsBody{Name: r.Name, SrsURL: r.Ref, Outbound: r.Outbound})
+		// `refs` (все наборы) сильнее `ref` (первый): файл без `refs` — от
+		// стороны, которая знает один набор на правило.
+		urls := r.Refs
+		if len(urls) == 0 {
+			urls = []string{r.Ref}
+		}
+		raw, err := json.Marshal(state.NewSrsBody(r.Name, urls, r.Outbound))
 		if err != nil {
 			return state.Rule{}, warns, err
 		}

@@ -9,6 +9,8 @@
 // orphan GC). Изменяешь алгоритм identity — изменяешь его здесь.
 package state
 
+import "strconv"
+
 // StableRuleID — pure-function identity правила. Не stored, не serialized.
 //
 // Маршруты по Kind:
@@ -45,6 +47,19 @@ func StableRuleID(r Rule) string {
 		return "unnamed"
 	}
 	return sanitizeIDPart(name)
+}
+
+// SrsRuleSetTag — тег записи route.rule_set для i-го (с нуля) набора
+// srs-правила с identity id. Единая точка для сборки (resolve_route.go) и
+// legacy-проекции (load_v6.go): первый набор держит исторический тег
+// "user:<id>", остальные — "user:<id>:2", "user:<id>:3", … Разделитель ':'
+// не входит в алфавит sanitizeIDPart, поэтому тег второго набора правила
+// "foo" не совпадёт с тегом правила "foo 2" ("user:foo-2").
+func SrsRuleSetTag(id string, i int) string {
+	if i <= 0 {
+		return "user:" + id
+	}
+	return "user:" + id + ":" + strconv.Itoa(i+1)
 }
 
 // sanitizeIDPart — приводит произвольный label к безопасному identifier'у:

@@ -19,7 +19,7 @@ const (
 	RuleKindInline RuleKind = "inline"
 
 	// RuleKindSrs — user-defined srs rule.
-	// Body: {name, srs_url, outbound}. Cached .srs файл на диске.
+	// Body: {name, srs_url, srs_urls?, outbound}. Cached .srs файлы на диске.
 	RuleKindSrs RuleKind = "srs"
 
 	// RuleKindNode — ЯКОРЬ правил маршрута, которые узел носит с собой
@@ -102,10 +102,80 @@ type InlineBody struct {
 }
 
 // SrsBody — kind=srs payload (user-defined srs rule).
+//
+// Одно правило может ссылаться на НЕСКОЛЬКО наборов (диалог правила принимает
+// список URL, sing-box принимает `rule_set: [..]`). Каноническая форма:
+//
+//	srs_url  — первый URL; единственное поле, которое читают лаунчеры до 1.5.6
+//	           и бэкап-поле `ref` контракта — им достаётся первый набор;
+//	srs_urls — ПОЛНЫЙ список (включая первый) — пишется только при двух и более.
+//
+// Форму нормализует DecodeBody, строит — NewSrsBody; читать список надо через
+// URLs(), а не по полям: репорт 1.5.5 («из трёх srs правило помнит один»)
+// возник ровно потому, что тело держало один URL.
 type SrsBody struct {
-	Name     string `json:"name"`
-	SrsURL   string `json:"srs_url"`
-	Outbound string `json:"outbound"` // tag | "reject" | "drop"
+	Name     string   `json:"name"`
+	SrsURL   string   `json:"srs_url"`
+	SrsURLs  []string `json:"srs_urls,omitempty"`
+	Outbound string   `json:"outbound"` // tag | "reject" | "drop"
+}
+
+// NewSrsBody — каноническое тело srs-правила из списка URL: дубли и пустые
+// строки снимаются с сохранением порядка, первый URL идёт в SrsURL, полный
+// список — в SrsURLs только при двух и более.
+func NewSrsBody(name string, urls []string, outbound string) SrsBody {
+	b := SrsBody{Name: name, SrsURLs: dedupNonEmpty(urls), Outbound: outbound}
+	b.normalize()
+	return b
+}
+
+// URLs — все URL наборов правила в порядке ввода (минимум один у валидного тела).
+func (b *SrsBody) URLs() []string {
+	if len(b.SrsURLs) > 0 {
+		return b.SrsURLs
+	}
+	if b.SrsURL == "" {
+		return nil
+	}
+	return []string{b.SrsURL}
+}
+
+// normalize — приводит любую комбинацию srs_url/srs_urls к канонической форме.
+func (b *SrsBody) normalize() {
+	all := make([]string, 0, len(b.SrsURLs)+1)
+	if b.SrsURL != "" {
+		all = append(all, b.SrsURL)
+	}
+	all = dedupNonEmpty(append(all, b.SrsURLs...))
+	if len(all) == 0 {
+		b.SrsURL, b.SrsURLs = "", nil
+		return
+	}
+	b.SrsURL = all[0]
+	if len(all) > 1 {
+		b.SrsURLs = all
+	} else {
+		b.SrsURLs = nil
+	}
+}
+
+func dedupNonEmpty(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, u := range in {
+		if u == "" || seen[u] {
+			continue
+		}
+		seen[u] = true
+		out = append(out, u)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // NodeRuleBody — kind=node payload: ССЫЛКА на узел (SPEC 121 §3.1).
@@ -136,7 +206,7 @@ func (b *NodeRuleBody) Link() NodeLink {
 //
 //	preset → r.Ref required, r.Body optional
 //	inline → r.Ref empty,    body.Name required
-//	srs    → r.Ref empty,    body.Name + body.SrsURL required
+//	srs    → r.Ref empty,    body.Name + хотя бы один URL (srs_url / srs_urls) required
 //
 // Ошибки:
 //   - kind=preset без ref → semantic error
@@ -184,6 +254,7 @@ func (r *Rule) DecodeBody() (interface{}, error) {
 		if body.Name == "" {
 			return nil, fmt.Errorf("rule kind=srs requires body.name")
 		}
+		body.normalize()
 		if body.SrsURL == "" {
 			return nil, fmt.Errorf("rule kind=srs requires body.srs_url")
 		}

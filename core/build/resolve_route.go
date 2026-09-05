@@ -117,7 +117,7 @@ type ResolvedRoute struct {
 //   - state         — v6 state (Rules с preset/inline/srs)
 //   - td            — TemplateData (presets с rule_set + routing rule)
 //   - execDir       — для резолва local SRS paths (preset remote rule_set)
-//   - srsCachedPaths — map[user-rule-id → path] для kind=srs
+//   - srsCachedPaths — map[user-rule-id → paths] для kind=srs (по пути на каждый URL правила)
 //
 // Возвращает ResolvedRoute. RuleSets дедуплицированы по tag (first-wins);
 // Rules в порядке state.Rules.
@@ -125,7 +125,7 @@ func ResolveRoute(
 	state *corestate.State,
 	td *template.TemplateData,
 	execDir string,
-	srsCachedPaths map[string]string,
+	srsCachedPaths map[string][]string,
 	target template.TargetSpec,
 ) ResolvedRoute {
 	return ResolveRouteWithGlobals(state, td, execDir, srsCachedPaths, target, nil)
@@ -139,7 +139,7 @@ func ResolveRouteWithGlobals(
 	state *corestate.State,
 	td *template.TemplateData,
 	execDir string,
-	srsCachedPaths map[string]string,
+	srsCachedPaths map[string][]string,
 	target template.TargetSpec,
 	globalVars map[string]string,
 ) ResolvedRoute {
@@ -158,7 +158,7 @@ func ResolveRouteWithNodeSections(
 	state *corestate.State,
 	td *template.TemplateData,
 	execDir string,
-	srsCachedPaths map[string]string,
+	srsCachedPaths map[string][]string,
 	target template.TargetSpec,
 	globalVars map[string]string,
 	nodeSections []NodeSectionSet,
@@ -356,7 +356,7 @@ func resolveInlineRouteRule(out *ResolvedRoute, rule corestate.Rule) {
 func resolveSrsRouteRule(
 	out *ResolvedRoute,
 	rule corestate.Rule,
-	srsCachedPaths map[string]string,
+	srsCachedPaths map[string][]string,
 	emittedTags map[string]bool,
 ) {
 	body, err := rule.DecodeBody()
@@ -366,11 +366,13 @@ func resolveSrsRouteRule(
 	}
 	sb := body.(*corestate.SrsBody)
 	id := corestate.StableRuleID(rule)
-	path, hasCache := srsCachedPaths[id]
-	tag := "user:" + id
-	if !hasCache {
+	urls := sb.URLs()
+	paths, hasCache := srsCachedPaths[id]
+	// Правило — одна единица: либо закэшированы все его наборы, либо оно
+	// пропускается целиком (частичный набор молча менял бы смысл правила).
+	if !hasCache || len(paths) != len(urls) {
 		out.RuleSets = append(out.RuleSets, ResolvedRouteRuleSet{
-			Tag:           tag,
+			Tag:           corestate.SrsRuleSetTag(id, 0),
 			Source:        RouteSourceSrs,
 			SrsID:         id,
 			Enabled:       rule.Enabled,
@@ -380,7 +382,16 @@ func resolveSrsRouteRule(
 		debuglog.WarnLog("route resolve: srs rule %q skipped: no cached file", sb.Name)
 		return
 	}
-	if !emittedTags[tag] {
+	// Запись rule_set на каждый набор правила (репорт 1.5.5: из трёх srs в
+	// одном правиле эмитился первый). Теги — corestate.SrsRuleSetTag: первый
+	// набор держит исторический "user:<id>", остальные "user:<id>:N".
+	tags := make([]string, 0, len(paths))
+	for i, path := range paths {
+		tag := corestate.SrsRuleSetTag(id, i)
+		tags = append(tags, tag)
+		if emittedTags[tag] {
+			continue
+		}
 		rs := map[string]interface{}{
 			"tag":    tag,
 			"type":   "local",
@@ -396,7 +407,11 @@ func resolveSrsRouteRule(
 		})
 		emittedTags[tag] = true
 	}
-	routeRule := map[string]interface{}{"rule_set": tag}
+	var ruleSetRef interface{} = tags[0]
+	if len(tags) > 1 {
+		ruleSetRef = tags
+	}
+	routeRule := map[string]interface{}{"rule_set": ruleSetRef}
 	routeRule = outboundutil.ApplyOutboundToRule(routeRule, sb.Outbound)
 	out.Rules = append(out.Rules, ResolvedRouteRule{
 		Body:    routeRule,

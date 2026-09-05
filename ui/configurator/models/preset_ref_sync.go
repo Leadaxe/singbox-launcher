@@ -300,25 +300,27 @@ func customRuleStateToV6Rule(rs *RuleState) *state.Rule {
 	label := rs.Rule.Label
 	outbound := rs.SelectedOutbound
 
-	// kind=srs если есть rule_set'ы remote
+	// kind=srs если есть rule_set'ы remote. Берутся ВСЕ remote-URL правила,
+	// а не первый: диалог принимает список, и выход из цикла на первом
+	// совпадении молча терял остальные наборы (репорт 1.5.5).
 	if len(rs.Rule.RuleSets) > 0 {
+		urls := make([]string, 0, len(rs.Rule.RuleSets))
 		for _, rsRaw := range rs.Rule.RuleSets {
 			var probe struct {
 				Type string `json:"type"`
 				URL  string `json:"url"`
 			}
 			if err := json.Unmarshal(rsRaw, &probe); err == nil && probe.Type == "remote" && probe.URL != "" {
-				body, _ := json.Marshal(state.SrsBody{
-					Name:     label,
-					SrsURL:   probe.URL,
-					Outbound: outbound,
-				})
-				return &state.Rule{
-					Kind:     state.RuleKindSrs,
-					Enabled:  rs.Enabled,
-					OrderNum: copyOrderNum(rs.OrderNum),
-					Body:     body,
-				}
+				urls = append(urls, probe.URL)
+			}
+		}
+		if len(urls) > 0 {
+			body, _ := json.Marshal(state.NewSrsBody(label, urls, outbound))
+			return &state.Rule{
+				Kind:     state.RuleKindSrs,
+				Enabled:  rs.Enabled,
+				OrderNum: copyOrderNum(rs.OrderNum),
+				Body:     body,
 			}
 		}
 	}

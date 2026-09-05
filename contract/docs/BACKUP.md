@@ -194,6 +194,7 @@
 | `rules[].kind` | обе | `inline\|srs\|preset\|json`; чужой `kind` пропускается с warning |
 | `rules[].num` | обе | общая ось порядка; импортёр перенумеровывает, сохраняя относительный порядок |
 | `rules[].outbound`, `ref`, `name`, `vars`, `match`, `enabled` | обе | |
+| `rules[].refs` | обе (черновик D-099, ждёт LxBox) | `kind=srs`: все URL наборов ОДНОГО правила по порядку, `ref` = `refs[0]`; пишется только при двух и более. Импортёр берёт `refs`, без него — `ref`; сторона без поддержки читает `ref` и получает первый набор — то же, что до поля |
 | `rules[].dns`, `rules[].resolve` | LxBox | лаунчер отбрасывает с warning |
 | `dns.servers[]`, `dns.rules[]`, `dns.final`, `dns.strategy` | обе | тела переносятся только у `kind=user` |
 | `vars` | обе | только `portable=true` из реестра |

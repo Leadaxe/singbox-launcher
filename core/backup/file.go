@@ -291,9 +291,11 @@ var (
 		"include_block": true, "include": true,
 		"interrupt_exist_connections": true, "auto": true,
 	}
+	// refs — kind=srs, все наборы одного правила (черновик D-099): объявлено
+	// в схеме, поэтому не «непонятое», а поле, которое импортёр применяет.
 	ruleKeys = map[string]bool{
 		"kind": true, "name": true, "enabled": true, "num": true,
-		"outbound": true, "ref": true, "vars": true, "match": true,
+		"outbound": true, "ref": true, "refs": true, "vars": true, "match": true,
 		"dns": true, "resolve": true,
 	}
 	directionAutoKeys = map[string]bool{

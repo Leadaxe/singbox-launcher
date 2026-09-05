@@ -1,0 +1,29 @@
+{
+  "lx_backup": 1,
+  "exported_by": {
+    "app": "launcher",
+    "version": "1.5.6"
+  },
+  "exported_at": "2026-09-05T00:00:00Z",
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "Multi",
+      "outbound": "direct",
+      "num": 1000,
+      "ref": "https://example.com/rules/a.srs",
+      "refs": [
+        "https://example.com/rules/a.srs",
+        "https://example.com/rules/b.srs",
+        "https://example.com/rules/c.srs"
+      ]
+    },
+    {
+      "kind": "srs",
+      "name": "Single",
+      "outbound": "direct",
+      "num": 1001,
+      "ref": "https://example.com/rules/d.srs"
+    }
+  ]
+}
