@@ -163,99 +163,15 @@ type Node struct {
 	// в диагностику fetch, и переводить его на месте значило бы завести две
 	// формулировки одной причины.
 	Reason string `json:"reason,omitempty"`
-	// Sections — сопутствующие фрагменты конфига узла (SPEC 121): DNS-серверы,
-	// DNS-правила и правила маршрута, которые живут и умирают вместе с ним.
-	// nil = секций нет (подавляющее большинство узлов).
+	// Sections — фрагмент состояния, который узел носит с собой (SPEC 121
+	// §10): route-правила и DNS-записи в формате лаунчера. nil = секций нет
+	// (подавляющее большинство узлов). См. node_sections.go.
 	//
 	// Только kind=server: у подписочных узлов свободы нет
 	// (features/sources.md §Свобода), у цепочек, Auto и unsupported секций не
 	// бывает по построению. Поле обнуляется у остальных видов при чтении
 	// состояния (NormalizeNodeSections).
 	Sections *NodeSections `json:"sections,omitempty"`
-}
-
-// NodeSections — набор фрагментов конфига, которые узел носит с собой
-// (SPEC 121 §3.1).
-//
-// Фрагменты хранятся СЫРЫМИ (json.RawMessage): порядок ключей внутри тела
-// значим ровно так же, как у Node.Body, а прогон через
-// map[string]interface{} его теряет. Разворачивание (подстановка @self,
-// префиксы тегов) живёт в сборке — здесь только хранение.
-type NodeSections struct {
-	// DNSServers — записи для dns.servers[]; локальный тег сервера получает
-	// на сборке префикс «<финальный тег узла>:».
-	DNSServers []json.RawMessage `json:"dns_servers,omitempty"`
-	// DNSRules — записи для dns.rules[].
-	DNSRules []json.RawMessage `json:"dns_rules,omitempty"`
-	// Rules — записи для route.rules[]; встают на ось порядка одним якорем
-	// (state.Rule вида RuleKindNode).
-	Rules []json.RawMessage `json:"rules,omitempty"`
-}
-
-// IsEmpty — набор не несёт ни одного фрагмента.
-func (ns *NodeSections) IsEmpty() bool {
-	return ns == nil || (len(ns.DNSServers) == 0 && len(ns.DNSRules) == 0 && len(ns.Rules) == 0)
-}
-
-// HasRules — у набора есть правила маршрута, то есть узлу положен якорь на
-// оси порядка (SPEC 121 §4 п. 6).
-func (ns *NodeSections) HasRules() bool {
-	return ns != nil && len(ns.Rules) > 0
-}
-
-// normalizeSectionsOfSources прогоняет NormalizeNodeSections по всему дереву
-// источников: корневые узлы и члены контейнеров.
-func normalizeSectionsOfSources(sources []Source) {
-	for i := range sources {
-		sources[i].Node.NormalizeNodeSections()
-		for j := range sources[i].Nodes {
-			sources[i].Nodes[j].NormalizeNodeSections()
-		}
-	}
-}
-
-// NodeSectionLinks собирает ссылки на узлы, у которых есть правила маршрута
-// в секциях (SPEC 121 §4 п. 6): вход для SeedNodeRules.
-//
-// FolderID у члена контейнера — ULID источника; у корневого узла пусто, как и
-// у всякой ссылки в корневое пространство тегов.
-func NodeSectionLinks(sources []Source) []NodeLink {
-	var out []NodeLink
-	for i := range sources {
-		src := &sources[i]
-		switch src.Kind {
-		case SourceKindServer:
-			// Тег корневого узла — тот, под которым его знает конфиг
-			// (canonicalProjection берёт NodeTagOrLabel); ссылка обязана
-			// говорить о том же имени, иначе якорь не найдёт свои секции.
-			if src.Node.Sections.HasRules() {
-				out = append(out, NodeLink{Tag: src.NodeTagOrLabel()})
-			}
-		case SourceKindFolder, SourceKindSubscription:
-			for j := range src.Nodes {
-				n := &src.Nodes[j]
-				if n.Kind == SourceKindServer && n.Sections.HasRules() {
-					out = append(out, NodeLink{FolderID: src.ID, Tag: n.Tag})
-				}
-			}
-		}
-	}
-	return out
-}
-
-// NormalizeNodeSections приводит поле к канону: пустой набор — в nil, и у
-// любого вида, кроме server, секций не остаётся вовсе.
-//
-// Зовётся и на чтении состояния, и перед записью: пустой объект `{}` в
-// state.json был бы третьим состоянием поля (nil / пусто / есть), а разбирать
-// его пришлось бы каждому потребителю.
-func (n *Node) NormalizeNodeSections() {
-	if n == nil {
-		return
-	}
-	if n.Kind != SourceKindServer || n.Sections.IsEmpty() {
-		n.Sections = nil
-	}
 }
 
 // IsUnsupported — узел является нематериализованной записью тела.

@@ -238,25 +238,26 @@ type CanonicalNode struct {
 	// Service — узел служебный (релей BYPASS, SPEC 120): в конфиг идёт, в
 	// пользовательский выбор — нет.
 	Service bool
-	// Sections — сопутствующие фрагменты конфига узла (SPEC 121), сырые.
-	// nil у всех видов, кроме server, и у подавляющего большинства серверов.
+	// Sections — фрагмент состояния, который узел носит с собой (SPEC 121
+	// §10). nil у всех видов, кроме server, и у подавляющего большинства
+	// серверов.
 	Sections *NodeSections
 }
 
-// NodeSections — секции узла в сборочной форме (зеркало state.NodeSections;
-// state сюда импортировать нельзя — цикл).
+// NodeSections — секции узла в сборочной форме.
 //
-// Тела сырые: порядок ключей значим, а подстановка `@self` и префиксы тегов
-// делаются на эмиссии, когда финальный тег узла уже известен.
+// Тело НЕПРОЗРАЧНО (сериализованный state.NodeSections): configtypes —
+// leaf-пакет и core/state импортировать не может, а второе зеркало записей
+// правил и DNS разошлось бы с оригиналом на первой же правке. Пакеты, которым
+// нужны сами записи (core/build, core/state), разбирают этот блок обратно.
 type NodeSections struct {
-	DNSServers []json.RawMessage
-	DNSRules   []json.RawMessage
-	Rules      []json.RawMessage
+	// Raw — объект `sections` в форме хранения (SPEC 121 §10.1).
+	Raw json.RawMessage
 }
 
-// IsEmpty — набор не несёт ни одного фрагмента.
+// IsEmpty — набор не несёт ни одной записи.
 func (ns *NodeSections) IsEmpty() bool {
-	return ns == nil || (len(ns.DNSServers) == 0 && len(ns.DNSRules) == 0 && len(ns.Rules) == 0)
+	return ns == nil || len(ns.Raw) == 0
 }
 
 // CanonicalAutoGroup — провайдерская группа канона в сборочной форме.

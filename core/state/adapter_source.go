@@ -14,7 +14,10 @@
 package state
 
 import (
+	"encoding/json"
+
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/internal/debuglog"
 )
 
 // ToProxySourceV4 — конвертит Source (v7) в сборочную configtypes.ProxySource.
@@ -169,10 +172,10 @@ func canonicalNodeProjection(n *Node) configtypes.CanonicalNode {
 	// Секции (SPEC 121) — только у server: у остальных видов поле снято ещё
 	// нормализацией формы, но проекция не полагается на это молча.
 	if n.Kind == SourceKindServer && !n.Sections.IsEmpty() {
-		out.Sections = &configtypes.NodeSections{
-			DNSServers: n.Sections.DNSServers,
-			DNSRules:   n.Sections.DNSRules,
-			Rules:      n.Sections.Rules,
+		if raw, err := json.Marshal(n.Sections); err == nil {
+			out.Sections = &configtypes.NodeSections{Raw: raw}
+		} else {
+			debuglog.WarnLog("canonical projection: node %q sections cannot be encoded (%v) — node goes without them", n.Tag, err)
 		}
 	}
 	if n.Origin != nil {
@@ -290,9 +293,13 @@ func NodeSectionsFromConfigTypes(ns *configtypes.NodeSections) *NodeSections {
 	if ns.IsEmpty() {
 		return nil
 	}
-	return &NodeSections{
-		DNSServers: ns.DNSServers,
-		DNSRules:   ns.DNSRules,
-		Rules:      ns.Rules,
+	var out NodeSections
+	if err := json.Unmarshal(ns.Raw, &out); err != nil {
+		debuglog.WarnLog("node sections: cannot read sections coming from the parser (%v) — node goes without them", err)
+		return nil
 	}
+	if out.IsEmpty() {
+		return nil
+	}
+	return &out
 }

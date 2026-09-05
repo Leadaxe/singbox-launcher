@@ -30,6 +30,12 @@
 // Ссылки на узел переписываются в `@self` — связка обязана пережить
 // переименование узла.
 //
+// # Хранимая форма
+//
+// Собранные фрагменты переводит в записи состояния ОДНА общая функция
+// (state.NodeSectionsFromSingbox) — та же, которой пользуется вкладка JSON
+// узла и конструктор Tailscale. Здесь только отбор «что связано с узлом».
+//
 // # Ограничение
 //
 // Порядок ключей внутри взятого фрагмента здесь НЕ сохраняется: импорт
@@ -45,11 +51,9 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 )
-
-// nodeSectionsSelfVar — плейсхолдер «финальный тег этого узла» (SPEC 121).
-const nodeSectionsSelfVar = "@self"
 
 // ExtractNodeSections вынимает секции единственного узла конфига.
 //
@@ -63,7 +67,8 @@ func ExtractNodeSections(cfg map[string]interface{}, nodeTag string) *configtype
 		return nil
 	}
 
-	out := &configtypes.NodeSections{}
+	var picked state.SingboxNodeFragments
+	picked.NodeTag = nodeTag
 
 	// Шаг 1: DNS-серверы, привязанные к узлу. Их локальные теги нужны шагу 2 —
 	// правило берётся, только если ссылается на СВОЙ сервер; правило на
@@ -77,16 +82,16 @@ func ExtractNodeSections(cfg map[string]interface{}, nodeTag string) *configtype
 			if tag := mapString(srv, "tag"); tag != "" {
 				ownServerTags[tag] = true
 			}
-			if raw, ok := marshalNodeSectionFragment(srv, nodeTag); ok {
-				out.DNSServers = append(out.DNSServers, raw)
+			if raw, ok := marshalNodeSectionFragment(srv); ok {
+				picked.DNSServers = append(picked.DNSServers, raw)
 			}
 		}
 		for _, rule := range jsonObjectList(dns["rules"]) {
 			if srv := mapString(rule, "server"); srv == "" || !ownServerTags[srv] {
 				continue
 			}
-			if raw, ok := marshalNodeSectionFragment(rule, nodeTag); ok {
-				out.DNSRules = append(out.DNSRules, raw)
+			if raw, ok := marshalNodeSectionFragment(rule); ok {
+				picked.DNSRules = append(picked.DNSRules, raw)
 			}
 		}
 	}
@@ -103,16 +108,29 @@ func ExtractNodeSections(cfg map[string]interface{}, nodeTag string) *configtype
 				debuglog.WarnLog("Parser: node sections: route rule for %q references a rule set — skipped", nodeTag)
 				continue
 			}
-			if raw, ok := marshalNodeSectionFragment(rule, nodeTag); ok {
-				out.Rules = append(out.Rules, raw)
+			if raw, ok := marshalNodeSectionFragment(rule); ok {
+				picked.RouteRules = append(picked.RouteRules, raw)
 			}
 		}
 	}
 
-	if out.IsEmpty() {
+	sections, err := state.NodeSectionsFromSingbox(picked)
+	if err != nil {
+		// Отбор здесь уже отсеял всё, что перевод считает отказом (rule_set),
+		// но конфиг пишет человек: остаётся чужая `@var` в строке. Узел
+		// приезжает без секций, а причина называется вслух.
+		debuglog.WarnLog("Parser: node sections for %q not taken: %v", nodeTag, err)
 		return nil
 	}
-	return out
+	if sections.IsEmpty() {
+		return nil
+	}
+	raw, err := json.Marshal(sections)
+	if err != nil {
+		debuglog.WarnLog("Parser: node sections for %q not serializable: %v", nodeTag, err)
+		return nil
+	}
+	return &configtypes.NodeSections{Raw: raw}
 }
 
 // SingleSectionCarrierTag — тег узла, которому принадлежит связка конфига, или
@@ -142,44 +160,19 @@ func SingleSectionCarrierTag(cfg map[string]interface{}) string {
 	return strings.TrimSpace(tag)
 }
 
-// marshalNodeSectionFragment — копия фрагмента с переписанной ссылкой на узел.
+// marshalNodeSectionFragment — сериализованная копия фрагмента.
 //
-// Ссылка ищется по ЗНАЧЕНИЮ во всём фрагменте, а не в перечне полей: она может
-// стоять в `outbound`, `detour`, `endpoint`, `server` — и следующее поле
-// перечислять забудут.
-func marshalNodeSectionFragment(obj map[string]interface{}, nodeTag string) (json.RawMessage, bool) {
-	replaced := replaceJSONStringValue(copyJSONMap(obj), nodeTag, nodeSectionsSelfVar)
-	raw, err := json.Marshal(replaced)
+// Перепись ссылки на узел в `@self` здесь НЕ делается: её делает общий
+// перевод (state.NodeSectionsFromSingbox по полю NodeTag) — по значению во
+// всём фрагменте, потому что ссылка может стоять в `outbound`, `detour`,
+// `endpoint`, `server`, и следующее поле перечислять забудут.
+func marshalNodeSectionFragment(obj map[string]interface{}) (json.RawMessage, bool) {
+	raw, err := json.Marshal(copyJSONMap(obj))
 	if err != nil {
 		debuglog.WarnLog("Parser: node sections: fragment not serializable: %v", err)
 		return nil, false
 	}
 	return json.RawMessage(raw), true
-}
-
-// replaceJSONStringValue заменяет каждое строковое ЗНАЧЕНИЕ, равное from, на
-// to. Ключи не трогаются: ключ — имя поля sing-box, а не ссылка.
-func replaceJSONStringValue(v interface{}, from, to string) interface{} {
-	switch t := v.(type) {
-	case string:
-		if t == from {
-			return to
-		}
-		return t
-	case []interface{}:
-		out := make([]interface{}, len(t))
-		for i := range t {
-			out[i] = replaceJSONStringValue(t[i], from, to)
-		}
-		return out
-	case map[string]interface{}:
-		out := make(map[string]interface{}, len(t))
-		for k, val := range t {
-			out[k] = replaceJSONStringValue(val, from, to)
-		}
-		return out
-	}
-	return v
 }
 
 // jsonObjectList — список объектов из значения секции; чужие формы (не массив,
@@ -198,20 +191,44 @@ func jsonObjectList(v interface{}) []map[string]interface{} {
 	return out
 }
 
+// nodeSectionEntryCount — сколько записей несёт извлечённая связка (для
+// счётчика результата и лога).
+func nodeSectionEntryCount(ns *configtypes.NodeSections) int {
+	decoded := decodeNodeSections(ns)
+	if decoded == nil {
+		return 0
+	}
+	return len(decoded.DNSServers()) + len(decoded.DNSRules()) + len(decoded.Rules)
+}
+
+// decodeNodeSections разбирает непрозрачный блок сборочной формы обратно в
+// записи состояния.
+func decodeNodeSections(ns *configtypes.NodeSections) *state.NodeSections {
+	if ns.IsEmpty() {
+		return nil
+	}
+	var decoded state.NodeSections
+	if err := json.Unmarshal(ns.Raw, &decoded); err != nil {
+		return nil
+	}
+	return &decoded
+}
+
 // sortedNodeSectionKinds — виды извлечённых фрагментов для лога, в
 // детерминированном порядке.
 func sortedNodeSectionKinds(ns *configtypes.NodeSections) []string {
-	if ns == nil {
+	decoded := decodeNodeSections(ns)
+	if decoded == nil {
 		return nil
 	}
 	var out []string
-	if len(ns.DNSServers) > 0 {
+	if len(decoded.DNSServers()) > 0 {
 		out = append(out, "dns.servers")
 	}
-	if len(ns.DNSRules) > 0 {
+	if len(decoded.DNSRules()) > 0 {
 		out = append(out, "dns.rules")
 	}
-	if len(ns.Rules) > 0 {
+	if len(decoded.Rules) > 0 {
 		out = append(out, "route.rules")
 	}
 	sort.Strings(out)
@@ -223,5 +240,5 @@ func sortedNodeSectionKinds(ns *configtypes.NodeSections) []string {
 // который «Add server» и окно папки отдают общему парсеру как целый конфиг:
 // без этого равенства связка из формы терялась бы на папочном пути.
 func refersToNode(ref, nodeTag string) bool {
-	return ref != "" && (ref == nodeTag || ref == nodeSectionsSelfVar)
+	return ref != "" && (ref == nodeTag || ref == state.SelfPlaceholder)
 }

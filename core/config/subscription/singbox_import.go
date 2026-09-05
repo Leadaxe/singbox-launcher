@@ -243,7 +243,7 @@ func parseSingboxConfig(
 		if sectionCarrier != "" && rawTag == sectionCarrier {
 			if ns := ExtractNodeSections(cfg, sectionCarrier); ns != nil {
 				node.Sections = ns
-				n := len(ns.DNSServers) + len(ns.DNSRules) + len(ns.Rules)
+				n := nodeSectionEntryCount(ns)
 				result.SectionFragments += n
 				debuglog.InfoLog("Parser: singbox import: node %q carries %d config fragment(s) (%s)",
 					sectionCarrier, n, strings.Join(sortedNodeSectionKinds(ns), ", "))
