@@ -104,7 +104,15 @@ type DragReorderGroup struct {
 	// indicator is the insertion line, parented to the canvas overlay so it can
 	// paint across row boundaries without taking part in layout.
 	indicator *canvas.Rectangle
-	canvas    fyne.Canvas
+	// wrapper — контейнер-обёртка индикатора, положенный в стек overlay-ев
+	// канваса. Снимать его надо ПО ССЫЛКЕ, а не «верхний из стека»: пока
+	// в canvas.Overlays() лежит хоть один overlay, Fyne ищет цель клика
+	// только внутри него и до контента окна не доходит вовсе, так что
+	// забытая здесь обёртка = окно перестаёт отвечать целиком при живом
+	// процессе (фриз 07–08.09.2026: Go жив, главный цикл свободен, клики
+	// в никуда).
+	wrapper fyne.CanvasObject
+	canvas  fyne.Canvas
 
 	dropTarget int
 
@@ -143,6 +151,10 @@ func NewDragReorderGroup(onReorder func(from, to int)) *DragReorderGroup {
 // чужую полосу.
 func (g *DragReorderGroup) Reset() {
 	g.rows = nil
+	// Список перестраивается — прежние полосы недействительны, и индикатор,
+	// нарисованный по ним, тоже. Идущее перетаскивание не страдает: следующий
+	// Dragged поднимет индикатор заново по свежим строкам.
+	g.hideIndicator()
 }
 
 func (g *DragReorderGroup) Register(idx int, row fyne.CanvasObject) {
@@ -320,7 +332,8 @@ func (g *DragReorderGroup) showIndicator(target, from int, c fyne.Canvas) {
 	if g.indicator == nil {
 		g.indicator = canvas.NewRectangle(theme.Color(theme.ColorNamePrimary))
 		g.canvas = c
-		c.Overlays().Add(container.NewWithoutLayout(g.indicator))
+		g.wrapper = container.NewWithoutLayout(g.indicator)
+		c.Overlays().Add(g.wrapper)
 	}
 	pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(row)
 	g.indicator.Resize(fyne.NewSize(row.Size().Width, dropLineThickness))
@@ -335,15 +348,41 @@ func (g *DragReorderGroup) hideIndicator() {
 		return
 	}
 	g.indicator.Hide()
-	if g.canvas != nil {
-		// Overlays are a stack; the wrapper we pushed is the top one as long as
-		// no dialog opened mid-drag. Remove() is index-free and safe either way.
-		if top := g.canvas.Overlays().Top(); top != nil {
-			g.canvas.Overlays().Remove(top)
-		}
+	if g.canvas != nil && g.wrapper != nil {
+		removeOverlayKeepingAbove(g.canvas, g.wrapper)
 	}
 	g.indicator = nil
+	g.wrapper = nil
 	g.canvas = nil
+}
+
+// removeOverlayKeepingAbove снимает ИМЕННО target из стека overlay-ев, не
+// трогая то, что легло поверх него (диалог, открывшийся посреди броска).
+//
+// Прежний код снимал Overlays().Top() — «верхний, кто бы он ни был». Если
+// поверх индикатора успевал встать чужой overlay, снимался он, а обёртка
+// индикатора оставалась в стеке навсегда: Fyne отдаёт клики только верхнему
+// overlay-у, и окно переставало реагировать при полностью живом процессе.
+// Overlays().Remove(x) по контракту Fyne удаляет x и всё над ним, поэтому
+// верхние overlay-и снимаются и возвращаются в прежнем порядке.
+func removeOverlayKeepingAbove(c fyne.Canvas, target fyne.CanvasObject) {
+	stack := c.Overlays()
+	list := stack.List()
+	idx := -1
+	for i, o := range list {
+		if o == target {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return
+	}
+	above := append([]fyne.CanvasObject(nil), list[idx+1:]...)
+	stack.Remove(target)
+	for _, o := range above {
+		stack.Add(o)
+	}
 }
 
 // autoScroll nudges the viewport when the pointer nears its edge during a drag.
@@ -494,7 +533,15 @@ func (h *DragHandle) Dragged(e *fyne.DragEvent) {
 
 // DragEnd implements fyne.Draggable.
 func (h *DragHandle) DragEnd() {
-	if h.group == nil || !h.dragging {
+	if h.group == nil {
+		return
+	}
+	// Индикатор снимается при ЛЮБОМ завершении броска, даже если этот захват
+	// его не начинал (список пересобрали посреди броска — DragEnd прилетает
+	// старому захвату, а индикатор висит на группе): забытая обёртка в
+	// overlay-ах глушит клики по всему окну.
+	h.group.hideIndicator()
+	if !h.dragging {
 		return
 	}
 	h.dragging = false
@@ -502,7 +549,6 @@ func (h *DragHandle) DragEnd() {
 	// и оставленный флаг заморозил бы окно строк навсегда.
 	h.group.dragging = false
 	h.refreshGrip()
-	h.group.hideIndicator()
 
 	to := h.group.dropTarget
 	if to == h.index || h.group.OnReorder == nil {
