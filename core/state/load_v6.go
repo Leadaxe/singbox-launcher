@@ -179,6 +179,20 @@ func legacyDevDNSToOptions(legacy json.RawMessage) DNSOptions {
 	return out
 }
 
+// RebuildLegacyRuleView пересобирает legacy-вид CustomRules из канона Rules.
+//
+// Вид строится при чтении с диска (load_v6 / disk_v7), но состояние, собранное
+// в памяти и затем ПЕРЕПИСАННОЕ мимо диска — импорт бэкапа заменяет Rules[]
+// целиком — его не обновляет. LoadState визарда берёт inline/srs-правила именно
+// из CustomRules, так что без пересборки импортированные правила приезжали в
+// Rules, честно считались «применёнными» и исчезали из UI (issue #111).
+func RebuildLegacyRuleView(s *State) {
+	if s == nil {
+		return
+	}
+	s.CustomRules = legacyCustomRulesFromV6(s.Rules)
+}
+
 // legacyCustomRulesFromV6 — конвертирует Rules[] в legacy CustomRule view.
 //
 // Только kind=inline/srs конвертируются. kind=preset пропускается (не имеет

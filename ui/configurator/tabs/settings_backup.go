@@ -196,6 +196,9 @@ func applyBackup(presenter *wizardpresentation.WizardPresenter, win fyne.Window,
 		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Import failed"), err), win)
 		return
 	}
+	// Import заменил Rules[] мимо диска, а LoadState читает inline/srs-правила
+	// из legacy-вида CustomRules — без пересборки они терялись (issue #111).
+	corestate.RebuildLegacyRuleView(st)
 
 	if err := presenter.LoadState(st); err != nil {
 		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Failed to restore state"), err), win)

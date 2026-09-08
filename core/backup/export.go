@@ -530,6 +530,13 @@ func exportVars(vars []state.SettingVar) map[string]string {
 }
 
 func routeFinal(s *state.State) string {
+	// vars["route_final"] — канонический канал лаунчера (config_params он не
+	// заполняет вовсе); config_params — legacy-состояния и чужие фикстуры.
+	for _, v := range s.Vars {
+		if v.Name == "route_final" && v.Value != "" {
+			return v.Value
+		}
+	}
 	for _, p := range s.ConfigParams {
 		if p.Name == "final" || p.Name == "route.final" {
 			return p.Value

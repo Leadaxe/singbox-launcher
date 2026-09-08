@@ -90,8 +90,8 @@ func richState() *state.State {
 	s.Vars = []state.SettingVar{
 		{Name: "log_level", Value: "debug"},
 		{Name: "tun_interface", Value: "utun9"},
+		{Name: "route_final", Value: "vpn-de"},
 	}
-	s.ConfigParams = []state.ConfigParam{{Name: "final", Value: "vpn-de"}}
 	s.DNS.Final = "dns_shield"
 	s.DNS.Strategy = "ipv4_only"
 	s.DNS.Servers = []state.DNSServer{

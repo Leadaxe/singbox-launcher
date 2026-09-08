@@ -354,7 +354,10 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 
 	if b.Route != nil && b.Route.Final != "" {
 		if known.empty() || known.has(b.Route.Final) {
-			setConfigParam(s, "final", b.Route.Final)
+			// Канонический канал лаунчера — vars["route_final"]: именно его
+			// читает LoadState и пишет Save. config_params["final"] никто не
+			// читал и не сохранял — Default direction из файла терялся (#111).
+			setVar(s, "route_final", b.Route.Final)
 		} else {
 			res.Warnings = append(res.Warnings, Warning{Code: WarnBackupFinalDropped, Detail: b.Route.Final})
 		}
@@ -765,16 +768,6 @@ func setVar(s *state.State, name, value string) {
 		}
 	}
 	s.Vars = append(s.Vars, state.SettingVar{Name: name, Value: value})
-}
-
-func setConfigParam(s *state.State, name, value string) {
-	for i := range s.ConfigParams {
-		if s.ConfigParams[i].Name == name {
-			s.ConfigParams[i].Value = value
-			return
-		}
-	}
-	s.ConfigParams = append(s.ConfigParams, state.ConfigParam{Name: name, Value: value})
 }
 
 // tagSet — множество известных тегов с нормализацией регистра.

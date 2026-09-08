@@ -412,8 +412,8 @@ func checkRouteFinal(t *testing.T, dst *state.State, exp corpusExpectation) {
 		return
 	}
 	applied := false
-	for _, p := range dst.ConfigParams {
-		if p.Name == "final" && p.Value != "" {
+	for _, v := range dst.Vars {
+		if v.Name == "route_final" && v.Value != "" {
 			applied = true
 		}
 	}
