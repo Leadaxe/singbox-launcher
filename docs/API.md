@@ -222,10 +222,14 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/traffic/live?last=30s" | jq '.ev
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/debug/snapshot` | `core.snapshot.Build()` — template + state + cache + config.json in a single JSON. Ideal for a bug report |
+| GET | `/debug/goroutines` | `runtime.Stack(all)` — stack dump of every goroutine as `text/plain`, the same text Go prints on SIGQUIT, without stopping the process. Header `X-Goroutines` carries the count. For a frozen UI: `goroutine 1` is the Fyne/GLFW main loop |
 
 ```bash
 # Save a full snapshot for a bug report
 curl -s -H "Authorization: Bearer $TOKEN" "$API/debug/snapshot" > snapshot-$(date +%Y%m%d-%H%M%S).json
+
+# UI hung but the process is alive: dump goroutines, look at what goroutine 1 is waiting on
+curl -s -H "Authorization: Bearer $TOKEN" "$API/debug/goroutines" > goroutines-$(date +%Y%m%d-%H%M%S).txt
 ```
 
 Response shape:
@@ -461,6 +465,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
 | `core/debugapi/log_level_endpoint.go` | `/state/log-level` (level validation + core restart via `core.ApplyLogLevelAndReloadCore`) |
 | `core/debugapi/traffic_endpoints.go` | All of `/traffic/*` |
 | `core/debugapi/snapshot.go` | `/debug/snapshot` |
+| `core/debugapi/goroutines.go` | `/debug/goroutines` |
 | `core/debugapi_wiring.go` | The bridge between Server and the controller (StartSingBox, StopSingBox, Update, Rebuild, PingAll) |
 | `internal/locale/settings.go` | `debug_api_enabled`, `debug_api_port`, `debug_api_token` |
 | `ui/settings_tab.go` | UI toggle / Copy token / port entry |

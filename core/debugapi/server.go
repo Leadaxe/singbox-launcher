@@ -241,6 +241,7 @@ func (s *Server) endpoints() []apiEndpoint {
 		{"GET", "/state", true, "Core run state + active proxy/group", s.handleState},
 		{"GET", "/proxies", true, "Proxy list with latencies", s.handleProxies},
 		{"GET", "/debug/snapshot", true, "Diagnostic snapshot (state/config/template)", s.handleSnapshot},
+		{"GET", "/debug/goroutines", true, "Stack dump of all goroutines (text/plain, like SIGQUIT)", s.handleGoroutines},
 		{"POST", "/action/update-subs", true, "Re-fetch subscriptions and rebuild config", s.handleUpdateSubs},
 		{"POST", "/action/start", true, "Start the core", s.handleStart},
 		{"POST", "/action/stop", true, "Stop the core", s.handleStop},

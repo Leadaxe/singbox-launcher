@@ -211,7 +211,7 @@ Local HTTP API on `127.0.0.1`, bearer-auth, off by default. ~30 local endpoints 
 | **State write** | rules / DNS / DNS-rules with `replace` and `append` modes, schema-validated before commit, mutex per state path |
 | **Actions** | start / stop / update-subs / ping-all / rebuild-config — synchronous triggers |
 | **Traffic Profiler control** | start / stop / clear / live snapshot / sessions list / export / drop / processes / verbose toggle |
-| **Snapshot** | `/debug/snapshot` — template + state + cache + config as one JSON for bug reports |
+| **Snapshot & diagnostics** | `/debug/snapshot` — template + state + cache + config as one JSON for bug reports; `/debug/goroutines` — stack dump of every goroutine without stopping the process, for a frozen UI |
 
 Use cases: automation scripts (`bash` + `curl`), MCP wrappers for AI agents, CI/CD validation of new templates, headless deployment, regression fixtures. No public, documented, scriptable HTTP API of this scope exists in any other desktop sing-box client.
 

@@ -222,10 +222,14 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/traffic/live?last=30s" | jq '.ev
 | Метод | Путь | Назначение |
 |---|---|---|
 | GET | `/debug/snapshot` | `core.snapshot.Build()` — template + state + cache + config.json в одном JSON-е. Идеально для bug-report'а |
+| GET | `/debug/goroutines` | `runtime.Stack(all)` — дамп стеков всех горутин как `text/plain`, тот же текст, что Go печатает по SIGQUIT, но без остановки процесса. Заголовок `X-Goroutines` — их число. При зависшем UI: `goroutine 1` — главный цикл Fyne/GLFW |
 
 ```bash
 # Сохранить полный snapshot для bug-report'а
 curl -s -H "Authorization: Bearer $TOKEN" "$API/debug/snapshot" > snapshot-$(date +%Y%m%d-%H%M%S).json
+
+# UI завис, процесс жив: снять горутины и посмотреть, на чём стоит goroutine 1
+curl -s -H "Authorization: Bearer $TOKEN" "$API/debug/goroutines" > goroutines-$(date +%Y%m%d-%H%M%S).txt
 ```
 
 Форма ответа:
@@ -459,6 +463,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
 | `core/debugapi/log_level_endpoint.go` | `/state/log-level` (валидация уровня + core restart через `core.ApplyLogLevelAndReloadCore`) |
 | `core/debugapi/traffic_endpoints.go` | Все `/traffic/*` |
 | `core/debugapi/snapshot.go` | `/debug/snapshot` |
+| `core/debugapi/goroutines.go` | `/debug/goroutines` |
 | `core/debugapi_wiring.go` | Bridge между Server и controller (StartSingBox, StopSingBox, Update, Rebuild, PingAll) |
 | `internal/locale/settings.go` | `debug_api_enabled`, `debug_api_port`, `debug_api_token` |
 | `ui/settings_tab.go` | UI toggle / Copy token / port entry |
