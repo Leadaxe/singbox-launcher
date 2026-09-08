@@ -899,10 +899,20 @@ type SourceChain struct {
 	// Пусто = умолчание ядра (5m), "0s" = жить до остановки.
 	IdleTimeout string `json:"idle_timeout,omitempty"`
 
+	// InterruptExistConnections — рвать ли ВНЕШНИЕ (пользовательские)
+	// соединения цепочки при переключении позиции тумблером (SPEC 075
+	// ядра). Внутренние соединения ядро рвёт всегда; без флага живые потоки
+	// пользователя доживают старым маршрутом, новым идут только новые
+	// дозвоны. Обычный bool, а не указатель: дефолт ядра false, и «не
+	// задано» от «выключено» здесь неотличимо. В конфиг и тело уезжает
+	// только true.
+	InterruptExistConnections bool `json:"interrupt_exist_connections,omitempty"`
+
 	// StripEvasion — снимать ли у звеньев односторонние DPI-приёмы.
 	// Указатель ради трёхзначности: nil = «умолчание ядра» (true),
 	// false = «пользователь выключил явно». Обычный bool не отличил бы
-	// одно от другого — та же причина, что у InterruptExistConnections.
+	// одно от другого — та же причина, что у DirectionAuto.
+	// InterruptExistConnections (там дефолт шаблона может быть true).
 	StripEvasion *bool `json:"strip_evasion,omitempty"`
 
 	// Strip — патч к каталогу ядра поверх StripEvasion.

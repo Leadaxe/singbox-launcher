@@ -1918,22 +1918,24 @@ func showSourceEditWindowAt(
 		// решил бы, что вписал рабочую настройку.
 		if isChainSource {
 			var parsed struct {
-				Outbounds    []string               `json:"outbounds"`
-				IdleTimeout  string                 `json:"idle_timeout"`
-				StripEvasion *bool                  `json:"strip_evasion"`
-				Strip        map[string]bool        `json:"strip"`
-				Rewrite      map[string]interface{} `json:"rewrite"`
+				Outbounds                 []string               `json:"outbounds"`
+				IdleTimeout               string                 `json:"idle_timeout"`
+				InterruptExistConnections bool                   `json:"interrupt_exist_connections"`
+				StripEvasion              *bool                  `json:"strip_evasion"`
+				Strip                     map[string]bool        `json:"strip"`
+				Rewrite                   map[string]interface{} `json:"rewrite"`
 			}
 			if err := json.Unmarshal([]byte(text), &parsed); err != nil {
 				dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
 				return
 			}
 			c := &configtypes.SourceChain{
-				Hops:         parsed.Outbounds,
-				IdleTimeout:  parsed.IdleTimeout,
-				StripEvasion: parsed.StripEvasion,
-				Strip:        parsed.Strip,
-				Rewrite:      parsed.Rewrite,
+				Hops:                      parsed.Outbounds,
+				IdleTimeout:               parsed.IdleTimeout,
+				InterruptExistConnections: parsed.InterruptExistConnections,
+				StripEvasion:              parsed.StripEvasion,
+				Strip:                     parsed.Strip,
+				Rewrite:                   parsed.Rewrite,
 			}
 			// Отвергаем правку, на которой ядро не стартует: показать
 			// ошибку здесь дешевле, чем дать сохранить и обнаружить, что

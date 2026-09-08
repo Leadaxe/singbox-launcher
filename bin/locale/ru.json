@@ -4318,5 +4318,20 @@
   },
   "This node carries AmneziaWG obfuscation fields, but it dials through a detour — the transport is raised by the detour's outbound, so the fields do nothing here and still travel into the config. Clear the detour to edit or remove them.": {
     "value": "У узла есть поля обфускации AmneziaWG, но он ходит через detour: транспорт поднимает outbound detour'а, поэтому поля здесь ничего не делают, а в конфиг всё равно едут. Снимите detour, чтобы их изменить или убрать."
+  },
+  "Interrupt existing connections on position toggle": {
+    "value": "Рвать существующие соединения при переключении позиции"
+  },
+  "Otherwise live connections finish on the old route; only new ones take the new path.": {
+    "value": "Иначе живые соединения дотекают старым маршрутом; новым путём идут только новые."
+  },
+  "starting": {
+    "value": "поднимается"
+  },
+  "active": {
+    "value": "активно"
+  },
+  "idle": {
+    "value": "простаивает"
   }
 }

@@ -114,6 +114,11 @@ func ChainOutboundObject(tag string, c *configtypes.SourceChain) map[string]inte
 	if v := strings.TrimSpace(c.IdleTimeout); v != "" {
 		ob["idle_timeout"] = v
 	}
+	// Только true: false — дефолт ядра, и писать его значило бы
+	// зафиксировать сегодняшнее умолчание навсегда.
+	if c.InterruptExistConnections {
+		ob["interrupt_exist_connections"] = true
+	}
 	if c.StripEvasion != nil {
 		ob["strip_evasion"] = *c.StripEvasion
 	}

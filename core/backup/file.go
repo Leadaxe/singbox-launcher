@@ -306,8 +306,8 @@ var (
 	// спускается намеренно: хоп ссылается на узел выражениями, чей набор
 	// ключей ведёт схема цепочки, а не таблица бэкапа.
 	chainBodyKeys = map[string]bool{
-		"hops": true, "idle_timeout": true, "rewrite": true,
-		"strip": true, "strip_evasion": true,
+		"hops": true, "idle_timeout": true, "interrupt_exist_connections": true,
+		"rewrite": true, "strip": true, "strip_evasion": true,
 	}
 	// warpKeys — поля регистрации WG/MASQUE. Union обоих типов: запись
 	// объявляет свой type, и разбирать её по типу значило бы завести две

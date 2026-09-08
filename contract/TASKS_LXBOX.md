@@ -501,3 +501,32 @@ Amnezia отдаёт AWG 3.x сервер контейнером `amnezia-awg2` 
   деградации — в `registry/warnings.json` (`awg3_*`).
 
 Подробное ТЗ для LxBox владелец пишет отдельно; здесь — контракт данных.
+
+## 11. `chain.interrupt_exist_connections` — флаг разрыва соединений цепочки (приоритет 2)
+
+Контракт 0.12.9. У ядра (SPEC 075, lx.28+) `ChainOutboundOptions` несёт
+`interrupt_exist_connections` (`option/chain_lx.go:26-29`): при переключении
+позиции тумблером в рантайме внутренние соединения рвутся всегда, внешние
+(пользовательские) — только при флаге. Без него живые потоки доживают
+старым маршрутом, новым идут только новые дозвоны.
+
+Что сделал лаунчер (SPEC 124):
+
+- `SourceChain.InterruptExistConnections bool` — обычный bool, не
+  указатель: дефолт ядра false, «не задано» и «выключено» неотличимы;
+- пишется ТОЛЬКО `true` — в конфиг ядра, в тело v7 и в бэкап
+  (`chains[].chain.interrupt_exist_connections`); `false` не эмитится;
+- форма цепочки: галочка «Interrupt existing connections on position
+  toggle» под idle timeout, по умолчанию снята;
+- кейс корпуса `corpus/direction/chain_interrupt_connections`.
+
+Что нужно от LxBox:
+
+1. поле в модели цепочки, чтение/запись бэкапа по схеме
+   `source_chain.schema.json` (необязательное, отсутствие = false);
+2. эмиссия в `chain` outbound одноимённым ключом, только при true;
+3. галочка в форме цепочки, дефолт снят;
+4. прогон кейса корпуса `chain_interrupt_connections` своим раннером.
+
+Ответ — сюда же, статусом под этим параграфом.
+
