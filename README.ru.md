@@ -219,7 +219,7 @@ Keyboard shortcuts (работают независимо от текущей а
 | **State write** | rules / DNS / DNS-rules с режимами `replace` и `append`, schema-validation перед commit'ом, mutex per state path |
 | **Actions** | start / stop / update-subs / ping-all / rebuild-config — синхронные триггеры |
 | **Traffic Profiler control** | start / stop / clear / live snapshot / sessions list / export / drop / processes / verbose toggle |
-| **Snapshot и диагностика** | `/debug/snapshot` — template + state + cache + config одним JSON для bug-report; `/debug/goroutines` — дамп стеков всех горутин без остановки процесса, для зависшего UI |
+| **Snapshot и диагностика** | `/debug/snapshot` — template + state + cache + config одним JSON для bug-report; `/debug/goroutines` — дамп стеков всех горутин без остановки процесса; `/debug/ui` — стек overlay-ев и фокус каждого окна, `/debug/ui/overlays/clear` размораживает окно, заблокированное забытым overlay-ем |
 
 Use cases: скрипты автоматизации (`bash` + `curl`), MCP-обёртки для AI-агентов, CI/CD валидация новых шаблонов, headless deployment, регрессионные фикстуры. Публичного, документированного, скриптуемого HTTP API такого охвата нет ни у одного другого desktop sing-box клиента.
 

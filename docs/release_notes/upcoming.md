@@ -25,6 +25,12 @@
 
 - **`GET /debug/goroutines` — a goroutine dump without killing the launcher.** When the Fyne UI freezes, the Go side usually keeps running: the debug API answers and the hourly heartbeat still logs. Until now there was no way to see what the main loop was waiting on: the launcher's stderr goes to `/dev/null` when started from Finder, so a SIGQUIT dump is lost, and an `lldb` attach kills the process outright. The new endpoint returns the same text Go prints on SIGQUIT — every goroutine's stack as `text/plain`, `X-Goroutines` header with the count — while the process keeps running. `goroutine 1` is the Fyne/GLFW main loop. Take the dump *before* restarting a frozen launcher.
 
+- **`GET /debug/ui` and `POST /debug/ui/overlays/clear` — see and clear the overlay stack.** The snapshot lists each window's canvas size, focused widget and overlay stack (type, position, size, children), which is exactly where a stale overlay shows up; the clear call drops every overlay and gives the window back without a restart. `504 ui loop unresponsive` means the Fyne main loop itself is blocked, which is a different bug. Capability `ui` in the manifest.
+
+### Fixes
+
+- **A drag-and-drop reorder could leave the whole window deaf to clicks.** The insertion line drawn while dragging a row (Sources, Rules, DNS, Directions, folder contents) lives in the canvas overlay stack, and it was removed as "whatever is on top". If anything else had landed on top mid-drag, the wrong overlay was removed and the line's wrapper stayed behind forever — and Fyne routes every click to the top overlay only, so the window kept rendering but ignored all input while the process was perfectly alive (two freezes on 7–8 September, both needing a restart). The wrapper is now removed by identity, anything above it is put back, and every drag end and every list rebuild clears it.
+
 ## RU
 ### Основное
 
@@ -45,3 +51,9 @@
 - **Вставленный wg-quick конфиг больше не теряет маскировку молча.** Разбор INI переносил junk-числа и явные теги `i1`–`i5`, но пропускал `ip` / `id` / `ib`: конфиг с маскировкой выглядел полностью настроенным, а первый decoy-пакет уходил без неё. Тот же сахар теперь сам по себе считается признаком AmneziaWG, из-за чего MTU такого узла ужимается до потолка AmneziaWG — без этого узел отказывает молча: рукопожатие проходит, данные не идут.
 
 - **`GET /debug/goroutines` — дамп горутин без убийства лаунчера.** Когда UI Fyne замирает, Go-часть обычно продолжает жить: debug API отвечает, часовой heartbeat пишется в лог. Увидеть, на чём стоит главный цикл, до сих пор было нечем: stderr лаунчера при запуске из Finder уходит в `/dev/null`, так что дамп по SIGQUIT теряется, а attach через `lldb` процесс просто убивает. Новый эндпоинт отдаёт тот же текст, что Go печатает по SIGQUIT, — стеки всех горутин как `text/plain`, число в заголовке `X-Goroutines` — не останавливая процесс. `goroutine 1` — главный цикл Fyne/GLFW. Снимать дамп нужно *до* перезапуска зависшего лаунчера.
+
+- **`GET /debug/ui` и `POST /debug/ui/overlays/clear` — посмотреть и снять стек overlay-ев.** Снимок перечисляет по каждому окну размер канваса, виджет в фокусе и стек overlay-ев (тип, позиция, размер, дети) — ровно то место, где виден забытый overlay; очистка снимает все overlay-и и возвращает окно без перезапуска. `504 ui loop unresponsive` означает, что заблокирован сам главный цикл Fyne, а это другая ошибка. Capability `ui` в манифесте.
+
+### Исправления
+
+- **Перетаскивание строки могло оставить всё окно глухим к кликам.** Линия вставки, которая рисуется при перетаскивании строки (Sources, Rules, DNS, Направления, состав папки), живёт в стеке overlay-ев канваса, а снималась как «верхний, кто бы он ни был». Если посреди броска поверх неё успевало лечь что-то ещё, снималось оно, а обёртка линии оставалась навсегда — Fyne же отдаёт любой клик только верхнему overlay-у, так что окно продолжало рисоваться, но не реагировало на ввод при полностью живом процессе (два фриза 7–8 сентября, оба лечились перезапуском). Теперь обёртка снимается по ссылке, лежавшее поверх возвращается на место, а любое завершение броска и любая пересборка списка её убирают.

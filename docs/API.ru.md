@@ -223,6 +223,8 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/traffic/live?last=30s" | jq '.ev
 |---|---|---|
 | GET | `/debug/snapshot` | `core.snapshot.Build()` — template + state + cache + config.json в одном JSON-е. Идеально для bug-report'а |
 | GET | `/debug/goroutines` | `runtime.Stack(all)` — дамп стеков всех горутин как `text/plain`, тот же текст, что Go печатает по SIGQUIT, но без остановки процесса. Заголовок `X-Goroutines` — их число. При зависшем UI: `goroutine 1` — главный цикл Fyne/GLFW |
+| GET | `/debug/ui` | Окна Fyne: размер канваса, тип контента, виджет в фокусе и **стек overlay-ев** каждого окна (тип, позиция, размер, дети). Capability `ui`. Fyne отдаёт любой клик только верхнему overlay-у, поэтому забытый overlay делает окно глухим к вводу при живом процессе — здесь это видно |
+| POST | `/debug/ui/overlays/clear` | Снять все overlay-и во всех окнах — размораживает окно, заблокированное забытым overlay-ем, без перезапуска. Закроет и открытые диалоги/попапы. `504 ui loop unresponsive` = заблокирован сам главный цикл Fyne |
 
 ```bash
 # Сохранить полный snapshot для bug-report'а
@@ -230,6 +232,11 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/debug/snapshot" > snapshot-$(dat
 
 # UI завис, процесс жив: снять горутины и посмотреть, на чём стоит goroutine 1
 curl -s -H "Authorization: Bearer $TOKEN" "$API/debug/goroutines" > goroutines-$(date +%Y%m%d-%H%M%S).txt
+
+# Окно не реагирует на клики, процесс жив: не застрял ли overlay на канвасе?
+curl -s -H "Authorization: Bearer $TOKEN" "$API/debug/ui" | jq '.windows[] | {title, focused, overlays}'
+# Да → снять и вернуть окно без перезапуска
+curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API/debug/ui/overlays/clear"
 ```
 
 Форма ответа:
@@ -464,6 +471,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
 | `core/debugapi/traffic_endpoints.go` | Все `/traffic/*` |
 | `core/debugapi/snapshot.go` | `/debug/snapshot` |
 | `core/debugapi/goroutines.go` | `/debug/goroutines` |
+| `core/debugapi/ui_endpoints.go` + `core/debugapi_ui.go` | `/debug/ui`, `/debug/ui/overlays/clear` (инспектор Fyne живёт в core, подключается через `EnableUI`) |
 | `core/debugapi_wiring.go` | Bridge между Server и controller (StartSingBox, StopSingBox, Update, Rebuild, PingAll) |
 | `internal/locale/settings.go` | `debug_api_enabled`, `debug_api_port`, `debug_api_token` |
 | `ui/settings_tab.go` | UI toggle / Copy token / port entry |

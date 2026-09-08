@@ -223,6 +223,8 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/traffic/live?last=30s" | jq '.ev
 |---|---|---|
 | GET | `/debug/snapshot` | `core.snapshot.Build()` — template + state + cache + config.json in a single JSON. Ideal for a bug report |
 | GET | `/debug/goroutines` | `runtime.Stack(all)` — stack dump of every goroutine as `text/plain`, the same text Go prints on SIGQUIT, without stopping the process. Header `X-Goroutines` carries the count. For a frozen UI: `goroutine 1` is the Fyne/GLFW main loop |
+| GET | `/debug/ui` | Fyne windows: canvas size, content type, focused widget and the **overlay stack** of each window (type, position, size, children). Capability `ui`. Fyne routes every click to the top overlay only, so a stale overlay makes a window ignore input while the process stays alive: this is where you see it |
+| POST | `/debug/ui/overlays/clear` | Remove every canvas overlay in every window — unfreezes a window blocked by a stale overlay without restarting. Also closes any open dialog/popup. `504 ui loop unresponsive` means the Fyne main loop itself is blocked |
 
 ```bash
 # Save a full snapshot for a bug report
@@ -230,6 +232,11 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/debug/snapshot" > snapshot-$(dat
 
 # UI hung but the process is alive: dump goroutines, look at what goroutine 1 is waiting on
 curl -s -H "Authorization: Bearer $TOKEN" "$API/debug/goroutines" > goroutines-$(date +%Y%m%d-%H%M%S).txt
+
+# Window ignores clicks but the process is alive: is an overlay stuck on the canvas?
+curl -s -H "Authorization: Bearer $TOKEN" "$API/debug/ui" | jq '.windows[] | {title, focused, overlays}'
+# Yes → drop it and get the window back without a restart
+curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API/debug/ui/overlays/clear"
 ```
 
 Response shape:
@@ -466,6 +473,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
 | `core/debugapi/traffic_endpoints.go` | All of `/traffic/*` |
 | `core/debugapi/snapshot.go` | `/debug/snapshot` |
 | `core/debugapi/goroutines.go` | `/debug/goroutines` |
+| `core/debugapi/ui_endpoints.go` + `core/debugapi_ui.go` | `/debug/ui`, `/debug/ui/overlays/clear` (Fyne inspector lives in core; wired via `EnableUI`) |
 | `core/debugapi_wiring.go` | The bridge between Server and the controller (StartSingBox, StopSingBox, Update, Rebuild, PingAll) |
 | `internal/locale/settings.go` | `debug_api_enabled`, `debug_api_port`, `debug_api_token` |
 | `ui/settings_tab.go` | UI toggle / Copy token / port entry |

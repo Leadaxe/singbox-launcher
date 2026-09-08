@@ -225,6 +225,9 @@ func (ac *AppController) StartDebugAPI(port int, token string) error {
 	if df := ac.debugAPIDaemonFacade(); df != nil {
 		s.EnableDaemon(df)
 	}
+	// Инспектор окон Fyne: стек overlay-ев и фокус, аварийная очистка
+	// overlay-ев — разбор «UI завис при живом процессе» без перезапуска.
+	s.EnableUI(fyneUIInspector{})
 	debugAPIServer = s
 	debugAPIServer.Start()
 	return nil
