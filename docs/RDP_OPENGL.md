@@ -49,6 +49,27 @@ A timeout is **not** read as "no OpenGL any more": a probe that hangs is usually
 a temporary driver hiccup, and treating it as a verdict was what installed Mesa
 on machines with a perfectly good GPU.
 
+### Why switching the renderer restarts the launcher
+
+`OPENGL32.dll` sits in the exe's **import table**, so Windows maps it while the
+process is being created — before a single line of the launcher's own code
+runs. The renderer therefore cannot be changed inside a live process: renaming
+the DLLs takes effect only for the *next* process. Whenever the gate or the
+Diagnostics button switches the renderer, the launcher writes
+`phase: restart` into `bin/gl-state.json`, says so in a dialog and restarts
+itself. The new process starts straight into the chosen renderer without
+probing again.
+
+The same import is why the hardware probe has to step around Mesa: with Mesa
+next to the exe, the `-gl-probe` child process would load Mesa too and report
+it as if it were the GPU (the field report showed `D3D12 (NVIDIA GeForce
+GT 440)` instead of the real `GeForce GT 440/PCIe/SSE2`). Before running the
+probe the launcher therefore renames the local `opengl32.dll` to
+`opengl32.dll.probe` for the duration of the child process and puts it back
+afterwards — Windows allows renaming a mapped DLL, so the running Mesa is
+unaffected. As a second line of defence the probe reads `GL_VENDOR`: a
+"hardware" result whose vendor is Mesa is discarded rather than believed.
+
 With `-tray` (start minimised) the gate shows **no dialogs at all** and changes
 no files — every decision goes to the log instead.
 
@@ -70,8 +91,10 @@ back (answer "Later" and it stays quiet until the renderer string changes).
 
 The **Diagnostics** tab has a single button that toggles the renderer while the
 UI is up: *Disable Mesa3D (use hardware OpenGL)* or *Enable Mesa3D (software
-rendering)*, depending on what is next to the exe. Either way the change takes
-effect after a restart. The button is hidden when there is nothing to toggle.
+rendering)*, depending on what is next to the exe. Confirming it shuts the
+launcher down cleanly (the core is stopped first) and starts it again, because
+the renderer can only change with the process. The button is hidden when there
+is nothing to toggle.
 
 The download comes from this repository's
 [`mesa3d-26.2.0`](https://github.com/Leadaxe/singbox-launcher/releases/tag/mesa3d-26.2.0)

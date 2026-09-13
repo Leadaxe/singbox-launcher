@@ -227,3 +227,29 @@ mesaBtn := buildMesaToggleButton(ac)   // nil → не добавлять в VBo
 - `upcoming.md` EN + RU, раздел Fixes: одна запись, из чего сложилась ловушка и
   что теперь.
 - `CHANGELOG.md`: «Не выпущено» → Исправления, одна строка с `(#125)`.
+
+## 8. Добавка по SPEC §6 (после RC 13.09.2026)
+
+| Файл | Что |
+|---|---|
+| `internal/platform/glstate.go` | `GLPhaseRestart`; `decideGate`: `Phase ∈ {rendered, restart}` → `actStart`; `probeResult.Vendor`, `SawMesa`; `ok()` учитывает `SawMesa`; `describe()` для него |
+| `internal/platform/glprobe_windows.go` | `pinMesaDriver()` в начале гейта (есть); `probeHardware(execDir)` с временным `.probe`-переименованием `opengl32.dll` и разбором `vendor=`; удалить `preloadMesa`/`mesaRestartText`; после D1-Yes и D3-Yes+verify — `UpdateGLState(restart)` → D6 → `RestartSelf()` → `os.Exit(0)`; WARN §2.7 по R4 |
+| `internal/platform/restart_windows.go` + `restart_other.go` | `RestartSelf() error` |
+| `ui/diagnostics_tab.go` | подтверждение с «will restart now» → `UpdateGLState(restart)` → `RestartSelf()`; при ошибке — прежнее «Restart the launcher to apply.» |
+| `bin/locale/ru.json` | обновлённые тексты кнопки |
+| `glstate_test.go` | два кейса из §6.3 п.14 |
+| `docs/RDP_OPENGL*.md`, `CHANGELOG.md`, `upcoming.md` | F1 (импорт, перезапуск), R3 |
+
+Ловушки:
+- Переименование `opengl32.dll` для пробы — только когда `IsMesaInstalled`;
+  `defer` обязан вернуть имя даже если `probeGLViaSubprocess` запаниковала.
+  Между rename и restore не вызывать ничего, что могло бы `LoadLibrary`.
+- В фоновой пробе (§2.5, UI работает под Mesa) то же переименование; Mesa
+  уже отображена, `libgallium_wgl.dll`/`dxil.dll` не трогать.
+- `RestartSelf`: `PrepareCommand` (HideWindow) — но окно новому процессу
+  нужно; для Windows использовать `SysProcAttr{CreationFlags:
+  windows.CREATE_NEW_PROCESS_GROUP | windows.DETACHED_PROCESS}` и НЕ
+  `HideWindow`. `cmd.Dir = execDir`.
+- После `os.Exit(0)` из гейта лог-файлы уже открыты — `debuglog` перед выходом
+  написать WARN «gl: restarting to apply <mode>».
+- `MarkGLRendered` в новом процессе перепишет `restart` → `rendered` штатно.

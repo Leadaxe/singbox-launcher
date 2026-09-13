@@ -13,17 +13,18 @@ package platform
 //
 //  1. До инициализации GL-части Fyne лаунчер перезапускает сам себя с флагом
 //     -gl-probe: подпроцесс создаёт скрытое окно, WGL-контекст и печатает
-//     версию/renderer. Подпроцесс нужен, чтобы родитель не грузил системный
-//     opengl32.dll — иначе его не подменить в текущем процессе.
+//     версию/renderer/vendor. Подпроцесс нужен, чтобы родитель не грузил
+//     системный opengl32.dll и чтобы падение кривого драйвера не унесло
+//     основной процесс.
 //  2. Если версия < 2.1 — нативный MessageBox (Fyne-окно показать нечем)
 //     предлагает скачать Mesa3D с релиза лаунчера и распаковать DLL рядом
 //     с exe.
-//  3. Свежераспакованный opengl32.dll грузится через LoadLibraryEx по полному
-//     пути: последующий LoadLibrary("opengl32.dll") из GLFW вернёт уже
-//     загруженный модуль по совпадению базового имени, так что окно
-//     отрисуется без перезапуска. На следующих стартах Mesa подхватывается
-//     самим загрузчиком Windows (каталог приложения ищется раньше system32),
-//     и пробник не нужен.
+//  3. Любая смена рендерера применяется только через перезапуск процесса.
+//     OPENGL32.dll стоит в таблице импорта exe (разбор PE, SPEC 125 §6.1 F1):
+//     загрузчик Windows отображает его при создании процесса, раньше любой
+//     строки Go. Подменить или выгрузить его внутри живого процесса нельзя —
+//     прогон RC 13.09.2026 показал, что после переименования DLL старт
+//     продолжался с уже отображённой Mesa и падал в glTexImage2D.
 
 import (
 	"archive/zip"
@@ -59,8 +60,6 @@ const (
 	// Диалоги гейта — только английский (SPEC 125 §2.3): locale.SetLang
 	// вызывается в main.go ниже гейта, переводов на этот момент ещё нет.
 	dlgTitle = "Singbox Launcher — OpenGL"
-
-	mesaRestartText = "Mesa3D is installed, but the system OpenGL is already loaded into this process.\nPlease restart Singbox Launcher."
 
 	// mesaPinnedDriver — драйвер Gallium, который лаунчер пинит через
 	// GALLIUM_DRIVER. В ассете лежат все драйверы (d3d12, zink, llvmpipe), и
@@ -332,6 +331,12 @@ func EnsureDesktopOpenGL(execDir string, interactive bool) {
 	mode := GLModeHardware
 	if mesaInstalled {
 		mode = GLModeMesa
+		// Пин драйвера — при КАЖДОМ старте с установленной Mesa, а не только
+		// на пути установки. Полевой прогон RC 13.09.2026: Mesa, включённая
+		// кнопкой Диагностики, на следующем старте загрузилась без пина, ушла
+		// в d3d12 и уронила окно; спас только откат через D1. Здесь — до
+		// любых подпроцессов и до того, как Fyne загрузит DLL.
+		pinMesaDriver()
 	}
 
 	// Чужой одиночный opengl32.dll рядом с exe (не наша Mesa) — только WARN:
@@ -359,8 +364,9 @@ func EnsureDesktopOpenGL(execDir string, interactive bool) {
 		// этом громко (иначе факт программного рендеринга невидим) и в фоне
 		// проверить, не появилось ли железо.
 		if mode == GLModeMesa {
-			debuglog.WarnLog("gl: rendering via local Mesa3D (driver=%s) — hardware OpenGL is not in use; Diagnostics → \"Disable Mesa3D\" to switch", mesaDriverName(state))
-			startBackgroundHardwareProbe(state.OfferedHWRenderer)
+			debuglog.WarnLog("gl: rendering via local Mesa3D (driver=%s, renderer=%s) — hardware OpenGL is not in use; Diagnostics → \"Disable Mesa3D\" to switch",
+				mesaActualDriver(), mesaVerifiedRenderer(state))
+			startBackgroundHardwareProbe(execDir, state.OfferedHWRenderer)
 		}
 		MarkGLStarting(execDir, mode)
 		return
@@ -374,7 +380,7 @@ func EnsureDesktopOpenGL(execDir string, interactive bool) {
 	// Цикл ради Retry в D2: каждая итерация — отдельный клик пользователя,
 	// поэтому ограничения на число повторов нет.
 	for {
-		probe := probeGLViaSubprocess(false)
+		probe := probeHardware(execDir)
 		in.Probed = true
 		in.Probe = probe
 		if probe.ok() {
@@ -410,6 +416,11 @@ func EnsureDesktopOpenGL(execDir string, interactive bool) {
 				if err := DisableMesa(execDir); err != nil {
 					debuglog.ErrorLog("gl: disable Mesa3D failed: %v", err)
 				} else {
+					// Продолжать этот старт бессмысленно: Mesa уже отображена
+					// загрузчиком (см. шапку файла), и именно так RC умирал
+					// второй раз подряд после «Yes».
+					restartToApply(execDir, GLModeHardware,
+						"Mesa3D disabled — hardware OpenGL will be used.")
 					mode = GLModeHardware
 				}
 			} else {
@@ -497,6 +508,11 @@ func EnsureDesktopOpenGL(execDir string, interactive bool) {
 			return
 		}
 		if installAndVerifyMesa(execDir, interactive) {
+			// Mesa только что легла рядом с exe, но текущий процесс уже держит
+			// системный opengl32.dll с первой своей инструкции — применить её
+			// можно только новым процессом.
+			restartToApply(execDir, GLModeMesa,
+				fmt.Sprintf("Mesa3D installed and verified (%s).", mesaActualDriver()))
 			mode = GLModeMesa
 		}
 		MarkGLStarting(execDir, mode)
@@ -504,16 +520,76 @@ func EnsureDesktopOpenGL(execDir string, interactive bool) {
 	}
 }
 
-// mesaDriverName — что именно подставится в WARN про Mesa. Пин лаунчера —
-// llvmpipe, но пользователь мог задать GALLIUM_DRIVER сам.
-func mesaDriverName(state GLState) string {
+// restartToApply — общий хвост любого переключения рендерера в гейте
+// (SPEC 125 §6.2 R2): записать новое состояние, показать D6 и перезапустить
+// процесс. При успехе не возвращается (os.Exit(0)).
+//
+// Продолжать текущий старт после переключения нельзя: OPENGL32.dll отображён
+// загрузчиком при создании процесса (см. шапку файла), и прогон RC 13.09.2026
+// показал ровно это — после D1 → Yes старт шёл дальше на уже отображённой Mesa
+// и падал в glTexImage2D, так и не дойдя до цикла событий.
+//
+// Если запустить новый процесс не удалось — честно просим перезапустить руками
+// и продолжаем старт как раньше: хуже, но не тупик.
+func restartToApply(execDir, newMode, what string) {
+	// phase=restart, а не starting: процесс выйдет сам, по нашему решению, и
+	// новый старт не должен принять это за смерть на инициализации GL.
+	UpdateGLState(execDir, func(s *GLState) {
+		s.Phase = GLPhaseRestart
+		s.Mode = newMode
+	})
+	debuglog.WarnLog("gl: restarting to apply %s", newMode)
+
+	// Диалог — до запуска потомка: иначе новый процесс успеет открыть своё
+	// окно поверх модального сообщения старого, и пользователь увидит два
+	// лаунчера сразу.
+	head := what + "\n" +
+		"OpenGL is loaded when the process starts, so the change needs a restart.\n\n"
+	messageBox(dlgTitle, head+"The launcher will restart now.", mbOK|mbIconInformation|mbTopmost|mbSetForeground)
+
+	if err := RestartSelf(); err != nil {
+		debuglog.ErrorLog("gl: self-restart failed: %v", err)
+		messageBox(dlgTitle, head+"Please restart the launcher manually.", mbOK|mbIconInformation|mbTopmost|mbSetForeground)
+		return
+	}
+	os.Exit(0)
+}
+
+// pinMesaDriver выставляет GALLIUM_DRIVER=llvmpipe, если переменная не задана.
+// Читается инициализацией opengl32.dll, поэтому вызывать строго до загрузки
+// DLL и до запуска подпроцессов пробы (они наследуют окружение). Явно
+// заданное пользователем значение не трогаем.
+func pinMesaDriver() {
+	if os.Getenv("GALLIUM_DRIVER") != "" {
+		return
+	}
+	if err := os.Setenv("GALLIUM_DRIVER", mesaPinnedDriver); err != nil {
+		debuglog.WarnLog("gl: cannot pin GALLIUM_DRIVER: %v", err)
+	}
+}
+
+// mesaActualDriver — какой драйвер Gallium реально получит Mesa на этом старте.
+// Только GALLIUM_DRIVER из окружения: pinMesaDriver вызывается выше по коду,
+// поэтому к моменту WARN переменная всегда задана.
+//
+// Прежняя версия подставляла пин «по умолчанию», и лог врал: на прогоне RC он
+// написал driver=llvmpipe, пока Mesa на самом деле работала через d3d12 и
+// падала в glTexImage2D (SPEC 125 §6.1 F3).
+func mesaActualDriver() string {
 	if env := os.Getenv("GALLIUM_DRIVER"); env != "" {
 		return env
 	}
-	if state.Driver != "" {
-		return state.Driver
+	return "unset"
+}
+
+// mesaVerifiedRenderer — renderer, который реально показала verify-проба
+// (-gl-probe-local). Пока Mesa не проверялась, честнее сказать об этом прямо,
+// чем подставлять ожидаемое значение.
+func mesaVerifiedRenderer(state GLState) string {
+	if state.Renderer != "" {
+		return state.Renderer
 	}
-	return mesaPinnedDriver
+	return "not verified"
 }
 
 // installAndVerifyMesa ставит Mesa3D (из mesa3d/ или скачиванием), проверяет
@@ -550,11 +626,7 @@ func installAndVerifyMesa(execDir string, interactive bool) bool {
 	// инициализация DLL, а подпроцесс наследует окружение родителя — поставь
 	// её позже, и проверялся бы не тот драйвер, который потом загрузится.
 	// Явно заданное пользователем значение не трогаем.
-	if os.Getenv("GALLIUM_DRIVER") == "" {
-		if setErr := os.Setenv("GALLIUM_DRIVER", mesaPinnedDriver); setErr != nil {
-			debuglog.WarnLog("gl: cannot pin GALLIUM_DRIVER: %v", setErr)
-		}
-	}
+	pinMesaDriver()
 
 	probe := probeGLViaSubprocess(true)
 	if !probe.ok() || !strings.Contains(strings.ToLower(probe.Renderer), mesaPinnedDriver) {
@@ -580,28 +652,31 @@ func installAndVerifyMesa(execDir string, interactive bool) bool {
 
 	debuglog.WarnLog("gl: Mesa3D installed and verified (renderer=%q)", probe.Renderer)
 	// Renderer и driver — в состояние: WARN про Mesa на следующих стартах
-	// берёт driver отсюда, а пробу больше не запускает.
+	// печатает renderer отсюда, повторной пробы не делая.
 	UpdateGLState(execDir, func(st *GLState) {
 		st.Renderer = probe.Renderer
-		st.Driver = mesaDriverName(*st)
+		st.Driver = mesaActualDriver()
 	})
-	if err := preloadMesa(execDir); err != nil {
-		debuglog.ErrorLog("gl: Mesa3D preload failed: %v", err)
-	}
+	// Preload'а здесь больше нет: подгрузить Mesa в живой процесс невозможно —
+	// системный opengl32.dll отображён по таблице импорта exe ещё до main
+	// (SPEC 125 §6.1 F1). Применяет установку только перезапуск.
 	return true
 }
 
 // startBackgroundHardwareProbe — фоновая проба железа в режиме mesa
 // (SPEC 125 §2.5). Не блокирует запуск: результат нужен не гейту, а UI,
 // который после появления окна предложит вернуться на аппаратный OpenGL.
-func startBackgroundHardwareProbe(offeredRenderer string) {
+func startBackgroundHardwareProbe(execDir, offeredRenderer string) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
 				debuglog.ErrorLog("gl: background hardware probe panicked: %v", r)
 			}
 		}()
-		probe := probeGLViaSubprocess(false)
+		// Та же уловка с переименованием, что и в гейте: без неё проба увидит
+		// Mesa, через которую прямо сейчас рисует окно, и предложит «вернуться»
+		// на неё же.
+		probe := probeHardware(execDir)
 		if !probe.ok() {
 			debuglog.InfoLog("gl: background hardware probe: still no usable OpenGL (%s)", probe.describe())
 			return
@@ -612,6 +687,48 @@ func startBackgroundHardwareProbe(offeredRenderer string) {
 		}
 		notifyHardwareGLAvailable(probe.Renderer)
 	}()
+}
+
+// probeHardware — проба НАСТОЯЩЕГО аппаратного OpenGL, даже когда рядом с exe
+// установлена Mesa3D (SPEC 125 §6.2 R3).
+//
+// Почему просто probeGLViaSubprocess(false) недостаточно: OPENGL32.dll стоит в
+// таблице импорта exe, поэтому дочерний процесс -gl-probe грузит opengl32.dll
+// из каталога приложения ещё до своего main — и «аппаратная» проба измеряет
+// Mesa. В логе RC это выглядело как renderer="D3D12 (NVIDIA GeForce GT 440)"
+// вместо настоящего "GeForce GT 440/PCIe/SSE2".
+//
+// Лечение — на время дочернего процесса увести opengl32.dll из каталога
+// приложения переименованием. Windows разрешает переименовать отображённую
+// DLL (удалить — нет), так что живая Mesa текущего процесса это переживает.
+// libgallium_wgl.dll и dxil.dll не трогаем: Mesa могла бы подгрузить их лениво
+// именно в это окно.
+func probeHardware(execDir string) probeResult {
+	if IsMesaInstalled(execDir) {
+		src := filepath.Join(execDir, "opengl32.dll")
+		dst := src + ".probe"
+		_ = os.Remove(dst)
+		if err := os.Rename(src, dst); err != nil {
+			debuglog.WarnLog("gl: cannot move Mesa's opengl32.dll aside for the hardware probe (%v) — the probe may see Mesa", err)
+		} else {
+			// Вернуть имя обязаны при любом исходе, включая панику: без
+			// opengl32.dll рядом с exe Mesa просто перестанет существовать.
+			// Между Rename и восстановлением ничего, что могло бы вызвать
+			// LoadLibrary, не делаем.
+			defer func() {
+				if err := os.Rename(dst, src); err != nil {
+					debuglog.ErrorLog("gl: cannot restore %s after the hardware probe: %v", src, err)
+				}
+			}()
+		}
+	}
+	res := probeGLViaSubprocess(false)
+	// Страховка: переименование могло не удаться (файл занят чем-то ещё).
+	// Тогда мы измерили Mesa, и выдавать её за железо нельзя.
+	if strings.Contains(res.Vendor, "Mesa") {
+		res.SawMesa = true
+	}
+	return res
 }
 
 // probeGLViaSubprocess перезапускает лаунчер с -gl-probe (local=false) или
@@ -657,6 +774,8 @@ func probeGLViaSubprocess(local bool) probeResult {
 			version = strings.TrimPrefix(line, "version=")
 		case strings.HasPrefix(line, "renderer="):
 			res.Renderer = strings.TrimPrefix(line, "renderer=")
+		case strings.HasPrefix(line, "vendor="):
+			res.Vendor = strings.TrimPrefix(line, "vendor=")
 		case strings.HasPrefix(line, "error="):
 			res.Err = fmt.Errorf("probe: %s", strings.TrimPrefix(line, "error="))
 			return res
@@ -714,27 +833,6 @@ func downloadMesa(execDir string) ([]string, error) {
 	}
 	debuglog.InfoLog("gl: extracted %d Mesa3D DLLs next to exe: %s", len(names), strings.Join(names, ", "))
 	return names, nil
-}
-
-// preloadMesa грузит распакованный рядом с exe opengl32.dll в текущий процесс
-// (общий хвост скачанной и вложенной установки).
-func preloadMesa(execDir string) error {
-	kernel32 := windows.NewLazySystemDLL("kernel32.dll")
-	getModuleHandleW := kernel32.NewProc("GetModuleHandleW")
-	namePtr, _ := windows.UTF16PtrFromString("opengl32.dll")
-	if h, _, _ := getModuleHandleW.Call(uintptr(unsafe.Pointer(namePtr))); h != 0 {
-		debuglog.WarnLog("gl: system opengl32.dll already loaded in this process — restart required to pick up Mesa")
-		messageBox(dlgTitle, mesaRestartText, mbOK|mbIconInformation|mbTopmost|mbSetForeground)
-		return nil
-	}
-
-	// LOAD_WITH_ALTERED_SEARCH_PATH: зависимости Mesa (libgallium_wgl.dll и др.)
-	// резолвятся из каталога самого opengl32.dll. Последующий
-	// LoadLibrary("opengl32.dll") из GLFW вернёт этот модуль по базовому имени.
-	if _, err := windows.LoadLibraryEx(filepath.Join(execDir, "opengl32.dll"), 0, windows.LOAD_WITH_ALTERED_SEARCH_PATH); err != nil {
-		return fmt.Errorf("preload mesa opengl32.dll: %w", err)
-	}
-	return nil
 }
 
 // downloadToFile качает url в destPath с жёстким потолком размера.

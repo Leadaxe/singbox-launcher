@@ -118,6 +118,11 @@ func TestDecideGate(t *testing.T) {
 			gateInput{HasState: true, State: GLState{Phase: GLPhaseRendered, Mode: GLModeMesa}, MesaInstalled: true, Interactive: true}, actStart},
 		{"previous start died before the first frame",
 			gateInput{HasState: true, State: GLState{Phase: GLPhaseStarting, Mode: GLModeMesa}, MesaInstalled: true, Interactive: true}, actProbe},
+		// SPEC 125 §6.3 п.14: процесс вышел сам, чтобы применить новый
+		// рендерер. Это не смерть — переспрашивать про OpenGL нельзя, иначе
+		// перезапуск после D1 снова упрётся в диалог.
+		{"previous process exited to apply a renderer switch",
+			gateInput{HasState: true, State: GLState{Phase: GLPhaseRestart, Mode: GLModeHardware}, Interactive: true}, actStart},
 
 		// Фаза «что делать с результатом пробы».
 		{"probe ok, no mesa around",
@@ -173,6 +178,19 @@ func TestDecideGate(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// SPEC 125 §6.3 п.14: «аппаратная» проба, увидевшая Mesa, железом не считается.
+// Иначе гейт предложил бы вернуться с Mesa на неё же — ровно это и печаталось
+// на прогоне RC как renderer="D3D12 (NVIDIA GeForce GT 440)".
+func TestProbeSawMesaIsNotHardware(t *testing.T) {
+	r := probeResult{Major: 4, Minor: 6, Renderer: "D3D12 (NVIDIA GeForce GT 440)", Vendor: "Mesa", SawMesa: true}
+	if r.ok() {
+		t.Error("a probe that hit Mesa3D must not count as hardware OpenGL")
+	}
+	if r.describe() != "probe hit Mesa3D instead of hardware OpenGL" {
+		t.Errorf("describe() = %q", r.describe())
 	}
 }
 

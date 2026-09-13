@@ -330,19 +330,28 @@ func main() {
 					}
 					confirm := dialog.NewConfirm(
 						locale.T("OpenGL"),
-						locale.Tf("Hardware OpenGL is now available:\n%s\nDisable Mesa3D and use it? The change applies after you restart the launcher.", renderer),
+						locale.Tf("Hardware OpenGL is now available:\n%s\nDisable Mesa3D and use it? The launcher will restart now.", renderer),
 						func(yes bool) {
-							if yes {
-								if err := platform.DisableMesa(glExecDir); err != nil {
-									debuglog.ErrorLog("gl: disable Mesa3D from UI failed: %v", err)
-									ui.ShowError(win, err)
-									return
-								}
-							}
 							rememberOfferedRenderer(glExecDir, renderer)
-							if yes {
-								ui.ShowInfo(win, locale.T("OpenGL"), locale.T("Restart the launcher to apply."))
+							if !yes {
+								return
 							}
+							if err := platform.DisableMesa(glExecDir); err != nil {
+								debuglog.ErrorLog("gl: disable Mesa3D from UI failed: %v", err)
+								ui.ShowError(win, err)
+								return
+							}
+							// Тот же путь, что у кнопки Диагностики (SPEC 125 §6.2 R2/R5):
+							// opengl32.dll отображён загрузчиком при старте процесса, и
+							// переключение применит только новый процесс. Выходим штатно —
+							// ядро остановится, логи закроются, RestartSelf в конце main().
+							platform.UpdateGLState(glExecDir, func(s *platform.GLState) {
+								s.Phase = platform.GLPhaseRestart
+								s.Mode = platform.GLModeHardware
+							})
+							debuglog.WarnLog("gl: restarting to apply hardware (return dialog)")
+							platform.RequestRestartAfterExit()
+							controller.GracefulExit()
 						}, win)
 					confirm.SetConfirmText(locale.T("Yes"))
 					confirm.SetDismissText(locale.T("Later"))
@@ -552,6 +561,17 @@ func main() {
 		if controller.FileService.ApiLogFile != nil {
 			api.SetAPILogFile(nil)
 			debuglog.RunAndLog("main: close API log file", controller.FileService.ApiLogFile.Close)
+		}
+	}
+
+	// Переключение рендерера из Диагностики (SPEC 125 §6.2 R5): применить его
+	// может только новый процесс — opengl32.dll отображается загрузчиком
+	// Windows при создании процесса, по таблице импорта exe. Поднимаемся здесь,
+	// а не в колбэке кнопки: к этому моменту ядро остановлено и логи закрыты,
+	// так что новый лаунчер не наткнётся на живой sing-box старого.
+	if platform.RestartRequested() {
+		if err := platform.RestartSelf(); err != nil {
+			debuglog.ErrorLog("main: self-restart failed: %v", err)
 		}
 	}
 }

@@ -432,18 +432,26 @@ func buildMesaToggleButton(ac *core.AppController) *widget.Button {
 	btn = widget.NewButton("", func() {
 		disable := platform.IsMesaInstalled(execDir)
 		title := locale.T("Enable Mesa3D (software rendering)")
-		question := locale.T("Render the window through the Mesa3D software renderer instead of the GPU?")
+		// Переключение применяется только новым процессом: opengl32.dll
+		// отображается загрузчиком Windows при создании процесса, по таблице
+		// импорта exe (SPEC 125 §6.1). Предупреждаем об этом в самом вопросе,
+		// а не постфактум.
+		question := locale.T("Render the window through the Mesa3D software renderer instead of the GPU?") +
+			" " + locale.T("The launcher will restart now.")
 		if disable {
 			title = locale.T("Disable Mesa3D (use hardware OpenGL)")
-			question = locale.T("Stop rendering through Mesa3D and use hardware OpenGL?")
+			question = locale.T("Stop rendering through Mesa3D and use hardware OpenGL?") +
+				" " + locale.T("The launcher will restart now.")
 		}
 		dialog.NewConfirm(title, question, func(yes bool) {
 			if !yes {
 				return
 			}
 			var err error
+			newMode := platform.GLModeMesa
 			if disable {
 				err = platform.DisableMesa(execDir)
+				newMode = platform.GLModeHardware
 			} else {
 				err = platform.EnableMesa(execDir)
 			}
@@ -453,7 +461,20 @@ func buildMesaToggleButton(ac *core.AppController) *widget.Button {
 				return
 			}
 			refresh()
-			dialogs.ShowInfo(ac.UIService.MainWindow, title, locale.T("Restart the launcher to apply."))
+			// phase=restart: выходим по своему решению, а не умираем на
+			// инициализации GL, и гейт нового процесса не должен принять одно
+			// за другое.
+			platform.UpdateGLState(execDir, func(s *platform.GLState) {
+				s.Phase = platform.GLPhaseRestart
+				s.Mode = newMode
+			})
+			debuglog.WarnLog("gl: restarting to apply %s (Diagnostics)", newMode)
+			// Сам перезапуск — в самом конце main(), после Run() и
+			// GracefulExit: новый процесс не должен подниматься, пока старый
+			// держит запущенный sing-box, иначе встретит пользователя диалогом
+			// «уже запущено».
+			platform.RequestRestartAfterExit()
+			ac.GracefulExit()
 		}, ac.UIService.MainWindow).Show()
 	})
 	refresh()

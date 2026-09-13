@@ -50,3 +50,14 @@
 - [x] `go build ./... && go vet ./... && go test ./...` — зелёные
 - [x] `GOOS=windows GOARCH=amd64 go build ./internal/platform/ ./internal/debuglog/` и `go vet ./internal/platform/` — зелёные
 - [x] `IMPLEMENTATION_REPORT.md`: что сделано, отклонения от PLAN с причинами, список изменённых файлов
+
+## Этап 9 · Добавка по итогам RC (SPEC §6, PLAN §8)
+- [x] `GLPhaseRestart`; `decideGate` считает `restart` чистым
+- [x] `probeResult.Vendor`/`SawMesa`; `ok()`/`describe()`
+- [x] `probeHardware(execDir)` с временным `.probe`-переименованием `opengl32.dll` + разбор `vendor=`; использовать в гейте и в фоновой пробе
+- [x] удалить `preloadMesa`, `mesaRestartText`
+- [x] `RestartSelf()` (+ stub); D6; после D1-Yes / D3-Yes+verify → `restart` → D6 → `RestartSelf` → `os.Exit(0)`
+- [x] WARN §2.7: реальный `GALLIUM_DRIVER` + `renderer` из verify / `not verified`
+- [x] Диагностика: самоперезапуск после переключения
+- [x] тесты §6.3 п.14; `go build/vet/test`; Windows build/vet `platform`, `debuglog`
+- [x] доки, CHANGELOG, upcoming; IMPLEMENTATION_REPORT §6

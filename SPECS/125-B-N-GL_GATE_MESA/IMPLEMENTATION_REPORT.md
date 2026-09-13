@@ -170,3 +170,87 @@ EnsureDesktopOpenGL|RedirectNativeStderr` — ноль совпадений), о
 зелёный. Причина — конкуренция за реальные сетевые порты между пакетами при
 параллельном запуске. Пакет содержит чужие незакоммиченные правки
 (`state_endpoints.go`), которых я не касался.
+
+## 5. §6 после RC (прогон `v1.5.5-23-ge516f0f5-prerelease`, 13.09.2026)
+
+### 5.1 Изменённые и новые файлы
+
+| Файл | Что |
+|---|---|
+| `internal/platform/restart_windows.go` (новый) | `RestartSelf()` — `exec.Command(exe, os.Args[1:]...)`, `cmd.Dir = <каталог exe>`, `SysProcAttr{CreationFlags: CREATE_NEW_PROCESS_GROUP \| DETACHED_PROCESS}`, `Start()`. Без `PrepareCommand`: он прячет окно, а новому процессу окно нужно |
+| `internal/platform/restart_other.go` (новый) | `RestartSelf()` → ошибка «not supported» |
+| `internal/platform/glstate.go` | `GLPhaseRestart`; `decideGate` считает `restart` чистой фазой наравне с `rendered`; `probeResult.Vendor`, `probeResult.SawMesa`, учёт `SawMesa` в `ok()`/`describe()`; `RequestRestartAfterExit`/`RestartRequested` |
+| `internal/platform/glprobe_windows.go` | `probeHardware(execDir)`; разбор `vendor=` в `probeGLViaSubprocess`; `restartToApply` (состояние `restart` → D6 → `RestartSelf` → `os.Exit(0)`); D1-Yes и D3-Yes+verify уходят в него; `mesaDriverName` → `mesaActualDriver`+`mesaVerifiedRenderer`; удалены `preloadMesa` и `mesaRestartText`; фоновая проба §2.5 переведена на `probeHardware` |
+| `main.go` | в самом конце (после `Run()`, `GracefulExit` и закрытия логов) — `platform.RestartRequested()` → `RestartSelf()` |
+| `ui/diagnostics_tab.go` | вопрос кнопки дополнен «The launcher will restart now.»; после успешного Disable/Enable — `UpdateGLState(phase=restart, mode)` → `RequestRestartAfterExit()` → `ac.GracefulExit()` |
+| `bin/locale/ru.json` | новый ключ `The launcher will restart now.` |
+| `internal/platform/glstate_test.go` | два кейса §6.3 п.14 |
+| `docs/RDP_OPENGL.md`, `.ru.md` | раздел «почему смена рендерера перезапускает лаунчер» (импорт `OPENGL32.dll`, обход Mesa пробой); кнопка Диагностики описана как перезапускающая |
+| `CHANGELOG.md`, `docs/release_notes/upcoming.md` | существующие записи (#125) дополнены самоперезапуском и обходом Mesa пробой (EN и RU) |
+
+### 5.2 Отклонения от ТЗ §6 и почему
+
+1. **Кнопка Диагностики не зовёт `RestartSelf()` на месте.** ТЗ: «после
+   успешного Disable/Enable → `UpdateGLState(restart)` → `RestartSelf()`». Так
+   новый процесс поднялся бы, пока старый ещё держит запущенный sing-box, и
+   встретил бы пользователя диалогом «уже запущено» (а в TUN-режиме — ещё и
+   гонкой за интерфейс). Поэтому кнопка ставит флаг
+   `platform.RequestRestartAfterExit()` и вызывает `ac.GracefulExit()` (тот же
+   путь, что у кнопки Exit), а сам `RestartSelf()` выполняется последней
+   строкой `main()` — после `Application.Run()`, остановки ядра и закрытия
+   логов. Состояние `phase=restart` пишется до выхода, как и требует ТЗ.
+
+   Следствие: ветку «`RestartSelf` вернул ошибку → показать `Restart the
+   launcher to apply.`» на этом пути показать уже некому (окно закрыто), она
+   остаётся только `ErrorLog`. В гейте (D6) эта ветка работает как описано —
+   там UI ещё нет и всё идёт через `MessageBoxW`.
+
+2. **Порядок внутри D6.** Диалог показывается ДО `RestartSelf()`, а не после:
+   иначе новый процесс успевает открыть окно поверх модального сообщения
+   старого и пользователь видит два лаунчера сразу. При ошибке `Start()`
+   показывается второй `MessageBox` с «Please restart the launcher manually.»
+   и старт продолжается (`MarkGLStarting` ниже перепишет `restart` в
+   `starting`, что верно: этот процесс всё-таки стартует).
+
+3. **`mesaDriverName(state)` не переписан, а разделён на две функции.**
+   `mesaActualDriver()` — только `GALLIUM_DRIVER` из окружения (`unset`, если
+   пусто: после `pinMesaDriver` такого быть не должно, но врать нельзя),
+   `mesaVerifiedRenderer(state)` — `state.Renderer` или `not verified`.
+   Смешивать их в одну функцию нельзя: WARN печатает оба поля, и именно
+   подстановка пина вместо факта дала ложное `driver=llvmpipe` при живом
+   d3d12.
+
+4. **Диалог возврата §2.5 (Fyne, «Hardware OpenGL is now available») оставлен
+   с текстом «applies after you restart the launcher».** ТЗ §6 его не
+   упоминало, а сам он ведёт себя честно: `DisableMesa` без перезапуска. См.
+   §5.4 — это кандидат на приведение к R5 отдельным решением.
+
+### 5.3 Проверки
+
+```
+$ gofmt -l internal/platform/ ui/diagnostics_tab.go main.go      # пусто
+$ go build ./...                                                 # только ld: warning -lobjc
+$ go vet ./...                                                   # чисто
+$ go test ./internal/platform/                                   # ok
+$ GOOS=windows GOARCH=amd64 go build ./internal/platform/ ./internal/debuglog/   # чисто
+$ GOOS=windows GOARCH=amd64 go vet ./internal/platform/          # чисто
+```
+
+### 5.4 Что остаётся сомнительным
+
+- **Fyne-диалог §2.5 не перезапускает лаунчер** (`main.go`, подписка
+  `SetOnHardwareGLAvailable`): он делает `DisableMesa` и советует
+  перезапустить руками. По духу R5 его стоило бы свести к тому же
+  самоперезапуску, но ТЗ §6 этого не требовало, а трогать поведение диалога
+  без решения владельца не стал.
+- **`probeHardware` и `DisableMesa` из UI могут пересечься.** Фоновая проба
+  §2.5 уводит `opengl32.dll` в `.probe` на время дочернего процесса; если
+  ровно в это окно пользователь нажмёт кнопку в Диагностике, `DisableMesa`
+  увидит `IsMesaInstalled()==false`. Окно — секунды раз в старт, и худший
+  исход — сообщение «no Mesa3D DLLs next to exe» вместо переключения, файлы
+  при этом целы. Замка не ставил: он потребовал бы разделяемого состояния
+  между гейтом и UI ради сценария, который на практике не воспроизвести.
+- **Win32-часть по-прежнему не проверена вживую** — переименование
+  отображённой DLL, `DETACHED_PROCESS` и D6 собираются и проходят `go vet`
+  под `GOOS=windows`, но выполнить их на macOS нельзя. Критерии 11–13
+  требуют прогона на Windows.

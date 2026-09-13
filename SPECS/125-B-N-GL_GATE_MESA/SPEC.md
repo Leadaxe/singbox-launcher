@@ -308,3 +308,99 @@ Later → `offered_hw_renderer = <renderer>`, больше не спрашива
 - Win7 / 386 — прежняя ветка с ручной инструкцией.
 - Самоперезапуск лаунчера после переключения — только сообщение «restart».
 - Общая ревизия уровней логирования за пределами списка §2.7.
+
+## 6. Добавка по итогам прогона RC `v1.5.5-23-ge516f0f5-prerelease` (13.09.2026)
+
+Стенд: GeForce GT 440 (Fermi), Windows 10 19045. Логи: `singbox-launcher.log`
+строки 5432–5635, `native-stderr.log` (два падения), `gl-state.json`.
+
+### 6.1 Факты
+
+**F1. `OPENGL32.dll` — в таблице импорта exe.** Разбор PE: imports = GDI32,
+KERNEL32, api-ms-win-crt-*, **OPENGL32.dll**, SHELL32, USER32. DLL грузится
+загрузчиком Windows при старте процесса из каталога приложения — раньше любой
+строки нашего кода. Следствия:
+- §1.4 верно лишь наполовину: `NewLazySystemDLL("opengl32.dll")` возвращает
+  **уже загруженный** модуль, и когда рядом с exe лежит Mesa, «аппаратная»
+  проба измеряет Mesa. Лог: строки 5528 и 5557 — `renderer="D3D12 (NVIDIA
+  GeForce GT 440)"` (это Mesa d3d12), тогда как настоящий NVIDIA — строка 5599:
+  `"GeForce GT 440/PCIe/SSE2"` 4.6.
+- Сменить рендерер внутри процесса **нельзя в принципе**. Запуск 3 (21:55:31):
+  D1 → Yes → `.off` → гейт продолжил старт → Mesa уже отображена → второе
+  падение → `event loop started` нет (строка 5597 подтверждает смерть).
+  `preloadMesa` при импорте бессмыслен.
+
+**F2. Падение — `glTexImage2D` под Mesa d3d12.** `native-stderr.log` впервые
+показал место: `Exception 0xc0000005 … _Cfunc_glowTexImage2D ←
+painter/gl.imgToTexture ← newGlTextTexture`. Первая же текстура текста.
+Дважды (запуски 2 и 3), идентично. Причина — d3d12 на Fermi, не llvmpipe.
+`crash.log` при этом пуст — Go-fatal «signal arrived during external code
+execution» ушёл в stderr; ловит только `native-stderr.log`.
+
+**F3. Пин не применялся на обычных стартах.** `GALLIUM_DRIVER=llvmpipe`
+ставился только в `installAndVerifyMesa`; Mesa, включённая кнопкой Диагностики,
+на следующем старте (21:54:57) загрузилась без пина → d3d12. При этом WARN
+напечатал `driver=llvmpipe` — `mesaDriverName` подставляет пин по умолчанию.
+**Лог врал.**
+
+**F4. Механизм отката работает.** Запуск 4 (21:55:57): грязный старт → проба
+настоящего железа (Mesa в `.off`) → 4.6 → окно. Пользователь видит «сообщение →
+починилось». Это и есть подтверждение §2.2 на живой машине.
+
+### 6.2 Решения
+
+**R1. Пин при каждом старте с установленной Mesa** — в начале гейта, до
+подпроцессов и до загрузки Fyne (`pinMesaDriver()`, уже в коде).
+
+**R2. Переключение = перезапуск.** Новая фаза `GLPhaseRestart = "restart"`:
+для `decideGate` — чистая (как `rendered`). После успешного переключения в
+гейте (D1 → Yes → `DisableMesa`; D3 → Yes → установка + verify OK):
+`UpdateGLState(phase=restart, mode=<новый>)` → диалог D6 → самоперезапуск →
+`os.Exit(0)`. `preloadMesa` и `mesaRestartText` удалить.
+
+D6 (`MB_OK | ICONINFORMATION`):
+```
+Singbox Launcher — OpenGL
+
+<Mesa3D disabled — hardware OpenGL will be used. | Mesa3D installed and verified (llvmpipe).>
+OpenGL is loaded when the process starts, so the change needs a restart.
+
+The launcher will restart now.
+```
+Самоперезапуск: `exec.Command(exe, os.Args[1:]...)`, `PrepareCommand`,
+`Start()`, затем `os.Exit(0)`. Если `Start()` упал — D6 с текстом «Please
+restart the launcher manually.» и обычное продолжение старта (хуже, но не
+тупик). В `-tray` эти ветки недостижимы.
+
+**R3. Проба железа обходит Mesa.** `probeHardware(execDir)`: если
+`IsMesaInstalled` — переименовать `opengl32.dll` → `opengl32.dll.probe` на
+время дочернего процесса, вернуть через `defer` (и при ошибке). Переименование
+отображённой DLL Windows разрешает (удаление — нет); `libgallium_wgl.dll` и
+`dxil.dll` не трогать — Mesa могла бы подгрузить их лениво в это окно.
+Страховка: `probeResult.Vendor` из строки `vendor=`; если у «аппаратной» пробы
+vendor содержит `Mesa` — `SawMesa=true`, результат **не** считается железом
+(`ok()==false`, `describe()` = "probe hit Mesa3D instead of hardware OpenGL").
+Применяется и в гейте, и в фоновой пробе §2.5.
+
+**R4. WARN про Mesa — правда, а не пин.** Строка §2.7 печатает
+`driver=<GALLIUM_DRIVER из env>`, `renderer=<state.Renderer или "not verified">`.
+`state.Renderer` заполняется только verify-пробой (`-gl-probe-local`).
+
+**R5. Кнопка Диагностики → самоперезапуск.** Вместо «Restart the launcher to
+apply.» — подтверждение «…The launcher will restart now.» → `UpdateGLState
+(phase=restart)` → тот же самоперезапуск. Общий хелпер `RestartSelf()` в
+`internal/platform` (Windows; на других ОС — вернуть ошибку «not supported»,
+кнопки там нет).
+
+### 6.3 Критерии приёмки (дополнение)
+
+11. С Mesa рядом с exe проба железа возвращает vendor **не** Mesa (реальный
+    renderer видеокарты); в логе `gl: hardware OpenGL … (renderer="GeForce …")`,
+    а не `D3D12 (…)`.
+12. D1 → Yes: файлы `.off`, `gl-state.json` = `restart/hardware`, диалог D6,
+    процесс перезапускается сам; новый процесс стартует без пробы и доходит до
+    `event loop started`. Ни одного падения в `native-stderr.log`.
+13. Каждый старт через Mesa пишет WARN с реальным `GALLIUM_DRIVER` и
+    `renderer` из verify (или `not verified`).
+14. Тесты: `decideGate` с `phase=restart` → `actStart`; `probeResult{SawMesa}`
+    → `ok()==false`.

@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"singbox-launcher/internal/constants"
@@ -48,6 +49,12 @@ const (
 	// GLPhaseRendered — окно дожило до первого кадра (см. glRenderedGrace в
 	// main.go). Такому старту гейт доверяет и пробу не запускает.
 	GLPhaseRendered = "rendered"
+	// GLPhaseRestart — процесс сам себя перезапускает, чтобы применить смену
+	// рендерера (SPEC 125 §6.2 R2). Для гейта такая запись «чистая», как и
+	// rendered: старт не умер, он завершился по нашему решению, и переспрашивать
+	// про OpenGL в новом процессе не нужно. MarkGLRendered из нового процесса
+	// штатно перепишет её в rendered.
+	GLPhaseRestart = "restart"
 
 	GLModeHardware = "hardware"
 	GLModeMesa     = "mesa"
@@ -157,6 +164,20 @@ func MarkGLRendered(execDir string) {
 		s.Phase = GLPhaseRendered
 	})
 }
+
+// restartPending — кнопка Диагностики попросила перезапуск после переключения
+// рендерера. Сам RestartSelf вызывается не там, а в самом конце main(), после
+// Application.Run() и GracefulExit: новый процесс не должен стартовать, пока
+// старый держит запущенный sing-box (иначе он встретит пользователя диалогом
+// «уже запущено»), а из колбэка Fyne-диалога дождаться этого нельзя.
+var restartPending atomic.Bool
+
+// RequestRestartAfterExit помечает, что после штатного завершения лаунчер
+// должен подняться снова.
+func RequestRestartAfterExit() { restartPending.Store(true) }
+
+// RestartRequested — был ли запрошен перезапуск (читается в конце main()).
+func RestartRequested() bool { return restartPending.Load() }
 
 // errForeignOpenGL — рядом с exe лежит opengl32.dll, но libgallium_wgl.dll
 // нет: это не наша Mesa, а чужая подмена (или ручная установка пользователя).
@@ -332,13 +353,21 @@ func copyFileGL(src, dst string) error {
 type probeResult struct {
 	Major, Minor int
 	Renderer     string
+	Vendor       string
 	Err          error // nil — проба ответила
 	Timeout      bool  // true — не уложилась в glProbeTimeout
+	// SawMesa — «аппаратная» проба на самом деле измерила Mesa3D. Страховка на
+	// случай, если временное переименование opengl32.dll не сработало
+	// (SPEC 125 §6.2 R3): OPENGL32.dll стоит в таблице импорта exe, поэтому
+	// дочерний процесс с Mesa рядом видит Mesa, а не железо. Такой результат
+	// железом считать нельзя — иначе гейт предложит «вернуться» на то же самое.
+	SawMesa bool
 }
 
-// ok — проба ответила и версия достаточна для Fyne/GLFW.
+// ok — проба ответила, версия достаточна для Fyne/GLFW и это действительно
+// железо, а не Mesa под видом железа.
 func (r probeResult) ok() bool {
-	if r.Err != nil || r.Timeout {
+	if r.Err != nil || r.Timeout || r.SawMesa {
 		return false
 	}
 	return r.Major > glMinMajor || (r.Major == glMinMajor && r.Minor >= glMinMinor)
@@ -351,6 +380,8 @@ func (r probeResult) describe() string {
 		return fmt.Sprintf("timed out after %v", glProbeTimeout)
 	case r.Err != nil:
 		return r.Err.Error()
+	case r.SawMesa:
+		return "probe hit Mesa3D instead of hardware OpenGL"
 	default:
 		return fmt.Sprintf("OpenGL %d.%d", r.Major, r.Minor)
 	}
@@ -399,7 +430,9 @@ const (
 func decideGate(in gateInput) gateAction {
 	if !in.Probed {
 		// Прошлый старт дошёл до кадра — доверяем ему и не тратим 10 секунд.
-		if in.HasState && in.State.Phase == GLPhaseRendered {
+		// restart — тоже чистый исход: процесс вышел сам, чтобы применить
+		// новый рендерер, и всё уже решено предыдущим стартом.
+		if in.HasState && (in.State.Phase == GLPhaseRendered || in.State.Phase == GLPhaseRestart) {
 			return actStart
 		}
 		return actProbe
