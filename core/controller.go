@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"singbox-launcher/internal/debuglog"
@@ -99,6 +100,11 @@ type AppController struct {
 	// item / dashboard Exit button *and* from main() after Application.Run()
 	// returns, so without this the whole teardown runs twice.
 	exitOnce sync.Once
+	// exiting поднимается первой строкой gracefulExit: пути остановки ядра
+	// (ProcessService.Stop и др.) по нему не показывают модальные диалоги —
+	// GracefulExit из трея выполняется на main-потоке Fyne, и диалог там
+	// никогда не отрисуется, а окно уже закрывается.
+	exiting atomic.Bool
 
 	// --- Update popup state ---
 	updatePopupShown bool         // Флаг, что попап обновления уже был показан в этой сессии
@@ -403,7 +409,33 @@ func (ac *AppController) GracefulExit() {
 	ac.exitOnce.Do(ac.gracefulExit)
 }
 
+// Дедлайны сторожевых таймеров gracefulExit. Первый взводится до остановки
+// ядра и покрывает всю фазу teardown (на Windows она ограничена: taskkill +
+// ожидание ≤ 2 с; на macOS privileged-путь может ждать пароль — 15 с
+// хватает, чтобы ввести его, но не оставляют зомби навсегда). Второй —
+// прежний короткий бюджет на размотку Fyne после Quit.
+const (
+	shutdownTeardownDeadline = 15 * time.Second
+	shutdownUnwindDeadline   = 3 * time.Second
+)
+
+// IsExiting reports whether GracefulExit has begun.
+func (ac *AppController) IsExiting() bool {
+	return ac.exiting.Load()
+}
+
 func (ac *AppController) gracefulExit() {
+	ac.exiting.Store(true)
+	// Сторож взводится ДО остановки ядра. Из трея этот код идёт на
+	// main-потоке Fyne (драйвер маршалит action через runOnMain), и всё,
+	// что здесь зависнет, зависнет вместе с циклом событий: окно не
+	// отрисуется, диалоги не покажутся, Quit из очереди не выполнится —
+	// процесс останется жить без окна и без иконки. Раньше сторож
+	// взводился только после teardown и эту фазу не покрывал.
+	if ac.hasUI() {
+		forceExitAfter(shutdownTeardownDeadline, "teardown (core stop / log close)")
+	}
+
 	// Cancel context to signal all goroutines to stop
 	if ac.cancelFunc != nil {
 		ac.cancelFunc()
@@ -466,23 +498,24 @@ func (ac *AppController) gracefulExit() {
 		// Armed before Quit so a driver that refuses to unwind can't strand
 		// the process. By this point sing-box is stopped and the log files
 		// are closed, so os.Exit loses nothing.
-		forceExitAfter(3 * time.Second)
+		forceExitAfter(shutdownUnwindDeadline, "Fyne event loop unwind after Quit")
 		ac.UIService.QuitApplication()
 	}
 }
 
-// forceExitAfter arms a last-resort os.Exit in case the Fyne event loop never
-// unwinds after Application.Quit(). Field reports (2026-08): quitting from the
-// tray with the window hidden leaves the process alive — on Windows the tray
-// icon stays behind and the still-running process holds the single-instance
-// lock, so relaunching the .exe reports "already running". The tray icon part
-// is fixed deterministically in UIService.QuitApplication (systray.Quit); this
-// watchdog guarantees the process itself dies even if the driver's shutdown
-// path stalls. By arming time all critical teardown (sing-box stopped, logs
-// closed) is already done, so os.Exit loses nothing.
-func forceExitAfter(d time.Duration) {
+// forceExitAfter arms a last-resort os.Exit for one phase of shutdown.
+// Field reports (2026-08): quitting from the tray with the window hidden
+// leaves the process alive — on Windows the tray icon stays behind and
+// relaunching the .exe shows "already running". The tray icon part is fixed
+// deterministically in UIService.QuitApplication (systray.Quit); the
+// watchdogs guarantee the process itself dies even if teardown or the
+// driver's shutdown path stalls. Armed twice from gracefulExit: once before
+// core stop (long budget — a forced exit there may orphan a privileged
+// sing-box, hence the explicit warning) and once before Quit (short budget,
+// nothing left to lose: sing-box stopped, logs closed).
+func forceExitAfter(d time.Duration, phase string) {
 	time.AfterFunc(d, func() {
-		debuglog.WarnLog("Shutdown watchdog: event loop did not exit within %s, forcing process exit", d)
+		debuglog.WarnLog("Shutdown watchdog: %s did not finish within %s, forcing process exit (a running core may be left behind)", phase, d)
 		os.Exit(0)
 	})
 }

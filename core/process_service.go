@@ -524,7 +524,9 @@ func (svc *ProcessService) Stop() {
 			ac.CmdMutex.Lock()
 			ac.StoppedByUser = false
 			ac.CmdMutex.Unlock()
-			if ac.hasUI() {
+			// На пути выхода диалог бессмысленен: GracefulExit идёт на
+			// main-потоке Fyne, окно закрывается — ошибка остаётся в логе.
+			if ac.hasUI() && !ac.IsExiting() {
 				dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("%s: %w", locale.T(stopPrivilegedFailedText), err))
 			}
 			return
