@@ -28,13 +28,9 @@ func migrateCustomRule(
 
 	// 1. preset-ref candidate
 	if presetID, ok := presetIDsByLabel[cr.Label]; ok {
-		body, _ := json.Marshal(PresetBody{Vars: map[string]string{}})
-		return &Rule{
-			Kind:    RuleKindPreset,
-			Ref:     presetID,
-			Enabled: cr.Enabled,
-			Body:    body,
-		}, nil
+		out := NewPresetRule(presetID, nil)
+		out.Enabled = cr.Enabled
+		return &out, nil
 	}
 
 	// 2. srs candidate
@@ -44,18 +40,11 @@ func migrateCustomRule(
 			URL  string `json:"url"`
 		}
 		if err := json.Unmarshal(cr.RuleSet[0], &rs); err == nil && rs.Type == "remote" && rs.URL != "" {
-			body, _ := json.Marshal(SrsBody{
-				Name:     cr.Label,
-				SrsURL:   rs.URL,
-				Outbound: cr.SelectedOutbound,
-			})
-			// SPEC 063: identity берётся через StableRuleID (= sanitize(body.name));
-			// поле Rule.ID удалено — больше не stored.
-			return &Rule{
-				Kind:    RuleKindSrs,
-				Enabled: cr.Enabled,
-				Body:    body,
-			}, nil
+			// SPEC 063: identity берётся через StableRuleID (= sanitize(name));
+			// поле Rule.ID лаунчер не заполняет.
+			out := NewSrsRule(cr.Label, []string{rs.URL}, cr.SelectedOutbound)
+			out.Enabled = cr.Enabled
+			return &out, nil
 		}
 	}
 
@@ -68,17 +57,10 @@ func migrateCustomRule(
 		})
 		return nil, warns
 	}
-	body, _ := json.Marshal(InlineBody{
-		Name:     cr.Label,
-		Match:    match,
-		Outbound: cr.SelectedOutbound,
-	})
-	// SPEC 063: identity = StableRuleID(r) = sanitize(body.name).
-	return &Rule{
-		Kind:    RuleKindInline,
-		Enabled: cr.Enabled,
-		Body:    body,
-	}, nil
+	// SPEC 063: identity = StableRuleID(r) = sanitize(name).
+	out := NewInlineRule(cr.Label, match, cr.SelectedOutbound)
+	out.Enabled = cr.Enabled
+	return &out, nil
 }
 
 // stripOutboundFromRule — удаляет outbound/action/method из rule, оставляет только match-поля.
@@ -140,10 +122,12 @@ func migrateDNS(old *LegacyDNSOptionsV5, templateDefaults map[string]bool) (DNSO
 				Enabled: enabled,
 			})
 		} else {
-			// User-added → kind=user с полным телом (без поля enabled — оно на top-level).
+			// User-added → kind=user с полным телом. Метаданные записи
+			// (enabled, tag) в тело не кладём: форма v8 держит их снаружи.
 			body := make(map[string]interface{}, len(srv))
 			for k, v := range srv {
-				if k == "enabled" {
+				switch k {
+				case "enabled", "tag":
 					continue
 				}
 				body[k] = v

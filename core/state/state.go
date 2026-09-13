@@ -35,9 +35,12 @@ import (
 //   - v6 — SPEC 053/056: rules[] kind discriminator, dns_options flat shape.
 //   - v7 — SPEC 118: плоский корень sources[]/directions[], юнион по kind,
 //     материализованные узлы подписок.
+//   - v8 — SPEC 127: одно пространство имён — запись = метаданные + `body`
+//     (правило sing-box как есть), `num`/`name`/`refs`/`vars` снаружи, корень
+//     `dns`/`warp`.
 //
-// Load принимает v2–v6 (с авто-миграцией); Save всегда пишет v7.
-const SchemaVersion = SchemaVersionV7
+// Load принимает v2–v7 (с авто-миграцией); Save всегда пишет v8.
+const SchemaVersion = SchemaVersionV8
 
 // ── State ────────────────────────────────────────────────────────
 

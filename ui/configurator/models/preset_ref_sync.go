@@ -78,18 +78,7 @@ func EmitStateRulesInAxisOrder(order []RuleSlot, presetRefs []*PresetRefState, c
 			if pr == nil || pr.Ref == "" {
 				continue
 			}
-			vars := pr.Vars
-			if vars == nil {
-				vars = map[string]string{}
-			}
-			body, _ := jsonMarshalPreset(vars)
-			out = append(out, state.Rule{
-				Kind:     state.RuleKindPreset,
-				Ref:      pr.Ref,
-				Enabled:  pr.Enabled,
-				OrderNum: copyOrderNum(pr.OrderNum),
-				Body:     body,
-			})
+			out = append(out, presetStateRule(pr))
 		case SlotKindCustom:
 			if slot.Index < 0 || slot.Index >= len(customRules) {
 				continue
@@ -113,10 +102,14 @@ func EmitStateRulesInAxisOrder(order []RuleSlot, presetRefs []*PresetRefState, c
 	return state.SortRulesByNum(out)
 }
 
-// jsonMarshalPreset — helper для serialization PresetBody (избавляет от
-// дублирования в SyncPresetRefsToStateRules / EmitStateRulesInAxisOrder).
-func jsonMarshalPreset(vars map[string]string) ([]byte, error) {
-	return json.Marshal(state.PresetBody{Vars: vars})
+// presetStateRule — запись пресета из UI-строки. Единственный писатель записи
+// kind=preset в этом пакете: тело у пресета в v8 не хранится, переменные и
+// номер оси лежат полями (SPEC 127 §0), и собирает их конструктор состояния.
+func presetStateRule(pr *PresetRefState) state.Rule {
+	r := state.NewPresetRule(pr.Ref, pr.Vars)
+	r.Enabled = pr.Enabled
+	r.Num = copyNum(pr.Num)
+	return r
 }
 
 // RuleOrderFromAxis — обратная конверсия: восстанавливает model.RuleOrder ПО
@@ -125,9 +118,9 @@ func jsonMarshalPreset(vars map[string]string) ([]byte, error) {
 // Имя говорит, откуда берётся порядок: не из позиций в state.Rules, а из
 // номеров оси — слоты выкладываются по ним (см. ниже).
 //
-// SPEC 106: порядок задаёт ОСЬ (state.Rule.OrderNum), а не позиция в слайсе —
+// SPEC 106: порядок задаёт ОСЬ (state.Rule.Num), а не позиция в слайсе —
 // сортируем стабильно по номеру, позиция остаётся тай-брейком. Заодно номер
-// раздаётся в модель (PresetRefState.OrderNum / RuleState.OrderNum), чтобы он
+// раздаётся в модель (PresetRefState.Num / RuleState.Num), чтобы он
 // пережил round-trip: без этого Save эмитил бы правила без номера и ось
 // пере-размечалась бы при каждой загрузке (drag&drop «откатывался»).
 //
@@ -163,7 +156,7 @@ func RuleOrderFromAxis(rules []state.Rule, presetRefs []*PresetRefState, customR
 			}
 			out = append(out, RuleSlot{Kind: SlotKindPresetRef, Index: idx})
 			if presetRefs[idx] != nil {
-				presetRefs[idx].OrderNum = copyOrderNum(r.OrderNum)
+				presetRefs[idx].Num = copyNum(r.Num)
 			}
 		case state.RuleKindInline, state.RuleKindSrs:
 			id := state.StableRuleID(r)
@@ -175,7 +168,7 @@ func RuleOrderFromAxis(rules []state.Rule, presetRefs []*PresetRefState, customR
 			crQueue[id] = q[1:]
 			out = append(out, RuleSlot{Kind: SlotKindCustom, Index: idx})
 			if customRules[idx] != nil {
-				customRules[idx].OrderNum = copyOrderNum(r.OrderNum)
+				customRules[idx].Num = copyNum(r.Num)
 			}
 		}
 	}
@@ -226,8 +219,8 @@ func buildCustomRuleQueue(rules []state.Rule, customRules []*RuleState) map[stri
 		}
 		id := state.StableRuleID(r)
 		n := state.DefaultRuleNum
-		if r.OrderNum != nil {
-			n = *r.OrderNum
+		if r.Num != nil {
+			n = *r.Num
 		}
 		numsByID[id] = append(numsByID[id], n)
 	}
@@ -258,8 +251,7 @@ func buildCustomRuleQueue(rules []state.Rule, customRules []*RuleState) map[stri
 // пустым match (возвращает nil), а для сопоставления позиций такое правило
 // всё равно нужно посчитать — иначе очередь identity сместилась бы.
 func customRuleStateToIdentityRule(rs *RuleState) *state.Rule {
-	body, _ := json.Marshal(state.InlineBody{Name: rs.Rule.Label})
-	return &state.Rule{Kind: state.RuleKindInline, Body: body}
+	return &state.Rule{Kind: state.RuleKindInline, Name: rs.Rule.Label}
 }
 
 // customRuleStateToV6Rule — конверсия RuleState (legacy) → state.Rule (kind=inline|srs).
@@ -293,13 +285,10 @@ func customRuleStateToV6Rule(rs *RuleState) *state.Rule {
 			}
 		}
 		if len(urls) > 0 {
-			body, _ := json.Marshal(state.NewSrsBody(label, urls, outbound))
-			return &state.Rule{
-				Kind:     state.RuleKindSrs,
-				Enabled:  rs.Enabled,
-				OrderNum: copyOrderNum(rs.OrderNum),
-				Body:     body,
-			}
+			r := state.NewSrsRule(label, urls, outbound)
+			r.Enabled = rs.Enabled
+			r.Num = copyNum(rs.Num)
+			return &r
 		}
 	}
 
@@ -308,23 +297,16 @@ func customRuleStateToV6Rule(rs *RuleState) *state.Rule {
 	if len(match) == 0 {
 		return nil
 	}
-	body, _ := json.Marshal(state.InlineBody{
-		Name:     label,
-		Match:    match,
-		Outbound: outbound,
-	})
-	return &state.Rule{
-		Kind:     state.RuleKindInline,
-		Enabled:  rs.Enabled,
-		OrderNum: copyOrderNum(rs.OrderNum),
-		Body:     body,
-	}
+	r := state.NewInlineRule(label, match, outbound)
+	r.Enabled = rs.Enabled
+	r.Num = copyNum(rs.Num)
+	return &r
 }
 
-// copyOrderNum — номер оси едет в state по значению: указатель из модели
+// copyNum — номер оси едет в state по значению: указатель из модели
 // нельзя отдавать наружу, иначе нормализация state пере-нумеровала бы модель
 // вживую (и наоборот). SPEC 106.
-func copyOrderNum(n *int) *int {
+func copyNum(n *int) *int {
 	if n == nil {
 		return nil
 	}
@@ -460,9 +442,15 @@ func syncDNSServersOnly(
 			if e, ok := srv["enabled"].(bool); ok {
 				enabled = e
 			}
+			// state v8 (SPEC 127 §0): в `body` едет тело sing-box КАК ЕСТЬ,
+			// без метаданных записи. `tag` живёт полем и дописывается обратно
+			// эмиссией (resolve_dns.go); до v8 его выбрасывал кастомный
+			// MarshalJSON у DNSServer, которого больше нет — значит выбрасывать
+			// приходится здесь, иначе тег удвоится в файле состояния.
 			body := make(map[string]interface{}, len(srv))
 			for k, v := range srv {
-				if k == "enabled" {
+				switch k {
+				case "enabled", "tag", "kind", "ref":
 					continue
 				}
 				body[k] = v
@@ -550,6 +538,8 @@ func buildDNSRulesFromOrder(
 			}
 			out = append(out, state.DNSRule{
 				Kind:    state.DNSRuleKindUser,
+				ID:      ur.ID,
+				Name:    ur.Name,
 				Enabled: ur.Enabled,
 				Body:    body,
 			})
@@ -638,6 +628,8 @@ func DNSRuleOrderFromStateRules(
 			}
 			newIdx := len(userRules)
 			userRules = append(userRules, DNSUserRule{
+				ID:      r.ID,
+				Name:    r.Name,
 				Enabled: r.Enabled,
 				Body:    body,
 			})
@@ -667,18 +659,7 @@ func SyncPresetRefsToStateRules(refs []*PresetRefState) []state.Rule {
 		if r == nil || r.Ref == "" {
 			continue
 		}
-		vars := r.Vars
-		if vars == nil {
-			vars = map[string]string{}
-		}
-		body, _ := json.Marshal(state.PresetBody{Vars: vars})
-		out = append(out, state.Rule{
-			Kind:     state.RuleKindPreset,
-			Ref:      r.Ref,
-			Enabled:  r.Enabled,
-			OrderNum: copyOrderNum(r.OrderNum),
-			Body:     body,
-		})
+		out = append(out, presetStateRule(r))
 	}
 	return out
 }
@@ -704,10 +685,10 @@ func SyncStateRulesToPresetRefs(rules []state.Rule) []*PresetRefState {
 			continue
 		}
 		out = append(out, &PresetRefState{
-			Ref:      r.Ref,
-			Enabled:  r.Enabled,
-			Vars:     pb.Vars,
-			OrderNum: copyOrderNum(r.OrderNum),
+			Ref:     r.Ref,
+			Enabled: r.Enabled,
+			Vars:    pb.Vars,
+			Num:     copyNum(r.Num),
 		})
 	}
 	return out

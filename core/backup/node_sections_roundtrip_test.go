@@ -26,23 +26,15 @@ const sectionsNodeURI = "trojan://pw@1.2.3.4:443#ts-node"
 // форме хранения.
 func stateWithSections(t *testing.T, dnsServerTag string, ruleNum int) *state.State {
 	t.Helper()
-	ruleBody, err := json.Marshal(state.InlineBody{
-		Name:     state.SelfPlaceholderBraced + " network",
-		Match:    map[string]interface{}{"ip_cidr": []interface{}{"100.64.0.0/10"}},
-		Outbound: state.SelfPlaceholder,
-	})
-	if err != nil {
-		t.Fatalf("кодирование правила секции: %v", err)
-	}
+	sectionRule := state.NewInlineRule(
+		state.SelfPlaceholderBraced+" network",
+		map[string]interface{}{"ip_cidr": []interface{}{"100.64.0.0/10"}},
+		state.SelfPlaceholder,
+	)
 	num := ruleNum
-	sections := &state.NodeSections{
-		Rules: []state.Rule{{
-			Kind:     state.RuleKindInline,
-			Enabled:  true,
-			OrderNum: &num,
-			Body:     ruleBody,
-		}},
-	}
+	sectionRule.Enabled = true
+	sectionRule.Num = &num
+	sections := &state.NodeSections{Rules: []state.Rule{sectionRule}}
 	sections.SetDNS(
 		[]state.DNSServer{{
 			Kind:    state.DNSServerKindUser,
@@ -125,7 +117,7 @@ func nodeSectionsOf(t *testing.T, s *state.State) *state.NodeSections {
 
 func TestBackupNodeSectionsRoundTrip(t *testing.T) {
 	// 1. Экспорт пишет поле в форме хранения — с `kind`, `enabled` и
-	//    `order_num` у записей.
+	//    `num` у записей (state v8; до v8 номер назывался `order_num`).
 	src := stateWithSections(t, "ts-dns", 945)
 	b, _, err := Export(src, ExportOptions{AppVersion: "test", Platform: "darwin"})
 	if err != nil {
@@ -135,7 +127,7 @@ func TestBackupNodeSectionsRoundTrip(t *testing.T) {
 		t.Fatal("экспорт не записал servers[].sections")
 	}
 	written := string(b.Servers[0].Sections.Raw)
-	for _, want := range []string{`"kind":"inline"`, `"order_num":945`, `"kind":"user"`} {
+	for _, want := range []string{`"kind":"inline"`, `"num":945`, `"kind":"user"`} {
 		if !strings.Contains(written, want) {
 			t.Errorf("экспортированные секции без %s: %s", want, written)
 		}
@@ -152,8 +144,8 @@ func TestBackupNodeSectionsRoundTrip(t *testing.T) {
 		t.Errorf("состав секций разошёлся: servers=%d rules=%d route=%d",
 			len(sec.DNSServers()), len(sec.DNSRules()), len(sec.Rules))
 	}
-	if sec.Rules[0].OrderNum == nil || *sec.Rules[0].OrderNum != 945 {
-		t.Errorf("позиция правила узла не пережила круг: %v", sec.Rules[0].OrderNum)
+	if sec.Rules[0].Num == nil || *sec.Rules[0].Num != 945 {
+		t.Errorf("позиция правила узла не пережила круг: %v", sec.Rules[0].Num)
 	}
 	if ep, _ := sec.DNSServers()[0].Body["endpoint"].(string); ep != state.SelfPlaceholder {
 		t.Errorf("плейсхолдер %s не пережил круг — связка потеряла привязку к узлу (endpoint=%q)",

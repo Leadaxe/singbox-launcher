@@ -333,8 +333,8 @@ func checkRules(t *testing.T, dst *state.State, exp corpusExpectation) {
 	for _, r := range dst.Rules {
 		name := ruleName(r)
 		num := 0
-		if r.OrderNum != nil {
-			num = *r.OrderNum
+		if r.Num != nil {
+			num = *r.Num
 		}
 		all = append(all, got{name, r.Enabled, num, ruleRefs(r)})
 	}
@@ -354,15 +354,13 @@ func checkRules(t *testing.T, dst *state.State, exp corpusExpectation) {
 }
 
 // ruleRefs — все URL наборов srs-правила по порядку; у прочих kind — nil.
+//
+// state v8: наборы — поле записи, дедуплицированное конструктором.
 func ruleRefs(r state.Rule) []string {
 	if r.Kind != state.RuleKindSrs {
 		return nil
 	}
-	body, err := r.DecodeBody()
-	if err != nil {
-		return nil
-	}
-	return body.(*state.SrsBody).URLs()
+	return r.Refs
 }
 
 // checkFolders — папки собраны по имени, с тем же составом и порядком.
@@ -522,17 +520,13 @@ func checkReplaceTags(t *testing.T, dst *state.State, exp corpusExpectation) {
 	}
 }
 
+// ruleName — имя записи: у inline/srs это поле `name` (state v8 вынес его из
+// тела наружу), у preset — ссылка на пресет.
 func ruleName(r state.Rule) string {
 	switch r.Kind {
-	case state.RuleKindInline:
-		var body state.InlineBody
-		if err := json.Unmarshal(r.Body, &body); err == nil {
-			return body.Name
-		}
-	case state.RuleKindSrs:
-		var body state.SrsBody
-		if err := json.Unmarshal(r.Body, &body); err == nil {
-			return body.Name
+	case state.RuleKindInline, state.RuleKindSrs:
+		if r.Name != "" {
+			return r.Name
 		}
 	case state.RuleKindPreset:
 		return r.Ref

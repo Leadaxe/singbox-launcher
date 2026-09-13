@@ -90,7 +90,7 @@ per-source raw-body cache.
 | `connections_helpers.go` | Hoisted shared `buildTagSpec` / server-label / URI-fragment helpers (deduped from adapter + migration). |
 | `rule_types.go` | v6 `Rule` (kind = preset/inline/srs) + bodies + `DecodeBody` validation. |
 | `rule_identity.go` | `StableRuleID` pure function (preset→Ref, inline/srs→sanitized name); identity is computed, not stored. |
-| `dns_options.go` | v6 flat DNS schema (kind discriminator template/preset/user) + custom Marshal/Unmarshal. |
+| `dns_options.go` | DNS records: kind discriminator (template/preset/user) + `body` (state v8; the v6 flat shape with custom Marshal/Unmarshal is gone). |
 | `sync_dns.go` | `SyncDNSOptionsWithActivePresets` (idempotent add/remove preset DNS entries on Rule toggle). |
 | `migration_v5_to_v6.go` | v5→v6 helpers (`migrateCustomRule` kind heuristic, `migrateDNS`). |
 | `legacy_migration.go` | v2/v3/v4→v5 migration (`migrateV4ToV5`, `migrateLegacySources`). |

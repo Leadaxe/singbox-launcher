@@ -74,11 +74,21 @@ func (s NodeSectionSet) RulesWithSelf() []state.Rule {
 	out := make([]state.Rule, 0, len(s.Sections.Rules))
 	for _, r := range s.Sections.Rules {
 		cp := r
-		if r.OrderNum != nil {
+		if r.Num != nil {
 			// Копия номера: список правил дальше сортируется и раздаётся,
 			// а состояние правку номера здесь не заказывало.
-			n := *r.OrderNum
-			cp.OrderNum = &n
+			n := *r.Num
+			cp.Num = &n
+		}
+		if len(r.Refs) > 0 {
+			cp.Refs = append([]string(nil), r.Refs...)
+		}
+		if len(r.Vars) > 0 {
+			vars := make(map[string]string, len(r.Vars))
+			for k, v := range r.Vars {
+				vars[k] = v
+			}
+			cp.Vars = vars
 		}
 		cp.Body = state.SubstituteSelf(r.Body, s.FinalTag)
 		out = append(out, cp)

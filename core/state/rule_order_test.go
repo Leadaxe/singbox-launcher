@@ -9,11 +9,11 @@ import "testing"
 func numPtr(n int) *int { return &n }
 
 func presetRule(ref string, num *int) Rule {
-	return Rule{Kind: RuleKindPreset, Ref: ref, Enabled: true, OrderNum: num, Body: []byte(`{}`)}
+	return Rule{Kind: RuleKindPreset, Ref: ref, Enabled: true, Num: num, Body: []byte(`{}`)}
 }
 
 func inlineRule(num *int) Rule {
-	return Rule{Kind: RuleKindInline, Enabled: true, OrderNum: num, Body: []byte(`{}`)}
+	return Rule{Kind: RuleKindInline, Enabled: true, Num: num, Body: []byte(`{}`)}
 }
 
 func allSortable(Rule) bool { return true }
@@ -36,8 +36,8 @@ func TestSeedAddsMissingNonSortablePreset(t *testing.T) {
 	for _, r := range out {
 		if r.Ref == "traffic-processing" {
 			found = true
-			if r.OrderNum == nil || *r.OrderNum != 0 {
-				t.Errorf("seeded с номером %v, ожидался 0", r.OrderNum)
+			if r.Num == nil || *r.Num != 0 {
+				t.Errorf("seeded с номером %v, ожидался 0", r.Num)
 			}
 		}
 	}
@@ -114,10 +114,10 @@ func TestMarkOrderUsesTemplateNumForPresets(t *testing.T) {
 		if key == "" {
 			key = "inline"
 		}
-		if r.OrderNum == nil {
+		if r.Num == nil {
 			t.Fatalf("правило %q осталось без номера", key)
 		}
-		nums[key] = *r.OrderNum
+		nums[key] = *r.Num
 	}
 	if nums["ru-direct"] != 1120 {
 		t.Errorf("пресет получил номер %d, ожидался 1120 из шаблона", nums["ru-direct"])
@@ -166,11 +166,11 @@ func TestPlaceRuleAfterFreeSlotDoesNotTouchNeighbours(t *testing.T) {
 		inlineRule(numPtr(1050)),
 	}
 	PlaceRuleAfter(rules, 1, 0, allSortable) // 1050 → сразу за 1000
-	if *rules[1].OrderNum != 1001 {
-		t.Errorf("moved получил %d, ожидался 1001", *rules[1].OrderNum)
+	if *rules[1].Num != 1001 {
+		t.Errorf("moved получил %d, ожидался 1001", *rules[1].Num)
 	}
-	if *rules[0].OrderNum != 1000 {
-		t.Errorf("target сдвинулся на %d, а не должен был", *rules[0].OrderNum)
+	if *rules[0].Num != 1000 {
+		t.Errorf("target сдвинулся на %d, а не должен был", *rules[0].Num)
 	}
 }
 
@@ -187,14 +187,14 @@ func TestPlaceRuleAfterCascadeStopsAtFirstGap(t *testing.T) {
 	}
 	PlaceRuleAfter(rules, 4, 0, allSortable)
 
-	if *rules[4].OrderNum != 1001 {
-		t.Errorf("moved получил %d, ожидался 1001", *rules[4].OrderNum)
+	if *rules[4].Num != 1001 {
+		t.Errorf("moved получил %d, ожидался 1001", *rules[4].Num)
 	}
-	if *rules[1].OrderNum != 1002 || *rules[2].OrderNum != 1003 {
-		t.Errorf("блок сдвинулся неверно: %d, %d", *rules[1].OrderNum, *rules[2].OrderNum)
+	if *rules[1].Num != 1002 || *rules[2].Num != 1003 {
+		t.Errorf("блок сдвинулся неверно: %d, %d", *rules[1].Num, *rules[2].Num)
 	}
-	if *rules[3].OrderNum != 1120 {
-		t.Errorf("ЯКОРЬ за дыркой уехал на %d — каскад не остановился на первой дырке", *rules[3].OrderNum)
+	if *rules[3].Num != 1120 {
+		t.Errorf("ЯКОРЬ за дыркой уехал на %d — каскад не остановился на первой дырке", *rules[3].Num)
 	}
 }
 
@@ -205,16 +205,16 @@ func TestPlaceRuleAfterIgnoresNonSortable(t *testing.T) {
 	sortable := func(r Rule) bool { return r.Ref != "traffic-processing" }
 
 	PlaceRuleAfter(rules, 0, 1, sortable) // попытка сдвинуть голову
-	if *rules[0].OrderNum != 0 {
-		t.Errorf("несортируемое правило сдвинулось на %d", *rules[0].OrderNum)
+	if *rules[0].Num != 0 {
+		t.Errorf("несортируемое правило сдвинулось на %d", *rules[0].Num)
 	}
 }
 
 func TestPlaceRuleAfterNilTarget(t *testing.T) {
 	rules := []Rule{inlineRule(numPtr(1050))}
 	PlaceRuleAfter(rules, 0, -1, allSortable)
-	if *rules[0].OrderNum != UserRuleNumStart {
-		t.Errorf("при target=nil правило получило %d, ожидалось %d", *rules[0].OrderNum, UserRuleNumStart)
+	if *rules[0].Num != UserRuleNumStart {
+		t.Errorf("при target=nil правило получило %d, ожидалось %d", *rules[0].Num, UserRuleNumStart)
 	}
 }
 

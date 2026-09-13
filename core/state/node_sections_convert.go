@@ -27,6 +27,7 @@
 package state
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -120,37 +121,41 @@ func NodeSectionsFromSingbox(in SingboxNodeFragments) (*NodeSections, error) {
 }
 
 // nodeSectionRuleFromBody — одно sing-box-правило как запись `inline`.
+//
+// Тело записи (state v8) — правило sing-box КАК ЕСТЬ: проверки уже сделаны
+// (`rule_set` — отказ, чужой `@var` — отказ), цели нет ни в каком виде →
+// дописывается `"outbound":"@self"`. Имя — метаданные записи, из тела оно
+// снимается (в конфиг `name` не уходил и раньше).
 func nodeSectionRuleFromBody(body map[string]interface{}, idx, num int) (*Rule, error) {
+	name, _ := body["name"].(string)
+	named := strings.TrimSpace(name) != ""
+	if !named {
+		name = fmt.Sprintf("%s rule %d", SelfPlaceholderBraced, idx+1)
+	}
+	out := make(map[string]interface{}, len(body)+1)
+	for k, v := range body {
+		if named && k == "name" {
+			continue
+		}
+		out[k] = v
+	}
 	outbound, _ := body["outbound"].(string)
 	_, hasAction := body["action"]
 	if outbound == "" && !hasAction {
 		// Правило без цели — про этот узел: иначе оно ничего не значит.
-		outbound = SelfPlaceholder
+		out["outbound"] = SelfPlaceholder
 	}
-	match := make(map[string]interface{}, len(body))
-	for k, v := range body {
-		switch k {
-		case "outbound", "action":
-			continue
-		}
-		match[k] = v
-	}
-	name, _ := body["name"].(string)
-	if strings.TrimSpace(name) == "" {
-		name = fmt.Sprintf("%s rule %d", SelfPlaceholderBraced, idx+1)
-	} else {
-		delete(match, "name")
-	}
-	encoded, err := json.Marshal(InlineBody{Name: name, Match: match, Outbound: outbound})
+	encoded, err := json.Marshal(out)
 	if err != nil {
 		return nil, err
 	}
 	n := num
 	return &Rule{
-		Kind:     RuleKindInline,
-		Enabled:  true,
-		OrderNum: &n,
-		Body:     encoded,
+		Kind:    RuleKindInline,
+		Name:    name,
+		Enabled: true,
+		Num:     &n,
+		Body:    encoded,
 	}, nil
 }
 
@@ -240,36 +245,47 @@ func NodeSectionsToSingbox(sections *NodeSections) SingboxNodeFragments {
 
 // nodeSectionRuleToSingbox — запись правила как sing-box-объект.
 func nodeSectionRuleToSingbox(r Rule) (json.RawMessage, bool) {
-	body, err := r.DecodeBody()
-	if err != nil {
+	if _, err := r.DecodeBody(); err != nil {
 		return nil, false
 	}
-	obj := map[string]interface{}{}
-	switch b := body.(type) {
-	case *InlineBody:
-		for k, v := range b.Match {
+	switch r.Kind {
+	case RuleKindInline:
+		// Тело записи УЖЕ правило sing-box — показываем его как есть, вместе
+		// с порядком ключей, который написал пользователь.
+		if len(bytes.TrimSpace(r.Body)) == 0 {
+			return json.RawMessage(`{}`), true
+		}
+		return append(json.RawMessage(nil), r.Body...), true
+	case RuleKindSrs:
+		// srs-правило узла показывается тем, чем оно является: ссылками на
+		// наборы плюс цель. Файлы наборов кладёт общий конвейер srs. ВСЕ
+		// ссылки, а не первая: до v8 правило с тремя наборами эмитило один
+		// (ловушка 20а карты SPEC 127).
+		body, err := decodeRuleBodyMap(r.Body)
+		if err != nil {
+			return nil, false
+		}
+		obj := make(map[string]interface{}, len(body)+1)
+		for k, v := range body {
 			obj[k] = v
 		}
-		if b.Outbound != "" {
-			obj["outbound"] = b.Outbound
+		if len(r.Refs) == 1 {
+			obj["rule_set"] = r.Refs[0]
+		} else if len(r.Refs) > 1 {
+			refs := make([]interface{}, 0, len(r.Refs))
+			for _, u := range r.Refs {
+				refs = append(refs, u)
+			}
+			obj["rule_set"] = refs
 		}
-	case *SrsBody:
-		// srs-правило узла показывается тем, чем оно является: ссылкой на
-		// набор плюс цель. Файл набора кладёт общий конвейер srs.
-		if b.SrsURL != "" {
-			obj["srs_url"] = b.SrsURL
+		raw, err := json.Marshal(obj)
+		if err != nil {
+			return nil, false
 		}
-		if b.Outbound != "" {
-			obj["outbound"] = b.Outbound
-		}
+		return raw, true
 	default:
 		return nil, false
 	}
-	raw, err := json.Marshal(obj)
-	if err != nil {
-		return nil, false
-	}
-	return raw, true
 }
 
 // nodeSectionVarRe — любое `@имя` в строковом значении. Тот же алфавит, что у

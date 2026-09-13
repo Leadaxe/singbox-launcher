@@ -19,7 +19,15 @@ import (
 //
 // Body — flat sing-box dns rule поля (domain, domain_suffix, rule_set, server,
 // ...). НЕ содержит kind/enabled (они top-level в state).
+//
+// ID/Name — метаданные записи состояния (state v8, SPEC 127 §0): лаунчер их не
+// заполняет и в UI не показывает, но обязан провозить без потерь — их пишет
+// вторая сторона (LxBox, импорт бэкапа). Круг «состояние → модель → состояние»
+// идёт на каждом сохранении визарда, поэтому поля обязаны жить и в модели:
+// иначе первое же сохранение DNS стирало бы чужие метаданные с диска.
 type DNSUserRule struct {
+	ID      string
+	Name    string
 	Enabled bool
 	Body    map[string]interface{}
 }

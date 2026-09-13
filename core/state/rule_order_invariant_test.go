@@ -47,11 +47,11 @@ func TestPlaceRuleAfterSystemHeadIsLegalAndStaysPositive(t *testing.T) {
 
 	PlaceRuleAfter(rules, 1, 0, sortable)
 
-	if got := *rules[1].OrderNum; got != 1 {
+	if got := *rules[1].Num; got != 1 {
 		t.Errorf("moved получил %d, ожидался 1 — позиция сразу под системной головой", got)
 	}
-	if *rules[0].OrderNum != 0 {
-		t.Errorf("системная голова сдвинута на %d", *rules[0].OrderNum)
+	if *rules[0].Num != 0 {
+		t.Errorf("системная голова сдвинута на %d", *rules[0].Num)
 	}
 }
 
@@ -65,7 +65,7 @@ func TestPlaceRuleAfterNeverGoesBelowMin(t *testing.T) {
 	}
 	PlaceRuleAfter(rules, 1, 0, allSortable)
 
-	if got := *rules[1].OrderNum; got < MinSortableRuleNum {
+	if got := *rules[1].Num; got < MinSortableRuleNum {
 		t.Errorf("moved получил %d — ниже пола оси %d", got, MinSortableRuleNum)
 	}
 }
@@ -84,14 +84,14 @@ func TestPlaceRuleAfterBetweenAnchorsKeepsAnchorsStill(t *testing.T) {
 
 	PlaceRuleAfter(rules, 3, 1, sortable)
 
-	if got := *rules[3].OrderNum; got != 951 {
+	if got := *rules[3].Num; got != 951 {
 		t.Errorf("moved получил %d, ожидался 951 — место между якорями", got)
 	}
-	if *rules[1].OrderNum != 950 || *rules[2].OrderNum != 960 {
-		t.Errorf("якоря сдвинуты: %d / %d", *rules[1].OrderNum, *rules[2].OrderNum)
+	if *rules[1].Num != 950 || *rules[2].Num != 960 {
+		t.Errorf("якоря сдвинуты: %d / %d", *rules[1].Num, *rules[2].Num)
 	}
-	if *rules[0].OrderNum != 0 {
-		t.Errorf("системная голова сдвинута на %d", *rules[0].OrderNum)
+	if *rules[0].Num != 0 {
+		t.Errorf("системная голова сдвинута на %d", *rules[0].Num)
 	}
 }
 
@@ -110,18 +110,18 @@ func TestPlaceRuleBeforeKeepsNumsDistinct(t *testing.T) {
 	}
 	PlaceRuleBefore(rules, 0, 1, allSortable)
 
-	if *rules[0].OrderNum != 950 {
-		t.Errorf("moved получил %d, ожидался 950 (номер соседа)", *rules[0].OrderNum)
+	if *rules[0].Num != 950 {
+		t.Errorf("moved получил %d, ожидался 950 (номер соседа)", *rules[0].Num)
 	}
-	if *rules[1].OrderNum != 951 {
-		t.Errorf("сосед вытеснен на %d, ожидался 951", *rules[1].OrderNum)
+	if *rules[1].Num != 951 {
+		t.Errorf("сосед вытеснен на %d, ожидался 951", *rules[1].Num)
 	}
-	if *rules[0].OrderNum == *rules[1].OrderNum {
+	if *rules[0].Num == *rules[1].Num {
 		t.Error("равные номера у перетащенного и соседа")
 	}
 	// Ленивость: якорь за дыркой не двигается.
-	if *rules[2].OrderNum != 1120 {
-		t.Errorf("якорь за дыркой уехал на %d", *rules[2].OrderNum)
+	if *rules[2].Num != 1120 {
+		t.Errorf("якорь за дыркой уехал на %d", *rules[2].Num)
 	}
 }
 
@@ -138,14 +138,14 @@ func TestDropToTopUnderHeadGivesOneAndKeepsAnchor(t *testing.T) {
 
 	PlaceRuleAfter(rules, 2, 0, sortable)
 
-	if got := *rules[2].OrderNum; got != 1 {
+	if got := *rules[2].Num; got != 1 {
 		t.Errorf("moved получил %d, ожидался 1 — сосед сверху голова 0", got)
 	}
-	if *rules[1].OrderNum != 950 {
-		t.Errorf("якорь уехал на %d", *rules[1].OrderNum)
+	if *rules[1].Num != 950 {
+		t.Errorf("якорь уехал на %d", *rules[1].Num)
 	}
-	if *rules[0].OrderNum != 0 {
-		t.Errorf("системная голова сдвинута на %d", *rules[0].OrderNum)
+	if *rules[0].Num != 0 {
+		t.Errorf("системная голова сдвинута на %d", *rules[0].Num)
 	}
 }
 
@@ -161,14 +161,14 @@ func TestPlaceRuleAfterDoesNotDisturbTailCatchAlls(t *testing.T) {
 	}
 	PlaceRuleAfter(rules, 4, 0, allSortable)
 
-	if *rules[4].OrderNum != 1001 {
-		t.Errorf("moved получил %d, ожидался 1001", *rules[4].OrderNum)
+	if *rules[4].Num != 1001 {
+		t.Errorf("moved получил %d, ожидался 1001", *rules[4].Num)
 	}
-	if *rules[1].OrderNum != 1002 {
-		t.Errorf("сплошной блок сдвинут неверно: %d", *rules[1].OrderNum)
+	if *rules[1].Num != 1002 {
+		t.Errorf("сплошной блок сдвинут неверно: %d", *rules[1].Num)
 	}
-	if *rules[2].OrderNum != 1110 || *rules[3].OrderNum != 1120 {
-		t.Errorf("хвостовые catch-all уехали: %d / %d", *rules[2].OrderNum, *rules[3].OrderNum)
+	if *rules[2].Num != 1110 || *rules[3].Num != 1120 {
+		t.Errorf("хвостовые catch-all уехали: %d / %d", *rules[2].Num, *rules[3].Num)
 	}
 }
 
@@ -176,8 +176,8 @@ func TestPlaceRuleAfterDoesNotDisturbTailCatchAlls(t *testing.T) {
 func TestPlaceRuleBeforeNilTarget(t *testing.T) {
 	rules := []Rule{inlineRule(numPtr(1050))}
 	PlaceRuleBefore(rules, 0, -1, allSortable)
-	if *rules[0].OrderNum != UserRuleNumStart {
-		t.Errorf("при target=nil правило получило %d, ожидалось %d", *rules[0].OrderNum, UserRuleNumStart)
+	if *rules[0].Num != UserRuleNumStart {
+		t.Errorf("при target=nil правило получило %d, ожидалось %d", *rules[0].Num, UserRuleNumStart)
 	}
 }
 

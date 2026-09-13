@@ -92,7 +92,7 @@
 | `connections_helpers.go` | Вынесенные общие хелперы `buildTagSpec`, меток сервера и фрагментов URI (дедуплицированы из адаптера и миграции). |
 | `rule_types.go` | `Rule` v6 (kind = preset/inline/srs), тела и валидация `DecodeBody`. |
 | `rule_identity.go` | Чистая функция `StableRuleID` (preset→Ref, inline/srs→очищенное имя); идентичность вычисляется, а не хранится. |
-| `dns_options.go` | Плоская схема DNS v6 (дискриминатор kind template/preset/user) и собственные Marshal/Unmarshal. |
+| `dns_options.go` | Записи DNS: дискриминатор kind (template/preset/user) и `body` (state v8; плоской формы v6 с собственными Marshal/Unmarshal больше нет). |
 | `sync_dns.go` | `SyncDNSOptionsWithActivePresets` (идемпотентное добавление и удаление DNS-записей пресета при переключении правила). |
 | `migration_v5_to_v6.go` | Хелперы v5→v6 (эвристика kind в `migrateCustomRule`, `migrateDNS`). |
 | `legacy_migration.go` | Миграция v2/v3/v4→v5 (`migrateV4ToV5`, `migrateLegacySources`). |

@@ -30,17 +30,17 @@ func axisTemplate() *wizardtemplate.TemplateData {
 }
 
 func inlineRule(name string, num *int) corestate.Rule {
-	body, _ := json.Marshal(corestate.InlineBody{
-		Name:     name,
-		Match:    map[string]interface{}{"domain_suffix": name + ".example"},
-		Outbound: "proxy-out",
-	})
-	return corestate.Rule{Kind: corestate.RuleKindInline, Enabled: true, OrderNum: num, Body: body}
+	r := corestate.NewInlineRule(name, map[string]interface{}{"domain_suffix": name + ".example"}, "proxy-out")
+	r.Enabled = true
+	r.Num = num
+	return r
 }
 
 func presetRule(ref string, num *int) corestate.Rule {
-	body, _ := json.Marshal(corestate.PresetBody{Vars: map[string]string{}})
-	return corestate.Rule{Kind: corestate.RuleKindPreset, Ref: ref, Enabled: true, OrderNum: num, Body: body}
+	r := corestate.NewPresetRule(ref, nil)
+	r.Enabled = true
+	r.Num = num
+	return r
 }
 
 // loadIntoModel воспроизводит restorePresetRefs: normalize → PresetRefs →
@@ -61,7 +61,7 @@ func loadIntoModel(t *testing.T, rules []corestate.Rule, td *wizardtemplate.Temp
 		m.RuleOrder = order
 		ReconcileRuleOrder(m)
 	}
-	EnsureRuleOrderNums(m)
+	EnsureRuleNums(m)
 	return m
 }
 
@@ -85,10 +85,20 @@ func customRulesFromStateRules(rules []corestate.Rule) []*RuleState {
 				name, outbound = b.Name, b.Outbound
 			}
 		} else {
-			// Безымянное правило: DecodeBody отказывает, но match переживает.
-			var ib corestate.InlineBody
-			_ = json.Unmarshal(r.Body, &ib)
-			match, outbound = ib.Match, ib.Outbound
+			// Безымянное правило: DecodeBody отказывает (имя обязательно), но
+			// тело переживает. В state v8 тело — правило sing-box целиком, так
+			// что матчеры и цель достаются из карты, а не из полей вида.
+			bm, _ := r.BodyMap()
+			match = make(map[string]interface{}, len(bm))
+			for k, v := range bm {
+				switch k {
+				case "outbound":
+					outbound, _ = v.(string)
+				case "action", "method":
+				default:
+					match[k] = v
+				}
+			}
 		}
 		if match == nil {
 			match = map[string]interface{}{}
@@ -179,7 +189,7 @@ func TestAxisSurvivesSaveLoadRoundTrip(t *testing.T) {
 
 	saved := saveModel(m)
 	for i, r := range saved {
-		if r.OrderNum == nil {
+		if r.Num == nil {
 			t.Fatalf("state.Rules[%d] (%s/%s) сохранён без order_num", i, r.Kind, r.Ref)
 		}
 	}
@@ -253,7 +263,7 @@ func TestUnmarkedStateGetsMarkedAndPersisted(t *testing.T) {
 		t.Fatal("после сохранения нет правил")
 	}
 	for i, r := range saved {
-		if r.OrderNum == nil {
+		if r.Num == nil {
 			t.Fatalf("state.Rules[%d] (%s/%s) остался без order_num", i, r.Kind, r.Ref)
 		}
 	}
@@ -268,7 +278,7 @@ func TestUnmarkedStateGetsMarkedAndPersisted(t *testing.T) {
 		if key == "" {
 			key = "inline"
 		}
-		nums[key] = *r.OrderNum
+		nums[key] = *r.Num
 	}
 	if nums["private-ips"] != 950 || nums["block-ads"] != 960 {
 		t.Fatalf("пресеты не сели на якоря шаблона: %v", nums)
@@ -295,9 +305,9 @@ func TestNewRuleGetsNextUserNum(t *testing.T) {
 		presetRule("russian", intp(1120)),
 	}, td)
 
-	got := NextRuleOrderNum(m)
+	got := NextRuleNum(m)
 	if got == nil || *got != 1002 {
-		t.Fatalf("NextRuleOrderNum = %v, ожидалось 1002", got)
+		t.Fatalf("NextRuleNum = %v, ожидалось 1002", got)
 	}
 }
 
@@ -330,16 +340,16 @@ func TestDragNextToAnchorDoesNotMoveAnchor(t *testing.T) {
 		switch s.Kind {
 		case SlotKindPresetRef:
 			pr := m.PresetRefs[s.Index]
-			if pr.OrderNum == nil {
+			if pr.Num == nil {
 				t.Fatalf("пресет %q остался без номера", pr.Ref)
 			}
-			nums[pr.Ref] = *pr.OrderNum
+			nums[pr.Ref] = *pr.Num
 		case SlotKindCustom:
 			cr := m.CustomRules[s.Index]
-			if cr.OrderNum == nil {
+			if cr.Num == nil {
 				t.Fatal("правило mine осталось без номера")
 			}
-			nums[cr.Rule.Label] = *cr.OrderNum
+			nums[cr.Rule.Label] = *cr.Num
 		}
 	}
 
@@ -395,8 +405,8 @@ func TestDragShiftsOnlyContiguousBlock(t *testing.T) {
 	}
 	nums := map[string]int{}
 	for _, cr := range m.CustomRules {
-		if cr.OrderNum != nil {
-			nums[cr.Rule.Label] = *cr.OrderNum
+		if cr.Num != nil {
+			nums[cr.Rule.Label] = *cr.Num
 		}
 	}
 	if nums["a"] != 1000 {
@@ -408,8 +418,8 @@ func TestDragShiftsOnlyContiguousBlock(t *testing.T) {
 	if nums["b"] != 1002 {
 		t.Errorf("b = %d, ожидалось 1002 (вытеснен на +1)", nums["b"])
 	}
-	if m.PresetRefs[1].OrderNum == nil || *m.PresetRefs[1].OrderNum != 1120 {
-		t.Errorf("якорь russian сдвинут: %v", m.PresetRefs[1].OrderNum)
+	if m.PresetRefs[1].Num == nil || *m.PresetRefs[1].Num != 1120 {
+		t.Errorf("якорь russian сдвинут: %v", m.PresetRefs[1].Num)
 	}
 }
 
@@ -459,7 +469,7 @@ func TestSystemRuleNumberUntouchedByDrag(t *testing.T) {
 	if !MoveRuleSlot(m, 2, 1) {
 		t.Fatal("обычная перестановка отклонена")
 	}
-	if n := m.PresetRefs[0].OrderNum; n == nil || *n != 0 {
+	if n := m.PresetRefs[0].Num; n == nil || *n != 0 {
 		t.Fatalf("номер системного правила изменился: %v", n)
 	}
 }

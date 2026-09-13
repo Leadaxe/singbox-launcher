@@ -103,7 +103,7 @@ func (p *WizardPresenter) restorePresetRefs(state *wizardmodels.WizardStateFile)
 	populatePresetEnabledFromState(p.model.PresetRefs, state.DNS)
 
 	// Restore RuleOrder из state.Rules (preserve порядок between save/load).
-	// Порядок задаёт ось (OrderNum), а не позиция в слайсе — сортировку и
+	// Порядок задаёт ось (Num), а не позиция в слайсе — сортировку и
 	// раздачу номеров в модель делает RuleOrderFromAxis (SPEC 106).
 	// Fallback на дефолтную последовательность если state v5 (нет RulesV6).
 	order := wizardmodels.RuleOrderFromAxis(state.Rules, p.model.PresetRefs, p.model.CustomRules, p.model.NodeRuleRefs)
@@ -122,7 +122,7 @@ func (p *WizardPresenter) restorePresetRefs(state *wizardmodels.WizardStateFile)
 	// Доразметка того, что приехало мимо оси (legacy state, дописанные
 	// Reconcile'ом слоты): следующий Save обязан уйти уже размеченным, иначе
 	// каждая загрузка пере-нумеровывала бы правила подряд.
-	wizardmodels.EnsureRuleOrderNums(p.model)
+	wizardmodels.EnsureRuleNums(p.model)
 
 	// SPEC 062-F-N: restore DNSRuleOrder + DNSUserRules from state.DNS.Rules.
 	// PresetRefs уже выставлены выше — DNSRuleOrderFromStateRules может

@@ -167,21 +167,15 @@ func buildNodeSectionsConfig(t *testing.T, tc nodeSectionsScenario) []byte {
 
 	// Пользовательское правило в своей зоне (1000): относительно него и
 	// проверяется позиция якоря узла (945).
-	userBody, err := json.Marshal(state.InlineBody{
-		Name:     "user-marker",
-		Match:    map[string]interface{}{"domain_suffix": []string{userRuleMarkerDomain}},
-		Outbound: "direct-out",
-	})
-	if err != nil {
-		t.Fatalf("кодирование пользовательского правила: %v", err)
-	}
+	userRule := state.NewInlineRule(
+		"user-marker",
+		map[string]interface{}{"domain_suffix": []string{userRuleMarkerDomain}},
+		"direct-out",
+	)
 	userNum := state.DefaultRuleNum
-	st.Rules = append(st.Rules, state.Rule{
-		Kind:     state.RuleKindInline,
-		Enabled:  true,
-		OrderNum: &userNum,
-		Body:     userBody,
-	})
+	userRule.Enabled = true
+	userRule.Num = &userNum
+	st.Rules = append(st.Rules, userRule)
 
 	ctx := BuildContext{
 		Template:   td,
@@ -210,23 +204,15 @@ func buildNodeSectionsConfig(t *testing.T, tc nodeSectionsScenario) []byte {
 // на его подсеть. Ссылки — плейсхолдером, как их пишет редактор.
 func nodeSectionsFixture(t *testing.T, ruleEnabled bool) *state.NodeSections {
 	t.Helper()
-	ruleBody, err := json.Marshal(state.InlineBody{
-		Name:     state.SelfPlaceholderBraced + " network",
-		Match:    map[string]interface{}{"ip_cidr": []string{"100.64.0.0/10"}},
-		Outbound: state.SelfPlaceholder,
-	})
-	if err != nil {
-		t.Fatalf("кодирование правила секции: %v", err)
-	}
+	sectionRule := state.NewInlineRule(
+		state.SelfPlaceholderBraced+" network",
+		map[string]interface{}{"ip_cidr": []string{"100.64.0.0/10"}},
+		state.SelfPlaceholder,
+	)
 	num := state.NodeRuleDefaultNum
-	out := &state.NodeSections{
-		Rules: []state.Rule{{
-			Kind:     state.RuleKindInline,
-			Enabled:  ruleEnabled,
-			OrderNum: &num,
-			Body:     ruleBody,
-		}},
-	}
+	sectionRule.Enabled = ruleEnabled
+	sectionRule.Num = &num
+	out := &state.NodeSections{Rules: []state.Rule{sectionRule}}
 	out.SetDNS(
 		[]state.DNSServer{{
 			Kind:    state.DNSServerKindUser,

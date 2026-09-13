@@ -81,6 +81,10 @@ func mkState() *state.State {
 			mkPresetRule("traffic-processing", 0, true),
 			mkInlineRule("Work", "proxy", 1000),
 			mkInlineRule("Local", "direct", 1001),
+			// Самостоятельный эффект правила (не цель): `action` без
+			// `outbound` обязан пережить круг export→import, иначе правило
+			// приезжает обратно матчером без действия.
+			mkEffectRule("Sniff", "sniff", 1002),
 		},
 		Vars: []state.SettingVar{
 			{Name: "log_level", Value: "debug"},     // переносимая
@@ -91,17 +95,31 @@ func mkState() *state.State {
 }
 
 func mkPresetRule(ref string, num int, enabled bool) state.Rule {
-	body, _ := json.Marshal(state.PresetBody{Vars: map[string]string{"mode": "on"}})
-	return state.Rule{Kind: state.RuleKindPreset, Ref: ref, Enabled: enabled, OrderNum: &num, Body: body}
+	r := state.NewPresetRule(ref, map[string]string{"mode": "on"})
+	r.Enabled = enabled
+	r.Num = &num
+	return r
+}
+
+// mkEffectRule — inline-правило с самостоятельным sing-box `action`
+// (`sniff`/`hijack-dns`/`resolve`) и без цели: ключ живёт в теле как матчер-
+// эффект, а не как цель.
+func mkEffectRule(name, action string, num int) state.Rule {
+	r := state.NewInlineRule(name, map[string]interface{}{
+		"inbound": "tun-in",
+		"action":  action,
+	}, "")
+	r.Enabled = true
+	r.Num = &num
+	return r
 }
 
 func mkInlineRule(name, outbound string, num int) state.Rule {
-	body, _ := json.Marshal(state.InlineBody{
-		Name:     name,
-		Match:    map[string]interface{}{"domain_suffix": []interface{}{"example.com"}},
-		Outbound: outbound,
-	})
-	return state.Rule{Kind: state.RuleKindInline, Enabled: true, OrderNum: &num, Body: body}
+	r := state.NewInlineRule(name,
+		map[string]interface{}{"domain_suffix": []interface{}{"example.com"}}, outbound)
+	r.Enabled = true
+	r.Num = &num
+	return r
 }
 
 // Инвариант §1: import(export(x)) == x в том же приложении.
@@ -152,11 +170,20 @@ func TestRoundTripLossless(t *testing.T) {
 		t.Errorf("id источника потерян: %q", sub.ID)
 	}
 
-	if len(dst.Rules) != 3 {
-		t.Fatalf("правил %d, ожидалось 3", len(dst.Rules))
+	if len(dst.Rules) != 4 {
+		t.Fatalf("правил %d, ожидалось 4", len(dst.Rules))
 	}
-	if res.AppliedRules != 3 || res.AppliedSources != 2 {
+	if res.AppliedRules != 4 || res.AppliedSources != 2 {
 		t.Errorf("счётчики: правил %d, источников %d", res.AppliedRules, res.AppliedSources)
+	}
+	// Самостоятельный `action` — эффект правила, а не цель: его нельзя
+	// потерять ни на экспорте (он уезжает в `match`), ни на импорте.
+	effectBody, err := dst.Rules[3].BodyMap()
+	if err != nil {
+		t.Fatalf("тело правила-эффекта: %v", err)
+	}
+	if effectBody["action"] != "sniff" || effectBody["inbound"] != "tun-in" {
+		t.Errorf("самостоятельный action потерян на круге бэкапа: %v", effectBody)
 	}
 	for _, r := range dst.Rules {
 		if !r.Enabled {
@@ -319,14 +346,10 @@ func TestImportRenumbersPreservingOrder(t *testing.T) {
 	}
 	all := make([]ordered, 0, len(dst.Rules))
 	for _, r := range dst.Rules {
-		var body state.InlineBody
-		if err := json.Unmarshal(r.Body, &body); err != nil {
-			t.Fatalf("тело правила: %v", err)
+		if r.Num == nil {
+			t.Fatalf("правило %q приехало без номера", r.Name)
 		}
-		if r.OrderNum == nil {
-			t.Fatalf("правило %q приехало без номера", body.Name)
-		}
-		all = append(all, ordered{body.Name, *r.OrderNum})
+		all = append(all, ordered{r.Name, *r.Num})
 	}
 
 	sort.Slice(all, func(i, j int) bool { return all[i].num < all[j].num })
@@ -361,9 +384,7 @@ func TestNormalizeKeepsImportedOrder(t *testing.T) {
 	names := func(rules []state.Rule) []string {
 		out := make([]string, 0, len(rules))
 		for _, r := range rules {
-			var body state.InlineBody
-			_ = json.Unmarshal(r.Body, &body)
-			out = append(out, body.Name)
+			out = append(out, r.Name)
 		}
 		return out
 	}
@@ -378,12 +399,12 @@ func TestNormalizeKeepsImportedOrder(t *testing.T) {
 		}
 	}
 	for i, r := range normalized {
-		if r.OrderNum == nil {
+		if r.Num == nil {
 			t.Fatalf("правило %d потеряло номер после normalize", i)
 		}
-		if *r.OrderNum != state.UserRuleNumStart+i {
+		if *r.Num != state.UserRuleNumStart+i {
 			t.Errorf("номер правила %q = %d, ожидался %d (импортные номера переписаны)",
-				got[i], *r.OrderNum, state.UserRuleNumStart+i)
+				got[i], *r.Num, state.UserRuleNumStart+i)
 		}
 	}
 

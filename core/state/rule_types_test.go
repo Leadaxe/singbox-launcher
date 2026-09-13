@@ -6,13 +6,16 @@ import (
 	"testing"
 )
 
-// TestRule_RoundTrip_Preset — preset-ref в state.rules[].
+// Сценарии те же, что до state v8, но на целевой форме: имя/номер/наборы/
+// переменные — поля записи, `body` — правило sing-box как есть.
+
+// TestRule_RoundTrip_Preset — preset-ref в state.rules[]: vars на уровне записи.
 func TestRule_RoundTrip_Preset(t *testing.T) {
 	raw := []byte(`{
 		"kind": "preset",
 		"ref": "ru-direct",
 		"enabled": true,
-		"body": {"vars": {"dns_ip": "77.88.8.7"}}
+		"vars": {"dns_ip": "77.88.8.7"}
 	}`)
 	var r Rule
 	if err := json.Unmarshal(raw, &r); err != nil {
@@ -21,7 +24,6 @@ func TestRule_RoundTrip_Preset(t *testing.T) {
 	if r.Kind != RuleKindPreset || r.Ref != "ru-direct" || !r.Enabled {
 		t.Errorf("header mismatch: %+v", r)
 	}
-	// SPEC 063: Rule.ID удалено; identity вычисляется через StableRuleID.
 	if StableRuleID(r) != "ru-direct" {
 		t.Errorf("preset identity should equal Ref, got %q", StableRuleID(r))
 	}
@@ -39,11 +41,9 @@ func TestRule_RoundTrip_Preset(t *testing.T) {
 	}
 }
 
-// TestRule_RoundTrip_PresetEmptyVars — preset-ref с пустым body.vars (всё дефолтное).
+// TestRule_RoundTrip_PresetEmptyVars — preset-ref без vars (всё дефолтное).
 func TestRule_RoundTrip_PresetEmptyVars(t *testing.T) {
-	raw := []byte(`{
-		"kind": "preset", "ref": "block-ads", "enabled": false, "body": {"vars": {}}
-	}`)
+	raw := []byte(`{"kind": "preset", "ref": "block-ads", "enabled": false}`)
 	var r Rule
 	_ = json.Unmarshal(raw, &r)
 	body, err := r.DecodeBody()
@@ -56,9 +56,10 @@ func TestRule_RoundTrip_PresetEmptyVars(t *testing.T) {
 	}
 }
 
-// TestRule_PresetMissingBody — body может отсутствовать совсем, DecodeBody возвращает {}.
+// TestRule_PresetMissingBody — тела у preset нет вовсе, DecodeBody даёт вид с {}.
 func TestRule_PresetMissingBody(t *testing.T) {
-	r := Rule{Kind: RuleKindPreset, Ref: "x", Enabled: true}
+	r := NewPresetRule("x", nil)
+	r.Enabled = true
 	body, err := r.DecodeBody()
 	if err != nil {
 		t.Fatalf("DecodeBody on missing body: %v", err)
@@ -67,21 +68,38 @@ func TestRule_PresetMissingBody(t *testing.T) {
 	if pb.Vars == nil {
 		t.Error("Vars should be initialized to empty map, not nil")
 	}
+	if len(r.Body) != 0 {
+		t.Errorf("preset rule must carry no body, got %s", r.Body)
+	}
 }
 
-// TestRule_RoundTrip_Inline — user inline rule.
+// TestRule_PresetVarsNotInBody — NewPresetRule кладёт переменные в поле записи,
+// а не в тело (единственный писатель).
+func TestRule_PresetVarsNotInBody(t *testing.T) {
+	r := NewPresetRule("ru-direct", map[string]string{"out": "direct-out"})
+	out, _ := json.Marshal(r)
+	if !strings.Contains(string(out), `"vars":{"out":"direct-out"}`) {
+		t.Errorf("vars must live on the record: %s", out)
+	}
+	if strings.Contains(string(out), `"body"`) {
+		t.Errorf("preset must not emit body: %s", out)
+	}
+}
+
+// TestRule_RoundTrip_Inline — user inline rule: имя снаружи, тело — правило.
 //
-// SPEC 063: JSON "id" field в payload — legacy. Go unmarshal silently
-// игнорирует (Rule struct больше не имеет ID field); identity вычисляется
-// через StableRuleID из body.name.
+// Legacy-ключ "id" из старых файлов больше не молчит: в v8 он — законные
+// метаданные записи, лаунчер их провозит.
 func TestRule_RoundTrip_Inline(t *testing.T) {
 	raw := []byte(`{
 		"kind": "inline",
 		"id": "01J9X0000000000000000000A",
+		"name": "Firefox через VPN",
 		"enabled": true,
+		"num": 1000,
 		"body": {
-			"name": "Firefox через VPN",
-			"match": {"domain_suffix": ["example.com"], "package_name": ["org.mozilla.firefox"]},
+			"domain_suffix": ["example.com"],
+			"package_name": ["org.mozilla.firefox"],
 			"outbound": "proxy-out"
 		}
 	}`)
@@ -95,9 +113,14 @@ func TestRule_RoundTrip_Inline(t *testing.T) {
 	if r.Ref != "" {
 		t.Errorf("inline must not have ref, got %q", r.Ref)
 	}
-	// Identity вычислимая, не зависит от legacy "id" в JSON.
+	if r.ID != "01J9X0000000000000000000A" {
+		t.Errorf("id must be carried through, got %q", r.ID)
+	}
+	if r.Num == nil || *r.Num != 1000 {
+		t.Errorf("num mismatch: %v", r.Num)
+	}
 	if got := StableRuleID(r); got != "Firefox--VPN" {
-		t.Errorf("StableRuleID: %q (want sanitize of body.name)", got)
+		t.Errorf("StableRuleID: %q (want sanitize of name)", got)
 	}
 
 	body, err := r.DecodeBody()
@@ -106,48 +129,135 @@ func TestRule_RoundTrip_Inline(t *testing.T) {
 	}
 	ib := body.(*InlineBody)
 	if ib.Name != "Firefox через VPN" || ib.Outbound != "proxy-out" {
-		t.Errorf("body mismatch: %+v", ib)
+		t.Errorf("view mismatch: %+v", ib)
 	}
 	if domains, ok := ib.Match["domain_suffix"].([]interface{}); !ok || len(domains) != 1 {
 		t.Errorf("match.domain_suffix mismatch: %+v", ib.Match)
 	}
+	if _, leaked := ib.Match["outbound"]; leaked {
+		t.Errorf("Match must not carry the target: %+v", ib.Match)
+	}
 }
 
-// TestRule_RoundTrip_Srs — user srs rule с reject outbound.
+// TestRule_InlineView_RejectAndDrop — цель вида вычисляется из тела sing-box.
+func TestRule_InlineView_RejectAndDrop(t *testing.T) {
+	cases := []struct {
+		body string
+		want string
+	}{
+		{`{"port":[443],"action":"reject"}`, "reject"},
+		{`{"port":[443],"action":"reject","method":"drop"}`, "drop"},
+		{`{"port":[443],"outbound":"proxy-out"}`, "proxy-out"},
+		{`{"port":[443]}`, ""},
+	}
+	for _, tc := range cases {
+		r := Rule{Kind: RuleKindInline, Name: "x", Body: json.RawMessage(tc.body)}
+		body, err := r.DecodeBody()
+		if err != nil {
+			t.Fatalf("DecodeBody(%s): %v", tc.body, err)
+		}
+		if got := body.(*InlineBody).Outbound; got != tc.want {
+			t.Errorf("body %s → outbound %q, want %q", tc.body, got, tc.want)
+		}
+	}
+}
+
+// TestRule_NewInlineRule_TargetInBody — конструктор кладёт цель в тело в форме
+// sing-box (ApplyOutboundToRule), а матчеры оставляет как переданы.
+func TestRule_NewInlineRule_TargetInBody(t *testing.T) {
+	r := NewInlineRule("blocked", map[string]interface{}{"domain_suffix": []string{"ads.example"}}, "drop")
+	var body map[string]interface{}
+	if err := json.Unmarshal(r.Body, &body); err != nil {
+		t.Fatalf("body: %v", err)
+	}
+	if body["action"] != "reject" || body["method"] != "drop" {
+		t.Errorf("drop must become action=reject+method=drop: %v", body)
+	}
+	if _, has := body["outbound"]; has {
+		t.Errorf("outbound must be absent for drop: %v", body)
+	}
+	if r.Name != "blocked" {
+		t.Errorf("name must live on the record: %q", r.Name)
+	}
+}
+
+// TestRule_SetOutbound_KeepsMatcherOrder — перепись цели не трогает ни ключи
+// матчеров, ни их порядок (нужно applyRenames и редактору UI).
+func TestRule_SetOutbound_KeepsMatcherOrder(t *testing.T) {
+	r := Rule{
+		Kind: RuleKindInline, Name: "x",
+		Body: json.RawMessage(`{"zzz":1,"aaa":2,"outbound":"old-out"}`),
+	}
+	if err := r.SetOutbound("new-out"); err != nil {
+		t.Fatalf("SetOutbound: %v", err)
+	}
+	if string(r.Body) != `{"zzz":1,"aaa":2,"outbound":"new-out"}` {
+		t.Errorf("matcher order or keys changed: %s", r.Body)
+	}
+	if err := r.SetOutbound("reject"); err != nil {
+		t.Fatalf("SetOutbound reject: %v", err)
+	}
+	if string(r.Body) != `{"zzz":1,"aaa":2,"action":"reject"}` {
+		t.Errorf("reject rewrite: %s", r.Body)
+	}
+	if err := r.SetOutbound("drop"); err != nil {
+		t.Fatalf("SetOutbound drop: %v", err)
+	}
+	if string(r.Body) != `{"zzz":1,"aaa":2,"action":"reject","method":"drop"}` {
+		t.Errorf("drop rewrite: %s", r.Body)
+	}
+}
+
+// TestRule_RoundTrip_Srs — user srs rule с reject: наборы в refs[], цель в body.
 func TestRule_RoundTrip_Srs(t *testing.T) {
 	raw := []byte(`{
 		"kind": "srs",
-		"id": "01J9X0000000000000000000B",
+		"name": "Custom block list",
 		"enabled": true,
-		"body": {
-			"name": "Custom block list",
-			"srs_url": "https://example.com/blocklist.srs",
-			"outbound": "reject"
-		}
+		"refs": ["https://example.com/blocklist.srs"],
+		"body": {"action": "reject"}
 	}`)
 	var r Rule
 	if err := json.Unmarshal(raw, &r); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if got := StableRuleID(r); got != "Custom-block-list" {
-		t.Errorf("StableRuleID: %q (want sanitize of body.name)", got)
+		t.Errorf("StableRuleID: %q (want sanitize of name)", got)
 	}
 	body, err := r.DecodeBody()
 	if err != nil {
 		t.Fatalf("DecodeBody: %v", err)
 	}
 	sb := body.(*SrsBody)
-	if sb.SrsURL != "https://example.com/blocklist.srs" {
-		t.Errorf("srs_url mismatch: %q", sb.SrsURL)
+	if len(sb.URLs()) != 1 || sb.URLs()[0] != "https://example.com/blocklist.srs" {
+		t.Errorf("refs mismatch: %v", sb.URLs())
 	}
 	if sb.Outbound != "reject" {
 		t.Errorf("outbound mismatch: %q (expected reject sentinel)", sb.Outbound)
 	}
 }
 
+// TestRule_NewSrsRule_DedupKeepsOrder — канонизация наборов переехала из
+// NewSrsBody в конструктор записи: дубли и пустые вон, порядок цел.
+func TestRule_NewSrsRule_DedupKeepsOrder(t *testing.T) {
+	r := NewSrsRule("три набора", []string{"https://b", "", "https://a", "https://b"}, "proxy-out")
+	want := []string{"https://b", "https://a"}
+	if len(r.Refs) != len(want) {
+		t.Fatalf("refs: %v, want %v", r.Refs, want)
+	}
+	for i := range want {
+		if r.Refs[i] != want[i] {
+			t.Fatalf("refs: %v, want %v", r.Refs, want)
+		}
+	}
+	if string(r.Body) != `{"outbound":"proxy-out"}` {
+		t.Errorf("srs body must carry the target only: %s", r.Body)
+	}
+}
+
 // TestRule_PresetWithoutRef_Error — kind=preset без ref → ошибка.
 func TestRule_PresetWithoutRef_Error(t *testing.T) {
-	r := Rule{Kind: RuleKindPreset, Body: json.RawMessage(`{"vars":{}}`)}
+	r := Rule{Kind: RuleKindPreset}
 	_, err := r.DecodeBody()
 	if err == nil {
 		t.Fatal("expected error: kind=preset without ref")
@@ -157,47 +267,48 @@ func TestRule_PresetWithoutRef_Error(t *testing.T) {
 	}
 }
 
-// TestRule_InlineWithoutName_Error — SPEC 063: kind=inline без body.name → ошибка.
+// TestRule_InlineWithoutName_Error — kind=inline без name → ошибка.
 func TestRule_InlineWithoutName_Error(t *testing.T) {
 	r := Rule{
 		Kind: RuleKindInline,
-		Body: json.RawMessage(`{"match":{"port":[443]},"outbound":"direct-out"}`),
+		Body: json.RawMessage(`{"port":[443],"outbound":"direct-out"}`),
 	}
 	_, err := r.DecodeBody()
 	if err == nil {
-		t.Fatal("expected error: kind=inline without body.name")
+		t.Fatal("expected error: kind=inline without name")
 	}
-	if !strings.Contains(err.Error(), "requires body.name") {
+	if !strings.Contains(err.Error(), "requires name") {
 		t.Errorf("error text mismatch: %v", err)
 	}
 }
 
-// TestRule_SrsWithoutName_Error — SPEC 063: kind=srs без body.name → ошибка.
+// TestRule_SrsWithoutName_Error — kind=srs без name → ошибка.
 func TestRule_SrsWithoutName_Error(t *testing.T) {
 	r := Rule{
 		Kind: RuleKindSrs,
-		Body: json.RawMessage(`{"srs_url":"https://x","outbound":"reject"}`),
+		Refs: []string{"https://x"},
+		Body: json.RawMessage(`{"action":"reject"}`),
 	}
 	_, err := r.DecodeBody()
 	if err == nil {
-		t.Fatal("expected error: kind=srs without body.name")
+		t.Fatal("expected error: kind=srs without name")
 	}
-	if !strings.Contains(err.Error(), "requires body.name") {
+	if !strings.Contains(err.Error(), "requires name") {
 		t.Errorf("error text mismatch: %v", err)
 	}
 }
 
-// TestRule_SrsWithoutURL_Error — SPEC 063: kind=srs без body.srs_url → ошибка.
-func TestRule_SrsWithoutURL_Error(t *testing.T) {
+// TestRule_SrsWithoutRefs_Error — kind=srs без единого набора → ошибка.
+func TestRule_SrsWithoutRefs_Error(t *testing.T) {
 	r := Rule{
-		Kind: RuleKindSrs,
-		Body: json.RawMessage(`{"name":"x","outbound":"reject"}`),
+		Kind: RuleKindSrs, Name: "x",
+		Body: json.RawMessage(`{"action":"reject"}`),
 	}
 	_, err := r.DecodeBody()
 	if err == nil {
-		t.Fatal("expected error: kind=srs without body.srs_url")
+		t.Fatal("expected error: kind=srs without refs")
 	}
-	if !strings.Contains(err.Error(), "requires body.srs_url") {
+	if !strings.Contains(err.Error(), "requires refs") {
 		t.Errorf("error text mismatch: %v", err)
 	}
 }
@@ -205,8 +316,8 @@ func TestRule_SrsWithoutURL_Error(t *testing.T) {
 // TestRule_InlineWithRef_Error — kind=inline с лишним ref → ошибка.
 func TestRule_InlineWithRef_Error(t *testing.T) {
 	r := Rule{
-		Kind: RuleKindInline, Ref: "leaked",
-		Body: json.RawMessage(`{"name":"x","match":{},"outbound":"direct-out"}`),
+		Kind: RuleKindInline, Ref: "leaked", Name: "x",
+		Body: json.RawMessage(`{"outbound":"direct-out"}`),
 	}
 	_, err := r.DecodeBody()
 	if err == nil {
@@ -229,67 +340,44 @@ func TestRule_UnknownKind_Error(t *testing.T) {
 	}
 }
 
-// TestRule_OmitEmpty — пустой ref не пишется для kind=inline; id больше нет
-// в struct (SPEC 063) — Marshal никогда не эмитит "id" field вообще.
+// TestRule_OmitEmpty — пустые поля записи не пишутся.
 func TestRule_OmitEmpty(t *testing.T) {
-	r := Rule{
-		Kind:    RuleKindInline,
-		Enabled: true,
-		Body:    json.RawMessage(`{}`),
-	}
+	r := Rule{Kind: RuleKindInline, Name: "x", Enabled: true, Body: json.RawMessage(`{}`)}
 	out, _ := json.Marshal(r)
-	if strings.Contains(string(out), `"ref":`) {
-		t.Errorf("ref should be omitted for inline rule: %s", out)
-	}
-	if strings.Contains(string(out), `"id":`) {
-		t.Errorf("id should NOT be emitted (SPEC 063 drop): %s", out)
+	for _, mustNotContain := range []string{`"ref":`, `"id":`, `"refs":`, `"vars":`, `"num":`} {
+		if strings.Contains(string(out), mustNotContain) {
+			t.Errorf("%s should be omitted for an inline rule: %s", mustNotContain, out)
+		}
 	}
 
-	r2 := Rule{Kind: RuleKindPreset, Ref: "x", Enabled: true, Body: json.RawMessage(`{}`)}
+	r2 := NewPresetRule("x", nil)
+	r2.Enabled = true
 	out2, _ := json.Marshal(r2)
-	if strings.Contains(string(out2), `"id":`) {
-		t.Errorf("id should NOT be emitted (SPEC 063 drop): %s", out2)
+	for _, mustNotContain := range []string{`"id":`, `"name":`, `"refs":`, `"body":`} {
+		if strings.Contains(string(out2), mustNotContain) {
+			t.Errorf("%s should be omitted for a preset rule: %s", mustNotContain, out2)
+		}
 	}
 }
 
-// TestRule_LegacyIDIgnoredOnLoad — SPEC 063: state.json с legacy "id" поле
-// загружается без error; identity вычисляется из body.name.
-func TestRule_LegacyIDIgnoredOnLoad(t *testing.T) {
-	raw := []byte(`{
-		"kind": "srs",
-		"id": "rule-YT",
-		"enabled": true,
-		"body": {"name": "YT", "srs_url": "https://x/y.srs", "outbound": "direct-out"}
-	}`)
-	var r Rule
-	if err := json.Unmarshal(raw, &r); err != nil {
-		t.Fatalf("unmarshal: %v", err)
+// TestRule_KeyOrder — порядок полей структуры = порядок ключей файла.
+func TestRule_KeyOrder(t *testing.T) {
+	num := 1010
+	r := Rule{
+		Kind: RuleKindSrs, ID: "i", Name: "n", Enabled: true, Num: &num,
+		Refs: []string{"https://a"}, Body: json.RawMessage(`{"outbound":"o"}`),
 	}
-	if got := StableRuleID(r); got != "YT" {
-		t.Errorf("StableRuleID after load: got %q, want \"YT\" (from body.name, not legacy id)", got)
-	}
-}
-
-// TestRule_RoundTripDropsID — SPEC 063: save → load → save должен убрать legacy "id".
-func TestRule_RoundTripDropsID(t *testing.T) {
-	raw := []byte(`{
-		"kind": "inline",
-		"id": "rule-Old",
-		"enabled": true,
-		"body": {"name": "Old", "match": {"port": [443]}, "outbound": "direct-out"}
-	}`)
-	var r Rule
-	_ = json.Unmarshal(raw, &r)
 	out, _ := json.Marshal(r)
-	if strings.Contains(string(out), `"id":`) {
-		t.Errorf("re-emit must drop legacy id: %s", out)
+	want := `{"kind":"srs","id":"i","name":"n","enabled":true,"num":1010,"refs":["https://a"],"body":{"outbound":"o"}}`
+	if string(out) != want {
+		t.Errorf("key order drifted:\n got %s\nwant %s", out, want)
 	}
 }
 
-// TestDNSOptions_RoundTrip — SPEC 056-R-N: flat servers[] через kind discriminator.
+// TestDNSOptions_RoundTrip — форма v8: метаданные снаружи, тело в body.
 func TestDNSOptions_RoundTrip(t *testing.T) {
-	// SPEC: independent_cache в payload — legacy/forward-compat поле,
-	// JSON unmarshal должен silently игнорировать (поле снято из DNSOptions).
+	// independent_cache в payload — legacy/forward-compat поле, JSON
+	// unmarshal должен silently игнорировать (поле снято из DNSOptions).
 	raw := []byte(`{
 		"strategy": "prefer_ipv4",
 		"independent_cache": true,
@@ -299,11 +387,13 @@ func TestDNSOptions_RoundTrip(t *testing.T) {
 			{"kind":"template", "tag":"cloudflare_udp", "enabled":true},
 			{"kind":"template", "tag":"yandex_doh", "enabled":false},
 			{"kind":"preset",   "ref":"russian:yandex_udp", "enabled":true},
-			{"kind":"user",     "tag":"my-pihole", "type":"udp", "server":"192.168.1.5", "server_port":53, "enabled":true}
+			{"kind":"user",     "tag":"my-pihole", "enabled":true,
+			 "body":{"type":"udp","server":"192.168.1.5","server_port":53}}
 		],
 		"rules": [
 			{"kind":"preset", "ref":"russian", "enabled":true},
-			{"kind":"user",   "rule_set":"ru-domains", "server":"yandex_doh", "enabled":true}
+			{"kind":"user",   "enabled":true,
+			 "body":{"rule_set":"ru-domains","server":"yandex_doh"}}
 		]
 	}`)
 	var d DNSOptions
@@ -331,6 +421,9 @@ func TestDNSOptions_RoundTrip(t *testing.T) {
 	if d.Servers[0].Kind != DNSServerKindTemplate || d.Servers[0].Tag != "cloudflare_udp" || !d.Servers[0].Enabled {
 		t.Errorf("template entry 0: %+v", d.Servers[0])
 	}
+	if d.Servers[1].Enabled {
+		t.Errorf("template entry 1 must stay disabled: %+v", d.Servers[1])
+	}
 	if d.Servers[2].Kind != DNSServerKindPreset || d.Servers[2].Ref != "russian:yandex_udp" {
 		t.Errorf("preset entry: %+v", d.Servers[2])
 	}
@@ -340,11 +433,18 @@ func TestDNSOptions_RoundTrip(t *testing.T) {
 	if d.Servers[3].Body["server"] != "192.168.1.5" {
 		t.Errorf("user body lost: %+v", d.Servers[3].Body)
 	}
+	if _, leaked := d.Servers[3].Body["tag"]; leaked {
+		t.Errorf("tag must stay out of the body: %+v", d.Servers[3].Body)
+	}
 	if d.Rules[0].Kind != DNSRuleKindPreset || d.Rules[0].Ref != "russian" {
 		t.Errorf("preset rule: %+v", d.Rules[0])
 	}
 	if d.Rules[1].Body["rule_set"] != "ru-domains" {
 		t.Errorf("user rule body lost: %+v", d.Rules[1].Body)
+	}
+	// Тела у ссылочных записей нет — это проверяет сборка.
+	if d.Servers[0].Body != nil || d.Servers[2].Body != nil || d.Rules[0].Body != nil {
+		t.Errorf("template/preset entries must carry no body: %+v", d)
 	}
 }
 
@@ -370,10 +470,19 @@ func TestSchemaConstants(t *testing.T) {
 	if SchemaNameV6 != "presets_v1" {
 		t.Errorf("SchemaNameV6 mismatch: %q", SchemaNameV6)
 	}
-	if SchemaVersionV7 != 7 || SchemaVersion != SchemaVersionV7 {
-		t.Errorf("SchemaVersion should be v7 (SPEC 118), got %d", SchemaVersion)
+	if SchemaVersionV7 != 7 {
+		t.Errorf("SchemaVersionV7 should be 7, got %d", SchemaVersionV7)
 	}
 	if SchemaNameV7 != "sources_v7" {
 		t.Errorf("SchemaNameV7 mismatch: %q", SchemaNameV7)
+	}
+	if SchemaVersionV8 != 8 || SchemaVersion != SchemaVersionV8 {
+		t.Errorf("SchemaVersion should be v8 (SPEC 127), got %d", SchemaVersion)
+	}
+	if SchemaNameV8 != "sources_v8" {
+		t.Errorf("SchemaNameV8 mismatch: %q", SchemaNameV8)
+	}
+	if SchemaMajor != SchemaVersionV8 {
+		t.Errorf("SchemaMajor must follow the write format, got %d", SchemaMajor)
 	}
 }

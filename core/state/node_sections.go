@@ -147,9 +147,19 @@ func (ns *NodeSections) Clone() *NodeSections {
 // cloneRule — копия записи правила с отдельным телом.
 func cloneRule(r Rule) Rule {
 	out := r
-	if r.OrderNum != nil {
-		v := *r.OrderNum
-		out.OrderNum = &v
+	if r.Num != nil {
+		v := *r.Num
+		out.Num = &v
+	}
+	if len(r.Refs) > 0 {
+		out.Refs = append([]string(nil), r.Refs...)
+	}
+	if len(r.Vars) > 0 {
+		vars := make(map[string]string, len(r.Vars))
+		for k, v := range r.Vars {
+			vars[k] = v
+		}
+		out.Vars = vars
 	}
 	if len(r.Body) > 0 {
 		out.Body = append(json.RawMessage(nil), r.Body...)

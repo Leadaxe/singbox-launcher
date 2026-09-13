@@ -718,7 +718,7 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 				lastRulesRevision = model.Revision
 				if wizardmodels.SeedNodeRuleRefs(model) {
 					wizardmodels.ReconcileRuleOrder(model)
-					wizardmodels.EnsureRuleOrderNums(model)
+					wizardmodels.EnsureRuleNums(model)
 					wizardmodels.SortRuleOrderByAxis(model)
 				}
 			}

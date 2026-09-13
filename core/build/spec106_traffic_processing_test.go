@@ -56,8 +56,8 @@ func TestTrafficProcessingPresetExists(t *testing.T) {
 	if !p.Locked {
 		t.Error("пресет обязан быть locked: пользователь не должен его выключать")
 	}
-	if p.OrderNum() != 0 {
-		t.Errorf("номер на оси %d, ожидался 0 — sniff обязан быть первым правилом", p.OrderNum())
+	if p.StartNum() != 0 {
+		t.Errorf("номер на оси %d, ожидался 0 — sniff обязан быть первым правилом", p.StartNum())
 	}
 	if !p.DefaultEnabled {
 		t.Error("пресет обязан быть включён по умолчанию")
@@ -106,8 +106,8 @@ func TestTrafficProcessingIsReseeded(t *testing.T) {
 	for _, r := range out {
 		if r.Kind == corestate.RuleKindPreset && r.Ref == "traffic-processing" {
 			found = true
-			if r.OrderNum == nil || *r.OrderNum != 0 {
-				t.Errorf("пере-засеян с номером %v, ожидался 0", r.OrderNum)
+			if r.Num == nil || *r.Num != 0 {
+				t.Errorf("пере-засеян с номером %v, ожидался 0", r.Num)
 			}
 			if !r.Enabled {
 				t.Error("пере-засеян выключенным")

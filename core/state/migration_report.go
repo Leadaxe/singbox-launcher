@@ -39,9 +39,9 @@ func MigrationReportPath(binDir string) string {
 	return filepath.Join(binDir, MigrationReportFileName)
 }
 
-// MigrationReport — итог одной миграции старой схемы в v7.
+// MigrationReport — итог одной миграции старой схемы в текущую (SchemaVersion).
 type MigrationReport struct {
-	// FromVersion — версия схемы исходного файла (2–6).
+	// FromVersion — версия схемы исходного файла (2–7).
 	FromVersion int
 	// Warnings — поимённые потери и переименования; порядок = порядок шагов.
 	Warnings []string
@@ -61,7 +61,7 @@ func (r *MigrationReport) add(format string, args ...interface{}) {
 	// по-русски и лезли поверх английского интерфейса.
 	msg := locale.Tf(format, args...)
 	r.Warnings = append(r.Warnings, msg)
-	debuglog.WarnLog("state migration v%d→v7: %s", r.FromVersion, msg)
+	debuglog.WarnLog("state migration v%d→v%d: %s", r.FromVersion, SchemaVersion, msg)
 }
 
 // HasWarnings — есть что показать пользователю.

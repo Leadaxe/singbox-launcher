@@ -36,9 +36,9 @@ func (p *Preset) PresetHasDNSRule() bool {
 	return p.DNSRule != nil || len(p.DNSRules) > 0
 }
 
-// OrderNum — стартовая позиция пресета на оси порядка (SPEC 106).
+// StartNum — стартовая позиция пресета на оси порядка (SPEC 106).
 // Не задана в шаблоне → начало пользовательской зоны.
-func (p *Preset) OrderNum() int {
+func (p *Preset) StartNum() int {
 	if p.Num == nil {
 		return state.DefaultRuleNum
 	}
@@ -60,7 +60,7 @@ func RuleOrderSpecs(presets []Preset) map[string]state.RuleOrderSpec {
 	for i := range presets {
 		p := &presets[i]
 		out[p.ID] = state.RuleOrderSpec{
-			Num:            p.OrderNum(),
+			Num:            p.StartNum(),
 			Sortable:       p.IsSortable(),
 			DefaultEnabled: p.DefaultEnabled,
 		}

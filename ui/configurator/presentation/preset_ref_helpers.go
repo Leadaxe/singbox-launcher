@@ -193,9 +193,9 @@ func populateUserDNSFromState(model *wizardmodels.WizardModel, dns state.DNSOpti
 		}
 		// Reconstruct wizard JSON shape (inverse of syncDNSServersOnly's
 		// kind=user branch in preset_ref_sync.go): tag + enabled top-level,
-		// плюс flatten Body. Body уже не содержит kind/ref/enabled
-		// (Unmarshal в DNSServer их выкидывает), но защищаемся от tag-
-		// коллизии (поле Tag — source of truth).
+		// плюс разворот Body. В state v8 (SPEC 127 §0) Body — тело sing-box
+		// как есть, без kind/ref/enabled/tag; фильтр оставлен как страховка
+		// от файла, собранного чужой рукой (поле Tag — source of truth).
 		entry := make(map[string]interface{}, 2+len(s.Body))
 		entry["tag"] = tag
 		entry["enabled"] = s.Enabled
@@ -272,7 +272,7 @@ func (p PresetRefForUI) AppendTo(model *wizardmodels.WizardModel) {
 		// SPEC 106: якорь из шаблона (или конец пользовательской зоны для
 		// пресета без num) — иначе правило уехало бы в конец списка и
 		// «прыгнуло» на своё место при следующем открытии визарда.
-		OrderNum: wizardmodels.PresetRuleOrderNum(model, p.Ref),
+		Num: wizardmodels.PresetRuleNum(model, p.Ref),
 	})
 	// Append slot to RuleOrder, then place it by the axis — новый пресет
 	// показывается сразу там, где его увидит и build pipeline.

@@ -37,7 +37,7 @@ func TestMergePresets_AppendsActivePresetRule(t *testing.T) {
 	ctx := PresetMergeContext{
 		Presets: []template.Preset{p},
 		Rules: []state.Rule{
-			{Kind: state.RuleKindPreset, Ref: "private-ips", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+			presetRule("private-ips", nil, true),
 		},
 	}
 	out, err := MergePresetsIntoRoute(raw, ctx)
@@ -73,7 +73,7 @@ func TestMergePresets_DisabledPresetRefSkipped(t *testing.T) {
 	ctx := PresetMergeContext{
 		Presets: []template.Preset{{ID: "x", Label: "X", Rules: []map[string]interface{}{{"ip_is_private": true, "outbound": "direct-out"}}}},
 		Rules: []state.Rule{
-			{Kind: state.RuleKindPreset, Ref: "x", Enabled: false, Body: json.RawMessage(`{"vars":{}}`)},
+			presetRule("x", nil, false),
 		},
 	}
 	out, _ := MergePresetsIntoRoute(raw, ctx)
@@ -89,7 +89,7 @@ func TestMergePresets_BrokenRefWarningSkip(t *testing.T) {
 	ctx := PresetMergeContext{
 		Presets: nil, // нет presets — все refs broken
 		Rules: []state.Rule{
-			{Kind: state.RuleKindPreset, Ref: "nonexistent", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+			presetRule("nonexistent", nil, true),
 		},
 	}
 	out, err := MergePresetsIntoRoute(raw, ctx)
@@ -130,7 +130,7 @@ func TestMergePresets_DNSBundledServer(t *testing.T) {
 	ctx := PresetMergeContext{
 		Presets: []template.Preset{p},
 		Rules: []state.Rule{
-			{Kind: state.RuleKindPreset, Ref: "ru-direct", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+			presetRule("ru-direct", nil, true),
 		},
 		// SPEC 056-R-N: kind=preset entry в DNSOptions.Servers (sync должен был создать).
 		DNS: state.DNSOptions{

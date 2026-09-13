@@ -452,13 +452,20 @@ func exportServerNode(src state.Node) Server {
 	return out
 }
 
+// exportRule — запись состояния в запись файла 0.12.
+//
+// Файл 0.12 не меняется ни на байт (SPEC 127 §4: формат 1.0 заводит волна 2),
+// поэтому здесь состояние v8 раскладывается обратно на `match` + `outbound`:
+// ровно ту пару, которую 0.12 несёт сегодня. Источник — вид записи
+// (`DecodeBody`), единственный законный читатель тела; вторая нормализация
+// srs-наборов больше не нужна — дедуп живёт в конструкторе и в виде.
 func exportRule(r state.Rule) (Rule, error) {
 	out := Rule{
 		Kind:    RuleKind(r.Kind),
 		Enabled: boolPtr(r.Enabled),
 	}
-	if r.OrderNum != nil {
-		out.Num = f64Ptr(float64(*r.OrderNum))
+	if r.Num != nil {
+		out.Num = f64Ptr(float64(*r.Num))
 	}
 	if !r.Enabled {
 		out.Enabled = boolPtr(false)
@@ -469,49 +476,103 @@ func exportRule(r state.Rule) (Rule, error) {
 	switch r.Kind {
 	case state.RuleKindPreset:
 		out.Ref = r.Ref
-		var body state.PresetBody
-		if len(r.Body) > 0 {
-			if err := json.Unmarshal(r.Body, &body); err != nil {
-				return Rule{}, fmt.Errorf("preset body: %w", err)
+		if len(r.Vars) > 0 {
+			vars := make(map[string]string, len(r.Vars))
+			for k, v := range r.Vars {
+				vars[k] = v
 			}
-		}
-		if len(body.Vars) > 0 {
-			out.Vars = body.Vars
+			out.Vars = vars
 		}
 	case state.RuleKindInline:
-		var body state.InlineBody
-		if err := json.Unmarshal(r.Body, &body); err != nil {
+		match, outbound, err := ruleMatchAndOutbound(r)
+		if err != nil {
 			return Rule{}, fmt.Errorf("inline body: %w", err)
 		}
-		out.Name = body.Name
-		out.Outbound = body.Outbound
-		if len(body.Match) > 0 {
-			raw, err := json.Marshal(body.Match)
+		out.Name = r.Name
+		out.Outbound = outbound
+		if len(match) > 0 {
+			raw, err := json.Marshal(match)
 			if err != nil {
 				return Rule{}, fmt.Errorf("inline match: %w", err)
 			}
 			out.Match = raw
 		}
 	case state.RuleKindSrs:
-		var body state.SrsBody
-		if err := json.Unmarshal(r.Body, &body); err != nil {
+		_, outbound, err := ruleMatchAndOutbound(r)
+		if err != nil {
 			return Rule{}, fmt.Errorf("srs body: %w", err)
 		}
-		out.Name = body.Name
-		// Тело здесь сырое (без нормализации DecodeBody) — приводим к канону сами.
-		canon := state.NewSrsBody(body.Name, append([]string{body.SrsURL}, body.SrsURLs...), body.Outbound)
-		urls := canon.URLs()
+		out.Name = r.Name
+		urls := dedupRefs(r.Refs)
 		if len(urls) > 0 {
 			out.Ref = urls[0]
 		}
 		if len(urls) > 1 {
 			out.Refs = urls
 		}
-		out.Outbound = body.Outbound
+		out.Outbound = outbound
 	default:
 		return Rule{}, fmt.Errorf("unknown kind %q", r.Kind)
 	}
 	return out, nil
+}
+
+// ruleMatchAndOutbound — матчеры и цель правила порознь: ровно та пара, из
+// которой состоит запись файла 0.12.
+//
+// Тело записи v8 — правило sing-box целиком, поэтому раскладка тут та же, что
+// делает вид (`InlineBody.Match` / `Outbound`), но без требования к `name`:
+// экспорт не отказывает целому файлу из-за одной записи без имени, как не
+// отказывал до v8.
+func ruleMatchAndOutbound(r state.Rule) (map[string]interface{}, string, error) {
+	body, err := r.BodyMap()
+	if err != nil {
+		return nil, "", err
+	}
+	// Раскладка ровно такая же, как у вида записи: цель — `outbound` либо
+	// `action:reject`(+`method:drop`), а самостоятельный `action` (`sniff`,
+	// `hijack-dns`, `resolve`) — эффект правила и едет в `match`, иначе
+	// import(export(x)) терял бы его на каждом круге.
+	outbound := ""
+	if action, _ := body["action"].(string); action == "reject" {
+		outbound = "reject"
+		if method, _ := body["method"].(string); method == "drop" {
+			outbound = "drop"
+		}
+	} else {
+		outbound, _ = body["outbound"].(string)
+	}
+	match := make(map[string]interface{}, len(body))
+	for k, v := range body {
+		switch k {
+		case "outbound", "method":
+			continue
+		case "action":
+			if outbound == "reject" || outbound == "drop" {
+				continue
+			}
+		}
+		match[k] = v
+	}
+	return match, outbound, nil
+}
+
+// dedupRefs — наборы srs-правила без повторов, порядок сохранён (тот же канон,
+// что у NewSrsRule и у вида).
+func dedupRefs(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, v := range in {
+		if v == "" || seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	return out
 }
 
 // exportVars отдаёт только переносимые имена переменных.
