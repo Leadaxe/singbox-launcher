@@ -136,8 +136,15 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	// (включая drag-reordering). Build pipeline затем эмитит fragments
 	// в config.json::route.rules[] в этом же порядке.
 	wizardmodels.ReconcileRuleOrder(p.model)
-	state.Rules = wizardmodels.EmitStateRulesInAxisOrder(
-		p.model.RuleOrder, p.model.PresetRefs, p.model.CustomRules,
+	// `Rule.ID` — необязательные метаданные второй стороны: UI их не хранит и
+	// не редактирует, поэтому эмиссия из модели отдаёт записи без `id`, и без
+	// этого шага первое же сохранение стирало бы их с диска (SPEC 127 §0,
+	// «лаунчер не заполняет, провозит»). Сопоставление — по identity правила.
+	state.Rules = corestate.CarryRuleMetadata(
+		wizardmodels.EmitStateRulesInAxisOrder(
+			p.model.RuleOrder, p.model.PresetRefs, p.model.CustomRules,
+		),
+		state.Rules,
 	)
 
 	// SPEC 056-R-N: full DNS sync → flat servers[]/rules[] через kind discriminator.
@@ -152,6 +159,7 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	// fallback на DNSRulesText (через buildDNSRulesFromText внутри).
 	templateDNSTags := wizardbusiness.ExtractTemplateDNSTags(p.model.TemplateData)
 	wizardmodels.ReconcileDNSRuleOrder(p.model)
+	prevDNSRules := state.DNS.Rules
 	state.DNS = wizardmodels.SyncDNSByOrderToState(
 		p.model.DNSRuleOrder,
 		p.model.PresetRefs,
@@ -161,6 +169,10 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 		p.model.DNSTemplateOverrides,
 		templateDNSTags,
 	)
+	// `id`/`name` DNS-правила — те же провозимые метаданные: модель несёт их
+	// полями DNSUserRule, но запись могла приехать и мимо модели (импорт
+	// бэкапа, fallback на DNSRulesText) — тогда их восстанавливает перенос.
+	state.DNS.Rules = corestate.CarryDNSRuleMetadata(state.DNS.Rules, prevDNSRules)
 	// Lifecycle sync: ensure preset-entries в state.DNS соответствуют активным
 	// preset-ref'ам в state.Rules. Idempotent — добавит missing entries и удалит
 	// orphan'ы. Это **единственная** точка где kind=preset entries создаются/удаляются.

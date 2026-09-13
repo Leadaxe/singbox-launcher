@@ -41,10 +41,13 @@ func parseV6Legacy(data []byte, lc LoadContext) (*State, error) {
 	var raw struct {
 		Meta         MetaSection          `json:"meta"`
 		Connections  ConnectionsSection   `json:"connections"`
-		Rules        []Rule               `json:"rules"`
 		Vars         []SettingVar         `json:"vars"`
-		DNSOptions   DNSOptions           `json:"dns_options"`
 		WarpAccounts *WarpAccountsSection `json:"warp_accounts"`
+		// SPEC 127: правила и DNS у v6 в СТАРОЙ форме записи (тело разобрано
+		// на части, DNS плоский) — читаются теми же функциями, что вход
+		// миграции v7→v8, а не прямым unmarshal в типы v8.
+		Rules      json.RawMessage `json:"rules"`
+		DNSOptions json.RawMessage `json:"dns_options"`
 		// Legacy dev-shape (SPEC 053). Читаем для одноразовой in-place миграции.
 		LegacyDNS json.RawMessage `json:"dns"`
 	}
@@ -54,9 +57,17 @@ func parseV6Legacy(data []byte, lc LoadContext) (*State, error) {
 
 	raw.Connections.adoptLegacyDirections()
 
-	dnsOpts := raw.DNSOptions
+	rules, err := rulesFromLegacyShape(raw.Rules, "rules", nil)
+	if err != nil {
+		return nil, fmt.Errorf("state: parse v6 rules: %w", err)
+	}
+
+	dnsOpts, err := dnsFromLegacyShape(raw.DNSOptions, "dns_options", nil)
+	if err != nil {
+		return nil, fmt.Errorf("state: parse v6 dns_options: %w", err)
+	}
 	if dnsOpts.IsEmpty() && len(raw.LegacyDNS) > 0 {
-		// Старый dev-shape → конвертим в новый flat layout.
+		// Старый dev-shape → конвертим в новый layout.
 		dnsOpts = legacyDevDNSToOptions(raw.LegacyDNS)
 	}
 
@@ -67,7 +78,7 @@ func parseV6Legacy(data []byte, lc LoadContext) (*State, error) {
 		TargetPlatform:     raw.Meta.TargetPlatform,
 		TargetArch:         raw.Meta.TargetArch,
 		Vars:               raw.Vars,
-		Rules:              raw.Rules,
+		Rules:              rules,
 		DNS:                dnsOpts,
 		WarpAccounts:       raw.WarpAccounts,
 		RulesLibraryMerged: true,
@@ -150,7 +161,9 @@ func legacyDevDNSToOptions(legacy json.RawMessage) DNSOptions {
 		}
 		clean := make(map[string]interface{}, len(body))
 		for k, v := range body {
-			if k == "enabled" {
+			// Метаданные записи (enabled, tag) в теле не живут — форма v8.
+			switch k {
+			case "enabled", "tag":
 				continue
 			}
 			clean[k] = v

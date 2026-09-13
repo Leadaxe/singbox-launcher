@@ -14,7 +14,7 @@ import (
 
 // Save атомарно записывает s в path.
 //
-// Единственный формат записи — v7 (SPEC 118 W1). Ветвления по версии схемы
+// Единственный формат записи — v8 (SPEC 127). Ветвления по версии схемы
 // нет и быть не может: старые формы существуют только на чтении (Load
 // роутит их в миграцию), а на диск состояние уходит всегда каноническим —
 // иначе один и тот же state давал бы разные файлы в зависимости от того,
@@ -37,8 +37,8 @@ func (s *State) Save(path string) error {
 	// SPEC 117 (W4): обратного синка legacy → canonical больше нет. Save
 	// сериализует ТОЛЬКО canonical (s.Sources/s.Directions/...); s.ParserConfig
 	// — read-only Load-проекция, Save её не читает. Все мутации обязаны идти
-	// в canonical-поля. SPEC 118 (W1): единственный формат записи — v7.
-	s.Version = SchemaVersionV7
+	// в canonical-поля. SPEC 127: единственный формат записи — v8.
+	s.Version = SchemaVersionV8
 
 	// SPEC 058-R-N: backup перед первым перезаписыванием когда outbounds
 	// содержат referenced entries (post-migration shape). Gate idempotent
@@ -88,8 +88,8 @@ func (s *State) Save(path string) error {
 	return nil
 }
 
-// MarshalV7 — состояние в форме v7, БЕЗ записи на диск и без мутаций
-// (SPEC 118 Т10).
+// MarshalV8 — состояние в форме v8, БЕЗ записи на диск и без мутаций
+// (SPEC 118 Т10, форма — SPEC 127).
 //
 // Нужна отладочным поверхностям (`GET /state/full` и близнец машины). Без неё
 // они отдавали Go-структуру `State` как есть: PascalCase-ключи, мёртвые
@@ -100,23 +100,23 @@ func (s *State) Save(path string) error {
 //
 // Форма следует за схемой без обязательств совместимости: это локальный
 // интерфейс, а контракт переноса — бэкап 0.11.
-func (s *State) MarshalV7() ([]byte, error) {
+func (s *State) MarshalV8() ([]byte, error) {
 	if s == nil {
-		return nil, fmt.Errorf("state: MarshalV7 called on nil receiver")
+		return nil, fmt.Errorf("state: MarshalV8 called on nil receiver")
 	}
 	return s.marshalDisk()
 }
 
-// marshalDisk — сериализация State в canonical (v7) shape (SPEC 118).
+// marshalDisk — сериализация State в canonical (v8) shape (SPEC 127).
 //
 //	{
-//	  "meta":          { version: 7, schema: "sources_v7", ... },
-//	  "sources":       [ {kind, tag, enabled, ...} ],
-//	  "directions":    [ ... ],
-//	  "rules":         [ {kind, ref|id, enabled, body} ],
-//	  "vars":          [ ... ],                                 // dns_* scalars
-//	  "dns_options":   { servers: [...], rules: [...] },        // SPEC 056-R-N
-//	  "warp_accounts": { ... }
+//	  "meta":       { version: 8, schema: "sources_v8", ... },
+//	  "sources":    [ {kind, tag, enabled, ...} ],
+//	  "directions": [ ... ],
+//	  "rules":      [ {kind, ref|name, enabled, num, refs|vars, body} ],
+//	  "vars":       [ ... ],                                 // dns_* scalars
+//	  "dns":        { servers: [...], rules: [...] },        // бывший dns_options
+//	  "warp":       { ... }                                  // бывший warp_accounts
 //	}
 //
 // Legacy `s.CustomRules` / `s.DNSOptions` НЕ сериализуются — источник истины
@@ -127,10 +127,10 @@ func (s *State) marshalDisk() ([]byte, error) {
 	// положено. Идемпотентно; дублирует нормализацию чтения, чтобы состояние,
 	// собранное в памяти (импорт бэкапа, редактор), уезжало на диск в каноне.
 	normalizeSectionsOfSources(s.Sources)
-	out := diskStateV7{
+	out := diskStateV8{
 		Meta: MetaSection{
-			Version:   SchemaVersionV7,
-			Schema:    SchemaNameV7,
+			Version:   SchemaVersionV8,
+			Schema:    SchemaNameV8,
 			Comment:   s.Comment,
 			CreatedAt: s.CreatedAt.Format(time.RFC3339),
 			UpdatedAt: s.UpdatedAt.Format(time.RFC3339),
@@ -139,12 +139,12 @@ func (s *State) marshalDisk() ([]byte, error) {
 			TargetPlatform: s.TargetPlatform,
 			TargetArch:     s.TargetArch,
 		},
-		Sources:      s.Sources,
-		Directions:   s.Directions,
-		Rules:        s.Rules,
-		Vars:         s.Vars,
-		DNSOptions:   s.DNS,
-		WarpAccounts: s.WarpAccounts,
+		Sources:    s.Sources,
+		Directions: s.Directions,
+		Rules:      s.Rules,
+		Vars:       s.Vars,
+		DNS:        s.DNS,
+		Warp:       s.WarpAccounts,
 	}
 	if out.Rules == nil {
 		out.Rules = []Rule{}

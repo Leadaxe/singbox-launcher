@@ -170,7 +170,7 @@ func InvalidateNodePool(model *wizardmodels.WizardModel) {
 		// Состав строк изменился — слоты обязаны прийти к нему: слот с
 		// индексом за концом списка нарисовал бы пустую строку.
 		wizardmodels.ReconcileRuleOrder(model)
-		wizardmodels.EnsureRuleOrderNums(model)
+		wizardmodels.EnsureRuleNums(model)
 		wizardmodels.SortRuleOrderByAxis(model)
 	}
 }

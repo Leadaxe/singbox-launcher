@@ -6,11 +6,32 @@
 куда уходит при build. Файл переписан под schema v6 (SPEC 053 + SPEC 056-R-N
 + SPEC 057-R-N + SPEC 058-R-N), v5 описан только в разделе «Миграции».
 
-> **Схема v7 (SPEC 118) — то, что лаунчер пишет сегодня.** Разделы ниже по-прежнему
-> описывают **v6** и сохранены потому, что файлы v6 читаются и мигрируются всегда.
-> Форма изменилась так — с этим и следует читать разделы, помеченные v6:
+> **Схема v8 (SPEC 127) — то, что лаунчер пишет сегодня.** Любая запись — это
+> *метаданные приложения + `body` = объект sing-box как есть*: одно пространство
+> имён у состояния лаунчера, состояния LxBox и файла бэкапа
+> (`contract/docs/ONE_NAMESPACE.md`). Относительно v7:
 >
-> - `meta.version` равен `7`, `meta.schema` — `"sources_v7"`;
+> - `meta.version` равен `8`, `meta.schema` — `"sources_v8"`;
+> - правила маршрута: `order_num` → `num`; `name`, `refs[]` (бывшие
+>   `body.srs_url` + `body.srs_urls`) и `vars` (у пресета) вынесены из тела на
+>   уровень записи; `body` — само правило sing-box: матчеры плюс цель в форме
+>   `"outbound": …` или `"action": "reject"` (+ `"method": "drop"`).
+>   `rule_set` по-прежнему не хранится: теги наборов вписывает сборка по `refs[]`;
+> - DNS-серверы и DNS-правила: плоской формы больше нет, объект sing-box лежит
+>   в `body`, тег сервера остаётся снаружи, в `tag`;
+> - два корневых ключа переименованы: `dns_options` → `dns`,
+>   `warp_accounts` → `warp`;
+> - `id` у правила и `id`/`name` у DNS-правила — необязательные метаданные:
+>   лаунчер их не генерирует и не читает, а провозит без потерь.
+>
+> Файлы v7 мигрируют сами при первом запуске; прежний файл остаётся рядом как
+> `state.json.v7.bak`.
+>
+> **Схема v7 (SPEC 118).** Разделы ниже местами по-прежнему описывают **v6** и
+> сохранены потому, что файлы v6 читаются и мигрируются всегда. v7 изменила
+> форму так:
+>
+> - `meta.version` был `7`, `meta.schema` — `"sources_v7"`;
 > - источники переехали на верхний уровень: `sources[]` вместо `connections.sources[]`,
 >   Направления — `directions[]` вместо `connections.direction_outbounds[]`;
 > - источник стал плоским юнионом с дискриминатором `kind` — `server`, `chain`,
@@ -89,9 +110,11 @@ release-сборке это `~/Library/Application Support/singbox-launcher/bin/
   },
 
   "rules": [
-    { "kind": "preset", "ref": "...",  "enabled": true, "body": { "vars": {} } },
-    { "kind": "inline", "id":  "...",  "enabled": true, "body": { "name": "...", "match": {}, "outbound": "..." } },
-    { "kind": "srs",    "id":  "...",  "enabled": true, "body": { "name": "...", "srs_url": "...", "outbound": "..." } }
+    { "kind": "preset", "ref": "...", "enabled": true, "num": 960, "vars": {} },
+    { "kind": "inline", "name": "...", "enabled": true, "num": 1000,
+      "body": { "domain_suffix": ["..."], "outbound": "..." } },
+    { "kind": "srs", "name": "...", "enabled": true, "num": 1010,
+      "refs": ["https://.../a.srs"], "body": { "action": "reject" } }
   ],
 
   "vars": [
@@ -100,20 +123,23 @@ release-сборке это `~/Library/Application Support/singbox-launcher/bin/
     ...
   ],
 
-  "dns_options": {
+  "dns": {
     "strategy":                "...",   // optional fallback; source of truth — vars[]
     "final":                   "...",
     "default_domain_resolver": "...",
     "servers": [
-      { "kind": "template", "tag": "...",        "enabled": true  },
+      { "kind": "template", "tag": "...",         "enabled": true },
       { "kind": "preset",   "ref": "<pid>:<tag>", "enabled": true },
-      { "kind": "user",     "tag": "...", "type": "...", "server": "...", "enabled": true, ... }
+      { "kind": "user",     "tag": "...", "enabled": true,
+        "body": { "type": "https", "server": "..." } }
     ],
     "rules": [
       { "kind": "preset", "ref": "<pid>", "enabled": true },
-      { "kind": "user",   "enabled": true, ... }
+      { "kind": "user",   "enabled": true, "body": { "domain_suffix": ["..."], "server": "..." } }
     ]
-  }
+  },
+
+  "warp": [ ... ]
 }
 ```
 
@@ -384,19 +410,26 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 
 | Поле | Тип | Когда | Описание |
 |------|-----|-------|----------|
-| `kind` | string | всегда | Discriminator. |
+| `kind` | string | всегда | Discriminator: `preset` \| `inline` \| `srs`. |
+| `id` | string | необязательно | Метаданные другой стороны (LxBox). Лаунчер их не генерирует и не читает — провозит без потерь. |
 | `ref` | string | `kind=preset` | Ссылка на `template.presets[].id`. |
-| `id` | string | `kind=inline` \| `srs` | ULID. |
+| `name` | string | `kind=inline` \| `srs` | Отображаемое имя. Источник `StableRuleID` — та же строка, что до v8 лежала в `body.name`. |
 | `enabled` | bool | всегда | Общий toggle. |
-| `body` | raw JSON | всегда | Kind-specific payload, декодируется через `DecodeBody`. |
+| `num` | int | необязательно | Позиция на разреженной оси порядка (SPEC 106; до v8 — `order_num`). Нет ключа = правило не размечено, номер раздаёт `MarkRuleOrder` при ближайшей загрузке. |
+| `refs` | string[] | `kind=srs` | URL наборов .srs в порядке ввода (до v8 — `body.srs_url` + `body.srs_urls`). Дедуп с сохранением порядка. |
+| `vars` | object | `kind=preset` | Значения переменных пресета (до v8 — `body.vars`) — **только diff** от template-дефолтов. Пустая карта = всё дефолтное. Bump'нули template → юзер автоматически получает новые дефолты для var'ов, которые не трогал. |
+| `body` | raw JSON | `kind=inline` \| `srs` | **Правило sing-box как есть**: матчеры плюс цель — `"outbound": "<tag>"` либо `"action": "reject"` (+ `"method": "drop"`). У записи пресета тела нет — правило живёт в шаблоне. |
 
-**Body schemas:**
+**`rule_set` в `body` не хранится.** Сборка регистрирует по локальному набору на
+каждый элемент `refs[]` (`user:<id>`, `user:<id>:2`, …) и сама вписывает список
+тегов в эмитируемое правило (`resolveSrsRouteRule`).
 
-| Kind | Body shape |
-|------|------------|
-| `preset` | `{ vars: { <name>: <value>, ... } }` — **только diff** от template default'ов. Пустой map = всё дефолтное. Bump'нули template → юзер автоматически получает новые дефолты для var'ов которые не трогал. |
-| `inline` | `{ name: string, match: { <sing-box match keys> }, outbound: string }` — outbound = tag или зарезервированный литерал (`reject` / `drop`). |
-| `srs` | `{ name: string, srs_url: string, srs_urls?: string[], outbound: string }` — URL первого .srs файла, полный список (`srs_url == srs_urls[0]`), когда у правила два и более набора, + outbound tag/литерал. Сборка эмитит по локальному rule-set на URL (`user:<id>`, `user:<id>:2`, …) и одно правило маршрута со ссылкой на все. |
+**Кто читает и кто пишет тело.** Читатель один — `DecodeBody()`: он отдаёт *вид*
+(`PresetBody` / `InlineBody` / `SrsBody`), собранный из полей записи и тела, где
+`Outbound` вычисляется из тела (`action: reject` → `"reject"`, `+ method: drop` →
+`"drop"`, иначе `body.outbound`). Пишут тело только `NewPresetRule` /
+`NewInlineRule` / `NewSrsRule` и `(*Rule).SetOutbound`, который переписывает цель,
+не трогая остальные ключи и их порядок.
 
 **JSON examples — три kind'а:**
 ```jsonc
@@ -405,32 +438,33 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
   "kind": "preset",
   "ref": "russian",
   "enabled": true,
-  "body": { "vars": { "out": "proxy-out" } }  // только переопределённые vars
+  "num": 960,
+  "vars": { "out": "proxy-out" }   // только переопределённые vars; тела нет
 }
 
-// 2. Inline user rule
+// 2. Inline user rule — тело есть само правило sing-box
 {
   "kind": "inline",
-  "id": "01KQD5XYZ...",
+  "name": "BitTorrent direct",
   "enabled": true,
+  "num": 1000,
   "body": {
-    "name": "BitTorrent direct",
-    "match": { "protocol": "bittorrent" },
+    "protocol": "bittorrent",
     "outbound": "direct-out"
   }
 }
 
-// 3. SRS rule-set user rule
+// 3. SRS rule-set user rule — наборы снаружи тела, цель внутри
 {
   "kind": "srs",
-  "id": "01KQD7ABC...",
+  "name": "Block ads (oisd)",
   "enabled": true,
-  "body": {
-    "name": "Block ads (oisd)",
-    "srs_url": "https://example.com/oisd.srs",
-    // "srs_urls": ["https://example.com/oisd.srs", "https://example.com/extra.srs"],  // только при 2+ наборах
-    "outbound": "reject"
-  }
+  "num": 1010,
+  "refs": [
+    "https://example.com/oisd.srs",
+    "https://example.com/extra.srs"    // по элементу на набор; `rule_set` вписывает сборка
+  ],
+  "body": { "action": "reject" }
 }
 ```
 
@@ -464,7 +498,7 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 ]
 ```
 
-### 3.6 `dns_options`
+### 3.6 `dns` (до v8 — `dns_options`)
 
 | Поле | Тип | Описание |
 |------|-----|----------|
@@ -482,16 +516,18 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 | `tag` | string | Для `kind=template` (lookup ключ в `template.dns_options.servers[tag]`) и `kind=user` (display tag в финальном `config.dns.servers[].tag`). Пуст для `preset`. |
 | `ref` | string | Только для `kind=preset`, формат `"<preset_id>:<local_tag>"`. Пуст для остальных. |
 | `enabled` | bool | Toggle. Build pipeline пропускает entry если `false`. |
-| `body` | `map[string]interface{}` | Только для `kind=user` — полные DNS-server поля (type / server / server_port / tls / detour / ...). Для `template` / `preset` — nil (body резолвится из template). |
+| `body` | `map[string]interface{}` | Только для `kind=user` — **DNS-сервер sing-box как есть** (type / server / server_port / tls / detour / ...), **без `tag`**: тег — метаданные, в эмитируемое тело его вписывает сборка. Для `template` / `preset` — nil (body резолвится из template). До v8 эти поля лежали плоско рядом с `kind`. |
 
 **`rules[i]` — `v6.DNSRule` (SPEC 056-R-N):**
 
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `kind` | `DNSRuleKind` | `preset` \| `user`. |
+| `id` | string | Необязательные метаданные другой стороны (LxBox). Лаунчер их провозит. |
 | `ref` | string | Только для `kind=preset`, формат `"<preset_id>"` (один dns_rule на preset). |
+| `name` | string | Необязательное отображаемое имя. Лаунчер его не заполняет, провозит. |
 | `enabled` | bool | Toggle. |
-| `body` | `map[string]interface{}` | Только для `kind=user` — полное sing-box dns rule body (rule_set / server / domain_* / ip_cidr / port / network / ...). nil для preset. |
+| `body` | `map[string]interface{}` | Только для `kind=user` — **DNS-правило sing-box как есть** (rule_set / server / domain_* / ip_cidr / port / network / ...), `server` внутри. nil для preset. До v8 эти поля лежали плоско рядом с `kind`. |
 
 **Записи шаблона: две формы (SPEC 109).** `template.dns_options.servers[]`
 принимает запись в двух видах — плоском (наш) и вложенном
@@ -521,7 +557,7 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 - `independent_cache` — deprecated в sing-box 1.14.0 (cache всегда per-transport). Legacy state с этим ключом парсится без ошибок (unknown field ignored), новые saves не пишут.
 - `extra_servers[]`, `extra_rules[]`, `template_servers` map — старая dev-схема SPEC 053, заменена flat-list'ом с kind discriminator (SPEC 056-R-N).
 
-**JSON example — полный `dns_options` блок:**
+**JSON example — полный `dns` блок:**
 ```jsonc
 {
   // strategy/final/default_domain_resolver — fallback дубль; source of truth в vars[]
@@ -610,8 +646,8 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 | `connections.defaults` | reload interval, max_nodes per source default | state | UI Settings/Sources | parser pipeline |
 | `rules` | Routing rules через kind discriminator (preset/inline/srs) — единый упорядоченный массив | state | UI Rules tab (drag, library add, edit) | build (`MergeRouteSection` + `MergePresetsIntoRoute`), UI render |
 | `vars` | Overrides для всех объявленных в template vars: tun, route_final, dns_*, clash_secret, etc. | state (значения) + template (объявления) | UI Settings tab, скрытые синхронизаторы (`SyncDNSModelToSettingsVars`) | build (`@var` substitute) |
-| `dns_options.servers` | Entries kind=template / preset / user; body для template/preset резолвится из template, для user — flat в entry | state (что включено) + template (тело) | UI DNS tab, `SyncDNSOptionsWithActivePresets`, presenter | build (`ResolveDNS` → `MergeDNSSection`), UI render |
-| `dns_options.rules` | Entries kind=preset / user. preset = thin ref на `template.presets[].dns_rule`, user = flat body | state + template | UI DNS tab, lifecycle sync, presenter | build (`ResolveDNS`), UI render |
+| `dns.servers` | Entries kind=template / preset / user; body для template/preset резолвится из template, у user лежит в `body` записи | state (что включено) + template (тело) | UI DNS tab, `SyncDNSOptionsWithActivePresets`, presenter | build (`ResolveDNS` → `MergeDNSSection`), UI render |
+| `dns.rules` | Entries kind=preset / user. preset = thin ref на `template.presets[].dns_rule`, у user правило лежит в `body` | state + template | UI DNS tab, lifecycle sync, presenter | build (`ResolveDNS`), UI render |
 
 «Источник истины» = откуда берётся семантика записи. «Кто пишет» = в каких
 точках кода mutates state. «Кто читает» = consumers при build/render.
@@ -715,10 +751,10 @@ generator получает flat'нутую копию).
 
 ## 6. DNS preset binding lifecycle (SPEC 056-R-N)
 
-Симметрично outbound binding. `dns_options.servers[]` и `dns_options.rules[]`
+Симметрично outbound binding. `dns.servers[]` и `dns.rules[]` (до v8 — `dns_options.*`)
 — flat array с `kind` discriminator.
 
-### 6.1 `dns_options.servers[]` — kind
+### 6.1 `dns.servers[]` — kind
 
 | `kind` | Identity | Body |
 |--------|----------|------|
@@ -730,7 +766,7 @@ Toggle `enabled` доступен для всех трёх kind'ов; edit body 
 delete — только для user (template/preset управляются template'ом и preset
 toggle'ом).
 
-### 6.2 `dns_options.rules[]` — kind
+### 6.2 `dns.rules[]` — kind
 
 | `kind` | Identity | Body |
 |--------|----------|------|
@@ -775,7 +811,7 @@ dropped через `_ = raw.IndependentCache` в `legacyDevDNSToOptions`),
 |--------|--------|------|
 | `preset` | `{ref, enabled}` (ref = `<preset_id>`) | `{vars: {<name>: <value>, ...}}` — только diff от template defaults; пустой map = всё дефолтное |
 | `inline` | `{id (ULID), enabled}` | `{name, match (sing-box match-объект), outbound (tag|"reject"|"drop")}` |
-| `srs` | `{id (ULID), enabled}` | `{name, srs_url, outbound}` |
+| `srs` | `{kind, name, enabled, num, refs[]}` | `{outbound}` \| `{action}` |
 
 Order = order рендера в UI Rules tab (включая drag-reordering) = order эмита
 в `config.json::route.rules[]`. Сохраняется через
@@ -899,11 +935,13 @@ patch поверх template body, что даёт template auto-upgrade авто
 | v6 dev-shape → v6 flat | `dns.{template_servers, extra_servers, extra_rules}` (SPEC 053 промежуточный shape) → `dns_options.servers[]/rules[]` flat (SPEC 056-R-N) | нет (lossless, dev-only, не релизился) |
 | SPEC 057 outbounds → SPEC 058 | Direct entries с full body, совпадающим по `tag` с template/preset → referenced thin entries (`ref=#TEMPLATE#` / `ref=<preset_id>`) + USER patch с field-level diff против merged_base. Идемпотентно, lossless. Также: legacy `wizard.required` map → top-level `required bool`; поле `wizard interface{}` удалено из struct. | **`state.json.pre-058.bak`** на первом save после migration |
 | sing-box 1.14 | `dns_options.independent_cache` silently dropped (legacy state читается, новый не пишется) | нет |
+| v6 → v7 | источники на верхний уровень, контейнеры с `nodes[]`, ссылки как `{folder_id, tag}`, `enabled` на самом узле (SPEC 118) | **`state.json.v6.bak`** перед первой записью v7 |
+| v7 → v8 | Одно пространство имён (SPEC 127): правила — `order_num` → `num`, `name` / `refs[]` / `vars` из тела на уровень записи, `body` = само правило sing-box (цель как `outbound` \| `action`); DNS — плоское тело в `body`, `tag` остаётся снаружи; корень `dns_options` → `dns`, `warp_accounts` → `warp`; `sections` узлов — по тем же правилам. Проход идёт по сырому документу, поэтому ключи матчеров и их порядок доживают байт-в-байт. | **`state.json.v7.bak`** перед первой записью v8 |
 
-Save всегда пишет canonical (v6) shape (SPEC 060 убрал dual write path).
-Legacy v5 файлы по-прежнему читаются через `parseV5Legacy` и нормализуются
-в `State` на load; следующий Save перезаписывает их в v6 layout.
-Юзеры с pure inline/srs rules остаются на v5 пока не добавят первый preset.
+Save всегда пишет текущую форму — сегодня v8 (SPEC 060 давно убрал dual write
+path). Любой более старый файл читается своим парсером, мигрирует по цепочке
+v5 → v6 → v7 → v8 и переписывается ближайшим Save; лежавший на диске файл
+остаётся рядом как `.bak` своей версии.
 
 ---
 
@@ -915,8 +953,10 @@ Legacy v5 файлы по-прежнему читаются через `parseV5L
 | `core/state/save.go` | `Save` / `marshalDisk` (single canonical-v6 write path после SPEC 060) / `maybeBackupSPEC058` (SPEC 058: `.pre-058.bak` на первом save после referenced-shape migration) |
 | `core/state/adapter.go` | `syncConnectionsFromLegacy` / `syncLegacyFromConnections` (обмен legacy ParserConfig ↔ canonical Connections) |
 | `core/state/disk_v6.go` | `diskStateV6` (private write-shape) + `MetaSection` + `SchemaVersionV6` |
-| `core/state/rule_types.go` | `Rule` + `PresetBody`/`InlineBody`/`SrsBody` + `DecodeBody` |
-| `core/state/dns_options.go` | `DNSServer` + `DNSRule` + flat `MarshalJSON`/`UnmarshalJSON` |
+| `core/state/disk_v8.go` | `diskStateV8` (текущая форма записи: `meta`, `sources`, `directions`, `rules`, `vars`, `dns`, `warp`) + `SchemaVersionV8` / `SchemaNameV8` + `parseV8` |
+| `core/state/migration_v7_to_v8.go` | `migrateV7DocToV8` — проход v7 → v8 по **сырому документу** (SPEC 127) |
+| `core/state/rule_types.go` | `Rule` + виды `PresetBody`/`InlineBody`/`SrsBody` + `DecodeBody` (единственный читатель) + `NewPresetRule`/`NewInlineRule`/`NewSrsRule`/`SetOutbound` (единственные писатели) |
+| `core/state/dns_options.go` | `DNSServer` + `DNSRule` — обычные struct-теги, объект sing-box в `body` (плоские `MarshalJSON`/`UnmarshalJSON` v6/v7 удалены в v8) |
 | `core/state/sync_dns.go` | `SyncDNSOptionsWithActivePresets` |
 | `core/state/migration_v5_to_v6.go` | `migrateV5ToV6` (private helper) + `isV5`/`isV6` detection |
 | `core/state/legacy_migration.go` | `migrateV4ToV5` (private) + `IDGenerator` |

@@ -40,20 +40,18 @@ func emitOrderPresets() []template.Preset {
 }
 
 func inlineStateRule(name string, num int, outbound string) corestate.Rule {
-	body, _ := json.Marshal(corestate.InlineBody{
-		Name:     name,
-		Match:    map[string]interface{}{"domain_suffix": name + ".example"},
-		Outbound: outbound,
-	})
-	return corestate.Rule{Kind: corestate.RuleKindInline, Enabled: true, OrderNum: &num, Body: body}
+	r := corestate.NewInlineRule(name, map[string]interface{}{"domain_suffix": name + ".example"}, outbound)
+	r.Enabled = true
+	r.Num = &num
+	return r
 }
 
 func presetStateRule(ref string, num int) corestate.Rule {
 	n := num
-	return corestate.Rule{
-		Kind: corestate.RuleKindPreset, Ref: ref, Enabled: true,
-		OrderNum: &n, Body: json.RawMessage(`{"vars":{}}`),
-	}
+	r := corestate.NewPresetRule(ref, nil)
+	r.Enabled = true
+	r.Num = &n
+	return r
 }
 
 // emittedRuleMarkers — по одному опознавательному признаку на правило в том
@@ -126,8 +124,8 @@ func TestEmitAnchorsUnmarkedPresetFromTemplate(t *testing.T) {
 	ctx := PresetMergeContext{
 		Presets: emitOrderPresets(),
 		Rules: []corestate.Rule{
-			{Kind: corestate.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
-			{Kind: corestate.RuleKindPreset, Ref: "traffic-processing", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+			presetRule("russian", nil, true),
+			presetRule("traffic-processing", nil, true),
 		},
 	}
 	out, err := MergePresetsIntoRoute(json.RawMessage(`{"rules":[],"rule_set":[]}`), ctx)

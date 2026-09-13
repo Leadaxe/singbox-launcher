@@ -813,7 +813,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 				// SPEC 106: номер оси — конец занятой пользовательской зоны,
 				// не хардкод: новое правило встаёт последним среди
 				// пользовательских и не вытесняет шаблонные якоря.
-				OrderNum: wizardmodels.NextRuleOrderNum(model),
+				Num: wizardmodels.NextRuleNum(model),
 			}
 			if model.CustomRules == nil {
 				model.CustomRules = make([]*wizardmodels.RuleState, 0)

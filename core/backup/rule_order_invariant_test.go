@@ -27,19 +27,15 @@ func TestImportLeavesRulesSortedByAxis(t *testing.T) {
 	got := make([]string, 0, len(dst.Rules))
 	prev := -1 << 31
 	for i, r := range dst.Rules {
-		var body state.InlineBody
-		if err := json.Unmarshal(r.Body, &body); err != nil {
-			t.Fatalf("тело правила %d: %v", i, err)
+		got = append(got, r.Name)
+		if r.Num == nil {
+			t.Fatalf("правило %q приехало без номера", r.Name)
 		}
-		got = append(got, body.Name)
-		if r.OrderNum == nil {
-			t.Fatalf("правило %q приехало без номера", body.Name)
-		}
-		if *r.OrderNum < prev {
+		if *r.Num < prev {
 			t.Fatalf("rules[%d] несёт номер %d после %d — массив не отсортирован по оси",
-				i, *r.OrderNum, prev)
+				i, *r.Num, prev)
 		}
-		prev = *r.OrderNum
+		prev = *r.Num
 	}
 
 	want := []string{"first", "second", "third"}
@@ -67,9 +63,7 @@ func TestImportPutsUnnumberedRulesLast(t *testing.T) {
 
 	got := make([]string, 0, len(dst.Rules))
 	for _, r := range dst.Rules {
-		var body state.InlineBody
-		_ = json.Unmarshal(r.Body, &body)
-		got = append(got, body.Name)
+		got = append(got, r.Name)
 	}
 	want := []string{"numbered", "no-num-a", "no-num-b"}
 	for i := range want {

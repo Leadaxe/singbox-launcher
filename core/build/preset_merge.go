@@ -370,7 +370,7 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 		if !r.Active || !r.Enabled {
 			continue
 		}
-		if r.OrderNum < state.UserRuleNumStart {
+		if r.Num < state.UserRuleNumStart {
 			head = append(head, r.Body)
 			continue
 		}
@@ -714,6 +714,10 @@ func CollectSrsCachedPaths(rules []state.Rule, execDir, resourceDir string) map[
 		if r.Kind != state.RuleKindSrs {
 			continue
 		}
+		// Список наборов в state v8 — поле записи Refs; читаем его через вид,
+		// потому что вид дедуплицирует. Расхождение с resolve_route.go, который
+		// берёт тот же вид, сделало бы правило «частично закэшированным» и
+		// молча выбросило бы его из конфига (ловушка 18).
 		body, err := r.DecodeBody()
 		if err != nil {
 			continue
@@ -722,7 +726,7 @@ func CollectSrsCachedPaths(rules []state.Rule, execDir, resourceDir string) map[
 		if !ok {
 			continue
 		}
-		urls := sb.URLs()
+		urls := sb.Refs
 		if len(urls) == 0 {
 			continue
 		}

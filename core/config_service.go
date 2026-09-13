@@ -487,23 +487,19 @@ func collectAllStageRuleSetTags(execDir, target, machineID string, td *template.
 			}
 		}
 		// Issue #77: user-defined kind=srs rule'ы тоже keep'аются. Файл
-		// сохраняется downloader'ом под `build.SRSTagFromURL(SrsURL)`;
+		// сохраняется downloader'ом под `build.SRSTagFromURL(ref)`;
 		// без этой ветки orphan GC удалял бы реально-скачанный файл при
 		// каждом save, ломая user-SRS правила.
+		//
+		// state v8: наборы — поле записи Refs, читается напрямую и без
+		// валидации вида. Это keep-лист: запись с незаполненным именем всё
+		// равно ссылается на файл, и удалять его нельзя.
 		for _, r := range s.Rules {
 			if r.Kind != state.RuleKindSrs {
 				continue
 			}
-			body, err := r.DecodeBody()
-			if err != nil {
-				continue
-			}
-			sb, ok := body.(*state.SrsBody)
-			if !ok {
-				continue
-			}
 			// Все наборы правила, не только первый (репорт 1.5.5).
-			for _, u := range sb.URLs() {
+			for _, u := range r.Refs {
 				addTag(build.SRSTagFromURL(u))
 			}
 		}

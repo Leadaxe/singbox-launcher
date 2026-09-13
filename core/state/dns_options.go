@@ -1,24 +1,31 @@
-// File dns_options.go — SPEC 056-R-N: DNS_SCHEMA_REDESIGN.
+// File dns_options.go — DNS-секция состояния (SPEC 056-R-N, форма v8 по SPEC 127).
 //
-// Новая flat-схема DNS-секции state.json через kind discriminator
-// (template/preset/user) для servers, (preset/user) для rules.
+// Вид записи задаёт kind: template/preset/user у серверов, preset/user у правил.
 //
-// JSON layout:
+// JSON layout (state v8 — ключ корня `dns`):
 //
-//	"dns_options": {
+//	"dns": {
 //	  "strategy": "...",
 //	  "final": "...",
 //	  "default_domain_resolver": "...",
 //	  "servers": [
 //	    {"kind":"template", "tag":"cloudflare_udp", "enabled":true},
 //	    {"kind":"preset",   "ref":"russian:yandex_udp", "enabled":true},
-//	    {"kind":"user",     "tag":"my-pihole", "type":"udp", "server":"192.168.1.5", "enabled":true}
+//	    {"kind":"user",     "tag":"my-pihole", "enabled":true,
+//	     "body":{"type":"udp","server":"192.168.1.5"}}
 //	  ],
 //	  "rules": [
 //	    {"kind":"preset", "ref":"russian", "enabled":true},
-//	    {"kind":"user",   "rule_set":"ru-domains", "server":"yandex_doh", "enabled":true}
+//	    {"kind":"user",   "enabled":true,
+//	     "body":{"rule_set":"ru-domains","server":"yandex_doh"}}
 //	  ]
 //	}
+//
+// До v8 тело разливалось ПЛОСКО рядом с kind/tag/enabled, и ради этого были
+// написаны четыре кастомных Marshal/Unmarshal. В v8 их нет: сериализация —
+// обычные struct-теги, плоскую форму читает только миграция v7→v8
+// (migration_v7_to_v8.go). Тега внутри `body` быть не должно — он метаданные;
+// при эмиссии конфига tag дописывается в тело из поля (resolve_dns.go).
 //
 // Инварианты:
 //  1. Memory == disk — никакого runtime materialization для preset entries.
@@ -26,15 +33,10 @@
 //     preset-ref'ов в state.Rules[] (вызывается на load + на toggle).
 //  2. kind=template/preset тело резолвится из template на build/render — на
 //     диске только {kind, tag|ref, enabled}.
-//  3. kind=user — полное тело сериализуется flat'ом рядом с kind/tag/enabled.
+//  3. kind=user — полное тело sing-box в `body`.
 //
-// См. SPECS/056-R-N-DNS_SCHEMA_REDESIGN/SPEC.md.
+// См. SPECS/056-R-N-DNS_SCHEMA_REDESIGN/SPEC.md, SPECS/127-F-N-ONE_NAMESPACE_V8/.
 package state
-
-import (
-	"encoding/json"
-	"fmt"
-)
 
 // DNSServerKind — дискриминатор entry в dns_options.servers[].
 type DNSServerKind string
@@ -67,47 +69,52 @@ const (
 	DNSRuleKindUser DNSRuleKind = "user"
 )
 
-// DNSServer — entry в state.dns_options.servers[].
+// DNSServer — запись в state.dns.servers[] и в sections.dns.servers[].
 //
-// Сериализация плоская: kind/ref/tag/enabled на верхнем уровне, плюс body-поля
-// (только для kind=user). Marshal/Unmarshal реализованы вручную чтобы достичь
-// этой формы.
+// Сериализация — обычные struct-теги (порядок полей = порядок ключей файла):
+// метаданные снаружи, тело sing-box в `body` (только kind=user).
 type DNSServer struct {
-	Kind DNSServerKind
+	Kind DNSServerKind `json:"kind"`
 
 	// Tag — для kind=template (template.dns_options.servers[tag]) и kind=user
 	// (display tag в финальном config.dns.servers[].tag). Пуст для kind=preset.
-	Tag string
+	Tag string `json:"tag,omitempty"`
 
 	// Ref — только для kind=preset, формат "<preset_id>:<local_tag>".
 	// Пуст для остальных kind'ов.
-	Ref string
+	Ref string `json:"ref,omitempty"`
 
 	// Enabled — toggle. Build pipeline пропускает entry если false.
-	Enabled bool
+	Enabled bool `json:"enabled"`
 
-	// Body — для kind=user полные DNS-server поля (type, server, server_port,
-	// tls, detour, ...). nil/пуст для kind=template/preset.
+	// Body — для kind=user полное тело sing-box DNS-сервера (type, server,
+	// server_port, tls, detour, ...). nil/пуст для kind=template/preset.
 	//
-	// **Не содержит** kind/ref/enabled (они на top-level). Может содержать
-	// tag (для kind=user — собственный display tag), но это дублирует поле
-	// `Tag` и сериализатор предпочитает поле Tag.
-	Body map[string]interface{}
+	// **Не содержит** kind/ref/enabled/tag — все они метаданные записи. Тег
+	// дописывается в тело при эмиссии конфига (resolve_dns.go).
+	Body map[string]interface{} `json:"body,omitempty"`
 }
 
-// DNSRule — entry в state.dns_options.rules[].
+// DNSRule — запись в state.dns.rules[] и в sections.dns.rules[].
 type DNSRule struct {
-	Kind DNSRuleKind
+	Kind DNSRuleKind `json:"kind"`
+
+	// ID — необязательные метаданные другой стороны; лаунчер провозит.
+	ID string `json:"id,omitempty"`
 
 	// Ref — только для kind=preset, формат "<preset_id>".
-	Ref string
+	Ref string `json:"ref,omitempty"`
+
+	// Name — необязательное имя правила (ONE_NAMESPACE §1): лаунчер его не
+	// заполняет, но и не теряет.
+	Name string `json:"name,omitempty"`
 
 	// Enabled — toggle.
-	Enabled bool
+	Enabled bool `json:"enabled"`
 
 	// Body — для kind=user полное тело sing-box dns rule (rule_set, server,
 	// domain_*, ip_cidr, port, network, ...). nil/пуст для kind=preset.
-	Body map[string]interface{}
+	Body map[string]interface{} `json:"body,omitempty"`
 }
 
 // DNSOptions — раздел dns_options в state.json (SPEC 056-R-N).
@@ -132,123 +139,6 @@ type DNSOptions struct {
 
 	Servers []DNSServer `json:"servers,omitempty"`
 	Rules   []DNSRule   `json:"rules,omitempty"`
-}
-
-// ── Marshal/Unmarshal: flat layout ─────────────────────────────────
-
-// MarshalJSON — flat сериализация: kind/ref/tag/enabled на верхнем уровне +
-// body fields (для kind=user) рядом с ними.
-func (s DNSServer) MarshalJSON() ([]byte, error) {
-	out := make(map[string]interface{}, 4+len(s.Body))
-	out["kind"] = string(s.Kind)
-	out["enabled"] = s.Enabled
-	switch s.Kind {
-	case DNSServerKindTemplate, DNSServerKindUser:
-		if s.Tag != "" {
-			out["tag"] = s.Tag
-		}
-	case DNSServerKindPreset:
-		if s.Ref != "" {
-			out["ref"] = s.Ref
-		}
-	}
-	if s.Kind == DNSServerKindUser {
-		for k, v := range s.Body {
-			// kind/ref/enabled никогда не должны попадать в body, но если
-			// кто-то их туда положил — top-level выигрывает.
-			switch k {
-			case "kind", "ref", "enabled":
-				continue
-			case "tag":
-				// Tag уже выставлен из поля Tag.
-				if s.Tag == "" {
-					out["tag"] = v
-				}
-				continue
-			}
-			out[k] = v
-		}
-	}
-	return json.Marshal(out)
-}
-
-// UnmarshalJSON — flat десериализация: достаёт kind/ref/tag/enabled, остаток
-// складывает в Body (для kind=user; для template/preset Body остаётся nil).
-func (s *DNSServer) UnmarshalJSON(data []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return fmt.Errorf("dns server: %w", err)
-	}
-	kind, _ := raw["kind"].(string)
-	s.Kind = DNSServerKind(kind)
-	if t, ok := raw["tag"].(string); ok {
-		s.Tag = t
-	}
-	if r, ok := raw["ref"].(string); ok {
-		s.Ref = r
-	}
-	if e, ok := raw["enabled"].(bool); ok {
-		s.Enabled = e
-	}
-
-	if s.Kind == DNSServerKindUser {
-		s.Body = make(map[string]interface{}, len(raw))
-		for k, v := range raw {
-			switch k {
-			case "kind", "ref", "enabled":
-				continue
-			}
-			s.Body[k] = v
-		}
-	}
-	return nil
-}
-
-// MarshalJSON — flat сериализация для DNSRule (зеркало DNSServer).
-func (r DNSRule) MarshalJSON() ([]byte, error) {
-	out := make(map[string]interface{}, 3+len(r.Body))
-	out["kind"] = string(r.Kind)
-	out["enabled"] = r.Enabled
-	if r.Kind == DNSRuleKindPreset && r.Ref != "" {
-		out["ref"] = r.Ref
-	}
-	if r.Kind == DNSRuleKindUser {
-		for k, v := range r.Body {
-			switch k {
-			case "kind", "ref", "enabled":
-				continue
-			}
-			out[k] = v
-		}
-	}
-	return json.Marshal(out)
-}
-
-// UnmarshalJSON — flat десериализация для DNSRule.
-func (r *DNSRule) UnmarshalJSON(data []byte) error {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return fmt.Errorf("dns rule: %w", err)
-	}
-	kind, _ := raw["kind"].(string)
-	r.Kind = DNSRuleKind(kind)
-	if ref, ok := raw["ref"].(string); ok {
-		r.Ref = ref
-	}
-	if e, ok := raw["enabled"].(bool); ok {
-		r.Enabled = e
-	}
-	if r.Kind == DNSRuleKindUser {
-		r.Body = make(map[string]interface{}, len(raw))
-		for k, v := range raw {
-			switch k {
-			case "kind", "ref", "enabled":
-				continue
-			}
-			r.Body[k] = v
-		}
-	}
-	return nil
 }
 
 // ── Helpers ────────────────────────────────────────────────────────

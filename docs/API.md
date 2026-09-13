@@ -98,7 +98,7 @@ Every patch endpoint returns `{"ok":true,"diff_summary":["..."]}` on success. Th
 | Method | Path | Body | What it does |
 |---|---|---|---|
 | PATCH | `/state/rules` | `{"mode":"replace"\|"append", "rules":[]state.Rule}` | Replaces / appends rules. Each is validated via `r.DecodeBody()` (kind discriminator: preset/inline/srs). |
-| PATCH | `/state/dns` | `state.DNSOptions` | Replaces the **whole** dns_options (servers + rules). Every server/rule is validated by its `kind`. **The body must contain `servers` and/or `rules`** — a keyless `{}` → `422` (a guard against silently wiping the entire section); state is left untouched. |
+| PATCH | `/state/dns` | `state.DNSOptions` | Replaces the **whole** `dns` section (servers + rules; state v8 — до v8 ключ назывался `dns_options`). Every server/rule is validated by its `kind`. **The body must contain `servers` and/or `rules`** — a keyless `{}` → `422` (a guard against silently wiping the entire section); state is left untouched. |
 | PATCH | `/state/dns/rules` | `{"text":"..."}` | Replaces **USER rules only**; preset rules are preserved. `""` (empty text) wipes the user rules. |
 | PATCH | `/state/log-level` | `{"level":"trace"\|"debug"\|"info"\|"warn"\|"error"\|"fatal"\|"panic"}` | Writes `vars[log_level]` → forces a `config.json` rebuild → **restarts sing-box** (active connections are dropped). Responds `202` + `{"ok":true,"level":"...","warning":"active connections reset"}` rather than the generic `{"ok":true,"diff_summary":[...]}`. The `level` field is required; an invalid level → `400` with the `allowed` list (the core is left alone). |
 

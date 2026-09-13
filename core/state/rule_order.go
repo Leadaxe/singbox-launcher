@@ -68,7 +68,7 @@ type RuleOrderSpec struct {
 	DefaultEnabled bool
 }
 
-// MarkRuleOrder проставляет OrderNum правилам, у которых его ещё нет.
+// MarkRuleOrder проставляет Num правилам, у которых его ещё нет.
 //
 // Отдельного версионированного шага миграции НЕТ: state, записанный до
 // SPEC 106, приезжает с nil и размечается при первой загрузке.
@@ -89,7 +89,7 @@ func MarkRuleOrder(rules []Rule, specs map[string]RuleOrderSpec) bool {
 	changed := false
 	nextUser := UserRuleNumStart
 	for i := range rules {
-		if rules[i].OrderNum != nil {
+		if rules[i].Num != nil {
 			continue
 		}
 		num := 0
@@ -105,7 +105,7 @@ func MarkRuleOrder(rules []Rule, specs map[string]RuleOrderSpec) bool {
 			nextUser++
 		}
 		n := num
-		rules[i].OrderNum = &n
+		rules[i].Num = &n
 		changed = true
 	}
 	sortRulesByNumInPlace(rules)
@@ -120,7 +120,7 @@ func sortRulesByNumInPlace(rules []Rule) {
 	})
 }
 
-// SortRulesByNum сортирует правила по возрастанию OrderNum.
+// SortRulesByNum сортирует правила по возрастанию Num.
 //
 // Сортировка СТАБИЛЬНАЯ: при равных номерах сохраняется взаимный порядок —
 // равенство возможно после исчерпания пользовательской зоны (NextUserRuleNum).
@@ -134,10 +134,10 @@ func SortRulesByNum(rules []Rule) []Rule {
 }
 
 func ruleNum(r Rule) int {
-	if r.OrderNum == nil {
+	if r.Num == nil {
 		return DefaultRuleNum
 	}
-	return *r.OrderNum
+	return *r.Num
 }
 
 // SeedRequiredRules добавляет отсутствующие несортируемые пресеты шаблона.
@@ -174,13 +174,10 @@ func SeedRequiredRules(rules []Rule, specs map[string]RuleOrderSpec) []Rule {
 	for _, ref := range missing {
 		spec := specs[ref]
 		num := spec.Num
-		out = append(out, Rule{
-			Kind:     RuleKindPreset,
-			Ref:      ref,
-			Enabled:  spec.DefaultEnabled,
-			OrderNum: &num,
-			Body:     []byte(`{"vars":{}}`),
-		})
+		seeded := NewPresetRule(ref, nil)
+		seeded.Enabled = spec.DefaultEnabled
+		seeded.Num = &num
+		out = append(out, seeded)
 	}
 	return out
 }
@@ -234,10 +231,10 @@ func NormalizeRuleOrder(rules []Rule, specs map[string]RuleOrderSpec) []Rule {
 func NextUserRuleNum(rules []Rule) int {
 	maxInZone := UserRuleNumStart - 1
 	for _, r := range rules {
-		if r.OrderNum == nil {
+		if r.Num == nil {
 			continue
 		}
-		n := *r.OrderNum
+		n := *r.Num
 		if n < UserRuleNumStart || n > UserRuleNumEnd {
 			continue
 		}
@@ -347,10 +344,10 @@ func placeRuleAt(rules []Rule, movedIdx int, want int, sortable func(Rule) bool)
 		if i == movedIdx || !sortable(rules[i]) {
 			continue
 		}
-		if rules[i].OrderNum == nil {
+		if rules[i].Num == nil {
 			continue
 		}
-		if n := *rules[i].OrderNum; n >= want {
+		if n := *rules[i].Num; n >= want {
 			occupied[n] = append(occupied[n], i)
 		}
 	}
@@ -371,10 +368,10 @@ func placeRuleAt(rules []Rule, movedIdx int, want int, sortable func(Rule) bool)
 	// Сдвигаем сверху вниз — иначе +1 наложился бы на ещё не сдвинутого соседа.
 	for i := len(block) - 1; i >= 0; i-- {
 		idx := block[i]
-		n := *rules[idx].OrderNum + 1
-		rules[idx].OrderNum = &n
+		n := *rules[idx].Num + 1
+		rules[idx].Num = &n
 	}
 
 	w := want
-	rules[movedIdx].OrderNum = &w
+	rules[movedIdx].Num = &w
 }

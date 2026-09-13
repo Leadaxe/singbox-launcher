@@ -40,8 +40,8 @@ func convertPresetRefToUserRules(
 	// молча, хотя пользователь просил только «отвязать от шаблона».
 	// Указатель раздаётся КОПИЯМИ: общий *int на несколько правил означал бы,
 	// что перетаскивание одного двигает все.
-	presetNum := wizardmodels.PresetRuleOrderNum(model, tplPreset.ID)
-	orderNum := func() *int {
+	presetNum := wizardmodels.PresetRuleNum(model, tplPreset.ID)
+	axisNum := func() *int {
 		if presetNum == nil {
 			return nil
 		}
@@ -89,7 +89,7 @@ func convertPresetRefToUserRules(
 					},
 					Enabled:          enabled,
 					SelectedOutbound: outbound,
-					OrderNum:         orderNum(),
+					Num:              axisNum(),
 				}
 				model.CustomRules = append(model.CustomRules, &cr)
 				created++
@@ -109,7 +109,7 @@ func convertPresetRefToUserRules(
 						},
 						Enabled:          enabled,
 						SelectedOutbound: outbound,
-						OrderNum:         orderNum(),
+						Num:              axisNum(),
 					}
 					model.CustomRules = append(model.CustomRules, &cr)
 					created++
@@ -157,7 +157,7 @@ func convertPresetRefToUserRules(
 			},
 			Enabled:          enabled,
 			SelectedOutbound: ruleOutbound,
-			OrderNum:         orderNum(),
+			Num:              axisNum(),
 		}
 		model.CustomRules = append(model.CustomRules, &cr)
 		created++

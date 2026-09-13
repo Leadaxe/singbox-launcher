@@ -6,14 +6,13 @@ import (
 	"testing"
 )
 
-func inlineBodyJSON(name string) json.RawMessage {
-	b, _ := json.Marshal(InlineBody{Name: name, Match: map[string]interface{}{"port": []int{443}}, Outbound: "direct-out"})
-	return b
+// SPEC 127 (state v8): имя — поле записи, тело — правило sing-box как есть.
+func inlineTestRule(name string) Rule {
+	return NewInlineRule(name, map[string]interface{}{"port": []int{443}}, "direct-out")
 }
 
-func srsBodyJSON(name, url string) json.RawMessage {
-	b, _ := json.Marshal(SrsBody{Name: name, SrsURL: url, Outbound: "reject"})
-	return b
+func srsTestRule(name, url string) Rule {
+	return NewSrsRule(name, []string{url}, "reject")
 }
 
 // TestStableRuleID_AllKinds — для каждого kind возвращает корректную identity.
@@ -25,17 +24,17 @@ func TestStableRuleID_AllKinds(t *testing.T) {
 	}{
 		{
 			name: "preset returns Ref",
-			rule: Rule{Kind: RuleKindPreset, Ref: "ru-direct", Body: json.RawMessage(`{"vars":{}}`)},
+			rule: NewPresetRule("ru-direct", nil),
 			want: "ru-direct",
 		},
 		{
 			name: "inline returns sanitized name",
-			rule: Rule{Kind: RuleKindInline, Body: inlineBodyJSON("Firefox VPN")},
+			rule: inlineTestRule("Firefox VPN"),
 			want: "Firefox-VPN",
 		},
 		{
 			name: "srs returns sanitized name",
-			rule: Rule{Kind: RuleKindSrs, Body: srsBodyJSON("Custom block list", "https://x/y.srs")},
+			rule: srsTestRule("Custom block list", "https://x/y.srs"),
 			want: "Custom-block-list",
 		},
 	}
@@ -57,12 +56,12 @@ func TestStableRuleID_EdgeCases(t *testing.T) {
 	}{
 		{
 			name: "inline empty name",
-			rule: Rule{Kind: RuleKindInline, Body: inlineBodyJSON("")},
+			rule: inlineTestRule(""),
 			want: "unnamed",
 		},
 		{
 			name: "srs empty name",
-			rule: Rule{Kind: RuleKindSrs, Body: srsBodyJSON("", "https://x")},
+			rule: srsTestRule("", "https://x"),
 			want: "unnamed",
 		},
 		{
@@ -71,18 +70,20 @@ func TestStableRuleID_EdgeCases(t *testing.T) {
 			want: "unnamed",
 		},
 		{
-			name: "undecodable body",
+			// В v8 имя не в теле: битое тело идентичности не касается,
+			// а безымянное правило по-прежнему "unnamed".
+			name: "broken body, no name",
 			rule: Rule{Kind: RuleKindInline, Body: json.RawMessage(`{ not json`)},
 			want: "unnamed",
 		},
 		{
 			name: "unicode/special chars sanitized to ASCII",
-			rule: Rule{Kind: RuleKindInline, Body: inlineBodyJSON("Firefox через VPN!")},
+			rule: inlineTestRule("Firefox через VPN!"),
 			want: "Firefox--VPN", // не-ASCII strip, "!" strip, пробелы → "-"
 		},
 		{
 			name: "all special chars → fallback rule",
-			rule: Rule{Kind: RuleKindInline, Body: inlineBodyJSON("!@#")},
+			rule: inlineTestRule("!@#"),
 			want: "rule",
 		},
 	}

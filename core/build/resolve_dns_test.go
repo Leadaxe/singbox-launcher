@@ -91,7 +91,7 @@ func TestResolveDNS_Preset(t *testing.T) {
 	td := makeTestTD(t, presetsJSON)
 	state := &state.State{
 		Rules: []state.Rule{
-			{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+			presetRule("russian", nil, true),
 		},
 	}
 	got := ResolveDNS(state, td, nil, template.LocalTarget())
@@ -130,7 +130,7 @@ func TestResolveDNS_PresetInactiveByIf(t *testing.T) {
 	td := makeTestTD(t, presetsJSON)
 	state := &state.State{
 		Rules: []state.Rule{
-			{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+			presetRule("russian", nil, true),
 		},
 	}
 	got := ResolveDNS(state, td, nil, template.LocalTarget())
@@ -155,7 +155,7 @@ func TestResolveDNS_PresetUserToggle(t *testing.T) {
 	td := makeTestTD(t, presetsJSON)
 	state := &state.State{
 		Rules: []state.Rule{
-			{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+			presetRule("russian", nil, true),
 		},
 		DNS: state.DNSOptions{
 			Servers: []state.DNSServer{
@@ -217,7 +217,7 @@ func TestResolveDNS_NoConsumptionFilter(t *testing.T) {
 	td := makeTestTD(t, presetsJSON)
 	state := &state.State{
 		Rules: []state.Rule{
-			{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+			presetRule("russian", nil, true),
 		},
 	}
 	got := ResolveDNS(state, td, nil, template.LocalTarget())

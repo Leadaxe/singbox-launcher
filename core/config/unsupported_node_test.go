@@ -124,7 +124,7 @@ func TestUnsupportedNodeShapeNormalized(t *testing.T) {
 	}}
 	s := state.New()
 	s.Sources = []state.Source{src}
-	data, err := s.MarshalV7()
+	data, err := s.MarshalV8()
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}

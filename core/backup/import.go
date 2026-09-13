@@ -636,28 +636,23 @@ func importRule(r Rule, known, presets tagSet) (state.Rule, []Warning, error) {
 		warns = append(warns, Warning{Code: WarnBackupUnknownOutbound, Detail: ruleLabel(r) + " → " + r.Outbound})
 	}
 
-	out := state.Rule{
-		Kind:    state.RuleKind(r.Kind),
-		Enabled: enabled,
-	}
+	// Ось: бэкап несёт номер как float64 (схема 0.12), состояние — как int.
+	var num *int
 	if r.Num != nil {
 		n := int(*r.Num)
-		out.OrderNum = &n
+		num = &n
 	}
 
+	// Тело записи пишут только конструкторы состояния (SPEC 127 §0) — здесь
+	// свой json.Marshal(XBody) больше не собирается.
+	var out state.Rule
 	switch RuleKind(r.Kind) {
 	case RulePreset:
-		out.Ref = r.Ref
 		if !presets.empty() && !presets.has(r.Ref) {
-			out.Enabled = false
+			enabled = false
 			warns = append(warns, Warning{Code: WarnBackupUnknownPreset, Detail: r.Ref})
 		}
-		body := state.PresetBody{Vars: r.Vars}
-		raw, err := json.Marshal(body)
-		if err != nil {
-			return state.Rule{}, warns, err
-		}
-		out.Body = raw
+		out = state.NewPresetRule(r.Ref, r.Vars)
 	case RuleInline:
 		var match map[string]interface{}
 		if len(r.Match) > 0 {
@@ -665,11 +660,7 @@ func importRule(r Rule, known, presets tagSet) (state.Rule, []Warning, error) {
 				return state.Rule{}, warns, fmt.Errorf("match: %w", err)
 			}
 		}
-		raw, err := json.Marshal(state.InlineBody{Name: r.Name, Match: match, Outbound: r.Outbound})
-		if err != nil {
-			return state.Rule{}, warns, err
-		}
-		out.Body = raw
+		out = state.NewInlineRule(r.Name, match, r.Outbound)
 	case RuleSRS:
 		// `refs` (все наборы) сильнее `ref` (первый): файл без `refs` — от
 		// стороны, которая знает один набор на правило.
@@ -677,11 +668,7 @@ func importRule(r Rule, known, presets tagSet) (state.Rule, []Warning, error) {
 		if len(urls) == 0 {
 			urls = []string{r.Ref}
 		}
-		raw, err := json.Marshal(state.NewSrsBody(r.Name, urls, r.Outbound))
-		if err != nil {
-			return state.Rule{}, warns, err
-		}
-		out.Body = raw
+		out = state.NewSrsRule(r.Name, urls, r.Outbound)
 	case RuleJSON:
 		// kind=json — сырое правило другой стороны: применять вслепую нельзя
 		// (структура чужая). Но и ронять весь импорт из-за одного правила
@@ -691,6 +678,10 @@ func importRule(r Rule, known, presets tagSet) (state.Rule, []Warning, error) {
 	default:
 		return state.Rule{}, append(warns, Warning{Code: WarnBackupUnknownField, Detail: "rules[].kind=" + string(r.Kind)}), errSkipRule
 	}
+
+	// Конструкторы задают вид и тело; метаданные записи дописываются поверх.
+	out.Enabled = enabled
+	out.Num = num
 
 	return out, warns, nil
 }
@@ -714,16 +705,16 @@ func ruleLabel(r Rule) string {
 func renumberImportedRules(rules []state.Rule) {
 	idx := make([]int, 0, len(rules))
 	for i, r := range rules {
-		if r.OrderNum != nil {
+		if r.Num != nil {
 			idx = append(idx, i)
 		}
 	}
 	sort.SliceStable(idx, func(a, b int) bool {
-		return *rules[idx[a]].OrderNum < *rules[idx[b]].OrderNum
+		return *rules[idx[a]].Num < *rules[idx[b]].Num
 	})
 	for pos, i := range idx {
 		n := state.UserRuleNumStart + pos
-		rules[i].OrderNum = &n
+		rules[i].Num = &n
 	}
 
 	// Неразмеченные (бэкап без num) уезжают в хвост, сохраняя взаимный
@@ -737,10 +728,10 @@ func renumberImportedRules(rules []state.Rule) {
 // importedAxisNum — номер для сортировки импортированных: неразмеченное
 // правило считается стоящим за всеми размеченными.
 func importedAxisNum(r state.Rule) int {
-	if r.OrderNum == nil {
+	if r.Num == nil {
 		return state.UserRuleNumEnd + 1
 	}
-	return *r.OrderNum
+	return *r.Num
 }
 
 func importVars(s *state.State, vars map[string]string) []Warning {

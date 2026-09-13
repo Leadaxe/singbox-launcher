@@ -117,10 +117,10 @@ func TestParseV6_LegacyDevShapeConversion(t *testing.T) {
 	}
 }
 
-// TestSave_AlwaysWritesV7 (бывш. V6, SPEC 118) — SPEC 060: single write path, всегда canonical (v6).
+// TestSave_AlwaysWritesV8 (бывш. V6, SPEC 118) — SPEC 060: single write path, всегда canonical (v6).
 // Раньше TestSave_V5_WhenNoPresetRefs ожидал v5 если нет preset-ref; теперь
 // независимо от содержимого пишем v6.
-func TestSave_AlwaysWritesV7(t *testing.T) {
+func TestSave_AlwaysWritesV8(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
 
@@ -148,28 +148,23 @@ func TestSave_AlwaysWritesV7(t *testing.T) {
 	if err := json.Unmarshal(raw, &probe); err != nil {
 		t.Fatalf("unmarshal probe: %v", err)
 	}
-	if probe.Meta.Version != SchemaVersionV7 {
-		t.Errorf("expected v7 save (single write path, SPEC 118), got version=%d", probe.Meta.Version)
+	if probe.Meta.Version != SchemaVersionV8 {
+		t.Errorf("expected v8 save (single write path, SPEC 118/127), got version=%d", probe.Meta.Version)
 	}
-	if probe.Meta.Schema != SchemaNameV7 {
-		t.Errorf("expected schema %s, got %q", SchemaNameV7, probe.Meta.Schema)
+	if probe.Meta.Schema != SchemaNameV8 {
+		t.Errorf("expected schema %s, got %q", SchemaNameV8, probe.Meta.Schema)
 	}
 }
 
-// TestSave_V7_WhenHasPresetRef — preset-ref в state → Save пишет v7 (SPEC 118).
-func TestSave_V7_WhenHasPresetRef(t *testing.T) {
+// TestSave_V8_WhenHasPresetRef — preset-ref в state → Save пишет v8 (SPEC 127).
+func TestSave_V8_WhenHasPresetRef(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
 
 	s := New()
-	s.Rules = []Rule{
-		{
-			Kind:    RuleKindPreset,
-			Ref:     "ru-direct",
-			Enabled: true,
-			Body:    json.RawMessage(`{"vars":{}}`),
-		},
-	}
+	preset := NewPresetRule("ru-direct", nil)
+	preset.Enabled = true
+	s.Rules = []Rule{preset}
 
 	if err := s.Save(path); err != nil {
 		t.Fatalf("save: %v", err)
@@ -185,11 +180,11 @@ func TestSave_V7_WhenHasPresetRef(t *testing.T) {
 	if err := json.Unmarshal(raw, &probe); err != nil {
 		t.Fatalf("unmarshal probe: %v", err)
 	}
-	if probe.Meta.Version != SchemaVersionV7 {
-		t.Errorf("expected v7 save (SPEC 118), got %d", probe.Meta.Version)
+	if probe.Meta.Version != SchemaVersionV8 {
+		t.Errorf("expected v8 save (SPEC 127), got %d", probe.Meta.Version)
 	}
-	if probe.Meta.Schema != SchemaNameV7 {
-		t.Errorf("expected schema %s, got %q", SchemaNameV7, probe.Meta.Schema)
+	if probe.Meta.Schema != SchemaNameV8 {
+		t.Errorf("expected schema %s, got %q", SchemaNameV8, probe.Meta.Schema)
 	}
 }
 
@@ -248,7 +243,7 @@ func TestRoundTrip_V6_LoadSaveLoad(t *testing.T) {
 		t.Errorf("user entry body lost: %+v", loaded.DNS.Servers[1])
 	}
 
-	// Re-save: единственный write-path теперь v7 (SPEC 118).
+	// Re-save: единственный write-path теперь v8 (SPEC 127).
 	if err := loaded.Save(path); err != nil {
 		t.Fatalf("save 2: %v", err)
 	}
@@ -258,8 +253,8 @@ func TestRoundTrip_V6_LoadSaveLoad(t *testing.T) {
 			Version int `json:"version"`
 		} `json:"meta"`
 	}
-	if err := json.Unmarshal(raw, &probe); err != nil || probe.Meta.Version != SchemaVersionV7 {
-		t.Error("re-save must write v7 (SPEC 118)")
+	if err := json.Unmarshal(raw, &probe); err != nil || probe.Meta.Version != SchemaVersionV8 {
+		t.Error("re-save must write v8 (SPEC 127)")
 	}
 }
 

@@ -27,7 +27,7 @@ func presetMap(presets ...*fakePreset) map[string]PresetLite {
 // TestSync_EnableAddsEntries — enable preset → DNS получает kind=preset entries.
 func TestSync_EnableAddsEntries(t *testing.T) {
 	rules := []Rule{
-		{Kind: RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+		presetRuleRef("russian", true),
 	}
 	dns := &DNSOptions{}
 	presets := presetMap(&fakePreset{
@@ -59,7 +59,7 @@ func TestSync_EnableAddsEntries(t *testing.T) {
 // TestSync_DisableRemovesEntries — disable preset → entries исчезают.
 func TestSync_DisableRemovesEntries(t *testing.T) {
 	rules := []Rule{
-		{Kind: RuleKindPreset, Ref: "russian", Enabled: false, Body: json.RawMessage(`{"vars":{}}`)},
+		presetRuleRef("russian", false),
 	}
 	dns := &DNSOptions{
 		Servers: []DNSServer{
@@ -88,7 +88,7 @@ func TestSync_DisableRemovesEntries(t *testing.T) {
 // sync сохраняет этот toggle (пока preset активен).
 func TestSync_PreserveUserToggle(t *testing.T) {
 	rules := []Rule{
-		{Kind: RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+		presetRuleRef("russian", true),
 	}
 	dns := &DNSOptions{
 		Servers: []DNSServer{
@@ -125,7 +125,7 @@ func TestSync_PreserveUserToggle(t *testing.T) {
 // TestSync_Idempotent — повторный вызов не меняет состояние.
 func TestSync_Idempotent(t *testing.T) {
 	rules := []Rule{
-		{Kind: RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+		presetRuleRef("russian", true),
 	}
 	dns := &DNSOptions{}
 	presets := presetMap(&fakePreset{
@@ -166,10 +166,10 @@ func TestSync_DisableEnableRoundtrip(t *testing.T) {
 		id: "russian", serverTags: []string{"yandex_udp"}, hasRule: false,
 	})
 	rulesEnabled := []Rule{
-		{Kind: RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+		presetRuleRef("russian", true),
 	}
 	rulesDisabled := []Rule{
-		{Kind: RuleKindPreset, Ref: "russian", Enabled: false, Body: json.RawMessage(`{"vars":{}}`)},
+		presetRuleRef("russian", false),
 	}
 
 	dns := &DNSOptions{}
@@ -212,4 +212,12 @@ func TestPresetRefHelpers(t *testing.T) {
 			t.Errorf("LocalTagFromServerRef(%q): got %q, want %q", c.ref, got, c.localTag)
 		}
 	}
+}
+
+// presetRuleRef — preset-ref через конструктор записи (единственный писатель
+// тела, SPEC 127 §0).
+func presetRuleRef(ref string, enabled bool) Rule {
+	r := NewPresetRule(ref, nil)
+	r.Enabled = enabled
+	return r
 }
