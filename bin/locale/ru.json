@@ -674,6 +674,33 @@
   "Traffic Profiler": {
     "value": "Профайлер трафика"
   },
+  "Disable Mesa3D (use hardware OpenGL)": {
+    "value": "Отключить Mesa3D (аппаратный OpenGL)"
+  },
+  "Enable Mesa3D (software rendering)": {
+    "value": "Включить Mesa3D (программный рендеринг)"
+  },
+  "Stop rendering through Mesa3D and use hardware OpenGL?": {
+    "value": "Перестать рисовать через Mesa3D и использовать аппаратный OpenGL?"
+  },
+  "Render the window through the Mesa3D software renderer instead of the GPU?": {
+    "value": "Рисовать окно программным рендерером Mesa3D вместо видеокарты?"
+  },
+  "Restart the launcher to apply.": {
+    "value": "Перезапустите лаунчер, чтобы применить."
+  },
+  "OpenGL": {
+    "value": "OpenGL"
+  },
+  "Hardware OpenGL is now available:\n%s\nDisable Mesa3D and use it? The change applies after you restart the launcher.": {
+    "value": "Появился аппаратный OpenGL:\n%s\nОтключить Mesa3D и перейти на него? Изменение применится после перезапуска лаунчера."
+  },
+  "Yes": {
+    "value": "Да"
+  },
+  "Later": {
+    "value": "Позже"
+  },
   "IP Check Services:": {
     "value": "Сервисы проверки IP:"
   },

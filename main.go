@@ -4,10 +4,13 @@ import (
 	_ "embed" // For embedding resource files (icons)
 	"flag"
 	"log"
+	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
 	fynetooltip "github.com/dweymouth/fyne-tooltip"
 
@@ -36,7 +39,19 @@ var greenIconData []byte // Icon for "on" state
 // Constants
 const (
 	autoStartDelay = 1 * time.Second // Delay before auto-starting VPN with -start parameter
+	// glRenderedGrace — сколько процесс должен прожить после старта цикла
+	// событий, чтобы старт считался дошедшим до первого кадра (SPEC 125).
+	glRenderedGrace = 3 * time.Second
 )
+
+// rememberOfferedRenderer запоминает renderer железа, про который мы уже
+// спросили: пока строка не сменится, диалог возврата больше не всплывает —
+// иначе «Later» переспрашивался бы каждый старт.
+func rememberOfferedRenderer(execDir, renderer string) {
+	platform.UpdateGLState(execDir, func(s *platform.GLState) {
+		s.OfferedHWRenderer = renderer
+	})
+}
 
 // main is the application's entry point. It simply creates and runs the AppController.
 func main() {
@@ -44,13 +59,38 @@ func main() {
 	autoStart := flag.Bool("start", false, "Automatically start VPN on launch")
 	startInTray := flag.Bool("tray", false, "Start minimized to system tray (hide window on launch)")
 	glProbe := flag.Bool("gl-probe", false, "Internal: probe desktop OpenGL and exit (used by the launcher itself)")
+	glProbeLocal := flag.Bool("gl-probe-local", false, "Internal: probe the opengl32.dll next to the exe (Mesa3D verification)")
 	flag.Parse()
 
-	// Служебный режим: лаунчер перезапускает сам себя с -gl-probe, чтобы
-	// проверить версию OpenGL в отдельном процессе (issue #105). Печатает
-	// результат в stdout и завершается, не доходя до инициализации UI.
-	if *glProbe {
-		platform.RunGLProbeChild()
+	// Windows-бинарь собран с -H windowsgui: stderr у процесса нет, и паника
+	// на старте выглядит как «окно мелькнуло и пропало» без единой строки в
+	// логе (репорт 09.09.2026). SetCrashOutput дублирует трассу фатальной
+	// паники в logs/crash.log. Обычные логи открываются позже, в
+	// NewAppController, поэтому путь считается здесь напрямую — тем же
+	// правилом, что и FileService.ExecDir.
+	if ex, err := os.Executable(); err == nil {
+		logsDir := filepath.Join(filepath.Dir(ex), "logs")
+		crashLog := filepath.Join(logsDir, constants.CrashLogFileName)
+		if err := debuglog.EnableCrashOutput(crashLog); err != nil {
+			debuglog.WarnLog("crash log: %v", err)
+		}
+		// SPEC 125 §2.8: SetCrashOutput ловит только панику Go. Падение под
+		// Mesa 08.09.2026 случилось в потоке, созданном DLL, и не оставило
+		// следов нигде: у windowsgui-сборки stderr ведёт в
+		// INVALID_HANDLE_VALUE, и всё, что пишут драйверы и GLFW, теряется.
+		// Подменяем системный хендл на файл — чужой нативный вывод получает
+		// своё место, наш код по-прежнему идёт через debuglog.
+		if err := debuglog.RedirectNativeStderr(filepath.Join(logsDir, constants.NativeStderrLogFileName)); err != nil {
+			debuglog.WarnLog("native stderr: %v", err)
+		}
+	}
+
+	// Служебный режим: лаунчер перезапускает сам себя с -gl-probe (системный
+	// OpenGL) или -gl-probe-local (opengl32.dll рядом с exe, то есть Mesa3D),
+	// чтобы проверить версию GL в отдельном процессе (issue #105, SPEC 125).
+	// Печатает результат в stdout и завершается, не доходя до инициализации UI.
+	if *glProbe || *glProbeLocal {
+		platform.RunGLProbeChild(*glProbeLocal)
 	}
 
 	// Create the application controller. If an error occurs, print it and exit the program.
@@ -60,12 +100,21 @@ func main() {
 		log.Fatalf("Failed to initialize application: %v", err)
 	}
 
+	// Первая WARN-строка любого старта. Успешный запуск не писал ни одной
+	// строки уровня WARN, и по логу с релиза (GlobalLevel=LevelWarn) нельзя
+	// было понять даже, какая версия упала (репорт 09.09.2026, SPEC 125 §2.7).
+	debuglog.WarnLog("launcher %s %s/%s started, exec=%s",
+		constants.AppVersion, runtime.GOOS, runtime.GOARCH, controller.FileService.ExecDir)
+
 	// Issue #105: в RDP-сессии Windows Server без GPU системный OpenGL — это
 	// «GDI Generic» 1.1, и окно Fyne молча не отрисовывается. Гейт проверяет
 	// версию GL в подпроцессе и при необходимости предлагает поставить Mesa3D
 	// (llvmpipe). Должен отработать до первого обращения Fyne к GLFW (то есть
 	// до Application.Run), пока opengl32.dll ещё не загружен в процесс.
-	platform.EnsureDesktopOpenGL(controller.FileService.ExecDir)
+	//
+	// interactive = не -tray: в трей-режиме окна никто не ждёт, и диалоги
+	// гейта показывать некому (SPEC 125 §2.2).
+	platform.EnsureDesktopOpenGL(controller.FileService.ExecDir, !*startInTray)
 
 	// Force-invalidate the wizard template if it was last installed by an
 	// older launcher version (SPEC 046). Has to run before any UI consults
@@ -155,7 +204,7 @@ func main() {
 			debuglog.WarnLog("debug-api: failed to start: %v", err)
 		}
 	}
-	debuglog.InfoLog("Locale: language set to %q, available: %v", locale.GetLang(), locale.Languages())
+	debuglog.WarnLog("Locale: language set to %q, available: %v", locale.GetLang(), locale.Languages())
 
 	// Check launcher version on startup (always checks, popup shown on first window display)
 	controller.CheckLauncherVersionOnStartup()
@@ -254,6 +303,53 @@ func main() {
 
 		// Set a handler that fires when the application is fully ready
 		controller.UIService.Application.Lifecycle().SetOnStarted(func() {
+			// Маркер живого цикла событий: до SPEC 125 успешный старт не писал
+			// ни одной WARN-строки, и по релизному логу нельзя было отличить
+			// «дошли до UI» от «умерли на инициализации GL».
+			debuglog.WarnLog("ui: event loop started")
+
+			// OnStarted срабатывает до первого кадра, поэтому засчитывать
+			// «отрисовано» прямо здесь нельзя: падение под Mesa приходило через
+			// 1–2 секунды ПОСЛЕ появления окна. 3 секунды прожитой жизни —
+			// практический признак, что кадр действительно нарисован; умерли
+			// раньше — в bin/gl-state.json останется phase=starting, и
+			// следующий старт переспросит про OpenGL (SPEC 125 §2.1).
+			glExecDir := controller.FileService.ExecDir
+			time.AfterFunc(glRenderedGrace, func() {
+				platform.MarkGLRendered(glExecDir)
+			})
+
+			// Сценарий возврата на железо (SPEC 125 §2.5): гейт в режиме mesa
+			// пробует железо в фоне; если оно появилось — спрашиваем один раз
+			// на каждый новый renderer.
+			platform.SetOnHardwareGLAvailable(func(renderer string) {
+				fyne.Do(func() {
+					win := controller.UIService.MainWindow
+					if win == nil {
+						return
+					}
+					confirm := dialog.NewConfirm(
+						locale.T("OpenGL"),
+						locale.Tf("Hardware OpenGL is now available:\n%s\nDisable Mesa3D and use it? The change applies after you restart the launcher.", renderer),
+						func(yes bool) {
+							if yes {
+								if err := platform.DisableMesa(glExecDir); err != nil {
+									debuglog.ErrorLog("gl: disable Mesa3D from UI failed: %v", err)
+									ui.ShowError(win, err)
+									return
+								}
+							}
+							rememberOfferedRenderer(glExecDir, renderer)
+							if yes {
+								ui.ShowInfo(win, locale.T("OpenGL"), locale.T("Restart the launcher to apply."))
+							}
+						}, win)
+					confirm.SetConfirmText(locale.T("Yes"))
+					confirm.SetDismissText(locale.T("Later"))
+					confirm.Show()
+				})
+			})
+
 			// Read state at startup (informational log only). state.json is the
 			// canonical source of parser_config since SPEC 045; reading from
 			// config.json's @ParserConfig comment-block is gone (block removed
@@ -268,7 +364,7 @@ func main() {
 				}
 				// Счётчики — из canonical s.Connections (SPEC 117): Load-проекция
 				// s.ParserConfig — только для build-путей, читать её здесь незачем.
-				debuglog.InfoLog("Application startup: state.json loaded (schema v%d, %d sources, %d outbounds, %d custom rules)",
+				debuglog.WarnLog("Application startup: state.json loaded (schema v%d, %d sources, %d outbounds, %d custom rules)",
 					s.Version,
 					len(s.Sources),
 					len(s.Directions),
@@ -435,7 +531,7 @@ func main() {
 
 	// The code below executes only after app.Run() finishes (when app.Quit() is called).
 	// This is where final cleanup is performed.
-	debuglog.InfoLog("Application shutting down.")
+	debuglog.WarnLog("Application shutting down.")
 
 	// Cleanup platform-specific handlers
 	if runtime.GOOS == "darwin" {

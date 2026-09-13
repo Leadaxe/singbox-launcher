@@ -364,6 +364,10 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 		}()
 	})
 
+	// Переключатель Mesa3D (SPEC 125 §2.6) — только Windows и только когда
+	// есть что переключать; на остальных платформах nil и в VBox не попадает.
+	mesaBtn := buildMesaToggleButton(ac)
+
 	// Layout: 3 строки (per user request).
 	//   Row 1: Log window (full width — самое частое действие при дебаге)
 	//   Row 2: Logs folder | Config folder (file-system explorer пара)
@@ -375,15 +379,83 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 	foldersRow := container.NewGridWithColumns(2, openLogsFolderButton, openConfigFolderButton)
 	killRow := killSingBoxButton
 
-	return container.NewVBox(
+	rows := []fyne.CanvasObject{
 		widget.NewLabel(" "),
 		logWindowRow,
 		foldersRow,
 		cleanRuleSetsButton,
 		killRow,
 		trafficProfilerBtn,
+	}
+	if mesaBtn != nil {
+		rows = append(rows, mesaBtn)
+	}
+	rows = append(rows,
 		widget.NewLabel(locale.T("IP Check Services:")),
 		stunRow,
 		ipServicesRow,
 	)
+	return container.NewVBox(rows...)
+}
+
+// buildMesaToggleButton — единственная кнопка управления Mesa3D в UI
+// (SPEC 125 §2.6). Её роль — переключение, когда окно уже есть;
+// восстановление после мёртвого старта делает гейт, до всякого UI.
+//
+// nil означает «нечего переключать»: не Windows, либо рядом с exe нет ни
+// Mesa, ни отключённых .off, ни папки mesa3d/.
+func buildMesaToggleButton(ac *core.AppController) *widget.Button {
+	if runtime.GOOS != "windows" {
+		return nil
+	}
+	execDir := ac.FileService.ExecDir
+	// Чужой одиночный opengl32.dll рядом с exe — не наша Mesa (SPEC 125 §2.1).
+	// Перезаписывать его копией из mesa3d/ мы не вправе, поэтому кнопки нет.
+	if platform.HasForeignOpenGL(execDir) {
+		return nil
+	}
+	if !platform.IsMesaInstalled(execDir) && !platform.IsMesaDisabled(execDir) && !platform.HasMesaBundle(execDir) {
+		return nil
+	}
+
+	var btn *widget.Button
+	// Подпись зависит от состояния файлов и меняется после каждого действия,
+	// поэтому считается функцией, а не один раз при сборке вкладки.
+	refresh := func() {
+		switch {
+		case platform.IsMesaInstalled(execDir):
+			btn.SetText(locale.T("Disable Mesa3D (use hardware OpenGL)"))
+		default:
+			btn.SetText(locale.T("Enable Mesa3D (software rendering)"))
+		}
+	}
+	btn = widget.NewButton("", func() {
+		disable := platform.IsMesaInstalled(execDir)
+		title := locale.T("Enable Mesa3D (software rendering)")
+		question := locale.T("Render the window through the Mesa3D software renderer instead of the GPU?")
+		if disable {
+			title = locale.T("Disable Mesa3D (use hardware OpenGL)")
+			question = locale.T("Stop rendering through Mesa3D and use hardware OpenGL?")
+		}
+		dialog.NewConfirm(title, question, func(yes bool) {
+			if !yes {
+				return
+			}
+			var err error
+			if disable {
+				err = platform.DisableMesa(execDir)
+			} else {
+				err = platform.EnableMesa(execDir)
+			}
+			if err != nil {
+				debuglog.ErrorLog("diagnosticsTab: Mesa3D toggle failed: %v", err)
+				ShowError(ac.UIService.MainWindow, err)
+				return
+			}
+			refresh()
+			dialogs.ShowInfo(ac.UIService.MainWindow, title, locale.T("Restart the launcher to apply."))
+		}, ac.UIService.MainWindow).Show()
+	})
+	refresh()
+	return btn
 }
