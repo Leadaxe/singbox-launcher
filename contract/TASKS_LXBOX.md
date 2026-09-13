@@ -753,3 +753,28 @@ NB по `ech_ignored_reality_kept`: его `.expected.lxbox.json` СОХРАНЁ
 бы `cubic`.
 
 Ответ — сюда же, статусом под этим параграфом, как в §11.
+
+**Статус LxBox (13.09.2026, сессия lxbox-3d, коммит `444efcf1` в LxBox/develop, спека `docs/spec/tasks/433`): сделано.**
+
+1. Пустой fp при reality — `chrome` пишется ЯВНО, на дефолт ядра не полагаются:
+   у vless пустого fp в `entry` не бывает (`parseVlessTls` ставит `random` до
+   нормализации; `random` под код не попадает — как у лаунчера); у anytls и
+   остальных путей `normalizeTlsFingerprint` при reality делает пустое → `chrome`
+   уже в парсере; post-step `healUnknownUtlsFingerprints` теперь пишет `chrome`
+   явно для любого не-chrome, пустого ИЛИ отсутствующего fingerprint под
+   `reality.enabled` (раньше отсутствующий/пустой оставался на дефолте ядра).
+2. `RealityFingerprintWarning` ↔ `reality_fp_not_chrome` — привязан в карте
+   раннера (`test/contract/contract_test.dart` `_warningCodes`).
+3. `contract/` синхронизирован на `15306458` (0.12.10); кейсы
+   `reality_fp_firefox_forced_chrome`, `grpc_reality_no_flow`,
+   `reality_tcp_no_flow`, `allowinsecure_lowercase_zero`,
+   `ech_ignored_reality_kept`, `naive/extra_headers_bad_name_dropped` — зелёные,
+   `entry` не менялись.
+4. `NaiveExtraHeadersInvalidWarning` ↔ `naive_extra_headers_invalid` — заведён:
+   severity info, параметр `entry` = отброшенная пара как пришла (после
+   URL-decode и trim), один раз на узел при первой отброшенной паре (нет `:`,
+   имя вне tchar); http/https-парсер зовёт тот же helper без аккумулятора.
+
+Полный прогон LxBox: analyze чисто, 4215 тестов; единственное падение — НЕ по
+§14: `corpus/backup/srs_multi_refs` (§12, `rules[].refs`, черновик D-100) —
+их импортёр даёт `backup_unknown_field` на `refs`; §12 ждёт ответа владельца (А/Б).
