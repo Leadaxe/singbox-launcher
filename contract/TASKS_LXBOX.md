@@ -778,3 +778,42 @@ NB по `ech_ignored_reality_kept`: его `.expected.lxbox.json` СОХРАНЁ
 Полный прогон LxBox: analyze чисто, 4215 тестов; единственное падение — НЕ по
 §14: `corpus/backup/srs_multi_refs` (§12, `rules[].refs`, черновик D-100) —
 их импортёр даёт `backup_unknown_field` на `refs`; §12 ждёт ответа владельца (А/Б).
+
+## 15. Xray-JSON: `users[0].encryption` (VLESS Encryption, ML-KEM) — кейс корпуса; баг только у лаунчера (приоритет 2)
+
+Черновик, `contract/VERSION` НЕ поднят, D-номер не занят. Issue лаунчера
+[#121](https://github.com/Leadaxe/singbox-launcher/issues/121) (Septdir,
+11.09.2026): при импорте подписки в формате Xray JSON у VLESS-узла теряется
+`settings.vnext[0].users[0].encryption` (`mlkem768x25519plus.native.0rtt.<key>`),
+и сервер с обязательным VLESS Encryption не принимает соединение
+(`bad http protocol version`). Не путать с D-104 (REALITY/`fp`, TLS-уровень):
+здесь уровень протокола VLESS, поле эмитится плоским рядом с `uuid`.
+
+**Состояние сторон (проверено по коду 14.09.2026):**
+
+- **LxBox — уже правильно.** `app/lib/services/parser/json_parsers.dart:516-522`
+  читает `user['encryption']` из `users[0]` «как есть» и кладёт в узел; URI-путь
+  тоже (кейс `corpus/uri/vless/encryption_mlkem768_long_key`, §335).
+- **Лаунчер — баг.** `core/config/subscription/xray_outbound_convert.go:133-162`
+  берёт из `users[0]` только `id` и `flow`; `encryption` выбрасывается. URI-путь у
+  лаунчера поле несёт (`node_parser_core.go:703`: пусто/`none` → не эмитить,
+  иначе как есть). Ядро принимает (`option/vless.go:26`, lx.36).
+
+**Норма (одна на обе стороны, повторяет URI-правило):** `users[0].encryption`
+после `trim` пусто или равно `none` (без учёта регистра) → поле НЕ эмитится;
+иначе — в `entry.encryption` как есть, без обрезки и нормализации (ключ ~1600
+символов base64url с `-`/`_`).
+
+**Что сделает лаунчер (v1.5.7):** чтение `encryption` в конвертере тем же
+правилом, что в URI; кейс корпуса `corpus/body/xray/vless_encryption_mlkem`
+(`.body` — Xray-outbound из issue с `network: ws`, `security: none`,
+длинный ключ; `.expected.json` — `entry.encryption` = ключ) и негатив
+`vless_encryption_none_dropped` (`"encryption": "none"` → поля нет). Кейсы
+приедут вместе с фиксом, чтобы раннер лаунчера не краснел раньше правки.
+
+**Что нужно от LxBox:** только sync `contract/` после фикса и прогон двух
+кейсов своим раннером — код менять не должно понадобиться. Если кейс
+`vless_encryption_none_dropped` у вас упадёт (например, `none` проносится
+как есть) — это и будет единственная встречная правка.
+
+Ответ — статусом под этим параграфом.
