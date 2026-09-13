@@ -1,15 +1,20 @@
 # Одно пространство имён: состояние лаунчера, состояние LxBox, бэкап — ПРЕДЛОЖЕНИЕ (контракт 1.0)
 
-Статус: **предложение к решению владельца; формы §1 приняты LxBox 13.09.2026 с замечаниями, замечания внесены** (D-104 — направление).
+Статус: **предложение к решению владельца; формы §1 приняты LxBox 13.09.2026, принцип «запись = метаданные + body sing-box целиком» уточнён владельцем 14.09.2026 и применён ко всем сущностям** (D-104 — направление).
 Ничего из этого ещё не реализовано. Цель: одна форма записи для каждой
 сущности во всех трёх местах, чтобы бэкап был сериализацией состояния обеих
 сторон без мапперов, а владелец читал оба состояния одними глазами.
 
-Принцип выбора формы: (1) никаких синтетических обёрток и переименований
-ради контракта (`node_tag`, `config_json`, `value`, `name`-вместо-тега);
-(2) тела — объекты sing-box под своим именем `body`/`match`, ключи sing-box
-(snake_case), не переизобретённые; (3) при прочих равных — форма, которую
-уже держат две стороны из трёх; (4) структура — как у состояния лаунчера
+Принцип выбора формы (уточнён владельцем 14.09.2026): **запись любой
+сущности = метаданные приложения + `body` = объект sing-box как есть.**
+Метаданные — `kind`, `id`, `name`, `enabled`, `num`, `tag`, `refs`, `origin`,
+`sections`, local-only расширения (`dns{}`, `resolve{}` у LxBox). `body` —
+ровно тот объект, который уходит в конфиг (без `tag`: тег — метаданные),
+ключи sing-box (snake_case), никаких переизобретённых имён и никакого
+разбора тела на части. Дальше: (1) никаких синтетических обёрток и
+переименований ради контракта (`node_tag`, `config_json`, `value`,
+`name`-вместо-тега, `match`); (2) при прочих равных — форма, которую уже
+держат две стороны из трёх; (3) структура — как у состояния лаунчера
 (`sources[]` с видом), потому что папка с `nodes[]` внутри выражает
 владение, а плоский список с полем `folder` — нет.
 
@@ -57,12 +62,14 @@
 | имя | `body.name` | `name` | `name` | `name` |
 | номер | `order_num` | `num` | `num` | `num` |
 | включён | `enabled` | `enabled` | `enabled` | `enabled` |
-| цель | `body.outbound` | `outbound` | `outbound` | `outbound` |
-| матчеры | `body.match{…sing-box…}` | плоско camelCase (`domainSuffixes`, `ipCidrs`, …) | `match{…sing-box…}` | `match{…sing-box…}` |
-| srs | `body.srs_url` | `srsUrl` | `ref` / `refs[]` | `refs[]` (одно имя, всегда массив) |
-| preset | `body.vars` | — | `ref` + `vars` | `ref` + `vars` |
-| ключи sing-box, которые вторая сторона не применяет | — | `packages`, `wifi`, `inbounds`, `ipIsPrivate` | не едут | в `match` под именами sing-box (`package_name`, `wifi_ssid`, `wifi_bssid`, `inbound`, `ip_is_private`, `source_ip_cidr`, …), типы sing-box (`port` — int[], `port_range` — строки); вторая сторона игнорирует по allowlist |
-| расширения приложения (не sing-box) | — | `dns{}`, `resolve{}` | `dns`, `resolve` (LxBox) | поля ЗАПИСИ вне `match`: `dns{}`, `resolve{}` — LxBox; вторая сторона игнорирует молча |
+| тело | `body{name, match{…}, outbound}` — разобрано | плоско camelCase (`domainSuffixes`, `ipCidrs`, …) + `outbound` | `match{…}` + `outbound` — разобрано | **`body` = правило sing-box целиком**: `{ "domain_suffix": […], "port": […], "outbound": "…" }` или `{ …, "action": "reject" }` |
+| srs-наборы | `body.srs_url` | `srsUrl` | `ref` / `refs[]` | `refs[]` — снаружи `body`: это источники наборов, не sing-box. Сборка регистрирует `rule_set` на каждый `ref` и сама вписывает список тегов в `body.rule_set` при эмиссии (## 12, вариант А, D-100) |
+| preset | `body.vars` | — | `ref` + `vars` | `ref` + `vars` (тела нет — оно у пресета) |
+| ключи sing-box, которые вторая сторона не применяет | — | `packages`, `wifi`, `inbounds`, `ipIsPrivate` | не едут | в `body` под именами sing-box (`package_name`, `wifi_ssid`, `wifi_bssid`, `inbound`, `ip_is_private`, `source_ip_cidr`, …), типы sing-box (`port` — int[], `port_range` — строки); вторая сторона игнорирует по allowlist |
+| расширения приложения (не sing-box) | — | `dns{}`, `resolve{}` | `dns`, `resolve` (LxBox) | поля ЗАПИСИ вне `body`: `dns{}`, `resolve{}` — LxBox; вторая сторона игнорирует молча |
+
+Целевая запись правила: `{ "kind": "inline", "name": "…", "enabled": true, "num": 1000, "body": { "domain_suffix": ["example.com"], "outbound": "proxy" } }`;
+srs: `{ "kind": "srs", "name": "…", "enabled": true, "num": 1010, "refs": ["https://…/a.srs", "https://…/b.srs"], "body": { "outbound": "proxy" } }` — `rule_set` в `body` пишет сборка.
 
 ### DNS-сервер и DNS-правило
 
@@ -86,7 +93,7 @@
 "sections": {
   "rules": [
     { "kind": "inline", "name": "@{self} network", "enabled": true, "num": 945,
-      "match": { "ip_cidr": ["100.64.0.0/10"] }, "outbound": "@self" }
+      "body": { "ip_cidr": ["100.64.0.0/10"], "outbound": "@self" } }
   ],
   "dns": {
     "servers": [ { "kind": "user", "tag": "@{self}-dns", "enabled": true,
@@ -99,16 +106,17 @@
 
 Это **одна** форма для `state.json`, `lxbox_settings.json` и файла бэкапа.
 Семантика — `NODE_SECTIONS.md` без изменений (плейсхолдер, инъекция,
-слияние, перенумерация); меняются только имена полей записей: `num`,
-`match`, `tag`+`body`, вместо `order_num`/`body`/`value`/`name`.
+слияние, перенумерация); меняются только имена полей записей: `num` и
+`body` целиком у правила, `tag`+`body` у DNS-записей, вместо
+`order_num`/`match`/`value`/`name`.
 
 ## 3. Цена
 
 | Сторона | Что меняется | Объём |
 |---|---|---|
-| Контракт | схема бэкапа 1.0 (`sources[]`, `body`, `tag`, `num`, `match`, `refs`, DNS `tag`+`body`), BACKUP.md, CANON.md, корпус `corpus/backup/**` перегенерировать, `NODE_SECTIONS.md` §1 | средний |
-| Лаунчер | state v8: правила `order_num/body` → `num/name/outbound/match/refs`, DNS плоско → `body`, миграция v7→v8 с эталоном; бэкап = состояние без маппера; legacy-чтение файлов 0.x (`node_tag`/`config_json`/`uri`/`value`/`servers[]`) | большой |
-| LxBox | хранение: `type`→`kind`, `name`→`tag`, `raw_body`(строка)→`body`+`origin`, матчеры camelCase→`match` с типами sing-box, `srsUrl`→`refs[]`, DNS `inline`→`user`, `rule`→`body`, `enabled` у DNS-правил; миграция `lxbox_settings.json` на диске при обновлении приложения, allowlist импорта, Debug API, STORAGE.md; legacy-чтение файлов 0.x | большой |
+| Контракт | схема бэкапа 1.0 (`sources[]`, `body` у всех сущностей, `tag`, `num`, `refs`, DNS `tag`+`body`), BACKUP.md, CANON.md, корпус `corpus/backup/**` перегенерировать, `NODE_SECTIONS.md` §1 | средний |
+| Лаунчер | state v8: правила `order_num` → `num`, `body{name,match,outbound}` → `name` + `body` = правило sing-box целиком, `srs_url` → `refs[]`; DNS плоско → `body`, миграция v7→v8 с эталоном; бэкап = состояние без маппера; legacy-чтение файлов 0.x (`node_tag`/`config_json`/`uri`/`value`/`servers[]`) | большой |
+| LxBox | хранение: `type`→`kind`, `name`→`tag`, `raw_body`(строка)→`body`+`origin`, матчеры camelCase + `outbound` → `body` sing-box с типами sing-box, `srsUrl`→`refs[]`, DNS `inline`→`user`, `rule`→`body`, `enabled` у DNS-правил; миграция `lxbox_settings.json` на диске при обновлении приложения, allowlist импорта, Debug API, STORAGE.md; legacy-чтение файлов 0.x | большой |
 
 Legacy-вход обязателен обеим сторонам: файлы 0.12 уже выпущены релизами.
 Это единственное место, где старые имена остаются, и только на чтении.
