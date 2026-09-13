@@ -9,7 +9,7 @@
 -
 
 ### Fixes
--
+- Xray JSON subscriptions: the `users[0].encryption` value of VLESS nodes (VLESS Encryption / ML-KEM, `mlkem768x25519plus…`) is now carried into the sing-box outbound as is; before, it was dropped and servers requiring VLESS Encryption refused the connection (`bad http protocol version`). Empty or `none` still emits no field, same as the share-link parser (#121).
 
 ### Technical / Internal
 -
@@ -19,7 +19,7 @@
 -
 
 ### Исправления
--
+- Подписки в формате Xray JSON: значение `users[0].encryption` у VLESS-узлов (VLESS Encryption / ML-KEM, `mlkem768x25519plus…`) теперь переносится в outbound sing-box как есть; раньше поле терялось, и серверы с обязательным VLESS Encryption рвали соединение (`bad http protocol version`). Пусто или `none` по-прежнему не даёт поля — как у парсера share-ссылок (#121).
 
 ### Техническое / Внутреннее
 -

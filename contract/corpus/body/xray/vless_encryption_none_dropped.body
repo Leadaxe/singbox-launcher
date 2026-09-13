@@ -1,0 +1,4 @@
+# Xray: `users[0].encryption` = "none" — слой VLESS Encryption выключен,
+# поле в `entry` НЕ эмитится (то же правило, что в URI-пути; issue #121).
+# Негатив к vless_encryption_mlkem: остальное тело идентично.
+[{"remarks":"vless-plain","outbounds":[{"protocol":"vless","tag":"vless-plain","settings":{"vnext":[{"address":"de1.example.com","port":8443,"users":[{"id":"11111111-1111-1111-1111-111111111111","encryption":"none","flow":""}]}]},"streamSettings":{"network":"ws","wsSettings":{"path":"/api/v2/channel"},"security":"none"}}]}]

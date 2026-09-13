@@ -563,6 +563,12 @@ Amnezia отдаёт AWG 3.x сервер контейнером `amnezia-awg2` 
 читать его раньше `ref`; раннеру — принять ключ `refs` в ожиданиях. Версия —
 патч (0.12.9) или вместе с 0.13.0 (§9), по решению обеих сторон.
 
+**Статус (14.09.2026): закрыто обеими сторонами по варианту А** — D-107
+(номер уточнён: D-104/D-105 заняты REALITY/naive из `## 14`). Лаунчер: в
+develop с 13.09.2026 (модель со списком наборов, `refs[]` в бэкапе). LxBox:
+коммит `038f4a46` в LxBox/develop, спека `docs/spec/tasks/434`, кейс
+`backup/srs_multi_refs` зелёный, полный прогон зелёный.
+
 ## 13. Tailscale и секции узла в LxBox (приоритет 1)
 
 Норма для обеих сторон — **`docs/NODE_SECTIONS.md`** (черновик до вашего
@@ -781,7 +787,11 @@ NB по `ech_ignored_reality_kept`: его `.expected.lxbox.json` СОХРАНЁ
 
 ## 15. Xray-JSON: `users[0].encryption` (VLESS Encryption, ML-KEM) — кейс корпуса; баг только у лаунчера (приоритет 2)
 
-Черновик, `contract/VERSION` НЕ поднят, D-номер не занят. Issue лаунчера
+**Статус лаунчера (14.09.2026): сделано** — D-108, контракт 0.12.11:
+конвертер читает `encryption` правилом URI-пути, оба кейса в корпусе. За
+LxBox: sync `contract/` и прогон двух кейсов, статус — строкой под §15.
+
+Issue лаунчера
 [#121](https://github.com/Leadaxe/singbox-launcher/issues/121) (Septdir,
 11.09.2026): при импорте подписки в формате Xray JSON у VLESS-узла теряется
 `settings.vnext[0].users[0].encryption` (`mlkem768x25519plus.native.0rtt.<key>`),
