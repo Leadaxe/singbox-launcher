@@ -767,8 +767,9 @@ func handleReadButton(presenter *wizardpresentation.WizardPresenter, wizardWindo
 		dialog.ShowConfirm(locale.T("Confirmation"), locale.T("Current changes will be lost. Save current state?"),
 			func(save bool) {
 				if save {
-					// Show "Save As" dialog
-					wizarddialogs.ShowSaveStateDialog(presenter, func(result wizarddialogs.SaveStateResult) {
+					// Show "Save As" dialog. Только снимок: следом в модель
+					// грузится другое состояние, «сделать текущим» тут не о чем.
+					wizarddialogs.ShowSaveStateDialog(presenter, wizarddialogs.SaveStateDialogOptions{}, func(result wizarddialogs.SaveStateResult) {
 						if result.Action == "save" {
 							if err := presenter.SaveStateAs(result.Comment, result.ID); err != nil {
 								dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to save state"), err))
@@ -965,16 +966,36 @@ func cloneSnapshotID() string {
 }
 
 // handleSaveAsButton обрабатывает нажатие кнопки "Save As".
+//
+// Два исхода по чекбоксу диалога (#122):
+//   - «сделать текущим» (дефолт; без state.json — единственный вариант):
+//     снимок <id>.json, затем обычный Save — state.json, dirty-маркеры,
+//     авто-пересборка config.json (для remote-цели — её config), диалог
+//     успеха, который и закрывает визард. Валидация — ДО записи снимка,
+//     иначе при ошибке на диске оставался бы снимок без текущего состояния;
+//   - снят: только снимок, текущее состояние не трогается — старое
+//     поведение для «отложить вариант в сторону».
 func handleSaveAsButton(presenter *wizardpresentation.WizardPresenter, wizardWindow fyne.Window) {
-	wizarddialogs.ShowSaveStateDialog(presenter, func(result wizarddialogs.SaveStateResult) {
-		if result.Action == "save" {
-			if err := presenter.SaveStateAs(result.Comment, result.ID); err != nil {
-				dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to save state"), err))
-				return
-			}
-			// Закрываем визард после успешного сохранения
-			wizardWindow.Close()
+	wizarddialogs.ShowSaveStateDialog(presenter, wizarddialogs.SaveStateDialogOptions{OfferMakeCurrent: true}, func(result wizarddialogs.SaveStateResult) {
+		if result.Action != "save" {
+			return
 		}
+		if result.MakeCurrent && !presenter.ValidateSaveInput() {
+			// Ошибка уже показана пользователю; снимок не пишем.
+			return
+		}
+		if err := presenter.SaveStateAs(result.Comment, result.ID); err != nil {
+			dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to save state"), err))
+			return
+		}
+		if result.MakeCurrent {
+			// Асинхронно: state.json → маркеры → rebuild → диалог «State
+			// Saved», OK которого закрывает визард.
+			presenter.SaveConfig()
+			return
+		}
+		// Только снимок: закрываем визард после успешного сохранения
+		wizardWindow.Close()
 	})
 }
 

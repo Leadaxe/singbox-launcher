@@ -2029,6 +2029,9 @@
   "State with this ID already exists. It will be overwritten.": {
     "value": "Состояние с таким ID уже существует. Оно будет перезаписано."
   },
+  "Make it the current state and rebuild config": {
+    "value": "Сделать текущим состоянием и пересобрать конфиг"
+  },
   "State ID:": {
     "value": "ID состояния:"
   },

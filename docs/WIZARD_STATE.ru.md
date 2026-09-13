@@ -37,6 +37,10 @@
   читаемый при старте Configurator'а и при headless rebuild config.json.
 - **`bin/wizard_states/<id>.json`** — именованные снимки (Save As).
   Структурно идентичны `state.json`; при Read копируются поверх `state.json`.
+  По умолчанию Save As делает снимок и текущим (пишет `state.json` и
+  пересобирает `config.json`); чтобы не трогать текущее состояние, снимите
+  чекбокс в диалоге. Без `state.json` чекбокс заблокирован во включённом
+  положении.
 - **`bin/subscriptions/<source_id>.raw`** — per-source raw body cache подписки
   (atomic .tmp + rename). Read-path парсит .raw напрямую без сети.
 - **`bin/rule-sets/<tag>.srs`** — скачанные rule-set'ы.

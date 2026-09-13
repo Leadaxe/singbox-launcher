@@ -84,6 +84,15 @@ func (p *WizardPresenter) SaveConfig() {
 	go p.executeSaveOperation()
 }
 
+// ValidateSaveInput — та же проверка, что делает Save перед записью
+// (DNS-модель, хотя бы один источник), но без самого сохранения. Ошибка
+// показывается пользователю здесь же. Нужна Save As с «сделать текущим»,
+// чтобы не писать снимок, который SaveConfig затем откажется делать текущим.
+func (p *WizardPresenter) ValidateSaveInput() bool {
+	p.SyncGUIToModel()
+	return p.validateSaveInput()
+}
+
 // validateSaveInput проверяет входные данные перед сохранением.
 // Истина — canonical model.Sources (SPEC 117): «есть хоть один источник»
 // проверяется без повторного парса строкового кэша.

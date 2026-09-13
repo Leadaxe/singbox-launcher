@@ -38,6 +38,9 @@ saved, where it goes at build time.
   when the Configurator starts and during a headless config.json rebuild.
 - **`bin/wizard_states/<id>.json`** — named snapshots (Save As). Structurally
   identical to `state.json`; on Read they are copied over `state.json`.
+  By default Save As also makes the snapshot current (writes `state.json`
+  and rebuilds `config.json`); untick the checkbox in the dialog to keep the
+  current state untouched. Without a `state.json` the checkbox is locked on.
 - **`bin/subscriptions/<source_id>.raw`** — the per-source raw subscription body
   cache (atomic .tmp + rename). The read path parses `.raw` directly, no network.
 - **`bin/rule-sets/<tag>.srs`** — downloaded rule-sets.
