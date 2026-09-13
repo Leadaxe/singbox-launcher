@@ -238,37 +238,33 @@
           },
           "sections": {
             "type": "object",
-            "additionalProperties": true,
-            "description": "Поле ЛАУНЧЕРА (SPEC 121). Фрагмент конфига, который узел носит с собой: route-правила и DNS-записи, живущие и умирающие вместе с ним. Форма — записи самого лаунчера (те же, что в rules[] и dns корня состояния), а не сырые объекты sing-box: у каждой записи свои enabled и order_num, и позиция на общей оси принадлежит ей, а не узлу. Тела внутри записей контракт не типизирует намеренно: у DNS-сервера tailscale есть endpoint, у правил за пиром WireGuard свои поля, и типизация потеряла бы незнакомое молча. Плейсхолдер \"@self\" целой строкой и \"@{self}\" внутри строки означает финальный тег этого узла. В rules[] бэкапа эти правила НЕ едут — их дом здесь. LxBox поле игнорирует молча и по возможности провозит (BACKUP.md §1).",
+            "additionalProperties": false,
+            "description": "Фрагмент конфига, который узел носит с собой (SPEC 121, D-101/D-102): route-правила и DNS-записи, живущие и умирающие вместе с ним. Форма — КОРНЕВАЯ форма бэкапа: sections.rules[] = элемент properties.rules.items (виды inline|srs, свои enabled и num на общей оси), sections.dns.servers[]/rules[] = $defs/dnsRef вида user (тело в value). Тела (match, value) контракт не типизирует намеренно. Плейсхолдер \"@self\" целой строкой и \"@{self}\" внутри строки означает финальный тег этого узла и хранится как есть. В rules[] бэкапа эти правила НЕ едут — их дом здесь. Норма: docs/NODE_SECTIONS.md. Поддержка: launcher сейчас, обе после реализации LxBox (0.13.0).",
             "properties": {
               "rules": {
                 "type": "array",
                 "items": {
-                  "type": "object",
-                  "additionalProperties": true
+                  "$ref": "#/properties/rules/items"
                 },
-                "description": "Записи route-правил вида inline | srs — та же форма, что у rules[] корня: kind, enabled, order_num, body. Вид preset у секции недопустим (шаблона на чужой машине может не быть); ключ rule_set в секциях не поддерживается."
+                "description": "Route-правила узла в корневой форме; kind только inline|srs; num — общая ось порядка."
               },
               "dns": {
                 "type": "object",
-                "additionalProperties": true,
-                "description": "DNS-половина секций узла.",
+                "additionalProperties": false,
                 "properties": {
                   "servers": {
                     "type": "array",
                     "items": {
-                      "type": "object",
-                      "additionalProperties": true
+                      "$ref": "#/$defs/dnsRef"
                     },
-                    "description": "Записи DNS-серверов вида user — та же плоская форма, что у dns.servers[] корня: kind, enabled, tag и поля тела рядом."
+                    "description": "DNS-серверы узла, kind=user, name — тег (с плейсхолдером), тело в value."
                   },
                   "rules": {
                     "type": "array",
                     "items": {
-                      "type": "object",
-                      "additionalProperties": true
+                      "$ref": "#/$defs/dnsRef"
                     },
-                    "description": "Записи DNS-правил вида user — та же плоская форма, что у dns.rules[] корня."
+                    "description": "DNS-правила узла, kind=user, тело в value."
                   }
                 }
               }

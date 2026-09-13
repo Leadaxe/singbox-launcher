@@ -663,3 +663,93 @@ key (секрет), Control URL, Hostname, Ephemeral, Accept routes, Exit node �
 
 После ответа: лаунчер снимает пометки «черновик» с NODE_SECTIONS.md и
 D-101, ставит «обе» в BACKUP.md §2 и поднимает `contract/VERSION`.
+
+## 14. REALITY: отпечаток chrome-семейства и код `reality_fp_not_chrome`; naive `extra-headers` — код `naive_extra_headers_invalid` (приоритет 1)
+
+Контракт 0.12.10, решения D-102 и D-103.
+
+### 14.1 REALITY — правило у вас УЖЕ есть
+
+Честно: это мы вас догоняли. Правило SPEC 083 ядра (REALITY-сервер Xray
+≥ v26.9.8 требует в ClientHello `key_share X25519MLKEM768`, который несут
+только chrome-спеки uTLS; иначе сервер МОЛЧА проксирует на камуфляжный сайт)
+у вас реализовано в `app/lib/services/parser/utls_fingerprint.dart:39-60`
+(`kChromeFamilyFingerprints`, `isChromeFamilyFingerprint`) и
+`post_steps/heal_unknown_utls_fingerprints.dart`. В общем реестре кода для
+него не было — контракт отставал от вашего кода.
+
+Что сделал лаунчер, повторив вашу модель дословно:
+
+- `IsChromeFamilyFingerprint` + `EnforceRealityFingerprint` —
+  `core/config/subscription/node_parser_transport.go`, одна функция на все
+  входы;
+- **подмена на `chrome` — на СБОРКЕ конфига**
+  (`core/build/tls_transforms.go` `HealRealityFingerprints`, вызов в
+  `build.go`), а НЕ в парсере: `entry` нормативен (CANON §2), и подмена в
+  парсере увела бы ~20 кейсов корпуса в расхождение с вашим `entry`. Это
+  ровно ваше размещение;
+- предупреждение `reality_fp_not_chrome` — в парсере, где узел под рукой:
+  URI vless, URI anytls, Xray-JSON, sing-box-импорт;
+- `random` из-под КОДА выведён (от явного `fp=random` неотличим) — как у
+  вас, `utls_fingerprint.dart:110-113`; на сборке подменяется наравне;
+- пустой fp при reality пишется как `chrome` ЯВНО.
+
+Что нужно от вас:
+
+1. **проверить и ответить**: эмитится ли у вас пустой fp при reality как
+   `chrome` ЯВНО, а не через дефолт ядра. У вас `parseVlessTls`
+   (`transport.dart:466`) подставляет `random` ещё до
+   `normalizeTlsFingerprint`, поэтому ветка `value.isEmpty && tls.reality
+   != null` для vless недостижима — практически пустого fp у vless не
+   бывает, но для anytls/других путей это стоит подтвердить;
+2. привязать `RealityFingerprintWarning` к коду `reality_fp_not_chrome` в
+   `contract/registry/warnings.json` (запись уже заведена, поле `dart` её
+   ждёт);
+3. синхронизировать `contract/` и прогнать своим раннером кейсы
+   `uri/vless/reality_fp_firefox_forced_chrome` (новый),
+   `uri/vless/grpc_reality_no_flow`, `uri/vless/reality_tcp_no_flow`,
+   `uri/vless/allowinsecure_lowercase_zero`,
+   `uri/vless/ech_ignored_reality_kept`.
+
+NB по `ech_ignored_reality_kept`: его `.expected.lxbox.json` СОХРАНЁН —
+стороны там расходятся по `ech_ignored`, а не по отпечатку, и эта правка на
+него не влияет.
+
+### 14.2 naive `extra-headers` — встречная задача
+
+У вас отброшенная пара `extra-headers` сегодня только логируется
+(`naive_parser.dart:102-109`). Лаунчер завёл на неё код
+`naive_extra_headers_invalid` (severity `info`, params `["entry"]`,
+вешается на узел один раз при первой отброшенной паре): узел живой и прочие
+пары целы, но заголовок, которым открывают доступ на сервере, до сервера не
+доедет, а человек этого нигде не видит.
+
+Что нужно от вас:
+
+4. завести `NaiveExtraHeadersInvalidWarning` на отброшенной паре и
+   привязать к коду (`dart` в реестре уже проставлен);
+5. прогнать кейс `uri/naive/extra_headers_bad_name_dropped`.
+
+Остальное по naive кодом не меняется, а только записано в норму (D-103,
+`docs/Protocols.md` §NaïveProxy): набор параметров диалекта прежний
+(`padding`, `extra-headers`) и совпадает с вашим `_naiveKnownQueryKeys`;
+неизвестные query-ключи игнорируются МОЛЧА (паритет, кейс
+`unknown_query_ignored`); `naive+quic` эмитит
+`quic_congestion_control: "bbr"` — дефолт обеих сторон, без поля ядро взяло
+бы `cubic`.
+
+Ответ — сюда же, статусом под этим параграфом, как в §11.
+
+### Ответ LxBox 13.09.2026 и что принято (D-102)
+
+- **Б принято**: форма секций в бэкапе — **корневая форма бэкапа**, не
+  внутренняя форма лаунчера. `sections.rules[]` = `properties.rules.items`
+  (`kind, name, enabled, num, outbound, ref/refs, match`), `sections.dns.*[]`
+  = `$defs/dnsRef` (`kind: user`, `name` = тег, тело в `value`). Схема и
+  `docs/NODE_SECTIONS.md` §1 переписаны; лаунчер переводит свою внутреннюю
+  форму в корневую тем же кодом, что корневые `rules[]`/`dns` (SPEC 126 L9).
+- Код `backup_section_record_dropped` покрывает два случая — «поле у узла
+  подписки/цепочки/Направления» и «чужой kind внутри секции», различаются
+  текстом предупреждения.
+- **В принято**: 0.13.0 после реализации LxBox.
+- **А** — за владельцем форка; хранение/провоз/UI делаются при любом исходе.
