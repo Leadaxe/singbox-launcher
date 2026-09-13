@@ -498,7 +498,15 @@ func exportRule(r state.Rule) (Rule, error) {
 			return Rule{}, fmt.Errorf("srs body: %w", err)
 		}
 		out.Name = body.Name
-		out.Ref = body.SrsURL
+		// Тело здесь сырое (без нормализации DecodeBody) — приводим к канону сами.
+		canon := state.NewSrsBody(body.Name, append([]string{body.SrsURL}, body.SrsURLs...), body.Outbound)
+		urls := canon.URLs()
+		if len(urls) > 0 {
+			out.Ref = urls[0]
+		}
+		if len(urls) > 1 {
+			out.Refs = urls
+		}
 		out.Outbound = body.Outbound
 	default:
 		return Rule{}, fmt.Errorf("unknown kind %q", r.Kind)

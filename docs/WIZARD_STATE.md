@@ -399,7 +399,7 @@ The `kind` discriminator: `preset` / `inline` / `srs`. A single ordered array; t
 |------|------------|
 | `preset` | `{ vars: { <name>: <value>, ... } }` — **the diff only** against the template defaults. An empty map means everything is default. Bump the template → the user automatically gets the new defaults for vars they never touched. |
 | `inline` | `{ name: string, match: { <sing-box match keys> }, outbound: string }` — outbound is a tag or a reserved literal (`reject` / `drop`). |
-| `srs` | `{ name: string, srs_url: string, outbound: string }` — the URL of an .srs file + an outbound tag/literal. |
+| `srs` | `{ name: string, srs_url: string, srs_urls?: string[], outbound: string }` — the URL of the first .srs file, the full list (`srs_url == srs_urls[0]`) when the rule references two or more sets, + an outbound tag/literal. The build emits one local rule-set per URL (`user:<id>`, `user:<id>:2`, …) and a single route rule referencing them all. |
 
 **JSON examples — the three kinds:**
 ```jsonc
@@ -431,6 +431,7 @@ The `kind` discriminator: `preset` / `inline` / `srs`. A single ordered array; t
   "body": {
     "name": "Block ads (oisd)",
     "srs_url": "https://example.com/oisd.srs",
+    // "srs_urls": ["https://example.com/oisd.srs", "https://example.com/extra.srs"],  // only when the rule has 2+ sets
     "outbound": "reject"
   }
 }

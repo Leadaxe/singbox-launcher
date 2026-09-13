@@ -392,7 +392,7 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 |------|------------|
 | `preset` | `{ vars: { <name>: <value>, ... } }` — **только diff** от template default'ов. Пустой map = всё дефолтное. Bump'нули template → юзер автоматически получает новые дефолты для var'ов которые не трогал. |
 | `inline` | `{ name: string, match: { <sing-box match keys> }, outbound: string }` — outbound = tag или зарезервированный литерал (`reject` / `drop`). |
-| `srs` | `{ name: string, srs_url: string, outbound: string }` — URL .srs файла + outbound tag/литерал. |
+| `srs` | `{ name: string, srs_url: string, srs_urls?: string[], outbound: string }` — URL первого .srs файла, полный список (`srs_url == srs_urls[0]`), когда у правила два и более набора, + outbound tag/литерал. Сборка эмитит по локальному rule-set на URL (`user:<id>`, `user:<id>:2`, …) и одно правило маршрута со ссылкой на все. |
 
 **JSON examples — три kind'а:**
 ```jsonc
@@ -424,6 +424,7 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
   "body": {
     "name": "Block ads (oisd)",
     "srs_url": "https://example.com/oisd.srs",
+    // "srs_urls": ["https://example.com/oisd.srs", "https://example.com/extra.srs"],  // только при 2+ наборах
     "outbound": "reject"
   }
 }

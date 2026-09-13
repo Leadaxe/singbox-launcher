@@ -499,10 +499,13 @@ func collectAllStageRuleSetTags(execDir, target, machineID string, td *template.
 				continue
 			}
 			sb, ok := body.(*state.SrsBody)
-			if !ok || sb.SrsURL == "" {
+			if !ok {
 				continue
 			}
-			addTag(build.SRSTagFromURL(sb.SrsURL))
+			// Все наборы правила, не только первый (репорт 1.5.5).
+			for _, u := range sb.URLs() {
+				addTag(build.SRSTagFromURL(u))
+			}
 		}
 	}
 

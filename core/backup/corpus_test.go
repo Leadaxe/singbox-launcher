@@ -28,6 +28,9 @@ type corpusExpectation struct {
 	Rules []struct {
 		Name    string `json:"name"`
 		Enabled bool   `json:"enabled"`
+		// Refs — kind=srs: все URL наборов правила по порядку (D-100).
+		// Необязательно: отсутствие ключа значит «не проверяем».
+		Refs []string `json:"refs"`
 	} `json:"rules"`
 	Vars              map[string]string `json:"vars"`
 	Warnings          []string          `json:"warnings"`
@@ -324,6 +327,7 @@ func checkRules(t *testing.T, dst *state.State, exp corpusExpectation) {
 		name    string
 		enabled bool
 		num     int
+		refs    []string
 	}
 	all := make([]got, 0, len(dst.Rules))
 	for _, r := range dst.Rules {
@@ -332,7 +336,7 @@ func checkRules(t *testing.T, dst *state.State, exp corpusExpectation) {
 		if r.OrderNum != nil {
 			num = *r.OrderNum
 		}
-		all = append(all, got{name, r.Enabled, num})
+		all = append(all, got{name, r.Enabled, num, ruleRefs(r)})
 	}
 	sort.SliceStable(all, func(i, j int) bool { return all[i].num < all[j].num })
 
@@ -343,7 +347,22 @@ func checkRules(t *testing.T, dst *state.State, exp corpusExpectation) {
 		if all[i].enabled != want.Enabled {
 			t.Errorf("правило %q: enabled=%v, ожидалось %v", want.Name, all[i].enabled, want.Enabled)
 		}
+		if want.Refs != nil && !equalStrings(all[i].refs, want.Refs) {
+			t.Errorf("правило %q: наборы %v, ожидались %v", want.Name, all[i].refs, want.Refs)
+		}
 	}
+}
+
+// ruleRefs — все URL наборов srs-правила по порядку; у прочих kind — nil.
+func ruleRefs(r state.Rule) []string {
+	if r.Kind != state.RuleKindSrs {
+		return nil
+	}
+	body, err := r.DecodeBody()
+	if err != nil {
+		return nil
+	}
+	return body.(*state.SrsBody).URLs()
 }
 
 // checkFolders — папки собраны по имени, с тем же составом и порядком.
