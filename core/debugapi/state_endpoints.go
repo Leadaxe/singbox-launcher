@@ -205,8 +205,18 @@ func (s *Server) stateRulesWith(w http.ResponseWriter, r *http.Request, acc stat
 		case "replace":
 			st.Rules = req.Rules
 		case "append":
-			st.Rules = append(st.Rules, req.Rules...)
+			// Правила без order_num получают следующий номер пользовательской
+			// зоны (SPEC 106) — иначе MarkRuleOrder при загрузке раздал бы им
+			// 1000, 1001…, дублируя номера уже существующих правил.
+			for i := range req.Rules {
+				if req.Rules[i].OrderNum == nil {
+					n := state.NextUserRuleNum(st.Rules)
+					req.Rules[i].OrderNum = &n
+				}
+				st.Rules = append(st.Rules, req.Rules[i])
+			}
 		}
+		st.Rules = state.SortRulesByNum(st.Rules) // закон оси: массив всегда отсортирован
 		if err := acc.save(st); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "save state: " + err.Error()})
 			return
