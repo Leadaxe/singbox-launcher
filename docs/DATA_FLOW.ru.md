@@ -184,7 +184,7 @@ core/build entry (BuildConfig)  — pure function over BuildContext
      │     walk state.rules[] kind switch
      │       preset → resolve через template.presets[id].rules (expand + tag prefix)
      │       inline → emit body.match + outbound
-     │       srs    → emit body.srs_url + outbound (downloaded .srs path)
+     │       srs    → emit local rule_set на каждый body.srs_urls (скачанные .srs) + outbound
      │
      ├─► MergeOutboundUpdates(ob, template)       — pure func (SPEC 058)
      │     per-entry resolver (UI preview / dialog Edit); build runtime

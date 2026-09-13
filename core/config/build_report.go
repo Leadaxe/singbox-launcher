@@ -49,6 +49,14 @@ const (
 	// умеет (SPEC 044 feature-probe).
 	BuildReportNaiveDegraded BuildReportKind = "naive_degraded"
 
+	// BuildReportTailscaleDegraded — узлы tailscale сняты, потому что ядро
+	// собрано без with_tailscale (SPEC 122 feature-probe).
+	BuildReportTailscaleDegraded BuildReportKind = "tailscale_degraded"
+
+	// BuildReportAWG3Degraded — wireguard-узлы с полями AmneziaWG 3.x сняты,
+	// потому что ядро старше 1.14.0-lx.32 (SPEC 123 feature-probe).
+	BuildReportAWG3Degraded BuildReportKind = "awg3_degraded"
+
 	// BuildReportSourceParseFailed — источник не дал конфигу НИ ОДНОГО узла:
 	// не фетчнулся, или фетчнулся и разобрался в ноль (SPEC 115).
 	//

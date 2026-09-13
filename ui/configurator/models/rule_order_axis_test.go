@@ -54,7 +54,7 @@ func loadIntoModel(t *testing.T, rules []corestate.Rule, td *wizardtemplate.Temp
 	m.PresetRefs = SyncStateRulesToPresetRefs(norm)
 	m.CustomRules = customRulesFromStateRules(norm)
 
-	order := RuleOrderFromAxis(norm, m.PresetRefs, m.CustomRules)
+	order := RuleOrderFromAxis(norm, m.PresetRefs, m.CustomRules, m.NodeRuleRefs)
 	if len(order) == 0 {
 		RebuildRuleOrder(m)
 	} else {

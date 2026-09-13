@@ -1,0 +1,29 @@
+{
+  "_": "Флаг разрыва внешних соединений при тумблере позиции доезжает до конфига; false в файле не пишется и в конфиг не эмитится (SPEC 124).",
+  "chains": [
+    {
+      "tag": "cut-chain",
+      "hops": [
+        "🇩🇪 Frankfurt",
+        "🇳🇱 Amsterdam"
+      ],
+      "interrupt_exist_connections": true
+    },
+    {
+      "tag": "soft-chain",
+      "hops": [
+        "🇳🇱 Amsterdam",
+        "🇩🇪 Frankfurt"
+      ]
+    }
+  ],
+  "directions": [],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

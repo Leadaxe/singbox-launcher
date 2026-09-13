@@ -21,6 +21,7 @@ import (
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
@@ -778,6 +779,9 @@ func showSourceEditWindowAt(
 	// ниже, поэтому ссылка объявлена заранее (nil до её сборки — Regen из
 	// формы возможен только после того, как окно собрано целиком).
 	var refreshJSONAfterOriginRegen func()
+	// refreshAWGAfterRegen — перечитывание блока обфускации после пересборки
+	// тела. Как и вкладка JSON, блок строится ниже кнопки Regen.
+	var refreshAWGAfterRegen func()
 	var originBtnRow *fyne.Container
 	var setOriginMode func(editing bool)
 
@@ -944,6 +948,14 @@ func showSourceEditWindowAt(
 	// scratch.DetourTag (stamped as-is); a "» node" option sets
 	// scratch.DetourNodeTag (looked up by that tag at generation time).
 	// The two are mutually exclusive.
+	// rebuildSettingsAfterDetour — пересборка раскладки Settings после смены
+	// detour. Объявлена заранее: сама раскладка строится ниже, а обработчик
+	// выбора — выше неё.
+	var rebuildSettingsAfterDetour func()
+	// clearAWGAfterDetour — снятие обфускации с узла при назначении detour.
+	// Объявлено заранее по той же причине, что и пересборка раскладки.
+	var clearAWGAfterDetour func()
+
 	detourNone := locale.T("(none — direct)")
 	detourSelect := widget.NewSelect(nil, nil)
 	detourHint := widget.NewLabel(locale.T(sourceDetourHintText))
@@ -967,6 +979,22 @@ func showSourceEditWindowAt(
 			p.Detour = &link
 		}
 		// SPEC 117: выбор буферизуется в копии до Save.
+		//
+		// Обфускация и detour несовместимы: узел, который ходит через чужой
+		// outbound, своего транспорта не поднимает — junk-датаграммы и
+		// маскировка ему не с чем применять. Поэтому назначенный detour не
+		// просто ПРЯЧЕТ блок, а снимает поля с тела: спрятанная, но живая в
+		// конфиге обфускация — ровно тот случай, когда форма показывает одно,
+		// а ядро получает другое.
+		if p.Detour != nil && clearAWGAfterDetour != nil {
+			clearAWGAfterDetour()
+		}
+		// Раскладку пересобираем: блок обфускации виден только без detour, и
+		// без пересборки он остался бы на экране у узла, которому только что
+		// назначили выход через чужой outbound.
+		if rebuildSettingsAfterDetour != nil {
+			rebuildSettingsAfterDetour()
+		}
 	}
 	detourSelect.OnChanged = detourOnChanged
 	refreshDetourOptions := func() {
@@ -1170,6 +1198,12 @@ func showSourceEditWindowAt(
 		if refreshJSONAfterOriginRegen != nil {
 			refreshJSONAfterOriginRegen()
 		}
+		// И блок обфускации тоже: новое тело могло приехать с полями AWG из
+		// ссылки — или, наоборот, без них. Форма обязана показывать то, что
+		// в узле сейчас, а не то, что было до пересборки.
+		if refreshAWGAfterRegen != nil {
+			refreshAWGAfterRegen()
+		}
 		originTextAtOpen = raw
 		setOriginMode(false)
 	})
@@ -1209,6 +1243,60 @@ func showSourceEditWindowAt(
 		settingsContent.Add(widget.NewLabel(locale.T("Detour server (chain)")))
 		settingsContent.Add(detourSelect)
 		settingsContent.Add(detourHint)
+	}
+
+	// Блок обфускации AmneziaWG (source_awg_edit.go). Живёт СРАЗУ ПОСЛЕ
+	// detour и только когда detour не выбран: узел, ходящий через чужой
+	// outbound, свой транспорт не поднимает — обфусцировать в нём нечего, и
+	// показывать поля, которые ни на что не влияют, значит врать.
+	//
+	// Запись идёт в тело рабочей копии, как и все правки этого окна, поэтому
+	// после неё нужно ровно то же, что после Regen происхождения: перерисовать
+	// вкладку JSON и пометить состояние изменённым.
+	awgUI := newAWGBlock(func() *wizardmodels.Node { return &scratch.Node }, win, func() {
+		if refreshJSONAfterOriginRegen != nil {
+			refreshJSONAfterOriginRegen()
+		}
+		presenter.MarkAsChanged()
+	})
+	awgUI.load(&scratch.Node)
+	refreshAWGAfterRegen = func() { awgUI.load(&scratch.Node) }
+	clearAWGAfterDetour = func() {
+		if !awgEditableNode(&scratch.Node) {
+			return
+		}
+		if !readAWGSettings(&scratch.Node).Enabled {
+			return // обфускации и не было — тело не трогаем
+		}
+		if err := clearAWGSettings(&scratch.Node); err != nil {
+			debuglog.WarnLog("AWG: clear on detour set: %v", err)
+			return
+		}
+		awgUI.load(&scratch.Node)
+		if refreshJSONAfterOriginRegen != nil {
+			refreshJSONAfterOriginRegen()
+		}
+		presenter.MarkAsChanged()
+	}
+
+	// awgConflictsWithDetour — у узла есть И detour, И живые поля обфускации.
+	// Состояние противоречивое: транспорт узел не поднимает, а поля в теле
+	// лежат и едут в конфиг.
+	awgConflictsWithDetour := func() bool {
+		p := srcRef()
+		if p == nil || p.Detour == nil || !awgEditableNode(&scratch.Node) {
+			return false
+		}
+		return readAWGSettings(&scratch.Node).Enabled
+	}
+
+	// awgVisibleFor — показывать ли блок: тело WireGuard и отсутствие detour.
+	awgVisibleFor := func() bool {
+		p := srcRef()
+		if p == nil || p.Detour != nil {
+			return false
+		}
+		return awgEditableNode(&scratch.Node)
 	}
 	rebuildSettingsLayout := func() {
 		settingsContent.Objects = settingsContent.Objects[:0]
@@ -1250,6 +1338,20 @@ func showSourceEditWindowAt(
 			settingsContent.Add(nodeTagEntry)
 			settingsContent.Add(widget.NewSeparator())
 			detourBlock()
+			if awgVisibleFor() {
+				settingsContent.Add(widget.NewSeparator())
+				awgUI.load(&scratch.Node)
+				settingsContent.Add(awgUI.content)
+			} else if awgConflictsWithDetour() {
+				// Узел приехал С обфускацией И с detour — так бывает у ссылки
+				// от провайдера или у состояния, собранного до этой формы.
+				// Молчать нельзя: блок мы не показываем, а поля живут в теле и
+				// уедут в конфиг. Спрашиваем прямо, не снимая ничего сами:
+				// detour пользователь выбирал осознанно, и отменять его выбор
+				// открытием окна — не наше дело.
+				settingsContent.Add(widget.NewSeparator())
+				settingsContent.Add(awgDetourConflictNote())
+			}
 			settingsContent.Add(widget.NewSeparator())
 			// Подпись по виду происхождения: «Server URI» над блоком
 			// wg-quick врала бы про природу текста (SPEC 119).
@@ -1323,6 +1425,7 @@ func showSourceEditWindowAt(
 		}
 		settingsContent.Refresh()
 	}
+	rebuildSettingsAfterDetour = rebuildSettingsLayout
 	rebuildSettingsLayout()
 	// Gutter — ВНУТРИ скролла (канонический приём, components.ScrollGutter
 	// call pattern): сам скролл встаёт вплотную к краю окна, а содержимое
@@ -1791,14 +1894,22 @@ func showSourceEditWindowAt(
 		// не принимает outbound без типа НИ у сервера, ни у цепочки, и
 		// сказать это одной внятной строкой лучше, чем двумя разными из
 		// глубины каждой ветки.
-		var ob map[string]interface{}
-		if err := json.Unmarshal([]byte(text), &ob); err != nil {
-			dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
-			return
-		}
-		if t, _ := ob["type"].(string); strings.TrimSpace(t) == "" {
-			dialog.ShowError(errors.New(locale.T("The outbound object must have a non-empty \"type\" field.")), win)
-			return
+		//
+		// SPEC 121 §5.1: исключение — ДОКУМЕНТ узла (тело + секции). У него
+		// `type` на верхнем уровне и не может быть: тип живёт у записи внутри
+		// `outbounds`/`endpoints`, и проверяет его разбор документа. У цепочки
+		// документов не бывает — там своя ветка ниже.
+		isDoc := !isChainSource && config.IsNodeDocument([]byte(text))
+		if !isDoc {
+			var ob map[string]interface{}
+			if err := json.Unmarshal([]byte(text), &ob); err != nil {
+				dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
+				return
+			}
+			if t, _ := ob["type"].(string); strings.TrimSpace(t) == "" {
+				dialog.ShowError(errors.New(locale.T("The outbound object must have a non-empty \"type\" field.")), win)
+				return
+			}
 		}
 		// SPEC 110: у цепочки правится СВОЙ объект, а не ConfigJSON —
 		// последнего у неё нет, и правка ушла бы в никуда. Обратно
@@ -1807,22 +1918,24 @@ func showSourceEditWindowAt(
 		// решил бы, что вписал рабочую настройку.
 		if isChainSource {
 			var parsed struct {
-				Outbounds    []string               `json:"outbounds"`
-				IdleTimeout  string                 `json:"idle_timeout"`
-				StripEvasion *bool                  `json:"strip_evasion"`
-				Strip        map[string]bool        `json:"strip"`
-				Rewrite      map[string]interface{} `json:"rewrite"`
+				Outbounds                 []string               `json:"outbounds"`
+				IdleTimeout               string                 `json:"idle_timeout"`
+				InterruptExistConnections bool                   `json:"interrupt_exist_connections"`
+				StripEvasion              *bool                  `json:"strip_evasion"`
+				Strip                     map[string]bool        `json:"strip"`
+				Rewrite                   map[string]interface{} `json:"rewrite"`
 			}
 			if err := json.Unmarshal([]byte(text), &parsed); err != nil {
 				dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
 				return
 			}
 			c := &configtypes.SourceChain{
-				Hops:         parsed.Outbounds,
-				IdleTimeout:  parsed.IdleTimeout,
-				StripEvasion: parsed.StripEvasion,
-				Strip:        parsed.Strip,
-				Rewrite:      parsed.Rewrite,
+				Hops:                      parsed.Outbounds,
+				IdleTimeout:               parsed.IdleTimeout,
+				InterruptExistConnections: parsed.InterruptExistConnections,
+				StripEvasion:              parsed.StripEvasion,
+				Strip:                     parsed.Strip,
+				Rewrite:                   parsed.Rewrite,
 			}
 			// Отвергаем правку, на которой ядро не стартует: показать
 			// ошибку здесь дешевле, чем дать сохранить и обнаружить, что
@@ -1856,7 +1969,13 @@ func showSourceEditWindowAt(
 		// была ли связь, уже негде.
 		hadSubURL := scratch.Origin != nil && scratch.Origin.SubURL != ""
 		if err := applyServerBodyJSON(&scratch.Node, text); err != nil {
-			dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
+			// Документ отвергается СВОЕЙ причиной («лишний ключ», «два узла»):
+			// обёртка «Invalid JSON» врала бы — JSON как раз валиден.
+			if isDoc {
+				dialog.ShowError(errors.New(locale.Tf("Node document rejected: %s", err.Error())), win)
+			} else {
+				dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
+			}
 			return
 		}
 		// Разыменование делает ОБЩАЯ точка (business.DereferenceNodeOrigin), а
@@ -1956,8 +2075,20 @@ func showSourceEditWindowAt(
 			if err := json.Indent(&buf, scratch.Body, "", "  "); err == nil {
 				text = buf.String()
 			}
+			status := locale.T("The outbound as it will reach the config.")
+			// SPEC 121 §5.1: узел с секциями показывается ДОКУМЕНТОМ — голое
+			// тело умолчало бы о половине того, что узел добавит в конфиг, и
+			// первый же Apply снёс бы её.
+			if !scratch.Sections.IsEmpty() {
+				doc, derr := config.RenderNodeDocument(
+					scratch.Body, scratch.Sections, config.NodeBodyGoesToEndpoints(scratch.Body))
+				if derr == nil {
+					text = doc
+					status = locale.T("The node and the config fragments it carries. @self is this node's tag.")
+				}
+			}
 			setJSONText(text)
-			jsonStatus.SetText(locale.T("The outbound as it will reach the config."))
+			jsonStatus.SetText(status)
 			if sourceOriginURI(&scratch) != "" {
 				jsonResetBtn.Enable()
 			} else {

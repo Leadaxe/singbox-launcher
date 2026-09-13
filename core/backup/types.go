@@ -375,7 +375,38 @@ type Server struct {
 	Folder            string `json:"folder,omitempty"`
 	Enabled           *bool  `json:"enabled,omitempty"`
 	ExcludeFromGlobal bool   `json:"exclude_from_global,omitempty"`
+	// Sections — фрагменты конфига, которые узел носит с собой (SPEC 121).
+	// Поле ЛАУНЧЕРА (BACKUP.md §2, «Поддержка: launcher»): LxBox игнорирует
+	// его молча и по возможности провозит.
+	Sections *ServerSections `json:"sections,omitempty"`
 	SourceRef
+}
+
+// ServerSections — секции узла в бэкапе (SPEC 121 §10.5).
+//
+// Форма та же, что на диске: записи правил и DNS лаунчера со своими `enabled`
+// и `order_num`. Своего типа у бэкапа нет намеренно — переименование полей
+// завело бы вторую схему одних и тех же данных и потребовало бы держать её в
+// согласии с первой.
+//
+// Тело едет непрозрачным блоком: разбирает его state, а не контракт. Так
+// незнакомое поле DNS-сервера (`endpoint` у tailscale) переживает round-trip.
+type ServerSections struct {
+	// Raw — объект `sections` как он лежит в файле.
+	Raw json.RawMessage
+}
+
+// MarshalJSON / UnmarshalJSON — секции едут блоком как есть.
+func (s ServerSections) MarshalJSON() ([]byte, error) {
+	if len(s.Raw) == 0 {
+		return []byte("null"), nil
+	}
+	return s.Raw, nil
+}
+
+func (s *ServerSections) UnmarshalJSON(data []byte) error {
+	s.Raw = append(json.RawMessage(nil), data...)
+	return nil
 }
 
 // RuleKind — вид правила.
@@ -398,12 +429,17 @@ type Rule struct {
 	Num *float64 `json:"num,omitempty"`
 	// Outbound — символическая ссылка на цель. Несуществующая цель не
 	// повод терять правило: импортируется выключенным с warning.
-	Outbound string            `json:"outbound,omitempty"`
-	Ref      string            `json:"ref,omitempty"`
-	Vars     map[string]string `json:"vars,omitempty"`
-	Match    json.RawMessage   `json:"match,omitempty"`
-	DNS      json.RawMessage   `json:"dns,omitempty"`
-	Resolve  json.RawMessage   `json:"resolve,omitempty"`
+	Outbound string `json:"outbound,omitempty"`
+	Ref      string `json:"ref,omitempty"`
+	// Refs — kind=srs: ВСЕ URL наборов правила по порядку, `ref` = `refs[0]`.
+	// Пишется только при двух и более. Черновое поле контракта (D-100, по
+	// образцу `sections`): сторона без поддержки читает `ref` и получает
+	// первый набор — ровно то, что было до поля.
+	Refs    []string          `json:"refs,omitempty"`
+	Vars    map[string]string `json:"vars,omitempty"`
+	Match   json.RawMessage   `json:"match,omitempty"`
+	DNS     json.RawMessage   `json:"dns,omitempty"`
+	Resolve json.RawMessage   `json:"resolve,omitempty"`
 }
 
 // DNS — секция DNS.

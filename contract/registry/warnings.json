@@ -70,6 +70,15 @@
       "dart": "UnknownFingerprintWarning",
       "go": "core/config/subscription/singbox_sanitize.go:177; core/config/subscription/node_parser_transport.go:646"
     },
+    "reality_fp_not_chrome": {
+      "severity": "warning",
+      "params": [
+        "value"
+      ],
+      "desc": "REALITY с uTLS-отпечатком не из chrome-семейства (D-104). ПОЧЕМУ: REALITY-сервер Xray >= v26.9.8 (XTLS/REALITY@8cdf7bf, SPEC 083 ядра) требует в ClientHello key_share X25519MLKEM768; его несут только chrome-спеки uTLS (chrome, chrome_psk, chrome_psk_shuffle, chrome_padding_psk_shuffle, chrome_pq, chrome_pq_psk — ядро схлопывает их в HelloChrome_Auto). firefox/edge/safari/ios/android/360/qq шлют голый X25519 и сервер МОЛЧА проксирует соединение на камуфляжный сайт: ошибки нет, узел просто мёртв. ЧТО ДЕЛАЕМ: на сборке конфига подставляем chrome — узел живёт, — а значение в узле (`entry`) НЕ трогаем: оно нормативно (CANON §2) и сверяется корпусом побайтно. Обе стороны правят на одном шаге: Go core/build/tls_transforms.go HealRealityFingerprints, Dart post_steps/heal_unknown_utls_fingerprints.dart. Пустой fp при reality эмитится как chrome ЯВНО, без warning (на дефолт ядра не полагаемся). Наш дефолт `random` (D-009) под код тоже НЕ попадает — от явного fp=random он неотличим, и warning кричал бы на каждой второй reality-ноде, — но на сборке подменяется наравне с остальными.",
+      "dart": "RealityFingerprintWarning",
+      "go": "core/config/subscription/parse_warnings.go:38 (WarnRealityFPNotChrome); эмиссия — node_parser_transport.go vlessTLSFromNode / noteRealityFingerprint, node_parser_anytls.go buildAnyTLSTLS, xray_outbound_convert.go, singbox_import.go; подмена — core/build/tls_transforms.go HealRealityFingerprints"
+    },
     "xhttp_param_reset": {
       "severity": "warning",
       "params": [
@@ -203,6 +212,15 @@
       "dart": "NaivePaddingIgnoredWarning",
       "go": "core/config/subscription/node_parser_core.go:384"
     },
+    "naive_extra_headers_invalid": {
+      "severity": "info",
+      "params": [
+        "entry"
+      ],
+      "desc": "Пара из naive `extra-headers` отброшена при разборе (D-105): нет разделителя ':', запрещённые символы в имени (набор допустимых — подмножество RFC 7230 tchar по спецификации DuckSoft 2020) или CR/LF/NUL в значении. Прочие пары той же ссылки сохраняются, узел живёт — отсюда severity=info. ПОЧЕМУ код, а не только лог: заголовок из extra-headers часто и есть то, чем открывают доступ на сервере, и его молчаливая пропажа выглядела для пользователя как отказ узла без причины. Вешается на узел ОДИН раз при первой отброшенной паре. Собственный `headers` у http/https-прокси под код НЕ попадает: параметр объявлен у схемы naive.",
+      "dart": "NaiveExtraHeadersInvalidWarning",
+      "go": "core/config/subscription/parse_warnings.go:45 (WarnNaiveExtraHeadersInvalid); эмиссия — node_parser_naive.go buildNaiveOutbound / parseNaiveExtraHeaders"
+    },
     "ss_method_invalid": {
       "severity": "error",
       "params": [
@@ -283,6 +301,49 @@
       "desc": "AWG magic-header (H1..H4/S1/S2 и др.) не uint32 и не lo-hi диапазон — поле снимается, ядро возьмёт WireGuard-дефолт.",
       "dart": "AwgHeaderInvalidWarning",
       "go": "core/config/subscription/node_parser_wireguard.go:400"
+    },
+    "awg3_field_invalid": {
+      "severity": "warning",
+      "params": [
+        "field",
+        "value"
+      ],
+      "desc": "Поле AWG 3.x (диапазон таймингов content_padding_addition/rekey_after_time/rekey_timeout/reject_after_time/keepalive_timeout/max_handshake_attempts либо булево random_trailers/disable_cookies) с мусором или с перевёрнутым диапазоном N>M — ПОЛЕ снимается, узел живёт: тайминги клиентские, ядро работает на своих дефолтах. Границы НЕ свопаются (в отличие от h1-h4): перевёрнутый диапазон — опечатка, которую человек должен увидеть. SPEC 123 §2.",
+      "dart": null,
+      "go": "core/config/subscription/awg3.go:applyAWG3Fields"
+    },
+    "awg3_header_key_invalid": {
+      "severity": "error",
+      "params": [],
+      "desc": "header_protection_key не base64, не 32 байта или все нули — УЗЕЛ выброшен на разборе (dropped), а не помечен: без верного ключа хендшейк невозможен, а ядро отвергает такой конфиг ЦЕЛИКОМ, то есть один узел лишил бы пользователя VPN. Та же политика, что у awg_headers_overlap. SPEC 123 §2.",
+      "dart": null,
+      "go": "core/config/subscription/awg3.go:validateAWG3 (parseWireGuardURI: return nil, err)"
+    },
+    "awg3_padding_too_short": {
+      "severity": "error",
+      "params": [
+        "field",
+        "min"
+      ],
+      "desc": "header_protection_key задан, но один из s1-s4 меньше 12 (или не задан = 0) — УЗЕЛ выброшен (dropped). Nonce шифра заголовка берётся из первых 12 байт паддинга сообщения, поэтому ядро отвергает такую пару на проверке конфига (docs-lx §2.9/§2.10). SPEC 123 §2.",
+      "dart": null,
+      "go": "core/config/subscription/awg3.go:validateAWG3 (parseWireGuardURI: return nil, err)"
+    },
+    "awg3_random_trailers_wide_headers": {
+      "severity": "info",
+      "params": [],
+      "desc": "random_trailers включён вместе с ШИРОКИМ диапазоном h1-h4 (ширина >= 65536). Ничего не снимается — это свойство протокола: приёмник сервера (референсная реализация) начинает принимать data-датаграммы за handshake-кандидаты с вероятностью ширина/2^32 на пакет и отбрасывать их на MAC, то есть страдает uplink. Наш приёмник к этому невосприимчив (SPEC 081 ядра). docs-lx §2.10.",
+      "dart": null,
+      "go": "core/config/subscription/awg3.go:awg3RandomTrailersWithWideHeaders"
+    },
+    "awg3_core_unsupported": {
+      "severity": "warning",
+      "params": [
+        "reason"
+      ],
+      "desc": "Узел с полями AmneziaWG 3.x снят на СБОРКЕ: ядро старше 1.14.0-lx.32 или собрано без with_awg отвергает конфиг с любым AWG3-ключом целиком («невалидный JSON»), то есть один такой узел оставил бы пользователя без VPN. Выброс, а не пометка на живом узле, но severity=warning: конфиг СОБИРАЕТСЯ, остальные узлы на месте, причина приезжает строкой отчёта сборки (BuildReportAWG3Degraded). Та же схема, что у tailscale_core_unsupported. SPEC 123 §2 «Гейт ядра». LxBox не применяет: ядро едет в AAR.",
+      "dart": null,
+      "go": "core/config/outbound_generator.go (GenerateOutboundsFromParserConfig, ветка !awg3Supported); проба core/core_capabilities.go (CoreSupportsAWG3)"
     },
     "awg_headers_overlap": {
       "severity": "error",
@@ -454,6 +515,15 @@
       "desc": "Цель `streamSettings.sockopt.dialerProxy` непригодна: узел-владелец отбраковывается целиком (иначе он ушёл бы напрямую — тихая деанонимизация). cause ∈ not_found | service_outbound | group | not_convertible | cycle | depth. Лаунчер сегодня даёт not_found (остальные причины режутся раньше другими путями), LxBox — все шесть.",
       "dart": "DialerProxyUnusableWarning",
       "go": "core/config/subscription/xray_json_array.go (attachXrayDialerChain)"
+    },
+    "tailscale_core_unsupported": {
+      "severity": "warning",
+      "params": [
+        "reason"
+      ],
+      "desc": "Узел `tailscale` снят на сборке: ядро собрано без тега with_tailscale (нужен форк 1.14.0-lx.31 или новее). Не пометка на живом узле, а его выброс — но severity=warning, а не error: конфиг СОБИРАЕТСЯ, остальные узлы на месте, и причина приезжает пользователю строкой отчёта сборки (BuildReportTailscaleDegraded). Без выброса один такой узел завалил бы `sing-box check` для ВСЕГО конфига. SPEC 122 §2.2. LxBox не применяет: libbox собран без tailscale, узлы схемы туда не доезжают.",
+      "dart": null,
+      "go": "core/config/outbound_generator.go (GenerateOutboundsFromParserConfig, ветка !tailscaleSupported); проба core/core_capabilities.go (CoreSupportsTailscale)"
     },
     "ws_early_data_converted": {
       "severity": "info",

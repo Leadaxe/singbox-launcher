@@ -1,0 +1,21 @@
+{
+  "groups": [
+    {
+      "interrupt_exist_connections": true,
+      "outbounds": [
+        "🇩🇪 Frankfurt",
+        "🇳🇱 Amsterdam"
+      ],
+      "tag": "cut-chain",
+      "type": "chain"
+    },
+    {
+      "outbounds": [
+        "🇳🇱 Amsterdam",
+        "🇩🇪 Frankfurt"
+      ],
+      "tag": "soft-chain",
+      "type": "chain"
+    }
+  ]
+}

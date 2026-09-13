@@ -33,6 +33,17 @@ const (
 	// перезаписывает его при каждом успешном Update; на переключении
 	// state'а файл не инвалидируется (см. PLAN.md outboundscache).
 	OutboundsCacheFileName = "outbounds.cache.json"
+	// GLStateFileName — bin/gl-state.json, единственное состояние GL-гейта
+	// (SPEC 125). Гейт перед инициализацией GL пишет phase=starting, первый
+	// отрисованный кадр переписывает на phase=rendered. Правило гейта: прошлый
+	// старт дошёл до кадра — пробу не делаем. Файл можно удалить руками, это
+	// полный сброс решений гейта.
+	GLStateFileName = "gl-state.json"
+	// MesaDisabledSuffix — суффикс, которым гейт и кнопка в Диагностике
+	// отключают Mesa3D: DLL рядом с exe переименовываются в <имя>.off.
+	// Переименование, а не удаление: откат обратно не требует ни сети, ни
+	// папки mesa3d/ (её нет в архиве win64).
+	MesaDisabledSuffix = ".off"
 )
 
 // Directory names
@@ -75,6 +86,12 @@ const (
 	ChildLogFileName  = "sing-box.log"
 	ParserLogFileName = "parser.log"
 	APILogFileName    = "api.log"
+	CrashLogFileName  = "crash.log" // трасса фатальной паники (debuglog.EnableCrashOutput)
+	// NativeStderrLogFileName — stderr чужого нативного кода (Mesa, драйверы,
+	// GLFW). У windowsgui-сборки stderr ведёт в INVALID_HANDLE_VALUE, и всё,
+	// что пишут DLL, пропадает бесследно; debuglog.RedirectNativeStderr
+	// подменяет системный хендл на этот файл (SPEC 125 §2.8).
+	NativeStderrLogFileName = "native-stderr.log"
 )
 
 // Process names for checking
@@ -128,7 +145,7 @@ const SingboxCoreRepo = "Leadaxe/sing-box-lx" // core for all platforms (XHTTP +
 // `sing-box version`, so the strict-equality reinstall check still holds.
 // Manually bumped per release; source-of-truth here. See
 // docs/RELEASE_PROCESS.md §5.1.
-const RequiredCoreVersion = "1.14.0-lx.30"
+const RequiredCoreVersion = "1.14.0-lx.36"
 
 // AppVersion — git describe output. Set by build scripts via -ldflags.
 //

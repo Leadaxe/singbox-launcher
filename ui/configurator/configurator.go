@@ -624,6 +624,11 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 	// Initialize button container
 	updateNavigationButtons(guiState, tabs, *currentTabIndex)
 
+	// Ревизии последнего показа Rules и DNS (SPEC 121 §10.4). Ноль означает
+	// «ещё не показывали»: первый заход перестраивает всегда — вкладка могла
+	// быть построена до того, как модель дочитала источники.
+	var lastRulesRevision, lastDNSRevision uint64
+
 	// Update buttons when switching tabs
 	tabs.OnSelected = func(item *container.TabItem) {
 		// Sync GUI to model before switching (без MarkAsChanged — иначе ложный «есть несохранённые» при переключении табов)
@@ -691,8 +696,32 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 			guiState.SaveButton.Show()
 		}
 
+		// SPEC 121 §10.4: правила и DNS-записи, которые узлы носят с собой,
+		// живут в дереве источников, а не в списках вкладок. Правка узла
+		// бампает ревизию модели (через инвалидацию пула), и вкладка, чей
+		// показ старше этой ревизии, обязана перестроиться при заходе —
+		// иначе строка правила узла появлялась бы только после перезапуска.
+		if item.Text == locale.T("DNS") && lastDNSRevision != model.Revision {
+			lastDNSRevision = model.Revision
+			if guiState.RefreshDNSList != nil {
+				guiState.RefreshDNSList()
+			}
+		}
+
 		// Handle tab-specific actions
 		if item == rulesTabItem {
+			// SPEC 121 §10.4: состав строк правил, которые узлы носят с
+			// собой, — производная от источников. Пересев до пересборки
+			// вкладки: иначе строка правила, добавленного узлу на соседней
+			// вкладке, появилась бы только после перезапуска.
+			if lastRulesRevision != model.Revision {
+				lastRulesRevision = model.Revision
+				if wizardmodels.SeedNodeRuleRefs(model) {
+					wizardmodels.ReconcileRuleOrder(model)
+					wizardmodels.EnsureRuleOrderNums(model)
+					wizardmodels.SortRuleOrderByAxis(model)
+				}
+			}
 			// Trigger async parsing to ensure outbounds are up-to-date
 			presenter.TriggerParseForPreview()
 			// Список целей у preset-строк — снимок availableOutbounds,
@@ -738,8 +767,9 @@ func handleReadButton(presenter *wizardpresentation.WizardPresenter, wizardWindo
 		dialog.ShowConfirm(locale.T("Confirmation"), locale.T("Current changes will be lost. Save current state?"),
 			func(save bool) {
 				if save {
-					// Show "Save As" dialog
-					wizarddialogs.ShowSaveStateDialog(presenter, func(result wizarddialogs.SaveStateResult) {
+					// Show "Save As" dialog. Только снимок: следом в модель
+					// грузится другое состояние, «сделать текущим» тут не о чем.
+					wizarddialogs.ShowSaveStateDialog(presenter, wizarddialogs.SaveStateDialogOptions{}, func(result wizarddialogs.SaveStateResult) {
 						if result.Action == "save" {
 							if err := presenter.SaveStateAs(result.Comment, result.ID); err != nil {
 								dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to save state"), err))
@@ -936,16 +966,36 @@ func cloneSnapshotID() string {
 }
 
 // handleSaveAsButton обрабатывает нажатие кнопки "Save As".
+//
+// Два исхода по чекбоксу диалога (#122):
+//   - «сделать текущим» (дефолт; без state.json — единственный вариант):
+//     снимок <id>.json, затем обычный Save — state.json, dirty-маркеры,
+//     авто-пересборка config.json (для remote-цели — её config), диалог
+//     успеха, который и закрывает визард. Валидация — ДО записи снимка,
+//     иначе при ошибке на диске оставался бы снимок без текущего состояния;
+//   - снят: только снимок, текущее состояние не трогается — старое
+//     поведение для «отложить вариант в сторону».
 func handleSaveAsButton(presenter *wizardpresentation.WizardPresenter, wizardWindow fyne.Window) {
-	wizarddialogs.ShowSaveStateDialog(presenter, func(result wizarddialogs.SaveStateResult) {
-		if result.Action == "save" {
-			if err := presenter.SaveStateAs(result.Comment, result.ID); err != nil {
-				dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to save state"), err))
-				return
-			}
-			// Закрываем визард после успешного сохранения
-			wizardWindow.Close()
+	wizarddialogs.ShowSaveStateDialog(presenter, wizarddialogs.SaveStateDialogOptions{OfferMakeCurrent: true}, func(result wizarddialogs.SaveStateResult) {
+		if result.Action != "save" {
+			return
 		}
+		if result.MakeCurrent && !presenter.ValidateSaveInput() {
+			// Ошибка уже показана пользователю; снимок не пишем.
+			return
+		}
+		if err := presenter.SaveStateAs(result.Comment, result.ID); err != nil {
+			dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to save state"), err))
+			return
+		}
+		if result.MakeCurrent {
+			// Асинхронно: state.json → маркеры → rebuild → диалог «State
+			// Saved», OK которого закрывает визард.
+			presenter.SaveConfig()
+			return
+		}
+		// Только снимок: закрываем визард после успешного сохранения
+		wizardWindow.Close()
 	})
 }
 

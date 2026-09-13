@@ -1,0 +1,50 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.8.1.7/32"
+        ],
+        "content_padding_addition": "10-100",
+        "disable_cookies": true,
+        "h1": 1,
+        "h2": 2,
+        "h3": 3,
+        "h4": 4,
+        "header_protection_key": "Bw4VHCMqMTg/Rk1UW2JpcHd+hYyTmqGor7a9xMvS2eA=",
+        "jc": 4,
+        "jmax": 50,
+        "jmin": 10,
+        "keepalive_timeout": "5-15",
+        "max_handshake_attempts": "15-20",
+        "mtu": 1280,
+        "peers": [
+          {
+            "address": "host.example.com",
+            "allowed_ips": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "persistent_keepalive_interval": "25-35",
+            "port": 30565,
+            "public_key": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
+          }
+        ],
+        "private_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "random_trailers": true,
+        "reject_after_time": "150-180",
+        "rekey_after_time": "100-120",
+        "rekey_timeout": "3-7",
+        "s1": 55,
+        "s2": 42,
+        "s3": 40,
+        "s4": 12,
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "awg3-server",
+      "scheme": "wireguard"
+    }
+  ],
+  "v": 1
+}

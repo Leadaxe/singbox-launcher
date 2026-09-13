@@ -107,7 +107,10 @@
 | Узел **отброшен** на разборе | `error` | в причине отброса — объекта `ParsedNode` не существует |
 
 Примеры первого вида: `masque_vhttp_invalid` (`vhttp` вне `{h3,h2}` принудительно
-становится `h3`), `naive_padding_ignored`, `packet_encoding_unknown`,
+становится `h3`), `naive_padding_ignored`, `naive_extra_headers_invalid`
+(битая пара `extra-headers` пропущена, остальные заголовки живут),
+`reality_fp_not_chrome` (у REALITY-узла отпечаток вне chrome-семейства — на
+подключении используется `chrome`), `packet_encoding_unknown`,
 `ws_early_data_converted` (хвост Xray `?ed=N` разложен на `max_early_data` +
 `early_data_header_name` — путь в конфиге намеренно не тот, что в ссылке),
 `amnezia_container_choice` (в профиле `vpn://` было несколько контейнеров, и
@@ -210,6 +213,7 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
 - `headerType` — вместе с `type=raw` или `tcp` и значением `http` задаёт транспорт типа HTTP (обфускация), см. отчёт 023
 - `serviceName` / `service_name` — имя gRPC-сервиса → `transport.service_name`
 - **Дефолт `fp`:** если ни `fp`, ни `fingerprint` не заданы, для VLESS подставляется `random`. У Trojan такого дефолта нет — там uTLS-блок появляется только при распознанном `fp` (и ключ `fingerprint` не читается).
+- **⚠️ У REALITY отпечаток всегда из chrome-семейства.** Везде, где реально эмитится блок `tls.reality`, отпечаток **в сгенерированном `config.json`** приводится к chrome-семейству (`chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk` — ядро схлопывает все шесть в `HelloChrome_Auto`). Пустой `fp` становится `chrome` явно; любое значение вне семейства становится `chrome`, и на узел вешается код `reality_fp_not_chrome`. Причина: REALITY-сервер на Xray ≥ v26.9.8 требует в ClientHello `key_share X25519MLKEM768`, а несут его только chrome-спеки uTLS — `firefox`, `edge`, `safari`, `ios`, `android`, `360` и `qq` шлют голый X25519, и сервер после этого **молча** проксирует соединение на свой камуфляжный сайт. Ошибки нет нигде: узел просто не везёт трафик. `random` мёртв в четырёх случаях из пяти, поэтому подменяется тоже (без предупреждения — от собственного дефолта парсера он неотличим). Значение на самом узле не трогается, чинится только эмитируемый конфиг. Если REALITY **не** эмитится (мусорный `pbk` с деградацией до plain TLS или `security=reality` без `pbk`), правило не применяется.
 - `packetEncoding` — поле outbound `packet_encoding`. **Allow-list:** только `xudp`, `packetaddr`, `none` (включая пустое значение). Любое другое значение **отбрасывается с warning** в `debuglog` — sing-box не примёт неизвестные. См. [доку VLESS](https://sing-box.sagernet.org/configuration/outbound/vless/)
 - `spx`, `quicSecurity`, `authority` — часто встречаются в ссылках Xray/панелей; в документированный клиентский JSON sing-box **не переносятся**, на разбор ссылки не влияют
 - `mode` и `extra` — **влияют**, но только при `type=xhttp`: `mode` уезжает в транспорт как есть, `extra` — это URL-encoded JSON, из которого читаются те же поля xhttp (значения из `extra` перекрывают одноимённые flat-параметры). См. [параметры `xhttp`](#параметры-транспорта-xhttp) ниже
@@ -460,13 +464,21 @@ naive+https://<user>:<pass>@<host>:<port>/?<params>#<label>
 naive+quic://<user>:<pass>@<host>:<port>/?<params>#<label>
 ```
 
-- **Схема:** `naive+https` — транспорт HTTP/2; `naive+quic` — QUIC (с автоматическим `quic_congestion_control: bbr` в JSON).
-- **Userinfo:** `<user>:<pass>` или только `<pass>` (тогда ложится в user-slot — как у hysteria2). Anonymous-режим — без userinfo.
-- **Port:** опциональный, default **443**.
-- **Query:**
-  - `padding=true|false` — **игнорируется** с warning (в sing-box нет соответствующего поля).
-  - `extra-headers=<urlencoded "Header1: Value1\r\nHeader2: Value2">` — дополнительные HTTP-заголовки; невалидные пары (неправильный charset имени, CR/LF/NUL в значении) пропускаются с warning, остальные сохраняются.
-- **Fragment (`#label`):** URL-decoded, UTF-8-fixup — стандартно.
+**Параметры ссылки.** У диалекта ровно те параметры, что ниже — набор зафиксирован gist'ом DuckSoft и совпадает с LxBox; ничего сверх не выдумывается.
+
+| Часть | Что принимается | Что делает парсер |
+|-------|-----------------|-------------------|
+| Схема | `naive+https` / `naive+quic` | HTTP/2 и QUIC соответственно. `naive+quic` дополнительно эмитит `quic: true` и `quic_congestion_control: "bbr"` |
+| Userinfo | `<user>:<pass>`, только `<pass>` или ничего | Валидны все три. Одинокий пароль ложится в user-slot (как у hysteria2); отсутствие userinfo — анонимный режим |
+| Host | обязателен | Пустой host **отбраковывает узел** (уезжает в `dropped`, подписка живёт) |
+| Port | опционален | Дефолт **443** |
+| Путь | любой | **Игнорируется** — у naive пути нет |
+| `padding` | `true` / `false` / что угодно | **Игнорируется** (в sing-box нет соответствующего поля) плюс код `naive_padding_ignored`. Значение не валидируется: любое отбрасывается одинаково |
+| `extra-headers` | URL-encoded `Header1: Value1\r\nHeader2: Value2` | Разворачивается в `extra_headers`. Имя — только из charset'а спецификации (подмножество RFC 7230 tchar); пара без `:`, с запрещёнными символами в имени или с CR/LF/NUL в значении **пропускается** — остальные пары живут, а на узел один раз вешается код `naive_extra_headers_invalid` |
+| Фрагмент `#label` | любой | URL-decoded, UTF-8-fixup — стандартно |
+| Прочие ключи | любые | **Игнорируются молча** (паритет с LxBox — это осознанно, а не недосмотр) |
+
+**Не поддерживается:** `alpn`, `utls`, `reality`, `insecure` — sing-box naive outbound их не принимает, и парсер их не эмитит. Отдельного `sni` тоже нет: `tls.server_name` всегда равен host.
 
 **Примеры:**
 
@@ -491,7 +503,7 @@ naive+https://some.what?extra-headers=X-Username%3Auser%0D%0AX-Password%3Apasswo
 }
 ```
 
-Для `naive+quic://` добавляются `"quic": true` и `"quic_congestion_control": "bbr"`. Блок `extra-headers` разворачивается в `"extra_headers": {"X-Username": "user", "X-Password": "password"}`.
+Для `naive+quic://` добавляются `"quic": true` и `"quic_congestion_control": "bbr"`. `bbr` здесь — **дефолт лаунчера и LxBox**, а не требование ссылки: без этого поля ядро взяло бы `cubic`. Сам outbound принимает `bbr`, `bbr2`, `cubic` и `reno` — чтобы поставить другой, правьте `config.json` после Save. Блок `extra-headers` разворачивается в `"extra_headers": {"X-Username": "user", "X-Password": "password"}`.
 
 **TLS-блок:** sing-box naive outbound поддерживает **только** `server_name`, `certificate`, `certificate_path`, `ech` — `alpn / utls / reality / min_version` для этого типа не применимы и не эмитятся парсером. Custom SNI в URI пока не поддерживается (v1); `tls.server_name` = `host`. Для ручного переопределения — правка `config.json` после wizard Save.
 

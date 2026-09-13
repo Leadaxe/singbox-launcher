@@ -16,7 +16,10 @@
         "username": "user1"
       },
       "kind": "outbound",
-      "scheme": "naive"
+      "scheme": "naive",
+      "warnings": [
+        "naive_extra_headers_invalid"
+      ]
     }
   ],
   "v": 1

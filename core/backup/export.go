@@ -11,6 +11,7 @@ import (
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
+	"singbox-launcher/internal/debuglog"
 )
 
 // ExportOptions — что подмешать в шапку файла.
@@ -92,6 +93,7 @@ func Export(s *state.State, opts ExportOptions) (*Backup, []Warning, error) {
 	// стоящая после сервера, экспортировалась молча: `2:select` совпадал с
 	// «деривативом», а импорт восстанавливал `1:select` — правила того же
 	// файла повисали, и предупреждения об этом не было.
+
 	subIndex := 0
 	for i, src := range s.Sources {
 		switch src.Kind {
@@ -419,6 +421,16 @@ func exportServerNode(src state.Node) Server {
 		NodeTag:   src.Tag,
 		SourceRef: exportNodeLinkRef(src.Detour),
 	}
+	// SPEC 121 §10.5: секции узла едут своей формой хранения — с `enabled` и
+	// `order_num` у каждой записи. Отдельной позиции на оси у узла больше нет:
+	// её несёт каждое правило само.
+	if !src.Sections.IsEmpty() {
+		if raw, err := json.Marshal(src.Sections); err == nil {
+			out.Sections = &ServerSections{Raw: raw}
+		} else {
+			debuglog.WarnLog("backup export: node %q sections cannot be encoded (%v) — exported without them", src.Tag, err)
+		}
+	}
 	// Форма хранения узла в v7 одна — тело; исходный URI живёт в origin и
 	// едет тем же ключом, что и раньше, когда он был единственной формой.
 	//
@@ -486,7 +498,15 @@ func exportRule(r state.Rule) (Rule, error) {
 			return Rule{}, fmt.Errorf("srs body: %w", err)
 		}
 		out.Name = body.Name
-		out.Ref = body.SrsURL
+		// Тело здесь сырое (без нормализации DecodeBody) — приводим к канону сами.
+		canon := state.NewSrsBody(body.Name, append([]string{body.SrsURL}, body.SrsURLs...), body.Outbound)
+		urls := canon.URLs()
+		if len(urls) > 0 {
+			out.Ref = urls[0]
+		}
+		if len(urls) > 1 {
+			out.Refs = urls
+		}
 		out.Outbound = body.Outbound
 	default:
 		return Rule{}, fmt.Errorf("unknown kind %q", r.Kind)
@@ -518,6 +538,13 @@ func exportVars(vars []state.SettingVar) map[string]string {
 }
 
 func routeFinal(s *state.State) string {
+	// vars["route_final"] — канонический канал лаунчера (config_params он не
+	// заполняет вовсе); config_params — legacy-состояния и чужие фикстуры.
+	for _, v := range s.Vars {
+		if v.Name == "route_final" && v.Value != "" {
+			return v.Value
+		}
+	}
 	for _, p := range s.ConfigParams {
 		if p.Name == "final" || p.Name == "route.final" {
 			return p.Value

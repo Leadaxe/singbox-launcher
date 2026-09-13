@@ -107,7 +107,10 @@ Codes split into two kinds, and the split is deliberate:
 | The node is **dropped** at parse time | `error` | in the drop reason — there is no `ParsedNode` to mark |
 
 Examples of the first kind: `masque_vhttp_invalid` (a `vhttp` outside `{h3,h2}` is
-forced to `h3`), `naive_padding_ignored`, `packet_encoding_unknown`,
+forced to `h3`), `naive_padding_ignored`, `naive_extra_headers_invalid` (a
+malformed `extra-headers` pair was skipped, the rest of the headers survive),
+`reality_fp_not_chrome` (a REALITY node carried a fingerprint outside the Chrome
+family — `chrome` is used when connecting), `packet_encoding_unknown`,
 `ws_early_data_converted` (an Xray `?ed=N` tail split into `max_early_data` +
 `early_data_header_name` — the path in the config is deliberately not the one in
 the link), `amnezia_container_choice` (a `vpn://` profile held several containers
@@ -210,6 +213,7 @@ The standard URI format: `vless://uuid@server:port?params#tag`
 - `headerType` — together with `type=raw` or `tcp` and the value `http` it selects an HTTP-type transport (obfuscation), see report 023
 - `serviceName` / `service_name` — the gRPC service name → `transport.service_name`
 - **The `fp` default:** when neither `fp` nor `fingerprint` is set, VLESS falls back to `random`. Trojan has no such default — there a uTLS block appears only for a recognized `fp` (and the `fingerprint` key is not read).
+- **⚠️ REALITY always ends up with a Chrome-family fingerprint.** Whenever a `tls.reality` block is actually emitted, the fingerprint **in the generated `config.json`** is forced into the Chrome family (`chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk` — the core collapses all six onto `HelloChrome_Auto`). An empty `fp` becomes `chrome` explicitly; anything outside the family becomes `chrome` and the node gets the `reality_fp_not_chrome` code. The reason: a REALITY server running Xray ≥ v26.9.8 requires a `key_share X25519MLKEM768` in the ClientHello, and only the Chrome uTLS specs carry it — `firefox`, `edge`, `safari`, `ios`, `android`, `360` and `qq` send a bare X25519, and the server then **silently** proxies the connection to its decoy site. There is no error anywhere: the node simply carries no traffic. `random` is dead in four cases out of five, so it is substituted too (without a warning — it is indistinguishable from the parser's own default). The value stored on the node itself is left untouched; only the emitted config is healed. When REALITY is **not** emitted (a junk `pbk` degrading to plain TLS, or `security=reality` with no `pbk`), the rule does not apply.
 - `packetEncoding` — the outbound's `packet_encoding` field. **Allow-list:** only `xudp`, `packetaddr`, `none` (an empty value included). Anything else is **dropped with a warning** into `debuglog` — sing-box would not accept unknown values. See the [VLESS docs](https://sing-box.sagernet.org/configuration/outbound/vless/)
 - `spx`, `quicSecurity`, `authority` — common in Xray/panel links; they are **not** carried into the documented sing-box client JSON and do not affect parsing
 - `mode` and `extra` — these **do** matter, but only with `type=xhttp`: `mode` goes into the transport as is, and `extra` is a URL-encoded JSON from which the same xhttp fields are read (values from `extra` override the flat parameters of the same name). See [the `xhttp` parameters](#the-xhttp-transport-parameters) below
@@ -459,13 +463,21 @@ naive+https://<user>:<pass>@<host>:<port>/?<params>#<label>
 naive+quic://<user>:<pass>@<host>:<port>/?<params>#<label>
 ```
 
-- **Scheme:** `naive+https` is the HTTP/2 transport; `naive+quic` is QUIC (with an automatic `quic_congestion_control: bbr` in the JSON).
-- **Userinfo:** `<user>:<pass>`, or just `<pass>` (which then lands in the user slot — as with hysteria2). Anonymous mode means no userinfo at all.
-- **Port:** optional, default **443**.
-- **Query:**
-  - `padding=true|false` — **ignored** with a warning (sing-box has no matching field).
-  - `extra-headers=<urlencoded "Header1: Value1\r\nHeader2: Value2">` — extra HTTP headers; invalid pairs (a bad charset in the name, CR/LF/NUL in the value) are skipped with a warning, the rest are kept.
-- **Fragment (`#label`):** URL-decoded, UTF-8-fixed — as everywhere.
+**Link parameters.** The dialect has exactly the parameters below — the set is fixed by the DuckSoft gist and is identical in LxBox; nothing else is invented.
+
+| Part | Accepted | What the parser does |
+|------|----------|----------------------|
+| Scheme | `naive+https` / `naive+quic` | HTTP/2 and QUIC respectively. `naive+quic` also emits `quic: true` and `quic_congestion_control: "bbr"` |
+| Userinfo | `<user>:<pass>`, just `<pass>`, or nothing | All three are valid. A lone password lands in the user slot (as with hysteria2); no userinfo at all means anonymous |
+| Host | required | An empty host **rejects the node** (it goes to `dropped`, the subscription survives) |
+| Port | optional | Default **443** |
+| Path | any | **Ignored** — naive has no path |
+| `padding` | `true` / `false` / anything | **Ignored** (sing-box has no matching field) plus the `naive_padding_ignored` code. The value is not validated: any value is dropped the same way |
+| `extra-headers` | URL-encoded `Header1: Value1\r\nHeader2: Value2` | Expands into `extra_headers`. A name may only use the charset of the spec (a subset of RFC 7230 tchar); a pair with no `:`, with forbidden characters in the name, or with CR/LF/NUL in the value is **skipped** — the remaining pairs survive, and the node gets the `naive_extra_headers_invalid` code once |
+| Fragment `#label` | any | URL-decoded, UTF-8-fixed — as everywhere |
+| Any other key | any | **Silently ignored** (parity with LxBox — this is deliberate, not an oversight) |
+
+**Not supported:** `alpn`, `utls`, `reality`, `insecure` — the sing-box naive outbound does not accept them, so the parser never emits them. There is no separate `sni` either: `tls.server_name` is always the host.
 
 **Examples:**
 
@@ -490,7 +502,7 @@ naive+https://some.what?extra-headers=X-Username%3Auser%0D%0AX-Password%3Apasswo
 }
 ```
 
-For `naive+quic://`, `"quic": true` and `"quic_congestion_control": "bbr"` are added. The `extra-headers` block expands into `"extra_headers": {"X-Username": "user", "X-Password": "password"}`.
+For `naive+quic://`, `"quic": true` and `"quic_congestion_control": "bbr"` are added. The `bbr` here is **the launcher's and LxBox's default**, not something the link asked for: without the field the core would fall back to `cubic`. The outbound itself accepts `bbr`, `bbr2`, `cubic` and `reno` — to use another one, edit `config.json` after Save. The `extra-headers` block expands into `"extra_headers": {"X-Username": "user", "X-Password": "password"}`.
 
 **The TLS block:** the sing-box naive outbound supports **only** `server_name`, `certificate`, `certificate_path`, `ech` — `alpn / utls / reality / min_version` do not apply to this type and are not emitted by the parser. A custom SNI in the URI is not supported yet (v1); `tls.server_name` = `host`. To override it by hand, edit `config.json` after the wizard's Save.
 
@@ -676,6 +688,32 @@ The numeric field names are read from the query in any case; `i1`–`i5` are tak
 wireguard://privkey-base64@server.example.com:51821?publickey=server-pubkey&address=10.0.0.2%2F32&allowedips=0.0.0.0%2F0%2C%3A%3A%2F0&keepalive=25&jc=10&jmin=50&jmax=100&s1=20&s2=20&s3=60&s4=60&h1=1234567890&h2=1234567891&h3=1234567892&h4=1234567893&i1=%3Cb%200x000100002112a442%3E%3Cr%2012%3E#AWG2
 ```
 (`i1` here is the URL-encoded `<b 0x000100002112a442><r 12>`.) Support is implemented in `applyAWGFields` / `ShareURIFromWireGuardEndpoint` (`core/config/subscription/node_parser_wireguard.go`, `shareuri_wireguard.go`); at runtime it needs a core with `with_awg`. See `SPECS/073-F-N-AMNEZIAWG_PARAMS/SPEC.md` and `sing-box-lx/docs-lx/lx-config.md`.
+
+**AmneziaWG 3.0/3.1 (optional — a sing-box-lx core **≥ 1.14.0-lx.32**):**
+
+On top of the AWG2 set, an AWG 3.x server (Amnezia exports it as the `amnezia-awg2` container with `awg.protocol_version: "3.1"`) adds these query parameters — the name is the `.conf` key lower-cased, exactly as for `jc`/`presharedkey`:
+
+| Parameter | Endpoint root key | Value |
+|---|---|---|
+| `headerprotectionkey` | `header_protection_key` | base64 of **32 bytes** (`awg genkey`), a server-side value copied verbatim |
+| `contentpaddingaddition` | `content_padding_addition` | `N` or the range `N-M` |
+| `rekeyaftertime` | `rekey_after_time` | `N` or `N-M` |
+| `rekeytimeout` | `rekey_timeout` | `N` or `N-M` |
+| `rejectaftertime` | `reject_after_time` | `N` or `N-M` |
+| `keepalivetimeout` | `keepalive_timeout` | `N` or `N-M` |
+| `maxhandshakeattempts` | `max_handshake_attempts` | `N` or `N-M` |
+| `randomtrailers` | `random_trailers` | `on` / `off` |
+| `disablecookies` | `disable_cookies` | `on` / `off` |
+
+`keepalive` (the peer's `PersistentKeepalive`) accepts a range too and reaches `peers[0].persistent_keepalive_interval`.
+
+**Value shapes.** A ranged field is emitted as a JSON **number** for `N` and as a JSON **string** `"N-M"` for a range (the core picks a value inside it). A boolean is emitted as `true` only when it is on — `off` and absent both mean the key is not written at all, never `false`.
+
+**Error policy.** A ranged field with garbage or with `N > M` is dropped from the node (the node keeps working on the core's defaults) with a warning that names the field — the bounds are **not** swapped, because a reversed range is a typo the user has to see. The node itself is dropped when `header_protection_key` is not valid base64 of 32 non-zero bytes, or when it is set while any of `s1`–`s4` is below 12: the padding carries the header cipher nonce, so without it the handshake cannot happen and the core rejects the config wholesale.
+
+**MTU.** An AWG 3.x node is clamped to 1280 like any AmneziaWG endpoint. The export's own value (Amnezia keeps it in `last_config.mtu`, outside `[Interface]`, `1376` on a live server) is read, but a value above the ceiling is lowered: on the reference server data did not flow at 1376 and did at 1280. A lower explicit value is honoured; without an MTU the AmneziaWG default applies as before. AWG2 nodes are unaffected.
+
+**Core gate.** A core older than `1.14.0-lx.32` rejects the **whole** config on any of these keys. The launcher probes `sing-box version` once per build (build tags plus version) and drops AWG 3.x nodes with a build-report line naming the installed and the required version, instead of letting one node take the config down. In the server list such a node is labelled `wireguard·awg3` or `wireguard·awg3.1` (the `.1` when `random_trailers` or `disable_cookies` is present). See `SPECS/123-F-N-AWG3/SPEC.md` and `sing-box-lx/docs-lx/lx-protocols-transports.ru.md` §2.10.
 
 ### Amnezia (`vpn://`)
 

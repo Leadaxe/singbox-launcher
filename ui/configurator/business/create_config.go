@@ -260,6 +260,14 @@ func inMemoryCacheFromModel(model *wizardmodels.WizardModel) *build.ParsedCache 
 		}
 		pc.Endpoints = append(pc.Endpoints, json.RawMessage(cleaned))
 	}
+	// SPEC 121: третий производитель ParsedCache. Без секций превью показывало
+	// бы конфиг без узловых фрагментов — то самое расхождение превью и боевой
+	// сборки, ради которого превью и живёт на общем конвейере.
+	//
+	// Узлы берутся не из GeneratedOutbounds (там уже готовые строки без
+	// ссылки на источник), а из состава модели — с финальным тегом от той же
+	// тег-машины, что у сборки.
+	pc.NodeSections = NodeSectionSetsFromModel(model)
 	return pc
 }
 

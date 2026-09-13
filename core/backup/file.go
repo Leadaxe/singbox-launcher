@@ -266,8 +266,15 @@ var (
 	serverKeys = mergeKeys(sourceRefKeys, map[string]bool{
 		"id": true, "uri": true, "config_json": true, "label": true,
 		"node_tag": true, "enabled": true, "exclude_from_global": true,
-		"folder": true,
+		"folder": true, "sections": true,
 	})
+	// serverSectionsKeys — секции узла (SPEC 121 §10.5). Внутрь записей
+	// сканер не спускается намеренно: их поля — тела sing-box плюс служебные
+	// kind/enabled/order_num, и их набор ведёт схема состояния, а не таблица
+	// бэкапа.
+	serverSectionsKeys = map[string]bool{
+		"rules": true, "dns": true,
+	}
 	chainKeys = mergeKeys(sourceRefKeys, map[string]bool{
 		"id": true, "tag": true, "label": true, "enabled": true,
 		"chain": true, "exclude_from_global": true,
@@ -285,9 +292,11 @@ var (
 		"include_block": true, "include": true,
 		"interrupt_exist_connections": true, "auto": true,
 	}
+	// refs — kind=srs, все наборы одного правила (черновик D-100): объявлено
+	// в схеме, поэтому не «непонятое», а поле, которое импортёр применяет.
 	ruleKeys = map[string]bool{
 		"kind": true, "name": true, "enabled": true, "num": true,
-		"outbound": true, "ref": true, "vars": true, "match": true,
+		"outbound": true, "ref": true, "refs": true, "vars": true, "match": true,
 		"dns": true, "resolve": true,
 	}
 	directionAutoKeys = map[string]bool{
@@ -299,8 +308,8 @@ var (
 	// спускается намеренно: хоп ссылается на узел выражениями, чей набор
 	// ключей ведёт схема цепочки, а не таблица бэкапа.
 	chainBodyKeys = map[string]bool{
-		"hops": true, "idle_timeout": true, "rewrite": true,
-		"strip": true, "strip_evasion": true,
+		"hops": true, "idle_timeout": true, "interrupt_exist_connections": true,
+		"rewrite": true, "strip": true, "strip_evasion": true,
 	}
 	// warpKeys — поля регистрации WG/MASQUE. Union обоих типов: запись
 	// объявляет свой type, и разбирать её по типу значило бы завести две
@@ -374,7 +383,11 @@ func scanUnknown(data []byte) []Warning {
 		// две таблицы для одной сущности разъехались бы.
 		sc.array(item, where+".outbounds", "outbounds", directionKeys, "tag", sc.scanDirectionBody)
 	})
-	sc.array(root, "servers", "servers", serverKeys, "label", nil)
+	sc.array(root, "servers", "servers", serverKeys, "label", func(where string, item map[string]json.RawMessage) {
+		// SPEC 121: секции узла — свой уровень ключей; внутрь фрагментов
+		// обход не спускается (это тела sing-box, не поля бэкапа).
+		sc.nested2(item, where, "sections", serverSectionsKeys)
+	})
 	sc.array(root, "chains", "chains", chainKeys, "tag", func(where string, item map[string]json.RawMessage) {
 		sc.nested2(item, where, "chain", chainBodyKeys)
 	})

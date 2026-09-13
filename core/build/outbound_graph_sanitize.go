@@ -210,6 +210,10 @@ func sanitizeOutboundGraph(cache *ParsedCache, finalTags map[string]bool) (*Pars
 	*out = *cache
 	out.Outbounds = rebuildEntries(entries, false, true)
 	out.Endpoints = rebuildEntries(entries, true, false)
+	// SPEC 121: секции узла живут и умирают вместе с ним. Узел, снятый здесь
+	// fail-closed, свои фрагменты в конфиг не отдаёт — иначе DNS-сервер с
+	// `endpoint` на выброшенный тег ронял бы конфиг целиком.
+	out.NodeSections = keepSectionsOfPresentNodes(cache.NodeSections, finalTags)
 
 	excluded := make([]SourceExclusion, 0, len(excludedOrder))
 	for _, key := range excludedOrder {
@@ -447,6 +451,29 @@ func rebuildEntries(entries []*graphEntry, endpoints bool, compact bool) []json.
 			continue
 		}
 		out = append(out, json.RawMessage(e.prefix+string(rebuilt)))
+	}
+	return out
+}
+
+// keepSectionsOfPresentNodes оставляет секции только тех узлов, чей финальный
+// тег пережил санитайзер (SPEC 121).
+//
+// finalTags к этому моменту уже мутирован дропами: выброшенного узла в нём
+// нет, и его набор отсеивается здесь честно, а не по отдельному списку.
+func keepSectionsOfPresentNodes(sets []NodeSectionSet, finalTags map[string]bool) []NodeSectionSet {
+	if len(sets) == 0 {
+		return nil
+	}
+	out := make([]NodeSectionSet, 0, len(sets))
+	for _, s := range sets {
+		if s.FinalTag != "" && !finalTags[s.FinalTag] {
+			debuglog.WarnLog("build: node %q was dropped by the graph sanitizer — its config sections go with it", s.FinalTag)
+			continue
+		}
+		out = append(out, s)
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }

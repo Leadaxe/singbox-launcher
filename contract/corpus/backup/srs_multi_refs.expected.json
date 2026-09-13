@@ -1,0 +1,21 @@
+{
+  "rules": [
+    {
+      "name": "Multi",
+      "enabled": true,
+      "refs": [
+        "https://example.com/rules/a.srs",
+        "https://example.com/rules/b.srs",
+        "https://example.com/rules/c.srs"
+      ]
+    },
+    {
+      "name": "Single",
+      "enabled": true,
+      "refs": [
+        "https://example.com/rules/d.srs"
+      ]
+    }
+  ],
+  "warnings": []
+}

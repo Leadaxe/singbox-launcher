@@ -252,3 +252,81 @@ func TestParseWireGuardURI_MTUClamp(t *testing.T) {
 		})
 	}
 }
+
+// wgConfToURI обязан переносить masquerade-сахар ip/id/ib.
+//
+// Без него .conf с маскировкой терял её МОЛЧА: числа junk доезжали, узел
+// выглядел настроенным, и только первый decoy-пакет уходил без маскировки —
+// то есть ровно та настройка, ради которой конфиг и брали, пропадала без
+// единого слова.
+func TestWgConfToURI_CarriesMasquerade(t *testing.T) {
+	const conf = `[Interface]
+PrivateKey = UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+Address = 10.0.0.2/32
+MTU = 1420
+Jc = 4
+Jmin = 40
+Jmax = 70
+Ip = quic
+Id = Telemost.Example.COM
+Ib = chrome
+
+[Peer]
+PublicKey = QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=
+Endpoint = vpn.example:51820
+AllowedIPs = 0.0.0.0/0
+`
+	uri, err := wgConfToURI(conf, "conf-node")
+	if err != nil {
+		t.Fatalf("wgConfToURI: %v", err)
+	}
+	u, err := url.Parse(uri)
+	if err != nil {
+		t.Fatalf("parse built URI: %v", err)
+	}
+	q := u.Query()
+	for key, want := range map[string]string{
+		"ip": "quic",
+		// Регистр домена сохраняется: id едет на провод как есть.
+		"id": "Telemost.Example.COM",
+		"ib": "chrome",
+	} {
+		if got := q.Get(key); got != want {
+			t.Errorf("%s: got %q, want %q", key, got, want)
+		}
+	}
+
+	// И сам узел обязан их получить — до тела, а не только до ссылки.
+	node, err := parseWireGuardURI(uri, nil)
+	if err != nil || node == nil {
+		t.Fatalf("parse node: err=%v node=%v", err, node)
+	}
+	for key, want := range map[string]string{
+		"ip": "quic", "id": "Telemost.Example.COM", "ib": "chrome",
+	} {
+		if got, _ := node.Outbound[key].(string); got != want {
+			t.Errorf("node %s: got %v, want %q", key, node.Outbound[key], want)
+		}
+	}
+}
+
+// Ссылка, несущая ТОЛЬКО masquerade-сахар, — тоже AWG-узел: ядро разворачивает
+// сахар в i1. Без этого MTU не ужимался до потолка AmneziaWG, а слишком
+// высокий MTU у AWG отказывает молча — рукопожатие проходит, данные не идут.
+func TestParseWireGuardURI_MasqueradeOnly_ClampsMTU(t *testing.T) {
+	extra := url.Values{}
+	extra.Set("ip", "quic")
+	extra.Set("id", "example.com")
+
+	node, err := parseWireGuardURI(awgTestURI("wireguard", extra), nil)
+	if err != nil || node == nil {
+		t.Fatalf("parse failed: err=%v node=%v", err, node)
+	}
+	mtu, ok := node.Outbound["mtu"].(int)
+	if !ok {
+		t.Fatalf("mtu type: %T (%v)", node.Outbound["mtu"], node.Outbound["mtu"])
+	}
+	if mtu != awgMaxMTU {
+		t.Errorf("mtu = %d, want %d (masquerade sugar alone must count as AWG)", mtu, awgMaxMTU)
+	}
+}

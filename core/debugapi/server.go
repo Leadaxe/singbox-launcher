@@ -107,6 +107,9 @@ type Server struct {
 	// daemon — local lxd-daemon API group (SPEC 100). Non-nil only on
 	// platforms where the daemon engine exists (darwin wiring).
 	daemon DaemonFacade
+	// ui — инспектор окон Fyne (стек overlay-ев, фокус, аварийная очистка).
+	// nil = группа /debug/ui/* выключена; подключается из wiring через EnableUI.
+	ui UIInspector
 
 	// machineMu — per-machine mutexes for PATCH /remote/machines/{id}/state/*
 	// load-modify-save cycles. Per machine, not global: two agents patching
@@ -145,6 +148,7 @@ func (s *Server) capabilities() map[string]bool {
 		"remote":   s.remote != nil,
 		"daemon":   s.daemon != nil,
 		"raw_grpc": s.remote != nil || s.daemon != nil,
+		"ui":       s.ui != nil,
 	}
 }
 
@@ -241,6 +245,7 @@ func (s *Server) endpoints() []apiEndpoint {
 		{"GET", "/state", true, "Core run state + active proxy/group", s.handleState},
 		{"GET", "/proxies", true, "Proxy list with latencies", s.handleProxies},
 		{"GET", "/debug/snapshot", true, "Diagnostic snapshot (state/config/template)", s.handleSnapshot},
+		{"GET", "/debug/goroutines", true, "Stack dump of all goroutines (text/plain, like SIGQUIT)", s.handleGoroutines},
 		{"POST", "/action/update-subs", true, "Re-fetch subscriptions and rebuild config", s.handleUpdateSubs},
 		{"POST", "/action/start", true, "Start the core", s.handleStart},
 		{"POST", "/action/stop", true, "Stop the core", s.handleStop},
@@ -282,6 +287,10 @@ func (s *Server) endpoints() []apiEndpoint {
 		// группа висит на том же условии, что и /daemon/* — без демона
 		// спрашивать нечего.
 		eps = append(eps, s.chainEndpoints()...)
+	}
+	// Инспектор окон Fyne — подключается из wiring (core), без него группы нет.
+	if s.ui != nil {
+		eps = append(eps, s.uiEndpoints()...)
 	}
 	if s.remote != nil || s.daemon != nil {
 		eps = append(eps, apiEndpoint{"GET", "/grpc/methods", true,

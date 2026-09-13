@@ -85,8 +85,8 @@ func mkState() *state.State {
 		Vars: []state.SettingVar{
 			{Name: "log_level", Value: "debug"},     // переносимая
 			{Name: "tun_interface", Value: "utun9"}, // непереносимая
+			{Name: "route_final", Value: "proxy"},   // непереносимая: едет секцией route.final
 		},
-		ConfigParams: []state.ConfigParam{{Name: "final", Value: "proxy"}},
 	}
 }
 
@@ -228,9 +228,9 @@ func TestImportUnknownFinalNotApplied(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
-	for _, p := range dst.ConfigParams {
-		if p.Name == "final" {
-			t.Errorf("final применён вопреки отсутствию цели: %q", p.Value)
+	for _, v := range dst.Vars {
+		if v.Name == "route_final" {
+			t.Errorf("final применён вопреки отсутствию цели: %q", v.Value)
 		}
 	}
 	if !hasWarn(res.Warnings, WarnBackupFinalDropped) {

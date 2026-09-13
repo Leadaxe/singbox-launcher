@@ -32,10 +32,11 @@ func TestCollectSrsCachedPaths_URLDerived(t *testing.T) {
 	if id != "YT" {
 		t.Fatalf("StableRuleID baseline: got %q", id)
 	}
-	got, ok := paths[id]
-	if !ok {
-		t.Fatalf("paths map should contain identity %q: %+v", id, paths)
+	gotPaths, ok := paths[id]
+	if !ok || len(gotPaths) != 1 {
+		t.Fatalf("paths map should contain identity %q with one path: %+v", id, paths)
 	}
+	got := gotPaths[0]
 	// Filename должно быть URL-derived (SRSTagFromURL), а НЕ просто identity.
 	expectedTag := SRSTagFromURL(url)
 	wantPath := "/exec/bin/rule-sets/" + expectedTag + ".srs"
@@ -63,11 +64,11 @@ func TestCollectSrsCachedPaths_TwoRulesSameURL_OneFile(t *testing.T) {
 		t.Fatalf("expected 2 identity entries, got %d: %+v", len(paths), paths)
 	}
 	// Оба identity → один и тот же путь.
-	pathA := paths["Rule-A"]
-	pathB := paths["Rule-B"]
-	if pathA == "" || pathB == "" {
+	if len(paths["Rule-A"]) != 1 || len(paths["Rule-B"]) != 1 {
 		t.Fatalf("missing identity in map: %+v", paths)
 	}
+	pathA := paths["Rule-A"][0]
+	pathB := paths["Rule-B"][0]
 	if pathA != pathB {
 		t.Errorf("dedup expected: same URL → same path, got A=%q B=%q", pathA, pathB)
 	}
@@ -91,10 +92,10 @@ func TestCollectSrsCachedPaths_RenameDoesNotInvalidate(t *testing.T) {
 	bp := CollectSrsCachedPaths(before, "/exec", "")
 	ap := CollectSrsCachedPaths(after, "/exec", "")
 
-	if bp["OldName"] != wantPath {
+	if len(bp["OldName"]) != 1 || bp["OldName"][0] != wantPath {
 		t.Errorf("before: got %q want %q", bp["OldName"], wantPath)
 	}
-	if ap["NewName"] != wantPath {
+	if len(ap["NewName"]) != 1 || ap["NewName"][0] != wantPath {
 		t.Errorf("after rename: got %q want %q (same file should be reused)", ap["NewName"], wantPath)
 	}
 }

@@ -37,6 +37,10 @@
   читаемый при старте Configurator'а и при headless rebuild config.json.
 - **`bin/wizard_states/<id>.json`** — именованные снимки (Save As).
   Структурно идентичны `state.json`; при Read копируются поверх `state.json`.
+  По умолчанию Save As делает снимок и текущим (пишет `state.json` и
+  пересобирает `config.json`); чтобы не трогать текущее состояние, снимите
+  чекбокс в диалоге. Без `state.json` чекбокс заблокирован во включённом
+  положении.
 - **`bin/subscriptions/<source_id>.raw`** — per-source raw body cache подписки
   (atomic .tmp + rename). Read-path парсит .raw напрямую без сети.
 - **`bin/rule-sets/<tag>.srs`** — скачанные rule-set'ы.
@@ -143,7 +147,7 @@ Top-level keys, отсутствующие в v6 (vs предыдущих рев
 | `outbounds` | `[]OutboundConfig` | subscription | Прежние per-source группы. **С SPEC 108 не пишутся:** группы свёрнутой подписки разворачиваются на сборке из `fold`, а записи со старыми маркерами `WIZARD:*` удаляются при загрузке. |
 | `expose_group_tags_to_global` | bool | subscription | Прежний флаг SPEC 026. **Только чтение (SPEC 108):** при загрузке разворачивается в `fold`, обратно не пишется. |
 | `fold` | `{mode, auto}` | subscription | **SPEC 108** — свёртка подписки в группу. Отсутствует — не свёрнута, узлы идут в Направления по отдельности. `mode`: `select` \| `auto` \| `select_auto`. `auto` — параметры автогруппы, форма общая с `outbounds[].auto` Направления. Сами группы (`<prefix>auto`, `<prefix>select`) в состоянии НЕ хранятся: они разворачиваются на каждой сборке, поэтому смена префикса подписки переименовывает их автоматически. |
-| `chain` | `{hops, …}` | chain | **SPEC 110** — цепочка хопов: `hops` (позиции в порядке ПАКЕТА), `idle_timeout`, `strip_evasion`, `strip`, `rewrite`. Только у `type: chain`; у такого источника нет ни `url`, ни `uri`. Материализуется в ОДИН узел типа `chain`, тег которого берётся из `label`. Цепочка описывает МАРШРУТ, а Направление — выбор между маршрутами, поэтому она источник, а не Направление; в Направления она попадает узлом, наравне с серверами подписки. |
+| `chain` | `{hops, …}` | chain | **SPEC 110** — цепочка хопов: `hops` (позиции в порядке ПАКЕТА), `idle_timeout`, `interrupt_exist_connections` (SPEC 124, только `true`), `strip_evasion`, `strip`, `rewrite`. Только у `type: chain`; у такого источника нет ни `url`, ни `uri`. Материализуется в ОДИН узел типа `chain`, тег которого берётся из `label`. Цепочка описывает МАРШРУТ, а Направление — выбор между маршрутами, поэтому она источник, а не Направление; в Направления она попадает узлом, наравне с серверами подписки. |
 | `update` | `{interval_hours, auto_refresh}` | subscription | Per-source override default reload interval. |
 | `max_nodes` | int | subscription | Per-source override `defaults.max_nodes`. |
 | `meta` | `SubscriptionMeta` | subscription | Runtime данные (см. ниже), заполняется Update'ом. |
@@ -392,7 +396,7 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 |------|------------|
 | `preset` | `{ vars: { <name>: <value>, ... } }` — **только diff** от template default'ов. Пустой map = всё дефолтное. Bump'нули template → юзер автоматически получает новые дефолты для var'ов которые не трогал. |
 | `inline` | `{ name: string, match: { <sing-box match keys> }, outbound: string }` — outbound = tag или зарезервированный литерал (`reject` / `drop`). |
-| `srs` | `{ name: string, srs_url: string, outbound: string }` — URL .srs файла + outbound tag/литерал. |
+| `srs` | `{ name: string, srs_url: string, srs_urls?: string[], outbound: string }` — URL первого .srs файла, полный список (`srs_url == srs_urls[0]`), когда у правила два и более набора, + outbound tag/литерал. Сборка эмитит по локальному rule-set на URL (`user:<id>`, `user:<id>:2`, …) и одно правило маршрута со ссылкой на все. |
 
 **JSON examples — три kind'а:**
 ```jsonc
@@ -424,6 +428,7 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
   "body": {
     "name": "Block ads (oisd)",
     "srs_url": "https://example.com/oisd.srs",
+    // "srs_urls": ["https://example.com/oisd.srs", "https://example.com/extra.srs"],  // только при 2+ наборах
     "outbound": "reject"
   }
 }

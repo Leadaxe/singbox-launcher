@@ -27,7 +27,7 @@
       "selection": {
         "go": "рекурсивный поиск [Interface]-текста по профилю (глубина <= 8, known-keys first: config/last_config/awg/wireguard), defaultContainer первым; ParseAmneziaVPNLinkAll импортирует ВСЕ WG/AWG-контейнеры, одиночный ParseNode — один (сигнатура отдаёт одну ноду)",
         "dart": "плоский проход по containers[] строго по пути <container>.awg|.wireguard.last_config.config; импортируются ВСЕ WG/AWG контейнеры",
-        "note": "РЕШЕНО (фаза 2): импортируются ВСЕ контейнеры — профиль с несколькими локациями штатен для Amnezia, и терять их незачем. Порядок детерминирован: дефолтный первым. Остаётся разница глубины поиска (Go рекурсивно, Dart по фиксированному пути) — не расхождение результата на валидных профилях, а запас Go на дрейф схемы; и подстановка $PRIMARY_DNS/$SECONDARY_DNS из корневых dns1/dns2 в INI: делает Dart, Go — нет (открыто)."
+        "note": "РЕШЕНО (фаза 2): импортируются ВСЕ контейнеры — профиль с несколькими локациями штатен для Amnezia, и терять их незачем. Порядок детерминирован: дефолтный первым. Остаётся разница глубины поиска (Go рекурсивно, Dart по фиксированному пути) — не расхождение результата на валидных профилях, а запас Go на дрейф схемы; подстановка $PRIMARY_DNS/$SECONDARY_DNS из корневых dns1/dns2 в INI делают ОБЕ стороны (Go — SPEC 123; неразрешённый плейсхолдер выбрасывается из списка, пустой список не пишется вовсе). Go дополнительно берёт MTU из last_config.mtu рядом с config, когда в [Interface] его нет (AWG3-экспорт Amnezia кладёт 1376 именно туда) — явный MTU в [Interface] приоритетнее."
       },
       "label": {
         "go": "description → hostName → имя контейнера",
@@ -63,7 +63,7 @@
       },
       "expand": {
         "required": "privatekey ([Interface]), publickey + endpoint ([Peer]); Go дополнительно ТРЕБУЕТ address ([Interface]) — в Dart address опционален (разрыв)",
-        "optional": "address, mtu, presharedkey, persistentkeepalive → keepalive, listenport (только Go), dns (только Go), AWG Jc/Jmin/Jmax/S1-S4/H1-H4/I1-I5 из [Interface] (ключи lowercase, регистр значений сохраняется)",
+        "optional": "address, mtu, presharedkey, persistentkeepalive → keepalive (Go принимает и AWG3-диапазон \"25-35\" — строкой в persistent_keepalive_interval), listenport (только Go), dns (только Go), AWG Jc/Jmin/Jmax/S1-S4/H1-H4/I1-I5 из [Interface] (ключи lowercase, регистр значений сохраняется); AWG 3.x из [Interface] (SPEC 123, только Go): HeaderProtectionKey, ContentPaddingAddition, RekeyAfterTime, RekeyTimeout, RejectAfterTime, KeepaliveTimeout, MaxHandshakeAttempts, RandomTrailers, DisableCookies → одноимённые lowercase-параметры URI → snake_case на корне endpoint; диапазон N-M едет строкой, одиночное N числом, булево пишется только при on",
         "reserved": "WARP Reserved/ClientId/client_id из [Peer] → reserved= читает ТОЛЬКО Dart (§126); Go wgConfToURI reserved теряет — WARP-конф на десктопе останется без reserved (handshake есть, трафика нет) — разрыв",
         "masquerade": "id/ip/ib из [Interface] читает только Dart (входят в Awg.strKeys); Go — только из URI-query",
         "multi": "Go paste: несколько [Interface]-блоков в одной вставке → нода на блок; Dart body: один IniConfig на тело (второй блок перезапишет ключи первого); multi-peer внутри блока: оба берут только первый [Peer]",

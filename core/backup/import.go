@@ -347,12 +347,17 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 	}
 
 	// Ось порядка перенумеровывается: абсолютные номера у сторон свои, важен
-	// лишь относительный порядок (BACKUP.md §2).
+	// лишь относительный порядок (BACKUP.md §2). Правила, которые узлы носят
+	// с собой, здесь не участвуют: они живут в секциях узла со своими
+	// номерами и в общий rules[] бэкапа не попадают (SPEC 121 §10.5).
 	renumberImportedRules(s.Rules)
 
 	if b.Route != nil && b.Route.Final != "" {
 		if known.empty() || known.has(b.Route.Final) {
-			setConfigParam(s, "final", b.Route.Final)
+			// Канонический канал лаунчера — vars["route_final"]: именно его
+			// читает LoadState и пишет Save. config_params["final"] никто не
+			// читал и не сохранял — Default direction из файла терялся (#111).
+			setVar(s, "route_final", b.Route.Final)
 		} else {
 			res.Warnings = append(res.Warnings, Warning{Code: WarnBackupFinalDropped, Detail: b.Route.Final})
 		}
@@ -553,6 +558,12 @@ func importServer(srv Server) (state.Source, []Warning) {
 		warns = append(warns, Warning{Code: WarnBackupSourceFlagDropped, Detail: serverLabel(srv)})
 	}
 	importSourceRef(&src, srv.SourceRef)
+	// SPEC 121: секции узла. Пустой набор нормализуется в nil — третьего
+	// состояния у поля нет.
+	if srv.Sections != nil {
+		src.Node.Sections = decodeBackupSections(srv.Sections, src.Tag)
+		src.Node.NormalizeNodeSections()
+	}
 	switch {
 	case len(srv.ConfigJSON) > 0:
 		src.Body = append(json.RawMessage(nil), srv.ConfigJSON...)
@@ -660,7 +671,13 @@ func importRule(r Rule, known, presets tagSet) (state.Rule, []Warning, error) {
 		}
 		out.Body = raw
 	case RuleSRS:
-		raw, err := json.Marshal(state.SrsBody{Name: r.Name, SrsURL: r.Ref, Outbound: r.Outbound})
+		// `refs` (все наборы) сильнее `ref` (первый): файл без `refs` — от
+		// стороны, которая знает один набор на правило.
+		urls := r.Refs
+		if len(urls) == 0 {
+			urls = []string{r.Ref}
+		}
+		raw, err := json.Marshal(state.NewSrsBody(r.Name, urls, r.Outbound))
 		if err != nil {
 			return state.Rule{}, warns, err
 		}
@@ -757,16 +774,6 @@ func setVar(s *state.State, name, value string) {
 		}
 	}
 	s.Vars = append(s.Vars, state.SettingVar{Name: name, Value: value})
-}
-
-func setConfigParam(s *state.State, name, value string) {
-	for i := range s.ConfigParams {
-		if s.ConfigParams[i].Name == name {
-			s.ConfigParams[i].Value = value
-			return
-		}
-	}
-	s.ConfigParams = append(s.ConfigParams, state.ConfigParam{Name: name, Value: value})
 }
 
 // tagSet — множество известных тегов с нормализацией регистра.

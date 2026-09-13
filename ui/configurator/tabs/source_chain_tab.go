@@ -70,6 +70,7 @@ type chainForm struct {
 	originalTag   string
 	referencedBy  map[string][]string
 	idleEntry     *widget.Entry
+	interrupt     *widget.Check // interrupt_exist_connections (SPEC 124)
 	stripEvasion  *widget.Check
 	stripChecks   map[string]*widget.Check
 	stripExplicit map[string]bool // ключ тронут пользователем → уедет в Strip
@@ -196,6 +197,12 @@ func (f *chainForm) Load(c *configtypes.SourceChain, hops []corestate.NodeLink) 
 		}
 		f.idleEntry.OnChanged = prev
 	}
+	if f.interrupt != nil {
+		prev := f.interrupt.OnChanged
+		f.interrupt.OnChanged = nil
+		f.interrupt.SetChecked(c != nil && c.InterruptExistConnections)
+		f.interrupt.OnChanged = prev
+	}
 	if f.stripEvasion != nil {
 		on := c.StripEvasionEnabled()
 		// Обработчик снимаем на время установки: SetChecked зовёт OnChanged,
@@ -280,6 +287,9 @@ func (f *chainForm) Collect() *configtypes.SourceChain {
 	}
 	if f.idleEntry != nil {
 		c.IdleTimeout = strings.TrimSpace(f.idleEntry.Text)
+	}
+	if f.interrupt != nil {
+		c.InterruptExistConnections = f.interrupt.Checked
 	}
 	if f.stripEvasion != nil && !f.stripEvasion.Checked {
 		// Пишем только выключение: nil = «умолчание ядра», и явное
@@ -394,6 +404,14 @@ func (f *chainForm) Content() fyne.CanvasObject {
 	// вызывается из changed(), а его дёргали все поля, кроме idle_timeout.
 	f.idleEntry.OnChanged = func(string) { f.changed() }
 
+	// Разрыв внешних соединений при тумблере позиции (SPEC 124). Снята по
+	// умолчанию, как у ядра; обработчик по той же причине, что у idle_timeout.
+	f.interrupt = widget.NewCheck(locale.T("Interrupt existing connections on position toggle"), nil)
+	f.interrupt.OnChanged = func(bool) { f.changed() }
+	interruptHint := widget.NewLabel(locale.T("Otherwise live connections finish on the old route; only new ones take the new path."))
+	interruptHint.Importance = widget.LowImportance
+	interruptHint.Wrapping = fyne.TextWrapWord
+
 	f.stripEvasion = widget.NewCheck(locale.T("Strip DPI evasion from links"), nil)
 	f.stripEvasion.SetChecked(true)
 	stripRows := container.NewVBox()
@@ -437,6 +455,8 @@ func (f *chainForm) Content() fyne.CanvasObject {
 	// заголовком). Своя раскрывашка на кнопке ведёт себя предсказуемо.
 	advancedBody := container.NewVBox(
 		chainFormRow(locale.T("Link idle timeout"), f.idleEntry),
+		f.interrupt,
+		interruptHint,
 		widget.NewSeparator(),
 		f.stripEvasion,
 		stripRows,

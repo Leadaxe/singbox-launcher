@@ -104,12 +104,12 @@ func LegacyNodeIdentityHash(node *ParsedNode) string {
 		return ""
 	}
 
-	// WireGuard-узлы — endpoint'ы и эмитятся через GenerateEndpointJSON:
-	// per-scheme switch outbound'ов ветки wireguard не имеет и обрезал бы их
-	// до {tag,type,server,server_port} (SPEC 101).
+	// Endpoint-схемы (wireguard, tailscale — IsEndpointScheme) эмитятся через
+	// GenerateEndpointJSON: per-scheme switch outbound'ов их веток не имеет и
+	// обрезал бы тело до {tag,type,server,server_port} (SPEC 101).
 	var emitted string
 	var err error
-	if node.Scheme == "wireguard" {
+	if IsEndpointScheme(node.Scheme) {
 		emitted, err = GenerateEndpointJSONBare(node)
 	} else {
 		emitted, err = GenerateNodeJSONBare(node)

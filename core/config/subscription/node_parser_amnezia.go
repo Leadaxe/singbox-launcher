@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
@@ -190,10 +191,10 @@ func amneziaWGConfText(profile map[string]interface{}) (string, string, int) {
 	matched := 0
 	confText, containerName := "", ""
 	for _, cm := range ordered {
-		if txt := findWGIniText(cm, 0); txt != "" {
+		if txt, owner := findWGIniText(cm, 0); txt != "" {
 			matched++
 			if confText == "" {
-				confText = txt
+				confText = amneziaPrepareConf(txt, owner, profile)
 				containerName, _ = cm["container"].(string)
 			}
 		}
@@ -230,9 +231,9 @@ func amneziaAllWGConfTexts(profile map[string]interface{}) (texts []string, name
 	}
 
 	for _, cm := range ordered {
-		if txt := findWGIniText(cm, 0); txt != "" {
+		if txt, owner := findWGIniText(cm, 0); txt != "" {
 			name, _ := cm["container"].(string)
-			texts = append(texts, txt)
+			texts = append(texts, amneziaPrepareConf(txt, owner, profile))
 			names = append(names, name)
 		}
 	}
@@ -307,9 +308,11 @@ func ParseAmneziaVPNLinkAll(uri string, skipFilters []map[string]string) ([]*con
 // "[Interface]" (with \n escapes), so the nested "config" field must win over
 // the wrapper. Known keys are tried before the rest to keep the walk
 // deterministic across Go's random map iteration.
-func findWGIniText(v interface{}, depth int) string {
+// Вторым значением отдаёт карту, НЕПОСРЕДСТВЕННО содержавшую найденный текст
+// (Amnezia кладёт рядом с `config` ещё и `mtu`, которого в [Interface] нет).
+func findWGIniText(v interface{}, depth int) (string, map[string]interface{}) {
 	if depth > maxAmneziaScanDepth {
-		return ""
+		return "", nil
 	}
 	switch t := v.(type) {
 	case string:
@@ -320,14 +323,17 @@ func findWGIniText(v interface{}, depth int) string {
 			}
 		}
 		if strings.Contains(t, "[Interface]") {
-			return t
+			return t, nil
 		}
 	case map[string]interface{}:
 		knownKeys := []string{"config", "last_config", "awg", "wireguard"}
 		for _, k := range knownKeys {
 			if nv, ok := t[k]; ok {
-				if r := findWGIniText(nv, depth+1); r != "" {
-					return r
+				if r, owner := findWGIniText(nv, depth+1); r != "" {
+					if owner == nil {
+						owner = t
+					}
+					return r, owner
 				}
 			}
 		}
@@ -336,18 +342,112 @@ func findWGIniText(v interface{}, depth int) string {
 			case "config", "last_config", "awg", "wireguard":
 				continue
 			}
-			if r := findWGIniText(nv, depth+1); r != "" {
-				return r
+			if r, owner := findWGIniText(nv, depth+1); r != "" {
+				if owner == nil {
+					owner = t
+				}
+				return r, owner
 			}
 		}
 	case []interface{}:
 		for _, nv := range t {
-			if r := findWGIniText(nv, depth+1); r != "" {
-				return r
+			if r, owner := findWGIniText(nv, depth+1); r != "" {
+				return r, owner
 			}
 		}
 	}
-	return ""
+	return "", nil
+}
+
+// amneziaPrepareConf доводит [Interface]-текст экспорта до вида, из которого
+// wgConfToURI соберёт полную ссылку. Две правки, обе — потеря данных без неё:
+//
+//   - MTU у AWG3-экспорта лежит НЕ в [Interface], а рядом с `config` в
+//     last_config ("1376"). Без него узел получал кламп 1280 и расходился с
+//     сервером. Явный MTU в [Interface] приоритетнее — он ближе к туннелю.
+//   - DNS = $PRIMARY_DNS, $SECONDARY_DNS — плейсхолдеры Amnezia; адреса лежат в
+//     корне профиля (dns1/dns2). Неразрешённый плейсхолдер выбрасывается из
+//     списка, пустой список не пишется вовсе: строка `dns=%24PRIMARY_DNS`
+//     уезжала в конфиг как имя сервера.
+func amneziaPrepareConf(text string, lastConfig, profile map[string]interface{}) string {
+	iface, _ := parseWGConfSections(text)
+	if iface["mtu"] == "" {
+		if mtu := amneziaMTUValue(lastConfig); mtu != "" {
+			text = amneziaSetInterfaceLine(text, "MTU = "+mtu)
+		}
+	}
+	if dns := iface["dns"]; strings.Contains(dns, "$") {
+		resolved := make([]string, 0, 2)
+		for _, part := range splitAndTrim(dns, ",") {
+			switch part {
+			case "$PRIMARY_DNS":
+				part = amneziaString(profile, "dns1")
+			case "$SECONDARY_DNS":
+				part = amneziaString(profile, "dns2")
+			}
+			if part != "" && !strings.Contains(part, "$") {
+				resolved = append(resolved, part)
+			}
+		}
+		text = amneziaReplaceDNSLine(text, resolved)
+	}
+	return text
+}
+
+// amneziaMTUValue reads last_config.mtu ("1376" or 1376) as a positive int.
+func amneziaMTUValue(lastConfig map[string]interface{}) string {
+	if lastConfig == nil {
+		return ""
+	}
+	var n int
+	switch v := lastConfig["mtu"].(type) {
+	case string:
+		parsed, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil {
+			return ""
+		}
+		n = parsed
+	case float64:
+		n = int(v)
+	default:
+		return ""
+	}
+	if n <= 0 {
+		return ""
+	}
+	return strconv.Itoa(n)
+}
+
+// amneziaSetInterfaceLine appends a line to the [Interface] section.
+func amneziaSetInterfaceLine(text, line string) string {
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	for i, l := range lines {
+		if strings.EqualFold(strings.TrimSpace(l), "[Interface]") {
+			out := append([]string{}, lines[:i+1]...)
+			out = append(out, line)
+			return strings.Join(append(out, lines[i+1:]...), "\n")
+		}
+	}
+	return text
+}
+
+// amneziaReplaceDNSLine rewrites (or removes, when the list is empty) the DNS
+// line of the [Interface] section.
+func amneziaReplaceDNSLine(text string, values []string) string {
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	out := make([]string, 0, len(lines))
+	for _, l := range lines {
+		key, _, ok := strings.Cut(l, "=")
+		if ok && strings.EqualFold(strings.TrimSpace(key), "dns") {
+			if len(values) == 0 {
+				continue
+			}
+			out = append(out, "DNS = "+strings.Join(values, ", "))
+			continue
+		}
+		out = append(out, l)
+	}
+	return strings.Join(out, "\n")
 }
 
 // parseWGConfSections splits a [Interface]/[Peer] INI text into two maps with
@@ -447,6 +547,28 @@ func wgConfToURI(confText, label string) (string, error) {
 		}
 	}
 	for _, k := range awgStringFields {
+		if v := iface[k]; v != "" {
+			q.Set(k, v)
+		}
+	}
+	// Masquerade-сахар ip/id/ib. Без него .conf с маскировкой терял её МОЛЧА:
+	// числа junk доезжали, узел выглядел настроенным, а первый decoy-пакет
+	// уходил без маскировки. Регистр значения сохраняем — id это домен.
+	//
+	// Явный i1 в INI и сахар несовместимы (ядро отвергает пару), и ту же
+	// проверку делает applyAWGFields на разборе получившейся ссылки: сюда
+	// кладём оба, а отбрасывает лишнее одна точка, а не две.
+	for _, k := range awgMasqueradeFields {
+		if v := iface[k]; v != "" {
+			q.Set(k, v)
+		}
+	}
+	// AmneziaWG 3.x (SPEC 123): ключи .conf в нижнем регистре 1:1 совпадают с
+	// параметрами ссылки, значения (диапазоны, on/off, base64) едут дословно —
+	// разбор и валидация живут в одной точке, parseWireGuardURI. Без этой
+	// ветки AWG3-набор ВЫБРАСЫВАЛСЯ молча: узел выглядел настроенным, а
+	// хендшейк с сервером, шифрующим заголовок, не проходил никогда.
+	for _, k := range awg3ParamKeys() {
 		if v := iface[k]; v != "" {
 			q.Set(k, v)
 		}

@@ -247,3 +247,138 @@ func TestParseNode_AmneziaVPN_WrappedBase64(t *testing.T) {
 		t.Fatalf("wrapped link must still parse: err=%v", err)
 	}
 }
+
+// amneziaAWG3Ini — .conf AWG 3.1-контейнера: поверх AWG2-набора защита
+// заголовка, паддинг содержимого, тайминги диапазонами, хвосты и cookie.
+// MTU здесь НЕТ намеренно — Amnezia кладёт его в last_config рядом с config.
+// DNS — плейсхолдеры, реальные адреса лежат в корне профиля. Ключи синтетические.
+const amneziaAWG3Ini = `[Interface]
+Address = 10.8.1.7/32
+DNS = $PRIMARY_DNS, $SECONDARY_DNS
+PrivateKey = UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+Jc = 4
+Jmin = 10
+Jmax = 50
+S1 = 55
+S2 = 42
+S3 = 40
+S4 = 12
+H1 = 1
+H2 = 2
+H3 = 3
+H4 = 4
+HeaderProtectionKey = Bw4VHCMqMTg/Rk1UW2JpcHd+hYyTmqGor7a9xMvS2eA=
+ContentPaddingAddition = 10-100
+RekeyAfterTime = 100-120
+RekeyTimeout = 3-7
+RejectAfterTime = 150-180
+KeepaliveTimeout = 5-15
+MaxHandshakeAttempts = 15-20
+RandomTrailers = on
+DisableCookies = on
+
+[Peer]
+PublicKey = QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=
+PresharedKey = UFNLMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = 203.0.113.9:30565
+PersistentKeepalive = 25-35
+`
+
+// amneziaAWG3Container повторяет форму экспорта AWG 3.x: last_config —
+// ОБЪЕКТ (а не JSON-строка, как у AWG2), в нём рядом с config лежат mtu и
+// hostName. Именно оттуда берётся MTU: в [Interface] его нет.
+func amneziaAWG3Container() map[string]interface{} {
+	return map[string]interface{}{
+		"container": "amnezia-awg2",
+		"awg": map[string]interface{}{
+			"port":             "30565",
+			"protocol_version": "3.1",
+			"transport_proto":  "udp",
+			"last_config": map[string]interface{}{
+				"config":                amneziaAWG3Ini,
+				"mtu":                   "1376",
+				"hostName":              "203.0.113.9",
+				"port":                  float64(30565),
+				"persistent_keep_alive": "25-35",
+				"allowed_ips":           []interface{}{"0.0.0.0/0", "::/0"},
+				"client_ip":             "10.8.1.7",
+			},
+		},
+	}
+}
+
+// SPEC 123: импорт AWG 3.1-профиля Amnezia. Проверяет весь путь целиком —
+// .conf → URI → endpoint: AWG3-поля на корне с нужными типами, MTU из
+// last_config без клампа 1280, диапазонный keepalive строкой и подстановку
+// $PRIMARY_DNS/$SECONDARY_DNS из корня профиля.
+func TestParseNode_AmneziaVPN_AWG3(t *testing.T) {
+	profile := map[string]interface{}{
+		"containers":       []interface{}{amneziaAWG3Container()},
+		"defaultContainer": "amnezia-awg2",
+		"hostName":         "203.0.113.9",
+		"description":      "AWG3 Node",
+		"dns1":             "172.29.172.254",
+		"dns2":             "1.0.0.1",
+	}
+	link := buildVPNLink(t, profile)
+	node, err := ParseNode(link, nil)
+	if err != nil || node == nil {
+		t.Fatalf("parse failed: err=%v node=%v", err, node)
+	}
+	if node.Scheme != "wireguard" || node.Server != "203.0.113.9" || node.Port != 30565 {
+		t.Fatalf("endpoint = %s %s:%d, want wireguard 203.0.113.9:30565", node.Scheme, node.Server, node.Port)
+	}
+	if !HasAWG3Fields(node.Outbound) {
+		t.Errorf("HasAWG3Fields = false for an AWG 3.1 import: %v", node.Outbound)
+	}
+	if got, _ := node.Outbound["header_protection_key"].(string); got != "Bw4VHCMqMTg/Rk1UW2JpcHd+hYyTmqGor7a9xMvS2eA=" {
+		t.Errorf("header_protection_key = %q, want the base64 from the .conf verbatim ('+'/'/' intact)", got)
+	}
+	// Диапазоны — строками, одиночные значения остались бы числами.
+	wantRanges := map[string]string{
+		"content_padding_addition": "10-100",
+		"rekey_after_time":         "100-120",
+		"rekey_timeout":            "3-7",
+		"reject_after_time":        "150-180",
+		"keepalive_timeout":        "5-15",
+		"max_handshake_attempts":   "15-20",
+	}
+	for k, want := range wantRanges {
+		if got, _ := node.Outbound[k].(string); got != want {
+			t.Errorf("%s = %v (%T), want string %q", k, node.Outbound[k], node.Outbound[k], want)
+		}
+	}
+	for _, k := range []string{"random_trailers", "disable_cookies"} {
+		if got, _ := node.Outbound[k].(bool); !got {
+			t.Errorf("%s = %v, want true", k, node.Outbound[k])
+		}
+	}
+	// MTU лежит в last_config, а не в [Interface]; AWG3 выведен из-под клампа 1280.
+	if got, _ := node.Outbound["mtu"].(int); got != 1280 {
+		t.Errorf("mtu = %v (%T), want last_config 1376 clamped to 1280", node.Outbound["mtu"], node.Outbound["mtu"])
+	}
+	peers, _ := node.Outbound["peers"].([]map[string]interface{})
+	if len(peers) != 1 {
+		t.Fatalf("peers = %v, want exactly 1", node.Outbound["peers"])
+	}
+	if got, _ := peers[0]["persistent_keepalive_interval"].(string); got != "25-35" {
+		t.Errorf("persistent_keepalive_interval = %v (%T), want string \"25-35\"",
+			peers[0]["persistent_keepalive_interval"], peers[0]["persistent_keepalive_interval"])
+	}
+	// Плейсхолдеры Amnezia разрешаются из корня профиля: иначе имя сервера
+	// «$PRIMARY_DNS» уезжало в конфиг как есть.
+	if got := node.Query.Get("dns"); got != "172.29.172.254,1.0.0.1" {
+		t.Errorf("dns = %q, want the profile dns1/dns2 with no $ placeholders", got)
+	}
+	// Тот же профиль через мульти-импорт обязан дать тот же узел.
+	all, _, err := ParseAmneziaVPNLinkAll(link, nil)
+	if err != nil || len(all) != 1 {
+		t.Fatalf("ParseAmneziaVPNLinkAll: err=%v nodes=%d, want 1", err, len(all))
+	}
+	single, _ := json.Marshal(node.Outbound)
+	multi, _ := json.Marshal(all[0].Outbound)
+	if string(single) != string(multi) {
+		t.Errorf("ParseAmneziaVPNLinkAll gave a different endpoint:\nsingle=%s\nmulti =%s", single, multi)
+	}
+}

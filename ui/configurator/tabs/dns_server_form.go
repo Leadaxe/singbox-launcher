@@ -5,10 +5,11 @@
 // domain_resolver, detour). Ядро поддерживает двенадцать типов, форм не было
 // ни для одного.
 //
-// Формы покрывают пять типов, осмысленных для пользователя: udp, tcp, tls
-// (DoT), https (DoH) и group. Прочие (quic, h3, hosts, fakeip, dhcp,
-// tailscale, legacy*) правятся на вкладке JSON — она остаётся запасным
-// путём, как у Направления, иначе типы без формы стали бы недоступны.
+// Формы покрывают шесть типов, осмысленных для пользователя: udp, tcp, tls
+// (DoT), https (DoH), group и tailscale (MagicDNS узла tailnet, SPEC 122).
+// Прочие (quic, h3, hosts, fakeip, dhcp, legacy*) правятся на вкладке JSON —
+// она остаётся запасным путём, как у Направления, иначе типы без формы
+// стали бы недоступны.
 //
 // Форма собирает map и отдаёт его в applyDNSServerJSON — тот же путь, что у
 // ручного JSON. Второй путь записи означал бы вторую реализацию проверок
@@ -39,10 +40,14 @@ const (
 	dnsTypeTLS   = "tls"
 	dnsTypeHTTPS = "https"
 	dnsTypeGroup = "group"
+	// SPEC 122: MagicDNS узла tailnet. Полей всего два — ссылка на узел
+	// (endpoint) и галка «спрашивать и обычные резолверы»; адреса и порта
+	// у него нет вовсе, за него ходит tsnet.
+	dnsTypeTailscale = "tailscale"
 )
 
 // dnsFormTypes — порядок в выпадающем списке: от простого к составному.
-var dnsFormTypes = []string{dnsTypeUDP, dnsTypeTCP, dnsTypeTLS, dnsTypeHTTPS, dnsTypeGroup}
+var dnsFormTypes = []string{dnsTypeUDP, dnsTypeTCP, dnsTypeTLS, dnsTypeHTTPS, dnsTypeGroup, dnsTypeTailscale}
 
 // dnsDefaultPort — порт по умолчанию для типа. Пользователь его почти
 // никогда не меняет, но подставить обязаны: сервер без порта ядро
@@ -83,6 +88,15 @@ type dnsServerForm struct {
 	modeSelect    *widget.Select
 	errorTTLEntry *widget.Entry
 	winTTLEntry   *widget.Entry
+
+	// Tailscale: ссылка на узел tailnet и галка резолверов по умолчанию.
+	// endpointSelect — когда пул узлов знает хотя бы один узел схемы;
+	// endpointEntry — когда не знает (пул не построен либо узлов нет):
+	// поле выбора без вариантов не даёт ввести тег вовсе.
+	endpointSelect  *widget.Select
+	endpointEntry   *widget.Entry
+	endpointWidget  fyne.CanvasObject
+	acceptDefaultRs *widget.Check
 
 	rows    map[string]fyne.CanvasObject
 	content *fyne.Container
@@ -177,6 +191,21 @@ func newDNSServerForm(p *wizardpresentation.WizardPresenter, selfTag string) *dn
 	f.membersAddRow = container.NewHBox(f.membersAddBtn)
 	f.rows["members"] = dnsFormRow(locale.T("Members"),
 		container.NewVBox(f.membersBox, f.membersAddRow))
+	// Tailscale: endpoint — тег УЗЛА, а не DNS-сервера, поэтому список
+	// берётся из пула узлов, а не из model.DNSServers.
+	tsTags := wizardbusiness.TailscaleEndpointTags(p.Model())
+	if len(tsTags) > 0 {
+		f.endpointSelect = widget.NewSelect(tsTags, func(string) {})
+		f.endpointWidget = f.endpointSelect
+	} else {
+		f.endpointEntry = widget.NewEntry()
+		f.endpointEntry.SetPlaceHolder("tailscale") // l10n-exempt: sample tag
+		f.endpointWidget = f.endpointEntry
+	}
+	f.acceptDefaultRs = widget.NewCheck(locale.T("Also use the system resolvers"), nil)
+	f.rows["endpoint"] = dnsFormRow(locale.T("Tailnet node"), f.endpointWidget)
+	f.rows["accept_default_resolvers"] = dnsFormRow("", f.acceptDefaultRs)
+
 	f.rows["mode"] = dnsFormRow(locale.T("Mode"), f.modeSelect)
 	f.rows["error_ttl"] = dnsFormRow(locale.T("Error TTL"), f.errorTTLEntry)
 	f.rows["win_ttl"] = dnsFormRow(locale.T("Win TTL"), f.winTTLEntry)
@@ -190,6 +219,7 @@ func newDNSServerForm(p *wizardpresentation.WizardPresenter, selfTag string) *dn
 		f.rows["server"], f.rows["port"], f.rows["path"], f.rows["sni"],
 		f.rows["detour"], f.rows["resolver"],
 		f.rows["members"], f.rows["mode"], f.rows["error_ttl"], f.rows["win_ttl"],
+		f.rows["endpoint"], f.rows["accept_default_resolvers"],
 	)
 
 	// Обработчик ПОСЛЕ установки значения.
@@ -211,6 +241,10 @@ func newDNSServerForm(p *wizardpresentation.WizardPresenter, selfTag string) *dn
 func (f *dnsServerForm) syncRows() {
 	typ := f.typeSelect.Selected
 	group := typ == dnsTypeGroup
+	// Узел tailnet ходит в сеть сам (tsnet), поэтому адреса, порта, пути,
+	// детура и резолвера у него нет — как у группы, но по другой причине.
+	tailscale := typ == dnsTypeTailscale
+	plain := !group && !tailscale
 	tlsLike := typ == dnsTypeTLS || typ == dnsTypeHTTPS
 
 	show := func(key string, on bool) {
@@ -222,16 +256,18 @@ func (f *dnsServerForm) syncRows() {
 			}
 		}
 	}
-	show("server", !group)
-	show("port", !group)
+	show("server", plain)
+	show("port", plain)
 	show("path", typ == dnsTypeHTTPS)
 	show("sni", tlsLike)
 	// Группа не ходит в сеть — ходят её участники, и каждый своим детуром.
 	// Детур на самой группе ядро не применяет; поле здесь означало бы
 	// настройку, которая ничего не делает (частность перенесена из LxBox,
 	// задача 319).
-	show("detour", !group)
-	show("resolver", !group)
+	show("detour", plain)
+	show("resolver", plain)
+	show("endpoint", tailscale)
+	show("accept_default_resolvers", tailscale)
 	show("members", group)
 	show("mode", group)
 	show("error_ttl", group)
@@ -281,13 +317,43 @@ func (f *dnsServerForm) SetReadOnly() {
 	replace("error_ttl", f.errorTTLEntry.Text)
 	replace("win_ttl", f.winTTLEntry.Text)
 
+	replace("endpoint", f.endpointValue())
+
 	replace("type", f.typeSelect.Selected)
 	replace("tag", f.tagEntry.Text)
+	if f.acceptDefaultRs != nil {
+		f.acceptDefaultRs.Disable()
+	}
 	if f.membersAddRow != nil {
 		f.membersAddRow.Hide()
 	}
 
 	f.rebuildMembers()
+}
+
+// endpointValue — текущая ссылка на узел tailnet из того виджета, который
+// форма построила (список либо поле).
+func (f *dnsServerForm) endpointValue() string {
+	if f.endpointSelect != nil {
+		return strings.TrimSpace(f.endpointSelect.Selected)
+	}
+	if f.endpointEntry != nil {
+		return strings.TrimSpace(f.endpointEntry.Text)
+	}
+	return ""
+}
+
+// dnsSelectHasOption — есть ли значение среди вариантов списка.
+func dnsSelectHasOption(sel *widget.Select, want string) bool {
+	if sel == nil {
+		return false
+	}
+	for _, o := range sel.Options {
+		if o == want {
+			return true
+		}
+	}
+	return false
 }
 
 // selectedOrDash — выбранное значение списка либо прочерк.
@@ -345,6 +411,31 @@ func (f *dnsServerForm) Load(obj map[string]interface{}) bool {
 	f.errorTTLEntry.SetText(dnsJSONStringField(obj, "error_ttl"))
 	f.winTTLEntry.SetText(dnsJSONStringField(obj, "win_ttl"))
 
+	// SPEC 122: ссылка на узел tailnet. Тег, которого пул не знает (узел
+	// выключен или ещё не разобран), НЕ теряется — Select с таким значением
+	// показал бы пусто, а Collect записал бы пустую ссылку; поэтому чужой
+	// тег дописывается в варианты как есть.
+	ep := dnsJSONStringField(obj, "endpoint")
+	if f.endpointSelect != nil {
+		if ep == "" {
+			// Пустую ссылку в Select не пишем: значения нет среди вариантов,
+			// и Fyne на этом ругается в лог. Список остаётся невыбранным.
+			f.endpointSelect.ClearSelected()
+		} else {
+			if !dnsSelectHasOption(f.endpointSelect, ep) {
+				f.endpointSelect.Options = append(append([]string(nil), f.endpointSelect.Options...), ep)
+				f.endpointSelect.Refresh()
+			}
+			f.endpointSelect.SetSelected(ep)
+		}
+	} else if f.endpointEntry != nil {
+		f.endpointEntry.SetText(ep)
+	}
+	accept, _ := obj["accept_default_resolvers"].(bool)
+	if f.acceptDefaultRs != nil {
+		f.acceptDefaultRs.SetChecked(accept)
+	}
+
 	f.syncRows()
 	return true
 }
@@ -363,6 +454,9 @@ func (f *dnsServerForm) Collect() map[string]interface{} {
 	for _, k := range []string{
 		"type", "tag", "server", "server_port", "path",
 		"detour", "domain_resolver", "servers", "mode", "error_ttl", "win_ttl",
+		// SPEC 122: ключи tailscale тоже управляемые — иначе смена типа
+		// оставила бы `endpoint` на udp-сервере, и ядро отвергло бы конфиг.
+		"endpoint", "accept_default_resolvers",
 	} {
 		delete(out, k)
 	}
@@ -386,6 +480,16 @@ func (f *dnsServerForm) Collect() map[string]interface{} {
 		if len(tls) > 0 {
 			out["tls"] = tls
 		}
+	}
+
+	if typ == dnsTypeTailscale {
+		putIfSet(out, "endpoint", f.endpointValue())
+		// Галка пишется только когда включена: false — это и есть дефолт
+		// ядра, и явный false в теле ничего не меняет, кроме шума.
+		if f.acceptDefaultRs != nil && f.acceptDefaultRs.Checked {
+			out["accept_default_resolvers"] = true
+		}
+		return out
 	}
 
 	if typ == dnsTypeGroup {

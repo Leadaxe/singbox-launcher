@@ -26,6 +26,23 @@ const (
 	// WarnUTLSFingerprintUnknown — отпечаток вне словаря ядра заменён на
 	// канонический; чужое значение валит все outbound'ы.
 	WarnUTLSFingerprintUnknown = "utls_fp_unknown"
+	// WarnRealityFPNotChrome — у узла эмитится reality, а uTLS-отпечаток не
+	// из chrome-семейства: на сборке он подменяется на chrome (D-104).
+	//
+	// Молчать нельзя: REALITY-сервер Xray ≥ v26.9.8 требует в ClientHello
+	// key_share X25519MLKEM768, который несут только chrome-спеки uTLS, и без
+	// него МОЛЧА уводит соединение на камуфляжный сайт — ошибки нет, узел
+	// просто мёртв (SPEC 083 ядра). Но и подмена меняет маскировку, о которой
+	// просила подписка, — пользователь вправе знать. Пустой fp и наш дефолт
+	// `random` под код не попадают (см. realityFingerprintWouldDegrade).
+	WarnRealityFPNotChrome = "reality_fp_not_chrome"
+	// WarnNaiveExtraHeadersInvalid — пара из naive `extra-headers` отброшена:
+	// нет ':', запрещённые символы в имени или CR/LF/NUL в значении.
+	//
+	// Прочие пары той же ссылки живут, узел живёт — отсюда severity=info; но
+	// до этого отброс уходил только в debuglog, и в отчёте сборки человек не
+	// видел, что заголовок, которым он открывает доступ, до сервера не доедет.
+	WarnNaiveExtraHeadersInvalid = "naive_extra_headers_invalid"
 	// WarnObfsUnknown — тип hysteria2-обфускации вне словаря ядра снят.
 	WarnObfsUnknown = "obfs_unknown"
 	// WarnObfsPasswordMissing — обфускация без пароля снята целиком: ядро
@@ -57,10 +74,30 @@ const (
 	// WarnAmneziaContainerChoice — в vpn://-профиле несколько контейнеров,
 	// одиночный путь взял дефолтный.
 	WarnAmneziaContainerChoice = "amnezia_container_choice"
+	// WarnTailscaleCoreUnsupported — узел tailscale снят: ядро собрано без
+	// with_tailscale (SPEC 122). Не пометка на живом узле, а его выброс —
+	// оставленный, он завалил бы `sing-box check` для всего конфига.
+	WarnTailscaleCoreUnsupported = "tailscale_core_unsupported"
 	// WarnAWGHeaderInvalid — AmneziaWG H1–H4 вне допустимого диапазона.
 	WarnAWGHeaderInvalid = "awg_header_invalid"
 	// WarnAWGHeadersOverlap — H1–H4 совпадают между собой.
 	WarnAWGHeadersOverlap = "awg_headers_overlap"
+	// AmneziaWG 3.x (SPEC 123).
+	// WarnAWG3FieldInvalid — диапазон/булево AWG3 с мусором или N>M: поле
+	// снято, узел живёт.
+	WarnAWG3FieldInvalid = "awg3_field_invalid"
+	// WarnAWG3HeaderKeyInvalid — header_protection_key не base64 32 байта
+	// или все нули: узел выброшен (без ключа хендшейк невозможен).
+	WarnAWG3HeaderKeyInvalid = "awg3_header_key_invalid"
+	// WarnAWG3PaddingTooShort — при header_protection_key один из s1–s4 < 12:
+	// узел выброшен (ядро отвергает конфиг целиком).
+	WarnAWG3PaddingTooShort = "awg3_padding_too_short"
+	// WarnAWG3RandomTrailersWideHeaders — random_trailers при широких
+	// диапазонах h1–h4: потери на data-пакетах, свойство протокола (info).
+	WarnAWG3RandomTrailersWideHeaders = "awg3_random_trailers_wide_headers"
+	// WarnAWG3CoreUnsupported — узел с AWG3-полями снят на сборке: ядро
+	// старше 1.14.0-lx.32 или без with_awg. Выброс, а не пометка.
+	WarnAWG3CoreUnsupported = "awg3_core_unsupported"
 	// WarnTuicCongestionInvalid — контроль перегрузки TUIC вне словаря.
 	WarnTuicCongestionInvalid = "tuic_congestion_invalid"
 	// WarnTuicUDPRelayModeInvalid — udp_relay_mode TUIC вне словаря.

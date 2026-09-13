@@ -102,6 +102,12 @@ func EmitStateRulesInAxisOrder(order []RuleSlot, presetRefs []*PresetRefState, c
 			if r != nil {
 				out = append(out, *r)
 			}
+		case SlotKindNodeRef:
+			// SPEC 121 §10.4: правила узлов в state.Rules НЕ уезжают — их дом
+			// внутри своего узла (`sections.rules[]`). Позиция и тумблер
+			// раскладываются туда отдельным проходом (SyncNodeRuleRefsToSources)
+			// — иначе одно и то же правило лежало бы в двух местах.
+			continue
 		}
 	}
 	return state.SortRulesByNum(out)
@@ -131,8 +137,8 @@ func jsonMarshalPreset(vars map[string]string) ([]byte, error) {
 //
 // Возвращает order. Если совпадения по ref/identity нет (e.g. legacy state v5
 // без RulesV6), возвращает пустой list → caller должен сделать RebuildRuleOrder.
-func RuleOrderFromAxis(rules []state.Rule, presetRefs []*PresetRefState, customRules []*RuleState) []RuleSlot {
-	if len(rules) == 0 {
+func RuleOrderFromAxis(rules []state.Rule, presetRefs []*PresetRefState, customRules []*RuleState, nodeRuleRefs []*NodeRuleRef) []RuleSlot {
+	if len(rules) == 0 && len(nodeRuleRefs) == 0 {
 		return nil
 	}
 	prByRef := make(map[string]int, len(presetRefs))
@@ -172,6 +178,16 @@ func RuleOrderFromAxis(rules []state.Rule, presetRefs []*PresetRefState, customR
 				customRules[idx].OrderNum = copyOrderNum(r.OrderNum)
 			}
 		}
+	}
+
+	// SPEC 121 §10.4: строки правил узлов приходят не из state.Rules — их дом
+	// внутри узла. Слоты дописываются здесь и встают на свои места общей
+	// пересортировкой по оси (её делает вызывающий: SortRuleOrderByAxis).
+	for i := range nodeRuleRefs {
+		if nodeRuleRefs[i] == nil {
+			continue
+		}
+		out = append(out, RuleSlot{Kind: SlotKindNodeRef, Index: i})
 	}
 	return out
 }
@@ -262,25 +278,27 @@ func customRuleStateToV6Rule(rs *RuleState) *state.Rule {
 	label := rs.Rule.Label
 	outbound := rs.SelectedOutbound
 
-	// kind=srs если есть rule_set'ы remote
+	// kind=srs если есть rule_set'ы remote. Берутся ВСЕ remote-URL правила,
+	// а не первый: диалог принимает список, и выход из цикла на первом
+	// совпадении молча терял остальные наборы (репорт 1.5.5).
 	if len(rs.Rule.RuleSets) > 0 {
+		urls := make([]string, 0, len(rs.Rule.RuleSets))
 		for _, rsRaw := range rs.Rule.RuleSets {
 			var probe struct {
 				Type string `json:"type"`
 				URL  string `json:"url"`
 			}
 			if err := json.Unmarshal(rsRaw, &probe); err == nil && probe.Type == "remote" && probe.URL != "" {
-				body, _ := json.Marshal(state.SrsBody{
-					Name:     label,
-					SrsURL:   probe.URL,
-					Outbound: outbound,
-				})
-				return &state.Rule{
-					Kind:     state.RuleKindSrs,
-					Enabled:  rs.Enabled,
-					OrderNum: copyOrderNum(rs.OrderNum),
-					Body:     body,
-				}
+				urls = append(urls, probe.URL)
+			}
+		}
+		if len(urls) > 0 {
+			body, _ := json.Marshal(state.NewSrsBody(label, urls, outbound))
+			return &state.Rule{
+				Kind:     state.RuleKindSrs,
+				Enabled:  rs.Enabled,
+				OrderNum: copyOrderNum(rs.OrderNum),
+				Body:     body,
 			}
 		}
 	}

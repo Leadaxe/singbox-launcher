@@ -72,11 +72,17 @@ func isValidNaiveHeaderName(s string) bool {
 // warning — a single bad pair must not fail the whole parse, because other
 // valid headers on the same node are still useful.
 //
+// Второе значение — признак «хотя бы одна пара отброшена» (D-105). Раньше
+// отброс уходил только в debuglog, и в отчёте сборки человек не видел, что
+// заголовок, которым он открывает доступ, до сервера не доедет; узел при этом
+// живой, поэтому код info, а не error.
+//
 // Returns nil for empty input or when no valid pairs were found.
-func parseNaiveExtraHeaders(s string) map[string]string {
+func parseNaiveExtraHeaders(s string) (map[string]string, bool) {
 	if s == "" {
-		return nil
+		return nil, false
 	}
+	dropped := false
 	out := make(map[string]string)
 	for _, line := range strings.Split(s, "\r\n") {
 		if line == "" {
@@ -85,24 +91,27 @@ func parseNaiveExtraHeaders(s string) map[string]string {
 		idx := strings.Index(line, ":")
 		if idx <= 0 {
 			debuglog.WarnLog("Parser: naive: extra-headers entry missing ':' separator, skipping: %q", line)
+			dropped = true
 			continue
 		}
 		name := strings.TrimSpace(line[:idx])
 		val := strings.TrimSpace(line[idx+1:])
 		if !isValidNaiveHeaderName(name) {
 			debuglog.WarnLog("Parser: naive: extra-headers name contains forbidden characters, skipping: %q", name)
+			dropped = true
 			continue
 		}
 		if strings.ContainsAny(val, "\r\n\x00") {
 			debuglog.WarnLog("Parser: naive: extra-headers value contains CR/LF/NUL, skipping pair %q", name)
+			dropped = true
 			continue
 		}
 		out[name] = val
 	}
 	if len(out) == 0 {
-		return nil
+		return nil, dropped
 	}
-	return out
+	return out, dropped
 }
 
 // buildNaiveOutbound populates a sing-box outbound map for a `naive` ParsedNode.
@@ -126,7 +135,13 @@ func buildNaiveOutbound(node *configtypes.ParsedNode, outbound map[string]interf
 
 	// Extra headers: parse the raw, already-URL-decoded value into a map.
 	if raw := node.Query.Get("extra-headers"); raw != "" {
-		if hdrs := parseNaiveExtraHeaders(raw); len(hdrs) > 0 {
+		hdrs, dropped := parseNaiveExtraHeaders(raw)
+		if dropped {
+			// D-105: битая пара молча исчезала — узел жив, но заголовка,
+			// которым открывают доступ, на сервере нет.
+			node.AddWarning(WarnNaiveExtraHeadersInvalid)
+		}
+		if len(hdrs) > 0 {
 			// sing-box expects map[string]interface{}; convert from map[string]string.
 			m := make(map[string]interface{}, len(hdrs))
 			for k, v := range hdrs {

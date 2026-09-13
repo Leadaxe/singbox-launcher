@@ -5,7 +5,8 @@
 // маршрутом (`tag`/`detour`); у цепочки — тегом и ПОЗИЦИЯМИ: позиции это
 // ссылки (NodeLink), их подставляет резолв сборки, и в теле им делать нечего.
 //
-// Остальное — `type`, `idle_timeout`, `strip_evasion`, `strip`, `rewrite` —
+// Остальное — `type`, `idle_timeout`, `interrupt_exist_connections`,
+// `strip_evasion`, `strip`, `rewrite` —
 // настройки маршрута, которые пользователь задал и которые обязаны пережить
 // сохранение. До SPEC 118 они жили отдельным полем состояния (`chain`);
 // здесь они переезжают в общий дом тел, чтобы у узла не было двух форм
@@ -20,8 +21,8 @@ import (
 
 // ChainBody — сериализованное тело цепочки: те же ключи, что у
 // ChainOutboundObject, минус `tag` и `outbounds`. Порядок ключей фиксирован
-// (type → idle_timeout → strip_evasion → strip → rewrite), чтобы
-// Load→Save→Load был байт-в-байт.
+// (type → idle_timeout → interrupt_exist_connections → strip_evasion →
+// strip → rewrite), чтобы Load→Save→Load был байт-в-байт.
 func ChainBody(c *SourceChain) json.RawMessage {
 	if c == nil {
 		return nil
@@ -32,6 +33,9 @@ func ChainBody(c *SourceChain) json.RawMessage {
 	if v := strings.TrimSpace(c.IdleTimeout); v != "" {
 		b.WriteString(`,"idle_timeout":`)
 		writeJSONString(&b, v)
+	}
+	if c.InterruptExistConnections {
+		b.WriteString(`,"interrupt_exist_connections":true`)
 	}
 	if c.StripEvasion != nil {
 		if *c.StripEvasion {
@@ -87,15 +91,17 @@ func ChainFromBody(body json.RawMessage, hops []string) *SourceChain {
 		return out
 	}
 	var raw struct {
-		IdleTimeout  string                 `json:"idle_timeout"`
-		StripEvasion *bool                  `json:"strip_evasion"`
-		Strip        map[string]bool        `json:"strip"`
-		Rewrite      map[string]interface{} `json:"rewrite"`
+		IdleTimeout               string                 `json:"idle_timeout"`
+		InterruptExistConnections bool                   `json:"interrupt_exist_connections"`
+		StripEvasion              *bool                  `json:"strip_evasion"`
+		Strip                     map[string]bool        `json:"strip"`
+		Rewrite                   map[string]interface{} `json:"rewrite"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return out
 	}
 	out.IdleTimeout = raw.IdleTimeout
+	out.InterruptExistConnections = raw.InterruptExistConnections
 	out.StripEvasion = raw.StripEvasion
 	out.Strip = raw.Strip
 	out.Rewrite = raw.Rewrite

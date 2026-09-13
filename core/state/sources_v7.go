@@ -163,6 +163,15 @@ type Node struct {
 	// в диагностику fetch, и переводить его на месте значило бы завести две
 	// формулировки одной причины.
 	Reason string `json:"reason,omitempty"`
+	// Sections — фрагмент состояния, который узел носит с собой (SPEC 121
+	// §10): route-правила и DNS-записи в формате лаунчера. nil = секций нет
+	// (подавляющее большинство узлов). См. node_sections.go.
+	//
+	// Только kind=server: у подписочных узлов свободы нет
+	// (features/sources.md §Свобода), у цепочек, Auto и unsupported секций не
+	// бывает по построению. Поле обнуляется у остальных видов при чтении
+	// состояния (NormalizeNodeSections).
+	Sections *NodeSections `json:"sections,omitempty"`
 }
 
 // IsUnsupported — узел является нематериализованной записью тела.
@@ -491,6 +500,12 @@ func normalizeNodeShape(n *Node, name string) []string {
 		drop("reason")
 		n.Reason = ""
 	}
+	// Секции узла (SPEC 121) — только у kind=server. Пустой набор нормализуется
+	// в nil здесь же, чтобы у поля не было третьего состояния.
+	if n.Kind != SourceKindServer && n.Sections != nil {
+		drop("sections")
+	}
+	n.NormalizeNodeSections()
 	switch n.Kind {
 	case SourceKindServer:
 		if len(n.Hops) > 0 {

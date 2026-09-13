@@ -238,6 +238,26 @@ type CanonicalNode struct {
 	// Service — узел служебный (релей BYPASS, SPEC 120): в конфиг идёт, в
 	// пользовательский выбор — нет.
 	Service bool
+	// Sections — фрагмент состояния, который узел носит с собой (SPEC 121
+	// §10). nil у всех видов, кроме server, и у подавляющего большинства
+	// серверов.
+	Sections *NodeSections
+}
+
+// NodeSections — секции узла в сборочной форме.
+//
+// Тело НЕПРОЗРАЧНО (сериализованный state.NodeSections): configtypes —
+// leaf-пакет и core/state импортировать не может, а второе зеркало записей
+// правил и DNS разошлось бы с оригиналом на первой же правке. Пакеты, которым
+// нужны сами записи (core/build, core/state), разбирают этот блок обратно.
+type NodeSections struct {
+	// Raw — объект `sections` в форме хранения (SPEC 121 §10.1).
+	Raw json.RawMessage
+}
+
+// IsEmpty — набор не несёт ни одной записи.
+func (ns *NodeSections) IsEmpty() bool {
+	return ns == nil || len(ns.Raw) == 0
 }
 
 // CanonicalAutoGroup — провайдерская группа канона в сборочной форме.
@@ -713,6 +733,14 @@ type ParsedNode struct {
 	// CanonicalDetour — личный detour узла из канона v7 (NodeLink).
 	// Резолвится единым резолвом на проходе 2; в body не запекается.
 	CanonicalDetour *NodeLink
+	// Sections — секции узла (SPEC 121), сырые: доезжают до эмиссии, где по
+	// финальному тегу собирается NodeSectionSet сборочного кэша.
+	Sections *NodeSections
+	// SectionsLink — идентичность узла в состоянии ({FolderID, Tag} канона),
+	// по которой записи секций находят свой узел. Заполняется вместе с
+	// Sections; финальный тег для этого не годится — он зависит от
+	// тег-политики контейнера.
+	SectionsLink NodeLink
 	// CanonicalGroupMembers / CanonicalGroupDefault — состав провайдерской
 	// Auto-группы канона по ссылкам NodeLink (сырые теги своей папки).
 	// Резолв на проходе 2 переписывает их в финальные теги членов.
@@ -742,6 +770,37 @@ func (n *ParsedNode) AddWarning(code string) {
 		}
 	}
 	n.Warnings = append(n.Warnings, code)
+}
+
+// SchemeTailscale — схема узла tailnet (contract/registry/protocols/tailscale.json).
+//
+// Объявлена здесь, а не рядом с config.IsEndpointScheme: configtypes —
+// leaf-пакет, импортировать config он не может, а предикат IsExitCapable
+// живёт на модели (его зовут обе точки пула). config.SchemeTailscale
+// ссылается на ту же строку — расхождение поймал бы любой из тестов SPEC 122.
+const SchemeTailscale = "tailscale"
+
+// IsExitCapable — годится ли узел ВЫХОДОМ В ИНТЕРНЕТ, то есть кандидатом в
+// состав Направления (SPEC 122 §2.3).
+//
+// Всё, что не tailscale, годится: обычный прокси-узел на то и заведён.
+// Узел tailnet — нет: без `exit_node` он открывает доступ в САМУ tailnet
+// (адреса 100.64.0.0/10 и MagicDNS), а не выход наружу, и Направление,
+// выбравшее такой узел, отправило бы трафик в никуда. С непустым `exit_node`
+// он выходом становится и в пул возвращается.
+//
+// Detour на такой узел предикат не запрещает: гнать чужой трафик через
+// tailnet — законный осознанный выбор, и запретов на цели detour здесь нет.
+func (n *ParsedNode) IsExitCapable() bool {
+	if n == nil {
+		return false
+	}
+	if n.Scheme != SchemeTailscale {
+		return true
+	}
+	// Тело приходит и из JSON (map), и из канона: строкой читается любое.
+	exit, _ := n.Outbound["exit_node"].(string)
+	return strings.TrimSpace(exit) != ""
 }
 
 // SyncJumpFromChain refreshes the deprecated Jump field from Chain[0].
@@ -840,10 +899,20 @@ type SourceChain struct {
 	// Пусто = умолчание ядра (5m), "0s" = жить до остановки.
 	IdleTimeout string `json:"idle_timeout,omitempty"`
 
+	// InterruptExistConnections — рвать ли ВНЕШНИЕ (пользовательские)
+	// соединения цепочки при переключении позиции тумблером (SPEC 075
+	// ядра). Внутренние соединения ядро рвёт всегда; без флага живые потоки
+	// пользователя доживают старым маршрутом, новым идут только новые
+	// дозвоны. Обычный bool, а не указатель: дефолт ядра false, и «не
+	// задано» от «выключено» здесь неотличимо. В конфиг и тело уезжает
+	// только true.
+	InterruptExistConnections bool `json:"interrupt_exist_connections,omitempty"`
+
 	// StripEvasion — снимать ли у звеньев односторонние DPI-приёмы.
 	// Указатель ради трёхзначности: nil = «умолчание ядра» (true),
 	// false = «пользователь выключил явно». Обычный bool не отличил бы
-	// одно от другого — та же причина, что у InterruptExistConnections.
+	// одно от другого — та же причина, что у DirectionAuto.
+	// InterruptExistConnections (там дефолт шаблона может быть true).
 	StripEvasion *bool `json:"strip_evasion,omitempty"`
 
 	// Strip — патч к каталогу ядра поверх StripEvasion.

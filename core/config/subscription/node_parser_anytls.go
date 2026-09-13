@@ -90,6 +90,11 @@ func buildAnyTLSTLS(node *configtypes.ParsedNode, outbound map[string]interface{
 			"public_key": strings.TrimSpace(pbk),
 			"short_id":   normalizeRealityShortID(queryGetFold(q, "sid")),
 		}
+		// D-104 — тот же гейт, что во vless-пути: отпечаток вне
+		// chrome-семейства на сборке станет chrome, узел об этом сообщает.
+		if realityFingerprintWouldDegrade(fp) {
+			node.AddWarning(WarnRealityFPNotChrome)
+		}
 	}
 
 	if alpn := queryGetFold(q, "alpn"); alpn != "" {

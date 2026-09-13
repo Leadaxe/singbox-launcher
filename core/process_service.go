@@ -210,7 +210,7 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 		}
 	}
 
-	debuglog.InfoLog("startSingBox: Starting Sing-Box...")
+	debuglog.WarnLog("startSingBox: Starting Sing-Box...")
 	ac.SingboxCmd = exec.Command(ac.FileService.SingboxPath, "run", "-c", filepath.Base(ac.FileService.ConfigPath))
 	platform.PrepareCommand(ac.SingboxCmd)
 	ac.SingboxCmd.Dir = platform.GetBinDir(ac.FileService.ExecDir)
@@ -265,7 +265,7 @@ func (svc *ProcessService) startSingBoxPrivileged() error {
 		return fmt.Errorf("failed to write script %s: %w", scriptPath, err)
 	}
 
-	debuglog.InfoLog("startSingBox: Starting Sing-Box with elevated privileges (TUN)...")
+	debuglog.WarnLog("startSingBox: Starting Sing-Box with elevated privileges (TUN)...")
 	type privilegedPids struct{ Script, Singbox int }
 	pidCh := make(chan privilegedPids, 1)
 	go func() {
@@ -438,7 +438,7 @@ func (svc *ProcessService) Monitor(cmdToMonitor *exec.Cmd) {
 
 	// 4. Then err == nil (exited normally, not restart) — do not restart
 	if action == actionClean {
-		debuglog.InfoLog("monitorSingBox: Sing-Box exited gracefully (exit code 0).")
+		debuglog.WarnLog("monitorSingBox: Sing-Box exited gracefully (exit code 0).")
 		ac.ConsecutiveCrashAttempts = newAttempts
 		ac.RunningState.Set(false)
 		return
@@ -524,7 +524,9 @@ func (svc *ProcessService) Stop() {
 			ac.CmdMutex.Lock()
 			ac.StoppedByUser = false
 			ac.CmdMutex.Unlock()
-			if ac.hasUI() {
+			// На пути выхода диалог бессмысленен: GracefulExit идёт на
+			// main-потоке Fyne, окно закрывается — ошибка остаётся в логе.
+			if ac.hasUI() && !ac.IsExiting() {
 				dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("%s: %w", locale.T(stopPrivilegedFailedText), err))
 			}
 			return

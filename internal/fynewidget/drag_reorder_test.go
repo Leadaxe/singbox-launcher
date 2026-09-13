@@ -147,3 +147,61 @@ func TestRegisterAfterResetDoesNotPanic(t *testing.T) {
 		t.Errorf("count() = %d, ожидалась 1 строка после Reset+Register", g.count())
 	}
 }
+
+// Индикатор броска живёт в overlay-ах канваса, а Fyne отдаёт клики ТОЛЬКО
+// верхнему overlay-у: забытая обёртка = окно не отвечает при живом процессе.
+// Снимать её надо по ссылке, не трогая то, что легло поверх (диалог посреди
+// броска), — прежний Remove(Top()) снимал диалог, а обёртку оставлял навсегда.
+func TestHideIndicatorRemovesOwnOverlayKeepsDialogAbove(t *testing.T) {
+	g, w := rowsAt(t, 3, 30)
+	defer w.Close()
+	c := w.Canvas()
+
+	g.showIndicator(1, 0, c)
+	if g.wrapper == nil || len(c.Overlays().List()) != 1 {
+		t.Fatalf("после showIndicator ожидался ровно один overlay (обёртка), есть %d", len(c.Overlays().List()))
+	}
+	pop := widget.NewPopUp(widget.NewLabel("dialog"), c)
+	pop.Show()
+	if len(c.Overlays().List()) != 2 {
+		t.Fatalf("ожидалось 2 overlay-а (обёртка + попап), есть %d", len(c.Overlays().List()))
+	}
+	// PopUp кладёт в стек не себя, а свой OverlayContainer — сравниваем с ним.
+	dialogOverlay := c.Overlays().Top()
+
+	g.hideIndicator()
+
+	list := c.Overlays().List()
+	if len(list) != 1 || list[0] != dialogOverlay {
+		t.Fatalf("после hideIndicator должен остаться только попап, стек: %v", list)
+	}
+	if g.wrapper != nil || g.indicator != nil || g.canvas != nil {
+		t.Errorf("группа не сбросила ссылки на индикатор: wrapper=%v indicator=%v canvas=%v", g.wrapper, g.indicator, g.canvas)
+	}
+}
+
+// DragEnd прилетает старому захвату после пересборки списка посреди броска;
+// сам он «не тащил», но индикатор висит на группе — снять его обязан любой
+// DragEnd, иначе обёртка остаётся в overlay-ах.
+func TestDragEndOfNonDraggingHandleClearsIndicator(t *testing.T) {
+	g, w := rowsAt(t, 3, 30)
+	defer w.Close()
+	c := w.Canvas()
+	g.showIndicator(2, 0, c)
+	if len(c.Overlays().List()) != 1 {
+		t.Fatalf("индикатор не поднялся")
+	}
+
+	h := NewDragHandle(g, 0, nil)
+	h.DragEnd()
+
+	if n := len(c.Overlays().List()); n != 0 {
+		t.Errorf("после DragEnd в overlay-ах осталось %d объектов, ожидалось 0", n)
+	}
+	// Reset при пересборке списка тоже не оставляет индикатор.
+	g.showIndicator(2, 0, c)
+	g.Reset()
+	if n := len(c.Overlays().List()); n != 0 {
+		t.Errorf("после Reset в overlay-ах осталось %d объектов, ожидалось 0", n)
+	}
+}

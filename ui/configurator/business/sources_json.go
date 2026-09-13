@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
@@ -87,7 +88,10 @@ func carveSingboxJSONMulti(body string, kind subscription.BodyKind) ([]singboxJS
 			debuglog.WarnLog("Parser: skipping pasted outbound %q: %v", n.Tag, merr)
 			continue
 		}
-		nodes = append(nodes, singboxJSONNode{Label: n.Tag, ConfigJSON: raw})
+		// SPEC 121: секции узла едут вместе с телом. Правило извлечения
+		// (ровно один узел в конфиге) проверил импорт — здесь их только
+		// передают дальше.
+		nodes = append(nodes, singboxJSONNode{Label: n.Tag, ConfigJSON: raw, Sections: n.Sections})
 	}
 	if len(nodes) == 0 {
 		return nil, true, fmt.Errorf("no outbounds found")
@@ -100,6 +104,9 @@ func carveSingboxJSONMulti(body string, kind subscription.BodyKind) ([]singboxJS
 type singboxJSONNode struct {
 	Label      string
 	ConfigJSON []byte
+	// Sections — фрагменты конфига, которые узел носит с собой (SPEC 121).
+	// nil у подавляющего большинства узлов.
+	Sections *configtypes.NodeSections
 }
 
 // compactJSON сжимает документ, сохраняя порядок полей автора (json.Compact
@@ -116,20 +123,42 @@ func compactJSON(s string) ([]byte, error) {
 // Source(server). Отдельный вход, а не AppendURLsToSources: там тело проходит
 // повторный разбор, а здесь важно сохранить объект ровно таким, каким его
 // набрал человек — включая поля, которых наш парсер не знает.
+//
+// SPEC 121 §5.1: принимается и ДОКУМЕНТ узла (тело + секции) — тем же
+// разбором, что на вкладке JSON окна источника. Второй реализацией правил
+// документа эти два входа разъехались бы на первой же правке.
 func AppendManualConfigJSON(ctx UIUpdater, body []byte, label string) error {
-	node, err := subscription.NodeFromManualConfigJSON(body)
-	if err != nil {
-		return err
-	}
-
-	compact, err := compactJSON(string(body))
-	if err != nil {
-		return err
+	var (
+		compact  []byte
+		sections *corestate.NodeSections
+		nodeTag  string
+	)
+	if config.IsNodeDocument(body) {
+		parsedBody, secs, err := config.ParseNodeDocument(body)
+		if err != nil {
+			return err
+		}
+		compact = parsedBody
+		sections = secs
+		if n, nerr := subscription.NodeFromManualConfigJSON(parsedBody); nerr == nil {
+			nodeTag = n.Tag
+		}
+	} else {
+		node, err := subscription.NodeFromManualConfigJSON(body)
+		if err != nil {
+			return err
+		}
+		nodeTag = node.Tag
+		c, cerr := compactJSON(string(body))
+		if cerr != nil {
+			return cerr
+		}
+		compact = c
 	}
 
 	model := ctx.Model()
 	if strings.TrimSpace(label) == "" {
-		label = node.Tag
+		label = nodeTag
 	}
 	if strings.TrimSpace(label) == "" {
 		label = fmt.Sprintf("server-%d", len(model.Sources)+1)
@@ -143,11 +172,12 @@ func AppendManualConfigJSON(ctx UIUpdater, body []byte, label string) error {
 	}
 	model.Sources = append(model.Sources, corestate.Source{
 		Node: corestate.Node{
-			Kind:    corestate.SourceKindServer,
-			Enabled: true,
-			Tag:     label,
-			Body:    mat.Body,
-			Origin:  &corestate.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw},
+			Kind:     corestate.SourceKindServer,
+			Enabled:  true,
+			Tag:      label,
+			Body:     mat.Body,
+			Origin:   &corestate.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw},
+			Sections: sections,
 		},
 		ID:    corestate.MakeULID(),
 		Label: label,

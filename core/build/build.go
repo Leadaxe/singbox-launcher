@@ -254,6 +254,14 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 		ctx.Cache, excluded = sanitizeOutboundGraph(ctx.Cache, finalOutboundTags)
 	}
 
+	// SPEC 121: секции узлов доезжают до слияния через PresetMergeContext, и
+	// снимаются с кэша ЗДЕСЬ — после санитайзера, чтобы фрагменты выброшенного
+	// узла в конфиг не попали. Вызывающие это поле не заполняют: у них кэш
+	// ещё не очищен, и они бы врали.
+	if ctx.Cache != nil {
+		ctx.Preset.NodeSections = ctx.Cache.NodeSections
+	}
+
 	// SPEC 118 (Р-DNS-2): множество тегов, реально уезжающих в
 	// `route.rule_set` — ДО обхода секций. Секция dns собирается раньше
 	// route, а её чистка висячих `rule_set`-ссылок судит именно по этому
@@ -294,6 +302,18 @@ func buildSection(ctx BuildContext, key string, raw json.RawMessage, finalOutbou
 			if len(transformed) == len(cache.Outbounds) {
 				c := *cache
 				c.Outbounds = transformed
+				cache = &c
+			}
+		}
+		// D-104: REALITY принимает только chrome-подобный ClientHello
+		// (SPEC 083 ядра). Правка НЕ опциональна — иначе узел молча мёртв, —
+		// и живёт здесь, а не в парсере: значение узла нормативно (CANON §2),
+		// LxBox чинит на том же шаге сборки.
+		if cache != nil {
+			healed := HealRealityFingerprints(cache.Outbounds)
+			if len(healed) == len(cache.Outbounds) {
+				c := *cache
+				c.Outbounds = healed
 				cache = &c
 			}
 		}

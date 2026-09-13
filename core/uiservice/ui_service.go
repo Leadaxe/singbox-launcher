@@ -287,8 +287,10 @@ func (ui *UIService) StopTrayMenuUpdateTimer() {
 //
 // fyne.Do is correct from every caller context: tray actions and widget
 // callbacks already run on the UI thread (the driver marshals tray actions
-// via runOnMain), where Do simply queues for the next loop iteration; after
-// the loop has died it executes inline (drained fast-path in
+// via runOnMain), where Do queues for the next loop iteration — which only
+// comes once the caller (GracefulExit, including its wait for the core to
+// stop) has returned; nothing here runs concurrently with that teardown.
+// After the loop has died it executes inline (drained fast-path in
 // runOnMainWithWait). Running on the UI thread also makes the darwin
 // systray.Quit (AppKit NSStatusItem removal) thread-correct.
 func (ui *UIService) QuitApplication() {

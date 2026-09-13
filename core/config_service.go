@@ -133,6 +133,14 @@ func parserSuccessToastMessage(result *config.OutboundGenerationResult) string {
 	if result.SkippedNaiveNodes > 0 {
 		msg += fmt.Sprintf(" %d naive node(s) skipped: %s.", result.SkippedNaiveNodes, result.SkippedNaiveReason)
 	}
+	// SPEC 122: то же правило для tailscale.
+	if result.SkippedTailscaleNodes > 0 {
+		msg += fmt.Sprintf(" %d tailscale node(s) skipped: %s.", result.SkippedTailscaleNodes, result.SkippedTailscaleReason)
+	}
+	// SPEC 123: то же правило для узлов с полями AmneziaWG 3.x.
+	if result.SkippedAWG3Nodes > 0 {
+		msg += fmt.Sprintf(" %d AmneziaWG 3.x node(s) skipped: %s.", result.SkippedAWG3Nodes, result.SkippedAWG3Reason)
+	}
 	// SPEC 110: то же правило для цепочек. Настроенный маршрут, молча
 	// выпавший из конфига, читается как потерянная настройка — пользователь
 	// должен узнать, что именно и почему не собралось.
@@ -491,10 +499,13 @@ func collectAllStageRuleSetTags(execDir, target, machineID string, td *template.
 				continue
 			}
 			sb, ok := body.(*state.SrsBody)
-			if !ok || sb.SrsURL == "" {
+			if !ok {
 				continue
 			}
-			addTag(build.SRSTagFromURL(sb.SrsURL))
+			// Все наборы правила, не только первый (репорт 1.5.5).
+			for _, u := range sb.URLs() {
+				addTag(build.SRSTagFromURL(u))
+			}
 		}
 	}
 

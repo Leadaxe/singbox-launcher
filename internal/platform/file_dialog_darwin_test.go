@@ -2,7 +2,10 @@
 
 package platform
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestAppleScriptStringLiteral(t *testing.T) {
 	cases := map[string]string{
@@ -40,5 +43,24 @@ func TestIsAppleScriptCancel(t *testing.T) {
 		if isAppleScriptCancel([]byte(s)) {
 			t.Errorf("should NOT be cancel: %q", s)
 		}
+	}
+}
+
+// The panel filter takes type identifiers, not extensions: a bare "json"
+// greys out every file on macOS 26 (issue #120). The script must resolve
+// each extension through UTType and never hand the bare string to `of type`.
+func TestChooseFileScriptResolvesExtensionsToUTI(t *testing.T) {
+	s := chooseFileScript("Open", []string{"json", "vpn"}, false)
+	if !strings.Contains(s, "typeWithFilenameExtension") {
+		t.Fatalf("extensions are not resolved through UTType:\n%s", s)
+	}
+	if strings.Contains(s, `of type {"json"`) {
+		t.Fatalf("bare extension handed to `of type`:\n%s", s)
+	}
+	if !strings.Contains(s, "of type utis") {
+		t.Fatalf("resolved UTI list is not used as the filter:\n%s", s)
+	}
+	if got := chooseFileScript("Open", nil, true); strings.Contains(got, "of type") || !strings.Contains(got, "multiple selections allowed") {
+		t.Fatalf("no-filter multi-select script is wrong:\n%s", got)
 	}
 }

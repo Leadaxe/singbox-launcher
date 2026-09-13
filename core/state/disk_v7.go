@@ -96,7 +96,7 @@ func parseV7(data []byte) (*State, error) {
 	}
 
 	// Legacy CustomRules view — как в v6-парсе: UI-код до Phase 6 читает его.
-	s.CustomRules = legacyCustomRulesFromV6(raw.Rules)
+	s.CustomRules = legacyCustomRulesFromV6(s.Rules)
 
 	syncLegacyFromCanonical(s)
 	normalizeNilSlices(s)

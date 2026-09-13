@@ -1,0 +1,10 @@
+{
+  "dropped": [
+    {
+      "reason": "parse_error",
+      "ref": "wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@host.example.com:30565?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.8.1.7/32&allowedips=0.0.0.0/0,::/0&mtu=1376&s1=55&s2=42&s3=40&s4=12&headerprotectionkey=AQIDBAUGBwgJCgsMDQ4PEA%3D%3D#awg3-short-key"
+    }
+  ],
+  "nodes": [],
+  "v": 1
+}

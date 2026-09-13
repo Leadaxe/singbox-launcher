@@ -44,12 +44,13 @@ type corpusDirection struct {
 
 // corpusChain — каноническая форма источника-цепочки (SPEC 110).
 type corpusChain struct {
-	Tag          string                 `json:"tag"`
-	Hops         []string               `json:"hops"`
-	IdleTimeout  string                 `json:"idle_timeout,omitempty"`
-	StripEvasion *bool                  `json:"strip_evasion,omitempty"`
-	Strip        map[string]bool        `json:"strip,omitempty"`
-	Rewrite      map[string]interface{} `json:"rewrite,omitempty"`
+	Tag                       string                 `json:"tag"`
+	Hops                      []string               `json:"hops"`
+	IdleTimeout               string                 `json:"idle_timeout,omitempty"`
+	InterruptExistConnections bool                   `json:"interrupt_exist_connections,omitempty"`
+	StripEvasion              *bool                  `json:"strip_evasion,omitempty"`
+	Strip                     map[string]bool        `json:"strip,omitempty"`
+	Rewrite                   map[string]interface{} `json:"rewrite,omitempty"`
 }
 
 type corpusAutoGroup struct {
@@ -247,11 +248,12 @@ func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
 				Nodes: []configtypes.CanonicalNode{{Kind: "chain", Tag: cc.Tag, Enabled: true}},
 			},
 			Chain: &configtypes.SourceChain{
-				Hops:         cc.Hops,
-				IdleTimeout:  cc.IdleTimeout,
-				StripEvasion: cc.StripEvasion,
-				Strip:        cc.Strip,
-				Rewrite:      cc.Rewrite,
+				Hops:                      cc.Hops,
+				IdleTimeout:               cc.IdleTimeout,
+				InterruptExistConnections: cc.InterruptExistConnections,
+				StripEvasion:              cc.StripEvasion,
+				Strip:                     cc.Strip,
+				Rewrite:                   cc.Rewrite,
 			},
 		})
 	}

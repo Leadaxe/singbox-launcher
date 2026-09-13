@@ -197,14 +197,19 @@ func mergeDisabledMarks(dst *state.Source, incoming []string) {
 // способа адресовать её членов. Существующие члены остаются на местах, новые
 // дописываются в конец в порядке файла.
 func mergeServers(s *state.State, list []Server, warns *[]Warning, cnt *mergeCounters) {
-	rootBodies := map[string]bool{}
+	// Индекс, а не просто множество: при совпадении тела нужно дотянуться до
+	// УЖЕ ЛЕЖАЩЕЙ записи и наложить на неё секции файла (SPEC 121, §9 —
+	// настройки файла сильнее локальных, как у подписки).
+	rootBodies := map[string]int{}
 	rootTags := takenRootTags(s)
 	takenIDs := takenSourceIDs(s.Sources)
 	for i := range s.Sources {
 		switch s.Sources[i].Kind {
 		case state.SourceKindServer:
 			if key := nodeBodyKey(&s.Sources[i].Node); key != "" {
-				rootBodies[key] = true
+				if _, dup := rootBodies[key]; !dup {
+					rootBodies[key] = i
+				}
 			}
 		}
 	}
@@ -234,20 +239,24 @@ func mergeServers(s *state.State, list []Server, warns *[]Warning, cnt *mergeCou
 		name := srv.Folder
 		if name == "" {
 			key := nodeBodyKey(&incoming.Node)
-			if key != "" && rootBodies[key] {
+			if at, dup := rootBodies[key]; key != "" && dup {
+				// Узел уже есть. Тело у него то же, но секции файла сильнее
+				// локальных — иначе связка, ради которой бэкап и делали,
+				// пропала бы «пропуском без warning» (CODEMAP §10 п. 29).
+				applyImportedSections(&s.Sources[at].Node, srv.Sections)
 				cnt.SkippedServers++
 				continue
 			}
 			incoming.Tag = uniqueTag(rootTags, incoming.Tag)
 			incoming.ID = freshIDIfTaken(incoming.ID, takenIDs)
 			takenIDs[incoming.ID] = true
-			if key != "" {
-				rootBodies[key] = true
-			}
 			if incoming.Tag != "" {
 				rootTags[incoming.Tag] = true
 			}
 			s.Sources = append(s.Sources, incoming)
+			if key != "" {
+				rootBodies[key] = len(s.Sources) - 1
+			}
 			cnt.AddedServers++
 			continue
 		}
@@ -264,7 +273,8 @@ func mergeServers(s *state.State, list []Server, warns *[]Warning, cnt *mergeCou
 			cnt.AddedFolders++
 		}
 		folder := &s.Sources[at]
-		if folderHasBody(folder, &incoming.Node) {
+		if hit := folderNodeWithBody(folder, &incoming.Node); hit >= 0 {
+			applyImportedSections(&folder.Nodes[hit], srv.Sections)
 			cnt.SkippedServers++
 			continue
 		}
@@ -278,22 +288,38 @@ func mergeServers(s *state.State, list []Server, warns *[]Warning, cnt *mergeCou
 	}
 }
 
-// folderHasBody — тело уже лежит в этой папке.
+// applyImportedSections накладывает секции файла на УЖЕ ЛЕЖАЩИЙ узел.
+//
+// Поля в файле нет → локальные секции остаются: молчание файла не значит
+// «сотри». Поле есть → замещает целиком, включая пустой набор (пользователь
+// снял секции на другой машине, и «слить» тут нечего — фрагменты не имеют
+// ключа, по которому их можно было бы сопоставить поштучно).
+func applyImportedSections(node *state.Node, sec *ServerSections) {
+	if node == nil || sec == nil {
+		return
+	}
+	node.Sections = decodeBackupSections(sec, node.Tag)
+	node.NormalizeNodeSections()
+}
+
+// folderNodeWithBody — индекс узла с тем же телом в этой папке; -1, если его
+// нет. Индекс, а не bool: при совпадении на найденный узел накладываются
+// секции файла (SPEC 121).
 //
 // Дедуп в пределах ОДНОЙ папки, а не по всему состоянию: один и тот же сервер
 // в двух разных папках — законная раскладка (одна «рабочая», другая
 // «запасная»), и схлопывать её импорт не вправе.
-func folderHasBody(folder *state.Source, node *state.Node) bool {
+func folderNodeWithBody(folder *state.Source, node *state.Node) int {
 	key := nodeBodyKey(node)
 	if key == "" {
-		return false
+		return -1
 	}
 	for i := range folder.Nodes {
 		if nodeBodyKey(&folder.Nodes[i]) == key {
-			return true
+			return i
 		}
 	}
-	return false
+	return -1
 }
 
 // nodeBodyKey — ключ дедупа одиночного узла: его ТЕЛО, без имени.

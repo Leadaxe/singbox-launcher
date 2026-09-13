@@ -5,6 +5,11 @@
 // там значило бы показывать цифры прежнего маршрута рядом с изменённым
 // списком позиций — правдоподобные и не про то, что на экране. Здесь же
 // строка соответствует работающему ядру по построению.
+//
+// SPEC 124: у каждой позиции своя строка ошибки и хвост состояния звена
+// словами ядра (`starting | active | idle`); общая строка под списком
+// остаётся за тем, что к позиции не привязано (старое ядро, отвалившийся
+// RPC).
 package ui
 
 import (
@@ -36,8 +41,54 @@ type chainLayerResult struct {
 	// Error — текст ЯДРА. Оно формулирует его само, с указанием позиции и
 	// пути до неё, поэтому показывается целиком и не переписывается.
 	Error string
-	// Skipped — позиция схлопнута (direct), мерить нечего.
+	// Transport — ошибка не ядра, а дороги до него (RPC отвалился, режим
+	// не тот). К позиции она не относится и показывается общей строкой.
+	Transport string
+	// Skipped — позиция схлопнута (direct) или выключена, мерить нечего.
 	Skipped bool
+}
+
+// chainRows — виджеты секции, которые обновляются по состоянию ядра.
+//
+// Один тип вместо четырёх параллельных срезов: их индексы обязаны
+// совпадать, и передавать их по отдельности значило бы проверять это в
+// каждой функции.
+type chainRows struct {
+	text    []*widget.Label // состав позиции
+	delay   []*widget.Label // замер, правый столбец
+	toggle  []*widget.Check // тумблер позиции
+	posErr  []*widget.Label // ошибка ЭТОЙ позиции, под её строкой
+	general *widget.Label   // ошибка, не привязанная к позиции
+}
+
+func (r *chainRows) clearDelays() {
+	for _, d := range r.delay {
+		d.SetText("")
+	}
+}
+
+// setPosErr пишет текст в строку позиции; пустой текст прячет её.
+func (r *chainRows) setPosErr(i int, text string) {
+	if i < 0 || i >= len(r.posErr) {
+		return
+	}
+	text = strings.TrimSpace(text)
+	r.posErr[i].SetText(text)
+	if text == "" {
+		r.posErr[i].Hide()
+	} else {
+		r.posErr[i].Show()
+	}
+}
+
+func (r *chainRows) setGeneral(text string) {
+	text = strings.TrimSpace(text)
+	r.general.SetText(text)
+	if text == "" {
+		r.general.Hide()
+	} else {
+		r.general.Show()
+	}
 }
 
 // addChainSection дорисовывает секцию цепочки, если узел ею является.
@@ -64,66 +115,76 @@ func addChainSection(ac *core.AppController, body *fyne.Container, win fyne.Wind
 	}(tag)
 }
 
+// newChainErrLabel — красная строка с переносом. Перенос обязателен:
+// сообщение ядра длинное, а Label без Wrapping задаёт окну минимальную
+// ширину и раздувает его на весь экран.
+func newChainErrLabel() *widget.Label {
+	l := widget.NewLabel("")
+	l.Wrapping = fyne.TextWrapWord
+	l.Importance = widget.DangerImportance
+	l.Hide()
+	return l
+}
+
 // buildChainSection рисует позиции и кнопку замера.
 func buildChainSection(ac *core.AppController, box *fyne.Container, win fyne.Window, info core.ChainInfo) {
 	box.Add(widget.NewSeparator())
 	box.Add(sectionHeader(locale.Tf("Chain positions (%d)", len(info.Positions))))
 
-	// Строка на позицию: слева тумблер, затем состав, справа замер. Галочка
-	// слева читается как «хоп участвует в маршруте» — список позиций и есть
-	// маршрут; правый край остаётся за задержками, иначе тумблер и цифра
-	// дрались бы за одно место.
-	rows := make([]*widget.Label, len(info.Positions))
-	delays := make([]*widget.Label, len(info.Positions))
-	toggles := make([]*widget.Check, len(info.Positions))
+	n := len(info.Positions)
+	rows := &chainRows{
+		text:    make([]*widget.Label, n),
+		delay:   make([]*widget.Label, n),
+		toggle:  make([]*widget.Check, n),
+		posErr:  make([]*widget.Label, n),
+		general: newChainErrLabel(),
+	}
 	// applying — идёт программная расстановка галочек, а не клик
 	// пользователя. Fyne зовёт OnChanged и на SetChecked, и отличить одно
 	// от другого больше нечем.
 	applying := false
 
-	// Текст ошибки — под списком, с переносом: сообщение ядра длинное и
-	// в колонку задержки не помещается. Объявлен до строк, потому что
-	// обработчик тумблера пишет в него провал прогрева.
-	errLabel := widget.NewLabel("")
-	errLabel.Wrapping = fyne.TextWrapWord
-	errLabel.Importance = widget.DangerImportance
-	errLabel.Hide()
+	// Строка на позицию: слева тумблер, затем состав, справа замер. Галочка
+	// слева читается как «хоп участвует в маршруте» — список позиций и есть
+	// маршрут; правый край остаётся за задержками, иначе тумблер и цифра
+	// дрались бы за одно место. Под строкой — её ошибка, скрытая пока пуста.
+	for i := range info.Positions {
+		rows.text[i] = widget.NewLabel("")
+		rows.text[i].Truncation = fyne.TextTruncateEllipsis
 
-	for i, pos := range info.Positions {
-		rows[i] = widget.NewLabel(chainPositionText(i, pos))
-		rows[i].Truncation = fyne.TextTruncateEllipsis
+		rows.delay[i] = widget.NewLabel("")
+		rows.delay[i].Alignment = fyne.TextAlignTrailing
 
-		delays[i] = widget.NewLabel("")
-		delays[i].Alignment = fyne.TextAlignTrailing
+		rows.posErr[i] = newChainErrLabel()
 
-		toggles[i] = newChainPositionToggle(ac, info.Tag, i, &applying, func(fresh core.ChainInfo) {
+		rows.toggle[i] = newChainPositionToggle(ac, info.Tag, i, &applying, rows, func(fresh core.ChainInfo) {
 			// Перерисовываем ВСЮ секцию, а не одну строку: маршрут общий,
 			// и выключенный хоп меняет то, во что резолвятся соседние
 			// позиции (группа выше могла держать выбор через него).
-			applyChainRows(fresh, rows, toggles, &applying)
-		}, delays, errLabel)
+			applyChainRows(fresh, rows, &applying)
+		})
 
-		box.Add(container.NewBorder(nil, nil, toggles[i], delays[i], rows[i]))
+		box.Add(container.NewBorder(nil, nil, rows.toggle[i], rows.delay[i], rows.text[i]))
+		box.Add(rows.posErr[i])
 	}
 	// Начальное состояние ставим ПОСЛЕ создания тумблеров и под флагом:
 	// SetChecked дёргает OnChanged, и без него отрисовка окна отправила бы
 	// ядру тумблер, которого пользователь не нажимал.
-	applying = true
-	for i, pos := range info.Positions {
-		toggles[i].SetChecked(!pos.Disabled)
-	}
-	applying = false
-	box.Add(errLabel)
+	applyChainRows(info, rows, &applying)
+	box.Add(rows.general)
 
 	var probeBtn *widget.Button
 	probeBtn = widget.NewButtonWithIcon(
 		locale.T("Probe by position"), theme.ViewRefreshIcon(), func() {
 			probeBtn.Disable()
 			probeBtn.SetText(locale.T("Measuring…"))
-			for _, d := range delays {
-				d.SetText("")
+			rows.clearDelays()
+			// Проба чистит ВСЕ строки позиций: она заново проверяет каждую,
+			// и старая ошибка прогрева рядом со свежим замером путала бы.
+			for i := range rows.posErr {
+				rows.setPosErr(i, "")
 			}
-			errLabel.Hide()
+			rows.setGeneral("")
 
 			go func() {
 				// Состав перечитываем ПЕРЕД замером, а не берём тот, что
@@ -139,15 +200,14 @@ func buildChainSection(ac *core.AppController, box *fyne.Container, win fyne.Win
 				}
 				results := probeChainLayers(ac, cur)
 				fyne.Do(func() {
+					// Замеры раскладываем ПЕРЕД составом: ошибка пробы
+					// свежее last_error звена, и заполнять пустые строки
+					// состав должен после неё.
+					applyChainProbeResults(results, rows)
 					// Строки состава тоже обновляем: если выбор группы
 					// сменился, показать старый тег рядом со свежей
 					// задержкой значило бы соврать вдвойне.
-					for i := range rows {
-						if i < len(cur.Positions) {
-							rows[i].SetText(chainPositionText(i, cur.Positions[i]))
-						}
-					}
-					applyChainProbeResults(results, delays, errLabel)
+					applyChainRows(cur, rows, &applying)
 					probeBtn.Enable()
 					probeBtn.SetText(locale.T("Probe again"))
 				})
@@ -167,9 +227,8 @@ func newChainPositionToggle(
 	chainTag string,
 	pos int,
 	applying *bool,
+	rows *chainRows,
 	refresh func(core.ChainInfo),
-	delays []*widget.Label,
-	errLabel *widget.Label,
 ) *widget.Check {
 	var check *widget.Check
 	check = widget.NewCheck("", func(enabled bool) {
@@ -177,13 +236,14 @@ func newChainPositionToggle(
 			return
 		}
 		check.Disable()
-		errLabel.Hide()
+		// Чистим СВОЮ строку и общую: прежняя ошибка этой позиции к новому
+		// клику не относится, чужие строки — не наше дело.
+		rows.setPosErr(pos, "")
+		rows.setGeneral("")
 		// Все замеры протухли разом: путь через позицию i входит в цену
 		// каждой позиции выше. Цифра прежнего маршрута рядом с новым
 		// составом врала бы, и заметить это было бы нечем.
-		for _, d := range delays {
-			d.SetText("")
-		}
+		rows.clearDelays()
 
 		go func() {
 			warmupErr, err := ac.SetChainPositionEnabled(chainTag, pos, enabled)
@@ -194,9 +254,10 @@ func newChainPositionToggle(
 				defer check.Enable()
 				switch {
 				case err != nil:
+					// Отказ дороги или ядра целиком — к позиции не привязан,
+					// идёт общей строкой.
 					debuglog.WarnLog("chain toggle: %s#%d enabled=%v: %v", chainTag, pos, enabled, err)
-					errLabel.SetText(chainToggleErrorText(err))
-					errLabel.Show()
+					rows.setGeneral(chainToggleErrorText(err))
 					if chainToggleNeedsRevert(err, warmupErr, ok) {
 						// Двойной сбой: ядро переключение отвергло И состав
 						// перечитать не удалось — приводить галочку не по чему,
@@ -213,11 +274,12 @@ func newChainPositionToggle(
 				case strings.TrimSpace(warmupErr) != "":
 					// Флаг ядро применило, а звено не поднялось. Это диагноз
 					// узла, а не отказ переключения: галочка остаётся там,
-					// куда её поставил пользователь, текст объясняет, почему
-					// трафик через позицию пока не пойдёт.
+					// куда её поставил пользователь, текст под ЕЁ строкой
+					// объясняет, почему трафик через позицию пока не пойдёт.
+					// Пишется ДО refresh: last_error звена из состава старее
+					// и пустую строку не перекроет, а занятую не трогает.
 					debuglog.WarnLog("chain toggle warmup: %s#%d: %s", chainTag, pos, warmupErr)
-					errLabel.SetText(warmupErr)
-					errLabel.Show()
+					rows.setPosErr(pos, warmupErr)
 				}
 				if ok {
 					refresh(fresh)
@@ -246,26 +308,29 @@ func chainToggleNeedsRevert(err error, warmupErr string, refreshed bool) bool {
 	return err != nil && !refreshed
 }
 
-// applyChainRows приводит строки с галочками к состоянию, прочитанному у
-// ядра. Состояние уже на руках — сюда попадаем из UI-потока, ходить в ядро
+// applyChainRows приводит строки к состоянию, прочитанному у ядра.
+// Состояние уже на руках — сюда попадаем из UI-потока, ходить в ядро
 // отсюда нельзя.
 //
 // Под флагом applying: SetChecked зовёт OnChanged, и без него приведение к
 // состоянию ядра само отправило бы ядру новый тумблер — рекурсией.
-func applyChainRows(
-	fresh core.ChainInfo,
-	rows []*widget.Label,
-	toggles []*widget.Check,
-	applying *bool,
-) {
+//
+// last_error звена заполняет только ПУСТЫЕ строки: то, что уже стоит
+// (прогрев после клика, ошибка пробы), свежее состава, который ядро могло
+// ещё не обновить.
+func applyChainRows(fresh core.ChainInfo, rows *chainRows, applying *bool) {
 	*applying = true
 	defer func() { *applying = false }()
-	for i := range rows {
+	for i := range rows.text {
 		if i >= len(fresh.Positions) {
 			break
 		}
-		rows[i].SetText(chainPositionText(i, fresh.Positions[i]))
-		toggles[i].SetChecked(!fresh.Positions[i].Disabled)
+		pos := fresh.Positions[i]
+		rows.text[i].SetText(chainPositionText(i, pos))
+		rows.toggle[i].SetChecked(!pos.Disabled)
+		if rows.posErr[i].Text == "" {
+			rows.setPosErr(i, pos.LastError)
+		}
 	}
 }
 
@@ -280,12 +345,20 @@ func chainToggleErrorText(err error) string {
 	return err.Error()
 }
 
-// chainPositionText — состав позиции: номер, тег и во что он резолвится.
+// chainPositionText — состав позиции: номер, тег, во что он резолвится и
+// состояние звена.
 //
 // `now` показывается только когда отличается от тега: у обычного узла они
 // совпадают, и вторая половина строки повторяла бы первую. У группы же это
 // единственный способ увидеть, через кого реально идёт трафик, не открывая
 // вложенные селекторы.
+//
+// Состояние звена — словами ядра (`starting | active | idle`), своих не
+// выдумываем. У выключенной позиции оно остаётся рядом с «off»: ядро не
+// рвёт звено принудительно, его забирает idle-эвикшн, и «off · active»
+// честно говорит, что звено ещё держит соединения. Пустое состояние — вход
+// (не клонируется) или звено ещё не создано (urltest-позиция рождает его
+// лениво); хвоста тогда нет.
 func chainPositionText(i int, pos core.ChainPositionInfo) string {
 	text := fmt.Sprintf("  %d. %s", i+1, pos.Tag)
 	if now := strings.TrimSpace(pos.Now); now != "" && now != pos.Tag {
@@ -299,7 +372,28 @@ func chainPositionText(i int, pos core.ChainPositionInfo) string {
 	if pos.Disabled {
 		text += "  · " + locale.T("off")
 	}
+	if state := chainCloneStateText(pos.CloneState); state != "" {
+		text += "  · " + state
+	}
 	return text
+}
+
+// chainCloneStateText — перевод состояния звена. Неизвестное слово ядра
+// показывается как есть: новая версия ядра может добавить состояние, и
+// прятать его хуже, чем показать без перевода.
+func chainCloneStateText(state string) string {
+	switch strings.TrimSpace(state) {
+	case "":
+		return ""
+	case "starting":
+		return locale.T("starting")
+	case "active":
+		return locale.T("active")
+	case "idle":
+		return locale.T("idle")
+	default:
+		return strings.TrimSpace(state)
+	}
 }
 
 // probeChainLayers меряет префиксы цепочки последовательно.
@@ -321,7 +415,7 @@ func probeChainLayers(ac *core.AppController, info core.ChainInfo) []chainLayerR
 			delay, coreErr, err := ac.ProbeChainLayer(info.Tag, i)
 			if err != nil {
 				debuglog.WarnLog("chain probe: %s#%d: %v", info.Tag, i, err)
-				results[i] = chainLayerResult{Error: err.Error()}
+				results[i] = chainLayerResult{Transport: err.Error()}
 				continue
 			}
 			results[i] = chainLayerResult{DelayMs: delay, Error: coreErr}
@@ -331,39 +425,47 @@ func probeChainLayers(ac *core.AppController, info core.ChainInfo) []chainLayerR
 }
 
 // applyChainProbeResults раскладывает замеры по строкам.
-func applyChainProbeResults(results []chainLayerResult, delays []*widget.Label, errLabel *widget.Label) {
-	firstError := ""
+//
+// Ошибка ядра ложится под СВОЮ позицию; ошибка дороги — в общую строку,
+// первая из встреченных: если RPC отвалился, он отвалился для всех.
+func applyChainProbeResults(results []chainLayerResult, rows *chainRows) {
+	transport := ""
 	prev := int64(-1) // задержка предыдущей ИЗМЕРЕННОЙ позиции
 	for i, res := range results {
-		if i >= len(delays) {
+		if i >= len(rows.delay) {
 			break
 		}
+		d := rows.delay[i]
 		// Importance выставляется на КАЖДЫЙ замер, а не только при ошибке:
 		// однажды покрасневшая позиция иначе рисовала бы опасным стилем и
 		// все последующие успешные цифры.
-		delays[i].Importance = widget.MediumImportance
+		d.Importance = widget.MediumImportance
 		switch {
 		case res.Skipped:
-			delays[i].SetText(locale.T("—"))
+			d.SetText(locale.T("—"))
 			// Опорную точку схлопнутая позиция не сбрасывает: пакет через
 			// неё проходит, просто без своего звена.
-		case res.Error != "":
-			delays[i].SetText(locale.T("error"))
-			delays[i].Importance = widget.DangerImportance
-			if firstError == "" {
-				firstError = res.Error
+		case res.Transport != "":
+			d.SetText(locale.T("error"))
+			d.Importance = widget.DangerImportance
+			if transport == "" {
+				transport = res.Transport
 			}
+			prev = -1
+		case res.Error != "":
+			d.SetText(locale.T("error"))
+			d.Importance = widget.DangerImportance
+			rows.setPosErr(i, res.Error)
 			// Следующая позиция теряет опорную точку: её цену не вычислить.
 			prev = -1
 		default:
-			delays[i].SetText(chainDelayText(res.DelayMs, prev))
+			d.SetText(chainDelayText(res.DelayMs, prev))
 			prev = res.DelayMs
 		}
-		delays[i].Refresh()
+		d.Refresh()
 	}
-	if firstError != "" {
-		errLabel.SetText(firstError)
-		errLabel.Show()
+	if transport != "" {
+		rows.setGeneral(transport)
 	}
 }
 

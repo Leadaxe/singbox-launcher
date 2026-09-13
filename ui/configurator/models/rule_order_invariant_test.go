@@ -25,7 +25,7 @@ func loadCrooked(rules []corestate.Rule, td *wizardtemplate.TemplateData) *Wizar
 	m := &WizardModel{TemplateData: td}
 	m.PresetRefs = SyncStateRulesToPresetRefs(rules)
 	m.CustomRules = customRulesFromStateRules(rules)
-	m.RuleOrder = RuleOrderFromAxis(rules, m.PresetRefs, m.CustomRules)
+	m.RuleOrder = RuleOrderFromAxis(rules, m.PresetRefs, m.CustomRules, m.NodeRuleRefs)
 	ReconcileRuleOrder(m)
 	EnsureRuleOrderNums(m)
 	return m
