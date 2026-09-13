@@ -305,6 +305,18 @@ func buildSection(ctx BuildContext, key string, raw json.RawMessage, finalOutbou
 				cache = &c
 			}
 		}
+		// D-104: REALITY принимает только chrome-подобный ClientHello
+		// (SPEC 083 ядра). Правка НЕ опциональна — иначе узел молча мёртв, —
+		// и живёт здесь, а не в парсере: значение узла нормативно (CANON §2),
+		// LxBox чинит на том же шаге сборки.
+		if cache != nil {
+			healed := HealRealityFingerprints(cache.Outbounds)
+			if len(healed) == len(cache.Outbounds) {
+				c := *cache
+				c.Outbounds = healed
+				cache = &c
+			}
+		}
 		// Висячие ссылки и кольца уже вычищены sanitizeOutboundGraph
 		// (buildOrderedSections) — по всему графу разом, а не по одной секции.
 		gen := cacheOutboundsAsStrings(cache)

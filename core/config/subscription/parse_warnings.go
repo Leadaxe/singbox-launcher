@@ -26,6 +26,23 @@ const (
 	// WarnUTLSFingerprintUnknown — отпечаток вне словаря ядра заменён на
 	// канонический; чужое значение валит все outbound'ы.
 	WarnUTLSFingerprintUnknown = "utls_fp_unknown"
+	// WarnRealityFPNotChrome — у узла эмитится reality, а uTLS-отпечаток не
+	// из chrome-семейства: на сборке он подменяется на chrome (D-104).
+	//
+	// Молчать нельзя: REALITY-сервер Xray ≥ v26.9.8 требует в ClientHello
+	// key_share X25519MLKEM768, который несут только chrome-спеки uTLS, и без
+	// него МОЛЧА уводит соединение на камуфляжный сайт — ошибки нет, узел
+	// просто мёртв (SPEC 083 ядра). Но и подмена меняет маскировку, о которой
+	// просила подписка, — пользователь вправе знать. Пустой fp и наш дефолт
+	// `random` под код не попадают (см. realityFingerprintWouldDegrade).
+	WarnRealityFPNotChrome = "reality_fp_not_chrome"
+	// WarnNaiveExtraHeadersInvalid — пара из naive `extra-headers` отброшена:
+	// нет ':', запрещённые символы в имени или CR/LF/NUL в значении.
+	//
+	// Прочие пары той же ссылки живут, узел живёт — отсюда severity=info; но
+	// до этого отброс уходил только в debuglog, и в отчёте сборки человек не
+	// видел, что заголовок, которым он открывает доступ, до сервера не доедет.
+	WarnNaiveExtraHeadersInvalid = "naive_extra_headers_invalid"
 	// WarnObfsUnknown — тип hysteria2-обфускации вне словаря ядра снят.
 	WarnObfsUnknown = "obfs_unknown"
 	// WarnObfsPasswordMissing — обфускация без пароля снята целиком: ядро

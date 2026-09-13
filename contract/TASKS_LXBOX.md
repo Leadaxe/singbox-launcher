@@ -664,9 +664,23 @@ key (секрет), Control URL, Hostname, Ephemeral, Accept routes, Exit node �
 После ответа: лаунчер снимает пометки «черновик» с NODE_SECTIONS.md и
 D-101, ставит «обе» в BACKUP.md §2 и поднимает `contract/VERSION`.
 
+### Ответ LxBox 13.09.2026 и что принято (D-102)
+
+- **Б принято**: форма секций в бэкапе — **корневая форма бэкапа**, не
+  внутренняя форма лаунчера. `sections.rules[]` = `properties.rules.items`
+  (`kind, name, enabled, num, outbound, ref/refs, match`), `sections.dns.*[]`
+  = `$defs/dnsRef` (`kind: user`, `name` = тег, тело в `value`). Схема и
+  `docs/NODE_SECTIONS.md` §1 переписаны; лаунчер переводит свою внутреннюю
+  форму в корневую тем же кодом, что корневые `rules[]`/`dns` (SPEC 126 L9).
+- Код `backup_section_record_dropped` покрывает два случая — «поле у узла
+  подписки/цепочки/Направления» и «чужой kind внутри секции», различаются
+  текстом предупреждения.
+- **В принято**: 0.13.0 после реализации LxBox.
+- **А** — за владельцем форка; хранение/провоз/UI делаются при любом исходе.
+
 ## 14. REALITY: отпечаток chrome-семейства и код `reality_fp_not_chrome`; naive `extra-headers` — код `naive_extra_headers_invalid` (приоритет 1)
 
-Контракт 0.12.10, решения D-102 и D-103.
+Контракт 0.12.10, решения D-104 и D-105.
 
 ### 14.1 REALITY — правило у вас УЖЕ есть
 
@@ -730,7 +744,7 @@ NB по `ech_ignored_reality_kept`: его `.expected.lxbox.json` СОХРАНЁ
    привязать к коду (`dart` в реестре уже проставлен);
 5. прогнать кейс `uri/naive/extra_headers_bad_name_dropped`.
 
-Остальное по naive кодом не меняется, а только записано в норму (D-103,
+Остальное по naive кодом не меняется, а только записано в норму (D-105,
 `docs/Protocols.md` §NaïveProxy): набор параметров диалекта прежний
 (`padding`, `extra-headers`) и совпадает с вашим `_naiveKnownQueryKeys`;
 неизвестные query-ключи игнорируются МОЛЧА (паритет, кейс
@@ -739,17 +753,3 @@ NB по `ech_ignored_reality_kept`: его `.expected.lxbox.json` СОХРАНЁ
 бы `cubic`.
 
 Ответ — сюда же, статусом под этим параграфом, как в §11.
-
-### Ответ LxBox 13.09.2026 и что принято (D-102)
-
-- **Б принято**: форма секций в бэкапе — **корневая форма бэкапа**, не
-  внутренняя форма лаунчера. `sections.rules[]` = `properties.rules.items`
-  (`kind, name, enabled, num, outbound, ref/refs, match`), `sections.dns.*[]`
-  = `$defs/dnsRef` (`kind: user`, `name` = тег, тело в `value`). Схема и
-  `docs/NODE_SECTIONS.md` §1 переписаны; лаунчер переводит свою внутреннюю
-  форму в корневую тем же кодом, что корневые `rules[]`/`dns` (SPEC 126 L9).
-- Код `backup_section_record_dropped` покрывает два случая — «поле у узла
-  подписки/цепочки/Направления» и «чужой kind внутри секции», различаются
-  текстом предупреждения.
-- **В принято**: 0.13.0 после реализации LxBox.
-- **А** — за владельцем форка; хранение/провоз/UI делаются при любом исходе.

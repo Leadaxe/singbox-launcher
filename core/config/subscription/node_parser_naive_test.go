@@ -43,13 +43,13 @@ func TestIsValidNaiveHeaderName(t *testing.T) {
 
 func TestParseNaiveExtraHeaders(t *testing.T) {
 	t.Run("nil on empty", func(t *testing.T) {
-		if got := parseNaiveExtraHeaders(""); got != nil {
+		if got, _ := parseNaiveExtraHeaders(""); got != nil {
 			t.Errorf("expected nil, got %v", got)
 		}
 	})
 
 	t.Run("single pair", func(t *testing.T) {
-		got := parseNaiveExtraHeaders("X-Username: user")
+		got, _ := parseNaiveExtraHeaders("X-Username: user")
 		want := map[string]string{"X-Username": "user"}
 		if !mapsEqual(got, want) {
 			t.Errorf("got %v, want %v", got, want)
@@ -57,7 +57,7 @@ func TestParseNaiveExtraHeaders(t *testing.T) {
 	})
 
 	t.Run("two pairs with CRLF", func(t *testing.T) {
-		got := parseNaiveExtraHeaders("X-A: 1\r\nX-B: 2")
+		got, _ := parseNaiveExtraHeaders("X-A: 1\r\nX-B: 2")
 		want := map[string]string{"X-A": "1", "X-B": "2"}
 		if !mapsEqual(got, want) {
 			t.Errorf("got %v, want %v", got, want)
@@ -65,7 +65,7 @@ func TestParseNaiveExtraHeaders(t *testing.T) {
 	})
 
 	t.Run("value with colons preserved", func(t *testing.T) {
-		got := parseNaiveExtraHeaders("X-Time: 12:34:56")
+		got, _ := parseNaiveExtraHeaders("X-Time: 12:34:56")
 		want := map[string]string{"X-Time": "12:34:56"}
 		if !mapsEqual(got, want) {
 			t.Errorf("got %v, want %v", got, want)
@@ -73,7 +73,7 @@ func TestParseNaiveExtraHeaders(t *testing.T) {
 	})
 
 	t.Run("leading/trailing spaces trimmed", func(t *testing.T) {
-		got := parseNaiveExtraHeaders("  X-A :  1  ")
+		got, _ := parseNaiveExtraHeaders("  X-A :  1  ")
 		want := map[string]string{"X-A": "1"}
 		if !mapsEqual(got, want) {
 			t.Errorf("got %v, want %v", got, want)
@@ -81,7 +81,7 @@ func TestParseNaiveExtraHeaders(t *testing.T) {
 	})
 
 	t.Run("invalid name skipped, valid kept", func(t *testing.T) {
-		got := parseNaiveExtraHeaders("X A: bad\r\nX-B: good")
+		got, _ := parseNaiveExtraHeaders("X A: bad\r\nX-B: good")
 		want := map[string]string{"X-B": "good"}
 		if !mapsEqual(got, want) {
 			t.Errorf("got %v, want %v", got, want)
@@ -89,7 +89,7 @@ func TestParseNaiveExtraHeaders(t *testing.T) {
 	})
 
 	t.Run("no separator skipped", func(t *testing.T) {
-		got := parseNaiveExtraHeaders("no-colon-here\r\nX-Good: v")
+		got, _ := parseNaiveExtraHeaders("no-colon-here\r\nX-Good: v")
 		want := map[string]string{"X-Good": "v"}
 		if !mapsEqual(got, want) {
 			t.Errorf("got %v, want %v", got, want)
@@ -97,14 +97,14 @@ func TestParseNaiveExtraHeaders(t *testing.T) {
 	})
 
 	t.Run("all invalid → nil", func(t *testing.T) {
-		got := parseNaiveExtraHeaders("no-colon\r\nalso-no-colon")
+		got, _ := parseNaiveExtraHeaders("no-colon\r\nalso-no-colon")
 		if got != nil {
 			t.Errorf("expected nil, got %v", got)
 		}
 	})
 
 	t.Run("UTF-8 in value allowed", func(t *testing.T) {
-		got := parseNaiveExtraHeaders("X-Note: Привет")
+		got, _ := parseNaiveExtraHeaders("X-Note: Привет")
 		want := map[string]string{"X-Note": "Привет"}
 		if !mapsEqual(got, want) {
 			t.Errorf("got %v, want %v", got, want)

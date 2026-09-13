@@ -191,6 +191,9 @@ func xrayBuildVLESSFromOutbound(ob map[string]interface{}, label string) (*confi
 	if tr, ok := outbound["transport"].(map[string]interface{}); ok {
 		noteXHTTPPlacementGuard(node, tr)
 	}
+	// D-104 — по той же причине после создания узла: reality с отпечатком вне
+	// chrome-семейства на сборке станет chrome.
+	noteRealityFingerprint(node, outbound)
 	return node, nil
 }
 

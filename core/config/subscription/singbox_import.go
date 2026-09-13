@@ -354,6 +354,9 @@ func parseSingboxEntry(entry map[string]interface{}, cfgIdx, entryIdx int) (*con
 	for _, code := range sanitizeCodes {
 		node.AddWarning(code)
 	}
+	// D-104 — reality, переживший санитайз, с отпечатком вне chrome-семейства:
+	// на сборке он станет chrome (SPEC 083 ядра).
+	noteRealityFingerprint(node, ob)
 
 	return node, nil
 }

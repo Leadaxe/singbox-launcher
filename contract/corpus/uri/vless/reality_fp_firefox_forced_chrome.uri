@@ -1,0 +1,8 @@
+# D-104 / SPEC 083 ядра: REALITY-сервер Xray >= v26.9.8 принимает только
+# chrome-подобный ClientHello (key_share X25519MLKEM768). Отпечаток firefox в
+# `entry` СОХРАНЁН — значение узла нормативно (CANON §2), подмена на chrome
+# делается на сборке конфига (Go core/build/tls_transforms.go
+# HealRealityFingerprints; Dart post_steps/heal_unknown_utls_fingerprints.dart).
+# Узел об этом сообщает кодом reality_fp_not_chrome.
+# источник: SPEC 083 ядра, D-104
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?security=reality&type=tcp&fp=firefox&sni=www.example-3.com&pbk=AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw&sid=ab#reality-fp-firefox

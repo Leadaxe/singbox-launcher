@@ -70,6 +70,15 @@
       "dart": "UnknownFingerprintWarning",
       "go": "core/config/subscription/singbox_sanitize.go:177; core/config/subscription/node_parser_transport.go:646"
     },
+    "reality_fp_not_chrome": {
+      "severity": "warning",
+      "params": [
+        "value"
+      ],
+      "desc": "REALITY с uTLS-отпечатком не из chrome-семейства (D-104). ПОЧЕМУ: REALITY-сервер Xray >= v26.9.8 (XTLS/REALITY@8cdf7bf, SPEC 083 ядра) требует в ClientHello key_share X25519MLKEM768; его несут только chrome-спеки uTLS (chrome, chrome_psk, chrome_psk_shuffle, chrome_padding_psk_shuffle, chrome_pq, chrome_pq_psk — ядро схлопывает их в HelloChrome_Auto). firefox/edge/safari/ios/android/360/qq шлют голый X25519 и сервер МОЛЧА проксирует соединение на камуфляжный сайт: ошибки нет, узел просто мёртв. ЧТО ДЕЛАЕМ: на сборке конфига подставляем chrome — узел живёт, — а значение в узле (`entry`) НЕ трогаем: оно нормативно (CANON §2) и сверяется корпусом побайтно. Обе стороны правят на одном шаге: Go core/build/tls_transforms.go HealRealityFingerprints, Dart post_steps/heal_unknown_utls_fingerprints.dart. Пустой fp при reality эмитится как chrome ЯВНО, без warning (на дефолт ядра не полагаемся). Наш дефолт `random` (D-009) под код тоже НЕ попадает — от явного fp=random он неотличим, и warning кричал бы на каждой второй reality-ноде, — но на сборке подменяется наравне с остальными.",
+      "dart": "RealityFingerprintWarning",
+      "go": "core/config/subscription/parse_warnings.go:38 (WarnRealityFPNotChrome); эмиссия — node_parser_transport.go vlessTLSFromNode / noteRealityFingerprint, node_parser_anytls.go buildAnyTLSTLS, xray_outbound_convert.go, singbox_import.go; подмена — core/build/tls_transforms.go HealRealityFingerprints"
+    },
     "xhttp_param_reset": {
       "severity": "warning",
       "params": [
@@ -202,6 +211,15 @@
       "desc": "URI-параметр padding у naive не имеет sing-box-эквивалента — игнорируется, узел живёт.",
       "dart": "NaivePaddingIgnoredWarning",
       "go": "core/config/subscription/node_parser_core.go:384"
+    },
+    "naive_extra_headers_invalid": {
+      "severity": "info",
+      "params": [
+        "entry"
+      ],
+      "desc": "Пара из naive `extra-headers` отброшена при разборе (D-105): нет разделителя ':', запрещённые символы в имени (набор допустимых — подмножество RFC 7230 tchar по спецификации DuckSoft 2020) или CR/LF/NUL в значении. Прочие пары той же ссылки сохраняются, узел живёт — отсюда severity=info. ПОЧЕМУ код, а не только лог: заголовок из extra-headers часто и есть то, чем открывают доступ на сервере, и его молчаливая пропажа выглядела для пользователя как отказ узла без причины. Вешается на узел ОДИН раз при первой отброшенной паре. Собственный `headers` у http/https-прокси под код НЕ попадает: параметр объявлен у схемы naive.",
+      "dart": "NaiveExtraHeadersInvalidWarning",
+      "go": "core/config/subscription/parse_warnings.go:45 (WarnNaiveExtraHeadersInvalid); эмиссия — node_parser_naive.go buildNaiveOutbound / parseNaiveExtraHeaders"
     },
     "ss_method_invalid": {
       "severity": "error",

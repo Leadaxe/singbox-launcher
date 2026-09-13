@@ -21,6 +21,7 @@ import (
 	"hash/fnv"
 	"strings"
 
+	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/debuglog"
 )
 
@@ -191,4 +192,61 @@ func mixedCaseSNI(host string) string {
 		labels[li] = string(b)
 	}
 	return strings.Join(labels, ".")
+}
+
+// HealRealityFingerprints приводит tls.utls.fingerprint КАЖДОГО outbound'а с
+// живым reality к chrome-семейству — финальный рубеж перед эмиссией (D-104).
+//
+// Зачем именно здесь, а не в парсере: REALITY-сервер Xray ≥ v26.9.8
+// (XTLS/REALITY@8cdf7bf, SPEC 083 ядра) требует в ClientHello key_share
+// X25519MLKEM768; его несут только chrome-спеки uTLS, а firefox/edge/safari/
+// ios/android/360/qq шлют голый X25519 и МОЛЧА уезжают на камуфляжный сайт.
+// Значение же в узле — нормативный `entry` контракта (CANON §2), его сверяет
+// корпус с LxBox побайтно; LxBox правит ровно на этом шаге
+// (post_steps/heal_unknown_utls_fingerprints.dart), и парсерная подмена увела
+// бы две стороны в расхождение вместо паритета.
+//
+// В отличие от ApplyTLSTransforms правка НЕ опциональна и НЕ ограничена
+// первым хопом: мёртвый ClientHello убивает узел на любой позиции цепочки.
+// Пользователю об этом говорит warning `reality_fp_not_chrome` на узле.
+//
+// Возвращает новый слайс; вход не мутируется.
+func HealRealityFingerprints(outbounds []json.RawMessage) []json.RawMessage {
+	if len(outbounds) == 0 {
+		return outbounds
+	}
+	out := make([]json.RawMessage, len(outbounds))
+	healed := 0
+	for i, raw := range outbounds {
+		var ob map[string]interface{}
+		if err := json.Unmarshal(raw, &ob); err != nil {
+			out[i] = raw // не объект — оставляем как есть
+			continue
+		}
+		tls, ok := ob["tls"].(map[string]interface{})
+		if !ok {
+			out[i] = raw
+			continue
+		}
+		original, changed := subscription.EnforceRealityFingerprint(tls)
+		if !changed && original != "" {
+			out[i] = raw
+			continue
+		}
+		reencoded, err := json.Marshal(ob)
+		if err != nil {
+			out[i] = raw
+			continue
+		}
+		out[i] = reencoded
+		if changed {
+			healed++
+			tag, _ := ob["tag"].(string)
+			debuglog.WarnLog("Build: outbound %q: REALITY с uTLS-отпечатком %q — подставлен chrome (Xray >= v26.9.8 принимает только chrome-подобный ClientHello, SPEC 083)", tag, original)
+		}
+	}
+	if healed > 0 {
+		debuglog.InfoLog("Build: REALITY fingerprint healed on %d outbound(s)", healed)
+	}
+	return out
 }

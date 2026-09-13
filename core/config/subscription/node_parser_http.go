@@ -113,7 +113,10 @@ func parseHTTPProxyURI(uri string, skipFilters []map[string]string) (*configtype
 	// headers: same serialization as naive extra-headers
 	// (URL-encoded "H1: V1\r\nH2: V2"; bad pairs are skipped with a warning).
 	if raw := q.Get("headers"); raw != "" {
-		if hdrs := parseNaiveExtraHeaders(raw); len(hdrs) > 0 {
+		// Код naive_extra_headers_invalid здесь НЕ ставится: он объявлен
+		// параметром ссылки naive (D-105), а это свой `headers` у http/https
+		// прокси. Расширять код на чужую схему — врать реестру.
+		if hdrs, _ := parseNaiveExtraHeaders(raw); len(hdrs) > 0 {
 			m := make(map[string]interface{}, len(hdrs))
 			for k, v := range hdrs {
 				m[k] = v
