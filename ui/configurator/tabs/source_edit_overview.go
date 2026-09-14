@@ -237,10 +237,10 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 		// не так, как ожидалось. Узлы при этом не трогаются вовсе: это показ,
 		// а не обновление.
 		appendRawBodySection(body, src.URL, subscription.SourceIdentity{
-			UserAgent: src.UserAgent,
-			HWID:      src.HWID,
-			SendHWID:  src.SendHWID,
-			HashModel: src.HashDeviceModel,
+			UserAgent: src.IdentityUserAgent(),
+			HWID:      src.IdentityHWID(),
+			SendHWID:  src.IdentitySendHWID(),
+			HashModel: src.IdentityHashDeviceModel(),
 		})
 
 		appendStorageRecordSection(body, src)

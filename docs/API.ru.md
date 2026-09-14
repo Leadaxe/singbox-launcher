@@ -158,6 +158,49 @@ curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application
 
 ---
 
+## Перенос настроек (SPEC 127)
+
+То же, что делают кнопки *Экспорт…* / *Импорт…* на вкладке «Файлы»: снять переносимый слепок настроек и применить его в другом месте. Телом ответа едет сам файл LX Backup — сохранив его на диск, вы получаете файл, который лаунчер и LxBox откроют без распаковки.
+
+Форматов два, они сосуществуют на время окна совместимости: **0.12** (переходный писатель, его сегодня читают оба приложения) и **1.0** (файл = состояние лаунчера, поэтому едут и правила узлов, и их DNS-секции, и папки). **Импорт всегда читает оба** — формат вызывающему называть не нужно. Экспорт пишет то, что просит `?format=`, а без параметра — умолчание сборки.
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/backup/formats` | `{"reads":[1,2],"writes":["0.12","1.0"],"default":"…"}` — `reads` это маркеры `lx_backup`, `writes` — имена форматов, которые принимает `?format=` |
+| GET | `/backup/export` | Файл бэкапа телом ответа. `?format=1.0\|0.12` (без параметра — умолчание сборки), `?envelope=1` заворачивает его в `{format, file_name, file, warnings}` |
+| POST | `/backup/import` | Тело — файл бэкапа любого читаемого формата. Слияние в состояние, `Save`, затем пересборка `config.json` |
+
+Потери экспорта не молчаливы: без конверта коды едут заголовком `X-Backup-Warnings` JSON-массивом, с `?envelope=1` — полем `warnings`. У простого ответа есть и `Content-Disposition` с тем же предлагаемым именем файла, что показывает UI.
+
+`POST /backup/import` **сливает**, а не замещает (BACKUP.md §9): подписки сходятся по URL, серверы — по телу, папки — по имени, цепочки и Направления — по тегу. Правила маршрута единственное исключение — их файл замещает целиком. В ответе — что именно применилось:
+
+```json
+{"ok":true,"format":"1.0","warnings":[{"code":"backup_unknown_outbound","detail":"Work → vpn-de"}],
+ "applied":{"rules":7,"sources":4,"directions":1,"added_subscriptions":1,"updated_subscriptions":0,
+            "added_servers":2,"skipped_servers":0,"added_folders":1,"updated_folders":0,
+            "added_chains":1},
+ "config_rebuilt":true}
+```
+
+```bash
+# Снять слепок этой машины в новом формате
+curl -s -H "Authorization: Bearer $TOKEN" "$API/backup/export?format=1.0" -o lx-backup.json
+
+# Коды того, что формат увезти не смог
+curl -sD- -o /dev/null -H "Authorization: Bearer $TOKEN" "$API/backup/export" | grep -i x-backup-warnings
+
+# Применить на другой машине
+curl -s -X POST -H "Authorization: Bearer $TOKEN" --data-binary @lx-backup.json "$API/backup/import" | jq
+```
+
+У машин, сопряжённых через `/remote/*`, есть зеркала первых двух ручек: `GET /remote/machines/{id}/backup/export` и `POST /remote/machines/{id}/backup/import` работают с профилем визарда этой машины. Действует известное ограничение SPEC 100 §3.3: `config.json` машины собирает её собственный визард, поэтому удалённый импорт отвечает `config_rebuilt:false`, и для доставки по-прежнему нужен шаг Save в UI.
+
+На **свежей установке** (файла `state.json` ещё нет) импорт всё равно работает: файл описывает настройку целиком, поэтому он сливается в чистое состояние и сохраняется. Экспорт в той же ситуации отвечает `404` — снимать нечего, и пустой файл был бы враньём о содержимом машины.
+
+**Ошибки:** `400` (неизвестный `?format=`, пустое тело, не файл LX Backup, `lx_backup` новее, чем эта сборка читает), `409` (файл состояния написан другим мажором схемы — гейт SPEC 118, тот же, что у `PATCH /state/*`), `422` (файл разобран, но слить не удалось), `404` (только экспорт: нет `state.json`), `405` (метод).
+
+---
+
 ## Действия
 
 Все `POST`-only (`GET` → 405). Synchronous (блокируют до завершения). Success = `{"ok":true}`.
@@ -286,6 +329,11 @@ API нет. Манифест `GET /` несёт `capabilities` (`remote`/`daemon
 `GET …/state/outbounds/resolved` — те же контракты, что у локальных ручек.
 **Ограничение:** PATCH меняет state машины, но её `config.json` собирает только
 визард (Configure → Save) — программной пересборки пока нет.
+
+**Перенос настроек (зеркала `/backup/*`):** `GET /remote/machines/{id}/backup/export`,
+`POST /remote/machines/{id}/backup/import` — те же контракты, что у локальных
+ручек, но над профилем этой машины. Ограничение выше действует и здесь:
+удалённый импорт отвечает `config_rebuilt:false`.
 
 **Наблюдаемость:** `GET …/groups`, `GET …/proxies?group=`,
 `POST …/proxies/switch {group,name}`, `POST …/proxies/delay {name}`,
@@ -467,6 +515,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
 |---|---|
 | `core/debugapi/server.go` | Routing, auth middleware, `/ping`, `/version`, `/state`, `/proxies`, `/action/*` |
 | `core/debugapi/state_endpoints.go` | `/state/full`, `/state/rules`, `/state/dns`, `/state/dns/rules`, `/state/outbounds/resolved` |
+| `core/debugapi/backup_endpoints.go` | `/backup/export`, `/backup/import`, `/backup/formats` и их зеркала `/remote/machines/{id}/backup/*` |
 | `core/debugapi/log_level_endpoint.go` | `/state/log-level` (валидация уровня + core restart через `core.ApplyLogLevelAndReloadCore`) |
 | `core/debugapi/traffic_endpoints.go` | Все `/traffic/*` |
 | `core/debugapi/snapshot.go` | `/debug/snapshot` |

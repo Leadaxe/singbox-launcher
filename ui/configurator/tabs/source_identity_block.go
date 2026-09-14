@@ -91,20 +91,20 @@ func newSourceIdentityBlock(srcRef func() *corestate.Source) *sourceIdentityBloc
 	b.uaEntry.SetPlaceHolder(locale.T("client User-Agent"))
 	b.uaEntry.OnChanged = func(s string) {
 		if p := srcRef(); p != nil && !b.uaCheck.Checked {
-			p.UserAgent = strings.TrimSpace(s)
+			p.SetIdentityUserAgent(strings.TrimSpace(s))
 		}
 	}
 	b.uaCheck = widget.NewCheck(locale.T(sourceIdentityAsSystemText), func(on bool) {
 		if on {
 			b.uaEntry.Disable()
 			if p := srcRef(); p != nil {
-				p.UserAgent = ""
+				p.SetIdentityUserAgent("")
 			}
 			return
 		}
 		b.uaEntry.Enable()
 		if p := srcRef(); p != nil {
-			p.UserAgent = strings.TrimSpace(b.uaEntry.Text)
+			p.SetIdentityUserAgent(strings.TrimSpace(b.uaEntry.Text))
 		}
 	})
 
@@ -112,21 +112,21 @@ func newSourceIdentityBlock(srcRef func() *corestate.Source) *sourceIdentityBloc
 	b.sendValue = widget.NewCheck(locale.T("Send device ID"), func(on bool) {
 		if p := srcRef(); p != nil && !b.sendCheck.Checked {
 			v := on
-			p.SendHWID = &v
+			p.SetIdentitySendHWID(&v)
 		}
 	})
 	b.sendCheck = widget.NewCheck(locale.T(sourceIdentityAsSystemText), func(on bool) {
 		if on {
 			b.sendValue.Disable()
 			if p := srcRef(); p != nil {
-				p.SendHWID = nil
+				p.SetIdentitySendHWID(nil)
 			}
 			return
 		}
 		b.sendValue.Enable()
 		if p := srcRef(); p != nil {
 			v := b.sendValue.Checked
-			p.SendHWID = &v
+			p.SetIdentitySendHWID(&v)
 		}
 	})
 
@@ -134,21 +134,21 @@ func newSourceIdentityBlock(srcRef func() *corestate.Source) *sourceIdentityBloc
 	b.hashValue = widget.NewCheck(locale.T("Hash device model (privacy)"), func(on bool) {
 		if p := srcRef(); p != nil && !b.hashCheck.Checked {
 			v := on
-			p.HashDeviceModel = &v
+			p.SetIdentityHashDeviceModel(&v)
 		}
 	})
 	b.hashCheck = widget.NewCheck(locale.T(sourceIdentityAsSystemText), func(on bool) {
 		if on {
 			b.hashValue.Disable()
 			if p := srcRef(); p != nil {
-				p.HashDeviceModel = nil
+				p.SetIdentityHashDeviceModel(nil)
 			}
 			return
 		}
 		b.hashValue.Enable()
 		if p := srcRef(); p != nil {
 			v := b.hashValue.Checked
-			p.HashDeviceModel = &v
+			p.SetIdentityHashDeviceModel(&v)
 		}
 	})
 
@@ -157,7 +157,7 @@ func newSourceIdentityBlock(srcRef func() *corestate.Source) *sourceIdentityBloc
 	b.hwidEntry.SetPlaceHolder(locale.T("device ID for this subscription"))
 	b.hwidEntry.OnChanged = func(s string) {
 		if p := srcRef(); p != nil && !b.hwidCheck.Checked {
-			p.HWID = strings.TrimSpace(s)
+			p.SetIdentityHWID(strings.TrimSpace(s))
 		}
 	}
 	// Своё значение генерируется ТЕМ ЖЕ способом, что глобальное — иначе
@@ -171,7 +171,7 @@ func newSourceIdentityBlock(srcRef func() *corestate.Source) *sourceIdentityBloc
 			b.hwidEntry.Disable()
 			b.hwidRegenBt.Disable()
 			if p := srcRef(); p != nil {
-				p.HWID = ""
+				p.SetIdentityHWID("")
 			}
 			return
 		}
@@ -183,7 +183,7 @@ func newSourceIdentityBlock(srcRef func() *corestate.Source) *sourceIdentityBloc
 			if strings.TrimSpace(b.hwidEntry.Text) == "" {
 				b.hwidEntry.SetText(locale.GenerateUUIDv4())
 			}
-			p.HWID = strings.TrimSpace(b.hwidEntry.Text)
+			p.SetIdentityHWID(strings.TrimSpace(b.hwidEntry.Text))
 		}
 	})
 
@@ -259,7 +259,7 @@ func (b *sourceIdentityBlock) syncFromModel(src *corestate.Source, global source
 	if b == nil || src == nil {
 		return
 	}
-	ua := strings.TrimSpace(src.UserAgent)
+	ua := strings.TrimSpace(src.IdentityUserAgent())
 	b.uaCheck.SetChecked(ua == "")
 	if ua == "" {
 		b.uaEntry.SetText(global.UserAgent)
@@ -269,21 +269,23 @@ func (b *sourceIdentityBlock) syncFromModel(src *corestate.Source, global source
 		b.uaEntry.Enable()
 	}
 
-	b.sendCheck.SetChecked(src.SendHWID == nil)
-	if src.SendHWID == nil {
+	sendHWID := src.IdentitySendHWID()
+	b.sendCheck.SetChecked(sendHWID == nil)
+	if sendHWID == nil {
 		b.sendValue.SetChecked(global.SendHWID)
 		b.sendValue.Disable()
 	} else {
-		b.sendValue.SetChecked(*src.SendHWID)
+		b.sendValue.SetChecked(*sendHWID)
 		b.sendValue.Enable()
 	}
 
-	b.hashCheck.SetChecked(src.HashDeviceModel == nil)
-	if src.HashDeviceModel == nil {
+	hashModel := src.IdentityHashDeviceModel()
+	b.hashCheck.SetChecked(hashModel == nil)
+	if hashModel == nil {
 		b.hashValue.SetChecked(global.HashModel)
 		b.hashValue.Disable()
 	} else {
-		b.hashValue.SetChecked(*src.HashDeviceModel)
+		b.hashValue.SetChecked(*hashModel)
 		b.hashValue.Enable()
 	}
 
@@ -307,7 +309,7 @@ func (b *sourceIdentityBlock) syncFromModel(src *corestate.Source, global source
 		b.relaysInfo.Show()
 	}
 
-	hw := strings.TrimSpace(src.HWID)
+	hw := strings.TrimSpace(src.IdentityHWID())
 	b.hwidCheck.SetChecked(hw == "")
 	if hw == "" {
 		b.hwidEntry.SetText(global.HWID)

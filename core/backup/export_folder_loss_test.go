@@ -53,7 +53,7 @@ func folderLossState() *state.State {
 // файл негодным к восстановлению, и её отсутствие — главное, что здесь
 // проверяется.
 func TestExportCarriesFolderMembers(t *testing.T) {
-	b, warns, err := Export(folderLossState(), ExportOptions{})
+	b, warns, err := Export012(folderLossState(), ExportOptions{})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestExportCarriesFolderMembers(t *testing.T) {
 // Пустая папка данных не несёт: её имя живёт только на записях членов, а
 // членов нет. Предупреждать не о чем — терять нечего.
 func TestExportEmptyFolderIsSilent(t *testing.T) {
-	_, warns, err := Export(folderLossState(), ExportOptions{})
+	_, warns, err := Export012(folderLossState(), ExportOptions{})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestExportNamesFolderOwnSettings(t *testing.T) {
 	s.Sources[1].TagPolicy = &state.TagPolicy{Prefix: "w-"}
 	s.Sources[1].Replace = &state.FolderReplace{Mode: state.FolderReplaceManual, Tag: "work"}
 
-	_, warns, err := Export(s, ExportOptions{})
+	_, warns, err := Export012(s, ExportOptions{})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestExportNamesFolderOwnSettings(t *testing.T) {
 
 // Провайдерская группа отличима от папки: код у потери общий, слова разные.
 func TestExportDistinguishesAutoFromFolder(t *testing.T) {
-	_, warns, err := Export(folderLossState(), ExportOptions{})
+	_, warns, err := Export012(folderLossState(), ExportOptions{})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestExportPutsWholeRecordLossesFirst(t *testing.T) {
 		Tag:  "совершенно-своё-имя",
 	}
 
-	_, warns, err := Export(s, ExportOptions{})
+	_, warns, err := Export012(s, ExportOptions{})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}

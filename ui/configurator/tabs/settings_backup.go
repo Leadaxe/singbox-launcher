@@ -45,6 +45,17 @@ const (
 	// Про правила сказано отдельно и честно — они единственные замещаются
 	// целиком; DNS сливается, и обещать его замену тоже было бы неправдой.
 	settingsBackupImportMergeNoteText = "Settings are merged, not replaced: subscriptions match by address, servers by what they connect to, and anything of yours that is not in the file stays. Routing rules are the exception — they are replaced by the file."
+
+	// Выбор формата файла (SPEC 127 §4, окно совместимости). Спрашиваем, а
+	// не решаем молча: файл гуляет между десктопом и телефоном, и формат,
+	// который вторая сторона ещё не читает, выглядит как «импорт сломался».
+	settingsBackupFormatNewText  = "Backup format 1.0 (new; requires LxBox with 1.0 import)"
+	settingsBackupFormatHintText = "Format 1.0 carries everything the launcher stores, including per-node rules and DNS. Leave it off while the phone app still reads the old format."
+
+	// Сводка файла 1.0: там одна секция источников (sources[]), и разложить
+	// её обратно на «подписки и серверы» ради старой строки значило бы
+	// научить UI форме файла — ровно тому, от чего избавляет union File.
+	settingsBackupSummaryCounts10Text = "Sources: %d\nRules: %d\nVariables: %d"
 )
 
 // knownPresetIDs — id пресетов текущего шаблона. Пустой список означает
@@ -86,7 +97,10 @@ func backupSection(presenter *wizardpresentation.WizardPresenter, win fyne.Windo
 	)
 }
 
-// handleBackupExport собирает текущее состояние и пишет файл.
+// handleBackupExport спрашивает формат, а затем пишет файл.
+//
+// Формат спрашивается ДО выбора пути: он меняет содержимое файла, и узнать о
+// нём после сохранения пользователю было бы неоткуда.
 func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.Window) {
 	st := presenter.CreateStateFromModel("", "")
 	if st == nil {
@@ -94,15 +108,27 @@ func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.
 		return
 	}
 
-	b, exportWarns, err := backup.Export(st, backup.ExportOptions{
-		AppVersion: constants.AppVersion,
-		Platform:   runtime.GOOS,
-	})
-	if err != nil {
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Export failed"), err), win)
-		return
-	}
+	formatCheck := widget.NewCheck(locale.T(settingsBackupFormatNewText), nil)
+	formatCheck.SetChecked(backup.BackupExportFormatDefault == backup.ExportFormat10)
+	formatHint := widget.NewLabel(locale.T(settingsBackupFormatHintText))
+	formatHint.Wrapping = fyne.TextWrapWord
+	form := container.NewVBox(formatCheck, formatHint)
 
+	dialog.ShowCustomConfirm(locale.T("Export settings"), locale.T("Export…"), locale.T("Cancel"),
+		form, func(ok bool) {
+			if !ok {
+				return
+			}
+			format := backup.ExportFormat012
+			if formatCheck.Checked {
+				format = backup.ExportFormat10
+			}
+			runBackupExport(st, format, win)
+		}, win)
+}
+
+// runBackupExport пишет файл выбранным форматом и показывает отчёт.
+func runBackupExport(st *corestate.State, format backup.ExportFormat, win fyne.Window) {
 	suggested := backup.SuggestFileName(time.Now().Format("2006-01-02"))
 	path, ok, err := platform.PickSaveFile(locale.T("Save LX Backup"), suggested)
 	if err != nil || !ok {
@@ -121,7 +147,12 @@ func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.
 		path += ".json"
 	}
 
-	if err := backup.WriteFile(path, b); err != nil {
+	exportWarns, err := backup.ExportFile(path, st, backup.ExportOptions{
+		AppVersion: constants.AppVersion,
+		Platform:   runtime.GOOS,
+		Format:     format,
+	})
+	if err != nil {
 		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Export failed"), err), win)
 		return
 	}
@@ -179,14 +210,14 @@ func handleBackupImport(presenter *wizardpresentation.WizardPresenter, win fyne.
 		}, win)
 }
 
-func applyBackup(presenter *wizardpresentation.WizardPresenter, win fyne.Window, b *backup.Backup, parseWarns []backup.Warning) {
+func applyBackup(presenter *wizardpresentation.WizardPresenter, win fyne.Window, b *backup.File, parseWarns []backup.Warning) {
 	st := presenter.CreateStateFromModel("", "")
 	if st == nil {
 		dialog.ShowError(fmt.Errorf("%s", locale.T("Cannot read the current state")), win)
 		return
 	}
 
-	res, err := backup.Import(st, b, backup.ImportOptions{
+	res, err := backup.ImportFile(st, b, backup.ImportOptions{
 		// Известные цели берём из модели: правило, ссылающееся в никуда,
 		// приедет выключенным, а не уронит конфиг ядра.
 		KnownOutbounds: wizardbusiness.GetAvailableOutbounds(presenter.Model()),
@@ -225,13 +256,25 @@ func applyBackup(presenter *wizardpresentation.WizardPresenter, win fyne.Window,
 }
 
 // backupSummary — что лежит в файле, до применения.
-func backupSummary(b *backup.Backup, warns []backup.Warning) string {
+//
+// Файл может быть любого читаемого формата, и UI про это знать не обязан:
+// шапку и счётчики отдаёт сам File. Разная строка счётчиков — не косметика:
+// у 0.x секции источников две (подписки и серверы порознь), у 1.0 одна, и
+// назвать «Серверов: 0» там, где их пять внутри sources[], значило бы соврать
+// пользователю ДО того, как он нажал «Импорт».
+func backupSummary(b *backup.File, warns []backup.Warning) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, locale.T("From %s %s, exported %s"),
-		b.ExportedBy.App, b.ExportedBy.Version, b.ExportedAt)
+	by, at := b.ExportedByOf()
+	fmt.Fprintf(&sb, locale.T("From %s %s, exported %s"), by.App, by.Version, at)
 	sb.WriteString("\n\n")
-	fmt.Fprintf(&sb, locale.T(settingsBackupSummaryCountsText),
-		len(b.Subscriptions), len(b.Servers), len(b.Rules), len(b.Vars))
+	if b.Legacy != nil {
+		fmt.Fprintf(&sb, locale.T(settingsBackupSummaryCountsText),
+			len(b.Legacy.Subscriptions), len(b.Legacy.Servers),
+			len(b.Legacy.Rules), len(b.Legacy.Vars))
+	} else {
+		sources, rules, vars := b.Counts()
+		fmt.Fprintf(&sb, locale.T(settingsBackupSummaryCounts10Text), sources, rules, vars)
+	}
 	if len(warns) > 0 {
 		sb.WriteString("\n\n")
 		sb.WriteString(warnLines(warns, backupSummaryWarnLimit))
@@ -312,6 +355,10 @@ func warnText(w backup.Warning) string {
 		return fmt.Sprintf(locale.T("%s — the \"exclude from the global list\" flag is gone; its nodes stay in the candidate pool (fold the source into a group for the previous behaviour)"), w.Detail)
 	case backup.WarnBackupLabelDropped:
 		return fmt.Sprintf(locale.T("%s — label dropped, a node is named by its tag"), w.Detail)
+	case backup.WarnBackupSectionRecordDropped:
+		// Detail несёт «тег узла: вид записи»: без тега пользователю негде
+		// искать, что именно потеряло часть своей связки.
+		return fmt.Sprintf(locale.T("%s — a node carries an entry of this kind, which node sections do not allow; the entry was dropped, the rest of the node came through"), w.Detail)
 	default:
 		// Сюда попадать не должно: каждый код обязан иметь свою фразу выше.
 		// Сырой код остаётся последним рубежом, чтобы новое предупреждение

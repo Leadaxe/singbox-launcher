@@ -144,6 +144,27 @@ func (ns *NodeSections) Clone() *NodeSections {
 	return out
 }
 
+// CloneRule / CloneDNSServer / CloneDNSRule — копии записей для тех, кто
+// уносит их за пределы состояния (экспорт бэкапа 1.0 пишет в файл СНИМОК
+// момента, и общий с состоянием указатель сделал бы файл окном в живые
+// данные).
+//
+// Публичные обёртки, а не переименование внутренних: внутри пакета копии
+// зовутся десятком мест, и смена имени была бы шумом без смысла.
+func CloneRule(r Rule) Rule { return cloneRule(r) }
+
+func CloneDNSServer(s DNSServer) DNSServer {
+	out := s
+	out.Body = cloneJSONMap(s.Body)
+	return out
+}
+
+func CloneDNSRule(r DNSRule) DNSRule {
+	out := r
+	out.Body = cloneJSONMap(r.Body)
+	return out
+}
+
 // cloneRule — копия записи правила с отдельным телом.
 func cloneRule(r Rule) Rule {
 	out := r

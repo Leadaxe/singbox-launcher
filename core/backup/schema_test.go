@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 )
@@ -25,7 +26,7 @@ var identityHashRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 func exportSample(t *testing.T) map[string]any {
 	t.Helper()
-	b, _, err := Export(mkState(), ExportOptions{
+	b, _, err := Export012(mkState(), ExportOptions{
 		AppVersion: "1.4.2", Platform: "darwin", Now: time.Unix(1750000000, 0),
 	})
 	if err != nil {
@@ -141,7 +142,7 @@ func TestExportEntityKeysAreDeclared(t *testing.T) {
 		t.Fatalf("разбор схемы: %v", err)
 	}
 
-	b, _, err := Export(richState(), ExportOptions{AppVersion: "test", Now: time.Unix(1750000000, 0)})
+	b, _, err := Export012(richState(), ExportOptions{AppVersion: "test", Now: time.Unix(1750000000, 0)})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -276,4 +277,144 @@ func equalStringSets(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// Словарь кодов бэкапа — нормативный источник (contract/registry/backup_warnings.json).
+//
+// Нормативность без проверки — просто текст: код в Go заводят, реестр
+// остаётся, и вторая сторона (LxBox) о деградации не узнаёт. Так уже уезжал
+// словарь разбора подписок (`ws_early_data_converted` прожил весь цикл вне
+// реестра), и ровно от этого там стоит registry_sync_test.
+//
+// Проверяется в обе стороны: код из Go обязан быть объявлен, а объявленный
+// код — либо ставиться лаунчером, либо быть помечен чужой стороной (LxBox
+// эмитирует свои два, и требовать их от Go значило бы требовать чужой код).
+// Список констант вычитывается ИЗ ИСХОДНИКА, а не пишется здесь руками:
+// список в тесте разъехался бы точно так же, как разъезжается реестр.
+func TestBackupWarningCodesDeclaredInRegistry(t *testing.T) {
+	reg := loadBackupWarningsRegistry(t)
+	for name, code := range goBackupWarningConstants(t) {
+		entry, ok := reg[code]
+		if !ok {
+			t.Errorf("код %q (%s) есть в Go, но отсутствует в contract/registry/backup_warnings.json", code, name)
+			continue
+		}
+		if entry.Severity == "" || entry.Side == "" || entry.Desc == "" {
+			t.Errorf("код %q объявлен неполно: severity=%q side=%q desc=%d символов",
+				code, entry.Severity, entry.Side, len(entry.Desc))
+		}
+	}
+}
+
+// Объявленный код, который лаунчер не ставит, обязан быть чужим (LxBox).
+// Иначе это обещанная, но не выдаваемая диагностика: пользователь о потере
+// не узнает, а вторая сторона будет ждать кода, которого нет.
+func TestBackupWarningCodesAreActuallySet(t *testing.T) {
+	// Коды, которые эмитирует ТОЛЬКО LxBox (contract/README.md, 0.12.2).
+	foreign := map[string]bool{
+		"backup_dns_entry_skipped": true,
+		"backup_warp_skipped":      true,
+	}
+	consts := goBackupWarningConstants(t)
+	byCode := map[string]string{}
+	for name, code := range consts {
+		byCode[code] = name
+	}
+	used := backupConstantsUsedInPackage(t)
+	for code := range loadBackupWarningsRegistry(t) {
+		if foreign[code] {
+			continue
+		}
+		name, ok := byCode[code]
+		if !ok {
+			t.Errorf("код %q объявлен в реестре, но в Go его нет — либо заводить, либо помечать стороной", code)
+			continue
+		}
+		if !used[name] {
+			t.Errorf("константа %s (%q) объявлена, но нигде не ставится: обещанная диагностика, которой не будет", name, code)
+		}
+	}
+}
+
+type backupWarningEntry struct {
+	Severity string   `json:"severity"`
+	Params   []string `json:"params"`
+	Side     string   `json:"side"`
+	Desc     string   `json:"desc"`
+}
+
+func loadBackupWarningsRegistry(t *testing.T) map[string]backupWarningEntry {
+	t.Helper()
+	path := filepath.Join("..", "..", "contract", "registry", "backup_warnings.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Skipf("реестр не найден (%s) — контракт не синхронизирован", path)
+	}
+	var f struct {
+		Warnings map[string]backupWarningEntry `json:"warnings"`
+	}
+	if err := json.Unmarshal(data, &f); err != nil {
+		t.Fatalf("разбор %s: %v", path, err)
+	}
+	if len(f.Warnings) == 0 {
+		t.Fatalf("%s: словарь пуст", path)
+	}
+	return f.Warnings
+}
+
+// goBackupWarningConstants — коды из import.go, вычитанные из исходника.
+func goBackupWarningConstants(t *testing.T) map[string]string {
+	t.Helper()
+	data, err := os.ReadFile("import.go")
+	if err != nil {
+		t.Fatalf("import.go: %v", err)
+	}
+	re := regexp.MustCompile(`(WarnBackup\w+)\s*=\s*"([^"]+)"`)
+	out := map[string]string{}
+	for _, m := range re.FindAllStringSubmatch(string(data), -1) {
+		out[m[1]] = m[2]
+	}
+	if len(out) == 0 {
+		t.Fatal("в import.go не найдено ни одной константы кода")
+	}
+	return out
+}
+
+// backupConstantsUsedInPackage — какие константы реально СТАВЯТСЯ в коде
+// пакета.
+//
+// Использованием считается упоминание в литерале Warning'а (`Code:` или
+// `Warning{Code: …}`), а не объявление константы: строка `WarnX = "x"` в
+// блоке констант упоминает имя, но диагностики не даёт. Поэтому строки
+// объявлений отсеиваются, а не целый файл: коды и ставятся, и объявляются в
+// import.go, и отсев по имени файла объявил бы «не ставится» половину
+// словаря.
+func backupConstantsUsedInPackage(t *testing.T) map[string]bool {
+	t.Helper()
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("чтение пакета: %v", err)
+	}
+	out := map[string]bool{}
+	use := regexp.MustCompile(`WarnBackup\w+`)
+	decl := regexp.MustCompile(`^\s*(WarnBackup\w+)\s*=\s*"`)
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		data, err := os.ReadFile(name)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			if decl.MatchString(line) {
+				continue
+			}
+			for _, m := range use.FindAllString(line, -1) {
+				out[m] = true
+			}
+		}
+	}
+	return out
 }

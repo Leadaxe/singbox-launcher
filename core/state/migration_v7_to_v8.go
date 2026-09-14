@@ -452,6 +452,9 @@ func migrateV8Sources(raw json.RawMessage, rep *MigrationReport) (json.RawMessag
 		if err := migrateV8NodeSections(list[i], fmt.Sprintf("sources[%d]", i), rep); err != nil {
 			return nil, err
 		}
+		if err := migrateV8SourceIdentity(list[i], fmt.Sprintf("sources[%d]", i)); err != nil {
+			return nil, err
+		}
 		nodesRaw, ok := list[i]["nodes"]
 		if !ok {
 			continue
@@ -475,6 +478,45 @@ func migrateV8Sources(raw json.RawMessage, rep *MigrationReport) (json.RawMessag
 		list[i]["nodes"] = out
 	}
 	return json.Marshal(list)
+}
+
+// migrateV8SourceIdentity — четыре плоских ключа подписки в один объект
+// `identity` (SPEC 127 §6.0).
+//
+// Ключи снимаются сырыми байтами и кладутся под теми же именами внутрь
+// объекта: у поля состояния и у поля контракта имена совпадают, поэтому
+// переводить значения не нужно — меняется только уровень вложенности.
+// Отсутствие всех четырёх ключей оставляет запись без `identity` вовсе:
+// пустой объект в каждой подписке отличал бы два одинаковых состояния.
+func migrateV8SourceIdentity(src map[string]json.RawMessage, where string) error {
+	flat := []string{"user_agent", "send_hwid", "hwid", "hash_device_model"}
+	identity := map[string]json.RawMessage{}
+	for _, k := range flat {
+		raw, ok := src[k]
+		if !ok {
+			continue
+		}
+		delete(src, k)
+		if len(bytes.TrimSpace(raw)) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+			continue
+		}
+		// Пустая строка UA/HWID в v7 значила «как в системе» — ровно то же,
+		// что отсутствие ключа; переносить её значило бы завести объект
+		// identity там, где пользователь ничего не переопределял.
+		if bytes.Equal(bytes.TrimSpace(raw), []byte(`""`)) {
+			continue
+		}
+		identity[k] = raw
+	}
+	if len(identity) == 0 {
+		return nil
+	}
+	out, err := json.Marshal(identity)
+	if err != nil {
+		return fmt.Errorf("state: migrate v7→v8 %s.identity: %w", where, err)
+	}
+	src["identity"] = out
+	return nil
 }
 
 // migrateV8NodeSections — `sections` одного узла теми же функциями, что корень:

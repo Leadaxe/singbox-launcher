@@ -182,11 +182,11 @@ func TestBackupCorpus(t *testing.T) {
 			// идут: оно декорация сцены, а не предмет кейса.
 			dst := &state.State{}
 			if pre := loadCorpusPre(t, name); pre != nil {
-				if _, err := Import(dst, pre, ImportOptions{}); err != nil {
+				if _, err := ImportFile(dst, pre, ImportOptions{}); err != nil {
 					t.Fatalf("Import предсостояния: %v", err)
 				}
 			}
-			res, err := Import(dst, b, ImportOptions{
+			res, err := ImportFile(dst, b, ImportOptions{
 				// Принимающая сторона знает эти цели; всё прочее —
 				// символическая ссылка в никуда.
 				KnownOutbounds: []string{"proxy", "direct"},
@@ -219,7 +219,7 @@ func TestBackupCorpus(t *testing.T) {
 
 // loadCorpusPre читает предсостояние кейса; nil = его нет (тогда импорт идёт
 // в пустое состояние, как было до конвенции pre).
-func loadCorpusPre(t *testing.T, name string) *Backup {
+func loadCorpusPre(t *testing.T, name string) *File {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(backupCorpusRelPath, name+".pre.backup.json"))
 	if err != nil {
@@ -449,7 +449,7 @@ func checkExtensionsDropped(t *testing.T, dst *state.State, exp corpusExpectatio
 	if !exp.ExtensionsDropped {
 		return
 	}
-	back, _, err := Export(dst, ExportOptions{AppVersion: "corpus"})
+	back, _, err := Export012(dst, ExportOptions{AppVersion: "corpus"})
 	if err != nil {
 		t.Fatalf("re-export: %v", err)
 	}
@@ -610,7 +610,7 @@ func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
 	if !needExport {
 		return
 	}
-	b, _, err := Export(dst, ExportOptions{AppVersion: "corpus"})
+	b, _, err := Export012(dst, ExportOptions{AppVersion: "corpus"})
 	if err != nil {
 		t.Fatalf("re-export: %v", err)
 	}

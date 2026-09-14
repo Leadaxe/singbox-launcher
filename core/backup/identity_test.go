@@ -23,16 +23,13 @@ func TestIdentityRoundTrip(t *testing.T) {
 	send := false
 	hashModel := true
 	src := state.Source{
-		ID:              "01SUB0000000000000000000",
-		Node:            state.Node{Kind: state.SourceKindSubscription, Enabled: true},
-		URL:             "https://example.invalid/s",
-		Name:            "Liberty",
-		UserAgent:       "Happ/1.0",
-		HWID:            "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-		SendHWID:        &send,
-		HashDeviceModel: &hashModel,
+		ID:   "01SUB0000000000000000000",
+		Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true},
+		URL:  "https://example.invalid/s",
+		Name: "Liberty",
 	}
-	b, _, err := Export(&state.State{Sources: []state.Source{src}}, ExportOptions{AppVersion: "test"})
+	src.SetIdentity("Happ/1.0", "7c9e6679-7425-40de-944b-e07fc1f90ae7", &send, &hashModel)
+	b, _, err := Export012(&state.State{Sources: []state.Source{src}}, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -49,7 +46,7 @@ func TestIdentityRoundTrip(t *testing.T) {
 	}
 
 	dst := &state.State{}
-	res, err := Import(dst, parsed, ImportOptions{})
+	res, err := ImportFile(dst, parsed, ImportOptions{})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -60,19 +57,19 @@ func TestIdentityRoundTrip(t *testing.T) {
 		t.Fatalf("источников после импорта: %d", len(dst.Sources))
 	}
 	got := dst.Sources[0]
-	if got.UserAgent != src.UserAgent {
-		t.Errorf("user_agent = %q, ожидалось %q", got.UserAgent, src.UserAgent)
+	if got.IdentityUserAgent() != src.IdentityUserAgent() {
+		t.Errorf("user_agent = %q, ожидалось %q", got.IdentityUserAgent(), src.IdentityUserAgent())
 	}
-	if got.HWID != src.HWID {
-		t.Errorf("hwid = %q, ожидалось %q", got.HWID, src.HWID)
+	if got.IdentityHWID() != src.IdentityHWID() {
+		t.Errorf("hwid = %q, ожидалось %q", got.IdentityHWID(), src.IdentityHWID())
 	}
 	// Указатели, а не bool: «явно false» обязано отличаться от «не задано»,
 	// иначе выключенная отправка HWID молча включается на приёмнике.
-	if got.SendHWID == nil || *got.SendHWID {
-		t.Errorf("send_hwid = %v, ожидалось явное false", got.SendHWID)
+	if v := got.IdentitySendHWID(); v == nil || *v {
+		t.Errorf("send_hwid = %v, ожидалось явное false", v)
 	}
-	if got.HashDeviceModel == nil || !*got.HashDeviceModel {
-		t.Errorf("hash_device_model = %v, ожидалось явное true", got.HashDeviceModel)
+	if v := got.IdentityHashDeviceModel(); v == nil || !*v {
+		t.Errorf("hash_device_model = %v, ожидалось явное true", v)
 	}
 }
 
@@ -81,7 +78,7 @@ func TestIdentityRoundTrip(t *testing.T) {
 // Экспорт — чистая функция состояния (П1): пустышка в каждом файле была бы
 // шумом, а на приёмнике «ключ есть, значение пустое» неотличимо от «выключи».
 func TestIdentityAbsentWhenUnset(t *testing.T) {
-	b, _, err := Export(&state.State{Sources: []state.Source{{
+	b, _, err := Export012(&state.State{Sources: []state.Source{{
 		ID:   "01SUB0000000000000000000",
 		Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true},
 		URL:  "https://example.invalid/s",
@@ -128,7 +125,7 @@ func TestIdentityUnappliedKeysWarnOnce(t *testing.T) {
 	}
 
 	dst := &state.State{}
-	res, err := Import(dst, b, ImportOptions{})
+	res, err := ImportFile(dst, b, ImportOptions{})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -153,8 +150,88 @@ func TestIdentityUnappliedKeysWarnOnce(t *testing.T) {
 	if strings.Contains(d, "user_agent") {
 		t.Errorf("применённый ключ назван потерей: %q", d)
 	}
-	if len(dst.Sources) != 1 || dst.Sources[0].UserAgent != "Happ/1.0" {
+	if len(dst.Sources) != 1 || dst.Sources[0].IdentityUserAgent() != "Happ/1.0" {
 		t.Errorf("применяемый ключ не применён: %+v", dst.Sources)
+	}
+	assertMobileOnlyIdentityNotStored(t, dst.Sources[0])
+}
+
+// TestIdentityUnappliedKeysWarnOnceFormat10 — тот же identity входом 1.0 даёт
+// то же состояние и то же предупреждение.
+//
+// Ответ на вопрос «что эта сторона умеет применить» не может зависеть от
+// формата: иначе одна и та же подписка, записанная двумя писателями, давала бы
+// на приёмнике два разных состояния и два разных разговора с пользователем —
+// при том что оба входа ведут в ОДИН код слияния. Mobile-only тройку лаунчер
+// не применяет (per-source её у него нет), и сложить её в состояние значило бы
+// завести состояние-призрак, который ничего не делает, но переопубликовывается
+// каждым следующим экспортом (П1/П3).
+func TestIdentityUnappliedKeysWarnOnceFormat10(t *testing.T) {
+	raw := []byte(`{
+	  "lx_backup": 2,
+	  "exported_by": {"app": "lxbox", "version": "2.0"},
+	  "exported_at": "2026-09-14T00:00:00Z",
+	  "sources": [{
+	    "kind": "subscription",
+	    "enabled": true,
+	    "url": "https://example.invalid/s",
+	    "name": "Liberty",
+	    "identity": {
+	      "user_agent": "Happ/1.0",
+	      "device_os": "android",
+	      "ver_os": "14"
+	    }
+	  }]
+	}`)
+	b, parseWarns, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	for _, w := range parseWarns {
+		if w.Code == WarnBackupUnknownField && strings.Contains(w.Detail, "identity") {
+			t.Errorf("ключ identity продублирован как неизвестное поле: %v", w)
+		}
+	}
+
+	dst := &state.State{}
+	res, err := ImportFile(dst, b, ImportOptions{})
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	var details []string
+	for _, w := range res.Warnings {
+		if w.Code == WarnBackupSourceIdentityDropped {
+			details = append(details, w.Detail)
+		}
+	}
+	if len(details) != 1 {
+		t.Fatalf("ожидался ровно один warning на подписку, получено %d: %v", len(details), details)
+	}
+	for _, want := range []string{"device_os", "ver_os"} {
+		if !strings.Contains(details[0], want) {
+			t.Errorf("не назван неприменённый ключ %q: %q", want, details[0])
+		}
+	}
+	if len(dst.Sources) != 1 || dst.Sources[0].IdentityUserAgent() != "Happ/1.0" {
+		t.Errorf("применяемый ключ не применён: %+v", dst.Sources)
+	}
+	assertMobileOnlyIdentityNotStored(t, dst.Sources[0])
+}
+
+// assertMobileOnlyIdentityNotStored — mobile-only ключи не осели в состоянии.
+//
+// Проверяется СОСТОЯНИЕ, а не только warning: предупредить о потере и тут же
+// сохранить потерянное — это и есть состояние-призрак, которое следующий
+// экспорт переопубликует как настоящую настройку.
+func assertMobileOnlyIdentityNotStored(t *testing.T, src state.Source) {
+	t.Helper()
+	id := src.Identity
+	if id == nil {
+		return
+	}
+	if id.DeviceOS != nil || id.VerOS != nil || id.DeviceModel != nil {
+		t.Errorf("mobile-only ключи осели в состоянии: device_os=%v ver_os=%v device_model=%v",
+			id.DeviceOS, id.VerOS, id.DeviceModel)
 	}
 }
 
@@ -171,7 +248,7 @@ func TestIdentityEmptyObjectIsSilent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	res, err := Import(&state.State{}, b, ImportOptions{})
+	res, err := ImportFile(&state.State{}, b, ImportOptions{})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -195,7 +272,7 @@ func TestLegacyServerLabelBecomesTag(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 	dst := &state.State{}
-	res, err := Import(dst, b, ImportOptions{})
+	res, err := ImportFile(dst, b, ImportOptions{})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -228,7 +305,7 @@ func TestLegacyServerLabelDivergedWarns(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 	dst := &state.State{}
-	res, err := Import(dst, b, ImportOptions{})
+	res, err := ImportFile(dst, b, ImportOptions{})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -271,7 +348,7 @@ func TestFolderRoundTrip(t *testing.T) {
 		},
 	}}
 
-	b, warns, err := Export(s, ExportOptions{AppVersion: "test"})
+	b, warns, err := Export012(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -301,7 +378,7 @@ func TestFolderRoundTrip(t *testing.T) {
 	}
 
 	dst := &state.State{}
-	if _, err := Import(dst, parsed, ImportOptions{}); err != nil {
+	if _, err := ImportFile(dst, parsed, ImportOptions{}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
 	if len(dst.Sources) != 2 {

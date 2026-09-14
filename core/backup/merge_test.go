@@ -46,8 +46,9 @@ func uriServer(tag, raw string) state.Source {
 func TestMergeSubscriptionKeepsLocalIdentityAndHistory(t *testing.T) {
 	local := subSourceWithNodes("01LOCALSUB", "https://example-1.com/sub", "Local name", "NL-1", "DE-2")
 	local.TagPolicy = &state.TagPolicy{Prefix: "loc:"}
-	local.UserAgent = "local-ua"
+	local.SetIdentityUserAgent("local-ua")
 	local.PendingDisabled = []string{"local-mark"}
+	local.RelaysInDirections = true
 	s := &state.State{Sources: []state.Source{local}}
 
 	b := &Backup{
@@ -90,8 +91,8 @@ func TestMergeSubscriptionKeepsLocalIdentityAndHistory(t *testing.T) {
 		t.Errorf("max_nodes %d, ожидалось 42", got.MaxNodes)
 	}
 	// identity в файле нет → сброс на «как в системе».
-	if got.UserAgent != "" {
-		t.Errorf("UA %q — объекта identity в файле нет, значит «как в системе»", got.UserAgent)
+	if got.IdentityUserAgent() != "" {
+		t.Errorf("UA %q — объекта identity в файле нет, значит «как в системе»", got.IdentityUserAgent())
 	}
 	// disabled — ОБЪЕДИНЕНИЕ: своя отметка жива, приехавшая доехала.
 	if !hasString(got.PendingDisabled, "local-mark") {
@@ -106,6 +107,126 @@ func TestMergeSubscriptionKeepsLocalIdentityAndHistory(t *testing.T) {
 	}
 	if res.UpdatedSubscriptions != 1 || res.AddedSubscriptions != 0 {
 		t.Errorf("счётчики: обновлено %d, добавлено %d", res.UpdatedSubscriptions, res.AddedSubscriptions)
+	}
+	// relays_in_directions входом 0.12 НЕ трогается: в той схеме поля нет
+	// вовсе, и применить его «ноль» значило бы снять галку пользователя
+	// импортом старого файла (BACKUP.md §9, local-only).
+	if !got.RelaysInDirections {
+		t.Error("вход 0.12 снял relays_in_directions — в схеме 0.12 поля нет, значит файл про него молчит")
+	}
+}
+
+// TestMergeSubscriptionTakesFullSettingsFromFormat10 — у совпавшей подписки
+// вход 1.0 применяет и то, чего в схеме 0.12 не было.
+//
+// Разница между ВХОДАМИ, а не между записями: relays_in_directions получил
+// дом в форме 1.0 (§6.0), и на совпавшей записи значение файла обязано
+// замещать локальное — иначе перенос на машину, где подписка уже есть (самый
+// частый случай), молча оставляет чужую настройку. Вход 0.12 того же поля не
+// несёт, и там оно не трогается — это проверено в тесте выше.
+func TestMergeSubscriptionTakesFullSettingsFromFormat10(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		local, file, want bool
+	}{
+		{"файл включает", false, true, true},
+		{"файл выключает", true, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			local := subSourceWithNodes("01LOCALSUB", "https://example-1.com/sub", "Local", "NL-1")
+			local.RelaysInDirections = tc.local
+			s := &state.State{Sources: []state.Source{local}}
+
+			b := &Backup10{
+				LxBackup: FormatVersion10,
+				Sources: []Source10{{
+					Kind: state.SourceKindSubscription, Enabled: true,
+					ID: "01FILESUB", Name: "File", URL: "https://example-1.com/sub",
+					RelaysInDirections: tc.file,
+				}},
+			}
+			if _, err := Import10(s, b, ImportOptions{}); err != nil {
+				t.Fatalf("Import10: %v", err)
+			}
+			if len(s.Sources) != 1 {
+				t.Fatalf("источников %d — подписка задвоена", len(s.Sources))
+			}
+			if got := s.Sources[0].RelaysInDirections; got != tc.want {
+				t.Errorf("relays_in_directions %v, ожидалось из файла %v", got, tc.want)
+			}
+			if s.Sources[0].ID != "01LOCALSUB" {
+				t.Errorf("id %q — совпавшая запись обязана держать локальный", s.Sources[0].ID)
+			}
+		})
+	}
+}
+
+// TestMergeFolderSettingsComeFromFormat10File — у совпавшей ПО ИМЕНИ папки
+// собственные настройки берутся из файла 1.0, а идентичность и состав
+// остаются локальными.
+//
+// Ровно та возможность, ради которой §6.0 завёл папке дом в схеме 1.0
+// («настройки папки едут»). Пока настройки применялись только к НОВОЙ папке,
+// главный сценарий переноса — на приёмнике папка с таким именем уже есть —
+// терял их молча: ни применения, ни предупреждения, а обратный экспорт давал
+// другой файл.
+func TestMergeFolderSettingsComeFromFormat10File(t *testing.T) {
+	local := state.Source{
+		Node: state.Node{Kind: state.SourceKindFolder, Enabled: true},
+		ID:   "01LOCALFLD", Name: "DE",
+		TagPolicy: &state.TagPolicy{Prefix: "old:"},
+		Nodes: []state.Node{{
+			Kind: state.SourceKindServer, Tag: "keep-me", Enabled: true,
+			Origin: &state.Origin{Kind: state.OriginKindURI, Raw: "ss://local#keep-me"},
+		}},
+	}
+	s := &state.State{Sources: []state.Source{local}}
+
+	b := &Backup10{
+		LxBackup: FormatVersion10,
+		Sources: []Source10{{
+			Kind: state.SourceKindFolder, Enabled: true,
+			ID: "01FILEFLD", Name: "DE",
+			TagPolicy: &state.TagPolicy{Prefix: "[D] "},
+			Detour:    &state.NodeLink{Tag: "WARP"},
+			Fold:      &Fold{Mode: "auto"},
+			FoldTag:   "DE-group",
+			Nodes: []state.Node{{
+				Kind: state.SourceKindServer, Tag: "from-file", Enabled: true,
+				Origin: &state.Origin{Kind: state.OriginKindURI, Raw: "ss://file#from-file"},
+			}},
+		}},
+	}
+	res, err := Import10(s, b, ImportOptions{})
+	if err != nil {
+		t.Fatalf("Import10: %v", err)
+	}
+	if len(s.Sources) != 1 {
+		t.Fatalf("источников %d, ожидался 1 — папка задвоена", len(s.Sources))
+	}
+	got := s.Sources[0]
+
+	// Идентичность и состав — локальные.
+	if got.ID != "01LOCALFLD" {
+		t.Errorf("id папки %q — совпавшая держит локальный (на него ссылаются detour/hops)", got.ID)
+	}
+	if len(got.Nodes) != 2 || got.Nodes[0].Tag != "keep-me" {
+		t.Fatalf("состав папки %d узлов, первый %q — локальный член обязан остаться на месте",
+			len(got.Nodes), got.Nodes[0].Tag)
+	}
+
+	// Настройки — из файла, все три.
+	if got.TagPolicy == nil || got.TagPolicy.Prefix != "[D] " {
+		t.Errorf("политика тегов папки %+v, ожидалась из файла", got.TagPolicy)
+	}
+	if got.Detour == nil || got.Detour.Tag != "WARP" {
+		t.Errorf("общий detour папки %+v, ожидался из файла", got.Detour)
+	}
+	if got.Replace == nil || got.Replace.Tag != "DE-group" || got.Replace.Mode != state.FolderReplaceAuto {
+		t.Errorf("свёртка папки %+v, ожидалась из файла с ЯВНЫМ тегом DE-group", got.Replace)
+	}
+	if res.UpdatedFolders != 1 || res.AddedFolders != 0 {
+		t.Errorf("счётчики папок: обновлено %d, добавлено %d", res.UpdatedFolders, res.AddedFolders)
 	}
 }
 
@@ -520,5 +641,279 @@ func TestMergeDedupMaterializedLocalNode(t *testing.T) {
 	}
 	if count != 2 {
 		t.Errorf("после повторного импорта серверов %d, ожидалось 2 — импорт не идемпотентен", count)
+	}
+}
+
+// TestMergeFolderMembersIdempotentForRefKinds — повторный импорт файла 1.0 не
+// удваивает ССЫЛОЧНЫХ членов папки (цепочку и провайдерскую группу).
+//
+// У этих видов тела нет вовсе: состав цепочки живёт в hops, состав группы — в
+// group, а адресуются они ТЕГОМ, и в корне слияние их так и ключует. Пока
+// внутри папки ключом служило только тело, он выходил пустым, «сравнивать
+// нечем» означало «не дубль», и каждый следующий импорт одного файла дописывал
+// ещё одну копию (auto-eu, auto-eu-2, auto-eu-3…): лишняя urltest-группа в
+// конфиге и безграничный рост состояния. Форма 1.0 повезла таких членов
+// впервые (§6.0), в 0.12 их вместо этого называли потерей.
+func TestMergeFolderMembersIdempotentForRefKinds(t *testing.T) {
+	b := &Backup10{
+		LxBackup: FormatVersion10,
+		Sources: []Source10{{
+			Kind: state.SourceKindFolder, Enabled: true,
+			ID: "01FLD", Name: "Proton",
+			Nodes: []state.Node{
+				{
+					Kind: state.SourceKindServer, Tag: "ams", Enabled: true,
+					Origin: &state.Origin{Kind: state.OriginKindURI, Raw: "ss://ams#ams"},
+				},
+				{
+					Kind: state.SourceKindAuto, Tag: "auto-eu", Enabled: true,
+					Group: &state.AutoGroup{
+						GroupType: state.AutoGroupURLTest,
+						Members:   []state.NodeLink{{Tag: "ams"}},
+					},
+				},
+				{
+					Kind: state.SourceKindChain, Tag: "via-ams", Enabled: true,
+					Hops: []state.NodeLink{{Tag: "ams"}},
+				},
+			},
+		}},
+	}
+
+	s := state.New()
+	for pass := 1; pass <= 3; pass++ {
+		if _, err := Import10(s, b, ImportOptions{}); err != nil {
+			t.Fatalf("импорт %d: %v", pass, err)
+		}
+	}
+	if len(s.Sources) != 1 {
+		t.Fatalf("источников %d, ожидалась одна папка", len(s.Sources))
+	}
+	var tags []string
+	for _, n := range s.Sources[0].Nodes {
+		tags = append(tags, string(n.Kind)+":"+n.Tag)
+	}
+	want := []string{"server:ams", "auto:auto-eu", "chain:via-ams"}
+	if !equalStrings(tags, want) {
+		t.Errorf("состав папки после трёх импортов %v, ожидался %v — ссылочные члены задвоены", tags, want)
+	}
+}
+
+// TestMergeDNSPresetServersSurviveByRef — три preset-сервера ОДНОГО пресета
+// переживают импорт в пустое состояние и повторный импорт без дублей.
+//
+// У kind=preset тега нет вовсе: идентичность записи — `ref` вида
+// "<preset_id>:<local_tag>". Пока ключ слияния был kind+tag, все они давали
+// один ключ "preset\x00", и после первого остальные молча отбрасывались как
+// «своё сильнее». На живом состоянии владельца из 17 DNS-серверов после
+// импорта в пустое оставалось 15 — пропадали russian:yandex_doh и
+// russian:yandex_dot, без единого предупреждения.
+func TestMergeDNSPresetServersSurviveByRef(t *testing.T) {
+	refs := []string{"russian:yandex_udp", "russian:yandex_doh", "russian:yandex_dot"}
+
+	b := &Backup10{LxBackup: FormatVersion10, DNS: &state.DNSOptions{Strategy: "prefer_ipv4"}}
+	for _, ref := range refs {
+		b.DNS.Servers = append(b.DNS.Servers, state.DNSServer{
+			Kind: "preset", Ref: ref, Enabled: true,
+		})
+	}
+	// Тёзки по tag у других видов не должны пострадать от общего ключа.
+	b.DNS.Servers = append(b.DNS.Servers,
+		state.DNSServer{Kind: "template", Tag: "local", Enabled: true},
+		state.DNSServer{Kind: "user", Tag: "home", Enabled: true,
+			Body: map[string]interface{}{"server": "192.0.2.1"}},
+	)
+
+	s := state.New()
+	for pass := 1; pass <= 2; pass++ {
+		if _, err := Import10(s, b, ImportOptions{}); err != nil {
+			t.Fatalf("импорт %d: %v", pass, err)
+		}
+	}
+
+	var got []string
+	for _, srv := range s.DNS.Servers {
+		got = append(got, string(srv.Kind)+":"+srv.Tag+srv.Ref)
+	}
+	want := []string{
+		"preset:russian:yandex_udp",
+		"preset:russian:yandex_doh",
+		"preset:russian:yandex_dot",
+		"template:local",
+		"user:home",
+	}
+	if !equalStrings(got, want) {
+		t.Fatalf("DNS-серверы после двух импортов %v, ожидалось %v", got, want)
+	}
+}
+
+// TestMergeDNSPresetServerNotOverwrittenByFile — совпавший по ref preset
+// остаётся ЛОКАЛЬНЫМ (§9 п. 5, «своё сильнее»): новый ключ не должен
+// превратить слияние в добавление.
+func TestMergeDNSPresetServerNotOverwrittenByFile(t *testing.T) {
+	s := state.New()
+	s.DNS.Servers = []state.DNSServer{
+		{Kind: "preset", Ref: "russian:yandex_udp", Enabled: false},
+	}
+
+	b := &Backup10{LxBackup: FormatVersion10, DNS: &state.DNSOptions{
+		Servers: []state.DNSServer{
+			{Kind: "preset", Ref: "russian:yandex_udp", Enabled: true},
+			{Kind: "preset", Ref: "russian:yandex_doh", Enabled: true},
+		},
+	}}
+	if _, err := Import10(s, b, ImportOptions{}); err != nil {
+		t.Fatalf("Import10: %v", err)
+	}
+	if len(s.DNS.Servers) != 2 {
+		t.Fatalf("DNS-серверов %d, ожидалось 2 (свой + новый)", len(s.DNS.Servers))
+	}
+	if s.DNS.Servers[0].Ref != "russian:yandex_udp" || s.DNS.Servers[0].Enabled {
+		t.Errorf("совпавший preset переписан файлом: %+v", s.DNS.Servers[0])
+	}
+	if s.DNS.Servers[1].Ref != "russian:yandex_doh" {
+		t.Errorf("новый preset не дописан: %+v", s.DNS.Servers[1])
+	}
+}
+
+// twinFolderState — состояние с ДВУМЯ папками-тёзками (разные id, разный
+// состав). UI такую раскладку допускает, и она встретилась на живом
+// состоянии владельца.
+func twinFolderState() *state.State {
+	s := state.New()
+	s.Sources = []state.Source{
+		{
+			Node: state.Node{Kind: state.SourceKindFolder, Enabled: true},
+			ID:   "01FOLDERA", Name: "Folder 1",
+			Nodes: []state.Node{
+				{Kind: state.SourceKindServer, Tag: "a1", Enabled: true,
+					Origin: &state.Origin{Kind: state.OriginKindURI, Raw: "ss://a1#a1"}},
+				{Kind: state.SourceKindServer, Tag: "a2", Enabled: true,
+					Origin: &state.Origin{Kind: state.OriginKindURI, Raw: "ss://a2#a2"}},
+			},
+		},
+		{
+			Node: state.Node{Kind: state.SourceKindFolder, Enabled: true},
+			ID:   "01FOLDERB", Name: "Folder 1",
+			Nodes: []state.Node{
+				{Kind: state.SourceKindServer, Tag: "b1", Enabled: true,
+					Origin: &state.Origin{Kind: state.OriginKindURI, Raw: "ss://b1#b1"}},
+				{Kind: state.SourceKindServer, Tag: "b2", Enabled: true,
+					Origin: &state.Origin{Kind: state.OriginKindURI, Raw: "ss://b2#b2"}},
+				{Kind: state.SourceKindServer, Tag: "b3", Enabled: true,
+					Origin: &state.Origin{Kind: state.OriginKindURI, Raw: "ss://b3#b3"}},
+			},
+		},
+	}
+	return s
+}
+
+// folderLayout — «id → состав» по тегам, в порядке источников.
+func folderLayout(s *state.State) []string {
+	var out []string
+	for _, src := range s.Sources {
+		if src.Kind != state.SourceKindFolder {
+			continue
+		}
+		line := src.ID + "/" + src.Name + "="
+		for i := range src.Nodes {
+			if i > 0 {
+				line += ","
+			}
+			line += src.Nodes[i].Tag
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+// TestImport10TwinFoldersMatchByID — свой же экспорт 1.0, ввезённый обратно в
+// то же состояние, НИЧЕГО не меняет, даже когда папок-тёзок две.
+//
+// Пока папка матчилась только по имени, карта «имя → папка» видела из двух
+// тёзок первую, и состав второй папки файла дописывался в первую локальную
+// (дедуп по телу не спасал: тела разные). Состояние росло на каждом импорте
+// собственного бэкапа.
+func TestImport10TwinFoldersMatchByID(t *testing.T) {
+	s := twinFolderState()
+	before := folderLayout(s)
+
+	b, warns, err := Export10(s, ExportOptions{})
+	if err != nil {
+		t.Fatalf("Export10: %v", err)
+	}
+	if len(warns) != 0 {
+		t.Fatalf("экспорт дал предупреждения: %v", warnCodes(warns))
+	}
+	raw, err := json.Marshal(b)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	f, pw, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(pw) != 0 {
+		t.Fatalf("Parse дал предупреждения: %v", warnCodes(pw))
+	}
+
+	for pass := 1; pass <= 2; pass++ {
+		if _, err := ImportFile(s, f, ImportOptions{}); err != nil {
+			t.Fatalf("импорт %d: %v", pass, err)
+		}
+		after := folderLayout(s)
+		if !equalStrings(after, before) {
+			t.Fatalf("после импорта %d раскладка папок %v, ожидалась %v", pass, after, before)
+		}
+	}
+
+	// Тот же файл в ПУСТОЕ состояние: обе папки обязаны доехать обеими, со
+	// своими id и составом. Пока папка, заведённая этим же импортом,
+	// находилась по ИМЕНИ, вторая запись файла (id B) попадала в только что
+	// заведённую A: 18 источников превращались в 17, состав первой папки — обе.
+	// «Одно имя = одна папка» — правило про состояние приёмника, а не про
+	// содержимое файла: в файле папок две.
+	fresh := state.New()
+	for pass := 1; pass <= 2; pass++ {
+		if _, err := ImportFile(fresh, f, ImportOptions{}); err != nil {
+			t.Fatalf("импорт в пустое, проход %d: %v", pass, err)
+		}
+		after := folderLayout(fresh)
+		if !equalStrings(after, before) {
+			t.Fatalf("импорт в пустое, проход %d: раскладка %v, ожидалась %v", pass, after, before)
+		}
+	}
+}
+
+// TestImport10FolderFromOtherMachineMatchesByName — кросс-машинный случай:
+// id из файла здесь неизвестен, и папка находится ПО ИМЕНИ (норма §9 п. 3).
+// Совпавшая держит СВОЙ id: на него смотрят ссылки этой машины.
+func TestImport10FolderFromOtherMachineMatchesByName(t *testing.T) {
+	s := state.New()
+	s.Sources = []state.Source{{
+		Node: state.Node{Kind: state.SourceKindFolder, Enabled: true},
+		ID:   "01LOCALB", Name: "X",
+		Nodes: []state.Node{
+			{Kind: state.SourceKindServer, Tag: "local", Enabled: true,
+				Origin: &state.Origin{Kind: state.OriginKindURI, Raw: "ss://local#local"}},
+		},
+	}}
+
+	b := &Backup10{LxBackup: FormatVersion10, Sources: []Source10{{
+		Kind: state.SourceKindFolder, Enabled: true,
+		ID: "01FILEA", Name: "X",
+		Nodes: []state.Node{
+			{Kind: state.SourceKindServer, Tag: "fromfile", Enabled: true,
+				Origin: &state.Origin{Kind: state.OriginKindURI, Raw: "ss://fromfile#fromfile"}},
+		},
+	}}}
+	if _, err := Import10(s, b, ImportOptions{}); err != nil {
+		t.Fatalf("Import10: %v", err)
+	}
+
+	got := folderLayout(s)
+	want := []string{"01LOCALB/X=local,fromfile"}
+	if !equalStrings(got, want) {
+		t.Fatalf("раскладка %v, ожидалась %v — папка обязана слиться по имени в локальную, id локальный", got, want)
 	}
 }

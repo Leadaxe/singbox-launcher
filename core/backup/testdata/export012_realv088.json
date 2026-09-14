@@ -1,0 +1,416 @@
+{
+  "warnings": [],
+  "backup": {
+    "lx_backup": 1,
+    "exported_by": {
+      "app": "launcher",
+      "version": "1.4.2",
+      "platform": "darwin"
+    },
+    "exported_at": "2025-06-15T15:06:40Z",
+    "subscriptions": [
+      {
+        "id": "01M17AS5R01X3SG47GEP6PV0HE",
+        "url": "https://sub-a.example/list-black.txt",
+        "enabled": false,
+        "tag": {
+          "prefix": "BL:"
+        }
+      },
+      {
+        "id": "01M17AS5R01X3SG47GEP6PV0HF",
+        "url": "https://sub-a.example/list-white.txt",
+        "enabled": false,
+        "tag": {
+          "prefix": "WL:"
+        },
+        "fold": {
+          "mode": "select_auto",
+          "auto": {
+            "url": "https://cp.cloudflare.com/generate_204",
+            "interval": "5m",
+            "tolerance": 100,
+            "interrupt_exist_connections": true
+          }
+        }
+      },
+      {
+        "id": "01M17AS5R01X3SG47GEP6PV0HG",
+        "url": "https://sub-b.example/mirror/22.txt",
+        "enabled": false,
+        "tag": {
+          "prefix": "XX:"
+        },
+        "fold": {
+          "mode": "select_auto",
+          "auto": {
+            "url": "https://cp.cloudflare.com/generate_204",
+            "interval": "5m",
+            "tolerance": 100,
+            "interrupt_exist_connections": true
+          }
+        }
+      },
+      {
+        "id": "01M17AS5R01X3SG47GEP6PV0HH",
+        "url": "https://sub-c.example/connection/subs/00000000-0000-4000-8000-0000000000a1",
+        "tag": {
+          "prefix": "AL:"
+        },
+        "fold": {
+          "mode": "select_auto",
+          "auto": {
+            "url": "https://cp.cloudflare.com/generate_204",
+            "interval": "5m",
+            "tolerance": 100,
+            "interrupt_exist_connections": true
+          }
+        }
+      },
+      {
+        "id": "01M17AS5R01X3SG47GEP6PV0HJ",
+        "url": "https://sub-c.example/connection/test_proxies_subs/00000000-0000-4000-8000-0000000000a1",
+        "enabled": false,
+        "tag": {
+          "prefix": "LW:"
+        },
+        "fold": {
+          "mode": "select_auto",
+          "auto": {
+            "url": "https://cp.cloudflare.com/generate_204",
+            "interval": "5m",
+            "tolerance": 100,
+            "interrupt_exist_connections": true
+          }
+        }
+      },
+      {
+        "id": "01M17AS5R01X3SG47GEP6PV0HM",
+        "url": "https://sub-d.example/sub/c3ludGhldGljLXRva2VuLTAwMDE/",
+        "enabled": false,
+        "tag": {
+          "prefix": "AAA"
+        }
+      }
+    ],
+    "servers": [
+      {
+        "id": "01M17AS5R01X3SG47GEP6PV0HK",
+        "node_tag": "WG:wg-mock"
+      }
+    ],
+    "directions": [
+      {
+        "tag": "auto-proxy-out",
+        "filter": "(🇷🇺)",
+        "invert": true,
+        "interrupt_exist_connections": true
+      },
+      {
+        "tag": "proxy-out",
+        "filter": "(🇷🇺)",
+        "invert": true,
+        "include_direct": true,
+        "include": [
+          "auto-proxy-out"
+        ],
+        "interrupt_exist_connections": true
+      },
+      {
+        "tag": "ru VPN 🇷🇺",
+        "filter": "(🇷🇺)",
+        "include_direct": true,
+        "interrupt_exist_connections": true
+      },
+      {
+        "tag": "vpn ①",
+        "include_direct": true,
+        "include": [
+          "proxy-out"
+        ],
+        "interrupt_exist_connections": true
+      },
+      {
+        "tag": "vpn ②",
+        "include_direct": true,
+        "include": [
+          "proxy-out"
+        ],
+        "interrupt_exist_connections": true
+      }
+    ],
+    "rules": [
+      {
+        "kind": "inline",
+        "name": "Private IPs direct",
+        "enabled": false,
+        "outbound": "direct-out",
+        "match": {
+          "ip_is_private": true
+        }
+      },
+      {
+        "kind": "inline",
+        "name": "Local/LAN domains direct",
+        "enabled": false,
+        "outbound": "direct-out",
+        "match": {
+          "domain_suffix": [
+            "local",
+            "lan"
+          ]
+        }
+      },
+      {
+        "kind": "inline",
+        "name": "porn",
+        "outbound": "direct-out",
+        "match": {
+          "domain_suffix": [
+            "ypncdn.com",
+            "adtng.com"
+          ]
+        }
+      },
+      {
+        "kind": "srs",
+        "name": "Block Ads (ads-all, soft)",
+        "enabled": false,
+        "outbound": "reject",
+        "ref": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-ads-all.srs"
+      },
+      {
+        "kind": "inline",
+        "name": "steam | dota",
+        "outbound": "direct-out",
+        "match": {
+          "process_path_regex": [
+            ".*(dota|steam|Steam).*"
+          ]
+        }
+      },
+      {
+        "kind": "inline",
+        "name": "BitTorrent direct",
+        "outbound": "direct-out",
+        "match": {
+          "protocol": [
+            "bittorrent"
+          ]
+        }
+      },
+      {
+        "kind": "inline",
+        "name": "Russian domains direct",
+        "outbound": "direct-out",
+        "match": {
+          "rule_set": "ru-domains"
+        }
+      },
+      {
+        "kind": "inline",
+        "name": "Gaming ports direct",
+        "enabled": false,
+        "outbound": "direct-out",
+        "match": {
+          "network": [
+            "tcp",
+            "udp"
+          ],
+          "port": [
+            3659,
+            1935,
+            5001,
+            5795,
+            5796,
+            7000,
+            7777,
+            9000,
+            10039,
+            10040
+          ],
+          "port_range": "27000:27100"
+        }
+      },
+      {
+        "kind": "srs",
+        "name": "Games direct",
+        "enabled": false,
+        "outbound": "direct-out",
+        "ref": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-games.srs"
+      },
+      {
+        "kind": "srs",
+        "name": "Russia-only services",
+        "enabled": false,
+        "outbound": "direct-out",
+        "ref": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-ru-available-only-inside.srs"
+      },
+      {
+        "kind": "inline",
+        "name": "filmix",
+        "enabled": false,
+        "outbound": "vpn ②",
+        "match": {
+          "domain_suffix": [
+            "cdnsqu.com",
+            "werkecdn.me"
+          ]
+        }
+      },
+      {
+        "kind": "inline",
+        "name": "GIT",
+        "enabled": false,
+        "outbound": "direct-out",
+        "match": {
+          "domain_suffix": [
+            "github.com",
+            "githubusercontent.com",
+            "blob.core.windows.net",
+            "ghcr.io",
+            "storage.googleapis.com",
+            "dl.google.com",
+            "jitpack.io"
+          ]
+        }
+      }
+    ],
+    "dns": {
+      "servers": [
+        {
+          "kind": "user",
+          "name": "local_dns_resolver",
+          "value": {
+            "type": "local"
+          }
+        },
+        {
+          "kind": "user",
+          "name": "direct_dns_resolver",
+          "value": {
+            "description": "Direct DNS resolver",
+            "server": "8.8.8.8",
+            "server_port": 53,
+            "type": "udp"
+          }
+        },
+        {
+          "kind": "user",
+          "name": "cloudflare_udp",
+          "value": {
+            "description": "Cloudflare DNS resolver",
+            "server": "1.1.1.1",
+            "server_port": 53,
+            "type": "udp"
+          }
+        },
+        {
+          "kind": "user",
+          "name": "cloudflare_doh",
+          "enabled": false,
+          "value": {
+            "description": "Cloudflare DNS over HTTPS resolver",
+            "path": "/dns-query",
+            "server": "1.1.1.1",
+            "server_port": 443,
+            "tls": {
+              "server_name": "cloudflare-dns.com"
+            },
+            "type": "https"
+          }
+        },
+        {
+          "kind": "user",
+          "name": "google_doh",
+          "value": {
+            "description": "Google DNS over HTTPS resolver",
+            "domain_resolver": "direct_dns_resolver",
+            "path": "/dns-query",
+            "server": "dns.google",
+            "server_port": 443,
+            "type": "https"
+          }
+        },
+        {
+          "kind": "user",
+          "name": "google_doh_vpn",
+          "enabled": false,
+          "value": {
+            "description": "Google DNS over HTTPS resolver",
+            "detour": "proxy-out",
+            "domain_resolver": "direct_dns_resolver",
+            "path": "/dns-query",
+            "server": "dns.google",
+            "server_port": 443,
+            "type": "https"
+          }
+        },
+        {
+          "kind": "user",
+          "name": "yandex_doh",
+          "value": {
+            "description": "Yandex DNS over HTTPS resolver",
+            "domain_strategy": "prefer_ipv4",
+            "path": "/dns-query",
+            "server": "77.88.8.88",
+            "server_port": 443,
+            "type": "https"
+          }
+        },
+        {
+          "kind": "user",
+          "name": "yandex_dns_vpn",
+          "enabled": false,
+          "value": {
+            "description": "Yandex DNS over UDP resolver",
+            "detour": "proxy-out",
+            "domain_strategy": "prefer_ipv4",
+            "server": "77.88.8.2",
+            "server_port": 53,
+            "type": "udp"
+          }
+        },
+        {
+          "kind": "user",
+          "name": "yandex_dns_direct",
+          "enabled": false,
+          "value": {
+            "description": "Yandex 2 DNS over UDP resolver",
+            "domain_strategy": "prefer_ipv4",
+            "server": "77.88.8.2",
+            "server_port": 53,
+            "type": "udp"
+          }
+        }
+      ],
+      "rules": [
+        {
+          "kind": "user",
+          "value": {
+            "rule_set": "ru-domains",
+            "server": "yandex_doh"
+          }
+        },
+        {
+          "kind": "user",
+          "value": {
+            "server": "google_doh"
+          }
+        }
+      ]
+    },
+    "vars": {
+      "dns_default_domain_resolver": "cloudflare_udp",
+      "dns_final": "direct_dns_resolver",
+      "dns_strategy": "prefer_ipv4",
+      "log_level": "info",
+      "resolve_strategy": "prefer_ipv4",
+      "tun_address": "172.16.0.1/30",
+      "tun_stack": "system",
+      "urltest_interval": "5m",
+      "urltest_tolerance": "50",
+      "urltest_url": "http://www.gstatic.com/generate_204"
+    }
+  }
+}
