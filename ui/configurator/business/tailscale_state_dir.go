@@ -61,17 +61,13 @@ func NodeIsTailscale(n *corestate.Node) bool {
 // Суффикса уникализации здесь нет и быть не может: его назначает глобальный
 // счётчик сборки, которого у правки в UI нет. Перекос осознанный и в сторону
 // СОХРАНЕНИЯ — см. CollectTailscaleStateDirNames: лишнее имя оставляет
-// каталог жить, недостающее сносит.
+// каталог жить, недостающее сносит. Сама формула — corestate.TagPolicy.FinalTag.
 func tailscaleFinalTag(container *wizardmodels.Source, rawTag string) string {
 	rawTag = strings.TrimSpace(rawTag)
-	if container == nil || !containerHasTagPolicy(container) {
+	if container == nil {
 		return rawTag
 	}
-	return container.TagPolicy.Prefix + rawTag + container.TagPolicy.Postfix
-}
-
-func containerHasTagPolicy(s *wizardmodels.Source) bool {
-	return s != nil && s.TagPolicy != nil && !s.TagPolicy.IsZero()
+	return container.TagPolicy.FinalTag(rawTag)
 }
 
 // SourceByID — источник по ULID. Экспортная обёртка над внутренним поиском:
@@ -193,8 +189,8 @@ func RenameTailscaleStateDirsForTagPolicy(
 		}
 		raw := strings.TrimSpace(n.Tag)
 		config.RenameTailscaleStateDir(
-			config.TailscaleStateDirName(oldP.Prefix+raw+oldP.Postfix),
-			config.TailscaleStateDirName(newP.Prefix+raw+newP.Postfix),
+			config.TailscaleStateDirName(oldP.FinalTag(raw)),
+			config.TailscaleStateDirName(newP.FinalTag(raw)),
 		)
 	}
 }

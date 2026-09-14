@@ -44,6 +44,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 )
 
@@ -263,7 +264,8 @@ func canonicalStateDirTag(cs *configtypes.CanonicalSource, cn *configtypes.Canon
 	if !cs.IsContainer {
 		return tag
 	}
-	return cs.TagPrefix + tag + cs.TagPostfix
+	policy := state.TagPolicy{Prefix: cs.TagPrefix, Postfix: cs.TagPostfix}
+	return policy.FinalTag(tag)
 }
 
 // bodyIsTailscale — тело узла это endpoint tailnet.

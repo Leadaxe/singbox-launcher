@@ -12,9 +12,11 @@ import (
 	"encoding/json"
 	"reflect"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
+	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
 )
@@ -806,4 +808,146 @@ func TestImport10RewritesFolderLinksToLocalIDs(t *testing.T) {
 	if folders != 1 {
 		t.Errorf("папок после импорта %d — имя совпало, а папка завелась второй", folders)
 	}
+
+	// Тот же перенос, но файл старой или чужой стороны: ссылка на член папки
+	// записана БЕЗ folder_id, одним финальным тегом конфига. Сборка ищет
+	// такую ссылку только в корне, и без нормализации на импорте узел с
+	// detour и цепочка с хопом уходили fail-closed на каждой сборке.
+	t.Run("tag-only links to folder members", func(t *testing.T) {
+		body := func(server string) json.RawMessage {
+			return json.RawMessage(`{"type":"trojan","server":"` + server + `","server_port":443,"password":"pw"}`)
+		}
+		member := func(tag, server string) state.Node {
+			return state.Node{Kind: state.SourceKindServer, Tag: tag, Enabled: true, Body: body(server)}
+		}
+		zurich := member("Zurich", "zrh.example")
+		zurich.Detour = &state.NodeLink{Tag: "[P] Amsterdam"}
+		raw, err := json.Marshal(&Backup10{
+			LxBackup:   FormatVersion10,
+			Directions: []Direction{{Tag: "vpn-de"}},
+			Sources: []Source10{
+				{Kind: state.SourceKindServer, Tag: "🔥 WARP", Enabled: true, Body: body("warp.example")},
+				{
+					Kind: state.SourceKindFolder, ID: "01FLD0000000000000000000", Name: "Proton", Enabled: true,
+					TagPolicy: &state.TagPolicy{Prefix: "[P] "},
+					Nodes:     []state.Node{member("Amsterdam", "ams.example"), zurich},
+				},
+				// Члены, чьи финальные теги заняты корнем («🔥 WARP» — корневой
+				// узел, «vpn-de» — Направление) или совпадают у двух папок
+				// («twin» и «tw» + «in»): такие ссылки импорт не трогает.
+				{
+					Kind: state.SourceKindFolder, ID: "01MIRA0000000000000000000", Name: "Mirror A", Enabled: true,
+					Nodes: []state.Node{member("twin", "a.example"), member("🔥 WARP", "b.example"), member("vpn-de", "c.example")},
+				},
+				{
+					Kind: state.SourceKindFolder, ID: "01MIRB0000000000000000000", Name: "Mirror B", Enabled: true,
+					TagPolicy: &state.TagPolicy{Prefix: "tw"},
+					Nodes:     []state.Node{member("in", "d.example")},
+				},
+				{
+					Kind: state.SourceKindServer, Tag: "Tokyo", Enabled: true, Body: body("tyo.example"),
+					Detour: &state.NodeLink{Tag: "[P] Amsterdam"},
+				},
+				{Kind: state.SourceKindServer, Tag: "Osaka", Enabled: true, Body: body("osa.example")},
+				{
+					Kind: state.SourceKindChain, Tag: "via-ams", Enabled: true,
+					Hops: []state.NodeLink{{Tag: "[P] Amsterdam"}, {Tag: "Osaka"}},
+				},
+				{
+					Kind: state.SourceKindChain, Tag: "via-others", Enabled: true,
+					Hops: []state.NodeLink{{Tag: "twin"}, {Tag: "🔥 WARP"}, {Tag: "vpn-de"}},
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		parsed, _, err := Parse(raw)
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		local := &state.State{Sources: []state.Source{{
+			ID:   "01LOCALFOLDER00000000000",
+			Name: "Proton",
+			Node: state.Node{Kind: state.SourceKindFolder, Enabled: true},
+		}}}
+		if _, err := ImportFile(local, parsed, ImportOptions{}); err != nil {
+			t.Fatalf("Import: %v", err)
+		}
+
+		find := func(kind state.SourceKind, name string) *state.Source {
+			for i := range local.Sources {
+				s := &local.Sources[i]
+				if s.Kind == kind && (s.Tag == name || s.Name == name) {
+					return s
+				}
+			}
+			t.Fatalf("после импорта нет %s %q", kind, name)
+			return nil
+		}
+		proton := find(state.SourceKindFolder, "Proton")
+		tokyo := find(state.SourceKindServer, "Tokyo")
+		viaAms := find(state.SourceKindChain, "via-ams")
+		want := state.NodeLink{FolderID: "01LOCALFOLDER00000000000", Tag: "Amsterdam"}
+		if tokyo.Detour == nil || *tokyo.Detour != want {
+			t.Errorf("detour корневого узла %+v, ожидалось %+v", tokyo.Detour, want)
+		}
+		if wantHops := []state.NodeLink{want, {Tag: "Osaka"}}; !reflect.DeepEqual(viaAms.Hops, wantHops) {
+			t.Errorf("хопы цепочки %+v, ожидалось %+v", viaAms.Hops, wantHops)
+		}
+		if len(proton.Nodes) != 2 {
+			t.Fatalf("состав папки после импорта: %d узлов, ожидалось 2", len(proton.Nodes))
+		}
+		if d := proton.Nodes[1].Detour; d == nil || *d != want {
+			t.Errorf("detour члена папки %+v, ожидалось %+v", d, want)
+		}
+		others := find(state.SourceKindChain, "via-others").Hops
+		wantOthers := []state.NodeLink{{Tag: "twin"}, {Tag: "🔥 WARP"}, {Tag: "vpn-de"}}
+		if !reflect.DeepEqual(others, wantOthers) {
+			t.Errorf("хопы на неоднозначный тег, корневой узел и Направление тронуты: %+v, ожидалось %+v", others, wantOthers)
+		}
+
+		// Сборка: узел с detour и цепочка остаются в конфиге, ссылки дошли
+		// до финального тега члена папки.
+		pc := &config.ParserConfig{}
+		pc.ParserConfig.Version = config.ParserConfigVersion
+		for _, s := range []*state.Source{proton, tokyo, find(state.SourceKindServer, "Osaka"), viaAms} {
+			pc.ParserConfig.Proxies = append(pc.ParserConfig.Proxies, s.ToProxySourceV4())
+		}
+		res, err := config.GenerateOutboundsFromParserConfig(pc, map[string]int{}, nil, config.DirectionBuildOptions{})
+		if err != nil {
+			t.Fatalf("GenerateOutboundsFromParserConfig: %v", err)
+		}
+		emitted := map[string]map[string]interface{}{}
+		for _, line := range res.OutboundsJSON {
+			if at := strings.Index(line, "{"); at >= 0 {
+				var m map[string]interface{}
+				if json.Unmarshal([]byte(strings.TrimRight(strings.TrimSpace(line[at:]), ",")), &m) == nil {
+					tag, _ := m["tag"].(string)
+					emitted[tag] = m
+				}
+			}
+		}
+		warns := strings.Join(config.EmissionWarningTexts(res.EmissionWarnings), " | ")
+		if got := emitted["Tokyo"]; got == nil || got["detour"] != "[P] Amsterdam" {
+			t.Errorf("узел с detour на член папки: %v (предупреждения сборки: %s)", got, warns)
+		}
+		if got := emitted["via-ams"]; got == nil || !reflect.DeepEqual(got["outbounds"], []interface{}{"[P] Amsterdam", "Osaka"}) {
+			t.Errorf("цепочка с хопом в член папки: %v (предупреждения сборки: %s)", got, warns)
+		}
+
+		// Резолв ссылки: нормализованная находит член папки, та же ссылка
+		// тегом без адреса — висит.
+		targets := config.BuildNodeLinkTargets(
+			[]config.ProxySource{proton.ToProxySourceV4()},
+			map[int][]*config.ParsedNode{0: {{Tag: "[P] Amsterdam", IdentityTag: "Amsterdam"}}},
+			nil,
+		)
+		if got := targets.Resolve(configtypes.NodeLink{FolderID: want.FolderID, Tag: want.Tag}); got.Tag != "[P] Amsterdam" {
+			t.Errorf("Resolve нормализованной ссылки: %+v", got)
+		}
+		if got := targets.Resolve(configtypes.NodeLink{Tag: "[P] Amsterdam"}); got.Problem == "" {
+			t.Errorf("ссылка без folder_id разрешилась и без нормализации: %+v", got)
+		}
+	})
 }

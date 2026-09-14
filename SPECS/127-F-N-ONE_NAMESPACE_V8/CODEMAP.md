@@ -2311,3 +2311,37 @@ Go-теста, валидирующего `registry/protocols/*.json` проти
 (1.0.0, раннер `backup_corpus_test.dart`, golden
 `v10_sources_union.expected.lxbox.json`), `TASKS_LXBOX.md` `## 16`,
 `DECISIONS.md` D-110, `docs/API*.md`, заметки 1.6.0.
+
+## 22. Одно правило — одно тело; ссылка без `folder_id` на член папки (D-111, релиз 1.6.0)
+
+Ветка `fix/rules-array-and-folder-links`. Две правки импорта, обе входят в
+1.6.0. Слияние §9 не тронуто; писатель 1.0 не тронут.
+
+### 22.1 Норма массива тел правила
+
+| Адрес | Что |
+|---|---|
+| `core/backup/import10.go:401` | **`splitRuleBodies(r, where)`** — ОДНА функция на оба входа: объект → запись как есть; массив → по записи на элемент-объект (`name`, `name #2`… по порядку получившихся, безымянная → безымянные; `enabled` общий; `num` исходной записи у всех частей — устойчивая сортировка и сплошная перенумерация импорта ставят их подряд, N+1 столкнулся бы со следующей записью; `id` только у первой); не-объект/битый JSON/пустой массив → `backup_unknown_field` с путём `rules[<имя>].body[#k]` |
+| `core/backup/import10.go:88-104` | вход 1.0: `ruleBodyPresent` (`:449`, inline\|srs с непустым не-`null` телом) → `splitRuleBodies` → `decode10Rule` на каждую часть (проверка цели по частям) |
+| `core/backup/legacy_read_0x.go:448`, `:526` | `importRule` отдаёт `[]state.Rule`; `kind: json` → **`importJSONRule`**: `match` — тело inline-записи как есть, та же `splitRuleBodies`, проверка цели — `decode10Rule`; плоский `outbound` json-записи не применяется (цель в теле); без частей → `errSkipRule` |
+| `core/backup/legacy_read_0x.go:546` | `legacyRuleNum` — номер оси 0.x (float64 → int), общий для inline/srs/preset и json |
+| `ui/configurator/dialogs/add_rule_dialog.go:1149` | `ruleArrayPastedError` — вставлен массив → ошибка «Paste one rule at a time: the editor keeps one sing-box rule per entry» (`addRuleArrayPastedText` `:59`, перевод `bin/locale/ru.json:2047`); три места ввода: Custom JSON `:473`, сохранение вкладки JSON `:744`, переход JSON → Form `:1022` |
+| `core/debugapi/state_endpoints.go:189` | PATCH `/state/rules`: массив в `body` у inline/srs отвергается `DecodeBody` (422) — правка не нужна |
+| `core/state/node_sections_convert.go:167` | вкладка JSON узла: элемент `route.rules[i]` не объект → документ отвергается («expected an object») — правка не нужна |
+| `contract/corpus/backup/legacy_012_json_rule_array.*` | кейс: json-объект, `Keep` выше массива по файлу и ниже его частей по `num`, массив из трёх с элементом-строкой; мутация «N+1» роняет кейс |
+| `core/backup/corpus_test.go:77`, `:568` | новый необязательный ключ ожидания `rules[].body` (deep-equal) |
+| `core/backup/backup_test.go:385` | `TestImport10RuleBodyArrayEqualsExpandedRecords` — массив в `body` даёт то же состояние, что развёрнутые записи |
+
+### 22.2 Ссылка без `folder_id` на член папки
+
+| Адрес | Что |
+|---|---|
+| `core/state/sources_v7.go:87` | **`(*TagPolicy).FinalTag(raw)`** — prefix + сырой тег + postfix, nil → сырой; единственный дом формулы: её же зовут `core/config/tailscale_state_dir.go:262` (`canonicalStateDirTag`) и `ui/configurator/business/tailscale_state_dir.go:65`, `:192-193` (прежние копии конкатенации) |
+| `core/backup/import10.go:499` | **`normalizeMemberLinks10(s, linked, rootNames)`** — приехавшие файлом `detour` (корневых узлов, членов папок, общий у контейнеров) и `hops[]` без `folder_id`: тег не в корне (`importKnownTags` `import.go:445` + `reservedTargetLiteral` `import.go:590`) и финальный тег ровно у одного члена папки/подписки результата → `{id контейнера здесь, сырой тег}`; несколько совпадений — как есть, без предупреждения (кода у импорта нет, BACKUP §4/§6) |
+| `core/backup/import.go:397-407` | развилка по `decodedFile.Format` (`decoded.go:47`): 1.0 → `normalizeMemberLinks10` после `rewriteFolderLinks`; 0.x → прежний `resolveImportedHops` (строковые хопы по сырым тегам). Для 1.0 `resolveImportedHops` больше не зовётся: сырой тег мимо финального переписал бы ссылку при неоднозначном финальном теге |
+| `core/backup/purity_test.go:816` | подтест `tag-only links to folder members` в `TestImport10RewritesFolderLinksToLocalIDs`: detour корня, detour члена папки, хоп цепочки → адрес папки; неоднозначный тег, корневой узел, Направление — не тронуты; сборка (`GenerateOutboundsFromParserConfig`) эмитит узел и цепочку, `NodeLinkTargets.Resolve` находит цель, та же ссылка без адреса — висит. Мутация «без нормализации» роняет подтест с fail-closed обоих |
+
+Документы: `contract/docs/BACKUP.md` §2 («Одно правило — одно тело»), §4, §6
+(«Терпимость читателя…»), §11; `ONE_NAMESPACE.md` §1; `TASKS_LXBOX.md` §16.8;
+`corpus/backup/README.md`; `DECISIONS.md` D-111; `docs/release_notes/1-6-0.md`,
+`CHANGELOG.md` v1.6.0.
