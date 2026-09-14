@@ -656,6 +656,10 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v1.6.0** | [docs/release_notes/1-6-0.md](docs/release_notes/1-6-0.md) |
+| **v1.5.6** | [docs/release_notes/1-5-6.md](docs/release_notes/1-5-6.md) |
+| **v1.5.5** | [docs/release_notes/1-5-5.md](docs/release_notes/1-5-5.md) |
+| **v1.5.4** | [docs/release_notes/1-5-4.md](docs/release_notes/1-5-4.md) |
 | **v1.5.3** | [docs/release_notes/1-5-3.md](docs/release_notes/1-5-3.md) |
 | **v1.5.2** | [docs/release_notes/1-5-2.md](docs/release_notes/1-5-2.md) |
 | **v1.5.1** | [docs/release_notes/1-5-1.md](docs/release_notes/1-5-1.md) |
