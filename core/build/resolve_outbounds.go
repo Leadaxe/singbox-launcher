@@ -125,6 +125,38 @@ func mergeOutboundUpdates(ob configtypes.Direction, td *template.TemplateData, t
 	return applyUpdatesToBase(base, ob.Updates)
 }
 
+// ResolveDirections — Направления состояния ТЕЛОМ ПОСЛЕ СЛИЯНИЯ: база из
+// шаблона или пресета, патчи пресетов и USER-патч поверх. Тело то же, что у
+// /state/outbounds/resolved и у сборки.
+//
+// Нужен тому, кто уносит Направление с этой машины (экспорт бэкапа).
+// Ссылочная запись в состоянии тонкая — sync срезает её до tag+ref+updates
+// (stripReferencedBody), — и сторона без нашего шаблона получила бы от неё
+// один тег: без отбора узлов и без включений.
+//
+// В отличие от MergeOutboundUpdatesInPlace запись с оборванной ссылкой не
+// выбрасывается, а остаётся тем, что удалось собрать (патчи поверх самой
+// записи): Направление в состоянии есть, и молча пропасть из переноса оно не
+// вправе. Длина и порядок совпадают со входом; вход не мутируется.
+func ResolveDirections(dirs []configtypes.Direction, td *template.TemplateData, target template.TargetSpec) []configtypes.Direction {
+	if len(dirs) == 0 {
+		return nil
+	}
+	tmplOutbounds := td.GlobalOutbounds()
+	presetByID := make(map[string]*template.Preset)
+	if td != nil {
+		for i := range td.Presets {
+			presetByID[td.Presets[i].ID] = &td.Presets[i]
+		}
+	}
+	out := make([]configtypes.Direction, 0, len(dirs))
+	for _, ob := range dirs {
+		base, _ := resolveBaseBody(ob, tmplOutbounds, presetByID, target)
+		out = append(out, applyUpdatesToBase(base, ob.Updates))
+	}
+	return out
+}
+
 // MergeOutboundUpdatesInPlace — runtime helper: walks parserCfg.Outbounds[] и
 // для каждой entry резолвит base (template/preset/inline) + flatten'ит
 // Updates[] стек в финальное body. Mutates in-place.

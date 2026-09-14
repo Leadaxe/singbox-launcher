@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/template"
 )
 
 // stickyHashKeys — компоненты sticky_hash в порядке отображения в UI.
@@ -189,19 +190,19 @@ func stripDirectBodyForReferenced(cfg *config.Direction) {
 // Имя не универсально: в шаблоне лаунчера это `block-out`, в чужом может
 // быть другим. Фолбэк на `block-out` нужен для случая, когда шаблон ещё не
 // загружен (первый запуск, тесты) — иначе чекбокс остался бы безымянным.
+//
+// Ответ даёт TemplateData.DirectionBlockTag — тот же, по которому экспорт
+// бэкапа ставит `include_block`: галка формы и признак в файле не вправе
+// разойтись.
 func directionBlockTag(editPresenter OutboundEditPresenter) string {
-	const fallback = "block-out"
 	if editPresenter == nil {
-		return fallback
+		return template.DefaultDirectionBlockTag
 	}
 	m := editPresenter.Model()
-	if m == nil || m.TemplateData == nil {
-		return fallback
+	if m == nil {
+		return template.DefaultDirectionBlockTag
 	}
-	if tag := m.TemplateData.DirectionMagicTag("block", ""); tag != "" {
-		return tag
-	}
-	return fallback
+	return m.TemplateData.DirectionBlockTag()
 }
 
 // directionFilterDocURL — справка по отбору узлов Направления (SPEC 104).

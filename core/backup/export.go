@@ -13,10 +13,12 @@ import (
 	"encoding/json"
 	"time"
 
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
 )
 
-// ExportOptions — что подмешать в шапку файла.
+// ExportOptions — что подмешать в шапку файла, и то, что писатель берёт у
+// шаблона, а не у состояния.
 type ExportOptions struct {
 	// AppVersion — версия лаунчера (exported_by.version).
 	AppVersion string
@@ -25,6 +27,22 @@ type ExportOptions struct {
 	// Now — момент экспорта; ноль означает time.Now(). Параметр существует
 	// ради воспроизводимых тестов, а не ради «настраиваемости».
 	Now time.Time
+
+	// Directions — Направления состояния ПОСЛЕ слияния: тело шаблона или
+	// пресета, патчи пресетов и USER-патч поверх (build.ResolveDirections).
+	// Писатель берёт тело записи отсюда по тегу. Ссылочная запись в самом
+	// состоянии — только tag+ref+updates, и без этого вида в файл уехал бы
+	// один тег (BACKUP.md §10, «Цена канонизации Направлений»).
+	//
+	// Слияние считает вызывающий: ему доступен шаблон, а core/backup о
+	// шаблоне не знает. nil — записи состояния как есть; это верно только
+	// для прямых записей (ref == "").
+	Directions []configtypes.Direction
+
+	// BlockTag — тег блокировки шаблона (TemplateData.DirectionBlockTag), по
+	// нему ставится `include_block`: тот же тег, что у галки формы
+	// Направления. Пусто — `block-out`.
+	BlockTag string
 }
 
 // ExportFile пишет бэкап состояния в файл формата 1.0.

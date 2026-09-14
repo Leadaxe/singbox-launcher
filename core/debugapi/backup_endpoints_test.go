@@ -12,10 +12,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"reflect"
+	"sort"
 	"testing"
 
+	"singbox-launcher/core/backup"
+	"singbox-launcher/core/build"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
+	"singbox-launcher/core/template"
 )
 
 // backupTestState — состояние, в котором есть все сущности, доступные форме
@@ -461,4 +466,224 @@ func TestBackupEndpointsDocumentedInHelp(t *testing.T) {
 			t.Errorf("%s не описан в /help", path)
 		}
 	}
+}
+
+// Направления уезжают в файл телом ПОСЛЕ слияния с шаблоном и пресетом.
+//
+// Дефект, пойманный на живом лаунчере 15.09.2026: ссылочная запись state —
+// это tag+ref+updates, писатель брал её как есть, и в файл уезжал один тег.
+// На другой машине proxy-out приезжал без фильтра !RU и собирал в себя
+// российские узлы; так же терялись фильтр vpn ② из USER-патча и тело
+// Направления пресета. Путь проверяется целиком, через API: слитый вид
+// (/state/outbounds/resolved) → файл → импорт в тот же лаунчер (ничего не
+// меняет) и в чистый с тем же шаблоном (без дублей, состав тот же).
+func TestBackupExportCarriesMergedDirections(t *testing.T) {
+	// Тег блокировки в шаблоне НЕ по умолчанию: include_block обязан
+	// ставиться по нему — по тому же тегу, что у галки формы Направления.
+	const blockTag = "reject-out"
+	td := &template.TemplateData{
+		ParserConfig: `{"ParserConfig":{"outbounds":[
+			{"tag":"proxy-out","type":"selector","options":{"interrupt_exist_connections":true},
+			 "addOutbounds":["direct-out"],
+			 "auto":{"url":"@urltest_url","interval":"@urltest_interval"}},
+			{"tag":"vpn ②","type":"selector","options":{"default":"proxy-out"},
+			 "addOutbounds":["direct-out","proxy-out"]}
+		]}}`,
+		Presets: []template.Preset{{
+			ID: "ru-direct",
+			Outbounds: []template.PresetOutbound{
+				{Mode: "update", Tag: "proxy-out", Filters: map[string]interface{}{"tag": "!/(🇷🇺)/i"}},
+				{Mode: "add", Tag: "ru VPN 🇷🇺", Type: "selector",
+					Filters:      map[string]interface{}{"tag": "/(🇷🇺)/i"},
+					AddOutbounds: []string{"direct-out"}},
+			},
+		}},
+		RawTemplate: json.RawMessage(`{"group_templates":{"magic_nodes":{"block":{"source":"preset","tag":"` + blockTag + `"}}}}`),
+	}
+	target := template.LocalTarget()
+
+	rule := presetRule("ru-direct", nil, true)
+	num := state.UserRuleNumStart
+	rule.Num = &num
+	st := state.New()
+	st.Rules = []state.Rule{rule}
+	st.Directions = []configtypes.Direction{
+		{Tag: "proxy-out", Ref: configtypes.RefTemplate},
+		{Tag: "vpn ②", Ref: configtypes.RefTemplate, Updates: []configtypes.OutboundUpdate{{
+			Ref: configtypes.RefUser,
+			Patch: map[string]interface{}{
+				"filters":      map[string]interface{}{"tag": "!/(🔥|Proton)/i"},
+				"addOutbounds": []interface{}{"direct-out", "proxy-out", blockTag},
+			},
+		}}},
+		{Tag: "local-net", Type: "selector",
+			Filters:      map[string]interface{}{"tag": "/(LAN)/i"},
+			AddOutbounds: []string{"direct-out"}},
+	}
+	// Синхронизация Save визарда: докладывает патч пресета в proxy-out и
+	// заводит тонкую запись пресета — ровно форма живого state.
+	build.SyncOutboundsWithTemplate(st.Rules, &st.Directions, td.Presets, build.TemplateOutboundTags(td), target)
+	for _, d := range st.Directions {
+		if d.Ref != "" && (d.Filters != nil || d.AddOutbounds != nil) {
+			t.Fatalf("предусловие: ссылочная запись %q хранит тело: %+v", d.Tag, d)
+		}
+	}
+
+	src := &fakeFacade{stateValue: st, templateValue: td}
+	srcBase, _ := newTestServer(t, src)
+
+	// Ожидание — слитый вид, записанный литералом: отбор и опции селектора.
+	want := []struct {
+		tag     string
+		filter  string
+		invert  bool
+		options []string
+	}{
+		{"proxy-out", "(🇷🇺)", true, []string{"direct-out"}},
+		{"vpn ②", "(🔥|Proton)", true, []string{"direct-out", "proxy-out", blockTag}},
+		{"local-net", "(LAN)", false, []string{"direct-out"}},
+		{"ru VPN 🇷🇺", "(🇷🇺)", false, []string{"direct-out"}},
+	}
+	merged := resolvedDirectionsOverAPI(t, srcBase)
+	for _, w := range want {
+		m, ok := merged[w.tag]
+		body, invert := configtypes.DirectionFilterTag(m.Filters)
+		if !ok || body != w.filter || invert != w.invert || !reflect.DeepEqual(m.AddOutbounds, w.options) {
+			t.Fatalf("предусловие: слитый вид %q не тот: %+v", w.tag, m)
+		}
+	}
+
+	raw, resp := fetchBackup(t, srcBase, "?format=1.0")
+	if resp.StatusCode != 200 {
+		t.Fatalf("export status %d: %s", resp.StatusCode, raw)
+	}
+	file, _, err := backup.Parse(raw)
+	if err != nil || file.V10 == nil {
+		t.Fatalf("экспорт отдал не файл 1.0: %v\n%s", err, raw)
+	}
+	if len(file.V10.Directions) != len(want) {
+		t.Fatalf("Направлений в файле %d, ожидалось %d:\n%s", len(file.V10.Directions), len(want), raw)
+	}
+	for i, w := range want {
+		got := file.V10.Directions[i]
+		var include []string
+		for _, tag := range w.options {
+			if tag != "direct-out" && tag != blockTag {
+				include = append(include, tag)
+			}
+		}
+		if got.Tag != w.tag || got.Filter != w.filter || got.Invert != w.invert ||
+			got.IncludeDirect != containsTag(w.options, "direct-out") ||
+			got.IncludeBlock != containsTag(w.options, blockTag) ||
+			!reflect.DeepEqual(got.Include, include) {
+			t.Errorf("Направление %q уехало не слитым телом: %+v", w.tag, got)
+		}
+	}
+	// Двойник и опции селектора ссылочной записи — тоже тело шаблона.
+	if proxy := file.V10.Directions[0]; proxy.Auto == nil || proxy.InterruptExistConnections == nil {
+		t.Errorf("proxy-out уехал без автовыбора или опций шаблона: %+v", proxy)
+	}
+
+	// Импорт в тот же лаунчер: все теги заняты (§9) — ничего не применяется,
+	// и состояние остаётся байт в байт прежним.
+	before, err := st.MarshalV8()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var same struct {
+		Applied struct {
+			Directions int `json:"directions"`
+		} `json:"applied"`
+		Warnings []backupWarningView `json:"warnings"`
+	}
+	if status, body := doJSON(t, authedReq(t, "POST", srcBase+"/backup/import", raw), &same); status != 200 {
+		t.Fatalf("импорт в тот же лаунчер: status %d: %s", status, body)
+	}
+	exists := 0
+	for _, w := range same.Warnings {
+		if w.Code == backup.WarnBackupDirectionExists {
+			exists++
+		}
+	}
+	if same.Applied.Directions != 0 || exists != len(want) {
+		t.Errorf("импорт в тот же лаунчер: применено %d, backup_direction_exists %d из %d",
+			same.Applied.Directions, exists, len(want))
+	}
+	after, err := src.savedState.MarshalV8()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Errorf("импорт своего же файла изменил состояние:\n--- до ---\n%s\n--- после ---\n%s", before, after)
+	}
+
+	// Чистый лаунчер с тем же шаблоном. После импорта — тот же проход, что у
+	// загрузки визарда (миграция в ссылочную форму + синхронизация): дубль
+	// появился бы именно там, если бы прямая запись не узналась шаблоном.
+	dst := &fakeFacade{stateValue: state.New(), templateValue: td}
+	dstBase, _ := newTestServer(t, dst)
+	if status, body := doJSON(t, authedReq(t, "POST", dstBase+"/backup/import", raw), nil); status != 200 {
+		t.Fatalf("импорт в чистый лаунчер: status %d: %s", status, body)
+	}
+	got := dst.savedState
+	build.MigrateOutboundsToReferencedShape(&got.Directions, got.Rules, td, target)
+	build.SyncOutboundsWithTemplate(got.Rules, &got.Directions, td.Presets, build.TemplateOutboundTags(td), target)
+	seen := map[string]int{}
+	for _, d := range got.Directions {
+		seen[d.Tag]++
+	}
+	if len(got.Directions) != len(want) {
+		t.Errorf("после импорта в чистый лаунчер Направлений %d, ожидалось %d: %v", len(got.Directions), len(want), seen)
+	}
+	back := resolvedDirectionsOverAPI(t, dstBase)
+	for _, w := range want {
+		if seen[w.tag] != 1 {
+			t.Errorf("Направление %q после импорта встречается %d раз", w.tag, seen[w.tag])
+		}
+		m := back[w.tag]
+		body, invert := configtypes.DirectionFilterTag(m.Filters)
+		// Тег блокировки импорт пишет своим именем (importDirection), а не
+		// шаблонным, — это вход, и в эту сверку он не входит.
+		if body != w.filter || invert != w.invert ||
+			!reflect.DeepEqual(sortedOptions(m.AddOutbounds, blockTag, "block-out"), sortedOptions(w.options, blockTag)) {
+			t.Errorf("Направление %q на чистом лаунчере собирается не так: %+v", w.tag, m)
+		}
+	}
+}
+
+// resolvedDirectionsOverAPI — слитый вид Направлений по тегу.
+func resolvedDirectionsOverAPI(t *testing.T, base string) map[string]configtypes.Direction {
+	t.Helper()
+	var res struct {
+		Outbounds []configtypes.Direction `json:"outbounds"`
+	}
+	if status, raw := doJSON(t, authedReq(t, "GET", base+"/state/outbounds/resolved", nil), &res); status != 200 {
+		t.Fatalf("resolved status %d: %s", status, raw)
+	}
+	out := make(map[string]configtypes.Direction, len(res.Outbounds))
+	for _, d := range res.Outbounds {
+		out[d.Tag] = d
+	}
+	return out
+}
+
+func containsTag(list []string, tag string) bool {
+	for _, x := range list {
+		if x == tag {
+			return true
+		}
+	}
+	return false
+}
+
+// sortedOptions — опции селектора множеством, без перечисленных тегов.
+func sortedOptions(list []string, drop ...string) []string {
+	out := make([]string, 0, len(list))
+	for _, x := range list {
+		if !containsTag(drop, x) {
+			out = append(out, x)
+		}
+	}
+	sort.Strings(out)
+	return out
 }

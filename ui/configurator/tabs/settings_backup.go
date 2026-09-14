@@ -23,7 +23,9 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/backup"
+	"singbox-launcher/core/build"
 	corestate "singbox-launcher/core/state"
+	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
@@ -120,10 +122,7 @@ func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.
 		path += ".json"
 	}
 
-	exportWarns, err := backup.ExportFile(path, st, backup.ExportOptions{
-		AppVersion: constants.AppVersion,
-		Platform:   runtime.GOOS,
-	})
+	exportWarns, err := backup.ExportFile(path, st, backupExportOptions(presenter, st))
 	if err != nil {
 		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Export failed"), err), win)
 		return
@@ -138,6 +137,25 @@ func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.
 	// Прежняя модалка резала список на десяти строках и отсылала за
 	// продолжением в отчёт импорта, которого при экспорте не существует.
 	showExportReport(win, path, exportWarns)
+}
+
+// backupExportOptions — шапка файла и то, что писатель берёт у шаблона.
+//
+// Направления — телом ПОСЛЕ слияния (build.ResolveDirections): ссылочная
+// запись в состоянии тонкая, и без тела шаблона или пресета proxy-out уехал
+// бы в файл одним тегом — без отбора узлов и без включений. Тег блокировки —
+// тот же, что у галки формы Направления.
+func backupExportOptions(presenter *wizardpresentation.WizardPresenter, st *corestate.State) backup.ExportOptions {
+	var td *wizardtemplate.TemplateData
+	if model := presenter.Model(); model != nil {
+		td = model.TemplateData
+	}
+	return backup.ExportOptions{
+		AppVersion: constants.AppVersion,
+		Platform:   runtime.GOOS,
+		Directions: build.ResolveDirections(st.Directions, td, build.TargetSpecFromState(st)),
+		BlockTag:   td.DirectionBlockTag(),
+	}
 }
 
 // handleBackupImport читает файл, показывает, что приедет, и применяет

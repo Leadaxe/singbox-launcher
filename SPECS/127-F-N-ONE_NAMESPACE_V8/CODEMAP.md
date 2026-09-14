@@ -2435,3 +2435,35 @@ Go-теста, валидирующего `registry/protocols/*.json` проти
 §10; `IDENTITY.md` §2.1; `TASKS_LXBOX.md` §17.3, §17.6, §17.7;
 `corpus/backup/README.md`; `SPECS/features/directions.md` §9; `DECISIONS.md`
 D-113, D-114; `docs/release_notes/1-6-0.md`; `CHANGELOG.md` v1.6.0.
+
+## 24. Экспорт Направлений телом после слияния (релиз 1.6.0)
+
+Ветка `fix/export-merged-directions`. Дефект с живого лаунчера (15.09.2026):
+`GET /backup/export` писал ссылочные Направления (`ref: #TEMPLATE#` или id
+пресета) одним `tag` — без `filter`, `include_direct`, `include`, `auto`.
+Причина: `Export10` брал `s.Directions` как есть, а у ссылочной записи тело
+срезано синхронизацией (`stripReferencedBody`,
+`core/build/sync_outbounds.go:255`); UI отдавал `GlobalOutbounds` без
+слияния (`ui/configurator/presentation/presenter_state.go:115`). Импорт и
+слияние §9 не тронуты.
+
+| Адрес | Что |
+|---|---|
+| `core/build/resolve_outbounds.go:141` | **`ResolveDirections(dirs, td, target)`** — слитый вид по записи (`resolveBaseBody` + `applyUpdatesToBase`, те же, что у `MergeOutboundUpdatesInPlace`), но запись с оборванной ссылкой НЕ выбрасывается; длина и порядок = вход |
+| `core/template/direction_groups.go:123`, `:132` | `DefaultDirectionBlockTag` и **`(*TemplateData).DirectionBlockTag()`** — `magic_nodes.block` или `block-out`, nil-safe; один ответ на форму и экспорт |
+| `core/backup/export.go:40`, `:45` | `ExportOptions.Directions` (слитый вид, считает вызывающий — core/backup шаблона не знает; nil = записи состояния как есть, верно только для прямых) и `ExportOptions.BlockTag` (пусто = `block-out`) |
+| `core/backup/export10.go:69-82` | состав и порядок Направлений — из `s.Directions`, тело — из `opts.Directions` по тегу (`resolvedDirectionsByTag`, `directions.go:25`, первая запись побеждает) |
+| `core/backup/directions.go:50`, `:75` | `exportDirection(d, blockTag)`: `include_block` по тегу шаблона (плюс литерал `block`); `importDirection` не тронут и пишет `block-out` |
+| `core/debugapi/backup_endpoints.go:194-211` | `exportBackupBytes`: `LoadTemplate` (ошибка → 500 `export: load template: …`), `build.ResolveDirections(st.Directions, td, build.TargetSpecFromState(st))`, `td.DirectionBlockTag()`; зеркало `/remote/machines/{id}/backup/export` идёт тем же путём |
+| `ui/configurator/tabs/settings_backup.go:148` | **`backupExportOptions(presenter, st)`** — то же из `model.TemplateData`; зовётся из `handleBackupExport` (`:125`) |
+| `ui/configurator/outbounds_configurator/edit_dialog_helpers.go:197` | `directionBlockTag` формы — через `DirectionBlockTag()` |
+| `core/debugapi/backup_endpoints_test.go:480` | **`TestBackupExportCarriesMergedDirections`** — шаблон с тегом блокировки не по умолчанию, `proxy-out` (шаблон + патч пресета), `vpn ②` (USER-патч), пресетное `ru VPN 🇷🇺`, прямое `local-net`; файл против литерала слитого вида (и `/state/outbounds/resolved`); импорт в тот же лаунчер — 0 применено, 4× `backup_direction_exists`, состояние байт в байт; импорт в чистый + `MigrateOutboundsToReferencedShape` + `SyncOutboundsWithTemplate` — без дублей, отбор и опции те же. Мутации «тело из состояния» и «без `BlockTag`» роняют тест |
+
+Документы: `contract/docs/BACKUP.md` §10 («Цена канонизации Направлений»:
+тело после слияния, перепривязка при загрузке, тег блокировки шаблона),
+`docs/API.md`/`API.ru.md` (строка `/backup/export`, `500`),
+`docs/release_notes/1-6-0.md`, `CHANGELOG.md` v1.6.0.
+
+Не сделано: `importDirection` пишет `block-out` литералом — при шаблоне с
+другим тегом блокировки круг «экспорт → импорт» превращает `include_block` в
+ссылку на несуществующий `block-out` (правка входа вне этой задачи).

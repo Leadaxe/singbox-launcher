@@ -167,7 +167,7 @@ Export writes **format 1.0** only: the file is the launcher state, so per-node r
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/backup/formats` | `{"reads":[1,2],"writes":["1.0"],"default":"1.0"}` — `reads` are the `lx_backup` markers import understands, `writes` the format names `?format=` accepts |
-| GET | `/backup/export` | The backup file (format 1.0) as the response body. `?format=` may be omitted or `1.0`; `?format=0.12` answers `400` (`format 0.12 is no longer written; import still reads it`). `?envelope=1` wraps the file as `{format, file_name, file, warnings}` |
+| GET | `/backup/export` | The backup file (format 1.0) as the response body. Directions carry their merged body — template or preset plus patches, the same as `/state/outbounds/resolved`. `?format=` may be omitted or `1.0`; `?format=0.12` answers `400` (`format 0.12 is no longer written; import still reads it`). `?envelope=1` wraps the file as `{format, file_name, file, warnings}` |
 | POST | `/backup/import` | Body = a backup file of format 1.0 or 0.x. Merges it into the state, saves, then rebuilds `config.json` |
 
 Export losses are never silent: without the envelope the codes travel in the `X-Backup-Warnings` header as a JSON array; with `?envelope=1` they are the `warnings` field. The plain response also carries `Content-Disposition` with the same suggested filename the UI offers.
@@ -197,7 +197,7 @@ Machines paired through `/remote/*` mirror export and import: `GET /remote/machi
 
 On a **fresh install** (no `state.json` yet) import still works: the file describes the whole setting, so it is merged into a clean state and saved. Export in the same situation answers `404` — there is nothing to snapshot, and an empty file would misreport the machine.
 
-**Errors:** `400` (`?format=` other than `1.0`, empty body, not an LX Backup file, `lx_backup` newer than this build reads), `409` (the state file is written by a different schema major — SPEC 118 gate, the same as a `PATCH /state/*`), `422` (the file parsed but could not be merged), `404` (export only: no `state.json`), `405` (method).
+**Errors:** `400` (`?format=` other than `1.0`, empty body, not an LX Backup file, `lx_backup` newer than this build reads), `409` (the state file is written by a different schema major — SPEC 118 gate, the same as a `PATCH /state/*`), `422` (the file parsed but could not be merged), `404` (export only: no `state.json`), `500` (export only: the template could not be read — without it a Direction that refers to the template has no body to write), `405` (method).
 
 ---
 
