@@ -418,6 +418,15 @@ func mergeEditedSourceIntoModel(
 	for tag, enabled := range enabledEdits {
 		setNodeEnabled(edited, tag, enabled)
 	}
+	// SPEC 122 норма 2: смена тег-политики контейнера меняет финальный тег
+	// ВСЕМ его узлам сразу — каталоги состояния tailnet переезжают тем же
+	// движением. Здесь, а не в GC: для GC переименование неотличимо от
+	// «узел удалили», и ключ устройства уехал бы в снос.
+	//
+	// До записи снимка: состав берётся из ЖИВОЙ записи (edited.Nodes уже
+	// равен live.Nodes выше), а старая политика читается только пока она в
+	// модели.
+	wizardbusiness.RenameTailscaleStateDirsForTagPolicy(live, live.TagPolicy, edited.TagPolicy)
 	m.Sources[sourceIndex] = *edited
 }
 
@@ -2362,11 +2371,25 @@ func showSourceEditWindowAt(
 			// узел никуда не делся, у него сменилось имя.
 			if renamed {
 				if mm := presenter.Model(); mm != nil {
+					// SPEC 122 норма 2: каталог состояния tailnet едет за
+					// новым тегом. Контейнер обеих сторон один и тот же —
+					// переименование состава не меняет.
+					if c := wizardbusiness.SourceByID(mm, containerIDAtOpen); c != nil {
+						wizardbusiness.RenameTailscaleStateDirForNode(
+							c, nodeTagAtOpen, c, &scratch.Node)
+					}
 					affected = wizardbusiness.RepointContainerNodeLinks(mm, containerIDAtOpen, nodeTagAtOpen, newTag)
 					repointed = true
 				}
 			}
 		} else {
+			// SPEC 122 норма 2 для КОРНЕВОГО узла: тег-политики у корня нет,
+			// финальный тег = сырой, и переезд каталога считается по паре
+			// «имя при открытии → имя в форме». До записи в модель: после неё
+			// прежнего имени взять уже негде.
+			if nodeIdentityOwner && nodeTagAtOpen != "" {
+				wizardbusiness.RenameTailscaleStateDirForNode(nil, nodeTagAtOpen, nil, &scratch.Node)
+			}
 			applySourceEditToModel(presenter, guiState, presenter.Model(), sourceIndex, &scratch, enabledEdits)
 			// SPEC 112-A: корневой узел переименован — его прежней идентичности
 			// больше нет, и ссылки на неё обязаны погаснуть здесь, а не молча

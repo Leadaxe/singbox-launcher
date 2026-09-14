@@ -1331,6 +1331,10 @@ func showSourceRowDeleteDialog(
 			if m == nil || sourceIndex < 0 || sourceIndex >= len(m.Sources) {
 				return
 			}
+			// SPEC 122 норма 1: строка уходит ВМЕСТЕ с составом — корневой
+			// узел tailnet либо контейнер со своими tailnet-узлами; каталоги
+			// их состояния уходят следом.
+			wizardbusiness.RemoveTailscaleStateDirsForSource(&m.Sources[sourceIndex])
 			m.Sources = append(m.Sources[:sourceIndex], m.Sources[sourceIndex+1:]...)
 			applySourceMutation(presenter, guiState)
 		},
@@ -1403,6 +1407,9 @@ func showFolderDeleteDialog(
 		if m == nil || idx < 0 {
 			return
 		}
+		// SPEC 122 норма 1: «Delete with nodes» уносит и узлы папки —
+		// каталоги их состояния уходят вместе с ними.
+		wizardbusiness.RemoveTailscaleStateDirsForSource(&m.Sources[idx])
 		m.Sources = append(m.Sources[:idx], m.Sources[idx+1:]...)
 		applySourceMutation(presenter, guiState)
 	})
