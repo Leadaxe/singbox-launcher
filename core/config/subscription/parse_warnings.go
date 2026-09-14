@@ -78,6 +78,10 @@ const (
 	// with_tailscale (SPEC 122). Не пометка на живом узле, а его выброс —
 	// оставленный, он завалил бы `sing-box check` для всего конфига.
 	WarnTailscaleCoreUnsupported = "tailscale_core_unsupported"
+	// WarnTailscaleFromSubscription — узел tailnet приехал ПОДПИСКОЙ.
+	// Узел живёт, поэтому info: но связки (MagicDNS + маршрут) подписка не
+	// приносит, а идентичность машины в tailnet — местная (NODE_SECTIONS.md §6).
+	WarnTailscaleFromSubscription = "tailscale_from_subscription"
 	// WarnAWGHeaderInvalid — AmneziaWG H1–H4 вне допустимого диапазона.
 	WarnAWGHeaderInvalid = "awg_header_invalid"
 	// WarnAWGHeadersOverlap — H1–H4 совпадают между собой.

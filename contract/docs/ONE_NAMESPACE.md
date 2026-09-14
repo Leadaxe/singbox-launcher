@@ -117,7 +117,9 @@ srs: `{ "kind": "srs", "name": "…", "enabled": true, "num": 1010, "refs": ["ht
 "sections": {
   "rules": [
     { "kind": "inline", "name": "@{self} network", "enabled": true, "num": 945,
-      "body": { "ip_cidr": ["100.64.0.0/10"], "outbound": "@self" } }
+      "body": { "domain_suffix": [".ts.net"],
+                "ip_cidr": ["100.64.0.0/10", "fd7a:115c:a1e0::/48"],
+                "outbound": "@self" } }
   ],
   "dns": {
     "servers": [ { "kind": "user", "tag": "@{self}-dns", "enabled": true,

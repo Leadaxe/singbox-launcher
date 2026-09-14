@@ -525,6 +525,13 @@
       "dart": "lib/services/builder/core_chain_capability.dart (coreVersionSupportsTailscale)",
       "go": "core/config/outbound_generator.go (GenerateOutboundsFromParserConfig, ветка !tailscaleSupported); проба core/core_capabilities.go (CoreSupportsTailscale)"
     },
+    "tailscale_from_subscription": {
+      "severity": "info",
+      "params": [],
+      "desc": "Узел `tailscale` приехал ПОДПИСКОЙ. Узел законен и остаётся в составе — отсюда severity=info, а не error, — но полезен он не сам по себе: каноническую связку (DNS-сервер MagicDNS + правило на `.ts.net` + маршрут на 100.64.0.0/10 и fd7a:115c:a1e0::/48) подписка принести не может, потому что связка ссылается на финальный тег узла на ЭТОЙ машине, а идентичность машины в tailnet живёт в локальном каталоге состояния и одноразовым ключом провайдера не переносится. Связку пользователь заводит у себя (конструктор «Add server → Tailscale» или вкладка JSON); голый узел, заведённый локально, получает её по умолчанию. Молчать нельзя: узел виден в списке, а о неработающих именах `*.ts.net` пользователь узнал бы уже в бою. NODE_SECTIONS.md §6.",
+      "dart": "—",
+      "go": "core/config/subscription/parse_body.go (bodyParseState.accept)"
+    },
     "ws_early_data_converted": {
       "severity": "info",
       "params": [

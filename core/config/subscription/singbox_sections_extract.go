@@ -161,23 +161,71 @@ func ExtractNodeSections(cfg map[string]interface{}, nodeTag string) *configtype
 // узлами (те же предикаты, что у импорта): конфиг с одним vless и одним
 // `selector` над ним — это по-прежнему конфиг об одном узле.
 func SingleSectionCarrierTag(cfg map[string]interface{}) string {
-	tag := ""
-	count := 0
+	tags := sectionCandidateTags(cfg)
+	if len(tags) != 1 {
+		return ""
+	}
+	return tags[0]
+}
+
+// SectionCarrierTags — теги узлов, которым конфиг отдаёт свою связку.
+//
+// Норма несимметрична намеренно (NODE_SECTIONS.md §6, договорённость с LxBox
+// 14.09.2026):
+//
+//   - обычный узел получает связку ТОЛЬКО когда он в конфиге один. Иначе
+//     непонятно, чей это DNS-сервер: связка принадлежит узлу, а не файлу, и
+//     раздать её нескольким узлам значило бы придумать за пользователя;
+//   - узел `type: tailscale` получает свою связку и в многоузловом конфиге,
+//     потому что здесь гадать не о чем: DNS-сервер `type: tailscale` несёт
+//     `endpoint` с ТЕГОМ своего узла, и правило маршрута на подсети tailnet
+//     метит в него же. Ссылка явная, и отбор идёт по ней, а не по числу
+//     узлов. Без этого пользователь, вставивший конфиг с tailnet и парой
+//     обычных серверов, терял бы MagicDNS молча — и узнавал бы об этом по
+//     неработающим именам `*.ts.net`.
+//
+// Возвращаются теги в порядке появления записей: результат детерминирован.
+func SectionCarrierTags(cfg map[string]interface{}) []string {
+	tags := sectionCandidateTags(cfg)
+	if len(tags) <= 1 {
+		return tags
+	}
+	// Многоузловой конфиг: только tailscale, только по явной ссылке.
+	var out []string
+	for _, entry := range singboxAllEntries(cfg) {
+		if !isSingboxTailscaleEntry(entry) {
+			continue
+		}
+		tag := strings.TrimSpace(mapString(entry, "tag"))
+		if tag == "" {
+			continue
+		}
+		out = append(out, tag)
+	}
+	return out
+}
+
+// sectionCandidateTags — теги всех записей, которые импорт считает узлами.
+//
+// Пустой тег в списке остаётся: он значим для правила «ровно один» (узел без
+// тега — всё равно узел), а отбор по ссылке его сам отсеет — ссылаться на
+// пустую строку нечем.
+func sectionCandidateTags(cfg map[string]interface{}) []string {
+	var out []string
 	for _, entry := range singboxAllEntries(cfg) {
 		entryType := strings.ToLower(strings.TrimSpace(mapString(entry, "type")))
 		if entryType == "" || IsSingboxServiceType(entryType) || IsSingboxGroupType(entryType) {
 			continue
 		}
-		count++
-		if count > 1 {
-			return ""
-		}
-		tag = mapString(entry, "tag")
+		out = append(out, strings.TrimSpace(mapString(entry, "tag")))
 	}
-	if count != 1 {
-		return ""
-	}
-	return strings.TrimSpace(tag)
+	return out
+}
+
+// isSingboxTailscaleEntry — запись конфига это узел tailnet.
+func isSingboxTailscaleEntry(entry map[string]interface{}) bool {
+	scheme, ok := SchemeFromSingboxType(strings.ToLower(strings.TrimSpace(mapString(entry, "type"))))
+	return ok && scheme == "tailscale"
 }
 
 // marshalNodeSectionFragment — сериализованная копия фрагмента.
@@ -261,4 +309,24 @@ func sortedNodeSectionKinds(ns *configtypes.NodeSections) []string {
 // без этого равенства связка из формы терялась бы на папочном пути.
 func refersToNode(ref, nodeTag string) bool {
 	return ref != "" && (ref == nodeTag || ref == state.SelfPlaceholder)
+}
+
+// defaultTailscaleNodeSections — каноническая связка tailnet в сборочной
+// форме (NODE_SECTIONS.md §6).
+//
+// Сама связка собирается ОДНОЙ функцией на все входы
+// (state.DefaultTailscaleSections): конструктор формы, разбор документа и
+// импорт обязаны дать неотличимые записи, а вторая реализация нормы
+// разошлась бы с первой на первой же правке.
+func defaultTailscaleNodeSections() *configtypes.NodeSections {
+	sections := state.DefaultTailscaleSections()
+	if sections.IsEmpty() {
+		return nil
+	}
+	raw, err := json.Marshal(sections)
+	if err != nil {
+		debuglog.WarnLog("Parser: default tailscale sections not serializable: %v", err)
+		return nil
+	}
+	return &configtypes.NodeSections{Raw: raw}
 }

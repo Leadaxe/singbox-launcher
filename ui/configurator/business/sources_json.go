@@ -49,7 +49,15 @@ func carveSingboxJSON(input string) (nodes []singboxJSONNode, isJSON bool, err e
 		if cerr != nil {
 			return nil, true, cerr
 		}
-		return []singboxJSONNode{{Label: node.Tag, ConfigJSON: compact}}, true, nil
+		// NODE_SECTIONS.md §6: одиночный узел tailnet приезжает голым — своих
+		// записей рядом с ним в документе нет вовсе, — и получает
+		// каноническую связку. Иначе tailnet поднялся бы без MagicDNS и без
+		// маршрута, а сказал бы об этом только молчащий `*.ts.net`.
+		out := singboxJSONNode{Label: node.Tag, ConfigJSON: compact}
+		if node.Scheme == config.SchemeTailscale {
+			out.Sections = defaultTailscaleSectionsConfigTypes()
+		}
+		return []singboxJSONNode{out}, true, nil
 
 	case subscription.BodyKindSingboxOutboundArray,
 		subscription.BodyKindSingboxConfig,
@@ -142,6 +150,13 @@ func AppendManualConfigJSON(ctx UIUpdater, body []byte, label string) error {
 		sections = secs
 		if n, nerr := subscription.NodeFromManualConfigJSON(parsedBody); nerr == nil {
 			nodeTag = n.Tag
+			// NODE_SECTIONS.md §6: голый узел tailnet — тот, чей документ не
+			// принёс ни одной записи, — получает КАНОНИЧЕСКУЮ связку. Это путь
+			// РОЖДЕНИЯ узла; на правке тела (вкладка JSON) подстановки нет
+			// намеренно, иначе снять связку документом без `dns`/`route` было
+			// бы нельзя.
+			sections = corestate.ApplyTailscaleDefaultSections(
+				n.Scheme == config.SchemeTailscale, sections)
 		}
 	} else {
 		node, err := subscription.NodeFromManualConfigJSON(body)
@@ -203,4 +218,20 @@ func RelabelLastSources(ctx UIUpdater, before int, label string) {
 	model.Sources[len(model.Sources)-1].Label = label
 	model.BumpRevision()
 	ctx.RefreshOutboundsConfiguratorList()
+}
+
+// defaultTailscaleSectionsConfigTypes — каноническая связка tailnet в
+// сборочной форме. Норма одна на все входы (state.DefaultTailscaleSections),
+// здесь только смена формы.
+func defaultTailscaleSectionsConfigTypes() *configtypes.NodeSections {
+	sections := corestate.DefaultTailscaleSections()
+	if sections.IsEmpty() {
+		return nil
+	}
+	raw, err := json.Marshal(sections)
+	if err != nil {
+		debuglog.WarnLog("Parser: default tailscale sections not serializable: %v", err)
+		return nil
+	}
+	return &configtypes.NodeSections{Raw: raw}
 }
