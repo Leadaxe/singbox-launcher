@@ -3620,11 +3620,11 @@
   "The machine is answering again — the failure was transient (macOS re-checked its local-network policy or the network blinked). Press Connect again.": {
     "value": "Машина снова отвечает — отказ был кратковременным (macOS перепроверила политику локальной сети или сеть моргнула). Нажмите Connect ещё раз."
   },
-  "Detour links cleared": {
-    "value": "Ссылки detour сброшены"
+  "Links to the deleted node": {
+    "value": "Ссылки на удалённый узел"
   },
-  "Node %q was renamed, so its identity changed. Detour links to it have been cleared in: %s": {
-    "value": "Узел %q переименован — его идентичность изменилась. Ссылки detour на него сброшены у источников: %s"
+  "Node %q was deleted. Links through it were removed, and anything that chose it as a target needs a new one. Affected: %s": {
+    "value": "Узел %q удалён. Ссылки через него сняты, а там, где он был выбран целью, нужно выбрать новую. Задеты: %s"
   },
   "tag %q is already taken — directions, nodes and service outbounds share one namespace": {
     "value": "тег %q уже занят — Направления, узлы и служебные outbound'ы живут в одном пространстве имён"
