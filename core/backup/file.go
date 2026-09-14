@@ -1,6 +1,7 @@
 package backup
 
-// Файловый слой LX Backup (контракт 0.11.0).
+// Файловый слой LX Backup: запись файла формата 1.0 и разбор файлов обоих
+// читаемых форматов (0.x и 1.0).
 
 import (
 	"encoding/json"
@@ -25,28 +26,12 @@ const MaxFileBytes = 8 << 20
 // такой-то не понят».
 const extensionsKey = "extensions"
 
-// WriteFile сохраняет бэкап.
+// WriteFile10 сохраняет бэкап формата 1.0 — единственного, который лаунчер
+// пишет (D-110).
 //
 // Пишется с отступами: файл читают и правят руками, а компактный JSON в одну
 // строку делает это невозможным. Запись атомарная — прерванная запись не
 // должна оставить обрезанный файл вместо прежнего.
-func WriteFile(path string, b *Backup) error {
-	if b == nil {
-		return fmt.Errorf("nil backup")
-	}
-	data, err := json.MarshalIndent(b, "", "  ")
-	if err != nil {
-		return fmt.Errorf("backup serialization: %w", err)
-	}
-	return writeFileAtomic(path, append(data, '\n'))
-}
-
-// WriteFile10 сохраняет бэкап формата 1.0.
-//
-// Отдельная функция, а не общая на два типа: у писателей разные корневые
-// структуры, и обобщение через interface{} стоило бы ровно того, что даёт, —
-// ничего. Механика записи та же: отступы (файл читают и правят руками) и
-// атомарная замена (прерванная запись не должна оставить обрезанный файл).
 func WriteFile10(path string, b *Backup10) error {
 	if b == nil {
 		return fmt.Errorf("nil backup")
@@ -71,14 +56,29 @@ func writeFileAtomic(path string, data []byte) error {
 	return nil
 }
 
+// FileFormat — какой из читаемых форматов у разобранного файла.
+//
+// Нужен только ЧТЕНИЮ: писатель у лаунчера один (1.0, D-110), а входов два —
+// файлы 0.x уже у пользователей на руках, и читаются они всегда. Нулевое
+// значение не означает ни одного формата: его несёт только File, который не
+// прошёл через Parse.
+type FileFormat int
+
+const (
+	// FileFormatLegacy — семейство 0.x (`lx_backup: 1`), вход legacy_read_0x.go.
+	FileFormatLegacy FileFormat = iota + 1
+	// FileFormat10 — контракт 1.0 (`lx_backup: 2`), вход import10.go.
+	FileFormat10
+)
+
 // File — разобранный файл бэкапа любого читаемого формата.
 //
 // Union, а не два входа у каждого вызывающего: UI, debug API и корпус читают
 // файл, не зная и не желая знать, каким писателем он сделан. Развилка живёт в
 // одном месте — ImportFile (import.go).
 type File struct {
-	// Format — каким писателем сделан файл.
-	Format ExportFormat
+	// Format — каким форматом сделан файл (по маркеру `lx_backup`).
+	Format FileFormat
 	// Legacy — форма 0.x (lx_backup: 1); nil у файла 1.0.
 	Legacy *Backup
 	// V10 — форма 1.0 (lx_backup: 2); nil у файла 0.x.
@@ -169,14 +169,14 @@ func Parse(data []byte) (*File, []Warning, error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("backup parse: %w", err)
 		}
-		return &File{Format: ExportFormat012, Legacy: b},
+		return &File{Format: FileFormatLegacy, Legacy: b},
 			append(typeWarns, scanUnknown(data)...), nil
 	case FormatVersion10:
 		b, typeWarns, err := decodeTolerant10(data)
 		if err != nil {
 			return nil, nil, fmt.Errorf("backup parse: %w", err)
 		}
-		return &File{Format: ExportFormat10, V10: b},
+		return &File{Format: FileFormat10, V10: b},
 			append(typeWarns, scanUnknown10(data)...), nil
 	default:
 		return nil, nil, fmt.Errorf("backup format v%d is newer than supported v%d — update the app",

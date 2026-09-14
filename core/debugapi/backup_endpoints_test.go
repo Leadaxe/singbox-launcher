@@ -243,13 +243,11 @@ func stripAPIAxisNums(doc string) string {
 	return string(out)
 }
 
-// Умолчание формата — та же константа, что у UI: ручка без ?format отдаёт
-// ровно то, что дал бы чекбокс в исходном положении.
-func TestBackupExportDefaultFormatMatchesConstant(t *testing.T) {
+// Писатель один — 1.0 (D-110): /backup/formats говорит ровно это, а экспорт
+// без ?format и с ?format=1.0 отдаёт один и тот же файл формата 1.0.
+func TestBackupFormatsWriteOnly10(t *testing.T) {
 	ff := &fakeFacade{stateValue: backupTestState()}
 	base, _ := newTestServer(t, ff)
-
-	implicit, _ := fetchBackup(t, base, "")
 
 	var formats struct {
 		Reads   []int    `json:"reads"`
@@ -259,49 +257,64 @@ func TestBackupExportDefaultFormatMatchesConstant(t *testing.T) {
 	if status, raw := doJSON(t, authedReq(t, "GET", base+"/backup/formats", nil), &formats); status != 200 {
 		t.Fatalf("formats status %d: %s", status, raw)
 	}
-	if len(formats.Reads) != 2 || len(formats.Writes) != 2 {
-		t.Fatalf("сборка обязана читать оба формата и писать оба: %+v", formats)
+	// Читаются оба маркера (файлы 0.x у пользователей на руках), пишется один.
+	if len(formats.Reads) != 2 || formats.Reads[0] != 1 || formats.Reads[1] != 2 {
+		t.Errorf("reads = %v, ожидалось [1 2]", formats.Reads)
 	}
-	explicit, _ := fetchBackup(t, base, "?format="+formats.Default)
-	if string(implicit) != string(explicit) {
-		t.Errorf("файл без ?format не совпал с файлом формата по умолчанию (%s)", formats.Default)
+	if len(formats.Writes) != 1 || formats.Writes[0] != "1.0" || formats.Default != "1.0" {
+		t.Errorf("writes/default = %v/%q, ожидалось [1.0]/1.0", formats.Writes, formats.Default)
 	}
-}
 
-// Файл 0.12 читается тем же POST: импорт не спрашивает формат и не заставляет
-// вызывающего его знать.
-func TestBackupImportAcceptsLegacyFormat(t *testing.T) {
-	src := &fakeFacade{stateValue: backupTestState()}
-	srcBase, _ := newTestServer(t, src)
-	legacy, resp := fetchBackup(t, srcBase, "?format=0.12")
+	implicit, resp := fetchBackup(t, base, "")
 	if resp.StatusCode != 200 {
-		t.Fatalf("export 0.12 status %d", resp.StatusCode)
+		t.Fatalf("export без ?format: status %d: %s", resp.StatusCode, implicit)
 	}
 	var head struct {
 		LxBackup int `json:"lx_backup"`
 	}
-	if err := json.Unmarshal(legacy, &head); err != nil || head.LxBackup != 1 {
-		t.Fatalf("?format=0.12 отдал не файл 0.x: %v lx_backup=%d", err, head.LxBackup)
+	if err := json.Unmarshal(implicit, &head); err != nil || head.LxBackup != 2 {
+		t.Fatalf("экспорт без ?format отдал не файл 1.0: %v lx_backup=%d", err, head.LxBackup)
 	}
-	// Экспорт 0.12 теряет то, чему в старом формате нет дома, — и обязан
-	// назвать потерю, а не отдать файл молча (П6).
-	if resp.Header.Get("X-Backup-Warnings") == "" {
-		t.Error("экспорт 0.12 богатого состояния не назвал ни одной потери в X-Backup-Warnings")
+	explicit, _ := fetchBackup(t, base, "?format=1.0")
+	if string(implicit) != string(explicit) {
+		t.Errorf("файл без ?format не совпал с файлом ?format=1.0")
 	}
+}
+
+// Файл 0.12 читается тем же POST: импорт не спрашивает формат и не заставляет
+// вызывающего его знать. Писателя 0.12 у сборки нет (D-110), поэтому файл —
+// тот, что снимали прежние релизы лаунчера.
+func TestBackupImportAcceptsLegacyFormat(t *testing.T) {
+	legacy := []byte(`{
+  "lx_backup": 1,
+  "exported_by": {"app": "launcher", "version": "1.5.6", "platform": "darwin"},
+  "exported_at": "2026-09-10T00:00:00Z",
+  "subscriptions": [{"id": "01SUB0000000000000000000", "url": "https://example-1.com/sub", "label": "Main"}],
+  "servers": [{"id": "01SRV0000000000000000000", "node_tag": "ts-node", "uri": "trojan://pw@1.2.3.4:443#ts-node"}],
+  "rules": [{"kind": "inline", "name": "Work", "num": 1000, "outbound": "direct",
+             "match": {"domain_suffix": ["example.com"]}}]
+}`)
 
 	dst := &fakeFacade{stateValue: state.New()}
 	dstBase, _ := newTestServer(t, dst)
 	var out struct {
-		OK     bool   `json:"ok"`
-		Format string `json:"format"`
+		OK      bool   `json:"ok"`
+		Format  string `json:"format"`
+		Applied struct {
+			Sources int `json:"sources"`
+			Rules   int `json:"rules"`
+		} `json:"applied"`
 	}
 	if status, raw := doJSON(t, authedReq(t, "POST", dstBase+"/backup/import", legacy), &out); status != 200 {
 		t.Fatalf("import 0.12 status %d: %s", status, raw)
 	}
-	if out.Format != "0.12" {
-		t.Errorf("ответ импорта назвал формат %q, ожидался 0.12", out.Format)
+	if !out.OK || out.Format != "0.12" {
+		t.Errorf("ответ импорта: ok=%v format=%q, ожидался 0.12", out.OK, out.Format)
 	}
-	if len(dst.savedState.Sources) == 0 {
+	if out.Applied.Sources != 2 || out.Applied.Rules != 1 {
+		t.Errorf("применено источников %d, правил %d — ожидалось 2 и 1", out.Applied.Sources, out.Applied.Rules)
+	}
+	if dst.savedState == nil || len(dst.savedState.Sources) != 2 {
 		t.Error("импорт файла 0.12 не привёз источников")
 	}
 }
@@ -392,6 +405,18 @@ func TestBackupEndpointsRejectBadInput(t *testing.T) {
 
 	if status, raw := doJSON(t, authedReq(t, "GET", base+"/backup/export?format=2.0", nil), nil); status != 400 {
 		t.Errorf("неизвестный формат дал %d: %s", status, raw)
+	}
+	// 0.12 — не «неизвестный», а снятый с записи формат (D-110): скрипт,
+	// написанный под окно двух писателей, обязан узнать именно это — и что
+	// импорт такие файлы по-прежнему читает.
+	var rejected struct {
+		Error string `json:"error"`
+	}
+	if status, raw := doJSON(t, authedReq(t, "GET", base+"/backup/export?format=0.12", nil), &rejected); status != 400 {
+		t.Errorf("?format=0.12 дал %d, ожидался 400: %s", status, raw)
+	}
+	if rejected.Error != "format 0.12 is no longer written; import still reads it" {
+		t.Errorf("?format=0.12: текст отказа %q", rejected.Error)
 	}
 	if status, _ := doJSON(t, authedReq(t, "POST", base+"/backup/import", []byte("  ")), nil); status != 400 {
 		t.Errorf("пустое тело импорта дало %d, ожидался 400", status)

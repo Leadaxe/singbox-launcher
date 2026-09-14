@@ -6,9 +6,9 @@
 // сделать ровно того, ради чего формат и заводился, — снять переносимый
 // слепок и залить его на другой машине.
 //
-//	GET  /backup/export?format=1.0|0.12[&envelope=1] — файл бэкапа
-//	POST /backup/import                              — применить файл
-//	GET  /backup/formats                             — что эта сборка умеет
+//	GET  /backup/export[?format=1.0][&envelope=1] — файл бэкапа (формат 1.0)
+//	POST /backup/import                           — применить файл 0.x или 1.0
+//	GET  /backup/formats                          — что эта сборка читает и пишет
 //
 // Три вещи, решённые здесь намеренно:
 //
@@ -18,9 +18,9 @@
 //     экспорта при этом терять нельзя (П6), поэтому они едут заголовком
 //     X-Backup-Warnings; кому удобнее одно тело — ?envelope=1.
 //  2. Развилки форматов здесь нет ни на экспорте, ни на импорте: пишет
-//     backup.ExportFile по backup.ExportFormat, читает backup.ImportFile по
-//     разобранному backup.File. Второй экземпляр «какой это формат» разошёлся
-//     бы с первым.
+//     backup.ExportFile (с v1.6.0 только формат 1.0, D-110), читает
+//     backup.ImportFile по разобранному backup.File. Второй экземпляр «какой
+//     это формат» разошёлся бы с первым.
 //  3. Импорт — это load-modify-save всего состояния, поэтому он проходит
 //     ГЕЙТ МАЖОРА СХЕМЫ (SPEC 118 Т10), как PATCH /state/*: слить чужую
 //     схему значило бы записать поверх неё то, что эта сборка сумела
@@ -47,30 +47,33 @@ import (
 // backupFormatNames — имена форматов в запросе и ответе.
 //
 // Строки («0.12», «1.0»), а не int-маркер lx_backup: маркер — деталь файла,
-// а разговаривает агент версиями контракта, теми же, что стоят в SPEC и в
-// чекбоксе UI.
+// а разговаривает агент версиями контракта, теми же, что стоят в SPEC.
+// Пишется только 1.0 (D-110); имя «0.12» живёт ради ответа импорта, который
+// называет формат ПРИНЯТОГО файла, и ради внятного отказа на ?format=0.12.
 const (
 	backupFormatName012 = "0.12"
 	backupFormatName10  = "1.0"
 )
 
-// backupFormatByName разбирает ?format=. Пустая строка — умолчание сборки
-// (одна константа на всё приложение, SPEC 127 §4).
-func backupFormatByName(name string) (backup.ExportFormat, bool) {
+// backupExportFormatError — почему ?format= не принят; пусто = принят.
+//
+// Пустой параметр и «1.0» — один и тот же ответ: другого писателя у сборки
+// нет. «0.12» отвергается отдельной фразой, а не общим «unknown format»:
+// скрипт, написанный под окно двух писателей, должен узнать, что формат не
+// сломался, а снят с записи, и что импорт такие файлы по-прежнему читает.
+func backupExportFormatError(name string) string {
 	switch strings.TrimSpace(name) {
-	case "":
-		return backup.BackupExportFormatDefault, true
+	case "", backupFormatName10:
+		return ""
 	case backupFormatName012:
-		return backup.ExportFormat012, true
-	case backupFormatName10:
-		return backup.ExportFormat10, true
+		return "format 0.12 is no longer written; import still reads it"
 	}
-	return 0, false
+	return "unknown format; use " + backupFormatName10
 }
 
-// backupFormatName — обратный перевод, для ответа и заголовков.
-func backupFormatName(f backup.ExportFormat) string {
-	if f == backup.ExportFormat10 {
+// backupFormatName — имя формата разобранного файла, для ответа импорта.
+func backupFormatName(f backup.FileFormat) string {
+	if f == backup.FileFormat10 {
 		return backupFormatName10
 	}
 	return backupFormatName012
@@ -112,11 +115,13 @@ func (s *Server) handleBackupFormats(w http.ResponseWriter, r *http.Request) {
 	// reads — маркеры lx_backup, которые понимает Parse: ими агент опознаёт
 	// чужой файл, не разбирая его. writes — имена форматов, которые принимает
 	// ?format=. Два разных словаря намеренно: читаем мы файлы (у них в корне
-	// маркер), а пишем — по имени контракта.
+	// маркер), а пишем — по имени контракта. Писатель один (D-110), поэтому
+	// writes и default совпадают; ключ default оставлен, чтобы агент,
+	// читавший его в окне двух писателей, не сломался на его пропаже.
 	writeJSON(w, http.StatusOK, map[string]any{
 		"reads":   []int{backup.FormatVersion, backup.FormatVersion10},
-		"writes":  []string{backupFormatName012, backupFormatName10},
-		"default": backupFormatName(backup.BackupExportFormatDefault),
+		"writes":  []string{backupFormatName10},
+		"default": backupFormatName10,
 	})
 }
 
@@ -130,11 +135,10 @@ func (s *Server) backupExportWith(w http.ResponseWriter, r *http.Request, acc st
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET required"})
 		return
 	}
-	format, ok := backupFormatByName(r.URL.Query().Get("format"))
-	if !ok {
+	if msg := backupExportFormatError(r.URL.Query().Get("format")); msg != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{
-			"error":   "unknown format; use " + backupFormatName012 + " or " + backupFormatName10,
-			"formats": []string{backupFormatName012, backupFormatName10},
+			"error":   msg,
+			"formats": []string{backupFormatName10},
 		})
 		return
 	}
@@ -144,7 +148,7 @@ func (s *Server) backupExportWith(w http.ResponseWriter, r *http.Request, acc st
 		return
 	}
 
-	data, warns, err := s.exportBackupBytes(st, format)
+	data, warns, err := s.exportBackupBytes(st)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "export: " + err.Error()})
 		return
@@ -156,7 +160,7 @@ func (s *Server) backupExportWith(w http.ResponseWriter, r *http.Request, acc st
 		// заголовки. Файл лежит в нём СЫРЫМ JSON-значением (RawMessage), а не
 		// строкой: строка заставила бы вызывающего распаковывать экранирование.
 		writeJSON(w, http.StatusOK, map[string]any{
-			"format":    backupFormatName(format),
+			"format":    backupFormatName10,
 			"file_name": name,
 			"file":      json.RawMessage(data),
 			"warnings":  backupWarningViews(warns),
@@ -176,13 +180,13 @@ func (s *Server) backupExportWith(w http.ResponseWriter, r *http.Request, acc st
 	_, _ = w.Write(data)
 }
 
-// exportBackupBytes пишет бэкап через ту же точку выбора формата, что и UI.
+// exportBackupBytes пишет бэкап через ту же точку записи, что и UI.
 //
 // Через файл во временном каталоге, а не своим маршалом: у ExportFile внутри
 // отступы, перевод строки в конце и порядок ключей, и второй сериализатор
 // здесь означал бы, что ответ API и файл с диска — разные байты при одном и
 // том же состоянии.
-func (s *Server) exportBackupBytes(st *state.State, format backup.ExportFormat) ([]byte, []backup.Warning, error) {
+func (s *Server) exportBackupBytes(st *state.State) ([]byte, []backup.Warning, error) {
 	dir, err := os.MkdirTemp("", "lx-backup-export")
 	if err != nil {
 		return nil, nil, err
@@ -192,7 +196,6 @@ func (s *Server) exportBackupBytes(st *state.State, format backup.ExportFormat) 
 	warns, err := backup.ExportFile(path, st, backup.ExportOptions{
 		AppVersion: s.facade.GetLauncherVersion(),
 		Platform:   runtime.GOOS,
-		Format:     format,
 	})
 	if err != nil {
 		return nil, warns, err
@@ -366,7 +369,7 @@ func (s *Server) knownPresetIDs() []string {
 func (s *Server) backupEndpoints() []apiEndpoint {
 	return []apiEndpoint{
 		{"GET", "/backup/formats", true, "Backup formats this build reads and writes", s.handleBackupFormats},
-		{"GET", "/backup/export", true, "Export settings as an LX Backup file (?format=1.0|0.12)", s.handleBackupExport},
+		{"GET", "/backup/export", true, "Export settings as an LX Backup file (format 1.0)", s.handleBackupExport},
 		{"POST", "/backup/import", true, "Import an LX Backup file (either format) into the state", s.handleBackupImport},
 	}
 }

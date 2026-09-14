@@ -243,8 +243,10 @@ type corpusExpectation struct {
 	// запись, пропущенная по занятому тегу, не должна материализоваться
 	// второй копией. chain сверяется deep-equal канона — включая
 	// null-значения rewrite (RFC 7396: null удаляет ключ и обязан пережить
-	// перенос как есть). label, если задан, проверяется через re-export:
-	// это общее поле схемы, и обе стороны обязаны вернуть его на место.
+	// перенос как есть). label цепочки — объявленное поле LxBox (D-094):
+	// лаунчер его не хранит и не пишет, поэтому ожидание label сверяет
+	// только раннер LxBox (`expected.lxbox.json`), а у лаунчера оно — ошибка
+	// кейса (см. checkChains).
 	//
 	// Enabled — указатель, а не bool: умолчание схемы true, и отсутствие
 	// ключа в ожиданиях обязано значить «не проверяем», а не «ожидаем
@@ -259,7 +261,7 @@ type corpusExpectation struct {
 		// либо имя папки, куда он обязан указывать после импорта.
 		//
 		// Канон `chain` выше схлопывает хопы до плоских тегов (форма 0.12,
-		// exportHops), и адрес папки в нём теряется — то есть главная
+		// chainCanon), и адрес папки в нём теряется — то есть главная
 		// механика §6 (перепись `folder_id` по карте id) остаётся без
 		// сверки. Здесь она и проверяется.
 		//
@@ -829,7 +831,7 @@ func checkExtensionsDropped(t *testing.T, dst *state.State, exp corpusExpectatio
 	if !exp.ExtensionsDropped {
 		return
 	}
-	back, _, err := Export012(dst, ExportOptions{AppVersion: "corpus"})
+	back, _, err := Export10(dst, ExportOptions{AppVersion: "corpus"})
 	if err != nil {
 		t.Fatalf("re-export: %v", err)
 	}
@@ -942,9 +944,8 @@ func equalStrings(a, b []string) bool {
 
 // checkChains проверяет цепочки после импорта (SPEC 110).
 //
-// Сверяется канон chain (deep-equal, включая null внутри rewrite) и число
-// записей; label — через re-export: он общее поле схемы, у лаунчера живёт в
-// Source.Label и обязан вернуться на место (П1).
+// Сверяется канон chain (deep-equal, включая null внутри rewrite), число
+// записей, enabled и хопы как ссылки.
 func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
 	t.Helper()
 	if len(exp.Chains) == 0 {
@@ -962,15 +963,15 @@ func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
 		t.Fatalf("цепочек %d, ожидалось %d", count, len(exp.Chains))
 	}
 
-	needExport := false
 	for _, want := range exp.Chains {
 		src, ok := byTag[want.Tag]
 		if !ok {
 			t.Fatalf("цепочка %q не создана импортом", want.Tag)
 		}
 		// SPEC 118 W5: канон цепочки в модели разложен по узлу (body + hops);
-		// сверяем ту же форму контракта, что уедет в файл.
-		gotRaw, err := json.Marshal(exportChainSpec(src))
+		// сверяем форму контракта source_chain.schema.json, в которой
+		// записаны ожидания.
+		gotRaw, err := json.Marshal(chainCanon(src))
 		if err != nil {
 			t.Fatalf("%s: marshal канона: %v", want.Tag, err)
 		}
@@ -988,29 +989,27 @@ func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
 		if want.Hops != nil {
 			checkChainHops(t, dst, want.Tag, src.Hops, want.Hops)
 		}
+		// Подписи цепочки у лаунчера нет ни в состоянии, ни в файле 1.0 (имя
+		// узла одно — тег, SPEC 112; label — поле LxBox, D-094). Ожидание,
+		// которое проверить нечем, не вправе пройти молча: это ошибка кейса,
+		// а не зелёный результат.
 		if want.Label != "" {
-			needExport = true
+			t.Errorf("%s: ожидание label цепочки у лаунчера непроверяемо — подпись сверяет раннер LxBox (expected.lxbox.json)", want.Tag)
 		}
 	}
-	if !needExport {
-		return
-	}
-	b, _, err := Export012(dst, ExportOptions{AppVersion: "corpus"})
-	if err != nil {
-		t.Fatalf("re-export: %v", err)
-	}
-	exported := map[string]Chain{}
-	for _, c := range b.Chains {
-		exported[c.Tag] = c
-	}
-	for _, want := range exp.Chains {
-		if want.Label == "" {
-			continue
-		}
-		if got := exported[want.Tag].Label; got != want.Label {
-			t.Errorf("%s: label в re-export %q, ожидалось %q — подпись потеряна", want.Tag, got, want.Label)
+}
+
+// chainCanon — цепочка модели в форме контракта source_chain.schema.json:
+// настройки маршрута из тела узла плюс позиции строками (адрес папки у хопа
+// в этой форме теряется — его сверяет checkChainHops).
+func chainCanon(src state.Source) *configtypes.SourceChain {
+	var hops []string
+	for _, h := range src.Hops {
+		if strings.TrimSpace(h.Tag) != "" {
+			hops = append(hops, h.Tag)
 		}
 	}
+	return configtypes.ChainFromBody(src.Body, hops)
 }
 
 // jsonDeepEqual сравнивает два JSON-фрагмента структурно, без чувствительности

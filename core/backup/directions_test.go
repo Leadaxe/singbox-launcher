@@ -92,7 +92,7 @@ func TestDirectionRoundTrip(t *testing.T) {
 		},
 	}}
 
-	b, _, err := Export012(src, ExportOptions{AppVersion: "1.4.2"})
+	b, _, err := Export10(src, ExportOptions{AppVersion: "1.4.2"})
 	if err != nil {
 		t.Fatalf("экспорт: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestDirectionRoundTrip(t *testing.T) {
 	}
 
 	dst := &state.State{}
-	if _, err := Import(dst, b, ImportOptions{}); err != nil {
+	if _, err := Import10(dst, b, ImportOptions{}); err != nil {
 		t.Fatalf("импорт: %v", err)
 	}
 	back := dst.Directions[0]
@@ -167,7 +167,7 @@ func TestDirectionForeignLabelIgnoredSilently(t *testing.T) {
 	}
 	// Провоза нет: у лаунчера имя одно, и обратный экспорт обязан быть без
 	// чужой подписи.
-	back, _, err := Export012(dst, ExportOptions{AppVersion: "test"})
+	back, _, err := Export10(dst, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}

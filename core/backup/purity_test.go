@@ -19,23 +19,6 @@ import (
 	"singbox-launcher/core/state"
 )
 
-// fixedExport — экспорт с прибитым моментом времени: exported_at обязан быть
-// одинаковым, иначе сравнение байтов проверяло бы часы, а не чистоту.
-func fixedExport(t *testing.T, s *state.State) []byte {
-	t.Helper()
-	b, _, err := Export012(s, ExportOptions{
-		AppVersion: "test", Platform: "darwin", Now: time.Unix(1750000000, 0),
-	})
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-	raw, err := json.MarshalIndent(b, "", "  ")
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	return raw
-}
-
 // richState — состояние со ВСЕМИ сущностями формата разом. Нужно именно
 // такое: чистоту легко удержать на пустом состоянии и легко потерять на
 // поле, которое обходится по map'у или дописывается «на провоз».
@@ -122,24 +105,17 @@ func importKnowsEverything() ImportOptions {
 	}
 }
 
-// П1: экспорт — чистая функция состояния. Два экспорта одного состояния
-// обязаны быть БАЙТ-идентичны: любая примесь «откуда взялось» делает файл
-// зависимым от истории, а не от настройки.
-func TestExportIsPureFunctionOfState(t *testing.T) {
-	s := richState()
-	first := fixedExport(t, s)
-	second := fixedExport(t, s)
-	if string(first) != string(second) {
-		t.Fatalf("два экспорта одного состояния разошлись:\n--- 1 ---\n%s\n--- 2 ---\n%s", first, second)
-	}
-}
-
 // П1: состояние после импорта неотличимо от настроенного руками — значит и
 // экспорт из него обязан совпасть байт в байт с исходным файлом. Это и есть
 // «нет теневых полей»: карман бы здесь всплыл лишней записью.
+//
+// Байт в байт уже с ПЕРВОГО круга: у richState нет правил узлов, и
+// перенумерация оси (§9 п. 7) номеров не сдвигает — ось и так размечена из
+// пользовательской зоны. Чистота самого экспорта (два экспорта одного
+// состояния) — TestExport10IsPureFunctionOfState.
 func TestExportIndependentOfImportOrigin(t *testing.T) {
 	handMade := richState()
-	want := fixedExport(t, handMade)
+	want := fixedExport10(t, handMade)
 
 	b, _, err := Parse(want)
 	if err != nil {
@@ -149,7 +125,7 @@ func TestExportIndependentOfImportOrigin(t *testing.T) {
 	if _, err := ImportFile(imported, b, importKnowsEverything()); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
-	got := fixedExport(t, imported)
+	got := fixedExport10(t, imported)
 	if string(got) != string(want) {
 		t.Fatalf("экспорт зависит от того, импортировано состояние или настроено руками:\n--- руками ---\n%s\n--- после импорта ---\n%s", want, got)
 	}
@@ -166,7 +142,7 @@ func TestExportIndependentOfImportOrigin(t *testing.T) {
 // только через равенство байтов.
 func TestRoundTripAllEntitiesByteIdentical(t *testing.T) {
 	s := richState()
-	first := fixedExport(t, s)
+	first := fixedExport10(t, s)
 
 	b, warns, err := Parse(first)
 	if err != nil {
@@ -201,7 +177,7 @@ func TestRoundTripAllEntitiesByteIdentical(t *testing.T) {
 		t.Errorf("id цепочки потерян: %q", chain.ID)
 	}
 
-	second := fixedExport(t, restored)
+	second := fixedExport10(t, restored)
 	if string(second) != string(first) {
 		t.Fatalf("roundtrip не тождественен:\n--- до ---\n%s\n--- после ---\n%s", first, second)
 	}
@@ -225,12 +201,13 @@ func fixedExport10(t *testing.T, s *state.State) []byte {
 	return raw
 }
 
-// richState10 — богатое состояние ПЛЮС то, что выражает только формат 1.0:
-// папка с настройками и составом трёх видов, узел с секциями, цепочка с
+// richState10 — богатое состояние ПЛЮС то, что умеет выразить только формат
+// 1.0: папка с настройками и составом трёх видов, узел с секциями, цепочка с
 // адресным хопом в папку, подписка с identity и disabled.
 //
-// Отдельная функция, а не правка richState: richState — вход 0.12-писателя, и
-// дописать туда папку значило бы поменять эталоны прежнего формата.
+// Отдельная функция, а не правка richState: на richState держатся сценарии,
+// которые сверяются и с файлом 0.12, снятым с него прежним писателем
+// (convert_v7_test.go), — у того файла этих сущностей нет.
 func richState10() *state.State {
 	s := richState()
 	send := false
@@ -551,7 +528,7 @@ func TestRoundTrip10ByteIdentical(t *testing.T) {
 	if len(warns) != 0 {
 		t.Fatalf("свой же файл 1.0 вызвал предупреждения: %v", warns)
 	}
-	if parsed.Format != ExportFormat10 || parsed.V10 == nil {
+	if parsed.Format != FileFormat10 || parsed.V10 == nil {
 		t.Fatalf("файл 1.0 прочитан не своим входом: %v", parsed.Format)
 	}
 

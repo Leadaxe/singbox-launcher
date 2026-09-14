@@ -4,13 +4,13 @@ package backup
 //
 // Секции едут в файле ТОЛЬКО в формате 1.0 (норма ONE_NAMESPACE §4): в 0.12
 // схема обещала одну форму записей, а писатель клал другую (ловушка CODEMAP
-// §7.6), и волна 2 закрыла расхождение снятием писателя, а не подгонкой
-// формы. Поэтому сценарии разнесены по форматам:
+// §7.6), и волна 2 закрыла расхождение снятием секций из 0.12, а не подгонкой
+// формы; сам писатель 0.12 снят в v1.6.0 (D-110). Поэтому сценарии разнесены
+// по входам:
 //
 //	1.0  — поле пишется, узловые правила в rules[] не уезжают, круг
 //	       «экспорт → Parse → импорт» восстанавливает записи и позиции,
 //	       файл замещает локальные секции, файл без поля их не трогает;
-//	0.12 — поле НЕ пишется, но потеря названа вслух;
 //	0.12 на чтение — файл, написанный прежней сборкой, открывается как
 //	       прежде: такие файлы уже у пользователей на руках.
 //
@@ -191,34 +191,6 @@ func TestBackupNodeSectionsFormat10(t *testing.T) {
 	snapshot.Sources[0].Node.Sections.Rules[0].Name = "changed after export"
 	if got := file.Sources[0].Sections.Rules[0].Name; strings.Contains(got, "changed") {
 		t.Errorf("файл делит память с состоянием: правка состояния изменила файл (%q)", got)
-	}
-}
-
-// Формат 0.12 секции НЕ пишет — и говорит об этом вслух.
-//
-// Молчаливая потеря здесь была бы самой дорогой: узел приедет на новую машину
-// без своих правил и DNS, а пользователь увидит это не раньше, чем перестанет
-// работать маршрут.
-func TestBackupNodeSections012NotWrittenButNamed(t *testing.T) {
-	src := stateWithSections(t, "ts-dns", 945)
-	b, warns, err := Export012(src, ExportOptions{AppVersion: "test"})
-	if err != nil {
-		t.Fatalf("Export012: %v", err)
-	}
-	if len(b.Servers) != 1 {
-		t.Fatalf("серверов в файле: %d", len(b.Servers))
-	}
-	if b.Servers[0].Sections != nil {
-		t.Errorf("0.12-писатель снова пишет секции: %s", b.Servers[0].Sections.Raw)
-	}
-	var named bool
-	for _, w := range warns {
-		if w.Code == WarnBackupLocalOnlyDropped && strings.Contains(w.Detail, "sections") {
-			named = true
-		}
-	}
-	if !named {
-		t.Errorf("секции выпали из файла 0.12 молча: %v", warns)
 	}
 }
 

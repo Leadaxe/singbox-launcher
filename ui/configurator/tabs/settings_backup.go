@@ -46,12 +46,6 @@ const (
 	// целиком; DNS сливается, и обещать его замену тоже было бы неправдой.
 	settingsBackupImportMergeNoteText = "Settings are merged, not replaced: subscriptions match by address, servers by what they connect to, and anything of yours that is not in the file stays. Routing rules are the exception — they are replaced by the file."
 
-	// Выбор формата файла (SPEC 127 §4, окно совместимости). Спрашиваем, а
-	// не решаем молча: файл гуляет между десктопом и телефоном, и формат,
-	// который вторая сторона ещё не читает, выглядит как «импорт сломался».
-	settingsBackupFormatNewText  = "Backup format 1.0 (new; requires LxBox with 1.0 import)"
-	settingsBackupFormatHintText = "Format 1.0 carries everything the launcher stores, including per-node rules and DNS. Leave it off while the phone app still reads the old format."
-
 	// Сводка файла 1.0: там одна секция источников (sources[]), и разложить
 	// её обратно на «подписки и серверы» ради старой строки значило бы
 	// научить UI форме файла — ровно тому, от чего избавляет union File.
@@ -97,10 +91,10 @@ func backupSection(presenter *wizardpresentation.WizardPresenter, win fyne.Windo
 	)
 }
 
-// handleBackupExport спрашивает формат, а затем пишет файл.
+// handleBackupExport пишет файл и показывает отчёт.
 //
-// Формат спрашивается ДО выбора пути: он меняет содержимое файла, и узнать о
-// нём после сохранения пользователю было бы неоткуда.
+// Формат не спрашивается: писатель у лаунчера один — 1.0 (D-110), релизы
+// лаунчера и LxBox выходят синхронно, и выбирать пользователю не из чего.
 func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.Window) {
 	st := presenter.CreateStateFromModel("", "")
 	if st == nil {
@@ -108,27 +102,6 @@ func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.
 		return
 	}
 
-	formatCheck := widget.NewCheck(locale.T(settingsBackupFormatNewText), nil)
-	formatCheck.SetChecked(backup.BackupExportFormatDefault == backup.ExportFormat10)
-	formatHint := widget.NewLabel(locale.T(settingsBackupFormatHintText))
-	formatHint.Wrapping = fyne.TextWrapWord
-	form := container.NewVBox(formatCheck, formatHint)
-
-	dialog.ShowCustomConfirm(locale.T("Export settings"), locale.T("Export…"), locale.T("Cancel"),
-		form, func(ok bool) {
-			if !ok {
-				return
-			}
-			format := backup.ExportFormat012
-			if formatCheck.Checked {
-				format = backup.ExportFormat10
-			}
-			runBackupExport(st, format, win)
-		}, win)
-}
-
-// runBackupExport пишет файл выбранным форматом и показывает отчёт.
-func runBackupExport(st *corestate.State, format backup.ExportFormat, win fyne.Window) {
 	suggested := backup.SuggestFileName(time.Now().Format("2006-01-02"))
 	path, ok, err := platform.PickSaveFile(locale.T("Save LX Backup"), suggested)
 	if err != nil || !ok {
@@ -150,7 +123,6 @@ func runBackupExport(st *corestate.State, format backup.ExportFormat, win fyne.W
 	exportWarns, err := backup.ExportFile(path, st, backup.ExportOptions{
 		AppVersion: constants.AppVersion,
 		Platform:   runtime.GOOS,
-		Format:     format,
 	})
 	if err != nil {
 		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Export failed"), err), win)

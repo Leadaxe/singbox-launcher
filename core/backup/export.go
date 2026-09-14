@@ -1,44 +1,22 @@
 package backup
 
-// Экспорт состояния лаунчера в переносимый файл: точка выбора формата и то,
-// что у обоих писателей общее.
+// Экспорт состояния лаунчера в переносимый файл.
 //
-// Писателей два (SPEC 127 §4, окно совместимости): 1.0 — сериализация
-// состояния v8 (export10.go), 0.12 — прежний маппер (legacy_write_012.go).
-// Дефолт держит одна константа BackupExportFormatDefault: пока релиз LxBox с
-// чтением 1.0 не доехал до пользователей, лаунчер по умолчанию пишет 0.12, а
-// пользователь может выбрать 1.0 чекбоксом в диалоге экспорта. Импорт читает
-// оба формата всегда.
+// Писатель один — формат 1.0, сериализация состояния v8 (export10.go). С
+// v1.6.0 лаунчер пишет ТОЛЬКО его (решение владельца, D-110): релизы лаунчера
+// и LxBox выходят синхронно, и окно «два писателя, дефолт 0.12» (SPEC 127 §4)
+// отменено вместе с писателем 0.12 и выбором формата. Импорт по-прежнему
+// читает оба формата: файлы 0.x уже у пользователей на руках, и вход для них
+// живёт всегда (legacy_read_0x.go).
 
 import (
 	"encoding/json"
-	"strings"
 	"time"
 
 	"singbox-launcher/core/state"
 )
 
-// ExportFormat — какой из двух писателей ведёт файл.
-type ExportFormat int
-
-const (
-	// ExportFormat012 — переходный формат 0.12 (legacy_write_012.go).
-	// Числовой ноль намеренно: вызывающий, который про формат ещё не знает,
-	// получает прежнее поведение, а не пустой файл.
-	ExportFormat012 ExportFormat = iota
-	// ExportFormat10 — контракт 1.0: файл = состояние v8 (export10.go).
-	ExportFormat10
-)
-
-// BackupExportFormatDefault — что пишется, когда формат не выбран явно.
-//
-// ОДНА константа на всё приложение (SPEC 127 §4): переключение дефолта после
-// выхода релиза LxBox с чтением 1.0 — правка этой строки, а не обход
-// вызывающих. Пока стоит 0.12: файл, который телефон не прочитает, хуже
-// файла старого формата.
-const BackupExportFormatDefault = ExportFormat012
-
-// ExportOptions — что подмешать в шапку файла и каким писателем писать.
+// ExportOptions — что подмешать в шапку файла.
 type ExportOptions struct {
 	// AppVersion — версия лаунчера (exported_by.version).
 	AppVersion string
@@ -47,32 +25,19 @@ type ExportOptions struct {
 	// Now — момент экспорта; ноль означает time.Now(). Параметр существует
 	// ради воспроизводимых тестов, а не ради «настраиваемости».
 	Now time.Time
-	// Format — писатель. Нулевое значение = ExportFormat012, то есть
-	// умолчание совпадает с BackupExportFormatDefault без дополнительной
-	// проверки у каждого вызывающего.
-	Format ExportFormat
 }
 
-// ExportFile пишет бэкап состояния в файл выбранным форматом.
+// ExportFile пишет бэкап состояния в файл формата 1.0.
 //
-// Одна точка на оба писателя: вызывающему (UI, debug API, инструменты) не
-// нужно знать, какая структура получилась, — он выбирает формат и получает
-// файл плюс предупреждения экспорта.
+// Одна точка на UI, debug API и инструменты: вызывающему не нужно знать,
+// какая структура получилась, — он получает файл плюс предупреждения
+// экспорта.
 func ExportFile(path string, s *state.State, opts ExportOptions) ([]Warning, error) {
-	switch opts.Format {
-	case ExportFormat10:
-		b, warns, err := Export10(s, opts)
-		if err != nil {
-			return warns, err
-		}
-		return warns, WriteFile10(path, b)
-	default:
-		b, warns, err := Export012(s, opts)
-		if err != nil {
-			return warns, err
-		}
-		return warns, WriteFile(path, b)
+	b, warns, err := Export10(s, opts)
+	if err != nil {
+		return warns, err
 	}
+	return warns, WriteFile10(path, b)
 }
 
 // sourceExportName — как назвать источник в предупреждении экспорта.
@@ -108,44 +73,6 @@ func exportWarp(s *state.State) []json.RawMessage {
 	}
 	if s.WarpAccounts.Masque != nil {
 		appendAcc("masque", s.WarpAccounts.Masque)
-	}
-	return out
-}
-
-// droppedLocalOnlyFields — перечень per-source настроек подписки, у которых
-// в схеме дома нет. Пусто = терять нечего.
-//
-// С контрактом 0.12 здесь остался ОДИН ключ: UA и HWID-семейство уехали в
-// объект identity, а relays_in_directions — нет. Он про то, предлагать ли
-// служебные узлы (релеи BYPASS) в списке целей Направлений; у LxBox такой
-// развилки нет вовсе, и односторонний ключ в общей схеме был бы ровно тем
-// тайным грузом, ради сноса которого убран механизм extensions.
-//
-// Потеря не косметическая: на маршрут галка не влияет (релей материализуется
-// всегда), но после restore список целей будет другим, и пользователь не
-// поймёт, куда делся выбор, — поэтому её называют поимённо.
-func droppedLocalOnlyFields(src state.Source) string {
-	var fields []string
-	if src.RelaysInDirections {
-		fields = append(fields, "relays_in_directions")
-	}
-	return strings.Join(fields, ", ")
-}
-
-// dedupRefs — наборы srs-правила без повторов, порядок сохранён (тот же канон,
-// что у NewSrsRule и у вида).
-func dedupRefs(in []string) []string {
-	if len(in) == 0 {
-		return nil
-	}
-	seen := make(map[string]bool, len(in))
-	out := make([]string, 0, len(in))
-	for _, v := range in {
-		if v == "" || seen[v] {
-			continue
-		}
-		seen[v] = true
-		out = append(out, v)
 	}
 	return out
 }

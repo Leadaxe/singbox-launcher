@@ -1,10 +1,15 @@
-// Package backup — переносимый формат LX Backup (контракт 0.12.0).
+// Package backup — переносимый формат LX Backup (контракт 1.0).
 //
 // Назначение: перенести подписки, серверы, цепочки, Направления, правила, DNS
 // и переменные между лаунчером и LxBox. Формат общий, схема нормативна —
 // contract/schema/backup.schema.json, семантика — contract/docs/BACKUP.md,
 // идеи и инварианты — contract/docs/BACKUP_PRINCIPLES.md (П1–П7, при
 // конфликте побеждают они).
+//
+// Пишется только формат 1.0 (backup10.go, export10.go; D-110). Типы этого
+// файла — форма семейства 0.x (`lx_backup: 1`, схема
+// contract/schema/backup-0.12.schema.json): их читает legacy-вход
+// (legacy_read_0x.go), и живут они, пока живы выпущенные файлы.
 //
 // Три инварианта определяют весь дизайн:
 //
@@ -26,8 +31,9 @@ import (
 	"singbox-launcher/core/state"
 )
 
-// FormatVersion — мажор формата (BACKUP.md §8). Импортёр читает свою и
-// меньшие версии; бо́льшую отклоняет с понятной ошибкой.
+// FormatVersion — мажор семейства 0.x в ключе lx_backup (BACKUP.md §8).
+// Импортёр читает свою и меньшие версии; бо́льшую отклоняет с понятной
+// ошибкой. Маркер действующего формата 1.0 — FormatVersion10.
 const FormatVersion = 1
 
 // AppLauncher — идентификатор приложения в exported_by.app.
@@ -132,10 +138,10 @@ type Subscription struct {
 // тела: UA, идентификатор устройства и режим его отправки.
 //
 // Псевдоним типа состояния, а не своя копия (SPEC 127 §6.0): одно
-// пространство имён — у настройки один дом, и файл бэкапа (обоих форматов)
-// сериализует ровно то, что лежит в состоянии. Форма объекта и её мотивы —
-// core/state/subscription_identity.go; JSON-теги те же, поэтому запись 0.12
-// не меняется ни на байт.
+// пространство имён — у настройки один дом, и объект identity читается из
+// файла любого формата в ровно ту форму, что лежит в состоянии. Форма
+// объекта и её мотивы — core/state/subscription_identity.go; JSON-теги те же,
+// что у объекта формата 0.12.
 type SubscriptionIdentity = state.SubscriptionIdentity
 
 // Fold — свёртка подписки контракта 0.11 (прежний configtypes.SourceFold).
@@ -350,10 +356,3 @@ type DNSRef struct {
 type Route struct {
 	Final string `json:"final,omitempty"`
 }
-
-// boolPtr — helper для полей с умолчанием true: писать значение нужно
-// только когда оно отличается от умолчания схемы.
-func boolPtr(v bool) *bool { return &v }
-
-// f64Ptr — helper для номера оси порядка.
-func f64Ptr(v float64) *float64 { return &v }

@@ -1,23 +1,21 @@
 package backup
 
-// Валидация экспорта против нормативных схем (SPEC 103 фаза 4; SPEC 127 W3.3).
+// Валидация экспорта против нормативной схемы (SPEC 103 фаза 4; SPEC 127 W3.3).
 //
 // Схема — договор между приложениями: файл, не проходящий её, LxBox имеет
-// право не принять. Проверять глазами такое нельзя, поэтому каждый писатель
-// валидируется структурно на каждом прогоне, и ПИСАТЕЛЕЙ ДВА (окно
-// совместимости, docs/BACKUP.md §1):
+// право не принять. Проверять глазами такое нельзя, поэтому писатель
+// валидируется структурно на каждом прогоне: Export10 →
+// contract/schema/backup.schema.json (lx_backup: 2). Писатель у лаунчера один
+// (D-110); схема 0.12 (backup-0.12.schema.json) заморожена для legacy-чтения,
+// и проверять ею нечего.
 //
-//   - Export012 → contract/schema/backup-0.12.schema.json (lx_backup: 1);
-//   - Export10  → contract/schema/backup.schema.json      (lx_backup: 2).
-//
-// Обе проверки идут на богатом состоянии: бедное состояние проходит любую
-// схему, потому что почти все поля необязательные.
+// Проверка идёт на богатом состоянии: бедное состояние проходит любую схему,
+// потому что почти все поля необязательные.
 //
 // Валидатор здесь минимальный и намеренно проверяет ровно то, что схема
-// объявляет строгим: обязательные поля, закрытые множества (enum),
-// формат ключей disabled и запрет неизвестных ключей там, где стоит
-// additionalProperties:false. Полноценный JSON-Schema-движок ради этого в
-// зависимости не тянется.
+// объявляет строгим: обязательные поля, закрытое множество видов правила
+// (enum) и ключи записей против объявленных properties. Полноценный
+// JSON-Schema-движок ради этого в зависимости не тянется.
 
 import (
 	"encoding/json"
@@ -26,180 +24,16 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 )
 
-// Два адреса схем: 0.12 — legacy-писателя, backup.schema.json — действующего
-// формата 1.0. Имена вынесены в функции, потому что перепутать их в тесте
-// значит проверять писателя чужой схемой и не заметить расхождения.
-func schemaPath012() string {
-	return filepath.Join("..", "..", "contract", "schema", "backup-0.12.schema.json")
-}
-
+// schemaPath10 — адрес схемы действующего формата 1.0. Функцией, а не
+// литералом в каждом тесте: рядом лежит замороженная копия 0.12, и перепутать
+// их значит проверять писателя чужой схемой и не заметить расхождения.
 func schemaPath10() string {
 	return filepath.Join("..", "..", "contract", "schema", "backup.schema.json")
 }
 
-var identityHashRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
-
-func exportSample(t *testing.T) map[string]any {
-	t.Helper()
-	b, _, err := Export012(mkState(), ExportOptions{
-		AppVersion: "1.4.2", Platform: "darwin", Now: time.Unix(1750000000, 0),
-	})
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-	raw, err := json.Marshal(b)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	var doc map[string]any
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	return doc
-}
-
-// Обязательные поля корня — без них файл не опознать как бэкап.
-func TestExportHasRequiredRootFields(t *testing.T) {
-	doc := exportSample(t)
-	for _, key := range []string{"lx_backup", "exported_by", "exported_at"} {
-		if _, ok := doc[key]; !ok {
-			t.Errorf("нет обязательного поля %q", key)
-		}
-	}
-	if v, _ := doc["lx_backup"].(float64); int(v) != FormatVersion {
-		t.Errorf("lx_backup = %v, ожидалось %d", doc["lx_backup"], FormatVersion)
-	}
-	by, _ := doc["exported_by"].(map[string]any)
-	if by["app"] != AppLauncher {
-		t.Errorf("exported_by.app = %v", by["app"])
-	}
-}
-
-// Ключи disabled — identity-хеши (64 hex). Короткий ключ означает, что
-// отметка не сопоставится ни с одной нодой на другой стороне.
-func TestExportDisabledKeysAreIdentityHashes(t *testing.T) {
-	doc := exportSample(t)
-	subs, _ := doc["subscriptions"].([]any)
-	for _, s := range subs {
-		sub, _ := s.(map[string]any)
-		disabled, ok := sub["disabled"].(map[string]any)
-		if !ok {
-			continue
-		}
-		for hash := range disabled {
-			if !identityHashRe.MatchString(hash) {
-				t.Errorf("ключ disabled %q не является identity-хешем (64 hex)", hash)
-			}
-		}
-	}
-}
-
-// kind правила — из закрытого множества схемы.
-func TestExportRuleKindsAreKnown(t *testing.T) {
-	allowed := map[string]bool{"inline": true, "srs": true, "preset": true, "json": true}
-	doc := exportSample(t)
-	rules, _ := doc["rules"].([]any)
-	if len(rules) == 0 {
-		t.Fatal("в образце нет правил — тест бессмыслен")
-	}
-	for _, r := range rules {
-		rule, _ := r.(map[string]any)
-		kind, _ := rule["kind"].(string)
-		if !allowed[kind] {
-			t.Errorf("kind %q вне множества схемы", kind)
-		}
-	}
-}
-
-// Экспорт не должен нести ключей, которых схема не объявляет.
-//
-// Схема с 0.11.0 открыта (additionalProperties:true) намеренно — чужой файл с
-// лишним полем обязан проходить валидацию (П3). Но это послабление для
-// ЧТЕНИЯ, а не для письма: собственный экспорт, вышедший за объявленные
-// properties, означал бы поле, которого нет в таблице BACKUP.md §2, — то есть
-// ровно тайный груз, ради сноса которого механизм extensions и убран.
-func TestExportHasNoUndeclaredRootKeys(t *testing.T) {
-	schemaPath := schemaPath012()
-	data, err := os.ReadFile(schemaPath)
-	if err != nil {
-		t.Skipf("схема недоступна: %v", err)
-	}
-	var schema struct {
-		Properties map[string]any `json:"properties"`
-	}
-	if err := json.Unmarshal(data, &schema); err != nil {
-		t.Fatalf("разбор схемы: %v", err)
-	}
-	doc := exportSample(t)
-	for key := range doc {
-		if _, ok := schema.Properties[key]; !ok {
-			t.Errorf("экспорт несёт ключ %q, которого нет в схеме", key)
-		}
-	}
-}
-
-// То же для записей сущностей: поле, вышедшее из-под объявленных properties,
-// не попадёт в таблицу поддержки и станет невидимым для другой стороны.
-func TestExportEntityKeysAreDeclared(t *testing.T) {
-	schemaPath := schemaPath012()
-	data, err := os.ReadFile(schemaPath)
-	if err != nil {
-		t.Skipf("схема недоступна: %v", err)
-	}
-	var schema struct {
-		Properties map[string]struct {
-			Items struct {
-				Properties map[string]any `json:"properties"`
-			} `json:"items"`
-		} `json:"properties"`
-	}
-	if err := json.Unmarshal(data, &schema); err != nil {
-		t.Fatalf("разбор схемы: %v", err)
-	}
-
-	b, _, err := Export012(richState(), ExportOptions{AppVersion: "test", Now: time.Unix(1750000000, 0)})
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-	raw, err := json.Marshal(b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var doc map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		t.Fatal(err)
-	}
-
-	for _, section := range []string{"subscriptions", "servers", "chains", "rules"} {
-		declared := schema.Properties[section].Items.Properties
-		if len(declared) == 0 {
-			t.Fatalf("схема не объявляет полей секции %s — сверять нечем", section)
-		}
-		var items []map[string]json.RawMessage
-		if err := json.Unmarshal(doc[section], &items); err != nil {
-			t.Fatalf("%s: %v", section, err)
-		}
-		if len(items) == 0 {
-			t.Fatalf("в образце нет записей %s — тест бессмыслен", section)
-		}
-		for _, item := range items {
-			for key := range item {
-				if _, ok := declared[key]; !ok {
-					t.Errorf("%s[]: экспорт несёт необъявленный ключ %q", section, key)
-				}
-			}
-		}
-	}
-}
-
 // ── Писатель 1.0 против backup.schema.json ───────────────────────────────
-//
-// Отдельным набором, а не параметризацией 0.12-тестов: формы файлов разные
-// (одна sources[] против четырёх плоских секций), и общий тест свёлся бы к
-// двум ветвям в каждом проверяющем.
 
 func export10Sample(t *testing.T) map[string]json.RawMessage {
 	t.Helper()
@@ -241,6 +75,10 @@ func TestExport10RootKeysAreDeclared(t *testing.T) {
 	if err := json.Unmarshal(doc["lx_backup"], &marker); err != nil || marker != FormatVersion10 {
 		t.Errorf("lx_backup = %s, ожидалось %d", doc["lx_backup"], FormatVersion10)
 	}
+	var by ExportedBy
+	if err := json.Unmarshal(doc["exported_by"], &by); err != nil || by.App != AppLauncher {
+		t.Errorf("exported_by = %s, ожидалось app=%q", doc["exported_by"], AppLauncher)
+	}
 
 	var schema struct {
 		Properties map[string]json.RawMessage `json:"properties"`
@@ -269,7 +107,7 @@ func TestExport10RootKeysAreDeclared(t *testing.T) {
 
 // Записи файла 1.0 — против $defs соответствующего вида.
 //
-// Проверяется то же, что у 0.12: ни одного ключа мимо объявленных. Адрес
+// Проверяется, что ни одного ключа мимо объявленных. Адрес
 // определения выбирается по kind записи — ровно как это делает if/then в
 // схеме, и расхождение между «что пишет Go» и «что объявляет схема» вылезает
 // на том виде, где оно есть, а не общим «где-то в sources[]».
@@ -343,8 +181,32 @@ func TestExport10EntityKeysAreDeclared(t *testing.T) {
 	if len(rules) == 0 {
 		t.Fatal("в образце нет правил — тест бессмыслен")
 	}
+	// kind правила — из закрытого множества схемы (enum): вид вне него
+	// вторая сторона вправе отвергнуть вместе с файлом.
+	var ruleDef struct {
+		Properties struct {
+			Kind struct {
+				Enum []string `json:"enum"`
+			} `json:"kind"`
+		} `json:"properties"`
+	}
+	var rawDefs map[string]json.RawMessage
+	if err := json.Unmarshal(schema["$defs"], &rawDefs); err != nil {
+		t.Fatalf("разбор $defs: %v", err)
+	}
+	if err := json.Unmarshal(rawDefs["rule"], &ruleDef); err != nil || len(ruleDef.Properties.Kind.Enum) == 0 {
+		t.Fatalf("$defs/rule не объявляет enum kind — сверять нечем: %v", err)
+	}
+	allowedKinds := map[string]bool{}
+	for _, k := range ruleDef.Properties.Kind.Enum {
+		allowedKinds[k] = true
+	}
 	for _, rec := range rules {
 		check("rules[]", "rule", rec)
+		var kind string
+		if err := json.Unmarshal(rec["kind"], &kind); err != nil || !allowedKinds[kind] {
+			t.Errorf("rules[]: kind %s вне множества схемы %v", rec["kind"], ruleDef.Properties.Kind.Enum)
+		}
 	}
 
 	var dns struct {
@@ -560,6 +422,15 @@ func TestBackupWarningCodesAreActuallySet(t *testing.T) {
 		"backup_dns_entry_skipped": true,
 		"backup_warp_skipped":      true,
 	}
+	// Коды, которые лаунчер ставил только писателем 0.12 и с v1.6.0 не ставит
+	// вовсе (D-110): писатель 1.0 этих потерь не знает. В словаре контракта
+	// они остаются — там же сказано, кто и когда их эмитил, — а константа
+	// нужна сверке словаря. Списком здесь, а не молчаливым проходом: иначе
+	// «объявлен, но не ставится» было бы неотличимо от забытой диагностики.
+	retired := map[string]bool{
+		"backup_local_only_dropped":  true,
+		"backup_replace_tag_derived": true,
+	}
 	consts := goBackupWarningConstants(t)
 	byCode := map[string]string{}
 	for name, code := range consts {
@@ -575,7 +446,10 @@ func TestBackupWarningCodesAreActuallySet(t *testing.T) {
 			t.Errorf("код %q объявлен в реестре, но в Go его нет — либо заводить, либо помечать стороной", code)
 			continue
 		}
-		if !used[name] {
+		switch {
+		case retired[code] && used[name]:
+			t.Errorf("константа %s (%q) снова ставится — убрать её из списка снятых с v1.6.0", name, code)
+		case !retired[code] && !used[name]:
 			t.Errorf("константа %s (%q) объявлена, но нигде не ставится: обещанная диагностика, которой не будет", name, code)
 		}
 	}
@@ -633,7 +507,8 @@ func goBackupWarningConstants(t *testing.T) map[string]string {
 // блоке констант упоминает имя, но диагностики не даёт. Поэтому строки
 // объявлений отсеиваются, а не целый файл: коды и ставятся, и объявляются в
 // import.go, и отсев по имени файла объявил бы «не ставится» половину
-// словаря.
+// словаря. Строки комментариев отсеиваются тем же правилом: упоминание кода в
+// пояснении — тоже не диагностика.
 func backupConstantsUsedInPackage(t *testing.T) map[string]bool {
 	t.Helper()
 	entries, err := os.ReadDir(".")
@@ -653,7 +528,7 @@ func backupConstantsUsedInPackage(t *testing.T) map[string]bool {
 			continue
 		}
 		for _, line := range strings.Split(string(data), "\n") {
-			if decl.MatchString(line) {
+			if decl.MatchString(line) || strings.HasPrefix(strings.TrimSpace(line), "//") {
 				continue
 			}
 			for _, m := range use.FindAllString(line, -1) {
