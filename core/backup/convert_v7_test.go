@@ -171,13 +171,15 @@ func assertV7ModelEquivalent(t *testing.T, src, dst *state.State, warns []Warnin
 		t.Errorf("replace.tag: %q, было %q", sub.Replace.Tag, src.Sources[0].Replace.Tag)
 	}
 
-	// detour-NodeLink с адресом папки ⇄ объект / тройня: оба конца обязаны
-	// выжить.
+	// detour-NodeLink на корневой узел ⇄ объект `{tag}` / тройня 0.12 с id
+	// сервера: корневой узел адресуется тегом, и тройня с
+	// `detour_node_source_id` сервера обязана приехать корневой формой
+	// (NODE_LINK.md §7.4), а не висящим folder_id.
 	if sub.Detour == nil {
 		t.Fatal("detour подписки потерян")
 	}
-	if sub.Detour.FolderID != "01SRV0000000000000000000" || sub.Detour.Tag != "🔥 WARP" {
-		t.Errorf("detour подписки: %+v, ожидалось {01SRV…, 🔥 WARP}", *sub.Detour)
+	if sub.Detour.FolderID != "" || sub.Detour.Tag != "🔥 WARP" {
+		t.Errorf("detour подписки: %+v, ожидалось {\"\", 🔥 WARP}", *sub.Detour)
 	}
 
 	// TagPolicy ⇄ tag_policy / tag{prefix,postfix}.

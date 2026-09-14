@@ -117,6 +117,12 @@ func importFold(f *Fold, replaceTag string) *state.FolderReplace {
 //
 // Пустая тройня при непустом detour_tag — ссылка на ГРУППУ (прежний
 // DetourTag): в v7 у неё та же форма, что у ссылки корневого пространства.
+//
+// `detour_node_source_id` здесь ложится в folder_id как есть, даже когда это
+// id СЕРВЕРА или цепочки файла (`servers[].id`, `chains[].id`): в 0.12 сервер
+// был сам себе источником. Адрес такой ссылке дописывает слияние, когда
+// известно, куда лёг узел (mergedInfo.rewriteLinks): корневой узел — `{tag:
+// тег здесь}`, член папки — парой (NODE_LINK.md §7.4).
 func importNodeLinkRef(ref SourceRef) *state.NodeLink {
 	tag := strings.TrimSpace(ref.DetourNodeTag)
 	if tag == "" {
@@ -240,7 +246,15 @@ func foldDerivedDirectionTags(sub Subscription, index int) map[string]bool {
 // Индекс строится по СЫРЫМ тегам узлов контейнеров; корневые узлы
 // (server/chain/auto), replace-теги и Направления живут в корневом
 // пространстве и адреса не требуют.
-func resolveImportedHops(sources []state.Source, directions []configtypes.Direction) {
+//
+// Хоп цепочки, приехавшей ЭТИМ файлом, сперва ищется в пространстве файла:
+// среди членов папок файла под их тегом в файле (merged.landed.legacyTags) и
+// узлов подписок, приехавших файлом. Член, которого слияние уникализировало
+// или узнало по телу под другим тегом, находится по прежнему имени и не
+// уводит позицию на здешнего тёзку (NODE_LINK.md §7.2). Члены, добавленные
+// файлом под другим тегом, в общий индекс не входят: их здешнее имя файлу не
+// принадлежит.
+func resolveImportedHops(sources []state.Source, directions []configtypes.Direction, merged *mergedInfo) {
 	byTag := map[string]string{}   // сырой тег узла контейнера → id контейнера
 	ambiguous := map[string]bool{} // тот же тег в двух контейнерах — адрес не выбираем
 	rootTags := map[string]bool{}
@@ -257,7 +271,7 @@ func resolveImportedHops(sources []state.Source, directions []configtypes.Direct
 					continue
 				}
 				tag := strings.TrimSpace(src.Nodes[j].Tag)
-				if tag == "" {
+				if tag == "" || merged.landed.renamed[state.NodeLink{FolderID: src.ID, Tag: src.Nodes[j].Tag}] {
 					continue
 				}
 				if prev, seen := byTag[tag]; seen && prev != src.ID {
@@ -286,6 +300,29 @@ func resolveImportedHops(sources []state.Source, directions []configtypes.Direct
 		}
 	}
 
+	fromFile := map[int]bool{}
+	for _, ln := range merged.linked {
+		if ln.at.node < 0 {
+			fromFile[ln.at.src] = true
+		}
+	}
+	fileTier := make(map[string][]state.NodeLink, len(merged.landed.legacyTags))
+	for tag, hits := range merged.landed.legacyTags {
+		fileTier[tag] = append([]state.NodeLink(nil), hits...)
+	}
+	for i := range sources {
+		src := &sources[i]
+		if !fromFile[i] || src.Kind != state.SourceKindSubscription || src.ID == "" {
+			continue
+		}
+		for j := range src.Nodes {
+			tag := strings.TrimSpace(src.Nodes[j].Tag)
+			if tag == "" || src.Nodes[j].IsUnsupported() {
+				continue
+			}
+			fileTier[tag] = append(fileTier[tag], state.NodeLink{FolderID: src.ID, Tag: src.Nodes[j].Tag})
+		}
+	}
 	for i := range sources {
 		src := &sources[i]
 		if src.Kind != state.SourceKindChain {
@@ -298,6 +335,12 @@ func resolveImportedHops(sources []state.Source, directions []configtypes.Direct
 			}
 			tag := strings.TrimSpace(hop.Tag)
 			if tag == "" || rootTags[tag] {
+				continue
+			}
+			if hits, inFile := fileTier[tag]; inFile && fromFile[i] {
+				if len(hits) == 1 {
+					*hop = hits[0]
+				}
 				continue
 			}
 			if id, ok := byTag[tag]; ok && !ambiguous[tag] {

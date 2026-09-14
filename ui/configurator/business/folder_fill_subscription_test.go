@@ -45,37 +45,61 @@ func fillTestSubNode(tag string, enabled bool) corestate.Node {
 
 // Заливка берёт узлы подписки как есть и штампует им subUrl; при повторном
 // вызове ничего не меняется (отдельного «обновить папку» нет — сценарий С5).
+//
+// detour владельца BYPASS на свой релей ведёт после заливки на КОПИЮ релея в
+// папке (NODE_LINK.md §9.3 п. 8): через узел подписки копия выпала бы из
+// конфига вместе с выключенной подпиской. Релей без копии в папке (тег занят
+// ручным узлом) оставляет ссылку на подписке — подменить цель нельзя.
 func TestFillFolderFromSubscription_FillsAndIsIdempotent(t *testing.T) {
+	owner := fillTestSubNode("NL-1", true)
+	owner.Detour = &corestate.NodeLink{FolderID: "01SUBFILL", Tag: "NL-1 · relay"}
+	relay := fillTestSubNode("NL-1 · relay", true)
+	relay.Service = true
+	blocked := fillTestSubNode("DE-1", false)
+	blocked.Detour = &corestate.NodeLink{FolderID: "01SUBFILL", Tag: "DE-1 · relay"}
+	manual := moveTestNode("DE-1 · relay", true, "")
 	m := &wizardmodels.WizardModel{Sources: []corestate.Source{
-		fillTestSub(fillTestSubNode("NL-1", true), fillTestSubNode("DE-1", false)),
-		moveTestFolder("01FOLDER", "My folder"),
+		fillTestSub(owner, relay, blocked, fillTestSubNode("DE-1 · relay", true)),
+		moveTestFolder("01FOLDER", "My folder", manual),
 	}}
 
 	res, err := FillFolderFromSubscription(m, "01FOLDER", "01SUBFILL")
 	if err != nil {
 		t.Fatalf("заливка отказала: %v", err)
 	}
-	if !res.Changed || len(res.Warnings) != 0 {
+	// Одно предупреждение ожидаемо: релей DE-1 отбит ручным узлом с тем же
+	// тегом.
+	if !res.Changed || len(res.Warnings) != 1 {
 		t.Fatalf("первая заливка: changed=%v warns=%v", res.Changed, res.Warnings)
 	}
 	folder := findFolder(t, m, "01FOLDER")
-	if len(folder.Nodes) != 2 {
+	if len(folder.Nodes) != 4 {
 		t.Fatalf("узлы не легли в папку: %+v", folder.Nodes)
 	}
-	for i := range folder.Nodes {
-		if folder.Nodes[i].Origin == nil || folder.Nodes[i].Origin.SubURL != fillTestSubURL {
-			t.Fatalf("узлу папки не проставлен subUrl: %+v", folder.Nodes[i].Origin)
+	for i := range folder.Nodes[1:] {
+		n := &folder.Nodes[i+1]
+		if n.Origin == nil || n.Origin.SubURL != fillTestSubURL {
+			t.Fatalf("узлу папки не проставлен subUrl: %+v", n.Origin)
 		}
-		if !folder.Nodes[i].Enabled {
-			t.Fatalf("новый узел обязан родиться включённым: %+v", folder.Nodes[i])
+		if !n.Enabled {
+			t.Fatalf("новый узел обязан родиться включённым: %+v", n)
 		}
+	}
+	if d := folder.Nodes[1].Detour; d == nil || d.FolderID != "01FOLDER" || d.Tag != "NL-1 · relay" {
+		t.Fatalf("detour копии не переуказан на копию релея: %+v", d)
+	}
+	if d := folder.Nodes[3].Detour; d == nil || d.FolderID != "01SUBFILL" || d.Tag != "DE-1 · relay" {
+		t.Fatalf("detour без копии релея в папке обязан остаться на подписке: %+v", d)
+	}
+	if d := m.Sources[0].Nodes[0].Detour; d == nil || d.FolderID != "01SUBFILL" {
+		t.Fatalf("заливка изменила detour узла подписки: %+v", d)
 	}
 
 	res2, err := FillFolderFromSubscription(m, "01FOLDER", "01SUBFILL")
 	if err != nil {
 		t.Fatalf("повторная заливка отказала: %v", err)
 	}
-	if res2.Changed || len(res2.Warnings) != 0 {
+	if res2.Changed || len(res2.Warnings) != 1 {
 		t.Fatalf("повторная заливка не идемпотентна: changed=%v warns=%v", res2.Changed, res2.Warnings)
 	}
 }

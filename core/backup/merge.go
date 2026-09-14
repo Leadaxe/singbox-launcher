@@ -435,28 +435,108 @@ func (a nodeAddr) resolve(s *state.State) *state.Node {
 
 // mergedInfo — что слияние обязано рассказать вызывающему.
 //
-// Два факта, которых по самому состоянию уже не восстановить: какие узлы
-// ПРИЕХАЛИ этим файлом (их секции участвуют в перенумерации оси) и как
-// переехали id папок (по ним переписываются ссылки detour/hops формата 1.0).
+// Факты, которых по самому состоянию уже не восстановить: какие узлы ПРИЕХАЛИ
+// этим файлом (их секции участвуют в перенумерации оси), как переехали id
+// контейнеров и куда легли узлы файла (по ним переписываются ссылки).
 type mergedInfo struct {
 	// nodes — узлы состояния, которые этот импорт принёс или обновил.
 	nodes []nodeAddr
-	// folderIDs — карта «id папки в файле → id папки здесь». Совпавшая по
-	// имени папка держит СВОЙ id, поэтому ссылки файла обязаны переехать.
+	// folderIDs — карта «id контейнера в файле → id здесь»: папки и
+	// подписки. Совпавший контейнер держит СВОЙ id, новый — id из файла или
+	// свежий ULID при коллизии, поэтому ссылки файла обязаны переехать.
 	folderIDs map[string]string
-	// linked — записи, чьи ссылки надо переписать по карте (detour, hops).
-	linked []nodeAddr
+	// linked — записи, чьи ссылки приехали файлом и подлежат переписи.
+	linked []linkedNode
+	// landed — где легли узлы файла, если слияние дало им другой адрес.
+	landed landings
 }
 
-func (m *mergedInfo) merge(other mergedInfo) {
-	m.nodes = append(m.nodes, other.nodes...)
-	m.linked = append(m.linked, other.linked...)
-	if m.folderIDs == nil {
-		m.folderIDs = other.folderIDs
+// linkedNode — запись со ссылками из файла.
+type linkedNode struct {
+	at nodeAddr
+	// fileContainer — id контейнера-владельца В ФАЙЛЕ у члена папки 1.0.
+	// Член группы без folder_id адресует свой контейнер (NODE_LINK.md §5.1
+	// № 8), и за переименованием, которое сделало слияние, он может пойти
+	// только по ключу файла. Пусто у корневых записей и у членов папки 0.x.
+	fileContainer string
+}
+
+// landings — куда легли узлы файла, когда слияние дало им ДРУГОЙ адрес, чем в
+// файле (NODE_LINK.md §7.2).
+//
+// Член папки, легший в совпавшую папку, уникализируется (`X` → `X-2`) или
+// узнаётся по телу в уже стоящем узле под его тегом; корневой узел
+// уникализируется в корневом пространстве или узнаётся по телу. Ссылки файла
+// написаны адресами ФАЙЛА, и оставить их как есть значило бы молча увести
+// ссылку на тёзку — узел приёмника с тем же тегом — или повесить её, а ссылка
+// никогда не переуказывается на другой узел (§6 правило 3).
+type landings struct {
+	// members — член контейнера файла 1.0: (id контейнера в файле, сырой тег
+	// в файле) → сырой тег здесь. Контейнер переписывается картой folderIDs.
+	members map[memberKey]string
+	// roots — корневой узел файла: тег в файле → тег здесь.
+	roots map[string]string
+	// legacyIDs — запись файла 0.x по своему id (`servers[].id`,
+	// `chains[].id`) → адрес узла здесь. В 0.12 `detour_node_source_id`
+	// адресовал источник-цель, а сервер там сам себе источник; в модели 1.0
+	// корневой узел адресуется `{tag}`, член папки — парой (§7.4).
+	legacyIDs map[string]state.NodeLink
+	// fileFinals — член папки файла 1.0 по ФИНАЛЬНОМУ тегу в файле (политика
+	// папки файла + сырой тег файла) → адреса здесь. Терпимость §7.3: ссылка
+	// `{tag: финальный}` называет узел именем из файла.
+	fileFinals map[string][]state.NodeLink
+	// legacyTags — член папки файла 0.x по сырому тегу в файле → адреса
+	// здесь (строковые позиции цепочек 0.x, resolveImportedHops).
+	legacyTags map[string][]state.NodeLink
+	// renamed — адреса здесь у членов, которых файл ДОБАВИЛ под другим тегом:
+	// здешнее имя такому члену дало слияние, и ссылка по этому имени называла
+	// кого-то другого.
+	renamed map[state.NodeLink]bool
+}
+
+// memberKey — член контейнера адресом ФАЙЛА.
+type memberKey struct {
+	folderID string
+	tag      string
+}
+
+func newLandings() landings {
+	return landings{
+		members:    map[memberKey]string{},
+		roots:      map[string]string{},
+		legacyIDs:  map[string]state.NodeLink{},
+		fileFinals: map[string][]state.NodeLink{},
+		legacyTags: map[string][]state.NodeLink{},
+		renamed:    map[state.NodeLink]bool{},
+	}
+}
+
+// root — корневой узел файла с тегом fileTag лёг здесь под тегом here.
+// Первая запись побеждает: два корневых узла файла с одним тегом — файл, в
+// котором ссылка по этому тегу и так неоднозначна.
+func (l *landings) root(fileTag, here string) {
+	if fileTag == "" {
 		return
 	}
-	for k, v := range other.folderIDs {
-		m.folderIDs[k] = v
+	if _, dup := l.roots[fileTag]; !dup {
+		l.roots[fileTag] = here
+	}
+}
+
+// member — член контейнера файла лёг здесь по адресу here. added — член
+// ДОБАВЛЕН этим импортом (а не узнан по телу в уже стоящем узле).
+func (l *landings) member(fileContainer, fileTag, fileFinal string, here state.NodeLink, added bool) {
+	if fileContainer != "" {
+		key := memberKey{folderID: fileContainer, tag: fileTag}
+		if _, dup := l.members[key]; !dup {
+			l.members[key] = here.Tag
+		}
+	}
+	if fileFinal != "" {
+		l.fileFinals[fileFinal] = append(l.fileFinals[fileFinal], here)
+	}
+	if added && here.Tag != fileTag {
+		l.renamed[here] = true
 	}
 }
 
@@ -479,34 +559,82 @@ func (m *mergedInfo) sectionRules(s *state.State) []*state.Rule {
 	return out
 }
 
-// rewriteFolderLinks переписывает ссылки на папки по карте «id файла → id
-// здесь» (формат 1.0).
+// rewriteLinks переписывает ссылки, приехавшие файлом, с адресов ФАЙЛА на
+// адреса здесь (NODE_LINK.md §7.2, §7.4): detour узлов, общий detour
+// контейнеров, `hops[]`, `group.members[]` и умолчание группы.
 //
-// Ссылка, чьей папки в файле не было, остаётся КАК ЕСТЬ — ровно как у 0.12:
-// импорт не выдумывает адрес, а сборка скажет о недостижимой цели сама
-// (fail-closed). Молча снять ссылку было бы хуже: узел тихо пошёл бы напрямую.
-func (m *mergedInfo) rewriteFolderLinks(s *state.State) {
-	if len(m.folderIDs) == 0 {
-		return
-	}
-	fix := func(link *state.NodeLink) {
-		if link == nil || link.FolderID == "" {
-			return
-		}
-		if local, ok := m.folderIDs[link.FolderID]; ok {
-			link.FolderID = local
-		}
-	}
-	for _, addr := range m.linked {
-		n := addr.resolve(s)
+// Ссылка, чьей цели в файле не было, остаётся КАК ЕСТЬ: импорт не выдумывает
+// адрес, а сборка скажет о недостижимой цели сама (fail-closed). Молча снять
+// ссылку было бы хуже: узел тихо пошёл бы напрямую.
+func (m *mergedInfo) rewriteLinks(s *state.State) {
+	for _, ln := range m.linked {
+		n := ln.at.resolve(s)
 		if n == nil {
 			continue
 		}
-		fix(n.Detour)
+		if n.Detour != nil {
+			*n.Detour = m.fileLinkHere(*n.Detour)
+		}
 		for i := range n.Hops {
-			fix(&n.Hops[i])
+			n.Hops[i] = m.fileLinkHere(n.Hops[i])
+		}
+		if n.Group != nil {
+			m.rewriteGroup(n.Group, ln.at.node >= 0, ln.fileContainer)
 		}
 	}
+}
+
+// fileLinkHere — адрес здесь для ссылки, записанной адресом файла.
+//
+// Ссылка без folder_id — корневое имя: переписывается, только если это
+// корневой узел файла, легший под другим тегом. Ссылка с folder_id — сперва
+// запись 0.x по своему id (сервер или цепочка как источник-цель), затем
+// контейнер по карте id и член контейнера по тегу, под которым он лёг.
+func (m *mergedInfo) fileLinkHere(link state.NodeLink) state.NodeLink {
+	if link.FolderID == "" {
+		if here, ok := m.landed.roots[link.Tag]; ok {
+			link.Tag = here
+		}
+		return link
+	}
+	if here, ok := m.landed.legacyIDs[link.FolderID]; ok {
+		return here
+	}
+	local, ok := m.folderIDs[link.FolderID]
+	if !ok {
+		return link
+	}
+	if here, ok := m.landed.members[memberKey{folderID: link.FolderID, tag: link.Tag}]; ok {
+		link.Tag = here
+	}
+	link.FolderID = local
+	return link
+}
+
+// rewriteGroup — состав и умолчание группы, приехавшей файлом.
+//
+// Умолчание — сырой тег члена — идёт за членом, которого называет: член лёг
+// под другим тегом, и умолчание обязано назвать его новым. Член без folder_id
+// внутри контейнера адресует свой контейнер, а не корень (§5.1 № 8): его форма
+// остаётся прежней, а тег идёт за переименованием по ключу контейнера файла.
+func (m *mergedInfo) rewriteGroup(g *state.AutoGroup, inContainer bool, fileContainer string) {
+	def, defDone := g.Default, false
+	for i := range g.Members {
+		mem := &g.Members[i]
+		before := mem.Tag
+		switch {
+		case mem.FolderID != "" || !inContainer:
+			*mem = m.fileLinkHere(*mem)
+		case fileContainer != "":
+			if here, ok := m.landed.members[memberKey{folderID: fileContainer, tag: mem.Tag}]; ok {
+				mem.Tag = here
+			}
+		}
+		if !defDone && def != "" && before == def {
+			def, defDone = mem.Tag, true
+		}
+	}
+	g.Default = def
 }
 
 // folderIndex — локальные папки, разложенные по обоим ключам сопоставления:
@@ -610,7 +738,7 @@ func (f *folderIndex) lookup(fileID, name string) (int, bool) {
 // импорта Направлений (см. applyDecoded): считать их здесь значило бы
 // уникализировать приехавший узел против Направления из того же файла.
 func mergeSources(s *state.State, items []decodedSource, rootTags map[string]bool, warns *[]Warning, cnt *mergeCounters) mergedInfo {
-	info := mergedInfo{folderIDs: map[string]string{}}
+	info := mergedInfo{folderIDs: map[string]string{}, landed: newLandings()}
 
 	// Индексы идентичности строятся ОДИН раз на проход и поддерживаются по
 	// ходу: пересобирать их на каждой записи значило бы не увидеть только что
@@ -675,6 +803,10 @@ func mergeSources(s *state.State, items []decodedSource, rootTags map[string]boo
 // записи, а вторая заведёт вторую подписку на тот же адрес.
 func mergeSubscriptionItem(s *state.State, item decodedSource, byURL map[string]int, takenIDs map[string]bool, cnt *mergeCounters, info *mergedInfo) {
 	incoming := item.Src
+	// id подписки В ФАЙЛЕ: им адресованы ссылки файла на её узлы
+	// (`{folder_id, tag}`), и он же ключ карты id — и у совпавшей по URL
+	// подписки (она держит свой id), и у новой (коллизия даёт свежий ULID).
+	fileID := incoming.ID
 	url := incoming.URL
 	at, hit := byURL[url]
 	if url == "" || !hit {
@@ -690,15 +822,20 @@ func mergeSubscriptionItem(s *state.State, item decodedSource, byURL map[string]
 		}
 		// Общий detour подписки — такая же ссылка на папку, как у узла, и
 		// переписки по карте id она требует ровно так же.
-		info.linked = append(info.linked, nodeAddr{src: at, node: -1})
+		info.linked = append(info.linked, linkedNode{at: nodeAddr{src: at, node: -1}})
 		cnt.AddedSubscriptions++
-		return
+	} else {
+		applySubscriptionSettings(&s.Sources[at], incoming, item.FullSettings)
+		// Настройки файла заместили detour локальной записи — значит ссылка
+		// теперь ИЗ ФАЙЛА, и её id тоже надо переписать.
+		info.linked = append(info.linked, linkedNode{at: nodeAddr{src: at, node: -1}})
+		cnt.UpdatedSubscriptions++
 	}
-	applySubscriptionSettings(&s.Sources[at], incoming, item.FullSettings)
-	// Настройки файла заместили detour локальной записи — значит ссылка
-	// теперь ИЗ ФАЙЛА, и её id тоже надо переписать.
-	info.linked = append(info.linked, nodeAddr{src: at, node: -1})
-	cnt.UpdatedSubscriptions++
+	// Узлы подписки в файл не едут, а сырые теги у обеих сторон одни и те же
+	// (IDENTITY.md §1) — ссылке на член подписки достаточно переписать id.
+	if fileID != "" {
+		info.folderIDs[fileID] = s.Sources[at].ID
+	}
 }
 
 // mergeServerItem — одиночный узел по ТЕЛУ (§9 пп. 2–3).
@@ -712,6 +849,9 @@ func mergeSubscriptionItem(s *state.State, item decodedSource, byURL map[string]
 // регистра: «DE» и «de » — две разные папки.
 func mergeServerItem(s *state.State, item decodedSource, rootBodies map[string]int, folderAt *folderIndex, rootTags map[string]bool, takenIDs map[string]bool, cnt *mergeCounters, info *mergedInfo) {
 	incoming := item.Src
+	// Имя и id узла В ФАЙЛЕ: ими его адресуют ссылки файла, а слияние вправе
+	// дать узлу другое имя (уникализация, узнавание по телу).
+	fileTag, fileID := incoming.NodeTagOrLabel(), incoming.ID
 	if item.Folder == "" {
 		key := nodeBodyKey(&incoming.Node)
 		if at, dup := rootBodies[key]; key != "" && dup {
@@ -720,6 +860,7 @@ func mergeServerItem(s *state.State, item decodedSource, rootBodies map[string]i
 			// пропала бы «пропуском без warning».
 			applyImportedSections(&s.Sources[at].Node, incoming.Node.Sections, item.Sections)
 			info.nodes = append(info.nodes, nodeAddr{src: at, node: -1})
+			info.landedRoot(fileTag, fileID, s.Sources[at].NodeTagOrLabel(), item.FullSettings)
 			cnt.SkippedServers++
 			return
 		}
@@ -735,12 +876,41 @@ func mergeServerItem(s *state.State, item decodedSource, rootBodies map[string]i
 			rootBodies[key] = at
 		}
 		info.nodes = append(info.nodes, nodeAddr{src: at, node: -1})
-		info.linked = append(info.linked, nodeAddr{src: at, node: -1})
+		info.linked = append(info.linked, linkedNode{at: nodeAddr{src: at, node: -1}})
+		info.landedRoot(fileTag, fileID, s.Sources[at].NodeTagOrLabel(), item.FullSettings)
 		cnt.AddedServers++
 		return
 	}
 
-	addFolderMember(s, ensureFolderAt(s, item.Folder, folderAt, cnt), incoming.Node, item.Sections, cnt, info)
+	folder := ensureFolderAt(s, item.Folder, folderAt, cnt)
+	here, added := addFolderMember(s, folder, incoming.Node, item.Sections, "", cnt, info)
+	// Член папки 0.x: в файле у папки нет ни записи, ни id, и ссылки файла
+	// адресуют сам сервер — id записи (`detour_node_source_id`) или сырым
+	// тегом (строковые позиции цепочек).
+	if !item.FullSettings && here.Tag != "" {
+		if fileID != "" {
+			info.landed.legacyIDs[fileID] = here
+		}
+		key := strings.TrimSpace(fileTag)
+		info.landed.legacyTags[key] = append(info.landed.legacyTags[key], here)
+		info.landed.member("", fileTag, "", here, added)
+	}
+}
+
+// landedRoot — корневой узел файла (тег fileTag, id записи fileID) лёг здесь
+// под тегом here.
+//
+// id записи запоминается только у формата 0.x (fullSettings == false): лишь
+// там id сервера бывает адресом ссылки (`detour_node_source_id`); в 1.0 id
+// корневого узла адресом не является (NODE_LINK.md §2 п. 5).
+func (m *mergedInfo) landedRoot(fileTag, fileID, here string, fullSettings bool) {
+	if here == "" {
+		return
+	}
+	m.landed.root(fileTag, here)
+	if !fullSettings && fileID != "" {
+		m.landed.legacyIDs[fileID] = state.NodeLink{Tag: here}
+	}
 }
 
 // mergeFolderItem — папка формата 1.0: сама папка по ID, затем по ИМЕНИ, её
@@ -772,7 +942,7 @@ func mergeFolderItem(s *state.State, item decodedSource, folderAt *folderIndex, 
 		at = len(s.Sources)
 		folderAt.addCreated(incoming.ID, incoming.Name, at)
 		s.Sources = append(s.Sources, incoming)
-		info.linked = append(info.linked, nodeAddr{src: at, node: -1})
+		info.linked = append(info.linked, linkedNode{at: nodeAddr{src: at, node: -1}})
 		cnt.AddedFolders++
 	} else if item.FullSettings {
 		// Состав не трогаем: он сливается ниже по телу (§9 п. 3). Заменяются
@@ -780,7 +950,7 @@ func mergeFolderItem(s *state.State, item decodedSource, folderAt *folderIndex, 
 		// не выражала вовсе (поэтому под флагом: у 0.x папки отдельной записи
 		// нет, она собирается из членов, и «пустых настроек» там не бывает).
 		applyFolderSettings(&s.Sources[at], item.Src)
-		info.linked = append(info.linked, nodeAddr{src: at, node: -1})
+		info.linked = append(info.linked, linkedNode{at: nodeAddr{src: at, node: -1}})
 		cnt.UpdatedFolders++
 	}
 	if item.FileFolderID != "" {
@@ -788,7 +958,14 @@ func mergeFolderItem(s *state.State, item decodedSource, folderAt *folderIndex, 
 	}
 	for i, n := range item.Src.Nodes {
 		present := i < len(item.MemberSections) && item.MemberSections[i]
-		addFolderMember(s, at, n, present, cnt, info)
+		fileTag := n.Tag
+		here, added := addFolderMember(s, at, n, present, item.FileFolderID, cnt, info)
+		if here.Tag == "" {
+			continue
+		}
+		// Финальный тег в файле — с политикой ПАПКИ ФАЙЛА: ссылка без
+		// folder_id называет член тем именем, которое он носил там.
+		info.landed.member(item.FileFolderID, fileTag, strings.TrimSpace(item.Src.TagPolicy.FinalTag(fileTag)), here, added)
 	}
 }
 
@@ -822,13 +999,18 @@ func ensureFolderAt(s *state.State, name string, folderAt *folderIndex, cnt *mer
 // «рабочая», другая «запасная»), и схлопывать её импорт не вправе.
 // Существующие члены остаются на местах, новые дописываются в конец в порядке
 // файла, тег уникализируется внутри папки.
-func addFolderMember(s *state.State, folderAt int, node state.Node, sectionsPresent bool, cnt *mergeCounters, info *mergedInfo) {
+//
+// Возвращает адрес, под которым член лёг здесь (узнанный по телу — адрес уже
+// стоящего узла), и признак «добавлен»: по ним ссылки файла идут за членом,
+// которого слияние переименовало (NODE_LINK.md §7.2). fileContainer — id папки
+// в файле (1.0), им ключуются члены групп без folder_id.
+func addFolderMember(s *state.State, folderAt int, node state.Node, sectionsPresent bool, fileContainer string, cnt *mergeCounters, info *mergedInfo) (state.NodeLink, bool) {
 	folder := &s.Sources[folderAt]
 	if hit := folderNodeWithBody(folder, &node); hit >= 0 {
 		applyImportedSections(&folder.Nodes[hit], node.Sections, sectionsPresent)
 		info.nodes = append(info.nodes, nodeAddr{src: folderAt, node: hit})
 		cnt.SkippedServers++
-		return
+		return state.NodeLink{FolderID: folder.ID, Tag: folder.Nodes[hit].Tag}, false
 	}
 	taken := map[string]bool{}
 	for i := range folder.Nodes {
@@ -838,8 +1020,9 @@ func addFolderMember(s *state.State, folderAt int, node state.Node, sectionsPres
 	folder.Nodes = append(folder.Nodes, node)
 	at := len(folder.Nodes) - 1
 	info.nodes = append(info.nodes, nodeAddr{src: folderAt, node: at})
-	info.linked = append(info.linked, nodeAddr{src: folderAt, node: at})
+	info.linked = append(info.linked, linkedNode{at: nodeAddr{src: folderAt, node: at}, fileContainer: fileContainer})
 	cnt.AddedServers++
+	return state.NodeLink{FolderID: folder.ID, Tag: node.Tag}, true
 }
 
 // mergeChainItem — цепочка по ТЕГУ (§9 п. 4).
@@ -861,6 +1044,12 @@ func mergeChainItem(s *state.State, item decodedSource, existingChains map[strin
 		// отличить от второй такой же.
 		return
 	}
+	// Цепочка адресуется тегом, и тег у неё один на обе стороны: ссылка 0.x
+	// по id записи (`detour_node_source_id`) ведёт к цепочке с этим тегом —
+	// приехавшей или своей (§9 п. 4).
+	if !item.FullSettings && item.Src.ID != "" {
+		info.landed.legacyIDs[item.Src.ID] = state.NodeLink{Tag: tag}
+	}
 	if existingChains[tag] {
 		*warns = append(*warns, Warning{Code: WarnBackupChainExists, Detail: tag})
 		return
@@ -872,7 +1061,7 @@ func mergeChainItem(s *state.State, item decodedSource, existingChains map[strin
 	incoming.ID = freshIDIfTaken(incoming.ID, takenIDs)
 	takenIDs[incoming.ID] = true
 	s.Sources = append(s.Sources, incoming)
-	info.linked = append(info.linked, nodeAddr{src: len(s.Sources) - 1, node: -1})
+	info.linked = append(info.linked, linkedNode{at: nodeAddr{src: len(s.Sources) - 1, node: -1}})
 	existingChains[tag] = true
 	cnt.AddedChains++
 }

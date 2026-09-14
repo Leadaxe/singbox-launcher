@@ -247,14 +247,14 @@ func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
 			Canonical: &configtypes.CanonicalSource{
 				Nodes: []configtypes.CanonicalNode{{Kind: "chain", Tag: cc.Tag, Enabled: true}},
 			},
-			Chain: &configtypes.SourceChain{
+			Chains: []configtypes.BuiltChain{{Tag: cc.Tag, Chain: &configtypes.SourceChain{
 				Hops:                      cc.Hops,
 				IdleTimeout:               cc.IdleTimeout,
 				InterruptExistConnections: cc.InterruptExistConnections,
 				StripEvasion:              cc.StripEvasion,
 				Strip:                     cc.Strip,
 				Rewrite:                   cc.Rewrite,
-			},
+			}}},
 		})
 	}
 	for _, cd := range in.Directions {

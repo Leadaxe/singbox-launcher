@@ -20,9 +20,9 @@
 //   - «Node info…» / «Rename…» → `showSourceEditWindow` — окно источника, то
 //     же, что открывает карандаш. Оно и есть форма правки верхнего узла: тег
 //     правится полем `nodeTagEntry`, а на Save отрабатывает
-//     `resetRefsAfterNodeRename` (гашение ссылок на прежнюю идентичность) и
+//     `repointRefsAfterRootNodeRename` (перепись ссылок на новое имя) и
 //     `staleSelectionAfterEdit`. Своего диалога переименования здесь заводить
-//     нельзя: у формы есть сброс ссылок на Save, у второго пути его не было бы.
+//     нельзя: у формы есть перепись ссылок на Save, у второго пути её не было бы.
 //   - «Delete» → `showSourceRowDeleteDialog` — тот же путь, что у корзины
 //     строки, вместе с веткой непустой папки (сценарий С7).
 //   - «Copy JSON» / «Copy tag» — то же, что у одноимённых пунктов строки узла
@@ -30,7 +30,7 @@
 //     правила.
 //   - «Copy to…» / «Move to…» → `previewNodeOps`
 //     (showMoveOrCopyDialog / applyMoveOrCopy) — тот же диалог, тот же
-//     showStaleSelectionDialog и тот же showDetourRefsResetDialog, что в
+//     showStaleSelectionDialog и тот же showNodeRefsRepointedDialog, что в
 //     Preview. Второй набор диалогов разъехался бы с первым текстами и
 //     проверками, а операция под ними одна.
 //

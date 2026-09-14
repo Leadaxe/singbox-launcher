@@ -36,7 +36,8 @@ func richState() *state.State {
 			ID: "01SUB0000000000000000000",
 			Node: state.Node{
 				Kind: state.SourceKindSubscription, Enabled: true,
-				Detour: &state.NodeLink{FolderID: "01SRV0000000000000000000", Tag: "🔥 WARP"},
+				// Корневой узел адресуется своим тегом (NODE_LINK.md §2 п. 5).
+				Detour: &state.NodeLink{Tag: "🔥 WARP"},
 			},
 			URL: "https://example-1.com/sub", Name: "Main", MaxNodes: 200,
 			TagPolicy:       &state.TagPolicy{Prefix: "[A] "},

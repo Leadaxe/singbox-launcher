@@ -484,21 +484,31 @@ func ruleEntryLabel(name string, index int) string {
 //     литерал (importKnownTags, reservedTargetLiteral). Корень сильнее члена
 //     папки — ровно как у Resolve, который туда смотрит первым;
 //   - тег совпал с финальным тегом (TagPolicy.FinalTag) РОВНО ОДНОГО члена
-//     папки или подписки результата,
+//     папки или подписки,
 //
-// — в `{folder_id: <id контейнера здесь>, tag: <сырой тег члена>}`.
+// — в `{folder_id: <id контейнера здесь>, tag: <сырой тег члена здесь>}`.
+//
+// Финальный тег сверяется в два яруса. Сперва — пространство ФАЙЛА: члены
+// папок файла под теми именами, которые они носили в файле
+// (mergedInfo.landed.fileFinals), и узлы подписок, приехавших файлом (их
+// узлы в файл не едут, но сырые теги у сторон одни и те же, а политика тегов
+// после слияния — файловая). Ссылка файла называет узел файла, и член,
+// которого слияние уникализировало или узнало по телу под другим тегом,
+// находится по прежнему имени, а не уводит ссылку на здешнего тёзку
+// (NODE_LINK.md §7.2). Не нашлось в файле — члены результата (член может
+// лежать в локальной папке, которой в файле нет), кроме добавленных файлом под
+// другим тегом: их здешнее имя файлу не принадлежит.
 //
 // Совпало несколько — ссылка остаётся как есть: выбирать за пользователя
 // нечем, а своего кода висячей ссылки у импорта нет — недостижимая цель
 // вопрос сборки, где она уходит fail-closed с названной причиной (§4, §6).
 // Трогаются только ссылки, приехавшие ЭТИМ файлом (linked).
 //
-// Проход идёт после слияния и переписи folder_id по карте id: сопоставлять
-// надо с составом РЕЗУЛЬТАТА — член может лежать в локальной папке, которой
-// в файле нет, или в папке файла, объявленной ниже ссылки.
-func normalizeMemberLinks10(s *state.State, linked []nodeAddr, rootNames []string) {
-	type member struct{ folderID, tag string }
-	byFinal := map[string][]member{}
+// Проход идёт после слияния и переписи адресов: сопоставлять надо с составом
+// РЕЗУЛЬТАТА — член может лежать в локальной папке, которой в файле нет, или
+// в папке файла, объявленной ниже ссылки.
+func normalizeMemberLinks10(s *state.State, merged *mergedInfo, rootNames []string) {
+	byFinal := map[string][]state.NodeLink{}
 	for i := range s.Sources {
 		src := &s.Sources[i]
 		if src.Kind != state.SourceKindFolder && src.Kind != state.SourceKindSubscription {
@@ -515,11 +525,30 @@ func normalizeMemberLinks10(s *state.State, linked []nodeAddr, rootNames []strin
 			if raw == "" || n.IsUnsupported() {
 				continue
 			}
+			here := state.NodeLink{FolderID: src.ID, Tag: n.Tag}
+			if merged.landed.renamed[here] {
+				continue
+			}
 			final := strings.TrimSpace(src.TagPolicy.FinalTag(raw))
-			byFinal[final] = append(byFinal[final], member{folderID: src.ID, tag: n.Tag})
+			byFinal[final] = append(byFinal[final], here)
 		}
 	}
-	if len(byFinal) == 0 {
+	fileTier := make(map[string][]state.NodeLink, len(merged.landed.fileFinals))
+	for final, hits := range merged.landed.fileFinals {
+		fileTier[final] = append([]state.NodeLink(nil), hits...)
+	}
+	for _, sub := range linkedSubscriptions(s, merged) {
+		for j := range sub.Nodes {
+			n := &sub.Nodes[j]
+			raw := strings.TrimSpace(n.Tag)
+			if raw == "" || n.IsUnsupported() {
+				continue
+			}
+			final := strings.TrimSpace(sub.TagPolicy.FinalTag(raw))
+			fileTier[final] = append(fileTier[final], state.NodeLink{FolderID: sub.ID, Tag: n.Tag})
+		}
+	}
+	if len(byFinal) == 0 && len(fileTier) == 0 {
 		return
 	}
 	root := make(map[string]bool, len(rootNames))
@@ -536,13 +565,16 @@ func normalizeMemberLinks10(s *state.State, linked []nodeAddr, rootNames []strin
 		if tag == "" || root[tag] || reservedTargetLiteral(tag) {
 			return
 		}
-		if hits := byFinal[tag]; len(hits) == 1 {
-			link.FolderID = hits[0].folderID
-			link.Tag = hits[0].tag
+		hits, inFile := fileTier[tag]
+		if !inFile {
+			hits = byFinal[tag]
+		}
+		if len(hits) == 1 {
+			*link = hits[0]
 		}
 	}
-	for _, addr := range linked {
-		n := addr.resolve(s)
+	for _, ln := range merged.linked {
+		n := ln.at.resolve(s)
 		if n == nil {
 			continue
 		}
@@ -551,6 +583,21 @@ func normalizeMemberLinks10(s *state.State, linked []nodeAddr, rootNames []strin
 			fix(&n.Hops[i])
 		}
 	}
+}
+
+// linkedSubscriptions — подписки результата, приехавшие этим файлом (новые и
+// узнанные по URL).
+func linkedSubscriptions(s *state.State, merged *mergedInfo) []*state.Source {
+	var out []*state.Source
+	for _, ln := range merged.linked {
+		if ln.at.node >= 0 || ln.at.src < 0 || ln.at.src >= len(s.Sources) {
+			continue
+		}
+		if src := &s.Sources[ln.at.src]; src.Kind == state.SourceKindSubscription && src.ID != "" {
+			out = append(out, src)
+		}
+	}
+	return out
 }
 
 // decode10DNS — секция dns 1.0: записи состояния копиями.

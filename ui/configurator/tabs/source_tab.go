@@ -1331,12 +1331,25 @@ func showSourceRowDeleteDialog(
 			if m == nil || sourceIndex < 0 || sourceIndex >= len(m.Sources) {
 				return
 			}
+			// Верхний узел: его имя берётся ДО выреза — после него взять негде.
+			// У контейнера (папки, подписки) имени-адреса нет, и его удаление
+			// ссылок не гасит (NODE_LINK.md §6).
+			rootNodeTag := ""
+			if sourceRowNodeOpsAllowed(m.Sources[sourceIndex].Kind) {
+				rootNodeTag = strings.TrimSpace(m.Sources[sourceIndex].NodeTagOrLabel())
+			}
 			// SPEC 122 норма 1: строка уходит ВМЕСТЕ с составом — корневой
 			// узел tailnet либо контейнер со своими tailnet-узлами; каталоги
 			// их состояния уходят следом.
 			wizardbusiness.RemoveTailscaleStateDirsForSource(&m.Sources[sourceIndex])
 			m.Sources = append(m.Sources[:sourceIndex], m.Sources[sourceIndex+1:]...)
+			// Ссылки на удалённый верхний узел гаснут вместе с ним (решение
+			// владельца 15.09.2026). ДО applySourceMutation: её обновление
+			// опций сбрасывает осиротевшие цели правил, и назвать их после
+			// было бы уже не по чему.
+			affected := wizardbusiness.ClearRootNodeRefs(m, rootNodeTag)
 			applySourceMutation(presenter, guiState)
+			showNodeRefsClearedDialog(guiState.Window, rootNodeTag, affected)
 		},
 		guiState.Window,
 	)

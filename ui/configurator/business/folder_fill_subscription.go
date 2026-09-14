@@ -107,6 +107,10 @@ func FillFolderFromSubscription(m *wizardmodels.WizardModel, folderID, subID str
 	material := &corestate.SubFetchMaterial{
 		Nodes:     make([]corestate.Node, 0, len(sub.Nodes)),
 		Truncated: sub.UpdateStatus != nil && sub.UpdateStatus.Truncated,
+		// Ссылки узлов подписки на соседей по ней (detour владельца BYPASS на
+		// свой релей) merge переуказывает на копии в папке — по этому id он
+		// их и узнаёт.
+		SourceID: strings.TrimSpace(sub.ID),
 	}
 	for i := range sub.Nodes {
 		// Неразобранные записи (kind=unsupported, SPEC 116 W11) в папку не
