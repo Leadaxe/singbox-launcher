@@ -97,6 +97,7 @@ sing-box), тогда всё будет проще и отлаживать, и �
 
 Целевая запись правила: `{ "kind": "inline", "name": "…", "enabled": true, "num": 1000, "body": { "domain_suffix": ["example.com"], "outbound": "proxy" } }`;
 srs: `{ "kind": "srs", "name": "…", "enabled": true, "num": 1010, "refs": ["https://…/a.srs", "https://…/b.srs"], "body": { "outbound": "proxy" } }` — `rule_set` в `body` пишет сборка.
+`body` — ровно один объект правила sing-box; массив на входе раскладывается на записи `name`, `name #2`… (норма «одно правило — одно тело», `BACKUP.md` §2, D-111).
 
 ### DNS-сервер и DNS-правило
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -371,6 +372,61 @@ func TestImport10UnknownOutboundDisablesRule(t *testing.T) {
 	}
 	if !hasWarn(res.Warnings, WarnBackupUnknownOutbound) {
 		t.Errorf("не названо: %v", res.Warnings)
+	}
+}
+
+// Норма «одно правило — одно тело» (D-111) на входе 1.0: запись с массивом в
+// `body` обязана дать РОВНО то состояние, что те же правила, развёрнутые в
+// файле подряд, — тогда и config.json из них байт-в-байт тот же. Заодно
+// проверяется, что части — обычные записи: у каждой своя проверка цели
+// (выключена только часть с мёртвой целью), `id` другой стороны остаётся у
+// первой, не-объект отбрасывается прежним кодом, соседние записи не
+// перемешиваются с частями по оси.
+func TestImport10RuleBodyArrayEqualsExpandedRecords(t *testing.T) {
+	num := func(n int) *int { return &n }
+	rule := func(name, id string, n int, body string) state.Rule {
+		return state.Rule{Kind: state.RuleKindInline, ID: id, Name: name, Enabled: true, Num: num(n), Body: json.RawMessage(body)}
+	}
+	const (
+		first  = `{"domain_suffix":["m.example-1.com"],"outbound":"vpn-3"}`
+		second = `{"ip_cidr":["203.0.113.0/24"],"action":"reject","method":"drop"}`
+	)
+	arrayFile := &Backup10{LxBackup: FormatVersion10, Rules: []state.Rule{
+		rule("After", "", 1002, `{"domain_suffix":["a.example-1.com"],"outbound":"proxy"}`),
+		rule("Mixed", "lx-1", 1001, `[`+first+`,`+second+`,42]`),
+	}}
+	expandedFile := &Backup10{LxBackup: FormatVersion10, Rules: []state.Rule{
+		rule("After", "", 1002, `{"domain_suffix":["a.example-1.com"],"outbound":"proxy"}`),
+		rule("Mixed", "lx-1", 1001, first),
+		rule("Mixed #2", "", 1001, second),
+	}}
+	opts := ImportOptions{KnownOutbounds: []string{"proxy", "direct"}}
+
+	fromArray := &state.State{}
+	res, err := Import10(fromArray, arrayFile, opts)
+	if err != nil {
+		t.Fatalf("Import10 (массив): %v", err)
+	}
+	fromExpanded := &state.State{}
+	if _, err := Import10(fromExpanded, expandedFile, opts); err != nil {
+		t.Fatalf("Import10 (развёрнутые записи): %v", err)
+	}
+
+	if !reflect.DeepEqual(fromArray.Rules, fromExpanded.Rules) {
+		t.Fatalf("массив в body дал не то же состояние, что развёрнутые записи:\n%+v\n%+v", fromArray.Rules, fromExpanded.Rules)
+	}
+	names := make([]string, 0, len(fromArray.Rules))
+	for _, r := range fromArray.Rules {
+		names = append(names, r.Name)
+	}
+	if want := []string{"Mixed", "Mixed #2", "After"}; !equalStrings(names, want) {
+		t.Errorf("порядок оси %v, ожидался %v", names, want)
+	}
+	if fromArray.Rules[0].Enabled || !fromArray.Rules[1].Enabled {
+		t.Errorf("проверка цели не по частям: enabled %v / %v", fromArray.Rules[0].Enabled, fromArray.Rules[1].Enabled)
+	}
+	if !hasWarn(res.Warnings, WarnBackupUnknownField) || !hasWarn(res.Warnings, WarnBackupUnknownOutbound) {
+		t.Errorf("не названы отброшенный элемент и мёртвая цель: %v", res.Warnings)
 	}
 }
 

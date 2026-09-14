@@ -11,6 +11,7 @@ package backup
 //	config_json / uri          → Node.Body / Origin
 //	servers[].folder           → папка, собранная ПО ИМЕНИ
 //	rules[]: match + outbound  → Rule.Body (конструкторами состояния)
+//	rules[]: kind=json, match  → inline-записи, тело как есть (splitRuleBodies)
 //	rules[]: ref / refs        → Rule.Refs
 //	dnsRef: name + value       → DNSServer.Tag + Body
 //	chains[].chain             → Node.Body + Node.Hops
@@ -47,7 +48,7 @@ var errSkipRule = errors.New("rule skipped")
 // Порядок разделов внутри decodedFile повторяет порядок файла: слияние
 // опирается на него (§9 п. 8, «новые встают в конец, в порядке файла»).
 func decodeLegacy(b *Backup, opts ImportOptions) (*decodedFile, error) {
-	out := &decodedFile{}
+	out := &decodedFile{Format: FileFormatLegacy}
 
 	// Подписки. Индекс нужен ДЛЯ ТЕГА ЗАМЕНЫ: контракт 0.x его не несёт, и
 	// обе стороны обязаны вывести один и тот же позиционный дериватив.
@@ -111,8 +112,8 @@ func decodeLegacy(b *Backup, opts ImportOptions) (*decodedFile, error) {
 	}
 	known := newTagSet(knownTags)
 	presets := newTagSet(opts.KnownPresets)
-	for _, r := range b.Rules {
-		rule, warns, err := importRule(r, known, presets)
+	for i, r := range b.Rules {
+		rules, warns, err := importRule(r, i, known, presets)
 		out.Warnings = append(out.Warnings, warns...)
 		if errors.Is(err, errSkipRule) {
 			continue // правило не наше — пропущено с warning, импорт живёт
@@ -120,7 +121,7 @@ func decodeLegacy(b *Backup, opts ImportOptions) (*decodedFile, error) {
 		if err != nil {
 			return nil, fmt.Errorf("rule %q: %w", ruleLabel(r), err)
 		}
-		out.Rules = append(out.Rules, rule)
+		out.Rules = append(out.Rules, rules...)
 	}
 
 	out.DNS = decodeLegacyDNS(b.DNS)
@@ -438,7 +439,21 @@ func importChain(in Chain) (state.Source, []Warning) {
 	return src, warns
 }
 
-func importRule(r Rule, known, presets tagSet) (state.Rule, []Warning, error) {
+// importRule — запись rules[] файла 0.x в записи состояния.
+//
+// Записей может получиться несколько: сырое правило `kind: json` с массивом
+// тел раскладывается по норме «одно правило — одно тело» (importJSONRule).
+// index — номер записи в файле, им называется безымянная запись в
+// предупреждении.
+func importRule(r Rule, index int, known, presets tagSet) ([]state.Rule, []Warning, error) {
+	if RuleKind(r.Kind) == RuleJSON {
+		rules, warns := importJSONRule(r, index, known, presets)
+		if len(rules) == 0 {
+			return nil, warns, errSkipRule
+		}
+		return rules, warns, nil
+	}
+
 	var warns []Warning
 	enabled := r.Enabled == nil || *r.Enabled
 
@@ -451,12 +466,7 @@ func importRule(r Rule, known, presets tagSet) (state.Rule, []Warning, error) {
 		warns = append(warns, Warning{Code: WarnBackupUnknownOutbound, Detail: ruleLabel(r) + " → " + r.Outbound})
 	}
 
-	// Ось: бэкап несёт номер как float64 (схема 0.12), состояние — как int.
-	var num *int
-	if r.Num != nil {
-		n := int(*r.Num)
-		num = &n
-	}
+	num := legacyRuleNum(r)
 
 	// Тело записи пишут только конструкторы состояния (SPEC 127 §0) — здесь
 	// свой json.Marshal(XBody) больше не собирается.
@@ -472,7 +482,7 @@ func importRule(r Rule, known, presets tagSet) (state.Rule, []Warning, error) {
 		var match map[string]interface{}
 		if len(r.Match) > 0 {
 			if err := json.Unmarshal(r.Match, &match); err != nil {
-				return state.Rule{}, warns, fmt.Errorf("match: %w", err)
+				return nil, warns, fmt.Errorf("match: %w", err)
 			}
 		}
 		out = state.NewInlineRule(r.Name, match, r.Outbound)
@@ -484,21 +494,61 @@ func importRule(r Rule, known, presets tagSet) (state.Rule, []Warning, error) {
 			urls = []string{r.Ref}
 		}
 		out = state.NewSrsRule(r.Name, urls, r.Outbound)
-	case RuleJSON:
-		// kind=json — сырое правило другой стороны: применять вслепую нельзя
-		// (структура чужая). Но и ронять весь импорт из-за одного правила
-		// нельзя — пользователь потеряет всё остальное. Правило
-		// пропускается, факт называется.
-		return state.Rule{}, append(warns, Warning{Code: WarnBackupUnknownField, Detail: "rules[].kind=json: " + ruleLabel(r)}), errSkipRule
 	default:
-		return state.Rule{}, append(warns, Warning{Code: WarnBackupUnknownField, Detail: "rules[].kind=" + string(r.Kind)}), errSkipRule
+		return nil, append(warns, Warning{Code: WarnBackupUnknownField, Detail: "rules[].kind=" + string(r.Kind)}), errSkipRule
 	}
 
 	// Конструкторы задают вид и тело; метаданные записи дописываются поверх.
 	out.Enabled = enabled
 	out.Num = num
 
-	return out, warns, nil
+	return []state.Rule{out}, warns, nil
+}
+
+// importJSONRule — `kind: json` файла 0.x: сырое правило sing-box в `match`
+// (схема 0.12: «kind=inline|json: sing-box rule-фрагмент»).
+//
+// Раньше такое правило пропускалось целиком с backup_unknown_field — «структура
+// чужая». Чужой она не была: это правило sing-box как есть, то есть ровно
+// запись 1.0 (BACKUP.md §11: вид json снят, «это был тот же inline»), и
+// пропуск стоил пользователю рабочего правила. Теперь запись становится
+// inline-записью с телом как есть и проходит норму «одно правило — одно тело»
+// ТОЙ ЖЕ функцией, что вход 1.0 (splitRuleBodies): объект — одна запись,
+// массив — по записи на элемент, не-объект и битый JSON — отброс с прежним
+// кодом backup_unknown_field.
+//
+// Цель остаётся В ТЕЛЕ: `outbound` | `action` правила sing-box. Плоский
+// `outbound` записи к json-правилу не применяется — вторая цель рядом с телом
+// была бы второй правдой о том, куда правило ведёт. Проверка цели та же, что у
+// записи 1.0 (decode10Rule): цель, которой нет, выключает часть с
+// backup_unknown_outbound. Часть без цели ввозится как есть — так же лаунчер
+// ввозит inline-правило 0.x без `outbound` и запись 1.0 без цели в теле.
+func importJSONRule(r Rule, index int, known, presets tagSet) ([]state.Rule, []Warning) {
+	rec := state.Rule{
+		Kind:    state.RuleKindInline,
+		Name:    r.Name,
+		Enabled: r.Enabled == nil || *r.Enabled,
+		Num:     legacyRuleNum(r),
+		Body:    append(json.RawMessage(nil), r.Match...),
+	}
+	parts, warns := splitRuleBodies(rec, "rules["+ruleEntryLabel(r.Name, index)+"].match")
+	out := make([]state.Rule, 0, len(parts))
+	for _, part := range parts {
+		rule, w := decode10Rule(part, known, presets)
+		warns = append(warns, w...)
+		out = append(out, rule)
+	}
+	return out, warns
+}
+
+// legacyRuleNum — номер оси записи 0.x: бэкап несёт его как float64 (схема
+// 0.12), состояние — как int.
+func legacyRuleNum(r Rule) *int {
+	if r.Num == nil {
+		return nil
+	}
+	n := int(*r.Num)
+	return &n
 }
 
 func ruleLabel(r Rule) string {

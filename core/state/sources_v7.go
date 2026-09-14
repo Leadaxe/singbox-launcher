@@ -75,6 +75,22 @@ func (t *TagPolicy) IsZero() bool {
 	return t.Prefix == "" && t.Postfix == ""
 }
 
+// FinalTag — финальный тег узла контейнера с этой политикой: prefix + сырой
+// тег + postfix; nil-политика отдаёт сырой тег как есть.
+//
+// Формула одна на всех, кому финальный тег нужен ВНЕ эмиссии: каталог
+// состояния Tailscale (вызывающие core/config и ui/configurator/business) и
+// импорт бэкапа, где ссылку без folder_id сопоставляют с членом папки
+// (core/backup/import10.go). Суффикса уникализации и раскрытия переменных
+// ({$num} и прочих) здесь нет и быть не может: их даёт только сборка —
+// глобальный счётчик и порядок эмиссии, которых у этих мест нет.
+func (t *TagPolicy) FinalTag(raw string) string {
+	if t == nil {
+		return raw
+	}
+	return t.Prefix + raw + t.Postfix
+}
+
 // AutoStrategy = configtypes.DirectionAuto — перенос, не изобретение
 // (strategy-К1): 9 полей, включая TemplateInt-tolerance и трёхзначный
 // interrupt.
