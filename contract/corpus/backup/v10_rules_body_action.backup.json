@@ -1,0 +1,53 @@
+{
+  "lx_backup": 2,
+  "exported_by": { "app": "launcher", "version": "corpus", "platform": "test" },
+  "exported_at": "2026-09-14T00:00:00Z",
+  "rules": [
+    {
+      "kind": "inline",
+      "name": "Ads to reject",
+      "enabled": true,
+      "num": 1000,
+      "body": { "domain_suffix": [".ads.example-2.com"], "action": "reject" }
+    },
+    {
+      "kind": "inline",
+      "name": "Trackers to drop",
+      "enabled": true,
+      "num": 1010,
+      "body": { "domain_suffix": [".track.example-2.com"], "action": "reject", "method": "drop" }
+    },
+    {
+      "kind": "inline",
+      "name": "Corp to proxy",
+      "enabled": true,
+      "num": 1020,
+      "body": { "domain_suffix": [".corp.example-1.com"], "outbound": "proxy" }
+    },
+    {
+      "kind": "inline",
+      "name": "Off by the owner",
+      "enabled": false,
+      "num": 1030,
+      "body": { "domain_suffix": [".off.example-1.com"], "outbound": "proxy" }
+    },
+    {
+      "kind": "srs",
+      "name": "Two sets",
+      "enabled": true,
+      "num": 1040,
+      "refs": [
+        "https://example-3.com/geosite-ru.srs",
+        "https://example-3.com/geoip-ru.srs"
+      ],
+      "body": { "outbound": "proxy" }
+    },
+    {
+      "kind": "preset",
+      "ref": "block_ads",
+      "enabled": true,
+      "num": 1050,
+      "vars": { "list_mode": "strict" }
+    }
+  ]
+}

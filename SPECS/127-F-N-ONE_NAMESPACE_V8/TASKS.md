@@ -337,8 +337,13 @@ func (r *Rule) SetOutbound(outbound string) error  // переписать це�
   локальной папки» (совпавшая по имени папка держит локальный id, новая —
   id из файла; сегодня это делает `freshIDIfTaken`/`resolveImportedHops`
   для 0.12 — та же механика, только ключ теперь `folder_id`, а не тег).
-  Ссылка, чью папку в файле не нашли, — как сегодня у 0.12 (`detour` снимается
-  с предупреждением прежним кодом).
+  Ссылка, чью папку в файле не нашли, ввозится КАК ЕСТЬ — как сегодня у 0.12
+  (`importNodeLinkRef` строит ссылку без проверки достижимости и ничего не
+  предупреждает). Недостижимая цель — вопрос сборки (fail-closed у `detour`,
+  `chain_hop_missing` у хопа), а не импорта: снять ссылку значило бы молча
+  пустить узел напрямую. **Исправлено на этапе FIX:** первая редакция этого
+  абзаца и BACKUP.md §6 утверждали «снимается с предупреждением» — поведения,
+  которого нет ни у одного входа.
 
 **Состояние v8 дополняется (без смены номера схемы — v8 ещё не выпущен):**
 `Source.Identity *SubscriptionIdentity{UserAgent, HWID, SendHWID, HashDeviceModel}`
@@ -566,3 +571,394 @@ DNS-записями; добавлена сверка СОСТОЯНИЯ пос�
       `node_sections_roundtrip_test.go`); новых файлов нет. Каждый проверен
       мутацией. Полный прогон один раз: `gofmt -l .` пусто, `go build ./...`,
       `go vet ./...`, `go test -count=1 ./...` — зелёные, 38 пакетов `ok`.
+
+## 8. Волна 3 — контракт 1.0 (схема, документы, корпус, задача LxBox, решение)
+
+Вход: волны 1–2 в develop (state v8, бэкап 1.0 с двумя писателями). Норма —
+ONE_NAMESPACE.md §1–§2 + договорённости с LxBox (TASKS.md §5.0: исключения
+`directions[]`, `fold`, `disabled{}`, `identity{}`, `vars`, `route`, `warp`;
+`lx_backup: 2`). Правила исполнителю — как в шапке файла; здесь разрешено
+править `contract/schema/*`, `contract/docs/*`, `contract/corpus/**`,
+`contract/registry/*`, `contract/README.md`, `contract/TASKS_LXBOX.md`,
+`SPECS/103-F-O-LX_SHARED_CONTRACT/DECISIONS.md`. **`contract/VERSION` не
+трогать** (→ 1.0.0 только когда LxBox читает и пишет 1.0 — правило обеих сторон).
+Перед записью в `TASKS_LXBOX.md`/`DECISIONS.md` перепроверить последний номер
+секции/решения — файлы правят параллельные сессии (ловушка 15).
+
+### 8.1 Схема
+
+- [x] W3.1 `contract/schema/backup-0.12.schema.json` — байт-в-байт копия
+      сегодняшнего `backup.schema.json` (для legacy-кейсов и `schema_test`
+      0.12-писателя); `$id` → `…/backup-0.12.schema.json`, `title` с пометкой
+      «legacy 0.12, читается, не пишется после окна совместимости».
+- [x] W3.2 `contract/schema/backup.schema.json` → 1.0: `title` «LX Backup v2
+      (контракт 1.0.0)»; `lx_backup` — `const: 2`; `properties`: `exported_by`,
+      `exported_at`, `sources[]`, `directions[]` (`$defs/direction` как сегодня),
+      `rules[]` (`$defs/rule`), `dns` (`$defs/dns`), `vars`, `route`, `warp[]`.
+      `$defs`: `node` (kind/id/tag/enabled/origin/body/detour/hops/group/service/
+      reason/sections), `nodeLink{folder_id?, tag}`, `origin{kind, raw, sub_url?}`,
+      `sections{rules[], dns{servers[], rules[]}}`, `rule` (kind enum inline|srs|
+      preset, id, name, enabled, num integer, refs[], vars, body object — `body`
+      обязателен у inline|srs, запрещён у preset; `ref` обязателен у preset;
+      `dns{}`/`resolve{}` — объявленные поля LxBox по D-0xx, провозятся),
+      `dnsServer` (kind enum template|preset|user, tag, ref, enabled, body —
+      только у user), `dnsRule` (kind enum preset|user, id, name, ref, enabled,
+      body), `dns{strategy, final, default_domain_resolver, servers[], rules[]}`,
+      `sourceServer`, `sourceFolder{…, nodes: [$defs/node]}`, `sourceSubscription`
+      (url, name, enabled, identity → сегодняшний блок identity, tag_policy,
+      fold → `source_fold.schema.json`, skip, max_nodes, update{interval_hours,
+      auto_refresh}, relays_in_directions, disabled{…: integer}), `sourceChain`
+      (tag, enabled, body → тело цепочки по `source_chain.schema.json` без
+      позиций, hops[] of nodeLink). `sources.items` — `oneOf` по `kind` через
+      `if/then` (или `discriminator`-подобный `allOf` с `properties.kind.const`),
+      чтобы ошибка валидации называла вид. Политика `additionalProperties` —
+      как в 0.12: открыто везде, кроме тех же трёх мест (ловушка 24) плюс
+      `sections` остаётся закрытым; непонятое отвергает импортёр с warning (П3).
+      `direction.schema.json`, `source_fold.schema.json`, `source_chain.schema.json`,
+      `node.schema.json` — не менять (у `node.schema.json` термин `entry` остаётся:
+      канон разбора, SPEC §6).
+- [x] W3.3 `core/backup/schema_test.go`: 0.12-писатель против `backup-0.12.schema.json`,
+      1.0-писатель против `backup.schema.json`; оба на полном состоянии из
+      round-trip-теста волны 2.
+
+### 8.2 Документы
+
+- [x] W3.4 `contract/docs/BACKUP.md` → «контракт 1.0.0»: §1 — файл = сериализация
+      состояния обеих сторон, `lx_backup: 2`, окно совместимости (0.x читается
+      всегда; писатель 0.12 у лаунчера временный, у LxBox — до миграции хранения);
+      §2 таблицы полей под 1.0 (корень; `sources[]` по видам; `rules[]`/`dns`/
+      `vars`/`route`/`warp[]`; колонка «Поддержка» — обе/лаунчер/LxBox по
+      каждому полю: `relays_in_directions`, `tag_policy`/`fold`/`detour` у папки —
+      лаунчер; `dns{}`/`resolve{}` у правила, `label`/`ping_*` у Направления —
+      LxBox); §4 цепочки — `hops[]` как `nodeLink`, `folder_id` необязателен
+      (LxBox — по тегу); §5 disabled — без изменений; §6 detour — `detour{folder_id?,
+      tag}` и правило переписи `folder_id` по карте id; §8 версионирование —
+      `lx_backup` 1 и 2, отказ на > своего; §9 слияние — по смыслу без изменений,
+      добавить пункты: секции узла — «файл замещает», чужой `kind` в секциях —
+      `backup_section_record_dropped`, перенумерация оси вместе с узловыми
+      правилами (SPEC 126 L2); новый §11 «Что изменилось против 0.12» (таблица
+      0.12 → 1.0 по каждому переименованному/переехавшему ключу: `servers[]`+
+      `subscriptions[]`+`chains[]`+`folder` → `sources[]`; `node_tag`→`tag`,
+      `config_json`/`uri`→`body`+`origin`, `label`→`name` у подписки; `tag{}`→
+      `tag_policy{}`; правила `match`+`outbound`→`body`, `ref`→`refs[]`; DNS
+      `name`→`tag`, `value`→`body`; `chain.chain{}`→`body`+`hops[]`).
+      `BACKUP_PRINCIPLES.md` — П4 «никакого legacy» уточнить: legacy-ВХОД 0.x
+      разрешён на время окна совместимости, legacy-запись — временная константа.
+- [x] W3.5 `contract/docs/NODE_SECTIONS.md`: заголовок → «контракт 1.0» без
+      «черновик»; §1 форма → ровно ONE_NAMESPACE §2 (уже совпадает с состоянием
+      v8: `kind,name,enabled,num,body` / `kind,tag,enabled,body` / `kind,enabled,body`);
+      §4 экспорт — секции только в 1.0 (в 0.12 не пишутся); §5 импорт —
+      объединённая перенумерация, код отбраковки; §8 корпус — имена кейсов по
+      W3.7.
+- [x] W3.6 `contract/docs/ONE_NAMESPACE.md`: заголовок → «норма контракта 1.0»,
+      статус — реализовано лаунчером (хэши волн 1–3), §4 порядок — отметить
+      сделанное; `IDENTITY.md`/`CANON.md` — только если там упоминаются
+      `node_tag`/`config_json`/`match` как ключи бэкапа (грепнуть).
+
+**Сделано (этап C1, ветка `spec127/contract-10`):** W3.1–W3.6 и W3.7а. Две схемы:
+`backup-0.12.schema.json` — копия прежней байт в байт кроме `$id`/`title`/
+`description`; `backup.schema.json` → 1.0 (`lx_backup` `const: 2`, `sources[]`
+union по `kind` через `allOf`+`if/then`, 18 `$defs`, `additionalProperties:
+false` только у `sections` и вложенного `dns`). Схема сверена с ФАКТИЧЕСКИМ
+выводом `Export10` на `richState10()` (внешний валидатор 2020-12 — разово при
+разработке: образец проходит, 14 негативных мутаций отвергнуты, два «открытых»
+случая приняты). `schema_test.go` разведён на двух писателей; добавлены
+`TestExport10RootKeysAreDeclared`, `TestExport10EntityKeysAreDeclared`,
+`TestExport10SectionsUseRootRecordForm`. **Находка этапа:** схема по §6.0 не
+объявляла `detour` у подписки — это общий detour контейнера, который слияние
+применяет (`merge.go:67`,`:100`); поймал новый тест, добавлено в схему и в
+`BACKUP.md` §2. Документы: BACKUP.md (заголовок 1.0.0, §1, все таблицы §2,
+§3/§4/§6/§8/§9, §10 отнесён к 0.12-писателю, новый §11), BACKUP_PRINCIPLES.md
+(П4 — окно совместимости), NODE_SECTIONS.md (норма, B3/B4/B5/E1, висячий
+endpoint, каталог Tailscale, A9, адреса LxBox, имена кейсов),
+ONE_NAMESPACE.md (норма, хэши волн), IDENTITY.md §2.1 (врезка про имена
+0.12), README.md (строка 1.0.0, черновик). `contract/VERSION` не тронут.
+Гейт `go test -count=1 ./core/backup/ -run 'Schema|Corpus'` — зелёный; весь
+пакет `core/backup` — `ok`. Адреса — CODEMAP §17.
+
+### 8.3 Корпус
+
+- [x] W3.7 `contract/corpus/backup/` — новые кейсы 1.0 (`lx_backup: 2`;
+      ожидания писать руками, флага `-update` в `core/backup` нет — ловушка 23):
+      `v10_sources_union` (все четыре вида в `sources[]`: подписка с identity/
+      tag_policy/fold/disabled, папка с tag_policy и узлами server+chain, корневой
+      сервер с origin uri, цепочка с hops в папку по `folder_id`; ожидания:
+      `subscriptions`, `root_servers`, `folders`, `chains` как у существующих);
+      `v10_node_sections` (корневой сервер Tailscale с секциями: правило
+      `@{self} network` с `num: 945`, DNS-сервер `@{self}-dns`, DNS-правило;
+      плюс корневые правила с `num` 1000/1010 — ожидание: узловое правило встало
+      на ось между ними по относительному порядку после перенумерации;
+      секционная запись `kind: preset` внутри `sections.rules[]` → код
+      `backup_section_record_dropped`); `v10_rules_body_action` (inline с
+      `action: reject`, с `action: reject`+`method: drop`, srs с двумя `refs`,
+      preset с `vars`; ожидание `rules[]{name, enabled, refs}` + новое
+      необязательное поле ожидания `outbound` = вид (`reject`/`drop`/тег));
+      `v10_dns_body` (user-сервер с body и tag, template, preset, user-правило с
+      `server` внутри body; ожидание — новое необязательное `dns{servers: [{kind,
+      tag|ref, enabled}], rules: N}`); `legacy_012_read` — 0.12-файл с
+      `servers[].sections` в форме состояния v8 (как писал лаунчер до волны 2)
+      → секции ИГНОРИРУЮТСЯ с `backup_unknown_field`? — НЕТ: решение W3.7а
+      ниже. Старые 0.12-кейсы остаются как есть = кейсы legacy-чтения.
+      Раннер `core/backup/corpus_test.go`: читать оба формата; `checkRules` —
+      форма v8; новые проверки `outbound`, `dns`, `sections` (по тегу корневого
+      сервера: `rules: [{name, enabled, num_relative?}]`, `dns_servers: [tags]`,
+      `dns_rules: N`).
+- [x] W3.7а Решение о `servers[].sections` в файлах 0.12, которые успели
+      написать dev-сборки лаунчера (релизов с секциями не было): legacy-вход
+      **читает** блок формы v8 как секции (это бесплатно — тот же парсер) и
+      ничего не предупреждает; в схему 0.12 поле не возвращать. Записать в
+      BACKUP.md §11 одной строкой.
+- [x] W3.8 `contract/corpus/body/singbox/whole_config_sections` (целый sing-box
+      конфиг с одним endpoint `wireguard`, DNS-сервером на него и route-правилом
+      → ожидание: узел + `sections` в форме §2 с `@self`/`@{self}-…`) и
+      `body/singbox/tailscale_endpoint` (endpoint `type: tailscale` без адреса
+      → узел `scheme: tailscale`, entry без `state_directory`); ожидания
+      генерируются `go test ./core/config -run TestContractCorpusBody -update`
+      и проверяются глазами; `meta.extension` не ставить (обе стороны).
+- [x] W3.9 (реестр `backup_warnings` — этап C2; реестр Tailscale и строка README — этап C3: `params` → `["node","kind","reason"]`,
+      `desc` про три причины; осталась строка `1.0.0` в `contract/README.md`)
+      `contract/registry/backup_warnings.json` — `backup_section_record_dropped`
+      (если не добавлен волной 2); `contract/README.md` — строка `1.0.0` в
+      таблице версий с пометкой «черновик до чтения+записи 1.0 у LxBox; VERSION
+      не поднят»: что изменилось (список W3.4 §11 кратко), окно совместимости,
+      зеркальные правки LxBox.
+
+**Сделано (этап C2, та же ветка):** W3.7, W3.8 и реестровая часть W3.9.
+Кейсы бэкапа 1.0 — `v10_sources_union` (четыре вида `sources[]` + слияние через
+`.pre.backup.json`: подписка по `url`, папка по `id`, `hops[].folder_id`
+переписан на локальный id), `v10_node_sections` (узловое правило встаёт на
+общую ось МЕЖДУ корневыми: 1000 → 1001 → 1002/1003; три отбраковки одним
+кодом), `v10_rules_body_action` (цель в `body` во всех трёх формах, `srs` с
+двумя `refs`, `preset` с `vars`), `v10_dns_body` (четыре вида DNS-записей).
+Ожидания написаны руками. Раннер `corpus_test.go` читает оба формата (формат
+опознаёт `Parse`, раннер его не выбирает); новые проверки — `outbound` (вид
+цели), `dns` (вид записи и ссылка), `sections` (по тегу корневого сервера);
+`checkRules` теперь идёт по ВСЕЙ оси, включая правила секций, иначе «правило
+узла уехало в конец» не видно. Правило про `lx_backup` выше читаемого —
+в `corpus/README.md` и в раннере (`t.Skip`). Кейсы тел: `whole_config_sections`
+и `tailscale_endpoint`, ожидания через `-update` и проверены глазами.
+**Ни одно старое ожидание не изменилось** (`git diff --stat contract/corpus` —
+только новый текст README).
+
+**Две правки кода, которых потребовал корпус** (норма C1 расходилась с кодом,
+оба расхождения нашли кейсы): теги извлечённых DNS-серверов теперь
+переписываются в `@{self}-<тег из конфига>` вместе со ссылками на них
+(`singbox_sections_extract.go:89`), и запись секции с `rule_set` в теле
+отбрасывается целиком по норме B3 (`node_sections.go:56,152`) — до этого она
+проезжала. Под B3 заведено `Warning.Reason` (`kind` | `rule_set` |
+`not_allowed`), реестр получил третий `param` и описание причин, у UI своя
+фраза для `rule_set`. Сняты `node.Scheme == "wireguard"` в канонизаторе
+корпуса (tailscale уезжал в `outbounds[]` с пустыми `server`/`server_port`).
+Гейт `go test -count=1 ./core/backup/... ./core/config/...` — зелёный.
+Адреса — CODEMAP §18.
+
+### 8.4 Задача LxBox и решение
+
+- [x] W3.10 `contract/TASKS_LXBOX.md` `## 16. Контракт 1.0 — бэкап = состояние
+      (приоритет 1)`: (1) что изменилось (ссылка на BACKUP.md §11, схема,
+      `lx_backup: 2`); (2) что ждём: чтение 1.0 + legacy 0.x одним слиянием §9,
+      запись 1.0 после миграции хранения, корпус 1.0 зелёный своим раннером,
+      `sections` в целевой форме (## 13); (3) окно совместимости и переключение
+      дефолта у лаунчера после их релиза (просьба прислать версию/хэш релиза с
+      чтением 1.0); (4) вопросы А/Б — только если остались (по состоянию на
+      14.09: `disabled{}`, `fold`, `folder_id?`, `lx_backup: 2` согласованы,
+      вопросов нет). Хэши коммитов волн 1–3.
+- [x] W3.11 `DECISIONS.md` — строка **D-109** (номер перепроверить): норма
+      контракта 1.0 (бэкап = сериализация состояния v8; исключения; `lx_backup: 2`;
+      окно совместимости с двумя писателями; сноска про 0.12-файлы с секциями).
+      Кто: Пользователь (принцип D-106/D-107) + обе сессии (детали). SPEC 126 §2 —
+      отметить L1–L9 сделанными/перекрытыми SPEC 127; SPEC 127 `SPEC.md` — статус
+      реализации по волнам (папка остаётся `-N` до приёмки владельцем).
+- [x] W3.12 Тесты волны: `go test ./core/backup/... ./core/config/...` (корпус
+      обоих форматов, схемы), sync-тест словаря кодов; полный прогон один раз.
+      Пинг `lxbox-3d` — из основной сессии после merge (хэш + `## 16`).
+
+**Сделано (этап FIX, та же ветка):** 15 находок ревью (девять уникальных
+дефектов — часть находок дублировала одну причину). Код: `Export10` больше не
+теряет корневую группу `kind: auto` молча — эмитит
+`backup_source_kind_unsupported`, как писатель 0.12 (П6); схема приведена к
+коду (корневой дискриминатор — `server|chain|folder|subscription`, `auto` и
+`unsupported` только членами папки). Документы: §6 `BACKUP.md` больше не
+обещает снятие недостижимой `detour`-ссылки — её ввозят как есть, рубеж на
+сборке (та же ложная посылка снята в §6.0 выше); §9 п. 5 перечисляет все ТРИ
+скаляра DNS; §2 развёл `id` корневой записи и члена папки. Корпус: семь
+кейсов не проверяли заявленного — заведены ожидания `vars`, `body`,
+`strategy`/`final`/`default_domain_resolver`, `warning_reasons`, `folder_ids`,
+`chains[].hops`, у `v10_sources_union` разведены ступени слияния по `id` и по
+имени, у `v10_node_sections` добавлены носитель секций внутри папки и записи
+с `reason: rule_set`/`kind`. Каждая правка подтверждена мутацией: до неё
+мутация оставляла корпус зелёным, после — роняет. Ни одно ожидание 0.12 не
+изменилось. Полный прогон дерева зелёный. Адреса — CODEMAP §20.
+
+**Сделано (этап C3, та же ветка):** W3.9 в полном объёме, W3.10, W3.11, W3.12.
+
+Реестр: `tailscale_core_unsupported` (`registry/warnings.json:519`) и
+`registry/protocols/tailscale.json` перестали утверждать, что LxBox Tailscale
+не применяет (применяет с релиза v2.23.2, ядро lx.38 в AAR, D-103); `dart`-путь
+у кода и пять `refs.dart` у протокола вписаны по §8.7. `backup_warnings.json`
+не трогался — `reason` там с этапа C2, а полей `go`/`dart` этот словарь не
+несёт вовсе. Строка `1.0.0` в `contract/README.md:85` стоит с этапа C1.
+
+`TASKS_LXBOX.md` `## 16` (:831) — номер проверен по содержимому файла (была
+`## 15`): что изменилось, что ждём (чтение 1.0 + legacy 0.x одним слиянием с
+тремя уточнениями §9, запись 1.0 после миграции хранения, пять кейсов корпуса
+поимённо), правки кодека B3/B5 отдельным подразделом с **явным перечнем
+значений `reason`** (`kind` | `rule_set` | `not_allowed` — чтобы стороны не
+завели свои слова), окно совместимости и просьба прислать версию/хэш релиза с
+чтением 1.0, хэши волн. Шапка файла отставала на четыре бампа — поправлена.
+
+`DECISIONS.md` — **D-109** (:117; номер проверен: в файле 108 решений,
+последнее D-108), помечено черновиком до чтения И записи 1.0 у LxBox. Ссылки на
+D-109 из `README.md` и `ONE_NAMESPACE.md` §4, поставленные C1 авансом, теперь
+разрешаются без правки.
+
+SPEC 126 §2 — все L1–L9 отмечены, добавлена таблица «где закрыто» с адресами
+(L9 перекрыт: форма секций стала формой записей состояния); шапка вышла из
+черновика. SPEC 127 `SPEC.md` — новый §8 «Статус реализации»: волны с хэшами,
+что не закрыто и почему (VERSION, константа дефолта, приёмка), факт байт-в-байт,
+четыре дефекта, найденных данными, и хвост `backup_unknown_outbound`.
+`upcoming.md` — строка про контракт 1.0 в EN и RU.
+
+**Полный прогон (один раз):** `gofmt -l .` пусто, `go build ./...` exit 0,
+`go vet ./...` exit 0, `go test -count=1 ./...` exit 0 — 38 пакетов `ok`,
+0 `FAIL`. Эталон `ETALON_V6MIG=1` не запускался.
+
+Находка этапа (вне волны): `registry/protocols/*.json` никаким тестом против
+`schema/registry.schema.json` не проверяются, и 7 файлов её не проходят
+(`null` там, где схема ждёт объект/строку; `extension: null` вне enum;
+`xray_dialect` у hysteria). Расхождение унаследованное — у `tailscale.json`
+ошибки те же в `HEAD` и после правки. Адреса — CODEMAP §19.7.
+
+### 8.5 Инварианты волны (ревьюеры)
+
+1. Схема 1.0 принимает каждый файл 1.0-писателя и отвергает `lx_backup: 1`;
+   схема 0.12 — прежняя байт-в-байт (кроме `$id`/`title`).
+2. Каждый ключ файла 1.0 описан в BACKUP.md §2 с колонкой «Поддержка»; каждый
+   переименованный ключ есть в §11.
+3. Корпус: все 0.12-кейсы зелёные без правки ожиданий; каждый новый 1.0-кейс
+   проверяет то, что заявлено в имени; ожидания синтетические (README корпуса).
+4. Ни одно решение не переписано — только новые строки D-109; номера секций
+   TASKS_LXBOX не пересекаются.
+
+### 8.6 Договорённости с LxBox по ## 13 (14.09.2026, сессия lxbox-3d) — учесть в W3.5/W3.7/W3.8
+
+- Конверт `body/singbox/*` с секциями: `nodes[].sections` в форме §2 **без `id`
+  и без `num`** (раннер конверта лаунчера их не пишет); имя извлечённого
+  правила — `body.name` или `@{self} rule N` (N — порядковый среди правил узла,
+  с 1); DNS-сервер `@{self}-<тег из конфига>`; `outbound: "@self"` дописывается,
+  если нет ни `outbound`, ни `action`.
+- Кейсы бэкапа 1.0 — только `lx_backup: 2`; правило раннера (в
+  `contract/corpus/README.md`): файл с `lx_backup` выше читаемого сторона
+  пропускает как чужой extension, override-файлов не заводить.
+- Висячий `endpoint` у DNS-сервера: сервер выброшен целиком, DNS-правила на
+  него выброшены, `final` → первый доехавший, `domain_resolver` снят — обе
+  стороны одинаково (NODE_SECTIONS.md §3/§6 — зафиксировать).
+- `registry/warnings.json` `tailscale_core_unsupported` и
+  `registry/protocols/tailscale.json`: снять «LxBox не применяет», пути dart —
+  по их сообщению после реализации.
+- `state_directory`: имя каталога = тег с заменой всего вне `[A-Za-z0-9._-]`
+  на `_` (LxBox приглашён к паритету; не норма).
+- Экспорт 0.12 узла с секциями: `backup_local_only_dropped` с полем `sections`
+  у обеих сторон (П6) — записать в BACKUP.md §2/§11.
+- UI-расхождение (не норма): строки правил выключенного узла у лаунчера
+  приглушены, у LxBox скрыты — записать в список UI-сценариев как известное.
+
+### 8.7 Пути LxBox для реестра (сообщение lxbox-3d 14.09.2026 ~02:30; ## 13 у них слит: ядро 3b52ff87, UI до a07f0ca8)
+
+- `registry/protocols/tailscale.json` → `refs.dart`: `lib/models/node_spec.dart`
+  (TailscaleSpec), `lib/services/parser/json_parsers.dart` (parseSingboxEntry
+  case 'tailscale'), `lib/services/builder/server_list_build.dart` (гейт ядра,
+  без exit_node не в пул Направлений), `lib/services/builder/build_config.dart`
+  (state_directory при эмиссии, инъекция секций), `lib/screens/add_server_wizard/tailscale_bundle.dart`;
+  `note` — снять «LxBox узел не применяет».
+- `registry/warnings.json` → `tailscale_core_unsupported.dart`:
+  `lib/services/builder/core_chain_capability.dart` (coreVersionSupportsTailscale);
+  из `desc` убрать «LxBox не применяет».
+- Секции у LxBox: `lib/models/node_sections.dart`, `lib/models/record_codec.dart`
+  (кодек записей §1–§2 — будущий корневой парсер 1.0), `lib/services/parser/singbox_config.dart`
+  (extractNodeSections), `lib/services/builder/post_steps/dns_servers.dart`,
+  `dns_rules.dart` — можно сослаться в NODE_SECTIONS.md §7/§8.
+- Факты по AAR для BACKUP/NODE_SECTIONS: `with_tailscale` + `ts_omit_*` собран
+  в форке (ветка lx-tailscale-aar, 682ae0426, не релиз): AAR +2,58 МБ
+  (116,8 → 119,4), время сборки не выросло; релиз lx.38 — за сессией ядра;
+  LxBox v2.23.2 выходит с пином lx.36 (узел хранится, при сборке снимается гейтом).
+
+### 8.8 Итог сверки UI-сценариев с LxBox (14.09.2026 ~02:45) — в NODE_SECTIONS.md волной 3
+
+- A1–A9, B1/B2/B6, C1–C3, D3/D5/D6, E2/E3 — совпадают (A9: LxBox сделал приглушение как у лаунчера).
+- **B3 норма:** запись секции с `rule_set` отбрасывается ЦЕЛИКОМ (ключ не вырезать —
+  иначе match-all); при вводе документа — отказ с текстом; при импорте/извлечении —
+  `backup_section_record_dropped` (params `node`, `kind`, `reason`; reason ∈ kind | rule_set).
+  LxBox правит кодек (drop записи вместо unknownKeys).
+- **B4 норма §2 остаётся «как есть»**; допустимая строгость стороны: отказ при ВВОДЕ
+  документа (лаунчер, из-за синтаксиса `@var` шаблона). Данные из бэкапа/извлечения
+  с чужим `@…` обе стороны принимают как есть; висячий тег — санитайзер сборки.
+- **B5 норма:** запись без `outbound`/`action` → `"outbound": "@self"` (LxBox правит с direct-out).
+- **E1 норма:** секции подписочных узлов не сохраняются; сторона сообщает уровнем info
+  без кода контракта (лаунчер: «ignored sections: route, dns» в диагностике fetch).
+- D1/D2/D4/D7/D8 — после чтения 1.0 у LxBox (их волна 3).
+- Проверить у лаунчера после волны 2: srs-правило в секциях — кэш качается
+  (`CollectSrsCachedPaths` по `rulesWithNodeSections`?), тап по узловой строке открывает узел.
+- **Внесено у LxBox (00193f20):** B3 — запись секции с `rule_set` ИЛИ любым незнакомым LxBox
+  ключом тела отбрасывается целиком (причина называет ключи; снекбар в редакторе, предупреждение
+  на узле при извлечении) — записать в NODE_SECTIONS.md как допустимую строгость LxBox (их
+  типизированные матчеры), у лаунчера незнакомые sing-box-ключи проходят как есть; B5 — `@self`
+  по умолчанию; E1 — info в лог. Ядро v1.14.0-lx.38 с Tailscale опубликовано, LxBox бампает
+  пин в v2.23.2; у лаунчера пин — решение владельца (гейт по пробе тегов, lx.36 тег уже несёт).
+- **LxBox v2.23.2 выпущен (тег 39f8f0df, ядро lx.38 с Tailscale в AAR):** ## 13 целиком в
+  релизе; C1/C2 на реальном ядре ✓ (AVD). Чтение 1.0 у них — следующий релиз (их волна 3), до
+  него дефолт экспорта лаунчера остаётся 0.12. Для TASKS_LXBOX ## 16 и README 1.0.0 — указать.
+
+### 8.9 Факты волны 2, обязательные для схемы/документов (после реализации, ~04:50)
+
+- Корень 1.0 (`core/backup/backup10.go` `Backup10`): `lx_backup: 2`, `exported_by`,
+  `exported_at`, `sources[]`, `directions[]`, `rules[]` (state.Rule), `dns` (state.DNSOptions:
+  `strategy`, `final`, `default_domain_resolver`, `servers[]`, `rules[]`), `vars`, `route{final}`,
+  `warp[]`.
+- `sources[]` = `Source10`: `kind, tag, enabled, origin, body, detour, hops, group, service,
+  reason, sections, id, name, tag_policy, nodes[] (state.Node), url, identity, relays_in_directions,
+  skip, max_nodes, update{interval_hours, auto_refresh}, disabled{тег: int}, fold{mode, auto},
+  fold_tag` — **`fold_tag` — новый ключ 1.0** (явный тег группы свёртки папки/подписки; в
+  0.11-форме `fold` тега нет, там он позиционный дериватив D-081; читатель 1.0: `fold_tag`
+  главнее, дериватив — запасной ход). В схему и BACKUP.md §2/§11 обязательно.
+- Слияние 1.0 (§9, уточнения): настройки СОВПАВШЕЙ подписки/папки берутся из файла целиком
+  (`FullSettings`: enabled, tag_policy, fold/fold_tag, detour, relays_in_directions, identity,
+  skip, max_nodes, update) — вход 0.x эти поля не трогает; папка 1.0 матчится сначала по `id`,
+  потом по имени (правка W2.10 по реальным данным: в состоянии владельца две папки «Folder 1»);
+  DNS-серверы сливаются по `kind`+`tag`, для preset — по `kind`+`ref` (W2.10; раньше все
+  preset-серверы схлопывались в один — унаследованный баг); члены папки без тела (chain/auto)
+  дедуп по виду+тегу; identity: mobile-only ключи не сохраняются, `backup_source_identity_dropped`
+  как у 0.x; `sections` у узла, которому не положены, → `backup_section_record_dropped`.
+- Перенумерация оси при импорте: ВСЕ размеченные правила файла (включая preset и узловые
+  секционные) получают `UserRuleNumStart + позиция` в порядке их `num`; относительный порядок
+  сохранён, абсолютные зоны (0/945/950) не сохраняются — унаследованная семантика
+  (`order_renumbered_preserving_sequence`), записать в BACKUP.md §9 явно + примечание владельцу
+  (системная голова после импорта живёт в пользовательской зоне).
+- `backup_section_record_dropped` в registry: params `["node","kind"]`, side import — по норме B3
+  (§8.8) добавить `reason` (kind | rule_set | not_allowed) и КОД для записи с `rule_set` в теле
+  при импорте (обоих входов) и при извлечении из конфига — это код лаунчера, задача C2.
+- Debug API: `GET /backup/formats`, `GET /backup/export?format=&envelope=1`
+  (`X-Backup-Warnings`, `Content-Disposition`), `POST /backup/import` (merge + Save + rebuild;
+  404 экспорта без state; импорт в отсутствующее состояние создаёт его), зеркала
+  `/remote/machines/{id}/backup/*`; описано в `docs/API.md`/`API.ru.md` — в контракт не входит,
+  но в README 1.0.0 упомянуть как способ прогона.
+- `ImportResult` счётчики: AddedSubscriptions/UpdatedSubscriptions/AddedServers/SkippedServers/
+  AddedFolders/UpdatedFolders/AddedChains — отчёт импорта BACKUP.md §9 «Отчёт импорта» обновить.
+- Эталоны 0.12-писателя: `core/backup/testdata/export012_*.json`; секции в 0.12 не пишутся,
+  `backup_local_only_dropped: sections`.
+- **Каталог состояния Tailscale — норма обеих сторон (14.09 ~12:30, предложено лаунчером):**
+  удаление узла → каталог `<root>/tailscale/<имя>` удаляется; смена финального тега
+  (переименование, перенос в папку с префиксом) → каталог переименовывается; при сборке
+  осиротевшие каталоги удаляются с info; каталог в бэкап не едет (ключ устройства — секрет
+  машины), восстановление на другой машине = новая идентичность и повторный auth_key.
+  Записать в NODE_SECTIONS.md §6; код лаунчера — отдельной задачей после волны 3.
+  **Поправка LxBox (принята 14.09 ~12:45):** ожидаемый набор имён для GC при сборке строится по
+  ВСЕМ хранимым узлам Tailscale (включая выключенные и снятые гейтом ядра), а не по эмитированным —
+  иначе «выключил → сборка снесла идентичность → включил → auth_key потрачен». Имя невыключенного
+  узла = финальный тег после уникализации; у выключенного финального тега у сборки нет — имя
+  считается от префикса контейнера + тега без суффикса уникализации, и такой каталог тоже
+  оставляется. Пункт (1) распространяется на удаление папки вместе с членами. У LxBox —
+  спека 435 §9.8, реализация их волной 3.
+- **Проверка байт-в-байт на живом состоянии владельца (12:30):** config.json из одного
+  состояния v7 и шаблона кодом 2d64ca72 и кодом develop 9fc880e1 идентичен (13244 байта,
+  кроме метки времени) — факт для статуса SPEC 127 и ONE_NAMESPACE.md.

@@ -1,0 +1,11 @@
+# sing-box: ЦЕЛЫЙ конфиг с одним узлом и его связкой (NODE_SECTIONS.md §7/§8).
+# В конфиге ровно один не-групповой узел — endpoint wireguard, — поэтому его
+# связка извлекается в nodes[].sections: DNS-сервер с detour на узел,
+# DNS-правило на этот сервер и route-правило с outbound на узел. Ссылки на тег
+# узла переписаны в @self; правило без своего `name` получает имя
+# «@{self} rule N».
+#
+# Что НЕ берётся и почему: сервер local-dns (detour'а на узел нет — это
+# настройка конфига, а не узла), dns.final и route.final (общие настройки).
+# Схема wireguard, а не tailscale: кейс не должен зависеть от тега сборки ядра.
+{"log":{"level":"warn"},"endpoints":[{"type":"wireguard","tag":"home-wg","mtu":1280,"address":["10.10.0.2/32"],"private_key":"QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVphYmNkZWY=","peers":[{"address":"192.0.2.10","port":51820,"public_key":"Z2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUZHSElKS0w=","allowed_ips":["0.0.0.0/0"]}]}],"dns":{"servers":[{"type":"udp","tag":"home-dns","server":"10.10.0.1","detour":"home-wg"},{"type":"udp","tag":"local-dns","server":"192.0.2.53"}],"rules":[{"domain_suffix":[".home.example-1.com"],"server":"home-dns"}],"final":"local-dns"},"route":{"rules":[{"ip_cidr":["10.10.0.0/16"],"outbound":"home-wg"},{"name":"Home mail","domain":["mail.home.example-1.com"],"outbound":"home-wg"}],"final":"home-wg"}}

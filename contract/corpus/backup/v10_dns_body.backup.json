@@ -1,0 +1,48 @@
+{
+  "lx_backup": 2,
+  "exported_by": { "app": "launcher", "version": "corpus", "platform": "test" },
+  "exported_at": "2026-09-14T00:00:00Z",
+  "dns": {
+    "strategy": "prefer_ipv4",
+    "final": "user-doh",
+    "default_domain_resolver": "local-dns",
+    "servers": [
+      {
+        "kind": "user",
+        "tag": "user-doh",
+        "enabled": true,
+        "body": {
+          "type": "https",
+          "server": "example-4.com",
+          "path": "/dns-query",
+          "detour": "proxy"
+        }
+      },
+      {
+        "kind": "template",
+        "tag": "local-dns",
+        "enabled": true
+      },
+      {
+        "kind": "preset",
+        "ref": "adguard_dns",
+        "enabled": false
+      }
+    ],
+    "rules": [
+      {
+        "kind": "user",
+        "enabled": true,
+        "body": {
+          "domain_suffix": [".corp.example-1.com"],
+          "server": "user-doh"
+        }
+      },
+      {
+        "kind": "preset",
+        "ref": "block_ads_dns",
+        "enabled": true
+      }
+    ]
+  }
+}

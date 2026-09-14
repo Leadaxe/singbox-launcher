@@ -67,6 +67,19 @@ func Export10(s *state.State, opts ExportOptions) (*Backup10, []Warning, error) 
 	for _, src := range s.Sources {
 		out, ok := export10Source(src)
 		if !ok {
+			// Вид, которого union `sources[]` не выражает. Молча выронить
+			// запись нельзя (П6): корневая провайдерская группа — законная
+			// форма состояния (state.NewAutoSource, normalizeSourceShape
+			// принимает её наравне с server/chain), и пользователь обязан
+			// узнать, что она в файл не поехала. Код и поля — те же, что у
+			// писателя 0.12 (legacy_write_012.go): вид и объём идут отдельно,
+			// потому что группа уезжает НЕ ОДНА, а со своим составом.
+			warnings = append(warnings, Warning{
+				Code:   WarnBackupSourceKindUnsupported,
+				Detail: sourceExportName(src),
+				Kind:   string(src.Kind),
+				Nodes:  len(src.Nodes),
+			})
 			continue
 		}
 		b.Sources = append(b.Sources, out)
@@ -90,9 +103,10 @@ func Export10(s *state.State, opts ExportOptions) (*Backup10, []Warning, error) 
 
 // export10Source — запись sources[] из источника состояния.
 //
-// Второй возврат — едет ли запись вообще. Провайдерская группа (kind=auto)
-// корневым источником не бывает: в корне её нет, а внутри папки она едет
-// обычным узлом nodes[].
+// Второй возврат — едет ли запись вообще. Корневая провайдерская группа
+// (kind=auto) в состоянии законна, но union `sources[]` её не выражает и
+// слияние применить не умеет, поэтому она не едет — и вызывающий обязан
+// сказать об этом предупреждением, а не промолчать (П6).
 func export10Source(src state.Source) (Source10, bool) {
 	switch src.Kind {
 	case state.SourceKindServer, state.SourceKindChain,

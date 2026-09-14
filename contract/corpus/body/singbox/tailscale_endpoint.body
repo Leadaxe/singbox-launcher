@@ -1,0 +1,9 @@
+# sing-box: endpoint типа tailscale БЕЗ адреса (NODE_SECTIONS.md §6/§8).
+# У tailnet-узла нет ни server, ни server_port — адрес даёт сама сеть, — и
+# сторона обязана принять запись такой: узел со scheme tailscale, kind endpoint
+# (contract/registry/protocols/tailscale.json).
+#
+# В entry НЕТ state_directory: путь каталога состояния локален для машины и
+# подставляется ПРИ ЭМИССИИ, а в хранимое тело не пишется (§6). Появление его
+# в ожидании означало бы, что путь чужой машины уехал в контракт.
+{"endpoints":[{"type":"tailscale","tag":"ts-home","exit_node":"exit-1","accept_routes":true}]}

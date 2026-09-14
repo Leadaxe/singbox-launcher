@@ -1,0 +1,51 @@
+{
+  "lx_backup": 2,
+  "exported_by": { "app": "launcher", "version": "corpus", "platform": "test" },
+  "exported_at": "2026-09-13T00:00:00Z",
+  "sources": [
+    {
+      "kind": "subscription",
+      "id": "01SUBU00000000000000000A",
+      "name": "Provider (local)",
+      "enabled": true,
+      "url": "https://example-1.com/sub-union",
+      "tag_policy": { "prefix": "old:" }
+    },
+    {
+      "kind": "folder",
+      "id": "01FLDLOCAL00000000000EU",
+      "name": "Europe",
+      "nodes": [
+        {
+          "kind": "server",
+          "tag": "local-fr",
+          "enabled": true,
+          "body": {
+            "type": "trojan",
+            "server": "example-9.com",
+            "server_port": 443,
+            "password": "testpass123"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "folder",
+      "id": "01FLDU00000000000000000N",
+      "name": "Nordics (local name)",
+      "nodes": [
+        {
+          "kind": "server",
+          "tag": "local-se",
+          "enabled": true,
+          "body": {
+            "type": "trojan",
+            "server": "example-8.com",
+            "server_port": 443,
+            "password": "testpass456"
+          }
+        }
+      ]
+    }
+  ]
+}

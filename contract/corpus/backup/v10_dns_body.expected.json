@@ -1,0 +1,25 @@
+{
+  "rules": [],
+  "warnings": [],
+  "dns": {
+    "strategy": "prefer_ipv4",
+    "final": "user-doh",
+    "default_domain_resolver": "local-dns",
+    "servers": [
+      {
+        "kind": "user",
+        "tag": "user-doh",
+        "enabled": true,
+        "body": {
+          "type": "https",
+          "server": "example-4.com",
+          "path": "/dns-query",
+          "detour": "proxy"
+        }
+      },
+      { "kind": "template", "tag": "local-dns", "enabled": true },
+      { "kind": "preset", "ref": "adguard_dns", "enabled": false }
+    ],
+    "rules": 2
+  }
+}

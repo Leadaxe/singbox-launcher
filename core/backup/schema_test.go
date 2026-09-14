@@ -1,10 +1,17 @@
 package backup
 
-// Валидация экспорта против нормативной схемы (SPEC 103, фаза 4).
+// Валидация экспорта против нормативных схем (SPEC 103 фаза 4; SPEC 127 W3.3).
 //
-// Схема contract/schema/backup.schema.json — договор между приложениями:
-// файл, не проходящий её, LxBox имеет право не принять. Проверять глазами
-// такое нельзя, поэтому экспорт валидируется структурно на каждом прогоне.
+// Схема — договор между приложениями: файл, не проходящий её, LxBox имеет
+// право не принять. Проверять глазами такое нельзя, поэтому каждый писатель
+// валидируется структурно на каждом прогоне, и ПИСАТЕЛЕЙ ДВА (окно
+// совместимости, docs/BACKUP.md §1):
+//
+//   - Export012 → contract/schema/backup-0.12.schema.json (lx_backup: 1);
+//   - Export10  → contract/schema/backup.schema.json      (lx_backup: 2).
+//
+// Обе проверки идут на богатом состоянии: бедное состояние проходит любую
+// схему, потому что почти все поля необязательные.
 //
 // Валидатор здесь минимальный и намеренно проверяет ровно то, что схема
 // объявляет строгим: обязательные поля, закрытые множества (enum),
@@ -21,6 +28,17 @@ import (
 	"testing"
 	"time"
 )
+
+// Два адреса схем: 0.12 — legacy-писателя, backup.schema.json — действующего
+// формата 1.0. Имена вынесены в функции, потому что перепутать их в тесте
+// значит проверять писателя чужой схемой и не заметить расхождения.
+func schemaPath012() string {
+	return filepath.Join("..", "..", "contract", "schema", "backup-0.12.schema.json")
+}
+
+func schemaPath10() string {
+	return filepath.Join("..", "..", "contract", "schema", "backup.schema.json")
+}
 
 var identityHashRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
@@ -104,7 +122,7 @@ func TestExportRuleKindsAreKnown(t *testing.T) {
 // properties, означал бы поле, которого нет в таблице BACKUP.md §2, — то есть
 // ровно тайный груз, ради сноса которого механизм extensions и убран.
 func TestExportHasNoUndeclaredRootKeys(t *testing.T) {
-	schemaPath := filepath.Join("..", "..", "contract", "schema", "backup.schema.json")
+	schemaPath := schemaPath012()
 	data, err := os.ReadFile(schemaPath)
 	if err != nil {
 		t.Skipf("схема недоступна: %v", err)
@@ -126,7 +144,7 @@ func TestExportHasNoUndeclaredRootKeys(t *testing.T) {
 // То же для записей сущностей: поле, вышедшее из-под объявленных properties,
 // не попадёт в таблицу поддержки и станет невидимым для другой стороны.
 func TestExportEntityKeysAreDeclared(t *testing.T) {
-	schemaPath := filepath.Join("..", "..", "contract", "schema", "backup.schema.json")
+	schemaPath := schemaPath012()
 	data, err := os.ReadFile(schemaPath)
 	if err != nil {
 		t.Skipf("схема недоступна: %v", err)
@@ -177,6 +195,233 @@ func TestExportEntityKeysAreDeclared(t *testing.T) {
 	}
 }
 
+// ── Писатель 1.0 против backup.schema.json ───────────────────────────────
+//
+// Отдельным набором, а не параметризацией 0.12-тестов: формы файлов разные
+// (одна sources[] против четырёх плоских секций), и общий тест свёлся бы к
+// двум ветвям в каждом проверяющем.
+
+func export10Sample(t *testing.T) map[string]json.RawMessage {
+	t.Helper()
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(fixedExport10(t, richState10()), &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	return doc
+}
+
+func readSchema10(t *testing.T) map[string]json.RawMessage {
+	t.Helper()
+	data, err := os.ReadFile(schemaPath10())
+	if err != nil {
+		t.Skipf("схема недоступна: %v", err)
+	}
+	var schema map[string]json.RawMessage
+	if err := json.Unmarshal(data, &schema); err != nil {
+		t.Fatalf("разбор схемы 1.0: %v", err)
+	}
+	return schema
+}
+
+// Корень файла 1.0: обязательные ключи на месте, маркер формата — 2, и ни
+// одного ключа мимо объявленных properties.
+//
+// Открытость схемы (additionalProperties: true) — послабление для ЧТЕНИЯ
+// чужого файла, а не для письма: собственный экспорт, вышедший за объявленные
+// properties, означал бы поле, которого нет в таблице BACKUP.md §2, то есть
+// тайный груз.
+func TestExport10RootKeysAreDeclared(t *testing.T) {
+	doc := export10Sample(t)
+	for _, key := range []string{"lx_backup", "exported_by", "exported_at"} {
+		if _, ok := doc[key]; !ok {
+			t.Errorf("нет обязательного поля %q", key)
+		}
+	}
+	var marker int
+	if err := json.Unmarshal(doc["lx_backup"], &marker); err != nil || marker != FormatVersion10 {
+		t.Errorf("lx_backup = %s, ожидалось %d", doc["lx_backup"], FormatVersion10)
+	}
+
+	var schema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	data, err := os.ReadFile(schemaPath10())
+	if err != nil {
+		t.Skipf("схема недоступна: %v", err)
+	}
+	if err := json.Unmarshal(data, &schema); err != nil {
+		t.Fatalf("разбор схемы: %v", err)
+	}
+	for key := range doc {
+		if _, ok := schema.Properties[key]; !ok {
+			t.Errorf("экспорт 1.0 несёт ключ %q, которого нет в схеме", key)
+		}
+	}
+	// Плоских секций 0.12 в файле 1.0 быть не должно, и схема их не знает:
+	// проверка «ключ объявлен» поймала бы это и сама, но явная формулировка
+	// объясняет, ЧТО именно сломалось.
+	for _, key := range []string{"subscriptions", "servers", "chains"} {
+		if _, ok := schema.Properties[key]; ok {
+			t.Errorf("схема 1.0 всё ещё объявляет секцию 0.12 %q", key)
+		}
+	}
+}
+
+// Записи файла 1.0 — против $defs соответствующего вида.
+//
+// Проверяется то же, что у 0.12: ни одного ключа мимо объявленных. Адрес
+// определения выбирается по kind записи — ровно как это делает if/then в
+// схеме, и расхождение между «что пишет Go» и «что объявляет схема» вылезает
+// на том виде, где оно есть, а не общим «где-то в sources[]».
+func TestExport10EntityKeysAreDeclared(t *testing.T) {
+	schema := readSchema10(t)
+	var defs map[string]struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(schema["$defs"], &defs); err != nil {
+		t.Fatalf("разбор $defs: %v", err)
+	}
+
+	declared := func(name string) map[string]json.RawMessage {
+		d := defs[name].Properties
+		if len(d) == 0 {
+			t.Fatalf("$defs/%s не объявляет полей — сверять нечем", name)
+		}
+		return d
+	}
+	check := func(where, def string, rec map[string]json.RawMessage) {
+		for key := range rec {
+			if _, ok := declared(def)[key]; !ok {
+				t.Errorf("%s: экспорт несёт ключ %q, не объявленный в $defs/%s", where, key, def)
+			}
+		}
+	}
+
+	doc := export10Sample(t)
+	var sources []map[string]json.RawMessage
+	if err := json.Unmarshal(doc["sources"], &sources); err != nil {
+		t.Fatalf("sources: %v", err)
+	}
+	if len(sources) == 0 {
+		t.Fatal("в образце нет источников — тест бессмыслен")
+	}
+	seen := map[string]bool{}
+	for _, rec := range sources {
+		var kind string
+		if err := json.Unmarshal(rec["kind"], &kind); err != nil {
+			t.Fatalf("kind: %v", err)
+		}
+		seen[kind] = true
+		switch kind {
+		case "folder":
+			check("sources[] folder", "sourceFolder", rec)
+			var nodes []map[string]json.RawMessage
+			if err := json.Unmarshal(rec["nodes"], &nodes); err != nil {
+				t.Fatalf("nodes: %v", err)
+			}
+			for _, n := range nodes {
+				check("sources[].nodes[]", "node", n)
+			}
+		case "subscription":
+			check("sources[] subscription", "sourceSubscription", rec)
+		default:
+			check("sources[] "+kind, "sourceServer", rec)
+		}
+	}
+	// Образец обязан покрывать все виды: иначе тест зелен потому, что вида в
+	// нём нет, а не потому, что он описан.
+	for _, kind := range []string{"server", "chain", "folder", "subscription"} {
+		if !seen[kind] {
+			t.Errorf("в образце нет источника вида %q — этот вид не проверен", kind)
+		}
+	}
+
+	var rules []map[string]json.RawMessage
+	if err := json.Unmarshal(doc["rules"], &rules); err != nil {
+		t.Fatalf("rules: %v", err)
+	}
+	if len(rules) == 0 {
+		t.Fatal("в образце нет правил — тест бессмыслен")
+	}
+	for _, rec := range rules {
+		check("rules[]", "rule", rec)
+	}
+
+	var dns struct {
+		Servers []map[string]json.RawMessage `json:"servers"`
+		Rules   []map[string]json.RawMessage `json:"rules"`
+	}
+	if err := json.Unmarshal(doc["dns"], &dns); err != nil {
+		t.Fatalf("dns: %v", err)
+	}
+	if len(dns.Servers) == 0 || len(dns.Rules) == 0 {
+		t.Fatal("в образце нет DNS-записей — тест бессмыслен")
+	}
+	for _, rec := range dns.Servers {
+		check("dns.servers[]", "dnsServer", rec)
+	}
+	for _, rec := range dns.Rules {
+		check("dns.rules[]", "dnsRule", rec)
+	}
+}
+
+// Секции узла: закрытое множество ключей (единственное место схемы 1.0, где
+// additionalProperties:false), и записи внутри — В КОРНЕВОЙ форме.
+//
+// Ровно это и есть «одно пространство имён»: узловое правило отличается от
+// корневого только тем, где оно лежит. Второй набор ключей у тех же
+// сущностей был бы возвратом к маппингу, ради сноса которого и затеян 1.0.
+func TestExport10SectionsUseRootRecordForm(t *testing.T) {
+	doc := export10Sample(t)
+	var sources []map[string]json.RawMessage
+	if err := json.Unmarshal(doc["sources"], &sources); err != nil {
+		t.Fatalf("sources: %v", err)
+	}
+	var sections struct {
+		Rules []map[string]json.RawMessage `json:"rules"`
+		DNS   struct {
+			Servers []map[string]json.RawMessage `json:"servers"`
+			Rules   []map[string]json.RawMessage `json:"rules"`
+		} `json:"dns"`
+	}
+	found := false
+	for _, rec := range sources {
+		raw, ok := rec["sections"]
+		if !ok {
+			continue
+		}
+		found = true
+		if err := json.Unmarshal(raw, &sections); err != nil {
+			t.Fatalf("sections: %v", err)
+		}
+	}
+	if !found {
+		t.Fatal("в образце нет узла с секциями — тест бессмыслен")
+	}
+	if len(sections.Rules) == 0 || len(sections.DNS.Servers) == 0 || len(sections.DNS.Rules) == 0 {
+		t.Fatalf("секции образца неполны: %+v", sections)
+	}
+	// Форма 0.12 (match/outbound у правила, name/value у DNS) внутри секций
+	// означала бы, что «одно пространство имён» не доехало.
+	for _, rec := range sections.Rules {
+		for _, forbidden := range []string{"match", "outbound"} {
+			if _, ok := rec[forbidden]; ok {
+				t.Errorf("правило секции несёт ключ формы 0.12 %q", forbidden)
+			}
+		}
+		if _, ok := rec["body"]; !ok {
+			t.Errorf("у правила секции нет body: %v", rec)
+		}
+	}
+	for _, rec := range append(sections.DNS.Servers, sections.DNS.Rules...) {
+		for _, forbidden := range []string{"name", "value"} {
+			if _, ok := rec[forbidden]; ok {
+				t.Errorf("DNS-запись секции несёт ключ формы 0.12 %q", forbidden)
+			}
+		}
+	}
+}
+
 // TestBackupDirectionDefMirrorsCanon — копия канона Направления в схеме
 // бэкапа не должна разъезжаться с оригиналом.
 //
@@ -216,7 +461,7 @@ func TestBackupDirectionDefMirrorsCanon(t *testing.T) {
 
 	canon := read("direction.schema.json")
 
-	backupData, err := os.ReadFile(filepath.Join("..", "..", "contract", "schema", "backup.schema.json"))
+	backupData, err := os.ReadFile(schemaPath10())
 	if err != nil {
 		t.Skipf("схема бэкапа недоступна: %v", err)
 	}

@@ -1,0 +1,638 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lx-contract/schema/backup-0.12.schema.json",
+  "title": "LX Backup v1 — legacy 0.12 (читается всегда, не пишется после окна совместимости)",
+  "description": "Схема ФОРМАТА 0.12 (lx_backup: 1) — предыдущее поколение файла бэкапа. Действующая норма — backup.schema.json (контракт 1.0.0, lx_backup: 2), где файл стал сериализацией состояния без маппера. Этот файл оставлен для чтения старых бэкапов и для проверки 0.12-писателя, который обе стороны держат на время окна совместимости (docs/BACKUP.md §1, §8, §11). Содержимое — копия backup.schema.json версии 0.12.0 без изменений, кроме $id и заголовка. Схема НАМЕРЕННО открыта (additionalProperties: true на любом уровне): чужой файл с лишним полем обязан проходить валидацию, а отбрасывать непонятое с warning — обязанность импортёра (П3), не валидатора.",
+  "type": "object",
+  "required": [
+    "lx_backup",
+    "exported_by",
+    "exported_at"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "lx_backup": {
+      "const": 1
+    },
+    "exported_by": {
+      "type": "object",
+      "required": [
+        "app",
+        "version"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "app": {
+          "enum": [
+            "launcher",
+            "lxbox"
+          ]
+        },
+        "version": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        }
+      }
+    },
+    "exported_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "subscriptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Стабильный идентификатор источника (ULID у лаунчера). Ссылки на узлы внутри источника (detour_node_source_id) адресуют его именно им, поэтому id обязан пережить перенос."
+          },
+          "url": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string",
+            "description": "Имя ИСТОЧНИКА (не узла): подпись подписки в списке. В отличие от снесённого label у servers[]/chains[], ссылочного тега в паре с ним нет — переименовать источник и ничего не сломать можно."
+          },
+          "identity": {
+            "type": "object",
+            "description": "Чем подписка представляется провайдеру при запросе тела (контракт 0.12.0). Отдельный объект, а не плоские ключи: это одна настройка из нескольких частей, и вложенность не даёт им расползтись по корню записи. Все ключи необязательны; отсутствие ключа значит «как в системе», а не «выключено» — поэтому булевы поля отличают не заданное от false самим фактом отсутствия. Ключи, которых принимающая сторона не применяет, отбрасываются ОДНИМ warning'ом backup_source_identity_dropped на подписку с перечнем (BACKUP_PRINCIPLES.md П3/П6).",
+            "additionalProperties": true,
+            "properties": {
+              "user_agent": {
+                "type": "string",
+                "description": "User-Agent ИМЕННО этой подписки; пусто — дефолт приложения. Поле не косметическое: провайдеры ВЕТВЯТ выдачу по UA, и одна ссылка отдаёт разным клиентам разные тела."
+              },
+              "send_hwid": {
+                "type": "boolean",
+                "description": "Отправлять ли заголовки идентификатора устройства. Отсутствие ключа = «как в системе»."
+              },
+              "hwid": {
+                "type": "string",
+                "description": "Идентификатор устройства для ЭТОЙ подписки; пусто — глобальный. Провайдеры привязывают подписку к устройству и считают их лимит."
+              },
+              "device_os": {
+                "type": "string",
+                "description": "Имя ОС в заголовках. Поддержка — только lxbox: у лаунчера ОС не переопределяется per-source."
+              },
+              "ver_os": {
+                "type": "string",
+                "description": "Версия ОС в заголовках. Поддержка — только lxbox."
+              },
+              "device_model": {
+                "type": "string",
+                "description": "Модель устройства в заголовках. Поддержка — только lxbox."
+              },
+              "hash_device_model": {
+                "type": "boolean",
+                "description": "Хэшировать ли модель устройства. Отсутствие ключа = «как в системе»."
+              }
+            }
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "skip": {
+            "type": "array",
+            "description": "Фильтры отсева узлов подписки: список условий {field, contains|equals|regexp, …}. Поддержка — только launcher (docs/BACKUP.md, таблица полей).",
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "max_nodes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tag": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "prefix": {
+                "type": "string"
+              },
+              "postfix": {
+                "type": "string"
+              },
+              "mask": {
+                "type": "string"
+              }
+            }
+          },
+          "update": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "interval_hours": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "auto": {
+                "type": "boolean"
+              }
+            }
+          },
+          "disabled": {
+            "type": "object",
+            "description": "идентичность узла (тег в рамках источника, docs/IDENTITY.md §1; ключ формы 64 hex — legacy-хеш) → lastSeen unix seconds. Ключ для формата обмена непрозрачен и копируется как есть.",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "outbounds": {
+            "type": "array",
+            "description": "Локальные Направления источника (форма direction.schema.json). Поддержка — только launcher.",
+            "items": {
+              "$ref": "#/$defs/direction"
+            }
+          },
+          "fold": {
+            "description": "Свёртка подписки в группу (SPEC 108). Поддержка — только launcher.",
+            "$ref": "source_fold.schema.json"
+          },
+          "exclude_from_global": {
+            "type": "boolean",
+            "description": "Узлы источника не попадают в глобальные Направления. Поддержка — только launcher."
+          },
+          "expose_group_tags_to_global": {
+            "type": "boolean",
+            "description": "Свёрнутая подписка отдаёт в глобальные Направления теги групп, а не узлов. Поддержка — только launcher."
+          },
+          "detour_tag": {
+            "type": "string",
+            "description": "Тег outbound'а, через который дозваниваются узлы источника. Поддержка — только launcher."
+          },
+          "detour_node_source_id": {
+            "type": "string",
+            "description": "id источника-цели ссылки detour-на-узел (docs/IDENTITY.md §2.1). Ходит парой с detour_node_tag."
+          },
+          "detour_node_tag": {
+            "type": "string",
+            "description": "identity-тег узла ВНУТРИ источника detour_node_source_id. Финальный конфиговый тег наружу не выезжает — он вычисляется каждой сборкой на принимающей стороне (П5)."
+          },
+          "detour_node_label": {
+            "type": "string",
+            "description": "Снимок подписи узла-цели, только для показа."
+          }
+        }
+      }
+    },
+    "servers": {
+      "type": "array",
+      "description": "Одиночные серверы. Ровно одно из uri/config_json.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Стабильный идентификатор источника — цель ссылок detour_node_source_id."
+          },
+          "uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "config_json": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "node_tag": {
+            "type": "string",
+            "description": "Тег узла (не подпись): на него ссылаются rules[].outbound, фильтры Направлений и позиции цепочек."
+          },
+          "folder": {
+            "type": "string",
+            "description": "Имя папки, в которой лежит запись; пусто или отсутствует — запись лежит в корне списка. Папка = контейнер ОДИНОЧНЫХ СЕРВЕРОВ, и обе стороны собирают её по этому имени: записи с одинаковым folder становятся одной папкой, порядок членов — порядок записей в файле. Отдельной секции folders[] нет намеренно — папка не несёт собственных данных, кроме имени, а секция потребовала бы синхронизировать два места. Настройки самой папки (политика тегов, свёртка, общий detour) в схему не входят и остаются на своей стороне (warning backup_local_only_dropped); подписки и цепочки в папку не кладутся — поля folder у них нет."
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "exclude_from_global": {
+            "type": "boolean"
+          },
+          "detour_tag": {
+            "type": "string"
+          },
+          "detour_node_source_id": {
+            "type": "string"
+          },
+          "detour_node_tag": {
+            "type": "string"
+          },
+          "detour_node_label": {
+            "type": "string"
+          },
+          "sections": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Фрагмент конфига, который узел носит с собой (SPEC 121, D-101/D-102): route-правила и DNS-записи, живущие и умирающие вместе с ним. Форма — КОРНЕВАЯ форма бэкапа: sections.rules[] = элемент properties.rules.items (виды inline|srs, свои enabled и num на общей оси), sections.dns.servers[]/rules[] = $defs/dnsRef вида user (тело в value). Тела (match, value) контракт не типизирует намеренно. Плейсхолдер \"@self\" целой строкой и \"@{self}\" внутри строки означает финальный тег этого узла и хранится как есть. В rules[] бэкапа эти правила НЕ едут — их дом здесь. Норма: docs/NODE_SECTIONS.md. Поддержка: launcher сейчас, обе после реализации LxBox (0.13.0).",
+            "properties": {
+              "rules": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/properties/rules/items"
+                },
+                "description": "Route-правила узла в корневой форме; kind только inline|srs; num — общая ось порядка."
+              },
+              "dns": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "servers": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/dnsRef"
+                    },
+                    "description": "DNS-серверы узла, kind=user, name — тег (с плейсхолдером), тело в value."
+                  },
+                  "rules": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/dnsRef"
+                    },
+                    "description": "DNS-правила узла, kind=user, тело в value."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "kind": {
+            "enum": [
+              "inline",
+              "srs",
+              "preset",
+              "json"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "num": {
+            "type": "number",
+            "description": "Общая ось порядка (модель LxBox §370); импортёр перенумеровывает, сохраняя относительный порядок"
+          },
+          "outbound": {
+            "type": "string",
+            "description": "Символическая ссылка; несуществующая цель → импорт выключенным с warning"
+          },
+          "ref": {
+            "type": "string",
+            "description": "kind=preset: id из registry/presets.json; kind=srs: URL первого набора (= refs[0], когда refs есть)"
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "kind=srs: все URL наборов ОДНОГО правила по порядку, ref = refs[0]. Пишется только при двух и более наборах. Импортёр берёт refs, без него — ref; сторона без поддержки читает ref и получает первый набор (черновик D-100)"
+          },
+          "vars": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "match": {
+            "type": "object",
+            "description": "kind=inline|json: sing-box rule-фрагмент",
+            "additionalProperties": true
+          },
+          "dns": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "resolve": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "dns": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "servers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dnsRef"
+          }
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dnsRef"
+          }
+        },
+        "final": {
+          "type": "string"
+        },
+        "strategy": {
+          "type": "string"
+        }
+      }
+    },
+    "vars": {
+      "type": "object",
+      "description": "Только имена с portable=true из registry/vars.json; непереносимое имя отбрасывается с warning backup_var_skipped",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "final": {
+          "type": "string"
+        }
+      }
+    },
+    "warp": {
+      "type": "array",
+      "description": "WARP-регистрации. Поля записи, кроме объявленных ниже, — snake_case поля самой регистрации; лаунчер везёт раздел сырым JSON. Пропуск записи принимающей стороной предъявляется кодом backup_warp_skipped.",
+      "items": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "wg",
+              "masque"
+            ]
+          },
+          "sni": {
+            "type": "string",
+            "description": "Поддержка: LxBox. SNI MASQUE-аккаунта, хранимый на самом аккаунте у LxBox. У лаунчера поля на аккаунте нет — SNI берётся из пула на сборке конфига, поэтому приехавшее значение он не применяет (молча: чужое объявленное, не «непонятое» П3), но провозит сырым JSON до следующего экспорта."
+          },
+          "idle_timeout": {
+            "type": "string",
+            "description": "Поддержка: LxBox. Простой MASQUE-аккаунта до разрыва, строка длительности (\"30s\") как у прочих таймаутов схемы. Хранится на аккаунте у LxBox; у лаунчера значение ставит UI, на аккаунте поля нет — приехавшее не применяется молча, но провозится сырым JSON."
+          },
+          "keep_alive": {
+            "type": "string",
+            "description": "Поддержка: LxBox. Период keep-alive MASQUE-аккаунта, строка длительности (\"30s\") как idle_timeout. Хранится на аккаунте у LxBox; у лаунчера значение ставит UI, на аккаунте поля нет — приехавшее не применяется молча, но провозится сырым JSON."
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "Поддержка: LxBox. Эндпоинт wg-аккаунта в форме host:port; LxBox пишет его только если он не дефолтный. Хранится на аккаунте у LxBox; у лаунчера поля на аккаунте нет — эндпоинт берётся из пула warp_endpoints.json на сборке конфига, поэтому приехавшее значение не применяется молча, но провозится сырым JSON."
+          },
+          "awg": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Поддержка: LxBox. Параметры AmneziaWG wg-аккаунта, состав открытый. Хранятся на аккаунте у LxBox; у лаунчера их на аккаунте нет — берутся из пула warp_endpoints.json на сборке конфига, поэтому приехавший объект не применяется молча, но провозится сырым JSON."
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "directions": {
+      "type": "array",
+      "description": "Направления — цели правил (SPEC 104). Импортируются ДО правил и пополняют список известных целей; существующий тег не перезаписывается (warning backup_direction_exists). Имя Направления ровно одно — tag (контракт 0.9.0).",
+      "items": {
+        "$ref": "#/$defs/direction"
+      }
+    },
+    "chains": {
+      "type": "array",
+      "description": "Цепочки хопов (SPEC 110). Порядок записей НОРМАТИВЕН и не сортируется ни на экспорте, ни на импорте: вложенная цепочка вправе стоять позицией только у цепочки, объявленной НИЖЕ её по этому списку, — этим исключены циклы. Импортируются ПОСЛЕ directions[] (позиция может ссылаться на Направление), но ДО rules[] (правило может метить в цепочку — тег пополняет список известных целей). Ключ идентичности и merge — tag: занятый тег не перезаписывается, приехавшая запись пропускается с warning backup_chain_exists ВСЕГДА (см. BACKUP.md об ограничениях тега). Достижимость позиций hops на импорте не проверяется — рубеж валидации у обеих сторон один: сборка конфига (chain_hop_missing).",
+      "items": {
+        "type": "object",
+        "required": [
+          "tag",
+          "chain"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Стабильный идентификатор источника-цепочки. Идентичностью при merge НЕ является — merge идёт по tag (П5); id переносится, чтобы ссылки detour_node_source_id на цепочку пережили перенос."
+          },
+          "tag": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Идентичность записи, он же тег будущего outbound'а: на него ссылаются rules[].outbound, route.final, фильтры Направлений и позиции других цепочек. Стабильным идентификатором НЕ является — см. BACKUP.md."
+          },
+          "label": {
+            "type": "string",
+            "description": "Отображаемая подпись цепочки. Поддержка: LxBox; лаунчер игнорирует молча (имя у него — тег, SPEC 112) и на экспорте не пишет. Идентичностью не является: merge идёт по tag."
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "exclude_from_global": {
+            "type": "boolean"
+          },
+          "detour_tag": {
+            "type": "string"
+          },
+          "detour_node_source_id": {
+            "type": "string"
+          },
+          "detour_node_tag": {
+            "type": "string"
+          },
+          "detour_node_label": {
+            "type": "string"
+          },
+          "chain": {
+            "$ref": "source_chain.schema.json"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "dnsRef": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "template",
+            "preset",
+            "user"
+          ]
+        },
+        "tag": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    },
+    "direction": {
+      "type": "object",
+      "description": "Направление в канонической форме direction.schema.json. Поля и их смысл — оттуда; здесь additionalProperties НАМЕРЕННО открыт, в отличие от канона: схема бэкапа не отвергает чужой файл с лишним ключом, отбрасывать непонятое с warning обязан импортёр (BACKUP_PRINCIPLES.md П3). Ключ label с контракта 0.12.4 объявлен (D-094) и потому неизвестным полем НЕ считается: его пишет и читает LxBox, лаунчер игнорирует молча.",
+      "required": [
+        "tag"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "tag": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Системный идентификатор И отображаемое имя одновременно: у Направления ровно одно имя. Цель правил. Автоматически выдаваемые имеют вид vpn-N; шаблонные и созданные пресетом — произвольные (proxy-out, ru VPN 🇷🇺). Переименование = смена tag, вместе с обновлением всех ссылок на него."
+        },
+        "label": {
+          "type": "string",
+          "description": "Отображаемая подпись Направления. Поддержка: LxBox; лаунчер игнорирует молча (имя у него — тег). Целью правил не является: ссылки идут на tag."
+        },
+        "ping_url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "URL замера доступности узлов Направления В ПРИЛОЖЕНИИ (бюджет пинга/URLTest клиента). Поддержка: LxBox; лаунчер игнорирует молча и провозит. Это НЕ auto.url: тот — параметр парной urltest-группы ядра, а этот — чем приложение меряет узлы Направления в своём списке."
+        },
+        "ping_timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Таймаут одного замера узла Направления в приложении, миллисекунды. Поддержка: LxBox; лаунчер игнорирует молча и провозит. Это НЕ auto.idle_timeout (простой urltest-группы ядра)."
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Выключенное Направление сохраняет настройки, но не материализуется и не предлагается целью правил."
+        },
+        "filter": {
+          "type": "string",
+          "description": "ТЕЛО регулярного выражения по итоговому тегу узла, без обёртки и флагов. Пусто — все узлы. Компилируется БЕЗ учёта регистра на обеих платформах: теги подписок приходят в произвольном регистре. Некорректное выражение равнозначно пустому — опечатка не должна лишать пользователя всех узлов."
+        },
+        "invert": {
+          "type": "boolean",
+          "default": false,
+          "description": "Оставить узлы, которые НЕ совпали с filter. При пустом filter не значит ничего."
+        },
+        "default": {
+          "type": "string",
+          "description": "ТЕЛО регулярного выражения; первый совпавший узел становится умолчанием селектора. Пусто — умолчание не выставляется, кроме случая auto (см. ниже)."
+        },
+        "include_direct": {
+          "type": "boolean",
+          "default": false,
+          "description": "Предложить прямое соединение опцией внутри Направления."
+        },
+        "include_block": {
+          "type": "boolean",
+          "default": false,
+          "description": "Предложить блокировку опцией внутри Направления."
+        },
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Теги других Направлений, предлагаемых опцией. Разрешены только стоящие ВЫШЕ по списку — порядок исключает циклы по построению. Парные <tag>-auto сюда не попадают: двойник является опцией только своего Направления."
+        },
+        "interrupt_exist_connections": {
+          "type": "boolean",
+          "description": "Рвать живые соединения при переключении. Отсутствие ключа означает «решает шаблон», а не false."
+        },
+        "auto": {
+          "$ref": "#/$defs/directionAuto",
+          "description": "Параметры парной urltest-группы <tag>-auto. Отсутствие ключа = автовыбора нет и группа не эмитится вовсе."
+        }
+      }
+    },
+    "directionAuto": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Парная группа <tag>-auto: состав тот же, что у Направления, минус группы выбора (urltest внутри urltest мерил бы выбор внутренней группы, а не сервер). Становится умолчанием Направления, если поле default ничего не поймало.",
+      "properties": {
+        "mode": {
+          "enum": [
+            "least_test",
+            "round_robin"
+          ],
+          "default": "least_test",
+          "description": "least_test — один самый быстрый узел (апстрим). round_robin — ротация по пулу; только он эмитит balancer."
+        },
+        "url": {
+          "type": "string",
+          "description": "Адрес проверки задержки."
+        },
+        "interval": {
+          "type": "string",
+          "description": "Период перепроверки (\"15m\")."
+        },
+        "tolerance": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "На сколько миллисекунд новый лидер должен опередить текущего, чтобы произошло переключение."
+        },
+        "idle_timeout": {
+          "type": "string",
+          "description": "Через сколько простоя перестать проверять."
+        },
+        "interrupt_exist_connections": {
+          "type": "boolean"
+        },
+        "pool": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "round_robin: размер пула."
+        },
+        "pool_tolerance": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "round_robin: запас задержки, при котором узел остаётся в пуле."
+        },
+        "sticky_hash": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "process",
+              "domain",
+              "source_ip",
+              "dest_ip",
+              "dest_port",
+              "none"
+            ]
+          },
+          "description": "round_robin: поля соединения, привязывающие сессию к одному узлу пула. Пустой список НЕ выключает липкость — ядро схлопывает его в умолчание; выключение — это явный [\"none\"]."
+        }
+      }
+    }
+  }
+}

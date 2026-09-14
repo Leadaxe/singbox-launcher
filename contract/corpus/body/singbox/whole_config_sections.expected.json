@@ -1,0 +1,83 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.10.0.2/32"
+        ],
+        "mtu": 1280,
+        "peers": [
+          {
+            "address": "192.0.2.10",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "port": 51820,
+            "public_key": "Z2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUZHSElKS0w="
+          }
+        ],
+        "private_key": "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVphYmNkZWY=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "home-wg",
+      "scheme": "wireguard",
+      "sections": {
+        "dns": {
+          "rules": [
+            {
+              "body": {
+                "domain_suffix": [
+                  ".home.example-1.com"
+                ],
+                "server": "@{self}-home-dns"
+              },
+              "enabled": true,
+              "kind": "user"
+            }
+          ],
+          "servers": [
+            {
+              "body": {
+                "detour": "@self",
+                "server": "10.10.0.1",
+                "type": "udp"
+              },
+              "enabled": true,
+              "kind": "user",
+              "tag": "@{self}-home-dns"
+            }
+          ]
+        },
+        "rules": [
+          {
+            "body": {
+              "ip_cidr": [
+                "10.10.0.0/16"
+              ],
+              "outbound": "@self"
+            },
+            "enabled": true,
+            "kind": "inline",
+            "name": "@{self} rule 1"
+          },
+          {
+            "body": {
+              "domain": [
+                "mail.home.example-1.com"
+              ],
+              "outbound": "@self"
+            },
+            "enabled": true,
+            "kind": "inline",
+            "name": "Home mail"
+          }
+        ]
+      }
+    }
+  ],
+  "v": 1
+}
