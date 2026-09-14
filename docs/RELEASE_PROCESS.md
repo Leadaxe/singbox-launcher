@@ -319,10 +319,10 @@ Every launcher version is tested against one specific pair of (sing-box core, wi
   ```
 - **When **not** to change it:** before a release, mid-feature — leave the source default untouched. `go run .` keeps pulling the last release's template rather than develop's HEAD, and that is by design (local builds then match what users were shipped).
 
-### 5.3 Template invalidation on the user's side
+### 5.3 Template refresh on the user's side
 
-When the launcher is upgraded, `core.InvalidateTemplateIfStale` (called from `main.go`) compares `Settings.LastTemplateLauncherVersion` (written after the last successful "Download Template") against `constants.AppVersion`. If it is lower, `bin/wizard_template.json` is deleted and the UI shows the blue "Download Template". After a successful download the UI writes a fresh `last_template_launcher_version` into `bin/settings.json`.
+When the launcher is upgraded, `core.RefreshTemplateIfStale` (started in the background from `main.go` via `StartTemplateRefresh`) compares `Settings.LastTemplateLauncherVersion` (written after the last successful template download) against `constants.AppVersion`. If it is lower, the template pinned for this release is downloaded and swapped in atomically; the old `bin/wizard_template.json` stays until then, and a failed download keeps it (the next launch retries). Config builds wait for the refresh, so the first core start after the upgrade is rebuilt from the new template; if that rebuild fails, the start is abandoned with an error dialog instead of running the previous `config.json`.
 
-Dev builds (AppVersion = `v-local-test`, `unnamed-dev`, `*-dirty`) skip invalidation — otherwise local development breaks on every run.
+Dev builds (AppVersion = `v-local-test`, `unnamed-dev`, `*-dirty`) skip the check — otherwise local development breaks on every run.
 
 Details and tests — [`core/template_migration.go`](../core/template_migration.go).

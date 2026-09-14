@@ -95,6 +95,11 @@ type AppController struct {
 	ctx        context.Context    // Context for cancellation
 	cancelFunc context.CancelFunc // Cancel function for stopping goroutines
 
+	// templateRefreshDone закрывается, когда фоновое обновление шаблона после
+	// апгрейда (StartTemplateRefresh) закончилось; сборка config.json ждёт его
+	// (awaitTemplateRefresh). nil — обновление не запускалось, ждать нечего.
+	templateRefreshDone atomic.Pointer[chan struct{}]
+
 	// --- Shutdown state ---
 	// exitOnce guards GracefulExit: it is reachable both from the tray "Quit"
 	// item / dashboard Exit button *and* from main() after Application.Run()

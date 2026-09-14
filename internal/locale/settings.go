@@ -47,8 +47,9 @@ type Settings struct {
 	DebugAPIPort int `json:"debug_api_port,omitempty"`
 	// LastTemplateLauncherVersion — версия лаунчера, которая в последний раз
 	// успешно скачала bin/wizard_template.json. На старте сравнивается с
-	// текущей AppVersion: если меньше → шаблон удаляется как протухший
-	// (формат шаблона мог разойтись между версиями). См. SPEC 046.
+	// текущей AppVersion: если меньше → шаблон этой версии скачивается и
+	// заменяет протухший (формат шаблона мог разойтись между версиями), старый
+	// до того не трогается. См. SPEC 046, core.RefreshTemplateIfStale.
 	LastTemplateLauncherVersion string `json:"last_template_launcher_version,omitempty"`
 	// LastLocaleLauncherVersion — версия лаунчера, которая в последний раз
 	// обновила bin/locale/*.json. Апдейт заменяет только бинарь (bin/
@@ -184,8 +185,8 @@ func GenerateUUIDv4() string {
 // template. Called after a successful template download — see SPEC 046.
 //
 // Failure to persist is non-fatal for the immediate operation but logged: if
-// the version isn't recorded the next launcher upgrade will re-invalidate the
-// template once more (cosmetic UX nuisance, not a correctness issue).
+// the version isn't recorded the next launch refreshes the template once more
+// (cosmetic UX nuisance, not a correctness issue).
 func MarkTemplateInstalled(binDir, appVersion string) error {
 	s := LoadSettings(binDir)
 	if s.LastTemplateLauncherVersion == appVersion {

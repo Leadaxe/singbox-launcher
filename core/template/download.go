@@ -42,6 +42,11 @@ type URLFetcher func(ctx context.Context, url string, timeout time.Duration) ([]
 // пользователю: она всегда содержит конкретную причину, а не «см. лог» —
 // именно этого не хватало диалогу в Мастере.
 //
+// Установленный шаблон не трогается, пока новый не скачан целиком и не
+// разобран: тело проверяется ParseTemplateData, а на место старого файла
+// встаёт переименованием временного. Любой провал — сеть, HTTP-статус,
+// заглушка вместо JSON, запись — оставляет прежний файл как был.
+//
 // СЕТЕВАЯ функция: вызывать только вне UI-потока, мутации виджетов после —
 // через fyne.Do.
 func DownloadTemplate(ctx context.Context, execDir string, fetch URLFetcher) (string, error) {
@@ -67,22 +72,58 @@ func DownloadTemplate(ctx context.Context, execDir string, fetch URLFetcher) (st
 		debuglog.ErrorLog("template: download returned an empty body")
 		return "", fmt.Errorf("%s: %s", locale.T("Config template download failed"), locale.T("server returned an empty file"))
 	}
+	if _, err := ParseTemplateData(data); err != nil {
+		debuglog.ErrorLog("template: downloaded body is not a usable template: %v", err)
+		return "", fmt.Errorf("%s: %w", locale.T("Config template download failed"), err)
+	}
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		debuglog.ErrorLog("template: mkdir %s failed: %v", binDir, err)
 		return "", fmt.Errorf("%s: %w", locale.T("Config template download failed"), err)
 	}
-	if err := os.WriteFile(target, data, 0o644); err != nil {
+	if err := replaceFileAtomically(target, data); err != nil {
 		debuglog.ErrorLog("template: write %s failed: %v", target, err)
 		return "", fmt.Errorf("%s: %w", locale.T("Config template download failed"), err)
 	}
 	// Pin install: помечаем, какая версия лаунчера поставила шаблон, чтобы
-	// следующий апгрейд знал, что его надо инвалидировать (SPEC 046).
+	// следующий апгрейд знал, что его надо обновить (SPEC 046).
 	// Best effort — провал отметки не отменяет уже записанный файл.
 	if err := locale.MarkTemplateInstalled(binDir, constants.AppVersion); err != nil {
 		debuglog.WarnLog("template: failed to record install version: %v", err)
 	}
 	debuglog.InfoLog("template: installed %s (%d bytes)", target, len(data))
 	return target, nil
+}
+
+// replaceFileAtomically пишет data во временный файл рядом с target и
+// переименовывает его поверх: на месте target всегда лежит либо прежний файл
+// целиком, либо новый целиком — обрыв записи не оставляет обрезка.
+//
+// Имя временного файла уникально: фоновое обновление после апгрейда и кнопка
+// Download (или Мастер) могут качать одновременно, и общий временный файл
+// один писатель переименовал бы из-под другого.
+func replaceFileAtomically(target string, data []byte) error {
+	f, err := os.CreateTemp(filepath.Dir(target), filepath.Base(target)+".*.download")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	_, writeErr := f.Write(data)
+	closeErr := f.Close()
+	if writeErr == nil {
+		writeErr = closeErr
+	}
+	if writeErr == nil {
+		// CreateTemp создаёт 0600; шаблон всегда лежал с 0644.
+		writeErr = os.Chmod(tmp, 0o644)
+	}
+	if writeErr == nil {
+		writeErr = os.Rename(tmp, target)
+	}
+	if writeErr != nil {
+		_ = os.Remove(tmp) // best-effort: прежний target остался нетронутым
+		return writeErr
+	}
+	return nil
 }
 
 // EnsureTemplate загружает шаблон, а если файла нет или он нечитаем —

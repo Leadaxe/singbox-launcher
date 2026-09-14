@@ -145,6 +145,11 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 		}
 	}
 
+	// Шаблон после апгрейда докачивается в фоне (StartTemplateRefresh) —
+	// ждём его ДО захвата CmdMutex: Stop, нажатый во время ожидания, иначе
+	// встал бы на мьютексе. Сборка ниже ждёт того же шлюза, но он уже открыт.
+	ac.awaitTemplateRefresh()
+
 	ac.CmdMutex.Lock()
 	defer ac.CmdMutex.Unlock()
 
@@ -162,10 +167,14 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 	// Это компенсирует UX-регрессию фазы 5.B: Wizard Save больше не пишет
 	// config.json, и без этого хука sing-box стартовал бы со старым.
 	//
-	// Best-effort: на ошибке rebuild — логируем и продолжаем со старым
-	// config.json. Лучше стартануть с чем есть, чем не стартовать вообще.
-	if err := ac.RebuildConfigIfDirty(); err != nil {
-		debuglog.WarnLog("startSingBox: config rebuild failed (%v); proceeding with existing config.json", err)
+	// Ошибка пересборки ОСТАНАВЛИВАЕТ запуск и показывается пользователю.
+	// Прежнее «логируем и стартуем со старым config.json» прятало провал:
+	// ядро работало, а настройки не применялись, и узнать об этом было
+	// неоткуда.
+	if err := ac.rebuildConfigBeforeStart(false); err != nil {
+		debuglog.ErrorLog("startSingBox: config rebuild failed, sing-box not started: %v", err)
+		ac.ShowRebuildError(err)
+		return
 	}
 
 	// Check capabilities on Linux before starting

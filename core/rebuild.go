@@ -107,6 +107,11 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	}
 	execDir := ac.FileService.ExecDir
 
+	// Шаблон после апгрейда докачивается в фоне (StartTemplateRefresh). Сборка
+	// из старого шаблона, пока новый в пути, дала бы ровно тот config.json,
+	// ради замены которого шаблон и качается, — ждём.
+	ac.awaitTemplateRefresh()
+
 	// One-time legacy cleanup: bin/outbounds.cache.json больше не используется.
 	cleanupLegacyOutboundsCache(execDir)
 
@@ -120,7 +125,8 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	// Step 1.5: load template — нужен раньше (SPEC 056) для preset.outbounds
 	// pre-patch внутри buildSnapshotFromState. Это лёгкая операция (file
 	// read + JSON parse), переиспользуется в Step 4 для BuildConfig.
-	td, err := template.LoadTemplateData(execDir)
+	// Отсутствующий файл сначала скачивается (loadTemplateForBuild).
+	td, templateFetched, err := ac.loadTemplateForBuild(execDir)
 	if err != nil {
 		return fmt.Errorf("load template: %w", err)
 	}
@@ -161,8 +167,9 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 
 	// Step 3: noop fast-path (skipped when forced=true — user explicitly
 	// pressed Rebuild button и ожидает полный rebuild + sing-box check
-	// даже если dirty markers чистые).
-	if !isForced && !cacheMissing && !ac.StateService.IsCacheStale() && !ac.StateService.IsConfigStale() {
+	// даже если dirty markers чистые). Только что скачанный шаблон — тоже
+	// повод собрать: config.json на диске собран без него.
+	if !isForced && !cacheMissing && !templateFetched && !ac.StateService.IsCacheStale() && !ac.StateService.IsConfigStale() {
 		return nil
 	}
 
@@ -306,6 +313,55 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 
 	debuglog.InfoLog("RebuildConfigIfDirty: config.json written (%d bytes)", len(res.ConfigJSON))
 	return nil
+}
+
+// loadTemplateForBuild reads the template for a build. A MISSING file is
+// downloaded first — the same template.EnsureTemplate the wizard uses: after a
+// startup refresh that failed (launched offline, network up by now) a start
+// would otherwise stop at "no such file" although one request fixes it.
+//
+// A file that exists but does not parse is NOT replaced: it may be the user's
+// own edit, and the returned error names the problem.
+//
+// fetched=true means the template was just downloaded, so config.json on disk
+// was built without it.
+func (ac *AppController) loadTemplateForBuild(execDir string) (td *template.TemplateData, fetched bool, err error) {
+	td, err = template.LoadTemplateData(execDir)
+	if err == nil || !errors.Is(err, os.ErrNotExist) {
+		return td, false, err
+	}
+	debuglog.WarnLog("RebuildConfigIfDirty: %s is missing — downloading it before the build", template.GetTemplateFileName())
+	ctx, cancel := context.WithTimeout(context.Background(), template.DownloadTimeout)
+	defer cancel()
+	td, _, err = template.EnsureTemplate(ctx, execDir, ac.GetURLBytes)
+	if err != nil {
+		return nil, false, err
+	}
+	// Вкладка Local прячет Configurator и показывает Download, пока файла
+	// нет, — после докачки ей надо перечитать.
+	if ac.UIService != nil && ac.UIService.UpdateConfigStatusFunc != nil {
+		ac.UIService.UpdateConfigStatusFunc()
+	}
+	return td, true, nil
+}
+
+// rebuildConfigBeforeStart — pre-start hook of both engines (classic
+// ProcessService.Start, daemon applyCurrentConfig). A non-nil error means the
+// core must NOT be started, and the caller shows it (ShowRebuildError).
+//
+// Before, the error went to the log and the core came up on whatever
+// config.json an earlier build had left — settings silently not applied, the
+// way a launcher upgrade that lost its template went unnoticed.
+//
+// No state.json is not an error: config.json is then managed by hand and there
+// is nothing to rebuild it from.
+func (ac *AppController) rebuildConfigBeforeStart(forced bool) error {
+	err := ac.RebuildConfigIfDirty(forced)
+	if errors.Is(err, state.ErrNotFound) {
+		debuglog.InfoLog("pre-start rebuild: no state.json — config.json is used as is")
+		return nil
+	}
+	return err
 }
 
 // CleanOrphanRuleSets removes bin/rule-sets/*.srs files not referenced by any

@@ -252,7 +252,14 @@ func LoadTemplateData(execDir string) (*TemplateData, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read %s: %w", TemplateFileName, err)
 	}
+	return ParseTemplateData(raw)
+}
 
+// ParseTemplateData — разбор шаблона из байтов: вторая половина
+// LoadTemplateData без чтения файла. Через неё DownloadTemplate проверяет
+// скачанное ДО того, как оно заменит установленный шаблон: страница-заглушка
+// провайдера с HTTP 200 не должна затереть рабочий файл.
+func ParseTemplateData(raw []byte) (*TemplateData, error) {
 	// Удаление UTF-8 BOM если присутствует
 	raw = stripUTF8BOM(raw)
 

@@ -527,6 +527,9 @@
   "Failed to start sing-box:\n\n%s\n\nPlease check:\n1. config.json is valid\n2. sing-box executable exists\n3. Check logs for details": {
     "value": "Не удалось запустить sing-box:\n\n%s\n\nПроверьте:\n1. config.json корректен\n2. Исполняемый файл sing-box существует\n3. Подробности в логах"
   },
+  "Failed to rebuild config.json:\n\n%s\n\nsing-box was not started with the previous config.json: it may not match your current settings. Fix the cause and try again.": {
+    "value": "Не удалось пересобрать config.json:\n\n%s\n\nsing-box не запущен с прежним config.json: он может не соответствовать текущим настройкам. Устраните причину и попробуйте снова."
+  },
   "Parser failed:\n\n%s\n\nPlease check:\n1. Subscription URL is valid\n2. Network connection\n3. Check parser.log for details": {
     "value": "Ошибка парсера:\n\n%s\n\nПроверьте:\n1. URL подписки корректен\n2. Подключение к сети\n3. Подробности в parser.log"
   },
