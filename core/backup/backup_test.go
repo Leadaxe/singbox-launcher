@@ -884,13 +884,15 @@ func TestPerEntityForeignExtensionsDropped(t *testing.T) {
 	}
 }
 
-// SPEC 112-A — ссылка detour-на-узел переносится ОБЪЕКТОМ: id источника-цели
-// плюс identity-тег узла. Обе половины обязаны пережить roundtrip, включая
-// сами id источников: без них ссылка на приёмнике мертва.
+// Ссылка detour на КОРНЕВОЙ узел переносится корневой формой `{tag}`
+// (NODE_LINK.md §2 п. 5): id корневого узла адресом не является.
 //
-// Входов два, и форма ссылки у них разная: у 1.0 — объект `detour{folder_id,
-// tag}`, у файла 0.12 — плоская тройня `detour_node_*`. Итог импорта обязан
-// совпасть.
+// Входов два, и форма ссылки у них разная: у 1.0 — объект `detour{tag}`, у
+// файла 0.12 — плоская тройня `detour_node_*`, где `detour_node_source_id`
+// несёт id СЕРВЕРА (в 0.12 сервер был сам себе источником). Итог импорта
+// обязан совпасть: `{tag: тег узла здесь}` без folder_id. Прежде 0.12
+// ввозил id сервера в folder_id, и на сборке такая ссылка не разрешалась
+// никогда («the referenced source is gone», §7.4).
 func TestRoundTripDetourNodeRef(t *testing.T) {
 	s := &state.State{}
 	s.Sources = []state.Source{
@@ -906,10 +908,7 @@ func TestRoundTripDetourNodeRef(t *testing.T) {
 			ID: "01PROTON0000000000000000",
 			Node: state.Node{
 				Kind: state.SourceKindSubscription, Enabled: true,
-				Detour: &state.NodeLink{
-					FolderID: "01WARP00000000000000000",
-					Tag:      "🔥🎭 WARP (MASQUE)",
-				},
+				Detour: &state.NodeLink{Tag: "🔥🎭 WARP (MASQUE)"},
 			},
 			URL: "https://example.com/sub",
 		},
@@ -926,15 +925,16 @@ func TestRoundTripDetourNodeRef(t *testing.T) {
 	if len(doc.Sources) != 2 {
 		t.Fatalf("источников в файле %d, ожидалось 2", len(doc.Sources))
 	}
-	var link state.NodeLink
+	var link map[string]string
 	if err := json.Unmarshal(doc.Sources[1]["detour"], &link); err != nil {
 		t.Fatalf("detour подписки не объектом: %s (%v)", doc.Sources[1]["detour"], err)
 	}
-	if link.FolderID != "01WARP00000000000000000" || link.Tag != "🔥🎭 WARP (MASQUE)" {
-		t.Fatalf("ссылка в файле 1.0 = %+v", link)
+	if _, has := link["folder_id"]; has || link["tag"] != "🔥🎭 WARP (MASQUE)" {
+		t.Fatalf("ссылка в файле 1.0 = %v, ожидалась корневая форма без folder_id", link)
 	}
 
-	// Файл 0.12, который прежний писатель снимал с этого состояния.
+	// Файл 0.12, который прежний писатель снимал с состояния, где ссылка
+	// адресовала сервер его id.
 	const legacy = `{
   "lx_backup": 1,
   "exported_by": {"app": "launcher", "version": "1.5.9", "platform": "darwin"},
@@ -966,16 +966,9 @@ func TestRoundTripDetourNodeRef(t *testing.T) {
 		if hop == nil || dep == nil {
 			t.Fatalf("%s: источники не восстановились: %+v", in.format, in.state.Sources)
 		}
-		// Ключ вопроса из ТЗ: id источника-цели обязан пережить roundtrip,
-		// иначе ссылка на приёмнике указывает в никуда.
-		if hop.ID != "01WARP00000000000000000" {
-			t.Fatalf("%s: id источника-цели потерян: %q", in.format, hop.ID)
-		}
-		if dep.Detour == nil || dep.Detour.FolderID != hop.ID {
-			t.Fatalf("%s: ссылка после импорта = %+v, ожидалась на %q", in.format, dep.Detour, hop.ID)
-		}
-		if dep.Detour.Tag != "🔥🎭 WARP (MASQUE)" {
-			t.Fatalf("%s: тег ссылки после импорта = %q", in.format, dep.Detour.Tag)
+		want := state.NodeLink{Tag: hop.NodeTagOrLabel()}
+		if dep.Detour == nil || *dep.Detour != want {
+			t.Fatalf("%s: ссылка после импорта = %+v, ожидалась корневая %+v", in.format, dep.Detour, want)
 		}
 	}
 }
