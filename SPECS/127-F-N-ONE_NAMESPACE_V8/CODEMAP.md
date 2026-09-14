@@ -1440,7 +1440,7 @@ v6mig — §9.7 (красный и до волны, не регрессия).
 | **`Import(s, *Backup, opts)`** | `core/backup/import.go:227` | вход 0.x: `decodeLegacy` + `applyDecoded` |
 | **`Import10(s, *Backup10, opts)`** | `core/backup/import.go:250` | вход 1.0: `decode10` + `applyDecoded` |
 | **`ImportFile(s, *File, opts)`** | `core/backup/import.go:273` | развилка форматов ОДНА, у вызывающих её нет |
-| **`applyDecoded(s, dec, opts)`** | `core/backup/import.go:292` | `s.Rules = nil` (`:311`, единственная полная замена §9 п. 7); снимок `takenRootTags` (`:321`) → Направления → `mergeSources` → `rewriteFolderLinks` → `resolveImportedHops` → правила → ось → `route.final` → `vars` → DNS → warp |
+| **`applyDecoded(s, dec, opts)`** | `core/backup/import.go:292` | `s.Rules = nil` (`:311`, единственная полная замена §9 п. 7); снимок `takenRootTags` (`:321`) → Направления → `mergeSources` → `rewriteFolderLinks` (с §23 — `rewriteLinks`) → `resolveImportedHops` → правила → ось → `route.final` → `vars` → DNS → warp |
 | `importKnownTags(opts, dec, s)` | `:405` | цели для проверки `route.final`, считаются ПОСЛЕ слияния по живому состоянию |
 | **`renumberImportedAxis(rules, sectionRules)`** | `core/backup/import.go:446` | ось ЦЕЛИКОМ: корневые правила и правила приехавших узлов одним проходом (NODE_SECTIONS.md §5, SPEC 126 L2) |
 | `importDNS(s, *decodedDNS)` / `importWarp` | `:565`, `:620` | правил слияния не меняли; тип аргумента теперь промежуточный |
@@ -2338,10 +2338,100 @@ Go-теста, валидирующего `registry/protocols/*.json` проти
 |---|---|
 | `core/state/sources_v7.go:87` | **`(*TagPolicy).FinalTag(raw)`** — prefix + сырой тег + postfix, nil → сырой; единственный дом формулы: её же зовут `core/config/tailscale_state_dir.go:262` (`canonicalStateDirTag`) и `ui/configurator/business/tailscale_state_dir.go:65`, `:192-193` (прежние копии конкатенации) |
 | `core/backup/import10.go:499` | **`normalizeMemberLinks10(s, linked, rootNames)`** — приехавшие файлом `detour` (корневых узлов, членов папок, общий у контейнеров) и `hops[]` без `folder_id`: тег не в корне (`importKnownTags` `import.go:445` + `reservedTargetLiteral` `import.go:590`) и финальный тег ровно у одного члена папки/подписки результата → `{id контейнера здесь, сырой тег}`; несколько совпадений — как есть, без предупреждения (кода у импорта нет, BACKUP §4/§6) |
-| `core/backup/import.go:397-407` | развилка по `decodedFile.Format` (`decoded.go:47`): 1.0 → `normalizeMemberLinks10` после `rewriteFolderLinks`; 0.x → прежний `resolveImportedHops` (строковые хопы по сырым тегам). Для 1.0 `resolveImportedHops` больше не зовётся: сырой тег мимо финального переписал бы ссылку при неоднозначном финальном теге |
+| `core/backup/import.go:397-407` | развилка по `decodedFile.Format` (`decoded.go:47`): 1.0 → `normalizeMemberLinks10` после `rewriteFolderLinks` (с §23 — `rewriteLinks`); 0.x → прежний `resolveImportedHops` (строковые хопы по сырым тегам). Для 1.0 `resolveImportedHops` больше не зовётся: сырой тег мимо финального переписал бы ссылку при неоднозначном финальном теге |
 | `core/backup/purity_test.go:816` | подтест `tag-only links to folder members` в `TestImport10RewritesFolderLinksToLocalIDs`: detour корня, detour члена папки, хоп цепочки → адрес папки; неоднозначный тег, корневой узел, Направление — не тронуты; сборка (`GenerateOutboundsFromParserConfig`) эмитит узел и цепочку, `NodeLinkTargets.Resolve` находит цель, та же ссылка без адреса — висит. Мутация «без нормализации» роняет подтест с fail-closed обоих |
 
 Документы: `contract/docs/BACKUP.md` §2 («Одно правило — одно тело»), §4, §6
 («Терпимость читателя…»), §11; `ONE_NAMESPACE.md` §1; `TASKS_LXBOX.md` §16.8;
 `corpus/backup/README.md`; `DECISIONS.md` D-111; `docs/release_notes/1-6-0.md`,
 `CHANGELOG.md` v1.6.0.
+
+## 23. Целостность NodeLink: сборка, импорт, операции (NODE_LINK.md §9.3 п. 2, 5–8; D-113, D-114; релиз 1.6.0)
+
+Ветка `fix/node-link-integrity`. Хранимая форма (state v8, файл 1.0) не
+менялась ни на ключ. Каждый дефект сперва воспроизведён падающим тестом на
+базе `d3f441ec`, затем закрыт.
+
+### 23.1 Сборка: цепочки папки (§9.3 п. 2)
+
+| Адрес | Что |
+|---|---|
+| `core/config/configtypes/types.go:172` | **`ProxySource.Chains []BuiltChain`** (`json:"-"`) вместо одного `Chain *SourceChain`: запись на каждый узел-цепочку источника |
+| `core/config/configtypes/types.go:939-945` | **`BuiltChain{Tag, Chain}`** — тег узла-цепочки (сырой = финальный) и маршрут с разрешёнными позициями |
+| `core/config/canonical_emit.go:275-332` | `ResolveCanonicalChainHops` копит `built` по цепочкам источника и кладёт `ps.Chains` только если есть что класть (сборочная форма, положенная вызывающим напрямую, не затирается — на этом держатся `chain_emit_test.go` и `contract_direction_test.go`) |
+| `core/config/chain_nodes.go:39-48` | **`chainNodeTag(bc, sourceIndex, chainIndex)`** — вместо `chainSourceTag`/`canonicalChainTag`; запасное `chain-<N>`, у второй безымянной цепочки источника — `chain-<N>-<k>` |
+| `core/config/chain_nodes.go:174-198`, `206-278` | цикл по `src.Chains` и **`buildChainNode`** — проверки одной цепочки (поддержка ядра, `ChainEmitError`, занятое имя, позиции, reality, вложенность); подпись источника называет цепочку только у корневой записи (`:220`), у папки — тег цепочки |
+
+### 23.2 Импорт: перепись по адресам слияния (§9.3 п. 5, 6)
+
+| Адрес | Что |
+|---|---|
+| `core/backup/merge.go:441-452` | `mergedInfo`: `folderIDs` — папки И подписки; `linked []linkedNode`; `landed landings`. Мёртвый `merge()` снят |
+| `core/backup/merge.go:455-462` | **`linkedNode{at, fileContainer}`** — id контейнера-владельца в файле у члена папки 1.0: по нему член группы без `folder_id` идёт за переименованием, не меняя формы (§5.1 № 8) |
+| `core/backup/merge.go:473-541` | **`landings`**: `members` ((id контейнера в файле, тег в файле) → тег здесь), `roots` (корневой узел: тег в файле → тег здесь), `legacyIDs` (0.x: id записи сервера/цепочки → адрес здесь), `fileFinals` (1.0: финальный тег члена в файле → адреса здесь), `legacyTags` (0.x: сырой тег члена папки → адреса здесь), `renamed` (адреса здесь у членов, добавленных под другим тегом); методы `root`, `member` |
+| `core/backup/merge.go:569-585` | **`rewriteLinks`** (было `rewriteFolderLinks`): detour, `hops[]`, группа — у всех записей из файла |
+| `core/backup/merge.go:593-612` | **`fileLinkHere`** — корень: `roots`; с `folder_id`: `legacyIDs` → `folderIDs` + `members` |
+| `core/backup/merge.go:620-638` | **`rewriteGroup`** — члены и `default` вместе; член без `folder_id` в контейнере — по `members` с `fileContainer` |
+| `core/backup/merge.go:804-839` | `mergeSubscriptionItem`: id подписки в файле (`:809`) → карта id (`:835-838`) и у совпавшей по URL, и у новой |
+| `core/backup/merge.go:850-898`, `906-914` | `mergeServerItem` + **`landedRoot`**: корневой узел, узнанный по телу или уникализированный, → `roots`, у 0.x ещё `legacyIDs`; член папки 0.x → `legacyIDs`, `legacyTags`, `member` (`:885-897`) |
+| `core/backup/merge.go:935-970` | `mergeFolderItem`: член → `member(fileFolderID, тег файла, финальный тег по политике ПАПКИ ФАЙЛА, адрес здесь, added)` |
+| `core/backup/merge.go:1007-1026` | `addFolderMember` возвращает `(адрес здесь, добавлен)`; принимает `fileContainer` |
+| `core/backup/merge.go:1038-1067` | `mergeChainItem`: 0.x id цепочки → `{tag}` (`:1050-1052`) |
+| `core/backup/import.go:387-408` | `rewriteLinks` → `normalizeMemberLinks10(s, &merged, …)` / `resolveImportedHops(…, &merged)` |
+| `core/backup/import10.go:510-586`, `590-601` | `normalizeMemberLinks10`: ярус файла (члены папок файла под именами из файла + узлы подписок, приехавших файлом — **`linkedSubscriptions`**) раньше яруса результата; из яруса результата исключены `renamed` |
+| `core/backup/convert_v7.go:126-138` | `importNodeLinkRef` — без изменений кода; комментарий: id сервера в `folder_id` дописывает слияние |
+| `core/backup/convert_v7.go:257-351` | `resolveImportedHops(sources, directions, merged)`: у цепочек из файла — ярус файла (`legacyTags` + узлы подписок файла), `renamed` вне общего индекса |
+
+### 23.3 Операции UI: реестр узловых ссылок и корневые имена (§9.3 п. 7, D-113, D-114)
+
+| Адрес | Что |
+|---|---|
+| `ui/configurator/business/node_move.go:485-491` | **`linkAddresses(link, space, target)`** — пространство ссылки без `folder_id`: корень у detour/позиции (№ 7), свой контейнер у члена группы (№ 8) |
+| `ui/configurator/business/node_move.go:494-508` | `linkEdit` (`linkKeep`/`linkReplace`/`linkDrop`), `linkEditFunc` |
+| `ui/configurator/business/node_move.go:516-553` | **`editNodeLinks(m, edit)`** — ЕДИНЫЙ обход: detour, позиции, группы корня и контейнеров; `(имена задетых источников, число ссылок)` |
+| `ui/configurator/business/node_move.go:557-571`, `578-601` | `editDetourLink`, `editLinkList` (без `slices`, исходный массив не портится) |
+| `ui/configurator/business/node_move.go:611-627` | **`editGroupLinks`** — ЕДИНАЯ точка правки состава группы: члены и `default` вместе, для переписи и гашения (замена `repointGroupLinks` и цикла `ClearContainerNodeLinks`; сюда же ляжет `default` как NodeLink) |
+| `ui/configurator/business/node_move.go:439-450`, `465-476` | `clearNodeLinks(from)`, `repointNodeLinks(from, to)` поверх `editNodeLinks` |
+| `ui/configurator/business/node_move.go:170-176` | `rootOnlyRefsToTag` — `editRootNameRefs(..., rootRefName)` (называет, не правит; теперь и `options.default`/`preferredDefault`) |
+| `ui/configurator/business/root_name_refs.go:33-77` | **новый файл**: `rootRefAction` (`Miss`/`Rename`/`Clear`/`Name`), `rootRefDecide`, `rootRenames(map)` (один проход — `x` → `x-auto` не переписывается дважды), `rootNameIs` |
+| `ui/configurator/business/root_name_refs.go:86-209` | **`editRootNameRefs(model, decide)`** — ЕДИНЫЙ обход ссылок на корневое имя: NodeLink корня (через `editNodeLinks`, члены групп контейнеров не трогает), цели правил, `route.final` + `SettingsVars`, Направления, переменные пресетов, detour DNS |
+| `ui/configurator/business/root_name_refs.go:153-182` | Направления: у собственной записи `addOutbounds`, `options.default`, литеральный `preferredDefault`; у ЛЮБОЙ записи — USER-патч; патч пресета не трогается |
+| `ui/configurator/business/root_name_refs.go:214-320` | `editNameList`, `editOptionsDefault`, `editDefaultLiteral`, **`editUserPatch`** (`addOutbounds` []interface{}/[]string, `options.default`, `preferredDefault`) |
+| `ui/configurator/business/root_name_refs.go:337-357` | `directionDefaultLiteral` — только `X`/`!X`; регулярка `/…/` ссылкой не считается (§4.3) |
+| `ui/configurator/business/root_name_refs.go:367-404` | `editDNSDetours` (было `renameDNSDetour`) |
+| `ui/configurator/business/root_name_refs.go:418-427` | **`RenameRootNodeRefs(m, old, new)`** — D-113 |
+| `ui/configurator/business/root_name_refs.go:437-447` | **`RootNodeTagTaken(m, tag, except)`** — гард переименования верхнего узла: владельцы корня без пары `-auto` (у узла двойника нет) |
+| `ui/configurator/business/root_name_refs.go:457-465` | **`ClearRootNodeRefs(m, tag)`** — D-114: NodeLink гаснут, опция уходит, одиночные цели называются |
+| `ui/configurator/business/root_name_refs.go:476-494` | `rootNameOwnedElsewhere` — имя после операции носит ещё кто-то (узел, Направление/твин, свёртка/двойник) → не трогать |
+| `ui/configurator/business/root_name_refs.go:508-526` | **`RenameFoldRefs(m, before, after)`** — `-auto` только при both до и после |
+| `ui/configurator/business/direction_rename.go:108-131` | `RenameDirection` — тег записи + `editRootNameRefs` с парой тег/`-auto` |
+| `ui/configurator/business/detour_refs.go` | `ResetDetourNodeRefs` снят (с `detour_refs_test.go`); остался `SourceDisplayName` |
+| `ui/configurator/tabs/source_edit_window.go:431-439` | `mergeEditedSourceIntoModel` → `RenameFoldRefs` после записи снимка |
+| `ui/configurator/tabs/source_edit_window.go:2394-2429` | Save корневого узла: гард свободного имени (`RootNodeTagTaken`, текст — существующий ключ локали), перепись, `stale.NodesRenamed` |
+| `ui/configurator/tabs/source_edit_window.go:2480-2506`, `2520-2532` | **`repointRefsAfterRootNodeRename`** (вместо `resetRefsAfterNodeRename`), **`showNodeRefsClearedDialog`** (вместо `showDetourRefsResetDialog`; ключи `Links to the deleted node`, `Node %q was deleted. …` — `bin/locale/ru.json`) |
+| `ui/configurator/tabs/source_tab.go:1337-1352` | удаление верхнего узла (`server`/`chain`/`auto`): `ClearRootNodeRefs` ДО `applySourceMutation` (та сбрасывает осиротевшие цели правил), диалог |
+| `ui/configurator/tabs/preview_node_ops.go:498-529` | удаление узла контейнера — `showNodeRefsClearedDialog`; перенос и переименование — `showNodeRefsRepointedDialog` (прежний текст «links cleared» врал) |
+
+### 23.4 Заливка подписки в папку (§9.3 п. 8)
+
+| Адрес | Что |
+|---|---|
+| `core/state/subscription_merge.go:42` | **`SubFetchMaterial.SourceID`** — id подписки материала |
+| `core/state/subscription_merge.go:371-389` | **`repointFolderDetours(folder, subURL, subID, touched)`** — detour узла этой заливки на соседа по подписке → на его копию в папке; копии нет — как есть |
+| `core/state/subscription_merge.go:393-401` | `fillCopyTags` — общий с `repointFolderAutoMembers` (`:311-351`) |
+| `ui/configurator/business/folder_fill_subscription.go:113` | материал несёт `SourceID` |
+
+### 23.5 Тесты (интеграционные, по одному на слой)
+
+| Адрес | Что |
+|---|---|
+| `core/config/canonical_emit_test.go:379` | `TestEmitE3_TwoChainsInOneFolderAreTwoOutbounds` — две цепочки папки с префиксом: два outbound'а, позиции финальными тегами, без деградаций |
+| `core/backup/merge_test.go:935` | `TestImportLinksFollowMergeAddresses` — подтесты `1.0` (`:1000`: подписка по URL, уникализация и узнавание по телу члена и корня, группа с `default`, ссылка финальным тегом, сборка результата без предупреждений) и `0.12` (`:1064`: id корневого и папочного сервера, строковые позиции, сборка) |
+| `ui/configurator/business/detour_rename_e2e_test.go:148` | `TestRootNameRefs_RenameAndDeleteFollowEveryLink` — переименование верхнего узла (все виды, USER-патч, `options.default`, сборка: обе цепочки папки), Направление и свёртка в папках, тёзка, удаление |
+| `ui/configurator/business/folder_fill_subscription_test.go:53` | расширен: detour на копию релея, релей без копии, идемпотентность |
+| `core/backup/backup_test.go:896`, `convert_v7_test.go:174-183`, `purity_test.go:40` | висячая форма `{folder_id: id сервера}` заменена корневой `{tag}` |
+
+Документы: `contract/docs/NODE_LINK.md` §5.2, §6, §7.2–§7.4, §8, §9.1, §9.3,
+§10; `IDENTITY.md` §2.1; `TASKS_LXBOX.md` §17.3, §17.6, §17.7;
+`corpus/backup/README.md`; `SPECS/features/directions.md` §9; `DECISIONS.md`
+D-113, D-114; `docs/release_notes/1-6-0.md`; `CHANGELOG.md` v1.6.0.
