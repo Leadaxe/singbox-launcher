@@ -63,6 +63,18 @@ type corpusRuleExpectation struct {
 	//
 	// Поле необязательное: отсутствие ключа значит «не проверяем».
 	Vars map[string]string `json:"vars"`
+	// Body — тело правила (форма sing-box: матчеры вместе с целью) deep-equal.
+	//
+	// Нужен там, где тело собирает сам импорт, а не копирует готовую запись:
+	// сырое правило `kind: json` и тело-массив раскладываются по норме «одно
+	// правило — одно тело» (D-111, BACKUP.md §2), и каждая получившаяся
+	// запись обязана нести свой элемент КАК ЕСТЬ. Вид цели (`outbound` выше)
+	// этого не видит: `"action": "reject"` и `"outbound": "reject"` дают один
+	// и тот же вид, а в конфиг уходят разные правила; потерянный или чужой
+	// матчер вид не видит вовсе.
+	//
+	// Поле необязательное: отсутствие ключа значит «не проверяем».
+	Body json.RawMessage `json:"body"`
 }
 
 // corpusExpectation — форма <case>.expected.json.
@@ -505,6 +517,7 @@ func checkRules(t *testing.T, dst *state.State, exp corpusExpectation) {
 		refs     []string
 		outbound string
 		vars     map[string]string
+		body     json.RawMessage
 	}
 	all := make([]got, 0, len(dst.Rules))
 	add := func(r state.Rule) {
@@ -512,7 +525,7 @@ func checkRules(t *testing.T, dst *state.State, exp corpusExpectation) {
 		if r.Num != nil {
 			num = *r.Num
 		}
-		all = append(all, got{ruleName(r), r.Enabled, num, ruleRefs(r), ruleOutboundView(r), r.Vars})
+		all = append(all, got{ruleName(r), r.Enabled, num, ruleRefs(r), ruleOutboundView(r), r.Vars, r.Body})
 	}
 	for _, r := range dst.Rules {
 		add(r)
@@ -551,6 +564,9 @@ func checkRules(t *testing.T, dst *state.State, exp corpusExpectation) {
 		}
 		if want.Vars != nil && !equalStringMaps(all[i].vars, want.Vars) {
 			t.Errorf("правило %q: переменные %v, ожидались %v", want.Name, all[i].vars, want.Vars)
+		}
+		if len(want.Body) > 0 && !jsonDeepEqual(all[i].body, want.Body) {
+			t.Errorf("правило %q: тело %s, ожидалось %s", want.Name, all[i].body, want.Body)
 		}
 	}
 }

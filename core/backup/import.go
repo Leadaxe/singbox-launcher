@@ -391,13 +391,20 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 	// объявлена в файле НИЖЕ записи, которая на неё ссылается.
 	merged.rewriteFolderLinks(s)
 
-	// Позиции цепочек приехали строками (контракт 0.x адреса папок не несёт):
-	// поднимаем их до адресных ссылок по ЖИВОМУ набору — уже импортированные
-	// источники плюс Направления принимающей стороны. Проход отдельный и
-	// последний, потому что видеть он обязан ВЕСЬ набор: цепочка может
-	// ссылаться на узел подписки, объявленной ниже неё. Ссылки формата 1.0
-	// адрес уже несут (folder_id) и этим проходом не трогаются.
-	resolveImportedHops(s.Sources, s.Directions)
+	// Ссылки без адреса папки поднимаются до адресных по ЖИВОМУ набору, и у
+	// каждого формата свой словарь: проход отдельный и последний, потому что
+	// видеть он обязан ВЕСЬ набор (цепочка может ссылаться на узел папки,
+	// объявленной ниже неё).
+	switch dec.Format {
+	case FileFormat10:
+		// 1.0: ссылка без folder_id адресует корень ФИНАЛЬНЫХ тегов, и на член
+		// папки её поднимает только однозначный финальный тег (§4, §6).
+		normalizeMemberLinks10(s, merged.linked, importKnownTags(opts, dec, s))
+	default:
+		// 0.x: позиции цепочек приехали строками (контракт 0.x адреса папок не
+		// несёт) и сопоставляются по сырым тегам узлов контейнеров.
+		resolveImportedHops(s.Sources, s.Directions)
+	}
 
 	s.Rules = append(s.Rules, dec.Rules...)
 	res.AppliedRules = len(dec.Rules)
@@ -571,12 +578,21 @@ func (t tagSet) has(tag string) bool {
 		return false
 	}
 	// Зарезервированные литералы существуют всегда: их не нужно объявлять.
-	switch strings.ToLower(strings.TrimSpace(tag)) {
-	case "direct", "block", "reject", "drop", "dns-out":
+	if reservedTargetLiteral(tag) {
 		return true
 	}
 	_, ok := t[strings.ToLower(strings.TrimSpace(tag))]
 	return ok
+}
+
+// reservedTargetLiteral — цель, которая существует у принимающей стороны
+// всегда и объявлять которую не нужно (без учёта регистра).
+func reservedTargetLiteral(tag string) bool {
+	switch strings.ToLower(strings.TrimSpace(tag)) {
+	case "direct", "block", "reject", "drop", "dns-out":
+		return true
+	}
+	return false
 }
 
 // importDNS СЛИВАЕТ секцию DNS: своё сильнее, новое дописывается в конец.

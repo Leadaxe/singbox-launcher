@@ -15,10 +15,15 @@ package backup
 // МАШИНЫ-ЭКСПОРТЁРА. На приёмнике совпавшая по имени папка держит СВОЙ id,
 // поэтому ссылки переписываются по карте «id из файла → локальный id» — карту
 // строит слияние (оно и решает, совпала папка или заведена новая), а здесь
-// только запоминается, какой id у папки был в файле.
+// только запоминается, какой id у папки был в файле. Ссылку на член папки,
+// записанную БЕЗ folder_id одним финальным тегом, после слияния поднимает
+// normalizeMemberLinks10.
 
 import (
+	"bytes"
+	"encoding/json"
 	"sort"
+	"strconv"
 	"strings"
 
 	"singbox-launcher/core/state"
@@ -26,7 +31,7 @@ import (
 
 // decode10 переводит файл 1.0 в записи состояния.
 func decode10(b *Backup10, opts ImportOptions) (*decodedFile, error) {
-	out := &decodedFile{}
+	out := &decodedFile{Format: FileFormat10}
 
 	for _, in := range b.Directions {
 		if in.Tag == "" {
@@ -80,10 +85,21 @@ func decode10(b *Backup10, opts ImportOptions) (*decodedFile, error) {
 	known := newTagSet(knownTags)
 	presets := newTagSet(opts.KnownPresets)
 
-	for _, r := range b.Rules {
-		rule, warns := decode10Rule(r, known, presets)
-		out.Warnings = append(out.Warnings, warns...)
-		out.Rules = append(out.Rules, rule)
+	for i, r := range b.Rules {
+		// Тело массивом раскладывается на записи (норма «одно правило — одно
+		// тело», splitRuleBodies); запись без тела нормой не затронута и
+		// едет как раньше.
+		parts := []state.Rule{r}
+		if ruleBodyPresent(r) {
+			var sw []Warning
+			parts, sw = splitRuleBodies(r, "rules["+ruleEntryLabel(r.Name, i)+"].body")
+			out.Warnings = append(out.Warnings, sw...)
+		}
+		for _, part := range parts {
+			rule, warns := decode10Rule(part, known, presets)
+			out.Warnings = append(out.Warnings, warns...)
+			out.Rules = append(out.Rules, rule)
+		}
 	}
 
 	out.DNS = decode10DNS(b.DNS)
@@ -343,6 +359,198 @@ func rule10Label(r state.Rule) string {
 		return r.Ref
 	}
 	return string(r.Kind)
+}
+
+// splitRuleBodies — норма «одно правило — одно тело» (D-111, BACKUP.md §2).
+// ОДНА функция на оба входа: запись 1.0 (decode10) и `kind: json` файла 0.x
+// (importJSONRule). Две реализации одной нормы разошлись бы на первой правке,
+// и один и тот же массив дал бы у пользователя разный набор правил в
+// зависимости от того, каким писателем снят файл.
+//
+// Запись правила маршрута несёт в `body` РОВНО ОДИН объект правила sing-box.
+// Массив формой записи не является, но на входе встречается (сырое
+// json-правило держало и массив; рукописная или чужая запись 1.0). Такой вход
+// не отбрасывается целиком, а раскладывается на записи так, как если бы
+// массив был развёрнут в файле подряд, — поэтому и config.json из них
+// байт-в-байт тот же:
+//
+//   - по записи на элемент-объект, в порядке массива; тело — элемент как
+//     есть, цель правила (`outbound` | `action`) остаётся в нём;
+//   - имена `name`, `name #2`, `name #3`… — по порядку получившихся записей.
+//     Безымянная запись даёт безымянные: к пустому имени суффикс не
+//     приклеивается, у лаунчера безымянное правило так и остаётся
+//     безымянным (идентичность `unnamed`), а « #2» было бы именем без имени;
+//   - `enabled` общий: тумблер у тела был один;
+//   - `num` — номер исходной записи у всех частей. Равный номер держит части
+//     вместе и в порядке массива (перенумерация импорта сортирует
+//     устойчиво), а сплошная перенумерация раздаёт им номера подряд. Номера
+//     N+1, N+2… здесь столкнулись бы с номером СЛЕДУЮЩЕЙ записи файла и
+//     перемешали бы части с ней;
+//   - `id` (метаданные другой стороны) — только у первой части: две записи с
+//     одним id дали бы ему двух владельцев;
+//   - `refs`/`vars` — у каждой части свои копии.
+//
+// Элемент, который не объект, отбрасывается кодом непонятого правила
+// (backup_unknown_field), соседи живут. Тело не объект и не массив (строка,
+// число, пусто, битый JSON) и пустой массив — запись отбрасывается тем же
+// кодом: применять нечего, а терять запись молча нельзя (П6). Новых кодов
+// норма не заводит.
+//
+// where — путь тела в предупреждении: `rules[<имя>].body` у 1.0,
+// `rules[<имя>].match` у json-правила 0.x.
+func splitRuleBodies(r state.Rule, where string) ([]state.Rule, []Warning) {
+	raw := bytes.TrimSpace(r.Body)
+	if !json.Valid(raw) {
+		return nil, []Warning{{Code: WarnBackupUnknownField, Detail: where}}
+	}
+	switch raw[0] {
+	case '{':
+		return []state.Rule{r}, nil
+	case '[':
+		var elems []json.RawMessage
+		if err := json.Unmarshal(raw, &elems); err != nil || len(elems) == 0 {
+			return nil, []Warning{{Code: WarnBackupUnknownField, Detail: where}}
+		}
+		var (
+			out   []state.Rule
+			warns []Warning
+		)
+		for i, el := range elems {
+			if el = bytes.TrimSpace(el); len(el) == 0 || el[0] != '{' {
+				warns = append(warns, Warning{
+					Code:   WarnBackupUnknownField,
+					Detail: where + "[#" + strconv.Itoa(i+1) + "]",
+				})
+				continue
+			}
+			part := state.CloneRule(r)
+			part.Body = append(json.RawMessage(nil), el...)
+			if len(out) > 0 {
+				part.ID = ""
+				if r.Name != "" {
+					part.Name = r.Name + " #" + strconv.Itoa(len(out)+1)
+				}
+			}
+			out = append(out, part)
+		}
+		return out, warns
+	default:
+		return nil, []Warning{{Code: WarnBackupUnknownField, Detail: where}}
+	}
+}
+
+// ruleBodyPresent — у записи 1.0 есть тело, которое норма splitRuleBodies
+// обязана посмотреть.
+//
+// Только у видов с телом (inline, srs): у preset тела нет по форме записи.
+// Отсутствующее тело и `null` нормой не затронуты — это не «массив вместо
+// объекта», а пустое тело, и читатель состояния (DecodeBody) понимает его как
+// пустой объект; такая запись едет как ехала.
+func ruleBodyPresent(r state.Rule) bool {
+	if r.Kind != state.RuleKindInline && r.Kind != state.RuleKindSrs {
+		return false
+	}
+	raw := bytes.TrimSpace(r.Body)
+	return len(raw) > 0 && !bytes.Equal(raw, []byte("null"))
+}
+
+// ruleEntryLabel — как назвать запись rules[] в пути предупреждения: имя, а
+// у безымянной — номер записи в файле (та же форма `#N`, что у общего обхода
+// неизвестных ключей, entryLabel).
+func ruleEntryLabel(name string, index int) string {
+	if name != "" {
+		return name
+	}
+	return "#" + strconv.Itoa(index+1)
+}
+
+// normalizeMemberLinks10 — терпимость читателя 1.0 к ссылке без folder_id на
+// член папки (BACKUP.md §4, §6).
+//
+// Форма ссылки — NodeLink `{folder_id, tag}`: у ссылки на член папки
+// `folder_id` обязателен, `tag` — СЫРОЙ тег узла внутри неё; у корневого узла
+// `folder_id` пуст. Старые и чужие файлы пишут ссылку на член папки одним
+// финальным тегом конфига, без folder_id. Сборка ищет такую ссылку только в
+// корневом пространстве (config.NodeLinkTargets.Resolve), и узел,
+// дозванивающийся через член папки, и цепочка с таким хопом уходили
+// fail-closed на каждой сборке. Это терпимость ЧИТАТЕЛЯ, а не форма записи:
+// писатель лаунчера folder_id у такой ссылки ставит всегда.
+//
+// Переписывается ссылка, у которой:
+//
+//   - folder_id пуст;
+//   - тег не занят корневым пространством результата — корневой узел,
+//     Направление, тег замены, известная цель приёмника, зарезервированный
+//     литерал (importKnownTags, reservedTargetLiteral). Корень сильнее члена
+//     папки — ровно как у Resolve, который туда смотрит первым;
+//   - тег совпал с финальным тегом (TagPolicy.FinalTag) РОВНО ОДНОГО члена
+//     папки или подписки результата,
+//
+// — в `{folder_id: <id контейнера здесь>, tag: <сырой тег члена>}`.
+//
+// Совпало несколько — ссылка остаётся как есть: выбирать за пользователя
+// нечем, а своего кода висячей ссылки у импорта нет — недостижимая цель
+// вопрос сборки, где она уходит fail-closed с названной причиной (§4, §6).
+// Трогаются только ссылки, приехавшие ЭТИМ файлом (linked).
+//
+// Проход идёт после слияния и переписи folder_id по карте id: сопоставлять
+// надо с составом РЕЗУЛЬТАТА — член может лежать в локальной папке, которой
+// в файле нет, или в папке файла, объявленной ниже ссылки.
+func normalizeMemberLinks10(s *state.State, linked []nodeAddr, rootNames []string) {
+	type member struct{ folderID, tag string }
+	byFinal := map[string][]member{}
+	for i := range s.Sources {
+		src := &s.Sources[i]
+		if src.Kind != state.SourceKindFolder && src.Kind != state.SourceKindSubscription {
+			continue
+		}
+		if src.ID == "" {
+			continue // адресовать контейнер без id нечем
+		}
+		for j := range src.Nodes {
+			n := &src.Nodes[j]
+			raw := strings.TrimSpace(n.Tag)
+			// Неразобранная запись в сборку не едет вовсе и целью ссылки
+			// быть не может (convert_v7.go, resolveImportedHops — то же).
+			if raw == "" || n.IsUnsupported() {
+				continue
+			}
+			final := strings.TrimSpace(src.TagPolicy.FinalTag(raw))
+			byFinal[final] = append(byFinal[final], member{folderID: src.ID, tag: n.Tag})
+		}
+	}
+	if len(byFinal) == 0 {
+		return
+	}
+	root := make(map[string]bool, len(rootNames))
+	for _, t := range rootNames {
+		if t = strings.TrimSpace(t); t != "" {
+			root[t] = true
+		}
+	}
+	fix := func(link *state.NodeLink) {
+		if link == nil || link.FolderID != "" {
+			return
+		}
+		tag := strings.TrimSpace(link.Tag)
+		if tag == "" || root[tag] || reservedTargetLiteral(tag) {
+			return
+		}
+		if hits := byFinal[tag]; len(hits) == 1 {
+			link.FolderID = hits[0].folderID
+			link.Tag = hits[0].tag
+		}
+	}
+	for _, addr := range linked {
+		n := addr.resolve(s)
+		if n == nil {
+			continue
+		}
+		fix(n.Detour)
+		for i := range n.Hops {
+			fix(&n.Hops[i])
+		}
+	}
 }
 
 // decode10DNS — секция dns 1.0: записи состояния копиями.

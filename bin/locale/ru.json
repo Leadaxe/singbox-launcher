@@ -2044,6 +2044,9 @@
   "Custom JSON must be an object": {
     "value": "Произвольный JSON должен быть объектом"
   },
+  "Paste one rule at a time: the editor keeps one sing-box rule per entry": {
+    "value": "Вставляйте правила по одному: в одной записи редактора — одно правило sing-box"
+  },
   "Save State": {
     "value": "Сохранить состояние"
   },
