@@ -30,7 +30,7 @@ func exportImport(t *testing.T, s *state.State, opts ImportOptions) (*state.Stat
 		t.Fatalf("Parse: %v", err)
 	}
 	dst := &state.State{}
-	res, err := Import(dst, b, opts)
+	res, err := ImportFile(dst, b, opts)
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestRoundTripV7ResolvesHopIntoContainer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if _, err := Import(live, b, ImportOptions{KnownOutbounds: []string{"relay"}}); err != nil {
+	if _, err := ImportFile(live, b, ImportOptions{KnownOutbounds: []string{"relay"}}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
 	// Импорт СЛИВАЕТ источники (D-095, BACKUP.md §9): папка приёмника, которой
@@ -268,7 +268,7 @@ func TestImportLegacy15xBackup(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 	dst := &state.State{}
-	res, err := Import(dst, b, ImportOptions{KnownOutbounds: []string{"[P]select"}})
+	res, err := ImportFile(dst, b, ImportOptions{KnownOutbounds: []string{"[P]select"}})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -355,7 +355,7 @@ func TestImportLegacyServerMaskArrivesAsNodeTag(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 	dst := &state.State{}
-	res, err := Import(dst, b, ImportOptions{})
+	res, err := ImportFile(dst, b, ImportOptions{})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -397,7 +397,7 @@ func TestExportNamesUnrepresentableReplaceTag(t *testing.T) {
 	s := richState()
 	s.Sources[0].Replace.Tag = "My Europe" // ни префикс, ни позиция такого не дадут
 
-	_, warns, err := Export(s, ExportOptions{AppVersion: "test", Platform: "darwin"})
+	_, warns, err := Export012(s, ExportOptions{AppVersion: "test", Platform: "darwin"})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -418,7 +418,7 @@ func TestExportNamesUnrepresentableReplaceTag(t *testing.T) {
 
 	// Дериватив предупреждения не вызывает: подмены нет.
 	s.Sources[0].Replace.Tag = "[A]select"
-	_, warns, err = Export(s, ExportOptions{AppVersion: "test", Platform: "darwin"})
+	_, warns, err = Export012(s, ExportOptions{AppVersion: "test", Platform: "darwin"})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -453,7 +453,7 @@ func TestReplaceTagDerivativeCountsSubscriptionsOnly(t *testing.T) {
 	// Сервер впереди: подписка первая в своей секции, значит дериватив —
 	// `1:select`, а не `2:select`.
 	after := &state.State{Sources: []state.Source{mkServer("srv"), mkSub("sub", "2:select")}}
-	_, warns, err := Export(after, ExportOptions{AppVersion: "test"})
+	_, warns, err := Export012(after, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -473,7 +473,7 @@ func TestReplaceTagDerivativeCountsSubscriptionsOnly(t *testing.T) {
 	// Та же подписка первой в списке: `1:select` — это и есть дериватив,
 	// и после круга экспорт→импорт тег обязан остаться тем же.
 	before := &state.State{Sources: []state.Source{mkSub("sub", "1:select"), mkServer("srv")}}
-	b, warns, err := Export(before, ExportOptions{AppVersion: "test"})
+	b, warns, err := Export012(before, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -517,7 +517,7 @@ func TestImportNamesDroppedSourceFlags(t *testing.T) {
 		t.Fatalf("поля объявлены в схеме, лишних предупреждений разбора быть не должно: %v", parseWarns)
 	}
 	dst := &state.State{}
-	res, err := Import(dst, b, ImportOptions{})
+	res, err := ImportFile(dst, b, ImportOptions{})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -552,7 +552,7 @@ func TestImportChainLabelIgnoredSilently(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 	dst := &state.State{}
-	res, err := Import(dst, b, ImportOptions{})
+	res, err := ImportFile(dst, b, ImportOptions{})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -595,11 +595,11 @@ func TestExportNamesLocalOnlySourceFields(t *testing.T) {
 		Node:               state.Node{Kind: state.SourceKindSubscription, Enabled: true},
 		URL:                "https://example.invalid/s",
 		Name:               "Liberty",
-		UserAgent:          "Happ/1.0",
-		SendHWID:           &send,
 		RelaysInDirections: true,
 	}}}
-	b, warns, err := Export(s, ExportOptions{AppVersion: "test"})
+	s.Sources[0].SetIdentityUserAgent("Happ/1.0")
+	s.Sources[0].SetIdentitySendHWID(&send)
+	b, warns, err := Export012(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -649,7 +649,7 @@ func TestExportNamesLocalOnlySourceFields(t *testing.T) {
 		Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true},
 		URL:  "https://example.invalid/s",
 	}
-	b, warns, err = Export(s, ExportOptions{AppVersion: "test"})
+	b, warns, err = Export012(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}

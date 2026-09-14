@@ -277,3 +277,292 @@ func (r *Rule) SetOutbound(outbound string) error  // переписать це�
       (`rule_identity.go:95`/`:132`) на пути сохранения. Находки 6 и 7.
 - [x] FIX.5 Тесты — расширены существующие сценарии (`migration_v7_to_v8_test.go`,
       `backup_test.go`, `spec127_state_v8_roundtrip_test.go`); новых файлов нет.
+
+## 6. Волна 2 — бэкап 1.0 (экспорт = состояние v8, legacy-вход 0.x, два писателя)
+
+Норма — SPEC.md §4, ONE_NAMESPACE.md §1 (таблицы «Узел», «Контейнеры»,
+«Правило», «DNS») и §2. Адреса — CODEMAP.md §4 (бэкап), ловушки §7: 6, 7, 10,
+11, 16, 21, 22, 23, 26. Правила исполнителю — как в шапке файла; дополнительно
+разрешено править `contract/registry/backup_warnings.json` (добавить код) —
+схему и документы контракта НЕ трогать (волна 3).
+
+### 6.0 Форма файла 1.0 — решения
+
+Корень (`core/backup/backup10.go`, тип `Backup10`; порядок полей = порядок ключей):
+
+```json
+{
+  "lx_backup": 2,                       // int-маркер формата, как сегодня (1 = 0.x); 2 = контракт 1.0
+  "exported_by": { "app": "launcher", "version": "…", "platform": "…" },
+  "exported_at": "RFC3339",
+  "sources":    [ …state.Source… ],     // union по kind: server | folder | subscription | chain
+  "directions": [ …backup.Direction… ], // форма 0.12 (direction.schema.json) — норма её не трогала, LxBox-поля label/ping_* живут там
+  "rules":      [ …state.Rule… ],       // форма v8
+  "dns":        { …state.DNSOptions… }, // strategy, final, default_domain_resolver?, servers[], rules[] — форма v8
+  "vars":       { … },                  // только переносимые (IsPortableVar), как сегодня
+  "route":      { "final": "…" },       // как сегодня
+  "warp":       [ … ]                   // сырой JSON, как сегодня
+}
+```
+
+`sources[]` — **сериализация `state.Source` теми же типами** с тонким слоем:
+
+- `server` (корневой): `kind, id, tag, enabled, origin?, body, detour?, sections?`
+  — ровно `state.Source` (encoding/json по struct-тегам). `service`/`reason`
+  у корневых узлов не бывают.
+- `folder`: `kind, id, name, tag_policy?, fold?, detour?, nodes[]` — узлы
+  всех видов как есть (`state.Node`), включая `chain`/`auto` члены и их
+  `sections`. Настройки папки едут (у них теперь есть дом в схеме 1.0);
+  сторона, которая их не применяет, игнорирует молча (BACKUP.md §1).
+- `subscription`: `kind, id, name, enabled, url, identity{user_agent?, hwid?,
+  send_hwid?, hash_device_model?}, tag_policy?, fold?, skip?, max_nodes?,
+  update{interval_hours, auto_refresh}?, relays_in_directions?,
+  disabled{тег: unix seconds}?` — **без** `nodes[]`, `meta`, `update_status`
+  (кэш и рантайм) и без `pending_disabled` (договорённость с LxBox 14.09:
+  у них отметка = `{идентичность: unix seconds}` с TTL-очисткой, форма 0.12
+  остаётся). `disabled` в файле = `exportDisabledMap` как сегодня (сырые теги
+  выключенных узлов кэша ∪ `pending_disabled`, значение 0); импорт —
+  `mergeDisabledMarks` как сегодня. `fold` — форма 0.12 (`source_fold.schema.json`,
+  `exportFold`/`importFold`), а не state-ный `replace`: у контракта уже есть имя.
+- `folder`: `fold` там же по той же причине (если у папки есть `replace`).
+- `chain`: `kind, id, tag, enabled, body, hops[{folder_id?, tag}]` — как
+  `state.Source`.
+- **Исключения из «бэкап = состояние» (тонкий слой, зафиксировано с LxBox
+  14.09.2026):** `directions[]` (форма 0.12, `direction.schema.json`), `fold`
+  (`source_fold.schema.json`), `disabled{}` (0.12), `identity{}` (объект — и в
+  состоянии v8 тоже, см. ниже), `vars` (только переносимые), `route{final}`,
+  `warp[]` (сырой). Всё остальное — struct-теги состояния без переименований.
+- Ссылки `detour{folder_id, tag}` и `hops[].folder_id` — ULID папки
+  **машины-экспортёра**; импорт переписывает их по карте «id из файла → id
+  локальной папки» (совпавшая по имени папка держит локальный id, новая —
+  id из файла; сегодня это делает `freshIDIfTaken`/`resolveImportedHops`
+  для 0.12 — та же механика, только ключ теперь `folder_id`, а не тег).
+  Ссылка, чью папку в файле не нашли, — как сегодня у 0.12 (`detour` снимается
+  с предупреждением прежним кодом).
+
+**Состояние v8 дополняется (без смены номера схемы — v8 ещё не выпущен):**
+`Source.Identity *SubscriptionIdentity{UserAgent, HWID, SendHWID, HashDeviceModel}`
+(`json:"identity,omitempty"`) вместо четырёх плоских полей `user_agent`/`hwid`/
+`send_hwid`/`hash_device_model`; миграция v7→v8 (`migration_v7_to_v8.go`)
+собирает объект из плоских ключей; фикстура `v8_roundtrip.json` и golden
+`real-v088-v8/state.json` перегенерируются (конфиг — байт-в-байт прежний).
+Читатели четырёх полей (fetcher подписок, UI подписки, `exportSourceIdentity`)
+переходят на `src.Identity`. Тип `SubscriptionIdentity` переезжает из
+`core/backup/types.go` в `core/state` (с `UnmarshalJSON`, который различает
+«ключа нет» и `null`, и `UnappliedKeys` для mobile-only ключей — сегодняшняя
+логика, только дом другой); `core/backup` использует его через `state.`.
+
+**Сделано (этап B1, ветка `spec127/backup-10`):** объект `identity` в
+состоянии и миграции, публичные читатели/сеттеры, переведены все читатели
+четырёх полей; фикстуры перегенерации не потребовали (identity в них нет —
+проверено регенерацией, diff пуст). Адреса — CODEMAP §12.1.
+
+### 6.1 Экспорт — два писателя
+
+- [x] W2.1 `core/backup/export10.go`: `Export10(s *state.State, opts) (*Backup10,
+      []Warning, error)` — чистая функция состояния (П1): `sources[]` по правилам
+      §6.0 (копии, не общие указатели; `Nodes=nil`/`Meta=nil`/`UpdateStatus=nil`
+      у подписок; `PendingDisabled` не пишется, вместо него `disabled` из
+      `exportDisabledMap`; `fold` из `exportFold`; `identity` — объект состояния как есть), `directions` через сегодняшний
+      `exportDirection`, `rules`/`dns` — **срезы состояния как есть** (никаких
+      `exportRule`/`dnsRefFrom`), `vars` через `exportVars`, `route`, `warp` через
+      `exportWarp`. Предупреждения экспорта: `WarnBackupReplaceTagDerived` как
+      сегодня; `backup_local_only_dropped` в 1.0 **не эмитится** (полей без дома
+      больше нет).
+- [x] W2.2 `core/backup/legacy_write_012.go`: сегодняшние `Export`, `exportRule`,
+      `dnsRefFrom`, `exportServer*`, `exportFolder`, `exportSubscription`,
+      `exportChain`, `droppedLocalOnlyFields` переезжают сюда как `Export012`
+      (файл 0.12 **байт-в-байт прежний**, включая порядок ключей и warnings;
+      секции узлов в 0.12 **не пишутся** — норма §4 ONE_NAMESPACE: `ServerSections`
+      и пронос `Raw` из 0.12-писателя снимаются, `backup_test`/`node_sections_roundtrip_test`
+      переводятся на 1.0).
+- [x] W2.3 Точка выбора: `type ExportFormat int` (`ExportFormat012`, `ExportFormat10`),
+      `const BackupExportFormatDefault = ExportFormat012` (одна константа, SPEC
+      §4), `ExportOptions.Format`; `ExportFile(path, s, opts)`/`WriteFile` пишут
+      выбранный формат. UI: в диалоге экспорта чекбокс «Backup format 1.0 (new;
+      requires LxBox with 1.0 import)» через `locale.T` (ключ английский; ru.json
+      не трогать), по умолчанию по константе; grep `backup.Export(` — все
+      вызывающие (UI, debug API, tools) получают `Format`.
+
+### 6.2 Импорт — один путь слияния, два входа
+
+- [x] W2.4 Разделить сегодняшний `Import` на (а) **декодирование записей файла в
+      типы состояния** и (б) **слияние** (`merge.go` + `importDNS`/`importWarp`/
+      `renumberImportedRules` + правила §9 BACKUP.md без изменений: подписки по
+      `url` байт-в-байт, серверы по телу, папки по имени, цепочки/Направления по
+      тегу, DNS «своё сильнее», `rules[]` — единственная полная замена, `vars`
+      переносимые, `route.final` при известной цели, `warp` добавлением).
+      Вход 1.0 (`import10.go`): `Backup10` → записи состояния напрямую (копии),
+      `identity` объектом, `disabled{}` → `mergeDisabledMarks`, `fold` → `importFold`,
+      переписка `folder_id` у `detour`/`hops` по карте id. Вход 0.x
+      (`legacy_read_0x.go`): сегодняшние `importSubscription`/`importServer`/
+      `importChain`/`importRule`/`importDNS`-разбор → те же записи состояния
+      (через `NewXxxRule`, `state.DNSServer{Body}`), `node_tag`/`config_json`/
+      `uri`/`label` → `tag`/`body`/`origin`, `folder` → сборка папки по имени
+      (как сегодня в `mergeServers`), `disabled` → `mergeDisabledMarks`,
+      `chain: SourceChain` → `body`+`hops`. После декодирования — **один** код
+      слияния для обоих входов.
+- [x] W2.5 Секции при импорте: «файл замещает секции узла» (как сегодня
+      `applyImportedSections`); записи чужого `kind` внутри секций отбрасываются
+      с кодом **`backup_section_record_dropped`** (side=import, params
+      `["node", "kind"]`) — добавить в `contract/registry/backup_warnings.json`
+      по формату соседей и в словарь кодов пакета; sync-тест словаря зелёный.
+      **Перенумерация оси** (`renumberImportedRules`) идёт по объединённой оси
+      `rules[]` ∪ `sections.rules[]` всех приехавших узлов с сохранением
+      относительного порядка (SPEC 126 L2): узловые правила получают номера в
+      том же проходе, а не абсолютные из файла.
+- [x] W2.6 `file.go`: `Parse` различает `lx_backup` 1 и 2 (иное — отказ с
+      прежним кодом); `scanUnknown` — два набора списков ключей: для 1.0 —
+      ключи struct-тегов состояния (генерировать из типов рефлексией, чтобы
+      списки не расходились с кодом), для 0.x — прежние списки без изменений
+      (ловушка 26). `decodeTolerant` — оба формата.
+- [x] W2.7 Тесты (в конце волны): (1) round-trip на **полном** состоянии v8
+      (подписка с identity/skip/disabled/fold, папка с tag_policy и узлами
+      трёх видов, корневой сервер с секциями Tailscale, цепочка с hops в папку,
+      Направления, правила всех трёх видов с `action`, DNS всех видов, warp):
+      `Export10` → `Parse` → импорт в пустое состояние → `Export10` — **файл
+      байт-в-байт** (П1, чистота) и состояние эквивалентно (ids подписок/папок
+      сохраняются, секции на месте, номера оси относительный порядок); (2) все
+      существующие кейсы `contract/corpus/backup/*.backup.json` (0.12) проходят
+      legacy-входом с теми же `expected` — ожидания **не править**; (3) 0.12-писатель:
+      `Export012` на фикстуре даёт тот же файл, что до волны (снять эталон до
+      правок: `go test`-хелпером сохранить вывод старого `Export` в
+      `core/backup/testdata/export012_*.json` ПЕРЕД рефакторингом, потом
+      сравнивать); (4) `schema_test` — 0.12-писатель против `backup.schema.json`
+      как сегодня; проверка 1.0 против схемы — волна 3. Полный `go test ./...`
+      один раз; golden/эталон без пересчёта.
+- [x] W2.9 **Debug API — паритет с UI (просьба владельца 14.09):**
+      `GET /backup/export?format=1.0|0.12` (без параметра — `BackupExportFormatDefault`;
+      тело ответа — файл бэкапа как есть, `Content-Disposition` с именем из
+      `SuggestFileName`; предупреждения экспорта — в заголовке `X-Backup-Warnings`
+      JSON-массивом кодов или отдельным полем при `?envelope=1`), `POST /backup/import`
+      (тело — файл бэкапа любого читаемого формата; ответ — `ImportResult`
+      с warnings и счётчиками; после импорта — `Save` состояния и пересборка
+      конфига тем же путём, что UI-импорт), `GET /backup/formats` (какие форматы
+      читает/пишет эта сборка и дефолт). Зарегистрировать в `/help`; те же три
+      маршрута под `/remote/machines/{id}/…` — только если удалённые машины
+      уже проксируют `/state/*` общим механизмом (иначе не заводить). Поднять
+      версию API-спеки (`/version`, `api/` — если там есть описание маршрутов,
+      дописать). Тест эндпоинтов — в существующем стиле `core/debugapi/*_test.go`
+      (один интеграционный: export 1.0 → import в пустое состояние → export
+      байт-в-байт).
+- [x] W2.8 `CODEMAP.md` §4 — новые файлы/функции; `TASKS.md` чекбоксы;
+      `docs/release_notes/upcoming.md` — «формат бэкапа 1.0 (пока выключен по
+      умолчанию, чекбокс в экспорте), импорт читает оба».
+
+- [x] W2.10 **Правки по РЕАЛЬНЫМ данным владельца (после волны 2).** Два
+      дефекта слияния, найденные импортом живого состояния, а не ревью; оба
+      воспроизведены до правки и проверены откатом. Разбор и адреса —
+      `CODEMAP.md` §16.
+      (1) **`importDNS` схлопывал preset-серверы:** ключ был `kind`+`tag`, а у
+      `kind: preset` тега нет вовсе (идентичность — `ref` вида
+      `russian:yandex_doh`), поэтому ВСЕ preset-записи давали один ключ
+      `preset\x00` и после первой отбрасывались как «своё сильнее» — молча. На
+      живом состоянии из 17 DNS-серверов после импорта в пустое оставалось 15
+      (пропадали `russian:yandex_doh`, `russian:yandex_dot`). Ключ стал единым
+      `kind`+`tag`+`ref` (`core/backup/import.go:584`); норма §9 п. 5 не
+      меняется — «по `kind`+`tag`» для preset читается как `kind`+`ref`.
+      Проверено грепом, что этот ключ строится ровно в одном месте.
+      (2) **Папки-тёзки при импорте 1.0:** норма §9 п. 3 («папка по имени»)
+      писалась под 0.12, где у папки нет `id`; в 1.0 он есть, а UI допускает
+      две папки с одним именем (у владельца две «Folder 1», 4 и 6 узлов).
+      Карта «имя → папка» видела первую, и состав второй папки ФАЙЛА
+      дописывался в первую ЛОКАЛЬНУЮ — состояние росло на каждом импорте
+      собственного экспорта. Введён `folderIndex` (`core/backup/merge.go:529`)
+      с порядком «сперва `id`, затем имя»; вход 0.x зовёт `lookup("", name)` и
+      не затронут. **Хвост того же дефекта (проверка владельца на реальных
+      данных):** импорт того же файла в ПУСТОЕ состояние давал 17 источников
+      вместо 18 — вторая папка файла (id B) по имени попадала в только что
+      заведённую из файла первую (id A). По имени теперь матчатся только
+      папки, существовавшие в состоянии ДО импорта: `folderIndex` помечает
+      собственные создания (`addCreated:551` — запись 1.0, по имени НЕ находится;
+      `addExisting:544` и `addCreated0x:559` — находятся). Отдельный метод для
+      0.x обязателен: там папка собирается из плоского `servers[]` по имени, и
+      пометка `fresh` завела бы по папке на запись (мутация красит корпус). Подпискам и корневым серверам то же не нужно: там ключ —
+      `url` байт в байт и ТЕЛО, настоящая идентичность записи, и менять их
+      значило бы менять норму §9 пп. 1–2 (разбор — CODEMAP §16.2).
+      Тесты — `merge_test.go`: `TestMergeDNSPresetServersSurviveByRef`,
+      `TestMergeDNSPresetServerNotOverwrittenByFile`,
+      `TestImport10TwinFoldersMatchByID`,
+      `TestImport10FolderFromOtherMachineMatchesByName`. Корпус
+      `contract/corpus/backup`, эталоны `export012_*.json` и писатель 0.12 не
+      тронуты; полный гейт зелёный.
+
+**Сделано (этап B2, ветка `spec127/backup-10`):** W2.4–W2.6. Импорт разрезан
+на декодирование (`legacy_read_0x.go` для 0.x, `import10.go` для 1.0 — оба
+отдают `decodedFile`) и ЕДИНОЕ слияние (`applyDecoded` + `mergeSources`);
+правила §9 не менялись, корпус зелёный без правки ожиданий. Код
+`backup_section_record_dropped` заведён в реестре, в словаре пакета и в
+тексте UI; sync-тест словаря добавлен. `Parse` различает `lx_backup` 1 и 2,
+`scanUnknown` — два набора списков (1.0 генерируется рефлексией по
+struct-тегам состояния). Из W2.7 сделаны пп. 1–3 (круг 1.0, корпус, эталоны
+0.12); п. 4 не потребовал правок. Адреса — CODEMAP §13.
+
+**Сделано (этап B3, ветка `spec127/backup-10`):** W2.3 UI-часть закрыта ещё
+B1 (чекбокс через `locale.T`, дефолт по константе, все вызывающие через
+`ExportFile`/`Format` — проверено грепом). W2.9: `core/debugapi/backup_endpoints.go` —
+`GET /backup/export` (тело = файл, `Content-Disposition`, коды потерь в
+`X-Backup-Warnings`, `?envelope=1`), `POST /backup/import` (любой читаемый
+формат, гейт мажора схемы, `Save` + `RebuildConfigIfDirty`),
+`GET /backup/formats`; зарегистрированы в `/help`; зеркала машин под
+`/remote/machines/{id}/backup/*` — заведены, потому что `/state/*` у машин уже
+проксируется общим `stateAccess`. Версия API-спеки НЕ поднята: поверхность
+аддитивная (SPEC 100 §254). W2.7 п. 1 доведён до полноты §6.0: `richState10`
+дополнен srs-правилом, правилом-эффектом и правилом-отказом, ссылочными
+DNS-записями; добавлена сверка СОСТОЯНИЯ после круга (`assertStateEquivalent10`),
+плюс круг через HTTP в `core/debugapi`. W2.8: `docs/API.md`/`API.ru.md`,
+`docs/release_notes/upcoming.md`, CODEMAP §14. Полный прогон волны
+(`gofmt -l .`, `go build ./...`, `go vet ./...`, `go test -count=1 ./...`) —
+зелёный, 38 пакетов `ok`, ни одного `FAIL`. Адреса — CODEMAP §14.
+
+### 6.3 Инварианты волны (ревьюеры)
+
+1. Файл 0.12 из `Export012` — байт-в-байт как до волны (эталоны W2.7 п.3).
+2. Импорт 0.12 — прежняя семантика: корпус зелёный без правки ожиданий.
+3. `import(export10(x))` в пустое состояние → `export10` даёт тот же файл; ни
+   одно поле §6.0 не теряется (identity, skip, tag_policy, fold, disabled, hops с
+   folder_id, detour, sections всех трёх списков, num, enabled, vars, refs).
+4. Секции: файл замещает; чужой kind — код; ось перенумерована совместно.
+5. Ссылки на папки переживают импорт на другой машине (id из файла ≠ локальные).
+6. Дефолт формата — константа; UI-чекбокс переключает; оба входа читаются
+   всегда; `lx_backup` ≠ 1/2 — отказ.
+
+## 7. Этап FIX — правки по ревью волны 2
+
+Адреса и разбор — `CODEMAP.md` §15. Шестнадцать находок ревью = семь дефектов
+(часть находок описывала один дефект с разных сторон). Каждая правка проверена
+откатом: без неё соответствующий тест краснеет. Все семь жили ИСКЛЮЧИТЕЛЬНО в
+пути 1.0 — писатель 0.12, его эталоны, корпус 0.12 и правила слияния §9 не
+тронуты ни на строку.
+
+- [x] FIX.1 Имя группы свёртки едет ЯВНО: `Source10.FoldTag` (`fold_tag`)
+      рядом с объектом `fold` формы контракта 0.11, где поля тега нет вовсе.
+      Дериватив остался запасным ходом для чужого файла. Снял сразу четыре
+      следствия: подмену явного имени, ОДИН тег у папки и первой свёрнутой
+      подписки (позиционная формула определена для `subscriptions[]`), потерю
+      `route.final` и молчание экспорта о папке. `WarnBackupReplaceTagDerived`
+      в 1.0 больше не эмитится — потери нет. Находки 1, 2, 3, 7, 11.
+- [x] FIX.2 Проверка целей правила в 1.0 была МЕРТВА: `DecodeBody` возвращает
+      указатели, а `ruleTarget10` матчил значения — правило с несуществующей
+      целью приезжало включённым и роняло `config.json`. Находка 10.
+- [x] FIX.3 Настройки СОВПАВШЕЙ записи берутся из файла: `applyFolderSettings`
+      для папки и `relays_in_directions` у подписки, под флагом
+      `decodedSource.FullSettings` (у 0.12 этих полей нет, и применять их
+      «ноль» значило бы стирать локальное импортом старого файла). Счётчик
+      `UpdatedFolders`. Находки 4, 8, 14, 15.
+- [x] FIX.4 `dns.default_domain_resolver` переживает круг: поле заведено в
+      `decodedDNS` и применяется в `importDNS` (писатель клал его в файл с
+      самого начала, читателя не было). Находки 5, 6, 12.
+- [x] FIX.5 Ссылочные члены папки (chain/auto) ключуются ТЕГОМ, как в корне:
+      `folderMemberKey`. Повторный импорт больше не дописывает копию. Находка 13.
+- [x] FIX.6 Поле `sections` у узла, которому оно не положено, снимается с
+      кодом `backup_section_record_dropped` — ровно как обещает реестр.
+      Находка 16.
+- [x] FIX.7 Mobile-only ключи identity вход 1.0 больше не складывает в
+      состояние молча: `importIdentity10` собирает объект из применяемой
+      четвёрки и называет остальное, как вход 0.x. Находка 9.
+- [x] FIX.8 Тесты — расширены существующие сценарии (`purity_test.go`,
+      `merge_test.go`, `backup_test.go`, `identity_test.go`,
+      `node_sections_roundtrip_test.go`); новых файлов нет. Каждый проверен
+      мутацией. Полный прогон один раз: `gofmt -l .` пусто, `go build ./...`,
+      `go vet ./...`, `go test -count=1 ./...` — зелёные, 38 пакетов `ok`.

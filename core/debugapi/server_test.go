@@ -36,6 +36,13 @@ type fakeFacade struct {
 	logLevelErr   error
 	applyLevelErr error
 	appliedLevel  string
+
+	// rebuilds — сколько раз позвали RebuildConfigIfDirty. Нужен импорту
+	// бэкапа (SPEC 127 W2.9): он обязан довести состояние до config.json тем
+	// же путём, что UI, и «позвали ли пересборку» — часть контракта ручки,
+	// а не деталь.
+	rebuilds    int
+	rebuildErrV error
 }
 
 func (f *fakeFacade) IsRunning() bool                     { return f.running }
@@ -51,7 +58,10 @@ func (f *fakeFacade) StartSingBox() error                 { return nil }
 func (f *fakeFacade) StopSingBox() error                  { return nil }
 func (f *fakeFacade) UpdateSubscriptions() error          { return f.updateErr }
 func (f *fakeFacade) PingAllProxies() error               { return nil }
-func (f *fakeFacade) RebuildConfigIfDirty() error         { return nil }
+func (f *fakeFacade) RebuildConfigIfDirty() error {
+	f.rebuilds++
+	return f.rebuildErrV
+}
 
 func (f *fakeFacade) LoadState() (*state.State, error) {
 	if f.stateLoadErr != nil {

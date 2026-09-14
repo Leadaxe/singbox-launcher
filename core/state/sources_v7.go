@@ -230,25 +230,26 @@ type Source struct {
 	// === subscription only ===
 
 	URL string `json:"url,omitempty"`
-	// UserAgent — User-Agent ИМЕННО ЭТОЙ подписки; пусто = глобальный из
-	// настроек (а он пуст → дефолт лаунчера).
+	// Identity — чем ЭТА подписка представляется провайдеру: UA, HWID и
+	// режим их отправки (SPEC 127 §6.0). Один объект вместо четырёх плоских
+	// ключей: это одна настройка из нескольких частей, и в состоянии, и в
+	// бэкапе 1.0 она хранится одинаково, поэтому файл бэкапа — сериализация
+	// состояния без маппера. nil = ничего не переопределено.
 	//
-	// Поле нужно потому, что провайдеры ВЕТВЯТ выдачу по UA: одна и та же
-	// ссылка отдаёт разным клиентам разные тела (у Liberty под UA лаунчера
-	// приезжает протухшая sing-box-ветка на 40 прямых узлов, под UA Happ —
-	// 292 Xray-конфига, включая рабочие BYPASS через socks5-релей). Глобальной
-	// настройки для этого мало: подменять UA всем подпискам ради одной значит
-	// сломать выдачу остальным, которые под нашим UA отвечают правильно.
-	UserAgent string `json:"user_agent,omitempty"`
-	// HWID — идентификатор устройства для ЭТОЙ подписки; пусто = глобальный.
-	// Провайдеры привязывают подписку к устройству и считают их лимит: свой
-	// HWID на подписку разводит устройства между разными провайдерами.
-	HWID string `json:"hwid,omitempty"`
-	// SendHWID — отправлять ли X-Hwid-заголовки; nil = «как в системе».
-	// Указатель, а не bool: иначе «не отправлять» неотличимо от «не задано».
-	SendHWID *bool `json:"send_hwid,omitempty"`
-	// HashDeviceModel — хэшировать ли модель устройства; nil = «как в системе».
-	HashDeviceModel *bool `json:"hash_device_model,omitempty"`
+	// Переопределение нужно потому, что провайдеры ВЕТВЯТ выдачу по UA: одна
+	// и та же ссылка отдаёт разным клиентам разные тела (у Liberty под UA
+	// лаунчера приезжает протухшая sing-box-ветка на 40 прямых узлов, под UA
+	// Happ — 292 Xray-конфига, включая рабочие BYPASS через socks5-релей).
+	// Глобальной настройки для этого мало: подменять UA всем подпискам ради
+	// одной значит сломать выдачу остальным, которые под нашим UA отвечают
+	// правильно. То же у HWID: провайдеры привязывают подписку к устройству
+	// и считают лимит, и свой HWID на подписку разводит устройства между
+	// разными провайдерами.
+	//
+	// Поля-указатели внутри объекта различают «не задано» и «задано пустым»
+	// (см. SubscriptionIdentity); читать их удобнее через хелперы
+	// IdentityUserAgent/IdentityHWID/IdentitySendHWID/IdentityHashDeviceModel.
+	Identity *SubscriptionIdentity `json:"identity,omitempty"`
 
 	// RelaysInDirections — предлагать ли служебные узлы подписки (релеи BYPASS) в
 	// выборе НАПРАВЛЕНИЙ.
@@ -422,9 +423,9 @@ func normalizeSourceShape(s *Source) ([]string, error) {
 			drop("replace")
 			s.Replace = nil
 		}
-		if s.URL != "" || s.UserAgent != "" || s.HWID != "" || s.SendHWID != nil || s.HashDeviceModel != nil || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil || len(s.PendingDisabled) > 0 {
+		if s.URL != "" || !s.Identity.IsEmpty() || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil || len(s.PendingDisabled) > 0 {
 			drop("url/identity/skip/max_nodes/update/meta/update_status/pending_disabled")
-			s.URL, s.UserAgent, s.HWID, s.SendHWID, s.HashDeviceModel = "", "", "", nil, nil
+			s.URL, s.Identity = "", nil
 			s.Skip, s.MaxNodes, s.Update, s.Meta, s.UpdateStatus, s.PendingDisabled = nil, 0, nil, nil, nil, nil
 		}
 		if ws := normalizeNodeShape(&s.Node, sourceShapeName(s)); len(ws) > 0 {
@@ -455,9 +456,9 @@ func normalizeSourceShape(s *Source) ([]string, error) {
 			s.Group = nil
 		}
 		if s.Kind == SourceKindFolder {
-			if s.URL != "" || s.UserAgent != "" || s.HWID != "" || s.SendHWID != nil || s.HashDeviceModel != nil || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil || len(s.PendingDisabled) > 0 {
+			if s.URL != "" || !s.Identity.IsEmpty() || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil || len(s.PendingDisabled) > 0 {
 				drop("url/identity/skip/max_nodes/update/meta/update_status/pending_disabled")
-				s.URL, s.UserAgent, s.HWID, s.SendHWID, s.HashDeviceModel = "", "", "", nil, nil
+				s.URL, s.Identity = "", nil
 				s.Skip, s.MaxNodes, s.Update, s.Meta, s.UpdateStatus, s.PendingDisabled = nil, 0, nil, nil, nil, nil
 			}
 		}

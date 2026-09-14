@@ -125,7 +125,7 @@ func mkInlineRule(name, outbound string, num int) state.Rule {
 // Инвариант §1: import(export(x)) == x в том же приложении.
 func TestRoundTripLossless(t *testing.T) {
 	src := mkState()
-	b, _, err := Export(src, ExportOptions{AppVersion: "1.4.2", Platform: "darwin", Now: time.Unix(1750000000, 0)})
+	b, _, err := Export012(src, ExportOptions{AppVersion: "1.4.2", Platform: "darwin", Now: time.Unix(1750000000, 0)})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestRoundTripLossless(t *testing.T) {
 // говорится вслух.
 func TestImportVarsPortableOnly(t *testing.T) {
 	src := mkState()
-	b, _, _ := Export(src, ExportOptions{})
+	b, _, _ := Export012(src, ExportOptions{})
 	if _, ok := b.Vars["tun_interface"]; ok {
 		t.Error("непереносимая переменная попала в бэкап")
 	}
@@ -240,6 +240,46 @@ func TestImportUnknownOutboundDisablesRule(t *testing.T) {
 	}
 	if dst.Rules[0].Enabled {
 		t.Error("правило с несуществующим outbound приехало ВКЛЮЧЁННЫМ — конфиг ядра упадёт")
+	}
+	if !hasWarn(res.Warnings, WarnBackupUnknownOutbound) {
+		t.Errorf("не названо: %v", res.Warnings)
+	}
+}
+
+// §3 для входа 1.0: та же проверка целей на записях формы v8.
+//
+// Форма записи здесь другая (цель живёт КЛЮЧОМ sing-box внутри body, а не
+// полем `outbound` записи бэкапа), и читается она видом — DecodeBody. Пока
+// разбор вида шёл по значениям, а DecodeBody возвращает указатели, switch
+// молча проваливался в default и отдавал «цели нет» ДЛЯ ЛЮБОГО правила:
+// проверка §9 п. 7 в пути 1.0 не работала вовсе, правило приезжало включённым
+// и роняло config.json целиком. Проверяются ОБА вида с целью — inline и srs.
+func TestImport10UnknownOutboundDisablesRule(t *testing.T) {
+	ghost := state.NewInlineRule("Ghost",
+		map[string]interface{}{"domain_suffix": []interface{}{"x.com"}}, "vpn-3")
+	ghost.Enabled = true
+	ghostSrs := state.NewSrsRule("GhostSrs", []string{"https://example.com/a.srs"}, "vpn-9")
+	ghostSrs.Enabled = true
+	alive := state.NewInlineRule("Alive",
+		map[string]interface{}{"domain_suffix": []interface{}{"y.com"}}, "proxy")
+	alive.Enabled = true
+
+	b := &Backup10{LxBackup: FormatVersion10, Rules: []state.Rule{ghost, ghostSrs, alive}}
+	dst := &state.State{}
+	res, err := Import10(dst, b, ImportOptions{KnownOutbounds: []string{"proxy", "direct"}})
+	if err != nil {
+		t.Fatalf("Import10: %v", err)
+	}
+	if len(dst.Rules) != 3 {
+		t.Fatalf("правил %d, ожидалось 3", len(dst.Rules))
+	}
+	for i, name := range []string{"Ghost", "GhostSrs"} {
+		if dst.Rules[i].Enabled {
+			t.Errorf("%s: правило с несуществующим outbound приехало ВКЛЮЧЁННЫМ — конфиг ядра упадёт", name)
+		}
+	}
+	if !dst.Rules[2].Enabled {
+		t.Error("Alive: правило с существующей целью выключено")
 	}
 	if !hasWarn(res.Warnings, WarnBackupUnknownOutbound) {
 		t.Errorf("не названо: %v", res.Warnings)
@@ -300,10 +340,10 @@ func TestForeignExtensionsDroppedWithWarning(t *testing.T) {
 		t.Fatalf("отброшенный extensions не назван: %v", warns)
 	}
 	dst := &state.State{}
-	if _, err := Import(dst, b, ImportOptions{}); err != nil {
+	if _, err := ImportFile(dst, b, ImportOptions{}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
-	back, _, err := Export(dst, ExportOptions{})
+	back, _, err := Export012(dst, ExportOptions{})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -474,7 +514,7 @@ func TestRoundTripChainSources(t *testing.T) {
 		},
 	}
 
-	b, _, err := Export(s, ExportOptions{AppVersion: "test"})
+	b, _, err := Export012(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -522,7 +562,7 @@ func TestLegacyExtensionsChainsNotRead(t *testing.T) {
 		t.Fatalf("legacy-блоб отброшен молча: %v", warns)
 	}
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{}); err != nil {
+	if _, err := ImportFile(restored, b, ImportOptions{}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
 	for _, src := range restored.Sources {
@@ -585,7 +625,7 @@ func TestRoundTripDNSSection(t *testing.T) {
 			Body: map[string]interface{}{"domain_suffix": "example.com", "server": "my_dns"}},
 	}
 
-	b, _, err := Export(s, ExportOptions{AppVersion: "test"})
+	b, _, err := Export012(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -618,7 +658,7 @@ func TestRoundTripWarpAccounts(t *testing.T) {
 	s.WarpAccounts = &state.WarpAccountsSection{
 		WG: &state.WarpWGAccount{PrivateKey: "priv", PeerPublic: "pub", ClientV4: "172.16.0.2"},
 	}
-	b, _, err := Export(s, ExportOptions{AppVersion: "test"})
+	b, _, err := Export012(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -658,10 +698,10 @@ func TestPerEntityForeignExtensionsDropped(t *testing.T) {
 		t.Fatalf("warning'ов об extensions %d, ожидался ровно один на файл: %v", n, warns)
 	}
 	s := &state.State{}
-	if _, err := Import(s, b, ImportOptions{}); err != nil {
+	if _, err := ImportFile(s, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	out, _, err := Export(s, ExportOptions{AppVersion: "test"})
+	out, _, err := Export012(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -701,7 +741,7 @@ func TestRoundTripDetourNodeRef(t *testing.T) {
 		},
 	}
 
-	b, _, err := Export(s, ExportOptions{AppVersion: "test"})
+	b, _, err := Export012(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -767,7 +807,7 @@ func TestRoundTripDetourNodeTagOnlyRef(t *testing.T) {
 		URL: "https://example.com/sub",
 	}}
 
-	b, _, err := Export(s, ExportOptions{AppVersion: "test"})
+	b, _, err := Export012(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -803,7 +843,7 @@ func TestLegacyDetourNodeHashFileReadsWithWarning(t *testing.T) {
 		t.Fatalf("потеря кармана не названа: %v", warns)
 	}
 	dst := &state.State{}
-	if _, err := Import(dst, b, ImportOptions{}); err != nil {
+	if _, err := ImportFile(dst, b, ImportOptions{}); err != nil {
 		t.Fatalf("старый файл уронил импорт: %v", err)
 	}
 	if len(dst.Sources) != 1 {

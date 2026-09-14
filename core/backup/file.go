@@ -38,8 +38,28 @@ func WriteFile(path string, b *Backup) error {
 	if err != nil {
 		return fmt.Errorf("backup serialization: %w", err)
 	}
-	data = append(data, '\n')
+	return writeFileAtomic(path, append(data, '\n'))
+}
 
+// WriteFile10 сохраняет бэкап формата 1.0.
+//
+// Отдельная функция, а не общая на два типа: у писателей разные корневые
+// структуры, и обобщение через interface{} стоило бы ровно того, что даёт, —
+// ничего. Механика записи та же: отступы (файл читают и правят руками) и
+// атомарная замена (прерванная запись не должна оставить обрезанный файл).
+func WriteFile10(path string, b *Backup10) error {
+	if b == nil {
+		return fmt.Errorf("nil backup")
+	}
+	data, err := json.MarshalIndent(b, "", "  ")
+	if err != nil {
+		return fmt.Errorf("backup serialization: %w", err)
+	}
+	return writeFileAtomic(path, append(data, '\n'))
+}
+
+// writeFileAtomic — общая запись через временный файл и rename.
+func writeFileAtomic(path string, data []byte) error {
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", tmp, err)
@@ -51,8 +71,53 @@ func WriteFile(path string, b *Backup) error {
 	return nil
 }
 
+// File — разобранный файл бэкапа любого читаемого формата.
+//
+// Union, а не два входа у каждого вызывающего: UI, debug API и корпус читают
+// файл, не зная и не желая знать, каким писателем он сделан. Развилка живёт в
+// одном месте — ImportFile (import.go).
+type File struct {
+	// Format — каким писателем сделан файл.
+	Format ExportFormat
+	// Legacy — форма 0.x (lx_backup: 1); nil у файла 1.0.
+	Legacy *Backup
+	// V10 — форма 1.0 (lx_backup: 2); nil у файла 0.x.
+	V10 *Backup10
+}
+
+// ExportedByOf — шапка файла независимо от формата (нужна сводке импорта).
+func (f *File) ExportedByOf() (ExportedBy, string) {
+	switch {
+	case f == nil:
+		return ExportedBy{}, ""
+	case f.V10 != nil:
+		return f.V10.ExportedBy, f.V10.ExportedAt
+	case f.Legacy != nil:
+		return f.Legacy.ExportedBy, f.Legacy.ExportedAt
+	}
+	return ExportedBy{}, ""
+}
+
+// Counts — сколько чего лежит в файле: источники, правила, переменные.
+//
+// Одно число на источники, а не «подписки и серверы» по отдельности: у
+// формата 1.0 секция одна (sources[]), и раскладывать её обратно на две ради
+// сводки значило бы завести у UI знание о форме файла.
+func (f *File) Counts() (sources, rules, vars int) {
+	switch {
+	case f == nil:
+		return 0, 0, 0
+	case f.V10 != nil:
+		return len(f.V10.Sources), len(f.V10.Rules), len(f.V10.Vars)
+	case f.Legacy != nil:
+		b := f.Legacy
+		return len(b.Subscriptions) + len(b.Servers) + len(b.Chains), len(b.Rules), len(b.Vars)
+	}
+	return 0, 0, 0
+}
+
 // ReadFile читает и разбирает бэкап.
-func ReadFile(path string) (*Backup, []Warning, error) {
+func ReadFile(path string) (*File, []Warning, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("backup file: %w", err)
@@ -69,6 +134,12 @@ func ReadFile(path string) (*Backup, []Warning, error) {
 
 // Parse разбирает содержимое бэкапа и называет всё, что импортёр не применит.
 //
+// Формат опознаётся по `lx_backup` ДО разбора тела: 1 — 0.x, 2 — контракт 1.0.
+// Одно поле, один int, никакой второй строковой версии в корне — два способа
+// сказать «какой это формат» разошлись бы на первом же релизе. Значение вне
+// этих двух — отказ ПРЕЖНИМ кодом: файл более новой мажорной версии читать
+// нечем, и сделать вид, что прочитали, хуже честного отказа.
+//
 // Схема намеренно открыта (additionalProperties: true) — файл более новой
 // минорной версии или чужой стороны обязан читаться. Но применять неизвестное
 // молча нельзя (П3): каждый ключ вне модели предъявляется пользователем с
@@ -80,15 +151,37 @@ func ReadFile(path string) (*Backup, []Warning, error) {
 // отсева. Строгий разбор ронял бы весь импорт из-за одного такого поля, то
 // есть терял бы всё остальное молча — ровно то, что запрещает П6. Поэтому
 // несовпавшее по типу поле отбрасывается с warning, а импорт продолжается.
-func Parse(data []byte) (*Backup, []Warning, error) {
-	b, typeWarns, err := decodeTolerant(data)
-	if err != nil {
-		return nil, nil, fmt.Errorf("backup parse: %w", err)
+func Parse(data []byte) (*File, []Warning, error) {
+	var head struct {
+		LxBackup int `json:"lx_backup"`
 	}
-	if b.LxBackup == 0 {
+	if err := json.Unmarshal(data, &head); err != nil {
+		// Тип у lx_backup чужой либо документ битый: терпимый разбор ниже
+		// разберётся и скажет точнее — здесь важно лишь не решить формат
+		// по мусору.
+		head.LxBackup = 0
+	}
+	switch head.LxBackup {
+	case 0:
 		return nil, nil, fmt.Errorf("not an LX Backup file: lx_backup field missing")
+	case FormatVersion:
+		b, typeWarns, err := decodeTolerant(data)
+		if err != nil {
+			return nil, nil, fmt.Errorf("backup parse: %w", err)
+		}
+		return &File{Format: ExportFormat012, Legacy: b},
+			append(typeWarns, scanUnknown(data)...), nil
+	case FormatVersion10:
+		b, typeWarns, err := decodeTolerant10(data)
+		if err != nil {
+			return nil, nil, fmt.Errorf("backup parse: %w", err)
+		}
+		return &File{Format: ExportFormat10, V10: b},
+			append(typeWarns, scanUnknown10(data)...), nil
+	default:
+		return nil, nil, fmt.Errorf("backup format v%d is newer than supported v%d — update the app",
+			head.LxBackup, FormatVersion10)
 	}
-	return b, append(typeWarns, scanUnknown(data)...), nil
 }
 
 // maxTypeMismatchPasses — потолок проходов терпимого разбора.
@@ -110,31 +203,54 @@ const maxTypeMismatchPasses = 64
 // Ошибка НЕ типа (битый JSON, обрезанный файл) остаётся фатальной: там нечего
 // спасать, и делать вид, что файл прочитан, было бы хуже отказа.
 func decodeTolerant(data []byte) (*Backup, []Warning, error) {
+	var out Backup
+	warns, err := decodeTolerantInto(data, &out, legacyArrayLabelKeys)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &out, warns, nil
+}
+
+// decodeTolerant10 — то же для формата 1.0.
+//
+// Отдельная обёртка, а не дженерик на две структуры: разница между ними ровно
+// в типе цели и в таблице имён записей, а обобщение через reflect стоило бы
+// читаемости там, где читаемость и есть весь смысл этого кода.
+func decodeTolerant10(data []byte) (*Backup10, []Warning, error) {
+	var out Backup10
+	warns, err := decodeTolerantInto(data, &out, arrayLabelKeys10)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &out, warns, nil
+}
+
+// decodeTolerantInto — общий механизм терпимого разбора.
+func decodeTolerantInto(data []byte, target interface{}, labels map[string]string) ([]Warning, error) {
 	var warns []Warning
 	cur := data
 
 	for pass := 0; pass < maxTypeMismatchPasses; pass++ {
-		var b Backup
-		err := json.Unmarshal(cur, &b)
+		err := json.Unmarshal(cur, target)
 		if err == nil {
-			return &b, warns, nil
+			return warns, nil
 		}
 		var typeErr *json.UnmarshalTypeError
 		if !errors.As(err, &typeErr) || typeErr.Field == "" {
-			return nil, nil, err
+			return nil, err
 		}
-		next, places := stripField(cur, typeErr.Field)
+		next, places := stripField(cur, typeErr.Field, labels)
 		if next == nil {
 			// Путь не нашёлся — вырезать нечего, и следующий проход дал бы
 			// ту же ошибку. Отдаём исходную ошибку, а не крутим цикл.
-			return nil, nil, err
+			return nil, err
 		}
 		for _, place := range places {
 			warns = append(warns, Warning{Code: WarnBackupFieldTypeMismatch, Detail: place})
 		}
 		cur = next
 	}
-	return nil, nil, fmt.Errorf("too many type mismatches to recover")
+	return nil, fmt.Errorf("too many type mismatches to recover")
 }
 
 // stripField удаляет ключ по ПУТИ вида "subscriptions.skip" из сырого дерева.
@@ -146,13 +262,13 @@ func decodeTolerant(data []byte) (*Backup, []Warning, error) {
 // «поле skip», а «subscriptions[https://…].skip».
 //
 // Возвращает nil, если по пути ничего не нашлось.
-func stripField(data []byte, path string) ([]byte, []string) {
+func stripField(data []byte, path string, labels map[string]string) ([]byte, []string) {
 	var root map[string]json.RawMessage
 	if json.Unmarshal(data, &root) != nil {
 		return nil, nil
 	}
 	parts := strings.Split(path, ".")
-	places := stripPath(root, "", parts)
+	places := stripPath(root, "", parts, labels)
 	if len(places) == 0 {
 		return nil, nil
 	}
@@ -165,7 +281,7 @@ func stripField(data []byte, path string) ([]byte, []string) {
 }
 
 // stripPath спускается по пути внутри объекта, проходя массивы насквозь.
-func stripPath(obj map[string]json.RawMessage, where string, parts []string) []string {
+func stripPath(obj map[string]json.RawMessage, where string, parts []string, labels map[string]string) []string {
 	if len(parts) == 0 {
 		return nil
 	}
@@ -186,8 +302,8 @@ func stripPath(obj map[string]json.RawMessage, where string, parts []string) []s
 		var places []string
 		changed := false
 		for i, item := range items {
-			label := joinPath(where, key) + "[" + entryLabel(item, arrayLabelKeys[key], i) + "]"
-			found := stripPath(item, label, parts[1:])
+			label := joinPath(where, key) + "[" + entryLabel(item, labels[key], i) + "]"
+			found := stripPath(item, label, parts[1:], labels)
 			if len(found) > 0 {
 				changed = true
 				places = append(places, found...)
@@ -206,7 +322,7 @@ func stripPath(obj map[string]json.RawMessage, where string, parts []string) []s
 	if json.Unmarshal(raw, &nested) != nil {
 		return nil
 	}
-	places := stripPath(nested, joinPath(where, key), parts[1:])
+	places := stripPath(nested, joinPath(where, key), parts[1:], labels)
 	if len(places) == 0 {
 		return nil
 	}
@@ -216,15 +332,28 @@ func stripPath(obj map[string]json.RawMessage, where string, parts []string) []s
 	return places
 }
 
-// arrayLabelKeys — чем называется запись секции пользователю. Тот же выбор,
-// что у scanUnknown: «в подписке https://…», а не «в записи №3».
-var arrayLabelKeys = map[string]string{
+// legacyArrayLabelKeys — чем называется запись секции 0.x пользователю. Тот
+// же выбор, что у scanUnknown: «в подписке https://…», а не «в записи №3».
+var legacyArrayLabelKeys = map[string]string{
 	"subscriptions": "url",
 	"servers":       "label",
 	"chains":        "tag",
 	"directions":    "tag",
 	"rules":         "name",
 	"outbounds":     "tag",
+}
+
+// arrayLabelKeys10 — то же для 1.0, где секция источников одна (sources[]).
+//
+// Запись источника называется тегом: у узла и цепочки он и есть имя, у
+// подписки и папки имя лежит в `name`, поэтому у безымянного контейнера
+// сработает откат на «#N» (entryLabel). Второе имя вводить незачем: таблица
+// нужна ради узнаваемости строки предупреждения, а не ради полноты.
+var arrayLabelKeys10 = map[string]string{
+	"sources":    "tag",
+	"nodes":      "tag",
+	"directions": "tag",
+	"rules":      "name",
 }
 
 func joinPath(where, key string) string {

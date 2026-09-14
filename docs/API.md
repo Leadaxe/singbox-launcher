@@ -158,6 +158,49 @@ curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application
 
 ---
 
+## Backup / transfer (SPEC 127)
+
+The same thing the **Files** tab does with its *Export…* / *Import…* buttons: take a portable snapshot of the settings and apply one somewhere else. The payload is the LX Backup file itself — save the response to disk and the launcher or LxBox opens it unchanged.
+
+Two formats live side by side during the compatibility window: **0.12** (the transitional writer both apps read today) and **1.0** (the file is the launcher state, so per-node rules, DNS sections and folders travel too). **Import always reads both** — the caller never states the format. Export writes what `?format=` asks for, or the build's default when it is omitted.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/backup/formats` | `{"reads":[1,2],"writes":["0.12","1.0"],"default":"…"}` — `reads` are `lx_backup` markers, `writes` are format names accepted by `?format=` |
+| GET | `/backup/export` | The backup file as the response body. `?format=1.0\|0.12` (default = the build's), `?envelope=1` wraps it as `{format, file_name, file, warnings}` |
+| POST | `/backup/import` | Body = a backup file of either format. Merges it into the state, saves, then rebuilds `config.json` |
+
+Export losses are never silent: without the envelope the codes travel in the `X-Backup-Warnings` header as a JSON array; with `?envelope=1` they are the `warnings` field. The plain response also carries `Content-Disposition` with the same suggested filename the UI offers.
+
+`POST /backup/import` **merges** — it does not replace (BACKUP.md §9): subscriptions match by URL, servers by what they connect to, folders by name, chains and Directions by tag. Routing rules are the one exception — the file replaces them wholly. The response reports what actually landed:
+
+```json
+{"ok":true,"format":"1.0","warnings":[{"code":"backup_unknown_outbound","detail":"Work → vpn-de"}],
+ "applied":{"rules":7,"sources":4,"directions":1,"added_subscriptions":1,"updated_subscriptions":0,
+            "added_servers":2,"skipped_servers":0,"added_folders":1,"updated_folders":0,
+            "added_chains":1},
+ "config_rebuilt":true}
+```
+
+```bash
+# Snapshot this machine in the new format
+curl -s -H "Authorization: Bearer $TOKEN" "$API/backup/export?format=1.0" -o lx-backup.json
+
+# Codes of anything the format could not carry
+curl -sD- -o /dev/null -H "Authorization: Bearer $TOKEN" "$API/backup/export" | grep -i x-backup-warnings
+
+# Apply it on the other machine
+curl -s -X POST -H "Authorization: Bearer $TOKEN" --data-binary @lx-backup.json "$API/backup/import" | jq
+```
+
+Machines paired through `/remote/*` mirror the first two: `GET /remote/machines/{id}/backup/export` and `POST /remote/machines/{id}/backup/import` act on that machine's wizard profile. The known SPEC 100 §3.3 limitation applies — the machine's `config.json` is rebuilt by its own wizard, so a remote import returns `config_rebuilt:false` and the deploy still needs the Save step in the UI.
+
+On a **fresh install** (no `state.json` yet) import still works: the file describes the whole setting, so it is merged into a clean state and saved. Export in the same situation answers `404` — there is nothing to snapshot, and an empty file would misreport the machine.
+
+**Errors:** `400` (unknown `?format=`, empty body, not an LX Backup file, `lx_backup` newer than this build reads), `409` (the state file is written by a different schema major — SPEC 118 gate, the same as a `PATCH /state/*`), `422` (the file parsed but could not be merged), `404` (export only: no `state.json`), `405` (method).
+
+---
+
 ## Actions
 
 All are `POST`-only (`GET` → 405) and synchronous (they block until done). Success = `{"ok":true}`.
@@ -287,6 +330,11 @@ non-macOS without `/daemon/*`).
 `GET …/state/outbounds/resolved` — same contracts as the local endpoints.
 **Limitation:** PATCH updates the machine's state, but its `config.json` is
 still built only by the wizard (Configure → Save) — no programmatic rebuild yet.
+
+**Backup (mirrors of `/backup/*`):** `GET /remote/machines/{id}/backup/export`,
+`POST /remote/machines/{id}/backup/import` — the same contracts as the local
+endpoints, acting on that machine's profile. The rebuild limitation above
+applies: a remote import answers `config_rebuilt:false`.
 
 **Observability:** `GET …/groups`, `GET …/proxies?group=`,
 `POST …/proxies/switch {group,name}`, `POST …/proxies/delay {name}`,
@@ -469,6 +517,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
 |---|---|
 | `core/debugapi/server.go` | Routing, auth middleware, `/ping`, `/version`, `/state`, `/proxies`, `/action/*` |
 | `core/debugapi/state_endpoints.go` | `/state/full`, `/state/rules`, `/state/dns`, `/state/dns/rules`, `/state/outbounds/resolved` |
+| `core/debugapi/backup_endpoints.go` | `/backup/export`, `/backup/import`, `/backup/formats` and their `/remote/machines/{id}/backup/*` mirrors |
 | `core/debugapi/log_level_endpoint.go` | `/state/log-level` (level validation + core restart via `core.ApplyLogLevelAndReloadCore`) |
 | `core/debugapi/traffic_endpoints.go` | All of `/traffic/*` |
 | `core/debugapi/snapshot.go` | `/debug/snapshot` |

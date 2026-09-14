@@ -1,0 +1,174 @@
+{
+  "warnings": [
+    "backup_local_only_dropped",
+    "backup_local_only_dropped"
+  ],
+  "backup": {
+    "lx_backup": 1,
+    "exported_by": {
+      "app": "launcher",
+      "version": "1.4.2",
+      "platform": "darwin"
+    },
+    "exported_at": "2025-06-15T15:06:40Z",
+    "subscriptions": [
+      {
+        "id": "01J00000000000000000000SUB",
+        "url": "https://example.invalid/sub?token=abc\u0026kind=all",
+        "label": "Proton NL",
+        "max_nodes": 500,
+        "tag": {
+          "prefix": "[P] ",
+          "postfix": " •"
+        },
+        "update": {
+          "interval_hours": 6,
+          "auto": false
+        },
+        "disabled": {
+          "DE-2": 0
+        },
+        "skip": [
+          {
+            "tag": "/(RU)/i"
+          }
+        ]
+      }
+    ],
+    "servers": [
+      {
+        "id": "01J00000000000000000000SRV",
+        "uri": "vless://uuid@h.example:443?security=reality\u0026pbk=k#Tokyo",
+        "node_tag": "🇯🇵 Tokyo",
+        "detour_node_source_id": "01J00000000000000000000SUB",
+        "detour_node_tag": "NL-1",
+        "detour_node_label": "NL-1"
+      },
+      {
+        "uri": "ss://Y2hhY2hh@de.example:8388#DE-1",
+        "node_tag": "DE-1",
+        "folder": "Личные"
+      }
+    ],
+    "directions": [
+      {
+        "tag": "proxy-out",
+        "auto": {
+          "mode": "least_test"
+        }
+      },
+      {
+        "tag": "video-out",
+        "filter": "(NL)"
+      }
+    ],
+    "chains": [
+      {
+        "id": "01J0000000000000000000CHN0",
+        "tag": "chain-1",
+        "chain": {
+          "hops": [
+            "🇯🇵 Tokyo",
+            "NL-1"
+          ]
+        }
+      }
+    ],
+    "rules": [
+      {
+        "kind": "preset",
+        "num": 960,
+        "ref": "ru-direct",
+        "vars": {
+          "out": "direct-out"
+        }
+      },
+      {
+        "kind": "inline",
+        "name": "X",
+        "num": 1000,
+        "outbound": "proxy-out",
+        "match": {
+          "domain_suffix": [
+            "example.com"
+          ],
+          "port": [
+            443
+          ]
+        }
+      },
+      {
+        "kind": "inline",
+        "name": "blocked",
+        "enabled": false,
+        "num": 1005,
+        "outbound": "drop",
+        "match": {
+          "domain_suffix": [
+            "ads.example"
+          ]
+        }
+      },
+      {
+        "kind": "srs",
+        "name": "three sets",
+        "num": 1010,
+        "outbound": "reject",
+        "ref": "https://example.invalid/a.srs",
+        "refs": [
+          "https://example.invalid/a.srs",
+          "https://example.invalid/b.srs"
+        ]
+      }
+    ],
+    "dns": {
+      "servers": [
+        {
+          "kind": "template",
+          "name": "cloudflare_udp"
+        },
+        {
+          "kind": "preset",
+          "ref": "russian:yandex_udp"
+        },
+        {
+          "kind": "user",
+          "name": "my-doh",
+          "value": {
+            "detour": "proxy-out",
+            "server": "1.1.1.1",
+            "type": "https"
+          }
+        }
+      ],
+      "rules": [
+        {
+          "kind": "preset",
+          "ref": "russian"
+        },
+        {
+          "kind": "user",
+          "value": {
+            "rule_set": "ru-domains",
+            "server": "my-doh"
+          }
+        }
+      ],
+      "final": "google_doh",
+      "strategy": "prefer_ipv4"
+    },
+    "vars": {
+      "log_level": "warn"
+    },
+    "warp": [
+      {
+        "client_v4": "172.16.0.2",
+        "client_v6": "fd00::2",
+        "created_at": "2026-08-01T00:00:00Z",
+        "peer_public": "pub",
+        "private_key": "priv",
+        "type": "wg"
+      }
+    ]
+  }
+}

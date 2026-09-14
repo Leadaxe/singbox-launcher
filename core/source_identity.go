@@ -21,9 +21,9 @@ func SourceIdentityOf(src *state.Source) subscription.SourceIdentity {
 		return subscription.SourceIdentity{}
 	}
 	return subscription.SourceIdentity{
-		UserAgent: src.UserAgent,
-		HWID:      src.HWID,
-		SendHWID:  src.SendHWID,
-		HashModel: src.HashDeviceModel,
+		UserAgent: src.IdentityUserAgent(),
+		HWID:      src.IdentityHWID(),
+		SendHWID:  src.IdentitySendHWID(),
+		HashModel: src.IdentityHashDeviceModel(),
 	}
 }
