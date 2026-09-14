@@ -23,7 +23,7 @@
       }
     },
     {
-      "tag": "[P] NL-1 •-2",
+      "tag": "[P] NL-1-2 •",
       "type": "shadowsocks",
       "server": "nl3.example",
       "server_port": 8388,
@@ -56,11 +56,11 @@
       ]
     },
     {
-      "tag": "[P]auto",
+      "tag": "[P]select-auto",
       "type": "urltest",
       "outbounds": [
         "[P] NL-1 •",
-        "[P] NL-1 •-2"
+        "[P] NL-1-2 •"
       ],
       "interval": "5m"
     },
@@ -68,12 +68,12 @@
       "tag": "[P]select",
       "type": "selector",
       "outbounds": [
-        "[P]auto",
+        "[P]select-auto",
         "[P] NL-1 •",
-        "[P] NL-1 •-2"
+        "[P] NL-1-2 •"
       ],
       "interrupt_exist_connections": true,
-      "default": "[P]auto"
+      "default": "[P]select-auto"
     }
   ],
   "endpoints": null
