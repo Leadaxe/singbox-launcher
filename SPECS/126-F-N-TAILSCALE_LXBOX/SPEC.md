@@ -1,9 +1,12 @@
 # SPEC 126 · Tailscale и секции узла в LxBox: контракт на обе стороны
 
-Статус: N. Ветка develop. Кросс-проектная задача: норма — `contract/docs/NODE_SECTIONS.md`
-(черновик до ответа LxBox), задача мобильной стороне — `contract/TASKS_LXBOX.md` `## 13`,
-решение — D-101 (черновик). Здесь — что делает **лаунчер**, чтобы контракт стал
-общим, и чего он ждёт от LxBox.
+Статус: задачи лаунчера (§2) закрыты; приёмка §4 — за владельцем.
+Ветка develop. Кросс-проектная задача: норма — `contract/docs/NODE_SECTIONS.md`
+(**норма**, черновик снят волной 3 SPEC 127), задача мобильной стороне —
+`contract/TASKS_LXBOX.md` `## 13` (**закрыта** релизом LxBox v2.23.2),
+решения — D-101 → D-102 → D-103, форма записей приведена к общей D-107/D-109.
+Здесь — что делает **лаунчер**, чтобы контракт стал общим, и чего он ждёт от
+LxBox.
 
 ## 1. Что меняется
 
@@ -23,33 +26,33 @@ SPEC 121/122 сделали `servers[].sections` и Tailscale полем и по
 
 ## 2. Задачи лаунчера
 
-- [ ] L1 `contract/docs/NODE_SECTIONS.md` — написан (черновик). После ответа
+- [x] L1 `contract/docs/NODE_SECTIONS.md` — написан (черновик). После ответа
       LxBox: снять пометку «черновик», BACKUP.md §2 строка `sections` →
       «обе» со ссылкой на документ, `contract/VERSION` → 0.13.0, D-101 →
       без пометки черновика (новой строкой, решения не переписываются).
-- [ ] L2 **Перенумерация оси при импорте** покрывает и `sections.rules[]`
+- [x] L2 **Перенумерация оси при импорте** покрывает и `sections.rules[]`
       приехавших узлов (NODE_SECTIONS.md §5): сегодня `renumberImportedRules`
       (`core/backup/import.go:714`) видит только `s.Rules`, узловые правила
       сохраняют абсолютные номера из файла и могут пересечься с
       перенумерованными. Один проход по объединённой оси с сохранением
       относительного порядка; тест в `core/backup/`.
-- [ ] L3 Код `backup_section_record_dropped` (side=import) в
+- [x] L3 Код `backup_section_record_dropped` (side=import) в
       `contract/registry/backup_warnings.json` + эмиссия при чужом `kind`
       внутри секций (сегодня — WarnLog без кода в `dropForeignKinds`);
       sync-тест словаря.
-- [ ] L4 Экспорт не пишет `state_directory` в тело `tailscale`-узла —
+- [x] L4 Экспорт не пишет `state_directory` в тело `tailscale`-узла —
       проверить, что `GenerateEndpointJSONBare` (канон/бэкап) путь не
       подставляет (SPEC 122 §2.1 так и задумано), закрепить тестом в
       `core/backup/` на узле `tailscale`.
-- [ ] L5 Извлечение из целого конфига: теги серверов переписывать в
+- [x] L5 Извлечение из целого конфига: теги серверов переписывать в
       `@{self}-<тег>` при извлечении (NODE_SECTIONS.md §6), если сегодня
       берётся сырой тег; проверить `NodeSectionsFromSingbox`.
-- [ ] L6 Корпус: три кейса из NODE_SECTIONS.md §8 (`body/singbox/whole_config_sections`,
+- [x] L6 Корпус: три кейса из NODE_SECTIONS.md §8 (`body/singbox/whole_config_sections`,
       `body/singbox/tailscale_endpoint`, `backup/node_sections`) с ожиданиями
       лаунчера; раннер лаунчера зелёный.
-- [ ] L7 `contract/TASKS_LXBOX.md` `## 13` — написан; пинг живой сессии LxBox
+- [x] L7 `contract/TASKS_LXBOX.md` `## 13` — написан; пинг живой сессии LxBox
       с путём и вопросами А/Б; ответ — сообщением, не поллить.
-- [ ] L9 **Форма секций в бэкапе = корневая форма** (правка LxBox, D-102):
+- [x] L9 **Форма секций в бэкапе = корневая форма** (правка LxBox, D-102):
       сегодня `ServerSections{Raw}` (`core/backup/types.go`) проносит в файл
       внутреннюю форму состояния (`order_num`, `body`, плоские DNS). Экспорт
       обязан переводить `sections.rules[]` в `backup.Rule` (`num`, плоские
@@ -58,7 +61,28 @@ SPEC 121/122 сделали `servers[].sections` и Tailscale полем и по
       импорт — обратно тем же кодом, что `importRule`/`importDNS`. Схема
       `backup.schema.json` уже ссылается на `properties.rules.items` и
       `$defs/dnsRef`. Тест round-trip переписать на новую форму.
-- [ ] L8 Тесты в конце куска, полный прогон один раз; golden без пересчёта.
+- [x] L8 Тесты в конце куска, полный прогон один раз; golden без пересчёта.
+
+**Все L1–L9 закрыты (14.09.2026).** L1–L7, L9 сделаны в SPEC 121/122/126 и
+перекрыты кампанией SPEC 127 (одно пространство имён): форма секций, ради
+которой стоял L9, стала общей формой записей состояния и бэкапа, поэтому
+`sections` едут корневым кодом, а не своим. Что закрыл SPEC 127 и где смотреть:
+
+| L | Где закрыто |
+|---|---|
+| L1 | `contract/docs/NODE_SECTIONS.md` — статус «норма» (волна 3); строка `sections` в BACKUP.md §2 → «обе» |
+| L2 | `renumberImportedAxis` (`core/backup/import.go:469`) — один проход по корневым `rules[]` и узловым `sections.rules[]`; тест `core/backup/node_sections_roundtrip_test.go:423`, кейс корпуса `v10_node_sections` |
+| L3 | `backup_section_record_dropped` в `contract/registry/backup_warnings.json`; эмиссия — `core/backup/node_sections.go`, `WarnBackupSectionRecordDropped` (`import.go:189`). Волна 3 добавила третий param `reason` (`kind` \| `rule_set` \| `not_allowed`) по норме B3 |
+| L4 | `state_directory` подставляет только эмиттер (`core/config/endpoint_schemes.go:88`), канон/бэкап его не несут: `core/config/tailscale_test.go:111-122` и кейс корпуса `body/singbox/tailscale_endpoint` (в `entry` поля нет) |
+| L5 | `singbox_sections_extract.go:89` — `ownServerTags` переписывает тег извлечённого DNS-сервера в `@{self}-<тег>` ВМЕСТЕ со ссылками `server` у его правил (правка волны 3: до неё тег ехал сырым, и на чужой машине правило узла могло уйти на чужой резолвер) |
+| L6 | `contract/corpus/body/singbox/whole_config_sections`, `body/singbox/tailscale_endpoint`, `backup/v10_node_sections` (кейс бэкапа приехал в форме 1.0 — в 0.12 секции не пишутся) |
+| L7 | `contract/TASKS_LXBOX.md` `## 13` — закрыт релизом LxBox v2.23.2 (тег `39f8f0df`, ядро `1.14.0-lx.38` с Tailscale в AAR); продолжение — `## 16` (контракт 1.0) |
+| L8 | Прогоны волн SPEC 127; golden и эталон без пересчёта |
+| L9 | Перекрыт: форма секций в бэкапе = форма записей состояния (D-107/D-109), `ServerSections{Raw}` снесён вместе с 0.12-писателем секций — волна 2 SPEC 127 |
+
+Версия контракта: вместо `0.13.0` (L1) кампания SPEC 127 ведёт сразу к
+**1.0.0** (D-109) — `contract/VERSION` поднимется, когда LxBox прочитает и
+запишет формат 1.0.
 
 ## 3. Чего ждём от LxBox (кратко; полностью — TASKS_LXBOX `## 13`)
 

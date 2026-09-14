@@ -1,12 +1,23 @@
 package backup
 
-// Конформанс-раннер корпуса LX Backup (контракт 0.12.0).
+// Конформанс-раннер корпуса LX Backup (контракт 1.0, legacy-вход 0.x).
 //
 // Гоняет contract/corpus/backup/*.backup.json через Import и сверяет с
 // <case>.expected.json. Тот же набор обязана проходить сторона LxBox: перенос
 // настроек между приложениями имеет смысл ровно настолько, насколько обе
 // стороны одинаково понимают битую ссылку, непереносимую переменную и
 // упразднённый карман extensions.
+//
+// Формат кейса раннер НЕ выбирает: он читает файл через Parse, а тот
+// опознаёт формат по `lx_backup` (1 — 0.x, 2 — контракт 1.0). Поэтому кейсы
+// обоих форматов лежат вперемешку и проверяются одними и теми же ожиданиями:
+// итог импорта — состояние, и оно обязано быть одинаковым независимо от того,
+// каким писателем сделан файл. Кейсы 1.0 названы с префиксом `v10_` — это
+// удобство чтения каталога, а не признак для раннера.
+//
+// Файл с `lx_backup` БОЛЬШЕ читаемого — не ошибка кейса, а чужой extension:
+// такой файл сторона пропускает (corpus/README.md), и раннер, у которого
+// Parse на нём отказывает, обязан пропустить кейс, а не завалить прогон.
 
 import (
 	"encoding/json"
@@ -23,18 +34,123 @@ import (
 
 const backupCorpusRelPath = "../../contract/corpus/backup"
 
+// corpusRuleExpectation — одно правило оси в ожиданиях.
+type corpusRuleExpectation struct {
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
+	// Refs — kind=srs: все URL наборов правила по порядку (D-100).
+	// Необязательно: отсутствие ключа значит «не проверяем».
+	Refs []string `json:"refs"`
+	// Outbound — ЦЕЛЬ правила как вид, а не как кусок тела: тег outbound'а,
+	// либо `reject`, либо `drop` (state v8 §0: цель живёт внутри `body` в
+	// форме sing-box — `"outbound": <тег>` | `"action": "reject"` |
+	// `"action": "reject", "method": "drop"`).
+	//
+	// Проверяется вид, а не байты тела, потому что расходятся стороны именно
+	// здесь: у 0.12 цель ехала ПЛОСКИМ полем `outbound`, и обратный перевод
+	// «reject/drop → action/method» (outboundutil.ApplyOutboundToRule) легко
+	// сделать наполовину — тогда правило-блокировка тихо станет правилом с
+	// outbound'ом по имени "reject", то есть висячей ссылкой.
+	//
+	// Поле необязательное: пустая строка значит «не проверяем».
+	Outbound string `json:"outbound"`
+	// Vars — переменные ЭТОГО правила (`kind: preset`): имя → значение.
+	//
+	// Сверяются именно они, а не глобальные `vars` состояния: у пресета
+	// переменные — часть его настройки («строгий список» против «мягкого»),
+	// и правило, приехавшее без них, делает не то, что делало на исходной
+	// машине, оставаясь при этом похожим на себя именем и видом.
+	//
+	// Поле необязательное: отсутствие ключа значит «не проверяем».
+	Vars map[string]string `json:"vars"`
+}
+
 // corpusExpectation — форма <case>.expected.json.
 type corpusExpectation struct {
-	Rules []struct {
-		Name    string `json:"name"`
-		Enabled bool   `json:"enabled"`
-		// Refs — kind=srs: все URL наборов правила по порядку (D-100).
-		// Необязательно: отсутствие ключа значит «не проверяем».
-		Refs []string `json:"refs"`
-	} `json:"rules"`
-	Vars              map[string]string `json:"vars"`
-	Warnings          []string          `json:"warnings"`
-	RouteFinalApplied *bool             `json:"route_final_applied"`
+	Rules []corpusRuleExpectation `json:"rules"`
+
+	// DNS — DNS-секция состояния после импорта (контракт 1.0).
+	//
+	// Проверяется ВИД записи и её ссылка, а не тело: тело — это правило
+	// sing-box как есть, оно едет в файле байт в байт, и дублировать его в
+	// ожидании значило бы проверять encoding/json. Предмет сверки здесь
+	// другой: обе стороны обязаны одинаково разложить запись на вид
+	// (user/template/preset) и её имя — именно на этом расходились плоская
+	// форма 0.12 и форма записей v8.
+	//
+	// Поле необязательное: отсутствие ключа значит «не проверяем».
+	DNS *struct {
+		Servers []struct {
+			Kind string `json:"kind"`
+			// Tag — у kind=user|template; Ref — у kind=preset. В ожидании
+			// стоит ровно один из двух: у пресета своего тега нет.
+			Tag     string `json:"tag"`
+			Ref     string `json:"ref"`
+			Enabled *bool  `json:"enabled"`
+			// Body — тело записи (форма sing-box) deep-equal.
+			//
+			// Тело едет в файле как есть, но «как есть» — это свойство
+			// ЭТОГО кодека, а не контракта: у второй стороны тело проходит
+			// через свой декодер, и потеря `detour` или `path` у резолвера
+			// — расхождение, которое видно только сверкой. Поле
+			// необязательное: отсутствие ключа значит «не проверяем».
+			Body json.RawMessage `json:"body"`
+		} `json:"servers"`
+		// Strategy и Final — одиночные значения секции; файл их ЗАМЕЩАЕТ
+		// (§9 п. 5). Пустая строка значит «не проверяем».
+		Strategy string `json:"strategy"`
+		Final    string `json:"final"`
+		// DefaultDomainResolver — третий скаляр секции, по тому же правилу.
+		DefaultDomainResolver string `json:"default_domain_resolver"`
+		// Rules — ЧИСЛО DNS-правил. Их имена контракт не нормирует (у
+		// user-правила имя необязательно), а вот потеря правила при
+		// переносе — расхождение.
+		Rules *int `json:"rules"`
+	} `json:"dns"`
+
+	// Sections — секции узлов после импорта: ТЕГ КОРНЕВОГО СЕРВЕРА → его
+	// связка (NODE_SECTIONS.md §5). Ключ — тег, а не позиция: секция
+	// принадлежит узлу, и проверять её по номеру в списке значило бы падать
+	// на любой перестановке источников.
+	//
+	// Правила узла сверяются по имени и enabled, но НЕ по номеру: номер
+	// раздаёт общая перенумерация оси (BACKUP.md §9), он зависит от того,
+	// сколько корневых правил приехало тем же файлом, и в ожидании был бы
+	// хрупкой копией арифметики импортёра. Положение узлового правила НА ОСИ
+	// проверяется списком `rules` верхнего уровня — там оно стоит среди
+	// корневых в том порядке, в каком встало.
+	//
+	// Поле необязательное: отсутствие ключа значит «не проверяем».
+	// Ключ — тег узла, причём ЛЮБОГО носителя секций, а не только корневого
+	// сервера: NODE_SECTIONS.md §1 разрешает секции свободному узлу и в
+	// корне `sources[]`, и внутри папки, у члена папки свой путь слияния, и
+	// проверять половину носителей значило бы оставить вторую без сверки.
+	Sections map[string]struct {
+		Rules []struct {
+			Name    string `json:"name"`
+			Enabled bool   `json:"enabled"`
+		} `json:"rules"`
+		// DNSServers — теги серверов связки по порядку.
+		DNSServers []string `json:"dns_servers"`
+		// DNSRules — их число (см. DNS.Rules выше).
+		DNSRules *int `json:"dns_rules"`
+	} `json:"sections"`
+	Vars     map[string]string `json:"vars"`
+	Warnings []string          `json:"warnings"`
+	// WarningReasons — уточнение причин для кодов, у которых причина
+	// нормирована перечнем: код → все встретившиеся `reason` по алфавиту,
+	// без повторов.
+	//
+	// Отдельным ключом, а не внутри `warnings`, чтобы не переписывать
+	// ожидания старых кейсов. Нужен там, где ОДИН код означает разные
+	// вещи: `backup_section_record_dropped` c `reason` ∈ kind | rule_set |
+	// not_allowed (норма B3) — множество кодов их не различает, и сторона,
+	// отбросившая запись «не по той причине», проходила бы кейс зелёной,
+	// показывая пользователю неверное объяснение потери.
+	//
+	// Поле необязательное: отсутствие ключа значит «не проверяем».
+	WarningReasons    map[string][]string `json:"warning_reasons"`
+	RouteFinalApplied *bool               `json:"route_final_applied"`
 	// ExtensionsDropped — файл несёт упразднённый механизм extensions
 	// (схема 0.10.x). Импортёр обязан его ОТБРОСИТЬ и назвать одним
 	// warning'ом на файл (BACKUP_PRINCIPLES.md П3/П4), а не провозить:
@@ -65,6 +181,17 @@ type corpusExpectation struct {
 	//
 	// Поле необязательное: отсутствие ключа значит «не проверяем».
 	Folders map[string][]string `json:"folders"`
+
+	// FolderIDs — имя папки → её ULID после импорта.
+	//
+	// Ступень слияния «сперва по `id`, затем по имени» (§9 п. 3) иначе
+	// НЕНАБЛЮДАЕМА: состав, собранный по любой из них, выглядит одинаково,
+	// и сторона, знающая только имя, проходила бы кейс зелёной. Именно id
+	// показывает, какая ступень сработала: совпавшая по `id` папка держит
+	// ЛОКАЛЬНЫЙ id, заведённая заново — id из файла.
+	//
+	// Поле необязательное: отсутствие ключа значит «не проверяем».
+	FolderIDs map[string]string `json:"folder_ids"`
 
 	// Subscriptions — подписки после импорта: URL → её настройки (D-095).
 	// Ключ тот же, по которому идёт слияние, — `url` как есть.
@@ -128,6 +255,24 @@ type corpusExpectation struct {
 		Label   string          `json:"label"`
 		Enabled *bool           `json:"enabled"`
 		Chain   json.RawMessage `json:"chain"`
+		// Hops — позиции цепочки как ССЫЛКИ, а не как теги: `folder_id`
+		// либо имя папки, куда он обязан указывать после импорта.
+		//
+		// Канон `chain` выше схлопывает хопы до плоских тегов (форма 0.12,
+		// exportHops), и адрес папки в нём теряется — то есть главная
+		// механика §6 (перепись `folder_id` по карте id) остаётся без
+		// сверки. Здесь она и проверяется.
+		//
+		// Поле необязательное: отсутствие ключа значит «не проверяем».
+		Hops []struct {
+			Tag string `json:"tag"`
+			// Folder — ИМЯ папки, на которую обязан указывать folder_id
+			// хопа после импорта. Имя, а не ULID: ULID у новой папки
+			// берётся из файла, у совпавшей — локальный, и записать в
+			// ожидание можно только то, что от машины не зависит.
+			// Пустая строка = хоп обязан быть БЕЗ folder_id (корневой).
+			Folder string `json:"folder"`
+		} `json:"hops"`
 	} `json:"chains"`
 }
 
@@ -171,6 +316,11 @@ func TestBackupCorpus(t *testing.T) {
 
 			b, parseWarns, err := Parse(raw)
 			if err != nil {
+				if corpusFormatAhead(raw) {
+					// Кейс формата новее читаемого — чужой extension, а не
+					// поломка (corpus/README.md): сторона его пропускает.
+					t.Skipf("формат кейса новее читаемого: %v", err)
+				}
 				t.Fatalf("Parse: %v", err)
 			}
 
@@ -202,7 +352,10 @@ func TestBackupCorpus(t *testing.T) {
 				t.Errorf("коды предупреждений: получено %v, ожидалось %v", gotWarns, wantWarns)
 			}
 
+			checkWarningReasons(t, append(parseWarns, res.Warnings...), exp)
 			checkRules(t, dst, exp)
+			checkDNS(t, dst, exp)
+			checkSections(t, dst, exp)
 			checkVars(t, dst, exp)
 			checkRouteFinal(t, dst, exp)
 			checkExtensionsDropped(t, dst, exp)
@@ -215,6 +368,22 @@ func TestBackupCorpus(t *testing.T) {
 			checkRootServers(t, dst, exp)
 		})
 	}
+}
+
+// corpusFormatAhead — у файла мажорный маркер БОЛЬШЕ читаемого этой стороной.
+//
+// Правило корпуса (corpus/README.md): такой файл сторона пропускает как чужой
+// extension, override-файлов под него не заводят. Отличать его от битого
+// кейса приходится здесь, а не по имени файла: имя — свойство каталога, а
+// маркер — свойство документа, и единственная честная проверка читает документ.
+func corpusFormatAhead(raw []byte) bool {
+	var head struct {
+		LxBackup int `json:"lx_backup"`
+	}
+	if err := json.Unmarshal(raw, &head); err != nil {
+		return false
+	}
+	return head.LxBackup > FormatVersion10
 }
 
 // loadCorpusPre читает предсостояние кейса; nil = его нет (тогда импорт идёт
@@ -316,27 +485,52 @@ func checkRootServers(t *testing.T, dst *state.State, exp corpusExpectation) {
 	}
 }
 
+// checkRules — ОСЬ ПОРЯДКА целиком: корневые правила и правила, которые узлы
+// носят с собой (NODE_SECTIONS.md §5).
+//
+// Ось одна, и проверять её половинами нельзя: узловое правило встаёт МЕЖДУ
+// корневыми по относительному порядку номеров (BACKUP.md §9), и ровно это
+// расхождение — «у той стороны правило узла уехало в конец» — список корневых
+// правил показать не в состоянии.
 func checkRules(t *testing.T, dst *state.State, exp corpusExpectation) {
 	t.Helper()
-	if len(dst.Rules) != len(exp.Rules) {
-		t.Fatalf("правил %d, ожидалось %d", len(dst.Rules), len(exp.Rules))
-	}
 	// Сравниваем в порядке оси, а не в порядке файла: импортёр
 	// перенумеровывает, сохраняя относительный порядок.
 	type got struct {
-		name    string
-		enabled bool
-		num     int
-		refs    []string
+		name     string
+		enabled  bool
+		num      int
+		refs     []string
+		outbound string
+		vars     map[string]string
 	}
 	all := make([]got, 0, len(dst.Rules))
-	for _, r := range dst.Rules {
-		name := ruleName(r)
+	add := func(r state.Rule) {
 		num := 0
 		if r.Num != nil {
 			num = *r.Num
 		}
-		all = append(all, got{name, r.Enabled, num, ruleRefs(r)})
+		all = append(all, got{ruleName(r), r.Enabled, num, ruleRefs(r), ruleOutboundView(r), r.Vars})
+	}
+	for _, r := range dst.Rules {
+		add(r)
+	}
+	for i := range dst.Sources {
+		if sec := dst.Sources[i].Node.Sections; sec != nil {
+			for _, r := range sec.Rules {
+				add(r)
+			}
+		}
+		for j := range dst.Sources[i].Nodes {
+			if sec := dst.Sources[i].Nodes[j].Sections; sec != nil {
+				for _, r := range sec.Rules {
+					add(r)
+				}
+			}
+		}
+	}
+	if len(all) != len(exp.Rules) {
+		t.Fatalf("правил на оси %d, ожидалось %d", len(all), len(exp.Rules))
 	}
 	sort.SliceStable(all, func(i, j int) bool { return all[i].num < all[j].num })
 
@@ -350,7 +544,179 @@ func checkRules(t *testing.T, dst *state.State, exp corpusExpectation) {
 		if want.Refs != nil && !equalStrings(all[i].refs, want.Refs) {
 			t.Errorf("правило %q: наборы %v, ожидались %v", want.Name, all[i].refs, want.Refs)
 		}
+		if want.Outbound != "" && all[i].outbound != want.Outbound {
+			t.Errorf("правило %q: цель %q, ожидалась %q", want.Name, all[i].outbound, want.Outbound)
+		}
+		if want.Vars != nil && !equalStringMaps(all[i].vars, want.Vars) {
+			t.Errorf("правило %q: переменные %v, ожидались %v", want.Name, all[i].vars, want.Vars)
+		}
 	}
+}
+
+// equalStringMaps — сравнение карт «имя → значение» по составу.
+func equalStringMaps(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || bv != v {
+			return false
+		}
+	}
+	return true
+}
+
+// ruleOutboundView — цель правила как вид: тег | "reject" | "drop".
+//
+// Обратная операция к outboundutil.ApplyOutboundToRule. Читает ТЕЛО, потому
+// что в state v8 другого места у цели нет; у preset-правила тела нет вовсе —
+// цель приходит из шаблона, и проверять её здесь нечем (пустая строка).
+func ruleOutboundView(r state.Rule) string {
+	if len(r.Body) == 0 {
+		return ""
+	}
+	var body struct {
+		Outbound string `json:"outbound"`
+		Action   string `json:"action"`
+		Method   string `json:"method"`
+	}
+	if err := json.Unmarshal(r.Body, &body); err != nil {
+		return ""
+	}
+	if body.Action == "reject" {
+		if body.Method == "drop" {
+			return "drop"
+		}
+		return "reject"
+	}
+	return body.Outbound
+}
+
+// checkDNS — DNS-секция состояния после импорта (вид записи и её ссылка).
+func checkDNS(t *testing.T, dst *state.State, exp corpusExpectation) {
+	t.Helper()
+	if exp.DNS == nil {
+		return
+	}
+	servers := dst.DNS.Servers
+	if len(servers) != len(exp.DNS.Servers) {
+		t.Fatalf("DNS-серверов %d, ожидалось %d", len(servers), len(exp.DNS.Servers))
+	}
+	for i, want := range exp.DNS.Servers {
+		got := servers[i]
+		if string(got.Kind) != want.Kind {
+			t.Errorf("DNS-сервер %d: вид %q, ожидался %q", i, got.Kind, want.Kind)
+		}
+		if got.Tag != want.Tag {
+			t.Errorf("DNS-сервер %d: тег %q, ожидался %q", i, got.Tag, want.Tag)
+		}
+		if got.Ref != want.Ref {
+			t.Errorf("DNS-сервер %d: ссылка %q, ожидалась %q", i, got.Ref, want.Ref)
+		}
+		if want.Enabled != nil && got.Enabled != *want.Enabled {
+			t.Errorf("DNS-сервер %d: enabled=%v, ожидалось %v", i, got.Enabled, *want.Enabled)
+		}
+		if want.Body != nil {
+			gotBody, err := json.Marshal(got.Body)
+			if err != nil {
+				t.Fatalf("DNS-сервер %d: marshal тела: %v", i, err)
+			}
+			if !jsonDeepEqual(gotBody, want.Body) {
+				t.Errorf("DNS-сервер %d (%s%s): тело %s, ожидалось %s",
+					i, got.Tag, got.Ref, string(gotBody), string(want.Body))
+			}
+		}
+	}
+	if exp.DNS.Rules != nil && len(dst.DNS.Rules) != *exp.DNS.Rules {
+		t.Errorf("DNS-правил %d, ожидалось %d", len(dst.DNS.Rules), *exp.DNS.Rules)
+	}
+	// Три скаляра секции — одним правилом (§9 п. 5): файл их замещает.
+	if exp.DNS.Strategy != "" && dst.DNS.Strategy != exp.DNS.Strategy {
+		t.Errorf("dns.strategy=%q, ожидалось %q", dst.DNS.Strategy, exp.DNS.Strategy)
+	}
+	if exp.DNS.Final != "" && dst.DNS.Final != exp.DNS.Final {
+		t.Errorf("dns.final=%q, ожидалось %q", dst.DNS.Final, exp.DNS.Final)
+	}
+	if exp.DNS.DefaultDomainResolver != "" && dst.DNS.DefaultDomainResolver != exp.DNS.DefaultDomainResolver {
+		t.Errorf("dns.default_domain_resolver=%q, ожидалось %q",
+			dst.DNS.DefaultDomainResolver, exp.DNS.DefaultDomainResolver)
+	}
+}
+
+// checkSections — связки узлов после импорта, по тегу корневого сервера.
+func checkSections(t *testing.T, dst *state.State, exp corpusExpectation) {
+	t.Helper()
+	if exp.Sections == nil {
+		return
+	}
+	// Носители секций — ВСЕ свободные узлы: и корневые, и члены папок
+	// (NODE_SECTIONS.md §1). У члена папки собственный путь слияния, и
+	// обход одних корневых оставлял бы его DNS-связку без единой проверки,
+	// а сторожа «есть секции, которых в ожиданиях нет» — слепым к ней.
+	have := map[string]*state.NodeSections{}
+	collect := func(n *state.Node) {
+		if sec := n.Sections; sec != nil && !sec.IsEmpty() {
+			if _, dup := have[n.Tag]; dup {
+				t.Errorf("тег %q носит секции дважды — ключ связки неоднозначен", n.Tag)
+			}
+			have[n.Tag] = sec
+		}
+	}
+	for i := range dst.Sources {
+		if dst.Sources[i].Kind == state.SourceKindServer {
+			collect(&dst.Sources[i].Node)
+		}
+		for j := range dst.Sources[i].Nodes {
+			collect(&dst.Sources[i].Nodes[j])
+		}
+	}
+	for tag, want := range exp.Sections {
+		sec, ok := have[tag]
+		if !ok {
+			t.Errorf("у узла %q секций после импорта нет: есть у %v", tag, sortedKeys(have))
+			continue
+		}
+		if len(sec.Rules) != len(want.Rules) {
+			t.Errorf("%s: правил связки %d, ожидалось %d", tag, len(sec.Rules), len(want.Rules))
+		} else {
+			for i, wr := range want.Rules {
+				if sec.Rules[i].Name != wr.Name {
+					t.Errorf("%s: правило связки %d имя %q, ожидалось %q", tag, i, sec.Rules[i].Name, wr.Name)
+				}
+				if sec.Rules[i].Enabled != wr.Enabled {
+					t.Errorf("%s: правило связки %q enabled=%v, ожидалось %v",
+						tag, wr.Name, sec.Rules[i].Enabled, wr.Enabled)
+				}
+			}
+		}
+		if want.DNSServers != nil {
+			var tags []string
+			for _, s := range sec.DNSServers() {
+				tags = append(tags, s.Tag)
+			}
+			if !equalStrings(tags, want.DNSServers) {
+				t.Errorf("%s: DNS-серверы связки %v, ожидались %v", tag, tags, want.DNSServers)
+			}
+		}
+		if want.DNSRules != nil && len(sec.DNSRules()) != *want.DNSRules {
+			t.Errorf("%s: DNS-правил связки %d, ожидалось %d", tag, len(sec.DNSRules()), *want.DNSRules)
+		}
+	}
+	for tag := range have {
+		if _, ok := exp.Sections[tag]; !ok {
+			t.Errorf("у узла %q есть секции, которых в ожиданиях нет", tag)
+		}
+	}
+}
+
+// sortedKeys — имена ключей карты по алфавиту (для сообщений об ошибках).
+func sortedKeys(m map[string]*state.NodeSections) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // ruleRefs — все URL наборов srs-правила по порядку; у прочих kind — nil.
@@ -366,10 +732,11 @@ func ruleRefs(r state.Rule) []string {
 // checkFolders — папки собраны по имени, с тем же составом и порядком.
 func checkFolders(t *testing.T, dst *state.State, exp corpusExpectation) {
 	t.Helper()
-	if exp.Folders == nil {
+	if exp.Folders == nil && exp.FolderIDs == nil {
 		return
 	}
 	have := map[string][]string{}
+	haveIDs := map[string]string{}
 	for _, src := range dst.Sources {
 		if src.Kind != state.SourceKindFolder {
 			continue
@@ -382,6 +749,17 @@ func checkFolders(t *testing.T, dst *state.State, exp corpusExpectation) {
 			tags = append(tags, src.Nodes[i].Tag)
 		}
 		have[src.Name] = tags
+		haveIDs[src.Name] = src.ID
+	}
+	for name, want := range exp.FolderIDs {
+		got, ok := haveIDs[name]
+		if !ok {
+			t.Errorf("папка %q не собрана: нечему сверять id", name)
+			continue
+		}
+		if got != want {
+			t.Errorf("папка %q: id %q, ожидался %q (ступень слияния §9 п. 3)", name, got, want)
+		}
 	}
 	for name, want := range exp.Folders {
 		got, ok := have[name]
@@ -395,9 +773,11 @@ func checkFolders(t *testing.T, dst *state.State, exp corpusExpectation) {
 			t.Errorf("папка %q: члены %v, ожидались %v (порядок нормативен)", name, got, want)
 		}
 	}
-	for name := range have {
-		if _, ok := exp.Folders[name]; !ok {
-			t.Errorf("собрана папка %q, которой в ожиданиях нет", name)
+	if exp.Folders != nil {
+		for name := range have {
+			if _, ok := exp.Folders[name]; !ok {
+				t.Errorf("собрана папка %q, которой в ожиданиях нет", name)
+			}
 		}
 	}
 }
@@ -603,6 +983,11 @@ func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
 		if want.Enabled != nil && src.Enabled != *want.Enabled {
 			t.Errorf("%s: enabled=%v, ожидалось %v", want.Tag, src.Enabled, *want.Enabled)
 		}
+		// Хопы как ССЫЛКИ: канон выше их уже схлопнул до тегов, и адрес
+		// папки (§6 — перепись folder_id по карте id) виден только здесь.
+		if want.Hops != nil {
+			checkChainHops(t, dst, want.Tag, src.Hops, want.Hops)
+		}
 		if want.Label != "" {
 			needExport = true
 		}
@@ -676,6 +1061,95 @@ func checkDirections(t *testing.T, dst *state.State, exp corpusExpectation) {
 		}
 		if (got.Auto != nil) != want.HasAuto {
 			t.Errorf("%s: автовыбор=%v, ожидалось %v", want.Tag, got.Auto != nil, want.HasAuto)
+		}
+	}
+}
+
+// checkChainHops — позиции цепочки как ссылки: тег и папка, на которую
+// обязан указывать folder_id после импорта.
+//
+// Папка названа ИМЕНЕМ, а не ULID: у совпавшей папки id локальный, у новой —
+// из файла, и записать в ожидание можно только то, что от машины-приёмника не
+// зависит. Разрешение «ULID → имя» делается здесь, по состоянию.
+func checkChainHops(t *testing.T, dst *state.State, tag string, got []state.NodeLink, want []struct {
+	Tag    string `json:"tag"`
+	Folder string `json:"folder"`
+}) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Errorf("%s: хопов %d, ожидалось %d", tag, len(got), len(want))
+		return
+	}
+	folderName := map[string]string{}
+	for i := range dst.Sources {
+		if dst.Sources[i].Kind == state.SourceKindFolder {
+			folderName[dst.Sources[i].ID] = dst.Sources[i].Name
+		}
+	}
+	for i, w := range want {
+		if got[i].Tag != w.Tag {
+			t.Errorf("%s: хоп %d тег %q, ожидался %q", tag, i, got[i].Tag, w.Tag)
+		}
+		switch {
+		case w.Folder == "":
+			if got[i].FolderID != "" {
+				t.Errorf("%s: хоп %d метит в папку %q, ожидался корневой узел",
+					tag, i, got[i].FolderID)
+			}
+		case got[i].FolderID == "":
+			t.Errorf("%s: хоп %d без folder_id, ожидалась папка %q", tag, i, w.Folder)
+		default:
+			name, ok := folderName[got[i].FolderID]
+			if !ok {
+				t.Errorf("%s: хоп %d метит в folder_id %q, папки с таким id нет — ссылка не переписана по карте (§6)",
+					tag, i, got[i].FolderID)
+				continue
+			}
+			if name != w.Folder {
+				t.Errorf("%s: хоп %d метит в папку %q, ожидалась %q", tag, i, name, w.Folder)
+			}
+		}
+	}
+}
+
+// checkWarningReasons — причины у кодов, где причина нормирована перечнем.
+//
+// Множество кодов их не различает: `backup_section_record_dropped` означает
+// три разные вещи (норма B3), и сторона, отбросившая запись «не по той
+// причине», показывала бы пользователю неверное объяснение потери, проходя
+// кейс зелёной.
+func checkWarningReasons(t *testing.T, warns []Warning, exp corpusExpectation) {
+	t.Helper()
+	if exp.WarningReasons == nil {
+		return
+	}
+	have := map[string][]string{}
+	for _, w := range warns {
+		if _, watched := exp.WarningReasons[w.Code]; !watched {
+			continue
+		}
+		if w.Reason == "" {
+			t.Errorf("%s: предупреждение без reason, а перечень причин нормирован", w.Code)
+			continue
+		}
+		seen := false
+		for _, r := range have[w.Code] {
+			if r == w.Reason {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			have[w.Code] = append(have[w.Code], w.Reason)
+		}
+	}
+	for code, want := range exp.WarningReasons {
+		got := append([]string(nil), have[code]...)
+		sort.Strings(got)
+		wantSorted := append([]string(nil), want...)
+		sort.Strings(wantSorted)
+		if !equalStrings(got, wantSorted) {
+			t.Errorf("%s: причины %v, ожидались %v", code, got, wantSorted)
 		}
 	}
 }

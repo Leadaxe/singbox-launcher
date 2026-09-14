@@ -19,6 +19,10 @@
 // `backup_section_record_dropped`. Раньше это делал `dropForeignKinds` в
 // состоянии, и потеря уходила в WarnLog без кода: пользователь импорта о ней
 // не узнавал вовсе.
+//
+// Тем же кодом отбрасывается правило с `rule_set` в теле (норма B3) — целиком,
+// а не вырезанием ключа, — и поле `sections` у узла, которому оно не положено.
+// Три причины у одного кода различает поле `reason` предупреждения.
 package backup
 
 import (
@@ -27,6 +31,39 @@ import (
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 )
+
+// Причины отбраковки записи секции (поле Warning.Reason у
+// `backup_section_record_dropped`; норма B3, NODE_SECTIONS.md §1).
+//
+// Экспортированы: причину читает UI, чтобы объяснить потерю разными словами,
+// и литерал на его стороне разошёлся бы с этим при первой же правке.
+const (
+	// SectionDropKind — вид записи у секции не бывает (preset/json у правила,
+	// template/preset у DNS).
+	SectionDropKind = "kind"
+	// SectionDropRuleSet — в теле правила стоит `rule_set`.
+	SectionDropRuleSet = "rule_set"
+	// SectionDropNotAllowed — узлу этого вида секции не положены вовсе.
+	SectionDropNotAllowed = "not_allowed"
+)
+
+// ruleBodyHasRuleSet — в теле записи стоит ключ `rule_set`.
+//
+// Разбор поверхностный (только верхний уровень объекта): `rule_set` —
+// матчер правила sing-box, он живёт именно там. Нечитаемое тело не считается
+// несущим набор: такая запись — отдельная беда, и объявлять её носителем
+// rule_set значило бы назвать пользователю неверную причину.
+func ruleBodyHasRuleSet(r state.Rule) bool {
+	if len(r.Body) == 0 {
+		return false
+	}
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(r.Body, &probe); err != nil {
+		return false
+	}
+	_, has := probe["rule_set"]
+	return has
+}
 
 // decodeBackupSections переводит блок из файла 0.x в записи состояния.
 //
@@ -71,6 +108,7 @@ func dropSectionsForForeignNode(kind state.SourceKind, sec *state.NodeSections, 
 		Code:   WarnBackupSectionRecordDropped,
 		Detail: nodeTag + ": sections",
 		Kind:   string(kind),
+		Reason: SectionDropNotAllowed,
 	}}
 }
 
@@ -89,11 +127,12 @@ func normalizeImportedSections(ns *state.NodeSections, nodeTag string) (*state.N
 		return nil, nil
 	}
 	var warns []Warning
-	drop := func(kind string) {
+	drop := func(kind, reason string) {
 		warns = append(warns, Warning{
 			Code:   WarnBackupSectionRecordDropped,
 			Detail: nodeTag + ": " + kind,
 			Kind:   kind,
+			Reason: reason,
 		})
 	}
 
@@ -101,11 +140,23 @@ func normalizeImportedSections(ns *state.NodeSections, nodeTag string) (*state.N
 	for _, r := range ns.Rules {
 		switch r.Kind {
 		case state.RuleKindInline, state.RuleKindSrs:
+			if ruleBodyHasRuleSet(r) {
+				// Норма B3 (NODE_SECTIONS.md §1): запись с `rule_set`
+				// отбрасывается ЦЕЛИКОМ, а не лечится вырезанием ключа.
+				// Вырезать нельзя: правило `{rule_set: […], outbound: @self}`
+				// без матчера становится match-all и уводит В УЗЕЛ ВЕСЬ
+				// трафик — молчаливая подмена смысла куда хуже честной потери
+				// одной строки. Наборы правил секции не объявляют и не
+				// ссылаются на них (§1), поэтому такая запись в файле — либо
+				// чужой диалект, либо правка руками.
+				drop(string(r.Kind), SectionDropRuleSet)
+				continue
+			}
 			rules = append(rules, r)
 		default:
 			// `preset` у узла означал бы ссылку на шаблон, которого на чужой
 			// машине может не быть; `json` — сырое правило другой стороны.
-			drop(string(r.Kind))
+			drop(string(r.Kind), SectionDropKind)
 		}
 	}
 	ns.Rules = nil
@@ -120,7 +171,7 @@ func normalizeImportedSections(ns *state.NodeSections, nodeTag string) (*state.N
 				servers = append(servers, s)
 				continue
 			}
-			drop(string(s.Kind))
+			drop(string(s.Kind), SectionDropKind)
 		}
 		dnsRules := make([]state.DNSRule, 0, len(ns.DNS.Rules))
 		for _, r := range ns.DNS.Rules {
@@ -128,7 +179,7 @@ func normalizeImportedSections(ns *state.NodeSections, nodeTag string) (*state.N
 				dnsRules = append(dnsRules, r)
 				continue
 			}
-			drop(string(r.Kind))
+			drop(string(r.Kind), SectionDropKind)
 		}
 		ns.SetDNS(servers, dnsRules)
 	}

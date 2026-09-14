@@ -27,8 +27,10 @@
 // сервер `local-dns`) не берутся: это настройки конфига целиком, у них своё
 // место в лаунчере, и подменять их вставкой одного узла нельзя.
 //
-// Ссылки на узел переписываются в `@self` — связка обязана пережить
-// переименование узла.
+// Ссылки на узел переписываются в `@self`, теги взятых DNS-серверов — в
+// `@{self}-<тег из конфига>` (NODE_SECTIONS.md §7): связка обязана пережить
+// и переименование узла, и переезд на машину, где такой тег сервера уже занят
+// чужой записью.
 //
 // # Хранимая форма
 //
@@ -73,23 +75,41 @@ func ExtractNodeSections(cfg map[string]interface{}, nodeTag string) *configtype
 	// Шаг 1: DNS-серверы, привязанные к узлу. Их локальные теги нужны шагу 2 —
 	// правило берётся, только если ссылается на СВОЙ сервер; правило на
 	// `local-dns` относится к конфигу, а не к узлу.
-	ownServerTags := map[string]bool{}
+	//
+	// ownServerTags — тег сервера В КОНФИГЕ → его тег В СЕКЦИИ. Теги взятых
+	// серверов переписываются в `@{self}-<тег из конфига>` (NODE_SECTIONS.md
+	// §7, договорённость с LxBox от 14.09.2026): сервер принадлежит узлу, и
+	// его имя обязано переехать вместе с узлом на чужую машину, где `home-dns`
+	// уже может быть занят ЧУЖИМ сервером — тогда DNS-правило узла ушло бы
+	// разрешать имена через чужой резолвер молча.
+	//
+	// Карта, а не множество: по ней же переписывается ссылка `server` у
+	// DNS-правил шага 2 — иначе правило метило бы в тег, которого после
+	// переименования сервера больше нет.
+	ownServerTags := map[string]string{}
 	if dns, ok := cfg["dns"].(map[string]interface{}); ok {
 		for _, srv := range jsonObjectList(dns["servers"]) {
 			if !refersToNode(mapString(srv, "detour"), nodeTag) && !refersToNode(mapString(srv, "endpoint"), nodeTag) {
 				continue
 			}
 			if tag := mapString(srv, "tag"); tag != "" {
-				ownServerTags[tag] = true
+				sectionTag := state.SelfPlaceholderBraced + "-" + tag
+				ownServerTags[tag] = sectionTag
+				srv = copyJSONMap(srv)
+				srv["tag"] = sectionTag
 			}
 			if raw, ok := marshalNodeSectionFragment(srv); ok {
 				picked.DNSServers = append(picked.DNSServers, raw)
 			}
 		}
 		for _, rule := range jsonObjectList(dns["rules"]) {
-			if srv := mapString(rule, "server"); srv == "" || !ownServerTags[srv] {
+			srv := mapString(rule, "server")
+			sectionTag, own := ownServerTags[srv]
+			if srv == "" || !own {
 				continue
 			}
+			rule = copyJSONMap(rule)
+			rule["server"] = sectionTag
 			if raw, ok := marshalNodeSectionFragment(rule); ok {
 				picked.DNSRules = append(picked.DNSRules, raw)
 			}

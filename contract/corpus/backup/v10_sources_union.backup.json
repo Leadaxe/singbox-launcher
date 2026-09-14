@@ -1,0 +1,93 @@
+{
+  "lx_backup": 2,
+  "exported_by": { "app": "launcher", "version": "corpus", "platform": "test" },
+  "exported_at": "2026-09-14T00:00:00Z",
+  "sources": [
+    {
+      "kind": "subscription",
+      "id": "01SUBU00000000000000000A",
+      "name": "Provider",
+      "enabled": true,
+      "url": "https://example-1.com/sub-union",
+      "identity": { "user_agent": "lx/1.0", "send_hwid": false },
+      "tag_policy": { "prefix": "eu:", "postfix": " ★" },
+      "relays_in_directions": true,
+      "max_nodes": 50,
+      "update": { "interval_hours": 12, "auto_refresh": true },
+      "disabled": { "dead-node": 0 },
+      "fold": { "mode": "select" },
+      "fold_tag": "Provider-group"
+    },
+    {
+      "kind": "folder",
+      "id": "01FLDU00000000000000000A",
+      "name": "Europe",
+      "tag_policy": { "prefix": "eu-" },
+      "nodes": [
+        {
+          "kind": "server",
+          "tag": "de-1",
+          "enabled": true,
+          "body": {
+            "type": "vless",
+            "server": "example-2.com",
+            "server_port": 443,
+            "uuid": "11111111-1111-1111-1111-111111111111"
+          }
+        },
+        {
+          "kind": "chain",
+          "tag": "de-via-nl",
+          "enabled": true,
+          "body": { "type": "chain", "idle_timeout": "0s" },
+          "hops": [{ "tag": "de-1" }]
+        }
+      ]
+    },
+    {
+      "kind": "folder",
+      "id": "01FLDU00000000000000000N",
+      "name": "Nordics (file name)",
+      "nodes": [
+        {
+          "kind": "server",
+          "tag": "se-1",
+          "enabled": true,
+          "body": {
+            "type": "vless",
+            "server": "example-7.com",
+            "server_port": 443,
+            "uuid": "22222222-2222-2222-2222-222222222222"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "server",
+      "tag": "root-jp",
+      "enabled": true,
+      "origin": {
+        "kind": "uri",
+        "raw": "vless://11111111-1111-1111-1111-111111111111@example-3.com:443?type=tcp&security=tls&sni=example-3.com#root-jp"
+      },
+      "body": {
+        "type": "vless",
+        "server": "example-3.com",
+        "server_port": 443,
+        "uuid": "11111111-1111-1111-1111-111111111111",
+        "tls": { "enabled": true, "server_name": "example-3.com" }
+      }
+    },
+    {
+      "kind": "chain",
+      "tag": "jp-via-eu",
+      "enabled": true,
+      "body": { "type": "chain", "idle_timeout": "0s" },
+      "hops": [
+        { "folder_id": "01FLDU00000000000000000A", "tag": "de-1" },
+        { "folder_id": "01FLDU00000000000000000N", "tag": "se-1" },
+        { "tag": "root-jp" }
+      ]
+    }
+  ]
+}

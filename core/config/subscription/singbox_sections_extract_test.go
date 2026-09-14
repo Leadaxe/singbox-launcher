@@ -54,9 +54,12 @@ func TestParseSingboxBody_NodeSectionsFromWholeConfig(t *testing.T) {
 	if got := len(decoded.DNSServers()); got != 1 {
 		t.Fatalf("dns servers = %d, want 1 (local-dns must not be taken)", got)
 	}
+	// Тег сервера — `@{self}-<тег из конфига>` (NODE_SECTIONS.md §7): сервер
+	// принадлежит узлу и переезжает вместе с ним, а `ts-dns` на чужой машине
+	// может оказаться занят другой записью.
 	srv := decoded.DNSServers()[0]
-	if srv.Kind != corestate.DNSServerKindUser || srv.Tag != "ts-dns" {
-		t.Fatalf("dns server entry = %+v, want a user entry tagged ts-dns", srv)
+	if srv.Kind != corestate.DNSServerKindUser || srv.Tag != "@{self}-ts-dns" {
+		t.Fatalf("dns server entry = %+v, want a user entry tagged @{self}-ts-dns", srv)
 	}
 	if srv.Body["type"] != "udp" || srv.Body["server"] != "100.100.100.100" {
 		t.Fatalf("dns server body = %v", srv.Body)
@@ -68,8 +71,10 @@ func TestParseSingboxBody_NodeSectionsFromWholeConfig(t *testing.T) {
 	if got := len(decoded.DNSRules()); got != 1 {
 		t.Fatalf("dns rules = %d, want 1", got)
 	}
-	if got := decoded.DNSRules()[0].Body["server"]; got != "ts-dns" {
-		t.Fatalf("dns rule server = %v, want ts-dns (the node's own server)", got)
+	// Ссылка правила идёт за переименованием сервера: иначе правило метило бы
+	// в тег, которого после извлечения уже нет.
+	if got := decoded.DNSRules()[0].Body["server"]; got != "@{self}-ts-dns" {
+		t.Fatalf("dns rule server = %v, want @{self}-ts-dns (the node's own server)", got)
 	}
 
 	if got := len(decoded.Rules); got != 1 {

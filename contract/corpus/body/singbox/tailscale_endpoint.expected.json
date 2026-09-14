@@ -1,0 +1,18 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "accept_routes": true,
+        "exit_node": "exit-1",
+        "type": "tailscale"
+      },
+      "kind": "endpoint",
+      "label": "ts-home",
+      "scheme": "tailscale"
+    }
+  ],
+  "v": 1
+}

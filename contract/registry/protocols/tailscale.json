@@ -8,7 +8,7 @@
     "singbox"
   ],
   "extension": null,
-  "note": "Endpoint (sing-box >= 1.12): узел живёт в endpoints[], не в outbounds[], и адреса на верхнем уровне не имеет (безадресный тип, как wireguard). Ядро поднимает tsnet в user-space и само входит в tailnet по auth_key. URI-формы нет — узел приходит только из sing-box JSON или из конструктора «Add server → Tailscale», который отдаёт документ узла (endpoint + dns + route). Одноразовый ключ (tskey-auth-…) расходуется при первом входе, дальше идентичность машины живёт в state_directory: удаление каталога регистрирует НОВОЕ устройство. Лаунчер подставляет state_directory вида <exec>/bin/tailscale/<финальный тег>, если поле не задано в теле, — дефолт ядра общий для всех узлов, и два узла tailnet сели бы в один каталог. Ядру нужен тег сборки with_tailscale (форк с 1.14.0-lx.31); на ядре без тега узел выбрасывается с warning tailscale_core_unsupported, иначе один такой узел валит sing-box check для ВСЕГО конфига. MagicDNS — отдельный DNS-сервер type=tailscale с полем endpoint (тег этого узла); маршрут в tailnet — обычное правило на 100.64.0.0/10. LxBox узел не применяет: libbox собран без tailscale.",
+  "note": "Endpoint (sing-box >= 1.12): узел живёт в endpoints[], не в outbounds[], и адреса на верхнем уровне не имеет (безадресный тип, как wireguard). Ядро поднимает tsnet в user-space и само входит в tailnet по auth_key. URI-формы нет — узел приходит только из sing-box JSON или из конструктора «Add server → Tailscale», который отдаёт документ узла (endpoint + dns + route). Одноразовый ключ (tskey-auth-…) расходуется при первом входе, дальше идентичность машины живёт в state_directory: удаление каталога регистрирует НОВОЕ устройство. Лаунчер подставляет state_directory вида <exec>/bin/tailscale/<финальный тег>, если поле не задано в теле, — дефолт ядра общий для всех узлов, и два узла tailnet сели бы в один каталог. Ядру нужен тег сборки with_tailscale (форк с 1.14.0-lx.31); на ядре без тега узел выбрасывается с warning tailscale_core_unsupported, иначе один такой узел валит sing-box check для ВСЕГО конфига. MagicDNS — отдельный DNS-сервер type=tailscale с полем endpoint (тег этого узла); маршрут в tailnet — обычное правило на 100.64.0.0/10. Схема применяется ОБЕИМИ сторонами: LxBox с релиза v2.23.2 (libbox форка собран с with_tailscale + ts_omit_*, D-103, ядро 1.14.0-lx.38) — узел хранится всегда, при сборке снимается тем же гейтом по версии ядра.",
   "uri": null,
   "emit": {
     "share_uri": false,
@@ -29,6 +29,12 @@
       "ui/configurator/dialogs/add_server_tailscale.go:1",
       "ui/configurator/tabs/dns_server_form.go:44"
     ],
-    "dart": []
+    "dart": [
+      "lib/models/node_spec.dart (TailscaleSpec)",
+      "lib/services/parser/json_parsers.dart (parseSingboxEntry, case 'tailscale')",
+      "lib/services/builder/server_list_build.dart (гейт ядра; узел без exit_node не идёт в пул Направлений)",
+      "lib/services/builder/build_config.dart (state_directory при эмиссии, инъекция секций узла)",
+      "lib/screens/add_server_wizard/tailscale_bundle.dart"
+    ]
   }
 }

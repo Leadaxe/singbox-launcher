@@ -1,0 +1,33 @@
+{
+  "rules": [
+    { "name": "Before the node",     "enabled": true, "outbound": "proxy" },
+    { "name": "@{self} network",     "enabled": true, "outbound": "@self" },
+    { "name": "@{self} member net",  "enabled": true, "outbound": "@self" },
+    { "name": "After the node",      "enabled": true, "outbound": "proxy" },
+    { "name": "Last on the axis",    "enabled": true, "outbound": "proxy" }
+  ],
+  "warnings": ["backup_section_record_dropped"],
+  "warning_reasons": {
+    "backup_section_record_dropped": ["kind", "rule_set"]
+  },
+  "root_servers": ["home-ts"],
+  "folders": {
+    "Carriers": ["fm-ts"]
+  },
+  "sections": {
+    "home-ts": {
+      "rules": [
+        { "name": "@{self} network", "enabled": true }
+      ],
+      "dns_servers": ["@{self}-dns"],
+      "dns_rules": 1
+    },
+    "fm-ts": {
+      "rules": [
+        { "name": "@{self} member net", "enabled": true }
+      ],
+      "dns_servers": ["@{self}-member-dns"],
+      "dns_rules": 1
+    }
+  }
+}

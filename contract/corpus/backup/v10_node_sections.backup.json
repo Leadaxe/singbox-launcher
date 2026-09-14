@@ -1,0 +1,182 @@
+{
+  "lx_backup": 2,
+  "exported_by": {
+    "app": "launcher",
+    "version": "corpus",
+    "platform": "test"
+  },
+  "exported_at": "2026-09-14T00:00:00Z",
+  "sources": [
+    {
+      "kind": "server",
+      "tag": "home-ts",
+      "enabled": true,
+      "body": {
+        "type": "tailscale",
+        "exit_node": "exit-1",
+        "accept_routes": true
+      },
+      "sections": {
+        "rules": [
+          {
+            "kind": "inline",
+            "name": "@{self} network",
+            "enabled": true,
+            "num": 945,
+            "body": {
+              "ip_cidr": [
+                "100.64.0.0/10"
+              ],
+              "outbound": "@self"
+            }
+          },
+          {
+            "kind": "preset",
+            "ref": "block_ads",
+            "enabled": true,
+            "num": 946
+          },
+          {
+            "kind": "inline",
+            "name": "@{self} by rule set",
+            "enabled": true,
+            "num": 947,
+            "body": {
+              "rule_set": [
+                "geosite-ads"
+              ],
+              "outbound": "@self"
+            }
+          }
+        ],
+        "dns": {
+          "servers": [
+            {
+              "kind": "user",
+              "tag": "@{self}-dns",
+              "enabled": true,
+              "body": {
+                "type": "udp",
+                "server": "100.100.100.100",
+                "detour": "@self"
+              }
+            },
+            {
+              "kind": "template",
+              "tag": "local-dns",
+              "enabled": true
+            }
+          ],
+          "rules": [
+            {
+              "kind": "user",
+              "enabled": true,
+              "body": {
+                "domain_suffix": [
+                  ".ts.net"
+                ],
+                "server": "@{self}-dns"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "kind": "folder",
+      "id": "01FLDSEC0000000000000AA",
+      "name": "Carriers",
+      "nodes": [
+        {
+          "kind": "server",
+          "tag": "fm-ts",
+          "enabled": true,
+          "body": {
+            "type": "tailscale",
+            "accept_routes": true
+          },
+          "sections": {
+            "rules": [
+              {
+                "kind": "inline",
+                "name": "@{self} member net",
+                "enabled": true,
+                "num": 948,
+                "body": {
+                  "ip_cidr": [
+                    "100.96.0.0/12"
+                  ],
+                  "outbound": "@self"
+                }
+              }
+            ],
+            "dns": {
+              "servers": [
+                {
+                  "kind": "user",
+                  "tag": "@{self}-member-dns",
+                  "enabled": true,
+                  "body": {
+                    "type": "udp",
+                    "server": "100.100.100.101",
+                    "detour": "@self"
+                  }
+                }
+              ],
+              "rules": [
+                {
+                  "kind": "user",
+                  "enabled": true,
+                  "body": {
+                    "domain_suffix": [
+                      ".member.ts.net"
+                    ],
+                    "server": "@{self}-member-dns"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "kind": "inline",
+      "name": "Before the node",
+      "enabled": true,
+      "num": 900,
+      "body": {
+        "domain_suffix": [
+          ".early.example-1.com"
+        ],
+        "outbound": "proxy"
+      }
+    },
+    {
+      "kind": "inline",
+      "name": "After the node",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "domain_suffix": [
+          ".late.example-1.com"
+        ],
+        "outbound": "proxy"
+      }
+    },
+    {
+      "kind": "inline",
+      "name": "Last on the axis",
+      "enabled": true,
+      "num": 1010,
+      "body": {
+        "domain_suffix": [
+          ".last.example-1.com"
+        ],
+        "outbound": "proxy"
+      }
+    }
+  ]
+}
