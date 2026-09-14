@@ -6,6 +6,34 @@
 Ломающие изменения помечены **!** — они меняют формат данных или поведение,
 на которое можно было полагаться.
 
+## v1.6.0
+
+Подробные заметки: [docs/release_notes/1-6-0.md](docs/release_notes/1-6-0.md).
+
+### Возможности (5)
+
+- feat(state)!: SPEC 127 волна 1 — схема состояния v8, одно пространство имён записей: у правила маршрута `num`/`name`/`refs[]`/`vars` на записи, а `body` = правило sing-box как есть (матчеры + `outbound`|`action`); у DNS-серверов и DNS-правил тело в `body`; корень `dns`/`warp` вместо `dns_options`/`warp_accounts`. Миграция v7→v8 по сырому документу при первой загрузке с копией `state.json.v7.bak`, `config.json` байт-в-байт прежний; `GET /state/full` и `PATCH /state/rules|dns` — в форме v8. Лаунчер 1.5.x файл v8 правильно не читает — откат только из `.v7.bak` (`bfd5fe15`)
+
+- feat(backup)!: SPEC 127 волна 2 — формат бэкапа 1.0 (`lx_backup: 2`) = сериализация состояния v8: секции узлов, папки с настройками и составом, хопы цепочек в папку, идентификация подписки. Писатель 0.12 остаётся по умолчанию (`BackupExportFormatDefault`) до релиза LxBox с чтением 1.0, в диалоге экспорта — чекбокс «Backup format 1.0»; импорт читает оба формата и сливает их одним кодом (BACKUP.md §9), запись чужого вида в секциях узла отбрасывается с `backup_section_record_dropped`. Debug API: `GET /backup/formats`, `GET /backup/export?format=1.0|0.12`, `POST /backup/import` и зеркала `/remote/machines/{id}/backup/*` (`768ef591`)
+
+- feat(contract)!: SPEC 127 волна 3 — контракт 1.0: `backup.schema.json` на `lx_backup: 2`, прежняя схема заморожена как `backup-0.12.schema.json`; BACKUP.md (§11 — что изменилось против 0.12), NODE_SECTIONS.md и ONE_NAMESPACE.md — норма; корпус `v10_*`; TASKS_LXBOX ## 16, D-109. `contract/VERSION` остаётся 0.12.11, пока LxBox не читает и не пишет 1.0 (`05d4f35f`)
+
+- feat(tailscale): жизненный цикл каталога состояния `bin/tailscale/<имя>` — удаляется вместе с узлом или папкой, переименовывается при смене финального тега (переименование, перенос, смена tag_policy), осиротевшие каталоги чистятся при сборке по всем хранимым узлам Tailscale, включая выключенные и снятые гейтом; явный `state_directory` не трогается, в бэкап каталог не едет (SPEC 122 §2.7) (`93ba81a0`)
+
+- feat(tailscale): каноническая связка узла tailnet (NODE_SECTIONS.md §6) — одно правило маршрута с `domain_suffix [".ts.net"]` и `ip_cidr ["100.64.0.0/10","fd7a:115c:a1e0::/48"]` (при FakeIP один `ip_cidr` имена не матчил); голый узел получает связку по умолчанию на путях рождения узла, снимается она документом без `dns`/`route` на вкладке JSON; в многоузловом конфиге узел `tailscale` забирает записи по ссылке на свой тег; узел из подписки остаётся без связки с info `tailscale_from_subscription` (`ad6ccfa6`)
+
+### Исправления (1)
+
+- fix(xray-json): `users[0].encryption` у VLESS переносится в outbound как есть — ключ VLESS Encryption (ML-KEM) терялся, и сервер с обязательным шифрованием рвал соединение (`bad http protocol version`); пусто или `none` — поля нет, как у share-ссылок (D-108, контракт 0.12.11) (#121, `2d64ca72`)
+
+### Прочее (3)
+
+- chore(core): пин ядра sing-box-lx поднят до `1.14.0-lx.39` (`RequiredCoreVersion`): lx.37 — синк с апстримом v1.14.0 + 33 (sing-tun v0.9.3, wireguard-go v0.0.6), lx.38 — хотфикс ABBA-дедлока вложенных selector'ов (переключение внутреннего могло заморозить все новые соединения до рестарта ядра), lx.39 — UDP через SOCKS5-прокси с BND.ADDR `0.0.0.0`/`::`; пороги гейтов не меняются — tailscale с lx.31, AmneziaWG 3.x с lx.32 (`64d4ce2b`)
+
+- ci(claude): бот по команде @claude вместо автотриажа issue (`a303c501`, `b0b56b99`)
+
+- chore(constants): bump RequiredTemplateRef source-default (v1.5.6) (`a927f5cf`)
+
 ## v1.5.6
 
 Подробные заметки: [docs/release_notes/1-5-6.md](docs/release_notes/1-5-6.md).
