@@ -1,0 +1,26 @@
+{
+  "lx_backup": 2,
+  "exported_by": { "app": "launcher", "version": "corpus", "platform": "test" },
+  "exported_at": "2026-09-13T00:00:00Z",
+  "sources": [
+    {
+      "kind": "folder",
+      "id": "01FLDWORKLOCAL000000000000",
+      "name": "Work",
+      "enabled": true,
+      "nodes": [
+        {
+          "kind": "server",
+          "tag": "local-at",
+          "enabled": true,
+          "body": {
+            "type": "trojan",
+            "server": "example-9.com",
+            "server_port": 443,
+            "password": "testpass901"
+          }
+        }
+      ]
+    }
+  ]
+}

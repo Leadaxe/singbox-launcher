@@ -21,6 +21,7 @@ package backup
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -266,16 +267,50 @@ type corpusExpectation struct {
 		// сверки. Здесь она и проверяется.
 		//
 		// Поле необязательное: отсутствие ключа значит «не проверяем».
-		Hops []struct {
-			Tag string `json:"tag"`
-			// Folder — ИМЯ папки, на которую обязан указывать folder_id
-			// хопа после импорта. Имя, а не ULID: ULID у новой папки
-			// берётся из файла, у совпавшей — локальный, и записать в
-			// ожидание можно только то, что от машины не зависит.
-			// Пустая строка = хоп обязан быть БЕЗ folder_id (корневой).
-			Folder string `json:"folder"`
-		} `json:"hops"`
+		Hops []corpusLinkExpectation `json:"hops"`
 	} `json:"chains"`
+
+	// Detours — личный detour УЗЛОВ после импорта: тег носителя → ссылка
+	// (docs/NODE_LINK.md). Носитель — любой узел: корневой сервер и член
+	// папки; общий detour самого контейнера сюда не входит.
+	//
+	// Без этого ключа detour проверить было нечем: канон цепочки и состав
+	// папок его не показывают, а перепись `detour.folder_id` по карте id
+	// (BACKUP.md §6) — та же механика, что у хопов, и ошибаться в ней можно
+	// так же.
+	//
+	// Карта ИСЧЕРПЫВАЮЩАЯ: detour у узла, которого в ожиданиях нет, —
+	// ошибка (ссылка, выдуманная импортом, опаснее потерянной: трафик идёт
+	// через хоп, которого пользователь не выбирал).
+	//
+	// Поле необязательное: отсутствие ключа значит «не проверяем».
+	Detours map[string]corpusLinkExpectation `json:"detours"`
+}
+
+// corpusLinkExpectation — ссылка NodeLink после импорта (docs/NODE_LINK.md
+// §2): тег плюс АДРЕС контейнера, записанный так, чтобы он не зависел от
+// машины-приёмника.
+//
+// Адрес задаётся не больше чем одним ключом; ни одного — ссылка обязана быть
+// корневой (без folder_id). Это прежнее значение пустого `folder`, и старые
+// ожидания хопов читаются ровно как раньше.
+type corpusLinkExpectation struct {
+	Tag string `json:"tag"`
+	// Folder — ИМЯ папки, на которую обязан указывать folder_id после
+	// импорта. Имя, а не ULID: ULID у новой папки берётся из файла, у
+	// совпавшей — локальный, и записать в ожидание можно только то, что от
+	// машины не зависит.
+	Folder string `json:"folder"`
+	// Subscription — URL подписки, на которую обязан указывать folder_id.
+	// Отдельным ключом, а не именем в `folder`: у подписки ключ слияния —
+	// URL, а имя может совпасть с именем папки, и ожидание «папка X»
+	// молча проходило бы на подписке X.
+	Subscription string `json:"subscription"`
+	// FolderID — ВИСЯЧАЯ ссылка: folder_id обязан остаться ровно таким, как
+	// в файле, и контейнера с этим id после импорта быть не должно. Импорт
+	// такую ссылку не снимает и не выдумывает ей адрес (BACKUP.md §6);
+	// недостижимую цель разбирает сборка.
+	FolderID string `json:"folder_id"`
 }
 
 func TestBackupCorpus(t *testing.T) {
@@ -364,6 +399,7 @@ func TestBackupCorpus(t *testing.T) {
 			checkDisabledHashes(t, dst, exp)
 			checkDirections(t, dst, exp)
 			checkChains(t, dst, exp)
+			checkDetours(t, dst, exp)
 			checkReplaceTags(t, dst, exp)
 			checkFolders(t, dst, exp)
 			checkSubscriptions(t, dst, exp)
@@ -1064,49 +1100,149 @@ func checkDirections(t *testing.T, dst *state.State, exp corpusExpectation) {
 	}
 }
 
-// checkChainHops — позиции цепочки как ссылки: тег и папка, на которую
-// обязан указывать folder_id после импорта.
-//
-// Папка названа ИМЕНЕМ, а не ULID: у совпавшей папки id локальный, у новой —
-// из файла, и записать в ожидание можно только то, что от машины-приёмника не
-// зависит. Разрешение «ULID → имя» делается здесь, по состоянию.
-func checkChainHops(t *testing.T, dst *state.State, tag string, got []state.NodeLink, want []struct {
-	Tag    string `json:"tag"`
-	Folder string `json:"folder"`
-}) {
+// checkChainHops — позиции цепочки как ссылки: тег и адрес контейнера, на
+// который обязан указывать folder_id после импорта.
+func checkChainHops(t *testing.T, dst *state.State, tag string, got []state.NodeLink, want []corpusLinkExpectation) {
 	t.Helper()
 	if len(got) != len(want) {
 		t.Errorf("%s: хопов %d, ожидалось %d", tag, len(got), len(want))
 		return
 	}
-	folderName := map[string]string{}
+	idx := newCorpusContainerIndex(dst)
+	for i, w := range want {
+		checkLinkExpectation(t, idx, fmt.Sprintf("%s: хоп %d", tag, i), got[i], w)
+	}
+}
+
+// checkDetours — личный detour узлов после импорта (docs/NODE_LINK.md §4).
+//
+// Ключ — тег носителя, как у `sections`: тег узла и есть его имя (SPEC 112),
+// и носителем бывает и корневой сервер, и член папки. Тег, который носят два
+// узла с detour, делает ключ неоднозначным — это ошибка кейса, а не
+// «первый победил».
+func checkDetours(t *testing.T, dst *state.State, exp corpusExpectation) {
+	t.Helper()
+	if exp.Detours == nil {
+		return
+	}
+	have := map[string]state.NodeLink{}
+	collect := func(n *state.Node) {
+		if n.Detour == nil {
+			return
+		}
+		if _, dup := have[n.Tag]; dup {
+			t.Errorf("тег %q носит detour дважды — ключ ожидания неоднозначен", n.Tag)
+		}
+		have[n.Tag] = *n.Detour
+	}
 	for i := range dst.Sources {
-		if dst.Sources[i].Kind == state.SourceKindFolder {
-			folderName[dst.Sources[i].ID] = dst.Sources[i].Name
+		// У папки и подписки собственный detour — ОБЩИЙ detour контейнера, не
+		// узла: в эту карту он не входит.
+		switch dst.Sources[i].Kind {
+		case state.SourceKindServer, state.SourceKindChain, state.SourceKindAuto:
+			collect(&dst.Sources[i].Node)
+		}
+		for j := range dst.Sources[i].Nodes {
+			collect(&dst.Sources[i].Nodes[j])
 		}
 	}
-	for i, w := range want {
-		if got[i].Tag != w.Tag {
-			t.Errorf("%s: хоп %d тег %q, ожидался %q", tag, i, got[i].Tag, w.Tag)
+	idx := newCorpusContainerIndex(dst)
+	for tag, want := range exp.Detours {
+		got, ok := have[tag]
+		if !ok {
+			t.Errorf("у узла %q после импорта нет detour", tag)
+			continue
 		}
-		switch {
-		case w.Folder == "":
-			if got[i].FolderID != "" {
-				t.Errorf("%s: хоп %d метит в папку %q, ожидался корневой узел",
-					tag, i, got[i].FolderID)
-			}
-		case got[i].FolderID == "":
-			t.Errorf("%s: хоп %d без folder_id, ожидалась папка %q", tag, i, w.Folder)
-		default:
-			name, ok := folderName[got[i].FolderID]
-			if !ok {
-				t.Errorf("%s: хоп %d метит в folder_id %q, папки с таким id нет — ссылка не переписана по карте (§6)",
-					tag, i, got[i].FolderID)
-				continue
-			}
-			if name != w.Folder {
-				t.Errorf("%s: хоп %d метит в папку %q, ожидалась %q", tag, i, name, w.Folder)
-			}
+		checkLinkExpectation(t, idx, fmt.Sprintf("detour узла %q", tag), got, want)
+	}
+	for tag := range have {
+		if _, ok := exp.Detours[tag]; !ok {
+			t.Errorf("у узла %q есть detour, которого в ожиданиях нет", tag)
+		}
+	}
+}
+
+// corpusContainerIndex — контейнеры состояния по id: папка → имя, подписка →
+// URL. Разрешение «ULID → машинонезависимый адрес» делается здесь, по
+// состоянию, а не в ожидании.
+type corpusContainerIndex struct {
+	folderName map[string]string
+	subURL     map[string]string
+}
+
+func newCorpusContainerIndex(dst *state.State) corpusContainerIndex {
+	idx := corpusContainerIndex{folderName: map[string]string{}, subURL: map[string]string{}}
+	for i := range dst.Sources {
+		switch dst.Sources[i].Kind {
+		case state.SourceKindFolder:
+			idx.folderName[dst.Sources[i].ID] = dst.Sources[i].Name
+		case state.SourceKindSubscription:
+			idx.subURL[dst.Sources[i].ID] = dst.Sources[i].URL
+		}
+	}
+	return idx
+}
+
+// checkLinkExpectation — одна ссылка против ожидания (corpusLinkExpectation).
+func checkLinkExpectation(t *testing.T, idx corpusContainerIndex, where string, got state.NodeLink, w corpusLinkExpectation) {
+	t.Helper()
+	if got.Tag != w.Tag {
+		t.Errorf("%s: тег %q, ожидался %q", where, got.Tag, w.Tag)
+	}
+	addresses := 0
+	for _, v := range []string{w.Folder, w.Subscription, w.FolderID} {
+		if v != "" {
+			addresses++
+		}
+	}
+	if addresses > 1 {
+		t.Errorf("%s: в ожидании больше одного адреса (folder/subscription/folder_id) — ошибка кейса", where)
+		return
+	}
+	switch {
+	case w.FolderID != "":
+		if got.FolderID != w.FolderID {
+			t.Errorf("%s: folder_id %q, ожидался %q как в файле — ссылку на неизвестный контейнер импорт ввозит как есть (§6)",
+				where, got.FolderID, w.FolderID)
+			return
+		}
+		if name, isFolder := idx.folderName[got.FolderID]; isFolder {
+			t.Errorf("%s: ожидалась висячая ссылка, а папка %q с id %q есть", where, name, got.FolderID)
+		}
+		if url, isSub := idx.subURL[got.FolderID]; isSub {
+			t.Errorf("%s: ожидалась висячая ссылка, а подписка %s с id %q есть", where, url, got.FolderID)
+		}
+	case w.Subscription != "":
+		if got.FolderID == "" {
+			t.Errorf("%s: без folder_id, ожидалась подписка %s", where, w.Subscription)
+			return
+		}
+		url, ok := idx.subURL[got.FolderID]
+		if !ok {
+			t.Errorf("%s: метит в folder_id %q, подписки с таким id нет — ссылка не переписана по карте (§6)",
+				where, got.FolderID)
+			return
+		}
+		if url != w.Subscription {
+			t.Errorf("%s: метит в подписку %s, ожидалась %s", where, url, w.Subscription)
+		}
+	case w.Folder != "":
+		if got.FolderID == "" {
+			t.Errorf("%s: без folder_id, ожидалась папка %q", where, w.Folder)
+			return
+		}
+		name, ok := idx.folderName[got.FolderID]
+		if !ok {
+			t.Errorf("%s: метит в folder_id %q, папки с таким id нет — ссылка не переписана по карте (§6)",
+				where, got.FolderID)
+			return
+		}
+		if name != w.Folder {
+			t.Errorf("%s: метит в папку %q, ожидалась %q", where, name, w.Folder)
+		}
+	default:
+		if got.FolderID != "" {
+			t.Errorf("%s: метит в контейнер %q, ожидалась корневая ссылка", where, got.FolderID)
 		}
 	}
 }
