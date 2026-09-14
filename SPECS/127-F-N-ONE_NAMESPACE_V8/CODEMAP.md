@@ -2247,3 +2247,67 @@ Go-теста, валидирующего `registry/protocols/*.json` проти
 копия прежней и правкам не подлежит. Хвост `backup_unknown_outbound` на
 корневой сервер из того же файла (замечание C2 №1) не чинился — он вне
 списка находок и требует общего сборщика `knownTags` на оба входа.
+
+## 21. Писатель 0.12 снят (решение владельца, D-110)
+
+Ветка `spec127/backup-10-only`. Лаунчер с v1.6.0 пишет бэкап только в 1.0;
+окно «два писателя, дефолт 0.12» (SPEC §4, §12.2 выше) отменено: релизы
+лаунчера 1.6.0 и LxBox 2.23.3 синхронны, обе стороны пишут только 1.0 и
+читают 0.x всегда. Импорт (`legacy_read_0x.go`, `import10.go`, слияние) не
+тронут ни строкой логики; корпус `contract/corpus/backup` зелёный без правки
+ожиданий.
+
+### 21.1 Код
+
+| Адрес | Что стало |
+|---|---|
+| `core/backup/legacy_write_012.go` | **удалён целиком** (`Export012` и весь маппер 0.12) |
+| `core/backup/export.go:20`, `:35` | `ExportOptions` без `Format`; `ExportFile` всегда `Export10` + `WriteFile10`. Сняты `ExportFormat`, `ExportFormat012/10`, `BackupExportFormatDefault` и мёртвые после писателя `droppedLocalOnlyFields`, `dedupRefs` |
+| `core/backup/file.go:35` | `WriteFile10` — единственная запись; `WriteFile` (тип 0.12) удалён |
+| `core/backup/file.go:65-73` | **`type FileFormat`** (`FileFormatLegacy` = 1, `FileFormat10` = 2; ноль — «не разобран») — тип формата остался только у ЧТЕНИЯ: `File.Format` различает входы |
+| `core/backup/convert_v7.go:192` | экспортная половина 0.12 снята (`exportNodeLinkRef`, `exportHops`, `exportChainSpec`, `replaceTagSurvivesExport`); остались `exportFold`/`exportDisabledMap` (писатель 1.0) и вся импортная половина; `legacyFoldPrefix` — у двух входов |
+| `core/backup/types.go` | `boolPtr`/`f64Ptr` сняты; типы — форма 0.x для legacy-входа |
+| `core/backup/import.go` | константы `WarnBackupLocalOnlyDropped`/`WarnBackupReplaceTagDerived` остались (коды в словаре), лаунчер их больше не ставит; комментарий `Warning.Reason` знает `unknown_key` чужой стороны |
+| `core/debugapi/backup_endpoints.go:64` | `backupExportFormatError`: пусто/`1.0` — ок, `0.12` → 400 «format 0.12 is no longer written; import still reads it», иное → 400 «unknown format; use 1.0» |
+| `core/debugapi/backup_endpoints.go:75`, `:110`, `:189` | `backupFormatName(FileFormat)` — имя формата принятого файла в ответе импорта; `/backup/formats` → `{"reads":[1,2],"writes":["1.0"],"default":"1.0"}`; `exportBackupBytes` без формата. Зеркала `/remote/machines/{id}/backup/*` идут тем же `backupExportWith` |
+| `ui/configurator/tabs/settings_backup.go:98` | `handleBackupExport` пишет сразу: диалог с чекбоксом, `runBackupExport` и ключи `settingsBackupFormatNewText`/`settingsBackupFormatHintText`/«Export settings» сняты; `ru.json` не тронут |
+
+### 21.2 Тесты
+
+**Удалены вместе с писателем** (проверяли свойства самого писателя 0.12):
+`export012_etalon_test.go` + `testdata/export012_*.json` (эталоны байтов 0.12);
+в `schema_test.go` — пять проверок 0.12 против `backup-0.12.schema.json`;
+`TestExportNamesUnrepresentableReplaceTag`, `TestReplaceTagDerivativeCountsSubscriptionsOnly`
+(импортную половину держит кейс `replace_tag_index`),
+`TestExportNamesLocalOnlySourceFields` (`convert_v7_test.go`);
+`TestExportNamesFolderOwnSettings`, `TestExportPutsWholeRecordLossesFirst`
+(`export_folder_loss_test.go`); `TestBackupNodeSections012NotWrittenButNamed`;
+`TestExportIsPureFunctionOfState` (двойник `TestExport10IsPureFunctionOfState`).
+
+**Переписаны, сценарий сохранён:**
+
+| Адрес | Как |
+|---|---|
+| `core/backup/backup_test.go:143` | **`importBothFormats`** — одна настройка двумя входами: файл `Export10` и СЫРОЙ JSON 0.12, снятый прежним писателем с того же состояния (выгружен до удаления); проверяет, что каждый файл прочитан своим входом |
+| `backup_test.go` | `TestRoundTripLossless` (`legacyMkState012` `:178`), `TestRoundTripDNSSection`, `TestRoundTripDetourNodeRef`/`TagOnlyRef` — оба входа; vars/цепочки/warp/extensions — на писатель 1.0 |
+| `core/backup/convert_v7_test.go:40`, `:133` | `TestRoundTripV7ModelEquivalent` — оба входа (`legacyV7Model012`), утверждения в `assertV7ModelEquivalent`; `TestRoundTripV7ResolvesHopIntoContainer` — только сырой 0.12 (резолв строкового хопа есть только у legacy-входа) |
+| `identity_test.go`, `wgini_roundtrip_test.go` | identity, папка (`servers[].folder` + выключенный член), INI в `uri` — оба входа |
+| `directions_test.go`, `file_test.go`, `export_folder_loss_test.go`, `purity_test.go`, `tailscale_state_dir_test.go` | на писатель 1.0 |
+| `core/backup/schema_test.go:430`, `:512` | сверка словаря: коды-«пенсионеры» `backup_local_only_dropped`/`backup_replace_tag_derived` — явным списком; упоминание кода в комментарии больше не считается «ставится» (раньше именно оно держало тест зелёным) |
+| `core/backup/corpus_test.go:997`, `:1005` | `checkExtensionsDropped` — re-export 1.0; `label` цепочки в ожидании лаунчера — ошибка кейса (подписи цепочки нет ни в состоянии, ни в 1.0); `chainCanon` — канон цепочки вместо снятого `exportChainSpec` |
+| `core/debugapi/backup_endpoints_test.go` | `TestBackupFormatsWriteOnly10`; `TestBackupImportAcceptsLegacyFormat` — сырой файл 0.12; `?format=0.12` → 400 с текстом |
+
+Проверено мутацией: без поля `detour_node_source_id` в `importNodeLinkRef`
+падают 0.12-половины `TestRoundTripDetourNodeRef` и
+`TestRoundTripV7ModelEquivalent`.
+
+### 21.3 Контракт и документы
+
+`contract/VERSION` → `1.0.0`; `contract/README.md` строка 1.0.0 — норма;
+`BACKUP.md` §1/§2/§8/§9 п. 7/§10/§11, `BACKUP_PRINCIPLES.md` П4 и статус
+зеркала, `ONE_NAMESPACE.md` §4, `NODE_SECTIONS.md` (статус, B3 `unknown_key`,
+§4), `registry/backup_warnings.json` (`backup_source_kind_unsupported` —
+`side: both`; desc двух снятых кодов; `unknown_key`), `corpus/backup/README.md`
+(1.0.0, раннер `backup_corpus_test.dart`, golden
+`v10_sources_union.expected.lxbox.json`), `TASKS_LXBOX.md` `## 16`,
+`DECISIONS.md` D-110, `docs/API*.md`, заметки 1.6.0.

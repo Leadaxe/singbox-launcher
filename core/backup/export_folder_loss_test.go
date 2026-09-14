@@ -3,10 +3,9 @@ package backup
 // SPEC 116 W9, критерий A9: экспорт НИКОГДА не отдаёт успешный файл, молча
 // потерявший запись.
 //
-// С контрактом 0.12 папка больше не теряется: её члены-серверы едут
-// записями servers[] с пометкой folder, и потерей остаются лишь настройки
-// САМОЙ папки (backup_local_only_dropped). Провайдерская группа — вид,
-// которого контракт по-прежнему не знает: она уезжает целиком, и тест
+// В формате 1.0 папка — своя запись sources[] с составом в nodes[], и
+// теряться у неё больше нечему. Целиком не едет только корневая
+// провайдерская группа — вид, которого union sources[] не выражает, — и тест
 // смотрит на данные, из которых UI обязан собрать фразу «группа N и её M
 // узлов в файл не попали»: код, имя, вид и объём.
 
@@ -18,7 +17,7 @@ import (
 )
 
 // folderLossState — состояние с папкой, провайдерской группой, подпиской и
-// пустой папкой: все четыре ветки switch'а экспорта разом.
+// пустой папкой: все четыре ветки экспорта разом.
 func folderLossState() *state.State {
 	return &state.State{Sources: []state.Source{
 		{
@@ -48,95 +47,77 @@ func folderLossState() *state.State {
 	}}
 }
 
-// Состав папки ЕДЕТ (контракт 0.12): члены становятся записями servers[] с
-// пометкой folder, и потери состава больше нет. Именно эта потеря делала
-// файл негодным к восстановлению, и её отсутствие — главное, что здесь
-// проверяется.
+// Состав папки ЕДЕТ: запись папки несёт своих членов в nodes[]. Именно эта
+// потеря делала файл негодным к восстановлению (SPEC 116), и её отсутствие —
+// главное, что здесь проверяется.
 func TestExportCarriesFolderMembers(t *testing.T) {
-	b, warns, err := Export012(folderLossState(), ExportOptions{})
+	b, warns, err := Export10(folderLossState(), ExportOptions{})
 	if err != nil {
-		t.Fatalf("Export: %v", err)
+		t.Fatalf("Export10: %v", err)
 	}
 	for _, w := range warns {
 		if w.Code == WarnBackupSourceKindUnsupported && w.Kind == string(state.SourceKindFolder) {
 			t.Errorf("папка объявлена неподдержанной, хотя её состав едет: %v", w)
 		}
 	}
-	var got []string
-	for _, srv := range b.Servers {
-		if srv.Folder == "Работа" {
-			got = append(got, srv.NodeTag)
+	var folder *Source10
+	for i := range b.Sources {
+		if b.Sources[i].Kind == state.SourceKindFolder && b.Sources[i].Name == "Работа" {
+			folder = &b.Sources[i]
 		}
+	}
+	if folder == nil {
+		t.Fatalf("папка не поехала в файл: %+v", b.Sources)
 	}
 	// Порядок членов нормативен: приёмник собирает папку в порядке записей.
 	want := []string{"n-1", "n-2", "n-3"}
-	if len(got) != len(want) {
-		t.Fatalf("в файл поехало %d членов папки, ожидалось %d: %v", len(got), len(want), got)
+	if len(folder.Nodes) != len(want) {
+		t.Fatalf("в файл поехало %d членов папки, ожидалось %d: %+v", len(folder.Nodes), len(want), folder.Nodes)
 	}
 	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("член %d = %q, ожидался %q (порядок нормативен)", i, got[i], want[i])
+		if folder.Nodes[i].Tag != want[i] {
+			t.Errorf("член %d = %q, ожидался %q (порядок нормативен)", i, folder.Nodes[i].Tag, want[i])
 		}
 	}
 	// Выключенный узел едет выключенным: пользователь его настроил.
-	for _, srv := range b.Servers {
-		if srv.NodeTag == "n-2" && (srv.Enabled == nil || *srv.Enabled) {
-			t.Errorf("выключенный член приехал включённым: %+v", srv)
-		}
+	if folder.Nodes[1].Enabled {
+		t.Errorf("выключенный член приехал включённым: %+v", folder.Nodes[1])
 	}
 }
 
-// Пустая папка данных не несёт: её имя живёт только на записях членов, а
-// членов нет. Предупреждать не о чем — терять нечего.
+// Пустая папка — запись без состава, а не потеря: предупреждать не о чем.
 func TestExportEmptyFolderIsSilent(t *testing.T) {
-	_, warns, err := Export012(folderLossState(), ExportOptions{})
+	b, warns, err := Export10(folderLossState(), ExportOptions{})
 	if err != nil {
-		t.Fatalf("Export: %v", err)
+		t.Fatalf("Export10: %v", err)
 	}
 	for _, w := range warns {
 		if w.Detail == "Пустая" || strings.HasPrefix(w.Detail, "Пустая:") {
-			t.Errorf("пустая папка без настроек объявлена потерей: %v", w)
+			t.Errorf("пустая папка объявлена потерей: %v", w)
 		}
 	}
-}
-
-// Настройки САМОЙ папки в схему не входят: одно предупреждение на папку с
-// перечнем, а не строка на каждый ключ.
-func TestExportNamesFolderOwnSettings(t *testing.T) {
-	s := folderLossState()
-	s.Sources[1].TagPolicy = &state.TagPolicy{Prefix: "w-"}
-	s.Sources[1].Replace = &state.FolderReplace{Mode: state.FolderReplaceManual, Tag: "work"}
-
-	_, warns, err := Export012(s, ExportOptions{})
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-	var detail string
-	var count int
-	for _, w := range warns {
-		if w.Code == WarnBackupLocalOnlyDropped && strings.HasPrefix(w.Detail, "Работа:") {
-			detail = w.Detail
-			count++
+	found := false
+	for _, rec := range b.Sources {
+		if rec.Kind == state.SourceKindFolder && rec.Name == "Пустая" {
+			found = true
 		}
 	}
-	if count != 1 {
-		t.Fatalf("ожидался один warning на папку, получено %d: %v", count, warns)
-	}
-	for _, want := range []string{"tag_policy", "replace"} {
-		if !strings.Contains(detail, want) {
-			t.Errorf("не названа осевшая настройка %q: %q", want, detail)
-		}
+	if !found {
+		t.Error("пустая папка не поехала в файл записью — её имя и настройки потерялись бы молча")
 	}
 }
 
 // Провайдерская группа отличима от папки: код у потери общий, слова разные.
 func TestExportDistinguishesAutoFromFolder(t *testing.T) {
-	_, warns, err := Export012(folderLossState(), ExportOptions{})
+	_, warns, err := Export10(folderLossState(), ExportOptions{})
 	if err != nil {
-		t.Fatalf("Export: %v", err)
+		t.Fatalf("Export10: %v", err)
 	}
 	for _, w := range warns {
 		if w.Kind == string(state.SourceKindAuto) {
+			if w.Code != WarnBackupSourceKindUnsupported {
+				t.Errorf("группа названа кодом %q", w.Code)
+			}
 			if w.Detail != "provider-auto" {
 				t.Errorf("группа названа %q, ожидался её тег", w.Detail)
 			}
@@ -144,40 +125,4 @@ func TestExportDistinguishesAutoFromFolder(t *testing.T) {
 		}
 	}
 	t.Fatal("провайдерская группа выпала без предупреждения")
-}
-
-// Потерянные ЦЕЛИКОМ записи идут первыми (§O1=А, «первой строкой»): под
-// списком переименованных тегов замены папка была бы прочитана последней или
-// не прочитана вовсе.
-func TestExportPutsWholeRecordLossesFirst(t *testing.T) {
-	s := folderLossState()
-	// Подписка с неверифицируемым тегом замены даёт warning «приехало иначе»
-	// и стоит в списке источников ПЕРЕД папкой — то есть в порядке обхода
-	// попала бы наверх.
-	s.Sources[0].Replace = &state.FolderReplace{
-		Mode: state.FolderReplaceManual,
-		Tag:  "совершенно-своё-имя",
-	}
-
-	_, warns, err := Export012(s, ExportOptions{})
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-	if len(warns) < 2 {
-		t.Fatalf("ожидались и потеря записи, и переименование тега: %v", warns)
-	}
-	// Хвост списка обязан содержать переименование — иначе тест проверяет не
-	// сортировку, а отсутствие второго предупреждения.
-	var sawDerived bool
-	for _, w := range warns {
-		if w.Code == WarnBackupReplaceTagDerived {
-			sawDerived = true
-		}
-	}
-	if !sawDerived {
-		t.Fatalf("тег замены не дал предупреждения — сортировать нечего: %v", warns)
-	}
-	if warns[0].Code != WarnBackupSourceKindUnsupported {
-		t.Errorf("первым идёт %q, а потеря записи целиком — ниже: %v", warns[0].Code, warns)
-	}
 }

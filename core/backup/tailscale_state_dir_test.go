@@ -54,7 +54,7 @@ func TestTailscaleStateDirNeverReachesBackup(t *testing.T) {
 		t.Fatalf("config-форма перестала подставлять state_directory — проверка выше стала бессмысленной:\n%s", forConfig)
 	}
 
-	// 2. Файл бэкапа (оба формата) пути не несёт.
+	// 2. Файл бэкапа пути не несёт.
 	s := &state.State{}
 	s.Sources = []state.Source{{
 		ID:   "01TSBACKUP0000000000000A",
@@ -72,18 +72,5 @@ func TestTailscaleStateDirNeverReachesBackup(t *testing.T) {
 	}
 	if bytes.Contains(raw10, []byte("state_directory")) {
 		t.Fatalf("бэкап 1.0 несёт state_directory:\n%s", raw10)
-	}
-
-	b012, _, err := Export012(s, ExportOptions{
-		AppVersion: "test", Platform: "darwin", Now: time.Unix(1750000000, 0)})
-	if err != nil {
-		t.Fatalf("Export012: %v", err)
-	}
-	raw012, err := json.Marshal(b012)
-	if err != nil {
-		t.Fatalf("marshal 0.12: %v", err)
-	}
-	if bytes.Contains(raw012, []byte("state_directory")) {
-		t.Fatalf("бэкап 0.12 несёт state_directory:\n%s", raw012)
 	}
 }

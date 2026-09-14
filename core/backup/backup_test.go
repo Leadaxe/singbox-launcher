@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"time"
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
@@ -122,73 +121,159 @@ func mkInlineRule(name, outbound string, num int) state.Rule {
 	return r
 }
 
-// Инвариант §1: import(export(x)) == x в том же приложении.
-func TestRoundTripLossless(t *testing.T) {
-	src := mkState()
-	b, _, err := Export012(src, ExportOptions{AppVersion: "1.4.2", Platform: "darwin", Now: time.Unix(1750000000, 0)})
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
+// importedAs — итог импорта одной и той же настройки одним из входов.
+type importedAs struct {
+	// format — «1.0» или «0.12»: имя подтеста и строки ошибки.
+	format string
+	state  *state.State
+	res    *ImportResult
+	// warns — предупреждения разбора и импорта вместе.
+	warns []Warning
+}
 
-	dst := &state.State{}
-	res, err := Import(dst, b, ImportOptions{
+// importBothFormats — одна и та же настройка ДВУМЯ входами импорта: файл,
+// который лаунчер пишет сейчас (Export10 → байты → Parse), и файл 0.12,
+// который прежний писатель снимал с того же состояния.
+//
+// Писателя 0.12 больше нет (D-110), а читатель живёт всегда: такие файлы у
+// пользователей на руках. Поэтому второй вход — сырой JSON, снятый прежним
+// писателем с того же состояния, а не выдуманный руками: проверяется чтение
+// того, что действительно выпущено. Слияние у входов одно (import.go), и
+// утверждения сценария обязаны держаться на обоих.
+func importBothFormats(t *testing.T, s *state.State, legacy012 string, opts ImportOptions) []importedAs {
+	t.Helper()
+	inputs := []struct {
+		format string
+		want   FileFormat
+		raw    []byte
+	}{
+		{"1.0", FileFormat10, fixedExport10(t, s)},
+		{"0.12", FileFormatLegacy, []byte(legacy012)},
+	}
+	out := make([]importedAs, 0, len(inputs))
+	for _, in := range inputs {
+		f, parseWarns, err := Parse(in.raw)
+		if err != nil {
+			t.Fatalf("%s: Parse: %v", in.format, err)
+		}
+		// Иначе оба прогона могли бы пройти одним читателем, и legacy-вход
+		// остался бы без проверки при зелёном тесте.
+		if f.Format != in.want {
+			t.Fatalf("%s: файл прочитан не своим входом (%v)", in.format, f.Format)
+		}
+		dst := &state.State{}
+		res, err := ImportFile(dst, f, opts)
+		if err != nil {
+			t.Fatalf("%s: Import: %v", in.format, err)
+		}
+		out = append(out, importedAs{
+			format: in.format, state: dst, res: res,
+			warns: append(parseWarns, res.Warnings...),
+		})
+	}
+	return out
+}
+
+// legacyMkState012 — файл 0.12, который прежний писатель снимал с mkState().
+const legacyMkState012 = `{
+  "lx_backup": 1,
+  "exported_by": {"app": "launcher", "version": "1.4.2", "platform": "darwin"},
+  "exported_at": "2025-06-15T15:06:40Z",
+  "subscriptions": [{
+    "id": "src-1",
+    "url": "https://example-1.com/sub",
+    "label": "Main",
+    "max_nodes": 200,
+    "tag": {"prefix": "[A] "},
+    "update": {"interval_hours": 12, "auto": true},
+    "disabled": {"a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90": 0},
+    "skip": [{"contains": "trial", "field": "tag"}],
+    "detour_node_tag": "hop-1",
+    "detour_node_label": "hop-1"
+  }],
+  "servers": [{
+    "id": "src-2",
+    "uri": "vless://11111111-1111-1111-1111-111111111111@example-2.com:443?type=tcp#s",
+    "node_tag": "s"
+  }],
+  "rules": [
+    {"kind": "preset", "num": 0, "ref": "traffic-processing", "vars": {"mode": "on"}},
+    {"kind": "inline", "name": "Work", "num": 1000, "outbound": "proxy",
+     "match": {"domain_suffix": ["example.com"]}},
+    {"kind": "inline", "name": "Local", "num": 1001, "outbound": "direct",
+     "match": {"domain_suffix": ["example.com"]}},
+    {"kind": "inline", "name": "Sniff", "num": 1002,
+     "match": {"action": "sniff", "inbound": "tun-in"}}
+  ],
+  "vars": {"log_level": "debug"},
+  "route": {"final": "proxy"}
+}`
+
+// Инвариант §1: import(export(x)) == x в том же приложении — и та же
+// настройка обязана получиться из файла 0.12, снятого с неё прежним
+// лаунчером (legacy-вход).
+func TestRoundTripLossless(t *testing.T) {
+	inputs := importBothFormats(t, mkState(), legacyMkState012, ImportOptions{
 		KnownOutbounds: []string{"proxy", "hop-1"},
 		KnownPresets:   []string{"traffic-processing"},
 	})
-	if err != nil {
-		t.Fatalf("Import: %v", err)
-	}
+	for _, in := range inputs {
+		t.Run(in.format, func(t *testing.T) {
+			dst, res := in.state, in.res
+			if len(dst.Sources) != 2 {
+				t.Fatalf("источников %d, ожидалось 2", len(dst.Sources))
+			}
+			sub := dst.Sources[0]
+			if sub.URL != "https://example-1.com/sub" || sub.Name != "Main" || sub.MaxNodes != 200 {
+				t.Errorf("подписка приехала искажённой: %+v", sub)
+			}
+			if sub.TagPolicy == nil || sub.TagPolicy.Prefix != "[A] " {
+				t.Errorf("tag-политика потеряна: %+v", sub.TagPolicy)
+			}
+			if sub.Update == nil || sub.Update.IntervalHours != 12 {
+				t.Errorf("политика обновления потеряна: %+v", sub.Update)
+			}
+			// SPEC 118 W5: отметка выключения едет по СЫРОМУ тегу узла; узлов у
+			// импортированной подписки ещё нет (nodes[] в контракт не едут),
+			// поэтому она ждёт первого достоверного fetch в PendingDisabled
+			// (вердикт O2).
+			if len(sub.PendingDisabled) != 1 || sub.PendingDisabled[0] != testNodeHash {
+				t.Errorf("отметка выключенной ноды потеряна: %v", sub.PendingDisabled)
+			}
+			// Прежде эти поля ездили карманом extensions.launcher; теперь они —
+			// обычные поля записи, и roundtrip на своей же машине обязан их
+			// вернуть.
+			if len(sub.Skip) != 1 || sub.Skip[0]["contains"] != "trial" {
+				t.Errorf("skip-фильтр потерян: %+v", sub.Skip)
+			}
+			if sub.Detour == nil || sub.Detour.Tag != "hop-1" {
+				t.Errorf("detour потерян: %+v", sub.Detour)
+			}
+			if sub.ID != "src-1" {
+				t.Errorf("id источника потерян: %q", sub.ID)
+			}
 
-	if len(dst.Sources) != 2 {
-		t.Fatalf("источников %d, ожидалось 2", len(dst.Sources))
-	}
-	sub := dst.Sources[0]
-	if sub.URL != "https://example-1.com/sub" || sub.Name != "Main" || sub.MaxNodes != 200 {
-		t.Errorf("подписка приехала искажённой: %+v", sub)
-	}
-	if sub.TagPolicy == nil || sub.TagPolicy.Prefix != "[A] " {
-		t.Errorf("tag-политика потеряна: %+v", sub.TagPolicy)
-	}
-	if sub.Update == nil || sub.Update.IntervalHours != 12 {
-		t.Errorf("политика обновления потеряна: %+v", sub.Update)
-	}
-	// SPEC 118 W5: отметка выключения едет по СЫРОМУ тегу узла; узлов у
-	// импортированной подписки ещё нет (nodes[] в контракт не едут), поэтому
-	// она ждёт первого достоверного fetch в PendingDisabled (вердикт O2).
-	if len(sub.PendingDisabled) != 1 || sub.PendingDisabled[0] != testNodeHash {
-		t.Errorf("отметка выключенной ноды потеряна: %v", sub.PendingDisabled)
-	}
-	// Прежде эти поля ездили карманом extensions.launcher; теперь они —
-	// обычные поля записи, и roundtrip на своей же машине обязан их вернуть.
-	if len(sub.Skip) != 1 || sub.Skip[0]["contains"] != "trial" {
-		t.Errorf("skip-фильтр потерян: %+v", sub.Skip)
-	}
-	if sub.Detour == nil || sub.Detour.Tag != "hop-1" {
-		t.Errorf("detour потерян: %+v", sub.Detour)
-	}
-	if sub.ID != "src-1" {
-		t.Errorf("id источника потерян: %q", sub.ID)
-	}
-
-	if len(dst.Rules) != 4 {
-		t.Fatalf("правил %d, ожидалось 4", len(dst.Rules))
-	}
-	if res.AppliedRules != 4 || res.AppliedSources != 2 {
-		t.Errorf("счётчики: правил %d, источников %d", res.AppliedRules, res.AppliedSources)
-	}
-	// Самостоятельный `action` — эффект правила, а не цель: его нельзя
-	// потерять ни на экспорте (он уезжает в `match`), ни на импорте.
-	effectBody, err := dst.Rules[3].BodyMap()
-	if err != nil {
-		t.Fatalf("тело правила-эффекта: %v", err)
-	}
-	if effectBody["action"] != "sniff" || effectBody["inbound"] != "tun-in" {
-		t.Errorf("самостоятельный action потерян на круге бэкапа: %v", effectBody)
-	}
-	for _, r := range dst.Rules {
-		if !r.Enabled {
-			t.Errorf("правило приехало выключенным без причины: %+v", r)
-		}
+			if len(dst.Rules) != 4 {
+				t.Fatalf("правил %d, ожидалось 4", len(dst.Rules))
+			}
+			if res.AppliedRules != 4 || res.AppliedSources != 2 {
+				t.Errorf("счётчики: правил %d, источников %d", res.AppliedRules, res.AppliedSources)
+			}
+			// Самостоятельный `action` — эффект правила, а не цель: его нельзя
+			// потерять ни в теле 1.0, ни в `match` файла 0.12.
+			effectBody, err := dst.Rules[3].BodyMap()
+			if err != nil {
+				t.Fatalf("тело правила-эффекта: %v", err)
+			}
+			if effectBody["action"] != "sniff" || effectBody["inbound"] != "tun-in" {
+				t.Errorf("самостоятельный action потерян на круге бэкапа: %v", effectBody)
+			}
+			for _, r := range dst.Rules {
+				if !r.Enabled {
+					t.Errorf("правило приехало выключенным без причины: %+v", r)
+				}
+			}
+		})
 	}
 }
 
@@ -196,7 +281,10 @@ func TestRoundTripLossless(t *testing.T) {
 // говорится вслух.
 func TestImportVarsPortableOnly(t *testing.T) {
 	src := mkState()
-	b, _, _ := Export012(src, ExportOptions{})
+	b, _, err := Export10(src, ExportOptions{})
+	if err != nil {
+		t.Fatalf("Export10: %v", err)
+	}
 	if _, ok := b.Vars["tun_interface"]; ok {
 		t.Error("непереносимая переменная попала в бэкап")
 	}
@@ -206,7 +294,7 @@ func TestImportVarsPortableOnly(t *testing.T) {
 
 	dst := &state.State{}
 	b.Vars["tun_interface"] = "utun0" // как будто прислала другая сторона
-	res, err := Import(dst, b, ImportOptions{})
+	res, err := Import10(dst, b, ImportOptions{})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -343,9 +431,9 @@ func TestForeignExtensionsDroppedWithWarning(t *testing.T) {
 	if _, err := ImportFile(dst, b, ImportOptions{}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
-	back, _, err := Export012(dst, ExportOptions{})
+	back, _, err := Export10(dst, ExportOptions{})
 	if err != nil {
-		t.Fatalf("Export: %v", err)
+		t.Fatalf("Export10: %v", err)
 	}
 	out, err := json.Marshal(back)
 	if err != nil {
@@ -485,9 +573,10 @@ func hasWarn(list []Warning, code string) bool {
 	return false
 }
 
-// TestRoundTripChainSources — цепочки (SPEC 110, схема v1.2) едут корневой
-// секцией chains[] со всеми полями канона и переживают экспорт→импорт;
-// блоб extensions.launcher больше не пишется (BACKUP.md §2).
+// TestRoundTripChainSources — цепочки (SPEC 110) едут записью sources[] вида
+// chain: настройки маршрута в теле, позиции в hops, — и переживают
+// экспорт→импорт; блоба extensions.launcher нет (BACKUP.md §2). Чтение
+// секции chains[] файлов 0.12 держит корпус (chains_roundtrip).
 func TestRoundTripChainSources(t *testing.T) {
 	stripOff := false
 	s := &state.State{}
@@ -514,16 +603,25 @@ func TestRoundTripChainSources(t *testing.T) {
 		},
 	}
 
-	b, _, err := Export012(s, ExportOptions{AppVersion: "test"})
+	b, _, err := Export10(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(b.Chains) != 1 || b.Chains[0].Tag != "chain-1" {
-		t.Fatalf("секция chains[] не собрана: %+v", b.Chains)
+	chains := 0
+	for _, rec := range b.Sources {
+		if rec.Kind == state.SourceKindChain {
+			chains++
+			if rec.Tag != "chain-1" {
+				t.Fatalf("тег цепочки в файле %q, ожидался chain-1", rec.Tag)
+			}
+		}
+	}
+	if chains != 1 {
+		t.Fatalf("цепочек в sources[] %d, ожидалась одна: %+v", chains, b.Sources)
 	}
 
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{}); err != nil {
+	if _, err := Import10(restored, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	var chain *state.Source
@@ -610,7 +708,8 @@ func TestImportChainTagBusy(t *testing.T) {
 }
 
 // TestRoundTripDNSSection — DNS-секция применяется на импорте (раньше
-// экспортировалась и молча игнорировалась).
+// экспортировалась и молча игнорировалась). Оба входа: у 1.0 тег и тело
+// лежат `tag`/`body`, у файла 0.12 — `name`/`value`, и итог обязан совпасть.
 func TestRoundTripDNSSection(t *testing.T) {
 	s := &state.State{}
 	s.DNS.Final = "dns_shield"
@@ -625,26 +724,41 @@ func TestRoundTripDNSSection(t *testing.T) {
 			Body: map[string]interface{}{"domain_suffix": "example.com", "server": "my_dns"}},
 	}
 
-	b, _, err := Export012(s, ExportOptions{AppVersion: "test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{}); err != nil {
-		t.Fatal(err)
-	}
+	// Файл 0.12, который прежний писатель снимал с этого состояния.
+	const legacy = `{
+  "lx_backup": 1,
+  "exported_by": {"app": "launcher", "version": "1.5.9", "platform": "darwin"},
+  "exported_at": "2025-06-15T15:06:40Z",
+  "dns": {
+    "servers": [
+      {"kind": "template", "name": "google_dot"},
+      {"kind": "user", "name": "my_dns", "value": {"server": "10.0.0.1", "type": "udp"}}
+    ],
+    "rules": [
+      {"kind": "user", "enabled": false, "value": {"domain_suffix": "example.com", "server": "my_dns"}}
+    ],
+    "final": "dns_shield",
+    "strategy": "ipv4_only"
+  }
+}`
 
-	if restored.DNS.Final != "dns_shield" || restored.DNS.Strategy != "ipv4_only" {
-		t.Fatalf("final/strategy потеряны: %q %q", restored.DNS.Final, restored.DNS.Strategy)
-	}
-	if len(restored.DNS.Servers) != 2 {
-		t.Fatalf("servers: %+v", restored.DNS.Servers)
-	}
-	if restored.DNS.Servers[1].Body["server"] != "10.0.0.1" {
-		t.Fatalf("тело user-сервера потеряно: %+v", restored.DNS.Servers[1])
-	}
-	if len(restored.DNS.Rules) != 1 || restored.DNS.Rules[0].Enabled {
-		t.Fatalf("rules: %+v", restored.DNS.Rules)
+	for _, in := range importBothFormats(t, s, legacy, ImportOptions{}) {
+		restored := in.state
+		if restored.DNS.Final != "dns_shield" || restored.DNS.Strategy != "ipv4_only" {
+			t.Fatalf("%s: final/strategy потеряны: %q %q", in.format, restored.DNS.Final, restored.DNS.Strategy)
+		}
+		if len(restored.DNS.Servers) != 2 {
+			t.Fatalf("%s: servers: %+v", in.format, restored.DNS.Servers)
+		}
+		if restored.DNS.Servers[0].Tag != "google_dot" || restored.DNS.Servers[1].Tag != "my_dns" {
+			t.Errorf("%s: теги серверов: %+v", in.format, restored.DNS.Servers)
+		}
+		if restored.DNS.Servers[1].Body["server"] != "10.0.0.1" {
+			t.Fatalf("%s: тело user-сервера потеряно: %+v", in.format, restored.DNS.Servers[1])
+		}
+		if len(restored.DNS.Rules) != 1 || restored.DNS.Rules[0].Enabled {
+			t.Fatalf("%s: rules: %+v", in.format, restored.DNS.Rules)
+		}
 	}
 }
 
@@ -658,7 +772,7 @@ func TestRoundTripWarpAccounts(t *testing.T) {
 	s.WarpAccounts = &state.WarpAccountsSection{
 		WG: &state.WarpWGAccount{PrivateKey: "priv", PeerPublic: "pub", ClientV4: "172.16.0.2"},
 	}
-	b, _, err := Export012(s, ExportOptions{AppVersion: "test"})
+	b, _, err := Export10(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -666,7 +780,7 @@ func TestRoundTripWarpAccounts(t *testing.T) {
 		t.Fatalf("warp не экспортирован: %v", b.Warp)
 	}
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{}); err != nil {
+	if _, err := Import10(restored, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if restored.WarpAccounts == nil || restored.WarpAccounts.WG == nil ||
@@ -701,7 +815,7 @@ func TestPerEntityForeignExtensionsDropped(t *testing.T) {
 	if _, err := ImportFile(s, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	out, _, err := Export012(s, ExportOptions{AppVersion: "test"})
+	out, _, err := Export10(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -717,6 +831,10 @@ func TestPerEntityForeignExtensionsDropped(t *testing.T) {
 // SPEC 112-A — ссылка detour-на-узел переносится ОБЪЕКТОМ: id источника-цели
 // плюс identity-тег узла. Обе половины обязаны пережить roundtrip, включая
 // сами id источников: без них ссылка на приёмнике мертва.
+//
+// Входов два, и форма ссылки у них разная: у 1.0 — объект `detour{folder_id,
+// tag}`, у файла 0.12 — плоская тройня `detour_node_*`. Итог импорта обязан
+// совпасть.
 func TestRoundTripDetourNodeRef(t *testing.T) {
 	s := &state.State{}
 	s.Sources = []state.Source{
@@ -741,56 +859,68 @@ func TestRoundTripDetourNodeRef(t *testing.T) {
 		},
 	}
 
-	b, _, err := Export012(s, ExportOptions{AppVersion: "test"})
-	if err != nil {
+	// Ссылка едет ОБЩИМ полем записи, а не карманом: extensions больше не
+	// существует (П3), и в файле 1.0 это объект `detour` самой подписки.
+	var doc struct {
+		Sources []map[string]json.RawMessage `json:"sources"`
+	}
+	if err := json.Unmarshal(fixedExport10(t, s), &doc); err != nil {
 		t.Fatal(err)
 	}
-	// Ссылка едет ОБЩИМИ полями записи, а не карманом: extensions больше
-	// не существует (П3), и ключи обязаны лежать прямо в subscriptions[0].
-	raw, err := json.Marshal(b.Subscriptions[0])
-	if err != nil {
-		t.Fatal(err)
+	if len(doc.Sources) != 2 {
+		t.Fatalf("источников в файле %d, ожидалось 2", len(doc.Sources))
 	}
-	var ext map[string]interface{}
-	if err := json.Unmarshal(raw, &ext); err != nil {
-		t.Fatal(err)
+	var link state.NodeLink
+	if err := json.Unmarshal(doc.Sources[1]["detour"], &link); err != nil {
+		t.Fatalf("detour подписки не объектом: %s (%v)", doc.Sources[1]["detour"], err)
 	}
-	if ext["detour_node_source_id"] != "01WARP00000000000000000" {
-		t.Fatalf("detour_node_source_id не выехал в бэкап: %v", ext)
-	}
-	if ext["detour_node_tag"] != "🔥🎭 WARP (MASQUE)" {
-		t.Fatalf("detour_node_tag не выехал в бэкап: %v", ext)
-	}
-	if _, stale := ext["detour_node_hash"]; stale {
-		t.Errorf("упразднённый detour_node_hash не должен писаться: %v", ext)
+	if link.FolderID != "01WARP00000000000000000" || link.Tag != "🔥🎭 WARP (MASQUE)" {
+		t.Fatalf("ссылка в файле 1.0 = %+v", link)
 	}
 
-	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	var hop, dep *state.Source
-	for i := range restored.Sources {
-		switch restored.Sources[i].Kind {
-		case state.SourceKindServer:
-			hop = &restored.Sources[i]
-		case state.SourceKindSubscription:
-			dep = &restored.Sources[i]
+	// Файл 0.12, который прежний писатель снимал с этого состояния.
+	const legacy = `{
+  "lx_backup": 1,
+  "exported_by": {"app": "launcher", "version": "1.5.9", "platform": "darwin"},
+  "exported_at": "2025-06-15T15:06:40Z",
+  "subscriptions": [{
+    "id": "01PROTON0000000000000000",
+    "url": "https://example.com/sub",
+    "detour_node_source_id": "01WARP00000000000000000",
+    "detour_node_tag": "🔥🎭 WARP (MASQUE)",
+    "detour_node_label": "🔥🎭 WARP (MASQUE)"
+  }],
+  "servers": [{
+    "id": "01WARP00000000000000000",
+    "uri": "vless://u@h:443",
+    "node_tag": "🔥🎭 WARP (MASQUE)"
+  }]
+}`
+
+	for _, in := range importBothFormats(t, s, legacy, ImportOptions{}) {
+		var hop, dep *state.Source
+		for i := range in.state.Sources {
+			switch in.state.Sources[i].Kind {
+			case state.SourceKindServer:
+				hop = &in.state.Sources[i]
+			case state.SourceKindSubscription:
+				dep = &in.state.Sources[i]
+			}
 		}
-	}
-	if hop == nil || dep == nil {
-		t.Fatalf("источники не восстановились: %+v", restored.Sources)
-	}
-	// Ключ вопроса из ТЗ: id источника-цели обязан пережить roundtrip, иначе
-	// ссылка на приёмнике указывает в никуда.
-	if hop.ID != "01WARP00000000000000000" {
-		t.Fatalf("id источника-цели потерян: %q", hop.ID)
-	}
-	if dep.Detour == nil || dep.Detour.FolderID != hop.ID {
-		t.Fatalf("ссылка после импорта = %+v, ожидалась на %q", dep.Detour, hop.ID)
-	}
-	if dep.Detour.Tag != "🔥🎭 WARP (MASQUE)" {
-		t.Fatalf("тег ссылки после импорта = %q", dep.Detour.Tag)
+		if hop == nil || dep == nil {
+			t.Fatalf("%s: источники не восстановились: %+v", in.format, in.state.Sources)
+		}
+		// Ключ вопроса из ТЗ: id источника-цели обязан пережить roundtrip,
+		// иначе ссылка на приёмнике указывает в никуда.
+		if hop.ID != "01WARP00000000000000000" {
+			t.Fatalf("%s: id источника-цели потерян: %q", in.format, hop.ID)
+		}
+		if dep.Detour == nil || dep.Detour.FolderID != hop.ID {
+			t.Fatalf("%s: ссылка после импорта = %+v, ожидалась на %q", in.format, dep.Detour, hop.ID)
+		}
+		if dep.Detour.Tag != "🔥🎭 WARP (MASQUE)" {
+			t.Fatalf("%s: тег ссылки после импорта = %q", in.format, dep.Detour.Tag)
+		}
 	}
 }
 
@@ -807,17 +937,23 @@ func TestRoundTripDetourNodeTagOnlyRef(t *testing.T) {
 		URL: "https://example.com/sub",
 	}}
 
-	b, _, err := Export012(s, ExportOptions{AppVersion: "test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	got := restored.Sources[0]
-	if got.Detour == nil || got.Detour.Tag != "🔥🎭 WARP (MASQUE)" || got.Detour.FolderID != "" {
-		t.Fatalf("ссылка корневого пространства искажена: %+v", got.Detour)
+	// Файл 0.12, который прежний писатель снимал с этого состояния.
+	const legacy = `{
+  "lx_backup": 1,
+  "exported_by": {"app": "launcher", "version": "1.5.9", "platform": "darwin"},
+  "exported_at": "2025-06-15T15:06:40Z",
+  "subscriptions": [{
+    "url": "https://example.com/sub",
+    "detour_node_tag": "🔥🎭 WARP (MASQUE)",
+    "detour_node_label": "🔥🎭 WARP (MASQUE)"
+  }]
+}`
+
+	for _, in := range importBothFormats(t, s, legacy, ImportOptions{}) {
+		got := in.state.Sources[0]
+		if got.Detour == nil || got.Detour.Tag != "🔥🎭 WARP (MASQUE)" || got.Detour.FolderID != "" {
+			t.Fatalf("%s: ссылка корневого пространства искажена: %+v", in.format, got.Detour)
+		}
 	}
 }
 

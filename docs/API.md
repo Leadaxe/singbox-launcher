@@ -162,13 +162,13 @@ curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application
 
 The same thing the **Files** tab does with its *Export…* / *Import…* buttons: take a portable snapshot of the settings and apply one somewhere else. The payload is the LX Backup file itself — save the response to disk and the launcher or LxBox opens it unchanged.
 
-Two formats live side by side during the compatibility window: **0.12** (the transitional writer both apps read today) and **1.0** (the file is the launcher state, so per-node rules, DNS sections and folders travel too). **Import always reads both** — the caller never states the format. Export writes what `?format=` asks for, or the build's default when it is omitted.
+Export writes **format 1.0** only: the file is the launcher state, so per-node rules, DNS sections and folders travel too. LxBox reads and writes the same format starting with 2.23.3, released together with launcher 1.6.0. **Import reads both 1.0 and the older 0.x files** (0.12 and before), and the caller never states the format.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/backup/formats` | `{"reads":[1,2],"writes":["0.12","1.0"],"default":"…"}` — `reads` are `lx_backup` markers, `writes` are format names accepted by `?format=` |
-| GET | `/backup/export` | The backup file as the response body. `?format=1.0\|0.12` (default = the build's), `?envelope=1` wraps it as `{format, file_name, file, warnings}` |
-| POST | `/backup/import` | Body = a backup file of either format. Merges it into the state, saves, then rebuilds `config.json` |
+| GET | `/backup/formats` | `{"reads":[1,2],"writes":["1.0"],"default":"1.0"}` — `reads` are the `lx_backup` markers import understands, `writes` the format names `?format=` accepts |
+| GET | `/backup/export` | The backup file (format 1.0) as the response body. `?format=` may be omitted or `1.0`; `?format=0.12` answers `400` (`format 0.12 is no longer written; import still reads it`). `?envelope=1` wraps the file as `{format, file_name, file, warnings}` |
+| POST | `/backup/import` | Body = a backup file of format 1.0 or 0.x. Merges it into the state, saves, then rebuilds `config.json` |
 
 Export losses are never silent: without the envelope the codes travel in the `X-Backup-Warnings` header as a JSON array; with `?envelope=1` they are the `warnings` field. The plain response also carries `Content-Disposition` with the same suggested filename the UI offers.
 
@@ -183,8 +183,8 @@ Export losses are never silent: without the envelope the codes travel in the `X-
 ```
 
 ```bash
-# Snapshot this machine in the new format
-curl -s -H "Authorization: Bearer $TOKEN" "$API/backup/export?format=1.0" -o lx-backup.json
+# Snapshot this machine
+curl -s -H "Authorization: Bearer $TOKEN" "$API/backup/export" -o lx-backup.json
 
 # Codes of anything the format could not carry
 curl -sD- -o /dev/null -H "Authorization: Bearer $TOKEN" "$API/backup/export" | grep -i x-backup-warnings
@@ -193,11 +193,11 @@ curl -sD- -o /dev/null -H "Authorization: Bearer $TOKEN" "$API/backup/export" | 
 curl -s -X POST -H "Authorization: Bearer $TOKEN" --data-binary @lx-backup.json "$API/backup/import" | jq
 ```
 
-Machines paired through `/remote/*` mirror the first two: `GET /remote/machines/{id}/backup/export` and `POST /remote/machines/{id}/backup/import` act on that machine's wizard profile. The known SPEC 100 §3.3 limitation applies — the machine's `config.json` is rebuilt by its own wizard, so a remote import returns `config_rebuilt:false` and the deploy still needs the Save step in the UI.
+Machines paired through `/remote/*` mirror export and import: `GET /remote/machines/{id}/backup/export` (the same 1.0-only rule for `?format=`) and `POST /remote/machines/{id}/backup/import` act on that machine's wizard profile. The known SPEC 100 §3.3 limitation applies — the machine's `config.json` is rebuilt by its own wizard, so a remote import returns `config_rebuilt:false` and the deploy still needs the Save step in the UI.
 
 On a **fresh install** (no `state.json` yet) import still works: the file describes the whole setting, so it is merged into a clean state and saved. Export in the same situation answers `404` — there is nothing to snapshot, and an empty file would misreport the machine.
 
-**Errors:** `400` (unknown `?format=`, empty body, not an LX Backup file, `lx_backup` newer than this build reads), `409` (the state file is written by a different schema major — SPEC 118 gate, the same as a `PATCH /state/*`), `422` (the file parsed but could not be merged), `404` (export only: no `state.json`), `405` (method).
+**Errors:** `400` (`?format=` other than `1.0`, empty body, not an LX Backup file, `lx_backup` newer than this build reads), `409` (the state file is written by a different schema major — SPEC 118 gate, the same as a `PATCH /state/*`), `422` (the file parsed but could not be merged), `404` (export only: no `state.json`), `405` (method).
 
 ---
 
