@@ -121,6 +121,11 @@ func MoveNodeToFolder(m *wizardmodels.WizardModel, srcIndex int, rawTag, dstFold
 	from := containerRefOf(srcSource, node)
 	moved := cloneCanonicalNodeForMove(*node)
 
+	// SPEC 122 норма 2, половина «откуда»: ПРЕЖНИЙ финальный тег узла
+	// считается ДО правки модели — после переноса исходного контейнера в
+	// модели может уже не быть (корневой узел уезжает элементом Sources).
+	oldStateDirTag := tailscaleFinalTagOfSource(srcSource, node.Tag)
+
 	// Ссылки, которые переписать НЕЛЬЗЯ, считаем ДО правки модели: узел ещё
 	// на месте, и его прежний корневой тег читается однозначно.
 	orphans := rootOnlyRefsToTag(m, from)
@@ -134,6 +139,12 @@ func MoveNodeToFolder(m *wizardmodels.WizardModel, srcIndex int, rawTag, dstFold
 	if err := removeNodeFromSource(m, srcIndex, rawTag); err != nil {
 		return nil, err
 	}
+
+	// SPEC 122 норма 2: перенос между контейнерами — это смена финального
+	// тега (у каждой папки своя тег-политика), значит каталог состояния
+	// tailnet переезжает вместе с узлом.
+	moved.Tag = newTag
+	renameTailscaleStateDirTo(m, oldStateDirTag, dstFolderID, &moved)
 
 	to := nodeContainerRef{folderID: strings.TrimSpace(dstFolderID), tag: newTag}
 	affected := append(repointNodeLinks(m, from, to), orphans...)
@@ -251,7 +262,11 @@ func ExtractFolderNodesToRoot(m *wizardmodels.WizardModel, folderIndex int) []st
 	repoints := make([][2]nodeContainerRef, 0, len(folder.Nodes))
 
 	for i := range folder.Nodes {
+		// SPEC 122 норма 2: прежний финальный тег — с политикой ПАПКИ,
+		// новый — сырой (у корня политики нет). Считается до folder.Nodes=nil.
+		oldStateDirTag := tailscaleFinalTagOfSource(folder, folder.Nodes[i].Tag)
 		src, from, to := promoteNodeToRoot(folder.Nodes[i], folderID, taken)
+		RenameTailscaleStateDirForNode(nil, oldStateDirTag, nil, &src.Node)
 		promoted = append(promoted, src)
 		repoints = append(repoints, [2]nodeContainerRef{from, to})
 	}
@@ -355,7 +370,12 @@ func MoveNodeToRoot(m *wizardmodels.WizardModel, srcIndex int, rawTag string) ([
 	}
 
 	folderID := strings.TrimSpace(srcSource.ID)
+	// SPEC 122 норма 2: прежний финальный тег — до правки модели (см.
+	// MoveNodeToFolder).
+	oldStateDirTag := tailscaleFinalTagOfSource(srcSource, node.Tag)
 	promotedSrc, from, to := promoteNodeToRoot(*node, folderID, rootTagSet(m))
+	// У корня тег-политики нет: финальный тег вынесенного узла = его сырой.
+	RenameTailscaleStateDirForNode(nil, oldStateDirTag, nil, &promotedSrc.Node)
 
 	// Кладём ДО удаления — то же правило, что у MoveNodeToFolder: если что-то
 	// откажет посередине, узел не должен пропасть из папки.

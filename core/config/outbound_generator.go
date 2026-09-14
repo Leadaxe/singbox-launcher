@@ -1556,6 +1556,16 @@ func GenerateOutboundsFromParserConfig(
 		}
 	}
 
+	// SPEC 122 «Каталог состояния: жизненный цикл», норма 3 — уборка
+	// осиротевших каталогов состояния tailnet.
+	//
+	// Здесь, а не раньше: только после ПОЛНОЙ эмиссии известны финальные теги
+	// со суффиксом уникализации, а он входит в имя каталога. Ожидаемый набор
+	// шире эмиссии — в него входят и выключенные узлы, и снятые гейтом ядра
+	// (их состояние живёт, пока живёт узел), поэтому он строится из канона
+	// источников, а не из allNodes.
+	GCTailscaleStateDirs(CollectTailscaleStateDirNames(parserConfig, allNodes))
+
 	globalPool := FilterDirectionCandidatePool(allNodes, parserConfig.ParserConfig.Proxies)
 	exposeCandidates := collectExposeTagCandidates(parserConfig)
 	outboundsInfo, chainCycles, detourCycles := buildOutboundsInfo(parserConfig, nodesBySource, globalPool, progressCallback)

@@ -454,6 +454,10 @@ func (o *previewNodeOps) applyRename(oldTag, newTag string) {
 
 	folderID := strings.TrimSpace(src.ID)
 	target.Tag = newTag
+	// SPEC 122 норма 2: у узла tailnet вместе с тегом переезжает и каталог
+	// состояния — в нём ключ устройства, и оставить его под прежним именем
+	// значило бы отправить узел логиниться заново.
+	wizardbusiness.RenameTailscaleStateDirForNode(src, oldTag, src, target)
 	affected := wizardbusiness.RepointContainerNodeLinks(m, folderID, oldTag, newTag)
 
 	applySourceMutation(o.presenter, o.guiState)
@@ -507,6 +511,9 @@ func (o *previewNodeOps) applyDelete(rawTag string) {
 	if found < 0 {
 		return
 	}
+	// SPEC 122 норма 1: каталог состояния узла tailnet уходит вместе с узлом.
+	// До выреза из состава — после него тег узла взять уже неоткуда.
+	wizardbusiness.RemoveTailscaleStateDirForNode(src, &src.Nodes[found])
 	src.Nodes = append(src.Nodes[:found], src.Nodes[found+1:]...)
 	// Тег "" целью переписи означает «цели больше нет»: реестр W2 гасит
 	// ссылку, а не уводит её на чужой узел.
