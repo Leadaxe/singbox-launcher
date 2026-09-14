@@ -30,6 +30,7 @@ package debugapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -186,7 +187,15 @@ func (s *Server) backupExportWith(w http.ResponseWriter, r *http.Request, acc st
 // отступы, перевод строки в конце и порядок ключей, и второй сериализатор
 // здесь означал бы, что ответ API и файл с диска — разные байты при одном и
 // том же состоянии.
+//
+// Шаблон обязателен, как у /state/outbounds/resolved: тело ссылочного
+// Направления живёт в нём, и без шаблона файл молча вёз бы от proxy-out
+// один тег. Отказ с причиной честнее такого файла (П6).
 func (s *Server) exportBackupBytes(st *state.State) ([]byte, []backup.Warning, error) {
+	td, err := s.facade.LoadTemplate()
+	if err != nil {
+		return nil, nil, fmt.Errorf("load template: %w", err)
+	}
 	dir, err := os.MkdirTemp("", "lx-backup-export")
 	if err != nil {
 		return nil, nil, err
@@ -196,6 +205,10 @@ func (s *Server) exportBackupBytes(st *state.State) ([]byte, []backup.Warning, e
 	warns, err := backup.ExportFile(path, st, backup.ExportOptions{
 		AppVersion: s.facade.GetLauncherVersion(),
 		Platform:   runtime.GOOS,
+		// Тот же слитый вид, что отдаёт /state/outbounds/resolved, и та же
+		// платформа: профиль удалённой машины резолвится под её goos/goarch.
+		Directions: build.ResolveDirections(st.Directions, td, build.TargetSpecFromState(st)),
+		BlockTag:   td.DirectionBlockTag(),
 	})
 	if err != nil {
 		return nil, warns, err

@@ -16,12 +16,38 @@ import (
 	"singbox-launcher/core/config/configtypes"
 )
 
+// defaultBlockTag — тег блокировки лаунчера, когда вызывающий шаблонного не
+// передал (тот же, что template.DefaultDirectionBlockTag).
+const defaultBlockTag = "block-out"
+
+// resolvedDirectionsByTag — слитый вид Направлений по тегу; первая запись с
+// тегом побеждает, как и в сборке.
+func resolvedDirectionsByTag(list []configtypes.Direction) map[string]configtypes.Direction {
+	if len(list) == 0 {
+		return nil
+	}
+	out := make(map[string]configtypes.Direction, len(list))
+	for _, d := range list {
+		if d.Tag == "" {
+			continue
+		}
+		if _, dup := out[d.Tag]; !dup {
+			out[d.Tag] = d
+		}
+	}
+	return out
+}
+
 // exportDirection переводит Направление в каноническую форму.
 //
-// Ссылочные записи (ref != "") экспортируются MERGED-телом: принимающая
-// сторона не знает ни нашего шаблона, ни наших пресетов, и тонкая ссылка
-// приехала бы туда пустой оболочкой.
-func exportDirection(d configtypes.Direction) Direction {
+// d — тело ПОСЛЕ слияния: ссылочные записи (ref != "") экспортируются
+// MERGED-телом, потому что принимающая сторона не знает ни нашего шаблона,
+// ни наших пресетов, и тонкая ссылка приехала бы туда пустой оболочкой.
+// Слияние делает вызывающий Export10 (ExportOptions.Directions).
+//
+// blockTag — тег блокировки шаблона: `include_block` ставится по тому же
+// тегу, по которому форма Направления показывает галку блокировки.
+func exportDirection(d configtypes.Direction, blockTag string) Direction {
 	body, invert := configtypes.DirectionFilterTag(d.Filters)
 	defBody, _ := configtypes.DirectionFilterTag(d.PreferredDefault)
 
@@ -46,7 +72,7 @@ func exportDirection(d configtypes.Direction) Direction {
 		switch {
 		case tag == "direct-out" || tag == "direct":
 			out.IncludeDirect = true
-		case tag == "block-out" || tag == "block":
+		case tag == blockTag || tag == "block":
 			out.IncludeBlock = true
 		default:
 			out.Include = append(out.Include, tag)

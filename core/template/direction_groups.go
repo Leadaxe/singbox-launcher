@@ -118,3 +118,20 @@ func (td *TemplateData) DirectionMagicTag(name, parentTag string) string {
 	}
 	return node.ResolveTag(parentTag)
 }
+
+// DefaultDirectionBlockTag — тег блокировки, когда шаблон его не называет.
+const DefaultDirectionBlockTag = "block-out"
+
+// DirectionBlockTag — тег блокировки, который Направление предлагает опцией:
+// `magic_nodes.block` шаблона, иначе DefaultDirectionBlockTag. nil-safe.
+//
+// Один ответ на форму Направления и на экспорт бэкапа: признак
+// `include_block` в файле обязан стоять ровно тогда, когда форма показывает
+// галку блокировки, — иначе шаблон с другим именем тега терял бы опцию на
+// переносе (она уезжала бы в `include` чужим тегом).
+func (td *TemplateData) DirectionBlockTag() string {
+	if tag := td.DirectionMagicTag("block", ""); tag != "" {
+		return tag
+	}
+	return DefaultDirectionBlockTag
+}
