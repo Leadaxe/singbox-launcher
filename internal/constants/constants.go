@@ -11,8 +11,8 @@ const (
 	WizardTemplateFileName = "wizard_template.json"
 	// WizardTemplateVersionFileName — маркер рядом с шаблоном: версия лаунчера,
 	// под которую шаблон положил УСТАНОВЩИК (архив win64-full, install-macos.sh).
-	// Совпал с AppVersion — шаблон свежий, и первый запуск его не сносит
-	// (core.InvalidateTemplateIfStale). Сам лаунчер маркер не пишет.
+	// Совпал с AppVersion — шаблон свежий, и первый запуск его не перекачивает
+	// (core.RefreshTemplateIfStale). Сам лаунчер маркер не пишет.
 	WizardTemplateVersionFileName = "wizard_template.version"
 	// MesaBundleDirName — папка рядом с exe, куда архив win64-full кладёт DLL
 	// Mesa3D. Не рядом с exe напрямую: лежащий рядом opengl32.dll загрузчик

@@ -116,18 +116,15 @@ func main() {
 	// гейта показывать некому (SPEC 125 §2.2).
 	platform.EnsureDesktopOpenGL(controller.FileService.ExecDir, !*startInTray)
 
-	// Force-invalidate the wizard template if it was last installed by an
-	// older launcher version (SPEC 046). Has to run before any UI consults
-	// bin/wizard_template.json — the Core Dashboard tab's "Download Template"
-	// flow relies on the file being absent.
+	// Replace the wizard template in the background if it was installed by an
+	// older launcher version (SPEC 046). The stale file stays until the new
+	// one is downloaded, and config builds wait for the refresh — so the
+	// first core start is built from the right template. Runs before anything
+	// can start the core (autostart, UI, debug API).
 	//
-	// Failure here is non-fatal: a stat/remove error means the user keeps
-	// running with the existing (possibly mismatched) template, which is a
-	// degraded but not broken state. The next manual Download Template will
-	// resync `last_template_launcher_version`.
-	if err := core.InvalidateTemplateIfStale(controller.FileService.ExecDir); err != nil {
-		debuglog.WarnLog("template: stale-check failed: %v", err)
-	}
+	// Failure is non-fatal: the installed template stays in use and the next
+	// launch retries.
+	controller.StartTemplateRefresh()
 
 	// SPEC 098: до этой версии профиль удалённой машины был один на всех
 	// (bin/wizard_states/remote/state.json + bin/remote-config.json). Отдаём
