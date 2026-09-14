@@ -154,14 +154,16 @@ func MoveNodeToFolder(m *wizardmodels.WizardModel, srcIndex int, rawTag, dstFold
 
 // rootOnlyRefsToTag — ссылки КОРНЕВОГО пространства на тег уезжающего узла,
 // которые переписать невозможно: цели правил, маршрут по умолчанию, detour
-// DNS-серверов и addOutbounds Направлений адресуют только финальные теги
-// корня, и узел, уехавший В ПАПКУ, для них перестаёт существовать.
+// DNS-серверов, опции и литеральное умолчание Направлений, переменные
+// пресетов адресуют только имена корня, и узел, уехавший В ПАПКУ, для них
+// перестаёт существовать.
 //
 // Молча потерять их нельзя (критерий A3: всякая ссылка, чья цель сменила
 // финальный тег, либо переписана реестром, либо НАЗВАНА в предупреждении),
-// поэтому здесь их только перечисляют — правки не делают. Осиротевшая цель
-// правила сбросится на direct штатным путём загрузки, но узнать об этом
-// пользователь обязан в момент операции, а не из лога следующего запуска.
+// поэтому здесь их только перечисляют — правки не делают (rootRefName в общем
+// обходе root_name_refs.go). Осиротевшая цель правила сбросится на direct
+// штатным путём загрузки, но узнать об этом пользователь обязан в момент
+// операции, а не из лога следующего запуска.
 //
 // Пусто, когда узел уезжает не из корня (from.folderID != ""): ссылка на узел
 // папки в этих классах невозможна по построению.
@@ -169,56 +171,8 @@ func rootOnlyRefsToTag(m *wizardmodels.WizardModel, from nodeContainerRef) []str
 	if m == nil || from.folderID != "" || from.tag == "" {
 		return nil
 	}
-	var out []string
-	seen := map[string]bool{}
-	add := func(name string) {
-		if name != "" && !seen[name] {
-			seen[name] = true
-			out = append(out, name)
-		}
-	}
-
-	for _, rs := range m.CustomRules {
-		if rs != nil && rs.SelectedOutbound == from.tag {
-			add(firstNonEmptyRefName(rs.Rule.Label, rs.Rule.Description))
-		}
-	}
-	if m.SelectedFinalOutbound == from.tag {
-		add("route.final")
-	}
-	for _, ref := range m.PresetRefs {
-		if ref == nil {
-			continue
-		}
-		for _, val := range ref.Vars {
-			if val == from.tag {
-				add(firstNonEmptyRefName(ref.Ref, "preset"))
-				break
-			}
-		}
-	}
-	for i := range m.GlobalOutbounds {
-		d := &m.GlobalOutbounds[i]
-		for _, opt := range d.AddOutbounds {
-			if opt == from.tag {
-				add(d.Tag)
-				break
-			}
-		}
-	}
-	for _, raw := range m.DNSServers {
-		var obj map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &obj); err != nil {
-			continue
-		}
-		var detour, tag string
-		if err := json.Unmarshal(obj["detour"], &detour); err != nil || detour != from.tag {
-			continue
-		}
-		_ = json.Unmarshal(obj["tag"], &tag)
-		add(firstNonEmptyRefName(tag, "DNS server"))
-	}
-	return out
+	names, _ := editRootNameRefs(m, rootNameIs(from.tag, rootRefName))
+	return names
 }
 
 // firstNonEmptyRefName — первое непустое имя из перечисленных.
@@ -467,87 +421,31 @@ func RepointContainerNodeLinks(m *wizardmodels.WizardModel, folderID, oldTag, ne
 // (SPEC 116 W5: команда «Delete» в списке узлов).
 //
 // Перенаправить их не на что: узел удалён, и подставить вместо него соседа
-// нельзя — пользователь выбирал хопом/детуром именно этот. Резолв сборки такую
-// ссылку и так не разрешит (fail-closed), но узнать об этом пользователь
-// обязан в момент удаления, а не из отчёта следующей сборки, — поэтому имена
-// задетых источников возвращаются наружу.
+// нельзя — пользователь выбирал хопом/детуром именно этот. Решение владельца
+// (15.09.2026): все ссылки, которые узел использовали, гаснут вместе с ним, и
+// пользователь узнаёт об этом в момент удаления, а не из отчёта следующей
+// сборки, — поэтому имена задетых источников возвращаются наружу.
 //
-// Гашение = пустой тег в цели переписи: detour источника снимается совсем,
-// хопы и члены группы получают пустую ссылку, которую санитайзер сборки
-// отбрасывает штатным путём (той же дорогой, что и цель, исчезнувшая у
-// провайдера).
+// Гашение идёт реестром (clearNodeLinks): detour источника снимается совсем,
+// позиция выходит из цепочки, член — из группы вместе с умолчанием на нём.
 func ClearContainerNodeLinks(m *wizardmodels.WizardModel, folderID, tag string) []string {
-	if m == nil || tag == "" {
+	affected := clearNodeLinks(m, nodeContainerRef{folderID: strings.TrimSpace(folderID), tag: tag})
+	InvalidateNodePool(m)
+	return affected
+}
+
+// clearNodeLinks гасит все ссылки NodeLink на адрес from и возвращает имена
+// задетых источников. Пустой from.folderID — корневой узел.
+func clearNodeLinks(m *wizardmodels.WizardModel, from nodeContainerRef) []string {
+	if m == nil || from.tag == "" {
 		return nil
 	}
-	from := nodeContainerRef{folderID: strings.TrimSpace(folderID), tag: tag}
-
-	var affected []string
-	seen := map[int]bool{}
-	note := func(i int) {
-		if !seen[i] {
-			seen[i] = true
-			affected = append(affected, SourceDisplayName(m.Sources[i]))
+	affected, _ := editNodeLinks(m, func(link corestate.NodeLink, space string) (corestate.NodeLink, linkEdit) {
+		if !linkAddresses(link, space, from) {
+			return link, linkKeep
 		}
-	}
-	hit := func(link *corestate.NodeLink) bool {
-		if link == nil {
-			return false
-		}
-		return strings.TrimSpace(link.FolderID) == from.folderID && link.Tag == from.tag
-	}
-	// dropLinks — убрать из списка ссылок все попавшие. Ручной фильтр без
-	// slices.* — go1.20-гард (win7-джоба CI).
-	dropLinks := func(links []corestate.NodeLink) ([]corestate.NodeLink, bool) {
-		out := links[:0:0]
-		dropped := false
-		for j := range links {
-			if hit(&links[j]) {
-				dropped = true
-				continue
-			}
-			out = append(out, links[j])
-		}
-		return out, dropped
-	}
-	clearNode := func(n *corestate.Node) bool {
-		touched := false
-		if hit(n.Detour) {
-			n.Detour = nil
-			touched = true
-		}
-		if len(n.Hops) > 0 {
-			if hops, dropped := dropLinks(n.Hops); dropped {
-				n.Hops = hops
-				touched = true
-			}
-		}
-		if n.Group != nil && len(n.Group.Members) > 0 {
-			if mem, dropped := dropLinks(n.Group.Members); dropped {
-				n.Group.Members = mem
-				// Умолчание указывало на выбывшего члена — снимаем вместе с
-				// ним, иначе группа эмитится с default'ом вне состава.
-				if n.Group.Default == from.tag {
-					n.Group.Default = ""
-				}
-				touched = true
-			}
-		}
-		return touched
-	}
-
-	for i := range m.Sources {
-		s := &m.Sources[i]
-		if clearNode(&s.Node) {
-			note(i)
-		}
-		for k := range s.Nodes {
-			if clearNode(&s.Nodes[k]) {
-				note(i)
-			}
-		}
-	}
-	InvalidateNodePool(m)
+		return link, linkDrop
+	})
 	return affected
 }
 
@@ -557,98 +455,175 @@ func ClearContainerNodeLinks(m *wizardmodels.WizardModel, folderID, tag string) 
 // Реестр ссылок на УЗЕЛ (features/directions.md §9): detour источников, хопы
 // цепочек, члены Auto и default селектора. Цели правил, route.final, detour
 // DNS-серверов и addOutbounds Направлений сюда НЕ входят по построению: они
-// адресуют корневое пространство финальных тегов, и узел папки в них попасть
-// не может. Перенос В корень такую ссылку создаёт (новый верхний тег), но не
-// переписывает: адресат появился, а не переехал.
+// адресуют корневое пространство финальных тегов по имени, и их переписывает
+// (или называет) вызывающий — root_name_refs.go. Перенос В корень такую
+// ссылку создаёт (новый верхний тег), но не переписывает: адресат появился, а
+// не переехал.
 //
-// Правило блока: новый вид ссылки на узел — сначала сюда, потом в модель.
+// Правило блока: новый вид ссылки на узел — сначала в editNodeLinks, потом в
+// модель.
 func repointNodeLinks(m *wizardmodels.WizardModel, from, to nodeContainerRef) []string {
 	if m == nil || from.tag == "" || (from.folderID == to.folderID && from.tag == to.tag) {
 		return nil
 	}
-
-	var affected []string
-	seen := map[int]bool{}
-	note := func(i int) {
-		if !seen[i] {
-			seen[i] = true
-			affected = append(affected, SourceDisplayName(m.Sources[i]))
+	affected, _ := editNodeLinks(m, func(link corestate.NodeLink, space string) (corestate.NodeLink, linkEdit) {
+		if !linkAddresses(link, space, from) {
+			return link, linkKeep
 		}
-	}
-	hit := func(link *corestate.NodeLink) bool {
-		if link == nil {
-			return false
-		}
-		return strings.TrimSpace(link.FolderID) == from.folderID && link.Tag == from.tag
-	}
-	repoint := func(link *corestate.NodeLink) {
-		link.FolderID = to.folderID
-		link.Tag = to.tag
-	}
-
-	for i := range m.Sources {
-		s := &m.Sources[i]
-		if hit(s.Detour) {
-			repoint(s.Detour)
-			note(i)
-		}
-		for j := range s.Hops {
-			if hit(&s.Hops[j]) {
-				repoint(&s.Hops[j])
-				note(i)
-			}
-		}
-		if repointGroupLinks(s.Group, hit, repoint, from, to) {
-			note(i)
-		}
-		// Узлы контейнера несут те же виды ссылок, что и верхние: детур
-		// сервера, хопы цепочки в папке, состав локальной группы.
-		for k := range s.Nodes {
-			n := &s.Nodes[k]
-			if hit(n.Detour) {
-				repoint(n.Detour)
-				note(i)
-			}
-			for j := range n.Hops {
-				if hit(&n.Hops[j]) {
-					repoint(&n.Hops[j])
-					note(i)
-				}
-			}
-			if repointGroupLinks(n.Group, hit, repoint, from, to) {
-				note(i)
-			}
-		}
-	}
+		return corestate.NodeLink{FolderID: to.folderID, Tag: to.tag}, linkReplace
+	})
 	return affected
 }
 
-// repointGroupLinks — состав и умолчание Auto-группы.
+// linkAddresses — ведёт ли ссылка на адрес target.
 //
-// Default хранится СЫРЫМ тегом члена (sources_v7.go: AutoGroup.Default) и
-// живёт в пространстве той же группы, поэтому переписывается вместе с
-// members: иначе умолчание указало бы на выбывшего члена и было бы снято
-// санитайзером с warning.
-func repointGroupLinks(
-	g *corestate.AutoGroup,
-	hit func(*corestate.NodeLink) bool,
-	repoint func(*corestate.NodeLink),
-	from, to nodeContainerRef,
-) bool {
-	if g == nil {
-		return false
+// space — чьим адресом считается ссылка без folder_id (NODE_LINK.md §5.1):
+// у detour и позиции это корень (№ 7), у члена группы внутри контейнера — сам
+// контейнер (№ 8). Без этого различия переименование корневого узла уводило
+// бы членство провайдерской группы в корень, а перепись узла папки не
+// замечала бы члена, записанного без адреса.
+func linkAddresses(link corestate.NodeLink, space string, target nodeContainerRef) bool {
+	folderID := strings.TrimSpace(link.FolderID)
+	if folderID == "" {
+		folderID = space
 	}
-	touched := false
-	for j := range g.Members {
-		if hit(&g.Members[j]) {
-			repoint(&g.Members[j])
-			touched = true
+	return folderID == target.folderID && link.Tag == target.tag
+}
+
+// linkEdit — что правка делает с одной ссылкой.
+type linkEdit int
+
+const (
+	// linkKeep — ссылка не задета.
+	linkKeep linkEdit = iota
+	// linkReplace — ссылка переписана на возвращённый адрес.
+	linkReplace
+	// linkDrop — ссылка гаснет: detour снимается, позиция и член выходят из
+	// своих списков.
+	linkDrop
+)
+
+// linkEditFunc — решение по одной ссылке: её пространство (см.
+// linkAddresses), новое значение и действие.
+type linkEditFunc func(link corestate.NodeLink, space string) (corestate.NodeLink, linkEdit)
+
+// editNodeLinks — ЕДИНЫЙ обход реестра ссылок на узел: detour и позиции
+// корневых записей и членов контейнеров, члены и умолчания групп в корне и
+// в контейнерах (features/directions.md §9, NODE_LINK.md §4.1).
+//
+// edit получает ссылку и её пространство и решает её судьбу. Возвращает
+// имена задетых источников (для окна-предупреждения) и число задетых ссылок.
+func editNodeLinks(m *wizardmodels.WizardModel, edit linkEditFunc) ([]string, int) {
+	if m == nil {
+		return nil, 0
+	}
+	count := 0
+	node := func(n *corestate.Node, space string) bool {
+		hits := editDetourLink(&n.Detour, edit)
+		if len(n.Hops) > 0 {
+			hops, h := editLinkList(n.Hops, "", edit, nil)
+			n.Hops = hops
+			hits += h
+		}
+		hits += editGroupLinks(n.Group, space, edit)
+		count += hits
+		return hits > 0
+	}
+
+	var affected []string
+	for i := range m.Sources {
+		s := &m.Sources[i]
+		// Верхняя запись: detour узла или общий detour контейнера, позиции
+		// корневой цепочки, члены корневой группы — всё в корневом
+		// пространстве.
+		touched := node(&s.Node, "")
+		// Узлы контейнера несут те же виды ссылок; члены их групп без адреса
+		// адресуют сам контейнер.
+		space := strings.TrimSpace(s.ID)
+		for k := range s.Nodes {
+			if node(&s.Nodes[k], space) {
+				touched = true
+			}
+		}
+		if touched {
+			affected = append(affected, SourceDisplayName(*s))
 		}
 	}
-	if touched && g.Default == from.tag {
-		g.Default = to.tag
+	return affected, count
+}
+
+// editDetourLink — detour узла или контейнера: переписывается на месте либо
+// снимается (nil). detour адресует корень, если folder_id пуст (§5.1 № 7).
+func editDetourLink(link **corestate.NodeLink, edit linkEditFunc) int {
+	if *link == nil {
+		return 0
 	}
-	return touched
+	next, act := edit(**link, "")
+	switch act {
+	case linkReplace:
+		**link = next
+	case linkDrop:
+		*link = nil
+	default:
+		return 0
+	}
+	return 1
+}
+
+// editLinkList — список ссылок (позиции цепочки, члены группы): переписанные
+// остаются на месте, погасшие выходят из списка. onEdit узнаёт о каждой
+// задетой ссылке (прежний тег, новый; пустой новый — погасла). Незадетый
+// список возвращается тем же срезом; изменённый — новым, исходный массив не
+// портится. Ручной фильтр без slices.* — go1.20-гард (win7-джоба CI).
+func editLinkList(links []corestate.NodeLink, space string, edit linkEditFunc, onEdit func(oldTag, newTag string)) ([]corestate.NodeLink, int) {
+	hits := 0
+	out := links[:0:0]
+	for j := range links {
+		next, act := edit(links[j], space)
+		switch act {
+		case linkReplace:
+			out = append(out, next)
+		case linkDrop:
+			next.Tag = ""
+		default:
+			out = append(out, links[j])
+			continue
+		}
+		hits++
+		if onEdit != nil {
+			onEdit(links[j].Tag, next.Tag)
+		}
+	}
+	if hits == 0 {
+		return links, 0
+	}
+	return out, hits
+}
+
+// editGroupLinks — ЕДИНАЯ точка правки состава группы: члены и умолчание
+// вместе, для переписи и для гашения.
+//
+// Умолчание — сырой тег члена — идёт за членом, которого называет:
+// переписанный член уносит умолчание на новый тег, погасший снимает его, иначе
+// группа эмитилась бы с default вне состава. Член без folder_id внутри
+// контейнера адресует свой контейнер (space, §5.1 № 8). Возвращает число
+// задетых ссылок-членов.
+func editGroupLinks(g *corestate.AutoGroup, space string, edit linkEditFunc) int {
+	if g == nil || len(g.Members) == 0 {
+		return 0
+	}
+	def, defDone := g.Default, false
+	members, hits := editLinkList(g.Members, space, edit, func(oldTag, newTag string) {
+		if !defDone && def != "" && oldTag == def {
+			def, defDone = newTag, true
+		}
+	})
+	if hits == 0 {
+		return 0
+	}
+	g.Members = members
+	g.Default = def
+	return hits
 }
 
 // ── внутренняя механика ──────────────────────────────────────────

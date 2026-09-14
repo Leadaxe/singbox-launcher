@@ -385,11 +385,12 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 	res.AppliedSources += cnt.AddedSubscriptions + cnt.UpdatedSubscriptions +
 		cnt.AddedServers + cnt.AddedFolders + cnt.UpdatedFolders + cnt.AddedChains
 
-	// Ссылки на папки формата 1.0 несут ULID машины-ЭКСПОРТЁРА; совпавшая по
-	// имени папка здесь держит свой. Переписка идёт последним проходом,
-	// когда карта «id файла → id здесь» собрана целиком: папка может быть
-	// объявлена в файле НИЖЕ записи, которая на неё ссылается.
-	merged.rewriteFolderLinks(s)
+	// Ссылки файла несут адреса машины-ЭКСПОРТЁРА: id контейнеров (совпавшая
+	// папка или подписка здесь держит свой) и имена узлов (слияние вправе
+	// уникализировать узел или узнать его по телу под другим тегом).
+	// Переписка идёт последним проходом, когда карта адресов собрана
+	// целиком: цель может быть объявлена в файле НИЖЕ ссылающейся записи.
+	merged.rewriteLinks(s)
 
 	// Ссылки без адреса папки поднимаются до адресных по ЖИВОМУ набору, и у
 	// каждого формата свой словарь: проход отдельный и последний, потому что
@@ -399,11 +400,11 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 	case FileFormat10:
 		// 1.0: ссылка без folder_id адресует корень ФИНАЛЬНЫХ тегов, и на член
 		// папки её поднимает только однозначный финальный тег (§4, §6).
-		normalizeMemberLinks10(s, merged.linked, importKnownTags(opts, dec, s))
+		normalizeMemberLinks10(s, &merged, importKnownTags(opts, dec, s))
 	default:
 		// 0.x: позиции цепочек приехали строками (контракт 0.x адреса папок не
 		// несёт) и сопоставляются по сырым тегам узлов контейнеров.
-		resolveImportedHops(s.Sources, s.Directions)
+		resolveImportedHops(s.Sources, s.Directions, &merged)
 	}
 
 	s.Rules = append(s.Rules, dec.Rules...)

@@ -8,8 +8,11 @@ package backup
 
 import (
 	"encoding/json"
+	"reflect"
+	"strings"
 	"testing"
 
+	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
 )
@@ -916,4 +919,189 @@ func TestImport10FolderFromOtherMachineMatchesByName(t *testing.T) {
 	if !equalStrings(got, want) {
 		t.Fatalf("раскладка %v, ожидалась %v — папка обязана слиться по имени в локальную, id локальный", got, want)
 	}
+}
+
+// TestImportLinksFollowMergeAddresses — ссылки файла идут туда, где слияние
+// положило их цели (NODE_LINK.md §7.2, §7.4), и сборка результата разрешает
+// их все: ни одна не висит и ни одна не ушла на здешнего тёзку.
+//
+// Слияние меняет адрес цели четырьмя способами, и каждый здесь есть:
+// подписка, узнанная по URL, держит свой id; член папки уникализирован
+// (`de-1` → `de-1-2`) или узнан по телу под другим тегом (`fr-1` →
+// `fr-local`); корневой узел уникализирован (`tokyo` → `tokyo-2`) или узнан по
+// телу (`osaka` → `osaka-local`). Ссылки — всех видов: detour члена и корневого
+// узла, позиции цепочки, члены и умолчание группы, ссылка одним финальным
+// тегом (терпимость §7.3). Legacy 0.12 — id сервера как источник-цель.
+func TestImportLinksFollowMergeAddresses(t *testing.T) {
+	body := func(server, password string) json.RawMessage {
+		return json.RawMessage(`{"type":"trojan","server":"` + server + `","server_port":443,"password":"` + password + `"}`)
+	}
+	server := func(tag string, b json.RawMessage) state.Node {
+		return state.Node{Kind: state.SourceKindServer, Tag: tag, Enabled: true, Body: b}
+	}
+	emitted := func(t *testing.T, s *state.State) map[string]map[string]interface{} {
+		t.Helper()
+		pc := &config.ParserConfig{}
+		pc.ParserConfig.Version = config.ParserConfigVersion
+		for i := range s.Sources {
+			pc.ParserConfig.Proxies = append(pc.ParserConfig.Proxies, s.Sources[i].ToProxySourceV4())
+		}
+		res, err := config.GenerateOutboundsFromParserConfig(pc, map[string]int{}, nil, config.DirectionBuildOptions{})
+		if err != nil {
+			t.Fatalf("сборка: %v", err)
+		}
+		if len(res.EmissionWarnings) > 0 || len(res.BrokenChains) > 0 {
+			t.Errorf("ссылки не разрешились на сборке: %s / %+v",
+				strings.Join(config.EmissionWarningTexts(res.EmissionWarnings), " | "), res.BrokenChains)
+		}
+		out := map[string]map[string]interface{}{}
+		for _, line := range res.OutboundsJSON {
+			if at := strings.Index(line, "{"); at >= 0 {
+				var m map[string]interface{}
+				if json.Unmarshal([]byte(strings.TrimRight(strings.TrimSpace(line[at:]), ",")), &m) == nil {
+					tag, _ := m["tag"].(string)
+					out[tag] = m
+				}
+			}
+		}
+		return out
+	}
+	find := func(t *testing.T, s *state.State, name string) *state.Source {
+		t.Helper()
+		for i := range s.Sources {
+			if s.Sources[i].Tag == name || s.Sources[i].Name == name {
+				return &s.Sources[i]
+			}
+		}
+		t.Fatalf("после импорта нет %q", name)
+		return nil
+	}
+	member := func(t *testing.T, src *state.Source, tag string) *state.Node {
+		t.Helper()
+		for i := range src.Nodes {
+			if src.Nodes[i].Tag == tag {
+				return &src.Nodes[i]
+			}
+		}
+		t.Fatalf("в %q нет члена %q", src.Name, tag)
+		return nil
+	}
+	importJSON := func(t *testing.T, s *state.State, raw string) {
+		t.Helper()
+		f, _, err := Parse([]byte(raw))
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		if _, err := ImportFile(s, f, ImportOptions{}); err != nil {
+			t.Fatalf("Import: %v", err)
+		}
+	}
+
+	t.Run("1.0", func(t *testing.T) {
+		s := state.New()
+		s.Sources = []state.Source{
+			{Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true}, ID: "01SUBLOCAL", URL: "https://example-1.com/sub",
+				Nodes: []state.Node{server("US-1", body("example-10.com", "us"))}},
+			{Node: state.Node{Kind: state.SourceKindFolder, Enabled: true}, ID: "01FLDLOCAL", Name: "Work",
+				Nodes: []state.Node{server("de-1", body("example-9.com", "local")), server("fr-local", body("example-8.com", "fr"))}},
+			{Node: server("tokyo", body("example-7.com", "tokyo-local")), ID: "01TOKYOLOCAL"},
+			{Node: server("osaka-local", body("example-6.com", "osaka")), ID: "01OSAKALOCAL"},
+		}
+		importJSON(t, s, `{
+  "lx_backup": 2, "exported_by": {"app": "launcher", "version": "t", "platform": "t"}, "exported_at": "2026-09-15T00:00:00Z",
+  "sources": [
+    {"kind": "subscription", "id": "01SUBFILE", "name": "P", "enabled": true, "url": "https://example-1.com/sub"},
+    {"kind": "folder", "id": "01FLDFILE", "name": "Work", "enabled": true, "tag_policy": {"prefix": "[W] "}, "nodes": [
+      {"kind": "server", "tag": "de-1", "enabled": true, "body": {"type": "trojan", "server": "example-2.com", "server_port": 443, "password": "file"}},
+      {"kind": "server", "tag": "fr-1", "enabled": true, "body": {"type": "trojan", "server": "example-8.com", "server_port": 443, "password": "fr"}},
+      {"kind": "auto", "tag": "grp", "enabled": true, "group": {"group_type": "selector", "default": "de-1", "members": [
+        {"folder_id": "01FLDFILE", "tag": "de-1"}, {"folder_id": "01FLDFILE", "tag": "fr-1"}]}},
+      {"kind": "server", "tag": "de-2", "enabled": true, "body": {"type": "trojan", "server": "example-3.com", "server_port": 443, "password": "de2"},
+       "detour": {"folder_id": "01FLDFILE", "tag": "de-1"}}
+    ]},
+    {"kind": "server", "tag": "tokyo", "enabled": true, "body": {"type": "trojan", "server": "example-4.com", "server_port": 443, "password": "tokyo-file"}},
+    {"kind": "server", "tag": "osaka", "enabled": true, "body": {"type": "trojan", "server": "example-6.com", "server_port": 443, "password": "osaka"}},
+    {"kind": "server", "tag": "via-final", "enabled": true, "body": {"type": "trojan", "server": "example-5.com", "server_port": 443, "password": "vf"},
+     "detour": {"tag": "[W] de-1"}},
+    {"kind": "chain", "tag": "route", "enabled": true, "body": {"type": "chain"}, "hops": [
+      {"folder_id": "01SUBFILE", "tag": "US-1"}, {"folder_id": "01FLDFILE", "tag": "fr-1"}, {"tag": "tokyo"}, {"tag": "osaka"}]}
+  ]
+}`)
+
+		work := find(t, s, "Work")
+		wantDe1 := state.NodeLink{FolderID: "01FLDLOCAL", Tag: "de-1-2"}
+		wantFr := state.NodeLink{FolderID: "01FLDLOCAL", Tag: "fr-local"}
+		if d := member(t, work, "de-2").Detour; d == nil || *d != wantDe1 {
+			t.Errorf("detour члена на уникализированный член: %+v, ожидалось %+v", d, wantDe1)
+		}
+		if d := find(t, s, "via-final").Detour; d == nil || *d != wantDe1 {
+			t.Errorf("ссылка финальным тегом на уникализированный член: %+v, ожидалось %+v", d, wantDe1)
+		}
+		g := member(t, work, "grp").Group
+		if !reflect.DeepEqual(g.Members, []state.NodeLink{wantDe1, wantFr}) || g.Default != "de-1-2" {
+			t.Errorf("группа: члены %+v, умолчание %q", g.Members, g.Default)
+		}
+		wantHops := []state.NodeLink{{FolderID: "01SUBLOCAL", Tag: "US-1"}, wantFr, {Tag: "tokyo-2"}, {Tag: "osaka-local"}}
+		if hops := find(t, s, "route").Hops; !reflect.DeepEqual(hops, wantHops) {
+			t.Errorf("позиции цепочки %+v, ожидалось %+v", hops, wantHops)
+		}
+
+		out := emitted(t, s)
+		if got := out["[W] de-2"]; got == nil || got["detour"] != "[W] de-1-2" {
+			t.Errorf("сборка: detour члена %v", got)
+		}
+		if got := out["via-final"]; got == nil || got["detour"] != "[W] de-1-2" {
+			t.Errorf("сборка: detour корневого узла %v", got)
+		}
+		if got := out["route"]; got == nil || !reflect.DeepEqual(got["outbounds"], []interface{}{"US-1", "[W] fr-local", "tokyo-2", "osaka-local"}) {
+			t.Errorf("сборка: цепочка %v", got)
+		}
+		if got := out["[W] grp"]; got == nil || got["default"] != "[W] de-1-2" {
+			t.Errorf("сборка: группа %v", got)
+		}
+	})
+
+	t.Run("0.12", func(t *testing.T) {
+		s := state.New()
+		s.Sources = []state.Source{
+			{Node: server("hop", body("example-9.com", "hop-local")), ID: "01HOPLOCAL"},
+			{Node: state.Node{Kind: state.SourceKindFolder, Enabled: true}, ID: "01BOXLOCAL", Name: "Box",
+				Nodes: []state.Node{server("member", body("example-8.com", "member-local"))}},
+		}
+		importJSON(t, s, `{
+  "lx_backup": 1, "exported_by": {"app": "launcher", "version": "1.5.9", "platform": "darwin"}, "exported_at": "2025-06-15T15:06:40Z",
+  "servers": [
+    {"id": "01SRVHOP", "config_json": {"type": "trojan", "server": "example-2.com", "server_port": 443, "password": "hop-file"}, "node_tag": "hop"},
+    {"id": "01SRVDEP", "config_json": {"type": "trojan", "server": "example-3.com", "server_port": 443, "password": "dep"}, "node_tag": "dep",
+     "detour_node_source_id": "01SRVHOP", "detour_node_tag": "hop", "detour_node_label": "hop"},
+    {"id": "01SRVMEM", "config_json": {"type": "trojan", "server": "example-4.com", "server_port": 443, "password": "member-file"}, "node_tag": "member", "folder": "Box"},
+    {"id": "01SRVDEP2", "config_json": {"type": "trojan", "server": "example-5.com", "server_port": 443, "password": "dep2"}, "node_tag": "dep2",
+     "detour_node_source_id": "01SRVMEM", "detour_node_tag": "member", "detour_node_label": "member"}
+  ],
+  "chains": [{"id": "01CHN", "tag": "legacy-route", "chain": {"hops": ["member", "hop"]}}]
+}`)
+
+		wantHop := state.NodeLink{Tag: "hop-2"}
+		wantMember := state.NodeLink{FolderID: "01BOXLOCAL", Tag: "member-2"}
+		if d := find(t, s, "dep").Detour; d == nil || *d != wantHop {
+			t.Errorf("detour по id корневого сервера: %+v, ожидалось %+v", d, wantHop)
+		}
+		if d := find(t, s, "dep2").Detour; d == nil || *d != wantMember {
+			t.Errorf("detour по id сервера в папке: %+v, ожидалось %+v", d, wantMember)
+		}
+		if hops := find(t, s, "legacy-route").Hops; !reflect.DeepEqual(hops, []state.NodeLink{wantMember, wantHop}) {
+			t.Errorf("строковые позиции: %+v, ожидалось %+v", hops, []state.NodeLink{wantMember, wantHop})
+		}
+
+		out := emitted(t, s)
+		if got := out["dep"]; got == nil || got["detour"] != "hop-2" {
+			t.Errorf("сборка: detour по id корневого сервера %v", got)
+		}
+		if got := out["dep2"]; got == nil || got["detour"] != "member-2" {
+			t.Errorf("сборка: detour по id сервера в папке %v", got)
+		}
+		if got := out["legacy-route"]; got == nil || !reflect.DeepEqual(got["outbounds"], []interface{}{"member-2", "hop-2"}) {
+			t.Errorf("сборка: цепочка %v", got)
+		}
+	})
 }

@@ -372,6 +372,40 @@ func TestEmitE3_DanglingChainHopIsFailClosed(t *testing.T) {
 	}
 }
 
+// NODE_LINK.md §9.3 п. 2: две цепочки одной папки — два outbound'а, каждый со
+// своими позициями. Одна запись цепочки на источник собирала их в один: тег
+// первой, позиции последней, а вторая пропадала без предупреждения. Тег
+// цепочки папки тег-политику не проходит, позиции — финальные теги членов.
+func TestEmitE3_TwoChainsInOneFolderAreTwoOutbounds(t *testing.T) {
+	folder := canonFolder("F1", "[P] ", "",
+		canonServerNode("A", "A", "a.example", 443),
+		canonServerNode("B", "B", "b.example", 443),
+		configtypes.CanonicalNode{Kind: "chain", Tag: "via-a", Enabled: true,
+			Hops: []configtypes.NodeLink{{FolderID: "F1", Tag: "A"}, {FolderID: "F1", Tag: "B"}}},
+		configtypes.CanonicalNode{Kind: "chain", Tag: "via-b", Enabled: true,
+			Hops: []configtypes.NodeLink{{FolderID: "F1", Tag: "B"}, {FolderID: "F1", Tag: "A"}}},
+	)
+
+	res := runCanonicalBuild(t, []ProxySource{folder}, nil)
+
+	for tag, want := range map[string][]interface{}{
+		"via-a": {"[P] A", "[P] B"},
+		"via-b": {"[P] B", "[P] A"},
+	} {
+		obj := emittedObject(t, res, tag)
+		if obj == nil {
+			t.Errorf("цепочка %q не собралась: tags=%v broken=%+v", tag, emittedTags(res), res.BrokenChains)
+			continue
+		}
+		if got, _ := obj["outbounds"].([]interface{}); len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+			t.Errorf("позиции %q = %v, want %v", tag, obj["outbounds"], want)
+		}
+	}
+	if len(res.BrokenChains) != 0 || len(res.EmissionWarnings) != 0 {
+		t.Errorf("сборка без ошибок дала деградации: broken=%+v warnings=%v", res.BrokenChains, res.EmissionWarnings)
+	}
+}
+
 // ── §4.E.4 — Auto: фильтр enabled, пустая не эмитится, default ───────
 
 func TestEmitE4_AutoFiltersDisabledMembers(t *testing.T) {

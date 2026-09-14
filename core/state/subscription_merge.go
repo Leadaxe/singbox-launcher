@@ -24,6 +24,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // SubFetchMaterial — материализованный итог одного достоверного разбора тела:
@@ -34,6 +35,11 @@ type SubFetchMaterial struct {
 	// удалять «исчезнувших» — запрещено (SPEC 113-A: «исчез» неотличим от
 	// «остался за капом»). Для папки тем же запретом закрыто разыменование.
 	Truncated bool
+	// SourceID — id подписки, чьи это узлы. Нужен заливке в папку: ссылки
+	// узлов материала на соседей по той же подписке (`{folder_id: SourceID,
+	// tag}`) переуказываются на их копии в папке (repointFolderDetours).
+	// Пусто — такие ссылки не трогаются. Обновлению самой подписки не нужен.
+	SourceID string
 }
 
 // refreshMergedNode переносит пользовательские пометки со старого узла на
@@ -180,7 +186,10 @@ func MergeSubscriptionNodes(sub *Source, res *SubFetchMaterial, trusted bool) (b
 //     неотличим от «остался за капом», SPEC 113-A);
 //   - trusted=false → nodes[] не трогаются вообще (как у подписки);
 //   - Auto, приехавший заливкой, переуказывает members на узлы ПАПКИ
-//     (repointFolderAutoMembers); член без копии в папке — prune с warning.
+//     (repointFolderAutoMembers); член без копии в папке — prune с warning;
+//   - detour узла, приехавшего заливкой, на соседа по подписке (релей
+//     BYPASS) переуказывается на копию соседа в папке
+//     (repointFolderDetours); копии нет — detour остаётся на подписке.
 //
 // PendingDisabled у папки не существует (поле подписочное) — не трогается.
 //
@@ -270,6 +279,7 @@ func MergeFolderNodesFromSubscription(folder *Source, subURL string, res *SubFet
 	// сложился целиком: член мог приехать этой же заливкой и лечь в хвост позже
 	// самой группы.
 	warns = append(warns, repointFolderAutoMembers(folder, subURL, touched)...)
+	repointFolderDetours(folder, subURL, res.SourceID, touched)
 
 	after, _ := json.Marshal(folder.Nodes)
 	return !bytes.Equal(before, after), warns
@@ -302,12 +312,7 @@ func repointFolderAutoMembers(folder *Source, subURL string, touched map[string]
 	if folder == nil || len(touched) == 0 {
 		return nil
 	}
-	inFolder := make(map[string]bool, len(folder.Nodes))
-	for i := range folder.Nodes {
-		if nodeSubURL(&folder.Nodes[i]) == subURL {
-			inFolder[folder.Nodes[i].Tag] = true
-		}
-	}
+	inFolder := fillCopyTags(folder, subURL)
 
 	var warns []string
 	for i := range folder.Nodes {
@@ -343,6 +348,56 @@ func repointFolderAutoMembers(folder *Source, subURL string, touched map[string]
 		n.Group = &g
 	}
 	return warns
+}
+
+// repointFolderDetours переуказывает detour узлов, приехавших этой заливкой,
+// с узла ПОДПИСКИ на его копию в папке (NODE_LINK.md §6, «заливка подписки в
+// папку»).
+//
+// Материал заливки — узлы подписки как есть, и их detour адресует
+// подписку-источник: у владельца BYPASS это служебный релей `<тег> · relay`
+// той же подписки (core/config/relay_materialize.go). Оставь ссылку как есть
+// — и копия в папке дозванивалась бы через узел ПОДПИСКИ, а при выключенной
+// или удалённой подписке выпадала бы из конфига, хотя копия релея лежит
+// рядом.
+//
+// Правило то же, что у членов группы (repointFolderAutoMembers): копией цели
+// считается узел папки из ЭТОЙ ЖЕ заливки с тем же сырым тегом. Копии нет
+// (релей не лёг из-за занятого тега) — ссылка остаётся на подписке:
+// подменить цель соседним узлом папки нельзя (NODE_LINK.md §6 правило 3), а
+// снять detour значило бы молча пустить узел напрямую. Ссылки не на
+// подписку-источник — ручной detour пользователя, переживший merge, — не
+// трогаются.
+func repointFolderDetours(folder *Source, subURL, subID string, touched map[string]bool) {
+	subID = strings.TrimSpace(subID)
+	if folder == nil || subID == "" || len(touched) == 0 {
+		return
+	}
+	copies := fillCopyTags(folder, subURL)
+	for i := range folder.Nodes {
+		n := &folder.Nodes[i]
+		if n.Detour == nil || !touched[n.Tag] || nodeSubURL(n) != subURL {
+			continue
+		}
+		if strings.TrimSpace(n.Detour.FolderID) != subID || !copies[n.Detour.Tag] {
+			continue
+		}
+		// Новый экземпляр, а не правка по указателю: узел — поверхностная
+		// копия материала вызывающего (тот же довод, что у setNodeSubURL).
+		n.Detour = &NodeLink{FolderID: folder.ID, Tag: n.Detour.Tag}
+	}
+}
+
+// fillCopyTags — сырые теги узлов папки, принадлежащих заливке subURL: ими
+// адресуются копии узлов подписки.
+func fillCopyTags(folder *Source, subURL string) map[string]bool {
+	out := make(map[string]bool, len(folder.Nodes))
+	for i := range folder.Nodes {
+		if nodeSubURL(&folder.Nodes[i]) == subURL {
+			out[folder.Nodes[i].Tag] = true
+		}
+	}
+	return out
 }
 
 // nodeSubURL — subUrl узла ("" у ручного узла и узла без origin).
