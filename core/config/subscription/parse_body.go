@@ -418,6 +418,20 @@ func (st *bodyParseState) accept(node *configtypes.ParsedNode, originKind, origi
 		return
 	}
 
+	// NODE_SECTIONS.md §6: узел tailnet из ПОДПИСКИ — info, а не отказ.
+	//
+	// Узел приезжает, но полезен он не сам по себе: идентичность машины в
+	// tailnet живёт в каталоге состояния ЭТОЙ машины, ключ провайдера
+	// одноразовый, а связку (MagicDNS + маршрут на подсети tailnet) подписка
+	// не приносит — её у узла подписки нет и быть не может, потому что она
+	// ссылается на финальный тег, которого у провайдера нет. Молчать здесь
+	// нельзя: пользователь увидел бы узел в списке и узнал бы о неработающих
+	// именах `*.ts.net` уже в бою. Отказывать — тоже: узел законен, а
+	// связку он получает у себя.
+	if node.Scheme == configtypes.SchemeTailscale {
+		node.AddWarning(WarnTailscaleFromSubscription)
+	}
+
 	entry := &ParsedBodyEntry{
 		Node:       node,
 		OriginKind: originKind,

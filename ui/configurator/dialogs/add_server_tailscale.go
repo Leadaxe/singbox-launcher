@@ -23,6 +23,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/locale"
 )
 
@@ -35,17 +36,6 @@ const addServerTailscaleNoteText = "One-off keys are consumed at first login; th
 // каталог состояния узла, и на него же ссылаются DNS-сервер и правило
 // маршрута из секций.
 const tailscaleDefaultTag = "tailscale"
-
-// tailscaleDNSTag — тег DNS-сервера MagicDNS в секциях узла. Локальный: на
-// сборке он получает префикс финального тега узла, поэтому два узла tailnet
-// своими серверами не сталкиваются.
-const tailscaleDNSTag = "ts-dns"
-
-// tailscaleCGNATRange — адресное пространство tailnet (RFC 6598, CGNAT).
-const tailscaleCGNATRange = "100.64.0.0/10"
-
-// tailscaleMagicDNSSuffix — доменный суффикс MagicDNS.
-const tailscaleMagicDNSSuffix = ".ts.net"
 
 // tailscaleFields — виджеты варианта.
 type tailscaleFields struct {
@@ -129,24 +119,19 @@ func tailscaleDocument(tag string, t *tailscaleFields) ([]byte, error) {
 	}
 	putIfNotEmpty(endpoint, "exit_node", t.exitNode.Text)
 
+	// Связка — не литерал формы: её собирает config.TailscaleBundleFragments,
+	// та же функция, которой голый узел получает связку по умолчанию на
+	// разборе и на импорте. Свой литерал здесь разошёлся бы с ними на первой
+	// же правке нормы (NODE_SECTIONS.md §6).
+	frags := corestate.TailscaleBundleFragments()
 	doc := map[string]interface{}{
 		"endpoints": []interface{}{endpoint},
 		"dns": map[string]interface{}{
-			"servers": []interface{}{map[string]interface{}{
-				"type":     "tailscale",
-				"tag":      tailscaleDNSTag,
-				"endpoint": "@self",
-			}},
-			"rules": []interface{}{map[string]interface{}{
-				"domain_suffix": []interface{}{tailscaleMagicDNSSuffix},
-				"server":        tailscaleDNSTag,
-			}},
+			"servers": rawList(frags.DNSServers),
+			"rules":   rawList(frags.DNSRules),
 		},
 		"route": map[string]interface{}{
-			"rules": []interface{}{map[string]interface{}{
-				"ip_cidr":  []interface{}{tailscaleCGNATRange},
-				"outbound": "@self",
-			}},
+			"rules": rawList(frags.RouteRules),
 		},
 	}
 	return json.MarshalIndent(doc, "", "  ")
@@ -159,4 +144,15 @@ func putIfNotEmpty(m map[string]interface{}, key, value string) {
 	if v := strings.TrimSpace(value); v != "" {
 		m[key] = v
 	}
+}
+
+// rawList — список готовых фрагментов как элементы JSON-документа.
+// json.RawMessage маршалится телом, поэтому порядок ключей внутри фрагмента
+// остаётся тем, каким его собрала норма.
+func rawList(list []json.RawMessage) []interface{} {
+	out := make([]interface{}, 0, len(list))
+	for _, raw := range list {
+		out = append(out, raw)
+	}
+	return out
 }
