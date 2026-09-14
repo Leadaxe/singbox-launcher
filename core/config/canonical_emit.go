@@ -266,6 +266,10 @@ var errCanonicalChainDeferred = fmt.Errorf("chain node is built on pass 2")
 // X not found among nodes and Directions». Подменять непойманную ссылку
 // молча нельзя: маршрут без хопа — другой маршрут.
 //
+// Каждый узел-цепочка даёт СВОЮ запись ProxySource.Chains: у папки их может
+// быть несколько, и одна запись на источник собирала их в один outbound —
+// тег первой цепочки, позиции последней (NODE_LINK.md §9.3 п. 2).
+//
 // Мутирует parserConfig — как и остальные проходы 0/2, по копии, собранной
 // для генерации.
 func ResolveCanonicalChainHops(parserConfig *ParserConfig, targets *NodeLinkTargets) []EmissionWarning {
@@ -279,6 +283,7 @@ func ResolveCanonicalChainHops(parserConfig *ParserConfig, targets *NodeLinkTarg
 		if cs == nil || ps.Disabled {
 			continue
 		}
+		var built []configtypes.BuiltChain
 		for ni := range cs.Nodes {
 			cn := &cs.Nodes[ni]
 			if cn.Kind != canonicalKindChain || !cn.Enabled || len(cn.Hops) == 0 {
@@ -312,7 +317,15 @@ func ResolveCanonicalChainHops(parserConfig *ParserConfig, targets *NodeLinkTarg
 				hops = append(hops, res.Tag)
 			}
 			// Настройки маршрута — из тела узла, позиции — свежерезолвнутые.
-			ps.Chain = configtypes.ChainFromBody(cn.Body, hops)
+			built = append(built, configtypes.BuiltChain{
+				Tag:   strings.TrimSpace(cn.Tag),
+				Chain: configtypes.ChainFromBody(cn.Body, hops),
+			})
+		}
+		// Источник без собираемых цепочек записей не получает: сборочную
+		// форму, положенную вызывающим напрямую, проход не затирает.
+		if len(built) > 0 {
+			ps.Chains = built
 		}
 	}
 	return warnings
