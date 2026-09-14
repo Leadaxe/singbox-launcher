@@ -965,7 +965,8 @@ func mergeFolderItem(s *state.State, item decodedSource, folderAt *folderIndex, 
 		}
 		// Финальный тег в файле — с политикой ПАПКИ ФАЙЛА: ссылка без
 		// folder_id называет член тем именем, которое он носил там.
-		info.landed.member(item.FileFolderID, fileTag, strings.TrimSpace(item.Src.TagPolicy.FinalTag(fileTag)), here, added)
+		fileFinal, _ := state.NodeLinkFinalTag(item.Src.TagPolicy, fileTag)
+		info.landed.member(item.FileFolderID, fileTag, fileFinal, here, added)
 	}
 }
 

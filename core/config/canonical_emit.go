@@ -239,9 +239,14 @@ func buildCanonicalAuto(cs *configtypes.CanonicalSource, cn *configtypes.Canonic
 	// чтобы форма узла-группы совпадала с формой импортированной группы.
 	outbound[configtypes.GroupMembersKey] = []interface{}{}
 
+	// Группа адресуется СЫРЫМ тегом, как и всякий узел контейнера
+	// (NODE_LINK.md §5.2): ссылка на неё переживает смену tag_policy. Пока
+	// IdentityTag здесь не ставился, словарь целей брал финальный тег, и
+	// позиция на группу рвалась от правки префикса.
 	node := &ParsedNode{
 		Scheme:      configtypes.SchemeGroup,
 		Outbound:    outbound,
+		IdentityTag: cn.Tag,
 		SourceIndex: configtypes.UnsetSourceIndex,
 	}
 	applyCanonicalDisplay(node, cn)

@@ -279,7 +279,13 @@ func richState10() *state.State {
 				Kind: state.SourceKindAuto, Enabled: true, Tag: "auto-eu",
 				Group: &state.AutoGroup{
 					GroupType: state.AutoGroupURLTest,
-					Members:   []state.NodeLink{{Tag: "Amsterdam"}, {Tag: "Zurich"}},
+					// Члены — парой (NODE_LINK.md §2): форма `{tag}` внутри
+					// контейнера — dev-форма, её поднимает чтение, и круг
+					// начинался бы с правки.
+					Members: []state.NodeLink{
+						{FolderID: "01FLD0000000000000000000", Tag: "Amsterdam"},
+						{FolderID: "01FLD0000000000000000000", Tag: "Zurich"},
+					},
 				},
 			},
 		},

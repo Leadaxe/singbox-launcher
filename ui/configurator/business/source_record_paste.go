@@ -126,6 +126,13 @@ func normalizePastedRecord(src *corestate.Source) {
 		src.Nodes = nil
 		normalizePastedNode(&src.Node)
 	}
+	// Запись могла скопироваться из сборки до 1.6.0 — со ссылками в dev-форме
+	// (член группы без folder_id, позиция на группу финальным тегом). Правило
+	// то же, что у загрузки состояния, и после переписи id: подниматься
+	// ссылка обязана уже к НОВОМУ адресу контейнера.
+	one := []corestate.Source{*src}
+	corestate.NormalizeNodeLinks(one, nil)
+	*src = one[0]
 }
 
 // normalizePastedNode — узел записи: пустой kind читается как server (так

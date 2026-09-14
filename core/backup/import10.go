@@ -483,7 +483,7 @@ func ruleEntryLabel(name string, index int) string {
 //     Направление, тег замены, известная цель приёмника, зарезервированный
 //     литерал (importKnownTags, reservedTargetLiteral). Корень сильнее члена
 //     папки — ровно как у Resolve, который туда смотрит первым;
-//   - тег совпал с финальным тегом (TagPolicy.FinalTag) РОВНО ОДНОГО члена
+//   - тег совпал с финальным тегом (state.NodeLinkFinalTag) РОВНО ОДНОГО члена
 //     папки или подписки,
 //
 // — в `{folder_id: <id контейнера здесь>, tag: <сырой тег члена здесь>}`.
@@ -508,31 +508,14 @@ func ruleEntryLabel(name string, index int) string {
 // РЕЗУЛЬТАТА — член может лежать в локальной папке, которой в файле нет, или
 // в папке файла, объявленной ниже ссылки.
 func normalizeMemberLinks10(s *state.State, merged *mergedInfo, rootNames []string) {
-	byFinal := map[string][]state.NodeLink{}
-	for i := range s.Sources {
-		src := &s.Sources[i]
-		if src.Kind != state.SourceKindFolder && src.Kind != state.SourceKindSubscription {
-			continue
-		}
-		if src.ID == "" {
-			continue // адресовать контейнер без id нечем
-		}
-		for j := range src.Nodes {
-			n := &src.Nodes[j]
-			raw := strings.TrimSpace(n.Tag)
-			// Неразобранная запись в сборку не едет вовсе и целью ссылки
-			// быть не может (convert_v7.go, resolveImportedHops — то же).
-			if raw == "" || n.IsUnsupported() {
-				continue
-			}
-			here := state.NodeLink{FolderID: src.ID, Tag: n.Tag}
-			if merged.landed.renamed[here] {
-				continue
-			}
-			final := strings.TrimSpace(src.TagPolicy.FinalTag(raw))
-			byFinal[final] = append(byFinal[final], here)
-		}
-	}
+	// Индекс финальных тегов — общий с нормализацией ссылок состояния
+	// (state.NodeLinkFinalIndex): те же кандидаты (неразобранная запись целью
+	// не бывает, контейнер с переменными в политике кандидатов не даёт) и та
+	// же нормализация имени, что у сборки. Член, которого файл добавил под
+	// другим тегом, отсеивается: здешнее имя ему дало слияние.
+	byFinal := state.NodeLinkFinalIndex(s.Sources, func(here state.NodeLink) bool {
+		return merged.landed.renamed[here]
+	})
 	fileTier := make(map[string][]state.NodeLink, len(merged.landed.fileFinals))
 	for final, hits := range merged.landed.fileFinals {
 		fileTier[final] = append([]state.NodeLink(nil), hits...)
@@ -540,11 +523,13 @@ func normalizeMemberLinks10(s *state.State, merged *mergedInfo, rootNames []stri
 	for _, sub := range linkedSubscriptions(s, merged) {
 		for j := range sub.Nodes {
 			n := &sub.Nodes[j]
-			raw := strings.TrimSpace(n.Tag)
-			if raw == "" || n.IsUnsupported() {
+			if n.IsUnsupported() {
 				continue
 			}
-			final := strings.TrimSpace(sub.TagPolicy.FinalTag(raw))
+			final, ok := state.NodeLinkFinalTag(sub.TagPolicy, n.Tag)
+			if !ok {
+				continue
+			}
 			fileTier[final] = append(fileTier[final], state.NodeLink{FolderID: sub.ID, Tag: n.Tag})
 		}
 	}

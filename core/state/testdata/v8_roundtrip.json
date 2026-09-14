@@ -99,6 +99,7 @@
             "group_type": "urltest",
             "members": [
               {
+                "folder_id": "01J00000000000000000000FLD",
                 "tag": "DE-1"
               }
             ],
@@ -167,9 +168,11 @@
             "group_type": "urltest",
             "members": [
               {
+                "folder_id": "01J00000000000000000000SUB",
                 "tag": "NL-1"
               },
               {
+                "folder_id": "01J00000000000000000000SUB",
                 "tag": "DE-2"
               }
             ],

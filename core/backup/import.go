@@ -398,6 +398,11 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 	// объявленной ниже неё).
 	switch dec.Format {
 	case FileFormat10:
+		// Dev-формы ссылок (член группы в контейнере без folder_id, позиция на
+		// группу финальным тегом) — тем же правилом, что у чтения состояния
+		// (state.NormalizeNodeLinks), и ДО подъёма корневых ссылок: тот
+		// работает уже с парами в норме.
+		state.NormalizeNodeLinks(s.Sources, s.Directions)
 		// 1.0: ссылка без folder_id адресует корень ФИНАЛЬНЫХ тегов, и на член
 		// папки её поднимает только однозначный финальный тег (§4, §6).
 		normalizeMemberLinks10(s, &merged, importKnownTags(opts, dec, s))
@@ -405,6 +410,7 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 		// 0.x: позиции цепочек приехали строками (контракт 0.x адреса папок не
 		// несёт) и сопоставляются по сырым тегам узлов контейнеров.
 		resolveImportedHops(s.Sources, s.Directions, &merged)
+		state.NormalizeNodeLinks(s.Sources, s.Directions)
 	}
 
 	s.Rules = append(s.Rules, dec.Rules...)

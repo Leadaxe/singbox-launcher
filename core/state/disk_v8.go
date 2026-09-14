@@ -67,6 +67,11 @@ func parseV8(data []byte) (*State, error) {
 			return nil, err
 		}
 	}
+	// Dev-формы ссылок сборок 1.6.0 до выпуска поднимаются до нормы NodeLink
+	// здесь, при чтении (nodelink_normalize.go). Путь общий для v8 и
+	// мигрированного v7; правило идемпотентно, поэтому перезапись файла на
+	// загрузке не нужна.
+	NormalizeNodeLinks(raw.Sources, raw.Directions)
 
 	s := &State{
 		Version:            raw.Meta.Version,

@@ -1087,6 +1087,9 @@
   "it has no node %q": {
     "value": "узла %q в нём нет"
   },
+  "it has no node %q — this looks like the final tag of group %q; pick the target again": {
+    "value": "узла %q в нём нет — похоже на финальный тег группы %q, выберите цель заново"
+  },
   "target %q is not among nodes, Directions and folder replacements": {
     "value": "цели %q нет среди узлов, Направлений и замен"
   },

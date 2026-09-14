@@ -50,6 +50,13 @@ type NodeLinkTargets struct {
 	// Направлений, replace-теги, системные теги шаблона. Ссылка на них
 	// легальна (SPEC §4.E.3), но ParsedNode за ними нет.
 	rootNames map[string]bool
+	// groupFinals — провайдерские группы контейнеров: folderId → ФИНАЛЬНЫЙ
+	// тег группы → её сырой тег. Только для подсказки: позиция, записанная
+	// финальным тегом группы (так писала форма до 1.6.0), по нему НЕ
+	// разрешается — ссылка на финальный тег протухает от правки tag_policy, и
+	// принять её значило бы узаконить форму, которую норма запрещает
+	// (NODE_LINK.md §2 правило 3).
+	groupFinals map[string]map[string]string
 }
 
 // BuildNodeLinkTargets собирает словарь целей.
@@ -64,9 +71,10 @@ func BuildNodeLinkTargets(
 	extraRootTags []string,
 ) *NodeLinkTargets {
 	t := &NodeLinkTargets{
-		byFolder:  make(map[string]map[string]*ParsedNode),
-		byRootTag: make(map[string]*ParsedNode),
-		rootNames: make(map[string]bool, len(extraRootTags)),
+		byFolder:    make(map[string]map[string]*ParsedNode),
+		byRootTag:   make(map[string]*ParsedNode),
+		rootNames:   make(map[string]bool, len(extraRootTags)),
+		groupFinals: make(map[string]map[string]string),
 	}
 	for i := range proxies {
 		cs := proxies[i].Canonical
@@ -87,6 +95,16 @@ func BuildNodeLinkTargets(
 				}
 				if _, dup := byRaw[raw]; !dup {
 					byRaw[raw] = n
+				}
+				if n.Scheme == configtypes.SchemeGroup && n.Tag != "" && n.Tag != raw {
+					finals := t.groupFinals[cs.FolderID]
+					if finals == nil {
+						finals = make(map[string]string)
+						t.groupFinals[cs.FolderID] = finals
+					}
+					if _, dup := finals[n.Tag]; !dup {
+						finals[n.Tag] = raw
+					}
 				}
 			}
 			continue
@@ -207,6 +225,12 @@ func (t *NodeLinkTargets) Resolve(link configtypes.NodeLink) NodeLinkResolution 
 		}
 		if n := byRaw[tag]; n != nil {
 			return NodeLinkResolution{Node: n, Tag: n.Tag}
+		}
+		if raw, ok := t.groupFinals[folder][tag]; ok {
+			// Не разрешаем, а подсказываем: пользователь видит, какую группу
+			// имела в виду ссылка, и выбирает позицию заново — форма запишет
+			// сырой тег.
+			return NodeLinkResolution{Problem: locale.Tf(emitLinkGroupFinalTagText, tag, raw)}
 		}
 		return NodeLinkResolution{Problem: locale.Tf(emitLinkNodeMissingText, tag)}
 	}
