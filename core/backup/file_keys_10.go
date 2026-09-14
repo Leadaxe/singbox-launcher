@@ -149,6 +149,9 @@ func (sc *unknownScan) scanSourceBody10(where string, item map[string]json.RawMe
 	if group, ok := rawObject(item, "group"); ok {
 		sc.object(joinPath(where, "group"), group, group10Keys)
 		sc.array(group, joinPath(where, "group")+".members", "members", link10Keys, "tag", nil)
+		// Умолчание — ссылка той же формы, что член. Строкой (dev-форма)
+		// обходить нечего: её терпит чтение группы (state.AutoGroup).
+		sc.nested2(group, joinPath(where, "group"), "default", link10Keys)
 	}
 	if fold, ok := rawObject(item, "fold"); ok {
 		sc.object(joinPath(where, "fold"), fold, fold10Keys)

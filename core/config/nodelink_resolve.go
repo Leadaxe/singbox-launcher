@@ -321,7 +321,7 @@ func ApplyCanonicalNodeLinks(
 		if n == nil || dropped[n] || n.Scheme != configtypes.SchemeGroup {
 			continue
 		}
-		if len(n.CanonicalGroupMembers) == 0 && n.CanonicalGroupDefault == "" {
+		if len(n.CanonicalGroupMembers) == 0 && n.CanonicalGroupDefault == nil {
 			continue // импортированная группа мостового пути — её состав уже сведён
 		}
 		for _, w := range resolveCanonicalGroup(n, targets, dropped) {
@@ -493,31 +493,24 @@ func resolveCanonicalGroup(n *ParsedNode, targets *NodeLinkTargets, dropped map[
 	// default — только у selector и только из состава: ядро отвергает ВЕСЬ
 	// конфиг, если умолчание не входит в группу.
 	delete(n.Outbound, "default")
-	if def := strings.TrimSpace(n.CanonicalGroupDefault); def != "" {
+	if def := n.CanonicalGroupDefault; def != nil && strings.TrimSpace(def.Tag) != "" {
 		groupType, _ := n.Outbound["type"].(string)
 		if groupType != "selector" {
 			// urltest со stray default не плодим (форма канона).
 			return warnings
 		}
-		res := targets.Resolve(configtypes.NodeLink{FolderID: canonicalGroupFolder(n), Tag: def})
+		// Умолчание — такая же ссылка, как член: резолв по СВОЕМУ адресу, а
+		// не по контейнеру первого члена.
+		res := targets.Resolve(*def)
 		if res.Problem == "" {
 			if _, inList := seen[res.Tag]; inList {
 				n.Outbound["default"] = res.Tag
 				return warnings
 			}
 		}
-		w := locale.Tf(emitGroupDefaultDroppedText, n.Tag, def)
+		w := locale.Tf(emitGroupDefaultDroppedText, n.Tag, def.Tag)
 		warnings = append(warnings, w)
 		debuglog.WarnLog("nodelink: %s", w)
 	}
 	return warnings
-}
-
-// canonicalGroupFolder — папка, в чьём пространстве адресован default группы:
-// та же, что у её членов (default — сырой тег члена, SPEC Т2).
-func canonicalGroupFolder(n *ParsedNode) string {
-	if len(n.CanonicalGroupMembers) > 0 {
-		return n.CanonicalGroupMembers[0].FolderID
-	}
-	return ""
 }

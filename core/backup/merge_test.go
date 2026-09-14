@@ -1038,8 +1038,8 @@ func TestImportLinksFollowMergeAddresses(t *testing.T) {
 			t.Errorf("ссылка финальным тегом на уникализированный член: %+v, ожидалось %+v", d, wantDe1)
 		}
 		g := member(t, work, "grp").Group
-		if !reflect.DeepEqual(g.Members, []state.NodeLink{wantDe1, wantFr}) || g.Default != "de-1-2" {
-			t.Errorf("группа: члены %+v, умолчание %q", g.Members, g.Default)
+		if !reflect.DeepEqual(g.Members, []state.NodeLink{wantDe1, wantFr}) || g.Default == nil || *g.Default != wantDe1 {
+			t.Errorf("группа: члены %+v, умолчание %+v", g.Members, g.Default)
 		}
 		wantHops := []state.NodeLink{{FolderID: "01SUBLOCAL", Tag: "US-1"}, wantFr, {Tag: "tokyo-2"}, {Tag: "osaka-local"}}
 		if hops := find(t, s, "route").Hops; !reflect.DeepEqual(hops, wantHops) {

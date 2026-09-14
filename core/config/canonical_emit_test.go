@@ -463,7 +463,7 @@ func TestEmitE4_SelectorKeepsTypeAndDefaultDropsForeign(t *testing.T) {
 		Kind: "auto", Tag: "grp", Enabled: true,
 		Group: &configtypes.CanonicalAutoGroup{
 			GroupType: "selector",
-			Default:   "NL-1",
+			Default:   &configtypes.NodeLink{FolderID: "F1", Tag: "NL-1"},
 			Members:   []configtypes.NodeLink{{FolderID: "F1", Tag: "NL-1"}},
 		},
 	}
@@ -482,7 +482,7 @@ func TestEmitE4_SelectorKeepsTypeAndDefaultDropsForeign(t *testing.T) {
 	}
 
 	// default вне состава — снимается с предупреждением.
-	auto.Group.Default = "ghost"
+	auto.Group.Default = &configtypes.NodeLink{FolderID: "F1", Tag: "ghost"}
 	res2 := runCanonicalBuild(t, []ProxySource{
 		canonFolder("F1", "[P] ", "", canonServerNode("NL-1", "NL-1", "nl.example", 443), auto),
 	}, nil)

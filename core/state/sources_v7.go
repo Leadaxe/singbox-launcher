@@ -15,6 +15,8 @@ package state
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"strings"
 
 	"singbox-launcher/core/config/configtypes"
 )
@@ -101,12 +103,77 @@ type AutoGroup struct {
 	// GroupType: "selector" | "urltest"; импортированный selector остаётся
 	// selector'ом.
 	GroupType string `json:"group_type"`
-	// Default — selector only; СЫРОЙ тег члена, обязан входить в состав.
-	// Живёт здесь, а не в AutoStrategy: default member-зависим (strategy-К2),
-	// а AutoStrategy переиспользуется твинами/replace, где default'а нет.
-	Default  string       `json:"default,omitempty"`
+	// Default — selector only; ссылка NodeLink на член группы, обязана
+	// входить в состав (NODE_LINK.md §4.1). Ссылкой, а не сырым тегом: члены
+	// группы вправе лежать в разных контейнерах, и тег без адреса называл
+	// узел в контейнере первого члена — перенос одного члена молча снимал
+	// умолчание со второго. Живёт здесь, а не в AutoStrategy: default
+	// member-зависим (strategy-К2), а AutoStrategy переиспользуется
+	// твинами/replace, где default'а нет.
+	//
+	// Чтение терпит строку (сырой тег) — форму сборок 1.6.0 до выпуска
+	// (UnmarshalJSON); до пары её доводит NormalizeNodeLinks (правило S2).
+	Default  *NodeLink    `json:"default,omitempty"`
 	Members  []NodeLink   `json:"members"`
 	Strategy AutoStrategy `json:"strategy,omitempty"`
+}
+
+// UnmarshalJSON читает группу, терпя `default` строкой: сырой тег члена
+// становится корневой формой `{tag}`, адрес ей выдаёт нормализация ссылок по
+// составу (NodeLink S2). Пустая строка и null — умолчания нет. Значение
+// другого типа — ошибка типа, как у любого поля модели.
+func (g *AutoGroup) UnmarshalJSON(data []byte) error {
+	type autoGroupAlias AutoGroup
+	var in struct {
+		autoGroupAlias
+		// Default перекрывает одноимённое поле алиаса: у внешнего поля
+		// глубина меньше, и декодер кладёт значение сюда как есть.
+		Default json.RawMessage `json:"default,omitempty"`
+	}
+	if err := json.Unmarshal(data, &in); err != nil {
+		return err
+	}
+	def, err := decodeGroupDefault(in.Default)
+	if err != nil {
+		return err
+	}
+	*g = AutoGroup(in.autoGroupAlias)
+	g.Default = def
+	return nil
+}
+
+// decodeGroupDefault — `default` группы: объект NodeLink или строка сырого
+// тега (dev-форма).
+func decodeGroupDefault(raw json.RawMessage) (*NodeLink, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return nil, nil
+	}
+	switch trimmed[0] {
+	case '"':
+		var tag string
+		if err := json.Unmarshal(raw, &tag); err != nil {
+			return nil, err
+		}
+		if tag = strings.TrimSpace(tag); tag == "" {
+			return nil, nil
+		}
+		return &NodeLink{Tag: tag}, nil
+	case '{':
+		var link NodeLink
+		if err := json.Unmarshal(raw, &link); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(link.Tag) == "" {
+			return nil, nil
+		}
+		return &link, nil
+	}
+	return nil, &json.UnmarshalTypeError{
+		Value: "default " + trimmed,
+		Type:  reflect.TypeOf(NodeLink{}),
+		Field: "default",
+	}
 }
 
 const (

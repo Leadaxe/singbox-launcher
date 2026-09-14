@@ -18,6 +18,12 @@
 //
 //   - S1 — член `{tag}` группы ВНУТРИ контейнера C → `{C, tag}`. Сборка так его
 //     и трактует (§5.1 № 8), форма просто становится явной.
+//   - S2 — умолчание группы без folder_id (строкой читается как `{tag}`, см.
+//     AutoGroup.UnmarshalJSON): ровно один член с этим тегом → копия его
+//     ссылки; иначе `{контейнер первого члена, tag}` — прежняя трактовка
+//     сборки; членов нет → `{C, tag}` в контейнере, `{tag}` в корне. У
+//     корневой группы умолчание, совпавшее с корневым членом `{tag}`, уже в
+//     норме и не трогается.
 //   - S3 — пара `{F, T}` в detour или позиции, где F — контейнер, T не сырой
 //     тег ни одного узла F и T — финальный тег (политика F без суффикса
 //     уникализации) ровно одного узла F, и это группа → `{F, сырой тег
@@ -169,11 +175,57 @@ func (nz *linkNormalizer) node(n *Node, space string) {
 	for i := range n.Hops {
 		nz.pairToGroup(&n.Hops[i])
 	}
-	if n.Group != nil && space != "" {
-		for i := range n.Group.Members {
-			nz.memberInContainer(&n.Group.Members[i], space)
+	if n.Group != nil {
+		if space != "" {
+			for i := range n.Group.Members {
+				nz.memberInContainer(&n.Group.Members[i], space)
+			}
+		}
+		// Умолчание — после членов: его адрес выводится из уже поднятого
+		// состава.
+		nz.groupDefault(n.Group, space)
+	}
+}
+
+// groupDefault — S2: умолчание группы получает адрес члена, которого
+// называет.
+func (nz *linkNormalizer) groupDefault(g *AutoGroup, space string) {
+	def := g.Default
+	if def == nil || strings.TrimSpace(def.FolderID) != "" || strings.TrimSpace(def.Tag) == "" {
+		return
+	}
+	effective := func(link NodeLink) NodeLink {
+		if strings.TrimSpace(link.FolderID) == "" {
+			link.FolderID = space
+		}
+		return link
+	}
+	if space == "" {
+		for _, m := range g.Members {
+			if strings.TrimSpace(m.FolderID) == "" && m.Tag == def.Tag {
+				return // корневой член с этим именем — умолчание уже в норме
+			}
 		}
 	}
+	var hits []NodeLink
+	for _, m := range g.Members {
+		if m.Tag == def.Tag {
+			hits = append(hits, m)
+		}
+	}
+	next := NodeLink{FolderID: space, Tag: def.Tag}
+	switch {
+	case len(hits) == 1:
+		next = effective(hits[0])
+	case len(g.Members) > 0:
+		// Прежняя трактовка сборки: сырой тег в контейнере первого члена.
+		next.FolderID = effective(g.Members[0]).FolderID
+	}
+	if next == *def {
+		return
+	}
+	g.Default = &next
+	nz.lifted++
 }
 
 // memberInContainer — S1: член группы внутри контейнера без folder_id

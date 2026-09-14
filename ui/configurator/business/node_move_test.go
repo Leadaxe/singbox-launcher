@@ -2,6 +2,7 @@ package business
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 
 	corestate "singbox-launcher/core/state"
@@ -164,7 +165,7 @@ func TestMoveNodeToFolder_CarriesMarksAndRepointsLinks(t *testing.T) {
 				Kind: corestate.SourceKindAuto, Tag: "auto-nl", Enabled: true,
 				Group: &corestate.AutoGroup{
 					GroupType: corestate.AutoGroupSelector,
-					Default:   "NL-1",
+					Default:   &corestate.NodeLink{FolderID: "01SRC", Tag: "NL-1"},
 					Members:   []corestate.NodeLink{{FolderID: "01SRC", Tag: "NL-1"}},
 				},
 			},
@@ -210,8 +211,8 @@ func TestMoveNodeToFolder_CarriesMarksAndRepointsLinks(t *testing.T) {
 	if g.Members[0].FolderID != "01DST" || g.Members[0].Tag != "NL-1" {
 		t.Fatalf("член группы не переписан: %+v", g.Members[0])
 	}
-	if g.Default != "NL-1" {
-		t.Fatalf("умолчание селектора разъехалось с составом: %q", g.Default)
+	if g.Default == nil || *g.Default != g.Members[0] {
+		t.Fatalf("умолчание селектора разъехалось с составом: %+v", g.Default)
 	}
 	if h := m.Sources[4].Hops[0]; h.FolderID != "01ELSE" || h.Tag != "NL-1" {
 		t.Fatalf("переписана ЧУЖАЯ ссылка на одноимённый тег другой папки: %+v", h)
@@ -660,5 +661,58 @@ func TestCopyNodeToRoot_KeepsSubURLAndOriginal(t *testing.T) {
 	// подписки оригинал (та же ловушка, что у copy в папку).
 	if got.Origin == m.Sources[0].Nodes[0].Origin {
 		t.Fatalf("копия делит Origin с оригиналом")
+	}
+}
+
+// NODE_LINK.md §4.1, §9.3 п. 4: умолчание группы — ссылка NodeLink, а не
+// сырой тег в контейнере первого члена. Перенос одного члена в другую папку
+// переписывает его адрес и не трогает умолчание на втором — на сборке
+// селектор держит прежний выбор. Пока умолчание было строкой, оно искалось в
+// папке ПЕРВОГО члена (уже переехавшего) и молча снималось.
+func TestMoveNodeToFolder_GroupDefaultOnOtherMemberSurvivesBuild(t *testing.T) {
+	m := &wizardmodels.WizardModel{Sources: []corestate.Source{
+		{
+			ID: "01FA", Name: "A",
+			Node: corestate.Node{Kind: corestate.SourceKindFolder, Enabled: true},
+			Nodes: []corestate.Node{
+				renameNode(t, "x", renameHopURI, nil),
+				renameNode(t, "y", renameDependentURI, nil),
+			},
+		},
+		moveTestFolder("01FB", "B"),
+		{
+			ID: "01PICK", Label: "Pick",
+			Node: corestate.Node{
+				Kind: corestate.SourceKindAuto, Tag: "pick", Enabled: true,
+				Group: &corestate.AutoGroup{
+					GroupType: corestate.AutoGroupSelector,
+					Default:   &corestate.NodeLink{FolderID: "01FA", Tag: "y"},
+					Members: []corestate.NodeLink{
+						{FolderID: "01FA", Tag: "x"},
+						{FolderID: "01FA", Tag: "y"},
+					},
+				},
+			},
+		},
+	}}
+
+	if _, err := MoveNodeToFolder(m, 0, "x", "01FB"); err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	g := m.Sources[2].Group
+	wantMembers := []corestate.NodeLink{{FolderID: "01FB", Tag: "x"}, {FolderID: "01FA", Tag: "y"}}
+	if !reflect.DeepEqual(g.Members, wantMembers) {
+		t.Fatalf("члены после переноса = %+v, want %+v", g.Members, wantMembers)
+	}
+	if g.Default == nil || *g.Default != (corestate.NodeLink{FolderID: "01FA", Tag: "y"}) {
+		t.Fatalf("умолчание на НЕперенесённом члене тронуто переносом: %+v", g.Default)
+	}
+
+	pick := buildNodesByTag(t, m)["pick"]
+	if pick == nil {
+		t.Fatal("группа не собралась")
+	}
+	if pick["default"] != "y" {
+		t.Fatalf("сборка сняла умолчание: default=%v, outbounds=%v", pick["default"], pick["outbounds"])
 	}
 }

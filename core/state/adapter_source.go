@@ -191,7 +191,7 @@ func canonicalNodeProjection(n *Node) configtypes.CanonicalNode {
 	if n.Group != nil {
 		g := &configtypes.CanonicalAutoGroup{
 			GroupType: n.Group.GroupType,
-			Default:   n.Group.Default,
+			Default:   canonicalLink(n.Group.Default),
 			Options:   AutoStrategyOptions(n.Group.Strategy),
 		}
 		g.Members = make([]configtypes.NodeLink, 0, len(n.Group.Members))

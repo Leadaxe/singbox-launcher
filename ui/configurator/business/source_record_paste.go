@@ -173,6 +173,7 @@ func repointRecordLinks(src *corestate.Source, oldID, newID string) {
 			for j := range n.Group.Members {
 				fix(&n.Group.Members[j])
 			}
+			fix(n.Group.Default)
 		}
 	}
 	fixNode(&src.Node)

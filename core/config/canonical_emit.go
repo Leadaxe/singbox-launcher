@@ -252,10 +252,14 @@ func buildCanonicalAuto(cs *configtypes.CanonicalSource, cn *configtypes.Canonic
 	applyCanonicalDisplay(node, cn)
 	node.Tag = applyEmissionTagMachine(node, cs, cn, num, tagCounts)
 	outbound["tag"] = node.Tag
-	// Members/default канона — сырые теги СВОЕЙ папки; ссылка без folderId
-	// у узла папки означает корень (features/directions.md §6).
+	// Члены и умолчание — ссылки NodeLink; без folderId внутри контейнера
+	// они адресуют СВОЙ контейнер (NODE_LINK.md §5.1 № 8) — одно правило на
+	// оба поля.
 	node.CanonicalGroupMembers = normalizeCanonicalLinks(cn.Group.Members, cs.FolderID)
-	node.CanonicalGroupDefault = strings.TrimSpace(cn.Group.Default)
+	if cn.Group.Default != nil && strings.TrimSpace(cn.Group.Default.Tag) != "" {
+		def := normalizeCanonicalLinks([]configtypes.NodeLink{*cn.Group.Default}, cs.FolderID)
+		node.CanonicalGroupDefault = &def[0]
+	}
 	return node, nil
 }
 

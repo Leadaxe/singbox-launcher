@@ -279,7 +279,7 @@ func TestFolderMergeRepointsAutoMembers(t *testing.T) {
 		Enabled: true,
 		Group: &AutoGroup{
 			GroupType: AutoGroupSelector,
-			Default:   "C",
+			Default:   &NodeLink{FolderID: subID, Tag: "C"},
 			Members: []NodeLink{
 				{FolderID: subID, Tag: "B"},
 				{FolderID: subID, Tag: "C"},
@@ -297,8 +297,8 @@ func TestFolderMergeRepointsAutoMembers(t *testing.T) {
 	if got.Group.Members[0].FolderID != f.ID || got.Group.Members[0].Tag != "B" {
 		t.Fatalf("член не переуказан на папку: %+v", got.Group.Members[0])
 	}
-	if got.Group.Default != "" {
-		t.Fatalf("умолчание, выпавшее из состава, обязано сняться: %q", got.Group.Default)
+	if got.Group.Default != nil {
+		t.Fatalf("умолчание, выпавшее из состава, обязано сняться: %+v", got.Group.Default)
 	}
 	// Материал вызывающего (узлы живой подписки) правкой на месте не задет.
 	if material.Nodes[0].Group.Members[0].FolderID != subID || len(material.Nodes[0].Group.Members) != 2 {

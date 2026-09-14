@@ -317,7 +317,8 @@ func TestFetchAutoMaterialization(t *testing.T) {
 	if pick == nil || pick.Kind != state.SourceKindAuto || pick.Group == nil {
 		t.Fatalf("selector не материализован: %s", nodeTags(src))
 	}
-	if pick.Group.GroupType != state.AutoGroupSelector || pick.Group.Default != "srv-b" {
+	if pick.Group.GroupType != state.AutoGroupSelector || pick.Group.Default == nil ||
+		*pick.Group.Default != (state.NodeLink{FolderID: src.ID, Tag: "srv-b"}) {
 		t.Fatalf("selector потерял тип/default: %+v", pick.Group)
 	}
 	for _, m := range pick.Group.Members {

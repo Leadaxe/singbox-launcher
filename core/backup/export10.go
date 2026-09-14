@@ -303,6 +303,10 @@ func cloneNode(n state.Node) state.Node {
 	if n.Group != nil {
 		g := *n.Group
 		g.Members = append([]state.NodeLink(nil), n.Group.Members...)
+		if n.Group.Default != nil {
+			d := *n.Group.Default
+			g.Default = &d
+		}
 		out.Group = &g
 	}
 	out.Sections = n.Sections.Clone()
