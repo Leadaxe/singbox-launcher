@@ -452,11 +452,10 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 	s.Rules = append(s.Rules, dec.Rules...)
 	res.AppliedRules = len(dec.Rules)
 
-	// Ось порядка перенумеровывается: абсолютные номера у сторон свои, важен
-	// лишь относительный порядок (BACKUP.md §2). Правила, которые узлы носят
-	// с собой, идут ТЕМ ЖЕ проходом (NODE_SECTIONS.md §5): разные проходы
-	// дали бы пересечение номеров и потерю взаимного порядка.
-	renumberImportedAxis(s.Rules, merged.sectionRules(s))
+	// Ось порядка встаёт номерами файла (BACKUP.md §9 п. 7): раскладка оси у
+	// сторон одна, и номер несёт зону, которую порядок не передаёт. Правила,
+	// которые узлы носят с собой, стоят на той же оси (NODE_SECTIONS.md §5).
+	placeImportedAxis(s.Rules, merged.sectionRules(s))
 
 	if dec.RouteFinal != "" {
 		known := newTagSet(importKnownTags(opts, dec, s))
@@ -588,48 +587,77 @@ func importKnownTags(opts ImportOptions, dec *decodedFile, s *state.State) []str
 	return out
 }
 
-// renumberImportedAxis перенумеровывает ось порядка ЦЕЛИКОМ, сохраняя
-// относительный порядок: у сторон свои абсолютные диапазоны, а важен лишь
-// порядок следования.
+// placeImportedAxis ставит правила файла на ось порядка: номер из файла
+// сохраняется, неразмеченные корневые правила встают в хвост оси.
 //
-// Ось одна на корневые правила и на правила, которые узлы носят с собой
-// (NODE_SECTIONS.md §5). Два прохода — по корню и по узлам — дали бы
-// пересечение номеров: узловое правило с номером из файла встало бы посреди
-// перенумерованных корневых, и порядок, который пользователь видел на той
-// машине, здесь не воспроизвёлся бы.
+// Сплошной перенумерации с 1000 нет (BACKUP.md §9 п. 7). Раскладка оси у
+// сторон одна (rule_order.go), и абсолютный номер значит то, чего порядок не
+// передаёт:
 //
-// SPEC 113-C §1: перенумерация заканчивается пересортировкой КОРНЕВОГО
-// массива. Иначе импорт оставлял бы состояние, где номера говорят одно, а
-// порядок записей другое — а закон оси запрещает читать позицию в слайсе как
-// самостоятельный смысл. Узловые правила не пересортировываются: их порядок
-// внутри узла задаётся номерами, а сам узел в оси не участвует.
-func renumberImportedAxis(rules []state.Rule, sectionRules []*state.Rule) {
-	// Общая ось: корневые правила и правила приехавших узлов вперемешку.
-	// Указатели, а не значения: номер проставляется на месте, в той записи,
-	// которая уже лежит в состоянии.
-	axis := make([]*state.Rule, 0, len(rules)+len(sectionRules))
-	for i := range rules {
-		axis = append(axis, &rules[i])
+//   - зону. Правило с номером ниже UserRuleNumStart сборка ставит ПЕРЕД
+//     route.rules шаблона (core/build/preset_merge.go), а несортируемая голова
+//     traffic-processing держит свой номер как часть инварианта
+//     (rule_order.go, PlaceRuleAfter). Сплошная нумерация уводила голову и
+//     якоря шаблона ниже 1000 в пользовательскую зону;
+//   - якоря для того, что встанет ПОСЛЕ импорта. Пресет из библиотеки берёт
+//     номер шаблона (950..995), правило нового узла — 945, новое правило —
+//     максимум зоны 1000..1100 плюс один. После сплошной нумерации пресет
+//     вставал перед бывшей головой (sniff переставал быть первым), а новое
+//     правило — за бывшие перехватчики 1110+.
+//
+// Порядок файла воспроизводится: он и задан номерами, а при равных корневое
+// правило стоит раньше узлового, как у сборки (rulesWithNodeSections).
+// Импорт своего экспорта ось не трогает.
+//
+// Неразмеченным корневым (запись без num) номер раздаётся здесь: следующий за
+// максимумом размеченных — корневых и узловых, — но не ниже начала
+// пользовательской зоны. Разметка на загрузке (MarkRuleOrder) дала бы им
+// номера от UserRuleNumStart вперемешку с размеченными. Файл, где не размечено
+// ни одно корневое правило (до SPEC 106), остаётся как есть: MarkRuleOrder
+// поставит пресеты на якоря шаблона, которого импорт не знает.
+//
+// SPEC 113-C §1: разметка заканчивается пересортировкой КОРНЕВОГО массива.
+// Узловые правила не пересортировываются: их порядок внутри узла задаётся
+// номерами, а сам узел в оси не участвует.
+func placeImportedAxis(rules []state.Rule, sectionRules []*state.Rule) {
+	var (
+		last               int
+		marked, rootMarked bool
+	)
+	see := func(r *state.Rule) {
+		if r.Num == nil {
+			return
+		}
+		if !marked || *r.Num > last {
+			last = *r.Num
+		}
+		marked = true
 	}
-	axis = append(axis, sectionRules...)
+	for i := range rules {
+		if rules[i].Num != nil {
+			rootMarked = true
+		}
+		see(&rules[i])
+	}
+	for _, r := range sectionRules {
+		see(r)
+	}
 
-	idx := make([]int, 0, len(axis))
-	for i, r := range axis {
-		if r.Num != nil {
-			idx = append(idx, i)
+	if rootMarked {
+		next := last + 1
+		if next < state.UserRuleNumStart {
+			next = state.UserRuleNumStart
+		}
+		for i := range rules {
+			if rules[i].Num != nil {
+				continue
+			}
+			n := next
+			rules[i].Num = &n
+			next++
 		}
 	}
-	sort.SliceStable(idx, func(a, b int) bool {
-		return *axis[idx[a]].Num < *axis[idx[b]].Num
-	})
-	for pos, i := range idx {
-		n := state.UserRuleNumStart + pos
-		axis[i].Num = &n
-	}
 
-	// Неразмеченные (бэкап без num) уезжают в хвост, сохраняя взаимный
-	// порядок: разметку им раздаст MarkRuleOrder на первой загрузке, и она
-	// пойдёт от конца занятой части — иначе они перебили бы перенумерованных.
 	sort.SliceStable(rules, func(a, b int) bool {
 		return importedAxisNum(rules[a]) < importedAxisNum(rules[b])
 	})
@@ -745,18 +773,22 @@ func importDNS(s *state.State, dns *decodedDNS) {
 	// Ключ един для всех видов: у template/user заполнен tag и пуст ref, у
 	// preset — наоборот. Разбирать по kind нечего, а один ключ на все виды
 	// не даёт завести второй, расходящийся с первым.
+	//
+	// Дубли ищутся ТОЛЬКО среди записей, которые лежали здесь ДО импорта:
+	// запись файла, совпавшая с локальной, пропускается, а одинаковые записи
+	// внутри самого файла ввозятся все. Файл — снимок настоящего состояния, и
+	// импорт в пустое состояние обязан его воспроизвести; ключ приехавшей
+	// записи в тех же наборах схлопывал два одинаковых правила файла в одно.
 	serverKey := func(kind, tag, ref string) string { return kind + "\x00" + tag + "\x00" + ref }
 	haveServers := map[string]bool{}
 	for _, srv := range s.DNS.Servers {
 		haveServers[serverKey(string(srv.Kind), srv.Tag, srv.Ref)] = true
 	}
 	for _, srv := range dns.Servers {
-		key := serverKey(string(srv.Kind), srv.Tag, srv.Ref)
-		if haveServers[key] {
+		if haveServers[serverKey(string(srv.Kind), srv.Tag, srv.Ref)] {
 			continue // своё сильнее
 		}
 		s.DNS.Servers = append(s.DNS.Servers, srv)
-		haveServers[key] = true
 	}
 
 	ruleKey := func(kind, ref string, body map[string]interface{}) string {
@@ -768,12 +800,10 @@ func importDNS(s *state.State, dns *decodedDNS) {
 		haveRules[ruleKey(string(r.Kind), r.Ref, r.Body)] = true
 	}
 	for _, r := range dns.Rules {
-		key := ruleKey(string(r.Kind), r.Ref, r.Body)
-		if haveRules[key] {
+		if haveRules[ruleKey(string(r.Kind), r.Ref, r.Body)] {
 			continue // своё сильнее
 		}
 		s.DNS.Rules = append(s.DNS.Rules, r)
-		haveRules[key] = true
 	}
 	if dns.Final != "" {
 		s.DNS.Final = dns.Final

@@ -57,6 +57,9 @@ func parseV8(data []byte) (*State, error) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("state: parse v8 json: %w", err)
 	}
+	// Плоская идентичность подписки из v8 dev-сборки волны 1 — в identity
+	// (disk_v8_flat_identity.go).
+	liftFlatSubscriptionIdentity(data, raw.Sources)
 
 	for i := range raw.Sources {
 		warns, err := normalizeSourceShape(&raw.Sources[i])

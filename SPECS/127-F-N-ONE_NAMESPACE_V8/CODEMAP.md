@@ -1442,7 +1442,7 @@ v6mig — §9.7 (красный и до волны, не регрессия).
 | **`ImportFile(s, *File, opts)`** | `core/backup/import.go:273` | развилка форматов ОДНА, у вызывающих её нет |
 | **`applyDecoded(s, dec, opts)`** | `core/backup/import.go:292` | `s.Rules = nil` (`:311`, единственная полная замена §9 п. 7); снимок `takenRootTags` (`:321`) → Направления → `mergeSources` → `rewriteFolderLinks` (с §23 — `rewriteLinks`) → `resolveImportedHops` → правила → ось → `route.final` → `vars` → DNS → warp |
 | `importKnownTags(opts, dec, s)` | `:405` | цели для проверки `route.final`, считаются ПОСЛЕ слияния по живому состоянию |
-| **`renumberImportedAxis(rules, sectionRules)`** | `core/backup/import.go:446` | ось ЦЕЛИКОМ: корневые правила и правила приехавших узлов одним проходом (NODE_SECTIONS.md §5, SPEC 126 L2) |
+| **`renumberImportedAxis(rules, sectionRules)`** → с §25 **`placeImportedAxis`** | `core/backup/import.go:446` | ось ЦЕЛИКОМ: корневые правила и правила приехавших узлов одним проходом (NODE_SECTIONS.md §5, SPEC 126 L2); с §25 номера файла сохраняются |
 | `importDNS(s, *decodedDNS)` / `importWarp` | `:565`, `:620` | правил слияния не меняли; тип аргумента теперь промежуточный |
 | **`mergeSources(s, items, rootTags, warns, cnt)`** | `core/backup/merge.go:467` | ОДИН проход в порядке файла; индексы идентичности (`byURL`, `rootBodies`, `folderAt`, `existingChains`) строятся раз и поддерживаются по ходу |
 | `mergeSubscriptionItem` | `core/backup/merge.go:533` | по `url` байт-в-байт |
@@ -1520,8 +1520,9 @@ v6mig — §9.7 (красный и до волны, не регрессия).
 | `core/backup/file_test.go` | доступ к разобранному файлу через `.Legacy`; проверка, что файл 0.12 приезжает своим входом |
 | `core/backup/*_test.go` | `Parse` → `ImportFile` там, где импортируется разобранный файл; `loadCorpusPre` возвращает `*File` |
 
-**Про инвариант «круг байт-в-байт».** Первый круг НЕ байт-идентичен, и это
-норма, а не потеря: импорт перенумеровывает ось (§9 п. 7, NODE_SECTIONS §5), и
+**Про инвариант «круг байт-в-байт».** (С §25 импорт номера оси не трогает,
+и первый круг тоже байт-идентичен; абзац — история.) Первый круг НЕ
+байт-идентичен, и это норма, а не потеря: импорт перенумеровывает ось (§9 п. 7, NODE_SECTIONS §5), и
 правило узла, стоявшее на 945 (перед якорем шаблона), при слиянии оси встаёт
 в пользовательскую зону вместе с корневыми. Поэтому тест проверяет два
 утверждения: (1) первый круг отличается РОВНО номерами оси и ничем больше
@@ -2390,7 +2391,7 @@ Go-теста, валидирующего `registry/protocols/*.json` проти
 | `ui/configurator/business/node_move.go:494-508` | `linkEdit` (`linkKeep`/`linkReplace`/`linkDrop`), `linkEditFunc` |
 | `ui/configurator/business/node_move.go:516-553` | **`editNodeLinks(m, edit)`** — ЕДИНЫЙ обход: detour, позиции, группы корня и контейнеров; `(имена задетых источников, число ссылок)` |
 | `ui/configurator/business/node_move.go:557-571`, `578-601` | `editDetourLink`, `editLinkList` (без `slices`, исходный массив не портится) |
-| `ui/configurator/business/node_move.go:611-637` | **`editGroupLinks`** — ЕДИНАЯ точка правки состава группы: члены и `default` вместе, для переписи и гашения (замена `repointGroupLinks` и цикла `ClearContainerNodeLinks`; с §25 `default` — NodeLink и решается тем же `edit`) |
+| `ui/configurator/business/node_move.go:611-637` | **`editGroupLinks`** — ЕДИНАЯ точка правки состава группы: члены и `default` вместе, для переписи и гашения (замена `repointGroupLinks` и цикла `ClearContainerNodeLinks`; с §26 `default` — NodeLink и решается тем же `edit`) |
 | `ui/configurator/business/node_move.go:439-450`, `465-476` | `clearNodeLinks(from)`, `repointNodeLinks(from, to)` поверх `editNodeLinks` |
 | `ui/configurator/business/node_move.go:170-176` | `rootOnlyRefsToTag` — `editRootNameRefs(..., rootRefName)` (называет, не правит; теперь и `options.default`/`preferredDefault`) |
 | `ui/configurator/business/root_name_refs.go:33-77` | **новый файл**: `rootRefAction` (`Miss`/`Rename`/`Clear`/`Name`), `rootRefDecide`, `rootRenames(map)` (один проход — `x` → `x-auto` не переписывается дважды), `rootNameIs` |
@@ -2467,29 +2468,60 @@ D-113, D-114; `docs/release_notes/1-6-0.md`; `CHANGELOG.md` v1.6.0.
 Не сделано: `importDirection` пишет `block-out` литералом — при шаблоне с
 другим тегом блокировки круг «экспорт → импорт» превращает `include_block` в
 ссылку на несуществующий `block-out` (правка входа вне этой задачи). **Сделано
-в §25**: `ImportOptions.BlockTag`.
+в §26**: `ImportOptions.BlockTag`.
 
-## 25. NodeLink для групп и `default`; Направления без узлов (D-115, контракт 1.0.1, релиз 1.6.0)
+## 25. Хвосты импорта и загрузки на копии живых данных (релиз 1.6.0)
+
+Ветка `fix/import-axis-ua-chain`. Офлайн-прогон установленной сборки против
+develop на копии живого состояния (стенд `scratchpad/livecmp/harness_test.go.txt`)
+нашёл три дефекта, четвёртый поймал LxBox на эмуляторе.
+
+| Адрес | Что |
+|---|---|
+| `core/backup/import.go:503` | **`placeImportedAxis(rules, sectionRules)`** (вместо `renumberImportedAxis`) — номера файла сохраняются у корневых и узловых правил; неразмеченные корневые → хвост `max+1…`, не ниже `UserRuleNumStart`; ни одного размеченного корневого → остаются `nil` (MarkRuleOrder даст пресетам якоря шаблона); стабильная сортировка корня. Сплошная `1000+i` уводила `traffic-processing` (0) и якоря <1000 за `route.rules` шаблона (`core/build/preset_merge.go:373`), пресет из библиотеки (`PresetRuleNum`) вставал перед головой, `NextUserRuleNum` — за перехватчики. Норма — BACKUP.md §9 п. 7, NODE_SECTIONS.md §5, TASKS_LXBOX §16.2 (закрывает вопрос 3 спеки 438 LxBox: у них номера файла сохранялись с 8f538ce9) |
+| `core/backup/import.go:649`, `:664`, `:679` | `importDNS`: наборы `haveServers`/`haveRules` строятся только из записей приёмника ДО импорта и по ходу не пополняются — одинаковые записи файла ввозятся все; ключи прежние (`kind`+`tag`+`ref`, правило `kind`+`ref`+тело). BACKUP.md §9 п. 5, TASKS_LXBOX §16.2. Route-правила дефекта не имеют (полная замена); источники дедупят файл сами с собой намеренно (`mergeSources`, `core/backup/merge.go:743`) |
+| `core/state/disk_v8_flat_identity.go:37` | **`liftFlatSubscriptionIdentity(data, sources)`** — вызов `core/state/disk_v8.go:62` до `normalizeSourceShape`: плоские `user_agent`/`send_hwid`/`hwid`/`hash_device_model` подписки (v8 сборки bfd5fe15, до переноса 768ef591) → `identity` по ключу, если там пусто; заданное в `identity` главнее; `""`/`null`/чужой тип — отброс; не подписка — не читается. Файл на загрузке не пишется |
+| `core/config/chain_nodes.go:288`, `:311` | **`sourceHasPendingChains(ps)`** (включённый chain-узел канона с позициями или `ps.Chains`) и **`chainSourceFailure(ps, i, broken)`** (причины `BrokenChains` по тегу цепочки, подпись — тег при пустой) |
+| `core/config/outbound_generator.go:1272`, `:1375`, `:1414`, `:1477` | `chainOnlySources`: источник без узлов прохода 1, но с цепочками, не идёт в silent-empty; вердикт после `ResolveChainSources` — узел есть → `succeededSources`, нет → `source_parse_failed` с причиной цепочки; при раннем выходе «узлов нет вовсе» — пуст. Ложная пометка была видна: строка Sources «⚠ No nodes from this source» (`ui/configurator/tabs/source_tab.go:1021`), отчёт «Итога» (`final_report_model.go:133`) и тост обновления «partially refreshed … (1 failed)» (`core/config_service.go:124`) |
+| `core/backup/import_axis_dns_test.go:73` | **`TestImportKeepsAxisZonesAndFileDNSDuplicates`** — раскладка живого состояния (0/945/950/955/1000/1001/1003/1120/1130 + неразмеченное): импорт в пустое и в непустое, DNS-пары файла и совпавшая с приёмником, `NextUserRuleNum`, `MergePresetsIntoRoute` с `route.rules` шаблона (sniff первым). Старый `import.go` роняет все проверки |
+| `core/state/disk_v8_flat_identity_test.go:19` | **`TestLoadV8LiftsFlatSubscriptionIdentity`** — три подписки (всё плоско / identity главнее / пустые) и папка; Load → Save без плоских ключей → Load→Save байт в байт. Без вызова в `parseV8` падает |
+| `core/backup/backup_test.go:515`, `:558`; `node_sections_roundtrip_test.go:400` | ожидания сплошной нумерации заменены на номера файла |
+
+Стенд на копии живых данных (`scratchpad/livecmp/out_tails/{baseline,fixed}`):
+`config.json` байт в байт прежний; отчёт сборки без записей (было
+`source_parse_failed` у `chain-test`); круг импорта своего экспорта — состояние
+и повторный экспорт без разницы (было 13 номеров → 1000…1012); Load→Save
+переносит UA в `identity`, экспорт 1.0 его везёт. Фаза «файл с двумя
+одинаковыми DNS-правилами → пустое / живое / повторно» — 2 / 2 / 2.
+
+Не сделано: состояния, уже перенумерованные импортом 1.5.3–1.5.6 (голова на
+1000+), этот фикс не лечит; лечение — ставить несортируемому пресету номер
+шаблона в `NormalizeRuleOrder` (`core/state/rule_order.go:219`). Импорт в
+пустое состояние через `POST /backup/import` выключает правила с целью
+`direct-out` (`backup_unknown_outbound`: `knownOutboundsFor` на пустом
+состоянии не видит системных тегов) — хвост «два списка известных целей».
+
+## 26. NodeLink для групп и `default`; Направления без узлов (D-115, контракт 1.0.1, релиз 1.6.0)
 
 Ветка `feat/nodelink-groups-directions`. Норма — `contract/docs/NODE_LINK.md`
 §2.1, §5.2, §7.3, §8; решения владельца 15.09.2026, форма согласована с LxBox
 (`TASKS_LXBOX.md` §17.8). Новой версии схемы state v8 и файла 1.0 нет —
 dev-формы читаются терпимо.
 
-### 25.1 Группа адресуется сырым тегом (W1)
+### 26.1 Группа адресуется сырым тегом (W1)
 
 | Адрес | Что |
 |---|---|
 | `core/config/canonical_emit.go:242-252` | `buildCanonicalAuto`: **`IdentityTag: cn.Tag`** у узла-группы — словарь целей берёт сырой тег (`canonicalRawTag`) |
 | `core/config/nodelink_resolve.go:53-60`, `98-106`, `242-247` | `NodeLinkTargets.groupFinals` (папка → финальный тег группы → сырой) — только подсказка `emitLinkGroupFinalTagText` в `Resolve`; резолва по финальному тегу нет |
 | `core/state/nodelink_normalize.go` | **новый файл**: `NodeLinkFinalTag(policy, raw)` (`norm(prefix+raw+postfix)`, переменные → нет кандидата), `NodeLinkFinalIndex(sources, skip)` (цепочка — свой тег), **`NormalizeNodeLinks(sources, directions)`** — S1 (член группы в контейнере без `folder_id`), S2 (`default` строкой), S3 (пара на финальный тег группы), S5′ (корневая ссылка через опцию Направления); одна строка `InfoLog` на подъём и на неоднозначные |
-| `core/state/disk_v8.go:74`, `core/state/migration_v6_to_v7.go:113` | вызовы на чтении v8/v7 и в хвосте миграции v6→v7 (перезаписи файла нет — правило идемпотентно) |
-| `core/backup/import.go:421-438` | 1.0 — до `normalizeMemberLinks10`; 0.x — после `resolveImportedHops` |
+| `core/state/disk_v8.go:77`, `core/state/migration_v6_to_v7.go:113` | вызовы на чтении v8/v7 и в хвосте миграции v6→v7 (перезаписи файла нет — правило идемпотентно) |
+| `core/backup/import.go:433-450` | 1.0 — до `normalizeMemberLinks10`; 0.x — после `resolveImportedHops` |
 | `core/backup/import10.go:510-571` | `normalizeMemberLinks10` на общем индексе (`renamed` — через `skip`); `merge.go:968` — `fileFinal` той же формулой |
 | `ui/configurator/business/source_record_paste.go:129-135` | вставка записи — после `repointRecordLinks` |
 | `core/config/subscription/parse_body.go` | «сперва узлы, затем группы» (IDENTITY.md §1.3): `accept` тегов группам не даёт, `finish` раздаёт их тем же `st.idCounts` после всех узлов и резолвит состав по карте «узлы первыми»; тест — `core/subscription_fetch_test.go` `TestFetchGroupNamesakeDoesNotShiftNodeTag` (Xray-балансировщик перед узлом-тёзкой) |
 
-### 25.2 `group.default` → NodeLink (W2)
+### 26.2 `group.default` → NodeLink (W2)
 
 | Адрес | Что |
 |---|---|
@@ -2505,25 +2537,25 @@ dev-формы читаются терпимо.
 | `core/backup/file_keys_10.go:154` | сканер ключей: `group.default` как ссылка |
 | клоны | `node_move.go` `cloneCanonicalNodeForMove`, `tabs/source_edit_window.go` `cloneCanonicalNode`, `core/backup/export10.go` `cloneNode` — копия указателя |
 
-### 25.3 Направления не хранят узлы (вариант А)
+### 26.3 Направления не хранят узлы (вариант А)
 
 | Адрес | Что |
 |---|---|
 | `core/config/nodelink_resolve.go:145-181` | **`allRootLinkTargets(pc, dirTags, opts)`** — без `AddOutbounds`; плюс `opts.BlockTag`, `DirectTag`, `SystemTags` |
 | `core/template/direction_groups.go:149` | **`(*TemplateData).SystemOutboundTags()`** — теги `config.outbounds`/`endpoints` + `magic_nodes.direct/block`; `core/config_service.go:597` кладёт их в `DirectionBuildOptions.SystemTags` |
 | `core/config/direction_options.go` | **новый файл**: `directionDeclaredTags` (все Направления, включая выключенные, и `-auto`), `directionOptionWarnings` — узел в опциях → «use a filter», неизвестное → «not found»; адресат `DirectionTag` |
-| `core/config/outbound_generator.go:1203-1208`, `1466-1494` | снимок объявленных до `PrepareDirections`; узлы — до резолва ссылок (плюс `brokenChains`) |
+| `core/config/outbound_generator.go:1203-1208`, `1483-1524` | снимок объявленных до `PrepareDirections`; узлы — до резолва ссылок (плюс `brokenChains`) |
 | `ui/configurator/business/direction_options.go` | **новый файл**: `DeclaredRootNames(model)`, **`ValidateDirectionOptions(model, tag, hasAuto, options)`**, `modelNodeNames` (текст отказа) |
 | `ui/configurator/outbounds_configurator/edit_dialog.go:588-598` | сохранение Raw — отказ до `renameRefs` |
 | `ui/configurator/business/outbound.go:98-116` | `GetAvailableOutbounds`: из опций — только объявленные |
 | `ui/configurator/business/tag_guard_model.go:117-140` | `KnownRuleTargetTags` знает строки опций как есть (сброс целей правил маршрут молча не меняет) |
 | `core/backup/directions.go:60-109`, `118-156` | `exportDirection(d, blockTag, directionTags)` → `(Direction, localOnly)`; `importDirection(in, blockTag)` |
 | `core/backup/export10.go:75-99` | `backup_local_only_dropped` на опции не-Направления |
-| `core/backup/import.go` | `ImportOptions.BlockTag`, `SystemTags`; **`filterImportedDirectionOptions`** (`:479-544`) + `WarnBackupDirectionIncludeDropped`; вызов после `mergeSources` |
+| `core/backup/import.go` | `ImportOptions.BlockTag`, `SystemTags`; **`filterImportedDirectionOptions`** (`:490-555`) + `WarnBackupDirectionIncludeDropped`; вызов после `mergeSources` |
 | `ui/configurator/tabs/settings_backup.go`, `core/debugapi/backup_endpoints.go` | импорт передаёт `BlockTag`/`SystemTags` шаблона; `warnText` — фразы для двух кодов |
 | `core/backup/schema_test.go` | `backup_local_only_dropped` вышел из списка снятых |
 
-### 25.4 Тесты
+### 26.4 Тесты
 
 | Адрес | Что |
 |---|---|
@@ -2533,7 +2565,7 @@ dev-формы читаются терпимо.
 | `ui/configurator/business/direction_options_test.go` | `TestDirectionsDoNotHoldNodes` — Raw, сборка с тем же составом и предупреждениями, S5′, экспорт |
 | `core/backup/corpus_test.go` | ключи `groups{}`, `directions[].include`; кейсы `v10_group_links`, `v10_dev_forms`, `v10_direction_include` |
 
-### 25.5 Поля стороны LxBox (этап 5)
+### 26.5 Поля стороны LxBox (этап 5)
 
 | Адрес | Что |
 |---|---|
