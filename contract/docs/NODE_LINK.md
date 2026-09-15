@@ -676,8 +676,8 @@ LxBox — по ответу сессии lxbox-3d (14.09.2026). LxBox приня
 | Кейс | Что закрепляет |
 |---|---|
 | `corpus/backup/v10_node_links` (+ `.pre`) | detour корневого узла и члена папки на члена папки — парой; позиции вперемешку: корневой узел, член папки с префиксом (тег сырой), член подписки; Направление позицией 0 и целью detour — `{tag}`; ссылка на неизвестный контейнер ввозится как есть без предупреждения; перепись `folder_id` папки, совпавшей по ИМЕНИ, — и у `detour`, и у `hops` |
-| `corpus/backup/v10_group_links` (+ `.pre`) | `kind: auto` в папке, совпавшей по ИМЕНИ: `members[]`, `default` объектом и позиция цепочки `{id файла, сырой тег группы}` переписаны на локальный id; предупреждений нет |
-| `corpus/backup/v10_dev_forms` | dev-формы лаунчера до 1.0.1 (§7.3): `default` строкой → пара; позиция `{F, финальный тег группы}` → сырой тег; член `{tag}` в папке → пара; предупреждений нет |
+| `corpus/backup/v10_group_links` (+ `.pre`, `.expected.lxbox.json`) | `kind: auto` в папке, совпавшей по ИМЕНИ: `members[]`, `default` объектом и позиция цепочки `{id файла, сырой тег группы}` переписаны на локальный id; предупреждений нет; LxBox — selector читает urltest'ом без `default` с `backup_group_degraded` (ответ на вопрос 6) |
+| `corpus/backup/v10_dev_forms` (+ `.expected.lxbox.json`) | dev-формы лаунчера до 1.0.1 (§7.3): `default` строкой → пара; позиция `{F, финальный тег группы}` → сырой тег; член `{tag}` в папке → пара; предупреждений нет; LxBox — selector читает urltest'ом без `default` с `backup_group_degraded` (ответ на вопрос 6) |
 | `corpus/backup/v10_direction_include` (+ `.expected.lxbox.json`) | `include` Направления (§8): тег Направления файла и тег свёртки остаются, узел и неизвестное имя отброшены одним `backup_direction_include_dropped`; LxBox — хранит всё без предупреждения (ответ на вопрос 5) |
 | `corpus/backup/v10_sources_union` (+ `.pre`) | перепись `hops[].folder_id`: папка по имени и по `id` |
 | `corpus/backup/chains_roundtrip`, `chain_tag_duplicate`, `chain_disabled_enabled_default` | legacy 0.12: позиции цепочек строками |

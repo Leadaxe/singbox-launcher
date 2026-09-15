@@ -1,0 +1,44 @@
+{
+  "rules": [],
+  "warnings": [
+    "backup_group_degraded"
+  ],
+  "warning_reasons": {
+    "backup_group_degraded": ["selector→urltest, default dropped"]
+  },
+  "folders": {
+    "Dev": [
+      "x",
+      "y",
+      "G"
+    ]
+  },
+  "root_servers": [
+    "relay-root"
+  ],
+  "groups": {
+    "G": {
+      "members": [
+        { "tag": "x", "folder": "Dev" },
+        { "tag": "y", "folder": "Dev" }
+      ]
+    }
+  },
+  "chains": [
+    {
+      "tag": "via-g",
+      "chain": {
+        "hops": [
+          "relay-root",
+          "G"
+        ],
+        "idle_timeout": "0s"
+      },
+      "hops": [
+        { "tag": "relay-root" },
+        { "tag": "G", "folder": "Dev" }
+      ]
+    }
+  ],
+  "detours": {}
+}

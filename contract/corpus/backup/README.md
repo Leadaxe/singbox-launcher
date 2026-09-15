@@ -428,6 +428,15 @@ Side-specific ожидание `v10_sources_union.expected.lxbox.json` (форм
 `{folder_id, "d:G"}`. Обязано получиться: члены — пары на **Dev**, умолчание —
 пара `y`, позиция — сырой тег `G`; предупреждений нет.
 
+Side-specific ожидания `v10_group_links.expected.lxbox.json` и
+`v10_dev_forms.expected.lxbox.json` (ответ на вопрос 6, `TASKS_LXBOX.md` §17.8;
+класс различия A по `docs/IDENTITY.md` §4a): selector с `default` LxBox читает
+как urltest — умолчание отброшено (ключа `default` в `groups` нет) и названо
+`backup_group_degraded` с reason `selector→urltest, default dropped`
+(`warning_reasons`), как у `pick` в `v10_group_degraded`. Члены, позиция
+цепочки, состав папки и `folder_ids` — как в базовом ожидании; «предупреждений
+нет» выше — сторона лаунчера.
+
 **`v10_direction_include`** (+ `.expected.lxbox.json`). Направление
 `streaming` несёт в `include` тег Направления файла `proxy-eu`, тег свёртки
 папки файла `fold-pick`, тег корневого узла `relay-root` и строку без цели
