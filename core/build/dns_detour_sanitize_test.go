@@ -42,7 +42,9 @@ func dnsServerDetour(t *testing.T, raw json.RawMessage, tag string) (string, boo
 	return "", false
 }
 
-func TestSanitizeDNSDetours_DanglingKeyIsStripped(t *testing.T) {
+// SPEC 129 Н10: сервер с висячим detour выпадает целиком — снять ключ значило
+// бы молча резолвить мимо выбранного маршрута.
+func TestSanitizeDNSDetours_DanglingDetourDropsServer(t *testing.T) {
 	raw := dnsSectionWithDetours("proxy-out", "ghost-out")
 	final := map[string]bool{"proxy-out": true, "direct-out": true}
 
@@ -51,8 +53,16 @@ func TestSanitizeDNSDetours_DanglingKeyIsStripped(t *testing.T) {
 	if d, has := dnsServerDetour(t, out, "dns-a"); !has || d != "proxy-out" {
 		t.Errorf("живой detour снят: %q (has=%v)", d, has)
 	}
-	if _, has := dnsServerDetour(t, out, "dns-b"); has {
-		t.Error("висячий detour доехал до ядра — конфиг не стартовал бы")
+	var obj struct {
+		Servers []map[string]interface{} `json:"servers"`
+	}
+	if err := json.Unmarshal(out, &obj); err != nil {
+		t.Fatalf("unmarshal dns: %v", err)
+	}
+	for _, srv := range obj.Servers {
+		if srv["tag"] == "dns-b" {
+			t.Errorf("сервер с висячим detour доехал до ядра: %v", srv)
+		}
 	}
 }
 

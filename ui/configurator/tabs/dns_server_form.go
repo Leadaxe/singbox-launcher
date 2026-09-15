@@ -143,7 +143,7 @@ func newDNSServerForm(p *wizardpresentation.WizardPresenter, selfTag string) *dn
 	f := &dnsServerForm{
 		rows:         map[string]fyne.CanvasObject{},
 		enabledByTag: dnsEnabledByTag(p.Model().DNSServers),
-		varValues:    dnsVarValues(p.Model()),
+		varValues:    dnsVarValuesFor(p.Model(), selfTag),
 	}
 
 	f.typeSelect = widget.NewSelect(dnsFormTypes, nil)

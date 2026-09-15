@@ -31,6 +31,7 @@ import (
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
+	"singbox-launcher/core/template"
 )
 
 const backupCorpusRelPath = "../../contract/corpus/backup"
@@ -108,6 +109,12 @@ type corpusExpectation struct {
 			// — расхождение, которое видно только сверкой. Поле
 			// необязательное: отсутствие ключа значит «не проверяем».
 			Body json.RawMessage `json:"body"`
+			// Vars — значения переменных записи шаблонного сервера
+			// (контракт 1.0.2, D-118), deep-equal. Исключение из правила
+			// «нет ключа — не проверяем»: отсутствие ключа значит «ожидаем
+			// пусто» — иначе сторона, не снявшая умолчание или
+			// необъявленное имя, проходила бы кейс зелёной.
+			Vars map[string]string `json:"vars"`
 		} `json:"servers"`
 		// Strategy и Final — одиночные значения секции; файл их ЗАМЕЩАЕТ
 		// (§9 п. 5). Пустая строка значит «не проверяем».
@@ -410,8 +417,12 @@ func TestBackupCorpus(t *testing.T) {
 			// были бы неразличимы. Предупреждения предсостояния в сверку не
 			// идут: оно декорация сцены, а не предмет кейса.
 			dst := &state.State{}
+			// Объявления шаблона приёмника (контракт 1.0.2): нормы значений
+			// переменных записи проверяемы только против них, а шаблоны у
+			// сторон разные — поэтому только по фикстуре кейса.
+			recordVars := loadCorpusRecordVars(t, name)
 			if pre := loadCorpusPre(t, name); pre != nil {
-				if _, err := ImportFile(dst, pre, ImportOptions{}); err != nil {
+				if _, err := ImportFile(dst, pre, ImportOptions{RecordVars: recordVars}); err != nil {
 					t.Fatalf("Import предсостояния: %v", err)
 				}
 			}
@@ -419,6 +430,7 @@ func TestBackupCorpus(t *testing.T) {
 				// Принимающая сторона знает эти цели; всё прочее —
 				// символическая ссылка в никуда.
 				KnownOutbounds: []string{"proxy", "direct"},
+				RecordVars:     recordVars,
 			})
 			if err != nil {
 				t.Fatalf("Import: %v", err)
@@ -465,6 +477,32 @@ func corpusFormatAhead(raw []byte) bool {
 		return false
 	}
 	return head.LxBackup > FormatVersion10
+}
+
+// loadCorpusRecordVars читает фикстуру объявлений шаблона кейса
+// `<case>.template.json` (контракт 1.0.2, corpus/backup/README.md); nil — её
+// нет, и нормализации значений переменных записи нет.
+//
+// Разбор — тем же швом, что у загрузки шаблона: вложенные записи серверов
+// через NormalizeDNSOptions, пресеты через LoadPresets, объявления — мостом
+// RecordVarDeclsFor для локальной цели.
+func loadCorpusRecordVars(t *testing.T, name string) *state.RecordVarDecls {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(backupCorpusRelPath, name+".template.json"))
+	if err != nil {
+		return nil
+	}
+	var fx struct {
+		DNSOptions json.RawMessage `json:"dns_options"`
+		Presets    json.RawMessage `json:"presets"`
+	}
+	if err := json.Unmarshal(raw, &fx); err != nil {
+		t.Fatalf("разбор фикстуры объявлений: %v", err)
+	}
+	normalized, decls := template.NormalizeDNSOptions(fx.DNSOptions)
+	presets, _ := template.LoadPresets(fx.Presets, nil)
+	td := &template.TemplateData{DNSOptionsRaw: normalized, DNSServerVars: decls, Presets: presets}
+	return template.RecordVarDeclsFor(td, nil, template.LocalTarget())
 }
 
 // loadCorpusPre читает предсостояние кейса; nil = его нет (тогда импорт идёт
@@ -710,6 +748,10 @@ func checkDNS(t *testing.T, dst *state.State, exp corpusExpectation) {
 				t.Errorf("DNS-сервер %d (%s%s): тело %s, ожидалось %s",
 					i, got.Tag, got.Ref, string(gotBody), string(want.Body))
 			}
+		}
+		// Отсутствие `vars` в ожидании — «ожидаем пусто» (контракт 1.0.2).
+		if !equalStringMaps(got.Vars, want.Vars) {
+			t.Errorf("DNS-сервер %d (%s%s): vars %v, ожидалось %v", i, got.Tag, got.Ref, got.Vars, want.Vars)
 		}
 	}
 	if exp.DNS.Rules != nil && len(dst.DNS.Rules) != *exp.DNS.Rules {

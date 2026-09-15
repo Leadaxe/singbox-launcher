@@ -185,6 +185,12 @@ type PresetMergeContext struct {
 	// конфиг строкой, и ядро отвергло бы его целиком.
 	TemplateVars []template.TemplateVar
 
+	// DNSServerVars (SPEC 129) — объявления переменных шаблонных DNS-серверов
+	// по тегу (TemplateData.DNSServerVars). Значения — в записях DNS выше
+	// (`DNS.Servers[kind=template].Vars`); без объявлений `@outbound` в теле
+	// сервера разрешить нечем, и тело уехало бы неподставленным.
+	DNSServerVars map[string][]template.TemplateVar
+
 	// EmittedRuleSetTags (SPEC 118, Р-DNS-2) — теги, реально попадающие в
 	// `route.rule_set` финального конфига. Заполняется ОДИН раз до обхода
 	// секций (`CollectEmittedRouteRuleSetTags`), потому что секция dns
@@ -548,6 +554,7 @@ func templateLikeFromCtx(ctx PresetMergeContext) template.TemplateData {
 		Presets:       ctx.Presets,
 		DNSOptionsRaw: raw,
 		Vars:          ctx.TemplateVars,
+		DNSServerVars: ctx.DNSServerVars,
 	}
 	return td
 }

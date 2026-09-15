@@ -115,6 +115,8 @@ func decodeLegacy(b *Backup, opts ImportOptions) (*decodedFile, error) {
 
 	out.DNS = decodeLegacyDNS(b.DNS)
 	out.Vars = b.Vars
+	// SPEC 129 Н8 — тем же правилом, что у 1.0: разбор внутри мажора один.
+	moveFileRootDNSVars(out, opts.RecordVars)
 	if b.Route != nil {
 		out.RouteFinal = b.Route.Final
 	}
@@ -143,6 +145,15 @@ func decodeLegacyDNS(dns *DNS) *decodedDNS {
 			var body map[string]interface{}
 			if json.Unmarshal(ref.Value, &body) == nil {
 				srv.Body = body
+			}
+		}
+		// SPEC 129: `vars` записи шаблонного сервера (так их пишет LxBox и в
+		// 0.x) — значения его переменных. До SPEC 129 поле читалось и молча
+		// терялось.
+		if ref.Kind == string(state.DNSServerKindTemplate) && len(ref.Vars) > 0 {
+			srv.Vars = make(map[string]string, len(ref.Vars))
+			for k, v := range ref.Vars {
+				srv.Vars[k] = v
 			}
 		}
 		out.Servers = append(out.Servers, srv)

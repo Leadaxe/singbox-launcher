@@ -168,6 +168,9 @@ func normalizeImportedSections(ns *state.NodeSections, nodeTag string) (*state.N
 		servers := make([]state.DNSServer, 0, len(ns.DNS.Servers))
 		for _, s := range ns.DNS.Servers {
 			if s.Kind == state.DNSServerKindUser {
+				// `vars` бывают только у записи шаблонного сервера (SPEC 129
+				// Н1); у user-записи ключ назван backup_unknown_field разбором.
+				s.Vars = nil
 				servers = append(servers, s)
 				continue
 			}

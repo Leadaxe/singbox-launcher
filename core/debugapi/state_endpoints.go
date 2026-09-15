@@ -218,6 +218,9 @@ func (s *Server) stateRulesWith(w http.ResponseWriter, r *http.Request, acc stat
 			}
 		}
 		st.Rules = state.SortRulesByNum(st.Rules) // закон оси: массив всегда отсортирован
+		// SPEC 129: писатель снимает у `vars` пресетов пустые, равные
+		// умолчанию и необъявленные имена — тем же правилом, что UI и импорт.
+		state.ApplyRecordVars(st, s.recordVarDeclsFor(st))
 		if err := acc.save(st); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "save state: " + err.Error()})
 			return
@@ -297,6 +300,16 @@ func (s *Server) stateDNSWith(w http.ResponseWriter, r *http.Request, acc stateA
 				})
 				return
 			}
+			// SPEC 129 Н1: значения переменных бывают только у записи
+			// шаблонного сервера — у user маршрут в body.detour, у preset
+			// переменные в записи правила пресета.
+			if len(srv.Vars) > 0 && srv.Kind != state.DNSServerKindTemplate {
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+					"error": fmt.Sprintf("servers[%d]: vars are allowed only on kind %q", i, state.DNSServerKindTemplate),
+					"field": fmt.Sprintf("dns.servers[%d].vars", i),
+				})
+				return
+			}
 		}
 		for i, rl := range req.Rules {
 			switch rl.Kind {
@@ -317,6 +330,9 @@ func (s *Server) stateDNSWith(w http.ResponseWriter, r *http.Request, acc stateA
 			return
 		}
 		st.DNS = req
+		// SPEC 129: нормы записи перед сохранением — умолчания, необъявленные
+		// имена и сироты не пишутся.
+		state.ApplyRecordVars(st, s.recordVarDeclsFor(st))
 		if err := acc.save(st); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "save state: " + err.Error()})
 			return

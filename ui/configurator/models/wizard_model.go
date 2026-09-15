@@ -126,6 +126,14 @@ type WizardModel struct {
 	// Map tag → enabled. Только tag'и где юзер изменил default_enabled.
 	DNSTemplateOverrides map[string]bool
 
+	// DNSTemplateVars — значения переменных шаблонных DNS-серверов (SPEC 129):
+	// тег → имя переменной сервера → значение, как в записи состояния
+	// `dns.servers[kind=template].vars`. Только выбранное пользователем:
+	// значения, равного умолчанию, здесь нет (Н4) — отсутствие ключа и есть
+	// «следовать шаблону». Пишет окно сервера (dns_template_vars.go),
+	// читают подпись строки, сборка превью и сохранение.
+	DNSTemplateVars map[string]map[string]string
+
 	// SPEC 057-R-N: preset outbound binding live в state.connections.outbounds[]
 	// напрямую через `ref` field (см. configtypes.Direction.Ref + .Updates).
 	// Display order = natural slice order — больше нет вспомогательной in-memory

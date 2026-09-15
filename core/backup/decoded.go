@@ -142,3 +142,28 @@ type decodedDNS struct {
 	Strategy              string
 	DefaultDomainResolver string
 }
+
+// moveFileRootDNSVars — Н8 для файла (SPEC 129): корневые `dns_<tag>_<var>`
+// переносятся в записи шаблонных серверов ФАЙЛА до слияния. Запись с
+// непустым `vars` побеждает (`superseded`), записи нет — имя снимается
+// (`no_record`); имя без кандидата остаётся корневым и идёт общим правилом
+// переменных. Карта файла не мутируется — переносится копия.
+func moveFileRootDNSVars(dec *decodedFile, decls *state.RecordVarDecls) {
+	if dec == nil || len(dec.Vars) == 0 || decls == nil {
+		return
+	}
+	vars := make(map[string]string, len(dec.Vars))
+	for k, v := range dec.Vars {
+		vars[k] = v
+	}
+	var servers []state.DNSServer
+	if dec.DNS != nil {
+		servers = dec.DNS.Servers
+	}
+	drops := state.MoveRootDNSVarsMap(vars, &servers, decls, false)
+	if dec.DNS != nil {
+		dec.DNS.Servers = servers
+	}
+	dec.Vars = vars
+	dec.Warnings = append(dec.Warnings, recordVarWarnings(drops)...)
+}

@@ -76,8 +76,10 @@ var (
 	dns10Keys  = jsonKeys(reflect.TypeOf(state.DNSOptions{}))
 	// dnsServer10Keys и dnsRule10Keys объявлены порознь: у сервера есть
 	// `tag`, у правила — `name`/`id`, и общий список пропустил бы чужое поле
-	// в обе стороны.
-	dnsServer10Keys = jsonKeys(reflect.TypeOf(state.DNSServer{}))
+	// в обе стороны. `vars` из общего списка сервера снят: ключ законен
+	// только у записи шаблонного сервера (SPEC 129 Н1, ловушка Л5), и
+	// рефлексия по типу этого не различает — его объявляет dnsServerKindKeys10.
+	dnsServer10Keys = withoutKeys(jsonKeys(reflect.TypeOf(state.DNSServer{})), "vars")
 	dnsRule10Keys   = jsonKeys(reflect.TypeOf(state.DNSRule{}))
 	// sections10Keys — секции узла: `rules` и `dns`. Внутрь записей секции
 	// обход спускается теми же списками, что у корневых, — форма одна
@@ -124,10 +126,40 @@ var (
 		"inline": {"verbatim": true},
 	}
 	lxboxDNSServerKeys10 = map[string]map[string]bool{
-		"*":        {"description": true},
+		"*": {"description": true},
+	}
+	// dnsServerKindKeys10 — ключи записи DNS-сервера, законные только у своего
+	// вида: `vars` у `template` (SPEC 129). У `user`/`preset` ключ
+	// называется backup_unknown_field.
+	dnsServerKindKeys10 = map[string]map[string]bool{
 		"template": {"vars": true},
 	}
 )
+
+// withoutKeys — набор ключей без перечисленных.
+func withoutKeys(base map[string]bool, drop ...string) map[string]bool {
+	for _, k := range drop {
+		delete(base, k)
+	}
+	return base
+}
+
+// mergeKindKeys — объединение таблиц «вид → ключи» (поля стороны LxBox и
+// ключи своей стороны, законные у одного вида).
+func mergeKindKeys(tables ...map[string]map[string]bool) map[string]map[string]bool {
+	out := map[string]map[string]bool{}
+	for _, t := range tables {
+		for kind, keys := range t {
+			if out[kind] == nil {
+				out[kind] = map[string]bool{}
+			}
+			for k := range keys {
+				out[kind][k] = true
+			}
+		}
+	}
+	return out
+}
 
 // scanUnknown10 обходит файл 1.0 и перечисляет всё, чего нет в модели.
 //
@@ -148,7 +180,8 @@ func scanUnknown10(data []byte) []Warning {
 
 	if dns, ok := rawObject(root, "dns"); ok {
 		sc.object("dns", dns, dns10Keys)
-		sc.arrayKinds(dns, "dns.servers", "servers", dnsServer10Keys, lxboxDNSServerKeys10, "tag", nil)
+		sc.arrayKinds(dns, "dns.servers", "servers", dnsServer10Keys,
+			mergeKindKeys(lxboxDNSServerKeys10, dnsServerKindKeys10), "tag", nil)
 		sc.array(dns, "dns.rules", "rules", dnsRule10Keys, "name", nil)
 	}
 

@@ -694,6 +694,55 @@ func SyncStateRulesToPresetRefs(rules []state.Rule) []*PresetRefState {
 	return out
 }
 
+// SyncStateV6ToDNSTemplateVars — state → UI (SPEC 129): значения переменных
+// шаблонных DNS-серверов по тегу, копией (модель правит свою карту, а не
+// записи загруженного состояния). nil — значений нет ни у одной записи.
+func SyncStateV6ToDNSTemplateVars(dns state.DNSOptions) map[string]map[string]string {
+	var out map[string]map[string]string
+	for _, s := range dns.Servers {
+		if s.Kind != state.DNSServerKindTemplate || len(s.Vars) == 0 {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]map[string]string)
+		}
+		vars := make(map[string]string, len(s.Vars))
+		for k, v := range s.Vars {
+			vars[k] = v
+		}
+		out[s.Tag] = vars
+	}
+	return out
+}
+
+// ApplyDNSTemplateVarsToState — UI → state (SPEC 129): значения переменных
+// из модели в записи шаблонных DNS-серверов, собранные
+// SyncDNSByOrderToState. Запись без значений остаётся без ключа `vars`;
+// значения тега, для которого записи нет (сервер не из шаблона), не пишутся
+// — сирота снимается при записи (Н2). Нормы Н2–Н4 доводит вызывающий
+// (state.ApplyRecordVars): модели хватает хранить выбор.
+func ApplyDNSTemplateVarsToState(dns *state.DNSOptions, vars map[string]map[string]string) {
+	if dns == nil {
+		return
+	}
+	for i := range dns.Servers {
+		srv := &dns.Servers[i]
+		if srv.Kind != state.DNSServerKindTemplate {
+			continue
+		}
+		src := vars[srv.Tag]
+		if len(src) == 0 {
+			srv.Vars = nil
+			continue
+		}
+		cp := make(map[string]string, len(src))
+		for k, v := range src {
+			cp[k] = v
+		}
+		srv.Vars = cp
+	}
+}
+
 // SyncStateV6ToDNSOverrides — state → UI. Возвращает overrides map из state.DNS
 // (только entries с kind=template, формат map[tag]→enabled).
 //

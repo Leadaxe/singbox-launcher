@@ -10,7 +10,8 @@
 //   - ссылки ПО ИМЕНИ строкой — цели правил, route.final, опции
 //     (addOutbounds), умолчание селектора (options.default) и литеральное
 //     умолчание отбора (preferredDefault) Направлений — в теле и в USER-патче,
-//     outbound-переменные пресетов, detour DNS-серверов.
+//     outbound-переменные пресетов, detour DNS-серверов, outbound-переменные
+//     шаблонных DNS-серверов (SPEC 129).
 //
 // Операций над именем четыре — переименование Направления, свёртки и верхнего
 // узла, удаление верхнего узла, — и отличаются они только тем, что делают с
@@ -22,10 +23,12 @@ package business
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
 	corestate "singbox-launcher/core/state"
+	wizardtemplate "singbox-launcher/core/template"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -205,7 +208,64 @@ func editRootNameRefs(model *wizardmodels.WizardModel, decide rootRefDecide) ([]
 	// 6. detour DNS-серверов.
 	count += editDNSDetours(model, decide, note)
 
+	// 7. Каналы шаблонных DNS-серверов (SPEC 129): значения переменных типа
+	// `outbound` в записи сервера. Литеральный detour плоского тела шаблона
+	// переписывать бесполезно — тело не сохраняется, маршрут живёт в записи.
+	count += editDNSTemplateVarRefs(model, decide, note)
+
 	return names, count
+}
+
+// editDNSTemplateVarRefs — значения переменных типа `outbound` в записях
+// шаблонных DNS-серверов (model.DNSTemplateVars): одиночная цель по имени.
+//
+// Тип берётся из объявления сервера: у сервера оно под рукой, в отличие от
+// пресетов, где тип не проверяется (пункт 5). Держатель в списке задетых —
+// тег сервера. Хранятся только выбранные значения (Н4): цель по умолчанию
+// называет тег шаблона, а его переименовать нельзя, — обходу их хватает.
+// Переписанное значение, совпавшее с умолчанием, снимается (Н4).
+func editDNSTemplateVarRefs(model *wizardmodels.WizardModel, decide rootRefDecide, note func(string)) int {
+	if model == nil || model.TemplateData == nil || len(model.DNSTemplateVars) == 0 {
+		return 0
+	}
+	tags := make([]string, 0, len(model.DNSTemplateVars))
+	for tag := range model.DNSTemplateVars {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	td := model.TemplateData
+	target := model.Target.Normalized()
+	count := 0
+	for _, tag := range tags {
+		vars := model.DNSTemplateVars[tag]
+		decls := td.DNSServerVars[tag]
+		for _, decl := range decls {
+			if decl.Type != "outbound" {
+				continue
+			}
+			val, ok := vars[decl.Name]
+			if !ok {
+				continue
+			}
+			next, act := decide(val)
+			if act == rootRefMiss {
+				continue
+			}
+			if act == rootRefRename {
+				if next == wizardtemplate.DNSServerVarDefault(decls, decl.Name, td.Vars, model.SettingsVars, target) {
+					delete(vars, decl.Name)
+				} else {
+					vars[decl.Name] = next
+				}
+			}
+			count++
+			note(firstNonEmptyRefName(tag, "DNS server"))
+		}
+		if len(vars) == 0 {
+			delete(model.DNSTemplateVars, tag)
+		}
+	}
+	return count
 }
 
 // editNameList — список имён (addOutbounds): переименование на месте,

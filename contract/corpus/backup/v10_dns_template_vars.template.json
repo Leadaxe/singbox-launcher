@@ -1,0 +1,81 @@
+{
+  "_": "Объявления шаблона приёмника для кейса v10_dns_template_vars (контракт 1.0.2, D-118). Оба раннера нормализуют значения переменных записи ТОЛЬКО по этой фикстуре: умолчания шаблонов у сторон разные.",
+  "dns_options": {
+    "servers": [
+      {
+        "description": "Google DNS (direct)",
+        "enabled": false,
+        "vars": [
+          { "name": "outbound", "type": "outbound", "default_value": "direct-out" },
+          { "name": "dns_ip", "type": "enum", "default_value": "8.8.8.8",
+            "options": [
+              { "title": "8.8.8.8 · Primary v4", "value": "8.8.8.8" },
+              { "title": "8.8.4.4 · Secondary v4", "value": "8.8.4.4" }
+            ] }
+        ],
+        "server": { "type": "udp", "tag": "google_udp", "server_port": 53, "server": "@dns_ip", "detour": "@outbound" }
+      },
+      {
+        "description": "Google DoT",
+        "enabled": false,
+        "vars": [
+          { "name": "outbound", "type": "outbound", "default_value": "proxy-out" },
+          { "name": "dns_ip", "type": "enum", "default_value": "8.8.8.8",
+            "options": [
+              { "title": "8.8.8.8 · Primary v4", "value": "8.8.8.8" },
+              { "title": "8.8.4.4 · Secondary v4", "value": "8.8.4.4" }
+            ] }
+        ],
+        "server": { "type": "tls", "tag": "google_dot", "server_port": 853, "server": "@dns_ip", "detour": "@outbound" }
+      },
+      {
+        "description": "Cloudflare DoT",
+        "enabled": false,
+        "vars": [
+          { "name": "outbound", "type": "outbound", "default_value": "proxy-out" },
+          { "name": "dns_ip", "type": "enum", "default_value": "1.1.1.1",
+            "options": [
+              { "title": "1.1.1.1 · Primary v4", "value": "1.1.1.1" },
+              { "title": "1.0.0.1 · Secondary v4", "value": "1.0.0.1" }
+            ] }
+        ],
+        "server": { "type": "tls", "tag": "cloudflare_dot", "server_port": 853, "server": "@dns_ip", "detour": "@outbound" }
+      },
+      {
+        "description": "Safe DNS (DoT)",
+        "enabled": false,
+        "vars": [
+          { "name": "outbound", "type": "outbound", "default_value": "direct-out" },
+          { "name": "safe_profile", "type": "enum", "default_value": "9.9.9.9",
+            "options": [
+              { "title": "Quad9 · anti-malware", "value": "9.9.9.9" },
+              { "title": "AdGuard · ad block", "value": "dns.adguard-dns.com" }
+            ] },
+          { "name": "dom_resolver", "type": "dns_servers", "default_value": "google_udp" }
+        ],
+        "server": { "type": "tls", "tag": "safe_dns_dot", "server_port": 853, "server": "@safe_profile", "domain_resolver": "@dom_resolver", "detour": "@outbound" }
+      },
+      {
+        "description": "Quad9 DoH",
+        "enabled": false,
+        "vars": [
+          { "name": "outbound", "type": "outbound", "default_value": "proxy-out" }
+        ],
+        "server": { "type": "https", "tag": "quad9_doh", "server_port": 443, "server": "9.9.9.9", "path": "/dns-query", "detour": "@outbound" }
+      }
+    ]
+  },
+  "presets": [
+    {
+      "id": "russian",
+      "vars": [
+        { "name": "out", "type": "outbound", "default_value": "direct-out" },
+        { "name": "dns_ip", "type": "enum", "default_value": "77.88.8.8",
+          "options": [
+            { "title": "77.88.8.8 · Base", "value": "77.88.8.8" },
+            { "title": "77.88.8.1 · Base v4 #2", "value": "77.88.8.1" }
+          ] }
+      ]
+    }
+  ]
+}

@@ -32,7 +32,10 @@
 //     SyncDNSOptionsWithActivePresets синхронизирует list с активным набором
 //     preset-ref'ов в state.Rules[] (вызывается на load + на toggle).
 //  2. kind=template/preset тело резолвится из template на build/render — на
-//     диске только {kind, tag|ref, enabled}.
+//     диске у preset только {kind, ref, enabled}, у template ещё значения
+//     переменных сервера `vars` (SPEC 129): {kind, tag, enabled, vars?}.
+//     В `vars` — только объявленные сервером имена и только значения,
+//     отличные от умолчания шаблона (нормы Н2/Н4, record_vars.go).
 //  3. kind=user — полное тело sing-box в `body`.
 //
 // См. SPECS/056-R-N-DNS_SCHEMA_REDESIGN/SPEC.md, SPECS/127-F-N-ONE_NAMESPACE_V8/.
@@ -86,6 +89,14 @@ type DNSServer struct {
 
 	// Enabled — toggle. Build pipeline пропускает entry если false.
 	Enabled bool `json:"enabled"`
+
+	// Vars — значения переменных шаблонного сервера по ЛОКАЛЬНЫМ именам его
+	// объявления (`outbound`, `dns_ip`), только kind=template (SPEC 129).
+	// Отсутствие ключа = «следовать шаблону»: умолчание не пишется (Н4),
+	// необъявленное имя снимается (Н2), значение хранится подрезанным (Н3).
+	// До SPEC 129 значения жили корневыми `vars.dns_<tag>_<var>`; их
+	// переносит сюда ApplyRecordVars.
+	Vars map[string]string `json:"vars,omitempty"`
 
 	// Body — для kind=user полное тело sing-box DNS-сервера (type, server,
 	// server_port, tls, detour, ...). nil/пуст для kind=template/preset.

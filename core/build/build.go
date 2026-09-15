@@ -96,6 +96,11 @@ type BuildContext struct {
 	// Zero value (пустой TargetSpec) нормализуется в «эта машина, local» —
 	// поведение вызывающих, не знающих о таргетах, не меняется.
 	Target template.TargetSpec
+
+	// dnsFailClosed — итог второй линии fail-closed секции dns (SPEC 129
+	// Н10): выпавшие DNS-серверы и резолвер замены. Заполняет сама сборка
+	// (секция dns собирается первой), читают route/outbounds/endpoints.
+	dnsFailClosed *dnsFailClosed
 }
 
 // TargetSpecFromState (SPEC 097) — TargetSpec из meta-полей state'а.
@@ -271,9 +276,29 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 	// так же, и неполное множество врало бы и в превью.
 	ctx.Preset.EmittedRuleSetTags = CollectEmittedRouteRuleSetTags(cfg["route"], ctx.Route, ctx.Preset)
 
+	// SPEC 129 Н10: секция dns собирается ПЕРВОЙ, независимо от порядка
+	// шаблона. Её вторая линия fail-closed выбрасывает серверы с висячим
+	// detour, и ссылки на них из route (`default_domain_resolver`) и из узлов
+	// (`domain_resolver`) обязаны узнать об этом до того, как их секции
+	// соберутся: иначе ядро не стартует на ссылке в никуда.
+	var dnsFormatted string
+	dnsBuilt := false
+	if raw, ok := cfg["dns"]; ok {
+		formatted, fc, err := buildDNSSection(ctx, raw, finalOutboundTags)
+		if err != nil {
+			return nil, nil, fmt.Errorf("build: section %q: %w", "dns", err)
+		}
+		dnsFormatted, dnsBuilt = formatted, true
+		ctx.dnsFailClosed = fc
+	}
+
 	for _, key := range order {
 		raw, ok := cfg[key]
 		if !ok {
+			continue
+		}
+		if key == "dns" && dnsBuilt {
+			out = append(out, fmt.Sprintf(`  "%s": %s`, key, dnsFormatted))
 			continue
 		}
 		formatted, err := buildSection(ctx, key, raw, finalOutboundTags)
@@ -283,6 +308,37 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 		out = append(out, fmt.Sprintf(`  "%s": %s`, key, formatted))
 	}
 	return out, excluded, nil
+}
+
+// buildDNSSection — секция dns: слияние шаблона, пресетов и записей
+// состояния, затем вторая линия fail-closed (SPEC 118 W4, SPEC 129 Н10).
+// Второй возврат — итог второй линии для секций, собираемых после; nil —
+// линия не сработала (или превью).
+func buildDNSSection(ctx BuildContext, raw json.RawMessage, finalOutboundTags map[string]bool) (string, *dnsFailClosed, error) {
+	merged, err := MergeDNSSection(raw, ctx.DNS)
+	if err != nil {
+		return "", nil, err
+	}
+	// SPEC 053: append bundled DNS from active presets + extras + filter by overrides.
+	merged, err = MergePresetsIntoDNS(merged, ctx.Preset)
+	if err != nil {
+		return "", nil, err
+	}
+	// SPEC 118 W4: `dns.detour` — полноправное ребро outbound-графа
+	// (features/directions.md §9). Висячий detour DNS-сервера обязан
+	// ловиться ЗДЕСЬ, а не падением ядра на старте. В preview
+	// (finalOutboundTags=nil) не трогаем: набор тегов там неполон, и
+	// false-positive хуже висячей ссылки в неприменяемом превью.
+	var fc *dnsFailClosed
+	if !ctx.ForPreview && len(finalOutboundTags) > 0 {
+		defaultResolver := ""
+		if ctx.Template != nil {
+			defaultResolver = ctx.Template.DefaultDomainResolver
+		}
+		merged, fc = sanitizeDNSSection(merged, finalOutboundTags, defaultResolver)
+	}
+	formatted, err := FormatSectionJSON(merged, 2)
+	return formatted, fc, err
 }
 
 // buildSection — диспетчер для одной секции. Pure: state хранится только
@@ -317,32 +373,33 @@ func buildSection(ctx BuildContext, key string, raw json.RawMessage, finalOutbou
 				cache = &c
 			}
 		}
+		// SPEC 129 Н10: `domain_resolver` узла на DNS-сервер, выпавший второй
+		// линией, — замена резолвером (без него ядро не стартует).
+		if cache != nil && ctx.dnsFailClosed.active() {
+			healed := ctx.dnsFailClosed.healResolversInEntries(cache.Outbounds, "outbound")
+			c := *cache
+			c.Outbounds = healed
+			cache = &c
+		}
+		raw = ctx.dnsFailClosed.healResolversInSection(raw, "outbounds")
 		// Висячие ссылки и кольца уже вычищены sanitizeOutboundGraph
 		// (buildOrderedSections) — по всему графу разом, а не по одной секции.
 		gen := cacheOutboundsAsStrings(cache)
 		return BuildOutboundsSection(raw, gen, ctx.ForPreview, ctx.Stats)
 	case "endpoints":
-		genEP := cacheEndpointsAsStrings(ctx.Cache)
+		cache := ctx.Cache
+		if cache != nil && ctx.dnsFailClosed.active() {
+			healed := ctx.dnsFailClosed.healResolversInEntries(cache.Endpoints, "endpoint")
+			c := *cache
+			c.Endpoints = healed
+			cache = &c
+		}
+		raw = ctx.dnsFailClosed.healResolversInSection(raw, "endpoints")
+		genEP := cacheEndpointsAsStrings(cache)
 		return BuildEndpointsSection(raw, genEP, ctx.ForPreview, ctx.Stats)
 	case "dns":
-		merged, err := MergeDNSSection(raw, ctx.DNS)
-		if err != nil {
-			return "", err
-		}
-		// SPEC 053: append bundled DNS from active presets + extras + filter by overrides.
-		merged, err = MergePresetsIntoDNS(merged, ctx.Preset)
-		if err != nil {
-			return "", err
-		}
-		// SPEC 118 W4: `dns.detour` — полноправное ребро outbound-графа
-		// (features/directions.md §9). Висячий detour DNS-сервера обязан
-		// ловиться ЗДЕСЬ, а не падением ядра на старте. В preview
-		// (finalOutboundTags=nil) не трогаем: набор тегов там неполон, и
-		// false-positive хуже висячей ссылки в неприменяемом превью.
-		if !ctx.ForPreview && len(finalOutboundTags) > 0 {
-			merged = SanitizeDNSDetours(merged, finalOutboundTags)
-		}
-		return FormatSectionJSON(merged, 2)
+		formatted, _, err := buildDNSSection(ctx, raw, finalOutboundTags)
+		return formatted, err
 	case "route":
 		merged, err := MergeRouteSection(raw, ctx.Route)
 		if err != nil {
@@ -369,6 +426,9 @@ func buildSection(ctx BuildContext, key string, raw json.RawMessage, finalOutbou
 				merged = cleaned
 			}
 		}
+		// SPEC 129 Н10: `route.default_domain_resolver` на DNS-сервер, выпавший
+		// второй линией, — замена (без резолвера ядро не стартует).
+		merged = ctx.dnsFailClosed.healResolversInSection(merged, "route")
 		return FormatSectionJSON(merged, 2)
 	default:
 		formatted, err := FormatSectionJSON(raw, 2)

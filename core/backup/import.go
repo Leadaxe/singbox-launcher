@@ -52,7 +52,16 @@ type Warning struct {
 	// Значения у лаунчера: `kind` | `rule_set` | `not_allowed`. Перечень
 	// контракта знает ещё `unknown_key` — его ставит сторона со строгим
 	// разбором тела (LxBox); у лаунчера тело сырое, и такой причины нет.
+	//
+	// У `backup_var_skipped` (SPEC 129 §5.6) — `not_portable` | `undeclared`
+	// | `superseded` | `no_record`.
 	Reason string
+	// Record — носитель переменной у `backup_var_skipped` (SPEC 129 §5.6):
+	// `dns:<tag>` — запись шаблонного DNS-сервера, `preset:<ref>` — пресет
+	// правила, пусто — корневая переменная. Отдельным полем, а не приклейкой к
+	// Detail: UI различает переменную записи и корневую по полю, а не разбором
+	// строки.
+	Record string
 	// Nodes — сколько узлов уехало вместе с записью, о которой warning.
 	// Ноль означает «неприменимо» (правило, переменная, поле), а не «узлов
 	// не было». Поле нужно ровно там, где потеря измеряется не фактом, а
@@ -76,8 +85,16 @@ const (
 	WarnBackupFinalDropped = "backup_final_dropped"
 	// WarnBackupUnknownPreset — preset id вне шаблона принимающей стороны.
 	WarnBackupUnknownPreset = "backup_unknown_preset"
-	// WarnBackupVarSkipped — переменная не в списке переносимых.
+	// WarnBackupVarSkipped — переменная не применена: корневая не в списке
+	// переносимых (`not_portable`), имя записи не объявлено шаблоном
+	// приёмника (`undeclared`), корневое `dns_<tag>_<var>` уступило записи
+	// файла со своими vars (`superseded`) или не нашло записи (`no_record`).
+	// Причина — Warning.Reason, носитель — Warning.Record (SPEC 129 §5.6).
 	WarnBackupVarSkipped = "backup_var_skipped"
+	// WarnBackupDNSEntrySkipped — запись шаблонного DNS-сервера, чей тег
+	// шаблон приёмника не объявил: тела у неё здесь нет, и запись не
+	// ввозится (SPEC 129 §5.2). Detail — `template:<tag>`.
+	WarnBackupDNSEntrySkipped = "backup_dns_entry_skipped"
 	// WarnBackupUnknownField — ключ вне схемы: в состояние не попадает (П3).
 	// Detail называет и ключ, и сущность, в которой он встретился.
 	WarnBackupUnknownField = "backup_unknown_field"
@@ -247,6 +264,12 @@ type ImportOptions struct {
 	// тегами Направлений и свёрток (NODE_LINK.md §8). Пусто — известны только
 	// `direct-out` и тег блокировки.
 	SystemTags []string
+	// RecordVars — объявления шаблона приёмника для значений переменных
+	// записи (SPEC 129): шаблонные DNS-серверы и пресеты с умолчаниями для
+	// цели состояния (template.RecordVarDeclsFor). nil — шаблона нет:
+	// корневые `dns_<tag>_<var>` не переносятся, записи не нормализуются,
+	// типы переменных серверов для Н9 неизвестны.
+	RecordVars *state.RecordVarDecls
 }
 
 // ImportResult — что получилось.
@@ -459,6 +482,12 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 	res.Warnings = append(res.Warnings, checkImportedRuleTargets(dec.Rules, known)...)
 	s.Rules = append(s.Rules, dec.Rules...)
 	res.AppliedRules = len(dec.Rules)
+	// SPEC 129 §5.4: `vars` пресетов после замещения — необъявленные имена
+	// снимаются и называются, равные умолчанию снимаются молча. Пресет вне
+	// шаблона (backup_unknown_preset) объявлений не имеет — не трогается.
+	var presetDrops []state.RecordVarDrop
+	state.NormalizePresetRuleVars(s.Rules, opts.RecordVars, &presetDrops)
+	res.Warnings = append(res.Warnings, recordVarWarnings(presetDrops)...)
 
 	// Ось порядка встаёт номерами файла (BACKUP.md §9 п. 7): раскладка оси у
 	// сторон одна, и номер несёт зону, которую порядок не передаёт. Правила,
@@ -478,7 +507,7 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 
 	res.Warnings = append(res.Warnings, importVars(s, dec.Vars)...)
 
-	importDNS(s, dec.DNS)
+	res.Warnings = append(res.Warnings, importDNS(s, dec.DNS, opts.RecordVars, known)...)
 	importWarp(s, dec.Warp)
 
 	return res, nil
@@ -723,7 +752,7 @@ func importVars(s *state.State, vars map[string]string) []Warning {
 		if !IsPortableVar(name) {
 			// Непереносимое имя на этой машине значит другое (путь,
 			// интерфейс, платформенный флаг) — применять нельзя.
-			warns = append(warns, Warning{Code: WarnBackupVarSkipped, Detail: name})
+			warns = append(warns, Warning{Code: WarnBackupVarSkipped, Detail: name, Reason: VarSkippedNotPortable})
 			continue
 		}
 		setVar(s, name, vars[name])
@@ -799,12 +828,28 @@ func reservedTargetLiteral(tag string) bool {
 // Ключ dns-правила — kind+ref+тело: своего имени у правила нет,
 // и различить два правила можно только тем, что они делают.
 //
+// Запись шаблонного сервера (SPEC 129 §5.2): тег, которого шаблон приёмника
+// не объявил, не ввозится (backup_dns_entry_skipped); у совпавшей записи
+// `enabled` локальный, а `vars` накладываются ПО ИМЕНАМ — имя файла замещает
+// значение приёмника, имён, которых в файле нет, импорт не трогает (П7:
+// старый файл без vars не сбрасывает маршрут приёмника к умолчанию).
+// Необъявленные имена файла называются, равные умолчанию снимаются молча —
+// после наложения, поэтому значение файла, равное умолчанию, сбрасывает
+// выбор приёмника (файл сказал это явно). Затем Н9: запись, которой импорт
+// коснулся, с целью канала вне известных приезжает выключенной.
+//
 // final и strategy — ЗАМЕЩАЮТСЯ файлом: это одиночные значения, а не список,
 // и «слить» два взаимоисключающих ответа нечем.
-func importDNS(s *state.State, dns *decodedDNS) {
+func importDNS(s *state.State, dns *decodedDNS, decls *state.RecordVarDecls, known tagSet) []Warning {
 	if dns == nil {
-		return
+		// Нормы записи действуют и без секции в файле: приёмник мог нести
+		// сирот и умолчания — первая запись после импорта их снимает.
+		if servers, changed, _ := state.NormalizeDNSServerVars(s.DNS.Servers, decls); changed {
+			s.DNS.Servers = servers
+		}
+		return nil
 	}
+	var warns []Warning
 
 	// Ключ един для всех видов: у template/user заполнен tag и пуст ref, у
 	// preset — наоборот. Разбирать по kind нечего, а один ключ на все виды
@@ -817,14 +862,71 @@ func importDNS(s *state.State, dns *decodedDNS) {
 	// записи в тех же наборах схлопывал два одинаковых правила файла в одно.
 	serverKey := func(kind, tag, ref string) string { return kind + "\x00" + tag + "\x00" + ref }
 	haveServers := map[string]bool{}
-	for _, srv := range s.DNS.Servers {
+	localTemplate := map[string]int{}
+	for i, srv := range s.DNS.Servers {
 		haveServers[serverKey(string(srv.Kind), srv.Tag, srv.Ref)] = true
+		if srv.Kind == state.DNSServerKindTemplate {
+			if _, dup := localTemplate[srv.Tag]; !dup {
+				localTemplate[srv.Tag] = i
+			}
+		}
+	}
+	declsKnown := decls != nil && decls.DNSServers != nil
+	touched := map[int]bool{}
+	var touchedOrder []int
+	touch := func(i int) {
+		if !touched[i] {
+			touched[i] = true
+			touchedOrder = append(touchedOrder, i)
+		}
 	}
 	for _, srv := range dns.Servers {
-		if haveServers[serverKey(string(srv.Kind), srv.Tag, srv.Ref)] {
+		if srv.Kind == state.DNSServerKindTemplate {
+			if !decls.DNSServerDeclared(srv.Tag) {
+				warns = append(warns, Warning{
+					Code:   WarnBackupDNSEntrySkipped,
+					Detail: "template:" + srv.Tag,
+					Kind:   warnKindDNSServer,
+				})
+				continue
+			}
+			if declsKnown {
+				warns = append(warns, recordVarWarnings(state.UndeclaredRecordVars(
+					srv.Vars, decls.DNSServers[srv.Tag], state.DNSVarRecord(srv.Tag)))...)
+			}
+			if idx, ok := localTemplate[srv.Tag]; ok {
+				if overlayRecordVars(&s.DNS.Servers[idx], srv.Vars) {
+					touch(idx)
+				}
+				continue // своё сильнее: enabled и прочие имена — локальные
+			}
+		} else if haveServers[serverKey(string(srv.Kind), srv.Tag, srv.Ref)] {
 			continue // своё сильнее
 		}
+		if srv.Kind != state.DNSServerKindTemplate {
+			srv.Vars = nil // Н1: vars только у записи шаблонного сервера
+		}
 		s.DNS.Servers = append(s.DNS.Servers, srv)
+		touch(len(s.DNS.Servers) - 1)
+	}
+
+	// Н2–Н4 для записей, которых импорт коснулся, — ДО проверки целей: цель,
+	// равная умолчанию, снята и целью файла не считается.
+	if declsKnown {
+		for _, i := range touchedOrder {
+			srv := &s.DNS.Servers[i]
+			if srv.Kind != state.DNSServerKindTemplate {
+				continue
+			}
+			if vars, changed, _ := state.NormalizeRecordVarMap(srv.Vars, decls.DNSServers[srv.Tag], ""); changed {
+				srv.Vars = vars
+			}
+		}
+	}
+	warns = append(warns, checkImportedDNSTargets(s.DNS.Servers, touchedOrder, decls, known)...)
+	// Остальные записи приёмника — те же нормы молча (сироты, умолчания).
+	if servers, changed, _ := state.NormalizeDNSServerVars(s.DNS.Servers, decls); changed {
+		s.DNS.Servers = servers
 	}
 
 	ruleKey := func(kind, ref string, body map[string]interface{}) string {
@@ -853,7 +955,114 @@ func importDNS(s *state.State, dns *decodedDNS) {
 	if dns.DefaultDomainResolver != "" {
 		s.DNS.DefaultDomainResolver = dns.DefaultDomainResolver
 	}
+	return warns
 }
+
+// overlayRecordVars накладывает значения записи файла на запись приёмника по
+// именам (SPEC 129 §5.2). Пустое после подрезки значение файла — «нет ключа»
+// (Н3) и значение приёмника не трогает. Возвращает true, если файл назвал
+// хоть одно имя.
+func overlayRecordVars(dst *state.DNSServer, vars map[string]string) bool {
+	named := false
+	for name, raw := range vars {
+		value := strings.TrimSpace(raw)
+		if value == "" {
+			continue
+		}
+		if dst.Vars == nil {
+			dst.Vars = map[string]string{}
+		}
+		dst.Vars[name] = value
+		named = true
+	}
+	return named
+}
+
+// checkImportedDNSTargets — Н9 (SPEC 129): запись DNS-сервера, которой импорт
+// коснулся, с каналом вне известных целей приезжает ВЫКЛЮЧЕННОЙ с
+// backup_unknown_outbound — значение остаётся, пользователь видит, куда метил
+// файл, а сборка не уведёт резолв мимо выбранного маршрута. Канал шаблонного
+// сервера — значения переменных типа `outbound` (типы — из объявлений; без
+// них проверять нечем), у `user` — `body.detour`. Пустой список известных —
+// «проверять нечем», как у правил.
+func checkImportedDNSTargets(servers []state.DNSServer, touched []int, decls *state.RecordVarDecls, known tagSet) []Warning {
+	if known.empty() {
+		return nil
+	}
+	var warns []Warning
+	fail := func(srv *state.DNSServer, target string) {
+		srv.Enabled = false
+		warns = append(warns, Warning{
+			Code:   WarnBackupUnknownOutbound,
+			Detail: srv.Tag + " → " + target,
+			Kind:   warnKindDNSServer,
+		})
+	}
+	for _, i := range touched {
+		srv := &servers[i]
+		switch srv.Kind {
+		case state.DNSServerKindTemplate:
+			if decls == nil {
+				continue
+			}
+			names := make([]string, 0, len(srv.Vars))
+			for name := range srv.Vars {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			for _, name := range names {
+				decl, ok := decls.DNSServerVarDecl(srv.Tag, name)
+				if !ok || decl.Type != "outbound" {
+					continue
+				}
+				if v := strings.TrimSpace(srv.Vars[name]); v != "" && !known.has(v) {
+					fail(srv, v)
+				}
+			}
+		case state.DNSServerKindUser:
+			if det, _ := srv.Body["detour"].(string); strings.TrimSpace(det) != "" && !known.has(det) {
+				fail(srv, det)
+			}
+		}
+	}
+	return warns
+}
+
+// recordVarWarnings — снятые имена переменных предупреждениями
+// backup_var_skipped (SPEC 129 §5.6).
+func recordVarWarnings(drops []state.RecordVarDrop) []Warning {
+	if len(drops) == 0 {
+		return nil
+	}
+	out := make([]Warning, 0, len(drops))
+	for _, d := range drops {
+		kind := ""
+		switch {
+		case strings.HasPrefix(d.Record, "dns:"):
+			kind = warnKindDNSServer
+		case strings.HasPrefix(d.Record, "preset:"):
+			kind = warnKindPreset
+		}
+		out = append(out, Warning{
+			Code:   WarnBackupVarSkipped,
+			Detail: d.Name,
+			Kind:   kind,
+			Record: d.Record,
+			Reason: d.Reason,
+		})
+	}
+	return out
+}
+
+// Вид носителя в Warning.Kind у предупреждений о записях DNS и пресетов.
+const (
+	warnKindDNSServer = "dns_server"
+	warnKindPreset    = "preset"
+)
+
+// VarSkippedNotPortable — причина backup_var_skipped у корневой переменной вне
+// списка переносимых (registry/vars.json, portable=true).
+const VarSkippedNotPortable = "not_portable"
 
 // importWarp восстанавливает WG/MASQUE-регистрации из warp[].
 //
