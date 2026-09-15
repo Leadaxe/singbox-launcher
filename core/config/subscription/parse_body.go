@@ -11,6 +11,8 @@
 //     строго ДО тегов; члены групп перепривязываются на выжившего
 //     (collapsedInto);
 //  3. уникализация СЫРЫХ тегов внутри тела (X, X-2) — StampNodeIdentity;
+//     сперва ВСЕ узлы, затем группы тем же счётчиком (IDENTITY.md §1.3):
+//     группа-тёзка узла получает X-2, где бы ни стояла в теле;
 //     кап capN ограничивает число ПРИНЯТЫХ узлов по ходу стадий — реальный
 //     предел разбора, не бейдж; достижение = Truncated.
 //
@@ -441,12 +443,16 @@ func (st *bodyParseState) accept(node *configtypes.ParsedNode, originKind, origi
 		// Группы идентичности SPEC 112 не имеют, но сырой тег в контейнере
 		// v7 обязан быть уникален среди ВСЕХ узлов — уникализируем той же
 		// машиной; группа без тега не рождается (features/sources.md).
-		raw := strings.TrimSpace(node.Tag)
-		if raw == "" {
+		//
+		// Тег группе даётся НЕ здесь, а в finish(), после всех узлов
+		// (IDENTITY.md §1.3, норма обеих сторон): иначе группа, стоящая в
+		// теле раньше узла-тёзки, забирала бы `X`, и узел становился `X-2`.
+		// На сыром теге узла держатся ссылки и отметки выключения, и
+		// появление группы у провайдера не вправе их сдвигать.
+		if strings.TrimSpace(node.Tag) == "" {
 			st.warn("group without tag skipped")
 			return
 		}
-		entry.RawTag = makeIdentityUnique(raw, st.idCounts)
 		if t, ok := node.Outbound["type"].(string); ok {
 			entry.GroupType = t
 		}
@@ -483,21 +489,34 @@ func (st *bodyParseState) finish() {
 		st.warn(fmt.Sprintf("body truncated: %d record(s) beyond the cap of %d", st.skipped, st.capN))
 	}
 
-	// Исходный тег (SourceTag) → сырой тег принятой записи.
-	rawByOriginal := make(map[string]string, len(st.res.Entries))
+	// Сырые теги групп — ПОСЛЕ всех узлов, тем же счётчиком и в порядке тела
+	// (IDENTITY.md §1.3): группа-тёзка узла получает `X-2` независимо от
+	// позиции. До резолва состава: члены сопоставляются уже по итоговым тегам.
 	for _, e := range st.res.Entries {
-		if e.Node == nil {
-			continue
+		if e.Node != nil && e.Node.Scheme == configtypes.SchemeGroup && e.RawTag == "" {
+			e.RawTag = makeIdentityUnique(strings.TrimSpace(e.Node.Tag), st.idCounts)
 		}
-		orig := e.Node.SourceTag
-		if orig == "" {
-			orig = strings.TrimSpace(e.Node.Tag)
-		}
-		if orig == "" {
-			continue
-		}
-		if _, taken := rawByOriginal[orig]; !taken {
-			rawByOriginal[orig] = e.RawTag
+	}
+
+	// Исходный тег (SourceTag) → сырой тег принятой записи. Узлы — первыми,
+	// по той же норме, что у тегов: член `X` называет узел `X`, а не
+	// группу-тёзку, стоящую в теле раньше него.
+	rawByOriginal := make(map[string]string, len(st.res.Entries))
+	for _, groups := range []bool{false, true} {
+		for _, e := range st.res.Entries {
+			if e.Node == nil || (e.Node.Scheme == configtypes.SchemeGroup) != groups {
+				continue
+			}
+			orig := e.Node.SourceTag
+			if orig == "" {
+				orig = strings.TrimSpace(e.Node.Tag)
+			}
+			if orig == "" {
+				continue
+			}
+			if _, taken := rawByOriginal[orig]; !taken {
+				rawByOriginal[orig] = e.RawTag
+			}
 		}
 	}
 	collapsed := st.dedup.collapsedTags()

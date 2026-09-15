@@ -2487,7 +2487,7 @@ dev-формы читаются терпимо.
 | `core/backup/import.go:421-438` | 1.0 — до `normalizeMemberLinks10`; 0.x — после `resolveImportedHops` |
 | `core/backup/import10.go:510-571` | `normalizeMemberLinks10` на общем индексе (`renamed` — через `skip`); `merge.go:968` — `fileFinal` той же формулой |
 | `ui/configurator/business/source_record_paste.go:129-135` | вставка записи — после `repointRecordLinks` |
-| `core/config/subscription/parse_body.go:440-449` | без изменений: сырой тег группы уникализируется тем же `st.idCounts`, что узлы, до `tag_policy` |
+| `core/config/subscription/parse_body.go` | «сперва узлы, затем группы» (IDENTITY.md §1.3): `accept` тегов группам не даёт, `finish` раздаёт их тем же `st.idCounts` после всех узлов и резолвит состав по карте «узлы первыми»; тест — `core/subscription_fetch_test.go` `TestFetchGroupNamesakeDoesNotShiftNodeTag` (Xray-балансировщик перед узлом-тёзкой) |
 
 ### 25.2 `group.default` → NodeLink (W2)
 
