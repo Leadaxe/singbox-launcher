@@ -35,7 +35,11 @@
 //     position 0») — check это не ловит, падает только run;
 //  5. кольцо по любым рёбрам (member → позиция цепочки → …) разрывается по
 //     ребру, замкнувшему цикл; кольцо, замкнувшееся ребром detour, разрывается
-//     выбросом носителя — снять detour значило бы тот же тихий direct.
+//     выбросом носителя — снять detour значило бы тот же тихий direct;
+//  6. urltest с interval больше idle_timeout (в том числе дефолтного, 30m):
+//     idle_timeout поднимается до interval — ядро отвергает такую пару в
+//     конструкторе группы, и check это снова не ловит, падает только run
+//     (см. outbound_graph_urltest.go).
 //
 // Удаление узла может делать висячими новые ссылки — проход повторяется до
 // фикспойнта. finalTags мутируется на месте: секция route собирается позже
@@ -252,6 +256,12 @@ func sanitizeEntryRefs(e *graphEntry, byTag map[string]*graphEntry, finalTags ma
 			}
 		}
 	case e.isGroup():
+		// Правило 6 — не про рёбра, а про опции самой группы, поэтому идёт
+		// до разбора состава: пара interval/idle_timeout ломает старт даже у
+		// группы, чей состав безупречен.
+		if sanitizeURLTestTimings(e) {
+			changed = true
+		}
 		members := e.members()
 		kept := members[:0]
 		var lost []string
