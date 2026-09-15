@@ -1,0 +1,49 @@
+{
+  "lx_backup": 2,
+  "exported_by": { "app": "launcher", "version": "1.6.0-dev", "platform": "test" },
+  "exported_at": "2026-09-15T00:00:00Z",
+  "sources": [
+    {
+      "kind": "folder",
+      "id": "01FLDINCLUDE00000000000000",
+      "name": "Fold",
+      "enabled": true,
+      "fold": { "mode": "select" },
+      "fold_tag": "fold-pick",
+      "nodes": [
+        {
+          "kind": "server",
+          "tag": "f-1",
+          "enabled": true,
+          "body": {
+            "type": "trojan",
+            "server": "example-8.com",
+            "server_port": 443,
+            "password": "testpass808"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "server",
+      "tag": "relay-root",
+      "enabled": true,
+      "body": {
+        "type": "trojan",
+        "server": "example-4.com",
+        "server_port": 443,
+        "password": "testpass404"
+      }
+    }
+  ],
+  "directions": [
+    { "tag": "proxy-eu", "filter": "de" },
+    {
+      "tag": "streaming",
+      "filter": "nl",
+      "include_direct": true,
+      "include_block": true,
+      "include": ["proxy-eu", "fold-pick", "relay-root", "ghost"]
+    }
+  ]
+}

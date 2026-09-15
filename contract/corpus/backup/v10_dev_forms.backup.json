@@ -1,0 +1,72 @@
+{
+  "lx_backup": 2,
+  "exported_by": { "app": "launcher", "version": "1.6.0-dev", "platform": "test" },
+  "exported_at": "2026-09-15T00:00:00Z",
+  "sources": [
+    {
+      "kind": "folder",
+      "id": "01FLDDEVFORMS0000000000000",
+      "name": "Dev",
+      "enabled": true,
+      "tag_policy": { "prefix": "d:" },
+      "nodes": [
+        {
+          "kind": "server",
+          "tag": "x",
+          "enabled": true,
+          "body": {
+            "type": "vless",
+            "server": "example-5.com",
+            "server_port": 443,
+            "uuid": "22222222-2222-2222-2222-222222222222"
+          }
+        },
+        {
+          "kind": "server",
+          "tag": "y",
+          "enabled": true,
+          "body": {
+            "type": "trojan",
+            "server": "example-6.com",
+            "server_port": 443,
+            "password": "testpass606"
+          }
+        },
+        {
+          "kind": "auto",
+          "tag": "G",
+          "enabled": true,
+          "group": {
+            "group_type": "selector",
+            "default": "y",
+            "members": [
+              { "tag": "x" },
+              { "tag": "y" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "kind": "server",
+      "tag": "relay-root",
+      "enabled": true,
+      "body": {
+        "type": "trojan",
+        "server": "example-7.com",
+        "server_port": 443,
+        "password": "testpass707"
+      }
+    },
+    {
+      "kind": "chain",
+      "tag": "via-g",
+      "enabled": true,
+      "body": { "type": "chain", "idle_timeout": "0s" },
+      "hops": [
+        { "tag": "relay-root" },
+        { "folder_id": "01FLDDEVFORMS0000000000000", "tag": "d:G" }
+      ]
+    }
+  ]
+}

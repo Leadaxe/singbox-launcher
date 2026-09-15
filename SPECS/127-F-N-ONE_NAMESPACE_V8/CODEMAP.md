@@ -2390,7 +2390,7 @@ Go-теста, валидирующего `registry/protocols/*.json` проти
 | `ui/configurator/business/node_move.go:494-508` | `linkEdit` (`linkKeep`/`linkReplace`/`linkDrop`), `linkEditFunc` |
 | `ui/configurator/business/node_move.go:516-553` | **`editNodeLinks(m, edit)`** — ЕДИНЫЙ обход: detour, позиции, группы корня и контейнеров; `(имена задетых источников, число ссылок)` |
 | `ui/configurator/business/node_move.go:557-571`, `578-601` | `editDetourLink`, `editLinkList` (без `slices`, исходный массив не портится) |
-| `ui/configurator/business/node_move.go:611-627` | **`editGroupLinks`** — ЕДИНАЯ точка правки состава группы: члены и `default` вместе, для переписи и гашения (замена `repointGroupLinks` и цикла `ClearContainerNodeLinks`; сюда же ляжет `default` как NodeLink) |
+| `ui/configurator/business/node_move.go:611-637` | **`editGroupLinks`** — ЕДИНАЯ точка правки состава группы: члены и `default` вместе, для переписи и гашения (замена `repointGroupLinks` и цикла `ClearContainerNodeLinks`; с §25 `default` — NodeLink и решается тем же `edit`) |
 | `ui/configurator/business/node_move.go:439-450`, `465-476` | `clearNodeLinks(from)`, `repointNodeLinks(from, to)` поверх `editNodeLinks` |
 | `ui/configurator/business/node_move.go:170-176` | `rootOnlyRefsToTag` — `editRootNameRefs(..., rootRefName)` (называет, не правит; теперь и `options.default`/`preferredDefault`) |
 | `ui/configurator/business/root_name_refs.go:33-77` | **новый файл**: `rootRefAction` (`Miss`/`Rename`/`Clear`/`Name`), `rootRefDecide`, `rootRenames(map)` (один проход — `x` → `x-auto` не переписывается дважды), `rootNameIs` |
@@ -2466,4 +2466,76 @@ D-113, D-114; `docs/release_notes/1-6-0.md`; `CHANGELOG.md` v1.6.0.
 
 Не сделано: `importDirection` пишет `block-out` литералом — при шаблоне с
 другим тегом блокировки круг «экспорт → импорт» превращает `include_block` в
-ссылку на несуществующий `block-out` (правка входа вне этой задачи).
+ссылку на несуществующий `block-out` (правка входа вне этой задачи). **Сделано
+в §25**: `ImportOptions.BlockTag`.
+
+## 25. NodeLink для групп и `default`; Направления без узлов (D-115, контракт 1.0.1, релиз 1.6.0)
+
+Ветка `feat/nodelink-groups-directions`. Норма — `contract/docs/NODE_LINK.md`
+§2.1, §5.2, §7.3, §8; решения владельца 15.09.2026, форма согласована с LxBox
+(`TASKS_LXBOX.md` §17.8). Новой версии схемы state v8 и файла 1.0 нет —
+dev-формы читаются терпимо.
+
+### 25.1 Группа адресуется сырым тегом (W1)
+
+| Адрес | Что |
+|---|---|
+| `core/config/canonical_emit.go:242-252` | `buildCanonicalAuto`: **`IdentityTag: cn.Tag`** у узла-группы — словарь целей берёт сырой тег (`canonicalRawTag`) |
+| `core/config/nodelink_resolve.go:53-60`, `98-106`, `242-247` | `NodeLinkTargets.groupFinals` (папка → финальный тег группы → сырой) — только подсказка `emitLinkGroupFinalTagText` в `Resolve`; резолва по финальному тегу нет |
+| `core/state/nodelink_normalize.go` | **новый файл**: `NodeLinkFinalTag(policy, raw)` (`norm(prefix+raw+postfix)`, переменные → нет кандидата), `NodeLinkFinalIndex(sources, skip)` (цепочка — свой тег), **`NormalizeNodeLinks(sources, directions)`** — S1 (член группы в контейнере без `folder_id`), S2 (`default` строкой), S3 (пара на финальный тег группы), S5′ (корневая ссылка через опцию Направления); одна строка `InfoLog` на подъём и на неоднозначные |
+| `core/state/disk_v8.go:74`, `core/state/migration_v6_to_v7.go:113` | вызовы на чтении v8/v7 и в хвосте миграции v6→v7 (перезаписи файла нет — правило идемпотентно) |
+| `core/backup/import.go:421-438` | 1.0 — до `normalizeMemberLinks10`; 0.x — после `resolveImportedHops` |
+| `core/backup/import10.go:510-571` | `normalizeMemberLinks10` на общем индексе (`renamed` — через `skip`); `merge.go:968` — `fileFinal` той же формулой |
+| `ui/configurator/business/source_record_paste.go:129-135` | вставка записи — после `repointRecordLinks` |
+| `core/config/subscription/parse_body.go:440-449` | без изменений: сырой тег группы уникализируется тем же `st.idCounts`, что узлы, до `tag_policy` |
+
+### 25.2 `group.default` → NodeLink (W2)
+
+| Адрес | Что |
+|---|---|
+| `core/state/sources_v7.go:102-177` | `AutoGroup.Default *NodeLink`; **`UnmarshalJSON`** через алиас с перекрывающим `Default json.RawMessage`; `decodeGroupDefault` — строка → `{tag}`, объект, иное → `UnmarshalTypeError` |
+| `core/config/configtypes/types.go` | `CanonicalAutoGroup.Default`, `ParsedNode.CanonicalGroupDefault` — `*NodeLink`; json-теги у зеркала `NodeLink` |
+| `core/state/adapter_source.go:194` | проекция `canonicalLink(n.Group.Default)` |
+| `core/config/canonical_emit.go:255-263` | умолчание без `folder_id` в контейнере → свой контейнер (как члены) |
+| `core/config/nodelink_resolve.go:508-528` | `resolveCanonicalGroup`: резолв по своему адресу; `canonicalGroupFolder` снят |
+| `core/config/migrate_materialize.go:142-147` | fetch/миграция — сразу пара `{subID, raw}` |
+| `core/state/subscription_merge.go:339-354` | заливка в папку: `default` → `{id папки, tag}` новым экземпляром или снимается |
+| `ui/configurator/business/node_move.go:611-637` | `editGroupLinks`: `default` — тем же `edit`, что члены |
+| `core/backup/merge.go:614-641` | `rewriteGroup`: одно правило на члены и `default` |
+| `core/backup/file_keys_10.go:154` | сканер ключей: `group.default` как ссылка |
+| клоны | `node_move.go` `cloneCanonicalNodeForMove`, `tabs/source_edit_window.go` `cloneCanonicalNode`, `core/backup/export10.go` `cloneNode` — копия указателя |
+
+### 25.3 Направления не хранят узлы (вариант А)
+
+| Адрес | Что |
+|---|---|
+| `core/config/nodelink_resolve.go:145-181` | **`allRootLinkTargets(pc, dirTags, opts)`** — без `AddOutbounds`; плюс `opts.BlockTag`, `DirectTag`, `SystemTags` |
+| `core/template/direction_groups.go:149` | **`(*TemplateData).SystemOutboundTags()`** — теги `config.outbounds`/`endpoints` + `magic_nodes.direct/block`; `core/config_service.go:597` кладёт их в `DirectionBuildOptions.SystemTags` |
+| `core/config/direction_options.go` | **новый файл**: `directionDeclaredTags` (все Направления, включая выключенные, и `-auto`), `directionOptionWarnings` — узел в опциях → «use a filter», неизвестное → «not found»; адресат `DirectionTag` |
+| `core/config/outbound_generator.go:1203-1208`, `1466-1494` | снимок объявленных до `PrepareDirections`; узлы — до резолва ссылок (плюс `brokenChains`) |
+| `ui/configurator/business/direction_options.go` | **новый файл**: `DeclaredRootNames(model)`, **`ValidateDirectionOptions(model, tag, hasAuto, options)`**, `modelNodeNames` (текст отказа) |
+| `ui/configurator/outbounds_configurator/edit_dialog.go:588-598` | сохранение Raw — отказ до `renameRefs` |
+| `ui/configurator/business/outbound.go:98-116` | `GetAvailableOutbounds`: из опций — только объявленные |
+| `ui/configurator/business/tag_guard_model.go:117-140` | `KnownRuleTargetTags` знает строки опций как есть (сброс целей правил маршрут молча не меняет) |
+| `core/backup/directions.go:60-109`, `118-156` | `exportDirection(d, blockTag, directionTags)` → `(Direction, localOnly)`; `importDirection(in, blockTag)` |
+| `core/backup/export10.go:75-99` | `backup_local_only_dropped` на опции не-Направления |
+| `core/backup/import.go` | `ImportOptions.BlockTag`, `SystemTags`; **`filterImportedDirectionOptions`** (`:479-544`) + `WarnBackupDirectionIncludeDropped`; вызов после `mergeSources` |
+| `ui/configurator/tabs/settings_backup.go`, `core/debugapi/backup_endpoints.go` | импорт передаёт `BlockTag`/`SystemTags` шаблона; `warnText` — фразы для двух кодов |
+| `core/backup/schema_test.go` | `backup_local_only_dropped` вышел из списка снятых |
+
+### 25.4 Тесты
+
+| Адрес | Что |
+|---|---|
+| `core/state/nodelink_normalize_test.go` | `TestNodeLinkDevFormsLiftedOnRead` — S1, S2 (подписка, копия в папке, корень двух видов), S3, политика с переменной, идемпотентность |
+| `core/config/canonical_emit_test.go` | `TestEmitProviderGroupAddressedByRawTag` — позиция и detour на группу при двух префиксах; финальный тег — подсказка |
+| `ui/configurator/business/node_move_test.go` | `TestMoveNodeToFolder_GroupDefaultOnOtherMemberSurvivesBuild` |
+| `ui/configurator/business/direction_options_test.go` | `TestDirectionsDoNotHoldNodes` — Raw, сборка с тем же составом и предупреждениями, S5′, экспорт |
+| `core/backup/corpus_test.go` | ключи `groups{}`, `directions[].include`; кейсы `v10_group_links`, `v10_dev_forms`, `v10_direction_include` |
+
+Документы: `contract/docs/NODE_LINK.md`, `BACKUP.md` §2, §4, §6, §10,
+`TASKS_LXBOX.md` §17.3, §17.7, §17.8, `schema/backup.schema.json`,
+`direction.schema.json`, `source_chain.schema.json`,
+`registry/backup_warnings.json`, `corpus/backup/README.md`, `contract/VERSION`
+1.0.1, `contract/README.md`, `DECISIONS.md` D-115, `SPECS/features/sources.md`,
+`directions.md`, `docs/release_notes/1-6-0.md`, `CHANGELOG.md` v1.6.0.
