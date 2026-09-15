@@ -3,6 +3,7 @@ package uiservice
 import (
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"fyne.io/systray"
@@ -101,6 +102,26 @@ type UIService struct {
 	// узлов на Remote): пока окно скрыто, их запросы уходят в никуда — данные
 	// никто не видит, а сеть и удалённая машина нагружаются.
 	OnWindowHidden func() // Called after main window is hidden to tray
+
+	// eventLoopStopped поднимается, когда Application.Run() вернул управление
+	// (RunEventLoop). С этого момента GLFW терминирован, и QuitApplication
+	// больше не обращается к драйверу.
+	eventLoopStopped atomic.Bool
+}
+
+// RunEventLoop крутит цикл событий Fyne и возвращается, когда он закончился.
+//
+// Закончиться цикл может двумя путями. Выходы самого лаунчера (Quit в трее,
+// Exit на дашборде, перезапуск ради рендерера) идут через GracefulExit и
+// просят Fyne завершиться, пока цикл жив. Но драйвер glfw гасит цикл и сам,
+// раньше любой нашей строки: по SIGINT/SIGTERM (catchTerm в
+// internal/driver/glfw/driver_desktop.go) и по запросу закрыть его скрытое
+// окно SystrayMonitor, у которого перехватчик закрытия — Quit драйвера. К
+// возврату из Run() runGL уже вызвал glfw.Terminate() (loop.go), и
+// GracefulExit из main() застаёт мёртвую библиотеку.
+func (ui *UIService) RunEventLoop() {
+	ui.Application.Run()
+	ui.eventLoopStopped.Store(true)
 }
 
 // HideMainWindow прячет главное окно в трей, уведомляя подписчиков.
@@ -290,11 +311,17 @@ func (ui *UIService) StopTrayMenuUpdateTimer() {
 // via runOnMain), where Do queues for the next loop iteration — which only
 // comes once the caller (GracefulExit, including its wait for the core to
 // stop) has returned; nothing here runs concurrently with that teardown.
-// After the loop has died it executes inline (drained fast-path in
-// runOnMainWithWait). Running on the UI thread also makes the darwin
-// systray.Quit (AppKit NSStatusItem removal) thread-correct.
+// Running on the UI thread also makes the darwin systray.Quit (AppKit
+// NSStatusItem removal) thread-correct.
+//
+// Once the loop has ended there is nothing left to quit, and nothing may be
+// touched: the driver ended it on its own (SIGTERM/SIGINT — see RunEventLoop)
+// and has already called glfw.Terminate(). fyne.Do would then run inline
+// (drained fast-path in runOnMainWithWait), and Application.Quit() would
+// close every window through the dead library — a NotInitialized panic after
+// a clean teardown, and a false entry in logs/crash.log.
 func (ui *UIService) QuitApplication() {
-	if ui.Application == nil {
+	if ui.Application == nil || ui.eventLoopStopped.Load() {
 		return
 	}
 
