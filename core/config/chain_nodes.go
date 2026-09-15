@@ -276,3 +276,64 @@ func buildChainNode(
 		EmitRaw:     true,
 	}, ChainDegradation{}
 }
+
+// sourceHasPendingChains — есть ли у источника цепочки, которые соберёт
+// проход 2.
+//
+// Узел-цепочка на проходе 1 не эмитится (errCanonicalChainDeferred), и
+// источник, у которого кроме цепочек ничего нет, выглядел там пустым: пометка
+// «не дал ни одного узла» ставилась и собравшейся цепочке. Условие то же, что
+// у ResolveCanonicalChainHops: включённый узел-цепочка с позициями. Сборочная
+// форма, положенная вызывающим напрямую (ps.Chains), тоже считается.
+func sourceHasPendingChains(ps ProxySource) bool {
+	if len(ps.Chains) > 0 {
+		return true
+	}
+	if ps.Canonical == nil {
+		return false
+	}
+	for i := range ps.Canonical.Nodes {
+		cn := &ps.Canonical.Nodes[i]
+		if cn.Kind == canonicalKindChain && cn.Enabled && len(cn.Hops) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// chainSourceFailure — запись «источник не дал ни одного узла» для
+// источника, ни одна цепочка которого не собралась.
+//
+// Причина — то, что сказал о его цепочках проход 2, а не общее «ничего не
+// осталось после разбора и фильтров»: разбора у цепочки нет. Подпись — тег
+// цепочки, когда у источника своей подписи нет (корневая цепочка), иначе
+// строка отчёта называла бы пустое имя.
+func chainSourceFailure(ps ProxySource, index int, broken []ChainDegradation) SourceExclusion {
+	var reasons []string
+	firstTag := ""
+	for ci, bc := range ps.Chains {
+		tag := chainNodeTag(bc, index, ci)
+		if firstTag == "" {
+			firstTag = tag
+		}
+		for _, b := range broken {
+			if b.Tag == tag {
+				reasons = appendReason(reasons, b.Reason)
+			}
+		}
+	}
+	if firstTag == "" && ps.Canonical != nil {
+		// Проход 2 не начинался (узлов нет вовсе): тег берётся из канона.
+		for i := range ps.Canonical.Nodes {
+			if cn := &ps.Canonical.Nodes[i]; cn.Kind == canonicalKindChain {
+				firstTag = strings.TrimSpace(cn.Tag)
+				break
+			}
+		}
+	}
+	failure := sourceParseFailure(ps, reasons)
+	if failure.SourceLabel == "" {
+		failure.SourceLabel = firstTag
+	}
+	return failure
+}

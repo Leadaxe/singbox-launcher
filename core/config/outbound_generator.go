@@ -1266,6 +1266,10 @@ func GenerateOutboundsFromParserConfig(
 	succeededSources := 0
 	failedSources := 0
 	var parseFailedSources []SourceExclusion
+	// Источники, у которых узлов на проходе 1 нет, но есть цепочки (они
+	// собираются на проходе 2): пустыми они считаются, только если ни одна
+	// цепочка не собралась.
+	var chainOnlySources []int
 	for i, proxySource := range parserConfig.ParserConfig.Proxies {
 		if proxySource.Disabled {
 			debuglog.DebugLog("GenerateOutboundsFromParserConfig: skipping source %d (disabled)", i+1)
@@ -1364,6 +1368,11 @@ func GenerateOutboundsFromParserConfig(
 			allNodes = append(allNodes, nodesFromSource...)
 			nodesBySource[i] = nodesFromSource
 			succeededSources++
+		} else if sourceHasPendingChains(proxySource) {
+			// Цепочка узлом становится только на проходе 2
+			// (ResolveChainSources): здесь узлов у неё нет по построению, и
+			// вердикт «источник пуст» выносится там, по итогу сборки цепочек.
+			chainOnlySources = append(chainOnlySources, i)
 		} else {
 			// Silent-empty: source fetched OK but parsed zero nodes. From
 			// the user's perspective this is indistinguishable from a hard
@@ -1399,6 +1408,14 @@ func GenerateOutboundsFromParserConfig(
 		// не даёт собрать конфиг — вызывающий обязан её уважать; результат
 		// несёт только диагностику (узлов в нём нет по определению), и его
 		// единственный потребитель — фид отчёта.
+		//
+		// До прохода 2 дело не доходит, и цепочке собираться не из чего:
+		// источник-цепочка здесь пуст на самом деле.
+		for _, i := range chainOnlySources {
+			failedSources++
+			parseFailedSources = append(parseFailedSources,
+				chainSourceFailure(parserConfig.ParserConfig.Proxies[i], i, nil))
+		}
 		diag := &OutboundGenerationResult{
 			TotalSources:           totalSources,
 			SucceededSources:       succeededSources,
@@ -1455,6 +1472,19 @@ func GenerateOutboundsFromParserConfig(
 	emissionWarnings := ResolveCanonicalChainHops(parserConfig, linkTargets)
 
 	allNodes, brokenChains := ResolveChainSources(parserConfig, allNodes, nodesBySource, directionTagsForChains)
+	// Вердикт по источникам-цепочкам, отложенный с прохода 1: пуст только тот,
+	// у кого не собралась ни одна цепочка.
+	for _, i := range chainOnlySources {
+		if len(nodesBySource[i]) > 0 {
+			succeededSources++
+			continue
+		}
+		failure := chainSourceFailure(parserConfig.ParserConfig.Proxies[i], i, brokenChains)
+		debuglog.WarnLog("GenerateOutboundsFromParserConfig: source %d/%d returned zero nodes (counted as failed): %s",
+			i+1, totalSources, failure.Reason)
+		failedSources++
+		parseFailedSources = append(parseFailedSources, failure)
+	}
 
 	// Detour узлов и состав Auto-групп канона: fail-closed по detour (с
 	// каскадом и кольцами), prune по членам.
