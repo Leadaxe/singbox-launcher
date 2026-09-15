@@ -27,6 +27,7 @@ import (
 	"singbox-launcher/core/build"
 	wizardtemplate "singbox-launcher/core/template"
 	internaldialogs "singbox-launcher/internal/dialogs"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -300,7 +301,7 @@ func showEditUserDNSRuleDialog(
 	buttons := container.NewHBox(layout.NewSpacer(), cancelBtn, saveBtn)
 	dialogContent := container.NewBorder(nil, buttons, nil, nil, tabs)
 	editWin.Resize(fyne.NewSize(500, 600))
-	editWin.CenterOnScreen()
+	fynewidget.CenterOnScreen(editWin)
 	editWin.SetContent(dialogContent)
 	editWin.SetCloseIntercept(func() { editWin.Close() })
 	editWin.Show()

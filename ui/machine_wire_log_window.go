@@ -12,6 +12,7 @@ import (
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/services"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/lxdclient"
 )
@@ -125,7 +126,7 @@ func OpenMachineWireLogWindow(ac *core.AppController, d services.RemoteDaemon, s
 		body,
 	)))
 	win.Resize(fyne.NewSize(760, 520))
-	win.CenterOnScreen()
+	fynewidget.CenterOnScreen(win)
 
 	stop := make(chan struct{})
 	win.SetOnClosed(func() {

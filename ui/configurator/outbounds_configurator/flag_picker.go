@@ -44,6 +44,7 @@ import (
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/textnorm"
 )
@@ -380,7 +381,7 @@ func showFlagPickerPopup(
 	win := app.NewWindow(locale.T("Emoji picker"))
 	win.SetContent(content)
 	win.Resize(fyne.NewSize(580, 620))
-	win.CenterOnScreen()
+	fynewidget.CenterOnScreen(win)
 
 	cancelBtn.OnTapped = func() { win.Close() }
 	applyBtn.OnTapped = func() {

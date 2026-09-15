@@ -14,6 +14,7 @@ import (
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui/components"
@@ -66,7 +67,7 @@ func OpenEditMachineWindow(ac *core.AppController, registry *services.RemoteRegi
 	)
 	win.SetContent(container.NewPadded(components.WrapInScrollWithGutter(body)))
 	win.Resize(fyne.NewSize(560, 640))
-	win.CenterOnScreen()
+	fynewidget.CenterOnScreen(win)
 	win.Show()
 }
 

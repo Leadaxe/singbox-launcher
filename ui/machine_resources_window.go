@@ -13,6 +13,7 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
 )
@@ -128,7 +129,7 @@ func OpenMachineResourcesWindow(ac *core.AppController, d services.RemoteDaemon)
 	)
 	win.SetContent(container.NewPadded(body))
 	win.Resize(fyne.NewSize(680, 480))
-	win.CenterOnScreen()
+	fynewidget.CenterOnScreen(win)
 	win.Show()
 	reload()
 }

@@ -1020,7 +1020,7 @@ func showDNSServerDialog(
 	}
 	editWin.SetContent(container.NewBorder(nil, buttons, nil, nil, tabs))
 	editWin.Resize(fyne.NewSize(660, 620))
-	editWin.CenterOnScreen()
+	fynewidget.CenterOnScreen(editWin)
 	editWin.Show()
 }
 
