@@ -20,6 +20,7 @@ import (
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui"
@@ -418,7 +419,7 @@ func main() {
 	// SetFixedSize здесь неприменим (он запрещает и растягивание); нижнюю
 	// границу держит MinSize контента — Fyne не даёт окну стать меньше него.
 	controller.UIService.MainWindow.Resize(ui.MinWindowSize)
-	controller.UIService.MainWindow.CenterOnScreen() // Center the window on the screen
+	fynewidget.CenterOnScreen(controller.UIService.MainWindow) // Center the window on the screen
 
 	core.CheckIfLauncherAlreadyRunningUtil()
 

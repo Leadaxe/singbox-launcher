@@ -1571,7 +1571,7 @@ func showSourcePreviewAllWindow(presenter *wizardpresentation.WizardPresenter) {
 
 	win.SetContent(content)
 	win.Resize(fyne.NewSize(560, 520))
-	win.CenterOnScreen()
+	fynewidget.CenterOnScreen(win)
 	refreshPreview()
 	win.Show()
 	presenter.UpdateChildOverlay()

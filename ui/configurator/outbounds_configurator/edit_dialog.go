@@ -22,6 +22,7 @@ import (
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/template"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/internal/textnorm"
@@ -1005,7 +1006,7 @@ func ShowEditDialog(
 		})
 	}
 	dialogWin.Resize(fyne.NewSize(440, 560))
-	dialogWin.CenterOnScreen()
+	fynewidget.CenterOnScreen(dialogWin)
 	// fynetooltip layer обязателен для tooltips на ttwidget виджетах в
 	// отдельном окне — без него fyne-tooltip пишет "no tool tip layer
 	// created for current overlay" и tooltips не показываются.

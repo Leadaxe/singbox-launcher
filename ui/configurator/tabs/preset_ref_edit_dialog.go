@@ -24,6 +24,7 @@ import (
 
 	"singbox-launcher/core/build"
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
@@ -395,7 +396,7 @@ func showEditPresetRefDialog(
 	}
 
 	editWindow.Resize(fyne.NewSize(500, 640))
-	editWindow.CenterOnScreen()
+	fynewidget.CenterOnScreen(editWindow)
 	editWindow.SetContent(dialogContent)
 	editWindow.SetCloseIntercept(func() {
 		editWindow.Close()
