@@ -359,6 +359,14 @@ func warnText(w backup.Warning) string {
 		return fmt.Sprintf(locale.T("%s — these Direction options are settings of this machine (folder replacements, service tags, nodes) and did not go into the file; a node joins a Direction through its filter"), w.Detail)
 	case backup.WarnBackupDirectionIncludeDropped:
 		return fmt.Sprintf(locale.T("%s — these Direction options are not Directions or known names here, they were left out; a node joins a Direction through its filter"), w.Detail)
+	case backup.WarnBackupGroupDegraded:
+		// У лаунчера причина одна — группа по правилу отбора без состава;
+		// чужой reason (LxBox упрощает selector) показывать нечем, и сырой
+		// код лучше, чем неверное объяснение.
+		if w.Reason == backup.GroupDegradedMembersRule {
+			return fmt.Sprintf(locale.T("%s — this group picks its members by a rule, which the launcher does not support; it was not imported, and links to it will not resolve"), w.Detail)
+		}
+		return w.Code + ": " + w.Detail + " (" + w.Reason + ")"
 	case backup.WarnBackupSectionRecordDropped:
 		// Detail несёт «тег узла: вид записи»: без тега пользователю негде
 		// искать, что именно потеряло часть своей связки. Причина у кода не

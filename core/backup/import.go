@@ -205,7 +205,19 @@ const (
 	// Направление кладёт фильтр, а имени, которого нет, в конфиге не бывает.
 	// Один warning на Направление; Detail — `<тег Направления>: <строки>`.
 	WarnBackupDirectionIncludeDropped = "backup_direction_include_dropped"
+	// WarnBackupGroupDegraded — провайдерская группа приехала в форме, которую
+	// принимающая сторона не выражает, и ввезена упрощённой или не ввезена
+	// вовсе. Код общий для обеих сторон, причина — в Warning.Reason: у
+	// лаунчера группа по правилу (`group.members_rule` без явного состава) не
+	// ввозится — пустую группу сборка выбрасывала бы на каждой сборке
+	// (GroupDegradedMembersRule); у LxBox selector с `default` становится
+	// urltest, умолчание отбрасывается. Detail — тег группы.
+	WarnBackupGroupDegraded = "backup_group_degraded"
 )
+
+// GroupDegradedMembersRule — причина WarnBackupGroupDegraded у лаунчера:
+// группа задана правилом отбора (`members_rule`), а явного состава нет.
+const GroupDegradedMembersRule = "members_rule unsupported"
 
 // ImportOptions — контекст принимающей стороны.
 //

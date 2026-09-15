@@ -99,6 +99,36 @@ var (
 	auto10Keys = jsonKeys(reflect.TypeOf(configtypes.DirectionAuto{}))
 )
 
+// Поля стороны LxBox (TASKS_LXBOX.md §16.7, BACKUP.md §2 «Поля стороны
+// LxBox»): объявлены в схеме с «Поддержка: LxBox», и лаунчер их игнорирует
+// МОЛЧА — в состояние не кладёт (у его типов таких полей нет, декодер их
+// пропускает) и неизвестными не называет (§1: объявленное чужое поле — не
+// «непонятое»). Ключ внешней карты — `kind` записи, "*" — любой вид.
+//
+// Отдельными таблицами, а не полями типов: ключ файла, которого у лаунчера в
+// модели нет и не будет, в state-типе был бы полем-призраком, которое тихо
+// переезжало бы в state.json.
+var (
+	lxboxSourceKeys10 = map[string]map[string]bool{
+		"subscription": {"detour_policy": true, "import_rules": true, "import_rules_enabled": true, "on_update_action": true},
+		// tag_policy у сервера — ключ записи и так (Source10.TagPolicy); у
+		// корневого сервера лаунчер его отбрасывает при разборе (decode10Source).
+		"server": {"detour_policy": true},
+		"folder": {"detour_policy": true, "ping_url": true, "ping_timeout_ms": true},
+		"chain":  {"label": true},
+	}
+	lxboxGroupKeys10 = map[string]bool{"members_rule": true, "pool_badge": true}
+	lxboxRuleKeys10  = map[string]map[string]bool{
+		"*":      {"dns": true, "resolve": true},
+		"srs":    {"update_interval_hours": true},
+		"inline": {"verbatim": true},
+	}
+	lxboxDNSServerKeys10 = map[string]map[string]bool{
+		"*":        {"description": true},
+		"template": {"vars": true},
+	}
+)
+
 // scanUnknown10 обходит файл 1.0 и перечисляет всё, чего нет в модели.
 //
 // Обязанности те же, что у scanUnknown (П3/П6): `extensions` любой глубины —
@@ -118,16 +148,16 @@ func scanUnknown10(data []byte) []Warning {
 
 	if dns, ok := rawObject(root, "dns"); ok {
 		sc.object("dns", dns, dns10Keys)
-		sc.array(dns, "dns.servers", "servers", dnsServer10Keys, "tag", nil)
+		sc.arrayKinds(dns, "dns.servers", "servers", dnsServer10Keys, lxboxDNSServerKeys10, "tag", nil)
 		sc.array(dns, "dns.rules", "rules", dnsRule10Keys, "name", nil)
 	}
 
-	sc.array(root, "sources", "sources", source10Keys, "tag", func(where string, item map[string]json.RawMessage) {
+	sc.arrayKinds(root, "sources", "sources", source10Keys, lxboxSourceKeys10, "tag", func(where string, item map[string]json.RawMessage) {
 		sc.scanSourceBody10(where, item)
 		sc.array(item, where+".nodes", "nodes", node10Keys, "tag", sc.scanSourceBody10)
 	})
 	sc.array(root, "directions", "directions", directionKeys, "tag", sc.scanDirectionBody)
-	sc.array(root, "rules", "rules", rule10Keys, "name", nil)
+	sc.arrayKinds(root, "rules", "rules", rule10Keys, lxboxRuleKeys10, "name", nil)
 	sc.array(root, "warp", "warp", warpKeys, "type", nil)
 
 	return sc.warnings()
@@ -147,7 +177,7 @@ func (sc *unknownScan) scanSourceBody10(where string, item map[string]json.RawMe
 	sc.nested2(item, where, "identity", identity10Keys)
 	sc.array(item, where+".hops", "hops", link10Keys, "tag", nil)
 	if group, ok := rawObject(item, "group"); ok {
-		sc.object(joinPath(where, "group"), group, group10Keys)
+		sc.object(joinPath(where, "group"), group, withKeys(group10Keys, lxboxGroupKeys10))
 		sc.array(group, joinPath(where, "group")+".members", "members", link10Keys, "tag", nil)
 		// Умолчание — ссылка той же формы, что член. Строкой (dev-форма)
 		// обходить нечего: её терпит чтение группы (state.AutoGroup).
@@ -167,6 +197,51 @@ func (sc *unknownScan) scanSourceBody10(where string, item map[string]json.RawMe
 			sc.array(dns, at+".dns.rules", "rules", dnsRule10Keys, "name", nil)
 		}
 	}
+}
+
+// arrayKinds — array с набором известных ключей по виду записи: base плюс
+// поля стороны LxBox для её `kind` (и для "*").
+func (sc *unknownScan) arrayKinds(parent map[string]json.RawMessage, where, key string, base map[string]bool, byKind map[string]map[string]bool, labelKey string, deeper func(string, map[string]json.RawMessage)) {
+	raw, ok := parent[key]
+	if !ok {
+		return
+	}
+	var items []map[string]json.RawMessage
+	if json.Unmarshal(raw, &items) != nil {
+		return
+	}
+	for i, item := range items {
+		entry := where + "[" + entryLabel(item, labelKey, i) + "]"
+		var kind string
+		if rawKind, ok := item["kind"]; ok {
+			_ = json.Unmarshal(rawKind, &kind)
+		}
+		sc.object(entry, item, withKeys(base, byKind["*"], byKind[kind]))
+		if deeper != nil {
+			deeper(entry, item)
+		}
+	}
+}
+
+// withKeys — объединение наборов ключей; без добавок — сам base.
+func withKeys(base map[string]bool, extra ...map[string]bool) map[string]bool {
+	n := 0
+	for _, e := range extra {
+		n += len(e)
+	}
+	if n == 0 {
+		return base
+	}
+	out := make(map[string]bool, len(base)+n)
+	for k := range base {
+		out[k] = true
+	}
+	for _, e := range extra {
+		for k := range e {
+			out[k] = true
+		}
+	}
+	return out
 }
 
 // identity10Keys — ключи объекта identity.

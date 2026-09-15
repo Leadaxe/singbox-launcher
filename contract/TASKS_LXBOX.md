@@ -1028,6 +1028,38 @@ longer written; import still reads it»), `POST /backup/import` (слияние 
 тонкий слой исключений целиком. Если при реализации чтения всплывёт
 развилка — ответом под этим параграфом, как обычно.
 
+**Поля стороны LxBox — объявлены (контракт 1.0.1, 15.09.2026; коммит
+лаунчера — ниже).** Все необязательные, «Поддержка: LxBox»; лаунчер их
+игнорирует молча (в состояние не кладёт, при импорте не предупреждает),
+отсутствие поля в файле значение у приёмника не сбрасывает (`BACKUP.md` §2,
+«Поля стороны LxBox»):
+
+- `subscription`: `detour_policy` `{register_detour_servers=false,
+  register_detour_in_auto=false, use_detour_servers=true,
+  replace_detour_chain=false}` (`$defs/detourPolicy`), `import_rules` (array
+  объектов, форма — ваша), `import_rules_enabled=true`,
+  `on_update_action` `rebuild|reload|none` (`rebuild`);
+- `server`: `detour_policy`, `tag_policy {prefix}` — у лаунчера это поле
+  контейнера, у корневого сервера импорт его отбрасывает, финальный тег не
+  меняется (Go-тест `core/backup/lxbox_fields_test.go`);
+- `folder`: `detour_policy`, `ping_url`, `ping_timeout_ms` ≥ 1;
+- `chain`: `label`;
+- `kind: auto` (в `group`): `members_rule {include, exclude}`, `pool_badge`
+  (string, регулярка значка; умолчание — флаг-эмодзи, не пишется). Группу
+  с `members_rule` без `members[]` лаунчер не ввозит —
+  `backup_group_degraded`, reason `members_rule unsupported`;
+- `rules[]` `kind: srs`: `update_interval_hours` ≥ 0 (168); `kind: inline`:
+  `verbatim=false`; `rules[].dns` / `resolve` (объявлены раньше) — теперь и в
+  сканере ключей лаунчера;
+- `dns.servers[]`: `description`; у `kind: template` — `vars` (string→string);
+  у DNS-записи лаунчера поля `vars` нет, конфликта нет.
+
+НЕ объявлено: DNS-правило `kind: srs` — остаётся `backup_local_only_dropped`
+до отдельного решения. Новый код `backup_group_degraded` (`side: both`) —
+`registry/backup_warnings.json`, `BACKUP.md` §10. Кейсы —
+`corpus/backup/v10_lxbox_fields`, `v10_group_degraded`
+(+ `.expected.lxbox.json`).
+
 ### 16.8 Норма массива тел правила (предложение владельца, принято обеими сторонами)
 
 Решение D-111, норма — `docs/BACKUP.md` §2 «Одно правило — одно тело».

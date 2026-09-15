@@ -1,0 +1,80 @@
+{
+  "lx_backup": 2,
+  "exported_by": { "app": "lxbox", "version": "corpus", "platform": "android" },
+  "exported_at": "2026-09-15T00:00:00Z",
+  "sources": [
+    {
+      "kind": "folder",
+      "id": "01FLDGROUPDEGRADED00000000",
+      "name": "Rules",
+      "enabled": true,
+      "nodes": [
+        {
+          "kind": "server",
+          "tag": "a",
+          "enabled": true,
+          "body": {
+            "type": "vless",
+            "server": "example-2.com",
+            "server_port": 443,
+            "uuid": "11111111-1111-1111-1111-111111111111"
+          }
+        },
+        {
+          "kind": "server",
+          "tag": "b",
+          "enabled": true,
+          "body": {
+            "type": "trojan",
+            "server": "example-3.com",
+            "server_port": 443,
+            "password": "testpass302"
+          }
+        },
+        {
+          "kind": "auto",
+          "tag": "by-rule",
+          "enabled": true,
+          "group": {
+            "group_type": "urltest",
+            "members_rule": { "include": "^a$" }
+          }
+        },
+        {
+          "kind": "auto",
+          "tag": "pick",
+          "enabled": true,
+          "group": {
+            "group_type": "selector",
+            "default": { "folder_id": "01FLDGROUPDEGRADED00000000", "tag": "b" },
+            "members": [
+              { "folder_id": "01FLDGROUPDEGRADED00000000", "tag": "a" },
+              { "folder_id": "01FLDGROUPDEGRADED00000000", "tag": "b" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "kind": "server",
+      "tag": "relay-root",
+      "enabled": true,
+      "body": {
+        "type": "trojan",
+        "server": "example-4.com",
+        "server_port": 443,
+        "password": "testpass404"
+      }
+    },
+    {
+      "kind": "chain",
+      "tag": "via-rule",
+      "enabled": true,
+      "body": { "type": "chain", "idle_timeout": "0s" },
+      "hops": [
+        { "tag": "relay-root" },
+        { "folder_id": "01FLDGROUPDEGRADED00000000", "tag": "by-rule" }
+      ]
+    }
+  ]
+}

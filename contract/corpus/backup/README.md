@@ -444,3 +444,31 @@ Side-specific ожидание LxBox (ответ на вопрос 5, `TASKS_LXB
 адресовать группу финальным тегом, оставить `default` строкой или без
 переписи `folder_id`, не поднять член без `folder_id`, сохранить узел в
 опциях Направления молча.
+
+## Поля стороны LxBox и деградация групп (контракт 1.0.1)
+
+Норма — `docs/BACKUP.md` §2 «Поля стороны LxBox», §10 (код
+`backup_group_degraded`); перечень — `TASKS_LXBOX.md` §16.7.
+
+**`v10_lxbox_fields`** — все объявленные поля стороны LxBox в одном файле:
+`detour_policy` / `import_rules` / `import_rules_enabled` / `on_update_action`
+у подписки, `detour_policy` и `tag_policy {prefix}` у корневого сервера,
+`detour_policy` / `ping_url` / `ping_timeout_ms` у папки, `label` у цепочки,
+`members_rule` и `pool_badge` у группы с явным составом, `update_interval_hours`
+у srs-правила, `verbatim` у inline-правила, `description` у DNS-серверов и
+`vars` у шаблонного. У лаунчера импорт проходит **без предупреждений**, а
+состояние такое же, как после импорта того же файла без этих полей (Go-тест
+`core/backup/lxbox_fields_test.go`); `tag_policy` у корневого сервера в
+состояние не попадает и финальный тег не меняет (`root_servers`). У LxBox
+поля применяются; его раннер сверяет их по своей модели.
+
+**`v10_group_degraded`** (+ `.expected.lxbox.json`) — один код на две разные
+деградации сторон. В папке **Rules** группа `by-rule` задана только правилом
+отбора (`members_rule`, без `members[]`), группа `pick` — selector с
+`default`; цепочка `via-rule` стоит позицией на `by-rule`. Лаунчер (базовое
+ожидание): `by-rule` не ввозится — `backup_group_degraded` с reason
+`members_rule unsupported` (`warning_reasons`), `pick` приезжает как есть с
+умолчанием, позиция цепочки остаётся ссылкой на невввезённую группу и
+разбирается сборкой fail-closed. LxBox (side-specific ожидание, класс A по
+`docs/IDENTITY.md` §4a): `by-rule` ввозится группой по правилу, а `pick`
+становится urltest без умолчания — тот же код со своей причиной.

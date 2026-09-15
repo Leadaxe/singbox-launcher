@@ -48,8 +48,10 @@ func decode10(b *Backup10, opts ImportOptions) (*decodedFile, error) {
 	// формулу, что у входа 0.x, иначе правила ЭТОГО ЖЕ файла уехали бы в
 	// никуда (foldTag10).
 	subIndex := 0
-	for _, src := range b.Sources {
-		item, warns, ok := decode10Source(src, subIndex)
+	for i, src := range b.Sources {
+		item, warns, ok := decode10Source(src, subIndex, func(node int) bool {
+			return b.ruleGroups[[2]int{i, node}]
+		})
 		out.Warnings = append(out.Warnings, warns...)
 		if src.Kind == state.SourceKindSubscription {
 			subIndex++
@@ -115,7 +117,10 @@ func decode10(b *Backup10, opts ImportOptions) (*decodedFile, error) {
 //
 // Третий возврат — едет ли запись дальше: вид, которого union не знает,
 // пропускается (это чужая сторона, ушедшая вперёд по схеме).
-func decode10Source(in Source10, subIndex int) (decodedSource, []Warning, bool) {
+//
+// ruleGroup(j) — член nodes[j] несёт группу по правилу без явного состава
+// (Backup10.ruleGroups); nil — таких нет.
+func decode10Source(in Source10, subIndex int, ruleGroup func(node int) bool) (decodedSource, []Warning, bool) {
 	var warns []Warning
 	node := state.Node{
 		Kind:    in.Kind,
@@ -156,6 +161,15 @@ func decode10Source(in Source10, subIndex int) (decodedSource, []Warning, bool) 
 	src.Node.Sections = sections
 	src.Node.NormalizeNodeSections()
 
+	// tag_policy — поле КОНТЕЙНЕРА. У корневого узла политики нет: финальный
+	// тег = его тег. В файле LxBox она у сервера бывает (поле стороны, BACKUP.md
+	// §2) — лаунчер её молча отбрасывает: сборка её и так не применила бы, а
+	// в состоянии она жила бы полем-призраком до следующей загрузки и уезжала
+	// бы обратно следующим экспортом.
+	if in.Kind == state.SourceKindServer || in.Kind == state.SourceKindChain {
+		src.TagPolicy = nil
+	}
+
 	switch in.Kind {
 	case state.SourceKindSubscription:
 		// Отметки выключенных узлов: у только что импортированной подписки
@@ -166,7 +180,21 @@ func decode10Source(in Source10, subIndex int) (decodedSource, []Warning, bool) 
 		return decodedSource{Kind: decodedSubscription, Src: src, FullSettings: true}, warns, true
 	case state.SourceKindFolder:
 		var memberSections []bool
-		for _, n := range in.Nodes {
+		for j, n := range in.Nodes {
+			if n.Kind == state.SourceKindAuto && ruleGroup != nil && ruleGroup(j) &&
+				(n.Group == nil || len(n.Group.Members) == 0) {
+				// Группа по правилу отбора (поле LxBox) без явного состава:
+				// лаунчер таких групп не держит, и пустую группу сборка
+				// выбрасывала бы на каждой сборке. Не ввозится; ссылки файла на
+				// неё остаются висеть и разбираются сборкой fail-closed.
+				warns = append(warns, Warning{
+					Code:   WarnBackupGroupDegraded,
+					Detail: n.Tag,
+					Kind:   string(n.Kind),
+					Reason: GroupDegradedMembersRule,
+				})
+				continue
+			}
 			member := cloneNode(n)
 			memberSections = append(memberSections, n.Sections != nil)
 			ms, mw := normalizeImportedSections(member.Sections, n.Tag)
@@ -600,6 +628,46 @@ func decode10DNS(in *state.DNSOptions) *decodedDNS {
 	}
 	for _, r := range in.Rules {
 		out.Rules = append(out.Rules, state.CloneDNSRule(r))
+	}
+	return out
+}
+
+// ruleOnlyGroups10 — члены папок, у которых группа задана правилом отбора
+// (`group.members_rule`, поле стороны LxBox) и явного состава нет: адрес —
+// (индекс записи sources[], индекс члена nodes[]).
+//
+// Читается по сырому файлу: в типах лаунчера поля нет, и после разбора его
+// следа не остаётся. Индексы совпадают с разобранным файлом — терпимый разбор
+// снимает поля, а не элементы списков.
+func ruleOnlyGroups10(data []byte) map[[2]int]bool {
+	var root struct {
+		Sources []struct {
+			Nodes []struct {
+				Kind  string `json:"kind"`
+				Group *struct {
+					MembersRule json.RawMessage   `json:"members_rule"`
+					Members     []json.RawMessage `json:"members"`
+				} `json:"group"`
+			} `json:"nodes"`
+		} `json:"sources"`
+	}
+	// Ошибку типа в чужом месте файла не считаем поводом молчать: декодер
+	// дочитывает документ и после неё, а синтаксически битый файл сюда не
+	// доходит (Parse отказал бы раньше).
+	_ = json.Unmarshal(data, &root)
+	var out map[[2]int]bool
+	for i := range root.Sources {
+		for j, n := range root.Sources[i].Nodes {
+			g := n.Group
+			if n.Kind != string(state.SourceKindAuto) || g == nil || len(g.MembersRule) == 0 ||
+				strings.TrimSpace(string(g.MembersRule)) == "null" || len(g.Members) > 0 {
+				continue
+			}
+			if out == nil {
+				out = map[[2]int]bool{}
+			}
+			out[[2]int{i, j}] = true
+		}
 	}
 	return out
 }

@@ -2533,8 +2533,18 @@ dev-формы читаются терпимо.
 | `ui/configurator/business/direction_options_test.go` | `TestDirectionsDoNotHoldNodes` — Raw, сборка с тем же составом и предупреждениями, S5′, экспорт |
 | `core/backup/corpus_test.go` | ключи `groups{}`, `directions[].include`; кейсы `v10_group_links`, `v10_dev_forms`, `v10_direction_include` |
 
+### 25.5 Поля стороны LxBox (этап 5)
+
+| Адрес | Что |
+|---|---|
+| `core/backup/file_keys_10.go` | **`lxboxSourceKeys10`**, `lxboxGroupKeys10`, `lxboxRuleKeys10`, `lxboxDNSServerKeys10` — объявленные поля LxBox по виду записи; **`arrayKinds`** / `withKeys` — известные ключи = ключи типа ∪ поля стороны для `kind` |
+| `core/backup/backup10.go` | `Backup10.ruleGroups` (не сериализуется) — члены папок с группой по правилу без состава |
+| `core/backup/file.go` | `Parse` 1.0 заполняет `ruleGroups` (`ruleOnlyGroups10`, `import10.go`) |
+| `core/backup/import10.go` | `decode10Source(in, subIndex, ruleGroup)`: `tag_policy` у server/chain отбрасывается; группа по правилу без `members[]` не ввозится — `WarnBackupGroupDegraded` + `GroupDegradedMembersRule` (`import.go`) |
+| `core/backup/lxbox_fields_test.go` | `TestLxBoxSideFieldsLeaveStateUnchanged` — файл с полями и без них даёт одно состояние; `tag_policy` сервера не хранится |
+
 Документы: `contract/docs/NODE_LINK.md`, `BACKUP.md` §2, §4, §6, §10,
-`TASKS_LXBOX.md` §17.3, §17.7, §17.8, `schema/backup.schema.json`,
+`TASKS_LXBOX.md` §16.7, §17.3, §17.7, §17.8, `schema/backup.schema.json`,
 `direction.schema.json`, `source_chain.schema.json`,
 `registry/backup_warnings.json`, `corpus/backup/README.md`, `contract/VERSION`
 1.0.1, `contract/README.md`, `DECISIONS.md` D-115, `SPECS/features/sources.md`,

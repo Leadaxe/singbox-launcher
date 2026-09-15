@@ -44,9 +44,11 @@
 
 - fix(directions)!: Направление не хранит узлы — варианты только объявленные корневые имена: сырой JSON отклоняет узел и неизвестное имя, сборка уже сохранённого состояния предупреждает, резолв ссылок строку `addOutbounds` целью не считает (сохранённые ссылки поднимаются до пары), бэкап пишет в `include` только теги Направлений (`backup_local_only_dropped` на остальное), импорт отбрасывает чужое с `backup_direction_include_dropped`; `include_block` — тег блокировки приёмника
 
-### Прочее (4)
+### Прочее (5)
 
 - docs(contract): контракт 1.0.1 — `$defs/nodeLink` (пара у члена контейнера, тег сырой), `autoGroup.default` anyOf nodeLink|string, `include` Направления — только теги Направлений, `detour` «Поддержка: обе», код `backup_direction_include_dropped`; NODE_LINK.md §8 — вариант А; корпус `v10_group_links`, `v10_dev_forms`, `v10_direction_include`; D-115
+
+- docs(contract): поля стороны LxBox объявлены в схеме бэкапа (detour_policy, import_rules, on_update_action, ping_url/ping_timeout_ms папки, label цепочки, members_rule/pool_badge группы, update_interval_hours, verbatim, description/vars DNS-сервера) — лаунчер игнорирует молча, `tag_policy` корневого сервера отбрасывается; группа только по правилу не ввозится с `backup_group_degraded`; кейсы `v10_lxbox_fields`, `v10_group_degraded`
 
 - chore(core): пин ядра sing-box-lx поднят до `1.14.0-lx.39` (`RequiredCoreVersion`): lx.37 — синк с апстримом v1.14.0 + 33 (sing-tun v0.9.3, wireguard-go v0.0.6), lx.38 — хотфикс ABBA-дедлока вложенных selector'ов (переключение внутреннего могло заморозить все новые соединения до рестарта ядра), lx.39 — UDP через SOCKS5-прокси с BND.ADDR `0.0.0.0`/`::`; пороги гейтов не меняются — tailscale с lx.31, AmneziaWG 3.x с lx.32 (`64d4ce2b`)
 

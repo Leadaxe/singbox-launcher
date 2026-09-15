@@ -64,6 +64,14 @@ type Backup10 struct {
 	Route *Route `json:"route,omitempty"`
 	// Warp — регистрации WG/MASQUE сырым JSON, как в 0.12.
 	Warp []json.RawMessage `json:"warp,omitempty"`
+
+	// ruleGroups — адреса членов папок (индекс в Sources, индекс в Nodes),
+	// у которых группа задана правилом отбора (`group.members_rule`, поле
+	// стороны LxBox) без явного состава. Заполняет Parse по сырому файлу:
+	// поля в типах нет (лаунчер групп по правилу не держит), а решение «такую
+	// группу не ввозить» принимает разбор записи (decode10Source). Не
+	// сериализуется.
+	ruleGroups map[[2]int]bool
 }
 
 // Source10 — запись sources[]: поля state.Source, кроме кэша и рантайма, плюс

@@ -176,6 +176,7 @@ func Parse(data []byte) (*File, []Warning, error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("backup parse: %w", err)
 		}
+		b.ruleGroups = ruleOnlyGroups10(data)
 		return &File{Format: FileFormat10, V10: b},
 			append(typeWarns, scanUnknown10(data)...), nil
 	default:

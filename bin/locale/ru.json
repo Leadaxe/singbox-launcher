@@ -4442,6 +4442,9 @@
   "%s — these Direction options are not Directions or known names here, they were left out; a node joins a Direction through its filter": {
     "value": "%s — эти варианты Направления здесь не Направления и не известные имена, они не добавлены; узел попадает в Направление через фильтр"
   },
+  "%s — this group picks its members by a rule, which the launcher does not support; it was not imported, and links to it will not resolve": {
+    "value": "%s — эта группа набирает состав по правилу, а лаунчер такие группы не поддерживает; группа не импортирована, и ссылки на неё не разрешатся"
+  },
   "%s — a node rule referenced a rule set; node sections neither declare nor reference rule sets, so the whole rule was dropped (cutting just the reference would have turned it into a match-all)": {
     "value": "%s — правило узла ссылалось на rule set; секции узла rule set не объявляют и на них не ссылаются, поэтому правило отброшено целиком (если вырезать одну ссылку, оно ловило бы весь трафик)"
   },
