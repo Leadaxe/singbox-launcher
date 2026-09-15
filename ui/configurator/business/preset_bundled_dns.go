@@ -36,7 +36,7 @@ func PresetBundledDNSTags(model *wizardmodels.WizardModel) []string {
 		if tpl == nil {
 			continue
 		}
-		frags, _, ok := build.ExpandPresetWithGlobals(tpl, pr.Vars, model.SettingsVars, model.Target)
+		frags, _, ok := build.ExpandPresetWithGlobals(tpl, pr.Vars, PresetGlobalVars(model), model.Target)
 		if !ok {
 			continue
 		}

@@ -22,6 +22,10 @@ import (
 // передал (тот же, что template.DefaultDirectionBlockTag).
 const defaultBlockTag = "block-out"
 
+// defaultDirectTag — прямой канал лаунчера: служебный outbound шаблона,
+// объявленное корневое имя даже без шаблона (NODE_LINK.md §8).
+const defaultDirectTag = "direct-out"
+
 // resolvedDirectionsByTag — слитый вид Направлений по тегу; первая запись с
 // тегом побеждает, как и в сборке.
 func resolvedDirectionsByTag(list []configtypes.Direction) map[string]configtypes.Direction {

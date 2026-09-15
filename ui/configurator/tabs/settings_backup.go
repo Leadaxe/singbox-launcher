@@ -30,7 +30,6 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
-	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
@@ -53,23 +52,6 @@ const (
 	// научить UI форме файла — ровно тому, от чего избавляет union File.
 	settingsBackupSummaryCounts10Text = "Sources: %d\nRules: %d\nVariables: %d"
 )
-
-// knownPresetIDs — id пресетов текущего шаблона. Пустой список означает
-// «шаблон не загружен» — тогда ссылки на пресеты не режутся: выключить всё
-// подряд хуже, чем импортировать как есть.
-func knownPresetIDs(presenter *wizardpresentation.WizardPresenter) []string {
-	model := presenter.Model()
-	if model == nil || model.TemplateData == nil {
-		return nil
-	}
-	out := make([]string, 0, len(model.TemplateData.Presets))
-	for _, p := range model.TemplateData.Presets {
-		if p.ID != "" {
-			out = append(out, p.ID)
-		}
-	}
-	return out
-}
 
 // backupSection — блок «Экспорт» / «Импорт» с пояснением.
 func backupSection(presenter *wizardpresentation.WizardPresenter, win fyne.Window) fyne.CanvasObject {
@@ -201,36 +183,20 @@ func handleBackupImport(presenter *wizardpresentation.WizardPresenter, win fyne.
 }
 
 func applyBackup(presenter *wizardpresentation.WizardPresenter, win fyne.Window, b *backup.File, parseWarns []backup.Warning) {
-	st := presenter.CreateStateFromModel("", "")
-	if st == nil {
-		dialog.ShowError(fmt.Errorf("%s", locale.T("Cannot read the current state")), win)
-		return
-	}
-
-	importOpts := backup.ImportOptions{
-		// Известные цели берём из модели: правило, ссылающееся в никуда,
-		// приедет выключенным, а не уронит конфиг ядра.
-		KnownOutbounds: wizardbusiness.GetAvailableOutbounds(presenter.Model()),
-		KnownPresets:   knownPresetIDs(presenter),
-	}
-	// Тег блокировки шаблона — им становится `include_block`; системные теги
-	// шаблона — законные строки `include` наравне с Направлениями и
-	// свёртками (NODE_LINK.md §8).
-	if model := presenter.Model(); model != nil && model.TemplateData != nil {
-		importOpts.BlockTag = model.TemplateData.DirectionBlockTag()
-		importOpts.SystemTags = model.TemplateData.SystemOutboundTags()
-	}
-	res, err := backup.ImportFile(st, b, importOpts)
+	// Новая машина: своего state.json у визарда ещё нет и правок не было —
+	// модель тогда сид шаблона, и файл сливается в пустое состояние, как у
+	// POST /backup/import на свежей установке (ImportBackupFile).
+	fresh := !presenter.GetStateStore().StateExists("") && !presenter.HasUnsavedChanges()
+	res, stage, err := presenter.ImportBackupFile(b, fresh)
 	if err != nil {
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Import failed"), err), win)
-		return
-	}
-	// Import заменил Rules[] мимо диска, а LoadState читает inline/srs-правила
-	// из legacy-вида CustomRules — без пересборки они терялись (issue #111).
-	corestate.RebuildLegacyRuleView(st)
-
-	if err := presenter.LoadState(st); err != nil {
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Failed to restore state"), err), win)
+		switch stage {
+		case wizardpresentation.BackupImportStageRead:
+			dialog.ShowError(fmt.Errorf("%s", locale.T("Cannot read the current state")), win)
+		case wizardpresentation.BackupImportStageLoad:
+			dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Failed to restore state"), err), win)
+		default:
+			dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Import failed"), err), win)
+		}
 		return
 	}
 	presenter.SyncModelToGUI()

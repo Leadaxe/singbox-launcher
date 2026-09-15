@@ -23,8 +23,29 @@ import (
 	corepkg "singbox-launcher/core"
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
+	wizardtemplate "singbox-launcher/core/template"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
+
+// PresetGlobalVars — глобальные переменные для тела пресета в визарде:
+// сохранённые значения SettingsVars плюс дефолты шаблона для имён, которых
+// пользователь не трогал.
+//
+// Правило одно со сборкой (build.PresetMergeContext, template.VarValuesFor):
+// превью пресета, строки DNS-вкладки и «конвертировать в свои правила»
+// обязаны видеть те же значения, что уйдут в config.json. Иначе у модели без
+// `tun` превью показывало sniff с `inbound: []`, а конвертация навсегда
+// вписывала его в пользовательское правило.
+func PresetGlobalVars(model *wizardmodels.WizardModel) map[string]string {
+	if model == nil {
+		return nil
+	}
+	if model.TemplateData == nil {
+		return model.SettingsVars
+	}
+	td := model.TemplateData
+	return wizardtemplate.VarValuesFor(td.Vars, model.SettingsVars, td.RawTemplate, model.Target)
+}
 
 // MaterializeSecretsIfNeeded гарантирует SettingsVars непустую map'у и
 // делегирует материализацию всех type:"secret" var в `core/build`. Тонкая

@@ -208,13 +208,15 @@ func buildShadowStateForResolve(m *wizardmodels.WizardModel) *state.State {
 }
 
 // gatherTemplateVars — собирает global template vars из model для substitute
-// на render-time. Объединяет SettingsVars и фиксированные dns_* scalars.
+// на render-time: значения SettingsVars и дефолты шаблона для имён, которых
+// пользователь не трогал — то же правило, что у сборки (PresetGlobalVars).
 func gatherTemplateVars(m *wizardmodels.WizardModel) map[string]string {
 	if m == nil {
 		return nil
 	}
-	out := make(map[string]string, len(m.SettingsVars))
-	for k, v := range m.SettingsVars {
+	globals := wizardbusiness.PresetGlobalVars(m)
+	out := make(map[string]string, len(globals))
+	for k, v := range globals {
 		out[k] = v
 	}
 	return out
