@@ -10,11 +10,11 @@
 
 ### Выжимка (RU) — v1.6.1
 
-Патч после v1.6.0. **REALITY-узлы снова сохраняют отпечаток провайдера:** с v1.5.6 лаунчер заменял `firefox` и прочие отпечатки вне chrome-семейства на `chrome`, и у провайдеров, выбравших `firefox` сознательно, узлы переставали подключаться в мобильных сетях. Теперь `chrome` ставится только вместо пустого отпечатка. DNS-сервер с выпавшим резолвером берёт следующий подходящий сервер. Парный выпуск телефона — LxBox 2.24.0. Подробнее: [docs/release_notes/1-6-1.md](docs/release_notes/1-6-1.md).
+Патч после v1.6.0. **REALITY-узлы снова сохраняют отпечаток провайдера:** с v1.5.6 лаунчер заменял `firefox` и прочие отпечатки вне chrome-семейства на `chrome`, отменяя выбор подписки, и у части провайдеров узлы переставали подключаться. Теперь лаунчер делает так, как велит подписка: `chrome` ставится только вместо пустого отпечатка. DNS-сервер с выпавшим резолвером берёт следующий подходящий сервер. Парный выпуск телефона — LxBox 2.24.0. Подробнее: [docs/release_notes/1-6-1.md](docs/release_notes/1-6-1.md).
 
 ### Highlights (EN) — v1.6.1
 
-A patch after v1.6.0. **REALITY nodes keep the provider's fingerprint again:** since v1.5.6 the launcher replaced `firefox` and other non-Chrome fingerprints with `chrome`, so nodes from providers that chose `firefox` on purpose stopped connecting in mobile networks. `chrome` is now written only in place of an empty fingerprint. A DNS server whose resolver dropped out falls back to the next suitable server. The paired phone release is LxBox 2.24.0. Details: [docs/release_notes/1-6-1.md](docs/release_notes/1-6-1.md).
+A patch after v1.6.0. **REALITY nodes keep the provider's fingerprint again:** since v1.5.6 the launcher replaced `firefox` and other non-Chrome fingerprints with `chrome`, overriding the subscription's choice, and some providers' nodes stopped connecting. The launcher now does what the subscription says: `chrome` is written only in place of an empty fingerprint. A DNS server whose resolver dropped out falls back to the next suitable server. The paired phone release is LxBox 2.24.0. Details: [docs/release_notes/1-6-1.md](docs/release_notes/1-6-1.md).
 
 ### Выжимка (RU) — v1.6.0
 
