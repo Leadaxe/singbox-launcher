@@ -534,11 +534,20 @@ func main() {
 	// Start the application event loop (windowless mode)
 	// This keeps the app running even when window is hidden/closed
 	// The menu already has "Open" item that calls MainWindow.Show()
-	controller.UIService.Application.Run()
+	controller.UIService.RunEventLoop()
 
-	// The code below executes only after app.Run() finishes (when app.Quit() is called).
-	// This is where final cleanup is performed.
-	debuglog.WarnLog("Application shutting down.")
+	// The code below executes only after the event loop has ended. This is
+	// where final cleanup is performed.
+	//
+	// Цикл гасит либо наш GracefulExit (трей, Exit, перезапуск рендерера) —
+	// тогда остановка уже прошла, и вызов ниже ничего не делает, — либо сам
+	// драйвер, например по SIGTERM: тогда ядро и логи останавливаются только
+	// здесь, а Quit драйверу уже не нужен (UIService.RunEventLoop).
+	if controller.IsExiting() {
+		debuglog.WarnLog("Application shutting down.")
+	} else {
+		debuglog.WarnLog("Application shutting down: event loop stopped by the driver (signal or system close request).")
+	}
 
 	// Cleanup platform-specific handlers
 	if runtime.GOOS == "darwin" {
