@@ -36,6 +36,33 @@ func TestURLTestIdleTimeoutRaised(t *testing.T) {
 	}
 }
 
+// TestURLTestCoreDefaultsBranches — две ветки фатала через дефолты ядра
+// (найдены LxBox, сверено с NewURLTestGroup): ноль и отсутствие ключа ядро
+// заменяет своим значением, и сравнивать нужно действующие величины.
+//   - interval не задан (ядро берёт 3m), idle_timeout «1m» → поднять до 3m;
+//   - idle_timeout «0» — это «не задан» (30m), interval «1h» → поднять до 1h;
+//   - « 3h» с пробелом ядро само отвергнет как длительность — не трогать.
+func TestURLTestCoreDefaultsBranches(t *testing.T) {
+	got, _ := sanitizeHelper(t, []string{
+		`{"tag":"n1","type":"vless","server":"a"}`,
+		`{"tag":"noint","type":"urltest","outbounds":["n1"],"idle_timeout":"1m"}`,
+		`{"tag":"zeroidle","type":"urltest","outbounds":["n1"],"interval":"1h","idle_timeout":"0"}`,
+		`{"tag":"spaced","type":"urltest","outbounds":["n1"],"interval":" 3h"}`,
+	})
+	if v := got["noint"]["idle_timeout"]; v != "3m" {
+		t.Errorf("unset interval (core 3m) with idle_timeout 1m: idle_timeout must become 3m, got %v", v)
+	}
+	if _, ok := got["noint"]["interval"]; ok {
+		t.Errorf("unset interval must stay unset: %v", got["noint"]["interval"])
+	}
+	if v := got["zeroidle"]["idle_timeout"]; v != "1h" {
+		t.Errorf(`idle_timeout "0" means the core default 30m: must be raised to 1h, got %v`, v)
+	}
+	if _, ok := got["spaced"]["idle_timeout"]; ok {
+		t.Errorf("a padded interval is invalid for the core and must be left to it: %v", got["spaced"])
+	}
+}
+
 // TestURLTestValidPairUntouched — валидные записи санитайзер не трогает:
 // ни короткий interval без idle_timeout (ядро подставит свои 30m), ни
 // уже сходящуюся пару. Иначе правило переписывало бы каждый конфиг подряд.
