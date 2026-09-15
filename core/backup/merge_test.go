@@ -355,7 +355,7 @@ func TestMergeServerTagUniquifiedAgainstRootSpace(t *testing.T) {
 			uriServer("DE", "vless://11111111-1111-1111-1111-111111111111@example-1.com:443#DE"),
 		},
 	}
-	s.Directions = append(s.Directions, importDirection(Direction{Tag: "Work"}))
+	s.Directions = append(s.Directions, importDirection(Direction{Tag: "Work"}, ""))
 
 	b := &Backup{LxBackup: FormatVersion, Servers: []Server{
 		{NodeTag: "DE", URI: "vless://11111111-1111-1111-1111-111111111111@example-9.com:443#DE"},
@@ -426,7 +426,7 @@ func TestMergeChainAndDirectionTagConflicts(t *testing.T) {
 			ID: "01LOCALCHAIN",
 		}},
 	}
-	s.Directions = append(s.Directions, importDirection(Direction{Tag: "Work"}))
+	s.Directions = append(s.Directions, importDirection(Direction{Tag: "Work"}, ""))
 
 	b := &Backup{LxBackup: FormatVersion,
 		Chains: []Chain{
@@ -1038,8 +1038,8 @@ func TestImportLinksFollowMergeAddresses(t *testing.T) {
 			t.Errorf("ссылка финальным тегом на уникализированный член: %+v, ожидалось %+v", d, wantDe1)
 		}
 		g := member(t, work, "grp").Group
-		if !reflect.DeepEqual(g.Members, []state.NodeLink{wantDe1, wantFr}) || g.Default != "de-1-2" {
-			t.Errorf("группа: члены %+v, умолчание %q", g.Members, g.Default)
+		if !reflect.DeepEqual(g.Members, []state.NodeLink{wantDe1, wantFr}) || g.Default == nil || *g.Default != wantDe1 {
+			t.Errorf("группа: члены %+v, умолчание %+v", g.Members, g.Default)
 		}
 		wantHops := []state.NodeLink{{FolderID: "01SUBLOCAL", Tag: "US-1"}, wantFr, {Tag: "tokyo-2"}, {Tag: "osaka-local"}}
 		if hops := find(t, s, "route").Hops; !reflect.DeepEqual(hops, wantHops) {

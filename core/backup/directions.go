@@ -13,6 +13,8 @@
 package backup
 
 import (
+	"strings"
+
 	"singbox-launcher/core/config/configtypes"
 )
 
@@ -47,7 +49,15 @@ func resolvedDirectionsByTag(list []configtypes.Direction) map[string]configtype
 //
 // blockTag — тег блокировки шаблона: `include_block` ставится по тому же
 // тегу, по которому форма Направления показывает галку блокировки.
-func exportDirection(d configtypes.Direction, blockTag string) Direction {
+//
+// directionTags — теги Направлений экспортируемого состояния. В `include`
+// едут ТОЛЬКО они (NODE_LINK.md §8, BACKUP.md §2): у LxBox там теги
+// Направлений, и чужую строку он хранит мёртвым грузом с предупреждением на
+// каждой сборке. Остальные опции — теги свёрток, их `-auto`, служебные теги
+// шаблона и пресетов, узлы старых состояний — вторым возвратом: это настройки
+// этой машины, которым в общем формате дома нет, и вызывающий называет их
+// предупреждением backup_local_only_dropped.
+func exportDirection(d configtypes.Direction, blockTag string, directionTags map[string]bool) (Direction, []string) {
 	body, invert := configtypes.DirectionFilterTag(d.Filters)
 	defBody, _ := configtypes.DirectionFilterTag(d.PreferredDefault)
 
@@ -65,17 +75,20 @@ func exportDirection(d configtypes.Direction, blockTag string) Direction {
 		out.InterruptExistConnections = &v
 	}
 
-	// Служебные опции переезжают признаками, остальные теги — списком.
+	// Служебные опции переезжают признаками, теги Направлений — списком.
 	// Тег блокировки/прямого соединения у сторон свой, и переносить его
 	// буквально значило бы сослаться на чужое имя.
+	var localOnly []string
 	for _, tag := range d.AddOutbounds {
 		switch {
 		case tag == "direct-out" || tag == "direct":
 			out.IncludeDirect = true
 		case tag == blockTag || tag == "block":
 			out.IncludeBlock = true
-		default:
+		case directionTags[strings.TrimSpace(tag)]:
 			out.Include = append(out.Include, tag)
+		case strings.TrimSpace(tag) != "":
+			localOnly = append(localOnly, tag)
 		}
 	}
 
@@ -92,11 +105,17 @@ func exportDirection(d configtypes.Direction, blockTag string) Direction {
 			StickyHash:                d.Auto.StickyHash,
 		}
 	}
-	return out
+	return out, localOnly
 }
 
 // importDirection переводит каноническую форму во внутреннюю.
-func importDirection(in Direction) configtypes.Direction {
+//
+// blockTag — тег блокировки ПРИНИМАЮЩЕГО шаблона (ImportOptions.BlockTag):
+// `include_block` — признак, а не имя, и превращается в тот тег, которым
+// блокировку называет эта машина. `include` едет как есть; строки, которые
+// здесь не объявленные корневые имена, отсеивает Import
+// (filterImportedDirectionOptions) — только там виден весь результат слияния.
+func importDirection(in Direction, blockTag string) configtypes.Direction {
 	d := configtypes.Direction{
 		Tag:      in.Tag,
 		Type:     "selector",
@@ -110,7 +129,10 @@ func importDirection(in Direction) configtypes.Direction {
 		d.AddOutbounds = append(d.AddOutbounds, "direct-out")
 	}
 	if in.IncludeBlock {
-		d.AddOutbounds = append(d.AddOutbounds, "block-out")
+		if blockTag == "" {
+			blockTag = defaultBlockTag
+		}
+		d.AddOutbounds = append(d.AddOutbounds, blockTag)
 	}
 	if in.InterruptExistConnections != nil {
 		d.Options = map[string]interface{}{

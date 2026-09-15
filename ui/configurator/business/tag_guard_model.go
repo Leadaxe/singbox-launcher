@@ -122,5 +122,19 @@ func KnownRuleTargetTags(model *wizardmodels.WizardModel) map[string]bool {
 	for _, tag := range AllDirectionTags(model) {
 		known[tag] = true
 	}
+	// Опции Направлений — как есть, включая необъявленные. Предлагать их
+	// целью больше нельзя (GetAvailableOutbounds их отсеивает), но правило,
+	// уже нацеленное на такую строку, при загрузке молча на direct не
+	// сбрасывается: маршрут пользователя меняет он сам, а висячую цель
+	// чистит сборка.
+	if model != nil {
+		for i := range model.GlobalOutbounds {
+			for _, opt := range model.GlobalOutbounds[i].AddOutbounds {
+				if opt = strings.TrimSpace(opt); opt != "" {
+					known[opt] = true
+				}
+			}
+		}
+	}
 	return known
 }

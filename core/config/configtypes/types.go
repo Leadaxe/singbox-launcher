@@ -270,8 +270,8 @@ func (ns *NodeSections) IsEmpty() bool {
 type CanonicalAutoGroup struct {
 	// GroupType: "selector" | "urltest".
 	GroupType string
-	// Default — сырой тег члена (selector only).
-	Default string
+	// Default — ссылка на член (selector only); nil — умолчания нет.
+	Default *NodeLink
 	Members []NodeLink
 	// Options — опции группы (url/interval/tolerance/…), уже раскрытые из
 	// AutoStrategy в форму sing-box.
@@ -282,9 +282,9 @@ type CanonicalAutoGroup struct {
 // state сюда импортировать нельзя — цикл).
 type NodeLink struct {
 	// FolderID: "" → корневое пространство ФИНАЛЬНЫХ тегов.
-	FolderID string
+	FolderID string `json:"folder_id,omitempty"`
 	// Tag — сырой тег узла папки | финальный тег корня.
-	Tag string
+	Tag string `json:"tag"`
 }
 
 // FolderReplace — свёртка папки в сборочной форме (зеркало
@@ -748,10 +748,10 @@ type ParsedNode struct {
 	// тег-политики контейнера.
 	SectionsLink NodeLink
 	// CanonicalGroupMembers / CanonicalGroupDefault — состав провайдерской
-	// Auto-группы канона по ссылкам NodeLink (сырые теги своей папки).
-	// Резолв на проходе 2 переписывает их в финальные теги членов.
+	// Auto-группы канона и её умолчание по ссылкам NodeLink. Резолв на
+	// проходе 2 переписывает их в финальные теги членов.
 	CanonicalGroupMembers []NodeLink
-	CanonicalGroupDefault string
+	CanonicalGroupDefault *NodeLink
 	// Warnings — коды деградаций, применённых к узлу при разборе
 	// (SPEC 103, фаза 2). Словарь кодов — contract/registry/warnings.json.
 	//

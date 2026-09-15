@@ -33,7 +33,6 @@ import (
 	"sort"
 	"strings"
 
-	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/state"
 )
@@ -83,7 +82,7 @@ func decodeLegacy(b *Backup, opts ImportOptions) (*decodedFile, error) {
 		if in.Tag == "" {
 			continue
 		}
-		out.Directions = append(out.Directions, importDirection(in))
+		out.Directions = append(out.Directions, importDirection(in, opts.BlockTag))
 	}
 
 	for _, in := range b.Chains {
@@ -183,18 +182,6 @@ func decodeLegacyDNS(dns *DNS) *decodedDNS {
 // зовётся тегом и живёт в записи состояния.
 func dnsRefTag(ref DNSRef) string {
 	return ref.Name
-}
-
-// importDirections — обратная сторона exportDirections.
-func importDirections(list []Direction) []configtypes.Direction {
-	var out []configtypes.Direction
-	for _, in := range list {
-		if in.Tag == "" {
-			continue
-		}
-		out = append(out, importDirection(in))
-	}
-	return out
 }
 
 // importSourceRef восстанавливает ссылку источника на цель дозвона

@@ -1,0 +1,38 @@
+{
+  "rules": [],
+  "warnings": [
+    "backup_group_degraded"
+  ],
+  "warning_reasons": {
+    "backup_group_degraded": ["members_rule unsupported"]
+  },
+  "folders": {
+    "Rules": ["a", "b", "pick"]
+  },
+  "root_servers": [
+    "relay-root"
+  ],
+  "groups": {
+    "pick": {
+      "members": [
+        { "tag": "a", "folder": "Rules" },
+        { "tag": "b", "folder": "Rules" }
+      ],
+      "default": { "tag": "b", "folder": "Rules" }
+    }
+  },
+  "chains": [
+    {
+      "tag": "via-rule",
+      "chain": {
+        "hops": ["relay-root", "by-rule"],
+        "idle_timeout": "0s"
+      },
+      "hops": [
+        { "tag": "relay-root" },
+        { "tag": "by-rule", "folder": "Rules" }
+      ]
+    }
+  ],
+  "detours": {}
+}

@@ -36,7 +36,7 @@ func renameModel() *wizardmodels.WizardModel {
 				Kind: corestate.SourceKindAuto, Tag: "auto-nl", Enabled: true,
 				Group: &corestate.AutoGroup{
 					GroupType: corestate.AutoGroupSelector,
-					Default:   "NL-1",
+					Default:   &corestate.NodeLink{FolderID: "01SRC", Tag: "NL-1"},
 					Members: []corestate.NodeLink{
 						{FolderID: "01SRC", Tag: "NL-1"},
 						{FolderID: "01SRC", Tag: "NL-2"},
@@ -72,8 +72,8 @@ func TestRepointContainerNodeLinks_RenameInPlace(t *testing.T) {
 	if g.Members[0].Tag != "NL-1-renamed" {
 		t.Fatalf("член группы не переписан: %+v", g.Members[0])
 	}
-	if g.Default != "NL-1-renamed" {
-		t.Fatalf("умолчание селектора разъехалось с составом: %q", g.Default)
+	if g.Default == nil || *g.Default != (corestate.NodeLink{FolderID: "01SRC", Tag: "NL-1-renamed"}) {
+		t.Fatalf("умолчание селектора разъехалось с составом: %+v", g.Default)
 	}
 	if h := m.Sources[3].Hops[0]; h.FolderID != "01ELSE" || h.Tag != "NL-1" {
 		t.Fatalf("переписана ЧУЖАЯ ссылка одноимённого тега: %+v", h)
@@ -108,8 +108,8 @@ func TestClearContainerNodeLinks_DropsRefsToDeletedNode(t *testing.T) {
 	if len(g.Members) != 1 || g.Members[0].Tag != "NL-2" {
 		t.Fatalf("состав группы не почищен: %+v", g.Members)
 	}
-	if g.Default != "" {
-		t.Fatalf("умолчание осталось на выбывшем члене: %q", g.Default)
+	if g.Default != nil {
+		t.Fatalf("умолчание осталось на выбывшем члене: %+v", g.Default)
 	}
 	if h := m.Sources[3].Hops[0]; h.FolderID != "01ELSE" || h.Tag != "NL-1" {
 		t.Fatalf("погашена ЧУЖАЯ ссылка одноимённого тега: %+v", h)

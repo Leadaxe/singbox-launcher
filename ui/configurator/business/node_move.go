@@ -603,26 +603,36 @@ func editLinkList(links []corestate.NodeLink, space string, edit linkEditFunc, o
 // editGroupLinks — ЕДИНАЯ точка правки состава группы: члены и умолчание
 // вместе, для переписи и для гашения.
 //
-// Умолчание — сырой тег члена — идёт за членом, которого называет:
-// переписанный член уносит умолчание на новый тег, погасший снимает его, иначе
-// группа эмитилась бы с default вне состава. Член без folder_id внутри
-// контейнера адресует свой контейнер (space, §5.1 № 8). Возвращает число
-// задетых ссылок-членов.
+// Умолчание — ссылка NodeLink на член — решается тем же edit, что члены:
+// адрес у них один, поэтому переписанный член уносит умолчание на новый адрес,
+// погасший снимает его, и группа не эмитится с default вне состава. Ссылка без
+// folder_id внутри контейнера адресует свой контейнер (space, §5.1 № 8).
+// Возвращает число задетых ссылок группы (члены и умолчание).
 func editGroupLinks(g *corestate.AutoGroup, space string, edit linkEditFunc) int {
-	if g == nil || len(g.Members) == 0 {
+	if g == nil {
 		return 0
 	}
-	def, defDone := g.Default, false
-	members, hits := editLinkList(g.Members, space, edit, func(oldTag, newTag string) {
-		if !defDone && def != "" && oldTag == def {
-			def, defDone = newTag, true
+	hits := 0
+	if len(g.Members) > 0 {
+		members, h := editLinkList(g.Members, space, edit, nil)
+		if h > 0 {
+			g.Members = members
+			hits += h
 		}
-	})
-	if hits == 0 {
-		return 0
 	}
-	g.Members = members
-	g.Default = def
+	if g.Default != nil {
+		next, act := edit(*g.Default, space)
+		switch act {
+		case linkReplace:
+			// Новый экземпляр, а не правка по указателю: копии узла (перенос,
+			// копия в папку) делят его с оригиналом до глубокого клона.
+			g.Default = &next
+			hits++
+		case linkDrop:
+			g.Default = nil
+			hits++
+		}
+	}
 	return hits
 }
 
@@ -785,6 +795,12 @@ func cloneCanonicalNodeForMove(n corestate.Node) corestate.Node {
 	if n.Group != nil {
 		g := *n.Group
 		g.Members = append([]corestate.NodeLink(nil), n.Group.Members...)
+		// Умолчание — указатель: копия обязана владеть своим, иначе перепись
+		// ссылок у копии переписала бы и оригинал.
+		if n.Group.Default != nil {
+			d := *n.Group.Default
+			g.Default = &d
+		}
 		// Strategy глубоко: *TemplateInt (Tolerance/PoolTolerance) не должны
 		// разделяться указателями между копией и оригиналом.
 		g.Strategy = *n.Group.Strategy.Clone()

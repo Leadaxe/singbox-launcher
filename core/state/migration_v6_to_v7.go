@@ -107,6 +107,11 @@ func migrateLegacyStateToV7(s *State, fromVersion int, lc LoadContext, legacy []
 	m.reportExcludes()         // шаг 7
 	m.applyRenames()           // перепись ссылок (Р2)
 
+	// Страховка: ссылки, собранные шагами выше, приходят к норме NodeLink тем
+	// же правилом, что у чтения v8 (nodelink_normalize.go). Мигрированное
+	// состояние сохраняется сразу, поэтому отдельного прохода на загрузке нет.
+	NormalizeNodeLinks(s.Sources, s.Directions)
+
 	// Шаг 8 (снос raw-кэша и переезд defaults) выполняется только после
 	// успешной записи v7-файла — см. Load; здесь лишь помечаем готовность.
 	s.Migration = m.rep

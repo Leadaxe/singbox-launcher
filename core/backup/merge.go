@@ -613,28 +613,31 @@ func (m *mergedInfo) fileLinkHere(link state.NodeLink) state.NodeLink {
 
 // rewriteGroup — состав и умолчание группы, приехавшей файлом.
 //
-// Умолчание — сырой тег члена — идёт за членом, которого называет: член лёг
-// под другим тегом, и умолчание обязано назвать его новым. Член без folder_id
-// внутри контейнера адресует свой контейнер, а не корень (§5.1 № 8): его форма
-// остаётся прежней, а тег идёт за переименованием по ключу контейнера файла.
+// Умолчание — такая же ссылка NodeLink, как член, и переписывается тем же
+// правилом: контейнер по карте id, тег — за переименованием слиянием. Ссылка
+// без folder_id внутри контейнера адресует свой контейнер, а не корень
+// (§5.1 № 8): её форма остаётся прежней, а тег идёт за переименованием по
+// ключу контейнера файла; до пары её доводит нормализация ссылок импорта.
 func (m *mergedInfo) rewriteGroup(g *state.AutoGroup, inContainer bool, fileContainer string) {
-	def, defDone := g.Default, false
-	for i := range g.Members {
-		mem := &g.Members[i]
-		before := mem.Tag
+	rewrite := func(link *state.NodeLink) {
 		switch {
-		case mem.FolderID != "" || !inContainer:
-			*mem = m.fileLinkHere(*mem)
+		case link.FolderID != "" || !inContainer:
+			*link = m.fileLinkHere(*link)
 		case fileContainer != "":
-			if here, ok := m.landed.members[memberKey{folderID: fileContainer, tag: mem.Tag}]; ok {
-				mem.Tag = here
+			if here, ok := m.landed.members[memberKey{folderID: fileContainer, tag: link.Tag}]; ok {
+				link.Tag = here
 			}
 		}
-		if !defDone && def != "" && before == def {
-			def, defDone = mem.Tag, true
-		}
 	}
-	g.Default = def
+	for i := range g.Members {
+		rewrite(&g.Members[i])
+	}
+	if g.Default != nil {
+		// Новый экземпляр: указатель мог прийти общим с разобранным файлом.
+		def := *g.Default
+		rewrite(&def)
+		g.Default = &def
+	}
 }
 
 // folderIndex — локальные папки, разложенные по обоим ключам сопоставления:
@@ -965,7 +968,8 @@ func mergeFolderItem(s *state.State, item decodedSource, folderAt *folderIndex, 
 		}
 		// Финальный тег в файле — с политикой ПАПКИ ФАЙЛА: ссылка без
 		// folder_id называет член тем именем, которое он носил там.
-		info.landed.member(item.FileFolderID, fileTag, strings.TrimSpace(item.Src.TagPolicy.FinalTag(fileTag)), here, added)
+		fileFinal, _ := state.NodeLinkFinalTag(item.Src.TagPolicy, fileTag)
+		info.landed.member(item.FileFolderID, fileTag, fileFinal, here, added)
 	}
 }
 

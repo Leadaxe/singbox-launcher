@@ -131,7 +131,6 @@ func canonicalNodeFromEntry(subID string, e *subscription.ParsedBodyEntry) (stat
 	if e.Node.Scheme == configtypes.SchemeGroup {
 		group := &state.AutoGroup{
 			GroupType: e.GroupType,
-			Default:   e.GroupDefaultRaw,
 			Members:   make([]state.NodeLink, 0, len(e.MemberRawTags)),
 			Strategy:  autoStrategyFromGroupOptions(e.Node.Outbound),
 		}
@@ -141,8 +140,10 @@ func canonicalNodeFromEntry(subID string, e *subscription.ParsedBodyEntry) (stat
 			group.Members = append(group.Members, state.NodeLink{FolderID: subID, Tag: raw})
 		}
 		// default только у selector; urltest со stray default не плодим.
-		if group.GroupType != state.AutoGroupSelector {
-			group.Default = ""
+		// Умолчание — сразу парой, как члены: оно называет член той же
+		// подписки (NODE_LINK.md §4.1).
+		if group.GroupType == state.AutoGroupSelector && e.GroupDefaultRaw != "" {
+			group.Default = &state.NodeLink{FolderID: subID, Tag: e.GroupDefaultRaw}
 		}
 		return state.Node{
 			Kind:    state.SourceKindAuto,

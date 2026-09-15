@@ -250,6 +250,15 @@ type corpusExpectation struct {
 		IncludeDirect bool   `json:"include_direct"`
 		IncludeBlock  bool   `json:"include_block"`
 		HasAuto       bool   `json:"has_auto"`
+		// Include — опции-теги Направления после импорта в ПОРЯДКЕ записи,
+		// без служебных direct/block (их сверяют признаки выше). Указатель:
+		// отсутствие ключа — «не проверяем», пустой список — «опций нет».
+		//
+		// Нужен норме «Направление не хранит узлы» (docs/NODE_LINK.md §8):
+		// строка, которая на приёмнике не тег Направления и не объявленное
+		// корневое имя, в опции не попадает, и сторона, сохранившая её
+		// молча, иначе проходила бы кейс зелёной.
+		Include *[]string `json:"include"`
 	} `json:"directions"`
 
 	// Chains — цепочки после импорта (SPEC 110). Список ИСЧЕРПЫВАЮЩИЙ:
@@ -297,6 +306,27 @@ type corpusExpectation struct {
 	//
 	// Поле необязательное: отсутствие ключа значит «не проверяем».
 	Detours map[string]corpusLinkExpectation `json:"detours"`
+
+	// Groups — провайдерские группы (узлы kind=auto, в корне и в папках)
+	// после импорта: тег узла → состав и умолчание ССЫЛКАМИ
+	// (docs/NODE_LINK.md §4.1).
+	//
+	// Без этого ключа перепись `group.members[].folder_id` по карте id и
+	// подъём dev-форм (член без folder_id, `default` строкой) ненаблюдаемы:
+	// состав папок называет группу только тегом.
+	//
+	// Карта ИСЧЕРПЫВАЮЩАЯ, как detours: группа, которой в ожиданиях нет, —
+	// ошибка. `members` сверяется по порядку и числу; `default` необязателен:
+	// отсутствие ключа — «не проверяем».
+	//
+	// Поле необязательное: отсутствие ключа значит «не проверяем».
+	Groups map[string]corpusGroupExpectation `json:"groups"`
+}
+
+// corpusGroupExpectation — одна провайдерская группа после импорта.
+type corpusGroupExpectation struct {
+	Members []corpusLinkExpectation `json:"members"`
+	Default *corpusLinkExpectation  `json:"default"`
 }
 
 // corpusLinkExpectation — ссылка NodeLink после импорта (docs/NODE_LINK.md
@@ -412,6 +442,7 @@ func TestBackupCorpus(t *testing.T) {
 			checkDirections(t, dst, exp)
 			checkChains(t, dst, exp)
 			checkDetours(t, dst, exp)
+			checkGroups(t, dst, exp)
 			checkReplaceTags(t, dst, exp)
 			checkFolders(t, dst, exp)
 			checkSubscriptions(t, dst, exp)
@@ -1112,6 +1143,71 @@ func checkDirections(t *testing.T, dst *state.State, exp corpusExpectation) {
 		}
 		if (got.Auto != nil) != want.HasAuto {
 			t.Errorf("%s: автовыбор=%v, ожидалось %v", want.Tag, got.Auto != nil, want.HasAuto)
+		}
+		if want.Include != nil {
+			include := []string{}
+			for _, tag := range got.AddOutbounds {
+				if tag != "direct-out" && tag != "block-out" {
+					include = append(include, tag)
+				}
+			}
+			if !equalStrings(include, *want.Include) {
+				t.Errorf("%s: опции %v, ожидались %v (узлы и неизвестные имена в Направление не попадают)",
+					want.Tag, include, *want.Include)
+			}
+		}
+	}
+}
+
+// checkGroups — провайдерские группы после импорта (docs/NODE_LINK.md §4.1):
+// члены и умолчание ссылками. Тег, который носят две группы, делает ключ
+// неоднозначным — это ошибка кейса.
+func checkGroups(t *testing.T, dst *state.State, exp corpusExpectation) {
+	t.Helper()
+	if exp.Groups == nil {
+		return
+	}
+	have := map[string]*state.AutoGroup{}
+	collect := func(n *state.Node) {
+		if n.Kind != state.SourceKindAuto || n.Group == nil {
+			return
+		}
+		if _, dup := have[n.Tag]; dup {
+			t.Errorf("тег %q носят две группы — ключ ожидания неоднозначен", n.Tag)
+		}
+		have[n.Tag] = n.Group
+	}
+	for i := range dst.Sources {
+		collect(&dst.Sources[i].Node)
+		for j := range dst.Sources[i].Nodes {
+			collect(&dst.Sources[i].Nodes[j])
+		}
+	}
+	idx := newCorpusContainerIndex(dst)
+	for tag, want := range exp.Groups {
+		got, ok := have[tag]
+		if !ok {
+			t.Errorf("группы %q после импорта нет", tag)
+			continue
+		}
+		if len(got.Members) != len(want.Members) {
+			t.Errorf("группа %q: членов %d, ожидалось %d", tag, len(got.Members), len(want.Members))
+		} else {
+			for i, w := range want.Members {
+				checkLinkExpectation(t, idx, fmt.Sprintf("группа %q: член %d", tag, i), got.Members[i], w)
+			}
+		}
+		if want.Default != nil {
+			if got.Default == nil {
+				t.Errorf("группа %q: умолчания нет, ожидалось %+v", tag, *want.Default)
+			} else {
+				checkLinkExpectation(t, idx, fmt.Sprintf("группа %q: умолчание", tag), *got.Default, *want.Default)
+			}
+		}
+	}
+	for tag := range have {
+		if _, ok := exp.Groups[tag]; !ok {
+			t.Errorf("после импорта есть группа %q, которой в ожиданиях нет", tag)
 		}
 	}
 }

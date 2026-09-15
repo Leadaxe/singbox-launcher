@@ -206,6 +206,10 @@ func cloneCanonicalNode(n wizardmodels.Node) wizardmodels.Node {
 	if n.Group != nil {
 		g := *n.Group
 		g.Members = append([]wizardmodels.NodeLink(nil), n.Group.Members...)
+		if n.Group.Default != nil {
+			d := *n.Group.Default
+			g.Default = &d
+		}
 		// Хвост ревью W1: Strategy глубоко — *TemplateInt
 		// (Tolerance/PoolTolerance) не должны разделяться указателями с
 		// моделью, даже пока TemplateInt replace-not-mutate.

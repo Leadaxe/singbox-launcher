@@ -90,13 +90,17 @@ func TestDirectionRoundTrip(t *testing.T) {
 			StickyHash:                []string{"process"},
 			InterruptExistConnections: &interrupt,
 		},
+	}, {
+		// Опция vpn-2 — тег Направления этого состояния: в `include` едут
+		// только такие (NODE_LINK.md §8).
+		Tag: "vpn-1",
 	}}
 
 	b, _, err := Export10(src, ExportOptions{AppVersion: "1.4.2"})
 	if err != nil {
 		t.Fatalf("экспорт: %v", err)
 	}
-	if len(b.Directions) != 1 {
+	if len(b.Directions) != 2 {
 		t.Fatalf("направлений в бэкапе: %d", len(b.Directions))
 	}
 	got := b.Directions[0]

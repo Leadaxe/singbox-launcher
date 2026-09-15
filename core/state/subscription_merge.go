@@ -339,11 +339,17 @@ func repointFolderAutoMembers(folder *Source, subURL string, touched map[string]
 		g.Members = kept
 		// Умолчание селектора — тоже ссылка на члена: снявшийся с состава
 		// default роняет селектор, поэтому он снимается вместе с членом
-		// (features/sources.md §Auto — «обязан входить в состав»).
-		if g.Default != "" && !inFolder[g.Default] {
-			warns = append(warns, fmt.Sprintf(
-				"group %q: default %q has no copy in the folder — cleared", n.Tag, g.Default))
-			g.Default = ""
+		// (features/sources.md §Auto — «обязан входить в состав»), а
+		// оставшийся переуказывается на копию в папке, как и члены. Новый
+		// экземпляр: указатель общий с группой САМОЙ подписки.
+		if g.Default != nil {
+			if !inFolder[g.Default.Tag] {
+				warns = append(warns, fmt.Sprintf(
+					"group %q: default %q has no copy in the folder — cleared", n.Tag, g.Default.Tag))
+				g.Default = nil
+			} else {
+				g.Default = &NodeLink{FolderID: folder.ID, Tag: g.Default.Tag}
+			}
 		}
 		n.Group = &g
 	}

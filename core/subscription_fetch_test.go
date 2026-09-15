@@ -317,7 +317,8 @@ func TestFetchAutoMaterialization(t *testing.T) {
 	if pick == nil || pick.Kind != state.SourceKindAuto || pick.Group == nil {
 		t.Fatalf("selector не материализован: %s", nodeTags(src))
 	}
-	if pick.Group.GroupType != state.AutoGroupSelector || pick.Group.Default != "srv-b" {
+	if pick.Group.GroupType != state.AutoGroupSelector || pick.Group.Default == nil ||
+		*pick.Group.Default != (state.NodeLink{FolderID: src.ID, Tag: "srv-b"}) {
 		t.Fatalf("selector потерял тип/default: %+v", pick.Group)
 	}
 	for _, m := range pick.Group.Members {
@@ -337,6 +338,54 @@ func TestFetchAutoMaterialization(t *testing.T) {
 	}
 	if !foundWarn {
 		t.Fatalf("потеря вложенной группы обязана быть warning'ом: %+v", src.UpdateStatus.Warnings)
+	}
+}
+
+// IDENTITY.md §1.3 — сырые теги: сперва ВСЕ узлы, затем группы, одним
+// счётчиком. В Xray-массиве группа-балансировщик элемента «NL» стоит в теле
+// РАНЬШЕ узла следующего элемента с тем же именем; раньше она забирала `NL`, и
+// узел становился `NL-2`. Теперь узел держит своё имя, а группа получает
+// `NL-2`: на сыром теге узла живут ссылки и отметки выключения, и появление
+// группы у провайдера их сдвигать не вправе.
+func TestFetchGroupNamesakeDoesNotShiftNodeTag(t *testing.T) {
+	body := `[
+  {
+    "remarks": "NL",
+    "outbounds": [
+      {"protocol":"vless","tag":"proxy-1","settings":{"vnext":[{"address":"1.1.1.1","port":443,"users":[{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}]}]}},
+      {"protocol":"vless","tag":"proxy-2","settings":{"vnext":[{"address":"2.2.2.2","port":443,"users":[{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}]}]}}
+    ],
+    "routing": {"balancers": [{"tag":"Auto_Balancer","selector":["proxy"]}]}
+  },
+  {
+    "remarks": "NL",
+    "outbounds": [{"protocol":"vless","tag":"proxy","settings":{"vnext":[{"address":"3.3.3.3","port":443,"users":[{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}]}]}}]
+  }
+]`
+	stub := newStubSub(t, b64Body(body))
+	src := newFetchTestSource(stub.srv.URL)
+	fetchOnce(t, src, locale.Settings{})
+
+	var group, node *state.Node
+	for i := range src.Nodes {
+		n := &src.Nodes[i]
+		switch {
+		case n.Kind == state.SourceKindAuto:
+			group = n
+		case n.Kind == state.SourceKindServer && n.Tag == "NL":
+			node = n
+		}
+	}
+	if node == nil {
+		t.Fatalf("узел отдал своё имя группе-тёзке: %s", nodeTags(src))
+	}
+	if group == nil || group.Tag != "NL-2" {
+		t.Fatalf("группа-тёзка узла обязана получить NL-2: %s", nodeTags(src))
+	}
+	for _, m := range group.Group.Members {
+		if m.FolderID != src.ID || m.Tag == "NL" || m.Tag == "NL-2" {
+			t.Fatalf("член группы = %+v: состав балансировщика — узлы его элемента", m)
+		}
 	}
 }
 

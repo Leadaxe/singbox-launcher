@@ -94,6 +94,12 @@ func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 	// опция внутри своего направления, а не самостоятельная цель
 	// (решение D-9А). В addOutbounds его тоже нет — он разворачивается
 	// только на сборке.
+	//
+	// Опции Направлений предлагаются, только если это ОБЪЯВЛЕННЫЕ корневые
+	// имена (DeclaredRootNames, NODE_LINK.md §8): узел или чужая строка,
+	// вписанные в опции сырым JSON или чужим файлом, целью detour, позиции и
+	// правила не становятся — такая цель протухает от правки tag_policy.
+	declared := DeclaredRootNames(model)
 	for i := range model.GlobalOutbounds {
 		outbound := &model.GlobalOutbounds[i]
 		if outbound.Disabled {
@@ -103,7 +109,9 @@ func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 			tags[outbound.Tag] = struct{}{}
 		}
 		for _, extra := range outbound.AddOutbounds {
-			tags[extra] = struct{}{}
+			if declared[strings.TrimSpace(extra)] {
+				tags[extra] = struct{}{}
+			}
 		}
 	}
 	// Теги ЗАМЕН свёрнутых папок целями правил не предлагаются: такая цель

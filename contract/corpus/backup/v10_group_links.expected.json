@@ -1,0 +1,44 @@
+{
+  "rules": [],
+  "warnings": [],
+  "folders": {
+    "Work": [
+      "local-at",
+      "de-1",
+      "de-2",
+      "Best"
+    ]
+  },
+  "folder_ids": {
+    "Work": "01FLDGROUPLOCAL00000000000"
+  },
+  "root_servers": [
+    "relay-root"
+  ],
+  "groups": {
+    "Best": {
+      "members": [
+        { "tag": "de-1", "folder": "Work" },
+        { "tag": "de-2", "folder": "Work" }
+      ],
+      "default": { "tag": "de-2", "folder": "Work" }
+    }
+  },
+  "chains": [
+    {
+      "tag": "via-best",
+      "chain": {
+        "hops": [
+          "relay-root",
+          "Best"
+        ],
+        "idle_timeout": "0s"
+      },
+      "hops": [
+        { "tag": "relay-root" },
+        { "tag": "Best", "folder": "Work" }
+      ]
+    }
+  ],
+  "detours": {}
+}

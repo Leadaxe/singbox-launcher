@@ -592,5 +592,8 @@ func directionBuildOptionsFrom(td *template.TemplateData) config.DirectionBuildO
 		TwinOptions: td.DirectionTwinOptions(),
 		BlockTag:    td.DirectionMagicTag("block", ""),
 		DirectTag:   td.DirectionMagicTag("direct", ""),
+		// Системная часть объявленных корневых имён: законные цели ссылок и
+		// опции Направлений без узла за ними (NODE_LINK.md §8).
+		SystemTags: td.SystemOutboundTags(),
 	}
 }

@@ -275,10 +275,17 @@ func (s *Server) backupImportWith(w http.ResponseWriter, r *http.Request, acc st
 		return
 	}
 
-	res, err := backup.ImportFile(st, file, backup.ImportOptions{
+	importOpts := backup.ImportOptions{
 		KnownOutbounds: s.knownOutboundsFor(st),
 		KnownPresets:   s.knownPresetIDs(),
-	})
+	}
+	// Тег блокировки и системные теги шаблона — те же, что у UI-импорта:
+	// ими становится `include_block`, и ими проверяются строки `include`.
+	if td, terr := s.facade.LoadTemplate(); terr == nil && td != nil {
+		importOpts.BlockTag = td.DirectionBlockTag()
+		importOpts.SystemTags = td.SystemOutboundTags()
+	}
+	res, err := backup.ImportFile(st, file, importOpts)
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": "import: " + err.Error()})
 		return

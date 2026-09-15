@@ -50,6 +50,13 @@ type NodeLinkTargets struct {
 	// Направлений, replace-теги, системные теги шаблона. Ссылка на них
 	// легальна (SPEC §4.E.3), но ParsedNode за ними нет.
 	rootNames map[string]bool
+	// groupFinals — провайдерские группы контейнеров: folderId → ФИНАЛЬНЫЙ
+	// тег группы → её сырой тег. Только для подсказки: позиция, записанная
+	// финальным тегом группы (так писала форма до 1.6.0), по нему НЕ
+	// разрешается — ссылка на финальный тег протухает от правки tag_policy, и
+	// принять её значило бы узаконить форму, которую норма запрещает
+	// (NODE_LINK.md §2 правило 3).
+	groupFinals map[string]map[string]string
 }
 
 // BuildNodeLinkTargets собирает словарь целей.
@@ -64,9 +71,10 @@ func BuildNodeLinkTargets(
 	extraRootTags []string,
 ) *NodeLinkTargets {
 	t := &NodeLinkTargets{
-		byFolder:  make(map[string]map[string]*ParsedNode),
-		byRootTag: make(map[string]*ParsedNode),
-		rootNames: make(map[string]bool, len(extraRootTags)),
+		byFolder:    make(map[string]map[string]*ParsedNode),
+		byRootTag:   make(map[string]*ParsedNode),
+		rootNames:   make(map[string]bool, len(extraRootTags)),
+		groupFinals: make(map[string]map[string]string),
 	}
 	for i := range proxies {
 		cs := proxies[i].Canonical
@@ -87,6 +95,16 @@ func BuildNodeLinkTargets(
 				}
 				if _, dup := byRaw[raw]; !dup {
 					byRaw[raw] = n
+				}
+				if n.Scheme == configtypes.SchemeGroup && n.Tag != "" && n.Tag != raw {
+					finals := t.groupFinals[cs.FolderID]
+					if finals == nil {
+						finals = make(map[string]string)
+						t.groupFinals[cs.FolderID] = finals
+					}
+					if _, dup := finals[n.Tag]; !dup {
+						finals[n.Tag] = raw
+					}
 				}
 			}
 			continue
@@ -110,12 +128,21 @@ func BuildNodeLinkTargets(
 }
 
 // allRootLinkTargets — законные цели КОРНЕВОГО пространства без узла за
-// ними: теги Направлений (и их твинов), replace-теги папок и системные теги
-// шаблона (`ChainBuiltinHopTags` — direct/block).
+// ними, то есть ОБЪЯВЛЕННЫЕ корневые имена, которые есть в этой сборке: теги
+// Направлений (и их твинов), replace-теги папок и системные теги шаблона
+// (`ChainBuiltinHopTags`, теги direct/block и прочие объявления шаблона из
+// DirectionBuildOptions).
+//
+// Содержимое addOutbounds Направлений сюда НЕ входит (NODE_LINK.md §8,
+// решение владельца 15.09.2026): опция Направления — объявленное имя, а не
+// источник имён. Пока оно входило, строка, вписанная в опции руками или чужим
+// файлом, делала законной корневой целью что угодно — в том числе финальный
+// тег узла папки, который протухает от правки tag_policy. Сохранённые ссылки
+// такого вида поднимает до пары нормализация состояния (правило S5′).
 //
 // Одно место сбора: разойдись оно с гардом занятости — и ссылка на живой
 // replace-тег читалась бы висячей (fail-closed на ровном месте).
-func allRootLinkTargets(parserConfig *ParserConfig, directionTags map[string]bool) []string {
+func allRootLinkTargets(parserConfig *ParserConfig, directionTags map[string]bool, opts DirectionBuildOptions) []string {
 	var out []string
 	for tag := range directionTags {
 		out = append(out, tag)
@@ -129,7 +156,6 @@ func allRootLinkTargets(parserConfig *ParserConfig, directionTags map[string]boo
 			if d.Auto != nil {
 				out = append(out, d.Tag+twinSuffix)
 			}
-			out = append(out, d.AddOutbounds...)
 		}
 		for i := range parserConfig.ParserConfig.Proxies {
 			ps := parserConfig.ParserConfig.Proxies[i]
@@ -145,6 +171,11 @@ func allRootLinkTargets(parserConfig *ParserConfig, directionTags map[string]boo
 		}
 	}
 	out = append(out, ChainBuiltinHopTags...)
+	for _, tag := range append([]string{opts.BlockTag, opts.DirectTag}, opts.SystemTags...) {
+		if tag = strings.TrimSpace(tag); tag != "" {
+			out = append(out, tag)
+		}
+	}
 	sort.Strings(out)
 	return out
 }
@@ -207,6 +238,12 @@ func (t *NodeLinkTargets) Resolve(link configtypes.NodeLink) NodeLinkResolution 
 		}
 		if n := byRaw[tag]; n != nil {
 			return NodeLinkResolution{Node: n, Tag: n.Tag}
+		}
+		if raw, ok := t.groupFinals[folder][tag]; ok {
+			// Не разрешаем, а подсказываем: пользователь видит, какую группу
+			// имела в виду ссылка, и выбирает позицию заново — форма запишет
+			// сырой тег.
+			return NodeLinkResolution{Problem: locale.Tf(emitLinkGroupFinalTagText, tag, raw)}
 		}
 		return NodeLinkResolution{Problem: locale.Tf(emitLinkNodeMissingText, tag)}
 	}
@@ -297,7 +334,7 @@ func ApplyCanonicalNodeLinks(
 		if n == nil || dropped[n] || n.Scheme != configtypes.SchemeGroup {
 			continue
 		}
-		if len(n.CanonicalGroupMembers) == 0 && n.CanonicalGroupDefault == "" {
+		if len(n.CanonicalGroupMembers) == 0 && n.CanonicalGroupDefault == nil {
 			continue // импортированная группа мостового пути — её состав уже сведён
 		}
 		for _, w := range resolveCanonicalGroup(n, targets, dropped) {
@@ -469,31 +506,24 @@ func resolveCanonicalGroup(n *ParsedNode, targets *NodeLinkTargets, dropped map[
 	// default — только у selector и только из состава: ядро отвергает ВЕСЬ
 	// конфиг, если умолчание не входит в группу.
 	delete(n.Outbound, "default")
-	if def := strings.TrimSpace(n.CanonicalGroupDefault); def != "" {
+	if def := n.CanonicalGroupDefault; def != nil && strings.TrimSpace(def.Tag) != "" {
 		groupType, _ := n.Outbound["type"].(string)
 		if groupType != "selector" {
 			// urltest со stray default не плодим (форма канона).
 			return warnings
 		}
-		res := targets.Resolve(configtypes.NodeLink{FolderID: canonicalGroupFolder(n), Tag: def})
+		// Умолчание — такая же ссылка, как член: резолв по СВОЕМУ адресу, а
+		// не по контейнеру первого члена.
+		res := targets.Resolve(*def)
 		if res.Problem == "" {
 			if _, inList := seen[res.Tag]; inList {
 				n.Outbound["default"] = res.Tag
 				return warnings
 			}
 		}
-		w := locale.Tf(emitGroupDefaultDroppedText, n.Tag, def)
+		w := locale.Tf(emitGroupDefaultDroppedText, n.Tag, def.Tag)
 		warnings = append(warnings, w)
 		debuglog.WarnLog("nodelink: %s", w)
 	}
 	return warnings
-}
-
-// canonicalGroupFolder — папка, в чьём пространстве адресован default группы:
-// та же, что у её членов (default — сырой тег члена, SPEC Т2).
-func canonicalGroupFolder(n *ParsedNode) string {
-	if len(n.CanonicalGroupMembers) > 0 {
-		return n.CanonicalGroupMembers[0].FolderID
-	}
-	return ""
 }
