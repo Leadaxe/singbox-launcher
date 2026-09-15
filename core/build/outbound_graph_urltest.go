@@ -40,71 +40,75 @@ import (
 	"singbox-launcher/internal/debuglog"
 )
 
-// coreDefaultURLTestIdleTimeout — значение, которое ядро подставит само, если
-// idle_timeout в конфиге нет (constant.DefaultURLTestIdleTimeout).
-const coreDefaultURLTestIdleTimeout = 30 * time.Minute
+// Значения, которые ядро подставит само, если ключа нет или длительность
+// нулевая (constant.DefaultURLTestInterval / DefaultURLTestIdleTimeout).
+const (
+	coreDefaultURLTestInterval     = 3 * time.Minute
+	coreDefaultURLTestIdleTimeout  = 30 * time.Minute
+	coreDefaultURLTestIntervalText = "3m"
+)
 
 // sanitizeURLTestTimings приводит пару interval/idle_timeout одной группы к
 // виду, который переживёт конструктор ядра. Возвращает true, если запись
 // изменилась.
 //
-// Разбирается только то, что реально мешает: если interval невалиден как
-// длительность, ядро отвергнет его само с внятным сообщением про сам ключ, и
-// подменять такое значение здесь — значит прятать ошибку конфига.
+// Сравниваются ДЕЙСТВУЮЩИЕ значения — те, что получит конструктор: ноль и
+// отсутствие ключа ядро заменяет своим дефолтом. Отсюда три ветки фатала,
+// которые закрывает одно правило:
+//   - interval больше дефолтного idle_timeout 30m, пары нет (или «0»);
+//   - interval не задан (ядро берёт 3m), а idle_timeout меньше 3m, например «1m»;
+//   - оба заданы, и interval > idle_timeout.
+//
+// Разбирается только то, что реально мешает: если значение невалидно как
+// длительность (в том числе с пробелами по краям — ядро их не срезает), ядро
+// отвергнет его само с внятным сообщением про сам ключ, и подменять такое
+// значение здесь — значит прятать ошибку конфига.
 func sanitizeURLTestTimings(e *graphEntry) bool {
 	if e.typ() != "urltest" {
 		return false
 	}
 
-	rawInterval, hasInterval := stringField(e.m, "interval")
-	if !hasInterval {
-		// Без interval ядро возьмёт 3m, и 3m ≤ любого дефолта — чинить нечего.
-		return false
-	}
-	interval, err := parseCoreDuration(rawInterval)
-	if err != nil || interval <= 0 {
-		return false
-	}
-
-	rawIdle, hasIdle := stringField(e.m, "idle_timeout")
-	if !hasIdle {
-		if interval <= coreDefaultURLTestIdleTimeout {
+	interval, intervalText := coreDefaultURLTestInterval, coreDefaultURLTestIntervalText
+	if raw, ok := stringField(e.m, "interval"); ok {
+		d, err := parseCoreDuration(raw)
+		if err != nil || d < 0 {
 			return false
 		}
-		// Провайдер (или наш собственный «1h») попросил редкую проверку, но
-		// idle_timeout не назвал — ядро подставит 30m и упадёт. Пишем пару.
-		e.m["idle_timeout"] = rawInterval
-		e.dirty = true
-		debuglog.WarnLog(
-			"build: urltest %q: interval %s exceeds the core default idle_timeout %s — idle_timeout set to %s "+
-				"(the interval is kept: shortening it would probe the provider more often than it asked)",
-			e.tag, rawInterval, coreDefaultURLTestIdleTimeout, rawInterval)
-		return true
+		if d > 0 {
+			interval, intervalText = d, raw
+		}
 	}
 
-	idle, err := parseCoreDuration(rawIdle)
-	if err != nil || idle <= 0 || interval <= idle {
+	idle, idleText := coreDefaultURLTestIdleTimeout, "unset (core default 30m)"
+	if raw, ok := stringField(e.m, "idle_timeout"); ok {
+		d, err := parseCoreDuration(raw)
+		if err != nil || d < 0 {
+			return false
+		}
+		if d > 0 {
+			idle, idleText = d, raw
+		}
+	}
+
+	if interval <= idle {
 		return false
 	}
-	// Заданы оба и пара не сходится: тянем вверх idle_timeout — см. шапку.
-	e.m["idle_timeout"] = rawInterval
+	// Пара не сходится: тянем вверх idle_timeout, interval не трогаем — см. шапку.
+	e.m["idle_timeout"] = intervalText
 	e.dirty = true
 	debuglog.WarnLog(
-		"build: urltest %q: interval %s is greater than idle_timeout %s — idle_timeout raised to %s "+
-			"(the core rejects interval > idle_timeout at startup)",
-		e.tag, rawInterval, rawIdle, rawInterval)
+		"build: urltest %q: interval %s is greater than idle_timeout %s — idle_timeout set to %s "+
+			"(the interval is kept: shortening it would probe the provider more often than it asked)",
+		e.tag, intervalText, idleText, intervalText)
 	return true
 }
 
 // stringField достаёт строковое поле; отсутствующее, пустое и нестроковое
-// трактуются одинаково — «не задано».
+// трактуются одинаково — «не задано». Пробелы не срезаются: ядро их тоже не
+// срезает, и « 3h» для него — невалидная длительность.
 func stringField(m map[string]interface{}, key string) (string, bool) {
 	v, ok := m[key].(string)
-	if !ok {
-		return "", false
-	}
-	v = strings.TrimSpace(v)
-	if v == "" {
+	if !ok || v == "" {
 		return "", false
 	}
 	return v, true
