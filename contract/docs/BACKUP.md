@@ -312,7 +312,7 @@ route-правила и DNS-записи, живущие и умирающие �
 | Запись | Поле | Тип (умолчание) | Смысл у LxBox |
 |---|---|---|---|
 | `subscription` | `detour_policy` | `{register_detour_servers: bool (false), register_detour_in_auto: bool (false), use_detour_servers: bool (true), replace_detour_chain: bool (false)}` | политика detour источника (`$defs/detourPolicy`) |
-| `subscription` | `import_rules` | array объектов | правка emit-JSON узлов при импорте подписки; вложенную форму описывает LxBox |
+| `subscription` | `import_rules` | array правил `{conditions: [{path, op, pattern, negate?, case_sensitive?}], match?, action, target_path?, replacement?, replace_mode?, substitute?, enabled?}`; старая форма без `conditions` — `{pattern, is_regex?, case_sensitive?, action, …}` — читается терпимо | правка узлов при импорте и обновлении подписки: условия над emit-JSON узла (`path` — JSONPath в точечной нотации, `tls.server_name`; пусто — весь узел; `op` `contains`\|`equals`\|`matches`; `match: any`, умолчание `all`) и действие `replace`\|`disable`\|`enable`; у `replace` — `target_path`, `replacement`, `replace_mode: substitute` (умолчание `set`) с regex `substitute` |
 | `subscription` | `import_rules_enabled` | bool (`true`) | включены ли `import_rules` |
 | `subscription` | `on_update_action` | `rebuild\|reload\|none` (`rebuild`) | что делать после обновления подписки |
 | `server` | `detour_policy` | как у подписки | политика detour сервера |

@@ -420,10 +420,131 @@
         "import_rules": {
           "type": "array",
           "items": {
-            "type": "object",
-            "additionalProperties": true
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "conditions",
+                  "action"
+                ],
+                "additionalProperties": true,
+                "description": "Правило: условия над emit-JSON узла и действие. Поддержка: LxBox.",
+                "properties": {
+                  "conditions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "JSONPath над emit-JSON узла в точечной нотации (tag, tls.server_name); пусто — весь узел."
+                        },
+                        "op": {
+                          "enum": [
+                            "contains",
+                            "equals",
+                            "matches"
+                          ],
+                          "default": "contains",
+                          "description": "matches — регулярное выражение."
+                        },
+                        "pattern": {
+                          "type": "string"
+                        },
+                        "negate": {
+                          "type": "boolean",
+                          "default": false,
+                          "description": "Инвертировать результат условия."
+                        },
+                        "case_sensitive": {
+                          "type": "boolean",
+                          "default": false
+                        }
+                      }
+                    }
+                  },
+                  "match": {
+                    "enum": [
+                      "all",
+                      "any"
+                    ],
+                    "default": "all",
+                    "description": "Объединение условий: all — все, any — любое."
+                  },
+                  "action": {
+                    "enum": [
+                      "replace",
+                      "disable",
+                      "enable"
+                    ],
+                    "description": "replace — правка поля узла, disable / enable — выключить / включить узел."
+                  },
+                  "target_path": {
+                    "type": "string",
+                    "description": "replace: JSONPath изменяемого поля, та же нотация."
+                  },
+                  "replacement": {
+                    "type": "string",
+                    "description": "replace: новое значение; $1…$9 — группы захвата matches-условия по тому же пути."
+                  },
+                  "replace_mode": {
+                    "enum": [
+                      "set",
+                      "substitute"
+                    ],
+                    "default": "set",
+                    "description": "set — записать значение целиком, substitute — заменить найденное внутри значения."
+                  },
+                  "substitute": {
+                    "type": "string",
+                    "description": "substitute: регулярное выражение поиска; пусто — pattern условия по тому же пути."
+                  },
+                  "enabled": {
+                    "type": "boolean",
+                    "default": true
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "pattern",
+                  "action"
+                ],
+                "additionalProperties": true,
+                "description": "Старая форма без conditions: pattern по тегу узла. Читается терпимо, не пишется. Поддержка: LxBox.",
+                "properties": {
+                  "pattern": {
+                    "type": "string"
+                  },
+                  "is_regex": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "case_sensitive": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "action": {
+                    "enum": [
+                      "replace",
+                      "disable",
+                      "enable"
+                    ]
+                  },
+                  "replacement": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean",
+                    "default": true
+                  }
+                }
+              }
+            ]
           },
-          "description": "Правка emit-JSON узлов при импорте подписки. Поддержка: LxBox; вложенную форму описывает их сторона. Лаунчер поле игнорирует молча: в состояние не кладёт и предупреждения не даёт. Отсутствие ключа в файле значение у приёмника не сбрасывает (BACKUP.md §2, «Поля стороны LxBox»)."
+          "description": "Правка узлов при импорте и обновлении подписки: условия над emit-JSON узла и действие. Элемент — форма с conditions; старая форма без conditions читается терпимо. Поддержка: LxBox. Лаунчер поле игнорирует молча: в состояние не кладёт и предупреждения не даёт. Отсутствие ключа в файле значение у приёмника не сбрасывает (BACKUP.md §2, «Поля стороны LxBox»)."
         },
         "import_rules_enabled": {
           "type": "boolean",
