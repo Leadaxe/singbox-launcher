@@ -162,7 +162,7 @@ curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application
 
 The same thing the **Files** tab does with its *Export…* / *Import…* buttons: take a portable snapshot of the settings and apply one somewhere else. The payload is the LX Backup file itself — save the response to disk and the launcher or LxBox opens it unchanged.
 
-Export writes **format 1.0** only: the file is the launcher state, so per-node rules, DNS sections and folders travel too. LxBox reads and writes the same format starting with 2.23.3, released together with launcher 1.6.0. **Import reads both 1.0 and the older 0.x files** (0.12 and before), and the caller never states the format.
+Export writes **format 1.0** only: the file is the launcher state, so per-node rules, DNS sections and folders travel too. LxBox reads and writes the same format starting with 2.24.0, released together with launcher 1.6.0. **Import reads both 1.0 and the older 0.x files** (0.12 and before), and the caller never states the format.
 
 | Method | Path | Purpose |
 |---|---|---|
