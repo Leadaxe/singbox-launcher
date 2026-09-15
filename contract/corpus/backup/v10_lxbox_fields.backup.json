@@ -16,7 +16,17 @@
         "replace_detour_chain": true
       },
       "import_rules": [
-        { "match": { "tag": "/trial/i" }, "set": { "tcp_fast_open": true } }
+        {
+          "conditions": [
+            { "path": "tag", "op": "contains", "pattern": "PROMO", "case_sensitive": true },
+            { "path": "type", "op": "equals", "pattern": "wireguard", "negate": true }
+          ],
+          "action": "replace",
+          "target_path": "tag",
+          "replace_mode": "substitute",
+          "substitute": " PROMO"
+        },
+        { "pattern": "^trial", "is_regex": true, "action": "disable" }
       ],
       "import_rules_enabled": false,
       "on_update_action": "reload"
