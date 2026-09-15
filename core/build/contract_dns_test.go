@@ -37,6 +37,9 @@ type corpusDNSCase struct {
 type corpusDNSStateEntry struct {
 	Tag     string `json:"tag"`
 	Enabled bool   `json:"enabled"`
+	// Vars — значения переменных записи шаблонного сервера (SPEC 129): по
+	// локальным именам его объявления.
+	Vars map[string]string `json:"vars,omitempty"`
 }
 
 type corpusDNSExpected struct {
@@ -77,12 +80,12 @@ func runDNSCorpusCase(t *testing.T, dir, caseName string) {
 	}
 
 	// Шов контракта (разрыв N8): вложенные записи разворачиваются в плоские,
-	// их vars становятся переменными шаблона.
+	// их vars остаются объявлениями сервера (SPEC 129).
 	section, err := json.Marshal(map[string]interface{}{"servers": in.Servers})
 	if err != nil {
 		t.Fatalf("marshal section: %v", err)
 	}
-	normalized, declaredVars := template.NormalizeDNSOptions(section)
+	normalized, serverVars := template.NormalizeDNSOptions(section)
 
 	st := &corestate.State{}
 	for _, e := range in.State {
@@ -90,6 +93,7 @@ func runDNSCorpusCase(t *testing.T, dir, caseName string) {
 			Kind:    corestate.DNSServerKindTemplate,
 			Tag:     e.Tag,
 			Enabled: e.Enabled,
+			Vars:    e.Vars,
 		})
 	}
 
@@ -100,7 +104,7 @@ func runDNSCorpusCase(t *testing.T, dir, caseName string) {
 		Rules:               st.Rules,
 		DNS:                 st.DNS,
 		TemplateDNSDefaults: ParseTemplateDNSDefaults(dnsLibraryOf(normalized)),
-		TemplateVars:        declaredVars,
+		DNSServerVars:       serverVars,
 		GlobalVars:          in.Vars,
 	})
 	if err != nil {

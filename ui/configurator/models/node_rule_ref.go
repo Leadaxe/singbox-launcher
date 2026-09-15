@@ -4,7 +4,7 @@
 // # Что это
 //
 // У узла в `sections.rules[]` лежат обычные записи правил лаунчера — со своими
-// `enabled` и `order_num`. В списке Rules каждая из них получает СВОЮ строку:
+// `enabled` и `num`. В списке Rules каждая из них получает СВОЮ строку:
 // её видно, её можно двигать и выключать. Тела правится у узла — на вкладке
 // JSON окна источника, — поэтому шестерёнки и удаления у строки нет.
 //
@@ -37,12 +37,12 @@ type NodeRuleRef struct {
 	// вторую нумерацию значило бы держать два места в согласии.
 	Index int
 
-	// Enabled / OrderNum — копии полей записи, которыми правит строка. При
+	// Enabled / Num — копии полей записи, которыми правит строка. При
 	// Save они уезжают обратно в запись узла.
-	Enabled  bool
-	OrderNum *int
+	Enabled bool
+	Num     *int
 
-	// Name — подпись записи (InlineBody.Name / SrsBody.Name) с уже
+	// Name — подпись записи (поле `name`, state v8) с уже
 	// подставленным финальным тегом узла, для строки списка.
 	Name string
 }
@@ -61,9 +61,9 @@ func (n *NodeRuleRef) Clone() *NodeRuleRef {
 		return nil
 	}
 	cp := *n
-	if n.OrderNum != nil {
-		v := *n.OrderNum
-		cp.OrderNum = &v
+	if n.Num != nil {
+		v := *n.Num
+		cp.Num = &v
 	}
 	return &cp
 }
@@ -89,11 +89,11 @@ func SeedNodeRuleRefs(m *WizardModel) bool {
 		for i := range node.Sections.Rules {
 			r := &node.Sections.Rules[i]
 			ref := &NodeRuleRef{
-				Link:     link,
-				Index:    i,
-				Enabled:  r.Enabled,
-				OrderNum: copyOrderNum(r.OrderNum),
-				Name:     nodeRuleDisplayName(*r, link.Tag),
+				Link:    link,
+				Index:   i,
+				Enabled: r.Enabled,
+				Num:     copyNum(r.Num),
+				Name:    nodeRuleDisplayName(*r, link.Tag),
 			}
 			out = append(out, ref)
 		}
@@ -124,7 +124,7 @@ func SeedNodeRuleRefs(m *WizardModel) bool {
 			// но если строку только что подвинули, а узел ещё не сохранён,
 			// расхождения быть не должно: Save пишет в узел до пересева.
 			out[i].Enabled = cur.Enabled
-			out[i].OrderNum = copyOrderNum(cur.OrderNum)
+			out[i].Num = copyNum(cur.Num)
 		}
 	}
 	m.NodeRuleRefs = out
@@ -138,21 +138,19 @@ func SeedNodeRuleRefs(m *WizardModel) bool {
 // видна лишь у папки с тег-политикой, и звать ради неё тег-машину на каждую
 // перерисовку списка дороже, чем показать имя узла таким, каким его знает
 // дерево источников.
+//
+// Имя берётся полем записи (state v8, SPEC 127 §0), а не видом: вид валидирует
+// запись целиком и у правила с недобитыми наборами вернул бы ошибку — строка
+// списка осталась бы безымянной там, где имя есть. У пресета имени нет.
 func nodeRuleDisplayName(r corestate.Rule, nodeTag string) string {
-	body, err := r.DecodeBody()
-	if err != nil {
-		return ""
-	}
-	switch b := body.(type) {
-	case *corestate.InlineBody:
-		return corestate.SubstituteSelfInString(b.Name, nodeTag)
-	case *corestate.SrsBody:
-		return corestate.SubstituteSelfInString(b.Name, nodeTag)
+	switch r.Kind {
+	case corestate.RuleKindInline, corestate.RuleKindSrs:
+		return corestate.SubstituteSelfInString(r.Name, nodeTag)
 	}
 	return ""
 }
 
-// SyncNodeRuleRefsToSources раскладывает `enabled` и `order_num` строк обратно
+// SyncNodeRuleRefsToSources раскладывает `enabled` и `num` строк обратно
 // по узлам (SPEC 121 §10.4).
 //
 // Зовётся на Save рядом с эмиссией корневых правил: у оси один порядок на всех,
@@ -174,7 +172,7 @@ func SyncNodeRuleRefsToSources(m *WizardModel) {
 			continue
 		}
 		node.Sections.Rules[ref.Index].Enabled = ref.Enabled
-		node.Sections.Rules[ref.Index].OrderNum = copyOrderNum(ref.OrderNum)
+		node.Sections.Rules[ref.Index].Num = copyNum(ref.Num)
 	}
 }
 

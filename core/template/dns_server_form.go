@@ -1,5 +1,5 @@
 // File dns_server_form.go — нормализация формы записей `dns_options.servers`
-// (SPEC 109, разрыв N8).
+// (SPEC 109, разрыв N8) и переменные шаблонного DNS-сервера (SPEC 129).
 //
 // Две формы одной сущности:
 //
@@ -19,31 +19,32 @@
 // этого вложенная форма разворачивается в плоскую здесь, один раз при
 // загрузке шаблона, и весь код ниже видит то же, что видел всегда.
 //
-// Переменные записи становятся переменными шаблона с именем
-// `dns_<tag>_<var>`: они живут в одном пространстве имён с остальными
-// `@placeholder`, и без префикса `outbound` от Google DoT затирал бы
-// `outbound` от Cloudflare DoT.
+// Переменные записи остаются ПРИ СЕРВЕРЕ (SPEC 129): объявления — в
+// TemplateData.DNSServerVars по тегу, тело держит локальные `@outbound`,
+// `@dns_ip`, значения — в записи состояния `dns.servers[kind=template].vars`.
+// До SPEC 129 они склеивались в переменные шаблона `dns_<tag>_<var>`, и
+// переносимость настройки решалась по склеенному имени, а не по записи.
 package template
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	"singbox-launcher/internal/debuglog"
 )
 
-// dnsServerVarPrefix — префикс имени переменной, порождённой записью DNS-сервера.
-const dnsServerVarPrefix = "dns_"
-
 // NormalizeDNSOptions разворачивает вложенные записи серверов в плоские и
-// возвращает переменные, которые эти записи объявили.
+// возвращает объявления их переменных по тегу сервера.
 //
 // Экспортирована: этот шов — часть контракта с LxBox (разрыв N8), и
 // конформанс-раннер корпуса обязан идти ровно через него, а не через свою
 // копию логики.
 //
 // Плоские записи проходят насквозь без изменений: шаблон, написанный в
-// нашей форме, обязан грузиться байт-в-байт как раньше.
-func NormalizeDNSOptions(raw json.RawMessage) (json.RawMessage, []TemplateVar) {
+// нашей форме, обязан грузиться байт-в-байт как раньше. Объявления у
+// плоской записи нет.
+func NormalizeDNSOptions(raw json.RawMessage) (json.RawMessage, map[string][]TemplateVar) {
 	if len(raw) == 0 {
 		return raw, nil
 	}
@@ -62,7 +63,7 @@ func NormalizeDNSOptions(raw json.RawMessage) (json.RawMessage, []TemplateVar) {
 
 	changed := false
 	out := make([]map[string]interface{}, 0, len(servers))
-	var vars []TemplateVar
+	var decls map[string][]TemplateVar
 
 	for _, entry := range servers {
 		nested, isNested := entry["server"].(map[string]interface{})
@@ -86,9 +87,11 @@ func NormalizeDNSOptions(raw json.RawMessage) (json.RawMessage, []TemplateVar) {
 		}
 
 		tag, _ := flat["tag"].(string)
-		if declared := dnsEntryVars(entry, tag); len(declared) > 0 {
-			vars = append(vars, dnsEntryTemplateVars(declared)...)
-			renameDNSPlaceholders(flat, declared)
+		if declared := dnsEntryVars(entry, tag); len(declared) > 0 && tag != "" {
+			if decls == nil {
+				decls = make(map[string][]TemplateVar)
+			}
+			decls[tag] = declared
 		}
 		out = append(out, flat)
 	}
@@ -107,19 +110,13 @@ func NormalizeDNSOptions(raw json.RawMessage) (json.RawMessage, []TemplateVar) {
 		debuglog.WarnLog("template: dns_options: could not assemble the section: %v", err)
 		return raw, nil
 	}
-	debuglog.DebugLog("template: dns_options: nested entries expanded, %d variables declared", len(vars))
-	return normalized, vars
+	debuglog.DebugLog("template: dns_options: nested entries expanded, %d servers declare variables", len(decls))
+	return normalized, decls
 }
 
-// dnsEntryVar — переменная записи и её итоговое имя в шаблоне.
-type dnsEntryVar struct {
-	local  string // как названа внутри записи: "outbound"
-	global string // как названа в шаблоне: "dns_google_dot_outbound"
-	tmpl   TemplateVar
-}
-
-// dnsEntryVars читает `vars` записи и переименовывает их с префиксом тега.
-func dnsEntryVars(entry map[string]interface{}, tag string) []dnsEntryVar {
+// dnsEntryVars читает `vars` вложенной записи — объявления с ЛОКАЛЬНЫМИ
+// именами, как их назвал автор шаблона.
+func dnsEntryVars(entry map[string]interface{}, tag string) []TemplateVar {
 	rawVars, ok := entry["vars"].([]interface{})
 	if !ok || len(rawVars) == 0 {
 		return nil
@@ -133,66 +130,207 @@ func dnsEntryVars(entry map[string]interface{}, tag string) []dnsEntryVar {
 		debuglog.WarnLog("template: dns_options: entry %q: vars unreadable: %v", tag, err)
 		return nil
 	}
-
-	out := make([]dnsEntryVar, 0, len(parsed))
+	out := make([]TemplateVar, 0, len(parsed))
 	for _, v := range parsed {
-		if v.Name == "" {
+		// Разделитель — оформление вкладки Settings, у записи сервера его
+		// показывать негде; безымянную запись подставить некуда.
+		if v.Separator || strings.TrimSpace(v.Name) == "" {
 			continue
 		}
-		local := v.Name
-		v.Name = dnsServerVarPrefix + tag + "_" + local
-		// Переменные DNS-сервера не показываются на вкладке Settings: их
-		// место — форма самого сервера, где видно, к какой записи они
-		// относятся. Иначе список настроек распух бы на два десятка строк
-		// вида «Outbound», неотличимых друг от друга.
-		v.WizardUI = "hidden"
-		out = append(out, dnsEntryVar{local: local, global: v.Name, tmpl: v})
+		out = append(out, v)
 	}
 	return out
 }
 
-// renameDNSPlaceholders переписывает `@local` → `@global` в теле сервера.
+// DNSServerVarScope — переменные, видимые телу шаблонного DNS-сервера
+// (SPEC 129 §4.1): переменные шаблона верхнего уровня (расширение лаунчера)
+// и поверх них объявления самого сервера. Локальное имя затеняет
+// одноимённое глобальное — глобальное из списка убирается, иначе резолв
+// увидел бы два объявления одного имени.
 //
-// Только точные совпадения целой строки: `"server": "@dns_ip"` — да,
-// `"path": "/dns-query?x=@dns_ip"` — нет. Подстановка внутри строк здесь
-// не встречается, а частичная замена молча испортила бы чужое значение.
-func renameDNSPlaceholders(body map[string]interface{}, vars []dnsEntryVar) {
-	byLocal := make(map[string]string, len(vars))
-	for _, v := range vars {
-		byLocal["@"+v.local] = "@" + v.global
-	}
-	var walk func(v interface{}) interface{}
-	walk = func(v interface{}) interface{} {
-		switch t := v.(type) {
-		case string:
-			if repl, ok := byLocal[t]; ok {
-				return repl
-			}
-			return t
-		case map[string]interface{}:
-			for k, inner := range t {
-				t[k] = walk(inner)
-			}
-			return t
-		case []interface{}:
-			for i, inner := range t {
-				t[i] = walk(inner)
-			}
-			return t
-		default:
-			return v
+// Порядок — глобальные, затем локальные: `#if` в default_value видит только
+// объявленные выше (ForTargetIn), и это тот же порядок, в котором до SPEC 129
+// склеенные переменные серверов дописывались в конец списка шаблона.
+func DNSServerVarScope(decls, globals []TemplateVar) []TemplateVar {
+	local := make(map[string]bool, len(decls))
+	for _, d := range decls {
+		if !d.Separator && d.Name != "" {
+			local[d.Name] = true
 		}
 	}
-	for k, v := range body {
-		body[k] = walk(v)
+	out := make([]TemplateVar, 0, len(globals)+len(decls))
+	for _, g := range globals {
+		if g.Separator || local[g.Name] {
+			continue
+		}
+		out = append(out, g)
 	}
-}
-
-// dnsEntryTemplateVars отдаёт объявленные переменные в виде TemplateVar.
-func dnsEntryTemplateVars(vars []dnsEntryVar) []TemplateVar {
-	out := make([]TemplateVar, 0, len(vars))
-	for _, v := range vars {
-		out = append(out, v.tmpl)
+	for _, d := range decls {
+		if d.Separator || d.Name == "" {
+			continue
+		}
+		out = append(out, d)
 	}
 	return out
+}
+
+// ResolveDNSServerVars — значения переменных для тела шаблонного DNS-сервера.
+//
+// Имя, объявленное сервером: значение из `vars` записи (непустое после
+// подрезки, Н3) → умолчание объявления для цели → «не задано». Значение
+// записи под именем, которого сервер не объявил, не видно никогда (Н2).
+// Имя, не объявленное сервером, — переменная шаблона со значением из
+// globalValues (расширение лаунчера); одноимённое глобальное значение для
+// локального имени не просачивается.
+//
+// Возвращает область видимости (DNSServerVarScope) и разрешённые значения —
+// ровно то, что нужно движку подстановки.
+func ResolveDNSServerVars(decls []TemplateVar, record map[string]string, globals []TemplateVar, globalValues map[string]string, target TargetSpec) ([]TemplateVar, map[string]ResolvedVar) {
+	scope := DNSServerVarScope(decls, globals)
+	local := make(map[string]bool, len(decls))
+	for _, d := range decls {
+		if !d.Separator && d.Name != "" {
+			local[d.Name] = true
+		}
+	}
+	values := make(map[string]string, len(globalValues)+len(decls))
+	for k, v := range globalValues {
+		if !local[k] {
+			values[k] = v
+		}
+	}
+	for name := range local {
+		if v := strings.TrimSpace(record[name]); v != "" {
+			values[name] = v
+		}
+	}
+	return scope, ResolveTemplateVarsFor(scope, values, nil, target)
+}
+
+// DNSServerVarValues — значения переменных сервера строками: то, что уедет в
+// его тело. Для подписи строки списка и формы окна — те же правила, что у
+// сборки (ResolveDNSServerVars), иначе строка показывала бы не то, что
+// уезжает в конфиг.
+func DNSServerVarValues(decls []TemplateVar, record map[string]string, globals []TemplateVar, globalValues map[string]string, target TargetSpec) map[string]string {
+	scope, resolved := ResolveDNSServerVars(decls, record, globals, globalValues, target)
+	out := make(map[string]string, len(scope))
+	for _, v := range scope {
+		r, ok := resolved[v.Name]
+		if !ok {
+			continue
+		}
+		value := r.Scalar
+		if v.Type == "text_list" {
+			value = strings.Join(r.List, "\n")
+		}
+		if value != "" {
+			out[v.Name] = value
+		}
+	}
+	return out
+}
+
+// DNSServerVarDefault — умолчание переменной сервера для цели: то, что
+// подставит сборка, когда в записи значения нет. Пусто — умолчания нет.
+func DNSServerVarDefault(decls []TemplateVar, name string, globals []TemplateVar, globalValues map[string]string, target TargetSpec) string {
+	_, resolved := ResolveDNSServerVars(decls, nil, globals, globalValues, target)
+	r, ok := resolved[name]
+	if !ok {
+		return ""
+	}
+	for _, d := range decls {
+		if d.Name == name && d.Type == "text_list" {
+			return strings.Join(r.List, "\n")
+		}
+	}
+	return r.Scalar
+}
+
+// validateDNSServerVars проверяет объявления переменных шаблонных
+// DNS-серверов и плейсхолдеры их тел (SPEC 129, Н11).
+//
+// Объявления — теми же проверками, что переменные шаблона (лексика и дубли
+// имён, зарезервированные имена, if/if_or, #if в default_value), но в своей
+// области: локальные имена поверх глобальных. До SPEC 129 их проверял общий
+// вызов ValidateWizardTemplate по склеенным именам; после разделения без
+// этого прохода объявления сервера не проверял бы никто.
+//
+// Плейсхолдер тела обязан быть объявлен сервером или (расширение лаунчера)
+// шаблоном. Необъявленное имя — ошибка ШАБЛОНА, а не данных пользователя:
+// шаблон с ней не грузится, и скачанный такой шаблон не заменит рабочий.
+func validateDNSServerVars(dnsOptions json.RawMessage, decls map[string][]TemplateVar, globals []TemplateVar) error {
+	if len(dnsOptions) == 0 {
+		return nil
+	}
+	var section struct {
+		Servers []map[string]interface{} `json:"servers"`
+	}
+	if err := json.Unmarshal(dnsOptions, &section); err != nil {
+		return nil // форму секции проверяют её читатели; здесь проверять нечего
+	}
+	globalByName := make(map[string]TemplateVar, len(globals))
+	for _, g := range globals {
+		if !g.Separator && strings.TrimSpace(g.Name) != "" {
+			globalByName[strings.TrimSpace(g.Name)] = g
+		}
+	}
+	for i, srv := range section.Servers {
+		tag, _ := srv["tag"].(string)
+		ctx := fmt.Sprintf("dns_options.servers[%d] (%s)", i, tag)
+		local := decls[tag]
+
+		varByName := make(map[string]TemplateVar, len(globalByName)+len(local))
+		for k, v := range globalByName {
+			varByName[k] = v
+		}
+		names := make(map[string]bool, len(local))
+		for j, v := range local {
+			vctx := fmt.Sprintf("%s.vars[%d]", ctx, j)
+			nm := strings.TrimSpace(v.Name)
+			if !validWizardVarNameRE.MatchString(nm) {
+				return fmt.Errorf("%s: invalid name %q (expected [A-Za-z_][A-Za-z0-9_]*)", vctx, nm)
+			}
+			if names[nm] {
+				return fmt.Errorf("%s: duplicate name %q", ctx, nm)
+			}
+			if _, reserved := reservedVarNames[nm]; reserved {
+				return fmt.Errorf("%s: name %q is reserved (runtime global namespace); rename", vctx, nm)
+			}
+			names[nm] = true
+			varByName[nm] = v
+		}
+		earlier := make(map[string]TemplateVar, len(globalByName)+len(local))
+		for k, v := range globalByName {
+			earlier[k] = v
+		}
+		for j, v := range local {
+			vctx := fmt.Sprintf("%s.vars[%d]", ctx, j)
+			if err := validateOuterIfRefs(vctx, v.If, v.IfOr, varByName); err != nil {
+				return err
+			}
+			if err := validateDefaultValueIf(v.DefaultValue, earlier, vctx); err != nil {
+				return err
+			}
+			earlier[strings.TrimSpace(v.Name)] = v
+		}
+
+		body, err := json.Marshal(srv)
+		if err != nil {
+			continue
+		}
+		refs, err := collectPlaceholderNamesFromJSON(body)
+		if err != nil {
+			return fmt.Errorf("%s: %w", ctx, err)
+		}
+		for _, ref := range refs {
+			if names[ref] || isRuntimeGlobalRef(ref) {
+				continue
+			}
+			if _, ok := globalByName[ref]; ok {
+				continue
+			}
+			return fmt.Errorf("%s: @%s is not declared by the server or the template", ctx, ref)
+		}
+	}
+	return nil
 }

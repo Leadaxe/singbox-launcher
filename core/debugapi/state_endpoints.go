@@ -130,11 +130,12 @@ func (s *Server) stateFullWith(w http.ResponseWriter, r *http.Request, acc state
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
-	// Отдаём v7-форму, а не Go-структуру State: у неё нет json-тегов, и
-	// прямой marshal показывал PascalCase-ключи вместе с мёртвыми легаси-
-	// полями загрузчика (Defaults, SelectableRuleStates, ParserConfig). Одна
-	// сериализация с файлом — единственный способ не расходиться с ним.
-	raw, err := st.MarshalV7()
+	// Отдаём форму файла (state v8), а не Go-структуру State: у неё нет
+	// json-тегов, и прямой marshal показывал PascalCase-ключи вместе с
+	// мёртвыми легаси-полями загрузчика (Defaults, SelectableRuleStates,
+	// ParserConfig). Одна сериализация с файлом — единственный способ не
+	// расходиться с ним.
+	raw, err := st.MarshalV8()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
@@ -205,18 +206,21 @@ func (s *Server) stateRulesWith(w http.ResponseWriter, r *http.Request, acc stat
 		case "replace":
 			st.Rules = req.Rules
 		case "append":
-			// Правила без order_num получают следующий номер пользовательской
+			// Правила без `num` получают следующий номер пользовательской
 			// зоны (SPEC 106) — иначе MarkRuleOrder при загрузке раздал бы им
 			// 1000, 1001…, дублируя номера уже существующих правил.
 			for i := range req.Rules {
-				if req.Rules[i].OrderNum == nil {
+				if req.Rules[i].Num == nil {
 					n := state.NextUserRuleNum(st.Rules)
-					req.Rules[i].OrderNum = &n
+					req.Rules[i].Num = &n
 				}
 				st.Rules = append(st.Rules, req.Rules[i])
 			}
 		}
 		st.Rules = state.SortRulesByNum(st.Rules) // закон оси: массив всегда отсортирован
+		// SPEC 129: писатель снимает у `vars` пресетов пустые, равные
+		// умолчанию и необъявленные имена — тем же правилом, что UI и импорт.
+		state.ApplyRecordVars(st, s.recordVarDeclsFor(st))
 		if err := acc.save(st); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "save state: " + err.Error()})
 			return
@@ -233,7 +237,8 @@ func (s *Server) stateRulesWith(w http.ResponseWriter, r *http.Request, acc stat
 
 // handleStateDNS — GET /state/dns / PATCH /state/dns.
 //
-// PATCH replaces the entire dns_options section (SPEC 056 flat shape).
+// PATCH replaces the entire `dns` section (state v8: records are
+// metadata + `body`; до v8 секция называлась dns_options и тела были плоскими).
 // We don't merge — mirrors PUT /state/dns/servers semantics from SPEC 050.
 // Callers wanting field-level edits should GET → mutate → PATCH.
 func (s *Server) handleStateDNS(w http.ResponseWriter, r *http.Request) {
@@ -262,9 +267,9 @@ func (s *Server) stateDNSWith(w http.ResponseWriter, r *http.Request, acc stateA
 		// Guard against silent wipe: PATCH replaces the WHOLE dns_options, so a
 		// bare `{}` (or a truncated request) would clear every DNS server/rule
 		// and still return 200. Require the body to actually carry servers
-		// and/or rules; a keyless object → 422, state untouched. (DNSOptions has
-		// a custom Unmarshal, so probe the raw keys rather than trusting nil
-		// slices.)
+		// and/or rules; a keyless object → 422, state untouched. Probe the raw
+		// keys rather than trusting nil slices: `{"servers": []}` is a legal
+		// wipe of the servers list, `{}` is a truncated request.
 		var probe map[string]json.RawMessage
 		if err := json.Unmarshal(body, &probe); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid body: " + err.Error()})
@@ -274,7 +279,7 @@ func (s *Server) stateDNSWith(w http.ResponseWriter, r *http.Request, acc stateA
 		_, hasRules := probe["rules"]
 		if !hasServers && !hasRules {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
-				"error": `body must include "servers" and/or "rules"; refusing to clear dns_options`,
+				"error": `body must include "servers" and/or "rules"; refusing to clear dns`,
 				"field": "dns",
 			})
 			return
@@ -292,6 +297,16 @@ func (s *Server) stateDNSWith(w http.ResponseWriter, r *http.Request, acc stateA
 				writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
 					"error": fmt.Sprintf("servers[%d]: unknown kind %q", i, srv.Kind),
 					"field": fmt.Sprintf("dns.servers[%d].kind", i),
+				})
+				return
+			}
+			// SPEC 129 Н1: значения переменных бывают только у записи
+			// шаблонного сервера — у user маршрут в body.detour, у preset
+			// переменные в записи правила пресета.
+			if len(srv.Vars) > 0 && srv.Kind != state.DNSServerKindTemplate {
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+					"error": fmt.Sprintf("servers[%d]: vars are allowed only on kind %q", i, state.DNSServerKindTemplate),
+					"field": fmt.Sprintf("dns.servers[%d].vars", i),
 				})
 				return
 			}
@@ -315,6 +330,9 @@ func (s *Server) stateDNSWith(w http.ResponseWriter, r *http.Request, acc stateA
 			return
 		}
 		st.DNS = req
+		// SPEC 129: нормы записи перед сохранением — умолчания, необъявленные
+		// имена и сироты не пишутся.
+		state.ApplyRecordVars(st, s.recordVarDeclsFor(st))
 		if err := acc.save(st); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "save state: " + err.Error()})
 			return

@@ -24,4 +24,20 @@
 // For a fyne-tooltip Button plus row hover, use [HoverForwardTTButton]. When code needs a *ttwidget.Button
 // (e.g. async Disable/SetText), use [HoverForwardTTButton.TTWidget] — the outer type’s first field is the
 // embedded value; the conversion follows unsafe.Pointer rules for the leading field.
+//
+// # Centering windows (critical)
+//
+// Never call fyne.Window.CenterOnScreen directly: use [CenterOnScreen]. Fyne 2.8.1 dereferences a nil
+// monitor when GLFW sees no screen, which on macOS happens while the display is asleep, and the panic
+// fires from the window's first Show(). GLFW re-reads its monitor list only at startup and when AppKit
+// reports a screen change, so right after the display wakes up the list can still be empty; the wrapper
+// checks both CoreGraphics and GLFW.
+//
+// # The NSApplication delegate (macOS)
+//
+// GLFW keeps its monitor list fresh through its own NSApplication delegate, and an app has only one.
+// The launcher's delegate (platform.SetupDockReopenHandler) must therefore wrap GLFW's and forward
+// every call it does not handle itself. Replacing it outright silently loses the screen-change refresh,
+// and without an applicationShouldTerminate: of its own Cmd+Q, Dock Quit and log out end the process at
+// once, skipping GracefulExit. What GLFW's delegate does is listed in that function's comment.
 package fynewidget

@@ -83,6 +83,13 @@ type TemplateData struct {
 
 	// DNSOptionsRaw — секция dns_options из шаблона (не sing-box); визард читает отсюда список DNS-серверов и правила при наличии.
 	DNSOptionsRaw json.RawMessage `json:"-"`
+
+	// DNSServerVars — объявления переменных шаблонных DNS-серверов по тегу
+	// (SPEC 129): локальные имена (`outbound`, `dns_ip`), как их объявила
+	// вложенная запись `dns_options.servers`. Значения живут в записи
+	// состояния `dns.servers[kind=template].vars`; тело сервера держит
+	// локальные `@name`. У плоской записи объявлений нет — ключа тоже.
+	DNSServerVars map[string][]TemplateVar `json:"-"`
 }
 
 // GlobalOutbounds возвращает типизированный slice template's global outbounds
@@ -252,7 +259,14 @@ func LoadTemplateData(execDir string) (*TemplateData, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read %s: %w", TemplateFileName, err)
 	}
+	return ParseTemplateData(raw)
+}
 
+// ParseTemplateData — разбор шаблона из байтов: вторая половина
+// LoadTemplateData без чтения файла. Через неё DownloadTemplate проверяет
+// скачанное ДО того, как оно заменит установленный шаблон: страница-заглушка
+// провайдера с HTTP 200 не должна затереть рабочий файл.
+func ParseTemplateData(raw []byte) (*TemplateData, error) {
 	// Удаление UTF-8 BOM если присутствует
 	raw = stripUTF8BOM(raw)
 
@@ -273,21 +287,23 @@ func LoadTemplateData(execDir string) (*TemplateData, error) {
 
 	// SPEC 109: записи `dns_options.servers` бывают в двух формах — плоской
 	// (наша) и вложенной `{vars, server}` (LxBox). Разворачиваем вложенные
-	// в плоские ДО валидации и до подстановки: объявленные ими переменные
-	// обязаны попасть в общий список, иначе `@dns_google_dot_outbound` в
-	// теле сервера останется неразрешённым плейсхолдером.
+	// в плоские ДО валидации и до подстановки.
 	//
 	// Результат применяется всегда, а не только при непустом списке
 	// переменных: вложенная запись БЕЗ блока `vars` тоже требует
 	// разворачивания, иначе она остаётся вложенной, читатели
 	// верхнеуровневого `tag` её не видят — и сервер молча исчезает.
-	{
-		normalized, dnsVars := NormalizeDNSOptions(root.DNSOptions)
-		root.DNSOptions = normalized
-		root.Vars = append(root.Vars, dnsVars...)
-	}
+	//
+	// SPEC 129: объявления переменных остаются при сервере
+	// (TemplateData.DNSServerVars) и в общий список шаблона НЕ попадают —
+	// значения живут в записи состояния, а не в корневых vars.
+	normalizedDNS, dnsServerVars := NormalizeDNSOptions(root.DNSOptions)
+	root.DNSOptions = normalizedDNS
 
 	if err := ValidateWizardTemplate(root.Vars, root.Params, root.Config); err != nil {
+		return nil, fmt.Errorf("%s: %w", TemplateFileName, err)
+	}
+	if err := validateDNSServerVars(root.DNSOptions, dnsServerVars, root.Vars); err != nil {
 		return nil, fmt.Errorf("%s: %w", TemplateFileName, err)
 	}
 
@@ -360,6 +376,7 @@ func LoadTemplateData(execDir string) (*TemplateData, error) {
 		DefaultFinal:          defaultFinal,
 		DefaultDomainResolver: defaultDomainResolver,
 		DNSOptionsRaw:         root.DNSOptions,
+		DNSServerVars:         dnsServerVars,
 	}, nil
 }
 

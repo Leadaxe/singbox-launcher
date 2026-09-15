@@ -33,7 +33,7 @@ func TestSyncOutbounds_EnableAddEntry(t *testing.T) {
 		{Tag: "proxy-out", Type: "selector"},
 	}
 	rules := []state.Rule{
-		{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+		presetRule("russian", nil, true),
 	}
 	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset}, template.LocalTarget())
 
@@ -70,7 +70,7 @@ func TestSyncOutbounds_UpdateStack(t *testing.T) {
 		{Tag: "proxy-out", Type: "selector"},
 	}
 	rules := []state.Rule{
-		{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+		presetRule("russian", nil, true),
 	}
 	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset}, template.LocalTarget())
 
@@ -104,7 +104,7 @@ func TestSyncOutbounds_DisableUpdateRemovesFromStack(t *testing.T) {
 		{"mode":"update","tag":"proxy-out","filters":{"tag":"bar"}}
 	]`)
 	rules := []state.Rule{
-		{Kind: state.RuleKindPreset, Ref: "ru-inside", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+		presetRule("ru-inside", nil, true),
 	}
 	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{russianPreset, ruInsidePreset}, template.LocalTarget())
 
@@ -126,7 +126,7 @@ func TestSyncOutbounds_Idempotent(t *testing.T) {
 		{Tag: "proxy-out", Type: "selector"},
 	}
 	rules := []state.Rule{
-		{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+		presetRule("russian", nil, true),
 	}
 	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset}, template.LocalTarget())
 	snapshot, _ := json.Marshal(outbounds)
@@ -146,7 +146,7 @@ func TestSyncOutbounds_PreserveOrder(t *testing.T) {
 		{Tag: "proxy-out", Type: "selector"},
 	}
 	rules := []state.Rule{
-		{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+		presetRule("russian", nil, true),
 	}
 	// Initial sync — preset entry appended at end.
 	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset}, template.LocalTarget())
@@ -186,7 +186,7 @@ func TestSyncOutbounds_AdoptLegacyGlobal(t *testing.T) {
 		{Tag: "ru VPN 🇷🇺", Type: "selector", Options: map[string]interface{}{"default": "direct-out"}},
 	}
 	rules := []state.Rule{
-		{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+		presetRule("russian", nil, true),
 	}
 	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset}, template.LocalTarget())
 

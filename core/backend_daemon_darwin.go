@@ -271,9 +271,13 @@ func (b *DaemonBackend) applyCurrentConfig(caller string, forced bool) {
 	// Pre-start rebuild — тот же хук, что в classic ProcessService.Start:
 	// dirty-маркеры Wizard'а материализуются в config.json перед доставкой.
 	// Restart форсирует полную пересборку (forced=true), иначе взяли бы
-	// устаревший config.json.
-	if err := ac.RebuildConfigIfDirty(forced); err != nil {
-		debuglog.WarnLog("daemon.%s: config rebuild failed (%v); proceeding with existing config.json", caller, err)
+	// устаревший config.json. Провал пересборки — отказ с диалогом, а не
+	// доставка демону старого файла.
+	if err := ac.rebuildConfigBeforeStart(forced); err != nil {
+		debuglog.ErrorLog("daemon.%s: config rebuild failed, config not applied: %v", caller, err)
+		ac.ShowRebuildError(err)
+		b.refreshUI()
+		return
 	}
 
 	// Синхронизируем APIService с пересобранным config.json. В daemon-режиме

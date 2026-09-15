@@ -206,6 +206,10 @@ func cloneCanonicalNode(n wizardmodels.Node) wizardmodels.Node {
 	if n.Group != nil {
 		g := *n.Group
 		g.Members = append([]wizardmodels.NodeLink(nil), n.Group.Members...)
+		if n.Group.Default != nil {
+			d := *n.Group.Default
+			g.Default = &d
+		}
 		// Хвост ревью W1: Strategy глубоко — *TemplateInt
 		// (Tolerance/PoolTolerance) не должны разделяться указателями с
 		// моделью, даже пока TemplateInt replace-not-mutate.
@@ -418,7 +422,25 @@ func mergeEditedSourceIntoModel(
 	for tag, enabled := range enabledEdits {
 		setNodeEnabled(edited, tag, enabled)
 	}
+	// SPEC 122 норма 2: смена тег-политики контейнера меняет финальный тег
+	// ВСЕМ его узлам сразу — каталоги состояния tailnet переезжают тем же
+	// движением. Здесь, а не в GC: для GC переименование неотличимо от
+	// «узел удалили», и ключ устройства уехал бы в снос.
+	//
+	// До записи снимка: состав берётся из ЖИВОЙ записи (edited.Nodes уже
+	// равен live.Nodes выше), а старая политика читается только пока она в
+	// модели.
+	wizardbusiness.RenameTailscaleStateDirsForTagPolicy(live, live.TagPolicy, edited.TagPolicy)
+	// Свёртка до правки: после записи снимка прежнего тега взять негде.
+	replaceBefore := live.Replace
 	m.Sources[sourceIndex] = *edited
+	// Переименование свёртки — смена КОРНЕВОГО имени: ссылки на прежний тег
+	// (цели правил, route.final, опции Направлений, позиции цепочек, detour)
+	// переписываются тем же обходом, что у Направления (NODE_LINK.md §6
+	// правило 1). После записи снимка: ссылки самого источника переписываются
+	// тоже. Выбор в селекторах ядра по прежнему тегу протухает — об этом
+	// предупреждает staleSelectionAfterEdit.
+	wizardbusiness.RenameFoldRefs(m, replaceBefore, edited.Replace)
 }
 
 // applySourceEditToModel — путь Save окна источника (SPEC 117, Т4).
@@ -2362,18 +2384,46 @@ func showSourceEditWindowAt(
 			// узел никуда не делся, у него сменилось имя.
 			if renamed {
 				if mm := presenter.Model(); mm != nil {
+					// SPEC 122 норма 2: каталог состояния tailnet едет за
+					// новым тегом. Контейнер обеих сторон один и тот же —
+					// переименование состава не меняет.
+					if c := wizardbusiness.SourceByID(mm, containerIDAtOpen); c != nil {
+						wizardbusiness.RenameTailscaleStateDirForNode(
+							c, nodeTagAtOpen, c, &scratch.Node)
+					}
 					affected = wizardbusiness.RepointContainerNodeLinks(mm, containerIDAtOpen, nodeTagAtOpen, newTag)
 					repointed = true
 				}
 			}
 		} else {
+			newRootTag := strings.TrimSpace(scratch.NodeTagOrLabel())
+			renamed = nodeIdentityOwner && nodeTagAtOpen != "" && newRootTag != "" && newRootTag != nodeTagAtOpen
+			// Ссылки на переименованный верхний узел переписываются на новое
+			// имя (решение владельца 15.09.2026), поэтому имя обязано быть
+			// свободным в корневом пространстве: занятое увело бы ссылки на
+			// ЧУЖУЮ цель — Направление, свёртку или другой узел под тем же
+			// именем (NODE_LINK.md §6 правило 3).
+			if renamed && wizardbusiness.RootNodeTagTaken(presenter.Model(), newRootTag, nodeTagAtOpen) {
+				dialog.ShowError(fmt.Errorf("%s", locale.Tf(
+					"tag %q is already taken — directions, nodes and service outbounds share one namespace", newRootTag)), win)
+				return
+			}
+			// SPEC 122 норма 2 для КОРНЕВОГО узла: тег-политики у корня нет,
+			// финальный тег = сырой, и переезд каталога считается по паре
+			// «имя при открытии → имя в форме». До записи в модель: после неё
+			// прежнего имени взять уже негде.
+			if nodeIdentityOwner && nodeTagAtOpen != "" {
+				wizardbusiness.RenameTailscaleStateDirForNode(nil, nodeTagAtOpen, nil, &scratch.Node)
+			}
 			applySourceEditToModel(presenter, guiState, presenter.Model(), sourceIndex, &scratch, enabledEdits)
-			// SPEC 112-A: корневой узел переименован — его прежней идентичности
-			// больше нет, и ссылки на неё обязаны погаснуть здесь, а не молча
-			// провалиться на следующей сборке. Порядок важен: сначала запись
-			// формы (тег уже новый), потом сброс ссылок на СТАРОЕ имя.
-			affected = resetRefsAfterNodeRename(presenter, guiState,
-				nodeIdentityOwner, sourceIndex, containerIDAtOpen, nodeTagAtOpen)
+			// Верхний узел переименован — ссылки идут за ним тем же путём, что
+			// у узла контейнера: узел никуда не делся, у него сменилось имя.
+			// Порядок важен: сначала запись формы (тег уже новый), потом
+			// перепись ссылок со СТАРОГО имени.
+			if renamed {
+				affected = repointRefsAfterRootNodeRename(presenter, guiState, nodeTagAtOpen, newRootTag)
+				repointed = true
+			}
 			// SPEC 118 Т8: сменились финальные теги — ручной выбор в
 			// селекторах живого ядра адресован прежними именами и собьётся на
 			// умолчание. У окна узла спрашивать нечего: тег-политика и свёртка
@@ -2388,14 +2438,10 @@ func showSourceEditWindowAt(
 			stale.NodesRenamed = true
 		}
 		win.Close()
-		if len(affected) > 0 {
+		if repointed && len(affected) > 0 {
 			// Владелец окна — родительское, а не win: то закрывается прямо
 			// сейчас, и диалог на нём умер бы вместе с ним, не показавшись.
-			if repointed {
-				showNodeRefsRepointedDialog(parent, affected)
-			} else {
-				showDetourRefsResetDialog(parent, nodeTagAtOpen, affected)
-			}
+			showNodeRefsRepointedDialog(parent, affected)
 		}
 		if dereferenced {
 			notifyNodeDereferenced(parent, strings.TrimSpace(scratch.Tag))
@@ -2413,7 +2459,7 @@ func showSourceEditWindowAt(
 	// Configurator wizard окно делают то же самое.
 	win.SetContent(fynetooltip.AddWindowToolTipLayer(root, win.Canvas()))
 	win.Resize(fyne.NewSize(880, 600))
-	win.CenterOnScreen()
+	fynewidget.CenterOnScreen(win)
 	syncFormFromModel()
 	win.Show()
 	presenter.UpdateChildOverlay()
@@ -2424,38 +2470,28 @@ func showSourceEditWindowAt(
 // же буферизованная правка, как любая другая; Save применяет её присваиванием
 // копии целиком.
 
-// resetRefsAfterNodeRename гасит detour-ссылки на узел, чьё имя только что
-// сменилось, и возвращает имена задетых источников (SPEC 112-A).
+// repointRefsAfterRootNodeRename переписывает ссылки на верхний узел, чьё имя
+// сменилось с oldTag на newTag, и возвращает имена задетых источников и
+// записей.
 //
-// Тег узла — единственная идентичность узла (SPEC 112), поэтому его
-// переименование = появление ДРУГОГО узла. Резолв ссылок на сборке строгий и
-// такую ссылку не разрешит; чинить её подстановкой узла с новым именем нельзя
-// (пользователь его хопом не выбирал), поэтому единственный честный исход —
-// сбросить ссылку здесь и сказать об этом.
+// Решение владельца 15.09.2026: переименование верхнего узла ведёт ссылки за
+// ним — detour, позиции цепочек, члены групп, цели правил, route.final, опции
+// Направлений, переменные пресетов и detour DNS (business.RenameRootNodeRefs).
+// Прежний сброс оставлял маршрут без хопа там, где узел никуда не делся.
 //
-// Возвращает nil, когда сбрасывать нечего: имя не менялось, источник не
-// именует узел (подписка — там имён много, и переименования узла в форме нет)
-// или на прежнее имя никто не ссылался.
-func resetRefsAfterNodeRename(
+// Правка ложится ПОСЛЕ записи формы, поэтому обновления вкладок повторяются:
+// первая волна (afterSourceEditApplied) видела ссылки ещё на старом имени.
+func repointRefsAfterRootNodeRename(
 	presenter *wizardpresentation.WizardPresenter,
 	guiState *wizardpresentation.GUIState,
-	nodeIdentityOwner bool,
-	sourceIndex int,
-	sourceIDAtOpen string,
-	nodeTagAtOpen string,
+	oldTag string,
+	newTag string,
 ) []string {
-	if !nodeIdentityOwner || nodeTagAtOpen == "" {
-		return nil
-	}
 	m := presenter.Model()
-	if m == nil || sourceIndex < 0 || sourceIndex >= len(m.Sources) {
+	if m == nil {
 		return nil
 	}
-	if strings.TrimSpace(m.Sources[sourceIndex].NodeTagOrLabel()) == nodeTagAtOpen {
-		return nil // имя на месте — идентичность не менялась
-	}
-
-	affected := wizardbusiness.ResetDetourNodeRefs(m, sourceIDAtOpen, nodeTagAtOpen)
+	affected := wizardbusiness.RenameRootNodeRefs(m, oldTag, newTag)
 	if len(affected) == 0 {
 		return nil
 	}
@@ -2465,6 +2501,7 @@ func resetRefsAfterNodeRename(
 	wizardbusiness.InvalidateSourceNodeCounts(m)
 	presenter.RefreshOutboundsConfiguratorList()
 	presenter.ScheduleRefreshOutboundOptionsDebounced()
+	presenter.RefreshDNSListAndSelects()
 	presenter.MarkAsChanged()
 	if guiState != nil && guiState.RefreshSourcesList != nil {
 		guiState.RefreshSourcesList()
@@ -2472,26 +2509,30 @@ func resetRefsAfterNodeRename(
 	return affected
 }
 
-// showDetourRefsResetDialog сообщает, чьи ссылки погасли из-за переименования.
+// showNodeRefsClearedDialog сообщает, какие ссылки погасли вместе с удалённым
+// узлом (решение владельца 15.09.2026).
 //
-// Окно информирующее: сброс уже применён вместе с сохранением формы, отменять
-// в нём нечего.
+// Окно информирующее: удаление уже применено, отменять в нём нечего. Имена —
+// источники, у которых погас detour, позиция или член группы, и записи,
+// которые называли узел по имени (Направление теряет опцию; цель правила,
+// route.final, detour DNS, переменная пресета и умолчание Направления
+// остаются без цели — их правит пользователь).
 //
 // Ловушка Fyne (fyne-label-minwidth-trap): Label без Wrapping задаёт окну
 // min-width своей строкой в одну линию — список из десятка имён растянул бы
 // диалог на весь экран. Отсюда Wrapping и явный Resize у содержимого.
-func showDetourRefsResetDialog(parent fyne.Window, nodeTag string, affected []string) {
+func showNodeRefsClearedDialog(parent fyne.Window, nodeTag string, affected []string) {
 	if parent == nil || len(affected) == 0 {
 		return
 	}
 	body := widget.NewLabel(locale.Tf(
-		"Node %q was renamed, so its identity changed. Detour links to it have been cleared in: %s",
+		"Node %q was deleted. Links through it were removed, and anything that chose it as a target needs a new one. Affected: %s",
 		nodeTag, strings.Join(affected, ", ")))
 	body.Wrapping = fyne.TextWrapWord
 
 	content := container.NewVScroll(body)
 	content.SetMinSize(fyne.NewSize(460, 120))
-	dialog.ShowCustom(locale.T("Detour links cleared"), locale.T("OK"), content, parent)
+	dialog.ShowCustom(locale.T("Links to the deleted node"), locale.T("OK"), content, parent)
 }
 
 // nodeTagTakenInContainer — занят ли сырой тег другим узлом того же
@@ -2518,12 +2559,13 @@ func nodeTagTakenInContainer(m *wizardmodels.WizardModel, link wizardmodels.Node
 	return false
 }
 
-// showNodeRefsRepointedDialog сообщает, чьи ссылки ПЕРЕЕХАЛИ вслед за узлом.
+// showNodeRefsRepointedDialog сообщает, чьи ссылки ПЕРЕЕХАЛИ вслед за узлом —
+// перенесённым или переименованным.
 //
-// Отдельный текст, а не showDetourRefsResetDialog: там ссылки погасли
-// (переименование = другой узел, вести некуда), здесь реестр переписи довёл их
-// до нового адреса и ничего не потеряно. Сказать «links have been cleared» про
-// удавшийся перенос значило бы отправить пользователя чинить целое.
+// Отдельный текст, а не showNodeRefsClearedDialog: там ссылки погасли вместе с
+// узлом, здесь реестр переписи довёл их до нового адреса и ничего не потеряно.
+// Сказать «links have been cleared» про удавшийся перенос значило бы отправить
+// пользователя чинить целое.
 //
 // Ловушка Fyne (fyne-label-minwidth-trap): Label без Wrapping задаёт окну
 // min-width своей строкой в одну линию — список имён растянул бы диалог.
@@ -2544,7 +2586,7 @@ func showNodeRefsRepointedDialog(parent fyne.Window, affected []string) {
 // showStaleSelectionDialog предупреждает о протухании ручного выбора в
 // селекторах живого ядра (SPEC 118 Т8, features/directions.md §10).
 //
-// Тот же информирующий диалог, что у сброса ссылок при переименовании узла:
+// Тот же информирующий диалог, что у переписи ссылок при переименовании узла:
 // правка уже сохранена, отменять в нём нечего, а выбор в cache.db — не наша
 // собственность (переписать его лаунчер не может; у Remote-машины он вообще
 // на другой машине).

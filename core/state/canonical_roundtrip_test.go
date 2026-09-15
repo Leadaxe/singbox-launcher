@@ -1,9 +1,10 @@
 package state
 
-// SPEC 118 (W1) — canonical v7 roundtrip и стабильность идентичности.
+// SPEC 118 (W1) / SPEC 127 — canonical roundtrip и стабильность идентичности.
 //
-// Схема v7 (SPEC Т1): плоский корень sources[]/directions[]/rules[]/vars[]/
-// dns_options/warp_accounts/meta; Save пишет только v7. Тесты фиксируют:
+// Схема v8 (SPEC 127): плоский корень sources[]/directions[]/rules[]/vars[]/
+// dns/warp/meta; запись = метаданные + `body`; Save пишет только v8. Тесты
+// фиксируют:
 //
 //  1. Load→Save→Load→Save сходится байт-в-байт (modulo meta.updated_at —
 //     Save штампует текущее время всегда);
@@ -11,26 +12,32 @@ package state
 //     идентифицируются тегом (id у узлов нет — у мостовых верхних узлов
 //     ULID живёт до W5);
 //  3. загрузка v6-состояния (структурный перенос W1) тоже даёт стабильный
-//     v7-roundtrip со второго Save.
+//     roundtrip со второго Save.
 //
-// Фикстура testdata/v7_roundtrip.json — многосекционный v7 state: папка с
-// узлами (server + auto) и replace, подписка с материализованными nodes[] и
-// update_status, chain с NodeLink-хопами, верхний server с body/origin,
-// directions, rules, vars, dns_options, warp_accounts. Регенерация:
-// GEN_V7_ROUNDTRIP_FIXTURE=1 go test -run TestGenerateV7RoundtripFixture
-// ./core/state/.
+// Фикстуры testdata/:
+//
+//   - v7_roundtrip.json — ЗАМОРОЖЕННЫЙ вход миграции v7→v8: папка с узлами
+//     (server + auto) и replace, подписка с материализованными nodes[] и
+//     update_status, chain с NodeLink-хопами, верхний server с body/origin и
+//     секциями, directions, правила всех трёх видов (в т.ч. srs с двумя
+//     наборами и inline с drop), vars, плоский dns_options, warp_accounts.
+//     Генератора у него больше нет: v7-форму записей типы уже не умеют.
+//   - v8_roundtrip.json — тот же state в целевой форме. Регенерация:
+//     GEN_V8_ROUNDTRIP_FIXTURE=1 go test -run TestGenerateV8RoundtripFixture
+//     ./core/state/.
 
 import (
 	"bytes"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
-
-	"singbox-launcher/core/config/configtypes"
 )
 
+// v7RoundtripFixture — вход миграции v7→v8 (только чтение, всегда через копию).
 const v7RoundtripFixture = "testdata/v7_roundtrip.json"
+
+// v8RoundtripFixture — то же состояние в целевой форме.
+const v8RoundtripFixture = "testdata/v8_roundtrip.json"
 
 // v6RoundtripFixture — старая v6-фикстура; в W1 служит входом структурного
 // переноса (полная миграция и её сценарии — волна W2).
@@ -58,186 +65,34 @@ func normalizeUpdatedAt(t *testing.T, data []byte) []byte {
 	return bytes.Join(lines, []byte("\n"))
 }
 
-// buildV7RoundtripFixture — State для v7-фикстуры (используется генератором).
-func buildV7RoundtripFixture() *State {
-	boolFalse := false
-	s := New()
-	s.Comment = "SPEC 118 v7 roundtrip fixture"
-	s.Sources = []Source{
-		{
-			// Верхний server-узел: canonical body + origin, NodeLink-detour
-			// на узел подписки.
-			Node: Node{
-				Kind:    SourceKindServer,
-				Tag:     "🇯🇵 Tokyo",
-				Enabled: true,
-				Origin: &Origin{
-					Kind: OriginKindURI,
-					Raw:  "vless://uuid@h.example:443?security=reality&pbk=k#Tokyo",
-				},
-				Body:   json.RawMessage(`{"type":"vless","server":"h.example","server_port":443}`),
-				Detour: &NodeLink{FolderID: "01J00000000000000000000SUB", Tag: "NL-1"},
-			},
-			ID: "01J00000000000000000000SRV",
-		},
-		{
-			// Папка с узлами (server + auto), тег-политикой и свёрткой both.
-			Node:      Node{Kind: SourceKindFolder, Enabled: true},
-			ID:        "01J00000000000000000000FLD",
-			Name:      "Личные",
-			TagPolicy: &TagPolicy{Prefix: "[F] "},
-			Nodes: []Node{
-				{
-					Kind:    SourceKindServer,
-					Tag:     "DE-1",
-					Enabled: true,
-					Origin:  &Origin{Kind: OriginKindURI, Raw: "ss://Y2hhY2hh@de.example:8388#DE-1"},
-					Body:    json.RawMessage(`{"type":"shadowsocks","server":"de.example","server_port":8388}`),
-				},
-				{
-					Kind:    SourceKindAuto,
-					Tag:     "быстрые",
-					Enabled: true,
-					Group: &AutoGroup{
-						GroupType: AutoGroupURLTest,
-						Members:   []NodeLink{{Tag: "DE-1"}},
-						Strategy:  AutoStrategy{Interval: "5m"},
-					},
-				},
-			},
-			Replace: &FolderReplace{
-				Mode:     FolderReplaceBoth,
-				Tag:      "личные",
-				Strategy: &AutoStrategy{Mode: configtypes.AutoModeLeastTest},
-			},
-		},
-		{
-			// Подписка с материализованными nodes[] и update_status.
-			Node:      Node{Kind: SourceKindSubscription, Enabled: true},
-			ID:        "01J00000000000000000000SUB",
-			Name:      "Proton NL",
-			TagPolicy: &TagPolicy{Prefix: "[P] ", Postfix: " •"},
-			Nodes: []Node{
-				{
-					Kind:    SourceKindServer,
-					Tag:     "NL-1",
-					Enabled: true,
-					Origin:  &Origin{Kind: OriginKindURI, Raw: "vless://uuid@nl.example:443#NL-1"},
-					Body:    json.RawMessage(`{"type":"vless","server":"nl.example","server_port":443}`),
-				},
-				{
-					Kind:    SourceKindServer,
-					Tag:     "DE-2",
-					Enabled: false,
-					Origin:  &Origin{Kind: OriginKindURI, Raw: "vless://uuid@de2.example:443#DE-2"},
-					Body:    json.RawMessage(`{"type":"vless","server":"de2.example","server_port":443}`),
-				},
-				{
-					Kind:    SourceKindAuto,
-					Tag:     "Auto",
-					Enabled: true,
-					Origin:  &Origin{Kind: OriginKindJSON, Raw: `{"type":"urltest","tag":"Auto"}`},
-					Group: &AutoGroup{
-						GroupType: AutoGroupURLTest,
-						Members:   []NodeLink{{Tag: "NL-1"}, {Tag: "DE-2"}},
-					},
-				},
-			},
-			URL:      "https://example.invalid/sub?token=abc&kind=all",
-			Skip:     []map[string]string{{"tag": "/(RU)/i"}},
-			MaxNodes: 500,
-			Update:   &UpdateSpec{IntervalHours: 6, AutoRefresh: &boolFalse},
-			Meta: &SubMeta{
-				ProfileTitle: "Proton",
-				UserInfo:     &UserInfo{UploadBytes: 10, DownloadBytes: 20, TotalBytes: 100},
-			},
-			UpdateStatus: &SubUpdateStatus{
-				URLAtFetch:        "https://example.invalid/sub?token=abc&kind=all",
-				LastAttemptAt:     "2026-08-01T00:00:00Z",
-				LastSuccessAt:     "2026-08-01T00:00:00Z",
-				LastStatus:        "ok",
-				NodesCountFetched: 3,
-				Warnings: []FetchWarning{
-					{Kind: "skip", Count: 2},
-				},
-			},
-		},
-		{
-			// Цепочка с NodeLink-хопами: ближний хоп первым.
-			Node: Node{
-				Kind:    SourceKindChain,
-				Tag:     "chain-1",
-				Enabled: true,
-				Hops: []NodeLink{
-					{Tag: "🇯🇵 Tokyo"},
-					{FolderID: "01J00000000000000000000SUB", Tag: "NL-1"},
-				},
-			},
-			ID: "01J0000000000000000000CHN0",
-		},
-	}
-	s.Directions = []configtypes.Direction{
-		{
-			Tag:  "proxy-out",
-			Ref:  configtypes.RefTemplate,
-			Auto: &configtypes.DirectionAuto{Mode: configtypes.AutoModeLeastTest},
-			Updates: []configtypes.OutboundUpdate{
-				{Ref: configtypes.RefUser, Patch: map[string]interface{}{
-					"filters": map[string]interface{}{"tag": "!/(🇷🇺)/i"},
-				}, Explicit: true},
-			},
-		},
-		{
-			Tag:     "video-out",
-			Type:    "selector",
-			Filters: map[string]interface{}{"tag": "/(NL)/"},
-		},
-	}
-	s.Defaults = Defaults{Reload: "4h", MaxNodes: DefaultMaxNodes}
-	s.Rules = []Rule{
-		{Kind: RuleKindPreset, Ref: "ru-direct", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
-		{Kind: RuleKindInline, Enabled: true,
-			Body: json.RawMessage(`{"name":"X","match":{"port":[443]},"outbound":"proxy-out"}`)},
-	}
-	s.Vars = []SettingVar{{Name: "log_level", Value: "warn"}}
-	s.DNS = DNSOptions{
-		Strategy: "prefer_ipv4",
-		Final:    "google_doh",
-		Servers: []DNSServer{
-			{Kind: DNSServerKindTemplate, Tag: "cloudflare_udp", Enabled: true},
-		},
-	}
-	s.WarpAccounts = &WarpAccountsSection{
-		WG: &WarpWGAccount{
-			PrivateKey: "priv",
-			PeerPublic: "pub",
-			ClientV4:   "172.16.0.2",
-			ClientV6:   "fd00::2",
-			CreatedAt:  "2026-08-01T00:00:00Z",
-		},
-	}
-	return s
-}
-
-// TestGenerateV7RoundtripFixture — генератор фикстуры; запускается только
-// вручную (GEN_V7_ROUNDTRIP_FIXTURE=1). Штампует фиксированный updated_at,
-// чтобы файл в testdata не дрейфовал.
-func TestGenerateV7RoundtripFixture(t *testing.T) {
-	if os.Getenv("GEN_V7_ROUNDTRIP_FIXTURE") != "1" {
-		t.Skip("generator: set GEN_V7_ROUNDTRIP_FIXTURE=1 to (re)write the fixture")
+// TestGenerateV8RoundtripFixture — генератор v8-фикстуры из замороженного
+// v7-входа; запускается только вручную (GEN_V8_ROUNDTRIP_FIXTURE=1).
+// Штампует фиксированные timestamps, чтобы файл в testdata не дрейфовал.
+func TestGenerateV8RoundtripFixture(t *testing.T) {
+	if os.Getenv("GEN_V8_ROUNDTRIP_FIXTURE") != "1" {
+		t.Skip("generator: set GEN_V8_ROUNDTRIP_FIXTURE=1 to (re)write the fixture")
 	}
 	dir := t.TempDir()
 	tmp := filepath.Join(dir, "state.json")
-	if err := buildV7RoundtripFixture().Save(tmp); err != nil {
+	s, err := Load(legacyFixtureCopy(t, v7RoundtripFixture))
+	if err != nil {
+		t.Fatalf("Load v7 fixture: %v", err)
+	}
+	if err := s.Save(tmp); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	data, err := os.ReadFile(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Фиксированные timestamps: created_at выставляет Save (zero → now),
-	// updated_at Save штампует всегда — нормализуем оба на константу,
-	// сохраняя хвост строки (запятая есть/нет — решает позиция ключа).
+	if err := os.WriteFile(v8RoundtripFixture, freezeFixtureTimestamps(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// freezeFixtureTimestamps — created_at/updated_at на константу, хвост строки
+// (запятая есть/нет — решает позиция ключа) сохраняется.
+func freezeFixtureTimestamps(data []byte) []byte {
 	fixLine := func(ln []byte, key string) []byte {
 		prefix := `    "` + key + `": "`
 		if !bytes.HasPrefix(ln, []byte(prefix)) {
@@ -253,25 +108,23 @@ func TestGenerateV7RoundtripFixture(t *testing.T) {
 	for i, ln := range lines {
 		lines[i] = fixLine(fixLine(ln, "created_at"), "updated_at")
 	}
-	if err := os.WriteFile(v7RoundtripFixture, bytes.Join(lines, []byte("\n")), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	return bytes.Join(lines, []byte("\n"))
 }
 
 // TestCanonical_LoadSaveLoadSave_ByteIdentical — SPEC 118 Т1 / §4.H:
 // Load(f) → Save(p1) → Load(p1) → Save(p2): p1 == p2 байт-в-байт (modulo
 // meta.updated_at), а p1 относительно фикстуры отличается ТОЛЬКО updated_at.
 func TestCanonical_LoadSaveLoadSave_ByteIdentical(t *testing.T) {
-	fixtureBytes, err := os.ReadFile(v7RoundtripFixture)
+	fixtureBytes, err := os.ReadFile(v8RoundtripFixture)
 	if err != nil {
-		t.Fatalf("fixture missing (regenerate with GEN_V7_ROUNDTRIP_FIXTURE=1): %v", err)
+		t.Fatalf("fixture missing (regenerate with GEN_V8_ROUNDTRIP_FIXTURE=1): %v", err)
 	}
 
 	dir := t.TempDir()
 	p1 := filepath.Join(dir, "p1.json")
 	p2 := filepath.Join(dir, "p2.json")
 
-	s1, err := Load(v7RoundtripFixture)
+	s1, err := Load(legacyFixtureCopy(t, v8RoundtripFixture))
 	if err != nil {
 		t.Fatalf("Load fixture: %v", err)
 	}
@@ -325,8 +178,8 @@ func TestCanonical_V6StructuralTransfer_RoundtripStable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load p1: %v", err)
 	}
-	if s2.Version != SchemaVersionV7 {
-		t.Fatalf("после Save версия обязана быть v7, got %d", s2.Version)
+	if s2.Version != SchemaVersionV8 {
+		t.Fatalf("после Save версия обязана быть v8, got %d", s2.Version)
 	}
 	if err := s2.Save(p2); err != nil {
 		t.Fatalf("Save p2: %v", err)
@@ -362,7 +215,7 @@ func TestCanonical_IDStability(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
 
-	src, err := os.ReadFile(v7RoundtripFixture)
+	src, err := os.ReadFile(v8RoundtripFixture)
 	if err != nil {
 		t.Fatalf("fixture: %v", err)
 	}

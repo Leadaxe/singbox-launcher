@@ -173,15 +173,24 @@ type PresetMergeContext struct {
 	// GlobalVars (SPEC 106, G3) — глобальные переменные шаблона, доступные
 	// телу пресета для имён, которых он не объявил у себя. Настройка со
 	// вкладки Settings (@tun, @resolve_strategy) не должна дублироваться в
-	// каждом пресете. nil — глобалей нет, поведение прежнее.
+	// каждом пресете. nil — глобалей нет, поведение прежнее. Это СОХРАНЁННЫЕ
+	// значения; тело пресета видит их через globalVarValues — вместе с
+	// дефолтами шаблона для имён, которых в состоянии нет.
 	GlobalVars map[string]string
 
 	// TemplateVars (SPEC 109) — ОБЪЯВЛЕНИЯ переменных шаблона. GlobalVars
-	// выше несёт только значения, а подстановка в теле DNS-сервера требует
-	// объявлений: из них берутся тип и дефолт для имён, которых пользователь
-	// не трогал. Без них `@dns_google_dot_outbound` уехал бы в конфиг
-	// строкой, и ядро отвергло бы его целиком.
+	// выше несёт только значения, а подстановка в теле DNS-сервера и пресета
+	// требует объявлений: из них берутся тип и дефолт для имён, которых
+	// пользователь не трогал. Без них `@tun` уехал бы в конфиг строкой, и
+	// ядро отвергло бы его целиком. Объявления переменных шаблонных
+	// DNS-серверов — отдельно, DNSServerVars ниже (SPEC 129).
 	TemplateVars []template.TemplateVar
+
+	// DNSServerVars (SPEC 129) — объявления переменных шаблонных DNS-серверов
+	// по тегу (TemplateData.DNSServerVars). Значения — в записях DNS выше
+	// (`DNS.Servers[kind=template].Vars`); без объявлений `@outbound` в теле
+	// сервера разрешить нечем, и тело уехало бы неподставленным.
+	DNSServerVars map[string][]template.TemplateVar
 
 	// EmittedRuleSetTags (SPEC 118, Р-DNS-2) — теги, реально попадающие в
 	// `route.rule_set` финального конфига. Заполняется ОДИН раз до обхода
@@ -263,6 +272,17 @@ func (c PresetMergeContext) dnsWithNodeSections() state.DNSOptions {
 	return out
 }
 
+// globalVarValues — глобальные переменные для тела пресета: сохранённые
+// значения плюс дефолты шаблона для имён, которых в состоянии нет.
+//
+// Правило то же, по которому собираются секции конфига (inbounds —
+// template.ResolveTemplateVarsFor): иначе у состояния без `tun` inbounds
+// строились по дефолту шаблона, а sniff и resolve считали `@tun` неизвестной
+// и получали `inbound: []` (template.VarValuesFor).
+func (c PresetMergeContext) globalVarValues() map[string]string {
+	return template.VarValuesFor(c.TemplateVars, c.GlobalVars, nil, c.Target)
+}
+
 // hasNodeRouteRules — есть ли среди дошедших до эмиссии узлов хоть один с
 // правилами маршрута. Гард раннего выхода MergePresetsIntoRoute.
 func (c PresetMergeContext) hasNodeRouteRules() bool {
@@ -329,7 +349,7 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 	// резолва — дальше они рядовые inline/srs, и узловых веток в конвейере нет.
 	st := &state.State{Rules: ctx.rulesWithNodeSections(), DNS: ctx.dnsWithNodeSections()}
 	tdVal := template.TemplateData{Presets: ctx.Presets}
-	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths, ctx.Target, ctx.GlobalVars)
+	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues())
 
 	// Dedup по tag (template уже мог эмитить rule_sets).
 	emittedTags := make(map[string]bool)
@@ -370,7 +390,7 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 		if !r.Active || !r.Enabled {
 			continue
 		}
-		if r.OrderNum < state.UserRuleNumStart {
+		if r.Num < state.UserRuleNumStart {
 			head = append(head, r.Body)
 			continue
 		}
@@ -415,7 +435,7 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 	// С nil подстановка в теле DNS-сервера всегда брала бы дефолт шаблона, и
 	// выбор пользователя (адрес провайдера, канал, профиль) молча терялся бы
 	// на каждой сборке.
-	resolved := ResolveDNS(st, &tdVal, ctx.GlobalVars, ctx.Target)
+	resolved := ResolveDNS(st, &tdVal, ctx.globalVarValues(), ctx.Target)
 
 	// SPEC 121: DNS-фрагменты узлов — ещё одна причина зайти внутрь.
 	if len(resolved.Servers) == 0 && len(resolved.Rules) == 0 && !hasAnyV6Rule(ctx.Rules) &&
@@ -535,6 +555,7 @@ func templateLikeFromCtx(ctx PresetMergeContext) template.TemplateData {
 		Presets:       ctx.Presets,
 		DNSOptionsRaw: raw,
 		Vars:          ctx.TemplateVars,
+		DNSServerVars: ctx.DNSServerVars,
 	}
 	return td
 }
@@ -607,7 +628,7 @@ func CollectEmittedRouteRuleSetTags(routeRaw json.RawMessage, routeCfg RouteConf
 	// MergePresetsIntoRoute, с теми же фильтрами эмиссии.
 	st := &state.State{Rules: ctx.rulesWithNodeSections(), DNS: ctx.dnsWithNodeSections()}
 	tdVal := template.TemplateData{Presets: ctx.Presets}
-	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths, ctx.Target, ctx.GlobalVars)
+	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues())
 	for _, rs := range resolved.RuleSets {
 		if rs.Skipped || !rs.Enabled {
 			continue
@@ -714,6 +735,10 @@ func CollectSrsCachedPaths(rules []state.Rule, execDir, resourceDir string) map[
 		if r.Kind != state.RuleKindSrs {
 			continue
 		}
+		// Список наборов в state v8 — поле записи Refs; читаем его через вид,
+		// потому что вид дедуплицирует. Расхождение с resolve_route.go, который
+		// берёт тот же вид, сделало бы правило «частично закэшированным» и
+		// молча выбросило бы его из конфига (ловушка 18).
 		body, err := r.DecodeBody()
 		if err != nil {
 			continue
@@ -722,7 +747,7 @@ func CollectSrsCachedPaths(rules []state.Rule, execDir, resourceDir string) map[
 		if !ok {
 			continue
 		}
-		urls := sb.URLs()
+		urls := sb.Refs
 		if len(urls) == 0 {
 			continue
 		}

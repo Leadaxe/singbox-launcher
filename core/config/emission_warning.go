@@ -32,6 +32,7 @@ const (
 	emitLinkEmptyText         = "the reference is empty"
 	emitLinkSourceMissingText = "the referenced source is gone"
 	emitLinkNodeMissingText   = "it has no node %q"
+	emitLinkGroupFinalTagText = "it has no node %q — this looks like the final tag of group %q; pick the target again"
 	emitLinkTargetUnknownText = "target %q is not among nodes, Directions and folder replacements"
 
 	emitDetourUnresolvedText    = "node %q dropped: the detour target did not resolve (%s) — a hop set up for anonymity may not silently become a direct dial"

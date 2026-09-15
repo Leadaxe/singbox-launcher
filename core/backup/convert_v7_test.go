@@ -1,13 +1,17 @@
 package backup
 
-// Граница «модель v7 ↔ контракт 0.11» (SPEC 118 §4.F.2 и §4.F.3).
+// Граница «модель ↔ формы контракта» (SPEC 118 §4.F.2 и §4.F.3).
 //
 // Тесты рядом смотрят на файл: purity_test проверяет БАЙТ-тождественность
 // экспорт→импорт→экспорт, то есть свойство формата. Здесь предмет другой —
-// МОДЕЛЬ: после экспорта и импорта поля v7 (enabled узлов, replace, detour как
-// NodeLink, хопы как NodeLink) обязаны означать то же самое, что до. Байтовая
-// тождественность этого не доказывает: пара «экспорт теряет X — импорт
-// выдумывает X» даёт одинаковые файлы и разъехавшуюся модель.
+// МОДЕЛЬ: после экспорта и импорта поля модели (enabled узлов, replace, detour
+// как NodeLink, хопы как NodeLink) обязаны означать то же самое, что до.
+// Байтовая тождественность этого не доказывает: пара «экспорт теряет X —
+// импорт выдумывает X» даёт одинаковые файлы и разъехавшуюся модель.
+//
+// Входов импорта два, и модель обязана выйти одной: файл 1.0, который
+// лаунчер пишет сейчас, и файл 0.12, который писали релизы до v1.6.0 (писатель
+// 0.12 снят, D-110, — второй вход дан сырым JSON, снятым прежним писателем).
 
 import (
 	"encoding/json"
@@ -18,24 +22,6 @@ import (
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
 )
-
-// exportImport — круг «состояние → файл → состояние» через настоящий Parse,
-// а не через прямую передачу структуры: сериализация — часть границы, и
-// поле, которое не пережило JSON, обязано падать здесь же.
-func exportImport(t *testing.T, s *state.State, opts ImportOptions) (*state.State, []Warning) {
-	t.Helper()
-	raw := fixedExport(t, s)
-	b, parseWarns, err := Parse(raw)
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	dst := &state.State{}
-	res, err := Import(dst, b, opts)
-	if err != nil {
-		t.Fatalf("Import: %v", err)
-	}
-	return dst, append(parseWarns, res.Warnings...)
-}
 
 func findSourceByID(t *testing.T, s *state.State, id string) *state.Source {
 	t.Helper()
@@ -48,11 +34,76 @@ func findSourceByID(t *testing.T, s *state.State, id string) *state.Source {
 	return nil
 }
 
-// §4.F.2: экспорт→импорт на этой же машине — модель эквивалентна.
+// legacyV7Model012 — файл 0.12, который прежний писатель снимал с состояния
+// TestRoundTripV7ModelEquivalent: свёртка без имени группы, detour-тройня,
+// хопы строками, канон цепочки в `chain`, disabled-карта.
+const legacyV7Model012 = `{
+  "lx_backup": 1,
+  "exported_by": {"app": "launcher", "version": "1.5.9", "platform": "darwin"},
+  "exported_at": "2025-06-15T15:06:40Z",
+  "subscriptions": [{
+    "id": "01SUB0000000000000000000",
+    "url": "https://example-1.com/sub",
+    "label": "Main",
+    "max_nodes": 200,
+    "tag": {"prefix": "[A] "},
+    "update": {"interval_hours": 12, "auto": true},
+    "disabled": {"NL-2": 0, "node-a": 0, "node-b": 0},
+    "skip": [{"contains": "trial", "field": "tag"}],
+    "fold": {"mode": "select"},
+    "detour_node_source_id": "01SRV0000000000000000000",
+    "detour_node_tag": "🔥 WARP",
+    "detour_node_label": "🔥 WARP"
+  }],
+  "servers": [{
+    "id": "01SRV0000000000000000000",
+    "uri": "vless://11111111-1111-1111-1111-111111111111@example-2.com:443?type=tcp#s",
+    "node_tag": "🔥 WARP",
+    "detour_node_tag": "hop-1",
+    "detour_node_label": "hop-1"
+  }],
+  "directions": [{"tag": "vpn-de", "include_direct": true}],
+  "chains": [{
+    "id": "01CHN0000000000000000000",
+    "tag": "relay",
+    "chain": {
+      "hops": ["vpn-de", "🔥 WARP"],
+      "idle_timeout": "0s",
+      "strip_evasion": false,
+      "strip": {"tls.utls": false},
+      "rewrite": {"vless": {"flow": null}}
+    }
+  }],
+  "rules": [
+    {"kind": "preset", "num": 1000, "ref": "traffic-processing", "vars": {"mode": "on"}},
+    {"kind": "inline", "name": "Work", "num": 1001, "outbound": "vpn-de",
+     "match": {"domain_suffix": ["example.com"]}},
+    {"kind": "inline", "name": "Chained", "num": 1002, "outbound": "relay",
+     "match": {"domain_suffix": ["example.com"]}}
+  ],
+  "dns": {
+    "servers": [
+      {"kind": "template", "name": "google_dot"},
+      {"kind": "user", "name": "my_dns", "value": {"server": "10.0.0.1", "type": "udp"}}
+    ],
+    "rules": [
+      {"kind": "user", "enabled": false, "value": {"domain_suffix": "example.com", "server": "my_dns"}}
+    ],
+    "final": "dns_shield",
+    "strategy": "ipv4_only"
+  },
+  "vars": {"log_level": "debug"},
+  "route": {"final": "vpn-de"},
+  "warp": [{"client_v4": "172.16.0.2", "client_v6": "", "peer_public": "pub", "private_key": "priv", "type": "wg"}]
+}`
+
+// §4.F.2: экспорт→импорт на этой же машине — модель эквивалентна, и та же
+// модель выходит из файла 0.12, снятого с неё прежним лаунчером.
 //
-// Проверяются именно те четыре конвертации, ради которых существует
-// convert_v7.go: enabled ⇄ disabled-карта, replace ⇄ fold, NodeLink ⇄ тройня,
-// хопы ⇄ строки. Задокументированные потери названы прямо в утверждениях.
+// Проверяются конвертации, ради которых существует convert_v7.go: enabled ⇄
+// disabled-карта и replace ⇄ fold у обоих входов, NodeLink ⇄ тройня и хопы ⇄
+// строки у входа 0.12. Задокументированные потери названы прямо в
+// утверждениях.
 func TestRoundTripV7ModelEquivalent(t *testing.T) {
 	src := richState()
 	// Материализованные узлы — то, чего контракт не несёт вовсе. Кладём их с
@@ -65,12 +116,22 @@ func TestRoundTripV7ModelEquivalent(t *testing.T) {
 	// PendingDisabled уже стоит в richState (node-a/node-b) — обе половины
 	// отметок обязаны уехать одним списком и вернуться одним же.
 
-	// Тег замены выставлен ровно тем деривативом, который контракт умеет
-	// воспроизвести из префикса: иначе круг его не переживает (см.
-	// TestExportNamesUnrepresentableReplaceTag — это НАЗВАННАЯ потеря).
+	// Тег замены выставлен ровно тем деривативом, который файл 0.12 умеет
+	// воспроизвести из префикса: имени группы в свёртке 0.12 нет, и другое
+	// явное имя такой файл не переживал (1.0 везёт его ключом fold_tag).
 	src.Sources[0].Replace.Tag = "[A]select"
 
-	dst, warns := exportImport(t, src, importKnowsEverything())
+	for _, in := range importBothFormats(t, src, legacyV7Model012, importKnowsEverything()) {
+		t.Run(in.format, func(t *testing.T) {
+			assertV7ModelEquivalent(t, src, in.state, in.warns)
+		})
+	}
+}
+
+// assertV7ModelEquivalent — утверждения TestRoundTripV7ModelEquivalent на
+// один вход импорта.
+func assertV7ModelEquivalent(t *testing.T, src, dst *state.State, warns []Warning) {
+	t.Helper()
 	for _, w := range warns {
 		if w.Code != WarnBackupSourceKindUnsupported {
 			t.Errorf("свой же файл дал предупреждение: %v", w)
@@ -96,9 +157,10 @@ func TestRoundTripV7ModelEquivalent(t *testing.T) {
 		}
 	}
 
-	// replace ⇄ fold: режим и тег обязаны совпасть. Тег контракт не несёт —
-	// импорт материализует его прежним позиционным деривативом, и он обязан
-	// совпасть с исходным, иначе правила того же файла указывают в никуда.
+	// replace ⇄ fold: режим и тег обязаны совпасть. 1.0 везёт имя группы
+	// явно (fold_tag), 0.12 — нет: там импорт материализует его прежним
+	// позиционным деривативом, и он обязан совпасть с исходным, иначе
+	// правила того же файла указывают в никуда.
 	if sub.Replace == nil {
 		t.Fatal("replace потерян на roundtrip")
 	}
@@ -109,15 +171,18 @@ func TestRoundTripV7ModelEquivalent(t *testing.T) {
 		t.Errorf("replace.tag: %q, было %q", sub.Replace.Tag, src.Sources[0].Replace.Tag)
 	}
 
-	// detour-NodeLink с адресом папки ⇄ тройня: оба конца обязаны выжить.
+	// detour-NodeLink на корневой узел ⇄ объект `{tag}` / тройня 0.12 с id
+	// сервера: корневой узел адресуется тегом, и тройня с
+	// `detour_node_source_id` сервера обязана приехать корневой формой
+	// (NODE_LINK.md §7.4), а не висящим folder_id.
 	if sub.Detour == nil {
 		t.Fatal("detour подписки потерян")
 	}
-	if sub.Detour.FolderID != "01SRV0000000000000000000" || sub.Detour.Tag != "🔥 WARP" {
-		t.Errorf("detour подписки: %+v, ожидалось {01SRV…, 🔥 WARP}", *sub.Detour)
+	if sub.Detour.FolderID != "" || sub.Detour.Tag != "🔥 WARP" {
+		t.Errorf("detour подписки: %+v, ожидалось {\"\", 🔥 WARP}", *sub.Detour)
 	}
 
-	// TagPolicy ⇄ tag{prefix,postfix}.
+	// TagPolicy ⇄ tag_policy / tag{prefix,postfix}.
 	if sub.TagPolicy == nil || sub.TagPolicy.Prefix != "[A] " {
 		t.Errorf("tag policy: %+v", sub.TagPolicy)
 	}
@@ -128,9 +193,9 @@ func TestRoundTripV7ModelEquivalent(t *testing.T) {
 		t.Errorf("detour узла: %+v, ожидалось {\"\", hop-1}", srv.Detour)
 	}
 
-	// hops []NodeLink ⇄ []string: порядок и состав обязаны совпасть. Адрес
-	// папки контракт не несёт — на импорте хоп поднимается по живому индексу,
-	// а «🔥 WARP» здесь корневой узел, значит FolderID остаётся пустым.
+	// hops []NodeLink ⇄ []NodeLink (1.0) / []string (0.12): порядок и состав
+	// обязаны совпасть. Адреса папки у этих хопов нет ни в каком формате:
+	// «vpn-de» — Направление, «🔥 WARP» — корневой узел.
 	chain := findSourceByID(t, dst, "01CHN0000000000000000000")
 	if len(chain.Hops) != 2 {
 		t.Fatalf("хопы цепочки: %v, ожидалось 2 позиции", chain.Hops)
@@ -138,9 +203,14 @@ func TestRoundTripV7ModelEquivalent(t *testing.T) {
 	if chain.Hops[0].Tag != "vpn-de" || chain.Hops[1].Tag != "🔥 WARP" {
 		t.Errorf("порядок хопов разъехался: %v", chain.Hops)
 	}
+	for _, h := range chain.Hops {
+		if h.FolderID != "" {
+			t.Errorf("хоп корневого пространства получил адрес папки: %+v", h)
+		}
+	}
 
 	// Настройки маршрута цепочки живут в теле узла (компенсация W5) и обязаны
-	// пережить границу: они уезжают формой контракта и возвращаются в body.
+	// пережить границу: у 1.0 тело едет как есть, у 0.12 — формой контракта.
 	var gotChain configtypes.SourceChain
 	if err := json.Unmarshal(chain.Body, &gotChain); err != nil {
 		t.Fatalf("тело цепочки: %v", err)
@@ -154,33 +224,40 @@ func TestRoundTripV7ModelEquivalent(t *testing.T) {
 	}
 }
 
-// §4.F.2, отдельная половина: хоп в узел ПОДПИСКИ поднимается до адресной
-// ссылки по живому индексу, а не остаётся голой строкой.
+// §4.F.2, legacy-половина: хоп файла 0.12 — голая СТРОКА, и импорт поднимает
+// её до адресной ссылки по живому индексу, но не выдумывает адрес.
 //
 // Это единственный случай, где импорт обязан ДОБАВИТЬ адрес, которого в файле
-// не было: контракт 0.11 знает только строку.
+// не было: форма 0.12 знает только строку. У файла 1.0 хоп адрес уже несёт
+// (`folder_id`), и этим проходом не трогается — поэтому вход здесь один.
+//
+// Файл — тот, что прежний писатель снимал с состояния «подписка с узлом NL-1
+// и цепочка с хопом в этот узел»: адрес папки при записи терялся.
 func TestRoundTripV7ResolvesHopIntoContainer(t *testing.T) {
-	s := &state.State{}
-	s.Sources = []state.Source{
-		{
-			ID:   "01SUB0000000000000000000",
-			Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true},
-			URL:  "https://example-1.com/sub", Name: "Main",
-			Nodes: []state.Node{{Kind: state.SourceKindServer, Tag: "NL-1", Enabled: true}},
-		},
-		{
-			ID: "01CHN0000000000000000000",
-			Node: state.Node{
-				Kind: state.SourceKindChain, Enabled: true, Tag: "relay",
-				Hops: []state.NodeLink{{FolderID: "01SUB0000000000000000000", Tag: "NL-1"}, {Tag: "direct"}},
-			},
-		},
+	const legacy = `{
+  "lx_backup": 1,
+  "exported_by": {"app": "launcher", "version": "1.5.9", "platform": "darwin"},
+  "exported_at": "2025-06-15T15:06:40Z",
+  "subscriptions": [{"id": "01SUB0000000000000000000", "url": "https://example-1.com/sub", "label": "Main"}],
+  "chains": [{"id": "01CHN0000000000000000000", "tag": "relay", "chain": {"hops": ["NL-1", "direct"]}}]
+}`
+	importLegacy := func(t *testing.T, dst *state.State) {
+		t.Helper()
+		b, _, err := Parse([]byte(legacy))
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		if _, err := ImportFile(dst, b, ImportOptions{KnownOutbounds: []string{"relay"}}); err != nil {
+			t.Fatalf("Import: %v", err)
+		}
 	}
+
 	// Индекс живого набора строится по узлам ПРИЕХАВШИХ контейнеров, а nodes[]
 	// в файл не едут — значит поднять адрес импорту не из чего, и хоп обязан
 	// остаться fail-closed-ссылкой корневого пространства. Проверяем именно
 	// это: «резолв по живому индексу» не должен выдумывать адрес.
-	dst, _ := exportImport(t, s, ImportOptions{KnownOutbounds: []string{"relay"}})
+	dst := &state.State{}
+	importLegacy(t, dst)
 	chain := findSourceByID(t, dst, "01CHN0000000000000000000")
 	if len(chain.Hops) != 2 {
 		t.Fatalf("хопы: %v", chain.Hops)
@@ -200,14 +277,7 @@ func TestRoundTripV7ResolvesHopIntoContainer(t *testing.T) {
 		Name:  "Local folder",
 		Nodes: []state.Node{{Kind: state.SourceKindServer, Tag: "NL-1", Enabled: true}},
 	}}}
-	raw := fixedExport(t, s)
-	b, _, err := Parse(raw)
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	if _, err := Import(live, b, ImportOptions{KnownOutbounds: []string{"relay"}}); err != nil {
-		t.Fatalf("Import: %v", err)
-	}
+	importLegacy(t, live)
 	// Импорт СЛИВАЕТ источники (D-095, BACKUP.md §9): папка приёмника, которой
 	// в файле нет, остаётся жить — и именно поэтому адрес хопа поднимается.
 	// Прежде здесь стоял обратный вердикт: replace сносил папку, живого
@@ -268,7 +338,7 @@ func TestImportLegacy15xBackup(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 	dst := &state.State{}
-	res, err := Import(dst, b, ImportOptions{KnownOutbounds: []string{"[P]select"}})
+	res, err := ImportFile(dst, b, ImportOptions{KnownOutbounds: []string{"[P]select"}})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -355,7 +425,7 @@ func TestImportLegacyServerMaskArrivesAsNodeTag(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 	dst := &state.State{}
-	res, err := Import(dst, b, ImportOptions{})
+	res, err := ImportFile(dst, b, ImportOptions{})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -382,111 +452,6 @@ func TestImportLegacyServerMaskArrivesAsNodeTag(t *testing.T) {
 	}
 	if len(chain.Hops) != 2 || chain.Hops[0].Tag != "🔥 WARP" {
 		t.Errorf("хопы цепочки: %v", chain.Hops)
-	}
-}
-
-// §4.F.2, названная потеря: ЯВНЫЙ тег замены, не совпавший с деривативом
-// контракта, круг не переживает — и экспорт обязан сказать это вслух.
-//
-// В v7 `replace.tag` задаётся руками; контракт 0.11 места для него не имеет и
-// на импорте выводит имя формулой «префикс подписки (или `<N>:`) + select».
-// Если имена разошлись, на приёмнике группа зовётся иначе, а правила, метившие
-// в прежнее имя, приедут выключенными. Молчаливая подмена имени, на которое
-// ссылается маршрутизация, — ровно та потеря, которую формат запрещает.
-func TestExportNamesUnrepresentableReplaceTag(t *testing.T) {
-	s := richState()
-	s.Sources[0].Replace.Tag = "My Europe" // ни префикс, ни позиция такого не дадут
-
-	_, warns, err := Export(s, ExportOptions{AppVersion: "test", Platform: "darwin"})
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-	if !hasWarn(warns, WarnBackupReplaceTagDerived) {
-		t.Fatalf("тег замены подменён молча; предупреждения: %v", warns)
-	}
-	// Обязаны быть названы ОБА имени: пользователь должен видеть, во что
-	// превратится его группа на приёмнике.
-	var detail string
-	for _, w := range warns {
-		if w.Code == WarnBackupReplaceTagDerived {
-			detail = w.Detail
-		}
-	}
-	if !strings.Contains(detail, "My Europe") || !strings.Contains(detail, "[A]select") {
-		t.Errorf("предупреждение не называет оба имени: %q", detail)
-	}
-
-	// Дериватив предупреждения не вызывает: подмены нет.
-	s.Sources[0].Replace.Tag = "[A]select"
-	_, warns, err = Export(s, ExportOptions{AppVersion: "test", Platform: "darwin"})
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-	if hasWarn(warns, WarnBackupReplaceTagDerived) {
-		t.Errorf("совпавший с деривативом тег объявлен потерей: %v", warns)
-	}
-}
-
-// Позиционный дериватив считают по одному и тому же числу обе стороны:
-// экспорт — по номеру записи в subscriptions[], импорт — по индексу в той же
-// секции. Пока экспорт брал позицию источника в ОБЩЕМ списке, подписка без
-// префикса, стоящая после сервера, уезжала молча: `2:select` считался
-// «деривативом», а импорт восстанавливал `1:select` — и правила того же
-// файла, метившие в старое имя, повисали без единого слова.
-func TestReplaceTagDerivativeCountsSubscriptionsOnly(t *testing.T) {
-	mkSub := func(id, tag string) state.Source {
-		return state.Source{
-			ID:      id,
-			Node:    state.Node{Kind: state.SourceKindSubscription, Enabled: true},
-			URL:     "https://example.invalid/" + id,
-			Name:    id,
-			Replace: &state.FolderReplace{Mode: state.FolderReplaceManual, Tag: tag},
-		}
-	}
-	mkServer := func(id string) state.Source {
-		return state.Source{
-			ID:   id,
-			Node: state.Node{Kind: state.SourceKindServer, Enabled: true, Tag: id},
-		}
-	}
-
-	// Сервер впереди: подписка первая в своей секции, значит дериватив —
-	// `1:select`, а не `2:select`.
-	after := &state.State{Sources: []state.Source{mkServer("srv"), mkSub("sub", "2:select")}}
-	_, warns, err := Export(after, ExportOptions{AppVersion: "test"})
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-	if !hasWarn(warns, WarnBackupReplaceTagDerived) {
-		t.Fatalf("подмена тега замены прошла молча: %v", warns)
-	}
-	var detail string
-	for _, w := range warns {
-		if w.Code == WarnBackupReplaceTagDerived {
-			detail = w.Detail
-		}
-	}
-	if !strings.Contains(detail, "1:select") {
-		t.Errorf("предупреждение называет чужой дериватив: %q", detail)
-	}
-
-	// Та же подписка первой в списке: `1:select` — это и есть дериватив,
-	// и после круга экспорт→импорт тег обязан остаться тем же.
-	before := &state.State{Sources: []state.Source{mkSub("sub", "1:select"), mkServer("srv")}}
-	b, warns, err := Export(before, ExportOptions{AppVersion: "test"})
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-	if hasWarn(warns, WarnBackupReplaceTagDerived) {
-		t.Errorf("дериватив объявлен потерей: %v", warns)
-	}
-	dst := &state.State{}
-	if _, err := Import(dst, b, ImportOptions{}); err != nil {
-		t.Fatalf("Import: %v", err)
-	}
-	got := findSourceByID(t, dst, "sub")
-	if got.Replace == nil || got.Replace.Tag != "1:select" {
-		t.Errorf("тег замены после круга: %+v, ожидался 1:select", got.Replace)
 	}
 }
 
@@ -517,7 +482,7 @@ func TestImportNamesDroppedSourceFlags(t *testing.T) {
 		t.Fatalf("поля объявлены в схеме, лишних предупреждений разбора быть не должно: %v", parseWarns)
 	}
 	dst := &state.State{}
-	res, err := Import(dst, b, ImportOptions{})
+	res, err := ImportFile(dst, b, ImportOptions{})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -552,7 +517,7 @@ func TestImportChainLabelIgnoredSilently(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 	dst := &state.State{}
-	res, err := Import(dst, b, ImportOptions{})
+	res, err := ImportFile(dst, b, ImportOptions{})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -579,84 +544,5 @@ func TestImportChainLabelIgnoredSilently(t *testing.T) {
 	got := findSourceByID(t, back, "01CHN0000000000000000000")
 	if got.Tag != "my-chain" {
 		t.Errorf("тег цепочки не пережил Save→Load: %q", got.Tag)
-	}
-}
-
-// П6 на per-source настройках подписки, контракт 0.12: UA и HWID-семейство
-// теперь ЕДУТ (объект identity), а бездомным остался единственный ключ
-// relays_in_directions — у LxBox такой развилки нет вовсе. Он идёт кодом
-// backup_local_only_dropped («такого поля в общем формате нет»), тогда как
-// identity-код остался за ключами identity («поле есть, здесь не
-// применяется»). О том, что уехало, предупреждать нечего.
-func TestExportNamesLocalOnlySourceFields(t *testing.T) {
-	send := true
-	s := &state.State{Sources: []state.Source{{
-		ID:                 "01SUB0000000000000000000",
-		Node:               state.Node{Kind: state.SourceKindSubscription, Enabled: true},
-		URL:                "https://example.invalid/s",
-		Name:               "Liberty",
-		UserAgent:          "Happ/1.0",
-		SendHWID:           &send,
-		RelaysInDirections: true,
-	}}}
-	b, warns, err := Export(s, ExportOptions{AppVersion: "test"})
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-	var detail string
-	for _, w := range warns {
-		if w.Code == WarnBackupLocalOnlyDropped {
-			detail = w.Detail
-		}
-	}
-	if detail == "" {
-		t.Fatalf("бездомный relays_in_directions выпал молча: %v", warns)
-	}
-	// Ключи identity своим кодом не помечаются: он остался за объектом
-	// identity, и смешение двух разговоров запутало бы UI.
-	if hasWarn(warns, WarnBackupSourceIdentityDropped) {
-		t.Errorf("бездомное поле помечено кодом ключей identity: %v", warns)
-	}
-	if !strings.Contains(detail, "Liberty") || !strings.Contains(detail, "relays_in_directions") {
-		t.Errorf("предупреждение не называет подписку и поле: %q", detail)
-	}
-	// Уехавшее в identity потерей НЕ объявляется — иначе пользователь ищет
-	// пропажу того, что на самом деле в файле.
-	for _, gone := range []string{"user_agent", "send_hwid", "hwid", "hash_device_model"} {
-		if strings.Contains(detail, gone) {
-			t.Errorf("уехавшее поле %q названо потерей: %q", gone, detail)
-		}
-	}
-	if len(b.Subscriptions) != 1 || b.Subscriptions[0].Identity == nil {
-		t.Fatalf("identity не собран: %+v", b.Subscriptions)
-	}
-	id := b.Subscriptions[0].Identity
-	if id.UserAgent == nil || *id.UserAgent != "Happ/1.0" {
-		t.Errorf("user_agent не уехал: %+v", id)
-	}
-	if id.SendHWID == nil || !*id.SendHWID {
-		t.Errorf("send_hwid не уехал: %+v", id)
-	}
-	// Незаданное остаётся НЕ заданным: пустая строка на приёмнике затёрла бы
-	// дефолт приложения, а nil означает «настройки нет».
-	if id.HWID != nil || id.HashDeviceModel != nil {
-		t.Errorf("незаданные ключи материализовались: %+v", id)
-	}
-
-	// Подписка без этих настроек: ни предупреждения, ни объекта identity.
-	s.Sources[0] = state.Source{
-		ID:   "01SUB0000000000000000000",
-		Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true},
-		URL:  "https://example.invalid/s",
-	}
-	b, warns, err = Export(s, ExportOptions{AppVersion: "test"})
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-	if hasWarn(warns, WarnBackupLocalOnlyDropped) {
-		t.Errorf("незаданные настройки объявлены потерей: %v", warns)
-	}
-	if b.Subscriptions[0].Identity != nil {
-		t.Errorf("пустой identity уехал в файл: %+v", b.Subscriptions[0].Identity)
 	}
 }

@@ -95,6 +95,11 @@ type AppController struct {
 	ctx        context.Context    // Context for cancellation
 	cancelFunc context.CancelFunc // Cancel function for stopping goroutines
 
+	// templateRefreshDone закрывается, когда фоновое обновление шаблона после
+	// апгрейда (StartTemplateRefresh) закончилось; сборка config.json ждёт его
+	// (awaitTemplateRefresh). nil — обновление не запускалось, ждать нечего.
+	templateRefreshDone atomic.Pointer[chan struct{}]
+
 	// --- Shutdown state ---
 	// exitOnce guards GracefulExit: it is reachable both from the tray "Quit"
 	// item / dashboard Exit button *and* from main() after Application.Run()
@@ -405,6 +410,12 @@ func (ac *AppController) hasUI() bool {
 // Two call sites reach this: the tray "Quit" item (and the dashboard Exit
 // button), and main() after Application.Run() returns. exitOnce makes the
 // second call a no-op instead of a second full teardown.
+//
+// На macOS есть третий путь: запрос системы на завершение (Cmd+Q,
+// «Завершить» в Dock, выход из системы) — platform.SetQuitRequestHandler.
+// Там GracefulExit идёт в горутине, пока AppKit держит главный поток и ждёт
+// ответа не дольше бюджета из main.go; Quit в конце встаёт в очередь Fyne,
+// до которой дело не доходит, — процесс завершает AppKit.
 func (ac *AppController) GracefulExit() {
 	ac.exitOnce.Do(ac.gracefulExit)
 }

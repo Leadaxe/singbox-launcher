@@ -122,5 +122,28 @@ func KnownRuleTargetTags(model *wizardmodels.WizardModel) map[string]bool {
 	for _, tag := range AllDirectionTags(model) {
 		known[tag] = true
 	}
+	// Объявленные корневые имена — тот же источник, что у импорта бэкапа
+	// (core/backup importRootNames) и у опций Направлений: системные теги
+	// шаблона (`block-out` и outbound'ы/endpoint'ы `config`), тег блокировки.
+	// Без них правило на системный тег, приехавшее импортом, первая же
+	// загрузка молча переводила на direct — блокировка превращалась в прямой
+	// выход.
+	for tag := range DeclaredRootNames(model) {
+		known[tag] = true
+	}
+	// Опции Направлений — как есть, включая необъявленные. Предлагать их
+	// целью больше нельзя (GetAvailableOutbounds их отсеивает), но правило,
+	// уже нацеленное на такую строку, при загрузке молча на direct не
+	// сбрасывается: маршрут пользователя меняет он сам, а висячую цель
+	// чистит сборка.
+	if model != nil {
+		for i := range model.GlobalOutbounds {
+			for _, opt := range model.GlobalOutbounds[i].AddOutbounds {
+				if opt = strings.TrimSpace(opt); opt != "" {
+					known[opt] = true
+				}
+			}
+		}
+	}
 	return known
 }

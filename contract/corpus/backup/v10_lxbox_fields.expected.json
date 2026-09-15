@@ -1,0 +1,50 @@
+{
+  "rules": [
+    { "name": "Ads", "enabled": true, "refs": ["https://example-5.com/ads.srs"] },
+    { "name": "Corp", "enabled": true, "outbound": "direct" }
+  ],
+  "warnings": [],
+  "subscriptions": {
+    "https://example-1.com/sub-lxbox-fields": {
+      "label": "Provider",
+      "prefix": "",
+      "postfix": "",
+      "enabled": true,
+      "nodes": []
+    }
+  },
+  "root_servers": [
+    "relay-root"
+  ],
+  "folders": {
+    "Work": ["de-1", "de-2", "Best"]
+  },
+  "groups": {
+    "Best": {
+      "members": [
+        { "tag": "de-1", "folder": "Work" },
+        { "tag": "de-2", "folder": "Work" }
+      ]
+    }
+  },
+  "chains": [
+    {
+      "tag": "via-relay",
+      "chain": {
+        "hops": ["relay-root", "de-1"],
+        "idle_timeout": "0s"
+      },
+      "hops": [
+        { "tag": "relay-root" },
+        { "tag": "de-1", "folder": "Work" }
+      ]
+    }
+  ],
+  "dns": {
+    "servers": [
+      { "kind": "template", "tag": "local-dns", "enabled": true, "vars": { "dns_local": "1.1.1.1" } },
+      { "kind": "user", "tag": "user-doh", "enabled": true }
+    ]
+  },
+  "detours": {}
+}

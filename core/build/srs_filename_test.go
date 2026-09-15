@@ -11,7 +11,6 @@
 package build
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -22,10 +21,7 @@ import (
 // с URL-derived filename, не с identity.
 func TestCollectSrsCachedPaths_URLDerived(t *testing.T) {
 	url := "https://example.com/geosite-youtube.srs"
-	body, _ := json.Marshal(state.SrsBody{Name: "YT", SrsURL: url, Outbound: "proxy-out"})
-	rules := []state.Rule{
-		{Kind: state.RuleKindSrs, Enabled: true, Body: body},
-	}
+	rules := []state.Rule{srsRule("YT", url, "proxy-out")}
 	paths := CollectSrsCachedPaths(rules, "/exec", "")
 
 	id := state.StableRuleID(rules[0])
@@ -54,10 +50,8 @@ func TestCollectSrsCachedPaths_URLDerived(t *testing.T) {
 func TestCollectSrsCachedPaths_TwoRulesSameURL_OneFile(t *testing.T) {
 	url := "https://example.com/list.srs"
 	rules := []state.Rule{
-		{Kind: state.RuleKindSrs, Enabled: true,
-			Body: mustMarshalSRS("Rule A", url, "proxy-out")},
-		{Kind: state.RuleKindSrs, Enabled: true,
-			Body: mustMarshalSRS("Rule B", url, "direct-out")},
+		srsRule("Rule A", url, "proxy-out"),
+		srsRule("Rule B", url, "direct-out"),
 	}
 	paths := CollectSrsCachedPaths(rules, "/exec", "")
 	if len(paths) != 2 {
@@ -81,14 +75,8 @@ func TestCollectSrsCachedPaths_RenameDoesNotInvalidate(t *testing.T) {
 	expectedTag := SRSTagFromURL(url)
 	wantPath := "/exec/bin/rule-sets/" + expectedTag + ".srs"
 
-	before := []state.Rule{
-		{Kind: state.RuleKindSrs, Enabled: true,
-			Body: mustMarshalSRS("OldName", url, "direct-out")},
-	}
-	after := []state.Rule{
-		{Kind: state.RuleKindSrs, Enabled: true,
-			Body: mustMarshalSRS("NewName", url, "direct-out")},
-	}
+	before := []state.Rule{srsRule("OldName", url, "direct-out")}
+	after := []state.Rule{srsRule("NewName", url, "direct-out")}
 	bp := CollectSrsCachedPaths(before, "/exec", "")
 	ap := CollectSrsCachedPaths(after, "/exec", "")
 
@@ -100,7 +88,9 @@ func TestCollectSrsCachedPaths_RenameDoesNotInvalidate(t *testing.T) {
 	}
 }
 
-func mustMarshalSRS(name, url, outbound string) json.RawMessage {
-	b, _ := json.Marshal(state.SrsBody{Name: name, SrsURL: url, Outbound: outbound})
-	return b
+// srsRule — включённая srs-запись state v8: наборы полем записи, цель в теле.
+func srsRule(name, url, outbound string) state.Rule {
+	r := state.NewSrsRule(name, []string{url}, outbound)
+	r.Enabled = true
+	return r
 }

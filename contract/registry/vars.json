@@ -38,6 +38,36 @@
       "in": "both",
       "note": "route.default_domain_resolver — символическая ссылка на тег DNS-сервера, та же политика, что dns_final"
     },
+    "dns_google_udp_outbound": {
+      "type": "outbound",
+      "portable": false,
+      "in": "both",
+      "note": "Терпимая форма чтения D-118 (SPEC 129), заменяет перенос D-117: писатель это имя не пишет; читатель переносит значение в запись dns.servers[kind=template, tag=google_udp].vars.outbound (самый длинный тег среди объявленных пар (tag, var)); у записи файла со своими vars корневое уступает (backup_var_skipped reason superseded), записи нет — backup_var_skipped reason no_record."
+    },
+    "dns_google_dot_outbound": {
+      "type": "outbound",
+      "portable": false,
+      "in": "both",
+      "note": "Терпимая форма чтения D-118 (SPEC 129), заменяет перенос D-117: писатель это имя не пишет; читатель переносит значение в запись dns.servers[kind=template, tag=google_dot].vars.outbound (самый длинный тег среди объявленных пар (tag, var)); у записи файла со своими vars корневое уступает (backup_var_skipped reason superseded), записи нет — backup_var_skipped reason no_record."
+    },
+    "dns_cloudflare_dot_outbound": {
+      "type": "outbound",
+      "portable": false,
+      "in": "both",
+      "note": "Терпимая форма чтения D-118 (SPEC 129), заменяет перенос D-117: писатель это имя не пишет; читатель переносит значение в запись dns.servers[kind=template, tag=cloudflare_dot].vars.outbound (самый длинный тег среди объявленных пар (tag, var)); у записи файла со своими vars корневое уступает (backup_var_skipped reason superseded), записи нет — backup_var_skipped reason no_record."
+    },
+    "dns_safe_dns_dot_outbound": {
+      "type": "outbound",
+      "portable": false,
+      "in": "both",
+      "note": "Терпимая форма чтения D-118 (SPEC 129), заменяет перенос D-117: писатель это имя не пишет; читатель переносит значение в запись dns.servers[kind=template, tag=safe_dns_dot].vars.outbound (самый длинный тег среди объявленных пар (tag, var)); у записи файла со своими vars корневое уступает (backup_var_skipped reason superseded), записи нет — backup_var_skipped reason no_record."
+    },
+    "dns_safe_dns_dot_dom_resolver": {
+      "type": "dns_servers",
+      "portable": false,
+      "in": "both",
+      "note": "Терпимая форма чтения D-118 (SPEC 129), заменяет перенос D-117: писатель это имя не пишет; читатель переносит значение в запись dns.servers[kind=template, tag=safe_dns_dot].vars.dom_resolver (самый длинный тег среди объявленных пар (tag, var)); у записи файла со своими vars корневое уступает (backup_var_skipped reason superseded), записи нет — backup_var_skipped reason no_record."
+    },
     "resolve_strategy": {
       "type": "enum",
       "portable": true,

@@ -926,8 +926,8 @@ func (tab *CoreDashboardTab) switchToNamedState(id string) error {
 // downloadConfigTemplate — кнопка [Download template] вкладки Local.
 //
 // Само скачивание живёт в wizardtemplate.DownloadTemplate: тот же механизм
-// зовёт Мастер, когда обнаруживает, что файла нет (в том числе после того,
-// как апгрейд лаунчера инвалидировал пин). Здесь остаётся только UI:
+// зовёт Мастер и сборка config.json, когда обнаруживают, что файла нет.
+// Здесь остаётся только UI:
 // блокировка кнопки, диалоги и обновление статуса.
 func (tab *CoreDashboardTab) downloadConfigTemplate() {
 	configTemplateURL := wizardtemplate.GetTemplateURL()

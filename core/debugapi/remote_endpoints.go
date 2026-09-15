@@ -81,6 +81,8 @@ func (s *Server) remoteEndpoints() []apiEndpoint {
 		{"GET/PATCH", "/remote/machines/{id}/state/dns", true, "Get / replace machine's dns_options", s.handleRemoteStateDNS},
 		{"GET/PATCH", "/remote/machines/{id}/state/dns/rules", true, "Get / replace machine's USER dns rules (text)", s.handleRemoteStateDNSRules},
 		{"GET", "/remote/machines/{id}/state/outbounds/resolved", true, "Machine's resolved outbounds", s.handleRemoteStateOutboundsResolved},
+		{"GET", "/remote/machines/{id}/backup/export", true, "Export the machine's settings as an LX Backup file", s.handleRemoteBackupExport},
+		{"POST", "/remote/machines/{id}/backup/import", true, "Import an LX Backup file into the machine's profile", s.handleRemoteBackupImport},
 
 		// Наблюдаемость (gRPC StartedService + admin REST хоста).
 		{"GET", "/remote/machines/{id}/groups", true, "Selector group tags of the machine's core", s.handleRemoteGroups},

@@ -31,6 +31,12 @@ var portableVars = map[string]struct{}{
 	"urltest_interval":  {},
 	"urltest_tolerance": {},
 	"urltest_url":       {},
+
+	// Маршрут шаблонных DNS-серверов в этот список больше не входит (SPEC 129,
+	// D-118): значения переменных сервера едут записью
+	// `dns.servers[kind=template].vars`, а пять склеенных имён D-117
+	// (`dns_google_udp_outbound` и др.) — только терпимая форма чтения, которую
+	// импорт переносит в запись до слияния (state.MoveRootDNSVarsMap).
 }
 
 // IsPortableVar сообщает, переносится ли переменная в бэкап.

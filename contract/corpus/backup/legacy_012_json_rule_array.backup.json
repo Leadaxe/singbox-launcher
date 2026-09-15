@@ -1,0 +1,55 @@
+{
+  "lx_backup": 1,
+  "exported_by": {
+    "app": "lxbox",
+    "version": "2.23.2"
+  },
+  "exported_at": "2026-09-14T00:00:00Z",
+  "rules": [
+    {
+      "kind": "json",
+      "name": "Raw object",
+      "enabled": true,
+      "num": 1000,
+      "match": {
+        "domain_suffix": [
+          "object.example-1.com"
+        ],
+        "outbound": "proxy"
+      }
+    },
+    {
+      "kind": "inline",
+      "name": "Keep",
+      "enabled": true,
+      "num": 1002,
+      "outbound": "direct",
+      "match": {
+        "domain_suffix": [
+          "keep.example-3.com"
+        ]
+      }
+    },
+    {
+      "kind": "json",
+      "name": "Raw array",
+      "enabled": false,
+      "num": 1001,
+      "match": [
+        {
+          "domain_suffix": [
+            "first.example-2.com"
+          ],
+          "outbound": "direct"
+        },
+        {
+          "ip_cidr": [
+            "203.0.113.0/24"
+          ],
+          "action": "reject"
+        },
+        "not a rule"
+      ]
+    }
+  ]
+}

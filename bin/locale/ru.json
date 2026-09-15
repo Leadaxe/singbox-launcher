@@ -527,6 +527,9 @@
   "Failed to start sing-box:\n\n%s\n\nPlease check:\n1. config.json is valid\n2. sing-box executable exists\n3. Check logs for details": {
     "value": "Не удалось запустить sing-box:\n\n%s\n\nПроверьте:\n1. config.json корректен\n2. Исполняемый файл sing-box существует\n3. Подробности в логах"
   },
+  "Failed to rebuild config.json:\n\n%s\n\nsing-box was not started with the previous config.json: it may not match your current settings. Fix the cause and try again.": {
+    "value": "Не удалось пересобрать config.json:\n\n%s\n\nsing-box не запущен с прежним config.json: он может не соответствовать текущим настройкам. Устраните причину и попробуйте снова."
+  },
   "Parser failed:\n\n%s\n\nPlease check:\n1. Subscription URL is valid\n2. Network connection\n3. Check parser.log for details": {
     "value": "Ошибка парсера:\n\n%s\n\nПроверьте:\n1. URL подписки корректен\n2. Подключение к сети\n3. Подробности в parser.log"
   },
@@ -1051,6 +1054,9 @@
   "%d naive node(s) skipped: %s": {
     "value": "Узлов naive пропущено: %d — %s"
   },
+  "%d tailscale node(s) skipped: %s": {
+    "value": "Узлов tailscale пропущено: %d — %s"
+  },
   "%d AmneziaWG 3.x node(s) skipped: %s": {
     "value": "Узлов AmneziaWG 3.x пропущено: %d — %s"
   },
@@ -1080,6 +1086,9 @@
   },
   "it has no node %q": {
     "value": "узла %q в нём нет"
+  },
+  "it has no node %q — this looks like the final tag of group %q; pick the target again": {
+    "value": "узла %q в нём нет — похоже на финальный тег группы %q, выберите цель заново"
   },
   "target %q is not among nodes, Directions and folder replacements": {
     "value": "цели %q нет среди узлов, Направлений и замен"
@@ -1119,6 +1128,12 @@
   },
   "tag %q is claimed twice: %s and %s": {
     "value": "тег %q занят дважды: %s и %s"
+  },
+  "Direction %q: node %q is listed as an option — a node cannot be added to a Direction directly, use a filter": {
+    "value": "Направление %q: узел %q стоит опцией — узел нельзя добавить в Направление напрямую, используйте фильтр"
+  },
+  "Direction %q: option %q was not found — it is left out of the group": {
+    "value": "Направление %q: вариант %q не найден — в группу он не попадает"
   },
   "a Direction": {
     "value": "Направление"
@@ -1239,6 +1254,9 @@
   },
   "Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://). For multiple links, use a new line for each.": {
     "value": "Поддерживаются URL подписок (http/https) или прямые ссылки (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://). Для нескольких ссылок — по одной на строку."
+  },
+  "Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://, hysteria://, hysteria2://, ssh://, wireguard://). For multiple links, use a new line for each.": {
+    "value": "Поддерживаются URL подписок (http/https) или прямые ссылки (vless://, vmess://, trojan://, ss://, hysteria://, hysteria2://, ssh://, wireguard://). Для нескольких ссылок — по одной на строку."
   },
   "Add from file": {
     "value": "Добавить из файла"
@@ -1556,6 +1574,9 @@
   "Invalid JSON: %s": {
     "value": "Некорректный JSON: %s"
   },
+  "Node document rejected: %s": {
+    "value": "Документ узла отклонён: %s"
+  },
   "The outbound object must have a non-empty \"type\" field.": {
     "value": "В объекте outbound должно быть непустое поле \"type\"."
   },
@@ -1715,6 +1736,12 @@
   "Members": {
     "value": "Участники"
   },
+  "Tailnet node": {
+    "value": "Узел tailnet"
+  },
+  "Also use the system resolvers": {
+    "value": "Также использовать системные резолверы"
+  },
   "Mode": {
     "value": "Режим"
   },
@@ -1816,6 +1843,15 @@
   },
   "Include this rule in the generated route when enabled": {
     "value": "Включить это правило в сгенерированный маршрут"
+  },
+  "Node rule": {
+    "value": "Правило узла"
+  },
+  "Route rule carried by node %q": {
+    "value": "Правило маршрута, которое несёт узел %q"
+  },
+  "node is disabled": {
+    "value": "узел выключен"
   },
   "Drag to reorder": {
     "value": "Перетащите, чтобы изменить порядок"
@@ -2016,6 +2052,9 @@
   },
   "Custom JSON must be an object": {
     "value": "Произвольный JSON должен быть объектом"
+  },
+  "Paste one rule at a time: the editor keeps one sing-box rule per entry": {
+    "value": "Вставляйте правила по одному: в одной записи редактора — одно правило sing-box"
   },
   "Save State": {
     "value": "Сохранить состояние"
@@ -2824,6 +2863,9 @@
   "The config for the remote machine was written to a separate file. The local bin/config.json was not touched.": {
     "value": "Конфиг для удалённой машины записан в отдельный файл. Локальный bin/config.json не тронут."
   },
+  "Failed to build the machine's config": {
+    "value": "Не удалось собрать конфиг машины"
+  },
   "Could not read the subscriptions for this target, so the config would contain no proxy nodes. Check the sources on the Sources tab and try again.": {
     "value": "Не удалось прочитать подписки для этого назначения — конфиг ушёл бы без единой прокси-ноды. Проверьте источники на вкладке «Источники» и попробуйте снова."
   },
@@ -3224,6 +3266,9 @@
   "Subscriptions: %d\nServers: %d\nRules: %d\nVariables: %d": {
     "value": "Подписок: %d\nСерверов: %d\nПравил: %d\nПеременных: %d"
   },
+  "Sources: %d\nRules: %d\nVariables: %d": {
+    "value": "Источников: %d\nПравил: %d\nПеременных: %d"
+  },
   "Importing replaces the current sources and rules.": {
     "value": "Импорт заменит текущие источники и правила."
   },
@@ -3260,6 +3305,9 @@
   "%s — target does not exist here, the rule is imported turned off": {
     "value": "%s — такой цели здесь нет, правило импортировано выключенным"
   },
+  "%s — this DNS server's channel does not exist here, the server is imported turned off": {
+    "value": "%s — канала этого DNS-сервера здесь нет, сервер импортирован выключенным"
+  },
   "%s — default route target does not exist here, left unchanged": {
     "value": "%s — цели маршрута по умолчанию здесь нет, оставлено без изменений"
   },
@@ -3268,6 +3316,21 @@
   },
   "%s — this setting means something else on this machine, skipped": {
     "value": "%s — на этой машине эта настройка означает другое, пропущена"
+  },
+  "%s: parameter \"%s\" is not declared by this template's DNS server, skipped": {
+    "value": "%s: параметр «%s» не объявлен DNS-сервером этого шаблона, пропущен"
+  },
+  "%s: parameter \"%s\" is not declared by this template's preset, skipped": {
+    "value": "%s: параметр «%s» не объявлен пресетом этого шаблона, пропущен"
+  },
+  "%s — the file also sets this DNS server's parameters in its entry; the entry wins, this older form is skipped": {
+    "value": "%s — файл задаёт параметры этого DNS-сервера и в его записи; запись важнее, старая форма пропущена"
+  },
+  "%s — the file has no entry for this DNS server, the value is skipped": {
+    "value": "%s — в файле нет записи этого DNS-сервера, значение пропущено"
+  },
+  "%s — this template has no such DNS server, the entry is not imported": {
+    "value": "%s — в этом шаблоне нет такого DNS-сервера, запись не импортирована"
   },
   "%s — not supported here, skipped": {
     "value": "%s — здесь не поддерживается, пропущено"
@@ -3341,6 +3404,18 @@
   "Delete all completed recording sessions? Active session is preserved.": {
     "value": "Удалить все завершённые сессии записи? Активная сессия сохранится."
   },
+  "Export live buffer": {
+    "value": "Экспорт буфера «Лайв»"
+  },
+  "A filter is active. Export what's on screen, or every event in the buffer?": {
+    "value": "Включён фильтр. Экспортировать то, что на экране, или все события буфера?"
+  },
+  "Visible rows only": {
+    "value": "Только видимые строки"
+  },
+  "Whole buffer": {
+    "value": "Весь буфер"
+  },
   "By client": {
     "value": "По клиенту"
   },
@@ -3361,6 +3436,15 @@
   },
   "Read-only. Edit via preset variables (Rules tab → Edit). For custom DNS rules use the Extra rules editor below.": {
     "value": "Только чтение. Правится через переменные пресета (вкладка Rules → Изменить). Для своих DNS-правил используйте редактор ниже."
+  },
+  "From node %q": {
+    "value": "Из узла %q"
+  },
+  "Read-only. This DNS server travels with the node — edit it on the node's JSON tab.": {
+    "value": "Только чтение. Этот DNS-сервер живёт вместе с узлом — правьте его на вкладке JSON узла."
+  },
+  "Read-only. This DNS rule travels with the node — edit it on the node's JSON tab.": {
+    "value": "Только чтение. Это DNS-правило живёт вместе с узлом — правьте его на вкладке JSON узла."
   },
   "+ Add Rule": {
     "value": "+ Правило"
@@ -3524,20 +3608,59 @@
   "Keys are base64, as in a wg-quick .conf. MTU above 1380 breaks AmneziaWG endpoints — for those the parser clamps it down. A whole .conf can be pasted on the Source tab instead.": {
     "value": "Ключи в base64, как в .conf для wg-quick. MTU выше 1380 ломает узлы AmneziaWG — для них парсер сам понижает значение. Целый .conf можно вставить на вкладке Source."
   },
+  "Tailscale": {
+    "value": "Tailscale"
+  },
+  "Auth key": {
+    "value": "Auth key"
+  },
+  "One-off keys are consumed at first login; the node identity then lives in the state directory. Deleting the profile registers a new device — use a reusable key for that.": {
+    "value": "Одноразовый ключ расходуется при первом входе, дальше идентичность узла хранится в каталоге состояния. После удаления профиля узел регистрируется как новое устройство — на этот случай нужен многоразовый ключ."
+  },
+  "Control URL": {
+    "value": "Control URL"
+  },
+  "optional — the official coordination server by default": {
+    "value": "необязательно — по умолчанию официальный сервер координации"
+  },
+  "Hostname": {
+    "value": "Имя хоста"
+  },
+  "optional — this machine's name by default": {
+    "value": "необязательно — по умолчанию имя этой машины"
+  },
+  "Ephemeral node (removed from the tailnet when it goes offline)": {
+    "value": "Эфемерный узел (удаляется из tailnet, когда уходит в офлайн)"
+  },
+  "Accept routes advertised by other nodes": {
+    "value": "Принимать маршруты, анонсированные другими узлами"
+  },
+  "Exit node": {
+    "value": "Exit node"
+  },
+  "Auth key is required": {
+    "value": "Укажите auth key"
+  },
   "macOS is blocking the launcher's access to the local network: the system rejects the connection instantly, before it even leaves this Mac. Enable the launcher in System Settings → Privacy & Security → Local Network. If it is already enabled there, the app bundle's code signature is broken (typical after swapping a dev binary into the installed app) — reinstall the launcher.": {
     "value": "macOS блокирует лаунчеру доступ к локальной сети: система отклоняет соединение мгновенно, ещё до выхода в сеть. Включите лаунчер в Настройки → Конфиденциальность и безопасность → Локальная сеть. Если он там уже включён — у бандла сломана подпись кода (типично после подмены dev-бинаря в установленном приложении), переустановите лаунчер."
   },
   "The machine is answering again — the failure was transient (macOS re-checked its local-network policy or the network blinked). Press Connect again.": {
     "value": "Машина снова отвечает — отказ был кратковременным (macOS перепроверила политику локальной сети или сеть моргнула). Нажмите Connect ещё раз."
   },
-  "Detour links cleared": {
-    "value": "Ссылки detour сброшены"
+  "Links to the deleted node": {
+    "value": "Ссылки на удалённый узел"
   },
-  "Node %q was renamed, so its identity changed. Detour links to it have been cleared in: %s": {
-    "value": "Узел %q переименован — его идентичность изменилась. Ссылки detour на него сброшены у источников: %s"
+  "Node %q was deleted. Links through it were removed, and anything that chose it as a target needs a new one. Affected: %s": {
+    "value": "Узел %q удалён. Ссылки через него сняты, а там, где он был выбран целью, нужно выбрать новую. Задеты: %s"
   },
   "tag %q is already taken — directions, nodes and service outbounds share one namespace": {
     "value": "тег %q уже занят — Направления, узлы и служебные outbound'ы живут в одном пространстве имён"
+  },
+  "node %q cannot be added to a Direction directly — use a filter": {
+    "value": "узел %q нельзя добавить в Направление напрямую — используйте фильтр"
+  },
+  "option %q not found": {
+    "value": "вариант %q не найден"
   },
   "Clone from…": {
     "value": "Клонировать с…"
@@ -3586,6 +3709,21 @@
   },
   "Stays machine-specific (not copied):": {
     "value": "Останется своим у этой машины (не копируется):"
+  },
+  "outbound interface": {
+    "value": "исходящий интерфейс"
+  },
+  "gateway mode": {
+    "value": "режим шлюза"
+  },
+  "gateway LAN interfaces": {
+    "value": "LAN-интерфейсы шлюза"
+  },
+  "Clash API address": {
+    "value": "адрес Clash API"
+  },
+  "Clash API secret": {
+    "value": "секрет Clash API"
   },
   "This replaces the current settings of this machine. The current state is saved as a snapshot first — you can get it back with Read.": {
     "value": "Это заменит текущие настройки машины. Сначала текущее состояние сохранится снимком — его можно вернуть через «Читать»."
@@ -3818,8 +3956,17 @@
   "Folder is empty — paste links above to add nodes.": {
     "value": "Папка пуста — вставьте ссылки в поле выше, чтобы добавить узлы."
   },
+  "Enable all nodes": {
+    "value": "Включить все узлы"
+  },
+  "Disable all nodes": {
+    "value": "Выключить все узлы"
+  },
   "Adds nodes to this folder: direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://) or sing-box JSON. One per line. A subscription URL goes to Sources, not into a folder.": {
     "value": "Добавляет узлы в эту папку: прямые ссылки (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://) либо JSON sing-box. По одной в строке. Ссылка на подписку кладётся в «Источники», а не в папку."
+  },
+  "Adds nodes to this folder: direct links (vless://, vmess://, trojan://, ss://, hysteria://, hysteria2://, ssh://, wireguard://) or sing-box JSON. One per line. A subscription URL goes to Sources, not into a folder.": {
+    "value": "Добавляет узлы в эту папку: прямые ссылки (vless://, vmess://, trojan://, ss://, hysteria://, hysteria2://, ssh://, wireguard://) либо JSON sing-box. По одной в строке. Ссылка на подписку кладётся в «Источники», а не в папку."
   },
   "Paste links or JSON…": {
     "value": "Вставить ссылки или JSON…"
@@ -3977,6 +4124,9 @@
   "The outbound as it will reach the config.": {
     "value": "Outbound в том виде, в каком он попадёт в конфиг."
   },
+  "The node and the config fragments it carries. @self is this node's tag.": {
+    "value": "Узел и фрагменты конфига, которые он несёт. @self — тег этого узла."
+  },
   "The sing-box outbound this node is built from — exactly what the build writes to config.json. Edit and press Apply to store it; Regen from raw rebuilds it from the original URI/JSON. Tag and detour are restamped by the launcher at build time.": {
     "value": "Outbound sing-box, из которого собран этот узел, — ровно то, что сборка пишет в config.json. Правьте и нажмите Apply, чтобы сохранить; «Пересобрать из исходника» вернёт его к исходному URI/JSON. Тег и detour лаунчер проставляет заново на сборке."
   },
@@ -4100,6 +4250,12 @@
   "subscription %q: %d disable mark(s) not carried over — no materialized nodes": {
     "value": "подписка %q: %d отметк(и) выключения не перенесены — нет материализованных узлов"
   },
+  "subscription %q: %d disable mark(s) kept aside — they will apply after the first update": {
+    "value": "подписка %q: %d отметк(и) выключения отложены — применятся после первого обновления"
+  },
+  "subscription %q: %d disable mark(s) not carried over — they addressed nodes by a hash that no longer exists": {
+    "value": "подписка %q: %d отметк(и) выключения не перенесены — они указывали на узлы по хэшу, которого больше нет"
+  },
   "chain %q: hop %q does not resolve — the chain degrades fail-closed": {
     "value": "цепочка %q: хоп %q не резолвится — цепочка деградирует fail-closed"
   },
@@ -4129,6 +4285,12 @@
   },
   "subscription %q: %s": {
     "value": "подписка %q: %s"
+  },
+  "rule of unknown kind %q kept as is (%s)": {
+    "value": "правило неизвестного вида %q оставлено как есть (%s)"
+  },
+  "DNS server %s carried tag %q inside its body; the record tag %q wins": {
+    "value": "DNS-сервер %s нёс в теле тег %q; действует тег записи %q"
   },
   "no members left": {
     "value": "не осталось ни одного участника"
@@ -4291,6 +4453,21 @@
   },
   "%s — label dropped, a node is named by its tag": {
     "value": "%s — подпись отброшена: имя узла — это его тег"
+  },
+  "%s — these Direction options are settings of this machine (folder replacements, service tags, nodes) and did not go into the file; a node joins a Direction through its filter": {
+    "value": "%s — эти варианты Направления — настройки этой машины (замены папок, служебные теги, узлы) и в файл не поехали; узел попадает в Направление через фильтр"
+  },
+  "%s — these Direction options are not Directions or known names here, they were left out; a node joins a Direction through its filter": {
+    "value": "%s — эти варианты Направления здесь не Направления и не известные имена, они не добавлены; узел попадает в Направление через фильтр"
+  },
+  "%s — this group picks its members by a rule, which the launcher does not support; it was not imported, and links to it will not resolve": {
+    "value": "%s — эта группа набирает состав по правилу, а лаунчер такие группы не поддерживает; группа не импортирована, и ссылки на неё не разрешатся"
+  },
+  "%s — a node rule referenced a rule set; node sections neither declare nor reference rule sets, so the whole rule was dropped (cutting just the reference would have turned it into a match-all)": {
+    "value": "%s — правило узла ссылалось на rule set; секции узла rule set не объявляют и на них не ссылаются, поэтому правило отброшено целиком (если вырезать одну ссылку, оно ловило бы весь трафик)"
+  },
+  "%s — a node carries an entry of this kind, which node sections do not allow; the entry was dropped, the rest of the node came through": {
+    "value": "%s — узел несёт запись такого вида, какой секции узла не допускают; запись отброшена, остальная часть узла импортирована"
   },
   "Settings are merged, not replaced: subscriptions match by address, servers by what they connect to, and anything of yours that is not in the file stays. Routing rules are the exception — they are replaced by the file.": {
     "value": "Настройки сливаются, а не заменяются: подписки сходятся по адресу, серверы — по тому, куда они подключаются, и всё ваше, чего нет в файле, остаётся. Исключение — правила маршрутизации: они замещаются файлом."

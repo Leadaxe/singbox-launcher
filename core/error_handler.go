@@ -12,6 +12,7 @@ import (
 const (
 	parserText  = "Parser failed:\n\n%s\n\nPlease check:\n1. Subscription URL is valid\n2. Network connection\n3. Check parser.log for details"
 	startupText = "Failed to start sing-box:\n\n%s\n\nPlease check:\n1. config.json is valid\n2. sing-box executable exists\n3. Check logs for details"
+	rebuildText = "Failed to rebuild config.json:\n\n%s\n\nsing-box was not started with the previous config.json: it may not match your current settings. Fix the cause and try again."
 )
 
 // showErrorUI logs the error and shows it in the UI if available.
@@ -26,6 +27,13 @@ func (ac *AppController) showErrorUI(category string, err error) {
 // ShowStartupError shows an error when sing-box fails to start.
 func (ac *AppController) ShowStartupError(err error) {
 	ac.showErrorUI("StartupError", fmt.Errorf("%s", locale.Tf(startupText, err.Error())))
+}
+
+// ShowRebuildError shows why config.json could not be rebuilt before a core
+// start. The start is abandoned rather than carried out on the previous
+// config.json (rebuildConfigBeforeStart).
+func (ac *AppController) ShowRebuildError(err error) {
+	ac.showErrorUI("RebuildError", fmt.Errorf("%s", locale.Tf(rebuildText, err.Error())))
 }
 
 // ShowParserError shows an error when parser fails.

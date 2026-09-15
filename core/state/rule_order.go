@@ -68,7 +68,7 @@ type RuleOrderSpec struct {
 	DefaultEnabled bool
 }
 
-// MarkRuleOrder проставляет OrderNum правилам, у которых его ещё нет.
+// MarkRuleOrder проставляет Num правилам, у которых его ещё нет.
 //
 // Отдельного версионированного шага миграции НЕТ: state, записанный до
 // SPEC 106, приезжает с nil и размечается при первой загрузке.
@@ -89,7 +89,7 @@ func MarkRuleOrder(rules []Rule, specs map[string]RuleOrderSpec) bool {
 	changed := false
 	nextUser := UserRuleNumStart
 	for i := range rules {
-		if rules[i].OrderNum != nil {
+		if rules[i].Num != nil {
 			continue
 		}
 		num := 0
@@ -105,7 +105,7 @@ func MarkRuleOrder(rules []Rule, specs map[string]RuleOrderSpec) bool {
 			nextUser++
 		}
 		n := num
-		rules[i].OrderNum = &n
+		rules[i].Num = &n
 		changed = true
 	}
 	sortRulesByNumInPlace(rules)
@@ -120,7 +120,7 @@ func sortRulesByNumInPlace(rules []Rule) {
 	})
 }
 
-// SortRulesByNum сортирует правила по возрастанию OrderNum.
+// SortRulesByNum сортирует правила по возрастанию Num.
 //
 // Сортировка СТАБИЛЬНАЯ: при равных номерах сохраняется взаимный порядок —
 // равенство возможно после исчерпания пользовательской зоны (NextUserRuleNum).
@@ -134,10 +134,10 @@ func SortRulesByNum(rules []Rule) []Rule {
 }
 
 func ruleNum(r Rule) int {
-	if r.OrderNum == nil {
+	if r.Num == nil {
 		return DefaultRuleNum
 	}
-	return *r.OrderNum
+	return *r.Num
 }
 
 // SeedRequiredRules добавляет отсутствующие несортируемые пресеты шаблона.
@@ -174,13 +174,10 @@ func SeedRequiredRules(rules []Rule, specs map[string]RuleOrderSpec) []Rule {
 	for _, ref := range missing {
 		spec := specs[ref]
 		num := spec.Num
-		out = append(out, Rule{
-			Kind:     RuleKindPreset,
-			Ref:      ref,
-			Enabled:  spec.DefaultEnabled,
-			OrderNum: &num,
-			Body:     []byte(`{"vars":{}}`),
-		})
+		seeded := NewPresetRule(ref, nil)
+		seeded.Enabled = spec.DefaultEnabled
+		seeded.Num = &num
+		out = append(out, seeded)
 	}
 	return out
 }
@@ -214,14 +211,59 @@ func DedupePresetRules(rules []Rule) []Rule {
 	return out
 }
 
-// NormalizeRuleOrder — полный проход: дедуп → seed пресетов → разметка →
-// сортировка.
+// PinRequiredRuleNums ставит несортируемым пресетам номер шаблона — и тем,
+// у кого номер уже есть.
+//
+// Номер несортируемого пресета — часть инварианта оси (голова
+// traffic-processing = 0, D-050): пользователь его не двигает (placeRuleAt),
+// ленивый сдвиг его не вытесняет, seed ставит номер шаблона. Номер, отличный
+// от шаблонного, пользователь поставить не мог — его ставили только импорт
+// бэкапа 1.5.3–1.5.6 (сплошная перенумерация с 1000, renumberImportedRules),
+// ручная правка файла или Debug API. Сдвинутая голова уезжала в
+// пользовательскую зону: сборка ставила её за route.rules шаблона
+// (core/build/preset_merge.go), а пресет, включённый позже с номером
+// шаблона ниже 1000, вставал перед ней — sniff переставал быть первым.
+//
+// Сортируемые пресеты здесь НЕ трогаются, даже уехавшие импортом в 1000+:
+// тот же номер пользователь ставит перетаскиванием (правила встают свободно
+// между якорями), и отличить одно от другого по состоянию нечем.
+//
+// Меняется только номер несортируемого пресета: номера и взаимный порядок
+// остальных правил остаются. Возвращает true, если что-то поправлено.
+func PinRequiredRuleNums(rules []Rule, specs map[string]RuleOrderSpec) bool {
+	changed := false
+	for i := range rules {
+		if rules[i].Kind != RuleKindPreset {
+			continue
+		}
+		spec, ok := specs[rules[i].Ref]
+		if !ok || spec.Sortable {
+			continue
+		}
+		if rules[i].Num != nil && *rules[i].Num == spec.Num {
+			continue
+		}
+		n := spec.Num
+		rules[i].Num = &n
+		changed = true
+	}
+	return changed
+}
+
+// NormalizeRuleOrder — полный проход: дедуп → seed пресетов → номер шаблона
+// несортируемым → разметка → сортировка.
 // Идемпотентен: повторный вызов на нормализованном списке ничего не меняет.
 // Значения переменных существующих пресетов сохраняются (seed срабатывает,
 // только если правила нет вовсе).
+//
+// Зовётся на обоих путях, которые читают ось вместе с шаблоном: при каждой
+// сборке (core/build/resolve_route.go) и при загрузке состояния в визард
+// (restorePresetRefs) — оттуда вылеченная голова уходит в state.json первым
+// же сохранением.
 func NormalizeRuleOrder(rules []Rule, specs map[string]RuleOrderSpec) []Rule {
 	out := DedupePresetRules(rules)
 	out = SeedRequiredRules(out, specs)
+	PinRequiredRuleNums(out, specs)
 	MarkRuleOrder(out, specs)
 	return SortRulesByNum(out)
 }
@@ -234,10 +276,10 @@ func NormalizeRuleOrder(rules []Rule, specs map[string]RuleOrderSpec) []Rule {
 func NextUserRuleNum(rules []Rule) int {
 	maxInZone := UserRuleNumStart - 1
 	for _, r := range rules {
-		if r.OrderNum == nil {
+		if r.Num == nil {
 			continue
 		}
-		n := *r.OrderNum
+		n := *r.Num
 		if n < UserRuleNumStart || n > UserRuleNumEnd {
 			continue
 		}
@@ -268,7 +310,8 @@ func NextUserRuleNum(rules []Rule) int {
 // вытеснять некуда, но он всё равно уезжал бы на +1.
 //
 // target == nil → правило уезжает в начало пользовательской зоны.
-// Несортируемые не двигаются и не сдвигаются: их номера часть инварианта.
+// Несортируемые не двигаются и не сдвигаются: их номера часть инварианта
+// (номер, разошедшийся с шаблоном, возвращает PinRequiredRuleNums).
 //
 // M7 (SPEC 113-C §3, ПЕРЕСМОТРЕН решением пользователя 28.08.2026): клэмп
 // оставлен ТОЛЬКО как защита от провала под системную голову (want <= 0).
@@ -347,10 +390,10 @@ func placeRuleAt(rules []Rule, movedIdx int, want int, sortable func(Rule) bool)
 		if i == movedIdx || !sortable(rules[i]) {
 			continue
 		}
-		if rules[i].OrderNum == nil {
+		if rules[i].Num == nil {
 			continue
 		}
-		if n := *rules[i].OrderNum; n >= want {
+		if n := *rules[i].Num; n >= want {
 			occupied[n] = append(occupied[n], i)
 		}
 	}
@@ -371,10 +414,10 @@ func placeRuleAt(rules []Rule, movedIdx int, want int, sortable func(Rule) bool)
 	// Сдвигаем сверху вниз — иначе +1 наложился бы на ещё не сдвинутого соседа.
 	for i := len(block) - 1; i >= 0; i-- {
 		idx := block[i]
-		n := *rules[idx].OrderNum + 1
-		rules[idx].OrderNum = &n
+		n := *rules[idx].Num + 1
+		rules[idx].Num = &n
 	}
 
 	w := want
-	rules[movedIdx].OrderNum = &w
+	rules[movedIdx].Num = &w
 }

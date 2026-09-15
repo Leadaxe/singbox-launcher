@@ -531,8 +531,8 @@ func TestMigrationScenario8PurgeAndIdempotency(t *testing.T) {
 	if bytes.Equal(original, after) {
 		t.Fatal("миграция не переписала файл — состояние осталось легаси")
 	}
-	if !bytes.Contains(after, []byte(`"schema": "sources_v7"`)) {
-		t.Fatalf("файл после миграции не в схеме v7:\n%s", after)
+	if !bytes.Contains(after, []byte(`"schema": "sources_v8"`)) {
+		t.Fatalf("файл после миграции не в схеме v8:\n%s", after)
 	}
 	bak, err := os.ReadFile(statePath + ".v6.bak")
 	if err != nil {

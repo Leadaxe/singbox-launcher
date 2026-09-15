@@ -20,6 +20,7 @@ import (
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui"
@@ -42,6 +43,12 @@ const (
 	// glRenderedGrace — сколько процесс должен прожить после старта цикла
 	// событий, чтобы старт считался дошедшим до первого кадра (SPEC 125).
 	glRenderedGrace = 3 * time.Second
+	// macQuitBudget — сколько выход по запросу macOS (Cmd+Q, «Завершить» в
+	// Dock, выход из системы, выключение) ждёт GracefulExit. Ядро
+	// останавливается штатно, но выход из системы лаунчер дольше не держит:
+	// по истечении процесс завершается всё равно (решение владельца 15.09.2026).
+	// Сам GracefulExit ждёт остановки ядра до 2 с, остальное — запас.
+	macQuitBudget = 5 * time.Second
 )
 
 // rememberOfferedRenderer запоминает renderer железа, про который мы уже
@@ -116,18 +123,15 @@ func main() {
 	// гейта показывать некому (SPEC 125 §2.2).
 	platform.EnsureDesktopOpenGL(controller.FileService.ExecDir, !*startInTray)
 
-	// Force-invalidate the wizard template if it was last installed by an
-	// older launcher version (SPEC 046). Has to run before any UI consults
-	// bin/wizard_template.json — the Core Dashboard tab's "Download Template"
-	// flow relies on the file being absent.
+	// Replace the wizard template in the background if it was installed by an
+	// older launcher version (SPEC 046). The stale file stays until the new
+	// one is downloaded, and config builds wait for the refresh — so the
+	// first core start is built from the right template. Runs before anything
+	// can start the core (autostart, UI, debug API).
 	//
-	// Failure here is non-fatal: a stat/remove error means the user keeps
-	// running with the existing (possibly mismatched) template, which is a
-	// degraded but not broken state. The next manual Download Template will
-	// resync `last_template_launcher_version`.
-	if err := core.InvalidateTemplateIfStale(controller.FileService.ExecDir); err != nil {
-		debuglog.WarnLog("template: stale-check failed: %v", err)
-	}
+	// Failure is non-fatal: the installed template stays in use and the next
+	// launch retries.
+	controller.StartTemplateRefresh()
 
 	// SPEC 098: до этой версии профиль удалённой машины был один на всех
 	// (bin/wizard_states/remote/state.json + bin/remote-config.json). Отдаём
@@ -421,7 +425,7 @@ func main() {
 	// SetFixedSize здесь неприменим (он запрещает и растягивание); нижнюю
 	// границу держит MinSize контента — Fyne не даёт окну стать меньше него.
 	controller.UIService.MainWindow.Resize(ui.MinWindowSize)
-	controller.UIService.MainWindow.CenterOnScreen() // Center the window on the screen
+	fynewidget.CenterOnScreen(controller.UIService.MainWindow) // Center the window on the screen
 
 	core.CheckIfLauncherAlreadyRunningUtil()
 
@@ -441,6 +445,14 @@ func main() {
 	// Uses native NSApplicationDelegate to handle applicationShouldHandleReopen
 	// This is a workaround for Fyne issue #3845 (Dock click not showing hidden window)
 	if runtime.GOOS == "darwin" {
+		// Тот же делегат получает запрос macOS на завершение: Cmd+Q,
+		// «Завершить» в Dock, выход из системы. Выход идёт через GracefulExit,
+		// как Quit в трее; без обработчика AppKit завершал процесс сразу, и в
+		// classic-режиме ядро оставалось работать без лаунчера.
+		platform.SetQuitRequestHandler(func() {
+			debuglog.WarnLog("Application shutting down: macOS quit request (Cmd+Q, Dock menu, log out or shut down).")
+			controller.GracefulExit()
+		}, macQuitBudget)
 		platform.SetupDockReopenHandler(func() {
 			fyne.Do(func() {
 				// Show() is safe to call even if window is already visible
@@ -536,11 +548,20 @@ func main() {
 	// Start the application event loop (windowless mode)
 	// This keeps the app running even when window is hidden/closed
 	// The menu already has "Open" item that calls MainWindow.Show()
-	controller.UIService.Application.Run()
+	controller.UIService.RunEventLoop()
 
-	// The code below executes only after app.Run() finishes (when app.Quit() is called).
-	// This is where final cleanup is performed.
-	debuglog.WarnLog("Application shutting down.")
+	// The code below executes only after the event loop has ended. This is
+	// where final cleanup is performed.
+	//
+	// Цикл гасит либо наш GracefulExit (трей, Exit, перезапуск рендерера) —
+	// тогда остановка уже прошла, и вызов ниже ничего не делает, — либо сам
+	// драйвер, например по SIGTERM: тогда ядро и логи останавливаются только
+	// здесь, а Quit драйверу уже не нужен (UIService.RunEventLoop).
+	if controller.IsExiting() {
+		debuglog.WarnLog("Application shutting down.")
+	} else {
+		debuglog.WarnLog("Application shutting down: event loop stopped by the driver (signal or system close request).")
+	}
 
 	// Cleanup platform-specific handlers
 	if runtime.GOOS == "darwin" {

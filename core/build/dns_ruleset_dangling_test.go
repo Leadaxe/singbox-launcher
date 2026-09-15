@@ -40,12 +40,8 @@ func TestDNSRuleSetRefsSurviveWhenTagIsEmitted(t *testing.T) {
 		t.Fatalf("mkdir srs: %v", err)
 	}
 
-	srsRule := state.Rule{
-		Kind:    state.RuleKindSrs,
-		Enabled: true,
-		Body: json.RawMessage(`{"name":"Ads",` +
-			`"srs_url":"https://example.invalid/geosite-ads.srs","outbound":"direct-out"}`),
-	}
+	srsRule := state.NewSrsRule("Ads", []string{"https://example.invalid/geosite-ads.srs"}, "direct-out")
+	srsRule.Enabled = true
 	srsID := state.StableRuleID(srsRule)
 	srsTag := "user:" + srsID
 	srsFile := filepath.Join(srsPath, srsID+".srs")

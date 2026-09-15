@@ -11,8 +11,8 @@ const (
 	WizardTemplateFileName = "wizard_template.json"
 	// WizardTemplateVersionFileName — маркер рядом с шаблоном: версия лаунчера,
 	// под которую шаблон положил УСТАНОВЩИК (архив win64-full, install-macos.sh).
-	// Совпал с AppVersion — шаблон свежий, и первый запуск его не сносит
-	// (core.InvalidateTemplateIfStale). Сам лаунчер маркер не пишет.
+	// Совпал с AppVersion — шаблон свежий, и первый запуск его не перекачивает
+	// (core.RefreshTemplateIfStale). Сам лаунчер маркер не пишет.
 	WizardTemplateVersionFileName = "wizard_template.version"
 	// MesaBundleDirName — папка рядом с exe, куда архив win64-full кладёт DLL
 	// Mesa3D. Не рядом с exe напрямую: лежащий рядом opengl32.dll загрузчик
@@ -145,7 +145,7 @@ const SingboxCoreRepo = "Leadaxe/sing-box-lx" // core for all platforms (XHTTP +
 // `sing-box version`, so the strict-equality reinstall check still holds.
 // Manually bumped per release; source-of-truth here. See
 // docs/RELEASE_PROCESS.md §5.1.
-const RequiredCoreVersion = "1.14.0-lx.36"
+const RequiredCoreVersion = "1.14.0-lx.39"
 
 // AppVersion — git describe output. Set by build scripts via -ldflags.
 //
@@ -159,7 +159,7 @@ const RequiredCoreVersion = "1.14.0-lx.36"
 // HEAD. See docs/RELEASE_PROCESS.md §5.2.
 var (
 	AppVersion          = "v-local-test"
-	RequiredTemplateRef = "f3fcd0d654632662679d0d31b465d8d6cc83359c"
+	RequiredTemplateRef = "5e0b7194b1b4258bcf50f36af0cac6052a61584f"
 )
 
 // GetMyBranch возвращает ветку репозитория для загрузки ассетов, у которых нет

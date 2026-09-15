@@ -1,0 +1,15 @@
+{
+  "lx_backup": 2,
+  "exported_by": { "app": "launcher", "version": "corpus", "platform": "test" },
+  "exported_at": "2026-09-15T00:00:00Z",
+  "dns": {
+    "servers": [
+      {
+        "kind": "template",
+        "tag": "google_dot",
+        "enabled": true,
+        "vars": { "outbound": "vpn-1", "dns_ip": "8.8.4.4" }
+      }
+    ]
+  }
+}

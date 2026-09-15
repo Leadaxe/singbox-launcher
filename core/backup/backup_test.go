@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
-	"time"
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
@@ -81,6 +81,10 @@ func mkState() *state.State {
 			mkPresetRule("traffic-processing", 0, true),
 			mkInlineRule("Work", "proxy", 1000),
 			mkInlineRule("Local", "direct", 1001),
+			// Самостоятельный эффект правила (не цель): `action` без
+			// `outbound` обязан пережить круг export→import, иначе правило
+			// приезжает обратно матчером без действия.
+			mkEffectRule("Sniff", "sniff", 1002),
 		},
 		Vars: []state.SettingVar{
 			{Name: "log_level", Value: "debug"},     // переносимая
@@ -91,77 +95,186 @@ func mkState() *state.State {
 }
 
 func mkPresetRule(ref string, num int, enabled bool) state.Rule {
-	body, _ := json.Marshal(state.PresetBody{Vars: map[string]string{"mode": "on"}})
-	return state.Rule{Kind: state.RuleKindPreset, Ref: ref, Enabled: enabled, OrderNum: &num, Body: body}
+	r := state.NewPresetRule(ref, map[string]string{"mode": "on"})
+	r.Enabled = enabled
+	r.Num = &num
+	return r
+}
+
+// mkEffectRule — inline-правило с самостоятельным sing-box `action`
+// (`sniff`/`hijack-dns`/`resolve`) и без цели: ключ живёт в теле как матчер-
+// эффект, а не как цель.
+func mkEffectRule(name, action string, num int) state.Rule {
+	r := state.NewInlineRule(name, map[string]interface{}{
+		"inbound": "tun-in",
+		"action":  action,
+	}, "")
+	r.Enabled = true
+	r.Num = &num
+	return r
 }
 
 func mkInlineRule(name, outbound string, num int) state.Rule {
-	body, _ := json.Marshal(state.InlineBody{
-		Name:     name,
-		Match:    map[string]interface{}{"domain_suffix": []interface{}{"example.com"}},
-		Outbound: outbound,
-	})
-	return state.Rule{Kind: state.RuleKindInline, Enabled: true, OrderNum: &num, Body: body}
+	r := state.NewInlineRule(name,
+		map[string]interface{}{"domain_suffix": []interface{}{"example.com"}}, outbound)
+	r.Enabled = true
+	r.Num = &num
+	return r
 }
 
-// Инвариант §1: import(export(x)) == x в том же приложении.
-func TestRoundTripLossless(t *testing.T) {
-	src := mkState()
-	b, _, err := Export(src, ExportOptions{AppVersion: "1.4.2", Platform: "darwin", Now: time.Unix(1750000000, 0)})
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
+// importedAs — итог импорта одной и той же настройки одним из входов.
+type importedAs struct {
+	// format — «1.0» или «0.12»: имя подтеста и строки ошибки.
+	format string
+	state  *state.State
+	res    *ImportResult
+	// warns — предупреждения разбора и импорта вместе.
+	warns []Warning
+}
 
-	dst := &state.State{}
-	res, err := Import(dst, b, ImportOptions{
+// importBothFormats — одна и та же настройка ДВУМЯ входами импорта: файл,
+// который лаунчер пишет сейчас (Export10 → байты → Parse), и файл 0.12,
+// который прежний писатель снимал с того же состояния.
+//
+// Писателя 0.12 больше нет (D-110), а читатель живёт всегда: такие файлы у
+// пользователей на руках. Поэтому второй вход — сырой JSON, снятый прежним
+// писателем с того же состояния, а не выдуманный руками: проверяется чтение
+// того, что действительно выпущено. Слияние у входов одно (import.go), и
+// утверждения сценария обязаны держаться на обоих.
+func importBothFormats(t *testing.T, s *state.State, legacy012 string, opts ImportOptions) []importedAs {
+	t.Helper()
+	inputs := []struct {
+		format string
+		want   FileFormat
+		raw    []byte
+	}{
+		{"1.0", FileFormat10, fixedExport10(t, s)},
+		{"0.12", FileFormatLegacy, []byte(legacy012)},
+	}
+	out := make([]importedAs, 0, len(inputs))
+	for _, in := range inputs {
+		f, parseWarns, err := Parse(in.raw)
+		if err != nil {
+			t.Fatalf("%s: Parse: %v", in.format, err)
+		}
+		// Иначе оба прогона могли бы пройти одним читателем, и legacy-вход
+		// остался бы без проверки при зелёном тесте.
+		if f.Format != in.want {
+			t.Fatalf("%s: файл прочитан не своим входом (%v)", in.format, f.Format)
+		}
+		dst := &state.State{}
+		res, err := ImportFile(dst, f, opts)
+		if err != nil {
+			t.Fatalf("%s: Import: %v", in.format, err)
+		}
+		out = append(out, importedAs{
+			format: in.format, state: dst, res: res,
+			warns: append(parseWarns, res.Warnings...),
+		})
+	}
+	return out
+}
+
+// legacyMkState012 — файл 0.12, который прежний писатель снимал с mkState().
+const legacyMkState012 = `{
+  "lx_backup": 1,
+  "exported_by": {"app": "launcher", "version": "1.4.2", "platform": "darwin"},
+  "exported_at": "2025-06-15T15:06:40Z",
+  "subscriptions": [{
+    "id": "src-1",
+    "url": "https://example-1.com/sub",
+    "label": "Main",
+    "max_nodes": 200,
+    "tag": {"prefix": "[A] "},
+    "update": {"interval_hours": 12, "auto": true},
+    "disabled": {"a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90": 0},
+    "skip": [{"contains": "trial", "field": "tag"}],
+    "detour_node_tag": "hop-1",
+    "detour_node_label": "hop-1"
+  }],
+  "servers": [{
+    "id": "src-2",
+    "uri": "vless://11111111-1111-1111-1111-111111111111@example-2.com:443?type=tcp#s",
+    "node_tag": "s"
+  }],
+  "rules": [
+    {"kind": "preset", "num": 0, "ref": "traffic-processing", "vars": {"mode": "on"}},
+    {"kind": "inline", "name": "Work", "num": 1000, "outbound": "proxy",
+     "match": {"domain_suffix": ["example.com"]}},
+    {"kind": "inline", "name": "Local", "num": 1001, "outbound": "direct",
+     "match": {"domain_suffix": ["example.com"]}},
+    {"kind": "inline", "name": "Sniff", "num": 1002,
+     "match": {"action": "sniff", "inbound": "tun-in"}}
+  ],
+  "vars": {"log_level": "debug"},
+  "route": {"final": "proxy"}
+}`
+
+// Инвариант §1: import(export(x)) == x в том же приложении — и та же
+// настройка обязана получиться из файла 0.12, снятого с неё прежним
+// лаунчером (legacy-вход).
+func TestRoundTripLossless(t *testing.T) {
+	inputs := importBothFormats(t, mkState(), legacyMkState012, ImportOptions{
 		KnownOutbounds: []string{"proxy", "hop-1"},
 		KnownPresets:   []string{"traffic-processing"},
 	})
-	if err != nil {
-		t.Fatalf("Import: %v", err)
-	}
+	for _, in := range inputs {
+		t.Run(in.format, func(t *testing.T) {
+			dst, res := in.state, in.res
+			if len(dst.Sources) != 2 {
+				t.Fatalf("источников %d, ожидалось 2", len(dst.Sources))
+			}
+			sub := dst.Sources[0]
+			if sub.URL != "https://example-1.com/sub" || sub.Name != "Main" || sub.MaxNodes != 200 {
+				t.Errorf("подписка приехала искажённой: %+v", sub)
+			}
+			if sub.TagPolicy == nil || sub.TagPolicy.Prefix != "[A] " {
+				t.Errorf("tag-политика потеряна: %+v", sub.TagPolicy)
+			}
+			if sub.Update == nil || sub.Update.IntervalHours != 12 {
+				t.Errorf("политика обновления потеряна: %+v", sub.Update)
+			}
+			// SPEC 118 W5: отметка выключения едет по СЫРОМУ тегу узла; узлов у
+			// импортированной подписки ещё нет (nodes[] в контракт не едут),
+			// поэтому она ждёт первого достоверного fetch в PendingDisabled
+			// (вердикт O2).
+			if len(sub.PendingDisabled) != 1 || sub.PendingDisabled[0] != testNodeHash {
+				t.Errorf("отметка выключенной ноды потеряна: %v", sub.PendingDisabled)
+			}
+			// Прежде эти поля ездили карманом extensions.launcher; теперь они —
+			// обычные поля записи, и roundtrip на своей же машине обязан их
+			// вернуть.
+			if len(sub.Skip) != 1 || sub.Skip[0]["contains"] != "trial" {
+				t.Errorf("skip-фильтр потерян: %+v", sub.Skip)
+			}
+			if sub.Detour == nil || sub.Detour.Tag != "hop-1" {
+				t.Errorf("detour потерян: %+v", sub.Detour)
+			}
+			if sub.ID != "src-1" {
+				t.Errorf("id источника потерян: %q", sub.ID)
+			}
 
-	if len(dst.Sources) != 2 {
-		t.Fatalf("источников %d, ожидалось 2", len(dst.Sources))
-	}
-	sub := dst.Sources[0]
-	if sub.URL != "https://example-1.com/sub" || sub.Name != "Main" || sub.MaxNodes != 200 {
-		t.Errorf("подписка приехала искажённой: %+v", sub)
-	}
-	if sub.TagPolicy == nil || sub.TagPolicy.Prefix != "[A] " {
-		t.Errorf("tag-политика потеряна: %+v", sub.TagPolicy)
-	}
-	if sub.Update == nil || sub.Update.IntervalHours != 12 {
-		t.Errorf("политика обновления потеряна: %+v", sub.Update)
-	}
-	// SPEC 118 W5: отметка выключения едет по СЫРОМУ тегу узла; узлов у
-	// импортированной подписки ещё нет (nodes[] в контракт не едут), поэтому
-	// она ждёт первого достоверного fetch в PendingDisabled (вердикт O2).
-	if len(sub.PendingDisabled) != 1 || sub.PendingDisabled[0] != testNodeHash {
-		t.Errorf("отметка выключенной ноды потеряна: %v", sub.PendingDisabled)
-	}
-	// Прежде эти поля ездили карманом extensions.launcher; теперь они —
-	// обычные поля записи, и roundtrip на своей же машине обязан их вернуть.
-	if len(sub.Skip) != 1 || sub.Skip[0]["contains"] != "trial" {
-		t.Errorf("skip-фильтр потерян: %+v", sub.Skip)
-	}
-	if sub.Detour == nil || sub.Detour.Tag != "hop-1" {
-		t.Errorf("detour потерян: %+v", sub.Detour)
-	}
-	if sub.ID != "src-1" {
-		t.Errorf("id источника потерян: %q", sub.ID)
-	}
-
-	if len(dst.Rules) != 3 {
-		t.Fatalf("правил %d, ожидалось 3", len(dst.Rules))
-	}
-	if res.AppliedRules != 3 || res.AppliedSources != 2 {
-		t.Errorf("счётчики: правил %d, источников %d", res.AppliedRules, res.AppliedSources)
-	}
-	for _, r := range dst.Rules {
-		if !r.Enabled {
-			t.Errorf("правило приехало выключенным без причины: %+v", r)
-		}
+			if len(dst.Rules) != 4 {
+				t.Fatalf("правил %d, ожидалось 4", len(dst.Rules))
+			}
+			if res.AppliedRules != 4 || res.AppliedSources != 2 {
+				t.Errorf("счётчики: правил %d, источников %d", res.AppliedRules, res.AppliedSources)
+			}
+			// Самостоятельный `action` — эффект правила, а не цель: его нельзя
+			// потерять ни в теле 1.0, ни в `match` файла 0.12.
+			effectBody, err := dst.Rules[3].BodyMap()
+			if err != nil {
+				t.Fatalf("тело правила-эффекта: %v", err)
+			}
+			if effectBody["action"] != "sniff" || effectBody["inbound"] != "tun-in" {
+				t.Errorf("самостоятельный action потерян на круге бэкапа: %v", effectBody)
+			}
+			for _, r := range dst.Rules {
+				if !r.Enabled {
+					t.Errorf("правило приехало выключенным без причины: %+v", r)
+				}
+			}
+		})
 	}
 }
 
@@ -169,7 +282,10 @@ func TestRoundTripLossless(t *testing.T) {
 // говорится вслух.
 func TestImportVarsPortableOnly(t *testing.T) {
 	src := mkState()
-	b, _, _ := Export(src, ExportOptions{})
+	b, _, err := Export10(src, ExportOptions{})
+	if err != nil {
+		t.Fatalf("Export10: %v", err)
+	}
 	if _, ok := b.Vars["tun_interface"]; ok {
 		t.Error("непереносимая переменная попала в бэкап")
 	}
@@ -179,7 +295,7 @@ func TestImportVarsPortableOnly(t *testing.T) {
 
 	dst := &state.State{}
 	b.Vars["tun_interface"] = "utun0" // как будто прислала другая сторона
-	res, err := Import(dst, b, ImportOptions{})
+	res, err := Import10(dst, b, ImportOptions{})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -216,6 +332,101 @@ func TestImportUnknownOutboundDisablesRule(t *testing.T) {
 	}
 	if !hasWarn(res.Warnings, WarnBackupUnknownOutbound) {
 		t.Errorf("не названо: %v", res.Warnings)
+	}
+}
+
+// §3 для входа 1.0: та же проверка целей на записях формы v8.
+//
+// Форма записи здесь другая (цель живёт КЛЮЧОМ sing-box внутри body, а не
+// полем `outbound` записи бэкапа), и читается она видом — DecodeBody. Пока
+// разбор вида шёл по значениям, а DecodeBody возвращает указатели, switch
+// молча проваливался в default и отдавал «цели нет» ДЛЯ ЛЮБОГО правила:
+// проверка §9 п. 7 в пути 1.0 не работала вовсе, правило приезжало включённым
+// и роняло config.json целиком. Проверяются ОБА вида с целью — inline и srs.
+func TestImport10UnknownOutboundDisablesRule(t *testing.T) {
+	ghost := state.NewInlineRule("Ghost",
+		map[string]interface{}{"domain_suffix": []interface{}{"x.com"}}, "vpn-3")
+	ghost.Enabled = true
+	ghostSrs := state.NewSrsRule("GhostSrs", []string{"https://example.com/a.srs"}, "vpn-9")
+	ghostSrs.Enabled = true
+	alive := state.NewInlineRule("Alive",
+		map[string]interface{}{"domain_suffix": []interface{}{"y.com"}}, "proxy")
+	alive.Enabled = true
+
+	b := &Backup10{LxBackup: FormatVersion10, Rules: []state.Rule{ghost, ghostSrs, alive}}
+	dst := &state.State{}
+	res, err := Import10(dst, b, ImportOptions{KnownOutbounds: []string{"proxy", "direct"}})
+	if err != nil {
+		t.Fatalf("Import10: %v", err)
+	}
+	if len(dst.Rules) != 3 {
+		t.Fatalf("правил %d, ожидалось 3", len(dst.Rules))
+	}
+	for i, name := range []string{"Ghost", "GhostSrs"} {
+		if dst.Rules[i].Enabled {
+			t.Errorf("%s: правило с несуществующим outbound приехало ВКЛЮЧЁННЫМ — конфиг ядра упадёт", name)
+		}
+	}
+	if !dst.Rules[2].Enabled {
+		t.Error("Alive: правило с существующей целью выключено")
+	}
+	if !hasWarn(res.Warnings, WarnBackupUnknownOutbound) {
+		t.Errorf("не названо: %v", res.Warnings)
+	}
+}
+
+// Норма «одно правило — одно тело» (D-111) на входе 1.0: запись с массивом в
+// `body` обязана дать РОВНО то состояние, что те же правила, развёрнутые в
+// файле подряд, — тогда и config.json из них байт-в-байт тот же. Заодно
+// проверяется, что части — обычные записи: у каждой своя проверка цели
+// (выключена только часть с мёртвой целью), `id` другой стороны остаётся у
+// первой, не-объект отбрасывается прежним кодом, соседние записи не
+// перемешиваются с частями по оси.
+func TestImport10RuleBodyArrayEqualsExpandedRecords(t *testing.T) {
+	num := func(n int) *int { return &n }
+	rule := func(name, id string, n int, body string) state.Rule {
+		return state.Rule{Kind: state.RuleKindInline, ID: id, Name: name, Enabled: true, Num: num(n), Body: json.RawMessage(body)}
+	}
+	const (
+		first  = `{"domain_suffix":["m.example-1.com"],"outbound":"vpn-3"}`
+		second = `{"ip_cidr":["203.0.113.0/24"],"action":"reject","method":"drop"}`
+	)
+	arrayFile := &Backup10{LxBackup: FormatVersion10, Rules: []state.Rule{
+		rule("After", "", 1002, `{"domain_suffix":["a.example-1.com"],"outbound":"proxy"}`),
+		rule("Mixed", "lx-1", 1001, `[`+first+`,`+second+`,42]`),
+	}}
+	expandedFile := &Backup10{LxBackup: FormatVersion10, Rules: []state.Rule{
+		rule("After", "", 1002, `{"domain_suffix":["a.example-1.com"],"outbound":"proxy"}`),
+		rule("Mixed", "lx-1", 1001, first),
+		rule("Mixed #2", "", 1001, second),
+	}}
+	opts := ImportOptions{KnownOutbounds: []string{"proxy", "direct"}}
+
+	fromArray := &state.State{}
+	res, err := Import10(fromArray, arrayFile, opts)
+	if err != nil {
+		t.Fatalf("Import10 (массив): %v", err)
+	}
+	fromExpanded := &state.State{}
+	if _, err := Import10(fromExpanded, expandedFile, opts); err != nil {
+		t.Fatalf("Import10 (развёрнутые записи): %v", err)
+	}
+
+	if !reflect.DeepEqual(fromArray.Rules, fromExpanded.Rules) {
+		t.Fatalf("массив в body дал не то же состояние, что развёрнутые записи:\n%+v\n%+v", fromArray.Rules, fromExpanded.Rules)
+	}
+	names := make([]string, 0, len(fromArray.Rules))
+	for _, r := range fromArray.Rules {
+		names = append(names, r.Name)
+	}
+	if want := []string{"Mixed", "Mixed #2", "After"}; !equalStrings(names, want) {
+		t.Errorf("порядок оси %v, ожидался %v", names, want)
+	}
+	if fromArray.Rules[0].Enabled || !fromArray.Rules[1].Enabled {
+		t.Errorf("проверка цели не по частям: enabled %v / %v", fromArray.Rules[0].Enabled, fromArray.Rules[1].Enabled)
+	}
+	if !hasWarn(res.Warnings, WarnBackupUnknownField) || !hasWarn(res.Warnings, WarnBackupUnknownOutbound) {
+		t.Errorf("не названы отброшенный элемент и мёртвая цель: %v", res.Warnings)
 	}
 }
 
@@ -273,12 +484,12 @@ func TestForeignExtensionsDroppedWithWarning(t *testing.T) {
 		t.Fatalf("отброшенный extensions не назван: %v", warns)
 	}
 	dst := &state.State{}
-	if _, err := Import(dst, b, ImportOptions{}); err != nil {
+	if _, err := ImportFile(dst, b, ImportOptions{}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
-	back, _, err := Export(dst, ExportOptions{})
+	back, _, err := Export10(dst, ExportOptions{})
 	if err != nil {
-		t.Fatalf("Export: %v", err)
+		t.Fatalf("Export10: %v", err)
 	}
 	out, err := json.Marshal(back)
 	if err != nil {
@@ -299,9 +510,9 @@ func TestImportRejectsNewerMajor(t *testing.T) {
 	}
 }
 
-// Ось порядка перенумеровывается, но ОТНОСИТЕЛЬНЫЙ порядок сохраняется:
-// абсолютные номера у сторон свои, важен лишь порядок следования.
-func TestImportRenumbersPreservingOrder(t *testing.T) {
+// Ось порядка встаёт номерами файла, и порядок следования тот же, что у файла
+// (BACKUP.md §9 п. 7): раскладка оси у сторон одна, и номер несёт зону.
+func TestImportKeepsFileNumsPreservingOrder(t *testing.T) {
 	n := func(v int) *float64 { f := float64(v); return &f }
 	b := &Backup{LxBackup: FormatVersion, Rules: []Rule{
 		{Kind: RuleInline, Name: "third", Num: n(9000), Match: json.RawMessage(`{}`)},
@@ -319,14 +530,10 @@ func TestImportRenumbersPreservingOrder(t *testing.T) {
 	}
 	all := make([]ordered, 0, len(dst.Rules))
 	for _, r := range dst.Rules {
-		var body state.InlineBody
-		if err := json.Unmarshal(r.Body, &body); err != nil {
-			t.Fatalf("тело правила: %v", err)
+		if r.Num == nil {
+			t.Fatalf("правило %q приехало без номера", r.Name)
 		}
-		if r.OrderNum == nil {
-			t.Fatalf("правило %q приехало без номера", body.Name)
-		}
-		all = append(all, ordered{body.Name, *r.OrderNum})
+		all = append(all, ordered{r.Name, *r.Num})
 	}
 
 	sort.Slice(all, func(i, j int) bool { return all[i].num < all[j].num })
@@ -336,16 +543,18 @@ func TestImportRenumbersPreservingOrder(t *testing.T) {
 			t.Fatalf("порядок нарушен: получено %v, ожидалось %v", all, want)
 		}
 	}
-	// Номера переписаны в свою зону, а не оставлены чужими.
-	if all[0].num != state.UserRuleNumStart {
-		t.Errorf("нумерация не переписана: первый номер %d, ожидался %d",
-			all[0].num, state.UserRuleNumStart)
+	// Номера — из файла: сплошная нумерация с 1000 уводила правила зоны ниже
+	// 1000 за route.rules шаблона.
+	for i, w := range []int{10, 500, 9000} {
+		if all[i].num != w {
+			t.Errorf("правило %q: номер %d, в файле %d", all[i].name, all[i].num, w)
+		}
 	}
 }
 
 // SPEC 106-B: подключение оси к визарду не должно ломать импорт. Номера,
-// проставленные renumberImportedRules, — уже разметка: NormalizeRuleOrder на
-// первой же загрузке обязан оставить их и порядок как есть, а не пере-размечать.
+// приехавшие файлом, — уже разметка: NormalizeRuleOrder на первой же загрузке
+// обязан оставить их и порядок как есть, а не пере-размечать.
 func TestNormalizeKeepsImportedOrder(t *testing.T) {
 	n := func(v int) *float64 { f := float64(v); return &f }
 	b := &Backup{LxBackup: FormatVersion, Rules: []Rule{
@@ -361,9 +570,7 @@ func TestNormalizeKeepsImportedOrder(t *testing.T) {
 	names := func(rules []state.Rule) []string {
 		out := make([]string, 0, len(rules))
 		for _, r := range rules {
-			var body state.InlineBody
-			_ = json.Unmarshal(r.Body, &body)
-			out = append(out, body.Name)
+			out = append(out, r.Name)
 		}
 		return out
 	}
@@ -378,12 +585,12 @@ func TestNormalizeKeepsImportedOrder(t *testing.T) {
 		}
 	}
 	for i, r := range normalized {
-		if r.OrderNum == nil {
+		if r.Num == nil {
 			t.Fatalf("правило %d потеряло номер после normalize", i)
 		}
-		if *r.OrderNum != state.UserRuleNumStart+i {
-			t.Errorf("номер правила %q = %d, ожидался %d (импортные номера переписаны)",
-				got[i], *r.OrderNum, state.UserRuleNumStart+i)
+		if w := []int{10, 500, 9000}[i]; *r.Num != w {
+			t.Errorf("номер правила %q = %d, в файле %d (normalize переписал номер)",
+				got[i], *r.Num, w)
 		}
 	}
 
@@ -424,9 +631,10 @@ func hasWarn(list []Warning, code string) bool {
 	return false
 }
 
-// TestRoundTripChainSources — цепочки (SPEC 110, схема v1.2) едут корневой
-// секцией chains[] со всеми полями канона и переживают экспорт→импорт;
-// блоб extensions.launcher больше не пишется (BACKUP.md §2).
+// TestRoundTripChainSources — цепочки (SPEC 110) едут записью sources[] вида
+// chain: настройки маршрута в теле, позиции в hops, — и переживают
+// экспорт→импорт; блоба extensions.launcher нет (BACKUP.md §2). Чтение
+// секции chains[] файлов 0.12 держит корпус (chains_roundtrip).
 func TestRoundTripChainSources(t *testing.T) {
 	stripOff := false
 	s := &state.State{}
@@ -453,16 +661,25 @@ func TestRoundTripChainSources(t *testing.T) {
 		},
 	}
 
-	b, _, err := Export(s, ExportOptions{AppVersion: "test"})
+	b, _, err := Export10(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(b.Chains) != 1 || b.Chains[0].Tag != "chain-1" {
-		t.Fatalf("секция chains[] не собрана: %+v", b.Chains)
+	chains := 0
+	for _, rec := range b.Sources {
+		if rec.Kind == state.SourceKindChain {
+			chains++
+			if rec.Tag != "chain-1" {
+				t.Fatalf("тег цепочки в файле %q, ожидался chain-1", rec.Tag)
+			}
+		}
+	}
+	if chains != 1 {
+		t.Fatalf("цепочек в sources[] %d, ожидалась одна: %+v", chains, b.Sources)
 	}
 
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{}); err != nil {
+	if _, err := Import10(restored, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	var chain *state.Source
@@ -501,7 +718,7 @@ func TestLegacyExtensionsChainsNotRead(t *testing.T) {
 		t.Fatalf("legacy-блоб отброшен молча: %v", warns)
 	}
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{}); err != nil {
+	if _, err := ImportFile(restored, b, ImportOptions{}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
 	for _, src := range restored.Sources {
@@ -549,7 +766,8 @@ func TestImportChainTagBusy(t *testing.T) {
 }
 
 // TestRoundTripDNSSection — DNS-секция применяется на импорте (раньше
-// экспортировалась и молча игнорировалась).
+// экспортировалась и молча игнорировалась). Оба входа: у 1.0 тег и тело
+// лежат `tag`/`body`, у файла 0.12 — `name`/`value`, и итог обязан совпасть.
 func TestRoundTripDNSSection(t *testing.T) {
 	s := &state.State{}
 	s.DNS.Final = "dns_shield"
@@ -564,26 +782,41 @@ func TestRoundTripDNSSection(t *testing.T) {
 			Body: map[string]interface{}{"domain_suffix": "example.com", "server": "my_dns"}},
 	}
 
-	b, _, err := Export(s, ExportOptions{AppVersion: "test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{}); err != nil {
-		t.Fatal(err)
-	}
+	// Файл 0.12, который прежний писатель снимал с этого состояния.
+	const legacy = `{
+  "lx_backup": 1,
+  "exported_by": {"app": "launcher", "version": "1.5.9", "platform": "darwin"},
+  "exported_at": "2025-06-15T15:06:40Z",
+  "dns": {
+    "servers": [
+      {"kind": "template", "name": "google_dot"},
+      {"kind": "user", "name": "my_dns", "value": {"server": "10.0.0.1", "type": "udp"}}
+    ],
+    "rules": [
+      {"kind": "user", "enabled": false, "value": {"domain_suffix": "example.com", "server": "my_dns"}}
+    ],
+    "final": "dns_shield",
+    "strategy": "ipv4_only"
+  }
+}`
 
-	if restored.DNS.Final != "dns_shield" || restored.DNS.Strategy != "ipv4_only" {
-		t.Fatalf("final/strategy потеряны: %q %q", restored.DNS.Final, restored.DNS.Strategy)
-	}
-	if len(restored.DNS.Servers) != 2 {
-		t.Fatalf("servers: %+v", restored.DNS.Servers)
-	}
-	if restored.DNS.Servers[1].Body["server"] != "10.0.0.1" {
-		t.Fatalf("тело user-сервера потеряно: %+v", restored.DNS.Servers[1])
-	}
-	if len(restored.DNS.Rules) != 1 || restored.DNS.Rules[0].Enabled {
-		t.Fatalf("rules: %+v", restored.DNS.Rules)
+	for _, in := range importBothFormats(t, s, legacy, ImportOptions{}) {
+		restored := in.state
+		if restored.DNS.Final != "dns_shield" || restored.DNS.Strategy != "ipv4_only" {
+			t.Fatalf("%s: final/strategy потеряны: %q %q", in.format, restored.DNS.Final, restored.DNS.Strategy)
+		}
+		if len(restored.DNS.Servers) != 2 {
+			t.Fatalf("%s: servers: %+v", in.format, restored.DNS.Servers)
+		}
+		if restored.DNS.Servers[0].Tag != "google_dot" || restored.DNS.Servers[1].Tag != "my_dns" {
+			t.Errorf("%s: теги серверов: %+v", in.format, restored.DNS.Servers)
+		}
+		if restored.DNS.Servers[1].Body["server"] != "10.0.0.1" {
+			t.Fatalf("%s: тело user-сервера потеряно: %+v", in.format, restored.DNS.Servers[1])
+		}
+		if len(restored.DNS.Rules) != 1 || restored.DNS.Rules[0].Enabled {
+			t.Fatalf("%s: rules: %+v", in.format, restored.DNS.Rules)
+		}
 	}
 }
 
@@ -597,7 +830,7 @@ func TestRoundTripWarpAccounts(t *testing.T) {
 	s.WarpAccounts = &state.WarpAccountsSection{
 		WG: &state.WarpWGAccount{PrivateKey: "priv", PeerPublic: "pub", ClientV4: "172.16.0.2"},
 	}
-	b, _, err := Export(s, ExportOptions{AppVersion: "test"})
+	b, _, err := Export10(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -605,7 +838,7 @@ func TestRoundTripWarpAccounts(t *testing.T) {
 		t.Fatalf("warp не экспортирован: %v", b.Warp)
 	}
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{}); err != nil {
+	if _, err := Import10(restored, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if restored.WarpAccounts == nil || restored.WarpAccounts.WG == nil ||
@@ -637,10 +870,10 @@ func TestPerEntityForeignExtensionsDropped(t *testing.T) {
 		t.Fatalf("warning'ов об extensions %d, ожидался ровно один на файл: %v", n, warns)
 	}
 	s := &state.State{}
-	if _, err := Import(s, b, ImportOptions{}); err != nil {
+	if _, err := ImportFile(s, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	out, _, err := Export(s, ExportOptions{AppVersion: "test"})
+	out, _, err := Export10(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -653,9 +886,15 @@ func TestPerEntityForeignExtensionsDropped(t *testing.T) {
 	}
 }
 
-// SPEC 112-A — ссылка detour-на-узел переносится ОБЪЕКТОМ: id источника-цели
-// плюс identity-тег узла. Обе половины обязаны пережить roundtrip, включая
-// сами id источников: без них ссылка на приёмнике мертва.
+// Ссылка detour на КОРНЕВОЙ узел переносится корневой формой `{tag}`
+// (NODE_LINK.md §2 п. 5): id корневого узла адресом не является.
+//
+// Входов два, и форма ссылки у них разная: у 1.0 — объект `detour{tag}`, у
+// файла 0.12 — плоская тройня `detour_node_*`, где `detour_node_source_id`
+// несёт id СЕРВЕРА (в 0.12 сервер был сам себе источником). Итог импорта
+// обязан совпасть: `{tag: тег узла здесь}` без folder_id. Прежде 0.12
+// ввозил id сервера в folder_id, и на сборке такая ссылка не разрешалась
+// никогда («the referenced source is gone», §7.4).
 func TestRoundTripDetourNodeRef(t *testing.T) {
 	s := &state.State{}
 	s.Sources = []state.Source{
@@ -671,65 +910,68 @@ func TestRoundTripDetourNodeRef(t *testing.T) {
 			ID: "01PROTON0000000000000000",
 			Node: state.Node{
 				Kind: state.SourceKindSubscription, Enabled: true,
-				Detour: &state.NodeLink{
-					FolderID: "01WARP00000000000000000",
-					Tag:      "🔥🎭 WARP (MASQUE)",
-				},
+				Detour: &state.NodeLink{Tag: "🔥🎭 WARP (MASQUE)"},
 			},
 			URL: "https://example.com/sub",
 		},
 	}
 
-	b, _, err := Export(s, ExportOptions{AppVersion: "test"})
-	if err != nil {
+	// Ссылка едет ОБЩИМ полем записи, а не карманом: extensions больше не
+	// существует (П3), и в файле 1.0 это объект `detour` самой подписки.
+	var doc struct {
+		Sources []map[string]json.RawMessage `json:"sources"`
+	}
+	if err := json.Unmarshal(fixedExport10(t, s), &doc); err != nil {
 		t.Fatal(err)
 	}
-	// Ссылка едет ОБЩИМИ полями записи, а не карманом: extensions больше
-	// не существует (П3), и ключи обязаны лежать прямо в subscriptions[0].
-	raw, err := json.Marshal(b.Subscriptions[0])
-	if err != nil {
-		t.Fatal(err)
+	if len(doc.Sources) != 2 {
+		t.Fatalf("источников в файле %d, ожидалось 2", len(doc.Sources))
 	}
-	var ext map[string]interface{}
-	if err := json.Unmarshal(raw, &ext); err != nil {
-		t.Fatal(err)
+	var link map[string]string
+	if err := json.Unmarshal(doc.Sources[1]["detour"], &link); err != nil {
+		t.Fatalf("detour подписки не объектом: %s (%v)", doc.Sources[1]["detour"], err)
 	}
-	if ext["detour_node_source_id"] != "01WARP00000000000000000" {
-		t.Fatalf("detour_node_source_id не выехал в бэкап: %v", ext)
-	}
-	if ext["detour_node_tag"] != "🔥🎭 WARP (MASQUE)" {
-		t.Fatalf("detour_node_tag не выехал в бэкап: %v", ext)
-	}
-	if _, stale := ext["detour_node_hash"]; stale {
-		t.Errorf("упразднённый detour_node_hash не должен писаться: %v", ext)
+	if _, has := link["folder_id"]; has || link["tag"] != "🔥🎭 WARP (MASQUE)" {
+		t.Fatalf("ссылка в файле 1.0 = %v, ожидалась корневая форма без folder_id", link)
 	}
 
-	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	var hop, dep *state.Source
-	for i := range restored.Sources {
-		switch restored.Sources[i].Kind {
-		case state.SourceKindServer:
-			hop = &restored.Sources[i]
-		case state.SourceKindSubscription:
-			dep = &restored.Sources[i]
+	// Файл 0.12, который прежний писатель снимал с состояния, где ссылка
+	// адресовала сервер его id.
+	const legacy = `{
+  "lx_backup": 1,
+  "exported_by": {"app": "launcher", "version": "1.5.9", "platform": "darwin"},
+  "exported_at": "2025-06-15T15:06:40Z",
+  "subscriptions": [{
+    "id": "01PROTON0000000000000000",
+    "url": "https://example.com/sub",
+    "detour_node_source_id": "01WARP00000000000000000",
+    "detour_node_tag": "🔥🎭 WARP (MASQUE)",
+    "detour_node_label": "🔥🎭 WARP (MASQUE)"
+  }],
+  "servers": [{
+    "id": "01WARP00000000000000000",
+    "uri": "vless://u@h:443",
+    "node_tag": "🔥🎭 WARP (MASQUE)"
+  }]
+}`
+
+	for _, in := range importBothFormats(t, s, legacy, ImportOptions{}) {
+		var hop, dep *state.Source
+		for i := range in.state.Sources {
+			switch in.state.Sources[i].Kind {
+			case state.SourceKindServer:
+				hop = &in.state.Sources[i]
+			case state.SourceKindSubscription:
+				dep = &in.state.Sources[i]
+			}
 		}
-	}
-	if hop == nil || dep == nil {
-		t.Fatalf("источники не восстановились: %+v", restored.Sources)
-	}
-	// Ключ вопроса из ТЗ: id источника-цели обязан пережить roundtrip, иначе
-	// ссылка на приёмнике указывает в никуда.
-	if hop.ID != "01WARP00000000000000000" {
-		t.Fatalf("id источника-цели потерян: %q", hop.ID)
-	}
-	if dep.Detour == nil || dep.Detour.FolderID != hop.ID {
-		t.Fatalf("ссылка после импорта = %+v, ожидалась на %q", dep.Detour, hop.ID)
-	}
-	if dep.Detour.Tag != "🔥🎭 WARP (MASQUE)" {
-		t.Fatalf("тег ссылки после импорта = %q", dep.Detour.Tag)
+		if hop == nil || dep == nil {
+			t.Fatalf("%s: источники не восстановились: %+v", in.format, in.state.Sources)
+		}
+		want := state.NodeLink{Tag: hop.NodeTagOrLabel()}
+		if dep.Detour == nil || *dep.Detour != want {
+			t.Fatalf("%s: ссылка после импорта = %+v, ожидалась корневая %+v", in.format, dep.Detour, want)
+		}
 	}
 }
 
@@ -746,17 +988,23 @@ func TestRoundTripDetourNodeTagOnlyRef(t *testing.T) {
 		URL: "https://example.com/sub",
 	}}
 
-	b, _, err := Export(s, ExportOptions{AppVersion: "test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	got := restored.Sources[0]
-	if got.Detour == nil || got.Detour.Tag != "🔥🎭 WARP (MASQUE)" || got.Detour.FolderID != "" {
-		t.Fatalf("ссылка корневого пространства искажена: %+v", got.Detour)
+	// Файл 0.12, который прежний писатель снимал с этого состояния.
+	const legacy = `{
+  "lx_backup": 1,
+  "exported_by": {"app": "launcher", "version": "1.5.9", "platform": "darwin"},
+  "exported_at": "2025-06-15T15:06:40Z",
+  "subscriptions": [{
+    "url": "https://example.com/sub",
+    "detour_node_tag": "🔥🎭 WARP (MASQUE)",
+    "detour_node_label": "🔥🎭 WARP (MASQUE)"
+  }]
+}`
+
+	for _, in := range importBothFormats(t, s, legacy, ImportOptions{}) {
+		got := in.state.Sources[0]
+		if got.Detour == nil || got.Detour.Tag != "🔥🎭 WARP (MASQUE)" || got.Detour.FolderID != "" {
+			t.Fatalf("%s: ссылка корневого пространства искажена: %+v", in.format, got.Detour)
+		}
 	}
 }
 
@@ -782,7 +1030,7 @@ func TestLegacyDetourNodeHashFileReadsWithWarning(t *testing.T) {
 		t.Fatalf("потеря кармана не названа: %v", warns)
 	}
 	dst := &state.State{}
-	if _, err := Import(dst, b, ImportOptions{}); err != nil {
+	if _, err := ImportFile(dst, b, ImportOptions{}); err != nil {
 		t.Fatalf("старый файл уронил импорт: %v", err)
 	}
 	if len(dst.Sources) != 1 {

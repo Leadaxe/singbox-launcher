@@ -23,6 +23,7 @@ import (
 
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/warp"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -132,7 +133,7 @@ func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, owner fyne
 
 	dialogContent := container.NewBorder(nil, buttons, nil, nil, scroll)
 	warpWindow.Resize(fyne.NewSize(600, 640))
-	warpWindow.CenterOnScreen()
+	fynewidget.CenterOnScreen(warpWindow)
 	warpWindow.SetContent(dialogContent)
 	warpWindow.SetCloseIntercept(func() { warpWindow.Close() })
 	warpWindow.Show()

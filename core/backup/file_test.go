@@ -15,12 +15,12 @@ func TestWriteReadFileRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "lx-backup.json")
 
-	b, _, err := Export(mkState(), ExportOptions{AppVersion: "1.4.2", Now: time.Unix(1750000000, 0)})
+	b, _, err := Export10(mkState(), ExportOptions{AppVersion: "1.4.2", Now: time.Unix(1750000000, 0)})
 	if err != nil {
-		t.Fatalf("Export: %v", err)
+		t.Fatalf("Export10: %v", err)
 	}
-	if err := WriteFile(path, b); err != nil {
-		t.Fatalf("WriteFile: %v", err)
+	if err := WriteFile10(path, b); err != nil {
+		t.Fatalf("WriteFile10: %v", err)
 	}
 
 	got, warns, err := ReadFile(path)
@@ -30,12 +30,15 @@ func TestWriteReadFileRoundTrip(t *testing.T) {
 	if len(warns) != 0 {
 		t.Errorf("предупреждения на своём же файле: %v", warns)
 	}
-	if got.LxBackup != b.LxBackup || got.ExportedAt != b.ExportedAt {
-		t.Errorf("шапка изменилась: %+v против %+v", got.ExportedBy, b.ExportedBy)
+	if got.Format != FileFormat10 || got.V10 == nil {
+		t.Fatalf("файл 1.0 прочитан не своим входом: формат %v, v10=%v", got.Format, got.V10 != nil)
 	}
-	if len(got.Subscriptions) != len(b.Subscriptions) || len(got.Rules) != len(b.Rules) {
-		t.Errorf("состав изменился: подписок %d/%d, правил %d/%d",
-			len(got.Subscriptions), len(b.Subscriptions), len(got.Rules), len(b.Rules))
+	if got.V10.LxBackup != b.LxBackup || got.V10.ExportedAt != b.ExportedAt || got.V10.ExportedBy != b.ExportedBy {
+		t.Errorf("шапка изменилась: %+v против %+v", got.V10.ExportedBy, b.ExportedBy)
+	}
+	if len(got.V10.Sources) != len(b.Sources) || len(got.V10.Rules) != len(b.Rules) {
+		t.Errorf("состав изменился: источников %d/%d, правил %d/%d",
+			len(got.V10.Sources), len(b.Sources), len(got.V10.Rules), len(b.Rules))
 	}
 }
 
@@ -43,8 +46,8 @@ func TestWriteReadFileRoundTrip(t *testing.T) {
 func TestWriteFileLeavesNoTemp(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "b.json")
-	if err := WriteFile(path, &Backup{LxBackup: FormatVersion}); err != nil {
-		t.Fatalf("WriteFile: %v", err)
+	if err := WriteFile10(path, &Backup10{LxBackup: FormatVersion10}); err != nil {
+		t.Fatalf("WriteFile10: %v", err)
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -74,8 +77,8 @@ func TestParseReportsUnknownRootKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if b.LxBackup != 1 {
-		t.Errorf("версия не прочитана: %d", b.LxBackup)
+	if b.Legacy.LxBackup != 1 {
+		t.Errorf("версия не прочитана: %d", b.Legacy.LxBackup)
 	}
 	if !hasWarn(warns, WarnBackupUnknownField) {
 		t.Errorf("неизвестный ключ не назван: %v", warns)
@@ -160,14 +163,14 @@ func TestParseTolerantToBooleanSkip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("булев skip уронил разбор: %v", err)
 	}
-	if len(b.Subscriptions) != 1 || b.Subscriptions[0].Label != "Main" {
-		t.Fatalf("остальные поля записи потеряны: %+v", b.Subscriptions)
+	if len(b.Legacy.Subscriptions) != 1 || b.Legacy.Subscriptions[0].Label != "Main" {
+		t.Fatalf("остальные поля записи потеряны: %+v", b.Legacy.Subscriptions)
 	}
-	if len(b.Subscriptions[0].Skip) != 0 {
-		t.Errorf("несовпавшее по типу поле применено: %+v", b.Subscriptions[0].Skip)
+	if len(b.Legacy.Subscriptions[0].Skip) != 0 {
+		t.Errorf("несовпавшее по типу поле применено: %+v", b.Legacy.Subscriptions[0].Skip)
 	}
-	if len(b.Rules) != 1 {
-		t.Errorf("остальные секции потеряны: %+v", b.Rules)
+	if len(b.Legacy.Rules) != 1 {
+		t.Errorf("остальные секции потеряны: %+v", b.Legacy.Rules)
 	}
 
 	found := false
@@ -193,14 +196,14 @@ func TestParseTolerantKeepsWellTypedNeighbour(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if len(b.Subscriptions) != 2 {
-		t.Fatalf("подписок %d, ожидалось 2", len(b.Subscriptions))
+	if len(b.Legacy.Subscriptions) != 2 {
+		t.Fatalf("подписок %d, ожидалось 2", len(b.Legacy.Subscriptions))
 	}
 	// Ключ снимается у всей секции: тип поля у стороны один на весь файл,
 	// и индексов путь из UnmarshalTypeError не содержит. Важно, что соседняя
 	// запись СОХРАНИЛАСЬ и названа — а не то, что её skip уцелел.
-	if b.Subscriptions[1].URL != "https://b.example/sub" {
-		t.Errorf("вторая запись потеряна: %+v", b.Subscriptions[1])
+	if b.Legacy.Subscriptions[1].URL != "https://b.example/sub" {
+		t.Errorf("вторая запись потеряна: %+v", b.Legacy.Subscriptions[1])
 	}
 }
 
@@ -277,7 +280,7 @@ func TestReadFileRejectsHuge(t *testing.T) {
 func TestWriteFilePermissions(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "b.json")
-	if err := WriteFile(path, &Backup{LxBackup: FormatVersion}); err != nil {
+	if err := WriteFile10(path, &Backup10{LxBackup: FormatVersion10}); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(path)
@@ -300,8 +303,11 @@ func TestWriteFilePermissions(t *testing.T) {
 func TestWriteFileIsIndented(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "b.json")
-	b, _, _ := Export(mkState(), ExportOptions{})
-	if err := WriteFile(path, b); err != nil {
+	b, _, err := Export10(mkState(), ExportOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteFile10(path, b); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(path)

@@ -1,0 +1,17 @@
+{
+  "rules": [],
+  "warnings": [],
+  "directions": [
+    { "tag": "proxy-eu", "filter": "de", "include": [] },
+    {
+      "tag": "streaming",
+      "filter": "nl",
+      "include_direct": true,
+      "include_block": true,
+      "include": ["proxy-eu", "fold-pick", "relay-root", "ghost"]
+    }
+  ],
+  "root_servers": [
+    "relay-root"
+  ]
+}

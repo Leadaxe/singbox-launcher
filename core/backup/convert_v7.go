@@ -1,22 +1,27 @@
-// File convert_v7.go — конвертеры границы «модель v7 ↔ контракт 0.11»
-// (SPEC 118 Т9).
+// File convert_v7.go — конвертеры границы «модель состояния ↔ формы
+// контракта» (SPEC 118 Т9, SPEC 127 §6.0).
 //
-// Контракт бэкапа НЕ меняется: он общий с LxBox-стороной и живёт своей
-// версией. Модель приложения переехала на v7 (SPEC 118), где нет ни
-// disabled-карты, ни свёртки, ни detour-тройни, ни строковых хопов. Значит
-// перевод одного в другое обязан быть ЯВНЫМ и в одном месте — здесь, а не
-// россыпью по export.go/import.go.
+// В модели приложения (v7, затем v8) нет ни disabled-карты, ни свёртки в форме
+// контракта, ни detour-тройни, ни строковых хопов. Значит перевод одного в
+// другое обязан быть ЯВНЫМ и в одном месте — здесь, а не россыпью по
+// экспорту и импорту.
 //
-// Что во что:
+// Экспорт (писатель 1.0 — единственный с v1.6.0, D-110) переводит здесь ровно
+// два поля тонкого слоя:
 //
-//	node.enabled=false ⇄ sub.disabled{сырой тег: 0}
-//	FolderReplace      ⇄ fold{mode, auto}
-//	NodeLink (detour)  ⇄ тройня detour_node_source_id + detour_node_tag
-//	[]NodeLink (hops)  ⇄ []string (теги)
-//	TagPolicy          ⇄ tag{prefix, postfix}     (mask не пишется)
-//	Node.Tag           ⇄ server.node_tag / chain.tag
+//	node.enabled=false + PendingDisabled → sub.disabled{сырой тег: 0}
+//	FolderReplace                        → fold{mode, auto}
 //
-// Материализованные nodes[] в бэкап НЕ уезжают: контракт 0.11 их не несёт, и
+// Импорт переводит обратно свёртку (оба входа) и всё, что называла иначе
+// форма 0.x (legacy-вход):
+//
+//	fold{mode, auto}                    → FolderReplace
+//	тройня detour_node_source_id + tag  → NodeLink (detour)
+//	[]string (теги хопов)               → []NodeLink (+ резолв по живому индексу)
+//	chain{…}                            → Node.Body
+//	tag{prefix, postfix, mask}          → TagPolicy (mask — потеря с warning)
+//
+// Материализованные nodes[] подписки в бэкап НЕ уезжают ни в каком формате:
 // после импорта подписка фетчится заново.
 package backup
 
@@ -29,7 +34,7 @@ import (
 	"singbox-launcher/core/state"
 )
 
-// ── экспорт: v7 → 0.11 ───────────────────────────────────────────
+// ── экспорт: состояние → поля тонкого слоя 1.0 ───────────────────
 
 // exportFold — FolderReplace модели в свёртку контракта.
 func exportFold(r *state.FolderReplace) *Fold {
@@ -83,51 +88,7 @@ func exportDisabledMap(src state.Source) map[string]int64 {
 	return out
 }
 
-// exportNodeLinkRef — NodeLink модели в detour-тройню контракта.
-//
-// Ссылка на узел папки едет парой «id папки + сырой тег»: ровно та адресация,
-// которую тройня и описывала. Ссылка корневого пространства (FolderID пуст)
-// едет одним тегом — так же, как её писала переходная форма.
-func exportNodeLinkRef(link *state.NodeLink) SourceRef {
-	if link == nil {
-		return SourceRef{}
-	}
-	if link.FolderID == "" {
-		return SourceRef{DetourNodeTag: link.Tag, DetourNodeLabel: link.Tag}
-	}
-	return SourceRef{
-		DetourNodeSourceID: link.FolderID,
-		DetourNodeTag:      link.Tag,
-		DetourNodeLabel:    link.Tag,
-	}
-}
-
-// exportHops — позиции цепочки в строковые теги контракта.
-//
-// Хоп на узел папки теряет адрес папки: контракт 0.11 знает только строку.
-// Это названная цена (BACKUP.md §10) — на импорте такой хоп резолвится по
-// живому индексу, а не резолвнувшийся уходит fail-closed с warning.
-func exportHops(hops []state.NodeLink) []string {
-	if len(hops) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(hops))
-	for _, h := range hops {
-		if strings.TrimSpace(h.Tag) == "" {
-			continue
-		}
-		out = append(out, h.Tag)
-	}
-	return out
-}
-
-// exportChainSpec — форма цепочки контракта: настройки из тела узла плюс
-// позиции строками.
-func exportChainSpec(src state.Source) *configtypes.SourceChain {
-	return configtypes.ChainFromBody(src.Body, exportHops(src.Hops))
-}
-
-// ── импорт: 0.11 → v7 ────────────────────────────────────────────
+// ── импорт: формы контракта → состояние ──────────────────────────
 
 // importFold — свёртка контракта в FolderReplace модели.
 //
@@ -156,6 +117,12 @@ func importFold(f *Fold, replaceTag string) *state.FolderReplace {
 //
 // Пустая тройня при непустом detour_tag — ссылка на ГРУППУ (прежний
 // DetourTag): в v7 у неё та же форма, что у ссылки корневого пространства.
+//
+// `detour_node_source_id` здесь ложится в folder_id как есть, даже когда это
+// id СЕРВЕРА или цепочки файла (`servers[].id`, `chains[].id`): в 0.12 сервер
+// был сам себе источником. Адрес такой ссылке дописывает слияние, когда
+// известно, куда лёг узел (mergedInfo.rewriteLinks): корневой узел — `{tag:
+// тег здесь}`, член папки — парой (NODE_LINK.md §7.4).
 func importNodeLinkRef(ref SourceRef) *state.NodeLink {
 	tag := strings.TrimSpace(ref.DetourNodeTag)
 	if tag == "" {
@@ -222,44 +189,12 @@ func importMaskTag(tp *TagPolicy) string {
 	return strings.TrimSpace(tp.Mask)
 }
 
-// replaceTagSurvivesExport — переживёт ли ЯВНЫЙ тег замены круг «экспорт →
-// импорт».
-//
-// В v7 `replace.tag` — обычное поле, которое пользователь задаёт руками
-// (вкладка Replace, W5). В контракте 0.11 места для него нет: там свёртка
-// несла только режим, а тег был ПОЗИЦИОННЫМ ДЕРИВАТИВОМ — «префикс тегов
-// подписки, а если он пуст, то `<номер>:`» плюс `select`. Импорт другого
-// источника тега не имеет и обязан воспроизвести ту же формулу
-// (backupReplaceTag), иначе правила ТОГО ЖЕ файла уедут в никуда.
-//
-// Значит тег, не совпавший с деривативом, круг не переживает: на приёмнике
-// группа будет называться иначе, а правила, метившие в старое имя, приедут
-// выключенными. Молчать об этом нельзя (П6) — экспорт называет расхождение.
-//
-// index — номер записи в СЕКЦИИ subscriptions[], а не позиция источника в
-// общем списке: ту же нумерацию использует импорт (backupReplaceTag), и
-// разошедшиеся индексы означали бы, что стороны считают дериватив по-разному
-// (подписка после сервера получала `2:select` здесь и `1:select` там).
-func replaceTagSurvivesExport(src state.Source, index int) (derived string, ok bool) {
-	if src.Replace == nil {
-		return "", true
-	}
-	want := strings.TrimSpace(src.Replace.Tag)
-	prefix := ""
-	if src.TagPolicy != nil {
-		prefix = src.TagPolicy.Prefix
-	}
-	derived = legacyFoldPrefix(prefix, index) + "select"
-	if want == "" || want == derived {
-		return derived, true
-	}
-	return derived, false
-}
-
 // legacyFoldPrefix — префикс групп прежней свёртки: тег-префикс подписки с
-// позиционным умолчанием «<номер>:». Формула воспроизведена байт-в-байт (в
-// т. ч. TrimSpace: старый движок обрезал префикс, и `"[P] "` давал `[P]select`)
-// — по этим тегам ссылались правила живых состояний.
+// позиционным умолчанием «<номер>:» (D-081; номер — индекс записи в секции
+// subscriptions[], а не позиция среди всех источников). Формула воспроизведена
+// байт-в-байт (в т. ч. TrimSpace: старый движок обрезал префикс, и `"[P] "`
+// давал `[P]select`) — по этим тегам ссылались правила живых состояний, а файл
+// 0.x и файл 1.0 без `fold_tag` имени группы иначе не несут.
 func legacyFoldPrefix(tagPrefix string, index int) string {
 	if p := strings.TrimSpace(tagPrefix); p != "" {
 		return p
@@ -311,7 +246,15 @@ func foldDerivedDirectionTags(sub Subscription, index int) map[string]bool {
 // Индекс строится по СЫРЫМ тегам узлов контейнеров; корневые узлы
 // (server/chain/auto), replace-теги и Направления живут в корневом
 // пространстве и адреса не требуют.
-func resolveImportedHops(sources []state.Source, directions []configtypes.Direction) {
+//
+// Хоп цепочки, приехавшей ЭТИМ файлом, сперва ищется в пространстве файла:
+// среди членов папок файла под их тегом в файле (merged.landed.legacyTags) и
+// узлов подписок, приехавших файлом. Член, которого слияние уникализировало
+// или узнало по телу под другим тегом, находится по прежнему имени и не
+// уводит позицию на здешнего тёзку (NODE_LINK.md §7.2). Члены, добавленные
+// файлом под другим тегом, в общий индекс не входят: их здешнее имя файлу не
+// принадлежит.
+func resolveImportedHops(sources []state.Source, directions []configtypes.Direction, merged *mergedInfo) {
 	byTag := map[string]string{}   // сырой тег узла контейнера → id контейнера
 	ambiguous := map[string]bool{} // тот же тег в двух контейнерах — адрес не выбираем
 	rootTags := map[string]bool{}
@@ -328,7 +271,7 @@ func resolveImportedHops(sources []state.Source, directions []configtypes.Direct
 					continue
 				}
 				tag := strings.TrimSpace(src.Nodes[j].Tag)
-				if tag == "" {
+				if tag == "" || merged.landed.renamed[state.NodeLink{FolderID: src.ID, Tag: src.Nodes[j].Tag}] {
 					continue
 				}
 				if prev, seen := byTag[tag]; seen && prev != src.ID {
@@ -357,6 +300,29 @@ func resolveImportedHops(sources []state.Source, directions []configtypes.Direct
 		}
 	}
 
+	fromFile := map[int]bool{}
+	for _, ln := range merged.linked {
+		if ln.at.node < 0 {
+			fromFile[ln.at.src] = true
+		}
+	}
+	fileTier := make(map[string][]state.NodeLink, len(merged.landed.legacyTags))
+	for tag, hits := range merged.landed.legacyTags {
+		fileTier[tag] = append([]state.NodeLink(nil), hits...)
+	}
+	for i := range sources {
+		src := &sources[i]
+		if !fromFile[i] || src.Kind != state.SourceKindSubscription || src.ID == "" {
+			continue
+		}
+		for j := range src.Nodes {
+			tag := strings.TrimSpace(src.Nodes[j].Tag)
+			if tag == "" || src.Nodes[j].IsUnsupported() {
+				continue
+			}
+			fileTier[tag] = append(fileTier[tag], state.NodeLink{FolderID: src.ID, Tag: src.Nodes[j].Tag})
+		}
+	}
 	for i := range sources {
 		src := &sources[i]
 		if src.Kind != state.SourceKindChain {
@@ -369,6 +335,12 @@ func resolveImportedHops(sources []state.Source, directions []configtypes.Direct
 			}
 			tag := strings.TrimSpace(hop.Tag)
 			if tag == "" || rootTags[tag] {
+				continue
+			}
+			if hits, inFile := fileTier[tag]; inFile && fromFile[i] {
+				if len(hits) == 1 {
+					*hop = hits[0]
+				}
 				continue
 			}
 			if id, ok := byTag[tag]; ok && !ambiguous[tag] {

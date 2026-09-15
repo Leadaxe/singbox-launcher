@@ -19,14 +19,16 @@ var ErrNotFound = errors.New("state: file not found")
 //
 // Поведение:
 //   - файл отсутствует → ErrNotFound;
-//   - v7 (meta.version = 7) → parseV7 напрямую;
+//   - v8 (meta.version >= 8) → parseV8 напрямую;
+//   - v7 → миграция по сырому документу (migration_v7_to_v8.go) → parseV8;
+//     перед миграцией рядом с файлом пишется копия `<path>.v7.bak`;
 //   - v6 / v5 / v2–4 → легаси-парс + структурный перенос W1 + семантическая
-//     миграция v6→v7 (SPEC 118 Т7); перед миграцией рядом с файлом пишется
+//     миграция (SPEC 118 Т7); перед миграцией рядом с файлом пишется
 //     бэкап-копия `<path>.v6.bak` (страховка необратимого шага 8, риск Р5);
 //   - неизвестная версия → ошибка «regenerate via wizard»;
 //   - битый JSON → ошибка с понятным контекстом.
 //
-// Save после Load всегда пишет v7.
+// Save после Load всегда пишет v8.
 func Load(path string) (*State, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -43,10 +45,19 @@ func Load(path string) (*State, error) {
 		if legacy {
 			// Бэкап исходника ПЕРЕД миграцией; идемпотентно (существующая
 			// копия не перетирается — первая и есть исходник).
-			if bak, bakErr := writeLegacyBackupOnce(path, data); bakErr != nil {
+			if bak, bakErr := writeLegacyBackupOnce(path, data, legacyBackupSuffix); bakErr != nil {
 				debuglog.WarnLog("state: backup before migration failed: %v", bakErr)
 			} else if bak != "" {
-				debuglog.InfoLog("state: legacy state backed up to %s before v7 migration", bak)
+				debuglog.InfoLog("state: legacy state backed up to %s before schema migration", bak)
+			}
+		}
+		if meta == SchemaVersionV7 {
+			// Своя копия у шага v7→v8: файл v7 — законная форма, и рядом с
+			// ним должен остаться ровно тот файл, который был до перезаписи.
+			if bak, bakErr := writeLegacyBackupOnce(path, data, v7BackupSuffix); bakErr != nil {
+				debuglog.WarnLog("state: backup before v8 migration failed: %v", bakErr)
+			} else if bak != "" {
+				debuglog.InfoLog("state: v7 state backed up to %s before v8 migration", bak)
 			}
 		}
 	}
@@ -70,17 +81,22 @@ func Load(path string) (*State, error) {
 	}
 	// SPEC 118 W6 (хвост W2): отчёт — на диск. Мигрирует ПЕРВЫЙ, кто откроет
 	// состояние, а на старте лаунчера это фоновая загрузка без окна: к
-	// открытию конфигуратора файл уже v7, и отчёта в памяти нет ни у кого.
-	// Файл рядом в bin/ переживает эту дистанцию.
+	// открытию конфигуратора файл уже в текущей схеме, и отчёта в памяти нет
+	// ни у кого. Файл рядом в bin/ переживает эту дистанцию.
 	PersistMigrationReport(lc.BinDir, s.Migration, path)
 
-	// Шаг 8 миграции (снос легаси) — гейт до W5 (PLAN §6): включается
-	// migrationPurgesLegacy. Порядок обязателен: сначала успешная запись
-	// v7-файла, только потом необратимый снос raw-кэша и легаси-полей.
-	if migrationPurgesLegacy && s.Migration != nil {
+	if s.Migration != nil {
+		// Мигрированное состояние уезжает на диск сразу: иначе следующий
+		// старт мигрировал бы тот же файл заново, а рядом уже лежит копия
+		// исходника.
 		if err := s.Save(path); err != nil {
-			debuglog.WarnLog("state: migrated v7 not persisted (%v) — legacy purge skipped", err)
-		} else {
+			debuglog.WarnLog("state: migrated state not persisted (%v) — legacy purge skipped", err)
+		} else if migrationPurgesLegacy && s.Migration.FromVersion <= SchemaVersionV6 {
+			// Шаг 8 миграции (снос легаси) — гейт до W5 (PLAN §6): включается
+			// migrationPurgesLegacy. Порядок обязателен: сначала успешная
+			// запись файла, только потом необратимый снос raw-кэша и
+			// легаси-полей. У v7 ни raw-кэша подписок, ни defaults в файле
+			// нет — сносить нечего.
 			purgeLegacyAfterMigration(s, lc)
 			if err := s.Save(path); err != nil {
 				debuglog.WarnLog("state: save after legacy purge: %v", err)
@@ -113,10 +129,24 @@ func parseWithContext(data []byte, lc LoadContext) (*State, error) {
 	}
 
 	switch {
-	case meta >= 7:
-		// v7 и минорные добавки поверх (PLAN §1.3: незнакомые ключи
-		// игнорируются, пока мажор 7; неизвестный kind внутри — отказ).
-		return parseV7(data)
+	case meta >= SchemaVersionV8:
+		// v8 и минорные добавки поверх (PLAN §1.3: незнакомые ключи
+		// игнорируются, пока мажор 8; неизвестный kind внутри — отказ).
+		return parseV8(data)
+	case meta == SchemaVersionV7:
+		// Форму записей сменил SPEC 127: v7-файл читается миграцией по
+		// сырому документу, и только её результат разбирается в типы.
+		rep := &MigrationReport{FromVersion: SchemaVersionV7}
+		migrated, err := migrateV7DocToV8(data, rep)
+		if err != nil {
+			return nil, err
+		}
+		s, err := parseV8(migrated)
+		if err != nil {
+			return nil, err
+		}
+		s.Migration = rep
+		return s, nil
 	case meta == 6:
 		return parseV6Legacy(data, lc)
 	case meta == 5:
@@ -180,20 +210,30 @@ func deriveLoadContext(path string) LoadContext {
 	return lc
 }
 
-// legacyBackupPath — путь бэкап-копии исходного легаси-файла.
+// Суффиксы бэкап-копий: у каждого шага миграции свой, иначе вторая миграция
+// не оставила бы следа (O_EXCL считал бы чужую копию своей).
+const (
+	legacyBackupSuffix = ".v6.bak"
+	v7BackupSuffix     = ".v7.bak"
+)
+
+// legacyBackupPath — путь бэкап-копии исходного файла: сначала копия того
+// шага, который сейчас выполняется (v7), затем легаси-копия v2–v6.
 func legacyBackupPath(path string) string {
-	bak := path + ".v6.bak"
-	if _, err := os.Stat(bak); err != nil {
-		return ""
+	for _, suffix := range []string{v7BackupSuffix, legacyBackupSuffix} {
+		bak := path + suffix
+		if _, err := os.Stat(bak); err == nil {
+			return bak
+		}
 	}
-	return bak
+	return ""
 }
 
 // writeLegacyBackupOnce — копия исходных байтов рядом с файлом (O_EXCL:
 // существующая копия — самый первый исходник, его не перетираем).
 // Возвращает путь копии, если она записана этим вызовом.
-func writeLegacyBackupOnce(path string, data []byte) (string, error) {
-	bak := path + ".v6.bak"
+func writeLegacyBackupOnce(path string, data []byte, suffix string) (string, error) {
+	bak := path + suffix
 	f, err := os.OpenFile(bak, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		if os.IsExist(err) {

@@ -357,6 +357,54 @@ func ResolveTemplateVarsFor(vars []TemplateVar, state map[string]string, rawTemp
 	return out
 }
 
+// VarValuesFor — значения переменных строками для тела пресета: сохранённое
+// значение, а у переменной шаблона, которой в состоянии нет (или она пустая),
+// — её дефолт для таргета.
+//
+// Правило «нет значения → дефолт шаблона» ОДНО на всю сборку: секции конфига
+// (inbounds и прочие params) разрешают переменные через ResolveTemplateVarsFor
+// (ApplyTemplateWithVarsFor), тело шаблонного DNS-сервера — тоже
+// (substituteTemplateDNSServer), и тело пресета обязано видеть те же значения.
+// Раньше пресет получал только сохранённые значения: у состояния без `tun` и
+// `enable_proxy_in` (новая машина, импорт бэкапа — переменные непереносимы)
+// #if по ним считался false, и sniff/resolve уезжали с `inbound: []`, хотя
+// inbounds собирались по дефолтам шаблона.
+//
+// Имена, которых шаблон не объявил, проходят как есть. Список — строкой через
+// перевод строки, как его хранит состояние. Переменная без значения и без
+// дефолта в выдачу не добавляется: подставлять ей нечего, и прежнее поведение
+// («неизвестная») сохраняется. Секреты не генерируются (MaybeGenerateSecrets):
+// значение, придуманное заново на каждой сборке, разошлось бы с состоянием.
+func VarValuesFor(vars []TemplateVar, state map[string]string, rawTemplate json.RawMessage, target TargetSpec) map[string]string {
+	if len(vars) == 0 {
+		return state
+	}
+	target = target.Normalized()
+	resolved := ResolveTemplateVarsFor(vars, state, rawTemplate, target)
+	out := make(map[string]string, len(state)+len(vars))
+	for name, value := range state {
+		out[name] = value
+	}
+	for _, v := range vars {
+		if v.Separator || v.Name == "" || !VarAppliesOnGOOS(v.Platforms, target.GOOS) {
+			continue
+		}
+		r, ok := resolved[v.Name]
+		if !ok {
+			continue
+		}
+		value := r.Scalar
+		if v.Type == "text_list" {
+			value = strings.Join(r.List, "\n")
+		}
+		if value == "" {
+			continue
+		}
+		out[v.Name] = value
+	}
+	return out
+}
+
 // MaybeGenerateSecrets автогенерирует значение для КАЖДОЙ объявленной
 // type:"secret" переменной, если в resolved она пустая/плейсхолдер CHANGE_THIS_*.
 // Обобщает прежнее clash_secret-специфичное поведение: секрет всегда

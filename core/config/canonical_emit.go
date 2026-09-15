@@ -239,18 +239,27 @@ func buildCanonicalAuto(cs *configtypes.CanonicalSource, cn *configtypes.Canonic
 	// чтобы форма узла-группы совпадала с формой импортированной группы.
 	outbound[configtypes.GroupMembersKey] = []interface{}{}
 
+	// Группа адресуется СЫРЫМ тегом, как и всякий узел контейнера
+	// (NODE_LINK.md §5.2): ссылка на неё переживает смену tag_policy. Пока
+	// IdentityTag здесь не ставился, словарь целей брал финальный тег, и
+	// позиция на группу рвалась от правки префикса.
 	node := &ParsedNode{
 		Scheme:      configtypes.SchemeGroup,
 		Outbound:    outbound,
+		IdentityTag: cn.Tag,
 		SourceIndex: configtypes.UnsetSourceIndex,
 	}
 	applyCanonicalDisplay(node, cn)
 	node.Tag = applyEmissionTagMachine(node, cs, cn, num, tagCounts)
 	outbound["tag"] = node.Tag
-	// Members/default канона — сырые теги СВОЕЙ папки; ссылка без folderId
-	// у узла папки означает корень (features/directions.md §6).
+	// Члены и умолчание — ссылки NodeLink; без folderId внутри контейнера
+	// они адресуют СВОЙ контейнер (NODE_LINK.md §5.1 № 8) — одно правило на
+	// оба поля.
 	node.CanonicalGroupMembers = normalizeCanonicalLinks(cn.Group.Members, cs.FolderID)
-	node.CanonicalGroupDefault = strings.TrimSpace(cn.Group.Default)
+	if cn.Group.Default != nil && strings.TrimSpace(cn.Group.Default.Tag) != "" {
+		def := normalizeCanonicalLinks([]configtypes.NodeLink{*cn.Group.Default}, cs.FolderID)
+		node.CanonicalGroupDefault = &def[0]
+	}
 	return node, nil
 }
 
@@ -266,6 +275,10 @@ var errCanonicalChainDeferred = fmt.Errorf("chain node is built on pass 2")
 // X not found among nodes and Directions». Подменять непойманную ссылку
 // молча нельзя: маршрут без хопа — другой маршрут.
 //
+// Каждый узел-цепочка даёт СВОЮ запись ProxySource.Chains: у папки их может
+// быть несколько, и одна запись на источник собирала их в один outbound —
+// тег первой цепочки, позиции последней (NODE_LINK.md §9.3 п. 2).
+//
 // Мутирует parserConfig — как и остальные проходы 0/2, по копии, собранной
 // для генерации.
 func ResolveCanonicalChainHops(parserConfig *ParserConfig, targets *NodeLinkTargets) []EmissionWarning {
@@ -279,6 +292,7 @@ func ResolveCanonicalChainHops(parserConfig *ParserConfig, targets *NodeLinkTarg
 		if cs == nil || ps.Disabled {
 			continue
 		}
+		var built []configtypes.BuiltChain
 		for ni := range cs.Nodes {
 			cn := &cs.Nodes[ni]
 			if cn.Kind != canonicalKindChain || !cn.Enabled || len(cn.Hops) == 0 {
@@ -312,7 +326,15 @@ func ResolveCanonicalChainHops(parserConfig *ParserConfig, targets *NodeLinkTarg
 				hops = append(hops, res.Tag)
 			}
 			// Настройки маршрута — из тела узла, позиции — свежерезолвнутые.
-			ps.Chain = configtypes.ChainFromBody(cn.Body, hops)
+			built = append(built, configtypes.BuiltChain{
+				Tag:   strings.TrimSpace(cn.Tag),
+				Chain: configtypes.ChainFromBody(cn.Body, hops),
+			})
+		}
+		// Источник без собираемых цепочек записей не получает: сборочную
+		// форму, положенную вызывающим напрямую, проход не затирает.
+		if len(built) > 0 {
+			ps.Chains = built
 		}
 	}
 	return warnings

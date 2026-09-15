@@ -24,7 +24,46 @@
         "folder_id": "01J00000000000000000000SUB",
         "tag": "NL-1"
       },
-      "id": "01J00000000000000000000SRV"
+      "id": "01J00000000000000000000SRV",
+      "sections": {
+        "rules": [
+          {
+            "kind": "inline",
+            "enabled": true,
+            "order_num": 945,
+            "body": {
+              "name": "@{self} network",
+              "match": {
+                "ip_cidr": [
+                  "100.64.0.0/10"
+                ]
+              },
+              "outbound": "@self"
+            }
+          }
+        ],
+        "dns": {
+          "servers": [
+            {
+              "kind": "user",
+              "enabled": true,
+              "tag": "@{self}-dns",
+              "type": "tailscale",
+              "endpoint": "@self"
+            }
+          ],
+          "rules": [
+            {
+              "kind": "user",
+              "enabled": true,
+              "domain_suffix": [
+                ".ts.net"
+              ],
+              "server": "@{self}-dns"
+            }
+          ]
+        }
+      }
     },
     {
       "kind": "folder",
@@ -217,21 +256,56 @@
       "kind": "preset",
       "ref": "ru-direct",
       "enabled": true,
+      "order_num": 960,
       "body": {
-        "vars": {}
+        "vars": {
+          "out": "direct-out"
+        }
       }
     },
     {
       "kind": "inline",
       "enabled": true,
+      "order_num": 1000,
       "body": {
         "name": "X",
         "match": {
           "port": [
             443
+          ],
+          "domain_suffix": [
+            "example.com"
           ]
         },
         "outbound": "proxy-out"
+      }
+    },
+    {
+      "kind": "inline",
+      "enabled": false,
+      "order_num": 1005,
+      "body": {
+        "name": "blocked",
+        "match": {
+          "domain_suffix": [
+            "ads.example"
+          ]
+        },
+        "outbound": "drop"
+      }
+    },
+    {
+      "kind": "srs",
+      "enabled": true,
+      "order_num": 1010,
+      "body": {
+        "name": "three sets",
+        "srs_url": "https://example.invalid/a.srs",
+        "srs_urls": [
+          "https://example.invalid/a.srs",
+          "https://example.invalid/b.srs"
+        ],
+        "outbound": "reject"
       }
     }
   ],
@@ -249,6 +323,32 @@
         "enabled": true,
         "kind": "template",
         "tag": "cloudflare_udp"
+      },
+      {
+        "enabled": true,
+        "kind": "preset",
+        "ref": "russian:yandex_udp"
+      },
+      {
+        "enabled": true,
+        "kind": "user",
+        "tag": "my-doh",
+        "type": "https",
+        "server": "1.1.1.1",
+        "detour": "proxy-out"
+      }
+    ],
+    "rules": [
+      {
+        "enabled": true,
+        "kind": "preset",
+        "ref": "russian"
+      },
+      {
+        "enabled": true,
+        "kind": "user",
+        "rule_set": "ru-domains",
+        "server": "my-doh"
       }
     ]
   },

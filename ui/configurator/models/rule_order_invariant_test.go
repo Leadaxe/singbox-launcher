@@ -1,7 +1,6 @@
 package models
 
 import (
-	"encoding/json"
 	"testing"
 
 	corestate "singbox-launcher/core/state"
@@ -27,7 +26,7 @@ func loadCrooked(rules []corestate.Rule, td *wizardtemplate.TemplateData) *Wizar
 	m.CustomRules = customRulesFromStateRules(rules)
 	m.RuleOrder = RuleOrderFromAxis(rules, m.PresetRefs, m.CustomRules, m.NodeRuleRefs)
 	ReconcileRuleOrder(m)
-	EnsureRuleOrderNums(m)
+	EnsureRuleNums(m)
 	return m
 }
 
@@ -44,11 +43,10 @@ func ruleMatchSuffix(cr *RuleState) string {
 // unnamedRule — inline-правило без имени: identity у таких общая ("unnamed"),
 // и различает их только очередь.
 func unnamedRule(suffix string, num *int) corestate.Rule {
-	body, _ := json.Marshal(corestate.InlineBody{
-		Match:    map[string]interface{}{"domain_suffix": suffix},
-		Outbound: "proxy-out",
-	})
-	return corestate.Rule{Kind: corestate.RuleKindInline, Enabled: true, OrderNum: num, Body: body}
+	r := corestate.NewInlineRule("", map[string]interface{}{"domain_suffix": suffix}, "proxy-out")
+	r.Enabled = true
+	r.Num = num
+	return r
 }
 
 // C6 (обязательный регресс): два безымянных inline-правила, файловый порядок
@@ -80,13 +78,13 @@ func TestUnnamedQueueFollowsAxisOnCrookedFile(t *testing.T) {
 	// отдавала осевому первому (alpha) индекс файлового первого (beta).
 	for _, cr := range m.CustomRules {
 		suffix := ruleMatchSuffix(cr)
-		if cr.OrderNum == nil {
+		if cr.Num == nil {
 			t.Fatalf("правило %q осталось без номера", suffix)
 		}
 		want := map[string]int{"alpha": 1000, "beta": 1001}[suffix]
-		if *cr.OrderNum != want {
+		if *cr.Num != want {
 			t.Errorf("правило %q получило номер %d, ожидался %d — номера перекрестились",
-				suffix, *cr.OrderNum, want)
+				suffix, *cr.Num, want)
 		}
 	}
 
@@ -133,21 +131,21 @@ func TestDropUnderSystemRuleIsLegalAndKeepsAnchors(t *testing.T) {
 			moved = cr
 		}
 	}
-	if moved == nil || moved.OrderNum == nil {
+	if moved == nil || moved.Num == nil {
 		t.Fatal("перетащенное правило потеряло номер")
 	}
-	if *moved.OrderNum != 1 {
-		t.Errorf("правило получило номер %d, ожидался 1 — позиция сразу под головой", *moved.OrderNum)
+	if *moved.Num != 1 {
+		t.Errorf("правило получило номер %d, ожидался 1 — позиция сразу под головой", *moved.Num)
 	}
-	if *moved.OrderNum < corestate.MinSortableRuleNum {
-		t.Errorf("правило получило номер %d — провалилось под системную голову", *moved.OrderNum)
+	if *moved.Num < corestate.MinSortableRuleNum {
+		t.Errorf("правило получило номер %d — провалилось под системную голову", *moved.Num)
 	}
 
 	// Якоря не тронуты: между 1 и 950 дырка, вытеснять некого.
 	anchors := map[string]int{}
 	for _, pr := range m.PresetRefs {
-		if pr.OrderNum != nil {
-			anchors[pr.Ref] = *pr.OrderNum
+		if pr.Num != nil {
+			anchors[pr.Ref] = *pr.Num
 		}
 	}
 	if anchors["traffic-processing"] != 0 {
@@ -346,16 +344,16 @@ func collectAxisNums(t *testing.T, m *WizardModel) map[string]int {
 		switch s.Kind {
 		case SlotKindPresetRef:
 			pr := m.PresetRefs[s.Index]
-			if pr.OrderNum == nil {
+			if pr.Num == nil {
 				t.Fatalf("пресет %q без номера", pr.Ref)
 			}
-			nums[pr.Ref] = *pr.OrderNum
+			nums[pr.Ref] = *pr.Num
 		case SlotKindCustom:
 			cr := m.CustomRules[s.Index]
-			if cr.OrderNum == nil {
+			if cr.Num == nil {
 				t.Fatalf("правило %q без номера", cr.Rule.Label)
 			}
-			nums[cr.Rule.Label] = *cr.OrderNum
+			nums[cr.Rule.Label] = *cr.Num
 		}
 	}
 	return nums
@@ -366,7 +364,7 @@ func assertSlotsMatchAxis(t *testing.T, m *WizardModel) {
 	t.Helper()
 	prev := -1 << 31
 	for i, s := range m.RuleOrder {
-		n := m.slotOrderNum(s)
+		n := m.slotNum(s)
 		if n == nil {
 			t.Fatalf("слот %d без номера", i)
 		}
@@ -382,13 +380,13 @@ func assertRulesSortedByAxis(t *testing.T, rules []corestate.Rule) {
 	t.Helper()
 	prev := -1 << 31
 	for i, r := range rules {
-		if r.OrderNum == nil {
+		if r.Num == nil {
 			t.Fatalf("state.Rules[%d] (%s/%s) без order_num", i, r.Kind, r.Ref)
 		}
-		if *r.OrderNum < prev {
+		if *r.Num < prev {
 			t.Fatalf("state.Rules[%d] несёт номер %d после %d — массив не отсортирован по оси",
-				i, *r.OrderNum, prev)
+				i, *r.Num, prev)
 		}
-		prev = *r.OrderNum
+		prev = *r.Num
 	}
 }

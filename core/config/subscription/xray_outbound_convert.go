@@ -138,6 +138,12 @@ func xrayBuildVLESSFromOutbound(ob map[string]interface{}, label string) (*confi
 		return nil, errors.New(xrayReasonEmptyUserID)
 	}
 	flow := xrayMapString(u0, "flow")
+	// VLESS Encryption (ML-KEM, ядро option/vless.go Encryption) — то же
+	// правило, что в URI-пути (node_parser_core.go): пусто или `none` = слой
+	// выключен, поле не эмитится; иначе ключ идёт как есть, без обрезки и
+	// нормализации (issue #121, TASKS_LXBOX §15). Раньше поле выбрасывалось, и
+	// узел с обязательным VLESS Encryption не подключался.
+	encryption := strings.TrimSpace(xrayMapString(u0, "encryption"))
 
 	streamSettings, _ := ob["streamSettings"].(map[string]interface{})
 	network := strings.ToLower(xrayMapString(streamSettings, "network"))
@@ -152,6 +158,9 @@ func xrayBuildVLESSFromOutbound(ob map[string]interface{}, label string) (*confi
 	outbound["server"] = addr
 	outbound["server_port"] = port
 	outbound["uuid"] = uuid
+	if encryption != "" && !strings.EqualFold(encryption, "none") {
+		outbound["encryption"] = encryption
+	}
 
 	if flow != "" {
 		if flow == "xtls-rprx-vision-udp443" {

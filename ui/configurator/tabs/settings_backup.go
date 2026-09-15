@@ -23,12 +23,13 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/backup"
+	"singbox-launcher/core/build"
 	corestate "singbox-launcher/core/state"
+	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
-	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
@@ -45,24 +46,12 @@ const (
 	// Про правила сказано отдельно и честно — они единственные замещаются
 	// целиком; DNS сливается, и обещать его замену тоже было бы неправдой.
 	settingsBackupImportMergeNoteText = "Settings are merged, not replaced: subscriptions match by address, servers by what they connect to, and anything of yours that is not in the file stays. Routing rules are the exception — they are replaced by the file."
-)
 
-// knownPresetIDs — id пресетов текущего шаблона. Пустой список означает
-// «шаблон не загружен» — тогда ссылки на пресеты не режутся: выключить всё
-// подряд хуже, чем импортировать как есть.
-func knownPresetIDs(presenter *wizardpresentation.WizardPresenter) []string {
-	model := presenter.Model()
-	if model == nil || model.TemplateData == nil {
-		return nil
-	}
-	out := make([]string, 0, len(model.TemplateData.Presets))
-	for _, p := range model.TemplateData.Presets {
-		if p.ID != "" {
-			out = append(out, p.ID)
-		}
-	}
-	return out
-}
+	// Сводка файла 1.0: там одна секция источников (sources[]), и разложить
+	// её обратно на «подписки и серверы» ради старой строки значило бы
+	// научить UI форме файла — ровно тому, от чего избавляет union File.
+	settingsBackupSummaryCounts10Text = "Sources: %d\nRules: %d\nVariables: %d"
+)
 
 // backupSection — блок «Экспорт» / «Импорт» с пояснением.
 func backupSection(presenter *wizardpresentation.WizardPresenter, win fyne.Window) fyne.CanvasObject {
@@ -86,20 +75,14 @@ func backupSection(presenter *wizardpresentation.WizardPresenter, win fyne.Windo
 	)
 }
 
-// handleBackupExport собирает текущее состояние и пишет файл.
+// handleBackupExport пишет файл и показывает отчёт.
+//
+// Формат не спрашивается: писатель у лаунчера один — 1.0 (D-110), релизы
+// лаунчера и LxBox выходят синхронно, и выбирать пользователю не из чего.
 func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.Window) {
 	st := presenter.CreateStateFromModel("", "")
 	if st == nil {
 		dialog.ShowError(fmt.Errorf("%s", locale.T("Cannot read the current state")), win)
-		return
-	}
-
-	b, exportWarns, err := backup.Export(st, backup.ExportOptions{
-		AppVersion: constants.AppVersion,
-		Platform:   runtime.GOOS,
-	})
-	if err != nil {
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Export failed"), err), win)
 		return
 	}
 
@@ -121,7 +104,8 @@ func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.
 		path += ".json"
 	}
 
-	if err := backup.WriteFile(path, b); err != nil {
+	exportWarns, err := backup.ExportFile(path, st, backupExportOptions(presenter, st))
+	if err != nil {
 		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Export failed"), err), win)
 		return
 	}
@@ -135,6 +119,32 @@ func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.
 	// Прежняя модалка резала список на десяти строках и отсылала за
 	// продолжением в отчёт импорта, которого при экспорте не существует.
 	showExportReport(win, path, exportWarns)
+}
+
+// backupExportOptions — шапка файла и то, что писатель берёт у шаблона.
+//
+// Направления — телом ПОСЛЕ слияния (build.ResolveDirections): ссылочная
+// запись в состоянии тонкая, и без тела шаблона или пресета proxy-out уехал
+// бы в файл одним тегом — без отбора узлов и без включений. Тег блокировки —
+// тот же, что у галки формы Направления.
+func backupExportOptions(presenter *wizardpresentation.WizardPresenter, st *corestate.State) backup.ExportOptions {
+	var td *wizardtemplate.TemplateData
+	if model := presenter.Model(); model != nil {
+		td = model.TemplateData
+	}
+	values := make(map[string]string, len(st.Vars))
+	for _, v := range st.Vars {
+		values[v.Name] = v.Value
+	}
+	return backup.ExportOptions{
+		AppVersion: constants.AppVersion,
+		Platform:   runtime.GOOS,
+		Directions: build.ResolveDirections(st.Directions, td, build.TargetSpecFromState(st)),
+		BlockTag:   td.DirectionBlockTag(),
+		// SPEC 129: записи шаблонных DNS-серверов и пресетов едут без
+		// умолчаний и необъявленных имён (писатель — тоже писатель, Н4).
+		RecordVars: wizardtemplate.RecordVarDeclsFor(td, values, build.TargetSpecFromState(st)),
+	}
 }
 
 // handleBackupImport читает файл, показывает, что приедет, и применяет
@@ -179,29 +189,21 @@ func handleBackupImport(presenter *wizardpresentation.WizardPresenter, win fyne.
 		}, win)
 }
 
-func applyBackup(presenter *wizardpresentation.WizardPresenter, win fyne.Window, b *backup.Backup, parseWarns []backup.Warning) {
-	st := presenter.CreateStateFromModel("", "")
-	if st == nil {
-		dialog.ShowError(fmt.Errorf("%s", locale.T("Cannot read the current state")), win)
-		return
-	}
-
-	res, err := backup.Import(st, b, backup.ImportOptions{
-		// Известные цели берём из модели: правило, ссылающееся в никуда,
-		// приедет выключенным, а не уронит конфиг ядра.
-		KnownOutbounds: wizardbusiness.GetAvailableOutbounds(presenter.Model()),
-		KnownPresets:   knownPresetIDs(presenter),
-	})
+func applyBackup(presenter *wizardpresentation.WizardPresenter, win fyne.Window, b *backup.File, parseWarns []backup.Warning) {
+	// Новая машина: своего state.json у визарда ещё нет и правок не было —
+	// модель тогда сид шаблона, и файл сливается в пустое состояние, как у
+	// POST /backup/import на свежей установке (ImportBackupFile).
+	fresh := !presenter.GetStateStore().StateExists("") && !presenter.HasUnsavedChanges()
+	res, stage, err := presenter.ImportBackupFile(b, fresh)
 	if err != nil {
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Import failed"), err), win)
-		return
-	}
-	// Import заменил Rules[] мимо диска, а LoadState читает inline/srs-правила
-	// из legacy-вида CustomRules — без пересборки они терялись (issue #111).
-	corestate.RebuildLegacyRuleView(st)
-
-	if err := presenter.LoadState(st); err != nil {
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Failed to restore state"), err), win)
+		switch stage {
+		case wizardpresentation.BackupImportStageRead:
+			dialog.ShowError(fmt.Errorf("%s", locale.T("Cannot read the current state")), win)
+		case wizardpresentation.BackupImportStageLoad:
+			dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Failed to restore state"), err), win)
+		default:
+			dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Import failed"), err), win)
+		}
 		return
 	}
 	presenter.SyncModelToGUI()
@@ -225,13 +227,25 @@ func applyBackup(presenter *wizardpresentation.WizardPresenter, win fyne.Window,
 }
 
 // backupSummary — что лежит в файле, до применения.
-func backupSummary(b *backup.Backup, warns []backup.Warning) string {
+//
+// Файл может быть любого читаемого формата, и UI про это знать не обязан:
+// шапку и счётчики отдаёт сам File. Разная строка счётчиков — не косметика:
+// у 0.x секции источников две (подписки и серверы порознь), у 1.0 одна, и
+// назвать «Серверов: 0» там, где их пять внутри sources[], значило бы соврать
+// пользователю ДО того, как он нажал «Импорт».
+func backupSummary(b *backup.File, warns []backup.Warning) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, locale.T("From %s %s, exported %s"),
-		b.ExportedBy.App, b.ExportedBy.Version, b.ExportedAt)
+	by, at := b.ExportedByOf()
+	fmt.Fprintf(&sb, locale.T("From %s %s, exported %s"), by.App, by.Version, at)
 	sb.WriteString("\n\n")
-	fmt.Fprintf(&sb, locale.T(settingsBackupSummaryCountsText),
-		len(b.Subscriptions), len(b.Servers), len(b.Rules), len(b.Vars))
+	if b.Legacy != nil {
+		fmt.Fprintf(&sb, locale.T(settingsBackupSummaryCountsText),
+			len(b.Legacy.Subscriptions), len(b.Legacy.Servers),
+			len(b.Legacy.Rules), len(b.Legacy.Vars))
+	} else {
+		sources, rules, vars := b.Counts()
+		fmt.Fprintf(&sb, locale.T(settingsBackupSummaryCounts10Text), sources, rules, vars)
+	}
 	if len(warns) > 0 {
 		sb.WriteString("\n\n")
 		sb.WriteString(warnLines(warns, backupSummaryWarnLimit))
@@ -274,13 +288,21 @@ func warnLines(warns []backup.Warning, limit int) string {
 func warnText(w backup.Warning) string {
 	switch w.Code {
 	case backup.WarnBackupUnknownOutbound:
+		// SPEC 129 Н9: у DNS-сервера цель — канал запроса, и выключается
+		// сервер, а не правило.
+		if w.Kind == "dns_server" {
+			return fmt.Sprintf(locale.T("%s — this DNS server's channel does not exist here, the server is imported turned off"), w.Detail)
+		}
 		return fmt.Sprintf(locale.T("%s — target does not exist here, the rule is imported turned off"), w.Detail)
 	case backup.WarnBackupFinalDropped:
 		return fmt.Sprintf(locale.T("%s — default route target does not exist here, left unchanged"), w.Detail)
 	case backup.WarnBackupUnknownPreset:
 		return fmt.Sprintf(locale.T("%s — unknown preset, the rule is imported turned off"), w.Detail)
 	case backup.WarnBackupVarSkipped:
-		return fmt.Sprintf(locale.T("%s — this setting means something else on this machine, skipped"), w.Detail)
+		return varSkippedWarnText(w)
+	case backup.WarnBackupDNSEntrySkipped:
+		return fmt.Sprintf(locale.T("%s — this template has no such DNS server, the entry is not imported"),
+			strings.TrimPrefix(w.Detail, "template:"))
 	case backup.WarnBackupUnknownField:
 		return fmt.Sprintf(locale.T("%s — not supported here, skipped"), w.Detail)
 	case backup.WarnBackupFieldTypeMismatch:
@@ -312,11 +334,56 @@ func warnText(w backup.Warning) string {
 		return fmt.Sprintf(locale.T("%s — the \"exclude from the global list\" flag is gone; its nodes stay in the candidate pool (fold the source into a group for the previous behaviour)"), w.Detail)
 	case backup.WarnBackupLabelDropped:
 		return fmt.Sprintf(locale.T("%s — label dropped, a node is named by its tag"), w.Detail)
+	case backup.WarnBackupLocalOnlyDropped:
+		// Экспорт: опции Направления, которые не теги Направлений, в общий
+		// формат не едут (NODE_LINK.md §8). Detail — «Направление: опции».
+		return fmt.Sprintf(locale.T("%s — these Direction options are settings of this machine (folder replacements, service tags, nodes) and did not go into the file; a node joins a Direction through its filter"), w.Detail)
+	case backup.WarnBackupDirectionIncludeDropped:
+		return fmt.Sprintf(locale.T("%s — these Direction options are not Directions or known names here, they were left out; a node joins a Direction through its filter"), w.Detail)
+	case backup.WarnBackupGroupDegraded:
+		// У лаунчера причина одна — группа по правилу отбора без состава;
+		// чужой reason (LxBox упрощает selector) показывать нечем, и сырой
+		// код лучше, чем неверное объяснение.
+		if w.Reason == backup.GroupDegradedMembersRule {
+			return fmt.Sprintf(locale.T("%s — this group picks its members by a rule, which the launcher does not support; it was not imported, and links to it will not resolve"), w.Detail)
+		}
+		return w.Code + ": " + w.Detail + " (" + w.Reason + ")"
+	case backup.WarnBackupSectionRecordDropped:
+		// Detail несёт «тег узла: вид записи»: без тега пользователю негде
+		// искать, что именно потеряло часть своей связки. Причина у кода не
+		// одна (норма B3), и общая фраза про «вид записи» на правиле с
+		// rule_set просто врала бы — вид там как раз законный.
+		if w.Reason == backup.SectionDropRuleSet {
+			return fmt.Sprintf(locale.T("%s — a node rule referenced a rule set; node sections neither declare nor reference rule sets, so the whole rule was dropped (cutting just the reference would have turned it into a match-all)"), w.Detail)
+		}
+		return fmt.Sprintf(locale.T("%s — a node carries an entry of this kind, which node sections do not allow; the entry was dropped, the rest of the node came through"), w.Detail)
 	default:
 		// Сюда попадать не должно: каждый код обязан иметь свою фразу выше.
 		// Сырой код остаётся последним рубежом, чтобы новое предупреждение
 		// не пропало молча, если фразу забыли.
 		return w.Code + ": " + w.Detail
+	}
+}
+
+// varSkippedWarnText — непримененная переменная (SPEC 129 §5.6): причина и
+// носитель различают четыре разных разговора с пользователем.
+func varSkippedWarnText(w backup.Warning) string {
+	record := w.Record
+	if i := strings.Index(record, ":"); i >= 0 {
+		record = record[i+1:]
+	}
+	switch w.Reason {
+	case corestate.RecordVarUndeclared:
+		if w.Kind == "preset" {
+			return fmt.Sprintf(locale.T("%s: parameter \"%s\" is not declared by this template's preset, skipped"), record, w.Detail)
+		}
+		return fmt.Sprintf(locale.T("%s: parameter \"%s\" is not declared by this template's DNS server, skipped"), record, w.Detail)
+	case corestate.RecordVarSuperseded:
+		return fmt.Sprintf(locale.T("%s — the file also sets this DNS server's parameters in its entry; the entry wins, this older form is skipped"), w.Detail)
+	case corestate.RecordVarNoRecord:
+		return fmt.Sprintf(locale.T("%s — the file has no entry for this DNS server, the value is skipped"), w.Detail)
+	default:
+		return fmt.Sprintf(locale.T("%s — this setting means something else on this machine, skipped"), w.Detail)
 	}
 }
 

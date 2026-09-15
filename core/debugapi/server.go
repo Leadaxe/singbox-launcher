@@ -276,6 +276,10 @@ func (s *Server) endpoints() []apiEndpoint {
 		{"POST", "/traffic/clear", true, "Clear captured traffic", s.handleTrafficClear},
 		{"GET/POST", "/traffic/verbose", true, "Get / toggle verbose capture", s.handleTrafficVerbose},
 	}
+	// SPEC 127 W2.9: перенос настроек — паритет с кнопками «Экспорт…» /
+	// «Импорт…» вкладки «Файлы». Группа не опциональна: она не зависит ни от
+	// какой обвязки wiring, только от состояния, которое у сборки есть всегда.
+	eps = append(eps, s.backupEndpoints()...)
 	// SPEC 100: optional groups — registered (and therefore documented in
 	// / and /help) only when the wiring enabled them.
 	if s.remote != nil {

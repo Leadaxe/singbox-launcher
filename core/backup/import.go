@@ -1,16 +1,23 @@
 package backup
 
-// Импорт LX Backup в состояние лаунчера (контракт 0.12.0).
+// Импорт LX Backup в состояние лаунчера: ОДИН код слияния на два формата
+// файла (SPEC 127 §6.2).
+//
+// Разрез: формат превращает файл в записи состояния (`legacy_read_0x.go` для
+// 0.x, `import10.go` для 1.0 — оба отдают decodedFile), а дальше работает
+// applyDecoded — единственный носитель правил §9 BACKUP.md. Правила эти не
+// меняются волной 2 ни на строку: подписки по `url` байт-в-байт, серверы по
+// телу, папки по имени, цепочки и Направления по тегу, DNS «своё сильнее»,
+// `rules[]` — единственная полная замена, `vars` переносимые, `route.final`
+// при известной цели, `warp` добавлением.
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
-	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/state"
 )
 
@@ -31,6 +38,30 @@ type Warning struct {
 	// приклеивался к началу Detail, и UI пришлось бы отрывать его обратно
 	// разбором строки, которую сам же и собирал.
 	Kind string
+	// Reason — ПОЧЕМУ запись отброшена, когда причин у одного кода несколько.
+	//
+	// Заведено под `backup_section_record_dropped` (норма B3,
+	// NODE_SECTIONS.md §1): запись секции отбрасывается либо из-за чужого
+	// ВИДА (`kind` — preset у правила, template/preset у DNS), либо из-за
+	// `rule_set` в теле, либо из-за того, что узлу секции не положены вовсе
+	// (`not_allowed`). Потеря для пользователя разная по смыслу — «вид записи
+	// у узла не бывает» против «набор правил узлу не принадлежит», — а код
+	// один, и различать их приклеиванием слов к Detail значило бы заставить
+	// UI разбирать человеческую строку обратно.
+	//
+	// Значения у лаунчера: `kind` | `rule_set` | `not_allowed`. Перечень
+	// контракта знает ещё `unknown_key` — его ставит сторона со строгим
+	// разбором тела (LxBox); у лаунчера тело сырое, и такой причины нет.
+	//
+	// У `backup_var_skipped` (SPEC 129 §5.6) — `not_portable` | `undeclared`
+	// | `superseded` | `no_record`.
+	Reason string
+	// Record — носитель переменной у `backup_var_skipped` (SPEC 129 §5.6):
+	// `dns:<tag>` — запись шаблонного DNS-сервера, `preset:<ref>` — пресет
+	// правила, пусто — корневая переменная. Отдельным полем, а не приклейкой к
+	// Detail: UI различает переменную записи и корневую по полю, а не разбором
+	// строки.
+	Record string
 	// Nodes — сколько узлов уехало вместе с записью, о которой warning.
 	// Ноль означает «неприменимо» (правило, переменная, поле), а не «узлов
 	// не было». Поле нужно ровно там, где потеря измеряется не фактом, а
@@ -54,8 +85,16 @@ const (
 	WarnBackupFinalDropped = "backup_final_dropped"
 	// WarnBackupUnknownPreset — preset id вне шаблона принимающей стороны.
 	WarnBackupUnknownPreset = "backup_unknown_preset"
-	// WarnBackupVarSkipped — переменная не в списке переносимых.
+	// WarnBackupVarSkipped — переменная не применена: корневая не в списке
+	// переносимых (`not_portable`), имя записи не объявлено шаблоном
+	// приёмника (`undeclared`), корневое `dns_<tag>_<var>` уступило записи
+	// файла со своими vars (`superseded`) или не нашло записи (`no_record`).
+	// Причина — Warning.Reason, носитель — Warning.Record (SPEC 129 §5.6).
 	WarnBackupVarSkipped = "backup_var_skipped"
+	// WarnBackupDNSEntrySkipped — запись шаблонного DNS-сервера, чей тег
+	// шаблон приёмника не объявил: тела у неё здесь нет, и запись не
+	// ввозится (SPEC 129 §5.2). Detail — `template:<tag>`.
+	WarnBackupDNSEntrySkipped = "backup_dns_entry_skipped"
 	// WarnBackupUnknownField — ключ вне схемы: в состояние не попадает (П3).
 	// Detail называет и ключ, и сущность, в которой он встретился.
 	WarnBackupUnknownField = "backup_unknown_field"
@@ -77,9 +116,11 @@ const (
 	// приехавшее НЕ применяется. Перезапись стёрла бы настройки, сделанные
 	// на этой машине, а правила и так найдут цель по тегу (SPEC 104).
 	WarnBackupDirectionExists = "backup_direction_exists"
-	// WarnBackupSourceKindUnsupported — вид источника, которого контракт
-	// 0.11 не знает (папка, провайдерская группа): в файл он не поехал.
-	// Секция folders[] — отдельный трек с LxBox-стороной (SPEC 118 §2).
+	// WarnBackupSourceKindUnsupported — запись вида, которого формат не
+	// выражает. На экспорте — корневая провайдерская группа (union sources[]
+	// 1.0 её не знает, export10.go): в файл она не поехала. На импорте —
+	// источник вида, которого этот union не знает (import10.go): запись не
+	// применена, остальные применяются.
 	WarnBackupSourceKindUnsupported = "backup_source_kind_unsupported"
 	// WarnBackupTagMaskDropped — `tag.mask` ПОДПИСКИ не применён: маска была
 	// шаблоном имени для каждой ноды (`{$label}` и подстановки), а в модели
@@ -93,10 +134,15 @@ const (
 	// попадает — она приезжает заменой (FolderReplace), а не потерей.
 	WarnBackupLocalDirectionDropped = "backup_local_direction_dropped"
 	// WarnBackupReplaceTagDerived — ЯВНЫЙ тег замены папки/подписки не
-	// переживает контракт 0.11: там свёртка несла только режим, а имя группы
+	// переживает формат 0.12: там свёртка несла только режим, а имя группы
 	// было позиционным деривативом префикса. На приёмнике группа получит
 	// деривативное имя, и правила, метившие в прежнее, приедут выключенными.
-	// Предупреждение ставится на ЭКСПОРТЕ — там, где ещё видно оба имени.
+	// Предупреждение ставит ЭКСПОРТ 0.12 — там, где ещё видно оба имени.
+	//
+	// Лаунчер с v1.6.0 его не ставит (D-110): писателя 0.12 у него нет, а
+	// формат 1.0 везёт имя группы явно (`fold_tag`). Код остаётся в словаре
+	// контракта (registry/backup_warnings.json), константа — его зеркало для
+	// сверки словаря (schema_test.go) и ключ фразы UI.
 	WarnBackupReplaceTagDerived = "backup_replace_tag_derived"
 	// WarnBackupChainExists — цепочка с таким тегом уже есть: приехавшая НЕ
 	// применяется, своя сильнее. Warning ставится ВСЕГДА, даже когда «своя
@@ -123,12 +169,13 @@ const (
 	// WarnBackupLocalOnlyDropped — настройки СВОЕЙ стороны, которым в общей
 	// схеме дома нет: они остаются здесь и в файл не едут.
 	//
-	// Один код на оба направления и обе стороны. У лаунчера это
-	// relays_in_directions подписки (у LxBox такой развилки нет вовсе),
-	// настройки самой папки (tag_policy, replace, detour) и её члены,
-	// которых секция servers[] выразить не может (цепочки, неразобранные
-	// записи); у LxBox — import_rules, свои настройки папки и политика
-	// detour источника.
+	// Один код на оба направления и обе стороны. У LxBox это import_rules,
+	// свои настройки папки и политика detour источника. У лаунчера им
+	// называл потери писатель 0.12 (relays_in_directions подписки, настройки
+	// самой папки, её члены не-server, секции узла) — в 1.0 у этих полей есть
+	// дом. С 1.6.0 (контракт 1.0.1) писатель 1.0 ставит его на опции
+	// Направления, которые не теги Направлений: `include` несёт только их
+	// (NODE_LINK.md §8, export10.go).
 	//
 	// Почему не «завести поля в схеме»: односторонний ключ в общем формате —
 	// это возвращённый тайный груз, ради сноса которого убран механизм
@@ -148,12 +195,46 @@ const (
 	// не говорили. У цепочек и Направлений кода нет: там `label` с контракта
 	// 0.12.4 — объявленное поле LxBox, игнорируемое МОЛЧА (D-094).
 	WarnBackupLabelDropped = "backup_label_dropped"
+	// WarnBackupSectionRecordDropped — запись ЧУЖОГО ВИДА внутри секций узла
+	// (NODE_SECTIONS.md §1, D-102): у правил узла бывают только `inline` и
+	// `srs`, у его DNS-записей — только `user`.
+	//
+	// Почему вид ограничен: `preset` означал бы ссылку на шаблон, которого на
+	// принимающей машине может не быть, а `template`/`preset` у DNS — тонкие
+	// ссылки, которым у узла ссылаться не на что. Такая запись применяется в
+	// никуда, поэтому отбрасывается — но ОСТАЛЬНЫЕ записи узла живут: одна
+	// чужая строка не стоит всей связки.
+	//
+	// Код на импорте, а не в состоянии: раньше отсев делал dropForeignKinds
+	// (core/state/node_sections.go) и писал только в WarnLog — пользователь,
+	// принёсший файл, о потере не узнавал. Detail и Kind называют узел и вид
+	// отброшенной записи.
+	//
+	// Тем же кодом отбрасывается правило с `rule_set` в теле (норма B3) и
+	// поле `sections` у узла, которому оно не положено. Три причины различает
+	// поле Warning.Reason (`kind` | `rule_set` | `not_allowed`): потеря
+	// одинаково называется кодом, но объясняется пользователю по-разному.
+	WarnBackupSectionRecordDropped = "backup_section_record_dropped"
+	// WarnBackupDirectionIncludeDropped — строки `include` приехавшего
+	// Направления, которые здесь не теги Направлений (этого файла или
+	// приёмника) и не объявленные корневые имена: узел, чужая свёртка,
+	// неизвестное имя. В опции они не попадают (NODE_LINK.md §8): узел в
+	// Направление кладёт фильтр, а имени, которого нет, в конфиге не бывает.
+	// Один warning на Направление; Detail — `<тег Направления>: <строки>`.
+	WarnBackupDirectionIncludeDropped = "backup_direction_include_dropped"
+	// WarnBackupGroupDegraded — провайдерская группа приехала в форме, которую
+	// принимающая сторона не выражает, и ввезена упрощённой или не ввезена
+	// вовсе. Код общий для обеих сторон, причина — в Warning.Reason: у
+	// лаунчера группа по правилу (`group.members_rule` без явного состава) не
+	// ввозится — пустую группу сборка выбрасывала бы на каждой сборке
+	// (GroupDegradedMembersRule); у LxBox selector с `default` становится
+	// urltest, умолчание отбрасывается. Detail — тег группы.
+	WarnBackupGroupDegraded = "backup_group_degraded"
 )
 
-// errSkipRule — правило пропущено осознанно (чужой kind), а не сломалось.
-// Отдельная ошибка, а не bool: вызывающий обязан различать «пропусти это» и
-// «импорт невозможен», иначе одно чужое правило уронит весь файл.
-var errSkipRule = errors.New("rule skipped")
+// GroupDegradedMembersRule — причина WarnBackupGroupDegraded у лаунчера:
+// группа задана правилом отбора (`members_rule`), а явного состава нет.
+const GroupDegradedMembersRule = "members_rule unsupported"
 
 // ImportOptions — контекст принимающей стороны.
 //
@@ -174,6 +255,21 @@ type ImportOptions struct {
 	KnownOutbounds []string
 	// KnownPresets — id пресетов шаблона принимающей стороны.
 	KnownPresets []string
+	// BlockTag — тег блокировки шаблона принимающей стороны
+	// (TemplateData.DirectionBlockTag): им становится `include_block`
+	// Направления. Пусто — `block-out`.
+	BlockTag string
+	// SystemTags — системные и шаблонные теги принимающей стороны
+	// (TemplateData.SystemOutboundTags): законные строки `include` наравне с
+	// тегами Направлений и свёрток (NODE_LINK.md §8). Пусто — известны только
+	// `direct-out` и тег блокировки.
+	SystemTags []string
+	// RecordVars — объявления шаблона приёмника для значений переменных
+	// записи (SPEC 129): шаблонные DNS-серверы и пресеты с умолчаниями для
+	// цели состояния (template.RecordVarDeclsFor). nil — шаблона нет:
+	// корневые `dns_<tag>_<var>` не переносятся, записи не нормализуются,
+	// типы переменных серверов для Н9 неизвестны.
+	RecordVars *state.RecordVarDecls
 }
 
 // ImportResult — что получилось.
@@ -199,18 +295,19 @@ type ImportResult struct {
 	// пропущены МОЛЧА, без warning (§9 п. 2).
 	SkippedServers int
 	AddedFolders   int
+	// UpdatedFolders — папки, совпавшие по имени, чьи собственные настройки
+	// (политика тегов, свёртка, общий detour) заместились файлом. Считается
+	// только для формата 1.0: у 0.12 у папки своей записи нет вовсе.
+	UpdatedFolders int
 	AddedChains    int
 }
 
-// Import применяет бэкап к state.
+// Import применяет бэкап формата 0.x к состоянию.
 //
 // Состояние после импорта неотличимо от настроенного руками (П1): теневых
 // полей «на провоз» нет, непонятое отброшено и названо warning'ом (П3).
 // Warning'и о неизвестных ключах и об extensions выдаёт Parse — он один видит
 // сырой JSON; здесь они не дублируются.
-//
-// Порядок разделов значим: источники раньше правил, потому что правило может
-// ссылаться на тег, который приезжает вместе с источником.
 func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error) {
 	if s == nil {
 		return nil, fmt.Errorf("nil state")
@@ -222,8 +319,76 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 		return nil, fmt.Errorf("backup format v%d is newer than supported v%d — update the app",
 			b.LxBackup, FormatVersion)
 	}
+	dec, err := decodeLegacy(b, opts)
+	if err != nil {
+		return nil, err
+	}
+	return applyDecoded(s, dec, opts)
+}
 
-	res := &ImportResult{}
+// Import10 применяет бэкап формата 1.0 к состоянию.
+//
+// Тот же код слияния, что у 0.x: разница между форматами кончается в
+// декодере. Иначе один и тот же файл, сохранённый двумя писателями, давал бы
+// у пользователя два разных состояния.
+func Import10(s *state.State, b *Backup10, opts ImportOptions) (*ImportResult, error) {
+	if s == nil {
+		return nil, fmt.Errorf("nil state")
+	}
+	if b == nil {
+		return nil, fmt.Errorf("nil backup")
+	}
+	if b.LxBackup > FormatVersion10 {
+		return nil, fmt.Errorf("backup format v%d is newer than supported v%d — update the app",
+			b.LxBackup, FormatVersion10)
+	}
+	dec, err := decode10(b, opts)
+	if err != nil {
+		return nil, err
+	}
+	return applyDecoded(s, dec, opts)
+}
+
+// ImportFile применяет разобранный файл любого читаемого формата.
+//
+// Точка входа для тех, кто получил файл от Parse/ReadFile и про формат знать
+// не обязан (UI, debug API): развилка форматов живёт здесь, а не у каждого
+// вызывающего.
+func ImportFile(s *state.State, f *File, opts ImportOptions) (*ImportResult, error) {
+	if f == nil {
+		return nil, fmt.Errorf("nil backup")
+	}
+	switch {
+	case f.V10 != nil:
+		return Import10(s, f.V10, opts)
+	case f.Legacy != nil:
+		return Import(s, f.Legacy, opts)
+	default:
+		return nil, fmt.Errorf("nil backup")
+	}
+}
+
+// applyDecoded — ЕДИНСТВЕННОЕ слияние: записи файла в состояние по §9.
+//
+// Порядок разделов значим: источники раньше правил, потому что правило может
+// ссылаться на тег, который приезжает вместе с источником; Направления раньше
+// цепочек (позиция цепочки может метить в Направление).
+func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*ImportResult, error) {
+	if s == nil {
+		return nil, fmt.Errorf("nil state")
+	}
+	if dec == nil {
+		return nil, fmt.Errorf("nil backup")
+	}
+
+	res := &ImportResult{Warnings: append([]Warning(nil), dec.Warnings...)}
+
+	// SPEC 129: своё хранение приёмника — к нормам записи ДО слияния.
+	// Состояние, не пересохранённое после обновления (debug API читает файл
+	// с диска), ещё держит корневые `dns_<tag>_<var>`; наложи файл на запись
+	// без переноса — и при следующей загрузке запись «со своими vars» вытеснила
+	// бы корневое значение приёмника, которого файл не называл (dns_ip).
+	state.ApplyRecordVars(s, opts.RecordVars)
 
 	// Источники СЛИВАЮТСЯ по идентичности, а не замещаются (D-095, §9):
 	// локальное, чего в файле нет, остаётся жить; совпавшее получает
@@ -234,501 +399,337 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 	// сливаются, каждая по своему ключу.
 	s.Rules = nil
 
+	// Занятые имена КОРНЕВОГО пространства снимаются ДО импорта Направлений.
+	//
+	// Тег Направления живёт в том же пространстве, что тег узла, и если
+	// посчитать занятость после — приехавший узел-тёзка Направления из того
+	// же файла получил бы суффикс `-2` там, где раньше приезжал своим именем.
+	// Снимок, а не порядок разделов: источники обязаны сливаться ОДНИМ
+	// проходом в порядке файла (§9 п. 8), иначе состав s.Sources после
+	// импорта зависел бы от вида записи, а не от файла, и обратный экспорт
+	// переставлял бы записи местами.
+	rootTags := takenRootTags(s)
+
+	// Направления — ДО источников: цепочка может встать позицией на
+	// Направление, а правило — метить в него целью. Существующий тег не
+	// трогаем: у принимающей стороны своё Направление с этим именем, и
+	// перезапись стёрла бы его настройки.
+	existing := make(map[string]bool, len(s.Directions))
+	for _, d := range s.Directions {
+		existing[d.Tag] = true
+	}
+	var appliedDirections []int
+	for _, in := range dec.Directions {
+		if in.Tag == "" {
+			continue
+		}
+		if existing[in.Tag] {
+			res.Warnings = append(res.Warnings, Warning{Code: WarnBackupDirectionExists, Detail: in.Tag})
+			continue
+		}
+		s.Directions = append(s.Directions, in)
+		appliedDirections = append(appliedDirections, len(s.Directions)-1)
+		existing[in.Tag] = true
+		res.AppliedDirections++
+	}
+
 	var cnt mergeCounters
-	mergeSubscriptions(s, b.Subscriptions, &res.Warnings, &cnt)
-	// Серверы: запись с пометкой folder уходит не в корень списка, а в
-	// папку с этим именем (контракт 0.12). Порядок записей в файле
-	// нормативен, дедуп — по ТЕЛУ записи (§9 пп. 2–3).
-	mergeServers(s, b.Servers, &res.Warnings, &cnt)
+	merged := mergeSources(s, dec.Sources, rootTags, &res.Warnings, &cnt)
+
+	// Опции приехавших Направлений — только объявленные корневые имена.
+	// После слияния: свёртка, приехавшая этим же файлом, уже в состоянии.
+	res.Warnings = append(res.Warnings,
+		filterImportedDirectionOptions(s, dec, appliedDirections, opts)...)
 
 	res.AddedSubscriptions = cnt.AddedSubscriptions
 	res.UpdatedSubscriptions = cnt.UpdatedSubscriptions
 	res.AddedServers = cnt.AddedServers
 	res.SkippedServers = cnt.SkippedServers
 	res.AddedFolders = cnt.AddedFolders
+	res.UpdatedFolders = cnt.UpdatedFolders
+	res.AddedChains = cnt.AddedChains
 	res.AppliedSources += cnt.AddedSubscriptions + cnt.UpdatedSubscriptions +
-		cnt.AddedServers + cnt.AddedFolders
+		cnt.AddedServers + cnt.AddedFolders + cnt.UpdatedFolders + cnt.AddedChains
 
-	// SPEC 104: Направления импортируются ДО правил и пополняют список
-	// известных целей — иначе правило, чья цель приехала в этом же файле,
-	// импортировалось бы выключенным.
-	//
-	// Существующий тег не трогаем: у принимающей стороны своё Направление с
-	// этим именем, и перезапись стёрла бы его настройки.
-	existing := make(map[string]bool, len(s.Directions))
-	for _, d := range s.Directions {
-		existing[d.Tag] = true
-	}
-	knownTags := append([]string(nil), opts.KnownOutbounds...)
-	// Группы, которые породит свёртка приехавших подписок (D-081): правила и
-	// route.final ТОГО ЖЕ файла ссылаются на позиционный дериватив
-	// `<N>:select` / `<N>:auto`, а принимающая сторона о нём знать не может —
-	// её список известных целей снят ДО импорта. Без этого пополнения перенос
-	// свёрнутой подписки приезжал маршрутизацией в никуда: правило
-	// выключалось `backup_unknown_outbound`, final отбрасывался, и оба —
-	// по причине «цель не существует», хотя цель приехала этим же файлом.
-	for i, sub := range b.Subscriptions {
-		for tag := range foldDerivedDirectionTags(sub, i) {
-			knownTags = append(knownTags, tag)
-		}
-	}
-	for _, in := range b.Directions {
-		if in.Tag == "" {
-			continue
-		}
-		if existing[in.Tag] {
-			res.Warnings = append(res.Warnings, Warning{Code: WarnBackupDirectionExists, Detail: in.Tag})
-			knownTags = append(knownTags, in.Tag)
-			continue
-		}
-		s.Directions = append(s.Directions, importDirection(in))
-		existing[in.Tag] = true
-		knownTags = append(knownTags, in.Tag)
-		res.AppliedDirections++
-	}
+	// Ссылки файла несут адреса машины-ЭКСПОРТЁРА: id контейнеров (совпавшая
+	// папка или подписка здесь держит свой) и имена узлов (слияние вправе
+	// уникализировать узел или узнать его по телу под другим тегом).
+	// Переписка идёт последним проходом, когда карта адресов собрана
+	// целиком: цель может быть объявлена в файле НИЖЕ ссылающейся записи.
+	merged.rewriteLinks(s)
 
-	// Цепочки — ПОСЛЕ Направлений (позиция может ссылаться на Направление) и
-	// ДО правил (правило может метить в цепочку как в цель — тег пополняет
-	// список известных). Порядок записей нормативен и сохраняется как есть.
-	// Достижимость hops здесь не проверяется: хоп — чаще всего узел подписки,
-	// которого до её обновления не существует; рубеж у обеих сторон один —
-	// сборка (chain_hop_missing).
-	existingChains := map[string]bool{}
-	for _, src := range s.Sources {
-		if src.Kind == state.SourceKindChain {
-			existingChains[src.NodeTagOrLabel()] = true
-		}
-	}
-	chainIDs := takenSourceIDs(s.Sources)
-	for _, in := range b.Chains {
-		if in.Tag == "" || in.Chain == nil {
-			continue
-		}
-		if existingChains[in.Tag] {
-			res.Warnings = append(res.Warnings, Warning{Code: WarnBackupChainExists, Detail: in.Tag})
-			knownTags = append(knownTags, in.Tag)
-			continue
-		}
-		src, warns := importChain(in)
-		// id из файла держится, пока он свободен: при коллизии с уже
-		// живущим источником — свежий ULID (§9 п. 7). Два источника с одним
-		// id дали бы двух владельцев одной адресации.
-		src.ID = freshIDIfTaken(src.ID, chainIDs)
-		chainIDs[src.ID] = true
-		s.Sources = append(s.Sources, src)
-		res.Warnings = append(res.Warnings, warns...)
-		existingChains[in.Tag] = true
-		knownTags = append(knownTags, in.Tag)
-		res.AppliedSources++
-		res.AddedChains++
-	}
+	// Известные цели — ОДИН список на весь импорт (цели правил, route.final,
+	// корневые имена подъёма ссылок), по состоянию ПОСЛЕ слияния: цель может
+	// приехать этим же файлом, быть системным тегом шаблона приёмника или
+	// корневым узлом. Слияние корневых имён дальше не меняет.
+	knownTags := importKnownTags(opts, dec, s)
 
-	// Позиции цепочек приехали строками (контракт 0.11 адреса папок не несёт):
-	// поднимаем их до адресных ссылок по ЖИВОМУ набору — уже импортированные
-	// источники плюс Направления принимающей стороны. Проход отдельный и
-	// последний, потому что видеть он обязан ВЕСЬ набор: цепочка может
-	// ссылаться на узел подписки, объявленной ниже неё.
-	resolveImportedHops(s.Sources, s.Directions)
+	// Ссылки без адреса папки поднимаются до адресных по ЖИВОМУ набору, и у
+	// каждого формата свой словарь: проход отдельный и последний, потому что
+	// видеть он обязан ВЕСЬ набор (цепочка может ссылаться на узел папки,
+	// объявленной ниже неё).
+	switch dec.Format {
+	case FileFormat10:
+		// Dev-формы ссылок (член группы в контейнере без folder_id, позиция на
+		// группу финальным тегом) — тем же правилом, что у чтения состояния
+		// (state.NormalizeNodeLinks), и ДО подъёма корневых ссылок: тот
+		// работает уже с парами в норме.
+		state.NormalizeNodeLinks(s.Sources, s.Directions)
+		// 1.0: ссылка без folder_id адресует корень ФИНАЛЬНЫХ тегов, и на член
+		// папки её поднимает только однозначный финальный тег (§4, §6).
+		normalizeMemberLinks10(s, &merged, knownTags)
+	default:
+		// 0.x: позиции цепочек приехали строками (контракт 0.x адреса папок не
+		// несёт) и сопоставляются по сырым тегам узлов контейнеров.
+		resolveImportedHops(s.Sources, s.Directions, &merged)
+		state.NormalizeNodeLinks(s.Sources, s.Directions)
+	}
 
 	known := newTagSet(knownTags)
-	presets := newTagSet(opts.KnownPresets)
+	res.Warnings = append(res.Warnings, checkImportedRuleTargets(dec.Rules, known)...)
+	s.Rules = append(s.Rules, dec.Rules...)
+	res.AppliedRules = len(dec.Rules)
+	// SPEC 129 §5.4: `vars` пресетов после замещения — необъявленные имена
+	// снимаются и называются, равные умолчанию снимаются молча. Пресет вне
+	// шаблона (backup_unknown_preset) объявлений не имеет — не трогается.
+	var presetDrops []state.RecordVarDrop
+	state.NormalizePresetRuleVars(s.Rules, opts.RecordVars, &presetDrops)
+	res.Warnings = append(res.Warnings, recordVarWarnings(presetDrops)...)
 
-	for _, r := range b.Rules {
-		rule, warns, err := importRule(r, known, presets)
-		res.Warnings = append(res.Warnings, warns...)
-		if errors.Is(err, errSkipRule) {
-			continue // правило не наше — пропущено с warning, импорт живёт
-		}
-		if err != nil {
-			return nil, fmt.Errorf("rule %q: %w", ruleLabel(r), err)
-		}
-		s.Rules = append(s.Rules, rule)
-		res.AppliedRules++
-	}
+	// Ось порядка встаёт номерами файла (BACKUP.md §9 п. 7): раскладка оси у
+	// сторон одна, и номер несёт зону, которую порядок не передаёт. Правила,
+	// которые узлы носят с собой, стоят на той же оси (NODE_SECTIONS.md §5).
+	placeImportedAxis(s.Rules, merged.sectionRules(s))
 
-	// Ось порядка перенумеровывается: абсолютные номера у сторон свои, важен
-	// лишь относительный порядок (BACKUP.md §2). Правила, которые узлы носят
-	// с собой, здесь не участвуют: они живут в секциях узла со своими
-	// номерами и в общий rules[] бэкапа не попадают (SPEC 121 §10.5).
-	renumberImportedRules(s.Rules)
-
-	if b.Route != nil && b.Route.Final != "" {
-		if known.empty() || known.has(b.Route.Final) {
+	if dec.RouteFinal != "" {
+		if known.empty() || known.has(dec.RouteFinal) {
 			// Канонический канал лаунчера — vars["route_final"]: именно его
 			// читает LoadState и пишет Save. config_params["final"] никто не
 			// читал и не сохранял — Default direction из файла терялся (#111).
-			setVar(s, "route_final", b.Route.Final)
+			setVar(s, "route_final", dec.RouteFinal)
 		} else {
-			res.Warnings = append(res.Warnings, Warning{Code: WarnBackupFinalDropped, Detail: b.Route.Final})
+			res.Warnings = append(res.Warnings, Warning{Code: WarnBackupFinalDropped, Detail: dec.RouteFinal})
 		}
 	}
 
-	res.Warnings = append(res.Warnings, importVars(s, b.Vars)...)
+	res.Warnings = append(res.Warnings, importVars(s, dec.Vars)...)
 
-	importDNS(s, b.DNS)
-	importWarp(s, b.Warp)
+	res.Warnings = append(res.Warnings, importDNS(s, dec.DNS, opts.RecordVars, known)...)
+	importWarp(s, dec.Warp)
 
 	return res, nil
 }
 
-// importDirections — обратная сторона exportDirections.
-func importDirections(list []Direction) []configtypes.Direction {
-	var out []configtypes.Direction
-	for _, in := range list {
-		if in.Tag == "" {
+// filterImportedDirectionOptions отсеивает из опций Направлений, приехавших
+// этим импортом, строки, которые здесь не объявленные корневые имена
+// (NODE_LINK.md §8, BACKUP.md §6).
+//
+// Законная строка `include` — тег Направления этого файла или приёмника, его
+// `-auto`, тег свёртки результата и её `-auto`, системный тег приёмника
+// (`direct-out`, тег блокировки, opts.SystemTags). Прочее — узел, свёртка,
+// которой здесь нет, неизвестное имя — в опции не попадает и называется
+// одним warning'ом на Направление: узел в Направление кладёт фильтр, а
+// строка без цели в конфиге отвергла бы группу ядром.
+func filterImportedDirectionOptions(s *state.State, dec *decodedFile, applied []int, opts ImportOptions) []Warning {
+	if len(applied) == 0 {
+		return nil
+	}
+	declared := importRootNames(opts, dec, s)
+
+	var warns []Warning
+	for _, at := range applied {
+		d := &s.Directions[at]
+		if len(d.AddOutbounds) == 0 {
 			continue
 		}
-		out = append(out, importDirection(in))
+		kept := make([]string, 0, len(d.AddOutbounds))
+		var dropped []string
+		for _, opt := range d.AddOutbounds {
+			if declared[strings.TrimSpace(opt)] {
+				kept = append(kept, opt)
+				continue
+			}
+			dropped = append(dropped, opt)
+		}
+		if len(dropped) == 0 {
+			continue
+		}
+		if len(kept) == 0 {
+			kept = nil
+		}
+		d.AddOutbounds = kept
+		warns = append(warns, Warning{
+			Code:   WarnBackupDirectionIncludeDropped,
+			Detail: d.Tag + ": " + strings.Join(dropped, ", "),
+		})
 	}
+	return warns
+}
+
+// importRootNames — объявленные корневые имена результата импорта
+// (NODE_LINK.md §8): системные теги приёмника (`direct-out`, тег блокировки,
+// opts.SystemTags — outbound'ы и endpoint'ы шаблона), теги Направлений файла
+// и приёмника и их `-auto`, теги свёрток результата и их `-auto`.
+//
+// Источник один на опции приехавших Направлений
+// (filterImportedDirectionOptions) и на известные цели (importKnownTags):
+// системный тег шаблона, законный в `include`, законен и целью правила, и
+// route.final.
+func importRootNames(opts ImportOptions, dec *decodedFile, s *state.State) map[string]bool {
+	names := map[string]bool{defaultDirectTag: true}
+	add := func(tag string) {
+		if tag = strings.TrimSpace(tag); tag != "" {
+			names[tag] = true
+		}
+	}
+	blockTag := opts.BlockTag
+	if blockTag == "" {
+		blockTag = defaultBlockTag
+	}
+	add(blockTag)
+	for _, tag := range opts.SystemTags {
+		add(tag)
+	}
+	addDirections := func(list []configtypes.Direction) {
+		for i := range list {
+			add(list[i].Tag)
+			if list[i].Auto != nil && strings.TrimSpace(list[i].Tag) != "" {
+				add(list[i].AutoTag())
+			}
+		}
+	}
+	if dec != nil {
+		addDirections(dec.Directions)
+	}
+	addDirections(s.Directions)
+	for i := range s.Sources {
+		if r := s.Sources[i].Replace; r != nil && strings.TrimSpace(r.Tag) != "" {
+			add(r.Tag)
+			if r.Mode == state.FolderReplaceBoth {
+				add(r.Tag + "-auto")
+			}
+		}
+	}
+	return names
+}
+
+// importKnownTags — ЕДИНСТВЕННЫЙ список известных целей импорта: цели правил
+// (checkImportedRuleTargets), route.final и корневые имена подъёма ссылок 1.0
+// (normalizeMemberLinks10).
+//
+// Состав: то, что знает принимающая сторона (opts.KnownOutbounds), теги,
+// которые породит сам файл (dec.KnownTagsFromFile), объявленные корневые имена
+// результата (importRootNames — с системными тегами шаблона приёмника) и
+// корневые узлы. Считается ПОСЛЕ слияния, по живому состоянию: цепочка, чей
+// тег был занят, в состояние не попала, и final в неё — это final в никуда.
+//
+// Раньше списков было два: декодер проверял цели правил ДО слияния своим
+// набором (opts плюс Направления, цепочки и свёртки файла), и ни один из них
+// не видел системных тегов шаблона. Импорт в пустое состояние через Debug API
+// (там opts.KnownOutbounds — Направления приёмника, то есть пусто) выключал
+// каждое правило на direct-out, а route.final на direct-out не применялся.
+//
+// nil — «проверять нечем»: ни приёмник, ни файл, ни результат слияния не
+// назвали ни одного имени. Тогда цели не режутся — выключить всё подряд хуже,
+// чем импортировать как есть; умолчания `direct-out` и тега блокировки такой
+// список не открывают.
+func importKnownTags(opts ImportOptions, dec *decodedFile, s *state.State) []string {
+	out := append([]string(nil), opts.KnownOutbounds...)
+	out = append(out, dec.KnownTagsFromFile...)
+	for i := range s.Sources {
+		src := &s.Sources[i]
+		switch src.Kind {
+		case state.SourceKindChain, state.SourceKindServer, state.SourceKindAuto:
+			if t := src.NodeTagOrLabel(); t != "" {
+				out = append(out, t)
+			}
+		}
+	}
+	names := importRootNames(opts, dec, s)
+	// Умолчания importRootNames — всегда два имени (`direct-out` и тег
+	// блокировки). Сверх них ни одного — значит, сказать о целях нечего.
+	onlyDefaults := len(opts.SystemTags) == 0 && strings.TrimSpace(opts.BlockTag) == "" && len(names) == 2
+	if len(out) == 0 && onlyDefaults {
+		return nil
+	}
+	for name := range names {
+		out = append(out, name)
+	}
+	sort.Strings(out)
 	return out
 }
 
-// importSourceRef восстанавливает ссылку источника на цель дозвона
-// (тройня контракта → NodeLink модели, convert_v7.go).
-func importSourceRef(src *state.Source, ref SourceRef) {
-	src.Detour = importNodeLinkRef(ref)
-}
-
-// ensureSourceID — Р3 (SPEC 117): ULID рождается в момент создания Source.
-// Обратного синка Save, который раньше доминтовывал пустые id, больше нет —
-// бэкап без id (чужой/рукописный файл) обязан получить ULID здесь.
-func ensureSourceID(id string) string {
-	if id == "" {
-		return state.MakeULID()
-	}
-	return id
-}
-
-// importSubscription — подписка контракта 0.11 в источник v7.
+// placeImportedAxis ставит правила файла на ось порядка: номер из файла
+// сохраняется, неразмеченные корневые правила встают в хвост оси.
 //
-// index — позиция записи в файле: тег ЗАМЕНЫ (fold → replace) контракт не
-// несёт, а в v7 он явный. Материализуем его прежним позиционным деривативом
-// (`<N>:select`), тем же, что писала старая свёртка: правила и route.final
-// приезжают из того же файла и ссылаются именно на него.
+// Сплошной перенумерации с 1000 нет (BACKUP.md §9 п. 7). Раскладка оси у
+// сторон одна (rule_order.go), и абсолютный номер значит то, чего порядок не
+// передаёт:
 //
-// Второй возврат — потери конвертации, которые контракт выразить умеет, а
-// модель v7 больше нет: маска тегов и локальные Направления источника. Обе
-// приезжают в бэкапах v1.5.x, и обе обязаны быть названы вслух.
-func importSubscription(sub Subscription, index int) (state.Source, []Warning) {
-	var warns []Warning
-	src := state.Source{
-		Node:     state.Node{Kind: state.SourceKindSubscription, Enabled: sub.Enabled == nil || *sub.Enabled},
-		ID:       ensureSourceID(sub.ID),
-		URL:      sub.URL,
-		Name:     sub.Label,
-		MaxNodes: sub.MaxNodes,
-		Skip:     sub.Skip,
-	}
-	importSourceRef(&src, sub.SourceRef)
-	// Чем подписка представляется провайдеру (контракт 0.12). Применяются
-	// четыре ключа, которые у модели v7 есть; mobile-only тройка и любое
-	// незнакомое — отбрасываются ОДНИМ warning'ом с перечнем.
-	if w, ok := importSourceIdentity(&src, sub); ok {
-		warns = append(warns, w)
-	}
-	if sub.Tag != nil {
-		if sub.Tag.Prefix != "" || sub.Tag.Postfix != "" {
-			src.TagPolicy = &state.TagPolicy{Prefix: sub.Tag.Prefix, Postfix: sub.Tag.Postfix}
+//   - зону. Правило с номером ниже UserRuleNumStart сборка ставит ПЕРЕД
+//     route.rules шаблона (core/build/preset_merge.go), а несортируемая голова
+//     traffic-processing держит свой номер как часть инварианта
+//     (rule_order.go, PlaceRuleAfter). Сплошная нумерация уводила голову и
+//     якоря шаблона ниже 1000 в пользовательскую зону;
+//   - якоря для того, что встанет ПОСЛЕ импорта. Пресет из библиотеки берёт
+//     номер шаблона (950..995), правило нового узла — 945, новое правило —
+//     максимум зоны 1000..1100 плюс один. После сплошной нумерации пресет
+//     вставал перед бывшей головой (sniff переставал быть первым), а новое
+//     правило — за бывшие перехватчики 1110+.
+//
+// Порядок файла воспроизводится: он и задан номерами, а при равных корневое
+// правило стоит раньше узлового, как у сборки (rulesWithNodeSections).
+// Импорт своего экспорта ось не трогает.
+//
+// Неразмеченным корневым (запись без num) номер раздаётся здесь: следующий за
+// максимумом размеченных — корневых и узловых, — но не ниже начала
+// пользовательской зоны. Разметка на загрузке (MarkRuleOrder) дала бы им
+// номера от UserRuleNumStart вперемешку с размеченными. Файл, где не размечено
+// ни одно корневое правило (до SPEC 106), остаётся как есть: MarkRuleOrder
+// поставит пресеты на якоря шаблона, которого импорт не знает.
+//
+// SPEC 113-C §1: разметка заканчивается пересортировкой КОРНЕВОГО массива.
+// Узловые правила не пересортировываются: их порядок внутри узла задаётся
+// номерами, а сам узел в оси не участвует.
+func placeImportedAxis(rules []state.Rule, sectionRules []*state.Rule) {
+	var (
+		last               int
+		marked, rootMarked bool
+	)
+	see := func(r *state.Rule) {
+		if r.Num == nil {
+			return
 		}
+		if !marked || *r.Num > last {
+			last = *r.Num
+		}
+		marked = true
 	}
-	// Маска ПОДПИСКИ — шаблон имени для каждой ноды; prefix/postfix её не
-	// заменяют. Потеря названа, тегам нод она не подставляется.
-	if mask := importMaskTag(sub.Tag); mask != "" {
-		warns = append(warns, Warning{Code: WarnBackupTagMaskDropped, Detail: subscriptionLabel(sub) + ": " + mask})
+	for i := range rules {
+		if rules[i].Num != nil {
+			rootMarked = true
+		}
+		see(&rules[i])
 	}
-	src.Replace = importFold(sub.Fold, backupReplaceTag(sub, index))
-	if sub.Update != nil {
-		src.Update = &state.UpdateSpec{IntervalHours: sub.Update.IntervalHours, AutoRefresh: sub.Update.Auto}
+	for _, r := range sectionRules {
+		see(r)
 	}
-	// Локальные Направления источника: пара, порождённая свёрткой, уже
-	// приехала заменой (Replace выше) — второй раз её импортировать нельзя,
-	// это дало бы двух владельцев одного тега. Остальные упразднены классом.
-	if derived := foldDerivedDirectionTags(sub, index); len(sub.Outbounds) > 0 {
-		for _, ob := range sub.Outbounds {
-			tag := strings.TrimSpace(ob.Tag)
-			if tag == "" || derived[tag] {
+
+	if rootMarked {
+		next := last + 1
+		if next < state.UserRuleNumStart {
+			next = state.UserRuleNumStart
+		}
+		for i := range rules {
+			if rules[i].Num != nil {
 				continue
 			}
-			warns = append(warns, Warning{Code: WarnBackupLocalDirectionDropped, Detail: subscriptionLabel(sub) + " → " + tag})
+			n := next
+			rules[i].Num = &n
+			next++
 		}
 	}
-	// Флаги «убрать из общего списка» / «показывать теги группы»: класс
-	// упразднён (SPEC 118), узлы источника остаются в пуле кандидатов.
-	// Поля объявлены в типах контракта, поэтому общий scanUnknown их не
-	// видит — без явного warning'а они пропали бы молча (П6).
-	if sub.ExcludeFromGlobal || sub.ExposeGroupTagsToGlobal {
-		warns = append(warns, Warning{Code: WarnBackupSourceFlagDropped, Detail: subscriptionLabel(sub)})
-	}
-	// Отметки выключения: узлов у только что импортированной подписки нет
-	// (nodes[] в контракт не едут), поэтому они ждут первого достоверного
-	// fetch в PendingDisabled — вердикт O2.
-	for tag := range sub.Disabled {
-		if strings.TrimSpace(tag) != "" {
-			src.PendingDisabled = append(src.PendingDisabled, tag)
-		}
-	}
-	sort.Strings(src.PendingDisabled)
-	return src, warns
-}
 
-// subscriptionLabel — как назвать подписку в предупреждении: подпись, а если
-// её нет — URL (единственное, что у записи есть всегда).
-func subscriptionLabel(sub Subscription) string {
-	if l := strings.TrimSpace(sub.Label); l != "" {
-		return l
-	}
-	return sub.URL
-}
-
-// importSourceIdentity применяет к источнику приехавший объект identity и
-// возвращает предупреждение о том, что применить не удалось.
-//
-// Применяются ровно те четыре ключа, которым в модели v7 есть куда лечь.
-// Остальные (mobile-only device_os/ver_os/device_model и любые незнакомые)
-// НЕ применяются и НЕ провозятся дальше: провоз непонятого создаёт
-// состояние-призрак, ради сноса которого убран механизм extensions (П1/П3).
-//
-// Warning ровно один на подписку, с перечнем ключей: потеря у пользователя
-// одна, и строка на каждый ключ утопила бы её в списке. Пустой объект
-// identity (или объект с одними применёнными ключами) не даёт ничего —
-// предупреждают о потере, а не о факте наличия поля.
-func importSourceIdentity(src *state.Source, sub Subscription) (Warning, bool) {
-	id := sub.Identity
-	if id == nil {
-		return Warning{}, false
-	}
-	if id.UserAgent != nil {
-		src.UserAgent = *id.UserAgent
-	}
-	if id.HWID != nil {
-		src.HWID = *id.HWID
-	}
-	if id.SendHWID != nil {
-		v := *id.SendHWID
-		src.SendHWID = &v
-	}
-	if id.HashDeviceModel != nil {
-		v := *id.HashDeviceModel
-		src.HashDeviceModel = &v
-	}
-	dropped := id.UnappliedKeys()
-	if len(dropped) == 0 {
-		return Warning{}, false
-	}
-	return Warning{
-		Code:   WarnBackupSourceIdentityDropped,
-		Detail: subscriptionLabel(sub) + ": " + strings.Join(dropped, ", "),
-	}, true
-}
-
-// backupReplaceTag — тег замены свёрнутой подписки, приехавшей из бэкапа:
-// префикс тегов подписки с позиционным умолчанием «<номер>:» плюс `select`.
-// Формула та же, что у старой свёртки, — по этим тегам ссылаются правила
-// того же файла.
-func backupReplaceTag(sub Subscription, index int) string {
-	prefix := ""
-	if sub.Tag != nil {
-		prefix = sub.Tag.Prefix
-	}
-	return legacyFoldPrefix(prefix, index) + "select"
-}
-
-// importServer — одиночный узел контракта в источник v7.
-//
-// Тело материализуется не здесь: URI приезжает в origin.raw, и узел
-// становится собираемым после первого прохода материализации (Regen from raw
-// в окне источника либо сборка). ConfigJSON — уже готовое тело.
-func importServer(srv Server) (state.Source, []Warning) {
-	var warns []Warning
-	src := state.Source{
-		Node: state.Node{Kind: state.SourceKindServer, Enabled: srv.Enabled == nil || *srv.Enabled, Tag: srv.NodeTag},
-		ID:   ensureSourceID(srv.ID),
-	}
-	// Label НЕ кладётся в Source.Label: у того поля `json:"-"`, и подпись
-	// умирала на первом же Save, а экспорт потом писал пустую строку. У
-	// канона v7 у узла одно имя — тег (SPEC 112). Пустой тег label ещё
-	// может спасти (иначе узел приехал бы безымянным), но разошедшаяся
-	// подпись — потеря, и её называют вслух.
-	if src.Tag == "" {
-		src.Tag = strings.TrimSpace(srv.Label)
-	} else if l := strings.TrimSpace(srv.Label); l != "" && l != src.Tag {
-		warns = append(warns, Warning{Code: WarnBackupLabelDropped, Detail: l + " → " + src.Tag})
-	}
-	if srv.ExcludeFromGlobal {
-		warns = append(warns, Warning{Code: WarnBackupSourceFlagDropped, Detail: serverLabel(srv)})
-	}
-	importSourceRef(&src, srv.SourceRef)
-	// SPEC 121: секции узла. Пустой набор нормализуется в nil — третьего
-	// состояния у поля нет.
-	if srv.Sections != nil {
-		src.Node.Sections = decodeBackupSections(srv.Sections, src.Tag)
-		src.Node.NormalizeNodeSections()
-	}
-	switch {
-	case len(srv.ConfigJSON) > 0:
-		src.Body = append(json.RawMessage(nil), srv.ConfigJSON...)
-		src.Origin = &state.Origin{Kind: state.OriginKindJSON, Raw: string(srv.ConfigJSON)}
-	case strings.TrimSpace(srv.URI) != "":
-		// Вид определяется ФОРМОЙ текста: в поле `uri` контракта едет и
-		// ссылка, и блок wg-quick (контракт общий с LxBox, третьего ключа в
-		// нём нет). Записать блоку kind=uri значило бы потерять вид на первом
-		// же Save — узел перестал бы пересобираться из исходника провайдера.
-		kind := state.OriginKindURI
-		if len(subscription.WGConfBlocksOf(srv.URI)) > 0 {
-			kind = state.OriginKindWGIni
-		}
-		src.Origin = &state.Origin{Kind: kind, Raw: srv.URI}
-	}
-	return src, warns
-}
-
-// serverLabel — как назвать одиночный узел в предупреждении: тег, а если
-// его нет — подпись; и то и другое пусто у безымянной записи, тогда URI.
-func serverLabel(srv Server) string {
-	if t := strings.TrimSpace(srv.NodeTag); t != "" {
-		return t
-	}
-	if l := strings.TrimSpace(srv.Label); l != "" {
-		return l
-	}
-	return srv.URI
-}
-
-// importChain переводит каноническую запись chains[] во внутренний источник.
-//
-// Тег записи едет в NodeTag, отображаемое имя — в Label: обе роли имеют своё
-// поле. Раньше тег клался в Label (другого места не было), из-за чего импорт
-// чужого label разъехался бы со ссылками правил, route.final и позиций других
-// цепочек.
-func importChain(in Chain) (state.Source, []Warning) {
-	var warns []Warning
-	src := state.Source{
-		Node: state.Node{
-			Kind:    state.SourceKindChain,
-			Enabled: in.Enabled == nil || *in.Enabled,
-			Tag:     in.Tag,
-			Body:    importChainBody(in.Chain),
-			Hops:    importHops(in.Chain.HopsOrNil()),
-		},
-		ID: ensureSourceID(in.ID),
-	}
-	// Label не применяется и предупреждения НЕ даёт: с контракта 0.12.4
-	// (D-094) это объявленное поле LxBox — он подпись цепочки пишет и
-	// читает, у лаунчера имя одно, тег (SPEC 112). Чужое объявленное
-	// игнорируется молча (BACKUP.md §1), иначе warning шумел бы на каждом
-	// импорте файла LxBox.
-	if in.ExcludeFromGlobal {
-		warns = append(warns, Warning{Code: WarnBackupSourceFlagDropped, Detail: in.Tag})
-	}
-	return src, warns
-}
-
-func importRule(r Rule, known, presets tagSet) (state.Rule, []Warning, error) {
-	var warns []Warning
-	enabled := r.Enabled == nil || *r.Enabled
-
-	// Символическая ссылка в никуда: правило приезжает выключенным, а не
-	// теряется. Ядро отвергает конфиг с несуществующим outbound целиком,
-	// поэтому «оставить включённым» здесь означало бы сломать пользователю
-	// весь VPN одним импортом (BACKUP.md §3).
-	if r.Outbound != "" && !known.empty() && !known.has(r.Outbound) {
-		enabled = false
-		warns = append(warns, Warning{Code: WarnBackupUnknownOutbound, Detail: ruleLabel(r) + " → " + r.Outbound})
-	}
-
-	out := state.Rule{
-		Kind:    state.RuleKind(r.Kind),
-		Enabled: enabled,
-	}
-	if r.Num != nil {
-		n := int(*r.Num)
-		out.OrderNum = &n
-	}
-
-	switch RuleKind(r.Kind) {
-	case RulePreset:
-		out.Ref = r.Ref
-		if !presets.empty() && !presets.has(r.Ref) {
-			out.Enabled = false
-			warns = append(warns, Warning{Code: WarnBackupUnknownPreset, Detail: r.Ref})
-		}
-		body := state.PresetBody{Vars: r.Vars}
-		raw, err := json.Marshal(body)
-		if err != nil {
-			return state.Rule{}, warns, err
-		}
-		out.Body = raw
-	case RuleInline:
-		var match map[string]interface{}
-		if len(r.Match) > 0 {
-			if err := json.Unmarshal(r.Match, &match); err != nil {
-				return state.Rule{}, warns, fmt.Errorf("match: %w", err)
-			}
-		}
-		raw, err := json.Marshal(state.InlineBody{Name: r.Name, Match: match, Outbound: r.Outbound})
-		if err != nil {
-			return state.Rule{}, warns, err
-		}
-		out.Body = raw
-	case RuleSRS:
-		// `refs` (все наборы) сильнее `ref` (первый): файл без `refs` — от
-		// стороны, которая знает один набор на правило.
-		urls := r.Refs
-		if len(urls) == 0 {
-			urls = []string{r.Ref}
-		}
-		raw, err := json.Marshal(state.NewSrsBody(r.Name, urls, r.Outbound))
-		if err != nil {
-			return state.Rule{}, warns, err
-		}
-		out.Body = raw
-	case RuleJSON:
-		// kind=json — сырое правило другой стороны: применять вслепую нельзя
-		// (структура чужая). Но и ронять весь импорт из-за одного правила
-		// нельзя — пользователь потеряет всё остальное. Правило
-		// пропускается, факт называется.
-		return state.Rule{}, append(warns, Warning{Code: WarnBackupUnknownField, Detail: "rules[].kind=json: " + ruleLabel(r)}), errSkipRule
-	default:
-		return state.Rule{}, append(warns, Warning{Code: WarnBackupUnknownField, Detail: "rules[].kind=" + string(r.Kind)}), errSkipRule
-	}
-
-	return out, warns, nil
-}
-
-func ruleLabel(r Rule) string {
-	if r.Name != "" {
-		return r.Name
-	}
-	if r.Ref != "" {
-		return r.Ref
-	}
-	return string(r.Kind)
-}
-
-// renumberImportedRules перенумеровывает ось порядка, сохраняя относительный
-// порядок: у сторон свои диапазоны, а важен лишь порядок следования.
-//
-// SPEC 113-C §1: перенумерация заканчивается пересортировкой массива. Иначе
-// импорт оставлял бы файл, где номера говорят одно, а порядок записей другое —
-// а закон оси запрещает читать позицию в слайсе как самостоятельный смысл.
-func renumberImportedRules(rules []state.Rule) {
-	idx := make([]int, 0, len(rules))
-	for i, r := range rules {
-		if r.OrderNum != nil {
-			idx = append(idx, i)
-		}
-	}
-	sort.SliceStable(idx, func(a, b int) bool {
-		return *rules[idx[a]].OrderNum < *rules[idx[b]].OrderNum
-	})
-	for pos, i := range idx {
-		n := state.UserRuleNumStart + pos
-		rules[i].OrderNum = &n
-	}
-
-	// Неразмеченные (бэкап без num) уезжают в хвост, сохраняя взаимный
-	// порядок: разметку им раздаст MarkRuleOrder на первой загрузке, и она
-	// пойдёт от конца занятой части — иначе они перебили бы перенумерованных.
 	sort.SliceStable(rules, func(a, b int) bool {
 		return importedAxisNum(rules[a]) < importedAxisNum(rules[b])
 	})
@@ -737,10 +738,10 @@ func renumberImportedRules(rules []state.Rule) {
 // importedAxisNum — номер для сортировки импортированных: неразмеченное
 // правило считается стоящим за всеми размеченными.
 func importedAxisNum(r state.Rule) int {
-	if r.OrderNum == nil {
+	if r.Num == nil {
 		return state.UserRuleNumEnd + 1
 	}
-	return *r.OrderNum
+	return *r.Num
 }
 
 func importVars(s *state.State, vars map[string]string) []Warning {
@@ -758,7 +759,7 @@ func importVars(s *state.State, vars map[string]string) []Warning {
 		if !IsPortableVar(name) {
 			// Непереносимое имя на этой машине значит другое (путь,
 			// интерфейс, платформенный флаг) — применять нельзя.
-			warns = append(warns, Warning{Code: WarnBackupVarSkipped, Detail: name})
+			warns = append(warns, Warning{Code: WarnBackupVarSkipped, Detail: name, Reason: VarSkippedNotPortable})
 			continue
 		}
 		setVar(s, name, vars[name])
@@ -797,12 +798,21 @@ func (t tagSet) has(tag string) bool {
 		return false
 	}
 	// Зарезервированные литералы существуют всегда: их не нужно объявлять.
-	switch strings.ToLower(strings.TrimSpace(tag)) {
-	case "direct", "block", "reject", "drop", "dns-out":
+	if reservedTargetLiteral(tag) {
 		return true
 	}
 	_, ok := t[strings.ToLower(strings.TrimSpace(tag))]
 	return ok
+}
+
+// reservedTargetLiteral — цель, которая существует у принимающей стороны
+// всегда и объявлять которую не нужно (без учёта регистра).
+func reservedTargetLiteral(tag string) bool {
+	switch strings.ToLower(strings.TrimSpace(tag)) {
+	case "direct", "block", "reject", "drop", "dns-out":
+		return true
+	}
+	return false
 }
 
 // importDNS СЛИВАЕТ секцию DNS: своё сильнее, новое дописывается в конец.
@@ -816,43 +826,114 @@ func (t tagSet) has(tag string) bool {
 //
 // Ключ сервера — kind+tag: имя DNS-сервера и есть его идентичность (на него
 // метят detour и dns-правила), а тело за ним — настройка, которую здесь
-// правили. Ключ dns-правила — kind+ref+тело: своего имени у правила нет,
+// правили. У kind=preset тега НЕТ вовсе (state.DNSServer: `ref` формы
+// "<preset_id>:<local_tag>" — вот его идентичность), поэтому в ключ входит и
+// `ref`: без него все preset-серверы состояния схлопывались в один ключ
+// "preset\x00", и из трёх резолверов пресета импорт молча оставлял первый
+// (на живом состоянии владельца из 17 DNS-серверов после импорта в пустое
+// оставалось 15 — пропадали russian:yandex_doh и russian:yandex_dot).
+// Ключ dns-правила — kind+ref+тело: своего имени у правила нет,
 // и различить два правила можно только тем, что они делают.
 //
-// Тела переносятся только у kind=user (симметрия с exportDNS: тело
-// template/preset принадлежит шаблону принимающей стороны).
+// Запись шаблонного сервера (SPEC 129 §5.2): тег, которого шаблон приёмника
+// не объявил, не ввозится (backup_dns_entry_skipped); у совпавшей записи
+// `enabled` локальный, а `vars` накладываются ПО ИМЕНАМ — имя файла замещает
+// значение приёмника, имён, которых в файле нет, импорт не трогает (П7:
+// старый файл без vars не сбрасывает маршрут приёмника к умолчанию).
+// Необъявленные имена файла называются, равные умолчанию снимаются молча —
+// после наложения, поэтому значение файла, равное умолчанию, сбрасывает
+// выбор приёмника (файл сказал это явно). Затем Н9: запись, которой импорт
+// коснулся, с целью канала вне известных приезжает выключенной.
 //
 // final и strategy — ЗАМЕЩАЮТСЯ файлом: это одиночные значения, а не список,
 // и «слить» два взаимоисключающих ответа нечем.
-func importDNS(s *state.State, dns *DNS) {
+func importDNS(s *state.State, dns *decodedDNS, decls *state.RecordVarDecls, known tagSet) []Warning {
 	if dns == nil {
-		return
+		// Нормы записи действуют и без секции в файле: приёмник мог нести
+		// сирот и умолчания — первая запись после импорта их снимает.
+		if servers, changed, _ := state.NormalizeDNSServerVars(s.DNS.Servers, decls); changed {
+			s.DNS.Servers = servers
+		}
+		return nil
 	}
+	var warns []Warning
 
-	serverKey := func(kind, tag string) string { return kind + "\x00" + tag }
+	// Ключ един для всех видов: у template/user заполнен tag и пуст ref, у
+	// preset — наоборот. Разбирать по kind нечего, а один ключ на все виды
+	// не даёт завести второй, расходящийся с первым.
+	//
+	// Дубли ищутся ТОЛЬКО среди записей, которые лежали здесь ДО импорта:
+	// запись файла, совпавшая с локальной, пропускается, а одинаковые записи
+	// внутри самого файла ввозятся все. Файл — снимок настоящего состояния, и
+	// импорт в пустое состояние обязан его воспроизвести; ключ приехавшей
+	// записи в тех же наборах схлопывал два одинаковых правила файла в одно.
+	serverKey := func(kind, tag, ref string) string { return kind + "\x00" + tag + "\x00" + ref }
 	haveServers := map[string]bool{}
-	for _, srv := range s.DNS.Servers {
-		haveServers[serverKey(string(srv.Kind), srv.Tag)] = true
-	}
-	for _, ref := range dns.Servers {
-		key := serverKey(ref.Kind, ref.Name)
-		if haveServers[key] {
-			continue // своё сильнее
-		}
-		srv := state.DNSServer{
-			Kind:    state.DNSServerKind(ref.Kind),
-			Tag:     ref.Name,
-			Ref:     ref.Ref,
-			Enabled: ref.Enabled == nil || *ref.Enabled,
-		}
-		if ref.Kind == "user" && len(ref.Value) > 0 {
-			var body map[string]interface{}
-			if json.Unmarshal(ref.Value, &body) == nil {
-				srv.Body = body
+	localTemplate := map[string]int{}
+	for i, srv := range s.DNS.Servers {
+		haveServers[serverKey(string(srv.Kind), srv.Tag, srv.Ref)] = true
+		if srv.Kind == state.DNSServerKindTemplate {
+			if _, dup := localTemplate[srv.Tag]; !dup {
+				localTemplate[srv.Tag] = i
 			}
 		}
+	}
+	declsKnown := decls != nil && decls.DNSServers != nil
+	touched := map[int]bool{}
+	var touchedOrder []int
+	touch := func(i int) {
+		if !touched[i] {
+			touched[i] = true
+			touchedOrder = append(touchedOrder, i)
+		}
+	}
+	for _, srv := range dns.Servers {
+		if srv.Kind == state.DNSServerKindTemplate {
+			if !decls.DNSServerDeclared(srv.Tag) {
+				warns = append(warns, Warning{
+					Code:   WarnBackupDNSEntrySkipped,
+					Detail: "template:" + srv.Tag,
+					Kind:   warnKindDNSServer,
+				})
+				continue
+			}
+			if declsKnown {
+				warns = append(warns, recordVarWarnings(state.UndeclaredRecordVars(
+					srv.Vars, decls.DNSServers[srv.Tag], state.DNSVarRecord(srv.Tag)))...)
+			}
+			if idx, ok := localTemplate[srv.Tag]; ok {
+				if overlayRecordVars(&s.DNS.Servers[idx], srv.Vars) {
+					touch(idx)
+				}
+				continue // своё сильнее: enabled и прочие имена — локальные
+			}
+		} else if haveServers[serverKey(string(srv.Kind), srv.Tag, srv.Ref)] {
+			continue // своё сильнее
+		}
+		if srv.Kind != state.DNSServerKindTemplate {
+			srv.Vars = nil // Н1: vars только у записи шаблонного сервера
+		}
 		s.DNS.Servers = append(s.DNS.Servers, srv)
-		haveServers[key] = true
+		touch(len(s.DNS.Servers) - 1)
+	}
+
+	// Н2–Н4 для записей, которых импорт коснулся, — ДО проверки целей: цель,
+	// равная умолчанию, снята и целью файла не считается.
+	if declsKnown {
+		for _, i := range touchedOrder {
+			srv := &s.DNS.Servers[i]
+			if srv.Kind != state.DNSServerKindTemplate {
+				continue
+			}
+			if vars, changed, _ := state.NormalizeRecordVarMap(srv.Vars, decls.DNSServers[srv.Tag], ""); changed {
+				srv.Vars = vars
+			}
+		}
+	}
+	warns = append(warns, checkImportedDNSTargets(s.DNS.Servers, touchedOrder, decls, known)...)
+	// Остальные записи приёмника — те же нормы молча (сироты, умолчания).
+	if servers, changed, _ := state.NormalizeDNSServerVars(s.DNS.Servers, decls); changed {
+		s.DNS.Servers = servers
 	}
 
 	ruleKey := func(kind, ref string, body map[string]interface{}) string {
@@ -863,22 +944,11 @@ func importDNS(s *state.State, dns *DNS) {
 	for _, r := range s.DNS.Rules {
 		haveRules[ruleKey(string(r.Kind), r.Ref, r.Body)] = true
 	}
-	for _, ref := range dns.Rules {
-		var body map[string]interface{}
-		if ref.Kind == "user" && len(ref.Value) > 0 {
-			_ = json.Unmarshal(ref.Value, &body)
-		}
-		key := ruleKey(ref.Kind, ref.Ref, body)
-		if haveRules[key] {
+	for _, r := range dns.Rules {
+		if haveRules[ruleKey(string(r.Kind), r.Ref, r.Body)] {
 			continue // своё сильнее
 		}
-		s.DNS.Rules = append(s.DNS.Rules, state.DNSRule{
-			Kind:    state.DNSRuleKind(ref.Kind),
-			Ref:     ref.Ref,
-			Enabled: ref.Enabled == nil || *ref.Enabled,
-			Body:    body,
-		})
-		haveRules[key] = true
+		s.DNS.Rules = append(s.DNS.Rules, r)
 	}
 	if dns.Final != "" {
 		s.DNS.Final = dns.Final
@@ -886,7 +956,120 @@ func importDNS(s *state.State, dns *DNS) {
 	if dns.Strategy != "" {
 		s.DNS.Strategy = dns.Strategy
 	}
+	// Третий скаляр секции — по тому же правилу, что первые два. Форма 0.12
+	// его не несла и здесь всегда пуста, форма 1.0 несёт (§6.0); без этой
+	// строки писатель 1.0 клал ключ в файл, а читатель терял его молча.
+	if dns.DefaultDomainResolver != "" {
+		s.DNS.DefaultDomainResolver = dns.DefaultDomainResolver
+	}
+	return warns
 }
+
+// overlayRecordVars накладывает значения записи файла на запись приёмника по
+// именам (SPEC 129 §5.2). Пустое после подрезки значение файла — «нет ключа»
+// (Н3) и значение приёмника не трогает. Возвращает true, если файл назвал
+// хоть одно имя.
+func overlayRecordVars(dst *state.DNSServer, vars map[string]string) bool {
+	named := false
+	for name, raw := range vars {
+		value := strings.TrimSpace(raw)
+		if value == "" {
+			continue
+		}
+		if dst.Vars == nil {
+			dst.Vars = map[string]string{}
+		}
+		dst.Vars[name] = value
+		named = true
+	}
+	return named
+}
+
+// checkImportedDNSTargets — Н9 (SPEC 129): запись DNS-сервера, которой импорт
+// коснулся, с каналом вне известных целей приезжает ВЫКЛЮЧЕННОЙ с
+// backup_unknown_outbound — значение остаётся, пользователь видит, куда метил
+// файл, а сборка не уведёт резолв мимо выбранного маршрута. Канал шаблонного
+// сервера — значения переменных типа `outbound` (типы — из объявлений; без
+// них проверять нечем), у `user` — `body.detour`. Пустой список известных —
+// «проверять нечем», как у правил.
+func checkImportedDNSTargets(servers []state.DNSServer, touched []int, decls *state.RecordVarDecls, known tagSet) []Warning {
+	if known.empty() {
+		return nil
+	}
+	var warns []Warning
+	fail := func(srv *state.DNSServer, target string) {
+		srv.Enabled = false
+		warns = append(warns, Warning{
+			Code:   WarnBackupUnknownOutbound,
+			Detail: srv.Tag + " → " + target,
+			Kind:   warnKindDNSServer,
+		})
+	}
+	for _, i := range touched {
+		srv := &servers[i]
+		switch srv.Kind {
+		case state.DNSServerKindTemplate:
+			if decls == nil {
+				continue
+			}
+			names := make([]string, 0, len(srv.Vars))
+			for name := range srv.Vars {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			for _, name := range names {
+				decl, ok := decls.DNSServerVarDecl(srv.Tag, name)
+				if !ok || decl.Type != "outbound" {
+					continue
+				}
+				if v := strings.TrimSpace(srv.Vars[name]); v != "" && !known.has(v) {
+					fail(srv, v)
+				}
+			}
+		case state.DNSServerKindUser:
+			if det, _ := srv.Body["detour"].(string); strings.TrimSpace(det) != "" && !known.has(det) {
+				fail(srv, det)
+			}
+		}
+	}
+	return warns
+}
+
+// recordVarWarnings — снятые имена переменных предупреждениями
+// backup_var_skipped (SPEC 129 §5.6).
+func recordVarWarnings(drops []state.RecordVarDrop) []Warning {
+	if len(drops) == 0 {
+		return nil
+	}
+	out := make([]Warning, 0, len(drops))
+	for _, d := range drops {
+		kind := ""
+		switch {
+		case strings.HasPrefix(d.Record, "dns:"):
+			kind = warnKindDNSServer
+		case strings.HasPrefix(d.Record, "preset:"):
+			kind = warnKindPreset
+		}
+		out = append(out, Warning{
+			Code:   WarnBackupVarSkipped,
+			Detail: d.Name,
+			Kind:   kind,
+			Record: d.Record,
+			Reason: d.Reason,
+		})
+	}
+	return out
+}
+
+// Вид носителя в Warning.Kind у предупреждений о записях DNS и пресетов.
+const (
+	warnKindDNSServer = "dns_server"
+	warnKindPreset    = "preset"
+)
+
+// VarSkippedNotPortable — причина backup_var_skipped у корневой переменной вне
+// списка переносимых (registry/vars.json, portable=true).
+const VarSkippedNotPortable = "not_portable"
 
 // importWarp восстанавливает WG/MASQUE-регистрации из warp[].
 //

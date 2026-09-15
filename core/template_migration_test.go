@@ -1,23 +1,30 @@
 package core
 
 import (
+	"context"
+	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"singbox-launcher/core/services"
+	"singbox-launcher/core/state"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/platform"
 )
 
-// lastTemplateVersion reads the persisted LastTemplateLauncherVersion marker.
-func lastTemplateVersion(t *testing.T, root string) string {
-	t.Helper()
-	return locale.LoadSettings(filepath.Join(root, "bin")).LastTemplateLauncherVersion
-}
+// refreshedTemplate — the smallest body template.ParseTemplateData accepts:
+// what the pinned download returns in these tests.
+const refreshedTemplate = `{"parser_config": {}, "config": {"outbounds": [], "route": {"final": "direct"}}, "params": [], "vars": []}`
 
-// withAppVersion temporarily overrides constants.AppVersion for a test scope
-// so the function-under-test reads the version we want without us touching
-// the global outside the closure.
+// installedTemplate — the file already on disk. The refresh never parses it,
+// so any content marks "untouched".
+const installedTemplate = `{"installed": "by an older launcher"}`
+
+// withAppVersion temporarily overrides constants.AppVersion for a test scope.
 func withAppVersion(t *testing.T, v string, fn func()) {
 	t.Helper()
 	prev := constants.AppVersion
@@ -26,162 +33,264 @@ func withAppVersion(t *testing.T, v string, fn func()) {
 	fn()
 }
 
-// makeTempLauncherDir builds an exec-dir-shaped layout: <root>/bin/, with
-// optional pre-existing wizard_template.json and bin/settings.json contents.
-func makeTempLauncherDir(t *testing.T, withTemplate bool, settingsJSON string) string {
+type templateFetchStub struct {
+	body   string
+	status int
+	err    error
+	calls  int
+}
+
+func (f *templateFetchStub) fetch(context.Context, string, time.Duration) ([]byte, int, error) {
+	f.calls++
+	if f.err != nil {
+		return nil, 0, f.err
+	}
+	return []byte(f.body), f.status, nil
+}
+
+type launcherDir struct {
+	root string
+	t    *testing.T
+}
+
+func newLauncherDir(t *testing.T) launcherDir {
 	t.Helper()
 	root := t.TempDir()
-	binDir := filepath.Join(root, "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatalf("mkdir bin: %v", err)
+	if err := os.MkdirAll(filepath.Join(root, "bin"), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	if withTemplate {
-		if err := os.WriteFile(filepath.Join(binDir, "wizard_template.json"), []byte("{}"), 0o644); err != nil {
-			t.Fatalf("write template: %v", err)
-		}
-	}
-	if settingsJSON != "" {
-		if err := os.WriteFile(filepath.Join(binDir, "settings.json"), []byte(settingsJSON), 0o644); err != nil {
-			t.Fatalf("write settings: %v", err)
-		}
-	}
-	return root
+	return launcherDir{root: root, t: t}
 }
 
-func templateExists(t *testing.T, root string) bool {
-	t.Helper()
-	_, err := os.Stat(filepath.Join(root, "bin", "wizard_template.json"))
-	if err == nil {
-		return true
+func (d launcherDir) write(rel, body string) {
+	d.t.Helper()
+	p := filepath.Join(d.root, rel)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		d.t.Fatal(err)
 	}
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		d.t.Fatal(err)
+	}
+}
+
+// template returns the installed template, "" when there is no file.
+func (d launcherDir) template() string {
+	d.t.Helper()
+	raw, err := os.ReadFile(filepath.Join(d.root, "bin", constants.WizardTemplateFileName))
 	if os.IsNotExist(err) {
-		return false
+		return ""
 	}
-	t.Fatalf("stat template: %v", err)
-	return false
+	if err != nil {
+		d.t.Fatal(err)
+	}
+	return string(raw)
 }
 
-func TestInvalidateTemplateIfStale_LegacyEmptyMarker_RemovesTemplate(t *testing.T) {
-	// settings.json without last_template_launcher_version (legacy install).
-	root := makeTempLauncherDir(t, true, `{"lang":"en"}`)
-	withAppVersion(t, "v0.8.8", func() {
-		if err := InvalidateTemplateIfStale(root); err != nil {
-			t.Fatalf("invalidate: %v", err)
-		}
-		if templateExists(t, root) {
-			t.Fatal("expected template to be removed (legacy empty marker)")
-		}
-	})
+func (d launcherDir) marker() string {
+	return locale.LoadSettings(filepath.Join(d.root, "bin")).LastTemplateLauncherVersion
 }
 
-func TestInvalidateTemplateIfStale_OlderVersion_RemovesTemplate(t *testing.T) {
-	root := makeTempLauncherDir(t, true, `{"lang":"en","last_template_launcher_version":"v0.8.7"}`)
-	withAppVersion(t, "v0.8.8", func() {
-		if err := InvalidateTemplateIfStale(root); err != nil {
-			t.Fatalf("invalidate: %v", err)
-		}
-		if templateExists(t, root) {
-			t.Fatal("expected template to be removed (last < current)")
-		}
-		// Marker must advance so the next launch doesn't re-invalidate.
-		if got := lastTemplateVersion(t, root); got != "v0.8.8" {
-			t.Fatalf("expected marker stamped to v0.8.8 after removal, got %q", got)
-		}
-	})
-}
-
-// Stale check on a version that has no template file on disk (already removed,
-// or never present): we must still stamp the marker so a manually-placed
-// template on the next launch is not wiped.
-func TestInvalidateTemplateIfStale_StaleButNoFile_StampsMarker(t *testing.T) {
-	root := makeTempLauncherDir(t, false, `{"lang":"en","last_template_launcher_version":"v0.8.7"}`)
-	withAppVersion(t, "v0.8.8", func() {
-		if err := InvalidateTemplateIfStale(root); err != nil {
-			t.Fatalf("invalidate: %v", err)
-		}
-		if got := lastTemplateVersion(t, root); got != "v0.8.8" {
-			t.Fatalf("expected marker stamped to v0.8.8 even with no file, got %q", got)
-		}
-	})
-}
-
-// The reported bug: after an upgrade wipes the template, the user drops one in
-// by hand. The next launch on the SAME version must keep it — invalidation is
-// at-most-once per version.
-func TestInvalidateTemplateIfStale_ManualTemplateSurvivesSecondLaunch(t *testing.T) {
-	root := makeTempLauncherDir(t, true, `{"lang":"en","last_template_launcher_version":"v0.8.7"}`)
-	withAppVersion(t, "v0.8.8", func() {
-		// First launch on v0.8.8: stale → removed + marker stamped.
-		if err := InvalidateTemplateIfStale(root); err != nil {
-			t.Fatalf("first invalidate: %v", err)
-		}
-		if templateExists(t, root) {
-			t.Fatal("expected template removed on first launch")
-		}
-		// User places a template by hand.
-		if err := os.WriteFile(filepath.Join(root, "bin", "wizard_template.json"), []byte("{}"), 0o644); err != nil {
-			t.Fatalf("manual write: %v", err)
-		}
-		// Second launch on the same version: must NOT remove it again.
-		if err := InvalidateTemplateIfStale(root); err != nil {
-			t.Fatalf("second invalidate: %v", err)
-		}
-		if !templateExists(t, root) {
-			t.Fatal("manually-placed template must survive a second launch on the same version")
-		}
-	})
-}
-
-func TestInvalidateTemplateIfStale_SameVersion_KeepsTemplate(t *testing.T) {
-	root := makeTempLauncherDir(t, true, `{"lang":"en","last_template_launcher_version":"v0.8.8"}`)
-	withAppVersion(t, "v0.8.8", func() {
-		if err := InvalidateTemplateIfStale(root); err != nil {
-			t.Fatalf("invalidate: %v", err)
-		}
-		if !templateExists(t, root) {
-			t.Fatal("expected template to be kept (last == current)")
-		}
-	})
-}
-
-func TestInvalidateTemplateIfStale_NewerVersion_KeepsTemplate(t *testing.T) {
-	// Downgrade scenario: last installed by a *newer* launcher than current.
-	// Don't touch the file — user knows what they're doing.
-	root := makeTempLauncherDir(t, true, `{"lang":"en","last_template_launcher_version":"v0.8.9"}`)
-	withAppVersion(t, "v0.8.8", func() {
-		if err := InvalidateTemplateIfStale(root); err != nil {
-			t.Fatalf("invalidate: %v", err)
-		}
-		if !templateExists(t, root) {
-			t.Fatal("expected template to be kept on downgrade")
-		}
-	})
-}
-
-func TestInvalidateTemplateIfStale_DevBuild_SkipsEntirely(t *testing.T) {
-	root := makeTempLauncherDir(t, true, `{"lang":"en","last_template_launcher_version":"v0.8.7"}`)
-	for _, v := range []string{"v-local-test", "unnamed-dev", "v0.8.7-3-gabc1234-dirty"} {
-		v := v
-		t.Run(v, func(t *testing.T) {
-			withAppVersion(t, v, func() {
-				if err := InvalidateTemplateIfStale(root); err != nil {
-					t.Fatalf("invalidate: %v", err)
+// TestRefreshTemplateIfStale — every outcome of the startup refresh. The
+// invariant behind the table: the installed template is replaced only by a
+// downloaded template that parses, and is never deleted or overwritten by a
+// failed fetch (the old invalidation removed it and left the launcher without
+// a template until someone pressed Download).
+func TestRefreshTemplateIfStale(t *testing.T) {
+	ok := func() *templateFetchStub { return &templateFetchStub{body: refreshedTemplate, status: http.StatusOK} }
+	cases := []struct {
+		name         string
+		version      string // AppVersion, "v0.8.8" when empty
+		marker       string // last_template_launcher_version; "" = legacy install
+		installed    string // template on disk; "" = no file
+		bundled      string // bin/wizard_template.version
+		state        bool
+		fetch        *templateFetchStub
+		wantTemplate string
+		wantMarker   string
+		wantCalls    int
+		wantErr      bool
+		wantRes      TemplateRefreshResult
+	}{
+		{
+			name: "upgrade replaces the template", marker: "v0.8.7", installed: installedTemplate, state: true, fetch: ok(),
+			wantTemplate: refreshedTemplate, wantMarker: "v0.8.8", wantCalls: 1,
+			wantRes: TemplateRefreshResult{RebuildConfig: true, Downloaded: true},
+		},
+		{
+			name: "legacy install without marker is refreshed", installed: installedTemplate, fetch: ok(),
+			wantTemplate: refreshedTemplate, wantMarker: "v0.8.8", wantCalls: 1,
+			wantRes: TemplateRefreshResult{Downloaded: true},
+		},
+		{
+			name: "network failure keeps the old template and retries next launch", marker: "v0.8.7", installed: installedTemplate, state: true,
+			fetch:        &templateFetchStub{err: errors.New("i/o timeout")},
+			wantTemplate: installedTemplate, wantMarker: "v0.8.7", wantCalls: 1, wantErr: true,
+			wantRes: TemplateRefreshResult{RebuildConfig: true},
+		},
+		{
+			name: "HTTP error keeps the old template", marker: "v0.8.7", installed: installedTemplate,
+			fetch:        &templateFetchStub{body: "not found", status: http.StatusNotFound},
+			wantTemplate: installedTemplate, wantMarker: "v0.8.7", wantCalls: 1, wantErr: true,
+		},
+		{
+			name: "a stub page with 200 does not overwrite the template", marker: "v0.8.7", installed: installedTemplate,
+			fetch:        &templateFetchStub{body: "<html>blocked</html>", status: http.StatusOK},
+			wantTemplate: installedTemplate, wantMarker: "v0.8.7", wantCalls: 1, wantErr: true,
+		},
+		{
+			name: "template lost by an older launcher is restored when state needs it", marker: "v0.8.7", state: true, fetch: ok(),
+			wantTemplate: refreshedTemplate, wantMarker: "v0.8.8", wantCalls: 1,
+			wantRes: TemplateRefreshResult{RebuildConfig: true, Downloaded: true},
+		},
+		{
+			name: "pristine install without state stays offline", marker: "v0.8.7", fetch: ok(),
+			wantTemplate: "", wantMarker: "v0.8.8", wantCalls: 0,
+		},
+		{
+			name: "template bundled by the installer for this version is kept", marker: "v0.8.7", installed: installedTemplate,
+			bundled: "v0.8.8\n", state: true, fetch: ok(),
+			wantTemplate: installedTemplate, wantMarker: "v0.8.8", wantCalls: 0,
+			wantRes: TemplateRefreshResult{RebuildConfig: true},
+		},
+		{
+			name: "same version is untouched", marker: "v0.8.8", installed: installedTemplate, state: true, fetch: ok(),
+			wantTemplate: installedTemplate, wantMarker: "v0.8.8", wantCalls: 0,
+		},
+		{
+			name: "downgrade is untouched", marker: "v0.8.9", installed: installedTemplate, state: true, fetch: ok(),
+			wantTemplate: installedTemplate, wantMarker: "v0.8.9", wantCalls: 0,
+		},
+		{
+			name: "dev build is untouched", version: "v0.8.7-3-gabc1234-dirty", marker: "v0.8.7", installed: installedTemplate, state: true, fetch: ok(),
+			wantTemplate: installedTemplate, wantMarker: "v0.8.7", wantCalls: 0,
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			d := newLauncherDir(t)
+			if tc.marker != "" {
+				d.write("bin/settings.json", `{"lang":"en","last_template_launcher_version":"`+tc.marker+`"}`)
+			}
+			if tc.installed != "" {
+				d.write("bin/"+constants.WizardTemplateFileName, tc.installed)
+			}
+			if tc.bundled != "" {
+				d.write("bin/"+constants.WizardTemplateVersionFileName, tc.bundled)
+			}
+			if tc.state {
+				if err := os.MkdirAll(filepath.Dir(platform.GetWizardStatePath(d.root)), 0o755); err != nil {
+					t.Fatal(err)
 				}
-				if !templateExists(t, root) {
-					t.Fatal("expected dev build to leave template alone")
+				if err := state.New().Save(platform.GetWizardStatePath(d.root)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			version := tc.version
+			if version == "" {
+				version = "v0.8.8"
+			}
+			withAppVersion(t, version, func() {
+				res, err := RefreshTemplateIfStale(context.Background(), d.root, tc.fetch.fetch)
+				if (err != nil) != tc.wantErr {
+					t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
+				}
+				if res != tc.wantRes {
+					t.Errorf("result = %+v, want %+v", res, tc.wantRes)
 				}
 			})
+			if got := d.template(); got != tc.wantTemplate {
+				t.Errorf("template on disk = %q, want %q", got, tc.wantTemplate)
+			}
+			if got := d.marker(); got != tc.wantMarker {
+				t.Errorf("marker = %q, want %q", got, tc.wantMarker)
+			}
+			if tc.fetch.calls != tc.wantCalls {
+				t.Errorf("fetch calls = %d, want %d", tc.fetch.calls, tc.wantCalls)
+			}
+			if left, _ := filepath.Glob(filepath.Join(d.root, "bin", "*.download")); len(left) > 0 {
+				t.Errorf("temporary download files left behind: %v", left)
+			}
 		})
 	}
 }
 
-func TestInvalidateTemplateIfStale_NoTemplate_NoOp(t *testing.T) {
-	// Fresh install: settings.json may or may not exist, no template file.
-	// Should not error.
-	root := makeTempLauncherDir(t, false, "")
+// A failed refresh is retried on the next launch and a later success replaces
+// the file; a success is not repeated on the same version, so a template the
+// user drops in by hand afterwards survives further launches.
+func TestRefreshTemplateIfStale_RetriesUntilSuccessThenOncePerVersion(t *testing.T) {
+	d := newLauncherDir(t)
+	d.write("bin/settings.json", `{"lang":"en","last_template_launcher_version":"v0.8.7"}`)
+	d.write("bin/"+constants.WizardTemplateFileName, installedTemplate)
+
 	withAppVersion(t, "v0.8.8", func() {
-		if err := InvalidateTemplateIfStale(root); err != nil {
-			t.Fatalf("invalidate: %v", err)
+		offline := &templateFetchStub{err: errors.New("connection reset")}
+		if _, err := RefreshTemplateIfStale(context.Background(), d.root, offline.fetch); err == nil {
+			t.Fatal("launch 1: expected the offline refresh to fail")
+		}
+		if d.template() != installedTemplate {
+			t.Fatal("launch 1: the installed template must survive a failed refresh")
+		}
+
+		online := &templateFetchStub{body: refreshedTemplate, status: http.StatusOK}
+		if _, err := RefreshTemplateIfStale(context.Background(), d.root, online.fetch); err != nil {
+			t.Fatalf("launch 2: %v", err)
+		}
+		if d.template() != refreshedTemplate || d.marker() != "v0.8.8" {
+			t.Fatalf("launch 2: template %q marker %q — want the refreshed template stamped v0.8.8", d.template(), d.marker())
+		}
+
+		const handMade = `{"placed": "by hand"}`
+		d.write("bin/"+constants.WizardTemplateFileName, handMade)
+		again := &templateFetchStub{body: refreshedTemplate, status: http.StatusOK}
+		if _, err := RefreshTemplateIfStale(context.Background(), d.root, again.fetch); err != nil {
+			t.Fatalf("launch 3: %v", err)
+		}
+		if again.calls != 0 || d.template() != handMade {
+			t.Fatalf("launch 3: fetch calls %d, template %q — a stamped version must not refresh again", again.calls, d.template())
 		}
 	})
+}
+
+// Regression: a failed pre-start rebuild used to be logged and sing-box was
+// started on the previous config.json anyway. Now the start is abandoned —
+// no process is even prepared. A missing state.json stays a legitimate start
+// on a hand-managed config.json.
+func TestProcessServiceStart_RebuildFailureDoesNotStartCore(t *testing.T) {
+	d := newLauncherDir(t)
+	if err := os.MkdirAll(filepath.Dir(platform.GetWizardStatePath(d.root)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.New().Save(platform.GetWizardStatePath(d.root)); err != nil {
+		t.Fatal(err)
+	}
+	// Present but unusable: the build fails without reaching for the network.
+	d.write("bin/"+constants.WizardTemplateFileName, "{ not a template")
+	d.write("bin/config.json", `{"outbounds":[]}`)
+
+	ac := &AppController{
+		FileService: &services.FileService{
+			ExecDir:     d.root,
+			ConfigPath:  filepath.Join(d.root, "bin", "config.json"),
+			SingboxPath: filepath.Join(d.root, "bin", "sing-box-absent"),
+		},
+		StateService: services.NewStateService(),
+		RunningState: &RunningState{},
+	}
+	ac.ProcessService = NewProcessService(ac)
+
+	if err := ac.rebuildConfigBeforeStart(false); err == nil {
+		t.Fatal("rebuild with an unusable template must fail")
+	}
+	ac.ProcessService.Start(true)
+	if ac.SingboxCmd != nil || ac.RunningState.IsRunning() {
+		t.Fatalf("sing-box must not be started after a failed rebuild (cmd %v, running %v)", ac.SingboxCmd, ac.RunningState.IsRunning())
+	}
+
+	if err := os.Remove(platform.GetWizardStatePath(d.root)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ac.rebuildConfigBeforeStart(false); err != nil {
+		t.Fatalf("no state.json means config.json is managed by hand — start must proceed, got %v", err)
+	}
 }

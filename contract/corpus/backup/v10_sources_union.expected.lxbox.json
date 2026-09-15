@@ -1,0 +1,50 @@
+{
+  "rules": [],
+  "warnings": ["backup_source_kind_unsupported"],
+  "subscriptions": {
+    "https://example-1.com/sub-union": {
+      "label": "Provider",
+      "prefix": "eu:",
+      "enabled": true,
+      "nodes": [],
+      "pending_disabled": [
+        "dead-node"
+      ]
+    }
+  },
+  "folders": {
+    "Europe": [
+      "local-fr",
+      "de-1"
+    ],
+    "Nordics (local name)": [
+      "local-se",
+      "se-1"
+    ]
+  },
+  "folder_ids": {
+    "Europe": "01FLDLOCAL00000000000EU",
+    "Nordics (local name)": "01FLDU00000000000000000N"
+  },
+  "root_servers": [
+    "root-jp"
+  ],
+  "chains": [
+    {
+      "tag": "jp-via-eu",
+      "chain": {
+        "hops": [
+          "de-1",
+          "se-1",
+          "root-jp"
+        ],
+        "idle_timeout": "0s"
+      },
+      "hops": [
+        { "tag": "de-1", "folder": "Europe" },
+        { "tag": "se-1", "folder": "Nordics (local name)" },
+        { "tag": "root-jp", "folder": "" }
+      ]
+    }
+  ]
+}

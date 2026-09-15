@@ -23,8 +23,29 @@ import (
 	corepkg "singbox-launcher/core"
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
+	wizardtemplate "singbox-launcher/core/template"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
+
+// PresetGlobalVars — глобальные переменные для тела пресета в визарде:
+// сохранённые значения SettingsVars плюс дефолты шаблона для имён, которых
+// пользователь не трогал.
+//
+// Правило одно со сборкой (build.PresetMergeContext, template.VarValuesFor):
+// превью пресета, строки DNS-вкладки и «конвертировать в свои правила»
+// обязаны видеть те же значения, что уйдут в config.json. Иначе у модели без
+// `tun` превью показывало sniff с `inbound: []`, а конвертация навсегда
+// вписывала его в пользовательское правило.
+func PresetGlobalVars(model *wizardmodels.WizardModel) map[string]string {
+	if model == nil {
+		return nil
+	}
+	if model.TemplateData == nil {
+		return model.SettingsVars
+	}
+	td := model.TemplateData
+	return wizardtemplate.VarValuesFor(td.Vars, model.SettingsVars, td.RawTemplate, model.Target)
+}
 
 // MaterializeSecretsIfNeeded гарантирует SettingsVars непустую map'у и
 // делегирует материализацию всех type:"secret" var в `core/build`. Тонкая
@@ -137,13 +158,16 @@ func buildConfigWithExclusions(model *wizardmodels.WizardModel, forPreview bool)
 		model.DNSTemplateOverrides,
 		templateDNSTags,
 	)
+	// SPEC 129: значения переменных шаблонных серверов — полем записи, как
+	// у сохранения: превью обязано собрать то же, что уйдёт в config.json.
+	wizardmodels.ApplyDNSTemplateVarsToState(&dnsV6, model.DNSTemplateVars)
 	// Зеркало Save-пути (core/config_service.go::dnsConfigForUpdate): при
 	// активном v6 servers/rules идут ТОЛЬКО через ctx.Preset.DNS →
-	// ResolveDNS, где template-серверы получают подстановку @dns_*-
+	// ResolveDNS, где template-серверы получают подстановку своих
 	// переменных. Прежний код дублировал их и в ctx.DNS.Servers: сырое тело
 	// с плейсхолдерами эмитилось первым, дедуп по тегу выбрасывал
 	// подставленную версию — и превью с remote-деплоем уносили literal
-	// `@dns_google_dot_dns_ip`, на котором удалённое ядро отвергало конфиг.
+	// `@dns_ip`, на котором удалённое ядро отвергало конфиг.
 	if len(dnsV6.Servers) > 0 || len(dnsV6.Rules) > 0 || len(rulesV6) > 0 {
 		ctx.DNS.Servers = nil
 	}
@@ -172,6 +196,8 @@ func buildConfigWithExclusions(model *wizardmodels.WizardModel, forPreview bool)
 		// SPEC 109: ОБЪЯВЛЕНИЯ переменных — из них подстановка в теле
 		// DNS-сервера берёт тип и дефолт. GlobalVars выше несёт только значения.
 		TemplateVars: model.TemplateData.Vars,
+		// SPEC 129: объявления переменных шаблонных DNS-серверов по тегу.
+		DNSServerVars: model.TemplateData.DNSServerVars,
 	}
 
 	res, err := build.BuildConfig(ctx)

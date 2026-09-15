@@ -372,6 +372,40 @@ func TestEmitE3_DanglingChainHopIsFailClosed(t *testing.T) {
 	}
 }
 
+// NODE_LINK.md §9.3 п. 2: две цепочки одной папки — два outbound'а, каждый со
+// своими позициями. Одна запись цепочки на источник собирала их в один: тег
+// первой, позиции последней, а вторая пропадала без предупреждения. Тег
+// цепочки папки тег-политику не проходит, позиции — финальные теги членов.
+func TestEmitE3_TwoChainsInOneFolderAreTwoOutbounds(t *testing.T) {
+	folder := canonFolder("F1", "[P] ", "",
+		canonServerNode("A", "A", "a.example", 443),
+		canonServerNode("B", "B", "b.example", 443),
+		configtypes.CanonicalNode{Kind: "chain", Tag: "via-a", Enabled: true,
+			Hops: []configtypes.NodeLink{{FolderID: "F1", Tag: "A"}, {FolderID: "F1", Tag: "B"}}},
+		configtypes.CanonicalNode{Kind: "chain", Tag: "via-b", Enabled: true,
+			Hops: []configtypes.NodeLink{{FolderID: "F1", Tag: "B"}, {FolderID: "F1", Tag: "A"}}},
+	)
+
+	res := runCanonicalBuild(t, []ProxySource{folder}, nil)
+
+	for tag, want := range map[string][]interface{}{
+		"via-a": {"[P] A", "[P] B"},
+		"via-b": {"[P] B", "[P] A"},
+	} {
+		obj := emittedObject(t, res, tag)
+		if obj == nil {
+			t.Errorf("цепочка %q не собралась: tags=%v broken=%+v", tag, emittedTags(res), res.BrokenChains)
+			continue
+		}
+		if got, _ := obj["outbounds"].([]interface{}); len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+			t.Errorf("позиции %q = %v, want %v", tag, obj["outbounds"], want)
+		}
+	}
+	if len(res.BrokenChains) != 0 || len(res.EmissionWarnings) != 0 {
+		t.Errorf("сборка без ошибок дала деградации: broken=%+v warnings=%v", res.BrokenChains, res.EmissionWarnings)
+	}
+}
+
 // ── §4.E.4 — Auto: фильтр enabled, пустая не эмитится, default ───────
 
 func TestEmitE4_AutoFiltersDisabledMembers(t *testing.T) {
@@ -429,7 +463,7 @@ func TestEmitE4_SelectorKeepsTypeAndDefaultDropsForeign(t *testing.T) {
 		Kind: "auto", Tag: "grp", Enabled: true,
 		Group: &configtypes.CanonicalAutoGroup{
 			GroupType: "selector",
-			Default:   "NL-1",
+			Default:   &configtypes.NodeLink{FolderID: "F1", Tag: "NL-1"},
 			Members:   []configtypes.NodeLink{{FolderID: "F1", Tag: "NL-1"}},
 		},
 	}
@@ -448,7 +482,7 @@ func TestEmitE4_SelectorKeepsTypeAndDefaultDropsForeign(t *testing.T) {
 	}
 
 	// default вне состава — снимается с предупреждением.
-	auto.Group.Default = "ghost"
+	auto.Group.Default = &configtypes.NodeLink{FolderID: "F1", Tag: "ghost"}
 	res2 := runCanonicalBuild(t, []ProxySource{
 		canonFolder("F1", "[P] ", "", canonServerNode("NL-1", "NL-1", "nl.example", 443), auto),
 	}, nil)
@@ -802,5 +836,63 @@ func TestEmitWireguardResolvableDetourStaysQuiet(t *testing.T) {
 	// настройка снова теряется молча.
 	if !strings.Contains(strings.Join(res.EndpointsJSON, "\n"), `"detour"`) {
 		t.Errorf("рабочий detour не проставлен: %v", res.EndpointsJSON)
+	}
+}
+
+// NODE_LINK.md §5.2, §9.3 п. 3: провайдерская группа адресуется СЫРЫМ тегом,
+// как всякий узел контейнера, — позиция цепочки и detour на неё переживают
+// смену tag_policy. Позиция, записанная ФИНАЛЬНЫМ тегом группы, по нему не
+// разрешается (форма, которую норма запрещает), но предупреждение называет
+// группу, чтобы позицию выбрали заново.
+func TestEmitProviderGroupAddressedByRawTag(t *testing.T) {
+	build := func(prefix string, hop configtypes.NodeLink) *OutboundGenerationResult {
+		auto := configtypes.CanonicalNode{
+			Kind: "auto", Tag: "Best", Enabled: true,
+			Group: &configtypes.CanonicalAutoGroup{
+				GroupType: "urltest",
+				Members:   []configtypes.NodeLink{{FolderID: "SUB", Tag: "US-1"}, {FolderID: "SUB", Tag: "US-2"}},
+			},
+		}
+		chain := configtypes.CanonicalNode{
+			Kind: "chain", Tag: "via-best", Enabled: true,
+			Hops: []configtypes.NodeLink{{Tag: "relay"}, hop},
+		}
+		tokyo := canonServerNode("tokyo", "tokyo", "tokyo.example", 443)
+		tokyo.Detour = &configtypes.NodeLink{FolderID: "SUB", Tag: "Best"}
+		return runCanonicalBuild(t, []ProxySource{
+			canonFolder("SUB", prefix, "",
+				canonServerNode("US-1", "US-1", "us1.example", 443),
+				canonServerNode("US-2", "US-2", "us2.example", 443),
+				auto),
+			canonRoot("R1", "relay", canonServerNode("relay", "relay", "relay.example", 443)),
+			canonRoot("R2", "tokyo", tokyo),
+			{ID: "C1", Label: "via-best",
+				Canonical: &configtypes.CanonicalSource{Nodes: []configtypes.CanonicalNode{chain}}},
+		}, nil)
+	}
+
+	for _, prefix := range []string{"nl:", "p:"} {
+		res := build(prefix, configtypes.NodeLink{FolderID: "SUB", Tag: "Best"})
+		obj := emittedObject(t, res, "via-best")
+		if obj == nil {
+			t.Fatalf("prefix %q: цепочка на группу не собралась: broken=%+v warnings=%v", prefix, res.BrokenChains, res.EmissionWarnings)
+		}
+		if hops, _ := obj["outbounds"].([]interface{}); len(hops) != 2 || hops[1] != prefix+"Best" {
+			t.Errorf("prefix %q: позиции = %v, want [relay %sBest]", prefix, obj["outbounds"], prefix)
+		}
+		if tokyo := emittedObject(t, res, "tokyo"); tokyo == nil || tokyo["detour"] != prefix+"Best" {
+			t.Errorf("prefix %q: detour на группу = %v, want %sBest", prefix, tokyo, prefix)
+		}
+		if len(res.EmissionWarnings) != 0 {
+			t.Errorf("prefix %q: сборка без ошибок дала деградации: %v", prefix, res.EmissionWarnings)
+		}
+	}
+
+	res := build("nl:", configtypes.NodeLink{FolderID: "SUB", Tag: "nl:Best"})
+	if emittedObject(t, res, "via-best") != nil {
+		t.Error("позиция финальным тегом группы разрешилась — ссылка протухла бы от правки префикса")
+	}
+	if w := joinWarnings(res); !strings.Contains(w, `"nl:Best"`) || !strings.Contains(w, `group "Best"`) {
+		t.Errorf("предупреждение не называет группу: %v", res.EmissionWarnings)
 	}
 }

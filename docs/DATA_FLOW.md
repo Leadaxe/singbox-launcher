@@ -174,7 +174,7 @@ core.AppController.RebuildConfigIfDirty  (sole config.json writer; noop if clean
 core/build entry (BuildConfig)  — pure function over BuildContext
      │
      ├─► ResolveDNS(state, template, vars)        — pure func
-     │     walk state.dns_options.servers[] kind switch
+     │     walk state.dns.servers[] kind switch
      │       template → resolve body from template.dns_options.servers[tag]
      │       preset   → resolve body from template.presets[id].dns_servers[local_tag] + substitute vars
      │       user     → body is already flat in the entry
@@ -184,7 +184,7 @@ core/build entry (BuildConfig)  — pure function over BuildContext
      │     walk state.rules[] kind switch
      │       preset → resolve via template.presets[id].rules (expand + tag prefix)
      │       inline → emit body.match + outbound
-     │       srs    → emit one local rule_set per body.srs_urls (downloaded .srs paths) + outbound
+     │       srs    → emit one local rule_set per refs[] entry (downloaded .srs paths) + outbound
      │
      ├─► MergeOutboundUpdates(ob, template)       — pure func (SPEC 058)
      │     per-entry resolver (UI preview / dialog Edit); build runtime

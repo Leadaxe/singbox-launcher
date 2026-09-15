@@ -27,30 +27,24 @@ type ChainDegradation struct {
 	Reason string
 }
 
-// chainSourceTag — тег будущего узла цепочки.
+// chainNodeTag — тег будущего узла цепочки.
 //
-// Берётся из канона (сырой тег chain-узла = его финальный тег: у корневого
-// узла тег-политики нет), а при пустом — запасное `chain-<N>` по позиции в
-// списке: пустой тег в конфиге валит `sing-box check`, и оставить его нельзя
-// даже когда пользователь не удосужился назвать цепочку.
-func chainSourceTag(src ProxySource, index int) string {
-	if t := canonicalChainTag(src); t != "" {
+// Берётся из записи прохода 2 (сырой тег chain-узла = его финальный тег:
+// тег-политика к цепочке не применяется), а при пустом — запасное
+// `chain-<N>` по позиции источника в списке: пустой тег в конфиге валит
+// `sing-box check`, и оставить его нельзя даже когда пользователь не
+// удосужился назвать цепочку. Вторая и следующие безымянные цепочки одного
+// источника получают ещё и свой номер: одно запасное имя на две цепочки
+// столкнулось бы само с собой.
+func chainNodeTag(bc configtypes.BuiltChain, sourceIndex, chainIndex int) string {
+	if t := strings.TrimSpace(bc.Tag); t != "" {
 		return t
 	}
-	return "chain-" + strconv.Itoa(index+1)
-}
-
-// canonicalChainTag — тег chain-узла источника (пусто, если такого узла нет).
-func canonicalChainTag(src ProxySource) string {
-	if src.Canonical == nil {
-		return ""
+	tag := "chain-" + strconv.Itoa(sourceIndex+1)
+	if chainIndex > 0 {
+		tag += "-" + strconv.Itoa(chainIndex+1)
 	}
-	for i := range src.Canonical.Nodes {
-		if src.Canonical.Nodes[i].Kind == canonicalKindChain {
-			return strings.TrimSpace(src.Canonical.Nodes[i].Tag)
-		}
-	}
-	return ""
+	return tag
 }
 
 // chainHopUnresolvedMark — префикс позиции цепочки, ссылка которой НЕ
@@ -116,7 +110,7 @@ func ResolveChainSources(
 	// же, как раньше, не платя ни за один лишний проход.
 	hasChain := false
 	for _, src := range parserConfig.ParserConfig.Proxies {
-		if src.Chain != nil && !src.Disabled {
+		if len(src.Chains) > 0 && !src.Disabled {
 			hasChain = true
 			break
 		}
@@ -179,86 +173,167 @@ func ResolveChainSources(
 
 	var broken []ChainDegradation
 	for i, src := range parserConfig.ParserConfig.Proxies {
-		if src.Chain == nil || src.Disabled {
+		if src.Disabled {
 			continue
 		}
-		tag := chainSourceTag(src, i)
-		name := tag
+		// Цепочек у источника бывает несколько (папка): каждая — свой узел,
+		// свои проверки и своя деградация; выпавшая не роняет соседок.
+		for ci, bc := range src.Chains {
+			if bc.Chain == nil {
+				continue
+			}
+			if node, reason := buildChainNode(src, i, ci, bc, supported, unsupportedReason, known, nodesByTag, chainTags); node != nil {
+				allNodes = append(allNodes, node)
+				nodesBySource[i] = append(nodesBySource[i], node)
+				known[node.Tag] = true
+				chainTags[node.Tag] = true
+				nodesByTag[node.Tag] = node
+				debuglog.DebugLog("chain: source %q became a node of %d positions", node.Tag, len(bc.Chain.Hops))
+			} else {
+				debuglog.WarnLog("chain: source %q did not become a node: %s", reason.Tag, reason.Reason)
+				broken = append(broken, reason)
+			}
+		}
+	}
+	return allNodes, broken
+}
+
+// buildChainNode — одна цепочка источника: узел либо причина, по которой он
+// не собрался.
+//
+// Порядок проверок нормативен: собственные диагностики цепочки информативнее
+// коллизии имени, а позиция, которой нет, — раньше проверок состава.
+func buildChainNode(
+	src ProxySource,
+	sourceIndex, chainIndex int,
+	bc configtypes.BuiltChain,
+	supported bool,
+	unsupportedReason string,
+	known map[string]bool,
+	nodesByTag map[string]*ParsedNode,
+	chainTags map[string]bool,
+) (*ParsedNode, ChainDegradation) {
+	tag := chainNodeTag(bc, sourceIndex, chainIndex)
+	name := tag
+	// Подпись источника называет цепочку только у корневой записи: у папки
+	// подпись — имя контейнера, а цепочек в нём может быть несколько.
+	if src.Canonical == nil || !src.Canonical.IsContainer {
 		if s := strings.TrimSpace(src.Label); s != "" {
 			name = s
 		}
+	}
+	degrade := func(reason string) (*ParsedNode, ChainDegradation) {
+		return nil, ChainDegradation{Tag: tag, Name: name, Reason: reason}
+	}
 
-		degrade := func(reason string) {
-			debuglog.WarnLog("chain: source %q did not become a node: %s", tag, reason)
-			broken = append(broken, ChainDegradation{Tag: tag, Name: name, Reason: reason})
+	if !supported {
+		return degrade(unsupportedReason)
+	}
+	if reason := ChainEmitError(tag, bc.Chain); reason != "" {
+		return degrade(reason)
+	}
+	// Коллизия имени: цепочка, названная как существующий узел, Направление
+	// или другая цепочка, дала бы два outbound'а с одним тегом — ядро
+	// отвергает такой конфиг целиком. Узлы подписок через это не проходят
+	// (MakeTagUnique), цепочки шли в обход. После ChainEmitError: собственные
+	// диагностики цепочки информативнее.
+	if known[tag] {
+		return degrade("the name “" + tag + "” is already taken by another node, Direction or chain")
+	}
+	// Позиция, которой нет среди известных тегов, — ссылка в никуда, на
+	// которой ядро не стартует. Цепочка выпадает ЦЕЛИКОМ, а не теряет
+	// позицию: маршрут без хопа — это другой маршрут, и подменять его молча
+	// нельзя.
+	for _, hop := range bc.Chain.Hops {
+		// Маркер проверяется ПЕРВЫМ: позиция, про которую проход 2 уже знает,
+		// что её цель не нашлась, роняет цепочку независимо от того, носит ли
+		// кто-то в корне такое же имя.
+		if chainHopIsUnresolved(hop) || !known[hop] {
+			return degrade("position " + chainHopDisplayTag(hop) + " not found among nodes and Directions")
 		}
+	}
+	if conflicts := ChainRealityConflict(bc.Chain, nodesByTag); len(conflicts) > 0 {
+		return degrade("strip removes tls.utls while positions " + strings.Join(conflicts, ", ") +
+			" are reality nodes: the core refuses to start with such a config")
+	}
+	if nested := ChainNestedConflict(bc.Chain, chainTags); len(nested) > 0 {
+		return degrade("chains " + strings.Join(nested, ", ") +
+			" are not in the first position — the core allows a nested chain only at position 0")
+	}
 
-		if !supported {
-			degrade(unsupportedReason)
-			continue
+	return &ParsedNode{
+		Tag:   tag,
+		Label: name,
+		// SPEC 112: идентичность узла цепочки — её собственный тег. Он же
+		// финальный: ни префиксов, ни маски у цепочки нет, тег задаётся
+		// пользователем напрямую. Проставляется явно, чтобы ссылка на цепочку
+		// (SPEC 112-A) резолвилась той же картой, что и на узел подписки, а не
+		// падала на запасное правило.
+		IdentityTag: tag,
+		Scheme:      configtypes.ChainOutboundType,
+		Outbound:    ChainOutboundObject(tag, bc.Chain),
+		SourceIndex: sourceIndex,
+		EmitRaw:     true,
+	}, ChainDegradation{}
+}
+
+// sourceHasPendingChains — есть ли у источника цепочки, которые соберёт
+// проход 2.
+//
+// Узел-цепочка на проходе 1 не эмитится (errCanonicalChainDeferred), и
+// источник, у которого кроме цепочек ничего нет, выглядел там пустым: пометка
+// «не дал ни одного узла» ставилась и собравшейся цепочке. Условие то же, что
+// у ResolveCanonicalChainHops: включённый узел-цепочка с позициями. Сборочная
+// форма, положенная вызывающим напрямую (ps.Chains), тоже считается.
+func sourceHasPendingChains(ps ProxySource) bool {
+	if len(ps.Chains) > 0 {
+		return true
+	}
+	if ps.Canonical == nil {
+		return false
+	}
+	for i := range ps.Canonical.Nodes {
+		cn := &ps.Canonical.Nodes[i]
+		if cn.Kind == canonicalKindChain && cn.Enabled && len(cn.Hops) > 0 {
+			return true
 		}
-		if reason := ChainEmitError(tag, src.Chain); reason != "" {
-			degrade(reason)
-			continue
+	}
+	return false
+}
+
+// chainSourceFailure — запись «источник не дал ни одного узла» для
+// источника, ни одна цепочка которого не собралась.
+//
+// Причина — то, что сказал о его цепочках проход 2, а не общее «ничего не
+// осталось после разбора и фильтров»: разбора у цепочки нет. Подпись — тег
+// цепочки, когда у источника своей подписи нет (корневая цепочка), иначе
+// строка отчёта называла бы пустое имя.
+func chainSourceFailure(ps ProxySource, index int, broken []ChainDegradation) SourceExclusion {
+	var reasons []string
+	firstTag := ""
+	for ci, bc := range ps.Chains {
+		tag := chainNodeTag(bc, index, ci)
+		if firstTag == "" {
+			firstTag = tag
 		}
-		// Коллизия имени: цепочка, названная как существующий узел,
-		// Направление или другая цепочка, дала бы два outbound'а с одним
-		// тегом — ядро отвергает такой конфиг целиком. Узлы подписок через
-		// это не проходят (MakeTagUnique), цепочки шли в обход. После
-		// ChainEmitError: собственные диагностики цепочки информативнее.
-		if known[tag] {
-			degrade("the name “" + tag + "” is already taken by another node, Direction or chain")
-			continue
+		for _, b := range broken {
+			if b.Tag == tag {
+				reasons = appendReason(reasons, b.Reason)
+			}
 		}
-		// Позиция, которой нет среди известных тегов, — ссылка в никуда, на
-		// которой ядро не стартует. Цепочка выпадает ЦЕЛИКОМ, а не теряет
-		// позицию: маршрут без хопа — это другой маршрут, и подменять его
-		// молча нельзя.
-		missing := ""
-		for _, hop := range src.Chain.Hops {
-			// Маркер проверяется ПЕРВЫМ: позиция, про которую проход 2 уже
-			// знает, что её цель не нашлась, роняет цепочку независимо от
-			// того, носит ли кто-то в корне такое же имя.
-			if chainHopIsUnresolved(hop) || !known[hop] {
-				missing = chainHopDisplayTag(hop)
+	}
+	if firstTag == "" && ps.Canonical != nil {
+		// Проход 2 не начинался (узлов нет вовсе): тег берётся из канона.
+		for i := range ps.Canonical.Nodes {
+			if cn := &ps.Canonical.Nodes[i]; cn.Kind == canonicalKindChain {
+				firstTag = strings.TrimSpace(cn.Tag)
 				break
 			}
 		}
-		if missing != "" {
-			degrade("position " + missing + " not found among nodes and Directions")
-			continue
-		}
-		if conflicts := ChainRealityConflict(src.Chain, nodesByTag); len(conflicts) > 0 {
-			degrade("strip removes tls.utls while positions " + strings.Join(conflicts, ", ") +
-				" are reality nodes: the core refuses to start with such a config")
-			continue
-		}
-		if nested := ChainNestedConflict(src.Chain, chainTags); len(nested) > 0 {
-			degrade("chains " + strings.Join(nested, ", ") +
-				" are not in the first position — the core allows a nested chain only at position 0")
-			continue
-		}
-
-		node := &ParsedNode{
-			Tag:   tag,
-			Label: name,
-			// SPEC 112: идентичность узла цепочки — её собственный тег. Он же
-			// финальный: ни префиксов, ни маски у цепочки нет, тег задаётся
-			// пользователем напрямую. Проставляется явно, чтобы ссылка на
-			// цепочку (SPEC 112-A) резолвилась той же картой, что и на узел
-			// подписки, а не падала на запасное правило.
-			IdentityTag: tag,
-			Scheme:      configtypes.ChainOutboundType,
-			Outbound:    ChainOutboundObject(tag, src.Chain),
-			SourceIndex: i,
-			EmitRaw:     true,
-		}
-		allNodes = append(allNodes, node)
-		nodesBySource[i] = append(nodesBySource[i], node)
-		known[tag] = true
-		chainTags[tag] = true
-		nodesByTag[tag] = node
-		debuglog.DebugLog("chain: source %q became a node of %d positions", tag, len(src.Chain.Hops))
 	}
-	return allNodes, broken
+	failure := sourceParseFailure(ps, reasons)
+	if failure.SourceLabel == "" {
+		failure.SourceLabel = firstTag
+	}
+	return failure
 }

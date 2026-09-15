@@ -1199,6 +1199,14 @@ func GenerateOutboundsFromParserConfig(
 	progressCallback func(float64, string),
 	directions DirectionBuildOptions,
 ) (*OutboundGenerationResult, error) {
+	// Объявленные имена Направлений снимаются ДО прохода 0: выключенное
+	// Направление из списка выпадет, а опцией чужого Направления оно
+	// остаётся законным именем (direction_options.go).
+	var declaredDirectionTags []string
+	if parserConfig != nil {
+		declaredDirectionTags = directionDeclaredTags(parserConfig.ParserConfig.Outbounds)
+	}
+
 	// SPEC 104, проход 0 — раскрываем Направления: выключенные выпадают,
 	// у остальных разворачиваются парные auto-группы. Делается ДО
 	// подстановки переменных, чтобы `@urltest_*` в опциях двойника
@@ -1266,6 +1274,10 @@ func GenerateOutboundsFromParserConfig(
 	succeededSources := 0
 	failedSources := 0
 	var parseFailedSources []SourceExclusion
+	// Источники, у которых узлов на проходе 1 нет, но есть цепочки (они
+	// собираются на проходе 2): пустыми они считаются, только если ни одна
+	// цепочка не собралась.
+	var chainOnlySources []int
 	for i, proxySource := range parserConfig.ParserConfig.Proxies {
 		if proxySource.Disabled {
 			debuglog.DebugLog("GenerateOutboundsFromParserConfig: skipping source %d (disabled)", i+1)
@@ -1364,6 +1376,11 @@ func GenerateOutboundsFromParserConfig(
 			allNodes = append(allNodes, nodesFromSource...)
 			nodesBySource[i] = nodesFromSource
 			succeededSources++
+		} else if sourceHasPendingChains(proxySource) {
+			// Цепочка узлом становится только на проходе 2
+			// (ResolveChainSources): здесь узлов у неё нет по построению, и
+			// вердикт «источник пуст» выносится там, по итогу сборки цепочек.
+			chainOnlySources = append(chainOnlySources, i)
 		} else {
 			// Silent-empty: source fetched OK but parsed zero nodes. From
 			// the user's perspective this is indistinguishable from a hard
@@ -1399,6 +1416,14 @@ func GenerateOutboundsFromParserConfig(
 		// не даёт собрать конфиг — вызывающий обязан её уважать; результат
 		// несёт только диагностику (узлов в нём нет по определению), и его
 		// единственный потребитель — фид отчёта.
+		//
+		// До прохода 2 дело не доходит, и цепочке собираться не из чего:
+		// источник-цепочка здесь пуст на самом деле.
+		for _, i := range chainOnlySources {
+			failedSources++
+			parseFailedSources = append(parseFailedSources,
+				chainSourceFailure(parserConfig.ParserConfig.Proxies[i], i, nil))
+		}
 		diag := &OutboundGenerationResult{
 			TotalSources:           totalSources,
 			SucceededSources:       succeededSources,
@@ -1446,7 +1471,8 @@ func GenerateOutboundsFromParserConfig(
 	// тегов (верхние узлы, Направления, replace-теги, системные) — и только
 	// после него материализуется хоть одна ссылка (тот же инвариант
 	// двухпроходности, что у node_ref.go).
-	linkTargets := BuildNodeLinkTargets(parserConfig.ParserConfig.Proxies, nodesBySource, allRootLinkTargets(parserConfig, directionTagsForChains))
+	rootLinkTargets := allRootLinkTargets(parserConfig, directionTagsForChains, directions)
+	linkTargets := BuildNodeLinkTargets(parserConfig.ParserConfig.Proxies, nodesBySource, rootLinkTargets)
 	// Позиции цепочек — до ResolveChainSources: она строит узел по строковым
 	// тегам и о ссылках не знает.
 	// SPEC 116 W12 фикс 3: предупреждения эмиссии едут с адресатом
@@ -1455,12 +1481,47 @@ func GenerateOutboundsFromParserConfig(
 	emissionWarnings := ResolveCanonicalChainHops(parserConfig, linkTargets)
 
 	allNodes, brokenChains := ResolveChainSources(parserConfig, allNodes, nodesBySource, directionTagsForChains)
+	// Вердикт по источникам-цепочкам, отложенный с прохода 1: пуст только тот,
+	// у кого не собралась ни одна цепочка.
+	for _, i := range chainOnlySources {
+		if len(nodesBySource[i]) > 0 {
+			succeededSources++
+			continue
+		}
+		failure := chainSourceFailure(parserConfig.ParserConfig.Proxies[i], i, brokenChains)
+		debuglog.WarnLog("GenerateOutboundsFromParserConfig: source %d/%d returned zero nodes (counted as failed): %s",
+			i+1, totalSources, failure.Reason)
+		failedSources++
+		parseFailedSources = append(parseFailedSources, failure)
+	}
+
+	// Опции Направлений, которые не объявленные корневые имена
+	// (direction_options.go). Узлы берутся ДО резолва ссылок: узел, выпавший
+	// fail-closed, остаётся узлом, и назвать его «не найденным вариантом»
+	// значило бы спрятать настоящую причину.
+	optionNodeTags := make(map[string]bool, len(allNodes)+len(brokenChains))
+	for _, n := range allNodes {
+		if n != nil && n.Tag != "" {
+			optionNodeTags[n.Tag] = true
+		}
+	}
+	for _, b := range brokenChains {
+		if b.Tag != "" {
+			optionNodeTags[b.Tag] = true
+		}
+	}
+	declaredOptionNames := make(map[string]bool, len(rootLinkTargets)+len(declaredDirectionTags))
+	for _, tag := range append(append([]string(nil), rootLinkTargets...), declaredDirectionTags...) {
+		declaredOptionNames[tag] = true
+	}
 
 	// Detour узлов и состав Auto-групп канона: fail-closed по detour (с
 	// каскадом и кольцами), prune по членам.
 	var linkWarnings []EmissionWarning
 	allNodes, linkWarnings = ApplyCanonicalNodeLinks(parserConfig.ParserConfig.Proxies, nodesBySource, allNodes, linkTargets)
 	emissionWarnings = append(emissionWarnings, linkWarnings...)
+	emissionWarnings = append(emissionWarnings,
+		directionOptionWarnings(parserConfig.ParserConfig.Outbounds, declaredOptionNames, optionNodeTags)...)
 	for i := 0; i < len(parserConfig.ParserConfig.Proxies); i++ {
 		if ws := emissionWarningsBySource[i]; len(ws) > 0 {
 			emissionWarnings = append(emissionWarnings,
@@ -1555,6 +1616,16 @@ func GenerateOutboundsFromParserConfig(
 			})
 		}
 	}
+
+	// SPEC 122 «Каталог состояния: жизненный цикл», норма 3 — уборка
+	// осиротевших каталогов состояния tailnet.
+	//
+	// Здесь, а не раньше: только после ПОЛНОЙ эмиссии известны финальные теги
+	// со суффиксом уникализации, а он входит в имя каталога. Ожидаемый набор
+	// шире эмиссии — в него входят и выключенные узлы, и снятые гейтом ядра
+	// (их состояние живёт, пока живёт узел), поэтому он строится из канона
+	// источников, а не из allNodes.
+	GCTailscaleStateDirs(CollectTailscaleStateDirNames(parserConfig, allNodes))
 
 	globalPool := FilterDirectionCandidatePool(allNodes, parserConfig.ParserConfig.Proxies)
 	exposeCandidates := collectExposeTagCandidates(parserConfig)

@@ -23,7 +23,9 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/build"
+	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
@@ -115,7 +117,7 @@ func showEditPresetRefDialog(
 	jsonRichText.Wrapping = fyne.TextWrapWord
 
 	refreshJSON := func() {
-		jsonRichText.ParseMarkdown("```json\n" + buildPresetJSONPreview(tplPreset, working, model.Target, model.SettingsVars) + "\n```")
+		jsonRichText.ParseMarkdown("```json\n" + buildPresetJSONPreview(tplPreset, working, model.Target, wizardbusiness.PresetGlobalVars(model)) + "\n```")
 	}
 
 	refreshVisibility := func() {
@@ -351,13 +353,10 @@ func showEditPresetRefDialog(
 		editWindow.Close()
 	}
 	saveButton.OnTapped = func() {
-		newVars := make(map[string]string, len(working))
-		for _, v := range tplPreset.Vars {
-			val := working[v.Name]
-			if val != "" && val != v.Default {
-				newVars[v.Name] = val
-			}
-		}
+		// SPEC 129 Н2–Н4 — общим правилом записи, а не своей копией: пустые,
+		// равные умолчанию и необъявленные имена не пишутся.
+		newVars, _, _ := corestate.NormalizeRecordVarMap(working,
+			wizardtemplate.PresetRecordVarDecls(tplPreset), "")
 		pr.Vars = newVars
 		presenter.MarkAsChanged()
 		editWindow.Close()
@@ -395,7 +394,7 @@ func showEditPresetRefDialog(
 	}
 
 	editWindow.Resize(fyne.NewSize(500, 640))
-	editWindow.CenterOnScreen()
+	fynewidget.CenterOnScreen(editWindow)
 	editWindow.SetContent(dialogContent)
 	editWindow.SetCloseIntercept(func() {
 		editWindow.Close()

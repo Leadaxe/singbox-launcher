@@ -521,9 +521,16 @@
       "params": [
         "reason"
       ],
-      "desc": "Узел `tailscale` снят на сборке: ядро собрано без тега with_tailscale (нужен форк 1.14.0-lx.31 или новее). Не пометка на живом узле, а его выброс — но severity=warning, а не error: конфиг СОБИРАЕТСЯ, остальные узлы на месте, и причина приезжает пользователю строкой отчёта сборки (BuildReportTailscaleDegraded). Без выброса один такой узел завалил бы `sing-box check` для ВСЕГО конфига. SPEC 122 §2.2. LxBox не применяет: libbox собран без tailscale, узлы схемы туда не доезжают.",
-      "dart": null,
+      "desc": "Узел `tailscale` снят на сборке: ядро собрано без тега with_tailscale (нужен форк 1.14.0-lx.31 или новее). Не пометка на живом узле, а его выброс — но severity=warning, а не error: конфиг СОБИРАЕТСЯ, остальные узлы на месте, и причина приезжает пользователю строкой отчёта сборки (BuildReportTailscaleDegraded). Без выброса один такой узел завалил бы `sing-box check` для ВСЕГО конфига. SPEC 122 §2.2. Код общий для обеих сторон: LxBox с релиза v2.23.2 применяет Tailscale полноценно (libbox форка собран с `with_tailscale` + `ts_omit_*`, D-103, ядро 1.14.0-lx.38), и тот же гейт по версии ядра у него свой.",
+      "dart": "lib/services/builder/core_chain_capability.dart (coreVersionSupportsTailscale)",
       "go": "core/config/outbound_generator.go (GenerateOutboundsFromParserConfig, ветка !tailscaleSupported); проба core/core_capabilities.go (CoreSupportsTailscale)"
+    },
+    "tailscale_from_subscription": {
+      "severity": "info",
+      "params": [],
+      "desc": "Узел `tailscale` приехал ПОДПИСКОЙ. Узел законен и остаётся в составе — отсюда severity=info, а не error, — но полезен он не сам по себе: каноническую связку (DNS-сервер MagicDNS + правило на `.ts.net` + маршрут на 100.64.0.0/10 и fd7a:115c:a1e0::/48) подписка принести не может, потому что связка ссылается на финальный тег узла на ЭТОЙ машине, а идентичность машины в tailnet живёт в локальном каталоге состояния и одноразовым ключом провайдера не переносится. Связку пользователь заводит у себя (конструктор «Add server → Tailscale» или вкладка JSON); голый узел, заведённый локально, получает её по умолчанию. Молчать нельзя: узел виден в списке, а о неработающих именах `*.ts.net` пользователь узнал бы уже в бою. NODE_SECTIONS.md §6.",
+      "dart": "—",
+      "go": "core/config/subscription/parse_body.go (bodyParseState.accept)"
     },
     "ws_early_data_converted": {
       "severity": "info",

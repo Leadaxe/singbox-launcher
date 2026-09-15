@@ -18,13 +18,15 @@ developers and for understanding the template ↔ state relationship.
   repository commit the launcher was built against. CI ldflags inject the real
   hash for a release; a dev build uses the source default (the last known-good
   merge commit).
-- **Upgrade lifecycle:** `core/template_migration.go::InvalidateTemplateIfStale`
-  compares `Settings.LastTemplateLauncherVersion` (written after the last
-  successful "Download Template" via `MarkTemplateInstalled`) against
-  `constants.AppVersion`. On a mismatch it deletes `bin/wizard_template.json` —
-  on the next start the UI shows "Download Template", and after a successful
-  download `bin/settings.json` gets a new `last_template_launcher_version`.
-  Dev builds (`v-local-test`, `unnamed-dev`, `*-dirty`) skip invalidation —
+- **Upgrade lifecycle:** `core/template_migration.go::RefreshTemplateIfStale`
+  compares `Settings.LastTemplateLauncherVersion` (written by
+  `MarkTemplateInstalled` after a successful download) against
+  `constants.AppVersion`. On a mismatch it downloads the pinned template in the
+  background and swaps it in atomically — the old `bin/wizard_template.json`
+  stays until the new one has arrived and parsed; a failed download keeps it and
+  the next launch retries. Config builds wait for this refresh, so the first
+  core start after an upgrade is rebuilt from the new template.
+  Dev builds (`v-local-test`, `unnamed-dev`, `*-dirty`) skip the check —
   otherwise local development would break on every run. See SPEC 046 (the
   mechanism) and SPEC 067 (the breaking template format — `#if` plus `@`-only
   outer `if[]` — triggered by the same `AppVersion` bump).
@@ -345,25 +347,34 @@ into `bin/` on first run. Every release build pins one specific commit:
 launcher start
      │
      ▼
-InvalidateTemplateIfStale(execDir)
+StartTemplateRefresh → RefreshTemplateIfStale(execDir)   (background, 15 s)
      │   compare Settings.LastTemplateLauncherVersion vs constants.AppVersion
-     │   stale (LastTemplateLauncherVersion < AppVersion) → unlink bin/wizard_template.json
      │   (dev AppVersion skip: v-local-test / unnamed-dev / *-dirty)
+     │   stale → download from raw.githubusercontent.com at the pinned ref,
+     │           parse, rename over bin/wizard_template.json
+     │           + MarkTemplateInstalled → last_template_launcher_version = AppVersion
+     │   download failed → the installed template stays, marker not stamped (retry next launch)
+     │   no template and no state.json → nothing to refresh (the UI shows "Download Template")
+     │   state.json exists → ConfigStale: the first start rebuilds config.json
      ▼
-UI shows "Download Template" (when the file is absent)
-     │   the user clicks → it is downloaded from raw.githubusercontent.com at the pinned ref
-     │   MarkTemplateInstalled → bin/settings.json::last_template_launcher_version = AppVersion
+RebuildConfigIfDirty (every config.json write, incl. the pre-start hook)
+     │   waits for the refresh; a still-missing template is downloaded here
      ▼
 LoadTemplateData
 ```
 
-Implementation: `core/template_migration.go::InvalidateTemplateIfStale` +
+A failed pre-start rebuild abandons the start with an error dialog instead of
+running the previous `config.json` (`rebuildConfigBeforeStart`, both engines).
+
+Implementation: `core/template_migration.go::RefreshTemplateIfStale` /
+`StartTemplateRefresh` + `core/rebuild.go::loadTemplateForBuild` +
+`core/template/download.go::DownloadTemplate` +
 `internal/locale/settings.go::LastTemplateLauncherVersion` /
 `MarkTemplateInstalled` + `core/template/loader.go::LoadTemplateData`.
 
 Breaking template format changes (SPEC 067's `#if` + `@`-only outer `if[]`, for
-instance) ride the same mechanism: after an `AppVersion` bump the stale cache is
-deleted on first start → the user downloads the new template in one click.
+instance) ride the same mechanism: after an `AppVersion` bump the new template
+replaces the old one before the first core start.
 
 ---
 
@@ -794,7 +805,7 @@ A map-spread example:
 | `core/template/substitute.go` | recursive `@var` substitution + `#if` walker / predicate engine / runtime globals `@runtime.platform`/`@runtime.arch` (SPEC 067) |
 | `core/template/template_validate.go` | template-side validation (uniqueness, refs resolvable, `#if` construct + outer `@`-only refs — SPEC 067) |
 | `internal/constants/constants.go` | `RequiredTemplateRef` + `WizardTemplateFileName` |
-| `core/template_migration.go` | `InvalidateTemplateIfStale` (stale template invalidation) |
+| `core/template_migration.go` | `RefreshTemplateIfStale` / `StartTemplateRefresh` (stale template refresh before the first core start) |
 | `core/build/preset_expand.go` | preset expand at build time (substitute + tag prefix + filter) |
 
 See also: [WIZARD_STATE.md](WIZARD_STATE.md) — how state interacts with the

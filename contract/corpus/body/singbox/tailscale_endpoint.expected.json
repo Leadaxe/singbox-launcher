@@ -1,0 +1,62 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "accept_routes": true,
+        "exit_node": "exit-1",
+        "type": "tailscale"
+      },
+      "kind": "endpoint",
+      "label": "ts-home",
+      "scheme": "tailscale",
+      "sections": {
+        "dns": {
+          "rules": [
+            {
+              "body": {
+                "domain_suffix": [
+                  ".ts.net"
+                ],
+                "server": "@{self}-dns"
+              },
+              "enabled": true,
+              "kind": "user"
+            }
+          ],
+          "servers": [
+            {
+              "body": {
+                "endpoint": "@self",
+                "type": "tailscale"
+              },
+              "enabled": true,
+              "kind": "user",
+              "tag": "@{self}-dns"
+            }
+          ]
+        },
+        "rules": [
+          {
+            "body": {
+              "domain_suffix": [
+                ".ts.net"
+              ],
+              "ip_cidr": [
+                "100.64.0.0/10",
+                "fd7a:115c:a1e0::/48"
+              ],
+              "outbound": "@self"
+            },
+            "enabled": true,
+            "kind": "inline",
+            "name": "@{self} rule 1"
+          }
+        ]
+      }
+    }
+  ],
+  "v": 1
+}

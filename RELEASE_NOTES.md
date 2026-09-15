@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v1.6.0
+
+Минорный релиз после v1.5.6, ядро `sing-box-lx 1.14.0-lx.39`. **Состояние переходит на схему v8:** при первом запуске `state.json` конвертируется сам, исходный файл остаётся рядом как `state.json.v7.bak`, а собранный `config.json` остаётся байт-в-байт прежним. Шаг односторонний: лаунчер 1.5.x файл v8 правильно не прочтёт, и вернуться на него можно только из `.v7.bak`. **Tailscale:** одно правило маршрута теперь ловит и имена `*.ts.net` (при FakeIP они молча уходили мимо tailnet), и IPv6-подсеть tailnet. Голый узел получает связку сам, а каталог состояния переезжает вместе с узлом при переименовании и переносе, так что устройство в tailnet остаётся тем же. **Бэкап пишется только в формате 1.0** и переносит всё состояние, включая секции узлов и папки; телефон читает и пишет его с LxBox 2.23.3, который выйдет следом (до обновления телефона бэкап с десктопа в LxBox не импортируется), а импорт по-прежнему открывает и старые файлы 0.12. **Ядро lx.39:** переключение вложенного Направления больше не может заморозить все новые соединения до перезапуска ядра, а SOCKS5-прокси, отвечающие на UDP ASSOCIATE адресом `0.0.0.0`, теперь носят UDP. **Обновление больше не удаляет шаблон конфигурации:** шаблон новой версии скачивается до первого старта ядра, старый работает до замены, а пересборка, упавшая перед стартом, показывает диалог вместо молчаливого запуска прежнего `config.json`. Подписки Xray JSON с VLESS Encryption подключаются (#121). Подробнее: [docs/release_notes/1-6-0.md](docs/release_notes/1-6-0.md).
+
+### Highlights (EN) — v1.6.0
+
+A minor release after v1.5.6, core `sing-box-lx 1.14.0-lx.39`. **The state moves to schema v8:** on the first start `state.json` converts itself, the original file stays next to it as `state.json.v7.bak`, and the built `config.json` stays byte-for-byte the same. The step is one-way: a 1.5.x launcher cannot read a v8 file correctly, and the only way back to it is `.v7.bak`. **Tailscale:** one route rule now catches both `*.ts.net` names (with FakeIP they silently went past the tailnet) and the tailnet's IPv6 range. A bare node gets its bundle by itself, and the state directory moves with the node on rename and move, so the tailnet keeps seeing the same device. **Backups are written in format 1.0 only** and carry the whole state, node sections and folders included; the phone reads and writes it from LxBox 2.23.3, which follows shortly (until the phone is updated, a desktop backup will not import into LxBox), and import still opens older 0.12 files. **Core lx.39:** switching a nested Direction can no longer freeze every new connection until the core restarts, and SOCKS5 proxies that answer UDP ASSOCIATE with `0.0.0.0` now carry UDP. **Upgrading no longer deletes the config template:** the new version's template is downloaded before the first core start, the old one keeps working until it is replaced, and a rebuild that fails before a start shows a dialog instead of silently running the previous `config.json`. Xray JSON subscriptions with VLESS Encryption now connect (#121). Details: [docs/release_notes/1-6-0.md](docs/release_notes/1-6-0.md).
+
 ### Выжимка (RU) — v1.5.6
 
 Патч к v1.5.5, ядро `sing-box-lx 1.14.0-lx.36`. **REALITY на обновлённых серверах Xray (≥ v26.9.8) снова работает:** такой сервер принимает только chrome-подобный ClientHello, а лаунчер по умолчанию слал `random` — узел выглядел живым, но интернета не было. Теперь на сборке конфига отпечаток у REALITY-узла всегда из chrome-семейства, а отличие от ссылки видно предупреждением в строке источника. **Mesa3D больше не ставится сама:** на домашнем ПК с рабочей видеокартой зависшая проверка OpenGL считалась «видеокарты нет», рядом с exe молча копировался программный рендерер, и лаунчер падал при старте без единой строки в логе. Проверка теперь отличает «не ответила» от «нет OpenGL», Mesa ставится только по явному согласию и работает через llvmpipe, переключиться туда и обратно можно из Диагностики — лаунчер сам перезапустится. Лаунчер стал разговорчивее: версия сборки первой строкой каждого лога, `logs/native-stderr.log` ловит то, что раньше пропадало (падения в драйверах и Mesa). Узлы Tailscale и AmneziaWG 3.x, узел с собственными DNS/route-фрагментами, правка обфускации AWG у готового узла — подробнее в заметках. Подробнее: [docs/release_notes/1-5-6.md](docs/release_notes/1-5-6.md).
@@ -648,6 +656,10 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v1.6.0** | [docs/release_notes/1-6-0.md](docs/release_notes/1-6-0.md) |
+| **v1.5.6** | [docs/release_notes/1-5-6.md](docs/release_notes/1-5-6.md) |
+| **v1.5.5** | [docs/release_notes/1-5-5.md](docs/release_notes/1-5-5.md) |
+| **v1.5.4** | [docs/release_notes/1-5-4.md](docs/release_notes/1-5-4.md) |
 | **v1.5.3** | [docs/release_notes/1-5-3.md](docs/release_notes/1-5-3.md) |
 | **v1.5.2** | [docs/release_notes/1-5-2.md](docs/release_notes/1-5-2.md) |
 | **v1.5.1** | [docs/release_notes/1-5-1.md](docs/release_notes/1-5-1.md) |

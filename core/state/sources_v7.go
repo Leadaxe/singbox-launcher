@@ -15,6 +15,8 @@ package state
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"strings"
 
 	"singbox-launcher/core/config/configtypes"
 )
@@ -75,6 +77,22 @@ func (t *TagPolicy) IsZero() bool {
 	return t.Prefix == "" && t.Postfix == ""
 }
 
+// FinalTag — финальный тег узла контейнера с этой политикой: prefix + сырой
+// тег + postfix; nil-политика отдаёт сырой тег как есть.
+//
+// Формула одна на всех, кому финальный тег нужен ВНЕ эмиссии: каталог
+// состояния Tailscale (вызывающие core/config и ui/configurator/business) и
+// импорт бэкапа, где ссылку без folder_id сопоставляют с членом папки
+// (core/backup/import10.go). Суффикса уникализации и раскрытия переменных
+// ({$num} и прочих) здесь нет и быть не может: их даёт только сборка —
+// глобальный счётчик и порядок эмиссии, которых у этих мест нет.
+func (t *TagPolicy) FinalTag(raw string) string {
+	if t == nil {
+		return raw
+	}
+	return t.Prefix + raw + t.Postfix
+}
+
 // AutoStrategy = configtypes.DirectionAuto — перенос, не изобретение
 // (strategy-К1): 9 полей, включая TemplateInt-tolerance и трёхзначный
 // interrupt.
@@ -85,12 +103,77 @@ type AutoGroup struct {
 	// GroupType: "selector" | "urltest"; импортированный selector остаётся
 	// selector'ом.
 	GroupType string `json:"group_type"`
-	// Default — selector only; СЫРОЙ тег члена, обязан входить в состав.
-	// Живёт здесь, а не в AutoStrategy: default member-зависим (strategy-К2),
-	// а AutoStrategy переиспользуется твинами/replace, где default'а нет.
-	Default  string       `json:"default,omitempty"`
+	// Default — selector only; ссылка NodeLink на член группы, обязана
+	// входить в состав (NODE_LINK.md §4.1). Ссылкой, а не сырым тегом: члены
+	// группы вправе лежать в разных контейнерах, и тег без адреса называл
+	// узел в контейнере первого члена — перенос одного члена молча снимал
+	// умолчание со второго. Живёт здесь, а не в AutoStrategy: default
+	// member-зависим (strategy-К2), а AutoStrategy переиспользуется
+	// твинами/replace, где default'а нет.
+	//
+	// Чтение терпит строку (сырой тег) — форму сборок 1.6.0 до выпуска
+	// (UnmarshalJSON); до пары её доводит NormalizeNodeLinks (правило S2).
+	Default  *NodeLink    `json:"default,omitempty"`
 	Members  []NodeLink   `json:"members"`
 	Strategy AutoStrategy `json:"strategy,omitempty"`
+}
+
+// UnmarshalJSON читает группу, терпя `default` строкой: сырой тег члена
+// становится корневой формой `{tag}`, адрес ей выдаёт нормализация ссылок по
+// составу (NodeLink S2). Пустая строка и null — умолчания нет. Значение
+// другого типа — ошибка типа, как у любого поля модели.
+func (g *AutoGroup) UnmarshalJSON(data []byte) error {
+	type autoGroupAlias AutoGroup
+	var in struct {
+		autoGroupAlias
+		// Default перекрывает одноимённое поле алиаса: у внешнего поля
+		// глубина меньше, и декодер кладёт значение сюда как есть.
+		Default json.RawMessage `json:"default,omitempty"`
+	}
+	if err := json.Unmarshal(data, &in); err != nil {
+		return err
+	}
+	def, err := decodeGroupDefault(in.Default)
+	if err != nil {
+		return err
+	}
+	*g = AutoGroup(in.autoGroupAlias)
+	g.Default = def
+	return nil
+}
+
+// decodeGroupDefault — `default` группы: объект NodeLink или строка сырого
+// тега (dev-форма).
+func decodeGroupDefault(raw json.RawMessage) (*NodeLink, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return nil, nil
+	}
+	switch trimmed[0] {
+	case '"':
+		var tag string
+		if err := json.Unmarshal(raw, &tag); err != nil {
+			return nil, err
+		}
+		if tag = strings.TrimSpace(tag); tag == "" {
+			return nil, nil
+		}
+		return &NodeLink{Tag: tag}, nil
+	case '{':
+		var link NodeLink
+		if err := json.Unmarshal(raw, &link); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(link.Tag) == "" {
+			return nil, nil
+		}
+		return &link, nil
+	}
+	return nil, &json.UnmarshalTypeError{
+		Value: "default " + trimmed,
+		Type:  reflect.TypeOf(NodeLink{}),
+		Field: "default",
+	}
 }
 
 const (
@@ -230,25 +313,26 @@ type Source struct {
 	// === subscription only ===
 
 	URL string `json:"url,omitempty"`
-	// UserAgent — User-Agent ИМЕННО ЭТОЙ подписки; пусто = глобальный из
-	// настроек (а он пуст → дефолт лаунчера).
+	// Identity — чем ЭТА подписка представляется провайдеру: UA, HWID и
+	// режим их отправки (SPEC 127 §6.0). Один объект вместо четырёх плоских
+	// ключей: это одна настройка из нескольких частей, и в состоянии, и в
+	// бэкапе 1.0 она хранится одинаково, поэтому файл бэкапа — сериализация
+	// состояния без маппера. nil = ничего не переопределено.
 	//
-	// Поле нужно потому, что провайдеры ВЕТВЯТ выдачу по UA: одна и та же
-	// ссылка отдаёт разным клиентам разные тела (у Liberty под UA лаунчера
-	// приезжает протухшая sing-box-ветка на 40 прямых узлов, под UA Happ —
-	// 292 Xray-конфига, включая рабочие BYPASS через socks5-релей). Глобальной
-	// настройки для этого мало: подменять UA всем подпискам ради одной значит
-	// сломать выдачу остальным, которые под нашим UA отвечают правильно.
-	UserAgent string `json:"user_agent,omitempty"`
-	// HWID — идентификатор устройства для ЭТОЙ подписки; пусто = глобальный.
-	// Провайдеры привязывают подписку к устройству и считают их лимит: свой
-	// HWID на подписку разводит устройства между разными провайдерами.
-	HWID string `json:"hwid,omitempty"`
-	// SendHWID — отправлять ли X-Hwid-заголовки; nil = «как в системе».
-	// Указатель, а не bool: иначе «не отправлять» неотличимо от «не задано».
-	SendHWID *bool `json:"send_hwid,omitempty"`
-	// HashDeviceModel — хэшировать ли модель устройства; nil = «как в системе».
-	HashDeviceModel *bool `json:"hash_device_model,omitempty"`
+	// Переопределение нужно потому, что провайдеры ВЕТВЯТ выдачу по UA: одна
+	// и та же ссылка отдаёт разным клиентам разные тела (у Liberty под UA
+	// лаунчера приезжает протухшая sing-box-ветка на 40 прямых узлов, под UA
+	// Happ — 292 Xray-конфига, включая рабочие BYPASS через socks5-релей).
+	// Глобальной настройки для этого мало: подменять UA всем подпискам ради
+	// одной значит сломать выдачу остальным, которые под нашим UA отвечают
+	// правильно. То же у HWID: провайдеры привязывают подписку к устройству
+	// и считают лимит, и свой HWID на подписку разводит устройства между
+	// разными провайдерами.
+	//
+	// Поля-указатели внутри объекта различают «не задано» и «задано пустым»
+	// (см. SubscriptionIdentity); читать их удобнее через хелперы
+	// IdentityUserAgent/IdentityHWID/IdentitySendHWID/IdentityHashDeviceModel.
+	Identity *SubscriptionIdentity `json:"identity,omitempty"`
 
 	// RelaysInDirections — предлагать ли служебные узлы подписки (релеи BYPASS) в
 	// выборе НАПРАВЛЕНИЙ.
@@ -422,9 +506,9 @@ func normalizeSourceShape(s *Source) ([]string, error) {
 			drop("replace")
 			s.Replace = nil
 		}
-		if s.URL != "" || s.UserAgent != "" || s.HWID != "" || s.SendHWID != nil || s.HashDeviceModel != nil || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil || len(s.PendingDisabled) > 0 {
+		if s.URL != "" || !s.Identity.IsEmpty() || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil || len(s.PendingDisabled) > 0 {
 			drop("url/identity/skip/max_nodes/update/meta/update_status/pending_disabled")
-			s.URL, s.UserAgent, s.HWID, s.SendHWID, s.HashDeviceModel = "", "", "", nil, nil
+			s.URL, s.Identity = "", nil
 			s.Skip, s.MaxNodes, s.Update, s.Meta, s.UpdateStatus, s.PendingDisabled = nil, 0, nil, nil, nil, nil
 		}
 		if ws := normalizeNodeShape(&s.Node, sourceShapeName(s)); len(ws) > 0 {
@@ -455,9 +539,9 @@ func normalizeSourceShape(s *Source) ([]string, error) {
 			s.Group = nil
 		}
 		if s.Kind == SourceKindFolder {
-			if s.URL != "" || s.UserAgent != "" || s.HWID != "" || s.SendHWID != nil || s.HashDeviceModel != nil || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil || len(s.PendingDisabled) > 0 {
+			if s.URL != "" || !s.Identity.IsEmpty() || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil || len(s.PendingDisabled) > 0 {
 				drop("url/identity/skip/max_nodes/update/meta/update_status/pending_disabled")
-				s.URL, s.UserAgent, s.HWID, s.SendHWID, s.HashDeviceModel = "", "", "", nil, nil
+				s.URL, s.Identity = "", nil
 				s.Skip, s.MaxNodes, s.Update, s.Meta, s.UpdateStatus, s.PendingDisabled = nil, 0, nil, nil, nil, nil
 			}
 		}

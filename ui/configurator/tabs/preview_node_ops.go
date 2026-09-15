@@ -31,8 +31,9 @@
 //     «верхний уровень» — MoveNodeToRoot / CopyNodeToRoot (W2); все четыре
 //     переписывают NodeLink и возвращают имена задетых источников;
 //   - смена финального тега → showStaleSelectionDialog (выбор в кэше ядра);
-//   - сброшенные ссылки при переименовании → resetRefsAfterNodeRename +
-//     showDetourRefsResetDialog;
+//   - переписанные ссылки при переносе и переименовании →
+//     showNodeRefsRepointedDialog, погасшие при удалении →
+//     showNodeRefsClearedDialog;
 //   - разыменование (Д5) → business.DereferenceNodeOrigin + ShowAutoHideInfo.
 package tabs
 
@@ -380,9 +381,9 @@ func (o *previewNodeOps) applyMoveOrCopy(rawTag, dstID string, move bool) {
 
 	// Критерий A3: всякая ссылка, чья цель сменила финальный тег, либо
 	// переписана реестром, либо НАЗВАНА. Реестр W2 вернул имена — показываем
-	// их тем же окном, что и сброс ссылок при переименовании.
+	// их тем же окном, что и перепись ссылок при переименовании.
 	if len(affected) > 0 {
-		showDetourRefsResetDialog(o.win, rawTag, affected)
+		showNodeRefsRepointedDialog(o.win, affected)
 	}
 }
 
@@ -454,6 +455,10 @@ func (o *previewNodeOps) applyRename(oldTag, newTag string) {
 
 	folderID := strings.TrimSpace(src.ID)
 	target.Tag = newTag
+	// SPEC 122 норма 2: у узла tailnet вместе с тегом переезжает и каталог
+	// состояния — в нём ключ устройства, и оставить его под прежним именем
+	// значило бы отправить узел логиниться заново.
+	wizardbusiness.RenameTailscaleStateDirForNode(src, oldTag, src, target)
 	affected := wizardbusiness.RepointContainerNodeLinks(m, folderID, oldTag, newTag)
 
 	applySourceMutation(o.presenter, o.guiState)
@@ -464,7 +469,7 @@ func (o *previewNodeOps) applyRename(oldTag, newTag string) {
 	}
 	showStaleSelectionDialog(o.win, staleSelectionScope{NodesRenamed: true})
 	if len(affected) > 0 {
-		showDetourRefsResetDialog(o.win, oldTag, affected)
+		showNodeRefsRepointedDialog(o.win, affected)
 	}
 }
 
@@ -486,10 +491,10 @@ func (o *previewNodeOps) showDeleteDialog(rawTag string) {
 
 // applyDelete убирает узел из контейнера.
 //
-// Ссылки на него НЕ переписываются — переписывать не на что: узла больше нет.
-// Они гаснут штатным fail-closed резолвом сборки, но узнать об этом
-// пользователь обязан здесь, а не из отчёта следующей сборки, — поэтому
-// задетые источники называются тем же диалогом, что и при переименовании.
+// Ссылки на него гаснут вместе с ним (решение владельца 15.09.2026):
+// переписывать не на что — узла больше нет, а подставить соседа нельзя.
+// Узнать об этом пользователь обязан здесь, а не из отчёта следующей сборки,
+// — поэтому задетые источники называются диалогом удаления.
 func (o *previewNodeOps) applyDelete(rawTag string) {
 	m := o.presenter.Model()
 	if m == nil || o.sourceIndex < 0 || o.sourceIndex >= len(m.Sources) {
@@ -507,6 +512,9 @@ func (o *previewNodeOps) applyDelete(rawTag string) {
 	if found < 0 {
 		return
 	}
+	// SPEC 122 норма 1: каталог состояния узла tailnet уходит вместе с узлом.
+	// До выреза из состава — после него тег узла взять уже неоткуда.
+	wizardbusiness.RemoveTailscaleStateDirForNode(src, &src.Nodes[found])
 	src.Nodes = append(src.Nodes[:found], src.Nodes[found+1:]...)
 	// Тег "" целью переписи означает «цели больше нет»: реестр W2 гасит
 	// ссылку, а не уводит её на чужой узел.
@@ -516,7 +524,7 @@ func (o *previewNodeOps) applyDelete(rawTag string) {
 	o.afterModelMutation()
 
 	if len(affected) > 0 {
-		showDetourRefsResetDialog(o.win, rawTag, affected)
+		showNodeRefsClearedDialog(o.win, rawTag, affected)
 	}
 }
 

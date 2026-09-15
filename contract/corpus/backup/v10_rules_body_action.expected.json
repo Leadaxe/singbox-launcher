@@ -1,0 +1,19 @@
+{
+  "rules": [
+    { "name": "Ads to reject",    "enabled": true,  "outbound": "reject" },
+    { "name": "Trackers to drop", "enabled": true,  "outbound": "drop" },
+    { "name": "Corp to proxy",    "enabled": true,  "outbound": "proxy" },
+    { "name": "Off by the owner", "enabled": false, "outbound": "proxy" },
+    {
+      "name": "Two sets",
+      "enabled": true,
+      "outbound": "proxy",
+      "refs": [
+        "https://example-3.com/geosite-ru.srs",
+        "https://example-3.com/geoip-ru.srs"
+      ]
+    },
+    { "name": "block_ads", "enabled": true, "vars": { "list_mode": "strict" } }
+  ],
+  "warnings": []
+}

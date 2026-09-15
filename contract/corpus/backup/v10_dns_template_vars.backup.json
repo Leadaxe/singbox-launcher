@@ -1,0 +1,61 @@
+{
+  "lx_backup": 2,
+  "exported_by": { "app": "lxbox", "version": "corpus", "platform": "test" },
+  "exported_at": "2026-09-15T00:00:00Z",
+  "directions": [
+    { "tag": "vpn-1" }
+  ],
+  "rules": [
+    {
+      "kind": "preset",
+      "ref": "russian",
+      "enabled": true,
+      "num": 960,
+      "vars": { "out": "direct-out", "dns_ip": "77.88.8.1", "bogus": "x" }
+    }
+  ],
+  "dns": {
+    "servers": [
+      {
+        "kind": "template",
+        "tag": "google_udp",
+        "enabled": true,
+        "vars": { "outbound": "vpn-1", "dns_ip": "8.8.4.4", "legacy_x": "1" }
+      },
+      {
+        "kind": "template",
+        "tag": "google_dot",
+        "enabled": false,
+        "vars": { "outbound": "proxy-out" }
+      },
+      {
+        "kind": "template",
+        "tag": "cloudflare_dot",
+        "enabled": true
+      },
+      {
+        "kind": "template",
+        "tag": "safe_dns_dot",
+        "enabled": true,
+        "vars": { "outbound": "ghost-vpn" }
+      },
+      {
+        "kind": "template",
+        "tag": "no_such_server",
+        "enabled": true,
+        "vars": { "outbound": "vpn-1" }
+      },
+      {
+        "kind": "user",
+        "tag": "my-doh",
+        "enabled": true,
+        "body": { "type": "https", "server": "1.1.1.1", "detour": "ghost-vpn" }
+      }
+    ]
+  },
+  "vars": {
+    "dns_cloudflare_dot_outbound": "vpn-1",
+    "dns_google_udp_outbound": "direct-out",
+    "dns_quad9_doh_outbound": "vpn-1"
+  }
+}

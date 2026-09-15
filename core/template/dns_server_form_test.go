@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-// Вложенная запись LxBox разворачивается в плоскую, а её vars становятся
-// переменными шаблона с префиксом тега. Тело взято из настоящего
-// app/assets/wizard_template.json LxBox, а не придумано: разрыв N8 живёт
-// именно в рассинхроне двух реальных форм.
+// Вложенная запись LxBox разворачивается в плоскую, а её vars остаются
+// объявлениями сервера с локальными именами (SPEC 129). Тело взято из
+// настоящего app/assets/wizard_template.json LxBox, а не придумано: разрыв N8
+// живёт именно в рассинхроне двух реальных форм.
 func TestNormalizeDNSOptionsNestedEntry(t *testing.T) {
 	raw := json.RawMessage(`{"servers":[
 	  {"description":"Google DoT","enabled":true,
@@ -54,23 +54,24 @@ func TestNormalizeDNSOptionsNestedEntry(t *testing.T) {
 		t.Error("vars остались в теле сервера — ядро отвергнет чужой ключ")
 	}
 
-	// Плейсхолдеры переименованы с префиксом тега: без него `outbound` от
-	// Google DoT затирал бы `outbound` от Cloudflare DoT.
-	if s["server"] != "@dns_google_dot_dns_ip" {
-		t.Errorf("server = %v, ожидался @dns_google_dot_dns_ip", s["server"])
+	// Плейсхолдеры остаются локальными (SPEC 129): значения живут в записи
+	// сервера, и склейка имени с тегом не нужна.
+	if s["server"] != "@dns_ip" {
+		t.Errorf("server = %v, ожидался @dns_ip", s["server"])
 	}
-	if s["detour"] != "@dns_google_dot_outbound" {
-		t.Errorf("detour = %v, ожидался @dns_google_dot_outbound", s["detour"])
+	if s["detour"] != "@outbound" {
+		t.Errorf("detour = %v, ожидался @outbound", s["detour"])
 	}
 
-	if len(vars) != 2 {
-		t.Fatalf("переменных %d, ожидалось 2: %+v", len(vars), vars)
+	declared := vars["google_dot"]
+	if len(vars) != 1 || len(declared) != 2 {
+		t.Fatalf("объявления %+v, ожидались две переменные google_dot", vars)
 	}
 	byName := map[string]TemplateVar{}
-	for _, v := range vars {
+	for _, v := range declared {
 		byName[v.Name] = v
 	}
-	ob, ok := byName["dns_google_dot_outbound"]
+	ob, ok := byName["outbound"]
 	if !ok {
 		t.Fatalf("нет переменной канала: %+v", byName)
 	}
@@ -80,7 +81,10 @@ func TestNormalizeDNSOptionsNestedEntry(t *testing.T) {
 	if ob.DefaultValue.Scalar != "vpn-1" {
 		t.Errorf("дефолт канала = %q, ожидался vpn-1", ob.DefaultValue.Scalar)
 	}
-	ip, ok := byName["dns_google_dot_dns_ip"]
+	if ob.WizardUI == "hidden" {
+		t.Error("объявление сервера помечено hidden — это была метка склеенной переменной шаблона")
+	}
+	ip, ok := byName["dns_ip"]
 	if !ok {
 		t.Fatal("нет переменной адреса")
 	}

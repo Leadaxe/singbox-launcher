@@ -172,10 +172,17 @@ func parseSingboxConfig(
 		return
 	}
 
-	// SPEC 121 §6: связка конфига принадлежит узлу — но только когда узел в
-	// конфиге один. Тег считается ДО разбора: ссылки внутри `dns`/`route`
-	// смотрят на тег записи, а не на тег, который выдаст лаунчер.
-	sectionCarrier := SingleSectionCarrierTag(cfg)
+	// SPEC 121 §6: связка конфига принадлежит узлу. Обычный узел получает её
+	// только когда он в конфиге один; узел tailnet — и в многоузловом
+	// конфиге, по явной ссылке на свой тег (NODE_SECTIONS.md §6). Теги
+	// считаются ДО разбора: ссылки внутри `dns`/`route` смотрят на тег
+	// записи, а не на тег, который выдаст лаунчер.
+	sectionCarriers := map[string]bool{}
+	for _, tag := range SectionCarrierTags(cfg) {
+		if tag != "" {
+			sectionCarriers[tag] = true
+		}
+	}
 
 	// Индекс по тегу нужен и группам (резолв состава), и цепочкам (фаза B).
 	byTag := make(map[string]map[string]interface{}, len(entries))
@@ -237,16 +244,28 @@ func parseSingboxConfig(
 			continue
 		}
 
-		// SPEC 121 §6: секции достаются ЕДИНСТВЕННОМУ узлу конфига и только
-		// ему. Узел kind=unsupported сюда не доходит — он не прошёл разбор
-		// выше, и связку без узла показывать было бы нечему.
-		if sectionCarrier != "" && rawTag == sectionCarrier {
-			if ns := ExtractNodeSections(cfg, sectionCarrier); ns != nil {
+		// SPEC 121 §6: секции достаются носителю связки и только ему. Узел
+		// kind=unsupported сюда не доходит — он не прошёл разбор выше, и
+		// связку без узла показывать было бы нечему.
+		if rawTag != "" && sectionCarriers[rawTag] {
+			if ns := ExtractNodeSections(cfg, rawTag); ns != nil {
 				node.Sections = ns
 				n := nodeSectionEntryCount(ns)
 				result.SectionFragments += n
 				debuglog.InfoLog("Parser: singbox import: node %q carries %d config fragment(s) (%s)",
-					sectionCarrier, n, strings.Join(sortedNodeSectionKinds(ns), ", "))
+					rawTag, n, strings.Join(sortedNodeSectionKinds(ns), ", "))
+			}
+		}
+		// Голый узел tailnet — тот, у которого в конфиге не нашлось ни одной
+		// своей записи, — получает КАНОНИЧЕСКУЮ связку (NODE_SECTIONS.md §6).
+		// Без неё узел бесполезен: tailnet поднимется, но ни имена `*.ts.net`,
+		// ни адреса `100.64.0.0/10` в него не пойдут, и пользователь узнал бы
+		// об этом только по молчащим именам.
+		if node.Sections.IsEmpty() && isSingboxTailscaleEntry(entry) {
+			if ns := defaultTailscaleNodeSections(); ns != nil {
+				node.Sections = ns
+				result.SectionFragments += nodeSectionEntryCount(ns)
+				debuglog.InfoLog("Parser: singbox import: bare tailscale node %q gets the canonical bundle", rawTag)
 			}
 		}
 

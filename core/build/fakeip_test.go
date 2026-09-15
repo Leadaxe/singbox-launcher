@@ -1,7 +1,6 @@
 package build
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -36,7 +35,7 @@ func TestResolveDNS_FakeIPPreset(t *testing.T) {
 	td := makeTestTD(t, presetsJSON)
 	st := &state.State{
 		Rules: []state.Rule{
-			{Kind: state.RuleKindPreset, Ref: "fakeip", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+			presetRule("fakeip", nil, true),
 		},
 	}
 	got := ResolveDNS(st, td, nil, template.LocalTarget())
@@ -90,7 +89,7 @@ func TestResolveDNS_FakeIPPreset(t *testing.T) {
 
 	// force=false drops the HTTPS/SVCB block → only the A/AAAA rule remains.
 	st2 := &state.State{Rules: []state.Rule{
-		{Kind: state.RuleKindPreset, Ref: "fakeip", Enabled: true, Body: json.RawMessage(`{"vars":{"force":"false"}}`)},
+		presetRule("fakeip", map[string]string{"force": "false"}, true),
 	}}
 	got2 := ResolveDNS(st2, td, nil, template.LocalTarget())
 	presetCount := 0

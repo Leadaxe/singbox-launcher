@@ -1,0 +1,45 @@
+{
+  "rules": [
+    {
+      "name": "Raw object",
+      "enabled": true,
+      "outbound": "proxy",
+      "body": {
+        "domain_suffix": [
+          "object.example-1.com"
+        ],
+        "outbound": "proxy"
+      }
+    },
+    {
+      "name": "Raw array",
+      "enabled": false,
+      "outbound": "direct",
+      "body": {
+        "domain_suffix": [
+          "first.example-2.com"
+        ],
+        "outbound": "direct"
+      }
+    },
+    {
+      "name": "Raw array #2",
+      "enabled": false,
+      "outbound": "reject",
+      "body": {
+        "ip_cidr": [
+          "203.0.113.0/24"
+        ],
+        "action": "reject"
+      }
+    },
+    {
+      "name": "Keep",
+      "enabled": true,
+      "outbound": "direct"
+    }
+  ],
+  "warnings": [
+    "backup_unknown_field"
+  ]
+}

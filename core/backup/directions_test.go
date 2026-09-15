@@ -90,13 +90,17 @@ func TestDirectionRoundTrip(t *testing.T) {
 			StickyHash:                []string{"process"},
 			InterruptExistConnections: &interrupt,
 		},
+	}, {
+		// Опция vpn-2 — тег Направления этого состояния: в `include` едут
+		// только такие (NODE_LINK.md §8).
+		Tag: "vpn-1",
 	}}
 
-	b, _, err := Export(src, ExportOptions{AppVersion: "1.4.2"})
+	b, _, err := Export10(src, ExportOptions{AppVersion: "1.4.2"})
 	if err != nil {
 		t.Fatalf("экспорт: %v", err)
 	}
-	if len(b.Directions) != 1 {
+	if len(b.Directions) != 2 {
 		t.Fatalf("направлений в бэкапе: %d", len(b.Directions))
 	}
 	got := b.Directions[0]
@@ -120,7 +124,7 @@ func TestDirectionRoundTrip(t *testing.T) {
 	}
 
 	dst := &state.State{}
-	if _, err := Import(dst, b, ImportOptions{}); err != nil {
+	if _, err := Import10(dst, b, ImportOptions{}); err != nil {
 		t.Fatalf("импорт: %v", err)
 	}
 	back := dst.Directions[0]
@@ -159,7 +163,7 @@ func TestDirectionForeignLabelIgnoredSilently(t *testing.T) {
 	}
 
 	dst := &state.State{}
-	if _, err := Import(dst, b, ImportOptions{}); err != nil {
+	if _, err := ImportFile(dst, b, ImportOptions{}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
 	if len(dst.Directions) != 1 || dst.Directions[0].Tag != "vpn-3" {
@@ -167,7 +171,7 @@ func TestDirectionForeignLabelIgnoredSilently(t *testing.T) {
 	}
 	// Провоза нет: у лаунчера имя одно, и обратный экспорт обязан быть без
 	// чужой подписи.
-	back, _, err := Export(dst, ExportOptions{AppVersion: "test"})
+	back, _, err := Export10(dst, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}

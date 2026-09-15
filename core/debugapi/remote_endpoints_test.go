@@ -353,10 +353,13 @@ func TestRemoteMachineStateMirror(t *testing.T) {
 		t.Fatalf("seed state: %v", err)
 	}
 
+	// Форма записи state v8: `name` — поле записи, `body` — правило sing-box
+	// целиком (матчеры плюс цель в форме `action`/`outbound`).
 	rule := map[string]any{
 		"kind":    "inline",
+		"name":    "t",
 		"enabled": true,
-		"body":    map[string]any{"name": "t", "match": map[string]any{"domain_suffix": []string{"x.com"}}, "outbound": "reject"},
+		"body":    map[string]any{"domain_suffix": []string{"x.com"}, "action": "reject"},
 	}
 	resp, body := authDo(t, http.MethodPatch, base+"/remote/machines/router/state/rules",
 		map[string]any{"mode": "replace", "rules": []any{rule}})

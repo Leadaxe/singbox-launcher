@@ -14,6 +14,7 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/lxdclient"
 	"singbox-launcher/ui/components"
@@ -178,7 +179,7 @@ func OpenMachineHostWindow(ac *core.AppController, d services.RemoteDaemon) {
 
 	win.SetContent(container.NewPadded(view.content()))
 	win.Resize(fyne.NewSize(hostWindowWidth, 700))
-	win.CenterOnScreen()
+	fynewidget.CenterOnScreen(win)
 	win.SetCloseIntercept(func() {
 		stop()
 		machineHostWindowsMu.Lock()

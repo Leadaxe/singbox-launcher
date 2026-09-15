@@ -118,3 +118,64 @@ func (td *TemplateData) DirectionMagicTag(name, parentTag string) string {
 	}
 	return node.ResolveTag(parentTag)
 }
+
+// DefaultDirectionBlockTag — тег блокировки, когда шаблон его не называет.
+const DefaultDirectionBlockTag = "block-out"
+
+// DirectionBlockTag — тег блокировки, который Направление предлагает опцией:
+// `magic_nodes.block` шаблона, иначе DefaultDirectionBlockTag. nil-safe.
+//
+// Один ответ на форму Направления и на экспорт бэкапа: признак
+// `include_block` в файле обязан стоять ровно тогда, когда форма показывает
+// галку блокировки, — иначе шаблон с другим именем тега терял бы опцию на
+// переносе (она уезжала бы в `include` чужим тегом).
+func (td *TemplateData) DirectionBlockTag() string {
+	if tag := td.DirectionMagicTag("block", ""); tag != "" {
+		return tag
+	}
+	return DefaultDirectionBlockTag
+}
+
+// SystemOutboundTags — теги, которые объявляет САМ шаблон, а не пользователь:
+// outbound'ы и endpoint'ы секций `config.outbounds` / `config.endpoints`
+// (у лаунчера — `direct-out` и `block-out`) плюс служебные опции
+// `magic_nodes.direct` и `magic_nodes.block`. nil-safe; порядок — порядок
+// объявления, без повторов.
+//
+// Это системная часть объявленных корневых имён (NODE_LINK.md §8): вместе с
+// тегами Направлений, их `-auto` и тегами свёрток она перечисляет всё, что
+// законно стоит опцией Направления и целью ссылки без узла за ним. Узлом ни
+// один из этих тегов не является.
+func (td *TemplateData) SystemOutboundTags() []string {
+	if td == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	add := func(tag string) {
+		tag = strings.TrimSpace(tag)
+		if tag == "" || seen[tag] {
+			return
+		}
+		seen[tag] = true
+		out = append(out, tag)
+	}
+	for _, section := range []string{"outbounds", "endpoints"} {
+		raw, ok := td.Config[section]
+		if !ok || len(raw) == 0 {
+			continue
+		}
+		var items []struct {
+			Tag string `json:"tag"`
+		}
+		if err := json.Unmarshal(raw, &items); err != nil {
+			continue
+		}
+		for _, it := range items {
+			add(it.Tag)
+		}
+	}
+	add(td.DirectionMagicTag("direct", ""))
+	add(td.DirectionMagicTag("block", ""))
+	return out
+}

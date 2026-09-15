@@ -5,12 +5,31 @@
 The Configurator's declarative model: where it lives, how it is loaded, how it is
 saved, where it goes at build time.
 
-> **Schema v7 (SPEC 118) is what the launcher writes today.** The per-section
-> descriptions below still document **v6** and are kept because v6 files are
-> read and migrated forever. The shape changed as follows; the sections marked
-> v6 should be read with this in mind:
+> **Schema v8 (SPEC 127) is what the launcher writes today.** Every record is
+> *application metadata + `body` = the sing-box object as it is* — one namespace
+> shared by the launcher state, the LxBox state and the backup file
+> (`contract/docs/ONE_NAMESPACE.md`). Compared with v7:
 >
-> - `meta.version` is `7`, `meta.schema` is `"sources_v7"`;
+> - `meta.version` is `8`, `meta.schema` is `"sources_v8"`;
+> - route rules: `order_num` → `num`; `name` and `refs[]` (the former
+>   `body.srs_url` + `body.srs_urls`) and `vars` (preset) moved out of the body
+>   onto the record; `body` is now the sing-box rule itself — matchers plus the
+>   target as `"outbound": …` or `"action": "reject"` (+ `"method": "drop"`).
+>   `rule_set` is still never stored: the build writes the set tags from `refs[]`;
+> - DNS servers and rules: the flat shape is gone, the sing-box object lives in
+>   `body`, the server tag stays outside it in `tag`;
+> - two root keys renamed: `dns_options` → `dns`, `warp_accounts` → `warp`;
+> - `id` on a rule and `id`/`name` on a DNS rule are optional metadata: the
+>   launcher never generates them, it carries them through without loss.
+>
+> v7 files migrate automatically on first launch; the previous file is kept next
+> to the new one as `state.json.v7.bak`.
+>
+> **Schema v7 (SPEC 118).** The per-section descriptions below still document
+> **v6** in places and are kept because v6 files are read and migrated forever.
+> v7 changed the shape as follows:
+>
+> - `meta.version` was `7`, `meta.schema` was `"sources_v7"`;
 > - sources moved to the top level: `sources[]` instead of `connections.sources[]`,
 >   and Directions to `directions[]` instead of `connections.direction_outbounds[]`;
 > - a source is a flat union with a `kind` discriminator — `server`, `chain`,
@@ -90,9 +109,11 @@ in a dev build it sits next to the binary.
   },
 
   "rules": [
-    { "kind": "preset", "ref": "...",  "enabled": true, "body": { "vars": {} } },
-    { "kind": "inline", "id":  "...",  "enabled": true, "body": { "name": "...", "match": {}, "outbound": "..." } },
-    { "kind": "srs",    "id":  "...",  "enabled": true, "body": { "name": "...", "srs_url": "...", "outbound": "..." } }
+    { "kind": "preset", "ref": "...", "enabled": true, "num": 960, "vars": {} },
+    { "kind": "inline", "name": "...", "enabled": true, "num": 1000,
+      "body": { "domain_suffix": ["..."], "outbound": "..." } },
+    { "kind": "srs", "name": "...", "enabled": true, "num": 1010,
+      "refs": ["https://.../a.srs"], "body": { "action": "reject" } }
   ],
 
   "vars": [
@@ -101,20 +122,23 @@ in a dev build it sits next to the binary.
     ...
   ],
 
-  "dns_options": {
+  "dns": {
     "strategy":                "...",   // optional fallback; source of truth — vars[]
     "final":                   "...",
     "default_domain_resolver": "...",
     "servers": [
-      { "kind": "template", "tag": "...",        "enabled": true  },
+      { "kind": "template", "tag": "...",         "enabled": true },
       { "kind": "preset",   "ref": "<pid>:<tag>", "enabled": true },
-      { "kind": "user",     "tag": "...", "type": "...", "server": "...", "enabled": true, ... }
+      { "kind": "user",     "tag": "...", "enabled": true,
+        "body": { "type": "https", "server": "..." } }
     ],
     "rules": [
       { "kind": "preset", "ref": "<pid>", "enabled": true },
-      { "kind": "user",   "enabled": true, ... }
+      { "kind": "user",   "enabled": true, "body": { "domain_suffix": ["..."], "server": "..." } }
     ]
-  }
+  },
+
+  "warp": [ ... ]
 }
 ```
 
@@ -390,19 +414,27 @@ The `kind` discriminator: `preset` / `inline` / `srs`. A single ordered array; t
 
 | Field | Type | When | Description |
 |------|-----|-------|----------|
-| `kind` | string | always | Discriminator. |
+| `kind` | string | always | Discriminator: `preset` \| `inline` \| `srs`. |
+| `id` | string | optional | Metadata of the other side (LxBox). The launcher neither generates nor reads it — it carries it through without loss. |
 | `ref` | string | `kind=preset` | A reference to `template.presets[].id`. |
-| `id` | string | `kind=inline` \| `srs` | ULID. |
+| `name` | string | `kind=inline` \| `srs` | The display name. The source of `StableRuleID` — the same string that lived in `body.name` before v8. |
 | `enabled` | bool | always | The common toggle. |
-| `body` | raw JSON | always | Kind-specific payload, decoded via `DecodeBody`. |
+| `num` | int | optional | The position on the sparse order axis (SPEC 106; `order_num` before v8). Absent = not yet placed — `MarkRuleOrder` assigns a number on the next load. |
+| `refs` | string[] | `kind=srs` | The URLs of the rule's .srs sets, in input order (`body.srs_url` + `body.srs_urls` before v8). Deduplicated, order preserved. |
+| `vars` | object | `kind=preset` | Preset var values (`body.vars` before v8) — **the diff only** against the template defaults. An empty map means everything is default. Bump the template → the user automatically gets the new defaults for vars they never touched. |
+| `body` | raw JSON | `kind=inline` \| `srs` | **The sing-box route rule as it is**: matchers plus the target — `"outbound": "<tag>"`, or `"action": "reject"` (+ `"method": "drop"`). A preset record has no body — its rule lives in the template. |
 
-**Body schemas:**
+**`rule_set` is never stored in `body`.** The build registers one local rule-set
+per `refs[]` entry (`user:<id>`, `user:<id>:2`, …) and writes the list of tags
+into the emitted rule itself (`resolveSrsRouteRule`).
 
-| Kind | Body shape |
-|------|------------|
-| `preset` | `{ vars: { <name>: <value>, ... } }` — **the diff only** against the template defaults. An empty map means everything is default. Bump the template → the user automatically gets the new defaults for vars they never touched. |
-| `inline` | `{ name: string, match: { <sing-box match keys> }, outbound: string }` — outbound is a tag or a reserved literal (`reject` / `drop`). |
-| `srs` | `{ name: string, srs_url: string, srs_urls?: string[], outbound: string }` — the URL of the first .srs file, the full list (`srs_url == srs_urls[0]`) when the rule references two or more sets, + an outbound tag/literal. The build emits one local rule-set per URL (`user:<id>`, `user:<id>:2`, …) and a single route rule referencing them all. |
+**Reading and writing the body.** `DecodeBody()` is the only reader: it returns a
+*view* (`PresetBody` / `InlineBody` / `SrsBody`) assembled from the record fields
+and the body, where `Outbound` is derived from the body (`action: reject` →
+`"reject"`, `+ method: drop` → `"drop"`, otherwise `body.outbound`). The only
+writers are `NewPresetRule` / `NewInlineRule` / `NewSrsRule` and
+`(*Rule).SetOutbound`, which rewrites the target without touching the other keys
+or their order.
 
 **JSON examples — the three kinds:**
 ```jsonc
@@ -411,32 +443,33 @@ The `kind` discriminator: `preset` / `inline` / `srs`. A single ordered array; t
   "kind": "preset",
   "ref": "russian",
   "enabled": true,
-  "body": { "vars": { "out": "proxy-out" } }  // only the overridden vars
+  "num": 960,
+  "vars": { "out": "proxy-out" }   // only the overridden vars; no body
 }
 
-// 2. Inline user rule
+// 2. Inline user rule — body is the sing-box rule itself
 {
   "kind": "inline",
-  "id": "01KQD5XYZ...",
+  "name": "BitTorrent direct",
   "enabled": true,
+  "num": 1000,
   "body": {
-    "name": "BitTorrent direct",
-    "match": { "protocol": "bittorrent" },
+    "protocol": "bittorrent",
     "outbound": "direct-out"
   }
 }
 
-// 3. SRS rule-set user rule
+// 3. SRS rule-set user rule — sets outside the body, target inside it
 {
   "kind": "srs",
-  "id": "01KQD7ABC...",
+  "name": "Block ads (oisd)",
   "enabled": true,
-  "body": {
-    "name": "Block ads (oisd)",
-    "srs_url": "https://example.com/oisd.srs",
-    // "srs_urls": ["https://example.com/oisd.srs", "https://example.com/extra.srs"],  // only when the rule has 2+ sets
-    "outbound": "reject"
-  }
+  "num": 1010,
+  "refs": [
+    "https://example.com/oisd.srs",
+    "https://example.com/extra.srs"    // one entry per set; `rule_set` is written by the build
+  ],
+  "body": { "action": "reject" }
 }
 ```
 
@@ -472,7 +505,7 @@ written back.
 ]
 ```
 
-### 3.6 `dns_options`
+### 3.6 `dns` (`dns_options` before v8)
 
 | Field | Type | Description |
 |------|-----|----------|
@@ -490,16 +523,19 @@ written back.
 | `tag` | string | For `kind=template` (the lookup key in `template.dns_options.servers[tag]`) and `kind=user` (the display tag in the final `config.dns.servers[].tag`). Empty for `preset`. |
 | `ref` | string | For `kind=preset` only, shaped `"<preset_id>:<local_tag>"`. Empty otherwise. |
 | `enabled` | bool | Toggle. The build pipeline skips the entry when `false`. |
-| `body` | `map[string]interface{}` | For `kind=user` only — the full DNS server fields (type / server / server_port / tls / detour / ...). nil for `template` / `preset` (the body resolves from the template). |
+| `vars` | `map[string]string` (omitempty) | For `kind=template` only (SPEC 129) — the values of the server's own variables, by the local names its template entry declares (`outbound`, `dns_ip`, …). Only declared names, only values that differ from the template default, stored trimmed; no key means "follow the template". |
+| `body` | `map[string]interface{}` | For `kind=user` only — **the sing-box DNS server as it is** (type / server / server_port / tls / detour / ...), **without `tag`**: the tag is metadata and is written back into the emitted body by the build. nil for `template` / `preset` (the body resolves from the template). Before v8 these fields lay flat next to `kind`. |
 
 **`rules[i]` — `v6.DNSRule` (SPEC 056-R-N):**
 
 | Field | Type | Description |
 |------|-----|----------|
 | `kind` | `DNSRuleKind` | `preset` \| `user`. |
+| `id` | string | Optional metadata of the other side (LxBox). The launcher carries it through. |
 | `ref` | string | For `kind=preset` only, shaped `"<preset_id>"` (one dns_rule per preset). |
+| `name` | string | Optional display name. The launcher does not fill it in, it carries it through. |
 | `enabled` | bool | Toggle. |
-| `body` | `map[string]interface{}` | For `kind=user` only — the full sing-box dns rule body (rule_set / server / domain_* / ip_cidr / port / network / ...). nil for preset. |
+| `body` | `map[string]interface{}` | For `kind=user` only — **the sing-box dns rule as it is** (rule_set / server / domain_* / ip_cidr / port / network / ...), `server` inside. nil for preset. Before v8 these fields lay flat next to `kind`. |
 
 **Template entries: two shapes (SPEC 109).** `template.dns_options.servers[]`
 accepts an entry in two forms — flat (ours) and nested
@@ -507,15 +543,21 @@ accepts an entry in two forms — flat (ours) and nested
 into the flat one when the template loads (`template.NormalizeDNSOptions`), so
 in `state.json` and everywhere downstream an entry is always flat.
 
-The `vars[]` an entry declares become template variables named
-`dns_<tag>_<var>`, sharing one namespace with every other `@placeholder`. The
-prefix is required: without it `outbound` from `google_dot` would overwrite
-`outbound` from `cloudflare_dot`. They are hidden from the Settings tab
-(`wizard_ui: hidden`) — their place is the server's own window, otherwise the
-settings list would grow by two dozen indistinguishable "Outbound" rows.
+The `vars[]` an entry declares stay with the server (SPEC 129):
+`TemplateData.DNSServerVars[tag]`, with the local names, and the body keeps
+`@outbound`, `@dns_ip`. Their values live in the server's state record,
+`dns.servers[kind=template].vars` — the same record the backup file carries and
+the phone app keeps. They are edited in the server's own window, not on the
+Settings tab. A placeholder in the body must be declared by the server or, as a
+launcher extension, by the template's top-level `vars`; anything else fails
+template validation.
 
-Such a variable's value is stored in the state's `vars[]` like any other
-setting; the server body stays in the template and is never copied into state.
+Before SPEC 129 these variables were glued into template variables named
+`dns_<tag>_<var>` and stored in the state's root `vars[]`. Such names are still
+read: loading, building, exporting and importing move them into the server's
+record (the longest tag wins when a tag with underscores makes the name
+ambiguous), and the next write no longer carries them. The record never stores
+a value equal to the template default.
 
 **A group's members are pruned at build time.** A member missing from the final
 server list — switched off by the user, or declared by an inactive preset — is
@@ -529,7 +571,7 @@ through servers they never picked.
 - `independent_cache` — deprecated in sing-box 1.14.0 (the cache is always per-transport). A legacy state carrying this key still parses (the unknown field is ignored); new saves don't write it.
 - `extra_servers[]`, `extra_rules[]`, the `template_servers` map — the old SPEC 053 dev schema, replaced by a flat list with a kind discriminator (SPEC 056-R-N).
 
-**JSON example — a complete `dns_options` block:**
+**JSON example — a complete `dns` block:**
 ```jsonc
 {
   // strategy/final/default_domain_resolver — a fallback duplicate; vars[] is the source of truth
@@ -618,8 +660,8 @@ Shape: `core/config/configtypes/types.go`. Materialization:
 | `connections.defaults` | The reload interval and the per-source max_nodes default | state | The UI Settings/Sources tabs | the parser pipeline |
 | `rules` | Routing rules behind a kind discriminator (preset/inline/srs) — a single ordered array | state | The UI Rules tab (drag, library add, edit) | build (`MergeRouteSection` + `MergePresetsIntoRoute`), UI render |
 | `vars` | Overrides for every var the template declares: tun, route_final, dns_*, clash_secret, etc. | state (the values) + template (the declarations) | The UI Settings tab, the hidden synchronizers (`SyncDNSModelToSettingsVars`) | build (`@var` substitution) |
-| `dns_options.servers` | Entries of kind=template / preset / user; for template/preset the body resolves from the template, for user it is flat in the entry | state (what is enabled) + template (the body) | The UI DNS tab, `SyncDNSOptionsWithActivePresets`, the presenter | build (`ResolveDNS` → `MergeDNSSection`), UI render |
-| `dns_options.rules` | Entries of kind=preset / user. preset is a thin ref to `template.presets[].dns_rule`, user is a flat body | state + template | The UI DNS tab, the lifecycle sync, the presenter | build (`ResolveDNS`), UI render |
+| `dns.servers` | Entries of kind=template / preset / user; for template/preset the body resolves from the template, for user it lives in the entry's `body` | state (what is enabled) + template (the body) | The UI DNS tab, `SyncDNSOptionsWithActivePresets`, the presenter | build (`ResolveDNS` → `MergeDNSSection`), UI render |
+| `dns.rules` | Entries of kind=preset / user. preset is a thin ref to `template.presets[].dns_rule`, user carries its rule in `body` | state + template | The UI DNS tab, the lifecycle sync, the presenter | build (`ResolveDNS`), UI render |
 
 "Source of truth" means where an entry's semantics come from. "Who writes" means
 the places in the code that mutate state. "Who reads" means the consumers at
@@ -728,10 +770,10 @@ from the merged one (`parserConfigForGen` — the generator gets a flattened cop
 
 ## 6. DNS preset binding lifecycle (SPEC 056-R-N)
 
-Symmetrical to the outbound binding. `dns_options.servers[]` and
-`dns_options.rules[]` are flat arrays with a `kind` discriminator.
+Symmetrical to the outbound binding. `dns.servers[]` and `dns.rules[]` are
+arrays with a `kind` discriminator (`dns_options.*` before v8).
 
-### 6.1 `dns_options.servers[]` — kind
+### 6.1 `dns.servers[]` — kind
 
 | `kind` | Identity | Body |
 |--------|----------|------|
@@ -743,7 +785,7 @@ The `enabled` toggle is available for all three kinds; editing the body is
 user-only; deleting is user-only as well (template/preset entries are governed by
 the template and the preset toggle).
 
-### 6.2 `dns_options.rules[]` — kind
+### 6.2 `dns.rules[]` — kind
 
 | `kind` | Identity | Body |
 |--------|----------|------|
@@ -788,7 +830,7 @@ not write the field.
 |--------|--------|------|
 | `preset` | `{ref, enabled}` (ref = `<preset_id>`) | `{vars: {<name>: <value>, ...}}` — the diff against the template defaults only; an empty map means everything is default |
 | `inline` | `{id (ULID), enabled}` | `{name, match (a sing-box match object), outbound (tag|"reject"|"drop")}` |
-| `srs` | `{id (ULID), enabled}` | `{name, srs_url, outbound}` |
+| `srs` | `{kind, name, enabled, num, refs[]}` | `{outbound}` \| `{action}` |
 
 The order is the render order in the UI Rules tab (drag-reordering included),
 which is also the emission order in `config.json::route.rules[]`. It is persisted
@@ -915,11 +957,13 @@ auto-upgrade for free.
 | v6 dev shape → v6 flat | `dns.{template_servers, extra_servers, extra_rules}` (the intermediate SPEC 053 shape) → flat `dns_options.servers[]/rules[]` (SPEC 056-R-N) | none (lossless, dev-only, never released) |
 | SPEC 057 outbounds → SPEC 058 | Direct entries with a full body whose `tag` matches the template/a preset → thin referenced entries (`ref=#TEMPLATE#` / `ref=<preset_id>`) plus a USER patch holding the field-level diff against merged_base. Idempotent and lossless. Also: the legacy `wizard.required` map → a top-level `required bool`; the `wizard interface{}` field was removed from the struct. | **`state.json.pre-058.bak`** on the first save after the migration |
 | sing-box 1.14 | `dns_options.independent_cache` is silently dropped (a legacy state still reads, new ones don't write it) | none |
+| v6 → v7 | sources to the top level, containers with `nodes[]`, links as `{folder_id, tag}`, per-node `enabled` (SPEC 118) | **`state.json.v6.bak`** before the first v7 write |
+| v7 → v8 | One namespace (SPEC 127): rules — `order_num` → `num`, `name` / `refs[]` / `vars` out of the body onto the record, `body` = the sing-box rule itself (target as `outbound` \| `action`); DNS — the flat body into `body`, `tag` stays outside; root `dns_options` → `dns`, `warp_accounts` → `warp`; node `sections` by the same rules. Runs on the raw document, so matcher keys and their order survive byte for byte. | **`state.json.v7.bak`** before the first v8 write |
 
-Save always writes the canonical (v6) shape (SPEC 060 removed the dual write
-path). Legacy v5 files are still read by `parseV5Legacy` and normalized into
-`State` at load time; the next Save rewrites them in the v6 layout. Users with
-purely inline/srs rules stay on v5 until they add their first preset.
+Save always writes the current shape — v8 today (SPEC 060 removed the dual write
+path long ago). Every older file is read by its own parser, migrated in the chain
+v5 → v6 → v7 → v8 and rewritten by the next Save; the file that was on disk is
+kept beside the new one as a `.bak` for the version it came from.
 
 ---
 
@@ -931,8 +975,10 @@ purely inline/srs rules stay on v5 until they add their first preset.
 | `core/state/save.go` | `Save` / `marshalDisk` (a single canonical-v6 write path since SPEC 060) / `maybeBackupSPEC058` (SPEC 058: `.pre-058.bak` on the first save after the referenced-shape migration) |
 | `core/state/adapter.go` | `syncConnectionsFromLegacy` / `syncLegacyFromConnections` (the legacy ParserConfig ↔ canonical Connections exchange) |
 | `core/state/disk_v6.go` | `diskStateV6` (private write-shape) + `MetaSection` + `SchemaVersionV6` |
-| `core/state/rule_types.go` | `Rule` + `PresetBody`/`InlineBody`/`SrsBody` + `DecodeBody` |
-| `core/state/dns_options.go` | `DNSServer` + `DNSRule` + flat `MarshalJSON`/`UnmarshalJSON` |
+| `core/state/disk_v8.go` | `diskStateV8` (the current write shape: `meta`, `sources`, `directions`, `rules`, `vars`, `dns`, `warp`) + `SchemaVersionV8` / `SchemaNameV8` + `parseV8` |
+| `core/state/migration_v7_to_v8.go` | `migrateV7DocToV8` — the v7 → v8 pass over the **raw document** (SPEC 127) |
+| `core/state/rule_types.go` | `Rule` + the views `PresetBody`/`InlineBody`/`SrsBody` + `DecodeBody` (the only reader) + `NewPresetRule`/`NewInlineRule`/`NewSrsRule`/`SetOutbound` (the only writers) |
+| `core/state/dns_options.go` | `DNSServer` + `DNSRule` — plain struct tags, the sing-box object in `body` (the flat v6/v7 `MarshalJSON`/`UnmarshalJSON` were removed in v8) |
 | `core/state/sync_dns.go` | `SyncDNSOptionsWithActivePresets` |
 | `core/state/migration_v5_to_v6.go` | `migrateV5ToV6` (private helper) + `isV5`/`isV6` detection |
 | `core/state/legacy_migration.go` | `migrateV4ToV5` (private) + `IDGenerator` |

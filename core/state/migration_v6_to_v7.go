@@ -16,7 +16,6 @@
 package state
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
@@ -107,6 +106,11 @@ func migrateLegacyStateToV7(s *State, fromVersion int, lc LoadContext, legacy []
 	m.reportLocalDirections()  // шаг 6, хвост: произвольные локальные Направления
 	m.reportExcludes()         // шаг 7
 	m.applyRenames()           // перепись ссылок (Р2)
+
+	// Страховка: ссылки, собранные шагами выше, приходят к норме NodeLink тем
+	// же правилом, что у чтения v8 (nodelink_normalize.go). Мигрированное
+	// состояние сохраняется сразу, поэтому отдельного прохода на загрузке нет.
+	NormalizeNodeLinks(s.Sources, s.Directions)
 
 	// Шаг 8 (снос raw-кэша и переезд defaults) выполняется только после
 	// успешной записи v7-файла — см. Load; здесь лишь помечаем готовность.
@@ -744,17 +748,16 @@ func (m *migrationV7) applyRenames() {
 		if err != nil {
 			continue
 		}
-		changed := false
 		switch b := body.(type) {
 		case *InlineBody:
 			if to, ok := rename(b.Outbound); ok {
-				b.Outbound = to
-				changed = true
+				// Через SetOutbound, а не пересборкой тела: ключи матчеров
+				// и их порядок остаются ровно теми, что были в файле.
+				_ = r.SetOutbound(to)
 			}
 		case *SrsBody:
 			if to, ok := rename(b.Outbound); ok {
-				b.Outbound = to
-				changed = true
+				_ = r.SetOutbound(to)
 			}
 		case *PresetBody:
 			// Переменные пресета несут теги значениями (в т.ч. 'outbound') —
@@ -762,14 +765,11 @@ func (m *migrationV7) applyRenames() {
 			// пропуск повесил бы ссылку [PFX]auto в var молча).
 			for name, val := range b.Vars {
 				if to, ok := rename(val); ok {
-					b.Vars[name] = to
-					changed = true
+					if r.Vars == nil {
+						r.Vars = map[string]string{}
+					}
+					r.Vars[name] = to
 				}
-			}
-		}
-		if changed {
-			if raw, err := json.Marshal(body); err == nil {
-				r.Body = raw
 			}
 		}
 	}

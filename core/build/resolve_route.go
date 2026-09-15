@@ -14,7 +14,6 @@ import (
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
-	"singbox-launcher/internal/outboundutil"
 )
 
 // RouteSource — discriminator происхождения route entry.
@@ -78,10 +77,10 @@ type ResolvedRouteRule struct {
 	PresetID    string
 	PresetLabel string
 
-	// OrderNum — позиция правила на оси порядка (SPEC 106). Нужна emit-слою:
-	// правила пресетов дописываются к тем, что пришли из шаблона, и без
-	// номера якорь с num=0 всё равно оказался бы в хвосте.
-	OrderNum int
+	// Num — позиция правила на оси порядка (SPEC 106; до v8 звалась order_num). Нужна
+	// emit-слою: правила пресетов дописываются к тем, что пришли из шаблона, и
+	// без номера якорь с num=0 всё равно оказался бы в хвосте.
+	Num int
 
 	// InlineID/SrsID — для kind=inline/srs.
 	InlineID string
@@ -147,7 +146,7 @@ func ResolveRouteWithGlobals(
 
 	emittedTags := make(map[string]bool)
 
-	// SPEC 106: порядок правил задаёт разреженная ось (OrderNum), а не позиция
+	// SPEC 106: порядок правил задаёт разреженная ось (Num), а не позиция
 	// в слайсе. Нормализация здесь же пере-засевает неотчуждаемые пресеты —
 	// именно re-seed на каждой сборке, а не флаг в state, делает их
 	// неотчуждаемыми (D-050): стёртое из state правило возвращается.
@@ -249,35 +248,34 @@ func resolvePresetRouteRule(
 			PresetLabel: presetLabel,
 			Active:      true, // ExpandPreset уже отфильтровал по if/if_or
 			Enabled:     rule.Enabled,
-			OrderNum:    ruleOrderNum(rule),
+			Num:         ruleNum(rule),
 		})
 	}
 }
 
 // resolveInlineRouteRule — kind=inline → direct route rule, no rule_set.
+//
+// state v8: тело записи — уже правило sing-box целиком (матчеры и цель в
+// форме `outbound` | `action`), поэтому оно едет в конфиг как есть.
+// DecodeBody здесь только валидирует запись (kind/name) — разбирать тело на
+// матчеры и цель, чтобы тут же склеить обратно, незачем.
 func resolveInlineRouteRule(out *ResolvedRoute, rule corestate.Rule) {
-	body, err := rule.DecodeBody()
+	if _, err := rule.DecodeBody(); err != nil {
+		debuglog.WarnLog("route resolve: decode inline body: %v", err)
+		return
+	}
+	routeRule, err := rule.BodyMap()
 	if err != nil {
 		debuglog.WarnLog("route resolve: decode inline body: %v", err)
 		return
 	}
-	ib := body.(*corestate.InlineBody)
-	match := ib.Match
-	if match == nil {
-		match = map[string]interface{}{}
-	}
-	routeRule := make(map[string]interface{}, len(match)+1)
-	for k, v := range match {
-		routeRule[k] = v
-	}
-	routeRule = outboundutil.ApplyOutboundToRule(routeRule, ib.Outbound)
 	out.Rules = append(out.Rules, ResolvedRouteRule{
 		Body:     routeRule,
 		Source:   RouteSourceInline,
 		InlineID: corestate.StableRuleID(rule),
 		Active:   true,
 		Enabled:  rule.Enabled,
-		OrderNum: ruleOrderNum(rule),
+		Num:      ruleNum(rule),
 	})
 }
 
@@ -295,7 +293,8 @@ func resolveSrsRouteRule(
 	}
 	sb := body.(*corestate.SrsBody)
 	id := corestate.StableRuleID(rule)
-	urls := sb.URLs()
+	// state v8: список наборов — поле записи Refs (вид отдаёт его же).
+	urls := sb.Refs
 	paths, hasCache := srsCachedPaths[id]
 	// Правило — одна единица: либо закэшированы все его наборы, либо оно
 	// пропускается целиком (частичный набор молча менял бы смысл правила).
@@ -340,8 +339,14 @@ func resolveSrsRouteRule(
 	if len(tags) > 1 {
 		ruleSetRef = tags
 	}
-	routeRule := map[string]interface{}{"rule_set": ruleSetRef}
-	routeRule = outboundutil.ApplyOutboundToRule(routeRule, sb.Outbound)
+	// Тело записи (цель в форме sing-box) едет как есть, `rule_set` вписывает
+	// сборка по Refs — в состоянии его нет (ONE_NAMESPACE §1).
+	routeRule, err := rule.BodyMap()
+	if err != nil {
+		debuglog.WarnLog("route resolve: decode srs body: %v", err)
+		return
+	}
+	routeRule["rule_set"] = ruleSetRef
 	out.Rules = append(out.Rules, ResolvedRouteRule{
 		Body:    routeRule,
 		Source:  RouteSourceSrs,
@@ -354,11 +359,11 @@ func resolveSrsRouteRule(
 // ── Helper: silence unused json import (will be used by tests). ──
 var _ = json.Unmarshal
 
-// ruleOrderNum — номер правила на оси; неразмеченное считается стоящим в
+// ruleNum — номер правила на оси; неразмеченное считается стоящим в
 // начале пользовательской зоны (SPEC 106).
-func ruleOrderNum(r corestate.Rule) int {
-	if r.OrderNum == nil {
+func ruleNum(r corestate.Rule) int {
+	if r.Num == nil {
 		return corestate.DefaultRuleNum
 	}
-	return *r.OrderNum
+	return *r.Num
 }

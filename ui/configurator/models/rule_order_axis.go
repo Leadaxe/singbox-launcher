@@ -3,7 +3,7 @@
 //
 // Слоты (RuleOrder) — механизм ОТОБРАЖЕНИЯ: они говорят, в каком порядке
 // нарисовать строки. Приоритет правила задаёт ось: номер живёт в модели
-// (PresetRefState.OrderNum / RuleState.OrderNum), уезжает в state.Rules при
+// (PresetRefState.Num / RuleState.Num), уезжает в state.Rules при
 // Save и оттуда попадает в config.json. Позиция в слайсе — только тай-брейк.
 //
 // Поэтому перетаскивание обязано двигать НОМЕР, а не только слот: иначе Save
@@ -21,39 +21,39 @@ import (
 	corestate "singbox-launcher/core/state"
 )
 
-// slotOrderNum — номер оси у правила, на которое ссылается slot.
-func (m *WizardModel) slotOrderNum(s RuleSlot) *int {
+// slotNum — номер оси у правила, на которое ссылается slot.
+func (m *WizardModel) slotNum(s RuleSlot) *int {
 	switch s.Kind {
 	case SlotKindPresetRef:
 		if s.Index >= 0 && s.Index < len(m.PresetRefs) && m.PresetRefs[s.Index] != nil {
-			return m.PresetRefs[s.Index].OrderNum
+			return m.PresetRefs[s.Index].Num
 		}
 	case SlotKindCustom:
 		if s.Index >= 0 && s.Index < len(m.CustomRules) && m.CustomRules[s.Index] != nil {
-			return m.CustomRules[s.Index].OrderNum
+			return m.CustomRules[s.Index].Num
 		}
 	case SlotKindNodeRef:
 		if s.Index >= 0 && s.Index < len(m.NodeRuleRefs) && m.NodeRuleRefs[s.Index] != nil {
-			return m.NodeRuleRefs[s.Index].OrderNum
+			return m.NodeRuleRefs[s.Index].Num
 		}
 	}
 	return nil
 }
 
-// setSlotOrderNum — записать номер оси правилу, на которое ссылается slot.
-func (m *WizardModel) setSlotOrderNum(s RuleSlot, num *int) {
+// setSlotNum — записать номер оси правилу, на которое ссылается slot.
+func (m *WizardModel) setSlotNum(s RuleSlot, num *int) {
 	switch s.Kind {
 	case SlotKindPresetRef:
 		if s.Index >= 0 && s.Index < len(m.PresetRefs) && m.PresetRefs[s.Index] != nil {
-			m.PresetRefs[s.Index].OrderNum = num
+			m.PresetRefs[s.Index].Num = num
 		}
 	case SlotKindCustom:
 		if s.Index >= 0 && s.Index < len(m.CustomRules) && m.CustomRules[s.Index] != nil {
-			m.CustomRules[s.Index].OrderNum = num
+			m.CustomRules[s.Index].Num = num
 		}
 	case SlotKindNodeRef:
 		if s.Index >= 0 && s.Index < len(m.NodeRuleRefs) && m.NodeRuleRefs[s.Index] != nil {
-			m.NodeRuleRefs[s.Index].OrderNum = num
+			m.NodeRuleRefs[s.Index].Num = num
 		}
 	}
 }
@@ -61,7 +61,7 @@ func (m *WizardModel) setSlotOrderNum(s RuleSlot, num *int) {
 // axisProxyRules — []state.Rule ровно по одному на slot в текущем порядке
 // RuleOrder. Это ПРОКСИ: тела правил не собираются (дорого и не нужно), только
 // то, что читает ось — Kind/Ref (чтобы отличить несортируемый пресет) и
-// OrderNum. Значения номеров копируются, чтобы PlaceRuleAfter не правил модель
+// Num. Значения номеров копируются, чтобы PlaceRuleAfter не правил модель
 // вживую до того, как мы решили принять результат.
 func (m *WizardModel) axisProxyRules() []corestate.Rule {
 	out := make([]corestate.Rule, 0, len(m.RuleOrder))
@@ -76,10 +76,10 @@ func (m *WizardModel) axisProxyRules() []corestate.Rule {
 		case SlotKindNodeRef:
 			// SPEC 121: правило узла — рядовое сортируемое правило оси; тела
 			// у прокси нет и здесь не нужно (ось читает только Kind и
-			// OrderNum), а вид inline её устраивает как и всякий не-пресет.
+			// Num), а вид inline её устраивает как и всякий не-пресет.
 			r.Kind = corestate.RuleKindInline
 		}
-		r.OrderNum = copyOrderNum(m.slotOrderNum(s))
+		r.Num = copyNum(m.slotNum(s))
 		out = append(out, r)
 	}
 	return out
@@ -125,7 +125,7 @@ func (m *WizardModel) applyAxisAfterMove(movedPos int) {
 	}
 
 	for i, s := range m.RuleOrder {
-		m.setSlotOrderNum(s, copyOrderNum(proxy[i].OrderNum))
+		m.setSlotNum(s, copyNum(proxy[i].Num))
 	}
 
 	// Закон оси: массив всегда отсортирован по номерам. Ленивый сдвиг может
@@ -141,36 +141,36 @@ func (m *WizardModel) applyAxisAfterMove(movedPos int) {
 func markProxyGaps(proxy []corestate.Rule) {
 	prev := corestate.UserRuleNumStart - 1
 	for i := range proxy {
-		if proxy[i].OrderNum != nil {
-			prev = *proxy[i].OrderNum
+		if proxy[i].Num != nil {
+			prev = *proxy[i].Num
 			continue
 		}
 		n := prev + 1
 		if n < corestate.UserRuleNumStart {
 			n = corestate.UserRuleNumStart
 		}
-		proxy[i].OrderNum = &n
+		proxy[i].Num = &n
 		prev = n
 	}
 }
 
-// EnsureRuleOrderNums — доразметка модели: правило без номера получает его по
+// EnsureRuleNums — доразметка модели: правило без номера получает его по
 // текущей позиции в RuleOrder, соседи не трогаются.
 //
 // Нужна на путях, где слот появился мимо оси: legacy state без rules[] (order
 // собран RebuildRuleOrder), ReconcileRuleOrder дописал слот для правила,
-// которого не было в state. Без этого правило сохранилось бы без order_num и
+// которого не было в state. Без этого правило сохранилось бы без num и
 // при следующей загрузке село бы в начало пользовательской зоны — то есть
 // поехало бы вверх относительно соседей.
-func EnsureRuleOrderNums(m *WizardModel) {
+func EnsureRuleNums(m *WizardModel) {
 	if m == nil || len(m.RuleOrder) == 0 {
 		return
 	}
 	proxy := m.axisProxyRules()
 	markProxyGaps(proxy)
 	for i, s := range m.RuleOrder {
-		if m.slotOrderNum(s) == nil {
-			m.setSlotOrderNum(s, copyOrderNum(proxy[i].OrderNum))
+		if m.slotNum(s) == nil {
+			m.setSlotNum(s, copyNum(proxy[i].Num))
 		}
 	}
 }
@@ -201,10 +201,10 @@ func SortRuleOrderByAxis(m *WizardModel) {
 }
 
 func axisNum(r corestate.Rule) int {
-	if r.OrderNum == nil {
+	if r.Num == nil {
 		return corestate.DefaultRuleNum
 	}
-	return *r.OrderNum
+	return *r.Num
 }
 
 // isSortableAxisRule — можно ли двигать правило и вытеснять его соседями.
@@ -222,10 +222,10 @@ func (m *WizardModel) isSortableAxisRule(r corestate.Rule) bool {
 	return true
 }
 
-// NextRuleOrderNum — номер для НОВОГО пользовательского правила: конец занятой
+// NextRuleNum — номер для НОВОГО пользовательского правила: конец занятой
 // части пользовательской зоны (state.NextUserRuleNum по текущему набору), а не
 // хардкод. Возвращает указатель, готовый лечь в RuleState/PresetRefState.
-func NextRuleOrderNum(m *WizardModel) *int {
+func NextRuleNum(m *WizardModel) *int {
 	if m == nil {
 		return nil
 	}
@@ -233,22 +233,22 @@ func NextRuleOrderNum(m *WizardModel) *int {
 	return &n
 }
 
-// PresetRuleOrderNum — номер оси для только что добавленного пресета: якорь из
+// PresetRuleNum — номер оси для только что добавленного пресета: якорь из
 // шаблона, если он там объявлен, иначе конец пользовательской зоны. Пресет
 // обязан вставать на СВОЙ якорь сразу, а не после следующей загрузки: иначе
 // включённый через Library пресет ехал бы в конец списка, а после перезахода
 // прыгал на место.
-func PresetRuleOrderNum(m *WizardModel, ref string) *int {
+func PresetRuleNum(m *WizardModel, ref string) *int {
 	if m == nil {
 		return nil
 	}
 	if m.TemplateData != nil {
 		for i := range m.TemplateData.Presets {
 			if m.TemplateData.Presets[i].ID == ref {
-				n := m.TemplateData.Presets[i].OrderNum()
+				n := m.TemplateData.Presets[i].StartNum()
 				return &n
 			}
 		}
 	}
-	return NextRuleOrderNum(m)
+	return NextRuleNum(m)
 }

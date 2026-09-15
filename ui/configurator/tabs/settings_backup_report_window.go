@@ -109,7 +109,7 @@ func openBackupReportWindow(title, headText, warnTitleText, copyText string, war
 		container.NewVScroll(rows),
 	)))
 	w.Resize(fyne.NewSize(560, 420))
-	w.CenterOnScreen()
+	fynewidget.CenterOnScreen(w)
 	w.Show()
 }
 

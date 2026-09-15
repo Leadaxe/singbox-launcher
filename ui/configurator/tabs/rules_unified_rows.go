@@ -250,10 +250,17 @@ func buildSinglePresetRefRow(
 		outSel = fynewidget.NewHoverForwardSelect(options, nil, rowGetter)
 		outSel.Selected = currentVal
 		outSel.OnChanged = func(value string) {
-			if pr.Vars == nil {
-				pr.Vars = make(map[string]string)
+			// SPEC 129 Н4: выбор умолчания — сброс к нему, ключ снимается;
+			// пустое значение — тоже «нет ключа» (Н3).
+			value = strings.TrimSpace(value)
+			if value == "" || value == strings.TrimSpace(soloOutVar.Default) {
+				delete(pr.Vars, soloOutVar.Name)
+			} else {
+				if pr.Vars == nil {
+					pr.Vars = make(map[string]string)
+				}
+				pr.Vars[soloOutVar.Name] = value
 			}
-			pr.Vars[soloOutVar.Name] = value
 			presenter.MarkAsChanged()
 		}
 	}

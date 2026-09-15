@@ -1,0 +1,70 @@
+{
+  "rules": [],
+  "warnings": [],
+  "subscriptions": {
+    "https://example-1.com/sub-node-links": {
+      "label": "Provider NL",
+      "prefix": "nl:",
+      "postfix": "",
+      "enabled": true,
+      "nodes": []
+    }
+  },
+  "folders": {
+    "Work": [
+      "local-at",
+      "de-1",
+      "de-2"
+    ]
+  },
+  "folder_ids": {
+    "Work": "01FLDWORKLOCAL000000000000"
+  },
+  "root_servers": [
+    "relay-root",
+    "tokyo",
+    "orphan",
+    "via-direction"
+  ],
+  "directions": [
+    { "tag": "proxy-eu", "filter": "de" }
+  ],
+  "chains": [
+    {
+      "tag": "mixed-route",
+      "chain": {
+        "hops": [
+          "relay-root",
+          "de-1",
+          "US-1"
+        ],
+        "idle_timeout": "0s"
+      },
+      "hops": [
+        { "tag": "relay-root" },
+        { "tag": "de-1", "folder": "Work" },
+        { "tag": "US-1", "subscription": "https://example-1.com/sub-node-links" }
+      ]
+    },
+    {
+      "tag": "dir-first",
+      "chain": {
+        "hops": [
+          "proxy-eu",
+          "tokyo"
+        ],
+        "idle_timeout": "0s"
+      },
+      "hops": [
+        { "tag": "proxy-eu" },
+        { "tag": "tokyo" }
+      ]
+    }
+  ],
+  "detours": {
+    "de-2": { "tag": "de-1", "folder": "Work" },
+    "tokyo": { "tag": "de-1", "folder": "Work" },
+    "orphan": { "tag": "gone-1", "folder_id": "01FLDGHOST0000000000000000" },
+    "via-direction": { "tag": "proxy-eu" }
+  }
+}

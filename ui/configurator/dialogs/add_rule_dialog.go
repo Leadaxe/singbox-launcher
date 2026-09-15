@@ -40,6 +40,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/internal/process"
@@ -56,6 +57,7 @@ const (
 	addRulePlaceholderIpText      = "Enter IP addresses (CIDR format)\ne.g., 192.168.1.0/24"
 	addRulePlaceholderSrsUrlsText = "SRS URLs (one per line)\ne.g. https://raw.githubusercontent.com/.../file.srs"
 	addRulePlaceholderUrlText     = "Enter domains or URLs (one per line)\ne.g., example.com"
+	addRuleArrayPastedText        = "Paste one rule at a time: the editor keeps one sing-box rule per entry"
 )
 
 // CreateRulesTabFunc is a function type for creating the rules tab.
@@ -469,6 +471,9 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		if trimmed == "" {
 			return nil, errors.New(locale.T("Custom JSON is empty"))
 		}
+		if err := ruleArrayPastedError(trimmed); err != nil {
+			return nil, err
+		}
 		var obj map[string]interface{}
 		if err := json.Unmarshal([]byte(trimmed), &obj); err != nil {
 			return nil, err
@@ -737,6 +742,10 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 				dialog.ShowError(errors.New(locale.T("Raw JSON is empty")), dialogWindow)
 				return
 			}
+			if err := ruleArrayPastedError(trimmed); err != nil {
+				dialog.ShowError(err, dialogWindow)
+				return
+			}
 			if err := json.Unmarshal([]byte(trimmed), &ruleRaw); err != nil {
 				dialog.ShowError(fmt.Errorf("invalid JSON: %w", err), dialogWindow)
 				return
@@ -813,7 +822,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 				// SPEC 106: номер оси — конец занятой пользовательской зоны,
 				// не хардкод: новое правило встаёт последним среди
 				// пользовательских и не вытесняет шаблонные якоря.
-				OrderNum: wizardmodels.NextRuleOrderNum(model),
+				Num: wizardmodels.NextRuleNum(model),
 			}
 			if model.CustomRules == nil {
 				model.CustomRules = make([]*wizardmodels.RuleState, 0)
@@ -1011,6 +1020,12 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			ruleSel.SetType(wizardmodels.RuleTypeRaw)
 			return
 		}
+		if err := ruleArrayPastedError(trimmed); err != nil {
+			dialog.ShowError(err, dialogWindow)
+			tabs.Select(rawTabItem)
+			ruleSel.SetType(wizardmodels.RuleTypeRaw)
+			return
+		}
 		var obj map[string]interface{}
 		if err := json.Unmarshal([]byte(trimmed), &obj); err != nil {
 			dialog.ShowError(fmt.Errorf("invalid JSON: %w", err), dialogWindow)
@@ -1107,7 +1122,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		dialog.ShowCustom(locale.T("SRS rule-sets"), locale.T("Close"), content, dialogWindow)
 	}
 	dialogWindow.Resize(fyne.NewSize(500, 640))
-	dialogWindow.CenterOnScreen()
+	fynewidget.CenterOnScreen(dialogWindow)
 	dialogWindow.SetContent(mainContent)
 
 	// Register dialog
@@ -1124,6 +1139,19 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	refreshSelectedProcessesUI()
 	updateButtonState()
 	dialogWindow.Show()
+}
+
+// ruleArrayPastedError — вставлен МАССИВ правил, а запись правила держит
+// ровно одно правило sing-box (норма «одно правило — одно тело», D-111,
+// contract/docs/BACKUP.md §2). Раскладывать массив на записи умеет только
+// импорт бэкапа; редактор одну запись в несколько не превращает, а без этой
+// проверки массив доходил до разбора в объект и отвечал сырой ошибкой
+// encoding/json. nil — вставлено не массивом.
+func ruleArrayPastedError(trimmed string) error {
+	if !strings.HasPrefix(trimmed, "[") {
+		return nil
+	}
+	return errors.New(locale.T(addRuleArrayPastedText))
 }
 
 // normalizeProcName strips the legacy "PID: name" prefix from a process string,

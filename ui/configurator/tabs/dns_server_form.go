@@ -108,10 +108,10 @@ type dnsServerForm struct {
 	// tls.insecure и любые прочие поля sing-box.
 	base map[string]interface{}
 
-	// varValues — значения переменных шаблона. Тело сервера приходит сырым,
-	// с `@dns_google_dot_dns_ip` вместо адреса: подстановка живёт на пути
-	// сборки конфига. В форме пользователь должен видеть значение — то же,
-	// что и в строке списка.
+	// varValues — значения переменных сервера (SPEC 129: его запись поверх
+	// умолчаний объявления). Тело сервера приходит сырым, с `@dns_ip` вместо
+	// адреса: подстановка живёт на пути сборки конфига. В форме пользователь
+	// должен видеть значение — то же, что и в строке списка.
 	//
 	// Подстановка односторонняя, только для показа: записи с переменными —
 	// шаблонные, а они открываются в режиме чтения и не сохраняются. Если
@@ -143,7 +143,7 @@ func newDNSServerForm(p *wizardpresentation.WizardPresenter, selfTag string) *dn
 	f := &dnsServerForm{
 		rows:         map[string]fyne.CanvasObject{},
 		enabledByTag: dnsEnabledByTag(p.Model().DNSServers),
-		varValues:    dnsVarValues(p.Model()),
+		varValues:    dnsVarValuesFor(p.Model(), selfTag),
 	}
 
 	f.typeSelect = widget.NewSelect(dnsFormTypes, nil)

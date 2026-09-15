@@ -22,6 +22,7 @@ import (
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/template"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/internal/textnorm"
@@ -585,6 +586,17 @@ func ShowEditDialog(
 				dialog.ShowError(err, dialogWin)
 				return
 			}
+			// Опции Направления — только объявленные корневые имена
+			// (NODE_LINK.md §8): узел в Направление кладёт фильтр, а
+			// неизвестное имя в конфиге не существует. Форма другого не
+			// предлагает; сырой JSON — единственный вход, который надо
+			// закрыть здесь, до сохранения.
+			if editPresenter != nil {
+				if err := wizardbusiness.ValidateDirectionOptions(editPresenter.Model(), cfg.Tag, cfg.Auto != nil, cfg.AddOutbounds); err != nil {
+					dialog.ShowError(err, dialogWin)
+					return
+				}
+			}
 			renameRefs(cfg.Tag)
 			scopeKind, idx := getScopeFromForm()
 			// SPEC 057-R-N: Raw tab показывает ref/updates юзеру (они в JSON),
@@ -994,7 +1006,7 @@ func ShowEditDialog(
 		})
 	}
 	dialogWin.Resize(fyne.NewSize(440, 560))
-	dialogWin.CenterOnScreen()
+	fynewidget.CenterOnScreen(dialogWin)
 	// fynetooltip layer обязателен для tooltips на ttwidget виджетах в
 	// отдельном окне — без него fyne-tooltip пишет "no tool tip layer
 	// created for current overlay" и tooltips не показываются.
