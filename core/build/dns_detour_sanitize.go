@@ -54,6 +54,9 @@ type dnsFailClosed struct {
 	dropped map[string]bool
 	// resolver — замена; пусто — заменить нечем, ключ снимается.
 	resolver string
+	// fallback — следующий пригодный сервер после resolver: им заменяется
+	// ссылка у самого сервера-замены, которому сослаться на себя нельзя.
+	fallback string
 }
 
 // active — сработала ли вторая линия.
@@ -201,7 +204,8 @@ func repairAfterServerDrop(dnsObj map[string]json.RawMessage, servers []map[stri
 				dropped[tag] = true // группа, опустевшая вслед за участниками
 			}
 		}
-		fc = &dnsFailClosed{dropped: dropped, resolver: pickHealDNSResolver(list, defaultResolver, dropped)}
+		primary, fallback := pickHealDNSResolver(list, defaultResolver, dropped)
+		fc = &dnsFailClosed{dropped: dropped, resolver: primary, fallback: fallback}
 
 		rules = rejectDNSRulesOnDropped(rules, dropped)
 		if final, _ := root["final"].(string); final != "" && dropped[final] {
@@ -298,7 +302,11 @@ func rejectDNSRulesOnDropped(rules []interface{}, dropped map[string]bool) []int
 // сервер: резолвер по умолчанию шаблона, если он в конфиге, иначе первый
 // оставшийся сервер не fakeip/hosts (тот же выбор, что у LxBox
 // heal_dangling_dns_resolvers). Пусто — заменить нечем.
-func pickHealDNSResolver(list []interface{}, defaultResolver string, dropped map[string]bool) string {
+//
+// Второе значение — следующий пригодный сервер после первого: замена для
+// самого сервера-замены (норма SPEC 129, сверено с LxBox: «следующий
+// пригодный, иначе ключ снимается»).
+func pickHealDNSResolver(list []interface{}, defaultResolver string, dropped map[string]bool) (string, string) {
 	suitable := func(m map[string]interface{}) bool {
 		switch m["type"] {
 		case "fakeip", "hosts":
@@ -306,7 +314,8 @@ func pickHealDNSResolver(list []interface{}, defaultResolver string, dropped map
 		}
 		return true
 	}
-	first := ""
+	var order []string
+	hasDefault := false
 	for _, raw := range list {
 		m, ok := raw.(map[string]interface{})
 		if !ok {
@@ -317,13 +326,21 @@ func pickHealDNSResolver(list []interface{}, defaultResolver string, dropped map
 			continue
 		}
 		if defaultResolver != "" && tag == defaultResolver {
-			return tag
+			hasDefault = true
+			continue
 		}
-		if first == "" {
-			first = tag
-		}
+		order = append(order, tag)
 	}
-	return first
+	if hasDefault {
+		order = append([]string{defaultResolver}, order...)
+	}
+	switch len(order) {
+	case 0:
+		return "", ""
+	case 1:
+		return order[0], ""
+	}
+	return order[0], order[1]
 }
 
 // healDNSServerResolver — `domain_resolver` DNS-сервера на выпавший сервер.
@@ -337,9 +354,13 @@ func healDNSServerResolver(m map[string]interface{}, fc *dnsFailClosed) {
 	}
 	tag, _ := m["tag"].(string)
 	addr, _ := m["server"].(string)
-	if dnsAddressIsDomain(addr) && fc.resolver != "" && fc.resolver != tag {
-		setResolverTarget(m, "domain_resolver", fc.resolver, isObject)
-		debuglog.WarnLog("dns: server %q: domain_resolver %q was dropped — replaced with %q", tag, target, fc.resolver)
+	replacement := fc.resolver
+	if replacement == tag {
+		replacement = fc.fallback
+	}
+	if dnsAddressIsDomain(addr) && replacement != "" && replacement != tag {
+		setResolverTarget(m, "domain_resolver", replacement, isObject)
+		debuglog.WarnLog("dns: server %q: domain_resolver %q was dropped — replaced with %q", tag, target, replacement)
 		return
 	}
 	delete(m, "domain_resolver")
