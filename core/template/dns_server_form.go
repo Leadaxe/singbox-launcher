@@ -323,7 +323,7 @@ func validateDNSServerVars(dnsOptions json.RawMessage, decls map[string][]Templa
 			return fmt.Errorf("%s: %w", ctx, err)
 		}
 		for _, ref := range refs {
-			if names[ref] {
+			if names[ref] || isRuntimeGlobalRef(ref) {
 				continue
 			}
 			if _, ok := globalByName[ref]; ok {
