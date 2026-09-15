@@ -31,6 +31,25 @@ var portableVars = map[string]struct{}{
 	"urltest_interval":  {},
 	"urltest_tolerance": {},
 	"urltest_url":       {},
+
+	// Маршрут шаблонных DNS-серверов (1.6.0): переменные, которые вложенная
+	// запись `dns_options.servers` объявляет себе и которые при загрузке
+	// шаблона становятся `dns_<tag>_<var>` (template.NormalizeDNSOptions).
+	// Значение — корневое имя: канал запроса (`outbound` → `detour` сервера,
+	// Направление или системный тег) или тег DNS-сервера (`dom_resolver` →
+	// `domain_resolver`). На другой машине оно значит то же самое.
+	//
+	// Без них импорт в пустое состояние терял выбор канала: финальный DNS
+	// google_udp, настроенный через proxy-out, на новой машине уходил на
+	// дефолт шаблона direct-out — DNS мимо VPN.
+	//
+	// Список по именам, как весь реестр: новая вложенная запись шаблона с
+	// переменной маршрута добавляется сюда и в registry/vars.json вместе.
+	"dns_google_udp_outbound":       {},
+	"dns_google_dot_outbound":       {},
+	"dns_cloudflare_dot_outbound":   {},
+	"dns_safe_dns_dot_outbound":     {},
+	"dns_safe_dns_dot_dom_resolver": {},
 }
 
 // IsPortableVar сообщает, переносится ли переменная в бэкап.

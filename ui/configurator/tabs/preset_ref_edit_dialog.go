@@ -115,7 +115,7 @@ func showEditPresetRefDialog(
 	jsonRichText.Wrapping = fyne.TextWrapWord
 
 	refreshJSON := func() {
-		jsonRichText.ParseMarkdown("```json\n" + buildPresetJSONPreview(tplPreset, working, model.Target, model.SettingsVars) + "\n```")
+		jsonRichText.ParseMarkdown("```json\n" + buildPresetJSONPreview(tplPreset, working, model.Target, wizardbusiness.PresetGlobalVars(model)) + "\n```")
 	}
 
 	refreshVisibility := func() {

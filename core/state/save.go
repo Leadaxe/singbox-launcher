@@ -56,6 +56,14 @@ func (s *State) Save(path string) error {
 	}
 
 	dir := filepath.Dir(path)
+	// Каталога состояний на свежей установке нет: его создавал только визард
+	// при своём первом сохранении (StateStore.ensureStatesDir). Первая запись
+	// мимо визарда — POST /backup/import на новой машине, «вот файл» — падала
+	// 500 «no such file or directory», и перенос настроек не работал ровно в
+	// том сценарии, ради которого импорт в пустое состояние и заведён.
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("state: mkdir %s: %w", dir, err)
+	}
 	tmp := path + ".tmp"
 	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {

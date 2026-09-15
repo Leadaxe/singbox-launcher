@@ -17,6 +17,7 @@ import (
 
 	"singbox-launcher/core/build"
 	wizardtemplate "singbox-launcher/core/template"
+	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -30,7 +31,7 @@ func convertPresetRefToUserRules(
 	if model == nil || tplPreset == nil {
 		return 0
 	}
-	frags, _, ok := build.ExpandPresetWithGlobals(tplPreset, vars, model.SettingsVars, model.Target)
+	frags, _, ok := build.ExpandPresetWithGlobals(tplPreset, vars, wizardbusiness.PresetGlobalVars(model), model.Target)
 	if !ok {
 		return 0
 	}
