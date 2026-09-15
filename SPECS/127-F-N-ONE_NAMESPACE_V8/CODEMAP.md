@@ -2581,3 +2581,63 @@ dev-формы читаются терпимо.
 `registry/backup_warnings.json`, `corpus/backup/README.md`, `contract/VERSION`
 1.0.1, `contract/README.md`, `DECISIONS.md` D-115, `SPECS/features/sources.md`,
 `directions.md`, `docs/release_notes/1-6-0.md`, `CHANGELOG.md` v1.6.0.
+
+## 27. Импорт в пустое состояние и оси, сдвинутые прошлыми импортами (D-117, релиз 1.6.0)
+
+Ветка `fix/axis-heal-known-targets`. Четыре дефекта с копии живых данных
+(стенд `scratchpad/livecmp/harness_ab_test.go.txt`, проба UI-входа
+`probe_ui_realflow_test.go.txt`, выход `livecmp/out_ab/{baseline,fixed}`).
+Норма — `contract/docs/BACKUP.md` §3, §9 п. 5, §9 п. 7; D-117.
+
+### 27.1 А — ось, сдвинутая импортом 1.5.3–1.5.6
+
+| Адрес | Что |
+|---|---|
+| `core/state/rule_order.go:233` | **`PinRequiredRuleNums(rules, specs)`** — несортируемому пресету номер шаблона, даже если номер уже есть; сортируемые не трогаются. Выпущенный `renumberImportedRules` (тег v1.5.6, `core/backup/import.go:711`) уводил голову `traffic-processing` 0 → 1000+: сборка ставила её за `route.rules` шаблона (`core/build/preset_merge.go:373`, голова = `num < 1000`), включённый позже пресет с номером шаблона < 1000 вставал перед ней |
+| `core/state/rule_order.go:263` | `NormalizeRuleOrder`: дедуп → seed → **pin** → разметка → сортировка. Потребители — сборка (`core/build/resolve_route.go:157`) и загрузка визарда (`ui/configurator/presentation/presenter_state_helpers.go:92`, оттуда вылеченный номер уходит в state.json первым Save). Срез нормализуется на месте, как и прежде (MarkRuleOrder сортирует in place) |
+| не сделано | сортируемые пресеты-якоря и перехватчики, уехавшие тем импортом в 1000+ (`private-ips` 950 → 1001, `russian` 1120 → 1011): однозначного признака нет — перетаскивание даёт те же номера (`PlaceRuleAfter` = сосед + 1, ленивый сдвиг). Следствия остаются: такие якоря идут за `route.rules` шаблона, новое правило (`NextUserRuleNum`) встаёт за перехватчиком в зоне 1000..1100, пресет из библиотеки с номером < 1000 встаёт перед сдвинутыми якорями. Лечится удалением и повторным включением пресета (номер шаблона) |
+
+### 27.2 Б — известные цели импорта одним списком
+
+| Адрес | Что |
+|---|---|
+| `core/backup/import.go:542` | **`importRootNames(opts, dec, s)`** — объявленные корневые имена результата: `direct-out`, тег блокировки, `opts.SystemTags`, Направления файла и приёмника ± `-auto`, свёртки ± `-auto`. Один источник на `filterImportedDirectionOptions` и известные цели |
+| `core/backup/import.go:600` | **`importKnownTags`** — `KnownOutbounds` + `KnownTagsFromFile` + корневые узлы + `importRootNames`; `nil` («проверять нечем») только когда ни приёмник, ни файл, ни слияние не назвали ни одного имени сверх двух умолчаний |
+| `core/backup/import.go:435`, `:459` | `applyDecoded`: список считается ОДИН раз после `merged.rewriteLinks`; им идут `normalizeMemberLinks10`, **`checkImportedRuleTargets`** (`core/backup/import10.go:338`, выключает inline/srs с неизвестной целью, warning в порядке правил) и `route.final` |
+| `core/backup/import10.go:319`, `legacy_read_0x.go` `importRule`/`importJSONRule` | декодеры больше не проверяют цели — только пресет (`backup_unknown_preset`). Прежний список декодера (`import10.go:63-79`, `legacy_read_0x.go:103-110`) не видел системных тегов: на пустом состоянии `knownOutboundsFor` (Debug API) пуст, Направления файла делали список непустым — `direct-out` выключался |
+| `core/backup/directions.go:27` | `defaultDirectTag` |
+| `ui/configurator/business/tag_guard_model.go:131` | `KnownRuleTargetTags` += `DeclaredRootNames(model)`: сброс осиротевших целей при загрузке (`presentation/rule_target_reset.go`) переводил правило на `block-out` (системный тег `config.outbounds`) на `direct-out` |
+| `core/debugapi/backup_endpoints.go` | `knownOutboundsFor` не менялся (комментарий: системные теги едут в `ImportOptions.SystemTags`) |
+
+### 27.3 В — маршрут DNS на восстановлении
+
+| Адрес | Что |
+|---|---|
+| `core/backup/portable_vars.go:48`, `contract/registry/vars.json` | переносимы `dns_google_udp_outbound`, `dns_google_dot_outbound`, `dns_cloudflare_dot_outbound`, `dns_safe_dns_dot_outbound`, `dns_safe_dns_dot_dom_resolver` — переменные вложенных записей `dns_options.servers` (`template/dns_server_form.go`, имя `dns_<tag>_<var>`) со значением-корневым именем. У LxBox то же значение — `dns.servers[].vars` записи шаблонного сервера (поле стороны LxBox); свести формы — отдельное решение |
+| `ui/configurator/presentation/presenter_backup_import.go:42` | **`ImportBackupFile(file, fresh)`** — UI-вход импорта (из `tabs/settings_backup.go` `applyBackup`); `fresh` → слияние в `state.New()` с целью модели (Target/Platform/Arch), иначе в `CreateStateFromModel`. `backupImportOptions` (`:75`) — `KnownOutbounds` модели, пресеты, `BlockTag`, `SystemTags`. Стадия ошибки — `BackupImportStage` (текст диалога) |
+| `ui/configurator/tabs/settings_backup.go:189` | `fresh := !StateExists("") && !HasUnsavedChanges()`: визард новой машины — сид шаблона (`configurator.go` ветка без state.json: `LoadConfigFromFile`, `ApplyWizardDNSTemplate`), и «своё сильнее» оставляло DNS-серверы файла выключенными (финальный DNS → системный резолвер) и давало `backup_direction_exists` на Направления шаблона |
+| `core/state/save.go:64` | `Save` создаёт каталог состояния: POST /backup/import на чистом `bin/` (каталога `wizard_states` нет, визард ни разу не сохранял) падал 500 |
+
+### 27.4 Г — отсутствующая переменная берёт дефолт шаблона одним правилом
+
+| Адрес | Что |
+|---|---|
+| `core/template/vars_resolve.go:378` | **`VarValuesFor(vars, state, raw, target)`** — сохранённые значения + скаляр `ResolveTemplateVarsFor` (то же, чем `ApplyTemplateWithVarsFor` собирает секции конфига) для объявленных переменных платформы; без значения и дефолта имя не добавляется; секреты не генерируются |
+| `core/build/preset_merge.go:275` | **`PresetMergeContext.globalVarValues()`** = `VarValuesFor(TemplateVars, GlobalVars, nil, Target)`; им идут `ResolveRouteWithGlobals` (`:345`, `:623`) и `ResolveDNS` (`:431`). Раньше `GlobalVars` без `tun`/`enable_proxy_in` давали `#if` false → sniff/resolve `inbound: []`, `@resolve_strategy` без значения ронял resolve, а inbounds собирались по дефолтам |
+| `ui/configurator/business/create_config.go:39` | **`PresetGlobalVars(model)`** — то же правило для UI: `tabs/dns_user_rules.go:432,494`, `dns_unified_rules.go:234`, `dns_preset_bundled.go:212` (`gatherTemplateVars`), `preset_ref_edit_dialog.go:118` (превью), `preset_ref_convert.go:34` (конвертация в свои правила — раньше вписывала `inbound: []` навсегда), `business/preset_bundled_dns.go:39` |
+| проверено | реальный поток новой машины воспроизводит Г на обоих входах: визард до импорта кладёт в `SettingsVars` только секреты (`clash_secret`, `proxy_in_password`), `CreateStateFromModel` эмитит только тронутые переменные |
+
+### 27.5 Тесты (по одному интеграционному на дефект, каждый падает на старом коде)
+
+| Адрес | Что |
+|---|---|
+| `core/build/shifted_axis_heal_test.go` | **`TestShiftedAxisHeadPinnedToTemplate`** — ось после импорта 1.5.x + пресет 980 после импорта + `route.rules` шаблона: нормализация (голова 0, остальные номера на месте, идемпотентно, Save → Load), `MergePresetsIntoRoute` из сдвинутого состояния — sniff первым |
+| `core/debugapi/backup_import_targets_test.go` | **`TestBackupImportIntoEmptyKeepsRuleTargets`** — экспорт через API → POST /backup/import без state.json: правила на `direct-out`, `block-out`, endpoint шаблона, `reject`, `-auto` Направления, srs на Направление файла включены, `ghost → vpn-9` выключено одним warning; `route.final` direct-out, detour DNS и переменные пресета на месте; файл 0.12 — те же цели |
+| `ui/configurator/presentation/backup_restore_dns_route_test.go` | **`TestBackupRestoreKeepsDNSRouteOnNewMachine`** — шаблон репозитория; вход Debug API (`ImportFile` в `state.New()`) и UI-вход новой машины (`ImportBackupFile(fresh)`): `google_udp` включён и `detour: proxy-out` в `ResolveDNS`, без `backup_direction_exists`, правило на `block-out` переживает `LoadState`. Без `fresh` падает на «google_udp выключен» |
+| `core/build/preset_var_defaults_test.go` | **`TestMissingVarTakesTemplateDefaultInPresetsAndInbounds`** — синтетический шаблон, `BuildConfig`: без переменных inbounds = sniff.inbound = resolve.inbound = `[tun-in]`, `resolve.strategy` дефолт; с переменными — сохранённые значения |
+
+Документы: `contract/docs/BACKUP.md` (§2 `vars`, поля LxBox `dns.servers[].vars`,
+§3, §9 п. 5, §9 п. 7), `contract/registry/vars.json`,
+`contract/schema/backup.schema.json` (`rules[].num` — номера файла сохраняются,
+D-116/D-117; `dnsServer.vars`), `contract/README.md` (строка 1.0.1, VERSION не
+поднят), `DECISIONS.md` D-117, `docs/release_notes/1-6-0.md`, `CHANGELOG.md` v1.6.0.

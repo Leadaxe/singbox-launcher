@@ -94,25 +94,15 @@ func decodeLegacy(b *Backup, opts ImportOptions) (*decodedFile, error) {
 		out.Sources = append(out.Sources, decodedSource{Kind: decodedChain, Src: src})
 	}
 
-	// Правила: чужой вид пропускается с warning, а не роняет файл. Проверки
-	// целей и пресетов делаются ЗДЕСЬ, потому что они про перевод записи
-	// («цель, которой нет, → enabled=false»), а не про слияние.
-	// Теги Направлений и цепочек ЭТОГО файла — тоже известные цели: правило
-	// может метить в то, что приехало вместе с ним (SPEC 104). Пустой список
-	// известных целей означает «проверять нечем» — тогда ссылки не режутся.
-	knownTags := append(append([]string(nil), opts.KnownOutbounds...), out.KnownTagsFromFile...)
-	for _, d := range out.Directions {
-		knownTags = append(knownTags, d.Tag)
-	}
-	for _, s := range out.Sources {
-		if s.Kind == decodedChain {
-			knownTags = append(knownTags, s.Src.Tag)
-		}
-	}
-	known := newTagSet(knownTags)
+	// Правила: чужой вид пропускается с warning, а не роняет файл. Пресет вне
+	// шаблона проверяется ЗДЕСЬ — это перевод записи. Цель правила — после
+	// слияния, одним списком известных целей на оба формата
+	// (checkImportedRuleTargets в applyDecoded): цель может приехать этим же
+	// файлом (Направление, цепочка, свёртка) или быть системным тегом шаблона
+	// приёмника, и знает об этом только состояние после слияния.
 	presets := newTagSet(opts.KnownPresets)
 	for i, r := range b.Rules {
-		rules, warns, err := importRule(r, i, known, presets)
+		rules, warns, err := importRule(r, i, presets)
 		out.Warnings = append(out.Warnings, warns...)
 		if errors.Is(err, errSkipRule) {
 			continue // правило не наше — пропущено с warning, импорт живёт
@@ -432,9 +422,9 @@ func importChain(in Chain) (state.Source, []Warning) {
 // тел раскладывается по норме «одно правило — одно тело» (importJSONRule).
 // index — номер записи в файле, им называется безымянная запись в
 // предупреждении.
-func importRule(r Rule, index int, known, presets tagSet) ([]state.Rule, []Warning, error) {
+func importRule(r Rule, index int, presets tagSet) ([]state.Rule, []Warning, error) {
 	if RuleKind(r.Kind) == RuleJSON {
-		rules, warns := importJSONRule(r, index, known, presets)
+		rules, warns := importJSONRule(r, index, presets)
 		if len(rules) == 0 {
 			return nil, warns, errSkipRule
 		}
@@ -444,14 +434,9 @@ func importRule(r Rule, index int, known, presets tagSet) ([]state.Rule, []Warni
 	var warns []Warning
 	enabled := r.Enabled == nil || *r.Enabled
 
-	// Символическая ссылка в никуда: правило приезжает выключенным, а не
-	// теряется. Ядро отвергает конфиг с несуществующим outbound целиком,
-	// поэтому «оставить включённым» здесь означало бы сломать пользователю
-	// весь VPN одним импортом (BACKUP.md §3).
-	if r.Outbound != "" && !known.empty() && !known.has(r.Outbound) {
-		enabled = false
-		warns = append(warns, Warning{Code: WarnBackupUnknownOutbound, Detail: ruleLabel(r) + " → " + r.Outbound})
-	}
+	// Цель `outbound` уезжает в тело записи конструктором; символическую
+	// ссылку в никуда выключает общий проход после слияния
+	// (checkImportedRuleTargets, BACKUP.md §3).
 
 	num := legacyRuleNum(r)
 
@@ -507,10 +492,10 @@ func importRule(r Rule, index int, known, presets tagSet) ([]state.Rule, []Warni
 // Цель остаётся В ТЕЛЕ: `outbound` | `action` правила sing-box. Плоский
 // `outbound` записи к json-правилу не применяется — вторая цель рядом с телом
 // была бы второй правдой о том, куда правило ведёт. Проверка цели та же, что у
-// записи 1.0 (decode10Rule): цель, которой нет, выключает часть с
-// backup_unknown_outbound. Часть без цели ввозится как есть — так же лаунчер
+// записи 1.0 (checkImportedRuleTargets после слияния): цель, которой нет,
+// выключает часть с backup_unknown_outbound. Часть без цели ввозится как есть — так же лаунчер
 // ввозит inline-правило 0.x без `outbound` и запись 1.0 без цели в теле.
-func importJSONRule(r Rule, index int, known, presets tagSet) ([]state.Rule, []Warning) {
+func importJSONRule(r Rule, index int, presets tagSet) ([]state.Rule, []Warning) {
 	rec := state.Rule{
 		Kind:    state.RuleKindInline,
 		Name:    r.Name,
@@ -521,7 +506,7 @@ func importJSONRule(r Rule, index int, known, presets tagSet) ([]state.Rule, []W
 	parts, warns := splitRuleBodies(rec, "rules["+ruleEntryLabel(r.Name, index)+"].match")
 	out := make([]state.Rule, 0, len(parts))
 	for _, part := range parts {
-		rule, w := decode10Rule(part, known, presets)
+		rule, w := decode10Rule(part, presets)
 		warns = append(warns, w...)
 		out = append(out, rule)
 	}

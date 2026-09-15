@@ -428,6 +428,12 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 	// целиком: цель может быть объявлена в файле НИЖЕ ссылающейся записи.
 	merged.rewriteLinks(s)
 
+	// Известные цели — ОДИН список на весь импорт (цели правил, route.final,
+	// корневые имена подъёма ссылок), по состоянию ПОСЛЕ слияния: цель может
+	// приехать этим же файлом, быть системным тегом шаблона приёмника или
+	// корневым узлом. Слияние корневых имён дальше не меняет.
+	knownTags := importKnownTags(opts, dec, s)
+
 	// Ссылки без адреса папки поднимаются до адресных по ЖИВОМУ набору, и у
 	// каждого формата свой словарь: проход отдельный и последний, потому что
 	// видеть он обязан ВЕСЬ набор (цепочка может ссылаться на узел папки,
@@ -441,7 +447,7 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 		state.NormalizeNodeLinks(s.Sources, s.Directions)
 		// 1.0: ссылка без folder_id адресует корень ФИНАЛЬНЫХ тегов, и на член
 		// папки её поднимает только однозначный финальный тег (§4, §6).
-		normalizeMemberLinks10(s, &merged, importKnownTags(opts, dec, s))
+		normalizeMemberLinks10(s, &merged, knownTags)
 	default:
 		// 0.x: позиции цепочек приехали строками (контракт 0.x адреса папок не
 		// несёт) и сопоставляются по сырым тегам узлов контейнеров.
@@ -449,6 +455,8 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 		state.NormalizeNodeLinks(s.Sources, s.Directions)
 	}
 
+	known := newTagSet(knownTags)
+	res.Warnings = append(res.Warnings, checkImportedRuleTargets(dec.Rules, known)...)
 	s.Rules = append(s.Rules, dec.Rules...)
 	res.AppliedRules = len(dec.Rules)
 
@@ -458,7 +466,6 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 	placeImportedAxis(s.Rules, merged.sectionRules(s))
 
 	if dec.RouteFinal != "" {
-		known := newTagSet(importKnownTags(opts, dec, s))
 		if known.empty() || known.has(dec.RouteFinal) {
 			// Канонический канал лаунчера — vars["route_final"]: именно его
 			// читает LoadState и пишет Save. config_params["final"] никто не
@@ -491,38 +498,7 @@ func filterImportedDirectionOptions(s *state.State, dec *decodedFile, applied []
 	if len(applied) == 0 {
 		return nil
 	}
-	declared := map[string]bool{"direct-out": true}
-	add := func(tag string) {
-		if tag = strings.TrimSpace(tag); tag != "" {
-			declared[tag] = true
-		}
-	}
-	blockTag := opts.BlockTag
-	if blockTag == "" {
-		blockTag = defaultBlockTag
-	}
-	add(blockTag)
-	for _, tag := range opts.SystemTags {
-		add(tag)
-	}
-	addDirections := func(list []configtypes.Direction) {
-		for i := range list {
-			add(list[i].Tag)
-			if list[i].Auto != nil && strings.TrimSpace(list[i].Tag) != "" {
-				add(list[i].AutoTag())
-			}
-		}
-	}
-	addDirections(dec.Directions)
-	addDirections(s.Directions)
-	for i := range s.Sources {
-		if r := s.Sources[i].Replace; r != nil && strings.TrimSpace(r.Tag) != "" {
-			add(r.Tag)
-			if r.Mode == state.FolderReplaceBoth {
-				add(r.Tag + "-auto")
-			}
-		}
-	}
+	declared := importRootNames(opts, dec, s)
 
 	var warns []Warning
 	for _, at := range applied {
@@ -554,21 +530,76 @@ func filterImportedDirectionOptions(s *state.State, dec *decodedFile, applied []
 	return warns
 }
 
-// importKnownTags — цели, которые считаются существующими при проверке
-// route.final.
+// importRootNames — объявленные корневые имена результата импорта
+// (NODE_LINK.md §8): системные теги приёмника (`direct-out`, тег блокировки,
+// opts.SystemTags — outbound'ы и endpoint'ы шаблона), теги Направлений файла
+// и приёмника и их `-auto`, теги свёрток результата и их `-auto`.
 //
-// Состав тот же, что у проверки правил в декодере: то, что знает принимающая
-// сторона (opts), плюс теги, приехавшие ЭТИМ ЖЕ файлом. Считается уже ПОСЛЕ
-// слияния, по живому состоянию: цепочка, чей тег был занят, в состояние не
-// попала, и final в неё — это final в никуда.
+// Источник один на опции приехавших Направлений
+// (filterImportedDirectionOptions) и на известные цели (importKnownTags):
+// системный тег шаблона, законный в `include`, законен и целью правила, и
+// route.final.
+func importRootNames(opts ImportOptions, dec *decodedFile, s *state.State) map[string]bool {
+	names := map[string]bool{defaultDirectTag: true}
+	add := func(tag string) {
+		if tag = strings.TrimSpace(tag); tag != "" {
+			names[tag] = true
+		}
+	}
+	blockTag := opts.BlockTag
+	if blockTag == "" {
+		blockTag = defaultBlockTag
+	}
+	add(blockTag)
+	for _, tag := range opts.SystemTags {
+		add(tag)
+	}
+	addDirections := func(list []configtypes.Direction) {
+		for i := range list {
+			add(list[i].Tag)
+			if list[i].Auto != nil && strings.TrimSpace(list[i].Tag) != "" {
+				add(list[i].AutoTag())
+			}
+		}
+	}
+	if dec != nil {
+		addDirections(dec.Directions)
+	}
+	addDirections(s.Directions)
+	for i := range s.Sources {
+		if r := s.Sources[i].Replace; r != nil && strings.TrimSpace(r.Tag) != "" {
+			add(r.Tag)
+			if r.Mode == state.FolderReplaceBoth {
+				add(r.Tag + "-auto")
+			}
+		}
+	}
+	return names
+}
+
+// importKnownTags — ЕДИНСТВЕННЫЙ список известных целей импорта: цели правил
+// (checkImportedRuleTargets), route.final и корневые имена подъёма ссылок 1.0
+// (normalizeMemberLinks10).
+//
+// Состав: то, что знает принимающая сторона (opts.KnownOutbounds), теги,
+// которые породит сам файл (dec.KnownTagsFromFile), объявленные корневые имена
+// результата (importRootNames — с системными тегами шаблона приёмника) и
+// корневые узлы. Считается ПОСЛЕ слияния, по живому состоянию: цепочка, чей
+// тег был занят, в состояние не попала, и final в неё — это final в никуда.
+//
+// Раньше списков было два: декодер проверял цели правил ДО слияния своим
+// набором (opts плюс Направления, цепочки и свёртки файла), и ни один из них
+// не видел системных тегов шаблона. Импорт в пустое состояние через Debug API
+// (там opts.KnownOutbounds — Направления приёмника, то есть пусто) выключал
+// каждое правило на direct-out, а route.final на direct-out не применялся.
+//
+// nil — «проверять нечем»: ни приёмник, ни файл, ни результат слияния не
+// назвали ни одного имени. Тогда цели не режутся — выключить всё подряд хуже,
+// чем импортировать как есть; умолчания `direct-out` и тега блокировки такой
+// список не открывают.
 func importKnownTags(opts ImportOptions, dec *decodedFile, s *state.State) []string {
 	out := append([]string(nil), opts.KnownOutbounds...)
 	out = append(out, dec.KnownTagsFromFile...)
-	for _, d := range s.Directions {
-		if d.Tag != "" {
-			out = append(out, d.Tag)
-		}
-	}
 	for i := range s.Sources {
 		src := &s.Sources[i]
 		switch src.Kind {
@@ -577,13 +608,18 @@ func importKnownTags(opts ImportOptions, dec *decodedFile, s *state.State) []str
 				out = append(out, t)
 			}
 		}
-		if src.Replace != nil && src.Replace.Tag != "" {
-			out = append(out, src.Replace.Tag)
-			if src.Replace.Mode == state.FolderReplaceBoth {
-				out = append(out, src.Replace.Tag+"-auto")
-			}
-		}
 	}
+	names := importRootNames(opts, dec, s)
+	// Умолчания importRootNames — всегда два имени (`direct-out` и тег
+	// блокировки). Сверх них ни одного — значит, сказать о целях нечего.
+	onlyDefaults := len(opts.SystemTags) == 0 && strings.TrimSpace(opts.BlockTag) == "" && len(names) == 2
+	if len(out) == 0 && onlyDefaults {
+		return nil
+	}
+	for name := range names {
+		out = append(out, name)
+	}
+	sort.Strings(out)
 	return out
 }
 

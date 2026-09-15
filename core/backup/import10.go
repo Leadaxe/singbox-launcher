@@ -62,29 +62,11 @@ func decode10(b *Backup10, opts ImportOptions) (*decodedFile, error) {
 		out.Sources = append(out.Sources, item)
 	}
 
-	// Известные цели: то, что знает принимающая сторона, плюс теги, которые
-	// приезжают ЭТИМ ЖЕ файлом (Направления, цепочки и группы свёртки).
-	// Без последних правило, метящее в группу свёрнутой подписки того же
-	// файла, приезжало бы выключенным «цель не существует» — при том что
-	// цель приехала строкой выше.
-	knownTags := append([]string(nil), opts.KnownOutbounds...)
-	for _, d := range out.Directions {
-		knownTags = append(knownTags, d.Tag)
-	}
-	for _, s := range out.Sources {
-		switch s.Kind {
-		case decodedChain:
-			knownTags = append(knownTags, s.Src.Tag)
-		case decodedSubscription, decodedFolder:
-			if s.Src.Replace != nil && s.Src.Replace.Tag != "" {
-				knownTags = append(knownTags, s.Src.Replace.Tag)
-				if s.Src.Replace.Mode == state.FolderReplaceBoth {
-					knownTags = append(knownTags, s.Src.Replace.Tag+"-auto")
-				}
-			}
-		}
-	}
-	known := newTagSet(knownTags)
+	// Цели правил здесь НЕ проверяются: список известных целей один на весь
+	// импорт и считается после слияния по живому состоянию
+	// (importKnownTags, checkImportedRuleTargets в applyDecoded). Прежний
+	// второй список декодера не видел системных тегов шаблона приёмника, и
+	// импорт в пустое состояние выключал каждое правило на direct-out.
 	presets := newTagSet(opts.KnownPresets)
 
 	for i, r := range b.Rules {
@@ -98,7 +80,7 @@ func decode10(b *Backup10, opts ImportOptions) (*decodedFile, error) {
 			out.Warnings = append(out.Warnings, sw...)
 		}
 		for _, part := range parts {
-			rule, warns := decode10Rule(part, known, presets)
+			rule, warns := decode10Rule(part, presets)
 			out.Warnings = append(out.Warnings, warns...)
 			out.Rules = append(out.Rules, rule)
 		}
@@ -328,28 +310,51 @@ func disabledTags10(in map[string]int64) []string {
 	return out
 }
 
-// decode10Rule — запись правила 1.0: копия плюс проверка целей.
+// decode10Rule — запись правила 1.0: копия плюс проверка пресета.
 //
 // Форма записи не трогается вовсе (в этом и смысл 1.0), но семантика импорта
-// та же, что у 0.x: правило с целью, которой нет, приезжает ВЫКЛЮЧЕННЫМ, а
-// не роняет конфиг ядра; preset вне шаблона — тоже выключенным.
-func decode10Rule(r state.Rule, known, presets tagSet) (state.Rule, []Warning) {
+// та же, что у 0.x: preset вне шаблона приезжает ВЫКЛЮЧЕННЫМ. Цель правила
+// проверяется позже, после слияния (checkImportedRuleTargets): известные цели
+// зависят от того, что слияние положило в состояние.
+func decode10Rule(r state.Rule, presets tagSet) (state.Rule, []Warning) {
 	var warns []Warning
 	out := state.CloneRule(r)
 
-	switch r.Kind {
-	case state.RuleKindPreset:
-		if !presets.empty() && !presets.has(r.Ref) {
-			out.Enabled = false
-			warns = append(warns, Warning{Code: WarnBackupUnknownPreset, Detail: r.Ref})
-		}
-	case state.RuleKindInline, state.RuleKindSrs:
-		if target := ruleTarget10(r); target != "" && !known.empty() && !known.has(target) {
-			out.Enabled = false
-			warns = append(warns, Warning{Code: WarnBackupUnknownOutbound, Detail: rule10Label(r) + " → " + target})
-		}
+	if r.Kind == state.RuleKindPreset && !presets.empty() && !presets.has(r.Ref) {
+		out.Enabled = false
+		warns = append(warns, Warning{Code: WarnBackupUnknownPreset, Detail: r.Ref})
 	}
 	return out, warns
+}
+
+// checkImportedRuleTargets выключает правила, чья цель здесь не существует.
+//
+// Правило с целью, которой нет, приезжает ВЫКЛЮЧЕННЫМ с
+// backup_unknown_outbound, а не роняет конфиг ядра (BACKUP.md §3, §9 п. 7).
+// Один проход на оба формата файла и на один список известных целей
+// (importKnownTags) — тот же, что у route.final: у двух списков правила и
+// маршрут по умолчанию расходились. Пустой список — «проверять нечем», цели
+// не режутся. Предупреждения — в порядке правил.
+func checkImportedRuleTargets(rules []state.Rule, known tagSet) []Warning {
+	if known.empty() {
+		return nil
+	}
+	var warns []Warning
+	for i := range rules {
+		r := &rules[i]
+		if r.Kind != state.RuleKindInline && r.Kind != state.RuleKindSrs {
+			continue
+		}
+		target := ruleTarget10(*r)
+		if target == "" || known.has(target) {
+			continue
+		}
+		if r.Enabled {
+			r.Enabled = false
+		}
+		warns = append(warns, Warning{Code: WarnBackupUnknownOutbound, Detail: rule10Label(*r) + " → " + target})
+	}
+	return warns
 }
 
 // ruleTarget10 — символическая цель правила, какой её видит проверка.

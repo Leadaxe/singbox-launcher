@@ -38,6 +38,36 @@
       "in": "both",
       "note": "route.default_domain_resolver — символическая ссылка на тег DNS-сервера, та же политика, что dns_final"
     },
+    "dns_google_udp_outbound": {
+      "type": "outbound",
+      "portable": true,
+      "in": "both",
+      "note": "D-117. Канал запроса шаблонного DNS-сервера google_udp (detour): Направление или системный тег. Переменная вложенной записи dns_options.servers {vars, server} с локальным именем outbound; у лаунчера живёт в корневом vars под именем dns_<tag>_<var> (TEMPLATE_LANG.md, разрыв N8), у LxBox — в dns.servers[].vars.outbound записи сервера. Без переноса DNS на новой машине уходил мимо VPN"
+    },
+    "dns_google_dot_outbound": {
+      "type": "outbound",
+      "portable": true,
+      "in": "both",
+      "note": "D-117. Канал запроса шаблонного DNS-сервера google_dot (detour); форма и соответствие LxBox — как у dns_google_udp_outbound"
+    },
+    "dns_cloudflare_dot_outbound": {
+      "type": "outbound",
+      "portable": true,
+      "in": "both",
+      "note": "D-117. Канал запроса шаблонного DNS-сервера cloudflare_dot (detour); форма и соответствие LxBox — как у dns_google_udp_outbound"
+    },
+    "dns_safe_dns_dot_outbound": {
+      "type": "outbound",
+      "portable": true,
+      "in": "both",
+      "note": "D-117. Канал запроса шаблонного DNS-сервера safe_dns_dot (detour); форма и соответствие LxBox — как у dns_google_udp_outbound"
+    },
+    "dns_safe_dns_dot_dom_resolver": {
+      "type": "dns_servers",
+      "portable": true,
+      "in": "both",
+      "note": "D-117. Резолвер имени шаблонного DNS-сервера safe_dns_dot (domain_resolver) — тег DNS-сервера; у LxBox — dns.servers[].vars.dom_resolver записи сервера"
+    },
     "resolve_strategy": {
       "type": "enum",
       "portable": true,
