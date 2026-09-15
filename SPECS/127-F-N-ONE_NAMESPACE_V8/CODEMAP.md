@@ -2517,7 +2517,7 @@ dev-формы читаются терпимо.
 | `core/state/nodelink_normalize.go` | **новый файл**: `NodeLinkFinalTag(policy, raw)` (`norm(prefix+raw+postfix)`, переменные → нет кандидата), `NodeLinkFinalIndex(sources, skip)` (цепочка — свой тег), **`NormalizeNodeLinks(sources, directions)`** — S1 (член группы в контейнере без `folder_id`), S2 (`default` строкой), S3 (пара на финальный тег группы), S5′ (корневая ссылка через опцию Направления); одна строка `InfoLog` на подъём и на неоднозначные |
 | `core/state/disk_v8.go:77`, `core/state/migration_v6_to_v7.go:113` | вызовы на чтении v8/v7 и в хвосте миграции v6→v7 (перезаписи файла нет — правило идемпотентно) |
 | `core/backup/import.go:433-450` | 1.0 — до `normalizeMemberLinks10`; 0.x — после `resolveImportedHops` |
-| `core/backup/import10.go:510-571` | `normalizeMemberLinks10` на общем индексе (`renamed` — через `skip`); `merge.go:968` — `fileFinal` той же формулой |
+| `core/backup/import10.go:538-599` | `normalizeMemberLinks10` на общем индексе (`renamed` — через `skip`); `merge.go:968` — `fileFinal` той же формулой |
 | `ui/configurator/business/source_record_paste.go:129-135` | вставка записи — после `repointRecordLinks` |
 | `core/config/subscription/parse_body.go` | «сперва узлы, затем группы» (IDENTITY.md §1.3): `accept` тегов группам не даёт, `finish` раздаёт их тем же `st.idCounts` после всех узлов и резолвит состав по карте «узлы первыми»; тест — `core/subscription_fetch_test.go` `TestFetchGroupNamesakeDoesNotShiftNodeTag` (Xray-балансировщик перед узлом-тёзкой) |
 
