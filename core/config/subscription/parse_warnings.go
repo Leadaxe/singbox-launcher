@@ -26,15 +26,15 @@ const (
 	// WarnUTLSFingerprintUnknown — отпечаток вне словаря ядра заменён на
 	// канонический; чужое значение валит все outbound'ы.
 	WarnUTLSFingerprintUnknown = "utls_fp_unknown"
-	// WarnRealityFPNotChrome — у узла эмитится reality, а uTLS-отпечаток не
-	// из chrome-семейства: на сборке он подменяется на chrome (D-104).
+	// WarnRealityFPNotChrome — у узла эмитится reality с явным uTLS-отпечатком
+	// не из chrome-семейства (D-119). Отпечаток уходит в конфиг как есть.
 	//
-	// Молчать нельзя: REALITY-сервер Xray ≥ v26.9.8 требует в ClientHello
+	// Зачем сказать: REALITY-сервер Xray ≥ v26.9.8 требует в ClientHello
 	// key_share X25519MLKEM768, который несут только chrome-спеки uTLS, и без
-	// него МОЛЧА уводит соединение на камуфляжный сайт — ошибки нет, узел
-	// просто мёртв (SPEC 083 ядра). Но и подмена меняет маскировку, о которой
-	// просила подписка, — пользователь вправе знать. Пустой fp и наш дефолт
-	// `random` под код не попадают (см. realityFingerprintWouldDegrade).
+	// него МОЛЧА уводит соединение на камуфляжный сайт. Старые серверы такой
+	// отпечаток принимают, поэтому выбор провайдера не подменяется; если
+	// соединение не устанавливается — стоит попробовать chrome. Пустой fp и
+	// наш дефолт `random` под код не попадают (см. realityFingerprintRisky).
 	WarnRealityFPNotChrome = "reality_fp_not_chrome"
 	// WarnNaiveExtraHeadersInvalid — пара из naive `extra-headers` отброшена:
 	// нет ':', запрещённые символы в имени или CR/LF/NUL в значении.

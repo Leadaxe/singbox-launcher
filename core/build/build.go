@@ -361,10 +361,10 @@ func buildSection(ctx BuildContext, key string, raw json.RawMessage, finalOutbou
 				cache = &c
 			}
 		}
-		// D-104: REALITY принимает только chrome-подобный ClientHello
-		// (SPEC 083 ядра). Правка НЕ опциональна — иначе узел молча мёртв, —
-		// и живёт здесь, а не в парсере: значение узла нормативно (CANON §2),
-		// LxBox чинит на том же шаге сборки.
+		// D-119: у REALITY включается uTLS и ставится chrome там, где
+		// отпечаток не выбирал никто; явный отпечаток узла не трогается.
+		// Живёт здесь, а не в парсере: значение узла нормативно (CANON §2),
+		// LxBox делает то же на том же шаге сборки.
 		if cache != nil {
 			healed := HealRealityFingerprints(cache.Outbounds)
 			if len(healed) == len(cache.Outbounds) {

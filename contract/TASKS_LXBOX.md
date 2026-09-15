@@ -1368,3 +1368,15 @@ REFUSED и на имя, и на корневой запрос `.`.
 
 Статус лаунчера: всё выше — в 1.6.0 (ветка `feat/spec129-record-vars`, хэш
 merge — сообщением после влития).
+
+## 19. REALITY: явный отпечаток не подменяется (D-119, заменяет D-104) — контракт 1.0.3
+
+Решение владельца 15.09.2026 после полевого отчёта LxBox 2.23.2 (`fp=firefox` у провайдера, подмена на chrome рвала соединение в мобильной сети).
+
+1. Явный `fingerprint` узла уходит в конфиг как есть — на сборке не подменяется ни у кого.
+2. Пустой `fingerprint` и наш неявный дефолт `random` при REALITY — сторона пишет `chrome` явно; uTLS-блок включается всегда.
+3. `reality_fp_not_chrome` остаётся на узле с явным отпечатком вне chrome-семейства, текст мягкий: серверы Xray ≥ v26.9.8 отвергают такой ClientHello; если соединение не устанавливается — попробуйте chrome.
+4. Реестры: `registry/tls.json` (note), `registry/warnings.json` (desc). Кейс `uri/vless/reality_fp_firefox_forced_chrome` переименован в `reality_fp_firefox_kept`, ожидание `entry` прежнее (firefox), код прежний.
+
+Лаунчер: `core/build/tls_transforms.go` `HealRealityFingerprints`, `core/config/subscription/node_parser_transport.go` `EnforceRealityFingerprint` (`realityFingerprintRisky`), тест `core/build/reality_fingerprint_test.go`. LxBox: `heal_unknown_utls_fingerprints.dart` — снять подмену явных отпечатков, оставить п. 2, смягчить текст.
+

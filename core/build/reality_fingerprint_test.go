@@ -9,11 +9,12 @@ import (
 )
 
 // TestRealityFingerprintAllEntryPaths — один интеграционный прогон правила
-// D-104 через ВСЕ входы, которые эмитят reality: URI vless, URI anytls,
+// D-119 через ВСЕ входы, которые эмитят reality: URI vless, URI anytls,
 // Xray-JSON и sing-box-JSON импорт. Каждый вход обязан (а) пометить узел
-// кодом reality_fp_not_chrome и (б) отдать на сборке отпечаток из
-// chrome-семейства. Россыпь юнитов на каждую точку не пишем: важна именно
-// связка «парсер пометил → сборка починила».
+// кодом reality_fp_not_chrome при явном отпечатке вне chrome-семейства и
+// (б) отдать его на сборке КАК ЕСТЬ; chrome ставится только вместо пустого или
+// нашего неявного `random`. Россыпь юнитов на каждую точку не пишем: важна
+// именно связка «парсер пометил → сборка не подменила».
 func TestRealityFingerprintAllEntryPaths(t *testing.T) {
 	const pbk = "AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw"
 
@@ -27,7 +28,7 @@ func TestRealityFingerprintAllEntryPaths(t *testing.T) {
 			name:     "uri vless firefox",
 			input:    "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?security=reality&fp=firefox&pbk=" + pbk + "&sid=ab#n",
 			wantWarn: true,
-			wantFP:   "chrome",
+			wantFP:   "firefox",
 		},
 		{
 			// Пустой fp у vless — наш дефолт `random` (D-009). Warning'а нет
@@ -48,7 +49,7 @@ func TestRealityFingerprintAllEntryPaths(t *testing.T) {
 			name:     "uri anytls safari",
 			input:    "anytls://pass@example-1.com:443?security=reality&fp=safari&pbk=" + pbk + "&sid=ab#n",
 			wantWarn: true,
-			wantFP:   "chrome",
+			wantFP:   "safari",
 		},
 	}
 
@@ -69,7 +70,7 @@ func TestRealityFingerprintAllEntryPaths(t *testing.T) {
 			`"streamSettings":{"network":"tcp","security":"reality",` +
 			`"realitySettings":{"serverName":"www.example-3.com","fingerprint":"firefox","publicKey":"` + pbk + `","shortId":"ab"}}}]}]`
 		node := parseBodySingleNode(t, raw)
-		assertRealityHealed(t, node.Outbound, node.Warnings, true, "chrome")
+		assertRealityHealed(t, node.Outbound, node.Warnings, true, "firefox")
 	})
 
 	t.Run("singbox json import firefox", func(t *testing.T) {
@@ -79,7 +80,7 @@ func TestRealityFingerprintAllEntryPaths(t *testing.T) {
 			`"utls":{"enabled":true,"fingerprint":"firefox"},` +
 			`"reality":{"enabled":true,"public_key":"` + pbk + `","short_id":"ab"}}}]}`
 		node := parseBodySingleNode(t, raw)
-		assertRealityHealed(t, node.Outbound, node.Warnings, true, "chrome")
+		assertRealityHealed(t, node.Outbound, node.Warnings, true, "firefox")
 	})
 }
 
