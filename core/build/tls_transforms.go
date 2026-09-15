@@ -194,21 +194,18 @@ func mixedCaseSNI(host string) string {
 	return strings.Join(labels, ".")
 }
 
-// HealRealityFingerprints приводит tls.utls.fingerprint КАЖДОГО outbound'а с
-// живым reality к chrome-семейству — финальный рубеж перед эмиссией (D-104).
+// HealRealityFingerprints доводит uTLS у КАЖДОГО outbound'а с живым reality
+// — финальный рубеж перед эмиссией (D-119, заменяет D-104): включает uTLS-блок,
+// которого reality требует, и ставит chrome там, где отпечаток не выбирал
+// никто (пусто или наш неявный `random`). Явный отпечаток узла не трогается:
+// отпечаток — выбор подписки, и сборка делает так, как она велит.
 //
-// Зачем именно здесь, а не в парсере: REALITY-сервер Xray ≥ v26.9.8
-// (XTLS/REALITY@8cdf7bf, SPEC 083 ядра) требует в ClientHello key_share
-// X25519MLKEM768; его несут только chrome-спеки uTLS, а firefox/edge/safari/
-// ios/android/360/qq шлют голый X25519 и МОЛЧА уезжают на камуфляжный сайт.
-// Значение же в узле — нормативный `entry` контракта (CANON §2), его сверяет
-// корпус с LxBox побайтно; LxBox правит ровно на этом шаге
-// (post_steps/heal_unknown_utls_fingerprints.dart), и парсерная подмена увела
-// бы две стороны в расхождение вместо паритета.
+// Живёт здесь, а не в парсере: значение в узле — нормативный `entry`
+// контракта (CANON §2); LxBox правит на том же шаге
+// (post_steps/heal_unknown_utls_fingerprints.dart).
 //
 // В отличие от ApplyTLSTransforms правка НЕ опциональна и НЕ ограничена
-// первым хопом: мёртвый ClientHello убивает узел на любой позиции цепочки.
-// Пользователю об этом говорит warning `reality_fp_not_chrome` на узле.
+// первым хопом: reality без uTLS не стартует на любой позиции цепочки.
 //
 // Возвращает новый слайс; вход не мутируется.
 func HealRealityFingerprints(outbounds []json.RawMessage) []json.RawMessage {
@@ -242,11 +239,11 @@ func HealRealityFingerprints(outbounds []json.RawMessage) []json.RawMessage {
 		if changed {
 			healed++
 			tag, _ := ob["tag"].(string)
-			debuglog.WarnLog("Build: outbound %q: REALITY с uTLS-отпечатком %q — подставлен chrome (Xray >= v26.9.8 принимает только chrome-подобный ClientHello, SPEC 083)", tag, original)
+			debuglog.InfoLog("Build: outbound %q: REALITY with the implicit uTLS fingerprint %q — chrome written instead (D-119)", tag, original)
 		}
 	}
 	if healed > 0 {
-		debuglog.InfoLog("Build: REALITY fingerprint healed on %d outbound(s)", healed)
+		debuglog.InfoLog("Build: REALITY implicit fingerprint set to chrome on %d outbound(s)", healed)
 	}
 	return out
 }

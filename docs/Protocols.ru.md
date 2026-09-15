@@ -109,8 +109,8 @@
 Примеры первого вида: `masque_vhttp_invalid` (`vhttp` вне `{h3,h2}` принудительно
 становится `h3`), `naive_padding_ignored`, `naive_extra_headers_invalid`
 (битая пара `extra-headers` пропущена, остальные заголовки живут),
-`reality_fp_not_chrome` (у REALITY-узла отпечаток вне chrome-семейства — на
-подключении используется `chrome`), `packet_encoding_unknown`,
+`reality_fp_not_chrome` (у REALITY-узла явный отпечаток вне chrome-семейства —
+остаётся как есть; серверы Xray ≥ v26.9.8 его отвергают), `packet_encoding_unknown`,
 `ws_early_data_converted` (хвост Xray `?ed=N` разложен на `max_early_data` +
 `early_data_header_name` — путь в конфиге намеренно не тот, что в ссылке),
 `amnezia_container_choice` (в профиле `vpn://` было несколько контейнеров, и
@@ -213,7 +213,7 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
 - `headerType` — вместе с `type=raw` или `tcp` и значением `http` задаёт транспорт типа HTTP (обфускация), см. отчёт 023
 - `serviceName` / `service_name` — имя gRPC-сервиса → `transport.service_name`
 - **Дефолт `fp`:** если ни `fp`, ни `fingerprint` не заданы, для VLESS подставляется `random`. У Trojan такого дефолта нет — там uTLS-блок появляется только при распознанном `fp` (и ключ `fingerprint` не читается).
-- **⚠️ У REALITY отпечаток всегда из chrome-семейства.** Везде, где реально эмитится блок `tls.reality`, отпечаток **в сгенерированном `config.json`** приводится к chrome-семейству (`chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk` — ядро схлопывает все шесть в `HelloChrome_Auto`). Пустой `fp` становится `chrome` явно; любое значение вне семейства становится `chrome`, и на узел вешается код `reality_fp_not_chrome`. Причина: REALITY-сервер на Xray ≥ v26.9.8 требует в ClientHello `key_share X25519MLKEM768`, а несут его только chrome-спеки uTLS — `firefox`, `edge`, `safari`, `ios`, `android`, `360` и `qq` шлют голый X25519, и сервер после этого **молча** проксирует соединение на свой камуфляжный сайт. Ошибки нет нигде: узел просто не везёт трафик. `random` мёртв в четырёх случаях из пяти, поэтому подменяется тоже (без предупреждения — от собственного дефолта парсера он неотличим). Значение на самом узле не трогается, чинится только эмитируемый конфиг. Если REALITY **не** эмитится (мусорный `pbk` с деградацией до plain TLS или `security=reality` без `pbk`), правило не применяется.
+- **⚠️ REALITY: явный отпечаток сохраняется, пустой становится chrome (D-119).** Везде, где реально эмитится блок `tls.reality`, uTLS включается всегда (без него ядро REALITY не поднимает). Отпечаток, который узел задал явно, уходит в `config.json` как есть; пустой `fp` и наш собственный неявный дефолт `random` пишутся как `chrome`. REALITY-сервер на Xray ≥ v26.9.8 требует в ClientHello `key_share X25519MLKEM768`, который несут только chrome-спеки uTLS, поэтому узел с явным отпечатком вне chrome-семейства получает код `reality_fp_not_chrome`: если соединение не устанавливается — попробуйте `chrome`. Сам отпечаток за вас не подменяется: это выбор подписки, и лаунчер делает так, как она велит (D-104 с принудительным chrome заменён).
 - `packetEncoding` — поле outbound `packet_encoding`. **Allow-list:** только `xudp`, `packetaddr`, `none` (включая пустое значение). Любое другое значение **отбрасывается с warning** в `debuglog` — sing-box не примёт неизвестные. См. [доку VLESS](https://sing-box.sagernet.org/configuration/outbound/vless/)
 - `spx`, `quicSecurity`, `authority` — часто встречаются в ссылках Xray/панелей; в документированный клиентский JSON sing-box **не переносятся**, на разбор ссылки не влияют
 - `mode` и `extra` — **влияют**, но только при `type=xhttp`: `mode` уезжает в транспорт как есть, `extra` — это URL-encoded JSON, из которого читаются те же поля xhttp (значения из `extra` перекрывают одноимённые flat-параметры). См. [параметры `xhttp`](#параметры-транспорта-xhttp) ниже

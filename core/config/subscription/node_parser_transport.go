@@ -880,11 +880,10 @@ func vlessTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, boo
 		if realityShortIDWouldDegrade(rawSID) {
 			node.AddWarning(WarnRealityShortIDInvalid)
 		}
-		// D-104: отпечаток вне chrome-семейства на сборке станет chrome —
-		// REALITY-сервер Xray ≥ v26.9.8 иначе молча уводит на камуфляж.
-		// Значение узла здесь НЕ трогаем: `entry` нормативен (CANON §2), и
-		// LxBox правит его на том же шаге сборки, а не в парсере.
-		if realityFingerprintWouldDegrade(fp) {
+		// D-119: отпечаток вне chrome-семейства уходит в конфиг как есть,
+		// узел лишь предупреждает — серверы Xray ≥ v26.9.8 такой ClientHello
+		// отвергают. Значение узла НЕ трогаем: `entry` нормативен (CANON §2).
+		if realityFingerprintRisky(fp) {
 			node.AddWarning(WarnRealityFPNotChrome)
 		}
 		tlsData := map[string]interface{}{
@@ -997,23 +996,30 @@ func IsChromeFamilyFingerprint(fp string) bool {
 	return ok
 }
 
-// EnforceRealityFingerprint приводит tls.utls.fingerprint к chrome-семейству у
-// блока, где РЕАЛЬНО эмитится reality (D-104, SPEC 083 ядра).
+// EnforceRealityFingerprint дописывает uTLS-блок у tls, где РЕАЛЬНО эмитится
+// reality, и ставит отпечаток там, где его не выбирал никто (D-119, заменяет
+// D-104).
 //
-// Зачем: REALITY-сервер Xray ≥ v26.9.8 (XTLS/REALITY@8cdf7bf) требует в
-// ClientHello key_share X25519MLKEM768; без него он МОЛЧА проксирует
-// соединение на камуфляжный сайт. firefox/edge/safari/ios/android/360/qq шлют
-// голый X25519 и мертвы, `random` мёртв в 4 случаях из 5. Ошибки нет —
-// пользователь видит «узел есть, интернета нет».
+// Явный отпечаток узла уходит в конфиг как есть: отпечаток — выбор подписки,
+// и лаунчер делает так, как она велит (решение владельца). D-104 подменял всё
+// вне chrome-семейства на chrome, исходя из того, что КАЖДЫЙ REALITY-сервер —
+// Xray ≥ v26.9.8, которому нужен key_share X25519MLKEM768; это не так, и
+// подмена чинила одни узлы ценой чужого выбора. Требование новых серверов
+// пользователь видит подсказкой на узле (reality_fp_not_chrome).
 //
-// Правит tlsData на месте; возвращает (исходный отпечаток, была ли подмена).
-// Исходное значение нужно вызывающему для параметра warning'а.
+// Что правится:
+//   - нет uTLS-блока или он выключен — блок включается: без него ядро падает
+//     «uTLS is required by reality client»;
+//   - пустой отпечаток — пишется chrome явно (ядро трактует пустой как chrome,
+//     но конфиг читают и другие инструменты);
+//   - `random` — наш неявный дефолт пустого fp у vless/anytls (D-009), от
+//     явного неотличим; против Xray ≥ v26.9.8 он мёртв в 4 случаях из 5, и это
+//     наш выбор, а не провайдера — становится chrome.
 //
-// Место вызова — СБОРКА КОНФИГА, а не парсер: значение в узле нормативно
-// (CANON §2, `entry` сверяется с LxBox побайтно), и подмена в парсере увела бы
-// корпус в расхождение с Dart, который правит ровно так же на выходе
-// (heal_unknown_utls_fingerprints.dart). Предупреждение на узле — наоборот,
-// дело парсера (см. noteRealityFingerprint).
+// Правит tlsData на месте; возвращает (исходный отпечаток, была ли подмена
+// непустого значения). Место вызова — сборка конфига: значение в узле
+// нормативно (CANON §2), LxBox правит на том же шаге
+// (heal_unknown_utls_fingerprints.dart).
 func EnforceRealityFingerprint(tlsData map[string]interface{}) (original string, changed bool) {
 	if tlsData == nil {
 		return "", false
@@ -1035,32 +1041,31 @@ func EnforceRealityFingerprint(tlsData map[string]interface{}) (original string,
 		utls["enabled"] = true
 	}
 	cur, _ := utls["fingerprint"].(string)
-	if IsChromeFamilyFingerprint(cur) {
-		// Пустой отпечаток ядро трактует как chrome, но полагаться на его
-		// дефолт нельзя: конфиг читают и другие инструменты. Пишем явно.
-		if cur == "" {
-			utls["fingerprint"] = utlsJunkFallback
-			return "", false
-		}
-		return cur, false
+	switch cur {
+	case "":
+		utls["fingerprint"] = utlsJunkFallback
+		return "", false
+	case "random":
+		utls["fingerprint"] = utlsJunkFallback
+		return cur, true
 	}
-	utls["fingerprint"] = utlsJunkFallback
-	return cur, true
+	return cur, false
 }
 
-// realityFingerprintWouldDegrade сообщает, что у узла эмитится reality, а
-// отпечаток вне chrome-семейства — то есть на сборке он будет подменён.
+// realityFingerprintRisky сообщает, что у узла эмитится reality с явным
+// отпечатком вне chrome-семейства: серверы Xray ≥ v26.9.8 такой ClientHello
+// отвергают, и если соединение не устанавливается, стоит попробовать chrome
+// (D-119). Сам отпечаток не подменяется.
 //
-// `random` из-под правила выведён СОЗНАТЕЛЬНО: это наш же дефолт пустого fp у
-// vless/anytls (D-009), от явного `fp=random` он неотличим, и warning на нём
-// кричал бы на каждой второй reality-ноде. Подмена на сборке всё равно
-// срабатывает. Правило дословно повторяет LxBox (utls_fingerprint.dart:110-113).
-func realityFingerprintWouldDegrade(fp string) bool {
+// `random` из-под правила выведен СОЗНАТЕЛЬНО: это наш же дефолт пустого fp у
+// vless/anytls (D-009), от явного `fp=random` он неотличим, и на сборке он
+// становится chrome. Правило дословно повторяет LxBox (utls_fingerprint.dart).
+func realityFingerprintRisky(fp string) bool {
 	return fp != "random" && !IsChromeFamilyFingerprint(fp)
 }
 
 // noteRealityFingerprint вешает WarnRealityFPNotChrome, если у ГОТОВОГО
-// outbound'а эмитится reality с отпечатком вне chrome-семейства (D-104).
+// outbound'а эмитится reality с отпечатком вне chrome-семейства (D-119).
 //
 // Парная к EnforceRealityFingerprint функция для путей, где узел появляется
 // ПОЗЖЕ блока tls (Xray-JSON, sing-box-импорт): там проверять нечего до
@@ -1082,7 +1087,7 @@ func noteRealityFingerprint(node *configtypes.ParsedNode, outbound map[string]in
 	}
 	utls, _ := tlsMap["utls"].(map[string]interface{})
 	fp, _ := utls["fingerprint"].(string)
-	if realityFingerprintWouldDegrade(fp) {
+	if realityFingerprintRisky(fp) {
 		node.AddWarning(WarnRealityFPNotChrome)
 	}
 }

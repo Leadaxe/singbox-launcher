@@ -12,3 +12,9 @@ updates:
       - "go"
     target-branch: "develop"
 
+    ignore:
+      # golang.org/x/sys 0.48+ требует Go 1.26, а CI и сборки релиза на Go 1.25
+      # (PR #123 закрыт). Снять вместе с переходом тулчейна на Go 1.26 — с проверкой
+      # старых macOS (Big Sur) и CI-джобы win7 (у неё свой go.win7.mod на go1.20).
+      - dependency-name: "golang.org/x/sys"
+        versions: [">= 0.48.0"]
