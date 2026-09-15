@@ -94,10 +94,11 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		// же приёмом «в конец общего списка».
 		bundledRows = append(bundledRows, renderNodeSectionDNSRows(m, dialogParent())...)
 
-		// Обе карты инвариантны в пределах одной пересборки — считаются ДО
-		// цикла: внутри него они заново анмаршалили весь список серверов и
-		// все переменные шаблона на КАЖДУЮ строку (O(n²) на десятках строк).
-		varValues := dnsVarValues(m)
+		// Карта включённости инвариантна в пределах одной пересборки —
+		// считается ДО цикла: внутри него она заново анмаршалила бы весь
+		// список серверов на КАЖДУЮ строку (O(n²) на десятках строк).
+		// Значения переменных — свои у каждого сервера (SPEC 129): их
+		// объявления и выбор живут в записи, и считаются по тегу строки.
 		enabledByTag := dnsEnabledByTag(m.DNSServers)
 
 		for i := range m.DNSServers {
@@ -110,7 +111,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				if err := json.Unmarshal(raw, &obj); err != nil {
 					obj = nil
 				}
-				sum := dnsServerSummaryFromObj(obj, varValues)
+				sum := dnsServerSummaryFromObj(obj, dnsVarValuesFor(m, dnsJSONStringField(obj, "tag")))
 				if obj == nil && len(raw) > 0 {
 					sum = dnsServerSummaryFromInvalidRaw(raw)
 				}
@@ -509,36 +510,25 @@ func dnsServerSummaryFromInvalidRaw(raw json.RawMessage) string {
 	return s
 }
 
-// dnsVarValues — значения переменных шаблона: правки пользователя поверх
-// дефолтов объявлений.
-//
-// SettingsVars несёт только то, что пользователь МЕНЯЛ; переменную, которую
-// он не трогал, там не найти, и без отката на дефолт объявления строка
-// показывала бы служебное «@dns_google_dot_dns_ip» вместо адреса.
-func dnsVarValues(m *wizardmodels.WizardModel) map[string]string {
-	if m == nil {
+// dnsVarValuesFor — значения, которые уедут в тело сервера tag (SPEC 129):
+// переменные самого сервера — выбор из его записи, иначе умолчание для
+// таргета модели; прочие имена — переменные шаблона (правки Settings поверх
+// умолчаний). Те же правила, что у сборки (template.DNSServerVarValues):
+// строка списка обязана показывать то, что реально уезжает в конфиг, а не
+// служебное «@dns_ip».
+func dnsVarValuesFor(m *wizardmodels.WizardModel, tag string) map[string]string {
+	if m == nil || m.TemplateData == nil {
 		return nil
 	}
-	out := make(map[string]string, len(m.SettingsVars)+8)
-	if m.TemplateData != nil {
-		for _, v := range m.TemplateData.Vars {
-			if def := v.DefaultValue.Scalar; def != "" {
-				out[v.Name] = def
-			}
-		}
-	}
-	for k, v := range m.SettingsVars {
-		if v != "" {
-			out[k] = v
-		}
-	}
-	return out
+	td := m.TemplateData
+	return wizardtemplate.DNSServerVarValues(td.DNSServerVars[tag], m.DNSTemplateVars[tag],
+		td.Vars, m.SettingsVars, m.Target.Normalized())
 }
 
 // dnsResolvePlaceholder показывает ЗНАЧЕНИЕ переменной вместо её имени.
 //
-// Тела серверов UI берёт прямо из шаблона, где `@dns_google_dot_dns_ip` ещё
-// не подставлен — подстановка живёт на пути сборки конфига. В строке списка
+// Тела серверов UI берёт прямо из шаблона, где `@dns_ip` ещё не
+// подставлен — подстановка живёт на пути сборки конфига. В строке списка
 // пользователь должен видеть адрес, который реально уедет в конфиг, а не
 // служебное имя переменной.
 func dnsResolvePlaceholder(v string, vars map[string]string) string {

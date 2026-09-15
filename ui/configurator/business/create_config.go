@@ -158,13 +158,16 @@ func buildConfigWithExclusions(model *wizardmodels.WizardModel, forPreview bool)
 		model.DNSTemplateOverrides,
 		templateDNSTags,
 	)
+	// SPEC 129: значения переменных шаблонных серверов — полем записи, как
+	// у сохранения: превью обязано собрать то же, что уйдёт в config.json.
+	wizardmodels.ApplyDNSTemplateVarsToState(&dnsV6, model.DNSTemplateVars)
 	// Зеркало Save-пути (core/config_service.go::dnsConfigForUpdate): при
 	// активном v6 servers/rules идут ТОЛЬКО через ctx.Preset.DNS →
-	// ResolveDNS, где template-серверы получают подстановку @dns_*-
+	// ResolveDNS, где template-серверы получают подстановку своих
 	// переменных. Прежний код дублировал их и в ctx.DNS.Servers: сырое тело
 	// с плейсхолдерами эмитилось первым, дедуп по тегу выбрасывал
 	// подставленную версию — и превью с remote-деплоем уносили literal
-	// `@dns_google_dot_dns_ip`, на котором удалённое ядро отвергало конфиг.
+	// `@dns_ip`, на котором удалённое ядро отвергало конфиг.
 	if len(dnsV6.Servers) > 0 || len(dnsV6.Rules) > 0 || len(rulesV6) > 0 {
 		ctx.DNS.Servers = nil
 	}
@@ -193,6 +196,8 @@ func buildConfigWithExclusions(model *wizardmodels.WizardModel, forPreview bool)
 		// SPEC 109: ОБЪЯВЛЕНИЯ переменных — из них подстановка в теле
 		// DNS-сервера берёт тип и дефолт. GlobalVars выше несёт только значения.
 		TemplateVars: model.TemplateData.Vars,
+		// SPEC 129: объявления переменных шаблонных DNS-серверов по тегу.
+		DNSServerVars: model.TemplateData.DNSServerVars,
 	}
 
 	res, err := build.BuildConfig(ctx)

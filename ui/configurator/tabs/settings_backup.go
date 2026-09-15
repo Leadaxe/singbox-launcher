@@ -132,11 +132,18 @@ func backupExportOptions(presenter *wizardpresentation.WizardPresenter, st *core
 	if model := presenter.Model(); model != nil {
 		td = model.TemplateData
 	}
+	values := make(map[string]string, len(st.Vars))
+	for _, v := range st.Vars {
+		values[v.Name] = v.Value
+	}
 	return backup.ExportOptions{
 		AppVersion: constants.AppVersion,
 		Platform:   runtime.GOOS,
 		Directions: build.ResolveDirections(st.Directions, td, build.TargetSpecFromState(st)),
 		BlockTag:   td.DirectionBlockTag(),
+		// SPEC 129: записи шаблонных DNS-серверов и пресетов едут без
+		// умолчаний и необъявленных имён (писатель — тоже писатель, Н4).
+		RecordVars: wizardtemplate.RecordVarDeclsFor(td, values, build.TargetSpecFromState(st)),
 	}
 }
 
@@ -281,13 +288,21 @@ func warnLines(warns []backup.Warning, limit int) string {
 func warnText(w backup.Warning) string {
 	switch w.Code {
 	case backup.WarnBackupUnknownOutbound:
+		// SPEC 129 Н9: у DNS-сервера цель — канал запроса, и выключается
+		// сервер, а не правило.
+		if w.Kind == "dns_server" {
+			return fmt.Sprintf(locale.T("%s — this DNS server's channel does not exist here, the server is imported turned off"), w.Detail)
+		}
 		return fmt.Sprintf(locale.T("%s — target does not exist here, the rule is imported turned off"), w.Detail)
 	case backup.WarnBackupFinalDropped:
 		return fmt.Sprintf(locale.T("%s — default route target does not exist here, left unchanged"), w.Detail)
 	case backup.WarnBackupUnknownPreset:
 		return fmt.Sprintf(locale.T("%s — unknown preset, the rule is imported turned off"), w.Detail)
 	case backup.WarnBackupVarSkipped:
-		return fmt.Sprintf(locale.T("%s — this setting means something else on this machine, skipped"), w.Detail)
+		return varSkippedWarnText(w)
+	case backup.WarnBackupDNSEntrySkipped:
+		return fmt.Sprintf(locale.T("%s — this template has no such DNS server, the entry is not imported"),
+			strings.TrimPrefix(w.Detail, "template:"))
 	case backup.WarnBackupUnknownField:
 		return fmt.Sprintf(locale.T("%s — not supported here, skipped"), w.Detail)
 	case backup.WarnBackupFieldTypeMismatch:
@@ -347,6 +362,28 @@ func warnText(w backup.Warning) string {
 		// Сырой код остаётся последним рубежом, чтобы новое предупреждение
 		// не пропало молча, если фразу забыли.
 		return w.Code + ": " + w.Detail
+	}
+}
+
+// varSkippedWarnText — непримененная переменная (SPEC 129 §5.6): причина и
+// носитель различают четыре разных разговора с пользователем.
+func varSkippedWarnText(w backup.Warning) string {
+	record := w.Record
+	if i := strings.Index(record, ":"); i >= 0 {
+		record = record[i+1:]
+	}
+	switch w.Reason {
+	case corestate.RecordVarUndeclared:
+		if w.Kind == "preset" {
+			return fmt.Sprintf(locale.T("%s: parameter \"%s\" is not declared by this template's preset, skipped"), record, w.Detail)
+		}
+		return fmt.Sprintf(locale.T("%s: parameter \"%s\" is not declared by this template's DNS server, skipped"), record, w.Detail)
+	case corestate.RecordVarSuperseded:
+		return fmt.Sprintf(locale.T("%s — the file also sets this DNS server's parameters in its entry; the entry wins, this older form is skipped"), w.Detail)
+	case corestate.RecordVarNoRecord:
+		return fmt.Sprintf(locale.T("%s — the file has no entry for this DNS server, the value is skipped"), w.Detail)
+	default:
+		return fmt.Sprintf(locale.T("%s — this setting means something else on this machine, skipped"), w.Detail)
 	}
 }
 

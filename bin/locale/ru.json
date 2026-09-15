@@ -3305,6 +3305,9 @@
   "%s — target does not exist here, the rule is imported turned off": {
     "value": "%s — такой цели здесь нет, правило импортировано выключенным"
   },
+  "%s — this DNS server's channel does not exist here, the server is imported turned off": {
+    "value": "%s — канала этого DNS-сервера здесь нет, сервер импортирован выключенным"
+  },
   "%s — default route target does not exist here, left unchanged": {
     "value": "%s — цели маршрута по умолчанию здесь нет, оставлено без изменений"
   },
@@ -3313,6 +3316,21 @@
   },
   "%s — this setting means something else on this machine, skipped": {
     "value": "%s — на этой машине эта настройка означает другое, пропущена"
+  },
+  "%s: parameter \"%s\" is not declared by this template's DNS server, skipped": {
+    "value": "%s: параметр «%s» не объявлен DNS-сервером этого шаблона, пропущен"
+  },
+  "%s: parameter \"%s\" is not declared by this template's preset, skipped": {
+    "value": "%s: параметр «%s» не объявлен пресетом этого шаблона, пропущен"
+  },
+  "%s — the file also sets this DNS server's parameters in its entry; the entry wins, this older form is skipped": {
+    "value": "%s — файл задаёт параметры этого DNS-сервера и в его записи; запись важнее, старая форма пропущена"
+  },
+  "%s — the file has no entry for this DNS server, the value is skipped": {
+    "value": "%s — в файле нет записи этого DNS-сервера, значение пропущено"
+  },
+  "%s — this template has no such DNS server, the entry is not imported": {
+    "value": "%s — в этом шаблоне нет такого DNS-сервера, запись не импортирована"
   },
   "%s — not supported here, skipped": {
     "value": "%s — здесь не поддерживается, пропущено"

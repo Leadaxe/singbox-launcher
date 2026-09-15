@@ -11,6 +11,7 @@ import (
 
 	"singbox-launcher/core/backup"
 	corestate "singbox-launcher/core/state"
+	wizardtemplate "singbox-launcher/core/template"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 )
 
@@ -87,5 +88,8 @@ func (p *WizardPresenter) backupImportOptions() backup.ImportOptions {
 	}
 	opts.BlockTag = td.DirectionBlockTag()
 	opts.SystemTags = td.SystemOutboundTags()
+	// SPEC 129: объявления шаблона приёмника — перенос корневых
+	// `dns_<tag>_<var>` файла в записи, нормы записи, типы каналов для Н9.
+	opts.RecordVars = wizardtemplate.RecordVarDeclsFor(td, p.model.SettingsVars, p.model.Target)
 	return opts
 }

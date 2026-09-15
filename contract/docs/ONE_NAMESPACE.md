@@ -110,9 +110,10 @@ srs: `{ "kind": "srs", "name": "…", "enabled": true, "num": 1010, "refs": ["ht
 | включён | `enabled` | `enabled` (у правил сегодня не хранится — добавят) | `enabled` | `enabled` |
 | имя правила | — | `name` | `name` | `name` (необязательно; LxBox пишет всегда) |
 | id правила | — | `id` у srs-DNS-правил | — | `id` (необязательно, как у правил маршрута) |
-| preset/template | `ref` | `preset`/`template` | `ref` | `kind: preset \| template` + `ref` |
+| preset/template | `ref` | `preset`/`template` | `ref` | `kind: preset` + `ref`; `kind: template` + `tag` и значения переменных сервера в `vars` (D-118) |
 
-Целевая запись DNS-сервера: `{ "kind": "user", "tag": "my-doh", "enabled": true, "body": { "type": "https", "server": "…" } }`.
+Целевая запись DNS-сервера: `{ "kind": "user", "tag": "my-doh", "enabled": true, "body": { "type": "https", "server": "…" } }`;
+шаблонного — `{ "kind": "template", "tag": "google_udp", "enabled": true, "vars": { "outbound": "vpn-1" } }` (нормы `vars` — `TEMPLATE_LANG.md` §6.4).
 Целевая запись DNS-правила: `{ "kind": "user", "name": "…", "enabled": true, "body": { "domain_suffix": […], "server": "my-doh" } }`.
 
 ## 2. Секции узла в целевой форме

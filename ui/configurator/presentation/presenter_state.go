@@ -169,6 +169,8 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 		p.model.DNSTemplateOverrides,
 		templateDNSTags,
 	)
+	// SPEC 129: значения переменных шаблонных серверов — полем записи.
+	wizardmodels.ApplyDNSTemplateVarsToState(&state.DNS, p.model.DNSTemplateVars)
 	// `id`/`name` DNS-правила — те же провозимые метаданные: модель несёт их
 	// полями DNSUserRule, но запись могла приехать и мимо модели (импорт
 	// бэкапа, fallback на DNSRulesText) — тогда их восстанавливает перенос.
@@ -229,9 +231,27 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 				state.Vars = append(state.Vars, wizardmodels.PersistedSettingVar{Name: vd.Name, Value: val})
 			}
 		}
+		// SPEC 129 Н2–Н4: сохранение — писатель. Записи шаблонных серверов и
+		// пресетов уходят без умолчаний, без необъявленных имён и без сирот —
+		// тем же правилом, что у импорта, экспорта и debug API.
+		corestate.ApplyRecordVars(state, p.recordVarDecls(state))
 	}
 
 	return state
+}
+
+// recordVarDecls — объявления шаблона модели для значений переменных записи
+// состояния st (SPEC 129): умолчания для таргета модели, `#if` в них видит
+// значения переменных этого состояния.
+func (p *WizardPresenter) recordVarDecls(st *wizardmodels.WizardStateFile) *corestate.RecordVarDecls {
+	if p.model == nil || p.model.TemplateData == nil || st == nil {
+		return nil
+	}
+	values := make(map[string]string, len(st.Vars))
+	for _, v := range st.Vars {
+		values[v.Name] = v.Value
+	}
+	return wizardtemplate.RecordVarDeclsFor(p.model.TemplateData, values, p.model.Target)
 }
 
 // SaveCurrentState сохраняет текущее состояние в state.json.
@@ -321,6 +341,12 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 	// Многострочный tun_address (v4+v6 в одном поле) → два однострочных
 	// поля. До restoreConfigParams: оно читает уже разведённые значения.
 	wizardmodels.MigrateTunAddressSplit(stateFile)
+	// SPEC 129: корневые `dns_<tag>_<var>` — в записи серверов, нормы записи
+	// обоих носителей. СТРОГО до restoreConfigParams: его фильтр сирот снимает
+	// имена, которых шаблон не объявил, а склеенных имён у шаблона больше нет —
+	// перенос после фильтра терял бы маршрут DNS на первом же сохранении
+	// (ловушка Л1). Таргет модели уже восстановлен выше: умолчания — для него.
+	corestate.ApplyRecordVars(stateFile, p.recordVarDecls(stateFile))
 
 	// Восстановление config_params и vars (шаг 4)
 	p.restoreConfigParams(stateFile)

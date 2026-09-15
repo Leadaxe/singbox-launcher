@@ -88,6 +88,10 @@ func decode10(b *Backup10, opts ImportOptions) (*decodedFile, error) {
 
 	out.DNS = decode10DNS(b.DNS)
 	out.Vars = b.Vars
+	// SPEC 129 Н8: корневые `dns_<tag>_<var>` (форма D-117) — в записи
+	// серверов ФАЙЛА, до слияния: importVars идёт раньше importDNS и назвал
+	// бы имя непереносимым прежде, чем оно нашло свою запись.
+	moveFileRootDNSVars(out, opts.RecordVars)
 	if b.Route != nil {
 		out.RouteFinal = b.Route.Final
 	}
@@ -629,7 +633,14 @@ func decode10DNS(in *state.DNSOptions) *decodedDNS {
 		DefaultDomainResolver: in.DefaultDomainResolver,
 	}
 	for _, srv := range in.Servers {
-		out.Servers = append(out.Servers, state.CloneDNSServer(srv))
+		cp := state.CloneDNSServer(srv)
+		if cp.Kind != state.DNSServerKindTemplate {
+			// `vars` бывают только у записи шаблонного сервера (SPEC 129 Н1):
+			// у другого вида ключ назван backup_unknown_field разбором, в
+			// состояние он не едет (Л5 — рефлексия ключей видов не различает).
+			cp.Vars = nil
+		}
+		out.Servers = append(out.Servers, cp)
 	}
 	for _, r := range in.Rules {
 		out.Rules = append(out.Rules, state.CloneDNSRule(r))

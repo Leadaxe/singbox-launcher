@@ -129,10 +129,7 @@ func (ns *NodeSections) Clone() *NodeSections {
 	if ns.DNS != nil {
 		dns := &NodeSectionsDNS{}
 		for _, s := range ns.DNS.Servers {
-			dns.Servers = append(dns.Servers, DNSServer{
-				Kind: s.Kind, Tag: s.Tag, Ref: s.Ref, Enabled: s.Enabled,
-				Body: cloneJSONMap(s.Body),
-			})
+			dns.Servers = append(dns.Servers, CloneDNSServer(s))
 		}
 		for _, r := range ns.DNS.Rules {
 			dns.Rules = append(dns.Rules, DNSRule{
@@ -155,7 +152,21 @@ func CloneRule(r Rule) Rule { return cloneRule(r) }
 
 func CloneDNSServer(s DNSServer) DNSServer {
 	out := s
+	out.Vars = cloneStringMap(s.Vars)
 	out.Body = cloneJSONMap(s.Body)
+	return out
+}
+
+// cloneStringMap — копия карты значений переменных записи; nil и пустая
+// дают nil (пустой объект не пишется, SPEC 129 Н1).
+func cloneStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
 	return out
 }
 

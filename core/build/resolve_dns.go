@@ -18,6 +18,7 @@ package build
 
 import (
 	"encoding/json"
+	"strings"
 
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/template"
@@ -180,14 +181,14 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 		} else {
 			enabled = stateTemplateEnabled(state, tag, defaultEnabled)
 		}
-		// SPEC 109: тело template-сервера может содержать `@переменные` —
+		// SPEC 109/129: тело template-сервера может содержать `@переменные` —
 		// записи, пришедшие во вложенной форме, объявляют собственные vars
-		// (канал, адрес провайдера, профиль). Раньше в этой ветке
-		// подстановки не было вовсе: в `dns_options.servers` шаблона
-		// плейсхолдеры не встречались, и тело уезжало в конфиг как есть.
-		// Без подстановки `"detour": "@dns_google_dot_outbound"` доедет до
-		// ядра строкой, и конфиг будет отвергнут.
-		body := substituteTemplateDNSServer(stripDNSWizardOnlyFields(raw), td, templateVars, target)
+		// (канал, адрес провайдера, профиль). Объявления — у сервера
+		// (td.DNSServerVars), значения — в его записи состояния; без
+		// подстановки `"detour": "@outbound"` доедет до ядра строкой, и
+		// конфиг будет отвергнут.
+		body := substituteTemplateDNSServer(stripDNSWizardOnlyFields(raw),
+			td.DNSServerVars[tag], stateTemplateVars(state, tag), td, templateVars, target)
 		out.Servers = append(out.Servers, ResolvedDNSServer{
 			Tag:      tag,
 			LocalTag: tag,
@@ -441,6 +442,20 @@ func stateTemplateEnabled(state *corestate.State, tag string, defaultEnabled boo
 	return defaultEnabled
 }
 
+// stateTemplateVars — значения переменных kind=template записи (SPEC 129).
+// Записи нет — nil: все переменные сервера следуют шаблону.
+func stateTemplateVars(state *corestate.State, tag string) map[string]string {
+	if state == nil {
+		return nil
+	}
+	for _, s := range state.DNS.Servers {
+		if s.Kind == corestate.DNSServerKindTemplate && s.Tag == tag {
+			return s.Vars
+		}
+	}
+	return nil
+}
+
 // statePresetServerEnabled — читает enabled для kind=preset entry в state.
 // Если state нет или entry нет — возвращает default (true).
 func statePresetServerEnabled(state *corestate.State, ref string, defaultEnabled bool) bool {
@@ -537,29 +552,38 @@ func substitutePresetDNSServer(ds *template.PresetDNSServer, presetVars []templa
 	return out
 }
 
-// substituteTemplateDNSServer подставляет переменные шаблона в тело
-// DNS-сервера из `dns_options.servers`.
+// substituteTemplateDNSServer подставляет переменные в тело DNS-сервера из
+// `dns_options.servers` (SPEC 129 §4.1).
 //
-// Значения берутся из state (templateVars) с откатом на дефолты шаблона:
-// пользователь мог ничего не выбирать, и тогда работает то, что объявил
-// автор шаблона. Тот же движок, что у пресетных серверов
-// (SubstituteVarsInJSONStrict) — второй реализацией подстановки эти две
-// ветки разъехались бы на первой же правке языка шаблонов.
+// Имя, объявленное сервером (decls): значение из `vars` его записи → умолчание
+// объявления для цели → «не задано», и тогда ключ с этим плейсхолдером
+// выпадает (у LxBox `null` → ключа нет). Имя, не объявленное сервером, —
+// переменная шаблона со значением из templateVars (расширение лаунчера;
+// необъявленное ни там, ни там валидатор шаблона не пропускает, Н11).
+// Тот же движок, что у пресетных серверов (SubstituteVarsInJSONStrict) —
+// второй реализацией подстановки эти ветки разъехались бы на первой же правке
+// языка шаблонов.
 func substituteTemplateDNSServer(
 	body map[string]interface{},
+	decls []template.TemplateVar,
+	record map[string]string,
 	td *template.TemplateData,
 	templateVars map[string]string,
 	target template.TargetSpec,
 ) map[string]interface{} {
-	if body == nil || td == nil || len(td.Vars) == 0 {
+	if body == nil || td == nil {
 		return body
 	}
+	scope, resolved := template.ResolveDNSServerVars(decls, record, td.Vars, templateVars, target)
+	if len(scope) == 0 {
+		return body
+	}
+	dropUnsetServerPlaceholders(body, decls, resolved)
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return body
 	}
-	resolved := template.ResolveTemplateVarsFor(td.Vars, templateVars, nil, target)
-	substituted, _, err := template.SubstituteVarsInJSONStrict(raw, td.Vars, resolved, target)
+	substituted, _, err := template.SubstituteVarsInJSONStrict(raw, scope, resolved, target)
 	if err != nil {
 		debuglog.WarnLog("resolve_dns: substitution in the DNS server body failed: %v", err)
 		return body
@@ -574,6 +598,53 @@ func substituteTemplateDNSServer(
 		delete(out, "detour")
 	}
 	return out
+}
+
+// dropUnsetServerPlaceholders убирает из тела ключи (и элементы массивов),
+// чьё значение — ровно `@name` объявленной сервером переменной без значения и
+// без умолчания (SPEC 129 §4.1 п. 1). До SPEC 129 такой ключ уезжал пустой
+// строкой («substitute: empty scalar»), а у LxBox — выпадал; норма одна.
+func dropUnsetServerPlaceholders(body map[string]interface{}, decls []template.TemplateVar, resolved map[string]template.ResolvedVar) {
+	if len(decls) == 0 {
+		return
+	}
+	unset := make(map[string]bool, len(decls))
+	for _, d := range decls {
+		r := resolved[d.Name]
+		if strings.TrimSpace(r.Scalar) == "" && len(r.List) == 0 {
+			unset["@"+d.Name] = true
+		}
+	}
+	if len(unset) == 0 {
+		return
+	}
+	var walk func(v interface{}) (interface{}, bool)
+	walk = func(v interface{}) (interface{}, bool) {
+		switch t := v.(type) {
+		case string:
+			return t, !unset[t]
+		case map[string]interface{}:
+			for k, inner := range t {
+				if kept, keep := walk(inner); keep {
+					t[k] = kept
+				} else {
+					delete(t, k)
+				}
+			}
+			return t, true
+		case []interface{}:
+			out := t[:0]
+			for _, inner := range t {
+				if kept, keep := walk(inner); keep {
+					out = append(out, kept)
+				}
+			}
+			return out, true
+		default:
+			return v, true
+		}
+	}
+	walk(body)
 }
 
 // substitutePresetDNSRules — резолвит ВСЕ DNS-правила пресета (singular DNSRule

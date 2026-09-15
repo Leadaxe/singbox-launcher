@@ -132,7 +132,9 @@ func stripLxBoxSideFields(t *testing.T, raw []byte) []byte {
 		servers := arr(dns["servers"])
 		for i, rawSrv := range servers {
 			srv := obj(rawSrv)
-			drop(srv, "description", "vars")
+			// `vars` у шаблонного сервера с контракта 1.0.2 — поле обеих
+			// сторон (D-118), а не поле LxBox: оно едет в состояние.
+			drop(srv, "description")
 			servers[i] = enc(srv)
 		}
 		dns["servers"] = enc(servers)

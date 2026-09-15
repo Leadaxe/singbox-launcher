@@ -43,6 +43,7 @@ import (
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
+	"singbox-launcher/core/template"
 )
 
 // backupFormatNames — имена форматов в запросе и ответе.
@@ -89,14 +90,40 @@ type backupWarningView struct {
 	Detail string `json:"detail,omitempty"`
 	Kind   string `json:"kind,omitempty"`
 	Nodes  int    `json:"nodes,omitempty"`
+	// Record и Reason — параметры `record`/`reason` кода (SPEC 129 §5.6:
+	// backup_var_skipped называет носителя переменной и причину).
+	Record string `json:"record,omitempty"`
+	Reason string `json:"reason,omitempty"`
 }
 
 func backupWarningViews(warns []backup.Warning) []backupWarningView {
 	out := make([]backupWarningView, 0, len(warns))
 	for _, w := range warns {
-		out = append(out, backupWarningView{Code: w.Code, Detail: w.Detail, Kind: w.Kind, Nodes: w.Nodes})
+		out = append(out, backupWarningView{
+			Code: w.Code, Detail: w.Detail, Kind: w.Kind, Nodes: w.Nodes,
+			Record: w.Record, Reason: w.Reason,
+		})
 	}
 	return out
+}
+
+// recordVarDeclsFor — объявления шаблона для значений переменных записи
+// состояния st (SPEC 129): умолчания — для цели этого состояния. nil —
+// шаблон не прочитался; тогда записи едут как есть, а корневые
+// `dns_<tag>_<var>` не переносятся (проверять нечем, как у целей правил).
+func (s *Server) recordVarDeclsFor(st *state.State) *state.RecordVarDecls {
+	if st == nil {
+		return nil
+	}
+	td, err := s.facade.LoadTemplate()
+	if err != nil || td == nil {
+		return nil
+	}
+	values := make(map[string]string, len(st.Vars))
+	for _, v := range st.Vars {
+		values[v.Name] = v.Value
+	}
+	return template.RecordVarDeclsFor(td, values, build.TargetSpecFromState(st))
 }
 
 // backupWarningCodes — только коды, для заголовка X-Backup-Warnings.
@@ -209,6 +236,9 @@ func (s *Server) exportBackupBytes(st *state.State) ([]byte, []backup.Warning, e
 		// платформа: профиль удалённой машины резолвится под её goos/goarch.
 		Directions: build.ResolveDirections(st.Directions, td, build.TargetSpecFromState(st)),
 		BlockTag:   td.DirectionBlockTag(),
+		// SPEC 129: файл пишется из КОПИИ, приведённой к нормам записи —
+		// состояние на диске могло быть не пересохранено после обновления.
+		RecordVars: s.recordVarDeclsFor(st),
 	})
 	if err != nil {
 		return nil, warns, err
@@ -278,6 +308,9 @@ func (s *Server) backupImportWith(w http.ResponseWriter, r *http.Request, acc st
 	importOpts := backup.ImportOptions{
 		KnownOutbounds: s.knownOutboundsFor(st),
 		KnownPresets:   s.knownPresetIDs(),
+		// SPEC 129: объявления шаблона приёмника — перенос корневых
+		// `dns_<tag>_<var>` файла, нормы записи, типы каналов для Н9.
+		RecordVars: s.recordVarDeclsFor(st),
 	}
 	// Тег блокировки и системные теги шаблона — те же, что у UI-импорта:
 	// ими становится `include_block`, и ими проверяются строки `include`.

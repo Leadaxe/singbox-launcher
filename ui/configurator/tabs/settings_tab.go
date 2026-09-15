@@ -170,31 +170,6 @@ func dnsTabOwnedVar(name string) bool {
 	}
 }
 
-// dnsServerOwnedVar true для переменной, объявленной ЗАПИСЬЮ DNS-сервера
-// шаблона (SPEC 109: `dns_<tag>_<var>`, см. dnsServerVarsFor).
-//
-// Такая переменная попадает в подпись строки списка DNS-серверов: строка
-// показывает подставленные значения (`udp · 8.8.8.8 [direct-out]`), а не
-// имена плейсхолдеров — их считает dnsVarValues на КАЖДОЙ пересборке
-// списка. Пока список не пересобран, правка параметра видна только в окне
-// сервера, а строка под ним продолжает показывать прежний outbound/адрес.
-//
-// Отбор по тегам шаблона, а не по одному префиксу `dns_`: под `dns_`
-// живут и переменные вкладки DNS (dns_strategy, dns_final), у которых своя
-// ветка выше. Тег определяется как самый длинный подходящий — та же
-// причина, что в dnsServerVarsFor (google_doh / google_doh_vpn).
-func dnsServerOwnedVar(td *wizardtemplate.TemplateData, name string) bool {
-	if td == nil || !strings.HasPrefix(name, "dns_") {
-		return false
-	}
-	for tag := range wizardbusiness.ExtractTemplateDNSTags(td) {
-		if tag != "" && strings.HasPrefix(name, "dns_"+tag+"_") {
-			return true
-		}
-	}
-	return false
-}
-
 // syncDNSMirrorFieldFromSettingsVars переносит on_change-запись из
 // model.SettingsVars[name] в соответствующее зеркальное поле DNS-вкладки,
 // иначе refreshDNSSelectsFromModel (presenter_sync.go:190) увидит старое
@@ -246,17 +221,6 @@ func applyOnChangeAndRefresh(presenter *wizardpresentation.WizardPresenter, td *
 			needDNSRefresh = true
 		}
 	}
-	// Параметры шаблонного DNS-сервера правятся В ОКНЕ САМОГО СЕРВЕРА
-	// (dnsTemplateVarRows), а не на вкладке Settings, поэтому здесь важен
-	// changedName, а не только каскад `touched`: у «Outbound» и «UDP server
-	// IP» никакого on_change нет, touched пуст — и список DNS оставался с
-	// прежней подписью, пока пользователь не переоткрывал визард.
-	needDNSListRebuild := dnsServerOwnedVar(td, changedName)
-	for _, name := range touched {
-		if dnsServerOwnedVar(td, name) {
-			needDNSListRebuild = true
-		}
-	}
 	gs := presenter.GUIState()
 	if gs == nil {
 		return
@@ -283,11 +247,10 @@ func applyOnChangeAndRefresh(presenter *wizardpresentation.WizardPresenter, td *
 	if gs.RefreshTargetTabFromModel != nil {
 		gs.RefreshTargetTabFromModel()
 	}
-	// Полная пересборка перерисовывает подписи строк, точечная — только
-	// селекты; изменившийся параметр сервера виден лишь в первой.
-	if needDNSListRebuild {
-		presenter.RefreshDNSListAndSelects()
-	} else if needDNSRefresh {
+	// Параметры шаблонного DNS-сервера сюда больше не заходят (SPEC 129):
+	// они живут в записи сервера, и перерисовку списка зовёт хранилище его
+	// строк (dns_template_vars.go).
+	if needDNSRefresh {
 		presenter.RefreshDNSDependentSelectsOnly()
 	}
 }
@@ -559,7 +522,74 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 	return scroll
 }
 
+// varRowStore — где живёт значение строки переменной (SPEC 129, ловушка Л3).
+//
+// Строку собирает один конструктор для двух хранилищ с разной семантикой.
+// Корневые переменные вкладки Settings (model.SettingsVars) пишут выбранное
+// как есть: ключ есть — «трогал». Значения переменных шаблонного DNS-сервера
+// живут в записи и умолчание не хранят (Н4): выбор значения, равного
+// умолчанию, и сброс снимают ключ, а построение строки — Fyne SetSelected
+// само зовёт OnChanged — модель не пачкает. Своя копия конструктора для
+// сервера разошлась бы с этим на первом же новом типе переменной.
+type varRowStore struct {
+	// values — значения, по которым резолвится показанное (с vars).
+	values map[string]string
+	// vars — объявления, видимые строке.
+	vars []wizardtemplate.TemplateVar
+	// stored — хранимое значение имени (ключ есть — выбрано).
+	stored func(name string) (string, bool)
+	// set — записать выбор; true — хранилище изменилось.
+	set func(name, value string) bool
+	// reset — снять выбор; true — хранилище изменилось.
+	reset func(name string) bool
+	// afterChange — каскад после записи. changed — изменилось ли хранилище;
+	// rebuild — можно ли пересобирать вкладку (не на каждый введённый символ).
+	afterChange func(name string, changed, rebuild bool)
+	// afterReset — перерисовка после сброса.
+	afterReset func(name string)
+	// keepForeignEnum — значение enum вне списка вариантов не заменяется
+	// первым вариантом при построении строки, а дописывается в список:
+	// значение записи могло приехать из чужого шаблона (Л4).
+	keepForeignEnum bool
+}
+
+// settingsVarRowStore — хранилище вкладки Settings: model.SettingsVars.
+func settingsVarRowStore(presenter *wizardpresentation.WizardPresenter, model *wizardmodels.WizardModel, td *wizardtemplate.TemplateData, gs *wizardpresentation.GUIState) varRowStore {
+	return varRowStore{
+		values: model.SettingsVars,
+		vars:   td.Vars,
+		stored: func(name string) (string, bool) {
+			v, ok := model.SettingsVars[name]
+			return v, ok
+		},
+		set: func(name, value string) bool {
+			model.SettingsVars[name] = value
+			return true
+		},
+		reset: func(name string) bool {
+			delete(model.SettingsVars, name)
+			return true
+		},
+		afterChange: func(name string, _ bool, rebuild bool) {
+			applyOnChangeAndRefresh(presenter, td, model, name)
+			if rebuild {
+				maybeRefreshSettingsAfterVarChange(gs, td, name)
+			}
+		},
+		afterReset: func(string) {
+			if presenter.GUIState().RefreshSettingsFromModel != nil {
+				presenter.GUIState().RefreshSettingsFromModel()
+			}
+		},
+	}
+}
+
 func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *wizardmodels.WizardModel, td *wizardtemplate.TemplateData, vd wizardtemplate.TemplateVar, title, toolTip string, rowEnabled bool, gs *wizardpresentation.GUIState) fyne.CanvasObject {
+	return buildVarRow(presenter, model, td, vd, title, toolTip, rowEnabled, gs, settingsVarRowStore(presenter, model, td, gs))
+}
+
+// buildVarRow — строка переменной над хранилищем store (см. varRowStore).
+func buildVarRow(presenter *wizardpresentation.WizardPresenter, model *wizardmodels.WizardModel, td *wizardtemplate.TemplateData, vd wizardtemplate.TemplateVar, title, toolTip string, rowEnabled bool, gs *wizardpresentation.GUIState, store varRowStore) fyne.CanvasObject {
 	name := vd.Name
 	typ := vd.Type
 	// Options carry actual values for substitution. Object-form options
@@ -576,26 +606,19 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 	// remote-значение (lxd-tun0).
 	rowTarget := model.Target.Normalized()
 
-	st := model.SettingsVars
+	st := store.values
 	raw := td.RawTemplate
-	vars := td.Vars
+	vars := store.vars
 
 	if strings.EqualFold(strings.TrimSpace(typ), "secret") {
 		return buildSettingsSecretRow(presenter, model, td, vd, title, toolTip, viewMode, rowEnabled, gs)
 	}
 
 	reset := func() {
-		delete(model.SettingsVars, name)
-		presenter.MarkAsChanged()
-		if presenter.GUIState().RefreshSettingsFromModel != nil {
-			presenter.GUIState().RefreshSettingsFromModel()
+		if store.reset(name) {
+			presenter.MarkAsChanged()
 		}
-		// Сброс параметра сервера к дефолту шаблона меняет подпись его
-		// строки ровно так же, как выбор значения, — а сюда каскад
-		// applyOnChangeAndRefresh не заходит: он на пути ИЗМЕНЕНИЯ.
-		if dnsServerOwnedVar(td, name) {
-			presenter.RefreshDNSListAndSelects()
-		}
+		store.afterReset(name)
 	}
 
 	resetBtn := ttwidget.NewButtonWithIcon("", theme.ContentUndoIcon(), reset)
@@ -633,20 +656,21 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 					return
 				}
 			}
+			value := "false"
 			if checked {
-				model.SettingsVars[name] = "true"
-			} else {
-				model.SettingsVars[name] = "false"
+				value = "true"
 			}
-			presenter.MarkAsChanged()
-			applyOnChangeAndRefresh(presenter, td, model, name)
-			maybeRefreshSettingsAfterVarChange(gs, td, name)
+			changed := store.set(name, value)
+			if changed {
+				presenter.MarkAsChanged()
+			}
+			store.afterChange(name, changed, true)
 		}
 		cwc := fynewidget.NewCheckWithContent(onChanged, titleLbl, fynewidget.CheckWithContentConfig{})
 		chk := cwc.Check
 		chkForDarwin = chk
 		prog = true
-		v, overridden := model.SettingsVars[name]
+		v, overridden := store.stored(name)
 		checked := strings.TrimSpace(wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)) == "true"
 		if overridden {
 			checked = v == "true"
@@ -684,23 +708,32 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 			}
 			return val
 		}
-		sel := widget.NewSelect(optionTitles, func(pickedTitle string) {
-			model.SettingsVars[name] = valueForTitle(pickedTitle)
-			presenter.MarkAsChanged()
-			applyOnChangeAndRefresh(presenter, td, model, name)
-			maybeRefreshSettingsAfterVarChange(gs, td, name)
-		})
 		disp := wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)
-		if _, ok := model.SettingsVars[name]; ok {
-			disp = model.SettingsVars[name]
+		if v, ok := store.stored(name); ok {
+			disp = v
 		}
 		if len(options) > 0 && !enumListContains(options, disp) {
-			disp = options[0]
-			if model.SettingsVars[name] != disp {
-				model.SettingsVars[name] = disp
-				presenter.MarkAsChanged()
+			if store.keepForeignEnum && disp != "" {
+				// Значение из чужого шаблона не подменяется молча: оно
+				// показывается как есть, пока пользователь не выберет другое.
+				options = append([]string{disp}, options...)
+				optionTitles = append([]string{disp}, optionTitles...)
+			} else {
+				disp = options[0]
+				if cur, _ := store.stored(name); cur != disp {
+					if store.set(name, disp) {
+						presenter.MarkAsChanged()
+					}
+				}
 			}
 		}
+		sel := widget.NewSelect(optionTitles, func(pickedTitle string) {
+			changed := store.set(name, valueForTitle(pickedTitle))
+			if changed {
+				presenter.MarkAsChanged()
+			}
+			store.afterChange(name, changed, true)
+		})
 		sel.SetSelected(titleForValue(disp))
 		row := container.NewBorder(nil, nil, titleLab, resetBtn, sel)
 		setVarFieldToolTip(toolTip, titleLab, sel)
@@ -724,7 +757,7 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 
 		titleLab := newSettingsTitleLabelFor(title, rowEnabled)
 		disp := wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)
-		if v, ok := model.SettingsVars[name]; ok {
+		if v, ok := store.stored(name); ok {
 			disp = v
 		}
 		disp = strings.TrimSpace(disp)
@@ -747,11 +780,12 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 
 		se.OnChanged = func(s string) {
 			s = strings.TrimSpace(s)
-			model.SettingsVars[name] = s
+			changed := store.set(name, s)
 			hint.SetText(interfaceHintForRow(model, s, hints, pending, suppressed))
-			presenter.MarkAsChanged()
-			applyOnChangeAndRefresh(presenter, td, model, name)
-			maybeRefreshSettingsAfterVarChange(gs, td, name)
+			if changed {
+				presenter.MarkAsChanged()
+			}
+			store.afterChange(name, changed, true)
 		}
 
 		// Ответ доехал — дозаполняем список и подпись на месте, не пересобирая
@@ -794,7 +828,7 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 			picks = wizardbusiness.DNSEnabledTagOptions(model)
 		}
 		disp := wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)
-		if v, ok := model.SettingsVars[name]; ok {
+		if v, ok := store.stored(name); ok {
 			disp = v
 		}
 		// Текущее значение обязано быть в списке, даже если цель исчезла:
@@ -803,10 +837,11 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 			picks = append([]string{disp}, picks...)
 		}
 		sel := widget.NewSelect(picks, func(picked string) {
-			model.SettingsVars[name] = picked
-			presenter.MarkAsChanged()
-			applyOnChangeAndRefresh(presenter, td, model, name)
-			maybeRefreshSettingsAfterVarChange(gs, td, name)
+			changed := store.set(name, picked)
+			if changed {
+				presenter.MarkAsChanged()
+			}
+			store.afterChange(name, changed, true)
 		})
 		sel.SetSelected(disp)
 		row := container.NewBorder(nil, nil, titleLab, resetBtn, sel)
@@ -820,14 +855,16 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 		e := widget.NewMultiLineEntry()
 		e.SetMinRowsVisible(3)
 		disp := wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)
-		if v, ok := model.SettingsVars[name]; ok {
+		if v, ok := store.stored(name); ok {
 			disp = v
 		}
 		e.SetText(disp)
 		e.OnChanged = func(s string) {
-			model.SettingsVars[name] = s
-			presenter.MarkAsChanged()
-			applyOnChangeAndRefresh(presenter, td, model, name)
+			changed := store.set(name, s)
+			if changed {
+				presenter.MarkAsChanged()
+			}
+			store.afterChange(name, changed, false)
 		}
 		// LAN-порты для tun.include_interface — тот же список интерфейсов, что
 		// у пикера аплинка, но мягче отфильтрованный. Поле остаётся источником
@@ -849,13 +886,15 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 	default: // text
 		titleLab := newSettingsTitleLabelFor(title, rowEnabled)
 		disp := wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)
-		if v, ok := model.SettingsVars[name]; ok {
+		if v, ok := store.stored(name); ok {
 			disp = v
 		}
 		onChanged := func(s string) {
-			model.SettingsVars[name] = s
-			presenter.MarkAsChanged()
-			applyOnChangeAndRefresh(presenter, td, model, name)
+			changed := store.set(name, s)
+			if changed {
+				presenter.MarkAsChanged()
+			}
+			store.afterChange(name, changed, false)
 		}
 		// `type:"text"` + options always means plain-string options
 		// (title==value): object-form options force the var to enum at

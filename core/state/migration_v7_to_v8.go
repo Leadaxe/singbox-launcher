@@ -369,6 +369,12 @@ func migrateV8DNSServers(raw json.RawMessage, where string, rep *MigrationReport
 		if srv.Kind == DNSServerKindUser {
 			srv.Body = flatDNSBody(flat, srv.Tag, fmt.Sprintf("%s[%d]", where, i), rep)
 		}
+		// SPEC 129: значения переменных шаблонного сервера — поле записи.
+		// Лаунчер до v8 их в запись не писал, но плоская запись, собранная
+		// чужой рукой, могла их нести — молча не теряем.
+		if srv.Kind == DNSServerKindTemplate {
+			srv.Vars = flatStringMap(flat["vars"])
+		}
 		out = append(out, srv)
 	}
 	return json.Marshal(out)
@@ -592,4 +598,23 @@ func dnsFromLegacyShape(raw json.RawMessage, where string, rep *MigrationReport)
 		return out, err
 	}
 	return out, nil
+}
+
+// flatStringMap — объект string→string плоской записи; не-строковые значения
+// отбрасываются, пустая карта — nil (SPEC 129 Н1: пустой объект = нет ключа).
+func flatStringMap(v interface{}) map[string]string {
+	m, ok := v.(map[string]interface{})
+	if !ok || len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(m))
+	for k, val := range m {
+		if str, ok := val.(string); ok {
+			out[k] = str
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

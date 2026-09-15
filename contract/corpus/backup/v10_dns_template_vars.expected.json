@@ -1,0 +1,23 @@
+{
+  "rules": [
+    { "name": "russian", "enabled": true, "vars": { "dns_ip": "77.88.8.1" } }
+  ],
+  "vars": {},
+  "warnings": [
+    "backup_dns_entry_skipped",
+    "backup_unknown_outbound",
+    "backup_var_skipped"
+  ],
+  "warning_reasons": {
+    "backup_var_skipped": ["no_record", "superseded", "undeclared"]
+  },
+  "dns": {
+    "servers": [
+      { "kind": "template", "tag": "google_dot", "enabled": true, "vars": { "dns_ip": "8.8.4.4" } },
+      { "kind": "template", "tag": "google_udp", "enabled": true, "vars": { "outbound": "vpn-1", "dns_ip": "8.8.4.4" } },
+      { "kind": "template", "tag": "cloudflare_dot", "enabled": true, "vars": { "outbound": "vpn-1" } },
+      { "kind": "template", "tag": "safe_dns_dot", "enabled": false, "vars": { "outbound": "ghost-vpn" } },
+      { "kind": "user", "tag": "my-doh", "enabled": false }
+    ]
+  }
+}

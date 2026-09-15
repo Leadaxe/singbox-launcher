@@ -99,6 +99,8 @@ func (p *WizardPresenter) restorePresetRefs(state *wizardmodels.WizardStateFile)
 	// произойти ДО RuleOrderFromAxis: тот дописывает слоты по этому списку.
 	wizardmodels.SeedNodeRuleRefs(p.model)
 	p.model.DNSTemplateOverrides = wizardmodels.SyncStateV6ToDNSOverrides(state.DNS)
+	// SPEC 129: значения переменных шаблонных серверов — из записей.
+	p.model.DNSTemplateVars = wizardmodels.SyncStateV6ToDNSTemplateVars(state.DNS)
 	// SPEC 056-R-N follow-up: per-server/rule preset enabled overrides → PresetRefState fields.
 	populatePresetEnabledFromState(p.model.PresetRefs, state.DNS)
 

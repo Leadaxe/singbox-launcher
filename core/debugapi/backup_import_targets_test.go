@@ -31,7 +31,11 @@ func TestBackupImportIntoEmptyKeepsRuleTargets(t *testing.T) {
 			"outbounds": json.RawMessage(`[{"type":"direct","tag":"direct-out"},{"type":"block","tag":"block-out"}]`),
 			"endpoints": json.RawMessage(`[{"type":"wireguard","tag":"warp-ep"}]`),
 		},
-		Presets: []template.Preset{{ID: "russian"}},
+		// Пресет объявляет свою цель (SPEC 129 Н2: значение необъявленного
+		// имени приёмник снимает), умолчание другое — выбор файла едет.
+		Presets: []template.Preset{{ID: "russian", Vars: []template.PresetVar{
+			{Name: "out", Type: "outbound", Default: "proxy-out"},
+		}}},
 	}
 
 	src := state.New()

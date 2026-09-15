@@ -23,6 +23,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/build"
+	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
@@ -352,13 +353,10 @@ func showEditPresetRefDialog(
 		editWindow.Close()
 	}
 	saveButton.OnTapped = func() {
-		newVars := make(map[string]string, len(working))
-		for _, v := range tplPreset.Vars {
-			val := working[v.Name]
-			if val != "" && val != v.Default {
-				newVars[v.Name] = val
-			}
-		}
+		// SPEC 129 Н2–Н4 — общим правилом записи, а не своей копией: пустые,
+		// равные умолчанию и необъявленные имена не пишутся.
+		newVars, _, _ := corestate.NormalizeRecordVarMap(working,
+			wizardtemplate.PresetRecordVarDecls(tplPreset), "")
 		pr.Vars = newVars
 		presenter.MarkAsChanged()
 		editWindow.Close()

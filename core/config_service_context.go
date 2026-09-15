@@ -42,6 +42,14 @@ func (ac *AppController) buildContextFromState(s *state.State, cache *build.Pars
 		return ctx
 	}
 
+	// SPEC 129: значения переменных записи — по нормам (перенос корневых
+	// `dns_<tag>_<var>` в записи серверов, Н2–Н4) на КОПИИ состояния, в
+	// памяти: файл не переписывается, и config.json до первого сохранения
+	// собирается тот же. Без переноса состояние, записанное до SPEC 129,
+	// потеряло бы маршрут DNS: объявлений `dns_<tag>_<var>` у шаблона больше
+	// нет, и сборка взяла бы умолчание сервера.
+	s = stateWithRecordVars(s, td)
+
 	// State есть: vars + DNS + Route.
 	vars := make(map[string]string, len(s.Vars))
 	for _, v := range s.Vars {
@@ -83,8 +91,37 @@ func (ac *AppController) buildContextFromState(s *state.State, cache *build.Pars
 		GlobalVars: ctx.Vars,
 		// SPEC 109: объявления переменных — см. create_config.go.
 		TemplateVars: td.Vars,
+		// SPEC 129: объявления переменных шаблонных DNS-серверов; значения —
+		// в записях s.DNS.Servers.
+		DNSServerVars: td.DNSServerVars,
 	}
 	return ctx
+}
+
+// stateWithRecordVars — копия состояния, приведённая к нормам SPEC 129, для
+// сборки в памяти. Копируются только срезы, которые нормализация меняет
+// (vars, DNS-серверы, правила); остальное делится с оригиналом и читается.
+func stateWithRecordVars(s *state.State, td *template.TemplateData) *state.State {
+	if s == nil || td == nil {
+		return s
+	}
+	values := make(map[string]string, len(s.Vars))
+	for _, v := range s.Vars {
+		values[v.Name] = v.Value
+	}
+	decls := template.RecordVarDeclsFor(td, values, build.TargetSpecFromState(s))
+	cp := *s
+	cp.Vars = append([]state.SettingVar(nil), s.Vars...)
+	cp.DNS.Servers = nil
+	for _, srv := range s.DNS.Servers {
+		cp.DNS.Servers = append(cp.DNS.Servers, state.CloneDNSServer(srv))
+	}
+	cp.Rules = nil
+	for _, r := range s.Rules {
+		cp.Rules = append(cp.Rules, state.CloneRule(r))
+	}
+	state.ApplyRecordVars(&cp, decls)
+	return &cp
 }
 
 // parseTemplateDNSDefaultsFromTD — извлекает dns_options.servers[] из template

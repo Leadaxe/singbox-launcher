@@ -43,6 +43,7 @@ func Export10(s *state.State, opts ExportOptions) (*Backup10, []Warning, error) 
 	if s == nil {
 		return nil, nil, fmt.Errorf("nil state")
 	}
+	s = stateWithRecordVars10(s, opts.RecordVars)
 	var warnings []Warning
 	now := opts.Now
 	if now.IsZero() {
@@ -135,6 +136,29 @@ func Export10(s *state.State, opts ExportOptions) (*Backup10, []Warning, error) 
 	b.Warp = exportWarp(s)
 
 	return b, warnings, nil
+}
+
+// stateWithRecordVars10 — копия состояния, приведённая к нормам значений
+// переменных записи (SPEC 129): писатель — тоже писатель (Н4 п. 1), и в файл
+// едут записи без умолчаний, без необъявленных имён и без корневых
+// `dns_<tag>_<var>`. Копируются только срезы, которые нормализация меняет;
+// само состояние экспорт не трогает (П1: экспорт — снимок, а не правка).
+func stateWithRecordVars10(s *state.State, decls *state.RecordVarDecls) *state.State {
+	if decls == nil {
+		return s
+	}
+	cp := *s
+	cp.Vars = append([]state.SettingVar(nil), s.Vars...)
+	cp.DNS.Servers = nil
+	for _, srv := range s.DNS.Servers {
+		cp.DNS.Servers = append(cp.DNS.Servers, state.CloneDNSServer(srv))
+	}
+	cp.Rules = nil
+	for _, r := range s.Rules {
+		cp.Rules = append(cp.Rules, state.CloneRule(r))
+	}
+	state.ApplyRecordVars(&cp, decls)
+	return &cp
 }
 
 // export10Source — запись sources[] из источника состояния.

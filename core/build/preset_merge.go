@@ -181,9 +181,16 @@ type PresetMergeContext struct {
 	// TemplateVars (SPEC 109) — ОБЪЯВЛЕНИЯ переменных шаблона. GlobalVars
 	// выше несёт только значения, а подстановка в теле DNS-сервера и пресета
 	// требует объявлений: из них берутся тип и дефолт для имён, которых
-	// пользователь не трогал. Без них `@dns_google_dot_outbound` уехал бы в
-	// конфиг строкой, и ядро отвергло бы его целиком.
+	// пользователь не трогал. Без них `@tun` уехал бы в конфиг строкой, и
+	// ядро отвергло бы его целиком. Объявления переменных шаблонных
+	// DNS-серверов — отдельно, DNSServerVars ниже (SPEC 129).
 	TemplateVars []template.TemplateVar
+
+	// DNSServerVars (SPEC 129) — объявления переменных шаблонных DNS-серверов
+	// по тегу (TemplateData.DNSServerVars). Значения — в записях DNS выше
+	// (`DNS.Servers[kind=template].Vars`); без объявлений `@outbound` в теле
+	// сервера разрешить нечем, и тело уехало бы неподставленным.
+	DNSServerVars map[string][]template.TemplateVar
 
 	// EmittedRuleSetTags (SPEC 118, Р-DNS-2) — теги, реально попадающие в
 	// `route.rule_set` финального конфига. Заполняется ОДИН раз до обхода
@@ -548,6 +555,7 @@ func templateLikeFromCtx(ctx PresetMergeContext) template.TemplateData {
 		Presets:       ctx.Presets,
 		DNSOptionsRaw: raw,
 		Vars:          ctx.TemplateVars,
+		DNSServerVars: ctx.DNSServerVars,
 	}
 	return td
 }

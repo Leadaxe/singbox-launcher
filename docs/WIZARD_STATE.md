@@ -523,6 +523,7 @@ written back.
 | `tag` | string | For `kind=template` (the lookup key in `template.dns_options.servers[tag]`) and `kind=user` (the display tag in the final `config.dns.servers[].tag`). Empty for `preset`. |
 | `ref` | string | For `kind=preset` only, shaped `"<preset_id>:<local_tag>"`. Empty otherwise. |
 | `enabled` | bool | Toggle. The build pipeline skips the entry when `false`. |
+| `vars` | `map[string]string` (omitempty) | For `kind=template` only (SPEC 129) — the values of the server's own variables, by the local names its template entry declares (`outbound`, `dns_ip`, …). Only declared names, only values that differ from the template default, stored trimmed; no key means "follow the template". |
 | `body` | `map[string]interface{}` | For `kind=user` only — **the sing-box DNS server as it is** (type / server / server_port / tls / detour / ...), **without `tag`**: the tag is metadata and is written back into the emitted body by the build. nil for `template` / `preset` (the body resolves from the template). Before v8 these fields lay flat next to `kind`. |
 
 **`rules[i]` — `v6.DNSRule` (SPEC 056-R-N):**
@@ -542,15 +543,21 @@ accepts an entry in two forms — flat (ours) and nested
 into the flat one when the template loads (`template.NormalizeDNSOptions`), so
 in `state.json` and everywhere downstream an entry is always flat.
 
-The `vars[]` an entry declares become template variables named
-`dns_<tag>_<var>`, sharing one namespace with every other `@placeholder`. The
-prefix is required: without it `outbound` from `google_dot` would overwrite
-`outbound` from `cloudflare_dot`. They are hidden from the Settings tab
-(`wizard_ui: hidden`) — their place is the server's own window, otherwise the
-settings list would grow by two dozen indistinguishable "Outbound" rows.
+The `vars[]` an entry declares stay with the server (SPEC 129):
+`TemplateData.DNSServerVars[tag]`, with the local names, and the body keeps
+`@outbound`, `@dns_ip`. Their values live in the server's state record,
+`dns.servers[kind=template].vars` — the same record the backup file carries and
+the phone app keeps. They are edited in the server's own window, not on the
+Settings tab. A placeholder in the body must be declared by the server or, as a
+launcher extension, by the template's top-level `vars`; anything else fails
+template validation.
 
-Such a variable's value is stored in the state's `vars[]` like any other
-setting; the server body stays in the template and is never copied into state.
+Before SPEC 129 these variables were glued into template variables named
+`dns_<tag>_<var>` and stored in the state's root `vars[]`. Such names are still
+read: loading, building, exporting and importing move them into the server's
+record (the longest tag wins when a tag with underscores makes the name
+ambiguous), and the next write no longer carries them. The record never stores
+a value equal to the template default.
 
 **A group's members are pruned at build time.** A member missing from the final
 server list — switched off by the user, or declared by an inactive preset — is

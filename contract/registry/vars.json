@@ -40,33 +40,33 @@
     },
     "dns_google_udp_outbound": {
       "type": "outbound",
-      "portable": true,
+      "portable": false,
       "in": "both",
-      "note": "D-117. Канал запроса шаблонного DNS-сервера google_udp (detour): Направление или системный тег. Переменная вложенной записи dns_options.servers {vars, server} с локальным именем outbound; у лаунчера живёт в корневом vars под именем dns_<tag>_<var> (TEMPLATE_LANG.md, разрыв N8), у LxBox — в dns.servers[].vars.outbound записи сервера. Без переноса DNS на новой машине уходил мимо VPN"
+      "note": "Терпимая форма чтения D-118 (SPEC 129), заменяет перенос D-117: писатель это имя не пишет; читатель переносит значение в запись dns.servers[kind=template, tag=google_udp].vars.outbound (самый длинный тег среди объявленных пар (tag, var)); у записи файла со своими vars корневое уступает (backup_var_skipped reason superseded), записи нет — backup_var_skipped reason no_record."
     },
     "dns_google_dot_outbound": {
       "type": "outbound",
-      "portable": true,
+      "portable": false,
       "in": "both",
-      "note": "D-117. Канал запроса шаблонного DNS-сервера google_dot (detour); форма и соответствие LxBox — как у dns_google_udp_outbound"
+      "note": "Терпимая форма чтения D-118 (SPEC 129), заменяет перенос D-117: писатель это имя не пишет; читатель переносит значение в запись dns.servers[kind=template, tag=google_dot].vars.outbound (самый длинный тег среди объявленных пар (tag, var)); у записи файла со своими vars корневое уступает (backup_var_skipped reason superseded), записи нет — backup_var_skipped reason no_record."
     },
     "dns_cloudflare_dot_outbound": {
       "type": "outbound",
-      "portable": true,
+      "portable": false,
       "in": "both",
-      "note": "D-117. Канал запроса шаблонного DNS-сервера cloudflare_dot (detour); форма и соответствие LxBox — как у dns_google_udp_outbound"
+      "note": "Терпимая форма чтения D-118 (SPEC 129), заменяет перенос D-117: писатель это имя не пишет; читатель переносит значение в запись dns.servers[kind=template, tag=cloudflare_dot].vars.outbound (самый длинный тег среди объявленных пар (tag, var)); у записи файла со своими vars корневое уступает (backup_var_skipped reason superseded), записи нет — backup_var_skipped reason no_record."
     },
     "dns_safe_dns_dot_outbound": {
       "type": "outbound",
-      "portable": true,
+      "portable": false,
       "in": "both",
-      "note": "D-117. Канал запроса шаблонного DNS-сервера safe_dns_dot (detour); форма и соответствие LxBox — как у dns_google_udp_outbound"
+      "note": "Терпимая форма чтения D-118 (SPEC 129), заменяет перенос D-117: писатель это имя не пишет; читатель переносит значение в запись dns.servers[kind=template, tag=safe_dns_dot].vars.outbound (самый длинный тег среди объявленных пар (tag, var)); у записи файла со своими vars корневое уступает (backup_var_skipped reason superseded), записи нет — backup_var_skipped reason no_record."
     },
     "dns_safe_dns_dot_dom_resolver": {
       "type": "dns_servers",
-      "portable": true,
+      "portable": false,
       "in": "both",
-      "note": "D-117. Резолвер имени шаблонного DNS-сервера safe_dns_dot (domain_resolver) — тег DNS-сервера; у LxBox — dns.servers[].vars.dom_resolver записи сервера"
+      "note": "Терпимая форма чтения D-118 (SPEC 129), заменяет перенос D-117: писатель это имя не пишет; читатель переносит значение в запись dns.servers[kind=template, tag=safe_dns_dot].vars.dom_resolver (самый длинный тег среди объявленных пар (tag, var)); у записи файла со своими vars корневое уступает (backup_var_skipped reason superseded), записи нет — backup_var_skipped reason no_record."
     },
     "resolve_strategy": {
       "type": "enum",
