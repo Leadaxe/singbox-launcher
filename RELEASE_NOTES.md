@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v1.6.1
+
+Патч после v1.6.0. **REALITY-узлы снова сохраняют отпечаток провайдера:** с v1.5.6 лаунчер заменял `firefox` и прочие отпечатки вне chrome-семейства на `chrome`, и у провайдеров, выбравших `firefox` сознательно, узлы переставали подключаться в мобильных сетях. Теперь `chrome` ставится только вместо пустого отпечатка. DNS-сервер с выпавшим резолвером берёт следующий подходящий сервер. Парный выпуск телефона — LxBox 2.24.0. Подробнее: [docs/release_notes/1-6-1.md](docs/release_notes/1-6-1.md).
+
+### Highlights (EN) — v1.6.1
+
+A patch after v1.6.0. **REALITY nodes keep the provider's fingerprint again:** since v1.5.6 the launcher replaced `firefox` and other non-Chrome fingerprints with `chrome`, so nodes from providers that chose `firefox` on purpose stopped connecting in mobile networks. `chrome` is now written only in place of an empty fingerprint. A DNS server whose resolver dropped out falls back to the next suitable server. The paired phone release is LxBox 2.24.0. Details: [docs/release_notes/1-6-1.md](docs/release_notes/1-6-1.md).
+
 ### Выжимка (RU) — v1.6.0
 
 Минорный релиз после v1.5.6, ядро `sing-box-lx 1.14.0-lx.39`. **Состояние переходит на схему v8:** при первом запуске `state.json` конвертируется сам, исходный файл остаётся рядом как `state.json.v7.bak`, а собранный `config.json` остаётся байт-в-байт прежним. Шаг односторонний: лаунчер 1.5.x файл v8 правильно не прочтёт, и вернуться на него можно только из `.v7.bak`. **Tailscale:** одно правило маршрута теперь ловит и имена `*.ts.net` (при FakeIP они молча уходили мимо tailnet), и IPv6-подсеть tailnet. Голый узел получает связку сам, а каталог состояния переезжает вместе с узлом при переименовании и переносе, так что устройство в tailnet остаётся тем же. **Бэкап пишется только в формате 1.0** и переносит всё состояние, включая секции узлов и папки; телефон читает и пишет его с LxBox 2.24.0, который выйдет следом (до обновления телефона бэкап с десктопа в LxBox не импортируется), а импорт по-прежнему открывает и старые файлы 0.12. **Ядро lx.39:** переключение вложенного Направления больше не может заморозить все новые соединения до перезапуска ядра, а SOCKS5-прокси, отвечающие на UDP ASSOCIATE адресом `0.0.0.0`, теперь носят UDP. **Обновление больше не удаляет шаблон конфигурации:** шаблон новой версии скачивается до первого старта ядра, старый работает до замены, а пересборка, упавшая перед стартом, показывает диалог вместо молчаливого запуска прежнего `config.json`. Подписки Xray JSON с VLESS Encryption подключаются (#121). Подробнее: [docs/release_notes/1-6-0.md](docs/release_notes/1-6-0.md).
@@ -656,6 +664,7 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v1.6.1** | [docs/release_notes/1-6-1.md](docs/release_notes/1-6-1.md) |
 | **v1.6.0** | [docs/release_notes/1-6-0.md](docs/release_notes/1-6-0.md) |
 | **v1.5.6** | [docs/release_notes/1-5-6.md](docs/release_notes/1-5-6.md) |
 | **v1.5.5** | [docs/release_notes/1-5-5.md](docs/release_notes/1-5-5.md) |
