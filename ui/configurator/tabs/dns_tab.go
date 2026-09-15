@@ -527,8 +527,8 @@ func dnsVarValuesFor(m *wizardmodels.WizardModel, tag string) map[string]string 
 
 // dnsResolvePlaceholder показывает ЗНАЧЕНИЕ переменной вместо её имени.
 //
-// Тела серверов UI берёт прямо из шаблона, где `@dns_google_dot_dns_ip` ещё
-// не подставлен — подстановка живёт на пути сборки конфига. В строке списка
+// Тела серверов UI берёт прямо из шаблона, где `@dns_ip` ещё не
+// подставлен — подстановка живёт на пути сборки конфига. В строке списка
 // пользователь должен видеть адрес, который реально уедет в конфиг, а не
 // служебное имя переменной.
 func dnsResolvePlaceholder(v string, vars map[string]string) string {
