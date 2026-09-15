@@ -128,12 +128,21 @@ func BuildNodeLinkTargets(
 }
 
 // allRootLinkTargets — законные цели КОРНЕВОГО пространства без узла за
-// ними: теги Направлений (и их твинов), replace-теги папок и системные теги
-// шаблона (`ChainBuiltinHopTags` — direct/block).
+// ними, то есть ОБЪЯВЛЕННЫЕ корневые имена, которые есть в этой сборке: теги
+// Направлений (и их твинов), replace-теги папок и системные теги шаблона
+// (`ChainBuiltinHopTags`, теги direct/block и прочие объявления шаблона из
+// DirectionBuildOptions).
+//
+// Содержимое addOutbounds Направлений сюда НЕ входит (NODE_LINK.md §8,
+// решение владельца 15.09.2026): опция Направления — объявленное имя, а не
+// источник имён. Пока оно входило, строка, вписанная в опции руками или чужим
+// файлом, делала законной корневой целью что угодно — в том числе финальный
+// тег узла папки, который протухает от правки tag_policy. Сохранённые ссылки
+// такого вида поднимает до пары нормализация состояния (правило S5′).
 //
 // Одно место сбора: разойдись оно с гардом занятости — и ссылка на живой
 // replace-тег читалась бы висячей (fail-closed на ровном месте).
-func allRootLinkTargets(parserConfig *ParserConfig, directionTags map[string]bool) []string {
+func allRootLinkTargets(parserConfig *ParserConfig, directionTags map[string]bool, opts DirectionBuildOptions) []string {
 	var out []string
 	for tag := range directionTags {
 		out = append(out, tag)
@@ -147,7 +156,6 @@ func allRootLinkTargets(parserConfig *ParserConfig, directionTags map[string]boo
 			if d.Auto != nil {
 				out = append(out, d.Tag+twinSuffix)
 			}
-			out = append(out, d.AddOutbounds...)
 		}
 		for i := range parserConfig.ParserConfig.Proxies {
 			ps := parserConfig.ParserConfig.Proxies[i]
@@ -163,6 +171,11 @@ func allRootLinkTargets(parserConfig *ParserConfig, directionTags map[string]boo
 		}
 	}
 	out = append(out, ChainBuiltinHopTags...)
+	for _, tag := range append([]string{opts.BlockTag, opts.DirectTag}, opts.SystemTags...) {
+		if tag = strings.TrimSpace(tag); tag != "" {
+			out = append(out, tag)
+		}
+	}
 	sort.Strings(out)
 	return out
 }

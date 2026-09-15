@@ -20,15 +20,16 @@ package backup
 // подписки, рантайм), и перевести три поля в форму контракта (fold, disabled,
 // directions).
 //
-// Предупреждение одно — backup_source_kind_unsupported на корневую
-// провайдерскую группу. backup_local_only_dropped и
-// backup_replace_tag_derived писатель 1.0 не эмитит: у всех полей, которые
-// терял формат 0.12, в 1.0 есть дом, а имя группы свёртки едет явно
-// (`fold_tag`).
+// Предупреждений два. backup_source_kind_unsupported — на корневую
+// провайдерскую группу. backup_local_only_dropped — на опции Направления,
+// которые не теги Направлений: `include` несёт только их (NODE_LINK.md §8).
+// backup_replace_tag_derived писатель 1.0 не эмитит: имя группы свёртки едет
+// явно (`fold_tag`).
 
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"singbox-launcher/core/state"
@@ -71,6 +72,12 @@ func Export10(s *state.State, opts ExportOptions) (*Backup10, []Warning, error) 
 	if blockTag == "" {
 		blockTag = defaultBlockTag
 	}
+	directionTags := make(map[string]bool, len(s.Directions))
+	for _, d := range s.Directions {
+		if tag := strings.TrimSpace(d.Tag); tag != "" {
+			directionTags[tag] = true
+		}
+	}
 	for _, d := range s.Directions {
 		if d.Tag == "" {
 			continue
@@ -79,7 +86,16 @@ func Export10(s *state.State, opts ExportOptions) (*Backup10, []Warning, error) 
 		if r, ok := resolved[d.Tag]; ok {
 			body = r
 		}
-		b.Directions = append(b.Directions, exportDirection(body, blockTag))
+		dir, localOnly := exportDirection(body, blockTag, directionTags)
+		b.Directions = append(b.Directions, dir)
+		if len(localOnly) > 0 {
+			// Опции, которые не теги Направлений, в `include` не едут
+			// (NODE_LINK.md §8): молча выронить их нельзя (П6).
+			warnings = append(warnings, Warning{
+				Code:   WarnBackupLocalOnlyDropped,
+				Detail: d.Tag + ": " + strings.Join(localOnly, ", "),
+			})
+		}
 	}
 
 	// Тег свёртки формат 1.0 везёт ЯВНО (`fold_tag`, см. Source10), поэтому

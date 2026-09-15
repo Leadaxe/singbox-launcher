@@ -37,7 +37,7 @@ func decode10(b *Backup10, opts ImportOptions) (*decodedFile, error) {
 		if in.Tag == "" {
 			continue
 		}
-		out.Directions = append(out.Directions, importDirection(in))
+		out.Directions = append(out.Directions, importDirection(in, opts.BlockTag))
 	}
 
 	// subIndex — номер ПОДПИСКИ среди источников-подписок файла. Нужен ровно

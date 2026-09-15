@@ -1199,6 +1199,14 @@ func GenerateOutboundsFromParserConfig(
 	progressCallback func(float64, string),
 	directions DirectionBuildOptions,
 ) (*OutboundGenerationResult, error) {
+	// Объявленные имена Направлений снимаются ДО прохода 0: выключенное
+	// Направление из списка выпадет, а опцией чужого Направления оно
+	// остаётся законным именем (direction_options.go).
+	var declaredDirectionTags []string
+	if parserConfig != nil {
+		declaredDirectionTags = directionDeclaredTags(parserConfig.ParserConfig.Outbounds)
+	}
+
 	// SPEC 104, проход 0 — раскрываем Направления: выключенные выпадают,
 	// у остальных разворачиваются парные auto-группы. Делается ДО
 	// подстановки переменных, чтобы `@urltest_*` в опциях двойника
@@ -1446,7 +1454,8 @@ func GenerateOutboundsFromParserConfig(
 	// тегов (верхние узлы, Направления, replace-теги, системные) — и только
 	// после него материализуется хоть одна ссылка (тот же инвариант
 	// двухпроходности, что у node_ref.go).
-	linkTargets := BuildNodeLinkTargets(parserConfig.ParserConfig.Proxies, nodesBySource, allRootLinkTargets(parserConfig, directionTagsForChains))
+	rootLinkTargets := allRootLinkTargets(parserConfig, directionTagsForChains, directions)
+	linkTargets := BuildNodeLinkTargets(parserConfig.ParserConfig.Proxies, nodesBySource, rootLinkTargets)
 	// Позиции цепочек — до ResolveChainSources: она строит узел по строковым
 	// тегам и о ссылках не знает.
 	// SPEC 116 W12 фикс 3: предупреждения эмиссии едут с адресатом
@@ -1456,11 +1465,33 @@ func GenerateOutboundsFromParserConfig(
 
 	allNodes, brokenChains := ResolveChainSources(parserConfig, allNodes, nodesBySource, directionTagsForChains)
 
+	// Опции Направлений, которые не объявленные корневые имена
+	// (direction_options.go). Узлы берутся ДО резолва ссылок: узел, выпавший
+	// fail-closed, остаётся узлом, и назвать его «не найденным вариантом»
+	// значило бы спрятать настоящую причину.
+	optionNodeTags := make(map[string]bool, len(allNodes)+len(brokenChains))
+	for _, n := range allNodes {
+		if n != nil && n.Tag != "" {
+			optionNodeTags[n.Tag] = true
+		}
+	}
+	for _, b := range brokenChains {
+		if b.Tag != "" {
+			optionNodeTags[b.Tag] = true
+		}
+	}
+	declaredOptionNames := make(map[string]bool, len(rootLinkTargets)+len(declaredDirectionTags))
+	for _, tag := range append(append([]string(nil), rootLinkTargets...), declaredDirectionTags...) {
+		declaredOptionNames[tag] = true
+	}
+
 	// Detour узлов и состав Auto-групп канона: fail-closed по detour (с
 	// каскадом и кольцами), prune по членам.
 	var linkWarnings []EmissionWarning
 	allNodes, linkWarnings = ApplyCanonicalNodeLinks(parserConfig.ParserConfig.Proxies, nodesBySource, allNodes, linkTargets)
 	emissionWarnings = append(emissionWarnings, linkWarnings...)
+	emissionWarnings = append(emissionWarnings,
+		directionOptionWarnings(parserConfig.ParserConfig.Outbounds, declaredOptionNames, optionNodeTags)...)
 	for i := 0; i < len(parserConfig.ParserConfig.Proxies); i++ {
 		if ws := emissionWarningsBySource[i]; len(ws) > 0 {
 			emissionWarnings = append(emissionWarnings,

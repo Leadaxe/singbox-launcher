@@ -207,12 +207,20 @@ func applyBackup(presenter *wizardpresentation.WizardPresenter, win fyne.Window,
 		return
 	}
 
-	res, err := backup.ImportFile(st, b, backup.ImportOptions{
+	importOpts := backup.ImportOptions{
 		// Известные цели берём из модели: правило, ссылающееся в никуда,
 		// приедет выключенным, а не уронит конфиг ядра.
 		KnownOutbounds: wizardbusiness.GetAvailableOutbounds(presenter.Model()),
 		KnownPresets:   knownPresetIDs(presenter),
-	})
+	}
+	// Тег блокировки шаблона — им становится `include_block`; системные теги
+	// шаблона — законные строки `include` наравне с Направлениями и
+	// свёртками (NODE_LINK.md §8).
+	if model := presenter.Model(); model != nil && model.TemplateData != nil {
+		importOpts.BlockTag = model.TemplateData.DirectionBlockTag()
+		importOpts.SystemTags = model.TemplateData.SystemOutboundTags()
+	}
+	res, err := backup.ImportFile(st, b, importOpts)
 	if err != nil {
 		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Import failed"), err), win)
 		return
@@ -345,6 +353,12 @@ func warnText(w backup.Warning) string {
 		return fmt.Sprintf(locale.T("%s — the \"exclude from the global list\" flag is gone; its nodes stay in the candidate pool (fold the source into a group for the previous behaviour)"), w.Detail)
 	case backup.WarnBackupLabelDropped:
 		return fmt.Sprintf(locale.T("%s — label dropped, a node is named by its tag"), w.Detail)
+	case backup.WarnBackupLocalOnlyDropped:
+		// Экспорт: опции Направления, которые не теги Направлений, в общий
+		// формат не едут (NODE_LINK.md §8). Detail — «Направление: опции».
+		return fmt.Sprintf(locale.T("%s — these Direction options are settings of this machine (folder replacements, service tags, nodes) and did not go into the file; a node joins a Direction through its filter"), w.Detail)
+	case backup.WarnBackupDirectionIncludeDropped:
+		return fmt.Sprintf(locale.T("%s — these Direction options are not Directions or known names here, they were left out; a node joins a Direction through its filter"), w.Detail)
 	case backup.WarnBackupSectionRecordDropped:
 		// Detail несёт «тег узла: вид записи»: без тега пользователю негде
 		// искать, что именно потеряло часть своей связки. Причина у кода не

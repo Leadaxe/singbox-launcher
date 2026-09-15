@@ -1129,6 +1129,12 @@
   "tag %q is claimed twice: %s and %s": {
     "value": "тег %q занят дважды: %s и %s"
   },
+  "Direction %q: node %q is listed as an option — a node cannot be added to a Direction directly, use a filter": {
+    "value": "Направление %q: узел %q стоит опцией — узел нельзя добавить в Направление напрямую, используйте фильтр"
+  },
+  "Direction %q: option %q was not found — it is left out of the group": {
+    "value": "Направление %q: вариант %q не найден — в группу он не попадает"
+  },
   "a Direction": {
     "value": "Направление"
   },
@@ -3632,6 +3638,12 @@
   "tag %q is already taken — directions, nodes and service outbounds share one namespace": {
     "value": "тег %q уже занят — Направления, узлы и служебные outbound'ы живут в одном пространстве имён"
   },
+  "node %q cannot be added to a Direction directly — use a filter": {
+    "value": "узел %q нельзя добавить в Направление напрямую — используйте фильтр"
+  },
+  "option %q not found": {
+    "value": "вариант %q не найден"
+  },
   "Clone from…": {
     "value": "Клонировать с…"
   },
@@ -4423,6 +4435,12 @@
   },
   "%s — label dropped, a node is named by its tag": {
     "value": "%s — подпись отброшена: имя узла — это его тег"
+  },
+  "%s — these Direction options are settings of this machine (folder replacements, service tags, nodes) and did not go into the file; a node joins a Direction through its filter": {
+    "value": "%s — эти варианты Направления — настройки этой машины (замены папок, служебные теги, узлы) и в файл не поехали; узел попадает в Направление через фильтр"
+  },
+  "%s — these Direction options are not Directions or known names here, they were left out; a node joins a Direction through its filter": {
+    "value": "%s — эти варианты Направления здесь не Направления и не известные имена, они не добавлены; узел попадает в Направление через фильтр"
   },
   "%s — a node rule referenced a rule set; node sections neither declare nor reference rule sets, so the whole rule was dropped (cutting just the reference would have turned it into a match-all)": {
     "value": "%s — правило узла ссылалось на rule set; секции узла rule set не объявляют и на них не ссылаются, поэтому правило отброшено целиком (если вырезать одну ссылку, оно ловило бы весь трафик)"

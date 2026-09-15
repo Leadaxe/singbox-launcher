@@ -427,8 +427,11 @@ func TestBackupWarningCodesAreActuallySet(t *testing.T) {
 	// они остаются — там же сказано, кто и когда их эмитил, — а константа
 	// нужна сверке словаря. Списком здесь, а не молчаливым проходом: иначе
 	// «объявлен, но не ставится» было бы неотличимо от забытой диагностики.
+	//
+	// backup_local_only_dropped из списка вышел: с 1.6.0 (контракт 1.0.1)
+	// писатель 1.0 называет им опции Направления, которые в `include` не
+	// едут (NODE_LINK.md §8).
 	retired := map[string]bool{
-		"backup_local_only_dropped":  true,
 		"backup_replace_tag_derived": true,
 	}
 	consts := goBackupWarningConstants(t)

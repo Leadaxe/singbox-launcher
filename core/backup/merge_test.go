@@ -355,7 +355,7 @@ func TestMergeServerTagUniquifiedAgainstRootSpace(t *testing.T) {
 			uriServer("DE", "vless://11111111-1111-1111-1111-111111111111@example-1.com:443#DE"),
 		},
 	}
-	s.Directions = append(s.Directions, importDirection(Direction{Tag: "Work"}))
+	s.Directions = append(s.Directions, importDirection(Direction{Tag: "Work"}, ""))
 
 	b := &Backup{LxBackup: FormatVersion, Servers: []Server{
 		{NodeTag: "DE", URI: "vless://11111111-1111-1111-1111-111111111111@example-9.com:443#DE"},
@@ -426,7 +426,7 @@ func TestMergeChainAndDirectionTagConflicts(t *testing.T) {
 			ID: "01LOCALCHAIN",
 		}},
 	}
-	s.Directions = append(s.Directions, importDirection(Direction{Tag: "Work"}))
+	s.Directions = append(s.Directions, importDirection(Direction{Tag: "Work"}, ""))
 
 	b := &Backup{LxBackup: FormatVersion,
 		Chains: []Chain{

@@ -28,6 +28,13 @@
 //     тег ни одного узла F и T — финальный тег (политика F без суффикса
 //     уникализации) ровно одного узла F, и это группа → `{F, сырой тег
 //     группы}`.
+//   - S5′ — корневая ссылка `{tag: T}` в detour, позиции, члене или умолчании
+//     КОРНЕВОЙ группы, где T не объявленное корневое имя и не корневой узел,
+//     T стоит опцией (addOutbounds) какого-то Направления и T — финальный тег
+//     ровно одного члена контейнера → пара этого члена. Такая ссылка
+//     разрешалась только потому, что резолв считал любую опцию Направления
+//     законной корневой целью; лазейка закрыта (NODE_LINK.md §8), и без
+//     подъёма ссылка выпала бы fail-closed.
 //
 // Ноль или несколько кандидатов — ссылка остаётся как есть: подставить узел
 // «похожий по имени» запрещено (NODE_LINK.md §6 правило 3), а висячую ссылку
@@ -71,7 +78,8 @@ func NodeLinkFinalTag(policy *TagPolicy, raw string) (string, bool) {
 // Кандидаты — все собираемые узлы папок и подписок с id, ВКЛЮЧАЯ
 // выключенные: выключенный узел слот финального тега потребляет, и ссылка на
 // него — ссылка на него, а не на соседа. Неразобранная запись целью ссылки не
-// бывает. skip (может быть nil) отсеивает адреса, которые вызывающий знает как
+// бывает. У цепочки финальный тег — её собственный: политика контейнера к
+// ней не применяется. skip (может быть nil) отсеивает адреса, которые вызывающий знает как
 // чужие (импорт: член, переименованный слиянием).
 func NodeLinkFinalIndex(sources []Source, skip func(NodeLink) bool) map[string][]NodeLink {
 	out := map[string][]NodeLink{}
@@ -86,6 +94,12 @@ func NodeLinkFinalIndex(sources []Source, skip func(NodeLink) bool) map[string][
 				continue
 			}
 			final, ok := NodeLinkFinalTag(src.TagPolicy, n.Tag)
+			if n.Kind == SourceKindChain {
+				// Тег цепочки тег-политику не проходит: в конфиге она зовётся
+				// своим тегом (core/config/canonical_emit.go, проход 2).
+				final = strings.TrimSpace(n.Tag)
+				ok = final != ""
+			}
 			if !ok {
 				continue
 			}
@@ -127,6 +141,11 @@ type linkNormalizer struct {
 	byID map[string]*Source
 	// final — индекс финальных тегов членов (NodeLinkFinalIndex).
 	final map[string][]NodeLink
+	// options — строки опций (addOutbounds) Направлений, в теле записи и в
+	// патчах; rootNames — объявленные корневые имена и теги корневых узлов:
+	// ссылку на них S5′ не трогает.
+	options   map[string]bool
+	rootNames map[string]bool
 
 	lifted    int
 	ambiguous []string
@@ -150,7 +169,66 @@ func newLinkNormalizer(sources []Source, directions []configtypes.Direction) *li
 		}
 	}
 	nz.final = NodeLinkFinalIndex(sources, nil)
+	nz.options, nz.rootNames = directionOptionNames(sources, directions)
 	return nz
+}
+
+// reservedRootLiterals — системные теги и действия, которые узнаются без
+// шаблона: служебные outbound'ы лаунчера и их короткие формы.
+var reservedRootLiterals = []string{"direct-out", "block-out", "direct", "block", "reject", "drop"}
+
+// directionOptionNames — строки опций Направлений (options) и имена корня,
+// которые ссылкой на узел папки не бывают (rootNames): Направления и их
+// `-auto`, свёртки и их `-auto`, корневые узлы, системные литералы.
+func directionOptionNames(sources []Source, directions []configtypes.Direction) (options, rootNames map[string]bool) {
+	options = map[string]bool{}
+	rootNames = map[string]bool{}
+	add := func(set map[string]bool, tag string) {
+		if tag = strings.TrimSpace(tag); tag != "" {
+			set[tag] = true
+		}
+	}
+	for _, lit := range reservedRootLiterals {
+		add(rootNames, lit)
+	}
+	for i := range directions {
+		d := &directions[i]
+		add(rootNames, d.Tag)
+		if d.Auto != nil && strings.TrimSpace(d.Tag) != "" {
+			add(rootNames, d.AutoTag())
+		}
+		for _, opt := range d.AddOutbounds {
+			add(options, opt)
+		}
+		for _, up := range d.Updates {
+			switch list := up.Patch["addOutbounds"].(type) {
+			case []interface{}:
+				for _, v := range list {
+					if opt, ok := v.(string); ok {
+						add(options, opt)
+					}
+				}
+			case []string:
+				for _, opt := range list {
+					add(options, opt)
+				}
+			}
+		}
+	}
+	for i := range sources {
+		src := &sources[i]
+		switch src.Kind {
+		case SourceKindServer, SourceKindChain, SourceKindAuto:
+			add(rootNames, src.NodeTagOrLabel())
+		}
+		if r := src.Replace; r != nil && strings.TrimSpace(r.Tag) != "" {
+			add(rootNames, r.Tag)
+			if r.Mode == FolderReplaceBoth {
+				add(rootNames, r.Tag+"-auto")
+			}
+		}
+	}
+	return options, rootNames
 }
 
 func (nz *linkNormalizer) run() {
@@ -170,21 +248,59 @@ func (nz *linkNormalizer) run() {
 // контейнер, в котором лежит узел; "" у корневой записи.
 func (nz *linkNormalizer) node(n *Node, space string) {
 	if n.Detour != nil {
-		nz.pairToGroup(n.Detour)
+		nz.link(n.Detour)
 	}
 	for i := range n.Hops {
-		nz.pairToGroup(&n.Hops[i])
+		nz.link(&n.Hops[i])
 	}
 	if n.Group != nil {
+		g := n.Group
 		if space != "" {
-			for i := range n.Group.Members {
-				nz.memberInContainer(&n.Group.Members[i], space)
+			for i := range g.Members {
+				nz.memberInContainer(&g.Members[i], space)
+			}
+		} else {
+			// Корневая группа: члены и умолчание — корневые ссылки.
+			for i := range g.Members {
+				nz.rootOption(&g.Members[i])
+			}
+			if g.Default != nil {
+				def := *g.Default
+				if nz.rootOption(&def) {
+					g.Default = &def
+				}
 			}
 		}
 		// Умолчание — после членов: его адрес выводится из уже поднятого
 		// состава.
-		nz.groupDefault(n.Group, space)
+		nz.groupDefault(g, space)
 	}
+}
+
+// link — ссылка detour или позиции: пара — под S3, корневая — под S5′.
+func (nz *linkNormalizer) link(l *NodeLink) {
+	if strings.TrimSpace(l.FolderID) != "" {
+		nz.pairToGroup(l)
+		return
+	}
+	nz.rootOption(l)
+}
+
+// rootOption — S5′: корневая ссылка на член контейнера, законная только через
+// опцию Направления, становится парой этого члена.
+func (nz *linkNormalizer) rootOption(l *NodeLink) bool {
+	tag := strings.TrimSpace(l.Tag)
+	if strings.TrimSpace(l.FolderID) != "" || tag == "" || !nz.options[tag] || nz.rootNames[tag] {
+		return false
+	}
+	hits := nz.final[tag]
+	if len(hits) != 1 {
+		nz.ambiguous = append(nz.ambiguous, fmt.Sprintf("{%q}", l.Tag))
+		return false
+	}
+	*l = hits[0]
+	nz.lifted++
+	return true
 }
 
 // groupDefault — S2: умолчание группы получает адрес члена, которого

@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
 )
 
@@ -154,10 +155,10 @@ const (
 	// Один код на оба направления и обе стороны. У LxBox это import_rules,
 	// свои настройки папки и политика detour источника. У лаунчера им
 	// называл потери писатель 0.12 (relays_in_directions подписки, настройки
-	// самой папки, её члены не-server, секции узла); с v1.6.0 лаунчер пишет
-	// только 1.0, где у всех этих полей есть дом, и код больше не ставит
-	// (D-110). Код остаётся в словаре контракта, константа — его зеркало для
-	// сверки словаря (schema_test.go).
+	// самой папки, её члены не-server, секции узла) — в 1.0 у этих полей есть
+	// дом. С 1.6.0 (контракт 1.0.1) писатель 1.0 ставит его на опции
+	// Направления, которые не теги Направлений: `include` несёт только их
+	// (NODE_LINK.md §8, export10.go).
 	//
 	// Почему не «завести поля в схеме»: односторонний ключ в общем формате —
 	// это возвращённый тайный груз, ради сноса которого убран механизм
@@ -197,6 +198,13 @@ const (
 	// поле Warning.Reason (`kind` | `rule_set` | `not_allowed`): потеря
 	// одинаково называется кодом, но объясняется пользователю по-разному.
 	WarnBackupSectionRecordDropped = "backup_section_record_dropped"
+	// WarnBackupDirectionIncludeDropped — строки `include` приехавшего
+	// Направления, которые здесь не теги Направлений (этого файла или
+	// приёмника) и не объявленные корневые имена: узел, чужая свёртка,
+	// неизвестное имя. В опции они не попадают (NODE_LINK.md §8): узел в
+	// Направление кладёт фильтр, а имени, которого нет, в конфиге не бывает.
+	// Один warning на Направление; Detail — `<тег Направления>: <строки>`.
+	WarnBackupDirectionIncludeDropped = "backup_direction_include_dropped"
 )
 
 // ImportOptions — контекст принимающей стороны.
@@ -218,6 +226,15 @@ type ImportOptions struct {
 	KnownOutbounds []string
 	// KnownPresets — id пресетов шаблона принимающей стороны.
 	KnownPresets []string
+	// BlockTag — тег блокировки шаблона принимающей стороны
+	// (TemplateData.DirectionBlockTag): им становится `include_block`
+	// Направления. Пусто — `block-out`.
+	BlockTag string
+	// SystemTags — системные и шаблонные теги принимающей стороны
+	// (TemplateData.SystemOutboundTags): законные строки `include` наравне с
+	// тегами Направлений и свёрток (NODE_LINK.md §8). Пусто — известны только
+	// `direct-out` и тег блокировки.
+	SystemTags []string
 }
 
 // ImportResult — что получилось.
@@ -359,6 +376,7 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 	for _, d := range s.Directions {
 		existing[d.Tag] = true
 	}
+	var appliedDirections []int
 	for _, in := range dec.Directions {
 		if in.Tag == "" {
 			continue
@@ -368,12 +386,18 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 			continue
 		}
 		s.Directions = append(s.Directions, in)
+		appliedDirections = append(appliedDirections, len(s.Directions)-1)
 		existing[in.Tag] = true
 		res.AppliedDirections++
 	}
 
 	var cnt mergeCounters
 	merged := mergeSources(s, dec.Sources, rootTags, &res.Warnings, &cnt)
+
+	// Опции приехавших Направлений — только объявленные корневые имена.
+	// После слияния: свёртка, приехавшая этим же файлом, уже в состоянии.
+	res.Warnings = append(res.Warnings,
+		filterImportedDirectionOptions(s, dec, appliedDirections, opts)...)
 
 	res.AddedSubscriptions = cnt.AddedSubscriptions
 	res.UpdatedSubscriptions = cnt.UpdatedSubscriptions
@@ -440,6 +464,83 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 	importWarp(s, dec.Warp)
 
 	return res, nil
+}
+
+// filterImportedDirectionOptions отсеивает из опций Направлений, приехавших
+// этим импортом, строки, которые здесь не объявленные корневые имена
+// (NODE_LINK.md §8, BACKUP.md §6).
+//
+// Законная строка `include` — тег Направления этого файла или приёмника, его
+// `-auto`, тег свёртки результата и её `-auto`, системный тег приёмника
+// (`direct-out`, тег блокировки, opts.SystemTags). Прочее — узел, свёртка,
+// которой здесь нет, неизвестное имя — в опции не попадает и называется
+// одним warning'ом на Направление: узел в Направление кладёт фильтр, а
+// строка без цели в конфиге отвергла бы группу ядром.
+func filterImportedDirectionOptions(s *state.State, dec *decodedFile, applied []int, opts ImportOptions) []Warning {
+	if len(applied) == 0 {
+		return nil
+	}
+	declared := map[string]bool{"direct-out": true}
+	add := func(tag string) {
+		if tag = strings.TrimSpace(tag); tag != "" {
+			declared[tag] = true
+		}
+	}
+	blockTag := opts.BlockTag
+	if blockTag == "" {
+		blockTag = defaultBlockTag
+	}
+	add(blockTag)
+	for _, tag := range opts.SystemTags {
+		add(tag)
+	}
+	addDirections := func(list []configtypes.Direction) {
+		for i := range list {
+			add(list[i].Tag)
+			if list[i].Auto != nil && strings.TrimSpace(list[i].Tag) != "" {
+				add(list[i].AutoTag())
+			}
+		}
+	}
+	addDirections(dec.Directions)
+	addDirections(s.Directions)
+	for i := range s.Sources {
+		if r := s.Sources[i].Replace; r != nil && strings.TrimSpace(r.Tag) != "" {
+			add(r.Tag)
+			if r.Mode == state.FolderReplaceBoth {
+				add(r.Tag + "-auto")
+			}
+		}
+	}
+
+	var warns []Warning
+	for _, at := range applied {
+		d := &s.Directions[at]
+		if len(d.AddOutbounds) == 0 {
+			continue
+		}
+		kept := make([]string, 0, len(d.AddOutbounds))
+		var dropped []string
+		for _, opt := range d.AddOutbounds {
+			if declared[strings.TrimSpace(opt)] {
+				kept = append(kept, opt)
+				continue
+			}
+			dropped = append(dropped, opt)
+		}
+		if len(dropped) == 0 {
+			continue
+		}
+		if len(kept) == 0 {
+			kept = nil
+		}
+		d.AddOutbounds = kept
+		warns = append(warns, Warning{
+			Code:   WarnBackupDirectionIncludeDropped,
+			Detail: d.Tag + ": " + strings.Join(dropped, ", "),
+		})
+	}
+	return warns
 }
 
 // importKnownTags — цели, которые считаются существующими при проверке
