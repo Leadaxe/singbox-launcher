@@ -510,9 +510,9 @@ func TestImportRejectsNewerMajor(t *testing.T) {
 	}
 }
 
-// Ось порядка перенумеровывается, но ОТНОСИТЕЛЬНЫЙ порядок сохраняется:
-// абсолютные номера у сторон свои, важен лишь порядок следования.
-func TestImportRenumbersPreservingOrder(t *testing.T) {
+// Ось порядка встаёт номерами файла, и порядок следования тот же, что у файла
+// (BACKUP.md §9 п. 7): раскладка оси у сторон одна, и номер несёт зону.
+func TestImportKeepsFileNumsPreservingOrder(t *testing.T) {
 	n := func(v int) *float64 { f := float64(v); return &f }
 	b := &Backup{LxBackup: FormatVersion, Rules: []Rule{
 		{Kind: RuleInline, Name: "third", Num: n(9000), Match: json.RawMessage(`{}`)},
@@ -543,16 +543,18 @@ func TestImportRenumbersPreservingOrder(t *testing.T) {
 			t.Fatalf("порядок нарушен: получено %v, ожидалось %v", all, want)
 		}
 	}
-	// Номера переписаны в свою зону, а не оставлены чужими.
-	if all[0].num != state.UserRuleNumStart {
-		t.Errorf("нумерация не переписана: первый номер %d, ожидался %d",
-			all[0].num, state.UserRuleNumStart)
+	// Номера — из файла: сплошная нумерация с 1000 уводила правила зоны ниже
+	// 1000 за route.rules шаблона.
+	for i, w := range []int{10, 500, 9000} {
+		if all[i].num != w {
+			t.Errorf("правило %q: номер %d, в файле %d", all[i].name, all[i].num, w)
+		}
 	}
 }
 
 // SPEC 106-B: подключение оси к визарду не должно ломать импорт. Номера,
-// проставленные renumberImportedRules, — уже разметка: NormalizeRuleOrder на
-// первой же загрузке обязан оставить их и порядок как есть, а не пере-размечать.
+// приехавшие файлом, — уже разметка: NormalizeRuleOrder на первой же загрузке
+// обязан оставить их и порядок как есть, а не пере-размечать.
 func TestNormalizeKeepsImportedOrder(t *testing.T) {
 	n := func(v int) *float64 { f := float64(v); return &f }
 	b := &Backup{LxBackup: FormatVersion, Rules: []Rule{
@@ -586,9 +588,9 @@ func TestNormalizeKeepsImportedOrder(t *testing.T) {
 		if r.Num == nil {
 			t.Fatalf("правило %d потеряло номер после normalize", i)
 		}
-		if *r.Num != state.UserRuleNumStart+i {
-			t.Errorf("номер правила %q = %d, ожидался %d (импортные номера переписаны)",
-				got[i], *r.Num, state.UserRuleNumStart+i)
+		if w := []int{10, 500, 9000}[i]; *r.Num != w {
+			t.Errorf("номер правила %q = %d, в файле %d (normalize переписал номер)",
+				got[i], *r.Num, w)
 		}
 	}
 

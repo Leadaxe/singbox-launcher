@@ -1442,7 +1442,7 @@ v6mig — §9.7 (красный и до волны, не регрессия).
 | **`ImportFile(s, *File, opts)`** | `core/backup/import.go:273` | развилка форматов ОДНА, у вызывающих её нет |
 | **`applyDecoded(s, dec, opts)`** | `core/backup/import.go:292` | `s.Rules = nil` (`:311`, единственная полная замена §9 п. 7); снимок `takenRootTags` (`:321`) → Направления → `mergeSources` → `rewriteFolderLinks` (с §23 — `rewriteLinks`) → `resolveImportedHops` → правила → ось → `route.final` → `vars` → DNS → warp |
 | `importKnownTags(opts, dec, s)` | `:405` | цели для проверки `route.final`, считаются ПОСЛЕ слияния по живому состоянию |
-| **`renumberImportedAxis(rules, sectionRules)`** | `core/backup/import.go:446` | ось ЦЕЛИКОМ: корневые правила и правила приехавших узлов одним проходом (NODE_SECTIONS.md §5, SPEC 126 L2) |
+| **`renumberImportedAxis(rules, sectionRules)`** → с §25 **`placeImportedAxis`** | `core/backup/import.go:446` | ось ЦЕЛИКОМ: корневые правила и правила приехавших узлов одним проходом (NODE_SECTIONS.md §5, SPEC 126 L2); с §25 номера файла сохраняются |
 | `importDNS(s, *decodedDNS)` / `importWarp` | `:565`, `:620` | правил слияния не меняли; тип аргумента теперь промежуточный |
 | **`mergeSources(s, items, rootTags, warns, cnt)`** | `core/backup/merge.go:467` | ОДИН проход в порядке файла; индексы идентичности (`byURL`, `rootBodies`, `folderAt`, `existingChains`) строятся раз и поддерживаются по ходу |
 | `mergeSubscriptionItem` | `core/backup/merge.go:533` | по `url` байт-в-байт |
@@ -1520,8 +1520,9 @@ v6mig — §9.7 (красный и до волны, не регрессия).
 | `core/backup/file_test.go` | доступ к разобранному файлу через `.Legacy`; проверка, что файл 0.12 приезжает своим входом |
 | `core/backup/*_test.go` | `Parse` → `ImportFile` там, где импортируется разобранный файл; `loadCorpusPre` возвращает `*File` |
 
-**Про инвариант «круг байт-в-байт».** Первый круг НЕ байт-идентичен, и это
-норма, а не потеря: импорт перенумеровывает ось (§9 п. 7, NODE_SECTIONS §5), и
+**Про инвариант «круг байт-в-байт».** (С §25 импорт номера оси не трогает,
+и первый круг тоже байт-идентичен; абзац — история.) Первый круг НЕ
+байт-идентичен, и это норма, а не потеря: импорт перенумеровывает ось (§9 п. 7, NODE_SECTIONS §5), и
 правило узла, стоявшее на 945 (перед якорем шаблона), при слиянии оси встаёт
 в пользовательскую зону вместе с корневыми. Поэтому тест проверяет два
 утверждения: (1) первый круг отличается РОВНО номерами оси и ничем больше
@@ -2467,3 +2468,34 @@ D-113, D-114; `docs/release_notes/1-6-0.md`; `CHANGELOG.md` v1.6.0.
 Не сделано: `importDirection` пишет `block-out` литералом — при шаблоне с
 другим тегом блокировки круг «экспорт → импорт» превращает `include_block` в
 ссылку на несуществующий `block-out` (правка входа вне этой задачи).
+
+## 25. Хвосты импорта и загрузки на копии живых данных (релиз 1.6.0)
+
+Ветка `fix/import-axis-ua-chain`. Офлайн-прогон установленной сборки против
+develop на копии живого состояния (стенд `scratchpad/livecmp/harness_test.go.txt`)
+нашёл три дефекта, четвёртый поймал LxBox на эмуляторе.
+
+| Адрес | Что |
+|---|---|
+| `core/backup/import.go:503` | **`placeImportedAxis(rules, sectionRules)`** (вместо `renumberImportedAxis`) — номера файла сохраняются у корневых и узловых правил; неразмеченные корневые → хвост `max+1…`, не ниже `UserRuleNumStart`; ни одного размеченного корневого → остаются `nil` (MarkRuleOrder даст пресетам якоря шаблона); стабильная сортировка корня. Сплошная `1000+i` уводила `traffic-processing` (0) и якоря <1000 за `route.rules` шаблона (`core/build/preset_merge.go:373`), пресет из библиотеки (`PresetRuleNum`) вставал перед головой, `NextUserRuleNum` — за перехватчики. Норма — BACKUP.md §9 п. 7, NODE_SECTIONS.md §5, TASKS_LXBOX §16.2 (закрывает вопрос 3 спеки 438 LxBox: у них номера файла сохранялись с 8f538ce9) |
+| `core/backup/import.go:649`, `:664`, `:679` | `importDNS`: наборы `haveServers`/`haveRules` строятся только из записей приёмника ДО импорта и по ходу не пополняются — одинаковые записи файла ввозятся все; ключи прежние (`kind`+`tag`+`ref`, правило `kind`+`ref`+тело). BACKUP.md §9 п. 5, TASKS_LXBOX §16.2. Route-правила дефекта не имеют (полная замена); источники дедупят файл сами с собой намеренно (`mergeSources`, `core/backup/merge.go:743`) |
+| `core/state/disk_v8_flat_identity.go:37` | **`liftFlatSubscriptionIdentity(data, sources)`** — вызов `core/state/disk_v8.go:62` до `normalizeSourceShape`: плоские `user_agent`/`send_hwid`/`hwid`/`hash_device_model` подписки (v8 сборки bfd5fe15, до переноса 768ef591) → `identity` по ключу, если там пусто; заданное в `identity` главнее; `""`/`null`/чужой тип — отброс; не подписка — не читается. Файл на загрузке не пишется |
+| `core/config/chain_nodes.go:288`, `:311` | **`sourceHasPendingChains(ps)`** (включённый chain-узел канона с позициями или `ps.Chains`) и **`chainSourceFailure(ps, i, broken)`** (причины `BrokenChains` по тегу цепочки, подпись — тег при пустой) |
+| `core/config/outbound_generator.go:1272`, `:1375`, `:1414`, `:1477` | `chainOnlySources`: источник без узлов прохода 1, но с цепочками, не идёт в silent-empty; вердикт после `ResolveChainSources` — узел есть → `succeededSources`, нет → `source_parse_failed` с причиной цепочки; при раннем выходе «узлов нет вовсе» — пуст. Ложная пометка была видна: строка Sources «⚠ No nodes from this source» (`ui/configurator/tabs/source_tab.go:1021`), отчёт «Итога» (`final_report_model.go:133`) и тост обновления «partially refreshed … (1 failed)» (`core/config_service.go:124`) |
+| `core/backup/import_axis_dns_test.go:73` | **`TestImportKeepsAxisZonesAndFileDNSDuplicates`** — раскладка живого состояния (0/945/950/955/1000/1001/1003/1120/1130 + неразмеченное): импорт в пустое и в непустое, DNS-пары файла и совпавшая с приёмником, `NextUserRuleNum`, `MergePresetsIntoRoute` с `route.rules` шаблона (sniff первым). Старый `import.go` роняет все проверки |
+| `core/state/disk_v8_flat_identity_test.go:19` | **`TestLoadV8LiftsFlatSubscriptionIdentity`** — три подписки (всё плоско / identity главнее / пустые) и папка; Load → Save без плоских ключей → Load→Save байт в байт. Без вызова в `parseV8` падает |
+| `core/backup/backup_test.go:515`, `:558`; `node_sections_roundtrip_test.go:400` | ожидания сплошной нумерации заменены на номера файла |
+
+Стенд на копии живых данных (`scratchpad/livecmp/out_tails/{baseline,fixed}`):
+`config.json` байт в байт прежний; отчёт сборки без записей (было
+`source_parse_failed` у `chain-test`); круг импорта своего экспорта — состояние
+и повторный экспорт без разницы (было 13 номеров → 1000…1012); Load→Save
+переносит UA в `identity`, экспорт 1.0 его везёт. Фаза «файл с двумя
+одинаковыми DNS-правилами → пустое / живое / повторно» — 2 / 2 / 2.
+
+Не сделано: состояния, уже перенумерованные импортом 1.5.3–1.5.6 (голова на
+1000+), этот фикс не лечит; лечение — ставить несортируемому пресету номер
+шаблона в `NormalizeRuleOrder` (`core/state/rule_order.go:219`). Импорт в
+пустое состояние через `POST /backup/import` выключает правила с целью
+`direct-out` (`backup_unknown_outbound`: `knownOutboundsFor` на пустом
+состоянии не видит системных тегов) — хвост «два списка известных целей».

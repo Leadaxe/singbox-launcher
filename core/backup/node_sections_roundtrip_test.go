@@ -15,7 +15,7 @@ package backup
 //	       прежде: такие файлы уже у пользователей на руках.
 //
 // Плюс два требования волны 2: чужой `kind` внутри секций отбрасывается с
-// кодом, а ось порядка перенумеровывается ОДНИМ проходом по корню и узлам.
+// кодом, а корень и узлы стоят на ОДНОЙ оси порядка номерами файла.
 
 import (
 	"encoding/json"
@@ -389,16 +389,15 @@ func TestBackupSectionOnForeignNodeKindNamed(t *testing.T) {
 	}
 }
 
-// W2.5: ось перенумеровывается ОДНИМ проходом по корню И по секциям
-// приехавших узлов (NODE_SECTIONS.md §5).
+// W2.5: корень и секции приехавших узлов стоят на ОДНОЙ оси
+// (NODE_SECTIONS.md §5).
 //
-// Раньше renumberImportedRules видел только s.Rules, а узловые правила
-// сохраняли абсолютные номера из файла — и пересекались с перенумерованными
-// (SPEC 126 L2). Пересечение не абстрактное: два правила с одним номером
-// встают в конфиг в порядке, который зависит от того, кто попался сборке
-// первым, и порядок, который пользователь настроил на той машине, здесь не
-// воспроизводится.
-func TestBackupImportRenumbersAxisWithNodeSections(t *testing.T) {
+// Когда импорт перенумеровывал только s.Rules, узловые правила сохраняли
+// номера файла и пересекались с перенумерованными (SPEC 126 L2): два правила с
+// одним номером встают в конфиг в порядке, который зависит от того, кто
+// попался сборке первым. Теперь номера файла держат оба вида — пересечений,
+// которых не было в файле, взяться неоткуда.
+func TestBackupImportAxisWithNodeSections(t *testing.T) {
 	src := stateWithSections(t, "ts-dns", 945) // правило узла стоит ПЕРВЫМ на оси
 	src.Rules = []state.Rule{
 		mkInlineRule("second", "direct", 2000),
@@ -415,14 +414,12 @@ func TestBackupImportRenumbersAxisWithNodeSections(t *testing.T) {
 		t.Fatalf("правило узла потеряло позицию: %+v", sec)
 	}
 
-	// Один проход: три номера подряд от начала пользовательской зоны, и
-	// относительный порядок тот же, что был в файле.
+	// Номера файла: правило узла на 945 — ПЕРВЫМ на оси, корневые за ним.
 	nodeNum := *sec.Rules[0].Num
-	if nodeNum != state.UserRuleNumStart {
-		t.Errorf("правило узла не перенумеровано общим проходом: num=%d, ожидалось %d",
-			nodeNum, state.UserRuleNumStart)
+	if nodeNum != 945 {
+		t.Errorf("правило узла ушло со своего места: num=%d, в файле 945", nodeNum)
 	}
-	for i, want := range []int{state.UserRuleNumStart + 1, state.UserRuleNumStart + 2} {
+	for i, want := range []int{2000, 3000} {
 		if dst.Rules[i].Num == nil || *dst.Rules[i].Num != want {
 			t.Errorf("корневое правило %q: num=%v, ожидалось %d",
 				dst.Rules[i].Name, dst.Rules[i].Num, want)
