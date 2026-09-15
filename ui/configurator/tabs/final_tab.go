@@ -461,6 +461,6 @@ func showConfigWindow(text string) {
 		container.NewVScroll(entry),
 	))
 	w.Resize(fyne.NewSize(820, 640))
-	w.CenterOnScreen()
+	fynewidget.CenterOnScreen(w)
 	w.Show()
 }

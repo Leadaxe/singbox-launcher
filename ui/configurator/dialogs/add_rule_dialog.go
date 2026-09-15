@@ -40,6 +40,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/internal/process"
@@ -1121,7 +1122,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		dialog.ShowCustom(locale.T("SRS rule-sets"), locale.T("Close"), content, dialogWindow)
 	}
 	dialogWindow.Resize(fyne.NewSize(500, 640))
-	dialogWindow.CenterOnScreen()
+	fynewidget.CenterOnScreen(dialogWindow)
 	dialogWindow.SetContent(mainContent)
 
 	// Register dialog

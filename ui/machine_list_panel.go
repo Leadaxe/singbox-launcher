@@ -19,6 +19,7 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui/components"
@@ -674,7 +675,7 @@ func (p *machineListPanel) showHealthDetails(d services.RemoteDaemon, h services
 	// правый край полей — здесь это ровно те поля, из которых копируют хеши.
 	win.SetContent(container.NewPadded(components.WrapInScrollWithGutter(body)))
 	win.Resize(fyne.NewSize(600, 460))
-	win.CenterOnScreen()
+	fynewidget.CenterOnScreen(win)
 	win.Show()
 }
 

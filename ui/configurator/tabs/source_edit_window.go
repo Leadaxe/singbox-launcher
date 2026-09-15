@@ -2459,7 +2459,7 @@ func showSourceEditWindowAt(
 	// Configurator wizard окно делают то же самое.
 	win.SetContent(fynetooltip.AddWindowToolTipLayer(root, win.Canvas()))
 	win.Resize(fyne.NewSize(880, 600))
-	win.CenterOnScreen()
+	fynewidget.CenterOnScreen(win)
 	syncFormFromModel()
 	win.Show()
 	presenter.UpdateChildOverlay()

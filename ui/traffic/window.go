@@ -21,6 +21,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	fynetooltip "github.com/dweymouth/fyne-tooltip"
 
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	tprof "singbox-launcher/internal/traffic"
 )
@@ -234,7 +235,7 @@ func (m *Manager) build() {
 	} else {
 		win.Resize(fyne.NewSize(720, 520))
 	}
-	win.CenterOnScreen()
+	fynewidget.CenterOnScreen(win)
 
 	// Close intercept: just close, don't quit. The profiler keeps
 	// running in the background (rolling buffer + active session

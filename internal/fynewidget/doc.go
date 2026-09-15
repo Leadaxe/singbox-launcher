@@ -24,4 +24,12 @@
 // For a fyne-tooltip Button plus row hover, use [HoverForwardTTButton]. When code needs a *ttwidget.Button
 // (e.g. async Disable/SetText), use [HoverForwardTTButton.TTWidget] — the outer type’s first field is the
 // embedded value; the conversion follows unsafe.Pointer rules for the leading field.
+//
+// # Centering windows (critical)
+//
+// Never call fyne.Window.CenterOnScreen directly: use [CenterOnScreen]. Fyne 2.8.1 dereferences a nil
+// monitor when GLFW sees no screen, which on macOS happens while the display is asleep, and the panic
+// fires from the window's first Show(). In the launcher GLFW's monitor list is taken once at startup
+// (the Dock reopen handler replaces GLFW's NSApplication delegate), so a launcher started with the
+// display asleep keeps an empty list after the display wakes up.
 package fynewidget

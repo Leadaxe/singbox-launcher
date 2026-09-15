@@ -11,6 +11,7 @@ import (
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui/components"
@@ -182,6 +183,6 @@ func OpenAddMachineWindow(ac *core.AppController, onAdded func()) {
 	// Высота с запасом под раскрытый Advanced: при 520 форма упиралась в низ
 	// окна и появлялась прокрутка на ровном месте.
 	win.Resize(fyne.NewSize(520, 570))
-	win.CenterOnScreen()
+	fynewidget.CenterOnScreen(win)
 	win.Show()
 }

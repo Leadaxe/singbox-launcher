@@ -17,6 +17,7 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 )
@@ -287,7 +288,7 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 
 	win.SetContent(tabs)
 	win.Resize(fyne.NewSize(620, 680))
-	win.CenterOnScreen()
+	fynewidget.CenterOnScreen(win)
 	win.Show()
 }
 
@@ -304,7 +305,7 @@ func withScrollGutter(body fyne.CanvasObject) fyne.CanvasObject {
 func finishNodeInfoWindow(win fyne.Window, body *fyne.Container) {
 	win.SetContent(withScrollGutter(body))
 	win.Resize(fyne.NewSize(620, 400))
-	win.CenterOnScreen()
+	fynewidget.CenterOnScreen(win)
 	win.Show()
 }
 

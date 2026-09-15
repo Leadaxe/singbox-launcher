@@ -53,6 +53,7 @@ import (
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui/components"
@@ -227,7 +228,7 @@ func buildWizardWindow(
 	// clampWizardSize ограничивает размер рабочей областью экрана.
 	wizardWindow := ac.UIService.Application.NewWindow(locale.T("Config Wizard"))
 	wizardWindow.Resize(clampWizardSize(ac.UIService.Application, 620, 660))
-	wizardWindow.CenterOnScreen()
+	fynewidget.CenterOnScreen(wizardWindow)
 	guiState.Window = wizardWindow
 
 	// Store wizard window in UIService

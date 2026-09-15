@@ -18,6 +18,7 @@ import (
 	"fyne.io/fyne/v2/container"
 
 	"singbox-launcher/core"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
 )
@@ -68,7 +69,7 @@ func OpenConnectionWindow(ac *core.AppController, onChanged func()) {
 
 	win.SetContent(scrolled)
 	win.Resize(fyne.NewSize(560, height))
-	win.CenterOnScreen()
+	fynewidget.CenterOnScreen(win)
 	win.SetOnClosed(func() {
 		connWindowMu.Lock()
 		connWindowOpen = nil
