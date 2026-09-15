@@ -22,7 +22,7 @@
 
 - feat(tailscale): каноническая связка узла tailnet (NODE_SECTIONS.md §6) — одно правило маршрута с `domain_suffix [".ts.net"]` и `ip_cidr ["100.64.0.0/10","fd7a:115c:a1e0::/48"]` (при FakeIP один `ip_cidr` имена не матчил); голый узел получает связку по умолчанию на путях рождения узла, снимается она документом без `dns`/`route` на вкладке JSON; в многоузловом конфиге узел `tailscale` забирает записи по ссылке на свой тег; узел из подписки остаётся без связки с info `tailscale_from_subscription` (`ad6ccfa6`)
 
-### Исправления (22)
+### Исправления (23)
 
 - fix(template): шаблон при апгрейде заменяется скачанным, а не удаляется — качается в фоне до первого старта ядра и встаёт на место только разобранным (temp + rename), провал скачивания оставляет старый файл и повторяется на следующем запуске; первый запуск новой версии помечает конфиг устаревшим, и первый старт пересобирает его из нового шаблона; провал пересборки перед стартом (classic и daemon) — диалог с причиной, ядро не стартует, вместо молчаливого запуска прежнего `config.json` (`485f83fe`)
 
@@ -67,6 +67,8 @@
 - fix(state): `Save` создаёт каталог состояния — POST /backup/import на чистой установке, где визард ни разу не сохранял, падал `500` «no such file or directory»
 
 - fix(ui): остановка сигналом больше не пишет ложную панику в `logs/crash.log` — по SIGTERM/SIGINT драйвер Fyne сам гасит цикл событий и вызывает `glfw.Terminate()`, а `GracefulExit` из `main()` после штатной остановки звал `Application.Quit()`, и закрытие окон через уже терминированный GLFW падало с `NotInitialized`; теперь `Quit` просится только у живого цикла (`UIService.RunEventLoop`), а в логе остаётся «Application shutting down: event loop stopped by the driver»
+
+- fix(macos): Cmd+Q, «Завершить» в Dock и выход из системы идут через `GracefulExit` — делегат NSApplication лаунчера (`platform.SetupDockReopenHandler`) заменял делегат GLFW целиком, без `applicationShouldTerminate:` AppKit отвечал `NSTerminateNow` и завершал процесс через `exit()` мимо остановки ядра (в classic-режиме ядро оставалось работать с маршрутами TUN); теперь делегат отвечает `NSTerminateLater`, `GracefulExit` идёт в горутине, а ответ AppKit уходит по её окончании, но не позже 5 с (`macQuitBudget`), `NSTerminateCancel` не возвращается никогда; остальные вызовы делегат пересылает делегату GLFW, и `applicationDidChangeScreenParameters` снова обновляет список мониторов
 
 ### Прочее (6)
 

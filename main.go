@@ -43,6 +43,12 @@ const (
 	// glRenderedGrace — сколько процесс должен прожить после старта цикла
 	// событий, чтобы старт считался дошедшим до первого кадра (SPEC 125).
 	glRenderedGrace = 3 * time.Second
+	// macQuitBudget — сколько выход по запросу macOS (Cmd+Q, «Завершить» в
+	// Dock, выход из системы, выключение) ждёт GracefulExit. Ядро
+	// останавливается штатно, но выход из системы лаунчер дольше не держит:
+	// по истечении процесс завершается всё равно (решение владельца 15.09.2026).
+	// Сам GracefulExit ждёт остановки ядра до 2 с, остальное — запас.
+	macQuitBudget = 5 * time.Second
 )
 
 // rememberOfferedRenderer запоминает renderer железа, про который мы уже
@@ -439,6 +445,14 @@ func main() {
 	// Uses native NSApplicationDelegate to handle applicationShouldHandleReopen
 	// This is a workaround for Fyne issue #3845 (Dock click not showing hidden window)
 	if runtime.GOOS == "darwin" {
+		// Тот же делегат получает запрос macOS на завершение: Cmd+Q,
+		// «Завершить» в Dock, выход из системы. Выход идёт через GracefulExit,
+		// как Quit в трее; без обработчика AppKit завершал процесс сразу, и в
+		// classic-режиме ядро оставалось работать без лаунчера.
+		platform.SetQuitRequestHandler(func() {
+			debuglog.WarnLog("Application shutting down: macOS quit request (Cmd+Q, Dock menu, log out or shut down).")
+			controller.GracefulExit()
+		}, macQuitBudget)
 		platform.SetupDockReopenHandler(func() {
 			fyne.Do(func() {
 				// Show() is safe to call even if window is already visible

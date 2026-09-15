@@ -29,7 +29,15 @@
 //
 // Never call fyne.Window.CenterOnScreen directly: use [CenterOnScreen]. Fyne 2.8.1 dereferences a nil
 // monitor when GLFW sees no screen, which on macOS happens while the display is asleep, and the panic
-// fires from the window's first Show(). In the launcher GLFW's monitor list is taken once at startup
-// (the Dock reopen handler replaces GLFW's NSApplication delegate), so a launcher started with the
-// display asleep keeps an empty list after the display wakes up.
+// fires from the window's first Show(). GLFW re-reads its monitor list only at startup and when AppKit
+// reports a screen change, so right after the display wakes up the list can still be empty; the wrapper
+// checks both CoreGraphics and GLFW.
+//
+// # The NSApplication delegate (macOS)
+//
+// GLFW keeps its monitor list fresh through its own NSApplication delegate, and an app has only one.
+// The launcher's delegate (platform.SetupDockReopenHandler) must therefore wrap GLFW's and forward
+// every call it does not handle itself. Replacing it outright silently loses the screen-change refresh,
+// and without an applicationShouldTerminate: of its own Cmd+Q, Dock Quit and log out end the process at
+// once, skipping GracefulExit. What GLFW's delegate does is listed in that function's comment.
 package fynewidget
