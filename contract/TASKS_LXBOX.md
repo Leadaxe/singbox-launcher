@@ -1425,3 +1425,7 @@ libbox/бинарём.
 ### 20.3 Дополнение 16.09.2026: firefox и safari — без `reality_fp_not_chrome`
 
 Ядро закрыло §20.2: sing-box-lx 1.14.1-lx.2 — `firefox` = Firefox 148, 1.14.1-lx.3 — `safari` = Safari 26.3 (форк utls, SPEC 086 ядра), оба с гибридным шаром; проверено на узле репортёра (#124): 204. Решение владельца: **firefox и safari из ограничений убрать**. Норма: код `reality_fp_not_chrome` получают только `ios`, `android`, `edge`, `360`, `qq`; chrome-семейство, `firefox`, `safari`, пустой fp и `random` — без кода. Go: `realityHybridUTLSFingerprints` в node_parser_transport.go; LxBox: тот же набор в `utls_fingerprint.dart`. Корпус: `uri/vless/reality_fp_firefox_kept`, `reality_tcp_no_flow`, `grpc_reality_no_flow` — без warning; `allowinsecure_lowercase_zero` (fp=qq) — с warning. Реестры: `warnings.json`, `tls.json`. Условие — ядро/libbox ≥ lx.3; лаунчер пинит lx.3 с 1.6.2.
+
+### 20.4 Статус (16.09.2026)
+
+Обе стороны закрыли §20: лаунчер — v1.6.2 (ядро 1.14.1-lx.3, `parseWGConfBase64Link`, `realityHybridUTLSFingerprints`); LxBox — v2.24.1 (задачи 450 awg-conf-base64-link и 451 reality-fp-firefox-safari-hybrid; множество `kRealityHybridFingerprints`, пин ядра lx.3, `rawUri` = исходная ссылка, не синтетический `wireguard://`). Все кейсы `awg_conf_base64*` и четыре REALITY-кейса проходят у обоих без локальных отступлений. `randomized` у обеих сторон остаётся с кодом, `random` — нет.
