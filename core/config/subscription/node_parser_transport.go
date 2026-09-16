@@ -975,9 +975,10 @@ func trojanTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, bo
 	return tlsData, true
 }
 
-// chromeFamilyUTLSFingerprints — единственные имена словаря ядра, чья
-// utls-спека несёт key_share X25519MLKEM768 перед X25519 (SPEC 083 ядра).
-// Ядро схлопывает все шесть в HelloChrome_Auto.
+// chromeFamilyUTLSFingerprints — имена словаря ядра, которые ядро схлопывает
+// в HelloChrome_Auto; их utls-спека несёт key_share X25519MLKEM768 перед
+// X25519 (SPEC 083 ядра). С lx.3 гибридный шар есть и у firefox/safari —
+// см. realityHybridUTLSFingerprints; сюда они не входят: это не chrome.
 var chromeFamilyUTLSFingerprints = map[string]struct{}{
 	"chrome": {}, "chrome_psk": {}, "chrome_psk_shuffle": {},
 	"chrome_padding_psk_shuffle": {}, "chrome_pq": {}, "chrome_pq_psk": {},
@@ -1052,16 +1053,32 @@ func EnforceRealityFingerprint(tlsData map[string]interface{}) (original string,
 	return cur, false
 }
 
+// realityHybridUTLSFingerprints — отпечатки вне chrome-семейства, чья спека в
+// utls ядра тоже несёт key_share X25519MLKEM768: `firefox` = Firefox 148 и
+// `safari` = Safari 26.3 (форк utls ядра, sing-box-lx 1.14.1-lx.3, SPEC 086).
+// REALITY-сервер Xray ≥ v26.9.8 их принимает — подсказка не нужна. На ядре
+// старше lx.3 такие узлы по-прежнему не подключаются; пин лаунчера ≥ lx.3.
+// Решение владельца 16.09.2026: firefox и safari из ограничений убрать.
+var realityHybridUTLSFingerprints = map[string]struct{}{
+	"firefox": {}, "safari": {},
+}
+
 // realityFingerprintRisky сообщает, что у узла эмитится reality с явным
-// отпечатком вне chrome-семейства: серверы Xray ≥ v26.9.8 такой ClientHello
-// отвергают, и если соединение не устанавливается, стоит попробовать chrome
-// (D-119). Сам отпечаток не подменяется.
+// отпечатком, чья utls-спека не несёт гибридного key share: серверы
+// Xray ≥ v26.9.8 такой ClientHello отвергают, и если соединение не
+// устанавливается, стоит попробовать chrome (D-119). Сам отпечаток не
+// подменяется. Без подсказки — chrome-семейство, firefox и safari
+// (realityHybridUTLSFingerprints).
 //
 // `random` из-под правила выведен СОЗНАТЕЛЬНО: это наш же дефолт пустого fp у
 // vless/anytls (D-009), от явного `fp=random` он неотличим, и на сборке он
 // становится chrome. Правило дословно повторяет LxBox (utls_fingerprint.dart).
 func realityFingerprintRisky(fp string) bool {
-	return fp != "random" && !IsChromeFamilyFingerprint(fp)
+	if fp == "random" || IsChromeFamilyFingerprint(fp) {
+		return false
+	}
+	_, hybrid := realityHybridUTLSFingerprints[fp]
+	return !hybrid
 }
 
 // noteRealityFingerprint вешает WarnRealityFPNotChrome, если у ГОТОВОГО

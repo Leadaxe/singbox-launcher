@@ -26,10 +26,7 @@
       },
       "kind": "outbound",
       "label": "t",
-      "scheme": "vless",
-      "warnings": [
-        "reality_fp_not_chrome"
-      ]
+      "scheme": "vless"
     }
   ],
   "v": 1
