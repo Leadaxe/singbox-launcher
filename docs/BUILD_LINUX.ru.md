@@ -15,17 +15,27 @@
    **Debian / Ubuntu:**
    ```bash
    sudo apt-get update && sudo apt-get install -y \
-     build-essential pkg-config libgl1-mesa-dev libxcursor-dev \
-     libxrandr-dev libxi-dev libxinerama-dev libxft-dev \
+     build-essential pkg-config libgl1-mesa-dev libegl1-mesa-dev \
+     libxcursor-dev libxrandr-dev libxi-dev libxinerama-dev libxft-dev \
      libxkbcommon-x11-dev libxxf86vm-dev libwayland-dev
    ```
 
    **Fedora / RHEL:**
    ```bash
    sudo dnf install -y \
-     mesa-libGL-devel libXcursor-devel libXrandr-devel libXi-devel \
-     libXinerama-devel libXft-devel libxkbcommon-x11-devel \
+     mesa-libGL-devel mesa-libEGL-devel libXcursor-devel \
+     libXrandr-devel libXi-devel libXinerama-devel libXft-devel \
+     libxkbcommon-x11-devel \
      libXxf86vm-devel libwayland-devel
+   ```
+
+   **openSUSE (Leap / Tumbleweed):**
+   ```bash
+   sudo zypper install -y \
+     gcc gcc-c++ make pkg-config Mesa-libGL-devel Mesa-libEGL-devel \
+     libXcursor-devel libXrandr-devel libXi-devel libXinerama-devel \
+     libXft-devel \
+     libxkbcommon-x11-devel libXxf86vm-devel wayland-devel
    ```
 
 3. **CGO** — должен быть включён (по умолчанию `CGO_ENABLED=1`).
@@ -34,7 +44,7 @@
 
 ### Вариант 1: Скрипт (рекомендуется)
 
-Скрипт проверяет наличие зависимостей и выводит команды установки при их отсутствии.
+Скрипт проверяет наличие зависимостей и выводит команды установки при их отсутствии. При наличии соответствующих файлов разработки он включает X11 и нативный Wayland; иначе собирает X11-бэкенд, который также работает в Wayland-сессиях через XWayland.
 
 ```bash
 cd /path/to/singbox-launcher
@@ -60,6 +70,7 @@ chmod +x singbox-launcher
 
 ```bash
 export CGO_ENABLED=1
+export CGO_CFLAGS="$(pkg-config --cflags-only-I wayland-client wayland-cursor wayland-egl xkbcommon)"
 GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o singbox-launcher
 ```
 
@@ -67,11 +78,20 @@ GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o singbox-lau
 
 ### Package gl was not found / pkg-config
 
-- Установите `pkg-config` и пакеты OpenGL: на Debian/Ubuntu — `libgl1-mesa-dev`, см. блок «Системные пакеты» выше.
+- Установите `pkg-config` и пакеты OpenGL: на Debian/Ubuntu — `libgl1-mesa-dev`, на openSUSE — `Mesa-libGL-devel`. См. блок «Системные пакеты» выше.
 
 ### X11/Xcursor/Xcursor.h: No such file or directory
 
-- Не хватает заголовков X11. На Debian/Ubuntu: `libxcursor-dev` и остальные пакеты из списка выше (libxrandr-dev, libxi-dev и т.д.).
+- Не хватает заголовков X11. На Debian/Ubuntu — `libxcursor-dev`; на openSUSE — `libXcursor-devel` и остальные пакеты из списка выше (`libXrandr-devel`, `libXi-devel` и т.д.).
+
+### wayland-client-core.h: No such file or directory
+
+- GLFW включает Wayland-бэкенд на Linux. В openSUSE заголовки Wayland находятся в `/usr/include/wayland`; `build_linux.sh` автоматически добавляет этот путь через `pkg-config`. При ручной сборке используйте команду `CGO_CFLAGS`, приведённую выше.
+- Проверить настройку можно командой `pkg-config --cflags wayland-client`: в openSUSE вывод должен содержать `-I/usr/include/wayland`.
+
+### EGL/egl.h: No such file or directory
+
+- Заголовки EGL нужны для нативного Wayland-бэкенда GLFW. Установите `libegl1-mesa-dev` в Debian/Ubuntu, `mesa-libEGL-devel` в Fedora/RHEL или `Mesa-libEGL-devel` в openSUSE. При их отсутствии `build_linux.sh` автоматически использует X11-бэкенд.
 
 ### Сборка в Docker: COPY failed / no such file
 

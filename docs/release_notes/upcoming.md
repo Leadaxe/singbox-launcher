@@ -12,7 +12,7 @@
 -
 
 ### Technical / Internal
--
+- Linux builds now obtain Wayland header paths from `pkg-config` and fall back to X11 when the optional native Wayland/EGL development files are incomplete, fixing local builds on openSUSE.
 
 ## RU
 ### Основное
@@ -22,4 +22,4 @@
 -
 
 ### Техническое / Внутреннее
--
+- Linux-сборка теперь получает пути к заголовкам Wayland через `pkg-config` и использует X11 при неполном наборе опциональных Wayland/EGL-файлов разработки, исправляя локальную сборку в openSUSE.
