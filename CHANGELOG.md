@@ -6,6 +6,20 @@
 Ломающие изменения помечены **!** — они меняют формат данных или поведение,
 на которое можно было полагаться.
 
+## v1.6.2
+
+Подробные заметки: [docs/release_notes/1-6-2.md](docs/release_notes/1-6-2.md).
+
+### Исправления (3)
+
+- fix(reality): `firefox` и `safari` больше не получают `reality_fp_not_chrome` — у ядра sing-box-lx ≥ 1.14.1-lx.3 их спеки (Firefox 148, Safari 26.3) несут key_share X25519MLKEM768 (решение владельца 16.09.2026); подсказка остаётся у ios/android/edge/360/qq; реестры warnings/tls, корпус vless, Protocols.md, TASKS_LXBOX §20.3 (`a50117f7`)
+- fix(wireguard): `awg://<base64 .conf>#label` — вторая форма ссылки (панели с AmneziaWG 3.1) распознаётся и сводится к конвертеру .conf вместо потери узла как «missing private key»; кейсы `uri/wireguard/awg_conf_base64*`, note `protocols/wireguard.json`, TASKS_LXBOX §20 (`e6aad5a2`)
+- fix(traffic): поллер Traffic Profiler в classic-режиме не бьётся в Clash API остановленного ядра и не пишет WARN `connection refused` раз в секунду — ждёт запущенное ядро, одно предупреждение на сбой и одно при восстановлении (`e6aad5a2`)
+
+### Прочее (1)
+
+- chore(core): пин ядра sing-box-lx 1.14.1-lx.3 — REALITY fp=firefox/safari с X25519MLKEM768 на Xray ≥ v26.9.8, хендшейк VLESS encryption не виснет (SPEC 086/087 ядра)
+
 ## v1.6.1
 
 Подробные заметки: [docs/release_notes/1-6-1.md](docs/release_notes/1-6-1.md).
