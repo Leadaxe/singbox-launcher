@@ -1,0 +1,2 @@
+# awg://<base64 не-conf> — payload декодируется, но [Interface] нет: штатный путь, штатная ошибка (missing hostname / key)
+awg://aGVsbG8gd29ybGQsIG5vdCBhIGNvbmY=#junk

@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v1.6.2
+
+Патч после v1.6.1, ядро `sing-box-lx 1.14.1-lx.3`. **REALITY-узлы с отпечатками `firefox` и `safari` подключаются к серверам Xray 26.9.8+:** такие серверы требуют постквантовый key share, а в uTLS ядра он был только у chrome-пресетов, и узел с `fp=firefox` молча уходил на камуфляжный сайт. Ядро переводит `firefox` на Firefox 148, `safari` на Safari 26.3, подсказка «попробуйте chrome» с этих узлов снята и остаётся у `ios`/`android`/`edge`/`360`/`qq`. **Ссылки `awg://` с целым `.conf` в base64** (так панели раздают AmneziaWG 3.x) импортируются вместо пустого источника. Traffic Profiler больше не пишет `connection refused` раз в секунду при остановленном ядре. Подробнее: [docs/release_notes/1-6-2.md](docs/release_notes/1-6-2.md).
+
+### Highlights (EN) — v1.6.2
+
+A patch after v1.6.1, core `sing-box-lx 1.14.1-lx.3`. **REALITY nodes with the `firefox` and `safari` fingerprints connect to Xray 26.9.8+ servers:** such servers require a post-quantum key share that the core's uTLS carried only in the Chrome presets, so an `fp=firefox` node was silently forwarded to the camouflage site. The core moves `firefox` to Firefox 148 and `safari` to Safari 26.3; the "try chrome" hint is gone from those nodes and stays on `ios`/`android`/`edge`/`360`/`qq`. **`awg://` links wrapping a whole base64 `.conf`** (how panels hand out AmneziaWG 3.x) now import instead of leaving an empty source. The Traffic Profiler no longer writes `connection refused` once a second while the core is stopped. Details: [docs/release_notes/1-6-2.md](docs/release_notes/1-6-2.md).
+
 ### Выжимка (RU) — v1.6.1
 
 Патч после v1.6.0. **REALITY-узлы снова сохраняют отпечаток провайдера:** с v1.5.6 лаунчер заменял `firefox` и прочие отпечатки вне chrome-семейства на `chrome`, отменяя выбор подписки, и у части провайдеров узлы переставали подключаться. Теперь лаунчер делает так, как велит подписка: `chrome` ставится только вместо пустого отпечатка. DNS-сервер с выпавшим резолвером берёт следующий подходящий сервер. Парный выпуск телефона — LxBox 2.24.0. Подробнее: [docs/release_notes/1-6-1.md](docs/release_notes/1-6-1.md).
@@ -664,6 +672,7 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v1.6.2** | [docs/release_notes/1-6-2.md](docs/release_notes/1-6-2.md) |
 | **v1.6.1** | [docs/release_notes/1-6-1.md](docs/release_notes/1-6-1.md) |
 | **v1.6.0** | [docs/release_notes/1-6-0.md](docs/release_notes/1-6-0.md) |
 | **v1.5.6** | [docs/release_notes/1-5-6.md](docs/release_notes/1-5-6.md) |

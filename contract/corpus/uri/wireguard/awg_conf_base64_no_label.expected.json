@@ -1,0 +1,49 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.101.0.2/32"
+        ],
+        "content_padding_addition": "16-64",
+        "h1": 1,
+        "h2": 2,
+        "h3": 3,
+        "h4": 4,
+        "header_protection_key": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=",
+        "jc": 120,
+        "jmax": 911,
+        "jmin": 23,
+        "keepalive_timeout": "8-15",
+        "max_handshake_attempts": "15-21",
+        "mtu": 1280,
+        "peers": [
+          {
+            "address": "91.247.235.94",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "persistent_keepalive_interval": 25,
+            "port": 51821,
+            "pre_shared_key": "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM=",
+            "public_key": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
+          }
+        ],
+        "private_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "random_trailers": true,
+        "reject_after_time": "180-190",
+        "rekey_after_time": "3000-4000",
+        "rekey_timeout": "5-10",
+        "s1": 56,
+        "s2": 48,
+        "s3": 32,
+        "s4": 16,
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "91.247.235.94",
+      "scheme": "wireguard"
+    }
+  ],
+  "v": 1
+}

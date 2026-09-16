@@ -25,9 +25,10 @@ func TestRealityFingerprintAllEntryPaths(t *testing.T) {
 		wantFP   string
 	}{
 		{
+			// firefox и safari с ядра lx.3 несут гибридный шар — подсказки нет.
 			name:     "uri vless firefox",
 			input:    "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?security=reality&fp=firefox&pbk=" + pbk + "&sid=ab#n",
-			wantWarn: true,
+			wantWarn: false,
 			wantFP:   "firefox",
 		},
 		{
@@ -48,8 +49,14 @@ func TestRealityFingerprintAllEntryPaths(t *testing.T) {
 		{
 			name:     "uri anytls safari",
 			input:    "anytls://pass@example-1.com:443?security=reality&fp=safari&pbk=" + pbk + "&sid=ab#n",
-			wantWarn: true,
+			wantWarn: false,
 			wantFP:   "safari",
+		},
+		{
+			name:     "uri vless ios still hinted",
+			input:    "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?security=reality&fp=ios&pbk=" + pbk + "&sid=ab#n",
+			wantWarn: true,
+			wantFP:   "ios",
 		},
 	}
 
@@ -63,24 +70,26 @@ func TestRealityFingerprintAllEntryPaths(t *testing.T) {
 		})
 	}
 
-	t.Run("xray json import firefox", func(t *testing.T) {
+	// Пути импорта проверяем на ios: firefox с ядра lx.3 подсказки не даёт,
+	// а сама проверка нужна именно про путь, где узел появляется после tls.
+	t.Run("xray json import ios", func(t *testing.T) {
 		// Xray-тело приезжает МАССИВОМ конфигов (BodyKindXrayArray).
 		raw := `[{"outbounds":[{"tag":"x","protocol":"vless","settings":{"vnext":[{"address":"example-1.com","port":443,` +
 			`"users":[{"id":"11111111-1111-1111-1111-111111111111"}]}]},` +
 			`"streamSettings":{"network":"tcp","security":"reality",` +
-			`"realitySettings":{"serverName":"www.example-3.com","fingerprint":"firefox","publicKey":"` + pbk + `","shortId":"ab"}}}]}]`
+			`"realitySettings":{"serverName":"www.example-3.com","fingerprint":"ios","publicKey":"` + pbk + `","shortId":"ab"}}}]}]`
 		node := parseBodySingleNode(t, raw)
-		assertRealityHealed(t, node.Outbound, node.Warnings, true, "firefox")
+		assertRealityHealed(t, node.Outbound, node.Warnings, true, "ios")
 	})
 
-	t.Run("singbox json import firefox", func(t *testing.T) {
+	t.Run("singbox json import ios", func(t *testing.T) {
 		raw := `{"outbounds":[{"tag":"s","type":"vless","server":"example-1.com","server_port":443,` +
 			`"uuid":"11111111-1111-1111-1111-111111111111",` +
 			`"tls":{"enabled":true,"server_name":"www.example-3.com",` +
-			`"utls":{"enabled":true,"fingerprint":"firefox"},` +
+			`"utls":{"enabled":true,"fingerprint":"ios"},` +
 			`"reality":{"enabled":true,"public_key":"` + pbk + `","short_id":"ab"}}}]}`
 		node := parseBodySingleNode(t, raw)
-		assertRealityHealed(t, node.Outbound, node.Warnings, true, "firefox")
+		assertRealityHealed(t, node.Outbound, node.Warnings, true, "ios")
 	})
 }
 

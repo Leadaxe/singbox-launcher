@@ -103,6 +103,14 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		return nil, fmt.Errorf("URI length (%d) exceeds maximum (%d)", len(uri), MaxURILength)
 	}
 
+	// awg://<base64 .conf>#label — панели заворачивают в ссылку целый wg-quick
+	// (AmneziaWG 3.x по подписке). Форма key@host:port идёт штатной веткой ниже.
+	if strings.HasPrefix(uri, "awg://") || strings.HasPrefix(uri, "wireguard://") {
+		if node, ok, err := parseWGConfBase64Link(uri, skipFilters); ok {
+			return node, err
+		}
+	}
+
 	// Determine scheme
 	scheme := ""
 	uriToParse := uri

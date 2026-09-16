@@ -30,11 +30,12 @@ const (
 	// не из chrome-семейства (D-119). Отпечаток уходит в конфиг как есть.
 	//
 	// Зачем сказать: REALITY-сервер Xray ≥ v26.9.8 требует в ClientHello
-	// key_share X25519MLKEM768, который несут только chrome-спеки uTLS, и без
-	// него МОЛЧА уводит соединение на камуфляжный сайт. Отпечаток — выбор
-	// подписки, лаунчер его не подменяет; если соединение не устанавливается —
-	// стоит попробовать chrome. Пустой fp и
-	// наш дефолт `random` под код не попадают (см. realityFingerprintRisky).
+	// key_share X25519MLKEM768, который в uTLS ядра несут chrome-спеки, а с
+	// sing-box-lx 1.14.1-lx.3 ещё firefox (Firefox 148) и safari (Safari 26.3);
+	// без него сервер МОЛЧА уводит соединение на камуфляжный сайт. Отпечаток —
+	// выбор подписки, лаунчер его не подменяет; если соединение не
+	// устанавливается — стоит попробовать chrome. Пустой fp, наш дефолт
+	// `random`, firefox и safari под код не попадают (см. realityFingerprintRisky).
 	WarnRealityFPNotChrome = "reality_fp_not_chrome"
 	// WarnNaiveExtraHeadersInvalid — пара из naive `extra-headers` отброшена:
 	// нет ':', запрещённые символы в имени или CR/LF/NUL в значении.
