@@ -1380,3 +1380,44 @@ merge — сообщением после влития).
 
 Лаунчер: `core/build/tls_transforms.go` `HealRealityFingerprints`, `core/config/subscription/node_parser_transport.go` `EnforceRealityFingerprint` (`realityFingerprintRisky`), тест `core/build/reality_fingerprint_test.go`. LxBox: `heal_unknown_utls_fingerprints.dart` — снять подмену явных отпечатков, оставить п. 2, смягчить текст.
 
+
+## 20. awg://<base64 .conf> и REALITY fp=firefox — полевые отчёты 16.09.2026
+
+### 20.1 Ссылка awg://<base64 .conf>#label (приоритет 1)
+
+Панели раздают AmneziaWG 3.1 по подписке ссылкой, в которой после `awg://`
+лежит НЕ `key@host:port?...`, а base64 целого wg-quick/.conf
+(`[Interface]`…`[Peer]`, с AWG3-полями `HeaderProtectionKey`,
+`ContentPaddingAddition`, `RekeyAfterTime = 3000-4000`, `RandomTrailers = on`
+и т. д.), фрагмент — имя (`#AmneziaWG-3.1`). Признак формы: в авторитете нет
+ни `@`, ни `:`. Штатный разбор видел в base64 хост без ключа и ронял узел —
+человек получал пустой источник.
+
+Норма (Go, `parseWGConfBase64Link`, с 1.6.2):
+1. payload до `#` декодируется (4 варианта base64, как везде); текст обязан
+   содержать `[Interface]` — иначе штатный путь и штатная ошибка;
+2. первый `[Interface]`-блок конвертируется ТЕМ ЖЕ конвертером, что
+   вставленный .conf (SPEC 076 → `wireguard://` → обычный разбор: AWG2/3-поля,
+   MTU-клэмп, валидация ключей — одна точка); один share-link = один узел;
+3. метка = фрагмент (percent-unescape); без фрагмента — комментарий пира или
+   хост Endpoint, как у .conf.
+
+Корпус: `uri/wireguard/awg_conf_base64` (полный AWG3-набор, метка из
+фрагмента), `awg_conf_base64_no_label` (метка = хост Endpoint),
+`awg_conf_base64_not_conf` (base64 без `[Interface]` → `dropped`,
+`parse_error`). Реестр: `protocols/wireguard.json` note.
+
+### 20.2 REALITY + fp=firefox: не подключается там, где Xray подключается
+
+Проверено на ядре форка (1.14.0-lx.33, lx.39, 1.14.1-lx.1) против сервера
+Xray ≥ v26.9.8 (`ger10.nekosocks.com`): `fp=chrome` — 204, `fp=firefox` —
+`reality verification failed`; Xray-клиент с `fp=firefox` работает.
+Причина не в лаунчере и не в LxBox: в `metacubex/utls` 1.8.7 (зависимость
+ядра/libbox) `HelloFirefox_Auto = HelloFirefox_120` — профиль без
+`X25519MLKEM768`, а REALITY-сервер после XTLS/REALITY@8cdf7bf отвергает
+приветствие без гибридного шара. У Xray `refraction-networking/utls`
+`HelloFirefox_Auto = HelloFirefox_148` с гибридом. Правило D-119 (§19)
+остаётся; предупреждение `reality_fp_not_chrome` («попробуйте chrome»)
+описывает ровно этот случай — не снимайте его. Лечится в ядре (профиль
+Firefox 148 в utls форка) — задача форка, обе стороны получат фикс новым
+libbox/бинарём.

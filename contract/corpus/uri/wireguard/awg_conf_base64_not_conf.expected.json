@@ -1,0 +1,10 @@
+{
+  "dropped": [
+    {
+      "reason": "parse_error",
+      "ref": "awg://aGVsbG8gd29ybGQsIG5vdCBhIGNvbmY=#junk"
+    }
+  ],
+  "nodes": [],
+  "v": 1
+}

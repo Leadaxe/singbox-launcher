@@ -116,6 +116,8 @@ type ConnPoller struct {
 	cfg      ClashConfigProvider
 	httpc    *http.Client
 	interval time.Duration
+	// failStreak — подряд неудачных HTTP-опросов; только goroutine поллера.
+	failStreak int
 
 	// snapshotFn, when non-nil, replaces the Clash HTTP fetch (daemon mode).
 	// Guarded by srcMu so it can be swapped when the backend mode changes.
@@ -228,8 +230,21 @@ func (p *ConnPoller) pollOnce(ctx context.Context) {
 	}
 	snap, err := fetchSnapshot(ctx, p.httpc, baseURL, token)
 	if err != nil {
-		pollerWarnFn("traffic poller: fetch /connections failed: %v", err)
+		// Одно предупреждение на сбой, а не по одному в секунду: между
+		// стартом процесса ядра и подъёмом Clash API проходит несколько
+		// тиков, и каждый давал строку WARN в лог. Дальнейшие отказы
+		// считаются и отчитываются одной строкой при восстановлении.
+		p.failStreak++
+		if p.failStreak == 1 {
+			pollerWarnFn("traffic poller: fetch /connections failed: %v (further failures suppressed until it recovers)", err)
+		}
 		return
+	}
+	if p.failStreak > 0 {
+		if p.failStreak > 1 {
+			pollerWarnFn("traffic poller: /connections reachable again after %d failed polls", p.failStreak)
+		}
+		p.failStreak = 0
 	}
 	now := time.Now()
 	curr := make(map[string]ClashConn, len(snap.Connections))

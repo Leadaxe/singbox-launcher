@@ -82,6 +82,14 @@ func EnsureTrafficProfilerStarted(ac *core.AppController) {
 		if ac.BackendMode() == core.BackendDaemon {
 			return "", "", false // daemon без Clash — Clash-поллер выключен
 		}
+		// Classic: Clash API есть только у ЗАПУЩЕННОГО ядра. Без этой
+		// проверки поллер бился в закрытый порт раз в секунду и засорял
+		// релизный лог (WARN — единственный уровень релиза) «connection
+		// refused» с момента старта лаунчера до старта ядра и после
+		// каждой остановки.
+		if ac.RunningState == nil || !ac.RunningState.IsRunning() {
+			return "", "", false
+		}
 		return ac.APIService.GetClashAPIConfig()
 	}
 	logPath := filepath.Join(platform.GetLogsDir(ac.FileService.ExecDir), constants.ChildLogFileName)
