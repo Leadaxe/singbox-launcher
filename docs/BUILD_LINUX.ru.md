@@ -15,18 +15,33 @@
    **Debian / Ubuntu:**
    ```bash
    sudo apt-get update && sudo apt-get install -y \
-     build-essential pkg-config libgl1-mesa-dev libegl1-mesa-dev \
-     libxcursor-dev libxrandr-dev libxi-dev libxinerama-dev libxft-dev \
+     build-essential pkg-config libgl1-mesa-dev libxcursor-dev \
+     libxrandr-dev libxi-dev libxinerama-dev libxft-dev \
      libxkbcommon-x11-dev libxxf86vm-dev libwayland-dev
    ```
 
-   **Fedora / RHEL:**
+   **Fedora:**
    ```bash
    sudo dnf install -y \
-     mesa-libGL-devel mesa-libEGL-devel libXcursor-devel \
-     libXrandr-devel libXi-devel libXinerama-devel libXft-devel \
-     libxkbcommon-x11-devel \
-     libXxf86vm-devel libwayland-devel
+     mesa-libGL-devel libXcursor-devel libXrandr-devel libXi-devel \
+     libXinerama-devel libXft-devel libxkbcommon-x11-devel \
+     libXxf86vm-devel wayland-devel
+   ```
+
+   **RHEL 9 и совместимые дистрибутивы:**
+
+   Пакеты `libxkbcommon-x11-devel` и `libXxf86vm-devel` находятся в репозитории CodeReady Builder (CRB). Сначала включите его, затем установите приведённый выше набор пакетов Fedora.
+
+   В RHEL с активной подпиской:
+   ```bash
+   sudo subscription-manager repos \
+     --enable="codeready-builder-for-rhel-9-$(arch)-rpms"
+   ```
+
+   В Rocky Linux 9 или AlmaLinux 9:
+   ```bash
+   sudo dnf install -y dnf-plugins-core
+   sudo dnf config-manager --set-enabled crb
    ```
 
    **openSUSE (Leap / Tumbleweed):**
@@ -91,7 +106,7 @@ GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o singbox-lau
 
 ### EGL/egl.h: No such file or directory
 
-- Заголовки EGL нужны для нативного Wayland-бэкенда GLFW. Установите `libegl1-mesa-dev` в Debian/Ubuntu, `mesa-libEGL-devel` в Fedora/RHEL или `Mesa-libEGL-devel` в openSUSE. При их отсутствии `build_linux.sh` автоматически использует X11-бэкенд.
+- Заголовки EGL нужны для нативного Wayland-бэкенда GLFW. Они устанавливаются как транзитивная зависимость наборов пакетов, проверенных в Debian 12, Ubuntu 24.04, Fedora 44 и Rocky Linux 9. Если в другом выпуске заголовков нет, установите `libegl1-mesa-dev` в Debian/Ubuntu, `mesa-libEGL-devel` в Fedora/RHEL или `Mesa-libEGL-devel` в openSUSE. При их отсутствии `build_linux.sh` автоматически использует X11-бэкенд.
 
 ### Сборка в Docker: COPY failed / no such file
 

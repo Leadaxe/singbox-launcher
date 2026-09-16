@@ -15,18 +15,33 @@
    **Debian / Ubuntu:**
    ```bash
    sudo apt-get update && sudo apt-get install -y \
-     build-essential pkg-config libgl1-mesa-dev libegl1-mesa-dev \
-     libxcursor-dev libxrandr-dev libxi-dev libxinerama-dev libxft-dev \
+     build-essential pkg-config libgl1-mesa-dev libxcursor-dev \
+     libxrandr-dev libxi-dev libxinerama-dev libxft-dev \
      libxkbcommon-x11-dev libxxf86vm-dev libwayland-dev
    ```
 
-   **Fedora / RHEL:**
+   **Fedora:**
    ```bash
    sudo dnf install -y \
-     mesa-libGL-devel mesa-libEGL-devel libXcursor-devel \
-     libXrandr-devel libXi-devel libXinerama-devel libXft-devel \
-     libxkbcommon-x11-devel \
-     libXxf86vm-devel libwayland-devel
+     mesa-libGL-devel libXcursor-devel libXrandr-devel libXi-devel \
+     libXinerama-devel libXft-devel libxkbcommon-x11-devel \
+     libXxf86vm-devel wayland-devel
+   ```
+
+   **RHEL 9 and compatible distributions:**
+
+   The `libxkbcommon-x11-devel` and `libXxf86vm-devel` packages are provided by CodeReady Builder (CRB). Enable it first, then install the Fedora package list above.
+
+   On RHEL with an active subscription:
+   ```bash
+   sudo subscription-manager repos \
+     --enable="codeready-builder-for-rhel-9-$(arch)-rpms"
+   ```
+
+   On Rocky Linux 9 or AlmaLinux 9:
+   ```bash
+   sudo dnf install -y dnf-plugins-core
+   sudo dnf config-manager --set-enabled crb
    ```
 
    **openSUSE (Leap / Tumbleweed):**
@@ -91,7 +106,7 @@ GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o singbox-lau
 
 ### EGL/egl.h: No such file or directory
 
-- EGL headers are needed for GLFW's native Wayland backend. Install `libegl1-mesa-dev` on Debian/Ubuntu, `mesa-libEGL-devel` on Fedora/RHEL, or `Mesa-libEGL-devel` on openSUSE. `build_linux.sh` falls back to the X11 backend when they are unavailable.
+- EGL headers are needed for GLFW's native Wayland backend. They are installed transitively by the package lists tested on Debian 12, Ubuntu 24.04, Fedora 44, and Rocky Linux 9. If they are missing on another release, install `libegl1-mesa-dev` on Debian/Ubuntu, `mesa-libEGL-devel` on Fedora/RHEL, or `Mesa-libEGL-devel` on openSUSE. `build_linux.sh` falls back to the X11 backend when they are unavailable.
 
 ### Docker build: COPY failed / no such file
 

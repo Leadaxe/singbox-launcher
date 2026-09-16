@@ -4,12 +4,13 @@
 #
 # Required system packages (OpenGL + X11/GLFW for Fyne):
 #   Debian/Ubuntu (apt):
-#     build-essential pkg-config libgl1-mesa-dev libegl1-mesa-dev \
-#     libxcursor-dev libxrandr-dev libxi-dev libxinerama-dev libxft-dev \
+#     build-essential pkg-config libgl1-mesa-dev libxcursor-dev libxrandr-dev \
+#     libxi-dev libxinerama-dev libxft-dev \
 #     libxkbcommon-x11-dev libxxf86vm-dev libwayland-dev
-#   Fedora/RHEL (dnf): mesa-libGL-devel mesa-libEGL-devel libXcursor-devel \
+#   Fedora/RHEL (dnf): mesa-libGL-devel libXcursor-devel \
 #     libXrandr-devel libXi-devel libXinerama-devel libXft-devel \
-#     libxkbcommon-x11-devel libXxf86vm-devel libwayland-devel
+#     libxkbcommon-x11-devel libXxf86vm-devel wayland-devel
+#     RHEL-compatible distributions may require CRB/CodeReady Builder.
 #   openSUSE (zypper): gcc gcc-c++ make pkg-config Mesa-libGL-devel \
 #     Mesa-libEGL-devel libXcursor-devel libXrandr-devel libXi-devel \
 #     libXinerama-devel libXft-devel libxkbcommon-x11-devel \
@@ -54,15 +55,17 @@ if ! check_deps; then
     echo "--- Install build dependencies ---"
     echo "Debian/Ubuntu:"
     echo "  sudo apt-get update && sudo apt-get install -y \\"
-    echo "    build-essential pkg-config libgl1-mesa-dev libegl1-mesa-dev \\"
-    echo "    libxcursor-dev libxrandr-dev libxi-dev libxinerama-dev libxft-dev \\"
+    echo "    build-essential pkg-config libgl1-mesa-dev libxcursor-dev \\"
+    echo "    libxrandr-dev libxi-dev libxinerama-dev libxft-dev \\"
     echo "    libxkbcommon-x11-dev libxxf86vm-dev libwayland-dev"
     echo ""
-    echo "Fedora/RHEL:"
+    echo "Fedora:"
     echo "  sudo dnf install -y \\"
-    echo "    mesa-libGL-devel mesa-libEGL-devel libXcursor-devel \\"
-    echo "    libXrandr-devel libXi-devel libXinerama-devel libXft-devel \\"
-    echo "    libxkbcommon-x11-devel libXxf86vm-devel libwayland-devel"
+    echo "    mesa-libGL-devel libXcursor-devel libXrandr-devel libXi-devel \\"
+    echo "    libXinerama-devel libXft-devel libxkbcommon-x11-devel \\"
+    echo "    libXxf86vm-devel wayland-devel"
+    echo ""
+    echo "RHEL-compatible: enable CRB/CodeReady Builder, then use the Fedora package list."
     echo ""
     echo "openSUSE (Leap/Tumbleweed):"
     echo "  sudo zypper install -y \\"
@@ -98,7 +101,8 @@ if pkg-config --exists egl wayland-client wayland-cursor wayland-egl xkbcommon 2
 else
     BUILD_TAG_ARGS=(-tags x11)
     echo "Native Wayland development files are incomplete; building the X11 backend."
-    echo "Install libegl1-mesa-dev (Debian/Ubuntu) or Mesa-libEGL-devel (openSUSE)"
+    echo "Install libegl1-mesa-dev (Debian/Ubuntu), mesa-libEGL-devel (Fedora/RHEL),"
+    echo "or Mesa-libEGL-devel (openSUSE)"
     echo "together with the Wayland development packages to enable both backends."
 fi
 
