@@ -204,6 +204,23 @@ func sanitizeSingboxReality(tlsMap map[string]interface{}, tag string) {
 			realityMap["short_id"] = normalized
 		}
 	}
+
+	if ks, ok := realityMap["key_share"]; ok {
+		normalized := strings.ToLower(strings.TrimSpace(toStringValue(ks)))
+		switch normalized {
+		case "hybrid", "classical":
+			// Канонический lower-case: ядро сверяет enum побуквенно.
+			realityMap["key_share"] = normalized
+		case "":
+			// Пусто = «как несёт отпечаток», ключа в конфиге просто нет.
+			delete(realityMap, "key_share")
+		default:
+			// Enum ядра закрытый (SPEC 089): чужое значение — отказ ВСЕГО
+			// конфига. Деградирует поле, а не узел и не конфиг.
+			debuglog.WarnLog("Parser: singbox import %q: unknown REALITY key_share %q — dropping the key", tag, toStringValue(ks))
+			delete(realityMap, "key_share")
+		}
+	}
 }
 
 // sanitizeSingboxFlow оставляет только xtls-rprx-vision и гасит flow при транспорте.

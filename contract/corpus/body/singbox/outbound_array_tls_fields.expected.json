@@ -98,6 +98,55 @@
       "kind": "outbound",
       "label": "naive-junk-tls",
       "scheme": "naive"
+    },
+    {
+      "entry": {
+        "server": "example-4.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "reality": {
+            "enabled": true,
+            "key_share": "classical",
+            "public_key": "AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw",
+            "short_id": "abcd"
+          },
+          "server_name": "example-4.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "type": "vless",
+        "uuid": "22222222-2222-2222-2222-222222222222"
+      },
+      "kind": "outbound",
+      "label": "vless-reality-key-share",
+      "scheme": "vless"
+    },
+    {
+      "entry": {
+        "server": "example-5.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "reality": {
+            "enabled": true,
+            "public_key": "AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw",
+            "short_id": "abcd"
+          },
+          "server_name": "example-5.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "type": "vless",
+        "uuid": "33333333-3333-3333-3333-333333333333"
+      },
+      "kind": "outbound",
+      "label": "vless-reality-key-share-junk",
+      "scheme": "vless"
     }
   ],
   "v": 1

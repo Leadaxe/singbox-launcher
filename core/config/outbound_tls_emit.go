@@ -154,6 +154,18 @@ func emitOutboundTLSJSON(scheme string, outbound map[string]interface{}) (string
 		if shortID, ok := reality["short_id"].(string); ok {
 			realityParts = append(realityParts, fmt.Sprintf(`"short_id":%s`, marshalJSONString(shortID)))
 		}
+		// key_share — SPEC 089 ядра (sing-box-lx ≥ 1.14.1-lx.4): "" = как
+		// несёт отпечаток, "classical" = без X25519MLKEM768, "hybrid" =
+		// гибрид обязателен. Enum ядра закрытый: любое другое значение —
+		// ошибка загрузки ВСЕГО конфига, поэтому мусор не эмитится (узел
+		// живёт без поля), а не передаётся дальше.
+		if keyShare, ok := reality["key_share"].(string); ok && keyShare != "" {
+			if keyShare == "hybrid" || keyShare == "classical" {
+				realityParts = append(realityParts, fmt.Sprintf(`"key_share":%s`, marshalJSONString(keyShare)))
+			} else {
+				debuglog.WarnLog("Generator: %q: tls.reality.key_share %q is not hybrid/classical — dropped", mapStringValue(outbound, "tag"), keyShare)
+			}
+		}
 		parts = append(parts, fmt.Sprintf(`"reality":{%s}`, strings.Join(realityParts, ",")))
 	}
 
