@@ -317,7 +317,7 @@
       },
       "network_list": {
         "type": "ref",
-        "ref": "dialer.common",
+        "ref": "dialer.common.network",
         "desc_en": "Networks this outbound handles.",
         "desc_ru": "Сети, которые обслуживает этот узел.",
         "impl": "Именно это поле, а НЕ network, задаёт у masque список tcp/udp. Правило значения — registry/dialer.json, секция common, поле network."

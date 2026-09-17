@@ -469,6 +469,8 @@
       },
       "utls": {
         "type": "object",
+        "forbidden_for": ["naive"],
+        "code": "tls_field_unsupported_naive",
         "order": ["enabled", "fingerprint"],
         "fields": {
           "enabled": {
@@ -501,6 +503,8 @@
       },
       "reality": {
         "type": "object",
+        "forbidden_for": ["naive"],
+        "code": "tls_field_unsupported_naive",
         "order": ["enabled", "public_key", "short_id", "key_share"],
         "fields": {
           "enabled": {

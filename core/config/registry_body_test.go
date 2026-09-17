@@ -347,7 +347,7 @@ func checkField(t *testing.T, where, path string, f *bodyField, codes map[string
 	if f.Type == "ref" && f.Ref == "" {
 		t.Errorf("%s: type=ref без ref", full)
 	}
-	if f.Ref != "" && !knownRefs[f.Ref] {
+	if f.Ref != "" && !knownRefs[f.Ref] && !knownRefs[refParent(f.Ref)] {
 		t.Errorf("%s: ref %q не указывает ни на одну суб-схему реестра", full, f.Ref)
 	}
 	if f.Type == "array" && f.Items == nil {
@@ -634,4 +634,14 @@ func checkDraftCoverage(t *testing.T, where string, draftFields map[string]draft
 		t.Errorf("%s: поле ядра %q не описано в реестре и не помечено skip (%s)",
 			where, name, fmt.Sprintf("источник — %s", coreSchemaDraft))
 	}
+}
+
+// refParent — для ссылки на поле внутри суб-схемы (`dialer.common.network`)
+// возвращает саму суб-схему (`dialer.common`); иные ссылки — как есть.
+func refParent(ref string) string {
+	i := strings.LastIndex(ref, ".")
+	if i <= 0 {
+		return ref
+	}
+	return ref[:i]
 }

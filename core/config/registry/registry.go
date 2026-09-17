@@ -1,0 +1,652 @@
+// Package registry читает реестр контракта (contract/registry/*.json) и
+// отдаёт его санитайзеру и эмиттеру узла в разрешённом виде: ссылки `ref`
+// подставлены, `__dialer` влит плоско, вариантные транспорты собраны.
+//
+// Пакет — только загрузка и индексы: ни одного решения о значениях полей
+// здесь нет, все решения лежат в JSON (SPEC 131 §4). Код не знает ни одной
+// схемы по имени — имена приходят с диска.
+//
+// go1.20-совместимо (Win7-джоба собирает весь модуль тулчейном go1.20):
+// без slices/maps/min/max/clear.
+package registry
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+	"sync"
+
+	"singbox-launcher/contract"
+)
+
+// Field — поле схемы тела. Атрибуты — словарь contract/schema/registry_body.schema.json;
+// неизвестные атрибуты молча игнорируются (реестр может уехать вперёд кода).
+type Field struct {
+	Type   string `json:"type"`
+	Ref    string `json:"ref"`
+	Inline bool   `json:"inline"`
+
+	// Вложенность.
+	Items  *Field            `json:"items"`
+	Order  []string          `json:"order"`
+	Fields map[string]*Field `json:"fields"`
+
+	// Ограничения значения.
+	Values    []interface{} `json:"values"`
+	Format    string        `json:"format"`
+	Min       *float64      `json:"min"`
+	Max       *float64      `json:"max"`
+	Len       *int          `json:"len"`
+	LenParity string        `json:"len_parity"`
+	Normalize string        `json:"normalize"`
+
+	// Поведение.
+	Required      bool        `json:"required"`
+	Secret        bool        `json:"secret"`
+	Tristate      bool        `json:"tristate"`
+	AllOrNothing  bool        `json:"all_or_nothing"`
+	Managed       bool        `json:"managed"`
+	Deprecated    bool        `json:"deprecated"`
+	Skip          string      `json:"skip"`
+	Default       interface{} `json:"default"`
+	OnInvalid     *OnInvalid  `json:"on_invalid"`
+	Advisory      []Advisory  `json:"advisory"`
+	DropAlways    bool        `json:"drop_always"`
+	Aliases       interface{} `json:"aliases"`
+	DefaultWhen   interface{} `json:"default_when"`
+	ForbiddenWhen *Relation   `json:"forbidden_when"`
+
+	// Связи со схемой и другими полями.
+	AllowedFor   []string   `json:"allowed_for"`
+	ForbiddenFor []string   `json:"forbidden_for"`
+	Code         string     `json:"code"`
+	Conflicts    []Relation `json:"conflicts"`
+	Requires     []Relation `json:"requires"`
+
+	// Гейты сборки.
+	MinCore  string `json:"min_core"`
+	Platform string `json:"platform"`
+	LxOnly   bool   `json:"lx_only"`
+	BuildTag string `json:"build_tag"`
+
+	// Тексты.
+	DescEn string `json:"desc_en"`
+	DescRu string `json:"desc_ru"`
+	Impl   string `json:"impl"`
+
+	// Variants заполняется при разрешении ref на вариантную секцию
+	// (transports): выбор варианта — по значению дискриминатора в карте.
+	Variants      map[string]*Field `json:"-"`
+	Discriminator string            `json:"-"`
+}
+
+// OnInvalid — что делать со значением, не прошедшим ограничение поля.
+type OnInvalid struct {
+	Action string      `json:"action"`
+	Value  interface{} `json:"value"`
+	Code   string      `json:"code"`
+}
+
+// Advisory — значения, которые ядро принимает, но узел получает код.
+type Advisory struct {
+	Values []interface{} `json:"values"`
+	Code   string        `json:"code"`
+}
+
+// Relation — связь поля с другим полем (conflicts / requires / forbidden_when).
+type Relation struct {
+	With    string `json:"with"`
+	Path    string `json:"path"`
+	Present *bool  `json:"present"`
+	Code    string `json:"code"`
+}
+
+// section — секция body/common одного файла реестра, как она лежит на диске.
+type section struct {
+	Core          string            `json:"core"`
+	Order         []string          `json:"order"`
+	Fields        map[string]*Field `json:"fields"`
+	Skipped       map[string]string `json:"skipped"`
+	Discriminator string            `json:"discriminator"`
+	Values        []string          `json:"values"`
+	Variants      map[string]*struct {
+		Order  []string          `json:"order"`
+		Fields map[string]*Field `json:"fields"`
+	} `json:"variants"`
+}
+
+// file — файл реестра: секции body/common разбираются структурами, всё
+// остальное остаётся сырым (оттуда берётся таблица maps_to).
+type file struct {
+	Body   *section
+	Common *section
+	Raw    map[string]json.RawMessage
+}
+
+func (f *file) UnmarshalJSON(data []byte) error {
+	f.Raw = map[string]json.RawMessage{}
+	if err := json.Unmarshal(data, &f.Raw); err != nil {
+		return err
+	}
+	if b, ok := f.Raw["body"]; ok {
+		f.Body = &section{}
+		if err := json.Unmarshal(b, f.Body); err != nil {
+			return err
+		}
+	}
+	if c, ok := f.Raw["common"]; ok {
+		f.Common = &section{}
+		if err := json.Unmarshal(c, f.Common); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// BodySchema — разрешённая схема тела одной схемы протокола.
+type BodySchema struct {
+	Scheme string
+	Core   string
+	Order  []string
+	Fields map[string]*Field
+}
+
+// WarningEntry — запись кода из registry/warnings.json.
+type WarningEntry struct {
+	Severity string   `json:"severity"`
+	Params   []string `json:"params"`
+	TitleEn  string   `json:"title_en"`
+	TitleRu  string   `json:"title_ru"`
+	TextEn   string   `json:"text_en"`
+	TextRu   string   `json:"text_ru"`
+	Desc     string   `json:"desc"`
+	Doc      string   `json:"doc"`
+}
+
+// Limit — запись из registry/limits.json.
+type Limit struct {
+	Value interface{} `json:"value"`
+	Note  string      `json:"note"`
+	Impl  string      `json:"impl"`
+}
+
+// Registry — весь реестр в разрешённом виде.
+type Registry struct {
+	bodies   map[string]*BodySchema
+	warnings map[string]*WarningEntry
+	limits   map[string]Limit
+	lists    map[string][]string
+	mapsTo   map[string]map[string][]string
+	schemes  []string
+}
+
+// protocolFiles — схемы протоколов реестра. Список явный: embed.FS читается
+// и через ReadDir, но порядок обхода должен быть предсказуем, а появление
+// нового файла — осознанным (линтер реестра держит тот же список).
+var protocolFiles = []string{
+	"anytls", "chain", "http", "hysteria", "hysteria2", "masque",
+	"naive", "shadowsocks", "socks", "ssh", "tailscale", "trojan", "tuic",
+	"vless", "vmess", "wireguard",
+}
+
+var (
+	once   sync.Once
+	cached *Registry
+	cerr   error
+)
+
+// Get возвращает реестр из кэша, загружая его при первом обращении.
+func Get() (*Registry, error) {
+	once.Do(func() { cached, cerr = Load() })
+	return cached, cerr
+}
+
+// MustGet — Get с паникой на ошибке: реестр вшит в бинарь, и его порча
+// означает сломанную сборку, а не ситуацию рантайма.
+func MustGet() *Registry {
+	r, err := Get()
+	if err != nil {
+		panic("registry: " + err.Error())
+	}
+	return r
+}
+
+// Load читает реестр из вшитых файлов контракта и разрешает ссылки.
+func Load() (*Registry, error) {
+	subs := map[string]*section{}
+	for _, name := range []string{"tls", "transports", "multiplex", "dialer"} {
+		f, err := readFile(name + ".json")
+		if err != nil {
+			return nil, err
+		}
+		if f.Body == nil {
+			return nil, fmt.Errorf("registry: %s.json: нет секции body", name)
+		}
+		subs[name] = f.Body
+		if f.Common != nil {
+			subs[name+".common"] = f.Common
+		}
+	}
+
+	reg := &Registry{
+		bodies:   make(map[string]*BodySchema, len(protocolFiles)),
+		warnings: map[string]*WarningEntry{},
+		limits:   map[string]Limit{},
+		lists:    map[string][]string{},
+		mapsTo:   map[string]map[string][]string{},
+	}
+
+	for _, scheme := range protocolFiles {
+		f, err := readFile("protocols/" + scheme + ".json")
+		if err != nil {
+			return nil, err
+		}
+		if f.Body == nil {
+			return nil, fmt.Errorf("registry: protocols/%s.json: нет секции body", scheme)
+		}
+		body, err := resolveSection(scheme, f.Body, subs)
+		if err != nil {
+			return nil, err
+		}
+		reg.bodies[scheme] = body
+		reg.schemes = append(reg.schemes, scheme)
+		reg.mapsTo[scheme] = collectMapsTo(f.Raw)
+	}
+
+	// Общие суб-схемы дают maps_to тоже (tls.json, transports.json).
+	for _, name := range []string{"tls", "transports"} {
+		f, err := readFile(name + ".json")
+		if err != nil {
+			return nil, err
+		}
+		shared := collectMapsTo(f.Raw)
+		for scheme := range reg.mapsTo {
+			for param, paths := range shared {
+				if _, ok := reg.mapsTo[scheme][param]; !ok {
+					reg.mapsTo[scheme][param] = paths
+				}
+			}
+		}
+	}
+
+	if err := readJSON("warnings.json", &struct {
+		Warnings *map[string]*WarningEntry `json:"warnings"`
+	}{Warnings: &reg.warnings}); err != nil {
+		return nil, err
+	}
+	if err := readJSON("limits.json", &struct {
+		Limits *map[string]Limit `json:"limits"`
+	}{Limits: &reg.limits}); err != nil {
+		return nil, err
+	}
+	var lists struct {
+		Allowlists map[string]struct {
+			Values []string `json:"values"`
+			Note   string   `json:"note"`
+		} `json:"allowlists"`
+	}
+	if err := readJSON("allowlists.json", &lists); err != nil {
+		return nil, err
+	}
+	for name, l := range lists.Allowlists {
+		reg.lists[name] = l.Values
+	}
+	return reg, nil
+}
+
+func readFile(name string) (*file, error) {
+	data, err := contract.ReadRegistry(name)
+	if err != nil {
+		return nil, fmt.Errorf("registry: %s: %w", name, err)
+	}
+	f := &file{}
+	if err := json.Unmarshal(data, f); err != nil {
+		return nil, fmt.Errorf("registry: %s: %w", name, err)
+	}
+	return f, nil
+}
+
+func readJSON(name string, dst interface{}) error {
+	data, err := contract.ReadRegistry(name)
+	if err != nil {
+		return fmt.Errorf("registry: %s: %w", name, err)
+	}
+	if err := json.Unmarshal(data, dst); err != nil {
+		return fmt.Errorf("registry: %s: %w", name, err)
+	}
+	return nil
+}
+
+// resolveSection разрешает ссылки схемы протокола: `ref` подставляется
+// содержимым суб-схемы, inline-ссылка (`__dialer`) вливается плоско в конец
+// order, вариантная суб-схема (транспорты) едет как Variants.
+func resolveSection(scheme string, sec *section, subs map[string]*section) (*BodySchema, error) {
+	out := &BodySchema{
+		Scheme: scheme,
+		Core:   sec.Core,
+		Order:  make([]string, 0, len(sec.Order)),
+		Fields: make(map[string]*Field, len(sec.Fields)),
+	}
+	for _, name := range sec.Order {
+		src := sec.Fields[name]
+		if src == nil {
+			return nil, fmt.Errorf("registry: %s: order упоминает %q, которого нет в fields", scheme, name)
+		}
+		if src.Type != "ref" {
+			out.Order = append(out.Order, name)
+			out.Fields[name] = src
+			continue
+		}
+		sub := subs[sectionOfRef(src.Ref)]
+		if sub == nil {
+			return nil, fmt.Errorf("registry: %s.%s: неизвестный ref %q", scheme, name, src.Ref)
+		}
+		if src.Inline {
+			// Поля суб-схемы вливаются в тело плоско, без обёртки.
+			for _, inner := range sub.Order {
+				f := sub.Fields[inner]
+				if f == nil {
+					continue
+				}
+				if _, dup := out.Fields[inner]; dup {
+					continue
+				}
+				out.Order = append(out.Order, inner)
+				out.Fields[inner] = f
+			}
+			continue
+		}
+		if sub.Variants == nil && len(sub.Fields) > 0 && strings.Contains(src.Ref, ".") {
+			f := resolveNamedRef(name, src, sub)
+			if f == nil {
+				return nil, fmt.Errorf("registry: %s.%s: в суб-схеме %q нет подходящего поля", scheme, name, src.Ref)
+			}
+			out.Order = append(out.Order, name)
+			out.Fields[name] = mergeRefAttrs(src, f)
+			continue
+		}
+		resolved, err := refAsObject(src, sub)
+		if err != nil {
+			return nil, fmt.Errorf("registry: %s.%s: %w", scheme, name, err)
+		}
+		out.Order = append(out.Order, name)
+		out.Fields[name] = resolved
+	}
+	return out, nil
+}
+
+// refAsObject превращает ссылку на суб-схему в поле-объект: обычная секция
+// даёт order+fields, вариантная (транспорты) — Variants с дискриминатором.
+func refAsObject(src *Field, sub *section) (*Field, error) {
+	f := &Field{
+		Type:     "object",
+		Required: src.Required,
+		Code:     src.Code,
+		DescEn:   src.DescEn,
+		DescRu:   src.DescRu,
+		Impl:     src.Impl,
+	}
+	if len(sub.Variants) == 0 {
+		f.Order = sub.Order
+		f.Fields = sub.Fields
+		return f, nil
+	}
+	if sub.Discriminator == "" {
+		return nil, fmt.Errorf("вариантная суб-схема без discriminator")
+	}
+	f.Discriminator = sub.Discriminator
+	f.Variants = make(map[string]*Field, len(sub.Variants))
+	for name, v := range sub.Variants {
+		f.Variants[name] = &Field{Type: "object", Order: v.Order, Fields: v.Fields}
+	}
+	return f, nil
+}
+
+// sectionOfRef — имя секции суб-схемы в ссылке. Ссылка бывает двух форм:
+// "dialer.common" (поле берётся по собственному имени) и
+// "dialer.common.network" (поле названо явно) — вторая форма нужна там, где
+// имя поля у схемы своё (masque.network_list).
+func sectionOfRef(ref string) string {
+	parts := strings.Split(ref, ".")
+	if len(parts) >= 3 {
+		return strings.Join(parts[:2], ".")
+	}
+	return ref
+}
+
+// resolveNamedRef ищет в суб-схеме поле, на которое ссылается ref.
+//
+// Порядок: явное имя в ссылке ("dialer.common.network") → собственное имя
+// поля → единственное поле суб-схемы с тем же desc_en. Последний шаг — мост
+// для masque.network_list, где реестр называет поле иначе, чем суб-схема, а
+// явной формы ссылки в контракте 1.1.0 ещё нет; совпадение ищется по данным
+// (одинаковый desc_en), и неоднозначность считается ошибкой реестра.
+func resolveNamedRef(name string, src *Field, sub *section) *Field {
+	if parts := strings.Split(src.Ref, "."); len(parts) >= 3 {
+		return sub.Fields[strings.Join(parts[2:], ".")]
+	}
+	if f := sub.Fields[name]; f != nil {
+		return f
+	}
+	if src.DescEn == "" {
+		return nil
+	}
+	var found *Field
+	for _, inner := range sub.Order {
+		f := sub.Fields[inner]
+		if f == nil || f.DescEn != src.DescEn {
+			continue
+		}
+		if found != nil {
+			return nil // неоднозначно — реестр обязан назвать поле явно
+		}
+		found = f
+	}
+	return found
+}
+
+// mergeRefAttrs накладывает атрибуты ссылки на поле суб-схемы: ссылка может
+// ужесточить обязательность (naive: tls required), но не подменяет правила.
+func mergeRefAttrs(src, target *Field) *Field {
+	if !src.Required && src.Code == "" && len(src.ForbiddenFor) == 0 && len(src.AllowedFor) == 0 {
+		return target
+	}
+	cp := *target
+	if src.Required {
+		cp.Required = true
+	}
+	if src.Code != "" {
+		cp.Code = src.Code
+	}
+	if len(src.ForbiddenFor) > 0 {
+		cp.ForbiddenFor = src.ForbiddenFor
+	}
+	if len(src.AllowedFor) > 0 {
+		cp.AllowedFor = src.AllowedFor
+	}
+	return &cp
+}
+
+// collectMapsTo собирает таблицу «параметр ссылки → путь в теле» из файла
+// реестра (SPEC 131 §3.1). Параметры лежат в разных секциях и на разной
+// глубине — uri.query.sni у протокола, tls.params.sni и tls.reality.pbk в
+// общей суб-схеме, transports.<type>.<param> у транспортов, — поэтому обход
+// рекурсивный по всему файлу: ключ таблицы = имя параметра ссылки, значение =
+// пути в теле. Секция body исключена: там maps_to не бывает, а обходить её
+// незачем.
+func collectMapsTo(raw map[string]json.RawMessage) map[string][]string {
+	out := map[string][]string{}
+	var walk func(name string, node interface{})
+	walk = func(name string, node interface{}) {
+		m, ok := node.(map[string]interface{})
+		if !ok {
+			return
+		}
+		if to, ok := m["maps_to"].(string); ok && to != "" && name != "" {
+			found := false
+			for _, existing := range out[name] {
+				if existing == to {
+					found = true
+					break
+				}
+			}
+			if !found {
+				out[name] = append(out[name], to)
+			}
+		}
+		for k, v := range m {
+			switch k {
+			case "maps_to", "aliases", "values", "allowlist", "default",
+				"desc_en", "desc_ru", "impl", "note", "meaning", "type":
+				continue
+			}
+			walk(k, v)
+		}
+	}
+	for section, body := range raw {
+		if section == "body" || section == "common" {
+			continue
+		}
+		var node interface{}
+		if err := json.Unmarshal(body, &node); err != nil {
+			continue
+		}
+		walk("", node)
+	}
+	return out
+}
+
+// Body возвращает разрешённую схему тела схемы протокола.
+func (r *Registry) Body(scheme string) (*BodySchema, bool) {
+	b, ok := r.bodies[scheme]
+	return b, ok
+}
+
+// Schemes — схемы реестра в порядке загрузки (алфавитном).
+func (r *Registry) Schemes() []string {
+	out := make([]string, len(r.schemes))
+	copy(out, r.schemes)
+	return out
+}
+
+// Order — порядок полей тела схемы (порядок структур ядра).
+func (r *Registry) Order(scheme string) []string {
+	b, ok := r.bodies[scheme]
+	if !ok {
+		return nil
+	}
+	out := make([]string, len(b.Order))
+	copy(out, b.Order)
+	return out
+}
+
+// Field ищет поле по пути в теле ("tls.reality.short_id"). У вариантного
+// узла (transport) имя варианта пишется отдельным сегментом:
+// "transport.xhttp.mode".
+func (r *Registry) Field(scheme, path string) (*Field, bool) {
+	b, ok := r.bodies[scheme]
+	if !ok {
+		return nil, false
+	}
+	parts := strings.Split(path, ".")
+	fields := b.Fields
+	var variants map[string]*Field
+	var cur *Field
+	for _, p := range parts {
+		var next *Field
+		if fields != nil {
+			next = fields[p]
+		}
+		if next == nil && variants != nil {
+			next = variants[p]
+		}
+		if next == nil {
+			return nil, false
+		}
+		cur = next
+		fields, variants = next.Fields, next.Variants
+		if fields == nil && next.Items != nil {
+			fields = next.Items.Fields
+		}
+	}
+	return cur, cur != nil
+}
+
+// Warning возвращает запись кода из warnings.json.
+func (r *Registry) Warning(code string) (*WarningEntry, bool) {
+	w, ok := r.warnings[code]
+	return w, ok
+}
+
+// WarningText отдаёт заголовок и текст кода на языке lang ("ru" — русский,
+// всё прочее — английский), подставляя {path}, {value} и параметры.
+func (r *Registry) WarningText(code, lang string, params map[string]string) (title, text string, ok bool) {
+	w, found := r.warnings[code]
+	if !found {
+		return "", "", false
+	}
+	if lang == "ru" {
+		title, text = w.TitleRu, w.TextRu
+	} else {
+		title, text = w.TitleEn, w.TextEn
+	}
+	return substitute(title, params), substitute(text, params), true
+}
+
+func substitute(s string, params map[string]string) string {
+	if s == "" || len(params) == 0 {
+		return s
+	}
+	for k, v := range params {
+		s = strings.ReplaceAll(s, "{"+k+"}", v)
+	}
+	return s
+}
+
+// MapsTo — пути в теле, куда переводится параметр ссылки (SPEC 131 §3.1).
+func (r *Registry) MapsTo(scheme, param string) ([]string, bool) {
+	t, ok := r.mapsTo[scheme]
+	if !ok {
+		return nil, false
+	}
+	paths, ok := t[param]
+	if !ok || len(paths) == 0 {
+		return nil, false
+	}
+	out := make([]string, len(paths))
+	copy(out, paths)
+	return out, true
+}
+
+// Limits — лимиты контракта (registry/limits.json).
+func (r *Registry) Limits() map[string]Limit {
+	out := make(map[string]Limit, len(r.limits))
+	for k, v := range r.limits {
+		out[k] = v
+	}
+	return out
+}
+
+// LimitInt отдаёт числовой лимит по имени.
+func (r *Registry) LimitInt(name string) (int, bool) {
+	l, ok := r.limits[name]
+	if !ok {
+		return 0, false
+	}
+	f, ok := l.Value.(float64)
+	if !ok {
+		return 0, false
+	}
+	return int(f), true
+}
+
+// Allowlist — канонический список по имени (utls_fingerprints, ss_methods…).
+func (r *Registry) Allowlist(name string) []string {
+	l, ok := r.lists[name]
+	if !ok {
+		return nil
+	}
+	out := make([]string, len(l))
+	copy(out, l)
+	return out
+}
