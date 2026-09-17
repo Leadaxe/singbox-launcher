@@ -363,11 +363,14 @@ func xrayTagOrDefault(ob map[string]interface{}, fallback string) string {
 
 // normalizeVMessSecurityValue приводит шифр vmess к принимаемому ядром виду.
 //
-// Значения вне allowlist ядро отвергает вместе со всем конфигом; "auto" —
-// безопасный дефолт, который сервер согласует сам.
+// Набор обязан совпадать с normalizeVMessSecurity (URI-путь) и с ядром
+// (sing-vmess/client.go:44-52, DRIFT 131 §7.11/§9.5): значение вне набора
+// ядро отвергает вместе со ВСЕМ конфигом («unsupported security type»),
+// а не с одной нодой; "auto" — безопасный дефолт, который сервер
+// согласует сам.
 func normalizeVMessSecurityValue(security string) string {
 	switch strings.ToLower(strings.TrimSpace(security)) {
-	case "auto", "none", "zero", "aes-128-gcm", "chacha20-poly1305":
+	case "auto", "none", "zero", "aes-128-cfb", "aes-128-gcm", "chacha20-poly1305":
 		return strings.ToLower(strings.TrimSpace(security))
 	case "chacha20-ietf-poly1305":
 		return "chacha20-poly1305"

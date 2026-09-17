@@ -415,6 +415,78 @@ func xhttpBuildTransport(primary, fallback map[string]string) map[string]interfa
 	return t
 }
 
+// xhttpEnumFields — закрытые enum'ы XHTTP-транспорта, которые ядро проверяет
+// РЕГИСТРОЗАВИСИМО и на промахе роняет ВЕСЬ конфиг, а не одну ноду
+// (transport/v2rayxhttp/meta.go:19-38, 91-159, 268-276, пин 1.14.1-lx.4;
+// замеры — DRIFT 131 §9.2):
+//
+//	initialize outbound[N]: create client transport: xhttp:
+//	v2ray-xhttp: unknown mode: garbage
+//	… v2ray-xhttp: unsupported seq_placement: garbage
+//	… v2ray-xhttp: unsupported x_padding_placement: garbage
+//	… v2ray-xhttp: unknown x_padding_method: garbage
+//
+// Проверено, что валидация НЕ зависит от режима: `seq_placement` осмыслен
+// только в packet-up, но normalizeMeta прогоняет весь набор на любом режиме.
+//
+// `x_padding_placement` — единственное поле реестра с camelCase-значением
+// (`queryInHeader`); `queryinheader` ядро отвергает. Поэтому значения здесь
+// сравниваются КАК ЕСТЬ, без приведения регистра: «нормализация к lowercase»
+// на этом поле сломала бы рабочую ноду.
+//
+// Пустая строка у ядра = дефолт (`orDefault`), поэтому мусор достаточно
+// СНЯТЬ — как с `key_share`: узел остаётся жив на дефолте транспорта, а
+// переписывать явное значение автора ссылки своей догадкой мы не вправе.
+var xhttpEnumFields = []struct {
+	jsonKey string
+	allowed []string
+}{
+	{"mode", []string{"auto", "packet-up", "stream-up", "stream-one"}},
+	{"session_placement", []string{"path", "query", "header", "cookie"}},
+	{"seq_placement", []string{"path", "query", "header", "cookie"}},
+	{"uplink_data_placement", []string{"body", "auto", "header", "cookie"}},
+	{"x_padding_placement", []string{"cookie", "header", "query", "queryInHeader"}},
+	{"x_padding_method", []string{"repeat-x", "tokenish"}},
+}
+
+// xhttpGuardEnums снимает XHTTP-поля со значением вне закрытого enum ядра.
+//
+// Возвращает true, если хоть одно поле снято (вызывающий вешает на узел
+// WarnXHTTPParamReset). Один код на все поля: для человека это одна и та же
+// история «параметр транспорта не доехал», а разбор по полям живёт в логе.
+func xhttpGuardEnums(t map[string]interface{}) bool {
+	if t == nil {
+		return false
+	}
+	reset := false
+	for _, f := range xhttpEnumFields {
+		raw, has := t[f.jsonKey]
+		if !has {
+			continue
+		}
+		v, _ := raw.(string)
+		if v == "" {
+			// Пустое значение = дефолт ядра; поле просто лишнее.
+			delete(t, f.jsonKey)
+			continue
+		}
+		ok := false
+		for _, a := range f.allowed {
+			if v == a {
+				ok = true
+				break
+			}
+		}
+		if ok {
+			continue
+		}
+		debuglog.WarnLog("Parser: xhttp %s=%q вне набора ядра — поле снято", f.jsonKey, v)
+		delete(t, f.jsonKey)
+		reset = true
+	}
+	return reset
+}
+
 // xhttpGuardUplinkPlacement приводит пару (mode, uplink_data_placement) к
 // форме, которую ядро принимает.
 //
@@ -471,6 +543,13 @@ func xhttpGuardUplinkPlacement(t map[string]interface{}) string {
 func noteXHTTPPlacementGuard(node *configtypes.ParsedNode, transport map[string]interface{}) {
 	if node == nil || transport == nil {
 		return
+	}
+	// Порядок важен: сперва снимаем мусор из enum'ов, и только потом
+	// сводим пару (mode, uplink_data_placement). Иначе мусорный mode
+	// попал бы в ветку «режим задан явно и он не packet-up» и снял бы
+	// рабочий placement заодно с собой.
+	if xhttpGuardEnums(transport) {
+		node.AddWarning(WarnXHTTPParamReset)
 	}
 	if code := xhttpGuardUplinkPlacement(transport); code != "" {
 		node.AddWarning(code)

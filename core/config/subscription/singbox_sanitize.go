@@ -78,7 +78,67 @@ func SanitizeSingboxOutboundMap(ob map[string]interface{}, tag string) []string 
 	sanitizeSingboxHysteria2Obfs(ob, obType, tag)
 	sanitizeSingboxHysteriaObfs(ob, obType, tag)
 	sanitizeSingboxHysteriaBandwidth(ob, obType, tag)
+	sanitizeSingboxVMessSecurity(ob, obType, tag)
+	if sanitizeSingboxXHTTP(ob, tag) {
+		codes = append(codes, WarnXHTTPParamReset)
+	}
 	return codes
+}
+
+// sanitizeSingboxVMessSecurity приводит шифр канала vmess к набору ядра.
+//
+// Третий вход того же бага, что §7.11 на URI- и Xray-путях: импортированное
+// тело до сих пор отдавало `security` ядру как есть, и `aes-128-ctr` из
+// чужого конфига ронял ВЕСЬ config.json —
+//
+//	initialize outbound[N]: vmess: unsupported security type: aes-128-ctr
+//
+// Набор и поведение те же, что у normalizeVMessSecurity: мусор → `auto`
+// (молча, как на URI-пути), пустое поле удаляется как эквивалент дефолта.
+func sanitizeSingboxVMessSecurity(ob map[string]interface{}, obType, tag string) {
+	if obType != "vmess" {
+		return
+	}
+	raw, has := ob["security"]
+	if !has {
+		return
+	}
+	sec := strings.ToLower(strings.TrimSpace(toStringValue(raw)))
+	if sec == "" {
+		delete(ob, "security")
+		return
+	}
+	norm := normalizeVMessSecurity(sec)
+	if norm != sec {
+		debuglog.WarnLog("Parser: singbox import %q: vmess security %q вне набора ядра — %q", tag, sec, norm)
+	}
+	ob["security"] = norm
+}
+
+// sanitizeSingboxXHTTP снимает enum-поля XHTTP-транспорта со значением вне
+// набора ядра — третий вход того же гарда, что на URI- и Xray-путях
+// (DRIFT 131 §7.14/§9.2). Ядро на промахе отвергает конфиг целиком, поэтому
+// импортированное тело обязано проходить ту же проверку, что и подписка.
+//
+// Возвращает true, если хоть одно поле снято.
+func sanitizeSingboxXHTTP(ob map[string]interface{}, tag string) bool {
+	tr, ok := ob["transport"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	if strings.ToLower(strings.TrimSpace(mapString(tr, "type"))) != "xhttp" {
+		return false
+	}
+	reset := xhttpGuardEnums(tr)
+	if reset {
+		debuglog.WarnLog("Parser: singbox import %q: xhttp-параметры вне набора ядра сняты", tag)
+	}
+	// Пара (mode, uplink_data_placement) сводится тем же гардом, что и на
+	// URI-пути: на импорте она так же фатальна.
+	if code := xhttpGuardUplinkPlacement(tr); code == WarnXHTTPParamReset {
+		reset = true
+	}
+	return reset
 }
 
 // sanitizeSingboxMasqueLegacy СТРИПАЕТ у masque-outbound ключи чужого

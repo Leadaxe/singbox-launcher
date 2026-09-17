@@ -14,14 +14,27 @@ import (
 )
 
 // normalizeVMessSecurity maps subscription / JSON values to sing-box vmess outbound security.
-// See: https://sing-box.sagernet.org/configuration/outbound/vmess/
+//
+// Набор ровно тот, что принимает ядро (sing-vmess/client.go:44-52, пин
+// 1.14.1-lx.4; DRIFT 131 §7.11/§9.5): auto, none, zero, aes-128-cfb,
+// aes-128-gcm, chacha20-poly1305. Шире его брать нельзя — ядро отвечает
+//
+//	initialize outbound[N]: vmess: unsupported security type: <значение>
+//
+// и роняет ВЕСЬ config.json, а не одну ноду: один узел из подписки со
+// снятым с поддержки `aes-128-ctr` оставлял человека вообще без VPN.
+// Обратная сторона той же ошибки — `aes-128-cfb`, который ядро принимает:
+// без него шифр канала молча уезжал в `auto`, то есть не тот, что просила
+// подписка.
+//
+// См. https://sing-box.sagernet.org/configuration/outbound/vmess/
 func normalizeVMessSecurity(raw string) string {
 	s := strings.TrimSpace(strings.ToLower(raw))
 	if s == "" || s == "null" || s == "undefined" {
 		return "auto"
 	}
 	switch s {
-	case "auto", "none", "zero", "aes-128-gcm", "chacha20-poly1305", "aes-128-ctr":
+	case "auto", "none", "zero", "aes-128-cfb", "aes-128-gcm", "chacha20-poly1305":
 		return s
 	case "chacha20-ietf-poly1305":
 		return "chacha20-poly1305"

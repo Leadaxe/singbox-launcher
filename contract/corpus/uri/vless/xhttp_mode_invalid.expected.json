@@ -13,13 +13,14 @@
           }
         },
         "transport": {
+          "path": "/x",
           "type": "xhttp"
         },
         "type": "vless",
         "uuid": "11111111-1111-1111-1111-111111111111"
       },
       "kind": "outbound",
-      "label": "xhttp-bogus-plc",
+      "label": "xhttp-mode-invalid",
       "scheme": "vless",
       "warnings": [
         "xhttp_param_reset"
