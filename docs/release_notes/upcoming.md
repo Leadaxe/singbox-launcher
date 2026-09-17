@@ -10,6 +10,7 @@
 - A node that lost something now says so. Fields the core would reject are removed with a named reason attached to the node (⚠ in the lists, details in the node card) instead of disappearing silently. Previously a subscription could "update" and quietly strip a node's obfuscation or certificate with nothing to show for it.
 
 ### Fixes
+- Core pinned to sing-box-lx 1.14.1-lx.7: a REALITY `short_id` longer than 16 hex characters no longer crashes the core (it is a config error now), an unknown `tuic.udp_relay_mode` is rejected at load instead of silently becoming `native`, MASQUE `standard` profile without `uri` gets one clear error, and core errors name the node type and tag (`initialize outbound[0] vless[proxy-de-1]: …`).
 - vmess: channel cipher list now matches the core exactly — `aes-128-ctr` (which the core never supported and which killed the whole config) is gone, `aes-128-cfb` is accepted instead of silently falling back to `auto`.
 - xhttp: `mode`, `seq_placement`, `session_placement`, `uplink_data_placement`, `x_padding_placement` and `x_padding_method` values outside the core's enum are dropped with an `xhttp_param_reset` warning instead of being passed through and aborting the whole config.
 - A hand-written JSON object added as a source is no longer copied into the config verbatim. A typo in a key used to abort the whole config — leaving you with no VPN at all and no hint which node was at fault; now the unknown key is removed and the node says why.
@@ -30,6 +31,7 @@
 - Если у узла что-то сняли, он об этом говорит. Поля, которые ядро отвергает, снимаются с названной причиной на самом узле (⚠ в списках, подробности в карточке) вместо молчаливого исчезновения. Прежде подписка «обновлялась», у узла молча срезали обфускацию или сертификат, и увидеть это было негде.
 
 ### Исправления
+- Ядро закреплено на sing-box-lx 1.14.1-lx.7: REALITY `short_id` длиннее 16 hex больше не роняет ядро паникой (теперь ошибка конфигурации), неизвестный `tuic.udp_relay_mode` отвергается при загрузке, а не молча становится `native`, MASQUE-профиль `standard` без `uri` получает одну понятную ошибку, а ошибки ядра называют тип и тег узла (`initialize outbound[0] vless[proxy-de-1]: …`).
 - vmess: набор шифров канала сверен с ядром — `aes-128-ctr`, которого ядро не знало и который валил весь конфиг, убран; `aes-128-cfb` принимается вместо молчаливого отката к `auto`.
 - xhttp: значения `mode`, `seq_placement`, `session_placement`, `uplink_data_placement`, `x_padding_placement` и `x_padding_method` вне набора ядра снимаются с кодом `xhttp_param_reset`, а не уезжают в конфиг, роняя его целиком.
 - Ручной JSON-объект больше не копируется в конфиг дословно. Опечатка в имени ключа валила весь конфиг — человек оставался вообще без VPN и без подсказки, какой узел виноват; теперь неизвестный ключ снимается, а узел объясняет почему.
