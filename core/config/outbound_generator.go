@@ -666,83 +666,9 @@ func GenerateNodeJSONBare(node *ParsedNode) (string, error) {
 
 	parts = appendOutboundTransportParts(parts, node.Outbound)
 
-	// 7. tls (if present) - with correct field order
-	if node.Outbound != nil {
-		if tlsData, ok := node.Outbound["tls"].(map[string]interface{}); ok {
-			if disabled, ok := tlsData["enabled"].(bool); ok && !disabled {
-				// Omit the block entirely instead of emitting
-				// `"tls":{"enabled":false}`. Both mean "dial plain TCP", but the
-				// explicit disabled form crashes sing-box cores
-				// 1.14.0-lx.5..lx.18 on the first dial of a trojan/vless node
-				// (nil TLS config wrapped in a live dialer — SPEC 045), taking
-				// the whole core process down. Backstop for nodes that reach the
-				// generator without going through the URI parsers.
-			} else {
-				var tlsParts []string
-
-				if enabled, ok := tlsData["enabled"].(bool); ok {
-					tlsParts = append(tlsParts, fmt.Sprintf(`"enabled":%v`, enabled))
-				}
-
-				if serverName, ok := tlsData["server_name"].(string); ok && serverName != "" {
-					tlsParts = append(tlsParts, fmt.Sprintf(`"server_name":%s`, marshalJSONString(serverName)))
-				}
-
-				if alpn, ok := tlsData["alpn"].([]string); ok && len(alpn) > 0 {
-					alpnJSON, _ := json.Marshal(alpn)
-					tlsParts = append(tlsParts, fmt.Sprintf(`"alpn":%s`, string(alpnJSON)))
-				}
-
-				if utls, ok := tlsData["utls"].(map[string]interface{}); ok {
-					var utlsParts []string
-					if utlsEnabled, ok := utls["enabled"].(bool); ok {
-						utlsParts = append(utlsParts, fmt.Sprintf(`"enabled":%v`, utlsEnabled))
-					}
-					// Emit fingerprint only when sing-box knows the name. An unknown value
-					// (e.g. fp=HelloChrome_120 from a raw uTLS identifier) aborts config
-					// load for every outbound; omitting the key lets sing-box pick its
-					// default Chrome hello instead.
-					if fingerprint, ok := utls["fingerprint"].(string); ok {
-						if fingerprint = subscription.NormalizeUTLSFingerprint(fingerprint); fingerprint != "" {
-							utlsParts = append(utlsParts, fmt.Sprintf(`"fingerprint":%s`, marshalJSONString(fingerprint)))
-						}
-					}
-					utlsJSON := "{" + strings.Join(utlsParts, ",") + "}"
-					tlsParts = append(tlsParts, fmt.Sprintf(`"utls":%s`, utlsJSON))
-				}
-
-				if insecure, ok := tlsData["insecure"].(bool); ok && insecure {
-					tlsParts = append(tlsParts, fmt.Sprintf(`"insecure":%v`, insecure))
-				}
-
-				// Пин сертификата (hysteria2 `pinSHA256=`): без эмиссии узел с
-				// самоподписанным сертификатом получал обычную CA-проверку и не
-				// подключался, хотя URI содержал всё нужное — девятая потеря
-				// сверх восьми из SPEC 103 фазы 2.
-				if pins, ok := tlsData["certificate_public_key_sha256"].([]string); ok && len(pins) > 0 {
-					pinsJSON, _ := json.Marshal(pins)
-					tlsParts = append(tlsParts, fmt.Sprintf(`"certificate_public_key_sha256":%s`, string(pinsJSON)))
-				}
-
-				if reality, ok := tlsData["reality"].(map[string]interface{}); ok {
-					var realityParts []string
-					if realityEnabled, ok := reality["enabled"].(bool); ok {
-						realityParts = append(realityParts, fmt.Sprintf(`"enabled":%v`, realityEnabled))
-					}
-					if publicKey, ok := reality["public_key"].(string); ok {
-						realityParts = append(realityParts, fmt.Sprintf(`"public_key":%s`, marshalJSONString(publicKey)))
-					}
-					if shortID, ok := reality["short_id"].(string); ok {
-						realityParts = append(realityParts, fmt.Sprintf(`"short_id":%s`, marshalJSONString(shortID)))
-					}
-					realityJSON := "{" + strings.Join(realityParts, ",") + "}"
-					tlsParts = append(tlsParts, fmt.Sprintf(`"reality":%s`, realityJSON))
-				}
-
-				tlsJSON := "{" + strings.Join(tlsParts, ",") + "}"
-				parts = append(parts, fmt.Sprintf(`"tls":%s`, tlsJSON))
-			}
-		}
+	// 7. tls (if present) — allowlist по OutboundTLSOptions ядра, см. outbound_tls_emit.go
+	if tlsJSON, ok := emitOutboundTLSJSON(node.Outbound); ok {
+		parts = append(parts, fmt.Sprintf(`"tls":%s`, tlsJSON))
 	}
 
 	// 8. detour (sing-box dial field; Xray dialerProxy chains)

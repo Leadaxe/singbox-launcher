@@ -1429,3 +1429,53 @@ libbox/бинарём.
 ### 20.4 Статус (16.09.2026)
 
 Обе стороны закрыли §20: лаунчер — v1.6.2 (ядро 1.14.1-lx.3, `parseWGConfBase64Link`, `realityHybridUTLSFingerprints`); LxBox — v2.24.1 (задачи 450 awg-conf-base64-link и 451 reality-fp-firefox-safari-hybrid; множество `kRealityHybridFingerprints`, пин ядра lx.3, `rawUri` = исходная ссылка, не синтетический `wireguard://`). Все кейсы `awg_conf_base64*` и четыре REALITY-кейса проходят у обоих без локальных отступлений. `randomized` у обеих сторон остаётся с кодом, `random` — нет.
+
+## 22. TLS-поля тела узла: `certificate` и соседи теряются в редакторе (LxBox #140, приоритет 1)
+
+Отчёт [LxBox #140](https://github.com/Leadaxe/LxBox/issues/140): JSON-редактор
+сервера у naive-узла выбрасывает `tls.certificate` при сохранении; через
+глобальный редактор конфига поле живёт и работает, но редактор узла его не
+показывает и снова теряет.
+
+Лаунчер: та же потеря воспроизведена на sing-box-импорте (массив/целый
+конфиг/подписка в формате sing-box): эмиттер tls был allowlist'ом из семи
+полей, и у `naive` пропадал `certificate`, у остальных — `alpn` и пины
+(приезжали `[]interface{}`, ассерт ждал `[]string` — ловушка
+json-map-type-assert-trap), `min/max_version`, `cipher_suites`, `client_*`,
+`fragment`. Ручной одиночный объект (`config_json`, EmitRaw) allowlist не
+проходил и не терял. Починено в develop 17.09.2026.
+
+Норма (registry/tls.json → `policy.emit_allowlist`, код
+`core/config/outbound_tls_emit.go`, корпус
+`body/singbox/outbound_array_tls_fields`):
+
+1. **Allowlist = OutboundTLSOptions ядра**, порядок полей = порядок структуры:
+   `enabled, disable_sni, server_name, insecure, alpn, min_version,
+   max_version, cipher_suites, curve_preferences, certificate,
+   certificate_path, certificate_public_key_sha256, client_certificate,
+   client_certificate_path, client_key, client_key_path, fragment,
+   fragment_fallback_delay, record_fragment, kernel_tx, kernel_rx,
+   utls{enabled,fingerprint}, reality{enabled,public_key,short_id}`.
+   Канон — `option/tls.go` в module cache ядра, не память.
+2. **Listable-поля** (`alpn`, `cipher_suites`, `curve_preferences`,
+   `certificate`, `certificate_public_key_sha256`, `client_certificate`,
+   `client_key`) принимаются строкой или массивом; эмитятся в той форме, в
+   какой приехали — человек, набравший `certificate` строкой, после
+   сохранения видит строку. Булевы кроме `enabled` — только при `true`.
+3. **Не эмитится:** `ech` (D-006, ядро без `with_ech`) и неизвестные ключи —
+   ядро отвергает unknown field на ВСЁМ конфиге, а карта tls приходит и от
+   URI-парсеров.
+4. **`kernel_tx`/`kernel_rx` — только когда ядро на Linux**: на macOS
+   `sing-box check` отвечает «kTLS is only supported on Linux» и это отказ
+   всего конфига, не узла. Для LxBox: Android = Linux (поля проходят), iOS —
+   опускать.
+5. Проверено `sing-box check` ядра 1.14.0-lx.33 на реальных сертификатах:
+   все поля списка принимаются; `certificate_public_key_sha256` ядро
+   считает конфликтом с `certificate`/`certificate_path` (это ошибка данных
+   пользователя, эмиттер не вмешивается).
+
+**Вопрос LxBox:** редактор сервера пересобирает tls по своей модели
+(`TlsSpec`) — тогда №140 = та же ловушка allowlist'а, и норма выше даёт
+полный список полей для модели/эмиттера; либо хранить `tls` как карту
+sing-box и не пересобирать (как ручной объект у лаунчера). Ответ — А
+(модель расширена по списку) / Б (карта как есть).
