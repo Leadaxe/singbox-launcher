@@ -41,17 +41,27 @@ import (
 // «Nodes: 38 + 5 unsupported». Сложить их в одно число нельзя — 43 узла
 // пользователь искал бы в конфиге, а их там 38.
 func sourceNodesHeader(nodes []corestate.Node) string {
-	supported, unsupported := 0, 0
+	supported, unsupported, warned := 0, 0, 0
 	for i := range nodes {
 		if nodes[i].IsUnsupported() {
 			unsupported++
 			continue
 		}
 		supported++
+		if len(nodes[i].Warnings) > 0 {
+			warned++
+		}
 	}
 	head := locale.Tf("Nodes: %d", supported)
 	if unsupported > 0 {
 		head += locale.Tf(" + %d unsupported", unsupported)
+	}
+	// SPEC 131 §6: счётчик узлов с деградациями — третьим слагаемым, а не
+	// вместо чего-то. Узел с ⚠ в конфиг поехал и в `supported` уже посчитан;
+	// это не отдельная категория состава, а пометка на его части — отсюда и
+	// формулировка «из них», а не «плюс».
+	if warned > 0 {
+		head += locale.Tf(" · %d with warnings", warned)
 	}
 	return head
 }

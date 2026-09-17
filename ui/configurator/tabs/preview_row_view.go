@@ -12,6 +12,7 @@ import (
 
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 	"singbox-launcher/internal/textnorm"
 )
 
@@ -75,7 +76,33 @@ func previewRowSubtitle(r previewRow) string {
 		}
 		return sub
 	}
+	// SPEC 131 §6: у здорового узла подстрока отвечает «что это такое», а у
+	// узла с деградацией — «что с ним сделали». Второе важнее: состав узел
+	// описывает и без подстроки (окно узла, тултип), а снятое поле не
+	// показывает больше НИЧЕГО и молча меняет поведение.
+	//
+	// Глиф тот же, что у неразобранной записи: развилки «⚠ означает одно» и
+	// «⚠ означает другое» в строке нет — есть один знак «с этим узлом что-то
+	// не так», а подробности берёт на себя окно узла.
+	if sub := nodewarn.Subtitle(r.Warnings); sub != "" {
+		return sub
+	}
 	return previewNodeSubtitle(r.Node)
+}
+
+// previewRowWarn — подстроку красить цветом предупреждения.
+//
+// Одно место на все три списка: корневой, drill-down и Preview окна
+// источника красили её каждый своим `if pr.Unsupported`, и добавление
+// второго повода разъехалось бы по трём файлам.
+func previewRowWarn(r previewRow) bool {
+	if r.Unsupported {
+		return true
+	}
+	if r.Node != nil && r.GroupCounted && r.GroupAlive == 0 {
+		return true
+	}
+	return len(r.Warnings) > 0
 }
 
 // previewRowToolTip — полный текст под курсором.
@@ -86,7 +113,11 @@ func previewRowSubtitle(r previewRow) string {
 // У собравшегося узла тултипа нет: его подстрока помещается целиком.
 func previewRowToolTip(r previewRow) string {
 	if !r.Unsupported {
-		return ""
+		// SPEC 131 §6: у выжившего узла тултип появляется только когда есть
+		// что сказать — заголовки его деградаций. Подстрока показывает
+		// первый из них и «+N», тултип раскрывает все: иначе про второй и
+		// третий код узнать было бы негде, кроме окна узла.
+		return nodewarn.ToolTip(r.Warnings)
 	}
 	tip := previewRowReason(r)
 	if r.OriginRaw != "" {

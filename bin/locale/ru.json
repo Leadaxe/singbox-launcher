@@ -4666,5 +4666,23 @@
   },
   "%dd": {
     "value": "%d д"
+  },
+  "Warnings": {
+    "value": "Предупреждения"
+  },
+  "+%d": {
+    "value": "+%d"
+  },
+  "⚠ %d field(s) stripped on %d node(s)": {
+    "value": "⚠ снято полей: %d у %d узл(ов)"
+  },
+  "⚠ %d warning(s) on %d node(s)": {
+    "value": "⚠ предупреждений: %d у %d узл(ов)"
+  },
+  "⚠ %d node(s) with warnings": {
+    "value": "⚠ узлов с предупреждениями: %d"
+  },
+  " · %d with warnings": {
+    "value": " · из них с предупреждениями: %d"
   }
 }

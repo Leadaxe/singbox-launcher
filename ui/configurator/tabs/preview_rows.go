@@ -45,6 +45,15 @@ type previewRow struct {
 	// OriginRaw — исходник записи байт в байт (у Unsupported — единственное,
 	// по чему её можно узнать и починить).
 	OriginRaw string
+	// Warnings — коды деградаций, применённых конвейером к телу узла
+	// (SPEC 131 §6). Берутся ИЗ СОСТОЯНИЯ, а не из эмитированного узла:
+	// эмиссия их не возвращает, а показывать их надо у любой строки состава,
+	// в том числе у выключенной, которую эмиссия не выпустила.
+	//
+	// Живут рядом с Reason, но это разные вещи (Л20): Reason — английский
+	// текст отбракованной записи, Warnings — коды ВЫЖИВШЕГО узла, которые
+	// переводит реестр.
+	Warnings []corestate.NodeWarning
 	// GroupAlive/GroupCounted — честный размер пула авто-группы: члены,
 	// которые СЕЙЧАС резолвятся по модели (annotatePreviewGroupRows).
 	// Counted=false — строку не считали (нет доступа к модели): подстрока
@@ -107,7 +116,7 @@ func buildPreviewRows(stateNodes []wizardmodels.Node, emitted []*config.ParsedNo
 		// Исходник берётся из СОСТОЯНИЯ, а не из эмитированного узла:
 		// ParsedNode происхождение не несёт (эмиссия читает его, но обратно не
 		// кладёт), а «из чего сделан узел» пользователю нужно у любой строки.
-		row := previewRow{Node: node, RawTag: raw, Service: sn.Service}
+		row := previewRow{Node: node, RawTag: raw, Service: sn.Service, Warnings: sn.Warnings}
 		if sn.Origin != nil {
 			row.OriginRaw = sn.Origin.Raw
 		}
@@ -195,6 +204,21 @@ func previewRowsBroken(rows []previewRow) int {
 	n := 0
 	for i := range rows {
 		if rows[i].Unsupported || (rows[i].GroupCounted && rows[i].GroupAlive == 0) {
+			n++
+		}
+	}
+	return n
+}
+
+// previewRowsWarned — сколько строк несут деградации конвейера (SPEC 131 §6).
+//
+// Считается ОТДЕЛЬНО от previewRowsBroken: сломанная запись в конфиг не
+// поедет, а помеченный узел поедет — просто не таким, каким его прислал
+// провайдер. Одно число на оба факта врало бы про оба.
+func previewRowsWarned(rows []previewRow) int {
+	n := 0
+	for i := range rows {
+		if len(rows[i].Warnings) > 0 {
 			n++
 		}
 	}

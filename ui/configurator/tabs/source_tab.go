@@ -1050,6 +1050,23 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					emitLabel.TextStyle = fyne.TextStyle{Italic: true}
 					lines = append(lines, container.NewBorder(nil, nil, leftPad(), nil, emitLabel))
 				}
+				// SPEC 131 §6: деградации КОНВЕЙЕРА — своей строкой и ПОСЛЕ
+				// эмиссионных. Порядок не случаен: выше живут факты про
+				// источник целиком (исключён, не дал узлов, урезан на
+				// сборке), а здесь — про содержимое его узлов, которое
+				// раскрывается построчно в контейнере.
+				//
+				// Одна сводная строка, а не строка на узел: у CIDR-подписки
+				// узлов бывает 500+, и список деградаций накрыл бы список
+				// источников целиком (тот же довод, по которому причины
+				// отбраковки уехали из Preview в Overview).
+				if warned := sourceWarnedNodes(&src); warned > 0 {
+					wl := widget.NewLabel(locale.Tf("⚠ %d node(s) with warnings", warned))
+					wl.Wrapping = fyne.TextWrapWord
+					wl.Importance = widget.MediumImportance
+					wl.TextStyle = fyne.TextStyle{Italic: true}
+					lines = append(lines, container.NewBorder(nil, nil, leftPad(), nil, wl))
+				}
 				var rowInner fyne.CanvasObject = titleRow
 				if len(lines) > 1 {
 					rowInner = container.New(tightVBox{}, lines...)

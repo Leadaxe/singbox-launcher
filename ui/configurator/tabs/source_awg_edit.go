@@ -41,8 +41,10 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/config/nodeflow"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -266,12 +268,95 @@ func applyAWGSettings(node *wizardmodels.Node, s awgSettings) error {
 		delete(ob, k)
 	}
 
-	body, err := json.Marshal(ob)
+	return writeAWGBody(node, ob)
+}
+
+// awgPipelineScheme — схема реестра, по правилам которой проверяется тело.
+//
+// Строкой, а не через `configtypes`: общей константы на «wireguard» в
+// проекте нет, а заводить её в чужом пакете ради одной формы — цена выше
+// пользы. Имя нормативно: это ключ `contract/registry/protocols/wireguard.json`.
+const awgPipelineScheme = "wireguard"
+
+// writeAWGBody — единственная запись тела обеими кнопками формы (Л23).
+//
+// # Что было и почему поменялось
+//
+// Форма правила ключи готового тела и писала его обратно `json.Marshal`,
+// минуя конвейер целиком: ни санитайзера, ни эмиттера. Значит и `warnings`
+// узла после правки оставались от ПРОШЛОГО его состояния — набор кодов на
+// узле расходился с его же телом, и ⚠ на строке говорил про поле, которого
+// там уже нет (или молчал про только что вписанное).
+//
+// Теперь тело проходит `nodeflow.Sanitize` → `nodeflow.Emit`, и коды
+// пересчитываются по тому же реестру, что и на всех остальных входах.
+//
+// # Почему санитайзер не владеет телом безоговорочно
+//
+// Реестр — живой документ волны W2, и его правила по AWG-полям ещё
+// доезжают (типы `h1`–`h4` объявлены строками, а ядро и все наши корпусные
+// тела несут там числа). Форма обфускации правит РАБОТАЮЩИЙ узел
+// пользователя: отдать его тело под перезапись правилу, которое сегодня
+// снимает живое поле, значит сломать соединение молча — ровно тот исход, от
+// которого волна и защищает.
+//
+// Поэтому правило такое: коды берём всегда, а ТЕЛО — только когда конвейер
+// ничего не потерял, то есть снял ровно то, что и должен был снять
+// (`type`/`tag` — их пишет сборка, см. buildManagedKeys). Потерял больше —
+// пишем пропатченное тело, а коды всё равно показываем: пользователь узнает
+// про деградацию, а узел продолжит работать. Когда реестр по AWG дозреет,
+// ветка отката перестанет срабатывать сама — без правки этого файла.
+//
+// То же и с вердиктом уровня узла (`Drop`): он становится КОДОМ на узле, а
+// не отказом формы. Отказ запер бы пользователя — тело без `address` или
+// `private_key` (неполный импорт) правится ровно этой формой и соседним
+// редактором JSON, и запрет на запись не оставил бы ему пути починки.
+func writeAWGBody(node *wizardmodels.Node, ob map[string]interface{}) error {
+	patched, err := json.Marshal(ob)
 	if err != nil {
 		return err
 	}
-	node.Body = body
+
+	res := nodeflow.Sanitize(awgPipelineScheme, ob)
+
+	// Коды — всегда, включая вердикт уровня узла. `Drop` здесь НЕ отказ
+	// формы: правка обфускации не обязана чинить узел целиком, а её отказ
+	// из-за неполного тела (нет `address`, нет `private_key`) запер бы
+	// пользователя — починить тело он может только этой же формой и
+	// редактором JSON рядом с ней.
+	warns := res.Warnings
+	if res.Drop != nil {
+		warns = append([]nodeflow.Warning{*res.Drop}, warns...)
+	}
+	node.Warnings = nodewarn.FromParsed(warns)
+
+	// Тело отдаём конвейеру только когда он ничего не потерял. Подробности
+	// правила — в шапке функции.
+	emitted, eerr := nodeflow.Emit(awgPipelineScheme, res.Clean)
+	if res.Drop != nil || eerr != nil || awgPipelineLostFields(ob, res.Clean) {
+		node.Body = patched
+		return nil
+	}
+	node.Body = emitted
 	return nil
+}
+
+// awgPipelineLostFields — снял ли санитайзер что-то СВЕРХ ключей, которыми
+// владеет сборка.
+//
+// `tag`/`type` в теле узла не живут по построению (SPEC 112: тег — это
+// идентичность узла, тип — его схема), и их снятие деградацией не является.
+// Всё остальное, чего нет в чистой карте, — потеря.
+func awgPipelineLostFields(src, clean map[string]interface{}) bool {
+	for k := range src {
+		if k == "tag" || k == "type" {
+			continue
+		}
+		if _, ok := clean[k]; !ok {
+			return true
+		}
+	}
+	return false
 }
 
 // clearAWGSettings снимает обфускацию с узла: снятая галочка обязана вернуть
@@ -302,12 +387,7 @@ func clearAWGSettings(node *wizardmodels.Node) error {
 		delete(ob, k)
 	}
 	clearRangedKeepalive(ob)
-	body, err := json.Marshal(ob)
-	if err != nil {
-		return err
-	}
-	node.Body = body
-	return nil
+	return writeAWGBody(node, ob)
 }
 
 // clearRangedKeepalive заменяет диапазонный persistent_keepalive_interval

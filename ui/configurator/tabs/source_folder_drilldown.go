@@ -484,6 +484,19 @@ func folderDrillHeader(
 		rightItems = append(rightItems, w)
 	}
 
+	// SPEC 131 §6: узлы, у которых конвейер что-то снял или привёл. Отдельным
+	// счётчиком от «node error(s)», а не слагаемым к нему: отбракованная
+	// запись в конфиг не поедет вовсе, а этот узел поедет — просто не таким,
+	// каким его прислал провайдер. Сложить их в одно число значило бы
+	// объявить сломанным то, что работает.
+	if warned := previewRowsWarned(rows); warned > 0 {
+		w := widget.NewLabel(fmt.Sprintf("%s %d",
+			previewUnsupportedMark, warned))
+		w.Importance = widget.MediumImportance
+		fynewidget.SetToolTipSafe(w, locale.Tf("⚠ %d node(s) with warnings", warned))
+		rightItems = append(rightItems, w)
+	}
+
 	// 📢 — только когда объявление есть: кнопка, за которой пусто, обещала бы
 	// содержимое, которого нет.
 	if announce != "" {
@@ -592,7 +605,7 @@ func folderDrillNodeRow(
 	spec := sourceNodeRowSpec{
 		Title:        previewRowTitle(pr),
 		Subtitle:     previewRowSubtitle(pr),
-		SubtitleWarn: pr.Unsupported,
+		SubtitleWarn: previewRowWarn(pr),
 		Service:      pr.Service,
 		ToolTip:      previewRowToolTip(pr),
 		OnOpen:       func() { showPreviewNodeEditWindow(pr, identity, ops) },

@@ -16,9 +16,11 @@ import (
 	"singbox-launcher/api"
 	"singbox-launcher/core"
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 )
 
@@ -35,7 +37,7 @@ import (
 // cfgPath — config.json той области, из которой открыли строку (см.
 // effectiveNodeConfigPath): для узла удалённой машины это её собранный
 // конфиг, локальный описывает другое ядро.
-func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath string) {
+func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath string, scope services.ProxyScope) {
 	if ac == nil || ac.FileService == nil || ac.UIService == nil {
 		return
 	}
@@ -55,6 +57,20 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 		body.Add(infoRow(locale.T("Display name"), display))
 	}
 	body.Add(infoRow(locale.T("Last delay"), formatDelay(proxy.Delay)))
+
+	// SPEC 131 §6: секция «Предупреждения» — СРАЗУ под шапкой, до полей узла.
+	// Она отвечает на вопрос, с которым сюда и приходят по ⚠ из списка, и
+	// прятать её под состав значило бы заставить скроллить мимо того, ради
+	// чего окно открыли.
+	//
+	// Выше `node == nil`: коды живут в СОСТОЯНИИ, а не в конфиге, и узел,
+	// которого в config.json ещё нет (гонка перегенерации), свои деградации
+	// имеет ровно так же.
+	if warn := nodewarn.Section(nodeWarningsFor(ac, proxy.Name, scope)); warn != nil {
+		body.Add(widget.NewSeparator())
+		body.Add(warn)
+		body.Add(widget.NewSeparator())
+	}
 
 	if node == nil {
 		// Узла нет в конфиге: гонка перегенерации либо служебный outbound.

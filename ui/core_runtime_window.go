@@ -34,6 +34,7 @@ import (
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 	"singbox-launcher/internal/textnorm"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
@@ -144,8 +145,8 @@ func showCoreRuntimeWindow(ac *core.AppController, scope services.ProxyScope, tr
 		go func() {
 			snap := collectCoreRuntimeSnapshot(ac, scope, transport, groups)
 			fyne.Do(func() {
-				renderCoreRuntimeDirections(dirBox, ac, snap.Directions, cfgPath)
-				renderCoreRuntimeEndpoints(epBox, ac, snap.Endpoints, cfgPath)
+				renderCoreRuntimeDirections(dirBox, ac, snap.Directions, cfgPath, scope)
+				renderCoreRuntimeEndpoints(epBox, ac, snap.Endpoints, cfgPath, scope)
 				reloadBtn.Enable()
 			})
 		}()
@@ -161,7 +162,7 @@ func showCoreRuntimeWindow(ac *core.AppController, scope services.ProxyScope, tr
 // renderCoreRuntimeDirections — вкладка Направлений: имя группы, под ним
 // стрелка и активный узел строкой списка. Состав группы НЕ разворачивается:
 // он и так на вкладке серверов, здесь нужен ответ «куда идёт трафик».
-func renderCoreRuntimeDirections(box *fyne.Container, ac *core.AppController, dirs []coreRuntimeDirection, cfgPath string) {
+func renderCoreRuntimeDirections(box *fyne.Container, ac *core.AppController, dirs []coreRuntimeDirection, cfgPath string, scope services.ProxyScope) {
 	box.Objects = nil
 	if len(dirs) == 0 {
 		box.Add(widget.NewLabel(locale.T("No selector groups in the config.")))
@@ -184,7 +185,7 @@ func renderCoreRuntimeDirections(box *fyne.Container, ac *core.AppController, di
 			none.Importance = widget.LowImportance
 			box.Add(none)
 		default:
-			box.Add(coreRuntimeNodeRow(ac, d.Active, cfgPath, coreRuntimeTreeBranch))
+			box.Add(coreRuntimeNodeRow(ac, d.Active, cfgPath, scope, coreRuntimeTreeBranch))
 		}
 	}
 	box.Refresh()
@@ -196,7 +197,7 @@ func renderCoreRuntimeDirections(box *fyne.Container, ac *core.AppController, di
 // есть живой пинг; у остального — только факт присутствия в конфиге. Пинг
 // tailscale-узлу без exit_node не рисуется намеренно: /delay через него
 // ушёл бы в tailnet и вернул ошибку, а не задержку — число врало бы.
-func renderCoreRuntimeEndpoints(box *fyne.Container, ac *core.AppController, eps []coreRuntimeEndpoint, cfgPath string) {
+func renderCoreRuntimeEndpoints(box *fyne.Container, ac *core.AppController, eps []coreRuntimeEndpoint, cfgPath string, scope services.ProxyScope) {
 	box.Objects = nil
 	if len(eps) == 0 {
 		box.Add(widget.NewLabel(locale.T("No endpoints in the config.")))
@@ -208,12 +209,12 @@ func renderCoreRuntimeEndpoints(box *fyne.Container, ac *core.AppController, eps
 		if ep.Live != nil {
 			info = *ep.Live
 		}
-		row := coreRuntimeNodeRow(ac, info, cfgPath, "  ")
+		row := coreRuntimeNodeRow(ac, info, cfgPath, scope, "  ")
 		// У tailscale в колонке вместо пинга — слово состояния из кеша стрима
 		// (SPEC 130): «starting», «running», «needs login». Подробности — в ⓘ.
 		if ep.Node.Type == configtypes.SchemeTailscale {
 			if st, ok := ac.TailscaleStatus(ep.Node.Tag); ok {
-				row = coreRuntimeNodeRowWithStatus(ac, info, cfgPath, "  ", tailscaleStateLabel(st.BackendState))
+				row = coreRuntimeNodeRowWithStatus(ac, info, cfgPath, scope, "  ", tailscaleStateLabel(st.BackendState))
 			}
 		}
 		box.Add(row)
@@ -236,14 +237,14 @@ const coreRuntimeTreeBranch = "└─ "
 // свой внутренний отступ, и два Label'а разъезжались в три строки с ⓘ,
 // повисшим между ними. prefix — маркер слева (ветка у Направления, отступ у
 // Endpoint'а).
-func coreRuntimeNodeRow(ac *core.AppController, p api.ProxyInfo, cfgPath, prefix string) fyne.CanvasObject {
-	return coreRuntimeNodeRowWithStatus(ac, p, cfgPath, prefix, formatDelay(p.Delay))
+func coreRuntimeNodeRow(ac *core.AppController, p api.ProxyInfo, cfgPath string, scope services.ProxyScope, prefix string) fyne.CanvasObject {
+	return coreRuntimeNodeRowWithStatus(ac, p, cfgPath, scope, prefix, formatDelay(p.Delay))
 }
 
 // coreRuntimeNodeRowWithStatus — та же строка, но с ЯВНЫМ текстом колонки
 // статуса вместо пинга. Нужна tailscale-узлу: пинг через него врал бы, а
 // слово состояния из стрима — нет.
-func coreRuntimeNodeRowWithStatus(ac *core.AppController, p api.ProxyInfo, cfgPath, prefix, status string) fyne.CanvasObject {
+func coreRuntimeNodeRowWithStatus(ac *core.AppController, p api.ProxyInfo, cfgPath string, scope services.ProxyScope, prefix, status string) fyne.CanvasObject {
 	name := canvas.NewText(prefix+p.DisplayOrName(), theme.Color(theme.ColorNameForeground))
 	name.TextSize = serversNameTextSize
 	name.TextStyle.Bold = true
@@ -255,6 +256,12 @@ func coreRuntimeNodeRowWithStatus(ac *core.AppController, p api.ProxyInfo, cfgPa
 	if node := wizardbusiness.LoadConfigNodes(cfgPath).Lookup(p.Name); node != nil {
 		subText = strings.Join(node.SubtitleParts(), "·")
 	}
+	// SPEC 131 §6: деградации конвейера вытесняют состав — тот же порядок
+	// важности, что на вкладке Servers (serversNodeSubtitle). Строка одна, и
+	// «что с узлом не так» в ней главнее «из чего он сделан».
+	if warn := nodewarn.Subtitle(nodeWarningsFor(ac, p.Name, scope)); warn != "" {
+		subText = warn
+	}
 	sub := canvas.NewText(subText, theme.Color(theme.ColorNamePlaceHolder))
 	sub.TextSize = serversSubtitleTextSize
 	title := container.New(tightVBoxLayout{gap: serversTitleSubtitleGap}, name, sub)
@@ -263,7 +270,7 @@ func coreRuntimeNodeRowWithStatus(ac *core.AppController, p api.ProxyInfo, cfgPa
 	delay.Alignment = fyne.TextAlignTrailing
 
 	infoBtn := widget.NewButtonWithIcon("", theme.InfoIcon(), func() {
-		showNodeInfoWindow(ac, p, cfgPath)
+		showNodeInfoWindow(ac, p, cfgPath, scope)
 	})
 	infoBtn.Importance = widget.LowImportance
 

@@ -1817,11 +1817,14 @@ func showSourceEditWindowAt(
 								name.Refresh()
 
 								sub.Text = previewRowSubtitle(pr)
-								if pr.Unsupported {
+								if previewRowWarn(pr) {
 									// Причина — там же, где у остальных строк
 									// «протокол·транспорт·security»: подстрока
 									// строки отвечает на «что это», и у
 									// неразобранной записи ответ ровно такой.
+									// SPEC 131 §6: тем же цветом красится
+									// подстрока узла с деградацией — знак один
+									// на оба смысла, развилки в строке нет.
 									sub.Color = theme.Color(theme.ColorNameWarning)
 								} else {
 									sub.Color = theme.Color(theme.ColorNamePlaceHolder)
@@ -1860,7 +1863,16 @@ func showSourceEditWindowAt(
 								}
 							},
 						)
-						previewListHost.Add(srvList)
+						// SPEC 131 §6: сводка деградаций конвейера — ПОД
+						// списком, одной строкой с раскрытием. Над списком её
+						// быть не может: список виртуализирован и растёт на
+						// всю высоту, а сводка отвечает на вопрос, который
+						// возникает уже после взгляда на состав.
+						if block := previewWarningsBlock(nn); block != nil {
+							previewListHost.Add(container.NewBorder(nil, block, nil, nil, srvList))
+						} else {
+							previewListHost.Add(srvList)
+						}
 					}
 				}
 				previewListHost.Refresh()
