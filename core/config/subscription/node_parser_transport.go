@@ -823,6 +823,33 @@ func isValidRealityPublicKey(pbk string) bool {
 	return err == nil
 }
 
+// NormalizeRealityKeyShare приводит значение tls.reality.key_share к
+// каноническому виду ядра: trim + lower-case, и только два значения enum'а
+// (SPEC 089 ядра, sing-box-lx ≥ 1.14.1-lx.4, option/tls.go
+// OutboundRealityOptions.KeyShare `enum:"hybrid,classical"`).
+//
+// Возвращает ("", false) на пустом значении — «как несёт отпечаток», ключа в
+// конфиге просто нет, и это НЕ деградация. Возвращает ("", true) на мусоре:
+// enum ядра закрытый, и чужое значение — ошибка загрузки ВСЕГО конфига (не
+// узла), проверено `sing-box check` бинарём lx.4. Поэтому деградирует ПОЛЕ:
+// ключ снимается, узел живёт с REALITY и поведением по умолчанию отпечатка
+// (мягче гейта pbk, где невалидный ключ роняет весь REALITY-блок).
+//
+// Второе значение — «значение было испорчено», по образцу
+// realityShortIDWouldDegrade: нормализатор зовут и с узлом под рукой
+// (URI-парсеры), и без него (санитайзер импорта), поэтому код вешает
+// вызывающий.
+func NormalizeRealityKeyShare(s string) (value string, degraded bool) {
+	switch v := strings.ToLower(strings.TrimSpace(s)); v {
+	case "hybrid", "classical":
+		return v, false
+	case "":
+		return "", false
+	default:
+		return "", true
+	}
+}
+
 func applyTLSQueryExtras(q url.Values, tlsData map[string]interface{}) {
 	if alpn := queryGetFold(q, "alpn"); alpn != "" {
 		alpn = normalizePercentDecodeLoop(alpn)
@@ -886,6 +913,19 @@ func vlessTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, boo
 		if realityFingerprintRisky(fp) {
 			node.AddWarning(WarnRealityFPNotChrome)
 		}
+		reality := map[string]interface{}{
+			"enabled":    true,
+			"public_key": strings.TrimSpace(pbk),
+			"short_id":   normalizeRealityShortID(rawSID),
+		}
+		// D-121: key_share читается ТОЛЬКО здесь, под валидным pbk — то есть
+		// там, где узел реально REALITY. На security=tls-узле поле смысла не
+		// имеет, а ядро на нём же падает всем конфигом.
+		if ks, degraded := NormalizeRealityKeyShare(queryGetFold(q, "key_share")); degraded {
+			node.AddWarning(WarnRealityKeyShareInvalid)
+		} else if ks != "" {
+			reality["key_share"] = ks
+		}
 		tlsData := map[string]interface{}{
 			"enabled":     true,
 			"server_name": sni,
@@ -893,11 +933,7 @@ func vlessTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, boo
 				"enabled":     true,
 				"fingerprint": fp,
 			},
-			"reality": map[string]interface{}{
-				"enabled":    true,
-				"public_key": strings.TrimSpace(pbk),
-				"short_id":   normalizeRealityShortID(rawSID),
-			},
+			"reality": reality,
 		}
 		applyTLSQueryExtras(q, tlsData)
 		return tlsData, true

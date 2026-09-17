@@ -43,6 +43,11 @@ func shareURIFromAnyTLS(out map[string]interface{}) (string, error) {
 				if sid := mapGetString(reality, "short_id"); sid != "" {
 					q.Set("sid", sid)
 				}
+				// D-121: тот же параметр, что во vless-эмиттере, и то же
+				// правило — в ссылку уходит только каноническое значение.
+				if ks, degraded := NormalizeRealityKeyShare(mapGetString(reality, "key_share")); !degraded && ks != "" {
+					q.Set("key_share", ks)
+				}
 			}
 		}
 		shareAppendALPNInsecure(q, tls) // alpn + insecure=1

@@ -37,6 +37,14 @@ const (
 	// устанавливается — стоит попробовать chrome. Пустой fp, наш дефолт
 	// `random`, firefox и safari под код не попадают (см. realityFingerprintRisky).
 	WarnRealityFPNotChrome = "reality_fp_not_chrome"
+	// WarnRealityKeyShareInvalid — tls.reality.key_share вне закрытого enum
+	// ядра (hybrid|classical, SPEC 089 ядра): ключ снят, узел жив.
+	//
+	// Зачем сказать: ядро отвергает такое значение отказом ВСЕГО конфига, а не
+	// узла (проверено `sing-box check` бинарём 1.14.1-lx.4), поэтому поле не
+	// доезжает — и узел молча идёт с обменом ключами по умолчанию отпечатка,
+	// хотя подписка/тело просили другой. Единый код для URI и JSON-тела.
+	WarnRealityKeyShareInvalid = "reality_key_share_invalid"
 	// WarnNaiveExtraHeadersInvalid — пара из naive `extra-headers` отброшена:
 	// нет ':', запрещённые символы в имени или CR/LF/NUL в значении.
 	//

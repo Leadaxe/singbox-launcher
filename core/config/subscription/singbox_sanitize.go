@@ -68,7 +68,9 @@ func SanitizeSingboxOutboundMap(ob map[string]interface{}, tag string) []string 
 
 	var codes []string
 	sanitizeSingboxMasqueLegacy(ob, obType, tag)
-	sanitizeSingboxTLS(ob, obType, tag)
+	if code := sanitizeSingboxTLS(ob, obType, tag); code != "" {
+		codes = append(codes, code)
+	}
 	sanitizeSingboxFlow(ob, tag)
 	if sanitizeSingboxPacketEncoding(ob, tag) {
 		codes = append(codes, WarnPacketEncodingUnknown)
@@ -106,27 +108,31 @@ func sanitizeSingboxMasqueLegacy(ob map[string]interface{}, obType, tag string) 
 }
 
 // sanitizeSingboxTLS чистит блок tls: uTLS allowlist, REALITY pbk/short_id,
-// снятие uTLS/REALITY на QUIC-типах.
-func sanitizeSingboxTLS(ob map[string]interface{}, obType, tag string) {
+// key_share, снятие uTLS/REALITY на QUIC-типах.
+//
+// Возвращает код деградации (или "") — прокидывает наружу код из
+// sanitizeSingboxReality, вешать его здесь не на что.
+func sanitizeSingboxTLS(ob map[string]interface{}, obType, tag string) string {
 	tlsRaw, ok := ob["tls"]
 	if !ok {
-		return
+		return ""
 	}
 	tlsMap, ok := tlsRaw.(map[string]interface{})
 	if !ok {
 		// tls не объект — ядро отвергнет конфиг; безопаснее снять поле.
 		debuglog.WarnLog("Parser: singbox import %q: tls is not an object — dropping field", tag)
 		delete(ob, "tls")
-		return
+		return ""
 	}
 
 	// Явный tls:{enabled:false} роняет ядра 1.14.0-lx.5..lx.18 SIGSEGV'ом при
 	// первом dial (SPEC 045). Блок в этом случае не нужен вовсе.
 	if enabled, ok := tlsMap["enabled"].(bool); ok && !enabled {
 		delete(ob, "tls")
-		return
+		return ""
 	}
 
+	code := ""
 	if _, isQUIC := quicOutboundTypes[obType]; isQUIC {
 		// SPEC 094 A2: на QUIC срезаем utls и reality целиком.
 		if _, had := tlsMap["utls"]; had {
@@ -134,17 +140,20 @@ func sanitizeSingboxTLS(ob map[string]interface{}, obType, tag string) {
 			debuglog.DebugLog("Parser: singbox import %q: stripped utls from %s (QUIC)", tag, obType)
 		}
 		if _, had := tlsMap["reality"]; had {
+			// key_share уезжает вместе с блоком и кода не даёт: снят не он,
+			// а весь REALITY (policy.quic_strip).
 			delete(tlsMap, "reality")
 			debuglog.DebugLog("Parser: singbox import %q: stripped reality from %s (QUIC)", tag, obType)
 		}
 	} else {
 		sanitizeSingboxUTLS(tlsMap, tag)
-		sanitizeSingboxReality(tlsMap, tag)
+		code = sanitizeSingboxReality(tlsMap, tag)
 	}
 
 	if len(tlsMap) == 0 {
 		delete(ob, "tls")
 	}
+	return code
 }
 
 // sanitizeSingboxUTLS прогоняет fingerprint через allowlist sing-box.
@@ -170,20 +179,23 @@ func sanitizeSingboxUTLS(tlsMap map[string]interface{}, tag string) {
 	utlsMap["fingerprint"] = normalized
 }
 
-// sanitizeSingboxReality валидирует public_key и чистит short_id.
-func sanitizeSingboxReality(tlsMap map[string]interface{}, tag string) {
+// sanitizeSingboxReality валидирует public_key, чистит short_id и key_share.
+//
+// Возвращает код деградации (или "") — как и у остальных санитайзеров, узла
+// здесь нет, и код вешает вызывающий через SanitizeSingboxOutboundMap.
+func sanitizeSingboxReality(tlsMap map[string]interface{}, tag string) string {
 	realityRaw, ok := tlsMap["reality"]
 	if !ok {
-		return
+		return ""
 	}
 	realityMap, ok := realityRaw.(map[string]interface{})
 	if !ok {
 		delete(tlsMap, "reality")
-		return
+		return ""
 	}
 	if enabled, ok := realityMap["enabled"].(bool); ok && !enabled {
 		delete(tlsMap, "reality")
-		return
+		return ""
 	}
 
 	pbk := mapString(realityMap, "public_key")
@@ -192,7 +204,7 @@ func sanitizeSingboxReality(tlsMap map[string]interface{}, tag string) {
 		// ("invalid public_key"). Деградируем ноду до plain TLS.
 		debuglog.WarnLog("Parser: singbox import %q: invalid REALITY public_key — degrading to plain TLS", tag)
 		delete(tlsMap, "reality")
-		return
+		return ""
 	}
 
 	if sid, ok := realityMap["short_id"]; ok {
@@ -206,21 +218,26 @@ func sanitizeSingboxReality(tlsMap map[string]interface{}, tag string) {
 	}
 
 	if ks, ok := realityMap["key_share"]; ok {
-		normalized := strings.ToLower(strings.TrimSpace(toStringValue(ks)))
-		switch normalized {
-		case "hybrid", "classical":
-			// Канонический lower-case: ядро сверяет enum побуквенно.
-			realityMap["key_share"] = normalized
-		case "":
+		// Нормализатор общий с URI-путём (node_parser_transport.go): одно и то
+		// же значение обязано дать один и тот же результат откуда угодно.
+		normalized, degraded := NormalizeRealityKeyShare(toStringValue(ks))
+		switch {
+		case degraded:
+			// Enum ядра закрытый (SPEC 089): чужое значение — отказ ВСЕГО
+			// конфига. Деградирует поле, а не узел и не конфиг. Код едет на
+			// узел через возврат — см. SanitizeSingboxOutboundMap.
+			debuglog.WarnLog("Parser: singbox import %q: unknown REALITY key_share %q — dropping the key", tag, toStringValue(ks))
+			delete(realityMap, "key_share")
+			return WarnRealityKeyShareInvalid
+		case normalized == "":
 			// Пусто = «как несёт отпечаток», ключа в конфиге просто нет.
 			delete(realityMap, "key_share")
 		default:
-			// Enum ядра закрытый (SPEC 089): чужое значение — отказ ВСЕГО
-			// конфига. Деградирует поле, а не узел и не конфиг.
-			debuglog.WarnLog("Parser: singbox import %q: unknown REALITY key_share %q — dropping the key", tag, toStringValue(ks))
-			delete(realityMap, "key_share")
+			// Канонический lower-case: ядро сверяет enum побуквенно.
+			realityMap["key_share"] = normalized
 		}
 	}
+	return ""
 }
 
 // sanitizeSingboxFlow оставляет только xtls-rprx-vision и гасит flow при транспорте.

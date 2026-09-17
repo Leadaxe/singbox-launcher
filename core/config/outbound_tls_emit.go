@@ -159,10 +159,18 @@ func emitOutboundTLSJSON(scheme string, outbound map[string]interface{}) (string
 		// гибрид обязателен. Enum ядра закрытый: любое другое значение —
 		// ошибка загрузки ВСЕГО конфига, поэтому мусор не эмитится (узел
 		// живёт без поля), а не передаётся дальше.
+		//
+		// D-121: поле знает только ядро ≥ 1.14.1-lx.4. На старом ядре ключ
+		// НЕИЗВЕСТЕН, а неизвестный ключ — тоже отказ всего конфига, поэтому
+		// гейт по версии стоит перед enum'ом. Гейт полевой: узел остаётся
+		// REALITY и берёт обмен ключами из uTLS-отпечатка.
 		if keyShare, ok := reality["key_share"].(string); ok && keyShare != "" {
-			if keyShare == "hybrid" || keyShare == "classical" {
+			switch {
+			case !coreSupportsRealityKeyShare():
+				debuglog.WarnLog("Generator: %q: core is older than 1.14.1-lx.4 — tls.reality.key_share %q omitted, node stays REALITY", mapStringValue(outbound, "tag"), keyShare)
+			case keyShare == "hybrid" || keyShare == "classical":
 				realityParts = append(realityParts, fmt.Sprintf(`"key_share":%s`, marshalJSONString(keyShare)))
-			} else {
+			default:
 				debuglog.WarnLog("Generator: %q: tls.reality.key_share %q is not hybrid/classical — dropped", mapStringValue(outbound, "tag"), keyShare)
 			}
 		}

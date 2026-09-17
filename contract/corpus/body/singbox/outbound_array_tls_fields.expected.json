@@ -146,7 +146,10 @@
       },
       "kind": "outbound",
       "label": "vless-reality-key-share-junk",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        "reality_key_share_invalid"
+      ]
     }
   ],
   "v": 1

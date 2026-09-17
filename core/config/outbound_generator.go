@@ -269,6 +269,26 @@ var TailscaleSupportProbe func() (supported bool, reason string)
 // отвергает ВЕСЬ конфиг как невалидный JSON. nil → считаем, что ядро умеет.
 var AWG3SupportProbe func() (supported bool, reason string)
 
+// RealityKeyShareSupportProbe — та же схема для поля tls.reality.key_share
+// (D-121, SPEC 089 ядра): ядро до 1.14.1-lx.4 не знает ключа, а неизвестный
+// ключ = отказ ВСЕГО конфига. nil → считаем, что ядро умеет.
+//
+// В отличие от соседей гейт ПОЛЕВОЙ: узел не выбрасывается, снимается одно
+// поле — REALITY без key_share работает, обмен ключами берётся из
+// uTLS-отпечатка. Поэтому вердикт читает эмиттер (outbound_tls_emit.go), а не
+// фильтр узлов в GenerateOutboundsFromParserConfig.
+var RealityKeyShareSupportProbe func() (supported bool, reason string)
+
+// coreSupportsRealityKeyShare — вердикт пробы для эмиттера. Отдельная функция,
+// чтобы nil-хук (юнит-тесты, standalone) читался в одном месте.
+func coreSupportsRealityKeyShare() bool {
+	if RealityKeyShareSupportProbe == nil {
+		return true
+	}
+	supported, _ := RealityKeyShareSupportProbe()
+	return supported
+}
+
 // GenerateNodeJSON returns a single JSON object string for one proxy node (sing-box outbound).
 // Field order and presence follow sing-box expectations. Supports: vless, vmess, trojan, shadowsocks, hysteria, hysteria2, tuic, naive, masque, anytls, ssh, socks.
 // Includes optional TLS (including reality), transport (ws/http/grpc), and protocol-specific options.

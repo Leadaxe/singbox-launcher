@@ -133,6 +133,10 @@ type AppController struct {
 	awg3SupportCache   *awg3SupportVerdict
 	awg3SupportCacheMu sync.Mutex
 
+	// D-121: тот же кэш для гейта tls.reality.key_share (только версия ядра).
+	keyShareSupportCache   *keyShareSupportVerdict
+	keyShareSupportCacheMu sync.Mutex
+
 	// --- Chain-support probe cache (SPEC 110) ---
 	// Тип `chain` есть только в ядрах, собранных с `with_lx_chain`, и ядро
 	// отвергает ВЕСЬ конфиг на неизвестном типе outbound'а. Кэш
@@ -279,6 +283,9 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	// SPEC 123: то же для полей AmneziaWG 3.x — ядро до 1.14.0-lx.32
 	// отвергает конфиг с любым из них целиком.
 	config.AWG3SupportProbe = ac.CoreSupportsAWG3
+	// D-121: то же для tls.reality.key_share — ядро до 1.14.1-lx.4 не знает
+	// ключа и отвергает весь конфиг. Гейт полевой: снимается поле, узел живёт.
+	config.RealityKeyShareSupportProbe = ac.CoreSupportsRealityKeyShare
 
 	// SPEC 122: корень каталогов состояния tailnet. Тот же корень
 	// `<execDir>/bin`, относительно которого лежат локальные .srs — эмиссия
