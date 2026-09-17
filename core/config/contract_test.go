@@ -175,6 +175,7 @@ func equalEnvelopeJSON(t *testing.T, got, want []byte) bool {
 	gv := parseEnvelopeJSON(t, "got", got)
 	wv := parseEnvelopeJSON(t, "want", want)
 	normalizeDropsForCompare(gv, wv)
+	normalizeWarningsForCompare(gv, wv)
 	return canonJSONString(t, gv) == canonJSONString(t, wv)
 }
 
@@ -219,6 +220,124 @@ func normalizeDropsForCompare(got, want any) {
 	for _, d := range wantDrops {
 		delete(d, "reason")
 	}
+}
+
+// normalizeWarningsForCompare приводит `warnings[]` обеих сторон к сравнимому
+// виду (CANON §6, контракт 1.1.0).
+//
+// До 1.1.0 конверт нёс здесь строки-коды, и весь существующий корпус написан
+// так; с 1.1.0 сторона отдаёт объекты {code, path?, value?}. Нормативен ровно
+// тот объём, который ОЖИДАНИЕ объявило:
+//
+//   - ожидание строка     → сверяется только код (path/value снимаются);
+//   - ожидание объект     → сверяются code и path, а value — только если
+//     ожидание его назвало.
+//
+// Почему не перегенерировать корпус под объекты: expected нормативны для обеих
+// сторон сразу (Л21), и массовая правка формы записи утопила бы в диффе
+// настоящие расхождения кодов. Сторона, у которой пути ещё нет, обязана
+// совпадать по коду — этого от контракта до W2a и требуется.
+func normalizeWarningsForCompare(got, want any) {
+	gotNodes := envelopeNodes(got)
+	wantNodes := envelopeNodes(want)
+	for i, gn := range gotNodes {
+		var wn map[string]any
+		if i < len(wantNodes) {
+			wn = wantNodes[i]
+		}
+		normalizeNodeWarnings(gn, wn)
+	}
+	for _, wn := range wantNodes {
+		normalizeNodeWarnings(wn, nil)
+	}
+}
+
+// normalizeNodeWarnings приводит warnings одного узла (и его хопов) к форме
+// объектов, срезая у результата поля, которых ожидание не объявляет.
+func normalizeNodeWarnings(node, want map[string]any) {
+	if node == nil {
+		return
+	}
+	gotList := warningObjects(node)
+	var wantList []map[string]any
+	if want != nil {
+		wantList = warningObjects(want)
+	}
+	for i, w := range gotList {
+		if want == nil {
+			continue
+		}
+		if i >= len(wantList) {
+			// Лишняя запись у результата — расхождение, и прятать его
+			// нормализацией нельзя: пусть падает с полным объектом.
+			continue
+		}
+		if _, ok := wantList[i]["path"]; !ok {
+			delete(w, "path")
+		}
+		if _, ok := wantList[i]["value"]; !ok {
+			delete(w, "value")
+		}
+	}
+	// Хопы цепочки несут свои warnings — тот же разбор, та же сверка.
+	gotHops := childNodes(node, "chain")
+	var wantHops []map[string]any
+	if want != nil {
+		wantHops = childNodes(want, "chain")
+	}
+	for i, gh := range gotHops {
+		var wh map[string]any
+		if i < len(wantHops) {
+			wh = wantHops[i]
+		}
+		normalizeNodeWarnings(gh, wh)
+	}
+}
+
+// warningObjects достаёт warnings[] узла как изменяемые карты, ПЕРЕПИСЫВАЯ
+// строки-коды объектами прямо в конверте: дальше сравниваются уже однородные
+// значения, и второй ветки «а вдруг строка» ниже по коду нет.
+func warningObjects(node map[string]any) []map[string]any {
+	list, ok := node["warnings"].([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(list))
+	for i, item := range list {
+		switch v := item.(type) {
+		case string:
+			m := map[string]any{"code": v}
+			list[i] = m
+			out = append(out, m)
+		case map[string]any:
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// envelopeNodes — записи nodes[] конверта как изменяемые карты.
+func envelopeNodes(v any) []map[string]any {
+	root, ok := v.(map[string]any)
+	if !ok {
+		return nil
+	}
+	return childNodes(root, "nodes")
+}
+
+// childNodes — список объектов по ключу карты.
+func childNodes(m map[string]any, key string) []map[string]any {
+	list, ok := m[key].([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		if o, ok := item.(map[string]any); ok {
+			out = append(out, o)
+		}
+	}
+	return out
 }
 
 // envelopeDrops достаёт записи `dropped[]` конверта как изменяемые карты.

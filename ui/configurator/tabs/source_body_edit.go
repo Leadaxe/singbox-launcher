@@ -86,6 +86,9 @@ func applyServerBodyJSON(node *wizardmodels.Node, text string) error {
 		return err
 	}
 	node.Body = mat.Body
+	// Коды пересчитаны по НОВОМУ телу и замещают прежние целиком (Л5):
+	// после правки тела старый набор описывает узел, которого больше нет.
+	node.Warnings = mat.Warnings
 	node.Sections = sections
 	node.NormalizeNodeSections()
 
@@ -164,6 +167,9 @@ func regenServerBodyFromRawText(node *wizardmodels.Node, raw string) error {
 		return err
 	}
 	node.Body = mat.Body
+	// Regen пересобирает узел из исходника — значит и коды считаются заново
+	// и замещают прежние (Л5, §3.5 «warnings замещаются, не дописываются»).
+	node.Warnings = mat.Warnings
 	node.Origin = &wizardmodels.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw}
 	return nil
 }

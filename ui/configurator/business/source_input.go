@@ -136,11 +136,12 @@ func parseSourceInput(input string, fallbackIndex int) (*parsedSourceInput, erro
 			continue
 		}
 		res.Nodes = append(res.Nodes, corestate.Node{
-			Kind:    corestate.SourceKindServer,
-			Enabled: true,
-			Tag:     tag,
-			Body:    mat.Body,
-			Origin:  &corestate.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw},
+			Kind:     corestate.SourceKindServer,
+			Enabled:  true,
+			Tag:      tag,
+			Body:     mat.Body,
+			Origin:   &corestate.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw},
+			Warnings: mat.Warnings,
 		})
 		res.URIOf = append(res.URIOf, uri)
 		res.Unnamed = append(res.Unnamed, unnamed)
@@ -161,11 +162,12 @@ func parseSourceInput(input string, fallbackIndex int) (*parsedSourceInput, erro
 			continue
 		}
 		res.Nodes = append(res.Nodes, corestate.Node{
-			Kind:    corestate.SourceKindServer,
-			Enabled: true,
-			Tag:     tag,
-			Body:    mat.Body,
-			Origin:  &corestate.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw},
+			Kind:     corestate.SourceKindServer,
+			Enabled:  true,
+			Tag:      tag,
+			Body:     mat.Body,
+			Origin:   &corestate.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw},
+			Warnings: mat.Warnings,
 			// SPEC 121: вставленный целиком конфиг с одним узлом приносит и
 			// его связку — DNS-сервер, DNS-правило, правило маршрута.
 			Sections: corestate.NodeSectionsFromConfigTypes(jn.Sections),

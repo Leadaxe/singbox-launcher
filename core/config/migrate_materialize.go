@@ -116,6 +116,42 @@ func materializeSubscriptionForMigration(req state.MigrationSubRequest) (*state.
 	return res, nil
 }
 
+// stateWarnings — записи деградаций разбора в форме состояния.
+//
+// Пара конвертеров живёт здесь, а не в state: направление импорта
+// config → state, и обратной зависимости у state быть не может (иначе цикл).
+// Форма у типов одна (CANON §6) — конверсия механическая. Обратный
+// конвертер (state → configtypes) заводится волной W2c вместе со своим
+// вызывающим: пустой, он немедленно уехал бы в `unused`.
+func stateWarnings(in []configtypes.Warning) []state.NodeWarning {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]state.NodeWarning, 0, len(in))
+	for _, w := range in {
+		out = append(out, state.NodeWarning{
+			Code:   w.Code,
+			Path:   w.Path,
+			Value:  w.Value,
+			Params: copyWarningParams(w.Params),
+		})
+	}
+	return out
+}
+
+// copyWarningParams — копия карты подстановок (общая карта у двух записей
+// означала бы правку одной через другую).
+func copyWarningParams(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
 // canonicalNodeFromEntry — общая конверсия принятой записи тела в
 // канонический узел v7 (server с body/origin либо auto с group).
 //
@@ -164,6 +200,10 @@ func canonicalNodeFromEntry(subID string, e *subscription.ParsedBodyEntry) (stat
 		Enabled: true,
 		Origin:  origin,
 		Body:    bodyJSON,
+		// Коды разбора едут с узлом (SPEC 131 W2b, шов Л1): до этого они
+		// доживали до записи и молча терялись здесь. SubUpdateStatus.Warnings
+		// не трогаем — это сводка по ИСТОЧНИКУ, другая сущность (Л15).
+		Warnings: stateWarnings(e.Node.Warnings),
 	}, nil
 }
 
@@ -181,6 +221,11 @@ func materializeServerForMigration(req state.MigrationServerRequest) (*state.Mig
 		if err != nil {
 			return nil, fmt.Errorf("manual config_json: %w", err)
 		}
+		// Warnings у ручного JSON пусты намеренно: эта ветка идёт мимо
+		// парсеров схем (stripTagAndDetour вместо эмиттера), и кодов ей
+		// сегодня ставить нечем. Санитайзер реестра, который их посчитает,
+		// встаёт сюда волной W2c — до тех пор узел из ручного JSON честно
+		// «не считан», а не «чист».
 		return &state.MigrationServerResult{
 			Body:       body,
 			OriginKind: state.OriginKindJSON,
@@ -219,6 +264,7 @@ func materializeServerForMigration(req state.MigrationServerRequest) (*state.Mig
 		OriginKind: state.OriginKindURI,
 		OriginRaw:  req.URI, // байт в байт, как хранился
 		LegacyHash: LegacyNodeIdentityHash(node),
+		Warnings:   stateWarnings(node.Warnings),
 	}, nil
 }
 
@@ -252,6 +298,7 @@ func materializeWGConfBlock(blocks []string) (*state.MigrationServerResult, erro
 		OriginKind: state.OriginKindWGIni,
 		OriginRaw:  raw, // блок байт в байт, а не выведенный из него URI
 		LegacyHash: LegacyNodeIdentityHash(node),
+		Warnings:   stateWarnings(node.Warnings),
 	}, nil
 }
 
@@ -329,6 +376,16 @@ type ServerNodeMaterial struct {
 	// OriginKind / OriginRaw — происхождение записи (state.OriginKind*).
 	OriginKind string
 	OriginRaw  string
+	// Warnings — коды деградаций этого разбора (SPEC 131 W2b, Л1).
+	//
+	// Потребитель кладёт их в state.Node.Warnings ПОЛНЫМ ЗАМЕЩЕНИЕМ, а не
+	// дописыванием (Л5): warnings — производная тела, и Regen из того же
+	// origin.raw обязан дать ровно тот набор, что даёт первая материализация.
+	// Дописывание оставило бы на узле коды правил, которые он давно перерос.
+	//
+	// Пусто у ветки ручного config_json: тот путь идёт мимо парсеров и
+	// собственных кодов пока не имеет — его переводит W2c.
+	Warnings []state.NodeWarning
 }
 
 // MaterializeServerNode — ЕДИНСТВЕННАЯ точка превращения «share-URI или
@@ -343,5 +400,10 @@ func MaterializeServerNode(uri string, configJSON json.RawMessage) (*ServerNodeM
 	if err != nil {
 		return nil, err
 	}
-	return &ServerNodeMaterial{Body: res.Body, OriginKind: res.OriginKind, OriginRaw: res.OriginRaw}, nil
+	return &ServerNodeMaterial{
+		Body:       res.Body,
+		OriginKind: res.OriginKind,
+		OriginRaw:  res.OriginRaw,
+		Warnings:   res.Warnings,
+	}, nil
 }

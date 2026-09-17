@@ -1,6 +1,10 @@
 package subscription
 
-import "testing"
+import (
+	"testing"
+
+	"singbox-launcher/core/config/configtypes"
+)
 
 // SPEC 103, фаза 2: коды деградации на узле.
 //
@@ -95,9 +99,9 @@ func TestRealitySIDCaseIsNotDegradation(t *testing.T) {
 // для sing-box-импорта, где узел приходит уже разобранным; тест на неё
 // появится вместе с покрытием того пути.
 
-func hasWarning(list []string, code string) bool {
-	for _, c := range list {
-		if c == code {
+func hasWarning(list []configtypes.Warning, code string) bool {
+	for _, w := range list {
+		if w.Code == code {
 			return true
 		}
 	}

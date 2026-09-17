@@ -43,7 +43,22 @@ type contractNode struct {
 	// Отсутствует у узла без секций (обычное тело, узел не один в конфиге).
 	Sections json.RawMessage `json:"sections,omitempty"`
 	Chain    []contractNode  `json:"chain,omitempty"`
-	Warnings []string        `json:"warnings,omitempty"`
+	// Warnings — записи деградаций конверта (CANON §6, контракт 1.1.0):
+	// {code, path?, value?}. `params` раннер пока не пишет — их ставит
+	// санитайзер реестра (W2a), до него параметров ни у одного кода нет.
+	//
+	// Старые ожидания корпуса несут здесь ГОЛЫЕ СТРОКИ-коды; сравнение это
+	// терпит (normalizeWarningsForCompare): строка в ожидании = «нормативен
+	// только код». Перегенерировать весь корпус ради формы записи — значит
+	// смешать шум с настоящими расхождениями.
+	Warnings []contractWarning `json:"warnings,omitempty"`
+}
+
+// contractWarning — запись warnings[] конверта.
+type contractWarning struct {
+	Code  string `json:"code"`
+	Path  string `json:"path,omitempty"`
+	Value string `json:"value,omitempty"`
 }
 
 // contractDrop — запись отбраковки в конверте (D-088).
@@ -98,9 +113,14 @@ func canonNode(node *configtypes.ParsedNode) (contractNode, error) {
 	// Коды деградации (SPEC 103, фаза 2) — часть контракта: они отвечают на
 	// вопрос «что узлу отняли при разборе», и расхождение кодов между
 	// приложениями означает, что одно из них молча портит узел.
-	// Порядок не нормируется — сортируем.
-	warnings := append([]string(nil), node.Warnings...)
-	sort.Strings(warnings)
+	//
+	// Порядок — как проставлен разбором (CANON §6, Л14), без сортировки:
+	// последовательность слоёв нормативна, и сортировка кодов скрыла бы
+	// расхождение в том, ЧТО именно сработало первым.
+	var warnings []contractWarning
+	for _, w := range node.Warnings {
+		warnings = append(warnings, contractWarning{Code: w.Code, Path: w.Path, Value: w.Value})
+	}
 
 	sections, err := canonNodeSections(node)
 	if err != nil {

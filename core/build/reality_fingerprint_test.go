@@ -110,12 +110,12 @@ func parseBodySingleNode(t *testing.T, body string) *configtypes.ParsedNode {
 // assertRealityHealed прогоняет outbound через сборочный шаг и сверяет
 // отпечаток с ожиданием; warnings проверяются отдельно — они с узла, а не с
 // конфига.
-func assertRealityHealed(t *testing.T, outbound map[string]interface{}, warnings []string, wantWarn bool, wantFP string) {
+func assertRealityHealed(t *testing.T, outbound map[string]interface{}, warnings []configtypes.Warning, wantWarn bool, wantFP string) {
 	t.Helper()
 
 	gotWarn := false
 	for _, w := range warnings {
-		if w == subscription.WarnRealityFPNotChrome {
+		if w.Code == subscription.WarnRealityFPNotChrome {
 			gotWarn = true
 		}
 	}

@@ -78,8 +78,12 @@ func relayNodesFromEntry(
 		return nil, nil
 	}
 
-	// Проход 1: тела выживших хопов, в порядке Chain.
+	// Проход 1: тела выживших хопов, в порядке Chain. Рядом с телом едут и
+	// коды разбора этого хопа: релей — полноценный узел контейнера (Л25,
+	// третье место рождения Body), и ⚠ на нём обязан говорить о нём самом,
+	// а не о владельце.
 	bodies := make([]json.RawMessage, 0, len(e.Node.Chain))
+	warns := make([][]state.NodeWarning, 0, len(e.Node.Chain))
 	for _, hop := range e.Node.Chain {
 		if hop == nil {
 			continue
@@ -100,6 +104,7 @@ func relayNodesFromEntry(
 			continue
 		}
 		bodies = append(bodies, body)
+		warns = append(warns, stateWarnings(hop.Warnings))
 	}
 	if len(bodies) == 0 {
 		return nil, nil
@@ -122,12 +127,13 @@ func relayNodesFromEntry(
 			detour = &state.NodeLink{FolderID: subID, Tag: tags[i+1]}
 		}
 		out = append(out, state.Node{
-			Kind:    state.SourceKindServer,
-			Tag:     tags[i],
-			Enabled: true,
-			Service: true,
-			Body:    bodies[i],
-			Detour:  detour,
+			Kind:     state.SourceKindServer,
+			Tag:      tags[i],
+			Enabled:  true,
+			Service:  true,
+			Body:     bodies[i],
+			Detour:   detour,
+			Warnings: warns[i],
 		})
 	}
 	return out, &state.NodeLink{FolderID: subID, Tag: tags[0]}

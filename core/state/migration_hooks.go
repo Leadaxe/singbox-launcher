@@ -65,6 +65,11 @@ type MigrationServerResult struct {
 	OriginRaw  string
 	// LegacyHash — контент-хэш узла (адресат detour_node_hash).
 	LegacyHash string
+	// Warnings — коды деградаций, проставленных разбором этому узлу
+	// (SPEC 131 W2b). Едут до самой записи узла: до этого они умирали в
+	// материализации, и пользователь видел узел без следа того, что у него
+	// сняли поле.
+	Warnings []NodeWarning
 }
 
 // MigrationHooks — набор реализаций, подставляемых пакетом config.

@@ -752,30 +752,95 @@ type ParsedNode struct {
 	// проходе 2 переписывает их в финальные теги членов.
 	CanonicalGroupMembers []NodeLink
 	CanonicalGroupDefault *NodeLink
-	// Warnings — коды деградаций, применённых к узлу при разборе
-	// (SPEC 103, фаза 2). Словарь кодов — contract/registry/warnings.json.
+	// Warnings — записи деградаций, применённых к узлу при разборе
+	// (SPEC 103 фаза 2, расширены путём и значением в SPEC 131 W2b).
+	// Словарь кодов — contract/registry/warnings.json.
 	//
 	// До этого деградация уходила только в debuglog: пользователь видел
 	// «нода есть», но не знал, что у неё срезали обфускацию или заменили
 	// отпечаток. Коды позволяют показать это в UI и сверять поведение
 	// обоих приложений по общему корпусу, а не по тексту лога.
 	//
-	// Порядок не нормируется, дубли не хранятся: код отвечает на вопрос
-	// «что случилось», а не «сколько раз».
-	Warnings []string
+	// Порядок = порядок вызовов AddWarning/AddFieldWarning (CANON §6, Л14):
+	// сортировать его при записи в state нельзя — сверка с корпусом идёт по
+	// последовательности слоёв разбора. Дубли по паре (Code, Path) не
+	// хранятся: запись отвечает на вопрос «что случилось с этим полем», а не
+	// «сколько раз».
+	Warnings []Warning
 }
 
-// AddWarning помечает узел кодом деградации, не создавая дублей.
+// AddWarning помечает узел кодом деградации уровня узла (Path пуст),
+// не создавая дублей.
 func (n *ParsedNode) AddWarning(code string) {
-	if n == nil || code == "" {
+	n.addWarning(Warning{Code: code})
+}
+
+// AddFieldWarning помечает узел кодом деградации уровня поля: путь в теле
+// sing-box (`tls.reality.short_id`) и исходное значение до деградации,
+// обрезанное до WarningValueMax (CANON §6).
+//
+// Маскировать секреты здесь нечем: реестр протоколов (какие поля объявлены
+// `secret: true`) читает санитайзер — он и подменяет значение на "***".
+// Парсеры зовут этот метод на полях, значение которых и так уходит в warning
+// как мусор.
+func (n *ParsedNode) AddFieldWarning(code, path, value string) {
+	n.addWarning(Warning{Code: code, Path: path, Value: TruncateWarningValue(value)})
+}
+
+// addWarning — общая запись с дедупом по паре (Code, Path).
+//
+// Дедуп именно по паре, а не по коду: один и тот же код законно возникает на
+// разных полях узла (например неизвестный ключ в tls и в transport), и
+// дедуп по коду потерял бы второе место.
+func (n *ParsedNode) addWarning(w Warning) {
+	if n == nil || w.Code == "" {
 		return
 	}
 	for _, existing := range n.Warnings {
-		if existing == code {
+		if existing.Code == w.Code && existing.Path == w.Path {
 			return
 		}
 	}
-	n.Warnings = append(n.Warnings, code)
+	n.Warnings = append(n.Warnings, w)
+}
+
+// HasWarning — узлу проставлен код деградации (на любом поле).
+func (n *ParsedNode) HasWarning(code string) bool {
+	if n == nil {
+		return false
+	}
+	for _, w := range n.Warnings {
+		if w.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
+// Warning — запись деградации узла (CANON §6, контракт 1.1.0, SPEC 131):
+// код из contract/registry/warnings.json плюс путь поля в теле sing-box
+// (`tls.reality.short_id`), исходное значение (≤64 символов; у secret-полей
+// реестра — "***") и подстановки шаблона text_* кода. Path пуст у кодов
+// уровня узла. Тип общий для санитайзера (core/config/nodeflow), парсеров и
+// материализации; в state он копируется в state.NodeWarning (state не
+// импортирует config).
+type Warning struct {
+	Code   string            `json:"code"`
+	Path   string            `json:"path,omitempty"`
+	Value  string            `json:"value,omitempty"`
+	Params map[string]string `json:"params,omitempty"`
+}
+
+// WarningValueMax — предел длины Warning.Value (CANON §6).
+const WarningValueMax = 64
+
+// TruncateWarningValue обрезает исходное значение до WarningValueMax рун.
+func TruncateWarningValue(v string) string {
+	r := []rune(v)
+	if len(r) <= WarningValueMax {
+		return v
+	}
+	return string(r[:WarningValueMax]) + "…"
 }
 
 // SchemeTailscale — схема узла tailnet (contract/registry/protocols/tailscale.json).

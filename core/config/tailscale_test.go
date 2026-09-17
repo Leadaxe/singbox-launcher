@@ -506,7 +506,7 @@ func TestTailscaleCanonicalBundle(t *testing.T) {
 		node := pb.Entries[0].Node
 		var found bool
 		for _, w := range node.Warnings {
-			if w == subscription.WarnTailscaleFromSubscription {
+			if w.Code == subscription.WarnTailscaleFromSubscription {
 				found = true
 			}
 		}
