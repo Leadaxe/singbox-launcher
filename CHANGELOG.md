@@ -6,6 +6,14 @@
 Ломающие изменения помечены **!** — они меняют формат данных или поведение,
 на которое можно было полагаться.
 
+## Unreleased
+
+Черновик пользовательских заметок — [docs/release_notes/upcoming.md](docs/release_notes/upcoming.md).
+
+### Прочее (1)
+
+- chore(core): пин ядра sing-box-lx 1.14.1-lx.4 — `tls.reality.key_share` (SPEC 089 ядра: `hybrid` / `classical`, пусто = как несёт отпечаток) и SPEC 088: `fragment`/`record_fragment` из шаблона (флаги `tls_fragment`/`tls_record_fragment`, `core/build/tls_transforms.go`) теперь доходят и до REALITY-узлов — прежние ядра их там молча игнорировали, так что у REALITY-узлов с включённым фрагментированием поведение на проводе меняется
+
 ## v1.6.2
 
 Подробные заметки: [docs/release_notes/1-6-2.md](docs/release_notes/1-6-2.md).
