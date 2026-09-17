@@ -8,79 +8,118 @@
   "extension": null,
   "uri": {
     "userinfo": {
+      "maps_to": "password",
       "meaning": "password",
-      "note": "Пароль — username-часть userinfo (hysteria2://password@host:port). Go дополнительно принимает base64-обёрнутый payload после схемы (node_parser_core.go:222-238) — desktop-расширение."
+      "desc_en": "Account password.",
+      "desc_ru": "Пароль учётной записи.",
+      "impl": "Пароль — username-часть userinfo (hysteria2://password@host:port). Go дополнительно принимает base64-обёрнутый payload после схемы (node_parser_core.go:222-238) — desktop-расширение."
     },
     "query": {
       "mport": {
         "type": "string",
-        "aliases": ["ports"],
         "default": null,
-        "note": "Multi-port / port hopping: список портов и диапазонов через запятую, диапазон через дефис (443,8443,20000-30000) → server_ports [\"low:high\"]. Multi-port может стоять и прямо в authority (host:20000-30000) — Go восстанавливает его через hysteria2RecoverMultiPortAuthority и сливает с mport. Сейчас только Go; §9.B2: Dart добавляет."
+        "aliases": ["ports"],
+        "maps_to": "server_ports",
+        "desc_en": "Port range for port hopping.",
+        "desc_ru": "Диапазон портов для port hopping.",
+        "impl": "Multi-port / port hopping: список портов и диапазонов через запятую, диапазон через дефис (443,8443,20000-30000) → server_ports [\"low:high\"]. Multi-port может стоять и прямо в authority (host:20000-30000) — Go восстанавливает его через hysteria2RecoverMultiPortAuthority и сливает с mport. Сейчас только Go; §9.B2: Dart добавляет. ЗАПИСЬ ИСПРАВЛЕНА (DRIFT §4): пометка «сейчас только Go; Dart добавляет» протухла — Dart уже читает mport/ports и восстанавливает диапазон из authority (hysteria2_parser.dart:74-79,179-235). Расхождения нет. Формат ядра — \"low:high\" через ДВОЕТОЧИЕ; дефис (\"1000-2000\") даёт B «bad port range»."
       },
       "obfs": {
         "type": "enum",
         "allowlist": "hysteria2_obfs",
         "default": null,
-        "note": "Тип обфускации. Невалидный тип / obfs без пароля → блок obfs отбрасывается с warning, нода живёт (fatal ядра иначе). Обе стороны принимают salamander и gecko (node_parser_hysteria2.go; сверяется TestRegistrySyncHysteria2Obfs) — gecko есть в ядре lx и в Dart (§358); разрыв не решён в §9, см. note allowlists.hysteria2_obfs."
+        "maps_to": "obfs.type",
+        "desc_en": "Obfuscation type.",
+        "desc_ru": "Тип обфускации.",
+        "impl": "Тип обфускации. Невалидный тип / obfs без пароля → блок obfs отбрасывается с warning, нода живёт (fatal ядра иначе). Обе стороны принимают salamander и gecko (node_parser_hysteria2.go; сверяется TestRegistrySyncHysteria2Obfs) — gecko есть в ядре lx и в Dart (§358); разрыв не решён в §9, см. note allowlists.hysteria2_obfs."
       },
       "obfs-password": {
         "type": "string",
         "default": null,
-        "note": "Пароль обфускации; обязателен при непустом obfs (иначе блок сбрасывается: Dart — с warning, Go singbox-sanitize — тоже; Go URI-путь пароль не требует — разрыв в строгости)."
+        "maps_to": "obfs.password",
+        "desc_en": "Obfuscation password.",
+        "desc_ru": "Пароль обфускации.",
+        "impl": "Пароль обфускации; обязателен при непустом obfs (иначе блок сбрасывается: Dart — с warning, Go singbox-sanitize — тоже; Go URI-путь пароль не требует — разрыв в строгости)."
       },
       "obfs-min-packet-size": {
         "type": "int",
         "default": null,
         "ext": "mobile",
-        "note": "Собственный ключ LxBox для gecko (у hysteria2 нет де-факто URI-ключа) → obfs.min_packet_size. Привязан к gecko-разрыву."
+        "maps_to": "obfs.min_packet_size",
+        "desc_en": "Minimum obfuscated packet size.",
+        "desc_ru": "Минимальный размер обфусцированного пакета.",
+        "impl": "Собственный ключ LxBox для gecko (у hysteria2 нет де-факто URI-ключа) → obfs.min_packet_size. Привязан к gecko-разрыву."
       },
       "obfs-max-packet-size": {
         "type": "int",
         "default": null,
         "ext": "mobile",
-        "note": "Собственный ключ LxBox для gecko → obfs.max_packet_size."
+        "maps_to": "obfs.max_packet_size",
+        "desc_en": "Maximum obfuscated packet size.",
+        "desc_ru": "Максимальный размер обфусцированного пакета.",
+        "impl": "Собственный ключ LxBox для gecko → obfs.max_packet_size."
       },
       "upmbps": {
         "type": "int",
-        "aliases": ["up_mbps"],
         "default": null,
-        "note": "up_mbps (Мбит/с). РАЗРЫВ ИМЁН (новое, вне §9): Go читает/пишет upmbps, Dart читает/пишет up_mbps — кросс-эмит теряет значение. Целевое: оба принимают оба ключа; канон эмита — решить на ревью."
+        "aliases": ["up_mbps"],
+        "maps_to": "up_mbps",
+        "desc_en": "Uplink bandwidth, Mbps.",
+        "desc_ru": "Полоса вверх, Мбит/с.",
+        "impl": "up_mbps (Мбит/с). РАЗРЫВ ИМЁН (новое, вне §9): Go читает/пишет upmbps, Dart читает/пишет up_mbps — кросс-эмит теряет значение. Целевое: оба принимают оба ключа; канон эмита — решить на ревью."
       },
       "downmbps": {
         "type": "int",
-        "aliases": ["down_mbps"],
         "default": null,
-        "note": "down_mbps (Мбит/с). Тот же разрыв имён, что upmbps."
+        "aliases": ["down_mbps"],
+        "maps_to": "down_mbps",
+        "desc_en": "Downlink bandwidth, Mbps.",
+        "desc_ru": "Полоса вниз, Мбит/с.",
+        "impl": "down_mbps (Мбит/с). Тот же разрыв имён, что upmbps."
       },
       "sni": {
         "type": "string",
         "default": null,
-        "note": "server_name. Значение без точки/двоеточия или '🔒' считается мусором → fallback на server (оба проекта, одинаковая эвристика)."
+        "maps_to": "tls.server_name",
+        "desc_en": "Server name sent in SNI.",
+        "desc_ru": "Имя сервера, отправляемое в SNI.",
+        "impl": "server_name. Значение без точки/двоеточия или '🔒' считается мусором → fallback на server (оба проекта, одинаковая эвристика)."
       },
       "fp": {
         "type": "alias_enum",
         "allowlist": "utls_fingerprints",
-        "aliases": ["fingerprint"],
         "default": null,
-        "note": "uTLS fingerprint. РАЗРЫВ (новое, вне §9): Go эмитит tls.utls в JSON (node_parser_hysteria2.go:91-100), Dart намеренно срезает uTLS на QUIC-протоколах (§282, toSingboxForQuic) — и сам Go на Xray-пути тоже срезает (xray_protocols.go:276). Влияет на identity-хеш и, возможно, на валидность конфига."
+        "aliases": ["fingerprint"],
+        "maps_to": "tls.utls.fingerprint",
+        "desc_en": "Browser fingerprint mimicked in the ClientHello.",
+        "desc_ru": "Отпечаток браузера, который подделывается в ClientHello.",
+        "impl": "uTLS fingerprint. РАЗРЫВ (новое, вне §9): Go эмитит tls.utls в JSON (node_parser_hysteria2.go:91-100), Dart намеренно срезает uTLS на QUIC-протоколах (§282, toSingboxForQuic) — и сам Go на Xray-пути тоже срезает (xray_protocols.go:276). Влияет на identity-хеш и, возможно, на валидность конфига."
       },
       "pinSHA256": {
         "type": "string",
         "default": null,
         "ext": "desktop",
-        "note": "→ tls.certificate_public_key_sha256 ([значение]). Только Go."
+        "maps_to": "tls.certificate_public_key_sha256",
+        "desc_en": "Pinned SHA-256 of the server certificate public key.",
+        "desc_ru": "Закреплённый SHA-256 публичного ключа сертификата сервера.",
+        "impl": "→ tls.certificate_public_key_sha256 ([значение]). Только Go. ЗАПИСЬ ИСПРАВЛЕНА (DRIFT §4): пометка «только Go» протухла — Dart читает (hysteria2_parser.dart:97,107). Расхождения нет."
       },
       "alpn": {
         "type": "string",
         "default": null,
-        "note": "Список через запятую → tls.alpn []string (обычно h3)."
+        "maps_to": "tls.alpn",
+        "desc_en": "Comma-separated list of ALPN protocols.",
+        "desc_ru": "Список протоколов ALPN через запятую.",
+        "impl": "Список через запятую → tls.alpn []string (обычно h3)."
       },
       "insecure": {
         "type": "bool",
-        "aliases": ["allowInsecure", "allowinsecure", "allow_insecure", "skip-cert-verify"],
         "default": null,
-        "note": "tls.insecure. Значения 1/true/yes. Go: insecure/allowInsecure/allowinsecure + skip-cert-verify (только true/1); Dart добавляет allow_insecure. Целевой набор алиасов — объединение."
+        "aliases": ["allowInsecure", "allowinsecure", "allow_insecure", "allow-insecure", "skipCertVerify", "skipcertverify", "skip_cert_verify", "skip-cert-verify", "noverify"],
+        "maps_to": "tls.insecure",
+        "desc_en": "Skip server certificate verification.",
+        "desc_ru": "Не проверять сертификат сервера.",
+        "impl": "tls.insecure. Значения 1/true/yes. Go: insecure/allowInsecure/allowinsecure + skip-cert-verify (только true/1); Dart добавляет allow_insecure. Целевой набор алиасов — объединение. ЦЕЛЕВОЙ НАБОР ИМЁН — объединение обоих проектов (DRIFT §2(a), общая запись — tls.json /tls/params/insecure): insecure, allowinsecure, allow_insecure, allow-insecure, skipcertverify, skip_cert_verify, skip-cert-verify, noverify; сверка по strings.ToLower со снятием '-'/'_'; истина 1|true|yes единообразно."
       }
     },
     "fragment": "label"
@@ -114,5 +153,265 @@
       "lib/services/parser/json_parsers.dart:513-520",
       "lib/services/parser/json_parsers.dart:638-650"
     ]
+  },
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": ["server", "server_port", "server_ports", "hop_interval", "hop_interval_max", "up_mbps", "down_mbps", "obfs", "password", "network", "tls", "bbr_profile", "brutal_debug", "disable_chrome_parrot", "realm", "idle_timeout", "keep_alive_period", "stream_receive_window", "connection_receive_window", "max_concurrent_streams", "initial_packet_size", "disable_path_mtu_discovery", "__dialer"],
+    "fields": {
+      "server": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server address: domain or IP.",
+        "desc_ru": "Адрес сервера: домен или IP.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "server_port": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server port.",
+        "desc_ru": "Порт сервера.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "server_ports": {
+        "type": "listable_string",
+        "conflicts": [
+          {
+            "with": "realm",
+            "code": "field_conflict"
+          }
+        ],
+        "desc_en": "Port ranges used for port hopping.",
+        "desc_ru": "Диапазоны портов для прыжков по портам.",
+        "impl": "Конфликт с realm: «realm conflicts with server, server_port, and server_ports» (protocol/hysteria2/outbound.go:172)."
+      },
+      "hop_interval": {
+        "type": "duration",
+        "desc_en": "Interval between port hops.",
+        "desc_ru": "Интервал между прыжками по портам.",
+        "impl": "option/hysteria2.go HopInterval."
+      },
+      "hop_interval_max": {
+        "type": "duration",
+        "desc_en": "Upper bound of the randomized hop interval.",
+        "desc_ru": "Верхняя граница случайного интервала прыжков.",
+        "impl": "option/hysteria2.go HopIntervalMax."
+      },
+      "up_mbps": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Upload bandwidth in Mbps.",
+        "desc_ru": "Скорость отдачи в Мбит/с.",
+        "impl": "Из JSON приезжает float64 — приведение обязательно."
+      },
+      "down_mbps": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Download bandwidth in Mbps.",
+        "desc_ru": "Скорость приёма в Мбит/с.",
+        "impl": "Из JSON приезжает float64 — приведение обязательно."
+      },
+      "obfs": {
+        "type": "object",
+        "order": ["type", "password", "min_packet_size", "max_packet_size"],
+        "fields": {
+          "type": {
+            "type": "enum",
+            "values": ["salamander", "gecko"],
+            "normalize": "trim_lower",
+            "on_invalid": {
+              "action": "drop",
+              "code": "obfs_unknown"
+            },
+            "required": true,
+            "desc_en": "Obfuscation algorithm.",
+            "desc_ru": "Алгоритм обфускации.",
+            "impl": "Дискриминатор объекта; иное значение = ошибка разбора JSON, код obfs_unknown."
+          },
+          "password": {
+            "type": "string",
+            "required": true,
+            "secret": true,
+            "desc_en": "Obfuscation password.",
+            "desc_ru": "Пароль обфускации.",
+            "impl": "Пустой = «missing obfs password», код obfs_password_missing. Секрет."
+          },
+          "min_packet_size": {
+            "type": "int",
+            "min": 0,
+            "on_invalid": {
+              "action": "drop",
+              "code": "type_invalid"
+            },
+            "desc_en": "Minimum packet size, gecko only.",
+            "desc_ru": "Минимальный размер пакета, только для gecko.",
+            "impl": "Осмыслено только при type=gecko."
+          },
+          "max_packet_size": {
+            "type": "int",
+            "min": 0,
+            "on_invalid": {
+              "action": "drop",
+              "code": "type_invalid"
+            },
+            "desc_en": "Maximum packet size, gecko only.",
+            "desc_ru": "Максимальный размер пакета, только для gecko.",
+            "impl": "Осмыслено только при type=gecko."
+          }
+        },
+        "desc_en": "Obfuscation settings.",
+        "desc_ru": "Настройки обфускации.",
+        "impl": "Дискриминированный юнион по type (option/hysteria2.go Hysteria2Obfs)."
+      },
+      "password": {
+        "type": "string",
+        "secret": true,
+        "desc_en": "Account password.",
+        "desc_ru": "Пароль учётной записи.",
+        "impl": "option/hysteria2.go Password. Секрет."
+      },
+      "network": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Networks this outbound handles.",
+        "desc_ru": "Сети, которые обслуживает этот узел.",
+        "impl": "NetworkList; правило значения — registry/dialer.json, секция common."
+      },
+      "tls": {
+        "type": "ref",
+        "ref": "tls",
+        "required": true,
+        "desc_en": "TLS settings.",
+        "desc_ru": "Настройки TLS.",
+        "impl": "C.ErrTLSRequired без tls.enabled=true. На QUIC-типе utls и reality вычищаются целиком."
+      },
+      "bbr_profile": {
+        "type": "enum",
+        "values": ["", "standard", "conservative", "aggressive"],
+        "normalize": "trim_lower",
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "default": "standard",
+        "desc_en": "BBR congestion control profile.",
+        "desc_ru": "Профиль управления перегрузкой BBR.",
+        "impl": "option/hysteria2.go BBRProfile (upstream 1.14, не форк)."
+      },
+      "brutal_debug": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Log TCP Brutal diagnostics.",
+        "desc_ru": "Писать диагностику TCP Brutal в лог.",
+        "impl": "option/hysteria2.go BrutalDebug."
+      },
+      "disable_chrome_parrot": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Do not mimic the Chrome QUIC fingerprint.",
+        "desc_ru": "Не подражать отпечатку QUIC браузера Chrome.",
+        "impl": "option/hysteria2.go DisableChromeParrot."
+      },
+      "realm": {
+        "type": "object",
+        "conflicts": [
+          {
+            "with": "server",
+            "code": "field_conflict"
+          },
+          {
+            "with": "server_port",
+            "code": "field_conflict"
+          },
+          {
+            "with": "server_ports",
+            "code": "field_conflict"
+          }
+        ],
+        "skip": "структура Hysteria2Realm в CORE_SCHEMA полями не расписана (§3.6 отмечает только конфликт); поля опишем вместе с поддержкой realm в лаунчере",
+        "desc_en": "Realm endpoint description replacing the server address.",
+        "desc_ru": "Описание realm-точки вместо адреса сервера.",
+        "impl": "Конфликтует с server/server_port/server_ports — «realm conflicts with server, server_port, and server_ports» (protocol/hysteria2/outbound.go:172). Лаунчер realm не эмитит."
+      },
+      "idle_timeout": {
+        "type": "duration",
+        "desc_en": "Close the QUIC connection after this idle period.",
+        "desc_ru": "Закрывать QUIC-соединение после простоя такой длительности.",
+        "impl": "QUICOptions, встроено плоско."
+      },
+      "keep_alive_period": {
+        "type": "duration",
+        "desc_en": "Interval between QUIC keepalive packets.",
+        "desc_ru": "Интервал между keepalive-пакетами QUIC.",
+        "impl": "QUICOptions, встроено плоско."
+      },
+      "stream_receive_window": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Receive window of a single QUIC stream.",
+        "desc_ru": "Окно приёма одного потока QUIC.",
+        "impl": "MemoryBytes: число или строка с суффиксом (HTTP2Options)."
+      },
+      "connection_receive_window": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Receive window of the whole QUIC connection.",
+        "desc_ru": "Окно приёма всего QUIC-соединения.",
+        "impl": "MemoryBytes: число или строка с суффиксом."
+      },
+      "max_concurrent_streams": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Maximum number of concurrent QUIC streams.",
+        "desc_ru": "Максимум одновременных потоков QUIC.",
+        "impl": "HTTP2Options, встроено плоско."
+      },
+      "initial_packet_size": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Initial QUIC packet size in bytes.",
+        "desc_ru": "Начальный размер пакета QUIC в байтах.",
+        "impl": "QUICOptions, встроено плоско."
+      },
+      "disable_path_mtu_discovery": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Disable QUIC path MTU discovery.",
+        "desc_ru": "Отключить определение MTU пути в QUIC.",
+        "impl": "QUICOptions, встроено плоско."
+      },
+      "__dialer": {
+        "type": "ref",
+        "ref": "dialer",
+        "inline": true,
+        "desc_en": "Common dialer fields, inlined flat into the body.",
+        "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
+        "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
+      }
+    },
+    "build_tag": "with_quic"
   }
 }

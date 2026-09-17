@@ -1,0 +1,2072 @@
+{
+  "core": "1.14.1-lx.4",
+  "upstream_base": "9dddbefb2c98611652b19bc25d2fcb8d7dc03b8d (v1.14.1-2-g9dddbefb2)",
+  "generated": "2026-09-17",
+  "note": "Извлечено из option/*.go на теге v1.14.1-lx.4. lx_only определён diff-ом option/ против upstream-базы форка. Дефолты и обязательность — из реализаций protocol/*/outbound.go, transport/*, common/tls/*.",
+  "common": {
+    "server": {
+      "fields": {
+        "server": {
+          "type": "string",
+          "required": true,
+          "note": "ServerOptions; без omitempty — эмитируется всегда"
+        },
+        "server_port": {
+          "type": "uint16",
+          "required": true,
+          "note": "ServerOptions; без omitempty"
+        }
+      }
+    },
+    "dialer": {
+      "fields": {
+        "detour": {
+          "type": "string",
+          "client": true,
+          "note": "reference:outbound"
+        },
+        "bind_interface": {
+          "type": "string",
+          "client": true
+        },
+        "inet4_bind_address": {
+          "type": "string",
+          "client": true,
+          "note": "badoption.Addr"
+        },
+        "inet6_bind_address": {
+          "type": "string",
+          "client": true,
+          "note": "badoption.Addr"
+        },
+        "bind_address_no_port": {
+          "type": "bool",
+          "client": false
+        },
+        "protect_path": {
+          "type": "string",
+          "client": false,
+          "platform": "android"
+        },
+        "routing_mark": {
+          "type": "int",
+          "client": false,
+          "platform": "linux",
+          "note": "FwMark"
+        },
+        "reuse_addr": {
+          "type": "bool",
+          "client": false
+        },
+        "netns": {
+          "type": "string",
+          "client": false,
+          "platform": "linux",
+          "note": "reference:network_namespace"
+        },
+        "connect_timeout": {
+          "type": "duration",
+          "client": true
+        },
+        "tcp_fast_open": {
+          "type": "bool",
+          "client": true,
+          "note": "конфликт с anytls"
+        },
+        "tcp_multi_path": {
+          "type": "bool",
+          "client": false
+        },
+        "disable_tcp_keep_alive": {
+          "type": "bool",
+          "client": false
+        },
+        "tcp_keep_alive": {
+          "type": "duration",
+          "client": false
+        },
+        "tcp_keep_alive_interval": {
+          "type": "duration",
+          "client": false
+        },
+        "udp_fragment": {
+          "type": "bool",
+          "client": true,
+          "note": "*bool — tri-state"
+        },
+        "domain_resolver": {
+          "type": "object",
+          "ref": "domain_resolver",
+          "client": true,
+          "note": "строка (тег сервера) ИЛИ объект"
+        },
+        "network_strategy": {
+          "type": "enum",
+          "client": false,
+          "values": [],
+          "note": "enum из C.StringToNetworkStrategy, в option не виден"
+        },
+        "network_type": {
+          "type": "listable_string",
+          "client": false
+        },
+        "fallback_network_type": {
+          "type": "listable_string",
+          "client": false
+        },
+        "fallback_delay": {
+          "type": "duration",
+          "client": false
+        },
+        "domain_strategy": {
+          "type": "enum",
+          "client": false,
+          "deprecated": true,
+          "values": [
+            "",
+            "as_is",
+            "prefer_ipv4",
+            "prefer_ipv6",
+            "ipv4_only",
+            "ipv6_only"
+          ],
+          "note": "schema:omit — мигрировано в domain_resolver"
+        }
+      }
+    },
+    "domain_resolver": {
+      "form": "string_or_object",
+      "fields": {
+        "server": {
+          "type": "string",
+          "required": true,
+          "note": "пустой = ошибка разбора"
+        },
+        "timeout": {
+          "type": "duration"
+        },
+        "strategy": {
+          "type": "enum",
+          "values": [
+            "",
+            "as_is",
+            "prefer_ipv4",
+            "prefer_ipv6",
+            "ipv4_only",
+            "ipv6_only"
+          ]
+        },
+        "disable_cache": {
+          "type": "bool"
+        },
+        "disable_optimistic_cache": {
+          "type": "bool"
+        },
+        "rewrite_ttl": {
+          "type": "int"
+        },
+        "client_subnet": {
+          "type": "string"
+        }
+      }
+    },
+    "network_list": {
+      "type": "listable_string",
+      "values": [
+        "tcp",
+        "udp"
+      ],
+      "default": [
+        "tcp",
+        "udp"
+      ],
+      "note": "NetworkList: строка или массив; неизвестное значение = ошибка разбора"
+    }
+  },
+  "tls": {
+    "fields": {
+      "enabled": {
+        "type": "bool",
+        "default": false,
+        "note": "false = блок tls игнорируется целиком"
+      },
+      "engine": {
+        "type": "enum",
+        "values": [
+          "",
+          "go",
+          "apple",
+          "windows"
+        ],
+        "default": "go",
+        "platform": "apple=darwin/ios, windows=windows"
+      },
+      "disable_sni": {
+        "type": "bool",
+        "note": "включает InsecureSkipVerify; конфликт с reality и spoof"
+      },
+      "server_name": {
+        "type": "string",
+        "note": "пусто → адрес сервера; пусто+insecure=false = ошибка errMissingServerName"
+      },
+      "insecure": {
+        "type": "bool"
+      },
+      "alpn": {
+        "type": "listable_string",
+        "note": "enum не фиксирован в коде; примеры http/1.1, h2, h3"
+      },
+      "min_version": {
+        "type": "enum",
+        "values": [
+          "1.0",
+          "1.1",
+          "1.2",
+          "1.3"
+        ]
+      },
+      "max_version": {
+        "type": "enum",
+        "values": [
+          "1.0",
+          "1.1",
+          "1.2",
+          "1.3"
+        ]
+      },
+      "cipher_suites": {
+        "type": "listable_string",
+        "note": "имена из tls.CipherSuites(); неизвестное = ошибка"
+      },
+      "curve_preferences": {
+        "type": "listable_string",
+        "values": [
+          "P256",
+          "P384",
+          "P521",
+          "X25519",
+          "X25519MLKEM768"
+        ],
+        "note": "разбор нечувствителен к регистру"
+      },
+      "certificate": {
+        "type": "listable_string",
+        "note": "PEM построчно"
+      },
+      "certificate_path": {
+        "type": "string"
+      },
+      "certificate_public_key_sha256": {
+        "type": "string_array",
+        "note": "base64 []byte; конфликт с certificate/certificate_path"
+      },
+      "client_certificate": {
+        "type": "listable_string"
+      },
+      "client_certificate_path": {
+        "type": "string"
+      },
+      "client_key": {
+        "type": "listable_string"
+      },
+      "client_key_path": {
+        "type": "string"
+      },
+      "fragment": {
+        "type": "bool"
+      },
+      "fragment_fallback_delay": {
+        "type": "duration"
+      },
+      "record_fragment": {
+        "type": "bool",
+        "note": "lx SPEC 060: авто-true при непустом detour, если ни fragment, ни record_fragment не заданы"
+      },
+      "spoof": {
+        "type": "string",
+        "note": "требует SNI-домен; должен отличаться от server_name; несовместим с reality"
+      },
+      "spoof_method": {
+        "type": "enum",
+        "values": [
+          "",
+          "wrong-sequence",
+          "wrong-checksum",
+          "wrong-ack",
+          "wrong-md5",
+          "wrong-timestamp"
+        ],
+        "default": "wrong-sequence",
+        "note": "без spoof = ошибка"
+      },
+      "kernel_tx": {
+        "type": "bool",
+        "platform": "linux",
+        "note": "не-Linux = ошибка старта"
+      },
+      "kernel_rx": {
+        "type": "bool",
+        "platform": "linux",
+        "note": "не-Linux = ошибка старта"
+      },
+      "handshake_timeout": {
+        "type": "duration"
+      },
+      "ech": {
+        "ref": "ech"
+      },
+      "utls": {
+        "ref": "utls"
+      },
+      "reality": {
+        "ref": "reality"
+      }
+    }
+  },
+  "utls": {
+    "fields": {
+      "enabled": {
+        "type": "bool"
+      },
+      "fingerprint": {
+        "type": "enum",
+        "default": "chrome",
+        "values": [
+          "",
+          "chrome",
+          "chrome_psk",
+          "chrome_psk_shuffle",
+          "chrome_padding_psk_shuffle",
+          "chrome_pq",
+          "chrome_pq_psk",
+          "firefox",
+          "edge",
+          "safari",
+          "360",
+          "qq",
+          "ios",
+          "android",
+          "random",
+          "randomized"
+        ],
+        "note": "uTLSClientHelloID в common/tls/utls_client.go; неизвестное = ошибка старта"
+      }
+    }
+  },
+  "reality": {
+    "fields": {
+      "enabled": {
+        "type": "bool"
+      },
+      "public_key": {
+        "type": "string",
+        "required": true,
+        "note": "base64 raw-url x25519; невалидный = ошибка"
+      },
+      "short_id": {
+        "type": "string",
+        "required": false,
+        "note": "hex; невалидный = ошибка"
+      },
+      "key_share": {
+        "type": "enum",
+        "values": [
+          "",
+          "hybrid",
+          "classical"
+        ],
+        "default": "",
+        "lx_only": true,
+        "min_core": "1.14.1-lx.4",
+        "note": "SPEC 089; неизвестное = ошибка старта"
+      }
+    },
+    "requires": [
+      "utls.enabled=true"
+    ]
+  },
+  "ech": {
+    "fields": {
+      "enabled": {
+        "type": "bool"
+      },
+      "config": {
+        "type": "listable_string",
+        "note": "PEM 'ECH CONFIGS'"
+      },
+      "config_path": {
+        "type": "string"
+      },
+      "query_server_name": {
+        "type": "string"
+      },
+      "pq_signature_schemes_enabled": {
+        "type": "bool",
+        "deprecated": true
+      },
+      "dynamic_record_sizing_disabled": {
+        "type": "bool",
+        "deprecated": true
+      }
+    }
+  },
+  "multiplex": {
+    "fields": {
+      "enabled": {
+        "type": "bool"
+      },
+      "protocol": {
+        "type": "enum",
+        "values": [
+          "",
+          "h2mux",
+          "smux",
+          "yamux"
+        ],
+        "default": "h2mux"
+      },
+      "max_connections": {
+        "type": "int"
+      },
+      "min_streams": {
+        "type": "int"
+      },
+      "max_streams": {
+        "type": "int"
+      },
+      "padding": {
+        "type": "bool"
+      },
+      "brutal": {
+        "ref": "brutal"
+      }
+    }
+  },
+  "brutal": {
+    "fields": {
+      "enabled": {
+        "type": "bool"
+      },
+      "up_mbps": {
+        "type": "int",
+        "required": true,
+        "note": "при enabled: <=0 = ошибка 'brutal: invalid upload speed'"
+      },
+      "down_mbps": {
+        "type": "int",
+        "required": true,
+        "note": "при enabled: <=0 = ошибка 'brutal: invalid download speed'"
+      }
+    }
+  },
+  "udp_over_tcp": {
+    "form": "bool_or_object",
+    "fields": {
+      "enabled": {
+        "type": "bool"
+      },
+      "version": {
+        "type": "enum",
+        "values": [
+          1,
+          2
+        ],
+        "default": 2
+      }
+    }
+  },
+  "quic_options": {
+    "note": "QUICOptions встраивается плоско в hysteria/hysteria2/tuic (вместе с HTTP2Options)",
+    "fields": {
+      "idle_timeout": {
+        "type": "duration"
+      },
+      "keep_alive_period": {
+        "type": "duration"
+      },
+      "stream_receive_window": {
+        "type": "int",
+        "note": "MemoryBytes: число или строка с суффиксом"
+      },
+      "connection_receive_window": {
+        "type": "int",
+        "note": "MemoryBytes"
+      },
+      "max_concurrent_streams": {
+        "type": "int"
+      },
+      "initial_packet_size": {
+        "type": "int"
+      },
+      "disable_path_mtu_discovery": {
+        "type": "bool"
+      }
+    }
+  },
+  "transports": {
+    "discriminator": "type",
+    "values": [
+      "http",
+      "ws",
+      "quic",
+      "grpc",
+      "httpupgrade",
+      "xhttp"
+    ],
+    "http": {
+      "fields": {
+        "host": {
+          "type": "listable_string"
+        },
+        "path": {
+          "type": "string",
+          "default": "/"
+        },
+        "method": {
+          "type": "string",
+          "default": "GET",
+          "note": "enum не найден в коде"
+        },
+        "headers": {
+          "type": "object",
+          "note": "badoption.HTTPHeader: map[string]listable_string"
+        },
+        "idle_timeout": {
+          "type": "duration"
+        },
+        "ping_timeout": {
+          "type": "duration"
+        }
+      }
+    },
+    "ws": {
+      "fields": {
+        "path": {
+          "type": "string",
+          "default": "/"
+        },
+        "headers": {
+          "type": "object"
+        },
+        "max_early_data": {
+          "type": "int",
+          "note": "uint32; парная с early_data_header_name"
+        },
+        "early_data_header_name": {
+          "type": "string",
+          "note": "пусто + max_early_data>0 = early data в пути"
+        }
+      }
+    },
+    "quic": {
+      "fields": {},
+      "note": "V2RayQUICOptions пустая структура"
+    },
+    "grpc": {
+      "fields": {
+        "service_name": {
+          "type": "string",
+          "default": "",
+          "note": "путь /<service_name>/Tun; enum нет"
+        },
+        "idle_timeout": {
+          "type": "duration"
+        },
+        "ping_timeout": {
+          "type": "duration"
+        },
+        "permit_without_stream": {
+          "type": "bool"
+        }
+      }
+    },
+    "httpupgrade": {
+      "fields": {
+        "host": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string",
+          "default": "/"
+        },
+        "headers": {
+          "type": "object"
+        }
+      }
+    },
+    "xhttp": {
+      "lx_only": true,
+      "min_core": "1.13.13-lx.1",
+      "build_tag": "with_xhttp",
+      "fields": {
+        "host": {
+          "type": "string",
+          "default": "",
+          "note": "пусто → SNI или адрес сервера"
+        },
+        "path": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "enum",
+          "values": [
+            "",
+            "auto",
+            "packet-up",
+            "stream-up",
+            "stream-one"
+          ],
+          "default": "auto"
+        },
+        "headers": {
+          "type": "object"
+        },
+        "x_padding_bytes": {
+          "type": "string",
+          "default": "100-1000",
+          "note": "диапазон 'min-max' или одно число"
+        },
+        "no_grpc_header": {
+          "type": "bool"
+        },
+        "xmux": {
+          "ref": "xmux"
+        },
+        "session_placement": {
+          "type": "enum",
+          "values": [
+            "",
+            "path",
+            "query",
+            "header",
+            "cookie"
+          ],
+          "default": "path"
+        },
+        "session_key": {
+          "type": "string",
+          "default": "X-Session (header) / x_session (query,cookie)"
+        },
+        "seq_placement": {
+          "type": "enum",
+          "values": [
+            "",
+            "path",
+            "query",
+            "header",
+            "cookie"
+          ],
+          "default": "path"
+        },
+        "seq_key": {
+          "type": "string",
+          "default": "X-Seq (header) / x_seq (query,cookie)"
+        },
+        "session_table": {
+          "type": "string",
+          "note": "литеральный ASCII-алфавит или имя: hex,HEX,number,alphabet,Alphabet,ALPHABET,base36,BASE36,Base62; парная с session_length"
+        },
+        "session_length": {
+          "type": "string",
+          "note": "'min-max'; только вместе с session_table"
+        },
+        "uplink_data_placement": {
+          "type": "enum",
+          "values": [
+            "",
+            "body",
+            "auto",
+            "header",
+            "cookie"
+          ],
+          "default": "auto",
+          "note": "header/cookie только при mode=packet-up, иначе ошибка"
+        },
+        "uplink_data_key": {
+          "type": "string",
+          "default": "X-Data (header,auto) / x_data (cookie)"
+        },
+        "uplink_chunk_size": {
+          "type": "string",
+          "default": "cookie 2048-3072 / header 3000-4000 / иначе sc_max_each_post_bytes"
+        },
+        "uplink_http_method": {
+          "type": "string",
+          "default": "POST",
+          "note": "GET вне packet-up = warn + откат на POST, не ошибка"
+        },
+        "x_padding_obfs_mode": {
+          "type": "bool",
+          "default": false
+        },
+        "x_padding_key": {
+          "type": "string",
+          "default": "x_padding"
+        },
+        "x_padding_header": {
+          "type": "string",
+          "default": "X-Padding"
+        },
+        "x_padding_placement": {
+          "type": "enum",
+          "values": [
+            "",
+            "cookie",
+            "header",
+            "query",
+            "queryInHeader"
+          ],
+          "default": "queryInHeader"
+        },
+        "x_padding_method": {
+          "type": "enum",
+          "values": [
+            "",
+            "repeat-x",
+            "tokenish"
+          ],
+          "default": "repeat-x"
+        },
+        "sc_max_each_post_bytes": {
+          "type": "string",
+          "default": "1000000-1000000"
+        },
+        "sc_min_posts_interval_ms": {
+          "type": "string",
+          "default": "30-30"
+        },
+        "sc_max_concurrent_posts": {
+          "type": "int",
+          "note": "принимается, ИГНОРИРУЕТСЯ"
+        },
+        "server_max_header_bytes": {
+          "type": "int",
+          "note": "server-only, ИГНОРИРУЕТСЯ клиентом"
+        },
+        "no_sse_header": {
+          "type": "bool",
+          "note": "server-only, ИГНОРИРУЕТСЯ"
+        },
+        "sc_max_buffered_posts": {
+          "type": "int",
+          "note": "server-only, ИГНОРИРУЕТСЯ"
+        },
+        "sc_stream_up_server_secs": {
+          "type": "string",
+          "note": "server-only, ИГНОРИРУЕТСЯ"
+        }
+      }
+    },
+    "xmux": {
+      "lx_only": true,
+      "min_core": "1.13.13-lx.1",
+      "note": "XmuxRange: 'min-max' | одно число | [min,max]. Секция отсутствует ИЛИ полностью пуста → дефолты; любое заданное поле → все поля как написаны (незаданные = 0 = без лимита)",
+      "fields": {
+        "max_concurrency": {
+          "type": "string",
+          "default": "1-1",
+          "note": "взаимоисключающе с max_connections"
+        },
+        "max_connections": {
+          "type": "string",
+          "note": "взаимоисключающе с max_concurrency"
+        },
+        "c_max_reuse_times": {
+          "type": "string"
+        },
+        "h_max_request_times": {
+          "type": "string",
+          "default": "600-900"
+        },
+        "h_max_reusable_secs": {
+          "type": "string",
+          "default": "1800-3000"
+        },
+        "h_keep_alive_period": {
+          "type": "int",
+          "note": "секунды; 0 = дефолт, отрицательное = выключить"
+        }
+      }
+    }
+  },
+  "types": {
+    "vless": {
+      "kind": "outbound",
+      "fields": {
+        "server": {
+          "ref": "common.server"
+        },
+        "server_port": {
+          "ref": "common.server"
+        },
+        "uuid": {
+          "type": "string",
+          "required": true
+        },
+        "flow": {
+          "type": "enum",
+          "values": [
+            "",
+            "xtls-rprx-vision"
+          ],
+          "default": "",
+          "note": "проверка в sing-vmess/vless.NewClient; xtls-rprx-vision не поддерживает UDP"
+        },
+        "encryption": {
+          "type": "string",
+          "lx_only": true,
+          "min_core": "1.14.0-lx.18",
+          "note": "SPEC 032; mlkem768x25519plus.<native|xorpub|random>.<0rtt|1rtt>[.<padding>].<key>; пусто/none = выключено"
+        },
+        "network": {
+          "ref": "common.network_list"
+        },
+        "packet_encoding": {
+          "type": "enum",
+          "values": [
+            "",
+            "packetaddr",
+            "xudp"
+          ],
+          "default": "xudp",
+          "note": "*string — отсутствие поля = xudp; явная \"\" = без инкапсуляции"
+        },
+        "tls": {
+          "ref": "tls"
+        },
+        "multiplex": {
+          "ref": "multiplex"
+        },
+        "transport": {
+          "ref": "transports"
+        }
+      }
+    },
+    "vmess": {
+      "kind": "outbound",
+      "fields": {
+        "server": {
+          "ref": "common.server"
+        },
+        "server_port": {
+          "ref": "common.server"
+        },
+        "uuid": {
+          "type": "string",
+          "required": true
+        },
+        "security": {
+          "type": "enum",
+          "values": [
+            "auto",
+            "none",
+            "zero",
+            "aes-128-cfb",
+            "aes-128-gcm",
+            "chacha20-poly1305"
+          ],
+          "default": "auto",
+          "required": true,
+          "note": "json-тег без omitempty — эмитируется всегда"
+        },
+        "alter_id": {
+          "type": "int",
+          "default": 0
+        },
+        "global_padding": {
+          "type": "bool"
+        },
+        "authenticated_length": {
+          "type": "bool"
+        },
+        "network": {
+          "ref": "common.network_list"
+        },
+        "packet_encoding": {
+          "type": "enum",
+          "values": [
+            "",
+            "packetaddr",
+            "xudp"
+          ],
+          "default": ""
+        },
+        "tls": {
+          "ref": "tls"
+        },
+        "multiplex": {
+          "ref": "multiplex"
+        },
+        "transport": {
+          "ref": "transports"
+        }
+      }
+    },
+    "trojan": {
+      "kind": "outbound",
+      "fields": {
+        "server": {
+          "ref": "common.server"
+        },
+        "server_port": {
+          "ref": "common.server"
+        },
+        "password": {
+          "type": "string",
+          "required": true,
+          "note": "без omitempty"
+        },
+        "network": {
+          "ref": "common.network_list"
+        },
+        "tls": {
+          "ref": "tls"
+        },
+        "multiplex": {
+          "ref": "multiplex"
+        },
+        "transport": {
+          "ref": "transports"
+        }
+      }
+    },
+    "shadowsocks": {
+      "kind": "outbound",
+      "fields": {
+        "server": {
+          "ref": "common.server"
+        },
+        "server_port": {
+          "ref": "common.server"
+        },
+        "method": {
+          "type": "enum",
+          "required": true,
+          "values": [
+            "none",
+            "aes-128-gcm",
+            "aes-192-gcm",
+            "aes-256-gcm",
+            "chacha20-ietf-poly1305",
+            "xchacha20-ietf-poly1305",
+            "2022-blake3-aes-128-gcm",
+            "2022-blake3-aes-256-gcm",
+            "2022-blake3-chacha20-poly1305",
+            "aes-128-ctr",
+            "aes-192-ctr",
+            "aes-256-ctr",
+            "aes-128-cfb",
+            "aes-192-cfb",
+            "aes-256-cfb",
+            "rc4-md5",
+            "chacha20-ietf",
+            "xchacha20"
+          ],
+          "note": "без omitempty; неизвестный = ошибка CreateMethod"
+        },
+        "password": {
+          "type": "string",
+          "required": true,
+          "note": "без omitempty; для 2022-* обязан быть base64 нужной длины"
+        },
+        "plugin": {
+          "type": "string",
+          "note": "enum не найден в option; обычно obfs-local/v2ray-plugin"
+        },
+        "plugin_opts": {
+          "type": "string"
+        },
+        "network": {
+          "ref": "common.network_list"
+        },
+        "udp_over_tcp": {
+          "ref": "udp_over_tcp"
+        },
+        "multiplex": {
+          "ref": "multiplex"
+        }
+      },
+      "no_tls": true
+    },
+    "hysteria": {
+      "kind": "outbound",
+      "build_tag": "with_quic",
+      "fields": {
+        "server": {
+          "ref": "common.server"
+        },
+        "server_port": {
+          "ref": "common.server"
+        },
+        "server_ports": {
+          "type": "listable_string",
+          "note": "диапазоны портов 'a:b'"
+        },
+        "hop_interval": {
+          "type": "duration"
+        },
+        "up": {
+          "type": "string",
+          "note": "NetworkBytesCompat: число или '100 Mbps'"
+        },
+        "up_mbps": {
+          "type": "int"
+        },
+        "down": {
+          "type": "string"
+        },
+        "down_mbps": {
+          "type": "int"
+        },
+        "obfs": {
+          "type": "string"
+        },
+        "auth": {
+          "type": "string",
+          "note": "[]byte, base64 в JSON"
+        },
+        "auth_str": {
+          "type": "string"
+        },
+        "network": {
+          "ref": "common.network_list"
+        },
+        "tls": {
+          "ref": "tls",
+          "required": true,
+          "note": "tls.enabled=true обязателен — иначе C.ErrTLSRequired"
+        },
+        "recv_window_conn": {
+          "type": "int",
+          "deprecated": true
+        },
+        "recv_window": {
+          "type": "int",
+          "deprecated": true
+        },
+        "disable_mtu_discovery": {
+          "type": "bool",
+          "deprecated": true
+        },
+        "_quic": {
+          "ref": "quic_options",
+          "note": "поля QUICOptions встроены плоско"
+        }
+      }
+    },
+    "hysteria2": {
+      "kind": "outbound",
+      "build_tag": "with_quic",
+      "fields": {
+        "server": {
+          "ref": "common.server"
+        },
+        "server_port": {
+          "ref": "common.server"
+        },
+        "server_ports": {
+          "type": "listable_string"
+        },
+        "hop_interval": {
+          "type": "duration"
+        },
+        "hop_interval_max": {
+          "type": "duration"
+        },
+        "up_mbps": {
+          "type": "int"
+        },
+        "down_mbps": {
+          "type": "int"
+        },
+        "obfs": {
+          "ref": "hysteria2_obfs"
+        },
+        "password": {
+          "type": "string"
+        },
+        "network": {
+          "ref": "common.network_list"
+        },
+        "tls": {
+          "ref": "tls",
+          "required": true,
+          "note": "C.ErrTLSRequired без tls.enabled"
+        },
+        "bbr_profile": {
+          "type": "enum",
+          "values": [
+            "",
+            "standard",
+            "conservative",
+            "aggressive"
+          ],
+          "default": "standard"
+        },
+        "brutal_debug": {
+          "type": "bool"
+        },
+        "disable_chrome_parrot": {
+          "type": "bool"
+        },
+        "realm": {
+          "type": "object",
+          "note": "конфликтует с server/server_port/server_ports"
+        },
+        "_quic": {
+          "ref": "quic_options"
+        }
+      }
+    },
+    "hysteria2_obfs": {
+      "discriminator": "type",
+      "fields": {
+        "type": {
+          "type": "enum",
+          "values": [
+            "salamander",
+            "gecko"
+          ],
+          "required": true,
+          "note": "неизвестный = ошибка разбора JSON"
+        },
+        "password": {
+          "type": "string",
+          "required": true,
+          "note": "пустой = 'missing obfs password'"
+        },
+        "min_packet_size": {
+          "type": "int",
+          "note": "только type=gecko"
+        },
+        "max_packet_size": {
+          "type": "int",
+          "note": "только type=gecko"
+        }
+      }
+    },
+    "tuic": {
+      "kind": "outbound",
+      "build_tag": "with_quic",
+      "fields": {
+        "server": {
+          "ref": "common.server"
+        },
+        "server_port": {
+          "ref": "common.server"
+        },
+        "uuid": {
+          "type": "string",
+          "required": true,
+          "note": "невалидный = 'invalid uuid'"
+        },
+        "password": {
+          "type": "string"
+        },
+        "congestion_control": {
+          "type": "enum",
+          "values": [
+            "",
+            "cubic",
+            "new_reno",
+            "bbr"
+          ],
+          "default": "cubic"
+        },
+        "udp_relay_mode": {
+          "type": "enum",
+          "values": [
+            "",
+            "native",
+            "quic"
+          ],
+          "default": "native",
+          "note": "конфликт с udp_over_stream"
+        },
+        "udp_over_stream": {
+          "type": "bool",
+          "note": "конфликт с udp_relay_mode"
+        },
+        "zero_rtt_handshake": {
+          "type": "bool"
+        },
+        "heartbeat": {
+          "type": "duration",
+          "default": "10s",
+          "note": "дефолт применяет sing-quic/tuic/client.go, не ядро"
+        },
+        "network": {
+          "ref": "common.network_list"
+        },
+        "tls": {
+          "ref": "tls",
+          "required": true,
+          "note": "C.ErrTLSRequired"
+        },
+        "_quic": {
+          "ref": "quic_options"
+        }
+      }
+    },
+    "anytls": {
+      "kind": "outbound",
+      "fields": {
+        "server": {
+          "ref": "common.server"
+        },
+        "server_port": {
+          "ref": "common.server"
+        },
+        "password": {
+          "type": "string"
+        },
+        "idle_session_check_interval": {
+          "type": "duration",
+          "default": "30s",
+          "note": "кламп в sing-anytls: <= 5s → 30s"
+        },
+        "idle_session_timeout": {
+          "type": "duration",
+          "default": "30s",
+          "note": "кламп в sing-anytls: <= 5s → 30s"
+        },
+        "min_idle_session": {
+          "type": "int"
+        },
+        "client_metadata": {
+          "type": "string"
+        },
+        "tls": {
+          "ref": "tls",
+          "required": true,
+          "note": "C.ErrTLSRequired"
+        }
+      },
+      "conflicts": [
+        "tcp_fast_open=true → 'tcp_fast_open is not supported with anytls outbound'"
+      ]
+    },
+    "naive": {
+      "kind": "outbound",
+      "build_tag": "with_naive_outbound",
+      "note": "purego cronet; требует libcronet рядом с бинарём",
+      "fields": {
+        "server": {
+          "ref": "common.server"
+        },
+        "server_port": {
+          "ref": "common.server"
+        },
+        "username": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        },
+        "insecure_concurrency": {
+          "type": "int"
+        },
+        "extra_headers": {
+          "type": "object",
+          "note": "HTTPHeader; берётся только ПЕРВОЕ значение каждого ключа"
+        },
+        "stream_receive_window": {
+          "type": "int"
+        },
+        "udp_over_tcp": {
+          "ref": "udp_over_tcp",
+          "note": "без него outbound только TCP"
+        },
+        "quic": {
+          "type": "bool"
+        },
+        "quic_congestion_control": {
+          "type": "enum",
+          "values": [
+            "",
+            "bbr",
+            "bbr2",
+            "cubic",
+            "reno"
+          ],
+          "default": ""
+        },
+        "quic_session_receive_window": {
+          "type": "int"
+        },
+        "tls": {
+          "ref": "tls",
+          "required": true,
+          "note": "ОГРАНИЧЕННОЕ подмножество — см. naive_tls_subset"
+        }
+      }
+    },
+    "socks": {
+      "kind": "outbound",
+      "fields": {
+        "server": {
+          "ref": "common.server"
+        },
+        "server_port": {
+          "ref": "common.server"
+        },
+        "version": {
+          "type": "enum",
+          "values": [
+            "",
+            "4",
+            "4a",
+            "5"
+          ],
+          "default": "5"
+        },
+        "username": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        },
+        "network": {
+          "ref": "common.network_list"
+        },
+        "udp_over_tcp": {
+          "ref": "udp_over_tcp"
+        }
+      },
+      "no_tls": true
+    },
+    "http": {
+      "kind": "outbound",
+      "fields": {
+        "server": {
+          "ref": "common.server"
+        },
+        "server_port": {
+          "ref": "common.server"
+        },
+        "username": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "headers": {
+          "type": "object"
+        },
+        "tls": {
+          "ref": "tls"
+        }
+      },
+      "note": "только TCP"
+    },
+    "ssh": {
+      "kind": "outbound",
+      "fields": {
+        "server": {
+          "ref": "common.server"
+        },
+        "server_port": {
+          "ref": "common.server",
+          "default": 22
+        },
+        "user": {
+          "type": "string",
+          "default": "root"
+        },
+        "password": {
+          "type": "string"
+        },
+        "private_key": {
+          "type": "listable_string"
+        },
+        "private_key_path": {
+          "type": "string"
+        },
+        "private_key_passphrase": {
+          "type": "string"
+        },
+        "host_key": {
+          "type": "listable_string",
+          "note": "authorized_keys-строки; несовпадение = 'host key mismatch'"
+        },
+        "host_key_algorithms": {
+          "type": "listable_string",
+          "note": "enum не найден в коде"
+        },
+        "client_version": {
+          "type": "string",
+          "default": "случайный из списка ядра"
+        },
+        "cipher": {
+          "type": "listable_string",
+          "note": "enum не найден в коде"
+        },
+        "mac": {
+          "type": "listable_string",
+          "note": "enum не найден в коде"
+        },
+        "kex_algorithm": {
+          "type": "listable_string",
+          "note": "enum не найден в коде"
+        }
+      },
+      "no_tls": true,
+      "note": "только TCP"
+    },
+    "masque": {
+      "kind": "outbound",
+      "lx_only": true,
+      "min_core": "1.14.0-lx.1",
+      "build_tag": "with_quic",
+      "fields": {
+        "server": {
+          "ref": "common.server"
+        },
+        "server_port": {
+          "ref": "common.server"
+        },
+        "profile": {
+          "type": "enum",
+          "values": [
+            "",
+            "cloudflare",
+            "standard"
+          ],
+          "default": "cloudflare"
+        },
+        "vhttp": {
+          "type": "enum",
+          "values": [
+            "",
+            "h3",
+            "h2",
+            "auto"
+          ],
+          "default": "auto",
+          "min_core": "1.14.0-lx.30-era",
+          "note": "SPEC 062/074; для profile=standard h2 не реализован"
+        },
+        "network": {
+          "type": "string",
+          "deprecated": true,
+          "note": "СТАРОЕ имя vhttp (h3/h2), НЕ tcp/udp; удаляется в v1.14.0-lx.30"
+        },
+        "private_key": {
+          "type": "string",
+          "required": "profile=cloudflare",
+          "note": "base64 DER EC private key"
+        },
+        "public_key": {
+          "type": "string",
+          "required": "profile=cloudflare",
+          "note": "base64 DER PKIX"
+        },
+        "ip": {
+          "type": "string",
+          "note": "минимум один из ip/ipv6 обязателен; без маски = /32"
+        },
+        "ipv6": {
+          "type": "string",
+          "note": "без маски = /128"
+        },
+        "uri": {
+          "type": "string",
+          "default": "https://cloudflareaccess.com (cloudflare)",
+          "required": "profile=standard"
+        },
+        "mtu": {
+          "type": "int",
+          "default": 1280,
+          "note": "uint32; для vhttp=h2 максимум 16000"
+        },
+        "idle_timeout": {
+          "type": "duration",
+          "default": "0 = выключено"
+        },
+        "keep_alive_period": {
+          "type": "duration",
+          "default": "30s",
+          "note": "отрицательное = выключить"
+        },
+        "network_list": {
+          "ref": "common.network_list",
+          "note": "именно это — tcp/udp allow-list"
+        },
+        "tls": {
+          "ref": "tls",
+          "note": "server_name по умолчанию www.cloudflare.com для profile=cloudflare"
+        },
+        "sni": {
+          "type": "string",
+          "deprecated": true,
+          "note": "→ tls.server_name"
+        },
+        "skip_cert_verify": {
+          "type": "bool",
+          "deprecated": true,
+          "note": "→ tls.insecure"
+        },
+        "fragment": {
+          "type": "bool",
+          "deprecated": true,
+          "note": "→ tls.fragment"
+        },
+        "fragment_fallback_delay": {
+          "type": "duration",
+          "deprecated": true,
+          "note": "→ tls.fragment_fallback_delay"
+        },
+        "record_fragment": {
+          "type": "bool",
+          "deprecated": true,
+          "note": "→ tls.record_fragment"
+        }
+      }
+    },
+    "chain": {
+      "kind": "outbound",
+      "lx_only": true,
+      "min_core": "1.14.0-lx.27",
+      "build_tag": "with_lx_chain",
+      "fields": {
+        "outbounds": {
+          "type": "string_array",
+          "required": true,
+          "note": "[0] — первый хоп; reference:outbound"
+        },
+        "idle_timeout": {
+          "type": "duration",
+          "default": "5m",
+          "note": "0 = жить до остановки"
+        },
+        "strip_evasion": {
+          "type": "bool",
+          "default": true,
+          "note": "*bool; nil = true"
+        },
+        "strip": {
+          "type": "object",
+          "note": "map[string]bool; неизвестный ключ = ошибка старта"
+        },
+        "rewrite": {
+          "type": "object",
+          "note": "JSON merge-patch RFC 7396 поверх опций узла; применяется к позициям >= 1"
+        },
+        "interrupt_exist_connections": {
+          "type": "bool"
+        }
+      },
+      "no_tls": true
+    },
+    "wireguard": {
+      "kind": "endpoint",
+      "build_tag": "with_wireguard",
+      "fields": {
+        "system": {
+          "type": "bool",
+          "note": "системный интерфейс вместо userspace-стека"
+        },
+        "name": {
+          "type": "string",
+          "note": "имя интерфейса при system=true"
+        },
+        "mtu": {
+          "type": "int",
+          "default": 1408,
+          "note": "uint32; при s4>0 дефолт 1280; предупреждение если mtu > 1492-60-s4"
+        },
+        "address": {
+          "type": "string_array",
+          "required": true,
+          "note": "listable CIDR; без omitempty"
+        },
+        "private_key": {
+          "type": "string",
+          "required": true,
+          "note": "без omitempty; пустой = 'missing private key'"
+        },
+        "listen_port": {
+          "type": "uint16",
+          "note": "конфликт с detour"
+        },
+        "peers": {
+          "ref": "wireguard_peer",
+          "required": true
+        },
+        "udp_timeout": {
+          "type": "duration"
+        },
+        "udp_mapping": {
+          "type": "string",
+          "note": "UDPNATBehavior; enum не извлечён"
+        },
+        "udp_filtering": {
+          "type": "string",
+          "note": "UDPNATBehavior; enum не извлечён"
+        },
+        "udp_nat_max": {
+          "type": "int"
+        },
+        "workers": {
+          "type": "int"
+        },
+        "_awg": {
+          "ref": "amneziawg",
+          "note": "AmneziaWGOptions встроены плоско в корень endpoint'а"
+        }
+      },
+      "no_tls": true
+    },
+    "wireguard_peer": {
+      "fields": {
+        "address": {
+          "type": "string",
+          "required": true
+        },
+        "port": {
+          "type": "uint16",
+          "required": true
+        },
+        "public_key": {
+          "type": "string",
+          "required": true
+        },
+        "pre_shared_key": {
+          "type": "string"
+        },
+        "allowed_ips": {
+          "type": "string_array",
+          "required": true,
+          "note": "пустой = 'missing allowed ips for peer N'"
+        },
+        "persistent_keepalive_interval": {
+          "type": "int",
+          "note": "AWGRange (lx): число ИЛИ 'min-max' секунд; форма-диапазон требует with_awg"
+        },
+        "reserved": {
+          "type": "string_array",
+          "note": "[]uint8; ровно 3 байта, иначе ошибка"
+        }
+      }
+    },
+    "amneziawg": {
+      "lx_only": true,
+      "min_core": "1.13.13-lx.1",
+      "min_core_awg3": "1.14.0-lx.32",
+      "build_tag": "with_awg",
+      "note": "без with_awg любое заданное поле = ошибка старта 'AmneziaWG (awg) support is not included in this build'",
+      "fields": {
+        "jc": {
+          "type": "int"
+        },
+        "jmin": {
+          "type": "int",
+          "note": "jmin <= jmax, иначе ошибка"
+        },
+        "jmax": {
+          "type": "int"
+        },
+        "s1": {
+          "type": "int"
+        },
+        "s2": {
+          "type": "int"
+        },
+        "s3": {
+          "type": "int",
+          "note": "padding cookie-reply, НЕ влияет на MTU"
+        },
+        "s4": {
+          "type": "int",
+          "note": "junk перед каждым transport-пакетом — влияет на MTU"
+        },
+        "h1": {
+          "type": "string",
+          "note": "MagicHeader = AWGRange: число или 'min-max'"
+        },
+        "h2": {
+          "type": "string"
+        },
+        "h3": {
+          "type": "string"
+        },
+        "h4": {
+          "type": "string"
+        },
+        "i1": {
+          "type": "string",
+          "note": "конфликтует с id/ip/ib masquerade"
+        },
+        "i2": {
+          "type": "string",
+          "note": "конфликтует с ip=sip masquerade"
+        },
+        "i3": {
+          "type": "string"
+        },
+        "i4": {
+          "type": "string"
+        },
+        "i5": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string",
+          "note": "masquerade-домен; обязателен при ip=quic/dns/sip, опционален при stun"
+        },
+        "ip": {
+          "type": "enum",
+          "values": [
+            "",
+            "quic",
+            "dns",
+            "stun",
+            "sip"
+          ],
+          "note": "обязателен, если задан id или ib"
+        },
+        "ib": {
+          "type": "enum",
+          "values": [
+            "",
+            "chrome",
+            "firefox",
+            "curl"
+          ],
+          "note": "осмыслен только при ip=quic"
+        },
+        "header_protection_key": {
+          "type": "string",
+          "min_core": "1.14.0-lx.32",
+          "note": "AWG 3.x; base64 фикс. длины; всё-нули = ошибка; требует s1-s4 не меньше порога"
+        },
+        "content_padding_addition": {
+          "type": "string",
+          "min_core": "1.14.0-lx.32"
+        },
+        "rekey_after_time": {
+          "type": "string",
+          "min_core": "1.14.0-lx.32",
+          "default": "120"
+        },
+        "rekey_timeout": {
+          "type": "string",
+          "min_core": "1.14.0-lx.32",
+          "default": "5"
+        },
+        "reject_after_time": {
+          "type": "string",
+          "min_core": "1.14.0-lx.32",
+          "default": "180"
+        },
+        "keepalive_timeout": {
+          "type": "string",
+          "min_core": "1.14.0-lx.32",
+          "default": "10"
+        },
+        "max_handshake_attempts": {
+          "type": "string",
+          "min_core": "1.14.0-lx.32",
+          "default": "18"
+        },
+        "random_trailers": {
+          "type": "bool",
+          "min_core": "1.14.0-lx.32",
+          "note": "AWG 3.1"
+        },
+        "disable_cookies": {
+          "type": "bool",
+          "min_core": "1.14.0-lx.32",
+          "note": "AWG 3.1"
+        }
+      }
+    },
+    "tailscale": {
+      "kind": "endpoint",
+      "build_tag": "with_tailscale",
+      "fields": {
+        "state_directory": {
+          "type": "string",
+          "default": "tailscale"
+        },
+        "auth_key": {
+          "type": "string"
+        },
+        "control_url": {
+          "type": "string",
+          "default": "https://controlplane.tailscale.com"
+        },
+        "ephemeral": {
+          "type": "bool"
+        },
+        "hostname": {
+          "type": "string",
+          "default": "os.Hostname() иначе 'sing-box'"
+        },
+        "accept_routes": {
+          "type": "bool"
+        },
+        "exit_node": {
+          "type": "string",
+          "note": "конфликт с advertise_exit_node"
+        },
+        "exit_node_allow_lan_access": {
+          "type": "bool"
+        },
+        "advertise_routes": {
+          "type": "string_array",
+          "note": "0.0.0.0/0 = ошибка, используйте advertise_exit_node"
+        },
+        "advertise_exit_node": {
+          "type": "bool",
+          "note": "конфликт с exit_node"
+        },
+        "advertise_tags": {
+          "type": "listable_string"
+        },
+        "listen_port": {
+          "type": "uint16"
+        },
+        "relay_server_port": {
+          "type": "uint16"
+        },
+        "relay_server_static_endpoints": {
+          "type": "string_array"
+        },
+        "system_interface": {
+          "type": "bool"
+        },
+        "system_interface_name": {
+          "type": "string"
+        },
+        "system_interface_mtu": {
+          "type": "int"
+        },
+        "udp_timeout": {
+          "type": "duration",
+          "default": "C.UDPTimeout"
+        },
+        "ssh_server": {
+          "type": "object",
+          "note": "{enabled,disable_pty,disable_sftp,disable_forwarding}; требует CheckSecurityFeature"
+        },
+        "taildrop_directory": {
+          "type": "string",
+          "default": "Taildrop"
+        }
+      },
+      "no_tls": true
+    }
+  },
+  "naive_tls_subset": {
+    "note": "protocol/naive/outbound.go отвергает неподдерживаемые поля TLS ОШИБКОЙ старта, не игнорирует",
+    "used": [
+      "enabled",
+      "server_name",
+      "certificate",
+      "certificate_path",
+      "ech.enabled",
+      "ech.config",
+      "ech.config_path",
+      "ech.query_server_name"
+    ],
+    "rejected_with_error": [
+      "disable_sni",
+      "insecure",
+      "alpn",
+      "min_version",
+      "max_version",
+      "cipher_suites",
+      "curve_preferences",
+      "client_certificate",
+      "client_certificate_path",
+      "client_key",
+      "client_key_path",
+      "fragment",
+      "record_fragment",
+      "kernel_tx",
+      "kernel_rx",
+      "utls.enabled",
+      "reality.enabled"
+    ],
+    "silently_ignored": [
+      "engine",
+      "certificate_public_key_sha256",
+      "spoof",
+      "spoof_method",
+      "fragment_fallback_delay",
+      "handshake_timeout"
+    ]
+  },
+  "conflicts": [
+    {
+      "keys": [
+        "tls.certificate_public_key_sha256",
+        "tls.certificate",
+        "tls.certificate_path"
+      ],
+      "effect": "ошибка старта: 'certificate_public_key_sha256 is conflict with certificate or certificate_path'",
+      "where": "std_client, utls_client"
+    },
+    {
+      "keys": [
+        "tls.reality.enabled",
+        "tls.ech.enabled"
+      ],
+      "effect": "ошибка старта: 'Reality is conflict with ECH'"
+    },
+    {
+      "keys": [
+        "tls.reality.enabled",
+        "tls.disable_sni"
+      ],
+      "effect": "ошибка старта: 'disable_sni is unsupported in reality'"
+    },
+    {
+      "keys": [
+        "tls.reality.enabled",
+        "tls.spoof"
+      ],
+      "effect": "ошибка старта: 'spoof is unsupported in reality'"
+    },
+    {
+      "keys": [
+        "tls.reality.enabled",
+        "tls.utls.enabled"
+      ],
+      "effect": "reality БЕЗ utls.enabled=true = ошибка 'uTLS is required by reality client'"
+    },
+    {
+      "keys": [
+        "tls.reality.key_share=hybrid",
+        "tls.utls.fingerprint"
+      ],
+      "effect": "ошибка в начале хендшейка, если у отпечатка нет X25519MLKEM768 (на lx.4 гибрид есть только у chrome/firefox/safari)"
+    },
+    {
+      "keys": [
+        "tls.spoof",
+        "tls.server_name"
+      ],
+      "effect": "ошибка: spoof требует SNI-домен (не IP, не пусто, не disable_sni) и должен отличаться от server_name"
+    },
+    {
+      "keys": [
+        "tls.spoof_method"
+      ],
+      "effect": "без tls.spoof = ошибка 'spoof_method requires spoof'"
+    },
+    {
+      "keys": [
+        "tls.server_name",
+        "tls.insecure"
+      ],
+      "effect": "оба пустые/false и адрес сервера пуст = ошибка 'missing server_name or insecure=true'"
+    },
+    {
+      "keys": [
+        "tls.client_certificate",
+        "tls.client_key"
+      ],
+      "effect": "ошибка: 'client certificate and client key must be provided together'"
+    },
+    {
+      "keys": [
+        "tls.kernel_tx",
+        "tls.kernel_rx"
+      ],
+      "effect": "не-Linux = ошибка 'kTLS is only supported on Linux'",
+      "platform": "linux"
+    },
+    {
+      "keys": [
+        "tuic.udp_over_stream",
+        "tuic.udp_relay_mode"
+      ],
+      "effect": "ошибка: 'udp_over_stream is conflict with udp_relay_mode'"
+    },
+    {
+      "keys": [
+        "anytls",
+        "tcp_fast_open"
+      ],
+      "effect": "ошибка: 'tcp_fast_open is not supported with anytls outbound'"
+    },
+    {
+      "keys": [
+        "wireguard.listen_port",
+        "detour"
+      ],
+      "effect": "ошибка: '`listen_port` is conflict with `detour`'"
+    },
+    {
+      "keys": [
+        "tailscale.advertise_exit_node",
+        "tailscale.exit_node"
+      ],
+      "effect": "ошибка: 'cannot advertise an exit node and use an exit node at the same time'"
+    },
+    {
+      "keys": [
+        "hysteria2.realm",
+        "hysteria2.server",
+        "hysteria2.server_port",
+        "hysteria2.server_ports"
+      ],
+      "effect": "ошибка: 'realm conflicts with server, server_port, and server_ports'"
+    },
+    {
+      "keys": [
+        "awg.i1",
+        "awg.id/ip/ib"
+      ],
+      "effect": "ошибка: masquerade конфликтует с явным i1"
+    },
+    {
+      "keys": [
+        "awg.i2",
+        "awg.ip=sip"
+      ],
+      "effect": "ошибка: sip-masquerade заполняет i2"
+    },
+    {
+      "keys": [
+        "xhttp.xmux.max_concurrency",
+        "xhttp.xmux.max_connections"
+      ],
+      "effect": "взаимоисключающие (по документации поля)"
+    },
+    {
+      "keys": [
+        "xhttp.uplink_data_placement=header|cookie",
+        "xhttp.mode!=packet-up"
+      ],
+      "effect": "ошибка старта"
+    },
+    {
+      "keys": [
+        "masque.private_key",
+        "masque.public_key"
+      ],
+      "effect": "profile=cloudflare без обоих = ошибка"
+    },
+    {
+      "keys": [
+        "masque.ip",
+        "masque.ipv6"
+      ],
+      "effect": "оба пустые = ошибка parsePrefixes"
+    }
+  ],
+  "unresolved": [
+    "network_strategy — enum живёт в C.StringToNetworkStrategy, в option/*.go не виден",
+    "udp_mapping / udp_filtering (UDPNATBehavior) — enum не извлечён",
+    "tls.alpn, tls.cipher_suites, ssh.cipher/mac/kex_algorithm/host_key_algorithms — фиксированного enum в коде ядра нет",
+    "shadowsocks.plugin — enum не найден в коде",
+    "transports.http.method — enum не найден в коде",
+    "vless.encryption — свободная строка со спецификацией в комментарии, enum нет"
+  ]
+}

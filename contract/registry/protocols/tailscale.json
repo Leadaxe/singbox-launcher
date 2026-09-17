@@ -36,5 +36,212 @@
       "lib/services/builder/build_config.dart (state_directory при эмиссии, инъекция секций узла)",
       "lib/screens/add_server_wizard/tailscale_bundle.dart"
     ]
+  },
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": ["state_directory", "auth_key", "control_url", "ephemeral", "hostname", "accept_routes", "exit_node", "exit_node_allow_lan_access", "advertise_routes", "advertise_exit_node", "advertise_tags", "listen_port", "relay_server_port", "relay_server_static_endpoints", "system_interface", "system_interface_name", "system_interface_mtu", "udp_timeout", "ssh_server", "taildrop_directory", "__dialer"],
+    "fields": {
+      "state_directory": {
+        "type": "string",
+        "default": "tailscale",
+        "desc_en": "Directory holding the tailnet state.",
+        "desc_ru": "Каталог, где хранится состояние tailnet.",
+        "impl": "Переменные окружения раскрываются, путь абсолютизируется ядром."
+      },
+      "auth_key": {
+        "type": "string",
+        "secret": true,
+        "desc_en": "Pre-authentication key for the tailnet.",
+        "desc_ru": "Ключ предварительной аутентификации в tailnet.",
+        "impl": "Без него — интерактивный вход по ссылке. Секрет."
+      },
+      "control_url": {
+        "type": "string",
+        "default": "https://controlplane.tailscale.com",
+        "desc_en": "Control plane URL.",
+        "desc_ru": "Адрес управляющего сервера.",
+        "impl": "Пусто → дефолт Tailscale."
+      },
+      "ephemeral": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Register as an ephemeral node.",
+        "desc_ru": "Регистрироваться как временный узел.",
+        "impl": "option/tailscale.go Ephemeral."
+      },
+      "hostname": {
+        "type": "string",
+        "desc_en": "Host name announced to the tailnet.",
+        "desc_ru": "Имя хоста, объявляемое в tailnet.",
+        "impl": "Пусто → os.Hostname(), иначе sing-box."
+      },
+      "accept_routes": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Accept routes advertised by other nodes.",
+        "desc_ru": "Принимать маршруты, объявленные другими узлами.",
+        "impl": "option/tailscale.go AcceptRoutes."
+      },
+      "exit_node": {
+        "type": "string",
+        "conflicts": [
+          {
+            "with": "advertise_exit_node",
+            "code": "field_conflict"
+          }
+        ],
+        "desc_en": "Tailnet node used as the exit node.",
+        "desc_ru": "Узел tailnet, используемый как выходной.",
+        "impl": "Конфликт с advertise_exit_node — «cannot advertise an exit node and use an exit node at the same time» (protocol/tailscale/endpoint.go:168)."
+      },
+      "exit_node_allow_lan_access": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Allow LAN access while an exit node is used.",
+        "desc_ru": "Разрешать доступ в локальную сеть при использовании выходного узла.",
+        "impl": "option/tailscale.go ExitNodeAllowLANAccess."
+      },
+      "advertise_routes": {
+        "type": "string_array",
+        "format": "cidr",
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Prefixes advertised to the tailnet.",
+        "desc_ru": "Префиксы, объявляемые в tailnet.",
+        "impl": "0.0.0.0/0 = ошибка: для выхода наружу нужен advertise_exit_node."
+      },
+      "advertise_exit_node": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Offer this node as an exit node.",
+        "desc_ru": "Предлагать этот узел как выходной.",
+        "impl": "Конфликт с exit_node (protocol/tailscale/endpoint.go:168)."
+      },
+      "advertise_tags": {
+        "type": "listable_string",
+        "desc_en": "ACL tags advertised to the tailnet.",
+        "desc_ru": "Теги ACL, объявляемые в tailnet.",
+        "impl": "option/tailscale.go AdvertiseTags."
+      },
+      "listen_port": {
+        "type": "uint16",
+        "format": "port",
+        "min": 1,
+        "max": 65535,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Local UDP port for WireGuard traffic.",
+        "desc_ru": "Локальный порт UDP для трафика WireGuard.",
+        "impl": "option/tailscale.go ListenPort (upstream 1.14, не форк)."
+      },
+      "relay_server_port": {
+        "type": "uint16",
+        "format": "port",
+        "min": 1,
+        "max": 65535,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "tristate": true,
+        "desc_en": "Port of the built-in relay server.",
+        "desc_ru": "Порт встроенного relay-сервера.",
+        "impl": "*uint16 — отсутствие ключа отличается от нуля."
+      },
+      "relay_server_static_endpoints": {
+        "type": "string_array",
+        "desc_en": "Static endpoints of the relay server.",
+        "desc_ru": "Статические точки подключения relay-сервера.",
+        "impl": "[]netip.AddrPort: строки вида адрес:порт."
+      },
+      "system_interface": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Use a system interface instead of the userspace stack.",
+        "desc_ru": "Использовать системный интерфейс вместо стека в пространстве пользователя.",
+        "impl": "option/tailscale.go SystemInterface."
+      },
+      "system_interface_name": {
+        "type": "string",
+        "desc_en": "Name of the system interface.",
+        "desc_ru": "Имя системного интерфейса.",
+        "impl": "Осмысленно только при system_interface=true."
+      },
+      "system_interface_mtu": {
+        "type": "int",
+        "min": 576,
+        "max": 1500,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "MTU of the system interface.",
+        "desc_ru": "MTU системного интерфейса.",
+        "impl": "uint32; осмысленно только при system_interface=true."
+      },
+      "udp_timeout": {
+        "type": "duration",
+        "desc_en": "Idle timeout of a UDP session.",
+        "desc_ru": "Таймаут простоя сессии UDP.",
+        "impl": "UDPTimeoutCompat; дефолт C.UDPTimeout."
+      },
+      "ssh_server": {
+        "type": "object",
+        "order": ["enabled", "disable_pty", "disable_sftp", "disable_forwarding"],
+        "fields": {
+          "enabled": {
+            "type": "bool",
+            "default": false,
+            "desc_en": "Enable the built-in SSH server.",
+            "desc_ru": "Включить встроенный SSH-сервер.",
+            "impl": "enabled=true проходит через CheckSecurityFeature ядра."
+          },
+          "disable_pty": {
+            "type": "bool",
+            "default": false,
+            "desc_en": "Disable PTY allocation.",
+            "desc_ru": "Запретить выделение PTY.",
+            "impl": "option/tailscale.go TailscaleSSHServerOptions."
+          },
+          "disable_sftp": {
+            "type": "bool",
+            "default": false,
+            "desc_en": "Disable SFTP subsystem.",
+            "desc_ru": "Отключить подсистему SFTP.",
+            "impl": "option/tailscale.go TailscaleSSHServerOptions."
+          },
+          "disable_forwarding": {
+            "type": "bool",
+            "default": false,
+            "desc_en": "Disable port forwarding.",
+            "desc_ru": "Запретить проброс портов.",
+            "impl": "option/tailscale.go TailscaleSSHServerOptions."
+          }
+        },
+        "desc_en": "Built-in SSH server settings.",
+        "desc_ru": "Настройки встроенного SSH-сервера.",
+        "impl": "*TailscaleSSHServerOptions (upstream 1.14, не форк)."
+      },
+      "taildrop_directory": {
+        "type": "string",
+        "default": "Taildrop",
+        "desc_en": "Directory receiving Taildrop files.",
+        "desc_ru": "Каталог, куда попадают файлы Taildrop.",
+        "impl": "option/tailscale.go TaildropDirectory."
+      },
+      "__dialer": {
+        "type": "ref",
+        "ref": "dialer",
+        "inline": true,
+        "desc_en": "Common dialer fields, inlined flat into the body.",
+        "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
+        "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
+      }
+    },
+    "build_tag": "with_tailscale"
   }
 }

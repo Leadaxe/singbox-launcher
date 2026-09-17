@@ -10,22 +10,24 @@
   "uri": {
     "userinfo": {
       "meaning": "не используется",
-      "note": "autogroup:// авторитета не имеет: host/userinfo пустые, всё в query + fragment."
+      "desc_en": "Not used: autogroup:// carries everything in the query.",
+      "desc_ru": "Не используется: autogroup:// несёт всё в query.",
+      "impl": "autogroup:// авторитета не имеет: host/userinfo пустые, всё в query + fragment."
     },
     "query": {
-      "include": {"type": "string", "ext": "mobile", "default": "", "note": "Regex членства по итоговому тегу узла И его синонимам (§321 P6); пустой = все члены контейнера. Из Xray selector строится ^(tag1|tag2) — префикс-матчинг Xray."},
-      "exclude": {"type": "string", "ext": "mobile", "default": "", "note": "Regex вычитания из пула."},
-      "members": {"type": "list", "ext": "mobile", "default": null, "note": "Явный список identity-ключей (protocol|server|port|credential) через запятую; per-key экранирование только ',' и '%' (%2C/%25, §352). Присутствие members = режим явного списка (include/exclude игнорируются)."},
-      "mode": {"type": "enum", "values": ["least_test", "round_robin"], "ext": "mobile", "default": "least_test", "note": "Режим выбора (§208). round_robin включает вложенный balancer{} ядра SPEC 019 (расширение lx-ядра, у апстримного urltest его нет)."},
-      "url": {"type": "string", "ext": "mobile", "default": "https://cp.cloudflare.com/generate_204", "note": "Цель проверки urltest."},
-      "interval": {"type": "string", "ext": "mobile", "default": "15m", "note": "Период проверки (Go-duration)."},
-      "tolerance": {"type": "int", "ext": "mobile", "default": 50, "note": "Окно от лучшего, мс."},
-      "idle_timeout": {"type": "string", "ext": "mobile", "default": "30m", "note": "urltest idle timeout."},
-      "interrupt": {"type": "bool", "ext": "mobile", "default": false, "note": "'1' → interrupt_exist_connections."},
-      "pool": {"type": "int", "ext": "mobile", "default": 3, "note": "balancer.pool (только round_robin); 0 = весь набор."},
-      "pool_tolerance": {"type": "int", "ext": "mobile", "default": 0, "note": "balancer.pool_tolerance, clamp 0..15000 (ядро SPEC 019)."},
-      "sticky": {"type": "list", "ext": "mobile", "default": null, "note": "balancer.sticky_hash через запятую; пустая строка = осознанно снятые чипы → sentinel [\"none\"] (§210: ядро схлопывает []→nil)."},
-      "badge": {"type": "string", "ext": "mobile", "default": "[\\u{1F1E6}-\\u{1F1FF}]{2}", "note": "UI-only regex значка пула; в конфиг не уходит."}
+      "include": { "type": "string", "default": "", "ext": "mobile", "desc_en": "Regex that selects members by tag.", "desc_ru": "Regex отбора членов по тегу.", "impl": "Regex членства по итоговому тегу узла И его синонимам (§321 P6); пустой = все члены контейнера. Из Xray selector строится ^(tag1|tag2) — префикс-матчинг Xray." },
+      "exclude": { "type": "string", "default": "", "ext": "mobile", "desc_en": "Regex that subtracts members from the pool.", "desc_ru": "Regex вычитания членов из пула.", "impl": "Regex вычитания из пула." },
+      "members": { "type": "list", "default": null, "ext": "mobile", "maps_to": "outbounds", "desc_en": "Explicit list of members.", "desc_ru": "Явный список членов.", "impl": "Явный список identity-ключей (protocol|server|port|credential) через запятую; per-key экранирование только ',' и '%' (%2C/%25, §352). Присутствие members = режим явного списка (include/exclude игнорируются)." },
+      "mode": { "type": "enum", "values": ["least_test", "round_robin"], "default": "least_test", "ext": "mobile", "desc_en": "How the group picks the outbound.", "desc_ru": "Как группа выбирает узел.", "impl": "Режим выбора (§208). round_robin включает вложенный balancer{} ядра SPEC 019 (расширение lx-ядра, у апстримного urltest его нет)." },
+      "url": { "type": "string", "default": "https://cp.cloudflare.com/generate_204", "ext": "mobile", "maps_to": "url", "desc_en": "URL probed by urltest.", "desc_ru": "URL, который проверяет urltest.", "impl": "Цель проверки urltest." },
+      "interval": { "type": "string", "default": "15m", "ext": "mobile", "maps_to": "interval", "desc_en": "How often urltest probes.", "desc_ru": "Как часто выполняется проверка urltest.", "impl": "Период проверки (Go-duration)." },
+      "tolerance": { "type": "int", "default": 50, "ext": "mobile", "maps_to": "tolerance", "desc_en": "Latency window from the best node, ms.", "desc_ru": "Окно задержки от лучшего узла, мс.", "impl": "Окно от лучшего, мс." },
+      "idle_timeout": { "type": "string", "default": "30m", "ext": "mobile", "maps_to": "idle_timeout", "desc_en": "How long urltest stays idle before stopping.", "desc_ru": "Сколько urltest простаивает до остановки.", "impl": "urltest idle timeout." },
+      "interrupt": { "type": "bool", "default": false, "ext": "mobile", "maps_to": "interrupt_exist_connections", "desc_en": "Drop existing connections on a switch.", "desc_ru": "Рвать существующие соединения при переключении.", "impl": "'1' → interrupt_exist_connections." },
+      "pool": { "type": "int", "default": 3, "ext": "mobile", "maps_to": "balancer.pool", "desc_en": "How many nodes the round-robin pool holds.", "desc_ru": "Сколько узлов держит пул round-robin.", "impl": "balancer.pool (только round_robin); 0 = весь набор." },
+      "pool_tolerance": { "type": "int", "default": 0, "ext": "mobile", "maps_to": "balancer.pool_tolerance", "desc_en": "Latency window of the pool, ms.", "desc_ru": "Окно задержки пула, мс.", "impl": "balancer.pool_tolerance, clamp 0..15000 (ядро SPEC 019)." },
+      "sticky": { "type": "list", "default": null, "ext": "mobile", "maps_to": "balancer.sticky_hash", "desc_en": "Connection attributes that pin a node.", "desc_ru": "Признаки соединения, закрепляющие узел.", "impl": "balancer.sticky_hash через запятую; пустая строка = осознанно снятые чипы → sentinel [\"none\"] (§210: ядро схлопывает []→nil)." },
+      "badge": { "type": "string", "default": "[\\u{1F1E6}-\\u{1F1FF}]{2}", "ext": "mobile", "desc_en": "UI-only regex of the pool badge.", "desc_ru": "Regex значка пула, только для интерфейса.", "impl": "UI-only regex значка пула; в конфиг не уходит." }
     },
     "fragment": "label"
   },

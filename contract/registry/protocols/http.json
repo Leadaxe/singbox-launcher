@@ -16,62 +16,91 @@
   "extension": null,
   "uri": {
     "userinfo": {
+      "maps_to": ["username", "password"],
       "meaning": "username:password",
-      "note": "HTTP(S) CONNECT proxy. Кастомные схемы вместо голых http(s):// — те перехватываются как URL подписки. Суффикс схемы — TLS-дискриминатор: *-https/+https → TLS on (порт по умолчанию 443), *-http/+http → plain (порт 80). §9.B6 закрыт: схемы разбираются и в Go (node_parser_core.go:288 → parseHTTPProxyURI), и в Dart. GenerateNodeJSON имеет http-ветку (outbound_generator.go:290): username/password/path/headers; transport и tls эмитятся общими секциями ниже. Sing-box-импорт принимает type http (singbox_import.go:315) и проходит через ту же ветку."
+      "desc_en": "username:password of the account.",
+      "desc_ru": "username:password учётной записи.",
+      "impl": "HTTP(S) CONNECT proxy. Кастомные схемы вместо голых http(s):// — те перехватываются как URL подписки. Суффикс схемы — TLS-дискриминатор: *-https/+https → TLS on (порт по умолчанию 443), *-http/+http → plain (порт 80). §9.B6 закрыт: схемы разбираются и в Go (node_parser_core.go:288 → parseHTTPProxyURI), и в Dart. GenerateNodeJSON имеет http-ветку (outbound_generator.go:290): username/password/path/headers; transport и tls эмитятся общими секциями ниже. Sing-box-импорт принимает type http (singbox_import.go:315) и проходит через ту же ветку."
     },
     "query": {
       "path": {
         "type": "string",
         "default": null,
         "ext": null,
-        "note": "→ path outbound'а (uri прокси-запроса)."
+        "maps_to": "path",
+        "desc_en": "Path of the CONNECT request.",
+        "desc_ru": "Путь запроса CONNECT.",
+        "impl": "→ path outbound'а (uri прокси-запроса)."
       },
       "headers": {
         "type": "string",
         "default": null,
         "ext": null,
-        "note": "Та же сериализация, что naive extra-headers: URL-encoded «H1: V1\\r\\nH2: V2» → headers map; ключи при эмите сортируются."
+        "maps_to": "headers",
+        "desc_en": "Extra HTTP headers of the request.",
+        "desc_ru": "Дополнительные HTTP-заголовки запроса.",
+        "impl": "Та же сериализация, что naive extra-headers: URL-encoded «H1: V1\\r\\nH2: V2» → headers map; ключи при эмите сортируются."
       },
       "sni": {
         "type": "string",
+        "default": null,
         "aliases": [
           "peer",
           "host"
         ],
-        "default": null,
         "ext": null,
-        "note": "server_name (только при TLS-схеме); trojan-конвенция sni/peer/host, fallback на server."
+        "maps_to": "tls.server_name",
+        "desc_en": "Server name sent in SNI.",
+        "desc_ru": "Имя сервера, отправляемое в SNI.",
+        "impl": "server_name (только при TLS-схеме); trojan-конвенция sni/peer/host, fallback на server."
       },
       "fp": {
         "type": "alias_enum",
         "allowlist": "utls_fingerprints",
         "default": null,
         "ext": null,
-        "note": "uTLS fingerprint (только при TLS-схеме); канонизация §281."
+        "maps_to": "tls.utls.fingerprint",
+        "desc_en": "Browser fingerprint mimicked in the ClientHello.",
+        "desc_ru": "Отпечаток браузера, который подделывается в ClientHello.",
+        "impl": "uTLS fingerprint (только при TLS-схеме); канонизация §281."
       },
       "alpn": {
         "type": "string",
         "default": null,
         "ext": null,
-        "note": "Список через запятую → tls.alpn (только при TLS-схеме)."
+        "maps_to": "tls.alpn",
+        "desc_en": "Comma-separated list of ALPN protocols.",
+        "desc_ru": "Список протоколов ALPN через запятую.",
+        "impl": "Список через запятую → tls.alpn (только при TLS-схеме)."
       },
       "insecure": {
         "type": "bool",
+        "default": null,
         "aliases": [
           "allowInsecure",
           "allowinsecure",
           "allow_insecure",
-          "skip-cert-verify"
+          "allow-insecure",
+          "skipCertVerify",
+          "skipcertverify",
+          "skip_cert_verify",
+          "skip-cert-verify",
+          "noverify"
         ],
-        "default": null,
         "ext": null,
-        "note": "tls.insecure; 1/true/yes."
+        "maps_to": "tls.insecure",
+        "desc_en": "Skip server certificate verification.",
+        "desc_ru": "Не проверять сертификат сервера.",
+        "impl": "tls.insecure; 1/true/yes. ЦЕЛЕВОЙ НАБОР ИМЁН — объединение обоих проектов (DRIFT §2(a), общая запись — tls.json /tls/params/insecure): insecure, allowinsecure, allow_insecure, allow-insecure, skipcertverify, skip_cert_verify, skip-cert-verify, noverify; сверка по strings.ToLower со снятием '-'/'_'; истина 1|true|yes единообразно."
       },
       "security": {
         "type": "string",
         "default": null,
         "ext": null,
-        "note": "security=none гасит TLS даже на https-схеме (trojan-конвенция parseTrojanTls)."
+        "maps_to": "tls.enabled",
+        "desc_en": "Whether the link asks for TLS, and in which flavour.",
+        "desc_ru": "Просит ли ссылка TLS и в каком виде.",
+        "impl": "security=none гасит TLS даже на https-схеме (trojan-конвенция parseTrojanTls)."
       }
     },
     "fragment": "label"
@@ -108,5 +137,65 @@
       "lib/models/node_spec_emit.dart:526-578",
       "lib/services/parser/json_parsers.dart:797"
     ]
+  },
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": ["server", "server_port", "username", "password", "path", "headers", "tls", "__dialer"],
+    "fields": {
+      "server": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server address: domain or IP.",
+        "desc_ru": "Адрес сервера: домен или IP.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "server_port": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server port.",
+        "desc_ru": "Порт сервера.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "username": {
+        "type": "string",
+        "desc_en": "Account user name.",
+        "desc_ru": "Имя пользователя учётной записи.",
+        "impl": "option/http.go Username."
+      },
+      "password": {
+        "type": "string",
+        "secret": true,
+        "desc_en": "Account password.",
+        "desc_ru": "Пароль учётной записи.",
+        "impl": "option/http.go Password. Секрет."
+      },
+      "path": {
+        "type": "string",
+        "desc_en": "Request path of the CONNECT request.",
+        "desc_ru": "Путь запроса CONNECT.",
+        "impl": "option/http.go Path."
+      },
+      "headers": {
+        "type": "object",
+        "desc_en": "Extra HTTP headers sent with the request.",
+        "desc_ru": "Дополнительные HTTP-заголовки в запросе.",
+        "impl": "badoption.HTTPHeader: map[string]listable_string."
+      },
+      "tls": {
+        "type": "ref",
+        "ref": "tls",
+        "desc_en": "TLS settings.",
+        "desc_ru": "Настройки TLS.",
+        "impl": "OutboundTLSOptions; поля — registry/tls.json."
+      },
+      "__dialer": {
+        "type": "ref",
+        "ref": "dialer",
+        "inline": true,
+        "desc_en": "Common dialer fields, inlined flat into the body.",
+        "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
+        "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
+      }
+    }
   }
 }

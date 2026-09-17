@@ -8,63 +8,93 @@
   "extension": null,
   "uri": {
     "userinfo": {
+      "maps_to": ["uuid", "password"],
       "meaning": "uuid:password",
-      "note": "TUIC v5: uuid — username-часть, password — password-часть. Обязателен только uuid у Go: валидация userinfo проверяет лишь Username (node_parser_core.go:308-316), tuic://uuid@host проходит — buildTuicOutbound при пустом password пишет warning и нода живёт (node_parser_tuic.go:62-66). Dart строже: требует оба непустыми (tuic_parser.dart:14-18, null-skip) — расхождение строгости."
+      "desc_en": "uuid:password of the account.",
+      "desc_ru": "uuid:password учётной записи.",
+      "impl": "TUIC v5: uuid — username-часть, password — password-часть. Обязателен только uuid у Go: валидация userinfo проверяет лишь Username (node_parser_core.go:308-316), tuic://uuid@host проходит — buildTuicOutbound при пустом password пишет warning и нода живёт (node_parser_tuic.go:62-66). Dart строже: требует оба непустыми (tuic_parser.dart:14-18, null-skip) — расхождение строгости."
     },
     "query": {
       "congestion_control": {
         "type": "enum",
         "allowlist": "tuic_congestion",
         "default": "cubic",
-        "note": "РАЗРЫВ ДЕФОЛТА В ЭМИТЕ (новое, вне §9): Dart всегда пишет congestion_control (дефолт cubic) в outbound-JSON, Go — только при наличии в URI. Ломает identity-паритет tuic-нод и противоречит CANON «дефолты не пишутся». Невалидное значение: Go дропает ключ с warning, Dart заменяет на cubic — итог для ядра одинаков."
+        "maps_to": "congestion_control",
+        "desc_en": "QUIC congestion control algorithm.",
+        "desc_ru": "Алгоритм контроля перегрузки QUIC.",
+        "impl": "РАЗРЫВ ДЕФОЛТА В ЭМИТЕ (новое, вне §9): Dart всегда пишет congestion_control (дефолт cubic) в outbound-JSON, Go — только при наличии в URI. Ломает identity-паритет tuic-нод и противоречит CANON «дефолты не пишутся». Невалидное значение: Go дропает ключ с warning, Dart заменяет на cubic — итог для ядра одинаков."
       },
       "udp_relay_mode": {
         "type": "enum",
         "allowlist": "tuic_udp_relay_mode",
         "default": "native",
-        "note": "Тот же разрыв дефолта в эмите, что congestion_control: Dart пишет всегда, Go — по наличию."
+        "maps_to": "udp_relay_mode",
+        "desc_en": "How UDP is relayed over QUIC.",
+        "desc_ru": "Как UDP ретранслируется поверх QUIC.",
+        "impl": "Тот же разрыв дефолта в эмите, что congestion_control: Dart пишет всегда, Go — по наличию."
       },
       "reduce_rtt": {
         "type": "bool",
-        "aliases": ["zero_rtt_handshake", "zero_rtt"],
         "default": null,
-        "note": "→ zero_rtt_handshake:true. Алиасы разъехались: Go принимает zero_rtt_handshake+reduce_rtt (node_parser_tuic.go:87-89), Dart — reduce_rtt+zero_rtt (tuic_parser.dart:28-29). Пересечение — reduce_rtt; целевое — все три в обоих."
+        "aliases": ["zero_rtt_handshake", "zero_rtt"],
+        "maps_to": "zero_rtt_handshake",
+        "desc_en": "Use a 0-RTT handshake.",
+        "desc_ru": "Использовать рукопожатие 0-RTT.",
+        "impl": "→ zero_rtt_handshake:true. Алиасы разъехались: Go принимает zero_rtt_handshake+reduce_rtt (node_parser_tuic.go:87-89), Dart — reduce_rtt+zero_rtt (tuic_parser.dart:28-29). Пересечение — reduce_rtt; целевое — все три в обоих."
       },
       "heartbeat": {
         "type": "string",
         "default": null,
         "ext": "desktop",
-        "note": "Duration; голое число трактуется как секунды (10 → 10s). Только Go."
+        "maps_to": "heartbeat",
+        "desc_en": "Heartbeat interval.",
+        "desc_ru": "Интервал сердцебиения.",
+        "impl": "Duration; голое число трактуется как секунды (10 → 10s). Только Go."
       },
       "sni": {
         "type": "string",
         "default": null,
-        "note": "server_name; пустой/мусорный (Go: эвристика точки/двоеточия) → fallback на server."
+        "maps_to": "tls.server_name",
+        "desc_en": "Server name sent in SNI.",
+        "desc_ru": "Имя сервера, отправляемое в SNI.",
+        "impl": "server_name; пустой/мусорный (Go: эвристика точки/двоеточия) → fallback на server."
       },
       "disable_sni": {
         "type": "bool",
         "default": null,
         "ext": "mobile",
-        "note": "1 → server_name не эмитится. Только Dart."
+        "maps_to": "tls.disable_sni",
+        "desc_en": "Do not send the SNI extension.",
+        "desc_ru": "Не отправлять расширение SNI.",
+        "impl": "1 → server_name не эмитится. Только Dart."
       },
       "alpn": {
         "type": "string",
         "default": null,
-        "note": "Список через запятую. РАЗРЫВ ДЕФОЛТА: Dart при отсутствии подставляет h3 и эмитит tls.alpn [\"h3\"]; Go эмитит только при наличии в URI. Ещё один вклад в расхождение identity-хешей tuic."
+        "maps_to": "tls.alpn",
+        "desc_en": "Comma-separated list of ALPN protocols.",
+        "desc_ru": "Список протоколов ALPN через запятую.",
+        "impl": "Список через запятую. РАЗРЫВ ДЕФОЛТА: Dart при отсутствии подставляет h3 и эмитит tls.alpn [\"h3\"]; Go эмитит только при наличии в URI. Ещё один вклад в расхождение identity-хешей tuic."
       },
       "fp": {
         "type": "alias_enum",
         "allowlist": "utls_fingerprints",
-        "aliases": ["fingerprint"],
         "default": null,
+        "aliases": ["fingerprint"],
         "ext": "desktop",
-        "note": "Только Go читает fp на tuic и эмитит tls.utls; Dart не читает вовсе и срезает uTLS на QUIC (§282). Тот же QUIC-uTLS-разрыв, что у hysteria2."
+        "maps_to": "tls.utls.fingerprint",
+        "desc_en": "Browser fingerprint mimicked in the ClientHello.",
+        "desc_ru": "Отпечаток браузера, который подделывается в ClientHello.",
+        "impl": "Только Go читает fp на tuic и эмитит tls.utls; Dart не читает вовсе и срезает uTLS на QUIC (§282). Тот же QUIC-uTLS-разрыв, что у hysteria2."
       },
       "allow_insecure": {
         "type": "bool",
-        "aliases": ["insecure", "allowInsecure", "allowinsecure", "skip-cert-verify", "skipCertVerify"],
         "default": null,
-        "note": "tls.insecure. Значения 1/true/yes. skipCertVerify (camelCase) принимает только Go; остальные алиасы — оба."
+        "aliases": ["allowInsecure", "allowinsecure", "allow_insecure", "allow-insecure", "skipCertVerify", "skipcertverify", "skip_cert_verify", "skip-cert-verify", "noverify"],
+        "maps_to": "tls.insecure",
+        "desc_en": "Skip server certificate verification.",
+        "desc_ru": "Не проверять сертификат сервера.",
+        "impl": "tls.insecure. Значения 1/true/yes. skipCertVerify (camelCase) принимает только Go; остальные алиасы — оба. ЦЕЛЕВОЙ НАБОР ИМЁН — объединение обоих проектов (DRIFT §2(a), общая запись — tls.json /tls/params/insecure): insecure, allowinsecure, allow_insecure, allow-insecure, skipcertverify, skip_cert_verify, skip-cert-verify, noverify; сверка по strings.ToLower со снятием '-'/'_'; истина 1|true|yes единообразно."
       }
     },
     "fragment": "label"
@@ -92,5 +122,185 @@
       "lib/models/node_spec_emit.dart:432-459",
       "lib/services/parser/json_parsers.dart:797"
     ]
+  },
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": ["server", "server_port", "uuid", "password", "congestion_control", "udp_relay_mode", "udp_over_stream", "zero_rtt_handshake", "heartbeat", "network", "tls", "idle_timeout", "keep_alive_period", "stream_receive_window", "connection_receive_window", "max_concurrent_streams", "initial_packet_size", "disable_path_mtu_discovery", "__dialer"],
+    "fields": {
+      "server": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server address: domain or IP.",
+        "desc_ru": "Адрес сервера: домен или IP.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "server_port": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server port.",
+        "desc_ru": "Порт сервера.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "uuid": {
+        "type": "string",
+        "format": "uuid",
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "required": true,
+        "secret": true,
+        "desc_en": "User identifier.",
+        "desc_ru": "Идентификатор пользователя.",
+        "impl": "Невалидный = «invalid uuid» на весь конфиг. Секрет."
+      },
+      "password": {
+        "type": "string",
+        "secret": true,
+        "desc_en": "Account password.",
+        "desc_ru": "Пароль учётной записи.",
+        "impl": "option/tuic.go Password. Секрет."
+      },
+      "congestion_control": {
+        "type": "enum",
+        "values": ["", "cubic", "new_reno", "bbr"],
+        "normalize": "trim_lower",
+        "on_invalid": {
+          "action": "drop",
+          "code": "tuic_congestion_invalid"
+        },
+        "default": "cubic",
+        "desc_en": "QUIC congestion control algorithm.",
+        "desc_ru": "Алгоритм управления перегрузкой QUIC.",
+        "impl": "Пустое значение = cubic. Иное = код tuic_congestion_invalid, поле снимается."
+      },
+      "udp_relay_mode": {
+        "type": "enum",
+        "values": ["", "native", "quic"],
+        "normalize": "trim_lower",
+        "on_invalid": {
+          "action": "drop",
+          "code": "tuic_udp_relay_mode_invalid"
+        },
+        "default": "native",
+        "conflicts": [
+          {
+            "with": "udp_over_stream",
+            "code": "field_conflict"
+          }
+        ],
+        "desc_en": "How UDP is relayed over QUIC.",
+        "desc_ru": "Способ передачи UDP поверх QUIC.",
+        "impl": "Конфликт с udp_over_stream — «udp_over_stream is conflict with udp_relay_mode» (protocol/tuic/outbound.go:57). Иное значение = код tuic_udp_relay_mode_invalid."
+      },
+      "udp_over_stream": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Tunnel UDP inside a QUIC stream.",
+        "desc_ru": "Передавать UDP внутри потока QUIC.",
+        "impl": "Старший в конфликте с udp_relay_mode (protocol/tuic/outbound.go:57)."
+      },
+      "zero_rtt_handshake": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Allow the 0-RTT QUIC handshake.",
+        "desc_ru": "Разрешить рукопожатие QUIC в режиме 0-RTT.",
+        "impl": "option/tuic.go ZeroRTTHandshake."
+      },
+      "heartbeat": {
+        "type": "duration",
+        "default": "10s",
+        "desc_en": "Interval between heartbeat packets.",
+        "desc_ru": "Интервал между пакетами heartbeat.",
+        "impl": "Дефолт применяет библиотека sing-quic (tuic/client.go:54), не option/ — санитайзер его НЕ материализует."
+      },
+      "network": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Networks this outbound handles.",
+        "desc_ru": "Сети, которые обслуживает этот узел.",
+        "impl": "NetworkList; правило значения — registry/dialer.json, секция common."
+      },
+      "tls": {
+        "type": "ref",
+        "ref": "tls",
+        "required": true,
+        "desc_en": "TLS settings.",
+        "desc_ru": "Настройки TLS.",
+        "impl": "C.ErrTLSRequired без tls.enabled=true. На QUIC-типе utls и reality вычищаются целиком."
+      },
+      "idle_timeout": {
+        "type": "duration",
+        "desc_en": "Close the QUIC connection after this idle period.",
+        "desc_ru": "Закрывать QUIC-соединение после простоя такой длительности.",
+        "impl": "QUICOptions, встроено плоско."
+      },
+      "keep_alive_period": {
+        "type": "duration",
+        "desc_en": "Interval between QUIC keepalive packets.",
+        "desc_ru": "Интервал между keepalive-пакетами QUIC.",
+        "impl": "QUICOptions, встроено плоско."
+      },
+      "stream_receive_window": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Receive window of a single QUIC stream.",
+        "desc_ru": "Окно приёма одного потока QUIC.",
+        "impl": "MemoryBytes: число или строка с суффиксом (HTTP2Options)."
+      },
+      "connection_receive_window": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Receive window of the whole QUIC connection.",
+        "desc_ru": "Окно приёма всего QUIC-соединения.",
+        "impl": "MemoryBytes: число или строка с суффиксом."
+      },
+      "max_concurrent_streams": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Maximum number of concurrent QUIC streams.",
+        "desc_ru": "Максимум одновременных потоков QUIC.",
+        "impl": "HTTP2Options, встроено плоско."
+      },
+      "initial_packet_size": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Initial QUIC packet size in bytes.",
+        "desc_ru": "Начальный размер пакета QUIC в байтах.",
+        "impl": "QUICOptions, встроено плоско."
+      },
+      "disable_path_mtu_discovery": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Disable QUIC path MTU discovery.",
+        "desc_ru": "Отключить определение MTU пути в QUIC.",
+        "impl": "QUICOptions, встроено плоско."
+      },
+      "__dialer": {
+        "type": "ref",
+        "ref": "dialer",
+        "inline": true,
+        "desc_en": "Common dialer fields, inlined flat into the body.",
+        "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
+        "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
+      }
+    },
+    "build_tag": "with_quic"
   }
 }

@@ -1,0 +1,338 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/Leadaxe/singbox-launcher/contract/schema/registry_body.schema.json",
+  "title": "Registry body section (SPEC 131)",
+  "description": "Схема секции \"body\" реестра контракта: описание тела узла sing-box, из которого работают санитайзер и эмиттер обеих сторон (лаунчер и LxBox). Применяется к contract/registry/protocols/<scheme>.json, tls.json, transports.json, multiplex.json, dialer.json. Существующие секции uri.* и policy.* этой схемой не покрываются.",
+  "type": "object",
+  "definitions": {
+    "fieldType": {
+      "description": "Словарь типов поля — SPEC 131 §4.",
+      "enum": [
+        "string",
+        "int",
+        "uint16",
+        "bool",
+        "duration",
+        "listable_string",
+        "string_array",
+        "object",
+        "enum",
+        "ref",
+        "array"
+      ]
+    },
+    "format": {
+      "description": "Формат значения; ставится только там, где он очевиден из структур ядра.",
+      "enum": ["uuid", "hex", "base64", "host", "port", "ipv4", "cidr"]
+    },
+    "relation": {
+      "description": "Связь поля с другим полем: путь в теле плюс код предупреждения.",
+      "type": "object",
+      "properties": {
+        "with": {
+          "type": "string",
+          "description": "Путь конфликтующего поля (для conflicts)."
+        },
+        "path": {
+          "type": "string",
+          "description": "Путь требуемого поля (для requires)."
+        },
+        "code": {
+          "type": "string",
+          "description": "Код из registry/warnings.json."
+        }
+      },
+      "required": ["code"],
+      "additionalProperties": false
+    },
+    "onInvalid": {
+      "description": "Что делать со значением, не прошедшим ограничение поля (enum/format/min/max/len/len_parity). SPEC 131 §3.2.",
+      "type": "object",
+      "properties": {
+        "action": {
+          "description": "drop — снять поле; coerce — заменить на value; drop_node — узел уходит в dropped целиком.",
+          "enum": ["drop", "coerce", "drop_node"]
+        },
+        "value": {
+          "description": "Значение для action=coerce.",
+          "type": ["string", "number", "boolean"]
+        },
+        "code": {
+          "type": "string",
+          "description": "Код из registry/warnings.json."
+        }
+      },
+      "required": ["action", "code"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "coerce"
+              }
+            },
+            "required": ["action"]
+          },
+          "then": {
+            "required": ["value"]
+          }
+        }
+      ]
+    },
+    "field": {
+      "type": "object",
+      "properties": {
+        "type": { "$ref": "#/definitions/fieldType" },
+        "ref": {
+          "type": "string",
+          "description": "Имя общей суб-схемы: tls, transports, multiplex, dialer, dialer.common."
+        },
+        "inline": {
+          "type": "boolean",
+          "description": "true у ref: поля суб-схемы вливаются в тело плоско, без обёртки (dialer)."
+        },
+        "items": {
+          "$ref": "#/definitions/field",
+          "description": "Описание элемента массива; обязательно при type=array."
+        },
+        "order": {
+          "type": "array",
+          "description": "Порядок полей вложенного объекта; обязателен при type=object с fields.",
+          "items": { "type": "string" }
+        },
+        "fields": {
+          "type": "object",
+          "description": "Поля вложенного объекта.",
+          "additionalProperties": { "$ref": "#/definitions/field" }
+        },
+        "values": {
+          "type": "array",
+          "description": "Допустимые значения; обязательны при type=enum.",
+          "items": { "type": ["string", "integer"] }
+        },
+        "format": { "$ref": "#/definitions/format" },
+        "min": { "type": "number", "description": "Минимум значения (число) или длины." },
+        "max": { "type": "number", "description": "Максимум значения (число) или длины." },
+        "len": { "type": "integer", "description": "Точная длина значения или массива." },
+        "len_parity": {
+          "description": "Требование к чётности длины (reality.short_id — hex чётной длины).",
+          "enum": ["even", "odd"]
+        },
+        "on_invalid": {
+          "$ref": "#/definitions/onInvalid"
+        },
+        "normalize": {
+          "description": "Нормализация значения ДО проверки enum/format. Ставится только там, где ядро case-sensitive и обе стороны нормализуют (SPEC 131 §4): без флага регистр не трогается — x_padding_placement принимает только camelCase queryInHeader.",
+          "enum": ["trim", "lower", "trim_lower"]
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Без поля узел не собирается — уходит в dropped с кодом field_missing."
+        },
+        "secret": {
+          "type": "boolean",
+          "description": "Значение — тайна: в warnings и логах пишется как ***."
+        },
+        "default": {
+          "type": ["string", "number", "boolean"],
+          "description": "Дефолт ядра. Санитайзер его НЕ материализует, если реестр явно не велит."
+        },
+        "tristate": {
+          "type": "boolean",
+          "description": "Указательное поле ядра (*string / *bool): «ключа нет» и «пустое значение» различаются; эмиттер не опускает пустое."
+        },
+        "all_or_nothing": {
+          "type": "boolean",
+          "description": "Объект, где задание одного поля обнуляет дефолты соседних (transport.xmux); частичный объект дополняется дефолтами с кодом partial_object_defaulted."
+        },
+        "managed": {
+          "type": "boolean",
+          "description": "Поле пишет сборка конфига, а не тело узла (detour)."
+        },
+        "deprecated": {
+          "type": "boolean",
+          "description": "Ядро поле принимает, но не применяет либо помечает schema:\"omit\"."
+        },
+        "decision_pending": {
+          "type": "string",
+          "description": "Правило поля не утверждено: ссылка на пункт решения владельца. До решения действует сегодняшнее поведение, on_invalid не ставится."
+        },
+        "advisory": {
+          "description": "Значения из enum, которые ядро принимает, но узел получает информационный код (ss legacy-шифры → ss_method_legacy). Поле не меняется.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "values": { "type": "array", "items": { "type": ["string", "number"] }, "minItems": 1 },
+              "code": { "type": "string", "description": "Код из registry/warnings.json (severity info)." }
+            },
+            "required": ["values", "code"],
+            "additionalProperties": false
+          }
+        },
+        "drop_always": {
+          "type": "boolean",
+          "description": "Параметр ссылки читается только чтобы поставить код и снимается всегда, независимо от значения (URI-ech= Xray-формы → ech_ignored, D-122). Только у uri-параметров."
+        },
+        "impl_decision": {
+          "type": "string",
+          "description": "Краткая ссылка на решение владельца, определившее правило поля (D-NNN)."
+        },
+        "lx_only": {
+          "type": "boolean",
+          "description": "Поля нет в upstream sing-box — только в форке lx."
+        },
+        "min_core": {
+          "type": "string",
+          "description": "Минимальная версия ядра; ниже неё ключ снимается на сборке."
+        },
+        "platform": {
+          "type": "string",
+          "description": "ОС, на которой поле работает; на прочих ключ снимается на сборке.",
+          "enum": ["linux", "darwin", "windows", "android", "ios"]
+        },
+        "build_tag": {
+          "type": "string",
+          "description": "Тег сборки ядра, без которого поле не поддержано."
+        },
+        "forbidden_for": {
+          "type": "array",
+          "description": "Схемы, которым это поле запрещено; требует code.",
+          "items": { "type": "string" }
+        },
+        "allowed_for": {
+          "type": "array",
+          "description": "Схемы, которым это поле разрешено (остальным запрещено); требует code.",
+          "items": { "type": "string" }
+        },
+        "code": {
+          "type": "string",
+          "description": "Код из registry/warnings.json для allowed_for / forbidden_for."
+        },
+        "conflicts": {
+          "type": "array",
+          "description": "Взаимоисключающие поля; снимается младшее по приоритету.",
+          "items": { "$ref": "#/definitions/relation" }
+        },
+        "requires": {
+          "type": "array",
+          "description": "Поля, без которых это поле снимается.",
+          "items": { "$ref": "#/definitions/relation" }
+        },
+        "skip": {
+          "type": "string",
+          "description": "Причина, по которой поле описано не полностью либо лаунчером не пишется."
+        },
+        "desc_en": { "type": "string", "description": "Короткая фраза для человека, EN (уходит в документацию)." },
+        "desc_ru": { "type": "string", "description": "Короткая фраза для человека, RU (уходит в документацию)." },
+        "impl": { "type": "string", "description": "Заметка для разработчика: где проверяется, откуда дефолт, файл:строка ядра. В документацию не попадает." }
+      },
+      "required": ["type"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "enum" } }, "required": ["type"] },
+          "then": { "required": ["values"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "ref" } }, "required": ["type"] },
+          "then": { "required": ["ref"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "array" } }, "required": ["type"] },
+          "then": { "required": ["items"] }
+        },
+        {
+          "if": { "required": ["fields"] },
+          "then": { "required": ["order"] }
+        },
+        {
+          "if": { "required": ["forbidden_for"] },
+          "then": { "required": ["code"] }
+        },
+        {
+          "if": { "required": ["allowed_for"] },
+          "then": { "required": ["code"] }
+        }
+      ]
+    },
+    "bodySection": {
+      "description": "Секция body: версия ядра, порядок полей и сами поля. Порядок = порядок структур ядра; по нему идут и санитайзер, и эмиттер, поэтому список warnings детерминирован.",
+      "type": "object",
+      "properties": {
+        "core": {
+          "type": "string",
+          "description": "Тег ядра, по которому сверен список полей."
+        },
+        "order": {
+          "type": "array",
+          "description": "Порядок полей; обязан покрывать ровно fields.",
+          "items": { "type": "string" }
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/field" }
+        },
+        "skipped": {
+          "type": "object",
+          "description": "Поля ядра, сознательно не описанные: имя → причина.",
+          "additionalProperties": { "type": "string" }
+        },
+        "lx_only": { "type": "boolean" },
+        "min_core": { "type": "string" },
+        "build_tag": { "type": "string" },
+        "note": { "type": "string" }
+      },
+      "required": ["core", "order", "fields"],
+      "additionalProperties": false
+    },
+    "variantsSection": {
+      "description": "Секция body с вариантами по дискриминатору (транспорты: выбор по transport.type).",
+      "type": "object",
+      "properties": {
+        "core": { "type": "string" },
+        "discriminator": {
+          "type": "string",
+          "description": "Поле-дискриминатор, по которому выбирается вариант."
+        },
+        "values": {
+          "type": "array",
+          "description": "Допустимые значения дискриминатора.",
+          "items": { "type": "string" }
+        },
+        "note": { "type": "string" },
+        "variants": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "order": { "type": "array", "items": { "type": "string" } },
+              "fields": {
+                "type": "object",
+                "additionalProperties": { "$ref": "#/definitions/field" }
+              },
+              "lx_only": { "type": "boolean" },
+              "min_core": { "type": "string" },
+              "build_tag": { "type": "string" },
+              "note": { "type": "string" }
+            },
+            "required": ["order", "fields"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["core", "discriminator", "values", "variants"],
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "body": {
+      "oneOf": [
+        { "$ref": "#/definitions/bodySection" },
+        { "$ref": "#/definitions/variantsSection" }
+      ]
+    },
+    "common": { "$ref": "#/definitions/bodySection" }
+  }
+}

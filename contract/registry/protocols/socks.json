@@ -8,8 +8,11 @@
   "extension": null,
   "uri": {
     "userinfo": {
+      "maps_to": ["username", "password"],
       "meaning": "username:password",
-      "note": "Оба компонента опциональны. Дефолтный порт 1080. socks:// и socks5:// эквивалентны, оба → sing-box type socks с version \"5\" (Go пишет version всегда; Dart хранит version в SocksSpec, дефолт '5'). version '4'/'4a' НЕ достижим ни одним parse-путём: Dart parseSingboxEntry в socks-ветке entry['version'] не читает (json_parsers.dart:973-984), поле модели с дефолтом '5' (node_spec.dart:542,553) никем не заполняется — мёртвое поле модели, не расширение. Query-параметров у схемы нет ни в одном парсере."
+      "desc_en": "username:password of the account.",
+      "desc_ru": "username:password учётной записи.",
+      "impl": "Оба компонента опциональны. Дефолтный порт 1080. socks:// и socks5:// эквивалентны, оба → sing-box type socks с version \"5\" (Go пишет version всегда; Dart хранит version в SocksSpec, дефолт '5'). version '4'/'4a' НЕ достижим ни одним parse-путём: Dart parseSingboxEntry в socks-ветке entry['version'] не читает (json_parsers.dart:973-984), поле модели с дефолтом '5' (node_spec.dart:542,553) никем не заполняется — мёртвое поле модели, не расширение. Query-параметров у схемы нет ни в одном парсере."
     },
     "query": {},
     "fragment": "label"
@@ -37,5 +40,94 @@
       "lib/models/node_spec_emit.dart:503-520",
       "lib/services/parser/json_parsers.dart:797"
     ]
+  },
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": ["server", "server_port", "version", "username", "password", "network", "udp_over_tcp", "__dialer"],
+    "fields": {
+      "server": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server address: domain or IP.",
+        "desc_ru": "Адрес сервера: домен или IP.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "server_port": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server port.",
+        "desc_ru": "Порт сервера.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "version": {
+        "type": "enum",
+        "values": ["", "4", "4a", "5"],
+        "normalize": "trim_lower",
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "default": "5",
+        "desc_en": "SOCKS protocol version.",
+        "desc_ru": "Версия протокола SOCKS.",
+        "impl": "Пустое значение = 5."
+      },
+      "username": {
+        "type": "string",
+        "desc_en": "Account user name.",
+        "desc_ru": "Имя пользователя учётной записи.",
+        "impl": "option/socks.go Username."
+      },
+      "password": {
+        "type": "string",
+        "secret": true,
+        "desc_en": "Account password.",
+        "desc_ru": "Пароль учётной записи.",
+        "impl": "option/socks.go Password. Секрет."
+      },
+      "network": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Networks this outbound handles.",
+        "desc_ru": "Сети, которые обслуживает этот узел.",
+        "impl": "NetworkList; правило значения — registry/dialer.json, секция common."
+      },
+      "udp_over_tcp": {
+        "type": "object",
+        "order": ["enabled", "version"],
+        "fields": {
+          "enabled": {
+            "type": "bool",
+            "default": false,
+            "desc_en": "Tunnel UDP over the TCP connection.",
+            "desc_ru": "Передавать UDP внутри TCP-соединения.",
+            "impl": "option/shadowsocks.go UDPOverTCPOptions.Enabled."
+          },
+          "version": {
+            "type": "enum",
+            "values": [1, 2],
+            "on_invalid": {
+              "action": "drop",
+              "code": "type_invalid"
+            },
+            "default": 2,
+            "desc_en": "UDP-over-TCP protocol version.",
+            "desc_ru": "Версия протокола UDP-over-TCP.",
+            "impl": "Ядро принимает и краткую форму — булево вместо объекта; в теле узла пишем объект."
+          }
+        },
+        "desc_en": "UDP-over-TCP settings.",
+        "desc_ru": "Настройки передачи UDP внутри TCP.",
+        "impl": "UDPOverTCPOptions (§1.9): форма — bool ИЛИ объект {enabled,version}."
+      },
+      "__dialer": {
+        "type": "ref",
+        "ref": "dialer",
+        "inline": true,
+        "desc_en": "Common dialer fields, inlined flat into the body.",
+        "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
+        "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
+      }
+    }
   }
 }

@@ -55,8 +55,23 @@
         },
         "warnings": {
           "type": "array",
-          "description": "Коды из registry/warnings.json, порядок появления",
-          "items": { "type": "string" }
+          "description": "Записи деградаций (CANON §6, контракт 1.1.0): {code, path?, value?, params?}; до 1.1.0 — строки-коды, читаются по-прежнему. Порядок: коды узла — по появлению, коды полей — по body.order реестра.",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "required": ["code"],
+                "additionalProperties": false,
+                "properties": {
+                  "code": { "type": "string", "description": "Код из registry/warnings.json" },
+                  "path": { "type": "string", "description": "Путь поля в entry (tls.reality.short_id); нет у кодов уровня узла" },
+                  "value": { "type": "string", "description": "Исходное значение до деградации, ≤64 символов; у secret-полей \"***\"" },
+                  "params": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Подстановки шаблона text_* кода" }
+                }
+              }
+            ]
+          }
         }
       }
     }

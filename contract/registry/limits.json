@@ -4,7 +4,7 @@
     "max_uri_length": {
       "value": 65536,
       "current": { "go": 8192, "dart": 65536 },
-      "note": "D-013/§9.B9: канон 65536, Go поднимает. Go: node_parser_core.go:40 (MaxURILength; тот же лимит в node_parser_wireguard.go:20); Dart: services/parser/uri_utils.dart:7. vpn:// из лимита исключён — у него свой amnezia_link_max_bytes."
+      "impl": "КАНОН ОСТАЁТСЯ 65536 (SPEC 131 W1). Go сегодня 8192 и подтягивается в W2 (DRIFT §12 Л18, CODEMAP Л18): MaxURILength — core/config/subscription/node_parser_core.go:40, тот же лимит продублирован в node_parser_wireguard.go:20; после W2 лимит берётся из этого файла, а не из Go-константы. Dart уже 65536 (services/parser/uri_utils.dart:7). Расхождение работает на входе конвейера: длинная, но валидная ссылка сегодня отбивается на десктопе с кодом uri_too_long и принимается на мобиле. vpn:// из лимита исключён — у него свой amnezia_link_max_bytes."
     },
     "max_nodes_per_subscription": {
       "value": 3000,

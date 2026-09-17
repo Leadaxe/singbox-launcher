@@ -1,0 +1,65 @@
+{
+  "v": 1,
+  "scheme": "chain",
+  "kind": "outbound",
+  "singbox_type": "chain",
+  "note": "Цепочка узлов форка (option/chain_lx.go, SPEC 075). Не имеет ни ServerOptions, ни TLS: адрес и шифрование берутся у хопов. Цепочка — МАРШРУТ, а не Направление (память chain-is-a-source). Файл заведён в W1 SPEC 131 только ради секции body; секции uri/policy у схемы нет — тело рождается в форме, а не из ссылки.",
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": ["outbounds", "idle_timeout", "strip_evasion", "strip", "rewrite", "interrupt_exist_connections", "__dialer"],
+    "fields": {
+      "outbounds": {
+        "type": "string_array",
+        "required": true,
+        "desc_en": "Ordered tags of the hops, client first.",
+        "desc_ru": "Теги узлов цепочки по порядку, первый — от клиента.",
+        "impl": "json-тег без omitempty; reference:outbound. Элемент [0] — первый хоп от клиента; его способность проксировать вложенный TCP и решает, работает ли цепочка (память chain-first-hop-server-capability). Коды chain_hop_missing, chain_invalid, chain_nested_position."
+      },
+      "idle_timeout": {
+        "type": "duration",
+        "default": "5m",
+        "desc_en": "Tear down the chain after this idle period.",
+        "desc_ru": "Разбирать цепочку после простоя такой длительности.",
+        "impl": "0 = жить до остановки ядра."
+      },
+      "strip_evasion": {
+        "type": "bool",
+        "default": true,
+        "tristate": true,
+        "desc_en": "Strip evasion options from inner hops.",
+        "desc_ru": "Снимать средства обхода у внутренних хопов.",
+        "impl": "*bool — три состояния: ключа нет = true (дефолт ядра), явные true и false. Эмиттер обязан различать отсутствие ключа и явное false."
+      },
+      "strip": {
+        "type": "object",
+        "desc_en": "Per-option patch to the strip catalogue.",
+        "desc_ru": "Точечная правка каталога снимаемых опций.",
+        "impl": "map[string]bool поверх каталога ядра; НЕИЗВЕСТНЫЙ ключ = ошибка старта на весь конфиг. Код chain_strip_utls_on_reality: `sing-box check` такую ошибку не ловит, падает только run (память chain-check-misses-start-errors)."
+      },
+      "rewrite": {
+        "type": "object",
+        "desc_en": "JSON merge patch applied to inner hop options.",
+        "desc_ru": "JSON merge-patch поверх опций внутренних хопов.",
+        "impl": "RFC 7396; применяется только к позициям >= 1."
+      },
+      "interrupt_exist_connections": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Drop existing connections when the chain changes.",
+        "desc_ru": "Рвать существующие соединения при смене цепочки.",
+        "impl": "SPEC 075 форка, option/chain_lx.go."
+      },
+      "__dialer": {
+        "type": "ref",
+        "ref": "dialer",
+        "inline": true,
+        "desc_en": "Common dialer fields, inlined flat into the body.",
+        "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
+        "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
+      }
+    },
+    "lx_only": true,
+    "min_core": "1.14.0-lx.27",
+    "build_tag": "with_lx_chain"
+  }
+}

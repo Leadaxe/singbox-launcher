@@ -1,0 +1,128 @@
+{
+  "v": 1,
+  "note": "Общие поля тела узла: ServerOptions + network (секция common) и «клиентские» DialerOptions (секция body). Ссылаются из body протоколов как {\"type\":\"ref\",\"ref\":\"dialer\",\"inline\":true} — поля вливаются в тело плоско, без обёртки. Неклиентские поля DialerOptions (bind_address_no_port, protect_path, routing_mark, reuse_addr, netns, tcp_multi_path, disable_tcp_keep_alive, tcp_keep_alive, tcp_keep_alive_interval, network_strategy, network_type, fallback_network_type, fallback_delay, domain_strategy) лаунчер не пишет — они помечены skip в этой же секции. SPEC 131, CORE_SCHEMA §1.1–§1.3.",
+  "common": {
+    "core": "1.14.1-lx.4",
+    "order": ["server", "server_port", "network"],
+    "fields": {
+      "server": {
+        "type": "string",
+        "format": "host",
+        "on_invalid": {
+          "action": "drop_node",
+          "code": "field_missing"
+        },
+        "required": true,
+        "desc_en": "Server address: domain or IP.",
+        "desc_ru": "Адрес сервера: домен или IP.",
+        "impl": "ServerOptions, option/outbound.go; json-тег БЕЗ omitempty — ключ пишется всегда."
+      },
+      "server_port": {
+        "type": "uint16",
+        "format": "port",
+        "min": 1,
+        "max": 65535,
+        "on_invalid": {
+          "action": "drop_node",
+          "code": "port_invalid"
+        },
+        "required": true,
+        "desc_en": "Server port.",
+        "desc_ru": "Порт сервера.",
+        "impl": "ServerOptions; без omitempty. Значение вне 1..65535 валит весь config.json через sing-box check — код port_invalid, узел в dropped."
+      },
+      "network": {
+        "type": "listable_string",
+        "values": ["tcp", "udp"],
+        "normalize": "trim_lower",
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Networks this outbound handles.",
+        "desc_ru": "Сети, которые обслуживает этот узел.",
+        "impl": "NetworkList: строка или массив; допустимы только tcp и udp, иное = ошибка разбора. Пустое значение = обе сети. У masque ту же роль играет network_list — поле network там устаревшее и означает другое."
+      }
+    }
+  },
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": ["detour", "bind_interface", "inet4_bind_address", "inet6_bind_address", "connect_timeout", "tcp_fast_open", "udp_fragment", "domain_resolver"],
+    "fields": {
+      "detour": {
+        "type": "string",
+        "managed": true,
+        "desc_en": "Tag of the outbound this connection is routed through.",
+        "desc_ru": "Тег узла, через который идёт это соединение.",
+        "impl": "reference:outbound. ПИШЕТ СБОРКА: detour вычисляется из Направлений и цепочек, в теле узла в state его быть не должно — санитайзер снимает. Непустой detour включает авто-record_fragment (SPEC 060). Конфликт с wireguard.listen_port."
+      },
+      "bind_interface": {
+        "type": "string",
+        "desc_en": "Network interface the connection is bound to.",
+        "desc_ru": "Сетевой интерфейс, к которому привязано соединение.",
+        "impl": "option/outbound.go DialerOptions.BindInterface."
+      },
+      "inet4_bind_address": {
+        "type": "string",
+        "format": "ipv4",
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Local IPv4 address to bind to.",
+        "desc_ru": "Локальный адрес IPv4 для привязки.",
+        "impl": "badoption.Addr — только адрес, без маски."
+      },
+      "inet6_bind_address": {
+        "type": "string",
+        "desc_en": "Local IPv6 address to bind to.",
+        "desc_ru": "Локальный адрес IPv6 для привязки.",
+        "impl": "badoption.Addr — только адрес, без маски."
+      },
+      "connect_timeout": {
+        "type": "duration",
+        "desc_en": "Timeout for establishing the connection.",
+        "desc_ru": "Таймаут установления соединения.",
+        "impl": "option/outbound.go DialerOptions.ConnectTimeout."
+      },
+      "tcp_fast_open": {
+        "type": "bool",
+        "default": false,
+        "forbidden_for": ["anytls"],
+        "code": "field_conflict",
+        "desc_en": "Use TCP Fast Open.",
+        "desc_ru": "Использовать TCP Fast Open.",
+        "impl": "Запрещён у anytls: «tcp_fast_open is not supported with anytls outbound» (protocol/anytls/outbound.go:60) — одна такая нода не даёт ядру стартовать, поэтому поле снимается."
+      },
+      "udp_fragment": {
+        "type": "bool",
+        "tristate": true,
+        "desc_en": "Allow fragmenting UDP packets.",
+        "desc_ru": "Разрешать фрагментацию UDP-пакетов.",
+        "impl": "*bool — три состояния: ключа нет (дефолт ядра), true, false. Эмиттер обязан различать отсутствие ключа и явное false."
+      },
+      "domain_resolver": {
+        "type": "string",
+        "desc_en": "DNS server tag used to resolve the server domain.",
+        "desc_ru": "Тег DNS-сервера для разрешения домена сервера.",
+        "impl": "Короткая форма — строка с тегом сервера; ядро принимает и объект {server,timeout,strategy,disable_cache,disable_optimistic_cache,rewrite_ttl,client_subnet} и сериализует обратно строкой, если задан только server. В теле узла лаунчер пишет короткую форму."
+      }
+    },
+    "skipped": {
+      "bind_address_no_port": "серверная/низкоуровневая опция dialer — лаунчер её не пишет ни на одном входе (CORE_SCHEMA §1.2, «клиентские» отмечены отдельно)",
+      "protect_path": "только Android (platform=android); десктопный лаунчер не пишет",
+      "routing_mark": "только Linux; лаунчер не пишет",
+      "reuse_addr": "низкоуровневая опция dialer — лаунчер не пишет",
+      "netns": "только Linux, reference:network_namespace — лаунчер не пишет",
+      "tcp_multi_path": "низкоуровневая опция dialer — лаунчер не пишет",
+      "disable_tcp_keep_alive": "низкоуровневая опция dialer — лаунчер не пишет",
+      "tcp_keep_alive": "низкоуровневая опция dialer — лаунчер не пишет",
+      "tcp_keep_alive_interval": "низкоуровневая опция dialer — лаунчер не пишет",
+      "network_strategy": "enum живёт в C.StringToNetworkStrategy и из option/*.go не виден (CORE_SCHEMA §8) — без словаря правило значения не описать",
+      "network_type": "парное с network_strategy, который не описан; лаунчер не пишет",
+      "fallback_network_type": "парное с network_strategy, который не описан; лаунчер не пишет",
+      "fallback_delay": "парное с network_strategy, который не описан; лаунчер не пишет",
+      "domain_strategy": "deprecated, schema:\"omit\" в ядре — мигрировано в domain_resolver"
+    }
+  }
+}

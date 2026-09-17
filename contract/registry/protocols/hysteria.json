@@ -9,72 +9,107 @@
   "note": "Hysteria v1 разбирает ТОЛЬКО лаунчер: у LxBox парсера для него нет. По правилу 3 контракта различие обязано быть помечено, а не остаться бесхозным — отсюда extension:desktop. Следствие для корпуса: раннер стороны пропускает каталоги и кейсы с чужим extension, иначе мобильная сторона падала бы на фикстурах протокола, которого не поддерживает (кейс hysteria_bandwidth помечен meta.extension:desktop в expected). Сам протокол при этом жив и развивается: hysteria2 — отдельный файл реестра, поддержан обеими сторонами.",
   "uri": {
     "userinfo": {
+      "maps_to": "auth_str",
       "meaning": "auth",
-      "note": "Запасной слот. У Hysteria 1.x секрет канонически едет в query (auth=), а не перед '@' — этим v1 отличается от hysteria2. Userinfo принимается на входе, потому что часть панелей выписывает hysteria://auth@host:port; эмиссия его НЕ использует (shareuri_hysteria.go)."
+      "desc_en": "Fallback slot for the auth secret.",
+      "desc_ru": "Запасной слот для секрета авторизации.",
+      "impl": "Запасной слот. У Hysteria 1.x секрет канонически едет в query (auth=), а не перед '@' — этим v1 отличается от hysteria2. Userinfo принимается на входе, потому что часть панелей выписывает hysteria://auth@host:port; эмиссия его НЕ использует (shareuri_hysteria.go)."
     },
     "query": {
       "auth": {
         "type": "string",
-        "aliases": ["auth_str", "authStr", "password"],
         "default": null,
-        "note": "→ auth_str. Пусто → warning, нода живёт (ядро поднимет outbound, сервер откажет на рукопожатии) — та же строгость, что у hysteria2 без password."
+        "aliases": ["auth_str", "authStr", "password"],
+        "maps_to": "auth_str",
+        "desc_en": "Authentication secret.",
+        "desc_ru": "Секрет авторизации.",
+        "impl": "→ auth_str. Пусто → warning, нода живёт (ядро поднимет outbound, сервер откажет на рукопожатии) — та же строгость, что у hysteria2 без password."
       },
       "upmbps": {
         "type": "int",
-        "aliases": ["up_mbps", "up"],
         "default": 100,
-        "note": "→ up_mbps. ОБЯЗАТЕЛЬНО для ядра: без него initialize outbound падает с «missing upload speed», и это fatal для ВСЕГО config.json, а не для узла. Ссылки его сплошь и рядом не несут, поэтому отсутствие добирается дефолтом 100 (hysteriaBandwidthOrDefault) на всех трёх путях — URI, singbox-импорт (sanitizeSingboxHysteriaBandwidth), xray. Значение с суффиксом единицы («100 mbps») режется до числа."
+        "aliases": ["up_mbps", "up"],
+        "maps_to": "up_mbps",
+        "desc_en": "Uplink bandwidth, Mbps.",
+        "desc_ru": "Полоса вверх, Мбит/с.",
+        "impl": "→ up_mbps. ОБЯЗАТЕЛЬНО для ядра: без него initialize outbound падает с «missing upload speed», и это fatal для ВСЕГО config.json, а не для узла. Ссылки его сплошь и рядом не несут, поэтому отсутствие добирается дефолтом 100 (hysteriaBandwidthOrDefault) на всех трёх путях — URI, singbox-импорт (sanitizeSingboxHysteriaBandwidth), xray. Значение с суффиксом единицы («100 mbps») режется до числа."
       },
       "downmbps": {
         "type": "int",
-        "aliases": ["down_mbps", "down"],
         "default": 100,
-        "note": "→ down_mbps. То же обязательное поле, «missing download speed»."
+        "aliases": ["down_mbps", "down"],
+        "maps_to": "down_mbps",
+        "desc_en": "Downlink bandwidth, Mbps.",
+        "desc_ru": "Полоса вниз, Мбит/с.",
+        "impl": "→ down_mbps. То же обязательное поле, «missing download speed»."
       },
       "obfs": {
         "type": "string",
         "default": null,
-        "note": "У v1 obfs — ПЛОСКАЯ строка-секрет (option/hysteria.go, HysteriaOutboundOptions.Obfs string), а НЕ объект {type,password}, как у hysteria2. В оригинальном Hysteria 1.x obfs объявлял тип (xplus), а секрет ехал в obfsParam — поэтому голый obfs=xplus без секрета отбрасывается: строка «xplus» стала бы ключом обфускации и узел молча перестал бы соединяться."
+        "maps_to": "obfs",
+        "desc_en": "Obfuscation password.",
+        "desc_ru": "Пароль обфускации.",
+        "impl": "У v1 obfs — ПЛОСКАЯ строка-секрет (option/hysteria.go, HysteriaOutboundOptions.Obfs string), а НЕ объект {type,password}, как у hysteria2. В оригинальном Hysteria 1.x obfs объявлял тип (xplus), а секрет ехал в obfsParam — поэтому голый obfs=xplus без секрета отбрасывается: строка «xplus» стала бы ключом обфускации и узел молча перестал бы соединяться."
       },
       "obfsParam": {
         "type": "string",
-        "aliases": ["obfs-password"],
         "default": null,
-        "note": "Секрет обфускации → obfs (плоская строка). Приоритетнее obfs=, если заданы оба."
+        "aliases": ["obfs-password"],
+        "maps_to": "obfs",
+        "desc_en": "Obfuscation password, alternative spelling.",
+        "desc_ru": "Пароль обфускации, другое написание.",
+        "impl": "Секрет обфускации → obfs (плоская строка). Приоритетнее obfs=, если заданы оба."
       },
       "mport": {
         "type": "string",
-        "aliases": ["ports"],
         "default": null,
-        "note": "Port hopping, тот же синтаксис и то же восстановление из authority, что у hysteria2 (hysteria2RecoverMultiPortAuthority обобщён на оба префикса) → server_ports [\"low:high\"]."
+        "aliases": ["ports"],
+        "maps_to": "server_ports",
+        "desc_en": "Port range for port hopping.",
+        "desc_ru": "Диапазон портов для port hopping.",
+        "impl": "Port hopping, тот же синтаксис и то же восстановление из authority, что у hysteria2 (hysteria2RecoverMultiPortAuthority обобщён на оба префикса) → server_ports [\"low:high\"]."
       },
       "sni": {
         "type": "string",
-        "aliases": ["peer"],
         "default": null,
-        "note": "→ tls.server_name. peer= — историческое написание клиентов 1.x. Мусор (без точки/двоеточия, '🔒') → fallback на server, как у hysteria2."
+        "aliases": ["peer"],
+        "maps_to": "tls.server_name",
+        "desc_en": "Server name sent in SNI.",
+        "desc_ru": "Имя сервера, отправляемое в SNI.",
+        "impl": "→ tls.server_name. peer= — историческое написание клиентов 1.x. Мусор (без точки/двоеточия, '🔒') → fallback на server, как у hysteria2."
       },
       "alpn": {
         "type": "string",
         "default": null,
-        "note": "Список через запятую → tls.alpn []string (обычно h3)."
+        "maps_to": "tls.alpn",
+        "desc_en": "Comma-separated list of ALPN protocols.",
+        "desc_ru": "Список протоколов ALPN через запятую.",
+        "impl": "Список через запятую → tls.alpn []string (обычно h3)."
       },
       "insecure": {
         "type": "bool",
-        "aliases": ["allowInsecure", "allowinsecure", "allow_insecure", "skip-cert-verify"],
         "default": null,
-        "note": "tls.insecure. Значения 1/true/yes."
+        "aliases": ["allowInsecure", "allowinsecure", "allow_insecure", "allow-insecure", "skipCertVerify", "skipcertverify", "skip_cert_verify", "skip-cert-verify", "noverify"],
+        "maps_to": "tls.insecure",
+        "desc_en": "Skip server certificate verification.",
+        "desc_ru": "Не проверять сертификат сервера.",
+        "impl": "tls.insecure. Значения 1/true/yes. ЦЕЛЕВОЙ НАБОР ИМЁН — объединение обоих проектов (DRIFT §2(a), общая запись — tls.json /tls/params/insecure): insecure, allowinsecure, allow_insecure, allow-insecure, skipcertverify, skip_cert_verify, skip-cert-verify, noverify; сверка по strings.ToLower со снятием '-'/'_'; истина 1|true|yes единообразно."
       },
       "pinSHA256": {
         "type": "string",
         "default": null,
         "ext": "desktop",
-        "note": "→ tls.certificate_public_key_sha256 ([значение])."
+        "maps_to": "tls.certificate_public_key_sha256",
+        "desc_en": "Pinned SHA-256 of the server certificate public key.",
+        "desc_ru": "Закреплённый SHA-256 публичного ключа сертификата сервера.",
+        "impl": "→ tls.certificate_public_key_sha256 ([значение]). ЗАПИСЬ ИСПРАВЛЕНА (DRIFT §4): пометка «только Go» протухла — обе стороны читают pinSHA256 (в hysteria2 — hysteria2_parser.dart:97,107)."
       },
       "fp": {
         "type": "ignored",
         "default": null,
-        "note": "НЕ читается: v1 живёт поверх QUIC, uTLS ядро на нём не примет (quicOutboundTypes включает hysteria). Тот же принцип, что у hysteria2 после SPEC 103 D-033."
+        "desc_en": "Ignored: uTLS does not apply to QUIC.",
+        "desc_ru": "Игнорируется: uTLS к QUIC не применяется.",
+        "impl": "НЕ читается: v1 живёт поверх QUIC, uTLS ядро на нём не примет (quicOutboundTypes включает hysteria). Тот же принцип, что у hysteria2 после SPEC 103 D-033."
       }
     },
     "fragment": "label"
@@ -108,5 +143,205 @@
       "core/config/outbound_generator.go (ветка эмиссии hysteria)"
     ],
     "dart": []
+  },
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": ["server", "server_port", "server_ports", "hop_interval", "up", "up_mbps", "down", "down_mbps", "obfs", "auth", "auth_str", "network", "tls", "recv_window_conn", "recv_window", "disable_mtu_discovery", "idle_timeout", "keep_alive_period", "stream_receive_window", "connection_receive_window", "max_concurrent_streams", "initial_packet_size", "disable_path_mtu_discovery", "__dialer"],
+    "fields": {
+      "server": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server address: domain or IP.",
+        "desc_ru": "Адрес сервера: домен или IP.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "server_port": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server port.",
+        "desc_ru": "Порт сервера.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "server_ports": {
+        "type": "listable_string",
+        "desc_en": "Port ranges used for port hopping.",
+        "desc_ru": "Диапазоны портов для прыжков по портам.",
+        "impl": "Форма диапазона «a:b»; listable."
+      },
+      "hop_interval": {
+        "type": "duration",
+        "desc_en": "Interval between port hops.",
+        "desc_ru": "Интервал между прыжками по портам.",
+        "impl": "option/hysteria.go HopInterval."
+      },
+      "up": {
+        "type": "string",
+        "desc_en": "Upload bandwidth, number or string with units.",
+        "desc_ru": "Скорость отдачи: число или строка с единицами.",
+        "impl": "NetworkBytesCompat: 100 или «100 Mbps»."
+      },
+      "up_mbps": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Upload bandwidth in Mbps.",
+        "desc_ru": "Скорость отдачи в Мбит/с.",
+        "impl": "Числовая форма up. Из JSON приезжает float64 — приведение обязательно (память json-map-type-assert-trap)."
+      },
+      "down": {
+        "type": "string",
+        "desc_en": "Download bandwidth, number or string with units.",
+        "desc_ru": "Скорость приёма: число или строка с единицами.",
+        "impl": "NetworkBytesCompat."
+      },
+      "down_mbps": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Download bandwidth in Mbps.",
+        "desc_ru": "Скорость приёма в Мбит/с.",
+        "impl": "Числовая форма down."
+      },
+      "obfs": {
+        "type": "string",
+        "secret": true,
+        "desc_en": "Obfuscation password.",
+        "desc_ru": "Пароль обфускации.",
+        "impl": "У hysteria v1 это строка-пароль (в отличие от объекта у hysteria2). Секрет."
+      },
+      "auth": {
+        "type": "string",
+        "format": "base64",
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "secret": true,
+        "desc_en": "Authentication payload, base64 of raw bytes.",
+        "desc_ru": "Данные аутентификации, base64 сырых байт.",
+        "impl": "[]byte в JSON приезжает строкой base64. Секрет."
+      },
+      "auth_str": {
+        "type": "string",
+        "secret": true,
+        "desc_en": "Authentication payload as a plain string.",
+        "desc_ru": "Данные аутентификации обычной строкой.",
+        "impl": "Строковая форма auth. Секрет."
+      },
+      "network": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Networks this outbound handles.",
+        "desc_ru": "Сети, которые обслуживает этот узел.",
+        "impl": "NetworkList; правило значения — registry/dialer.json, секция common."
+      },
+      "tls": {
+        "type": "ref",
+        "ref": "tls",
+        "required": true,
+        "desc_en": "TLS settings.",
+        "desc_ru": "Настройки TLS.",
+        "impl": "C.ErrTLSRequired без tls.enabled=true. На QUIC-типе utls и reality вычищаются целиком — ядро не умеет uTLS/REALITY поверх QUIC."
+      },
+      "recv_window_conn": {
+        "type": "int",
+        "deprecated": true,
+        "desc_en": "Deprecated per-connection receive window.",
+        "desc_ru": "Устаревшее окно приёма на соединение.",
+        "impl": "schema:\"omit\" — мигрировано в connection_receive_window."
+      },
+      "recv_window": {
+        "type": "int",
+        "deprecated": true,
+        "desc_en": "Deprecated receive window.",
+        "desc_ru": "Устаревшее окно приёма.",
+        "impl": "schema:\"omit\" — мигрировано в stream_receive_window."
+      },
+      "disable_mtu_discovery": {
+        "type": "bool",
+        "deprecated": true,
+        "desc_en": "Deprecated MTU discovery switch.",
+        "desc_ru": "Устаревший переключатель определения MTU.",
+        "impl": "schema:\"omit\" — мигрировано в disable_path_mtu_discovery."
+      },
+      "idle_timeout": {
+        "type": "duration",
+        "desc_en": "Close the QUIC connection after this idle period.",
+        "desc_ru": "Закрывать QUIC-соединение после простоя такой длительности.",
+        "impl": "QUICOptions, встроено плоско."
+      },
+      "keep_alive_period": {
+        "type": "duration",
+        "desc_en": "Interval between QUIC keepalive packets.",
+        "desc_ru": "Интервал между keepalive-пакетами QUIC.",
+        "impl": "QUICOptions, встроено плоско."
+      },
+      "stream_receive_window": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Receive window of a single QUIC stream.",
+        "desc_ru": "Окно приёма одного потока QUIC.",
+        "impl": "MemoryBytes: число или строка с суффиксом (HTTP2Options)."
+      },
+      "connection_receive_window": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Receive window of the whole QUIC connection.",
+        "desc_ru": "Окно приёма всего QUIC-соединения.",
+        "impl": "MemoryBytes: число или строка с суффиксом."
+      },
+      "max_concurrent_streams": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Maximum number of concurrent QUIC streams.",
+        "desc_ru": "Максимум одновременных потоков QUIC.",
+        "impl": "HTTP2Options, встроено плоско."
+      },
+      "initial_packet_size": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Initial QUIC packet size in bytes.",
+        "desc_ru": "Начальный размер пакета QUIC в байтах.",
+        "impl": "QUICOptions, встроено плоско."
+      },
+      "disable_path_mtu_discovery": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Disable QUIC path MTU discovery.",
+        "desc_ru": "Отключить определение MTU пути в QUIC.",
+        "impl": "QUICOptions, встроено плоско."
+      },
+      "__dialer": {
+        "type": "ref",
+        "ref": "dialer",
+        "inline": true,
+        "desc_en": "Common dialer fields, inlined flat into the body.",
+        "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
+        "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
+      }
+    },
+    "build_tag": "with_quic"
   }
 }

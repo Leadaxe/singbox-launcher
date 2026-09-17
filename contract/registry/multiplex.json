@@ -1,0 +1,113 @@
+{
+  "v": 1,
+  "note": "Общая суб-схема мультиплексирования (OutboundMultiplexOptions ядра, option/multiplex.go) — ссылается из body протоколов как {\"type\":\"ref\",\"ref\":\"multiplex\"}. Есть у vless/vmess/trojan/shadowsocks. SPEC 131, CORE_SCHEMA §1.8.",
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": ["enabled", "protocol", "max_connections", "min_streams", "max_streams", "padding", "brutal"],
+    "fields": {
+      "enabled": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Enable stream multiplexing.",
+        "desc_ru": "Включить мультиплексирование потоков.",
+        "impl": "false = блок ядром игнорируется."
+      },
+      "protocol": {
+        "type": "enum",
+        "values": ["", "h2mux", "smux", "yamux"],
+        "normalize": "trim_lower",
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "default": "h2mux",
+        "desc_en": "Multiplexing protocol.",
+        "desc_ru": "Протокол мультиплексирования.",
+        "impl": "Пустое значение = h2mux (option/multiplex.go)."
+      },
+      "max_connections": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "default": 0,
+        "desc_en": "Maximum number of parallel connections.",
+        "desc_ru": "Максимум параллельных соединений.",
+        "impl": "0 = без ограничения."
+      },
+      "min_streams": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "default": 0,
+        "desc_en": "Minimum streams before opening a new connection.",
+        "desc_ru": "Минимум потоков до открытия нового соединения.",
+        "impl": "0 = без ограничения."
+      },
+      "max_streams": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "default": 0,
+        "desc_en": "Maximum streams per connection.",
+        "desc_ru": "Максимум потоков на соединение.",
+        "impl": "0 = без ограничения."
+      },
+      "padding": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Pad multiplexed frames.",
+        "desc_ru": "Добавлять набивку к мультиплексированным кадрам.",
+        "impl": "option/multiplex.go OutboundMultiplexOptions.Padding."
+      },
+      "brutal": {
+        "type": "object",
+        "order": ["enabled", "up_mbps", "down_mbps"],
+        "fields": {
+          "enabled": {
+            "type": "bool",
+            "default": false,
+            "desc_en": "Enable the TCP Brutal congestion control.",
+            "desc_ru": "Включить управление перегрузкой TCP Brutal.",
+            "impl": "При enabled обязательны up_mbps и down_mbps."
+          },
+          "up_mbps": {
+            "type": "int",
+            "min": 1,
+            "on_invalid": {
+              "action": "drop",
+              "code": "type_invalid"
+            },
+            "required": true,
+            "desc_en": "Upload bandwidth in Mbps.",
+            "desc_ru": "Скорость отдачи в Мбит/с.",
+            "impl": "При brutal.enabled значение <= 0 = ошибка «brutal: invalid upload speed»."
+          },
+          "down_mbps": {
+            "type": "int",
+            "min": 1,
+            "on_invalid": {
+              "action": "drop",
+              "code": "type_invalid"
+            },
+            "required": true,
+            "desc_en": "Download bandwidth in Mbps.",
+            "desc_ru": "Скорость приёма в Мбит/с.",
+            "impl": "При brutal.enabled значение <= 0 = ошибка «brutal: invalid download speed»."
+          }
+        },
+        "desc_en": "TCP Brutal congestion control settings.",
+        "desc_ru": "Настройки управления перегрузкой TCP Brutal.",
+        "impl": "option/multiplex.go BrutalOptions; требует поддержки на сервере."
+      }
+    }
+  }
+}

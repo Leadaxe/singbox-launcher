@@ -8,8 +8,11 @@
   "extension": null,
   "uri": {
     "userinfo": {
+      "maps_to": "password",
       "meaning": "password",
-      "note": "Percent-decoded. РАСХОЖДЕНИЕ (новое, вне §9): при ':' в userinfo Go берёт паролем часть ДО ':' (Username(); хвост уходит в Query['password'] и не эмитится), Dart — ВЕСЬ userinfo включая ':' (userParts.join(':')). Пустой пароль = drop ноды. Дефолтный порт 443."
+      "desc_en": "Account password.",
+      "desc_ru": "Пароль учётной записи.",
+      "impl": "Percent-decoded. РАСХОЖДЕНИЕ (новое, вне §9): при ':' в userinfo Go берёт паролем часть ДО ':' (Username(); хвост уходит в Query['password'] и не эмитится), Dart — ВЕСЬ userinfo включая ':' (userParts.join(':')). Пустой пароль = drop ноды. Дефолтный порт 443."
     },
     "query": {
       "type": {
@@ -18,7 +21,10 @@
         "allowlist": null,
         "default": "",
         "aliases": [],
-        "note": "Транспорт — суб-схема registry/transports.json (общая с vless: тот же uriTransportFromQuery/parseTransport). 'h2' в URI читает только Dart — см. transports.json."
+        "maps_to": "transport.type",
+        "desc_en": "Transport selector.",
+        "desc_ru": "Селектор транспорта.",
+        "impl": "Транспорт — суб-схема registry/transports.json (общая с vless: тот же uriTransportFromQuery/parseTransport). 'h2' в URI читает только Dart — см. transports.json."
       },
       "headerType": {
         "type": "enum",
@@ -26,7 +32,10 @@
         "allowlist": null,
         "default": "",
         "aliases": [],
-        "note": "tcp|raw + headerType=http → transport 'http' (Xray-камуфляж). См. transports.json."
+        "maps_to": "transport.type",
+        "desc_en": "Xray TCP/RAW HTTP camouflage selector.",
+        "desc_ru": "Селектор HTTP-камуфляжа Xray поверх TCP/RAW.",
+        "impl": "tcp|raw + headerType=http → transport 'http' (Xray-камуфляж). См. transports.json."
       },
       "security": {
         "type": "enum",
@@ -34,7 +43,10 @@
         "allowlist": null,
         "default": "",
         "aliases": [],
-        "note": "TLS-суб-схема — registry/tls.json. Для trojan дефолт = TLS ВКЛЮЧЁН (security пустой → tls on; plaintext-портовой эвристики vless здесь нет). security=none → tls-блок не эмитится вовсе (SPEC 045: явный tls{enabled:false} ронял ядра lx.5..lx.18 SIGSEGV). ВНИМАНИЕ: Dart emitTrojan пишет tls:{enabled:false} (node_spec_emit.dart:211) — новое расхождение вне §9, конфликтует с SPEC 045 и ломает identity-хеш класса нод. REALITY у trojan-URI не разбирается ни одним проектом (pbk игнорируется; reality приезжает только через sing-box/Xray-импорт)."
+        "maps_to": "tls.enabled",
+        "desc_en": "Whether the link asks for TLS, and in which flavour.",
+        "desc_ru": "Просит ли ссылка TLS и в каком виде.",
+        "impl": "TLS-суб-схема — registry/tls.json. Для trojan дефолт = TLS ВКЛЮЧЁН (security пустой → tls on; plaintext-портовой эвристики vless здесь нет). security=none → tls-блок не эмитится вовсе (SPEC 045: явный tls{enabled:false} ронял ядра lx.5..lx.18 SIGSEGV). ВНИМАНИЕ: Dart emitTrojan пишет tls:{enabled:false} (node_spec_emit.dart:211) — новое расхождение вне §9, конфликтует с SPEC 045 и ломает identity-хеш класса нод. REALITY у trojan-URI не разбирается ни одним проектом (pbk игнорируется; reality приезжает только через sing-box/Xray-импорт)."
       },
       "sni": {
         "type": "string",
@@ -42,7 +54,10 @@
         "allowlist": null,
         "default": "",
         "aliases": ["peer", "host (третий fallback — только trojan)"],
-        "note": "Fallback-цепочка sni → peer → host → server (оба проекта, посимвольно одинаковая). См. tls.json."
+        "maps_to": "tls.server_name",
+        "desc_en": "Server name sent in SNI.",
+        "desc_ru": "Имя сервера, отправляемое в SNI.",
+        "impl": "Fallback-цепочка sni → peer → host → server (оба проекта, посимвольно одинаковая). См. tls.json."
       },
       "fp": {
         "type": "alias_enum",
@@ -50,7 +65,10 @@
         "allowlist": "utls_fingerprints",
         "default": "",
         "aliases": [],
-        "note": "БЕЗ дефолта (в отличие от vless 'random'): пустой fp → utls-блок не эмитится (оба). Алиас 'fingerprint' у trojan НЕ читается (только vless). См. tls.json."
+        "maps_to": "tls.utls.fingerprint",
+        "desc_en": "Browser fingerprint mimicked in the ClientHello.",
+        "desc_ru": "Отпечаток браузера, который подделывается в ClientHello.",
+        "impl": "БЕЗ дефолта (в отличие от vless 'random'): пустой fp → utls-блок не эмитится (оба). Алиас 'fingerprint' у trojan НЕ читается (только vless). См. tls.json."
       },
       "alpn": {
         "type": "string",
@@ -58,15 +76,21 @@
         "allowlist": null,
         "default": "",
         "aliases": [],
-        "note": "Comma-list. См. tls.json."
+        "maps_to": "tls.alpn",
+        "desc_en": "Comma-separated list of ALPN protocols.",
+        "desc_ru": "Список протоколов ALPN через запятую.",
+        "impl": "Comma-list. См. tls.json."
       },
       "insecure": {
         "type": "bool",
         "values": [],
         "allowlist": null,
         "default": false,
-        "aliases": ["allowInsecure", "allowinsecure"],
-        "note": "Семейство ключей — см. tls.json (у Dart шире: + allow_insecure, skip-cert-verify)."
+        "aliases": ["allowInsecure", "allowinsecure", "allow_insecure", "allow-insecure", "skipCertVerify", "skipcertverify", "skip_cert_verify", "skip-cert-verify", "noverify"],
+        "maps_to": "tls.insecure",
+        "desc_en": "Skip server certificate verification.",
+        "desc_ru": "Не проверять сертификат сервера.",
+        "impl": "Семейство ключей — см. tls.json (у Dart шире: + allow_insecure, skip-cert-verify). ЦЕЛЕВОЙ НАБОР ИМЁН — объединение обоих проектов (DRIFT §2(a), общая запись — tls.json /tls/params/insecure): insecure, allowinsecure, allow_insecure, allow-insecure, skipcertverify, skip_cert_verify, skip-cert-verify, noverify; сверка по strings.ToLower со снятием '-'/'_'; истина 1|true|yes единообразно."
       }
     },
     "fragment": "label"
@@ -101,5 +125,69 @@
       "lib/services/parser/json_parsers.dart:839-851",
       "lib/models/node_spec_emit.dart:199-230"
     ]
+  },
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": ["server", "server_port", "password", "network", "tls", "multiplex", "transport", "__dialer"],
+    "fields": {
+      "server": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server address: domain or IP.",
+        "desc_ru": "Адрес сервера: домен или IP.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "server_port": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server port.",
+        "desc_ru": "Порт сервера.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "password": {
+        "type": "string",
+        "required": true,
+        "secret": true,
+        "desc_en": "Account password.",
+        "desc_ru": "Пароль учётной записи.",
+        "impl": "json-тег без omitempty. Секрет."
+      },
+      "network": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Networks this outbound handles.",
+        "desc_ru": "Сети, которые обслуживает этот узел.",
+        "impl": "NetworkList; правило значения — registry/dialer.json, секция common."
+      },
+      "tls": {
+        "type": "ref",
+        "ref": "tls",
+        "desc_en": "TLS settings.",
+        "desc_ru": "Настройки TLS.",
+        "impl": "OutboundTLSOptions; поля — registry/tls.json."
+      },
+      "multiplex": {
+        "type": "ref",
+        "ref": "multiplex",
+        "desc_en": "Stream multiplexing settings.",
+        "desc_ru": "Настройки мультиплексирования потоков.",
+        "impl": "OutboundMultiplexOptions — registry/multiplex.json."
+      },
+      "transport": {
+        "type": "ref",
+        "ref": "transports",
+        "desc_en": "V2Ray transport settings.",
+        "desc_ru": "Настройки транспорта V2Ray.",
+        "impl": "V2RayTransportOptions; варианты по transport.type — registry/transports.json."
+      },
+      "__dialer": {
+        "type": "ref",
+        "ref": "dialer",
+        "inline": true,
+        "desc_en": "Common dialer fields, inlined flat into the body.",
+        "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
+        "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
+      }
+    }
   }
 }

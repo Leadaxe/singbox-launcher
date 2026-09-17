@@ -8,19 +8,27 @@
   "extension": null,
   "uri": {
     "userinfo": {
+      "maps_to": ["username", "password"],
       "meaning": "user:password",
-      "note": "user:pass → username+password. РАЗРЫВ ОДИНОЧНОГО USERINFO (новое, вне §9): naive+https://secret@host — Go кладёт secret в username (node_parser_core.go:366-374), Dart — в password (naive_parser.dart:21-29). Go share-URI при password-без-username пишет пароль в user-слот (конвенция hysteria2) — т.е. Go-эмит Dart прочитает «наоборот». Выровнять на ревью. naive+quic — §9.B1: Dart добавляет (сейчас naive+quic парсит только Go; транспорт запоминается как quic:true + quic_congestion_control:bbr). Dart toUriNaive опускает порт 443 (каноничная форма DuckSoft) и всегда пишет naive+https."
+      "desc_en": "user:password of the account.",
+      "desc_ru": "user:password учётной записи.",
+      "impl": "user:pass → username+password. РАЗРЫВ ОДИНОЧНОГО USERINFO (новое, вне §9): naive+https://secret@host — Go кладёт secret в username (node_parser_core.go:366-374), Dart — в password (naive_parser.dart:21-29). Go share-URI при password-без-username пишет пароль в user-слот (конвенция hysteria2) — т.е. Go-эмит Dart прочитает «наоборот». Выровнять на ревью. naive+quic — §9.B1: Dart добавляет (сейчас naive+quic парсит только Go; транспорт запоминается как quic:true + quic_congestion_control:bbr). Dart toUriNaive опускает порт 443 (каноничная форма DuckSoft) и всегда пишет naive+https."
     },
     "query": {
       "extra-headers": {
         "type": "string",
         "default": null,
-        "note": "URL-encoded «H1: V1\\r\\nH2: V2» → extra_headers map. Имя валидируется по charset де-факто-спеки DuckSoft (подмножество RFC 7230 tchar); битая пара скипается с warning, остальные живут. При эмите ключи сортируются лексикографически (оба проекта)."
+        "maps_to": "extra_headers",
+        "desc_en": "Extra HTTP headers of the request.",
+        "desc_ru": "Дополнительные HTTP-заголовки запроса.",
+        "impl": "URL-encoded «H1: V1\\r\\nH2: V2» → extra_headers map. Имя валидируется по charset де-факто-спеки DuckSoft (подмножество RFC 7230 tchar); битая пара скипается с warning, остальные живут. При эмите ключи сортируются лексикографически (оба проекта)."
       },
       "padding": {
         "type": "bool",
         "default": null,
-        "note": "Нет sing-box-эквивалента — игнорируется с warning в обоих (Go дополнительно удаляет из Query)."
+        "desc_en": "Ignored: sing-box has no naive padding switch.",
+        "desc_ru": "Игнорируется: переключателя набивки у naive в sing-box нет.",
+        "impl": "Нет sing-box-эквивалента — игнорируется с warning в обоих (Go дополнительно удаляет из Query)."
       }
     },
     "fragment": "label"
@@ -50,5 +58,143 @@
       "lib/models/node_spec_emit.dart:371-426",
       "lib/services/parser/json_parsers.dart:797"
     ]
+  },
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": ["server", "server_port", "username", "password", "insecure_concurrency", "extra_headers", "stream_receive_window", "udp_over_tcp", "quic", "quic_congestion_control", "quic_session_receive_window", "tls", "__dialer"],
+    "fields": {
+      "server": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server address: domain or IP.",
+        "desc_ru": "Адрес сервера: домен или IP.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "server_port": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server port.",
+        "desc_ru": "Порт сервера.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "username": {
+        "type": "string",
+        "desc_en": "Account user name.",
+        "desc_ru": "Имя пользователя учётной записи.",
+        "impl": "option/naive.go Username."
+      },
+      "password": {
+        "type": "string",
+        "secret": true,
+        "desc_en": "Account password.",
+        "desc_ru": "Пароль учётной записи.",
+        "impl": "option/naive.go Password. Секрет."
+      },
+      "insecure_concurrency": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "default": 0,
+        "desc_en": "Number of concurrent insecure connections.",
+        "desc_ru": "Число параллельных небезопасных соединений.",
+        "impl": "option/naive.go InsecureConcurrency."
+      },
+      "extra_headers": {
+        "type": "object",
+        "desc_en": "Extra HTTP headers added to requests.",
+        "desc_ru": "Дополнительные HTTP-заголовки в запросах.",
+        "impl": "HTTPHeader, но cronet берёт ТОЛЬКО первое значение каждого ключа — код naive_extra_headers_invalid."
+      },
+      "stream_receive_window": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Receive window of a single stream.",
+        "desc_ru": "Окно приёма одного потока.",
+        "impl": "MemoryBytes: число или строка с суффиксом."
+      },
+      "udp_over_tcp": {
+        "type": "object",
+        "order": ["enabled", "version"],
+        "fields": {
+          "enabled": {
+            "type": "bool",
+            "default": false,
+            "desc_en": "Tunnel UDP over the TCP connection.",
+            "desc_ru": "Передавать UDP внутри TCP-соединения.",
+            "impl": "option/shadowsocks.go UDPOverTCPOptions.Enabled."
+          },
+          "version": {
+            "type": "enum",
+            "values": [1, 2],
+            "on_invalid": {
+              "action": "drop",
+              "code": "type_invalid"
+            },
+            "default": 2,
+            "desc_en": "UDP-over-TCP protocol version.",
+            "desc_ru": "Версия протокола UDP-over-TCP.",
+            "impl": "Ядро принимает и краткую форму — булево вместо объекта; в теле узла пишем объект."
+          }
+        },
+        "desc_en": "UDP-over-TCP settings.",
+        "desc_ru": "Настройки передачи UDP внутри TCP.",
+        "impl": "UDPOverTCPOptions (§1.9): форма — bool ИЛИ объект {enabled,version}."
+      },
+      "quic": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Use QUIC instead of TCP.",
+        "desc_ru": "Использовать QUIC вместо TCP.",
+        "impl": "option/naive.go QUIC."
+      },
+      "quic_congestion_control": {
+        "type": "enum",
+        "values": ["", "bbr", "bbr2", "cubic", "reno"],
+        "normalize": "trim_lower",
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "default": "",
+        "desc_en": "QUIC congestion control algorithm.",
+        "desc_ru": "Алгоритм управления перегрузкой QUIC.",
+        "impl": "Иное значение = ошибка старта."
+      },
+      "quic_session_receive_window": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Receive window of the QUIC session.",
+        "desc_ru": "Окно приёма сессии QUIC.",
+        "impl": "MemoryBytes."
+      },
+      "tls": {
+        "type": "ref",
+        "ref": "tls",
+        "required": true,
+        "desc_en": "TLS settings.",
+        "desc_ru": "Настройки TLS.",
+        "impl": "C.ErrTLSRequired без tls.enabled=true. ПОДМНОЖЕСТВО: cronet читает только enabled/server_name/certificate/certificate_path и блок ech; остальные поля помечены в registry/tls.json как forbidden_for naive с кодом tls_field_unsupported_naive (16 фатальных на старте + 6 молча игнорируемых, CORE_SCHEMA §5). Требует libcronet.* рядом с бинарём — код naive_unavailable."
+      },
+      "__dialer": {
+        "type": "ref",
+        "ref": "dialer",
+        "inline": true,
+        "desc_en": "Common dialer fields, inlined flat into the body.",
+        "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
+        "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
+      }
+    },
+    "build_tag": "with_naive_outbound"
   }
 }
