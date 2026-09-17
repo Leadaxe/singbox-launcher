@@ -955,17 +955,8 @@
   "Custom": {
     "value": "Свой"
   },
-  "Selector -> Active Outbound": {
-    "value": "Селектор -> Активный Outbound"
-  },
   "%d ms": {
     "value": "%d мс"
-  },
-  "%s -> (no active outbound)": {
-    "value": "%s -> (нет активного outbound)"
-  },
-  "%s -> error: %v": {
-    "value": "%s -> ошибка: %v"
   },
   "%s -> %s": {
     "value": "%s -> %s"
@@ -1582,9 +1573,6 @@
   },
   "Storage record (state.json)": {
     "value": "Запись в хранилище (state.json)"
-  },
-  "A manual config_json is set — the URI above is ignored at build time (see the JSON tab).": {
-    "value": "Задан ручной config_json — URI выше при сборке игнорируется (см. вкладку JSON)."
   },
   "Local outbounds: %d · Servers: load failed — %s": {
     "value": "Локальные outbounds: %d · Серверы: ошибка загрузки — %s"
@@ -4543,5 +4531,140 @@
   },
   "idle": {
     "value": "простаивает"
+  },
+  "Advertise this node as an exit node": {
+    "value": "Анонсировать этот узел как выход в интернет"
+  },
+  "Keep local network reachable while using the exit node": {
+    "value": "Не заворачивать локальную сеть в чужой выход"
+  },
+  "Advertise routes": {
+    "value": "Анонс маршрутов"
+  },
+  "ACL tags": {
+    "value": "Теги ACL"
+  },
+  "optional — CIDR list, comma-separated": {
+    "value": "необязательно — список CIDR через запятую"
+  },
+  "optional — tag:name list, comma-separated": {
+    "value": "необязательно — список tag:имя через запятую"
+  },
+  "Advertised routes and exit nodes stay pending until they are approved in the tailnet admin console.": {
+    "value": "Анонсированные маршруты и выход в интернет не заработают, пока их не подтвердят в админке tailnet."
+  },
+  "Not a valid CIDR: %s": {
+    "value": "Не похоже на CIDR: %s"
+  },
+  "Use the exit node checkbox instead of a default route": {
+    "value": "Для маршрута по умолчанию используйте галку «анонсировать как выход»"
+  },
+  "This rule belongs to node %q — edit it in that source's JSON tab.": {
+    "value": "Это правило принадлежит узлу %q — правится на вкладке JSON его источника."
+  },
+  "Origin (raw JSON)": {
+    "value": "Происхождение (сырой JSON)"
+  },
+  "A manual config_json is set — the origin above is ignored at build time (see the JSON tab). Regen from raw rebuilds the node from it.": {
+    "value": "Задан ручной config_json — происхождение выше при сборке игнорируется (см. вкладку JSON). «Regen from raw» пересобирает узел из него."
+  },
+  "Node rule · %s": {
+    "value": "Правило узла · %s"
+  },
+  "View this rule (owned by the node)": {
+    "value": "Посмотреть правило (принадлежит узлу)"
+  },
+  "Endpoints": {
+    "value": "Endpoints"
+  },
+  "Loading…": {
+    "value": "Загрузка…"
+  },
+  "No selector groups in the config.": {
+    "value": "В конфиге нет групп выбора."
+  },
+  "No endpoints in the config.": {
+    "value": "В конфиге нет endpoint'ов."
+  },
+  "error: %v": {
+    "value": "ошибка: %v"
+  },
+  "(no active outbound)": {
+    "value": "(активного узла нет)"
+  },
+  "running": {
+    "value": "работает"
+  },
+  "needs login": {
+    "value": "нужен вход"
+  },
+  "stopped": {
+    "value": "остановлен"
+  },
+  "no state": {
+    "value": "нет состояния"
+  },
+  "No tailnet status for this node yet — the core has not reported it.": {
+    "value": "Статуса tailnet у узла пока нет — ядро его не сообщило."
+  },
+  "Tailnet status stream is not connected.": {
+    "value": "Поток статуса tailnet не подключён."
+  },
+  "stale, %s ago": {
+    "value": "устарел, %s назад"
+  },
+  "State": {
+    "value": "Состояние"
+  },
+  "Open login URL": {
+    "value": "Открыть ссылку входа"
+  },
+  "Auth": {
+    "value": "Вход"
+  },
+  "interactive": {
+    "value": "интерактивный"
+  },
+  "Network": {
+    "value": "Сеть"
+  },
+  "This node": {
+    "value": "Этот узел"
+  },
+  "none": {
+    "value": "нет"
+  },
+  "online": {
+    "value": "в сети"
+  },
+  "offline": {
+    "value": "не в сети"
+  },
+  "Peers (%d online / %d)": {
+    "value": "Пиры (%d в сети / %d)"
+  },
+  "No peers in this tailnet.": {
+    "value": "В этой tailnet нет пиров."
+  },
+  "exit node (in use)": {
+    "value": "выход (используется)"
+  },
+  "exit node": {
+    "value": "выход"
+  },
+  "last seen %s ago": {
+    "value": "был в сети %s назад"
+  },
+  "%ds": {
+    "value": "%d с"
+  },
+  "%dm": {
+    "value": "%d мин"
+  },
+  "%dh": {
+    "value": "%d ч"
+  },
+  "%dd": {
+    "value": "%d д"
   }
 }

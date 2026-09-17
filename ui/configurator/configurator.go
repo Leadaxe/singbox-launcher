@@ -92,6 +92,11 @@ func ShowConfigWizardForMachine(parent fyne.Window, machine services.RemoteDaemo
 	// НА МАШИНЕ), SrsLocalDir — где файл лежит у нас (проверка наличия и
 	// источник для Deploy).
 	tgt.ResourceDir = machine.ResourceDir()
+	// SPEC 122: тот же довод, что у ResourceDir строкой выше — путь резолвит
+	// ядро НА МАШИНЕ, и локальный `<execDir>/bin/tailscale` там не
+	// существует. Без этого узел tailnet уносил на роутер путь с нашего
+	// Mac'а, и состояние оседало в каталоге, созданном от корня роутера.
+	tgt.TailscaleStateDir = machine.TailscaleStateDir()
 	tgt.SrsLocalDir = platform.GetRuleSetsDirFor(
 		core.GetController().FileService.ExecDir, constants.ConfigTargetRemote, machine.ID)
 	// ResourceDir кешируется в реестре при каждом соединении (SPEC 063):
@@ -111,6 +116,11 @@ func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, r
 	if ac == nil {
 		return
 	}
+	// Корень состояния tailnet ставится ЗДЕСЬ, в общей точке обоих входов, а
+	// не у каждого отдельно: у Local он обязан СНЯТЬСЯ, и пустая строка тут
+	// — не забытый случай, а рабочий. Поставь его только в ветке машины —
+	// после возврата на Local локальный конфиг унаследовал бы путь роутера.
+	config.SetTailscaleRemoteStateDirRoot(target.TailscaleStateDir)
 	// If wizard is already open - just focus it and return.
 	// Using RequestFocus() ensures the already-open window is brought
 	// to the foreground without creating a duplicate.

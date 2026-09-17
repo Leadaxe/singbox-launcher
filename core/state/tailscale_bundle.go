@@ -4,18 +4,20 @@
 // # Что это
 //
 // Узел `type: tailscale` сам по себе бесполезен: ядро поднимает tailnet, но
-// ни имена `*.ts.net`, ни адреса `100.64.0.0/10` в него не пойдут, пока рядом
-// не встанут три записи — DNS-сервер MagicDNS, DNS-правило на суффикс и
-// правило маршрута на подсети tailnet. Эти три записи и есть связка.
+// ни имена `*.ts.net`, ни адреса пиров в него не пойдут, пока рядом не
+// встанут три записи — DNS-сервер MagicDNS, DNS-правило на суффикс и правило
+// маршрута `preferred_by` на сам узел. Эти три записи и есть связка.
 //
-// # Почему ОДНО правило маршрута, а не два
+// # Почему маршрут — `preferred_by`, а не литералы (D-120, 16.09.2026)
 //
-// Внутри одного правила sing-box поля соединяются по ИЛИ: правило с
-// `domain_suffix` И `ip_cidr` срабатывает на любом из двух признаков. Разнести
-// их по двум правилам было бы не эквивалентно, а хуже: при FakeIP запрос
-// приходит именем, `ip_cidr` его не матчит, и трафик до tailnet уходит мимо —
-// молча, потому что имя резолвится, а маршрут выбирается не тот. Поэтому
-// норма — ровно одно правило с обоими признаками.
+// Прежняя норма писала в правило `domain_suffix: [.ts.net]` и
+// `ip_cidr: [100.64.0.0/10, fd7a:…/48]` — вслепую, весь CGNAT-диапазон.
+// У ядра есть родной матчер `preferred_by` (route/rule.md, с 1.13.0): для
+// tailscale он матчит «MagicDNS domains and peers' allowed IPs» из ЖИВОГО
+// состояния tailnet. Разница существенная: subnet routes чужих узлов
+// (`accept_routes`) литералы не покрывали — трафик до `192.168.x` за чужим
+// subnet-роутером уходил мимо; матчер их знает. Ядро с `with_tailscale`
+// (lx.31+) знает и матчер — отдельной пробы нет. Правило по-прежнему одно.
 //
 // # Почему связка живёт отдельной функцией
 //
@@ -49,6 +51,16 @@ const (
 	// собирается как `@{self}-dns`: на сборке `@{self}` заменяется финальным
 	// тегом узла, поэтому два узла tailnet своими серверами не сталкиваются.
 	TailscaleDNSTagSuffix = "dns"
+
+	// TailscaleRouteRuleName — имя правила маршрута связки.
+	//
+	// Своё имя вместо автонумерации: «rule 1» не сообщает ничего. `@{self}`
+	// внутри имени подставляется тегом узла, поэтому строка списка называет
+	// себя целиком и не нуждается в дописанном владельце.
+	//
+	// `name` — метаданные записи: в config.json оно не уходит
+	// (nodeSectionRuleFromBody снимает его из тела).
+	TailscaleRouteRuleName = SelfPlaceholderBraced + " tailscale route"
 )
 
 // TailscaleDNSServerTag — тег DNS-сервера канонической связки.
@@ -77,13 +89,19 @@ func TailscaleBundleFragments() SingboxNodeFragments {
 				"server":        dnsTag,
 			}),
 		},
-		// ОДНО правило: внутри правила поля соединяются по ИЛИ, и при FakeIP
-		// один только `ip_cidr` имена бы не поймал (см. шапку файла).
+		// `preferred_by` — родной матчер ядра (route/rule.md, с 1.13.0):
+		// «MagicDNS domains and peers' allowed IPs» из ЖИВОГО состояния
+		// tailnet. Литералы `.ts.net` + `100.64.0.0/10` (прежняя норма)
+		// покрывали только это, а subnet routes чужих узлов (`accept_routes`)
+		// — нет: трафик до `192.168.x` за чужим subnet-роутером уходил мимо.
+		// Ядро, знающее `with_tailscale` (lx.31+), знает и матчер — отдельной
+		// пробы не нужно. Ссылка — `@self`, как у `outbound`: матчер резолвит
+		// тег на старте (`outbound not found` иначе).
 		RouteRules: []json.RawMessage{
 			mustTailscaleFragment(map[string]interface{}{
-				"domain_suffix": []interface{}{TailscaleMagicDNSSuffix},
-				"ip_cidr":       []interface{}{TailscaleCGNATRange, TailscaleCGNATRange6},
-				"outbound":      SelfPlaceholder,
+				"name":         TailscaleRouteRuleName,
+				"preferred_by": []interface{}{SelfPlaceholder},
+				"outbound":     SelfPlaceholder,
 			}),
 		},
 	}

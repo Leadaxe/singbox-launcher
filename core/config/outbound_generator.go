@@ -1067,7 +1067,7 @@ func generateEndpointJSONBare(node *ParsedNode, forConfig bool) (string, error) 
 		endpoint["tag"] = node.Tag
 	}
 	if forConfig {
-		applyTailscaleStateDirectory(endpoint, node.Scheme, node.Tag)
+		applyTailscaleStateDirectory(endpoint, node.Scheme, node.Tag, TailscaleRemoteStateDirRoot())
 	}
 	jsonBytes, err := json.MarshalIndent(endpoint, "", "  ")
 	if err != nil {

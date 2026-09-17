@@ -94,7 +94,21 @@ func NodeSectionsFromSingbox(in SingboxNodeFragments) (*NodeSections, error) {
 	}
 	out.SetDNS(servers, dnsRules)
 
+	// Нумеруются только БЕЗЫМЯННЫЕ правила и только друг относительно друга:
+	// номер существует, чтобы их различать, и правило со своим именем в счёт
+	// не идёт. Поэтому счётчик свой, а не индекс в общем списке: у конфига с
+	// одним безымянным правилом и одним именованным номер не нужен вовсе.
+	unnamed := 0
+	for i, raw := range in.RouteRules {
+		if body, err := nodeSectionFragmentBody(raw, in.NodeTag, "route.rules", i, true); err == nil && body != nil {
+			if name, _ := body["name"].(string); strings.TrimSpace(name) == "" {
+				unnamed++
+			}
+		}
+	}
+
 	num := NodeRuleDefaultNum
+	unnamedSeen := 0
 	for i, raw := range in.RouteRules {
 		body, err := nodeSectionFragmentBody(raw, in.NodeTag, "route.rules", i, true)
 		if err != nil {
@@ -103,7 +117,10 @@ func NodeSectionsFromSingbox(in SingboxNodeFragments) (*NodeSections, error) {
 		if body == nil {
 			continue
 		}
-		rule, err := nodeSectionRuleFromBody(body, i, num)
+		if name, _ := body["name"].(string); strings.TrimSpace(name) == "" {
+			unnamedSeen++
+		}
+		rule, err := nodeSectionRuleFromBody(body, unnamedSeen, unnamed, num)
 		if err != nil {
 			return nil, fmt.Errorf("route.rules[%d]: %w", i, err)
 		}
@@ -126,11 +143,21 @@ func NodeSectionsFromSingbox(in SingboxNodeFragments) (*NodeSections, error) {
 // (`rule_set` — отказ, чужой `@var` — отказ), цели нет ни в каком виде →
 // дописывается `"outbound":"@self"`. Имя — метаданные записи, из тела оно
 // снимается (в конфиг `name` не уходил и раньше).
-func nodeSectionRuleFromBody(body map[string]interface{}, idx, num int) (*Rule, error) {
+// unnamedNo / unnamedTotal — порядковый номер этого правила СРЕДИ БЕЗЫМЯННЫХ
+// и их общее число; для правила со своим именем оба не смотрятся.
+func nodeSectionRuleFromBody(body map[string]interface{}, unnamedNo, unnamedTotal, num int) (*Rule, error) {
 	name, _ := body["name"].(string)
 	named := strings.TrimSpace(name) != ""
 	if !named {
-		name = fmt.Sprintf("%s rule %d", SelfPlaceholderBraced, idx+1)
+		// Номер нужен только чтобы РАЗЛИЧАТЬ безымянные правила одного узла.
+		// У единственного различать нечего, и «#1» там читается как обещание
+		// второго, которого нет, — поэтому номер появляется начиная с двух.
+		// Слово «rule» в списке правил ничего не добавляет, отсюда короткое
+		// `#N`.
+		name = SelfPlaceholderBraced
+		if unnamedTotal > 1 {
+			name = fmt.Sprintf("%s #%d", SelfPlaceholderBraced, unnamedNo)
+		}
 	}
 	out := make(map[string]interface{}, len(body)+1)
 	for k, v := range body {

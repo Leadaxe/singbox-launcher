@@ -58,6 +58,10 @@ type DaemonBackend struct {
 	// (traffic-график по gRPC вместо Clash /connections).
 	connTracker *connTracker
 
+	// tailscale — кеш последнего снимка SubscribeTailscaleStatus (SPEC 130);
+	// стрим держит superviseTailscale.
+	tailscale services.TailscaleStatusCache
+
 	// link — состояние канала к демону для индикатора у «Core Status».
 	// Считается по кадрам статус-стрима: отдельного heartbeat нет, чтобы не
 	// добавлять трафик ради кружка.
@@ -160,6 +164,7 @@ func newDaemonBackend(ac *AppController) (CoreBackend, error) {
 	go b.superviseStatus()
 	go b.superviseLogs()
 	go b.superviseConnections()
+	go b.superviseTailscale()
 	return b, nil
 }
 
@@ -737,30 +742,11 @@ func (t *daemonProxyTransport) GroupProxies(group string) ([]api.ProxyInfo, stri
 	if err != nil {
 		return nil, "", fmt.Errorf("daemon GetGroups: %w", err)
 	}
-	for _, g := range groups.GetGroup() {
-		if g.GetTag() != group {
-			continue
-		}
-		selected := g.GetSelected()
-		proxies := make([]api.ProxyInfo, 0, len(g.GetItems()))
-		for _, item := range g.GetItems() {
-			info := api.ProxyInfo{
-				Name:      item.GetTag(),
-				ClashType: item.GetType(),
-				Delay:     int64(item.GetUrlTestDelay()),
-			}
-			// Проставляем Now для активного узла группы, чтобы Servers-tab
-			// рисовал маркер выбранного (Clash-путь заполняет Now из ответа
-			// /proxies; GetGroups отдаёт выбор только на уровне группы —
-			// разворачиваем его в per-node Now у совпадающего узла).
-			if item.GetTag() == selected {
-				info.Now = selected
-			}
-			proxies = append(proxies, info)
-		}
-		return proxies, selected, nil
+	proxies, selected, ok := services.ProxyInfosFromGroups(groups, group)
+	if !ok {
+		return nil, "", fmt.Errorf("daemon: group %q not found", group)
 	}
-	return nil, "", fmt.Errorf("daemon: group %q not found", group)
+	return proxies, selected, nil
 }
 
 // SwitchProxy implements services.ProxyTransport через SelectOutbound.

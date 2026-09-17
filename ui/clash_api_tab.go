@@ -24,7 +24,6 @@ import (
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
-	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
@@ -1556,57 +1555,19 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		}
 		transport := EffectiveProxyTransportIn(ac, scope)
 
-		// Run queries in background to avoid blocking UI
-		go func() {
-			// Используем актуальный список селекторов из groupSelect или перечитываем из конфига
-			var currentSelectorOptions []string
-			if groupSelect != nil && len(groupSelect.Options) > 0 {
-				// Используем актуальный список из виджета (обновляется через updateSelectorList)
-				currentSelectorOptions = groupSelect.Options
-			} else {
-				// Fallback: перечитываем из конфига, если groupSelect еще не инициализирован
-				updatedOptions, _, err := config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath)
-				if err != nil {
-					if os.IsNotExist(err) {
-						debuglog.DebugLog("clash_api_tab: config.json not present yet (popup): %v", err)
-					} else {
-						debuglog.ErrorLog("clash_api_tab: failed to get selector groups for popup: %v", err)
-					}
-					currentSelectorOptions = selectorOptions // Используем старый список как fallback
-				} else if len(updatedOptions) > 0 {
-					currentSelectorOptions = updatedOptions
-				} else {
-					currentSelectorOptions = selectorOptions // Fallback на старый список
-				}
-			}
+		// Список групп — тот же, что в выпадашке (обновляется через
+		// updateSelectorList); до её инициализации — перечитываем из конфига.
+		currentSelectorOptions := selectorOptions
+		if groupSelect != nil && len(groupSelect.Options) > 0 {
+			currentSelectorOptions = groupSelect.Options
+		} else if updated, _, err := config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath); err == nil && len(updated) > 0 {
+			currentSelectorOptions = updated
+		} else if err != nil && !os.IsNotExist(err) {
+			debuglog.ErrorLog("clash_api_tab: failed to get selector groups for runtime window: %v", err)
+		}
 
-			results := make([]string, 0, len(currentSelectorOptions))
-			for _, sel := range currentSelectorOptions {
-				_, now, err := transport.GroupProxies(sel)
-				if err != nil {
-					results = append(results, locale.Tf("%s -> error: %v", sel, err))
-					continue
-				}
-				if now == "" {
-					results = append(results, locale.Tf("%s -> (no active outbound)", sel))
-				} else {
-					results = append(results, locale.Tf("%s -> %s", sel, textnorm.NormalizeProxyDisplay(now)))
-				}
-			}
-
-			// Show dialog on UI thread
-			fyne.Do(func() {
-				content := container.NewVBox()
-				for _, line := range results {
-					lbl := widget.NewLabel(line)
-					content.Add(lbl)
-				}
-				scroll := container.NewVScroll(content)
-				scroll.SetMinSize(fyne.NewSize(480, 260))
-				dlg := dialogs.NewCustom(locale.T("Selector -> Active Outbound"), scroll, nil, locale.T("Close"), ac.UIService.MainWindow)
-				dlg.Show()
-			})
-		}()
+		// Окно опрашивает ядро само, в фоне (core_runtime_window.go).
+		showCoreRuntimeWindow(ac, scope, transport, currentSelectorOptions)
 	})
 	// subtle importance to avoid visual noise
 	mapButton.Importance = widget.LowImportance

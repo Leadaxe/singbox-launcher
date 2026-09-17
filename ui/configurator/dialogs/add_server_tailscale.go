@@ -17,6 +17,7 @@ package dialogs
 import (
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -32,6 +33,12 @@ import (
 // идентичность машины держит каталог состояния, а не ключ.
 const addServerTailscaleNoteText = "One-off keys are consumed at first login; the node identity then lives in the state directory. Deleting the profile registers a new device — use a reusable key for that."
 
+// addServerTailscaleAdvertiseNoteText — подсказка под блоком анонсов.
+// Нормативна ровно в одном: анонс сам по себе ничего не включает. Ядро шлёт
+// его координатору, а разрешение узел получает в админке tailnet — без этого
+// шага галка выглядит сработавшей, а трафик не идёт.
+const addServerTailscaleAdvertiseNoteText = "Advertised routes and exit nodes stay pending until they are approved in the tailnet admin console."
+
 // tailscaleDefaultTag — тег по умолчанию. Тег обязателен: по нему называется
 // каталог состояния узла, и на него же ссылаются DNS-сервер и правило
 // маршрута из секций.
@@ -39,13 +46,21 @@ const tailscaleDefaultTag = "tailscale"
 
 // tailscaleFields — виджеты варианта.
 type tailscaleFields struct {
-	authKey    *widget.Entry
-	controlURL *widget.Entry
-	hostname   *widget.Entry
-	ephemeral  *widget.Check
-	acceptRts  *widget.Check
-	exitNode   *widget.Entry
-	box        *fyne.Container
+	authKey     *widget.Entry
+	controlURL  *widget.Entry
+	hostname    *widget.Entry
+	ephemeral   *widget.Check
+	acceptRts   *widget.Check
+	exitNode    *widget.Entry
+	exitNodeLAN *widget.Check
+	advExit     *widget.Check
+	advRoutes   *widget.Entry
+	advTags     *widget.Entry
+	box         *fyne.Container
+
+	// exitNodeRow держится отдельно от box, чтобы гасить строку целиком
+	// вместе с её подписью (§ «две роли исключают друг друга» ниже).
+	exitNodeRow *fyne.Container
 }
 
 // buildTailscaleFields собирает блок полей. onChange зовётся на каждую правку
@@ -70,11 +85,32 @@ func buildTailscaleFields(onChange func()) *tailscaleFields {
 	t.hostname = mk(locale.T("optional — this machine's name by default"))
 	t.exitNode = mk(locale.T("optional"))
 
+	t.advRoutes = mk(locale.T("optional — CIDR list, comma-separated"))
+	t.advTags = mk(locale.T("optional — tag:name list, comma-separated"))
+
 	t.ephemeral = widget.NewCheck(locale.T("Ephemeral node (removed from the tailnet when it goes offline)"), func(bool) { onChange() })
 	t.acceptRts = widget.NewCheck(locale.T("Accept routes advertised by other nodes"), func(bool) { onChange() })
+	t.exitNodeLAN = widget.NewCheck(locale.T("Keep local network reachable while using the exit node"), func(bool) { onChange() })
+
+	// Две роли исключают друг друга: ядро отказывается стартовать с
+	// `advertise_exit_node` и непустым `exit_node` разом (protocol/tailscale
+	// /endpoint.go — «cannot advertise an exit node and use an exit node at
+	// the same time»). Проверка живёт в NewEndpoint, то есть `sing-box check`
+	// её не ловит — падает только запуск (ловушка
+	// chain-check-misses-start-errors). Поэтому форма не даёт собрать такую
+	// пару вовсе: галка «быть выходом» гасит строку «пользоваться выходом».
+	t.advExit = widget.NewCheck(locale.T("Advertise this node as an exit node"), func(bool) {
+		t.syncExitRole()
+		onChange()
+	})
 
 	note := widget.NewLabel(locale.T(addServerTailscaleNoteText))
 	note.Wrapping = fyne.TextWrapWord
+
+	advNote := widget.NewLabel(locale.T(addServerTailscaleAdvertiseNoteText))
+	advNote.Wrapping = fyne.TextWrapWord
+
+	t.exitNodeRow = labeledRow(locale.T("Exit node"), t.exitNode)
 
 	t.box = container.NewVBox(
 		labeledRow(locale.T("Auth key"), t.authKey),
@@ -83,10 +119,35 @@ func buildTailscaleFields(onChange func()) *tailscaleFields {
 		labeledRow(locale.T("Hostname"), t.hostname),
 		t.ephemeral,
 		t.acceptRts,
-		labeledRow(locale.T("Exit node"), t.exitNode),
+		widget.NewSeparator(),
+		// Галка-переключатель роли стоит НАД тем, что от неё зависит: скрытые
+		// ею строки лежат ниже, поэтому переключение не двигает саму галку
+		// под курсором — уезжает только хвост формы.
+		t.advExit,
+		labeledRow(locale.T("Advertise routes"), t.advRoutes),
+		labeledRow(locale.T("ACL tags"), t.advTags),
+		t.exitNodeRow,
+		t.exitNodeLAN,
+		advNote,
 	)
+	t.syncExitRole()
 	t.box.Hide()
 	return t
+}
+
+// syncExitRole разводит две роли узла в tailnet, которые ядро вместе не
+// принимает: «быть выходом» (advertise_exit_node) и «пользоваться чужим
+// выходом» (exit_node). Галка гасит строку чужого выхода и её спутника
+// exit_node_allow_lan_access — тот и сам по себе бессмыслен без exit_node:
+// ядро применяет его только внутри ветки `if t.exitNode != ""`.
+func (t *tailscaleFields) syncExitRole() {
+	if t.advExit.Checked {
+		t.exitNodeRow.Hide()
+		t.exitNodeLAN.Hide()
+		return
+	}
+	t.exitNodeRow.Show()
+	t.exitNodeLAN.Show()
 }
 
 // tailscaleDocument собирает документ узла: endpoint плюс секции dns/route.
@@ -117,7 +178,28 @@ func tailscaleDocument(tag string, t *tailscaleFields) ([]byte, error) {
 	if t.acceptRts.Checked {
 		endpoint["accept_routes"] = true
 	}
-	putIfNotEmpty(endpoint, "exit_node", t.exitNode.Text)
+	// Роли взаимоисключающие (см. syncExitRole): на анонсе чужой выход в тело
+	// не пишется, даже если строка осталась заполненной с прошлого состояния
+	// галки.
+	if t.advExit.Checked {
+		endpoint["advertise_exit_node"] = true
+	} else {
+		putIfNotEmpty(endpoint, "exit_node", t.exitNode.Text)
+		if strings.TrimSpace(t.exitNode.Text) != "" && t.exitNodeLAN.Checked {
+			endpoint["exit_node_allow_lan_access"] = true
+		}
+	}
+
+	routes, rerr := parseTailscalePrefixList(t.advRoutes.Text)
+	if rerr != nil {
+		return nil, rerr
+	}
+	if len(routes) > 0 {
+		endpoint["advertise_routes"] = routes
+	}
+	if tags := splitTailscaleList(t.advTags.Text); len(tags) > 0 {
+		endpoint["advertise_tags"] = tags
+	}
 
 	// Связка — не литерал формы: её собирает config.TailscaleBundleFragments,
 	// та же функция, которой голый узел получает связку по умолчанию на
@@ -135,6 +217,46 @@ func tailscaleDocument(tag string, t *tailscaleFields) ([]byte, error) {
 		},
 	}
 	return json.MarshalIndent(doc, "", "  ")
+}
+
+// splitTailscaleList режет список, набранный через запятую или пробелы.
+func splitTailscaleList(text string) []string {
+	fields := strings.FieldsFunc(text, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
+	})
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if f = strings.TrimSpace(f); f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// parseTailscalePrefixList проверяет анонсируемые маршруты под формат ядра.
+//
+// `advertise_routes` — это []netip.Prefix, а не строки: мусор из поля свалил бы
+// разбор всего конфига (ловушка broken-list-pbk-junk). Отдельной проверкой
+// отбивается дефолтный маршрут — ядро на нём отказывается стартовать и само
+// советует галку «быть выходом», но советует уже в рантайме, мимо check.
+//
+// Нормализация — обязательная: netip требует, чтобы биты хоста за префиксом
+// были нулями, поэтому «192.168.10.5/24» ядро отвергнет. Masked() приводит его
+// к «192.168.10.0/24» — ровно то, что пользователь имел в виду.
+func parseTailscalePrefixList(text string) ([]string, error) {
+	items := splitTailscaleList(text)
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		prefix, err := netip.ParsePrefix(item)
+		if err != nil {
+			return nil, fmt.Errorf("%s", locale.Tf("Not a valid CIDR: %s", item))
+		}
+		if prefix.Addr().IsUnspecified() && prefix.Bits() == 0 {
+			return nil, fmt.Errorf("%s", locale.T("Use the exit node checkbox instead of a default route"))
+		}
+		out = append(out, prefix.Masked().String())
+	}
+	return out, nil
 }
 
 // putIfNotEmpty пишет строковое поле, только когда оно заполнено: пустая

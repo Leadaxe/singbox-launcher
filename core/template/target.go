@@ -58,6 +58,13 @@ type TargetSpec struct {
 	// нашей файловой системе, а в конфиг пишется путь чужой. Пусто = local,
 	// проверка идёт по bin/rule-sets/.
 	SrsLocalDir string
+
+	// TailscaleStateDir — корень каталогов состояния tailnet НА
+	// МАШИНЕ-ИСПОЛНИТЕЛЕ (`<state_dir>/tailscale`, SPEC 122). Парное к
+	// ResourceDir по той же причине: путь уезжает в endpoint.state_directory
+	// и резолвится ядром на той стороне, где пути лаунчера не существует.
+	// Пусто = конфиг для этой машины, берётся локальный корень.
+	TailscaleStateDir string
 }
 
 // Значения TargetSpec.Target. Совпадают со слагами: TargetRemote — имя

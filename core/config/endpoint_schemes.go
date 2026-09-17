@@ -52,9 +52,22 @@ const SchemeTailscale = configtypes.SchemeTailscale
 // Пусто = состояние ставить некуда (превью, тесты): поле не подставляется
 // вовсе, и ядро возьмёт свой дефолт. Молча писать относительный путь нельзя
 // — рабочий каталог ядра лаунчеру не принадлежит.
+// tailscaleRemoteStateDirRoot — корень каталогов состояния tailnet НА
+// МАШИНЕ-ИСПОЛНИТЕЛЕ, когда конфиг собирается не для себя
+// (`<state_dir>/tailscale` её демона, SPEC 063/122).
+//
+// Живёт рядом с локальным корнем и переключается вместе с целью Мастера
+// (ShowConfigWizardForMachine ставит, Local — снимает), потому что эмиссия
+// одна и та же для сборки и для превью вкладки JSON: разъедься они, вкладка
+// показывала бы путь, отличный от уехавшего в конфиг.
+//
+// Пусто = собираем для себя, берётся локальный корень. GC каталогов на это
+// НЕ смотрит: он ходит по нашей файловой системе и остаётся на локальном
+// корне всегда — чужой каталог нам не принадлежит.
 var (
-	tailscaleStateDirRoot   string
-	tailscaleStateDirRootMu sync.RWMutex
+	tailscaleStateDirRoot       string
+	tailscaleRemoteStateDirRoot string
+	tailscaleStateDirRootMu     sync.RWMutex
 )
 
 // SetTailscaleStateDirRoot задаёт корень каталогов состояния tailnet.
@@ -71,11 +84,31 @@ func SetTailscaleStateDirRoot(root string) {
 	tailscaleStateDirRootMu.Unlock()
 }
 
-// TailscaleStateDirRoot — текущий корень (для тестов и диагностики).
+// TailscaleStateDirRoot — текущий ЛОКАЛЬНЫЙ корень (для тестов, GC и
+// диагностики).
 func TailscaleStateDirRoot() string {
 	tailscaleStateDirRootMu.RLock()
 	defer tailscaleStateDirRootMu.RUnlock()
 	return tailscaleStateDirRoot
+}
+
+// SetTailscaleRemoteStateDirRoot задаёт корень состояния tailnet на
+// машине-исполнителе. Пустая строка (Local) снимает переопределение.
+//
+// Зовётся при выборе цели Мастера — там же, где ставится ResourceDir: оба
+// поля решают одну задачу, путь чужой машины в конфиг для чужой машины.
+func SetTailscaleRemoteStateDirRoot(root string) {
+	root = strings.TrimSpace(root)
+	tailscaleStateDirRootMu.Lock()
+	tailscaleRemoteStateDirRoot = root
+	tailscaleStateDirRootMu.Unlock()
+}
+
+// TailscaleRemoteStateDirRoot — текущий корень машины-исполнителя.
+func TailscaleRemoteStateDirRoot() string {
+	tailscaleStateDirRootMu.RLock()
+	defer tailscaleStateDirRootMu.RUnlock()
+	return tailscaleRemoteStateDirRoot
 }
 
 // applyTailscaleStateDirectory подставляет state_directory узлу tailnet.
@@ -85,11 +118,24 @@ func TailscaleStateDirRoot() string {
 // каталог `tailscale` относительно рабочего каталога процесса, поэтому два
 // узла tailnet без этого поля сели бы в одно состояние и второй перетёр бы
 // идентичность первого.
-func applyTailscaleStateDirectory(endpoint map[string]interface{}, scheme, tag string) {
+//
+// remoteRoot — корень НА МАШИНЕ-ИСПОЛНИТЕЛЕ (`<state_dir>/tailscale` её
+// демона). Непустой = конфиг собирается для чужой машины, и локальный корень
+// в него писать нельзя: путь резолвит ядро на той стороне, нашего пути там
+// нет. Ядро создало бы его от своего корня, и состояние узла оседало бы в
+// каталоге вида `/Applications/…/bin/tailscale/<тег>` на роутере — рабочем,
+// но абсурдном и сносимом первой же чисткой overlay.
+func applyTailscaleStateDirectory(endpoint map[string]interface{}, scheme, tag, remoteRoot string) {
 	if scheme != SchemeTailscale || endpoint == nil {
 		return
 	}
 	if _, present := endpoint["state_directory"]; present {
+		return
+	}
+	if remoteRoot = strings.TrimSpace(remoteRoot); remoteRoot != "" {
+		// Разделитель "/" литералом: путь ЧУЖОЙ машины, и filepath.Join на
+		// Windows-лаунчере дал бы обратные слэши в пути linux-роутера.
+		endpoint["state_directory"] = strings.TrimRight(remoteRoot, "/") + "/" + sanitizeStateDirName(tag)
 		return
 	}
 	root := TailscaleStateDirRoot()

@@ -247,6 +247,12 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 		addChainSection(ac, body, win, proxy.Name)
 	}
 
+	// Tailnet: состояние, вход, пиры. Только у tailscale-endpoint'а и только
+	// там, где ядро отдаёт статус по gRPC (SPEC 130, addTailscaleSection).
+	if node.Type == configtypes.SchemeTailscale {
+		addTailscaleSection(ac, body, proxy.Name)
+	}
+
 	// TLS-подробности отдельной секцией: их много и они длинные.
 	if tlsRows := tlsInfoRows(node); len(tlsRows) > 0 {
 		body.Add(widget.NewSeparator())

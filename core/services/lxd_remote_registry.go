@@ -598,6 +598,28 @@ func (d RemoteDaemon) ResourceDir() string {
 	return ""
 }
 
+// TailscaleStateDir — корень каталогов состояния tailnet НА ЭТОЙ МАШИНЕ:
+// `<state_dir>/tailscale` (SPEC 122).
+//
+// Парная к ResourceDir и по той же причине: путь резолвит ядро на той
+// стороне, и путь лаунчера там не существует. Без этого в конфиг уезжал
+// локальный `<execDir>/bin/tailscale/<тег>` — на роутере ядро создавало его
+// от корня, и состояние узла оказывалось в каталоге вида
+// `/Applications/…app/Contents/MacOS/bin/tailscale/<тег>`: рабочем, но
+// абсурдном и сносимом первой же чисткой overlay.
+//
+// Разделитель "/" литералом, а не filepath.Join: путь для ЧУЖОЙ машины, и на
+// Windows-лаунчере Join дал бы обратные слэши в пути linux-роутера.
+//
+// Пусто, если state_dir ещё не известен — тогда поле не подставляется вовсе
+// и ядро на той стороне берёт свой дефолт.
+func (d RemoteDaemon) TailscaleStateDir() string {
+	if s := strings.TrimSpace(d.StateDir); s != "" {
+		return s + "/tailscale"
+	}
+	return ""
+}
+
 // Target собирает TargetSpec генерации из записи реестра (SPEC 098 §2.4).
 // Единственный санкционированный способ узнать, под что собирать конфиг
 // машины.

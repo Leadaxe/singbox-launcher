@@ -101,11 +101,16 @@ func buildSingleNodeRuleRow(
 
 	nodeEnabled := wizardmodels.NodeRuleRefNodeEnabled(model, nr)
 
+	// Имя записи уже называет и правило, и узел: `@{self}` в нём подставлен
+	// тегом владельца (nodeRuleDisplayName). Дописывать « · тег» сверху
+	// значило бы печатать тег дважды в одной строке. Владелец остаётся в
+	// tooltip — там он отвечает на другой вопрос: чьё это правило, если имя
+	// у записи своё и тега не содержит.
 	name := nr.Name
 	if strings.TrimSpace(name) == "" {
-		name = locale.T("Node rule")
+		name = locale.Tf("Node rule · %s", nr.NodeTag())
 	}
-	labelText := "🔗 " + name + " · " + nr.NodeTag()
+	labelText := "🔗 " + name
 	label := ttwidget.NewLabel(labelText)
 	label.Wrapping = fyne.TextWrapOff
 	label.Truncation = fyne.TextTruncateEllipsis
@@ -134,12 +139,31 @@ func buildSingleNodeRuleRow(
 	dragHandle := fynewidget.NewDragHandle(dragGroup, slotIdx, rowGetter)
 	setTooltip(dragHandle, locale.T("Drag to reorder"))
 
-	labelTap := newRowLabelToggleTap(label, enableCh)
+	// Открыть правило — и карандашом, и кликом по строке.
+	//
+	// Тумблером клик по строке тут НЕ работает (в отличие от прочих строк
+	// списка): у правила узла нечего править в форме, и единственное, что
+	// строка может показать, — своё тело. Тумблер остаётся кликабельным
+	// своей областью, как всякий widget.Check, и это единственное место
+	// строки, которым он переключается.
+	openView := func() {
+		showNodeRuleViewWindow(
+			wizardmodels.NodeRuleRefRecord(model, nr),
+			labelText,
+			nr.NodeTag(),
+		)
+	}
+	labelTap := fynewidget.NewTapWrap(label, openView)
 
-	// Shared row scaffolding (see row_scaffold.go). Neither edit nor delete:
-	// the node owns these rules.
+	// Карандаш есть, корзины нет: тело принадлежит узлу — смотреть можно,
+	// удалять строку отдельно от узла нельзя (SPEC 121).
+	viewBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DocumentCreateIcon(), openView, rowGetter)
+	viewBtn.Importance = widget.LowImportance
+	setTooltip(viewBtn, locale.T("View this rule (owned by the node)"))
+
+	// Shared row scaffolding (see row_scaffold.go).
 	leftLead := buildRowDragLead(dragHandle, enableCh)
-	rightCluster := container.NewHBox(buildRowEditDelCluster(nil, nil))
+	rightCluster := container.NewHBox(buildRowEditDelCluster(viewBtn, nil))
 	row = finalizeDragRow(rulesBox, dragGroup, slotIdx, leftLead, rightCluster, labelTap, label)
 }
 

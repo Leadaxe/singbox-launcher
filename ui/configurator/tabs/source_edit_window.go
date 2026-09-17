@@ -1376,10 +1376,19 @@ func showSourceEditWindowAt(
 			}
 			settingsContent.Add(widget.NewSeparator())
 			// Подпись по виду происхождения: «Server URI» над блоком
-			// wg-quick врала бы про природу текста (SPEC 119).
+			// wg-quick врала бы про природу текста (SPEC 119). Над JSON она
+			// врёт так же: у узла, рождённого объектом (вставленный конфиг,
+			// конструктор Tailscale — share-URI у него не бывает вовсе),
+			// в поле лежит не URI, и «Regen from raw» пересобирает узел
+			// именно из него.
 			uriLabel := locale.T("Server URI")
-			if scratch.Origin != nil && scratch.Origin.Kind == wizardmodels.OriginKindWGIni {
-				uriLabel = locale.T("Origin (wg-quick config)")
+			if scratch.Origin != nil {
+				switch scratch.Origin.Kind {
+				case wizardmodels.OriginKindWGIni:
+					uriLabel = locale.T("Origin (wg-quick config)")
+				case wizardmodels.OriginKindJSON:
+					uriLabel = locale.T("Origin (raw JSON)")
+				}
 			}
 			// Заголовок и кнопки — ОДНОЙ строкой: Origin занимает всю
 			// оставшуюся высоту, и кнопки под ним уезжали бы за прокрутку.
@@ -1391,10 +1400,12 @@ func showSourceEditWindowAt(
 			uriSizeRect := canvas.NewRectangle(color.Transparent)
 			uriSizeRect.SetMinSize(fyne.NewSize(0, uriEntryMinHeightFor(&scratch)))
 			settingsContent.Add(container.NewStack(uriSizeRect, uriEntry))
-			// Ручной config_json переопределяет URI — без пометки правка URI
-			// «молча не работает» и путает.
+			// Ручной config_json переопределяет происхождение — без пометки
+			// правка «молча не работает» и путает. Текст говорит «origin», а
+			// не «URI»: у JSON-узла в поле выше лежит объект, и звать его URI
+			// значило бы повторить ту же ложь, что и подпись поля.
 			if scratch.Origin != nil && scratch.Origin.Kind == wizardmodels.OriginKindJSON {
-				manualNote := widget.NewLabel(locale.T("A manual config_json is set — the URI above is ignored at build time (see the JSON tab)."))
+				manualNote := widget.NewLabel(locale.T("A manual config_json is set — the origin above is ignored at build time (see the JSON tab). Regen from raw rebuilds the node from it."))
 				manualNote.Wrapping = fyne.TextWrapWord
 				manualNote.Importance = widget.LowImportance
 				settingsContent.Add(manualNote)

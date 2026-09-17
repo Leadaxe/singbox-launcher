@@ -33,11 +33,14 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/subscription"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/ui/components"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
@@ -66,40 +69,50 @@ type AddServerResult struct {
 // ShowAddServerDialog открывает форму ручного добавления источника. onResult
 // получает результат в главном потоке Fyne.
 //
-// owner — окно, которому принадлежит диалог; nil означает главное окно
-// визарда (см. довод у ShowAddWarpDialog, SPEC 116 W6).
+// owner сохранён в сигнатуре ради вызывающих, но роли больше не играет:
+// форма открывается самостоятельным окном, а не попапом поверх чужой канвы,
+// и ошибки показывает на себе.
 func ShowAddServerDialog(presenter *wizardpresentation.WizardPresenter, owner fyne.Window, onResult func(AddServerResult)) {
+	_ = owner
 	guiState := presenter.GUIState()
 	if guiState == nil || guiState.Window == nil || onResult == nil {
 		return
 	}
-	win := guiState.Window
-	if owner != nil {
-		win = owner
-	}
 
 	f := newAddServerForm()
 
-	d := dialog.NewCustomConfirm(
-		locale.T("Add server"),
-		locale.T("Add"),
-		locale.T("Cancel"),
-		f.container,
-		func(ok bool) {
-			if !ok {
-				return
-			}
-			res, err := f.result()
-			if err != nil {
-				dialog.ShowError(err, win)
-				return
-			}
-			onResult(res)
-		},
-		win,
-	)
-	d.Resize(fyne.NewSize(640, 680))
-	d.Show()
+	// Отдельное окно (Application.NewWindow), а НЕ модальный попап — тот же
+	// довод, что у warp_dialog и preset_ref_edit: попап Fyne подтягивает
+	// размер до Content.MinSize() и игнорирует Resize() как потолок, поэтому
+	// высокая форма либо раздувает окно, либо вылезает за край без скролла.
+	// Форма здесь высокая и растёт (вариант Tailscale — полтора десятка
+	// строк), так что попап ей не подходит по устройству.
+	controller := presenter.Controller()
+	if controller == nil || controller.UIService == nil || controller.UIService.Application == nil {
+		return
+	}
+	addWindow := controller.UIService.Application.NewWindow(locale.T("Add server"))
+
+	submit := func() {
+		res, err := f.result()
+		if err != nil {
+			dialog.ShowError(err, addWindow)
+			return
+		}
+		addWindow.Close()
+		onResult(res)
+	}
+
+	cancelButton := widget.NewButton(locale.T("Cancel"), func() { addWindow.Close() })
+	addButton := widget.NewButton(locale.T("Add"), submit)
+	addButton.Importance = widget.HighImportance
+	buttons := container.NewHBox(layout.NewSpacer(), cancelButton, addButton)
+
+	addWindow.SetContent(container.NewBorder(nil, buttons, nil, nil, f.container))
+	addWindow.Resize(fyne.NewSize(640, 680))
+	fynewidget.CenterOnScreen(addWindow)
+	addWindow.SetCloseIntercept(func() { addWindow.Close() })
+	addWindow.Show()
 }
 
 // addServerForm — состояние формы.
@@ -176,7 +189,11 @@ func newAddServerForm() *addServerForm {
 	tagNote.Wrapping = fyne.TextWrapWord
 
 	f.buildParamsTab()
-	f.formsScroll = container.NewScroll(container.NewVBox(f.fieldsBox, f.wgBox, f.ts.box))
+	// Gutter под вертикальной полосой — канонический паттерн проекта
+	// (components.WrapInScrollWithGutter): Fyne рисует полосу ПОВЕРХ вьюпорта,
+	// и без зарезервированной полосы справа она наезжает на правый край полей.
+	// Заметнее всего на длинных строках варианта Tailscale.
+	f.formsScroll = components.WrapInScrollWithGutter(container.NewVBox(f.fieldsBox, f.wgBox, f.ts.box))
 	f.buildJSONTab()
 
 	tabs := container.NewAppTabs(
