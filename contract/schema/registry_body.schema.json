@@ -6,7 +6,7 @@
   "type": "object",
   "definitions": {
     "fieldType": {
-      "description": "Словарь типов поля — SPEC 131 §4.",
+      "description": "Словарь типов поля — SPEC 131 §4, плюс два типа из W2c (awg_range, int_array): оба описывают форму ЯДРА, которую словарь §4 не выражал, и без них санитайзер снимал валидные поля рабочих AWG-узлов.",
       "enum": [
         "string",
         "int",
@@ -18,12 +18,15 @@
         "object",
         "enum",
         "ref",
-        "array"
+        "array",
+        "awg_range",
+        "int_array"
       ]
     },
     "format": {
       "description": "Формат значения; ставится только там, где он очевиден из структур ядра.",
-      "enum": ["uuid", "hex", "base64", "host", "port", "ipv4", "cidr"]
+      "enum": ["uuid", "hex", "base64", "host", "port", "ipv4", "cidr",
+        "url_path"]
     },
     "relation": {
       "description": "Связь поля с другим полем: путь в теле плюс код предупреждения.",

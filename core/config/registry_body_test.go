@@ -51,6 +51,19 @@ var registryFieldTypes = map[string]bool{
 	"enum":            true,
 	"ref":             true,
 	"array":           true,
+	// SPEC 131 W2c: два типа сверх словаря §4, оба — форма ЯДРА, а не
+	// выдумка кода.
+	//
+	// awg_range — AWGRange форка (option/wireguard_awg.go): число ИЛИ строка
+	// "min-max", ядро принимает обе формы (проверено `sing-box check` на
+	// 1.14.1-lx.4). Пока эти поля стояли как "string", санитайзер снимал у
+	// них числовую форму — то есть ровно ту, которой их пишут парсеры, — и
+	// AWG-узел терял всю обфускацию h1..h4 молча.
+	//
+	// int_array — []uint8 из трёх байт (peers[].reserved, Cloudflare WARP);
+	// string_array ронял поле целиком.
+	"awg_range": true,
+	"int_array": true,
 }
 
 // registryNormalizeModes — допустимые значения normalize.
@@ -82,6 +95,10 @@ var registryPendingCodes = map[string]bool{
 var registryFieldFormats = map[string]bool{
 	"uuid": true, "hex": true, "base64": true, "host": true,
 	"port": true, "ipv4": true, "cidr": true,
+	// SPEC 131 W2c: путь, который ядро разбирает через url.Parse
+	// (ws/httpupgrade/http). Битое percent-кодирование там = «invalid URL
+	// escape» и отказ ВСЕГО конфига, а не одного узла.
+	"url_path": true,
 }
 
 // bodyField — поле схемы тела. Разбирается лениво: вложенность описывается

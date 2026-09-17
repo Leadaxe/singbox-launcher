@@ -12,6 +12,13 @@
 //     уронил бы конфиг;
 //   - неизвестные ключи — ядро отвергает unknown field на всём конфиге,
 //     а карта tls приходит и от URI-парсеров, и от чужого JSON.
+//
+// SPEC 131 W2c: фильтр TLS-полей naive отсюда СНЯТ — те же 25 запретов живут
+// в реестре (`forbidden_for: ["naive"]`, код tls_field_unsupported_naive), и
+// санитайзер снимает их ДО эмиссии, с кодом на узле. Здесь они снимались
+// молча, в debuglog, — пользователь видел узел без сертификата и не знал
+// почему (LxBox #140). Сам файл остаётся живым для путей, которые тела через
+// конвейер не получают: цепочки, превью вкладки JSON и legacy-подпись.
 package config
 
 import (
@@ -24,21 +31,10 @@ import (
 	"singbox-launcher/internal/debuglog"
 )
 
-// naiveTLSKeys — единственные TLS-поля, которые ядро читает у naive
-// (protocol/naive/outbound.go NewOutbound): всё остальное — disable_sni,
-// insecure, alpn, версии, cipher_suites, curve_preferences, client_*,
-// fragment, kernel_*, utls, reality — ядро отвергает фаталом на ВЕСЬ конфиг,
-// а certificate_public_key_sha256 молча не применяет (пиннинг, которого
-// нет). Режем здесь, а не в санитайзере импорта: эмиттер — последний рубеж
-// и для URI-, и для JSON-пути. Норма §22 TASKS_LXBOX, паритет с LxBox.
-var naiveTLSKeys = map[string]struct{}{
-	"enabled": {}, "server_name": {}, "certificate": {}, "certificate_path": {},
-}
-
-// emitOutboundTLSJSON строит `{...}` для tls узла схемы scheme. Второе
+// emitOutboundTLSJSON строит `{...}` для tls узла. Второе
 // значение false — блок опускается целиком (нет карты или enabled:false,
 // SPEC 045).
-func emitOutboundTLSJSON(scheme string, outbound map[string]interface{}) (string, bool) {
+func emitOutboundTLSJSON(outbound map[string]interface{}) (string, bool) {
 	if outbound == nil {
 		return "", false
 	}
@@ -54,18 +50,6 @@ func emitOutboundTLSJSON(scheme string, outbound map[string]interface{}) (string
 		// SPEC 045). Backstop for nodes that reach the generator without
 		// going through the URI parsers.
 		return "", false
-	}
-
-	if scheme == "naive" {
-		filtered := make(map[string]interface{}, len(naiveTLSKeys))
-		for k, v := range tlsData {
-			if _, keep := naiveTLSKeys[k]; keep {
-				filtered[k] = v
-			} else {
-				debuglog.WarnLog("Generator: naive %q: tls.%s is not supported by the core — dropped", mapStringValue(outbound, "tag"), k)
-			}
-		}
-		tlsData = filtered
 	}
 
 	var parts []string
@@ -160,17 +144,15 @@ func emitOutboundTLSJSON(scheme string, outbound map[string]interface{}) (string
 		// ошибка загрузки ВСЕГО конфига, поэтому мусор не эмитится (узел
 		// живёт без поля), а не передаётся дальше.
 		//
-		// D-121: поле знает только ядро ≥ 1.14.1-lx.4. На старом ядре ключ
-		// НЕИЗВЕСТЕН, а неизвестный ключ — тоже отказ всего конфига, поэтому
-		// гейт по версии стоит перед enum'ом. Гейт полевой: узел остаётся
-		// REALITY и берёт обмен ключами из uTLS-отпечатка.
+		// D-121: поле знает только ядро >= 1.14.1-lx.4, и на старом ядре
+		// неизвестный ключ — отказ всего конфига. Гейт по ВЕРСИИ отсюда снят
+		// (SPEC 131 W2c): он табличный и живёт на сборке, по записи
+		// `min_core` в registry/tls.json (node_build_gate.go). Здесь остаётся
+		// только закрытый enum ядра — мусор не эмитится, узел живёт без поля.
 		if keyShare, ok := reality["key_share"].(string); ok && keyShare != "" {
-			switch {
-			case !coreSupportsRealityKeyShare():
-				debuglog.WarnLog("Generator: %q: core is older than 1.14.1-lx.4 — tls.reality.key_share %q omitted, node stays REALITY", mapStringValue(outbound, "tag"), keyShare)
-			case keyShare == "hybrid" || keyShare == "classical":
+			if keyShare == "hybrid" || keyShare == "classical" {
 				realityParts = append(realityParts, fmt.Sprintf(`"key_share":%s`, marshalJSONString(keyShare)))
-			default:
+			} else {
 				debuglog.WarnLog("Generator: %q: tls.reality.key_share %q is not hybrid/classical — dropped", mapStringValue(outbound, "tag"), keyShare)
 			}
 		}

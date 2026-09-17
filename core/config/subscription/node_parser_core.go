@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/textnorm"
 )
@@ -42,8 +43,33 @@ func IsDirectLink(input string) bool {
 		strings.HasPrefix(trimmed, "proxy+https://")
 }
 
-// MaxURILength defines the maximum allowed length for a proxy URI
-const MaxURILength = 8192 // 8 KB - reasonable limit for proxy URIs
+// MaxURILength — предел длины share-URI, из реестра контракта
+// (registry/limits.json, max_uri_length), а не из константы кода.
+//
+// До SPEC 131 W2c Go держал 8192 против канонических 65536 у LxBox
+// (ловушка Л18): длинная, но полностью валидная ссылка — Amnezia с
+// контейнером, MASQUE с ключами — отбивалась на десктопе кодом uri_too_long
+// и принималась на мобиле. Расхождение стояло в САМОМ НАЧАЛЕ конвейера, до
+// всякого санитайза, и никакое правило реестра до такой ссылки не доезжало.
+//
+// var, а не const: значение читается с загрузкой реестра. Реестр вшит в
+// бинарь, поэтому промах возможен лишь при порче сборки — там остаётся
+// прежний потолок, чтобы разбор ссылок не остался вовсе без предела.
+var MaxURILength = maxURILengthFromRegistry()
+
+// maxURILengthDefault — запасной предел, если реестр не прочитался.
+const maxURILengthDefault = 65536
+
+func maxURILengthFromRegistry() int {
+	reg, err := registry.Get()
+	if err != nil {
+		return maxURILengthDefault
+	}
+	if n, ok := reg.LimitInt("max_uri_length"); ok && n > 0 {
+		return n
+	}
+	return maxURILengthDefault
+}
 
 // percentEncodeUserinfoSpaces percent-encodes raw spaces inside the userinfo
 // segment of a proxy URI (between "://" and the authority's '@').

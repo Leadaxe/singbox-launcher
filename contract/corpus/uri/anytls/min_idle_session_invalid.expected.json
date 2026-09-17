@@ -19,7 +19,9 @@
       "label": "at-bad-idle",
       "scheme": "anytls",
       "warnings": [
-        "anytls_min_idle_invalid"
+        {
+          "code": "anytls_min_idle_invalid"
+        }
       ]
     }
   ],

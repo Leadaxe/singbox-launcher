@@ -29,6 +29,7 @@ func init() {
 	state.SetMigrationHooks(state.MigrationHooks{
 		MaterializeSubscription: materializeSubscriptionForMigration,
 		MaterializeServer:       materializeServerForMigration,
+		SanitizeBody:            sanitizeStoredNodeBody,
 	})
 }
 
@@ -190,9 +191,9 @@ func canonicalNodeFromEntry(subID string, e *subscription.ParsedBodyEntry) (stat
 		}, nil
 	}
 
-	bodyJSON, emitErr := emitMigrationBody(e.Node)
-	if emitErr != nil {
-		return state.Node{}, emitErr
+	bodyJSON, warns, drop := materializeParsedNodeBody(e.Node)
+	if drop != nil {
+		return state.Node{}, fmt.Errorf("%s", dropReason(drop))
 	}
 	return state.Node{
 		Kind:    state.SourceKindServer,
@@ -203,7 +204,8 @@ func canonicalNodeFromEntry(subID string, e *subscription.ParsedBodyEntry) (stat
 		// Коды разбора едут с узлом (SPEC 131 W2b, шов Л1): до этого они
 		// доживали до записи и молча терялись здесь. SubUpdateStatus.Warnings
 		// не трогаем — это сводка по ИСТОЧНИКУ, другая сущность (Л15).
-		Warnings: stateWarnings(e.Node.Warnings),
+		// Набор — парсерные коды плюс санитайзерные, в этом порядке (W2c).
+		Warnings: stateWarnings(warns),
 	}, nil
 }
 
@@ -217,20 +219,21 @@ func materializeServerForMigration(req state.MigrationServerRequest) (*state.Mig
 		if err != nil {
 			return nil, fmt.Errorf("manual config_json: %w", err)
 		}
-		body, err := stripTagAndDetour(req.ConfigJSON)
-		if err != nil {
-			return nil, fmt.Errorf("manual config_json: %w", err)
+		// Ручной объект идёт ТЕМ ЖЕ конвейером, что и ссылка (ловушка Л2):
+		// до W2c он ехал в тело дословно через stripTagAndDetour, и
+		// вставленный мусор валил `sing-box check` на ВСЁМ конфиге. Схема
+		// определяется по "type" тела (обратная карта реестра), а `tag` и
+		// `detour` снимает сам санитайзер — они managed-ключи сборки.
+		body, warns, drop := materializeParsedNodeBody(node)
+		if drop != nil {
+			return nil, fmt.Errorf("manual config_json: %s", dropReason(drop))
 		}
-		// Warnings у ручного JSON пусты намеренно: эта ветка идёт мимо
-		// парсеров схем (stripTagAndDetour вместо эмиттера), и кодов ей
-		// сегодня ставить нечем. Санитайзер реестра, который их посчитает,
-		// встаёт сюда волной W2c — до тех пор узел из ручного JSON честно
-		// «не считан», а не «чист».
 		return &state.MigrationServerResult{
 			Body:       body,
 			OriginKind: state.OriginKindJSON,
 			OriginRaw:  string(req.ConfigJSON),
 			LegacyHash: LegacyNodeIdentityHash(node),
+			Warnings:   stateWarnings(warns),
 		}, nil
 	}
 
@@ -255,16 +258,16 @@ func materializeServerForMigration(req state.MigrationServerRequest) (*state.Mig
 	if node == nil {
 		return nil, fmt.Errorf("URI parsed to no node")
 	}
-	body, err := emitMigrationBody(node)
-	if err != nil {
-		return nil, err
+	body, warns, drop := materializeParsedNodeBody(node)
+	if drop != nil {
+		return nil, fmt.Errorf("%s", dropReason(drop))
 	}
 	return &state.MigrationServerResult{
 		Body:       body,
 		OriginKind: state.OriginKindURI,
 		OriginRaw:  req.URI, // байт в байт, как хранился
 		LegacyHash: LegacyNodeIdentityHash(node),
-		Warnings:   stateWarnings(node.Warnings),
+		Warnings:   stateWarnings(warns),
 	}, nil
 }
 
@@ -289,34 +292,33 @@ func materializeWGConfBlock(blocks []string) (*state.MigrationServerResult, erro
 	if node == nil {
 		return nil, fmt.Errorf("wg-quick block parsed to no node")
 	}
-	body, err := emitMigrationBody(node)
-	if err != nil {
-		return nil, err
+	body, warns, drop := materializeParsedNodeBody(node)
+	if drop != nil {
+		return nil, fmt.Errorf("wg-quick block: %s", dropReason(drop))
 	}
 	return &state.MigrationServerResult{
 		Body:       body,
 		OriginKind: state.OriginKindWGIni,
 		OriginRaw:  raw, // блок байт в байт, а не выведенный из него URI
 		LegacyHash: LegacyNodeIdentityHash(node),
-		Warnings:   stateWarnings(node.Warnings),
+		Warnings:   stateWarnings(warns),
 	}, nil
 }
 
-// emitMigrationBody — канонический body узла: эмиссия существующим
-// эмиттером (endpoint-схемы — endpoint-эмиттером, SPEC 101/122) и зачистка
-// tag/detour — body чист от detour (SPEC Т2), тег живёт в Node.Tag.
+// emitMigrationBody — канонический body узла через конвейер (SPEC 131 W2c):
+// санитайзер реестра + тупой эмиттер. Тело чисто от tag/detour — их владелец
+// модель узла (SPEC Т2), — а `type` стоит первым ключом, как и раньше.
+//
+// Коды отбрасываются: у этой обёртки их некуда деть, а вызывающие, которым
+// они нужны, зовут materializeParsedNodeBody напрямую. Отказ санитайзера —
+// ошибка эмиссии для вызывающего: узел, тело которого ядро отвергнет
+// фаталом, до state доехать не должен.
 func emitMigrationBody(node *configtypes.ParsedNode) (json.RawMessage, error) {
-	var emitted string
-	var err error
-	if IsEndpointScheme(node.Scheme) {
-		emitted, err = GenerateEndpointJSONBare(node)
-	} else {
-		emitted, err = GenerateNodeJSONBare(node)
+	body, _, drop := materializeParsedNodeBody(node)
+	if drop != nil {
+		return nil, fmt.Errorf("%s", dropReason(drop))
 	}
-	if err != nil {
-		return nil, err
-	}
-	return stripTagAndDetour(json.RawMessage(emitted))
+	return body, nil
 }
 
 // stripTagAndDetour убирает из outbound-объекта ключи tag и detour,

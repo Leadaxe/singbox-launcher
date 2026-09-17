@@ -94,8 +94,11 @@ func relayNodesFromEntry(
 		if hop.Scheme == configtypes.SchemeGroup {
 			continue
 		}
-		body, err := emitMigrationBody(hop)
-		if err != nil {
+		// Тело релея — тем же конвейером, что у всякого узла (SPEC 131 W2c,
+		// ловушка Л25): третье место рождения Body перестало быть третьим
+		// набором правил. Коды — парсерные плюс санитайзерные, как везде.
+		body, hopWarns, drop := materializeParsedNodeBody(hop)
+		if drop != nil {
 			// Релей не собрался — маршрут строится по ОСТАВШИМСЯ, а если не
 			// осталось никого, владелец идёт напрямую без detour. Это честнее
 			// ссылки в никуда: прямой путь может не работать, но fail-closed
@@ -104,7 +107,7 @@ func relayNodesFromEntry(
 			continue
 		}
 		bodies = append(bodies, body)
-		warns = append(warns, stateWarnings(hop.Warnings))
+		warns = append(warns, stateWarnings(hopWarns))
 	}
 	if len(bodies) == 0 {
 		return nil, nil

@@ -178,6 +178,14 @@ type Registry struct {
 	lists    map[string][]string
 	mapsTo   map[string]map[string][]string
 	schemes  []string
+	// singboxTypes — schema → тип узла в config.json ("ss" → "shadowsocks").
+	// Тип пишет СБОРКА, а не тело (см. buildManagedKeys в nodeflow), поэтому
+	// материализация тела берёт его отсюда, а не из входной карты: иначе
+	// ручной JSON диктовал бы имя типа сам.
+	singboxTypes map[string]string
+	// schemeByType — обратная карта для входа «ручной JSON-объект»: у него
+	// схемы нет, есть только "type" тела.
+	schemeByType map[string]string
 }
 
 // protocolFiles — схемы протоколов реестра. Список явный: embed.FS читается
@@ -229,20 +237,30 @@ func Load() (*Registry, error) {
 	}
 
 	reg := &Registry{
-		bodies:   make(map[string]*BodySchema, len(protocolFiles)),
-		warnings: map[string]*WarningEntry{},
-		limits:   map[string]Limit{},
-		lists:    map[string][]string{},
-		mapsTo:   map[string]map[string][]string{},
+		bodies:       make(map[string]*BodySchema, len(protocolFiles)),
+		warnings:     map[string]*WarningEntry{},
+		limits:       map[string]Limit{},
+		lists:        map[string][]string{},
+		mapsTo:       map[string]map[string][]string{},
+		singboxTypes: map[string]string{},
+		schemeByType: map[string]string{},
 	}
 
-	for _, scheme := range protocolFiles {
-		f, err := readFile("protocols/" + scheme + ".json")
+	for _, name := range protocolFiles {
+		f, err := readFile("protocols/" + name + ".json")
 		if err != nil {
 			return nil, err
 		}
 		if f.Body == nil {
-			return nil, fmt.Errorf("registry: protocols/%s.json: нет секции body", scheme)
+			return nil, fmt.Errorf("registry: protocols/%s.json: нет секции body", name)
+		}
+		// Схема зовётся так, как объявлено ВНУТРИ файла, а не как назван
+		// файл: shadowsocks.json несёт scheme "ss", и раздача по имени файла
+		// оставляла бы половину лаунчера без правил (ss, socks5, wg, awg —
+		// живые схемы парсеров). Алиасы ведут на ту же схему тела.
+		scheme := strings.TrimSpace(schemeNameOf(f.Raw))
+		if scheme == "" {
+			scheme = name
 		}
 		body, err := resolveSection(scheme, f.Body, subs)
 		if err != nil {
@@ -251,6 +269,28 @@ func Load() (*Registry, error) {
 		reg.bodies[scheme] = body
 		reg.schemes = append(reg.schemes, scheme)
 		reg.mapsTo[scheme] = collectMapsTo(f.Raw)
+		sbType := strings.TrimSpace(rawString(f.Raw, "singbox_type"))
+		if sbType != "" && !strings.Contains(sbType, "|") {
+			reg.singboxTypes[scheme] = sbType
+			reg.schemeByType[sbType] = scheme
+		}
+		// Имя файла и singbox_type тоже ведут на схему: реестр адресуют и по
+		// схеме лаунчера ("ss"), и по типу ядра ("shadowsocks").
+		aliases := append([]string{name, sbType}, rawStringSlice(f.Raw, "aliases")...)
+		for _, alias := range aliases {
+			alias = strings.TrimSpace(alias)
+			if alias == "" || alias == scheme {
+				continue
+			}
+			if _, taken := reg.bodies[alias]; taken {
+				continue
+			}
+			reg.bodies[alias] = body
+			reg.mapsTo[alias] = reg.mapsTo[scheme]
+			if sbType != "" {
+				reg.singboxTypes[alias] = sbType
+			}
+		}
 	}
 
 	// Общие суб-схемы дают maps_to тоже (tls.json, transports.json).
@@ -516,10 +556,53 @@ func collectMapsTo(raw map[string]json.RawMessage) map[string][]string {
 	return out
 }
 
+// schemeNameOf — имя схемы, объявленное в файле реестра.
+func schemeNameOf(raw map[string]json.RawMessage) string {
+	return rawString(raw, "scheme")
+}
+
+func rawString(raw map[string]json.RawMessage, key string) string {
+	b, ok := raw[key]
+	if !ok {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return ""
+	}
+	return s
+}
+
+func rawStringSlice(raw map[string]json.RawMessage, key string) []string {
+	b, ok := raw[key]
+	if !ok {
+		return nil
+	}
+	var out []string
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil
+	}
+	return out
+}
+
 // Body возвращает разрешённую схему тела схемы протокола.
 func (r *Registry) Body(scheme string) (*BodySchema, bool) {
 	b, ok := r.bodies[scheme]
 	return b, ok
+}
+
+// SingboxType — значение ключа "type" в config.json для этой схемы
+// ("ss" → "shadowsocks"). Пустая строка = схема реестру неизвестна либо у
+// неё несколько типов (группы: selector|urltest).
+func (r *Registry) SingboxType(scheme string) string {
+	return r.singboxTypes[scheme]
+}
+
+// SchemeForSingboxType — обратное направление, для входа «ручной
+// JSON-объект»: схемы у него нет, есть только "type" в теле.
+func (r *Registry) SchemeForSingboxType(t string) (string, bool) {
+	s, ok := r.schemeByType[strings.ToLower(strings.TrimSpace(t))]
+	return s, ok
 }
 
 // Schemes — схемы реестра в порядке загрузки (алфавитном).

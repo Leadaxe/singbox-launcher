@@ -178,12 +178,30 @@ func TestSanitizeEmit(t *testing.T) {
 		},
 		{
 			// Секрет в warnings не светится (CANON §6).
-			name:   "vless/секрет-маскируется-в-warning",
+			//
+			// Схема — tuic, а не vless: у tuic ядро разбирает uuid строго
+			// (`invalid uuid: incorrect UUID length` на весь конфиг), а vless
+			// мусорную строку ПРИНИМАЕТ, хешируя её (DRIFT §(t), проверено
+			// `sing-box check` на 1.14.1-lx.4) — там формат остался
+			// документацией и поле не снимается.
+			name:   "tuic/секрет-маскируется-в-warning",
+			scheme: "tuic",
+			in: `{"server":"a.e.com","server_port":443,"uuid":"не-uuid",` +
+				`"tls":{"enabled":true,"server_name":"a.e.com"}}`,
+			want: `{"server":"a.e.com","server_port":443,"tls":{"enabled":true,"server_name":"a.e.com"}}`,
+			// Один код на одно поле: причину назвало правило значения, и
+			// «а ещё поля нет» было бы тем же фактом во второй раз. Отказ
+			// по узлу при этом остаётся — обязательного uuid у тела нет.
+			codes: []string{"type_invalid"},
+			drop:  "type_invalid",
+		},
+		{
+			// Обратная сторона той же пары: у vless мусорный uuid остаётся
+			// в теле и кода не даёт — ядро такой узел собирает.
+			name:   "vless/мусорный-uuid-остаётся",
 			scheme: "vless",
 			in:     `{"server":"a.e.com","server_port":443,"uuid":"не-uuid"}`,
-			want:   `{"server":"a.e.com","server_port":443}`,
-			codes:  []string{"type_invalid", "field_missing"},
-			drop:   "field_missing",
+			want:   `{"server":"a.e.com","server_port":443,"uuid":"не-uuid"}`,
 		},
 	}
 

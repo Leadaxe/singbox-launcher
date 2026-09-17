@@ -19,7 +19,9 @@
       "label": "pe-junk",
       "scheme": "vless",
       "warnings": [
-        "packet_encoding_unknown"
+        {
+          "code": "packet_encoding_unknown"
+        }
       ]
     }
   ],

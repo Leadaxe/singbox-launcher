@@ -393,10 +393,11 @@
           },
           "path": {
             "type": "string",
+          "format": "url_path",
             "default": "/",
             "desc_en": "Request path.",
             "desc_ru": "Путь запроса.",
-            "impl": "Ведущий «/» дописывается ядром."
+            "impl": "Ведущий «/» дописывается ядром. Путь разбирается url.Parse: битое percent-кодирование («/x%zz») = «invalid URL escape» и отказ ВСЕГО конфига (проверено `sing-box check` на 1.14.0-lx.39). Отсюда format url_path — SPEC 131 W2c."
           },
           "method": {
             "type": "string",
@@ -430,10 +431,11 @@
         "fields": {
           "path": {
             "type": "string",
+          "format": "url_path",
             "default": "/",
             "desc_en": "WebSocket request path.",
             "desc_ru": "Путь запроса WebSocket.",
-            "impl": "Хвост «?ed=N» из Xray-ссылок в путь не пишется: он разбирается в max_early_data + early_data_header_name (issue #96)."
+            "impl": "Хвост «?ed=N» из Xray-ссылок в путь не пишется: он разбирается в max_early_data + early_data_header_name (issue #96). Путь разбирается url.Parse: битое percent-кодирование («/x%zz») = «invalid URL escape» и отказ ВСЕГО конфига (проверено `sing-box check` на 1.14.0-lx.39). Отсюда format url_path — SPEC 131 W2c."
           },
           "headers": {
             "type": "object",
@@ -508,10 +510,11 @@
           },
           "path": {
             "type": "string",
+          "format": "url_path",
             "default": "/",
             "desc_en": "Request path.",
             "desc_ru": "Путь запроса.",
-            "impl": "option/v2ray_transport.go V2RayHTTPUpgradeOptions.Path."
+            "impl": "option/v2ray_transport.go V2RayHTTPUpgradeOptions.Path. Путь разбирается url.Parse: битое percent-кодирование («/x%zz») = «invalid URL escape» и отказ ВСЕГО конфига (проверено `sing-box check` на 1.14.0-lx.39). Отсюда format url_path — SPEC 131 W2c."
           },
           "headers": {
             "type": "object",
@@ -697,15 +700,9 @@
               "code": "xhttp_param_reset"
             },
             "default": "auto",
-            "conflicts": [
-              {
-                "with": "transport.mode",
-                "code": "field_conflict"
-              }
-            ],
             "desc_en": "Where uplink data is carried.",
             "desc_ru": "Где передаются данные исходящего потока.",
-            "impl": "header и cookie допустимы ТОЛЬКО при mode=packet-up, иначе ошибка старта (transport/v2rayxhttp/meta.go:117); конфликт разрешается в пользу mode."
+            "impl": "header и cookie допустимы ТОЛЬКО при mode=packet-up, иначе ошибка старта (transport/v2rayxhttp/meta.go:117); конфликт разрешается в пользу mode. Правило УСЛОВНОЕ по ЗНАЧЕНИЮ соседа, а conflicts/forbidden_when его не выражают (у Relation нет сравнения значения): безусловный conflicts с transport.mode убивал рабочую пару packet-up+header (кейс uri/vless/xhttp_extra_empty_mode_keeps_flat). До появления value-условия правило живёт в маппере (xhttpGuardUplinkPlacement, node_parser_transport.go:515) — SPEC 131 W2c, вынос в W2d."
           },
           "uplink_data_key": {
             "type": "string",

@@ -232,6 +232,7 @@ _Где возникает / where it comes from:_
 | `wireguard` | `jc` | on_invalid: drop |
 | `wireguard` | `jmax` | on_invalid: drop |
 | `wireguard` | `jmin` | on_invalid: drop |
+| `wireguard` | `jmin` | requires jmax |
 | `wireguard` | `s1` | on_invalid: drop |
 | `wireguard` | `s2` | on_invalid: drop |
 
@@ -481,8 +482,8 @@ _Где возникает / where it comes from:_
 | `hysteria2` | `realm` | conflicts server_ports |
 | `hysteria2` | `server_ports` | conflicts realm |
 | `tailscale` | `exit_node` | conflicts advertise_exit_node |
-| `tls` | `certificate` | conflicts tls.certificate_public_key_sha256 |
-| `tls` | `certificate_path` | conflicts tls.certificate_public_key_sha256 |
+| `tls` | `certificate_public_key_sha256` | conflicts tls.certificate |
+| `tls` | `certificate_public_key_sha256` | conflicts tls.certificate_path |
 | `tls` | `disable_sni` | conflicts tls.reality.enabled |
 | `tls` | `ech.enabled` | conflicts tls.reality.enabled |
 | `tls` | `reality.enabled` | conflicts tls.disable_sni |

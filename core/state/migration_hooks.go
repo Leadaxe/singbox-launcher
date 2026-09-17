@@ -72,10 +72,33 @@ type MigrationServerResult struct {
 	Warnings []NodeWarning
 }
 
+// SanitizeBodyRequest — разовый пересчёт кодов по УЖЕ СОХРАНЁННОМУ телу
+// (SPEC 131 W2c §3.5, ловушка Л3).
+type SanitizeBodyRequest struct {
+	// Body — тело узла из state как есть; схема определяется по его "type".
+	Body json.RawMessage
+}
+
+// SanitizeBodyResult — итог пересчёта.
+type SanitizeBodyResult struct {
+	// Body — тело после санитайзера. Непусто ТОЛЬКО если санитайзер что-то
+	// снял или привёл: перезаписывать байты, в которых ничего не изменилось,
+	// нельзя — это «менялось» у каждого узла на каждом апгрейде.
+	Body json.RawMessage
+	// Warnings — коды по этому телу; пустой (не nil) список = «считали, чисто».
+	Warnings []NodeWarning
+	// Drop — тело не проходит правила реестра совсем (ядро отвергло бы весь
+	// конфиг). Узел при этом НЕ выбрасывается: он уже в состоянии, и
+	// молчаливый снос чужого узла на апгрейде хуже, чем узел с кодами.
+	Drop bool
+}
+
 // MigrationHooks — набор реализаций, подставляемых пакетом config.
 type MigrationHooks struct {
 	MaterializeSubscription func(req MigrationSubRequest) (*MigrationSubResult, error)
 	MaterializeServer       func(req MigrationServerRequest) (*MigrationServerResult, error)
+	// SanitizeBody — пересчёт кодов по сохранённому телу (без origin.raw).
+	SanitizeBody func(req SanitizeBodyRequest) (*SanitizeBodyResult, error)
 }
 
 var migrationHooks MigrationHooks

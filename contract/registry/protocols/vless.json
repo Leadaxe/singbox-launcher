@@ -140,16 +140,11 @@
       },
       "uuid": {
         "type": "string",
-        "format": "uuid",
-        "on_invalid": {
-          "action": "drop",
-          "code": "type_invalid"
-        },
-        "required": true,
+                        "required": true,
         "secret": true,
         "desc_en": "User identifier.",
         "desc_ru": "Идентификатор пользователя.",
-        "impl": "json-тег без omitempty. Секрет: в warnings и логах маскируется."
+        "impl": "json-тег без omitempty. Секрет: в warnings и логах маскируется. Формат uuid — только документация: ядро мусорную строку ПРИНИМАЕТ (хеширует в vless.NewClient), проверено `sing-box check` на 1.14.1-lx.4 — DRIFT §(t), SPEC 131 W2c."
       },
       "flow": {
         "type": "enum",

@@ -37,6 +37,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -269,25 +270,10 @@ var TailscaleSupportProbe func() (supported bool, reason string)
 // отвергает ВЕСЬ конфиг как невалидный JSON. nil → считаем, что ядро умеет.
 var AWG3SupportProbe func() (supported bool, reason string)
 
-// RealityKeyShareSupportProbe — та же схема для поля tls.reality.key_share
-// (D-121, SPEC 089 ядра): ядро до 1.14.1-lx.4 не знает ключа, а неизвестный
-// ключ = отказ ВСЕГО конфига. nil → считаем, что ядро умеет.
-//
-// В отличие от соседей гейт ПОЛЕВОЙ: узел не выбрасывается, снимается одно
-// поле — REALITY без key_share работает, обмен ключами берётся из
-// uTLS-отпечатка. Поэтому вердикт читает эмиттер (outbound_tls_emit.go), а не
-// фильтр узлов в GenerateOutboundsFromParserConfig.
-var RealityKeyShareSupportProbe func() (supported bool, reason string)
-
-// coreSupportsRealityKeyShare — вердикт пробы для эмиттера. Отдельная функция,
-// чтобы nil-хук (юнит-тесты, standalone) читался в одном месте.
-func coreSupportsRealityKeyShare() bool {
-	if RealityKeyShareSupportProbe == nil {
-		return true
-	}
-	supported, _ := RealityKeyShareSupportProbe()
-	return supported
-}
+// Полевого гейта tls.reality.key_share здесь БОЛЬШЕ НЕТ (SPEC 131 W2c):
+// частная проба на одно поле заменена табличной проверкой по реестру
+// (`min_core` в registry/tls.json, node_build_gate.go). Соседи выше остаются:
+// они выбрасывают УЗЕЛ и в реестре не выразимы (ловушка Л17).
 
 // GenerateNodeJSON returns a single JSON object string for one proxy node (sing-box outbound).
 // Field order and presence follow sing-box expectations. Supports: vless, vmess, trojan, shadowsocks, hysteria, hysteria2, tuic, naive, masque, anytls, ssh, socks.
@@ -687,7 +673,7 @@ func GenerateNodeJSONBare(node *ParsedNode) (string, error) {
 	parts = appendOutboundTransportParts(parts, node.Outbound)
 
 	// 7. tls (if present) — allowlist по OutboundTLSOptions ядра, см. outbound_tls_emit.go
-	if tlsJSON, ok := emitOutboundTLSJSON(node.Scheme, node.Outbound); ok {
+	if tlsJSON, ok := emitOutboundTLSJSON(node.Outbound); ok {
 		parts = append(parts, fmt.Sprintf(`"tls":%s`, tlsJSON))
 	}
 
@@ -1073,7 +1059,31 @@ func generateEndpointJSONBare(node *ParsedNode, forConfig bool) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal %s endpoint: %w", node.Scheme, err)
 	}
-	return string(jsonBytes), nil
+	if !forConfig {
+		// Голая форма пишет КАНОНИЧЕСКОЕ тело узла (материализация, подпись
+		// содержимого): гейт по ядру ей противопоказан — тело не должно
+		// зависеть от того, какое ядро стояло в момент сохранения, ровно как
+		// и state_directory этой машины (SPEC 122).
+		return string(jsonBytes), nil
+	}
+	// Полевой гейт ядра для endpoint'ов (SPEC 131 §3.4): у wireguard добрая
+	// половина AWG-полей несёт min_core и build_tag, и на ядре постарше любое
+	// из них отвергает ВЕСЬ конфиг.
+	//
+	// Форма секции endpoints — pretty-printed (сборка кеширует её строками,
+	// core/build/build.go:472), а гейт возвращает компактный JSON, поэтому
+	// отступы восстанавливаются: иначе на ядре постарше endpoints уезжал бы
+	// в конфиг одной строкой — рабочей, но нечитаемой человеку, который в
+	// этот конфиг и заглядывает, когда что-то не так.
+	gated, changed := gateBodyForCore(node.Scheme, node.Tag, jsonBytes)
+	if !changed {
+		return string(jsonBytes), nil
+	}
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, gated, "", "  "); err != nil {
+		return string(gated), nil
+	}
+	return buf.String(), nil
 }
 
 // EmitNodeJSONs renders one parsed node exactly as the final config carries
@@ -1726,7 +1736,13 @@ func generateRawNodeJSON(node *ParsedNode) (string, error) {
 // эмиттер, из которого тело и получилось. Порядок остальных ключей не
 // трогается вовсе, поэтому байты совпадают со старым движком.
 func generateCanonicalBodyJSON(node *ParsedNode) (string, error) {
-	obj, err := decodeOrderedJSONObject(node.EmitBody)
+	// Полевой гейт ядра (SPEC 131 §3.4): тело заморожено и от ядра не
+	// зависит, но ключ, которого ЭТО ядро не знает, отвергает весь конфиг.
+	// Здесь единственное место, где сохранённое тело становится outbound'ом
+	// config.json, — значит и гейту место здесь, одной табличной проверкой
+	// по реестру вместо частной пробы на каждое поле.
+	gated, _ := gateBodyForCore(node.Scheme, node.Tag, node.EmitBody)
+	obj, err := decodeOrderedJSONObject(gated)
 	if err != nil {
 		return "", fmt.Errorf("canonical node %q: %w", node.Tag, err)
 	}

@@ -61,6 +61,19 @@ type sanitizer struct {
 	// tls.reality.enabled в один «enabled» и снимал бы reality на ровном месте.
 	srcRoot   map[string]interface{}
 	cleanRoot map[string]interface{}
+	// removed — пути, снятые запретом по схеме (allowed_for/forbidden_for).
+	//
+	// Связи (conflicts/requires/forbidden_when) обязаны считать такое поле
+	// ОТСУТСТВУЮЩИМ: оно уже снято, и конфликтовать с ним не с чем. Иначе у
+	// naive снятый запретом certificate_public_key_sha256 продолжал бы
+	// «конфликтовать» с certificate_path — и узел терял бы СВОЙ сертификат
+	// из-за поля, которого в теле не будет (ровно LxBox #140, только с
+	// другой стороны).
+	removed map[string]bool
+	// missingRequired — обязательные поля, не пережившие обход текущего
+	// объекта. Накопитель, а не флаг: один объект может недосчитаться
+	// нескольких полей, и сообщить надо про каждое.
+	missingRequired []missingRequired
 }
 
 // Sanitize приводит карту тела узла к правилам реестра для схемы scheme.
@@ -85,11 +98,72 @@ func Sanitize(scheme string, m map[string]interface{}) Result {
 			},
 		}
 	}
-	s := &sanitizer{reg: reg, scheme: scheme, seen: map[string]bool{}, srcRoot: m}
+	s := &sanitizer{reg: reg, scheme: scheme, seen: map[string]bool{}, srcRoot: m, removed: map[string]bool{}}
 	s.cleanRoot = map[string]interface{}{}
 	s.res.Clean = s.cleanRoot
+	// Запреты по схеме размечаются ДО обхода, а не по ходу: связи
+	// (conflicts/requires) читают исходную карту, а поле, запрещённое схеме,
+	// может стоять в body.order ПОЗЖЕ того, с кем оно конфликтует. У naive
+	// так и вышло: certificate_path (order 11) конфликтовал с
+	// certificate_public_key_sha256 (order 12), который сам запрещён naive и
+	// до тела не доедет, — и узел терял собственный сертификат из-за поля,
+	// которого в теле не будет.
+	s.markSchemeForbidden("", body.Order, body.Fields, m)
 	s.object("", body.Order, body.Fields, m)
+	// Обязательное поле КОРНЯ, не пережившее обход, — это отсутствующий узел:
+	// ядро отвергнет такое тело фаталом на весь конфиг. Вложенные объекты
+	// свои отметки уже разобрали сами (objectField), поэтому здесь остаются
+	// только корневые.
+	if len(s.missingRequired) > 0 && s.res.Drop == nil {
+		first := s.missingRequired[0]
+		// Код отказа — тот, которым о поле УЖЕ сообщили: если значение снял
+		// ss_method_invalid, отказ по узлу зовут так же. Иначе пользователь
+		// прочёл бы в списке один код, а в причине отбраковки другой.
+		if w := s.warningFor(first.Path); w != nil {
+			d := *w
+			s.res.Drop = &d
+		} else {
+			s.res.Drop = &Warning{
+				Code:   first.Code,
+				Path:   first.Path,
+				Params: s.declaredParams(first.Code, map[string]string{"field": first.Path, "path": first.Path}),
+			}
+		}
+	}
 	return s.res
+}
+
+// markSchemeForbidden помечает снятыми все пути, запрещённые текущей схеме,
+// чтобы связи полей их не видели. Коды при этом НЕ ставятся — их поставит
+// обход, в своём порядке.
+func (s *sanitizer) markSchemeForbidden(prefix string, order []string, fields map[string]*registry.Field, src map[string]interface{}) {
+	if src == nil {
+		return
+	}
+	for _, name := range order {
+		f := fields[name]
+		if f == nil {
+			continue
+		}
+		raw, present := src[name]
+		if !present {
+			continue
+		}
+		path := joinPath(prefix, name)
+		if !s.allowedForScheme(f) {
+			s.removed[path] = true
+			continue
+		}
+		inner, ok := asObject(raw)
+		if !ok {
+			continue
+		}
+		subOrder, subFields := emitShape(f, inner)
+		if subOrder == nil {
+			continue
+		}
+		s.markSchemeForbidden(path, subOrder, subFields, inner)
+	}
 }
 
 // warn кладёт код в накопитель, снимая дубли по (code, path).
@@ -102,13 +176,43 @@ func (s *sanitizer) warn(code, path string, value interface{}, secret bool, para
 		return
 	}
 	s.seen[key] = true
-	w := Warning{Code: code, Path: path, Params: params}
+	w := Warning{Code: code, Path: path, Params: s.declaredParams(code, params)}
 	if secret {
 		w.Value = maskedValue
 	} else if value != nil {
 		w.Value = configtypes.TruncateWarningValue(displayValue(value))
 	}
 	s.res.Warnings = append(s.res.Warnings, w)
+}
+
+// declaredParams оставляет только те подстановки, которые код объявил в
+// реестре (`params` в warnings.json).
+//
+// Параметры существуют ради шаблона текста (`{path}`, `{value}`, `{with}`) —
+// всё сверх него шум, а этот шум пишется в state.json и в бэкап каждого узла.
+// Живой пример: field_missing объявляет один `field`, а звался с парой
+// field+path, где path дословно повторял поле рядом.
+//
+// Код, которого в реестре нет (его ещё не завели), параметры сохраняет: терять
+// данные из-за неполноты словаря нельзя.
+func (s *sanitizer) declaredParams(code string, params map[string]string) map[string]string {
+	if len(params) == 0 {
+		return nil
+	}
+	entry, ok := s.reg.Warning(code)
+	if !ok || entry == nil || len(entry.Params) == 0 {
+		return params
+	}
+	out := make(map[string]string, len(entry.Params))
+	for _, name := range entry.Params {
+		if v, has := params[name]; has {
+			out[name] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // dropNode фиксирует отказ по узлу. Первый отказ побеждает: дальнейший обход
@@ -118,13 +222,57 @@ func (s *sanitizer) dropNode(code, path string, value interface{}, secret bool, 
 	if s.res.Drop != nil {
 		return
 	}
-	d := Warning{Code: code, Path: path, Params: params}
+	d := Warning{Code: code, Path: path, Params: s.declaredParams(code, params)}
 	if secret {
 		d.Value = maskedValue
 	} else if value != nil {
 		d.Value = configtypes.TruncateWarningValue(displayValue(value))
 	}
 	s.res.Drop = &d
+}
+
+// requiredFailed фиксирует, что обязательное поле по пути path не собралось.
+//
+// Кого при этом хоронить, решает НЕ это место, а уровень объекта, которому
+// поле принадлежит:
+//
+//   - поле корня тела (server, uuid, method) — узла нет, ядро отвергнет его
+//     фаталом; отказ по узлу;
+//   - поле внутри НЕОБЯЗАТЕЛЬНОГО объекта (obfs.type, obfs.password) — «если
+//     obfs задан, в нём обязан быть тип». Узел без обфускации работает, и
+//     хоронить его за неё нельзя: коды obfs_unknown и obfs_password_missing
+//     объявлены в реестре с severity `warning`, а warning на отброшенном узле
+//     стоять не может (CANON §4, ловушка Л11). Такой объект снимается целиком,
+//     узел живёт.
+//
+// Поэтому здесь только отметка, а разбирает её objectField (для вложенного
+// объекта) либо Sanitize (для корня).
+func (s *sanitizer) requiredFailed(path, code string) {
+	s.warn(code, path, nil, false, map[string]string{"field": path, "path": path})
+	s.missingRequired = append(s.missingRequired, missingRequired{Path: path, Code: code})
+}
+
+// warningFor — уже поставленный код по этому пути, если он есть.
+func (s *sanitizer) warningFor(path string) *Warning {
+	for i := range s.res.Warnings {
+		if s.res.Warnings[i].Path == path {
+			return &s.res.Warnings[i]
+		}
+	}
+	return nil
+}
+
+// requiredFailedQuiet — то же для поля, которое УЖЕ получило код от правила
+// значения: отметка ставится, второй код — нет.
+func (s *sanitizer) requiredFailedQuiet(path, code string) {
+	s.missingRequired = append(s.missingRequired, missingRequired{Path: path, Code: code})
+}
+
+// missingRequired — незаполненное обязательное поле и код, которым о нём
+// сообщать.
+type missingRequired struct {
+	Path string
+	Code string
 }
 
 // object обходит один уровень карты по order реестра и возвращает чистую
@@ -159,26 +307,42 @@ func (s *sanitizer) object(prefix string, order []string, fields map[string]*reg
 		if !s.allowedForScheme(f) {
 			if present {
 				s.warn(codeOr(f.Code, "unknown_key"), path, raw, f.Secret, map[string]string{"path": path})
+				s.removed[path] = true
 			}
 			continue
 		}
 		if !present {
 			if f.Required {
-				s.dropNode("field_missing", path, nil, false, map[string]string{"field": path})
+				s.requiredFailed(path, codeOr(f.Code, "field_missing"))
 			}
 			continue
 		}
 		v, ok := s.value(path, prefix, f, raw)
 		if ok {
+			if s.omitAsUnset(f, v) {
+				// Пустая строка у обычного (не tristate) поля — это «не
+				// задано», а не значение: ядро пишет такие поля с omitempty
+				// и трактует пустое как отсутствующее (tls.server_name →
+				// адрес сервера). Ключ с "" и отсутствие ключа для ядра
+				// одно и то же, а в теле узла они дают РАЗНЫЕ байты — и
+				// разошлись бы с эталонами корпуса на ровном месте.
+				// У tristate-полей (packet_encoding, strip_evasion) пустое
+				// значимо, и там ключ остаётся (SPEC 131 §4).
+				continue
+			}
 			out[name] = v
 			continue
 		}
-		// Поле было, но не пережило проверки. Если оно обязательное,
-		// узел собрать нельзя — код снятия уже поставлен, добавляем отказ
-		// по узлу (on_invalid drop_node ставит его сам и побеждает как
-		// первый).
-		if f.Required && s.res.Drop == nil {
-			s.dropNode("field_missing", path, nil, false, map[string]string{"field": path})
+		// Поле было, но не пережило проверки. Обязательное поле без
+		// значения означает, что объект, которому оно принадлежит, собрать
+		// нельзя; КАКОЙ объект при этом гибнет — тело узла или необязательная
+		// секция внутри него, — решает вызывающий уровень (requiredFailed).
+		//
+		// Второго кода на том же пути не ставим: причину снятия уже назвало
+		// правило значения (ss_method_invalid, obfs_unknown), и «а ещё поля
+		// нет» добавило бы к ней шум, а не смысл.
+		if f.Required {
+			s.requiredFailedQuiet(path, codeOr(f.Code, "field_missing"))
 		}
 	}
 
@@ -192,6 +356,21 @@ func (s *sanitizer) object(prefix string, order []string, fields map[string]*reg
 		s.warn("unknown_key", path, src[name], false, map[string]string{"path": path})
 	}
 	return out
+}
+
+// omitAsUnset — пишем ли ключ с этим значением в тело.
+//
+// Пустая строка = «не задано» для всех полей, КРОМЕ двух видов:
+//   - tristate: там пустое значение значимо (vless.packet_encoding "" —
+//     «без инкапсуляции», а отсутствие ключа — дефолт xudp);
+//   - required: ядро пишет такое поле всегда (server без omitempty), и
+//     молчаливое исчезновение ключа сменило бы форму тела.
+func (s *sanitizer) omitAsUnset(f *registry.Field, v interface{}) bool {
+	if f.Tristate || f.Required {
+		return false
+	}
+	str, ok := v.(string)
+	return ok && str == ""
 }
 
 // allowedForScheme — разрешено ли поле текущей схеме (allowed_for/forbidden_for).
@@ -245,7 +424,7 @@ func (s *sanitizer) value(path, prefix string, f *registry.Field, raw interface{
 // objectField обрабатывает вложенный объект: по варианту дискриминатора
 // (transport), по описанным полям или как свободную карту (headers).
 func (s *sanitizer) objectField(path string, f *registry.Field, raw interface{}) (interface{}, bool) {
-	m, ok := raw.(map[string]interface{})
+	m, ok := asObject(raw)
 	if !ok {
 		return s.onInvalid(path, f, raw)
 	}
@@ -257,7 +436,16 @@ func (s *sanitizer) objectField(path string, f *registry.Field, raw interface{})
 		// решать нечего — отдаём как есть.
 		return m, true
 	}
+	mark := len(s.missingRequired)
 	out := s.object(path, f.Order, f.Fields, m)
+	if missing := s.missingRequired[mark:]; len(missing) > 0 {
+		// Внутри объекта не собралось обязательное поле. Объект снимается
+		// ЦЕЛИКОМ, а узел живёт: «obfs без типа» означает «узел без
+		// обфускации», а не «узла нет» (см. requiredFailed). Коды уже
+		// поставлены, второй раз о том же не сообщаем.
+		s.missingRequired = s.missingRequired[:mark]
+		return nil, false
+	}
 	if f.AllOrNothing {
 		s.fillAllOrNothing(path, f, out)
 	}
@@ -301,7 +489,7 @@ func (s *sanitizer) variantObject(path string, f *registry.Field, m map[string]i
 
 // arrayField обходит массив объектов (wireguard.peers).
 func (s *sanitizer) arrayField(path string, f *registry.Field, raw interface{}) (interface{}, bool) {
-	list, ok := raw.([]interface{})
+	list, ok := asSlice(raw)
 	if !ok || f.Items == nil {
 		return s.onInvalid(path, f, raw)
 	}
@@ -312,7 +500,7 @@ func (s *sanitizer) arrayField(path string, f *registry.Field, raw interface{}) 
 			out = append(out, item)
 			continue
 		}
-		m, ok := item.(map[string]interface{})
+		m, ok := asObject(item)
 		if !ok {
 			s.warn("type_invalid", itemPath, item, false, map[string]string{"path": itemPath})
 			continue
@@ -422,6 +610,10 @@ func (s *sanitizer) pathPresent(path, prefix string) bool {
 }
 
 func (s *sanitizer) lookupNonEmpty(path string) bool {
+	if s.removed[path] {
+		// Поле снято запретом по схеме — для связей его нет.
+		return false
+	}
 	parts := strings.Split(path, ".")
 	if v, ok := lookupPath(s.cleanRoot, parts); ok {
 		return !isEmptyValue(v)
@@ -497,6 +689,15 @@ func (s *sanitizer) onInvalid(path string, f *registry.Field, raw interface{}) (
 
 // constraintsOK — enum, format, min/max, len, len_parity.
 func (s *sanitizer) constraintsOK(f *registry.Field, v interface{}) bool {
+	// Обязательное строковое поле пустым быть не может: ядро пишет такие
+	// поля без omitempty и на пустом значении падает («invalid server
+	// address»). У необязательного поля пустое значение — это «не задано»,
+	// и его снимает omitAsUnset уже после проверок.
+	if f.Required {
+		if str, isStr := v.(string); isStr && strings.TrimSpace(str) == "" {
+			return false
+		}
+	}
 	if len(f.Values) > 0 {
 		switch vv := v.(type) {
 		case []string:
@@ -561,6 +762,10 @@ func (s *sanitizer) constraintsOK(f *registry.Field, v interface{}) bool {
 				return false
 			}
 		case []string:
+			if len(vv) != *f.Len {
+				return false
+			}
+		case []int:
 			if len(vv) != *f.Len {
 				return false
 			}
@@ -683,7 +888,19 @@ func formatOK(format, v string) bool {
 		_, err := base64.RawStdEncoding.DecodeString(v)
 		return err == nil
 	case "host":
-		return v != "" && !strings.ContainsAny(v, " \t\r\n/")
+		// Пустую строку решает НЕ формат, а обязательность поля, и решает её
+		// вызывающий (constraintsOK): у обязательного адреса пустое значение
+		// фатально («invalid server address» на весь конфиг), у
+		// необязательного tls.server_name — законное «не задано», которое
+		// ядро принимает и заменяет адресом сервера. Один и тот же формат,
+		// разные исходы — потому что разная обязательность.
+		return !strings.ContainsAny(v, " \t\r\n/")
+	case "url_path":
+		// Путь, который ядро разбирает через url.Parse (ws/httpupgrade/http):
+		// битое percent-кодирование даёт «invalid URL escape» и отказ ВСЕГО
+		// конфига. Проверяем ровно то, на чём падает ядро, — синтаксис
+		// экранирования, а не форму пути.
+		return validPercentEscapes(v)
 	case "port":
 		n, err := strconv.Atoi(v)
 		return err == nil && n >= 1 && n <= 65535
@@ -735,4 +952,20 @@ func uuidOK(v string) bool {
 
 func isHexDigit(c byte) bool {
 	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+// validPercentEscapes — корректно ли экранирование в строке: каждый «%»
+// сопровождается двумя hex-цифрами. Ровно этот разбор делает url.Parse в
+// ядре, и ровно на нём оно роняет конфиг целиком.
+func validPercentEscapes(v string) bool {
+	for i := 0; i < len(v); i++ {
+		if v[i] != '%' {
+			continue
+		}
+		if i+2 >= len(v) || !isHexDigit(v[i+1]) || !isHexDigit(v[i+2]) {
+			return false
+		}
+		i += 2
+	}
+	return true
 }

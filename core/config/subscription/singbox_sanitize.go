@@ -68,77 +68,11 @@ func SanitizeSingboxOutboundMap(ob map[string]interface{}, tag string) []string 
 
 	var codes []string
 	sanitizeSingboxMasqueLegacy(ob, obType, tag)
-	if code := sanitizeSingboxTLS(ob, obType, tag); code != "" {
-		codes = append(codes, code)
-	}
-	sanitizeSingboxFlow(ob, tag)
-	if sanitizeSingboxPacketEncoding(ob, tag) {
-		codes = append(codes, WarnPacketEncodingUnknown)
-	}
+	sanitizeSingboxTLS(ob, obType, tag)
 	sanitizeSingboxHysteria2Obfs(ob, obType, tag)
 	sanitizeSingboxHysteriaObfs(ob, obType, tag)
 	sanitizeSingboxHysteriaBandwidth(ob, obType, tag)
-	sanitizeSingboxVMessSecurity(ob, obType, tag)
-	if sanitizeSingboxXHTTP(ob, tag) {
-		codes = append(codes, WarnXHTTPParamReset)
-	}
 	return codes
-}
-
-// sanitizeSingboxVMessSecurity приводит шифр канала vmess к набору ядра.
-//
-// Третий вход того же бага, что §7.11 на URI- и Xray-путях: импортированное
-// тело до сих пор отдавало `security` ядру как есть, и `aes-128-ctr` из
-// чужого конфига ронял ВЕСЬ config.json —
-//
-//	initialize outbound[N]: vmess: unsupported security type: aes-128-ctr
-//
-// Набор и поведение те же, что у normalizeVMessSecurity: мусор → `auto`
-// (молча, как на URI-пути), пустое поле удаляется как эквивалент дефолта.
-func sanitizeSingboxVMessSecurity(ob map[string]interface{}, obType, tag string) {
-	if obType != "vmess" {
-		return
-	}
-	raw, has := ob["security"]
-	if !has {
-		return
-	}
-	sec := strings.ToLower(strings.TrimSpace(toStringValue(raw)))
-	if sec == "" {
-		delete(ob, "security")
-		return
-	}
-	norm := normalizeVMessSecurity(sec)
-	if norm != sec {
-		debuglog.WarnLog("Parser: singbox import %q: vmess security %q вне набора ядра — %q", tag, sec, norm)
-	}
-	ob["security"] = norm
-}
-
-// sanitizeSingboxXHTTP снимает enum-поля XHTTP-транспорта со значением вне
-// набора ядра — третий вход того же гарда, что на URI- и Xray-путях
-// (DRIFT 131 §7.14/§9.2). Ядро на промахе отвергает конфиг целиком, поэтому
-// импортированное тело обязано проходить ту же проверку, что и подписка.
-//
-// Возвращает true, если хоть одно поле снято.
-func sanitizeSingboxXHTTP(ob map[string]interface{}, tag string) bool {
-	tr, ok := ob["transport"].(map[string]interface{})
-	if !ok {
-		return false
-	}
-	if strings.ToLower(strings.TrimSpace(mapString(tr, "type"))) != "xhttp" {
-		return false
-	}
-	reset := xhttpGuardEnums(tr)
-	if reset {
-		debuglog.WarnLog("Parser: singbox import %q: xhttp-параметры вне набора ядра сняты", tag)
-	}
-	// Пара (mode, uplink_data_placement) сводится тем же гардом, что и на
-	// URI-пути: на импорте она так же фатальна.
-	if code := xhttpGuardUplinkPlacement(tr); code == WarnXHTTPParamReset {
-		reset = true
-	}
-	return reset
 }
 
 // sanitizeSingboxMasqueLegacy СТРИПАЕТ у masque-outbound ключи чужого
@@ -172,27 +106,26 @@ func sanitizeSingboxMasqueLegacy(ob map[string]interface{}, obType, tag string) 
 //
 // Возвращает код деградации (или "") — прокидывает наружу код из
 // sanitizeSingboxReality, вешать его здесь не на что.
-func sanitizeSingboxTLS(ob map[string]interface{}, obType, tag string) string {
+func sanitizeSingboxTLS(ob map[string]interface{}, obType, tag string) {
 	tlsRaw, ok := ob["tls"]
 	if !ok {
-		return ""
+		return
 	}
 	tlsMap, ok := tlsRaw.(map[string]interface{})
 	if !ok {
 		// tls не объект — ядро отвергнет конфиг; безопаснее снять поле.
 		debuglog.WarnLog("Parser: singbox import %q: tls is not an object — dropping field", tag)
 		delete(ob, "tls")
-		return ""
+		return
 	}
 
 	// Явный tls:{enabled:false} роняет ядра 1.14.0-lx.5..lx.18 SIGSEGV'ом при
 	// первом dial (SPEC 045). Блок в этом случае не нужен вовсе.
 	if enabled, ok := tlsMap["enabled"].(bool); ok && !enabled {
 		delete(ob, "tls")
-		return ""
+		return
 	}
 
-	code := ""
 	if _, isQUIC := quicOutboundTypes[obType]; isQUIC {
 		// SPEC 094 A2: на QUIC срезаем utls и reality целиком.
 		if _, had := tlsMap["utls"]; had {
@@ -205,148 +138,11 @@ func sanitizeSingboxTLS(ob map[string]interface{}, obType, tag string) string {
 			delete(tlsMap, "reality")
 			debuglog.DebugLog("Parser: singbox import %q: stripped reality from %s (QUIC)", tag, obType)
 		}
-	} else {
-		sanitizeSingboxUTLS(tlsMap, tag)
-		code = sanitizeSingboxReality(tlsMap, tag)
 	}
 
 	if len(tlsMap) == 0 {
 		delete(ob, "tls")
 	}
-	return code
-}
-
-// sanitizeSingboxUTLS прогоняет fingerprint через allowlist sing-box.
-func sanitizeSingboxUTLS(tlsMap map[string]interface{}, tag string) {
-	utlsRaw, ok := tlsMap["utls"]
-	if !ok {
-		return
-	}
-	utlsMap, ok := utlsRaw.(map[string]interface{})
-	if !ok {
-		delete(tlsMap, "utls")
-		return
-	}
-	fp := mapString(utlsMap, "fingerprint")
-	normalized := utlsFingerprintOrFallback(fp)
-	if normalized == "" {
-		// Поле пустое (а не мусорное) — блока utls тут просто нет.
-		delete(tlsMap, "utls")
-		return
-	}
-	// Мусор канонизируется в chrome (D-029), а не снимает блок целиком: раньше
-	// одна и та же нода получала utls на URI-пути и теряла его на импорте.
-	utlsMap["fingerprint"] = normalized
-}
-
-// sanitizeSingboxReality валидирует public_key, чистит short_id и key_share.
-//
-// Возвращает код деградации (или "") — как и у остальных санитайзеров, узла
-// здесь нет, и код вешает вызывающий через SanitizeSingboxOutboundMap.
-func sanitizeSingboxReality(tlsMap map[string]interface{}, tag string) string {
-	realityRaw, ok := tlsMap["reality"]
-	if !ok {
-		return ""
-	}
-	realityMap, ok := realityRaw.(map[string]interface{})
-	if !ok {
-		delete(tlsMap, "reality")
-		return ""
-	}
-	if enabled, ok := realityMap["enabled"].(bool); ok && !enabled {
-		delete(tlsMap, "reality")
-		return ""
-	}
-
-	pbk := mapString(realityMap, "public_key")
-	if !isValidRealityPublicKey(pbk) {
-		// pbk=enabled / true / мусор: ядро отвергает весь конфиг
-		// ("invalid public_key"). Деградируем ноду до plain TLS.
-		debuglog.WarnLog("Parser: singbox import %q: invalid REALITY public_key — degrading to plain TLS", tag)
-		delete(tlsMap, "reality")
-		return ""
-	}
-
-	if sid, ok := realityMap["short_id"]; ok {
-		normalized := normalizeRealityShortID(toStringValue(sid))
-		if normalized == "" {
-			// Пустой short_id для REALITY легален; мусорный — нет.
-			delete(realityMap, "short_id")
-		} else {
-			realityMap["short_id"] = normalized
-		}
-	}
-
-	if ks, ok := realityMap["key_share"]; ok {
-		// Нормализатор общий с URI-путём (node_parser_transport.go): одно и то
-		// же значение обязано дать один и тот же результат откуда угодно.
-		normalized, degraded := NormalizeRealityKeyShare(toStringValue(ks))
-		switch {
-		case degraded:
-			// Enum ядра закрытый (SPEC 089): чужое значение — отказ ВСЕГО
-			// конфига. Деградирует поле, а не узел и не конфиг. Код едет на
-			// узел через возврат — см. SanitizeSingboxOutboundMap.
-			debuglog.WarnLog("Parser: singbox import %q: unknown REALITY key_share %q — dropping the key", tag, toStringValue(ks))
-			delete(realityMap, "key_share")
-			return WarnRealityKeyShareInvalid
-		case normalized == "":
-			// Пусто = «как несёт отпечаток», ключа в конфиге просто нет.
-			delete(realityMap, "key_share")
-		default:
-			// Канонический lower-case: ядро сверяет enum побуквенно.
-			realityMap["key_share"] = normalized
-		}
-	}
-	return ""
-}
-
-// sanitizeSingboxFlow оставляет только xtls-rprx-vision и гасит flow при транспорте.
-func sanitizeSingboxFlow(ob map[string]interface{}, tag string) {
-	flowRaw, ok := ob["flow"]
-	if !ok {
-		return
-	}
-	flow := strings.TrimSpace(toStringValue(flowRaw))
-	if flow == "" {
-		delete(ob, "flow")
-		return
-	}
-	if flow != "xtls-rprx-vision" {
-		// none, deprecated xtls-rprx-direct/origin/splice, мусор —
-		// всё это ядро либо отвергает, либо трактует неверно.
-		debuglog.DebugLog("Parser: singbox import %q: dropping unsupported flow %q", tag, flow)
-		delete(ob, "flow")
-		return
-	}
-	// vision валиден только на голом TLS: с транспортом ядро отвергает узел.
-	if _, hasTransport := ob["transport"]; hasTransport {
-		debuglog.DebugLog("Parser: singbox import %q: dropping vision flow (transport present)", tag)
-		delete(ob, "flow")
-	}
-}
-
-// sanitizeSingboxPacketEncoding применяет allowlist sing-box.
-// Возвращает true, если значение было неизвестным и поле снято (код ставит
-// вызывающий — см. SanitizeSingboxOutboundMap).
-func sanitizeSingboxPacketEncoding(ob map[string]interface{}, tag string) bool {
-	peRaw, ok := ob["packet_encoding"]
-	if !ok {
-		return false
-	}
-	pe := strings.ToLower(strings.TrimSpace(toStringValue(peRaw)))
-	switch pe {
-	case "xudp", "packetaddr":
-		ob["packet_encoding"] = pe
-	case "", "none":
-		// "no special encoding" — эквивалентно отсутствию поля.
-		delete(ob, "packet_encoding")
-	default:
-		// Неизвестное значение даёт панику в ядре (SPEC 049).
-		debuglog.WarnLog("Parser: singbox import %q: unknown packet_encoding %q — dropping field", tag, pe)
-		delete(ob, "packet_encoding")
-		return true
-	}
-	return false
 }
 
 // sanitizeSingboxHysteriaBandwidth дописывает обязательную полосу Hysteria v1.

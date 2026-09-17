@@ -27,7 +27,9 @@
       "label": "awg-server",
       "scheme": "wireguard",
       "warnings": [
-        "awg_header_invalid"
+        {
+          "code": "awg_header_invalid"
+        }
       ]
     }
   ],

@@ -191,7 +191,7 @@
         ],
         "desc_en": "How UDP is relayed over QUIC.",
         "desc_ru": "Способ передачи UDP поверх QUIC.",
-        "impl": "Конфликт с udp_over_stream — «udp_over_stream is conflict with udp_relay_mode» (protocol/tuic/outbound.go:57). Иное значение = код tuic_udp_relay_mode_invalid."
+        "impl": "Конфликт с udp_over_stream — «udp_over_stream is conflict with udp_relay_mode» (protocol/tuic/outbound.go:57). Иное значение = код tuic_udp_relay_mode_invalid. С ядра 1.14.1-lx.6 (SPEC 091 ядра) мусор — ошибка загрузки «unknown udp_relay_mode: <v> (expected native or quic)», пустая строка по-прежнему native; вердикт C→B, правило drop+код уже совпадает."
       },
       "udp_over_stream": {
         "type": "bool",

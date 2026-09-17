@@ -23,7 +23,9 @@
       "label": "xhttp-mode-invalid",
       "scheme": "vless",
       "warnings": [
-        "xhttp_param_reset"
+        {
+          "code": "xhttp_param_reset"
+        }
       ]
     }
   ],

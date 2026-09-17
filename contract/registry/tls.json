@@ -233,24 +233,12 @@
       },
       "certificate": {
         "type": "listable_string",
-        "conflicts": [
-          {
-            "with": "tls.certificate_public_key_sha256",
-            "code": "field_conflict"
-          }
-        ],
         "desc_en": "Trusted server certificate in PEM form.",
         "desc_ru": "Доверенный сертификат сервера в форме PEM.",
         "impl": "PEM построчно (массив строк или одна строка). Конфликт с certificate_public_key_sha256 (std_client.go:139, utls_client.go:223). LxBox #140: эмиттер терял это поле до 1.6.3."
       },
       "certificate_path": {
         "type": "string",
-        "conflicts": [
-          {
-            "with": "tls.certificate_public_key_sha256",
-            "code": "field_conflict"
-          }
-        ],
         "desc_en": "Path to a file with the trusted certificate.",
         "desc_ru": "Путь к файлу с доверенным сертификатом.",
         "impl": "Конфликт с certificate_public_key_sha256 (std_client.go:139)."
@@ -258,6 +246,16 @@
       "certificate_public_key_sha256": {
         "type": "string_array",
         "format": "base64",
+        "conflicts": [
+          {
+            "with": "tls.certificate",
+            "code": "field_conflict"
+          },
+          {
+            "with": "tls.certificate_path",
+            "code": "field_conflict"
+          }
+        ],
         "on_invalid": {
           "action": "drop",
           "code": "type_invalid"
@@ -266,7 +264,7 @@
         "code": "tls_field_unsupported_naive",
         "desc_en": "Pinned SHA-256 hashes of the server public key.",
         "desc_ru": "Закреплённые SHA-256 отпечатки публичного ключа сервера.",
-        "impl": "[]byte в base64. Конфликт с certificate/certificate_path — «certificate_public_key_sha256 is conflict with certificate or certificate_path»; старший в конфликте, снимается certificate. У naive молча игнорируется (в структуру cronet не попадает)."
+        "impl": "[]byte в base64. Конфликт с certificate/certificate_path — «certificate_public_key_sha256 is conflict with certificate or certificate_path»; в конфликте снимаются ПИНЫ, сертификат/путь остаются (SPEC 131 W2c, дух LxBox #140: сертификат пользователя не терять — для самоподписанного сервера нужен CA, пин без CA его не откроет). У naive молча игнорируется (в структуру cronet не попадает)."
       },
       "client_certificate": {
         "type": "listable_string",
@@ -566,7 +564,7 @@
             ],
             "desc_en": "REALITY short ID (hex, even length).",
             "desc_ru": "Короткий идентификатор REALITY (hex, чётной длины).",
-            "impl": "Пустой short_id легален (нулевой [8]byte). Нечётная длина = encoding/hex odd length на старте; целевое поведение — drop значения, не обрезка (см. uri.reality.sid, §343)."
+            "impl": "Пустой short_id легален (нулевой [8]byte). Нечётная длина = encoding/hex odd length на старте; целевое поведение — drop значения, не обрезка (см. uri.reality.sid, §343). С ядра 1.14.1-lx.5 (SPEC 090) паники на >16 hex нет — ошибка конфигурации invalid short_id; гард остаётся как UX-код."
           },
           "key_share": {
             "type": "enum",

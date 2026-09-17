@@ -49,11 +49,53 @@ func GateForCore(scheme string, body []byte, core CoreInfo) (out []byte, dropped
 	if len(g.dropped) == 0 {
 		return body, nil, nil
 	}
-	var buf bytes.Buffer
-	if err := emitObject(&buf, schema.Order, schema.Fields, m); err != nil {
+	// Пересобираем ИСХОДНОЕ тело без снятых путей, а не эмитим карту заново
+	// по схеме: в теле живут ключи, которых в body.order нет и быть не может
+	// — `type` (его пишет сборка), а на пути сборки ещё и `tag` с `detour`.
+	// Эмиссия по схеме вычёркивала бы их молча, и узел приезжал в конфиг с
+	// пустым типом: «unknown outbound type: ».
+	out, err = deleteJSONPaths(body, g.dropped)
+	if err != nil {
 		return nil, nil, err
 	}
-	return buf.Bytes(), g.dropped, nil
+	return out, g.dropped, nil
+}
+
+// deleteJSONPaths удаляет из тела перечисленные пути ("tls.reality.key_share"),
+// оставляя всё остальное — включая порядок ключей — нетронутым.
+func deleteJSONPaths(body []byte, paths []string) ([]byte, error) {
+	var m map[string]interface{}
+	if err := json.Unmarshal(body, &m); err != nil {
+		return nil, err
+	}
+	for _, p := range paths {
+		deleteJSONPath(m, strings.Split(p, "."))
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func deleteJSONPath(m map[string]interface{}, parts []string) {
+	if len(parts) == 0 || m == nil {
+		return
+	}
+	if len(parts) == 1 {
+		delete(m, parts[0])
+		return
+	}
+	inner, ok := m[parts[0]].(map[string]interface{})
+	if !ok {
+		return
+	}
+	deleteJSONPath(inner, parts[1:])
+	if len(inner) == 0 {
+		// Блок, у которого гейт снял всё содержимое, в теле не оставляем:
+		// пустой tls или reality для ядра не то же самое, что их отсутствие.
+		delete(m, parts[0])
+	}
 }
 
 type gate struct {

@@ -24,7 +24,9 @@
       "label": "xhttp-plc-adds-mode",
       "scheme": "vless",
       "warnings": [
-        "xhttp_mode_forced_packet_up"
+        {
+          "code": "xhttp_mode_forced_packet_up"
+        }
       ]
     }
   ],

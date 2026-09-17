@@ -79,6 +79,18 @@ func Load(path string) (*State, error) {
 			debuglog.InfoLog("state: masque uri migration persisted (%d nodes) to %s", n, path)
 		}
 	}
+	// SPEC 131 W2c: разовый пересчёт кодов на узлах, сохранённых до
+	// конвейера (node_warnings_migration.go). Персистится ТОЛЬКО когда
+	// санитайзер переписал хотя бы одно тело: коды производные и считаются
+	// заново на каждой загрузке, а лишняя перезапись файла означала бы
+	// «изменилось тело» у всех узлов разом (Л3).
+	if n := recountNodeWarnings(s); n > 0 {
+		if err := s.Save(path); err != nil {
+			debuglog.WarnLog("state: sanitizer rewrote %d node bodies, not persisted: %v", n, err)
+		} else {
+			debuglog.WarnLog("state: sanitizer rewrote %d node bodies, persisted to %s", n, path)
+		}
+	}
 	// SPEC 118 W6 (хвост W2): отчёт — на диск. Мигрирует ПЕРВЫЙ, кто откроет
 	// состояние, а на старте лаунчера это фоновая загрузка без окна: к
 	// открытию конфигуратора файл уже в текущей схеме, и отчёта в памяти нет
@@ -115,6 +127,7 @@ func Parse(data []byte) (*State, error) {
 		return nil, err
 	}
 	rewriteLegacyMasqueURIs(s)
+	recountNodeWarnings(s)
 	return s, nil
 }
 

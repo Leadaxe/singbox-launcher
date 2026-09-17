@@ -34,9 +34,6 @@
             "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"
           ],
           "certificate_path": "/etc/ssl/ca.pem",
-          "certificate_public_key_sha256": [
-            "MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI="
-          ],
           "cipher_suites": [
             "TLS_AES_128_GCM_SHA256"
           ],
@@ -47,9 +44,11 @@
           "curve_preferences": [
             "X25519"
           ],
+          "disable_sni": false,
           "enabled": true,
           "fragment": true,
           "fragment_fallback_delay": "500ms",
+          "insecure": false,
           "max_version": "1.3",
           "min_version": "1.2",
           "record_fragment": true,
@@ -63,7 +62,13 @@
       },
       "kind": "outbound",
       "label": "trojan-full-tls",
-      "scheme": "trojan"
+      "scheme": "trojan",
+      "warnings": [
+        {
+          "code": "field_conflict",
+          "path": "tls.certificate_public_key_sha256"
+        }
+      ]
     },
     {
       "entry": {
@@ -97,7 +102,39 @@
       },
       "kind": "outbound",
       "label": "naive-junk-tls",
-      "scheme": "naive"
+      "scheme": "naive",
+      "warnings": [
+        {
+          "code": "tls_field_unsupported_naive",
+          "path": "tls.insecure",
+          "value": "true"
+        },
+        {
+          "code": "tls_field_unsupported_naive",
+          "path": "tls.alpn",
+          "value": "[h2]"
+        },
+        {
+          "code": "tls_field_unsupported_naive",
+          "path": "tls.min_version",
+          "value": "1.2"
+        },
+        {
+          "code": "tls_field_unsupported_naive",
+          "path": "tls.certificate_public_key_sha256",
+          "value": "[MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=]"
+        },
+        {
+          "code": "tls_field_unsupported_naive",
+          "path": "tls.fragment",
+          "value": "true"
+        },
+        {
+          "code": "tls_field_unsupported_naive",
+          "path": "tls.utls",
+          "value": "map[enabled:true fingerprint:chrome]"
+        }
+      ]
     },
     {
       "entry": {
@@ -148,7 +185,11 @@
       "label": "vless-reality-key-share-junk",
       "scheme": "vless",
       "warnings": [
-        "reality_key_share_invalid"
+        {
+          "code": "reality_key_share_invalid",
+          "path": "tls.reality.key_share",
+          "value": "quantum"
+        }
       ]
     }
   ],

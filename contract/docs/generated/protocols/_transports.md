@@ -93,7 +93,7 @@ _A shared registry sub-schema: its fields are substituted into the body of every
 | Путь / path | Тип / type | Значения, формат, диапазон / values, format, range | Дефолт / default | Обяз. / req. | Мусор / on invalid | Гейт / gate | EN | RU |
 |---|---|---|---|---|---|---|---|---|
 | `host` | listable_string | — | — | — | — | — | Host header values, picked at random per request. | Значения заголовка Host, выбираются случайно на запрос. |
-| `path` | string | — | `/` | — | — | — | Request path. | Путь запроса. |
+| `path` | string | формат / format `url_path` | `/` | — | — | — | Request path. | Путь запроса. |
 | `method` | string | — | `GET` | — | — | — | HTTP method of the request. | HTTP-метод запроса. |
 | `headers` | object | — | — | — | — | — | Extra HTTP headers sent with each request. | Дополнительные HTTP-заголовки в каждом запросе. |
 | `idle_timeout` | duration | — | — | — | — | — | Close the connection after this idle period. | Закрывать соединение после простоя такой длительности. |
@@ -104,7 +104,7 @@ _A shared registry sub-schema: its fields are substituted into the body of every
 | Путь / path | Тип / type | Значения, формат, диапазон / values, format, range | Дефолт / default | Обяз. / req. | Мусор / on invalid | Гейт / gate | EN | RU |
 |---|---|---|---|---|---|---|---|---|
 | `host` | string | — | — | — | — | — | Host header value. | Значение заголовка Host. |
-| `path` | string | — | `/` | — | — | — | Request path. | Путь запроса. |
+| `path` | string | формат / format `url_path` | `/` | — | — | — | Request path. | Путь запроса. |
 | `headers` | object | — | — | — | — | — | Extra HTTP headers sent with each request. | Дополнительные HTTP-заголовки в каждом запросе. |
 
 ### `quic`
@@ -115,7 +115,7 @@ _A shared registry sub-schema: its fields are substituted into the body of every
 
 | Путь / path | Тип / type | Значения, формат, диапазон / values, format, range | Дефолт / default | Обяз. / req. | Мусор / on invalid | Гейт / gate | EN | RU |
 |---|---|---|---|---|---|---|---|---|
-| `path` | string | — | `/` | — | — | — | WebSocket request path. | Путь запроса WebSocket. |
+| `path` | string | формат / format `url_path` | `/` | — | — | — | WebSocket request path. | Путь запроса WebSocket. |
 | `headers` | object | — | — | — | — | — | Extra HTTP headers sent with each request. | Дополнительные HTTP-заголовки в каждом запросе. |
 | `max_early_data` | int | `0–4294967295` | — | — | drop [`type_invalid`](../warnings.md#type_invalid) | — | Maximum bytes of WebSocket early data. | Максимум байт ранних данных WebSocket. |
 | `early_data_header_name` | string | — | — | — | — | — | Header carrying the early data payload. | Заголовок, в котором едут ранние данные. |

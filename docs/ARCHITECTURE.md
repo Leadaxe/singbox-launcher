@@ -300,6 +300,53 @@ The launcher has two driving flows: **ingest** (subscription → nodes → state
 config) and **UI edit** (wizard → state → rebuild). Both converge on a single config
 writer. (For the storage-time view with diagrams, see [DATA_FLOW.md](DATA_FLOW.md).)
 
+### 6.0 Node flow: three stages from text to body (SPEC 131)
+
+Whatever a node arrives as — a share link, a hand-written JSON object, a
+subscription body, a WireGuard `.conf`, a backup entry or a form edit — its
+**body** is produced by exactly one sequence:
+
+```
+text ──▶ 1. mapper ──▶ 2. sanitizer ──▶ 3. emitter ──▶ state.Node{Body, Warnings[]}
+         (dialect)     (registry rules)   (table)                    │
+                                                                     ▼  build
+                                                      core/platform gate ──▶ config.json
+```
+
+1. **Mapper** (`core/config/subscription/*`) translates a dialect into the
+   canonical sing-box shape: `sni`→`tls.server_name`, `?ed=N`→`max_early_data`,
+   Xray `streamSettings.*`→`transport.*`. It decides nothing about *values*; its
+   only refusals are "protocol not recognised" and "syntax unparseable".
+2. **Sanitizer** (`core/config/nodeflow.Sanitize`) applies the rules of
+   `contract/registry/**` — type, enum, format, per-scheme bans, conflicts,
+   unknown keys. Anything removed or coerced produces a `{code, path}` warning.
+   The code knows no protocol by name; every scheme-specific difference is data.
+3. **Emitter** (`core/config/nodeflow.Emit`) walks the registry's field order and
+   writes what the sanitizer left. No per-scheme branching and no type asserts —
+   the values are already coerced.
+
+`core/config.materializeBody` is the single entry point to that sequence, and
+`state.Node.Body` is only ever written from its output.
+
+Two properties fall out of this, and both are load-bearing:
+
+- **A value the core rejects fatally cannot reach a body.** sing-box refuses a
+  `config.json` *whole* on one bad field, so a single bad node from a
+  500-node subscription would otherwise leave the user with no VPN at all.
+  `TestCorpusBodiesPassSingboxCheck` enforces this by assembling every corpus
+  case into one config and running the pinned core's `check`.
+- **The body is frozen; the core is not.** A body carries the fields of whatever
+  core wrote it, so the version/platform gate (`nodeflow.GateForCore`, driven by
+  `min_core`/`platform` in the registry) runs at *build* time and omits keys the
+  target core does not know. The node stays; only the runtime is narrowed, so no
+  ⚠ is raised. Node-level gates (naive/chain/tailscale/AWG3) are a different
+  class: they drop the whole node and stay in the emitter.
+
+Warnings are derived data — recomputable from `origin.raw` — and are stored only
+so the UI can draw ⚠ without re-parsing. `nil` means "never counted" and an empty
+list means "counted, clean"; a one-time pass at load turns the former into the
+latter for nodes saved before the pipeline existed.
+
 ### 6.1 Ingest → state → build → config.json → run
 
 1. **INGEST (subscription → nodes).** UI/auto-update triggers

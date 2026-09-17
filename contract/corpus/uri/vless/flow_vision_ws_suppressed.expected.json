@@ -24,7 +24,13 @@
       },
       "kind": "outbound",
       "label": "flow-ws",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "field_conflict",
+          "path": "flow"
+        }
+      ]
     }
   ],
   "v": 1

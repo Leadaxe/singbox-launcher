@@ -42,20 +42,132 @@ func coerce(f *registry.Field, raw interface{}) (interface{}, bool) {
 		return asBool(raw)
 	case "duration":
 		return asDuration(raw)
+	case "awg_range":
+		return asAWGRange(raw)
+	case "int_array":
+		return asIntArray(raw)
 	case "listable_string":
 		return asListable(f, raw)
 	case "string_array":
 		return asStringArray(f, raw)
 	case "object":
-		m, ok := raw.(map[string]interface{})
-		return m, ok
+		m, ok := asObject(raw)
+		if !ok {
+			return nil, false
+		}
+		return m, true
 	case "array":
-		l, ok := raw.([]interface{})
-		return l, ok
+		l, ok := asSlice(raw)
+		if !ok {
+			return nil, false
+		}
+		return l, true
 	}
 	// Тип, которого код не знает: реестр уехал вперёд — пропускаем как есть,
 	// не выдумывая приведения.
 	return raw, true
+}
+
+// asAWGRange — тип AWGRange форка (option/wireguard_awg.go): ЧИСЛО либо
+// строка "min-max", из которой ядро выбирает значение на каждое рукопожатие.
+// Обе формы ядро принимает (проверено `sing-box check` на 1.14.1-lx.4), и
+// форма сохраняется как приехала: число, записанное строкой, сменило бы
+// смысл поля на «диапазон из одного значения».
+func asAWGRange(raw interface{}) (interface{}, bool) {
+	if s, ok := raw.(string); ok {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return nil, false
+		}
+		lo, hi, isRange := strings.Cut(s, "-")
+		if !isRange {
+			// Голое число строкой — форму не переписываем, лишь проверяем.
+			if _, err := strconv.ParseUint(s, 10, 64); err != nil {
+				return nil, false
+			}
+			return s, true
+		}
+		if _, err := strconv.ParseUint(strings.TrimSpace(lo), 10, 64); err != nil {
+			return nil, false
+		}
+		if _, err := strconv.ParseUint(strings.TrimSpace(hi), 10, 64); err != nil {
+			return nil, false
+		}
+		return s, true
+	}
+	v, ok := asInt(raw)
+	if !ok {
+		return nil, false
+	}
+	if n, isInt := v.(int); isInt && n < 0 {
+		return nil, false
+	}
+	return v, true
+}
+
+// asIntArray — массив целых (peers[].reserved: ровно три байта).
+func asIntArray(raw interface{}) (interface{}, bool) {
+	var src []interface{}
+	switch v := raw.(type) {
+	case []int:
+		out := make([]int, len(v))
+		copy(out, v)
+		return out, true
+	case []interface{}:
+		src = v
+	default:
+		return nil, false
+	}
+	out := make([]int, 0, len(src))
+	for _, item := range src {
+		n, ok := asInt(item)
+		if !ok {
+			return nil, false
+		}
+		out = append(out, n.(int))
+	}
+	return out, true
+}
+
+// asObject принимает карту в любой из форм, в которых она приезжает: после
+// round-trip через JSON это map[string]interface{}, а прямо от URI-парсера —
+// нередко map[string]string (transport.headers, node_parser_transport.go:215)
+// или map[string]listable. Ассерт ровно одной формы молча ронял бы поле —
+// ловушка Л8 ровно про это.
+func asObject(raw interface{}) (map[string]interface{}, bool) {
+	switch v := raw.(type) {
+	case map[string]interface{}:
+		return v, true
+	case map[string]string:
+		out := make(map[string]interface{}, len(v))
+		for k, item := range v {
+			out[k] = item
+		}
+		return out, true
+	case map[string][]string:
+		out := make(map[string]interface{}, len(v))
+		for k, item := range v {
+			out[k] = item
+		}
+		return out, true
+	}
+	return nil, false
+}
+
+// asSlice — то же для массивов: peers приезжают []map[string]interface{}
+// (node_parser_wireguard.go:216), а после JSON — []interface{}.
+func asSlice(raw interface{}) ([]interface{}, bool) {
+	switch v := raw.(type) {
+	case []interface{}:
+		return v, true
+	case []map[string]interface{}:
+		out := make([]interface{}, 0, len(v))
+		for _, item := range v {
+			out = append(out, item)
+		}
+		return out, true
+	}
+	return nil, false
 }
 
 func normalize(mode, v string) string {

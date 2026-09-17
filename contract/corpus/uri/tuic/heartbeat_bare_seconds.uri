@@ -1,3 +1,7 @@
 # heartbeat=10 (голое число) нормализуется в duration "10s"
 # источник: core/config/subscription/node_parser_tuic_test.go:82 (TestBuildOutbound_Tuic_HeartbeatSeconds)
-tuic://u:p@example-1.com/?heartbeat=10
+# SPEC 131 W2c: uuid был заглушкой "u" — ядро её отвергает фаталом на ВЕСЬ
+# конфиг («invalid uuid: incorrect UUID length», проверено sing-box check на
+# 1.14.1-lx.4), то есть кейс нормировал тело, которое не запускается. Проверяемое
+# кейсом (порт/heartbeat/алиас/congestion) от формы uuid не зависит.
+tuic://11111111-1111-1111-1111-111111111111:p@example-1.com/?heartbeat=10

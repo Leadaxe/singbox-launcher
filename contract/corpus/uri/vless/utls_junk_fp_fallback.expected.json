@@ -19,7 +19,9 @@
       "label": "t",
       "scheme": "vless",
       "warnings": [
-        "utls_fp_unknown"
+        {
+          "code": "utls_fp_unknown"
+        }
       ]
     }
   ],

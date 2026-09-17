@@ -202,7 +202,7 @@
         "default": "cloudflare",
         "desc_en": "MASQUE server profile.",
         "desc_ru": "Профиль сервера MASQUE.",
-        "impl": "Иное значение = ошибка старта. Для cloudflare сертификат пинится по публичному ключу, обычная валидация цепочки отключена."
+        "impl": "Иное значение = ошибка старта. Для cloudflare сертификат пинится по публичному ключу, обычная валидация цепочки отключена. С ядра 1.14.1-lx.6 (SPEC 091): profile=standard без uri — один текст «masque: uri is required for the standard profile — set it to the server's CONNECT-IP request URI, e.g. https://<host>/.well-known/masque/ip/*/*/» при любом vhttp; «vhttp h2 is not implemented for the standard profile» только при заданном uri; ядро в uri ничего не подставляет."
       },
       "vhttp": {
         "type": "enum",
@@ -286,7 +286,7 @@
         "type": "string",
         "desc_en": "MASQUE endpoint URI.",
         "desc_ru": "URI точки подключения MASQUE.",
-        "impl": "Обязателен при profile=standard; для cloudflare дефолт https://cloudflareaccess.com."
+        "impl": "Обязателен при profile=standard; для cloudflare дефолт https://cloudflareaccess.com. С ядра 1.14.1-lx.6 (SPEC 091): profile=standard без uri — один текст «masque: uri is required for the standard profile — set it to the server's CONNECT-IP request URI, e.g. https://<host>/.well-known/masque/ip/*/*/» при любом vhttp; «vhttp h2 is not implemented for the standard profile» только при заданном uri; ядро в uri ничего не подставляет."
       },
       "mtu": {
         "type": "int",

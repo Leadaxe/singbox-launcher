@@ -10,12 +10,14 @@
           "server_name": "example-1.com"
         },
         "type": "tuic",
-        "uuid": "u"
+        "uuid": "11111111-1111-1111-1111-111111111111"
       },
       "kind": "outbound",
       "scheme": "tuic",
       "warnings": [
-        "tuic_congestion_invalid"
+        {
+          "code": "tuic_congestion_invalid"
+        }
       ]
     }
   ],

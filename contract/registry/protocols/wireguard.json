@@ -183,28 +183,28 @@
         "maps_to": "h1",
         "desc_en": "AmneziaWG magic header H1.",
         "desc_ru": "Magic-заголовок AmneziaWG H1.",
-        "impl": "AWG magic header: uint32 ИЛИ строка-диапазон \"lo-hi\" (AWG 2.0, ядро >= lx.6; эмитится строкой). Go нормализует порядок границ; при overlap h1-h4 нода дропается (ядро отвергло бы весь конфиг); Dart — только regex ^\\d+(-\\d+)?$. Битое → поле опускается с громким warn (дефолтный WG-header не совпадёт с сервером)."
+        "impl": "AWG magic header: uint32 ИЛИ строка-диапазон \"lo-hi\" (AWG 2.0, ядро >= lx.6; эмитится строкой). Go нормализует порядок границ; при overlap h1-h4 нода дропается (ядро отвергло бы весь конфиг); Dart — только regex ^\\d+(-\\d+)?$. Битое → поле опускается с громким warn (дефолтный WG-header не совпадёт с сервером). Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "h2": {
         "type": "int",
         "maps_to": "h2",
         "desc_en": "AmneziaWG magic header H2.",
         "desc_ru": "Magic-заголовок AmneziaWG H2.",
-        "impl": "AWG magic header, как h1."
+        "impl": "AWG magic header, как h1. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "h3": {
         "type": "int",
         "maps_to": "h3",
         "desc_en": "AmneziaWG magic header H3.",
         "desc_ru": "Magic-заголовок AmneziaWG H3.",
-        "impl": "AWG magic header, как h1."
+        "impl": "AWG magic header, как h1. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "h4": {
         "type": "int",
         "maps_to": "h4",
         "desc_en": "AmneziaWG magic header H4.",
         "desc_ru": "Magic-заголовок AmneziaWG H4.",
-        "impl": "AWG magic header, как h1."
+        "impl": "AWG magic header, как h1. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "i1": {
         "type": "string",
@@ -481,13 +481,13 @@
               "impl": "Пустой список = «missing allowed ips for peer N» на весь конфиг."
             },
             "persistent_keepalive_interval": {
-              "type": "string",
+              "type": "awg_range",
               "desc_en": "Keepalive interval in seconds, number or range.",
               "desc_ru": "Интервал keepalive в секундах: число или диапазон.",
-              "impl": "AWGRange форка: число (как в upstream) ИЛИ «min-max». Форма-диапазон требует сборки с with_awg и ядра >= 1.14.0-lx.32."
+              "impl": "AWGRange форка: число (как в upstream) ИЛИ «min-max». Форма-диапазон требует сборки с with_awg и ядра >= 1.14.0-lx.32. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
             },
             "reserved": {
-              "type": "string_array",
+              "type": "int_array",
               "len": 3,
               "on_invalid": {
                 "action": "drop",
@@ -495,7 +495,7 @@
               },
               "desc_en": "Three reserved bytes prepended to packets.",
               "desc_ru": "Три резервных байта в начале пакетов.",
-              "impl": "[]uint8 ровно из 3 элементов, иначе ошибка."
+              "impl": "[]uint8 ровно из 3 элементов, иначе ошибка. Тип int_array: значения ЧИСЛА (Go parseReservedTriplet → []int), string_array ронял поле целиком (SPEC 131 W2c)."
             }
           },
           "desc_en": "One WireGuard peer.",
@@ -571,9 +571,15 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
-        "desc_en": "Minimum size of a junk packet.",
+        "requires": [
+        {
+          "path": "jmax",
+          "code": "awg_header_invalid"
+        }
+      ],
+      "desc_en": "Minimum size of a junk packet.",
         "desc_ru": "Минимальный размер мусорного пакета.",
-        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Требование jmin <= jmax, иначе ошибка."
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Требование jmin <= jmax, иначе ошибка. jmin БЕЗ jmax = фатал на весь конфиг («jmin (N) must be <= jmax (0)», проверено `sing-box check`): ядро читает отсутствующий jmax как 0. Поэтому requires jmax — в одиночку поле бессмысленно и смертельно (SPEC 131 W2c)."
       },
       "jmax": {
         "type": "int",
@@ -646,7 +652,7 @@
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Влияет на MTU: при s4 > 0 дефолт mtu становится 1280."
       },
       "h1": {
-        "type": "string",
+        "type": "awg_range",
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
@@ -655,7 +661,7 @@
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». MagicHeader = AWGRange: число или «min-max». Пересечение диапазонов h1..h4 = код awg_headers_overlap."
       },
       "h2": {
-        "type": "string",
+        "type": "awg_range",
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
@@ -664,7 +670,7 @@
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». MagicHeader = AWGRange."
       },
       "h3": {
-        "type": "string",
+        "type": "awg_range",
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
@@ -673,7 +679,7 @@
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». MagicHeader = AWGRange."
       },
       "h4": {
-        "type": "string",
+        "type": "awg_range",
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
@@ -819,63 +825,63 @@
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x: base64 фиксированной длины; всё-нули = ошибка; требует s1..s4 не ниже порога. Коды awg3_header_key_invalid, awg3_padding_too_short. Секрет."
       },
       "content_padding_addition": {
-        "type": "string",
+        "type": "awg_range",
         "lx_only": true,
         "min_core": "1.14.0-lx.32",
         "build_tag": "with_awg",
         "desc_en": "Extra content padding, number or range.",
         "desc_ru": "Добавочная набивка содержимого: число или диапазон.",
-        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange."
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "rekey_after_time": {
-        "type": "string",
+        "type": "awg_range",
         "default": "120",
         "lx_only": true,
         "min_core": "1.14.0-lx.32",
         "build_tag": "with_awg",
         "desc_en": "Rekey after this many seconds.",
         "desc_ru": "Смена ключей через столько секунд.",
-        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 120 секунд."
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 120 секунд. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "rekey_timeout": {
-        "type": "string",
+        "type": "awg_range",
         "default": "5",
         "lx_only": true,
         "min_core": "1.14.0-lx.32",
         "build_tag": "with_awg",
         "desc_en": "Rekey attempt timeout in seconds.",
         "desc_ru": "Таймаут попытки смены ключей в секундах.",
-        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 5 секунд."
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 5 секунд. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "reject_after_time": {
-        "type": "string",
+        "type": "awg_range",
         "default": "180",
         "lx_only": true,
         "min_core": "1.14.0-lx.32",
         "build_tag": "with_awg",
         "desc_en": "Reject the session after this many seconds.",
         "desc_ru": "Отбрасывать сессию через столько секунд.",
-        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 180 секунд."
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 180 секунд. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "keepalive_timeout": {
-        "type": "string",
+        "type": "awg_range",
         "default": "10",
         "lx_only": true,
         "min_core": "1.14.0-lx.32",
         "build_tag": "with_awg",
         "desc_en": "Keepalive timeout in seconds.",
         "desc_ru": "Таймаут keepalive в секундах.",
-        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 10 секунд."
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 10 секунд. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "max_handshake_attempts": {
-        "type": "string",
+        "type": "awg_range",
         "default": "18",
         "lx_only": true,
         "min_core": "1.14.0-lx.32",
         "build_tag": "with_awg",
         "desc_en": "Maximum handshake attempts, count not seconds.",
         "desc_ru": "Максимум попыток рукопожатия — попытки, не секунды.",
-        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 18 попыток."
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 18 попыток. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "random_trailers": {
         "type": "bool",

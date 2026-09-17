@@ -1841,6 +1841,16 @@ URI-путь), а расхождение путей записано в `desc` �
 - Общие баги ядра (vmess `security` aes-128-ctr/aes-128-cfb; xhttp
   `mode`/`seq_placement`/`x_padding_*` без enum-гарда) — задача LxBox §459,
   до конвейера.
+- **§459 сделано** (develop LxBox `24aaab05`, 18.09.2026): 7.11 vmess
+  `security` = enum ядра, `trim_lower`, иное → `auto` (лог; класс под
+  `type_invalid` придёт с реестром); 7.14 xhttp `mode`/`x_padding_placement`/
+  `x_padding_method` — enum case-sensitive, мусор → снят с `xhttp_param_reset`;
+  7.2 `tls.ech{}` из sing-box-JSON проходит (объектом как есть, в т.ч. naive),
+  URI `ech=` снимается с `ech_ignored`; 7.12 `key_share` trim+lower; 7.4
+  `-udp443` порт не переписывает ни в одной из трёх веток.
+- Фича LxBox 460 (бандлинг реестра 1.1.0, санитайзер по `body` на сборке,
+  `RegistryWarning` с текстами из `warnings.json`) — волна W1 в работе
+  18.09; список кодов для привязки `dart` пришлём по её завершении.
 
 ### 24.5 Ответы LxBox 18.09.2026 (решения владельца, зеркало из копии LxBox)
 
@@ -1850,3 +1860,25 @@ URI-путь), а расхождение путей записано в `desc` �
 - (г) Баг ядра `short_id` >16 hex передан агенту ядра (сессия sing-box-lx) по решению владельца вместо issue.
 - ECH: та же ложная посылка D-006 была у LxBox в §454 (`tls.ech` вырезан из allowlist'а) — правят: `tls.ech{}` из sing-box-JSON пропускается, URI `ech=` Xray-формы снимается с `ech_ignored`.
 - Общие баги против ядра (vmess `security` `aes-128-ctr`/`aes-128-cfb`, гарды xhttp-enum) — задача LxBox §459, до конвейера (у лаунчера — hotfix `5627be78`).
+
+### 24.6 Изменения нормативного поведения корпуса от W2c лаунчера (18.09.2026) — нужна встречная правка
+
+Конвейер подключён ко всем входам лаунчера (`core/config/node_materialize.go`); корпус
+перепроверен сводным `sing-box check` (239 outbound + 43 endpoint одним конфигом,
+тест `TestCorpusBodiesPassSingboxCheck`). Ожидания, сменившие поведение
+содержательно (обоснования вписаны в сами `.uri`/`.body`):
+
+| Кейс | Было | Стало | Почему |
+|---|---|---|---|
+| `uri/naive/empty_host_rejected` | узел жил | узел отбракован (`required` host) | тело роняло весь конфиг |
+| `uri/trojan/ws_path_broken_percent_kept` | `%zz` в path проходил | снят, новый `format: url_path` | ядро отвергает битый percent-encoding |
+| `uri/wireguard/awg_bad_numeric_skipped`, `awg_jc_invalid_dropped` | частичный набор jc/jmin/jmax | `jmin` без `jmax` → `requires` снимает | ядро отвергает неполный набор |
+| `body/singbox/outbound_array_tls_fields` (trojan-full-tls) | `certificate` + `certificate_path` + пины вместе | **снимаются пины**, сертификат и путь остаются, `field_conflict` на `tls.certificate_public_key_sha256` | ядро: «certificate_public_key_sha256 is conflict with certificate or certificate_path»; в духе #140 сертификат пользователя не теряем (реестр `tls.json`, `conflicts` перенесён на пины) |
+| `uri/tuic/*` (4 кейса) | uuid-заглушка `"u"` | валидные uuid в фикстурах | `"u"` даёт фатал «invalid uuid» — фикстуры были невалидны |
+| `reality.short_id: ""` (3 кейса) | пустой ключ в теле | ключ опущен | ядру эквивалентно |
+| `flow_deprecated` / `field_conflict` (4 кейса) | кодов не было | коды добавлены, тела те же | Л10: коды реестра теперь ставятся |
+| явные `insecure:false`, `disable_sni:false` в sing-box-JSON | опускались старым эмиттером | **сохраняются как пришли** | санитайзер не канонизирует дефолты (CANON §2.4 — про материализацию своих дефолтов, не про снятие явных значений входа); если LxBox их снимает — скажите, выровняем |
+
+Новые типы реестра: `awg_range` (h1–h4 и диапазоны AWG), `int_array` (`peers.reserved`), формат `url_path`; `registry.Load` теперь индексирует схемы по `scheme`+`aliases`+`singbox_type` (ss/socks5/wg/awg). Пара ссылка↔JSON одного мусорного vless (`uri/vless/junk_pair_with_body` ↔ `body/singbox/vless_junk_pair`) даёт одинаковые тела; коды пока различаются путями — правила значений выносятся из URI-парсеров в W2d.
+
+Ядро: lx.5 — паника short_id заменена ошибкой; lx.6 (SPEC 091) — `tuic.udp_relay_mode` мусор стал ошибкой загрузки (вердикт C→B, наш drop совпадает), masque standard без uri — один текст ошибки; lx.7 (SPEC 092) — ошибки называют тип и тег элемента. Лаунчер пинит lx.7 одним бампом.
