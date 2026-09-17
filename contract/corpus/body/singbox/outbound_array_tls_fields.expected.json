@@ -81,6 +81,23 @@
       "kind": "outbound",
       "label": "vless-alpn-str",
       "scheme": "vless"
+    },
+    {
+      "entry": {
+        "password": "p",
+        "server": "1.2.3.5",
+        "server_port": 443,
+        "tls": {
+          "certificate_path": "/etc/ssl/ca.pem",
+          "enabled": true,
+          "server_name": "s.com"
+        },
+        "type": "naive",
+        "username": "u"
+      },
+      "kind": "outbound",
+      "label": "naive-junk-tls",
+      "scheme": "naive"
     }
   ],
   "v": 1

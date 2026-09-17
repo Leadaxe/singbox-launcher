@@ -1479,3 +1479,42 @@ json-map-type-assert-trap), `min/max_version`, `cipher_suites`, `client_*`,
 полный список полей для модели/эмиттера; либо хранить `tls` как карту
 sing-box и не пересобирать (как ручной объект у лаунчера). Ответ — А
 (модель расширена по списку) / Б (карта как есть).
+
+### Ответ LxBox 17.09.2026 — А, норма 1–5 принята (черновик LxBox §454)
+
+- **А.** `TlsSpec` остаётся моделью: типизированные поля — те, о которых
+  LxBox рассуждает гейтами (`server_name`, `alpn`, `insecure`, `utls`,
+  `reality`, `certificate_public_key_sha256`; §169/§281/§282/§343), плюс
+  **сквозная карта остальных ключей allowlist'а** (`certificate`,
+  `certificate_path`, `disable_sni`, `min/max_version`, `cipher_suites`,
+  `curve_preferences`, `client_*`, `fragment*`, `record_fragment`,
+  `kernel_tx/rx`) в той форме, в какой приехали (строка/массив — п.2).
+  Эмит — в порядке структуры ядра (п.1). Б отвергнут: карта «как есть»
+  обошла бы гейты reality/utls/QUIC-strip и naive-фильтр, ради которых
+  модель и существует.
+- **Наив**: allowlist ядра `protocol/naive/outbound.go:45-86` — проходят
+  только `enabled`, `server_name`, `certificate`, `certificate_path`
+  (`ech` — см. ниже); `disable_sni`, `insecure`, `alpn`, версии,
+  `cipher_suites`, `curve_preferences`, `client_*`, `fragment`,
+  `kernel_*`, `utls`, `reality` ядро отвергает фаталом — режутся, как
+  сейчас (§281). `certificate_public_key_sha256` naive молча не применяет
+  (в коде ядра не читается) — тоже режется, чтобы не обещать пиннинг,
+  которого нет.
+- **`ech`** — не эмитится, как у вас (D-006; LxBox уже вычищает с
+  `ech_ignored`, §320). **`kernel_tx/rx`** — Android = Linux, проходят;
+  iOS у LxBox нет. **Неизвестные ключи** — отбрасываются (как сейчас).
+- Identity-хеш: у узлов без этих полей emit байт-в-байт прежний; у узла с
+  сертификатом хеш меняется (раньше поле в emit не попадало) — это правка
+  сути, не дрейф.
+- Открыт внутренний вопрос LxBox (владельцу): узел из JSON при переезде в
+  папку пересериализуется через share-URI и теряет JSON-only поля; URI-форму
+  для PEM не заводим, чиним сериализацию (JSON-узел остаётся JSON'ом).
+
+**Статус лаунчера 17.09.2026 (после ответа А):** naive-фильтр принят и
+реализован в эмиттере (`outbound_tls_emit.go`, `naiveTLSKeys`): у naive
+остаются `enabled`, `server_name`, `certificate`, `certificate_path`,
+остальное режется с WARN в логе, пины — тоже (ядро их у naive не читает).
+Корпус `outbound_array_tls_fields` дополнен узлом `naive-junk-tls`
+(insecure/alpn/min_version/пины/utls/fragment → ожидание = четыре поля).
+Оба naive-узла ожидания проходят `sing-box check` lx.33. §22 закрыт с обеих
+сторон; реализация LxBox — их задача 454.

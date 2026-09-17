@@ -667,7 +667,7 @@ func GenerateNodeJSONBare(node *ParsedNode) (string, error) {
 	parts = appendOutboundTransportParts(parts, node.Outbound)
 
 	// 7. tls (if present) — allowlist по OutboundTLSOptions ядра, см. outbound_tls_emit.go
-	if tlsJSON, ok := emitOutboundTLSJSON(node.Outbound); ok {
+	if tlsJSON, ok := emitOutboundTLSJSON(node.Scheme, node.Outbound); ok {
 		parts = append(parts, fmt.Sprintf(`"tls":%s`, tlsJSON))
 	}
 

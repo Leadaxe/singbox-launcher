@@ -21,11 +21,24 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/subscription"
+	"singbox-launcher/internal/debuglog"
 )
 
-// emitOutboundTLSJSON строит `{...}` для tls. Второе значение false —
-// блок опускается целиком (нет карты или enabled:false, SPEC 045).
-func emitOutboundTLSJSON(outbound map[string]interface{}) (string, bool) {
+// naiveTLSKeys — единственные TLS-поля, которые ядро читает у naive
+// (protocol/naive/outbound.go NewOutbound): всё остальное — disable_sni,
+// insecure, alpn, версии, cipher_suites, curve_preferences, client_*,
+// fragment, kernel_*, utls, reality — ядро отвергает фаталом на ВЕСЬ конфиг,
+// а certificate_public_key_sha256 молча не применяет (пиннинг, которого
+// нет). Режем здесь, а не в санитайзере импорта: эмиттер — последний рубеж
+// и для URI-, и для JSON-пути. Норма §22 TASKS_LXBOX, паритет с LxBox.
+var naiveTLSKeys = map[string]struct{}{
+	"enabled": {}, "server_name": {}, "certificate": {}, "certificate_path": {},
+}
+
+// emitOutboundTLSJSON строит `{...}` для tls узла схемы scheme. Второе
+// значение false — блок опускается целиком (нет карты или enabled:false,
+// SPEC 045).
+func emitOutboundTLSJSON(scheme string, outbound map[string]interface{}) (string, bool) {
 	if outbound == nil {
 		return "", false
 	}
@@ -41,6 +54,18 @@ func emitOutboundTLSJSON(outbound map[string]interface{}) (string, bool) {
 		// SPEC 045). Backstop for nodes that reach the generator without
 		// going through the URI parsers.
 		return "", false
+	}
+
+	if scheme == "naive" {
+		filtered := make(map[string]interface{}, len(naiveTLSKeys))
+		for k, v := range tlsData {
+			if _, keep := naiveTLSKeys[k]; keep {
+				filtered[k] = v
+			} else {
+				debuglog.WarnLog("Generator: naive %q: tls.%s is not supported by the core — dropped", mapStringValue(outbound, "tag"), k)
+			}
+		}
+		tlsData = filtered
 	}
 
 	var parts []string
@@ -133,4 +158,13 @@ func emitOutboundTLSJSON(outbound map[string]interface{}) (string, bool) {
 	}
 
 	return "{" + strings.Join(parts, ",") + "}", true
+}
+
+// mapStringValue — строковое поле карты или "".
+func mapStringValue(m map[string]interface{}, key string) string {
+	if m == nil {
+		return ""
+	}
+	v, _ := m[key].(string)
+	return v
 }
