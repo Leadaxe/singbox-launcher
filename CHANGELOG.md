@@ -6,6 +6,27 @@
 Ломающие изменения помечены **!** — они меняют формат данных или поведение,
 на которое можно было полагаться.
 
+## Unreleased
+
+Черновик пользовательских заметок — [docs/release_notes/upcoming.md](docs/release_notes/upcoming.md).
+
+## v1.6.3
+
+Подробные заметки: [docs/release_notes/1-6-3.md](docs/release_notes/1-6-3.md).
+
+### Исправления (2)
+
+- fix(config): эмиттер TLS собран по allowlist полей `OutboundTLSOptions` ядра — импорт sing-box JSON (массив outbound'ов, целый конфиг, подписка) больше не теряет `tls.certificate` у `naive` и `alpn`/пины `certificate_public_key_sha256`/`min_version`/`max_version`/`cipher_suites`/`client_*`/`fragment` у любых схем; встроенный эмиттер знал семь ключей и падал на `[]interface{}` из JSON там, где ждал `[]string`. Узлы, добавленные одним объектом JSON (EmitRaw), потерей не задевало; корпус `body/singbox/outbound_array_tls_fields`, `registry/tls.json` policy.emit_allowlist, TASKS_LXBOX §22 (LxBox #140, `189bdd4f`)
+- fix(config): у `naive` эмитятся только `enabled`/`server_name`/`certificate`/`certificate_path` — ядро naive валит фатальной ошибкой весь конфиг на любом другом ключе TLS, так что один такой узел не давал ядру стартовать; `certificate_public_key_sha256` оно молча игнорирует (`7f2feafe`)
+
+### Основное (1)
+
+- feat(config): `key_share` в ссылках REALITY — параметр `key_share=hybrid|classical` у `vless://` и `anytls://` рядом с `pbk`/`sid` (имя ключа sing-box как есть, D-121, контракт 1.0.4). `classical` нужен REALITY-серверам Xray **старше** v26.9.8: они рвут соединение на гибридном ClientHello, и до сих пор такой сервер можно было подключить только правкой JSON-тела. Значение читается только у настоящего REALITY-узла (валидный `pbk`), мусор снимает ПОЛЕ а не узел (код `reality_key_share_invalid`, единый для ссылки и тела — прежде тело чистило ключ молча), а на ядре старше 1.14.1-lx.4 поле не эмитится вовсе: ключ ему неизвестен, и узел остался бы вообще без конфига
+
+### Прочее (1)
+
+- chore(core): пин ядра sing-box-lx 1.14.1-lx.4 — `tls.reality.key_share` (SPEC 089 ядра: `hybrid` / `classical`, пусто = как несёт отпечаток) и SPEC 088: `fragment`/`record_fragment` из шаблона (флаги `tls_fragment`/`tls_record_fragment`, `core/build/tls_transforms.go`) теперь доходят и до REALITY-узлов — прежние ядра их там молча игнорировали, так что у REALITY-узлов с включённым фрагментированием поведение на проводе меняется
+
 ## v1.6.2
 
 Подробные заметки: [docs/release_notes/1-6-2.md](docs/release_notes/1-6-2.md).

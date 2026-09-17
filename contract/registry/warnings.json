@@ -190,9 +190,18 @@
       "params": [
         "value"
       ],
-      "desc": "REALITY short_id содержит не-hex или слишком длинный — фильтруется до hex-цифр/усекается, мусор целиком → поле снимается (пустой short_id легален). Сегодня молча в обоих проектах.",
+      "desc": "REALITY short_id содержит не-hex или слишком длинный — фильтруется до hex-цифр/усекается, мусор целиком → поле снимается (пустой short_id легален). Код ставится только на URI-пути vless, где узел под рукой (предикат realityShortIDWouldDegrade ДО нормализации). На sing-box-импорте поле чистится МОЛЧА: sanitizeSingboxReality нормализует short_id, но кода не возвращает — расхождение путей, кандидат на выравнивание по образцу reality_key_share_invalid.",
       "dart": "RealityShortIdInvalidWarning",
-      "go": "core/config/subscription/node_parser_transport.go:564; core/config/subscription/singbox_sanitize.go:209"
+      "go": "core/config/subscription/node_parser_transport.go:908 (AddWarning); нормализатор — node_parser_transport.go normalizeRealityShortID, молчаливая чистка импорта — singbox_sanitize.go sanitizeSingboxReality"
+    },
+    "reality_key_share_invalid": {
+      "severity": "info",
+      "params": [
+        "value"
+      ],
+      "desc": "tls.reality.key_share вне закрытого enum ядра (hybrid|classical, SPEC 089 ядра, sing-box-lx >= 1.14.1-lx.4): ключ снят, узел жив с REALITY и обменом ключами по умолчанию отпечатка. ПОЧЕМУ ПРЕДУПРЕЖДАЕМ: значение вне enum ядро считает ошибкой загрузки ВСЕГО конфига, а не узла (проверено `sing-box check` бинарём 1.14.1-lx.4), поэтому поле не доезжает — и узел молча идёт не с тем обменом ключами, который просила подписка или тело. Мягче гейта pbk (§169: невалидный public_key роняет весь REALITY-блок и деградирует узел до plain TLS). Единый код для share-URI (vless/anytls, читается ТОЛЬКО при валидном pbk — D-121) и JSON-тела sing-box. Нормализация обоих путей — trim + lower-case через NormalizeRealityKeyShare. Пустая строка кода НЕ даёт: это не мусор, а «как несёт отпечаток». ГЕЙТ ВЕРСИИ — отдельная история: на ядре старше lx.4 валидное поле снимается эмиттером БЕЗ этого кода (ключ неизвестен ядру, узел живёт), причина уходит в WARN лога.",
+      "dart": null,
+      "go": "core/config/subscription/parse_warnings.go (WarnRealityKeyShareInvalid); URI — node_parser_transport.go:925 vlessTLSFromNode, node_parser_anytls.go:96 buildAnyTLSTLS; JSON-тело — singbox_sanitize.go:231 sanitizeSingboxReality (код возвращается наружу и вешается в singbox_import.go); эмиссия и гейт версии — core/config/outbound_tls_emit.go, проба core/core_capabilities.go CoreSupportsRealityKeyShare"
     },
     "packet_encoding_unknown": {
       "severity": "warning",

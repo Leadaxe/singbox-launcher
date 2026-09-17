@@ -85,11 +85,19 @@ func buildAnyTLSTLS(node *configtypes.ParsedNode, outbound map[string]interface{
 	// a junk pbk on a plain TLS node would make sing-box reject the whole config.
 	// LxBox already parses this; without it the two sides emit different nodes.
 	if pbk := queryGetFold(q, "pbk"); isValidRealityPublicKey(pbk) {
-		tlsData["reality"] = map[string]interface{}{
+		reality := map[string]interface{}{
 			"enabled":    true,
 			"public_key": strings.TrimSpace(pbk),
 			"short_id":   normalizeRealityShortID(queryGetFold(q, "sid")),
 		}
+		// D-121 — тот же гейт, что во vless-пути: key_share читается только
+		// под валидным pbk, мусор снимает поле и предупреждает.
+		if ks, degraded := NormalizeRealityKeyShare(queryGetFold(q, "key_share")); degraded {
+			node.AddWarning(WarnRealityKeyShareInvalid)
+		} else if ks != "" {
+			reality["key_share"] = ks
+		}
+		tlsData["reality"] = reality
 		// D-119 — тот же гейт, что во vless-пути: отпечаток вне
 		// chrome-семейства уходит как есть, узел об этом предупреждает.
 		if realityFingerprintRisky(fp) {

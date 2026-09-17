@@ -1,0 +1,30 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "reality": {
+            "enabled": true,
+            "key_share": "hybrid",
+            "public_key": "AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw",
+            "short_id": "abcd"
+          },
+          "server_name": "cdn.example-1.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "type": "anytls"
+      },
+      "kind": "outbound",
+      "label": "at-ks-hybrid",
+      "scheme": "anytls"
+    }
+  ],
+  "v": 1
+}

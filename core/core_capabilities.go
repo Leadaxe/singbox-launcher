@@ -362,3 +362,116 @@ func cronetLibAvailable(singboxPath string) bool {
 	}
 	return false
 }
+
+// SPEC 089 ядра: поле `tls.reality.key_share` знает только ядро
+// 1.14.1-lx.4 и новее. На ядре постарше это НЕИЗВЕСТНЫЙ ключ, а неизвестный
+// ключ ядро отвергает отказом ВСЕГО конфига — то есть без гейта один узел с
+// key_share оставил бы пользователя вообще без VPN. Здесь, в отличие от
+// tailscale/AWG3, узел выбрасывать не надо: REALITY прекрасно работает и без
+// поля (обмен ключами берётся из uTLS-отпечатка), поэтому гейт ПОЛЕВОЙ —
+// снимается одно поле.
+
+// keyShareSupportVerdict — кэш вердикта по (mtime, size) бинаря ядра.
+type keyShareSupportVerdict struct {
+	binMtime  time.Time
+	binSize   int64
+	supported bool
+	reason    string
+}
+
+// keyShareMinCoreVersion — граница строкой, для текста причины и сравнения
+// базовых версий.
+const keyShareMinCoreVersion = "1.14.1-lx.4"
+
+// keyShareMinLxRelease — минимальный номер релиза форка в суффиксе `-lx.N`
+// поверх базовой 1.14.1.
+const keyShareMinLxRelease = 4
+
+// keyShareMinBaseVersion — базовая версия, начиная с которой смотрим суффикс.
+const keyShareMinBaseVersion = "1.14.1"
+
+// CoreSupportsRealityKeyShare reports whether the installed sing-box core
+// understands tls.reality.key_share, with a human-readable reason when it
+// can't.
+func (ac *AppController) CoreSupportsRealityKeyShare() (bool, string) {
+	if ac == nil || ac.FileService == nil {
+		return true, ""
+	}
+	singboxPath := ac.FileService.SingboxPath
+	if resolved, err := exec.LookPath(singboxPath); err == nil {
+		singboxPath = resolved
+	}
+	st, err := os.Stat(singboxPath)
+	if err != nil {
+		return true, "" // ядра нет — пробовать нечего
+	}
+
+	ac.keyShareSupportCacheMu.Lock()
+	defer ac.keyShareSupportCacheMu.Unlock()
+	if c := ac.keyShareSupportCache; c != nil && c.binMtime.Equal(st.ModTime()) && c.binSize == st.Size() {
+		return c.supported, c.reason
+	}
+
+	supported, reason := probeKeyShareSupport(singboxPath)
+	ac.keyShareSupportCache = &keyShareSupportVerdict{
+		binMtime:  st.ModTime(),
+		binSize:   st.Size(),
+		supported: supported,
+		reason:    reason,
+	}
+	if !supported {
+		debuglog.WarnLog("CoreSupportsRealityKeyShare: %s", reason)
+	}
+	return supported, reason
+}
+
+// probeKeyShareSupport runs `sing-box version` and derives the verdict.
+func probeKeyShareSupport(singboxPath string) (bool, string) {
+	cmd := exec.Command(singboxPath, "version")
+	platform.PrepareCommand(cmd)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		debuglog.WarnLog("probeKeyShareSupport: sing-box version failed: %v", err)
+		return true, ""
+	}
+	return keyShareVerdictFromVersionOutput(string(output))
+}
+
+// keyShareVerdictFromVersionOutput — чистая часть пробы, проверяемая тестом.
+//
+// Тега сборки у поля нет (оно в option/tls.go, а не за build-тегом), поэтому
+// вердикт строится только по версии. Политика та же, что у соседей:
+// деградируем только по положительному свидетельству — неразобранная версия
+// значит «умеет», а последним рубежом остаётся `sing-box check`.
+func keyShareVerdictFromVersionOutput(versionOutput string) (bool, string) {
+	version := coreVersionFromVersionOutput(versionOutput)
+	if version == "" {
+		return true, "" // формат неизвестен — не деградируем по догадке
+	}
+	base := strings.SplitN(version, "-", 2)[0]
+	switch CompareVersions(base, keyShareMinBaseVersion) {
+	case 1:
+		return true, "" // 1.14.2+ — поле уже в апстриме форка
+	case -1:
+		return false, keyShareUnsupportedReason(version)
+	}
+	// Ровно 1.14.1: решает номер релиза форка в суффиксе.
+	lx := awg3LxReleaseRegex.FindStringSubmatch(version)
+	if lx == nil {
+		return true, "" // не форк или неожиданный суффикс — не гадаем
+	}
+	release, err := strconv.Atoi(lx[1])
+	if err != nil || release >= keyShareMinLxRelease {
+		return true, ""
+	}
+	return false, keyShareUnsupportedReason(version)
+}
+
+// keyShareUnsupportedReason — текст причины для лога и отчёта сборки.
+func keyShareUnsupportedReason(version string) string {
+	if version == "" {
+		version = "of unknown version"
+	}
+	return fmt.Sprintf("sing-box core %s does not support tls.reality.key_share (need %s or newer) — the field is omitted, REALITY nodes keep working",
+		version, keyShareMinCoreVersion)
+}

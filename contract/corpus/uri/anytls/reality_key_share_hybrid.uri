@@ -1,0 +1,4 @@
+# D-121: тот же параметр key_share на anytls — вторая схема, где URI-парсер
+# строит REALITY (в trojan:// reality не парсится ни одним проектом).
+# источник: SPEC 089 ядра (sing-box-lx 1.14.1-lx.4), TASKS_LXBOX §23
+anytls://pass123@example-1.com:443?security=reality&pbk=AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw&sid=abcd&key_share=hybrid&sni=cdn.example-1.com&fp=chrome#at-ks-hybrid

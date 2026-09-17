@@ -31,6 +31,13 @@ func vlessTLSToQuery(q url.Values, tls map[string]interface{}, server string, po
 			if sid := mapGetString(reality, "short_id"); sid != "" {
 				q.Set("sid", sid)
 			}
+			// D-121: key_share едет рядом с pbk/sid — имя ключа sing-box как
+			// есть. Пишется только каноническое значение: мусор из тела узла
+			// в ссылку не переносится (его всё равно снимет любой парсер, а
+			// принимающая сторона получила бы код на ровном месте).
+			if ks, degraded := NormalizeRealityKeyShare(mapGetString(reality, "key_share")); !degraded && ks != "" {
+				q.Set("key_share", ks)
+			}
 			sni := mapGetString(tls, "server_name")
 			if sni == "" {
 				sni = server

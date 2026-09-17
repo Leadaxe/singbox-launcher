@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v1.6.3
+
+Патч после v1.6.2, ядро `sing-box-lx 1.14.1-lx.4`. **Импорт sing-box JSON больше не теряет поля TLS:** массив outbound'ов, целый конфиг и подписка в этом формате шли через эмиттер, знавший семь ключей, — у `naive` терялся `tls.certificate`, у любых схем `alpn`, пины, `min_version`/`max_version`, `cipher_suites`, `client_*` и `fragment`. **Узел `naive` с чужим ключом TLS больше не роняет конфиг целиком:** ядро naive принимает ровно четыре ключа, остальные валят старт, и теперь эмиттер пишет только их. В ссылках REALITY читается `key_share=hybrid|classical` (нужен серверам Xray старше v26.9.8). Ядро lx.4: `tls.reality.key_share` из JSON-тела доезжает до ядра, а флаги фрагментации TLS из шаблона теперь применяются и к REALITY-узлам. Подробнее: [docs/release_notes/1-6-3.md](docs/release_notes/1-6-3.md).
+
+### Highlights (EN) — v1.6.3
+
+A patch after v1.6.2, core `sing-box-lx 1.14.1-lx.4`. **Importing sing-box JSON no longer drops TLS fields:** an outbound array, a whole config and a subscription in that format ran through an emitter that knew seven keys — `tls.certificate` was lost on `naive`, and `alpn`, pins, `min_version`/`max_version`, `cipher_suites`, `client_*` and `fragment` on every scheme. **A `naive` node with a foreign TLS key no longer takes down the whole config:** the naive core accepts exactly four keys and fails the start on any other, so the emitter now writes only those. REALITY links accept `key_share=hybrid|classical` (needed by Xray servers older than v26.9.8). Core lx.4: `tls.reality.key_share` from a node's JSON body reaches the core, and the template's TLS fragmentation flags now apply to REALITY nodes too. Details: [docs/release_notes/1-6-3.md](docs/release_notes/1-6-3.md).
+
 ### Выжимка (RU) — v1.6.2
 
 Патч после v1.6.1, ядро `sing-box-lx 1.14.1-lx.3`. **REALITY-узлы с отпечатками `firefox` и `safari` подключаются к серверам Xray 26.9.8+:** такие серверы требуют постквантовый key share, а в uTLS ядра он был только у chrome-пресетов, и узел с `fp=firefox` молча уходил на камуфляжный сайт. Ядро переводит `firefox` на Firefox 148, `safari` на Safari 26.3, подсказка «попробуйте chrome» с этих узлов снята и остаётся у `ios`/`android`/`edge`/`360`/`qq`. **Ссылки `awg://` с целым `.conf` в base64** (так панели раздают AmneziaWG 3.x) импортируются вместо пустого источника. Traffic Profiler больше не пишет `connection refused` раз в секунду при остановленном ядре. Подробнее: [docs/release_notes/1-6-2.md](docs/release_notes/1-6-2.md).
@@ -672,6 +680,7 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v1.6.3** | [docs/release_notes/1-6-3.md](docs/release_notes/1-6-3.md) |
 | **v1.6.2** | [docs/release_notes/1-6-2.md](docs/release_notes/1-6-2.md) |
 | **v1.6.1** | [docs/release_notes/1-6-1.md](docs/release_notes/1-6-1.md) |
 | **v1.6.0** | [docs/release_notes/1-6-0.md](docs/release_notes/1-6-0.md) |

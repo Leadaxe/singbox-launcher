@@ -1425,3 +1425,234 @@ libbox/бинарём.
 ### 20.3 Дополнение 16.09.2026: firefox и safari — без `reality_fp_not_chrome`
 
 Ядро закрыло §20.2: sing-box-lx 1.14.1-lx.2 — `firefox` = Firefox 148, 1.14.1-lx.3 — `safari` = Safari 26.3 (форк utls, SPEC 086 ядра), оба с гибридным шаром; проверено на узле репортёра (#124): 204. Решение владельца: **firefox и safari из ограничений убрать**. Норма: код `reality_fp_not_chrome` получают только `ios`, `android`, `edge`, `360`, `qq`; chrome-семейство, `firefox`, `safari`, пустой fp и `random` — без кода. Go: `realityHybridUTLSFingerprints` в node_parser_transport.go; LxBox: тот же набор в `utls_fingerprint.dart`. Корпус: `uri/vless/reality_fp_firefox_kept`, `reality_tcp_no_flow`, `grpc_reality_no_flow` — без warning; `allowinsecure_lowercase_zero` (fp=qq) — с warning. Реестры: `warnings.json`, `tls.json`. Условие — ядро/libbox ≥ lx.3; лаунчер пинит lx.3 с 1.6.2.
+
+### 20.4 Статус (16.09.2026)
+
+Обе стороны закрыли §20: лаунчер — v1.6.2 (ядро 1.14.1-lx.3, `parseWGConfBase64Link`, `realityHybridUTLSFingerprints`); LxBox — v2.24.1 (задачи 450 awg-conf-base64-link и 451 reality-fp-firefox-safari-hybrid; множество `kRealityHybridFingerprints`, пин ядра lx.3, `rawSource` (до переименования `rawUri`) = исходная ссылка, не синтетический `wireguard://`). Все кейсы `awg_conf_base64*` и четыре REALITY-кейса проходят у обоих без локальных отступлений. `randomized` у обеих сторон остаётся с кодом, `random` — нет.
+
+## 22. TLS-поля тела узла: `certificate` и соседи теряются в редакторе (LxBox #140, приоритет 1)
+
+Отчёт [LxBox #140](https://github.com/Leadaxe/LxBox/issues/140): JSON-редактор
+сервера у naive-узла выбрасывает `tls.certificate` при сохранении; через
+глобальный редактор конфига поле живёт и работает, но редактор узла его не
+показывает и снова теряет.
+
+Лаунчер: та же потеря воспроизведена на sing-box-импорте (массив/целый
+конфиг/подписка в формате sing-box): эмиттер tls был allowlist'ом из семи
+полей, и у `naive` пропадал `certificate`, у остальных — `alpn` и пины
+(приезжали `[]interface{}`, ассерт ждал `[]string` — ловушка
+json-map-type-assert-trap), `min/max_version`, `cipher_suites`, `client_*`,
+`fragment`. Ручной одиночный объект (`config_json`, EmitRaw) allowlist не
+проходил и не терял. Починено в develop 17.09.2026.
+
+Норма (registry/tls.json → `policy.emit_allowlist`, код
+`core/config/outbound_tls_emit.go`, корпус
+`body/singbox/outbound_array_tls_fields`):
+
+1. **Allowlist = OutboundTLSOptions ядра**, порядок полей = порядок структуры:
+   `enabled, disable_sni, server_name, insecure, alpn, min_version,
+   max_version, cipher_suites, curve_preferences, certificate,
+   certificate_path, certificate_public_key_sha256, client_certificate,
+   client_certificate_path, client_key, client_key_path, fragment,
+   fragment_fallback_delay, record_fragment, kernel_tx, kernel_rx,
+   utls{enabled,fingerprint}, reality{enabled,public_key,short_id}`.
+   Канон — `option/tls.go` в module cache ядра, не память.
+2. **Listable-поля** (`alpn`, `cipher_suites`, `curve_preferences`,
+   `certificate`, `certificate_public_key_sha256`, `client_certificate`,
+   `client_key`) принимаются строкой или массивом; эмитятся в той форме, в
+   какой приехали — человек, набравший `certificate` строкой, после
+   сохранения видит строку. Булевы кроме `enabled` — только при `true`.
+3. **Не эмитится:** `ech` (D-006, ядро без `with_ech`) и неизвестные ключи —
+   ядро отвергает unknown field на ВСЁМ конфиге, а карта tls приходит и от
+   URI-парсеров.
+4. **`kernel_tx`/`kernel_rx` — только когда ядро на Linux**: на macOS
+   `sing-box check` отвечает «kTLS is only supported on Linux» и это отказ
+   всего конфига, не узла. Для LxBox: Android = Linux (поля проходят), iOS —
+   опускать.
+5. Проверено `sing-box check` ядра 1.14.0-lx.33 на реальных сертификатах:
+   все поля списка принимаются; `certificate_public_key_sha256` ядро
+   считает конфликтом с `certificate`/`certificate_path` (это ошибка данных
+   пользователя, эмиттер не вмешивается).
+
+**Вопрос LxBox:** редактор сервера пересобирает tls по своей модели
+(`TlsSpec`) — тогда №140 = та же ловушка allowlist'а, и норма выше даёт
+полный список полей для модели/эмиттера; либо хранить `tls` как карту
+sing-box и не пересобирать (как ручной объект у лаунчера). Ответ — А
+(модель расширена по списку) / Б (карта как есть).
+
+### Ответ LxBox 17.09.2026 — А, норма 1–5 принята (черновик LxBox §454)
+
+- **А.** `TlsSpec` остаётся моделью: типизированные поля — те, о которых
+  LxBox рассуждает гейтами (`server_name`, `alpn`, `insecure`, `utls`,
+  `reality`, `certificate_public_key_sha256`; §169/§281/§282/§343), плюс
+  **сквозная карта остальных ключей allowlist'а** (`certificate`,
+  `certificate_path`, `disable_sni`, `min/max_version`, `cipher_suites`,
+  `curve_preferences`, `client_*`, `fragment*`, `record_fragment`,
+  `kernel_tx/rx`) в той форме, в какой приехали (строка/массив — п.2).
+  Эмит — в порядке структуры ядра (п.1). Б отвергнут: карта «как есть»
+  обошла бы гейты reality/utls/QUIC-strip и naive-фильтр, ради которых
+  модель и существует.
+- **Наив**: allowlist ядра `protocol/naive/outbound.go:45-86` — проходят
+  только `enabled`, `server_name`, `certificate`, `certificate_path`
+  (`ech` — см. ниже); `disable_sni`, `insecure`, `alpn`, версии,
+  `cipher_suites`, `curve_preferences`, `client_*`, `fragment`,
+  `kernel_*`, `utls`, `reality` ядро отвергает фаталом — режутся, как
+  сейчас (§281). `certificate_public_key_sha256` naive молча не применяет
+  (в коде ядра не читается) — тоже режется, чтобы не обещать пиннинг,
+  которого нет.
+- **`ech`** — не эмитится, как у вас (D-006; LxBox уже вычищает с
+  `ech_ignored`, §320). **`kernel_tx/rx`** — Android = Linux, проходят;
+  iOS у LxBox нет. **Неизвестные ключи** — отбрасываются (как сейчас).
+- Identity-хеш: у узлов без этих полей emit байт-в-байт прежний; у узла с
+  сертификатом хеш меняется (раньше поле в emit не попадало) — это правка
+  сути, не дрейф.
+- Открыт внутренний вопрос LxBox (владельцу): узел из JSON при переезде в
+  папку пересериализуется через share-URI и теряет JSON-only поля; URI-форму
+  для PEM не заводим, чиним сериализацию (JSON-узел остаётся JSON'ом).
+
+**Статус LxBox 17.09.2026 (вечер) — реализовано в ветке
+`feat/454-tls-allowlist-raw-source`, ждёт влития в develop.**
+
+- §454 (`76af5cc8`): `TlsSpec` несёт 16 сквозных ключей allowlist'а в форме
+  прибытия, порядок эмита = структура ядра (одно отступление ради
+  байт-паритета старых узлов: `alpn` перед `insecure`; identity-хеш сортирует
+  ключи); naive — `enabled/server_name/certificate/certificate_path`, пин
+  срезан (паритет с `naiveTLSKeys`); пин из JSON теперь читается; `ech` и
+  неизвестное не проходят. Корпус `outbound_array_tls_fields` в LxBox-раннер
+  ещё не заведён — ожидания сверены тестом `tls_passthrough_test`.
+- Источник узла: поле `rawUri` переименовано в `rawSource` (упоминание в §20
+  выше устарело); узел из sing-box/Xray JSON несёт свой объект outbound'а.
+- §455 (`4b776f04`): **правило лаунчера принято** — запись `server` / член
+  папки с `origin.kind: json` уходит в ядро дословно (объект источника,
+  `detour` тела снимается и решается сборкой), гейты модели на нём не
+  работают, ворота — `Libbox.checkConfig` при Save в редакторе. Флага нет,
+  `body` LxBox не пишет; `body` чужого бэкапа игнорируется, узел перечитан из
+  `origin.raw` (BACKUP §9 п.2). Экран: Source (правится), JSON (только
+  чтение, кнопка Edit → источник := JSON).
+
+**Статус лаунчера 17.09.2026 (после ответа А):** naive-фильтр принят и
+реализован в эмиттере (`outbound_tls_emit.go`, `naiveTLSKeys`): у naive
+остаются `enabled`, `server_name`, `certificate`, `certificate_path`,
+остальное режется с WARN в логе, пины — тоже (ядро их у naive не читает).
+Корпус `outbound_array_tls_fields` дополнен узлом `naive-junk-tls`
+(insecure/alpn/min_version/пины/utls/fragment → ожидание = четыре поля).
+Оба naive-узла ожидания проходят `sing-box check` lx.33. §22 закрыт с обеих
+сторон; реализация LxBox — их задача 454.
+
+## 23. `tls.reality.key_share` (ядро lx.4, SPEC 089) — норма тела и вопрос про share-URI (приоритет 2)
+
+Ядро `sing-box-lx v1.14.1-lx.4` завело у REALITY-блока поле `key_share`
+(`option/tls.go`, `OutboundRealityOptions.KeyShare`,
+`enum:"hybrid,classical"`) — выбор обмена ключами в REALITY ClientHello.
+Мотив — [LxBox #142](https://github.com/Leadaxe/LxBox/issues/142). Лаунчер
+провёл поле насквозь в develop 17.09.2026 (пин ядра поднят до lx.4).
+
+Норма (реестр `registry/tls.json` → `fields.reality.key_share`, код
+`core/config/outbound_tls_emit.go` и
+`core/config/subscription/singbox_sanitize.go`, корпус
+`body/singbox/outbound_array_tls_fields`):
+
+1. **Enum закрытый — три значения.** `""` (ключа нет) = как несёт
+   uTLS-отпечаток; `"hybrid"` = X25519MLKEM768 обязателен (ядро падает в
+   начале хендшейка, если у отпечатка гибридного шара нет); `"classical"` =
+   X25519MLKEM768 срезан из `key_share` и `supported_groups` — это нужно
+   серверам Xray старше v26.9.8, которые на гибридном ClientHello рвут
+   соединение.
+2. **Мусор → удаляется КЛЮЧ, а не узел.** Значение вне enum ядро считает
+   ошибкой загрузки **ВСЕГО конфига** (не узла), поэтому эмиттер такое
+   значение не пишет и логирует WARN, а санитайз импорта удаляет ключ с
+   WARN. Это мягче, чем гейт `pbk` (§169: невалидный `public_key` роняет
+   REALITY-блок целиком и деградирует узел до plain TLS) — тут узел живёт с
+   REALITY и просто получает поведение по умолчанию отпечатка.
+3. **Нормализация импорта** — `trim` + lower-case; `"Classical"` и
+   `" hybrid "` записываются каноническим lower-case. Пустая строка после
+   trim = ключ снимается (это не мусор, а «как несёт отпечаток»).
+4. **Порядок в reality-блоке = порядок структуры ядра:** `enabled`,
+   `public_key`, `short_id`, `key_share` (§22 п.1 — канон в `option/tls.go`,
+   не память).
+5. **QUIC-strip не меняется:** на `hysteria2`/`tuic`/`masque` весь блок
+   `reality` вычищается вместе с `key_share` (§22, `policy.quic_strip`).
+6. Корпус: `body/singbox/outbound_array_tls_fields` дополнен двумя
+   vless-узлами — `vless-reality-key-share` (`"classical"` → в ожидании
+   ключ есть) и `vless-reality-key-share-junk` (`"quantum"` → в ожидании
+   ключа нет, остальной узел цел). Оба проверены `sing-box check` ядра
+   1.14.1-lx.4.
+
+**Внимание, побочный эффект того же релиза ядра (SPEC 088):**
+`fragment`/`record_fragment` теперь **реально применяются на REALITY-узлах**
+— прежние ядра их там молча игнорировали. У существующих узлов с включённой
+фрагментацией TLS (у лаунчера это флаги шаблона `tls_fragment` /
+`tls_record_fragment`, `core/build/tls_transforms.go`) на REALITY меняется
+поведение на проводе без единой правки конфига. Если LxBox пишет эти поля на
+REALITY-узлы — стоит проверить их на живых серверах до выката ядра lx.4.
+
+**Вопрос LxBox:** параметра для `key_share` **нет ни в одном диалекте
+share-URI** — ни в `vless://`/`anytls://` у Xray, ни у v2rayN, ни где-либо
+ещё; поле родилось сразу в JSON. Лаунчер свой URI-параметр **не вводит**
+(выдуманное имя уехало бы в чужие подписки и разошлось с вашим), поле живёт
+только в JSON-теле узла — то есть узел с `key_share` переживает
+sing-box-импорт и ручной JSON, но теряет поле при сериализации в
+share-ссылку. Нужен ли вам для #142 параметр ссылки? Если да — **лаунчер
+примет ваше имя как норму** и заведёт его в парсерах и эмиттере ссылок.
+Ответ — А (только JSON-тело, как у лаунчера) / Б (нужен URI-параметр, имя
+такое-то).
+
+### 23.1 Ответ владельца 17.09.2026 — Б, параметр `key_share` (D-121)
+
+Выбран **вариант Б**: URI-параметр нужен, и имя берётся **`key_share`** —
+ключ sing-box как есть, без выдуманного короткого алиаса. Обоснование то же,
+что у прецедента именования §453/§269: у поля нет чужого диалекта (в Xray и
+v2rayN оно не родилось), поэтому имя вводят обе стороны согласованно, и
+дешевле всего то, которое уже стоит в теле узла — никакой таблицы
+соответствий между ссылкой и JSON.
+
+Норма share-URI (реализовано в лаунчере 17.09.2026):
+
+1. **Имя и значения:** `key_share=hybrid|classical`, рядом с `pbk`/`sid`.
+   Значения те же, что в теле; разбор `trim` + lower-case, то есть
+   `key_share=Classical` и `key_share=%20hybrid` канонизируются.
+2. **Схемы — `vless://` и `anytls://`.** В `trojan://` параметра нет: там
+   REALITY не парсится ни одним проектом (`registry/tls.json` → `reality.note`),
+   и читать его было бы некуда.
+3. **Читается ТОЛЬКО при валидном `pbk`** — то есть там, где узел реально
+   REALITY. На узле с `security=tls` и мусорным `pbk` (§169) REALITY-блок не
+   строится, и `key_share` уходит молча вместе с ним: снят не он, а весь блок,
+   поэтому кода нет. Кейс `uri/vless/reality_key_share_without_pbk_ignored`.
+4. **Мусор → поле не пишется, узел жив,** код `reality_key_share_invalid`
+   (`registry/warnings.json`, severity `info`) — ЕДИНЫЙ для URI и JSON-тела.
+   Раньше JSON-путь чистил ключ молча; теперь `sanitizeSingboxReality`
+   возвращает код наружу (образец `WarnPacketEncodingUnknown`), и его вешает
+   `singbox_import.go`. Пустая строка кода не даёт: это не мусор, а «как
+   несёт отпечаток».
+5. **Xray-JSON аналога нет** — в конвертере `streamSettings.realitySettings`
+   поле не читается, добавлять нечего.
+6. **Гейт версии ядра — отдельно от enum'а.** Поле эмитится только при ядре
+   ≥ `1.14.1-lx.4`; на более старом ключ ему НЕИЗВЕСТЕН, а неизвестный ключ
+   ядро отвергает отказом **всего конфига**. Гейт **полевой**, не узловой:
+   снимается одно поле, узел остаётся REALITY и берёт обмен ключами из
+   uTLS-отпечатка (в отличие от `tailscale`/AWG3, где узел выбрасывается
+   целиком). Warning-кода на снятии по версии нет — деградации данных не
+   произошло, причина уходит в WARN лога. Go: проба
+   `core/core_capabilities.go` `CoreSupportsRealityKeyShare` (только версия,
+   тега сборки у поля нет), хук `config.RealityKeyShareSupportProbe`,
+   потребитель — `core/config/outbound_tls_emit.go`.
+7. Корпус: `uri/vless/reality_key_share_hybrid`,
+   `reality_key_share_classical` (проверяет trim+lower),
+   `reality_key_share_bad_dropped` (код в конверте),
+   `reality_key_share_without_pbk_ignored`,
+   `uri/anytls/reality_key_share_hybrid`; в теле —
+   `body/singbox/outbound_array_tls_fields` (узел `vless-reality-key-share-junk`
+   получил код в ожидании).
+
+**Встречная задача LxBox:** завести тот же параметр в парсерах и эмиттере
+share-ссылок (`vless`/`anytls`), с тем же гейтом «только при валидном pbk», и
+привязать свой класс предупреждения к коду `reality_key_share_invalid` —
+`dart` у кода сейчас `null`. Если у вас параметр уже назван иначе во
+внутренней ветке по #142 — скажите до релиза, имя ещё не уехало в подписки.
+
+**Побочная правка того же прохода:** у кода `reality_short_id_invalid` в
+`registry/warnings.json` была протухшая ссылка на `singbox_sanitize.go:209` —
+кода там не ставится, `sanitizeSingboxReality` чистит `short_id` молча.
+Ссылка исправлена на реальное место (`node_parser_transport.go:908`,
+URI-путь), а расхождение путей записано в `desc` как кандидат на выравнивание
+по образцу `reality_key_share_invalid`. Само поведение не менялось.
