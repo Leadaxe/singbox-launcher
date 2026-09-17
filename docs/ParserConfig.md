@@ -24,7 +24,7 @@
 
 ## Purpose
 
-The parser updates `bin/config.json` by loading subscriptions (see the [«Supported protocols»](Protocols.md#supported-protocols) table below — 14 protocols: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`), MASQUE, AnyTLS, HTTP(S) CONNECT proxy), filtering them and grouping them into selectors. The result is written between the `/** @ParserSTART */` and `/** @ParserEND */` markers (outbounds); WireGuard nodes go between `/** @ParserSTART_E */` and `/** @ParserEND_E */` (endpoints). The **endpoints** section (WireGuard) is supported by sing-box from version **1.11** on.
+The parser updates `bin/config.json` by loading subscriptions (see the [the generated scheme index](../contract/docs/generated/index.md) table below — 14 protocols: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`), MASQUE, AnyTLS, HTTP(S) CONNECT proxy), filtering them and grouping them into selectors. The result is written between the `/** @ParserSTART */` and `/** @ParserEND */` markers (outbounds); WireGuard nodes go between `/** @ParserSTART_E */` and `/** @ParserEND_E */` (endpoints). The **endpoints** section (WireGuard) is supported by sing-box from version **1.11** on.
 
 ### Supported protocols
 
@@ -238,8 +238,8 @@ An array of objects describing proxy-server sources.
 
 | Field          | Type      | Required | Description |
 |---------------|----------|--------------|----------|
-| `source`      | string   | Yes           | The subscription URL. All 14 protocols from the [«Supported protocols»](Protocols.md#supported-protocols) table: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`), MASQUE, AnyTLS, HTTP(S) CONNECT proxy. Base64 and plain text are both accepted, as is a **JSON array** of full Xray configs (`[ {...}, ... ]`), see above. |
-| `connections` | array    | No          | An array of direct links. All 13 schemes from the [«Supported protocols»](Protocols.md#supported-protocols) table: `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`/`hy2://`, `tuic://`, `ssh://`, `socks5://`/`socks://`, `naive+https://`/`naive+quic://`, `wireguard://`/`awg://`, `vpn://` (Amnezia), `masque://`, `anytls://`. Can be combined with subscriptions. WireGuard nodes land in the config's `endpoints` section (sing-box ≥ 1.11). NaïveProxy requires sing-box ≥ 1.13.0 + the `with_naive_outbound` build tag (fork core `1.14.0-lx.4+`). More in [URI formats for direct links](#uri-formats-for-direct-links). |
+| `source`      | string   | Yes           | The subscription URL. All 14 protocols from the [the generated scheme index](../contract/docs/generated/index.md) table: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`), MASQUE, AnyTLS, HTTP(S) CONNECT proxy. Base64 and plain text are both accepted, as is a **JSON array** of full Xray configs (`[ {...}, ... ]`), see above. |
+| `connections` | array    | No          | An array of direct links. All 13 schemes from the [the generated scheme index](../contract/docs/generated/index.md) table: `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`/`hy2://`, `tuic://`, `ssh://`, `socks5://`/`socks://`, `naive+https://`/`naive+quic://`, `wireguard://`/`awg://`, `vpn://` (Amnezia), `masque://`, `anytls://`. Can be combined with subscriptions. WireGuard nodes land in the config's `endpoints` section (sing-box ≥ 1.11). NaïveProxy requires sing-box ≥ 1.13.0 + the `with_naive_outbound` build tag (fork core `1.14.0-lx.4+`). More in [URI formats for direct links](#uri-formats-for-direct-links). |
 | `skip`        | array    | No          | A list of filters. If at least one matches, the node is skipped. |
 | `chain`       | object   | No          | **SPEC 110.** Makes this source a hop chain instead of a subscription or a server: `hops` (positions in packet order), `idle_timeout`, `interrupt_exist_connections` (cut live user connections on a runtime position toggle, SPEC 124), `strip_evasion`, `strip`, `rewrite`. Such a source has no `source` and no `connections` — it materializes into a single `chain` outbound whose tag comes from `tag_mask`. Requires a core built with `with_lx_chain`. See [Hop chains](#hop-chains). |
 | `tag_prefix`  | string   | No          | A prefix added to every node tag from this source (version 4). Applied before the original tag. Supports the variables `{$tag}`, `{$scheme}`, `{$protocol}`, `{$server}`, `{$port}`, `{$label}`, `{$comment}`, `{$num}`. Ignored when `tag_mask` is set. |
@@ -632,14 +632,18 @@ When you press **"Update Config"** on the "Core" tab (or use the Config Wizard):
 The parser accepts direct links in the `connections` array — the format depends
 on the protocol.
 
-📄 The parameters of each scheme now live in [`Protocols.md`](Protocols.md):
-[VLESS](Protocols.md#vless-vless), [VMess](Protocols.md#vmess-vmess),
-[Trojan](Protocols.md#trojan-trojan), [Shadowsocks](Protocols.md#shadowsocks-ss),
-[Hysteria2](Protocols.md#hysteria2-hysteria2-or-hy2), [SSH](Protocols.md#ssh-ssh),
-[SOCKS5](Protocols.md#socks5-socks5-or-socks), [NaiveProxy](Protocols.md#naïveproxy-naivehttps--naivequic),
-[TUIC](Protocols.md#tuic-tuic), [AnyTLS](Protocols.md#anytls-anytls),
-[MASQUE](Protocols.md#masque-masque), [WireGuard](Protocols.md#wireguard-wireguard),
-[Amnezia](Protocols.md#amnezia-vpn), [`.conf` text](Protocols.md#raw-conf-text-interfacepeer).
+📄 The parameters of each scheme are **generated from the registry** — the index
+is [`contract/docs/generated/index.md`](../contract/docs/generated/index.md):
+[VLESS](../contract/docs/generated/protocols/vless.md), [VMess](../contract/docs/generated/protocols/vmess.md),
+[Trojan](../contract/docs/generated/protocols/trojan.md), [Shadowsocks](../contract/docs/generated/protocols/shadowsocks.md),
+[Hysteria2](../contract/docs/generated/protocols/hysteria2.md), [SSH](../contract/docs/generated/protocols/ssh.md),
+[SOCKS5](../contract/docs/generated/protocols/socks.md), [NaiveProxy](../contract/docs/generated/protocols/naive.md),
+[TUIC](../contract/docs/generated/protocols/tuic.md), [AnyTLS](../contract/docs/generated/protocols/anytls.md),
+[MASQUE](../contract/docs/generated/protocols/masque.md), [WireGuard](../contract/docs/generated/protocols/wireguard.md),
+[HTTP(S) proxy](../contract/docs/generated/protocols/http.md), plus the shared
+[TLS/REALITY](../contract/docs/generated/protocols/_tls.md) and [transport](../contract/docs/generated/protocols/_transports.md) pages.
+The non-link input forms (Amnezia `vpn://`, raw `.conf` text) stay in
+[`Protocols.md`](Protocols.md#input-forms-that-are-not-links).
 
 
 ## The marker section in `config.json`

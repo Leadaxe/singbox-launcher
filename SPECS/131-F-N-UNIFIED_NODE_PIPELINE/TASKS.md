@@ -65,9 +65,9 @@
 
 ## W4 — генерация документации
 
-- [ ] `contract/tools/gendocs` (Go, go1.20-совместимо) → `contract/docs/generated/{index.md, warnings.md, protocols/<scheme>.md}`; `//go:generate` в `contract/doc.go`
-- [ ] CI-джоба: генератор + `git diff --exit-code contract/docs/generated` + линтер реестра (первая контрактная джоба в репо, Л13)
-- [ ] `docs/Protocols*.md` (`CODEMAP.md` §8.1) → абзац со ссылкой на `generated/index.md`; ссылка из README
+- [x] `contract/tools/gendocs` (Go, go1.20-совместимо) → `contract/docs/generated/{index.md, warnings.md, protocols/<scheme>.md}` + страницы суб-схем `protocols/_{tls,transports,multiplex,dialer}.md`; `//go:generate` в `contract/doc.go`
+- [x] CI-джоба `Contract` (`.github/workflows/contract.yml`, job `contract`): `go generate ./contract/...` + `git diff --exit-code contract/docs/generated` + `go test ./core/config/ -run Registry` (первая контрактная джоба в репо, Л13)
+- [x] `docs/Protocols*.md` (`CODEMAP.md` §8.1) → абзац со ссылкой на `generated/index.md` и `warnings.md`; уникальные разделы (build-теги xhttp/AWG, JSON-массив Xray, share-URI, `.conf`/`vpn://`/Add-from-file) сохранены ниже ссылки; ссылки из README/README.ru/ParserConfig* перенаправлены
 - [ ] `TASKS_LXBOX.md`: путь к сгенерированным страницам, чтобы LxBox ссылался на те же якоря
 
 ## Закрытие

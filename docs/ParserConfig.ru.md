@@ -631,14 +631,18 @@ API. В этом и смысл того, что она источник: буд�
 Парсер принимает прямые ссылки в массиве `connections` — формат зависит от
 протокола.
 
-📄 Параметры каждой схемы вынесены в [`Protocols.ru.md`](Protocols.ru.md):
-[VLESS](Protocols.ru.md#vless-vless), [VMess](Protocols.ru.md#vmess-vmess),
-[Trojan](Protocols.ru.md#trojan-trojan), [Shadowsocks](Protocols.ru.md#shadowsocks-ss),
-[Hysteria2](Protocols.ru.md#hysteria2-hysteria2-или-hy2), [SSH](Protocols.ru.md#ssh-ssh),
-[SOCKS5](Protocols.ru.md#socks5-socks5-или-socks), [NaïveProxy](Protocols.ru.md#naïveproxy-naivehttps--naivequic),
-[TUIC](Protocols.ru.md#tuic-tuic), [AnyTLS](Protocols.ru.md#anytls-anytls),
-[MASQUE](Protocols.ru.md#masque-masque), [WireGuard](Protocols.ru.md#wireguard-wireguard),
-[Amnezia](Protocols.ru.md#amnezia-vpn), [`.conf`-текст](Protocols.ru.md#голый-conf-текст-interfacepeer).
+📄 Параметры каждой схемы **генерируются из реестра** — оглавление в
+[`contract/docs/generated/index.md`](../contract/docs/generated/index.md):
+[VLESS](../contract/docs/generated/protocols/vless.md), [VMess](../contract/docs/generated/protocols/vmess.md),
+[Trojan](../contract/docs/generated/protocols/trojan.md), [Shadowsocks](../contract/docs/generated/protocols/shadowsocks.md),
+[Hysteria2](../contract/docs/generated/protocols/hysteria2.md), [SSH](../contract/docs/generated/protocols/ssh.md),
+[SOCKS5](../contract/docs/generated/protocols/socks.md), [NaïveProxy](../contract/docs/generated/protocols/naive.md),
+[TUIC](../contract/docs/generated/protocols/tuic.md), [AnyTLS](../contract/docs/generated/protocols/anytls.md),
+[MASQUE](../contract/docs/generated/protocols/masque.md), [WireGuard](../contract/docs/generated/protocols/wireguard.md),
+[HTTP(S)-прокси](../contract/docs/generated/protocols/http.md), плюс общие страницы
+[TLS/REALITY](../contract/docs/generated/protocols/_tls.md) и [транспортов](../contract/docs/generated/protocols/_transports.md).
+Входные формы без ссылки (Amnezia `vpn://`, голый `.conf`-текст) остались в
+[`Protocols.ru.md`](Protocols.ru.md#входные-формы-которые-не-являются-ссылками).
 
 
 ## Маркерная секция в `config.json`

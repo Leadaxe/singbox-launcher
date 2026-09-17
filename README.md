@@ -380,7 +380,8 @@ To run GUI tests locally, set `TEST_PACKAGE` manually inside the script or invok
 - **[docs/API.md](docs/API.md)** — Debug API reference with a curl cookbook.
 - **[docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md)** — daemon core engine, pairing, and remote-machine management.
 - **[docs/WIZARD_TEMPLATE.md](docs/WIZARD_TEMPLATE.md)** — `wizard_template.json` syntax reference for VPN providers shipping a custom template.
-- **[docs/Protocols.md](docs/Protocols.md)** — supported protocols and URI link formats.
+- **[contract/docs/generated/index.md](contract/docs/generated/index.md)** — the per-scheme field reference, generated from the shared registry: link parameters, body fields and the [degradation codes](contract/docs/generated/warnings.md) a node can carry.
+- **[docs/Protocols.md](docs/Protocols.md)** — the launcher-side machinery around a node: build tags, Xray JSON arrays, share URIs, and the input forms that are not links.
 - **[docs/ParserConfig.md](docs/ParserConfig.md)** — subscription parser configuration reference.
 - **[docs/TRAFFIC_PROFILER.md](docs/TRAFFIC_PROFILER.md)** — Traffic Profiler internals and usage.
 - **[docs/TEMPLATE_REFERENCE.md](docs/TEMPLATE_REFERENCE.md)** — `wizard_template.json` schema reference.
