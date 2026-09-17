@@ -1428,7 +1428,7 @@ libbox/бинарём.
 
 ### 20.4 Статус (16.09.2026)
 
-Обе стороны закрыли §20: лаунчер — v1.6.2 (ядро 1.14.1-lx.3, `parseWGConfBase64Link`, `realityHybridUTLSFingerprints`); LxBox — v2.24.1 (задачи 450 awg-conf-base64-link и 451 reality-fp-firefox-safari-hybrid; множество `kRealityHybridFingerprints`, пин ядра lx.3, `rawUri` = исходная ссылка, не синтетический `wireguard://`). Все кейсы `awg_conf_base64*` и четыре REALITY-кейса проходят у обоих без локальных отступлений. `randomized` у обеих сторон остаётся с кодом, `random` — нет.
+Обе стороны закрыли §20: лаунчер — v1.6.2 (ядро 1.14.1-lx.3, `parseWGConfBase64Link`, `realityHybridUTLSFingerprints`); LxBox — v2.24.1 (задачи 450 awg-conf-base64-link и 451 reality-fp-firefox-safari-hybrid; множество `kRealityHybridFingerprints`, пин ядра lx.3, `rawSource` (до переименования `rawUri`) = исходная ссылка, не синтетический `wireguard://`). Все кейсы `awg_conf_base64*` и четыре REALITY-кейса проходят у обоих без локальных отступлений. `randomized` у обеих сторон остаётся с кодом, `random` — нет.
 
 ## 22. TLS-поля тела узла: `certificate` и соседи теряются в редакторе (LxBox #140, приоритет 1)
 
@@ -1509,6 +1509,26 @@ sing-box и не пересобирать (как ручной объект у �
 - Открыт внутренний вопрос LxBox (владельцу): узел из JSON при переезде в
   папку пересериализуется через share-URI и теряет JSON-only поля; URI-форму
   для PEM не заводим, чиним сериализацию (JSON-узел остаётся JSON'ом).
+
+**Статус LxBox 17.09.2026 (вечер) — реализовано в ветке
+`feat/454-tls-allowlist-raw-source`, ждёт влития в develop.**
+
+- §454 (`76af5cc8`): `TlsSpec` несёт 16 сквозных ключей allowlist'а в форме
+  прибытия, порядок эмита = структура ядра (одно отступление ради
+  байт-паритета старых узлов: `alpn` перед `insecure`; identity-хеш сортирует
+  ключи); naive — `enabled/server_name/certificate/certificate_path`, пин
+  срезан (паритет с `naiveTLSKeys`); пин из JSON теперь читается; `ech` и
+  неизвестное не проходят. Корпус `outbound_array_tls_fields` в LxBox-раннер
+  ещё не заведён — ожидания сверены тестом `tls_passthrough_test`.
+- Источник узла: поле `rawUri` переименовано в `rawSource` (упоминание в §20
+  выше устарело); узел из sing-box/Xray JSON несёт свой объект outbound'а.
+- §455 (`4b776f04`): **правило лаунчера принято** — запись `server` / член
+  папки с `origin.kind: json` уходит в ядро дословно (объект источника,
+  `detour` тела снимается и решается сборкой), гейты модели на нём не
+  работают, ворота — `Libbox.checkConfig` при Save в редакторе. Флага нет,
+  `body` LxBox не пишет; `body` чужого бэкапа игнорируется, узел перечитан из
+  `origin.raw` (BACKUP §9 п.2). Экран: Source (правится), JSON (только
+  чтение, кнопка Edit → источник := JSON).
 
 **Статус лаунчера 17.09.2026 (после ответа А):** naive-фильтр принят и
 реализован в эмиттере (`outbound_tls_emit.go`, `naiveTLSKeys`): у naive
