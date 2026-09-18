@@ -2,6 +2,7 @@ package linkmap
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"singbox-launcher/core/config/registry"
@@ -217,4 +218,123 @@ func mustDetect(t *testing.T, raw string) *registry.Detect {
 		t.Fatalf("detect %s: %v", raw, err)
 	}
 	return d
+}
+
+// TestTraceCanonicalSerialization — канон сериализации трассы
+// (contract/docs/MAPPER_ENGINE.md, приложение «Трасса»).
+//
+// Проверяется именно то, на чём Go и Dart расходятся МОЛЧА: HTML-экранирование,
+// экспонента у чисел, \u у кириллицы и порядок ключей. Каждое из четырёх даёт
+// ложное расхождение при механической сверке диффом.
+func TestTraceCanonicalSerialization(t *testing.T) {
+	t.Run("без HTML-экранирования и без \\u у не-ASCII", func(t *testing.T) {
+		tr := NewTrace(nil)
+		tr.Add(Event{
+			Stage: StageField, Mapper: "trojan.uri.url", Entry: "label",
+			Src: "fragment", Raw: "a<b>&c", Val: "Москва 🇬🇧", Path: "$label",
+			Act: ActWrite,
+		})
+		got := TrimTrailingNewline(tr.String())
+
+		// encoding/json по умолчанию пишет \u003c, \u003e, \u0026 — в выводе это
+		// ЛИТЕРАЛЬНЫЕ шесть символов, поэтому и ищем их литералом.
+		for _, bad := range []string{`\u003c`, `\u003e`, `\u0026`, `\u041c`} {
+			if strings.Contains(got, bad) {
+				t.Errorf("найдено экранирование %s в %s", bad, got)
+			}
+		}
+		for _, want := range []string{`"a<b>&c"`, `"Москва 🇬🇧"`} {
+			if !strings.Contains(got, want) {
+				t.Errorf("не найдено %s в %s", want, got)
+			}
+		}
+	})
+
+	t.Run("числа без экспоненты", func(t *testing.T) {
+		tr := NewTrace(nil)
+		tr.Add(Event{Stage: StageField, Entry: "n", Val: float64(1000000), Act: ActWrite})
+		got := tr.String()
+		if strings.Contains(got, "e+") || strings.Contains(got, "E+") {
+			t.Errorf("экспонента в %s", got)
+		}
+		if !strings.Contains(got, `"val":1000000`) {
+			t.Errorf("ожидалось 1000000, получено %s", got)
+		}
+	})
+
+	t.Run("ключи тела по body.order, свободные — лексикографически", func(t *testing.T) {
+		tr := NewTrace([]string{"server", "server_port", "password", "tls"})
+		body := map[string]interface{}{
+			"tls":         map[string]interface{}{"enabled": true},
+			"password":    "p",
+			"server_port": float64(443),
+			"server":      "h.com",
+			// headers в body.order нет — лексикографический порядок.
+			"headers": map[string]interface{}{"Zeta": "1", "Alpha": "2"},
+		}
+		tr.ResultEvent("trojan.uri.url", body, "метка", "uri")
+		got := tr.String()
+
+		orderIdx := func(sub string) int { return strings.Index(got, sub) }
+		if !(orderIdx(`"server"`) < orderIdx(`"server_port"`) &&
+			orderIdx(`"server_port"`) < orderIdx(`"password"`) &&
+			orderIdx(`"password"`) < orderIdx(`"tls"`)) {
+			t.Errorf("порядок body.order нарушен: %s", got)
+		}
+		if orderIdx(`"Alpha"`) > orderIdx(`"Zeta"`) {
+			t.Errorf("свободный объект не лексикографический: %s", got)
+		}
+		// Ключ вне body.order идёт после перечисленных.
+		if orderIdx(`"tls"`) > orderIdx(`"headers"`) {
+			t.Errorf("ключ вне order обязан идти после перечисленных: %s", got)
+		}
+	})
+
+	t.Run("фиксированный порядок ключей события и нумерация", func(t *testing.T) {
+		tr := NewTrace(nil)
+		tr.Add(Event{Stage: StageDocDetect, Mapper: "-", Entry: "-", Act: ActKeep})
+		tr.Add(Event{Stage: StageUnknown, Mapper: "trojan.uri", Entry: "zzz",
+			Src: "query.zzz", Act: ActKeep, Why: WhyNotDeclared})
+
+		lines := strings.Split(TrimTrailingNewline(tr.String()), "\n")
+		if len(lines) != 2 {
+			t.Fatalf("строк %d, ожидалось 2", len(lines))
+		}
+		if !strings.HasPrefix(lines[0], `{"n":1,"stage":"doc_detect",`) {
+			t.Errorf("первая строка: %s", lines[0])
+		}
+		if !strings.HasPrefix(lines[1], `{"n":2,"stage":"unknown",`) {
+			t.Errorf("вторая строка: %s", lines[1])
+		}
+		// Ключи в объявленном порядке, без пробелов.
+		wantKeys := []string{`"n":`, `"stage":`, `"mapper":`, `"entry":`, `"src":`,
+			`"raw":`, `"val":`, `"path":`, `"act":`, `"why":`}
+		prev := -1
+		for _, k := range wantKeys {
+			at := strings.Index(lines[1], k)
+			if at < 0 {
+				t.Fatalf("нет ключа %s в %s", k, lines[1])
+			}
+			if at < prev {
+				t.Errorf("ключ %s не на месте: %s", k, lines[1])
+			}
+			prev = at
+		}
+		if strings.Contains(lines[1], ", ") || strings.Contains(lines[1], `": `) {
+			t.Errorf("найдены пробелы: %s", lines[1])
+		}
+		// Незаполненные raw/path — null, а не пустая строка.
+		if !strings.Contains(lines[1], `"raw":null`) || !strings.Contains(lines[1], `"path":null`) {
+			t.Errorf("ожидались null у raw/path: %s", lines[1])
+		}
+	})
+
+	t.Run("выключенная трасса ничего не стоит", func(t *testing.T) {
+		var tr *Trace
+		tr.Add(Event{Stage: StageField})
+		tr.ResultEvent("x", nil, "", "")
+		if tr.Enabled() || tr.String() != "" || len(tr.Events()) != 0 {
+			t.Error("nil-трасса обязана быть полностью безопасной и пустой")
+		}
+	})
 }

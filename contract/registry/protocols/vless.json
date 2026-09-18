@@ -4,7 +4,11 @@
   "kind": "outbound",
   "singbox_type": "vless",
   "aliases": [],
-  "sources": ["uri", "singbox", "xray"],
+  "sources": [
+    "uri",
+    "singbox",
+    "xray"
+  ],
   "extension": null,
   "uri": {
     "userinfo": {
@@ -17,7 +21,11 @@
     "query": {
       "flow": {
         "type": "enum",
-        "values": ["", "xtls-rprx-vision", "xtls-rprx-vision-udp443"],
+        "values": [
+          "",
+          "xtls-rprx-vision",
+          "xtls-rprx-vision-udp443"
+        ],
         "allowlist": null,
         "default": "",
         "aliases": [],
@@ -28,10 +36,16 @@
       },
       "packetEncoding": {
         "type": "alias_enum",
-        "values": ["", "xudp", "packetaddr"],
+        "values": [
+          "",
+          "xudp",
+          "packetaddr"
+        ],
         "allowlist": "packet_encoding",
         "default": "",
-        "aliases": ["packetencoding (любой регистр — оба парсера читают ключ case-insensitively)"],
+        "aliases": [
+          "packetencoding (любой регистр — оба парсера читают ключ case-insensitively)"
+        ],
         "maps_to": "packet_encoding",
         "desc_en": "How UDP packets are encapsulated.",
         "desc_ru": "Способ инкапсуляции UDP-пакетов.",
@@ -50,7 +64,17 @@
       },
       "type": {
         "type": "enum",
-        "values": ["", "tcp", "raw", "ws", "grpc", "http", "h2", "httpupgrade", "xhttp"],
+        "values": [
+          "",
+          "tcp",
+          "raw",
+          "ws",
+          "grpc",
+          "http",
+          "h2",
+          "httpupgrade",
+          "xhttp"
+        ],
         "allowlist": null,
         "default": "",
         "aliases": [],
@@ -61,7 +85,10 @@
       },
       "headerType": {
         "type": "enum",
-        "values": ["", "http"],
+        "values": [
+          "",
+          "http"
+        ],
         "allowlist": null,
         "default": "",
         "aliases": [],
@@ -72,7 +99,12 @@
       },
       "security": {
         "type": "enum",
-        "values": ["", "none", "tls", "reality"],
+        "values": [
+          "",
+          "none",
+          "tls",
+          "reality"
+        ],
         "allowlist": null,
         "default": "",
         "aliases": [],
@@ -86,7 +118,23 @@
   },
   "emit": {
     "share_uri": true,
-    "param_order": ["alpn", "encryption", "flow", "fp", "host", "insecure", "mode", "packetEncoding", "path", "pbk", "security", "serviceName", "sid", "sni", "type"],
+    "param_order": [
+      "alpn",
+      "encryption",
+      "flow",
+      "fp",
+      "host",
+      "insecure",
+      "mode",
+      "packetEncoding",
+      "path",
+      "pbk",
+      "security",
+      "serviceName",
+      "sid",
+      "sni",
+      "type"
+    ],
     "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart buildQuery sort). Расхождения формы эмита (для cross-emit фазы 2): Go всегда пишет encryption=none и опускает fp при 'random', reality-ноды идут БЕЗ security=reality (только pbk/sid), insecure=1 под ключом 'insecure'; Dart пишет security=reality|tls|none явно, fp всегда (включая random), флаг под ключом 'allowInsecure'."
   },
   "mapper": [
@@ -131,7 +179,19 @@
   },
   "body": {
     "core": "1.14.1-lx.4",
-    "order": ["server", "server_port", "uuid", "flow", "encryption", "network", "packet_encoding", "tls", "multiplex", "transport", "__dialer"],
+    "order": [
+      "server",
+      "server_port",
+      "uuid",
+      "flow",
+      "encryption",
+      "network",
+      "packet_encoding",
+      "tls",
+      "multiplex",
+      "transport",
+      "__dialer"
+    ],
     "fields": {
       "server": {
         "type": "ref",
@@ -149,7 +209,7 @@
       },
       "uuid": {
         "type": "string",
-                        "required": true,
+        "required": true,
         "secret": true,
         "desc_en": "User identifier.",
         "desc_ru": "Идентификатор пользователя.",
@@ -157,7 +217,10 @@
       },
       "flow": {
         "type": "enum",
-        "values": ["", "xtls-rprx-vision"],
+        "values": [
+          "",
+          "xtls-rprx-vision"
+        ],
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
@@ -177,7 +240,9 @@
       "encryption": {
         "type": "string",
         "normalize": "trim",
-        "absent_values": ["none"],
+        "absent_values": [
+          "none"
+        ],
         "pattern": "^mlkem768x25519plus(\\.[^.]+){3,}$",
         "lx_only": true,
         "min_core": "1.14.0-lx.18",
@@ -198,7 +263,11 @@
       },
       "packet_encoding": {
         "type": "enum",
-        "values": ["", "packetaddr", "xudp"],
+        "values": [
+          "",
+          "packetaddr",
+          "xudp"
+        ],
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
@@ -238,6 +307,270 @@
         "desc_en": "Common dialer fields, inlined flat into the body.",
         "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
         "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
+      }
+    }
+  },
+  "mappers": {
+    "uri": {
+      "detect": {
+        "scheme_in": [
+          "vless"
+        ]
+      },
+      "body_source": "uri",
+      "forms": [
+        {
+          "id": "url",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            "url"
+          ],
+          "space": "url"
+        }
+      ],
+      "userinfo": {
+        "into": [
+          "uuid"
+        ],
+        "required": true
+      },
+      "label": {
+        "source": [
+          "fragment",
+          "path"
+        ],
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "value_map": {
+          "🇪🇳": "🇬🇧"
+        },
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "singbox_type"
+        }
+      },
+      "defaults": {
+        "server_port": 443
+      },
+      "include": [
+        "transports#uri",
+        "tls#uri"
+      ],
+      "params": {
+        "server": {
+          "source": "host",
+          "maps_to": "server",
+          "required": true
+        },
+        "server_port": {
+          "source": "port",
+          "maps_to": "server_port",
+          "type": "int"
+        },
+        "$plaintext_port": {
+          "source": "query.security",
+          "selector": true,
+          "priority": 5,
+          "when": {
+            "query.security": "",
+            "port": {
+              "in": [
+                80,
+                8080,
+                8880,
+                2052,
+                2082,
+                2086,
+                2095
+              ]
+            }
+          },
+          "sets": {
+            "": {}
+          },
+          "impl": "Служебная запись без maps_to: её единственная работа — перебить дефолт security ''→tls.enabled пустым набором. priority 5 (меньше, чем у security из блока tls#uri) выражает «срабатывает раньше». Сегодня это node_parser_transport.go:150-158 и :912-914."
+        },
+        "flow": {
+          "source": "query.flow",
+          "maps_to": "flow",
+          "value_map": {
+            "xtls-rprx-vision-udp443": "xtls-rprx-vision"
+          },
+          "sets": {
+            "xtls-rprx-vision-udp443": {
+              "packet_encoding": "xudp"
+            }
+          },
+          "priority": 10,
+          "impl": "`xtls-rprx-vision-udp443` — не значение поля, а СОСТАВНОЕ имя: суффикс означает «UDP/443 идёт напрямую», то есть packet_encoding=xudp. Порт при этом НЕ переписывается (DRIFT §7.4, решение владельца): порт — свойство узла, а не флоу."
+        },
+        "packetEncoding": {
+          "source": "query.packetEncoding",
+          "maps_to": "packet_encoding",
+          "value_map": {
+            "none": null
+          },
+          "priority": 20,
+          "merge": "overwrite",
+          "impl": "QUIRKS: корпус packet_encoding_udp443_quirk_wins ждёт xudp при packetEncoding=none И flow=…-udp443. Это работает не потому, что «sets побеждает», а потому что `none` отображается в null и записи НЕ делает. Явное значение (xudp/packetaddr) перебивает — priority 20 > 10 плюс merge overwrite, ровно как сегодня (node_parser_core.go:759-768 пишет ПОСЛЕ flow)."
+        },
+        "encryption": {
+          "source": "query.encryption",
+          "maps_to": "encryption",
+          "normalize": "trim",
+          "value_map": {
+            "": null,
+            "none": null
+          },
+          "emit_when": "always",
+          "impl": "На разборе `none` = «слоя нет» (ключ не пишется), на эмите параметр пишется ВСЕГДА (shareuri_vless.go:81-87). Асимметрия сохраняется явно."
+        }
+      },
+      "unknown_key": {
+        "action": "keep",
+        "code": "uri_param_unknown"
+      },
+      "emit": {
+        "form": "url",
+        "param_order": "alphabetical",
+        "omit_default": [
+          "fp",
+          "security"
+        ],
+        "emit_when": {
+          "encryption": "always"
+        },
+        "impl": "omit_default fp: у vless `fp=random` НЕ пишется (shareuri_vless.go:49-51), у trojan/vmess пишется — асимметрия становится данными. security=reality не пишется: REALITY-ветка пишет только pbk (implies обратно)."
+      }
+    },
+    "xray": {
+      "detect": {
+        "json": {
+          "value_of": {
+            "protocol": "vless"
+          }
+        }
+      },
+      "body_source": "xray",
+      "forms": [
+        {
+          "id": "vnext",
+          "detect": {
+            "default": true
+          },
+          "space": "json",
+          "base": "settings.vnext.0"
+        }
+      ],
+      "include": [
+        "transports#xray",
+        "tls#xray"
+      ],
+      "params": {
+        "address": {
+          "source": "json.$base.address",
+          "maps_to": "server",
+          "required": true
+        },
+        "port": {
+          "source": "json.$base.port",
+          "maps_to": "server_port",
+          "type": "int",
+          "required": true
+        },
+        "id": {
+          "source": "json.$base.users.0.id",
+          "maps_to": "uuid",
+          "required": true
+        },
+        "flow": {
+          "source": "json.$base.users.0.flow",
+          "maps_to": "flow",
+          "value_map": {
+            "xtls-rprx-vision-udp443": "xtls-rprx-vision"
+          },
+          "sets": {
+            "xtls-rprx-vision-udp443": {
+              "packet_encoding": "xudp"
+            }
+          }
+        },
+        "encryption": {
+          "source": "json.$base.users.0.encryption",
+          "maps_to": "encryption",
+          "value_map": {
+            "": null,
+            "none": null
+          },
+          "impl": "Сравнение у Xray-ветки сегодня ТОЧНОЕ (не EqualFold, xray_outbound_convert.go:164) — value_map это сохраняет."
+        },
+        "$extra_vnext": {
+          "source": "json.settings.vnext",
+          "maps_to": null,
+          "on_len_gt": {
+            "n": 1,
+            "action": "note",
+            "code": "xray_extra_entries_dropped"
+          },
+          "impl": "QUIRKS Q133-18: vnext[1..] и users[1..] отбрасываются молча."
+        },
+        "$extra_users": {
+          "source": "json.$base.users",
+          "maps_to": null,
+          "on_len_gt": {
+            "n": 1,
+            "action": "note",
+            "code": "xray_extra_entries_dropped"
+          }
+        }
+      },
+      "unknown_key": {
+        "action": "drop",
+        "code": "json_field_unknown"
+      },
+      "emit": null
+    },
+    "singbox": {
+      "detect": {
+        "json": {
+          "value_in": {
+            "type": [
+              "vless"
+            ]
+          }
+        }
+      },
+      "body_source": "singbox",
+      "forms": [
+        {
+          "id": "outbound",
+          "detect": {
+            "default": true
+          },
+          "space": "json",
+          "level": "outbound"
+        }
+      ],
+      "params": {
+        "$xmux": {
+          "source": [
+            "json.transport.xmux",
+            "json.transport.extra.xmux"
+          ],
+          "flatten": [
+            "xmux"
+          ],
+          "maps_to": "transport.xmux",
+          "impl": "Диалект форков: реестр уже объявляет двойные написания (max_concurrency/maxConcurrency, c_max_reuse_times/cMaxReuseTimes) и вложенность extra.xmux. Живое состояние владельца несёт xmux.max_concurrency='16-32' на 186 узлах origin=json."
+        }
+      },
+      "unknown_key": {
+        "action": "keep",
+        "code": "json_field_unknown"
       }
     }
   }
