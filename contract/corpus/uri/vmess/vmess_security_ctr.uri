@@ -1,4 +1,6 @@
 # aes-128-ctr в ядре НЕ существует: роняет весь конфиг
 # (initialize outbound[0]: vmess: unsupported security type: aes-128-ctr)
 # → коэрсится в auto, как любой мусор в scy. Источник: DRIFT 131 §7.11/§9.5 (B)
+# Замена ВИДНА: код vmess_security_unknown. Подписка просила один шифр, узел
+# уедет на другом — молчать об этом нельзя (контракт 1.1.7).
 vmess://eyJ2IjoiMiIsInBzIjoiY3RyLW5vZGUiLCJhZGQiOiJ2bS5leGFtcGxlLTIwLmNvbSIsInBvcnQiOiI4MCIsImlkIjoiMTExMTExMTEtMTExMS0xMTExLTExMTEtMTExMTExMTExMTExIiwibmV0IjoidGNwIiwic2N5IjoiYWVzLTEyOC1jdHIifQ==

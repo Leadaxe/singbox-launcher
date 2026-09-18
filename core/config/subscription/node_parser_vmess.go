@@ -13,19 +13,33 @@ import (
 	"singbox-launcher/internal/textnorm"
 )
 
-// normalizeVMessSecurity maps subscription / JSON values to sing-box vmess outbound security.
+// normalizeVMessSecurity переводит написание шифра vmess из чужих диалектов,
+// и только это.
 //
-// Набор ровно тот, что принимает ядро (sing-vmess/client.go:44-52, пин
-// 1.14.1-lx.4; DRIFT 131 §7.11/§9.5): auto, none, zero, aes-128-cfb,
-// aes-128-gcm, chacha20-poly1305. Шире его брать нельзя — ядро отвечает
+// Суждение о значении здесь БОЛЬШЕ НЕ ЖИВЁТ. Набор, который принимает ядро
+// (auto, none, zero, aes-128-cfb, aes-128-gcm, chacha20-poly1305 —
+// sing-vmess/client.go:44-52, пин 1.14.1-lx.4), описан один раз в реестре
+// (vmess.json body.fields.security), и негодное значение заменяет на auto
+// санитайзер конвейера — с кодом `vmess_security_unknown`, который человек
+// видит. Пока сведение к auto делалось здесь, замена шла МОЛЧА на входах
+// «ссылка» и «Xray-JSON», а код появлялся только на теле sing-box: один и
+// тот же узел вёл себя по-разному в зависимости от того, каким входом
+// приехал.
 //
-//	initialize outbound[N]: vmess: unsupported security type: <значение>
+// Замена важна сама по себе: узел после неё работает на том шифре, который
+// выберет сервер, а не на том, что просила подписка.
 //
-// и роняет ВЕСЬ config.json, а не одну ноду: один узел из подписки со
-// снятым с поддержки `aes-128-ctr` оставлял человека вообще без VPN.
-// Обратная сторона той же ошибки — `aes-128-cfb`, который ядро принимает:
-// без него шифр канала молча уезжал в `auto`, то есть не тот, что просила
-// подписка.
+// Остаётся ровно два случая. Первый — chacha20-ietf-poly1305: то же самое,
+// что chacha20-poly1305, написанное словарём Xray. Это перевод диалекта, а
+// не вердикт о значении, и кода он не даёт (та же логика, что у
+// packet_encoding в node_parser_core.go).
+//
+// Второй — пустое/null/undefined: «не задано» подставляет auto, и это тоже
+// не замена, о которой надо предупреждать (подписка ничего не просила).
+// Ключ при этом обязан появиться: у ядра поле без omitempty, `default`
+// реестра сам по себе тело не наполняет (CANON §2.4 — дефолты ядра не
+// пишутся, материализуются только default_when), и опущенный ключ у
+// required-поля уронил бы узел кодом field_missing.
 //
 // См. https://sing-box.sagernet.org/configuration/outbound/vmess/
 func normalizeVMessSecurity(raw string) string {
@@ -33,14 +47,12 @@ func normalizeVMessSecurity(raw string) string {
 	if s == "" || s == "null" || s == "undefined" {
 		return "auto"
 	}
-	switch s {
-	case "auto", "none", "zero", "aes-128-cfb", "aes-128-gcm", "chacha20-poly1305":
-		return s
-	case "chacha20-ietf-poly1305":
+	if s == "chacha20-ietf-poly1305" {
 		return "chacha20-poly1305"
-	default:
-		return "auto"
 	}
+	// Всё прочее уезжает как приехало (в нижнем регистре, как нормализует
+	// реестр): годное пройдёт enum, негодное получит код от санитайзера.
+	return s
 }
 
 func vmessStringField(m map[string]interface{}, keys ...string) string {

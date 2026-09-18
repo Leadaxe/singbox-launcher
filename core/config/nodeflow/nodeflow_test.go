@@ -95,12 +95,14 @@ func TestSanitizeEmit(t *testing.T) {
 		},
 		{
 			// (г) vmess security — enum с coerce: значение вне набора ядра
-			// заменяется дефолтом, узел живёт.
+			// заменяется дефолтом, узел живёт. Код СВОЙ: подписка просила
+			// один шифр, узел уедет на другом — общий type_invalid с текстом
+			// «поле снято: неверный тип» описывал бы не то, что случилось.
 			name:   "vmess/security-вне-набора-ядра",
 			scheme: "vmess",
 			in:     `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `","security":"aes-128-ctr"}`,
 			want:   `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `","security":"auto"}`,
-			codes:  []string{"type_invalid"},
+			codes:  []string{"vmess_security_unknown"},
 		},
 		{
 			// (д) xhttp: mode — закрытый enum, снимается; а вот

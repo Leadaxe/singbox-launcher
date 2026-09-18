@@ -202,12 +202,10 @@ func xrayBuildVMessFromOutbound(ob map[string]interface{}, label string) (*confi
 		"uuid":        uuid,
 	}
 
-	// security у vmess — шифр канала, не TLS-режим; allowlist общий с URI-путём.
-	if security := strings.TrimSpace(xrayMapString(user, "security")); security != "" {
-		outbound["security"] = normalizeVMessSecurityValue(security)
-	} else {
-		outbound["security"] = "auto"
-	}
+	// security у vmess — шифр канала, не TLS-режим. Суждение о значении —
+	// у реестра (см. normalizeVMessSecurity): здесь только перевод диалекта
+	// и подстановка auto на «не задано», общие с URI-путём.
+	outbound["security"] = normalizeVMessSecurity(xrayMapString(user, "security"))
 	if alterID := xrayJSONInt(user["alterId"]); alterID > 0 {
 		outbound["alter_id"] = alterID
 	}
@@ -361,20 +359,6 @@ func xrayTagOrDefault(ob map[string]interface{}, fallback string) string {
 	return fallback
 }
 
-// normalizeVMessSecurityValue приводит шифр vmess к принимаемому ядром виду.
-//
-// Набор обязан совпадать с normalizeVMessSecurity (URI-путь) и с ядром
-// (sing-vmess/client.go:44-52, DRIFT 131 §7.11/§9.5): значение вне набора
-// ядро отвергает вместе со ВСЕМ конфигом («unsupported security type»),
-// а не с одной нодой; "auto" — безопасный дефолт, который сервер
-// согласует сам.
-func normalizeVMessSecurityValue(security string) string {
-	switch strings.ToLower(strings.TrimSpace(security)) {
-	case "auto", "none", "zero", "aes-128-cfb", "aes-128-gcm", "chacha20-poly1305":
-		return strings.ToLower(strings.TrimSpace(security))
-	case "chacha20-ietf-poly1305":
-		return "chacha20-poly1305"
-	default:
-		return "auto"
-	}
-}
+// normalizeVMessSecurityValue был копией normalizeVMessSecurity и держал свой
+// (более узкий) набор значений — вторая рукописная копия allowlist'а шифра.
+// Снята: перевод диалекта один на все входы, а набор ядра живёт в реестре.

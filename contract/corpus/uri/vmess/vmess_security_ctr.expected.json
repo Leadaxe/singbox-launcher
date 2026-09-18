@@ -10,7 +10,14 @@
       },
       "kind": "outbound",
       "label": "ctr-node",
-      "scheme": "vmess"
+      "scheme": "vmess",
+      "warnings": [
+        {
+          "code": "vmess_security_unknown",
+          "path": "security",
+          "value": "aes-128-ctr"
+        }
+      ]
     }
   ],
   "v": 1

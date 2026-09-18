@@ -556,6 +556,30 @@
       "dart": "PacketEncodingUnknownWarning",
       "go": "core/config/subscription/node_parser_core.go:622; core/config/subscription/singbox_sanitize.go:260"
     },
+    "vmess_security_unknown": {
+      "severity": "warning",
+      "params": [
+        "path",
+        "value"
+      ],
+      "title_en": "VMess: unknown cipher replaced with auto",
+      "title_ru": "VMess: неизвестный шифр заменён на auto",
+      "text_en": "The VMess cipher {value} at {path} is not one the core knows. It was replaced with auto, because the core rejects such a value and would refuse to start the whole config. The node works, but on the cipher the server picks, not the one the subscription asked for.",
+      "text_ru": "Шифр VMess {value} в поле {path} ядру неизвестен. Он заменён на auto: ядро отвергает такое значение и не запустит весь конфиг. Узел работает, но на том шифре, который выберет сервер, а не на том, что просила подписка.",
+      "cause_en": "The core knows only auto, none, zero, aes-128-cfb, aes-128-gcm and chacha20-poly1305 here. Another word means a typo in the link, a cipher retired from the core (aes-128-ctr), or a name borrowed from another client, where the same ciphers are spelled differently.",
+      "cause_ru": "Ядро знает здесь только auto, none, zero, aes-128-cfb, aes-128-gcm и chacha20-poly1305. Другое слово — опечатка в ссылке, снятый с поддержки шифр (aes-128-ctr) или имя из чужого диалекта, где те же шифры пишутся иначе.",
+      "fix_en": [
+        "Nothing to do in most cases: with auto the server picks the cipher itself and the node connects.",
+        "If the node does not connect, ask the provider for a link with a cipher sing-box knows."
+      ],
+      "fix_ru": [
+        "Чаще всего делать ничего не нужно: с auto шифр выбирает сервер, и узел подключается.",
+        "Если узел не соединяется, попросите у провайдера ссылку с шифром, известным sing-box."
+      ],
+      "desc": "vmess security вне набора ядра (auto, none, zero, aes-128-cfb, aes-128-gcm, chacha20-poly1305 — sing-vmess/client.go:44-52, пин 1.14.1-lx.4) заменяется на auto. Замена значения подписки — это замена, и молчать о ней нельзя: узел уезжает не на том шифре, который просили. Прежде здесь стоял общий type_invalid с текстом «поле снято» — неточно вдвойне: поле не снимается, а подменяется, и тип значения тут ни при чём. Исполняется ТОЛЬКО реестром (on_invalid coerce → auto с этим кодом), одинаково на всех входах: ссылка, тело sing-box, Xray-JSON. Алиас chacha20-ietf-poly1305 → chacha20-poly1305 кодa НЕ даёт: это перевод диалекта, а не суждение о значении, и живёт он в маппере. Пустое/null/undefined тоже без кода — это «не задано», и поле берёт default auto.",
+      "dart": null,
+      "go": "contract/registry/protocols/vmess.json body.fields.security (on_invalid); исполнение — core/config/nodeflow/sanitize.go onInvalid"
+    },
     "naive_padding_ignored": {
       "severity": "info",
       "params": [

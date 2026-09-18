@@ -286,13 +286,13 @@
         "on_invalid": {
           "action": "coerce",
           "value": "auto",
-          "code": "type_invalid"
+          "code": "vmess_security_unknown"
         },
         "required": true,
         "default": "auto",
         "desc_en": "Payload encryption method.",
         "desc_ru": "Метод шифрования полезной нагрузки.",
-        "impl": "json-тег без omitempty — ключ эмитируется всегда, даже с дефолтом auto."
+        "impl": "json-тег без omitempty — ключ эмитируется всегда, даже с дефолтом auto. Код замены — свой (`vmess_security_unknown`), а не общий `type_invalid`: здесь значение не снимается, а ПОДМЕНЯЕТСЯ, и узел уезжает не на том шифре, который просила подписка; текст type_invalid («поле снято: неверный тип») врал бы о вдвойне. Правило исполняет ТОЛЬКО реестр: рукописные normalizeVMessSecurity/normalizeVMessSecurityValue сведения значения больше не делают (иначе замена шла бы молча на входах uri и xray, а код появлялся бы только на теле sing-box). В маппере остался единственный перевод диалекта — chacha20-ietf-poly1305 → chacha20-poly1305; кода он не даёт."
       },
       "alter_id": {
         "type": "int",

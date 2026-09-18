@@ -78,6 +78,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`uri_too_long`](#uri_too_long) · `error` — Link too long: {length} characters
 - [`utls_fp_unknown`](#utls_fp_unknown) · `warning` — Unknown uTLS fingerprint replaced
 - [`vision_with_transport`](#vision_with_transport) · `info` — flow removed: incompatible with transport
+- [`vmess_security_unknown`](#vmess_security_unknown) · `warning` — VMess: unknown cipher replaced with auto
 - [`ws_early_data_converted`](#ws_early_data_converted) · `info` — WebSocket: early data converted
 - [`xhttp_mode_forced_packet_up`](#xhttp_mode_forced_packet_up) · `warning` — XHTTP mode set to packet-up
 - [`xhttp_param_reset`](#xhttp_param_reset) · `warning` — XHTTP: field {field} removed
@@ -1371,7 +1372,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`uuid`](protocols/tuic.md#body-uuid) — the value does not fit the field → removed
 - [`vmess`](protocols/vmess.md)
   - [`alter_id`](protocols/vmess.md#body-alter-id) — the value does not fit the field → removed
-  - [`security`](protocols/vmess.md#body-security) — the value does not fit the field → replaced with `auto`
 - [`wireguard`](protocols/wireguard.md)
   - [`address`](protocols/wireguard.md#body-address) — the value does not fit the field → removed
   - [`listen_port`](protocols/wireguard.md#body-listen-port) — the value does not fit the field → removed
@@ -1451,6 +1451,24 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - [`vless`](protocols/vless.md)
   - [`flow`](protocols/vless.md#body-flow) — conflicts with `transport` → removed
+
+<a id="vmess_security_unknown"></a>
+### vmess_security_unknown
+
+**severity:** `warning` · **params:** `path`, `value`
+
+**VMess: unknown cipher replaced with auto**
+
+- **What happened:** The VMess cipher {value} at {path} is not one the core knows. It was replaced with auto, because the core rejects such a value and would refuse to start the whole config. The node works, but on the cipher the server picks, not the one the subscription asked for.
+- **Why it happens:** The core knows only auto, none, zero, aes-128-cfb, aes-128-gcm and chacha20-poly1305 here. Another word means a typo in the link, a cipher retired from the core (aes-128-ctr), or a name borrowed from another client, where the same ciphers are spelled differently.
+- **What you can do:**
+  - Nothing to do in most cases: with auto the server picks the cipher itself and the node connects.
+  - If the node does not connect, ask the provider for a link with a cipher sing-box knows.
+
+**Where it comes from:**
+
+- [`vmess`](protocols/vmess.md)
+  - [`security`](protocols/vmess.md#body-security) — the value does not fit the field → replaced with `auto`
 
 <a id="ws_early_data_converted"></a>
 ### ws_early_data_converted

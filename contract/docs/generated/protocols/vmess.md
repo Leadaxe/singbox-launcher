@@ -76,7 +76,7 @@ Everything a link of this scheme can carry, including the TLS and transport para
   - Also spelled: `security`
   - Type: enum (other spellings of the same value are accepted): `auto`, `none`, `zero`, `aes-128-cfb`, `aes-128-gcm`, `chacha20-poly1305` (allowlist `vmess_security`) · Default: `auto`
   - Maps to: [`security`](#body-security)
-  - If invalid: replaced with `auto` → [`type_invalid`](../warnings.md#type_invalid)
+  - If invalid: replaced with `auto` → [`vmess_security_unknown`](../warnings.md#vmess_security_unknown)
 - <a id="link-proto-net"></a>**`net`** — Transport selector.
   - Also spelled: `network`, `type`
   - Type: enum: `tcp`, `ws`, `http`, `h2`, `grpc`, `httpupgrade`, `xhttp` · Default: `tcp`
@@ -280,7 +280,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Default: `auto`
   - Required: the node is dropped without it
   - Set by link parameter: [`scy`](#link-proto-scy)
-  - If invalid: replaced with `auto` → [`type_invalid`](../warnings.md#type_invalid)
+  - If invalid: replaced with `auto` → [`vmess_security_unknown`](../warnings.md#vmess_security_unknown)
 - <a id="body-alter-id"></a>**`alter_id`** — Legacy alterId of the VMess user.
   - Type: int, `0–…`
   - Default: `0`
@@ -719,7 +719,6 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - [`tls_insecure`](../warnings.md#tls_insecure)
   - [`tls.insecure`](#body-tls-insecure) — the value is `true` → kept with a notice
 - [`type_invalid`](../warnings.md#type_invalid)
-  - [`security`](#body-security) — the value does not fit the field → replaced with `auto`
   - [`alter_id`](#body-alter-id) — the value does not fit the field → removed
   - [`network`](#body-network) — the value does not fit the field → removed
   - [`tls.engine`](#body-tls-engine) — the value does not fit the field → removed
@@ -740,6 +739,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`inet4_bind_address`](#body-inet4-bind-address) — the value does not fit the field → removed
 - [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
   - [`tls.utls.fingerprint`](#body-tls-utls-fingerprint) — the value does not fit the field → replaced with `chrome`
+- [`vmess_security_unknown`](../warnings.md#vmess_security_unknown)
+  - [`security`](#body-security) — the value does not fit the field → replaced with `auto`
 - [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
   - [`transport.xhttp.mode`](#body-transport-xhttp-mode) — the value does not fit the field → removed
   - [`transport.xhttp.session_placement`](#body-transport-xhttp-session-placement) — the value does not fit the field → removed
@@ -761,7 +762,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 **Values.** What the sanitizer does to a value before it reaches the node body.
 
 - `security` — normalized: `trim_lower`
-- `security` — an invalid value is replaced with `auto` → [`type_invalid`](../warnings.md#type_invalid)
+- `security` — an invalid value is replaced with `auto` → [`vmess_security_unknown`](../warnings.md#vmess_security_unknown)
 - `network` — normalized: `trim_lower`
 - `packet_encoding` — normalized: `trim_lower`
 - `tls.engine` — normalized: `trim_lower`
