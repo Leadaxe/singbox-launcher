@@ -1,0 +1,10 @@
+{
+  "dropped": [
+    {
+      "reason": "emit_error",
+      "ref": "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?type=tcp&security=none&encryption=mlkem768x25519plus.native..AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA#enc-empty-seg"
+    }
+  ],
+  "nodes": [],
+  "v": 1
+}

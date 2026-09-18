@@ -165,6 +165,32 @@
       "dart": "NaiveBuildTagWarning",
       "go": "core/config/outbound_generator.go:822"
     },
+    "vless_encryption_invalid": {
+      "severity": "error",
+      "params": [
+        "path",
+        "value"
+      ],
+      "title_en": "VLESS encryption string is malformed",
+      "title_ru": "Строка encryption VLESS испорчена",
+      "text_en": "The encryption string {value} at {path} does not look like a value the core accepts: it must start with the method name and carry at least three more non-empty parts separated by dots. The node was dropped, because the core would refuse to start the whole config over such a string.",
+      "text_ru": "Строка encryption {value} в поле {path} не похожа на значение, которое принимает ядро: она обязана начинаться с имени метода и нести ещё не меньше трёх непустых частей через точку. Узел отброшен: из-за такой строки ядро не запустило бы весь конфиг.",
+      "cause_en": "The post-quantum layer is written as method.appearance.rtt, optionally followed by padding blocks, and ends with a key — all separated by dots. A string this short, this broken or starting with another method name is a truncated copy-paste, a line wrapped by a mail client or a chat, or a placeholder a panel wrote instead of a real value. Only the shape is checked here, never the grammar: a copy of the core's grammar would drift on the next core bump and start rejecting working nodes, so anything subtler is caught by the core itself.",
+      "cause_ru": "Постквантовый слой пишется как method.appearance.rtt, дальше необязательные padding-блоки, в конце ключ — всё через точку. Настолько короткая или порванная строка, равно как и строка с другим именем метода, — это обрезанная копипаста, перенос, добавленный почтой или мессенджером, либо заглушка, которую панель написала вместо настоящего значения. Проверяется только форма и никогда грамматика: копия грамматики ядра разошлась бы с ним на первом же бампе и начала бы отбраковывать рабочие узлы, поэтому всё более тонкое ловит само ядро.",
+      "fix_en": [
+        "Update the subscription: the provider may have already fixed the string.",
+        "Take the encryption string from the provider again, in one piece and without line breaks.",
+        "If this server has no post-quantum layer at all, remove the encryption parameter instead of shortening it."
+      ],
+      "fix_ru": [
+        "Обновите подписку: возможно, провайдер уже исправил строку.",
+        "Возьмите строку encryption у провайдера заново — целиком и без переносов.",
+        "Если у этого сервера постквантового слоя нет вовсе, уберите параметр encryption, а не укорачивайте его."
+      ],
+      "desc": "vless.encryption не совпал с pattern ^mlkem768x25519plus(\\\\.[^.]+){3,}$. НОРМАТИВНЫЙ ПОРЯДОК (одинаков на всех входах): URL-декодирование на входе ссылки → обрезка краёв всей строки (normalize trim, тихо) → пусто или ТОЧНОЕ 'none' = слоя нет, поля и кода нет → иначе pattern. В код уезжает СЫРОЕ значение, до обрезки. Проверяется только имя метода и число непустых частей; вид, RTT, padding и ключи НЕ проверяются, пробелы ВНУТРИ сегментов законны (ядро тримит сегменты с четвёртого). ПОЧЕМУ drop_node, а не снятие поля: узел без encryption к серверу, который слой требует, не подключится, а молча снять шифрование значит тихо понизить защиту. Грамматику ядра (справка SPECS/131-F-O-UNIFIED_NODE_PIPELINE/VLESS_ENCRYPTION_GRAMMAR.md) решением владельца 18.09.2026 НЕ дублируем; всё тоньше формы ловит страховка core_rejected (SPEC 132). Имя метода зашито в выражение — при бампе пина ядра сверить с protocol/vless/lx_encryption.go.",
+      "dart": null,
+      "go": "правило реестра: contract/registry/protocols/vless.json body.fields.encryption (normalize trim + pattern + on_invalid drop_node); исполнение — core/config/nodeflow/sanitize.go patternOK; точное сравнение с 'none' на входах — node_parser_core.go:770-775, xray_outbound_convert.go:145,160"
+    },
     "utls_fp_unknown": {
       "severity": "warning",
       "params": [

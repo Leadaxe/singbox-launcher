@@ -767,10 +767,19 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 			}
 		}
 
-		// VLESS post-quantum encryption layer (lx SPEC 032, core option/vless.go
-		// Encryption). `none` и пустое значение означают «слой выключен» —
-		// ключ тогда опускается (CANON §2.4, паритет с LxBox).
-		if enc := queryParam(node.Query, "vless", "encryption"); enc != "" && !strings.EqualFold(enc, "none") {
+		// VLESS post-quantum encryption layer (lx SPEC 032, core
+		// protocol/vless/lx_encryption.go). Порядок нормативен и одинаков на
+		// всех входах (реестр, body.fields.encryption): значение уже
+		// URL-декодировано, дальше обрезаются края, и пустое либо ТОЧНОЕ
+		// `none` означают «слоя нет» — ключ опускается (CANON §2.4).
+		//
+		// Сравнение точное, а НЕ EqualFold: ядро сличает свой литерал с
+		// учётом регистра, поэтому `None` для него настоящее значение, на
+		// котором падает весь конфиг. Пропускать его дальше — правильно:
+		// форму судит правило реестра, и `None` уходит в drop_node
+		// vless_encryption_invalid одинаково на всех входах. EqualFold здесь
+		// прятал бы негодное значение под видом «слоя нет».
+		if enc := strings.TrimSpace(queryParam(node.Query, "vless", "encryption")); enc != "" && enc != "none" {
 			outbound["encryption"] = enc
 		}
 

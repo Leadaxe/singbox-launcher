@@ -14,8 +14,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/registry"
@@ -477,6 +479,15 @@ func (s *sanitizer) value(path, prefix string, f *registry.Field, raw interface{
 	if !ok {
 		return s.onInvalid(path, f, raw)
 	}
+	// Литерал, означающий «этого нет»: проверяется ПОСЛЕ normalize и ДО
+	// ограничений — иначе правило значения судило бы слово-выключатель как
+	// значение и хоронило узел за выключенную настройку (vless.encryption:
+	// `none` — собственный литерал ядра, выключающий слой, а не строка
+	// грамматики). Ключ при этом не пишется вовсе, кода нет: сказать тут
+	// нечего, «нет слоя» — это не деградация.
+	if isAbsentValue(f, v) {
+		return nil, false
+	}
 	if !s.constraintsOK(f, v) {
 		return s.onInvalid(path, f, raw)
 	}
@@ -484,6 +495,29 @@ func (s *sanitizer) value(path, prefix string, f *registry.Field, raw interface{
 	s.noteNormalized(path, f, raw, v)
 	s.advisory(path, prefix, f, v)
 	return v, true
+}
+
+// isAbsentValue — значение является литералом-выключателем (Field.AbsentValues).
+//
+// Сравнение ТОЧНОЕ и только для строк: смысл атрибута в том, чтобы повторить
+// литерал ядра буква в букву. Регистронезависимое сравнение здесь было бы
+// прямой ошибкой — ядро сличает свой `none` с учётом регистра, и `None` для
+// него настоящее значение, на котором падает весь конфиг; спрятать его под
+// видом «нет слоя» значит пропустить негодный узел в ядро.
+func isAbsentValue(f *registry.Field, v interface{}) bool {
+	if len(f.AbsentValues) == 0 {
+		return false
+	}
+	str, ok := v.(string)
+	if !ok {
+		return false
+	}
+	for _, a := range f.AbsentValues {
+		if as, ok := a.(string); ok && as == str {
+			return true
+		}
+	}
+	return false
 }
 
 // applyMaxWhen исполняет условный потолок значения (Field.MaxWhen).
@@ -965,6 +999,20 @@ func (s *sanitizer) constraintsOK(f *registry.Field, v interface{}) bool {
 			}
 		}
 	}
+	if f.Pattern != "" {
+		switch vv := v.(type) {
+		case []string:
+			for _, item := range vv {
+				if !patternOK(f.Pattern, item) {
+					return false
+				}
+			}
+		default:
+			if isStr && !patternOK(f.Pattern, str) {
+				return false
+			}
+		}
+	}
 	// min/max: у строк это длина, у чисел — значение (реестр так и
 	// использует: short_id max:16 — длина, server_port max:65535 — значение).
 	if f.Min != nil || f.Max != nil {
@@ -1128,6 +1176,43 @@ func inValues(values []interface{}, v interface{}) bool {
 		}
 	}
 	return false
+}
+
+// patternCache — скомпилированные выражения Field.Pattern.
+//
+// Реестр неизменен в пределах процесса, а выражений всего несколько, поэтому
+// кэш растёт до размера реестра и больше не двигается. Под мьютексом:
+// санитайзер зовут из разбора подписок, а тот ходит по узлам параллельно.
+var (
+	patternCacheMu sync.Mutex
+	patternCache   = map[string]*regexp.Regexp{}
+)
+
+// patternOK — соответствие значения выражению Field.Pattern.
+//
+// Невалидное выражение ПРОПУСКАЕТ значение, а не отбраковывает его: реестр
+// может уехать вперёд кода, и молчаливый отказ узлов из-за опечатки в
+// контракте был бы хуже пропущенной проверки. Сама опечатка ловится раньше —
+// линтером реестра, который обязан компилировать каждое выражение.
+//
+// Якоря живут в самом выражении (см. Field.Pattern): здесь совпадение
+// проверяется как есть, без неявного оборачивания в ^…$.
+func patternOK(pattern, v string) bool {
+	patternCacheMu.Lock()
+	re, seen := patternCache[pattern]
+	if !seen {
+		compiled, err := regexp.Compile(pattern)
+		if err != nil {
+			compiled = nil
+		}
+		patternCache[pattern] = compiled
+		re = compiled
+	}
+	patternCacheMu.Unlock()
+	if re == nil {
+		return true
+	}
+	return re.MatchString(v)
 }
 
 // formatOK — проверка строкового формата. Неизвестный формат пропускается:

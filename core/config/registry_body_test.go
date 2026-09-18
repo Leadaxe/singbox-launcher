@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -152,6 +153,8 @@ type bodyField struct {
 	Fields         map[string]*bodyField `json:"fields"`
 	Values         []interface{}         `json:"values"`
 	Format         string                `json:"format"`
+	Pattern        string                `json:"pattern"`
+	AbsentValues   []interface{}         `json:"absent_values"`
 	Code           string                `json:"code"`
 	ForbiddenFor   []string              `json:"forbidden_for"`
 	ForbiddenCodes map[string]string     `json:"forbidden_codes"`
@@ -446,6 +449,40 @@ func checkField(t *testing.T, where, path string, f *bodyField, codes map[string
 	}
 	if f.Format != "" && !registryFieldFormats[f.Format] {
 		t.Errorf("%s: format %q вне словаря SPEC 131 §4", full, f.Format)
+	}
+	// pattern обязан компилироваться: невалидное выражение санитайзер
+	// ПРОПУСКАЕТ (реестр вправе уехать вперёд кода), то есть опечатка в
+	// контракте молча отключила бы проверку. Ловим её здесь.
+	//
+	// Диалект — общее подмножество Go RE2 и ECMAScript/Dart: конструкции, на
+	// которых RE2 не спотыкается, но вторая сторона поведёт себя иначе,
+	// перечислены явно. Совпадение по всей строке задают якоря в самом
+	// выражении, поэтому их отсутствие — тоже ошибка: без них правило
+	// проверяло бы ПОДстроку и пропускало мусор по краям.
+	// absent_values — только непустые строки: атрибут повторяет ЛИТЕРАЛ ядра,
+	// а пустую строку и так снимает omitAsUnset.
+	for _, a := range f.AbsentValues {
+		str, ok := a.(string)
+		if !ok {
+			t.Errorf("%s: absent_values содержит не строку (%T) — литерал ядра всегда строка", full, a)
+			continue
+		}
+		if str == "" {
+			t.Errorf("%s: absent_values содержит пустую строку — её снимает omitAsUnset, запись лишняя", full)
+		}
+	}
+	if f.Pattern != "" {
+		if _, err := regexp.Compile(f.Pattern); err != nil {
+			t.Errorf("%s: pattern %q не компилируется: %v", full, f.Pattern, err)
+		}
+		if !strings.HasPrefix(f.Pattern, "^") || !strings.HasSuffix(f.Pattern, "$") {
+			t.Errorf("%s: pattern %q без якорей ^…$ — правило проверяло бы подстроку", full, f.Pattern)
+		}
+		for _, bad := range []string{"(?=", "(?!", "(?<", "(?i)", "(?m)", "(?s)", "\\1", "\\2"} {
+			if strings.Contains(f.Pattern, bad) {
+				t.Errorf("%s: pattern %q содержит %q — вне общего подмножества RE2 и ECMAScript/Dart", full, f.Pattern, bad)
+			}
+		}
 	}
 	if len(f.Fields) > 0 && f.Type != "object" {
 		t.Errorf("%s: fields заданы при type=%q (ожидался object)", full, f.Type)

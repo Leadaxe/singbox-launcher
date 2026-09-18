@@ -1,0 +1,4 @@
+# SPEC 132: форма в порядке — метод и три непустые части, ключ 32 байта
+# (43 символа base64url). Тело не меняется, предупреждений нет: длины ключей
+# правило намеренно НЕ проверяет.
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?type=tcp&security=none&encryption=mlkem768x25519plus.native.0rtt.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA#enc-k32

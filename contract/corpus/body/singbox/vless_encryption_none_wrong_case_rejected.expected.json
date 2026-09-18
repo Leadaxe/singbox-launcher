@@ -1,0 +1,13 @@
+{
+  "dropped": [
+    {
+      "reason": "emit_error",
+      "ref": "sb-enc-None"
+    }
+  ],
+  "meta": {
+    "body_kind": "singbox-outbound"
+  },
+  "nodes": [],
+  "v": 1
+}

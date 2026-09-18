@@ -1,0 +1,16 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 443,
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "enc-empty",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

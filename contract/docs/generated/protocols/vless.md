@@ -63,9 +63,9 @@ Everything a link of this scheme can carry, including the TLS and transport para
   - Maps to: [`packet_encoding`](#body-packet-encoding)
   - If invalid: removed → [`packet_encoding_unknown`](../warnings.md#packet_encoding_unknown)
 - <a id="link-proto-encryption"></a>**`encryption`** — Post-quantum encryption layer.
-  - Supported by LxBox only
   - Type: string · Default: `""`
   - Maps to: [`encryption`](#body-encryption)
+  - If invalid: node dropped → [`vless_encryption_invalid`](../warnings.md#vless_encryption_invalid)
 - <a id="link-proto-type"></a>**`type`** — Transport selector.
   - Type: enum: `""`, `tcp`, `raw`, `ws`, `grpc`, `http`, `h2`, `httpupgrade`, `xhttp` · Default: `""`
   - Maps to: `transport.type`
@@ -305,8 +305,9 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - If invalid: removed → [`flow_deprecated`](../warnings.md#flow_deprecated)
   - Conflicts with: `transport`
 - <a id="body-encryption"></a>**`encryption`** — Post-quantum encryption layer.
-  - Type: string
+  - Type: string, must match `^mlkem768x25519plus(\.[^.]+){3,}$`, means "not set": `none`, normalized: `trim`
   - Set by link parameter: [`encryption`](#link-proto-encryption)
+  - If invalid: node dropped → [`vless_encryption_invalid`](../warnings.md#vless_encryption_invalid)
   - Only written when: core ≥ `1.14.0-lx.18`, lx fork only
 - <a id="body-network"></a>**`network`** — Networks this outbound handles.
   - Type: listable_string, `tcp`, `udp`, normalized: `trim_lower`
@@ -768,6 +769,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`tls.utls.fingerprint`](#body-tls-utls-fingerprint) — the value does not fit the field → replaced with `chrome`
 - [`vision_with_transport`](../warnings.md#vision_with_transport)
   - [`flow`](#body-flow) — conflicts with `transport` → removed
+- [`vless_encryption_invalid`](../warnings.md#vless_encryption_invalid)
+  - [`encryption`](#body-encryption) — the value does not fit the field → node dropped
 - [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
   - [`transport.xhttp.mode`](#body-transport-xhttp-mode) — the value does not fit the field → removed
   - [`transport.xhttp.session_placement`](#body-transport-xhttp-session-placement) — the value does not fit the field → removed
@@ -785,6 +788,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 **Values.** What the sanitizer does to a value before it reaches the node body.
 
 - `flow` — normalized: `trim_lower`
+- `encryption` — normalized: `trim`
 - `network` — normalized: `trim_lower`
 - `packet_encoding` — normalized: `trim_lower`
 - `tls.engine` — normalized: `trim_lower`
@@ -826,6 +830,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 **The node is dropped**
 
+- `encryption` — invalid value
 - `server_port` — invalid value
 - `server` — invalid value
 - `uuid` — required and missing

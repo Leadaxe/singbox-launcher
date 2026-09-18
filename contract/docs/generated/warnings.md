@@ -78,6 +78,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`uri_too_long`](#uri_too_long) · `error` — Link too long: {length} characters
 - [`utls_fp_unknown`](#utls_fp_unknown) · `warning` — Unknown uTLS fingerprint replaced
 - [`vision_with_transport`](#vision_with_transport) · `info` — flow removed: incompatible with transport
+- [`vless_encryption_invalid`](#vless_encryption_invalid) · `error` — VLESS encryption string is malformed
 - [`vmess_security_unknown`](#vmess_security_unknown) · `warning` — VMess: unknown cipher replaced with auto
 - [`ws_early_data_converted`](#ws_early_data_converted) · `info` — WebSocket: early data converted
 - [`xhttp_mode_forced_packet_up`](#xhttp_mode_forced_packet_up) · `warning` — XHTTP mode set to packet-up
@@ -1451,6 +1452,25 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - [`vless`](protocols/vless.md)
   - [`flow`](protocols/vless.md#body-flow) — conflicts with `transport` → removed
+
+<a id="vless_encryption_invalid"></a>
+### vless_encryption_invalid
+
+**severity:** `error` · **params:** `path`, `value`
+
+**VLESS encryption string is malformed**
+
+- **What happened:** The encryption string {value} at {path} does not look like a value the core accepts: it must start with the method name and carry at least three more non-empty parts separated by dots. The node was dropped, because the core would refuse to start the whole config over such a string.
+- **Why it happens:** The post-quantum layer is written as method.appearance.rtt, optionally followed by padding blocks, and ends with a key — all separated by dots. A string this short, this broken or starting with another method name is a truncated copy-paste, a line wrapped by a mail client or a chat, or a placeholder a panel wrote instead of a real value. Only the shape is checked here, never the grammar: a copy of the core's grammar would drift on the next core bump and start rejecting working nodes, so anything subtler is caught by the core itself.
+- **What you can do:**
+  - Update the subscription: the provider may have already fixed the string.
+  - Take the encryption string from the provider again, in one piece and without line breaks.
+  - If this server has no post-quantum layer at all, remove the encryption parameter instead of shortening it.
+
+**Where it comes from:**
+
+- [`vless`](protocols/vless.md)
+  - [`encryption`](protocols/vless.md#body-encryption) — the value does not fit the field → node dropped
 
 <a id="vmess_security_unknown"></a>
 ### vmess_security_unknown

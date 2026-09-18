@@ -578,6 +578,12 @@ func bodyConstraints(f *registry.Field) string {
 	if f.Format != "" {
 		parts = append(parts, "format "+code(f.Format))
 	}
+	if f.Pattern != "" {
+		parts = append(parts, "must match "+code(f.Pattern))
+	}
+	if len(f.AbsentValues) > 0 {
+		parts = append(parts, "means \"not set\": "+scalarList(f.AbsentValues))
+	}
 	if f.Min != nil || f.Max != nil {
 		lo, hi := "…", "…"
 		if f.Min != nil {
