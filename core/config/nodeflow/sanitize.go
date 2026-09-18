@@ -487,9 +487,11 @@ func (s *sanitizer) objectField(path string, f *registry.Field, raw interface{})
 		s.missingRequired = s.missingRequired[:mark]
 		return nil, false
 	}
-	if f.AllOrNothing {
-		s.fillAllOrNothing(path, f, out)
-	}
+	// Атрибут all_or_nothing санитайзер НЕ отрабатывает: ядро при частично
+	// заданной секции оставляет незаданные поля нулями (= без лимита), и
+	// дописывать дефолты соседей нельзя — это меняет поведение живого узла
+	// (случай transport.xmux, SPEC 131 DRIFT §7). Атрибут остаётся в реестре
+	// как документация о поведении ядра.
 	if len(out) == 0 {
 		return nil, false
 	}
@@ -552,36 +554,6 @@ func (s *sanitizer) arrayField(path string, f *registry.Field, raw interface{}) 
 		return nil, false
 	}
 	return out, true
-}
-
-// fillAllOrNothing дописывает дефолты соседей у частично заданного объекта.
-//
-// Правило all_or_nothing: в ядре задание одного поля обнуляет дефолты
-// остальных (transport.xmux). Молчаливое «как выглядит, так и работает»
-// здесь неверно, поэтому недостающие дефолты пишутся явно.
-func (s *sanitizer) fillAllOrNothing(path string, f *registry.Field, out map[string]interface{}) {
-	if len(out) == 0 {
-		return // секции нет — дефолты ядра в силе, дописывать нечего
-	}
-	changed := false
-	for _, name := range f.Order {
-		inner := f.Fields[name]
-		if inner == nil || inner.Default == nil {
-			continue
-		}
-		if _, ok := out[name]; ok {
-			continue
-		}
-		v, ok := coerce(inner, inner.Default)
-		if !ok {
-			continue
-		}
-		out[name] = v
-		changed = true
-	}
-	if changed {
-		s.warn("partial_object_defaulted", path, nil, false, map[string]string{"path": path})
-	}
 }
 
 // relationsOK проверяет conflicts / requires / forbidden_when.
@@ -929,12 +901,21 @@ func sortedKeys(m map[string]interface{}) []string {
 	return out
 }
 
+// isEmptyValue — «значение не задано» для слоя связей (conflicts / requires /
+// forbidden_when).
+//
+// Ядро судит взаимоисключающие поля по ЗНАЧЕНИЮ, а не по наличию ключа:
+// у transport.xmux конфликт max_concurrency↔max_connections срабатывает только
+// когда оба > 0 (transport/v2rayxhttp/xmux.go), а "0" в JSON означает «не
+// задано». Поэтому нулём считается и число-строка "0"/"0-0": подписка,
+// выписавшая все поля секции с нулями, не должна терять заданные соседние
+// значения. То же правило нужно certificate↔pins и reality↔ech.
 func isEmptyValue(v interface{}) bool {
 	switch vv := v.(type) {
 	case nil:
 		return true
 	case string:
-		return vv == ""
+		return isZeroNumericString(vv)
 	case bool:
 		return !vv
 	case float64:
@@ -949,6 +930,30 @@ func isEmptyValue(v interface{}) bool {
 		return len(vv) == 0
 	}
 	return false
+}
+
+// isZeroNumericString — пустая строка или число/диапазон из одних нулей
+// ("0", "0-0"). Диапазоны XmuxRange приходят строками, и "0" в них — штатная
+// запись «без лимита», то есть «поле не задано».
+func isZeroNumericString(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return true
+	}
+	seenDigit := false
+	for _, r := range s {
+		switch {
+		case r == '0':
+			seenDigit = true
+		case r == '-':
+			// разделитель диапазона; знак минуса тут не встречается
+		case r >= '1' && r <= '9':
+			return false
+		default:
+			return false // не число и не диапазон — обычная строка
+		}
+	}
+	return seenDigit
 }
 
 func displayValue(v interface{}) string {

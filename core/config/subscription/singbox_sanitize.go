@@ -66,12 +66,11 @@ func SanitizeSingboxOutboundMap(ob map[string]interface{}, tag string) []string 
 	}
 	obType := strings.ToLower(strings.TrimSpace(mapString(ob, "type")))
 
-	var codes []string
 	sanitizeSingboxMasqueLegacy(ob, obType, tag)
 	sanitizeSingboxTLS(ob, obType, tag)
 	sanitizeSingboxHysteria2Obfs(ob, obType, tag)
 	sanitizeSingboxHysteriaObfs(ob, obType, tag)
-	return codes
+	return nil
 }
 
 // sanitizeSingboxMasqueLegacy СТРИПАЕТ у masque-outbound ключи чужого

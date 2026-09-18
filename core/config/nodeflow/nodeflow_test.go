@@ -154,17 +154,44 @@ func TestSanitizeEmit(t *testing.T) {
 				`"auth_str":"x","tls":{"enabled":true}}`,
 		},
 		{
-			// all_or_nothing: частично заданный xmux в ядре обнуляет дефолты
-			// соседей — санитайзер дописывает их явно.
-			name:   "vless/xmux-частичный-дополнен-дефолтами",
+			// all_or_nothing — только документация о поведении ядра: при
+			// частичной секции ядро оставляет незаданные поля нулями (без
+			// лимита). Дописывать дефолты соседей нельзя — это меняет
+			// поведение живого узла. Частичный xmux проходит как есть.
+			name:   "vless/xmux-частичный-проходит-как-есть",
 			scheme: "vless",
 			in: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `",
 			      "transport":{"type":"xhttp","xmux":{"h_max_request_times":"100-200"}}}`,
 			want: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `",` +
-				`"transport":{"type":"xhttp","xmux":{"max_concurrency":"1-1",` +
-				`"h_max_request_times":"100-200","h_max_reusable_secs":"1800-3000",` +
+				`"transport":{"type":"xhttp","xmux":{"h_max_request_times":"100-200"}}}`,
+		},
+		{
+			// Конфликт max_concurrency↔max_connections ядро судит по
+			// ЗНАЧЕНИЮ: "0" = не задано. Реальная подписка выписывает всю
+			// секцию с нулями у незаданных полей — заданное значение обязано
+			// уцелеть (SPEC 131 DRIFT §7).
+			name:   "vless/xmux-нулевой-сосед-не-конфликт",
+			scheme: "vless",
+			in: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `",
+			      "transport":{"type":"xhttp","xmux":{"max_concurrency":"16-32",
+			      "max_connections":"0","c_max_reuse_times":"0",
+			      "h_keep_alive_period":0}}}`,
+			want: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `",` +
+				`"transport":{"type":"xhttp","xmux":{"max_concurrency":"16-32",` +
+				`"max_connections":"0","c_max_reuse_times":"0",` +
 				`"h_keep_alive_period":0}}}`,
-			codes: []string{"partial_object_defaulted"},
+		},
+		{
+			// Обратный полюс того же правила: оба значения заданы — конфликт
+			// настоящий, младшее по order поле снимается.
+			name:   "vless/xmux-оба-заданы-конфликт",
+			scheme: "vless",
+			in: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `",
+			      "transport":{"type":"xhttp","xmux":{"max_concurrency":"16-32",
+			      "max_connections":"4-8"}}}`,
+			want: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `",` +
+				`"transport":{"type":"xhttp","xmux":{"max_connections":"4-8"}}}`,
+			codes: []string{"field_conflict"},
 		},
 		{
 			// tag, type и detour пишет сборка конфига, в теле узла их быть не

@@ -299,8 +299,7 @@ func TestRegistryWarningCodesHaveAProducer(t *testing.T) {
 // не по записи в секции: правила формы, общие для всех полей.
 var nodeflowBuiltinCodes = []string{
 	"unknown_key", "type_invalid", "field_missing", "field_conflict",
-	"field_requires", "partial_object_defaulted", "protocol_unsupported",
-	"parse_error",
+	"field_requires", "protocol_unsupported", "parse_error",
 }
 
 // nodeFieldCodePrefixes — относится ли код к ПОЛЯМ ТЕЛА УЗЛА, то есть к
