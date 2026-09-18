@@ -114,7 +114,7 @@ GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o singbox-lau
 
 ### Пароль спрашивают трижды при старте VPN (и ещё раз при остановке)
 
-- На десктопе с `systemd-resolved` sing-box настраивает DNS TUN-интерфейса через `resolvectl`, и Polkit авторизует каждое из четырёх действий D-Bus по отдельности. `CAP_NET_ADMIN` тут не помогает — проверка происходит на стороне `systemd-resolved`. Узкое правило Polkit, убирающее запросы, описано в [LINUX_DNS_POLKIT.ru.md](LINUX_DNS_POLKIT.ru.md) (issue #126).
+- Это не проблема сборки — см. [TROUBLESHOOTING.ru.md](TROUBLESHOOTING.ru.md#linux).
 
 ## Запуск
 
