@@ -33,7 +33,6 @@ package outbounds_configurator
 import (
 	"fmt"
 	"image/color"
-	"sort"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -44,112 +43,31 @@ import (
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/internal/emojitag"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/textnorm"
 )
 
-// flagEntry — один флаг + сколько нод его содержит.
-type flagEntry struct {
-	Flag  string
-	Count int
-}
-
-// extractFlags — пробегает по тэгам всех нод, собирает уникальные эмодзи с
-// count'ами, sorted by count desc.
+// extractFlags — эмодзи тегов всех нод с частотой, по убыванию частоты.
 //
 // SPEC 104: не только флаги. Провайдеры кладут в имена 🚀, ⭐, 🔒, 💎 и
 // прочее — это такие же маркеры категории, как флаг страны, и отбирать по
 // ним должно быть так же легко. Флаг (пара Regional Indicator) остаётся
 // одним элементом, а не двумя буквами.
-func extractFlags(nodes []*config.ParsedNode) []flagEntry {
-	counts := map[string]int{}
+//
+// Сам разбор живёт в internal/emojitag — общий с окном фильтров списка
+// серверов: два места предлагают один и тот же отбор по значку, и второй
+// копии алгоритма у них быть не должно.
+func extractFlags(nodes []*config.ParsedNode) []emojitag.Entry {
+	names := make([]string, 0, len(nodes))
 	for _, n := range nodes {
 		if n == nil {
 			continue
 		}
-		for _, f := range findFlagsInString(n.Tag) {
-			counts[f]++
-		}
+		names = append(names, n.Tag)
 	}
-	out := make([]flagEntry, 0, len(counts))
-	for f, c := range counts {
-		out = append(out, flagEntry{Flag: f, Count: c})
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Count != out[j].Count {
-			return out[i].Count > out[j].Count
-		}
-		return out[i].Flag < out[j].Flag
-	})
-	return out
-}
-
-func findFlagsInString(s string) []string {
-	seen := map[string]bool{}
-	var out []string
-	add := func(e string) {
-		if !seen[e] {
-			seen[e] = true
-			out = append(out, e)
-		}
-	}
-	runes := []rune(s)
-	for i := 0; i < len(runes); i++ {
-		r := runes[i]
-		// Флаг — пара Regional Indicator, один элемент.
-		if i+1 < len(runes) && isRegionalIndicator(r) && isRegionalIndicator(runes[i+1]) {
-			add(string(runes[i : i+2]))
-			i++
-			continue
-		}
-		if isEmojiRune(r) {
-			// Захватываем следующий за эмодзи селектор вариации / модификатор
-			// тона кожи, чтобы «⭐️» и «⭐» не считались разными.
-			end := i + 1
-			for end < len(runes) && isEmojiModifier(runes[end]) {
-				end++
-			}
-			add(string(runes[i:end]))
-			i = end - 1
-		}
-	}
-	return out
-}
-
-func isRegionalIndicator(r rune) bool {
-	return r >= 0x1F1E6 && r <= 0x1F1FF
-}
-
-// isEmojiRune — основные блоки эмодзи Unicode. Буквы, цифры и пунктуацию
-// не трогаем: пикер нужен для символов, которые неудобно набирать.
-func isEmojiRune(r rune) bool {
-	switch {
-	case r >= 0x1F300 && r <= 0x1FAFF: // Misc Symbols & Pictographs … Symbols Extended-A
-		return true
-	case r >= 0x2600 && r <= 0x27BF: // Misc Symbols, Dingbats (☀ ⭐ ✅ ✈)
-		return true
-	case r >= 0x1F900 && r <= 0x1F9FF: // Supplemental Symbols & Pictographs
-		return true
-	case r == 0x2B50 || r == 0x2B55 || r == 0x231A || r == 0x231B || r == 0x23F0 || r == 0x23F3:
-		return true
-	}
-	return false
-}
-
-// isEmojiModifier — селектор вариации (U+FE0F) и модификаторы тона кожи.
-func isEmojiModifier(r rune) bool {
-	return r == 0xFE0F || (r >= 0x1F3FB && r <= 0x1F3FF)
-}
-
-// buildFlagRegex — ТЕЛО регулярки из выбранных чипов: `flag1|flag2`.
-//
-// SPEC 104: пикер работает в тех же терминах, что и форма Направления —
-// тело без обёртки, инверсия отдельной галкой. Обёртку `/…/i` ставит
-// форма при сохранении, и пикеру выдумывать её нельзя: иначе в поле тела
-// оказывался бы полный паттерн, и генератор искал бы символы «/» в тегах.
-func buildFlagRegex(selected []string) string {
-	return strings.Join(selected, "|")
+	return emojitag.Entries(names)
 }
 
 // showFlagPickerPopup — modal popup поверх parent-canvas'а. На Apply вызывает
@@ -180,11 +98,8 @@ func showFlagPickerPopup(
 	// Скобки вокруг тела — наследие прежнего формата `/(🇷🇺)/i`; для
 	// сопоставления с чипами они значения не имеют.
 	selected := map[string]bool{}
-	for _, part := range strings.Split(strings.Trim(currentBody, "()"), "|") {
-		part = strings.TrimSpace(strings.Trim(part, "()"))
-		if part != "" {
-			selected[part] = true
-		}
+	for _, part := range emojitag.SplitORPattern(currentBody) {
+		selected[part] = true
 	}
 	excludeCheck := widget.NewCheck(locale.T("Invert: keep nodes that do NOT match"), nil)
 	excludeCheck.SetChecked(currentInvert)
@@ -289,11 +204,11 @@ func showFlagPickerPopup(
 	rebuildFromChips := func() {
 		picked := make([]string, 0, len(selected))
 		for _, fe := range flags {
-			if selected[fe.Flag] {
-				picked = append(picked, fe.Flag)
+			if selected[fe.Emoji] {
+				picked = append(picked, fe.Emoji)
 			}
 		}
-		regexEntry.SetText(buildFlagRegex(picked))
+		regexEntry.SetText(emojitag.BuildORPattern(picked))
 		// SetText triggers OnChanged → recomputeMatches called transitively.
 	}
 	excludeCheck.OnChanged = func(_ bool) { recomputeMatches() }
@@ -309,13 +224,13 @@ func showFlagPickerPopup(
 		chipObjs := make([]fyne.CanvasObject, 0, len(flags))
 		for _, fe := range flags {
 			fe := fe
-			label := fmt.Sprintf("%s (%d)", fe.Flag, fe.Count)
+			label := fmt.Sprintf("%s (%d)", fe.Emoji, fe.Count)
 			chk := widget.NewCheck(label, nil)
-			chk.SetChecked(selected[fe.Flag])
+			chk.SetChecked(selected[fe.Emoji])
 			// Обработчик ПОСЛЕ SetChecked — иначе он сработал бы на
 			// восстановлении состояния и перезаписал поле фильтра.
 			chk.OnChanged = func(checked bool) {
-				selected[fe.Flag] = checked
+				selected[fe.Emoji] = checked
 				rebuildFromChips()
 			}
 			chipObjs = append(chipObjs, chk)
