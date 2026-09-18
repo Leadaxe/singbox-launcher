@@ -126,7 +126,7 @@ func Section(in []state.NodeWarning) fyne.CanvasObject {
 	if group := levelGroup(warns, WarningsGroupTitleText, WarnMark, widget.WarningImportance); group != nil {
 		items = append(items, group)
 	}
-	if group := levelGroup(infos, InfoGroupTitleText, "", widget.HighImportance); group != nil {
+	if group := levelGroup(infos, InfoGroupTitleText, "", widget.MediumImportance); group != nil {
 		items = append(items, group)
 	}
 	return container.NewVBox(items...)
