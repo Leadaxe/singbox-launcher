@@ -373,7 +373,7 @@ func buildFolderDrillRows(sources []corestate.Source, folderID string) (folderDr
 	if len(src.Nodes) > 0 {
 		emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), idx, map[string]int{})
 		out.Rows = buildPreviewRows(src.Nodes, emitted.Nodes)
-		annotatePreviewGroupRows(out.Rows, src.Nodes, sources)
+		annotatePreviewGroupRows(out.Rows, src.Nodes, sources, src.ID)
 	}
 	out.Identities = make([]string, len(out.Rows))
 	for i := range out.Rows {

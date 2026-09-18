@@ -138,6 +138,11 @@ func buildNodeWarningIndex(path string) *NodeWarningIndex {
 		}
 		for j := range src.Nodes {
 			n := &src.Nodes[j]
+			// Отбор по ПУСТОТЕ, а не по уровню (nodewarn.HasProblems), и это
+			// намеренно: индекс — сырые данные для всех поверхностей сразу, а
+			// решение «показывать или нет» принимает каждая сама. Вкладка
+			// Servers ставит по этим же записям значок «(i)», и фильтр по
+			// уровню здесь молча лишил бы её info-кодов.
 			if len(n.Warnings) == 0 {
 				continue
 			}

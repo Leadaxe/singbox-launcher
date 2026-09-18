@@ -75,6 +75,7 @@ func TestSeverityLevelsDrivePresentation(t *testing.T) {
 		{"только info", warnings(i), "", -1, true},
 		{"только warning", warnings(w), WarnMark, -1, false},
 		{"только error", warnings(e), ErrorMark, -1, false},
+		{"два info и warning", warnings(i, i, w), WarnMark, -1, true},
 		// Старший уровень решает глиф, даже когда пришёл ВТОРЫМ: порядок
 		// внутри уровня детерминирован обходом реестра, но между уровнями
 		// важность сильнее исходного порядка.
@@ -122,6 +123,21 @@ func TestSeverityLevelsDrivePresentation(t *testing.T) {
 
 			if got := HasInfo(c.in); got != c.info {
 				t.Errorf("HasInfo = %v, ожидалось %v", got, c.info)
+			}
+			// HasProblems — тот же вопрос, на который отвечает подстрока:
+			// «с этим узлом что-то не так?». Расходиться им нельзя, иначе
+			// строка красится оранжевым без подстроки (или наоборот), и
+			// счётчик шапки объявляет узел испорченным там, где список
+			// показывает его здоровым — ровно эта дыра и чинится.
+			wantProblems := c.mark != ""
+			if got := HasProblems(c.in); got != wantProblems {
+				t.Errorf("HasProblems = %v, ожидалось %v (глиф подстроки %q)",
+					got, wantProblems, c.mark)
+			}
+			// InfoOnly — «есть что сказать, и это всё, что есть».
+			wantInfoOnly := c.info && !wantProblems
+			if got := InfoOnly(c.in); got != wantInfoOnly {
+				t.Errorf("InfoOnly = %v, ожидалось %v", got, wantInfoOnly)
 			}
 			mark := InfoMarkFor(c.in)
 			if c.info && mark != InfoMark {
@@ -202,5 +218,42 @@ func TestSectionGroupsByLevel(t *testing.T) {
 	}
 	if errs[0].Code != e || warns[0].Code != w || infos[0].Code != i {
 		t.Errorf("коды разъехались по уровням: %q / %q / %q", errs[0].Code, warns[0].Code, infos[0].Code)
+	}
+}
+
+// TestSplitNodesCountsByLevel — счёт УЗЛОВ, а не кодов: ровно то число, что
+// уходит в «⚠ N» шапки контейнера и в «For your information: N» сводки.
+//
+// Данные-критично здесь одно: узел не должен попасть в обе группы разом и не
+// должен пропасть из обеих. Двенадцать info-узлов, посчитанных как
+// предупреждения, — та самая ложная тревога, из-за которой счёт и переехал на
+// уровни.
+func TestSplitNodesCountsByLevel(t *testing.T) {
+	e, w, i := codesBySeverity(t)
+
+	nodes := [][]state.NodeWarning{
+		nil,                                  // чистый узел — ни в одну группу
+		warnings(i),                          // только «к сведению»
+		warnings(i, i),                       // два info у одного узла — всё равно ОДИН узел
+		warnings(w),                          // проблема
+		warnings(e),                          // проблема
+		warnings(e, i),                       // проблема И info: считается проблемой, и только ею
+		warnings("no_such_code_in_registry"), // неизвестный код = проблема
+	}
+	problems, infoOnly := SplitNodes(nodes)
+	if problems != 4 {
+		t.Errorf("узлов с проблемой = %d, ожидалось 4", problems)
+	}
+	if infoOnly != 2 {
+		t.Errorf("узлов только с «к сведению» = %d, ожидалось 2", infoOnly)
+	}
+	// Сумма меньше числа узлов ровно на чистые — ни один узел не сосчитан
+	// дважды и ни один не потерян.
+	if problems+infoOnly != len(nodes)-1 {
+		t.Errorf("сумма групп = %d, узлов с кодами = %d", problems+infoOnly, len(nodes)-1)
+	}
+
+	if p, io := SplitNodes(nil); p != 0 || io != 0 {
+		t.Errorf("пустой вход дал %d/%d", p, io)
 	}
 }

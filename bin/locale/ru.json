@@ -4702,5 +4702,8 @@
   },
   "For your information": {
     "value": "К сведению"
+  },
+  "For your information: %d node(s)": {
+    "value": "К сведению: узлов %d"
   }
 }

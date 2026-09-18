@@ -106,6 +106,12 @@ func previewRowSubtitle(r previewRow) string {
 // Одно место на все три списка: корневой, drill-down и Preview окна
 // источника красили её каждый своим `if pr.Unsupported`, и добавление
 // второго повода разъехалось бы по трём файлам.
+//
+// Из кодов узла красит только ПРОБЛЕМА (error/warning): оранжевая подстрока —
+// это призыв разбираться, а info говорит ровно обратное. По `len(Warnings)`
+// узел с единственным «к сведению» (reality_fp_not_chrome) выглядел
+// сломанным, показывая при этом свой обычный состав «vless·tcp·Reality+Vision»
+// — цвет тревоги и текст «всё в порядке» в одной строке.
 func previewRowWarn(r previewRow) bool {
 	if r.Unsupported {
 		return true
@@ -113,7 +119,7 @@ func previewRowWarn(r previewRow) bool {
 	if r.Node != nil && r.GroupCounted && r.GroupAlive == 0 {
 		return true
 	}
-	return len(r.Warnings) > 0
+	return nodewarn.HasProblems(r.Warnings)
 }
 
 // previewRowToolTip — полный текст под курсором.

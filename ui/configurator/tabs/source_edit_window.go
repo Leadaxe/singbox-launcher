@@ -24,6 +24,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -1322,6 +1323,26 @@ func showSourceEditWindowAt(
 	}
 	rebuildSettingsLayout := func() {
 		settingsContent.Objects = settingsContent.Objects[:0]
+		// SPEC 131 §6: секция «Предупреждения» — ПЕРВЫМ блоком формы, до
+		// полей узла, и та же самая, что в окне Info вкладки Servers
+		// (`nodewarn.Section`). Одна функция на все окна «узел изнутри», а не
+		// копия вёрстки: иначе один и тот же код читался бы здесь и там
+		// разными словами — ровно то, ради чего пакет `nodewarn` и заведён.
+		//
+		// До этого секции здесь не было вовсе, и узел, открытый из превью
+		// источника, не показывал ни одного своего кода: пользователь видел
+		// «(i)» у имени в списке и, открыв узел, не находил объяснения. Место
+		// — самый верх: с этим вопросом сюда и приходят по значку из списка.
+		//
+		// Источник данных — рабочий буфер окна (`scratch.Node.Warnings`): у
+		// окна на УЗЕЛ это коды самого узла, у окна на строку корня —
+		// узлового источника (server/chain/auto). У контейнера (папка,
+		// подписка) своих кодов нет, Section вернёт nil, и блока не будет —
+		// состав со своими кодами живёт на вкладке Preview.
+		if warn := nodewarn.Section(scratch.Node.Warnings); warn != nil {
+			settingsContent.Add(warn)
+			settingsContent.Add(widget.NewSeparator())
+		}
 		// Вид — ОБЩИЙ для всего окна (`view`), а не пересчитанный по строке
 		// sourceIndex. Пересчёт здесь был багом: когда окно открыто на УЗЕЛ
 		// внутри папки, sourceIndex указывает на папку, и форма показывала
@@ -1628,7 +1649,7 @@ func showSourceEditWindowAt(
 					} else {
 						emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), sourceIndex, map[string]int{})
 						rows = buildPreviewRows(src.Nodes, emitted.Nodes)
-						annotatePreviewGroupRows(rows, src.Nodes, model.Sources)
+						annotatePreviewGroupRows(rows, src.Nodes, model.Sources, src.ID)
 					}
 				default:
 					emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), sourceIndex, map[string]int{})

@@ -24,6 +24,7 @@ import (
 
 	"singbox-launcher/core/config"
 	corestate "singbox-launcher/core/state"
+	"singbox-launcher/internal/nodewarn"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -140,10 +141,29 @@ func buildPreviewRows(stateNodes []wizardmodels.Node, emitted []*config.ParsedNo
 //
 // rows и stateNodes идут одним порядком (контракт buildPreviewRows); длины
 // расходятся только у узлового источника без состава — там групп-ссылок нет.
-func annotatePreviewGroupRows(rows []previewRow, stateNodes []wizardmodels.Node, sources []corestate.Source) {
+//
+// ownerID — ID источника, чьё превью рисуется. Он нужен ровно для одной
+// развилки: ВЫКЛЮЧЕННЫЙ источник. Прежде членство считалось живым только у
+// включённого источника, и у выключенной подписки все её авто-группы
+// объявлялись сломанными («⚠ [0] fastest — no working members», «⚠ 8 node
+// error(s)» в шапке), хотя с узлами ничего не случилось: группа выключена
+// ВМЕСТЕ со своими членами, одним и тем же тумблером. Ложная тревога — и
+// ровно про то место, где пользователь сам всё выключил.
+//
+// Поэтому член СВОЕГО источника считается по собственному состоянию, а
+// тумблер источника из счёта уходит. Член ЧУЖОГО выключенного источника
+// по-прежнему не живой: включи такую группу — и на сборке она останется без
+// членов, здесь это правда, а не артефакт показа.
+func annotatePreviewGroupRows(
+	rows []previewRow,
+	stateNodes []wizardmodels.Node,
+	sources []corestate.Source,
+	ownerID string,
+) {
 	if len(rows) != len(stateNodes) {
 		return
 	}
+	ownerID = strings.TrimSpace(ownerID)
 	var byID map[string]*corestate.Source
 	for i := range rows {
 		sn := &stateNodes[i]
@@ -158,8 +178,15 @@ func annotatePreviewGroupRows(rows []previewRow, stateNodes []wizardmodels.Node,
 		}
 		alive := 0
 		for _, m := range sn.Group.Members {
-			src := byID[strings.TrimSpace(m.FolderID)]
-			if src == nil || !src.Enabled {
+			memberOwner := strings.TrimSpace(m.FolderID)
+			src := byID[memberOwner]
+			if src == nil {
+				continue
+			}
+			// Свой источник: его тумблер гасит и группу, и членов разом, и
+			// спрашивать о нём здесь незачем — см. шапку.
+			ownSource := ownerID != "" && memberOwner == ownerID
+			if !src.Enabled && !ownSource {
 				continue
 			}
 			for k := range src.Nodes {
@@ -210,15 +237,34 @@ func previewRowsBroken(rows []previewRow) int {
 	return n
 }
 
-// previewRowsWarned — сколько строк несут деградации конвейера (SPEC 131 §6).
+// previewRowsWarned — сколько строк несут ПРОБЛЕМУ конвейера: код уровня
+// error или warning (SPEC 131 §6).
 //
 // Считается ОТДЕЛЬНО от previewRowsBroken: сломанная запись в конфиг не
 // поедет, а помеченный узел поедет — просто не таким, каким его прислал
 // провайдер. Одно число на оба факта врало бы про оба.
+//
+// info в это число НЕ входит: ⚠ в шапке зовёт разбираться, а info говорит
+// «разбираться не с чем». Счётчик по `len(Warnings) > 0` ставил в шапку «⚠
+// 12» у источника, где все двенадцать кодов были «к сведению».
 func previewRowsWarned(rows []previewRow) int {
 	n := 0
 	for i := range rows {
-		if len(rows[i].Warnings) > 0 {
+		if nodewarn.HasProblems(rows[i].Warnings) {
+			n++
+		}
+	}
+	return n
+}
+
+// previewRowsInfoOnly — сколько строк несут ТОЛЬКО «к сведению».
+//
+// Своё число, а не разность: узел с error и info попадает в previewRowsWarned
+// и здесь не считается вовсе — про него уже сказано сильнее.
+func previewRowsInfoOnly(rows []previewRow) int {
+	n := 0
+	for i := range rows {
+		if nodewarn.InfoOnly(rows[i].Warnings) {
 			n++
 		}
 	}

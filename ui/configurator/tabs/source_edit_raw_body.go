@@ -33,6 +33,7 @@ import (
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 )
 
 // sourceNodesHeader — строка счёта состава.
@@ -48,7 +49,11 @@ func sourceNodesHeader(nodes []corestate.Node) string {
 			continue
 		}
 		supported++
-		if len(nodes[i].Warnings) > 0 {
+		// Только ПРОБЛЕМЫ (error/warning): слово «warnings» в счёте состава
+		// обещает, что с этими узлами что-то сделали, а info говорит ровно
+		// обратное — «делать ничего не нужно». По `len(Warnings)` подписка с
+		// двенадцатью info-кодами объявляла двенадцать узлов испорченными.
+		if nodewarn.HasProblems(nodes[i].Warnings) {
 			warned++
 		}
 	}

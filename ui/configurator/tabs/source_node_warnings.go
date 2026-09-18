@@ -26,24 +26,39 @@ const warnedNodesFieldsText = "⚠ %d field(s) stripped on %d node(s)" // l10n-k
 // снимали, и говорить «снято полей» было бы неправдой.
 const warnedNodesPlainText = "⚠ %d warning(s) on %d node(s)" // l10n-key
 
-// sourceWarnedNodes — сколько узлов источника несут хоть одну деградацию.
+// infoNodesText — заголовок группы «к сведению» под составом.
+//
+// Без ⚠ и без слова warnings: группа отвечает «делать ничего не нужно», и
+// знак тревоги рядом с ней спорил бы с её собственным текстом.
+const infoNodesText = "For your information: %d node(s)" // l10n-key
+
+// sourceWarnedNodes — сколько узлов источника несут ПРОБЛЕМУ: код уровня
+// error или warning.
 //
 // Считается по СОСТАВУ, а не по эмиссии: warnings принадлежат записи узла и
 // живут в ней независимо от того, выпустила ли её сборка. Узловой источник
 // (server/chain/auto) состава не имеет — там узел и есть сам источник.
+//
+// info сюда не входит намеренно. Это число рисует «⚠ N node(s) with
+// warnings» в СПИСКЕ источников — строке, которую пользователь читает, не
+// открывая ничего, — и ставить там ⚠ ради «к сведению» значит звать
+// разбираться туда, где разбираться не с чем. Инфо-кодам место внутри
+// контейнера (сводка под составом, секция в окне узла), а не в общем списке:
+// у подписки на 500 узлов они дали бы ⚠ у каждой второй строки и обесценили
+// бы сам знак.
 func sourceWarnedNodes(src *wizardmodels.Source) int {
 	if src == nil {
 		return 0
 	}
 	if len(src.Nodes) == 0 {
-		if len(src.Warnings) > 0 {
+		if nodewarn.HasProblems(src.Warnings) {
 			return 1
 		}
 		return 0
 	}
 	n := 0
 	for i := range src.Nodes {
-		if len(src.Nodes[i].Warnings) > 0 {
+		if nodewarn.HasProblems(src.Nodes[i].Warnings) {
 			n++
 		}
 	}
@@ -59,11 +74,16 @@ func sourceWarnedNodes(src *wizardmodels.Source) int {
 // формулировку про поля — она конкретнее, а узловые коды всё равно видны в
 // строках и в окне узла.
 //
+// Считаются только узлы с ПРОБЛЕМОЙ (error/warning) и только их коды: у
+// info-узла ничего не снимали и ничего не приводили, и «снято N полей» про
+// него было бы прямой неправдой. «К сведению» живёт своей группой ниже
+// (previewInfoSummary).
+//
 // Пустая строка = показывать нечего.
 func previewWarningsSummary(rows []previewRow) string {
 	fields, nodeLevel, nodes := 0, 0, 0
 	for _, r := range rows {
-		if len(r.Warnings) == 0 {
+		if !nodewarn.HasProblems(r.Warnings) {
 			continue
 		}
 		nodes++
@@ -80,6 +100,26 @@ func previewWarningsSummary(rows []previewRow) string {
 	return locale.Tf(warnedNodesPlainText, nodeLevel, nodes)
 }
 
+// previewInfoSummary — заголовок группы «к сведению»: узлы, у которых КРОМЕ
+// info ничего нет.
+//
+// Узел с error и info сюда не попадает: про него уже сказано сильнее, и
+// второе упоминание в списке ниже читалось бы как второй, отдельный факт.
+//
+// Пустая строка = таких узлов нет.
+func previewInfoSummary(rows []previewRow) string {
+	nodes := 0
+	for _, r := range rows {
+		if nodewarn.InfoOnly(r.Warnings) {
+			nodes++
+		}
+	}
+	if nodes == 0 {
+		return ""
+	}
+	return locale.Tf(infoNodesText, nodes)
+}
+
 // previewWarningsBlock — сводка под списком узлов с раскрытием построчно.
 //
 // `widget.Accordion`, а не свой тумблер: раскрывающихся блоков в проекте
@@ -90,16 +130,45 @@ func previewWarningsSummary(rows []previewRow) string {
 // Закрыт по умолчанию: сводка отвечает на «всё ли в порядке» одной строкой,
 // а список из двухсот путей нужен тому, кто уже решил разбираться.
 //
+// Групп ДВЕ, и они не сливаются: «⚠ …» — узлы, с которыми что-то сделали, и
+// «For your information: N» — узлы, про которые есть что сказать, но делать
+// ничего не нужно. Одной строкой их считали до разведения уровней, и она
+// объявляла двенадцать спокойных узлов предупреждениями. Порядок тот же, что
+// в секции окна узла: сперва проблемы, потом «к сведению».
+//
 // Wrapping у каждой строки обязателен (Л19): путь поля вместе с заголовком
 // кода длиннее окна, и Label без переноса раздул бы его на весь экран.
 func previewWarningsBlock(rows []previewRow) fyne.CanvasObject {
-	summary := previewWarningsSummary(rows)
-	if summary == "" {
+	accItems := make([]*widget.AccordionItem, 0, 2)
+
+	if summary := previewWarningsSummary(rows); summary != "" {
+		if lines := previewWarningLines(rows, nodewarn.HasProblems); len(lines) > 0 {
+			accItems = append(accItems,
+				widget.NewAccordionItem(summary, container.NewVBox(lines...)))
+		}
+	}
+	if summary := previewInfoSummary(rows); summary != "" {
+		if lines := previewWarningLines(rows, nodewarn.InfoOnly); len(lines) > 0 {
+			accItems = append(accItems,
+				widget.NewAccordionItem(summary, container.NewVBox(lines...)))
+		}
+	}
+	if len(accItems) == 0 {
 		return nil
 	}
+	return widget.NewAccordion(accItems...)
+}
+
+// previewWarningLines — строки «узел · путь — заголовок кода» у тех строк
+// списка, которые прошли отбор.
+//
+// Отбор параметром, а не двумя копиями цикла: вёрстка строки у обеих групп
+// одна и та же, и разъехаться ей нельзя — это один и тот же факт про узел,
+// показанный в двух разных контекстах.
+func previewWarningLines(rows []previewRow, pick func([]corestate.NodeWarning) bool) []fyne.CanvasObject {
 	items := make([]fyne.CanvasObject, 0, 8)
 	for _, r := range rows {
-		if len(r.Warnings) == 0 {
+		if !pick(r.Warnings) {
 			continue
 		}
 		tag := previewRowTitle(r)
@@ -115,11 +184,7 @@ func previewWarningsBlock(rows []previewRow) fyne.CanvasObject {
 			items = append(items, lbl)
 		}
 	}
-	if len(items) == 0 {
-		return nil
-	}
-	acc := widget.NewAccordion(widget.NewAccordionItem(summary, container.NewVBox(items...)))
-	return acc
+	return items
 }
 
 // nodeWarningsOfSource — деградации узла источника по его сырому тегу.
