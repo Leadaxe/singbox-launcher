@@ -4,6 +4,10 @@
 
 [← index](../index.md) · [diagnosed problems](../warnings.md)
 
+`wireguard` — an endpoint (a tunnel interface, not a plain outbound), sing-box type `wireguard`. Also written as `wg`, `awg`. Accepted from: share link, sing-box JSON, WireGuard .conf, AmneziaWG .conf.
+
+<sub>Schema checked against core `1.14.1-lx.4` · the link fragment (`#…`) is the node `label`</sub>
+
 | Field | Value |
 |---|---|
 | `scheme` | `wireguard` |
@@ -11,317 +15,365 @@
 | `kind` | `endpoint` |
 | `aliases` | `wg`, `awg` |
 | `sources` | `uri`, `singbox`, `wgconf`, `amnezia` |
-| `extension` | — |
 | Core the schema was checked against | `1.14.1-lx.4` |
 | URI fragment | `label` |
 
+## How to read this page
+
+```
+share link          mapper                node body              sanitizer            core config
+wireguard://…?…     ──▶ link parameter   ──▶  sing-box JSON,    ──▶  checks each     ──▶  what sing-box
+                     becomes a body         stored in state        body field's         is actually
+                     field                                         value                started with
+```
+
+- **Link parameters** — the dictionary of the share link: every parameter this scheme understands, and the body field each one becomes.
+- **Body fields** — the node body itself: the sing-box JSON kept in the launcher state. The rules here hold for every input alike — a share link, sing-box JSON, Xray JSON or a hand-filled form — because they are checked after the input has already become a body.
+- **Diagnosed problems** — every warning code a node of this scheme can carry, and the field that raises it.
+- **Replacements** — what is silently rewritten on the way in: other spellings of the same name, values normalized or substituted, and structural decisions the mapper takes before any value is judged.
+- **Degradation** — the same rules grouped by outcome: what drops the node, what only drops a field, and what is merely worth knowing.
+
+A bad value never breaks the whole config: the field is dropped, replaced or — at worst — the single node is. Each link parameter says which of the three happens to it, taken from the rule of the body field it maps to.
+
 ## Link parameters
 
-- **`userinfo`** — Client private key.
+Everything a link of this scheme can carry. **Maps to** points at the body field the value lands in; **If invalid** is that field's own rule.
+
+### Common
+
+- <a id="link-common-userinfo"></a>**`userinfo`** — Client private key.
   - Type: `private_key — base64 of the 32-byte private key`
-  - Maps to: `private_key`
-  - If invalid: If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
-- **`publickey`** — Peer public key.
+  - Maps to: [`private_key`](#body-private-key)
+  - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+- <a id="link-common-fragment"></a>**`#fragment`** — The part after `#`: the name the node is shown under. It is not a body field — it is the node `label`.
+
+### Protocol-specific
+
+- <a id="link-proto-publickey"></a>**`publickey`** — Peer public key.
   - Also spelled: `public_key`
   - Type: base64
   - Maps to: `peers[].public_key`
-- **`privatekey`** (mobile) — Client private key.
+- <a id="link-proto-privatekey"></a>**`privatekey`** — Client private key.
+  - Supported by LxBox only
   - Also spelled: `private_key`
   - Type: base64
-  - Maps to: `private_key`
-  - If invalid: If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
-- **`address`** — Addresses assigned to the tunnel interface.
+  - Maps to: [`private_key`](#body-private-key)
+  - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+- <a id="link-proto-address"></a>**`address`** — Addresses assigned to the tunnel interface.
   - Type: list
-  - Maps to: `address`
-  - If invalid: If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`allowedips`** — Networks routed into the peer.
+  - Maps to: [`address`](#body-address)
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="link-proto-allowedips"></a>**`allowedips`** — Networks routed into the peer.
   - Also spelled: `allowed_ips`
   - Type: list · Default: `0.0.0.0/0,::/0`
   - Maps to: `peers[].allowed_ips`
-- **`mtu`** — Tunnel MTU.
+- <a id="link-proto-mtu"></a>**`mtu`** — Tunnel MTU.
   - Type: int
-  - Maps to: `mtu`
-  - If invalid: If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`keepalive`** — Persistent keep-alive interval.
+  - Maps to: [`mtu`](#body-mtu)
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="link-proto-keepalive"></a>**`keepalive`** — Persistent keep-alive interval.
   - Type: int
   - Maps to: `peers[].persistent_keepalive_interval`
-- **`presharedkey`** — Pre-shared key of the peer.
+- <a id="link-proto-presharedkey"></a>**`presharedkey`** — Pre-shared key of the peer.
   - Also spelled: `preshared_key`
   - Type: base64
   - Maps to: `peers[].pre_shared_key`
-- **`reserved`** — Reserved bytes of the WireGuard header.
+- <a id="link-proto-reserved"></a>**`reserved`** — Reserved bytes of the WireGuard header.
   - Also spelled: `client_id`
   - Type: string
   - Maps to: `peers[].reserved`
-- **`listenport`** (desktop) — Local UDP port the tunnel listens on.
+- <a id="link-proto-listenport"></a>**`listenport`** — Local UDP port the tunnel listens on.
+  - Supported by the desktop launcher only
   - Type: int
-  - Maps to: `listen_port`
-  - If invalid: If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`name`** (desktop) — Node label shown to the user.
+  - Maps to: [`listen_port`](#body-listen-port)
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="link-proto-name"></a>**`name`** — Node label shown to the user.
+  - Supported by the desktop launcher only
   - Type: string · Default: `singbox-wg0`
-- **`dns`** (desktop) — DNS servers of the profile: the launcher does not write them into the body.
+- <a id="link-proto-dns"></a>**`dns`** — DNS servers of the profile: the launcher does not write them into the body.
+  - Supported by the desktop launcher only
   - Type: list
-- **`jc`** — AmneziaWG obfuscation parameter jc.
+- <a id="link-proto-jc"></a>**`jc`** — AmneziaWG obfuscation parameter jc.
   - Type: int
-  - Maps to: `jc`
-  - If invalid: If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
-- **`jmin`** — AmneziaWG obfuscation parameter jmin.
+  - Maps to: [`jc`](#body-jc)
+  - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
+- <a id="link-proto-jmin"></a>**`jmin`** — AmneziaWG obfuscation parameter jmin.
   - Type: int
-  - Maps to: `jmin`
-  - If invalid: If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
-- **`jmax`** — AmneziaWG obfuscation parameter jmax.
+  - Maps to: [`jmin`](#body-jmin)
+  - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
+- <a id="link-proto-jmax"></a>**`jmax`** — AmneziaWG obfuscation parameter jmax.
   - Type: int
-  - Maps to: `jmax`
-  - If invalid: If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
-- **`s1`** — AmneziaWG obfuscation parameter s1.
+  - Maps to: [`jmax`](#body-jmax)
+  - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
+- <a id="link-proto-s1"></a>**`s1`** — AmneziaWG obfuscation parameter s1.
   - Type: int
-  - Maps to: `s1`
-  - If invalid: If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
-- **`s2`** — AmneziaWG obfuscation parameter s2.
+  - Maps to: [`s1`](#body-s1)
+  - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
+- <a id="link-proto-s2"></a>**`s2`** — AmneziaWG obfuscation parameter s2.
   - Type: int
-  - Maps to: `s2`
-  - If invalid: If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
-- **`s3`** — AmneziaWG obfuscation parameter s3.
+  - Maps to: [`s2`](#body-s2)
+  - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
+- <a id="link-proto-s3"></a>**`s3`** — AmneziaWG obfuscation parameter s3.
   - Type: int
-  - Maps to: `s3`
-  - If invalid: If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
-- **`s4`** — AmneziaWG obfuscation parameter s4.
+  - Maps to: [`s3`](#body-s3)
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
+- <a id="link-proto-s4"></a>**`s4`** — AmneziaWG obfuscation parameter s4.
   - Type: int
-  - Maps to: `s4`
-  - If invalid: If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
-- **`h1`** — AmneziaWG magic header H1.
+  - Maps to: [`s4`](#body-s4)
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
+- <a id="link-proto-h1"></a>**`h1`** — AmneziaWG magic header H1.
   - Type: int
-  - Maps to: `h1`
-- **`h2`** — AmneziaWG magic header H2.
+  - Maps to: [`h1`](#body-h1)
+- <a id="link-proto-h2"></a>**`h2`** — AmneziaWG magic header H2.
   - Type: int
-  - Maps to: `h2`
-- **`h3`** — AmneziaWG magic header H3.
+  - Maps to: [`h2`](#body-h2)
+- <a id="link-proto-h3"></a>**`h3`** — AmneziaWG magic header H3.
   - Type: int
-  - Maps to: `h3`
-- **`h4`** — AmneziaWG magic header H4.
+  - Maps to: [`h3`](#body-h3)
+- <a id="link-proto-h4"></a>**`h4`** — AmneziaWG magic header H4.
   - Type: int
-  - Maps to: `h4`
-- **`i1`** — AmneziaWG 3.x junk packet I1.
+  - Maps to: [`h4`](#body-h4)
+- <a id="link-proto-i1"></a>**`i1`** — AmneziaWG 3.x junk packet I1.
   - Type: string
-  - Maps to: `i1`
-- **`i2`** — AmneziaWG 3.x junk packet I2.
+  - Maps to: [`i1`](#body-i1)
+- <a id="link-proto-i2"></a>**`i2`** — AmneziaWG 3.x junk packet I2.
   - Type: string
-  - Maps to: `i2`
-- **`i3`** — AmneziaWG 3.x junk packet I3.
+  - Maps to: [`i2`](#body-i2)
+- <a id="link-proto-i3"></a>**`i3`** — AmneziaWG 3.x junk packet I3.
   - Type: string
-  - Maps to: `i3`
-- **`i4`** — AmneziaWG 3.x junk packet I4.
+  - Maps to: [`i3`](#body-i3)
+- <a id="link-proto-i4"></a>**`i4`** — AmneziaWG 3.x junk packet I4.
   - Type: string
-  - Maps to: `i4`
-- **`i5`** — AmneziaWG 3.x junk packet I5.
+  - Maps to: [`i4`](#body-i4)
+- <a id="link-proto-i5"></a>**`i5`** — AmneziaWG 3.x junk packet I5.
   - Type: string
-  - Maps to: `i5`
-- **`id`** — AmneziaWG 3.x cover protocol domain.
+  - Maps to: [`i5`](#body-i5)
+- <a id="link-proto-id"></a>**`id`** — AmneziaWG 3.x cover protocol domain.
   - Type: string
-  - Maps to: `id`
-  - If invalid: If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
-- **`ip`** — AmneziaWG 3.x cover protocol.
+  - Maps to: [`id`](#body-id)
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
+- <a id="link-proto-ip"></a>**`ip`** — AmneziaWG 3.x cover protocol.
   - Type: string
-  - Maps to: `ip`
-  - If invalid: If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
-- **`ib`** — AmneziaWG 3.x browser signature.
+  - Maps to: [`ip`](#body-ip)
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
+- <a id="link-proto-ib"></a>**`ib`** — AmneziaWG 3.x browser signature.
   - Type: string
-  - Maps to: `ib`
-  - If invalid: If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
-
-Shared link parameters live on their own pages: [TLS / REALITY](_tls.md#link-parameters), [transports](_transports.md).
+  - Maps to: [`ib`](#body-ib)
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
 
 ## Body fields
 
-The path is the one used in the node body.
+The node body itself — the sing-box JSON kept in the launcher state. The path is the one used in that body, and the rules below apply to every input alike: a share link, sing-box JSON, Xray JSON or a hand-filled form.
 
-- **`system`** — Use a system interface instead of the userspace stack.
+- <a id="body-system"></a>**`system`** — Use a system interface instead of the userspace stack.
   - Type: bool
   - Default: `false`
-- **`name`** — Interface name when a system interface is used.
+- <a id="body-name"></a>**`name`** — Interface name when a system interface is used.
   - Type: string
-- **`mtu`** — Tunnel MTU in bytes.
+- <a id="body-mtu"></a>**`mtu`** — Tunnel MTU in bytes.
   - Type: int, `576–1500`
   - Default: `1408`
+  - Set by link parameter: [`mtu`](#link-proto-mtu)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`address`** — Addresses assigned to the tunnel interface.
+- <a id="body-address"></a>**`address`** — Addresses assigned to the tunnel interface.
   - Type: string_array, format `cidr`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
+  - Set by link parameter: [`address`](#link-proto-address)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`private_key`** — Local private key.
+- <a id="body-private-key"></a>**`private_key`** — Local private key.
   - Type: string, secret, format `base64_32`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
+  - Set by link parameter: [`userinfo`](#link-common-userinfo), [`privatekey`](#link-proto-privatekey)
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
-- **`listen_port`** — Local UDP port the tunnel listens on.
+- <a id="body-listen-port"></a>**`listen_port`** — Local UDP port the tunnel listens on.
   - Type: uint16, format `port`, `1–65535`
+  - Set by link parameter: [`listenport`](#link-proto-listenport)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
   - Conflicts with: `detour`
-- **`peers`** — List of WireGuard peers.
+- <a id="body-peers"></a>**`peers`** — List of WireGuard peers.
   - Type: array
-  - Default: none · Required: yes
-- **`peers.address`** — Peer endpoint address.
+  - Required: the node is dropped without it
+- <a id="body-peers-address"></a>**`peers.address`** — Peer endpoint address.
   - Type: string, format `host`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
-- **`peers.port`** — Peer endpoint port.
+- <a id="body-peers-port"></a>**`peers.port`** — Peer endpoint port.
   - Type: uint16, format `port`, `1–65535`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
-- **`peers.public_key`** — Peer public key.
+- <a id="body-peers-public-key"></a>**`peers.public_key`** — Peer public key.
   - Type: string, format `base64_32`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
-- **`peers.pre_shared_key`** — Optional pre-shared key.
+- <a id="body-peers-pre-shared-key"></a>**`peers.pre_shared_key`** — Optional pre-shared key.
   - Type: string, secret, format `base64_32`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`peers.allowed_ips`** — Prefixes routed to this peer.
+- <a id="body-peers-allowed-ips"></a>**`peers.allowed_ips`** — Prefixes routed to this peer.
   - Type: string_array, format `cidr`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`peers.persistent_keepalive_interval`** — Keepalive interval in seconds, number or range.
+- <a id="body-peers-persistent-keepalive-interval"></a>**`peers.persistent_keepalive_interval`** — Keepalive interval in seconds, number or range.
   - Type: awg_range
-- **`peers.reserved`** — Three reserved bytes prepended to packets.
+- <a id="body-peers-reserved"></a>**`peers.reserved`** — Three reserved bytes prepended to packets.
   - Type: int_array, len `3`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`udp_timeout`** — Idle timeout of a UDP session.
+- <a id="body-udp-timeout"></a>**`udp_timeout`** — Idle timeout of a UDP session.
   - Type: duration
-- **`udp_mapping`** — UDP NAT mapping behaviour.
+- <a id="body-udp-mapping"></a>**`udp_mapping`** — UDP NAT mapping behaviour.
   - Type: string
-- **`udp_filtering`** — UDP NAT filtering behaviour.
+- <a id="body-udp-filtering"></a>**`udp_filtering`** — UDP NAT filtering behaviour.
   - Type: string
-- **`udp_nat_max`** — Maximum number of UDP NAT entries.
+- <a id="body-udp-nat-max"></a>**`udp_nat_max`** — Maximum number of UDP NAT entries.
   - Type: int, `0–…`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`workers`** — Number of packet processing workers.
+- <a id="body-workers"></a>**`workers`** — Number of packet processing workers.
   - Type: int, `0–…`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`jc`** — Number of junk packets sent before the handshake.
+- <a id="body-jc"></a>**`jc`** — Number of junk packets sent before the handshake.
   - Type: int, `0–…`
+  - Set by link parameter: [`jc`](#link-proto-jc)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`jmin`** — Minimum size of a junk packet.
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-jmin"></a>**`jmin`** — Minimum size of a junk packet.
   - Type: int, `0–…`
+  - Set by link parameter: [`jmin`](#link-proto-jmin)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
-  - Requires: `jmax`
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`jmax`** — Maximum size of a junk packet.
+  - Meaningless without: `jmax`
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-jmax"></a>**`jmax`** — Maximum size of a junk packet.
   - Type: int, `0–…`
+  - Set by link parameter: [`jmax`](#link-proto-jmax)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`s1`** — Junk prepended to the handshake initiation packet.
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-s1"></a>**`s1`** — Junk prepended to the handshake initiation packet.
   - Type: int, `0–…`
+  - Set by link parameter: [`s1`](#link-proto-s1)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`s2`** — Junk prepended to the handshake response packet.
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-s2"></a>**`s2`** — Junk prepended to the handshake response packet.
   - Type: int, `0–…`
+  - Set by link parameter: [`s2`](#link-proto-s2)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`s3`** — Junk prepended to the cookie reply packet.
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-s3"></a>**`s3`** — Junk prepended to the cookie reply packet.
   - Type: int, `0–…`
+  - Set by link parameter: [`s3`](#link-proto-s3)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`s4`** — Junk prepended to every transport packet.
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-s4"></a>**`s4`** — Junk prepended to every transport packet.
   - Type: int, `0–…`
+  - Set by link parameter: [`s4`](#link-proto-s4)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`h1`** — Magic header of the handshake initiation packet.
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-h1"></a>**`h1`** — Magic header of the handshake initiation packet.
   - Type: awg_range
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`h2`** — Magic header of the handshake response packet.
+  - Set by link parameter: [`h1`](#link-proto-h1)
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-h2"></a>**`h2`** — Magic header of the handshake response packet.
   - Type: awg_range
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`h3`** — Magic header of the cookie reply packet.
+  - Set by link parameter: [`h2`](#link-proto-h2)
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-h3"></a>**`h3`** — Magic header of the cookie reply packet.
   - Type: awg_range
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`h4`** — Magic header of the transport packet.
+  - Set by link parameter: [`h3`](#link-proto-h3)
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-h4"></a>**`h4`** — Magic header of the transport packet.
   - Type: awg_range
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`i1`** — First custom junk packet.
+  - Set by link parameter: [`h4`](#link-proto-h4)
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-i1"></a>**`i1`** — First custom junk packet.
   - Type: string
+  - Set by link parameter: [`i1`](#link-proto-i1)
   - Conflicts with: `id`
   - Conflicts with: `ip`
   - Conflicts with: `ib`
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`i2`** — Second custom junk packet.
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-i2"></a>**`i2`** — Second custom junk packet.
   - Type: string
+  - Set by link parameter: [`i2`](#link-proto-i2)
   - Conflicts with: `ip`
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`i3`** — Third custom junk packet.
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-i3"></a>**`i3`** — Third custom junk packet.
   - Type: string
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`i4`** — Fourth custom junk packet.
+  - Set by link parameter: [`i3`](#link-proto-i3)
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-i4"></a>**`i4`** — Fourth custom junk packet.
   - Type: string
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`i5`** — Fifth custom junk packet.
+  - Set by link parameter: [`i4`](#link-proto-i4)
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-i5"></a>**`i5`** — Fifth custom junk packet.
   - Type: string
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`id`** — Masquerade domain name.
+  - Set by link parameter: [`i5`](#link-proto-i5)
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-id"></a>**`id`** — Masquerade domain name.
   - Type: string, format `host`, `…–253`
+  - Set by link parameter: [`id`](#link-proto-id)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
-  - Requires: `ip`
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`ip`** — Protocol the traffic is masqueraded as.
+  - Meaningless without: `ip`
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-ip"></a>**`ip`** — Protocol the traffic is masqueraded as.
   - Type: enum, `""`, `quic`, `dns`, `stun`, `sip`, normalized: `trim_lower`
+  - Set by link parameter: [`ip`](#link-proto-ip)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`ib`** — Client profile imitated inside the masquerade.
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-ib"></a>**`ib`** — Client profile imitated inside the masquerade.
   - Type: enum, `""`, `chrome`, `firefox`, `curl`, normalized: `trim_lower`
+  - Set by link parameter: [`ib`](#link-proto-ib)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
-  - Requires: `ip`
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- **`header_protection_key`** — Key protecting packet headers.
+  - Meaningless without: `ip`
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- <a id="body-header-protection-key"></a>**`header_protection_key`** — Key protecting packet headers.
   - Type: string, secret, format `base64_32`
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
-  - Requires: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
-- **`content_padding_addition`** — Extra content padding, number or range.
+  - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- <a id="body-content-padding-addition"></a>**`content_padding_addition`** — Extra content padding, number or range.
   - Type: awg_range
-  - Requires: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
-- **`rekey_after_time`** — Rekey after this many seconds.
+  - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- <a id="body-rekey-after-time"></a>**`rekey_after_time`** — Rekey after this many seconds.
   - Type: awg_range
   - Default: `120`
-  - Requires: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
-- **`rekey_timeout`** — Rekey attempt timeout in seconds.
+  - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- <a id="body-rekey-timeout"></a>**`rekey_timeout`** — Rekey attempt timeout in seconds.
   - Type: awg_range
   - Default: `5`
-  - Requires: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
-- **`reject_after_time`** — Reject the session after this many seconds.
+  - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- <a id="body-reject-after-time"></a>**`reject_after_time`** — Reject the session after this many seconds.
   - Type: awg_range
   - Default: `180`
-  - Requires: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
-- **`keepalive_timeout`** — Keepalive timeout in seconds.
+  - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- <a id="body-keepalive-timeout"></a>**`keepalive_timeout`** — Keepalive timeout in seconds.
   - Type: awg_range
   - Default: `10`
-  - Requires: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
-- **`max_handshake_attempts`** — Maximum handshake attempts, count not seconds.
+  - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- <a id="body-max-handshake-attempts"></a>**`max_handshake_attempts`** — Maximum handshake attempts, count not seconds.
   - Type: awg_range
   - Default: `18`
-  - Requires: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
-- **`random_trailers`** — Append random trailing bytes to packets.
+  - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- <a id="body-random-trailers"></a>**`random_trailers`** — Append random trailing bytes to packets.
   - Type: bool
   - Default: `false`
-  - Requires: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
-- **`disable_cookies`** — Disable the cookie mechanism.
+  - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- <a id="body-disable-cookies"></a>**`disable_cookies`** — Disable the cookie mechanism.
   - Type: bool
   - Default: `false`
-  - Requires: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
-- **`detour`** — Tag of the outbound this connection is routed through.
+  - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- <a id="body-detour"></a>**`detour`** — Tag of the outbound this connection is routed through.
   - Type: string, set by config build
-- **`bind_interface`** — Network interface the connection is bound to.
+- <a id="body-bind-interface"></a>**`bind_interface`** — Network interface the connection is bound to.
   - Type: string
-- **`inet4_bind_address`** — Local IPv4 address to bind to.
+- <a id="body-inet4-bind-address"></a>**`inet4_bind_address`** — Local IPv4 address to bind to.
   - Type: string, format `ipv4`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`inet6_bind_address`** — Local IPv6 address to bind to.
+- <a id="body-inet6-bind-address"></a>**`inet6_bind_address`** — Local IPv6 address to bind to.
   - Type: string
-- **`connect_timeout`** — Timeout for establishing the connection.
+- <a id="body-connect-timeout"></a>**`connect_timeout`** — Timeout for establishing the connection.
   - Type: duration
-- **`tcp_fast_open`** — Use TCP Fast Open.
+- <a id="body-tcp-fast-open"></a>**`tcp_fast_open`** — Use TCP Fast Open.
   - Type: bool
   - Default: `false`
-  - Forbidden for: `anytls`
-- **`udp_fragment`** — Allow fragmenting UDP packets.
+- <a id="body-udp-fragment"></a>**`udp_fragment`** — Allow fragmenting UDP packets.
   - Type: bool, tristate
-- **`domain_resolver`** — DNS server tag used to resolve the server domain.
+- <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.
   - Type: string
 
 ## Diagnosed problems
@@ -329,45 +381,45 @@ The path is the one used in the node body.
 Every code that can be raised on a node of this scheme, including the ones coming from the shared TLS, transport, multiplex and dialer sub-schemas. Follow a code for what it means and what to do about it.
 
 - [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
-  - `s3` — on_invalid: drop → removed
-  - `s4` — on_invalid: drop → removed
-  - `id` — on_invalid: drop → removed
-  - `ip` — on_invalid: drop → removed
-  - `ib` — on_invalid: drop → removed
-  - `header_protection_key` — on_invalid: drop → removed
+  - [`s3`](#body-s3) — the value does not fit the field → removed
+  - [`s4`](#body-s4) — the value does not fit the field → removed
+  - [`id`](#body-id) — the value does not fit the field → removed
+  - [`ip`](#body-ip) — the value does not fit the field → removed
+  - [`ib`](#body-ib) — the value does not fit the field → removed
+  - [`header_protection_key`](#body-header-protection-key) — the value does not fit the field → removed
 - [`awg_header_invalid`](../warnings.md#awg_header_invalid)
-  - `jc` — on_invalid: drop → removed
-  - `jmin` — on_invalid: drop → removed
-  - `jmin` — requires `jmax` → removed
-  - `jmax` — on_invalid: drop → removed
-  - `s1` — on_invalid: drop → removed
-  - `s2` — on_invalid: drop → removed
+  - [`jc`](#body-jc) — the value does not fit the field → removed
+  - [`jmin`](#body-jmin) — the value does not fit the field → removed
+  - [`jmin`](#body-jmin) — set without `jmax` → removed
+  - [`jmax`](#body-jmax) — the value does not fit the field → removed
+  - [`s1`](#body-s1) — the value does not fit the field → removed
+  - [`s2`](#body-s2) — the value does not fit the field → removed
 - [`field_conflict`](../warnings.md#field_conflict)
-  - `listen_port` — conflicts with `detour` → removed
-  - `i1` — conflicts with `id` → removed
-  - `i1` — conflicts with `ip` → removed
-  - `i1` — conflicts with `ib` → removed
-  - `i2` — conflicts with `ip` → removed
+  - [`listen_port`](#body-listen-port) — conflicts with `detour` → removed
+  - [`i1`](#body-i1) — conflicts with `id` → removed
+  - [`i1`](#body-i1) — conflicts with `ip` → removed
+  - [`i1`](#body-i1) — conflicts with `ib` → removed
+  - [`i2`](#body-i2) — conflicts with `ip` → removed
 - [`field_missing`](../warnings.md#field_missing)
-  - `private_key` — on_invalid: drop_node → node dropped
-  - `peers` — required → node dropped
-  - `peers.address` — on_invalid: drop_node → node dropped
-  - `peers.public_key` — on_invalid: drop_node → node dropped
+  - [`private_key`](#body-private-key) — the value does not fit the field → node dropped
+  - [`peers`](#body-peers) — required and missing → node dropped
+  - [`peers.address`](#body-peers-address) — the value does not fit the field → node dropped
+  - [`peers.public_key`](#body-peers-public-key) — the value does not fit the field → node dropped
 - [`field_requires`](../warnings.md#field_requires)
-  - `id` — requires `ip` → removed
-  - `ib` — requires `ip` → removed
+  - [`id`](#body-id) — set without `ip` → removed
+  - [`ib`](#body-ib) — set without `ip` → removed
 - [`port_invalid`](../warnings.md#port_invalid)
-  - `peers.port` — on_invalid: drop_node → node dropped
+  - [`peers.port`](#body-peers-port) — the value does not fit the field → node dropped
 - [`type_invalid`](../warnings.md#type_invalid)
-  - `mtu` — on_invalid: drop → removed
-  - `address` — on_invalid: drop → removed
-  - `listen_port` — on_invalid: drop → removed
-  - `peers.pre_shared_key` — on_invalid: drop → removed
-  - `peers.allowed_ips` — on_invalid: drop → removed
-  - `peers.reserved` — on_invalid: drop → removed
-  - `udp_nat_max` — on_invalid: drop → removed
-  - `workers` — on_invalid: drop → removed
-  - `inet4_bind_address` — on_invalid: drop → removed
+  - [`mtu`](#body-mtu) — the value does not fit the field → removed
+  - [`address`](#body-address) — the value does not fit the field → removed
+  - [`listen_port`](#body-listen-port) — the value does not fit the field → removed
+  - [`peers.pre_shared_key`](#body-peers-pre-shared-key) — the value does not fit the field → removed
+  - [`peers.allowed_ips`](#body-peers-allowed-ips) — the value does not fit the field → removed
+  - [`peers.reserved`](#body-peers-reserved) — the value does not fit the field → removed
+  - [`udp_nat_max`](#body-udp-nat-max) — the value does not fit the field → removed
+  - [`workers`](#body-workers) — the value does not fit the field → removed
+  - [`inet4_bind_address`](#body-inet4-bind-address) — the value does not fit the field → removed
 
 ## Replacements
 
@@ -432,32 +484,32 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 **Left out when the running core is too old**
 
-- `content_padding_addition` — core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
-- `disable_cookies` — core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
-- `h1` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- `h2` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- `h3` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- `h4` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- `header_protection_key` — core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
-- `i1` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- `i2` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- `i3` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- `i4` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- `i5` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- `ib` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- `id` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- `ip` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- `jc` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- `jmax` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- `jmin` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- `keepalive_timeout` — core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
-- `max_handshake_attempts` — core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
-- `random_trailers` — core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
-- `reject_after_time` — core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
-- `rekey_after_time` — core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
-- `rekey_timeout` — core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
-- `s1` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- `s2` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- `s3` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
-- `s4` — core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `content_padding_addition` — needs core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- `disable_cookies` — needs core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- `h1` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `h2` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `h3` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `h4` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `header_protection_key` — needs core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- `i1` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `i2` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `i3` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `i4` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `i5` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `ib` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `id` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `ip` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `jc` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `jmax` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `jmin` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `keepalive_timeout` — needs core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- `max_handshake_attempts` — needs core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- `random_trailers` — needs core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- `reject_after_time` — needs core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- `rekey_after_time` — needs core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- `rekey_timeout` — needs core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- `s1` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `s2` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `s3` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+- `s4` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 

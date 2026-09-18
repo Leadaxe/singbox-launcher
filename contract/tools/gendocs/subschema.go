@@ -100,7 +100,7 @@ func renderSubSchema(raw *rawRegistry, name string) (*subPage, error) {
 
 	if f.Common != nil {
 		b.WriteString("## Common fields\n\n")
-		l := &list{b: &b}
+		l := &list{b: &b, anchors: true}
 		writeSection(l, f.Common.Order, f.Common.Fields)
 		b.WriteString("\n")
 	}
@@ -126,8 +126,11 @@ func renderSubSchema(raw *rawRegistry, name string) (*subPage, error) {
 			if d := mdText(variant.DescEn); d != "" {
 				b.WriteString("> " + d + "\n\n")
 			}
-			l := &list{b: &b}
-			writeSection(l, variant.Order, variant.Fields)
+			l := &list{b: &b, anchors: true}
+			// Имя варианта — часть пути: словарь кодов адресует поле как
+			// `xhttp.xmux.max_concurrency`, и страница обязана звать его так
+			// же, иначе ссылка из warnings.md ведёт в никуда.
+			writeSectionUnder(l, v, variant.Order, variant.Fields)
 			b.WriteString("\n")
 		}
 	} else if len(f.Body.Fields) > 0 {
@@ -135,7 +138,7 @@ func renderSubSchema(raw *rawRegistry, name string) (*subPage, error) {
 		if d := mdText(f.Body.DescEn); d != "" {
 			b.WriteString("> " + d + "\n\n")
 		}
-		l := &list{b: &b}
+		l := &list{b: &b, anchors: true}
 		writeSection(l, f.Body.Order, f.Body.Fields)
 		b.WriteString("\n")
 	}
@@ -160,6 +163,12 @@ func renderSubSchema(raw *rawRegistry, name string) (*subPage, error) {
 // writeSection печатает поля секции списком — тем же видом, что и на странице
 // схемы, чтобы одно и то же поле выглядело одинаково в обоих местах.
 func writeSection(l *list, order []string, fields map[string]*registry.Field) {
+	writeSectionUnder(l, "", order, fields)
+}
+
+// writeSectionUnder — то же, но с префиксом пути: у вариантной суб-схемы имя
+// варианта входит в путь поля.
+func writeSectionUnder(l *list, prefix string, order []string, fields map[string]*registry.Field) {
 	if len(order) == 0 {
 		for k := range fields {
 			order = append(order, k)
@@ -171,7 +180,7 @@ func writeSection(l *list, order []string, fields map[string]*registry.Field) {
 		if f == nil {
 			continue
 		}
-		writeBodyItems(l, "", name, f, "../")
+		writeBodyItems(l, prefix, name, f, "../")
 	}
 }
 
@@ -193,26 +202,35 @@ func variantGate(v *subVariantSection) string {
 }
 
 // renderSubURI печатает параметры ссылки, которые лежат в суб-схеме: TLS и
-// REALITY у tls.json, семейства транспортов у transports.json. Эти параметры
-// общие для всех схем, поэтому на страницах самих схем их нет.
+// REALITY у tls.json, семейства транспортов у transports.json.
+//
+// Эти же параметры печатаются и на странице каждой схемы, которая их носит —
+// там они вдобавок знают правило поля тела и применимость. Здесь они собраны
+// в одном месте как справочник: один экземпляр, без схемы вокруг.
 func renderSubURI(b *strings.Builder, raw *rawRegistry, name string) {
 	switch name {
 	case "tls":
 		b.WriteString("## Link parameters\n\n")
+		b.WriteString("These are repeated on the page of every scheme that carries a TLS " +
+			"block, together with the rule of the body field each one maps to.\n\n")
 		l := &list{b: b}
 		for _, k := range raw.tlsOrder {
 			if p := raw.tlsParams[k]; p != nil {
-				writeURIItem(l, raw, "", k, p)
+				writeSubURIItem(l, k, p)
 			}
 		}
 		for _, k := range raw.realityOrder {
 			if p := raw.realityParams[k]; p != nil {
-				writeURIItem(l, raw, "", k, p)
+				writeSubURIItem(l, k, p)
 			}
 		}
 		b.WriteString("\n")
 	case "transports":
 		b.WriteString("## Link parameters\n\n")
+		b.WriteString("These are repeated on the page of every scheme that carries a " +
+			"transport block, together with the rule of the body field each one maps to. " +
+			"The body path below is written relative to the transport block: in a node " +
+			"body the variant is a segment of its own, e.g. `transport.ws.path`.\n\n")
 		for _, tname := range raw.transportOrder {
 			tr := raw.transports[tname]
 			if tr == nil {
@@ -226,10 +244,29 @@ func renderSubURI(b *strings.Builder, raw *rawRegistry, name string) {
 			l := &list{b: b}
 			for _, k := range tr.paramOrder {
 				if p := tr.Params[k]; p != nil {
-					writeURIItem(l, raw, "", k, p)
+					writeSubURIItem(l, k, p)
 				}
 			}
 			b.WriteString("\n")
 		}
+	}
+}
+
+// writeSubURIItem — параметр ссылки на странице общей суб-схемы. Правила поля
+// тела здесь нет и быть не может: одно и то же поле у разных схем живёт по
+// разным правилам (`fp` запрещён naive), а суб-схема не знает, о какой схеме
+// речь. За правилом — на страницу схемы.
+func writeSubURIItem(l *list, name string, p *uriParam) {
+	l.item("**`"+name+"`**", p.DescEn)
+	if p.Ext != "" {
+		l.attr(extWord(p.Ext))
+	}
+	writeParamAttrs(l, p)
+	if p.DropAlways {
+		l.attr("Maps to: nothing — the parameter is read and then deliberately dropped")
+		return
+	}
+	if paths := p.mapsToPaths(); len(paths) > 0 {
+		l.attr("Maps to: " + codeList(paths))
 	}
 }

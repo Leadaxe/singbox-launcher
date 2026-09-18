@@ -4,146 +4,659 @@
 
 [← index](../index.md) · [diagnosed problems](../warnings.md)
 
+`vmess` — an outbound, sing-box type `vmess`. Accepted from: share link, sing-box JSON, Xray JSON.
+
+<sub>Schema checked against core `1.14.1-lx.4` · the link fragment (`#…`) is the node `label`</sub>
+
 | Field | Value |
 |---|---|
 | `scheme` | `vmess` |
 | `singbox_type` | `vmess` |
 | `kind` | `outbound` |
 | `sources` | `uri`, `singbox`, `xray` |
-| `extension` | — |
 | Core the schema was checked against | `1.14.1-lx.4` |
 | URI fragment | `label` |
 
+## How to read this page
+
+```
+share link          mapper                node body              sanitizer            core config
+vmess://…?…         ──▶ link parameter   ──▶  sing-box JSON,    ──▶  checks each     ──▶  what sing-box
+                     becomes a body         stored in state        body field's         is actually
+                     field                                         value                started with
+```
+
+- **Link parameters** — the dictionary of the share link: every parameter this scheme understands, and the body field each one becomes. The TLS and transport parameters shared with other schemes are listed here too, not only on their reference pages.
+- **Body fields** — the node body itself: the sing-box JSON kept in the launcher state. The rules here hold for every input alike — a share link, sing-box JSON, Xray JSON or a hand-filled form — because they are checked after the input has already become a body.
+- **Diagnosed problems** — every warning code a node of this scheme can carry, and the field that raises it.
+- **Replacements** — what is silently rewritten on the way in: other spellings of the same name, values normalized or substituted, and structural decisions the mapper takes before any value is judged.
+- **Degradation** — the same rules grouped by outcome: what drops the node, what only drops a field, and what is merely worth knowing.
+
+A bad value never breaks the whole config: the field is dropped, replaced or — at worst — the single node is. Each link parameter says which of the three happens to it, taken from the rule of the body field it maps to.
+
 ## Link parameters
 
-- **`userinfo`** — No userinfo: the whole entry is base64 inside the link.
+Everything a link of this scheme can carry, including the TLS and transport parameters shared with other schemes. **Maps to** points at the body field the value lands in; **If invalid** is that field's own rule.
+
+### Common
+
+- <a id="link-common-userinfo"></a>**`userinfo`** — No userinfo: the whole entry is base64 inside the link.
   - Type: `none (container scheme)`
-- **`v`** — v2rayN container format version.
+- <a id="link-common-host"></a>**`host`** — The authority of the link: everything before `:` in `scheme://…@host:port`.
+  - Maps to: [`server`](#body-server)
+  - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+- <a id="link-common-port"></a>**`port`** — The authority of the link: everything after `:` in `scheme://…@host:port`.
+  - Maps to: [`server_port`](#body-server-port)
+  - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
+- <a id="link-common-fragment"></a>**`#fragment`** — The part after `#`: the name the node is shown under. It is not a body field — it is the node `label`.
+
+### Protocol-specific
+
+- <a id="link-proto-v"></a>**`v`** — v2rayN container format version.
   - Type: string: `2` · Default: `2`
-- **`ps`** — Node label shown to the user.
+- <a id="link-proto-ps"></a>**`ps`** — Node label shown to the user.
   - Type: string · Default: `""`
-- **`add`** — Server address.
+- <a id="link-proto-add"></a>**`add`** — Server address.
   - Type: string
-  - Maps to: `server`
-  - If invalid: If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
-- **`port`** — Server port.
+  - Maps to: [`server`](#body-server)
+  - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+- <a id="link-proto-port"></a>**`port`** — Server port.
   - Type: int
-  - Maps to: `server_port`
-  - If invalid: If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
-- **`id`** — User identifier.
+  - Maps to: [`server_port`](#body-server-port)
+  - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
+- <a id="link-proto-id"></a>**`id`** — User identifier.
   - Type: string
-  - Maps to: `uuid`
-- **`aid`** — Legacy alterId of VMess.
+  - Maps to: [`uuid`](#body-uuid)
+- <a id="link-proto-aid"></a>**`aid`** — Legacy alterId of VMess.
   - Also spelled: `alter_id`
   - Type: int · Default: `0`
-  - Maps to: `alter_id`
-  - If invalid: If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`scy`** — Payload encryption method.
+  - Maps to: [`alter_id`](#body-alter-id)
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="link-proto-scy"></a>**`scy`** — Payload encryption method.
   - Also spelled: `security`
-  - Type: alias_enum: `auto`, `none`, `zero`, `aes-128-cfb`, `aes-128-gcm`, `chacha20-poly1305` (allowlist `vmess_security`) · Default: `auto`
-  - Maps to: `security`
-  - If invalid: If invalid: replaced with `auto` → [`type_invalid`](../warnings.md#type_invalid)
-- **`net`** — Transport selector.
+  - Type: enum (other spellings of the same value are accepted): `auto`, `none`, `zero`, `aes-128-cfb`, `aes-128-gcm`, `chacha20-poly1305` (allowlist `vmess_security`) · Default: `auto`
+  - Maps to: [`security`](#body-security)
+  - If invalid: replaced with `auto` → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="link-proto-net"></a>**`net`** — Transport selector.
   - Also spelled: `network`, `type`
   - Type: enum: `tcp`, `ws`, `http`, `h2`, `grpc`, `httpupgrade`, `xhttp` · Default: `tcp`
   - Maps to: `transport.type`
-- **`type`** — Header camouflage of the tcp transport.
+- <a id="link-proto-type"></a>**`type`** — Header camouflage of the tcp transport.
   - Type: string: `none` · Default: `none`
   - Maps to: `transport.type`
-- **`host`** — Host of the transport request.
+- <a id="link-proto-host"></a>**`host`** — Host of the transport request.
   - Type: string · Default: `""`
   - Maps to: `transport.host`
-- **`path`** — Path of the transport request.
+- <a id="link-proto-path"></a>**`path`** — Path of the transport request.
   - Type: string · Default: `""`
   - Maps to: `transport.path`
-- **`serviceName`** (mobile) — gRPC service name.
+- <a id="link-proto-servicename"></a>**`serviceName`** — gRPC service name.
+  - Supported by LxBox only
   - Type: string · Default: `""`
   - Maps to: `transport.service_name`
-- **`mode`** (desktop) — XHTTP transfer mode.
+- <a id="link-proto-mode"></a>**`mode`** — XHTTP transfer mode.
+  - Supported by the desktop launcher only
   - Type: string: `""`, `auto`, `packet-up`, `stream-up`, `stream-one` · Default: `""`
   - Maps to: `transport.mode`
-- **`tls`** — Whether TLS is enabled.
+- <a id="link-proto-tls"></a>**`tls`** — Whether TLS is enabled.
   - Also spelled: `tls_enabled`
   - Type: enum: `""`, `tls` · Default: `""`
-  - Maps to: `tls.enabled`
-- **`sni`** — Server name sent in SNI.
+  - Maps to: [`tls.enabled`](#body-tls-enabled)
+- <a id="link-proto-sni"></a>**`sni`** — Server name sent in SNI.
   - Type: string · Default: `""`
-  - Maps to: `tls.server_name`
-  - If invalid: If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`alpn`** — Comma-separated list of ALPN protocols.
+  - Maps to: [`tls.server_name`](#body-tls-server-name)
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="link-proto-alpn"></a>**`alpn`** — Comma-separated list of ALPN protocols.
   - Type: string · Default: `""`
-  - Maps to: `tls.alpn`
-- **`fp`** — Browser fingerprint mimicked in the ClientHello.
-  - Type: alias_enum (allowlist `utls_fingerprints`) · Default: `""`
-  - Maps to: `tls.utls.fingerprint`
-  - If invalid: If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown); Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
-- **`insecure`** — Skip server certificate verification.
+  - Maps to: [`tls.alpn`](#body-tls-alpn)
+- <a id="link-proto-fp"></a>**`fp`** — Browser fingerprint mimicked in the ClientHello.
+  - Type: enum (other spellings of the same value are accepted) (allowlist `utls_fingerprints`) · Default: `""`
+  - Maps to: [`tls.utls.fingerprint`](#body-tls-utls-fingerprint)
+  - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown) · Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
+- <a id="link-proto-insecure"></a>**`insecure`** — Skip server certificate verification.
   - Also spelled: `allowInsecure`, `allowinsecure`, `allow_insecure`, `allow-insecure`, `skipCertVerify`, `skipcertverify`, `skip_cert_verify`, `skip-cert-verify`, `noverify`
   - Type: bool · Default: `false`
-  - Maps to: `tls.insecure`
+  - Maps to: [`tls.insecure`](#body-tls-insecure)
 
-Shared link parameters live on their own pages: [TLS / REALITY](_tls.md#link-parameters), [transports](_transports.md).
+### TLS / REALITY
+
+Shared across every scheme that carries a TLS block; the reference page is [`_tls.md`](_tls.md).
+
+- <a id="link-tls-security"></a>**`security`** — Whether the link asks for TLS, and in which flavour.
+  - Type: enum: `""`, `none`, `tls`, `reality` · Default: `""`
+  - Maps to: [`tls.enabled`](#body-tls-enabled)
+- <a id="link-tls-ech"></a>**`ech`** — Encrypted Client Hello parameters in the Xray form.
+  - Also spelled: `echfq`
+  - Type: string · Default: `""`
+  - Maps to: nothing — the parameter is read and then deliberately dropped
+- <a id="link-tls-pbk"></a>**`pbk`** — Server REALITY public key.
+  - Type: string — X25519 public key: base64url or base64std, padded or not, decoding to exactly 32 bytes; anything else is not a valid key
+  - Maps to: [`tls.reality.public_key`](#body-tls-reality-public-key)
+  - If invalid: removed → [`reality_pbk_invalid`](../warnings.md#reality_pbk_invalid)
+- <a id="link-tls-sid"></a>**`sid`** — REALITY short ID.
+  - Type: string — hex only, lowercase, even length and at most 16 characters; an empty short_id is legal (a zero [8]byte)
+  - Maps to: [`tls.reality.short_id`](#body-tls-reality-short-id)
+  - If invalid: removed → [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid) · If the value had to be cleaned up: [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
+- <a id="link-tls-key-share"></a>**`key_share`** — Key exchange used in the REALITY ClientHello.
+  - Type: enum: `""`, `hybrid`, `classical` — a closed core enum, hybrid or classical; trimmed and lower-cased; an empty string means the key is absent, not invalid · Default: `""`
+  - Maps to: [`tls.reality.key_share`](#body-tls-reality-key-share)
+  - If invalid: removed → [`reality_key_share_invalid`](../warnings.md#reality_key_share_invalid)
+
+### Transport · `ws`
+
+Read when the link says `type=ws`; the reference page is [`_transports.md`](_transports.md).
+
+- <a id="link-tr-ws-ed"></a>**`ed`** — WebSocket early data size, in bytes.
+  - Type: int
+  - Maps to: [`transport.ws.max_early_data`](#body-transport-ws-max-early-data), [`transport.ws.early_data_header_name`](#body-transport-ws-early-data-header-name)
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="link-tr-ws-eh"></a>**`eh`** — Header name that carries the early data.
+  - Supported by LxBox only
+  - Type: string · Default: `Sec-WebSocket-Protocol`
+  - Maps to: [`transport.ws.early_data_header_name`](#body-transport-ws-early-data-header-name)
+
+### Transport · `xhttp`
+
+Read when the link says `type=xhttp`; the reference page is [`_transports.md`](_transports.md).
+
+- <a id="link-tr-xhttp-extra"></a>**`extra`** — Nested JSON object with the same XHTTP fields.
+  - Also spelled: `xhttpSettings.extra`
+  - Type: string · Default: `""`
+- <a id="link-tr-xhttp-x-padding-bytes"></a>**`x_padding_bytes`** — Padding size range, min-max.
+  - Also spelled: `xPaddingBytes`
+  - Type: string · Default: `""`
+  - Maps to: [`transport.xhttp.x_padding_bytes`](#body-transport-xhttp-x-padding-bytes)
+- <a id="link-tr-xhttp-no-grpc-header"></a>**`no_grpc_header`** — Do not send the gRPC-style header.
+  - Also spelled: `noGRPCHeader`
+  - Type: bool · Default: `false`
+  - Maps to: [`transport.xhttp.no_grpc_header`](#body-transport-xhttp-no-grpc-header)
+- <a id="link-tr-xhttp-session-placement"></a>**`session_placement`** — Where the session identifier is carried.
+  - Also spelled: `sessionPlacement`
+  - Type: enum: `path`, `query`, `header`, `cookie` · Default: `""`
+  - Maps to: [`transport.xhttp.session_placement`](#body-transport-xhttp-session-placement)
+  - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
+- <a id="link-tr-xhttp-session-key"></a>**`session_key`** — Name of the session identifier.
+  - Also spelled: `sessionKey`
+  - Type: string · Default: `""`
+  - Maps to: [`transport.xhttp.session_key`](#body-transport-xhttp-session-key)
+- <a id="link-tr-xhttp-seq-placement"></a>**`seq_placement`** — Where the packet sequence number is carried.
+  - Also spelled: `seqPlacement`
+  - Type: enum: `path`, `query`, `header`, `cookie` · Default: `""`
+  - Maps to: [`transport.xhttp.seq_placement`](#body-transport-xhttp-seq-placement)
+  - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
+- <a id="link-tr-xhttp-seq-key"></a>**`seq_key`** — Name of the sequence number.
+  - Also spelled: `seqKey`
+  - Type: string · Default: `""`
+  - Maps to: [`transport.xhttp.seq_key`](#body-transport-xhttp-seq-key)
+- <a id="link-tr-xhttp-uplink-data-placement"></a>**`uplink_data_placement`** — Where uplink data is carried.
+  - Also spelled: `uplinkDataPlacement`
+  - Type: enum: `body`, `auto`, `header`, `cookie` · Default: `""`
+  - Maps to: [`transport.xhttp.uplink_data_placement`](#body-transport-xhttp-uplink-data-placement)
+  - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
+- <a id="link-tr-xhttp-uplink-data-key"></a>**`uplink_data_key`** — Name of the uplink data field.
+  - Also spelled: `uplinkDataKey`
+  - Type: string · Default: `""`
+  - Maps to: [`transport.xhttp.uplink_data_key`](#body-transport-xhttp-uplink-data-key)
+- <a id="link-tr-xhttp-uplink-chunk-size"></a>**`uplink_chunk_size`** — Uplink chunk size, in bytes.
+  - Also spelled: `uplinkChunkSize`
+  - Type: string · Default: `""`
+  - Maps to: [`transport.xhttp.uplink_chunk_size`](#body-transport-xhttp-uplink-chunk-size)
+- <a id="link-tr-xhttp-uplink-http-method"></a>**`uplink_http_method`** — HTTP method used for uplink.
+  - Also spelled: `uplinkHTTPMethod`
+  - Type: string · Default: `POST`
+  - Maps to: [`transport.xhttp.uplink_http_method`](#body-transport-xhttp-uplink-http-method)
+- <a id="link-tr-xhttp-x-padding-obfs-mode"></a>**`x_padding_obfs_mode`** — Padding obfuscation mode.
+  - Also spelled: `xPaddingObfsMode`
+  - Type: bool · Default: `false`
+  - Maps to: [`transport.xhttp.x_padding_obfs_mode`](#body-transport-xhttp-x-padding-obfs-mode)
+- <a id="link-tr-xhttp-x-padding-key"></a>**`x_padding_key`** — Name of the padding parameter.
+  - Also spelled: `xPaddingKey`
+  - Type: string · Default: `""`
+  - Maps to: [`transport.xhttp.x_padding_key`](#body-transport-xhttp-x-padding-key)
+- <a id="link-tr-xhttp-x-padding-header"></a>**`x_padding_header`** — Header that carries the padding.
+  - Also spelled: `xPaddingHeader`
+  - Type: string · Default: `""`
+  - Maps to: [`transport.xhttp.x_padding_header`](#body-transport-xhttp-x-padding-header)
+- <a id="link-tr-xhttp-x-padding-placement"></a>**`x_padding_placement`** — Where the padding is carried.
+  - Also spelled: `xPaddingPlacement`
+  - Type: enum: `cookie`, `header`, `query`, `queryInHeader` · Default: `""`
+  - Maps to: [`transport.xhttp.x_padding_placement`](#body-transport-xhttp-x-padding-placement)
+  - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
+- <a id="link-tr-xhttp-x-padding-method"></a>**`x_padding_method`** — How the padding bytes are generated.
+  - Also spelled: `xPaddingMethod`
+  - Type: enum: `repeat-x`, `tokenish` · Default: `""`
+  - Maps to: [`transport.xhttp.x_padding_method`](#body-transport-xhttp-x-padding-method)
+  - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
+- <a id="link-tr-xhttp-sc-max-each-post-bytes"></a>**`sc_max_each_post_bytes`** — Maximum size of one POST, in bytes.
+  - Also spelled: `scMaxEachPostBytes`
+  - Type: string · Default: `""`
+  - Maps to: [`transport.xhttp.sc_max_each_post_bytes`](#body-transport-xhttp-sc-max-each-post-bytes)
+- <a id="link-tr-xhttp-sc-min-posts-interval-ms"></a>**`sc_min_posts_interval_ms`** — Minimum interval between POSTs, in milliseconds.
+  - Also spelled: `scMinPostsIntervalMs`
+  - Type: string · Default: `""`
+  - Maps to: [`transport.xhttp.sc_min_posts_interval_ms`](#body-transport-xhttp-sc-min-posts-interval-ms)
+- <a id="link-tr-xhttp-sc-stream-up-server-secs"></a>**`sc_stream_up_server_secs`** — How long the server keeps the uplink stream, in seconds.
+  - Supported by the desktop launcher only
+  - Also spelled: `scStreamUpServerSecs`
+  - Type: string · Default: `""`
+  - Maps to: [`transport.xhttp.sc_stream_up_server_secs`](#body-transport-xhttp-sc-stream-up-server-secs)
+- <a id="link-tr-xhttp-sc-max-buffered-posts"></a>**`sc_max_buffered_posts`** — How many POSTs may be buffered.
+  - Supported by the desktop launcher only
+  - Also spelled: `scMaxBufferedPosts`
+  - Type: int
+  - Maps to: [`transport.xhttp.sc_max_buffered_posts`](#body-transport-xhttp-sc-max-buffered-posts)
+- <a id="link-tr-xhttp-no-sse-header"></a>**`no_sse_header`** — Do not send the SSE header.
+  - Supported by the desktop launcher only
+  - Also spelled: `noSSEHeader`
+  - Type: bool · Default: `false`
+  - Maps to: [`transport.xhttp.no_sse_header`](#body-transport-xhttp-no-sse-header)
+- <a id="link-tr-xhttp-xmux"></a>**`xmux`** — XHTTP connection multiplexing settings.
+  - Supported by the desktop launcher only
+  - Also spelled: `extra.xmux`
+  - Type: string
+  - Maps to: [`transport.xhttp.xmux`](#body-transport-xhttp-xmux)
 
 ## Body fields
 
-The path is the one used in the node body.
+The node body itself — the sing-box JSON kept in the launcher state. The path is the one used in that body, and the rules below apply to every input alike: a share link, sing-box JSON, Xray JSON or a hand-filled form.
 
-- **`server`** — Server address: domain or IP.
+- <a id="body-server"></a>**`server`** — Server address: domain or IP.
   - Type: string, format `host`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
+  - Set by link parameter: [`host`](#link-common-host), [`add`](#link-proto-add)
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
-- **`server_port`** — Server port.
+- <a id="body-server-port"></a>**`server_port`** — Server port.
   - Type: uint16, format `port`, `1–65535`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
+  - Set by link parameter: [`port`](#link-common-port)
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
-- **`uuid`** — User identifier.
+- <a id="body-uuid"></a>**`uuid`** — User identifier.
   - Type: string, secret
-  - Default: none · Required: yes
-- **`security`** — Payload encryption method.
+  - Required: the node is dropped without it
+  - Set by link parameter: [`id`](#link-proto-id)
+- <a id="body-security"></a>**`security`** — Payload encryption method.
   - Type: enum, `auto`, `none`, `zero`, `aes-128-cfb`, `aes-128-gcm`, `chacha20-poly1305`, normalized: `trim_lower`
-  - Default: `auto` · Required: yes
+  - Default: `auto`
+  - Required: the node is dropped without it
+  - Set by link parameter: [`scy`](#link-proto-scy)
   - If invalid: replaced with `auto` → [`type_invalid`](../warnings.md#type_invalid)
-- **`alter_id`** — Legacy alterId of the VMess user.
+- <a id="body-alter-id"></a>**`alter_id`** — Legacy alterId of the VMess user.
   - Type: int, `0–…`
   - Default: `0`
+  - Set by link parameter: [`aid`](#link-proto-aid)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`global_padding`** — Enable global padding.
+- <a id="body-global-padding"></a>**`global_padding`** — Enable global padding.
   - Type: bool
   - Default: `false`
-- **`authenticated_length`** — Authenticate the payload length field.
+- <a id="body-authenticated-length"></a>**`authenticated_length`** — Authenticate the payload length field.
   - Type: bool
   - Default: `false`
-- **`network`** — Networks this outbound handles.
+- <a id="body-network"></a>**`network`** — Networks this outbound handles.
   - Type: listable_string, `tcp`, `udp`, normalized: `trim_lower`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`packet_encoding`** — How UDP packets are encapsulated.
+- <a id="body-packet-encoding"></a>**`packet_encoding`** — How UDP packets are encapsulated.
   - Type: enum, `""`, `packetaddr`, `xudp`, normalized: `trim_lower`
   - Default: `""`
   - If invalid: removed → [`packet_encoding_unknown`](../warnings.md#packet_encoding_unknown)
-- **`tls`** — TLS settings.
-  - Shared sub-schema: see [_tls](_tls.md)
-- **`multiplex`** — Stream multiplexing settings.
-  - Shared sub-schema: see [_multiplex](_multiplex.md)
-- **`transport`** — V2Ray transport settings.
-  - Shared sub-schema: see [_transports](_transports.md)
-- **`detour`** — Tag of the outbound this connection is routed through.
-  - Type: string, set by config build
-- **`bind_interface`** — Network interface the connection is bound to.
-  - Type: string
-- **`inet4_bind_address`** — Local IPv4 address to bind to.
-  - Type: string, format `ipv4`
-  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`inet6_bind_address`** — Local IPv6 address to bind to.
-  - Type: string
-- **`connect_timeout`** — Timeout for establishing the connection.
-  - Type: duration
-- **`tcp_fast_open`** — Use TCP Fast Open.
+- <a id="body-tls"></a>**`tls`** — TLS settings.
+  - Shared sub-schema, expanded below · reference page: [_tls](_tls.md)
+- <a id="body-tls-enabled"></a>**`tls.enabled`** — Enable TLS for this outbound.
   - Type: bool
   - Default: `false`
-  - Forbidden for: `anytls`
-- **`udp_fragment`** — Allow fragmenting UDP packets.
+  - Set by link parameter: [`tls`](#link-proto-tls), [`security`](#link-tls-security)
+- <a id="body-tls-engine"></a>**`tls.engine`** — TLS implementation used for the handshake.
+  - Type: enum, `""`, `go`, `apple`, `windows`, normalized: `trim_lower`
+  - Default: `go`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-tls-disable-sni"></a>**`tls.disable_sni`** — Do not send the SNI extension.
+  - Type: bool
+  - Default: `false`
+  - Conflicts with: `tls.reality.enabled`
+- <a id="body-tls-server-name"></a>**`tls.server_name`** — Server name sent in SNI and verified in the certificate.
+  - Type: string, format `host`
+  - Set by link parameter: [`sni`](#link-proto-sni)
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-tls-insecure"></a>**`tls.insecure`** — Skip server certificate verification.
+  - Type: bool
+  - Default: `false`
+  - Set by link parameter: [`insecure`](#link-proto-insecure)
+- <a id="body-tls-alpn"></a>**`tls.alpn`** — ALPN protocols offered in the handshake.
+  - Type: listable_string
+  - Set by link parameter: [`alpn`](#link-proto-alpn)
+- <a id="body-tls-min-version"></a>**`tls.min_version`** — Minimum accepted TLS version.
+  - Type: enum, `1.0`, `1.1`, `1.2`, `1.3`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-tls-max-version"></a>**`tls.max_version`** — Maximum accepted TLS version.
+  - Type: enum, `1.0`, `1.1`, `1.2`, `1.3`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-tls-cipher-suites"></a>**`tls.cipher_suites`** — Allowed TLS cipher suites.
+  - Type: listable_string
+- <a id="body-tls-curve-preferences"></a>**`tls.curve_preferences`** — Preferred elliptic curves / key exchange groups.
+  - Type: listable_string, `P256`, `P384`, `P521`, `X25519`, `X25519MLKEM768`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-tls-certificate"></a>**`tls.certificate`** — Trusted server certificate in PEM form.
+  - Type: listable_string
+- <a id="body-tls-certificate-path"></a>**`tls.certificate_path`** — Path to a file with the trusted certificate.
+  - Type: string
+- <a id="body-tls-certificate-public-key-sha256"></a>**`tls.certificate_public_key_sha256`** — Pinned SHA-256 hashes of the server public key.
+  - Type: string_array, format `base64`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Conflicts with: `tls.certificate`
+  - Conflicts with: `tls.certificate_path`
+- <a id="body-tls-client-certificate"></a>**`tls.client_certificate`** — Client certificate for mTLS, PEM form.
+  - Type: listable_string
+  - Meaningless without: `tls.client_key`
+- <a id="body-tls-client-certificate-path"></a>**`tls.client_certificate_path`** — Path to the client certificate file.
+  - Type: string
+- <a id="body-tls-client-key"></a>**`tls.client_key`** — Client private key for mTLS, PEM form.
+  - Type: listable_string, secret
+  - Meaningless without: `tls.client_certificate`
+- <a id="body-tls-client-key-path"></a>**`tls.client_key_path`** — Path to the client private key file.
+  - Type: string, secret
+- <a id="body-tls-fragment"></a>**`tls.fragment`** — Split the ClientHello across TCP segments.
+  - Type: bool
+  - Default: `false`
+- <a id="body-tls-fragment-fallback-delay"></a>**`tls.fragment_fallback_delay`** — Delay before falling back when fragmenting.
+  - Type: duration
+- <a id="body-tls-record-fragment"></a>**`tls.record_fragment`** — Split the ClientHello across TLS records.
+  - Type: bool
+  - Default: `false`
+- <a id="body-tls-spoof"></a>**`tls.spoof`** — Domain used for the spoofed ClientHello.
+  - Type: string, format `host`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Conflicts with: `tls.reality.enabled`
+  - Conflicts with: `tls.disable_sni`
+- <a id="body-tls-spoof-method"></a>**`tls.spoof_method`** — How the spoofed packet is made invalid.
+  - Type: enum, `""`, `wrong-sequence`, `wrong-checksum`, `wrong-ack`, `wrong-md5`, `wrong-timestamp`, normalized: `trim_lower`
+  - Default: `wrong-sequence`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Meaningless without: `tls.spoof`
+- <a id="body-tls-kernel-tx"></a>**`tls.kernel_tx`** — Offload TLS transmission to the kernel (kTLS).
+  - Type: bool
+  - Default: `false`
+  - Only written when: OS `linux`
+- <a id="body-tls-kernel-rx"></a>**`tls.kernel_rx`** — Offload TLS reception to the kernel (kTLS).
+  - Type: bool
+  - Default: `false`
+  - Only written when: OS `linux`
+- <a id="body-tls-handshake-timeout"></a>**`tls.handshake_timeout`** — Timeout for the TLS handshake.
+  - Type: duration
+- <a id="body-tls-ech"></a>**`tls.ech`** — Encrypted Client Hello settings.
+  - Type: object
+- <a id="body-tls-ech-enabled"></a>**`tls.ech.enabled`** — Enable Encrypted Client Hello.
+  - Type: bool
+  - Default: `false`
+  - Conflicts with: `tls.reality.enabled`
+- <a id="body-tls-ech-config"></a>**`tls.ech.config`** — Inline ECH config (PEM block).
+  - Type: listable_string
+- <a id="body-tls-ech-config-path"></a>**`tls.ech.config_path`** — Path to a file with the ECH config.
+  - Type: string
+- <a id="body-tls-ech-query-server-name"></a>**`tls.ech.query_server_name`** — Domain queried over DNS for the ECH config.
+  - Type: string
+- <a id="body-tls-ech-pq-signature-schemes-enabled"></a>**`tls.ech.pq_signature_schemes_enabled`** — Deprecated post-quantum signature switch.
+  - Type: bool, deprecated
+- <a id="body-tls-ech-dynamic-record-sizing-disabled"></a>**`tls.ech.dynamic_record_sizing_disabled`** — Deprecated dynamic record sizing switch.
+  - Type: bool, deprecated
+- <a id="body-tls-utls"></a>**`tls.utls`** — uTLS fingerprint settings.
+  - Type: object
+- <a id="body-tls-utls-enabled"></a>**`tls.utls.enabled`** — Enable uTLS ClientHello mimicry.
+  - Type: bool
+  - Default: `false`
+- <a id="body-tls-utls-fingerprint"></a>**`tls.utls.fingerprint`** — Browser fingerprint used for the ClientHello.
+  - Type: enum, `""`, `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized`, normalized: `trim_lower`
+  - Default: `chrome`
+  - Set by link parameter: [`fp`](#link-proto-fp)
+  - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
+  - Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
+- <a id="body-tls-reality"></a>**`tls.reality`** — REALITY settings.
+  - Type: object
+- <a id="body-tls-reality-enabled"></a>**`tls.reality.enabled`** — Enable REALITY handshake camouflage.
+  - Type: bool
+  - Default: `false`
+  - Conflicts with: `tls.ech.enabled`
+  - Conflicts with: `tls.disable_sni`
+  - Conflicts with: `tls.spoof`
+  - Meaningless without: `tls.utls.enabled`
+- <a id="body-tls-reality-public-key"></a>**`tls.reality.public_key`** — Server REALITY public key (x25519).
+  - Type: string, format `base64_32`
+  - Required: the node is dropped without it
+  - Set by link parameter: [`pbk`](#link-tls-pbk)
+  - If invalid: removed → [`reality_pbk_invalid`](../warnings.md#reality_pbk_invalid)
+- <a id="body-tls-reality-short-id"></a>**`tls.reality.short_id`** — REALITY short ID (hex, even length).
+  - Type: string, format `hex`, `…–16`, len `even`, normalized: `hex_only`
+  - Set by link parameter: [`sid`](#link-tls-sid)
+  - If invalid: removed → [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
+  - If the value had to be cleaned up: [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
+  - Meaningless without: `tls.reality.public_key`
+- <a id="body-tls-reality-key-share"></a>**`tls.reality.key_share`** — Key exchange used in the REALITY ClientHello.
+  - Type: enum, `""`, `hybrid`, `classical`, normalized: `trim_lower`
+  - Default: `""`
+  - Set by link parameter: [`key_share`](#link-tls-key-share)
+  - If invalid: removed → [`reality_key_share_invalid`](../warnings.md#reality_key_share_invalid)
+  - Meaningless without: `tls.reality.public_key`
+  - Only written when: core ≥ `1.14.1-lx.4`, lx fork only
+- <a id="body-multiplex"></a>**`multiplex`** — Stream multiplexing settings.
+  - Shared sub-schema, expanded below · reference page: [_multiplex](_multiplex.md)
+- <a id="body-multiplex-enabled"></a>**`multiplex.enabled`** — Enable stream multiplexing.
+  - Type: bool
+  - Default: `false`
+- <a id="body-multiplex-protocol"></a>**`multiplex.protocol`** — Multiplexing protocol.
+  - Type: enum, `""`, `h2mux`, `smux`, `yamux`, normalized: `trim_lower`
+  - Default: `h2mux`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-multiplex-max-connections"></a>**`multiplex.max_connections`** — Maximum number of parallel connections.
+  - Type: int, `0–…`
+  - Default: `0`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-multiplex-min-streams"></a>**`multiplex.min_streams`** — Minimum streams before opening a new connection.
+  - Type: int, `0–…`
+  - Default: `0`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-multiplex-max-streams"></a>**`multiplex.max_streams`** — Maximum streams per connection.
+  - Type: int, `0–…`
+  - Default: `0`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-multiplex-padding"></a>**`multiplex.padding`** — Pad multiplexed frames.
+  - Type: bool
+  - Default: `false`
+- <a id="body-multiplex-brutal"></a>**`multiplex.brutal`** — TCP Brutal congestion control settings.
+  - Type: object
+- <a id="body-multiplex-brutal-enabled"></a>**`multiplex.brutal.enabled`** — Enable the TCP Brutal congestion control.
+  - Type: bool
+  - Default: `false`
+- <a id="body-multiplex-brutal-up-mbps"></a>**`multiplex.brutal.up_mbps`** — Upload bandwidth in Mbps.
+  - Type: int, `1–…`
+  - Required: the node is dropped without it
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-multiplex-brutal-down-mbps"></a>**`multiplex.brutal.down_mbps`** — Download bandwidth in Mbps.
+  - Type: int, `1–…`
+  - Required: the node is dropped without it
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-transport"></a>**`transport`** — V2Ray transport settings.
+  - Shared sub-schema, expanded below · reference page: [_transports](_transports.md)
+- <a id="body-transport-grpc-service-name"></a>**`transport.grpc.service_name`** — gRPC service name in the request path. A leading "/" makes the value a ready-made request path in Xray's absolute-path form (core >= 1.14.1-lx.8): "/a/b/Tun" goes on the wire as "/a/b/Tun", each segment escaped on its own. Without a leading "/" it is a service name and the core appends "/Tun" itself ("a/b" -> "/a%2Fb/Tun"). The value is passed to the core unchanged in either form.
+  - Type: string
+  - Default: `""`
+- <a id="body-transport-grpc-idle-timeout"></a>**`transport.grpc.idle_timeout`** — Close the stream after this idle period.
+  - Type: duration
+- <a id="body-transport-grpc-ping-timeout"></a>**`transport.grpc.ping_timeout`** — Timeout waiting for a keepalive ping reply.
+  - Type: duration
+- <a id="body-transport-grpc-permit-without-stream"></a>**`transport.grpc.permit_without_stream`** — Send keepalive pings even with no active stream.
+  - Type: bool
+  - Default: `false`
+- <a id="body-transport-http-host"></a>**`transport.http.host`** — Host header values, picked at random per request.
+  - Type: listable_string
+- <a id="body-transport-http-path"></a>**`transport.http.path`** — Request path.
+  - Type: string, format `url_path`
+  - Default: `/`
+- <a id="body-transport-http-method"></a>**`transport.http.method`** — HTTP method of the request.
+  - Type: string
+  - Default: `GET`
+- <a id="body-transport-http-headers"></a>**`transport.http.headers`** — Extra HTTP headers sent with each request.
+  - Type: object
+- <a id="body-transport-http-idle-timeout"></a>**`transport.http.idle_timeout`** — Close the connection after this idle period.
+  - Type: duration
+- <a id="body-transport-http-ping-timeout"></a>**`transport.http.ping_timeout`** — Timeout waiting for a keepalive ping reply.
+  - Type: duration
+- <a id="body-transport-httpupgrade-host"></a>**`transport.httpupgrade.host`** — Host header value.
+  - Type: string
+- <a id="body-transport-httpupgrade-path"></a>**`transport.httpupgrade.path`** — Request path.
+  - Type: string, format `url_path`
+  - Default: `/`
+- <a id="body-transport-httpupgrade-headers"></a>**`transport.httpupgrade.headers`** — Extra HTTP headers sent with each request.
+  - Type: object
+- <a id="body-transport-ws-path"></a>**`transport.ws.path`** — WebSocket request path.
+  - Type: string, format `url_path`
+  - Default: `/`
+- <a id="body-transport-ws-headers"></a>**`transport.ws.headers`** — Extra HTTP headers sent with each request.
+  - Type: object
+- <a id="body-transport-ws-max-early-data"></a>**`transport.ws.max_early_data`** — Maximum bytes of WebSocket early data.
+  - Type: int, `0–4294967295`
+  - Set by link parameter: [`ed`](#link-tr-ws-ed)
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-transport-ws-early-data-header-name"></a>**`transport.ws.early_data_header_name`** — Header carrying the early data payload.
+  - Type: string
+  - Set by link parameter: [`ed`](#link-tr-ws-ed), [`eh`](#link-tr-ws-eh)
+- <a id="body-transport-xhttp-host"></a>**`transport.xhttp.host`** — Host header value.
+  - Type: string
+  - Default: `""`
+- <a id="body-transport-xhttp-path"></a>**`transport.xhttp.path`** — Base request path.
+  - Type: string
+- <a id="body-transport-xhttp-mode"></a>**`transport.xhttp.mode`** — XHTTP transfer mode.
+  - Type: enum, `""`, `auto`, `packet-up`, `stream-up`, `stream-one`
+  - Default: `auto`
+  - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
+- <a id="body-transport-xhttp-headers"></a>**`transport.xhttp.headers`** — Extra HTTP headers sent with each request.
+  - Type: object
+- <a id="body-transport-xhttp-x-padding-bytes"></a>**`transport.xhttp.x_padding_bytes`** — Size range of the padding block.
+  - Type: string
+  - Default: `100-1000`
+  - Set by link parameter: [`x_padding_bytes`](#link-tr-xhttp-x-padding-bytes)
+- <a id="body-transport-xhttp-no-grpc-header"></a>**`transport.xhttp.no_grpc_header`** — Omit the fake gRPC header.
+  - Type: bool
+  - Default: `false`
+  - Set by link parameter: [`no_grpc_header`](#link-tr-xhttp-no-grpc-header)
+- <a id="body-transport-xhttp-xmux"></a>**`transport.xhttp.xmux`** — Connection multiplexing for XHTTP.
+  - Type: object, all-or-nothing in the core (setting one field leaves the neighbours at zero, i.e. unlimited; a partly filled section is passed through unchanged)
+  - Set by link parameter: [`xmux`](#link-tr-xhttp-xmux)
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only
+- <a id="body-transport-xhttp-xmux-max-concurrency"></a>**`transport.xhttp.xmux.max_concurrency`** — Concurrent streams per connection, as a range.
+  - Type: string
+  - Default: `1-1`
+  - Conflicts with: `transport.xmux.max_connections`
+- <a id="body-transport-xhttp-xmux-max-connections"></a>**`transport.xhttp.xmux.max_connections`** — Number of parallel connections, as a range.
+  - Type: string
+- <a id="body-transport-xhttp-xmux-c-max-reuse-times"></a>**`transport.xhttp.xmux.c_max_reuse_times`** — How many times a connection is reused.
+  - Type: string
+- <a id="body-transport-xhttp-xmux-h-max-request-times"></a>**`transport.xhttp.xmux.h_max_request_times`** — Requests served by one HTTP connection.
+  - Type: string
+  - Default: `600-900`
+- <a id="body-transport-xhttp-xmux-h-max-reusable-secs"></a>**`transport.xhttp.xmux.h_max_reusable_secs`** — Lifetime of a reusable HTTP connection, seconds.
+  - Type: string
+  - Default: `1800-3000`
+- <a id="body-transport-xhttp-xmux-h-keep-alive-period"></a>**`transport.xhttp.xmux.h_keep_alive_period`** — Keepalive period in seconds.
+  - Type: int
+  - Default: `0`
+- <a id="body-transport-xhttp-session-placement"></a>**`transport.xhttp.session_placement`** — Where the session id is carried.
+  - Type: enum, `""`, `path`, `query`, `header`, `cookie`
+  - Default: `path`
+  - Set by link parameter: [`session_placement`](#link-tr-xhttp-session-placement)
+  - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
+- <a id="body-transport-xhttp-session-key"></a>**`transport.xhttp.session_key`** — Name of the session id key.
+  - Type: string
+  - Default: `X-Session`
+  - Set by link parameter: [`session_key`](#link-tr-xhttp-session-key)
+- <a id="body-transport-xhttp-seq-placement"></a>**`transport.xhttp.seq_placement`** — Where the packet sequence number is carried.
+  - Type: enum, `""`, `path`, `query`, `header`, `cookie`
+  - Default: `path`
+  - Set by link parameter: [`seq_placement`](#link-tr-xhttp-seq-placement)
+  - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
+- <a id="body-transport-xhttp-seq-key"></a>**`transport.xhttp.seq_key`** — Name of the sequence number key.
+  - Type: string
+  - Default: `X-Seq`
+  - Set by link parameter: [`seq_key`](#link-tr-xhttp-seq-key)
+- <a id="body-transport-xhttp-session-table"></a>**`transport.xhttp.session_table`** — Alphabet used to generate session ids.
+  - Type: string
+  - Meaningless without: `transport.session_length`
+- <a id="body-transport-xhttp-session-length"></a>**`transport.xhttp.session_length`** — Length range of the session id.
+  - Type: string
+  - Meaningless without: `transport.session_table`
+- <a id="body-transport-xhttp-uplink-data-placement"></a>**`transport.xhttp.uplink_data_placement`** — Where uplink data is carried.
+  - Type: enum, `""`, `body`, `auto`, `header`, `cookie`
+  - Default: `auto`
+  - Set by link parameter: [`uplink_data_placement`](#link-tr-xhttp-uplink-data-placement)
+  - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
+- <a id="body-transport-xhttp-uplink-data-key"></a>**`transport.xhttp.uplink_data_key`** — Name of the uplink data key.
+  - Type: string
+  - Default: `X-Data`
+  - Set by link parameter: [`uplink_data_key`](#link-tr-xhttp-uplink-data-key)
+- <a id="body-transport-xhttp-uplink-chunk-size"></a>**`transport.xhttp.uplink_chunk_size`** — Size range of one uplink chunk.
+  - Type: string
+  - Set by link parameter: [`uplink_chunk_size`](#link-tr-xhttp-uplink-chunk-size)
+- <a id="body-transport-xhttp-uplink-http-method"></a>**`transport.xhttp.uplink_http_method`** — HTTP method used for uplink requests.
+  - Type: string
+  - Default: `POST`
+  - Set by link parameter: [`uplink_http_method`](#link-tr-xhttp-uplink-http-method)
+- <a id="body-transport-xhttp-x-padding-obfs-mode"></a>**`transport.xhttp.x_padding_obfs_mode`** — Use the newer padding obfuscation mode.
+  - Type: bool
+  - Default: `false`
+  - Set by link parameter: [`x_padding_obfs_mode`](#link-tr-xhttp-x-padding-obfs-mode)
+- <a id="body-transport-xhttp-x-padding-key"></a>**`transport.xhttp.x_padding_key`** — Name of the padding key.
+  - Type: string
+  - Default: `x_padding`
+  - Set by link parameter: [`x_padding_key`](#link-tr-xhttp-x-padding-key)
+- <a id="body-transport-xhttp-x-padding-header"></a>**`transport.xhttp.x_padding_header`** — Header carrying the padding.
+  - Type: string
+  - Default: `X-Padding`
+  - Set by link parameter: [`x_padding_header`](#link-tr-xhttp-x-padding-header)
+- <a id="body-transport-xhttp-x-padding-placement"></a>**`transport.xhttp.x_padding_placement`** — Where the padding is carried.
+  - Type: enum, `""`, `cookie`, `header`, `query`, `queryInHeader`
+  - Default: `queryInHeader`
+  - Set by link parameter: [`x_padding_placement`](#link-tr-xhttp-x-padding-placement)
+  - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
+- <a id="body-transport-xhttp-x-padding-method"></a>**`transport.xhttp.x_padding_method`** — How the padding content is generated.
+  - Type: enum, `""`, `repeat-x`, `tokenish`
+  - Default: `repeat-x`
+  - Set by link parameter: [`x_padding_method`](#link-tr-xhttp-x-padding-method)
+  - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
+- <a id="body-transport-xhttp-sc-max-each-post-bytes"></a>**`transport.xhttp.sc_max_each_post_bytes`** — Size range of one POST body.
+  - Type: string
+  - Default: `1000000-1000000`
+  - Set by link parameter: [`sc_max_each_post_bytes`](#link-tr-xhttp-sc-max-each-post-bytes)
+- <a id="body-transport-xhttp-sc-min-posts-interval-ms"></a>**`transport.xhttp.sc_min_posts_interval_ms`** — Minimum interval between POSTs, ms.
+  - Type: string
+  - Default: `30-30`
+  - Set by link parameter: [`sc_min_posts_interval_ms`](#link-tr-xhttp-sc-min-posts-interval-ms)
+- <a id="body-transport-xhttp-sc-max-concurrent-posts"></a>**`transport.xhttp.sc_max_concurrent_posts`** — Accepted but ignored concurrency limit.
+  - Type: int
+- <a id="body-transport-xhttp-server-max-header-bytes"></a>**`transport.xhttp.server_max_header_bytes`** — Server-side option, ignored by the client.
+  - Type: int
+- <a id="body-transport-xhttp-no-sse-header"></a>**`transport.xhttp.no_sse_header`** — Server-side option, ignored by the client.
+  - Type: bool
+  - Set by link parameter: [`no_sse_header`](#link-tr-xhttp-no-sse-header)
+- <a id="body-transport-xhttp-sc-max-buffered-posts"></a>**`transport.xhttp.sc_max_buffered_posts`** — Server-side option, ignored by the client.
+  - Type: int
+  - Set by link parameter: [`sc_max_buffered_posts`](#link-tr-xhttp-sc-max-buffered-posts)
+- <a id="body-transport-xhttp-sc-stream-up-server-secs"></a>**`transport.xhttp.sc_stream_up_server_secs`** — Server-side option, ignored by the client.
+  - Type: string
+  - Set by link parameter: [`sc_stream_up_server_secs`](#link-tr-xhttp-sc-stream-up-server-secs)
+- <a id="body-detour"></a>**`detour`** — Tag of the outbound this connection is routed through.
+  - Type: string, set by config build
+- <a id="body-bind-interface"></a>**`bind_interface`** — Network interface the connection is bound to.
+  - Type: string
+- <a id="body-inet4-bind-address"></a>**`inet4_bind_address`** — Local IPv4 address to bind to.
+  - Type: string, format `ipv4`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-inet6-bind-address"></a>**`inet6_bind_address`** — Local IPv6 address to bind to.
+  - Type: string
+- <a id="body-connect-timeout"></a>**`connect_timeout`** — Timeout for establishing the connection.
+  - Type: duration
+- <a id="body-tcp-fast-open"></a>**`tcp_fast_open`** — Use TCP Fast Open.
+  - Type: bool
+  - Default: `false`
+- <a id="body-udp-fragment"></a>**`udp_fragment`** — Allow fragmenting UDP packets.
   - Type: bool, tristate
-- **`domain_resolver`** — DNS server tag used to resolve the server domain.
+- <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.
   - Type: string
 
 ## Diagnosed problems
@@ -151,70 +664,70 @@ The path is the one used in the node body.
 Every code that can be raised on a node of this scheme, including the ones coming from the shared TLS, transport, multiplex and dialer sub-schemas. Follow a code for what it means and what to do about it.
 
 - [`field_conflict`](../warnings.md#field_conflict)
-  - `tls.disable_sni` — conflicts with `tls.reality.enabled` → removed
-  - `tls.certificate_public_key_sha256` — conflicts with `tls.certificate` → removed
-  - `tls.certificate_public_key_sha256` — conflicts with `tls.certificate_path` → removed
-  - `tls.spoof` — conflicts with `tls.reality.enabled` → removed
-  - `tls.spoof` — conflicts with `tls.disable_sni` → removed
-  - `tls.ech.enabled` — conflicts with `tls.reality.enabled` → removed
-  - `tls.reality.enabled` — conflicts with `tls.ech.enabled` → removed
-  - `tls.reality.enabled` — conflicts with `tls.disable_sni` → removed
-  - `tls.reality.enabled` — conflicts with `tls.spoof` → removed
-  - `transport.xhttp.xmux.max_concurrency` — conflicts with `transport.xmux.max_connections` → removed
+  - [`tls.disable_sni`](#body-tls-disable-sni) — conflicts with `tls.reality.enabled` → removed
+  - [`tls.certificate_public_key_sha256`](#body-tls-certificate-public-key-sha256) — conflicts with `tls.certificate` → removed
+  - [`tls.certificate_public_key_sha256`](#body-tls-certificate-public-key-sha256) — conflicts with `tls.certificate_path` → removed
+  - [`tls.spoof`](#body-tls-spoof) — conflicts with `tls.reality.enabled` → removed
+  - [`tls.spoof`](#body-tls-spoof) — conflicts with `tls.disable_sni` → removed
+  - [`tls.ech.enabled`](#body-tls-ech-enabled) — conflicts with `tls.reality.enabled` → removed
+  - [`tls.reality.enabled`](#body-tls-reality-enabled) — conflicts with `tls.ech.enabled` → removed
+  - [`tls.reality.enabled`](#body-tls-reality-enabled) — conflicts with `tls.disable_sni` → removed
+  - [`tls.reality.enabled`](#body-tls-reality-enabled) — conflicts with `tls.spoof` → removed
+  - [`transport.xhttp.xmux.max_concurrency`](#body-transport-xhttp-xmux-max-concurrency) — conflicts with `transport.xmux.max_connections` → removed
 - [`field_missing`](../warnings.md#field_missing)
-  - `server` — on_invalid: drop_node → node dropped
-  - `uuid` — required → node dropped
+  - [`server`](#body-server) — the value does not fit the field → node dropped
+  - [`uuid`](#body-uuid) — required and missing → node dropped
 - [`field_requires`](../warnings.md#field_requires)
-  - `tls.client_certificate` — requires `tls.client_key` → removed
-  - `tls.client_key` — requires `tls.client_certificate` → removed
-  - `tls.spoof_method` — requires `tls.spoof` → removed
-  - `tls.reality.enabled` — requires `tls.utls.enabled` → removed
-  - `tls.reality.short_id` — requires `tls.reality.public_key` → removed
-  - `tls.reality.key_share` — requires `tls.reality.public_key` → removed
-  - `transport.xhttp.session_table` — requires `transport.session_length` → removed
-  - `transport.xhttp.session_length` — requires `transport.session_table` → removed
+  - [`tls.client_certificate`](#body-tls-client-certificate) — set without `tls.client_key` → removed
+  - [`tls.client_key`](#body-tls-client-key) — set without `tls.client_certificate` → removed
+  - [`tls.spoof_method`](#body-tls-spoof-method) — set without `tls.spoof` → removed
+  - [`tls.reality.enabled`](#body-tls-reality-enabled) — set without `tls.utls.enabled` → removed
+  - [`tls.reality.short_id`](#body-tls-reality-short-id) — set without `tls.reality.public_key` → removed
+  - [`tls.reality.key_share`](#body-tls-reality-key-share) — set without `tls.reality.public_key` → removed
+  - [`transport.xhttp.session_table`](#body-transport-xhttp-session-table) — set without `transport.session_length` → removed
+  - [`transport.xhttp.session_length`](#body-transport-xhttp-session-length) — set without `transport.session_table` → removed
 - [`packet_encoding_unknown`](../warnings.md#packet_encoding_unknown)
-  - `packet_encoding` — on_invalid: drop → removed
+  - [`packet_encoding`](#body-packet-encoding) — the value does not fit the field → removed
 - [`port_invalid`](../warnings.md#port_invalid)
-  - `server_port` — on_invalid: drop_node → node dropped
+  - [`server_port`](#body-server-port) — the value does not fit the field → node dropped
 - [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
-  - `tls.utls.fingerprint` — advisory except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random` → kept with a notice
+  - [`tls.utls.fingerprint`](#body-tls-utls-fingerprint) — the value is anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random` → kept with a notice
 - [`reality_key_share_invalid`](../warnings.md#reality_key_share_invalid)
-  - `tls.reality.key_share` — on_invalid: drop → removed
+  - [`tls.reality.key_share`](#body-tls-reality-key-share) — the value does not fit the field → removed
 - [`reality_pbk_invalid`](../warnings.md#reality_pbk_invalid)
-  - `tls.reality.public_key` — on_invalid: drop → removed
+  - [`tls.reality.public_key`](#body-tls-reality-public-key) — the value does not fit the field → removed
 - [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
-  - `tls.reality.short_id` — on_invalid: drop → removed
-  - `tls.reality.short_id` — normalize hex_only → value cleaned up
+  - [`tls.reality.short_id`](#body-tls-reality-short-id) — the value does not fit the field → removed
+  - [`tls.reality.short_id`](#body-tls-reality-short-id) — the value had to be cleaned up (hex_only) → value cleaned up
 - [`type_invalid`](../warnings.md#type_invalid)
-  - `security` — on_invalid: coerce → replaced with `auto`
-  - `alter_id` — on_invalid: drop → removed
-  - `network` — on_invalid: drop → removed
-  - `tls.engine` — on_invalid: drop → removed
-  - `tls.server_name` — on_invalid: drop → removed
-  - `tls.min_version` — on_invalid: drop → removed
-  - `tls.max_version` — on_invalid: drop → removed
-  - `tls.curve_preferences` — on_invalid: drop → removed
-  - `tls.certificate_public_key_sha256` — on_invalid: drop → removed
-  - `tls.spoof` — on_invalid: drop → removed
-  - `tls.spoof_method` — on_invalid: drop → removed
-  - `multiplex.protocol` — on_invalid: drop → removed
-  - `multiplex.max_connections` — on_invalid: drop → removed
-  - `multiplex.min_streams` — on_invalid: drop → removed
-  - `multiplex.max_streams` — on_invalid: drop → removed
-  - `multiplex.brutal.up_mbps` — on_invalid: drop → removed
-  - `multiplex.brutal.down_mbps` — on_invalid: drop → removed
-  - `transport.ws.max_early_data` — on_invalid: drop → removed
-  - `inet4_bind_address` — on_invalid: drop → removed
+  - [`security`](#body-security) — the value does not fit the field → replaced with `auto`
+  - [`alter_id`](#body-alter-id) — the value does not fit the field → removed
+  - [`network`](#body-network) — the value does not fit the field → removed
+  - [`tls.engine`](#body-tls-engine) — the value does not fit the field → removed
+  - [`tls.server_name`](#body-tls-server-name) — the value does not fit the field → removed
+  - [`tls.min_version`](#body-tls-min-version) — the value does not fit the field → removed
+  - [`tls.max_version`](#body-tls-max-version) — the value does not fit the field → removed
+  - [`tls.curve_preferences`](#body-tls-curve-preferences) — the value does not fit the field → removed
+  - [`tls.certificate_public_key_sha256`](#body-tls-certificate-public-key-sha256) — the value does not fit the field → removed
+  - [`tls.spoof`](#body-tls-spoof) — the value does not fit the field → removed
+  - [`tls.spoof_method`](#body-tls-spoof-method) — the value does not fit the field → removed
+  - [`multiplex.protocol`](#body-multiplex-protocol) — the value does not fit the field → removed
+  - [`multiplex.max_connections`](#body-multiplex-max-connections) — the value does not fit the field → removed
+  - [`multiplex.min_streams`](#body-multiplex-min-streams) — the value does not fit the field → removed
+  - [`multiplex.max_streams`](#body-multiplex-max-streams) — the value does not fit the field → removed
+  - [`multiplex.brutal.up_mbps`](#body-multiplex-brutal-up-mbps) — the value does not fit the field → removed
+  - [`multiplex.brutal.down_mbps`](#body-multiplex-brutal-down-mbps) — the value does not fit the field → removed
+  - [`transport.ws.max_early_data`](#body-transport-ws-max-early-data) — the value does not fit the field → removed
+  - [`inet4_bind_address`](#body-inet4-bind-address) — the value does not fit the field → removed
 - [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
-  - `tls.utls.fingerprint` — on_invalid: coerce → replaced with `chrome`
+  - [`tls.utls.fingerprint`](#body-tls-utls-fingerprint) — the value does not fit the field → replaced with `chrome`
 - [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
-  - `transport.xhttp.mode` — on_invalid: drop → removed
-  - `transport.xhttp.session_placement` — on_invalid: drop → removed
-  - `transport.xhttp.seq_placement` — on_invalid: drop → removed
-  - `transport.xhttp.uplink_data_placement` — on_invalid: drop → removed
-  - `transport.xhttp.x_padding_placement` — on_invalid: drop → removed
-  - `transport.xhttp.x_padding_method` — on_invalid: drop → removed
+  - [`transport.xhttp.mode`](#body-transport-xhttp-mode) — the value does not fit the field → removed
+  - [`transport.xhttp.session_placement`](#body-transport-xhttp-session-placement) — the value does not fit the field → removed
+  - [`transport.xhttp.seq_placement`](#body-transport-xhttp-seq-placement) — the value does not fit the field → removed
+  - [`transport.xhttp.uplink_data_placement`](#body-transport-xhttp-uplink-data-placement) — the value does not fit the field → removed
+  - [`transport.xhttp.x_padding_placement`](#body-transport-xhttp-x-padding-placement) — the value does not fit the field → removed
+  - [`transport.xhttp.x_padding_method`](#body-transport-xhttp-x-padding-method) — the value does not fit the field → removed
 
 ## Replacements
 
@@ -322,8 +835,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 **Left out when the running core is too old**
 
-- `tls.kernel_rx` — OS `linux`
-- `tls.kernel_tx` — OS `linux`
-- `tls.reality.key_share` — core ≥ `1.14.1-lx.4`, lx fork only
-- `transport.xhttp.xmux` — core ≥ `1.13.13-lx.1`, lx fork only
+- `tls.kernel_rx` — needs OS `linux`
+- `tls.kernel_tx` — needs OS `linux`
+- `tls.reality.key_share` — needs core ≥ `1.14.1-lx.4`, lx fork only
+- `transport.xhttp.xmux` — needs core ≥ `1.13.13-lx.1`, lx fork only
 

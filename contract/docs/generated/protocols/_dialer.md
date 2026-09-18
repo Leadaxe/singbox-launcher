@@ -10,38 +10,38 @@ Core the schema was checked against: `1.14.1-lx.4`
 
 ## Common fields
 
-- **`server`** — Server address: domain or IP.
+- <a id="body-server"></a>**`server`** — Server address: domain or IP.
   - Type: string, format `host`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
-- **`server_port`** — Server port.
+- <a id="body-server-port"></a>**`server_port`** — Server port.
   - Type: uint16, format `port`, `1–65535`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
-- **`network`** — Networks this outbound handles.
+- <a id="body-network"></a>**`network`** — Networks this outbound handles.
   - Type: listable_string, `tcp`, `udp`, normalized: `trim_lower`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 
 ## Body fields
 
-- **`detour`** — Tag of the outbound this connection is routed through.
+- <a id="body-detour"></a>**`detour`** — Tag of the outbound this connection is routed through.
   - Type: string, set by config build
-- **`bind_interface`** — Network interface the connection is bound to.
+- <a id="body-bind-interface"></a>**`bind_interface`** — Network interface the connection is bound to.
   - Type: string
-- **`inet4_bind_address`** — Local IPv4 address to bind to.
+- <a id="body-inet4-bind-address"></a>**`inet4_bind_address`** — Local IPv4 address to bind to.
   - Type: string, format `ipv4`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`inet6_bind_address`** — Local IPv6 address to bind to.
+- <a id="body-inet6-bind-address"></a>**`inet6_bind_address`** — Local IPv6 address to bind to.
   - Type: string
-- **`connect_timeout`** — Timeout for establishing the connection.
+- <a id="body-connect-timeout"></a>**`connect_timeout`** — Timeout for establishing the connection.
   - Type: duration
-- **`tcp_fast_open`** — Use TCP Fast Open.
+- <a id="body-tcp-fast-open"></a>**`tcp_fast_open`** — Use TCP Fast Open.
   - Type: bool
   - Default: `false`
-  - Forbidden for: `anytls`
-- **`udp_fragment`** — Allow fragmenting UDP packets.
+  - Not supported by: `anytls`
+- <a id="body-udp-fragment"></a>**`udp_fragment`** — Allow fragmenting UDP packets.
   - Type: bool, tristate
-- **`domain_resolver`** — DNS server tag used to resolve the server domain.
+- <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.
   - Type: string
 
 ## Deliberately not described

@@ -59,7 +59,9 @@ func renderSchemeWarnings(b *strings.Builder, raw *rawRegistry, scheme string, b
 	for _, c := range codes {
 		l.item(warnLink(c, "../"), "")
 		for _, u := range found[c] {
-			line := "`" + u.path + "` — " + u.via
+			// Путь — якорной ссылкой на само поле выше по странице: код без
+			// поля не говорит, что именно чинить.
+			line := "[`" + u.path + "`](#" + bodyAnchor(u.path) + ") — " + u.via
 			if u.action != "" {
 				line += " → " + u.action
 			}
@@ -86,44 +88,44 @@ func collectSchemeUsages(out map[string][]usage, scheme, path string, f *registr
 	// Поле, запрещённое этой схеме, снимается целиком: собственные правила
 	// значения к нему уже не применяются, и показывать их — врать.
 	if len(f.ForbiddenFor) > 0 && contains(f.ForbiddenFor, scheme) {
-		add(codeOr(f.Code, "unknown_key"), "forbidden for `"+scheme+"`", actionRemoved)
+		add(codeOr(f.Code, "unknown_key"), "not supported by `"+scheme+"`", actionRemoved)
 		return
 	}
 	if len(f.AllowedFor) > 0 && !contains(f.AllowedFor, scheme) {
-		add(codeOr(f.Code, "unknown_key"), "not allowed for `"+scheme+"`", actionRemoved)
+		add(codeOr(f.Code, "unknown_key"), "not supported by `"+scheme+"`", actionRemoved)
 		return
 	}
 
 	if f.OnInvalid != nil {
-		add(f.OnInvalid.Code, "on_invalid: "+f.OnInvalid.Action, onInvalidAction(f.OnInvalid))
+		add(f.OnInvalid.Code, "the value does not fit the field", onInvalidAction(f.OnInvalid))
 	}
 	for _, a := range f.Advisory {
 		if len(a.Except) > 0 {
-			add(a.Code, "advisory except "+scalarList(a.Except), actionKept)
+			add(a.Code, "the value is anything except "+scalarList(a.Except), actionKept)
 			continue
 		}
-		add(a.Code, "advisory "+scalarList(a.Values), actionKept)
+		add(a.Code, "the value is "+scalarList(a.Values), actionKept)
 	}
 	if dw := f.DefaultWhen; dw != nil && dw.Absent && dw.Code != "" {
-		add(dw.Code, "default_when absent", "filled in with "+scalar(dw.Value))
+		add(dw.Code, "the field is absent", "filled in with "+scalar(dw.Value))
 	}
 	if f.NormalizeCode != "" {
-		add(f.NormalizeCode, "normalize "+f.Normalize, "value cleaned up")
+		add(f.NormalizeCode, "the value had to be cleaned up ("+f.Normalize+")", "value cleaned up")
 	}
 	for _, c := range f.Conflicts {
 		add(codeOr(c.Code, "field_conflict"), "conflicts with `"+c.With+"`", actionRemoved)
 	}
 	for _, rq := range f.Requires {
-		add(codeOr(rq.Code, "field_requires"), "requires `"+rq.Path+"`", actionRemoved)
+		add(codeOr(rq.Code, "field_requires"), "set without `"+rq.Path+"`", actionRemoved)
 	}
 	if fw := f.ForbiddenWhen; fw != nil {
 		add(codeOr(fw.Code, "field_conflict"), "forbidden when `"+fw.Path+"` is set", actionRemoved)
 	}
 	if f.Required && f.OnInvalid == nil {
-		add("field_missing", "required", actionNodeDropped)
+		add("field_missing", "required and missing", actionNodeDropped)
 	}
 	if f.Code != "" && len(f.ForbiddenFor) == 0 && len(f.AllowedFor) == 0 {
-		add(f.Code, "code", "")
+		add(f.Code, "the field is present", "")
 	}
 
 	// Варианты (транспорты) и вложенные объекты — тем же порядком, с полным
@@ -407,7 +409,7 @@ func collectDegradation(out map[string][]string, scheme, path string, f *registr
 		put("replaced", "`"+path+"` — absent value is filled in with "+scalar(dw.Value))
 	}
 	if g := bodyGate(f); g != "" {
-		put("gated", "`"+path+"` — "+strings.TrimPrefix(g, "Requires: "))
+		put("gated", "`"+path+"` — needs "+strings.TrimPrefix(g, "Only written when: "))
 	}
 
 	if len(f.Variants) > 0 {

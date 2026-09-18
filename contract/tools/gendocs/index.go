@@ -25,6 +25,8 @@ func renderIndex(raw *rawRegistry, reg *registry.Registry, schemes []string) str
 	t.add("Core (`body.core`)", coreVersions(reg, schemes))
 	t.render(&b)
 
+	b.WriteString(indexIntro())
+
 	b.WriteString("## Pipeline\n\n")
 	b.WriteString("Every input — a share URI, sing-box or Xray JSON, a wg-conf, a hand-written " +
 		"body — goes through the same three stages in both apps:\n\n")
@@ -40,24 +42,26 @@ func renderIndex(raw *rawRegistry, reg *registry.Registry, schemes []string) str
 	b.WriteString("The normative text is [`contract/docs/CANON.md` §8](../CANON.md).\n\n")
 
 	b.WriteString("## Schemes\n\n")
+	// Колонка `extension` снята: она пуста почти у всех строк, а «поддержано
+	// одним проектом» — редкая заметка, которой место рядом со схемой, а не
+	// отдельным столбцом прочерков.
 	st := &table{head: []string{
-		"Scheme", "sing-box `type`", "`kind`", "Sources", "`extension`", "Link form",
+		"Scheme", "sing-box `type`", "`kind`", "Accepted from", "Link form",
 	}}
 	for _, scheme := range schemes {
 		p := raw.protocols[scheme]
 		if p == nil {
 			continue
 		}
-		ext := ""
-		if p.Extension != nil {
-			ext = code(*p.Extension)
+		name := "[`" + scheme + "`](protocols/" + schemeFileName(scheme) + ")"
+		if p.Extension != nil && *p.Extension != "" {
+			name += " — " + extWord(*p.Extension)
 		}
 		link := "no"
 		if p.URI != nil {
 			link = "yes"
 		}
-		st.add("[`"+scheme+"`](protocols/"+schemeFileName(scheme)+")",
-			code(p.SingboxType), code(p.Kind), codeList(p.Sources), ext, link)
+		st.add(name, code(p.SingboxType), code(p.Kind), sourceWords(p.Sources), link)
 	}
 	st.render(&b)
 

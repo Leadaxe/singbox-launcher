@@ -4,94 +4,168 @@
 
 [← index](../index.md) · [diagnosed problems](../warnings.md)
 
+`ss` — an outbound, sing-box type `shadowsocks`. Accepted from: share link, sing-box JSON, Xray JSON.
+
+<sub>Schema checked against core `1.14.1-lx.4` · the link fragment (`#…`) is the node `label`</sub>
+
 | Field | Value |
 |---|---|
 | `scheme` | `ss` |
 | `singbox_type` | `shadowsocks` |
 | `kind` | `outbound` |
 | `sources` | `uri`, `singbox`, `xray` |
-| `extension` | — |
 | Core the schema was checked against | `1.14.1-lx.4` |
 | URI fragment | `label` |
 
+## How to read this page
+
+```
+share link          mapper                node body              sanitizer            core config
+shadowsocks://…?…   ──▶ link parameter   ──▶  sing-box JSON,    ──▶  checks each     ──▶  what sing-box
+                     becomes a body         stored in state        body field's         is actually
+                     field                                         value                started with
+```
+
+- **Link parameters** — the dictionary of the share link: every parameter this scheme understands, and the body field each one becomes.
+- **Body fields** — the node body itself: the sing-box JSON kept in the launcher state. The rules here hold for every input alike — a share link, sing-box JSON, Xray JSON or a hand-filled form — because they are checked after the input has already become a body.
+- **Diagnosed problems** — every warning code a node of this scheme can carry, and the field that raises it.
+- **Replacements** — what is silently rewritten on the way in: other spellings of the same name, values normalized or substituted, and structural decisions the mapper takes before any value is judged.
+- **Degradation** — the same rules grouped by outcome: what drops the node, what only drops a field, and what is merely worth knowing.
+
+A bad value never breaks the whole config: the field is dropped, replaced or — at worst — the single node is. Each link parameter says which of the three happens to it, taken from the rule of the body field it maps to.
+
 ## Link parameters
 
-- **`userinfo`** — base64 of method:password.
-  - Type: `base64(method:password)`
-  - Maps to: `method`, `password`
-  - If invalid: If invalid: node dropped → [`ss_method_invalid`](../warnings.md#ss_method_invalid); Accepted with a notice for `aes-128-ctr`, `aes-192-ctr`, `aes-256-ctr`, `aes-128-cfb`, `aes-192-cfb`, `aes-256-cfb`, `rc4-md5`, `chacha20-ietf`, `xchacha20` → [`ss_method_legacy`](../warnings.md#ss_method_legacy)
-- **`method`** — Encryption method.
-  - Type: alias_enum: `2022-blake3-aes-128-gcm`, `2022-blake3-aes-256-gcm`, `2022-blake3-chacha20-poly1305`, `none`, `aes-128-gcm`, `aes-192-gcm`, `aes-256-gcm`, `chacha20-ietf-poly1305`, `xchacha20-ietf-poly1305` (allowlist `ss_methods`)
-  - Maps to: `method`
-  - If invalid: If invalid: node dropped → [`ss_method_invalid`](../warnings.md#ss_method_invalid); Accepted with a notice for `aes-128-ctr`, `aes-192-ctr`, `aes-256-ctr`, `aes-128-cfb`, `aes-192-cfb`, `aes-256-cfb`, `rc4-md5`, `chacha20-ietf`, `xchacha20` → [`ss_method_legacy`](../warnings.md#ss_method_legacy)
-- **`password`** — Account password.
-  - Type: string
-  - Maps to: `password`
-- **`plugin`** (mobile) — SIP003 plugin name.
-  - Type: string · Default: `""`
-  - Maps to: `plugin`
-- **`plugin_opts`** (mobile) — SIP003 plugin options.
-  - Type: string · Default: `""`
-  - Maps to: `plugin_opts`
+Everything a link of this scheme can carry. **Maps to** points at the body field the value lands in; **If invalid** is that field's own rule.
 
-Shared link parameters live on their own pages: [TLS / REALITY](_tls.md#link-parameters), [transports](_transports.md).
+### Common
+
+- <a id="link-common-userinfo"></a>**`userinfo`** — base64 of method:password.
+  - Type: `base64(method:password)`
+  - Maps to: [`method`](#body-method), [`password`](#body-password)
+  - If invalid: node dropped → [`ss_method_invalid`](../warnings.md#ss_method_invalid) · Accepted with a notice for `aes-128-ctr`, `aes-192-ctr`, `aes-256-ctr`, `aes-128-cfb`, `aes-192-cfb`, `aes-256-cfb`, `rc4-md5`, `chacha20-ietf`, `xchacha20` → [`ss_method_legacy`](../warnings.md#ss_method_legacy)
+- <a id="link-common-host"></a>**`host`** — The authority of the link: everything before `:` in `scheme://…@host:port`.
+  - Maps to: [`server`](#body-server)
+  - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+- <a id="link-common-port"></a>**`port`** — The authority of the link: everything after `:` in `scheme://…@host:port`.
+  - Maps to: [`server_port`](#body-server-port)
+  - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
+- <a id="link-common-fragment"></a>**`#fragment`** — The part after `#`: the name the node is shown under. It is not a body field — it is the node `label`.
+
+### Protocol-specific
+
+- <a id="link-proto-method"></a>**`method`** — Encryption method.
+  - Type: enum (other spellings of the same value are accepted): `2022-blake3-aes-128-gcm`, `2022-blake3-aes-256-gcm`, `2022-blake3-chacha20-poly1305`, `none`, `aes-128-gcm`, `aes-192-gcm`, `aes-256-gcm`, `chacha20-ietf-poly1305`, `xchacha20-ietf-poly1305` (allowlist `ss_methods`)
+  - Maps to: [`method`](#body-method)
+  - If invalid: node dropped → [`ss_method_invalid`](../warnings.md#ss_method_invalid) · Accepted with a notice for `aes-128-ctr`, `aes-192-ctr`, `aes-256-ctr`, `aes-128-cfb`, `aes-192-cfb`, `aes-256-cfb`, `rc4-md5`, `chacha20-ietf`, `xchacha20` → [`ss_method_legacy`](../warnings.md#ss_method_legacy)
+- <a id="link-proto-password"></a>**`password`** — Account password.
+  - Type: string
+  - Maps to: [`password`](#body-password)
+- <a id="link-proto-plugin"></a>**`plugin`** — SIP003 plugin name.
+  - Supported by LxBox only
+  - Type: string · Default: `""`
+  - Maps to: [`plugin`](#body-plugin)
+- <a id="link-proto-plugin-opts"></a>**`plugin_opts`** — SIP003 plugin options.
+  - Supported by LxBox only
+  - Type: string · Default: `""`
+  - Maps to: [`plugin_opts`](#body-plugin-opts)
 
 ## Body fields
 
-The path is the one used in the node body.
+The node body itself — the sing-box JSON kept in the launcher state. The path is the one used in that body, and the rules below apply to every input alike: a share link, sing-box JSON, Xray JSON or a hand-filled form.
 
-- **`server`** — Server address: domain or IP.
+- <a id="body-server"></a>**`server`** — Server address: domain or IP.
   - Type: string, format `host`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
+  - Set by link parameter: [`host`](#link-common-host)
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
-- **`server_port`** — Server port.
+- <a id="body-server-port"></a>**`server_port`** — Server port.
   - Type: uint16, format `port`, `1–65535`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
+  - Set by link parameter: [`port`](#link-common-port)
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
-- **`method`** — Encryption method.
+- <a id="body-method"></a>**`method`** — Encryption method.
   - Type: enum, `none`, `aes-128-gcm`, `aes-192-gcm`, `aes-256-gcm`, `chacha20-ietf-poly1305`, `xchacha20-ietf-poly1305`, `2022-blake3-aes-128-gcm`, `2022-blake3-aes-256-gcm`, `2022-blake3-chacha20-poly1305`, `aes-128-ctr`, `aes-192-ctr`, `aes-256-ctr`, `aes-128-cfb`, `aes-192-cfb`, `aes-256-cfb`, `rc4-md5`, `chacha20-ietf`, `xchacha20`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
+  - Set by link parameter: [`userinfo`](#link-common-userinfo), [`method`](#link-proto-method)
   - If invalid: node dropped → [`ss_method_invalid`](../warnings.md#ss_method_invalid)
   - Accepted with a notice for `aes-128-ctr`, `aes-192-ctr`, `aes-256-ctr`, `aes-128-cfb`, `aes-192-cfb`, `aes-256-cfb`, `rc4-md5`, `chacha20-ietf`, `xchacha20` → [`ss_method_legacy`](../warnings.md#ss_method_legacy)
-- **`password`** — Account password.
+- <a id="body-password"></a>**`password`** — Account password.
   - Type: string, secret
-  - Default: none · Required: yes
-- **`plugin`** — SIP003 plugin name.
+  - Required: the node is dropped without it
+  - Set by link parameter: [`userinfo`](#link-common-userinfo), [`password`](#link-proto-password)
+- <a id="body-plugin"></a>**`plugin`** — SIP003 plugin name.
   - Type: string
-- **`plugin_opts`** — Options string passed to the plugin.
+  - Set by link parameter: [`plugin`](#link-proto-plugin)
+- <a id="body-plugin-opts"></a>**`plugin_opts`** — Options string passed to the plugin.
   - Type: string
-- **`network`** — Networks this outbound handles.
+  - Set by link parameter: [`plugin_opts`](#link-proto-plugin-opts)
+- <a id="body-network"></a>**`network`** — Networks this outbound handles.
   - Type: listable_string, `tcp`, `udp`, normalized: `trim_lower`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`udp_over_tcp`** — UDP-over-TCP settings.
+- <a id="body-udp-over-tcp"></a>**`udp_over_tcp`** — UDP-over-TCP settings.
   - Type: object
-- **`udp_over_tcp.enabled`** — Tunnel UDP over the TCP connection.
+- <a id="body-udp-over-tcp-enabled"></a>**`udp_over_tcp.enabled`** — Tunnel UDP over the TCP connection.
   - Type: bool
   - Default: `false`
-- **`udp_over_tcp.version`** — UDP-over-TCP protocol version.
+- <a id="body-udp-over-tcp-version"></a>**`udp_over_tcp.version`** — UDP-over-TCP protocol version.
   - Type: enum, `1`, `2`
   - Default: `2`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`multiplex`** — Stream multiplexing settings.
-  - Shared sub-schema: see [_multiplex](_multiplex.md)
-- **`detour`** — Tag of the outbound this connection is routed through.
-  - Type: string, set by config build
-- **`bind_interface`** — Network interface the connection is bound to.
-  - Type: string
-- **`inet4_bind_address`** — Local IPv4 address to bind to.
-  - Type: string, format `ipv4`
-  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`inet6_bind_address`** — Local IPv6 address to bind to.
-  - Type: string
-- **`connect_timeout`** — Timeout for establishing the connection.
-  - Type: duration
-- **`tcp_fast_open`** — Use TCP Fast Open.
+- <a id="body-multiplex"></a>**`multiplex`** — Stream multiplexing settings.
+  - Shared sub-schema, expanded below · reference page: [_multiplex](_multiplex.md)
+- <a id="body-multiplex-enabled"></a>**`multiplex.enabled`** — Enable stream multiplexing.
   - Type: bool
   - Default: `false`
-  - Forbidden for: `anytls`
-- **`udp_fragment`** — Allow fragmenting UDP packets.
+- <a id="body-multiplex-protocol"></a>**`multiplex.protocol`** — Multiplexing protocol.
+  - Type: enum, `""`, `h2mux`, `smux`, `yamux`, normalized: `trim_lower`
+  - Default: `h2mux`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-multiplex-max-connections"></a>**`multiplex.max_connections`** — Maximum number of parallel connections.
+  - Type: int, `0–…`
+  - Default: `0`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-multiplex-min-streams"></a>**`multiplex.min_streams`** — Minimum streams before opening a new connection.
+  - Type: int, `0–…`
+  - Default: `0`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-multiplex-max-streams"></a>**`multiplex.max_streams`** — Maximum streams per connection.
+  - Type: int, `0–…`
+  - Default: `0`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-multiplex-padding"></a>**`multiplex.padding`** — Pad multiplexed frames.
+  - Type: bool
+  - Default: `false`
+- <a id="body-multiplex-brutal"></a>**`multiplex.brutal`** — TCP Brutal congestion control settings.
+  - Type: object
+- <a id="body-multiplex-brutal-enabled"></a>**`multiplex.brutal.enabled`** — Enable the TCP Brutal congestion control.
+  - Type: bool
+  - Default: `false`
+- <a id="body-multiplex-brutal-up-mbps"></a>**`multiplex.brutal.up_mbps`** — Upload bandwidth in Mbps.
+  - Type: int, `1–…`
+  - Required: the node is dropped without it
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-multiplex-brutal-down-mbps"></a>**`multiplex.brutal.down_mbps`** — Download bandwidth in Mbps.
+  - Type: int, `1–…`
+  - Required: the node is dropped without it
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-detour"></a>**`detour`** — Tag of the outbound this connection is routed through.
+  - Type: string, set by config build
+- <a id="body-bind-interface"></a>**`bind_interface`** — Network interface the connection is bound to.
+  - Type: string
+- <a id="body-inet4-bind-address"></a>**`inet4_bind_address`** — Local IPv4 address to bind to.
+  - Type: string, format `ipv4`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-inet6-bind-address"></a>**`inet6_bind_address`** — Local IPv6 address to bind to.
+  - Type: string
+- <a id="body-connect-timeout"></a>**`connect_timeout`** — Timeout for establishing the connection.
+  - Type: duration
+- <a id="body-tcp-fast-open"></a>**`tcp_fast_open`** — Use TCP Fast Open.
+  - Type: bool
+  - Default: `false`
+- <a id="body-udp-fragment"></a>**`udp_fragment`** — Allow fragmenting UDP packets.
   - Type: bool, tristate
-- **`domain_resolver`** — DNS server tag used to resolve the server domain.
+- <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.
   - Type: string
 
 ## Diagnosed problems
@@ -99,24 +173,24 @@ The path is the one used in the node body.
 Every code that can be raised on a node of this scheme, including the ones coming from the shared TLS, transport, multiplex and dialer sub-schemas. Follow a code for what it means and what to do about it.
 
 - [`field_missing`](../warnings.md#field_missing)
-  - `server` — on_invalid: drop_node → node dropped
-  - `password` — required → node dropped
+  - [`server`](#body-server) — the value does not fit the field → node dropped
+  - [`password`](#body-password) — required and missing → node dropped
 - [`port_invalid`](../warnings.md#port_invalid)
-  - `server_port` — on_invalid: drop_node → node dropped
+  - [`server_port`](#body-server-port) — the value does not fit the field → node dropped
 - [`ss_method_invalid`](../warnings.md#ss_method_invalid)
-  - `method` — on_invalid: drop_node → node dropped
+  - [`method`](#body-method) — the value does not fit the field → node dropped
 - [`ss_method_legacy`](../warnings.md#ss_method_legacy)
-  - `method` — advisory `aes-128-ctr`, `aes-192-ctr`, `aes-256-ctr`, `aes-128-cfb`, `aes-192-cfb`, `aes-256-cfb`, `rc4-md5`, `chacha20-ietf`, `xchacha20` → kept with a notice
+  - [`method`](#body-method) — the value is `aes-128-ctr`, `aes-192-ctr`, `aes-256-ctr`, `aes-128-cfb`, `aes-192-cfb`, `aes-256-cfb`, `rc4-md5`, `chacha20-ietf`, `xchacha20` → kept with a notice
 - [`type_invalid`](../warnings.md#type_invalid)
-  - `network` — on_invalid: drop → removed
-  - `udp_over_tcp.version` — on_invalid: drop → removed
-  - `multiplex.protocol` — on_invalid: drop → removed
-  - `multiplex.max_connections` — on_invalid: drop → removed
-  - `multiplex.min_streams` — on_invalid: drop → removed
-  - `multiplex.max_streams` — on_invalid: drop → removed
-  - `multiplex.brutal.up_mbps` — on_invalid: drop → removed
-  - `multiplex.brutal.down_mbps` — on_invalid: drop → removed
-  - `inet4_bind_address` — on_invalid: drop → removed
+  - [`network`](#body-network) — the value does not fit the field → removed
+  - [`udp_over_tcp.version`](#body-udp-over-tcp-version) — the value does not fit the field → removed
+  - [`multiplex.protocol`](#body-multiplex-protocol) — the value does not fit the field → removed
+  - [`multiplex.max_connections`](#body-multiplex-max-connections) — the value does not fit the field → removed
+  - [`multiplex.min_streams`](#body-multiplex-min-streams) — the value does not fit the field → removed
+  - [`multiplex.max_streams`](#body-multiplex-max-streams) — the value does not fit the field → removed
+  - [`multiplex.brutal.up_mbps`](#body-multiplex-brutal-up-mbps) — the value does not fit the field → removed
+  - [`multiplex.brutal.down_mbps`](#body-multiplex-brutal-down-mbps) — the value does not fit the field → removed
+  - [`inet4_bind_address`](#body-inet4-bind-address) — the value does not fit the field → removed
 
 ## Replacements
 

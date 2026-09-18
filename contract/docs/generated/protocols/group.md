@@ -4,6 +4,10 @@
 
 [← index](../index.md) · [diagnosed problems](../warnings.md)
 
+`group` — an outbound group, sing-box type `selector|urltest`. Also written as `autogroup`. Accepted from: sing-box JSON, Xray JSON, share link.
+
+<sub>the link fragment (`#…`) is the node `label`</sub>
+
 | Field | Value |
 |---|---|
 | `scheme` | `group` |
@@ -11,50 +15,85 @@
 | `kind` | `group` |
 | `aliases` | `autogroup` |
 | `sources` | `singbox`, `xray`, `uri` |
-| `extension` | — |
 | URI fragment | `label` |
+
+## How to read this page
+
+```
+share link          mapper                node body              sanitizer            core config
+group://…?…         ──▶ link parameter   ──▶  sing-box JSON,    ──▶  checks each     ──▶  what sing-box
+                     becomes a body         stored in state        body field's         is actually
+                     field                                         value                started with
+```
+
+- **Link parameters** — the dictionary of the share link: every parameter this scheme understands, and the body field each one becomes.
+- **Body fields** — the node body itself: the sing-box JSON kept in the launcher state. The rules here hold for every input alike — a share link, sing-box JSON, Xray JSON or a hand-filled form — because they are checked after the input has already become a body.
+- **Diagnosed problems** — every warning code a node of this scheme can carry, and the field that raises it.
+- **Replacements** — what is silently rewritten on the way in: other spellings of the same name, values normalized or substituted, and structural decisions the mapper takes before any value is judged.
+- **Degradation** — the same rules grouped by outcome: what drops the node, what only drops a field, and what is merely worth knowing.
+
+A bad value never breaks the whole config: the field is dropped, replaced or — at worst — the single node is. Each link parameter says which of the three happens to it, taken from the rule of the body field it maps to.
 
 ## Link parameters
 
-- **`userinfo`** — Not used: autogroup:// carries everything in the query.
+Everything a link of this scheme can carry. **Maps to** points at the body field the value lands in; **If invalid** is that field's own rule.
+
+### Common
+
+- <a id="link-common-userinfo"></a>**`userinfo`** — Not used: autogroup:// carries everything in the query.
   - Type: `not used`
-- **`include`** (mobile) — Regex that selects members by tag.
+- <a id="link-common-fragment"></a>**`#fragment`** — The part after `#`: the name the node is shown under. It is not a body field — it is the node `label`.
+
+### Protocol-specific
+
+- <a id="link-proto-include"></a>**`include`** — Regex that selects members by tag.
+  - Supported by LxBox only
   - Type: string · Default: `""`
-- **`exclude`** (mobile) — Regex that subtracts members from the pool.
+- <a id="link-proto-exclude"></a>**`exclude`** — Regex that subtracts members from the pool.
+  - Supported by LxBox only
   - Type: string · Default: `""`
-- **`members`** (mobile) — Explicit list of members.
+- <a id="link-proto-members"></a>**`members`** — Explicit list of members.
+  - Supported by LxBox only
   - Type: list
   - Maps to: `outbounds`
-- **`mode`** (mobile) — How the group picks the outbound.
+- <a id="link-proto-mode"></a>**`mode`** — How the group picks the outbound.
+  - Supported by LxBox only
   - Type: enum: `least_test`, `round_robin` · Default: `least_test`
-- **`url`** (mobile) — URL probed by urltest.
+- <a id="link-proto-url"></a>**`url`** — URL probed by urltest.
+  - Supported by LxBox only
   - Type: string · Default: `https://cp.cloudflare.com/generate_204`
   - Maps to: `url`
-- **`interval`** (mobile) — How often urltest probes.
+- <a id="link-proto-interval"></a>**`interval`** — How often urltest probes.
+  - Supported by LxBox only
   - Type: string · Default: `15m`
   - Maps to: `interval`
-- **`tolerance`** (mobile) — Latency window from the best node, ms.
+- <a id="link-proto-tolerance"></a>**`tolerance`** — Latency window from the best node, ms.
+  - Supported by LxBox only
   - Type: int · Default: `50`
   - Maps to: `tolerance`
-- **`idle_timeout`** (mobile) — How long urltest stays idle before stopping.
+- <a id="link-proto-idle-timeout"></a>**`idle_timeout`** — How long urltest stays idle before stopping.
+  - Supported by LxBox only
   - Type: string · Default: `30m`
   - Maps to: `idle_timeout`
-- **`interrupt`** (mobile) — Drop existing connections on a switch.
+- <a id="link-proto-interrupt"></a>**`interrupt`** — Drop existing connections on a switch.
+  - Supported by LxBox only
   - Type: bool · Default: `false`
   - Maps to: `interrupt_exist_connections`
-- **`pool`** (mobile) — How many nodes the round-robin pool holds.
+- <a id="link-proto-pool"></a>**`pool`** — How many nodes the round-robin pool holds.
+  - Supported by LxBox only
   - Type: int · Default: `3`
   - Maps to: `balancer.pool`
-- **`pool_tolerance`** (mobile) — Latency window of the pool, ms.
+- <a id="link-proto-pool-tolerance"></a>**`pool_tolerance`** — Latency window of the pool, ms.
+  - Supported by LxBox only
   - Type: int · Default: `0`
   - Maps to: `balancer.pool_tolerance`
-- **`sticky`** (mobile) — Connection attributes that pin a node.
+- <a id="link-proto-sticky"></a>**`sticky`** — Connection attributes that pin a node.
+  - Supported by LxBox only
   - Type: list
   - Maps to: `balancer.sticky_hash`
-- **`badge`** (mobile) — UI-only regex of the pool badge.
+- <a id="link-proto-badge"></a>**`badge`** — UI-only regex of the pool badge.
+  - Supported by LxBox only
   - Type: string · Default: `[\u{1F1E6}-\u{1F1FF}]{2}`
-
-Shared link parameters live on their own pages: [TLS / REALITY](_tls.md#link-parameters), [transports](_transports.md).
 
 ## Body fields
 

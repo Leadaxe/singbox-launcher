@@ -4,95 +4,138 @@
 
 [← index](../index.md) · [diagnosed problems](../warnings.md)
 
+`ssh` — an outbound, sing-box type `ssh`. Accepted from: share link, sing-box JSON.
+
+<sub>Schema checked against core `1.14.1-lx.4` · the link fragment (`#…`) is the node `label`</sub>
+
 | Field | Value |
 |---|---|
 | `scheme` | `ssh` |
 | `singbox_type` | `ssh` |
 | `kind` | `outbound` |
 | `sources` | `uri`, `singbox` |
-| `extension` | — |
 | Core the schema was checked against | `1.14.1-lx.4` |
 | URI fragment | `label` |
 
+## How to read this page
+
+```
+share link          mapper                node body              sanitizer            core config
+ssh://…?…           ──▶ link parameter   ──▶  sing-box JSON,    ──▶  checks each     ──▶  what sing-box
+                     becomes a body         stored in state        body field's         is actually
+                     field                                         value                started with
+```
+
+- **Link parameters** — the dictionary of the share link: every parameter this scheme understands, and the body field each one becomes.
+- **Body fields** — the node body itself: the sing-box JSON kept in the launcher state. The rules here hold for every input alike — a share link, sing-box JSON, Xray JSON or a hand-filled form — because they are checked after the input has already become a body.
+- **Diagnosed problems** — every warning code a node of this scheme can carry, and the field that raises it.
+- **Replacements** — what is silently rewritten on the way in: other spellings of the same name, values normalized or substituted, and structural decisions the mapper takes before any value is judged.
+- **Degradation** — the same rules grouped by outcome: what drops the node, what only drops a field, and what is merely worth knowing.
+
+A bad value never breaks the whole config: the field is dropped, replaced or — at worst — the single node is. Each link parameter says which of the three happens to it, taken from the rule of the body field it maps to.
+
 ## Link parameters
 
-- **`userinfo`** — user:password of the account.
-  - Type: `user:password`
-  - Maps to: `user`, `password`
-- **`private_key`** — Inline private key.
-  - Type: string
-  - Maps to: `private_key`
-- **`private_key_path`** (desktop) — Path to the private key file.
-  - Type: string
-  - Maps to: `private_key_path`
-- **`private_key_passphrase`** — Passphrase of the private key.
-  - Type: string
-  - Maps to: `private_key_passphrase`
-- **`host_key`** — Accepted server host keys.
-  - Type: string
-  - Maps to: `host_key`
-- **`host_key_algorithms`** — Accepted host key algorithms.
-  - Type: string
-  - Maps to: `host_key_algorithms`
-- **`client_version`** (desktop) — SSH client version string.
-  - Type: string
-  - Maps to: `client_version`
+Everything a link of this scheme can carry. **Maps to** points at the body field the value lands in; **If invalid** is that field's own rule.
 
-Shared link parameters live on their own pages: [TLS / REALITY](_tls.md#link-parameters), [transports](_transports.md).
+### Common
+
+- <a id="link-common-userinfo"></a>**`userinfo`** — user:password of the account.
+  - Type: `user:password`
+  - Maps to: [`user`](#body-user), [`password`](#body-password)
+- <a id="link-common-host"></a>**`host`** — The authority of the link: everything before `:` in `scheme://…@host:port`.
+  - Maps to: [`server`](#body-server)
+  - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+- <a id="link-common-port"></a>**`port`** — The authority of the link: everything after `:` in `scheme://…@host:port`.
+  - Maps to: [`server_port`](#body-server-port)
+  - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
+- <a id="link-common-fragment"></a>**`#fragment`** — The part after `#`: the name the node is shown under. It is not a body field — it is the node `label`.
+
+### Protocol-specific
+
+- <a id="link-proto-private-key"></a>**`private_key`** — Inline private key.
+  - Type: string
+  - Maps to: [`private_key`](#body-private-key)
+- <a id="link-proto-private-key-path"></a>**`private_key_path`** — Path to the private key file.
+  - Supported by the desktop launcher only
+  - Type: string
+  - Maps to: [`private_key_path`](#body-private-key-path)
+- <a id="link-proto-private-key-passphrase"></a>**`private_key_passphrase`** — Passphrase of the private key.
+  - Type: string
+  - Maps to: [`private_key_passphrase`](#body-private-key-passphrase)
+- <a id="link-proto-host-key"></a>**`host_key`** — Accepted server host keys.
+  - Type: string
+  - Maps to: [`host_key`](#body-host-key)
+- <a id="link-proto-host-key-algorithms"></a>**`host_key_algorithms`** — Accepted host key algorithms.
+  - Type: string
+  - Maps to: [`host_key_algorithms`](#body-host-key-algorithms)
+- <a id="link-proto-client-version"></a>**`client_version`** — SSH client version string.
+  - Supported by the desktop launcher only
+  - Type: string
+  - Maps to: [`client_version`](#body-client-version)
 
 ## Body fields
 
-The path is the one used in the node body.
+The node body itself — the sing-box JSON kept in the launcher state. The path is the one used in that body, and the rules below apply to every input alike: a share link, sing-box JSON, Xray JSON or a hand-filled form.
 
-- **`server`** — Server address: domain or IP.
+- <a id="body-server"></a>**`server`** — Server address: domain or IP.
   - Type: string, format `host`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
+  - Set by link parameter: [`host`](#link-common-host)
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
-- **`server_port`** — Server port.
+- <a id="body-server-port"></a>**`server_port`** — Server port.
   - Type: uint16, format `port`, `1–65535`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
+  - Set by link parameter: [`port`](#link-common-port)
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
-- **`user`** — SSH user name.
+- <a id="body-user"></a>**`user`** — SSH user name.
   - Type: string
   - Default: `root`
-- **`password`** — SSH password.
+  - Set by link parameter: [`userinfo`](#link-common-userinfo)
+- <a id="body-password"></a>**`password`** — SSH password.
   - Type: string, secret
-- **`private_key`** — Private key contents, PEM form.
+  - Set by link parameter: [`userinfo`](#link-common-userinfo)
+- <a id="body-private-key"></a>**`private_key`** — Private key contents, PEM form.
   - Type: listable_string, secret
-- **`private_key_path`** — Path to the private key file.
+  - Set by link parameter: [`private_key`](#link-proto-private-key)
+- <a id="body-private-key-path"></a>**`private_key_path`** — Path to the private key file.
   - Type: string, secret
-- **`private_key_passphrase`** — Passphrase of the private key.
+  - Set by link parameter: [`private_key_path`](#link-proto-private-key-path)
+- <a id="body-private-key-passphrase"></a>**`private_key_passphrase`** — Passphrase of the private key.
   - Type: string, secret
-- **`host_key`** — Expected server host keys.
+  - Set by link parameter: [`private_key_passphrase`](#link-proto-private-key-passphrase)
+- <a id="body-host-key"></a>**`host_key`** — Expected server host keys.
   - Type: listable_string
-- **`host_key_algorithms`** — Accepted host key algorithms.
+  - Set by link parameter: [`host_key`](#link-proto-host-key)
+- <a id="body-host-key-algorithms"></a>**`host_key_algorithms`** — Accepted host key algorithms.
   - Type: listable_string
-- **`client_version`** — SSH client version string.
+  - Set by link parameter: [`host_key_algorithms`](#link-proto-host-key-algorithms)
+- <a id="body-client-version"></a>**`client_version`** — SSH client version string.
   - Type: string
-- **`cipher`** — Accepted ciphers.
+  - Set by link parameter: [`client_version`](#link-proto-client-version)
+- <a id="body-cipher"></a>**`cipher`** — Accepted ciphers.
   - Type: listable_string
-- **`mac`** — Accepted MAC algorithms.
+- <a id="body-mac"></a>**`mac`** — Accepted MAC algorithms.
   - Type: listable_string
-- **`kex_algorithm`** — Accepted key exchange algorithms.
+- <a id="body-kex-algorithm"></a>**`kex_algorithm`** — Accepted key exchange algorithms.
   - Type: listable_string
-- **`detour`** — Tag of the outbound this connection is routed through.
+- <a id="body-detour"></a>**`detour`** — Tag of the outbound this connection is routed through.
   - Type: string, set by config build
-- **`bind_interface`** — Network interface the connection is bound to.
+- <a id="body-bind-interface"></a>**`bind_interface`** — Network interface the connection is bound to.
   - Type: string
-- **`inet4_bind_address`** — Local IPv4 address to bind to.
+- <a id="body-inet4-bind-address"></a>**`inet4_bind_address`** — Local IPv4 address to bind to.
   - Type: string, format `ipv4`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`inet6_bind_address`** — Local IPv6 address to bind to.
+- <a id="body-inet6-bind-address"></a>**`inet6_bind_address`** — Local IPv6 address to bind to.
   - Type: string
-- **`connect_timeout`** — Timeout for establishing the connection.
+- <a id="body-connect-timeout"></a>**`connect_timeout`** — Timeout for establishing the connection.
   - Type: duration
-- **`tcp_fast_open`** — Use TCP Fast Open.
+- <a id="body-tcp-fast-open"></a>**`tcp_fast_open`** — Use TCP Fast Open.
   - Type: bool
   - Default: `false`
-  - Forbidden for: `anytls`
-- **`udp_fragment`** — Allow fragmenting UDP packets.
+- <a id="body-udp-fragment"></a>**`udp_fragment`** — Allow fragmenting UDP packets.
   - Type: bool, tristate
-- **`domain_resolver`** — DNS server tag used to resolve the server domain.
+- <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.
   - Type: string
 
 ## Diagnosed problems
@@ -100,11 +143,11 @@ The path is the one used in the node body.
 Every code that can be raised on a node of this scheme, including the ones coming from the shared TLS, transport, multiplex and dialer sub-schemas. Follow a code for what it means and what to do about it.
 
 - [`field_missing`](../warnings.md#field_missing)
-  - `server` — on_invalid: drop_node → node dropped
+  - [`server`](#body-server) — the value does not fit the field → node dropped
 - [`port_invalid`](../warnings.md#port_invalid)
-  - `server_port` — on_invalid: drop_node → node dropped
+  - [`server_port`](#body-server-port) — the value does not fit the field → node dropped
 - [`type_invalid`](../warnings.md#type_invalid)
-  - `inet4_bind_address` — on_invalid: drop → removed
+  - [`inet4_bind_address`](#body-inet4-bind-address) — the value does not fit the field → removed
 
 ## Replacements
 

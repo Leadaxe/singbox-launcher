@@ -4,14 +4,33 @@
 
 [← index](../index.md) · [diagnosed problems](../warnings.md)
 
+`tailscale` — an endpoint (a tunnel interface, not a plain outbound), sing-box type `tailscale`. Accepted from: sing-box JSON.
+
+<sub>Schema checked against core `1.14.1-lx.4`</sub>
+
 | Field | Value |
 |---|---|
 | `scheme` | `tailscale` |
 | `singbox_type` | `tailscale` |
 | `kind` | `endpoint` |
 | `sources` | `singbox` |
-| `extension` | — |
 | Core the schema was checked against | `1.14.1-lx.4` |
+
+## How to read this page
+
+```
+sing-box JSON       node body              sanitizer            core config
+or a form field ──▶ sing-box JSON,    ──▶  checks each     ──▶  what sing-box
+                    stored in state         body field's         is actually
+                                            value                started with
+```
+
+- **Body fields** — the node body itself: the sing-box JSON kept in the launcher state, with the rule applied to each value.
+- **Diagnosed problems** — every warning code a node of this scheme can carry, and the field that raises it.
+- **Replacements** — what is silently rewritten on the way in: other spellings of the same name, values normalized or substituted, and structural decisions the mapper takes before any value is judged.
+- **Degradation** — the same rules grouped by outcome: what drops the node, what only drops a field, and what is merely worth knowing.
+
+A bad value never breaks the whole config: the field is dropped, replaced or — at worst — the single node is.
 
 ## Link parameters
 
@@ -19,91 +38,90 @@ The scheme has no link form: it comes from sing-box JSON only.
 
 ## Body fields
 
-The path is the one used in the node body.
+The node body itself — the sing-box JSON kept in the launcher state. The path is the one used in that body.
 
-- **`state_directory`** — Directory holding the tailnet state.
+- <a id="body-state-directory"></a>**`state_directory`** — Directory holding the tailnet state.
   - Type: string
   - Default: `tailscale`
-- **`auth_key`** — Pre-authentication key for the tailnet.
+- <a id="body-auth-key"></a>**`auth_key`** — Pre-authentication key for the tailnet.
   - Type: string, secret
-- **`control_url`** — Control plane URL.
+- <a id="body-control-url"></a>**`control_url`** — Control plane URL.
   - Type: string
   - Default: `https://controlplane.tailscale.com`
-- **`ephemeral`** — Register as an ephemeral node.
+- <a id="body-ephemeral"></a>**`ephemeral`** — Register as an ephemeral node.
   - Type: bool
   - Default: `false`
-- **`hostname`** — Host name announced to the tailnet.
+- <a id="body-hostname"></a>**`hostname`** — Host name announced to the tailnet.
   - Type: string
-- **`accept_routes`** — Accept routes advertised by other nodes.
+- <a id="body-accept-routes"></a>**`accept_routes`** — Accept routes advertised by other nodes.
   - Type: bool
   - Default: `false`
-- **`exit_node`** — Tailnet node used as the exit node.
+- <a id="body-exit-node"></a>**`exit_node`** — Tailnet node used as the exit node.
   - Type: string
   - Conflicts with: `advertise_exit_node`
-- **`exit_node_allow_lan_access`** — Allow LAN access while an exit node is used.
+- <a id="body-exit-node-allow-lan-access"></a>**`exit_node_allow_lan_access`** — Allow LAN access while an exit node is used.
   - Type: bool
   - Default: `false`
-- **`advertise_routes`** — Prefixes advertised to the tailnet.
+- <a id="body-advertise-routes"></a>**`advertise_routes`** — Prefixes advertised to the tailnet.
   - Type: string_array, format `cidr`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`advertise_exit_node`** — Offer this node as an exit node.
+- <a id="body-advertise-exit-node"></a>**`advertise_exit_node`** — Offer this node as an exit node.
   - Type: bool
   - Default: `false`
-- **`advertise_tags`** — ACL tags advertised to the tailnet.
+- <a id="body-advertise-tags"></a>**`advertise_tags`** — ACL tags advertised to the tailnet.
   - Type: listable_string
-- **`listen_port`** — Local UDP port for WireGuard traffic.
+- <a id="body-listen-port"></a>**`listen_port`** — Local UDP port for WireGuard traffic.
   - Type: uint16, format `port`, `1–65535`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`relay_server_port`** — Port of the built-in relay server.
+- <a id="body-relay-server-port"></a>**`relay_server_port`** — Port of the built-in relay server.
   - Type: uint16, tristate, format `port`, `1–65535`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`relay_server_static_endpoints`** — Static endpoints of the relay server.
+- <a id="body-relay-server-static-endpoints"></a>**`relay_server_static_endpoints`** — Static endpoints of the relay server.
   - Type: string_array
-- **`system_interface`** — Use a system interface instead of the userspace stack.
+- <a id="body-system-interface"></a>**`system_interface`** — Use a system interface instead of the userspace stack.
   - Type: bool
   - Default: `false`
-- **`system_interface_name`** — Name of the system interface.
+- <a id="body-system-interface-name"></a>**`system_interface_name`** — Name of the system interface.
   - Type: string
-- **`system_interface_mtu`** — MTU of the system interface.
+- <a id="body-system-interface-mtu"></a>**`system_interface_mtu`** — MTU of the system interface.
   - Type: int, `576–1500`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`udp_timeout`** — Idle timeout of a UDP session.
+- <a id="body-udp-timeout"></a>**`udp_timeout`** — Idle timeout of a UDP session.
   - Type: duration
-- **`ssh_server`** — Built-in SSH server settings.
+- <a id="body-ssh-server"></a>**`ssh_server`** — Built-in SSH server settings.
   - Type: object
-- **`ssh_server.enabled`** — Enable the built-in SSH server.
+- <a id="body-ssh-server-enabled"></a>**`ssh_server.enabled`** — Enable the built-in SSH server.
   - Type: bool
   - Default: `false`
-- **`ssh_server.disable_pty`** — Disable PTY allocation.
+- <a id="body-ssh-server-disable-pty"></a>**`ssh_server.disable_pty`** — Disable PTY allocation.
   - Type: bool
   - Default: `false`
-- **`ssh_server.disable_sftp`** — Disable SFTP subsystem.
+- <a id="body-ssh-server-disable-sftp"></a>**`ssh_server.disable_sftp`** — Disable SFTP subsystem.
   - Type: bool
   - Default: `false`
-- **`ssh_server.disable_forwarding`** — Disable port forwarding.
+- <a id="body-ssh-server-disable-forwarding"></a>**`ssh_server.disable_forwarding`** — Disable port forwarding.
   - Type: bool
   - Default: `false`
-- **`taildrop_directory`** — Directory receiving Taildrop files.
+- <a id="body-taildrop-directory"></a>**`taildrop_directory`** — Directory receiving Taildrop files.
   - Type: string
   - Default: `Taildrop`
-- **`detour`** — Tag of the outbound this connection is routed through.
+- <a id="body-detour"></a>**`detour`** — Tag of the outbound this connection is routed through.
   - Type: string, set by config build
-- **`bind_interface`** — Network interface the connection is bound to.
+- <a id="body-bind-interface"></a>**`bind_interface`** — Network interface the connection is bound to.
   - Type: string
-- **`inet4_bind_address`** — Local IPv4 address to bind to.
+- <a id="body-inet4-bind-address"></a>**`inet4_bind_address`** — Local IPv4 address to bind to.
   - Type: string, format `ipv4`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`inet6_bind_address`** — Local IPv6 address to bind to.
+- <a id="body-inet6-bind-address"></a>**`inet6_bind_address`** — Local IPv6 address to bind to.
   - Type: string
-- **`connect_timeout`** — Timeout for establishing the connection.
+- <a id="body-connect-timeout"></a>**`connect_timeout`** — Timeout for establishing the connection.
   - Type: duration
-- **`tcp_fast_open`** — Use TCP Fast Open.
+- <a id="body-tcp-fast-open"></a>**`tcp_fast_open`** — Use TCP Fast Open.
   - Type: bool
   - Default: `false`
-  - Forbidden for: `anytls`
-- **`udp_fragment`** — Allow fragmenting UDP packets.
+- <a id="body-udp-fragment"></a>**`udp_fragment`** — Allow fragmenting UDP packets.
   - Type: bool, tristate
-- **`domain_resolver`** — DNS server tag used to resolve the server domain.
+- <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.
   - Type: string
 
 ## Diagnosed problems
@@ -111,13 +129,13 @@ The path is the one used in the node body.
 Every code that can be raised on a node of this scheme, including the ones coming from the shared TLS, transport, multiplex and dialer sub-schemas. Follow a code for what it means and what to do about it.
 
 - [`field_conflict`](../warnings.md#field_conflict)
-  - `exit_node` — conflicts with `advertise_exit_node` → removed
+  - [`exit_node`](#body-exit-node) — conflicts with `advertise_exit_node` → removed
 - [`type_invalid`](../warnings.md#type_invalid)
-  - `advertise_routes` — on_invalid: drop → removed
-  - `listen_port` — on_invalid: drop → removed
-  - `relay_server_port` — on_invalid: drop → removed
-  - `system_interface_mtu` — on_invalid: drop → removed
-  - `inet4_bind_address` — on_invalid: drop → removed
+  - [`advertise_routes`](#body-advertise-routes) — the value does not fit the field → removed
+  - [`listen_port`](#body-listen-port) — the value does not fit the field → removed
+  - [`relay_server_port`](#body-relay-server-port) — the value does not fit the field → removed
+  - [`system_interface_mtu`](#body-system-interface-mtu) — the value does not fit the field → removed
+  - [`inet4_bind_address`](#body-inet4-bind-address) — the value does not fit the field → removed
 
 ## Replacements
 

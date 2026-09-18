@@ -9,6 +9,17 @@ These pages are generated from the `contract/registry/` registry by `go generate
 | Contract (`contract/VERSION`) | `1.1.3` |
 | Core (`body.core`) | `1.14.1-lx.4` |
 
+## How to read these pages
+
+```
+share link          mapper                node body              sanitizer            core config
+vless://…?…         ──▶ link parameter   ──▶  sing-box JSON,    ──▶  checks each     ──▶  what sing-box
+                     becomes a body         stored in state        body field's         is actually
+                     field                                         value                started with
+```
+
+Each scheme page lists the **link parameters** (the share-link dictionary and the body field every parameter becomes) and the **body fields** (the sing-box JSON kept in the launcher state, with the rule applied to each value). The body rules hold for every input alike — link, sing-box JSON, Xray JSON or a hand-filled form. Three more sections follow: the warning codes a node can carry, what is silently replaced on the way in, and what a bad value costs — a field or the whole node.
+
 ## Pipeline
 
 Every input — a share URI, sing-box or Xray JSON, a wg-conf, a hand-written body — goes through the same three stages in both apps:
@@ -21,25 +32,25 @@ The normative text is [`contract/docs/CANON.md` §8](../CANON.md).
 
 ## Schemes
 
-| Scheme | sing-box `type` | `kind` | Sources | `extension` | Link form |
-|---|---|---|---|---|---|
-| [`anytls`](protocols/anytls.md) | `anytls` | `outbound` | `uri`, `singbox` | — | yes |
-| [`chain`](protocols/chain.md) | `chain` | `outbound` | — | — | no |
-| [`group`](protocols/group.md) | `selector\|urltest` | `group` | `singbox`, `xray`, `uri` | — | yes |
-| [`http`](protocols/http.md) | `http` | `outbound` | `uri`, `singbox` | — | yes |
-| [`hysteria`](protocols/hysteria.md) | `hysteria` | `outbound` | `uri`, `singbox`, `xray` | `desktop` | yes |
-| [`hysteria2`](protocols/hysteria2.md) | `hysteria2` | `outbound` | `uri`, `singbox`, `xray` | — | yes |
-| [`masque`](protocols/masque.md) | `masque` | `outbound` | `uri`, `singbox` | — | yes |
-| [`naive`](protocols/naive.md) | `naive` | `outbound` | `uri`, `singbox` | — | yes |
-| [`shadowsocks`](protocols/shadowsocks.md) | `shadowsocks` | `outbound` | `uri`, `singbox`, `xray` | — | yes |
-| [`socks`](protocols/socks.md) | `socks` | `outbound` | `uri`, `singbox` | — | yes |
-| [`ssh`](protocols/ssh.md) | `ssh` | `outbound` | `uri`, `singbox` | — | yes |
-| [`tailscale`](protocols/tailscale.md) | `tailscale` | `endpoint` | `singbox` | — | no |
-| [`trojan`](protocols/trojan.md) | `trojan` | `outbound` | `uri`, `singbox`, `xray` | — | yes |
-| [`tuic`](protocols/tuic.md) | `tuic` | `outbound` | `uri`, `singbox` | — | yes |
-| [`vless`](protocols/vless.md) | `vless` | `outbound` | `uri`, `singbox`, `xray` | — | yes |
-| [`vmess`](protocols/vmess.md) | `vmess` | `outbound` | `uri`, `singbox`, `xray` | — | yes |
-| [`wireguard`](protocols/wireguard.md) | `wireguard` | `endpoint` | `uri`, `singbox`, `wgconf`, `amnezia` | — | yes |
+| Scheme | sing-box `type` | `kind` | Accepted from | Link form |
+|---|---|---|---|---|
+| [`anytls`](protocols/anytls.md) | `anytls` | `outbound` | share link, sing-box JSON | yes |
+| [`chain`](protocols/chain.md) | `chain` | `outbound` | — | no |
+| [`group`](protocols/group.md) | `selector\|urltest` | `group` | sing-box JSON, Xray JSON, share link | yes |
+| [`http`](protocols/http.md) | `http` | `outbound` | share link, sing-box JSON | yes |
+| [`hysteria`](protocols/hysteria.md) — Supported by the desktop launcher only | `hysteria` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
+| [`hysteria2`](protocols/hysteria2.md) | `hysteria2` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
+| [`masque`](protocols/masque.md) | `masque` | `outbound` | share link, sing-box JSON | yes |
+| [`naive`](protocols/naive.md) | `naive` | `outbound` | share link, sing-box JSON | yes |
+| [`shadowsocks`](protocols/shadowsocks.md) | `shadowsocks` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
+| [`socks`](protocols/socks.md) | `socks` | `outbound` | share link, sing-box JSON | yes |
+| [`ssh`](protocols/ssh.md) | `ssh` | `outbound` | share link, sing-box JSON | yes |
+| [`tailscale`](protocols/tailscale.md) | `tailscale` | `endpoint` | sing-box JSON | no |
+| [`trojan`](protocols/trojan.md) | `trojan` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
+| [`tuic`](protocols/tuic.md) | `tuic` | `outbound` | share link, sing-box JSON | yes |
+| [`vless`](protocols/vless.md) | `vless` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
+| [`vmess`](protocols/vmess.md) | `vmess` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
+| [`wireguard`](protocols/wireguard.md) | `wireguard` | `endpoint` | share link, sing-box JSON, WireGuard .conf, AmneziaWG .conf | yes |
 
 ## Shared sub-schemas
 

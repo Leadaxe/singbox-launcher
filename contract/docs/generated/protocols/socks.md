@@ -4,6 +4,10 @@
 
 [← index](../index.md) · [diagnosed problems](../warnings.md)
 
+`socks` — an outbound, sing-box type `socks`. Also written as `socks5`. Accepted from: share link, sing-box JSON.
+
+<sub>Schema checked against core `1.14.1-lx.4` · the link fragment (`#…`) is the node `label`</sub>
+
 | Field | Value |
 |---|---|
 | `scheme` | `socks` |
@@ -11,68 +15,96 @@
 | `kind` | `outbound` |
 | `aliases` | `socks5` |
 | `sources` | `uri`, `singbox` |
-| `extension` | — |
 | Core the schema was checked against | `1.14.1-lx.4` |
 | URI fragment | `label` |
 
+## How to read this page
+
+```
+share link          mapper                node body              sanitizer            core config
+socks://…?…         ──▶ link parameter   ──▶  sing-box JSON,    ──▶  checks each     ──▶  what sing-box
+                     becomes a body         stored in state        body field's         is actually
+                     field                                         value                started with
+```
+
+- **Link parameters** — the dictionary of the share link: every parameter this scheme understands, and the body field each one becomes.
+- **Body fields** — the node body itself: the sing-box JSON kept in the launcher state. The rules here hold for every input alike — a share link, sing-box JSON, Xray JSON or a hand-filled form — because they are checked after the input has already become a body.
+- **Diagnosed problems** — every warning code a node of this scheme can carry, and the field that raises it.
+- **Replacements** — what is silently rewritten on the way in: other spellings of the same name, values normalized or substituted, and structural decisions the mapper takes before any value is judged.
+- **Degradation** — the same rules grouped by outcome: what drops the node, what only drops a field, and what is merely worth knowing.
+
+A bad value never breaks the whole config: the field is dropped, replaced or — at worst — the single node is. Each link parameter says which of the three happens to it, taken from the rule of the body field it maps to.
+
 ## Link parameters
 
-- **`userinfo`** — username:password of the account.
-  - Type: `username:password`
-  - Maps to: `username`, `password`
+Everything a link of this scheme can carry. **Maps to** points at the body field the value lands in; **If invalid** is that field's own rule.
 
-Shared link parameters live on their own pages: [TLS / REALITY](_tls.md#link-parameters), [transports](_transports.md).
+### Common
+
+- <a id="link-common-userinfo"></a>**`userinfo`** — username:password of the account.
+  - Type: `username:password`
+  - Maps to: [`username`](#body-username), [`password`](#body-password)
+- <a id="link-common-host"></a>**`host`** — The authority of the link: everything before `:` in `scheme://…@host:port`.
+  - Maps to: [`server`](#body-server)
+  - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+- <a id="link-common-port"></a>**`port`** — The authority of the link: everything after `:` in `scheme://…@host:port`.
+  - Maps to: [`server_port`](#body-server-port)
+  - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
+- <a id="link-common-fragment"></a>**`#fragment`** — The part after `#`: the name the node is shown under. It is not a body field — it is the node `label`.
 
 ## Body fields
 
-The path is the one used in the node body.
+The node body itself — the sing-box JSON kept in the launcher state. The path is the one used in that body, and the rules below apply to every input alike: a share link, sing-box JSON, Xray JSON or a hand-filled form.
 
-- **`server`** — Server address: domain or IP.
+- <a id="body-server"></a>**`server`** — Server address: domain or IP.
   - Type: string, format `host`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
+  - Set by link parameter: [`host`](#link-common-host)
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
-- **`server_port`** — Server port.
+- <a id="body-server-port"></a>**`server_port`** — Server port.
   - Type: uint16, format `port`, `1–65535`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
+  - Set by link parameter: [`port`](#link-common-port)
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
-- **`version`** — SOCKS protocol version.
+- <a id="body-version"></a>**`version`** — SOCKS protocol version.
   - Type: enum, `""`, `4`, `4a`, `5`, normalized: `trim_lower`
   - Default: `5`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`username`** — Account user name.
+- <a id="body-username"></a>**`username`** — Account user name.
   - Type: string
-- **`password`** — Account password.
+  - Set by link parameter: [`userinfo`](#link-common-userinfo)
+- <a id="body-password"></a>**`password`** — Account password.
   - Type: string, secret
-- **`network`** — Networks this outbound handles.
+  - Set by link parameter: [`userinfo`](#link-common-userinfo)
+- <a id="body-network"></a>**`network`** — Networks this outbound handles.
   - Type: listable_string, `tcp`, `udp`, normalized: `trim_lower`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`udp_over_tcp`** — UDP-over-TCP settings.
+- <a id="body-udp-over-tcp"></a>**`udp_over_tcp`** — UDP-over-TCP settings.
   - Type: object
-- **`udp_over_tcp.enabled`** — Tunnel UDP over the TCP connection.
+- <a id="body-udp-over-tcp-enabled"></a>**`udp_over_tcp.enabled`** — Tunnel UDP over the TCP connection.
   - Type: bool
   - Default: `false`
-- **`udp_over_tcp.version`** — UDP-over-TCP protocol version.
+- <a id="body-udp-over-tcp-version"></a>**`udp_over_tcp.version`** — UDP-over-TCP protocol version.
   - Type: enum, `1`, `2`
   - Default: `2`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`detour`** — Tag of the outbound this connection is routed through.
+- <a id="body-detour"></a>**`detour`** — Tag of the outbound this connection is routed through.
   - Type: string, set by config build
-- **`bind_interface`** — Network interface the connection is bound to.
+- <a id="body-bind-interface"></a>**`bind_interface`** — Network interface the connection is bound to.
   - Type: string
-- **`inet4_bind_address`** — Local IPv4 address to bind to.
+- <a id="body-inet4-bind-address"></a>**`inet4_bind_address`** — Local IPv4 address to bind to.
   - Type: string, format `ipv4`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`inet6_bind_address`** — Local IPv6 address to bind to.
+- <a id="body-inet6-bind-address"></a>**`inet6_bind_address`** — Local IPv6 address to bind to.
   - Type: string
-- **`connect_timeout`** — Timeout for establishing the connection.
+- <a id="body-connect-timeout"></a>**`connect_timeout`** — Timeout for establishing the connection.
   - Type: duration
-- **`tcp_fast_open`** — Use TCP Fast Open.
+- <a id="body-tcp-fast-open"></a>**`tcp_fast_open`** — Use TCP Fast Open.
   - Type: bool
   - Default: `false`
-  - Forbidden for: `anytls`
-- **`udp_fragment`** — Allow fragmenting UDP packets.
+- <a id="body-udp-fragment"></a>**`udp_fragment`** — Allow fragmenting UDP packets.
   - Type: bool, tristate
-- **`domain_resolver`** — DNS server tag used to resolve the server domain.
+- <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.
   - Type: string
 
 ## Diagnosed problems
@@ -80,14 +112,14 @@ The path is the one used in the node body.
 Every code that can be raised on a node of this scheme, including the ones coming from the shared TLS, transport, multiplex and dialer sub-schemas. Follow a code for what it means and what to do about it.
 
 - [`field_missing`](../warnings.md#field_missing)
-  - `server` — on_invalid: drop_node → node dropped
+  - [`server`](#body-server) — the value does not fit the field → node dropped
 - [`port_invalid`](../warnings.md#port_invalid)
-  - `server_port` — on_invalid: drop_node → node dropped
+  - [`server_port`](#body-server-port) — the value does not fit the field → node dropped
 - [`type_invalid`](../warnings.md#type_invalid)
-  - `version` — on_invalid: drop → removed
-  - `network` — on_invalid: drop → removed
-  - `udp_over_tcp.version` — on_invalid: drop → removed
-  - `inet4_bind_address` — on_invalid: drop → removed
+  - [`version`](#body-version) — the value does not fit the field → removed
+  - [`network`](#body-network) — the value does not fit the field → removed
+  - [`udp_over_tcp.version`](#body-udp-over-tcp-version) — the value does not fit the field → removed
+  - [`inet4_bind_address`](#body-inet4-bind-address) — the value does not fit the field → removed
 
 ## Replacements
 

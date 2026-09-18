@@ -10,39 +10,39 @@ Core the schema was checked against: `1.14.1-lx.4`
 
 ## Body fields
 
-- **`enabled`** — Enable stream multiplexing.
+- <a id="body-enabled"></a>**`enabled`** — Enable stream multiplexing.
   - Type: bool
   - Default: `false`
-- **`protocol`** — Multiplexing protocol.
+- <a id="body-protocol"></a>**`protocol`** — Multiplexing protocol.
   - Type: enum, `""`, `h2mux`, `smux`, `yamux`, normalized: `trim_lower`
   - Default: `h2mux`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`max_connections`** — Maximum number of parallel connections.
+- <a id="body-max-connections"></a>**`max_connections`** — Maximum number of parallel connections.
   - Type: int, `0–…`
   - Default: `0`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`min_streams`** — Minimum streams before opening a new connection.
+- <a id="body-min-streams"></a>**`min_streams`** — Minimum streams before opening a new connection.
   - Type: int, `0–…`
   - Default: `0`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`max_streams`** — Maximum streams per connection.
+- <a id="body-max-streams"></a>**`max_streams`** — Maximum streams per connection.
   - Type: int, `0–…`
   - Default: `0`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`padding`** — Pad multiplexed frames.
+- <a id="body-padding"></a>**`padding`** — Pad multiplexed frames.
   - Type: bool
   - Default: `false`
-- **`brutal`** — TCP Brutal congestion control settings.
+- <a id="body-brutal"></a>**`brutal`** — TCP Brutal congestion control settings.
   - Type: object
-- **`brutal.enabled`** — Enable the TCP Brutal congestion control.
+- <a id="body-brutal-enabled"></a>**`brutal.enabled`** — Enable the TCP Brutal congestion control.
   - Type: bool
   - Default: `false`
-- **`brutal.up_mbps`** — Upload bandwidth in Mbps.
+- <a id="body-brutal-up-mbps"></a>**`brutal.up_mbps`** — Upload bandwidth in Mbps.
   - Type: int, `1–…`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`brutal.down_mbps`** — Download bandwidth in Mbps.
+- <a id="body-brutal-down-mbps"></a>**`brutal.down_mbps`** — Download bandwidth in Mbps.
   - Type: int, `1–…`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 

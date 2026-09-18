@@ -128,7 +128,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`anytls`](protocols/anytls.md)
-  - `min_idle_session` — on_invalid: drop → removed
+  - [`min_idle_session`](protocols/anytls.md#body-min-idle-session) — the value does not fit the field → removed
 
 <a id="awg3_core_unsupported"></a>
 ### awg3_core_unsupported
@@ -163,12 +163,12 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`wireguard`](protocols/wireguard.md)
-  - `header_protection_key` — on_invalid: drop → removed
-  - `ib` — on_invalid: drop → removed
-  - `id` — on_invalid: drop → removed
-  - `ip` — on_invalid: drop → removed
-  - `s3` — on_invalid: drop → removed
-  - `s4` — on_invalid: drop → removed
+  - [`header_protection_key`](protocols/wireguard.md#body-header-protection-key) — the value does not fit the field → removed
+  - [`ib`](protocols/wireguard.md#body-ib) — the value does not fit the field → removed
+  - [`id`](protocols/wireguard.md#body-id) — the value does not fit the field → removed
+  - [`ip`](protocols/wireguard.md#body-ip) — the value does not fit the field → removed
+  - [`s3`](protocols/wireguard.md#body-s3) — the value does not fit the field → removed
+  - [`s4`](protocols/wireguard.md#body-s4) — the value does not fit the field → removed
 
 <a id="awg3_header_key_invalid"></a>
 ### awg3_header_key_invalid
@@ -237,12 +237,12 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`wireguard`](protocols/wireguard.md)
-  - `jc` — on_invalid: drop → removed
-  - `jmax` — on_invalid: drop → removed
-  - `jmin` — on_invalid: drop → removed
-  - `jmin` — requires jmax → removed
-  - `s1` — on_invalid: drop → removed
-  - `s2` — on_invalid: drop → removed
+  - [`jc`](protocols/wireguard.md#body-jc) — the value does not fit the field → removed
+  - [`jmax`](protocols/wireguard.md#body-jmax) — the value does not fit the field → removed
+  - [`jmin`](protocols/wireguard.md#body-jmin) — set without `jmax` → removed
+  - [`jmin`](protocols/wireguard.md#body-jmin) — the value does not fit the field → removed
+  - [`s1`](protocols/wireguard.md#body-s1) — the value does not fit the field → removed
+  - [`s2`](protocols/wireguard.md#body-s2) — the value does not fit the field → removed
 
 <a id="awg_headers_overlap"></a>
 ### awg_headers_overlap
@@ -514,36 +514,36 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`dialer`](protocols/_dialer.md)
-  - `tcp_fast_open` — forbidden_for anytls → removed
+  - [`tcp_fast_open`](protocols/_dialer.md#body-tcp-fast-open) — not supported by `anytls` → removed
 - [`hysteria2`](protocols/hysteria2.md)
-  - `realm` — conflicts server → removed
-  - `realm` — conflicts server_port → removed
-  - `realm` — conflicts server_ports → removed
-  - `server_ports` — conflicts realm → removed
+  - [`realm`](protocols/hysteria2.md#body-realm) — conflicts with `server_port` → removed
+  - [`realm`](protocols/hysteria2.md#body-realm) — conflicts with `server_ports` → removed
+  - [`realm`](protocols/hysteria2.md#body-realm) — conflicts with `server` → removed
+  - [`server_ports`](protocols/hysteria2.md#body-server-ports) — conflicts with `realm` → removed
 - [`tailscale`](protocols/tailscale.md)
-  - `exit_node` — conflicts advertise_exit_node → removed
+  - [`exit_node`](protocols/tailscale.md#body-exit-node) — conflicts with `advertise_exit_node` → removed
 - [`tls`](protocols/_tls.md)
-  - `certificate_public_key_sha256` — conflicts tls.certificate → removed
-  - `certificate_public_key_sha256` — conflicts tls.certificate_path → removed
-  - `disable_sni` — conflicts tls.reality.enabled → removed
-  - `ech.enabled` — conflicts tls.reality.enabled → removed
-  - `reality.enabled` — conflicts tls.disable_sni → removed
-  - `reality.enabled` — conflicts tls.ech.enabled → removed
-  - `reality.enabled` — conflicts tls.spoof → removed
-  - `spoof` — conflicts tls.disable_sni → removed
-  - `spoof` — conflicts tls.reality.enabled → removed
+  - [`certificate_public_key_sha256`](protocols/_tls.md#body-certificate-public-key-sha256) — conflicts with `tls.certificate_path` → removed
+  - [`certificate_public_key_sha256`](protocols/_tls.md#body-certificate-public-key-sha256) — conflicts with `tls.certificate` → removed
+  - [`disable_sni`](protocols/_tls.md#body-disable-sni) — conflicts with `tls.reality.enabled` → removed
+  - [`ech.enabled`](protocols/_tls.md#body-ech-enabled) — conflicts with `tls.reality.enabled` → removed
+  - [`reality.enabled`](protocols/_tls.md#body-reality-enabled) — conflicts with `tls.disable_sni` → removed
+  - [`reality.enabled`](protocols/_tls.md#body-reality-enabled) — conflicts with `tls.ech.enabled` → removed
+  - [`reality.enabled`](protocols/_tls.md#body-reality-enabled) — conflicts with `tls.spoof` → removed
+  - [`spoof`](protocols/_tls.md#body-spoof) — conflicts with `tls.disable_sni` → removed
+  - [`spoof`](protocols/_tls.md#body-spoof) — conflicts with `tls.reality.enabled` → removed
 - [`transports`](protocols/_transports.md)
-  - `xhttp.xmux.max_concurrency` — conflicts transport.xmux.max_connections → removed
+  - [`xhttp.xmux.max_concurrency`](protocols/_transports.md#body-xhttp-xmux-max-concurrency) — conflicts with `transport.xmux.max_connections` → removed
 - [`tuic`](protocols/tuic.md)
-  - `udp_relay_mode` — conflicts udp_over_stream → removed
+  - [`udp_relay_mode`](protocols/tuic.md#body-udp-relay-mode) — conflicts with `udp_over_stream` → removed
 - [`vless`](protocols/vless.md)
-  - `flow` — conflicts transport → removed
+  - [`flow`](protocols/vless.md#body-flow) — conflicts with `transport` → removed
 - [`wireguard`](protocols/wireguard.md)
-  - `i1` — conflicts ib → removed
-  - `i1` — conflicts id → removed
-  - `i1` — conflicts ip → removed
-  - `i2` — conflicts ip → removed
-  - `listen_port` — conflicts detour → removed
+  - [`i1`](protocols/wireguard.md#body-i1) — conflicts with `ib` → removed
+  - [`i1`](protocols/wireguard.md#body-i1) — conflicts with `id` → removed
+  - [`i1`](protocols/wireguard.md#body-i1) — conflicts with `ip` → removed
+  - [`i2`](protocols/wireguard.md#body-i2) — conflicts with `ip` → removed
+  - [`listen_port`](protocols/wireguard.md#body-listen-port) — conflicts with `detour` → removed
 
 <a id="field_missing"></a>
 ### field_missing
@@ -562,36 +562,36 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`anytls`](protocols/anytls.md)
-  - `tls` — required → node dropped
+  - [`tls`](protocols/anytls.md#body-tls) — required and missing → node dropped
 - [`chain`](protocols/chain.md)
-  - `outbounds` — required → node dropped
+  - [`outbounds`](protocols/chain.md#body-outbounds) — required and missing → node dropped
 - [`dialer`](protocols/_dialer.md)
-  - `server` — on_invalid: drop_node → node dropped
+  - [`server`](protocols/_dialer.md#body-server) — the value does not fit the field → node dropped
 - [`hysteria`](protocols/hysteria.md)
-  - `tls` — required → node dropped
+  - [`tls`](protocols/hysteria.md#body-tls) — required and missing → node dropped
 - [`hysteria2`](protocols/hysteria2.md)
-  - `obfs.password` — required → node dropped
-  - `tls` — required → node dropped
+  - [`obfs.password`](protocols/hysteria2.md#body-obfs-password) — required and missing → node dropped
+  - [`tls`](protocols/hysteria2.md#body-tls) — required and missing → node dropped
 - [`masque`](protocols/masque.md)
-  - `private_key` — on_invalid: drop_node → node dropped
-  - `public_key` — on_invalid: drop_node → node dropped
+  - [`private_key`](protocols/masque.md#body-private-key) — the value does not fit the field → node dropped
+  - [`public_key`](protocols/masque.md#body-public-key) — the value does not fit the field → node dropped
 - [`naive`](protocols/naive.md)
-  - `tls` — required → node dropped
+  - [`tls`](protocols/naive.md#body-tls) — required and missing → node dropped
 - [`shadowsocks`](protocols/shadowsocks.md)
-  - `password` — required → node dropped
+  - [`password`](protocols/shadowsocks.md#body-password) — required and missing → node dropped
 - [`trojan`](protocols/trojan.md)
-  - `password` — required → node dropped
+  - [`password`](protocols/trojan.md#body-password) — required and missing → node dropped
 - [`tuic`](protocols/tuic.md)
-  - `tls` — required → node dropped
+  - [`tls`](protocols/tuic.md#body-tls) — required and missing → node dropped
 - [`vless`](protocols/vless.md)
-  - `uuid` — required → node dropped
+  - [`uuid`](protocols/vless.md#body-uuid) — required and missing → node dropped
 - [`vmess`](protocols/vmess.md)
-  - `uuid` — required → node dropped
+  - [`uuid`](protocols/vmess.md#body-uuid) — required and missing → node dropped
 - [`wireguard`](protocols/wireguard.md)
-  - `peers` — required → node dropped
-  - `peers.address` — on_invalid: drop_node → node dropped
-  - `peers.public_key` — on_invalid: drop_node → node dropped
-  - `private_key` — on_invalid: drop_node → node dropped
+  - [`peers`](protocols/wireguard.md#body-peers) — required and missing → node dropped
+  - [`peers.address`](protocols/wireguard.md#body-peers-address) — the value does not fit the field → node dropped
+  - [`peers.public_key`](protocols/wireguard.md#body-peers-public-key) — the value does not fit the field → node dropped
+  - [`private_key`](protocols/wireguard.md#body-private-key) — the value does not fit the field → node dropped
 
 <a id="field_requires"></a>
 ### field_requires
@@ -609,24 +609,24 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`hysteria2`](protocols/hysteria2.md)
-  - `obfs.max_packet_size` — requires obfs.type → removed
-  - `obfs.min_packet_size` — requires obfs.type → removed
+  - [`obfs.max_packet_size`](protocols/hysteria2.md#body-obfs-max-packet-size) — set without `obfs.type` → removed
+  - [`obfs.min_packet_size`](protocols/hysteria2.md#body-obfs-min-packet-size) — set without `obfs.type` → removed
 - [`masque`](protocols/masque.md)
-  - `private_key` — requires public_key → removed
-  - `public_key` — requires private_key → removed
+  - [`private_key`](protocols/masque.md#body-private-key) — set without `public_key` → removed
+  - [`public_key`](protocols/masque.md#body-public-key) — set without `private_key` → removed
 - [`tls`](protocols/_tls.md)
-  - `client_certificate` — requires tls.client_key → removed
-  - `client_key` — requires tls.client_certificate → removed
-  - `reality.enabled` — requires tls.utls.enabled → removed
-  - `reality.key_share` — requires tls.reality.public_key → removed
-  - `reality.short_id` — requires tls.reality.public_key → removed
-  - `spoof_method` — requires tls.spoof → removed
+  - [`client_certificate`](protocols/_tls.md#body-client-certificate) — set without `tls.client_key` → removed
+  - [`client_key`](protocols/_tls.md#body-client-key) — set without `tls.client_certificate` → removed
+  - [`reality.enabled`](protocols/_tls.md#body-reality-enabled) — set without `tls.utls.enabled` → removed
+  - [`reality.key_share`](protocols/_tls.md#body-reality-key-share) — set without `tls.reality.public_key` → removed
+  - [`reality.short_id`](protocols/_tls.md#body-reality-short-id) — set without `tls.reality.public_key` → removed
+  - [`spoof_method`](protocols/_tls.md#body-spoof-method) — set without `tls.spoof` → removed
 - [`transports`](protocols/_transports.md)
-  - `xhttp.session_length` — requires transport.session_table → removed
-  - `xhttp.session_table` — requires transport.session_length → removed
+  - [`xhttp.session_length`](protocols/_transports.md#body-xhttp-session-length) — set without `transport.session_table` → removed
+  - [`xhttp.session_table`](protocols/_transports.md#body-xhttp-session-table) — set without `transport.session_length` → removed
 - [`wireguard`](protocols/wireguard.md)
-  - `ib` — requires ip → removed
-  - `id` — requires ip → removed
+  - [`ib`](protocols/wireguard.md#body-ib) — set without `ip` → removed
+  - [`id`](protocols/wireguard.md#body-id) — set without `ip` → removed
 
 <a id="flow_deprecated"></a>
 ### flow_deprecated
@@ -643,7 +643,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`vless`](protocols/vless.md)
-  - `flow` — on_invalid: drop → removed
+  - [`flow`](protocols/vless.md#body-flow) — the value does not fit the field → removed
 
 <a id="group_empty"></a>
 ### group_empty
@@ -695,7 +695,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`masque`](protocols/masque.md)
-  - `vhttp` — on_invalid: coerce → replaced with `h3`
+  - [`vhttp`](protocols/masque.md#body-vhttp) — the value does not fit the field → replaced with `h3`
 
 <a id="max_nodes_exceeded"></a>
 ### max_nodes_exceeded
@@ -780,7 +780,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`hysteria2`](protocols/hysteria2.md)
-  - `obfs.password` — code
+  - [`obfs.password`](protocols/hysteria2.md#body-obfs-password) — the field is present
 
 <a id="obfs_unknown"></a>
 ### obfs_unknown
@@ -798,7 +798,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`hysteria2`](protocols/hysteria2.md)
-  - `obfs.type` — on_invalid: drop → removed
+  - [`obfs.type`](protocols/hysteria2.md#body-obfs-type) — the value does not fit the field → removed
 
 <a id="packet_encoding_unknown"></a>
 ### packet_encoding_unknown
@@ -816,9 +816,9 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`vless`](protocols/vless.md)
-  - `packet_encoding` — on_invalid: drop → removed
+  - [`packet_encoding`](protocols/vless.md#body-packet-encoding) — the value does not fit the field → removed
 - [`vmess`](protocols/vmess.md)
-  - `packet_encoding` — on_invalid: drop → removed
+  - [`packet_encoding`](protocols/vmess.md#body-packet-encoding) — the value does not fit the field → removed
 
 <a id="port_invalid"></a>
 ### port_invalid
@@ -836,9 +836,9 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`dialer`](protocols/_dialer.md)
-  - `server_port` — on_invalid: drop_node → node dropped
+  - [`server_port`](protocols/_dialer.md#body-server-port) — the value does not fit the field → node dropped
 - [`wireguard`](protocols/wireguard.md)
-  - `peers.port` — on_invalid: drop_node → node dropped
+  - [`peers.port`](protocols/wireguard.md#body-peers-port) — the value does not fit the field → node dropped
 
 <a id="protocol_unsupported"></a>
 ### protocol_unsupported
@@ -874,7 +874,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`tls`](protocols/_tls.md)
-  - `utls.fingerprint` — advisory except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random` → kept with a notice
+  - [`utls.fingerprint`](protocols/_tls.md#body-utls-fingerprint) — the value is anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random` → kept with a notice
 
 <a id="reality_key_share_invalid"></a>
 ### reality_key_share_invalid
@@ -893,7 +893,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`tls`](protocols/_tls.md)
-  - `reality.key_share` — on_invalid: drop → removed
+  - [`reality.key_share`](protocols/_tls.md#body-reality-key-share) — the value does not fit the field → removed
 
 <a id="reality_pbk_invalid"></a>
 ### reality_pbk_invalid
@@ -912,7 +912,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`tls`](protocols/_tls.md)
-  - `reality.public_key` — on_invalid: drop → removed
+  - [`reality.public_key`](protocols/_tls.md#body-reality-public-key) — the value does not fit the field → removed
 
 <a id="reality_short_id_invalid"></a>
 ### reality_short_id_invalid
@@ -930,8 +930,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`tls`](protocols/_tls.md)
-  - `reality.short_id` — normalize hex_only → value cleaned up
-  - `reality.short_id` — on_invalid: drop → removed
+  - [`reality.short_id`](protocols/_tls.md#body-reality-short-id) — the value does not fit the field → removed
+  - [`reality.short_id`](protocols/_tls.md#body-reality-short-id) — the value had to be cleaned up (hex_only) → value cleaned up
 
 <a id="selector_as_auto"></a>
 ### selector_as_auto
@@ -982,7 +982,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`shadowsocks`](protocols/shadowsocks.md)
-  - `method` — on_invalid: drop_node → node dropped
+  - [`method`](protocols/shadowsocks.md#body-method) — the value does not fit the field → node dropped
 
 <a id="ss_method_legacy"></a>
 ### ss_method_legacy
@@ -1000,7 +1000,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`shadowsocks`](protocols/shadowsocks.md)
-  - `method` — advisory `aes-128-ctr`, `aes-192-ctr`, `aes-256-ctr`, `aes-128-cfb`, `aes-192-cfb`, `aes-256-cfb`, `rc4-md5`, `chacha20-ietf`, `xchacha20` → kept with a notice
+  - [`method`](protocols/shadowsocks.md#body-method) — the value is `aes-128-ctr`, `aes-192-ctr`, `aes-256-ctr`, `aes-128-cfb`, `aes-192-cfb`, `aes-256-cfb`, `rc4-md5`, `chacha20-ietf`, `xchacha20` → kept with a notice
 
 <a id="ssh_user_default"></a>
 ### ssh_user_default
@@ -1136,31 +1136,31 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`tls`](protocols/_tls.md)
-  - `alpn` — forbidden_for naive → removed
-  - `certificate_public_key_sha256` — forbidden_for naive → removed
-  - `cipher_suites` — forbidden_for naive → removed
-  - `client_certificate` — forbidden_for naive → removed
-  - `client_certificate_path` — forbidden_for naive → removed
-  - `client_key` — forbidden_for naive → removed
-  - `client_key_path` — forbidden_for naive → removed
-  - `curve_preferences` — forbidden_for naive → removed
-  - `disable_sni` — forbidden_for naive → removed
-  - `engine` — forbidden_for naive → removed
-  - `fragment` — forbidden_for naive → removed
-  - `fragment_fallback_delay` — forbidden_for naive → removed
-  - `handshake_timeout` — forbidden_for naive → removed
-  - `insecure` — forbidden_for naive → removed
-  - `kernel_rx` — forbidden_for naive → removed
-  - `kernel_tx` — forbidden_for naive → removed
-  - `max_version` — forbidden_for naive → removed
-  - `min_version` — forbidden_for naive → removed
-  - `reality` — forbidden_for naive → removed
-  - `reality.enabled` — forbidden_for naive → removed
-  - `record_fragment` — forbidden_for naive → removed
-  - `spoof` — forbidden_for naive → removed
-  - `spoof_method` — forbidden_for naive → removed
-  - `utls` — forbidden_for naive → removed
-  - `utls.enabled` — forbidden_for naive → removed
+  - [`alpn`](protocols/_tls.md#body-alpn) — not supported by `naive` → removed
+  - [`certificate_public_key_sha256`](protocols/_tls.md#body-certificate-public-key-sha256) — not supported by `naive` → removed
+  - [`cipher_suites`](protocols/_tls.md#body-cipher-suites) — not supported by `naive` → removed
+  - [`client_certificate`](protocols/_tls.md#body-client-certificate) — not supported by `naive` → removed
+  - [`client_certificate_path`](protocols/_tls.md#body-client-certificate-path) — not supported by `naive` → removed
+  - [`client_key`](protocols/_tls.md#body-client-key) — not supported by `naive` → removed
+  - [`client_key_path`](protocols/_tls.md#body-client-key-path) — not supported by `naive` → removed
+  - [`curve_preferences`](protocols/_tls.md#body-curve-preferences) — not supported by `naive` → removed
+  - [`disable_sni`](protocols/_tls.md#body-disable-sni) — not supported by `naive` → removed
+  - [`engine`](protocols/_tls.md#body-engine) — not supported by `naive` → removed
+  - [`fragment`](protocols/_tls.md#body-fragment) — not supported by `naive` → removed
+  - [`fragment_fallback_delay`](protocols/_tls.md#body-fragment-fallback-delay) — not supported by `naive` → removed
+  - [`handshake_timeout`](protocols/_tls.md#body-handshake-timeout) — not supported by `naive` → removed
+  - [`insecure`](protocols/_tls.md#body-insecure) — not supported by `naive` → removed
+  - [`kernel_rx`](protocols/_tls.md#body-kernel-rx) — not supported by `naive` → removed
+  - [`kernel_tx`](protocols/_tls.md#body-kernel-tx) — not supported by `naive` → removed
+  - [`max_version`](protocols/_tls.md#body-max-version) — not supported by `naive` → removed
+  - [`min_version`](protocols/_tls.md#body-min-version) — not supported by `naive` → removed
+  - [`reality`](protocols/_tls.md#body-reality) — not supported by `naive` → removed
+  - [`reality.enabled`](protocols/_tls.md#body-reality-enabled) — not supported by `naive` → removed
+  - [`record_fragment`](protocols/_tls.md#body-record-fragment) — not supported by `naive` → removed
+  - [`spoof`](protocols/_tls.md#body-spoof) — not supported by `naive` → removed
+  - [`spoof_method`](protocols/_tls.md#body-spoof-method) — not supported by `naive` → removed
+  - [`utls`](protocols/_tls.md#body-utls) — not supported by `naive` → removed
+  - [`utls.enabled`](protocols/_tls.md#body-utls-enabled) — not supported by `naive` → removed
 
 <a id="tls_insecure"></a>
 ### tls_insecure
@@ -1212,7 +1212,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`tuic`](protocols/tuic.md)
-  - `congestion_control` — on_invalid: drop → removed
+  - [`congestion_control`](protocols/tuic.md#body-congestion-control) — the value does not fit the field → removed
 
 <a id="tuic_udp_relay_mode_invalid"></a>
 ### tuic_udp_relay_mode_invalid
@@ -1230,7 +1230,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`tuic`](protocols/tuic.md)
-  - `udp_relay_mode` — on_invalid: drop → removed
+  - [`udp_relay_mode`](protocols/tuic.md#body-udp-relay-mode) — the value does not fit the field → removed
 
 <a id="type_invalid"></a>
 ### type_invalid
@@ -1249,83 +1249,83 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`dialer`](protocols/_dialer.md)
-  - `inet4_bind_address` — on_invalid: drop → removed
-  - `network` — on_invalid: drop → removed
+  - [`inet4_bind_address`](protocols/_dialer.md#body-inet4-bind-address) — the value does not fit the field → removed
+  - [`network`](protocols/_dialer.md#body-network) — the value does not fit the field → removed
 - [`hysteria`](protocols/hysteria.md)
-  - `auth` — on_invalid: drop → removed
-  - `connection_receive_window` — on_invalid: drop → removed
-  - `down_mbps` — on_invalid: drop → removed
-  - `initial_packet_size` — on_invalid: drop → removed
-  - `max_concurrent_streams` — on_invalid: drop → removed
-  - `stream_receive_window` — on_invalid: drop → removed
-  - `up_mbps` — on_invalid: drop → removed
+  - [`auth`](protocols/hysteria.md#body-auth) — the value does not fit the field → removed
+  - [`connection_receive_window`](protocols/hysteria.md#body-connection-receive-window) — the value does not fit the field → removed
+  - [`down_mbps`](protocols/hysteria.md#body-down-mbps) — the value does not fit the field → removed
+  - [`initial_packet_size`](protocols/hysteria.md#body-initial-packet-size) — the value does not fit the field → removed
+  - [`max_concurrent_streams`](protocols/hysteria.md#body-max-concurrent-streams) — the value does not fit the field → removed
+  - [`stream_receive_window`](protocols/hysteria.md#body-stream-receive-window) — the value does not fit the field → removed
+  - [`up_mbps`](protocols/hysteria.md#body-up-mbps) — the value does not fit the field → removed
 - [`hysteria2`](protocols/hysteria2.md)
-  - `bbr_profile` — on_invalid: drop → removed
-  - `connection_receive_window` — on_invalid: drop → removed
-  - `down_mbps` — on_invalid: drop → removed
-  - `initial_packet_size` — on_invalid: drop → removed
-  - `max_concurrent_streams` — on_invalid: drop → removed
-  - `obfs.max_packet_size` — on_invalid: drop → removed
-  - `obfs.min_packet_size` — on_invalid: drop → removed
-  - `stream_receive_window` — on_invalid: drop → removed
-  - `up_mbps` — on_invalid: drop → removed
+  - [`bbr_profile`](protocols/hysteria2.md#body-bbr-profile) — the value does not fit the field → removed
+  - [`connection_receive_window`](protocols/hysteria2.md#body-connection-receive-window) — the value does not fit the field → removed
+  - [`down_mbps`](protocols/hysteria2.md#body-down-mbps) — the value does not fit the field → removed
+  - [`initial_packet_size`](protocols/hysteria2.md#body-initial-packet-size) — the value does not fit the field → removed
+  - [`max_concurrent_streams`](protocols/hysteria2.md#body-max-concurrent-streams) — the value does not fit the field → removed
+  - [`obfs.max_packet_size`](protocols/hysteria2.md#body-obfs-max-packet-size) — the value does not fit the field → removed
+  - [`obfs.min_packet_size`](protocols/hysteria2.md#body-obfs-min-packet-size) — the value does not fit the field → removed
+  - [`stream_receive_window`](protocols/hysteria2.md#body-stream-receive-window) — the value does not fit the field → removed
+  - [`up_mbps`](protocols/hysteria2.md#body-up-mbps) — the value does not fit the field → removed
 - [`masque`](protocols/masque.md)
-  - `ip` — on_invalid: drop → removed
-  - `ipv6` — on_invalid: drop → removed
-  - `mtu` — on_invalid: drop → removed
-  - `profile` — on_invalid: drop → removed
+  - [`ip`](protocols/masque.md#body-ip) — the value does not fit the field → removed
+  - [`ipv6`](protocols/masque.md#body-ipv6) — the value does not fit the field → removed
+  - [`mtu`](protocols/masque.md#body-mtu) — the value does not fit the field → removed
+  - [`profile`](protocols/masque.md#body-profile) — the value does not fit the field → removed
 - [`multiplex`](protocols/_multiplex.md)
-  - `brutal.down_mbps` — on_invalid: drop → removed
-  - `brutal.up_mbps` — on_invalid: drop → removed
-  - `max_connections` — on_invalid: drop → removed
-  - `max_streams` — on_invalid: drop → removed
-  - `min_streams` — on_invalid: drop → removed
-  - `protocol` — on_invalid: drop → removed
+  - [`brutal.down_mbps`](protocols/_multiplex.md#body-brutal-down-mbps) — the value does not fit the field → removed
+  - [`brutal.up_mbps`](protocols/_multiplex.md#body-brutal-up-mbps) — the value does not fit the field → removed
+  - [`max_connections`](protocols/_multiplex.md#body-max-connections) — the value does not fit the field → removed
+  - [`max_streams`](protocols/_multiplex.md#body-max-streams) — the value does not fit the field → removed
+  - [`min_streams`](protocols/_multiplex.md#body-min-streams) — the value does not fit the field → removed
+  - [`protocol`](protocols/_multiplex.md#body-protocol) — the value does not fit the field → removed
 - [`naive`](protocols/naive.md)
-  - `insecure_concurrency` — on_invalid: drop → removed
-  - `quic_congestion_control` — on_invalid: drop → removed
-  - `quic_session_receive_window` — on_invalid: drop → removed
-  - `stream_receive_window` — on_invalid: drop → removed
-  - `udp_over_tcp.version` — on_invalid: drop → removed
+  - [`insecure_concurrency`](protocols/naive.md#body-insecure-concurrency) — the value does not fit the field → removed
+  - [`quic_congestion_control`](protocols/naive.md#body-quic-congestion-control) — the value does not fit the field → removed
+  - [`quic_session_receive_window`](protocols/naive.md#body-quic-session-receive-window) — the value does not fit the field → removed
+  - [`stream_receive_window`](protocols/naive.md#body-stream-receive-window) — the value does not fit the field → removed
+  - [`udp_over_tcp.version`](protocols/naive.md#body-udp-over-tcp-version) — the value does not fit the field → removed
 - [`shadowsocks`](protocols/shadowsocks.md)
-  - `udp_over_tcp.version` — on_invalid: drop → removed
+  - [`udp_over_tcp.version`](protocols/shadowsocks.md#body-udp-over-tcp-version) — the value does not fit the field → removed
 - [`socks`](protocols/socks.md)
-  - `udp_over_tcp.version` — on_invalid: drop → removed
-  - `version` — on_invalid: drop → removed
+  - [`udp_over_tcp.version`](protocols/socks.md#body-udp-over-tcp-version) — the value does not fit the field → removed
+  - [`version`](protocols/socks.md#body-version) — the value does not fit the field → removed
 - [`tailscale`](protocols/tailscale.md)
-  - `advertise_routes` — on_invalid: drop → removed
-  - `listen_port` — on_invalid: drop → removed
-  - `relay_server_port` — on_invalid: drop → removed
-  - `system_interface_mtu` — on_invalid: drop → removed
+  - [`advertise_routes`](protocols/tailscale.md#body-advertise-routes) — the value does not fit the field → removed
+  - [`listen_port`](protocols/tailscale.md#body-listen-port) — the value does not fit the field → removed
+  - [`relay_server_port`](protocols/tailscale.md#body-relay-server-port) — the value does not fit the field → removed
+  - [`system_interface_mtu`](protocols/tailscale.md#body-system-interface-mtu) — the value does not fit the field → removed
 - [`tls`](protocols/_tls.md)
-  - `certificate_public_key_sha256` — on_invalid: drop → removed
-  - `curve_preferences` — on_invalid: drop → removed
-  - `engine` — on_invalid: drop → removed
-  - `max_version` — on_invalid: drop → removed
-  - `min_version` — on_invalid: drop → removed
-  - `server_name` — on_invalid: drop → removed
-  - `spoof` — on_invalid: drop → removed
-  - `spoof_method` — on_invalid: drop → removed
+  - [`certificate_public_key_sha256`](protocols/_tls.md#body-certificate-public-key-sha256) — the value does not fit the field → removed
+  - [`curve_preferences`](protocols/_tls.md#body-curve-preferences) — the value does not fit the field → removed
+  - [`engine`](protocols/_tls.md#body-engine) — the value does not fit the field → removed
+  - [`max_version`](protocols/_tls.md#body-max-version) — the value does not fit the field → removed
+  - [`min_version`](protocols/_tls.md#body-min-version) — the value does not fit the field → removed
+  - [`server_name`](protocols/_tls.md#body-server-name) — the value does not fit the field → removed
+  - [`spoof`](protocols/_tls.md#body-spoof) — the value does not fit the field → removed
+  - [`spoof_method`](protocols/_tls.md#body-spoof-method) — the value does not fit the field → removed
 - [`transports`](protocols/_transports.md)
-  - `ws.max_early_data` — on_invalid: drop → removed
+  - [`ws.max_early_data`](protocols/_transports.md#body-ws-max-early-data) — the value does not fit the field → removed
 - [`tuic`](protocols/tuic.md)
-  - `connection_receive_window` — on_invalid: drop → removed
-  - `initial_packet_size` — on_invalid: drop → removed
-  - `max_concurrent_streams` — on_invalid: drop → removed
-  - `stream_receive_window` — on_invalid: drop → removed
-  - `uuid` — on_invalid: drop → removed
+  - [`connection_receive_window`](protocols/tuic.md#body-connection-receive-window) — the value does not fit the field → removed
+  - [`initial_packet_size`](protocols/tuic.md#body-initial-packet-size) — the value does not fit the field → removed
+  - [`max_concurrent_streams`](protocols/tuic.md#body-max-concurrent-streams) — the value does not fit the field → removed
+  - [`stream_receive_window`](protocols/tuic.md#body-stream-receive-window) — the value does not fit the field → removed
+  - [`uuid`](protocols/tuic.md#body-uuid) — the value does not fit the field → removed
 - [`vmess`](protocols/vmess.md)
-  - `alter_id` — on_invalid: drop → removed
-  - `security` — on_invalid: coerce → replaced with `auto`
+  - [`alter_id`](protocols/vmess.md#body-alter-id) — the value does not fit the field → removed
+  - [`security`](protocols/vmess.md#body-security) — the value does not fit the field → replaced with `auto`
 - [`wireguard`](protocols/wireguard.md)
-  - `address` — on_invalid: drop → removed
-  - `listen_port` — on_invalid: drop → removed
-  - `mtu` — on_invalid: drop → removed
-  - `peers.allowed_ips` — on_invalid: drop → removed
-  - `peers.pre_shared_key` — on_invalid: drop → removed
-  - `peers.reserved` — on_invalid: drop → removed
-  - `udp_nat_max` — on_invalid: drop → removed
-  - `workers` — on_invalid: drop → removed
+  - [`address`](protocols/wireguard.md#body-address) — the value does not fit the field → removed
+  - [`listen_port`](protocols/wireguard.md#body-listen-port) — the value does not fit the field → removed
+  - [`mtu`](protocols/wireguard.md#body-mtu) — the value does not fit the field → removed
+  - [`peers.allowed_ips`](protocols/wireguard.md#body-peers-allowed-ips) — the value does not fit the field → removed
+  - [`peers.pre_shared_key`](protocols/wireguard.md#body-peers-pre-shared-key) — the value does not fit the field → removed
+  - [`peers.reserved`](protocols/wireguard.md#body-peers-reserved) — the value does not fit the field → removed
+  - [`udp_nat_max`](protocols/wireguard.md#body-udp-nat-max) — the value does not fit the field → removed
+  - [`workers`](protocols/wireguard.md#body-workers) — the value does not fit the field → removed
 
 <a id="unknown_key"></a>
 ### unknown_key
@@ -1378,7 +1378,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`tls`](protocols/_tls.md)
-  - `utls.fingerprint` — on_invalid: coerce → replaced with `chrome`
+  - [`utls.fingerprint`](protocols/_tls.md#body-utls-fingerprint) — the value does not fit the field → replaced with `chrome`
 
 <a id="vision_with_transport"></a>
 ### vision_with_transport
@@ -1445,10 +1445,10 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`transports`](protocols/_transports.md)
-  - `xhttp.mode` — on_invalid: drop → removed
-  - `xhttp.seq_placement` — on_invalid: drop → removed
-  - `xhttp.session_placement` — on_invalid: drop → removed
-  - `xhttp.uplink_data_placement` — on_invalid: drop → removed
-  - `xhttp.x_padding_method` — on_invalid: drop → removed
-  - `xhttp.x_padding_placement` — on_invalid: drop → removed
+  - [`xhttp.mode`](protocols/_transports.md#body-xhttp-mode) — the value does not fit the field → removed
+  - [`xhttp.seq_placement`](protocols/_transports.md#body-xhttp-seq-placement) — the value does not fit the field → removed
+  - [`xhttp.session_placement`](protocols/_transports.md#body-xhttp-session-placement) — the value does not fit the field → removed
+  - [`xhttp.uplink_data_placement`](protocols/_transports.md#body-xhttp-uplink-data-placement) — the value does not fit the field → removed
+  - [`xhttp.x_padding_method`](protocols/_transports.md#body-xhttp-x-padding-method) — the value does not fit the field → removed
+  - [`xhttp.x_padding_placement`](protocols/_transports.md#body-xhttp-x-padding-placement) — the value does not fit the field → removed
 

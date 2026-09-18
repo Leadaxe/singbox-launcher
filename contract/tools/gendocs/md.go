@@ -32,12 +32,43 @@ func mdText(s string) string {
 // человеческую заметку в скобках или после пробела («packetencoding (любой
 // регистр — …)», «sni (fallback)»). Документация английская, и заметка в ней
 // не нужна — нужно само имя, под которым параметр встречается в подписках.
+//
+// Отдельный случай — запись, которая именем не является вовсе, а описывает
+// форму фразой («the '?ed=N' suffix of path»). Обрезка по первому пробелу
+// давала из неё алиас `the`; такая запись отбрасывается целиком.
 func aliasName(s string) string {
 	s = strings.TrimSpace(s)
 	if i := strings.IndexAny(s, " ("); i > 0 {
 		s = s[:i]
 	}
-	return strings.TrimSpace(s)
+	s = strings.TrimSpace(s)
+	if !looksLikeParamName(s) {
+		return ""
+	}
+	return s
+}
+
+// looksLikeParamName — годится ли строка на имя параметра. Имена параметров в
+// подписках — идентификаторы: буквы, цифры, `-`, `_`, `.`; всё прочее (кавычка,
+// артикль, знак препинания) означает, что это фраза, а не имя.
+func looksLikeParamName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '-' || r == '_' || r == '.':
+		default:
+			return false
+		}
+	}
+	// Английское слово-артикль в списке алиасов — остаток обрезанной фразы.
+	switch strings.ToLower(s) {
+	case "the", "a", "an", "any", "same", "as", "or":
+		return false
+	}
+	return true
 }
 
 // aliasNames чистит список алиасов и выкидывает пустые.
@@ -56,6 +87,43 @@ func aliasNames(items []string) []string {
 // оказывается там, куда не доскроллить.
 type list struct {
 	b *strings.Builder
+
+	// anchors — ставить ли якорь у каждого поля тела. Якоря нужны и на
+	// странице схемы (туда ведут ссылки «Maps to» из словаря ссылки), и на
+	// странице общей суб-схемы (туда ведёт словарь кодов). Уникальны они в
+	// пределах одного документа, а страницы разные.
+	anchors bool
+
+	// byPath — обратный индекс «поле тела → параметры ссылки, которые сюда
+	// кладут». Пустой на страницах, где словаря ссылки нет.
+	byPath map[string][]linkParam
+
+	// scheme — схема, чью страницу мы печатаем; пусто на странице общей
+	// суб-схемы. Список чужих схем в `allowed_for`/`forbidden_for` осмыслен
+	// только там, где схема заранее не известна.
+	scheme string
+}
+
+// setByLink — параметры ссылки, кладущие значение в это поле, ссылками на их
+// пункты выше по странице.
+func (l *list) setByLink(path string) string {
+	if len(l.byPath) == 0 {
+		return ""
+	}
+	items := l.byPath[path]
+	if len(items) == 0 {
+		return ""
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(items))
+	for _, it := range items {
+		if seen[it.name] {
+			continue
+		}
+		seen[it.name] = true
+		out = append(out, "[`"+it.name+"`](#"+it.anchor+")")
+	}
+	return strings.Join(out, ", ")
 }
 
 // item открывает пункт: заголовок с именем поля и его описанием.

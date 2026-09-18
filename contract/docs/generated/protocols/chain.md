@@ -4,13 +4,32 @@
 
 [← index](../index.md) · [diagnosed problems](../warnings.md)
 
+`chain` — an outbound, sing-box type `chain`.
+
+<sub>Schema checked against core `1.14.1-lx.4`</sub>
+
 | Field | Value |
 |---|---|
 | `scheme` | `chain` |
 | `singbox_type` | `chain` |
 | `kind` | `outbound` |
-| `extension` | — |
 | Core the schema was checked against | `1.14.1-lx.4` |
+
+## How to read this page
+
+```
+sing-box JSON       node body              sanitizer            core config
+or a form field ──▶ sing-box JSON,    ──▶  checks each     ──▶  what sing-box
+                    stored in state         body field's         is actually
+                                            value                started with
+```
+
+- **Body fields** — the node body itself: the sing-box JSON kept in the launcher state, with the rule applied to each value.
+- **Diagnosed problems** — every warning code a node of this scheme can carry, and the field that raises it.
+- **Replacements** — what is silently rewritten on the way in: other spellings of the same name, values normalized or substituted, and structural decisions the mapper takes before any value is judged.
+- **Degradation** — the same rules grouped by outcome: what drops the node, what only drops a field, and what is merely worth knowing.
+
+A bad value never breaks the whole config: the field is dropped, replaced or — at worst — the single node is.
 
 ## Link parameters
 
@@ -18,42 +37,41 @@ The scheme has no link form: it comes from sing-box JSON only.
 
 ## Body fields
 
-The path is the one used in the node body.
+The node body itself — the sing-box JSON kept in the launcher state. The path is the one used in that body.
 
-- **`outbounds`** — Ordered tags of the hops, client first.
+- <a id="body-outbounds"></a>**`outbounds`** — Ordered tags of the hops, client first.
   - Type: string_array
-  - Default: none · Required: yes
-- **`idle_timeout`** — Tear down the chain after this idle period.
+  - Required: the node is dropped without it
+- <a id="body-idle-timeout"></a>**`idle_timeout`** — Tear down the chain after this idle period.
   - Type: duration
   - Default: `5m`
-- **`strip_evasion`** — Strip evasion options from inner hops.
+- <a id="body-strip-evasion"></a>**`strip_evasion`** — Strip evasion options from inner hops.
   - Type: bool, tristate
   - Default: `true`
-- **`strip`** — Per-option patch to the strip catalogue.
+- <a id="body-strip"></a>**`strip`** — Per-option patch to the strip catalogue.
   - Type: object
-- **`rewrite`** — JSON merge patch applied to inner hop options.
+- <a id="body-rewrite"></a>**`rewrite`** — JSON merge patch applied to inner hop options.
   - Type: object
-- **`interrupt_exist_connections`** — Drop existing connections when the chain changes.
+- <a id="body-interrupt-exist-connections"></a>**`interrupt_exist_connections`** — Drop existing connections when the chain changes.
   - Type: bool
   - Default: `false`
-- **`detour`** — Tag of the outbound this connection is routed through.
+- <a id="body-detour"></a>**`detour`** — Tag of the outbound this connection is routed through.
   - Type: string, set by config build
-- **`bind_interface`** — Network interface the connection is bound to.
+- <a id="body-bind-interface"></a>**`bind_interface`** — Network interface the connection is bound to.
   - Type: string
-- **`inet4_bind_address`** — Local IPv4 address to bind to.
+- <a id="body-inet4-bind-address"></a>**`inet4_bind_address`** — Local IPv4 address to bind to.
   - Type: string, format `ipv4`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`inet6_bind_address`** — Local IPv6 address to bind to.
+- <a id="body-inet6-bind-address"></a>**`inet6_bind_address`** — Local IPv6 address to bind to.
   - Type: string
-- **`connect_timeout`** — Timeout for establishing the connection.
+- <a id="body-connect-timeout"></a>**`connect_timeout`** — Timeout for establishing the connection.
   - Type: duration
-- **`tcp_fast_open`** — Use TCP Fast Open.
+- <a id="body-tcp-fast-open"></a>**`tcp_fast_open`** — Use TCP Fast Open.
   - Type: bool
   - Default: `false`
-  - Forbidden for: `anytls`
-- **`udp_fragment`** — Allow fragmenting UDP packets.
+- <a id="body-udp-fragment"></a>**`udp_fragment`** — Allow fragmenting UDP packets.
   - Type: bool, tristate
-- **`domain_resolver`** — DNS server tag used to resolve the server domain.
+- <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.
   - Type: string
 
 ## Diagnosed problems
@@ -61,9 +79,9 @@ The path is the one used in the node body.
 Every code that can be raised on a node of this scheme, including the ones coming from the shared TLS, transport, multiplex and dialer sub-schemas. Follow a code for what it means and what to do about it.
 
 - [`field_missing`](../warnings.md#field_missing)
-  - `outbounds` — required → node dropped
+  - [`outbounds`](#body-outbounds) — required and missing → node dropped
 - [`type_invalid`](../warnings.md#type_invalid)
-  - `inet4_bind_address` — on_invalid: drop → removed
+  - [`inet4_bind_address`](#body-inet4-bind-address) — the value does not fit the field → removed
 
 ## Replacements
 

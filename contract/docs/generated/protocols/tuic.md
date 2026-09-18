@@ -4,137 +4,343 @@
 
 [← index](../index.md) · [diagnosed problems](../warnings.md)
 
+`tuic` — an outbound, sing-box type `tuic`. Accepted from: share link, sing-box JSON.
+
+<sub>Schema checked against core `1.14.1-lx.4` · the link fragment (`#…`) is the node `label`</sub>
+
 | Field | Value |
 |---|---|
 | `scheme` | `tuic` |
 | `singbox_type` | `tuic` |
 | `kind` | `outbound` |
 | `sources` | `uri`, `singbox` |
-| `extension` | — |
 | Core the schema was checked against | `1.14.1-lx.4` |
 | URI fragment | `label` |
 
+## How to read this page
+
+```
+share link          mapper                node body              sanitizer            core config
+tuic://…?…          ──▶ link parameter   ──▶  sing-box JSON,    ──▶  checks each     ──▶  what sing-box
+                     becomes a body         stored in state        body field's         is actually
+                     field                                         value                started with
+```
+
+- **Link parameters** — the dictionary of the share link: every parameter this scheme understands, and the body field each one becomes. The TLS and transport parameters shared with other schemes are listed here too, not only on their reference pages.
+- **Body fields** — the node body itself: the sing-box JSON kept in the launcher state. The rules here hold for every input alike — a share link, sing-box JSON, Xray JSON or a hand-filled form — because they are checked after the input has already become a body.
+- **Diagnosed problems** — every warning code a node of this scheme can carry, and the field that raises it.
+- **Replacements** — what is silently rewritten on the way in: other spellings of the same name, values normalized or substituted, and structural decisions the mapper takes before any value is judged.
+- **Degradation** — the same rules grouped by outcome: what drops the node, what only drops a field, and what is merely worth knowing.
+
+A bad value never breaks the whole config: the field is dropped, replaced or — at worst — the single node is. Each link parameter says which of the three happens to it, taken from the rule of the body field it maps to.
+
 ## Link parameters
 
-- **`userinfo`** — uuid:password of the account.
+Everything a link of this scheme can carry, including the TLS and transport parameters shared with other schemes. **Maps to** points at the body field the value lands in; **If invalid** is that field's own rule.
+
+### Common
+
+- <a id="link-common-userinfo"></a>**`userinfo`** — uuid:password of the account.
   - Type: `uuid:password`
-  - Maps to: `uuid`, `password`
-  - If invalid: If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`congestion_control`** — QUIC congestion control algorithm.
+  - Maps to: [`uuid`](#body-uuid), [`password`](#body-password)
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="link-common-host"></a>**`host`** — The authority of the link: everything before `:` in `scheme://…@host:port`.
+  - Maps to: [`server`](#body-server)
+  - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+- <a id="link-common-port"></a>**`port`** — The authority of the link: everything after `:` in `scheme://…@host:port`.
+  - Maps to: [`server_port`](#body-server-port)
+  - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
+- <a id="link-common-fragment"></a>**`#fragment`** — The part after `#`: the name the node is shown under. It is not a body field — it is the node `label`.
+
+### Protocol-specific
+
+- <a id="link-proto-congestion-control"></a>**`congestion_control`** — QUIC congestion control algorithm.
   - Type: enum (allowlist `tuic_congestion`) · Default: `cubic`
-  - Maps to: `congestion_control`
-  - If invalid: If invalid: removed → [`tuic_congestion_invalid`](../warnings.md#tuic_congestion_invalid)
-- **`udp_relay_mode`** — How UDP is relayed over QUIC.
+  - Maps to: [`congestion_control`](#body-congestion-control)
+  - If invalid: removed → [`tuic_congestion_invalid`](../warnings.md#tuic_congestion_invalid)
+- <a id="link-proto-udp-relay-mode"></a>**`udp_relay_mode`** — How UDP is relayed over QUIC.
   - Type: enum (allowlist `tuic_udp_relay_mode`) · Default: `native`
-  - Maps to: `udp_relay_mode`
-  - If invalid: If invalid: removed → [`tuic_udp_relay_mode_invalid`](../warnings.md#tuic_udp_relay_mode_invalid)
-- **`reduce_rtt`** — Use a 0-RTT handshake.
+  - Maps to: [`udp_relay_mode`](#body-udp-relay-mode)
+  - If invalid: removed → [`tuic_udp_relay_mode_invalid`](../warnings.md#tuic_udp_relay_mode_invalid)
+- <a id="link-proto-reduce-rtt"></a>**`reduce_rtt`** — Use a 0-RTT handshake.
   - Also spelled: `zero_rtt_handshake`, `zero_rtt`
   - Type: bool
-  - Maps to: `zero_rtt_handshake`
-- **`heartbeat`** (desktop) — Heartbeat interval.
+  - Maps to: [`zero_rtt_handshake`](#body-zero-rtt-handshake)
+- <a id="link-proto-heartbeat"></a>**`heartbeat`** — Heartbeat interval.
+  - Supported by the desktop launcher only
   - Type: string
-  - Maps to: `heartbeat`
-- **`sni`** — Server name sent in SNI.
+  - Maps to: [`heartbeat`](#body-heartbeat)
+- <a id="link-proto-sni"></a>**`sni`** — Server name sent in SNI.
   - Type: string
-  - Maps to: `tls.server_name`
-  - If invalid: If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`disable_sni`** (mobile) — Do not send the SNI extension.
+  - Maps to: [`tls.server_name`](#body-tls-server-name)
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="link-proto-disable-sni"></a>**`disable_sni`** — Do not send the SNI extension.
+  - Supported by LxBox only
   - Type: bool
-  - Maps to: `tls.disable_sni`
-- **`alpn`** — Comma-separated list of ALPN protocols.
+  - Maps to: [`tls.disable_sni`](#body-tls-disable-sni)
+- <a id="link-proto-alpn"></a>**`alpn`** — Comma-separated list of ALPN protocols.
   - Type: string
-  - Maps to: `tls.alpn`
-- **`fp`** (desktop) — Browser fingerprint mimicked in the ClientHello.
+  - Maps to: [`tls.alpn`](#body-tls-alpn)
+- <a id="link-proto-fp"></a>**`fp`** — Browser fingerprint mimicked in the ClientHello.
+  - Supported by the desktop launcher only
   - Also spelled: `fingerprint`
-  - Type: alias_enum (allowlist `utls_fingerprints`)
-  - Maps to: `tls.utls.fingerprint`
-  - If invalid: If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown); Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
-- **`allow_insecure`** — Skip server certificate verification.
+  - Type: enum (other spellings of the same value are accepted) (allowlist `utls_fingerprints`)
+  - Maps to: [`tls.utls.fingerprint`](#body-tls-utls-fingerprint)
+  - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown) · Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
+- <a id="link-proto-allow-insecure"></a>**`allow_insecure`** — Skip server certificate verification.
   - Also spelled: `allowInsecure`, `allowinsecure`, `allow_insecure`, `allow-insecure`, `skipCertVerify`, `skipcertverify`, `skip_cert_verify`, `skip-cert-verify`, `noverify`
   - Type: bool
-  - Maps to: `tls.insecure`
+  - Maps to: [`tls.insecure`](#body-tls-insecure)
 
-Shared link parameters live on their own pages: [TLS / REALITY](_tls.md#link-parameters), [transports](_transports.md).
+### TLS / REALITY
+
+Shared across every scheme that carries a TLS block; the reference page is [`_tls.md`](_tls.md).
+
+- <a id="link-tls-security"></a>**`security`** — Whether the link asks for TLS, and in which flavour.
+  - Type: enum: `""`, `none`, `tls`, `reality` · Default: `""`
+  - Maps to: [`tls.enabled`](#body-tls-enabled)
+- <a id="link-tls-insecure"></a>**`insecure`** — Skip server certificate verification.
+  - Also spelled: `allowInsecure`, `allowinsecure`, `allow_insecure`, `allow-insecure`, `skipCertVerify`, `skipcertverify`, `skip_cert_verify`, `skip-cert-verify`, `noverify`
+  - Type: bool · Default: `false`
+  - Maps to: [`tls.insecure`](#body-tls-insecure)
+- <a id="link-tls-ech"></a>**`ech`** — Encrypted Client Hello parameters in the Xray form.
+  - Also spelled: `echfq`
+  - Type: string · Default: `""`
+  - Maps to: nothing — the parameter is read and then deliberately dropped
+- <a id="link-tls-pbk"></a>**`pbk`** — Server REALITY public key.
+  - Type: string — X25519 public key: base64url or base64std, padded or not, decoding to exactly 32 bytes; anything else is not a valid key
+  - Maps to: [`tls.reality.public_key`](#body-tls-reality-public-key)
+  - If invalid: removed → [`reality_pbk_invalid`](../warnings.md#reality_pbk_invalid)
+- <a id="link-tls-sid"></a>**`sid`** — REALITY short ID.
+  - Type: string — hex only, lowercase, even length and at most 16 characters; an empty short_id is legal (a zero [8]byte)
+  - Maps to: [`tls.reality.short_id`](#body-tls-reality-short-id)
+  - If invalid: removed → [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid) · If the value had to be cleaned up: [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
+- <a id="link-tls-key-share"></a>**`key_share`** — Key exchange used in the REALITY ClientHello.
+  - Type: enum: `""`, `hybrid`, `classical` — a closed core enum, hybrid or classical; trimmed and lower-cased; an empty string means the key is absent, not invalid · Default: `""`
+  - Maps to: [`tls.reality.key_share`](#body-tls-reality-key-share)
+  - If invalid: removed → [`reality_key_share_invalid`](../warnings.md#reality_key_share_invalid)
 
 ## Body fields
 
-The path is the one used in the node body.
+The node body itself — the sing-box JSON kept in the launcher state. The path is the one used in that body, and the rules below apply to every input alike: a share link, sing-box JSON, Xray JSON or a hand-filled form.
 
-- **`server`** — Server address: domain or IP.
+- <a id="body-server"></a>**`server`** — Server address: domain or IP.
   - Type: string, format `host`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
+  - Set by link parameter: [`host`](#link-common-host)
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
-- **`server_port`** — Server port.
+- <a id="body-server-port"></a>**`server_port`** — Server port.
   - Type: uint16, format `port`, `1–65535`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
+  - Set by link parameter: [`port`](#link-common-port)
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
-- **`uuid`** — User identifier.
+- <a id="body-uuid"></a>**`uuid`** — User identifier.
   - Type: string, secret, format `uuid`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
+  - Set by link parameter: [`userinfo`](#link-common-userinfo)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`password`** — Account password.
+- <a id="body-password"></a>**`password`** — Account password.
   - Type: string, secret
-- **`congestion_control`** — QUIC congestion control algorithm.
+  - Set by link parameter: [`userinfo`](#link-common-userinfo)
+- <a id="body-congestion-control"></a>**`congestion_control`** — QUIC congestion control algorithm.
   - Type: enum, `""`, `cubic`, `new_reno`, `bbr`, normalized: `trim_lower`
   - Default: `cubic`
+  - Set by link parameter: [`congestion_control`](#link-proto-congestion-control)
   - If invalid: removed → [`tuic_congestion_invalid`](../warnings.md#tuic_congestion_invalid)
-- **`udp_relay_mode`** — How UDP is relayed over QUIC.
+- <a id="body-udp-relay-mode"></a>**`udp_relay_mode`** — How UDP is relayed over QUIC.
   - Type: enum, `""`, `native`, `quic`, normalized: `trim_lower`
   - Default: `native`
+  - Set by link parameter: [`udp_relay_mode`](#link-proto-udp-relay-mode)
   - If invalid: removed → [`tuic_udp_relay_mode_invalid`](../warnings.md#tuic_udp_relay_mode_invalid)
   - Conflicts with: `udp_over_stream`
-- **`udp_over_stream`** — Tunnel UDP inside a QUIC stream.
+- <a id="body-udp-over-stream"></a>**`udp_over_stream`** — Tunnel UDP inside a QUIC stream.
   - Type: bool
   - Default: `false`
-- **`zero_rtt_handshake`** — Allow the 0-RTT QUIC handshake.
+- <a id="body-zero-rtt-handshake"></a>**`zero_rtt_handshake`** — Allow the 0-RTT QUIC handshake.
   - Type: bool
   - Default: `false`
-- **`heartbeat`** — Interval between heartbeat packets.
+  - Set by link parameter: [`reduce_rtt`](#link-proto-reduce-rtt)
+- <a id="body-heartbeat"></a>**`heartbeat`** — Interval between heartbeat packets.
   - Type: duration
   - Default: `10s`
-- **`network`** — Networks this outbound handles.
+  - Set by link parameter: [`heartbeat`](#link-proto-heartbeat)
+- <a id="body-network"></a>**`network`** — Networks this outbound handles.
   - Type: listable_string, `tcp`, `udp`, normalized: `trim_lower`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`tls`** — TLS settings.
-  - Shared sub-schema: see [_tls](_tls.md)
-- **`idle_timeout`** — Close the QUIC connection after this idle period.
-  - Type: duration
-- **`keep_alive_period`** — Interval between QUIC keepalive packets.
-  - Type: duration
-- **`stream_receive_window`** — Receive window of a single QUIC stream.
-  - Type: int, `0–…`
-  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`connection_receive_window`** — Receive window of the whole QUIC connection.
-  - Type: int, `0–…`
-  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`max_concurrent_streams`** — Maximum number of concurrent QUIC streams.
-  - Type: int, `0–…`
-  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`initial_packet_size`** — Initial QUIC packet size in bytes.
-  - Type: int, `0–…`
-  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`disable_path_mtu_discovery`** — Disable QUIC path MTU discovery.
+- <a id="body-tls"></a>**`tls`** — TLS settings.
+  - Shared sub-schema, expanded below · reference page: [_tls](_tls.md)
+- <a id="body-tls-enabled"></a>**`tls.enabled`** — Enable TLS for this outbound.
   - Type: bool
   - Default: `false`
-- **`detour`** — Tag of the outbound this connection is routed through.
-  - Type: string, set by config build
-- **`bind_interface`** — Network interface the connection is bound to.
+  - Set by link parameter: [`security`](#link-tls-security)
+- <a id="body-tls-engine"></a>**`tls.engine`** — TLS implementation used for the handshake.
+  - Type: enum, `""`, `go`, `apple`, `windows`, normalized: `trim_lower`
+  - Default: `go`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-tls-disable-sni"></a>**`tls.disable_sni`** — Do not send the SNI extension.
+  - Type: bool
+  - Default: `false`
+  - Set by link parameter: [`disable_sni`](#link-proto-disable-sni)
+  - Conflicts with: `tls.reality.enabled`
+- <a id="body-tls-server-name"></a>**`tls.server_name`** — Server name sent in SNI and verified in the certificate.
+  - Type: string, format `host`
+  - Set by link parameter: [`sni`](#link-proto-sni)
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-tls-insecure"></a>**`tls.insecure`** — Skip server certificate verification.
+  - Type: bool
+  - Default: `false`
+  - Set by link parameter: [`allow_insecure`](#link-proto-allow-insecure), [`insecure`](#link-tls-insecure)
+- <a id="body-tls-alpn"></a>**`tls.alpn`** — ALPN protocols offered in the handshake.
+  - Type: listable_string
+  - Set by link parameter: [`alpn`](#link-proto-alpn)
+- <a id="body-tls-min-version"></a>**`tls.min_version`** — Minimum accepted TLS version.
+  - Type: enum, `1.0`, `1.1`, `1.2`, `1.3`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-tls-max-version"></a>**`tls.max_version`** — Maximum accepted TLS version.
+  - Type: enum, `1.0`, `1.1`, `1.2`, `1.3`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-tls-cipher-suites"></a>**`tls.cipher_suites`** — Allowed TLS cipher suites.
+  - Type: listable_string
+- <a id="body-tls-curve-preferences"></a>**`tls.curve_preferences`** — Preferred elliptic curves / key exchange groups.
+  - Type: listable_string, `P256`, `P384`, `P521`, `X25519`, `X25519MLKEM768`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-tls-certificate"></a>**`tls.certificate`** — Trusted server certificate in PEM form.
+  - Type: listable_string
+- <a id="body-tls-certificate-path"></a>**`tls.certificate_path`** — Path to a file with the trusted certificate.
   - Type: string
-- **`inet4_bind_address`** — Local IPv4 address to bind to.
+- <a id="body-tls-certificate-public-key-sha256"></a>**`tls.certificate_public_key_sha256`** — Pinned SHA-256 hashes of the server public key.
+  - Type: string_array, format `base64`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Conflicts with: `tls.certificate`
+  - Conflicts with: `tls.certificate_path`
+- <a id="body-tls-client-certificate"></a>**`tls.client_certificate`** — Client certificate for mTLS, PEM form.
+  - Type: listable_string
+  - Meaningless without: `tls.client_key`
+- <a id="body-tls-client-certificate-path"></a>**`tls.client_certificate_path`** — Path to the client certificate file.
+  - Type: string
+- <a id="body-tls-client-key"></a>**`tls.client_key`** — Client private key for mTLS, PEM form.
+  - Type: listable_string, secret
+  - Meaningless without: `tls.client_certificate`
+- <a id="body-tls-client-key-path"></a>**`tls.client_key_path`** — Path to the client private key file.
+  - Type: string, secret
+- <a id="body-tls-fragment"></a>**`tls.fragment`** — Split the ClientHello across TCP segments.
+  - Type: bool
+  - Default: `false`
+- <a id="body-tls-fragment-fallback-delay"></a>**`tls.fragment_fallback_delay`** — Delay before falling back when fragmenting.
+  - Type: duration
+- <a id="body-tls-record-fragment"></a>**`tls.record_fragment`** — Split the ClientHello across TLS records.
+  - Type: bool
+  - Default: `false`
+- <a id="body-tls-spoof"></a>**`tls.spoof`** — Domain used for the spoofed ClientHello.
+  - Type: string, format `host`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Conflicts with: `tls.reality.enabled`
+  - Conflicts with: `tls.disable_sni`
+- <a id="body-tls-spoof-method"></a>**`tls.spoof_method`** — How the spoofed packet is made invalid.
+  - Type: enum, `""`, `wrong-sequence`, `wrong-checksum`, `wrong-ack`, `wrong-md5`, `wrong-timestamp`, normalized: `trim_lower`
+  - Default: `wrong-sequence`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Meaningless without: `tls.spoof`
+- <a id="body-tls-kernel-tx"></a>**`tls.kernel_tx`** — Offload TLS transmission to the kernel (kTLS).
+  - Type: bool
+  - Default: `false`
+  - Only written when: OS `linux`
+- <a id="body-tls-kernel-rx"></a>**`tls.kernel_rx`** — Offload TLS reception to the kernel (kTLS).
+  - Type: bool
+  - Default: `false`
+  - Only written when: OS `linux`
+- <a id="body-tls-handshake-timeout"></a>**`tls.handshake_timeout`** — Timeout for the TLS handshake.
+  - Type: duration
+- <a id="body-tls-ech"></a>**`tls.ech`** — Encrypted Client Hello settings.
+  - Type: object
+- <a id="body-tls-ech-enabled"></a>**`tls.ech.enabled`** — Enable Encrypted Client Hello.
+  - Type: bool
+  - Default: `false`
+  - Conflicts with: `tls.reality.enabled`
+- <a id="body-tls-ech-config"></a>**`tls.ech.config`** — Inline ECH config (PEM block).
+  - Type: listable_string
+- <a id="body-tls-ech-config-path"></a>**`tls.ech.config_path`** — Path to a file with the ECH config.
+  - Type: string
+- <a id="body-tls-ech-query-server-name"></a>**`tls.ech.query_server_name`** — Domain queried over DNS for the ECH config.
+  - Type: string
+- <a id="body-tls-ech-pq-signature-schemes-enabled"></a>**`tls.ech.pq_signature_schemes_enabled`** — Deprecated post-quantum signature switch.
+  - Type: bool, deprecated
+- <a id="body-tls-ech-dynamic-record-sizing-disabled"></a>**`tls.ech.dynamic_record_sizing_disabled`** — Deprecated dynamic record sizing switch.
+  - Type: bool, deprecated
+- <a id="body-tls-utls"></a>**`tls.utls`** — uTLS fingerprint settings.
+  - Type: object
+- <a id="body-tls-utls-enabled"></a>**`tls.utls.enabled`** — Enable uTLS ClientHello mimicry.
+  - Type: bool
+  - Default: `false`
+- <a id="body-tls-utls-fingerprint"></a>**`tls.utls.fingerprint`** — Browser fingerprint used for the ClientHello.
+  - Type: enum, `""`, `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized`, normalized: `trim_lower`
+  - Default: `chrome`
+  - Set by link parameter: [`fp`](#link-proto-fp)
+  - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
+  - Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
+- <a id="body-tls-reality"></a>**`tls.reality`** — REALITY settings.
+  - Type: object
+- <a id="body-tls-reality-enabled"></a>**`tls.reality.enabled`** — Enable REALITY handshake camouflage.
+  - Type: bool
+  - Default: `false`
+  - Conflicts with: `tls.ech.enabled`
+  - Conflicts with: `tls.disable_sni`
+  - Conflicts with: `tls.spoof`
+  - Meaningless without: `tls.utls.enabled`
+- <a id="body-tls-reality-public-key"></a>**`tls.reality.public_key`** — Server REALITY public key (x25519).
+  - Type: string, format `base64_32`
+  - Required: the node is dropped without it
+  - Set by link parameter: [`pbk`](#link-tls-pbk)
+  - If invalid: removed → [`reality_pbk_invalid`](../warnings.md#reality_pbk_invalid)
+- <a id="body-tls-reality-short-id"></a>**`tls.reality.short_id`** — REALITY short ID (hex, even length).
+  - Type: string, format `hex`, `…–16`, len `even`, normalized: `hex_only`
+  - Set by link parameter: [`sid`](#link-tls-sid)
+  - If invalid: removed → [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
+  - If the value had to be cleaned up: [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
+  - Meaningless without: `tls.reality.public_key`
+- <a id="body-tls-reality-key-share"></a>**`tls.reality.key_share`** — Key exchange used in the REALITY ClientHello.
+  - Type: enum, `""`, `hybrid`, `classical`, normalized: `trim_lower`
+  - Default: `""`
+  - Set by link parameter: [`key_share`](#link-tls-key-share)
+  - If invalid: removed → [`reality_key_share_invalid`](../warnings.md#reality_key_share_invalid)
+  - Meaningless without: `tls.reality.public_key`
+  - Only written when: core ≥ `1.14.1-lx.4`, lx fork only
+- <a id="body-idle-timeout"></a>**`idle_timeout`** — Close the QUIC connection after this idle period.
+  - Type: duration
+- <a id="body-keep-alive-period"></a>**`keep_alive_period`** — Interval between QUIC keepalive packets.
+  - Type: duration
+- <a id="body-stream-receive-window"></a>**`stream_receive_window`** — Receive window of a single QUIC stream.
+  - Type: int, `0–…`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-connection-receive-window"></a>**`connection_receive_window`** — Receive window of the whole QUIC connection.
+  - Type: int, `0–…`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-max-concurrent-streams"></a>**`max_concurrent_streams`** — Maximum number of concurrent QUIC streams.
+  - Type: int, `0–…`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-initial-packet-size"></a>**`initial_packet_size`** — Initial QUIC packet size in bytes.
+  - Type: int, `0–…`
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="body-disable-path-mtu-discovery"></a>**`disable_path_mtu_discovery`** — Disable QUIC path MTU discovery.
+  - Type: bool
+  - Default: `false`
+- <a id="body-detour"></a>**`detour`** — Tag of the outbound this connection is routed through.
+  - Type: string, set by config build
+- <a id="body-bind-interface"></a>**`bind_interface`** — Network interface the connection is bound to.
+  - Type: string
+- <a id="body-inet4-bind-address"></a>**`inet4_bind_address`** — Local IPv4 address to bind to.
   - Type: string, format `ipv4`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`inet6_bind_address`** — Local IPv6 address to bind to.
+- <a id="body-inet6-bind-address"></a>**`inet6_bind_address`** — Local IPv6 address to bind to.
   - Type: string
-- **`connect_timeout`** — Timeout for establishing the connection.
+- <a id="body-connect-timeout"></a>**`connect_timeout`** — Timeout for establishing the connection.
   - Type: duration
-- **`tcp_fast_open`** — Use TCP Fast Open.
+- <a id="body-tcp-fast-open"></a>**`tcp_fast_open`** — Use TCP Fast Open.
   - Type: bool
   - Default: `false`
-  - Forbidden for: `anytls`
-- **`udp_fragment`** — Allow fragmenting UDP packets.
+- <a id="body-udp-fragment"></a>**`udp_fragment`** — Allow fragmenting UDP packets.
   - Type: bool, tristate
-- **`domain_resolver`** — DNS server tag used to resolve the server domain.
+- <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.
   - Type: string
 
 ## Diagnosed problems
@@ -142,59 +348,59 @@ The path is the one used in the node body.
 Every code that can be raised on a node of this scheme, including the ones coming from the shared TLS, transport, multiplex and dialer sub-schemas. Follow a code for what it means and what to do about it.
 
 - [`field_conflict`](../warnings.md#field_conflict)
-  - `udp_relay_mode` — conflicts with `udp_over_stream` → removed
-  - `tls.disable_sni` — conflicts with `tls.reality.enabled` → removed
-  - `tls.certificate_public_key_sha256` — conflicts with `tls.certificate` → removed
-  - `tls.certificate_public_key_sha256` — conflicts with `tls.certificate_path` → removed
-  - `tls.spoof` — conflicts with `tls.reality.enabled` → removed
-  - `tls.spoof` — conflicts with `tls.disable_sni` → removed
-  - `tls.ech.enabled` — conflicts with `tls.reality.enabled` → removed
-  - `tls.reality.enabled` — conflicts with `tls.ech.enabled` → removed
-  - `tls.reality.enabled` — conflicts with `tls.disable_sni` → removed
-  - `tls.reality.enabled` — conflicts with `tls.spoof` → removed
+  - [`udp_relay_mode`](#body-udp-relay-mode) — conflicts with `udp_over_stream` → removed
+  - [`tls.disable_sni`](#body-tls-disable-sni) — conflicts with `tls.reality.enabled` → removed
+  - [`tls.certificate_public_key_sha256`](#body-tls-certificate-public-key-sha256) — conflicts with `tls.certificate` → removed
+  - [`tls.certificate_public_key_sha256`](#body-tls-certificate-public-key-sha256) — conflicts with `tls.certificate_path` → removed
+  - [`tls.spoof`](#body-tls-spoof) — conflicts with `tls.reality.enabled` → removed
+  - [`tls.spoof`](#body-tls-spoof) — conflicts with `tls.disable_sni` → removed
+  - [`tls.ech.enabled`](#body-tls-ech-enabled) — conflicts with `tls.reality.enabled` → removed
+  - [`tls.reality.enabled`](#body-tls-reality-enabled) — conflicts with `tls.ech.enabled` → removed
+  - [`tls.reality.enabled`](#body-tls-reality-enabled) — conflicts with `tls.disable_sni` → removed
+  - [`tls.reality.enabled`](#body-tls-reality-enabled) — conflicts with `tls.spoof` → removed
 - [`field_missing`](../warnings.md#field_missing)
-  - `server` — on_invalid: drop_node → node dropped
-  - `tls` — required → node dropped
+  - [`server`](#body-server) — the value does not fit the field → node dropped
+  - [`tls`](#body-tls) — required and missing → node dropped
 - [`field_requires`](../warnings.md#field_requires)
-  - `tls.client_certificate` — requires `tls.client_key` → removed
-  - `tls.client_key` — requires `tls.client_certificate` → removed
-  - `tls.spoof_method` — requires `tls.spoof` → removed
-  - `tls.reality.enabled` — requires `tls.utls.enabled` → removed
-  - `tls.reality.short_id` — requires `tls.reality.public_key` → removed
-  - `tls.reality.key_share` — requires `tls.reality.public_key` → removed
+  - [`tls.client_certificate`](#body-tls-client-certificate) — set without `tls.client_key` → removed
+  - [`tls.client_key`](#body-tls-client-key) — set without `tls.client_certificate` → removed
+  - [`tls.spoof_method`](#body-tls-spoof-method) — set without `tls.spoof` → removed
+  - [`tls.reality.enabled`](#body-tls-reality-enabled) — set without `tls.utls.enabled` → removed
+  - [`tls.reality.short_id`](#body-tls-reality-short-id) — set without `tls.reality.public_key` → removed
+  - [`tls.reality.key_share`](#body-tls-reality-key-share) — set without `tls.reality.public_key` → removed
 - [`port_invalid`](../warnings.md#port_invalid)
-  - `server_port` — on_invalid: drop_node → node dropped
+  - [`server_port`](#body-server-port) — the value does not fit the field → node dropped
 - [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
-  - `tls.utls.fingerprint` — advisory except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random` → kept with a notice
+  - [`tls.utls.fingerprint`](#body-tls-utls-fingerprint) — the value is anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random` → kept with a notice
 - [`reality_key_share_invalid`](../warnings.md#reality_key_share_invalid)
-  - `tls.reality.key_share` — on_invalid: drop → removed
+  - [`tls.reality.key_share`](#body-tls-reality-key-share) — the value does not fit the field → removed
 - [`reality_pbk_invalid`](../warnings.md#reality_pbk_invalid)
-  - `tls.reality.public_key` — on_invalid: drop → removed
+  - [`tls.reality.public_key`](#body-tls-reality-public-key) — the value does not fit the field → removed
 - [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
-  - `tls.reality.short_id` — on_invalid: drop → removed
-  - `tls.reality.short_id` — normalize hex_only → value cleaned up
+  - [`tls.reality.short_id`](#body-tls-reality-short-id) — the value does not fit the field → removed
+  - [`tls.reality.short_id`](#body-tls-reality-short-id) — the value had to be cleaned up (hex_only) → value cleaned up
 - [`tuic_congestion_invalid`](../warnings.md#tuic_congestion_invalid)
-  - `congestion_control` — on_invalid: drop → removed
+  - [`congestion_control`](#body-congestion-control) — the value does not fit the field → removed
 - [`tuic_udp_relay_mode_invalid`](../warnings.md#tuic_udp_relay_mode_invalid)
-  - `udp_relay_mode` — on_invalid: drop → removed
+  - [`udp_relay_mode`](#body-udp-relay-mode) — the value does not fit the field → removed
 - [`type_invalid`](../warnings.md#type_invalid)
-  - `uuid` — on_invalid: drop → removed
-  - `network` — on_invalid: drop → removed
-  - `tls.engine` — on_invalid: drop → removed
-  - `tls.server_name` — on_invalid: drop → removed
-  - `tls.min_version` — on_invalid: drop → removed
-  - `tls.max_version` — on_invalid: drop → removed
-  - `tls.curve_preferences` — on_invalid: drop → removed
-  - `tls.certificate_public_key_sha256` — on_invalid: drop → removed
-  - `tls.spoof` — on_invalid: drop → removed
-  - `tls.spoof_method` — on_invalid: drop → removed
-  - `stream_receive_window` — on_invalid: drop → removed
-  - `connection_receive_window` — on_invalid: drop → removed
-  - `max_concurrent_streams` — on_invalid: drop → removed
-  - `initial_packet_size` — on_invalid: drop → removed
-  - `inet4_bind_address` — on_invalid: drop → removed
+  - [`uuid`](#body-uuid) — the value does not fit the field → removed
+  - [`network`](#body-network) — the value does not fit the field → removed
+  - [`tls.engine`](#body-tls-engine) — the value does not fit the field → removed
+  - [`tls.server_name`](#body-tls-server-name) — the value does not fit the field → removed
+  - [`tls.min_version`](#body-tls-min-version) — the value does not fit the field → removed
+  - [`tls.max_version`](#body-tls-max-version) — the value does not fit the field → removed
+  - [`tls.curve_preferences`](#body-tls-curve-preferences) — the value does not fit the field → removed
+  - [`tls.certificate_public_key_sha256`](#body-tls-certificate-public-key-sha256) — the value does not fit the field → removed
+  - [`tls.spoof`](#body-tls-spoof) — the value does not fit the field → removed
+  - [`tls.spoof_method`](#body-tls-spoof-method) — the value does not fit the field → removed
+  - [`stream_receive_window`](#body-stream-receive-window) — the value does not fit the field → removed
+  - [`connection_receive_window`](#body-connection-receive-window) — the value does not fit the field → removed
+  - [`max_concurrent_streams`](#body-max-concurrent-streams) — the value does not fit the field → removed
+  - [`initial_packet_size`](#body-initial-packet-size) — the value does not fit the field → removed
+  - [`inet4_bind_address`](#body-inet4-bind-address) — the value does not fit the field → removed
 - [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
-  - `tls.utls.fingerprint` — on_invalid: coerce → replaced with `chrome`
+  - [`tls.utls.fingerprint`](#body-tls-utls-fingerprint) — the value does not fit the field → replaced with `chrome`
 
 ## Replacements
 
@@ -277,7 +483,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 **Left out when the running core is too old**
 
-- `tls.kernel_rx` — OS `linux`
-- `tls.kernel_tx` — OS `linux`
-- `tls.reality.key_share` — core ≥ `1.14.1-lx.4`, lx fork only
+- `tls.kernel_rx` — needs OS `linux`
+- `tls.kernel_tx` — needs OS `linux`
+- `tls.reality.key_share` — needs core ≥ `1.14.1-lx.4`, lx fork only
 

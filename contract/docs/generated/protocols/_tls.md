@@ -10,6 +10,8 @@ Core the schema was checked against: `1.14.1-lx.4`
 
 ## Link parameters
 
+These are repeated on the page of every scheme that carries a TLS block, together with the rule of the body field each one maps to.
+
 - **`security`** — Whether the link asks for TLS, and in which flavour.
   - Type: enum: `""`, `none`, `tls`, `reality` · Default: `""`
   - Maps to: `tls.enabled`
@@ -26,12 +28,12 @@ Core the schema was checked against: `1.14.1-lx.4`
   - Maps to: `tls.insecure`
 - **`fp`** — Browser fingerprint mimicked in the ClientHello.
   - Also spelled: `fingerprint`
-  - Type: alias_enum: `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized` (allowlist `utls_fingerprints`) · Default: `""`
+  - Type: enum (other spellings of the same value are accepted): `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized` (allowlist `utls_fingerprints`) · Default: `""`
   - Maps to: `tls.utls.fingerprint`
 - **`ech`** — Encrypted Client Hello parameters in the Xray form.
   - Also spelled: `echfq`
   - Type: string · Default: `""`
-  - Maps to: nothing — the parameter is always dropped
+  - Maps to: nothing — the parameter is read and then deliberately dropped
 - **`pbk`** — Server REALITY public key.
   - Type: string — X25519 public key: base64url or base64std, padded or not, decoding to exactly 32 bytes; anything else is not a valid key
   - Maps to: `tls.reality.public_key`
@@ -44,156 +46,156 @@ Core the schema was checked against: `1.14.1-lx.4`
 
 ## Body fields
 
-- **`enabled`** — Enable TLS for this outbound.
+- <a id="body-enabled"></a>**`enabled`** — Enable TLS for this outbound.
   - Type: bool
   - Default: `false`
-- **`engine`** — TLS implementation used for the handshake.
+- <a id="body-engine"></a>**`engine`** — TLS implementation used for the handshake.
   - Type: enum, `""`, `go`, `apple`, `windows`, normalized: `trim_lower`
   - Default: `go`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-  - Forbidden for: `naive`
-- **`disable_sni`** — Do not send the SNI extension.
+  - Not supported by: `naive`
+- <a id="body-disable-sni"></a>**`disable_sni`** — Do not send the SNI extension.
   - Type: bool
   - Default: `false`
-  - Forbidden for: `naive`
+  - Not supported by: `naive`
   - Conflicts with: `tls.reality.enabled`
-- **`server_name`** — Server name sent in SNI and verified in the certificate.
+- <a id="body-server-name"></a>**`server_name`** — Server name sent in SNI and verified in the certificate.
   - Type: string, format `host`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`insecure`** — Skip server certificate verification.
+- <a id="body-insecure"></a>**`insecure`** — Skip server certificate verification.
   - Type: bool
   - Default: `false`
-  - Forbidden for: `naive`
-- **`alpn`** — ALPN protocols offered in the handshake.
+  - Not supported by: `naive`
+- <a id="body-alpn"></a>**`alpn`** — ALPN protocols offered in the handshake.
   - Type: listable_string
-  - Forbidden for: `naive`
-- **`min_version`** — Minimum accepted TLS version.
+  - Not supported by: `naive`
+- <a id="body-min-version"></a>**`min_version`** — Minimum accepted TLS version.
   - Type: enum, `1.0`, `1.1`, `1.2`, `1.3`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-  - Forbidden for: `naive`
-- **`max_version`** — Maximum accepted TLS version.
+  - Not supported by: `naive`
+- <a id="body-max-version"></a>**`max_version`** — Maximum accepted TLS version.
   - Type: enum, `1.0`, `1.1`, `1.2`, `1.3`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-  - Forbidden for: `naive`
-- **`cipher_suites`** — Allowed TLS cipher suites.
+  - Not supported by: `naive`
+- <a id="body-cipher-suites"></a>**`cipher_suites`** — Allowed TLS cipher suites.
   - Type: listable_string
-  - Forbidden for: `naive`
-- **`curve_preferences`** — Preferred elliptic curves / key exchange groups.
+  - Not supported by: `naive`
+- <a id="body-curve-preferences"></a>**`curve_preferences`** — Preferred elliptic curves / key exchange groups.
   - Type: listable_string, `P256`, `P384`, `P521`, `X25519`, `X25519MLKEM768`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-  - Forbidden for: `naive`
-- **`certificate`** — Trusted server certificate in PEM form.
+  - Not supported by: `naive`
+- <a id="body-certificate"></a>**`certificate`** — Trusted server certificate in PEM form.
   - Type: listable_string
-- **`certificate_path`** — Path to a file with the trusted certificate.
+- <a id="body-certificate-path"></a>**`certificate_path`** — Path to a file with the trusted certificate.
   - Type: string
-- **`certificate_public_key_sha256`** — Pinned SHA-256 hashes of the server public key.
+- <a id="body-certificate-public-key-sha256"></a>**`certificate_public_key_sha256`** — Pinned SHA-256 hashes of the server public key.
   - Type: string_array, format `base64`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-  - Forbidden for: `naive`
+  - Not supported by: `naive`
   - Conflicts with: `tls.certificate`
   - Conflicts with: `tls.certificate_path`
-- **`client_certificate`** — Client certificate for mTLS, PEM form.
+- <a id="body-client-certificate"></a>**`client_certificate`** — Client certificate for mTLS, PEM form.
   - Type: listable_string
-  - Forbidden for: `naive`
-  - Requires: `tls.client_key`
-- **`client_certificate_path`** — Path to the client certificate file.
+  - Not supported by: `naive`
+  - Meaningless without: `tls.client_key`
+- <a id="body-client-certificate-path"></a>**`client_certificate_path`** — Path to the client certificate file.
   - Type: string
-  - Forbidden for: `naive`
-- **`client_key`** — Client private key for mTLS, PEM form.
+  - Not supported by: `naive`
+- <a id="body-client-key"></a>**`client_key`** — Client private key for mTLS, PEM form.
   - Type: listable_string, secret
-  - Forbidden for: `naive`
-  - Requires: `tls.client_certificate`
-- **`client_key_path`** — Path to the client private key file.
+  - Not supported by: `naive`
+  - Meaningless without: `tls.client_certificate`
+- <a id="body-client-key-path"></a>**`client_key_path`** — Path to the client private key file.
   - Type: string, secret
-  - Forbidden for: `naive`
-- **`fragment`** — Split the ClientHello across TCP segments.
+  - Not supported by: `naive`
+- <a id="body-fragment"></a>**`fragment`** — Split the ClientHello across TCP segments.
   - Type: bool
   - Default: `false`
-  - Forbidden for: `naive`
-- **`fragment_fallback_delay`** — Delay before falling back when fragmenting.
+  - Not supported by: `naive`
+- <a id="body-fragment-fallback-delay"></a>**`fragment_fallback_delay`** — Delay before falling back when fragmenting.
   - Type: duration
-  - Forbidden for: `naive`
-- **`record_fragment`** — Split the ClientHello across TLS records.
+  - Not supported by: `naive`
+- <a id="body-record-fragment"></a>**`record_fragment`** — Split the ClientHello across TLS records.
   - Type: bool
   - Default: `false`
-  - Forbidden for: `naive`
-- **`spoof`** — Domain used for the spoofed ClientHello.
+  - Not supported by: `naive`
+- <a id="body-spoof"></a>**`spoof`** — Domain used for the spoofed ClientHello.
   - Type: string, format `host`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-  - Forbidden for: `naive`
+  - Not supported by: `naive`
   - Conflicts with: `tls.reality.enabled`
   - Conflicts with: `tls.disable_sni`
-- **`spoof_method`** — How the spoofed packet is made invalid.
+- <a id="body-spoof-method"></a>**`spoof_method`** — How the spoofed packet is made invalid.
   - Type: enum, `""`, `wrong-sequence`, `wrong-checksum`, `wrong-ack`, `wrong-md5`, `wrong-timestamp`, normalized: `trim_lower`
   - Default: `wrong-sequence`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-  - Forbidden for: `naive`
-  - Requires: `tls.spoof`
-- **`kernel_tx`** — Offload TLS transmission to the kernel (kTLS).
+  - Not supported by: `naive`
+  - Meaningless without: `tls.spoof`
+- <a id="body-kernel-tx"></a>**`kernel_tx`** — Offload TLS transmission to the kernel (kTLS).
   - Type: bool
   - Default: `false`
-  - Forbidden for: `naive`
-  - Requires: OS `linux`
-- **`kernel_rx`** — Offload TLS reception to the kernel (kTLS).
+  - Not supported by: `naive`
+  - Only written when: OS `linux`
+- <a id="body-kernel-rx"></a>**`kernel_rx`** — Offload TLS reception to the kernel (kTLS).
   - Type: bool
   - Default: `false`
-  - Forbidden for: `naive`
-  - Requires: OS `linux`
-- **`handshake_timeout`** — Timeout for the TLS handshake.
+  - Not supported by: `naive`
+  - Only written when: OS `linux`
+- <a id="body-handshake-timeout"></a>**`handshake_timeout`** — Timeout for the TLS handshake.
   - Type: duration
-  - Forbidden for: `naive`
-- **`ech`** — Encrypted Client Hello settings.
+  - Not supported by: `naive`
+- <a id="body-ech"></a>**`ech`** — Encrypted Client Hello settings.
   - Type: object
-- **`ech.enabled`** — Enable Encrypted Client Hello.
+- <a id="body-ech-enabled"></a>**`ech.enabled`** — Enable Encrypted Client Hello.
   - Type: bool
   - Default: `false`
   - Conflicts with: `tls.reality.enabled`
-- **`ech.config`** — Inline ECH config (PEM block).
+- <a id="body-ech-config"></a>**`ech.config`** — Inline ECH config (PEM block).
   - Type: listable_string
-- **`ech.config_path`** — Path to a file with the ECH config.
+- <a id="body-ech-config-path"></a>**`ech.config_path`** — Path to a file with the ECH config.
   - Type: string
-- **`ech.query_server_name`** — Domain queried over DNS for the ECH config.
+- <a id="body-ech-query-server-name"></a>**`ech.query_server_name`** — Domain queried over DNS for the ECH config.
   - Type: string
-- **`ech.pq_signature_schemes_enabled`** — Deprecated post-quantum signature switch.
+- <a id="body-ech-pq-signature-schemes-enabled"></a>**`ech.pq_signature_schemes_enabled`** — Deprecated post-quantum signature switch.
   - Type: bool, deprecated
-- **`ech.dynamic_record_sizing_disabled`** — Deprecated dynamic record sizing switch.
+- <a id="body-ech-dynamic-record-sizing-disabled"></a>**`ech.dynamic_record_sizing_disabled`** — Deprecated dynamic record sizing switch.
   - Type: bool, deprecated
-- **`utls`** — uTLS fingerprint settings.
+- <a id="body-utls"></a>**`utls`** — uTLS fingerprint settings.
   - Type: object
-  - Forbidden for: `naive`
-- **`utls.enabled`** — Enable uTLS ClientHello mimicry.
+  - Not supported by: `naive`
+- <a id="body-utls-enabled"></a>**`utls.enabled`** — Enable uTLS ClientHello mimicry.
   - Type: bool
   - Default: `false`
-  - Forbidden for: `naive`
-- **`utls.fingerprint`** — Browser fingerprint used for the ClientHello.
+  - Not supported by: `naive`
+- <a id="body-utls-fingerprint"></a>**`utls.fingerprint`** — Browser fingerprint used for the ClientHello.
   - Type: enum, `""`, `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized`, normalized: `trim_lower`
   - Default: `chrome`
   - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
   - Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
-- **`reality`** — REALITY settings.
+- <a id="body-reality"></a>**`reality`** — REALITY settings.
   - Type: object
-  - Forbidden for: `naive`
-- **`reality.enabled`** — Enable REALITY handshake camouflage.
+  - Not supported by: `naive`
+- <a id="body-reality-enabled"></a>**`reality.enabled`** — Enable REALITY handshake camouflage.
   - Type: bool
   - Default: `false`
-  - Forbidden for: `naive`
+  - Not supported by: `naive`
   - Conflicts with: `tls.ech.enabled`
   - Conflicts with: `tls.disable_sni`
   - Conflicts with: `tls.spoof`
-  - Requires: `tls.utls.enabled`
-- **`reality.public_key`** — Server REALITY public key (x25519).
+  - Meaningless without: `tls.utls.enabled`
+- <a id="body-reality-public-key"></a>**`reality.public_key`** — Server REALITY public key (x25519).
   - Type: string, format `base64_32`
-  - Default: none · Required: yes
+  - Required: the node is dropped without it
   - If invalid: removed → [`reality_pbk_invalid`](../warnings.md#reality_pbk_invalid)
-- **`reality.short_id`** — REALITY short ID (hex, even length).
+- <a id="body-reality-short-id"></a>**`reality.short_id`** — REALITY short ID (hex, even length).
   - Type: string, format `hex`, `…–16`, len `even`, normalized: `hex_only`
   - If invalid: removed → [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
   - If the value had to be cleaned up: [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
-  - Requires: `tls.reality.public_key`
-- **`reality.key_share`** — Key exchange used in the REALITY ClientHello.
+  - Meaningless without: `tls.reality.public_key`
+- <a id="body-reality-key-share"></a>**`reality.key_share`** — Key exchange used in the REALITY ClientHello.
   - Type: enum, `""`, `hybrid`, `classical`, normalized: `trim_lower`
   - Default: `""`
   - If invalid: removed → [`reality_key_share_invalid`](../warnings.md#reality_key_share_invalid)
-  - Requires: `tls.reality.public_key`
-  - Requires: core ≥ `1.14.1-lx.4`, lx fork only
+  - Meaningless without: `tls.reality.public_key`
+  - Only written when: core ≥ `1.14.1-lx.4`, lx fork only
 

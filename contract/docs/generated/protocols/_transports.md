@@ -10,6 +10,8 @@ Core the schema was checked against: `1.14.1-lx.4`
 
 ## Link parameters
 
+These are repeated on the page of every scheme that carries a transport block, together with the rule of the body field each one maps to. The body path below is written relative to the transport block: in a node body the variant is a segment of its own, e.g. `transport.ws.path`.
+
 ### `ws`
 
 - **`path`** — WebSocket request path.
@@ -20,10 +22,10 @@ Core the schema was checked against: `1.14.1-lx.4`
   - Type: string · Default: `""`
   - Maps to: `transport.headers.Host`
 - **`ed`** — WebSocket early data size, in bytes.
-  - Also spelled: `the`
   - Type: int
   - Maps to: `transport.max_early_data`, `transport.early_data_header_name`
-- **`eh`** (mobile) — Header name that carries the early data.
+- **`eh`** — Header name that carries the early data.
+  - Supported by LxBox only
   - Type: string · Default: `Sec-WebSocket-Protocol`
   - Maps to: `transport.early_data_header_name`
 
@@ -137,19 +139,23 @@ Core the schema was checked against: `1.14.1-lx.4`
   - Also spelled: `scMinPostsIntervalMs`
   - Type: string · Default: `""`
   - Maps to: `transport.sc_min_posts_interval_ms`
-- **`sc_stream_up_server_secs`** (desktop) — How long the server keeps the uplink stream, in seconds.
+- **`sc_stream_up_server_secs`** — How long the server keeps the uplink stream, in seconds.
+  - Supported by the desktop launcher only
   - Also spelled: `scStreamUpServerSecs`
   - Type: string · Default: `""`
   - Maps to: `transport.sc_stream_up_server_secs`
-- **`sc_max_buffered_posts`** (desktop) — How many POSTs may be buffered.
+- **`sc_max_buffered_posts`** — How many POSTs may be buffered.
+  - Supported by the desktop launcher only
   - Also spelled: `scMaxBufferedPosts`
   - Type: int
   - Maps to: `transport.sc_max_buffered_posts`
-- **`no_sse_header`** (desktop) — Do not send the SSE header.
+- **`no_sse_header`** — Do not send the SSE header.
+  - Supported by the desktop launcher only
   - Also spelled: `noSSEHeader`
   - Type: bool · Default: `false`
   - Maps to: `transport.no_sse_header`
-- **`xmux`** (desktop) — XHTTP connection multiplexing settings.
+- **`xmux`** — XHTTP connection multiplexing settings.
+  - Supported by the desktop launcher only
   - Also spelled: `extra.xmux`
   - Type: string
   - Maps to: `transport.xmux`
@@ -160,42 +166,42 @@ Discriminator: `type` — `http`, `ws`, `quic`, `grpc`, `httpupgrade`, `xhttp`
 
 ### `grpc`
 
-- **`service_name`** — gRPC service name in the request path. A leading "/" makes the value a ready-made request path in Xray's absolute-path form (core >= 1.14.1-lx.8): "/a/b/Tun" goes on the wire as "/a/b/Tun", each segment escaped on its own. Without a leading "/" it is a service name and the core appends "/Tun" itself ("a/b" -> "/a%2Fb/Tun"). The value is passed to the core unchanged in either form.
+- <a id="body-grpc-service-name"></a>**`grpc.service_name`** — gRPC service name in the request path. A leading "/" makes the value a ready-made request path in Xray's absolute-path form (core >= 1.14.1-lx.8): "/a/b/Tun" goes on the wire as "/a/b/Tun", each segment escaped on its own. Without a leading "/" it is a service name and the core appends "/Tun" itself ("a/b" -> "/a%2Fb/Tun"). The value is passed to the core unchanged in either form.
   - Type: string
   - Default: `""`
-- **`idle_timeout`** — Close the stream after this idle period.
+- <a id="body-grpc-idle-timeout"></a>**`grpc.idle_timeout`** — Close the stream after this idle period.
   - Type: duration
-- **`ping_timeout`** — Timeout waiting for a keepalive ping reply.
+- <a id="body-grpc-ping-timeout"></a>**`grpc.ping_timeout`** — Timeout waiting for a keepalive ping reply.
   - Type: duration
-- **`permit_without_stream`** — Send keepalive pings even with no active stream.
+- <a id="body-grpc-permit-without-stream"></a>**`grpc.permit_without_stream`** — Send keepalive pings even with no active stream.
   - Type: bool
   - Default: `false`
 
 ### `http`
 
-- **`host`** — Host header values, picked at random per request.
+- <a id="body-http-host"></a>**`http.host`** — Host header values, picked at random per request.
   - Type: listable_string
-- **`path`** — Request path.
+- <a id="body-http-path"></a>**`http.path`** — Request path.
   - Type: string, format `url_path`
   - Default: `/`
-- **`method`** — HTTP method of the request.
+- <a id="body-http-method"></a>**`http.method`** — HTTP method of the request.
   - Type: string
   - Default: `GET`
-- **`headers`** — Extra HTTP headers sent with each request.
+- <a id="body-http-headers"></a>**`http.headers`** — Extra HTTP headers sent with each request.
   - Type: object
-- **`idle_timeout`** — Close the connection after this idle period.
+- <a id="body-http-idle-timeout"></a>**`http.idle_timeout`** — Close the connection after this idle period.
   - Type: duration
-- **`ping_timeout`** — Timeout waiting for a keepalive ping reply.
+- <a id="body-http-ping-timeout"></a>**`http.ping_timeout`** — Timeout waiting for a keepalive ping reply.
   - Type: duration
 
 ### `httpupgrade`
 
-- **`host`** — Host header value.
+- <a id="body-httpupgrade-host"></a>**`httpupgrade.host`** — Host header value.
   - Type: string
-- **`path`** — Request path.
+- <a id="body-httpupgrade-path"></a>**`httpupgrade.path`** — Request path.
   - Type: string, format `url_path`
   - Default: `/`
-- **`headers`** — Extra HTTP headers sent with each request.
+- <a id="body-httpupgrade-headers"></a>**`httpupgrade.headers`** — Extra HTTP headers sent with each request.
   - Type: object
 
 ### `quic`
@@ -203,121 +209,121 @@ Discriminator: `type` — `http`, `ws`, `quic`, `grpc`, `httpupgrade`, `xhttp`
 
 ### `ws`
 
-- **`path`** — WebSocket request path.
+- <a id="body-ws-path"></a>**`ws.path`** — WebSocket request path.
   - Type: string, format `url_path`
   - Default: `/`
-- **`headers`** — Extra HTTP headers sent with each request.
+- <a id="body-ws-headers"></a>**`ws.headers`** — Extra HTTP headers sent with each request.
   - Type: object
-- **`max_early_data`** — Maximum bytes of WebSocket early data.
+- <a id="body-ws-max-early-data"></a>**`ws.max_early_data`** — Maximum bytes of WebSocket early data.
   - Type: int, `0–4294967295`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- **`early_data_header_name`** — Header carrying the early data payload.
+- <a id="body-ws-early-data-header-name"></a>**`ws.early_data_header_name`** — Header carrying the early data payload.
   - Type: string
 
 ### `xhttp`
 
 **core ≥ `1.13.13-lx.1` · lx fork only · build tag `with_xhttp`**
 
-- **`host`** — Host header value.
+- <a id="body-xhttp-host"></a>**`xhttp.host`** — Host header value.
   - Type: string
   - Default: `""`
-- **`path`** — Base request path.
+- <a id="body-xhttp-path"></a>**`xhttp.path`** — Base request path.
   - Type: string
-- **`mode`** — XHTTP transfer mode.
+- <a id="body-xhttp-mode"></a>**`xhttp.mode`** — XHTTP transfer mode.
   - Type: enum, `""`, `auto`, `packet-up`, `stream-up`, `stream-one`
   - Default: `auto`
   - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
-- **`headers`** — Extra HTTP headers sent with each request.
+- <a id="body-xhttp-headers"></a>**`xhttp.headers`** — Extra HTTP headers sent with each request.
   - Type: object
-- **`x_padding_bytes`** — Size range of the padding block.
+- <a id="body-xhttp-x-padding-bytes"></a>**`xhttp.x_padding_bytes`** — Size range of the padding block.
   - Type: string
   - Default: `100-1000`
-- **`no_grpc_header`** — Omit the fake gRPC header.
+- <a id="body-xhttp-no-grpc-header"></a>**`xhttp.no_grpc_header`** — Omit the fake gRPC header.
   - Type: bool
   - Default: `false`
-- **`xmux`** — Connection multiplexing for XHTTP.
+- <a id="body-xhttp-xmux"></a>**`xhttp.xmux`** — Connection multiplexing for XHTTP.
   - Type: object, all-or-nothing in the core (setting one field leaves the neighbours at zero, i.e. unlimited; a partly filled section is passed through unchanged)
-  - Requires: core ≥ `1.13.13-lx.1`, lx fork only
-- **`xmux.max_concurrency`** — Concurrent streams per connection, as a range.
+  - Only written when: core ≥ `1.13.13-lx.1`, lx fork only
+- <a id="body-xhttp-xmux-max-concurrency"></a>**`xhttp.xmux.max_concurrency`** — Concurrent streams per connection, as a range.
   - Type: string
   - Default: `1-1`
   - Conflicts with: `transport.xmux.max_connections`
-- **`xmux.max_connections`** — Number of parallel connections, as a range.
+- <a id="body-xhttp-xmux-max-connections"></a>**`xhttp.xmux.max_connections`** — Number of parallel connections, as a range.
   - Type: string
-- **`xmux.c_max_reuse_times`** — How many times a connection is reused.
+- <a id="body-xhttp-xmux-c-max-reuse-times"></a>**`xhttp.xmux.c_max_reuse_times`** — How many times a connection is reused.
   - Type: string
-- **`xmux.h_max_request_times`** — Requests served by one HTTP connection.
+- <a id="body-xhttp-xmux-h-max-request-times"></a>**`xhttp.xmux.h_max_request_times`** — Requests served by one HTTP connection.
   - Type: string
   - Default: `600-900`
-- **`xmux.h_max_reusable_secs`** — Lifetime of a reusable HTTP connection, seconds.
+- <a id="body-xhttp-xmux-h-max-reusable-secs"></a>**`xhttp.xmux.h_max_reusable_secs`** — Lifetime of a reusable HTTP connection, seconds.
   - Type: string
   - Default: `1800-3000`
-- **`xmux.h_keep_alive_period`** — Keepalive period in seconds.
+- <a id="body-xhttp-xmux-h-keep-alive-period"></a>**`xhttp.xmux.h_keep_alive_period`** — Keepalive period in seconds.
   - Type: int
   - Default: `0`
-- **`session_placement`** — Where the session id is carried.
+- <a id="body-xhttp-session-placement"></a>**`xhttp.session_placement`** — Where the session id is carried.
   - Type: enum, `""`, `path`, `query`, `header`, `cookie`
   - Default: `path`
   - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
-- **`session_key`** — Name of the session id key.
+- <a id="body-xhttp-session-key"></a>**`xhttp.session_key`** — Name of the session id key.
   - Type: string
   - Default: `X-Session`
-- **`seq_placement`** — Where the packet sequence number is carried.
+- <a id="body-xhttp-seq-placement"></a>**`xhttp.seq_placement`** — Where the packet sequence number is carried.
   - Type: enum, `""`, `path`, `query`, `header`, `cookie`
   - Default: `path`
   - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
-- **`seq_key`** — Name of the sequence number key.
+- <a id="body-xhttp-seq-key"></a>**`xhttp.seq_key`** — Name of the sequence number key.
   - Type: string
   - Default: `X-Seq`
-- **`session_table`** — Alphabet used to generate session ids.
+- <a id="body-xhttp-session-table"></a>**`xhttp.session_table`** — Alphabet used to generate session ids.
   - Type: string
-  - Requires: `transport.session_length`
-- **`session_length`** — Length range of the session id.
+  - Meaningless without: `transport.session_length`
+- <a id="body-xhttp-session-length"></a>**`xhttp.session_length`** — Length range of the session id.
   - Type: string
-  - Requires: `transport.session_table`
-- **`uplink_data_placement`** — Where uplink data is carried.
+  - Meaningless without: `transport.session_table`
+- <a id="body-xhttp-uplink-data-placement"></a>**`xhttp.uplink_data_placement`** — Where uplink data is carried.
   - Type: enum, `""`, `body`, `auto`, `header`, `cookie`
   - Default: `auto`
   - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
-- **`uplink_data_key`** — Name of the uplink data key.
+- <a id="body-xhttp-uplink-data-key"></a>**`xhttp.uplink_data_key`** — Name of the uplink data key.
   - Type: string
   - Default: `X-Data`
-- **`uplink_chunk_size`** — Size range of one uplink chunk.
+- <a id="body-xhttp-uplink-chunk-size"></a>**`xhttp.uplink_chunk_size`** — Size range of one uplink chunk.
   - Type: string
-- **`uplink_http_method`** — HTTP method used for uplink requests.
+- <a id="body-xhttp-uplink-http-method"></a>**`xhttp.uplink_http_method`** — HTTP method used for uplink requests.
   - Type: string
   - Default: `POST`
-- **`x_padding_obfs_mode`** — Use the newer padding obfuscation mode.
+- <a id="body-xhttp-x-padding-obfs-mode"></a>**`xhttp.x_padding_obfs_mode`** — Use the newer padding obfuscation mode.
   - Type: bool
   - Default: `false`
-- **`x_padding_key`** — Name of the padding key.
+- <a id="body-xhttp-x-padding-key"></a>**`xhttp.x_padding_key`** — Name of the padding key.
   - Type: string
   - Default: `x_padding`
-- **`x_padding_header`** — Header carrying the padding.
+- <a id="body-xhttp-x-padding-header"></a>**`xhttp.x_padding_header`** — Header carrying the padding.
   - Type: string
   - Default: `X-Padding`
-- **`x_padding_placement`** — Where the padding is carried.
+- <a id="body-xhttp-x-padding-placement"></a>**`xhttp.x_padding_placement`** — Where the padding is carried.
   - Type: enum, `""`, `cookie`, `header`, `query`, `queryInHeader`
   - Default: `queryInHeader`
   - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
-- **`x_padding_method`** — How the padding content is generated.
+- <a id="body-xhttp-x-padding-method"></a>**`xhttp.x_padding_method`** — How the padding content is generated.
   - Type: enum, `""`, `repeat-x`, `tokenish`
   - Default: `repeat-x`
   - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
-- **`sc_max_each_post_bytes`** — Size range of one POST body.
+- <a id="body-xhttp-sc-max-each-post-bytes"></a>**`xhttp.sc_max_each_post_bytes`** — Size range of one POST body.
   - Type: string
   - Default: `1000000-1000000`
-- **`sc_min_posts_interval_ms`** — Minimum interval between POSTs, ms.
+- <a id="body-xhttp-sc-min-posts-interval-ms"></a>**`xhttp.sc_min_posts_interval_ms`** — Minimum interval between POSTs, ms.
   - Type: string
   - Default: `30-30`
-- **`sc_max_concurrent_posts`** — Accepted but ignored concurrency limit.
+- <a id="body-xhttp-sc-max-concurrent-posts"></a>**`xhttp.sc_max_concurrent_posts`** — Accepted but ignored concurrency limit.
   - Type: int
-- **`server_max_header_bytes`** — Server-side option, ignored by the client.
+- <a id="body-xhttp-server-max-header-bytes"></a>**`xhttp.server_max_header_bytes`** — Server-side option, ignored by the client.
   - Type: int
-- **`no_sse_header`** — Server-side option, ignored by the client.
+- <a id="body-xhttp-no-sse-header"></a>**`xhttp.no_sse_header`** — Server-side option, ignored by the client.
   - Type: bool
-- **`sc_max_buffered_posts`** — Server-side option, ignored by the client.
+- <a id="body-xhttp-sc-max-buffered-posts"></a>**`xhttp.sc_max_buffered_posts`** — Server-side option, ignored by the client.
   - Type: int
-- **`sc_stream_up_server_secs`** — Server-side option, ignored by the client.
+- <a id="body-xhttp-sc-stream-up-server-secs"></a>**`xhttp.sc_stream_up_server_secs`** — Server-side option, ignored by the client.
   - Type: string
 

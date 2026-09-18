@@ -118,7 +118,9 @@ func writeUsages(b *strings.Builder, list []usage) {
 	for _, scheme := range order {
 		b.WriteString("- " + schemeRef(scheme) + "\n")
 		for _, u := range byScheme[scheme] {
-			line := "`" + u.path + "` — " + u.via
+			// Путь — ссылкой прямо на поле нужной страницы: со словаря кодов
+			// человек идёт чинить конкретное поле, а не искать его глазами.
+			line := "[`" + u.path + "`](" + schemeFieldLink(scheme, u.path) + ") — " + u.via
 			if u.action != "" {
 				line += " → " + u.action
 			}
@@ -130,10 +132,21 @@ func writeUsages(b *strings.Builder, list []usage) {
 
 // schemeRef — ссылка на страницу схемы либо на общую суб-схему.
 func schemeRef(scheme string) string {
+	return "[`" + scheme + "`](" + schemePageLink(scheme) + ")"
+}
+
+func schemePageLink(scheme string) string {
 	if file, ok := subPageFile[scheme]; ok {
-		return "[`" + scheme + "`](protocols/" + file + ")"
+		return "protocols/" + file
 	}
-	return "[`" + scheme + "`](protocols/" + schemeFileName(scheme) + ")"
+	return "protocols/" + schemeFileName(scheme)
+}
+
+// schemeFieldLink — ссылка на конкретное поле нужной страницы. Пути в
+// обратном индексе записаны так же, как их печатает страница: у суб-схемы —
+// относительно неё самой (`reality.public_key`), у схемы — от корня тела.
+func schemeFieldLink(scheme, path string) string {
+	return schemePageLink(scheme) + "#" + bodyAnchor(path)
 }
 
 // buildUsageIndex обходит body-секции всех файлов реестра и собирает, какое
@@ -234,39 +247,39 @@ func walkField(out map[string][]usage, scheme, path string, f *registry.Field) {
 		out[code] = append(out[code], usage{scheme: scheme, path: path, via: via, action: action})
 	}
 	if f.OnInvalid != nil {
-		add(f.OnInvalid.Code, "on_invalid: "+f.OnInvalid.Action, onInvalidAction(f.OnInvalid))
+		add(f.OnInvalid.Code, "the value does not fit the field", onInvalidAction(f.OnInvalid))
 	}
 	for _, a := range f.Advisory {
 		if len(a.Except) > 0 {
-			add(a.Code, "advisory except "+scalarList(a.Except), actionKept)
+			add(a.Code, "the value is anything except "+scalarList(a.Except), actionKept)
 			continue
 		}
-		add(a.Code, "advisory "+scalarList(a.Values), actionKept)
+		add(a.Code, "the value is "+scalarList(a.Values), actionKept)
 	}
 	if dw := f.DefaultWhen; dw != nil && dw.Absent && dw.Code != "" {
-		add(dw.Code, "default_when absent", "filled in with "+scalar(dw.Value))
+		add(dw.Code, "the field is absent", "filled in with "+scalar(dw.Value))
 	}
 	if f.NormalizeCode != "" {
-		add(f.NormalizeCode, "normalize "+f.Normalize, "value cleaned up")
+		add(f.NormalizeCode, "the value had to be cleaned up ("+f.Normalize+")", "value cleaned up")
 	}
 	for _, c := range f.Conflicts {
-		add(c.Code, "conflicts "+c.With, actionRemoved)
+		add(c.Code, "conflicts with `"+c.With+"`", actionRemoved)
 	}
 	for _, rq := range f.Requires {
-		add(rq.Code, "requires "+rq.Path, actionRemoved)
+		add(rq.Code, "set without `"+rq.Path+"`", actionRemoved)
 	}
 	if f.ForbiddenWhen != nil {
-		add(f.ForbiddenWhen.Code, "forbidden_when "+f.ForbiddenWhen.Path, actionRemoved)
+		add(f.ForbiddenWhen.Code, "forbidden when `"+f.ForbiddenWhen.Path+"` is set", actionRemoved)
 	}
 	if len(f.ForbiddenFor) > 0 {
-		add(f.Code, "forbidden_for "+strings.Join(f.ForbiddenFor, ", "), actionRemoved)
+		add(f.Code, "not supported by "+codeList(f.ForbiddenFor), actionRemoved)
 	} else if len(f.AllowedFor) > 0 {
-		add(f.Code, "allowed_for "+strings.Join(f.AllowedFor, ", "), actionRemoved)
+		add(f.Code, "supported only by "+codeList(f.AllowedFor), actionRemoved)
 	} else if f.Code != "" {
-		add(f.Code, "code", "")
+		add(f.Code, "the field is present", "")
 	}
 	if f.Required && f.OnInvalid == nil {
-		add("field_missing", "required", actionNodeDropped)
+		add("field_missing", "required and missing", actionNodeDropped)
 	}
 
 	inner := f
