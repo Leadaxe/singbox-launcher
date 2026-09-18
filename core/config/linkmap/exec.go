@@ -232,6 +232,13 @@ func (st *execState) applyEntry(e *Entry) {
 		return
 	}
 
+	// on_present — код за САМО наличие значения, независимо от того, едет оно
+	// куда-нибудь или нет. Нужен записям с `maps_to: null`: значение осознанно
+	// никуда не переводится, и без кода оно исчезало бы молча.
+	if code := codeOf(p.OnPresent); code != "" {
+		st.note(code, paramsOf(p.OnPresent))
+	}
+
 	// Декодирование поверх декодера формы, потом форм-семантика `+`.
 	val := st.decodeValue(p, rawVal)
 
@@ -1168,6 +1175,19 @@ func codeOf(m map[string]interface{}) string {
 	}
 	s, _ := m["code"].(string)
 	return s
+}
+
+// paramsOf читает объявленные параметры кода ({"query_name": "ech"}).
+func paramsOf(m map[string]interface{}) map[string]string {
+	raw, ok := m["params"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		out[k] = toString(v)
+	}
+	return out
 }
 
 func mapOf(v interface{}) map[string]interface{} {

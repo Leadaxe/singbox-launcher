@@ -1218,10 +1218,20 @@
         },
         "path": {
           "source": "query.path",
-          "maps_to": "transport.path",
+          "decode_extra": {
+            "mode": "path",
+            "passes": 2
+          },
+          "extract": {
+            "re": "^(?P<path>[^?]*)",
+            "into": {
+              "path": "transport.path"
+            }
+          },
           "when": {
             "transport.type": "xhttp"
-          }
+          },
+          "impl": "Хвост '?…' срезается целиком (SPEC 002 §4.1): early data у xhttp не существует, и любой хвост запроса ломает маршрут — сервер отвечает 404. Группа одна, без ed: значение хвоста отбрасывается, а не раскладывается (в отличие от ws). mode:path — оба прохода path-семантика, '+' литерален."
         },
         "host": {
           "source": "query.host",
@@ -1229,7 +1239,338 @@
           "when": {
             "transport.type": "xhttp"
           }
-        }
+        },
+        "xPaddingBytes": {
+          "source": [
+            "extra.xPaddingBytes",
+            "extra.x_padding_bytes",
+            "query.xPaddingBytes",
+            "query.x_padding_bytes"
+          ],
+          "maps_to": "transport.x_padding_bytes",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "sessionPlacement": {
+          "source": [
+            "extra.sessionPlacement",
+            "extra.session_placement",
+            "query.sessionPlacement",
+            "query.session_placement"
+          ],
+          "maps_to": "transport.session_placement",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "sessionKey": {
+          "source": [
+            "extra.sessionKey",
+            "extra.session_key",
+            "query.sessionKey",
+            "query.session_key"
+          ],
+          "maps_to": "transport.session_key",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "seqPlacement": {
+          "source": [
+            "extra.seqPlacement",
+            "extra.seq_placement",
+            "query.seqPlacement",
+            "query.seq_placement"
+          ],
+          "maps_to": "transport.seq_placement",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "seqKey": {
+          "source": [
+            "extra.seqKey",
+            "extra.seq_key",
+            "query.seqKey",
+            "query.seq_key"
+          ],
+          "maps_to": "transport.seq_key",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "uplinkDataPlacement": {
+          "source": [
+            "extra.uplinkDataPlacement",
+            "extra.uplink_data_placement",
+            "query.uplinkDataPlacement",
+            "query.uplink_data_placement"
+          ],
+          "maps_to": "transport.uplink_data_placement",
+          "when": {
+            "transport.type": "xhttp",
+            "transport.mode": {
+              "not_in": [
+                "auto",
+                "stream-one",
+                "stream-up"
+              ]
+            }
+          },
+          "implies": {
+            "transport.mode": "packet-up"
+          },
+          "priority": 50,
+          "impl": "Структурное правило ЯДРА, а не значение поля: uplink_data_placement=header работает ТОЛЬКО в режиме packet-up («uplink_data_placement can be header only in packet-up mode» — фатал на весь конфиг). Выражено ОПЕРАТОРОМ not_in, а не in: при отсутствующем режиме `in` ложен (сравнивать нечего), а нужно обратное — режима нет, значит запрета нет, и implies его допишет. not_in по несуществующему пути истинен по построению. implies дописывает packet-up только когда режим не назвали: priority 50 ставит запись ПОЗЖЕ записи mode (умолчание 0), поэтому явный режим она не перебивает."
+        },
+        "uplinkDataKey": {
+          "source": [
+            "extra.uplinkDataKey",
+            "extra.uplink_data_key",
+            "query.uplinkDataKey",
+            "query.uplink_data_key"
+          ],
+          "maps_to": "transport.uplink_data_key",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "uplinkChunkSize": {
+          "source": [
+            "extra.uplinkChunkSize",
+            "extra.uplink_chunk_size",
+            "query.uplinkChunkSize",
+            "query.uplink_chunk_size"
+          ],
+          "maps_to": "transport.uplink_chunk_size",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "uplinkHTTPMethod": {
+          "source": [
+            "extra.uplinkHTTPMethod",
+            "extra.uplink_http_method",
+            "query.uplinkHTTPMethod",
+            "query.uplink_http_method"
+          ],
+          "maps_to": "transport.uplink_http_method",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "xPaddingKey": {
+          "source": [
+            "extra.xPaddingKey",
+            "extra.x_padding_key",
+            "query.xPaddingKey",
+            "query.x_padding_key"
+          ],
+          "maps_to": "transport.x_padding_key",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "xPaddingHeader": {
+          "source": [
+            "extra.xPaddingHeader",
+            "extra.x_padding_header",
+            "query.xPaddingHeader",
+            "query.x_padding_header"
+          ],
+          "maps_to": "transport.x_padding_header",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "xPaddingPlacement": {
+          "source": [
+            "extra.xPaddingPlacement",
+            "extra.x_padding_placement",
+            "query.xPaddingPlacement",
+            "query.x_padding_placement"
+          ],
+          "maps_to": "transport.x_padding_placement",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "xPaddingMethod": {
+          "source": [
+            "extra.xPaddingMethod",
+            "extra.x_padding_method",
+            "query.xPaddingMethod",
+            "query.x_padding_method"
+          ],
+          "maps_to": "transport.x_padding_method",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "scMaxEachPostBytes": {
+          "source": [
+            "extra.scMaxEachPostBytes",
+            "extra.sc_max_each_post_bytes",
+            "query.scMaxEachPostBytes",
+            "query.sc_max_each_post_bytes"
+          ],
+          "maps_to": "transport.sc_max_each_post_bytes",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "scMinPostsIntervalMs": {
+          "source": [
+            "extra.scMinPostsIntervalMs",
+            "extra.sc_min_posts_interval_ms",
+            "query.scMinPostsIntervalMs",
+            "query.sc_min_posts_interval_ms"
+          ],
+          "maps_to": "transport.sc_min_posts_interval_ms",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "scStreamUpServerSecs": {
+          "source": [
+            "extra.scStreamUpServerSecs",
+            "extra.sc_stream_up_server_secs",
+            "query.scStreamUpServerSecs",
+            "query.sc_stream_up_server_secs"
+          ],
+          "maps_to": "transport.sc_stream_up_server_secs",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "noGRPCHeader": {
+          "source": [
+            "extra.noGRPCHeader",
+            "extra.no_grpc_header",
+            "query.noGRPCHeader",
+            "query.no_grpc_header"
+          ],
+          "maps_to": "transport.no_grpc_header",
+          "type": "bool_spelled",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "noSSEHeader": {
+          "source": [
+            "extra.noSSEHeader",
+            "extra.no_sse_header",
+            "query.noSSEHeader",
+            "query.no_sse_header"
+          ],
+          "maps_to": "transport.no_sse_header",
+          "type": "bool_spelled",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "xPaddingObfsMode": {
+          "source": [
+            "extra.xPaddingObfsMode",
+            "extra.x_padding_obfs_mode",
+            "query.xPaddingObfsMode",
+            "query.x_padding_obfs_mode"
+          ],
+          "maps_to": "transport.x_padding_obfs_mode",
+          "type": "bool_spelled",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "scMaxBufferedPosts": {
+          "source": [
+            "extra.scMaxBufferedPosts",
+            "extra.sc_max_buffered_posts",
+            "query.scMaxBufferedPosts",
+            "query.sc_max_buffered_posts"
+          ],
+          "maps_to": "transport.sc_max_buffered_posts",
+          "type": "int",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "maxConcurrency": {
+          "source": [
+            "extra.maxConcurrency",
+            "extra.max_concurrency",
+            "query.maxConcurrency",
+            "query.max_concurrency"
+          ],
+          "maps_to": "transport.xmux.max_concurrency",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "maxConnections": {
+          "source": [
+            "extra.maxConnections",
+            "extra.max_connections",
+            "query.maxConnections",
+            "query.max_connections"
+          ],
+          "maps_to": "transport.xmux.max_connections",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "cMaxReuseTimes": {
+          "source": [
+            "extra.cMaxReuseTimes",
+            "extra.c_max_reuse_times",
+            "query.cMaxReuseTimes",
+            "query.c_max_reuse_times"
+          ],
+          "maps_to": "transport.xmux.c_max_reuse_times",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "hMaxRequestTimes": {
+          "source": [
+            "extra.hMaxRequestTimes",
+            "extra.h_max_request_times",
+            "query.hMaxRequestTimes",
+            "query.h_max_request_times"
+          ],
+          "maps_to": "transport.xmux.h_max_request_times",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "hMaxReusableSecs": {
+          "source": [
+            "extra.hMaxReusableSecs",
+            "extra.h_max_reusable_secs",
+            "query.hMaxReusableSecs",
+            "query.h_max_reusable_secs"
+          ],
+          "maps_to": "transport.xmux.h_max_reusable_secs",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "hKeepAlivePeriod": {
+          "source": [
+            "extra.hKeepAlivePeriod",
+            "extra.h_keep_alive_period",
+            "query.hKeepAlivePeriod",
+            "query.h_keep_alive_period"
+          ],
+          "maps_to": "transport.xmux.h_keep_alive_period",
+          "type": "int",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "$note_v2": "SPEC 002 v2: плоский набор полей XHTTP. Имена в ссылке camelCase (так их пишет Xray), в теле — snake_case ядра; оба написания перечислены source, регистр не значим. Булевы поля пишутся ТОЛЬКО когда истинны (type bool_spelled снимает ложь), поэтому умолчание ядра = отсутствующий ключ. Вложенный слой extra (JSON в query-параметре) здесь НЕ выражен — нужен примитив второго пространства источников, см. PRIMITIVES §0.9.",
+        "$note_extra": "Вложенный слой extra перечислен ПЕРВЫМ источником у каждой записи, кроме базовой тройки mode/path/host: у прочих ключей extra побеждает плоский слой (SPEC 002 §1.5), у тройки — наоборот (D-097, Xray в SplitHTTPConfig.Build безусловно затирает extra внешними значениями, даже пустыми; кейс 4PDA #1755). Порядок источников — то самое место, где это решение принимает САМА запись: слияние слоёв приняло бы его за неё и одинаково для всех ключей."
       }
     },
     "xray": {

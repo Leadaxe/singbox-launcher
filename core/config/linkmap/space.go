@@ -42,6 +42,17 @@ type Space struct {
 
 	json interface{}
 	ini  map[string]map[string]string
+	// overlays — ДОПОЛНИТЕЛЬНЫЕ пространства, распакованные из значения
+	// внутри входа (SPEC 133, примитив `overlay`): чужой диалект приезжает
+	// вложенным слоем — JSON в query-параметре, — и адресуется тем же
+	// `source`, только под своим префиксом (`extra.scMaxEachPostBytes`).
+	//
+	// Отдельная карта, а не слияние в query: слой ИМЕННО отдельный, и
+	// запись сама решает, кто из двух побеждает, перечисляя источники в
+	// нужном порядке. Слияние приняло бы это решение за неё и одинаково для
+	// всех ключей — ровно то, на чём горит базовая тройка mode/path/host,
+	// где Xray затирает вложенный слой плоским (D-097).
+	overlays map[string]map[string]string
 	// iniComments — первый комментарий секции: имя узла в .conf живёт под
 	// [Peer] и больше нигде (G7).
 	iniComments map[string]string
@@ -103,6 +114,35 @@ func (s *Space) Lookup(name string) (string, bool) {
 		return jsonScalar(s.json, strings.TrimPrefix(name, "json."))
 	case strings.HasPrefix(name, "ini."):
 		return s.iniValue(strings.TrimPrefix(name, "ini."))
+	}
+	// Наложенный слой: "<имя слоя>.<ключ>". Проверяется ПОСЛЕ встроенных имён,
+	// чтобы слой не мог перекрыть `host`/`port`/`query.*`.
+	if idx := strings.Index(name, "."); idx > 0 {
+		if layer, ok := s.overlays[name[:idx]]; ok {
+			return mapGetFold(layer, name[idx+1:])
+		}
+	}
+	return "", false
+}
+
+// SetOverlay кладёт наложенное пространство под своим именем.
+func (s *Space) SetOverlay(name string, values map[string]string) {
+	if s.overlays == nil {
+		s.overlays = map[string]map[string]string{}
+	}
+	s.overlays[name] = values
+}
+
+// mapGetFold читает ключ плоской карты регистронезависимо, точное совпадение
+// первым: подписки шлют и camelCase, и snake_case одного и того же имени.
+func mapGetFold(m map[string]string, key string) (string, bool) {
+	if v, ok := m[key]; ok && strings.TrimSpace(v) != "" {
+		return v, true
+	}
+	for k, v := range m {
+		if strings.EqualFold(k, key) && strings.TrimSpace(v) != "" {
+			return v, true
+		}
 	}
 	return "", false
 }

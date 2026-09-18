@@ -294,9 +294,31 @@
     },
 
     "when": {
-      "description": "Условие по УЖЕ ПОСТРОЕННОМУ телу и/или по источнику. Ключ — путь тела, '$type' — тип тела, 'query.X'/'json.X'/'ini.X' — источник, '$form' — id формы.",
+      "description": "Условие по УЖЕ ПОСТРОЕННОМУ телу и/или по источнику. Ключ — путь тела, '$type' — тип тела, 'query.X'/'json.X'/'ini.X' — источник, '$form' — id формы. Значение — скаляр (равенство, строки fold-case), null («адреса нет») либо объект-оператор: {\"in\": […]}, {\"not_in\": […]}, {\"present\": true|false}, {\"absent\": true|false}. ВАЖНО для not_in: по НЕСУЩЕСТВУЮЩЕМУ адресу он истинен, а in — ложен; это не симметрия, а разные вопросы («значение вне набора» против «значение в наборе»), и правило вида «запрещено при таких-то значениях» выражается только через not_in.",
       "type": "object",
       "additionalProperties": true
+    },
+
+    "overlay": {
+      "description": "Наложенное пространство источников: вложенный слой ЧУЖОГО диалекта (JSON в query-параметре) адресуется тем же source под своим именем ('extra.scMaxEachPostBytes'). Слой ОТДЕЛЬНЫЙ, а не слитый с основным: кто из двух побеждает, решает сама запись порядком своих источников — слияние приняло бы это решение за неё и одинаково для всех ключей, на чём горит базовая тройка mode/path/host (D-097). Битый слой НЕ роняет узел: он просто не появляется.",
+      "type": "object",
+      "required": ["name", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "Префикс, под которым слой адресуется в source." },
+        "source": { "$ref": "#/definitions/source" },
+        "decode": {
+          "type": "array",
+          "description": "Конвейер декодеров текста слоя: 'percent' (панели кодируют дважды), 'base64?'.",
+          "items": { "enum": ["percent", "base64?", "base64"] }
+        },
+        "flatten": {
+          "type": "array",
+          "description": "Имена вложенных объектов слоя, чьи члены поднимаются в плоский слой (xmux у xhttp).",
+          "items": { "type": "string" }
+        },
+        "impl": { "type": "string" }
+      }
     },
 
     "extract": {
@@ -387,6 +409,7 @@
           "description": "Каким source тело приходит в санитайзер: на это опирается except_sources в правилах реестра."
         },
         "forms": { "type": "array", "items": { "$ref": "#/definitions/form" } },
+        "overlays": { "type": "array", "items": { "$ref": "#/definitions/overlay" } },
         "userinfo": { "$ref": "#/definitions/userinfo" },
         "label": { "$ref": "#/definitions/labelSpec" },
         "params": { "type": "object", "additionalProperties": { "$ref": "#/definitions/param" } },

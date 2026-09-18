@@ -15,6 +15,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/registry"
@@ -76,7 +77,85 @@ func UnwrapURI(plan *Plan, text string) (*Space, registry.Form, error) {
 	if err != nil {
 		return nil, form, err
 	}
+	buildOverlays(plan.Mapper.Overlays, space)
 	return space, form, nil
+}
+
+// buildOverlays распаковывает наложенные пространства, объявленные секцией.
+//
+// Битый слой — НЕ отказ разбора: подписки шлют полуобрезанный JSON, и терять
+// из-за него весь узел нельзя (плоский слой остаётся рабочим). Слой просто не
+// появляется, и записи читают то, что нашли в основном пространстве.
+func buildOverlays(specs []registry.Overlay, space *Space) {
+	for i := range specs {
+		spec := &specs[i]
+		if spec.Name == "" {
+			continue
+		}
+		raw := ""
+		for _, name := range spec.Source.All() {
+			if v, ok := space.Lookup(name); ok && strings.TrimSpace(v) != "" {
+				raw = strings.TrimSpace(v)
+				break
+			}
+		}
+		if raw == "" {
+			continue
+		}
+		for _, dec := range spec.Decode {
+			switch dec {
+			case "base64?":
+				if s, err := decodeBase64Any(raw); err == nil {
+					raw = s
+				}
+			case "percent":
+				// Значение уже percent-декодировано лексером один раз;
+				// второй проход нужен панелям, кодирующим слой дважды.
+				if !strings.HasPrefix(raw, "{") {
+					if s, err := percentUnescape(raw); err == nil {
+						raw = s
+					}
+				}
+			}
+		}
+		var obj map[string]interface{}
+		if err := json.Unmarshal([]byte(raw), &obj); err != nil {
+			continue
+		}
+		flat := map[string]string{}
+		for k, v := range obj {
+			if nested, ok := v.(map[string]interface{}); ok {
+				if containsFold(spec.Flatten, k) {
+					for nk, nv := range nested {
+						if s := overlayScalar(nv); s != "" {
+							flat[nk] = s
+						}
+					}
+				}
+				continue
+			}
+			if s := overlayScalar(v); s != "" {
+				flat[k] = s
+			}
+		}
+		space.SetOverlay(spec.Name, flat)
+	}
+}
+
+// overlayScalar приводит значение слоя к строке.
+//
+// Числа печатаются БЕЗ экспоненты и без хвоста `.0`: слой приезжает JSON'ом, и
+// `30.0` там означает то же, что `30`, а `1e+06` в теле — мусор.
+func overlayScalar(v interface{}) string {
+	switch t := v.(type) {
+	case string:
+		return strings.TrimSpace(t)
+	case bool:
+		return strconv.FormatBool(t)
+	case float64:
+		return formatNumber(t)
+	}
+	return ""
 }
 
 // applyDecoder применяет один декодер конвейера формы.

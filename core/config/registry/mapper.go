@@ -404,6 +404,20 @@ type LabelFallback struct {
 	SchemeSource string `json:"scheme_source"`
 }
 
+// Overlay — наложенное пространство источников.
+//
+// `name` — префикс, под которым слой адресуется в `source`; `source` — откуда
+// берётся сам текст слоя; `decode` — конвейер декодеров (`json`, `base64?`);
+// `flatten` — имена вложенных объектов, чьи члены поднимаются в плоский слой
+// (`xmux` у xhttp).
+type Overlay struct {
+	Name    string    `json:"name"`
+	Source  SourceRef `json:"source"`
+	Decode  []string  `json:"decode"`
+	Flatten []string  `json:"flatten"`
+	Impl    string    `json:"impl"`
+}
+
 // UnknownKey — что делать с неперечисленным ключом источника.
 // Молчание — тот самый дефект, ради которого затеяна кампания.
 type UnknownKey struct {
@@ -434,6 +448,17 @@ type Mapper struct {
 	Forms    []Form     `json:"forms"`
 	UserInfo *UserInfo  `json:"userinfo"`
 	Label    *LabelSpec `json:"label"`
+
+	// Overlays — ДОПОЛНИТЕЛЬНЫЕ пространства источников, распакованные из
+	// значения внутри входа: чужой диалект приезжает вложенным слоем (JSON в
+	// query-параметре `extra` у xhttp). Запись адресует его тем же `source`
+	// под именем слоя (`extra.scMaxEachPostBytes`).
+	//
+	// Слой ОТДЕЛЬНЫЙ, а не слитый с query: кто из двух побеждает, решает
+	// запись порядком своих источников. Слияние приняло бы это решение за неё
+	// и одинаково для всех ключей — ровно то, на чём горит базовая тройка
+	// mode/path/host, где Xray затирает вложенный слой плоским (D-097).
+	Overlays []Overlay `json:"overlays"`
 
 	Params map[string]*Param `json:"params"`
 
