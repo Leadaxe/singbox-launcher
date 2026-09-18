@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 1080,
+        "type": "socks",
+        "username": "useridonly",
+        "version": "4"
+      },
+      "kind": "outbound",
+      "label": "socks4-userid",
+      "scheme": "socks4"
+    }
+  ],
+  "v": 1
+}

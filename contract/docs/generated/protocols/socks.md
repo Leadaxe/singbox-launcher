@@ -4,7 +4,7 @@
 
 [← index](../index.md) · [diagnosed problems](../warnings.md)
 
-`socks` — an outbound, sing-box type `socks`. Also written as `socks5`. Accepted from: share link, sing-box JSON.
+`socks` — an outbound, sing-box type `socks`. Also written as `socks5`, `socks4`, `socks4a`. Accepted from: share link, sing-box JSON.
 
 <sub>Schema checked against core `1.14.1-lx.4` · the link fragment (`#…`) is the node `label`</sub>
 
@@ -13,7 +13,7 @@
 | `scheme` | `socks` |
 | `singbox_type` | `socks` |
 | `kind` | `outbound` |
-| `aliases` | `socks5` |
+| `aliases` | `socks5`, `socks4`, `socks4a` |
 | `sources` | `uri`, `singbox` |
 | Core the schema was checked against | `1.14.1-lx.4` |
 | URI fragment | `label` |
@@ -142,6 +142,11 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 - `version` — normalized: `trim_lower`
 - `network` — normalized: `trim_lower`
+
+**Structural translations.** Decisions taken while the link is being read, before any value is judged: whether a block exists at all, where a field comes from, or how one input becomes several fields. The sanitizer sees a finished body and cannot take them.
+
+- `the URI scheme itself: socks4:// / socks4a:// / socks:// / socks5://` → `version` = "4" / "4a" / "5" — A SOCKS link has no parameter for the protocol version in any dialect — the scheme carries it, the way the proxy-https:// suffix carries TLS.
+  - Kind: `structure`
 
 ## Degradation
 

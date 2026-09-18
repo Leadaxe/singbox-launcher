@@ -1,0 +1,4 @@
+# sing-box: version "5" написан ЯВНО и равен дефолту ядра. Проходит как есть:
+# конвейер дефолты ядра не материализует, но и не снимает написанное автором
+# тела (CANON §2.4). Контроль к socks_version_absent.
+{"type":"socks","tag":"sb-socks5","server":"example-3.com","server_port":1080,"version":"5"}

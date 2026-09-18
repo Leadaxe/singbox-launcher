@@ -328,10 +328,11 @@ func GenerateNodeJSONBare(node *ParsedNode) (string, error) {
 	// 1. tag
 	parts = append(parts, fmt.Sprintf(`"tag":%s`, marshalJSONString(node.Tag)))
 
-	// 2. type (sing-box uses "socks" + version for SOCKS5 URIs, not a separate socks5 type)
+	// 2. type (у ядра тип один — "socks"; версию протокола несёт поле тела
+	// `version`, а в ссылке — сама схема: socks/socks5/socks4/socks4a)
 	if node.Scheme == "ss" {
 		parts = append(parts, fmt.Sprintf(`"type":%s`, marshalJSONString("shadowsocks")))
-	} else if node.Scheme == "socks" || node.Scheme == "socks5" {
+	} else if subscription.IsSocksScheme(node.Scheme) {
 		parts = append(parts, fmt.Sprintf(`"type":%s`, marshalJSONString("socks")))
 	} else {
 		parts = append(parts, fmt.Sprintf(`"type":%s`, marshalJSONString(node.Scheme)))
@@ -469,7 +470,7 @@ func GenerateNodeJSONBare(node *ParsedNode) (string, error) {
 			}
 			parts = append(parts, fmt.Sprintf(`"password":%s`, string(passwordJSON)))
 		}
-	} else if (node.Scheme == "socks" || node.Scheme == "socks5") && node.Outbound != nil {
+	} else if subscription.IsSocksScheme(node.Scheme) && node.Outbound != nil {
 		if ver, ok := node.Outbound["version"].(string); ok && ver != "" {
 			parts = append(parts, fmt.Sprintf(`"version":%s`, marshalJSONString(ver)))
 		}

@@ -1,0 +1,3 @@
+# sing-box: ключа version нет вовсе — и не появляется: дефолт ядра (5)
+# конвейер не материализует.
+{"type":"socks","tag":"sb-socks-nover","server":"example-4.com","server_port":1080}

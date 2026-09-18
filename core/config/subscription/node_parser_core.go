@@ -34,6 +34,8 @@ func IsDirectLink(input string) bool {
 		strings.HasPrefix(trimmed, "masque://") ||
 		strings.HasPrefix(trimmed, "vpn://") ||
 		strings.HasPrefix(trimmed, "socks5://") ||
+		strings.HasPrefix(trimmed, "socks4a://") ||
+		strings.HasPrefix(trimmed, "socks4://") ||
 		strings.HasPrefix(trimmed, "socks://") ||
 		strings.HasPrefix(trimmed, "naive+https://") ||
 		strings.HasPrefix(trimmed, "naive+quic://") ||
@@ -314,6 +316,19 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		// остаётся в корпусе как per-app override (docs/IDENTITY.md §4a-C).
 		scheme = "socks5"
 		defaultPort = 1080
+	case strings.HasPrefix(uri, "socks4a://"):
+		// SOCKS4a: версия протокола живёт в САМОЙ СХЕМЕ — у ядра это
+		// `version: "4a"` в теле (option/socks.go). Схема-дискриминатор, как
+		// суффикс у proxy-https:// (registry/protocols/http.json). Запись
+		// остальной ссылки общая с socks5://, поэтому веток разбора ниже это
+		// не касается — различает их только socksVersionForScheme.
+		scheme = "socks4a"
+		defaultPort = 1080
+	case strings.HasPrefix(uri, "socks4://"):
+		// SOCKS4: userinfo несёт ОДИН компонент — userid (пароля у версии 4
+		// нет, ядро шлёт username как userid). Годность значения судит ядро.
+		scheme = "socks4"
+		defaultPort = 1080
 	case strings.HasPrefix(uri, "socks://"):
 		scheme = "socks"
 		defaultPort = 1080
@@ -390,7 +405,7 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		return nil, fmt.Errorf("invalid hysteria URI: missing hostname")
 	}
 	// Validate SOCKS / SOCKS5: hostname required, user/password optional
-	if (scheme == "socks" || scheme == "socks5") && parsedURL.Hostname() == "" {
+	if isSocksScheme(scheme) && parsedURL.Hostname() == "" {
 		return nil, fmt.Errorf("invalid socks URI: missing hostname")
 	}
 
@@ -441,7 +456,10 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	if parsedURL.User != nil {
 		node.UUID = parsedURL.User.Username()
 		// Extract password for SSH, Trojan, SOCKS, Naive and TUIC (user:password@server)
-		if scheme == "ssh" || scheme == "trojan" || scheme == "socks" || scheme == "socks5" || scheme == "naive" || scheme == "tuic" {
+		// У socks4/socks4a пароля нет вовсе (userinfo = userid), но
+		// написанный в ссылке он переносится как есть: годность пары
+		// судит ядро, а не парсер («маппер не судит значения»).
+		if scheme == "ssh" || scheme == "trojan" || isSocksScheme(scheme) || scheme == "naive" || scheme == "tuic" {
 			if password, hasPassword := parsedURL.User.Password(); hasPassword {
 				node.Query.Set("password", password)
 			}
@@ -698,12 +716,16 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 	// чужой ключ. Помечаем один раз здесь, а не в каждой TLS-ветке.
 	noteECHIgnored(node)
 	outbound["tag"] = node.Tag
-	// Use "shadowsocks" instead of "ss" for sing-box; "socks" outbound for socks5:// and socks:// URIs
+	// Use "shadowsocks" instead of "ss" for sing-box; "socks" outbound for
+	// socks://, socks5://, socks4:// and socks4a:// URIs — версию протокола
+	// у ядра несёт поле тела, а в ссылке её несёт схема.
 	if node.Scheme == "ss" {
 		outbound["type"] = "shadowsocks"
-	} else if node.Scheme == "socks" || node.Scheme == "socks5" {
+	} else if isSocksScheme(node.Scheme) {
 		outbound["type"] = "socks"
-		outbound["version"] = "5"
+		if v := socksVersionForScheme(node.Scheme); v != "" {
+			outbound["version"] = v
+		}
 	} else {
 		outbound["type"] = node.Scheme
 	}
@@ -916,7 +938,7 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 		buildSSHOutbound(node, outbound)
 	} else if node.Scheme == "naive" {
 		buildNaiveOutbound(node, outbound)
-	} else if node.Scheme == "socks" || node.Scheme == "socks5" {
+	} else if isSocksScheme(node.Scheme) {
 		if node.UUID != "" {
 			outbound["username"] = node.UUID
 		}

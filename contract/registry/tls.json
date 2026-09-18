@@ -114,13 +114,13 @@
   "mapper": [
     {
       "id": "security_none_no_tls",
-      "applies_to": ["vless", "trojan", "vmess", "anytls", "http"],
+      "applies_to": ["vless", "trojan", "vmess", "http"],
       "from": "security=none",
       "to": "no `tls` block at all",
       "kind": "structure",
       "desc_en": "A link that asks for no TLS produces a body with no `tls` key, not `tls.enabled=false`.",
       "desc_ru": "Ссылка без TLS даёт тело вовсе без ключа `tls`, а не `tls.enabled=false`.",
-      "impl": "core/config/subscription/node_parser_transport.go:vlessTLSFromNode / trojanTLSFromNode. Отсутствие ключа санитайзеру неотличимо от «не задано», поэтому решение принимает маппер; явный `enabled:false` роняет ядра lx.5–lx.18 в SIGSEGV (SPEC 045)."
+      "impl": "core/config/subscription/node_parser_transport.go:vlessTLSFromNode / trojanTLSFromNode. Отсутствие ключа санитайзеру неотличимо от «не задано», поэтому решение принимает маппер; явный `enabled:false` роняет ядра lx.5–lx.18 в SIGSEGV (SPEC 045). anytls в области правила НЕ состоит (контракт 1.1.8): у него TLS обязателен — ядро отвергает такой outbound с C.ErrTLSRequired (protocol/anytls/outbound.go:45), — и `security=none` у него лишь ИГНОРИРУЕТСЯ, блок TLS остаётся на месте (node_parser_anytls.go:buildAnyTLSTLS, кейс uri/anytls/security_none_params_kept). Правило стояло на нём мёртвым: исполнись оно — узел ронял бы конфиг."
     },
     {
       "id": "plaintext_port_no_tls",

@@ -386,8 +386,6 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 **Structural translations.** Decisions taken while the link is being read, before any value is judged: whether a block exists at all, where a field comes from, or how one input becomes several fields. The sanitizer sees a finished body and cannot take them.
 
-- `security=none` → no `tls` block at all — A link that asks for no TLS produces a body with no `tls` key, not `tls.enabled=false`.
-  - Kind: `structure`
 - `pbk=` present in the link → a `tls.reality` block appears in the body — The presence of `pbk=` is what creates the REALITY block; whether the key itself is usable is decided later by the registry rule on `tls.reality.public_key`.
   - Kind: `structure`
 - `fp=HelloChrome_120`, `hellofirefox_auto`, `HelloChrome-106` and other uTLS library identifiers → the browser family name sing-box understands, e.g. `chrome` — Xray and v2ray lists spell fingerprints with uTLS Go identifiers; the same family is written plainly for sing-box.

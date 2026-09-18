@@ -1,0 +1,3 @@
+# sing-box: version вне enum ядра — поле снимается кодом type_invalid,
+# узел живёт и работает как socks5 по дефолту ядра.
+{"type":"socks","tag":"sb-socks6","server":"example-5.com","server_port":1080,"version":"6"}

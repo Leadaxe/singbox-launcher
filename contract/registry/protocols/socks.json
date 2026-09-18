@@ -3,7 +3,7 @@
   "scheme": "socks",
   "kind": "outbound",
   "singbox_type": "socks",
-  "aliases": ["socks5"],
+  "aliases": ["socks5", "socks4", "socks4a"],
   "sources": ["uri", "singbox"],
   "extension": null,
   "uri": {
@@ -12,7 +12,7 @@
       "meaning": "username:password",
       "desc_en": "username:password of the account.",
       "desc_ru": "username:password учётной записи.",
-      "impl": "Оба компонента опциональны. Дефолтный порт 1080. socks:// и socks5:// эквивалентны, оба → sing-box type socks с version \"5\" (Go пишет version всегда; Dart хранит version в SocksSpec, дефолт '5'). version '4'/'4a' НЕ достижим ни одним parse-путём: Dart parseSingboxEntry в socks-ветке entry['version'] не читает (json_parsers.dart:973-984), поле модели с дефолтом '5' (node_spec.dart:542,553) никем не заполняется — мёртвое поле модели, не расширение. Query-параметров у схемы нет ни в одном парсере."
+      "impl": "Оба компонента опциональны. Дефолтный порт 1080. Версию протокола ссылка несёт СХЕМОЙ (правило маппера socks_scheme_is_version): socks:// и socks5:// эквивалентны и дают version \"5\", socks4:// → \"4\", socks4a:// → \"4a\". У версии 4 пароля нет вовсе — userinfo это userid, но написанный в ссылке пароль переносится как есть: годность пары судит ядро (option/socks.go шлёт username как userid). Query-параметров у схемы нет ни в одном парсере. ВХОД singbox читает version полем тела независимо от схемы — см. body.version."
     },
     "query": {},
     "fragment": "label"
@@ -20,15 +20,26 @@
   "emit": {
     "share_uri": true,
     "param_order": [],
-    "note": "Оба эмитят socks5:// (даже если пришёл socks://). Userinfo: Go при любом непустом user/pass пишет user:pass целиком (url.UserPassword — ':pass@' при пустом user); Dart при пустом username опускает userinfo целиком, т.е. password-only нода теряет пароль в share-URI (минорный разрыв)."
+    "note": "Схему выбирает version тела: \"4\" → socks4://, \"4a\" → socks4a://, \"5\" и пусто → socks5:// (даже если пришёл socks://). Эмиттер и парсер обязаны читать одну таблицу — узел с version 4/4a обязан пережить round-trip своей же ссылки. Userinfo: Go при любом непустом user/pass пишет user:pass целиком (url.UserPassword — ':pass@' при пустом user); Dart при пустом username опускает userinfo целиком, т.е. password-only нода теряет пароль в share-URI (минорный разрыв)."
   },
+  "mapper": [
+    {
+      "id": "socks_scheme_is_version",
+      "from": "the URI scheme itself: socks4:// / socks4a:// / socks:// / socks5://",
+      "to": "`version` = \"4\" / \"4a\" / \"5\"",
+      "kind": "structure",
+      "desc_en": "A SOCKS link has no parameter for the protocol version in any dialect — the scheme carries it, the way the proxy-https:// suffix carries TLS.",
+      "desc_ru": "У socks-ссылки нет параметра под версию протокола ни в одном диалекте — её несёт схема, как суффикс proxy-https:// несёт TLS.",
+      "impl": "core/config/subscription/node_parser_socks.go — таблица socksVersionByScheme одна на парсер (socksVersionForScheme) и эмиттер (socksSchemeForVersion). Версия \"5\" пишется В ТЕЛО ЯВНО, хотя ядру хватило бы отсутствия ключа: значение стоит в ожиданиях корпуса и в телах всех живых socks-узлов обеих сторон, и снятие переписало бы их все ради нуля разницы для ядра."
+    }
+  ],
   "refs": {
     "go": [
-      "core/config/subscription/node_parser_core.go:253-258",
-      "core/config/subscription/node_parser_core.go:317-320",
-      "core/config/subscription/node_parser_core.go:784-791",
-      "core/config/subscription/shareuri_socks.go:10-29",
-      "core/config/outbound_generator.go:205"
+      "core/config/subscription/node_parser_socks.go",
+      "core/config/subscription/node_parser_core.go:306-334",
+      "core/config/subscription/node_parser_core.go:714-726",
+      "core/config/subscription/shareuri_socks.go",
+      "core/config/outbound_generator.go:331-340"
     ],
     "dart": [
       "lib/services/parser/uri_parsers.dart:67-69",
@@ -66,7 +77,7 @@
         "default": "5",
         "desc_en": "SOCKS protocol version.",
         "desc_ru": "Версия протокола SOCKS.",
-        "impl": "Пустое значение = 5."
+        "impl": "Пустое значение = 5. Из ссылки значение приходит от СХЕМЫ (mapper socks_scheme_is_version), из тела sing-box — как написано: явное \"5\" проходит как есть (дефолт ядра не снимается, равно как и не материализуется — CANON §2.4). Негодное значение снимается кодом type_invalid, и узел работает как socks5 по дефолту ядра."
       },
       "username": {
         "type": "string",
