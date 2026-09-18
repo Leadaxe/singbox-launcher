@@ -22,7 +22,14 @@
       },
       "kind": "outbound",
       "label": "Tls",
-      "scheme": "hysteria"
+      "scheme": "hysteria",
+      "warnings": [
+        {
+          "code": "tls_insecure",
+          "path": "tls.insecure",
+          "value": "true"
+        }
+      ]
     }
   ],
   "v": 1

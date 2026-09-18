@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "note": "Общие поля тела узла: ServerOptions + network (секция common) и «клиентские» DialerOptions (секция body). Ссылаются из body протоколов как {\"type\":\"ref\",\"ref\":\"dialer\",\"inline\":true} — поля вливаются в тело плоско, без обёртки. Неклиентские поля DialerOptions (bind_address_no_port, protect_path, routing_mark, reuse_addr, netns, tcp_multi_path, disable_tcp_keep_alive, tcp_keep_alive, tcp_keep_alive_interval, network_strategy, network_type, fallback_network_type, fallback_delay, domain_strategy) лаунчер не пишет — они помечены skip в этой же секции. SPEC 131, CORE_SCHEMA §1.1–§1.3.",
+  "note": "Общие поля тела узла: ServerOptions + network (секция common) и «клиентские» DialerOptions (секция body). Ссылаются из body протоколов как {\"type\":\"ref\",\"ref\":\"dialer\",\"inline\":true} — поля вливаются в тело плоско, без обёртки. Неклиентские поля DialerOptions (bind_address_no_port, protect_path, routing_mark, reuse_addr, netns, tcp_multi_path, network_strategy, network_type, fallback_network_type, fallback_delay, domain_strategy) лаунчер не пишет — они помечены skip в этой же секции. ВНИМАНИЕ (контракт 1.1.6): skipped ≠ «поля нет у ядра». Санитайзер снимает всё, чего нет в fields, кодом unknown_key, поэтому skip годится только тому, что тело узла не несёт НИ ОДНИМ входом; поле, которое ядро принимает и которое может приехать входом singbox, обязано быть в fields, даже если лаунчер его не пишет сам (так вернулись disable_tcp_keep_alive, tcp_keep_alive, tcp_keep_alive_interval). SPEC 131, CORE_SCHEMA §1.1–§1.3.",
   "common": {
     "core": "1.14.1-lx.4",
     "order": [
@@ -61,6 +61,9 @@
       "inet6_bind_address",
       "connect_timeout",
       "tcp_fast_open",
+      "disable_tcp_keep_alive",
+      "tcp_keep_alive",
+      "tcp_keep_alive_interval",
       "udp_fragment",
       "domain_resolver"
     ],
@@ -112,6 +115,25 @@
         "desc_ru": "Использовать TCP Fast Open.",
         "impl": "Запрещён у anytls: «tcp_fast_open is not supported with anytls outbound» (protocol/anytls/outbound.go:60) — одна такая нода не даёт ядру стартовать, поэтому поле снимается."
       },
+      "disable_tcp_keep_alive": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Disable TCP keepalive on this connection.",
+        "desc_ru": "Отключить TCP keepalive для этого соединения.",
+        "impl": "option/outbound.go DialerOptions.DisableTCPKeepAlive. Лаунчер поле не ПИШЕТ сам, но описать его обязан: тело в форме ядра (вход singbox) может его нести, и без записи в fields санитайзер снимал его как unknown_key — ⚠ на рабочем узле за поле, которое ядро принимает (запрос LxBox, контракт 1.1.6)."
+      },
+      "tcp_keep_alive": {
+        "type": "duration",
+        "desc_en": "Idle time before the first TCP keepalive probe.",
+        "desc_ru": "Время простоя до первой пробы TCP keepalive.",
+        "impl": "option/outbound.go DialerOptions.TCPKeepAlive, badoption.Duration. Осмысленно только при выключенном disable_tcp_keep_alive, но связь НЕ описана conflicts: ядро пару принимает молча, а снятие поля меняло бы тело узла без пользы."
+      },
+      "tcp_keep_alive_interval": {
+        "type": "duration",
+        "desc_en": "Interval between TCP keepalive probes.",
+        "desc_ru": "Интервал между пробами TCP keepalive.",
+        "impl": "option/outbound.go DialerOptions.TCPKeepAliveInterval, badoption.Duration."
+      },
       "udp_fragment": {
         "type": "bool",
         "tristate": true,
@@ -133,9 +155,6 @@
       "reuse_addr": "A low-level dialer option; the launcher does not write it.",
       "netns": "Linux only, reference:network_namespace; the launcher does not write it.",
       "tcp_multi_path": "A low-level dialer option; the launcher does not write it.",
-      "disable_tcp_keep_alive": "A low-level dialer option; the launcher does not write it.",
-      "tcp_keep_alive": "A low-level dialer option; the launcher does not write it.",
-      "tcp_keep_alive_interval": "A low-level dialer option; the launcher does not write it.",
       "network_strategy": "The enum lives in C.StringToNetworkStrategy and is not visible from option/*.go (CORE_SCHEMA 8); without that dictionary the value rule cannot be described.",
       "network_type": "Paired with network_strategy, which is not described; the launcher does not write it.",
       "fallback_network_type": "Paired with network_strategy, which is not described; the launcher does not write it.",

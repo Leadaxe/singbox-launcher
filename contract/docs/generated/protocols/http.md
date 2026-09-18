@@ -76,6 +76,7 @@ Everything a link of this scheme can carry, including the TLS and transport para
   - Also spelled: `allowInsecure`, `allowinsecure`, `allow_insecure`, `allow-insecure`, `skipCertVerify`, `skipcertverify`, `skip_cert_verify`, `skip-cert-verify`, `noverify`
   - Type: bool
   - Maps to: [`tls.insecure`](#body-tls-insecure)
+  - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
 - <a id="link-proto-security"></a>**`security`** — Whether the link asks for TLS, and in which flavour.
   - Type: string
   - Maps to: [`tls.enabled`](#body-tls-enabled)
@@ -149,6 +150,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: bool
   - Default: `false`
   - Set by link parameter: [`insecure`](#link-proto-insecure)
+  - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
 - <a id="body-tls-alpn"></a>**`tls.alpn`** — ALPN protocols offered in the handshake.
   - Type: listable_string
   - Set by link parameter: [`alpn`](#link-proto-alpn)
@@ -278,6 +280,13 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tcp-fast-open"></a>**`tcp_fast_open`** — Use TCP Fast Open.
   - Type: bool
   - Default: `false`
+- <a id="body-disable-tcp-keep-alive"></a>**`disable_tcp_keep_alive`** — Disable TCP keepalive on this connection.
+  - Type: bool
+  - Default: `false`
+- <a id="body-tcp-keep-alive"></a>**`tcp_keep_alive`** — Idle time before the first TCP keepalive probe.
+  - Type: duration
+- <a id="body-tcp-keep-alive-interval"></a>**`tcp_keep_alive_interval`** — Interval between TCP keepalive probes.
+  - Type: duration
 - <a id="body-udp-fragment"></a>**`udp_fragment`** — Allow fragmenting UDP packets.
   - Type: bool, tristate
 - <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.
@@ -317,6 +326,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
   - [`tls.reality.short_id`](#body-tls-reality-short-id) — the value does not fit the field → removed
   - [`tls.reality.short_id`](#body-tls-reality-short-id) — the value had to be cleaned up (hex_only) → value cleaned up
+- [`tls_insecure`](../warnings.md#tls_insecure)
+  - [`tls.insecure`](#body-tls-insecure) — the value is `true` → kept with a notice
 - [`type_invalid`](../warnings.md#type_invalid)
   - [`tls.engine`](#body-tls-engine) — the value does not fit the field → removed
   - [`tls.server_name`](#body-tls-server-name) — the value does not fit the field → removed
@@ -391,6 +402,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 **Kept as is, with a notice**
 
+- `tls.insecure` — accepted, but worth knowing about
 - `tls.utls.fingerprint` — accepted, but worth knowing about
 
 **Left out when the running core is too old**

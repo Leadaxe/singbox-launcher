@@ -552,17 +552,28 @@ func checkField(t *testing.T, where, path string, f *bodyField, codes map[string
 		// advisory-значение обязано быть в enum: иначе оно не «принимается с
 		// кодом», а снимается. То же и для except: исключение из правила
 		// «все, кроме этих» обязано быть значением, которое вообще бывает.
-		for _, av := range append(append([]interface{}{}, adv.Values...), adv.Except...) {
-			found := false
-			for _, v := range f.Values {
-				if fmt.Sprintf("%v", v) == fmt.Sprintf("%v", av) {
-					found = true
-					break
+		//
+		// Проверка идёт ТОЛЬКО по полям, которые перечисляют значения сами.
+		// У bool домен закрыт типом, а не списком: `values` там пуст (и
+		// заполнять его парой true/false незачем — ограничение проверяет не
+		// список, а coerce). Требовать вхождения в пустой список значило бы
+		// запретить advisory на bool вовсе — ровно так отвергался tls.insecure,
+		// единственная форма которого «код на значении true» (контракт 1.1.6).
+		if len(f.Values) > 0 {
+			for _, av := range append(append([]interface{}{}, adv.Values...), adv.Except...) {
+				found := false
+				for _, v := range f.Values {
+					if fmt.Sprintf("%v", v) == fmt.Sprintf("%v", av) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("%s: advisory-значение %v отсутствует в values", full, av)
 				}
 			}
-			if !found {
-				t.Errorf("%s: advisory-значение %v отсутствует в values", full, av)
-			}
+		} else if f.Type != "bool" {
+			t.Errorf("%s: advisory[%d] на поле без values и не bool — домен значений неизвестен", full, i)
 		}
 	}
 	if oi := f.OnInvalid; oi != nil {

@@ -39,6 +39,13 @@ Core the schema was checked against: `1.14.1-lx.4`
   - Type: bool
   - Default: `false`
   - Not supported by: `anytls`
+- <a id="body-disable-tcp-keep-alive"></a>**`disable_tcp_keep_alive`** — Disable TCP keepalive on this connection.
+  - Type: bool
+  - Default: `false`
+- <a id="body-tcp-keep-alive"></a>**`tcp_keep_alive`** — Idle time before the first TCP keepalive probe.
+  - Type: duration
+- <a id="body-tcp-keep-alive-interval"></a>**`tcp_keep_alive_interval`** — Interval between TCP keepalive probes.
+  - Type: duration
 - <a id="body-udp-fragment"></a>**`udp_fragment`** — Allow fragmenting UDP packets.
   - Type: bool, tristate
 - <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.
@@ -47,7 +54,6 @@ Core the schema was checked against: `1.14.1-lx.4`
 ## Deliberately not described
 
 - `bind_address_no_port` — A server-side, low-level dialer option; the launcher never writes it on any input (CORE_SCHEMA 1.2 marks the client-side ones separately).
-- `disable_tcp_keep_alive` — A low-level dialer option; the launcher does not write it.
 - `domain_strategy` — Deprecated, schema:"omit" in the core — migrated to domain_resolver.
 - `fallback_delay` — Paired with network_strategy, which is not described; the launcher does not write it.
 - `fallback_network_type` — Paired with network_strategy, which is not described; the launcher does not write it.
@@ -57,7 +63,5 @@ Core the schema was checked against: `1.14.1-lx.4`
 - `protect_path` — Android only (platform=android); the desktop launcher does not write it.
 - `reuse_addr` — A low-level dialer option; the launcher does not write it.
 - `routing_mark` — Linux only; the launcher does not write it.
-- `tcp_keep_alive` — A low-level dialer option; the launcher does not write it.
-- `tcp_keep_alive_interval` — A low-level dialer option; the launcher does not write it.
 - `tcp_multi_path` — A low-level dialer option; the launcher does not write it.
 

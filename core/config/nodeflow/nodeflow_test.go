@@ -43,7 +43,11 @@ func TestSanitizeEmit(t *testing.T) {
 			      "insecure":"true","alpn":"h2,http/1.1"}}`,
 			want: `{"server":"a.example.com","server_port":443,"uuid":"` + testUUID + `",` +
 				`"tls":{"enabled":true,"server_name":"a.example.com","insecure":true,"alpn":"h2,http/1.1"}}`,
-			codes: []string{"unknown_key"},
+			// tls_insecure — advisory реестра на значении true (контракт
+			// 1.1.6): значение остаётся, узел получает info. Идёт раньше
+			// unknown_key, потому что порядок кодов = порядок body.order, а
+			// tls стоит в нём до ключей вне схемы.
+			codes: []string{"tls_insecure", "unknown_key"},
 		},
 		{
 			// (б) naive читает лишь несколько TLS-полей; остальные ядро либо

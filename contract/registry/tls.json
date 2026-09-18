@@ -255,9 +255,15 @@
         "default": false,
         "forbidden_for": ["naive"],
         "code": "tls_field_unsupported_naive",
+        "advisory": [
+          {
+            "values": [true],
+            "code": "tls_insecure"
+          }
+        ],
         "desc_en": "Skip server certificate verification.",
         "desc_ru": "Не проверять сертификат сервера.",
-        "impl": "Код tls_insecure (info) — узел работает, но защита от MITM снята. У naive — фатал старта."
+        "impl": "Код tls_insecure (info) — узел работает, но защита от MITM снята; значение СОХРАНЯЕТСЯ, это осознанный выбор провайдера. Правило живёт в реестре (advisory на значении true, контракт 1.1.6), а не рукописно в парсерах, — как reality_fp_not_chrome у utls.fingerprint. Условие по значению, а не `except`: у bool «не задано» и false — одно и то же, и код должен ставиться ровно на true. У naive — фатал старта, там поле снимает forbidden_for с другим кодом."
       },
       "alpn": {
         "type": "listable_string",

@@ -65,6 +65,7 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
 - <a id="body-insecure"></a>**`insecure`** — Skip server certificate verification.
   - Type: bool
   - Default: `false`
+  - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
   - Not supported by: `naive`
 - <a id="body-alpn"></a>**`alpn`** — ALPN protocols offered in the handshake.
   - Type: listable_string

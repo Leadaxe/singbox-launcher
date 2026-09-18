@@ -21,7 +21,14 @@
       },
       "kind": "outbound",
       "label": "full-tls",
-      "scheme": "http"
+      "scheme": "http",
+      "warnings": [
+        {
+          "code": "tls_insecure",
+          "path": "tls.insecure",
+          "value": "true"
+        }
+      ]
     }
   ],
   "v": 1

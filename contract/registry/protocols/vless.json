@@ -168,12 +168,12 @@
         "conflicts": [
           {
             "with": "transport",
-            "code": "field_conflict"
+            "code": "vision_with_transport"
           }
         ],
         "desc_en": "XTLS flow control mode.",
         "desc_ru": "Режим управления потоком XTLS.",
-        "impl": "Проверка в sing-vmess/vless.NewClient; иное значение = код flow_deprecated, поле снимается. Vision несовместим с транспортом (код vision_with_transport) и не поддерживает UDP."
+        "impl": "Проверка в sing-vmess/vless.NewClient; иное значение = код flow_deprecated, поле снимается. Vision несовместим с транспортом и не поддерживает UDP. Конфликт назван СВОИМ кодом vision_with_transport, а не общим field_conflict: у общего кода текст «ядро отвергает такую пару и не запустит весь конфиг», а здесь ядро пару ПРИНИМАЕТ (вердикт D) — снимается бессмыслица, узел живёт, и severity тут info, а не warning. Снимается при этом сам flow: связи читают исходное тело (pathPresent → srcRoot), поэтому transport виден, хотя по body.order он идёт ПОЗЖЕ flow, — «младшее по order» описывает не то, какое поле снимается, а лишь то, что сторона-декларант уступает."
       },
       "encryption": {
         "type": "string",

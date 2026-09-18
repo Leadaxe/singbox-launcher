@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "body_kind": "singbox-outbound-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 443,
+        "tcp_keep_alive": "30s",
+        "tcp_keep_alive_interval": "15s",
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "keepalive-full",
+      "scheme": "vless"
+    },
+    {
+      "entry": {
+        "disable_tcp_keep_alive": true,
+        "password": "pw",
+        "server": "example-2.com",
+        "server_port": 443,
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "keepalive-off",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

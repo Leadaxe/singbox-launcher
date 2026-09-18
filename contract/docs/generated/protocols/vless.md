@@ -92,6 +92,7 @@ Shared across every scheme that carries a TLS block; the reference page is [`_tl
   - Also spelled: `allowInsecure`, `allowinsecure`, `allow_insecure`, `allow-insecure`, `skipCertVerify`, `skipcertverify`, `skip_cert_verify`, `skip-cert-verify`, `noverify`
   - Type: bool · Default: `false`
   - Maps to: [`tls.insecure`](#body-tls-insecure)
+  - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
 - <a id="link-tls-fp"></a>**`fp`** — Browser fingerprint mimicked in the ClientHello.
   - Also spelled: `fingerprint`
   - Type: enum (other spellings of the same value are accepted): `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized` (allowlist `utls_fingerprints`) · Default: `""`
@@ -337,6 +338,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: bool
   - Default: `false`
   - Set by link parameter: [`insecure`](#link-tls-insecure)
+  - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
 - <a id="body-tls-alpn"></a>**`tls.alpn`** — ALPN protocols offered in the handshake.
   - Type: listable_string
   - Set by link parameter: [`alpn`](#link-tls-alpn)
@@ -680,6 +682,13 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tcp-fast-open"></a>**`tcp_fast_open`** — Use TCP Fast Open.
   - Type: bool
   - Default: `false`
+- <a id="body-disable-tcp-keep-alive"></a>**`disable_tcp_keep_alive`** — Disable TCP keepalive on this connection.
+  - Type: bool
+  - Default: `false`
+- <a id="body-tcp-keep-alive"></a>**`tcp_keep_alive`** — Idle time before the first TCP keepalive probe.
+  - Type: duration
+- <a id="body-tcp-keep-alive-interval"></a>**`tcp_keep_alive_interval`** — Interval between TCP keepalive probes.
+  - Type: duration
 - <a id="body-udp-fragment"></a>**`udp_fragment`** — Allow fragmenting UDP packets.
   - Type: bool, tristate
 - <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.
@@ -690,7 +699,6 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 Every code that can be raised on a node of this scheme, including the ones coming from the shared TLS, transport, multiplex and dialer sub-schemas. Follow a code for what it means and what to do about it.
 
 - [`field_conflict`](../warnings.md#field_conflict)
-  - [`flow`](#body-flow) — conflicts with `transport` → removed
   - [`tls.disable_sni`](#body-tls-disable-sni) — conflicts with `tls.reality.enabled` → removed
   - [`tls.certificate_public_key_sha256`](#body-tls-certificate-public-key-sha256) — conflicts with `tls.certificate` → removed
   - [`tls.certificate_public_key_sha256`](#body-tls-certificate-public-key-sha256) — conflicts with `tls.certificate_path` → removed
@@ -728,6 +736,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
   - [`tls.reality.short_id`](#body-tls-reality-short-id) — the value does not fit the field → removed
   - [`tls.reality.short_id`](#body-tls-reality-short-id) — the value had to be cleaned up (hex_only) → value cleaned up
+- [`tls_insecure`](../warnings.md#tls_insecure)
+  - [`tls.insecure`](#body-tls-insecure) — the value is `true` → kept with a notice
 - [`type_invalid`](../warnings.md#type_invalid)
   - [`network`](#body-network) — the value does not fit the field → removed
   - [`tls.engine`](#body-tls-engine) — the value does not fit the field → removed
@@ -748,6 +758,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`inet4_bind_address`](#body-inet4-bind-address) — the value does not fit the field → removed
 - [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
   - [`tls.utls.fingerprint`](#body-tls-utls-fingerprint) — the value does not fit the field → replaced with `chrome`
+- [`vision_with_transport`](../warnings.md#vision_with_transport)
+  - [`flow`](#body-flow) — conflicts with `transport` → removed
 - [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
   - [`transport.xhttp.mode`](#body-transport-xhttp-mode) — the value does not fit the field → removed
   - [`transport.xhttp.session_placement`](#body-transport-xhttp-session-placement) — the value does not fit the field → removed
@@ -861,6 +873,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 **Kept as is, with a notice**
 
+- `tls.insecure` — accepted, but worth knowing about
 - `tls.utls.fingerprint` — accepted, but worth knowing about
 
 **Left out when the running core is too old**

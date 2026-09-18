@@ -14,7 +14,14 @@
       },
       "kind": "outbound",
       "label": "Hy2 Alias",
-      "scheme": "hysteria2"
+      "scheme": "hysteria2",
+      "warnings": [
+        {
+          "code": "tls_insecure",
+          "path": "tls.insecure",
+          "value": "true"
+        }
+      ]
     }
   ],
   "v": 1

@@ -198,6 +198,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tls-insecure"></a>**`tls.insecure`** — Skip server certificate verification.
   - Type: bool
   - Default: `false`
+  - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
 - <a id="body-tls-alpn"></a>**`tls.alpn`** — ALPN protocols offered in the handshake.
   - Type: listable_string
   - Set by link parameter: [`alpn`](#link-tls-alpn)
@@ -331,6 +332,13 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tcp-fast-open"></a>**`tcp_fast_open`** — Use TCP Fast Open.
   - Type: bool
   - Default: `false`
+- <a id="body-disable-tcp-keep-alive"></a>**`disable_tcp_keep_alive`** — Disable TCP keepalive on this connection.
+  - Type: bool
+  - Default: `false`
+- <a id="body-tcp-keep-alive"></a>**`tcp_keep_alive`** — Idle time before the first TCP keepalive probe.
+  - Type: duration
+- <a id="body-tcp-keep-alive-interval"></a>**`tcp_keep_alive_interval`** — Interval between TCP keepalive probes.
+  - Type: duration
 - <a id="body-udp-fragment"></a>**`udp_fragment`** — Allow fragmenting UDP packets.
   - Type: bool, tristate
 - <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.
@@ -361,6 +369,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`vhttp`](#body-vhttp) — the value does not fit the field → replaced with `h3`
 - [`port_invalid`](../warnings.md#port_invalid)
   - [`server_port`](#body-server-port) — the value does not fit the field → node dropped
+- [`tls_insecure`](../warnings.md#tls_insecure)
+  - [`tls.insecure`](#body-tls-insecure) — the value is `true` → kept with a notice
 - [`tls_not_applicable_quic`](../warnings.md#tls_not_applicable_quic)
   - [`tls.utls`](#body-tls-utls) — not supported by `masque` → removed
   - [`tls.reality`](#body-tls-reality) — not supported by `masque` → removed
@@ -451,6 +461,10 @@ Every code that can be raised on a node of this scheme, including the ones comin
 **The value is replaced, the node lives on**
 
 - `vhttp` — invalid value becomes `h3`
+
+**Kept as is, with a notice**
+
+- `tls.insecure` — accepted, but worth knowing about
 
 **Left out when the running core is too old**
 

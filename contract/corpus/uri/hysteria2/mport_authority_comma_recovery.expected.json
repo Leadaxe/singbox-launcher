@@ -18,7 +18,14 @@
       },
       "kind": "outbound",
       "label": "hop",
-      "scheme": "hysteria2"
+      "scheme": "hysteria2",
+      "warnings": [
+        {
+          "code": "tls_insecure",
+          "path": "tls.insecure",
+          "value": "true"
+        }
+      ]
     }
   ],
   "v": 1

@@ -575,8 +575,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`xhttp.xmux.max_concurrency`](protocols/_transports.md#body-xhttp-xmux-max-concurrency) — conflicts with `transport.xmux.max_connections` → removed
 - [`tuic`](protocols/tuic.md)
   - [`udp_relay_mode`](protocols/tuic.md#body-udp-relay-mode) — conflicts with `udp_over_stream` → removed
-- [`vless`](protocols/vless.md)
-  - [`flow`](protocols/vless.md#body-flow) — conflicts with `transport` → removed
 - [`wireguard`](protocols/wireguard.md)
   - [`i1`](protocols/wireguard.md#body-i1) — conflicts with `ib` → removed
   - [`i1`](protocols/wireguard.md#body-i1) — conflicts with `id` → removed
@@ -1204,7 +1202,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="tls_insecure"></a>
 ### tls_insecure
 
-**severity:** `info`
+**severity:** `info` · **params:** `path`, `value`
 
 **Certificate verification disabled**
 
@@ -1216,7 +1214,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **Where it comes from:**
 
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+- [`tls`](protocols/_tls.md)
+  - [`insecure`](protocols/_tls.md#body-insecure) — the value is `true` → kept with a notice
 
 <a id="tls_not_applicable_quic"></a>
 ### tls_not_applicable_quic
@@ -1439,18 +1438,19 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="vision_with_transport"></a>
 ### vision_with_transport
 
-**severity:** `info` · **params:** `transport`
+**severity:** `info` · **params:** `path`, `with`
 
 **flow removed: incompatible with transport**
 
-- **What happened:** xtls-rprx-vision works only over bare TLS, but the node uses the {transport} transport. The flow field at {path} was removed, because the value has no effect here; the node keeps working.
+- **What happened:** xtls-rprx-vision works only over bare TLS, but the node has {with} set. The flow field at {path} was removed, because the value has no effect here; the node keeps working.
 - **Why it happens:** The panel put flow=xtls-rprx-vision into every link it generates, without looking at whether the node uses a transport. Vision only exists over bare TLS, so on a WebSocket, gRPC or HTTP node it is simply left over.
 - **What you can do:**
   - Nothing to do: the node works, and the removed value had no effect on this transport.
 
 **Where it comes from:**
 
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+- [`vless`](protocols/vless.md)
+  - [`flow`](protocols/vless.md#body-flow) — conflicts with `transport` → removed
 
 <a id="ws_early_data_converted"></a>
 ### ws_early_data_converted

@@ -101,12 +101,13 @@
     "vision_with_transport": {
       "severity": "info",
       "params": [
-        "transport"
+        "path",
+        "with"
       ],
       "title_en": "flow removed: incompatible with transport",
       "title_ru": "flow снят: несовместим с транспортом",
-      "text_en": "xtls-rprx-vision works only over bare TLS, but the node uses the {transport} transport. The flow field at {path} was removed, because the value has no effect here; the node keeps working.",
-      "text_ru": "xtls-rprx-vision работает только поверх голого TLS, а узел использует транспорт {transport}. Поле flow ({path}) снято: значение не влияет и удалено. Узел продолжает работать.",
+      "text_en": "xtls-rprx-vision works only over bare TLS, but the node has {with} set. The flow field at {path} was removed, because the value has no effect here; the node keeps working.",
+      "text_ru": "xtls-rprx-vision работает только поверх голого TLS, а у узла задан {with}. Поле flow ({path}) снято: значение не влияет и удалено. Узел продолжает работать.",
       "cause_en": "The panel put flow=xtls-rprx-vision into every link it generates, without looking at whether the node uses a transport. Vision only exists over bare TLS, so on a WebSocket, gRPC or HTTP node it is simply left over.",
       "cause_ru": "Панель проставляет flow=xtls-rprx-vision во все ссылки подряд, не глядя, есть ли у узла транспорт. Vision существует только поверх голого TLS, поэтому на узле с WebSocket, gRPC или HTTP он просто лишний.",
       "fix_en": [
@@ -115,13 +116,16 @@
       "fix_ru": [
         "Делать ничего не нужно: узел работает, а снятое значение на этом транспорте ни на что не влияло."
       ],
-      "desc": "xtls-rprx-vision валиден только на голом TLS; при любом v2ray-транспорте flow гасится, узел живёт.",
+      "desc": "xtls-rprx-vision валиден только на голом TLS; при любом v2ray-транспорте flow гасится, узел живёт. Ставится ПРАВИЛОМ РЕЕСТРА — conflicts у vless.flow с собственным кодом (контракт 1.1.6); рукописного места в Go нет и не было, прежние ссылки на singbox_sanitize.go/outbound_generator.go были строками legacy-аудита, а не эмиттерами кода.",
       "dart": "VisionWithTransportWarning",
-      "go": "core/config/subscription/singbox_sanitize.go:240; core/config/outbound_generator.go:352"
+      "go": "core/config/nodeflow/sanitize.go relationsOK (по contract/registry/protocols/vless.json flow.conflicts)"
     },
     "tls_insecure": {
       "severity": "info",
-      "params": [],
+      "params": [
+        "path",
+        "value"
+      ],
       "title_en": "Certificate verification disabled",
       "title_ru": "Проверка сертификата отключена",
       "text_en": "The entry sets {path} to {value}, so the server certificate is not verified. The value was kept as the provider sent it; connections to this node can be intercepted without being noticed.",
@@ -136,9 +140,9 @@
         "Если провайдеру вы доверяете, делать ничего не нужно: узел работает так, как задумано.",
         "Если этого вы не ожидали, спросите провайдера, почему на его сервере отключена проверка сертификата."
       ],
-      "desc": "Проверка TLS-сертификата отключена (allowInsecure/insecure). Часто намеренный выбор провайдера — только info. Go молча эмитит insecure:true без пометки; после появления warning-аккумулятора (фаза 2) добавляет код.",
+      "desc": "Проверка TLS-сертификата отключена (allowInsecure/insecure). Часто намеренный выбор провайдера — только info, значение СОХРАНЯЕТСЯ. Ставится advisory-правилом реестра у tls.insecure на значении true (контракт 1.1.6) — как reality_fp_not_chrome у utls.fingerprint; рукописного места в Go нет.",
       "dart": "InsecureTlsWarning",
-      "go": null
+      "go": "core/config/nodeflow/sanitize.go advisory (по contract/registry/tls.json insecure.advisory)"
     },
     "naive_unavailable": {
       "severity": "error",

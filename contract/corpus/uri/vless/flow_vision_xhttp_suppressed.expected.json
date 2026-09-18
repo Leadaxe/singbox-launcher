@@ -29,7 +29,7 @@
       "scheme": "vless",
       "warnings": [
         {
-          "code": "field_conflict",
+          "code": "vision_with_transport",
           "path": "flow"
         }
       ]
