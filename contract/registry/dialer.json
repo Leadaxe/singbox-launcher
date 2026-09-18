@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "note": "Общие поля тела узла: ServerOptions + network (секция common) и «клиентские» DialerOptions (секция body). Ссылаются из body протоколов как {\"type\":\"ref\",\"ref\":\"dialer\",\"inline\":true} — поля вливаются в тело плоско, без обёртки. Неклиентские поля DialerOptions (bind_address_no_port, protect_path, routing_mark, reuse_addr, netns, tcp_multi_path, network_strategy, network_type, fallback_network_type, fallback_delay, domain_strategy) лаунчер не пишет — они помечены skip в этой же секции. ВНИМАНИЕ (контракт 1.1.6): skipped ≠ «поля нет у ядра». Санитайзер снимает всё, чего нет в fields, кодом unknown_key, поэтому skip годится только тому, что тело узла не несёт НИ ОДНИМ входом; поле, которое ядро принимает и которое может приехать входом singbox, обязано быть в fields, даже если лаунчер его не пишет сам (так вернулись disable_tcp_keep_alive, tcp_keep_alive, tcp_keep_alive_interval). SPEC 131, CORE_SCHEMA §1.1–§1.3.",
+  "note": "Общие поля тела узла: ServerOptions + network (секция common) и «клиентские» DialerOptions (секция body). Ссылаются из body протоколов как {\"type\":\"ref\",\"ref\":\"dialer\",\"inline\":true} — поля вливаются в тело плоско, без обёртки. Неклиентские поля DialerOptions (bind_address_no_port, protect_path, routing_mark, reuse_addr, netns, tcp_multi_path, domain_strategy) лаунчер не пишет — они помечены skip в этой же секции. ВНИМАНИЕ (контракт 1.1.6): skipped ≠ «поля нет у ядра». Санитайзер снимает всё, чего нет в fields, кодом unknown_key, поэтому skip годится только тому, что тело узла не несёт НИ ОДНИМ входом; поле, которое ядро принимает и которое может приехать входом singbox, обязано быть в fields, даже если лаунчер его не пишет сам (так вернулись disable_tcp_keep_alive, tcp_keep_alive, tcp_keep_alive_interval, а следом network_strategy с тройкой при нём). ОТСУТСТВИЕ `values` — не повод для skip: словарь network_strategy/InterfaceType живёт в C.* и из option/*.go не виден, но снимать настройку, которую ядро принимает, хуже, чем не проверять её значение (решение владельца 18.09.2026) — такие поля описаны БЕЗ enum, значение судит ядро. SPEC 131, CORE_SCHEMA §1.1–§1.3.",
   "common": {
     "core": "1.14.1-lx.4",
     "order": [
@@ -65,7 +65,11 @@
       "tcp_keep_alive",
       "tcp_keep_alive_interval",
       "udp_fragment",
-      "domain_resolver"
+      "domain_resolver",
+      "network_strategy",
+      "network_type",
+      "fallback_network_type",
+      "fallback_delay"
     ],
     "fields": {
       "detour": {
@@ -146,6 +150,30 @@
         "desc_en": "DNS server tag used to resolve the server domain.",
         "desc_ru": "Тег DNS-сервера для разрешения домена сервера.",
         "impl": "Короткая форма — строка с тегом сервера; ядро принимает и объект {server,timeout,strategy,disable_cache,disable_optimistic_cache,rewrite_ttl,client_subnet} и сериализует обратно строкой, если задан только server. В теле узла лаунчер пишет короткую форму."
+      },
+      "network_strategy": {
+        "type": "string",
+        "desc_en": "Strategy for picking the outbound network interface. The core judges the value: the launcher passes it through unchecked.",
+        "desc_ru": "Стратегия выбора сетевого интерфейса. Значение судит ЯДРО: лаунчер пропускает его без проверки.",
+        "impl": "option/outbound.go DialerOptions.NetworkStrategy (*NetworkStrategy). Словарь значений живёт в C.StringToNetworkStrategy и из option/*.go НЕ ВИДЕН (CORE_SCHEMA §8), поэтому поле описано БЕЗ `values` — тип string, а не enum. Решение владельца 18.09.2026: снимать как unknown_key настройку, которую ядро принимает, хуже, чем не проверять её значение. Мусор здесь отвергнет ядро на старте, и это честнее молчаливой потери поля."
+      },
+      "network_type": {
+        "type": "listable_string",
+        "desc_en": "Interface types allowed for this connection. The core judges the values.",
+        "desc_ru": "Типы интерфейсов, разрешённые этому соединению. Значения судит ЯДРО.",
+        "impl": "option/outbound.go DialerOptions.NetworkType, InterfaceType, listable. Словарь — C.StringToInterfaceType, из option/*.go не виден, поэтому без `values` (см. network_strategy)."
+      },
+      "fallback_network_type": {
+        "type": "listable_string",
+        "desc_en": "Interface types used when the primary ones are unavailable. The core judges the values.",
+        "desc_ru": "Типы интерфейсов на случай недоступности основных. Значения судит ЯДРО.",
+        "impl": "option/outbound.go DialerOptions.FallbackNetworkType, тот же InterfaceType и тот же невидимый словарь — без `values`."
+      },
+      "fallback_delay": {
+        "type": "duration",
+        "desc_en": "Delay before falling back to the secondary network type.",
+        "desc_ru": "Задержка перед переходом на запасной тип сети.",
+        "impl": "option/outbound.go DialerOptions.FallbackDelay, badoption.Duration. Описан вместе с тройкой network_strategy: поле осмысленно только при ней, но связь requires НЕ заведена — ядро одинокое значение принимает молча, и снятие меняло бы тело узла без пользы."
       }
     },
     "skipped": {
@@ -155,10 +183,6 @@
       "reuse_addr": "A low-level dialer option; the launcher does not write it.",
       "netns": "Linux only, reference:network_namespace; the launcher does not write it.",
       "tcp_multi_path": "A low-level dialer option; the launcher does not write it.",
-      "network_strategy": "The enum lives in C.StringToNetworkStrategy and is not visible from option/*.go (CORE_SCHEMA 8); without that dictionary the value rule cannot be described.",
-      "network_type": "Paired with network_strategy, which is not described; the launcher does not write it.",
-      "fallback_network_type": "Paired with network_strategy, which is not described; the launcher does not write it.",
-      "fallback_delay": "Paired with network_strategy, which is not described; the launcher does not write it.",
       "domain_strategy": "Deprecated, schema:\"omit\" in the core — migrated to domain_resolver."
     }
   }

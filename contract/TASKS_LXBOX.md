@@ -2404,15 +2404,27 @@ string/number). Линтер требует вхождения advisory-знач
 
 - платформенные — `protect_path` (android), `routing_mark`, `netns` (linux):
   на десктопе поля не приезжают;
-- `network_strategy` и тройка при нём (`network_type`,
-  `fallback_network_type`, `fallback_delay`) — enum живёт в
-  `C.StringToNetworkStrategy` и из `option/*.go` не виден, правило значения
-  описать нечем; **это единственные кандидаты на возврат**, если вам нужен
-  вход `singbox` с этими полями: скажите, и мы опишем их без `values`;
 - `domain_strategy` — `schema:"omit"` у ядра, мигрировано в
   `domain_resolver`;
 - `bind_address_no_port`, `reuse_addr`, `tcp_multi_path` — низкоуровневые
   dial-опции; в отличие от keepalive, в чужих телах не встречались.
+
+**Дополнение (решение владельца, тот же день; контракт остаётся 1.1.6):**
+`network_strategy`, `network_type`, `fallback_network_type`, `fallback_delay`
+тоже **описаны полями и убраны из `skipped`** — БЕЗ `values`
+(`string` / `listable_string` ×2 / `duration` по CORE_SCHEMA §1.2).
+Отсутствие словаря (`C.StringToNetworkStrategy`, `C.StringToInterfaceType`
+из `option/*.go` не видны) **не повод для skip**: снимать как `unknown_key`
+настройку, которую ядро принимает, хуже, чем не проверять её значение —
+мусор здесь отвергнет ядро на старте, и это честнее молчаливой потери поля.
+В `desc` у всех трёх отмечено, что значения судит ядро. `fallback_delay`
+осмыслен только при стратегии, но `requires` не заведён: ядро одинокое
+значение принимает молча. Кейс корпуса
+`body/singbox/dialer_tcp_keep_alive` дополнен узлом `net-strategy` — все
+четыре поля проходят без кодов. В `skipped` осталось 7 строк: платформенные
+(`protect_path`, `routing_mark`, `netns`), низкоуровневые
+(`bind_address_no_port`, `reuse_addr`, `tcp_multi_path`) и устаревшее
+`domain_strategy`.
 
 **(4) Уточнения поведения — оба ваших утверждения ВЕРНЫ.**
 

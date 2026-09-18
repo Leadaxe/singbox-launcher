@@ -50,16 +50,20 @@ Core the schema was checked against: `1.14.1-lx.4`
   - Type: bool, tristate
 - <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.
   - Type: string
+- <a id="body-network-strategy"></a>**`network_strategy`** — Strategy for picking the outbound network interface. The core judges the value: the launcher passes it through unchecked.
+  - Type: string
+- <a id="body-network-type"></a>**`network_type`** — Interface types allowed for this connection. The core judges the values.
+  - Type: listable_string
+- <a id="body-fallback-network-type"></a>**`fallback_network_type`** — Interface types used when the primary ones are unavailable. The core judges the values.
+  - Type: listable_string
+- <a id="body-fallback-delay"></a>**`fallback_delay`** — Delay before falling back to the secondary network type.
+  - Type: duration
 
 ## Deliberately not described
 
 - `bind_address_no_port` — A server-side, low-level dialer option; the launcher never writes it on any input (CORE_SCHEMA 1.2 marks the client-side ones separately).
 - `domain_strategy` — Deprecated, schema:"omit" in the core — migrated to domain_resolver.
-- `fallback_delay` — Paired with network_strategy, which is not described; the launcher does not write it.
-- `fallback_network_type` — Paired with network_strategy, which is not described; the launcher does not write it.
 - `netns` — Linux only, reference:network_namespace; the launcher does not write it.
-- `network_strategy` — The enum lives in C.StringToNetworkStrategy and is not visible from option/*.go (CORE_SCHEMA 8); without that dictionary the value rule cannot be described.
-- `network_type` — Paired with network_strategy, which is not described; the launcher does not write it.
 - `protect_path` — Android only (platform=android); the desktop launcher does not write it.
 - `reuse_addr` — A low-level dialer option; the launcher does not write it.
 - `routing_mark` — Linux only; the launcher does not write it.

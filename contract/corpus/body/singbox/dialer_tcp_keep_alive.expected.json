@@ -27,6 +27,24 @@
       "kind": "outbound",
       "label": "keepalive-off",
       "scheme": "trojan"
+    },
+    {
+      "entry": {
+        "fallback_delay": "300ms",
+        "fallback_network_type": "cellular",
+        "network_strategy": "hybrid",
+        "network_type": [
+          "wifi",
+          "cellular"
+        ],
+        "server": "example-3.com",
+        "server_port": 443,
+        "type": "vless",
+        "uuid": "22222222-2222-2222-2222-222222222222"
+      },
+      "kind": "outbound",
+      "label": "net-strategy",
+      "scheme": "vless"
     }
   ],
   "v": 1

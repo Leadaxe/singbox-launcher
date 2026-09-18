@@ -305,6 +305,14 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: bool, tristate
 - <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.
   - Type: string
+- <a id="body-network-strategy"></a>**`network_strategy`** — Strategy for picking the outbound network interface. The core judges the value: the launcher passes it through unchecked.
+  - Type: string
+- <a id="body-network-type"></a>**`network_type`** — Interface types allowed for this connection. The core judges the values.
+  - Type: listable_string
+- <a id="body-fallback-network-type"></a>**`fallback_network_type`** — Interface types used when the primary ones are unavailable. The core judges the values.
+  - Type: listable_string
+- <a id="body-fallback-delay"></a>**`fallback_delay`** — Delay before falling back to the secondary network type.
+  - Type: duration
 
 ## Diagnosed problems
 
