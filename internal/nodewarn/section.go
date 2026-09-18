@@ -78,7 +78,7 @@ const ErrorsGroupTitleText = "Errors" // l10n-key
 const WarningsGroupTitleText = "Warnings" // l10n-key
 
 // InfoGroupTitleText — подзаголовок группы info-кодов.
-const InfoGroupTitleText = "For your information" // l10n-key
+const InfoGroupTitleText = "Info" // l10n-key
 
 // DetailsButtonText — подпись кнопки на якорь документации.
 const DetailsButtonText = "Details" // l10n-key
@@ -109,6 +109,10 @@ const accordionTitleMaxRunes = 64
 // nil при пустом списке — вызывающий не добавляет ни заголовка, ни
 // разделителя: раздел, за которым ничего нет, обещал бы проблему там, где её
 // нет.
+// showHeads — рисовать ли подзаголовки уровней; выставляет Section перед
+// сборкой групп (UI-поток, гонки нет).
+var showHeads = true
+
 func Section(in []state.NodeWarning) fyne.CanvasObject {
 	errs, warns, infos := byLevel(Describe(in))
 	if len(errs)+len(warns)+len(infos) == 0 {
@@ -117,6 +121,18 @@ func Section(in []state.NodeWarning) fyne.CanvasObject {
 
 	items := make([]fyne.CanvasObject, 0, 7)
 	items = append(items, sectionHeader(len(errs), len(warns), len(infos)))
+
+	// Один уровень — подзаголовок не нужен: шапка раздела уже сказала значком
+	// и счётчиком, что это за уровень, и «Уведомления → К сведению → код» —
+	// три строки про одно и то же. Подзаголовки появляются, когда уровней
+	// несколько и их надо различать.
+	levels := 0
+	for _, n := range []int{len(errs), len(warns), len(infos)} {
+		if n > 0 {
+			levels++
+		}
+	}
+	showHeads = levels > 1
 
 	// Порядок групп — ТОТ ЖЕ, что в тултипе и в счётчиках шапки: человек,
 	// пришедший сюда по знаку из списка, читает уровни в одном порядке везде.
@@ -229,6 +245,9 @@ func levelGroup(texts []Text, titleKey, mark string, imp widget.Importance) fyne
 	// MultiOpen: уведомления независимы, и раскрытие второго не имеет права
 	// закрывать первое — человек сравнивает их между собой.
 	acc.MultiOpen = true
+	if !showHeads {
+		return container.NewVBox(acc)
+	}
 	return container.NewVBox(headCell, acc)
 }
 
