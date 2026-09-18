@@ -1,4 +1,4 @@
-package ui
+package fynewidget
 
 import (
 	"fyne.io/fyne/v2"
@@ -12,26 +12,38 @@ import (
 // Предупреждение «в ссылке приватный ключ» — один хелпер на все точки выдачи
 // ссылки (решение владельца 18.09.2026, «как в LxBox»).
 //
-// Признак приходит из core/config (ShareURICarriesPrivateKey по телу узла),
-// здесь — только вопрос и передача ответа. Пароли и uuid ссылку не
-// задерживают: предупреждать о каждой значит приучить жать «Да» не читая.
+// Признак приходит из core/config (ShareURICarriesPrivateKey по телу узла
+// либо ShareURITextCarriesPrivateKey по строке ссылки), здесь — только вопрос
+// и передача ответа. Пароли и uuid ссылку не задерживают: предупреждать о
+// каждой значит приучить жать «Да» не читая.
+//
+// Живёт здесь, а не в ui: копирование ссылок идёт и из ui, и из
+// ui/configurator/tabs, а tabs импортировать ui не может. Тексты и ключи
+// locale — те же, что были у прежнего хелпера в ui.
 const (
 	shareURISecretWarnText     = "This link contains the node's private key. Anyone who gets it will be able to connect as you. Copy?"
 	shareURISecretWarnManyText = "Some of these links contain node private keys. Anyone who gets them will be able to connect as you. Copy?"
 )
 
-// confirmShareURISecret зовёт onOK либо сразу (ключа в ссылке нет), либо после
+// ConfirmShareURISecret зовёт onOK либо сразу (ключа в ссылке нет), либо после
 // подтверждения. Отказ — тишина: ничего не копируем, статус не трогаем.
 //
 // Вызов обязан идти из UI-потока (fyne.Do) — как и всякий показ диалога.
-func confirmShareURISecret(win fyne.Window, carriesPrivateKey bool, onOK func()) {
+func ConfirmShareURISecret(win fyne.Window, carriesPrivateKey bool, onOK func()) {
 	confirmShareURISecretText(win, carriesPrivateKey, shareURISecretWarnText, onOK)
 }
 
-// confirmShareURISecretBulk — та же развилка для массового копирования: одно
+// ConfirmShareURISecretBulk — та же развилка для массового копирования: одно
 // подтверждение на всю операцию, текст во множественном числе.
-func confirmShareURISecretBulk(win fyne.Window, carriesPrivateKey bool, onOK func()) {
+func ConfirmShareURISecretBulk(win fyne.Window, carriesPrivateKey bool, onOK func()) {
 	confirmShareURISecretText(win, carriesPrivateKey, shareURISecretWarnManyText, onOK)
+}
+
+// ConfirmShareURISecretCopy — самая частая форма: спросить и положить строку в
+// буфер. Признак считается по САМОЙ строке (ShareURITextCarriesPrivateKey у
+// вызывающего), тела узла тут нет.
+func ConfirmShareURISecretCopy(win fyne.Window, carriesPrivateKey bool, text string) {
+	ConfirmShareURISecret(win, carriesPrivateKey, func() { SetClipboard(text) })
 }
 
 func confirmShareURISecretText(win fyne.Window, carriesPrivateKey bool, text string, onOK func()) {

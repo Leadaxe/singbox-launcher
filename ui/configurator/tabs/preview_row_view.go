@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/nodewarn"
@@ -171,7 +172,11 @@ func showPreviewRowContextMenu(
 			showPreviewNodeEditWindow(r, rawTag, ops)
 		}),
 		fyne.NewMenuItem(locale.T("Copy source line"), func() {
-			fynewidget.SetClipboard(origin)
+			// Исходник неразобранной строки — это ссылка как приехала, и
+			// она может нести приватный ключ (wireguard/masque/ssh
+			// разбираются, даже когда узел из них не собрался). Признак
+			// считаем по самой строке: тела у такой записи нет.
+			fynewidget.ConfirmShareURISecretCopy(win, subscription.ShareURITextCarriesPrivateKey(origin), origin)
 		}),
 	}
 	widget.ShowPopUpMenuAtPosition(fyne.NewMenu("", items...), win.Canvas(), pe.AbsolutePosition)

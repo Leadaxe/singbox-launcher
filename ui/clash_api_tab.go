@@ -1330,7 +1330,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 					ShowErrorText(win, locale.T("🖥️ Servers"), locale.T("No share links could be built for this list."))
 					return
 				}
-				confirmShareURISecretBulk(win, hasKey, func() {
+				fynewidget.ConfirmShareURISecretBulk(win, hasKey, func() {
 					// One line per server URI; full block to clipboard.
 					clipboardText := strings.Join(lines, "\n")
 					if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {

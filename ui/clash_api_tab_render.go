@@ -13,6 +13,7 @@ import (
 	"singbox-launcher/core/services"
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
@@ -122,7 +123,7 @@ func serversRunCopyShareURIToClipboard(ac *core.AppController, status *widget.La
 				}
 				return
 			}
-			confirmShareURISecret(win, hasKey, func() {
+			fynewidget.ConfirmShareURISecret(win, hasKey, func() {
 				if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
 					app.Clipboard().SetContent(line)
 				}
@@ -147,7 +148,7 @@ func serversRunCopyJumpShareURIToClipboard(ac *core.AppController, status *widge
 				}
 				return
 			}
-			confirmShareURISecret(win, hasKey, func() {
+			fynewidget.ConfirmShareURISecret(win, hasKey, func() {
 				if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
 					app.Clipboard().SetContent(line)
 				}

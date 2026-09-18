@@ -1187,7 +1187,12 @@ func showSourceEditWindowAt(
 	// как и любая другая правка формы. Cancel окна отменяет и это.
 
 	originCopyBtn := widget.NewButton(locale.T("Copy"), func() {
-		fynewidget.SetClipboard(uriEntry.Text)
+		// Тела узла тут нет: поле правится руками, и в буфер уходит ИМЕННО
+		// набранный текст, а не то, из чего собран scratch. Признак «несёт
+		// приватный ключ» считаем по самой строке — разбором тем же
+		// парсером (нечитаемая строка тела не имеет, диалога нет).
+		uri := uriEntry.Text
+		fynewidget.ConfirmShareURISecretCopy(win, subscription.ShareURITextCarriesPrivateKey(uri), uri)
 	})
 	originEditBtn := widget.NewButton(locale.T("Edit"), func() {
 		setOriginMode(true)
