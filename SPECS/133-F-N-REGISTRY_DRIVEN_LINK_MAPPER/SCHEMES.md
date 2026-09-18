@@ -782,3 +782,196 @@ hysteria **v1** отличается тремя записями:
 Тринадцать групп. Ни одна не названа по схеме; каждая используется
 минимум двумя схемами, кроме `split_into` (masque) — он оставлен общим
 осознанно, потому что обратная операция (склейка) нужна эмиттеру.
+
+
+---
+
+## 13. Секции по ВИДАМ ИСТОЧНИКА — черновики
+
+Расширение области 19.09.2026: `mappers.uri` (§1–§11 выше), плюс три
+независимые секции. Форма записи одна (`SPEC.md` §3.2), различаются
+`detect`, `forms` и написание `source`.
+
+### 13.1. `registry/sources.json` — уровень документа
+
+Полный черновик — `SPEC.md` §3A.3. Кратко: упорядоченный список видов
+источника, у каждого `detect` + `priority` + `mapper` + оболочка
+(`unwrap`/`redetect`). Переводит в данные сегодняшний
+`ClassifySubscriptionBody` (`body_classify.go:90-124`) вместе с
+обоснованиями порядка.
+
+### 13.2. `mappers.xray` — черновики по протоколам
+
+```jsonc
+// vless
+"mappers": { "xray": {
+  "detect": {"json": {"value_of": {"protocol": "vless"}}},
+  "body_source": "xray",
+  "unknown_key": {"action": "drop", "code": "json_field_unknown"},
+  "forms": [
+    { "id": "vnext", "detect": {"json": {"type_of": {"settings.vnext": "array"}}},
+      "space": "json", "base": "settings.vnext.0" }
+  ],
+  "params": {
+    "address": { "source": "json.$base.address", "maps_to": "server", "required": true },
+    "port":    { "source": "json.$base.port", "maps_to": "server_port",
+                 "type": "int", "required": true },
+    "id":      { "source": "json.$base.users.0.id", "maps_to": "uuid", "required": true },
+    "flow":    { "source": "json.$base.users.0.flow", "maps_to": "flow",
+                 "value_map": {"xtls-rprx-vision-udp443": "xtls-rprx-vision"},
+                 "sets": {"xtls-rprx-vision-udp443": {"packet_encoding": "xudp"}},
+                 "priority": 10 },
+    "encryption": { "source": "json.$base.users.0.encryption", "maps_to": "encryption",
+                    "value_map": {"none": null, "": null} },
+    "$extra_users": { "source": "json.$base.users", "maps_to": null,
+                      "on_len_gt": {"n": 1, "action": "note",
+                                    "code": "xray_extra_entries_dropped"} }
+  },
+  "include": ["transports#xray", "tls#xray"],
+  "emit": null
+} }
+
+// hysteria — версия выбирает ТИП ТЕЛА
+"mappers": { "xray": {
+  "detect": {"json": {"value_of": {"protocol": "hysteria"}}},
+  "forms": [ { "id": "flat", "detect": {"json": {"any_keys": ["settings.address"]}},
+               "base": "settings" },
+             { "id": "servers", "detect": {"default": true},
+               "base": "settings.servers.0" } ],
+  "params": {
+    "version": { "source": ["json.streamSettings.hysteriaSettings.version",
+                            "json.settings.version"],
+                 "selector": true, "type": "int",
+                 "default_when": {"absent": true, "value": 1},
+                 "sets": {"1": {"$type": "hysteria"}, "2": {"$type": "hysteria2"}},
+                 "on_invalid": {"action": "drop_node", "code": "protocol_unsupported"} },
+    "auth": { "source": ["json.streamSettings.hysteriaSettings.auth",
+                         "json.streamSettings.hysteriaSettings.auth_str",
+                         "json.streamSettings.hysteriaSettings.authStr",
+                         "json.streamSettings.hysteriaSettings.password",
+                         "json.settings.auth", "json.settings.auth_str",
+                         "json.settings.authStr", "json.settings.password"],
+              "maps_to": {"hysteria": "auth_str", "hysteria2": "password"} },
+    "obfs": { "source": ["json.$hy.obfs", "json.$hy.obfsParam", "json.$hy.obfs_password"],
+              "maps_to": {"hysteria": "obfs",
+                          "hysteria2": "obfs.password"},
+              "sets": {"$present": {"obfs.type": "salamander"}},
+              "when": {"$type": "hysteria2"} }
+  }
+} }
+```
+
+`$base` — якорь формы: одна таблица параметров обслуживает `vnext[0]`,
+`servers[0]` и плоскую форму, различающиеся только префиксом пути. Это
+снимает дословный дубль выемки (`xray_outbound_convert.go:104-131` ≡
+`xray_protocols.go:117-144`).
+
+`maps_to` картой по типу тела — выражение «один вход, два целевых поля в
+зависимости от версии» без единой ветки в коде.
+
+**Транспорты xray** (`transports#xray`) — где формы `host` различаются:
+
+```jsonc
+"blocks": { "transports": { "xray": {
+  "ws":          { "$settings": "wsSettings",
+                   "path": {"source": "json.wsSettings.path",
+                            "extract": {"$ref": "ws_early_data"}},
+                   "host": {"source": "json.wsSettings.host",
+                            "maps_to": "transport.headers.Host"} },
+  "http":        { "host": {"source": "json.httpSettings.host",
+                            "maps_to": "transport.host",
+                            "list": {"coerce_scalar": true}} },
+  "httpupgrade": { "host": {"source": "json.httpupgradeSettings.host",
+                            "maps_to": "transport.host"} },
+  "grpc":        { "service_name": {"source": "json.grpcSettings.serviceName",
+                                    "aliases": ["service_name"],
+                                    "maps_to": "transport.service_name"} },
+  "xhttp":       { "$settings": ["xhttpSettings", "splithttpSettings"],
+                   "flatten": ["extra", "xmux"] } } } }
+```
+
+`list.coerce_scalar` у `httpSettings.host` чинит сегодняшний баг: массив
+`["a.com","b.com"]` уходит через `fmt.Sprint` и даёт `["[a.com b.com]"]`
+(`xray_outbound_convert.go:26`, `:363-365`).
+
+### 13.3. `mappers.singbox` — диалекты форков
+
+Полный разбор — `SPEC.md` §3.4. Черновик записи:
+
+```jsonc
+"mappers": { "singbox": {
+  "detect": {"json": {"value_in": {"type": ["shadowsocks", "ss"]}}},
+  "body_source": "singbox",
+  "unknown_key": {"action": "keep", "code": "json_field_unknown"},
+  "forms": [
+    { "id": "endpoint", "detect": {"in_array": "endpoints"}, "level": "endpoint" },
+    { "id": "outbound", "detect": {"default": true},         "level": "outbound" }
+  ],
+  "type_synonyms": {"shadowsocks": "ss"},
+  "params": { /* только исключения: см. ниже */ }
+} }
+```
+
+Что обязано быть перечислено (сегодня — код или ничего):
+
+| Запись | Закрывает |
+|---|---|
+| `$masque_flat` (`network`/`sni`/`skip_cert_verify`, `since: "0.8.0"`, drop + код) | `singbox_sanitize.go:84-96` — сегодня стрип **без кода** |
+| `obfs` с `coerce.object_to_scalar: "password"`, `when: {$type: "hysteria"}` | `:147-173` — сегодня три ветки, все **только WarnLog** |
+| `tls` с проверкой ФОРМЫ (не объект → снять; `enabled:false` → снять целиком) | `:109-132`, SPEC 045 (SIGSEGV ядер lx.5–lx.18) |
+| `xmux.*` с `source` списком (snake ∥ camel ∥ `extra.xmux.*`) | реестр уже объявляет оба написания, код читает одно |
+| `$addressless` (`when.$type in [wireguard, tailscale]` — не требовать server/port) | `singbox_import.go:429-431`, `if type ==` |
+| `$credential` (какое поле несёт секрет по типу) | `:437-449`, switch по схеме из 8 литералов |
+
+### 13.4. `mappers.conf` — ini напрямую
+
+`SCHEMES.md` §9 уже записан в форме `ini.<Section>.<Key>`. Добавляется:
+
+```jsonc
+"mappers": { "conf": {
+  "detect": {"ini": {"sections": ["Interface"]}},
+  "body_source": "wgconf",
+  "forms": [
+    { "id": "awg3", "detect": {"ini": {"keys_any": ["H1","I1","HeaderProtectionKey"]}} },
+    { "id": "awg",  "detect": {"ini": {"keys_any": ["Jc","Jmin","Jmax","S1"]}} },
+    { "id": "wg",   "detect": {"default": true} }
+  ],
+  "ini_dialect": { "key_case": "lower", "value_case": "preserve",
+                   "comment_prefixes": ["#", ";"], "inline_comments": false,
+                   "repeated_key": "last_wins",
+                   "sections": {"Peer": {"repeat": "first_only",
+                                         "on_extra": {"code": "wgconf_extra_peer_dropped"}}} },
+  "params": {
+    "label":    { "source": "ini.$comment.Peer",
+                  "when": {"value": {"not_matches": "="}} },
+    "endpoint": { "source": "ini.Peer.Endpoint", "selector": true,
+                  "extract": {"re": "^(?:\\[(?P<h6>[^\\]]+)\\]|(?P<h>[^:]+(?::[^:]+)*?)):(?P<p>\\d+)$",
+                              "into": {"h6": "peers[].address", "h": "peers[].address",
+                                       "p": {"path": "peers[].port", "type": "int"}}},
+                  "on_no_match": {"action": "take_all",
+                                  "into": "peers[].address",
+                                  "defaults": {"peers[].port": 51820}} },
+    "dns":      { "source": "ini.Interface.DNS", "maps_to": null,
+                  "on_present": {"action": "note", "code": "wgconf_dns_ignored"} }
+  }
+} }
+```
+
+Три места, где черновик исправлен по факту кода:
+
+- **`repeat: "first_only"` + код** — сегодня вторая `[Peer]` отбрасывается
+  **молча** (`node_parser_amnezia.go:494-497`), хотя счётчик уже посчитан;
+- **`Endpoint` с голым IPv6** — регулярка черновика `^(\[[^\]]+\]|[^:]+):(\d+)$`
+  не матчит `2001:db8::1:51820`; код это умеет (`LastIndex(":")` +
+  `Trim("[]")`, `wgconf_text.go:111-118`), грамматика обязана уметь тоже;
+- **`Interface.DNS`** — by-design лоссы (`wireguard.json:124-131`), но
+  сегодня **молча**; получает info-код, раз параметр объявлен.
+
+### 13.5. Что НЕ переводится (границы)
+
+| Остаётся | Почему |
+|---|---|
+| `xray_json_array.go`, `xray_balancer.go` | сборка ДОКУМЕНТА: владение, дедуп, `dialerProxy`→цепочки, `balancers[0]`→группа — работа над массивом узлов и связями |
+| распаковщик Amnezia `vpn://` (`node_parser_amnezia.go:96-360`) | обёртка над текстом: zlib+base64, выбор контейнера, плейсхолдеры DNS. Отдаёт `.conf` секции `conf` |
+| `body_classify.go` | **переводится** в `sources.json` (§13.1) — единственное исключение из «классификатор остаётся» |
+| разбор тела подписки (`parse_body.go`) | лимиты, баннеры, построчность — свойство подписки, не узла |

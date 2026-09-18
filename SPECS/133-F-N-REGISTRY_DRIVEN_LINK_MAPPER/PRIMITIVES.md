@@ -533,3 +533,96 @@ Amnezia `vpn://` (сжатый профиль → `.conf`/JSON, `node_parser_amn
 | (з) tag-фолбэк по типу тела | `SCHEMES.md` §0.5; **переключение переименует живые узлы** → вопрос владельцу `SPEC.md` §13 |
 | (и) `?ed=N`: неявный заголовок не писать в ссылку | `SCHEMES.md` §11 — `implicit: true` в `implies`, влияет только на эмит |
 | (к) `+` в query не пробел | §2 выше (четыре заплаты) + риск identity `SPEC.md` §9.3 |
+
+
+---
+
+## 15. Примитивы расширенной области (все источники) — 19.09.2026
+
+Добавлены после расширения кампании со ссылок на ВСЕ источники узла и после
+сверки с LxBox. Нумерация продолжает §1 (P1–P12).
+
+| № | Примитив | Где | Что выражает | Ради чего |
+|---|---|---|---|---|
+| P13 | `detect` | у секции, у формы, у вида источника | «этот контент — мой»: `regex` \| `json{required_keys,any_keys,key_absent,type_of,value_in}` \| `ini{sections,keys}` \| `text{prefix_fold,line_fold}` + `not`/`all`/`any`/`default` | убирает рукописный сниффер формата (`body_classify.go`, каскад из 25 схем) |
+| P14 | `mappers.<kind>` | у протокола | отдельная таблица на вид источника: `uri`/`xray`/`singbox`/`conf` | решение владельца «мапперы могут быть разные» |
+| P15 | `lift` / `flatten` | у записи | перенос между уровнями вложенности: `outbound ↔ endpoint`, `peers[] ↔ плоские`, `extra.xmux.* → плоский слой` | диалекты форков; сегодня `xrayFlattenScalars` вручную |
+| P16 | `include` / `$ref` блока | у секции | переиспользуемый блок с ДИАЛЕКТНЫМИ вариантами (`transports.ws#uri` против `#xray`) | не дублировать transport/tls/multiplex между протоколами и диалектами |
+| P17 | `unknown_key{action,code}` | у секции | что делать с неперечисленным ключом: `keep`+код (singbox) / `drop`+код (xray) | `uri_param_unknown`, `json_field_unknown` — решение владельца (1 = Б) |
+| P18 | `when.source_has` / `when.form` | у записи | условие по ИСТОЧНИКУ и ФОРМЕ, а не по телу | **G1**: род AWG объявляет вход (`hasAWGParams(q)` читает query), в теле awg-ключей может не остаться |
+| P19 | `sets: {path: null}` | у записи | `null` = **снять** путь (отличается от «не писать») | **G2**: tuic `disable_sni=1` убирает `tls.server_name` |
+| P20 | `priority` + `merge{keep_first,overwrite}` | у записи | явный порядок двух записей в один путь | **G3**: `flow=…-udp443` против `packetEncoding=` |
+| P21 | `sort_keys` | у `type: object` | детерминированный порядок ключей объекта | **G4**: заголовки http/naive входят в identity; сегодня порядок — случайность реализации Go-map |
+| P22 | `label.normalize` | у метки | `strip_control`, `trim`, `value_map` над НЕПУСТОЙ меткой | **G8**: метка = identity; сегодня только `normalizeFlagTag` (🇪🇳→🇬🇧) |
+| P23 | `materialize_default` | у записи | маппер ЗАПИСЫВАЕТ дефолт в тело, даже когда источник молчал | vmess `security` (у нас уже так — `xray_protocols.go:208`; у LxBox опущенный ключ снимал узел) |
+| P24 | `body_source` | у секции | каким `source` тело приходит в санитайзер | `except_sources` в правилах реестра; у нас 5 значений, у LxBox — 2 |
+| P25 | `unwrap` + `redetect` + `max_unwrap_depth` | у вида источника | оболочка-декодер с рекурсивным передетектом и пределом глубины | base64-подписка, `vpn://` (zlib+base64); предела сегодня нет вовсе |
+| P26 | источник `ini.$comment.<Section>` | у записи | значение из комментария секции | **G7**: имя узла из комментария под `[Peer]` (`wgconf_text.go:82-107`) |
+
+### 15.1. Уточнение `decode_extra` (снимает противоречие черновика)
+
+Черновик `SCHEMES.md` писал `{"percent": 2}` и `alpn`, и `path`. **Ошибка**:
+по коду это разные режимы, и двойка сломала бы фикстуру.
+
+| | Сегодня | Норма |
+|---|---|---|
+| `alpn` | `QueryUnescape` **до стабилизации, без предела** (`node_parser_transport.go:24-33`) | `{"mode": "query", "passes": "until_stable", "max": 16}` |
+| `path` | ровно **2** прохода `PathUnescape` (`:755-776`) | `{"mode": "path", "passes": 2}` |
+
+Фикстура `uri/vless/alpn_multiply_encoded.uri` несёт `http%2525252F1.1` —
+**три** уровня, ожидание `["http/1.1"]`. Семантика различается намеренно:
+в пути литеральный `+` легален, `QueryUnescape` превращал `/ws+v2` в
+`/ws v2` → 404.
+
+### 15.2. Норма разбора authority
+
+Authority разбирает **лексер движка**, не платформенный парсер URL:
+`host:443,20000-30000` (multi-port hysteria) `Uri.tryParse` у Dart отвергает
+целиком. Сырая строка порта доступна как `port_raw` (§0.1 `SCHEMES.md`).
+У нас это уже так — `hysteria2_ports.go` работает с сырым authority через
+хук `node_parser_core.go:383-388`.
+
+### 15.3. Инвентаризация прочих входов (адреса)
+
+**Xray-JSON** — `PRIMITIVES.md` §10 и `SPEC.md` §3.4a. Ключевое сверх §10:
+диспетчер `xray_protocols.go:97-112` плюс **второй, скрытый**
+(`xray_json_array.go:789`, `if protocol == "socks"` — socks только как хоп);
+три формы эндпоинта (`vnext[]`, `servers[]`, плоская `settings.{address,port}`
+у hysteria), причём выемка vnext **продублирована дословно**
+(`xray_outbound_convert.go:104-131` ≡ `xray_protocols.go:117-144`);
+`vnext[1..]`/`servers[1..]`/`users[1..]` отбрасываются молча; `mux` и весь
+`sockopt` кроме `dialerProxy`/`dialer` не читаются; `network` вне набора и
+`security: "xtls"` теряются без кода (`:403-405`, `:223-225`);
+`httpSettings.host` как массив даёт мусор `["[a.com b.com]"]` через
+`fmt.Sprint` (`:26`, `:363-365`).
+
+**sing-box JSON** — `SPEC.md` §3.4. Формы: одиночный outbound, массив
+outbound'ов, целый конфиг, массив конфигов (`body_classify.go:145-196`);
+`outbounds` ++ `endpoints` склеиваются в один список
+(`singbox_import.go:300-316`); единственное переименование типа —
+`shadowsocks → ss` (`:390-409`); `singboxTypeIsAddressless` = `wireguard` ∨
+`tailscale` (`:429-431`) — `if type ==` в чистом виде;
+`singboxCredentialFromMap` — switch по схеме из 8 литералов (`:437-449`);
+`SanitizeSingboxOutboundMap` **всегда возвращает `nil`** (`:71`), то есть ни
+одна деградация sing-box-входа не доезжает до узла; reject'ы идут **без
+машинного кода** (`add` вместо `addCoded`).
+
+**`.conf` / ini** — `SCHEMES.md` §9. Свой парсер, 36 строк
+(`node_parser_amnezia.go:466-501`): ключи lowercase, значения as-is,
+комментарии `#` и `;` только целой строкой (inline **не** поддержан),
+повторяющийся ключ — **последний выигрывает**, секции кроме
+`interface`/`peer` игнорируются. Чтутся поля **только первой** `[Peer]`
+(`:494-497`) — прочие молча отброшены. Каждая `[Interface]` даёт отдельный
+узел (`wgconf_text.go:26-49`). `Interface.DNS` ставится в query
+(`:555-557`) и **не читается никогда** — by-design по
+`wireguard.json:124-131`, но молча. Пять независимых реализаций проверки
+`[Interface]`/`[Peer]`.
+
+**Amnezia `vpn://`** — обёртка (base64url → qCompress: 4 байта BE размер +
+zlib), отдаёт **текст `.conf`** (`:96-164`, `:313-360`); выбор контейнера —
+default первым, при нескольких WG-контейнерах код `amnezia_container_choice`
+(`:174-206`); множественный путь `ParseAmneziaVPNLinkAll` (`:252-303`)
+возвращает все контейнеры.
+
+**Clash YAML — поддержки НЕТ.** Ни парсера, ни зависимости; все вхождения
+`clash` в коде — про Clash API ядра. В `sources.json` не объявляется.
