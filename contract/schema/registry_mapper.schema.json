@@ -74,7 +74,7 @@
         },
         "array_elem_any_keys": {
           "type": "array",
-          "description": "Хотя бы один элемент массива-документа несёт один из путей. Так Xray-конфиг отличается от sing-box: элемент Xray несёт outbounds[].protocol.",
+          "description": "Хотя бы один элемент массива несёт путь. Массив называется явно через [] — \"outbounds[].protocol\" значит «в массиве outbounds есть элемент с ключом protocol»; путь без [] считает массивом сам документ. Так Xray-конфиг отличается от sing-box: элемент Xray несёт outbounds[].protocol.",
           "items": { "type": "string" }
         }
       }

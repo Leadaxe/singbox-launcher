@@ -53,7 +53,7 @@ SPEC 133. Спутник `SPEC.md` (дизайн движка) и `TASKS.md` (в
 | `json.required_keys` / `any_keys` / `key_absent` | **FROZEN** | пути точечные; числовой сегмент индексирует массив |
 | `json.type_of` | **FROZEN** | путь → `object`\|`array`\|`string`\|`number`\|`bool` |
 | `json.value_of` / `value_in` | **FROZEN** | путь → значение / набор (строки сравниваются fold-case) |
-| `json.array_elem_any_keys` | **FROZEN** | хотя бы один элемент массива несёт путь |
+| `json.array_elem_any_keys` | **FROZEN** | хотя бы один элемент массива несёт путь; массив назван явно через `[]` (`"outbounds[].protocol"`), без `[]` массив — сам документ |
 | `ini.sections` / `keys` / `keys_any` | **FROZEN** | имена fold-case |
 | `text.prefix_fold` / `line_fold` / `contains` | **FROZEN** | |
 | `scheme_in` | **FROZEN** | написания схемы ссылки |
@@ -134,13 +134,42 @@ SPEC 133. Спутник `SPEC.md` (дизайн движка) и `TASKS.md` (в
 
 | Атрибут | Почему draft |
 |---|---|
-| `ini_dialect{key_case,value_case,comment_prefixes,inline_comments,repeated_key,sections.<S>.repeat,on_extra}` | набор ключей устаканится на волне `conf` (W8.6); сегодня выражает сегодняшний разбор дословно |
-| источник `ini.$comment.<Section>` | синтаксис `$comment` не сверен с LxBox — **G7** |
+| `ini_dialect{key_case,value_case,comment_prefixes,inline_comments,repeated_key,sections.<S>.repeat,on_extra}` | набор ключей устаканится на волне `conf` (W8.6); §0.8 |
 | `$base` как подстановка в `source` | механика якоря формы проверяется на xray (W8) |
 | служебные записи с `$`-префиксом (`$multiport`, `$plaintext_port`, `$legacy_flat`) | соглашение об имени: `$` помечает запись без `maps_to`, в документацию не идёт |
 | `emit.form_from` | форма выбора схемы по телу нужна только эмиту (W7) |
 | `round_trip: false` + причина | появляется в W7 вместе с исключениями раннера |
 | `unwrap` значения (`base64`, `amnezia_vpn`) | список распаковщиков закрытый, но пополнится при первом новом контейнере |
+
+### 0.8. `ini` — уточнения после сверки с LxBox (19.09.2026)
+
+Синтаксис `ini.$comment.<Section>` **принят** (G7). Предикат «что считается
+именем» — атрибут самого источника, а не зашитое правило:
+
+```jsonc
+"label": { "source": "ini.$comment.Peer",
+           "comment": {"take": "first", "require_no": "="} }
+```
+
+`take: "first"` — первый комментарий секции; `require_no: "="` — строка с
+`=` это отключённая настройка (`# Bouncing = 0`), а не имя. Сам `#` внутри
+значения легален (`US-FREE#137`), поэтому режется только ведущий префикс.
+
+**`repeated_key` покрывает ТРИ случая разом** — это одно правило, а не три:
+
+| Случай | Сегодня | Запись |
+|---|---|---|
+| несколько `[Peer]` | чтутся поля только ПЕРВОЙ, прочие молча (`node_parser_amnezia.go:494-497`) | `sections.Peer.repeat: "first_only"` + `on_extra{code}` |
+| `Address` / `AllowedIPs` через запятую | `list{sep:","}` | `list` у записи |
+| тот же ключ ПОВТОРОМ строк | последний выигрывает | `repeated_key: "last_wins"` \| `"append"` |
+
+Второй и третий — одна величина, собранная двумя способами; `repeated_key:
+"append"` вместе с `list{sep:","}` даёт одинаковый результат для обеих
+записей, поэтому таблица не обязана знать, как провайдер оформил файл.
+
+Алиасы ключей ini — обычный `aliases` записи, отдельного механизма нет.
+
+Перевод этих имён в **FROZEN** — после первой сверки секции `conf`.
 
 ---
 
