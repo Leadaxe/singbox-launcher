@@ -40,7 +40,6 @@
 package ui
 
 import (
-	"fmt"
 	"image/color"
 	"strconv"
 	"strings"
@@ -291,7 +290,7 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 		objs := make([]fyne.CanvasObject, 0, len(facets.Emojis))
 		for _, e := range facets.Emojis {
 			e := e
-			chip := fynewidget.NewChip(fmt.Sprintf("%s %d", e.Emoji, e.Count), selected[e.Emoji], nil)
+			chip := fynewidget.NewChip(e.Emoji, selected[e.Emoji], nil).SetCount(strconv.Itoa(e.Count))
 			chip.OnChanged = func(bool) {
 				// Клик = toggle терма в OR-паттерне поля (LxBox :126). Поле
 				// остаётся ЕДИНСТВЕННЫМ носителем отбора по имени: второй
@@ -316,12 +315,12 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 		for _, f := range facets.Protocols {
 			f := f
 			objs = append(objs, fynewidget.NewChip(
-				fmt.Sprintf("%s %d", f.Key, f.Count),
+				f.Key,
 				st().Protocols[f.Key],
 				func(on bool) {
 					setChipSelection(st().Protocols, f.Key, on)
 					apply()
-				}))
+				}).SetCount(strconv.Itoa(f.Count)))
 		}
 		if len(facets.Protocols) > 0 && len(facets.Variants) > 0 {
 			objs = append(objs, filterHintText("·"))
@@ -329,12 +328,12 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 		for _, f := range facets.Variants {
 			f := f
 			objs = append(objs, fynewidget.NewChip(
-				fmt.Sprintf("%s %d", f.Key, f.Count),
+				f.Key,
 				st().Variants[f.Key],
 				func(on bool) {
 					setChipSelection(st().Variants, f.Key, on)
 					apply()
-				}))
+				}).SetCount(strconv.Itoa(f.Count)))
 		}
 		protocolFlow.SetObjects(objs)
 	}
@@ -345,12 +344,12 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 		for _, f := range facets.Sources {
 			f := f
 			chip := fynewidget.NewChip(
-				fmt.Sprintf("%s %d", truncateSourceChipName(f.Name), f.Count),
+				truncateSourceChipName(f.Name),
 				st().Sources[f.ID],
 				func(on bool) {
 					setChipSelection(st().Sources, f.ID, on)
 					apply()
-				})
+				}).SetCount(strconv.Itoa(f.Count))
 			chip.SetToolTip(f.Name) // полное имя: в чипе оно обрезано
 			objs = append(objs, chip)
 		}

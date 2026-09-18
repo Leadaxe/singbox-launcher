@@ -57,8 +57,14 @@ type Chip struct {
 	selected bool
 	hovered  bool
 
+	// count — необязательный счётчик справа от подписи, мельче и приглушённее:
+	// слитная строка «Folder 1 4» читалась как имя «Folder 1 4», а не как
+	// папка «Folder 1» с четырьмя узлами.
+	count string
+
 	bg    *canvas.Rectangle
 	label *canvas.Text
+	badge *canvas.Text
 }
 
 // NewChip создаёт чип с подписью text.
@@ -68,11 +74,24 @@ func NewChip(text string, selected bool, onChanged func(bool)) *Chip {
 	return c
 }
 
+// SetCount задаёт счётчик, рисуемый отдельно от подписи. Пустая строка —
+// счётчика нет.
+func (c *Chip) SetCount(count string) *Chip {
+	c.count = count
+	c.Refresh()
+	return c
+}
+
+// chipCountGap — зазор между подписью и счётчиком.
+const chipCountGap = 5
+
 // CreateRenderer implements fyne.Widget.
 func (c *Chip) CreateRenderer() fyne.WidgetRenderer {
 	c.bg = canvas.NewRectangle(color.Transparent)
 	c.label = canvas.NewText(c.text, color.Black)
 	c.label.TextSize = c.captionSize()
+	c.badge = canvas.NewText(c.count, color.Black)
+	c.badge.TextSize = c.captionSize() - 2
 	c.applyStyle()
 	return &chipRenderer{chip: c}
 }
@@ -142,7 +161,7 @@ func (c *Chip) captionSize() float32 {
 
 // applyStyle перекрашивает плашку и текст под текущее состояние.
 func (c *Chip) applyStyle() {
-	if c.bg == nil || c.label == nil {
+	if c.bg == nil || c.label == nil || c.badge == nil {
 		return
 	}
 	th := c.Theme()
@@ -161,8 +180,13 @@ func (c *Chip) applyStyle() {
 		c.bg.FillColor = th.Color(theme.ColorNameInputBackground, v)
 		c.label.Color = th.Color(theme.ColorNameForeground, v)
 	}
+	// Счётчик — тем же цветом, что подпись, но полупрозрачным: на синей
+	// плашке выбранного чипа серый PlaceHolder пропадал бы совсем.
+	r, g, b, a := c.label.Color.RGBA()
+	c.badge.Color = color.NRGBA{R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: uint8((a >> 8) * 55 / 100)}
 	c.bg.Refresh()
 	c.label.Refresh()
+	c.badge.Refresh()
 	canvas.Refresh(c)
 }
 
@@ -174,13 +198,23 @@ func (r *chipRenderer) Layout(size fyne.Size) {
 	r.chip.bg.Resize(size)
 	r.chip.bg.Move(fyne.NewPos(0, 0))
 	ts := r.chip.label.MinSize()
+	total := ts.Width
+	var bs fyne.Size
+	if r.chip.count != "" {
+		bs = r.chip.badge.MinSize()
+		total += chipCountGap + bs.Width
+	}
 	// Текст по центру плашки: при клампе высоты до chipMinHeight остаток
 	// делится поровну, иначе подпись липла бы к верхнему краю.
+	x := (size.Width - total) / 2
 	r.chip.label.Resize(ts)
-	r.chip.label.Move(fyne.NewPos(
-		(size.Width-ts.Width)/2,
-		(size.Height-ts.Height)/2,
-	))
+	r.chip.label.Move(fyne.NewPos(x, (size.Height-ts.Height)/2))
+	if r.chip.count != "" {
+		r.chip.badge.Resize(bs)
+		// Счётчик мельче — сажаем на ту же базовую линию, а не по центру.
+		r.chip.badge.Move(fyne.NewPos(x+ts.Width+chipCountGap,
+			(size.Height-ts.Height)/2+(ts.Height-bs.Height)-1))
+	}
 }
 
 func (r *chipRenderer) MinSize() fyne.Size {
@@ -189,15 +223,20 @@ func (r *chipRenderer) MinSize() fyne.Size {
 	if h < chipMinHeight {
 		h = chipMinHeight
 	}
-	return fyne.NewSize(ts.Width+2*chipPadH, h)
+	w := ts.Width
+	if r.chip.count != "" {
+		w += chipCountGap + r.chip.badge.MinSize().Width
+	}
+	return fyne.NewSize(w+2*chipPadH, h)
 }
 
 func (r *chipRenderer) Objects() []fyne.CanvasObject {
-	return []fyne.CanvasObject{r.chip.bg, r.chip.label}
+	return []fyne.CanvasObject{r.chip.bg, r.chip.label, r.chip.badge}
 }
 
 func (r *chipRenderer) Refresh() {
 	r.chip.label.Text = r.chip.text
+	r.chip.badge.Text = r.chip.count
 	r.chip.applyStyle()
 	canvas.Refresh(r.chip)
 }
