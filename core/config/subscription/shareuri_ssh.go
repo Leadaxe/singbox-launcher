@@ -8,6 +8,49 @@ import (
 
 // --- SSH ---
 
+// sshPrivateKeyLiteral приводит листаемое поле private_key к одной строке для
+// ?private_key=. ok=false означает «в URI не кодируется»: несколько ключей в
+// одном параметре не разберутся обратно.
+func sshPrivateKeyLiteral(v interface{}) (string, bool) {
+	switch t := v.(type) {
+	case nil:
+		return "", true
+	case string:
+		return t, true
+	case []string:
+		return sshPrivateKeySingle(t)
+	case []interface{}:
+		parts := make([]string, 0, len(t))
+		for _, e := range t {
+			s, ok := e.(string)
+			if !ok {
+				return "", false
+			}
+			parts = append(parts, s)
+		}
+		return sshPrivateKeySingle(parts)
+	default:
+		return "", false
+	}
+}
+
+func sshPrivateKeySingle(list []string) (string, bool) {
+	kept := make([]string, 0, len(list))
+	for _, s := range list {
+		if strings.TrimSpace(s) != "" {
+			kept = append(kept, s)
+		}
+	}
+	switch len(kept) {
+	case 0:
+		return "", true
+	case 1:
+		return kept[0], true
+	default:
+		return "", false
+	}
+}
+
 func shareURIFromSSH(out map[string]interface{}) (string, error) {
 	user := mapGetString(out, "user")
 	if user == "" {
@@ -21,12 +64,28 @@ func shareURIFromSSH(out map[string]interface{}) (string, error) {
 	if port <= 0 {
 		port = 22
 	}
-	if mapGetString(out, "private_key") != "" {
-		return "", fmt.Errorf("%w: ssh with inline private_key cannot be encoded as URI", ErrShareURINotSupported)
-	}
 	pass := mapGetString(out, "password")
 	q := url.Values{}
-	if pkp := mapGetString(out, "private_key_path"); pkp != "" {
+	// Inline приватный ключ уезжает в ?private_key= — так его пишет LxBox
+	// (node_spec_emit.dart) и так его читает наш же buildSSHOutbound, то
+	// есть ссылка round-trip'ится. Раньше здесь стоял отказ
+	// ErrShareURINotSupported, и ssh-узел с ключом нельзя было
+	// скопировать вовсе; решение владельца 18.09.2026 — отдавать, но
+	// только после предупреждения в UI (см. ShareURICarriesPrivateKey).
+	//
+	// private_key листаемый (строка либо массив): многоэлементную форму не
+	// кодируем — склейка в один параметр не round-trip'ится, парсер вернул
+	// бы один ключ вместо списка.
+	pk, pkOK := sshPrivateKeyLiteral(out["private_key"])
+	if !pkOK {
+		return "", fmt.Errorf("%w: ssh private_key list with several keys cannot be encoded as URI", ErrShareURINotSupported)
+	}
+	if pk != "" {
+		q.Set("private_key", pk)
+	} else if pkp := mapGetString(out, "private_key_path"); pkp != "" {
+		// Парсер отдаёт private_key_path только когда private_key пуст
+		// (buildSSHOutbound): эмитим той же парой, иначе ссылка описывала
+		// бы узел, которого разбор не даст.
 		q.Set("private_key_path", pkp)
 	}
 	if hk, ok := out["host_key"].([]interface{}); ok && len(hk) > 0 {

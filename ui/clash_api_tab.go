@@ -1298,7 +1298,10 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			fyne.Do(func() {
 				status.SetText(locale.T("Preparing export…"))
 			})
-			lines, err := config.BuildShareURILinesForOutboundTags(cfgPath, tags)
+			// hasKey — по всему блоку сразу: подтверждение одно на операцию,
+			// а не на каждый узел (иначе экспорт 500-узловой подписки
+			// превратился бы в 500 диалогов).
+			lines, hasKey, err := config.BuildShareURILinesWithSecretForOutboundTags(cfgPath, tags)
 			fyne.Do(func() {
 				if err != nil {
 					ShowError(win, err)
@@ -1308,12 +1311,14 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 					ShowErrorText(win, locale.T("🖥️ Servers"), locale.T("No share links could be built for this list."))
 					return
 				}
-				// One line per server URI; full block to clipboard.
-				clipboardText := strings.Join(lines, "\n")
-				if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
-					app.Clipboard().SetContent(clipboardText)
-				}
-				status.SetText(locale.Tf("Clipboard: %d lines (one URI per line)", len(lines)))
+				confirmShareURISecretBulk(win, hasKey, func() {
+					// One line per server URI; full block to clipboard.
+					clipboardText := strings.Join(lines, "\n")
+					if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
+						app.Clipboard().SetContent(clipboardText)
+					}
+					status.SetText(locale.Tf("Clipboard: %d lines (one URI per line)", len(lines)))
+				})
 			})
 		}()
 	})
