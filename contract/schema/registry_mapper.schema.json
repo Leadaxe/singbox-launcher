@@ -1,0 +1,490 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/Leadaxe/singbox-launcher/contract/schema/registry_mapper.schema.json",
+  "title": "Секции-мапперы реестра (SPEC 133)",
+  "description": "Исполняемые таблицы превращения ВНЕШНЕГО источника в тело узла. Секция на вид источника (uri / xray / singbox / conf): таблицы разные, движок один. Отличается от описательной секции `mapper` (registry_body.schema.json), которую в рантайме не исполняет никто: здесь каждая запись ИСПОЛНЯЕТСЯ, и значение доступно параметру только через `source`. Значений секция не судит — их судит санитайзер по body-схеме (CANON §8).",
+  "type": "object",
+  "definitions": {
+
+    "detect": {
+      "description": "Декларативный признак «этот контент — мой». Один и тот же словарь на обоих уровнях: вид источника (sources.json) и секция/форма протокола. Предикаты внутри объекта — конъюнкция.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "regex": {
+          "type": "string",
+          "description": "Регулярное выражение по сырому тексту. Диалект — общее подмножество Go RE2 и ECMAScript/Dart: без lookaround, без обратных ссылок, без inline-флагов. Совпадение по всей строке задаётся якорями в самом выражении."
+        },
+        "json": { "$ref": "#/definitions/detectJSON" },
+        "ini": { "$ref": "#/definitions/detectINI" },
+        "text": { "$ref": "#/definitions/detectText" },
+        "scheme_in": {
+          "type": "array",
+          "description": "Написания схемы ссылки, на которые отзывается секция (с учётом aliases протокола).",
+          "items": { "type": "string" }
+        },
+        "in_array": {
+          "type": "string",
+          "description": "Элемент пришёл из массива с этим именем ('outbounds' / 'endpoints') — различает уровень документа sing-box."
+        },
+        "not": { "$ref": "#/definitions/detect" },
+        "all": { "type": "array", "items": { "$ref": "#/definitions/detect" } },
+        "any": { "type": "array", "items": { "$ref": "#/definitions/detect" } },
+        "default": {
+          "type": "boolean",
+          "description": "Ветка «всё остальное». Ровно одна на уровень — проверяет линтер."
+        }
+      }
+    },
+
+    "detectJSON": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Предикаты по разобранному JSON. Пути — точечные ('settings.vnext').",
+      "properties": {
+        "required_keys": {
+          "type": "array",
+          "description": "Все перечисленные пути обязаны присутствовать.",
+          "items": { "type": "string" }
+        },
+        "any_keys": {
+          "type": "array",
+          "description": "Хотя бы один из путей присутствует.",
+          "items": { "type": "string" }
+        },
+        "key_absent": {
+          "type": "array",
+          "description": "Ни одного из путей нет. Так одиночный selector (несёт и type, и outbounds) отличается от конфига.",
+          "items": { "type": "string" }
+        },
+        "type_of": {
+          "type": "object",
+          "description": "Путь → тип значения.",
+          "additionalProperties": { "enum": ["object", "array", "string", "number", "bool"] }
+        },
+        "value_of": {
+          "type": "object",
+          "description": "Путь → точное значение (сравнение регистронезависимое для строк).",
+          "additionalProperties": { "type": "string" }
+        },
+        "value_in": {
+          "type": "object",
+          "description": "Путь → набор допустимых значений. Так объявляются типы-синонимы ('shadowsocks' и 'ss').",
+          "additionalProperties": { "type": "array", "items": { "type": "string" } }
+        },
+        "array_elem_any_keys": {
+          "type": "array",
+          "description": "Хотя бы один элемент массива-документа несёт один из путей. Так Xray-конфиг отличается от sing-box: элемент Xray несёт outbounds[].protocol.",
+          "items": { "type": "string" }
+        }
+      }
+    },
+
+    "detectINI": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Предикаты по ini-тексту. Имена секций и ключей сравниваются регистронезависимо.",
+      "properties": {
+        "sections": { "type": "array", "items": { "type": "string" } },
+        "keys": {
+          "type": "array",
+          "description": "Все ключи присутствуют (в любой секции).",
+          "items": { "type": "string" }
+        },
+        "keys_any": {
+          "type": "array",
+          "description": "Хотя бы один ключ присутствует. Так род узла (awg3 / awg / wg) объявляется данными, а не функцией hasAWGParams.",
+          "items": { "type": "string" }
+        }
+      }
+    },
+
+    "detectText": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prefix_fold": { "type": "string", "description": "Префикс текста, регистронезависимо." },
+        "line_fold": { "type": "string", "description": "Строка целиком (после trim), регистронезависимо." },
+        "contains": { "type": "string" }
+      }
+    },
+
+    "form": {
+      "description": "Оболочка источника: как из текста получить пространство источников. Формы пробуются по порядку, первая сработавшая выигрывает.",
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "detect": { "$ref": "#/definitions/detect" },
+        "decode": {
+          "type": "array",
+          "description": "Конвейер декодеров оболочки: url, percent, base64, base64url, 'base64?' (try-decode с фолбэком «не base64 → как есть»), json, ini, {reparse: url|authority}.",
+          "items": { "type": ["string", "object"] }
+        },
+        "space": {
+          "enum": ["url", "json", "ini"],
+          "description": "Итоговое пространство источников."
+        },
+        "base": {
+          "type": "string",
+          "description": "Якорь пути: префикс, подставляемый вместо $base в source. Одна таблица параметров обслуживает vnext[0], servers[0] и плоскую форму."
+        },
+        "level": {
+          "enum": ["outbound", "endpoint"],
+          "description": "Уровень документа sing-box, из которого пришёл элемент."
+        }
+      }
+    },
+
+    "sourceRef": {
+      "description": "Откуда параметр берёт значение. Строка — один источник; массив — цепочка приоритета (первый найденный выигрывает); объект — карта по id формы. ЕДИНСТВЕННЫЙ способ получить значение: сырого url.Values/карты JSON у движка нет.",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } },
+        { "type": "object", "additionalProperties": { "oneOf": [
+          { "type": "string" },
+          { "type": "array", "items": { "type": "string" } }
+        ] } }
+      ]
+    },
+
+    "decodeExtra": {
+      "description": "Дополнительный percent-декод ПОВЕРХ декодера формы. Режимы различаются намеренно: в пути литеральный '+' легален, и query-семантика превратила бы /ws+v2 в /ws v2.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["query", "path"] },
+        "passes": {
+          "oneOf": [
+            { "type": "integer", "minimum": 1 },
+            { "const": "until_stable" }
+          ],
+          "description": "Число проходов либо «до стабилизации». alpn сегодня декодируется до стабилизации (фикстура alpn_multiply_encoded несёт ТРИ уровня), path — ровно 2."
+        },
+        "max": {
+          "type": "integer",
+          "description": "Предел проходов при until_stable — страховка от неограниченного цикла.",
+          "minimum": 1
+        },
+        "preserve_plus": {
+          "type": "boolean",
+          "description": "Не превращать '+' в пробел. Сегодня это четыре точечные заплаты в трёх файлах; политика по умолчанию — вопрос владельца (DELTAS.md D133-C1)."
+        }
+      }
+    },
+
+    "param": {
+      "description": "Запись таблицы: один параметр источника.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": { "$ref": "#/definitions/sourceRef" },
+        "maps_to": {
+          "description": "Путь в теле узла. null — значение осознанно никуда не едет (снимается с кодом). Объект — карта по типу тела, когда один вход ведёт в разные поля (hysteria v1 auth_str против v2 password).",
+          "oneOf": [
+            { "type": "string" },
+            { "type": "null" },
+            { "type": "object", "additionalProperties": { "type": "string" } }
+          ]
+        },
+        "aliases": { "type": "array", "items": { "type": "string" } },
+        "type": {
+          "enum": ["string", "int", "bool", "bool_spelled", "duration", "base64", "list", "object"],
+          "description": "bool_spelled — общий набор написаний истины (1|true|yes), одно правило на все булевы параметры всех схем."
+        },
+        "required": { "type": "boolean" },
+        "selector": {
+          "type": "boolean",
+          "description": "Параметр первого прохода: его значение строит тело, по которому дальше проверяется when у зависимых."
+        },
+        "priority": {
+          "type": "integer",
+          "description": "Явный порядок двух записей, пишущих в один путь. Меньше = раньше."
+        },
+        "merge": {
+          "enum": ["keep_first", "overwrite", "prepend", "append"],
+          "description": "Что делать, когда путь уже занят."
+        },
+        "value_map": {
+          "type": "object",
+          "description": "Перевод значений чужого диалекта. null в значении = ключа нет. Первое написание каноническое (для эмита)."
+        },
+        "sets": {
+          "type": "object",
+          "description": "Значение параметра → набор присваиваний в тело. null в присваивании СНИМАЕТ путь (отличается от «не писать»): tuic disable_sni убирает tls.server_name."
+        },
+        "implies": {
+          "type": "object",
+          "description": "Одно лишь НАЛИЧИЕ параметра даёт присваивания (REALITY заводится по наличию pbk)."
+        },
+        "when": { "$ref": "#/definitions/when" },
+        "extract": { "$ref": "#/definitions/extract" },
+        "compose": { "type": "string", "description": "Обратный шаблон сборки для эмита." },
+        "list": { "$ref": "#/definitions/list" },
+        "split_into": {
+          "type": "object",
+          "description": "Список разбрасывается по нескольким полям по предикату на элементе (masque address → ip/ipv6)."
+        },
+        "normalize": {
+          "type": "string",
+          "description": "Имя общего нормализатора: base64_std, cidr_prefix, port_range_spec, duration_bare_seconds, range_order{swap,strict}, trim, trim_lower."
+        },
+        "decode_extra": { "$ref": "#/definitions/decodeExtra" },
+        "default_from": {
+          "description": "Источник значения по умолчанию (SNI-эвристика: sni → peer → server).",
+          "oneOf": [ { "type": "string" }, { "type": "object" } ]
+        },
+        "default_when": { "type": "object" },
+        "materialize_default": {
+          "type": "boolean",
+          "description": "Маппер ЗАПИСЫВАЕТ дефолт в тело, даже когда источник молчал. Отличается от default в body.fields: там это правило санитайзера («чем заполнить пустоту»), здесь — обязанность маппера (vmess.security пишется всегда)."
+        },
+        "coerce": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Приведение ФОРМЫ значения (не смысла): объект→скаляр по имени поля, скаляр→список.",
+          "properties": {
+            "object_to_scalar": { "type": "string" },
+            "scalar_to_list": { "type": "boolean" }
+          }
+        },
+        "flatten": {
+          "type": "array",
+          "description": "Имена вложенных объектов, чьи члены вливаются в плоский слой (extra, xmux).",
+          "items": { "type": "string" }
+        },
+        "lift": {
+          "type": "string",
+          "description": "Перенос значения между уровнями вложенности (outbound ↔ endpoint, peers[] ↔ плоские поля)."
+        },
+        "sort_keys": {
+          "type": "boolean",
+          "description": "Детерминированный порядок ключей у type:object. Порядок входит в identity, и оставлять его свойством реализации нельзя."
+        },
+        "empty": {
+          "enum": ["absent", "significant"],
+          "description": "По умолчанию пусто = отсутствует. significant — там, где ядро различает «ключа нет» и «пустая строка»."
+        },
+        "on_invalid": { "type": "object" },
+        "on_present": { "type": "object" },
+        "on_item_invalid": { "type": "object" },
+        "on_no_match": { "type": "object" },
+        "on_len_gt": { "type": "object" },
+        "emit_when": { "type": ["string", "object"] },
+        "omit_default": {},
+        "implicit": {
+          "type": "boolean",
+          "description": "Значение подставлено конвенцией, а не источником: в ссылку при эмите не пишется (early_data_header_name)."
+        },
+        "since": { "type": "string", "description": "Версия контракта, с которой запись действует (legacy-ключи)." },
+        "desc_en": { "type": "string" },
+        "desc_ru": { "type": "string" },
+        "impl": { "type": "string" }
+      }
+    },
+
+    "when": {
+      "description": "Условие по УЖЕ ПОСТРОЕННОМУ телу и/или по источнику. Ключ — путь тела, '$type' — тип тела, 'query.X'/'json.X'/'ini.X' — источник, '$form' — id формы.",
+      "type": "object",
+      "additionalProperties": true
+    },
+
+    "extract": {
+      "type": "object",
+      "required": ["re"],
+      "additionalProperties": false,
+      "properties": {
+        "re": {
+          "type": "string",
+          "description": "Регулярка с ИМЕНОВАННЫМИ группами. Диалект — RE2 ∩ ECMAScript; все группы обязаны быть покрыты into (проверяет линтер)."
+        },
+        "into": { "type": "object" }
+      }
+    },
+
+    "list": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sep": { "type": "string" },
+        "item": { "enum": ["string", "int"] },
+        "len": { "type": "integer" },
+        "coerce_scalar": {
+          "type": "boolean",
+          "description": "Скаляр принимается как список из одного элемента (Xray httpSettings.host бывает и строкой, и массивом)."
+        }
+      }
+    },
+
+    "userinfo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "decode": { "type": "array", "items": { "type": "string" } },
+        "split": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sep": { "type": "string" },
+            "limit": { "type": "integer", "description": "limit:2 — резать по ПЕРВОМУ разделителю: пароль с двоеточием иначе теряется." }
+          }
+        },
+        "into": { "type": "array", "items": { "type": "string" } },
+        "single_into": { "type": "string", "description": "Куда идёт userinfo без разделителя." }
+      }
+    },
+
+    "labelSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Метка узла. Входит в identity, поэтому её нормализация объявляется, а не остаётся свойством кода.",
+      "properties": {
+        "source": { "$ref": "#/definitions/sourceRef" },
+        "normalize": {
+          "type": "array",
+          "description": "strip_control, trim.",
+          "items": { "type": "string" }
+        },
+        "value_map": { "type": "object" },
+        "fallback": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "template": { "type": "string" },
+            "scheme_source": {
+              "enum": ["as_written", "singbox_type"],
+              "description": "as_written — по написанию схемы (hy2-… ≠ hysteria2-…); singbox_type — по типу тела. Решение владельца 19.09.2026: singbox_type. Меняет identity живых узлов — DELTAS.md D133-6."
+            }
+          }
+        }
+      }
+    },
+
+    "mapper": {
+      "description": "Одна секция-маппер: вид источника у одного протокола.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "detect": { "$ref": "#/definitions/detect" },
+        "body_source": {
+          "enum": ["uri", "singbox", "xray", "wgconf", "amnezia"],
+          "description": "Каким source тело приходит в санитайзер: на это опирается except_sources в правилах реестра."
+        },
+        "forms": { "type": "array", "items": { "$ref": "#/definitions/form" } },
+        "userinfo": { "$ref": "#/definitions/userinfo" },
+        "label": { "$ref": "#/definitions/labelSpec" },
+        "params": { "type": "object", "additionalProperties": { "$ref": "#/definitions/param" } },
+        "include": {
+          "type": "array",
+          "description": "Переиспользуемые блоки с диалектными вариантами ('transports.ws#uri', 'tls#xray'). Разворачиваются загрузчиком до исполнения; конфликт имён — ошибка линтера, а не молчаливое перекрытие.",
+          "items": { "type": "string" }
+        },
+        "scheme_sets": {
+          "type": "object",
+          "description": "Написание схемы → набор присваиваний (socks4/socks5 → version, naive+quic → quic+bbr)."
+        },
+        "type_synonyms": {
+          "type": "object",
+          "description": "Тип тела чужого диалекта → схема реестра (shadowsocks → ss).",
+          "additionalProperties": { "type": "string" }
+        },
+        "defaults": { "type": "object" },
+        "unknown_key": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Что делать с неперечисленным ключом источника. Молчание — тот самый дефект, ради которого затеяна кампания.",
+          "properties": {
+            "action": { "enum": ["keep", "drop"] },
+            "code": { "type": "string" }
+          }
+        },
+        "emit": {
+          "description": "Обратное направление. null — обратного хода нет (xray, conf), и линтер не требует param_order.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "form": { "type": "string" },
+                "form_from": { "type": "object" },
+                "param_order": { "type": "array", "items": { "type": "string" } },
+                "omit_default": { "type": "array", "items": { "type": "string" } },
+                "emit_when": { "type": "object" }
+              }
+            }
+          ]
+        }
+      }
+    },
+
+    "sourceKind": {
+      "description": "Вид источника на уровне ДОКУМЕНТА (registry/sources.json).",
+      "type": "object",
+      "required": ["kind", "detect"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string" },
+        "priority": {
+          "type": "integer",
+          "description": "Порядок проверки; меньше = раньше. Уникален в пределах уровня — при совпадении нескольких detect побеждает меньший priority."
+        },
+        "mapper": {
+          "type": ["string", "null"],
+          "description": "Секция-маппер, которой достаётся элемент. null — это распаковщик, а не маппер (vpn://, base64)."
+        },
+        "detect": { "$ref": "#/definitions/detect" },
+        "unwrap": {
+          "type": "string",
+          "description": "Оболочка-декодер: base64, amnezia_vpn."
+        },
+        "redetect": {
+          "type": "boolean",
+          "description": "Результат распаковки отправляется на повторный детект (подписка base64 внутри base64)."
+        },
+        "split": {
+          "enum": ["lines"],
+          "description": "Документ разбирается поэлементно."
+        },
+        "desc_en": { "type": "string" },
+        "desc_ru": { "type": "string" }
+      }
+    }
+  },
+
+  "properties": {
+    "mappers": {
+      "description": "Секции-мапперы протокола: ключ — вид источника (uri / xray / singbox / conf).",
+      "type": "object",
+      "additionalProperties": { "$ref": "#/definitions/mapper" }
+    },
+    "document": {
+      "description": "Только в registry/sources.json: уровень документа.",
+      "type": "object",
+      "required": ["sources"],
+      "additionalProperties": false,
+      "properties": {
+        "max_unwrap_depth": {
+          "type": "integer",
+          "description": "Предел рекурсии распаковки. Сегодня предела нет вовсе.",
+          "minimum": 1
+        },
+        "on_unrecognized": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "code": { "type": "string" },
+            "severity": { "enum": ["info", "warning", "error"] },
+            "include_fragment": { "type": "integer" }
+          }
+        },
+        "sources": { "type": "array", "items": { "$ref": "#/definitions/sourceKind" } }
+      }
+    },
+    "blocks": {
+      "description": "Переиспользуемые блоки с диалектными вариантами (transports.json, tls.json): блок → диалект → записи.",
+      "type": "object"
+    }
+  }
+}
