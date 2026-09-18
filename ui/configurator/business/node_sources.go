@@ -52,6 +52,15 @@ type NodeSource struct {
 	// Name — отображаемое имя: имя источника, иначе заголовок профиля от
 	// провайдера, иначе хост ссылки, иначе тег узлового источника.
 	Name string
+	// Container — источник-КОНТЕЙНЕР (подписка или папка), то есть тот, что
+	// объединяет несколько узлов.
+	//
+	// Узловой источник (server/chain/auto) — это один узел, и чип для него
+	// повторял бы строку списка: «server-17 1» рядом с узлом «server-17»
+	// ничего не отбирает, а место занимает наравне с подпиской на 200 узлов.
+	// Поэтому чипы строятся только по контейнерам (решение владельца), а узлы
+	// одиночных источников идут по общей формуле как «не член выбора».
+	Container bool
 }
 
 // NodeSourceIndex — снимок принадлежности узлов источникам по финальному тегу.
@@ -142,7 +151,14 @@ func buildNodeSourceIndex(path string) *NodeSourceIndex {
 	idx := &NodeSourceIndex{byTag: make(map[string]NodeSource, 16)}
 	for i := range s.Sources {
 		src := &s.Sources[i]
-		entry := NodeSource{ID: sourceIndexID(src), Name: sourceDisplayName(src)}
+		entry := NodeSource{
+			ID:   sourceIndexID(src),
+			Name: sourceDisplayName(src),
+			// Вид берётся у самого источника, а не выводится из len(Nodes):
+			// пустая подписка (ещё не обновлялась) — всё равно контейнер.
+			Container: src.Kind == state.SourceKindSubscription ||
+				src.Kind == state.SourceKindFolder,
+		}
 		if entry.ID == "" || entry.Name == "" {
 			continue
 		}

@@ -43,6 +43,11 @@ import (
 )
 
 // serversTestMode — режим категории «Тест».
+//
+// Порог пинга — ПЯТЫЙ режим этого же выбора, а не отдельная галка рядом
+// (решение владельца: «вместо галки — точка»). Так у ряда ровно одно
+// состояние: «ok» и «ping ≤ 300» — два ответа на один вопрос «что показывать
+// по результату замера», и одновременно они не значат ничего связного.
 type serversTestMode int
 
 const (
@@ -50,14 +55,15 @@ const (
 	serversTestOK
 	serversTestError
 	serversTestUntested
+	// serversTestPing — «ping ≤ N ms»: порог из PingMaxMs.
+	serversTestPing
 )
 
-// serversFilterDefaultPingText — предзаполненный порог «ping ≤ N ms».
+// serversFilterDefaultPingText — значение поля порога по умолчанию.
 //
-// Настоящее значение в поле, а не серый placeholder (LxBox §095): человек
-// видит, с чем согласится, когда поставит галку. Чекбокс при этом выключен —
-// фильтр не работает, пока его не включили.
-const serversFilterDefaultPingText = "200"
+// Настоящее число, а не placeholder: порог включается ВЫБОРОМ ЧИПА, и пустое
+// поле в момент выбора означало бы вариант, который ничего не отбирает.
+const serversFilterDefaultPingText = "300"
 
 // serversFilterSourceNameMaxRunes — предел длины имени источника в чипе.
 //
@@ -79,10 +85,20 @@ type serversNodeFacets struct {
 	// строки, кроме протокола: фильтр обязан отбирать по тому, что человек
 	// видит, а не по параллельному словарю.
 	Variants []string
-	// SourceID — ULID источника; пусто = принадлежность неизвестна (тег-
-	// политика с переменными, узел не из состояния). Такие узлы фильтр по
-	// источнику НЕ отсекает — см. шапку node_sources.go.
+	// SourceID — ULID источника-КОНТЕЙНЕРА (подписка, папка). Пусто у узла
+	// одиночного источника (server/chain/auto) и у узла, чьё происхождение
+	// не раскрыто вовсе.
 	SourceID string
+	// SourceKnown — происхождение узла известно (неважно, контейнер или
+	// одиночка).
+	//
+	// Различать обязательно: «неизвестно» — единственное исключение из общей
+	// формулы, узел с нераскрытым тегом фильтр по источнику не отсекает (см.
+	// шапку node_sources.go), а вот узел одиночного источника отсекается как
+	// «не член выбора» — он известен, просто ни в один контейнер не входит.
+	// Сложи их в одно «пусто» — и одиночки молча проходили бы любой выбор
+	// подписки.
+	SourceKnown bool
 }
 
 // serversFilterState — полное состояние фильтра одной группы.
@@ -98,12 +114,21 @@ type serversFilterState struct {
 	// RegexInvert — галка «!» у регулярки.
 	RegexInvert bool
 
+	// Protocols / Variants — две половины ОДНОЙ категории «Протокол»: тип
+	// outbound'а и метки транспорта/безопасности. Внутри половины ИЛИ, между
+	// половинами И («vless» + «ws» = vless поверх ws), пустая половина не
+	// ограничивает.
+	//
+	// Половин две, а инверсия одна (ProtocolsInvert): в окне это одна строка
+	// чипов с одним «!», и он обязан переворачивать её ИТОГ. Две галки под
+	// одной подписью спрашивали бы «не-vless поверх ws» или «vless поверх
+	// не-ws» — вопрос, которого человек перед строкой чипов не задаёт.
 	Protocols       map[string]bool
-	ProtocolsInvert bool
 	Variants        map[string]bool
-	VariantsInvert  bool
-	Sources         map[string]bool
-	SourcesInvert   bool
+	ProtocolsInvert bool
+
+	Sources       map[string]bool
+	SourcesInvert bool
 
 	Test serversTestMode
 
@@ -117,13 +142,19 @@ type serversFilterState struct {
 	// пер-группа накрывает глаз заодно с остальным отбором.
 	HideErrors bool
 
-	// PingEnabled / PingMaxMs — «ping ≤ N ms». Untested (Delay == 0) порог
-	// проходят: мерять их никто не обещал, и прятать узел за неизвестность
+	// PingMaxMs — порог режима serversTestPing; 0 = число в поле не разобрано
+	// (пусто или мусор), и режим не отбирает ничего.
+	//
+	// Отдельного флага включения нет: включает порог ВЫБОР режима, а число
+	// только уточняет его. Пара «галка + режим» дала бы состояние «выбран
+	// порог, но выключен», которого человек перед рядом чипов не ждёт.
+	//
+	// Untested (Delay == 0) порог проходят, ошибочные (-1) — нет: порог
+	// отвечает на «дай быстрые», а неизмеренные прятать за неизвестность
 	// значит прятать как раз те, которые стоит проверить (LxBox #11).
-	PingEnabled bool
-	PingMaxMs   int
+	PingMaxMs int
 	// PingText — сырой текст поля; хранится, чтобы окно восстанавливало
-	// написанное, включая недопечатанное.
+	// написанное, включая недопечатанное и ошибочное.
 	PingText string
 
 	// InvertAll — инверсия ИТОГА всего фильтра, поверх категорий.
@@ -137,8 +168,10 @@ func newServersFilterState() serversFilterState {
 		Variants:  map[string]bool{},
 		Sources:   map[string]bool{},
 		Test:      serversTestAny,
+		// Поле порога предзаполнено, но режим не выбран: Reset обязан вернуть
+		// ровно это — пустое поле в момент выбора «ping ≤» не отбирало бы.
 		PingText:  serversFilterDefaultPingText,
-		PingMaxMs: 200,
+		PingMaxMs: 300,
 	}
 }
 
@@ -191,10 +224,12 @@ func (f serversFilterState) Active() bool {
 		len(selectedKeys(f.Sources)) > 0 {
 		return true
 	}
-	if f.Test != serversTestAny || f.HideErrors {
-		return true
+	// Режим «ping ≤» с неразобранным числом ничего не отбирает — как и
+	// невалидная регулярка, активным он не считается.
+	if f.Test == serversTestPing {
+		return f.PingMaxMs > 0
 	}
-	return f.PingEnabled && f.PingMaxMs > 0
+	return f.Test != serversTestAny || f.HideErrors
 }
 
 // ExcludesErrors — скрыты ли сейчас строки с ошибкой замера.
@@ -202,8 +237,13 @@ func (f serversFilterState) Active() bool {
 // По ней рисуется иконка «глаза» панели. Истинна и когда глаз нажали руками, и
 // когда ошибки отсекает сам Тест: иконка обязана описывать то, что НА ЭКРАНЕ,
 // а не то, какой кнопкой этого добились.
+// Порог «ping ≤» сюда входит наравне с «ok»: узел с ошибкой замера (-1)
+// порога не проходит, и на экране ошибок нет — значит глаз обязан гореть.
 func (f serversFilterState) ExcludesErrors() bool {
-	return f.HideErrors || f.Test == serversTestOK || f.Test == serversTestUntested
+	return f.HideErrors ||
+		f.Test == serversTestOK ||
+		f.Test == serversTestUntested ||
+		f.Test == serversTestPing
 }
 
 // SetHideErrors — переключить «глаз».
@@ -298,21 +338,24 @@ func (p serversFilterPredicate) passesCategories(proxy api.ProxyInfo, facets ser
 			return false
 		}
 	}
-	if len(p.protos) > 0 {
-		member := facets.Protocol != "" && p.protos[facets.Protocol]
-		if member == p.state.ProtocolsInvert {
-			return false
+	// Объединённая категория «Протокол»: две половины через И, одна инверсия
+	// на итог (см. поля состояния). Пустая половина не ограничивает, поэтому
+	// проверка запускается, только если выбрано хоть что-то.
+	if len(p.protos) > 0 || len(p.variants) > 0 {
+		member := true
+		if len(p.protos) > 0 {
+			member = facets.Protocol != "" && p.protos[facets.Protocol]
 		}
-	}
-	if len(p.variants) > 0 {
-		member := false
-		for _, v := range facets.Variants {
-			if p.variants[v] {
-				member = true
-				break
+		if member && len(p.variants) > 0 {
+			member = false
+			for _, v := range facets.Variants {
+				if p.variants[v] {
+					member = true
+					break
+				}
 			}
 		}
-		if member == p.state.VariantsInvert {
+		if member == p.state.ProtocolsInvert {
 			return false
 		}
 	}
@@ -321,8 +364,12 @@ func (p serversFilterPredicate) passesCategories(proxy api.ProxyInfo, facets ser
 		// (см. шапку node_sources.go): соврать про принадлежность хуже, чем
 		// промолчать. Отсюда проверка только у узлов с известным источником —
 		// исключение из общей формулы, и единственное.
-		if facets.SourceID != "" {
-			member := p.sources[facets.SourceID]
+		// Узел одиночного источника (server/chain/auto) сюда ВХОДИТ: он
+		// известен, просто не принадлежит ни одному контейнеру, и member у
+		// него ложь — при непустом выборе без инверсии он не проходит, с
+		// инверсией проходит. Та же формула, что у остальных.
+		if facets.SourceKnown {
+			member := facets.SourceID != "" && p.sources[facets.SourceID]
 			if member == p.state.SourcesInvert {
 				return false
 			}
@@ -341,13 +388,16 @@ func (p serversFilterPredicate) passesCategories(proxy api.ProxyInfo, facets ser
 		if proxy.Delay != 0 {
 			return false
 		}
-	}
-	if p.state.PingEnabled && p.state.PingMaxMs > 0 {
-		// Непроверенные (0) и ошибочные (-1) порог проходят: порог отвечает на
-		// «дай быстрые», а не «выкинь неизмеренные» (LxBox #11). Кому нужно
-		// выкинуть — берёт Тест = ok.
-		if proxy.Delay > 0 && proxy.Delay > int64(p.state.PingMaxMs) {
-			return false
+	case serversTestPing:
+		// Число не разобрано (пусто/мусор) — режим не отбирает: прятать весь
+		// список из-за недопечатанной цифры нельзя, ровно как у регулярки.
+		if p.state.PingMaxMs > 0 {
+			// Непроверенные (0) порог проходят — мерять их никто не обещал
+			// (LxBox #11); ошибочные (-1) не проходят: «дай быстрые» про
+			// сломанный узел не говорит ничего хорошего.
+			if proxy.Delay == -1 || proxy.Delay > int64(p.state.PingMaxMs) {
+				return false
+			}
 		}
 	}
 	return true
@@ -461,7 +511,13 @@ func collectServersFacets(ac *core.AppController, list []api.ProxyInfo, scope se
 				facets.Variants = parts[1:]
 			}
 		}
-		if src, ok := sources.Lookup(p.Name); ok {
+		if src, ok := sources.Lookup(p.Name); ok && src.Container {
+			// Только контейнеры (подписки и папки) — решение владельца.
+			// Узловой источник в чипах не участвует, и SourceID у его узла не
+			// проставляется вовсе: узел остаётся «не приписанным ни к одному
+			// контейнеру» и ведёт себя по общей формуле — при пустом выборе
+			// проходит, при непустом без инверсии отсекается, с инверсией
+			// проходит. Отдельной ветки под него в предикате нет.
 			facets.SourceID = src.ID
 			sourceNames[src.ID] = src.Name
 		}

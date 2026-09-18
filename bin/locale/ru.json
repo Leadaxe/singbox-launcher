@@ -4778,7 +4778,13 @@
   "Selected rows, direct-out and the active proxy are never hidden.": {
     "value": "Выделенные строки, direct-out и активный прокси не скрываются никогда."
   },
-  "Untested nodes pass the threshold — it answers «show me the fast ones», not «drop the unmeasured».": {
-    "value": "Непроверенные узлы порог проходят: он отвечает на «покажи быстрые», а не «выкинь неизмеренные»."
+  "Show nodes at or below this latency. Untested nodes pass the threshold — it answers «show me the fast ones», not «drop the unmeasured»; nodes whose test failed do not pass.": {
+    "value": "Показывать узлы с задержкой не больше указанной. Непроверенные узлы порог проходят: он отвечает на «покажи быстрые», а не «выкинь неизмеренные». Узлы с ошибкой замера не проходят."
+  },
+  "regex, e.g. NL|DE|Proton": {
+    "value": "регулярное выражение, например NL|DE|Proton"
+  },
+  "milliseconds, e.g. 300": {
+    "value": "миллисекунды, например 300"
   }
 }

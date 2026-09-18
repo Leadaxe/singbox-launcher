@@ -2,16 +2,31 @@
 // Модель и предикат, которыми оно управляет, живут в servers_filter.go.
 //
 //	┌─ Filters ────────────────── показано 24 / 312 ─┐
-//	│ Regex   [ 🇩🇪|🇳🇱|Proton        ] [⧉] [✕]  [!] │
-//	│         ⚠ invalid regex: …                     │
-//	│ Emoji   [🇩🇪 24] [🇳🇱 18] [🇺🇸 17] [🔥 4] …     │
-//	│ Protocol   [vless] [wireguard] …           [!] │
-//	│ Transport  [tcp] [ws] [Reality+Vision] …   [!] │
-//	│ Source     [Proton] [BL: ЧЁРНЫЕ СП…] …     [!] │
-//	│ Test    (•) any ( ) ok ( ) error ( ) untested  │
-//	│         [ ] ping ≤ [200] ms                    │
+//	│ [!] Regex     [ NL|DE|Proton      ] [⧉] [✕]   │
+//	│               ⚠ invalid regex: …               │
+//	│     Emoji     [🇩🇪 24][🇳🇱 18][🇺🇸 17][🔥 4] …  │
+//	│ [!] Protocol  [vless 8][ss 3] · [ws 5][tcp 6]  │
+//	│ [!] Source    [Proton 40][BL: ЧЁРНЫЕ… 12]      │
+//	│     Test      [any][ok][error][untested]       │
+//	│               ping ≤ [   ] ms                  │
 //	│ [ Invert all ]              [ Reset ] [ Close ]│
 //	└────────────────────────────────────────────────┘
+//
+// # Как устроена форма
+//
+// Категория — ОДНА строка: слева узкая колонка «[!] подпись» (чип инверсии и
+// название), справа поток чипов с переносом. Заголовок отдельной строкой,
+// сетка в пять колонок и разделители между категориями, которые были здесь
+// раньше, давали окно в 950pt шириной, не влезавшее по высоте; чипы при этом
+// растягивались на пятую часть ширины каждый — «🇳🇱 1» шириной с абзац.
+//
+// Чипы — fynewidget.Chip: подпись капитальным кеглем в скруглённой плашке,
+// минимальная ширина по тексту. Раскладка — fynewidget.FlowBox, она же
+// считает свою высоту под фактическую ширину (см. flow.go).
+//
+// Колонка подписей фиксированной ширины у ВСЕХ категорий, включая те, у
+// которых инверсии нет (Emoji, Test): на месте чипа «!» там пустая распорка
+// той же ширины, иначе подписи разъехались бы по горизонтали.
 //
 // Окно НЕМОДАЛЬНОЕ и отдельное (Application.NewWindow): человек держит его
 // открытым и правит отбор, глядя на список, а модальный попап и список, и
@@ -26,34 +41,41 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"strconv"
 	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	fynetooltip "github.com/dweymouth/fyne-tooltip"
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/internal/emojitag"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/ui/components"
 )
 
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
-	filterRegexCopyTooltipText   = "Copy the pattern body (no wrapper) — paste it into a Direction's filter field."
-	filterRegexCopiedInvertText  = "Pattern body copied. Its invert flag is NOT part of the body: tick Invert in the Direction's filter."
-	filterRegexCopiedPlainText   = "Pattern body copied."
-	filterInvertCategoryTooltip  = "Invert this category: keep the nodes it does NOT select."
-	filterInvertAllTooltipText   = "Invert the whole filter: show exactly the rows it hides now."
-	filterEmojiChipTooltipText   = "Toggle this emoji in the Regex field (OR pattern)."
-	filterNoEmojiText            = "No emoji in the names of the nodes in this list."
-	filterKeepsSelectedRowsText  = "Selected rows, direct-out and the active proxy are never hidden."
-	filterPingKeepsUntestedText  = "Untested nodes pass the threshold — it answers «show me the fast ones», not «drop the unmeasured»."
-	filterWindowRegexPlaceholder = "🇩🇪|🇳🇱|Proton"
+	filterRegexCopyTooltipText  = "Copy the pattern body (no wrapper) — paste it into a Direction's filter field."
+	filterRegexCopiedInvertText = "Pattern body copied. Its invert flag is NOT part of the body: tick Invert in the Direction's filter."
+	filterRegexCopiedPlainText  = "Pattern body copied."
+	filterInvertCategoryTooltip = "Invert this category: keep the nodes it does NOT select."
+	filterInvertAllTooltipText  = "Invert the whole filter: show exactly the rows it hides now."
+	filterEmojiChipTooltipText  = "Toggle this emoji in the Regex field (OR pattern)."
+	filterNoEmojiText           = "No emoji in the names of the nodes in this list."
+	filterKeepsSelectedRowsText = "Selected rows, direct-out and the active proxy are never hidden."
+	filterPingTooltipText       = "Show nodes at or below this latency. Untested nodes pass the threshold — it answers «show me the fast ones», not «drop the unmeasured»; nodes whose test failed do not pass."
+	// Плейсхолдер поля регулярки — подсказка формата, а не пример-обманка:
+	// прежний «🇩🇪|🇳🇱|Proton» читался как уже введённый фильтр, и человек шёл
+	// искать, почему список не отобран.
+	filterWindowRegexPlaceholder = "regex, e.g. NL|DE|Proton"
 )
 
 // serversFilterDebounce — пауза перед компиляцией регулярки (LxBox §048 #4).
@@ -61,6 +83,27 @@ const (
 // Печать идёт посимвольно, и пересчёт среза на каждый символ гонял бы разбор
 // 500 узлов и перерисовку списка десятки раз на одно слово.
 const serversFilterDebounce = 300 * time.Millisecond
+
+// Метрики компактной формы.
+const (
+	// filterLabelColWidth — ширина колонки подписей категорий. Под самое
+	// длинное слово формы («Transport» ушло, осталось «Protocol»/«Untested»)
+	// с запасом на перевод.
+	filterLabelColWidth = 74
+	// filterInvertSlotWidth — ширина ячейки чипа «!» (и распорки на её месте
+	// у категорий без инверсии).
+	filterInvertSlotWidth = 18
+	// filterEmojiMaxRows — потолок высоты потока эмодзи в рядах чипов.
+	// Эмодзи в подписке на 500 узлов бывает под сотню, и без потолка форма
+	// уехала бы за край экрана, унося кнопки под док.
+	filterEmojiMaxRows = 3
+	// filterChipRowHeight — высота ряда чипов с вертикальным зазором; на ней
+	// считается потолок потока эмодзи.
+	filterChipRowHeight = 24
+	// filterPingEntryWidth — ширина поля порога пинга. Это три цифры, а
+	// растянутое поле читалось бы как поле ввода текста.
+	filterPingEntryWidth = 60
+)
 
 // serversFilterWindow — открытое окно фильтров одной панели.
 type serversFilterWindow struct {
@@ -117,15 +160,15 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 
 	// ── Regex ──────────────────────────────────────────────────────────────
 	regexEntry := widget.NewEntry()
-	regexEntry.SetPlaceHolder(filterWindowRegexPlaceholder)
+	regexEntry.SetPlaceHolder(locale.T(filterWindowRegexPlaceholder))
 	regexEntry.SetText(st().RegexBody)
 
-	// Строка ошибки — canvas-текста ей не нужно, но Wrapping обязателен:
-	// сообщение regexp бывает длинным, а Label без переноса меряет себя ОДНОЙ
-	// строкой и раздувает окно по ширине (память `fyne-label-minwidth-trap`).
-	regexError := widget.NewLabel("")
-	regexError.Wrapping = fyne.TextWrapWord
-	regexError.Importance = widget.DangerImportance
+	// Строка ошибки — мелким кеглем и только когда есть ошибка. Canvas-текст,
+	// а не Label: Label без Wrapping меряет свою единственную строку как
+	// минимальную ширину и раздувает окно (память `fyne-label-minwidth-trap`),
+	// а с Wrapping занимал бы место и пустым.
+	regexError := canvas.NewText("", theme.Color(theme.ColorNameError))
+	regexError.TextSize = theme.Size(theme.SizeNameCaptionText)
 	regexError.Hide()
 
 	var refreshEmojiChips func()
@@ -136,7 +179,8 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 			return
 		}
 		if _, err := compileServersFilterRegex(body); err != nil {
-			regexError.SetText(locale.Tf("Invalid regex: %s", err.Error()))
+			regexError.Text = locale.Tf("Invalid regex: %s", err.Error())
+			regexError.Refresh()
 			regexError.Show()
 			return
 		}
@@ -169,7 +213,7 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 		scheduleRegexApply()
 	}
 
-	regexInvert := newFilterInvertButton(st().RegexInvert, func(on bool) {
+	regexInvert := newFilterInvertChip(st().RegexInvert, func(on bool) {
 		st().RegexInvert = on
 		apply()
 	})
@@ -192,48 +236,49 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 			host.Status(locale.T(filterRegexCopiedPlainText))
 		}
 	})
+	regexCopy.Importance = widget.LowImportance
 	regexCopy.SetToolTip(locale.T(filterRegexCopyTooltipText))
 
 	regexClear := ttwidget.NewButtonWithIcon("", theme.ContentClearIcon(), func() {
 		regexEntry.SetText("") // OnChanged сам обновит состояние и чипы
 	})
+	regexClear.Importance = widget.LowImportance
 	regexClear.SetToolTip(locale.T("Clear the pattern"))
 
-	regexRow := container.NewBorder(nil, nil, nil,
-		container.NewHBox(regexCopy, regexClear, regexInvert.button),
-		regexEntry,
-	)
+	regexRow := filterCategoryRow(regexInvert, locale.T("Regex"),
+		container.NewBorder(nil, nil, nil,
+			container.NewHBox(regexCopy, regexClear),
+			regexEntry,
+		))
 
-	// ── Чипы категорий ─────────────────────────────────────────────────────
+	// ── Потоки чипов ───────────────────────────────────────────────────────
 	//
 	// Подписи чипов собираются fmt.Sprintf, а не locale.Tf: переводить в них
 	// нечего — это значение из данных («vless», «🇩🇪», имя подписки) и число
 	// рядом. Прогонять их через словарь значило бы завести там сотни ключей,
 	// приезжающих из чужих подписок.
-	emojiBox := container.NewVBox()
-	protocolBox := container.NewVBox()
-	variantBox := container.NewVBox()
-	sourceBox := container.NewVBox()
+	emojiFlow := fynewidget.NewFlowBox()
+	emojiFlow.MaxHeight = filterEmojiMaxRows * filterChipRowHeight
+	protocolFlow := fynewidget.NewFlowBox()
+	sourceFlow := fynewidget.NewFlowBox()
 
-	protocolInvert := newFilterInvertButton(st().ProtocolsInvert, func(on bool) {
+	// Один чип инверсии на объединённую категорию «Протокол» (протоколы и
+	// транспорт в одном потоке) — он переворачивает её итог целиком.
+	protocolInvert := newFilterInvertChip(st().ProtocolsInvert, func(on bool) {
 		st().ProtocolsInvert = on
 		apply()
 	})
-	variantInvert := newFilterInvertButton(st().VariantsInvert, func(on bool) {
-		st().VariantsInvert = on
-		apply()
-	})
-	sourceInvert := newFilterInvertButton(st().SourcesInvert, func(on bool) {
+	sourceInvert := newFilterInvertChip(st().SourcesInvert, func(on bool) {
 		st().SourcesInvert = on
 		apply()
 	})
 
 	refreshEmojiChips = func() {
 		facets := host.Facets()
-		emojiBox.Objects = nil
 		if len(facets.Emojis) == 0 {
-			emojiBox.Add(widget.NewLabel(locale.T(filterNoEmojiText)))
-			emojiBox.Refresh()
+			emojiFlow.SetObjects([]fyne.CanvasObject{
+				filterHintText(locale.T(filterNoEmojiText)),
+			})
 			return
 		}
 		// Выбранным считается то, что СТОИТ В ПОЛЕ: человек мог набрать терм
@@ -246,8 +291,8 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 		objs := make([]fyne.CanvasObject, 0, len(facets.Emojis))
 		for _, e := range facets.Emojis {
 			e := e
-			btn := ttwidget.NewButton(fmt.Sprintf("%s %d", e.Emoji, e.Count), nil)
-			btn.OnTapped = func() {
+			chip := fynewidget.NewChip(fmt.Sprintf("%s %d", e.Emoji, e.Count), selected[e.Emoji], nil)
+			chip.OnChanged = func(bool) {
 				// Клик = toggle терма в OR-паттерне поля (LxBox :126). Поле
 				// остаётся ЕДИНСТВЕННЫМ носителем отбора по имени: второй
 				// набор «выбранных эмодзи» рядом с ним разошёлся бы с ним на
@@ -255,103 +300,109 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 				next := emojitag.ToggleInORPattern(st().RegexBody, e.Emoji)
 				regexEntry.SetText(next)
 			}
-			if selected[e.Emoji] {
-				btn.Importance = widget.HighImportance
-			}
-			btn.SetToolTip(locale.T(filterEmojiChipTooltipText))
-			objs = append(objs, btn)
+			chip.SetToolTip(locale.T(filterEmojiChipTooltipText))
+			objs = append(objs, chip)
 		}
-		emojiBox.Add(newFilterChipGrid(objs))
-		emojiBox.Refresh()
+		emojiFlow.SetObjects(objs)
 	}
 
+	// refreshProtocolChips — ОДИН поток на объединённую категорию: сперва
+	// протоколы, затем варианты транспорта/безопасности, между наборами —
+	// точка-разделитель. Наборы остаются разными (внутри ИЛИ, между ними И),
+	// и точка — единственное, что об этом говорит глазу.
 	refreshProtocolChips := func() {
 		facets := host.Facets()
-		protocolBox.Objects = nil
-		objs := make([]fyne.CanvasObject, 0, len(facets.Protocols))
+		objs := make([]fyne.CanvasObject, 0, len(facets.Protocols)+len(facets.Variants)+1)
 		for _, f := range facets.Protocols {
 			f := f
-			objs = append(objs, newFilterToggleChip(
-				fmt.Sprintf("%s %d", f.Key, f.Count), "",
+			objs = append(objs, fynewidget.NewChip(
+				fmt.Sprintf("%s %d", f.Key, f.Count),
 				st().Protocols[f.Key],
 				func(on bool) {
 					setChipSelection(st().Protocols, f.Key, on)
 					apply()
 				}))
 		}
-		protocolBox.Add(newFilterChipGrid(objs))
-		protocolBox.Refresh()
-	}
-
-	refreshVariantChips := func() {
-		facets := host.Facets()
-		variantBox.Objects = nil
-		objs := make([]fyne.CanvasObject, 0, len(facets.Variants))
+		if len(facets.Protocols) > 0 && len(facets.Variants) > 0 {
+			objs = append(objs, filterHintText("·"))
+		}
 		for _, f := range facets.Variants {
 			f := f
-			objs = append(objs, newFilterToggleChip(
-				fmt.Sprintf("%s %d", f.Key, f.Count), "",
+			objs = append(objs, fynewidget.NewChip(
+				fmt.Sprintf("%s %d", f.Key, f.Count),
 				st().Variants[f.Key],
 				func(on bool) {
 					setChipSelection(st().Variants, f.Key, on)
 					apply()
 				}))
 		}
-		variantBox.Add(newFilterChipGrid(objs))
-		variantBox.Refresh()
+		protocolFlow.SetObjects(objs)
 	}
 
 	refreshSourceChips := func() {
 		facets := host.Facets()
-		sourceBox.Objects = nil
 		objs := make([]fyne.CanvasObject, 0, len(facets.Sources))
 		for _, f := range facets.Sources {
 			f := f
-			objs = append(objs, newFilterToggleChip(
+			chip := fynewidget.NewChip(
 				fmt.Sprintf("%s %d", truncateSourceChipName(f.Name), f.Count),
-				f.Name, // полное имя — в тултип: в чипе оно обрезано
 				st().Sources[f.ID],
 				func(on bool) {
 					setChipSelection(st().Sources, f.ID, on)
 					apply()
-				}))
+				})
+			chip.SetToolTip(f.Name) // полное имя: в чипе оно обрезано
+			objs = append(objs, chip)
 		}
-		sourceBox.Add(newFilterChipGrid(objs))
-		sourceBox.Refresh()
+		sourceFlow.SetObjects(objs)
 	}
 
 	// ── Test ───────────────────────────────────────────────────────────────
-	testOptions := []string{
-		locale.T("any"), locale.T("ok"), locale.T("error"), locale.T("untested"),
-	}
-	testRadio := widget.NewRadioGroup(testOptions, nil)
-	testRadio.Horizontal = true
-	testRadio.SetSelected(testOptions[int(st().Test)])
-	testRadio.OnChanged = func(sel string) {
-		for i, opt := range testOptions {
-			if opt == sel {
-				// Через SetTest, а не присваиванием: выбор «error» обязан
-				// погасить «глаз» панели, иначе режим показывал бы пустоту
-				// (см. servers_filter.go).
-				st().SetTest(serversTestMode(i))
-				break
-			}
-		}
-		apply()
-	}
+	//
+	// Радио-чипы вместо widget.RadioGroup: тот занимает высокий отдельный ряд
+	// с кружками, а здесь строка обязана стоять в один рост с остальными.
+	//
+	// Порог пинга — ПЯТЫЙ чип того же взаимоисключающего ряда (решение
+	// владельца), а поле числа при нём только уточняет выбранный вариант.
+	testChips := newFilterRadioChips(
+		[]string{
+			locale.T("any"), locale.T("ok"), locale.T("error"),
+			locale.T("untested"), locale.T("ping ≤"),
+		},
+		int(st().Test),
+		func(i int) {
+			// Через SetTest, а не присваиванием: выбор «error» обязан
+			// погасить «глаз» панели, иначе режим показывал бы пустоту
+			// (см. servers_filter.go).
+			st().SetTest(serversTestMode(i))
+			apply()
+		})
+	testChips.chips[serversTestPing].SetToolTip(locale.T(filterPingTooltipText))
 
 	pingEntry := widget.NewEntry()
 	pingEntry.SetText(st().PingText)
-	// Поле узкое: это число миллисекунд, а растянутое на всю строку оно
-	// читалось бы как поле ввода текста.
-	pingEntryWrap := container.NewGridWrap(fyne.NewSize(72, pingEntry.MinSize().Height), pingEntry)
-
-	pingCheck := widget.NewCheck(locale.T("ping ≤"), nil)
-	pingCheck.SetChecked(st().PingEnabled)
-	pingCheck.OnChanged = func(on bool) {
-		st().PingEnabled = on
-		apply()
+	// Не число — поле с ошибкой, а вариант просто не отбирает (PingMaxMs=0).
+	// Прятать список из-за недопечатанной цифры нельзя, ровно как у регулярки.
+	pingEntry.Validator = func(text string) error {
+		text = strings.TrimSpace(text)
+		if text == "" {
+			return nil
+		}
+		if n, err := strconv.Atoi(text); err != nil || n <= 0 {
+			return fmt.Errorf("%s", locale.T("milliseconds, e.g. 300"))
+		}
+		return nil
 	}
+	pingEntryWrap := container.NewGridWrap(
+		fyne.NewSize(filterPingEntryWidth, pingEntry.MinSize().Height), pingEntry)
+
+	// restoring — идёт программное восстановление полей (Reset, смена группы),
+	// а не правка человеком.
+	//
+	// Без этого флага Reset вёл бы себя так: SetText кладёт в поле «300»,
+	// OnChanged через 300 мс видит число и «удобно» выбирает вариант «ping ≤»
+	// — то есть сброшенный фильтр сам собой включал бы порог.
+	restoring := false
 
 	var pingDebounce *time.Timer
 	pingEntry.OnChanged = func(text string) {
@@ -359,6 +410,7 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 		if pingDebounce != nil {
 			pingDebounce.Stop()
 		}
+		byHuman := !restoring
 		pingDebounce = time.AfterFunc(serversFilterDebounce, func() {
 			fyne.Do(func() {
 				n, err := strconv.Atoi(strings.TrimSpace(text))
@@ -366,33 +418,35 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 					st().PingMaxMs = 0
 				} else {
 					st().PingMaxMs = n
+					// Правка числа САМА выбирает вариант «ping ≤»: человек,
+					// который печатает порог, уже сказал, чего хочет, и
+					// требовать после этого ещё и клика по чипу значило бы
+					// показывать ему неотфильтрованный список молча.
+					if byHuman && st().Test != serversTestPing {
+						st().SetTest(serversTestPing)
+						testChips.set(int(serversTestPing))
+					}
 				}
 				apply()
 			})
 		})
 	}
+	fynewidget.SetToolTipSafe(pingEntry, locale.T(filterPingTooltipText))
 
-	pingRow := container.NewHBox(
-		pingCheck, pingEntryWrap, widget.NewLabel(locale.T("ms")),
-	)
-	// Обе подсказки — с Wrapping: Label без переноса меряет свою ЕДИНСТВЕННУЮ
-	// строку как минимальную ширину и раздувает окно на весь экран (память
-	// `fyne-label-minwidth-trap`).
-	pingHint := widget.NewLabel(locale.T(filterPingKeepsUntestedText))
-	pingHint.Wrapping = fyne.TextWrapWord
-	pingHint.Importance = widget.LowImportance
-
-	keepsHint := widget.NewLabel(locale.T(filterKeepsSelectedRowsText))
-	keepsHint.Wrapping = fyne.TextWrapWord
-	keepsHint.Importance = widget.LowImportance
+	// Поле и «ms» идут сразу за чипом «ping ≤» в том же потоке: разрыв между
+	// вариантом и его числом читался бы как два независимых элемента.
+	testRow := filterCategoryRow(nil, locale.T("Test"),
+		fynewidget.NewFlowBox(append(testChips.objects,
+			pingEntryWrap, filterHintText(locale.T("ms")))...))
 
 	// ── Нижний ряд ─────────────────────────────────────────────────────────
 	invertAll := ttwidget.NewButton(locale.T("Invert all"), nil)
+	invertAll.Importance = widget.LowImportance
 	syncInvertAll := func() {
 		if st().InvertAll {
 			invertAll.Importance = widget.HighImportance
 		} else {
-			invertAll.Importance = widget.MediumImportance
+			invertAll.Importance = widget.LowImportance
 		}
 		invertAll.Refresh()
 	}
@@ -404,27 +458,37 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 	invertAll.SetToolTip(locale.T(filterInvertAllTooltipText))
 	syncInvertAll()
 
+	// Строка Source прячется целиком, когда контейнеров в списке нет: пустая
+	// подпись над пустым местом читалась бы как «чипы не загрузились».
+	sourceRow := filterCategoryRow(sourceInvert, locale.T("Source"), sourceFlow)
+
 	// rebuildAll — перечитать ВСЁ состояние в виджеты. Нужен и Reset'у, и
 	// смене группы: у новой группы свой снимок фильтра, и поля обязаны
 	// показать именно его.
 	rebuildAll := func() {
 		f := st()
+		// На время восстановления поля не считаются правкой человека: их
+		// OnChanged не должен доводить состояние (см. restoring).
+		restoring = true
+		defer func() { restoring = false }()
 		// SetText зовёт OnChanged, и тот перепишет RegexBody тем же текстом —
 		// безобидно, но чипы обновятся до того, как мы дойдём до них ниже.
 		regexEntry.SetText(f.RegexBody)
-		regexInvert.set(f.RegexInvert)
-		protocolInvert.set(f.ProtocolsInvert)
-		variantInvert.set(f.VariantsInvert)
-		sourceInvert.set(f.SourcesInvert)
-		testRadio.SetSelected(testOptions[int(f.Test)])
-		pingCheck.SetChecked(f.PingEnabled)
+		regexInvert.SetSelected(f.RegexInvert)
+		protocolInvert.SetSelected(f.ProtocolsInvert)
+		sourceInvert.SetSelected(f.SourcesInvert)
+		testChips.set(int(f.Test))
 		pingEntry.SetText(f.PingText)
 		syncInvertAll()
 		syncRegexError()
 		refreshEmojiChips()
 		refreshProtocolChips()
-		refreshVariantChips()
 		refreshSourceChips()
+		if len(host.Facets().Sources) == 0 {
+			sourceRow.Hide()
+		} else {
+			sourceRow.Show()
+		}
 	}
 
 	resetBtn := widget.NewButton(locale.T("Reset"), func() {
@@ -432,6 +496,7 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 		rebuildAll()
 		apply()
 	})
+	resetBtn.Importance = widget.LowImportance
 	closeBtn := widget.NewButton(locale.T("Close"), func() { fw.win.Close() })
 
 	bottomRow := container.NewBorder(nil, nil, invertAll,
@@ -440,39 +505,23 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 	)
 
 	// ── Сборка ─────────────────────────────────────────────────────────────
+	//
+	// Без разделителей-линий: у категории есть подпись в своей колонке, и
+	// линия между строками добавляла бы только высоту.
 	form := container.NewVBox(
-		filterSectionLabel(locale.T("Regex")),
 		regexRow,
-		regexError,
-		widget.NewSeparator(),
-
-		filterSectionLabel(locale.T("Emoji")),
-		emojiBox,
-		widget.NewSeparator(),
-
-		filterSectionHeader(locale.T("Protocol"), protocolInvert.button),
-		protocolBox,
-		widget.NewSeparator(),
-
-		filterSectionHeader(locale.T("Transport"), variantInvert.button),
-		variantBox,
-		widget.NewSeparator(),
-
-		filterSectionHeader(locale.T("Source"), sourceInvert.button),
-		sourceBox,
-		widget.NewSeparator(),
-
-		filterSectionLabel(locale.T("Test")),
-		testRadio,
-		pingRow,
-		pingHint,
-		widget.NewSeparator(),
-
-		keepsHint,
+		filterErrorRow(regexError),
+		filterCategoryRow(nil, locale.T("Emoji"), emojiFlow),
+		filterCategoryRow(protocolInvert, locale.T("Protocol"), protocolFlow),
+		sourceRow,
+		testRow,
+		filterKeepsHint(),
 	)
 
+	// Канонический gutter проекта (components.WrapInScrollWithGutter): без
+	// него полоса прокрутки ложится на правые края чипов и кнопок ⧉/✕.
 	content := container.NewBorder(nil, bottomRow, nil, nil,
-		container.NewVScroll(form))
+		components.WrapInScrollWithGutter(container.NewPadded(form)))
 
 	fw.refreshTitle = func() {
 		shown, total := host.Counts()
@@ -486,7 +535,8 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 	// Закрытое окно обязано перестать быть «открытым» для панели: иначе
 	// следующее нажатие кнопки поднимало бы мёртвый экземпляр, и фильтр
 	// выглядел бы недоступным. Дебаунс-таймеры снимаются здесь же — их
-	// отложенный fyne.Do пришёл бы к виджетам закрытого окна.
+	// отложенный fyne.Do пришёл бы к виджетам закрытого окна. Слой тултипов
+	// разрушается тогда же: он держит ссылку на канву закрытого окна.
 	fw.win.SetOnClosed(func() {
 		if debounce != nil {
 			debounce.Stop()
@@ -494,110 +544,123 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 		if pingDebounce != nil {
 			pingDebounce.Stop()
 		}
+		fynetooltip.DestroyWindowToolTipLayer(fw.win.Canvas())
 		if host.Closed != nil {
 			host.Closed()
 		}
 	})
 
-	fw.win.SetContent(content)
-	fw.win.Resize(fyne.NewSize(520, 560))
+	// Слой тултипов обязателен: без него SetToolTip у чипов и кнопок молчит,
+	// а полное имя обрезанного источника читается только из него.
+	fw.win.SetContent(fynetooltip.AddWindowToolTipLayer(content, fw.win.Canvas()))
+	fw.win.Resize(fyne.NewSize(460, 420))
 	fynewidget.CenterOnScreen(fw.win)
 	fw.win.Show()
 	return fw
 }
 
-// filterSectionLabel — подпись категории.
-func filterSectionLabel(text string) *widget.Label {
-	l := widget.NewLabelWithStyle(text, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+// filterCategoryRow — строка категории: «[!] Подпись │ содержимое».
+//
+// Чип инверсии стоит СЛЕВА от подписи (решение владельца). Когда инверсии у
+// категории нет (invert == nil), его место занимает распорка той же ширины —
+// иначе подписи Emoji и Test съехали бы влево относительно остальных.
+func filterCategoryRow(invert *fynewidget.Chip, title string, content fyne.CanvasObject) *fyne.Container {
+	var slot fyne.CanvasObject
+	if invert != nil {
+		slot = invert
+	} else {
+		spacer := canvas.NewRectangle(color.Transparent)
+		spacer.SetMinSize(fyne.NewSize(filterInvertSlotWidth, 0))
+		slot = spacer
+	}
+	label := canvas.NewText(title, theme.Color(theme.ColorNameForeground))
+	label.TextSize = theme.Size(theme.SizeNameCaptionText)
+	labelCol := container.NewGridWrap(
+		fyne.NewSize(filterLabelColWidth, filterChipRowHeight),
+		container.NewVBox(layout.NewSpacer(), label, layout.NewSpacer()),
+	)
+	lead := container.NewHBox(container.NewCenter(slot), labelCol)
+	return container.NewBorder(nil, nil, lead, nil, content)
+}
+
+// filterErrorRow — строка ошибки регулярки, выровненная под колонку чипов.
+func filterErrorRow(errText *canvas.Text) fyne.CanvasObject {
+	pad := canvas.NewRectangle(color.Transparent)
+	pad.SetMinSize(fyne.NewSize(filterInvertSlotWidth+filterLabelColWidth, 0))
+	return container.NewBorder(nil, nil, pad, nil, errText)
+}
+
+// filterKeepsHint — единственная оставшаяся в форме подсказка (что фильтр не
+// прячет никогда).
+//
+// Label с Wrapping, а не canvas.Text: строка длинная, и без переноса её
+// «единственная строка» стала бы минимальной шириной окна (память
+// `fyne-label-minwidth-trap`). Остальные пояснения ушли в тултипы — они не
+// влезали и обрезались.
+func filterKeepsHint() fyne.CanvasObject {
+	l := widget.NewLabel(locale.T(filterKeepsSelectedRowsText))
+	l.Wrapping = fyne.TextWrapWord
+	l.Importance = widget.LowImportance
+	l.TextStyle = fyne.TextStyle{Italic: true}
 	return l
 }
 
-// filterSectionHeader — подпись категории с кнопкой инверсии справа.
-func filterSectionHeader(text string, invert fyne.CanvasObject) fyne.CanvasObject {
-	return container.NewBorder(nil, nil, filterSectionLabel(text), invert, layout.NewSpacer())
-}
-
-// filterInvertButton — кнопка «!» категории: подсвечена, когда включена.
-type filterInvertButton struct {
-	button *ttwidget.Button
-	on     bool
-}
-
-func newFilterInvertButton(initial bool, onChange func(bool)) *filterInvertButton {
-	b := &filterInvertButton{on: initial}
-	b.button = ttwidget.NewButton("!", nil)
-	b.button.OnTapped = func() {
-		b.on = !b.on
-		b.sync()
-		onChange(b.on)
-	}
-	b.button.SetToolTip(locale.T(filterInvertCategoryTooltip))
-	b.sync()
-	return b
-}
-
-// set — поставить состояние БЕЗ вызова onChange (восстановление снимка).
-func (b *filterInvertButton) set(on bool) {
-	b.on = on
-	b.sync()
-}
-
-func (b *filterInvertButton) sync() {
-	if b.on {
-		b.button.Importance = widget.HighImportance
-	} else {
-		b.button.Importance = widget.MediumImportance
-	}
-	b.button.Refresh()
-}
-
-// newFilterToggleChip — чип-тоггл категории: подсвечен, когда выбран.
+// filterHintText — мелкий приглушённый текст (подпись «ms», точка между
+// наборами чипов).
 //
-// Кнопка, а не widget.Check: чипов бывает под сотню, и ряд галок читается как
-// форма настроек, а не как быстрый отбор.
-func newFilterToggleChip(label, tooltip string, selected bool, onChange func(bool)) fyne.CanvasObject {
-	on := selected
-	btn := ttwidget.NewButton(label, nil)
-	sync := func() {
-		if on {
-			btn.Importance = widget.HighImportance
-		} else {
-			btn.Importance = widget.MediumImportance
+// canvas.Text, а не widget.Label: у Label минимальная ширина считается по его
+// единственной строке и раздувает окно (память `fyne-label-minwidth-trap`), да
+// и кегль ему пришлось бы переопределять темой.
+func filterHintText(text string) *canvas.Text {
+	t := canvas.NewText(text, theme.Color(theme.ColorNameDisabled))
+	t.TextSize = theme.Size(theme.SizeNameCaptionText)
+	return t
+}
+
+// newFilterInvertChip — чип «!» категории.
+func newFilterInvertChip(initial bool, onChange func(bool)) *fynewidget.Chip {
+	c := fynewidget.NewChip("!", initial, onChange)
+	c.SetToolTip(locale.T(filterInvertCategoryTooltip))
+	return c
+}
+
+// filterRadioChips — взаимоисключающая группа чипов (категория «Тест»).
+//
+// Выбор снять нельзя: «ни один не выбран» у режима теста означало бы четвёртое
+// состояние сверх any/ok/error/untested, а его в модели нет. Поэтому клик по
+// уже выбранному чипу возвращает его в выбранное состояние.
+type filterRadioChips struct {
+	chips   []*fynewidget.Chip
+	objects []fyne.CanvasObject
+}
+
+func newFilterRadioChips(titles []string, selected int, onSelect func(int)) *filterRadioChips {
+	g := &filterRadioChips{
+		chips:   make([]*fynewidget.Chip, 0, len(titles)),
+		objects: make([]fyne.CanvasObject, 0, len(titles)),
+	}
+	for i, title := range titles {
+		i := i
+		chip := fynewidget.NewChip(title, i == selected, nil)
+		chip.OnChanged = func(on bool) {
+			if !on {
+				chip.SetSelected(true) // снять выбор нельзя — см. шапку типа
+				return
+			}
+			g.set(i)
+			onSelect(i)
 		}
-		btn.Refresh()
+		g.chips = append(g.chips, chip)
+		g.objects = append(g.objects, chip)
 	}
-	btn.OnTapped = func() {
-		on = !on
-		sync()
-		onChange(on)
-	}
-	if tooltip != "" {
-		btn.SetToolTip(tooltip)
-	}
-	sync()
-	return btn
+	return g
 }
 
-// newFilterChipGrid — сетка чипов 5 в ряд с потолком высоты.
-//
-// Потолок обязателен: эмодзи и источников в подписке на 500 узлов бывает
-// много, и без него окно выросло бы за пределы экрана, унося кнопки под док
-// (ровно это чинили в пикере флагов).
-func newFilterChipGrid(objs []fyne.CanvasObject) fyne.CanvasObject {
-	if len(objs) == 0 {
-		return widget.NewLabel("—")
+// set — подсветить i-й чип, погасив остальные; OnChanged не зовётся.
+func (g *filterRadioChips) set(selected int) {
+	for i, c := range g.chips {
+		c.SetSelected(i == selected)
 	}
-	const perRow = 5
-	grid := container.NewGridWithColumns(perRow, objs...)
-	rows := (len(objs) + perRow - 1) / perRow
-	height := float32(rows) * 38
-	const maxHeight = 152 // ≈4 ряда, дальше прокрутка
-	if height > maxHeight {
-		height = maxHeight
-	}
-	scroll := container.NewVScroll(grid)
-	scroll.SetMinSize(fyne.NewSize(0, height))
-	return scroll
 }
 
 // setChipSelection — выбор чипа в карте категории; снятый ключ удаляется, а не

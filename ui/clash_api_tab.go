@@ -260,6 +260,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		serversViewCacheValid bool
 
 		serversFilterButton          *ttwidget.Button
+		serversFilterBadge           *fynewidget.BadgeDot
 		serversFilterWin             *serversFilterWindow
 		applyServersFilterUI         func()
 		syncServersFilterButton      func()
@@ -1160,18 +1161,15 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	}
 
 	syncServersFilterButton = func() {
-		if serversFilterButton == nil {
+		if serversFilterBadge == nil {
 			return
 		}
-		// Подсветка — единственный признак того, что список неполон: без неё
-		// человек, вернувшийся к вкладке через час, читал бы усечённый список
-		// как «узлы пропали».
-		if serversFilter.Active() {
-			serversFilterButton.Importance = widget.HighImportance
-		} else {
-			serversFilterButton.Importance = widget.MediumImportance
-		}
-		serversFilterButton.Refresh()
+		// Признак того, что список неполон, — ТОЧКА в углу кнопки, а не её
+		// подсветка: без признака человек, вернувшийся к вкладке через час,
+		// читал бы усечённый список как «узлы пропали», а подсвеченная целиком
+		// кнопка читалась бы как «нажата» и спорила бы с обычной важностью
+		// соседей в ряду (решение владельца).
+		serversFilterBadge.SetVisible(serversFilter.Active())
 	}
 
 	// applyServersFilterUI — общий хвост любой правки фильтра: сбросить кэш
@@ -1546,6 +1544,9 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		}, serversFilterWin)
 	})
 	serversFilterButton.SetToolTip(locale.T("Filters…"))
+	// Точка-индикатор активного фильтра поверх лупы; сама кнопка остаётся
+	// обычной важности (см. syncServersFilterButton).
+	serversFilterBadge = fynewidget.NewBadgeDot(serversFilterButton, theme.ColorNameWarning)
 	syncServersFilterButton()
 
 	// Кнопки пинга и сортировки по задержке (справа)
@@ -1772,7 +1773,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		sortByNameButton,
 		sortNameLabel,
 		exportShareURIsButton,
-		serversFilterButton,
+		serversFilterBadge.Container,
 		layout.NewSpacer(),
 		filterPingErrorsButton,
 		sortByDelayButton,
