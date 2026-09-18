@@ -78,6 +78,6 @@
 
 ## W2d — парсеры → мапперы
 
-- [x] 21 правило значений снято из парсеров как дубликат реестра, 6 перенесено в реестр (`base64_32`, `hex_only`, условный `advisory`, `requires`+`equals`, `default_when`), 14 оставлены как перевод диалекта; алиасы имён — из реестра (`queryParam`); naive userinfo=password (7.3, релиз ≥ 24.09.2026); `W2D_CHANGES.md`
+- [x] 21 правило значений снято из парсеров как дубликат реестра, 6 перенесено в реестр (`base64_32`, `hex_only`, условный `advisory`, `requires`+`equals`, `default_when`), 14 оставлены как перевод диалекта; алиасы имён — из реестра (`queryParam`); naive userinfo=password (7.3; дата синхронизации снята владельцем 19.09.2026); `W2D_CHANGES.md`
 - [x] Пара ссылка↔JSON даёт равные тела и warnings (`nodeflow_pipeline_test.go`); `TestRegistryWarningCodesHaveAProducer` вместо регулярки по `parse_warnings.go`
 - [ ] Порт вне 1–65535 в ссылке по-прежнему отбраковывает узел в `ParseNode` (форма `dropped[]`), а не код `port_invalid` на узле — отдельное решение (W2D_CHANGES §6)
