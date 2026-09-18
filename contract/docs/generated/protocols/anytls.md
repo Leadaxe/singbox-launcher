@@ -291,6 +291,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tcp-fast-open"></a>**`tcp_fast_open`** — Use TCP Fast Open.
   - Type: bool
   - Default: `false`
+  - Not applicable to `anytls`: removed → [`field_conflict`](../warnings.md#field_conflict)
 - <a id="body-udp-fragment"></a>**`udp_fragment`** — Allow fragmenting UDP packets.
   - Type: bool, tristate
 - <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.

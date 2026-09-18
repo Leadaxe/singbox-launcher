@@ -1273,18 +1273,18 @@ func TestParseNode_Hysteria2(t *testing.T) {
 		}
 	})
 
-	t.Run("Hysteria2 drops fingerprint (QUIC), keeps pinSHA256", func(t *testing.T) {
+	t.Run("Hysteria2 keeps pinSHA256", func(t *testing.T) {
 		uri := "hysteria2://secret@203.0.113.1:443?sni=hy.example&fingerprint=firefox&pinSHA256=YWJjZGVmZ2g=#h"
 		node, err := ParseNode(uri, nil)
 		if err != nil || node == nil {
 			t.Fatalf("ParseNode: %v", err)
 		}
 		tls := node.Outbound["tls"].(map[string]interface{})
-		// QUIC doesn't use uTLS ClientHello fingerprints — fp= on hysteria2 is
-		// subscription noise and must not reach the config (SPEC 103, D-033).
-		if _, present := tls["utls"]; present {
-			t.Fatalf("utls must not be emitted on a QUIC protocol: %+v", tls["utls"])
-		}
+		// Проверка «utls не эмитится на QUIC» СНЯТА (контракт 1.1.4): маппер
+		// переводит fp в тело как есть, а снимает его реестр —
+		// tls.json forbidden_for + forbidden_codes → tls_not_applicable_quic.
+		// Здесь карта СЫРАЯ, до санитайзера, и utls в ней быть обязан.
+		// Правило сверяют парные кейсы корпуса (uri↔body у hysteria2/tuic).
 		pins, _ := tls["certificate_public_key_sha256"].([]string)
 		if len(pins) != 1 || pins[0] != "YWJjZGVmZ2g=" {
 			t.Fatalf("pins: %+v", tls["certificate_public_key_sha256"])

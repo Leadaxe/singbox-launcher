@@ -93,7 +93,7 @@
         "maps_to": "tls.utls.fingerprint",
         "desc_en": "Browser fingerprint mimicked in the ClientHello.",
         "desc_ru": "Отпечаток браузера, который подделывается в ClientHello.",
-        "impl": "uTLS fingerprint. РАЗРЫВ (новое, вне §9): Go эмитит tls.utls в JSON (node_parser_hysteria2.go:91-100), Dart намеренно срезает uTLS на QUIC-протоколах (§282, toSingboxForQuic) — и сам Go на Xray-пути тоже срезает (xray_protocols.go:276). Влияет на identity-хеш и, возможно, на валидность конфига."
+        "impl": "uTLS fingerprint. РАЗРЫВ ЗАКРЫТ (контракт 1.1.4): прежняя запись описывала состояние, когда Go эмитил tls.utls, Dart срезал его в toSingboxForQuic, а Xray-путь Go срезал третьим способом. Теперь правило одно на всех — реестр: tls.json body.fields.utls forbidden_for включает hysteria2, код tls_not_applicable_quic (info). Параметр читается и переводится в тело всеми путями одинаково, блок снимает санитайзер. Тело не изменилось (блок и раньше не доезжал), identity-хеш на месте; изменились warnings — срез перестал быть молчаливым."
       },
       "pinSHA256": {
         "type": "string",

@@ -49,12 +49,13 @@ func TestXrayHysteriaDialectVersionSplit(t *testing.T) {
 			if got, _ := node.Outbound[tc.secretField].(string); got != tc.wantSecret {
 				t.Fatalf("%s = %q, ожидалось %q", tc.secretField, got, tc.wantSecret)
 			}
-			// uTLS на QUIC ядро не примет — fingerprint обязан быть снят.
-			if tls, ok := node.Outbound["tls"].(map[string]interface{}); ok {
-				if _, has := tls["utls"]; has {
-					t.Fatalf("utls остался в TLS-блоке QUIC-протокола: %v", tls)
-				}
-			}
+			// Проверка «utls снят на QUIC» СНЯТА ОТСЮДА (контракт 1.1.4):
+			// правило переехало в реестр (tls.json forbidden_for +
+			// forbidden_codes → tls_not_applicable_quic), и увидеть его
+			// можно только в готовом теле — здесь же карта СЫРАЯ, прямо
+			// с маппера, и utls в ней быть обязан. Та же судьба, что у
+			// дефолта полосы v1 абзацем ниже. Сверяет правило корпус:
+			// пары uri↔body у hysteria2 и tuic.
 		})
 	}
 }

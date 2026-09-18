@@ -268,9 +268,6 @@ func walkField(out map[string][]usage, scheme, path string, f *registry.Field) {
 	for _, rq := range f.Requires {
 		add(rq.Code, "set without `"+rq.Path+"`", actionRemoved)
 	}
-	if f.ForbiddenWhen != nil {
-		add(f.ForbiddenWhen.Code, "forbidden when `"+f.ForbiddenWhen.Path+"` is set", actionRemoved)
-	}
 	if len(f.ForbiddenFor) > 0 {
 		add(f.Code, "not supported by "+codeList(f.ForbiddenFor), actionRemoved)
 	} else if len(f.AllowedFor) > 0 {

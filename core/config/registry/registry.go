@@ -65,15 +65,30 @@ type Field struct {
 	// outbound вовсе: у hysteria v1 отсутствующий up_mbps даёт «missing
 	// upload speed» ФАТАЛОМ НА ВЕСЬ config.json, и ссылки сплошь и рядом
 	// скорость не несут.
-	DefaultWhen   *DefaultWhen `json:"default_when"`
-	ForbiddenWhen *Relation    `json:"forbidden_when"`
+	DefaultWhen *DefaultWhen `json:"default_when"`
+	// СНЯТО (контракт 1.1.4): ForbiddenWhen. Атрибут `forbidden_when` был
+	// объявлен в SPEC 131 §3.2 и реализован в трёх местах (здесь, в
+	// санитайзере, в генераторе доков), но НИ ОДНО поле реестра его так и не
+	// понесло, и в `schema/registry_body.schema.json` он не попал вовсе —
+	// значит валидатор отверг бы файл, который его использует. Единственный
+	// случай, ради которого он задумывался (vless.flow при заданном
+	// transport), выражен обычным `conflicts`. Мёртвый атрибут в структуре
+	// читается как «так тоже можно» и зовёт написать правило, которое схема
+	// не примет.
 
 	// Связи со схемой и другими полями.
-	AllowedFor   []string   `json:"allowed_for"`
-	ForbiddenFor []string   `json:"forbidden_for"`
-	Code         string     `json:"code"`
-	Conflicts    []Relation `json:"conflicts"`
-	Requires     []Relation `json:"requires"`
+	AllowedFor   []string `json:"allowed_for"`
+	ForbiddenFor []string `json:"forbidden_for"`
+	Code         string   `json:"code"`
+	// ForbiddenCodes — код запрета ДЛЯ КОНКРЕТНОЙ СХЕМЫ, когда общий `code`
+	// поля не годится по исходу. Один запрет, но два разных смысла: у naive
+	// снятое TLS-поле — деградация настройки, о которой стоит знать
+	// (severity warning), а на QUIC uTLS/REALITY не применились бы в принципе
+	// — узел не пострадал, и код там info. Ключ — имя схемы из forbidden_for;
+	// схема без записи берёт общий `code`.
+	ForbiddenCodes map[string]string `json:"forbidden_codes"`
+	Conflicts      []Relation        `json:"conflicts"`
+	Requires       []Relation        `json:"requires"`
 
 	// Гейты сборки.
 	MinCore  string `json:"min_core"`
@@ -124,7 +139,7 @@ type DefaultWhen struct {
 	Code   string      `json:"code"`
 }
 
-// Relation — связь поля с другим полем (conflicts / requires / forbidden_when).
+// Relation — связь поля с другим полем (conflicts / requires / advisory.when).
 type Relation struct {
 	With    string `json:"with"`
 	Path    string `json:"path"`
@@ -555,7 +570,7 @@ func resolveNamedRef(name string, src *Field, sub *section) *Field {
 // mergeRefAttrs накладывает атрибуты ссылки на поле суб-схемы: ссылка может
 // ужесточить обязательность (naive: tls required), но не подменяет правила.
 func mergeRefAttrs(src, target *Field) *Field {
-	if !src.Required && src.Code == "" && len(src.ForbiddenFor) == 0 && len(src.AllowedFor) == 0 {
+	if !src.Required && src.Code == "" && len(src.ForbiddenFor) == 0 && len(src.AllowedFor) == 0 && len(src.ForbiddenCodes) == 0 {
 		return target
 	}
 	cp := *target
@@ -567,6 +582,9 @@ func mergeRefAttrs(src, target *Field) *Field {
 	}
 	if len(src.ForbiddenFor) > 0 {
 		cp.ForbiddenFor = src.ForbiddenFor
+	}
+	if len(src.ForbiddenCodes) > 0 {
+		cp.ForbiddenCodes = src.ForbiddenCodes
 	}
 	if len(src.AllowedFor) > 0 {
 		cp.AllowedFor = src.AllowedFor

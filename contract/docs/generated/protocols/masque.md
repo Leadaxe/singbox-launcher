@@ -110,27 +110,10 @@ Shared across every scheme that carries a TLS block; the reference page is [`_tl
 - <a id="link-tls-alpn"></a>**`alpn`** — Comma-separated list of ALPN protocols.
   - Type: string · Default: `""`
   - Maps to: [`tls.alpn`](#body-tls-alpn)
-- <a id="link-tls-fp"></a>**`fp`** — Browser fingerprint mimicked in the ClientHello.
-  - Also spelled: `fingerprint`
-  - Type: enum (other spellings of the same value are accepted): `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized` (allowlist `utls_fingerprints`) · Default: `""`
-  - Maps to: [`tls.utls.fingerprint`](#body-tls-utls-fingerprint)
-  - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown) · Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
 - <a id="link-tls-ech"></a>**`ech`** — Encrypted Client Hello parameters in the Xray form.
   - Also spelled: `echfq`
   - Type: string · Default: `""`
   - Maps to: nothing — the parameter is read and then deliberately dropped
-- <a id="link-tls-pbk"></a>**`pbk`** — Server REALITY public key.
-  - Type: string — X25519 public key: base64url or base64std, padded or not, decoding to exactly 32 bytes; anything else is not a valid key
-  - Maps to: [`tls.reality.public_key`](#body-tls-reality-public-key)
-  - If invalid: removed → [`reality_pbk_invalid`](../warnings.md#reality_pbk_invalid)
-- <a id="link-tls-sid"></a>**`sid`** — REALITY short ID.
-  - Type: string — hex only, lowercase, even length and at most 16 characters; an empty short_id is legal (a zero [8]byte)
-  - Maps to: [`tls.reality.short_id`](#body-tls-reality-short-id)
-  - If invalid: removed → [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid) · If the value had to be cleaned up: [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
-- <a id="link-tls-key-share"></a>**`key_share`** — Key exchange used in the REALITY ClientHello.
-  - Type: enum: `""`, `hybrid`, `classical` — a closed core enum, hybrid or classical; trimmed and lower-cased; an empty string means the key is absent, not invalid · Default: `""`
-  - Maps to: [`tls.reality.key_share`](#body-tls-reality-key-share)
-  - If invalid: removed → [`reality_key_share_invalid`](../warnings.md#reality_key_share_invalid)
 
 ## Body fields
 
@@ -294,17 +277,16 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: bool, deprecated
 - <a id="body-tls-utls"></a>**`tls.utls`** — uTLS fingerprint settings.
   - Type: object
+  - Not applicable to `masque`: removed → [`tls_not_applicable_quic`](../warnings.md#tls_not_applicable_quic)
 - <a id="body-tls-utls-enabled"></a>**`tls.utls.enabled`** — Enable uTLS ClientHello mimicry.
   - Type: bool
   - Default: `false`
 - <a id="body-tls-utls-fingerprint"></a>**`tls.utls.fingerprint`** — Browser fingerprint used for the ClientHello.
   - Type: enum, `""`, `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized`, normalized: `trim_lower`
   - Default: `chrome`
-  - Set by link parameter: [`fp`](#link-tls-fp)
-  - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
-  - Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
 - <a id="body-tls-reality"></a>**`tls.reality`** — REALITY settings.
   - Type: object
+  - Not applicable to `masque`: removed → [`tls_not_applicable_quic`](../warnings.md#tls_not_applicable_quic)
 - <a id="body-tls-reality-enabled"></a>**`tls.reality.enabled`** — Enable REALITY handshake camouflage.
   - Type: bool
   - Default: `false`
@@ -315,19 +297,12 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tls-reality-public-key"></a>**`tls.reality.public_key`** — Server REALITY public key (x25519).
   - Type: string, format `base64_32`
   - Required: the node is dropped without it
-  - Set by link parameter: [`pbk`](#link-tls-pbk)
-  - If invalid: removed → [`reality_pbk_invalid`](../warnings.md#reality_pbk_invalid)
 - <a id="body-tls-reality-short-id"></a>**`tls.reality.short_id`** — REALITY short ID (hex, even length).
   - Type: string, format `hex`, `…–16`, len `even`, normalized: `hex_only`
-  - Set by link parameter: [`sid`](#link-tls-sid)
-  - If invalid: removed → [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
-  - If the value had to be cleaned up: [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
   - Meaningless without: `tls.reality.public_key`
 - <a id="body-tls-reality-key-share"></a>**`tls.reality.key_share`** — Key exchange used in the REALITY ClientHello.
   - Type: enum, `""`, `hybrid`, `classical`, normalized: `trim_lower`
   - Default: `""`
-  - Set by link parameter: [`key_share`](#link-tls-key-share)
-  - If invalid: removed → [`reality_key_share_invalid`](../warnings.md#reality_key_share_invalid)
   - Meaningless without: `tls.reality.public_key`
   - Only written when: core ≥ `1.14.1-lx.4`, lx fork only
 - <a id="body-sni"></a>**`sni`** — Deprecated alias of tls.server_name.
@@ -372,9 +347,6 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`tls.spoof`](#body-tls-spoof) — conflicts with `tls.reality.enabled` → removed
   - [`tls.spoof`](#body-tls-spoof) — conflicts with `tls.disable_sni` → removed
   - [`tls.ech.enabled`](#body-tls-ech-enabled) — conflicts with `tls.reality.enabled` → removed
-  - [`tls.reality.enabled`](#body-tls-reality-enabled) — conflicts with `tls.ech.enabled` → removed
-  - [`tls.reality.enabled`](#body-tls-reality-enabled) — conflicts with `tls.disable_sni` → removed
-  - [`tls.reality.enabled`](#body-tls-reality-enabled) — conflicts with `tls.spoof` → removed
 - [`field_missing`](../warnings.md#field_missing)
   - [`server`](#body-server) — the value does not fit the field → node dropped
   - [`private_key`](#body-private-key) — the value does not fit the field → node dropped
@@ -385,22 +357,13 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`tls.client_certificate`](#body-tls-client-certificate) — set without `tls.client_key` → removed
   - [`tls.client_key`](#body-tls-client-key) — set without `tls.client_certificate` → removed
   - [`tls.spoof_method`](#body-tls-spoof-method) — set without `tls.spoof` → removed
-  - [`tls.reality.enabled`](#body-tls-reality-enabled) — set without `tls.utls.enabled` → removed
-  - [`tls.reality.short_id`](#body-tls-reality-short-id) — set without `tls.reality.public_key` → removed
-  - [`tls.reality.key_share`](#body-tls-reality-key-share) — set without `tls.reality.public_key` → removed
 - [`masque_vhttp_invalid`](../warnings.md#masque_vhttp_invalid)
   - [`vhttp`](#body-vhttp) — the value does not fit the field → replaced with `h3`
 - [`port_invalid`](../warnings.md#port_invalid)
   - [`server_port`](#body-server-port) — the value does not fit the field → node dropped
-- [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
-  - [`tls.utls.fingerprint`](#body-tls-utls-fingerprint) — the value is anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random` → kept with a notice
-- [`reality_key_share_invalid`](../warnings.md#reality_key_share_invalid)
-  - [`tls.reality.key_share`](#body-tls-reality-key-share) — the value does not fit the field → removed
-- [`reality_pbk_invalid`](../warnings.md#reality_pbk_invalid)
-  - [`tls.reality.public_key`](#body-tls-reality-public-key) — the value does not fit the field → removed
-- [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
-  - [`tls.reality.short_id`](#body-tls-reality-short-id) — the value does not fit the field → removed
-  - [`tls.reality.short_id`](#body-tls-reality-short-id) — the value had to be cleaned up (hex_only) → value cleaned up
+- [`tls_not_applicable_quic`](../warnings.md#tls_not_applicable_quic)
+  - [`tls.utls`](#body-tls-utls) — not supported by `masque` → removed
+  - [`tls.reality`](#body-tls-reality) — not supported by `masque` → removed
 - [`type_invalid`](../warnings.md#type_invalid)
   - [`profile`](#body-profile) — the value does not fit the field → removed
   - [`ip`](#body-ip) — the value does not fit the field → removed
@@ -416,8 +379,6 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`tls.spoof`](#body-tls-spoof) — the value does not fit the field → removed
   - [`tls.spoof_method`](#body-tls-spoof-method) — the value does not fit the field → removed
   - [`inet4_bind_address`](#body-inet4-bind-address) — the value does not fit the field → removed
-- [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
-  - [`tls.utls.fingerprint`](#body-tls-utls-fingerprint) — the value does not fit the field → replaced with `chrome`
 
 ## Replacements
 
@@ -479,30 +440,20 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `tls.engine` — invalid value
 - `tls.max_version` — invalid value
 - `tls.min_version` — invalid value
-- `tls.reality.enabled` — conflicts with another field of the same node
-- `tls.reality.key_share` — conflicts with another field of the same node
-- `tls.reality.key_share` — invalid value
-- `tls.reality.public_key` — invalid value
-- `tls.reality.short_id` — conflicts with another field of the same node
-- `tls.reality.short_id` — invalid value
+- `tls.reality` — not supported by this protocol
 - `tls.server_name` — invalid value
 - `tls.spoof_method` — conflicts with another field of the same node
 - `tls.spoof_method` — invalid value
 - `tls.spoof` — conflicts with another field of the same node
 - `tls.spoof` — invalid value
+- `tls.utls` — not supported by this protocol
 
 **The value is replaced, the node lives on**
 
-- `tls.utls.fingerprint` — invalid value becomes `chrome`
 - `vhttp` — invalid value becomes `h3`
-
-**Kept as is, with a notice**
-
-- `tls.utls.fingerprint` — accepted, but worth knowing about
 
 **Left out when the running core is too old**
 
 - `tls.kernel_rx` — needs OS `linux`
 - `tls.kernel_tx` — needs OS `linux`
-- `tls.reality.key_share` — needs core ≥ `1.14.1-lx.4`, lx fork only
 

@@ -237,6 +237,11 @@
           "type": "string",
           "description": "Код из registry/warnings.json для allowed_for / forbidden_for."
         },
+        "forbidden_codes": {
+          "type": "object",
+          "description": "Код запрета для КОНКРЕТНОЙ схемы из forbidden_for, когда исход у неё другой: у naive снятое TLS-поле — потерянная настройка (warning), на QUIC uTLS/REALITY не применились бы вовсе (info). Схема без записи берёт общий code.",
+          "additionalProperties": { "type": "string" }
+        },
         "conflicts": {
           "type": "array",
           "description": "Взаимоисключающие поля; снимается младшее по приоритету.",

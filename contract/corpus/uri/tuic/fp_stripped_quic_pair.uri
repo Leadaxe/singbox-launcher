@@ -1,0 +1,7 @@
+# SPEC 131, контракт 1.1.4: `fp` на tuic переводится в тело и снимается
+# правилом реестра с кодом tls_not_applicable_quic. Прежде параметр молча
+# терялся в парсере («uTLS на QUIC не читается»), и пользователь не узнавал,
+# что отпечаток из подписки не сработал.
+#
+# Ссылочная половина пары к body/singbox/tuic_quic_tls_pair.body.
+tuic://11111111-1111-1111-1111-111111111111:pass123@tuic.example-1.com:443/?congestion_control=bbr&fp=firefox&sni=tuic.example-1.com#tuic-quic-pair

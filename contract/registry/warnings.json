@@ -1546,6 +1546,29 @@
       "dart": null,
       "go": null
     },
+    "tls_not_applicable_quic": {
+      "severity": "info",
+      "params": [
+        "path"
+      ],
+      "title_en": "QUIC: TLS field {path} not applicable",
+      "title_ru": "QUIC: TLS-поле {path} неприменимо",
+      "text_en": "This protocol runs over QUIC, where the core cannot use a uTLS fingerprint or REALITY at all. The field {path} was removed; the node connects exactly as it would have anyway.",
+      "text_ru": "Этот протокол работает поверх QUIC, а там ядро не умеет ни отпечаток uTLS, ни REALITY. Поле {path} снято; узел подключается ровно так же, как подключился бы с ним.",
+      "cause_en": "The subscription applies one TLS template to every protocol, so a QUIC node (hysteria, hysteria2, tuic, masque) was handed a fingerprint or REALITY keys. QUIC carries TLS 1.3 inside itself and the core builds it through the standard engine, which neither uTLS nor REALITY can provide — with such a block the outbound would not start at all.",
+      "cause_ru": "Подписка применяет один шаблон TLS ко всем протоколам, и QUIC-узлу (hysteria, hysteria2, tuic, masque) достался отпечаток или ключи REALITY. QUIC несёт TLS 1.3 внутри себя, и ядро строит его стандартным движком, которого ни uTLS, ни REALITY не дают, — с таким блоком outbound не поднялся бы вовсе.",
+      "fix_en": [
+        "Nothing to do: the node works, and the removed settings have no meaning over QUIC.",
+        "If you need a fingerprint or REALITY, take a node on a TCP protocol — vless, trojan, vmess or anytls."
+      ],
+      "fix_ru": [
+        "Делать ничего не нужно: узел работает, а снятые настройки поверх QUIC смысла не имеют.",
+        "Если нужен отпечаток или REALITY, возьмите узел на TCP-протоколе — vless, trojan, vmess или anytls."
+      ],
+      "desc": "Блок tls.utls или tls.reality на протоколе поверх QUIC (hysteria, hysteria2, tuic, masque) — снимается целиком. Ядро строит TLS для QUIC через aTLS.Config.STDConfig() (sing-quic qtls.Dial/DialEarly/CreateTransport; у masque — protocol/masque/outbound.go:406), а у UTLSClientConfig и RealityClientConfig этот метод возвращает ошибку («unsupported usage for uTLS» / «for reality») — outbound не поднимается, узел мёртв. Severity info, а не warning: снята настройка, которая к QUIC не применилась бы в принципе, и узел от её снятия ничего не теряет (в отличие от tls_field_unsupported_naive, где это потерянная настройка). Один код на блок: key_share и short_id своих кодов не дают — снят не они, а весь REALITY. Правило живёт в реестре (tls.json body.fields.utls/reality forbidden_for + forbidden_codes), прежде было частной веткой quicOutboundTypes в singbox_sanitize.go и молчаливым пропуском fp в URI-парсерах.",
+      "dart": null,
+      "go": null
+    },
     "ss_method_legacy": {
       "severity": "info",
       "params": [

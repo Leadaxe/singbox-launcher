@@ -305,7 +305,15 @@ func linkOutcome(raw *rawRegistry, scheme string, item linkParam) string {
 		if f == nil {
 			continue
 		}
-		for _, o := range fieldOutcomes(f, "../") {
+		// Запрет живёт на БЛОКЕ, а параметр ссылки целится в поле внутри него:
+		// `fp` кладёт значение в tls.utls.fingerprint, а forbidden_for стоит
+		// на tls.utls. Без подъёма по пути страница hysteria2 продолжала бы
+		// обещать, что отпечаток применится, — ровно та ложь, из-за которой
+		// правило и переехало в реестр.
+		if banned := forbiddenAncestor(raw, scheme, path); banned != nil {
+			f = banned
+		}
+		for _, o := range fieldOutcomes(f, scheme, "../") {
 			if seen[o] {
 				continue
 			}
@@ -391,9 +399,12 @@ func writeBodyItems(l *list, prefix, name string, f *registry.Field, linkPrefix 
 		l.attr("Set by link parameter: " + names)
 	}
 
-	// Что случится с негодным значением.
-	for _, o := range fieldOutcomes(f, linkPrefix) {
-		l.attr(o)
+	// Что случится с негодным значением. Внутри запрещённого блока — ничего:
+	// строку о запрете уже напечатал сам блок.
+	if !l.banned {
+		for _, o := range fieldOutcomes(f, l.scheme, linkPrefix) {
+			l.attr(o)
+		}
 	}
 	// Связи с другими полями. `forbidden_for`/`allowed_for` на странице ОДНОЙ
 	// схемы не печатаются: страница уже про неё, и перечень чужих схем здесь
@@ -406,7 +417,14 @@ func writeBodyItems(l *list, prefix, name string, f *registry.Field, linkPrefix 
 		l.attr(g)
 	}
 
+	// Потомки запрещённого блока печатаются без своих правил: флаг снимается
+	// после обхода, чтобы соседний разрешённый блок его не унаследовал.
+	wasBanned := l.banned
+	if !wasBanned && l.scheme != "" && !fieldAllowedFor(f, l.scheme) {
+		l.banned = true
+	}
 	writeChildren(l, path, f, linkPrefix)
+	l.banned = wasBanned
 }
 
 // writeChildren печатает потомков поля — варианты и вложенные объекты — с
@@ -453,7 +471,17 @@ func writeNested(l *list, path string, f *registry.Field, linkPrefix string) {
 }
 
 // fieldOutcomes — что санитайзер делает со значением: действие плюс код.
-func fieldOutcomes(f *registry.Field, linkPrefix string) []string {
+func fieldOutcomes(f *registry.Field, scheme, linkPrefix string) []string {
+	// Поле, запрещённое ЭТОЙ схеме, до тела не доедет: правила его значения
+	// здесь не работают, и печатать их — обещать диагностику, которой не
+	// будет. Вместо них одна строка о запрете с кодом, который реально
+	// поставит санитайзер (у QUIC он свой — tls_not_applicable_quic).
+	// На общих страницах суб-схем (scheme == "") запрета «этой схеме» нет:
+	// там перечень схем печатает fieldRelations.
+	if scheme != "" && !fieldAllowedFor(f, scheme) {
+		return []string{"Not applicable to `" + scheme + "`: removed → " +
+			warnLink(forbiddenCode(f, scheme), linkPrefix)}
+	}
 	var out []string
 	if f.OnInvalid != nil {
 		out = append(out, "If invalid: "+onInvalidAction(f.OnInvalid)+" → "+

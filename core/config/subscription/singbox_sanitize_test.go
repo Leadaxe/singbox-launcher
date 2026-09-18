@@ -12,35 +12,16 @@ import "testing"
 // packet_encoding) отсюда сняты вместе с самими проверками — эти правила
 // живут в реестре, их исполняет nodeflow.Sanitize, и сверяют их табличный
 // тест пакета nodeflow и корпус контракта. Здесь остаётся то, что реестром
-// не выражается: СТРУКТУРНЫЕ преобразования диалекта (снятие tls-блока на
-// QUIC, форма obfs, плоский masque) — работа маппера.
-func TestSanitizeSingboxQUICStripsUTLSAndReality(t *testing.T) {
-	for _, quicType := range []string{"hysteria2", "tuic"} {
-		t.Run(quicType+": utls and reality are stripped", func(t *testing.T) {
-			ob := map[string]interface{}{
-				"type": quicType,
-				"tls": map[string]interface{}{
-					"enabled":     true,
-					"server_name": "example.com",
-					"utls":        map[string]interface{}{"enabled": true, "fingerprint": "chrome"},
-					"reality":     map[string]interface{}{"enabled": true, "public_key": "x"},
-				},
-			}
-			SanitizeSingboxOutboundMap(ob, "n")
-
-			tls := ob["tls"].(map[string]interface{})
-			if _, present := tls["utls"]; present {
-				t.Error("utls must be stripped on QUIC outbounds")
-			}
-			if _, present := tls["reality"]; present {
-				t.Error("reality must be stripped on QUIC outbounds")
-			}
-			if tls["server_name"] != "example.com" {
-				t.Error("server_name must survive")
-			}
-		})
-	}
-}
+// не выражается: СТРУКТУРНЫЕ преобразования диалекта (форма obfs, плоский
+// masque, снятие tls-блока негодной ФОРМЫ) — работа маппера.
+//
+// Контракт 1.1.4: TestSanitizeSingboxQUICStripsUTLSAndReality снят вместе со
+// своим правилом — срез utls/reality на QUIC переехал в реестр (forbidden_for
+// + forbidden_codes → tls_not_applicable_quic), и проверяют его парные кейсы
+// корпуса uri/hysteria2/reality_fp_stripped_quic_pair ↔
+// body/singbox/hysteria2_quic_tls_pair (и та же пара у tuic). Проверять здесь
+// значило бы держать копию правила в тесте после того, как копию сняли
+// из кода.
 
 func TestSanitizeSingboxTLSDisabledBlockRemoved(t *testing.T) {
 	// SPEC 045: явный tls:{enabled:false} роняет ядро SIGSEGV'ом при dial.

@@ -67,6 +67,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`template_var_undeclared`](#template_var_undeclared) · `warning` — Variable {name} is not declared
 - [`tls_field_unsupported_naive`](#tls_field_unsupported_naive) · `warning` — naive: TLS field {path} removed
 - [`tls_insecure`](#tls_insecure) · `info` — Certificate verification disabled
+- [`tls_not_applicable_quic`](#tls_not_applicable_quic) · `info` — QUIC: TLS field {path} not applicable
 - [`transport_unsupported`](#transport_unsupported) · `warning` — Transport replaced with {fallback}
 - [`tuic_congestion_invalid`](#tuic_congestion_invalid) · `warning` — Field removed: unknown congestion control
 - [`tuic_udp_relay_mode_invalid`](#tuic_udp_relay_mode_invalid) · `warning` — Field removed: unknown UDP relay mode
@@ -1154,12 +1155,12 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`kernel_tx`](protocols/_tls.md#body-kernel-tx) — not supported by `naive` → removed
   - [`max_version`](protocols/_tls.md#body-max-version) — not supported by `naive` → removed
   - [`min_version`](protocols/_tls.md#body-min-version) — not supported by `naive` → removed
-  - [`reality`](protocols/_tls.md#body-reality) — not supported by `naive` → removed
+  - [`reality`](protocols/_tls.md#body-reality) — not supported by `naive`, `hysteria`, `hysteria2`, `tuic`, `masque` → removed
   - [`reality.enabled`](protocols/_tls.md#body-reality-enabled) — not supported by `naive` → removed
   - [`record_fragment`](protocols/_tls.md#body-record-fragment) — not supported by `naive` → removed
   - [`spoof`](protocols/_tls.md#body-spoof) — not supported by `naive` → removed
   - [`spoof_method`](protocols/_tls.md#body-spoof-method) — not supported by `naive` → removed
-  - [`utls`](protocols/_tls.md#body-utls) — not supported by `naive` → removed
+  - [`utls`](protocols/_tls.md#body-utls) — not supported by `naive`, `hysteria`, `hysteria2`, `tuic`, `masque` → removed
   - [`utls.enabled`](protocols/_tls.md#body-utls-enabled) — not supported by `naive` → removed
 
 <a id="tls_insecure"></a>
@@ -1174,6 +1175,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Nothing to do if you trust this provider: the node works as they intended it to.
   - If you did not expect this, ask the provider why certificate verification is off on their server.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="tls_not_applicable_quic"></a>
+### tls_not_applicable_quic
+
+**severity:** `info` · **params:** `path`
+
+**QUIC: TLS field {path} not applicable**
+
+- **What happened:** This protocol runs over QUIC, where the core cannot use a uTLS fingerprint or REALITY at all. The field {path} was removed; the node connects exactly as it would have anyway.
+- **Why it happens:** The subscription applies one TLS template to every protocol, so a QUIC node (hysteria, hysteria2, tuic, masque) was handed a fingerprint or REALITY keys. QUIC carries TLS 1.3 inside itself and the core builds it through the standard engine, which neither uTLS nor REALITY can provide — with such a block the outbound would not start at all.
+- **What you can do:**
+  - Nothing to do: the node works, and the removed settings have no meaning over QUIC.
+  - If you need a fingerprint or REALITY, take a node on a TCP protocol — vless, trojan, vmess or anytls.
 
 **Where it comes from:**
 

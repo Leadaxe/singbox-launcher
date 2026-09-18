@@ -88,11 +88,11 @@ func collectSchemeUsages(out map[string][]usage, scheme, path string, f *registr
 	// Поле, запрещённое этой схеме, снимается целиком: собственные правила
 	// значения к нему уже не применяются, и показывать их — врать.
 	if len(f.ForbiddenFor) > 0 && contains(f.ForbiddenFor, scheme) {
-		add(codeOr(f.Code, "unknown_key"), "not supported by `"+scheme+"`", actionRemoved)
+		add(forbiddenCode(f, scheme), "not supported by `"+scheme+"`", actionRemoved)
 		return
 	}
 	if len(f.AllowedFor) > 0 && !contains(f.AllowedFor, scheme) {
-		add(codeOr(f.Code, "unknown_key"), "not supported by `"+scheme+"`", actionRemoved)
+		add(forbiddenCode(f, scheme), "not supported by `"+scheme+"`", actionRemoved)
 		return
 	}
 
@@ -117,9 +117,6 @@ func collectSchemeUsages(out map[string][]usage, scheme, path string, f *registr
 	}
 	for _, rq := range f.Requires {
 		add(codeOr(rq.Code, "field_requires"), "set without `"+rq.Path+"`", actionRemoved)
-	}
-	if fw := f.ForbiddenWhen; fw != nil {
-		add(codeOr(fw.Code, "field_conflict"), "forbidden when `"+fw.Path+"` is set", actionRemoved)
 	}
 	if f.Required && f.OnInvalid == nil {
 		add("field_missing", "required and missing", actionNodeDropped)
@@ -402,7 +399,7 @@ func collectDegradation(out map[string][]string, scheme, path string, f *registr
 	if len(f.Advisory) > 0 {
 		put(actionKept, "`"+path+"` — accepted, but worth knowing about")
 	}
-	if len(f.Conflicts) > 0 || len(f.Requires) > 0 || f.ForbiddenWhen != nil {
+	if len(f.Conflicts) > 0 || len(f.Requires) > 0 {
 		put(actionRemoved, "`"+path+"` — conflicts with another field of the same node")
 	}
 	if dw := f.DefaultWhen; dw != nil && dw.Absent {
@@ -501,6 +498,18 @@ func codeOr(code, fallback string) string {
 		return code
 	}
 	return fallback
+}
+
+// forbiddenCode — код запрета поля для конкретной схемы. Тот же выбор, что
+// делает санитайзер (core/config/nodeflow/sanitize.go forbiddenCode): у поля
+// кроме общего `code` есть словарь `forbidden_codes`, потому что исход у
+// разных схем разный — naive теряет настройку (warning), QUIC-протокол
+// избавляется от бессмыслицы (info).
+func forbiddenCode(f *registry.Field, scheme string) string {
+	if c, ok := f.ForbiddenCodes[scheme]; ok && c != "" {
+		return c
+	}
+	return codeOr(f.Code, "unknown_key")
 }
 
 func contains(items []string, s string) bool {

@@ -162,7 +162,7 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
   - Type: bool, deprecated
 - <a id="body-utls"></a>**`utls`** — uTLS fingerprint settings.
   - Type: object
-  - Not supported by: `naive`
+  - Not supported by: `naive`, `hysteria`, `hysteria2`, `tuic`, `masque`
 - <a id="body-utls-enabled"></a>**`utls.enabled`** — Enable uTLS ClientHello mimicry.
   - Type: bool
   - Default: `false`
@@ -174,7 +174,7 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
   - Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
 - <a id="body-reality"></a>**`reality`** — REALITY settings.
   - Type: object
-  - Not supported by: `naive`
+  - Not supported by: `naive`, `hysteria`, `hysteria2`, `tuic`, `masque`
 - <a id="body-reality-enabled"></a>**`reality.enabled`** — Enable REALITY handshake camouflage.
   - Type: bool
   - Default: `false`

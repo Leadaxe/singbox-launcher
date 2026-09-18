@@ -22,7 +22,9 @@
       "label": "ech-full",
       "scheme": "trojan",
       "warnings": [
-        "ech_ignored"
+        {
+          "code": "ech_ignored"
+        }
       ]
     }
   ],

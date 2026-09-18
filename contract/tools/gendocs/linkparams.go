@@ -196,7 +196,10 @@ func tlsParamApplies(raw *rawRegistry, scheme string, p *uriParam) bool {
 	}
 	for _, path := range paths {
 		if f, _ := resolveBodyField(raw, scheme, path); f != nil {
-			if fieldAllowedFor(f, scheme) {
+			// Запрет ищется по ВСЕМУ пути, а не только у самого поля: у
+			// `pbk` адрес tls.reality.public_key, а forbidden_for стоит на
+			// блоке tls.reality.
+			if forbiddenAncestor(raw, scheme, path) == nil {
 				return true
 			}
 			continue
@@ -221,6 +224,25 @@ func transportApplies(body *registry.BodySchema, variant string) bool {
 
 func bodyHas(body *registry.BodySchema, name string) bool {
 	return body != nil && body.Fields[name] != nil
+}
+
+// forbiddenAncestor — ближайшее поле по пути (само поле или любой его предок),
+// которое запрещено этой схеме. Нужен там, где адрес в теле глубже запрета:
+// forbidden_for стоит на блоке `tls.utls`, а параметр ссылки `fp` целится в
+// `tls.utls.fingerprint`. Возвращает nil, если запрета по пути нет.
+func forbiddenAncestor(raw *rawRegistry, scheme, path string) *registry.Field {
+	cur := path
+	for cur != "" {
+		if f, _ := resolveBodyField(raw, scheme, cur); f != nil && !fieldAllowedFor(f, scheme) {
+			return f
+		}
+		i := strings.LastIndex(cur, ".")
+		if i < 0 {
+			return nil
+		}
+		cur = cur[:i]
+	}
+	return nil
 }
 
 func fieldAllowedFor(f *registry.Field, scheme string) bool {

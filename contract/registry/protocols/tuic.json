@@ -85,7 +85,7 @@
         "maps_to": "tls.utls.fingerprint",
         "desc_en": "Browser fingerprint mimicked in the ClientHello.",
         "desc_ru": "Отпечаток браузера, который подделывается в ClientHello.",
-        "impl": "Только Go читает fp на tuic и эмитит tls.utls; Dart не читает вовсе и срезает uTLS на QUIC (§282). Тот же QUIC-uTLS-разрыв, что у hysteria2."
+        "impl": "РАЗРЫВ ЗАКРЫТ (контракт 1.1.4): прежде Go читал fp и эмитил tls.utls, Dart не читал вовсе. Теперь обе стороны читают и переводят в тело, а блок снимает правило реестра — tls.json body.fields.utls forbidden_for включает tuic, код tls_not_applicable_quic (info). Тот же порядок, что у hysteria2 и hysteria."
       },
       "allow_insecure": {
         "type": "bool",

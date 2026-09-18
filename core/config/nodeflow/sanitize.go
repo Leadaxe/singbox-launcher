@@ -63,7 +63,7 @@ type sanitizer struct {
 	cleanRoot map[string]interface{}
 	// removed — пути, снятые запретом по схеме (allowed_for/forbidden_for).
 	//
-	// Связи (conflicts/requires/forbidden_when) обязаны считать такое поле
+	// Связи (conflicts/requires) обязаны считать такое поле
 	// ОТСУТСТВУЮЩИМ: оно уже снято, и конфликтовать с ним не с чем. Иначе у
 	// naive снятый запретом certificate_public_key_sha256 продолжал бы
 	// «конфликтовать» с certificate_path — и узел терял бы СВОЙ сертификат
@@ -306,7 +306,7 @@ func (s *sanitizer) object(prefix string, order []string, fields map[string]*reg
 		}
 		if !s.allowedForScheme(f) {
 			if present {
-				s.warn(codeOr(f.Code, "unknown_key"), path, raw, f.Secret, map[string]string{"path": path})
+				s.warn(s.forbiddenCode(f), path, raw, f.Secret, map[string]string{"path": path})
 				s.removed[path] = true
 			}
 			continue
@@ -387,6 +387,22 @@ func (s *sanitizer) omitAsUnset(f *registry.Field, v interface{}) bool {
 	return ok && str == ""
 }
 
+// forbiddenCode — код, которым сообщать о поле, снятом запретом по схеме.
+//
+// Один запрет, но разный ИСХОД для пользователя, и код обязан это разделять:
+// у naive снятое TLS-поле — настройка, которой узел лишился (warning), а на
+// QUIC-протоколах uTLS/REALITY не применились бы в принципе (ядро зовёт
+// STDConfig(), а у uTLS- и REALITY-конфигов он возвращает ошибку) — снята
+// бессмыслица, узел не пострадал, и код там info. Поэтому у поля кроме общего
+// `code` есть `forbidden_codes` — словарь «схема → код»; схема без записи
+// берёт общий.
+func (s *sanitizer) forbiddenCode(f *registry.Field) string {
+	if c, ok := f.ForbiddenCodes[s.scheme]; ok && c != "" {
+		return c
+	}
+	return codeOr(f.Code, "unknown_key")
+}
+
 // allowedForScheme — разрешено ли поле текущей схеме (allowed_for/forbidden_for).
 func (s *sanitizer) allowedForScheme(f *registry.Field) bool {
 	for _, sc := range f.ForbiddenFor {
@@ -408,7 +424,7 @@ func (s *sanitizer) allowedForScheme(f *registry.Field) bool {
 // value обрабатывает одно поле: связи с соседями, приведение типа, проверки
 // значения. Второй результат false — поле снято.
 //
-// siblings — исходная карта уровня (для conflicts/requires/forbidden_when по
+// siblings — исходная карта уровня (для conflicts/requires по
 // относительным путям), clean — уже собранная чистая карта того же уровня.
 func (s *sanitizer) value(path, prefix string, f *registry.Field, raw interface{}) (interface{}, bool) {
 	// Связи полей считаются до приведения типа: снятое поле не должно
@@ -556,7 +572,7 @@ func (s *sanitizer) arrayField(path string, f *registry.Field, raw interface{}) 
 	return out, true
 }
 
-// relationsOK проверяет conflicts / requires / forbidden_when.
+// relationsOK проверяет conflicts / requires.
 //
 // Конфликт снимает ТЕКУЩЕЕ поле (младшее по order): к моменту проверки
 // старший сосед уже прошёл обход и лежит в clean.
@@ -591,17 +607,9 @@ func (s *sanitizer) relationsOK(path, prefix string, f *registry.Field) bool {
 			map[string]string{"path": path, "requires": rq.Path})
 		return false
 	}
-	if fw := f.ForbiddenWhen; fw != nil && fw.Path != "" {
-		want := true
-		if fw.Present != nil {
-			want = *fw.Present
-		}
-		if s.pathPresent(fw.Path, prefix) == want {
-			s.warn(codeOr(fw.Code, "field_conflict"), path, nil, false,
-				map[string]string{"path": path, "with": fw.Path})
-			return false
-		}
-	}
+	// Ветка forbidden_when снята вместе с атрибутом (контракт 1.1.4): его не
+	// несло ни одно поле реестра и не знала схема. Обратная связь («поле
+	// запрещено, когда сосед задан») выражается `conflicts` у того же поля.
 	return true
 }
 
@@ -901,8 +909,7 @@ func sortedKeys(m map[string]interface{}) []string {
 	return out
 }
 
-// isEmptyValue — «значение не задано» для слоя связей (conflicts / requires /
-// forbidden_when).
+// isEmptyValue — «значение не задано» для слоя связей (conflicts / requires).
 //
 // Ядро судит взаимоисключающие поля по ЗНАЧЕНИЮ, а не по наличию ключа:
 // у transport.xmux конфликт max_concurrency↔max_connections срабатывает только

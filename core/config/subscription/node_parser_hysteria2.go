@@ -58,8 +58,10 @@ func buildHysteria2Outbound(node *configtypes.ParsedNode, outbound map[string]in
 // buildHysteria2TLS собирает TLS-блок hysteria2 (протокол поверх QUIC — TLS
 // включён всегда).
 //
-// uTLS здесь сознательно не читается: ядро не применяет отпечаток поверх
-// QUIC, а лишний блок менял бы identity-хеш узла между путями (D-033).
+// `fp` и REALITY-параметры переводятся в тело КАК ЕСТЬ: снимет их реестр
+// (tls.json, forbidden_for на QUIC-схемах) — с кодом tls_not_applicable_quic,
+// а не молча, как было до SPEC 131. Тело от этого не меняется: блок всё равно
+// не доезжает до конфига, и identity-хеш живых узлов на месте (D-033).
 func buildHysteria2TLS(node *configtypes.ParsedNode, outbound map[string]interface{}) {
 	q := node.Query
 	tlsData := map[string]interface{}{"enabled": true}
@@ -71,6 +73,7 @@ func buildHysteria2TLS(node *configtypes.ParsedNode, outbound map[string]interfa
 		tlsData["certificate_public_key_sha256"] = []string{pin}
 	}
 	applyTLSQueryExtras(q, "hysteria2", tlsData)
+	applyTLSCamouflageFromQuery(q, "hysteria2", tlsData)
 
 	outbound["tls"] = tlsData
 }

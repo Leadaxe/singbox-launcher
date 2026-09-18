@@ -1,0 +1,4 @@
+# SPEC 131, контракт 1.1.4: JSON-половина пары к
+# uri/tuic/fp_stripped_quic_pair.uri. uTLS на tuic снимается правилом реестра
+# с кодом tls_not_applicable_quic — одинаково для ссылки и для тела.
+{"type":"tuic","tag":"tuic-quic-pair","server":"tuic.example-1.com","server_port":443,"uuid":"11111111-1111-1111-1111-111111111111","password":"pass123","congestion_control":"bbr","tls":{"enabled":true,"server_name":"tuic.example-1.com","utls":{"enabled":true,"fingerprint":"firefox"}}}

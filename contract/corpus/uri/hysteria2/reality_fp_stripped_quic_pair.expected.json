@@ -12,13 +12,18 @@
         "type": "hysteria2"
       },
       "kind": "outbound",
-      "label": "hy2-fp",
+      "label": "hy2-quic-pair",
       "scheme": "hysteria2",
       "warnings": [
         {
           "code": "tls_not_applicable_quic",
           "path": "tls.utls",
           "value": "map[enabled:true fingerprint:chrome]"
+        },
+        {
+          "code": "tls_not_applicable_quic",
+          "path": "tls.reality",
+          "value": "map[enabled:true public_key:AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5…"
         }
       ]
     }

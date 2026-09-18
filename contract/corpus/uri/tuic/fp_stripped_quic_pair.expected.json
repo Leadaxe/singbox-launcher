@@ -2,23 +2,25 @@
   "nodes": [
     {
       "entry": {
+        "congestion_control": "bbr",
         "password": "pass123",
-        "server": "example-1.com",
+        "server": "tuic.example-1.com",
         "server_port": 443,
         "tls": {
           "enabled": true,
-          "server_name": "x.example.com"
+          "server_name": "tuic.example-1.com"
         },
-        "type": "hysteria2"
+        "type": "tuic",
+        "uuid": "11111111-1111-1111-1111-111111111111"
       },
       "kind": "outbound",
-      "label": "hy2-fp",
-      "scheme": "hysteria2",
+      "label": "tuic-quic-pair",
+      "scheme": "tuic",
       "warnings": [
         {
           "code": "tls_not_applicable_quic",
           "path": "tls.utls",
-          "value": "map[enabled:true fingerprint:chrome]"
+          "value": "map[enabled:true fingerprint:firefox]"
         }
       ]
     }

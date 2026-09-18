@@ -103,7 +103,7 @@
       "impl": "REALITY взаимоисключим с QUIC-типами (см. policy) и всегда носит uTLS-блок. В trojan-URI reality не парсится ни одним проектом (только vless/anytls URI + sing-box/Xray-импорт)."
     },
     "policy": {
-      "quic_strip": "На QUIC-типах (hysteria2, tuic, masque) utls и reality вычищаются целиком (ядро не умеет uTLS/REALITY поверх QUIC — STDConfig() error, мёртвая нода): Go SanitizeSingboxOutboundMap/quicOutboundTypes (SPEC 094 A2), Dart TlsSpec.toSingboxForQuic (§282). server_name/alpn/insecure остаются.",
+      "quic_strip": "ПРАВИЛО РЕЕСТРА, не проза (SPEC 131, контракт 1.1.4): у body.fields.utls и body.fields.reality стоит forbidden_for с четырьмя QUIC-схемами (hysteria, hysteria2, tuic, masque) и forbidden_codes → tls_not_applicable_quic. Блок снимается целиком, узел живёт, код уровня info: ядро строит TLS QUIC-протоколов через aTLS.Config.STDConfig() (sing-quic qtls.Dial/DialEarly/CreateTransport, у masque — protocol/masque/outbound.go:406), а у UTLSClientConfig и RealityClientConfig этот метод возвращает ошибку — с таким блоком outbound не поднимается вовсе. hysteria v1 в списке наравне с остальными: она ходит тем же qtls.Dial (sing-quic hysteria/client.go:264), прежняя проза её не называла, хотя частная ветка quicOutboundTypes включала. Исполняет правило санитайзер по реестру (core/config/nodeflow/sanitize.go forbiddenCode) — одинаково для ссылки, JSON-тела и Xray-объекта; частная ветка quicOutboundTypes в singbox_sanitize.go снята, у Dart на очереди TlsSpec.toSingboxForQuic (§282 → §24.13). server_name/alpn/insecure остаются.",
       "disabled_block": "tls.enabled:false НЕ эмитится — ключ опускается целиком (SPEC 045: явный disabled-блок ронял ядра 1.14.0-lx.5..lx.18 SIGSEGV на первом dial). Go-санитайз вычищает такой блок и на импорте. НАРУШЕНИЕ (новое, вне §9): Dart emitTrojan при выключенном TLS пишет tls:{enabled:false} (node_spec_emit.dart:211) — конфликтует с SPEC 045 и даёт A-класс расхождение identity-хеша trojan-без-TLS нод; целевое поведение — омит ключа (как Go и как Dart же в emitVless).",
       "plaintext_ports": "Только vless: security='' на портах {80, 8080, 8880, 2052, 2082, 2086, 2095} → TLS не эмитится (эвристика CF-HTTP, посимвольно одинакова в обоих).",
       "utls_junk": "Битые значения TLS-полей деградируют ПОЛЕ, не ноду: fp вне allowlist → drop/замена блока (см. fp), битый pbk → plain TLS, битый sid → '' ; нода живёт (философия «деградируй ноду, не конфиг» — обратное валит весь config.json через sing-box check).",
@@ -550,8 +550,14 @@
       },
       "utls": {
         "type": "object",
-        "forbidden_for": ["naive"],
+        "forbidden_for": ["naive", "hysteria", "hysteria2", "tuic", "masque"],
         "code": "tls_field_unsupported_naive",
+        "forbidden_codes": {
+          "hysteria": "tls_not_applicable_quic",
+          "hysteria2": "tls_not_applicable_quic",
+          "tuic": "tls_not_applicable_quic",
+          "masque": "tls_not_applicable_quic"
+        },
         "order": ["enabled", "fingerprint"],
         "fields": {
           "enabled": {
@@ -587,12 +593,18 @@
         },
         "desc_en": "uTLS fingerprint settings.",
         "desc_ru": "Настройки отпечатка uTLS.",
-        "impl": "OutboundUTLSOptions, option/tls.go. На QUIC-типах (hysteria2, tuic, masque) блок вычищается целиком — ядро не умеет uTLS поверх QUIC."
+        "impl": "OutboundUTLSOptions, option/tls.go. На QUIC-протоколах (hysteria, hysteria2, tuic, masque) блок запрещён и снимается целиком с кодом tls_not_applicable_quic — ядро строит их TLS через STDConfig(), а у uTLS он возвращает ошибку (policy.quic_strip)."
       },
       "reality": {
         "type": "object",
-        "forbidden_for": ["naive"],
+        "forbidden_for": ["naive", "hysteria", "hysteria2", "tuic", "masque"],
         "code": "tls_field_unsupported_naive",
+        "forbidden_codes": {
+          "hysteria": "tls_not_applicable_quic",
+          "hysteria2": "tls_not_applicable_quic",
+          "tuic": "tls_not_applicable_quic",
+          "masque": "tls_not_applicable_quic"
+        },
         "order": ["enabled", "public_key", "short_id", "key_share"],
         "fields": {
           "enabled": {
@@ -681,7 +693,7 @@
         },
         "desc_en": "REALITY settings.",
         "desc_ru": "Настройки REALITY.",
-        "impl": "OutboundRealityOptions, option/tls.go. Требует utls.enabled. На QUIC-типах вычищается целиком."
+        "impl": "OutboundRealityOptions, option/tls.go. Требует utls.enabled. На QUIC-протоколах (hysteria, hysteria2, tuic, masque) блок запрещён и снимается целиком с кодом tls_not_applicable_quic; key_share и short_id своих кодов при этом не дают — снят не они, а весь REALITY (policy.quic_strip)."
       }
     }
   }

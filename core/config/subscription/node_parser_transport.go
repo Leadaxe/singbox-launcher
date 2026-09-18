@@ -950,6 +950,46 @@ func vlessTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, boo
 	return tlsData, true
 }
 
+// applyTLSCamouflageFromQuery переводит в тело маскировочные параметры ссылки:
+// `fp` → блок tls.utls, `pbk`/`sid`/`key_share` → блок tls.reality.
+//
+// Маппер, а не суждение: он решает только вопрос «есть ли блок», который
+// санитайзеру недоступен (отсутствующий ключ неотличим от «не задано»), —
+// ровно тот же вопрос, что у vlessTLSFromNode. Годность значений и
+// применимость блока к схеме судит реестр: мусорный отпечаток станет `chrome`
+// с utls_fp_unknown, мусорный pbk снимет блок целиком (reality_pbk_invalid),
+// а на QUIC-протоколах оба блока запрещены (forbidden_for + forbidden_codes,
+// код tls_not_applicable_quic) и снимаются с кодом.
+//
+// Зовут её QUIC-схемы, где прежде параметры пропадали МОЛЧА: hysteria2 и tuic
+// не читали `fp` вовсе с комментарием «uTLS на QUIC не читается», а импорт
+// того же узла телом снимал блок частной веткой quicOutboundTypes. Один и тот
+// же узел давал на двух входах одно тело, но разные наборы кодов — ссылка не
+// говорила пользователю ничего. Пустого дефолта отпечатка здесь нет (в отличие
+// от vless `random`, D-009): его нечему материализовать — блока на QUIC не
+// будет в любом случае.
+func applyTLSCamouflageFromQuery(q url.Values, scheme string, tlsData map[string]interface{}) {
+	if fp := utlsFingerprintFromQuery(q, scheme); fp != "" {
+		tlsData["utls"] = map[string]interface{}{
+			"enabled":     true,
+			"fingerprint": fp,
+		}
+	}
+	if pbk := queryParam(q, scheme, "pbk"); pbk != "" {
+		reality := map[string]interface{}{
+			"enabled":    true,
+			"public_key": pbk,
+		}
+		if sid := queryParam(q, scheme, "sid"); sid != "" {
+			reality["short_id"] = sid
+		}
+		if ks := queryParam(q, scheme, "key_share"); ks != "" {
+			reality["key_share"] = ks
+		}
+		tlsData["reality"] = reality
+	}
+}
+
 // utlsFingerprintOrDefault — отпечаток из ссылки либо конвенция схемы.
 func utlsFingerprintOrDefault(q url.Values, scheme, def string) string {
 	if fp := utlsFingerprintFromQuery(q, scheme); fp != "" {

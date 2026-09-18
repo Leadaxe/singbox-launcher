@@ -108,27 +108,28 @@ var registryFieldFormats = map[string]bool{
 // bodyField — поле схемы тела. Разбирается лениво: вложенность описывается
 // теми же структурами, а неизвестные атрибуты ловит проверка по схеме.
 type bodyField struct {
-	Type          string                `json:"type"`
-	Ref           string                `json:"ref"`
-	Inline        bool                  `json:"inline"`
-	Items         *bodyField            `json:"items"`
-	Order         []string              `json:"order"`
-	Fields        map[string]*bodyField `json:"fields"`
-	Values        []interface{}         `json:"values"`
-	Format        string                `json:"format"`
-	Code          string                `json:"code"`
-	ForbiddenFor  []string              `json:"forbidden_for"`
-	AllowedFor    []string              `json:"allowed_for"`
-	Conflicts     []bodyRelation        `json:"conflicts"`
-	Requires      []bodyRelation        `json:"requires"`
-	OnInvalid     *bodyOnInvalid        `json:"on_invalid"`
-	Advisory      []bodyAdvisory        `json:"advisory"`
-	Normalize     string                `json:"normalize"`
-	NormalizeCode string                `json:"normalize_code"`
-	DefaultWhen   *bodyDefaultWhen      `json:"default_when"`
-	Skip          string                `json:"skip"`
-	DescEn        string                `json:"desc_en"`
-	DescRu        string                `json:"desc_ru"`
+	Type           string                `json:"type"`
+	Ref            string                `json:"ref"`
+	Inline         bool                  `json:"inline"`
+	Items          *bodyField            `json:"items"`
+	Order          []string              `json:"order"`
+	Fields         map[string]*bodyField `json:"fields"`
+	Values         []interface{}         `json:"values"`
+	Format         string                `json:"format"`
+	Code           string                `json:"code"`
+	ForbiddenFor   []string              `json:"forbidden_for"`
+	ForbiddenCodes map[string]string     `json:"forbidden_codes"`
+	AllowedFor     []string              `json:"allowed_for"`
+	Conflicts      []bodyRelation        `json:"conflicts"`
+	Requires       []bodyRelation        `json:"requires"`
+	OnInvalid      *bodyOnInvalid        `json:"on_invalid"`
+	Advisory       []bodyAdvisory        `json:"advisory"`
+	Normalize      string                `json:"normalize"`
+	NormalizeCode  string                `json:"normalize_code"`
+	DefaultWhen    *bodyDefaultWhen      `json:"default_when"`
+	Skip           string                `json:"skip"`
+	DescEn         string                `json:"desc_en"`
+	DescRu         string                `json:"desc_ru"`
 }
 
 // bodyDefaultWhen — дефолт, который реестр велит МАТЕРИАЛИЗОВАТЬ явно
@@ -406,6 +407,24 @@ func checkField(t *testing.T, where, path string, f *bodyField, codes map[string
 	}
 	if f.Code != "" && !codes[f.Code] && !registryPendingCodes[f.Code] {
 		t.Errorf("%s: код %q не объявлен в warnings.json", full, f.Code)
+	}
+	// forbidden_codes переопределяет код запрета для отдельной схемы: исход у
+	// схем разный (naive теряет настройку, QUIC — бессмыслицу). Схема, которой
+	// поле НЕ запрещено, в словаре бессмысленна и означает опечатку.
+	for scheme, code := range f.ForbiddenCodes {
+		if !codes[code] && !registryPendingCodes[code] {
+			t.Errorf("%s: forbidden_codes[%q] = %q не объявлен в warnings.json", full, scheme, code)
+		}
+		found := false
+		for _, sc := range f.ForbiddenFor {
+			if sc == scheme {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%s: forbidden_codes называет схему %q, которой поле не запрещено", full, scheme)
+		}
 	}
 	if f.Normalize != "" && !registryNormalizeModes[f.Normalize] {
 		t.Errorf("%s: normalize %q вне словаря SPEC 131 §4", full, f.Normalize)

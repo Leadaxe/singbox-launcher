@@ -105,11 +105,14 @@
         "impl": "→ tls.certificate_public_key_sha256 ([значение]). ЗАПИСЬ ИСПРАВЛЕНА (DRIFT §4): пометка «только Go» протухла — обе стороны читают pinSHA256 (в hysteria2 — hysteria2_parser.dart:97,107)."
       },
       "fp": {
-        "type": "ignored",
+        "type": "alias_enum",
+        "allowlist": "utls_fingerprints",
         "default": null,
-        "desc_en": "Ignored: uTLS does not apply to QUIC.",
-        "desc_ru": "Игнорируется: uTLS к QUIC не применяется.",
-        "impl": "НЕ читается: v1 живёт поверх QUIC, uTLS ядро на нём не примет (quicOutboundTypes включает hysteria). Тот же принцип, что у hysteria2 после SPEC 103 D-033."
+        "aliases": ["fingerprint"],
+        "maps_to": "tls.utls.fingerprint",
+        "desc_en": "Browser fingerprint mimicked in the ClientHello.",
+        "desc_ru": "Отпечаток браузера, который подделывается в ClientHello.",
+        "impl": "ЗАПИСЬ ИСПРАВЛЕНА (контракт 1.1.4): было type=ignored «не читается». Параметр читается и переводится в tls.utls как у всех схем, а снимает блок ПРАВИЛО РЕЕСТРА — tls.json body.fields.utls forbidden_for включает hysteria, код tls_not_applicable_quic (info). До 1.1.4 срез был молчаливым с обеих сторон: узел терял отпечаток, и никто об этом не сообщал. v1 живёт поверх QUIC наравне с hysteria2 — тот же qtls.Dial (sing-quic hysteria/client.go:264), тот же STDConfig() с ошибкой у uTLS."
       }
     },
     "fragment": "label"

@@ -1,0 +1,10 @@
+# SPEC 131, контракт 1.1.4: uTLS и REALITY на QUIC-протоколе снимаются
+# ПРАВИЛОМ РЕЕСТРА (tls.json body.fields.utls/reality forbidden_for +
+# forbidden_codes), а не молча парсером. Ядро строит TLS QUIC-протоколов через
+# STDConfig(), у uTLS- и REALITY-конфигов он возвращает ошибку — узел был бы
+# мёртв. Исход: оба блока сняты, узел живёт, два кода уровня info.
+#
+# Ссылочная половина пары к body/singbox/hysteria2_quic_tls_pair.body — тело
+# и коды обязаны совпасть с ней; расхождение означает, что маппер ссылки и
+# маппер JSON снова приняли разные решения.
+hysteria2://pass123@example-1.com:443?sni=x.example.com&fp=chrome&pbk=AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw&sid=ab#hy2-quic-pair

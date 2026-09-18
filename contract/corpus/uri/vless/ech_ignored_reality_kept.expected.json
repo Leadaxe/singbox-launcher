@@ -24,7 +24,9 @@
       "label": "ech-reality",
       "scheme": "vless",
       "warnings": [
-        "ech_ignored"
+        {
+          "code": "ech_ignored"
+        }
       ]
     }
   ],

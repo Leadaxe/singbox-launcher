@@ -41,14 +41,13 @@ func IsSingboxGroupType(t string) bool {
 	return ok
 }
 
-// quicOutboundTypes — типы, работающие поверх QUIC. Для них ядро не умеет
-// uTLS/REALITY: STDConfig() возвращает ошибку, а QUIC-путь фолбэчит именно
-// на него, и нода становится мёртвой.
-// masque: h3 несёт TLS внутри QUIC, а ядро (SPEC 062 §1.3) для него игнорирует
-// utls/reality/ech с предупреждением — снимаем их здесь, как у остальных QUIC.
-var quicOutboundTypes = map[string]struct{}{
-	"hysteria": {}, "hysteria2": {}, "tuic": {}, "masque": {},
-}
+// СНЯТО (SPEC 131, контракт 1.1.4): частный набор quicOutboundTypes и срез
+// utls/reality по нему. Правило переехало в реестр — tls.json
+// body.fields.utls/reality, `forbidden_for` с четырьмя QUIC-схемами и
+// `forbidden_codes` → tls_not_applicable_quic. Исполняет его санитайзер
+// конвейера (core/config/nodeflow), одинаково для ссылки, JSON-тела и
+// Xray-объекта, и — главное — С КОДОМ: здесь срез был молчаливым (только
+// debuglog), и пользователь не узнавал, что отпечаток из подписки не сработал.
 
 // SanitizeSingboxOutboundMap приводит импортированный outbound к форме,
 // которую ядро гарантированно принимает. Правит ob на месте.
@@ -67,7 +66,7 @@ func SanitizeSingboxOutboundMap(ob map[string]interface{}, tag string) []string 
 	obType := strings.ToLower(strings.TrimSpace(mapString(ob, "type")))
 
 	sanitizeSingboxMasqueLegacy(ob, obType, tag)
-	sanitizeSingboxTLS(ob, obType, tag)
+	sanitizeSingboxTLS(ob, tag)
 	sanitizeSingboxHysteria2Obfs(ob, obType, tag)
 	sanitizeSingboxHysteriaObfs(ob, obType, tag)
 	return nil
@@ -99,12 +98,16 @@ func sanitizeSingboxMasqueLegacy(ob map[string]interface{}, obType, tag string) 
 	}
 }
 
-// sanitizeSingboxTLS чистит блок tls: uTLS allowlist, REALITY pbk/short_id,
-// key_share, снятие uTLS/REALITY на QUIC-типах.
+// sanitizeSingboxTLS снимает блок tls в двух случаях, где его форма роняет
+// ядро ДО того, как тело доедет до санитайзера реестра: tls не объект (ядро
+// отвергает конфиг на разборе) и явный `enabled:false` (SIGSEGV на первом
+// dial, SPEC 045). Обе проверки — о ФОРМЕ JSON, а не о значениях: значения
+// судит реестр.
 //
-// Возвращает код деградации (или "") — прокидывает наружу код из
-// sanitizeSingboxReality, вешать его здесь не на что.
-func sanitizeSingboxTLS(ob map[string]interface{}, obType, tag string) {
+// Правил значения здесь больше нет. uTLS allowlist, REALITY pbk/short_id и
+// key_share ушли в реестр волной W2d, срез utls/reality на QUIC — контрактом
+// 1.1.4 (см. комментарий про quicOutboundTypes выше).
+func sanitizeSingboxTLS(ob map[string]interface{}, tag string) {
 	tlsRaw, ok := ob["tls"]
 	if !ok {
 		return
@@ -122,20 +125,6 @@ func sanitizeSingboxTLS(ob map[string]interface{}, obType, tag string) {
 	if enabled, ok := tlsMap["enabled"].(bool); ok && !enabled {
 		delete(ob, "tls")
 		return
-	}
-
-	if _, isQUIC := quicOutboundTypes[obType]; isQUIC {
-		// SPEC 094 A2: на QUIC срезаем utls и reality целиком.
-		if _, had := tlsMap["utls"]; had {
-			delete(tlsMap, "utls")
-			debuglog.DebugLog("Parser: singbox import %q: stripped utls from %s (QUIC)", tag, obType)
-		}
-		if _, had := tlsMap["reality"]; had {
-			// key_share уезжает вместе с блоком и кода не даёт: снят не он,
-			// а весь REALITY (policy.quic_strip).
-			delete(tlsMap, "reality")
-			debuglog.DebugLog("Parser: singbox import %q: stripped reality from %s (QUIC)", tag, obType)
-		}
 	}
 
 	if len(tlsMap) == 0 {

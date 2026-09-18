@@ -17,7 +17,9 @@
       "scheme": "masque",
       "warnings": [
         {
-          "code": "masque_vhttp_invalid"
+          "code": "masque_vhttp_invalid",
+          "path": "vhttp",
+          "value": "tcp"
         }
       ]
     }

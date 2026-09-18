@@ -72,10 +72,14 @@ func buildTuicTLS(node *configtypes.ParsedNode, outbound map[string]interface{})
 	if sni := tlsServerNameFromQuery(q, scheme, node.Server); sni != "" {
 		tlsData["server_name"] = sni
 	}
-	// uTLS на QUIC не читается — ядро отпечаток не применяет (D-033).
 	// ALPN и insecure (девять написаний) — общие: дефолт ["h3"] НЕ пишем,
 	// это дефолт ядра (DRIFT §7.7).
 	applyTLSQueryExtras(q, scheme, tlsData)
+	// `fp` переводится в тело как есть и снимается реестром с кодом
+	// tls_not_applicable_quic: ядро отпечаток поверх QUIC не применяет, но
+	// молчать об этом (как было до SPEC 131) значит не сказать пользователю,
+	// что параметр ссылки не сработал.
+	applyTLSCamouflageFromQuery(q, scheme, tlsData)
 
 	outbound["tls"] = tlsData
 }
