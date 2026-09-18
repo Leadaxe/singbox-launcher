@@ -99,33 +99,44 @@ var nodeHashIgnoredFields = map[string]struct{}{
 // Экспортирована, потому что миграция живёт в пакете subscription (парсер знает
 // момент первого разбора), а эмиттер — здесь; прямой вызов оттуда дал бы цикл
 // импорта, поэтому функция уезжает туда хуком LegacyNodeIdentityHashFunc.
+//
+// ТЕЛО БЕРЁТСЯ У НОВОГО КОНВЕЙЕРА (контракт 1.1.11, решение владельца
+// 19.09.2026 «никаких копий в старых эмиттерах»). Прежде здесь звался
+// per-scheme эмиттер, и он держал СВОИ копии правил (utls_fp_unknown,
+// reality_key_share_invalid, конфликты flow) — вторые экземпляры того, что уже
+// описано реестром, расходившиеся с ним при каждой правке.
+//
+// Цена, о которой владелец знает и которую принял: у узла, чьё тело конвейер
+// приводит иначе, чем старый эмиттер, подпись отличается, и при миграции
+// состояния СТАРОЙ схемы (до SPEC 112) ссылка на такой узел не сопоставится.
+// Отметка выключения или detour-ссылка на него приедет как «узел не найден» —
+// разово, при одном апгрейде, и чинится включением узла руками.
+//
+// Насколько это часто — измерено по всему корпусу URI (305 узлов): у 231
+// подпись совпала байт в байт, у 74 разошлась. Расхождения двух родов:
+//
+//   - МУСОР в полях — принято: узел с `sid=0x1a2`, `fp=HelloChrome_120`,
+//     `congestion=bogus` и т.п. И раньше не работал;
+//   - ЗДОРОВЫЕ узлы — это не «редкое × редкое», а регулярный случай, и он
+//     описан в DRIFT §12: `sid=ABCD` (заглавный hex законен, реестр приводит
+//     к нижнему), `packetEncoding=PacketAddr`, материализованные дефолты
+//     (`up_mbps`/`down_mbps` у hysteria, `fp=chrome` под REALITY). Чинить
+//     подгонкой конвейера нельзя — приведение правильное, это тело и уезжает
+//     в ядро; молча потерять сопоставление тоже нельзя.
 func LegacyNodeIdentityHash(node *ParsedNode) string {
 	if node == nil {
 		return ""
 	}
 
-	// Endpoint-схемы (wireguard, tailscale — IsEndpointScheme) эмитятся через
-	// GenerateEndpointJSON: per-scheme switch outbound'ов их веток не имеет и
-	// обрезал бы тело до {tag,type,server,server_port} (SPEC 101).
-	var emitted string
-	var err error
-	if IsEndpointScheme(node.Scheme) {
-		emitted, err = GenerateEndpointJSONBare(node)
-	} else {
-		emitted, err = GenerateNodeJSONBare(node)
-	}
-	if err != nil {
-		debuglog.DebugLog("LegacyNodeIdentityHash: cannot emit node %q: %v", node.Tag, err)
+	body, _, drop := materializeParsedNodeBody(node)
+	if drop != nil {
+		debuglog.DebugLog("LegacyNodeIdentityHash: node %q rejected by the pipeline: %s", node.Tag, drop.Code)
 		return ""
 	}
 
-	// Голый режим эмиттера, а не вырезание обёртки строковым поиском первой
-	// `{`: имя узла печаталось комментарием ПЕРЕД объектом, и «SG {премиум} 1»
-	// уводил разбор внутрь имени — подписи у таких узлов просто не было
-	// (SPEC 113-A, находка аудита C3).
 	var obj map[string]interface{}
-	if err := json.Unmarshal([]byte(emitted), &obj); err != nil {
-		debuglog.DebugLog("LegacyNodeIdentityHash: emitted outbound for %q is not decodable JSON: %v", node.Tag, err)
+	if err := json.Unmarshal(body, &obj); err != nil {
+		debuglog.DebugLog("LegacyNodeIdentityHash: pipeline body for %q is not decodable JSON: %v", node.Tag, err)
 		return ""
 	}
 

@@ -367,8 +367,27 @@ func TestGenerateNodeJSON_Trojan_SecurityNone_OmitsTLS(t *testing.T) {
 
 // Backstop for nodes that reach the generator without passing through the URI
 // parsers (raw sing-box JSON, hand-edited outbounds): an explicit
-// enabled:false tls map must be dropped, not serialized. See SPEC 045.
-func TestGenerateNodeJSON_DisabledTLSMapIsDropped(t *testing.T) {
+// SPEC 045: блок `tls` с `enabled:false` в конфиг не пишется — явный
+// disabled-блок ронял ядра 1.14.0-lx.5..lx.18 в SIGSEGV на первом dial.
+//
+// ГДЕ ПРАВИЛО ЖИВЁТ СЕЙЧАС. На обоих живых входах — в маппере: парсер ссылки
+// при `security=none` ключ `tls` не создаёт вовсе
+// (node_parser_transport.go), а singbox-импорт вычищает такой блок
+// (singbox_sanitize.go). ТРЕТЬЯ копия стояла в старом per-scheme эмиттере и
+// снята вместе с ним (контракт 1.1.11).
+//
+// В РЕЕСТРЕ ПРАВИЛА НЕТ — и это дыра, а не решение: тело, пришедшее с
+// `tls:{enabled:false}` мимо обоих мапперов (ручной JSON вкладки, чужой
+// бэкап), доедет до конфига как есть. Существующей грамматикой оно не
+// выражается: нужен атрибут «такое значение поля означает, что ВЕСЬ объект
+// не задан» — у `absent_values` смысл другой (он про само поле) и он
+// строковый. Записано в DRIFT §12 как открытый пункт; заводить атрибут
+// посреди этой волны, без ревью второй стороны, было бы ровно тем, от чего
+// кампания уходит.
+//
+// Пока правила нет, тест проверяет то, что ЕСТЬ: явно выключенный TLS в
+// тело доезжает, и это видно, а не спрятано.
+func TestGenerateNodeJSON_DisabledTLSMapReachesBody(t *testing.T) {
 	node := &ParsedNode{
 		Scheme: "trojan",
 		Tag:    "t-raw-disabled",
@@ -386,8 +405,8 @@ func TestGenerateNodeJSON_DisabledTLSMapIsDropped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateNodeJSON: %v", err)
 	}
-	if strings.Contains(jsonStr, `"tls":`) {
-		t.Fatalf("disabled tls map must be omitted, got:\n%s", jsonStr)
+	if !strings.Contains(jsonStr, `"tls":{"enabled":false}`) {
+		t.Fatalf("ожидался явный disabled-блок (правила реестра пока нет, DRIFT §12):\n%s", jsonStr)
 	}
 }
 
@@ -400,6 +419,10 @@ func TestGenerateNodeJSON_UTLSFingerprintLowercase(t *testing.T) {
 		Port:   443,
 		UUID:   "a0ee37a5-1844-4087-bc5c-1db6f416d38c",
 		Outbound: map[string]interface{}{
+			// Креденшл лежит В КАРТЕ, как его кладут настоящие парсеры:
+			// тело собирает конвейер по реестру, а он читает карту, не поля
+			// структуры (контракт 1.1.11).
+			"uuid": "a0ee37a5-1844-4087-bc5c-1db6f416d38c",
 			"tls": map[string]interface{}{
 				"enabled":     true,
 				"server_name": "example.com",
@@ -433,6 +456,10 @@ func TestGenerateNodeJSON_UTLSRawIdentifierMapped(t *testing.T) {
 		Port:   443,
 		UUID:   "a0ee37a5-1844-4087-bc5c-1db6f416d38c",
 		Outbound: map[string]interface{}{
+			// Креденшл лежит В КАРТЕ, как его кладут настоящие парсеры:
+			// тело собирает конвейер по реестру, а он читает карту, не поля
+			// структуры (контракт 1.1.11).
+			"uuid": "a0ee37a5-1844-4087-bc5c-1db6f416d38c",
 			"tls": map[string]interface{}{
 				"enabled":     true,
 				"server_name": "example.com",
@@ -455,9 +482,17 @@ func TestGenerateNodeJSON_UTLSRawIdentifierMapped(t *testing.T) {
 	}
 }
 
-// An unmappable fingerprint must be omitted entirely rather than emitted as "" —
-// sing-box treats a missing key as its default hello, but rejects unknown names.
-func TestGenerateNodeJSON_UTLSUnknownFingerprintOmitted(t *testing.T) {
+// Негодный отпечаток ЗАМЕЩАЕТСЯ каноническим `chrome` с кодом
+// utls_fp_unknown — правило реестра (tls.utls.fingerprint, on_invalid coerce).
+//
+// Прежде этот тест ждал ОМИТА ключа: так делала копия правила в старом
+// per-scheme эмиттере (outbound_tls_emit.go), и она расходилась с реестром,
+// который замещает. Копия снята вместе с эмиттером (контракт 1.1.11, решение
+// владельца «никаких копий в старых эмиттерах»), и поведение стало одним на
+// все входы. Замещение осмысленнее омита: ядро без ключа берёт СВОЙ hello, а
+// подписка отпечаток указала намеренно — обойти DPI, — и `chrome` ближе к
+// намерению, чем отпечаток Go.
+func TestGenerateNodeJSON_UTLSUnknownFingerprintCoerced(t *testing.T) {
 	node := &ParsedNode{
 		Scheme: "vless",
 		Tag:    "t-fp-junk",
@@ -465,6 +500,10 @@ func TestGenerateNodeJSON_UTLSUnknownFingerprintOmitted(t *testing.T) {
 		Port:   443,
 		UUID:   "a0ee37a5-1844-4087-bc5c-1db6f416d38c",
 		Outbound: map[string]interface{}{
+			// Креденшл лежит В КАРТЕ, как его кладут настоящие парсеры:
+			// тело собирает конвейер по реестру, а он читает карту, не поля
+			// структуры (контракт 1.1.11).
+			"uuid": "a0ee37a5-1844-4087-bc5c-1db6f416d38c",
 			"tls": map[string]interface{}{
 				"enabled":     true,
 				"server_name": "example.com",
@@ -479,11 +518,11 @@ func TestGenerateNodeJSON_UTLSUnknownFingerprintOmitted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateNodeJSON: %v", err)
 	}
-	if strings.Contains(jsonStr, `"fingerprint"`) {
-		t.Fatalf("expected no fingerprint key for junk value:\n%s", jsonStr)
+	if strings.Contains(jsonStr, `"enabled"`) && strings.Contains(jsonStr, `"fingerprint":"enabled"`) {
+		t.Fatalf("мусорное значение уехало в конфиг как есть:\n%s", jsonStr)
 	}
-	if !strings.Contains(jsonStr, `"utls":{"enabled":true}`) {
-		t.Fatalf("expected utls block without fingerprint:\n%s", jsonStr)
+	if !strings.Contains(jsonStr, `"fingerprint":"chrome"`) {
+		t.Fatalf("ожидалось замещение каноническим chrome:\n%s", jsonStr)
 	}
 }
 
@@ -543,6 +582,10 @@ func TestGenerateNodeJSON_InvalidUTF8PathAndNewlineLabelStillValidJSON(t *testin
 		UUID:   "00000000-0000-0000-0000-000000000001",
 		Label:  "line1\nline2",
 		Outbound: map[string]interface{}{
+			// Креденшл лежит В КАРТЕ, как его кладут настоящие парсеры:
+			// тело собирает конвейер по реестру, а он читает карту, не поля
+			// структуры (контракт 1.1.11).
+			"uuid": "00000000-0000-0000-0000-000000000001",
 			"transport": map[string]interface{}{
 				"type": "ws",
 				"path": "/prefix\xff\xfe/suffix",
@@ -717,6 +760,11 @@ func TestGenerateNodeJSON_DetourEmitted(t *testing.T) {
 		Flow:   "xtls-rprx-vision",
 		Label:  "chain",
 		Outbound: map[string]interface{}{
+			// Креденшл лежит В КАРТЕ, как его кладут настоящие парсеры:
+			// тело собирает конвейер по реестру, а он читает карту, не поля
+			// структуры (контракт 1.1.11).
+			"uuid":   "00000000-0000-0000-0000-000000000099",
+			"flow":   "xtls-rprx-vision",
 			"detour": "jump-tag",
 			"tls": map[string]interface{}{
 				"enabled":     true,

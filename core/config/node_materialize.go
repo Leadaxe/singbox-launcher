@@ -325,3 +325,16 @@ func dropReason(w *configtypes.Warning) string {
 	}
 	return w.Code
 }
+
+// mapStringValue — строковое поле карты или "".
+//
+// Переехало из outbound_tls_emit.go вместе со сносом старого эмиттера
+// (контракт 1.1.11): от того файла это единственное, что пережило удаление, —
+// остальное было копиями правил реестра.
+func mapStringValue(m map[string]interface{}, key string) string {
+	if m == nil {
+		return ""
+	}
+	v, _ := m[key].(string)
+	return v
+}
