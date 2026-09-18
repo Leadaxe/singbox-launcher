@@ -3531,7 +3531,7 @@
     "value": "Подключаться к прокси по TLS (HTTPS-прокси). Тонкие настройки TLS — SNI, ALPN — можно поправить позже в редакторе источника."
   },
   "Source": {
-    "value": "Source"
+    "value": "Источник"
   },
   "Rebuild from fields": {
     "value": "Пересобрать из полей"
@@ -4714,5 +4714,71 @@
   },
   "For your information: %d node(s)": {
     "value": "К сведению: узлов %d"
+  },
+  "Filters…": {
+    "value": "Фильтры…"
+  },
+  "Filters": {
+    "value": "Фильтры"
+  },
+  "Filters — %d / %d shown": {
+    "value": "Фильтры — показано %d / %d"
+  },
+  "Filter: %d of %d shown": {
+    "value": "Фильтр: показано %d из %d"
+  },
+  "Emoji": {
+    "value": "Эмодзи"
+  },
+  "Test": {
+    "value": "Тест"
+  },
+  "any": {
+    "value": "любой"
+  },
+  "untested": {
+    "value": "не проверен"
+  },
+  "ms": {
+    "value": "мс"
+  },
+  "ping ≤": {
+    "value": "пинг ≤"
+  },
+  "Invert all": {
+    "value": "Инвертировать всё"
+  },
+  "Clear the pattern": {
+    "value": "Очистить выражение"
+  },
+  "Invalid regex: %s": {
+    "value": "Неверное регулярное выражение: %s"
+  },
+  "Copy the pattern body (no wrapper) — paste it into a Direction's filter field.": {
+    "value": "Скопировать тело выражения без обёртки — его можно вставить в поле фильтра Направления."
+  },
+  "Pattern body copied. Its invert flag is NOT part of the body: tick Invert in the Direction's filter.": {
+    "value": "Тело выражения скопировано. Инверсия в тело НЕ входит: поставьте галку «Инверсия» в фильтре Направления."
+  },
+  "Pattern body copied.": {
+    "value": "Тело выражения скопировано."
+  },
+  "Invert this category: keep the nodes it does NOT select.": {
+    "value": "Инвертировать категорию: оставить узлы, которые она НЕ отбирает."
+  },
+  "Invert the whole filter: show exactly the rows it hides now.": {
+    "value": "Инвертировать весь фильтр: показать ровно те строки, которые он сейчас прячет."
+  },
+  "Toggle this emoji in the Regex field (OR pattern).": {
+    "value": "Добавить или убрать этот значок в поле регулярного выражения (список через «|»)."
+  },
+  "No emoji in the names of the nodes in this list.": {
+    "value": "В именах узлов этого списка значков нет."
+  },
+  "Selected rows, direct-out and the active proxy are never hidden.": {
+    "value": "Выделенные строки, direct-out и активный прокси не скрываются никогда."
+  },
+  "Untested nodes pass the threshold — it answers «show me the fast ones», not «drop the unmeasured».": {
+    "value": "Непроверенные узлы порог проходят: он отвечает на «покажи быстрые», а не «выкинь неизмеренные»."
   }
 }
