@@ -114,9 +114,10 @@ func TestParseNode_AmneziaVPN_AWG(t *testing.T) {
 	if got, _ := node.Outbound["i1"].(string); got != "<b 0x000100002112a442><r 12>" {
 		t.Errorf("i1 mismatch: %q", got)
 	}
-	// AWG endpoint: MTU=1420 from the Amnezia conf must be clamped (SPEC 073).
-	if got, _ := node.Outbound["mtu"].(int); got != 1280 {
-		t.Errorf("mtu = %v, want clamped 1280", node.Outbound["mtu"])
+	// MTU из .conf Amnezia доезжает как записан; потолок 1280 у AWG-узла
+	// накладывает санитайзер по телу (max_when), а не конвертер .conf.
+	if got, _ := node.Outbound["mtu"].(int); got != 1420 {
+		t.Errorf("mtu = %v, want 1420 verbatim (потолок — правило реестра)", node.Outbound["mtu"])
 	}
 	peers, _ := node.Outbound["peers"].([]map[string]interface{})
 	if len(peers) != 1 {
@@ -310,7 +311,7 @@ func amneziaAWG3Container() map[string]interface{} {
 
 // SPEC 123: импорт AWG 3.1-профиля Amnezia. Проверяет весь путь целиком —
 // .conf → URI → endpoint: AWG3-поля на корне с нужными типами, MTU из
-// last_config без клампа 1280, диапазонный keepalive строкой и подстановку
+// last_config (потолок накладывает реестр, не этот путь), диапазонный keepalive строкой и подстановку
 // $PRIMARY_DNS/$SECONDARY_DNS из корня профиля.
 func TestParseNode_AmneziaVPN_AWG3(t *testing.T) {
 	profile := map[string]interface{}{
@@ -354,9 +355,10 @@ func TestParseNode_AmneziaVPN_AWG3(t *testing.T) {
 			t.Errorf("%s = %v, want true", k, node.Outbound[k])
 		}
 	}
-	// MTU лежит в last_config, а не в [Interface]; AWG3 выведен из-под клампа 1280.
-	if got, _ := node.Outbound["mtu"].(int); got != 1280 {
-		t.Errorf("mtu = %v (%T), want last_config 1376 clamped to 1280", node.Outbound["mtu"], node.Outbound["mtu"])
+	// MTU лежит в last_config, а не в [Interface] — и доезжает оттуда как
+	// записан (1376). Потолок 1280 накладывает уже санитайзер по телу.
+	if got, _ := node.Outbound["mtu"].(int); got != 1376 {
+		t.Errorf("mtu = %v (%T), want last_config 1376 verbatim", node.Outbound["mtu"], node.Outbound["mtu"])
 	}
 	peers, _ := node.Outbound["peers"].([]map[string]interface{})
 	if len(peers) != 1 {

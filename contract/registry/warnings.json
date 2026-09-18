@@ -940,6 +940,54 @@
       "dart": null,
       "go": "core/config/subscription/node_parser_wireguard.go (parseWireGuardURI: return nil, err)"
     },
+    "awg_mtu_clamped": {
+      "severity": "warning",
+      "params": [
+        "value",
+        "path"
+      ],
+      "title_en": "AmneziaWG: MTU lowered to 1280",
+      "title_ru": "AmneziaWG: MTU снижен до 1280",
+      "text_en": "The MTU at {path} was {value}, above the 1280 ceiling this launcher holds for AmneziaWG. The value was replaced with 1280, because AmneziaWG pads every packet and a higher MTU makes the tunnel connect and then carry no data.",
+      "text_ru": "MTU в поле {path} был {value} — выше потолка 1280, который лаунчер держит для AmneziaWG. Значение заменено на 1280: AmneziaWG набивает каждый пакет, и при более высоком MTU туннель поднимается, а данные по нему не идут.",
+      "cause_en": "AmneziaWG wraps every packet in junk and padding, so an obfuscated packet is bigger than the plain WireGuard one the MTU was calculated for. Once it exceeds the path MTU the system refuses to send it at all (\"sendmsg: message too long\") instead of fragmenting it: the handshake completes, the tunnel looks up, and nothing goes through. Link generators copy the MTU from the plain WireGuard profile (1420) or from the Amnezia export (1376) without accounting for that overhead.",
+      "cause_ru": "AmneziaWG оборачивает каждый пакет мусором и набивкой, поэтому обфусцированный пакет больше обычного WireGuard-пакета, под который считался MTU. Как только он превышает MTU пути, система отказывается его отправлять вовсе («sendmsg: message too long») вместо фрагментации: рукопожатие проходит, туннель выглядит поднятым, а трафика нет. Генераторы ссылок переносят MTU из обычного профиля WireGuard (1420) или из экспорта Amnezia (1376), не учитывая эти накладные расходы.",
+      "fix_en": [
+        "Nothing to do in most cases: 1280 is the MTU AmneziaWG itself recommends, and the tunnel works at it.",
+        "If the node still carries no data, the MTU is not the cause — check the keys and the server."
+      ],
+      "fix_ru": [
+        "Чаще всего делать ничего не нужно: 1280 — тот MTU, который рекомендует сам AmneziaWG, и туннель на нём работает.",
+        "Если данные всё равно не идут, дело не в MTU — проверьте ключи и сервер."
+      ],
+      "desc": "wireguard.body.mtu выше 1280 на узле с любым AWG-полем ЗАМЕНЯЕТСЯ на 1280 — правило значения реестра (max_when, контракт 1.1.5). Потолок 1280 = рекомендация AmneziaWG и минимум IPv6, с запасом под S3/S4 (1500 - 28 UDP/IP - 32 WG - 60 max S3/S4 = 1380). Решение владельца 05.09.2026 на живых узлах: экспорт Amnezia несёт 1376, данные на нём не шли, на 1280 туннель заработал (память awg-mtu-too-high). ДО контракта 1.1.5 правило жило кодом в парсере ссылки (awgMaxMTU) и потому не применялось к телу из sing-box-импорта — расхождение входов, находка №5 LEGACY_AUDIT. ИСКЛЮЧЕНИЕ по входу: на sing-box JSON тело написано в форме ядра самим человеком или подпиской, значение НЕ заменяется, и узел получает info-код awg_mtu_high (решение владельца 18.09.2026, except_sources; парность входов нарушена намеренно, DRIFT §7.23). Подстановка 1280 при ОТСУТСТВИИ mtu кода не даёт — это дефолт, а не замена.",
+      "dart": "awgClampMtu → по реестру (max_when), см. TASKS_LXBOX §24.14",
+      "go": "core/config/nodeflow/sanitize.go applyMaxWhen; правило — contract/registry/protocols/wireguard.json body.fields.mtu.max_when"
+    },
+    "awg_mtu_high": {
+      "severity": "info",
+      "params": [
+        "value",
+        "path"
+      ],
+      "title_en": "AmneziaWG: MTU above 1280",
+      "title_ru": "AmneziaWG: MTU выше 1280",
+      "text_en": "The MTU at {path} is {value}, above the 1280 this launcher recommends for AmneziaWG. The value was kept as written, because the body came in the core's own form; be aware that a too-high MTU makes an AmneziaWG tunnel connect and then carry no data.",
+      "text_ru": "MTU в поле {path} равен {value} — выше 1280, которые лаунчер рекомендует для AmneziaWG. Значение оставлено как записано: тело пришло в собственной форме ядра. Учтите, что при завышенном MTU туннель AmneziaWG поднимается, а данные по нему не идут.",
+      "cause_en": "AmneziaWG pads every packet, so the obfuscated packet is bigger than the plain WireGuard one the MTU was calculated for; past the path MTU the system refuses to send it (\"sendmsg: message too long\") instead of fragmenting. The value is kept here because a sing-box body is written in the core's own form, by hand or by the subscription, and the launcher does not silently rewrite what you wrote yourself.",
+      "cause_ru": "AmneziaWG набивает каждый пакет, и обфусцированный пакет больше обычного WireGuard-пакета, под который считался MTU; за пределами MTU пути система отказывается его слать («sendmsg: message too long») вместо фрагментации. Значение здесь сохраняется, потому что тело sing-box написано в собственной форме ядра — руками или подпиской, — а написанное вами лаунчер молча не переписывает.",
+      "fix_en": [
+        "Nothing to do if the tunnel carries data: your server accepts this MTU.",
+        "If the handshake succeeds but nothing goes through, lower the MTU to 1280 in the node body."
+      ],
+      "fix_ru": [
+        "Если данные по туннелю идут, делать ничего не нужно: ваш сервер держит такой MTU.",
+        "Если рукопожатие проходит, а трафика нет, понизьте mtu до 1280 в теле узла."
+      ],
+      "desc": "Парный info-код к awg_mtu_clamped для входа `singbox`: тело в форме ядра не переписывается, узел получает уведомление. Решение владельца 18.09.2026 — молча править тело, которое человек написал сам в форме ядра, лаунчер не вправе; ссылку/.conf сочинял генератор провайдера, и там действует замена. Различие входов НАМЕРЕННОЕ и документировано в DRIFT §7.23. Вход определяется по origin узла и потому переживает перезапуск: пересчёт кодов на загрузке state (sanitizeStoredNodeBody) читает Origin.Kind, иначе исключение терялось бы после первой же загрузки и узел получал бы кламп задним числом.",
+      "dart": null,
+      "go": "core/config/nodeflow/sanitize.go applyMaxWhen (ветка sourceExcepted); правило — contract/registry/protocols/wireguard.json body.fields.mtu.max_when.note_code"
+    },
     "amnezia_container_choice": {
       "severity": "info",
       "params": [

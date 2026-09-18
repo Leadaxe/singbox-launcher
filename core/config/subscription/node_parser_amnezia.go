@@ -362,9 +362,18 @@ func findWGIniText(v interface{}, depth int) (string, map[string]interface{}) {
 // amneziaPrepareConf доводит [Interface]-текст экспорта до вида, из которого
 // wgConfToURI соберёт полную ссылку. Две правки, обе — потеря данных без неё:
 //
-//   - MTU у AWG3-экспорта лежит НЕ в [Interface], а рядом с `config` в
-//     last_config ("1376"). Без него узел получал кламп 1280 и расходился с
-//     сервером. Явный MTU в [Interface] приоритетнее — он ближе к туннелю.
+//   - MTU у экспорта Amnezia лежит НЕ в [Interface], а рядом с `config` в
+//     last_config ("1376"). Явный MTU в [Interface] приоритетнее — он ближе к
+//     туннелю.
+//
+//     ОБОСНОВАНИЕ ЗДЕСЬ БЫЛО НЕВЕРНЫМ: комментарий утверждал, что подъём mtu
+//     из last_config спасает узел от клампа 1280, а кламп срабатывал ровно
+//     так же и возвращал 1280 — работа отменяла сама себя (находка №5
+//     LEGACY_AUDIT). Настоящая польза правки другая и к AWG отношения не
+//     имеет: у ОБЫЧНОГО WireGuard-профиля потолка нет вовсе, и без этой
+//     строки его узел терял прописанный сервером MTU целиком. У AWG-узла
+//     значение выше 1280 теперь заменяется правилом реестра (max_when) — и
+//     заменяется С КОДОМ, то есть человек об этом узнает, а не как раньше.
 //   - DNS = $PRIMARY_DNS, $SECONDARY_DNS — плейсхолдеры Amnezia; адреса лежат в
 //     корне профиля (dns1/dns2). Неразрешённый плейсхолдер выбрасывается из
 //     списка, пустой список не пишется вовсе: строка `dns=%24PRIMARY_DNS`
@@ -493,7 +502,8 @@ func parseWGConfSections(text string) (iface, peer map[string]string) {
 // wgConfToURI converts parsed [Interface]/[Peer] data into the canonical
 // wireguard:// URI accepted by parseWireGuardURI. AWG fields (Jc/Jmin/.../I1-I5)
 // map 1:1 to their lower-case query params; MTU is passed through verbatim —
-// parseWireGuardURI clamps AWG endpoints to awgMaxMTU (SPEC 073).
+// потолок AWG-узла держит правило реестра уже по ТЕЛУ
+// (wireguard.body.fields.mtu.max_when, контракт 1.1.5), а не парсер ссылки.
 func wgConfToURI(confText, label string) (string, error) {
 	iface, peer := parseWGConfSections(confText)
 

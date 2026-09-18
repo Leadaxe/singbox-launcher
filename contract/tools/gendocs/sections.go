@@ -2,6 +2,7 @@ package main
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/registry"
@@ -12,6 +13,64 @@ import (
 // отдельного текстового поля: свободный список `degrade[]` из реестра снят
 // именно потому, что расходился с правилами, по которым конвейер работает на
 // самом деле.
+
+// conditionPhrase — английская запись условия применимости правила значения
+// (`when.any_set`).
+//
+// Условие называет РОД узла набором полей, и печатать здесь все два десятка
+// имён значило бы утопить правило в списке: человек читает страницу, чтобы
+// понять, к нему ли это относится, а не чтобы сверить набор. Поэтому — первые
+// несколько имён и «and N more», а полный набор виден в самом реестре.
+func conditionPhrase(c *registry.Condition) string {
+	if c == nil || len(c.AnySet) == 0 {
+		return ""
+	}
+	const shown = 3
+	names := c.AnySet
+	head := names
+	tail := 0
+	if len(names) > shown {
+		head, tail = names[:shown], len(names)-shown
+	}
+	out := " when any of " + codeList(head) + " is set"
+	if tail > 0 {
+		out += " (and " + strconv.Itoa(tail) + " more)"
+	}
+	return out
+}
+
+// maxWhenPhrase — английская запись условного потолка: что заменяется, когда
+// и с каким кодом.
+func maxWhenPhrase(mw *registry.MaxWhen, linkPrefix string) string {
+	if mw == nil {
+		return ""
+	}
+	out := "Above " + scalar(mw.Max) + ": replaced with " + scalar(mw.Max) +
+		conditionPhrase(mw.When)
+	if mw.Code != "" {
+		out += " → " + warnLink(mw.Code, linkPrefix)
+	}
+	if len(mw.ExceptSources) > 0 {
+		// Исключение по входу — не деталь реализации, а то, что человек
+		// увидит как разное поведение на разных импортах. Молчать о нём
+		// нельзя: узел из подписки и тот же узел JSON-ом ведут себя по-разному.
+		out += ". From " + codeList(mw.ExceptSources) +
+			": kept as written, with a note"
+		if mw.NoteCode != "" {
+			out += " → " + warnLink(mw.NoteCode, linkPrefix)
+		}
+	}
+	return out
+}
+
+// lowerFirst опускает первую букву фразы: одна и та же формулировка встаёт и
+// самостоятельным пунктом («Above 1280: …»), и продолжением строки после тире.
+func lowerFirst(s string) string {
+	if s == "" || s[0] < 'A' || s[0] > 'Z' {
+		return s
+	}
+	return string(s[0]-'A'+'a') + s[1:]
+}
 
 // renderSchemeWarnings — раздел «Diagnosed problems».
 //
@@ -108,6 +167,14 @@ func collectSchemeUsages(out map[string][]usage, scheme, path string, f *registr
 	}
 	if dw := f.DefaultWhen; dw != nil && dw.Absent && dw.Code != "" {
 		add(dw.Code, "the field is absent", "filled in with "+scalar(dw.Value))
+	}
+	if mw := f.MaxWhen; mw != nil {
+		add(mw.Code, "the value is above "+scalar(mw.Max)+conditionPhrase(mw.When),
+			"replaced with "+scalar(mw.Max))
+		if mw.NoteCode != "" {
+			add(mw.NoteCode, "the value is above "+scalar(mw.Max)+conditionPhrase(mw.When)+
+				", but the body came from "+codeList(mw.ExceptSources), actionKept)
+		}
 	}
 	if f.NormalizeCode != "" {
 		add(f.NormalizeCode, "the value had to be cleaned up ("+f.Normalize+")", "value cleaned up")
@@ -287,11 +354,15 @@ func collectReplacements(out *[]string, prefix string, order []string, fields ma
 			*out = append(*out, line)
 		}
 		if dw := f.DefaultWhen; dw != nil && dw.Absent {
-			line := "`" + path + "` — when absent, filled in with " + scalar(dw.Value)
+			line := "`" + path + "` — when absent, filled in with " + scalar(dw.Value) +
+				conditionPhrase(dw.When)
 			if dw.Code != "" {
 				line += " → " + warnLink(dw.Code, "../")
 			}
 			*out = append(*out, line)
+		}
+		if mw := f.MaxWhen; mw != nil {
+			*out = append(*out, "`"+path+"` — "+lowerFirst(maxWhenPhrase(mw, "../")))
 		}
 		if names := fieldAliasNames(f.Aliases); len(names) > 0 {
 			*out = append(*out, "`"+path+"` — also read from "+codeList(names))
@@ -403,7 +474,16 @@ func collectDegradation(out map[string][]string, scheme, path string, f *registr
 		put(actionRemoved, "`"+path+"` — conflicts with another field of the same node")
 	}
 	if dw := f.DefaultWhen; dw != nil && dw.Absent {
-		put("replaced", "`"+path+"` — absent value is filled in with "+scalar(dw.Value))
+		put("replaced", "`"+path+"` — absent value is filled in with "+scalar(dw.Value)+
+			conditionPhrase(dw.When))
+	}
+	if mw := f.MaxWhen; mw != nil {
+		put("replaced", "`"+path+"` — a value above "+scalar(mw.Max)+
+			" is replaced with "+scalar(mw.Max)+conditionPhrase(mw.When))
+		if mw.NoteCode != "" {
+			put(actionKept, "`"+path+"` — a value above "+scalar(mw.Max)+
+				" coming from "+codeList(mw.ExceptSources)+" is kept, with a note")
+		}
 	}
 	if g := bodyGate(f); g != "" {
 		put("gated", "`"+path+"` — needs "+strings.TrimPrefix(g, "Only written when: "))

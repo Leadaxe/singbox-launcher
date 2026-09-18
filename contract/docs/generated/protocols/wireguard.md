@@ -70,7 +70,7 @@ Everything a link of this scheme can carry. **Maps to** points at the body field
 - <a id="link-proto-mtu"></a>**`mtu`** — Tunnel MTU.
   - Type: int
   - Maps to: [`mtu`](#body-mtu)
-  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid) · If absent: filled in with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more) · Above `1280`: replaced with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more) → [`awg_mtu_clamped`](../warnings.md#awg_mtu_clamped). From `singbox`: kept as written, with a note → [`awg_mtu_high`](../warnings.md#awg_mtu_high)
 - <a id="link-proto-keepalive"></a>**`keepalive`** — Persistent keep-alive interval.
   - Type: int
   - Maps to: `peers[].persistent_keepalive_interval`
@@ -175,6 +175,8 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Default: `1408`
   - Set by link parameter: [`mtu`](#link-proto-mtu)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - If absent: filled in with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more)
+  - Above `1280`: replaced with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more) → [`awg_mtu_clamped`](../warnings.md#awg_mtu_clamped). From `singbox`: kept as written, with a note → [`awg_mtu_high`](../warnings.md#awg_mtu_high)
 - <a id="body-address"></a>**`address`** — Addresses assigned to the tunnel interface.
   - Type: string_array, format `cidr`
   - Required: the node is dropped without it
@@ -394,6 +396,10 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`jmax`](#body-jmax) — the value does not fit the field → removed
   - [`s1`](#body-s1) — the value does not fit the field → removed
   - [`s2`](#body-s2) — the value does not fit the field → removed
+- [`awg_mtu_clamped`](../warnings.md#awg_mtu_clamped)
+  - [`mtu`](#body-mtu) — the value is above `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more) → replaced with `1280`
+- [`awg_mtu_high`](../warnings.md#awg_mtu_high)
+  - [`mtu`](#body-mtu) — the value is above `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more), but the body came from `singbox` → kept with a notice
 - [`field_conflict`](../warnings.md#field_conflict)
   - [`listen_port`](#body-listen-port) — conflicts with `detour` → removed
   - [`i1`](#body-i1) — conflicts with `id` → removed
@@ -433,6 +439,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 **Values.** What the sanitizer does to a value before it reaches the node body.
 
+- `mtu` — when absent, filled in with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more)
+- `mtu` — above `1280`: replaced with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more) → [`awg_mtu_clamped`](../warnings.md#awg_mtu_clamped). From `singbox`: kept as written, with a note → [`awg_mtu_high`](../warnings.md#awg_mtu_high)
 - `ip` — normalized: `trim_lower`
 - `ib` — normalized: `trim_lower`
 
@@ -440,8 +448,6 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 - a bare IP in `address` or `allowed_ips` (`10.0.0.2`, `fd00::2`) → `10.0.0.2/32`, `fd00::2/128` — wg-quick config files write single addresses without a prefix length; the core field is a CIDR.
   - Kind: `spelling`
-- `mtu` above 1280 on a node carrying AmneziaWG fields → `mtu: 1280` — AmneziaWG adds per-packet overhead, and an MTU left too high silently drops data instead of fragmenting it.
-  - Kind: `default`
 
 ## Degradation
 
@@ -481,6 +487,15 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `s4` — invalid value
 - `udp_nat_max` — invalid value
 - `workers` — invalid value
+
+**The value is replaced, the node lives on**
+
+- `mtu` — a value above `1280` is replaced with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more)
+- `mtu` — absent value is filled in with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more)
+
+**Kept as is, with a notice**
+
+- `mtu` — a value above `1280` coming from `singbox` is kept, with a note
 
 **Left out when the running core is too old**
 

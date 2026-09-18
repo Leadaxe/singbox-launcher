@@ -20,6 +20,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`awg3_random_trailers_wide_headers`](#awg3_random_trailers_wide_headers) · `info` — AmneziaWG 3.x: wide headers with random trailers
 - [`awg_header_invalid`](#awg_header_invalid) · `warning` — AmneziaWG: field {field} removed
 - [`awg_headers_overlap`](#awg_headers_overlap) · `error` — AmneziaWG: headers {a} and {b} overlap
+- [`awg_mtu_clamped`](#awg_mtu_clamped) · `warning` — AmneziaWG: MTU lowered to 1280
+- [`awg_mtu_high`](#awg_mtu_high) · `info` — AmneziaWG: MTU above 1280
 - [`chain_cycle_through_direction`](#chain_cycle_through_direction) · `warning` — Chain {chain} excluded from {direction}
 - [`chain_hop_missing`](#chain_hop_missing) · `error` — Chain: hop {position} not found
 - [`chain_invalid`](#chain_invalid) · `error` — Chain is malformed
@@ -261,6 +263,42 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="awg_mtu_clamped"></a>
+### awg_mtu_clamped
+
+**severity:** `warning` · **params:** `value`, `path`
+
+**AmneziaWG: MTU lowered to 1280**
+
+- **What happened:** The MTU at {path} was {value}, above the 1280 ceiling this launcher holds for AmneziaWG. The value was replaced with 1280, because AmneziaWG pads every packet and a higher MTU makes the tunnel connect and then carry no data.
+- **Why it happens:** AmneziaWG wraps every packet in junk and padding, so an obfuscated packet is bigger than the plain WireGuard one the MTU was calculated for. Once it exceeds the path MTU the system refuses to send it at all ("sendmsg: message too long") instead of fragmenting it: the handshake completes, the tunnel looks up, and nothing goes through. Link generators copy the MTU from the plain WireGuard profile (1420) or from the Amnezia export (1376) without accounting for that overhead.
+- **What you can do:**
+  - Nothing to do in most cases: 1280 is the MTU AmneziaWG itself recommends, and the tunnel works at it.
+  - If the node still carries no data, the MTU is not the cause — check the keys and the server.
+
+**Where it comes from:**
+
+- [`wireguard`](protocols/wireguard.md)
+  - [`mtu`](protocols/wireguard.md#body-mtu) — the value is above `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more) → replaced with `1280`
+
+<a id="awg_mtu_high"></a>
+### awg_mtu_high
+
+**severity:** `info` · **params:** `value`, `path`
+
+**AmneziaWG: MTU above 1280**
+
+- **What happened:** The MTU at {path} is {value}, above the 1280 this launcher recommends for AmneziaWG. The value was kept as written, because the body came in the core's own form; be aware that a too-high MTU makes an AmneziaWG tunnel connect and then carry no data.
+- **Why it happens:** AmneziaWG pads every packet, so the obfuscated packet is bigger than the plain WireGuard one the MTU was calculated for; past the path MTU the system refuses to send it ("sendmsg: message too long") instead of fragmenting. The value is kept here because a sing-box body is written in the core's own form, by hand or by the subscription, and the launcher does not silently rewrite what you wrote yourself.
+- **What you can do:**
+  - Nothing to do if the tunnel carries data: your server accepts this MTU.
+  - If the handshake succeeds but nothing goes through, lower the MTU to 1280 in the node body.
+
+**Where it comes from:**
+
+- [`wireguard`](protocols/wireguard.md)
+  - [`mtu`](protocols/wireguard.md#body-mtu) — the value is above `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more), but the body came from `singbox` → kept with a notice
 
 <a id="chain_cycle_through_direction"></a>
 ### chain_cycle_through_direction

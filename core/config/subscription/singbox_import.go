@@ -355,11 +355,15 @@ func parseSingboxEntry(entry map[string]interface{}, cfgIdx, entryIdx int) (*con
 	sanitizeCodes := SanitizeSingboxOutboundMap(ob, tag)
 
 	node := &configtypes.ParsedNode{
-		Tag:         tag,
-		Scheme:      scheme,
-		Server:      server,
-		Port:        port,
-		Label:       tag,
+		Tag:    tag,
+		Scheme: scheme,
+		Server: server,
+		Port:   port,
+		Label:  tag,
+		// Вход назван явно: тело приехало в СОБСТВЕННОЙ форме ядра, и правила
+		// значений с `except_sources` обязаны это видеть (потолок MTU у
+		// AmneziaWG здесь не заменяет значение, а предупреждает о нём).
+		Source:      configtypes.NodeSourceSingbox,
 		Outbound:    ob,
 		SourceIndex: configtypes.UnsetSourceIndex,
 	}

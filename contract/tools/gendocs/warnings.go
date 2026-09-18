@@ -259,6 +259,14 @@ func walkField(out map[string][]usage, scheme, path string, f *registry.Field) {
 	if dw := f.DefaultWhen; dw != nil && dw.Absent && dw.Code != "" {
 		add(dw.Code, "the field is absent", "filled in with "+scalar(dw.Value))
 	}
+	if mw := f.MaxWhen; mw != nil {
+		add(mw.Code, "the value is above "+scalar(mw.Max)+conditionPhrase(mw.When),
+			"replaced with "+scalar(mw.Max))
+		if mw.NoteCode != "" {
+			add(mw.NoteCode, "the value is above "+scalar(mw.Max)+conditionPhrase(mw.When)+
+				", but the body came from "+codeList(mw.ExceptSources), actionKept)
+		}
+	}
 	if f.NormalizeCode != "" {
 		add(f.NormalizeCode, "the value had to be cleaned up ("+f.Normalize+")", "value cleaned up")
 	}

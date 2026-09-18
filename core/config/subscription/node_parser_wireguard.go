@@ -129,32 +129,22 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 		return nil, fmt.Errorf("invalid wireguard URI: address or allowedips empty after parse")
 	}
 
-	// AmneziaWG transport padding (S3/S4) inflates every data packet, so an AWG
-	// endpoint needs a lower MTU than plain WireGuard — otherwise a full-size
-	// packet exceeds the path MTU and the OS rejects it with EMSGSIZE
-	// ("message too long"): the handshake succeeds but data silently stops.
-	// Default AWG to awgMaxMTU and clamp any higher URI value down to it; honor an
-	// explicitly lower value. Plain WireGuard emits no mtu at all when the URI
-	// carries none: the core defaults it to 1408 itself
-	// (transport/wireguard/endpoint.go), so writing our own 1420 both contradicts
-	// the core and gave the node a different identity hash than LxBox
-	// (SPEC 103, D-026 / CANON §2.4).
-	// AWG3 (SPEC 123) клампится так же: экспорт Amnezia несёт mtu 1376, но
-	// у владельца на нём данные не шли, а на 1280 туннель заработал —
-	// решение 2026-09-05: дефолт 1280 для всего AmneziaWG.
-	isAWG := hasAWGParams(q)
+	// MTU только ПЕРЕНОСИТСЯ из ссылки в тело. Ни дефолта, ни потолка здесь
+	// больше нет: и то и другое — правила ЗНАЧЕНИЯ, и живут они в реестре
+	// (contract/registry/protocols/wireguard.json, body.fields.mtu:
+	// default_when даёт AWG-узлу 1280, когда mtu не задан, max_when держит
+	// потолок 1280). Пока правило жило здесь, оно не применялось к телу из
+	// sing-box-импорта — один и тот же узел ссылкой и объектом получал разный
+	// MTU (находка №5 LEGACY_AUDIT, контракт 1.1.5).
+	//
+	// Plain WireGuard без mtu= поля не получает вовсе: ядро само ставит 1408
+	// (transport/wireguard/endpoint.go), и свой 1420 и противоречил бы ядру, и
+	// давал узлу другой identity-хеш, чем у LxBox (SPEC 103, D-026 / CANON §2.4).
 	mtu := 0
-	if isAWG {
-		mtu = awgMaxMTU
-	}
 	if m := q.Get("mtu"); m != "" {
 		if mi, err := strconv.Atoi(m); err == nil {
 			mtu = mi
 		}
-	}
-	if isAWG && mtu > awgMaxMTU {
-		debuglog.DebugLog("parseWireGuardURI: clamping AWG mtu %d -> %d (AmneziaWG padding overhead)", mtu, awgMaxMTU)
-		mtu = awgMaxMTU
 	}
 	listenport := 0
 	if lp := q.Get("listenport"); lp != "" {
@@ -398,28 +388,21 @@ var (
 	awgMasqueradeFields = []string{"ip", "id", "ib"}
 )
 
-const (
-	// awgMaxMTU caps AmneziaWG endpoints. It is the AmneziaWG-recommended client
-	// MTU and the IPv6 minimum, leaving headroom for S3/S4 transport padding so
-	// the obfuscated packet stays under a 1500-byte path (1500 - 28 UDP/IP - 32
-	// WireGuard - 60 max S3/S4 = 1380 ceiling; 1280 adds margin for PPPoE/mobile/
-	// nested paths). A too-high MTU fails silently (handshake OK, no data), so we
-	// clamp rather than trust the URI value. See SPEC 073 and the lx-config docs.
-	awgMaxMTU = 1280
-)
-
 // hasAWGParams reports whether the query carries any AmneziaWG obfuscation field
 // (numeric jc/jmin/jmax/s/h, string i1-i5, or the masquerade sugar ip/id/ib).
-// Drives the MTU policy: AWG endpoints are clamped to awgMaxMTU; a plain
-// WireGuard URI is left untouched.
+//
+// ПОЛИТИКУ MTU ЭТА ФУНКЦИЯ БОЛЬШЕ НЕ ВЕДЁТ. Потолок и дефолт AWG-узла —
+// правила значения реестра (wireguard.body.fields.mtu, max_when/default_when),
+// и условие «узел AmneziaWG» там выражено тем же набором полей, но по ТЕЛУ, а
+// не по query: так оно работает на всех входах, а не только на ссылке
+// (контракт 1.1.5). Здесь предикат остался для решений уровня РАЗБОРА ссылки —
+// нужно ли вообще читать AWG-поля из query.
 //
 // The masquerade sugar counts on its own: a link carrying only ip/id/ib is an
-// AWG endpoint too (the core expands the sugar into i1), and leaving its MTU
-// unclamped reproduces the silent AWG failure — the handshake completes and no
-// data flows.
+// AWG endpoint too (the core expands the sugar into i1).
 // An AWG3 marker (header protection, timings, ranged keepalive — SPEC 123)
 // counts too: such a link is an AmneziaWG endpoint even without a single AWG2
-// field, and its MTU is clamped like any other AmneziaWG endpoint.
+// field.
 func hasAWGParams(q url.Values) bool {
 	for _, list := range [][]string{awgNumericFields, awgStringFields, awgMasqueradeFields} {
 		for _, k := range list {

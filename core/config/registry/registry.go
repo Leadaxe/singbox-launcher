@@ -66,6 +66,16 @@ type Field struct {
 	// upload speed» ФАТАЛОМ НА ВЕСЬ config.json, и ссылки сплошь и рядом
 	// скорость не несут.
 	DefaultWhen *DefaultWhen `json:"default_when"`
+	// MaxWhen — УСЛОВНЫЙ потолок значения: обычные `min`/`max` действуют на
+	// поле всегда, а этот — только когда выполнено `when`.
+	//
+	// Нужен ровно там, где потолок диктует не поле, а РОД узла: у AmneziaWG
+	// накладные расходы на пакет (junk/padding) делают mtu выше 1280
+	// нерабочим — рукопожатие проходит, а данные молча не идут («sendmsg:
+	// message too long», память awg-mtu-too-high). У plain WireGuard того же
+	// поля потолка нет. Выразить это обычным `max` нельзя: он снял бы mtu у
+	// каждого обычного WG-узла.
+	MaxWhen *MaxWhen `json:"max_when"`
 	// СНЯТО (контракт 1.1.4): ForbiddenWhen. Атрибут `forbidden_when` был
 	// объявлен в SPEC 131 §3.2 и реализован в трёх местах (здесь, в
 	// санитайзере, в генераторе доков), но НИ ОДНО поле реестра его так и не
@@ -132,11 +142,43 @@ type Advisory struct {
 //
 // `absent: true` — подставить, когда поля нет вовсе (единственная форма,
 // которая сегодня нужна). `value` — что подставить; `code` — код, которым об
-// этом сообщить, если сообщать стоит.
+// этом сообщить, если сообщать стоит; `when` — условие, при котором правило
+// вообще применяется (у wireguard.mtu дефолт 1280 — только для AmneziaWG,
+// plain WG обходится дефолтом ядра и поля не получает вовсе).
 type DefaultWhen struct {
 	Absent bool        `json:"absent"`
 	Value  interface{} `json:"value"`
 	Code   string      `json:"code"`
+	When   *Condition  `json:"when"`
+}
+
+// MaxWhen — условный потолок значения (см. Field.MaxWhen).
+//
+// `except_sources` — входы, на которых потолок НЕ применяется: значение
+// остаётся как пришло, а узел получает информационный код `note_code`.
+// Основание не техническое, а по владению: тело в форме ядра (sing-box JSON)
+// человек или подписка написали САМИ и сознательно, и переписывать его молча
+// лаунчер не вправе — он предупреждает. Значение из ссылки/.conf сочинял
+// генератор провайдера, там правило работает заменой (решение владельца
+// 18.09.2026, DRIFT §7.23).
+type MaxWhen struct {
+	Max  float64    `json:"max"`
+	Code string     `json:"code"`
+	When *Condition `json:"when"`
+	// ExceptSources — имена входов из `sources` схемы (uri|singbox|xray|
+	// wgconf|amnezia).
+	ExceptSources []string `json:"except_sources"`
+	NoteCode      string   `json:"note_code"`
+}
+
+// Condition — условие применимости правила значения.
+//
+// `any_set` — «задано ЛЮБОЕ из перечисленных полей». Одного `Relation.Path`
+// здесь мало: «узел AmneziaWG» — это не одно поле, а набор из двадцати с
+// лишним, любого из которых достаточно. Пути — от корня тела, как и везде в
+// реестре.
+type Condition struct {
+	AnySet []string `json:"any_set"`
 }
 
 // Relation — связь поля с другим полем (conflicts / requires / advisory.when).

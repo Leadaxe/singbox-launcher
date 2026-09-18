@@ -125,9 +125,11 @@ func TestShareURIFromWireGuardEndpoint_AWG3RoundTrip(t *testing.T) {
 	if got, _ := first.Outbound["header_protection_key"].(string); got != awg3ValidHeaderKey {
 		t.Fatalf("header_protection_key = %q, want %q ('+' must survive the query decode)", got, awg3ValidHeaderKey)
 	}
-	// AWG3 выведен из-под клампа AWG2: MTU задаёт сервер.
-	if got, _ := first.Outbound["mtu"].(int); got != 1280 {
-		t.Errorf("mtu = %v, want 1376 clamped to 1280 (AWG3 clamps like AWG2)", first.Outbound["mtu"])
+	// MTU ссылки доезжает как записан: потолок 1280 накладывает уже санитайзер
+	// по телу (wireguard.body.fields.mtu.max_when, контракт 1.1.5), и здесь
+	// проверяется именно round-trip значения, а не правило.
+	if got, _ := first.Outbound["mtu"].(int); got != 1376 {
+		t.Errorf("mtu = %v, want 1376 verbatim (потолок — правило реестра, не парсера)", first.Outbound["mtu"])
 	}
 	share, err := ShareURIFromWireGuardEndpoint(first.Outbound)
 	if err != nil {

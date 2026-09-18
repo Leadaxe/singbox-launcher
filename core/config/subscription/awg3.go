@@ -110,9 +110,16 @@ func awg3ParamKeys() []string {
 }
 
 // hasAWG3Params reports whether a wireguard:// query carries an AWG3 marker: an
-// AWG3 param, or a RANGED keepalive ("25-35"). Decided BEFORE the endpoint is
-// built because it drives the MTU policy: an AWG3 node keeps the MTU the server
-// prescribed (1376 in Amnezia exports), the AWG2 clamp does not apply (SPEC 123 §2).
+// AWG3 param, or a RANGED keepalive ("25-35").
+//
+// Комментарий здесь долго утверждал обратное коду: будто AWG3-узел сохраняет
+// прописанный сервером MTU (1376 у экспортов Amnezia) и потолок AWG2 к нему не
+// применяется. На деле hasAWGParams возвращал hasAWG3Params, то есть AWG3
+// клампился наравне со всеми, — и решение владельца 05.09.2026 именно такое
+// (на 1376 данные не шли, на 1280 туннель заработал). Расхождение снято
+// вместе с переносом правила в реестр: потолок 1280 действует на ЛЮБОМ
+// AmneziaWG-узле, включая AWG3 (wireguard.body.fields.mtu.max_when,
+// контракт 1.1.5, находка №5 LEGACY_AUDIT).
 func hasAWG3Params(q url.Values) bool {
 	for _, k := range awg3ParamKeys() {
 		if strings.TrimSpace(q.Get(k)) != "" {

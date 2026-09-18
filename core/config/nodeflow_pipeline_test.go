@@ -15,6 +15,7 @@ import (
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
+	"singbox-launcher/core/state"
 )
 
 // pipelineNode — то, что конвейер сохранит: тело и коды.
@@ -36,9 +37,12 @@ func pipelineFromURI(t *testing.T, uri string) pipelineNode {
 	return pipelineNode{Body: string(body), Warnings: warns}
 }
 
-func pipelineFromOutbound(t *testing.T, scheme string, outbound map[string]interface{}) pipelineNode {
+// pipelineFromOutbound — тело картой sing-box. `source` — вход, которым тело
+// приехало: его читают правила значений, различающие, кто сочинил значение
+// (см. materializeBody).
+func pipelineFromOutbound(t *testing.T, scheme, source string, outbound map[string]interface{}) pipelineNode {
 	t.Helper()
-	body, warns, drop := materializeBody(scheme, outbound)
+	body, warns, drop := materializeBody(scheme, source, outbound)
 	if drop != nil {
 		t.Fatalf("узел отбракован конвейером: %s", dropReason(drop))
 	}
@@ -106,7 +110,7 @@ func TestPipelineAllInputsAgree(t *testing.T) {
 		`{"serverName":"` + sni + `","fingerprint":"totally-bogus","publicKey":"` + pbk + `","shortId":"0x1a2"}}}]}]`
 
 	fromURI := pipelineFromURI(t, uri)
-	fromBody := pipelineFromOutbound(t, "vless", singboxBody)
+	fromBody := pipelineFromOutbound(t, "vless", configtypes.NodeSourceSingbox, singboxBody)
 
 	if fromURI.Body != fromBody.Body {
 		t.Errorf("тела разошлись\n  ссылка: %s\n  тело:   %s", fromURI.Body, fromBody.Body)
@@ -122,7 +126,7 @@ func TestPipelineAllInputsAgree(t *testing.T) {
 	if err != nil || len(xrayNodes) != 1 {
 		t.Fatalf("ParseNodesFromXrayJSONArray: err=%v nodes=%d", err, len(xrayNodes))
 	}
-	fromXray := pipelineFromOutbound(t, "vless", xrayNodes[0].Outbound)
+	fromXray := pipelineFromOutbound(t, "vless", configtypes.NodeSourceXray, xrayNodes[0].Outbound)
 	var uriEntry, xrayEntry map[string]interface{}
 	if err := json.Unmarshal([]byte(fromURI.Body), &uriEntry); err != nil {
 		t.Fatalf("тело ссылки не разбирается: %v", err)
@@ -266,7 +270,7 @@ func equalStrings(a, b []string) bool {
 func TestPipelineHysteriaV1BandwidthDefault(t *testing.T) {
 	inputs := map[string]pipelineNode{
 		"ссылка": pipelineFromURI(t, "hysteria://host.example.com:36712?auth=a&sni=host.example.com"),
-		"тело sing-box": pipelineFromOutbound(t, "hysteria", map[string]interface{}{
+		"тело sing-box": pipelineFromOutbound(t, "hysteria", configtypes.NodeSourceSingbox, map[string]interface{}{
 			"type": "hysteria", "server": "1.2.3.4", "server_port": 443,
 			"auth_str": "pw",
 			"tls":      map[string]interface{}{"enabled": true, "server_name": "a.b"},
@@ -283,5 +287,169 @@ func TestPipelineHysteriaV1BandwidthDefault(t *testing.T) {
 				t.Errorf("%s: %s = %#v — ядро отвергнет ВЕСЬ конфиг", name, key, entry[key])
 			}
 		}
+	}
+}
+
+// TestPipelineAWGMTUCeiling — потолок MTU у AmneziaWG как правило РЕЕСТРА
+// (SPEC 131, находка №5 LEGACY_AUDIT; контракт 1.1.5).
+//
+// Пока правило жило кодом в парсере ссылки (awgMaxMTU), оно не применялось к
+// телу из sing-box-импорта: один и тот же узел ссылкой и объектом получал
+// разный MTU, и объектная половина тихо уносила в ядро значение, на котором
+// туннель поднимается и не несёт данных. Теперь правило одно, в контракте, —
+// и проверяется здесь его результат на всех входах сразу.
+//
+// Парность входов нарушена НАМЕРЕННО (решение владельца 18.09.2026,
+// DRIFT §7.23): тело в форме ядра человек или подписка написали сами, и
+// молча переписывать его лаунчер не вправе — он предупреждает.
+func TestPipelineAWGMTUCeiling(t *testing.T) {
+	const (
+		priv = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+		pub  = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
+		host = "awg.example-1.com"
+		base = "publickey=" + pub + "&address=10.0.0.2/32"
+	)
+	uri := func(extra string) string {
+		return "wireguard://" + priv + "@" + host + ":51820?" + base + extra + "#awg"
+	}
+	// body — то же тело картой sing-box; `awg` решает, быть ли узлу AWG.
+	body := func(awg bool, mtu interface{}) map[string]interface{} {
+		ob := map[string]interface{}{
+			"type":        "wireguard",
+			"address":     []interface{}{"10.0.0.2/32"},
+			"private_key": priv,
+			"peers": []interface{}{map[string]interface{}{
+				"address": host, "port": 51820, "public_key": pub,
+				"allowed_ips": []interface{}{"0.0.0.0/0"},
+			}},
+		}
+		if awg {
+			ob["jc"] = 10
+		}
+		if mtu != nil {
+			ob["mtu"] = mtu
+		}
+		return ob
+	}
+
+	cases := []struct {
+		name    string
+		got     pipelineNode
+		wantMTU interface{} // nil = ключа mtu быть не должно
+		wantCod string      // "" = кодов по mtu быть не должно
+	}{
+		// Ссылка: значение сочинил генератор провайдера — правило заменяет.
+		{"ссылка awg без mtu", pipelineFromURI(t, uri("&jc=10")), float64(1280), ""},
+		{"ссылка awg mtu 1420", pipelineFromURI(t, uri("&jc=10&mtu=1420")), float64(1280), "awg_mtu_clamped"},
+		{"ссылка awg mtu 1200", pipelineFromURI(t, uri("&jc=10&mtu=1200")), float64(1200), ""},
+		// AWG3-маркер без единого поля AWG2 — тот же узел AmneziaWG.
+		{"ссылка awg3 mtu 1376", pipelineFromURI(t, uri("&randomtrailers=on&mtu=1376")), float64(1280), "awg_mtu_clamped"},
+		// jc=0 — законное «мусор выключен», а не «поля нет»: условие правила
+		// смотрит на НАЛИЧИЕ ключа. Прочитай оно значение — с такого узла
+		// потолок снялся бы, и вернулась бы ровно та тихая поломка.
+		{"ссылка awg jc=0 mtu 1420", pipelineFromURI(t, uri("&jc=0&mtu=1420")), float64(1280), "awg_mtu_clamped"},
+		// Обычный WireGuard правило не трогает вовсе.
+		{"ссылка plain wg mtu 1420", pipelineFromURI(t, uri("&mtu=1420")), float64(1420), ""},
+		{"ссылка plain wg без mtu", pipelineFromURI(t, uri("")), nil, ""},
+
+		// Тело sing-box: написано в форме ядра — значение СОХРАНЯЕТСЯ с info.
+		{"тело awg mtu 1420", pipelineFromOutbound(t, "wireguard", configtypes.NodeSourceSingbox, body(true, 1420)), float64(1420), "awg_mtu_high"},
+		// Дефолт при отсутствии mtu действует и здесь: это не замена
+		// написанного человеком, а дефолт.
+		{"тело awg без mtu", pipelineFromOutbound(t, "wireguard", configtypes.NodeSourceSingbox, body(true, nil)), float64(1280), ""},
+		{"тело plain wg mtu 1420", pipelineFromOutbound(t, "wireguard", configtypes.NodeSourceSingbox, body(false, 1420)), float64(1420), ""},
+		// Вход не назван — исключение не действует: молчать про завышенный
+		// MTU только потому, что вход забыли протянуть, нельзя.
+		{"тело awg mtu 1420, вход не назван", pipelineFromOutbound(t, "wireguard", "", body(true, 1420)), float64(1280), "awg_mtu_clamped"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var entry map[string]interface{}
+			if err := json.Unmarshal([]byte(c.got.Body), &entry); err != nil {
+				t.Fatalf("тело не разбирается: %v", err)
+			}
+			raw, present := entry["mtu"]
+			if c.wantMTU == nil {
+				if present {
+					t.Errorf("mtu = %v, want ключа нет", raw)
+				}
+			} else if raw != c.wantMTU {
+				t.Errorf("mtu = %#v, want %#v", raw, c.wantMTU)
+			}
+
+			var mtuCodes []string
+			for _, w := range c.got.Warnings {
+				if w.Path == "mtu" {
+					mtuCodes = append(mtuCodes, w.Code)
+				}
+			}
+			if c.wantCod == "" {
+				if len(mtuCodes) > 0 {
+					t.Errorf("коды по mtu = %v, want ни одного", mtuCodes)
+				}
+				return
+			}
+			if len(mtuCodes) != 1 || mtuCodes[0] != c.wantCod {
+				t.Errorf("коды по mtu = %v, want [%s]", mtuCodes, c.wantCod)
+			}
+		})
+	}
+}
+
+// TestPipelineAWGMTUExceptionSurvivesStateReload — исключение по входу обязано
+// пережить перезапуск.
+//
+// Это не «ещё один случай», а самостоятельный риск конструкции. Вход узла
+// живёт в двух местах: на разборе — в ParsedNode.Source, в сохранённом
+// состоянии — в Origin.Kind. Пересчёт кодов при загрузке state гоняет тело
+// через тот же конвейер и ВПРАВЕ переписать тело. Если бы он не знал входа,
+// JSON-узел с mtu 1420 был бы заклампен задним числом — то есть настройка
+// пользователя исчезала бы от перезапуска, молча и необратимо.
+func TestPipelineAWGMTUExceptionSurvivesStateReload(t *testing.T) {
+	stored := []byte(`{"type":"wireguard","mtu":1420,"address":["10.0.0.2/32"],` +
+		`"private_key":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","jc":10,` +
+		`"peers":[{"address":"awg.example-1.com","port":51820,` +
+		`"public_key":"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",` +
+		`"allowed_ips":["0.0.0.0/0"]}]}`)
+
+	cases := []struct {
+		name       string
+		originKind string
+		wantRewrit bool
+		wantCode   string
+	}{
+		// Узел из sing-box JSON: тело остаётся байт в байт, код — info.
+		{"origin=json", state.OriginKindJSON, false, "awg_mtu_high"},
+		// Узел из ссылки: значение заменяется, тело переписывается.
+		{"origin=uri", state.OriginKindURI, true, "awg_mtu_clamped"},
+		// .conf — ссылка того же рода.
+		{"origin=wg_ini", state.OriginKindWGIni, true, "awg_mtu_clamped"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			res, err := sanitizeStoredNodeBody(state.SanitizeBodyRequest{
+				Body: stored, OriginKind: c.originKind,
+			})
+			if err != nil {
+				t.Fatalf("пересчёт кодов: %v", err)
+			}
+			if res.Drop {
+				t.Fatal("узел объявлен непригодным — тело валидно")
+			}
+			if got := len(res.Body) > 0; got != c.wantRewrit {
+				t.Errorf("тело переписано = %v, want %v (body=%s)", got, c.wantRewrit, res.Body)
+			}
+			var codes []string
+			for _, w := range res.Warnings {
+				if w.Path == "mtu" {
+					codes = append(codes, w.Code)
+				}
+			}
+			if len(codes) != 1 || codes[0] != c.wantCode {
+				t.Errorf("коды по mtu = %v, want [%s]", codes, c.wantCode)
+			}
+		})
 	}
 }

@@ -14,7 +14,15 @@
 // Пересбор из origin.raw — это ПЕРЕразбор: он даёт другое тело (правила
 // парсера с тех пор менялись), то есть меняет узел, а не объясняет его.
 // Здесь задача обратная — объяснить то тело, которое у узла УЖЕ есть.
-// Поэтому санитайзер запускается по телу, а origin не читается вовсе.
+// Поэтому санитайзер запускается по ТЕЛУ, а origin.raw не читается вовсе.
+//
+// Из origin берётся ровно одно — `kind`, то есть ВХОД узла. Он не участвует
+// в разборе, он часть условия у правил, которые различают, кто сочинил
+// значение: тело в форме ядра человек или подписка написали сами, и лаунчер
+// его не переписывает, а предупреждает (потолок MTU у AmneziaWG, решение
+// владельца 18.09.2026). Без этого исключение жило бы до первой же загрузки
+// state — пересчёт увидел бы «вход неизвестен» и заклампил бы тело задним
+// числом, то есть настройка пользователя исчезала бы от перезапуска.
 //
 // # Когда переписывается тело
 //
@@ -61,7 +69,11 @@ func recountOneNode(node *Node) int {
 	if node.Warnings != nil || len(node.Body) == 0 {
 		return 0
 	}
-	res, err := migrationHooks.SanitizeBody(SanitizeBodyRequest{Body: node.Body})
+	originKind := ""
+	if node.Origin != nil {
+		originKind = node.Origin.Kind
+	}
+	res, err := migrationHooks.SanitizeBody(SanitizeBodyRequest{Body: node.Body, OriginKind: originKind})
 	if err != nil || res == nil {
 		if err != nil {
 			debuglog.WarnLog("state: node %q: warnings not recounted: %v", node.Tag, err)

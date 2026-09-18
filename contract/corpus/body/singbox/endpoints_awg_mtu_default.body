@@ -1,0 +1,5 @@
+# AWG-endpoint телом sing-box БЕЗ mtu: дефолт 1280 дописывается и здесь.
+# Исключение по входу (решение владельца 18.09.2026) касается только ЗАМЕНЫ
+# завышенного значения; подстановка дефолта работает на всех входах и кода не
+# даёт — это дефолт, а не замена написанного человеком.
+{"endpoints":[{"type":"wireguard","tag":"awg-ep-nomtu","address":["10.0.0.2/32"],"private_key":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=","jc":10,"peers":[{"address":"example-3.com","port":51820,"public_key":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=","allowed_ips":["0.0.0.0/0"]}]}]}

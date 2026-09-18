@@ -72,7 +72,7 @@
         "maps_to": "mtu",
         "desc_en": "Tunnel MTU.",
         "desc_ru": "MTU туннеля.",
-        "impl": "Plain WG: дефолт Go 1420 (upstream) vs Dart 1408 (sing-box) — РАСХОЖДЕНИЕ, влияет на identity-хеш plain-WG нод без mtu=. AWG (есть любое awg-поле): дефолт 1280, всё что выше клампится к 1280 в обоих (awgMaxMTU / awgClampMtu); явно меньший уважается. Битое значение → остаётся дефолт (поле mtu в endpoint эмитится всегда, в отличие от keepalive/listenport/reserved)."
+        "impl": "Parser-уровень: параметр только ПЕРЕНОСИТСЯ в body.mtu как есть, битое значение снимается общим правилом поля (on_invalid). Всё остальное решает реестр: дефолт 1280 у AWG-узла без mtu (default_when) и потолок 1280 (max_when) — см. body.fields.mtu. Plain WG без mtu поля не получает вовсе: ядро берёт свой 1408 (прежний Go-дефолт 1420 в парсере снят вместе с клампом, контракт 1.1.5). У Dart правило то же — awgClampMtu переводится на реестр, TASKS_LXBOX §24.14."
       },
       "keepalive": {
         "type": "int",
@@ -309,15 +309,6 @@
       "desc_en": "wg-quick config files write single addresses without a prefix length; the core field is a CIDR.",
       "desc_ru": "Файлы wg-quick пишут одиночные адреса без длины префикса; поле ядра — CIDR.",
       "impl": "core/config/subscription/node_parser_wireguard.go, wgconf_text.go."
-    },
-    {
-      "id": "awg_mtu_clamped",
-      "from": "`mtu` above 1280 on a node carrying AmneziaWG fields",
-      "to": "`mtu: 1280`",
-      "kind": "default",
-      "desc_en": "AmneziaWG adds per-packet overhead, and an MTU left too high silently drops data instead of fragmenting it.",
-      "desc_ru": "AmneziaWG добавляет накладные расходы на пакет, и завышенный MTU молча теряет данные вместо фрагментации.",
-      "impl": "core/config/subscription/awg3.go. Решение владельца: тихий отказ данных хуже мелких пакетов."
     }
   ],
   "refs": {
@@ -375,9 +366,25 @@
           "code": "type_invalid"
         },
         "default": 1408,
+        "default_when": {
+          "absent": true,
+          "value": 1280,
+          "when": {
+            "any_set": ["jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4", "i1", "i2", "i3", "i4", "i5", "id", "ip", "ib", "header_protection_key", "content_padding_addition", "rekey_after_time", "rekey_timeout", "reject_after_time", "keepalive_timeout", "max_handshake_attempts", "random_trailers", "disable_cookies"]
+          }
+        },
+        "max_when": {
+          "max": 1280,
+          "code": "awg_mtu_clamped",
+          "except_sources": ["singbox"],
+          "note_code": "awg_mtu_high",
+          "when": {
+            "any_set": ["jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4", "i1", "i2", "i3", "i4", "i5", "id", "ip", "ib", "header_protection_key", "content_padding_addition", "rekey_after_time", "rekey_timeout", "reject_after_time", "keepalive_timeout", "max_handshake_attempts", "random_trailers", "disable_cookies"]
+          }
+        },
         "desc_en": "Tunnel MTU in bytes.",
         "desc_ru": "MTU туннеля в байтах.",
-        "impl": "uint32, дефолт ядра 1408; при s4 > 0 дефолт 1280. Ядро предупреждает при mtu > 1492-60-s4. У AmneziaWG-узлов слишком большой mtu даёт «sendmsg: message too long» при успешном рукопожатии (память awg-mtu-too-high); для AWG3 лаунчер клампит до 1280 (решение владельца 05.09.2026)."
+        "impl": "uint32, дефолт ядра 1408; при s4 > 0 дефолт 1280. Ядро предупреждает при mtu > 1492-60-s4. У AmneziaWG-узлов слишком большой mtu даёт «sendmsg: message too long» при успешном рукопожатии (память awg-mtu-too-high): рукопожатие проходит, данные не идут. Потолок 1280 для ЛЮБОГО AmneziaWG-узла — решение владельца 05.09.2026; условие «узел AWG» = задан любой из awg-ключей корня (тот же набор, что был у hasAWGParams/hasAWG3Params в Go). Условие смотрит на НАЛИЧИЕ ключа, а не на непустоту: jc=0 — законное «мусор выключен» у настоящего AWG-узла (кейс awg_jc_zero_explicit). Прежде правило жило кодом в парсере ссылки (awgMaxMTU в node_parser_wireguard.go) и потому НЕ применялось к телу из sing-box-импорта — расхождение входов, находка №5 LEGACY_AUDIT; с контрактом 1.1.5 оно правило реестра. ИСКЛЮЧЕНИЕ ПО ВХОДУ (решение владельца 18.09.2026): на входе `singbox` тело написано в собственной форме ядра человеком или подпиской — значение сохраняется, узел получает info-код awg_mtu_high; на прочих входах (ссылка wg/awg, .conf, awg://base64, форма AWG) значение заменяется на 1280 с кодом awg_mtu_clamped. Парность входов здесь нарушена НАМЕРЕННО (DRIFT §7.23). Подстановка 1280 при отсутствии mtu кода НЕ даёт (это дефолт, а не замена) и действует на ВСЕХ входах, включая singbox. Plain WG правило не трогает: без awg-ключей mtu не эмитится, ядро берёт свой 1408."
       },
       "address": {
         "type": "string_array",

@@ -47,11 +47,28 @@ const maskedValue = "***"
 // в реестре с managed:true, и его снимает общий обход.
 var buildManagedKeys = map[string]bool{"tag": true, "type": true}
 
+// Входы узла — имена из секции `sources` схемы реестра. Ими правила значений
+// отличают тело, написанное в форме ядра (`singbox`), от тела, собранного
+// маппером из ссылки или .conf. Словарь один на пакеты — он объявлен в
+// configtypes, здесь только удобные имена.
+const (
+	SourceURI     = configtypes.NodeSourceURI
+	SourceSingbox = configtypes.NodeSourceSingbox
+	SourceXray    = configtypes.NodeSourceXray
+	SourceWGConf  = configtypes.NodeSourceWGConf
+	SourceAmnezia = configtypes.NodeSourceAmnezia
+)
+
 // sanitizer — состояние одного прохода. Хранит схему и накопители, чтобы не
 // таскать их шестым аргументом через рекурсию.
 type sanitizer struct {
 	reg    *registry.Registry
 	scheme string
+	// source — вход, которым тело приехало (константы Source*). Пустая
+	// строка = вход неизвестен; правила с except_sources тогда работают в
+	// своей ОСНОВНОЙ форме (замена), потому что неизвестный вход — это не
+	// «пользователь написал сам».
+	source string
 	res    Result
 	seen   map[string]bool // дедуп по (code, path)
 	// srcRoot — исходная карта тела целиком, cleanRoot — уже собранная
@@ -78,9 +95,25 @@ type sanitizer struct {
 
 // Sanitize приводит карту тела узла к правилам реестра для схемы scheme.
 //
+// Вход при этом считается НЕизвестным — см. SanitizeFrom. Звать так можно
+// там, где тело действительно ниоткуда не приехало (форма редактора правит
+// уже готовый узел), и нельзя на входах импорта: правило с `except_sources`
+// сработает основной формой.
+func Sanitize(scheme string, m map[string]interface{}) Result {
+	return SanitizeFrom(scheme, "", m)
+}
+
+// SanitizeFrom — то же с явным ВХОДОМ (константы Source*).
+//
+// Вход — часть условия у правил, которые различают, кто сочинил значение:
+// тело в форме ядра (`singbox`) писал человек или подписка напрямую, и
+// переписывать его молча лаунчер не вправе — он предупреждает. Значение из
+// ссылки или .conf собрал генератор провайдера, и там правило работает
+// заменой (решение владельца 18.09.2026, wireguard.mtu у AmneziaWG).
+//
 // Неизвестная схема — не повод молча пропустить мусор: тело возвращается
 // пустым с кодом уровня узла protocol_unsupported.
-func Sanitize(scheme string, m map[string]interface{}) Result {
+func SanitizeFrom(scheme, source string, m map[string]interface{}) Result {
 	reg, err := registry.Get()
 	if err != nil {
 		return Result{
@@ -98,7 +131,7 @@ func Sanitize(scheme string, m map[string]interface{}) Result {
 			},
 		}
 	}
-	s := &sanitizer{reg: reg, scheme: scheme, seen: map[string]bool{}, srcRoot: m, removed: map[string]bool{}}
+	s := &sanitizer{reg: reg, scheme: scheme, source: source, seen: map[string]bool{}, srcRoot: m, removed: map[string]bool{}}
 	s.cleanRoot = map[string]interface{}{}
 	s.res.Clean = s.cleanRoot
 	// Запреты по схеме размечаются ДО обхода, а не по ходу: связи
@@ -317,7 +350,7 @@ func (s *sanitizer) object(prefix string, order []string, fields map[string]*reg
 			// пишутся (CANON §2.4). Сюда попадают только поля, без которых
 			// ядро не собирает outbound вовсе — у hysteria v1 отсутствующий
 			// up_mbps даёт «missing upload speed» фаталом на весь конфиг.
-			if dw := f.DefaultWhen; dw != nil && dw.Absent && dw.Value != nil {
+			if dw := f.DefaultWhen; dw != nil && dw.Absent && dw.Value != nil && s.conditionHolds(dw.When) {
 				if v, ok := coerce(f, dw.Value); ok {
 					out[name] = v
 					if dw.Code != "" {
@@ -447,9 +480,112 @@ func (s *sanitizer) value(path, prefix string, f *registry.Field, raw interface{
 	if !s.constraintsOK(f, v) {
 		return s.onInvalid(path, f, raw)
 	}
+	v = s.applyMaxWhen(path, f, v)
 	s.noteNormalized(path, f, raw, v)
 	s.advisory(path, prefix, f, v)
 	return v, true
+}
+
+// applyMaxWhen исполняет условный потолок значения (Field.MaxWhen).
+//
+// Потолок применяется ПОСЛЕ обычных проверок: значение, которое ядро не
+// примет в принципе (mtu 9000 при max 1500), снимает on_invalid, и клампить
+// там нечего.
+//
+// Два исхода, и разделяет их не техника, а владение телом:
+//
+//   - вход из `except_sources` (sing-box JSON) — тело написано в форме ядра
+//     самим человеком или подпиской; значение остаётся как есть, узел
+//     получает информационный код. Молча переписывать чужое осознанное
+//     решение лаунчер не вправе;
+//   - все прочие входы (ссылка, .conf, форма) — значение сочинил генератор
+//     провайдера; оно заменяется потолком с кодом-предупреждением.
+//
+// Решение владельца 18.09.2026: парность входов здесь нарушена НАМЕРЕННО
+// (DRIFT §7.23).
+func (s *sanitizer) applyMaxWhen(path string, f *registry.Field, v interface{}) interface{} {
+	mw := f.MaxWhen
+	if mw == nil || !s.conditionHolds(mw.When) {
+		return v
+	}
+	n, ok := numericValue(v)
+	if !ok || n <= mw.Max {
+		return v
+	}
+	params := map[string]string{"path": path, "value": displayValue(v)}
+	if s.sourceExcepted(mw.ExceptSources) {
+		// Значение остаётся; человеку сообщают, чем это грозит.
+		s.warn(mw.NoteCode, path, v, f.Secret, params)
+		return v
+	}
+	s.warn(mw.Code, path, v, f.Secret, params)
+	capped, ok := coerce(f, mw.Max)
+	if !ok {
+		return v
+	}
+	return capped
+}
+
+// sourceExcepted — входит ли текущий вход в список исключений правила.
+//
+// Пустой вход («неизвестно, откуда тело») исключением НЕ считается: молчать
+// про завышенный MTU только потому, что вход не назвали, значит терять
+// правило на каждом месте, куда его забыли протянуть.
+func (s *sanitizer) sourceExcepted(sources []string) bool {
+	if s.source == "" {
+		return false
+	}
+	for _, src := range sources {
+		if src == s.source {
+			return true
+		}
+	}
+	return false
+}
+
+// conditionHolds — выполнено ли условие применимости правила.
+//
+// nil-условие = правило безусловно (так работает default_when у hysteria
+// up_mbps). `any_set` — задан любой из перечисленных КЛЮЧЕЙ; пути читаются от
+// КОРНЯ тела, как и у conflicts/requires.
+//
+// Считается НАЛИЧИЕ ключа, а не непустота значения (в отличие от
+// conflicts/requires, где ядро судит по значению). Разница не косметическая:
+// `jc: 0` — законная запись «мусорные пакеты выключены» у настоящего
+// AmneziaWG-узла (кейс корпуса awg_jc_zero_explicit), и прочитать её как
+// «поля нет» значило бы снять с такого узла потолок MTU и вернуть ему ровно
+// ту тихую поломку, от которой правило заведено.
+func (s *sanitizer) conditionHolds(c *registry.Condition) bool {
+	if c == nil || len(c.AnySet) == 0 {
+		return true
+	}
+	for _, p := range c.AnySet {
+		if s.removed[p] {
+			// Поле снято запретом по схеме — для условий его нет.
+			continue
+		}
+		parts := strings.Split(p, ".")
+		if _, ok := lookupPath(s.cleanRoot, parts); ok {
+			return true
+		}
+		if _, ok := lookupPath(s.srcRoot, parts); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// numericValue — число из приведённого значения, если оно число.
+func numericValue(v interface{}) (float64, bool) {
+	switch vv := v.(type) {
+	case int:
+		return float64(vv), true
+	case int64:
+		return float64(vv), true
+	case float64:
+		return vv, true
+	}
+	return 0, false
 }
 
 // noteNormalized сообщает, что normalize ВЫБРОСИЛ часть значения.

@@ -40,7 +40,11 @@ import (
 // его всегда (buildCanonicalServer читает схему узла именно оттуда), а в
 // body-секциях реестра его нет, потому что при сборке config.json его пишет
 // сборка.
-func materializeBody(scheme string, outbound map[string]interface{}) (json.RawMessage, []configtypes.Warning, *configtypes.Warning) {
+// `source` — вход, которым тело приехало (configtypes.NodeSource*); пусто =
+// вход не назван. Его читают правила значений, различающие, кто сочинил
+// значение: тело в форме ядра лаунчер не переписывает молча, он
+// предупреждает (потолок MTU у AmneziaWG, решение владельца 18.09.2026).
+func materializeBody(scheme, source string, outbound map[string]interface{}) (json.RawMessage, []configtypes.Warning, *configtypes.Warning) {
 	if _, known := registry.MustGet().Body(scheme); !known {
 		// Схема вне реестра — правил для неё нет, и выдумывать их конвейер
 		// не вправе. Тело едет как есть, минус managed-ключи сборки; так
@@ -49,7 +53,7 @@ func materializeBody(scheme string, outbound map[string]interface{}) (json.RawMe
 		// про его поля нечего.
 		return passthroughBody(outbound)
 	}
-	res := nodeflow.Sanitize(scheme, outbound)
+	res := nodeflow.SanitizeFrom(scheme, source, outbound)
 	if res.Drop != nil {
 		return nil, res.Warnings, res.Drop
 	}
@@ -146,7 +150,7 @@ func materializeParsedNodeBody(node *configtypes.ParsedNode) (json.RawMessage, [
 		drop := configtypes.Warning{Code: "parse_error", Params: map[string]string{"error": "nil node"}}
 		return nil, nil, &drop
 	}
-	body, sanWarns, drop := materializeBody(node.Scheme, outboundMapOf(node))
+	body, sanWarns, drop := materializeBody(node.Scheme, node.Source, outboundMapOf(node))
 	return body, mergeWarnings(node.Warnings, sanWarns), drop
 }
 
@@ -267,7 +271,7 @@ func sanitizeStoredNodeBody(req state.SanitizeBodyRequest) (*state.SanitizeBodyR
 		return &state.SanitizeBodyResult{Warnings: []state.NodeWarning{}}, nil
 	}
 
-	body, warns, drop := materializeBody(scheme, outbound)
+	body, warns, drop := materializeBody(scheme, subscription.NodeSourceFromOriginKind(req.OriginKind), outbound)
 	res := &state.SanitizeBodyResult{Warnings: stateWarnings(warns)}
 	if res.Warnings == nil {
 		res.Warnings = []state.NodeWarning{}

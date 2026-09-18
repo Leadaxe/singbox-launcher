@@ -82,6 +82,42 @@ var registryOnInvalidActions = map[string]bool{
 	"drop": true, "coerce": true, "drop_node": true,
 }
 
+// registryNodeSources — словарь ВХОДОВ узла (секция `sources` схем реестра).
+//
+// Его читают правила значений, различающие, КТО сочинил значение: тело в
+// форме ядра (`singbox`) человек или подписка написали сами, остальное собрал
+// маппер из ссылки, .conf или профиля.
+var registryNodeSources = map[string]bool{
+	"uri": true, "singbox": true, "xray": true, "wgconf": true, "amnezia": true,
+}
+
+// checkBodyCondition — линтер условия применимости правила значения.
+//
+// Условие без путей молча «выполнено всегда», то есть правило перестаёт быть
+// условным и тихо расползается на узлы, которым не адресовано. Пустой список
+// здесь опаснее отсутствия условия: отсутствие видно, пустота — нет.
+func checkBodyCondition(t *testing.T, where string, c *bodyCondition) {
+	t.Helper()
+	if c == nil {
+		return
+	}
+	if len(c.AnySet) == 0 {
+		t.Errorf("%s: when без any_set — условие выполнено всегда, правило перестаёт быть условным", where)
+		return
+	}
+	seen := make(map[string]bool, len(c.AnySet))
+	for _, p := range c.AnySet {
+		if strings.TrimSpace(p) == "" {
+			t.Errorf("%s: when.any_set содержит пустой путь", where)
+			continue
+		}
+		if seen[p] {
+			t.Errorf("%s: when.any_set повторяет путь %q", where, p)
+		}
+		seen[p] = true
+	}
+}
+
 // registryPendingCodes — коды, которых в warnings.json ещё нет: они
 // объявлены в SPECS/131-F-O-UNIFIED_NODE_PIPELINE/new_codes.md и доедут
 // вместе с правкой реестра кодов (её ведёт отдельный агент).
@@ -127,6 +163,7 @@ type bodyField struct {
 	Normalize      string                `json:"normalize"`
 	NormalizeCode  string                `json:"normalize_code"`
 	DefaultWhen    *bodyDefaultWhen      `json:"default_when"`
+	MaxWhen        *bodyMaxWhen          `json:"max_when"`
 	Skip           string                `json:"skip"`
 	DescEn         string                `json:"desc_en"`
 	DescRu         string                `json:"desc_ru"`
@@ -135,9 +172,24 @@ type bodyField struct {
 // bodyDefaultWhen — дефолт, который реестр велит МАТЕРИАЛИЗОВАТЬ явно
 // (SPEC 131 §3.2): обычные `default` в тело не пишутся.
 type bodyDefaultWhen struct {
-	Absent bool        `json:"absent"`
-	Value  interface{} `json:"value"`
-	Code   string      `json:"code"`
+	Absent bool           `json:"absent"`
+	Value  interface{}    `json:"value"`
+	Code   string         `json:"code"`
+	When   *bodyCondition `json:"when"`
+}
+
+// bodyMaxWhen — условный потолок значения (контракт 1.1.5).
+type bodyMaxWhen struct {
+	Max           *float64       `json:"max"`
+	Code          string         `json:"code"`
+	When          *bodyCondition `json:"when"`
+	ExceptSources []string       `json:"except_sources"`
+	NoteCode      string         `json:"note_code"`
+}
+
+// bodyCondition — условие применимости правила значения.
+type bodyCondition struct {
+	AnySet []string `json:"any_set"`
 }
 
 // bodyOnInvalid — правило SPEC 131 §3.2: что делать со значением, не
@@ -446,6 +498,43 @@ func checkField(t *testing.T, where, path string, f *bodyField, codes map[string
 		}
 		if dw.Code != "" && !codes[dw.Code] && !registryPendingCodes[dw.Code] {
 			t.Errorf("%s: default_when.code %q не объявлен в warnings.json", full, dw.Code)
+		}
+		checkBodyCondition(t, full+" default_when", dw.When)
+	}
+	if mw := f.MaxWhen; mw != nil {
+		if mw.Max == nil {
+			t.Errorf("%s: max_when без max — потолка нет", full)
+		}
+		if mw.Code == "" {
+			t.Errorf("%s: max_when без code — замена значения была бы молчаливой", full)
+		} else if !codes[mw.Code] && !registryPendingCodes[mw.Code] {
+			t.Errorf("%s: max_when.code %q не объявлен в warnings.json", full, mw.Code)
+		}
+		// Потолок ВСЕГДА условный: безусловный выражается обычным `max`, и
+		// правило без `when` сняло бы поле у всех, кому оно не адресовано
+		// (у mtu — у каждого обычного WireGuard-узла).
+		if mw.When == nil {
+			t.Errorf("%s: max_when без when — безусловный потолок пишется обычным max", full)
+		}
+		checkBodyCondition(t, full+" max_when", mw.When)
+		// Исключение по входу и код-уведомление ходят парой: без кода
+		// сохранение завышенного значения стало бы молчаливым, а код без
+		// исключения некому поставить.
+		if len(mw.ExceptSources) > 0 && mw.NoteCode == "" {
+			t.Errorf("%s: max_when.except_sources без note_code — исключение было бы молчаливым", full)
+		}
+		if mw.NoteCode != "" {
+			if len(mw.ExceptSources) == 0 {
+				t.Errorf("%s: max_when.note_code без except_sources — код ставить некому", full)
+			}
+			if !codes[mw.NoteCode] && !registryPendingCodes[mw.NoteCode] {
+				t.Errorf("%s: max_when.note_code %q не объявлен в warnings.json", full, mw.NoteCode)
+			}
+		}
+		for _, src := range mw.ExceptSources {
+			if !registryNodeSources[src] {
+				t.Errorf("%s: max_when.except_sources называет вход %q вне словаря sources", full, src)
+			}
 		}
 	}
 	for i, adv := range f.Advisory {

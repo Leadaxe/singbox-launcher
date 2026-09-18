@@ -498,11 +498,14 @@ func fieldOutcomes(f *registry.Field, scheme, linkPrefix string) []string {
 		out = append(out, desc+" → "+warnLink(a.Code, linkPrefix))
 	}
 	if dw := f.DefaultWhen; dw != nil && dw.Absent {
-		line := "If absent: filled in with " + scalar(dw.Value)
+		line := "If absent: filled in with " + scalar(dw.Value) + conditionPhrase(dw.When)
 		if dw.Code != "" {
 			line += " → " + warnLink(dw.Code, linkPrefix)
 		}
 		out = append(out, line)
+	}
+	if mw := f.MaxWhen; mw != nil {
+		out = append(out, maxWhenPhrase(mw, linkPrefix))
 	}
 	if f.NormalizeCode != "" {
 		out = append(out, "If the value had to be cleaned up: "+warnLink(f.NormalizeCode, linkPrefix))

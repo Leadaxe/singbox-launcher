@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 )
 
@@ -236,7 +237,7 @@ func sanitizeForTest(t *testing.T, ob map[string]interface{}) map[string]interfa
 	if !ok {
 		t.Fatalf("тип %q вне таблицы схем", mapStringValue(src, "type"))
 	}
-	body, _, drop := materializeBody(scheme, src)
+	body, _, drop := materializeBody(scheme, configtypes.NodeSourceSingbox, src)
 	if drop != nil {
 		t.Fatalf("конвейер отверг узел целиком: %s", dropReason(drop))
 	}

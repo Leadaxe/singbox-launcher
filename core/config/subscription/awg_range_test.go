@@ -144,8 +144,10 @@ PersistentKeepalive = 25
 			t.Errorf("empty %s line must not produce a key", k)
 		}
 	}
-	if v, _ := node.Outbound["mtu"].(int); v != 1280 {
-		t.Errorf("mtu = %v, want AWG default 1280", node.Outbound["mtu"])
+	// .conf без MTU: ключа у тела на выходе ПАРСЕРА нет — дефолт 1280
+	// AWG-узлу дописывает реестр (default_when), а не парсер.
+	if raw, ok := node.Outbound["mtu"]; ok {
+		t.Errorf("mtu = %v, want no key (дефолт AWG ставит реестр)", raw)
 	}
 }
 

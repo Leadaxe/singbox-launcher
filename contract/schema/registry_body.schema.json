@@ -49,7 +49,7 @@
     },
     "format": {
       "description": "Формат значения; ставится только там, где он очевиден из структур ядра.",
-      "enum": ["uuid", "hex", "base64", "host", "port", "ipv4", "cidr",
+      "enum": ["uuid", "hex", "base64", "base64_32", "host", "port", "ipv4", "cidr",
         "url_path"]
     },
     "relation": {
@@ -64,12 +64,26 @@
           "type": "string",
           "description": "Путь требуемого поля (для requires)."
         },
+        "equals": {
+          "description": "Связь не по наличию соседа, а по его ЗНАЧЕНИЮ: поле осмысленно только при таком-то варианте дискриминатора (границы размера пакета есть только у obfs=gecko). Без него такие пары описывались бы «наличием», а дискриминатор присутствует всегда.",
+          "type": ["string", "number", "boolean"]
+        },
         "code": {
           "type": "string",
           "description": "Код из registry/warnings.json."
         }
       },
       "required": ["code"],
+      "additionalProperties": false
+    },
+    "advisoryWhen": {
+      "description": "Условие advisory-правила по СОСЕДНЕМУ полю: правило действует, только когда поле по `path` задано (`present: false` — наоборот, когда не задано). Кода у условия нет — код несёт само правило.",
+      "type": "object",
+      "properties": {
+        "path": { "type": "string", "description": "Путь соседнего поля от корня тела." },
+        "present": { "type": "boolean", "description": "Ожидаемое наличие; по умолчанию true." }
+      },
+      "required": ["path"],
       "additionalProperties": false
     },
     "onInvalid": {
@@ -104,6 +118,67 @@
           "then": {
             "required": ["value"]
           }
+        }
+      ]
+    },
+    "condition": {
+      "description": "Условие применимости правила значения. `any_set` — задан ЛЮБОЙ из перечисленных ключей тела (пути от корня, как в conflicts/requires); считается НАЛИЧИЕ ключа, а не непустота значения. Одного пути здесь мало там, где условие называет не поле, а РОД узла: «узел AmneziaWG» — это набор из двух десятков полей, любого из которых довольно, и `jc: 0` («мусор выключен») — такой же маркер, как jc: 10.",
+      "type": "object",
+      "properties": {
+        "any_set": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        }
+      },
+      "required": ["any_set"],
+      "additionalProperties": false
+    },
+    "defaultWhen": {
+      "description": "Дефолт, который реестр велит МАТЕРИАЛИЗОВАТЬ явно: обычный `default` в тело не пишется (дефолты ядра не материализуются). Ставится там, где без поля ядро не собирает outbound вовсе (hysteria v1 up_mbps — «missing upload speed» фаталом на весь config.json), либо где дефолт зависит от рода узла (mtu у AmneziaWG). Код не обязателен: подстановка дефолта — не замена значения, и сообщать о ней человеку чаще всего нечего.",
+      "type": "object",
+      "properties": {
+        "absent": {
+          "type": "boolean",
+          "description": "true — подставить, когда поля нет вовсе. Единственная форма, которую знает санитайзер."
+        },
+        "value": {
+          "type": ["string", "number", "boolean"],
+          "description": "Что подставить."
+        },
+        "code": {
+          "type": "string",
+          "description": "Код из registry/warnings.json, если о подстановке стоит сообщить."
+        },
+        "when": { "$ref": "#/definitions/condition" }
+      },
+      "required": ["absent", "value"],
+      "additionalProperties": false
+    },
+    "maxWhen": {
+      "description": "УСЛОВНЫЙ потолок значения: обычный `max` действует всегда, этот — только когда выполнено `when`. Нужен там, где потолок диктует не поле, а род узла: у AmneziaWG накладные расходы на пакет делают mtu выше 1280 нерабочим (рукопожатие проходит, данные молча не идут), а у plain WireGuard того же поля потолка нет — обычный `max` снял бы mtu у каждого обычного WG-узла. `except_sources` — входы, на которых потолок НЕ применяется: значение остаётся, узел получает `note_code`. Основание не техническое, а по владению: тело в форме ядра (sing-box JSON) человек или подписка написали сами, и молча переписывать его лаунчер не вправе; значение из ссылки или .conf сочинял генератор провайдера, и там правило работает заменой (решение владельца 18.09.2026).",
+      "type": "object",
+      "properties": {
+        "max": { "type": "number", "description": "Потолок значения." },
+        "code": { "type": "string", "description": "Код замены из registry/warnings.json (severity warning)." },
+        "when": { "$ref": "#/definitions/condition" },
+        "except_sources": {
+          "type": "array",
+          "description": "Входы из секции `sources` схемы, на которых значение сохраняется: там тело написано в собственной форме ядра.",
+          "items": { "enum": ["uri", "singbox", "xray", "wgconf", "amnezia"] },
+          "minItems": 1
+        },
+        "note_code": {
+          "type": "string",
+          "description": "Код-уведомление для входов из except_sources (severity info): значение оставлено, человеку сказано, чем это грозит."
+        }
+      },
+      "required": ["max", "code"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "required": ["except_sources"] },
+          "then": { "required": ["note_code"] }
         }
       ]
     },
@@ -153,6 +228,12 @@
           "description": "Нормализация значения ДО проверки enum/format. Ставится только там, где ядро case-sensitive и обе стороны нормализуют (SPEC 131 §4): без флага регистр не трогается — x_padding_placement принимает только camelCase queryInHeader.",
           "enum": ["trim", "lower", "trim_lower", "hex_only"]
         },
+        "normalize_code": {
+          "type": "string",
+          "description": "Код из registry/warnings.json на случай, когда normalize ВЫБРОСИЛ часть значения. Обрезка пробелов и смена регистра кода не дают — ядро читает такое значение одинаково; код ставится там, где исчезли символы (hex_only на short_id: 0x1a2 → 01a2 — ДРУГОЙ идентификатор). Требует normalize."
+        },
+        "default_when": { "$ref": "#/definitions/defaultWhen" },
+        "max_when": { "$ref": "#/definitions/maxWhen" },
         "required": {
           "type": "boolean",
           "description": "Без поля узел не собирается — уходит в dropped с кодом field_missing."
@@ -186,16 +267,22 @@
           "description": "Правило поля не утверждено: ссылка на пункт решения владельца. До решения действует сегодняшнее поведение, on_invalid не ставится."
         },
         "advisory": {
-          "description": "Значения из enum, которые ядро принимает, но узел получает информационный код (ss legacy-шифры → ss_method_legacy). Поле не меняется.",
+          "description": "Значения из enum, которые ядро принимает, но узел получает информационный код (ss legacy-шифры → ss_method_legacy). Поле не меняется. Три формы: `values` — код на перечисленных значениях; `except` — код на любом значении, КРОМЕ перечисленных (правило вида «все, кто не умеет X» — перечислять в values весь остальной словарь значило бы дублировать enum); `when` — условие по соседнему полю, без которого правило вешалось бы на узлы, к которым отношения не имеет (отпечаток без гибридного шара — только при заданном reality, D-119).",
           "type": "array",
           "items": {
             "type": "object",
             "properties": {
               "values": { "type": "array", "items": { "type": ["string", "number"] }, "minItems": 1 },
+              "except": { "type": "array", "items": { "type": ["string", "number"] }, "minItems": 1 },
+              "when": { "$ref": "#/definitions/advisoryWhen" },
               "code": { "type": "string", "description": "Код из registry/warnings.json (severity info)." }
             },
-            "required": ["values", "code"],
-            "additionalProperties": false
+            "required": ["code"],
+            "additionalProperties": false,
+            "oneOf": [
+              { "required": ["values"] },
+              { "required": ["except"] }
+            ]
           }
         },
         "drop_always": {

@@ -201,12 +201,19 @@ func TestAWG_TypeFidelity_JSON(t *testing.T) {
 	}
 }
 
-// TestParseWireGuardURI_MTUClamp verifies the AWG MTU policy (SPEC 073 follow-up):
-// AmneziaWG endpoints default to / are clamped to awgMaxMTU (1280) because AWG's
-// S3/S4 transport padding would otherwise push data packets past the path MTU and
-// fail with EMSGSIZE (handshake OK, data silently stops). Plain WireGuard keeps
-// the upstream 1420 default and honors the URI value verbatim.
-func TestParseWireGuardURI_MTUClamp(t *testing.T) {
+// TestParseWireGuardURI_MTUPassthrough — граница ответственности по MTU.
+//
+// Парсер ссылки MTU только ПЕРЕНОСИТ: ни дефолта AWG, ни потолка здесь
+// больше нет. И то и другое — правила ЗНАЧЕНИЯ, и живут они в реестре
+// (wireguard.body.fields.mtu: default_when и max_when, контракт 1.1.5).
+// Пока правило стояло здесь, оно не применялось к телу из sing-box-импорта, и
+// один и тот же узел ссылкой и объектом получал разный MTU (находка №5
+// LEGACY_AUDIT).
+//
+// Результат ПОСЛЕ правил реестра проверяется на конвейере целиком —
+// TestPipelineAWGMTUCeiling в пакете config и кейсы корпуса; здесь только то,
+// за что отвечает парсер.
+func TestParseWireGuardURI_MTUPassthrough(t *testing.T) {
 	const (
 		pk   = "UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA="
 		pub  = "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU="
@@ -220,14 +227,17 @@ func TestParseWireGuardURI_MTUClamp(t *testing.T) {
 		extra string
 		want  int
 	}{
-		{"awg high mtu clamped", "&jc=10&mtu=1420", 1280},
-		{"awg no mtu defaults low", "&jc=10", 1280},
-		{"awg explicit lower honored", "&jc=10&mtu=1200", 1200},
-		{"awg string-only field still AWG", "&i1=%3Cr+24%3E&mtu=1500", 1280},
+		// Значение ссылки доезжает как записано — у AWG-узла тоже: потолок
+		// накладывает санитайзер по телу, а не парсер по query.
+		{"awg high mtu carried as written", "&jc=10&mtu=1420", 1420},
+		{"awg explicit lower carried", "&jc=10&mtu=1200", 1200},
+		{"awg string-only field, mtu as written", "&i1=%3Cr+24%3E&mtu=1500", 1500},
 		{"plain wg keeps high mtu", "&mtu=1500", 1500},
-		// want 0 = no mtu key at all: the core defaults plain WireGuard to 1408
-		// itself, so emitting our own value would fight it (SPEC 103, D-026).
+		// want 0 = no mtu key at all. У обычного WG ядро само ставит 1408
+		// (SPEC 103, D-026), у AWG-узла ключ дописывает РЕЕСТР (default_when),
+		// а не парсер — поэтому здесь его нет в обоих случаях.
 		{"plain wg default is left to the core", "", 0},
+		{"awg without mtu gets nothing from the parser", "&jc=10", 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -311,9 +321,13 @@ AllowedIPs = 0.0.0.0/0
 }
 
 // Ссылка, несущая ТОЛЬКО masquerade-сахар, — тоже AWG-узел: ядро разворачивает
-// сахар в i1. Без этого MTU не ужимался до потолка AmneziaWG, а слишком
-// высокий MTU у AWG отказывает молча — рукопожатие проходит, данные не идут.
-func TestParseWireGuardURI_MasqueradeOnly_ClampsMTU(t *testing.T) {
+// сахар в i1, и потолок MTU обязан к ней применяться наравне с прочими.
+//
+// Проверяется то, от чего это зависит ПОСЛЕ переноса правила в реестр: сахар
+// доезжает до тела отдельными ключами ip/id, а условие правила
+// (`any_set`) их перечисляет. Сам потолок — на конвейере
+// (TestPipelineAWGMTUCeiling).
+func TestParseWireGuardURI_MasqueradeOnlyReachesBody(t *testing.T) {
 	extra := url.Values{}
 	extra.Set("ip", "quic")
 	extra.Set("id", "example.com")
@@ -322,11 +336,9 @@ func TestParseWireGuardURI_MasqueradeOnly_ClampsMTU(t *testing.T) {
 	if err != nil || node == nil {
 		t.Fatalf("parse failed: err=%v node=%v", err, node)
 	}
-	mtu, ok := node.Outbound["mtu"].(int)
-	if !ok {
-		t.Fatalf("mtu type: %T (%v)", node.Outbound["mtu"], node.Outbound["mtu"])
-	}
-	if mtu != awgMaxMTU {
-		t.Errorf("mtu = %d, want %d (masquerade sugar alone must count as AWG)", mtu, awgMaxMTU)
+	for key, want := range map[string]string{"ip": "quic", "id": "example.com"} {
+		if got, _ := node.Outbound[key].(string); got != want {
+			t.Errorf("%s = %v, want %q (сахар — маркер AWG для правила реестра)", key, node.Outbound[key], want)
+		}
 	}
 }

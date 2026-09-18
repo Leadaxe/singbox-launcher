@@ -44,7 +44,14 @@
       },
       "kind": "endpoint",
       "label": "AWG3 Node",
-      "scheme": "wireguard"
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "awg_mtu_clamped",
+          "path": "mtu",
+          "value": "1376"
+        }
+      ]
     }
   ],
   "v": 1

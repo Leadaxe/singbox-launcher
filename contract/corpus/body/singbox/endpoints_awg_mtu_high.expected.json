@@ -1,4 +1,7 @@
 {
+  "meta": {
+    "body_kind": "singbox-config"
+  },
   "nodes": [
     {
       "entry": {
@@ -6,27 +9,26 @@
           "10.0.0.2/32"
         ],
         "jc": 10,
-        "mtu": 1280,
+        "mtu": 1420,
         "peers": [
           {
-            "address": "example-1.com",
+            "address": "example-3.com",
             "allowed_ips": [
-              "0.0.0.0/0",
-              "::/0"
+              "0.0.0.0/0"
             ],
             "port": 51820,
-            "public_key": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
+            "public_key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA="
           }
         ],
-        "private_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "private_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=",
         "type": "wireguard"
       },
       "kind": "endpoint",
-      "label": "awg-clamp",
+      "label": "awg-ep",
       "scheme": "wireguard",
       "warnings": [
         {
-          "code": "awg_mtu_clamped",
+          "code": "awg_mtu_high",
           "path": "mtu",
           "value": "1420"
         }

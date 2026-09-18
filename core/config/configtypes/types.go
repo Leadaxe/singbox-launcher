@@ -637,6 +637,21 @@ func (oc *Direction) IsPresetRef() bool {
 // UnsetSourceIndex means SourceIndex was not assigned; exclude_from_global must not apply.
 const UnsetSourceIndex = -1
 
+// Входы узла (ParsedNode.Source) — имена из секции `sources` схем реестра.
+//
+// Их читают правила значений, которым важно, КТО сочинил значение: тело в
+// форме ядра (NodeSourceSingbox) написано человеком или подпиской напрямую,
+// остальное собрал маппер из ссылки, .conf или профиля. Список намеренно
+// повторяет словарь реестра, а не заводит свой: правило пишется в контракте
+// именами оттуда, и второй словарь разъехался бы с первым.
+const (
+	NodeSourceURI     = "uri"
+	NodeSourceSingbox = "singbox"
+	NodeSourceXray    = "xray"
+	NodeSourceWGConf  = "wgconf"
+	NodeSourceAmnezia = "amnezia"
+)
+
 // SchemeGroup marks a ParsedNode that is an outbound group (selector/urltest)
 // imported from a sing-box config (SPEC 094 A5).
 //
@@ -685,6 +700,21 @@ type ParsedNode struct {
 	// carries the full path. Jump stays in sync with Chain[0] so existing
 	// readers and state.json files written before SPEC 094 keep working.
 	Jump *ParsedJump
+	// Source — ВХОД, которым узел приехал: имя из секции `sources` схемы
+	// реестра (nodeflow.SourceURI / SourceSingbox / …). Пусто = вход не
+	// назван.
+	//
+	// Нужен правилам значений, которые различают, КТО сочинил значение.
+	// Сегодня такое правило одно — потолок MTU у AmneziaWG: тело в форме
+	// ядра (`singbox`) писал человек или подписка напрямую, и переписывать
+	// его молча лаунчер не вправе (он предупреждает), а значение из ссылки
+	// или .conf собрал генератор провайдера, и там правило работает заменой
+	// (решение владельца 18.09.2026).
+	//
+	// Поле обязано совпадать с Origin.Kind сохранённого узла: пересчёт кодов
+	// на загрузке state идёт по origin, и разъехавшаяся пара означала бы, что
+	// узел меняет правила после перезапуска.
+	Source string
 	// SourceTag is the node's tag exactly as it appeared in an imported
 	// sing-box config, before prefix/mask/uniquification (SPEC 094 A5).
 	//
