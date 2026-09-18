@@ -219,8 +219,9 @@
    "type": "enum",
    "wizard_ui": "edit",
    "title": "TUN stack",
-   "tooltip": "sing-box inbound tun stack (system, gvisor, mixed). Mixed uses system TCP stack and gvisor UDP stack.",
+   "tooltip": "sing-box inbound tun stack (system, gvisor, mixed). Mixed uses system TCP stack and gvisor UDP stack. Linux default is gvisor: with firewalld/nftables the system stack can bring the TUN up but pass no traffic (issue #129). Windows 7 x86 also defaults to gvisor.",
    "default_value": {
+    "linux": "gvisor",
     "default": {
      "#if": {
       "#and": [
