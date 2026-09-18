@@ -544,9 +544,27 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 	// Слой тултипов обязателен: без него SetToolTip у чипов и кнопок молчит,
 	// а полное имя обрезанного источника читается только из него.
 	fw.win.SetContent(fynetooltip.AddWindowToolTipLayer(content, fw.win.Canvas()))
-	fw.win.Resize(fyne.NewSize(460, 420))
+	fw.win.Resize(fyne.NewSize(460, 300))
 	fynewidget.CenterOnScreen(fw.win)
 	fw.win.Show()
+
+	// Высота окна — ПО СОДЕРЖИМОМУ, без пустого поля под чипами. Настоящая
+	// высота потоков известна только после первой раскладки (она зависит от
+	// ширины), поэтому подгонка идёт вдогонку показу; потолок оставляет
+	// прокрутке работу на случай сотни эмодзи и десятка источников.
+	fitHeight := func() {
+		h := form.MinSize().Height + bottomRow.MinSize().Height + 5*theme.Padding()
+		if h > 640 {
+			h = 640
+		}
+		fw.win.Resize(fyne.NewSize(fw.win.Canvas().Size().Width, h))
+	}
+	time.AfterFunc(120*time.Millisecond, func() { fyne.Do(fitHeight) })
+	prevRebuild := fw.rebuildChips
+	fw.rebuildChips = func() {
+		prevRebuild()
+		time.AfterFunc(120*time.Millisecond, func() { fyne.Do(fitHeight) })
+	}
 	return fw
 }
 
