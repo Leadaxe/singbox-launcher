@@ -162,10 +162,18 @@ func xrayBuildVLESSFromOutbound(ob map[string]interface{}, label string) (*confi
 	}
 
 	if flow != "" {
+		// Суффикс `-udp443` — часть составного ИМЕНИ, а не значение ядра:
+		// он означает «UDP/443 идёт напрямую». Порт узла при этом НЕ
+		// переписывается (DRIFT §7.4, решение владельца; mapper-правило
+		// vless.vision_udp443_is_a_compound_name прямо это оговаривает):
+		// порт — свойство узла, а не флоу, и прежняя правка превращала
+		// `…:8443` в `…:443`, делая узел недозваниваемым. URI-путь
+		// (node_parser_core.go:730) исправлен волной W2d, а эта ветка
+		// осталась старой — один и тот же узел двумя входами давал разный
+		// порт.
 		if flow == "xtls-rprx-vision-udp443" {
 			outbound["flow"] = "xtls-rprx-vision"
 			outbound["packet_encoding"] = "xudp"
-			outbound["server_port"] = 443
 		} else {
 			outbound["flow"] = flow
 		}

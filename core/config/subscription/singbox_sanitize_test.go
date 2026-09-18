@@ -36,57 +36,13 @@ func TestSanitizeSingboxTLSDisabledBlockRemoved(t *testing.T) {
 	}
 }
 
-func TestSanitizeSingboxHysteria2Obfs(t *testing.T) {
-	t.Run("salamander with password is kept", func(t *testing.T) {
-		ob := map[string]interface{}{
-			"type": "hysteria2",
-			"obfs": map[string]interface{}{"type": "salamander", "password": "secret"},
-		}
-		SanitizeSingboxOutboundMap(ob, "n")
-
-		if _, present := ob["obfs"]; !present {
-			t.Fatal("valid obfs must survive")
-		}
-	})
-
-	t.Run("unsupported obfs type is dropped", func(t *testing.T) {
-		ob := map[string]interface{}{
-			"type": "hysteria2",
-			"obfs": map[string]interface{}{"type": "quicksand", "password": "secret"},
-		}
-		SanitizeSingboxOutboundMap(ob, "n")
-
-		if _, present := ob["obfs"]; present {
-			t.Fatal("unsupported obfs type must be dropped (fatal for the whole config)")
-		}
-	})
-
-	// gecko is implemented by sing-box-lx (protocol/hysteria2/outbound.go) and
-	// accepted by LxBox, so it must survive the import (SPEC 103, D-016(а)).
-	t.Run("gecko obfs is kept", func(t *testing.T) {
-		ob := map[string]interface{}{
-			"type": "hysteria2",
-			"obfs": map[string]interface{}{"type": "gecko", "password": "secret"},
-		}
-		SanitizeSingboxOutboundMap(ob, "n")
-
-		if _, present := ob["obfs"]; !present {
-			t.Fatal("gecko obfs must be kept — the core supports it")
-		}
-	})
-
-	t.Run("obfs without password is dropped", func(t *testing.T) {
-		ob := map[string]interface{}{
-			"type": "hysteria2",
-			"obfs": map[string]interface{}{"type": "salamander"},
-		}
-		SanitizeSingboxOutboundMap(ob, "n")
-
-		if _, present := ob["obfs"]; present {
-			t.Fatal("obfs without password must be dropped")
-		}
-	})
-}
+// СНЯТО вместе с правилом (SPEC 131, аудит остатков):
+// TestSanitizeSingboxHysteria2Obfs. Все четыре его посылки — enum типов,
+// пустой тип, пустой пароль, сохранение gecko — выражены в
+// hysteria2.json (body.obfs.type enum + on_invalid, body.obfs.password
+// required + code) и проверяются на выходе конвейера. Прежний код снимал
+// obfs МОЛЧА; теперь узел получает obfs_unknown / obfs_password_missing —
+// проверено прогоном nodeflow.Sanitize на обоих кейсах.
 
 func TestSanitizeSingboxHandlesMalformedBlocks(t *testing.T) {
 	// tls не объект: ядро отвергло бы конфиг, поле снимается.

@@ -314,7 +314,8 @@ func nodeFieldCodePrefixes(code string) bool {
 		"flow_deprecated", "ss_method_invalid", "ss_method_legacy", "port_invalid",
 		"obfs_unknown", "obfs_password_missing", "tuic_congestion_invalid",
 		"tuic_udp_relay_mode_invalid", "anytls_min_idle_invalid",
-		"tls_field_unsupported_naive", "ech_ignored", "masque_vhttp_invalid":
+		"tls_field_unsupported_naive", "tls_not_applicable_quic", "ech_ignored",
+		"masque_vhttp_invalid":
 		return true
 	}
 	return false
@@ -360,6 +361,19 @@ func registryCodesIn(t *testing.T, path string) []string {
 				if k == "code" || k == "normalize_code" {
 					if s, ok := item.(string); ok && s != "" {
 						out = append(out, s)
+					}
+					continue
+				}
+				// forbidden_codes — словарь «схема → код», а не одиночный
+				// code: без этой ветки код, названный ТОЛЬКО там
+				// (tls_not_applicable_quic), выглядел бы бесхозным.
+				if k == "forbidden_codes" {
+					if m, ok := item.(map[string]interface{}); ok {
+						for _, v := range m {
+							if s, ok := v.(string); ok && s != "" {
+								out = append(out, s)
+							}
+						}
 					}
 					continue
 				}

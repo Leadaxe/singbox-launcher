@@ -67,7 +67,6 @@ func SanitizeSingboxOutboundMap(ob map[string]interface{}, tag string) []string 
 
 	sanitizeSingboxMasqueLegacy(ob, obType, tag)
 	sanitizeSingboxTLS(ob, tag)
-	sanitizeSingboxHysteria2Obfs(ob, obType, tag)
 	sanitizeSingboxHysteriaObfs(ob, obType, tag)
 	return nil
 }
@@ -173,41 +172,16 @@ func sanitizeSingboxHysteriaObfs(ob map[string]interface{}, obType, tag string) 
 	}
 }
 
-// sanitizeSingboxHysteria2Obfs снимает обфускацию с неподдерживаемым типом.
-func sanitizeSingboxHysteria2Obfs(ob map[string]interface{}, obType, tag string) {
-	if obType != "hysteria2" {
-		return
-	}
-	obfsRaw, ok := ob["obfs"]
-	if !ok {
-		return
-	}
-	obfsMap, ok := obfsRaw.(map[string]interface{})
-	if !ok {
-		delete(ob, "obfs")
-		return
-	}
-	obfsType := strings.ToLower(strings.TrimSpace(mapString(obfsMap, "type")))
-	if obfsType == "" {
-		delete(ob, "obfs")
-		return
-	}
-	// Набор типов — из реестра (hysteria2.body.obfs.type); прежде он жил
-	// константой в парсере ссылок, и та копия ушла в W2d.
-	if obfsType != "salamander" && obfsType != "gecko" {
-		// "unknown obfs type" — fatal для всего конфига.
-		debuglog.WarnLog("Parser: singbox import %q: unsupported hysteria2 obfs %q — dropping obfs", tag, obfsType)
-		delete(ob, "obfs")
-		return
-	}
-	if strings.TrimSpace(mapString(obfsMap, "password")) == "" {
-		// "missing obfs password" — тоже fatal.
-		debuglog.WarnLog("Parser: singbox import %q: hysteria2 obfs without password — dropping obfs", tag)
-		delete(ob, "obfs")
-		return
-	}
-	obfsMap["type"] = obfsType
-}
+// СНЯТО (SPEC 131, аудит остатков): sanitizeSingboxHysteria2Obfs.
+//
+// Все четыре его решения выражены в реестре и исполняются санитайзером:
+// obfs не объект и тип вне набора — hysteria2.json body.obfs.type (enum
+// salamander|gecko, on_invalid drop + obfs_unknown); пустой пароль —
+// body.obfs.password (required + code obfs_password_missing), а
+// nodeflow.objectField снимает необязательный объект целиком, когда в нём
+// не собралось required-поле. Здесь то же самое делалось МОЛЧА (WarnLog),
+// то есть код съедался: два объявленных кода не доезжали до узла, и
+// пользователь не узнавал, что обфускация из подписки не сработала.
 
 // mapString возвращает строковое поле map или "".
 func mapString(m map[string]interface{}, key string) string {
