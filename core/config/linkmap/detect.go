@@ -46,8 +46,35 @@ type Content struct {
 }
 
 // NewContent — контент из сырого текста.
+//
+// Написание схемы вынимается ЗДЕСЬ, а не оставляется пустым: без него
+// предикат `scheme_in` не срабатывал ни разу, и секции протоколов не
+// опознавали собственные ссылки — уровень документа вынужден был бы выбирать
+// схему по префиксу, то есть кодом, знающим имена схем.
 func NewContent(text string) *Content {
-	return &Content{text: text}
+	return &Content{text: text, scheme: schemeOfText(text)}
+}
+
+// schemeOfText — написание схемы ссылки, как оно стоит в тексте.
+//
+// Только форма `scheme://`: у `mailto:`-подобной формы без слэшей узлов не
+// бывает, и принимать её значило бы опознавать схемой произвольный текст с
+// двоеточием.
+func schemeOfText(text string) string {
+	t := strings.TrimSpace(text)
+	i := strings.Index(t, "://")
+	if i <= 0 {
+		return ""
+	}
+	for j := 0; j < i; j++ {
+		c := t[j]
+		ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') || c == '+' || c == '-' || c == '.'
+		if !ok {
+			return ""
+		}
+	}
+	return strings.ToLower(t[:i])
 }
 
 // NewElementContent — контент одного элемента документа: разобранное

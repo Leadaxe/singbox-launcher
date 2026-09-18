@@ -1138,7 +1138,10 @@
         ],
         "maps_to": "tls.server_name",
         "default_from": "host",
-        "impl": "Цепочка sni→peer→host — наше сегодняшнее поведение у http: trojanTLSFromNode(node, \"http\") читает те же три написания (node_parser_http.go:131-138, node_parser_transport.go:1014-1020). Фолбэк на server — тот же Q133-08, что у trojan: корпус uri/http/proxy_https_default_port_443 ждёт server_name из адреса."
+        "impl": "Цепочка sni→peer→host — наше сегодняшнее поведение у http: trojanTLSFromNode(node, \"http\") читает те же три написания (node_parser_http.go:131-138, node_parser_transport.go:1014-1020). Фолбэк на server — тот же Q133-08, что у trojan: корпус uri/http/proxy_https_default_port_443 ждёт server_name из адреса. when по ТЕЛУ: блок tls у http заводит только написание схемы (scheme_sets у proxy-https/proxy+https), и без гейта запись сочиняла бы tls.server_name простому HTTP-прокси, где блока быть не должно.",
+        "when": {
+          "tls.enabled": true
+        }
       }
     },
     "xray": {

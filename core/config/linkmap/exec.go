@@ -384,6 +384,23 @@ func (st *execState) applyAssigns(entry string, assigns map[string]interface{}, 
 				v = inner
 			}
 		}
+		// Ссылка на источник вместо литерала: "$host" означает «значение
+		// источника host», а не строку из пяти символов. Нужна там, где
+		// присваивание подставляет не константу, а часть самого входа
+		// (SNI = адрес сервера у naive).
+		if s, ok := v.(string); ok && strings.HasPrefix(s, "$") {
+			if got, found := st.space.Lookup(strings.TrimPrefix(s, "$")); found {
+				v = got
+			} else {
+				// Источник промолчал — писать литерал "$host" в тело нельзя:
+				// это мусор, который уедет в конфиг.
+				st.trace.Add(Event{
+					Stage: StageSets, Mapper: st.mapperName, Entry: entry,
+					Src: s, Raw: nil, Val: nil, Path: path, Act: ActSkip, Why: WhyEmpty,
+				})
+				continue
+			}
+		}
 		st.writeAssign(entry, v, path, priority, decl, why, merge)
 	}
 }
@@ -964,6 +981,11 @@ func convertType(typ, v string) (interface{}, bool) {
 			return nil, true
 		}
 		return true, false
+	case "duration":
+		// Форма записи — работа маппера; годность судит реестр. Поэтому
+		// значение едет строкой как есть: приведение к числу здесь означало
+		// бы суждение о том, что ядро считает валидной длительностью.
+		return v, false
 	default:
 		return v, false
 	}
@@ -987,6 +1009,21 @@ func normalizeValue(kind, v string) string {
 		return strings.ToLower(strings.TrimSpace(v))
 	case "strip_control":
 		return stripControl(v)
+	case "duration_bare_seconds":
+		// Голое число — это СЕКУНДЫ: живая конвенция панелей
+		// (`idle_session_timeout=30`), а ядро ждёт единицу измерения и на
+		// голом числе валит весь конфиг. Значение с уже написанной единицей
+		// не трогаем: это перевод диалекта, а не нормализация величины.
+		t := strings.TrimSpace(v)
+		if t == "" {
+			return v
+		}
+		for i := 0; i < len(t); i++ {
+			if t[i] < '0' || t[i] > '9' {
+				return v
+			}
+		}
+		return t + "s"
 	}
 	return v
 }

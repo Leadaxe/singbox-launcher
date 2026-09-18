@@ -4,7 +4,10 @@
   "kind": "outbound",
   "singbox_type": "anytls",
   "aliases": [],
-  "sources": ["uri", "singbox"],
+  "sources": [
+    "uri",
+    "singbox"
+  ],
   "extension": null,
   "uri": {
     "userinfo": {
@@ -18,7 +21,9 @@
       "sni": {
         "type": "string",
         "default": null,
-        "aliases": ["peer"],
+        "aliases": [
+          "peer"
+        ],
         "maps_to": "tls.server_name",
         "desc_en": "Server name sent in SNI.",
         "desc_ru": "Имя сервера, отправляемое в SNI.",
@@ -28,7 +33,9 @@
         "type": "alias_enum",
         "allowlist": "utls_fingerprints",
         "default": "random",
-        "aliases": ["fingerprint"],
+        "aliases": [
+          "fingerprint"
+        ],
         "maps_to": "tls.utls.fingerprint",
         "desc_en": "Browser fingerprint mimicked in the ClientHello.",
         "desc_ru": "Отпечаток браузера, который подделывается в ClientHello.",
@@ -45,7 +52,17 @@
       "insecure": {
         "type": "bool",
         "default": null,
-        "aliases": ["allowInsecure", "allowinsecure", "allow_insecure", "allow-insecure", "skipCertVerify", "skipcertverify", "skip_cert_verify", "skip-cert-verify", "noverify"],
+        "aliases": [
+          "allowInsecure",
+          "allowinsecure",
+          "allow_insecure",
+          "allow-insecure",
+          "skipCertVerify",
+          "skipcertverify",
+          "skip_cert_verify",
+          "skip-cert-verify",
+          "noverify"
+        ],
         "maps_to": "tls.insecure",
         "desc_en": "Skip server certificate verification.",
         "desc_ru": "Не проверять сертификат сервера.",
@@ -107,7 +124,18 @@
   },
   "emit": {
     "share_uri": true,
-    "param_order": ["alpn", "fp", "idle_session_check_interval", "idle_session_timeout", "insecure", "min_idle_session", "pbk", "security", "sid", "sni"],
+    "param_order": [
+      "alpn",
+      "fp",
+      "idle_session_check_interval",
+      "idle_session_timeout",
+      "insecure",
+      "min_idle_session",
+      "pbk",
+      "security",
+      "sid",
+      "sni"
+    ],
     "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart toUriAnyTls → _buildUri → buildQuery sort, uri_utils.dart:306-312). insecure: Dart эмитит allowInsecure=1, Go — insecure=1. security/pbk/sid эмитит только Dart (REALITY-разрыв)."
   },
   "refs": {
@@ -126,7 +154,17 @@
   },
   "body": {
     "core": "1.14.1-lx.4",
-    "order": ["server", "server_port", "password", "idle_session_check_interval", "idle_session_timeout", "min_idle_session", "client_metadata", "tls", "__dialer"],
+    "order": [
+      "server",
+      "server_port",
+      "password",
+      "idle_session_check_interval",
+      "idle_session_timeout",
+      "min_idle_session",
+      "client_metadata",
+      "tls",
+      "__dialer"
+    ],
     "fields": {
       "server": {
         "type": "ref",
@@ -263,10 +301,48 @@
           "required": true,
           "impl": "Пустой пароль — записи нет."
         },
+        "fp": {
+          "source": [
+            "query.fp",
+            "query.fingerprint"
+          ],
+          "maps_to": "tls.utls.fingerprint",
+          "value_map": {
+            "$ref": "tls.fp_dialect"
+          },
+          "implies": {
+            "tls.utls.enabled": true
+          },
+          "materialize_default": true,
+          "sets": {
+            "": {
+              "tls.utls.enabled": true,
+              "tls.utls.fingerprint": "random"
+            }
+          },
+          "when": {
+            "tls.enabled": true
+          },
+          "impl": "D-009, та же конвенция, что у vless: ПУСТОЙ fp означает `random`, и это НЕ дефолт ядра (у него пустой = chrome), а договорённость обеих сторон — отсюда materialize_default, маппер обязан записать значение в тело (node_parser_transport.go:920-929 через utlsFingerprintOrDefault). У trojan/http дефолта нет, и общая запись блока tls#uri там остаётся как есть. Запись перекрывает одноимённую из include, потому что объявлена ПОЗЖЕ него."
+        },
         "security": {
           "source": "query.security",
+          "selector": true,
+          "priority": 10,
           "maps_to": null,
-          "impl": "ИГНОРИРУЕТСЯ до чтения TLS. AnyTLS живёт только поверх TLS (body.fields.tls → required, ядро отвечает C.ErrTLSRequired), и security=none для него бессмысленен: правило security_none_no_tls унесло бы весь блок вместе с sni, alpn и insecure, которые автор написал. Кейс корпуса security_none_params_kept нормирует именно это."
+          "impl": "ИГНОРИРУЕТСЯ до чтения TLS, и это выражается ЯВНО: запись перекрывает одноимённую из блока tls#uri (объявлена позже него, merge overwrite) и во ВСЕХ ветках, включая none, оставляет tls.enabled. AnyTLS живёт только поверх TLS (body.fields.tls → required, ядро отвечает C.ErrTLSRequired), и security=none для него бессмысленен: ветка блока `{\"tls\": null}` унесла бы весь блок вместе с sni, alpn и insecure, которые автор написал, и санитайзер отверг бы узел целиком (field_missing). Кейс корпуса security_none_params_kept нормирует именно это. selector: запись объявляет СТРУКТУРУ (есть ли блок tls), значит её место — проход A, рядом с одноимённой записью блока; priority 10 против умолчания 0 у той ставит её ПОЗЖЕ, и merge overwrite возвращает tls.enabled. Иначе записи блока (sni/alpn/fp/insecure) со своим when: {tls.enabled: true} исполнялись бы в проходе B раньше нашей и видели бы снятый блок.",
+          "sets": {
+            "none": {
+              "tls.enabled": true
+            },
+            "": {
+              "tls.enabled": true
+            },
+            "tls": {
+              "tls.enabled": true
+            }
+          },
+          "merge": "overwrite"
         },
         "idle_session_check_interval": {
           "source": "query.idle_session_check_interval",

@@ -138,10 +138,13 @@ func schemeOfDir(dir string) string {
 func engineBody(t *testing.T, plans *PlanSet, reg *registry.Registry, casePath string) (map[string]interface{}, error) {
 	t.Helper()
 	uri := readCaseURI(t, casePath)
-	scheme := schemeOfURI(uri)
-	plan, ok := plans.Plan(scheme, "uri")
+	// Схему выбирает РЕЕСТР своим detect, а не префикс ссылки: написание и
+	// схема — разные вещи (`hy2://` → hysteria2, `socks5://` → socks,
+	// `naive+quic://` → naive), и сверка обязана идти тем же путём, каким
+	// пойдёт разбор.
+	scheme, plan, ok := selectPlanFor(plans, uri)
 	if !ok {
-		t.Skipf("у схемы %q нет секции uri", scheme)
+		t.Skipf("ни одна секция uri не опознала ссылку")
 	}
 	bodyType := reg.SingboxType(scheme)
 	res, err := ParseURI(plan, uri, bodyType, nil)
@@ -160,11 +163,24 @@ func engineBody(t *testing.T, plans *PlanSet, reg *registry.Registry, casePath s
 	return sr.Clean, nil
 }
 
-func schemeOfURI(uri string) string {
-	if i := strings.Index(uri, "://"); i > 0 {
-		return strings.ToLower(uri[:i])
+// selectPlanFor находит секцию, чей detect опознал ссылку.
+func selectPlanFor(plans *PlanSet, uri string) (string, *Plan, bool) {
+	content := NewContent(uri)
+	var hits []string
+	for _, scheme := range plans.Schemes() {
+		plan, ok := plans.Plan(scheme, "uri")
+		if !ok || plan.Mapper.Detect == nil {
+			continue
+		}
+		if Matches(plan.Mapper.Detect, content) {
+			hits = append(hits, scheme)
+		}
 	}
-	return ""
+	if len(hits) != 1 {
+		return "", nil, false
+	}
+	plan, _ := plans.Plan(hits[0], "uri")
+	return hits[0], plan, true
 }
 
 // fixtureBody достаёт тело первого узла из ожидания корпуса, снимая служебные
