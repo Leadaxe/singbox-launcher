@@ -49,6 +49,7 @@ type subFile struct {
 		Core          string                        `json:"core"`
 		Order         []string                      `json:"order"`
 		Fields        map[string]*registry.Field    `json:"fields"`
+		AbsentWhen    map[string]interface{}        `json:"absent_when"`
 		Skipped       map[string]string             `json:"skipped"`
 		DescEn        string                        `json:"desc_en"`
 		Discriminator string                        `json:"discriminator"`
@@ -90,6 +91,15 @@ func renderSubSchema(raw *rawRegistry, name string) (*subPage, error) {
 	b.WriteString("[← index](../index.md) · [diagnosed problems](../warnings.md)\n\n")
 	if f.Body.Core != "" {
 		b.WriteString("Core the schema was checked against: `" + f.Body.Core + "`\n\n")
+	}
+	if len(f.Body.AbsentWhen) > 0 {
+		// Условие «секции нет» объявлено у самой суб-схемы и переезжает в
+		// каждое поле, которое её подключает, — поэтому и на странице оно
+		// стоит в шапке, а не у отдельного поля.
+		b.WriteString("**The whole block is dropped entirely and silently when " +
+			absentWhenList(f.Body.AbsentWhen) + "** — that is how the core reads it " +
+			"(\"not configured\", not \"configured and switched off\"). The block is then " +
+			"absent for every presence check, including its own nested blocks.\n\n")
 	}
 	if d := mdText(f.DescEn); d != "" {
 		b.WriteString("> " + d + "\n\n")

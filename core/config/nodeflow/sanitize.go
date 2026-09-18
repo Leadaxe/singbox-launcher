@@ -89,6 +89,13 @@ type sanitizer struct {
 	// из-за поля, которого в теле не будет (ровно LxBox #140, только с
 	// другой стороны).
 	removed map[string]bool
+	// absent — пути объектов, снятых правилом `absent_when` реестра.
+	//
+	// Отдельный набор, а не общий с `removed`: смысл разный и его стоит
+	// различать при чтении. `removed` — «поле схеме запрещено, о нём сообщили
+	// кодом», `absent` — «настройки нет вовсе, и сказать тут нечего». Для
+	// связей и условий оба означают отсутствие, поэтому проверяются парой.
+	absent map[string]bool
 	// missingRequired — обязательные поля, не пережившие обход текущего
 	// объекта. Накопитель, а не флаг: один объект может недосчитаться
 	// нескольких полей, и сообщить надо про каждое.
@@ -133,7 +140,7 @@ func SanitizeFrom(scheme, source string, m map[string]interface{}) Result {
 			},
 		}
 	}
-	s := &sanitizer{reg: reg, scheme: scheme, source: source, seen: map[string]bool{}, srcRoot: m, removed: map[string]bool{}}
+	s := &sanitizer{reg: reg, scheme: scheme, source: source, seen: map[string]bool{}, srcRoot: m, removed: map[string]bool{}, absent: map[string]bool{}}
 	s.cleanRoot = map[string]interface{}{}
 	s.res.Clean = s.cleanRoot
 	// Запреты по схеме размечаются ДО обхода, а не по ходу: связи
@@ -144,6 +151,12 @@ func SanitizeFrom(scheme, source string, m map[string]interface{}) Result {
 	// до тела не доедет, — и узел терял собственный сертификат из-за поля,
 	// которого в теле не будет.
 	s.markSchemeForbidden("", body.Order, body.Fields, m)
+	// «Объект не задан» размечается тем же предварительным проходом и по той
+	// же причине: tls:{enabled:false} для ядра значит «TLS нет», и объекта,
+	// которого нет, не должны видеть НИ правила его полей, НИ связи соседей
+	// (CANON §6.1). Проход идёт после запретов по схеме: поле, запрещённое
+	// схеме, снято раньше и внутрь него заглядывать незачем.
+	s.markAbsentObjects("", body.Order, body.Fields, m)
 	s.object("", body.Order, body.Fields, m)
 	// Связи МЕЖДУ НЕСКОЛЬКИМИ полями считаются после обхода: они смотрят на
 	// готовое тело целиком, а не на соседей одного поля, и до конца обхода
@@ -203,6 +216,82 @@ func (s *sanitizer) markSchemeForbidden(prefix string, order []string, fields ma
 		}
 		s.markSchemeForbidden(path, subOrder, subFields, inner)
 	}
+}
+
+// markAbsentObjects помечает объекты, которые реестр велит считать НЕ
+// ЗАДАННЫМИ (`absent_when`), и делает это ДО обхода.
+//
+// Смысл правила — у ядра: `tls: {enabled: false}` значит «TLS не задан»
+// (конструктор возвращает (nil, nil)), а не «TLS с выключенным флагом»; тем же
+// атрибутом описаны вложенные utls / reality / ech со своим `enabled: false`.
+// Объект снимается ЦЕЛИКОМ и ТИХО: это запись «настройки нет», а не деградация,
+// и сообщать человеку нечего.
+//
+// Почему проход отдельный и предварительный (норма порядка, CANON §6.1):
+// объекта, которого нет, не должны видеть ни правила его собственных полей, ни
+// связи соседей. Иначе `tls: {enabled: false, reality: {…}}` дал бы коды на
+// поля несуществующего блока, а сосед потерял бы своё значение из-за конфликта
+// с блоком, которого в теле не будет.
+//
+// Проход рекурсивный и общий: имён протоколов и секций он не знает — обходит
+// то, что описал реестр, и снимает то, на что реестр поставил атрибут.
+func (s *sanitizer) markAbsentObjects(prefix string, order []string, fields map[string]*registry.Field, src map[string]interface{}) {
+	if src == nil {
+		return
+	}
+	for _, name := range order {
+		f := fields[name]
+		if f == nil {
+			continue
+		}
+		raw, present := src[name]
+		if !present {
+			continue
+		}
+		path := joinPath(prefix, name)
+		if s.removed[path] {
+			// Поле уже снято запретом по схеме — заглядывать внутрь незачем.
+			continue
+		}
+		inner, ok := asObject(raw)
+		if !ok {
+			continue
+		}
+		if objectIsAbsent(f, inner) {
+			s.absent[path] = true
+			// Внутрь снятого объекта не спускаемся: его вложенные блоки для
+			// тела узла уже не существуют, и отмечать их по отдельности
+			// нечего — проверки наличия остановятся на самом объекте.
+			continue
+		}
+		subOrder, subFields := emitShape(f, inner)
+		if subOrder == nil {
+			continue
+		}
+		s.markAbsentObjects(path, subOrder, subFields, inner)
+	}
+}
+
+// objectIsAbsent — совпал ли объект с условием `absent_when` своего поля.
+//
+// Совпасть обязаны ВСЕ перечисленные ключи: условие описывает форму записи
+// «настройки нет», а не набор подозрительных признаков.
+//
+// Сравнение — по печатной форме скаляра (как у `values` и `advisory`): тело
+// приезжает и разбором JSON, и от маппера, где булев флаг бывает строкой, и
+// `false` с `"false"` здесь одно и то же. Приведение типов тут ещё не
+// делалось — до него дело не дойдёт вовсе, объект снимается раньше.
+func objectIsAbsent(f *registry.Field, m map[string]interface{}) bool {
+	if len(f.AbsentWhen) == 0 {
+		return false
+	}
+	for key, want := range f.AbsentWhen {
+		got, ok := m[key]
+		if !ok || !sameValue(want, got) {
+			return false
+		}
+	}
+	return true
 }
 
 // warn кладёт код в накопитель, снимая дубли по (code, path).
@@ -341,6 +430,13 @@ func (s *sanitizer) object(prefix string, order []string, fields map[string]*reg
 		// вычисляется из Направлений и цепочек. Снимаем молча — это не
 		// ошибка источника (SPEC 131 §3.2).
 		if f.Managed {
+			continue
+		}
+		// Объект, помеченный `absent_when`: реестр велел считать его НЕ
+		// ЗАДАННЫМ. Снимаем молча и до всего остального — это запись «настройки
+		// нет», а не ошибка источника. Разметку сделал предварительный проход
+		// (markAbsentObjects), чтобы связи соседей тоже не видели объекта.
+		if present && s.absent[path] {
 			continue
 		}
 		if !s.allowedForScheme(f) {
@@ -770,8 +866,9 @@ func (s *sanitizer) conditionHolds(c *registry.Condition) bool {
 		return true
 	}
 	for _, p := range c.AnySet {
-		if s.removed[p] {
-			// Поле снято запретом по схеме — для условий его нет.
+		if s.gone(p) {
+			// Поле снято запретом по схеме либо лежит в объекте, который
+			// реестр объявил незаданным, — для условий его нет.
 			continue
 		}
 		parts := strings.Split(p, ".")
@@ -1001,7 +1098,7 @@ func (s *sanitizer) pathEquals(path, prefix string, want interface{}) bool {
 		candidates = append(candidates, joinPath(prefix, path))
 	}
 	for _, p := range candidates {
-		if s.removed[p] {
+		if s.gone(p) {
 			continue
 		}
 		parts := strings.Split(p, ".")
@@ -1016,8 +1113,9 @@ func (s *sanitizer) pathEquals(path, prefix string, want interface{}) bool {
 }
 
 func (s *sanitizer) lookupNonEmpty(path string) bool {
-	if s.removed[path] {
-		// Поле снято запретом по схеме — для связей его нет.
+	if s.gone(path) {
+		// Поле снято запретом по схеме или объявлено незаданным
+		// (`absent_when`) — для связей его нет.
 		return false
 	}
 	parts := strings.Split(path, ".")
@@ -1026,6 +1124,28 @@ func (s *sanitizer) lookupNonEmpty(path string) bool {
 	}
 	if v, ok := lookupPath(s.srcRoot, parts); ok {
 		return !isEmptyValue(v)
+	}
+	return false
+}
+
+// gone — «для проверок наличия этого пути в теле нет».
+//
+// Два источника: поле, снятое запретом по схеме (`removed`), и объект,
+// объявленный незаданным правилом `absent_when` (`absent`). Второй забирает с
+// собой и ВСЁ, что внутри: у выключенного блока `tls` пути
+// `tls.reality.enabled` для связей не существует — иначе `tls.ech.enabled`
+// продолжал бы конфликтовать с REALITY, которого в теле не будет.
+//
+// Префикс сверяется по сегменту пути, а не подстрокой: иначе `tls_fragment`
+// исчезал бы вместе с `tls`.
+func (s *sanitizer) gone(path string) bool {
+	if s.removed[path] || s.absent[path] {
+		return true
+	}
+	for p := range s.absent {
+		if strings.HasPrefix(path, p+".") {
+			return true
+		}
 	}
 	return false
 }

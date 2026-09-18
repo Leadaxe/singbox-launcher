@@ -227,6 +227,22 @@ func scalarList(items []interface{}) string {
 	return strings.Join(parts, ", ")
 }
 
+// absentWhenList — условие «объекта нет» человеческой фразой: `enabled` is
+// `false`. Ключи сортируются: карта в Go обходится случайно, а страница
+// документации обязана перегенерироваться байт в байт.
+func absentWhenList(cond map[string]interface{}) string {
+	keys := make([]string, 0, len(cond))
+	for k := range cond {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, code(k)+" is "+scalar(cond[k]))
+	}
+	return strings.Join(parts, " and ")
+}
+
 // warnLink — ссылка на код в warnings.md. Якорь ставится генератором там же,
 // поэтому имя якоря = сам код.
 func warnLink(code, prefix string) string {

@@ -368,26 +368,21 @@ func TestGenerateNodeJSON_Trojan_SecurityNone_OmitsTLS(t *testing.T) {
 // Backstop for nodes that reach the generator without passing through the URI
 // parsers (raw sing-box JSON, hand-edited outbounds): an explicit
 // SPEC 045: блок `tls` с `enabled:false` в конфиг не пишется — явный
-// disabled-блок ронял ядра 1.14.0-lx.5..lx.18 в SIGSEGV на первом dial.
+// disabled-блок ронял ядра 1.14.0-lx.5..lx.18 в SIGSEGV на первом dial
+// (конструктор TLS отдаёт (nil, nil), а dialer строится по НАЛИЧИЮ блока).
 //
-// ГДЕ ПРАВИЛО ЖИВЁТ СЕЙЧАС. На обоих живых входах — в маппере: парсер ссылки
-// при `security=none` ключ `tls` не создаёт вовсе
-// (node_parser_transport.go), а singbox-импорт вычищает такой блок
-// (singbox_sanitize.go). ТРЕТЬЯ копия стояла в старом per-scheme эмиттере и
-// снята вместе с ним (контракт 1.1.11).
+// ДЫРА ЗАКРЫТА (контракт 1.1.12). Прежде правило жило двумя рукописными
+// копиями в мапперах и потому работало только на их входах: тело, пришедшее с
+// `tls:{enabled:false}` мимо обоих (ручной JSON вкладки, чужой бэкап), доезжало
+// до конфига как есть — и этот тест пинил именно ту дыру. Теперь правило
+// выражено атрибутом реестра `absent_when` у секции tls, то есть действует на
+// ЛЮБОМ входе, а тело здесь идёт мимо парсеров — прямо в GenerateNodeJSON.
 //
-// В РЕЕСТРЕ ПРАВИЛА НЕТ — и это дыра, а не решение: тело, пришедшее с
-// `tls:{enabled:false}` мимо обоих мапперов (ручной JSON вкладки, чужой
-// бэкап), доедет до конфига как есть. Существующей грамматикой оно не
-// выражается: нужен атрибут «такое значение поля означает, что ВЕСЬ объект
-// не задан» — у `absent_values` смысл другой (он про само поле) и он
-// строковый. Записано в DRIFT §12 как открытый пункт; заводить атрибут
-// посреди этой волны, без ревью второй стороны, было бы ровно тем, от чего
-// кампания уходит.
-//
-// Пока правила нет, тест проверяет то, что ЕСТЬ: явно выключенный TLS в
-// тело доезжает, и это видно, а не спрятано.
-func TestGenerateNodeJSON_DisabledTLSMapReachesBody(t *testing.T) {
+// Тест поэтому перевёрнут: выключенный блок обязан исчезнуть, а узел — выжить
+// (TLS ему не обязателен). Норму порядка и вложенные utls/reality/ech проверяют
+// TestAbsentWhenObjects пакета nodeflow и кейс корпуса
+// body/singbox/tls_disabled_block.
+func TestGenerateNodeJSON_DisabledTLSMapDropped(t *testing.T) {
 	node := &ParsedNode{
 		Scheme: "trojan",
 		Tag:    "t-raw-disabled",
@@ -405,8 +400,13 @@ func TestGenerateNodeJSON_DisabledTLSMapReachesBody(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateNodeJSON: %v", err)
 	}
-	if !strings.Contains(jsonStr, `"tls":{"enabled":false}`) {
-		t.Fatalf("ожидался явный disabled-блок (правила реестра пока нет, DRIFT §12):\n%s", jsonStr)
+	if strings.Contains(jsonStr, `"tls"`) {
+		t.Fatalf("выключенный блок tls обязан исчезнуть (absent_when, контракт 1.1.12):\n%s", jsonStr)
+	}
+	// Узел при этом жив: TLS у trojan не обязателен, и снятие блока —
+	// «настройки нет», а не причина хоронить узел.
+	if !strings.Contains(jsonStr, `"password":"secretpass"`) {
+		t.Fatalf("узел обязан пережить снятие выключенного tls:\n%s", jsonStr)
 	}
 }
 

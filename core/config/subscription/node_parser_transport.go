@@ -1088,11 +1088,12 @@ func EnforceRealityFingerprint(tlsData map[string]interface{}) (original string,
 	if tlsData == nil {
 		return "", false
 	}
-	reality, ok := tlsData["reality"].(map[string]interface{})
-	if !ok {
-		return "", false
-	}
-	if enabled, has := reality["enabled"].(bool); has && !enabled {
+	// Проверки «а вдруг reality выключен» здесь БОЛЬШЕ НЕТ (контракт 1.1.12):
+	// блок с `enabled: false` до сборки не доезжает — его снимает санитайзер
+	// правилом реестра `absent_when` у tls.reality, на всех входах сразу.
+	// Рукописная копия того же правила означала бы, что одно место знает про
+	// выключенный блок, а остальные нет.
+	if _, ok := tlsData["reality"].(map[string]interface{}); !ok {
 		return "", false
 	}
 	// REALITY без uTLS-блока — fatal «uTLS is required by reality client» при

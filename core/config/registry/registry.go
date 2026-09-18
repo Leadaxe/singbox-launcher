@@ -63,7 +63,27 @@ type Field struct {
 	// `None` сюда не попадает и уходит на общие правила: это не выключатель,
 	// а негодное значение.
 	AbsentValues []interface{} `json:"absent_values"`
-	Min          *float64      `json:"min"`
+	// AbsentWhen — условие, при котором ОБЪЕКТ считается НЕ ЗАДАННЫМ: если
+	// перечисленные ключи объекта равны указанным значениям, объект снимается
+	// ЦЕЛИКОМ и ТИХО. Это запись «настройки нет», а не ошибка.
+	//
+	// Нужен там, где выключатель секции лежит ВНУТРИ неё самой: `tls:
+	// {enabled: false}` у ядра значит «TLS не задан» — конструктор возвращает
+	// (nil, nil), — а не «TLS с выключенным флагом». Тем же атрибутом
+	// описываются вложенные utls / reality / ech со своим `enabled: false`;
+	// особого случая ни у одного из них нет. `AbsentValues` это не выражает:
+	// он про значение САМОГО поля и только строковый.
+	//
+	// Порядок исполнения нормативен (CANON §6): объект снимается ДО правил
+	// своих полей и ДО связей соседей (conflicts/requires/forbidden_for), для
+	// которых он после этого «не задан».
+	//
+	// Сравнение — по печатной форме скаляра, как у `values` и `advisory`:
+	// `false` и `"false"` совпадают, потому что тело приезжает и разбором
+	// JSON, и от маппера, где булев флаг бывает строкой. Несколько ключей =
+	// объект снимается, только когда совпали ВСЕ.
+	AbsentWhen map[string]interface{} `json:"absent_when"`
+	Min        *float64               `json:"min"`
 	Max          *float64      `json:"max"`
 	Len          *int          `json:"len"`
 	LenParity    string        `json:"len_parity"`
@@ -254,12 +274,19 @@ type Relation struct {
 
 // section — секция body/common одного файла реестра, как она лежит на диске.
 type section struct {
-	Core          string            `json:"core"`
-	Order         []string          `json:"order"`
-	Fields        map[string]*Field `json:"fields"`
-	Skipped       map[string]string `json:"skipped"`
-	Relations     []Relation2       `json:"relations"`
-	Discriminator string            `json:"discriminator"`
+	Core   string            `json:"core"`
+	Order  []string          `json:"order"`
+	Fields map[string]*Field `json:"fields"`
+	// AbsentWhen — условие «этой секции нет» для суб-схемы, которую схемы
+	// подключают через `ref` (tls). Живёт у СЕКЦИИ, а не у ссылающегося поля:
+	// «tls:{enabled:false} = TLS не задан» — правило самой секции, и повторять
+	// его в каждом из полутора десятков протоколов значило бы завести ровно ту
+	// копию, от которой кампания уходит. При разрешении ref условие переезжает
+	// в поле-объект (refAsObject).
+	AbsentWhen    map[string]interface{} `json:"absent_when"`
+	Skipped       map[string]string      `json:"skipped"`
+	Relations     []Relation2            `json:"relations"`
+	Discriminator string                 `json:"discriminator"`
 	Values        []string          `json:"values"`
 	Variants      map[string]*struct {
 		Order  []string          `json:"order"`
@@ -637,6 +664,11 @@ func refAsObject(src *Field, sub *section) (*Field, error) {
 		DescEn:   src.DescEn,
 		DescRu:   src.DescRu,
 		Impl:     src.Impl,
+		// Условие «секции нет» объявлено один раз, у самой суб-схемы, и
+		// переезжает в каждое поле, которое её подключает: tls:{enabled:false}
+		// значит «TLS не задан» у любой схемы, а не у той, где не забыли
+		// переписать атрибут.
+		AbsentWhen: sub.AbsentWhen,
 	}
 	if len(sub.Variants) == 0 {
 		f.Order = sub.Order

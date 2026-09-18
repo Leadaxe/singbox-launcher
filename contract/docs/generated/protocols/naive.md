@@ -222,7 +222,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: duration
   - Not applicable to `naive`: removed → [`tls_field_unsupported_naive`](../warnings.md#tls_field_unsupported_naive)
 - <a id="body-tls-ech"></a>**`tls.ech`** — Encrypted Client Hello settings.
-  - Type: object
+  - Type: object, dropped entirely and silently when `enabled` is `false` (the object then counts as "not set" for every presence check)
 - <a id="body-tls-ech-enabled"></a>**`tls.ech.enabled`** — Enable Encrypted Client Hello.
   - Type: bool
   - Default: `false`
@@ -238,7 +238,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tls-ech-dynamic-record-sizing-disabled"></a>**`tls.ech.dynamic_record_sizing_disabled`** — Deprecated dynamic record sizing switch.
   - Type: bool, deprecated
 - <a id="body-tls-utls"></a>**`tls.utls`** — uTLS fingerprint settings.
-  - Type: object
+  - Type: object, dropped entirely and silently when `enabled` is `false` (the object then counts as "not set" for every presence check)
   - Not applicable to `naive`: removed → [`tls_field_unsupported_naive`](../warnings.md#tls_field_unsupported_naive)
 - <a id="body-tls-utls-enabled"></a>**`tls.utls.enabled`** — Enable uTLS ClientHello mimicry.
   - Type: bool
@@ -247,7 +247,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: enum, `""`, `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized`, normalized: `trim_lower`
   - Default: `chrome`
 - <a id="body-tls-reality"></a>**`tls.reality`** — REALITY settings.
-  - Type: object
+  - Type: object, dropped entirely and silently when `enabled` is `false` (the object then counts as "not set" for every presence check)
   - Not applicable to `naive`: removed → [`tls_field_unsupported_naive`](../warnings.md#tls_field_unsupported_naive)
 - <a id="body-tls-reality-enabled"></a>**`tls.reality.enabled`** — Enable REALITY handshake camouflage.
   - Type: bool

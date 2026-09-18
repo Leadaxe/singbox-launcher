@@ -8,6 +8,8 @@ A shared registry sub-schema (`contract/registry/tls.json`): its fields are subs
 
 Core the schema was checked against: `1.14.1-lx.4`
 
+**The whole block is dropped entirely and silently when `enabled` is `false`** — that is how the core reads it ("not configured", not "configured and switched off"). The block is then absent for every presence check, including its own nested blocks.
+
 ## Link parameters
 
 These are repeated on the page of every scheme that carries a TLS block, together with the rule of the body field each one maps to.
@@ -146,7 +148,7 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
   - Type: duration
   - Not supported by: `naive`
 - <a id="body-ech"></a>**`ech`** — Encrypted Client Hello settings.
-  - Type: object
+  - Type: object, dropped entirely and silently when `enabled` is `false` (the object then counts as "not set" for every presence check)
 - <a id="body-ech-enabled"></a>**`ech.enabled`** — Enable Encrypted Client Hello.
   - Type: bool
   - Default: `false`
@@ -162,7 +164,7 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
 - <a id="body-ech-dynamic-record-sizing-disabled"></a>**`ech.dynamic_record_sizing_disabled`** — Deprecated dynamic record sizing switch.
   - Type: bool, deprecated
 - <a id="body-utls"></a>**`utls`** — uTLS fingerprint settings.
-  - Type: object
+  - Type: object, dropped entirely and silently when `enabled` is `false` (the object then counts as "not set" for every presence check)
   - Not supported by: `naive`, `hysteria`, `hysteria2`, `tuic`, `masque`
 - <a id="body-utls-enabled"></a>**`utls.enabled`** — Enable uTLS ClientHello mimicry.
   - Type: bool
@@ -174,7 +176,7 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
   - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
   - Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
 - <a id="body-reality"></a>**`reality`** — REALITY settings.
-  - Type: object
+  - Type: object, dropped entirely and silently when `enabled` is `false` (the object then counts as "not set" for every presence check)
   - Not supported by: `naive`, `hysteria`, `hysteria2`, `tuic`, `masque`
 - <a id="body-reality-enabled"></a>**`reality.enabled`** — Enable REALITY handshake camouflage.
   - Type: bool

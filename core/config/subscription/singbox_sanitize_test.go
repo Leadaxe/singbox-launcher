@@ -23,18 +23,17 @@ import "testing"
 // значило бы держать копию правила в тесте после того, как копию сняли
 // из кода.
 
-func TestSanitizeSingboxTLSDisabledBlockRemoved(t *testing.T) {
-	// SPEC 045: явный tls:{enabled:false} роняет ядро SIGSEGV'ом при dial.
-	ob := map[string]interface{}{
-		"type": "vless",
-		"tls":  map[string]interface{}{"enabled": false},
-	}
-	SanitizeSingboxOutboundMap(ob, "n")
-
-	if _, present := ob["tls"]; present {
-		t.Fatal("tls:{enabled:false} must be removed entirely")
-	}
-}
+// СНЯТО вместе с правилом (контракт 1.1.12):
+// TestSanitizeSingboxTLSDisabledBlockRemoved. «`tls:{enabled:false}` = TLS не
+// задан» стало атрибутом реестра `absent_when` у секции tls, и тем же
+// атрибутом описаны вложенные utls/reality/ech. Рукописная копия здесь
+// работала только на ЭТОМ входе: то же тело, приехавшее ручным JSON вкладки
+// или чужим бэкапом, доезжало до конфига с выключенным блоком.
+//
+// Проверяют правило теперь TestAbsentWhenObjects пакета nodeflow (там же
+// норма порядка: снятый объект «не задан» для связей соседей) и кейс корпуса
+// body/singbox/tls_disabled_block. Держать проверку здесь значило бы оставить
+// копию правила в тесте после того, как копию сняли из кода.
 
 // СНЯТО вместе с правилом (SPEC 131, аудит остатков):
 // TestSanitizeSingboxHysteria2Obfs. Все четыре его посылки — enum типов,

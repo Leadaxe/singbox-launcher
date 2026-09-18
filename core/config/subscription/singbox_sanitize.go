@@ -97,15 +97,19 @@ func sanitizeSingboxMasqueLegacy(ob map[string]interface{}, obType, tag string) 
 	}
 }
 
-// sanitizeSingboxTLS снимает блок tls в двух случаях, где его форма роняет
-// ядро ДО того, как тело доедет до санитайзера реестра: tls не объект (ядро
-// отвергает конфиг на разборе) и явный `enabled:false` (SIGSEGV на первом
-// dial, SPEC 045). Обе проверки — о ФОРМЕ JSON, а не о значениях: значения
-// судит реестр.
+// sanitizeSingboxTLS снимает блок tls в единственном случае, где его форма
+// роняет ядро ДО того, как тело доедет до санитайзера реестра: tls не объект.
+// Ядро отвергает такой конфиг на РАЗБОРЕ, то есть раньше любых правил
+// значений, и никакой атрибут реестра этого не выразит — он описывает поля
+// объекта, а объекта тут нет.
 //
 // Правил значения здесь больше нет. uTLS allowlist, REALITY pbk/short_id и
 // key_share ушли в реестр волной W2d, срез utls/reality на QUIC — контрактом
-// 1.1.4 (см. комментарий про quicOutboundTypes выше).
+// 1.1.4 (см. комментарий про quicOutboundTypes выше), а правило
+// «`tls:{enabled:false}` = TLS не задан» — атрибутом `absent_when` у секции
+// tls (контракт 1.1.12). Прежде оно жило здесь рукописной копией и потому
+// работало только на этом входе: тело, приехавшее мимо импорта (ручной JSON
+// вкладки, чужой бэкап), доезжало до конфига с выключенным блоком.
 func sanitizeSingboxTLS(ob map[string]interface{}, tag string) {
 	tlsRaw, ok := ob["tls"]
 	if !ok {
@@ -115,13 +119,6 @@ func sanitizeSingboxTLS(ob map[string]interface{}, tag string) {
 	if !ok {
 		// tls не объект — ядро отвергнет конфиг; безопаснее снять поле.
 		debuglog.WarnLog("Parser: singbox import %q: tls is not an object — dropping field", tag)
-		delete(ob, "tls")
-		return
-	}
-
-	// Явный tls:{enabled:false} роняет ядра 1.14.0-lx.5..lx.18 SIGSEGV'ом при
-	// первом dial (SPEC 045). Блок в этом случае не нужен вовсе.
-	if enabled, ok := tlsMap["enabled"].(bool); ok && !enabled {
 		delete(ob, "tls")
 		return
 	}

@@ -5,7 +5,12 @@
     "params": {
       "security": {
         "type": "enum",
-        "values": ["", "none", "tls", "reality"],
+        "values": [
+          "",
+          "none",
+          "tls",
+          "reality"
+        ],
         "default": "",
         "aliases": [],
         "maps_to": "tls.enabled",
@@ -17,7 +22,9 @@
         "type": "string",
         "values": [],
         "default": "",
-        "aliases": ["peer"],
+        "aliases": [
+          "peer"
+        ],
         "maps_to": "tls.server_name",
         "desc_en": "Server name sent in SNI.",
         "desc_ru": "Имя сервера, отправляемое в SNI.",
@@ -37,7 +44,17 @@
         "type": "bool",
         "values": [],
         "default": false,
-        "aliases": ["allowInsecure", "allowinsecure", "allow_insecure", "allow-insecure", "skipCertVerify", "skipcertverify", "skip_cert_verify", "skip-cert-verify", "noverify"],
+        "aliases": [
+          "allowInsecure",
+          "allowinsecure",
+          "allow_insecure",
+          "allow-insecure",
+          "skipCertVerify",
+          "skipcertverify",
+          "skip_cert_verify",
+          "skip-cert-verify",
+          "noverify"
+        ],
         "maps_to": "tls.insecure",
         "desc_en": "Skip server certificate verification.",
         "desc_ru": "Не проверять сертификат сервера.",
@@ -45,10 +62,28 @@
       },
       "fp": {
         "type": "alias_enum",
-        "values": ["chrome", "chrome_psk", "chrome_psk_shuffle", "chrome_padding_psk_shuffle", "chrome_pq", "chrome_pq_psk", "firefox", "edge", "safari", "360", "qq", "ios", "android", "random", "randomized"],
+        "values": [
+          "chrome",
+          "chrome_psk",
+          "chrome_psk_shuffle",
+          "chrome_padding_psk_shuffle",
+          "chrome_pq",
+          "chrome_pq_psk",
+          "firefox",
+          "edge",
+          "safari",
+          "360",
+          "qq",
+          "ios",
+          "android",
+          "random",
+          "randomized"
+        ],
         "allowlist": "utls_fingerprints",
         "default": "",
-        "aliases": ["fingerprint (только vless, оба проекта)"],
+        "aliases": [
+          "fingerprint (только vless, оба проекта)"
+        ],
         "maps_to": "tls.utls.fingerprint",
         "desc_en": "Browser fingerprint mimicked in the ClientHello.",
         "desc_ru": "Отпечаток браузера, который подделывается в ClientHello.",
@@ -58,7 +93,9 @@
         "type": "string",
         "values": [],
         "default": "",
-        "aliases": ["echfq (не читается намеренно — legacy pq-опция, removed in sing-box 1.13)"],
+        "aliases": [
+          "echfq (не читается намеренно — legacy pq-опция, removed in sing-box 1.13)"
+        ],
         "maps_to": "tls.ech",
         "desc_en": "Encrypted Client Hello parameters in the Xray form.",
         "desc_ru": "Параметры Encrypted Client Hello в форме Xray.",
@@ -89,7 +126,11 @@
       },
       "key_share": {
         "type": "enum",
-        "values": ["", "hybrid", "classical"],
+        "values": [
+          "",
+          "hybrid",
+          "classical"
+        ],
         "default": "",
         "aliases": [],
         "maps_to": "tls.reality.key_share",
@@ -114,7 +155,12 @@
   "mapper": [
     {
       "id": "security_none_no_tls",
-      "applies_to": ["vless", "trojan", "vmess", "http"],
+      "applies_to": [
+        "vless",
+        "trojan",
+        "vmess",
+        "http"
+      ],
       "from": "security=none",
       "to": "no `tls` block at all",
       "kind": "structure",
@@ -124,7 +170,9 @@
     },
     {
       "id": "plaintext_port_no_tls",
-      "applies_to": ["vless"],
+      "applies_to": [
+        "vless"
+      ],
       "from": "no `security` param on a plaintext port (80, 8080, 8880, 2052, 2082, 2086, 2095)",
       "to": "no `tls` block at all",
       "kind": "structure",
@@ -134,7 +182,10 @@
     },
     {
       "id": "pbk_makes_reality_block",
-      "applies_to": ["vless", "anytls"],
+      "applies_to": [
+        "vless",
+        "anytls"
+      ],
       "from": "`pbk=` present in the link",
       "to": "a `tls.reality` block appears in the body",
       "kind": "structure",
@@ -144,7 +195,14 @@
     },
     {
       "id": "utls_xray_hello_names",
-      "applies_to": ["vless", "vmess", "trojan", "anytls", "hysteria2", "http"],
+      "applies_to": [
+        "vless",
+        "vmess",
+        "trojan",
+        "anytls",
+        "hysteria2",
+        "http"
+      ],
       "from": "`fp=HelloChrome_120`, `hellofirefox_auto`, `HelloChrome-106` and other uTLS library identifiers",
       "to": "the browser family name sing-box understands, e.g. `chrome`",
       "kind": "spelling",
@@ -154,7 +212,15 @@
     },
     {
       "id": "alpn_comma_list",
-      "applies_to": ["vless", "trojan", "vmess", "hysteria", "hysteria2", "tuic", "anytls"],
+      "applies_to": [
+        "vless",
+        "trojan",
+        "vmess",
+        "hysteria",
+        "hysteria2",
+        "tuic",
+        "anytls"
+      ],
       "from": "`alpn=h2,http/1.1` — one comma-separated string",
       "to": "`tls.alpn` as a list of strings, each trimmed",
       "kind": "split",
@@ -164,7 +230,16 @@
     },
     {
       "id": "sni_heuristic_falls_back_to_server",
-      "applies_to": ["vless", "trojan", "vmess", "hysteria", "hysteria2", "tuic", "anytls", "masque"],
+      "applies_to": [
+        "vless",
+        "trojan",
+        "vmess",
+        "hysteria",
+        "hysteria2",
+        "tuic",
+        "anytls",
+        "masque"
+      ],
       "from": "`sni=` whose value carries neither `.` nor `:` (a label, an emoji, a country name)",
       "to": "`tls.server_name` takes the server address instead",
       "kind": "structure",
@@ -174,7 +249,12 @@
     },
     {
       "id": "ech_param_dropped_with_code",
-      "applies_to": ["vless", "trojan", "vmess", "anytls"],
+      "applies_to": [
+        "vless",
+        "trojan",
+        "vmess",
+        "anytls"
+      ],
       "from": "`ech=` in the link (any Xray-style form)",
       "to": "nothing in the body; the node gets `ech_ignored`",
       "kind": "drop",
@@ -185,7 +265,10 @@
     },
     {
       "id": "fp_empty_defaults_to_random",
-      "applies_to": ["vless", "anytls"],
+      "applies_to": [
+        "vless",
+        "anytls"
+      ],
       "from": "no `fp=` in the link",
       "to": "`tls.utls.fingerprint = random`",
       "kind": "default",
@@ -195,30 +278,91 @@
     }
   ],
   "refs": {
-    "go": ["core/config/outbound_tls_emit.go", "core/config/subscription/node_parser_transport.go:36-44", "core/config/subscription/node_parser_transport.go:49-100", "core/config/subscription/node_parser_transport.go:103-110", "core/config/subscription/node_parser_transport.go:562-608", "core/config/subscription/node_parser_transport.go:610-622", "core/config/subscription/node_parser_transport.go:625-744", "core/config/subscription/singbox_sanitize.go:44-51", "core/config/subscription/singbox_sanitize.go:121-218", "core/config/subscription/xray_outbound_convert.go:188-263", "core/config/subscription/shareuri_helpers.go:198-216"],
-    "dart": ["lib/services/parser/transport.dart:290-314", "lib/services/parser/transport.dart:317-416", "lib/services/parser/transport.dart:437-460", "lib/services/parser/uri_utils.dart:121-133", "lib/services/parser/uri_utils.dart:228-258", "lib/services/parser/utls_fingerprint.dart:23-90", "lib/models/tls_spec.dart:5-105", "lib/services/parser/json_parsers.dart:705-739", "lib/services/parser/json_parsers.dart:1141-1173"]
+    "go": [
+      "core/config/outbound_tls_emit.go",
+      "core/config/subscription/node_parser_transport.go:36-44",
+      "core/config/subscription/node_parser_transport.go:49-100",
+      "core/config/subscription/node_parser_transport.go:103-110",
+      "core/config/subscription/node_parser_transport.go:562-608",
+      "core/config/subscription/node_parser_transport.go:610-622",
+      "core/config/subscription/node_parser_transport.go:625-744",
+      "core/config/subscription/singbox_sanitize.go:44-51",
+      "core/config/subscription/singbox_sanitize.go:121-218",
+      "core/config/subscription/xray_outbound_convert.go:188-263",
+      "core/config/subscription/shareuri_helpers.go:198-216"
+    ],
+    "dart": [
+      "lib/services/parser/transport.dart:290-314",
+      "lib/services/parser/transport.dart:317-416",
+      "lib/services/parser/transport.dart:437-460",
+      "lib/services/parser/uri_utils.dart:121-133",
+      "lib/services/parser/uri_utils.dart:228-258",
+      "lib/services/parser/utls_fingerprint.dart:23-90",
+      "lib/models/tls_spec.dart:5-105",
+      "lib/services/parser/json_parsers.dart:705-739",
+      "lib/services/parser/json_parsers.dart:1141-1173"
+    ]
   },
   "body": {
     "core": "1.14.1-lx.4",
-    "order": ["enabled", "engine", "disable_sni", "server_name", "insecure", "alpn", "min_version", "max_version", "cipher_suites", "curve_preferences", "certificate", "certificate_path", "certificate_public_key_sha256", "client_certificate", "client_certificate_path", "client_key", "client_key_path", "fragment", "fragment_fallback_delay", "record_fragment", "spoof", "spoof_method", "kernel_tx", "kernel_rx", "handshake_timeout", "ech", "utls", "reality"],
+    "order": [
+      "enabled",
+      "engine",
+      "disable_sni",
+      "server_name",
+      "insecure",
+      "alpn",
+      "min_version",
+      "max_version",
+      "cipher_suites",
+      "curve_preferences",
+      "certificate",
+      "certificate_path",
+      "certificate_public_key_sha256",
+      "client_certificate",
+      "client_certificate_path",
+      "client_key",
+      "client_key_path",
+      "fragment",
+      "fragment_fallback_delay",
+      "record_fragment",
+      "spoof",
+      "spoof_method",
+      "kernel_tx",
+      "kernel_rx",
+      "handshake_timeout",
+      "ech",
+      "utls",
+      "reality"
+    ],
+    "absent_when": {
+      "enabled": false
+    },
     "fields": {
       "enabled": {
         "type": "bool",
         "default": false,
         "desc_en": "Enable TLS for this outbound.",
         "desc_ru": "Включить TLS для этого узла.",
-        "impl": "false = весь блок tls игнорируется ядром. Блок с enabled:false НЕ эмитится вовсе (SPEC 045: явный disabled-блок ронял ядра 1.14.0-lx.5..lx.18). Обязателен (=true) у hysteria/hysteria2/tuic/anytls/naive — C.ErrTLSRequired."
+        "impl": "false = TLS НЕ ЗАДАН: конструктор ядра возвращает (nil, nil), и блок в тело не пишется вовсе — это правило секции absent_when, а не код парсера (SPEC 045: явный disabled-блок ронял ядра 1.14.0-lx.5..lx.18 SIGSEGV'ом на первом dial). Обязателен (=true) у hysteria/hysteria2/tuic/anytls/naive — C.ErrTLSRequired."
       },
       "engine": {
         "type": "enum",
-        "values": ["", "go", "apple", "windows"],
+        "values": [
+          "",
+          "go",
+          "apple",
+          "windows"
+        ],
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
           "code": "type_invalid"
         },
         "default": "go",
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "desc_en": "TLS implementation used for the handshake.",
         "desc_ru": "Реализация TLS, выполняющая рукопожатие.",
@@ -227,7 +371,9 @@
       "disable_sni": {
         "type": "bool",
         "default": false,
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "conflicts": [
           {
@@ -253,11 +399,15 @@
       "insecure": {
         "type": "bool",
         "default": false,
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "advisory": [
           {
-            "values": [true],
+            "values": [
+              true
+            ],
             "code": "tls_insecure"
           }
         ],
@@ -267,7 +417,9 @@
       },
       "alpn": {
         "type": "listable_string",
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "desc_en": "ALPN protocols offered in the handshake.",
         "desc_ru": "Список протоколов ALPN, предлагаемых в рукопожатии.",
@@ -275,12 +427,19 @@
       },
       "min_version": {
         "type": "enum",
-        "values": ["1.0", "1.1", "1.2", "1.3"],
+        "values": [
+          "1.0",
+          "1.1",
+          "1.2",
+          "1.3"
+        ],
         "on_invalid": {
           "action": "drop",
           "code": "type_invalid"
         },
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "desc_en": "Minimum accepted TLS version.",
         "desc_ru": "Минимальная допустимая версия TLS.",
@@ -288,12 +447,19 @@
       },
       "max_version": {
         "type": "enum",
-        "values": ["1.0", "1.1", "1.2", "1.3"],
+        "values": [
+          "1.0",
+          "1.1",
+          "1.2",
+          "1.3"
+        ],
         "on_invalid": {
           "action": "drop",
           "code": "type_invalid"
         },
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "desc_en": "Maximum accepted TLS version.",
         "desc_ru": "Максимальная допустимая версия TLS.",
@@ -301,7 +467,9 @@
       },
       "cipher_suites": {
         "type": "listable_string",
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "desc_en": "Allowed TLS cipher suites.",
         "desc_ru": "Разрешённые наборы шифров TLS.",
@@ -309,12 +477,20 @@
       },
       "curve_preferences": {
         "type": "listable_string",
-        "values": ["P256", "P384", "P521", "X25519", "X25519MLKEM768"],
+        "values": [
+          "P256",
+          "P384",
+          "P521",
+          "X25519",
+          "X25519MLKEM768"
+        ],
         "on_invalid": {
           "action": "drop",
           "code": "type_invalid"
         },
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "desc_en": "Preferred elliptic curves / key exchange groups.",
         "desc_ru": "Предпочитаемые кривые и группы обмена ключами.",
@@ -349,7 +525,9 @@
           "action": "drop",
           "code": "type_invalid"
         },
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "desc_en": "Pinned SHA-256 hashes of the server public key.",
         "desc_ru": "Закреплённые SHA-256 отпечатки публичного ключа сервера.",
@@ -357,7 +535,9 @@
       },
       "client_certificate": {
         "type": "listable_string",
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "requires": [
           {
@@ -371,7 +551,9 @@
       },
       "client_certificate_path": {
         "type": "string",
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "desc_en": "Path to the client certificate file.",
         "desc_ru": "Путь к файлу клиентского сертификата.",
@@ -380,7 +562,9 @@
       "client_key": {
         "type": "listable_string",
         "secret": true,
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "requires": [
           {
@@ -395,7 +579,9 @@
       "client_key_path": {
         "type": "string",
         "secret": true,
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "desc_en": "Path to the client private key file.",
         "desc_ru": "Путь к файлу закрытого клиентского ключа.",
@@ -404,7 +590,9 @@
       "fragment": {
         "type": "bool",
         "default": false,
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "desc_en": "Split the ClientHello across TCP segments.",
         "desc_ru": "Разбивать ClientHello по TCP-сегментам.",
@@ -412,7 +600,9 @@
       },
       "fragment_fallback_delay": {
         "type": "duration",
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "desc_en": "Delay before falling back when fragmenting.",
         "desc_ru": "Задержка перед откатом при фрагментации.",
@@ -421,7 +611,9 @@
       "record_fragment": {
         "type": "bool",
         "default": false,
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "desc_en": "Split the ClientHello across TLS records.",
         "desc_ru": "Разбивать ClientHello по TLS-записям.",
@@ -434,7 +626,9 @@
           "action": "drop",
           "code": "type_invalid"
         },
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "conflicts": [
           {
@@ -452,14 +646,23 @@
       },
       "spoof_method": {
         "type": "enum",
-        "values": ["", "wrong-sequence", "wrong-checksum", "wrong-ack", "wrong-md5", "wrong-timestamp"],
+        "values": [
+          "",
+          "wrong-sequence",
+          "wrong-checksum",
+          "wrong-ack",
+          "wrong-md5",
+          "wrong-timestamp"
+        ],
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
           "code": "type_invalid"
         },
         "default": "wrong-sequence",
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "requires": [
           {
@@ -475,7 +678,9 @@
         "type": "bool",
         "default": false,
         "platform": "linux",
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "desc_en": "Offload TLS transmission to the kernel (kTLS).",
         "desc_ru": "Передавать шифрование исходящего трафика ядру ОС (kTLS).",
@@ -485,7 +690,9 @@
         "type": "bool",
         "default": false,
         "platform": "linux",
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "desc_en": "Offload TLS reception to the kernel (kTLS).",
         "desc_ru": "Передавать расшифровку входящего трафика ядру ОС (kTLS).",
@@ -493,7 +700,9 @@
       },
       "handshake_timeout": {
         "type": "duration",
-        "forbidden_for": ["naive"],
+        "forbidden_for": [
+          "naive"
+        ],
         "code": "tls_field_unsupported_naive",
         "desc_en": "Timeout for the TLS handshake.",
         "desc_ru": "Таймаут рукопожатия TLS.",
@@ -501,7 +710,17 @@
       },
       "ech": {
         "type": "object",
-        "order": ["enabled", "config", "config_path", "query_server_name", "pq_signature_schemes_enabled", "dynamic_record_sizing_disabled"],
+        "absent_when": {
+          "enabled": false
+        },
+        "order": [
+          "enabled",
+          "config",
+          "config_path",
+          "query_server_name",
+          "pq_signature_schemes_enabled",
+          "dynamic_record_sizing_disabled"
+        ],
         "fields": {
           "enabled": {
             "type": "bool",
@@ -556,7 +775,13 @@
       },
       "utls": {
         "type": "object",
-        "forbidden_for": ["naive", "hysteria", "hysteria2", "tuic", "masque"],
+        "forbidden_for": [
+          "naive",
+          "hysteria",
+          "hysteria2",
+          "tuic",
+          "masque"
+        ],
         "code": "tls_field_unsupported_naive",
         "forbidden_codes": {
           "hysteria": "tls_not_applicable_quic",
@@ -564,12 +789,20 @@
           "tuic": "tls_not_applicable_quic",
           "masque": "tls_not_applicable_quic"
         },
-        "order": ["enabled", "fingerprint"],
+        "absent_when": {
+          "enabled": false
+        },
+        "order": [
+          "enabled",
+          "fingerprint"
+        ],
         "fields": {
           "enabled": {
             "type": "bool",
             "default": false,
-            "forbidden_for": ["naive"],
+            "forbidden_for": [
+              "naive"
+            ],
             "code": "tls_field_unsupported_naive",
             "desc_en": "Enable uTLS ClientHello mimicry.",
             "desc_ru": "Включить подмену ClientHello через uTLS.",
@@ -577,7 +810,24 @@
           },
           "fingerprint": {
             "type": "enum",
-            "values": ["", "chrome", "chrome_psk", "chrome_psk_shuffle", "chrome_padding_psk_shuffle", "chrome_pq", "chrome_pq_psk", "firefox", "edge", "safari", "360", "qq", "ios", "android", "random", "randomized"],
+            "values": [
+              "",
+              "chrome",
+              "chrome_psk",
+              "chrome_psk_shuffle",
+              "chrome_padding_psk_shuffle",
+              "chrome_pq",
+              "chrome_pq_psk",
+              "firefox",
+              "edge",
+              "safari",
+              "360",
+              "qq",
+              "ios",
+              "android",
+              "random",
+              "randomized"
+            ],
             "normalize": "trim_lower",
             "on_invalid": {
               "action": "coerce",
@@ -587,8 +837,21 @@
             "default": "chrome",
             "advisory": [
               {
-                "except": ["chrome", "chrome_psk", "chrome_psk_shuffle", "chrome_padding_psk_shuffle", "chrome_pq", "chrome_pq_psk", "firefox", "safari", "random"],
-                "when": {"path": "tls.reality.enabled", "present": true},
+                "except": [
+                  "chrome",
+                  "chrome_psk",
+                  "chrome_psk_shuffle",
+                  "chrome_padding_psk_shuffle",
+                  "chrome_pq",
+                  "chrome_pq_psk",
+                  "firefox",
+                  "safari",
+                  "random"
+                ],
+                "when": {
+                  "path": "tls.reality.enabled",
+                  "present": true
+                },
                 "code": "reality_fp_not_chrome"
               }
             ],
@@ -603,7 +866,13 @@
       },
       "reality": {
         "type": "object",
-        "forbidden_for": ["naive", "hysteria", "hysteria2", "tuic", "masque"],
+        "forbidden_for": [
+          "naive",
+          "hysteria",
+          "hysteria2",
+          "tuic",
+          "masque"
+        ],
         "code": "tls_field_unsupported_naive",
         "forbidden_codes": {
           "hysteria": "tls_not_applicable_quic",
@@ -611,12 +880,22 @@
           "tuic": "tls_not_applicable_quic",
           "masque": "tls_not_applicable_quic"
         },
-        "order": ["enabled", "public_key", "short_id", "key_share"],
+        "absent_when": {
+          "enabled": false
+        },
+        "order": [
+          "enabled",
+          "public_key",
+          "short_id",
+          "key_share"
+        ],
         "fields": {
           "enabled": {
             "type": "bool",
             "default": false,
-            "forbidden_for": ["naive"],
+            "forbidden_for": [
+              "naive"
+            ],
             "code": "tls_field_unsupported_naive",
             "conflicts": [
               {
@@ -677,7 +956,11 @@
           },
           "key_share": {
             "type": "enum",
-            "values": ["", "hybrid", "classical"],
+            "values": [
+              "",
+              "hybrid",
+              "classical"
+            ],
             "normalize": "trim_lower",
             "on_invalid": {
               "action": "drop",
@@ -701,6 +984,199 @@
         "desc_ru": "Настройки REALITY.",
         "impl": "OutboundRealityOptions, option/tls.go. Требует utls.enabled. На QUIC-протоколах (hysteria, hysteria2, tuic, masque) блок запрещён и снимается целиком с кодом tls_not_applicable_quic; key_share и short_id своих кодов при этом не дают — снят не они, а весь REALITY (policy.quic_strip)."
       }
+    }
+  },
+  "blocks": {
+    "note": "SPEC 133: ИСПОЛНЯЕМЫЕ записи общего TLS-блока, по диалектам. Секция протокола подключает их через include (\"tls#uri\", \"tls#xray\"). Описательные tls.params выше НЕ отменяются: там словарь и проза для документации, здесь — таблица, которую исполняет движок. Диалектов два, потому что имена ключей у Xray свои (serverName/publicKey/shortId), а у ссылки — свои (sni/pbk/sid).",
+    "uri": {
+      "security": {
+        "source": "query.security",
+        "selector": true,
+        "sets": {
+          "tls": {
+            "tls.enabled": true
+          },
+          "reality": {
+            "tls.enabled": true,
+            "tls.reality.enabled": true
+          },
+          "none": {},
+          "": {
+            "tls.enabled": true
+          }
+        },
+        "impl": "security=none → блока tls НЕТ вовсе (не enabled:false): явный блок ронял ядра lx.5..lx.18 в SIGSEGV, SPEC 045. Пустой sets выражает именно это — ключ не появляется."
+      },
+      "sni": {
+        "source": [
+          "query.sni",
+          "query.peer"
+        ],
+        "maps_to": "tls.server_name",
+        "default_from": "host"
+      },
+      "alpn": {
+        "source": "query.alpn",
+        "maps_to": "tls.alpn",
+        "list": {
+          "sep": ","
+        },
+        "decode_extra": {
+          "mode": "query",
+          "passes": "until_stable",
+          "max": 16
+        },
+        "impl": "until_stable, а не 2 прохода: фикстура uri/vless/alpn_multiply_encoded несёт ТРИ уровня (http%2525252F1.1 → http/1.1). max=16 — страховка от неограниченного цикла, на корпусе не достигается."
+      },
+      "fp": {
+        "source": [
+          "query.fp",
+          "query.fingerprint"
+        ],
+        "maps_to": "tls.utls.fingerprint",
+        "value_map": {
+          "$ref": "tls.fp_dialect"
+        },
+        "implies": {
+          "tls.utls.enabled": true
+        }
+      },
+      "insecure": {
+        "source": "query.insecure",
+        "type": "bool_spelled",
+        "maps_to": "tls.insecure",
+        "impl": "Написания берутся из aliases (9 имён, tls.params.insecure); истинность — общий bool_spelled (1|true|yes). До этого у masque был свой список из трёх имён, и 'yes' там не работал."
+      },
+      "disable_sni": {
+        "source": "query.disable_sni",
+        "type": "bool_spelled",
+        "maps_to": "tls.disable_sni",
+        "impl": "DELTAS D133-3: объявлен у tuic и masque, но Go не читал его НИ ТАМ НИ ТАМ — поле терялось только на десктопе."
+      },
+      "pbk": {
+        "source": "query.pbk",
+        "maps_to": "tls.reality.public_key",
+        "decode_extra": {
+          "plus_literal": true
+        },
+        "implies": {
+          "tls.enabled": true,
+          "tls.reality.enabled": true
+        },
+        "impl": "REALITY заводится по НАЛИЧИЮ pbk, а не по security=reality. plus_literal — DELTAS D133-7: поле base64, и '+' в нём обязан читаться буквально; сегодня заплаты у pbk НЕТ, поэтому '+' становится пробелом и реестр снимает поле по format."
+      },
+      "sid": {
+        "source": "query.sid",
+        "maps_to": "tls.reality.short_id",
+        "when": {
+          "tls.reality.enabled": true
+        }
+      },
+      "key_share": {
+        "source": "query.key_share",
+        "maps_to": "tls.reality.key_share",
+        "when": {
+          "tls.reality.enabled": true
+        }
+      }
+    },
+    "xray": {
+      "security": {
+        "source": "json.streamSettings.security",
+        "selector": true,
+        "sets": {
+          "tls": {
+            "tls.enabled": true
+          },
+          "reality": {
+            "tls.enabled": true
+          },
+          "none": {},
+          "": {}
+        },
+        "impl": "У Xray security=xtls сегодня теряется МОЛЧА (xray_outbound_convert.go:223-225): значение вне набора не даёт tls-блока и не даёт кода."
+      },
+      "sni": {
+        "source": [
+          "json.streamSettings.realitySettings.serverName",
+          "json.streamSettings.realitySettings.server_name",
+          "json.streamSettings.tlsSettings.serverName",
+          "json.streamSettings.tlsSettings.server_name"
+        ],
+        "maps_to": "tls.server_name",
+        "impl": "Два написания каждого ключа — диалект Xray. xray_hysteria.go:227 читает ТОЛЬКО server_name, расходясь с :270 того же файла; одна запись снимает расхождение."
+      },
+      "alpn": {
+        "source": "json.streamSettings.tlsSettings.alpn",
+        "maps_to": "tls.alpn",
+        "list": {
+          "sep": ",",
+          "coerce_scalar": true
+        },
+        "impl": "DELTAS D133-C9: сегодня читается ТОЛЬКО в hysteria-ветке (xray_hysteria.go:213-225); vless/vmess/trojan из Xray-конфига теряют alpn. Кандидат — поведение не меняется до решения владельца."
+      },
+      "fp": {
+        "source": [
+          "json.streamSettings.realitySettings.fingerprint",
+          "json.streamSettings.tlsSettings.fingerprint"
+        ],
+        "maps_to": "tls.utls.fingerprint",
+        "value_map": {
+          "$ref": "tls.fp_dialect"
+        },
+        "implies": {
+          "tls.utls.enabled": true
+        }
+      },
+      "insecure": {
+        "source": [
+          "json.streamSettings.realitySettings.allowInsecure",
+          "json.streamSettings.tlsSettings.allowInsecure"
+        ],
+        "type": "bool_spelled",
+        "maps_to": "tls.insecure"
+      },
+      "pbk": {
+        "source": [
+          "json.streamSettings.realitySettings.publicKey",
+          "json.streamSettings.realitySettings.public_key"
+        ],
+        "maps_to": "tls.reality.public_key",
+        "implies": {
+          "tls.enabled": true,
+          "tls.reality.enabled": true
+        }
+      },
+      "sid": {
+        "source": [
+          "json.streamSettings.realitySettings.shortId",
+          "json.streamSettings.realitySettings.short_id"
+        ],
+        "maps_to": "tls.reality.short_id",
+        "when": {
+          "tls.reality.enabled": true
+        }
+      }
+    },
+    "fp_dialect": {
+      "note": "Именованная таблица value_map: uTLS-идентификаторы чужого диалекта → канон ядра. Ссылка — {\"$ref\": \"tls.fp_dialect\"}.",
+      "prefix": {
+        "hellochrome": "chrome",
+        "hellofirefox": "firefox",
+        "helloedge": "edge",
+        "hellosafari": "safari",
+        "helloios": "ios",
+        "helloandroid": "android",
+        "hello360": "360",
+        "helloqq": "qq",
+        "hellorandomized": "randomized",
+        "hellorandom": "random"
+      },
+      "strip": [
+        "_",
+        "-",
+        " "
+      ]
     }
   }
 }

@@ -238,6 +238,13 @@ func TestSanitizeEmit(t *testing.T) {
 		},
 	}
 
+	runPipeCases(t, cases)
+}
+
+// runPipeCases — общий прогон таблицы pipeCase: разбор входа → Sanitize →
+// Emit, сверка тела байт в байт, кодов по порядку и отказа по узлу.
+func runPipeCases(t *testing.T, cases []pipeCase) {
+	t.Helper()
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
@@ -270,6 +277,92 @@ func TestSanitizeEmit(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestAbsentWhenObjects — атрибут реестра `absent_when`: объект, чьи ключи
+// совпали с условием, снимается ЦЕЛИКОМ и ТИХО.
+//
+// Проверяется не только исчезновение блока, но и НОРМА ПОРЯДКА (CANON §6):
+// снятый объект «не задан» для правил своих полей и для связей соседей. Без
+// неё `tls{enabled:false, reality{мусор}}` дал бы коды на поля блока, которого
+// в теле не будет, а `tls.ech.enabled` продолжал бы конфликтовать с REALITY
+// внутри выключенного TLS.
+func TestAbsentWhenObjects(t *testing.T) {
+	cases := []pipeCase{
+		{
+			// (1) tls{enabled:false} с мусором внутри: блока нет, кодов нет.
+			// Мусорный pbk сам по себе даёт reality_pbk_invalid, и его
+			// ОТСУТСТВИЕ здесь — и есть проверка порядка.
+			name:   "tls-выключен-с-мусором-внутри",
+			scheme: "vless",
+			in: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `",` +
+				`"tls":{"enabled":false,"server_name":"a.e.com","insecure":true,` +
+				`"reality":{"enabled":true,"public_key":"мусор"},"totally_unknown":1}}`,
+			want: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `"}`,
+		},
+		{
+			// (2) reality{enabled:false} внутри ЖИВОГО tls: снят только
+			// reality, сам блок и его соседи целы.
+			name:   "reality-выключен-внутри-живого-tls",
+			scheme: "vless",
+			in: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `",` +
+				`"tls":{"enabled":true,"server_name":"a.e.com",` +
+				`"utls":{"enabled":true,"fingerprint":"chrome"},` +
+				`"reality":{"enabled":false,"public_key":"мусор"}}}`,
+			want: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `",` +
+				`"tls":{"enabled":true,"server_name":"a.e.com",` +
+				`"utls":{"enabled":true,"fingerprint":"chrome"}}}`,
+		},
+		{
+			// (3) utls{enabled:false} — тем же атрибутом, не особым случаем.
+			name:   "utls-выключен",
+			scheme: "vless",
+			in: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `",` +
+				`"tls":{"enabled":true,"server_name":"a.e.com",` +
+				`"utls":{"enabled":false,"fingerprint":"chrome"}}}`,
+			want: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `",` +
+				`"tls":{"enabled":true,"server_name":"a.e.com"}}`,
+		},
+		{
+			// (4) Выключенный ech не должен конфликтовать с живым REALITY:
+			// связь читает объект, которого нет. Без нормы порядка здесь
+			// появился бы field_conflict на tls.reality.
+			name:   "выключенный-ech-не-конфликтует-с-reality",
+			scheme: "vless",
+			in: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `",` +
+				`"tls":{"enabled":true,"server_name":"a.e.com","ech":{"enabled":false},` +
+				`"utls":{"enabled":true,"fingerprint":"chrome"},` +
+				`"reality":{"enabled":true,"public_key":"` + testPBK + `"}}}`,
+			want: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `",` +
+				`"tls":{"enabled":true,"server_name":"a.e.com",` +
+				`"utls":{"enabled":true,"fingerprint":"chrome"},` +
+				`"reality":{"enabled":true,"public_key":"` + testPBK + `"}}}`,
+		},
+		{
+			// (5) Булев флаг строкой — тело приезжает и от маппера. Сравнение
+			// идёт по печатной форме, поэтому "false" равно false.
+			name:   "выключатель-записан-строкой",
+			scheme: "vless",
+			in: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `",` +
+				`"tls":{"enabled":"false","server_name":"a.e.com"}}`,
+			want: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `"}`,
+		},
+		{
+			// (6) Контроль: живой tls с тем же мусором коды ПОЛУЧАЕТ — иначе
+			// кейс (1) доказывал бы только то, что правила не работают вовсе.
+			name:   "живой-tls-мусор-судится",
+			scheme: "vless",
+			in: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `",` +
+				`"tls":{"enabled":true,"server_name":"a.e.com",` +
+				`"utls":{"enabled":true,"fingerprint":"chrome"},` +
+				`"reality":{"enabled":true,"public_key":"мусор"}}}`,
+			want: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `",` +
+				`"tls":{"enabled":true,"server_name":"a.e.com",` +
+				`"utls":{"enabled":true,"fingerprint":"chrome"}}}`,
+			codes: []string{"reality_pbk_invalid"},
+		},
+	}
+	runPipeCases(t, cases)
 }
 
 // TestSecretsAreMasked — значение секретного поля в warnings не появляется.

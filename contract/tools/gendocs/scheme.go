@@ -584,6 +584,15 @@ func bodyConstraints(f *registry.Field) string {
 	if len(f.AbsentValues) > 0 {
 		parts = append(parts, "means \"not set\": "+scalarList(f.AbsentValues))
 	}
+	if len(f.AbsentWhen) > 0 {
+		// Объект, объявленный незаданным, снимается ЦЕЛИКОМ и молча, до
+		// правил своих полей и до связей соседей (CANON §6.1). Сказать это
+		// в документации важнее, чем перечислить ключи: человек читает
+		// страницу поля и должен понимать, почему блок исчезает без кода.
+		parts = append(parts, "dropped entirely and silently when "+
+			absentWhenList(f.AbsentWhen)+" (the object then counts as \"not set\" "+
+			"for every presence check)")
+	}
 	if f.Min != nil || f.Max != nil {
 		lo, hi := "…", "…"
 		if f.Min != nil {
