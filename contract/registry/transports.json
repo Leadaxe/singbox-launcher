@@ -17,7 +17,10 @@
         "host": {
           "type": "string",
           "default": "",
-          "aliases": ["sni (fallback)", "obfsParam (fallback 3-й ступени)"],
+          "aliases": [
+            "sni (fallback)",
+            "obfsParam (fallback 3-й ступени)"
+          ],
           "maps_to": "transport.headers.Host",
           "desc_en": "Host header of the WebSocket request.",
           "desc_ru": "Заголовок Host запроса WebSocket.",
@@ -26,8 +29,13 @@
         "ed": {
           "type": "int",
           "default": null,
-          "aliases": ["the '?ed=N' suffix of path"],
-          "maps_to": ["transport.max_early_data", "transport.early_data_header_name"],
+          "aliases": [
+            "the '?ed=N' suffix of path"
+          ],
+          "maps_to": [
+            "transport.max_early_data",
+            "transport.early_data_header_name"
+          ],
           "desc_en": "WebSocket early data size, in bytes.",
           "desc_ru": "Размер early data WebSocket в байтах.",
           "impl": "WebSocket Early Data → max_early_data. Две формы записи: (1) хвост пути path='/x?ed=2560' — оба проекта; (2) плоский query-параметр ed=N — только Dart (§320); Go плоскую форму не читает — новое расхождение вне §9 PLAN. Приоритет: хвост пути выше плоского. ed ≤ 0 / не число → значение отбрасывается (path всё равно чистится). D-008: ed без eh → эмитится max_early_data + early_data_header_name='Sec-WebSocket-Protocol' (конвенция v2ray/Xray; поведение Go — Dart добавляет дефолт, сейчас эмитит только max_early_data, §9.A2)."
@@ -52,7 +60,10 @@
         "serviceName": {
           "type": "string",
           "default": "",
-          "aliases": ["service_name", "path (fallback)"],
+          "aliases": [
+            "service_name",
+            "path (fallback)"
+          ],
           "maps_to": "transport.service_name",
           "desc_en": "gRPC service name.",
           "desc_ru": "Имя сервиса gRPC.",
@@ -76,7 +87,9 @@
         "host": {
           "type": "string",
           "default": "",
-          "aliases": ["sni (fallback — только формы h2)"],
+          "aliases": [
+            "sni (fallback — только формы h2)"
+          ],
           "maps_to": "transport.host",
           "desc_en": "Host list of the HTTP request.",
           "desc_ru": "Список Host для HTTP-запроса.",
@@ -101,7 +114,9 @@
         "host": {
           "type": "string",
           "default": "",
-          "aliases": ["sni (fallback — только Dart)"],
+          "aliases": [
+            "sni (fallback — только Dart)"
+          ],
           "maps_to": "transport.host",
           "desc_en": "Host of the HTTP Upgrade request.",
           "desc_ru": "Host запроса HTTP Upgrade.",
@@ -126,7 +141,9 @@
         "host": {
           "type": "string",
           "default": "",
-          "aliases": ["sni (fallback)"],
+          "aliases": [
+            "sni (fallback)"
+          ],
           "maps_to": "transport.host",
           "desc_en": "Host of the XHTTP request.",
           "desc_ru": "Host запроса XHTTP.",
@@ -134,7 +151,13 @@
         },
         "mode": {
           "type": "enum",
-          "values": ["", "auto", "packet-up", "stream-up", "stream-one"],
+          "values": [
+            "",
+            "auto",
+            "packet-up",
+            "stream-up",
+            "stream-one"
+          ],
           "default": "",
           "aliases": [],
           "maps_to": "transport.mode",
@@ -145,7 +168,9 @@
         "extra": {
           "type": "string",
           "default": "",
-          "aliases": ["xhttpSettings.extra (Xray-JSON: вложенный объект)"],
+          "aliases": [
+            "xhttpSettings.extra (Xray-JSON: вложенный объект)"
+          ],
           "desc_en": "Nested JSON object with the same XHTTP fields.",
           "desc_ru": "Вложенный JSON-объект с теми же полями XHTTP.",
           "impl": "URL-encoded JSON (URI) либо объект (Xray-JSON) с теми же полями, что и плоские параметры; ПРИ КОНФЛИКТЕ extra ВЫИГРЫВАЕТ (SPEC 002 §1.5, SPEC 102 R4) — КРОМЕ host/path/mode: эта тройка читается только из плоских параметров, значения из extra отбрасываются даже непустые (D-097; Xray infra/conf/transport_method.go, SplitHTTPConfig.Build перезаписывает extra.Host/Path/Mode внешними). Числа стрингифицируются канонично: 30.0→'30', 1000000→'1000000' (не 1e+06). Битый/не-объектный extra игнорируется, узел живёт на плоских полях (SPEC 102 R6 / §399 R6). Оба проекта."
@@ -153,7 +178,9 @@
         "x_padding_bytes": {
           "type": "string",
           "default": "",
-          "aliases": ["xPaddingBytes"],
+          "aliases": [
+            "xPaddingBytes"
+          ],
           "maps_to": "transport.x_padding_bytes",
           "desc_en": "Padding size range, min-max.",
           "desc_ru": "Диапазон размера набивки, min-max.",
@@ -162,7 +189,9 @@
         "no_grpc_header": {
           "type": "bool",
           "default": false,
-          "aliases": ["noGRPCHeader"],
+          "aliases": [
+            "noGRPCHeader"
+          ],
           "maps_to": "transport.no_grpc_header",
           "desc_en": "Do not send the gRPC-style header.",
           "desc_ru": "Не отправлять заголовок в стиле gRPC.",
@@ -170,9 +199,16 @@
         },
         "session_placement": {
           "type": "enum",
-          "values": ["path", "query", "header", "cookie"],
+          "values": [
+            "path",
+            "query",
+            "header",
+            "cookie"
+          ],
           "default": "",
-          "aliases": ["sessionPlacement"],
+          "aliases": [
+            "sessionPlacement"
+          ],
           "maps_to": "transport.session_placement",
           "desc_en": "Where the session identifier is carried.",
           "desc_ru": "Где переносится идентификатор сессии.",
@@ -181,7 +217,9 @@
         "session_key": {
           "type": "string",
           "default": "",
-          "aliases": ["sessionKey"],
+          "aliases": [
+            "sessionKey"
+          ],
           "maps_to": "transport.session_key",
           "desc_en": "Name of the session identifier.",
           "desc_ru": "Имя идентификатора сессии.",
@@ -189,9 +227,16 @@
         },
         "seq_placement": {
           "type": "enum",
-          "values": ["path", "query", "header", "cookie"],
+          "values": [
+            "path",
+            "query",
+            "header",
+            "cookie"
+          ],
           "default": "",
-          "aliases": ["seqPlacement"],
+          "aliases": [
+            "seqPlacement"
+          ],
           "maps_to": "transport.seq_placement",
           "desc_en": "Where the packet sequence number is carried.",
           "desc_ru": "Где переносится номер пакета.",
@@ -200,7 +245,9 @@
         "seq_key": {
           "type": "string",
           "default": "",
-          "aliases": ["seqKey"],
+          "aliases": [
+            "seqKey"
+          ],
           "maps_to": "transport.seq_key",
           "desc_en": "Name of the sequence number.",
           "desc_ru": "Имя номера последовательности.",
@@ -208,9 +255,16 @@
         },
         "uplink_data_placement": {
           "type": "enum",
-          "values": ["body", "auto", "header", "cookie"],
+          "values": [
+            "body",
+            "auto",
+            "header",
+            "cookie"
+          ],
           "default": "",
-          "aliases": ["uplinkDataPlacement"],
+          "aliases": [
+            "uplinkDataPlacement"
+          ],
           "maps_to": "transport.uplink_data_placement",
           "desc_en": "Where uplink data is carried.",
           "desc_ru": "Где переносятся данные восходящего потока.",
@@ -219,7 +273,9 @@
         "uplink_data_key": {
           "type": "string",
           "default": "",
-          "aliases": ["uplinkDataKey"],
+          "aliases": [
+            "uplinkDataKey"
+          ],
           "maps_to": "transport.uplink_data_key",
           "desc_en": "Name of the uplink data field.",
           "desc_ru": "Имя поля данных восходящего потока.",
@@ -228,7 +284,9 @@
         "uplink_chunk_size": {
           "type": "string",
           "default": "",
-          "aliases": ["uplinkChunkSize"],
+          "aliases": [
+            "uplinkChunkSize"
+          ],
           "maps_to": "transport.uplink_chunk_size",
           "desc_en": "Uplink chunk size, in bytes.",
           "desc_ru": "Размер порции восходящего потока в байтах.",
@@ -237,7 +295,9 @@
         "uplink_http_method": {
           "type": "string",
           "default": "POST",
-          "aliases": ["uplinkHTTPMethod"],
+          "aliases": [
+            "uplinkHTTPMethod"
+          ],
           "maps_to": "transport.uplink_http_method",
           "desc_en": "HTTP method used for uplink.",
           "desc_ru": "HTTP-метод для восходящего потока.",
@@ -246,7 +306,9 @@
         "x_padding_obfs_mode": {
           "type": "bool",
           "default": false,
-          "aliases": ["xPaddingObfsMode"],
+          "aliases": [
+            "xPaddingObfsMode"
+          ],
           "maps_to": "transport.x_padding_obfs_mode",
           "desc_en": "Padding obfuscation mode.",
           "desc_ru": "Режим обфускации набивки.",
@@ -255,7 +317,9 @@
         "x_padding_key": {
           "type": "string",
           "default": "",
-          "aliases": ["xPaddingKey"],
+          "aliases": [
+            "xPaddingKey"
+          ],
           "maps_to": "transport.x_padding_key",
           "desc_en": "Name of the padding parameter.",
           "desc_ru": "Имя параметра набивки.",
@@ -264,7 +328,9 @@
         "x_padding_header": {
           "type": "string",
           "default": "",
-          "aliases": ["xPaddingHeader"],
+          "aliases": [
+            "xPaddingHeader"
+          ],
           "maps_to": "transport.x_padding_header",
           "desc_en": "Header that carries the padding.",
           "desc_ru": "Заголовок, несущий набивку.",
@@ -272,9 +338,16 @@
         },
         "x_padding_placement": {
           "type": "enum",
-          "values": ["cookie", "header", "query", "queryInHeader"],
+          "values": [
+            "cookie",
+            "header",
+            "query",
+            "queryInHeader"
+          ],
           "default": "",
-          "aliases": ["xPaddingPlacement"],
+          "aliases": [
+            "xPaddingPlacement"
+          ],
           "maps_to": "transport.x_padding_placement",
           "desc_en": "Where the padding is carried.",
           "desc_ru": "Где переносится набивка.",
@@ -282,9 +355,14 @@
         },
         "x_padding_method": {
           "type": "enum",
-          "values": ["repeat-x", "tokenish"],
+          "values": [
+            "repeat-x",
+            "tokenish"
+          ],
           "default": "",
-          "aliases": ["xPaddingMethod"],
+          "aliases": [
+            "xPaddingMethod"
+          ],
           "maps_to": "transport.x_padding_method",
           "desc_en": "How the padding bytes are generated.",
           "desc_ru": "Как порождаются байты набивки.",
@@ -293,7 +371,9 @@
         "sc_max_each_post_bytes": {
           "type": "string",
           "default": "",
-          "aliases": ["scMaxEachPostBytes"],
+          "aliases": [
+            "scMaxEachPostBytes"
+          ],
           "maps_to": "transport.sc_max_each_post_bytes",
           "desc_en": "Maximum size of one POST, in bytes.",
           "desc_ru": "Максимальный размер одного POST в байтах.",
@@ -302,7 +382,9 @@
         "sc_min_posts_interval_ms": {
           "type": "string",
           "default": "",
-          "aliases": ["scMinPostsIntervalMs"],
+          "aliases": [
+            "scMinPostsIntervalMs"
+          ],
           "maps_to": "transport.sc_min_posts_interval_ms",
           "desc_en": "Minimum interval between POSTs, in milliseconds.",
           "desc_ru": "Минимальный интервал между POST в миллисекундах.",
@@ -311,7 +393,9 @@
         "sc_stream_up_server_secs": {
           "type": "string",
           "default": "",
-          "aliases": ["scStreamUpServerSecs"],
+          "aliases": [
+            "scStreamUpServerSecs"
+          ],
           "ext": "desktop",
           "maps_to": "transport.sc_stream_up_server_secs",
           "desc_en": "How long the server keeps the uplink stream, in seconds.",
@@ -321,7 +405,9 @@
         "sc_max_buffered_posts": {
           "type": "int",
           "default": null,
-          "aliases": ["scMaxBufferedPosts"],
+          "aliases": [
+            "scMaxBufferedPosts"
+          ],
           "ext": "desktop",
           "maps_to": "transport.sc_max_buffered_posts",
           "desc_en": "How many POSTs may be buffered.",
@@ -331,7 +417,9 @@
         "no_sse_header": {
           "type": "bool",
           "default": false,
-          "aliases": ["noSSEHeader"],
+          "aliases": [
+            "noSSEHeader"
+          ],
           "ext": "desktop",
           "maps_to": "transport.no_sse_header",
           "desc_en": "Do not send the SSE header.",
@@ -341,7 +429,9 @@
         "xmux": {
           "type": "string",
           "default": null,
-          "aliases": ["extra.xmux (вложенный объект)"],
+          "aliases": [
+            "extra.xmux (вложенный объект)"
+          ],
           "ext": "desktop",
           "maps_to": "transport.xmux",
           "desc_en": "XHTTP connection multiplexing settings.",
@@ -356,7 +446,11 @@
   "mapper": [
     {
       "id": "ws_early_data_path_suffix",
-      "applies_to": ["vless", "vmess", "trojan"],
+      "applies_to": [
+        "vless",
+        "vmess",
+        "trojan"
+      ],
       "from": "`?ed=N` carried inside the WebSocket path",
       "to": "`transport.max_early_data` + `transport.early_data_header_name`",
       "kind": "split",
@@ -366,7 +460,11 @@
     },
     {
       "id": "transport_name_dialect",
-      "applies_to": ["vless", "vmess", "trojan"],
+      "applies_to": [
+        "vless",
+        "vmess",
+        "trojan"
+      ],
       "from": "`headerType=http` on `type=tcp|raw`, `net=h2`, Xray `splithttp`",
       "to": "`transport.type` = `http` / `http` / `xhttp`",
       "kind": "spelling",
@@ -401,11 +499,25 @@
   "body": {
     "core": "1.14.1-lx.4",
     "discriminator": "type",
-    "values": ["http", "ws", "quic", "grpc", "httpupgrade", "xhttp"],
+    "values": [
+      "http",
+      "ws",
+      "quic",
+      "grpc",
+      "httpupgrade",
+      "xhttp"
+    ],
     "note": "Тело транспорта выбирается по transport.type; поле type обязательно, пустой или неизвестный тип = ошибка разбора JSON у ядра. Порядок полей внутри варианта = порядок структуры option/v2ray_transport.go (для xhttp — option/v2ray_xhttp.go).",
     "variants": {
       "http": {
-        "order": ["host", "path", "method", "headers", "idle_timeout", "ping_timeout"],
+        "order": [
+          "host",
+          "path",
+          "method",
+          "headers",
+          "idle_timeout",
+          "ping_timeout"
+        ],
         "fields": {
           "host": {
             "type": "listable_string",
@@ -415,7 +527,7 @@
           },
           "path": {
             "type": "string",
-          "format": "url_path",
+            "format": "url_path",
             "default": "/",
             "desc_en": "Request path.",
             "desc_ru": "Путь запроса.",
@@ -449,11 +561,16 @@
         }
       },
       "ws": {
-        "order": ["path", "headers", "max_early_data", "early_data_header_name"],
+        "order": [
+          "path",
+          "headers",
+          "max_early_data",
+          "early_data_header_name"
+        ],
         "fields": {
           "path": {
             "type": "string",
-          "format": "url_path",
+            "format": "url_path",
             "default": "/",
             "desc_en": "WebSocket request path.",
             "desc_ru": "Путь запроса WebSocket.",
@@ -491,7 +608,12 @@
         "note": "V2RayQUICOptions — пустая структура: у транспорта quic нет ни одного поля кроме type."
       },
       "grpc": {
-        "order": ["service_name", "idle_timeout", "ping_timeout", "permit_without_stream"],
+        "order": [
+          "service_name",
+          "idle_timeout",
+          "ping_timeout",
+          "permit_without_stream"
+        ],
         "fields": {
           "service_name": {
             "type": "string",
@@ -522,7 +644,11 @@
         }
       },
       "httpupgrade": {
-        "order": ["host", "path", "headers"],
+        "order": [
+          "host",
+          "path",
+          "headers"
+        ],
         "fields": {
           "host": {
             "type": "string",
@@ -532,7 +658,7 @@
           },
           "path": {
             "type": "string",
-          "format": "url_path",
+            "format": "url_path",
             "default": "/",
             "desc_en": "Request path.",
             "desc_ru": "Путь запроса.",
@@ -547,7 +673,37 @@
         }
       },
       "xhttp": {
-        "order": ["host", "path", "mode", "headers", "x_padding_bytes", "no_grpc_header", "xmux", "session_placement", "session_key", "seq_placement", "seq_key", "session_table", "session_length", "uplink_data_placement", "uplink_data_key", "uplink_chunk_size", "uplink_http_method", "x_padding_obfs_mode", "x_padding_key", "x_padding_header", "x_padding_placement", "x_padding_method", "sc_max_each_post_bytes", "sc_min_posts_interval_ms", "sc_max_concurrent_posts", "server_max_header_bytes", "no_sse_header", "sc_max_buffered_posts", "sc_stream_up_server_secs"],
+        "order": [
+          "host",
+          "path",
+          "mode",
+          "headers",
+          "x_padding_bytes",
+          "no_grpc_header",
+          "xmux",
+          "session_placement",
+          "session_key",
+          "seq_placement",
+          "seq_key",
+          "session_table",
+          "session_length",
+          "uplink_data_placement",
+          "uplink_data_key",
+          "uplink_chunk_size",
+          "uplink_http_method",
+          "x_padding_obfs_mode",
+          "x_padding_key",
+          "x_padding_header",
+          "x_padding_placement",
+          "x_padding_method",
+          "sc_max_each_post_bytes",
+          "sc_min_posts_interval_ms",
+          "sc_max_concurrent_posts",
+          "server_max_header_bytes",
+          "no_sse_header",
+          "sc_max_buffered_posts",
+          "sc_stream_up_server_secs"
+        ],
         "fields": {
           "host": {
             "type": "string",
@@ -564,7 +720,13 @@
           },
           "mode": {
             "type": "enum",
-            "values": ["", "auto", "packet-up", "stream-up", "stream-one"],
+            "values": [
+              "",
+              "auto",
+              "packet-up",
+              "stream-up",
+              "stream-one"
+            ],
             "on_invalid": {
               "action": "drop",
               "code": "xhttp_param_reset"
@@ -596,7 +758,14 @@
           },
           "xmux": {
             "type": "object",
-            "order": ["max_concurrency", "max_connections", "c_max_reuse_times", "h_max_request_times", "h_max_reusable_secs", "h_keep_alive_period"],
+            "order": [
+              "max_concurrency",
+              "max_connections",
+              "c_max_reuse_times",
+              "h_max_request_times",
+              "h_max_reusable_secs",
+              "h_keep_alive_period"
+            ],
             "fields": {
               "max_concurrency": {
                 "type": "string",
@@ -654,7 +823,13 @@
           },
           "session_placement": {
             "type": "enum",
-            "values": ["", "path", "query", "header", "cookie"],
+            "values": [
+              "",
+              "path",
+              "query",
+              "header",
+              "cookie"
+            ],
             "on_invalid": {
               "action": "drop",
               "code": "xhttp_param_reset"
@@ -673,7 +848,13 @@
           },
           "seq_placement": {
             "type": "enum",
-            "values": ["", "path", "query", "header", "cookie"],
+            "values": [
+              "",
+              "path",
+              "query",
+              "header",
+              "cookie"
+            ],
             "on_invalid": {
               "action": "drop",
               "code": "xhttp_param_reset"
@@ -716,7 +897,13 @@
           },
           "uplink_data_placement": {
             "type": "enum",
-            "values": ["", "body", "auto", "header", "cookie"],
+            "values": [
+              "",
+              "body",
+              "auto",
+              "header",
+              "cookie"
+            ],
             "on_invalid": {
               "action": "drop",
               "code": "xhttp_param_reset"
@@ -769,7 +956,13 @@
           },
           "x_padding_placement": {
             "type": "enum",
-            "values": ["", "cookie", "header", "query", "queryInHeader"],
+            "values": [
+              "",
+              "cookie",
+              "header",
+              "query",
+              "queryInHeader"
+            ],
             "on_invalid": {
               "action": "drop",
               "code": "xhttp_param_reset"
@@ -781,7 +974,11 @@
           },
           "x_padding_method": {
             "type": "enum",
-            "values": ["", "repeat-x", "tokenish"],
+            "values": [
+              "",
+              "repeat-x",
+              "tokenish"
+            ],
             "on_invalid": {
               "action": "drop",
               "code": "xhttp_param_reset"
@@ -840,6 +1037,320 @@
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_xhttp",
         "note": "Форк lx: option/v2ray_xhttp.go. В сборке без with_xhttp транспорт неизвестен ядру — код transport_unsupported."
+      }
+    }
+  },
+  "blocks": {
+    "note": "SPEC 133: ИСПОЛНЯЕМЫЕ записи транспортов по диалектам. Подключаются секцией протокола через include (\"transports#uri\", \"transports#xray\"). Описательные transports.<type>.params выше не отменяются — там словарь для документации. Диалектов два, потому что у Xray свои имена секций (wsSettings/grpcSettings/...) и своя форма host.",
+    "uri": {
+      "$selector": {
+        "type": {
+          "source": "query.type",
+          "selector": true,
+          "maps_to": "transport.type",
+          "value_map": {
+            "": null,
+            "tcp": null,
+            "raw": null
+          }
+        },
+        "headerType": {
+          "source": "query.headerType",
+          "selector": true,
+          "maps_to": "transport.type",
+          "when": {
+            "query.type": {
+              "in": [
+                "tcp",
+                "raw",
+                ""
+              ]
+            }
+          },
+          "value_map": {
+            "http": "http",
+            "none": null,
+            "": null
+          },
+          "impl": "Xray-камуфляж HTTP поверх TCP/RAW: headerType читается ТОЛЬКО когда type пуст или tcp/raw."
+        }
+      },
+      "ws": {
+        "path": {
+          "source": "query.path",
+          "decode_extra": {
+            "mode": "path",
+            "passes": 2
+          },
+          "extract": {
+            "re": "^(?P<path>[^?]*)(?:\\?ed=(?P<ed>\\d+))?$",
+            "into": {
+              "path": "transport.path",
+              "ed": {
+                "path": "transport.max_early_data",
+                "type": "int",
+                "implies": {
+                  "transport.early_data_header_name": {
+                    "value": "Sec-WebSocket-Protocol",
+                    "implicit": true
+                  }
+                }
+              }
+            }
+          },
+          "compose": "{transport.path}?ed={transport.max_early_data}",
+          "when": {
+            "transport.type": "ws"
+          },
+          "impl": "Память проекта ws-early-data-ed-param: ?ed=N жил в ЧЕТЫРЁХ слоях (3 парсера + allowlist-эмиттер). Здесь одна запись на оба направления. mode:path — оба прохода path-семантика, '+' литерален (DELTAS D133-14)."
+        },
+        "host": {
+          "source": [
+            "query.host",
+            "query.sni",
+            "query.obfsParam"
+          ],
+          "maps_to": "transport.headers.Host",
+          "when": {
+            "transport.type": "ws"
+          },
+          "impl": "Фолбэк-цепочка host → sni → obfsParam; сегодня живёт прозой в aliases."
+        }
+      },
+      "httpupgrade": {
+        "path": {
+          "source": "query.path",
+          "decode_extra": {
+            "mode": "path",
+            "passes": 2
+          },
+          "extract": {
+            "re": "^(?P<path>[^?]*)(?:\\?ed=\\d+)?$",
+            "into": {
+              "path": "transport.path"
+            }
+          },
+          "when": {
+            "transport.type": "httpupgrade"
+          },
+          "impl": "Тот же extract, но без группы ed: у httpupgrade хвост срезается, значение отбрасывается."
+        },
+        "host": {
+          "source": [
+            "query.host",
+            "query.sni"
+          ],
+          "maps_to": "transport.host",
+          "when": {
+            "transport.type": "httpupgrade"
+          },
+          "impl": "У httpupgrade host — СКАЛЯР (у ws это headers.Host, у http — список): форма различается по типу транспорта, поэтому три записи, а не одна."
+        }
+      },
+      "http": {
+        "path": {
+          "source": "query.path",
+          "maps_to": "transport.path",
+          "when": {
+            "transport.type": "http"
+          }
+        },
+        "host": {
+          "source": [
+            "query.host",
+            "query.sni"
+          ],
+          "maps_to": "transport.host",
+          "list": {
+            "sep": ",",
+            "coerce_scalar": true
+          },
+          "when": {
+            "transport.type": "http"
+          },
+          "impl": "У http host — СПИСОК."
+        }
+      },
+      "grpc": {
+        "serviceName": {
+          "source": [
+            "query.serviceName",
+            "query.service_name",
+            "query.path"
+          ],
+          "maps_to": "transport.service_name",
+          "when": {
+            "transport.type": "grpc"
+          },
+          "impl": "Фолбэк на path — живая форма подписок. normalize снят целиком контрактом 1.1.3 (TASKS_LXBOX §24.12), поэтому его здесь нет."
+        }
+      },
+      "xhttp": {
+        "mode": {
+          "source": "query.mode",
+          "maps_to": "transport.mode",
+          "when": {
+            "transport.type": "xhttp"
+          },
+          "impl": "mode/path/host у xhttp читаются ТОЛЬКО из плоского слоя; extra — вложенный слой чужого диалекта, и одноимённые ключи в нём игнорируются (D-097). Поэтому source из одного элемента."
+        },
+        "path": {
+          "source": "query.path",
+          "maps_to": "transport.path",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "host": {
+          "source": "query.host",
+          "maps_to": "transport.host",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        }
+      }
+    },
+    "xray": {
+      "$selector": {
+        "network": {
+          "source": "json.streamSettings.network",
+          "selector": true,
+          "maps_to": "transport.type",
+          "value_map": {
+            "tcp": null,
+            "raw": null,
+            "": null,
+            "h2": "http",
+            "splithttp": "xhttp"
+          },
+          "on_invalid": {
+            "action": "drop",
+            "code": "transport_unsupported"
+          },
+          "impl": "QUIRKS Q133-17: сегодня неизвестный network (kcp/quic/ds) возвращает nil МОЛЧА — узел приезжает чистым TCP. Код transport_unsupported объявлен, но из Xray не ставится."
+        }
+      },
+      "ws": {
+        "path": {
+          "source": "json.wsSettings.path",
+          "extract": {
+            "re": "^(?P<path>[^?]*)(?:\\?ed=(?P<ed>\\d+))?$",
+            "into": {
+              "path": "transport.path",
+              "ed": {
+                "path": "transport.max_early_data",
+                "type": "int",
+                "implies": {
+                  "transport.early_data_header_name": {
+                    "value": "Sec-WebSocket-Protocol",
+                    "implicit": true
+                  }
+                }
+              }
+            }
+          },
+          "when": {
+            "transport.type": "ws"
+          }
+        },
+        "host": {
+          "source": "json.wsSettings.host",
+          "maps_to": "transport.headers.Host",
+          "when": {
+            "transport.type": "ws"
+          }
+        }
+      },
+      "httpupgrade": {
+        "path": {
+          "source": "json.httpupgradeSettings.path",
+          "extract": {
+            "re": "^(?P<path>[^?]*)(?:\\?ed=\\d+)?$",
+            "into": {
+              "path": "transport.path"
+            }
+          },
+          "when": {
+            "transport.type": "httpupgrade"
+          }
+        },
+        "host": {
+          "source": "json.httpupgradeSettings.host",
+          "maps_to": "transport.host",
+          "when": {
+            "transport.type": "httpupgrade"
+          }
+        }
+      },
+      "http": {
+        "path": {
+          "source": "json.httpSettings.path",
+          "maps_to": "transport.path",
+          "when": {
+            "transport.type": "http"
+          }
+        },
+        "host": {
+          "source": "json.httpSettings.host",
+          "maps_to": "transport.host",
+          "list": {
+            "sep": ",",
+            "coerce_scalar": true
+          },
+          "when": {
+            "transport.type": "http"
+          },
+          "impl": "QUIRKS Q133-16: сегодня массив ['a.com','b.com'] уходит через fmt.Sprint и даёт host ['[a.com b.com]'] — типовой реальный конфиг даёт мусор. coerce_scalar принимает ОБЕ формы."
+        }
+      },
+      "grpc": {
+        "serviceName": {
+          "source": [
+            "json.grpcSettings.serviceName",
+            "json.grpcSettings.service_name"
+          ],
+          "maps_to": "transport.service_name",
+          "when": {
+            "transport.type": "grpc"
+          }
+        }
+      },
+      "xhttp": {
+        "$settings": {
+          "source": [
+            "json.xhttpSettings",
+            "json.splithttpSettings"
+          ],
+          "flatten": [
+            "extra",
+            "xmux"
+          ],
+          "when": {
+            "transport.type": "xhttp"
+          },
+          "impl": "xhttpSettings ∥ splithttpSettings — один транспорт под двумя именами. flatten разворачивает вложенные extra и xmux в плоский слой (сегодня это делает xrayFlattenScalars вручную)."
+        },
+        "mode": {
+          "source": "json.xhttpSettings.mode",
+          "maps_to": "transport.mode",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "path": {
+          "source": "json.xhttpSettings.path",
+          "maps_to": "transport.path",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "host": {
+          "source": "json.xhttpSettings.host",
+          "maps_to": "transport.host",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        }
       }
     }
   }

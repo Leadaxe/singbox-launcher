@@ -4,7 +4,11 @@
   "kind": "outbound",
   "singbox_type": "trojan",
   "aliases": [],
-  "sources": ["uri", "singbox", "xray"],
+  "sources": [
+    "uri",
+    "singbox",
+    "xray"
+  ],
   "extension": null,
   "uri": {
     "userinfo": {
@@ -17,7 +21,17 @@
     "query": {
       "type": {
         "type": "enum",
-        "values": ["", "tcp", "raw", "ws", "grpc", "http", "h2", "httpupgrade", "xhttp"],
+        "values": [
+          "",
+          "tcp",
+          "raw",
+          "ws",
+          "grpc",
+          "http",
+          "h2",
+          "httpupgrade",
+          "xhttp"
+        ],
         "allowlist": null,
         "default": "",
         "aliases": [],
@@ -28,7 +42,10 @@
       },
       "headerType": {
         "type": "enum",
-        "values": ["", "http"],
+        "values": [
+          "",
+          "http"
+        ],
         "allowlist": null,
         "default": "",
         "aliases": [],
@@ -39,7 +56,11 @@
       },
       "security": {
         "type": "enum",
-        "values": ["", "none", "tls"],
+        "values": [
+          "",
+          "none",
+          "tls"
+        ],
         "allowlist": null,
         "default": "",
         "aliases": [],
@@ -53,7 +74,10 @@
         "values": [],
         "allowlist": null,
         "default": "",
-        "aliases": ["peer", "host"],
+        "aliases": [
+          "peer",
+          "host"
+        ],
         "maps_to": "tls.server_name",
         "desc_en": "Server name sent in SNI.",
         "desc_ru": "Имя сервера, отправляемое в SNI.",
@@ -86,7 +110,17 @@
         "values": [],
         "allowlist": null,
         "default": false,
-        "aliases": ["allowInsecure", "allowinsecure", "allow_insecure", "allow-insecure", "skipCertVerify", "skipcertverify", "skip_cert_verify", "skip-cert-verify", "noverify"],
+        "aliases": [
+          "allowInsecure",
+          "allowinsecure",
+          "allow_insecure",
+          "allow-insecure",
+          "skipCertVerify",
+          "skipcertverify",
+          "skip_cert_verify",
+          "skip-cert-verify",
+          "noverify"
+        ],
         "maps_to": "tls.insecure",
         "desc_en": "Skip server certificate verification.",
         "desc_ru": "Не проверять сертификат сервера.",
@@ -97,7 +131,17 @@
   },
   "emit": {
     "share_uri": true,
-    "param_order": ["alpn", "fp", "host", "insecure", "path", "security", "serviceName", "sni", "type"],
+    "param_order": [
+      "alpn",
+      "fp",
+      "host",
+      "insecure",
+      "path",
+      "security",
+      "serviceName",
+      "sni",
+      "type"
+    ],
     "note": "Порядок лексикографический (url.Values.Encode / buildQuery). Расхождение формы: Go при включённом TLS НЕ пишет security=tls (дефолт схемы), Dart пишет явно; insecure: Go 'insecure=1', Dart 'allowInsecure=1'. Оба парсера принимают обе формы."
   },
   "refs": {
@@ -120,7 +164,16 @@
   },
   "body": {
     "core": "1.14.1-lx.4",
-    "order": ["server", "server_port", "password", "network", "tls", "multiplex", "transport", "__dialer"],
+    "order": [
+      "server",
+      "server_port",
+      "password",
+      "network",
+      "tls",
+      "multiplex",
+      "transport",
+      "__dialer"
+    ],
     "fields": {
       "server": {
         "type": "ref",
@@ -179,6 +232,177 @@
         "desc_en": "Common dialer fields, inlined flat into the body.",
         "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
         "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
+      }
+    }
+  },
+  "mappers": {
+    "uri": {
+      "detect": {
+        "scheme_in": [
+          "trojan"
+        ]
+      },
+      "body_source": "uri",
+      "forms": [
+        {
+          "id": "url",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            "url"
+          ],
+          "space": "url"
+        }
+      ],
+      "userinfo": {
+        "into": [
+          "password"
+        ],
+        "impl": "DELTAS D133-8 / QUIRKS Q133-07: пароль = ВЕСЬ userinfo, без резки по ':'. Сегодня node_parser_core.go:455-466 берёт часть ДО ':', а хвост уходит в Query['password'] и в тело не попадает — пароль с двоеточием терялся молча."
+      },
+      "label": {
+        "source": [
+          "fragment",
+          "path"
+        ],
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "value_map": {
+          "🇪🇳": "🇬🇧"
+        },
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "singbox_type"
+        }
+      },
+      "defaults": {
+        "server_port": 443
+      },
+      "include": [
+        "transports#uri",
+        "tls#uri"
+      ],
+      "params": {
+        "server": {
+          "source": "host",
+          "maps_to": "server",
+          "required": true
+        },
+        "server_port": {
+          "source": "port",
+          "maps_to": "server_port",
+          "type": "int"
+        },
+        "sni": {
+          "source": [
+            "query.sni",
+            "query.peer",
+            "query.host"
+          ],
+          "maps_to": "tls.server_name",
+          "default_from": "host",
+          "impl": "QUIRKS Q133-08: фолбэк на server — НАШЕ сегодняшнее поведение (node_parser_transport.go:1042-1045), и корпус на нём стоит (uri/trojan/basic_password без sni ждёт server_name=example-1.com). LxBox просит эвристику снять; снятие изменило бы тела РАБОЧИХ узлов → открытый вопрос SPEC.md §15.9. До ответа поведение сохраняется."
+        }
+      },
+      "unknown_key": {
+        "action": "keep",
+        "code": "uri_param_unknown"
+      },
+      "emit": {
+        "form": "url",
+        "param_order": "alphabetical",
+        "omit_default": [
+          "security"
+        ],
+        "impl": "param_order — ПРАВИЛО, а не перечень: q.Encode() во всех эмиттерах уже даёт алфавит. Прежний ручной список из 9 имён снят как дубль правила."
+      }
+    },
+    "xray": {
+      "detect": {
+        "json": {
+          "value_of": {
+            "protocol": "trojan"
+          }
+        }
+      },
+      "body_source": "xray",
+      "forms": [
+        {
+          "id": "servers",
+          "detect": {
+            "default": true
+          },
+          "space": "json",
+          "base": "settings.servers.0"
+        }
+      ],
+      "include": [
+        "transports#xray",
+        "tls#xray"
+      ],
+      "params": {
+        "address": {
+          "source": "json.$base.address",
+          "maps_to": "server",
+          "required": true
+        },
+        "port": {
+          "source": "json.$base.port",
+          "maps_to": "server_port",
+          "type": "int",
+          "required": true
+        },
+        "password": {
+          "source": "json.$base.password",
+          "maps_to": "password",
+          "required": true
+        },
+        "$extra_servers": {
+          "source": "json.settings.servers",
+          "maps_to": null,
+          "on_len_gt": {
+            "n": 1,
+            "action": "note",
+            "code": "xray_extra_entries_dropped"
+          },
+          "impl": "QUIRKS Q133-18: servers[1..] отбрасываются молча (xray_protocols.go:159). Поведение то же, но появляется код."
+        }
+      },
+      "unknown_key": {
+        "action": "drop",
+        "code": "json_field_unknown"
+      },
+      "emit": null
+    },
+    "singbox": {
+      "detect": {
+        "json": {
+          "value_in": {
+            "type": [
+              "trojan"
+            ]
+          }
+        }
+      },
+      "body_source": "singbox",
+      "forms": [
+        {
+          "id": "outbound",
+          "detect": {
+            "default": true
+          },
+          "space": "json",
+          "level": "outbound"
+        }
+      ],
+      "params": {},
+      "unknown_key": {
+        "action": "keep",
+        "code": "json_field_unknown",
+        "impl": "keep, а не drop: тело уже в каноне ядра, и чужой ключ может быть расширением форка — выбрасывать его нельзя. Но и молчать нельзя: сегодня неизвестный ключ уезжает в тело слепой копией и всплывает, лишь когда ядро отвергнет весь конфиг."
       }
     }
   }
