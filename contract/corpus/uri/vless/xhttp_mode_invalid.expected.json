@@ -24,7 +24,9 @@
       "scheme": "vless",
       "warnings": [
         {
-          "code": "xhttp_param_reset"
+          "code": "xhttp_param_reset",
+          "path": "transport.mode",
+          "value": "garbage"
         }
       ]
     }

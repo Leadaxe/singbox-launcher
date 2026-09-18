@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
-	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/core/config/registry"
 )
 
 // queryGetFold returns the first value for a query key, matching case-insensitively.
@@ -409,76 +409,36 @@ func xhttpBuildTransport(primary, fallback map[string]string) map[string]interfa
 	return t
 }
 
-// xhttpEnumFields — закрытые enum'ы XHTTP-транспорта, которые ядро проверяет
-// РЕГИСТРОЗАВИСИМО и на промахе роняет ВЕСЬ конфиг, а не одну ноду
-// (transport/v2rayxhttp/meta.go:19-38, 91-159, 268-276, пин 1.14.1-lx.4;
-// замеры — DRIFT 131 §9.2):
+// xhttpModeInRegistryEnum — валиден ли `mode` по реестру
+// (contract/registry/transports.json, вариант xhttp).
 //
-//	initialize outbound[N]: create client transport: xhttp:
-//	v2ray-xhttp: unknown mode: garbage
-//	… v2ray-xhttp: unsupported seq_placement: garbage
-//	… v2ray-xhttp: unsupported x_padding_placement: garbage
-//	… v2ray-xhttp: unknown x_padding_method: garbage
+// Значений здесь НЕТ: закрытый enum и его исполнение (снять поле + код
+// xhttp_param_reset с путём и значением) живут в реестре и исполняются
+// санитайзером nodeflow — парсер их не дублирует (SPEC 131 §3.1). Спрашиваем
+// реестр только для структурного правила ниже, которому нужно отличить
+// «режим задан явно» от «режима нет», а мусорный режим — это «нет»: он до
+// тела всё равно не доедет.
 //
-// Проверено, что валидация НЕ зависит от режима: `seq_placement` осмыслен
-// только в packet-up, но normalizeMeta прогоняет весь набор на любом режиме.
-//
-// `x_padding_placement` — единственное поле реестра с camelCase-значением
-// (`queryInHeader`); `queryinheader` ядро отвергает. Поэтому значения здесь
-// сравниваются КАК ЕСТЬ, без приведения регистра: «нормализация к lowercase»
-// на этом поле сломала бы рабочую ноду.
-//
-// Пустая строка у ядра = дефолт (`orDefault`), поэтому мусор достаточно
-// СНЯТЬ — как с `key_share`: узел остаётся жив на дефолте транспорта, а
-// переписывать явное значение автора ссылки своей догадкой мы не вправе.
-var xhttpEnumFields = []struct {
-	jsonKey string
-	allowed []string
-}{
-	{"mode", []string{"auto", "packet-up", "stream-up", "stream-one"}},
-	{"session_placement", []string{"path", "query", "header", "cookie"}},
-	{"seq_placement", []string{"path", "query", "header", "cookie"}},
-	{"uplink_data_placement", []string{"body", "auto", "header", "cookie"}},
-	{"x_padding_placement", []string{"cookie", "header", "query", "queryInHeader"}},
-	{"x_padding_method", []string{"repeat-x", "tokenish"}},
-}
-
-// xhttpGuardEnums снимает XHTTP-поля со значением вне закрытого enum ядра.
-//
-// Возвращает true, если хоть одно поле снято (вызывающий вешает на узел
-// WarnXHTTPParamReset). Один код на все поля: для человека это одна и та же
-// история «параметр транспорта не доехал», а разбор по полям живёт в логе.
-func xhttpGuardEnums(t map[string]interface{}) bool {
-	if t == nil {
-		return false
+// Реестр недоступен (сломан файл) → считаем режим валидным: молча ослаблять
+// структурный гард нельзя, а поднимать ошибку разбора из-за реестра — тем
+// более.
+func xhttpModeInRegistryEnum(mode string) bool {
+	reg, err := registry.Get()
+	if err != nil {
+		return true
 	}
-	reset := false
-	for _, f := range xhttpEnumFields {
-		raw, has := t[f.jsonKey]
-		if !has {
-			continue
-		}
-		v, _ := raw.(string)
-		if v == "" {
-			// Пустое значение = дефолт ядра; поле просто лишнее.
-			delete(t, f.jsonKey)
-			continue
-		}
-		ok := false
-		for _, a := range f.allowed {
-			if v == a {
-				ok = true
-				break
-			}
-		}
-		if ok {
-			continue
-		}
-		debuglog.WarnLog("Parser: xhttp %s=%q вне набора ядра — поле снято", f.jsonKey, v)
-		delete(t, f.jsonKey)
-		reset = true
+	// Вариант xhttp у vless/vmess/trojan один и тот же (общая суб-схема
+	// транспортов), поэтому схема для поиска роли не играет.
+	f, ok := reg.Field("vless", "transport.xhttp.mode")
+	if !ok || len(f.Values) == 0 {
+		return true
 	}
-	return reset
+	for _, v := range f.Values {
+		if str, isStr := v.(string); isStr && str == mode {
+			return true
+		}
+	}
+	return false
 }
 
 // xhttpGuardUplinkPlacement приводит пару (mode, uplink_data_placement) к
@@ -515,6 +475,13 @@ func xhttpGuardUplinkPlacement(t map[string]interface{}) string {
 		return ""
 	}
 	mode, _ := t["mode"].(string)
+	if mode != "" && !xhttpModeInRegistryEnum(mode) {
+		// Мусорный режим санитайзер снимет по реестру, и до ядра доедет
+		// узел БЕЗ режима. Значит это ветка «режима нет»: считать такой
+		// режим «явно заданным не-packet-up» означало бы снять валидный
+		// placement заодно с мусором (кейс mode=garbage + header).
+		mode = ""
+	}
 	switch mode {
 	case "packet-up":
 		// Рабочая пара — не трогаем и молчим.
@@ -537,13 +504,6 @@ func xhttpGuardUplinkPlacement(t map[string]interface{}) string {
 func noteXHTTPPlacementGuard(node *configtypes.ParsedNode, transport map[string]interface{}) {
 	if node == nil || transport == nil {
 		return
-	}
-	// Порядок важен: сперва снимаем мусор из enum'ов, и только потом
-	// сводим пару (mode, uplink_data_placement). Иначе мусорный mode
-	// попал бы в ветку «режим задан явно и он не packet-up» и снял бы
-	// рабочий placement заодно с собой.
-	if xhttpGuardEnums(transport) {
-		node.AddWarning(WarnXHTTPParamReset)
 	}
 	if code := xhttpGuardUplinkPlacement(transport); code != "" {
 		node.AddWarning(code)
