@@ -109,7 +109,9 @@ func TestTailscaleEmittedAsEndpoint(t *testing.T) {
 	if emitted["tag"] != "ts node/1" {
 		t.Errorf("tag = %v, want %q", emitted["tag"], "ts node/1")
 	}
-	if got, want := emitted["state_directory"], "/opt/lx/bin/tailscale/ts_node_1"; got != want {
+	// Ожидание собирается filepath.Join'ом — эмиттер клеит ЛОКАЛЬНЫЙ корень
+	// тем же вызовом, и на Windows путь приходит с обратными слэшами.
+	if got, want := emitted["state_directory"], filepath.Join("/opt/lx/bin/tailscale", "ts_node_1"); got != want {
 		t.Errorf("state_directory = %v, want %q", got, want)
 	}
 
