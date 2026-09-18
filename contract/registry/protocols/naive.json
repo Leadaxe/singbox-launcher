@@ -211,5 +211,140 @@
       }
     },
     "build_tag": "with_naive_outbound"
+  },
+  "mappers": {
+    "uri": {
+      "body_source": "uri",
+      "detect": {
+        "scheme_in": [
+          "naive+https",
+          "naive+quic"
+        ]
+      },
+      "forms": [
+        {
+          "id": "url",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            "url"
+          ],
+          "space": "url"
+        }
+      ],
+      "userinfo": {
+        "split": {
+          "sep": ":",
+          "limit": 2
+        },
+        "into": [
+          "username",
+          "password"
+        ],
+        "single_into": "password",
+        "impl": "§465 — одиночный userinfo это PASSWORD (конвенция DuckSoft, та же что у hysteria2): 'naive+https://secret@host' даёт password=secret с пустым username. Наличие ':' отличает форму «только имя»: 'user:' — это username."
+      },
+      "label": {
+        "source": "fragment",
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "singbox_type"
+        }
+      },
+      "defaults": {
+        "type": "naive",
+        "server_port": 443
+      },
+      "scheme_sets": {
+        "naive+https": {
+          "tls.enabled": true,
+          "tls.server_name": "$host"
+        },
+        "naive+quic": {
+          "tls.enabled": true,
+          "tls.server_name": "$host",
+          "quic": true,
+          "quic_congestion_control": "bbr"
+        }
+      },
+      "params": {
+        "server": {
+          "source": "host",
+          "maps_to": "server",
+          "required": true,
+          "impl": "§463 / контракт §24.6 — пустой host отбраковывается: ядро на пустом адресе валит ВЕСЬ конфиг, то есть один такой узел из подписки оставлял человека без VPN."
+        },
+        "server_port": {
+          "source": "port",
+          "maps_to": "server_port",
+          "type": "int",
+          "materialize_default": true,
+          "impl": "Каноничная форма DuckSoft — 443."
+        },
+        "username": {
+          "source": "userinfo.user",
+          "maps_to": "username"
+        },
+        "password": {
+          "source": "userinfo.pass",
+          "maps_to": "password"
+        },
+        "extra-headers": {
+          "source": "query.extra-headers",
+          "maps_to": "extra_headers",
+          "type": "object",
+          "sort_keys": true,
+          "list": {
+            "sep": "\r\n"
+          },
+          "extract": {
+            "re": "^(?P<k>[^:]+):\\s*(?P<v>.*)$",
+            "into": {
+              "k": "$key",
+              "v": "$value"
+            }
+          },
+          "on_item_invalid": {
+            "action": "skip",
+            "code": "naive_extra_headers_invalid"
+          },
+          "impl": "Правило broken_header_pair_skipped: битая пара пропускается, остальные живут; код ставится ОДИН раз на узел, о первой отброшенной паре. sort_keys — порядок входит в identity."
+        },
+        "padding": {
+          "source": "query.padding",
+          "maps_to": null,
+          "on_present": {
+            "action": "drop",
+            "code": "naive_padding_ignored"
+          },
+          "impl": "sing-box-эквивалента нет. Предупреждение О ПЕРЕВОДЕ: значения в теле уже нет, и санитайзеру сказать о нём нечего."
+        }
+      },
+      "include": [
+        "dialer#uri"
+      ],
+      "unknown_key": {
+        "action": "keep",
+        "code": "uri_param_unknown"
+      },
+      "emit": {
+        "form": "url",
+        "form_from": {
+          "quic": {
+            "true": "naive+quic",
+            "*": "naive+https"
+          }
+        },
+        "param_order": "alphabetical",
+        "omit_default": [
+          "quic_congestion_control"
+        ]
+      }
+    }
   }
 }

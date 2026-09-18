@@ -185,5 +185,137 @@
         "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
       }
     }
+  },
+  "mappers": {
+    "uri": {
+      "body_source": "uri",
+      "detect": {
+        "scheme_in": [
+          "ssh"
+        ]
+      },
+      "forms": [
+        {
+          "id": "url",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            "url"
+          ],
+          "space": "url"
+        }
+      ],
+      "userinfo": {
+        "split": {
+          "sep": ":",
+          "limit": 2
+        },
+        "into": [
+          "user",
+          "password"
+        ]
+      },
+      "label": {
+        "source": "fragment",
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "singbox_type"
+        }
+      },
+      "defaults": {
+        "type": "ssh",
+        "server_port": 22
+      },
+      "params": {
+        "server": {
+          "source": "host",
+          "maps_to": "server",
+          "required": true
+        },
+        "server_port": {
+          "source": "port",
+          "maps_to": "server_port",
+          "type": "int",
+          "materialize_default": true,
+          "impl": "Канонический порт ssh — 22."
+        },
+        "user": {
+          "source": "userinfo.user",
+          "maps_to": "user",
+          "required": true,
+          "impl": "Обязателен. У нас отбраковка РАНЬШЕ секции — node_parser_core.go:394-400 (ssh в списке схем с обязательным userinfo), корпус uri/ssh/missing_user_rejected ждёт parse_error. Дефолт 'root' реестра не материализуется: ветка node_parser_ssh.go:20-23 с WarnSSHUserDefault МЁРТВАЯ, до неё исполнение не доходит (QUIRKS-кандидат на чистку)."
+        },
+        "password": {
+          "source": "userinfo.pass",
+          "maps_to": "password"
+        },
+        "private_key": {
+          "source": "query.private_key",
+          "maps_to": "private_key",
+          "decode_extra": {
+            "mode": "query",
+            "passes": 1
+          },
+          "impl": "Многострочный PEM: %0A раскрывается ОДИН раз, раскрутки до стабильной точки нет — она сломала бы ключ, где '%' законен. format: pem вместо plus_literal (PRIMITIVES §0.4a, DELTAS D133-15): '+' в PEM несёт ДВА смысла — пробел в заголовочных строках -----BEGIN…----- и литерал в base64-теле, — поэтому булев флаг негоден в обоих положениях. Открытое место, помеченное LxBox, закрыто форматом. У нас сегодня заплаты нет вовсе: значение идёт из parsedURL.Query() (node_parser_ssh.go:32), и '+' становится пробелом И в заголовке, И в теле — тело ключа портится молча. QUIRKS Q133-40.",
+          "format": "pem"
+        },
+        "private_key_path": {
+          "source": "query.private_key_path",
+          "maps_to": "private_key_path",
+          "when": {
+            "private_key": {
+              "present": false
+            }
+          },
+          "impl": "Учитывается только при пустом private_key — node_parser_ssh.go:32-36. Поле launcher-only, у LxBox его нет: per-app override uri/ssh/private_key_path.expected.lxbox.json."
+        },
+        "private_key_passphrase": {
+          "source": "query.private_key_passphrase",
+          "maps_to": "private_key_passphrase"
+        },
+        "host_key": {
+          "source": "query.host_key",
+          "maps_to": "host_key",
+          "type": "list",
+          "list": {
+            "sep": ",",
+            "item": "string"
+          },
+          "normalize": "trim",
+          "impl": "Список через запятую; пустые элементы отбрасываются, остальные trim (uri.query.host_key.impl)."
+        },
+        "host_key_algorithms": {
+          "source": "query.host_key_algorithms",
+          "maps_to": "host_key_algorithms",
+          "type": "list",
+          "list": {
+            "sep": ",",
+            "item": "string"
+          },
+          "normalize": "trim"
+        },
+        "client_version": {
+          "source": "query.client_version",
+          "maps_to": "client_version",
+          "impl": "ext: desktop. Наш парсер его ЧИТАЕТ — node_parser_ssh.go:72-74, и корпус это фиксирует per-app override'ом: uri/ssh/full_config.expected.launcher.json несёт client_version, .expected.lxbox.json — нет. Прежняя оговорка «если корпус покажет расхождение, снимается» снята приёмкой."
+        }
+      },
+      "include": [
+        "dialer#uri"
+      ],
+      "unknown_key": {
+        "action": "keep",
+        "code": "uri_param_unknown"
+      },
+      "emit": {
+        "form": "url",
+        "param_order": "alphabetical"
+      }
+    }
   }
 }

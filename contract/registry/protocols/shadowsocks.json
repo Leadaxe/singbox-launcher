@@ -180,5 +180,219 @@
         "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
       }
     }
+  },
+  "mappers": {
+    "uri": {
+      "body_source": "uri",
+      "detect": {
+        "scheme_in": [
+          "ss"
+        ]
+      },
+      "forms": [
+        {
+          "id": "sip002",
+          "detect": {
+            "regex": "^[^#]*@"
+          },
+          "decode": [
+            "url"
+          ],
+          "space": "url",
+          "impl": "Наличие '@' до фрагмента: userinfo кодирован, адрес открыт."
+        },
+        {
+          "id": "legacy",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            "percent",
+            "base64",
+            {
+              "reparse": "authority"
+            }
+          ],
+          "space": "url",
+          "impl": "До-SIP002: в base64 уехала вся запись 'method:password@host:port'. Фрагмент отрезается ДО декода."
+        }
+      ],
+      "userinfo": {
+        "decode": [
+          "percent",
+          "base64?"
+        ],
+        "split": {
+          "sep": ":",
+          "limit": 2
+        },
+        "into": [
+          "method",
+          "password"
+        ],
+        "impl": "percent ДО base64 — панели экранируют '='-паддинг как %3D (корпус sip002_escaped_padding). 'base64?' — try-decode с фолбэком «не base64 → как есть»: delta480, открытый SS2022 'method:key@host' теперь читается (было — уходил в безусловный base64 и давал мусор). limit:2 — пароль это ВСЁ после первого ':': у SS2022 он бывает составным (k1:k2)."
+      },
+      "label": {
+        "source": "fragment",
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "as_written"
+        },
+        "impl": "scheme_source: singbox_type — тег безымянного узла 'shadowsocks-host-8388', а не 'ss-host-8388'. Так делал старый парсер, identity живых узлов не двигается. scheme_source=as_written: generateDefaultTag зовётся со scheme='ss' (node_parser_core.go:186, :543), тег выходит ss-host-port. Переход на singbox_type (D133-6) сменил бы ТЕГ, то есть identity живых узлов, — делается волной D133-6 целиком, а не по одной схеме."
+      },
+      "defaults": {
+        "type": "shadowsocks",
+        "server_port": 443
+      },
+      "params": {
+        "server": {
+          "source": "host",
+          "maps_to": "server",
+          "required": true
+        },
+        "server_port": {
+          "source": "port",
+          "maps_to": "server_port",
+          "type": "int",
+          "materialize_default": true,
+          "impl": "Дефолт 443, а не канонический для ss 8388: node_parser_core.go:145 ставит 443 всем схемам, и ss-ветка (:185-250) его НЕ переопределяет — в отличие от socks (:318) и ssh (:306). Похоже на наш баг, но корпус нем: ни одна из 9 фикстур uri/shadowsocks не опускает порт. Менять дефолт вслепую значит двигать тела узлов без арбитра — нужна фикстура и решение владельца (TASKS_LXBOX §24.20 п.2)."
+        },
+        "method": {
+          "source": "userinfo.user",
+          "maps_to": "method",
+          "normalize": "trim",
+          "required": true,
+          "impl": "Значение КАК ПРИШЛО: набор из восемнадцати методов и info-код для девяти stream-шифров — правила реестра (body.fields.method)."
+        },
+        "password": {
+          "source": "userinfo.pass",
+          "maps_to": "password",
+          "required": true,
+          "impl": "Пустой пароль = «записи нет» (uri.query.password.impl: «Пустой → drop ноды»). Это структура: поля санитайзеру судить бы не досталось."
+        },
+        "plugin": {
+          "source": "query.plugin",
+          "maps_to": "plugin",
+          "extract": {
+            "re": "^(?P<name>[^;]*)(?:;(?P<opts>.*))?$",
+            "into": {
+              "name": "plugin",
+              "opts": "plugin_opts"
+            }
+          },
+          "priority": 1,
+          "impl": "SIP003 'plugin=name;k=v;k=v…': имя до первого ';', опции хвостом. Закрытого enum у имени плагина ядро не держит."
+        },
+        "plugin_opts": {
+          "source": "query.plugin_opts",
+          "aliases": [
+            "pluginOpts"
+          ],
+          "maps_to": "plugin_opts",
+          "priority": 2,
+          "merge": "keep_first",
+          "impl": "Опции берутся из хвоста `plugin`, а при его отсутствии — отсюда (priority 2 + keep_first). Алиас pluginOpts — delta480: было — не читался, стало — читается (имена параметров регистронезависимо)."
+        }
+      },
+      "include": [
+        "dialer#uri"
+      ],
+      "unknown_key": {
+        "action": "keep",
+        "code": "uri_param_unknown"
+      },
+      "emit": {
+        "form": "sip002",
+        "param_order": "alphabetical"
+      }
+    },
+    "xray": {
+      "body_source": "xray",
+      "detect": {
+        "json": {
+          "value_in": {
+            "protocol": [
+              "shadowsocks",
+              "ss"
+            ]
+          }
+        }
+      },
+      "type_synonyms": {
+        "shadowsocks": "ss"
+      },
+      "forms": [
+        {
+          "id": "servers",
+          "detect": {
+            "default": true
+          },
+          "space": "json",
+          "base": "settings.servers.0",
+          "impl": "Единственная форма — ветка default: элемент Xray уже опознан detect секции (protocol), и разбирать его иначе не из чего. Так же записана форма servers у trojan в живом реестре лаунчера (контракт 1.1.13)."
+        }
+      ],
+      "defaults": {
+        "type": "shadowsocks"
+      },
+      "label": {
+        "source": "json.remarks",
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "as_written"
+        },
+        "impl": "У Xray-входа имя схемы для фолбэка не равно типу тела: 'ss' при 'shadowsocks' (tagScheme в XrayMapping). Тег И ЕСТЬ identity, поэтому as_written здесь нормативен."
+      },
+      "params": {
+        "address": {
+          "source": "json.$base.address",
+          "maps_to": "server",
+          "required": true
+        },
+        "port": {
+          "source": "json.$base.port",
+          "maps_to": "server_port",
+          "type": "int",
+          "required": true,
+          "impl": "Порт ОБЯЗАТЕЛЕН и ненулевой: port==0 даёт null (записи нет). Дефолта у этого входа нет, в отличие от ссылки."
+        },
+        "method": {
+          "source": "json.$base.method",
+          "maps_to": "method",
+          "required": true
+        },
+        "password": {
+          "source": "json.$base.password",
+          "maps_to": "password",
+          "impl": "required, а НЕ empty:significant: xray_protocols.go:284-286 отбраковывает узел при пустом method ИЛИ password. Это рубеж против плейсхолдеров просроченной подписки — «пишется даже пустым» из черновика его бы снесло.",
+          "required": true
+        },
+        "$extra_servers": {
+          "source": "json.settings.servers",
+          "maps_to": null,
+          "on_len_gt": {
+            "n": 1,
+            "action": "note",
+            "code": "xray_extra_entries_dropped"
+          }
+        }
+      },
+      "include": [
+        "dialer#xray"
+      ],
+      "unknown_key": {
+        "action": "drop",
+        "code": "json_field_unknown"
+      },
+      "emit": null
+    }
   }
 }

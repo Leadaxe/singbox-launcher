@@ -370,5 +370,343 @@
         "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
       }
     }
+  },
+  "mappers": {
+    "uri": {
+      "body_source": "uri",
+      "detect": {
+        "scheme_in": [
+          "vmess"
+        ]
+      },
+      "forms": [
+        {
+          "id": "v2rayn",
+          "detect": {
+            "json": {
+              "type_of": {
+                "$root": "object"
+              }
+            }
+          },
+          "decode": [
+            "base64",
+            "json"
+          ],
+          "space": "json",
+          "impl": "Основная форма. Порядок форм НОРМАТИВЕН: JSON пробуется первым, cleartext — правило legacy_cleartext_fallback, то есть именно откат."
+        },
+        {
+          "id": "legacy",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            "base64",
+            {
+              "reparse": "url"
+            }
+          ],
+          "space": "url",
+          "impl": "legacy cleartext 'method:uuid@host:port?type=ws&tls=1'. IPv6 в скобках снимается лексером движка — delta480 D133-13: было (ручной lastIndexOf(':') в vmess_mapper.dart:197) — '[2001:db8::1]:443' давал server '[2001:db8::1]', стало — '2001:db8::1'. ВНИМАНИЕ, дельта касается ТОЛЬКО этой формы: у формы v2rayN адрес приходит готовым ключом json.add, скобки в нём — часть значения, и фикстура b480 legacy_ipv6_authority (несмотря на имя, это JSON-форма) ждёт server '[::1]' СО скобками. Снятие скобок там сдвинуло бы identity."
+        }
+      ],
+      "userinfo": {
+        "split": {
+          "sep": ":",
+          "limit": 2
+        },
+        "into": [
+          "security",
+          "uuid"
+        ],
+        "impl": "Только у формы legacy: 'method:uuid@'. Двоеточие обязательно; uuid может содержать свои — limit:2."
+      },
+      "label": {
+        "source": {
+          "v2rayn": "json.ps",
+          "legacy": "fragment"
+        },
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "singbox_type"
+        },
+        "impl": "У JSON-формы фрагмент НЕ читается вовсе (uri.userinfo.impl — Go не передаёт фрагмент в parseVMessJSON, Dart не передавал в _vmessFromJson); имя берётся из ключа ps."
+      },
+      "defaults": {
+        "type": "vmess"
+      },
+      "params": {
+        "server": {
+          "source": {
+            "v2rayn": "json.add",
+            "legacy": "host"
+          },
+          "maps_to": "server",
+          "required": true,
+          "impl": "uri.query.add.impl — отсутствие даёт drop ноды."
+        },
+        "server_port": {
+          "source": {
+            "v2rayn": "json.port",
+            "legacy": "port"
+          },
+          "maps_to": "server_port",
+          "type": "int",
+          "impl": "БЕЗ дефолта и без materialize_default: у нас отсутствующий или нечисловой порт кладётся в missingFields и узел отбраковывается (node_parser_vmess.go:215-225, :233) — фолбэка 443 на этом входе нет. Черновик LxBox нёс materialize_default:true при impl «поведение сохранено как было»; таблица противоречила собственной сноске, приёмка выбрала поведение кода. Расхождение Go/Dart остаётся открытым (TASKS_LXBOX §24.20 п.4).",
+          "required": true
+        },
+        "uuid": {
+          "source": {
+            "v2rayn": "json.id",
+            "legacy": "userinfo.pass"
+          },
+          "maps_to": "uuid",
+          "normalize": "trim",
+          "required": true
+        },
+        "security": {
+          "source": {
+            "v2rayn": [
+              "json.scy",
+              "json.security"
+            ],
+            "legacy": "userinfo.user"
+          },
+          "maps_to": "security",
+          "normalize": "trim_lower",
+          "materialize_default": true,
+          "value_map": {
+            "chacha20-ietf-poly1305": "chacha20-poly1305",
+            "": "auto",
+            "null": "auto",
+            "undefined": "auto"
+          },
+          "emit_when": "always",
+          "impl": "Ключ security ОБЯЗАН появиться в теле: у ядра поле без omitempty, у схемы required, опущенный ключ уронил бы узел кодом field_missing. Перевод chacha20-ietf-poly1305 → chacha20-poly1305 — имя того же шифра в диалекте Xray; без перевода реальный шифр подписки схлопнулся бы в auto. Пусто/'null'/'undefined' строкой (их шлют реальные панели, корпус json_scy_null_to_auto) → auto. §474: сведение МУСОРА к auto отсюда СНЯТО — судит реестр (enum + on_invalid coerce auto, код vmess_security_unknown)."
+        },
+        "alter_id": {
+          "source": {
+            "v2rayn": "json.aid",
+            "legacy": "query.aid"
+          },
+          "maps_to": "alter_id",
+          "type": "int",
+          "omit_default": 0,
+          "impl": "Числом или строкой — оба вида читают обе стороны. Нулевой в тело не пишется."
+        },
+        "net": {
+          "source": {
+            "v2rayn": "json.net",
+            "legacy": "query.type"
+          },
+          "selector": true,
+          "maps_to": "transport.type",
+          "normalize": "trim_lower",
+          "value_map": {
+            "": null,
+            "tcp": null,
+            "raw": null,
+            "h2": "http"
+          },
+          "sets": {
+            "h2": {
+              "tls.enabled": true
+            }
+          },
+          "impl": "У cleartext-формы транспорт зовётся 'type', а не 'net' (uri.query.net.aliases). net=h2 включает TLS ПРИНУДИТЕЛЬНО (uri.query.tls.impl, оба проекта) — sets на значении селектора, без отдельной ветки."
+        },
+        "tls": {
+          "source": "json.tls",
+          "selector": true,
+          "maps_to": null,
+          "normalize": "trim_lower",
+          "when": {
+            "$form": "v2rayn"
+          },
+          "sets": {
+            "tls": {
+              "tls.enabled": true
+            },
+            "": {},
+            "none": {}
+          },
+          "impl": "ФОРМА v2rayN: истина ровно одна — строка 'tls' (cfg['tls']=='tls', vmess_mapper.dart:130). Значения '1' и 'true' истиной ЗДЕСЬ НЕ являются, и это проверено фикстурами b480 legacy_tls_1 и legacy_tls_true: обе несут JSON с tls:\"1\"/\"true\" и дают тело БЕЗ блока tls. Разведение по формам — не украшение: одна общая таблица завела бы этим узлам TLS и сдвинула их тела и identity."
+        },
+        "tls_legacy": {
+          "source": "query.tls",
+          "selector": true,
+          "maps_to": null,
+          "normalize": "trim_lower",
+          "when": {
+            "$form": "legacy"
+          },
+          "sets": {
+            "tls": {
+              "tls.enabled": true
+            },
+            "1": {
+              "tls.enabled": true
+            },
+            "true": {
+              "tls.enabled": true
+            },
+            "": {},
+            "none": {}
+          },
+          "impl": "ФОРМА legacy cleartext: семейство истины '1|true|tls' (uri.query.tls.impl, vmess_mapper.dart:228). Отдельная запись, потому что у формы v2rayN набор УЖЕ (см. параметр tls)."
+        },
+        "mode": {
+          "source": {
+            "v2rayn": "json.mode",
+            "legacy": "query.mode"
+          },
+          "maps_to": "transport.mode",
+          "when": {
+            "transport.type": "xhttp"
+          },
+          "impl": "SPEC 071/103 vmess/json_net_xhttp — при net=xhttp ключ mode лежит в самом объекте v2rayN, наравне с path/host."
+        },
+        "sni": {
+          "source": {
+            "v2rayn": [
+              "json.sni",
+              "json.host"
+            ],
+            "legacy": [
+              "query.sni",
+              "query.peer"
+            ]
+          },
+          "maps_to": "tls.server_name",
+          "default_from": "server",
+          "when": {
+            "tls.enabled": true
+          },
+          "impl": "SNI-цепочка расходится СЕРЕДИНОЙ: у контейнера v2rayN это sni → host → сервер (ключа peer у него нет), у legacy-формы sni → peer → сервер (ключ host там адресует транспорт). Этим формы и отличаются."
+        },
+        "ech": {
+          "source": {
+            "v2rayn": "json.ech",
+            "legacy": "query.ech"
+          },
+          "maps_to": null,
+          "on_present": {
+            "action": "drop",
+            "code": "ech_ignored"
+          },
+          "impl": "§320 — ссылочная форма ECH адреса в теле sing-box не имеет, а чужой ключ рвёт рукопожатие. Код — ech_ignored, существующий идентификатор (node_parser_transport.go:868+ noteECHIgnored); 'ech_param_dropped_with_code' из черновика было описанием, а не именем. ОТКРЫТО: у нас код не ставится на ech=none (node_parser_transport.go::879-881) — выключенный ECH сообщать не о чем; выражение этого исключения предикатом when требует отрицания по источнику, которого в грамматике сегодня нет (TASKS_LXBOX §24.20 п.7). Чтение из JSON-формы (json.ech) — РАСШИРЕНИЕ: сегодня noteECHIgnored смотрит только node.Query, и в v2rayN-форме ech не виден вовсе."
+        }
+      },
+      "include": [
+        "transports#uri",
+        "tls#uri",
+        "dialer#uri"
+      ],
+      "unknown_key": {
+        "action": "keep",
+        "code": "uri_param_unknown"
+      },
+      "emit": {
+        "form": "v2rayn",
+        "param_order": "alphabetical"
+      }
+    },
+    "xray": {
+      "body_source": "xray",
+      "detect": {
+        "json": {
+          "value_of": {
+            "protocol": "vmess"
+          }
+        }
+      },
+      "forms": [
+        {
+          "id": "vnext",
+          "detect": {
+            "default": true
+          },
+          "space": "json",
+          "base": "settings.vnext.0",
+          "impl": "Единственная форма — ветка default: элемент Xray уже опознан detect секции (protocol), и разбирать его иначе не из чего. Так же записана форма servers у trojan в живом реестре лаунчера (контракт 1.1.13)."
+        }
+      ],
+      "defaults": {
+        "type": "vmess"
+      },
+      "params": {
+        "address": {
+          "source": "json.$base.address",
+          "maps_to": "server",
+          "required": true
+        },
+        "port": {
+          "source": "json.$base.port",
+          "maps_to": "server_port",
+          "type": "int",
+          "required": true,
+          "impl": "БЕЗ дефолта 443: xray_protocols.go:133-136 отбраковывает узел при port <= 0 || port > 65535, фолбэка на этом входе нет. Черновик LxBox нёс materialize_default:true — поведение Dart."
+        },
+        "id": {
+          "source": "json.$base.users.0.id",
+          "maps_to": "uuid",
+          "required": true
+        },
+        "security": {
+          "source": "json.$base.users.0.security",
+          "maps_to": "security",
+          "normalize": "trim_lower",
+          "materialize_default": true,
+          "value_map": {
+            "chacha20-ietf-poly1305": "chacha20-poly1305",
+            "": "auto",
+            "null": "auto",
+            "undefined": "auto"
+          },
+          "impl": "§459 — то же правило написания, что у маппера ссылки. Ключ обязан ПОЯВИТЬСЯ в теле даже при пустом значении: у ядра поле без omitempty, опущенный ключ снял бы узел кодом field_missing. Годность судит реестр (enum + on_invalid coerce auto)."
+        },
+        "alterId": {
+          "source": "json.$base.users.0.alterId",
+          "maps_to": "alter_id",
+          "type": "int",
+          "materialize_default": true,
+          "impl": "В отличие от ссылки, здесь alter_id пишется ВСЕГДА, в том числе нулём (прежняя ветка Xray клала его безусловно). РАСХОЖДЕНИЕ: у нас ноль НЕ пишется — xray_protocols.go:209-211 (if alterID > 0). materialize_default оставлен как заявка LxBox; переключение схемы на движок изменит тело узлов с alterId=0 (TASKS_LXBOX §24.20 п.4)."
+        },
+        "$extra_vnext": {
+          "source": "json.settings.vnext",
+          "maps_to": null,
+          "on_len_gt": {
+            "n": 1,
+            "action": "note",
+            "code": "xray_extra_entries_dropped"
+          },
+          "impl": "vnext[1..] отбрасываются; сегодня молча."
+        },
+        "$extra_users": {
+          "source": "json.$base.users",
+          "maps_to": null,
+          "on_len_gt": {
+            "n": 1,
+            "action": "note",
+            "code": "xray_extra_entries_dropped"
+          }
+        }
+      },
+      "include": [
+        "transports#xray",
+        "tls#xray",
+        "dialer#xray"
+      ],
+      "unknown_key": {
+        "action": "drop",
+        "code": "json_field_unknown"
+      },
+      "emit": null
+    }
   }
 }

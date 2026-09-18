@@ -185,5 +185,55 @@
       "tcp_multi_path": "A low-level dialer option; the launcher does not write it.",
       "domain_strategy": "Deprecated, schema:\"omit\" in the core — migrated to domain_resolver."
     }
+  },
+  "blocks": {
+    "note": "SPEC 133: ИСПОЛНЯЕМЫЕ записи keep-alive по диалектам. Поля описаны в секции body выше (контракт 1.1.6) и ядром принимаются, но ни один парсер лаунчера не читает их НИ ИЗ ОДНОЙ ссылки — не хватало именно исполняемых записей. Дельта односторонняя: тела рабочих узлов не меняются, добавляется только принимаемый вход. DELTAS D133-19.",
+    "uri": {
+      "tcp_keep_alive": {
+        "source": "query.tcp_keep_alive",
+        "aliases": [
+          "tcpKeepAlive"
+        ],
+        "maps_to": "tcp_keep_alive",
+        "type": "duration"
+      },
+      "tcp_keep_alive_interval": {
+        "source": "query.tcp_keep_alive_interval",
+        "aliases": [
+          "tcpKeepAliveInterval"
+        ],
+        "maps_to": "tcp_keep_alive_interval",
+        "type": "duration"
+      },
+      "disable_tcp_keep_alive": {
+        "source": "query.disable_tcp_keep_alive",
+        "aliases": [
+          "disableTcpKeepAlive"
+        ],
+        "maps_to": "disable_tcp_keep_alive",
+        "type": "bool_spelled"
+      }
+    },
+    "xray": {
+      "tcp_keep_alive": {
+        "source": [
+          "json.streamSettings.sockopt.tcpKeepAliveIdle",
+          "json.streamSettings.sockopt.tcp_keep_alive_idle"
+        ],
+        "maps_to": "tcp_keep_alive",
+        "type": "duration",
+        "normalize": "duration_bare_seconds",
+        "impl": "У Xray keep-alive живёт в streamSettings.sockopt и измеряется ГОЛЫМИ СЕКУНДАМИ (tcpKeepAliveIdle: 30), у ядра — duration (\"30s\"); перевод общим нормализатором duration_bare_seconds, а не своей веткой. Сегодня sockopt не читается вовсе."
+      },
+      "tcp_keep_alive_interval": {
+        "source": [
+          "json.streamSettings.sockopt.tcpKeepAliveInterval",
+          "json.streamSettings.sockopt.tcp_keep_alive_interval"
+        ],
+        "maps_to": "tcp_keep_alive_interval",
+        "type": "duration",
+        "normalize": "duration_bare_seconds"
+      }
+    }
   }
 }

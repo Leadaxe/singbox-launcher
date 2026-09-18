@@ -17,12 +17,14 @@ package linkmap
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
+	"singbox-launcher/core/config/nodeflow"
 	"singbox-launcher/core/config/registry"
 )
 
@@ -146,7 +148,16 @@ func engineBody(t *testing.T, plans *PlanSet, reg *registry.Registry, casePath s
 	if err != nil {
 		return nil, err
 	}
-	return res.Body, nil
+	// Тело маппера прогоняется через САНИТАЙЗЕР — стадия 6 конвейера
+	// (MAPPER_ENGINE.md §1). Без неё сверка невозможна по построению: фикстуры
+	// сняты ПОСЛЕ санитайзера, а маппер значения не судит (норма: «маппер
+	// переводит диалект, годность судит санитайзер»). Сравнивать его сырое
+	// тело с фикстурой значило бы требовать от движка чужой работы.
+	sr := nodeflow.SanitizeFrom(scheme, plan.Mapper.BodySource, res.Body)
+	if sr.Drop != nil {
+		return nil, fmt.Errorf("санитайзер отверг узел: %s", sr.Drop.Code)
+	}
+	return sr.Clean, nil
 }
 
 func schemeOfURI(uri string) string {

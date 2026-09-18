@@ -1054,13 +1054,22 @@
         }
       },
       "insecure": {
-        "source": "query.insecure",
+        "source": [
+          "query.insecure",
+          "query.allowInsecure",
+          "query.allow_insecure",
+          "query.allow-insecure",
+          "query.skipCertVerify",
+          "query.skip_cert_verify",
+          "query.skip-cert-verify",
+          "query.noverify"
+        ],
         "type": "bool_spelled",
         "maps_to": "tls.insecure",
         "when": {
           "tls.enabled": true
         },
-        "impl": "Написания берутся из aliases (9 имён, tls.params.insecure); истинность — общий bool_spelled (1|true|yes). До этого у masque был свой список из трёх имён, и 'yes' там не работал."
+        "impl": "Написания перечислены ИСПОЛНЯЕМЫМ source, а не описательными aliases: движок читает только source, и список в tls.params.insecure до него не доезжал — живой allowInsecure=1 терялся (кейс uri/vless/reality_vision_full). Имена читаются регистронезависимо, поэтому allowinsecure/skipcertverify отдельными строками не нужны. Истинность — общий bool_spelled (1|true|yes): до W2d у masque был свой список из трёх имён, и 'yes' там не работал."
       },
       "disable_sni": {
         "source": "query.disable_sni",

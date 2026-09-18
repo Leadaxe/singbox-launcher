@@ -136,5 +136,122 @@
         "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
       }
     }
+  },
+  "mappers": {
+    "uri": {
+      "body_source": "uri",
+      "detect": {
+        "scheme_in": [
+          "socks",
+          "socks5",
+          "socks4",
+          "socks4a"
+        ]
+      },
+      "forms": [
+        {
+          "id": "url",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            "url"
+          ],
+          "space": "url"
+        }
+      ],
+      "userinfo": {
+        "split": {
+          "sep": ":",
+          "limit": 2
+        },
+        "into": [
+          "username",
+          "password"
+        ]
+      },
+      "label": {
+        "source": [
+          "fragment",
+          "path"
+        ],
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "as_written"
+        },
+        "impl": "scheme_source=as_written, а НЕ singbox_type: node_parser_core.go:309-317 намеренно сохраняет написание схемы (socks5 против socks), и корпус на этом стоит — у socks заведён per-app override (corpus/uri/socks/*.expected.lxbox.json, docs/IDENTITY.md §4a-C). D133-6 меняет фолбэк тега вообще, но не отменяет уже зафиксированное расхождение приложений; снятие override — отдельное решение владельца."
+      },
+      "defaults": {
+        "type": "socks",
+        "server_port": 1080
+      },
+      "scheme_sets": {
+        "socks": {
+          "version": "5"
+        },
+        "socks5": {
+          "version": "5"
+        },
+        "socks4": {
+          "version": "4"
+        },
+        "socks4a": {
+          "version": "4a"
+        }
+      },
+      "params": {
+        "server": {
+          "source": "host",
+          "maps_to": "server",
+          "required": true,
+          "impl": "Адрес сервера; без него записи не построить (маппер отвечает null)."
+        },
+        "server_port": {
+          "source": "port",
+          "maps_to": "server_port",
+          "type": "int",
+          "materialize_default": true,
+          "impl": "Порт; по умолчанию 1080 (uri.userinfo.impl)."
+        },
+        "username": {
+          "source": "userinfo.user",
+          "maps_to": "username",
+          "impl": "Опционален; пустой в тело не пишется."
+        },
+        "password": {
+          "source": "userinfo.pass",
+          "maps_to": "password",
+          "impl": "Опционален. У версии 4 пароля нет вовсе, но написанный переносится как есть — маппер значения не судит."
+        },
+        "version": {
+          "source": "scheme",
+          "maps_to": "version",
+          "materialize_default": true,
+          "impl": "§475 socks_scheme_is_version — версию несёт СХЕМА, значение подставляет scheme_sets. Пишется в тело ЯВНО: значение стоит в телах всех живых узлов обеих сторон."
+        }
+      },
+      "include": [
+        "dialer#uri"
+      ],
+      "unknown_key": {
+        "action": "keep",
+        "code": "uri_param_unknown"
+      },
+      "emit": {
+        "form": "url",
+        "form_from": {
+          "version": {
+            "4": "socks4",
+            "4a": "socks4a",
+            "*": "socks5"
+          }
+        },
+        "param_order": "alphabetical"
+      }
+    }
   }
 }

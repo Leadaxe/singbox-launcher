@@ -331,10 +331,15 @@
         }
       ],
       "userinfo": {
+        "split": {
+          "sep": ":",
+          "limit": 2
+        },
         "into": [
           "uuid"
         ],
-        "required": true
+        "required": true,
+        "impl": "Режется по ПЕРВОМУ ':', берётся только первая часть: у vless userinfo — UUID, а второй компонент (пароля у схемы нет) отбрасывается. Так читает Go (Username(), node_parser_core.go:458) и Dart (split(':').first). Отличается от trojan, где пароль — ВЕСЬ userinfo (D133-8): там резка теряет пароли с двоеточием, здесь отбрасывается мусор публичных списков (кейс uri/vless/userinfo_raw_space: 'Promo:Configs ')."
       },
       "label": {
         "source": [
@@ -371,6 +376,30 @@
           "maps_to": "server_port",
           "type": "int"
         },
+        "fp": {
+          "source": [
+            "query.fp",
+            "query.fingerprint"
+          ],
+          "maps_to": "tls.utls.fingerprint",
+          "value_map": {
+            "$ref": "tls.fp_dialect"
+          },
+          "implies": {
+            "tls.utls.enabled": true
+          },
+          "materialize_default": true,
+          "sets": {
+            "": {
+              "tls.utls.enabled": true,
+              "tls.utls.fingerprint": "random"
+            }
+          },
+          "when": {
+            "tls.enabled": true
+          },
+          "impl": "D-009: у vless ПУСТОЙ fp означает `random`, и это НЕ дефолт ядра (у него пустой fp = chrome), а конвенция обеих сторон — отсюда materialize_default: маппер ОБЯЗАН записать значение в тело. Без него санитайзер снимает tls.reality.enabled по requires tls.utls.enabled, и блок REALITY рассыпается (node_parser_transport.go:920-929). У trojan/anytls дефолта нет: там пустой fp = блока utls нет, и общая запись блока tls#uri остаётся как есть. Эта запись перекрывает одноимённую из include, потому что объявлена ПОЗЖЕ него."
+        },
         "$plaintext_port": {
           "source": "query.security",
           "selector": true,
@@ -390,9 +419,11 @@
             }
           },
           "sets": {
-            "": {}
+            "": {
+              "tls": null
+            }
           },
-          "impl": "Служебная запись без maps_to: её единственная работа — перебить дефолт security ''→tls.enabled пустым набором. priority 5 (меньше, чем у security из блока tls#uri) выражает «срабатывает раньше». Сегодня это node_parser_transport.go:150-158 и :912-914."
+          "impl": "Служебная запись без maps_to: её единственная работа — СНЯТЬ блок tls, который дефолт security ''→tls.enabled успел завести. Выражается sets со значением null (G2), а не пустым набором {}: пустой набор означает «ничего не писать», и блок оставался бы (QUIRKS Q133-34, тот же корень, что у trojan security=none). priority 5 — больше, чем у security из блока tls#uri (0): security исполняется РАНЬШЕ, эта запись снимает его результат. Сегодня это node_parser_transport.go:150-158 и :912-914 (plaintextVLESSPorts)."
         },
         "flow": {
           "source": "query.flow",

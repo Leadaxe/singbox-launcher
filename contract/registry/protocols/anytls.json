@@ -198,5 +198,120 @@
         "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
       }
     }
+  },
+  "mappers": {
+    "uri": {
+      "body_source": "uri",
+      "detect": {
+        "scheme_in": [
+          "anytls"
+        ]
+      },
+      "forms": [
+        {
+          "id": "url",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            "url"
+          ],
+          "space": "url"
+        }
+      ],
+      "userinfo": {
+        "into": [
+          "password"
+        ],
+        "impl": "Пароль = ВЕСЬ userinfo, без split: двоеточие — законная часть пароля (кейс корпуса percent_encoded_password нормирует 'p@ss:word'). Go берёт только Username() — расхождение зафиксировано реестром и сохранено как было."
+      },
+      "label": {
+        "source": "fragment",
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "singbox_type"
+        }
+      },
+      "defaults": {
+        "type": "anytls",
+        "server_port": 443
+      },
+      "scheme_sets": {
+        "anytls": {
+          "tls.enabled": true
+        }
+      },
+      "params": {
+        "server": {
+          "source": "host",
+          "maps_to": "server",
+          "required": true
+        },
+        "server_port": {
+          "source": "port",
+          "maps_to": "server_port",
+          "type": "int",
+          "materialize_default": true
+        },
+        "password": {
+          "source": "userinfo",
+          "maps_to": "password",
+          "required": true,
+          "impl": "Пустой пароль — записи нет."
+        },
+        "security": {
+          "source": "query.security",
+          "maps_to": null,
+          "impl": "ИГНОРИРУЕТСЯ до чтения TLS. AnyTLS живёт только поверх TLS (body.fields.tls → required, ядро отвечает C.ErrTLSRequired), и security=none для него бессмысленен: правило security_none_no_tls унесло бы весь блок вместе с sni, alpn и insecure, которые автор написал. Кейс корпуса security_none_params_kept нормирует именно это."
+        },
+        "idle_session_check_interval": {
+          "source": "query.idle_session_check_interval",
+          "maps_to": "idle_session_check_interval",
+          "type": "duration",
+          "normalize": "duration_bare_seconds",
+          "impl": "Голое число это секунды — та же конвенция, что heartbeat_bare_number у tuic. Форма записи это работа маппера; годность судит реестр."
+        },
+        "idle_session_timeout": {
+          "source": "query.idle_session_timeout",
+          "maps_to": "idle_session_timeout",
+          "type": "duration",
+          "normalize": "duration_bare_seconds"
+        },
+        "min_idle_session": {
+          "source": "query.min_idle_session",
+          "maps_to": "min_idle_session",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep",
+            "code": null
+          },
+          "impl": "Идёт в карту КАК ПРИШЁЛ — числом если число, иначе строкой: годность («неотрицательное целое») судит реестр, min:0 + on_invalid drop с кодом anytls_min_idle_invalid. Привести здесь к числу значило бы судить."
+        },
+        "key_share": {
+          "source": "query.key_share",
+          "maps_to": "tls.reality.key_share",
+          "when": {
+            "tls.reality.enabled": true
+          },
+          "impl": "Дыра с ОБЕИХ сторон: параметр читает node_parser_anytls.go:66-68 и на нём стоит корпус (uri/anytls/reality_key_share_hybrid), но в черновике LxBox его нет, и в нашем описательном anytls.json тоже нет. SPEC 089, ядро lx.4."
+        }
+      },
+      "include": [
+        "tls#uri",
+        "dialer#uri"
+      ],
+      "unknown_key": {
+        "action": "keep",
+        "code": "uri_param_unknown"
+      },
+      "emit": {
+        "form": "url",
+        "param_order": "alphabetical"
+      }
+    }
   }
 }
