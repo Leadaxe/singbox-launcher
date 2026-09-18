@@ -1,0 +1,14 @@
+{
+  "dropped": [
+    {
+      "code": "awg_headers_overlap",
+      "reason": "emit_error",
+      "ref": "awg-overlap"
+    }
+  ],
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [],
+  "v": 1
+}

@@ -59,20 +59,16 @@ const (
 	// Узел живёт, поэтому info: но связки (MagicDNS + маршрут) подписка не
 	// приносит, а идентичность машины в tailnet — местная (NODE_SECTIONS.md §6).
 	WarnTailscaleFromSubscription = "tailscale_from_subscription"
-	// WarnAWGHeaderInvalid — AmneziaWG H1–H4 вне допустимого диапазона.
-	WarnAWGHeaderInvalid = "awg_header_invalid"
-	// WarnAWGHeadersOverlap — H1–H4 совпадают между собой.
-	WarnAWGHeadersOverlap = "awg_headers_overlap"
-	// AmneziaWG 3.x (SPEC 123).
-	// WarnAWG3FieldInvalid — диапазон/булево AWG3 с мусором или N>M: поле
-	// снято, узел живёт.
-	WarnAWG3FieldInvalid = "awg3_field_invalid"
-	// WarnAWG3HeaderKeyInvalid — header_protection_key не base64 32 байта
-	// или все нули: узел выброшен (без ключа хендшейк невозможен).
-	WarnAWG3HeaderKeyInvalid = "awg3_header_key_invalid"
-	// WarnAWG3PaddingTooShort — при header_protection_key один из s1–s4 < 12:
-	// узел выброшен (ядро отвергает конфиг целиком).
-	WarnAWG3PaddingTooShort = "awg3_padding_too_short"
+	// СНЯТЫ (контракт 1.1.11): awg_header_invalid, awg_headers_overlap,
+	// awg3_field_invalid, awg3_header_key_invalid, awg3_padding_too_short,
+	// wg_key_invalid. Эти коды ставит РЕЕСТР, а не парсер: правила уехали в
+	// contract/registry/protocols/wireguard.json (on_invalid у полей, min_when
+	// у s1..s4, связь body.relations ranges_disjoint), и производителя им
+	// сверяет TestRegistryWarningCodesHaveAProducer по стороне реестра.
+	// Константа Go рядом читалась бы как «код ставит парсер» и звала бы
+	// написать вторую копию правила — ровно то, от чего кампания уходит
+	// (решение владельца 19.09.2026).
+	//
 	// WarnAWG3RandomTrailersWideHeaders — random_trailers при широких
 	// диапазонах h1–h4: потери на data-пакетах, свойство протокола (info).
 	WarnAWG3RandomTrailersWideHeaders = "awg3_random_trailers_wide_headers"

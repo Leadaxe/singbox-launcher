@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.0.0.2/32"
+        ],
+        "peers": [
+          {
+            "address": "example-3.com",
+            "allowed_ips": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "port": 51820,
+            "public_key": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
+          }
+        ],
+        "private_key": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "wg-no-aips",
+      "scheme": "wireguard"
+    }
+  ],
+  "v": 1
+}

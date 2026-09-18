@@ -43,7 +43,7 @@ func coerce(f *registry.Field, raw interface{}) (interface{}, bool) {
 	case "duration":
 		return asDuration(raw)
 	case "awg_range":
-		return asAWGRange(raw)
+		return asAWGRange(f, raw)
 	case "int_array":
 		return asIntArray(raw)
 	case "listable_string":
@@ -73,33 +73,51 @@ func coerce(f *registry.Field, raw interface{}) (interface{}, bool) {
 // Обе формы ядро принимает (проверено `sing-box check` на 1.14.1-lx.4), и
 // форма сохраняется как приехала: число, записанное строкой, сменило бы
 // смысл поля на «диапазон из одного значения».
-func asAWGRange(raw interface{}) (interface{}, bool) {
+//
+// Границы — uint32: это MagicHeader и тайминги ядра, и значение шире 2^32-1
+// оно отвергает разбором, роняя весь конфиг. Разбор в uint64 пропускал бы их.
+//
+// normalize: "range_order" СВОПАЕТ перевёрнутую пару ("40-10" → "10-40").
+// Флаг именно у поля, а не у типа: у magic-заголовков h1–h4 порядок границ
+// смысла не несёт (ядро выбирает значение ИЗ диапазона, и [10,40] = [40,10]),
+// а у таймингов AWG 3.x перевёрнутая пара — опечатка человека, которую он
+// обязан увидеть, и там своп запрещён (SPEC 123 §2 «Политика ошибок»).
+func asAWGRange(f *registry.Field, raw interface{}) (interface{}, bool) {
 	if s, ok := raw.(string); ok {
 		s = strings.TrimSpace(s)
 		if s == "" {
 			return nil, false
 		}
-		lo, hi, isRange := strings.Cut(s, "-")
+		loStr, hiStr, isRange := strings.Cut(s, "-")
 		if !isRange {
 			// Голое число строкой — форму не переписываем, лишь проверяем.
-			if _, err := strconv.ParseUint(s, 10, 64); err != nil {
+			if _, err := strconv.ParseUint(s, 10, 32); err != nil {
 				return nil, false
 			}
 			return s, true
 		}
-		if _, err := strconv.ParseUint(strings.TrimSpace(lo), 10, 64); err != nil {
+		lo, err := strconv.ParseUint(strings.TrimSpace(loStr), 10, 32)
+		if err != nil {
 			return nil, false
 		}
-		if _, err := strconv.ParseUint(strings.TrimSpace(hi), 10, 64); err != nil {
+		hi, err := strconv.ParseUint(strings.TrimSpace(hiStr), 10, 32)
+		if err != nil {
 			return nil, false
 		}
-		return s, true
+		if hi < lo {
+			if f.Normalize != "range_order" {
+				// Своп не разрешён — пара негодна, решает on_invalid поля.
+				return nil, false
+			}
+			lo, hi = hi, lo
+		}
+		return strconv.FormatUint(lo, 10) + "-" + strconv.FormatUint(hi, 10), true
 	}
 	v, ok := asInt(raw)
 	if !ok {
 		return nil, false
 	}
-	if n, isInt := v.(int); isInt && n < 0 {
+	if n, isInt := v.(int); isInt && (n < 0 || int64(n) > 0xFFFFFFFF) {
 		return nil, false
 	}
 	return v, true

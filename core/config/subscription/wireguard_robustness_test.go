@@ -32,11 +32,20 @@ func TestParseWireGuardURI_SlashInPrivateKey(t *testing.T) {
 	}
 }
 
-// A key that is not a 32-byte base64 value must reject the node at parse time:
-// emitted as-is it fails `sing-box check` and kills the whole config. Seen in
-// the wild as Proton's masked "PrivateKey = *****" placeholder pasted from the
-// web UI without revealing the key.
-func TestParseWireGuardURI_InvalidKeysRejected(t *testing.T) {
+// Негодный ключ (не 32 байта base64) роняет УЗЕЛ — но роняет его РЕЕСТР, а не
+// парсер (контракт 1.1.11, решение владельца 19.09.2026): маппер переносит
+// значение как есть, а wireguard.body.private_key / peers[].public_key /
+// peers[].pre_shared_key снимают его с кодом wg_key_invalid. Пока проверка
+// стояла здесь, узел пропадал МОЛЧА, и то же значение телом sing-box проверок
+// не проходило вовсе (находка №4 LEGACY_AUDIT).
+//
+// Исход проверяется кейсами корпуса — uri/wireguard/{masked_private_key_rejected,
+// short_private_key_rejected, junk_publickey_rejected, junk_presharedkey_rejected,
+// wg_private_key_31_bytes, wg_private_key_33_bytes, wg_public_key_31_bytes,
+// wg_psk_33_bytes, wg_psk_not_base64} и парными телами
+// body/singbox/{endpoints_wg_private_key_31_bytes, endpoints_wg_psk_junk}.
+// Здесь остаётся ровно обязанность МАППЕРА: не решать судьбу узла самому.
+func TestParseWireGuardURI_InvalidKeysReachTheRegistry(t *testing.T) {
 	cases := map[string]string{
 		"masked private key": "wireguard://*****@1.2.3.4:51820?publickey=" + wgTestPub +
 			"&address=10.0.0.2/32&allowedips=0.0.0.0/0#node",
@@ -49,8 +58,9 @@ func TestParseWireGuardURI_InvalidKeysRejected(t *testing.T) {
 	}
 	for name, uri := range cases {
 		t.Run(name, func(t *testing.T) {
-			if node, err := parseWireGuardURI(uri, nil); err == nil {
-				t.Errorf("expected error, got node %v", node)
+			node, err := parseWireGuardURI(uri, nil)
+			if err != nil || node == nil {
+				t.Fatalf("маппер сам отверг узел (err=%v) — судить ключ обязан реестр", err)
 			}
 		})
 	}

@@ -1,0 +1,7 @@
+# Ключ защиты заголовков задан, а паддинга s1..s4 НЕТ ВОВСЕ: ядро читает
+# незаданное поле как 0, и пара «ключ есть, паддинга нет» так же фатальна, как
+# «ключ + паддинг 5» — конфиг не загрузится целиком. Узел отбраковывается с
+# кодом awg3_padding_too_short (реестр: min_when с absent_is_zero). Прежде
+# правило жило рукописным validateAWG3 и роняло узел молча (находка №8).
+# Ключ синтетический.
+wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@host.example.com:30565?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.8.1.7/32&allowedips=0.0.0.0/0,::/0&headerprotectionkey=Bw4VHCMqMTg%2FRk1UW2JpcHd%2BhYyTmqGor7a9xMvS2eA%3D#awg3-nopad

@@ -86,7 +86,12 @@ func TestParseWireGuardURI_NoAWG_StaysClean(t *testing.T) {
 	}
 }
 
-func TestParseWireGuardURI_BadNumeric_Skipped(t *testing.T) {
+// Битое число AWG не роняет узел — и не снимается МАППЕРОМ: значение едет в
+// тело как есть, а поле снимает реестр с кодом awg_header_invalid (контракт
+// 1.1.11, находка №9 LEGACY_AUDIT — прежде маппер ронял jc/jmin/jmax/s1..s4
+// МОЛЧА, хотя код был объявлен). Итог проверяется кейсами корпуса
+// awg_bad_numeric_skipped и парным ему endpoints_awg_jc_invalid_code.
+func TestParseWireGuardURI_BadNumeric_ReachesTheRegistry(t *testing.T) {
 	e := url.Values{}
 	e.Set("jc", "not-a-number")
 	e.Set("jmin", "50")
@@ -94,8 +99,8 @@ func TestParseWireGuardURI_BadNumeric_Skipped(t *testing.T) {
 	if err != nil || node == nil {
 		t.Fatalf("a bad numeric must not fail the whole node: err=%v", err)
 	}
-	if _, ok := node.Outbound["jc"]; ok {
-		t.Error("invalid jc should be skipped, not stored")
+	if got, ok := node.Outbound["jc"]; !ok || got != "not-a-number" {
+		t.Errorf("jc = %v (ok=%v), want значение как есть — снимать его обязан реестр", got, ok)
 	}
 	if v, _ := node.Outbound["jmin"].(int64); v != 50 {
 		t.Errorf("jmin should still parse: got %v", node.Outbound["jmin"])

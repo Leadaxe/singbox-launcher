@@ -1,6 +1,7 @@
 {
   "dropped": [
     {
+      "code": "vless_encryption_invalid",
       "reason": "emit_error",
       "ref": "sb-enc-broken"
     }

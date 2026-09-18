@@ -1,7 +1,8 @@
 {
   "dropped": [
     {
-      "reason": "parse_error",
+      "code": "wg_key_invalid",
+      "reason": "emit_error",
       "ref": "wireguard://*****@192.0.2.71:51820?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=&address=10.0.0.2/32&allowedips=0.0.0.0/0#node"
     }
   ],

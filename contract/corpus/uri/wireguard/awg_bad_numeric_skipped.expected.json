@@ -26,6 +26,11 @@
       "warnings": [
         {
           "code": "awg_header_invalid",
+          "path": "jc",
+          "value": "not-a-number"
+        },
+        {
+          "code": "awg_header_invalid",
           "path": "jmin"
         }
       ]

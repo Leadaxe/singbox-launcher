@@ -145,6 +145,10 @@ func SanitizeFrom(scheme, source string, m map[string]interface{}) Result {
 	// которого в теле не будет.
 	s.markSchemeForbidden("", body.Order, body.Fields, m)
 	s.object("", body.Order, body.Fields, m)
+	// Связи МЕЖДУ НЕСКОЛЬКИМИ полями считаются после обхода: они смотрят на
+	// готовое тело целиком, а не на соседей одного поля, и до конца обхода
+	// половина участников ещё не приведена к типу.
+	s.relations(body.Relations)
 	// Обязательное поле КОРНЯ, не пережившее обход, — это отсутствующий узел:
 	// ядро отвергнет такое тело фаталом на весь конфиг. Вложенные объекты
 	// свои отметки уже разобрали сами (objectField), поэтому здесь остаются
@@ -395,6 +399,11 @@ func (s *sanitizer) object(prefix string, order []string, fields map[string]*reg
 		}
 	}
 
+	// Поле, не прошедшее условный минимум ОТСУТСТВИЕМ: ядро читает его как 0
+	// (см. minWhenAbsent). Проход отдельный и ПОСЛЕ основного — условие
+	// правила читает соседей, а они к этому моменту уже приведены.
+	s.minWhenAbsent(order, fields, src)
+
 	// Всё, чего нет в fields, — вне схемы: ядро отвергнет ключ и не запустит
 	// весь конфиг, поэтому снимаем с кодом.
 	for _, name := range sortedKeys(src) {
@@ -491,6 +500,9 @@ func (s *sanitizer) value(path, prefix string, f *registry.Field, raw interface{
 	if !s.constraintsOK(f, v) {
 		return s.onInvalid(path, f, raw)
 	}
+	if !s.applyMinWhen(path, f, v) {
+		return nil, false
+	}
 	v = s.applyMaxWhen(path, f, v)
 	s.noteNormalized(path, f, raw, v)
 	s.advisory(path, prefix, f, v)
@@ -558,6 +570,170 @@ func (s *sanitizer) applyMaxWhen(path string, f *registry.Field, v interface{}) 
 		return v
 	}
 	return capped
+}
+
+// applyMinWhen исполняет условный минимум значения (Field.MinWhen).
+//
+// Зеркало applyMaxWhen, но без исключения по входу и БЕЗ замены значения:
+// порог здесь стоит не ради качества связи, а ради того, примет ли ядро
+// конфиг вообще. Подставить минимум вместо написанного значило бы выдумать
+// за провайдера размер паддинга, от которого зависит рукопожатие.
+//
+// Второй результат false — значение порог не прошло и поле снято (либо узел
+// похоронен, если правило так велит).
+func (s *sanitizer) applyMinWhen(path string, f *registry.Field, v interface{}) bool {
+	mw := f.MinWhen
+	if mw == nil || !s.conditionHolds(mw.When) {
+		return true
+	}
+	n, ok := numericValue(v)
+	if !ok || n >= mw.Min {
+		return true
+	}
+	params := map[string]string{
+		"path":  path,
+		"field": path,
+		"min":   displayValue(mw.Min),
+	}
+	if !f.Secret {
+		params["value"] = displayValue(v)
+	}
+	if mw.Action == "drop_node" {
+		s.dropNode(mw.Code, path, v, f.Secret, params)
+	} else {
+		s.warn(mw.Code, path, v, f.Secret, params)
+	}
+	return false
+}
+
+// minWhenAbsent разбирает поля, которые порога не прошли ОТСУТСТВИЕМ.
+//
+// Ядро читает незаданный s2 как 0, поэтому пара «ключ защиты заголовков
+// задан + паддинга нет» так же фатальна, как «ключ + паддинг 5»: конфиг не
+// загрузится целиком. Обычный обход такое поле не видит вовсе (нет ключа —
+// нет и проверок), и без отдельного прохода правило молчало бы ровно на том
+// случае, который в живых подписках встречается чаще битого значения.
+func (s *sanitizer) minWhenAbsent(order []string, fields map[string]*registry.Field, src map[string]interface{}) {
+	for _, name := range order {
+		f := fields[name]
+		if f == nil || f.MinWhen == nil || !f.MinWhen.AbsentIsZero {
+			continue
+		}
+		if _, present := src[name]; present {
+			continue
+		}
+		if f.MinWhen.Min <= 0 || !s.conditionHolds(f.MinWhen.When) {
+			continue
+		}
+		params := map[string]string{
+			"path":  name,
+			"field": name,
+			"min":   displayValue(f.MinWhen.Min),
+			"value": "0",
+		}
+		if f.MinWhen.Action == "drop_node" {
+			s.dropNode(f.MinWhen.Code, name, nil, false, params)
+		} else {
+			s.warn(f.MinWhen.Code, name, nil, false, params)
+		}
+	}
+}
+
+// relations исполняет связи МЕЖДУ НЕСКОЛЬКИМИ полями тела (Relation2).
+//
+// Неизвестный вид связи пропускается молча: реестр вправе уехать вперёд
+// кода, и правило, которого исполнитель ещё не знает, не должно ронять узлы.
+func (s *sanitizer) relations(rels []registry.Relation2) {
+	for i := range rels {
+		if rels[i].Kind == "ranges_disjoint" {
+			s.rangesDisjoint(&rels[i])
+		}
+	}
+}
+
+// rangesDisjoint — попарно непересекающиеся диапазоны перечисленных полей.
+//
+// Смысл у AmneziaWG: h1..h4 — это magic-заголовки, по которым ядро РАЗЛИЧАЕТ
+// типы сообщений. Пересечение двух диапазонов оставляет его без способа
+// различать, и оно отвергает endpoint на конфигурировании устройства
+// («headers must not overlap», submodules/wireguard-go/device/uapi.go) — то
+// есть падает ВЕСЬ конфиг, а не один узел.
+//
+// Незаданное поле участвует своим дефолтом ядра (h1=1 … h4=4): «ключа нет»
+// здесь не значит «участника нет», иначе h1=2 рядом с незаданным h2 прошло бы
+// проверку и уронило конфиг на старте.
+func (s *sanitizer) rangesDisjoint(rel *registry.Relation2) {
+	type span struct {
+		name   string
+		lo, hi float64
+		known  bool
+	}
+	spans := make([]span, 0, len(rel.Paths))
+	for i, p := range rel.Paths {
+		sp := span{name: p}
+		if i < len(rel.Defaults) {
+			sp.lo, sp.hi, sp.known = rel.Defaults[i], rel.Defaults[i], true
+		}
+		// Читаем ТОЛЬКО чистую карту. Заглядывать в исходную тут нельзя:
+		// поле, которое санитайзер уже снял за негодное значение, в тело не
+		// поедет, и ядро прочтёт вместо него свой дефолт. Пока связь читала
+		// исходник, снятый h1=«1-4294967296» продолжал «пересекаться» с
+		// соседями и хоронил узел кодом awg_headers_overlap вместо честного
+		// awg_header_invalid на самом поле — вина уезжала не на того.
+		parts := strings.Split(p, ".")
+		if v, ok := lookupPath(s.cleanRoot, parts); ok {
+			if lo, hi, parsed := rangeBounds(v); parsed {
+				sp.lo, sp.hi, sp.known = lo, hi, true
+			}
+		}
+		if sp.known {
+			spans = append(spans, sp)
+		}
+	}
+	for i := 0; i < len(spans); i++ {
+		for j := i + 1; j < len(spans); j++ {
+			if spans[i].lo > spans[j].hi || spans[j].lo > spans[i].hi {
+				continue
+			}
+			params := map[string]string{"a": spans[i].name, "b": spans[j].name}
+			if rel.Action == "drop_node" {
+				s.dropNode(rel.Code, spans[i].name, nil, false, params)
+			} else {
+				s.warn(rel.Code, spans[i].name, nil, false, params)
+			}
+			return
+		}
+	}
+}
+
+// rangeBounds — границы значения типа awg_range: число даёт [n,n], строка
+// "lo-hi" — свои границы, голое число строкой — [n,n].
+func rangeBounds(v interface{}) (float64, float64, bool) {
+	if n, ok := numericValue(v); ok {
+		return n, n, true
+	}
+	str, ok := v.(string)
+	if !ok {
+		return 0, 0, false
+	}
+	str = strings.TrimSpace(str)
+	loStr, hiStr, isRange := strings.Cut(str, "-")
+	if !isRange {
+		n, err := strconv.ParseFloat(str, 64)
+		if err != nil {
+			return 0, 0, false
+		}
+		return n, n, true
+	}
+	lo, errLo := strconv.ParseFloat(strings.TrimSpace(loStr), 64)
+	hi, errHi := strconv.ParseFloat(strings.TrimSpace(hiStr), 64)
+	if errLo != nil || errHi != nil {
+		return 0, 0, false
+	}
+	if hi < lo {
+		lo, hi = hi, lo
+	}
+	return lo, hi, true
 }
 
 // sourceExcepted — входит ли текущий вход в список исключений правила.

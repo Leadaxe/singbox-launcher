@@ -1,6 +1,7 @@
 {
   "dropped": [
     {
+      "code": "vless_encryption_invalid",
       "reason": "emit_error",
       "ref": "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?type=tcp&security=none&encryption=MLKEM768X25519PLUS.native.0rtt.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA#enc-method-case"
     }

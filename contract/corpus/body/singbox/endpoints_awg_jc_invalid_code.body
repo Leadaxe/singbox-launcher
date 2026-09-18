@@ -1,0 +1,4 @@
+# ПАРНОСТЬ ВХОДОВ (находка №9, запрос LxBox (2)): мусор в jc телом sing-box.
+# Поле снимается С КОДОМ awg_header_invalid, узел живёт. Прежде парсер ссылки
+# ронял такое поле МОЛЧА, а тело sing-box проверки не проходило вовсе.
+{"endpoints":[{"type":"wireguard","tag":"awg-badjc","address":["10.0.0.2/32"],"private_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=","jc":"abc","jmin":50,"jmax":100,"peers":[{"address":"example-3.com","port":51820,"public_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=","allowed_ips":["0.0.0.0/0"]}]}]}

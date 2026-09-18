@@ -97,9 +97,12 @@ func TestContractCorpusURI(t *testing.T) {
 			case node == nil:
 				env.Dropped = append(env.Dropped, contractDrop{Ref: uri, Reason: "filtered"})
 			default:
-				cn, err := canonNode(node)
+				cn, code, err := canonNodeDrop(node)
 				if err != nil {
-					env.Dropped = append(env.Dropped, contractDrop{Ref: uri, Reason: "emit_error"})
+					// `code` — машинная причина из warnings.json, и она
+					// нормативна (D-088); `reason` остаётся человеческим
+					// текстом стороны и сравнением не покрывается.
+					env.Dropped = append(env.Dropped, contractDrop{Ref: uri, Code: code, Reason: "emit_error"})
 				} else {
 					env.Nodes = append(env.Nodes, cn)
 				}

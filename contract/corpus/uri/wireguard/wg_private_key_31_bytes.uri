@@ -1,0 +1,6 @@
+# Приватный ключ декодируется в 31 байт вместо 32 — узел отбраковывается
+# РЕЕСТРОМ (private_key, format base64_32, on_invalid drop_node) с кодом
+# wg_key_invalid. Прежде это был молчаливый дроп в парсере (находка №4
+# LEGACY_AUDIT); теперь причина названа. Значение в коде маскируется: поле
+# secret. Ключ синтетический.
+wireguard://AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHw==@192.0.2.72:51820?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=&address=10.0.0.2/32&allowedips=0.0.0.0/0#node

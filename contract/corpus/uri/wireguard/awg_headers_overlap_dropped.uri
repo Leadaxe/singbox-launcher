@@ -1,0 +1,7 @@
+# Диапазоны magic-заголовков пересекаются (h1=500 внутри h2=400-600): ядро
+# принимает такой endpoint на `sing-box check`, но отвергает на конфигурировании
+# устройства («headers must not overlap») — падает ВЕСЬ конфиг, а не один узел.
+# Узел отбраковывается с кодом awg_headers_overlap (реестр: body.relations
+# ranges_disjoint). Прежде рукописный awgHeaderOverlap ронял узел молча, и код
+# не ставился НИКОГДА (находка №8 LEGACY_AUDIT, запрос LxBox (4)).
+wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@example-1.com:51820?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.0.0.2/32&allowedips=0.0.0.0/0&h1=500&h2=400-600&h3=700&h4=800#awg-overlap

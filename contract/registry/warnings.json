@@ -860,6 +860,30 @@
       "dart": null,
       "go": "core/config/subscription/node_parser_ssh.go:22"
     },
+    "wg_key_invalid": {
+      "severity": "error",
+      "params": [
+        "path",
+        "value"
+      ],
+      "title_en": "WireGuard: invalid key",
+      "title_ru": "WireGuard: неверный ключ",
+      "text_en": "The WireGuard key at {path} is not a 32-byte key. The node was dropped, because the core rejects such a value and would refuse to start the whole config, and no handshake is possible without a correct key.",
+      "text_ru": "Ключ WireGuard в поле {path} не является 32-байтовым ключом. Узел отброшен: ядро отвергает такое значение и не запустит весь конфиг, а без верного ключа рукопожатие невозможно.",
+      "cause_en": "A WireGuard key is exactly 32 bytes in base64. A truncated copy-paste, a placeholder the panel shows instead of the key (a row of asterisks), or a word like enabled left in by a broken generator all give exactly this.",
+      "cause_ru": "Ключ WireGuard — ровно 32 байта в base64. Обрезанная вставка, заглушка, которую панель показывает вместо ключа (ряд звёздочек), или слово вроде enabled от кривого генератора дают именно это.",
+      "fix_en": [
+        "Take the configuration from the provider again: the key is usually truncated or masked when copied out of a web panel.",
+        "Pick another node: without a correct key no handshake is possible."
+      ],
+      "fix_ru": [
+        "Возьмите конфигурацию у провайдера заново: чаще всего ключ обрезают или он замаскирован в веб-панели.",
+        "Выберите другой узел: без верного ключа рукопожатие невозможно."
+      ],
+      "desc": "private_key, peers[].public_key или peers[].pre_shared_key не декодируется в 32 байта — УЗЕЛ выброшен (dropped), а не помечен. Ядро декодирует эти поля base64.StdEncoding и отвергает весь config.json на негодном значении (класс pbk=enabled), то есть один узел лишил бы пользователя VPN. pre_shared_key роняет узел НАРАВНЕ с обязательными ключами (решение владельца 19.09.2026): туннель без ожидаемого сервером PSK — тихо сломанный туннель, рукопожатие не пройдёт, и снятие ПОЛЯ дало бы узел, который выглядит рабочим и молчит. Значение в params маскируется (`secret: true` у всех трёх полей).",
+      "dart": null,
+      "go": "contract/registry/protocols/wireguard.json (body.fields.private_key / peers[].public_key / peers[].pre_shared_key, on_invalid drop_node)"
+    },
     "awg_header_invalid": {
       "severity": "warning",
       "params": [

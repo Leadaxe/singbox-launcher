@@ -7,17 +7,24 @@ import (
 	"testing"
 )
 
-// SPEC 073.2: AWG 2.0 header randomization ranges (H1-H4 = "lo-hi") pass
-// through to the endpoint as normalized strings — the sing-box-lx core
-// (>= 1.13.13-lx.6) accepts "h1": "N-M" and picks an in-range value per
-// handshake. Plain values stay int64 (JSON numbers), as before.
+// SPEC 073.2: AWG 2.0 header randomization ranges (H1-H4 = "lo-hi") доезжают
+// до endpoint'а — ядро sing-box-lx (>= 1.13.13-lx.6) принимает "h1": "N-M" и
+// выбирает значение из диапазона на каждое рукопожатие. Голое число остаётся
+// int64 (JSON-числом), как и раньше.
+//
+// Контракт 1.1.11: маппер больше НЕ судит значение. Своп перевёрнутой пары,
+// границы uint32 и снятие мусора — правила реестра (type awg_range, normalize
+// range_order, on_invalid), и проверяются они кейсами корпуса
+// (awg_h1_range_reversed_swapped, awg_h1_above_uint32_dropped,
+// awg_s1_invalid_dropped_with_code). Здесь остаётся ровно то, что маппер за
+// собой держит: перенос значения из query в корень endpoint'а без потерь.
 func TestParseWireGuardURI_AWGHeaderRanges(t *testing.T) {
 	e := url.Values{}
 	e.Set("h1", "43613244-384550127")
-	e.Set("h2", "300-200") // reversed — normalized to lo-hi
-	e.Set("h3", "10-x")    // garbage — skipped, node survives
+	e.Set("h2", "300-200") // перевёрнутая пара: своп — дело санитайзера
+	e.Set("h3", "10-x")    // мусор: снятие с кодом — дело санитайзера
 	e.Set("h4", "992706287")
-	e.Set("jc", "10-20") // ranges are h-only; non-header numeric range is skipped
+	e.Set("jc", "10-20")
 	node, err := parseWireGuardURI(awgTestURI("wireguard", e), nil)
 	if err != nil || node == nil {
 		t.Fatalf("parse failed: err=%v", err)
@@ -25,17 +32,16 @@ func TestParseWireGuardURI_AWGHeaderRanges(t *testing.T) {
 	if v, _ := node.Outbound["h1"].(string); v != "43613244-384550127" {
 		t.Errorf("h1 = %v (%T), want range string", node.Outbound["h1"], node.Outbound["h1"])
 	}
-	if v, _ := node.Outbound["h2"].(string); v != "200-300" {
-		t.Errorf("h2 = %v, want normalized 200-300", node.Outbound["h2"])
-	}
-	if _, ok := node.Outbound["h3"]; ok {
-		t.Error("garbage h3 must be skipped, not stored")
-	}
 	if v, _ := node.Outbound["h4"].(int64); v != 992706287 {
 		t.Errorf("h4 = %v (%T), want plain int64", node.Outbound["h4"], node.Outbound["h4"])
 	}
-	if _, ok := node.Outbound["jc"]; ok {
-		t.Error("range on jc (non-header field) must be skipped")
+	// Значение, которое маппер разобрать не смог, он обязан ПЕРЕНЕСТИ как
+	// есть: молчаливый дроп здесь означал бы, что до реестра оно не доедет и
+	// кода никто не поставит (находка №9 LEGACY_AUDIT).
+	for _, k := range []string{"h2", "h3", "jc"} {
+		if _, ok := node.Outbound[k]; !ok {
+			t.Errorf("%s: маппер снял значение сам — судить его обязан реестр", k)
+		}
 	}
 }
 
@@ -151,35 +157,11 @@ PersistentKeepalive = 25
 	}
 }
 
-// Overlap detection mirrors the core contract: unset header = WG default
-// (h1=1 … h4=4), single = [v,v], range = [lo,hi].
-func TestAWGHeaderOverlap(t *testing.T) {
-	cases := []struct {
-		name     string
-		ep       map[string]interface{}
-		wantPair bool
-	}{
-		{"real-world disjoint ranges", map[string]interface{}{
-			"h1": "43613244-384550127", "h2": "826869626-2105069164",
-			"h3": "2124774725-2141151992", "h4": "2144594503-2146278491",
-		}, false},
-		{"distinct singles", map[string]interface{}{
-			"h1": int64(100), "h2": int64(200), "h3": int64(300), "h4": int64(400),
-		}, false},
-		{"range covers default of unset h2", map[string]interface{}{
-			"h1": "1-100",
-		}, true},
-		{"single inside range", map[string]interface{}{
-			"h1": int64(500), "h2": "400-600", "h3": int64(700), "h4": int64(800),
-		}, true},
-		{"no awg headers at all", map[string]interface{}{}, false},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			a, b := awgHeaderOverlap(c.ep)
-			if got := a != ""; got != c.wantPair {
-				t.Errorf("overlap = %v (%s/%s), want %v", got, a, b, c.wantPair)
-			}
-		})
-	}
-}
+// Пересечение magic-заголовков h1..h4 — правило РЕЕСТРА (body.relations
+// ranges_disjoint, код awg_headers_overlap, узел отбрасывается), а не
+// рукописная проверка парсера. Рукописный awgHeaderOverlap снят вместе с
+// TestAWGHeaderOverlap: он проверял функцию, которой больше нет, и сама
+// связь проверяется кейсами корпуса — uri/wireguard/awg_headers_overlap_dropped
+// и парный ему body/singbox/endpoints_awg_headers_overlap (тот же исход телом
+// sing-box, на котором рукописная проверка не работала вовсе). Контракт 1.1.11,
+// находка №8 LEGACY_AUDIT.

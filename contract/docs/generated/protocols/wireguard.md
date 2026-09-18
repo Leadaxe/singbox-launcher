@@ -44,7 +44,7 @@ Everything a link of this scheme can carry. **Maps to** points at the body field
 - <a id="link-common-userinfo"></a>**`userinfo`** — Client private key.
   - Type: `private_key — base64 of the 32-byte private key`
   - Maps to: [`private_key`](#body-private-key)
-  - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+  - If invalid: node dropped → [`wg_key_invalid`](../warnings.md#wg_key_invalid)
 - <a id="link-common-fragment"></a>**`#fragment`** — The part after `#`: the name the node is shown under. It is not a body field — it is the node `label`.
 
 ### Protocol-specific
@@ -58,7 +58,7 @@ Everything a link of this scheme can carry. **Maps to** points at the body field
   - Also spelled: `private_key`
   - Type: base64
   - Maps to: [`private_key`](#body-private-key)
-  - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+  - If invalid: node dropped → [`wg_key_invalid`](../warnings.md#wg_key_invalid)
 - <a id="link-proto-address"></a>**`address`** — Addresses assigned to the tunnel interface.
   - Type: list
   - Maps to: [`address`](#body-address)
@@ -124,15 +124,19 @@ Everything a link of this scheme can carry. **Maps to** points at the body field
 - <a id="link-proto-h1"></a>**`h1`** — AmneziaWG magic header H1.
   - Type: int
   - Maps to: [`h1`](#body-h1)
+  - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
 - <a id="link-proto-h2"></a>**`h2`** — AmneziaWG magic header H2.
   - Type: int
   - Maps to: [`h2`](#body-h2)
+  - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
 - <a id="link-proto-h3"></a>**`h3`** — AmneziaWG magic header H3.
   - Type: int
   - Maps to: [`h3`](#body-h3)
+  - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
 - <a id="link-proto-h4"></a>**`h4`** — AmneziaWG magic header H4.
   - Type: int
   - Maps to: [`h4`](#body-h4)
+  - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
 - <a id="link-proto-i1"></a>**`i1`** — AmneziaWG 3.x junk packet I1.
   - Type: string
   - Maps to: [`i1`](#body-i1)
@@ -186,7 +190,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: string, secret, format `base64_32`
   - Required: the node is dropped without it
   - Set by link parameter: [`userinfo`](#link-common-userinfo), [`privatekey`](#link-proto-privatekey)
-  - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+  - If invalid: node dropped → [`wg_key_invalid`](../warnings.md#wg_key_invalid)
 - <a id="body-listen-port"></a>**`listen_port`** — Local UDP port the tunnel listens on.
   - Type: uint16, format `port`, `1–65535`
   - Set by link parameter: [`listenport`](#link-proto-listenport)
@@ -206,14 +210,15 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-peers-public-key"></a>**`peers.public_key`** — Peer public key.
   - Type: string, format `base64_32`
   - Required: the node is dropped without it
-  - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+  - If invalid: node dropped → [`wg_key_invalid`](../warnings.md#wg_key_invalid)
 - <a id="body-peers-pre-shared-key"></a>**`peers.pre_shared_key`** — Optional pre-shared key.
   - Type: string, secret, format `base64_32`
-  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - If invalid: node dropped → [`wg_key_invalid`](../warnings.md#wg_key_invalid)
 - <a id="body-peers-allowed-ips"></a>**`peers.allowed_ips`** — Prefixes routed to this peer.
   - Type: string_array, format `cidr`
   - Required: the node is dropped without it
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - If absent: filled in with `0.0.0.0/0`, `::/0`
 - <a id="body-peers-persistent-keepalive-interval"></a>**`peers.persistent_keepalive_interval`** — Keepalive interval in seconds, number or range.
   - Type: awg_range
 - <a id="body-peers-reserved"></a>**`peers.reserved`** — Three reserved bytes prepended to packets.
@@ -268,20 +273,24 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - <a id="body-h1"></a>**`h1`** — Magic header of the handshake initiation packet.
-  - Type: awg_range
+  - Type: awg_range, normalized: `range_order`
   - Set by link parameter: [`h1`](#link-proto-h1)
+  - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - <a id="body-h2"></a>**`h2`** — Magic header of the handshake response packet.
-  - Type: awg_range
+  - Type: awg_range, normalized: `range_order`
   - Set by link parameter: [`h2`](#link-proto-h2)
+  - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - <a id="body-h3"></a>**`h3`** — Magic header of the cookie reply packet.
-  - Type: awg_range
+  - Type: awg_range, normalized: `range_order`
   - Set by link parameter: [`h3`](#link-proto-h3)
+  - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - <a id="body-h4"></a>**`h4`** — Magic header of the transport packet.
-  - Type: awg_range
+  - Type: awg_range, normalized: `range_order`
   - Set by link parameter: [`h4`](#link-proto-h4)
+  - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - <a id="body-i1"></a>**`i1`** — First custom junk packet.
   - Type: string
@@ -325,39 +334,47 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Meaningless without: `ip`
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - <a id="body-header-protection-key"></a>**`header_protection_key`** — Key protecting packet headers.
-  - Type: string, secret, format `base64_32`
-  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
+  - Type: string, secret, format `base64_32`, must match `^$|^[A-Za-z0-9+/_-]*[B-Za-z0-9+/_-][A-Za-z0-9+/_-]*={0,2}$`
+  - If invalid: node dropped → [`awg3_header_key_invalid`](../warnings.md#awg3_header_key_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
 - <a id="body-content-padding-addition"></a>**`content_padding_addition`** — Extra content padding, number or range.
   - Type: awg_range
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
 - <a id="body-rekey-after-time"></a>**`rekey_after_time`** — Rekey after this many seconds.
   - Type: awg_range
   - Default: `120`
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
 - <a id="body-rekey-timeout"></a>**`rekey_timeout`** — Rekey attempt timeout in seconds.
   - Type: awg_range
   - Default: `5`
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
 - <a id="body-reject-after-time"></a>**`reject_after_time`** — Reject the session after this many seconds.
   - Type: awg_range
   - Default: `180`
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
 - <a id="body-keepalive-timeout"></a>**`keepalive_timeout`** — Keepalive timeout in seconds.
   - Type: awg_range
   - Default: `10`
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
 - <a id="body-max-handshake-attempts"></a>**`max_handshake_attempts`** — Maximum handshake attempts, count not seconds.
   - Type: awg_range
   - Default: `18`
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
 - <a id="body-random-trailers"></a>**`random_trailers`** — Append random trailing bytes to packets.
   - Type: bool
   - Default: `false`
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
 - <a id="body-disable-cookies"></a>**`disable_cookies`** — Disable the cookie mechanism.
   - Type: bool
   - Default: `false`
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
 - <a id="body-detour"></a>**`detour`** — Tag of the outbound this connection is routed through.
   - Type: string, set by config build
@@ -403,7 +420,16 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`id`](#body-id) — the value does not fit the field → removed
   - [`ip`](#body-ip) — the value does not fit the field → removed
   - [`ib`](#body-ib) — the value does not fit the field → removed
-  - [`header_protection_key`](#body-header-protection-key) — the value does not fit the field → removed
+  - [`content_padding_addition`](#body-content-padding-addition) — the value does not fit the field → removed
+  - [`rekey_after_time`](#body-rekey-after-time) — the value does not fit the field → removed
+  - [`rekey_timeout`](#body-rekey-timeout) — the value does not fit the field → removed
+  - [`reject_after_time`](#body-reject-after-time) — the value does not fit the field → removed
+  - [`keepalive_timeout`](#body-keepalive-timeout) — the value does not fit the field → removed
+  - [`max_handshake_attempts`](#body-max-handshake-attempts) — the value does not fit the field → removed
+  - [`random_trailers`](#body-random-trailers) — the value does not fit the field → removed
+  - [`disable_cookies`](#body-disable-cookies) — the value does not fit the field → removed
+- [`awg3_header_key_invalid`](../warnings.md#awg3_header_key_invalid)
+  - [`header_protection_key`](#body-header-protection-key) — the value does not fit the field → node dropped
 - [`awg_header_invalid`](../warnings.md#awg_header_invalid)
   - [`jc`](#body-jc) — the value does not fit the field → removed
   - [`jmin`](#body-jmin) — the value does not fit the field → removed
@@ -411,6 +437,10 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`jmax`](#body-jmax) — the value does not fit the field → removed
   - [`s1`](#body-s1) — the value does not fit the field → removed
   - [`s2`](#body-s2) — the value does not fit the field → removed
+  - [`h1`](#body-h1) — the value does not fit the field → removed
+  - [`h2`](#body-h2) — the value does not fit the field → removed
+  - [`h3`](#body-h3) — the value does not fit the field → removed
+  - [`h4`](#body-h4) — the value does not fit the field → removed
 - [`awg_mtu_clamped`](../warnings.md#awg_mtu_clamped)
   - [`mtu`](#body-mtu) — the value is above `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more) → replaced with `1280`
 - [`awg_mtu_high`](../warnings.md#awg_mtu_high)
@@ -422,10 +452,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`i1`](#body-i1) — conflicts with `ib` → removed
   - [`i2`](#body-i2) — conflicts with `ip` → removed
 - [`field_missing`](../warnings.md#field_missing)
-  - [`private_key`](#body-private-key) — the value does not fit the field → node dropped
   - [`peers`](#body-peers) — required and missing → node dropped
   - [`peers.address`](#body-peers-address) — the value does not fit the field → node dropped
-  - [`peers.public_key`](#body-peers-public-key) — the value does not fit the field → node dropped
 - [`field_requires`](../warnings.md#field_requires)
   - [`id`](#body-id) — set without `ip` → removed
   - [`ib`](#body-ib) — set without `ip` → removed
@@ -435,12 +463,15 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`mtu`](#body-mtu) — the value does not fit the field → removed
   - [`address`](#body-address) — the value does not fit the field → removed
   - [`listen_port`](#body-listen-port) — the value does not fit the field → removed
-  - [`peers.pre_shared_key`](#body-peers-pre-shared-key) — the value does not fit the field → removed
   - [`peers.allowed_ips`](#body-peers-allowed-ips) — the value does not fit the field → removed
   - [`peers.reserved`](#body-peers-reserved) — the value does not fit the field → removed
   - [`udp_nat_max`](#body-udp-nat-max) — the value does not fit the field → removed
   - [`workers`](#body-workers) — the value does not fit the field → removed
   - [`inet4_bind_address`](#body-inet4-bind-address) — the value does not fit the field → removed
+- [`wg_key_invalid`](../warnings.md#wg_key_invalid)
+  - [`private_key`](#body-private-key) — the value does not fit the field → node dropped
+  - [`peers.public_key`](#body-peers-public-key) — the value does not fit the field → node dropped
+  - [`peers.pre_shared_key`](#body-peers-pre-shared-key) — the value does not fit the field → node dropped
 
 ## Replacements
 
@@ -456,11 +487,18 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 - `mtu` — when absent, filled in with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more)
 - `mtu` — above `1280`: replaced with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more) → [`awg_mtu_clamped`](../warnings.md#awg_mtu_clamped). From `singbox`: kept as written, with a note → [`awg_mtu_high`](../warnings.md#awg_mtu_high)
+- `peers.allowed_ips` — when absent, filled in with `0.0.0.0/0`, `::/0`
+- `h1` — normalized: `range_order`
+- `h2` — normalized: `range_order`
+- `h3` — normalized: `range_order`
+- `h4` — normalized: `range_order`
 - `ip` — normalized: `trim_lower`
 - `ib` — normalized: `trim_lower`
 
 **Structural translations.** Decisions taken while the link is being read, before any value is judged: whether a block exists at all, where a field comes from, or how one input becomes several fields. The sanitizer sees a finished body and cannot take them.
 
+- a WireGuard key written url-safe or without padding (`a-b_c…`, 43 chars) → `the same 32 bytes as std base64 with padding (44 chars)` — Panels write the same key in all four base64 spellings; the core decodes these fields with std base64 only.
+  - Kind: `spelling`
 - a bare IP in `address` or `allowed_ips` (`10.0.0.2`, `fd00::2`) → `10.0.0.2/32`, `fd00::2/128` — wg-quick config files write single addresses without a prefix length; the core field is a CIDR.
   - Kind: `spelling`
 
@@ -468,8 +506,10 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 **The node is dropped**
 
+- `header_protection_key` — invalid value
 - `peers.address` — invalid value
 - `peers.port` — invalid value
+- `peers.pre_shared_key` — invalid value
 - `peers.public_key` — invalid value
 - `peers` — required and missing
 - `private_key` — invalid value
@@ -477,7 +517,12 @@ Every code that can be raised on a node of this scheme, including the ones comin
 **The field is removed, the node lives on**
 
 - `address` — invalid value
-- `header_protection_key` — invalid value
+- `content_padding_addition` — invalid value
+- `disable_cookies` — invalid value
+- `h1` — invalid value
+- `h2` — invalid value
+- `h3` — invalid value
+- `h4` — invalid value
 - `i1` — conflicts with another field of the same node
 - `i2` — conflicts with another field of the same node
 - `ib` — conflicts with another field of the same node
@@ -490,12 +535,17 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `jmax` — invalid value
 - `jmin` — conflicts with another field of the same node
 - `jmin` — invalid value
+- `keepalive_timeout` — invalid value
 - `listen_port` — conflicts with another field of the same node
 - `listen_port` — invalid value
+- `max_handshake_attempts` — invalid value
 - `mtu` — invalid value
 - `peers.allowed_ips` — invalid value
-- `peers.pre_shared_key` — invalid value
 - `peers.reserved` — invalid value
+- `random_trailers` — invalid value
+- `reject_after_time` — invalid value
+- `rekey_after_time` — invalid value
+- `rekey_timeout` — invalid value
 - `s1` — invalid value
 - `s2` — invalid value
 - `s3` — invalid value
@@ -507,6 +557,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 - `mtu` — a value above `1280` is replaced with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more)
 - `mtu` — absent value is filled in with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more)
+- `peers.allowed_ips` — absent value is filled in with `0.0.0.0/0`, `::/0`
 
 **Kept as is, with a notice**
 

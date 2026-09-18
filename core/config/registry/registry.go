@@ -105,6 +105,17 @@ type Field struct {
 	// поля потолка нет. Выразить это обычным `max` нельзя: он снял бы mtu у
 	// каждого обычного WG-узла.
 	MaxWhen *MaxWhen `json:"max_when"`
+	// MinWhen — УСЛОВНЫЙ минимум значения, зеркало MaxWhen без исключения по
+	// входу: у AWG 3.x паддинг s1..s4 обязан быть не ниже 12 ТОЛЬКО когда
+	// задан header_protection_key (nonce шифра заголовка берётся из первых 12
+	// байт паддинга). Обычным `min` это не записать — он снял бы паддинг у
+	// каждого обычного AmneziaWG-узла, где порога нет вовсе.
+	//
+	// Исключения по входу тут нет и быть не может: ядро отвергает такую пару
+	// на загрузке ВСЕГО конфига, а не одного узла, и «сохранить как написал
+	// человек» означало бы оставить пользователя без VPN (в отличие от
+	// потолка MTU, где узел собирается и работает хуже).
+	MinWhen *MinWhen `json:"min_when"`
 	// СНЯТО (контракт 1.1.4): ForbiddenWhen. Атрибут `forbidden_when` был
 	// объявлен в SPEC 131 §3.2 и реализован в трёх местах (здесь, в
 	// санитайзере, в генераторе доков), но НИ ОДНО поле реестра его так и не
@@ -200,6 +211,24 @@ type MaxWhen struct {
 	NoteCode      string   `json:"note_code"`
 }
 
+// MinWhen — условный минимум значения (см. Field.MinWhen).
+//
+// `action` — что делать со значением ниже порога: "drop" снимает поле,
+// "drop_node" хоронит узел. Второе нужно там, где ядро отвергает такую пару
+// на загрузке всего конфига: снять поле значило бы отдать ядру узел, который
+// оно всё равно не примет, — и уронить чужие узлы вместе с ним.
+//
+// Порог действует и на ОТСУТСТВУЮЩЕЕ поле, когда стоит `absent_is_zero`:
+// ядро читает незаданный s2 как 0, то есть «паддинга нет», и пара
+// «ключ заголовка + нет паддинга» так же фатальна, как «ключ + паддинг 5».
+type MinWhen struct {
+	Min          float64    `json:"min"`
+	Code         string     `json:"code"`
+	Action       string     `json:"action"`
+	AbsentIsZero bool       `json:"absent_is_zero"`
+	When         *Condition `json:"when"`
+}
+
 // Condition — условие применимости правила значения.
 //
 // `any_set` — «задано ЛЮБОЕ из перечисленных полей». Одного `Relation.Path`
@@ -229,12 +258,39 @@ type section struct {
 	Order         []string          `json:"order"`
 	Fields        map[string]*Field `json:"fields"`
 	Skipped       map[string]string `json:"skipped"`
+	Relations     []Relation2       `json:"relations"`
 	Discriminator string            `json:"discriminator"`
 	Values        []string          `json:"values"`
 	Variants      map[string]*struct {
 		Order  []string          `json:"order"`
 		Fields map[string]*Field `json:"fields"`
 	} `json:"variants"`
+}
+
+// Relation2 — именованная связь МЕЖДУ НЕСКОЛЬКИМИ полями тела, которую
+// атрибутами одного поля не записать.
+//
+// `conflicts`/`requires` живут у поля и говорят про пару «я и сосед». Есть
+// связи другого рода: у AmneziaWG диапазоны magic-заголовков h1..h4 обязаны
+// НЕ пересекаться попарно — это свойство всего набора, и повесить его на h1
+// значило бы соврать (виноват может быть любой из четырёх, а снятие h1 пару
+// не развело бы).
+//
+// Единственный вид сегодня — `ranges_disjoint`. Новый вид заводится вместе с
+// его исполнением в санитайзере: неизвестный вид пропускается молча (реестр
+// вправе уехать вперёд кода), и правило-опечатка не должна ронять узлы.
+type Relation2 struct {
+	Kind   string   `json:"kind"`
+	Paths  []string `json:"paths"`
+	Action string   `json:"action"`
+	Code   string   `json:"code"`
+	// Defaults — значение поля, когда ключа в теле нет: у h1..h4 незаданный
+	// заголовок равен своему типу сообщения WireGuard (h1=1 … h4=4), и
+	// «поля нет» здесь не значит «участника нет».
+	Defaults []float64 `json:"defaults"`
+	DescEn   string    `json:"desc_en"`
+	DescRu   string    `json:"desc_ru"`
+	Impl     string    `json:"impl"`
 }
 
 // file — файл реестра: секции body/common разбираются структурами, всё
@@ -271,6 +327,8 @@ type BodySchema struct {
 	Core   string
 	Order  []string
 	Fields map[string]*Field
+	// Relations — связи между несколькими полями тела (см. Relation2).
+	Relations []Relation2
 }
 
 // WarningEntry — запись кода из registry/warnings.json.
@@ -515,10 +573,11 @@ func readJSON(name string, dst interface{}) error {
 // order, вариантная суб-схема (транспорты) едет как Variants.
 func resolveSection(scheme string, sec *section, subs map[string]*section) (*BodySchema, error) {
 	out := &BodySchema{
-		Scheme: scheme,
-		Core:   sec.Core,
-		Order:  make([]string, 0, len(sec.Order)),
-		Fields: make(map[string]*Field, len(sec.Fields)),
+		Scheme:    scheme,
+		Core:      sec.Core,
+		Order:     make([]string, 0, len(sec.Order)),
+		Fields:    make(map[string]*Field, len(sec.Fields)),
+		Relations: sec.Relations,
 	}
 	for _, name := range sec.Order {
 		src := sec.Fields[name]

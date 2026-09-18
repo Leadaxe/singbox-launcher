@@ -220,9 +220,11 @@ func TestContractCorpusBody(t *testing.T) {
 				env.Meta["extension"] = ext
 			}
 			for _, node := range nodes {
-				cn, err := canonNode(node)
+				cn, code, err := canonNodeDrop(node)
 				if err != nil {
-					env.Dropped = append(env.Dropped, contractDrop{Ref: node.Tag, Reason: "emit_error"})
+					// `code` нормативен, `reason` — нет (D-088): см.
+					// canonNodeDrop.
+					env.Dropped = append(env.Dropped, contractDrop{Ref: node.Tag, Code: code, Reason: "emit_error"})
 					continue
 				}
 				env.Nodes = append(env.Nodes, cn)

@@ -1,0 +1,6 @@
+# ПАРНОСТЬ ВХОДОВ: тот же негодный приватный ключ (31 байт), что в
+# uri/wireguard/wg_private_key_31_bytes, но телом sing-box. Исход обязан быть
+# тем же — узел в dropped с кодом wg_key_invalid. Прежде проверка стояла в
+# ПАРСЕРЕ ССЫЛКИ, и это тело проверок не проходило вовсе: тот же ключ уезжал в
+# ядро и валил весь config.json (находка №4 LEGACY_AUDIT, контракт 1.1.11).
+{"endpoints":[{"type":"wireguard","tag":"wg-short-priv","address":["10.0.0.2/32"],"private_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHw==","peers":[{"address":"example-3.com","port":51820,"public_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=","allowed_ips":["0.0.0.0/0"]}]}]}

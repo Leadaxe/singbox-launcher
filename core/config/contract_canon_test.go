@@ -74,6 +74,28 @@ type contractDrop struct {
 	Reason string `json:"reason"`
 }
 
+// canonNodeDrop — canonNode плюс МАШИННАЯ причина отказа.
+//
+// `code` в записи отбраковки нормативен (D-088, corpus/README §«Отбраковки»),
+// а `reason` — нет: он человеческий текст стороны. Пока раннеры знали только
+// текст ошибки Go, любая отбраковка приезжала в конверт без кода, и вторая
+// сторона сверяла у неё ровно одно поле — `ref`. Отличить «узел выброшен за
+// негодный ключ» от «узел выброшен за пересечение заголовков» такой конверт
+// не позволял, то есть перенос правил в реестр проверить было нечем.
+//
+// Код берётся у отказа санитайзера. Пустая строка = отказ пришёл не от него
+// (ошибка эмиссии, битый JSON) — там кода и нет.
+func canonNodeDrop(node *configtypes.ParsedNode) (contractNode, string, error) {
+	if node != nil && node.Scheme != configtypes.SchemeGroup {
+		if _, _, drop := materializeParsedNodeBody(node); drop != nil {
+			cn, err := canonNode(node)
+			return cn, drop.Code, err
+		}
+	}
+	cn, err := canonNode(node)
+	return cn, "", err
+}
+
 // canonNode превращает разобранный узел в канонический вид конверта.
 func canonNode(node *configtypes.ParsedNode) (contractNode, error) {
 	if node == nil {

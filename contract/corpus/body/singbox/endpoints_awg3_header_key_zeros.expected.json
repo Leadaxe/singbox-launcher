@@ -1,0 +1,14 @@
+{
+  "dropped": [
+    {
+      "code": "awg3_header_key_invalid",
+      "reason": "emit_error",
+      "ref": "awg3-zero-key"
+    }
+  ],
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [],
+  "v": 1
+}

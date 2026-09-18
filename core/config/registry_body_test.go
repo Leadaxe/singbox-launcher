@@ -74,9 +74,28 @@ var registryFieldTypes = map[string]bool{
 // ошибки — xhttp x_padding_placement принимает лишь camelCase
 // "queryInHeader", и нормализация к lowercase ломает рабочий узел
 // (DRIFT §9.2).
+// range_order — своп перевёрнутой пары границ у типа awg_range («40-10» →
+// «10-40»), МОЛЧА: порядок границ смысла не несёт (ядро выбирает значение ИЗ
+// диапазона), а замена без смены смысла кода не даёт — то же правило, что у
+// trim. У таймингов AWG 3.x флаг не ставится: там перевёрнутая пара —
+// опечатка человека, и он обязан её увидеть (контракт 1.1.11).
 var registryNormalizeModes = map[string]bool{
 	"trim": true, "lower": true, "trim_lower": true, "hex_only": true,
+	"range_order": true,
 }
+
+// registryMinWhenActions — допустимые действия условного минимума.
+var registryMinWhenActions = map[string]bool{"drop": true, "drop_node": true}
+
+// registryRelationKinds — виды связей МЕЖДУ НЕСКОЛЬКИМИ полями (body.relations).
+//
+// Вид, которого нет в словаре, санитайзер пропускает МОЛЧА (реестр вправе
+// уехать вперёд кода), то есть опечатка в `kind` тихо отключила бы правило —
+// ловим её здесь, как и опечатку в `pattern`.
+var registryRelationKinds = map[string]bool{"ranges_disjoint": true}
+
+// registryRelationActions — что связь делает с узлом.
+var registryRelationActions = map[string]bool{"warn": true, "drop_node": true}
 
 // registryOnInvalidActions — допустимые действия on_invalid.
 var registryOnInvalidActions = map[string]bool{
@@ -167,6 +186,7 @@ type bodyField struct {
 	NormalizeCode  string                `json:"normalize_code"`
 	DefaultWhen    *bodyDefaultWhen      `json:"default_when"`
 	MaxWhen        *bodyMaxWhen          `json:"max_when"`
+	MinWhen        *bodyMinWhen          `json:"min_when"`
 	Skip           string                `json:"skip"`
 	DescEn         string                `json:"desc_en"`
 	DescRu         string                `json:"desc_ru"`
@@ -188,6 +208,26 @@ type bodyMaxWhen struct {
 	When          *bodyCondition `json:"when"`
 	ExceptSources []string       `json:"except_sources"`
 	NoteCode      string         `json:"note_code"`
+}
+
+// bodyMinWhen — условный минимум значения (контракт 1.1.11).
+type bodyMinWhen struct {
+	Min          *float64       `json:"min"`
+	Code         string         `json:"code"`
+	Action       string         `json:"action"`
+	AbsentIsZero bool           `json:"absent_is_zero"`
+	When         *bodyCondition `json:"when"`
+}
+
+// bodyRelation2 — связь между НЕСКОЛЬКИМИ полями тела (body.relations).
+type bodyRelation2 struct {
+	Kind     string    `json:"kind"`
+	Paths    []string  `json:"paths"`
+	Defaults []float64 `json:"defaults"`
+	Action   string    `json:"action"`
+	Code     string    `json:"code"`
+	DescEn   string    `json:"desc_en"`
+	DescRu   string    `json:"desc_ru"`
 }
 
 // bodyCondition — условие применимости правила значения.
@@ -221,11 +261,12 @@ type bodyRelation struct {
 
 // bodySection — секция body (или common) одного файла реестра.
 type bodySection struct {
-	Core     string                `json:"core"`
-	Order    []string              `json:"order"`
-	Fields   map[string]*bodyField `json:"fields"`
-	Skipped  map[string]string     `json:"skipped"`
-	Variants map[string]*struct {
+	Core      string                `json:"core"`
+	Order     []string              `json:"order"`
+	Fields    map[string]*bodyField `json:"fields"`
+	Skipped   map[string]string     `json:"skipped"`
+	Relations []bodyRelation2       `json:"relations"`
+	Variants  map[string]*struct {
 		Order  []string              `json:"order"`
 		Fields map[string]*bodyField `json:"fields"`
 	} `json:"variants"`
@@ -425,6 +466,50 @@ func TestRegistryBodyStructure(t *testing.T) {
 			walkFields("", sec.Order, sec.Fields, func(path string, fl *bodyField) {
 				checkField(t, where, path, fl, codes)
 			})
+			checkBodyRelations(t, where, sec.Relations, sec.Order, sec.Fields, codes)
+		}
+	}
+}
+
+// checkBodyRelations — линтер связей между несколькими полями (body.relations).
+//
+// Санитайзер неизвестный `kind` пропускает МОЛЧА (реестр вправе уехать вперёд
+// кода), поэтому опечатка в виде связи тихо отключила бы правило — её ловим
+// здесь, как и опечатку в `pattern`. Пути обязаны существовать: связь на
+// несуществующее поле не сработает никогда и выглядит как рабочая.
+func checkBodyRelations(t *testing.T, where string, rels []bodyRelation2, order []string, fields map[string]*bodyField, codes map[string]bool) {
+	t.Helper()
+	known := collectPaths(order, fields)
+	for i, rel := range rels {
+		full := fmt.Sprintf("%s relations[%d]", where, i)
+		if !registryRelationKinds[rel.Kind] {
+			t.Errorf("%s: kind %q вне словаря связей — санитайзер такую связь пропустит молча", full, rel.Kind)
+		}
+		if !registryRelationActions[rel.Action] {
+			t.Errorf("%s: action %q вне словаря (warn|drop_node)", full, rel.Action)
+		}
+		if rel.Code == "" {
+			t.Errorf("%s: без code — срабатывание связи было бы молчаливым", full)
+		} else if !codes[rel.Code] && !registryPendingCodes[rel.Code] {
+			t.Errorf("%s: код %q не объявлен в warnings.json", full, rel.Code)
+		}
+		if len(rel.Paths) < 2 {
+			t.Errorf("%s: связь МЕЖДУ полями объявляет %d путь(ей) — паре хватило бы conflicts у поля", full, len(rel.Paths))
+		}
+		for _, p := range rel.Paths {
+			if !known[p] {
+				t.Errorf("%s: путь %q не описан в fields — связь не сработает никогда", full, p)
+			}
+		}
+		// defaults перечисляет значение участника при отсутствии ключа, и
+		// длина обязана совпадать: короткий список молча оставил бы часть
+		// полей без дефолта ядра, то есть вне проверки.
+		if len(rel.Defaults) > 0 && len(rel.Defaults) != len(rel.Paths) {
+			t.Errorf("%s: defaults (%d) короче/длиннее paths (%d) — часть участников осталась бы без дефолта ядра",
+				full, len(rel.Defaults), len(rel.Paths))
+		}
+		if rel.DescEn == "" || rel.DescRu == "" {
+			t.Errorf("%s: нет desc_en/desc_ru — связь не попадёт в документацию", full)
 		}
 	}
 }
@@ -518,6 +603,18 @@ func checkField(t *testing.T, where, path string, f *bodyField, codes map[string
 	if f.Normalize != "" && !registryNormalizeModes[f.Normalize] {
 		t.Errorf("%s: normalize %q вне словаря SPEC 131 §4", full, f.Normalize)
 	}
+	if f.Normalize == "range_order" {
+		// Своп границ осмыслен только у диапазона: у строки или числа
+		// переставлять нечего, и флаг там означает опечатку.
+		if f.Type != "awg_range" {
+			t.Errorf("%s: normalize=range_order на поле типа %q — свопать границы можно только у awg_range", full, f.Type)
+		}
+		// Своп ТИХИЙ по определению (смысл диапазона не меняется), и код
+		// рядом с ним противоречил бы самому правилу.
+		if f.NormalizeCode != "" {
+			t.Errorf("%s: normalize_code при range_order — своп границ смысла не меняет и кода не даёт", full)
+		}
+	}
 	if f.NormalizeCode != "" {
 		if f.Normalize == "" {
 			t.Errorf("%s: normalize_code без normalize — сообщать не о чем", full)
@@ -572,6 +669,32 @@ func checkField(t *testing.T, where, path string, f *bodyField, codes map[string
 			if !registryNodeSources[src] {
 				t.Errorf("%s: max_when.except_sources называет вход %q вне словаря sources", full, src)
 			}
+		}
+	}
+	if mw := f.MinWhen; mw != nil {
+		if mw.Min == nil {
+			t.Errorf("%s: min_when без min — порога нет", full)
+		}
+		if mw.Code == "" {
+			t.Errorf("%s: min_when без code — снятие поля было бы молчаливым", full)
+		} else if !codes[mw.Code] && !registryPendingCodes[mw.Code] {
+			t.Errorf("%s: min_when.code %q не объявлен в warnings.json", full, mw.Code)
+		}
+		if !registryMinWhenActions[mw.Action] {
+			t.Errorf("%s: min_when.action %q вне словаря (drop|drop_node)", full, mw.Action)
+		}
+		// Минимум ВСЕГДА условный — ровно как потолок: безусловный
+		// записывается обычным `min`, а правило без `when` сняло бы поле у
+		// всех, кому оно не адресовано (у s1..s4 — у каждого AmneziaWG-узла
+		// без защиты заголовков, то есть почти у всех).
+		if mw.When == nil {
+			t.Errorf("%s: min_when без when — безусловный порог пишется обычным min", full)
+		}
+		checkBodyCondition(t, full+" min_when", mw.When)
+		// absent_is_zero осмыслен только у числового поля: у строки
+		// «отсутствует» не значит «ноль», и порог там читался бы наугад.
+		if mw.AbsentIsZero && f.Type != "int" && f.Type != "uint16" && f.Type != "awg_range" {
+			t.Errorf("%s: min_when.absent_is_zero на поле типа %q — «нет ключа = 0» осмысленно только у числа", full, f.Type)
 		}
 	}
 	for i, adv := range f.Advisory {

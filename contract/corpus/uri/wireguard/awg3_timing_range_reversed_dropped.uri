@@ -1,0 +1,6 @@
+# Перевёрнутый диапазон тайминга AWG 3.x («180-150») снимает ПОЛЕ с кодом
+# awg3_field_invalid и НЕ свопается: тайминги клиентские, ядро работает на
+# своих дефолтах, а перевёрнутая пара — опечатка человека, которую он обязан
+# увидеть (SPEC 123 §2). Противоположный случай — h1..h4, кейс
+# awg_h1_range_reversed_swapped.
+wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@example-1.com:51820?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.0.0.2/32&allowedips=0.0.0.0/0&rekeyaftertime=180-150#awg3-rev

@@ -1,0 +1,7 @@
+# ПАРНОСТЬ ВХОДОВ (находка №8): ключ защиты заголовков задан, а s4 меньше 12.
+# Nonce шифра заголовка берётся из первых 12 байт паддинга, и ядро отвергает
+# такую пару на загрузке ВСЕГО конфига. Узел отбраковывается с кодом
+# awg3_padding_too_short (реестр: min_when у s1..s4). Прежде проверка жила
+# рукописным validateAWG3 в парсере ссылки, и это тело её не проходило.
+# Ключи синтетические.
+{"endpoints":[{"type":"wireguard","tag":"awg3-short-pad","address":["10.0.0.2/32"],"private_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=","s1":55,"s2":42,"s3":40,"s4":8,"header_protection_key":"Bw4VHCMqMTg/Rk1UW2JpcHd+hYyTmqGor7a9xMvS2eA=","peers":[{"address":"example-3.com","port":51820,"public_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=","allowed_ips":["0.0.0.0/0"]}]}]}

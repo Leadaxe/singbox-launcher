@@ -1,7 +1,6 @@
 package subscription
 
 import (
-	"encoding/base64"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -48,12 +47,12 @@ var awg3BoolFields = []awg3Field{
 }
 
 // awg3HeaderKeyField — the only SERVER-side AWG3 value: base64 of 32 bytes
-// (`awg genkey`), copied verbatim. With it set, each of s1–s4 must be >= 12
-// (the padding carries the header cipher nonce).
+// (`awg genkey`), copied verbatim. Правила значения — в реестре: 32 байта и
+// не все нули (format base64_32 + pattern, on_invalid drop_node с кодом
+// awg3_header_key_invalid), а при заданном ключе каждый из s1–s4 обязан быть
+// >= 12 — паддинг несёт nonce шифра заголовка (min_when у s1..s4, код
+// awg3_padding_too_short).
 var awg3HeaderKeyField = awg3Field{"headerprotectionkey", "header_protection_key"}
-
-// awg3MinPaddingWithHeaderKey — minimum s1–s4 when header_protection_key is set.
-const awg3MinPaddingWithHeaderKey = 12
 
 // AWG3RootKeys lists every AWG3 endpoint-root JSON key (header key, range and
 // bool fields). Order is stable for deterministic emission/iteration.
@@ -171,45 +170,6 @@ func parseAWG3Bool(raw string) (value, ok bool) {
 	}
 }
 
-// normalizeAWG3HeaderKey validates the header protection key: base64 (any of
-// the four encodings, url-safe converted to std like the WireGuard keys) of
-// exactly 32 bytes, not all-zero. Without a correct key the handshake is
-// impossible AND the core rejects the whole config, so the caller drops the
-// node rather than the field (SPEC 123 §2).
-func normalizeAWG3HeaderKey(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "", fmt.Errorf("header_protection_key is empty")
-	}
-	var raw []byte
-	var err error
-	for _, enc := range []*base64.Encoding{
-		base64.StdEncoding, base64.URLEncoding,
-		base64.RawStdEncoding, base64.RawURLEncoding,
-	} {
-		if raw, err = enc.DecodeString(value); err == nil {
-			break
-		}
-	}
-	if err != nil {
-		return "", fmt.Errorf("header_protection_key is not base64")
-	}
-	if len(raw) != 32 {
-		return "", fmt.Errorf("header_protection_key decodes to %d bytes, want 32", len(raw))
-	}
-	allZero := true
-	for _, b := range raw {
-		if b != 0 {
-			allZero = false
-			break
-		}
-	}
-	if allZero {
-		return "", fmt.Errorf("header_protection_key is all zeros")
-	}
-	return base64.StdEncoding.EncodeToString(raw), nil
-}
-
 // applyAWG3Fields promotes AWG3 params from a wireguard:// query onto the
 // endpoint root and returns degradation codes for the node envelope.
 //
@@ -217,26 +177,36 @@ func normalizeAWG3HeaderKey(value string) (string, error) {
 // its base64 '+' into a space (form-urlencoded semantics) and the key would be
 // rejected as junk — the same trap publickey/presharedkey already dodge.
 //
-// A malformed key is NOT dropped here: it is validated in validateAWG3, which
-// kills the node — the field-level policy (drop the field, keep the node)
-// applies to timings and bools only.
+// Ключ переносится КАК ЕСТЬ: судит его реестр (on_invalid drop_node). Прежде
+// здесь стоял рукописный validateAWG3, ронявший узел МОЛЧА — объявленные коды
+// awg3_header_key_invalid и awg3_padding_too_short не ставились НИКОГДА, и на
+// входе sing-box проверки не было вовсе (находка №8 LEGACY_AUDIT).
 func applyAWG3Fields(endpoint map[string]interface{}, u *url.URL, q url.Values) []string {
 	var codes []string
 	if raw := strings.TrimSpace(queryParamPreservePlusOrGet(u, q, awg3HeaderKeyField.Param)); raw != "" {
-		endpoint[awg3HeaderKeyField.JSON] = raw
+		// Перевод написания тем же маппером, что у ключей WireGuard: ядро
+		// декодирует и это поле только std-base64, а панели пишут url-safe и
+		// без паддинга. Годность значения normalizeWGKey не судит — негодное
+		// возвращает как есть, и его снимает реестр.
+		endpoint[awg3HeaderKeyField.JSON] = normalizeWGKey(raw)
 	}
 	for _, f := range awg3RangeFields {
 		raw := strings.TrimSpace(q.Get(f.Param))
 		if raw == "" {
 			continue
 		}
-		v, ok := parseAWG3Range(raw)
-		if !ok {
-			debuglog.WarnLog("Parser: AWG3 %s=%q is not a uint32 or an ordered N-M range — field dropped, the core will use its WireGuard default", f.Param, raw)
-			codes = append(codes, WarnAWG3FieldInvalid)
+		// Форма значения — дело реестра (type awg_range): маппер переносит
+		// как есть, негодное или перевёрнутое снимает санитайзер с кодом
+		// awg3_field_invalid. Своп перевёрнутой пары здесь ЗАПРЕЩЁН и в
+		// реестре тоже (normalize range_order у этих полей не стоит):
+		// тайминги — клиентская настройка, ядро живёт на своих дефолтах, а
+		// перевёрнутый диапазон это опечатка, которую человек обязан увидеть
+		// (SPEC 123 §2). У magic-заголовков h1–h4 наоборот: там своп тихий.
+		if v, ok := parseAWG3Range(raw); ok {
+			endpoint[f.JSON] = v
 			continue
 		}
-		endpoint[f.JSON] = v
+		endpoint[f.JSON] = raw
 	}
 	for _, f := range awg3BoolFields {
 		raw := strings.TrimSpace(q.Get(f.Param))
@@ -245,8 +215,10 @@ func applyAWG3Fields(endpoint map[string]interface{}, u *url.URL, q url.Values) 
 		}
 		v, ok := parseAWG3Bool(raw)
 		if !ok {
-			debuglog.WarnLog("Parser: AWG3 %s=%q is not a boolean — field dropped", f.Param, raw)
-			codes = append(codes, WarnAWG3FieldInvalid)
+			// Не булево — переносим как есть, снимет реестр (type bool,
+			// on_invalid). Прежде поле роняли здесь, и на входе sing-box то
+			// же значение уезжало в ядро.
+			endpoint[f.JSON] = raw
 			continue
 		}
 		if v {
@@ -304,33 +276,4 @@ func awg3RandomTrailersWithWideHeaders(endpoint map[string]interface{}) bool {
 		}
 	}
 	return false
-}
-
-// validateAWG3 returns the errors that kill the NODE (as opposed to a field):
-// a header protection key that cannot work, and padding too short to carry the
-// header cipher nonce. Both make the core reject the whole config, so one such
-// node would take the user's entire VPN down — same policy as awgHeaderOverlap.
-//
-// Normalizes the key in place when it is valid (url-safe base64 → std, which is
-// the only encoding the core decodes).
-func validateAWG3(endpoint map[string]interface{}) error {
-	raw, ok := endpoint[awg3HeaderKeyField.JSON].(string)
-	if !ok || strings.TrimSpace(raw) == "" {
-		return nil
-	}
-	normalized, err := normalizeAWG3HeaderKey(raw)
-	if err != nil {
-		return fmt.Errorf("invalid wireguard URI: %v — the core rejects such an endpoint; node skipped", err)
-	}
-	endpoint[awg3HeaderKeyField.JSON] = normalized
-	// Nonce защиты заголовка берётся из первых 12 байт паддинга сообщения,
-	// поэтому каждый из s1–s4 обязан быть >= 12; ядро отвергает конфиг целиком.
-	for _, k := range []string{"s1", "s2", "s3", "s4"} {
-		n, _ := endpoint[k].(int64)
-		if n < awg3MinPaddingWithHeaderKey {
-			return fmt.Errorf("invalid wireguard URI: %s=%d is below the minimum %d required by header_protection_key (the padding carries the header cipher nonce); node skipped",
-				k, n, awg3MinPaddingWithHeaderKey)
-		}
-	}
-	return nil
 }

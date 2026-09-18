@@ -1,0 +1,7 @@
+# Перевёрнутая пара границ h1 («300-100») свопается РЕЕСТРОМ (normalize
+# range_order) МОЛЧА: порядок границ смысла не несёт — ядро выбирает значение
+# ИЗ диапазона, и [100,300] = [300,100]. Кода тут нет по тому же правилу, что у
+# trim: замена, не меняющая смысла, человеку не сообщается. У таймингов AWG 3.x
+# наоборот — своп запрещён (кейс awg3_timing_range_reversed_dropped).
+# Запрос LxBox (1), контракт 1.1.11.
+wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@example-1.com:51820?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.0.0.2/32&allowedips=0.0.0.0/0&h1=300-100&h2=500&h3=600&h4=700#awg-swap

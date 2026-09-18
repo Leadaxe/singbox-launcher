@@ -1867,10 +1867,16 @@ func TestParseNode_Wireguard(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error when address is missing")
 	}
-	// Invalid: missing allowedips
-	_, err = ParseNode("wireguard://key@10.0.0.1:51820?publickey=x&address=10.10.10.2/32", nil)
-	if err == nil {
-		t.Error("Expected error when allowedips is missing")
+	// allowedips ОТСУТСТВУЕТ — это НЕ ошибка: «маршрутизировать всё»
+	// подставляет реестр (peers[].allowed_ips.default_when, D-022), и узел
+	// живёт. Проверка стояла здесь с ожиданием ошибки и всё это время
+	// проходила по ЧУЖОЙ причине: ключ "key" не 32 байта, и узел ронял
+	// снятый ныне валидатор ключей парсера, а не отсутствие allowedips
+	// (контракт 1.1.11, находка №27 LEGACY_AUDIT; итог — кейс корпуса
+	// uri/wireguard/missing_allowedips_rejected, где тело собирается).
+	node, err = ParseNode("wireguard://"+wgTestPub+"@10.0.0.1:51820?publickey="+wgTestPub+"&address=10.10.10.2/32", nil)
+	if err != nil || node == nil {
+		t.Errorf("узел без allowedips обязан выжить (дефолт ставит реестр): err=%v", err)
 	}
 	// Invalid: missing hostname
 	_, err = ParseNode("wireguard://key@:51820?publickey=x&address=10.10.10.2/32&allowedips=0.0.0.0/0", nil)

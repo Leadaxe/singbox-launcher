@@ -1,0 +1,6 @@
+# ПАРНОСТЬ ВХОДОВ: мусорный pre_shared_key телом sing-box. Узел отбраковывается
+# с кодом wg_key_invalid — так же, как ссылка (uri/wireguard/junk_presharedkey_rejected).
+# Прежде реестр ронял здесь ПОЛЕ (drop/type_invalid), и тело давало узел без
+# PSK, который выглядит рабочим и молчит, тогда как ссылка узел дропала.
+# Решение владельца 19.09.2026, контракт 1.1.11.
+{"endpoints":[{"type":"wireguard","tag":"wg-junk-psk","address":["10.0.0.2/32"],"private_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=","peers":[{"address":"example-3.com","port":51820,"public_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=","pre_shared_key":"*****","allowed_ips":["0.0.0.0/0"]}]}]}

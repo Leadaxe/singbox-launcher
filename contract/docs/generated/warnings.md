@@ -81,6 +81,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`vision_with_transport`](#vision_with_transport) · `info` — flow removed: incompatible with transport
 - [`vless_encryption_invalid`](#vless_encryption_invalid) · `error` — VLESS encryption string is malformed
 - [`vmess_security_unknown`](#vmess_security_unknown) · `warning` — VMess: unknown cipher replaced with auto
+- [`wg_key_invalid`](#wg_key_invalid) · `error` — WireGuard: invalid key
 - [`ws_early_data_converted`](#ws_early_data_converted) · `info` — WebSocket: early data converted
 - [`xhttp_mode_forced_packet_up`](#xhttp_mode_forced_packet_up) · `warning` — XHTTP mode set to packet-up
 - [`xhttp_param_reset`](#xhttp_param_reset) · `warning` — XHTTP: field {field} removed
@@ -169,10 +170,17 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`wireguard`](protocols/wireguard.md)
-  - [`header_protection_key`](protocols/wireguard.md#body-header-protection-key) — the value does not fit the field → removed
+  - [`content_padding_addition`](protocols/wireguard.md#body-content-padding-addition) — the value does not fit the field → removed
+  - [`disable_cookies`](protocols/wireguard.md#body-disable-cookies) — the value does not fit the field → removed
   - [`ib`](protocols/wireguard.md#body-ib) — the value does not fit the field → removed
   - [`id`](protocols/wireguard.md#body-id) — the value does not fit the field → removed
   - [`ip`](protocols/wireguard.md#body-ip) — the value does not fit the field → removed
+  - [`keepalive_timeout`](protocols/wireguard.md#body-keepalive-timeout) — the value does not fit the field → removed
+  - [`max_handshake_attempts`](protocols/wireguard.md#body-max-handshake-attempts) — the value does not fit the field → removed
+  - [`random_trailers`](protocols/wireguard.md#body-random-trailers) — the value does not fit the field → removed
+  - [`reject_after_time`](protocols/wireguard.md#body-reject-after-time) — the value does not fit the field → removed
+  - [`rekey_after_time`](protocols/wireguard.md#body-rekey-after-time) — the value does not fit the field → removed
+  - [`rekey_timeout`](protocols/wireguard.md#body-rekey-timeout) — the value does not fit the field → removed
   - [`s3`](protocols/wireguard.md#body-s3) — the value does not fit the field → removed
   - [`s4`](protocols/wireguard.md#body-s4) — the value does not fit the field → removed
 
@@ -191,7 +199,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **Where it comes from:**
 
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+- [`wireguard`](protocols/wireguard.md)
+  - [`header_protection_key`](protocols/wireguard.md#body-header-protection-key) — the value does not fit the field → node dropped
 
 <a id="awg3_padding_too_short"></a>
 ### awg3_padding_too_short
@@ -243,6 +252,10 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`wireguard`](protocols/wireguard.md)
+  - [`h1`](protocols/wireguard.md#body-h1) — the value does not fit the field → removed
+  - [`h2`](protocols/wireguard.md#body-h2) — the value does not fit the field → removed
+  - [`h3`](protocols/wireguard.md#body-h3) — the value does not fit the field → removed
+  - [`h4`](protocols/wireguard.md#body-h4) — the value does not fit the field → removed
   - [`jc`](protocols/wireguard.md#body-jc) — the value does not fit the field → removed
   - [`jmax`](protocols/wireguard.md#body-jmax) — the value does not fit the field → removed
   - [`jmin`](protocols/wireguard.md#body-jmin) — set without `jmax` → removed
@@ -649,8 +662,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`wireguard`](protocols/wireguard.md)
   - [`peers`](protocols/wireguard.md#body-peers) — required and missing → node dropped
   - [`peers.address`](protocols/wireguard.md#body-peers-address) — the value does not fit the field → node dropped
-  - [`peers.public_key`](protocols/wireguard.md#body-peers-public-key) — the value does not fit the field → node dropped
-  - [`private_key`](protocols/wireguard.md#body-private-key) — the value does not fit the field → node dropped
 
 <a id="field_requires"></a>
 ### field_requires
@@ -1398,7 +1409,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`listen_port`](protocols/wireguard.md#body-listen-port) — the value does not fit the field → removed
   - [`mtu`](protocols/wireguard.md#body-mtu) — the value does not fit the field → removed
   - [`peers.allowed_ips`](protocols/wireguard.md#body-peers-allowed-ips) — the value does not fit the field → removed
-  - [`peers.pre_shared_key`](protocols/wireguard.md#body-peers-pre-shared-key) — the value does not fit the field → removed
   - [`peers.reserved`](protocols/wireguard.md#body-peers-reserved) — the value does not fit the field → removed
   - [`udp_nat_max`](protocols/wireguard.md#body-udp-nat-max) — the value does not fit the field → removed
   - [`workers`](protocols/wireguard.md#body-workers) — the value does not fit the field → removed
@@ -1509,6 +1519,26 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - [`vmess`](protocols/vmess.md)
   - [`security`](protocols/vmess.md#body-security) — the value does not fit the field → replaced with `auto`
+
+<a id="wg_key_invalid"></a>
+### wg_key_invalid
+
+**severity:** `error` · **params:** `path`, `value`
+
+**WireGuard: invalid key**
+
+- **What happened:** The WireGuard key at {path} is not a 32-byte key. The node was dropped, because the core rejects such a value and would refuse to start the whole config, and no handshake is possible without a correct key.
+- **Why it happens:** A WireGuard key is exactly 32 bytes in base64. A truncated copy-paste, a placeholder the panel shows instead of the key (a row of asterisks), or a word like enabled left in by a broken generator all give exactly this.
+- **What you can do:**
+  - Take the configuration from the provider again: the key is usually truncated or masked when copied out of a web panel.
+  - Pick another node: without a correct key no handshake is possible.
+
+**Where it comes from:**
+
+- [`wireguard`](protocols/wireguard.md)
+  - [`peers.pre_shared_key`](protocols/wireguard.md#body-peers-pre-shared-key) — the value does not fit the field → node dropped
+  - [`peers.public_key`](protocols/wireguard.md#body-peers-public-key) — the value does not fit the field → node dropped
+  - [`private_key`](protocols/wireguard.md#body-private-key) — the value does not fit the field → node dropped
 
 <a id="ws_early_data_converted"></a>
 ### ws_early_data_converted

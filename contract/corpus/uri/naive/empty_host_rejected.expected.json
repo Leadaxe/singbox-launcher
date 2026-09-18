@@ -1,6 +1,7 @@
 {
   "dropped": [
     {
+      "code": "field_missing",
       "reason": "emit_error",
       "ref": "naive+https://"
     }

@@ -182,6 +182,56 @@
         }
       ]
     },
+    "minWhen": {
+      "description": "УСЛОВНЫЙ минимум значения — зеркало max_when, но БЕЗ исключения по входу и БЕЗ замены значения. Нужен там, где порог диктует не само поле, а СОСЕД: у AmneziaWG 3.x паддинг s1-s4 обязан быть не ниже 12 только когда задан header_protection_key (nonce шифра заголовка берётся из первых 12 байт паддинга). Обычным `min` это не записать — он снял бы паддинг у каждого обычного AmneziaWG-узла, где порога нет вовсе. Исключения по входу тут нет и быть не может: ядро отвергает такую пару на загрузке ВСЕГО конфига, и «сохранить как написал человек» оставило бы пользователя без VPN — в отличие от потолка MTU, где узел собирается и просто работает хуже. Замены тоже нет: подставить минимум значило бы выдумать за провайдера размер паддинга, от которого зависит рукопожатие.",
+      "type": "object",
+      "properties": {
+        "min": { "type": "number", "description": "Порог значения." },
+        "code": { "type": "string", "description": "Код из registry/warnings.json." },
+        "action": {
+          "description": "drop — снять поле; drop_node — узел уходит в dropped целиком. Второе ставится там, где ядро отвергает пару на загрузке всего конфига: снять поле значило бы отдать ядру узел, который оно всё равно не примет, и уронить чужие узлы вместе с ним.",
+          "enum": ["drop", "drop_node"]
+        },
+        "absent_is_zero": {
+          "type": "boolean",
+          "description": "Порог действует и на ОТСУТСТВУЮЩЕЕ поле: ядро читает незаданный ключ как 0, и «сосед задан, а поля нет» так же фатально, как заниженное значение. Без флага правило молчало бы ровно на том случае, который в живых подписках встречается чаще битого значения."
+        },
+        "when": { "$ref": "#/definitions/condition" }
+      },
+      "required": ["min", "code", "action"],
+      "additionalProperties": false
+    },
+    "bodyRelation": {
+      "description": "Именованная связь МЕЖДУ НЕСКОЛЬКИМИ полями тела, которую атрибутами одного поля не записать. `conflicts`/`requires` живут у поля и говорят про пару «я и сосед»; здесь свойство НАБОРА: у AmneziaWG диапазоны magic-заголовков h1-h4 обязаны попарно не пересекаться, виноват может быть любой из четырёх, и снятие одного пару не развело бы. Неизвестный вид связи санитайзер пропускает молча — реестр вправе уехать вперёд кода, и правило-опечатка не должна ронять узлы; новый вид заводится вместе с его исполнением.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "description": "ranges_disjoint — диапазоны перечисленных полей (тип awg_range) не пересекаются попарно.",
+          "enum": ["ranges_disjoint"]
+        },
+        "paths": {
+          "type": "array",
+          "description": "Пути участвующих полей от корня тела.",
+          "items": { "type": "string" },
+          "minItems": 2
+        },
+        "defaults": {
+          "type": "array",
+          "description": "Значение участника, когда ключа в теле нет: у h1-h4 незаданный заголовок равен своему типу сообщения WireGuard (1…4), и «поля нет» тут не значит «участника нет». Длина — как у paths.",
+          "items": { "type": "number" }
+        },
+        "action": {
+          "description": "drop_node — узел уходит в dropped; warn — только код.",
+          "enum": ["warn", "drop_node"]
+        },
+        "code": { "type": "string", "description": "Код из registry/warnings.json." },
+        "desc_en": { "type": "string", "description": "Короткая фраза для человека, EN (уходит в документацию)." },
+        "desc_ru": { "type": "string", "description": "Короткая фраза для человека, RU." },
+        "impl": { "type": "string", "description": "Заметка для разработчика. В документацию не попадает." }
+      },
+      "required": ["kind", "paths", "action", "code", "desc_en"],
+      "additionalProperties": false
+    },
     "field": {
       "type": "object",
       "properties": {
@@ -235,8 +285,8 @@
           "$ref": "#/definitions/onInvalid"
         },
         "normalize": {
-          "description": "Нормализация значения ДО проверки enum/format. Ставится только там, где ядро case-sensitive и обе стороны нормализуют (SPEC 131 §4): без флага регистр не трогается — x_padding_placement принимает только camelCase queryInHeader.",
-          "enum": ["trim", "lower", "trim_lower", "hex_only"]
+          "description": "Нормализация значения ДО проверки enum/format. Ставится только там, где ядро case-sensitive и обе стороны нормализуют (SPEC 131 §4): без флага регистр не трогается — x_padding_placement принимает только camelCase queryInHeader. Режим range_order относится ТОЛЬКО к типу awg_range: он свопает перевёрнутую пару границ («40-10» → «10-40») и делает это МОЛЧА — у magic-заголовков h1-h4 порядок границ смысла не несёт (ядро выбирает значение ИЗ диапазона, и [10,40] = [40,10]), а замена, не меняющая смысла, человеку не сообщается, как и обрезка пробелов. У таймингов AWG 3.x флаг НЕ ставится: там перевёрнутая пара — опечатка человека, которую он обязан увидеть, и такое значение уходит на on_invalid (SPEC 123 §2).",
+          "enum": ["trim", "lower", "trim_lower", "hex_only", "range_order"]
         },
         "normalize_code": {
           "type": "string",
@@ -244,6 +294,7 @@
         },
         "default_when": { "$ref": "#/definitions/defaultWhen" },
         "max_when": { "$ref": "#/definitions/maxWhen" },
+        "min_when": { "$ref": "#/definitions/minWhen" },
         "required": {
           "type": "boolean",
           "description": "Без поля узел не собирается — уходит в dropped с кодом field_missing."
@@ -407,6 +458,11 @@
           "type": "object",
           "description": "Поля ядра, сознательно не описанные: имя → причина.",
           "additionalProperties": { "type": "string" }
+        },
+        "relations": {
+          "type": "array",
+          "description": "Связи между несколькими полями тела (см. bodyRelation).",
+          "items": { "$ref": "#/definitions/bodyRelation" }
         },
         "lx_only": { "type": "boolean" },
         "min_core": { "type": "string" },

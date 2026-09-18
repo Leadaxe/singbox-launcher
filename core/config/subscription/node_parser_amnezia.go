@@ -374,6 +374,7 @@ func findWGIniText(v interface{}, depth int) (string, map[string]interface{}) {
 //     строки его узел терял прописанный сервером MTU целиком. У AWG-узла
 //     значение выше 1280 теперь заменяется правилом реестра (max_when) — и
 //     заменяется С КОДОМ, то есть человек об этом узнает, а не как раньше.
+//
 //   - DNS = $PRIMARY_DNS, $SECONDARY_DNS — плейсхолдеры Amnezia; адреса лежат в
 //     корне профиля (dns1/dns2). Неразрешённый плейсхолдер выбрасывается из
 //     списка, пустой список не пишется вовсе: строка `dns=%24PRIMARY_DNS`
@@ -531,11 +532,14 @@ func wgConfToURI(confText, label string) (string, error) {
 	q := url.Values{}
 	q.Set("publickey", peer["publickey"])
 	q.Set("address", stripSpaces(iface["address"]))
-	allowed := stripSpaces(peer["allowedips"])
-	if allowed == "" {
-		allowed = "0.0.0.0/0,::/0"
+	// AllowedIPs нет в профиле — параметр не ставим вовсе: «маршрутизировать
+	// всё» подставит РЕЕСТР (peers[].allowed_ips.default_when, D-022). Копия
+	// дефолта, стоявшая здесь, была ВТОРОЙ (первая — в парсере ссылки) и
+	// расходилась бы с ним при любой правке правила; на входе sing-box не
+	// работала ни та ни другая (находка №27 LEGACY_AUDIT, контракт 1.1.11).
+	if allowed := stripSpaces(peer["allowedips"]); allowed != "" {
+		q.Set("allowedips", allowed)
 	}
-	q.Set("allowedips", allowed)
 	for confKey, param := range map[string]string{
 		"persistentkeepalive": "keepalive",
 		"presharedkey":        "presharedkey",

@@ -26,7 +26,24 @@
       "scheme": "wireguard",
       "warnings": [
         {
-          "code": "awg_header_invalid"
+          "code": "awg_header_invalid",
+          "path": "h1",
+          "value": "10-"
+        },
+        {
+          "code": "awg_header_invalid",
+          "path": "h2",
+          "value": "a-b"
+        },
+        {
+          "code": "awg_header_invalid",
+          "path": "h3",
+          "value": "-5"
+        },
+        {
+          "code": "awg_header_invalid",
+          "path": "h4",
+          "value": "1-2-3"
         }
       ]
     }

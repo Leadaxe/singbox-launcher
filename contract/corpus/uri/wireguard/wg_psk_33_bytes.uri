@@ -1,0 +1,6 @@
+# PSK декодируется в 33 байта — УЗЕЛ отбраковывается (решение владельца
+# 19.09.2026): туннель без ожидаемого сервером PSK — тихо сломанный туннель,
+# рукопожатие не пройдёт, и снятие ПОЛЯ дало бы узел, который выглядит рабочим
+# и молчит. Прежде реестр ронял здесь поле, а парсер ссылки — узел; расхождение
+# снято контрактом 1.1.11. Ключ синтетический.
+wireguard://UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=@192.0.2.72:51820?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=&presharedkey=AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyAh&address=10.0.0.2/32&allowedips=0.0.0.0/0#node

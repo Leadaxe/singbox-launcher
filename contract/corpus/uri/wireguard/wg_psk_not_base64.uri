@@ -1,0 +1,3 @@
+# PSK — вообще не base64 (мусор кривого генератора): узел отбраковывается с
+# кодом wg_key_invalid, как и ключи выше.
+wireguard://UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=@192.0.2.72:51820?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=&presharedkey=%21%21not-base64%21%21&address=10.0.0.2/32&allowedips=0.0.0.0/0#node

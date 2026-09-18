@@ -72,15 +72,14 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 	if privateKey == "" {
 		return nil, fmt.Errorf("invalid wireguard URI: empty private key")
 	}
-	// The core decodes keys with base64.StdEncoding only (transport/wireguard);
-	// an invalid key emitted into config.json fails `sing-box check` and kills
-	// the whole config (same junk-value class as pbk=enabled, v1.1.7). Reject
-	// the node here instead; URL-safe/unpadded variants are converted to std.
-	privateKey, err = normalizeWGKey("private key", privateKey)
-	if err != nil {
-		debuglog.WarnLog("parseWireGuardURI: %v — node skipped", err)
-		return nil, err
-	}
+	// Только ПЕРЕВОД НАПИСАНИЯ: ядро декодирует ключи base64.StdEncoding
+	// (transport/wireguard), а панели пишут тот же ключ url-safe и без
+	// паддинга. ГОДНОСТЬ ключа тут больше не судится — это правило значения, и
+	// живёт оно в реестре (wireguard.body.private_key, format base64_32,
+	// on_invalid drop_node с кодом wg_key_invalid). Пока проверка стояла
+	// здесь, узел пропадал МОЛЧА, и то же самое значение на входе sing-box
+	// уезжало в ядро (находка №4 LEGACY_AUDIT, решение владельца 19.09.2026).
+	privateKey = normalizeWGKey(privateKey)
 
 	port := 51820
 	if p := parsedURL.Port(); p != "" {
@@ -105,18 +104,8 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 		debuglog.DebugLog("parseWireGuardURI: error missing address")
 		return nil, fmt.Errorf("invalid wireguard URI: missing required query parameter address")
 	}
-	if allowedipsParam == "" {
-		// Omitted allowed_ips means "route everything" in every WireGuard client;
-		// LxBox defaults it, so dropping the node here would make the same
-		// subscription yield different sets on desktop and mobile (SPEC 103, D-022).
-		allowedipsParam = "0.0.0.0/0,::/0"
-		debuglog.DebugLog("parseWireGuardURI: allowedips omitted — defaulting to %s", allowedipsParam)
-	}
-	publicKey, err = normalizeWGKey("peer publickey", publicKey)
-	if err != nil {
-		debuglog.WarnLog("parseWireGuardURI: %v — node skipped", err)
-		return nil, err
-	}
+	// Перевод написания, без суда о годности (см. private_key выше).
+	publicKey = normalizeWGKey(publicKey)
 
 	addressDecoded, _ := url.QueryUnescape(addressParam)
 	allowedipsDecoded, _ := url.QueryUnescape(allowedipsParam)
@@ -125,8 +114,8 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 	// bare address to /32 (IPv4) or /128 (IPv6).
 	addressList := normalizeWGPrefixes(splitAndTrim(addressDecoded, ","))
 	allowedipsList := normalizeWGPrefixes(splitAndTrim(allowedipsDecoded, ","))
-	if len(addressList) == 0 || len(allowedipsList) == 0 {
-		return nil, fmt.Errorf("invalid wireguard URI: address or allowedips empty after parse")
+	if len(addressList) == 0 {
+		return nil, fmt.Errorf("invalid wireguard URI: address empty after parse")
 	}
 
 	// MTU только ПЕРЕНОСИТСЯ из ссылки в тело. Ни дефолта, ни потолка здесь
@@ -161,10 +150,21 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 	}
 
 	peer := map[string]interface{}{
-		"address":     parsedURL.Hostname(),
-		"port":        port,
-		"public_key":  publicKey,
-		"allowed_ips": allowedipsList,
+		"address":    parsedURL.Hostname(),
+		"port":       port,
+		"public_key": publicKey,
+	}
+	// allowedips= нет — ключ в тело не пишем вовсе: «маршрутизировать всё»
+	// подставит РЕЕСТР (peers[].allowed_ips.default_when, D-022). Прежде
+	// дефолт стоял здесь и второй копией в парсере профиля Amnezia, а на
+	// входе sing-box не работал совсем: тело без allowed_ips узел терял
+	// вместо того, чтобы дополниться (находка №27 LEGACY_AUDIT).
+	//
+	// Пустой список писать нельзя: для ядра это «missing allowed ips for peer
+	// N» фаталом на весь конфиг, а для default_when — заданное значение,
+	// которое он не тронет.
+	if len(allowedipsList) > 0 {
+		peer["allowed_ips"] = allowedipsList
 	}
 	// keepalive: число как раньше; AWG3 добавил диапазон "25-35", который ядро
 	// перевыбирает при каждом взводе таймера. Мусор пропускается (как раньше).
@@ -180,14 +180,10 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 		psk = q.Get("presharedkey")
 	}
 	if psk != "" {
-		// A broken psk can't be dropped (the server would reject the handshake
-		// anyway) — reject the node like the private/public key above.
-		psk, err = normalizeWGKey("presharedkey", psk)
-		if err != nil {
-			debuglog.WarnLog("parseWireGuardURI: %v — node skipped", err)
-			return nil, err
-		}
-		peer["pre_shared_key"] = psk
+		// Перевод написания. Негодный psk роняет УЗЕЛ, но решает это реестр
+		// (peers[].pre_shared_key, on_invalid drop_node, код wg_key_invalid):
+		// туннель без ожидаемого сервером PSK — тихо сломанный туннель.
+		peer["pre_shared_key"] = normalizeWGKey(psk)
 	}
 	// reserved (Cloudflare WARP): 3 decimal bytes "b0,b1,b2" derived from the
 	// account client_id. sing-box prepends them to every WireGuard packet, which
@@ -221,21 +217,17 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 	// AmneziaWG 3.x (SPEC 123): защита заголовка, паддинг содержимого, хвосты
 	// и тайминги — там же, на корне endpoint.
 	awgCodes = append(awgCodes, applyAWG3Fields(endpoint, parsedURL, q)...)
-	// Пересечение magic-заголовков фатально не для узла, а для КОНФИГА:
-	// ядро отвергает такой endpoint на загрузке («headers must not
-	// overlap»), и одна подписка с h1=h2 оставляла пользователя без VPN
-	// целиком, с check-ошибкой, указывающей не на подписку. Узел без
-	// правильных заголовков всё равно не заработает — выбрасываем его,
-	// а не конфиг (та же политика, что у битого ключа выше).
-	if a, b := awgHeaderOverlap(endpoint); a != "" {
-		return nil, fmt.Errorf("AWG magic headers %s and %s overlap — the core rejects such an endpoint ('headers must not overlap'); node skipped", a, b)
-	}
-	// Та же политика для AWG3: битый ключ защиты заголовка или слишком
-	// короткий паддинг роняют ВЕСЬ конфиг на загрузке — выбрасываем узел.
-	if err := validateAWG3(endpoint); err != nil {
-		debuglog.WarnLog("parseWireGuardURI: %v", err)
-		return nil, err
-	}
+	// Пересечение magic-заголовков h1..h4 и порог паддинга при заданном
+	// header_protection_key тоже роняют узел — но решает это РЕЕСТР, а не
+	// парсер: связь body.relations ranges_disjoint (код awg_headers_overlap) и
+	// min_when у s1..s4 (код awg3_padding_too_short), негодный ключ защиты
+	// заголовка — on_invalid drop_node (код awg3_header_key_invalid).
+	//
+	// Прежде тут стояли рукописные awgHeaderOverlap и validateAWG3: они
+	// роняли узел МОЛЧА (все три кода были объявлены в warnings.json и не
+	// ставились НИКОГДА), и на входе sing-box не работали вовсе — то же тело
+	// уезжало в ядро и валило весь конфиг. Находка №8 LEGACY_AUDIT, запрос
+	// LxBox (4), контракт 1.1.11.
 
 	label := parsedURL.Fragment
 	if label == "" && fragmentFromRaw != "" {
@@ -306,31 +298,34 @@ func percentEncodeWGUserinfoSlashes(uri string) string {
 	return uri[:start] + strings.ReplaceAll(userinfo, "/", "%2F") + uri[start+at:]
 }
 
-// normalizeWGKey validates a WireGuard key (private/public/preshared) from a
-// share-URI or pasted .conf and returns it in the std-base64 form the core
-// requires (transport/wireguard decodes with base64.StdEncoding only). URL-safe
-// and unpadded variants are converted; anything that is not a 32-byte key —
-// e.g. Proton's masked "*****" placeholder — is an error so the caller can skip
-// the node instead of emitting a value that fails `sing-box check` and kills
-// the whole config.
-func normalizeWGKey(kind, value string) (string, error) {
-	var raw []byte
-	var err error
+// normalizeWGKey переводит НАПИСАНИЕ ключа WireGuard (приватного, публичного,
+// PSK) в ту форму base64, которую читает ядро: transport/wireguard декодирует
+// исключительно base64.StdEncoding, а панели пишут тот же ключ url-safe и без
+// паддинга. Одни и те же 32 байта — четыре написания.
+//
+// Это ПЕРЕВОД ДИАЛЕКТА и ничего больше (секция mapper реестра,
+// wg_key_spelling_to_std_base64). О годности значения функция не судит:
+// значение, которое не декодируется или декодируется не в 32 байта, она
+// возвращает КАК ЕСТЬ, и судит его реестр — wireguard.body.private_key,
+// peers[].public_key, peers[].pre_shared_key (format base64_32, on_invalid
+// drop_node, код wg_key_invalid).
+//
+// Прежде функция возвращала ошибку, а вызывающий ронял узел МОЛЧА. Цена была
+// двойная: человек не знал, почему узел исчез, и то же самое значение,
+// приехавшее телом sing-box, проверки не проходило вовсе и уезжало в ядро —
+// расхождение входов, находка №4 LEGACY_AUDIT (решение владельца 19.09.2026).
+func normalizeWGKey(value string) string {
 	for _, enc := range []*base64.Encoding{
 		base64.StdEncoding, base64.URLEncoding,
 		base64.RawStdEncoding, base64.RawURLEncoding,
 	} {
-		if raw, err = enc.DecodeString(value); err == nil {
-			break
+		raw, err := enc.DecodeString(value)
+		if err != nil || len(raw) != 32 {
+			continue
 		}
+		return base64.StdEncoding.EncodeToString(raw)
 	}
-	if err != nil {
-		return "", fmt.Errorf("invalid wireguard URI: %s is not base64", kind)
-	}
-	if len(raw) != 32 {
-		return "", fmt.Errorf("invalid wireguard URI: %s decodes to %d bytes, want 32", kind, len(raw))
-	}
-	return base64.StdEncoding.EncodeToString(raw), nil
+	return value
 }
 
 // normalizeWGPrefixes ensures every entry is a CIDR (netip.Prefix): a bare IP
@@ -437,20 +432,19 @@ func applyAWGFields(endpoint map[string]interface{}, q url.Values) []string {
 			endpoint[k] = int64(n)
 			continue
 		}
-		// SPEC 073.2: h1–h4 may carry an AWG 2.0 randomization range "lo-hi".
-		if awgHeaderFields[k] {
-			if rng, ok := parseAWGHeaderRange(raw); ok {
-				endpoint[k] = rng
-				continue
-			}
-			// A silently dropped header means the core falls back to the WG
-			// default message type and the handshake won't match the server —
-			// the exact failure mode of the original 073.2 bug. Warn loudly.
-			debuglog.WarnLog("Parser: AWG %s=%q is not a uint32 or lo-hi range — field dropped, the core will use the WireGuard default header", k, raw)
-			codes = append(codes, WarnAWGHeaderInvalid)
-			continue
-		}
-		debuglog.DebugLog("applyAWGFields: skip %s=%q (invalid value)", k, raw)
+		// Дальше значение — уже НЕ голое число. Судить его маппер больше не
+		// вправе: прежде он ронял h1–h4 с кодом, а jc/jmin/jmax/s1–s4 —
+		// МОЛЧА (асимметрия внутри одной функции, находка №9 LEGACY_AUDIT), и
+		// на входе sing-box не работал ни тот ни другой случай. Значение
+		// переносится КАК ЕСТЬ, поле снимает реестр своим on_invalid с кодом
+		// (awg_header_invalid у jc/jmin/jmax/h1–h4/s1–s2, awg3_field_invalid у
+		// s3–s4) — решение владельца 19.09.2026: «снятие реестром с
+		// сообщением, а не тихое».
+		//
+		// SPEC 073.2: h1–h4 законно несут диапазон "lo-hi"; его ФОРМУ знает
+		// тип реестра awg_range, а порядок границ там же и нормализуется
+		// (normalize range_order, тихий своп).
+		endpoint[k] = raw
 	}
 	for _, k := range awgStringFields {
 		// q.Get already URL-decodes (incl. '+' → space and %3C → '<'); the tag
@@ -498,72 +492,6 @@ func parseReservedTriplet(raw string) []int {
 		out = append(out, n)
 	}
 	return out
-}
-
-// awgHeaderOverlap reports a pair of magic-header fields whose effective
-// ranges overlap ("", "" when all four are disjoint). Mirrors the core
-// contract (SPEC 073.2): an unset/zero header counts as its WireGuard default
-// message type (h1=1 … h4=4), a single value as [v,v], a range as [lo,hi].
-// The core rejects an overlapping set at load with "headers must not
-// overlap", so the parser must not emit such an endpoint: one broken node
-// would take the whole config down (parseWireGuardURI drops the node).
-func awgHeaderOverlap(endpoint map[string]interface{}) (string, string) {
-	type span struct {
-		name   string
-		lo, hi uint64
-	}
-	spans := make([]span, 0, 4)
-	for i, k := range []string{"h1", "h2", "h3", "h4"} {
-		s := span{name: k, lo: uint64(i + 1), hi: uint64(i + 1)} // WG default
-		switch v := endpoint[k].(type) {
-		case int64:
-			if v > 0 {
-				s.lo, s.hi = uint64(v), uint64(v)
-			}
-		case string:
-			loStr, hiStr, _ := strings.Cut(v, "-")
-			lo, errLo := strconv.ParseUint(loStr, 10, 32)
-			hi, errHi := strconv.ParseUint(hiStr, 10, 32)
-			if errLo == nil && errHi == nil {
-				s.lo, s.hi = lo, hi
-			}
-		}
-		spans = append(spans, s)
-	}
-	for i := 0; i < len(spans); i++ {
-		for j := i + 1; j < len(spans); j++ {
-			if spans[i].lo <= spans[j].hi && spans[j].lo <= spans[i].hi {
-				return spans[i].name, spans[j].name
-			}
-		}
-	}
-	return "", ""
-}
-
-// awgHeaderFields — magic-header fields (h1–h4) that, unlike the other AWG
-// numerics, may carry an AWG 2.0 randomization range besides a plain uint32.
-var awgHeaderFields = map[string]bool{"h1": true, "h2": true, "h3": true, "h4": true}
-
-// parseAWGHeaderRange validates an AWG 2.0 header randomization range "lo-hi"
-// (both bounds uint32) and returns it normalized (bounds ordered). The range
-// stays a string: the sing-box-lx core (>= 1.13.13-lx.6) accepts "h1": "N-M"
-// in the endpoint JSON and picks a fresh in-range value per handshake — better
-// obfuscation than any fixed value the launcher could choose. Cores before
-// lx.6 reject the string form — hence the RequiredCoreVersion bump (SPEC 073.2).
-func parseAWGHeaderRange(raw string) (string, bool) {
-	loStr, hiStr, found := strings.Cut(raw, "-")
-	if !found {
-		return "", false
-	}
-	lo, errLo := strconv.ParseUint(strings.TrimSpace(loStr), 10, 32)
-	hi, errHi := strconv.ParseUint(strings.TrimSpace(hiStr), 10, 32)
-	if errLo != nil || errHi != nil {
-		return "", false
-	}
-	if hi < lo {
-		lo, hi = hi, lo
-	}
-	return fmt.Sprintf("%d-%d", lo, hi), true
 }
 
 // splitAndTrim splits a string by separator, trims whitespace from each part,
