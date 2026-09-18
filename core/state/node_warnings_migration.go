@@ -66,7 +66,12 @@ func recountOneNode(node *Node) int {
 	// nil = «не считали», пустой список = «считали, чисто». Узел, у которого
 	// коды уже есть, не трогаем: их поставил разбор, и он знает о входе
 	// больше, чем мы знаем о теле.
-	if node.Warnings != nil || len(node.Body) == 0 {
+	//
+	// SPEC 132: считаются только ПРОИЗВОДНЫЕ коды. Узел, у которого в списке
+	// лежит один вердикт ядра (`core_rejected`), по-прежнему «не считали»:
+	// иначе выключенный страховкой узел навсегда остался бы без кодов своего
+	// тела — а они и объясняют, за что ядро его не приняло.
+	if len(node.Body) == 0 || hasDerivedWarnings(node.Warnings) {
 		return 0
 	}
 	originKind := ""
@@ -87,7 +92,12 @@ func recountOneNode(node *Node) int {
 	if res.Warnings == nil {
 		res.Warnings = []NodeWarning{}
 	}
-	node.Warnings = res.Warnings
+	// Через ReplaceDerivedWarnings, а не присваиванием: пересчёт по телу не
+	// вправе стереть вердикт ядра (SPEC 132, core/state/node_enabled.go).
+	// Досчёт идёт только при Warnings==nil, то есть авторитетных записей у
+	// узла и быть не может, — но правило одно на все шесть мест пересчёта, и
+	// исключений у него нет.
+	node.ReplaceDerivedWarnings(res.Warnings)
 
 	if len(res.Body) == 0 {
 		return 0 // санитайзер ничего не снял — тело остаётся байт в байт

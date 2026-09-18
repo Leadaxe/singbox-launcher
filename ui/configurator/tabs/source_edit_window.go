@@ -100,14 +100,17 @@ func setNodeEnabled(src *wizardmodels.Source, rawTag string, enabled bool) {
 	if src == nil || rawTag == "" {
 		return
 	}
+	// Через corestate.Node.SetNodeEnabled, а не присваиванием: включение
+	// рукой стирает вердикт ядра (SPEC 132, CANON §9.4) — человек сказал
+	// «пробуй снова», и следующая сборка проверит узел заново.
 	for i := range src.Nodes {
 		if src.Nodes[i].Tag == rawTag {
-			src.Nodes[i].Enabled = enabled
+			src.Nodes[i].SetNodeEnabled(enabled)
 		}
 	}
 	// Узловой источник (server/chain/auto): узел один, и он сам источник.
 	if len(src.Nodes) == 0 && src.Tag == rawTag {
-		src.Enabled = enabled
+		src.Node.SetNodeEnabled(enabled)
 	}
 }
 

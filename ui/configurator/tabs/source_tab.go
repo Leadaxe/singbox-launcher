@@ -866,7 +866,9 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					if sourceIndex >= len(m.Sources) {
 						return
 					}
-					m.Sources[sourceIndex].Enabled = enabled
+					// Через единый сеттер узла: включение рукой стирает
+					// вердикт ядра (SPEC 132, CANON §9.4).
+					m.Sources[sourceIndex].Node.SetNodeEnabled(enabled)
 					// Shared mutation chain (marks dirty, re-derives, refreshes
 					// outbound options + list). The MarkAsChanged rationale and
 					// the previously-missing RefreshOutboundOptions live there.

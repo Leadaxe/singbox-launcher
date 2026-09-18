@@ -320,6 +320,7 @@ func writeAWGBody(node *wizardmodels.Node, ob map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
+	bodyBefore := node.Body
 
 	res := nodeflow.Sanitize(awgPipelineScheme, ob)
 
@@ -332,16 +333,22 @@ func writeAWGBody(node *wizardmodels.Node, ob map[string]interface{}) error {
 	if res.Drop != nil {
 		warns = append([]nodeflow.Warning{*res.Drop}, warns...)
 	}
-	node.Warnings = nodewarn.FromParsed(warns)
+	// Замещаются ПРОИЗВОДНЫЕ коды: вердикт ядра поставил не пересчёт, и
+	// стирать его пересчётом нельзя (SPEC 132).
+	node.ReplaceDerivedWarnings(nodewarn.FromParsed(warns))
 
 	// Тело отдаём конвейеру только когда он ничего не потерял. Подробности
 	// правила — в шапке функции.
 	emitted, eerr := nodeflow.Emit(awgPipelineScheme, res.Clean)
 	if res.Drop != nil || eerr != nil || awgPipelineLostFields(ob, res.Clean) {
 		node.Body = patched
-		return nil
+	} else {
+		node.Body = emitted
 	}
-	node.Body = emitted
+	// Вердикт ядра привязан к ТЕЛУ: правка обфускации сменила тело — приговор
+	// о прежнем недействителен, узел включается обратно и проверится
+	// следующей сборкой (SPEC 132, CANON §9.4).
+	node.RevalidateCoreVerdictAfterBodyChange(bodyBefore)
 	return nil
 }
 
