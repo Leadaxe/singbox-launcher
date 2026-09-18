@@ -267,6 +267,9 @@ func (f *addServerForm) buildParamsTab() {
 	// Source: многострочный ввод чего угодно, что понимает общий путь Add.
 	f.source = widget.NewMultiLineEntry()
 	f.source.Wrapping = fyne.TextWrapOff
+	// Образцы того, что можно вставить, — сами схемы и ключи (vless://,
+	// JSON-тело sing-box, заголовок секции wg-quick). Это синтаксис входных
+	// форматов, переводить в нём нечего. l10n-exempt
 	f.source.SetPlaceHolder("vless://…\n{\"type\":\"vless\",…}\n[Interface]…")
 	f.source.OnChanged = func(string) { f.refreshJSON() }
 	sourceNote := widget.NewLabel(locale.T(addServerSourceNoteText))

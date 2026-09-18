@@ -530,13 +530,17 @@ func newAWGBlock(
 	// выпадающий список — по подписи. В Border
 	// растягивается ровно центр, поэтому домен стоит там, а всё прочее ушло
 	// в правый край одной HBox-лентой.
+	// Имена полей AmneziaWG (id/ib/jc/jmin/jmax) — ключи протокола, а не
+	// подписи: ровно так они пишутся в .conf и в awg://. Перевод увёл бы
+	// подпись от того, что пользователь ищет в своём конфиге.
 	tail := container.NewHBox(
-		widget.NewLabel("ib"), b.browser,
-		widget.NewLabel("jc"), awgNumCell(b.jc, awgJCDigits),
-		widget.NewLabel("jmin"), awgNumCell(b.jmin, awgJSizeDigits),
-		widget.NewLabel("jmax"), awgNumCell(b.jmax, awgJSizeDigits),
+		widget.NewLabel("ib"), b.browser, // l10n-exempt
+		widget.NewLabel("jc"), awgNumCell(b.jc, awgJCDigits), // l10n-exempt
+		widget.NewLabel("jmin"), awgNumCell(b.jmin, awgJSizeDigits), // l10n-exempt
+		widget.NewLabel("jmax"), awgNumCell(b.jmax, awgJSizeDigits), // l10n-exempt
 	)
 	b.rows = []fyne.CanvasObject{
+		// l10n-exempt
 		container.NewBorder(nil, nil, widget.NewLabel("id"), tail, b.domain),
 		b.note,
 	}
