@@ -511,7 +511,12 @@ func collectServersFacets(ac *core.AppController, list []api.ProxyInfo, scope se
 				facets.Variants = parts[1:]
 			}
 		}
-		if src, ok := sources.Lookup(p.Name); ok && src.Container {
+		src, srcOK := sources.Lookup(p.Name)
+		// Происхождение известно у любого узла из индекса — и контейнерного,
+		// и одиночного. Без этого флага предикат считал ВСЕ узлы «неизвестного
+		// происхождения» и отбор по источнику не срабатывал вовсе.
+		facets.SourceKnown = srcOK
+		if srcOK && src.Container {
 			// Только контейнеры (подписки и папки) — решение владельца.
 			// Узловой источник в чипах не участвует, и SourceID у его узла не
 			// проставляется вовсе: узел остаётся «не приписанным ни к одному
