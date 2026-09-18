@@ -5,11 +5,16 @@
 # Required system packages (OpenGL + X11/GLFW for Fyne):
 #   Debian/Ubuntu (apt):
 #     build-essential pkg-config libgl1-mesa-dev libxcursor-dev libxrandr-dev \
-#     libxi-dev libxinerama-dev libxft-dev libxkbcommon-x11-dev libxxf86vm-dev \
-#     libwayland-dev
-#   Fedora/RHEL (dnf): mesa-libGL-devel libXcursor-devel libXrandr-devel \
-#     libXi-devel libXinerama-devel libXft-devel libxkbcommon-x11-devel \
-#     libXxf86vm-devel libwayland-devel
+#     libxi-dev libxinerama-dev libxft-dev \
+#     libxkbcommon-x11-dev libxxf86vm-dev libwayland-dev
+#   Fedora/RHEL (dnf): mesa-libGL-devel libXcursor-devel \
+#     libXrandr-devel libXi-devel libXinerama-devel libXft-devel \
+#     libxkbcommon-x11-devel libXxf86vm-devel wayland-devel
+#     RHEL-compatible distributions may require CRB/CodeReady Builder.
+#   openSUSE (zypper): gcc gcc-c++ make pkg-config Mesa-libGL-devel \
+#     Mesa-libEGL-devel libXcursor-devel libXrandr-devel libXi-devel \
+#     libXinerama-devel libXft-devel libxkbcommon-x11-devel \
+#     libXxf86vm-devel wayland-devel
 #   Or use Docker: from repo root:
 #     docker build -f build/Dockerfile.linux --target export -o type=local,dest=. .
 
@@ -54,11 +59,19 @@ if ! check_deps; then
     echo "    libxrandr-dev libxi-dev libxinerama-dev libxft-dev \\"
     echo "    libxkbcommon-x11-dev libxxf86vm-dev libwayland-dev"
     echo ""
-    echo "Fedora/RHEL:"
+    echo "Fedora:"
     echo "  sudo dnf install -y \\"
     echo "    mesa-libGL-devel libXcursor-devel libXrandr-devel libXi-devel \\"
     echo "    libXinerama-devel libXft-devel libxkbcommon-x11-devel \\"
-    echo "    libXxf86vm-devel libwayland-devel"
+    echo "    libXxf86vm-devel wayland-devel"
+    echo ""
+    echo "RHEL-compatible: enable CRB/CodeReady Builder, then use the Fedora package list."
+    echo ""
+    echo "openSUSE (Leap/Tumbleweed):"
+    echo "  sudo zypper install -y \\"
+    echo "    gcc gcc-c++ make pkg-config Mesa-libGL-devel Mesa-libEGL-devel \\"
+    echo "    libXcursor-devel libXrandr-devel libXi-devel libXinerama-devel \\"
+    echo "    libXft-devel libxkbcommon-x11-devel libXxf86vm-devel wayland-devel"
     echo ""
     echo "Or build in Docker (from repo root):"
     echo "  docker build -f build/Dockerfile.linux --target export -o type=local,dest=. ."
@@ -74,6 +87,24 @@ echo "=== Setting build environment ==="
 export CGO_ENABLED=1
 export GOOS=linux
 export GOARCH=amd64
+
+# GLFW 3.4 enables X11 and Wayland by default. Its Go binding links the
+# Wayland libraries without importing their pkg-config CFLAGS, while openSUSE
+# exposes the headers through /usr/include/wayland. Use pkg-config when the
+# complete native Wayland toolchain is present; otherwise build the X11
+# backend, which also works in Wayland sessions through XWayland.
+BUILD_TAG_ARGS=()
+if pkg-config --exists egl wayland-client wayland-cursor wayland-egl xkbcommon 2>/dev/null; then
+    WAYLAND_CFLAGS=$(pkg-config --cflags-only-I wayland-client wayland-cursor wayland-egl xkbcommon)
+    export CGO_CFLAGS="${CGO_CFLAGS:+$CGO_CFLAGS }$WAYLAND_CFLAGS"
+    echo "Wayland include flags: $WAYLAND_CFLAGS"
+else
+    BUILD_TAG_ARGS=(-tags x11)
+    echo "Native Wayland development files are incomplete; building the X11 backend."
+    echo "Install libegl1-mesa-dev (Debian/Ubuntu), mesa-libEGL-devel (Fedora/RHEL),"
+    echo "or Mesa-libEGL-devel (openSUSE)"
+    echo "together with the Wayland development packages to enable both backends."
+fi
 
 # Determine output filename
 BASE_NAME="singbox-launcher"
@@ -103,7 +134,7 @@ echo "Template ref: $TEMPLATE_REF"
 
 echo ""
 echo "=== Starting Build ==="
-go build -buildvcs=false -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=$VERSION -X singbox-launcher/internal/constants.RequiredTemplateRef=$TEMPLATE_REF" -o "$OUTPUT_FILENAME"
+go build "${BUILD_TAG_ARGS[@]}" -buildvcs=false -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=$VERSION -X singbox-launcher/internal/constants.RequiredTemplateRef=$TEMPLATE_REF" -o "$OUTPUT_FILENAME"
 
 if [ $? -eq 0 ]; then
     echo ""
@@ -116,4 +147,3 @@ else
     echo "!!! Build failed !!!"
     exit 1
 fi
-

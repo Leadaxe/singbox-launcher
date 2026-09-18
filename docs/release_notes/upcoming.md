@@ -25,6 +25,7 @@
 - A junk REALITY public key is reported instead of being dropped in silence, and keys that merely *look* like base64 (`enabled`, `true`) no longer slip through — the key is checked to be 32 bytes after decoding, which is what the core checks.
 
 ### Technical / Internal
+- Linux builds now obtain Wayland header paths from `pkg-config` and fall back to X11 when the optional native Wayland/EGL development files are incomplete, fixing local builds on openSUSE (PR #128, issue #127).
 - Node bodies are produced by `Sanitize` + `Emit` over the contract registry (`contract/registry/**`): the per-protocol emitter chain, the TLS/transport field allowlists and the special-case naive filter are gone. Adding a field to a protocol is now a registry edit, not four code edits.
 - The per-field core gate is table-driven from the registry's `min_core`/`platform` instead of one probe per field; `RealityKeyShareSupportProbe` and its cache are removed. Node-level gates (naive/chain/tailscale/AWG3) are unchanged — they drop a node, which the registry does not express.
 - `warnings` are recomputed once on load for nodes saved before the pipeline. A node's stored body is rewritten only when the sanitizer actually removes or coerces something, and each such rewrite is a WARN line naming the node and the codes.
@@ -54,6 +55,7 @@
 - Мусорный публичный ключ REALITY теперь называется, а не снимается молча, и ключи, которые лишь ПОХОЖИ на base64 (`enabled`, `true`), больше не проходят: ключ проверяется на 32 байта после декода — ровно так, как проверяет ядро.
 
 ### Техническое / Внутреннее
+- Linux-сборка теперь получает пути к заголовкам Wayland через `pkg-config` и использует X11 при неполном наборе опциональных Wayland/EGL-файлов разработки, исправляя локальную сборку в openSUSE (PR #128, issue #127).
 - Тело узла делают `Sanitize` + `Emit` по реестру контракта (`contract/registry/**`): per-scheme цепочка эмиттера, allowlist-ы полей TLS и транспорта и частный фильтр naive сняты. Новое поле протокола — правка реестра, а не четырёх мест в коде.
 - Полевой гейт ядра стал табличным (`min_core`/`platform` реестра) вместо пробы на каждое поле; `RealityKeyShareSupportProbe` и её кэш удалены. Узловые гейты (naive/chain/tailscale/AWG3) не тронуты — они выбрасывают узел, и реестром это не выражается.
 - `warnings` разово досчитываются при загрузке у узлов, сохранённых до конвейера. Тело переписывается, только если санитайзер реально что-то снял или привёл, и каждая такая перезапись — строка WARN с тегом узла и кодами.
