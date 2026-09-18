@@ -127,7 +127,7 @@
         },
         "normalize": {
           "description": "Нормализация значения ДО проверки enum/format. Ставится только там, где ядро case-sensitive и обе стороны нормализуют (SPEC 131 §4): без флага регистр не трогается — x_padding_placement принимает только camelCase queryInHeader.",
-          "enum": ["trim", "lower", "trim_lower"]
+          "enum": ["trim", "lower", "trim_lower", "hex_only", "grpc_service_name"]
         },
         "required": {
           "type": "boolean",

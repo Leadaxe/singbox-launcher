@@ -10,6 +10,7 @@
 - A node that lost something now says so. Fields the core would reject are removed with a named reason attached to the node (⚠ in the lists, details in the node card) instead of disappearing silently. Previously a subscription could "update" and quietly strip a node's obfuscation or certificate with nothing to show for it.
 
 ### Fixes
+- gRPC transport: Xray's absolute-path `serviceName` form (`/service/Tun`) is translated on import, so the request path on the wire matches what the server expects instead of a 404 (issue #130). A multi-segment service name still needs a core fix — filed with sing-box-lx.
 - Linux: the TUN stack now defaults to `gvisor` (template). With firewalld/nftables the `system` stack could bring the TUN up but pass no traffic; the selector in Wizard → Settings is unchanged (issue #129).
 - macOS: "Hide app from Dock" now survives a restart. The tray toggle is saved to `bin/settings.json` and applied on the next launch, so a launcher you sent to the tray comes back there instead of reappearing in the Dock every time.
 - Core pinned to sing-box-lx 1.14.1-lx.7: a REALITY `short_id` longer than 16 hex characters no longer crashes the core (it is a config error now), an unknown `tuic.udp_relay_mode` is rejected at load instead of silently becoming `native`, MASQUE `standard` profile without `uri` gets one clear error, and core errors name the node type and tag (`initialize outbound[0] vless[proxy-de-1]: …`).
@@ -44,6 +45,7 @@
 - Если у узла что-то сняли, он об этом говорит. Поля, которые ядро отвергает, снимаются с названной причиной на самом узле (⚠ в списках, подробности в карточке) вместо молчаливого исчезновения. Прежде подписка «обновлялась», у узла молча срезали обфускацию или сертификат, и увидеть это было негде.
 
 ### Исправления
+- Транспорт gRPC: форма Xray с абсолютным путём в `serviceName` (`/service/Tun`) переводится при импорте, и путь запроса совпадает с ожидаемым сервером вместо 404 (issue #130). Многосегментное имя сервиса ждёт правки ядра — заявка в sing-box-lx.
 - Linux: стек TUN по умолчанию — `gvisor` (шаблон). С firewalld/nftables стек `system` поднимал TUN без трафика; переключатель в Мастере → Настройки не менялся (issue #129).
 - macOS: «Скрыть из Dock» переживает перезапуск. Переключатель в трее сохраняется в `bin/settings.json` и применяется при следующем запуске, так что убранный в трей лаунчер там и остаётся, а не возвращается в Dock каждый раз.
 - Ядро закреплено на sing-box-lx 1.14.1-lx.7: REALITY `short_id` длиннее 16 hex больше не роняет ядро паникой (теперь ошибка конфигурации), неизвестный `tuic.udp_relay_mode` отвергается при загрузке, а не молча становится `native`, MASQUE-профиль `standard` без `uri` получает одну понятную ошибку, а ошибки ядра называют тип и тег узла (`initialize outbound[0] vless[proxy-de-1]: …`).

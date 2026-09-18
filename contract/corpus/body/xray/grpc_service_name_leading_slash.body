@@ -1,0 +1,4 @@
+# Xray-JSON: grpcSettings.serviceName в форме «абсолютного пути» «/<a>/Tun».
+# Та же нормализация, что и у share-URI (issue #130): вход в конвейер другой,
+# правило одно — реестровое normalize у transport.service_name.
+[{"outbounds":[{"protocol":"vless","tag":"xr-grpc","settings":{"vnext":[{"address":"example-1.com","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","encryption":"none"}]}]},"streamSettings":{"network":"grpc","security":"tls","tlsSettings":{"serverName":"example-1.com"},"grpcSettings":{"serviceName":"/abcde/Tun"}}}]}]

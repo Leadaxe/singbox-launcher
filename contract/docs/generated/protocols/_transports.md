@@ -83,7 +83,7 @@ _A shared registry sub-schema: its fields are substituted into the body of every
 
 | Путь / path | Тип / type | Значения, формат, диапазон / values, format, range | Дефолт / default | Обяз. / req. | Мусор / on invalid | Гейт / gate | EN | RU |
 |---|---|---|---|---|---|---|---|---|
-| `service_name` | string | — | `""` | — | — | — | gRPC service name in the request path. | Имя gRPC-сервиса в пути запроса. |
+| `service_name` | string | normalize `grpc_service_name` | `""` | — | — | — | gRPC service name in the request path. | Имя gRPC-сервиса в пути запроса. |
 | `idle_timeout` | duration | — | — | — | — | — | Close the stream after this idle period. | Закрывать поток после простоя такой длительности. |
 | `ping_timeout` | duration | — | — | — | — | — | Timeout waiting for a keepalive ping reply. | Таймаут ожидания ответа на keepalive-пинг. |
 | `permit_without_stream` | bool | — | `false` | — | — | — | Send keepalive pings even with no active stream. | Слать keepalive-пинги и без активного потока. |

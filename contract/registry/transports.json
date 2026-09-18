@@ -476,7 +476,8 @@
             "default": "",
             "desc_en": "gRPC service name in the request path.",
             "desc_ru": "Имя gRPC-сервиса в пути запроса.",
-            "impl": "Путь собирается как /<service_name>/Tun; enum нет."
+            "normalize": "grpc_service_name",
+            "impl": "Путь собирается как /<service_name>/Tun; enum нет. Ведущий «/» — это Xray-форма «абсолютного пути», где последний сегмент называет ПОТОК, а не сервис (xray-core transport/internet/grpc/config.go getServiceName/getTunStreamName): «/a/b/Tun» на проводе = «/a/b/Tun». Ядро имя потока не настраивает (всегда «Tun», transport/v2raygrpclite/client.go:58), поэтому normalize grpc_service_name снимает ведущий «/» и хвост «/Tun» — путь на проводе сохраняется. ОГРАНИЧЕНИЕ ЯДРА: «/» внутри service_name уезжает на провод как %2F (RawPath, url.PathEscape там же), поэтому многосегментное имя всё равно не совпадёт с сервером; односегментное («/abcde/Tun») чинится полностью. Issue #130."
           },
           "idle_timeout": {
             "type": "duration",

@@ -1,0 +1,8 @@
+# gRPC: многосегментный serviceName в Xray-форме «/<a>/<b>/Tun» (форма из
+# issue #130). Ведущий «/» и хвост «/Tun» снимаются, внутренние «/»
+# остаются частью имени сервиса.
+# ВНИМАНИЕ (ограничение ядра): «/» внутри service_name ядро кодирует как
+# %2F (transport/v2raygrpclite/client.go:59), поэтому на проводе выйдет
+# /abcde%2Fsomething/Tun, а не /abcde/something/Tun — такой узел на сервере
+# по-прежнему не заработает. Кейс фиксирует нормализацию формы, не почин.
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?encryption=none&type=grpc&serviceName=%2Fabcde%2Fsomething%2FTun&sni=example-1.com&security=tls&fp=chrome#gr%20abs

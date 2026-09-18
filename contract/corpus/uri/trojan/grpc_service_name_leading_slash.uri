@@ -1,0 +1,6 @@
+# gRPC: serviceName в Xray-форме «абсолютного пути» «/<сервис>/Tun».
+# Ведущий «/» у Xray означает не часть имени, а другую форму записи:
+# последний сегмент называет ПОТОК. sing-box поток не настраивает (всегда
+# «Tun»), поэтому форма сводится к service_name без «/» и без хвоста «/Tun»
+# — путь на проводе (/abcde/Tun) сохраняется. Issue #130.
+trojan://testpass123@example-3.com:443?type=grpc&security=tls&serviceName=%2Fabcde%2FTun&sni=example-3.com#Trojan%20gRPC%20abs
