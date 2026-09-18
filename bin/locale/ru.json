@@ -2428,17 +2428,17 @@
   "Emoji picker": {
     "value": "Выбор эмодзи"
   },
-  "Emoji found in node names (click to toggle):": {
-    "value": "Эмодзи из имён узлов (клик — переключить):"
+  "Emoji picker — %d / %d match": {
+    "value": "Выбор эмодзи — совпадает %d / %d"
   },
-  "No emoji found in node names. Refresh subscriptions first, or type a regex below manually.": {
-    "value": "В именах узлов эмодзи не найдены. Сначала обновите подписки или введите регулярку ниже вручную."
+  "No emoji in the names of these nodes.": {
+    "value": "В именах этих узлов эмодзи нет."
   },
-  "Filter body (editable, live-applied):": {
-    "value": "Тело фильтра (правится, применяется сразу):"
+  "Filter body: a regex over node names, applied live. Emoji chips above toggle terms in it.": {
+    "value": "Тело фильтра: регулярка по именам узлов, применяется сразу. Чипы эмодзи выше переключают в ней термы."
   },
-  "matches %d of %d total nodes": {
-    "value": "совпадает %d из %d узлов"
+  "Copy the pattern body.": {
+    "value": "Скопировать тело выражения."
   },
   "Apply": {
     "value": "Применить"

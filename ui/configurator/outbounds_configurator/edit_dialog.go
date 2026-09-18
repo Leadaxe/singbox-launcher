@@ -141,7 +141,7 @@ func ShowEditDialog(
 	// cfg, пикер и сброс формы) — просто не показывается.
 	filterInvertCheck := widget.NewCheck("", nil)
 	filterInvertBtn := ttwidget.NewButton("!", nil)
-	filterInvertBtn.SetToolTip(locale.T("Invert: keep nodes that do NOT match"))
+	filterInvertBtn.SetToolTip(locale.T(pickerInvertTooltipText))
 	syncInvertBtn := func() {
 		if filterInvertCheck.Checked {
 			// Включённая инверсия меняет смысл всего отбора на обратный —
