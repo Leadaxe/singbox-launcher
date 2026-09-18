@@ -390,6 +390,7 @@ build\test_windows.bat   # Windows
 - **[docs/ParserConfig.ru.md](docs/ParserConfig.ru.md)** — справочник по настройке парсера подписок.
 - **[docs/TRAFFIC_PROFILER.md](docs/TRAFFIC_PROFILER.md)** — внутренности и использование Traffic Profiler.
 - **[docs/TEMPLATE_REFERENCE.md](docs/TEMPLATE_REFERENCE.md)** — справочник схемы `wizard_template.json`.
+- **[docs/BUILD_LINUX.ru.md](docs/BUILD_LINUX.ru.md)** — сборка и запуск на Linux; как убрать повторные запросы пароля от `systemd-resolved` при старте TUN — [docs/LINUX_DNS_POLKIT.ru.md](docs/LINUX_DNS_POLKIT.ru.md).
 
 ## Решение проблем
 
@@ -400,6 +401,7 @@ build\test_windows.bat   # Windows
 | Вкладка Clash API недоступна | sing-box не запущен (вкладка намеренно disabled, пока движок не поднят). |
 | Подписка возвращает пусто / ошибки | Проверьте **Subscription identification** в Settings — HWID-binding панели требуют `Send device ID` включённым. Смотрите tooltip ⚠ badge — там announce от провайдера. |
 | TUN не захватывает трафик (Linux/macOS) | Для TUN-интерфейса обычно нужен root: `sudo ./singbox-launcher` или `sudo setcap cap_net_admin+ep ./singbox-launcher` (Linux). |
+| Linux: пароль спрашивают 3 раза при старте VPN и 1 при остановке | `systemd-resolved` + Polkit авторизуют каждое действие `resolvectl` по D-Bus отдельно. Узкое правило Polkit: [docs/LINUX_DNS_POLKIT.ru.md](docs/LINUX_DNS_POLKIT.ru.md). |
 | Win7 32-bit: иконка в трее есть, окно пустое / без виджетов | OpenGL 2.0 против требования Fyne 2.1+ — см. [docs/WIN7_OPENGL.md](docs/WIN7_OPENGL.md), drop-in фикс через Mesa3D. |
 | Auto-update подписок молчит | Откройте **Settings → Subscriptions** — убедитесь, что `Auto-update subscriptions` включён. Heartbeat раз в час; immediate retry срабатывает на VPN-event. |
 | Нужен полный state для bug-report | **Diagnostics → Copy snapshot** упакует template + state + cache + config одним JSON. |

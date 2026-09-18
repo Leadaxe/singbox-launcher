@@ -112,6 +112,10 @@ GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o singbox-lau
 
 - Run `docker build` **from the repository root** (where `go.mod` and `go.sum` live), with `.` as the context and `-f build/Dockerfile.linux`.
 
+### A password is asked three times when the VPN starts (and once when it stops)
+
+- On a desktop with `systemd-resolved`, sing-box configures the TUN interface's DNS through `resolvectl`, and Polkit authorizes each of the four D-Bus actions separately. `CAP_NET_ADMIN` does not help — the check happens on the `systemd-resolved` side. See [LINUX_DNS_POLKIT.md](LINUX_DNS_POLKIT.md) for a narrowly scoped Polkit rule that removes the prompts (issue #126).
+
 ## Running
 
 ```bash

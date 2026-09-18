@@ -385,6 +385,7 @@ To run GUI tests locally, set `TEST_PACKAGE` manually inside the script or invok
 - **[docs/ParserConfig.md](docs/ParserConfig.md)** — subscription parser configuration reference.
 - **[docs/TRAFFIC_PROFILER.md](docs/TRAFFIC_PROFILER.md)** — Traffic Profiler internals and usage.
 - **[docs/TEMPLATE_REFERENCE.md](docs/TEMPLATE_REFERENCE.md)** — `wizard_template.json` schema reference.
+- **[docs/BUILD_LINUX.md](docs/BUILD_LINUX.md)** — building and running on Linux; see [docs/LINUX_DNS_POLKIT.md](docs/LINUX_DNS_POLKIT.md) for removing the repeated `systemd-resolved` password prompts on TUN start.
 
 ## Troubleshooting
 
@@ -395,6 +396,7 @@ To run GUI tests locally, set `TEST_PACKAGE` manually inside the script or invok
 | Server list is empty / disabled | sing-box is not running (the list is intentionally inert until the engine is up). |
 | Subscription returns empty / errors | Check **Subscription identification** in Settings — HWID-binding panels need `Send device ID` enabled. Look at the ⚠ badge tooltip for provider announce. |
 | TUN doesn't capture traffic (Linux/macOS) | TUN interface usually needs root: `sudo ./singbox-launcher` or `sudo setcap cap_net_admin+ep ./singbox-launcher` (Linux). |
+| Linux: password asked 3× on VPN start, 1× on stop | `systemd-resolved` + Polkit authorize each `resolvectl` D-Bus action separately. Narrow Polkit rule: [docs/LINUX_DNS_POLKIT.md](docs/LINUX_DNS_POLKIT.md). |
 | Win7 32-bit: tray icon shows but window is blank / empty frame | OpenGL 2.0 vs Fyne's 2.1+ requirement — see [docs/WIN7_OPENGL.md](docs/WIN7_OPENGL.md) for the Mesa3D drop-in fix. |
 | Subscription auto-update silent | Open **Settings → Subscriptions** — confirm `Auto-update subscriptions` is on. Heartbeat is hourly; immediate retry fires on VPN-event. |
 | Need full state for a bug report | **Diagnostics → Copy snapshot** packages template + state + cache + config into one JSON. |

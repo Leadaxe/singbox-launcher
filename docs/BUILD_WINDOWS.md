@@ -155,6 +155,25 @@ Just launch `singbox-launcher.exe` by double-clicking it, or from the command li
 .\singbox-launcher.exe
 ```
 
+### Autostart via Task Scheduler
+
+The Windows release archives ship two batch files next to `singbox-launcher.exe`
+(sources: `build/windows/`):
+
+- `autostart_add.bat` — creates a Task Scheduler entry named `singbox-launcher` that runs the
+  launcher at logon with the highest privileges:
+  `schtasks /Create /TN "singbox-launcher" /SC ONLOGON /RL HIGHEST /TR "<folder>\singbox-launcher.exe" /F`
+- `autostart_remove.bat` — deletes that entry (`schtasks /Delete /TN "singbox-launcher" /F`).
+
+Both must be **run as administrator** and must stay next to the `.exe` — they take the path
+from their own location (`%~dp0`). A Startup-folder shortcut is not equivalent: the launcher's
+manifest requires administrator rights, so a shortcut raises a UAC prompt at every logon, while
+a scheduled task with `/RL HIGHEST` starts silently and before the regular startup apps.
+
+To start minimized with the VPN already up, open the task's action and append `-start -tray`
+to the command. If the launcher hangs at logon, add a 30-second to 1-minute delay to the
+"At log on" trigger — the session and the video driver need time to come up (issue #79).
+
 ## 📝 Notes
 
 - The first build may take a few minutes (downloading dependencies)

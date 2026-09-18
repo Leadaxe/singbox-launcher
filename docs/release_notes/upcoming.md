@@ -10,7 +10,10 @@
 - A node that lost something now says so. Fields the core would reject are removed with a named reason attached to the node (⚠ in the lists, details in the node card) instead of disappearing silently. Previously a subscription could "update" and quietly strip a node's obfuscation or certificate with nothing to show for it.
 
 ### Fixes
+- Linux: the TUN stack now defaults to `gvisor` (template). With firewalld/nftables the `system` stack could bring the TUN up but pass no traffic; the selector in Wizard → Settings is unchanged (issue #129).
+- macOS: "Hide app from Dock" now survives a restart. The tray toggle is saved to `bin/settings.json` and applied on the next launch, so a launcher you sent to the tray comes back there instead of reappearing in the Dock every time.
 - Core pinned to sing-box-lx 1.14.1-lx.7: a REALITY `short_id` longer than 16 hex characters no longer crashes the core (it is a config error now), an unknown `tuic.udp_relay_mode` is rejected at load instead of silently becoming `native`, MASQUE `standard` profile without `uri` gets one clear error, and core errors name the node type and tag (`initialize outbound[0] vless[proxy-de-1]: …`).
+- gRPC: a `serviceName` written in Xray's absolute-path form (`/my-service/Tun`) is now understood. The leading slash and the trailing `/Tun` are Xray's way of spelling the stream name, not part of the service name, so they are stripped and the request path stays the one the server expects; previously the whole string was sent as the service name and the server answered `404 Not Found` (issue #130).
 - vmess: channel cipher list now matches the core exactly — `aes-128-ctr` (which the core never supported and which killed the whole config) is gone, `aes-128-cfb` is accepted instead of silently falling back to `auto`.
 - xhttp: `mode`, `seq_placement`, `session_placement`, `uplink_data_placement`, `x_padding_placement` and `x_padding_method` values outside the core's enum are dropped with an `xhttp_param_reset` warning instead of being passed through and aborting the whole config.
 - A hand-written JSON object added as a source is no longer copied into the config verbatim. A typo in a key used to abort the whole config — leaving you with no VPN at all and no hint which node was at fault; now the unknown key is removed and the node says why.
@@ -26,6 +29,7 @@
 
 ### Technical / Internal
 - Linux builds now obtain Wayland header paths from `pkg-config` and fall back to X11 when the optional native Wayland/EGL development files are incomplete, fixing local builds on openSUSE (PR #128, issue #127).
+- Windows release archives now carry `autostart_add.bat` / `autostart_remove.bat` next to the `.exe`: a Task Scheduler entry that starts the launcher at logon with the highest privileges, so an admin-manifested launcher no longer raises a UAC prompt on every logon (issue #79). New guide for Linux desktops with `systemd-resolved`: a narrow Polkit rule that ends the three password prompts on VPN start and one on stop — `docs/LINUX_DNS_POLKIT.md` (issue #126).
 - Node bodies are produced by `Sanitize` + `Emit` over the contract registry (`contract/registry/**`): the per-protocol emitter chain, the TLS/transport field allowlists and the special-case naive filter are gone. Adding a field to a protocol is now a registry edit, not four code edits.
 - The per-field core gate is table-driven from the registry's `min_core`/`platform` instead of one probe per field; `RealityKeyShareSupportProbe` and its cache are removed. Node-level gates (naive/chain/tailscale/AWG3) are unchanged — they drop a node, which the registry does not express.
 - `warnings` are recomputed once on load for nodes saved before the pipeline. A node's stored body is rewritten only when the sanitizer actually removes or coerces something, and each such rewrite is a WARN line naming the node and the codes.
@@ -40,7 +44,10 @@
 - Если у узла что-то сняли, он об этом говорит. Поля, которые ядро отвергает, снимаются с названной причиной на самом узле (⚠ в списках, подробности в карточке) вместо молчаливого исчезновения. Прежде подписка «обновлялась», у узла молча срезали обфускацию или сертификат, и увидеть это было негде.
 
 ### Исправления
+- Linux: стек TUN по умолчанию — `gvisor` (шаблон). С firewalld/nftables стек `system` поднимал TUN без трафика; переключатель в Мастере → Настройки не менялся (issue #129).
+- macOS: «Скрыть из Dock» переживает перезапуск. Переключатель в трее сохраняется в `bin/settings.json` и применяется при следующем запуске, так что убранный в трей лаунчер там и остаётся, а не возвращается в Dock каждый раз.
 - Ядро закреплено на sing-box-lx 1.14.1-lx.7: REALITY `short_id` длиннее 16 hex больше не роняет ядро паникой (теперь ошибка конфигурации), неизвестный `tuic.udp_relay_mode` отвергается при загрузке, а не молча становится `native`, MASQUE-профиль `standard` без `uri` получает одну понятную ошибку, а ошибки ядра называют тип и тег узла (`initialize outbound[0] vless[proxy-de-1]: …`).
+- gRPC: `serviceName` в Xray-форме «абсолютного пути» (`/my-service/Tun`) теперь понимается правильно. Ведущий «/» и хвост `/Tun` — это способ Xray записать имя потока, а не часть имени сервиса; они снимаются, и путь запроса остаётся тем, которого ждёт сервер. Прежде вся строка уезжала как имя сервиса, и сервер отвечал `404 Not Found` (issue #130).
 - vmess: набор шифров канала сверен с ядром — `aes-128-ctr`, которого ядро не знало и который валил весь конфиг, убран; `aes-128-cfb` принимается вместо молчаливого отката к `auto`.
 - xhttp: значения `mode`, `seq_placement`, `session_placement`, `uplink_data_placement`, `x_padding_placement` и `x_padding_method` вне набора ядра снимаются с кодом `xhttp_param_reset`, а не уезжают в конфиг, роняя его целиком.
 - Ручной JSON-объект больше не копируется в конфиг дословно. Опечатка в имени ключа валила весь конфиг — человек оставался вообще без VPN и без подсказки, какой узел виноват; теперь неизвестный ключ снимается, а узел объясняет почему.
@@ -56,6 +63,7 @@
 
 ### Техническое / Внутреннее
 - Linux-сборка теперь получает пути к заголовкам Wayland через `pkg-config` и использует X11 при неполном наборе опциональных Wayland/EGL-файлов разработки, исправляя локальную сборку в openSUSE (PR #128, issue #127).
+- В Windows-архивы релиза добавлены `autostart_add.bat` / `autostart_remove.bat` рядом с `.exe`: задание Планировщика, запускающее лаунчер при входе в систему с наивысшими правами, — лаунчер с админским манифестом больше не даёт запрос UAC на каждом входе (issue #79). Для Linux-десктопов с `systemd-resolved` появилось руководство: узкое правило Polkit, убирающее три запроса пароля при старте VPN и один при остановке — `docs/LINUX_DNS_POLKIT.ru.md` (issue #126).
 - Тело узла делают `Sanitize` + `Emit` по реестру контракта (`contract/registry/**`): per-scheme цепочка эмиттера, allowlist-ы полей TLS и транспорта и частный фильтр naive сняты. Новое поле протокола — правка реестра, а не четырёх мест в коде.
 - Полевой гейт ядра стал табличным (`min_core`/`platform` реестра) вместо пробы на каждое поле; `RealityKeyShareSupportProbe` и её кэш удалены. Узловые гейты (naive/chain/tailscale/AWG3) не тронуты — они выбрасывают узел, и реестром это не выражается.
 - `warnings` разово досчитываются при загрузке у узлов, сохранённых до конвейера. Тело переписывается, только если санитайзер реально что-то снял или привёл, и каждая такая перезапись — строка WARN с тегом узла и кодами.

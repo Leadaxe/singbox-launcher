@@ -652,6 +652,10 @@ jobs:
             cd "$EXE_DIR"
             zip -j "${ORIGINAL_DIR}/singbox-launcher-${VERSION}-win64.zip" "$EXE_NAME"
             cd "$ORIGINAL_DIR"
+            # Автозапуск через Планировщик заданий (issue #79): батники лежат рядом
+            # с exe и берут путь из %~dp0, поэтому кладём их в корень архива.
+            zip -j "singbox-launcher-${VERSION}-win64.zip" \
+              ../build/windows/autostart_add.bat ../build/windows/autostart_remove.bat
             echo "✓ Created: singbox-launcher-${VERSION}-win64.zip"
             echo ""
             echo "=== ZIP contents verification ==="
@@ -682,6 +686,8 @@ jobs:
             rm -rf "$FULL_DIR"
             mkdir -p "$FULL_DIR/bin" "$FULL_DIR/mesa3d"
             cp "$WIN_EXE" "$FULL_DIR/singbox-launcher.exe"
+            cp "$REPO_ROOT/build/windows/autostart_add.bat" \
+               "$REPO_ROOT/build/windows/autostart_remove.bat" "$FULL_DIR/"
             DL_TMP="$(mktemp -d)"
             curl -fsSL --retry 3 -o "$DL_TMP/core.zip" \
               "https://github.com/Leadaxe/sing-box-lx/releases/download/v${CORE_VER}/sing-box-${CORE_VER}-windows-amd64.zip"
@@ -710,6 +716,8 @@ jobs:
             cd "$EXE_DIR"
             zip -j "${ORIGINAL_DIR}/singbox-launcher-${VERSION}-win7-32.zip" "$EXE_NAME"
             cd "$ORIGINAL_DIR"
+            zip -j "singbox-launcher-${VERSION}-win7-32.zip" \
+              ../build/windows/autostart_add.bat ../build/windows/autostart_remove.bat
             echo "✓ Created: singbox-launcher-${VERSION}-win7-32.zip"
           else
             echo "⚠ Warning: singbox-launcher-win7-32.exe not found (Win7 build may have been skipped)"
