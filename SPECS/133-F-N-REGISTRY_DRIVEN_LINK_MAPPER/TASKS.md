@@ -241,3 +241,92 @@ Win7-сборка. Полный прогон — в CI после законче
 
 Релизится: W0–W1 без релиза (внутреннее); W2–W6 — patch по мере готовности;
 W7 и W8 — patch; W9 — вместе с последним.
+
+
+---
+
+# Состояние и следующий шаг (передача, 19.09.2026 вечер)
+
+Контекст предыдущего агента исчерпан. Ниже — точное состояние, чтобы
+продолжить без перечитывания истории.
+
+## Что готово (с sha)
+
+| sha | Что |
+|---|---|
+| `75fb876c` | SPEC расширен со ссылок на ВСЕ источники; §3 четыре секции, §3A detect двух уровней, §3B примитивы G1–G8, §14 решения владельца, §15 вопросы. `DELTAS.md` заведён |
+| `f43f86fe` | `contract/schema/registry_mapper.schema.json`; решения по «+», дельтам, нормам эмита |
+| `4a3dbf3f` | **ЗАМОРОЗКА ГРАММАТИКИ** — `PRIMITIVES.md` §0, таблица FROZEN/DRAFT. LxBox пишет Dart-движок по ней |
+| `28780ce6` | Движок: `registry/mapper.go` (модель+загрузчик), `linkmap/{detect,select,space}.go` |
+| `8cc6ac69` | Контракт **1.1.13**: `blocks` у `transports` (+`tls` уехал с `18b3dee6`), `mappers` у trojan; `QUIRKS.md`; README 1.1.11+1.1.13; TASKS_LXBOX §24.23 |
+| `8e59e808` | `mappers` у vless; `contract/docs/MAPPER_ENGINE.md`; трасса `linkmap/trace.go` |
+
+Зелено: `go build ./core/...`, `TestContractCorpusURI`, `…Body`,
+`…EmitRoundTrip`, `TestLinkmapEngineW0`, `TestTraceCanonicalSerialization`.
+
+## Что движок УМЕЕТ сейчас
+
+- **`detect`** обоих уровней целиком: `regex` (кэш), `json.*` (включая
+  `array_elem_any_keys` с синтаксисом `outbounds[].protocol`), `ini.*`,
+  `text.*`, `scheme_in`, `in_array`, `not`/`all`/`any`/`default`;
+- **выбор** (`Select`): побеждает меньший `priority`, `default` не
+  конкурирует, `SelectResult.Matched` отдаёт ВСЕ сработавшие (нужно линтеру
+  непересечения);
+- **пространство источников** (`Space`): `Lookup`/`LookupRaw`, порядок query
+  с приоритетом точного совпадения, `SplitAuthority` (multi-port, голый
+  IPv6), `jsonScalar` без склейки массива;
+- **трасса** — формат, канон сериализации, выключена по умолчанию.
+
+## Чего НЕ хватает (порядок работ)
+
+1. **Исполнитель таблицы** — главный пробел. Нет: разворачивания `include`
+   (`"tls#uri"` → записи), подстановки `$base`, декодеров формы
+   (`url`/`base64`/`base64?`/`json`/`ini`/`reparse`), двух проходов A/B,
+   применения `value_map`/`sets`/`implies`/`extract`/`list`/`normalize`/
+   `coerce`/`flatten`/`when`, сборки `label`, `unknown_key`.
+   Точка входа задумана как `Parse(text) (scheme, body, label, err)`.
+2. **`registry/sources.json`** — уровень документа (черновик готов:
+   `SPEC.md` §3A.3, модель `registry.DocumentSpec` уже читает файл, если он
+   появится).
+3. **Линтеры** (`SPEC.md` §8 + §3A.5): у каждой записи есть `source`;
+   `maps_to` существует в `body.fields`; `detect`-ы одного уровня **не
+   пересекаются на корпусе**; ровно один `default` на уровень; `regex`
+   валиден в RE2 **и** ECMAScript; `priority` уникальны; `body_source`
+   покрывает все `except_sources`.
+4. **W0.5 — identity-фикстуры СТАРЫМ путём** (`SPEC.md` §10.1). Снять по
+   всему корпусу: тело, `tag`, `label`, `origin.raw`, share-URI, `warnings`.
+   Делать **до** переключения любой схемы — это база сравнения.
+5. **Переключение trojan**, затем **vless**: движок ведёт разбор, сверка с
+   фикстурами, расхождения разбираются по одному.
+
+## Ловушки (проверено, не повторять)
+
+- **`alpn` ≠ 2 прохода.** Фикстура `uri/vless/alpn_multiply_encoded` несёт
+  ТРИ уровня; норма — `until_stable, max 16`. `path` — 2 прохода
+  **path-семантика на обоих**.
+- **`+` в `path` ломает не `decodeResidualPercent`, а `url.ParseQuery` до
+  него.** Проверено запуском: `?path=/a+b` → `"/a b"`. В движке
+  `ParseQueryOrdered` не заменяет `+`, семантику применяет запись.
+- **`packet_encoding_udp443_quirk_wins` проходит не потому, что «`sets`
+  побеждает»**, а потому что `none` → `null` и записи не делает. Явное
+  значение перебивает (`priority` 10/20 + `merge: overwrite`).
+- **Эвристика SNI у trojan у нас ЕСТЬ и корпус на ней стоит**
+  (`basic_password` без `sni=` ждёт `server_name=server`). Не снимать —
+  открытый вопрос `SPEC.md` §15.9.
+- **`json.Marshal` нельзя** для трассы и тел сверки: экранирует `<>&`, не
+  умеет `body.order`. Использовать `WriteCanonicalJSON`.
+- **Разделяемая рабочая копия.** `registry.go`, `nodeflow/*`,
+  `singbox_*.go`, `node_parser_wireguard.go` правит другой агент — перед
+  правкой смотреть `git status`, свои вещи класть в НОВЫЕ файлы.
+- **Версия контракта** — брать следующую после фактической в дереве на
+  момент коммита (она растёт от чужих волн), строку в `contract/README.md`
+  и параграф `TASKS_LXBOX §24.NN` писать в том же коммите.
+
+## Документы
+
+`SPEC.md` (цель, нормы, решения, вопросы) · `PRIMITIVES.md` (**§0 —
+замороженная грамматика**, §15 примитивы расширенной области) ·
+`SCHEMES.md` (§1–§11 черновики uri, §13 черновики xray/singbox/conf) ·
+`DELTAS.md` (13 принятых, 2 кандидата, 1 открытый) · `QUIRKS.md` (31
+странность старого кода) · `contract/docs/MAPPER_ENGINE.md` (архитектура
+движка, трасса, канон сериализации — общий с LxBox).
