@@ -66,17 +66,9 @@ func TestParseNode_Tuic_MissingUserinfoRejected(t *testing.T) {
 	}
 }
 
-func TestBuildOutbound_Tuic_UnknownCongestionDropped(t *testing.T) {
-	node, err := ParseNode("tuic://u:p@host.tld/?congestion_control=reno-xyz", nil)
-	if err != nil {
-		t.Fatalf("ParseNode: %v", err)
-	}
-	node.Tag = "t"
-	out := buildOutbound(node)
-	if _, has := out["congestion_control"]; has {
-		t.Errorf("unknown congestion_control must be dropped, got %v", out["congestion_control"])
-	}
-}
+// Снятие congestion_control вне словаря переехало в санитайзер
+// (tuic.json: on_invalid drop + tuic_congestion_invalid). Проверка —
+// corpus uri/tuic/unknown_congestion_dropped и TestPipelineSetsDegradationCodes.
 
 func TestBuildOutbound_Tuic_HeartbeatSeconds(t *testing.T) {
 	node, err := ParseNode("tuic://u:p@host.tld/?heartbeat=10", nil)

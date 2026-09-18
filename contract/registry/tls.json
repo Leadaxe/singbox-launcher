@@ -17,11 +17,11 @@
         "type": "string",
         "values": [],
         "default": "",
-        "aliases": ["peer", "host (только trojan, 3-я ступень)"],
+        "aliases": ["peer"],
         "maps_to": "tls.server_name",
         "desc_en": "Server name sent in SNI.",
         "desc_ru": "Имя сервера, отправляемое в SNI.",
-        "impl": "Fallback: vless sni→peer→server; trojan sni→peer→host→server; vmess-JSON sni→host→server. Эмитится как server_name."
+        "impl": "Fallback: vless sni→peer→server; trojan sni→peer→host→server; vmess-JSON sni→host→server. Эмитится как server_name. Написания общего параметра — sni, peer; третья ступень host объявлена ТОЛЬКО у trojan (protocols/trojan.json), потому что у vless host — это Host транспорта, а не SNI. Список читает queryParam лаунчера (SPEC 131 W2d), поэтому пояснения в скобках сюда класть нельзя — только имена ключей."
       },
       "alpn": {
         "type": "string",
@@ -490,9 +490,16 @@
               "code": "utls_fp_unknown"
             },
             "default": "chrome",
+            "advisory": [
+              {
+                "except": ["chrome", "chrome_psk", "chrome_psk_shuffle", "chrome_padding_psk_shuffle", "chrome_pq", "chrome_pq_psk", "firefox", "safari", "random"],
+                "when": {"path": "tls.reality.enabled", "present": true},
+                "code": "reality_fp_not_chrome"
+              }
+            ],
             "desc_en": "Browser fingerprint used for the ClientHello.",
             "desc_ru": "Отпечаток браузера для ClientHello.",
-            "impl": "Канонический список — uTLSClientHelloID в common/tls/utls_client.go:380; неизвестное значение = ошибка старта. Гибридный шар X25519MLKEM768 на lx.4 есть только у chrome/firefox/safari — см. tls.reality.key_share=hybrid."
+            "impl": "Канонический список — uTLSClientHelloID в common/tls/utls_client.go:380; неизвестное значение = ошибка старта. Гибридный шар X25519MLKEM768 на lx.4 есть только у chrome/firefox/safari — см. tls.reality.key_share=hybrid. ПРАВИЛО D-119 ПЕРЕЕХАЛО В РЕЕСТР (SPEC 131 W2d): код reality_fp_not_chrome ставится advisory-правилом «любой отпечаток, кроме гибридных, при наличии tls.reality.enabled», а не четырьмя копиями в парсерах Go (vless/anytls/xray/singbox-import). `random` в исключениях — это наш неявный дефолт пустого fp (D-009), от явного он неотличим, и на сборке становится chrome; пустое значение под advisory не попадает по определению («не задано» — не выбор автора ссылки)."
           }
         },
         "desc_en": "uTLS fingerprint settings.",
@@ -536,7 +543,7 @@
           },
           "public_key": {
             "type": "string",
-            "format": "base64",
+            "format": "base64_32",
             "on_invalid": {
               "action": "drop",
               "code": "reality_pbk_invalid"
@@ -544,14 +551,15 @@
             "required": true,
             "desc_en": "Server REALITY public key (x25519).",
             "desc_ru": "Публичный ключ REALITY сервера (x25519).",
-            "impl": "base64 raw-url, ровно 32 байта после декода; невалидный = «invalid public_key» на весь конфиг. Гейт всего блока reality: мусор pbk → узел деградирует до plain TLS (broken-list-pbk-junk, v1.1.7)."
+            "impl": "base64 (любое из четырёх написаний), ровно 32 байта ПОСЛЕ декода — format base64_32; невалидный = «invalid public_key» на весь конфиг. Длину считаем по декоду, а не по строке: `enabled` и `true` — валидный base64 на 5 и 3 байта, и прежний format base64 их пропускал (DRIFT §2(b2), целевое = вариант Dart). Гейт всего блока reality: public_key здесь required, поэтому мусорный pbk снимает блок целиком и узел деградирует до plain TLS (broken-list-pbk-junk, v1.1.7)."
           },
           "short_id": {
             "type": "string",
             "format": "hex",
             "max": 16,
             "len_parity": "even",
-            "normalize": "trim_lower",
+            "normalize": "hex_only",
+            "normalize_code": "reality_short_id_invalid",
             "on_invalid": {
               "action": "drop",
               "code": "reality_short_id_invalid"

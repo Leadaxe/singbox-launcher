@@ -293,7 +293,14 @@ func bodyOnInvalid(f *registry.Field, linkPrefix string) string {
 		parts = append(parts, act+" "+warnLink(f.OnInvalid.Code, linkPrefix))
 	}
 	for _, a := range f.Advisory {
-		parts = append(parts, "advisory "+scalarList(a.Values)+" "+warnLink(a.Code, linkPrefix))
+		desc := "advisory " + scalarList(a.Values)
+		if len(a.Except) > 0 {
+			desc = "advisory кроме / except " + scalarList(a.Except)
+		}
+		if a.When != nil && a.When.Path != "" {
+			desc += " при / when " + code(a.When.Path)
+		}
+		parts = append(parts, desc+" "+warnLink(a.Code, linkPrefix))
 	}
 	if len(f.ForbiddenFor) > 0 {
 		parts = append(parts, "запрещено / forbidden for "+codeList(f.ForbiddenFor)+" "+warnLink(f.Code, linkPrefix))
@@ -305,7 +312,17 @@ func bodyOnInvalid(f *registry.Field, linkPrefix string) string {
 		parts = append(parts, "конфликт / conflicts "+code(c.With)+" "+warnLink(c.Code, linkPrefix))
 	}
 	for _, rq := range f.Requires {
-		parts = append(parts, "требует / requires "+code(rq.Path)+" "+warnLink(rq.Code, linkPrefix))
+		req := "требует / requires " + code(rq.Path)
+		if rq.Equals != nil {
+			req += " = " + scalar(rq.Equals)
+		}
+		parts = append(parts, req+" "+warnLink(rq.Code, linkPrefix))
+	}
+	if dw := f.DefaultWhen; dw != nil && dw.Absent {
+		parts = append(parts, "отсутствует → / absent → "+scalar(dw.Value)+" "+warnLink(dw.Code, linkPrefix))
+	}
+	if f.NormalizeCode != "" {
+		parts = append(parts, "чистка значения / value cleaned "+warnLink(f.NormalizeCode, linkPrefix))
 	}
 	if f.DropAlways {
 		parts = append(parts, "снимается всегда / always dropped")

@@ -357,8 +357,8 @@ func GenerateNodeJSONBare(node *ParsedNode) (string, error) {
 			if security, ok := node.Outbound["security"].(string); ok && security != "" {
 				parts = append(parts, fmt.Sprintf(`"security":%s`, marshalJSONString(security)))
 			}
-			if alterID, ok := node.Outbound["alter_id"].(int); ok {
-				parts = append(parts, fmt.Sprintf(`"alter_id":%d`, alterID))
+			if _, has := node.Outbound["alter_id"]; has {
+				parts = append(parts, fmt.Sprintf(`"alter_id":%d`, tolerantInt(node.Outbound["alter_id"])))
 			}
 		}
 	} else if node.Scheme == "trojan" {
@@ -592,7 +592,7 @@ func GenerateNodeJSONBare(node *ParsedNode) (string, error) {
 				parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(key), marshalJSONString(v)))
 			}
 		}
-		if mtu, ok := node.Outbound["mtu"].(int); ok && mtu > 0 {
+		if mtu := tolerantInt(node.Outbound["mtu"]); mtu > 0 {
 			parts = append(parts, fmt.Sprintf(`"mtu":%d`, mtu))
 		}
 	} else if node.Scheme == "anytls" && node.Outbound != nil {
@@ -603,7 +603,7 @@ func GenerateNodeJSONBare(node *ParsedNode) (string, error) {
 				parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(key), marshalJSONString(v)))
 			}
 		}
-		if n, ok := node.Outbound["min_idle_session"].(int); ok {
+		if n := tolerantInt(node.Outbound["min_idle_session"]); n > 0 {
 			parts = append(parts, fmt.Sprintf(`"min_idle_session":%d`, n))
 		}
 	} else if node.Scheme == "ssh" && node.Outbound != nil {
@@ -2038,6 +2038,16 @@ func tolerantInt(v interface{}) int {
 			return 0
 		}
 		return int(n)
+	case string:
+		// С SPEC 131 W2d парсер ссылки числа НЕ приводит: он маппер, а
+		// приведение — работа санитайзера по реестру. В карте Outbound
+		// поэтому лежит строка `"2"`, и жёсткий `.(int)` терял бы поле
+		// ровно так же, как терял float64 из JSON-тела.
+		n, err := strconv.Atoi(strings.TrimSpace(t))
+		if err != nil {
+			return 0
+		}
+		return n
 	}
 	return 0
 }

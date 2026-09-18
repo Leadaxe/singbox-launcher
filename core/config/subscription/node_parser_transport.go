@@ -1,7 +1,6 @@
 package subscription
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"net/url"
 	"strconv"
@@ -34,14 +33,18 @@ func normalizePercentDecodeLoop(s string) string {
 	return s
 }
 
-func tlsInsecureTrue(q url.Values) bool {
-	for _, key := range []string{"insecure", "allowInsecure", "allowinsecure"} {
-		v := strings.TrimSpace(strings.ToLower(queryGetFold(q, key)))
-		if v == "1" || v == "true" || v == "yes" {
-			return true
-		}
+// tlsInsecureTrue — включён ли `insecure` по ЛЮБОМУ из написаний реестра.
+//
+// Схема нужна, потому что канон параметра у неё свой: у tuic это
+// `allow_insecure`, у остальных — `insecure`, а набор написаний один и тот же
+// (registry/tls.json tls.params.insecure). До W2d набор был зашит в шести
+// местах и в каждом свой (DRIFT §2(a)).
+func tlsInsecureTrue(q url.Values, scheme string) bool {
+	if queryFlagTrue(q, scheme, "insecure") {
+		return true
 	}
-	return false
+	// Схемы, объявившие каноном другое имя (tuic), читаются по нему.
+	return queryFlagTrue(q, scheme, "allow_insecure")
 }
 
 // singboxUTLSFingerprints are the names sing-box accepts in tls.utls.fingerprint.
@@ -110,31 +113,26 @@ func normalizeUTLSFingerprintEx(fp string) (canon string, junk bool) {
 	return "", true
 }
 
-// utlsFingerprintOrFallback resolves the fingerprint for a node: canonical value
-// as-is, junk → `chrome` with a warning, absent → empty (callers decide their
-// own default). See D-029.
-func utlsFingerprintOrFallback(raw string) string {
-	canon, junk := normalizeUTLSFingerprintEx(raw)
-	if junk {
-		debuglog.WarnLog("Parser: unknown uTLS fingerprint %q — using %q instead (fingerprint is client-side camouflage; the node stays)", raw, utlsJunkFallback)
-		return utlsJunkFallback
-	}
-	return canon
-}
-
-// utlsJunkFallback — canonical replacement for an unrecognized fingerprint.
+// utlsJunkFallback — канонический отпечаток, которым реестр заменяет мусор
+// (`tls.utls.fingerprint.on_invalid: coerce chrome`). Здесь он нужен только
+// сборке конфига (EnforceRealityFingerprint) — парсер значений не решает.
 const utlsJunkFallback = "chrome"
 
-// utlsFingerprintFromQuery читает отпечаток по альтернативным написаниям
-// параметра (fp / fingerprint): канон берётся из ПЕРВОГО распознанного
-// значения, а фолбэк chrome включается только когда ни одно написание не
-// дало канона. Прежний код брал фолбэк уже на первом написании — и мусорный
-// `fp=qwerty` перебивал валидный `fingerprint=firefox`, который подписка
-// назвала явно (регрессия D-029).
-func utlsFingerprintFromQuery(q url.Values, keys ...string) string {
+// utlsFingerprintFromQuery читает отпечаток по всем написаниям параметра из
+// реестра и переводит написание ЗНАЧЕНИЯ: Xray-идентификаторы uTLS
+// (`HelloChrome_120`, `hellofirefox_auto`) — это то же имя семейства в чужом
+// диалекте, и развернуть его обязан маппер, иначе санитайзер увидит мусор там,
+// где ссылка назвала валидное значение.
+//
+// Решения о значении здесь больше нет (SPEC 131 W2d): значение вне словаря
+// ядра уезжает КАК ЕСТЬ, а снимет или заменит его санитайзер по правилу
+// реестра (`utls_fp_unknown`). Канон берётся из ПЕРВОГО распознанного
+// написания — мусорный `fp=qwerty` не должен перебивать явный
+// `fingerprint=firefox` (D-029).
+func utlsFingerprintFromQuery(q url.Values, scheme string) string {
 	junkRaw := ""
-	for _, k := range keys {
-		raw := queryGetFold(q, k)
+	for _, k := range queryParamNames(scheme, "fp") {
+		raw := strings.TrimSpace(queryGetFold(q, k))
 		if raw == "" {
 			continue
 		}
@@ -146,11 +144,7 @@ func utlsFingerprintFromQuery(q url.Values, keys ...string) string {
 			junkRaw = raw
 		}
 	}
-	if junkRaw != "" {
-		debuglog.WarnLog("Parser: unknown uTLS fingerprint %q — using %q instead (fingerprint is client-side camouflage; the node stays)", junkRaw, utlsJunkFallback)
-		return utlsJunkFallback
-	}
-	return ""
+	return junkRaw
 }
 
 // plaintextVLESSPorts are common subscription ports where TLS is typically off (plain HTTP / CF HTTP).
@@ -842,65 +836,11 @@ func xhttpRange(v string) string {
 	return strings.TrimSpace(v)
 }
 
-// maxRealityShortIDHexLen is the maximum hex character count sing-box accepts for outbound
-// tls.reality.short_id (8 bytes, common/tls/reality_client.go: `decodedLen > 8` → E.New
-// "invalid short_id", a fatal error for the whole config, not a per-node skip).
-const maxRealityShortIDHexLen = 16
-
-// normalizeRealityShortID keeps only hex digits for sing-box REALITY short_id decoding.
-// Public lists sometimes paste mojibake (e.g. UTF-8 bytes misread as Latin-1 → U+00C2 in sid),
-// spaces, or punctuation; sing-box uses encoding/hex and fails on any non-hex rune.
-//
-// SPEC 103 D-032: a value that is already invalid before truncation — odd hex length
-// (encoding/hex: "odd length hex string", fatal) or more than 16 hex chars (decodes to
-// >8 bytes, fatal) — is not "the same short_id, just longer": truncating it produces a
-// DIFFERENT short_id the subscription never specified, silently corrupting the node
-// instead of degrading it. So validity is checked on the filtered value BEFORE any
-// truncation; an invalid value is dropped to "" (node stays, without REALITY sid) rather
-// than truncated. Canon = the model LxBox already used.
-func normalizeRealityShortID(s string) string {
-	s = strings.TrimSpace(s)
-	s = strings.ToValidUTF8(s, "")
-	var b strings.Builder
-	b.Grow(len(s))
-	for _, r := range s {
-		switch {
-		case r >= '0' && r <= '9':
-			b.WriteRune(r)
-		case r >= 'a' && r <= 'f':
-			b.WriteRune(r)
-		case r >= 'A' && r <= 'F':
-			b.WriteRune(r - 'A' + 'a')
-		}
-	}
-	out := b.String()
-	if len(out)%2 != 0 || len(out) > maxRealityShortIDHexLen {
-		debuglog.WarnLog("Parser: reality short_id %q is not a valid ≤16-char even-length hex string — dropping it, node stays", s)
-		return ""
-	}
-	return out
-}
-
-// isValidRealityPublicKey reports whether pbk is a usable REALITY public_key.
-// A REALITY key is an X25519 public key: 32 bytes, shared as base64url without
-// padding (43 chars). Public lists sometimes paste junk into pbk (e.g. literal
-// "enabled", "true", an empty token) while declaring security=tls — sing-box then
-// rejects the whole config with "invalid public_key" and the VPN won't start at
-// all. We treat any non-decodable / wrong-length value as "no reality" so the node
-// degrades to plain TLS instead of poisoning the generated config.json.
-func isValidRealityPublicKey(pbk string) bool {
-	pbk = strings.TrimSpace(pbk)
-	// REALITY uses base64url; tolerate a stray '=' pad and base64std variants.
-	pbk = strings.TrimRight(pbk, "=")
-	if len(pbk) != 43 {
-		return false
-	}
-	if _, err := base64.RawURLEncoding.DecodeString(pbk); err == nil {
-		return true
-	}
-	_, err := base64.RawStdEncoding.DecodeString(pbk)
-	return err == nil
-}
+// Чистка и проверка REALITY-полей (short_id, public_key) переехали в реестр
+// (SPEC 131 W2d): short_id — normalize hex_only + max/len_parity, public_key —
+// format base64_32 с required внутри блока reality. Прежние
+// normalizeRealityShortID и isValidRealityPublicKey сняты: держать вторую
+// копию правила рядом с реестром значило бы снова их рассинхронизировать.
 
 // NormalizeRealityKeyShare приводит значение tls.reality.key_share к
 // каноническому виду ядра: trim + lower-case, и только два значения enum'а
@@ -929,8 +869,14 @@ func NormalizeRealityKeyShare(s string) (value string, degraded bool) {
 	}
 }
 
-func applyTLSQueryExtras(q url.Values, tlsData map[string]interface{}) {
-	if alpn := queryGetFold(q, "alpn"); alpn != "" {
+// applyTLSQueryExtras переводит общие TLS-параметры ссылки в поля тела.
+//
+// Обе операции — перевод диалекта, не решение: `alpn` в ссылке это строка
+// через запятую, в теле — список (форма записи), а `insecure` приезжает под
+// девятью именами (registry/tls.json tls.params.insecure). Значения элементов
+// списка парсер не судит: элемент вне смысла снимет санитайзер.
+func applyTLSQueryExtras(q url.Values, scheme string, tlsData map[string]interface{}) {
+	if alpn := queryParam(q, scheme, "alpn"); alpn != "" {
 		alpn = normalizePercentDecodeLoop(alpn)
 		alpnList := strings.Split(alpn, ",")
 		for i := range alpnList {
@@ -938,113 +884,139 @@ func applyTLSQueryExtras(q url.Values, tlsData map[string]interface{}) {
 		}
 		tlsData["alpn"] = alpnList
 	}
-	if tlsInsecureTrue(q) {
+	if tlsInsecureTrue(q, scheme) {
 		tlsData["insecure"] = true
 	}
 }
 
-// vlessTLSFromNode returns sing-box tls map for VLESS and whether TLS should be included.
+// noteECHIgnored вешает ech_ignored, если ссылка несла Xray-параметр `ech=`.
+//
+// Единственный URI-параметр, у которого НЕТ адреса в теле (SPEC 131 W2d,
+// решение D-122): Xray-форма `ech=<public_name>+<resolver>` несёт ключ ЧУЖОГО
+// клиента (public_name ≠ SNI узла), и рукопожатие с ним не состоится —
+// device-verified, §320 LxBox. Поэтому параметр не переводится никуда, а
+// снимается здесь с кодом.
+//
+// Блок `tls.ech{}` из sing-box-JSON при этом проходит НЕТРОНУТЫМ: ECH в ядре
+// скомпилирован всегда (common/tls/ech.go под //go:build go1.24, тег with_ech
+// намеренно отравлен), и нативная конфигурация рабочая. Различить эти два
+// случая может только маппер: он один знает, ОТКУДА пришло значение, —
+// санитайзер видит уже готовое тело (DRIFT §7.2).
+//
+// Прежде Go не читал `ech=` вовсе: параметр молча исчезал на allowlist-эмиттере,
+// и кейс корпуса держал per-app override, потому что Dart код ставил, а Go нет.
+func noteECHIgnored(node *configtypes.ParsedNode) {
+	if node == nil {
+		return
+	}
+	// Только само имя `ech`: `echfq` в реестре объявлен алиасом с пометкой
+	// «не читается намеренно» (legacy pq-опция, снята в sing-box 1.13) — он
+	// не Xray-форма ECH, и кода за него быть не должно.
+	raw := strings.TrimSpace(queryGetFold(node.Query, "ech"))
+	if raw == "" {
+		return
+	}
+	// `ech=none` — способ подписки сказать «ECH выключен», то есть сообщать
+	// не о чем: ничего не снято. Тот же разбор у LxBox (§320).
+	if strings.EqualFold(raw, "none") {
+		return
+	}
+	node.AddWarningWithParams(WarnECHIgnored, map[string]string{"query_name": "ech"})
+}
+
+// vlessTLSFromNode — карта tls для vless и признак «блок вообще есть».
+//
+// Маппер (SPEC 131 §3.1): переводит параметры ссылки в пути тела и решает
+// ровно один вопрос — ЕСТЬ ли у узла блок tls. Этот вопрос санитайзеру
+// недоступен (отсутствующий ключ для него неотличим от «не задан»), и он же
+// единственный, где ссылка несёт структуру, а не значение:
+//
+//   - `security=none` → ключа tls нет ВОВСЕ (не `enabled:false`: явный
+//     выключенный блок роняет ядра 1.14.0-lx.5..lx.18 в SIGSEGV, SPEC 045);
+//   - `security=”` на портах открытого HTTP → того же вида «TLS не
+//     предполагался» (registry/tls.json policy.plaintext_ports);
+//   - `pbk=` в ссылке → в теле появляется блок reality.
+//
+// Значения полей дальше не судятся: мусорный pbk снимет санитайзер правилом
+// `reality_pbk_invalid` (а с ним и весь блок reality — public_key там
+// required), sid — `reality_short_id_invalid`, key_share — своим кодом,
+// отпечаток вне словаря станет `chrome` с `utls_fp_unknown`.
 func vlessTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, bool) {
 	q := node.Query
-	sec := strings.ToLower(strings.TrimSpace(queryGetFold(q, "security")))
-	pbk := strings.TrimSpace(queryGetFold(q, "pbk"))
+	const scheme = "vless"
+	sec := strings.ToLower(queryParam(q, scheme, "security"))
 
 	if sec == "none" {
 		return nil, false
 	}
-
-	sni := queryGetFold(q, "sni")
-	if sni == "" {
-		sni = queryGetFold(q, "peer")
-	}
-	if sni == "" {
-		sni = node.Server
-	}
-	// Мусорный отпечаток заменяется каноническим — узел выживает, но
-	// пользователь должен знать, что маскировка не та, о которой просила
-	// подписка (utls_fp_unknown, SPEC 093).
-	if utlsFingerprintWouldDegrade(queryGetFold(q, "fp")) ||
-		utlsFingerprintWouldDegrade(queryGetFold(q, "fingerprint")) {
-		node.AddWarning(WarnUTLSFingerprintUnknown)
-	}
-	fp := utlsFingerprintFromQuery(q, "fp", "fingerprint")
-	if fp == "" {
-		fp = "random"
-	}
-
-	// Only build a REALITY block when pbk is a usable X25519 public key. We gate on
-	// the key itself, not on security=reality, because many real lists carry pbk
-	// without an explicit security=reality (e.g. xhttp+reality nodes). Broken public
-	// lists sometimes attach a junk pbk (e.g. "enabled") to a plain security=tls
-	// node; emitting that as public_key makes sing-box reject the entire config
-	// ("invalid public_key") and nothing starts. In that case fall through to plain
-	// TLS below.
-	if isValidRealityPublicKey(pbk) {
-		// Деградация short_id помечается кодом ДО нормализации: после неё
-		// исходное значение потеряно, а узел уедет с чужим sid.
-		rawSID := queryGetFold(q, "sid")
-		if realityShortIDWouldDegrade(rawSID) {
-			node.AddWarning(WarnRealityShortIDInvalid)
-		}
-		// D-119: отпечаток вне chrome-семейства уходит в конфиг как есть,
-		// узел лишь предупреждает — серверы Xray ≥ v26.9.8 такой ClientHello
-		// отвергают. Значение узла НЕ трогаем: `entry` нормативен (CANON §2).
-		if realityFingerprintRisky(fp) {
-			node.AddWarning(WarnRealityFPNotChrome)
-		}
-		reality := map[string]interface{}{
-			"enabled":    true,
-			"public_key": strings.TrimSpace(pbk),
-			"short_id":   normalizeRealityShortID(rawSID),
-		}
-		// D-121: key_share читается ТОЛЬКО здесь, под валидным pbk — то есть
-		// там, где узел реально REALITY. На security=tls-узле поле смысла не
-		// имеет, а ядро на нём же падает всем конфигом.
-		if ks, degraded := NormalizeRealityKeyShare(queryGetFold(q, "key_share")); degraded {
-			node.AddWarning(WarnRealityKeyShareInvalid)
-		} else if ks != "" {
-			reality["key_share"] = ks
-		}
-		tlsData := map[string]interface{}{
-			"enabled":     true,
-			"server_name": sni,
-			"utls": map[string]interface{}{
-				"enabled":     true,
-				"fingerprint": fp,
-			},
-			"reality": reality,
-		}
-		applyTLSQueryExtras(q, tlsData)
-		return tlsData, true
-	}
-
-	if sec == "reality" {
-		tlsData := map[string]interface{}{
-			"enabled":     true,
-			"server_name": sni,
-			"utls": map[string]interface{}{
-				"enabled":     true,
-				"fingerprint": fp,
-			},
-		}
-		applyTLSQueryExtras(q, tlsData)
-		return tlsData, true
-	}
-
 	if sec == "" && shouldVLESSSkipTLSForPort(node.Port) {
 		return nil, false
 	}
 
+	sni := queryParam(q, scheme, "sni")
+	if sni == "" {
+		sni = node.Server
+	}
 	tlsData := map[string]interface{}{
 		"enabled":     true,
 		"server_name": sni,
 		"utls": map[string]interface{}{
-			"enabled":     true,
-			"fingerprint": fp,
+			"enabled": true,
+			// Пустой fp у vless — дефолт `random` (D-009, паритет с LxBox).
+			// Это не дефолт ЯДРА (у него пустой fp = chrome), а конвенция
+			// обеих сторон, поэтому материализуется здесь: реестр выражает
+			// дефолты только через default_when, которого у этого поля нет.
+			"fingerprint": utlsFingerprintOrDefault(q, scheme, "random"),
 		},
 	}
-	applyTLSQueryExtras(q, tlsData)
+	// Блок reality заводится по НАЛИЧИЮ pbk, а не по security=reality: живые
+	// xhttp+reality-ссылки несут ключ без явного security. Пустой pbk блока
+	// не создаёт — иначе у каждого plain-TLS узла появлялся бы reality с
+	// required-полем и кодом на ровном месте.
+	if pbk := queryParam(q, scheme, "pbk"); pbk != "" {
+		reality := map[string]interface{}{
+			"enabled":    true,
+			"public_key": pbk,
+		}
+		if sid := queryParam(q, scheme, "sid"); sid != "" {
+			reality["short_id"] = sid
+		}
+		if ks := queryParam(q, scheme, "key_share"); ks != "" {
+			reality["key_share"] = ks
+		}
+		tlsData["reality"] = reality
+	}
+	applyTLSQueryExtras(q, scheme, tlsData)
 	return tlsData, true
+}
+
+// utlsFingerprintOrDefault — отпечаток из ссылки либо конвенция схемы.
+func utlsFingerprintOrDefault(q url.Values, scheme, def string) string {
+	if fp := utlsFingerprintFromQuery(q, scheme); fp != "" {
+		return fp
+	}
+	return def
+}
+
+// tlsServerNameFromQuery — SNI узла: `sni` (со всеми написаниями реестра),
+// иначе адрес сервера.
+//
+// Это выбор ИСТОЧНИКА поля, а не суждение о значении: ядро принимает любой
+// server_name (вердикт D), и снимать его санитайзеру не за что. Но значение,
+// которое не может быть именем хоста, — не имя хоста, а мусор подписки, и
+// подставлять его в SNI значит отправить рукопожатие в никуда: узел «есть» и
+// молча не работает (DRIFT §7.5, решение владельца — эвристика на всех
+// TLS-схемах). Признак «может быть именем хоста» — наличие точки (домен) или
+// двоеточия (IPv6); таковы обе стороны с самого начала.
+//
+// Одна функция на все схемы вместо четырёх копий: у anytls копия отличалась
+// (ловила только пустую строку) и пропускала `🔒` в конфиг.
+func tlsServerNameFromQuery(q url.Values, scheme, server string) string {
+	sni := queryParam(q, scheme, "sni")
+	if sni != "" && strings.ContainsAny(sni, ".:") {
+		return sni
+	}
+	return server
 }
 
 // trojanTLSFromNode returns the sing-box tls map for Trojan (WebSocket/raw over
@@ -1058,20 +1030,16 @@ func vlessTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, boo
 // so the dialer wraps a nil config and SIGSEGVs on the first dial — URL test
 // included, killing the whole core process (sing-box-lx SPEC 045). Omitting
 // the key yields the same plain-TCP dial on every core version.
-func trojanTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, bool) {
+// Схему передаёт вызывающий: ту же функцию зовёт http-proxy-парсер, а
+// написания параметров (sni→peer→host, девять имён insecure) берутся из
+// секции реестра ИМЕННО этой схемы.
+func trojanTLSFromNode(node *configtypes.ParsedNode, scheme string) (map[string]interface{}, bool) {
 	q := node.Query
-	sec := strings.ToLower(strings.TrimSpace(queryGetFold(q, "security")))
-	if sec == "none" {
+	if strings.ToLower(queryParam(q, scheme, "security")) == "none" {
 		return nil, false
 	}
 
-	sni := queryGetFold(q, "sni")
-	if sni == "" {
-		sni = queryGetFold(q, "peer")
-	}
-	if sni == "" {
-		sni = queryGetFold(q, "host")
-	}
+	sni := queryParam(q, scheme, "sni")
 	if sni == "" {
 		sni = node.Server
 	}
@@ -1080,36 +1048,16 @@ func trojanTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, bo
 		"enabled":     true,
 		"server_name": sni,
 	}
-	if fp := utlsFingerprintFromQuery(q, "fp", "fingerprint"); fp != "" {
+	// У trojan/http дефолта отпечатка нет (в отличие от vless, D-009): нет
+	// параметра — нет и блока utls.
+	if fp := utlsFingerprintFromQuery(q, scheme); fp != "" {
 		tlsData["utls"] = map[string]interface{}{
 			"enabled":     true,
 			"fingerprint": fp,
 		}
 	}
-	applyTLSQueryExtras(q, tlsData)
+	applyTLSQueryExtras(q, scheme, tlsData)
 	return tlsData, true
-}
-
-// chromeFamilyUTLSFingerprints — имена словаря ядра, которые ядро схлопывает
-// в HelloChrome_Auto; их utls-спека несёт key_share X25519MLKEM768 перед
-// X25519 (SPEC 083 ядра). С lx.3 гибридный шар есть и у firefox/safari —
-// см. realityHybridUTLSFingerprints; сюда они не входят: это не chrome.
-var chromeFamilyUTLSFingerprints = map[string]struct{}{
-	"chrome": {}, "chrome_psk": {}, "chrome_psk_shuffle": {},
-	"chrome_padding_psk_shuffle": {}, "chrome_pq": {}, "chrome_pq_psk": {},
-}
-
-// IsChromeFamilyFingerprint сообщает, даст ли уже канонизированный отпечаток
-// ClientHello, который принимает REALITY-сервер Xray ≥ v26.9.8.
-//
-// Пустое значение = дефолт ядра (chrome) — тоже true. Зеркало
-// isChromeFamilyFingerprint из LxBox (utls_fingerprint.dart:59).
-func IsChromeFamilyFingerprint(fp string) bool {
-	if fp == "" {
-		return true
-	}
-	_, ok := chromeFamilyUTLSFingerprints[fp]
-	return ok
 }
 
 // EnforceRealityFingerprint дописывает uTLS-блок у tls, где РЕАЛЬНО эмитится
@@ -1168,58 +1116,10 @@ func EnforceRealityFingerprint(tlsData map[string]interface{}) (original string,
 	return cur, false
 }
 
-// realityHybridUTLSFingerprints — отпечатки вне chrome-семейства, чья спека в
-// utls ядра тоже несёт key_share X25519MLKEM768: `firefox` = Firefox 148 и
-// `safari` = Safari 26.3 (форк utls ядра, sing-box-lx 1.14.1-lx.3, SPEC 086).
-// REALITY-сервер Xray ≥ v26.9.8 их принимает — подсказка не нужна. На ядре
-// старше lx.3 такие узлы по-прежнему не подключаются; пин лаунчера ≥ lx.3.
-// Решение владельца 16.09.2026: firefox и safari из ограничений убрать.
-var realityHybridUTLSFingerprints = map[string]struct{}{
-	"firefox": {}, "safari": {},
-}
-
-// realityFingerprintRisky сообщает, что у узла эмитится reality с явным
-// отпечатком, чья utls-спека не несёт гибридного key share: серверы
-// Xray ≥ v26.9.8 такой ClientHello отвергают, и если соединение не
-// устанавливается, стоит попробовать chrome (D-119). Сам отпечаток не
-// подменяется. Без подсказки — chrome-семейство, firefox и safari
-// (realityHybridUTLSFingerprints).
-//
-// `random` из-под правила выведен СОЗНАТЕЛЬНО: это наш же дефолт пустого fp у
-// vless/anytls (D-009), от явного `fp=random` он неотличим, и на сборке он
-// становится chrome. Правило дословно повторяет LxBox (utls_fingerprint.dart).
-func realityFingerprintRisky(fp string) bool {
-	if fp == "random" || IsChromeFamilyFingerprint(fp) {
-		return false
-	}
-	_, hybrid := realityHybridUTLSFingerprints[fp]
-	return !hybrid
-}
-
-// noteRealityFingerprint вешает WarnRealityFPNotChrome, если у ГОТОВОГО
-// outbound'а эмитится reality с отпечатком вне chrome-семейства (D-119).
-//
-// Парная к EnforceRealityFingerprint функция для путей, где узел появляется
-// ПОЗЖЕ блока tls (Xray-JSON, sing-box-импорт): там проверять нечего до
-// создания ParsedNode, а править значение нельзя — оно нормативно (CANON §2).
-func noteRealityFingerprint(node *configtypes.ParsedNode, outbound map[string]interface{}) {
-	if node == nil || outbound == nil {
-		return
-	}
-	tlsMap, ok := outbound["tls"].(map[string]interface{})
-	if !ok {
-		return
-	}
-	reality, ok := tlsMap["reality"].(map[string]interface{})
-	if !ok {
-		return
-	}
-	if enabled, has := reality["enabled"].(bool); has && !enabled {
-		return
-	}
-	utls, _ := tlsMap["utls"].(map[string]interface{})
-	fp, _ := utls["fingerprint"].(string)
-	if realityFingerprintRisky(fp) {
-		node.AddWarning(WarnRealityFPNotChrome)
-	}
-}
+// Набор отпечатков с гибридным key share (D-119) переехал в реестр:
+// tls.json, body/utls/fingerprint/advisory — правило «любой отпечаток, кроме
+// перечисленных, при наличии tls.reality.enabled → код reality_fp_not_chrome».
+// Прежде тот же список лежал здесь и ставился четырьмя копиями в парсерах
+// (vless, anytls, Xray-конверт, sing-box-импорт); одна из копий отставала от
+// решения владельца о firefox/safari, и узел получал подсказку на одном входе
+// и не получал на другом (SPEC 131 W2d).

@@ -2,69 +2,10 @@ package subscription
 
 import "testing"
 
-func TestNormalizeRealityShortID(t *testing.T) {
-	tests := []struct {
-		in, want string
-	}{
-		{"48720c", "48720c"},
-		{" 9083951b754b4254 ", "9083951b754b4254"},
-		{"ABCDEF01", "abcdef01"},
-		{"48\xC2\xA7ab", "48ab"}, // § (UTF-8) between hex — strip non-hex
-		{"\xC2\xA0", ""},         // NBSP only
-		// SPEC 103 D-032: >16 hex chars decodes to >8 bytes — fatal in the core
-		// (reality_client.go: decodedLen > 8 → "invalid short_id"). Truncating
-		// silently substitutes a DIFFERENT short_id the subscription never
-		// specified; canon is to drop the value entirely, not truncate it.
-		{"9083951b754b4254deadbeef", ""},
-		{"", ""},
-	}
-	for _, tt := range tests {
-		if got := normalizeRealityShortID(tt.in); got != tt.want {
-			t.Errorf("normalizeRealityShortID(%q) = %q, want %q", tt.in, got, tt.want)
-		}
-	}
-}
-
-func TestParseNode_VLESS_RealityShortIDSanitized(t *testing.T) {
-	// NBSP (U+00A0) inside sid — sing-box hex decode fails without sanitization
-	uri := "vless://a1b2c3d4-e5f6-7890-abcd-ef1234567890@example.com:443?encryption=none&security=reality&type=tcp&pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg&sid=48%C2%A0ab12"
-	node, err := ParseNode(uri, nil)
-	if err != nil || node == nil {
-		t.Fatalf("ParseNode: err=%v node=%v", err, node)
-	}
-	tls, ok := node.Outbound["tls"].(map[string]interface{})
-	if !ok {
-		t.Fatal("missing tls")
-	}
-	rel, ok := tls["reality"].(map[string]interface{})
-	if !ok {
-		t.Fatal("missing reality")
-	}
-	if got, _ := rel["short_id"].(string); got != "48ab12" {
-		t.Fatalf("short_id got %q want 48ab12", got)
-	}
-}
-
-func TestIsValidRealityPublicKey(t *testing.T) {
-	tests := []struct {
-		in   string
-		want bool
-	}{
-		{"mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg", true},   // base64url, 43 chars
-		{" mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg ", true}, // surrounding space
-		{"mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg=", true},  // stray pad
-		{"enabled", false}, // junk from broken public lists
-		{"true", false},
-		{"", false},
-		{"short", false},
-		{"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", false}, // 43 non-base64 chars
-	}
-	for _, tt := range tests {
-		if got := isValidRealityPublicKey(tt.in); got != tt.want {
-			t.Errorf("isValidRealityPublicKey(%q) = %v, want %v", tt.in, got, tt.want)
-		}
-	}
-}
+// Чистка short_id и проверка pbk переехали в реестр (SPEC 131 W2d): их
+// юниты сняты вместе с функциями. Правила проверяются там, где теперь живут —
+// core/config/nodeflow (hex_only, base64_32) и корпус контракта
+// (uri/vless/reality_sid_*, reality_pbk_*).
 
 func TestNormalizeUTLSFingerprint(t *testing.T) {
 	tests := []struct {
@@ -127,42 +68,13 @@ func TestParseNode_VLESS_RawUTLSIdentifierFingerprint(t *testing.T) {
 	}
 }
 
-// A fingerprint sing-box cannot map at all must not reach the config: the node
-// falls back to a valid name rather than emitting the junk value.
-func TestParseNode_VLESS_JunkFingerprintDropped(t *testing.T) {
-	uri := "vless://a0ee37a5-1844-4087-bc5c-1db6f416d38c@example.com:443?encryption=none&security=tls&sni=example.com&fp=enabled#t"
-	node, err := ParseNode(uri, nil)
-	if err != nil || node == nil {
-		t.Fatalf("ParseNode: err=%v node=%v", err, node)
-	}
-	tls := node.Outbound["tls"].(map[string]interface{})
-	ut, ok := tls["utls"].(map[string]interface{})
-	if !ok {
-		t.Fatal("missing utls")
-	}
-	// Junk canonicalizes to chrome, not random: `random` re-rolls the fingerprint
-	// on every core start, so the node's identity hash would differ between runs
-	// and between the two projects (SPEC 103, D-029).
-	if got := ut["fingerprint"]; got != "chrome" {
-		t.Fatalf("fingerprint = %#v, want chrome fallback", got)
-	}
-}
+// Замена мусорного отпечатка на chrome переехала в санитайзер
+// (tls.json: on_invalid coerce chrome + utls_fp_unknown). Проверка —
+// corpus uri/vless/utls_junk_fp_fallback и TestPipelineSetsDegradationCodes.
 
-// Regression: a broken public list attaches pbk=enabled to a plain security=tls
-// node. Emitting that as reality.public_key made sing-box reject the entire
-// config ("initialize outbound[N]: invalid public_key") so the VPN never started.
-// The node must degrade to plain TLS, with no reality block.
-func TestParseNode_VLESS_JunkPbkOnTLSNode(t *testing.T) {
-	uri := "vless://35aead44-22e1-d2ef-01a8-ab8c508222ec@172.67.204.176:2053?security=tls&sni=ez.example.workers.dev&type=ws&host=ez.example.workers.dev&path=%2Fsync&fp=chrome&pbk=enabled&allowInsecure=0"
-	node, err := ParseNode(uri, nil)
-	if err != nil || node == nil {
-		t.Fatalf("ParseNode: err=%v node=%v", err, node)
-	}
-	tls, ok := node.Outbound["tls"].(map[string]interface{})
-	if !ok {
-		t.Fatal("expected plain TLS to remain enabled")
-	}
-	if _, hasReality := tls["reality"]; hasReality {
-		t.Fatalf("junk pbk=enabled must NOT produce a reality block; tls=%v", tls)
-	}
-}
+// Регрессия «pbk=enabled на security=tls ноде валит весь config.json»
+// (broken-list-pbk-junk, v1.1.7) проверяется теперь на выходе конвейера:
+// public_key в реестре required с форматом base64_32, поэтому мусорный ключ
+// снимает блок reality целиком. См. TestPipelineSetsDegradationCodes
+// («мусорный pbk снимает весь блок reality») и corpus
+// uri/vless/reality_pbk_junk_on_tls.

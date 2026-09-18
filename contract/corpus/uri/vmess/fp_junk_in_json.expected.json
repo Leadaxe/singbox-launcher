@@ -25,7 +25,14 @@
       },
       "kind": "outbound",
       "label": "vmess-fp",
-      "scheme": "vmess"
+      "scheme": "vmess",
+      "warnings": [
+        {
+          "code": "utls_fp_unknown",
+          "path": "tls.utls.fingerprint",
+          "value": "wat"
+        }
+      ]
     }
   ],
   "v": 1

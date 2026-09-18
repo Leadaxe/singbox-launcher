@@ -12,7 +12,7 @@
       "meaning": "user:password",
       "desc_en": "user:password of the account.",
       "desc_ru": "user:password учётной записи.",
-      "impl": "user:pass → username+password. РАЗРЫВ ОДИНОЧНОГО USERINFO (новое, вне §9): naive+https://secret@host — Go кладёт secret в username (node_parser_core.go:366-374), Dart — в password (naive_parser.dart:21-29). Go share-URI при password-без-username пишет пароль в user-слот (конвенция hysteria2) — т.е. Go-эмит Dart прочитает «наоборот». Выровнять на ревью. naive+quic — §9.B1: Dart добавляет (сейчас naive+quic парсит только Go; транспорт запоминается как quic:true + quic_congestion_control:bbr). Dart toUriNaive опускает порт 443 (каноничная форма DuckSoft) и всегда пишет naive+https."
+      "impl": "user:pass → username+password. ОДИНОЧНЫЙ USERINFO БЕЗ ДВОЕТОЧИЯ — ЭТО PASSWORD (naive+https://secret@host → password=secret, username пуст): конвенция DuckSoft, та же что у hysteria2. РАЗРЫВ ЗАКРЫТ (DRIFT §7.3, вариант А, решение владельца 18.09.2026, синхронно с LxBox 24.09.2026): прежде Go клал значение в username, тогда как его же эмиттер share-URI пишет пароль в user-слот — ссылка, отданная Go, читалась Go же «наоборот», а кросс-эмит с Dart не сходился. Кейс корпуса — uri/naive/password_only_userinfo. naive+quic — §9.B1: Dart добавляет (сейчас naive+quic парсит только Go; транспорт запоминается как quic:true + quic_congestion_control:bbr). Dart toUriNaive опускает порт 443 (каноничная форма DuckSoft) и всегда пишет naive+https."
     },
     "query": {
       "extra-headers": {

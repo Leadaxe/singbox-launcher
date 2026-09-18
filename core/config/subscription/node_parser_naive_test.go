@@ -215,16 +215,21 @@ func TestParseNode_Naive_CustomPort(t *testing.T) {
 }
 
 func TestParseNode_Naive_PasswordOnly(t *testing.T) {
-	// `naive+https://secret@host` — per spec, password alone goes in the user slot.
+	// `naive+https://secret@host` — одиночный userinfo это ПАРОЛЬ (конвенция
+	// DuckSoft, та же что у hysteria2), а не имя пользователя.
+	//
+	// До SPEC 131 W2d Go клал его в username, хотя его же эмиттер share-URI
+	// пишет пароль именно в user-слот: ссылка, отданная лаунчером, читалась
+	// лаунчером же «наоборот» (DRIFT §7.3, вариант А, синхронно с LxBox).
 	node, err := ParseNode("naive+https://secret@host.tld", nil)
 	if err != nil {
 		t.Fatalf("ParseNode error: %v", err)
 	}
-	if node.UUID != "secret" {
-		t.Errorf("UUID = %q, want %q", node.UUID, "secret")
+	if node.UUID != "" {
+		t.Errorf("UUID = %q, want empty (одиночный userinfo — пароль)", node.UUID)
 	}
-	if got := node.Query.Get("password"); got != "" {
-		t.Errorf("password should be empty for user-only URI, got %q", got)
+	if got := node.Query.Get("password"); got != "secret" {
+		t.Errorf("password = %q, want %q", got, "secret")
 	}
 }
 

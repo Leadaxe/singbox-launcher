@@ -72,8 +72,16 @@ func TestXrayArrayParsesTrojanAndShadowsocks(t *testing.T) {
 	}
 }
 
-// Неподдерживаемый метод ss отбрасывает ноду, а не роняет весь конфиг.
-func TestXrayArrayDropsShadowsocksWithBadMethod(t *testing.T) {
+// Legacy-шифр ss ядро ПРИНИМАЕТ, и узел обязан дожить до конвейера.
+//
+// Прежде этот тест требовал обратного — дропа на rc4-md5, — и требовал по
+// ошибке: словарь в коде держал 9 значений против 18 у ядра, то есть оба
+// клиента выбрасывали рабочие узлы (DRIFT §7.10, решение владельца
+// 18.09.2026). Теперь метод судит санитайзер по реестру: вне словаря ядра —
+// дроп с ss_method_invalid, legacy — живой узел с info-кодом ss_method_legacy.
+// Итоговое поведение обоих случаев проверяется в core/config
+// (TestPipelineSetsDegradationCodes и корпус), здесь — что маппер их доносит.
+func TestXrayArrayKeepsShadowsocksLegacyMethod(t *testing.T) {
 	raw := `[{"remarks":"ss","outbounds":[{"protocol":"shadowsocks","tag":"proxy",
 	  "settings":{"servers":[{"address":"s.test","port":8388,
 	    "method":"rc4-md5","password":"pw"}]}}]}]`
@@ -82,8 +90,11 @@ func TestXrayArrayDropsShadowsocksWithBadMethod(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(nodes) != 0 {
-		t.Fatalf("got %d nodes, want 0 (unsupported method)", len(nodes))
+	if len(nodes) != 1 {
+		t.Fatalf("got %d nodes, want 1 (ядро rc4-md5 принимает)", len(nodes))
+	}
+	if got := nodes[0].Outbound["method"]; got != "rc4-md5" {
+		t.Fatalf("method = %v, want rc4-md5 как есть", got)
 	}
 }
 

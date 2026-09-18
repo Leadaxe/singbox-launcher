@@ -61,9 +61,11 @@ func TestMasque_VHTTPDefaultAndValidation(t *testing.T) {
 	// default h3
 	n, _ := ParseNode(base+"#x", nil)
 	assertEq(t, n.Outbound["vhttp"], "h3")
-	// invalid value forced to h3
+	// Мусорное значение уезжает КАК ЕСТЬ: приведение к h3 с кодом
+	// masque_vhttp_invalid делает санитайзер по реестру (SPEC 131 W2d).
+	// Итог проверяет корпус — uri/masque/vhttp_invalid_forced_h3.
 	n2, _ := ParseNode(base+"&vhttp=tcp#x", nil)
-	assertEq(t, n2.Outbound["vhttp"], "h3")
+	assertEq(t, n2.Outbound["vhttp"], "tcp")
 	// h2 honored
 	n3, _ := ParseNode(base+"&vhttp=h2#x", nil)
 	assertEq(t, n3.Outbound["vhttp"], "h2")

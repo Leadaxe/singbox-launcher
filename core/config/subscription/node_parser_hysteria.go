@@ -60,30 +60,21 @@ func buildHysteriaOutbound(node *configtypes.ParsedNode, outbound map[string]int
 		outbound["obfs"] = obfs
 	}
 
-	// Пропускная способность у v1 ОБЯЗАТЕЛЬНА: без up_mbps ядро отказывается
-	// поднимать outbound («missing upload speed»/«missing download speed»), а
-	// это fatal для ВСЕГО config.json, не для одной ноды. Ссылки же сплошь и
-	// рядом её не несут, поэтому недостающая половина добирается дефолтом.
-	up := hysteriaMbps(node, "upmbps", "up_mbps", "up")
-	down := hysteriaMbps(node, "downmbps", "down_mbps", "down")
-	outbound["up_mbps"] = hysteriaBandwidthOrDefault(up)
-	outbound["down_mbps"] = hysteriaBandwidthOrDefault(down)
+	// Пропускная способность у v1 обязательна ядру, но дефолт ПОДСТАВЛЯЕТ
+	// РЕЕСТР (default_when у hysteria.body.up_mbps/down_mbps, SPEC 131 W2d):
+	// прежде его подставлял этот парсер, и узел, пришедший JSON-телом, его не
+	// получал — то есть валил весь конфиг «missing upload speed».
+	//
+	// Здесь остаётся только перевод формы записи: суффикс единицы («100 mbps»,
+	// «50m») панели пишут как придётся, а ядру нужно число.
+	if up := hysteriaMbps(node, "upmbps", "up_mbps", "up"); up > 0 {
+		outbound["up_mbps"] = up
+	}
+	if down := hysteriaMbps(node, "downmbps", "down_mbps", "down"); down > 0 {
+		outbound["down_mbps"] = down
+	}
 
 	buildHysteriaTLS(node, outbound)
-}
-
-// hysteriaDefaultMbps — подстановка для узла, чья ссылка не назвала скорость.
-//
-// Значение не «лимит», а стартовая оценка для congestion control Hysteria 1.x:
-// сервер согласует реальную полосу сам, а ядру нужно ненулевое число, чтобы
-// вообще собрать outbound.
-const hysteriaDefaultMbps = 100
-
-func hysteriaBandwidthOrDefault(v int) int {
-	if v > 0 {
-		return v
-	}
-	return hysteriaDefaultMbps
 }
 
 // hysteriaAuthFromNode достаёт секрет v1 из query (auth/auth_str) или userinfo.
@@ -126,34 +117,17 @@ func buildHysteriaTLS(node *configtypes.ParsedNode, outbound map[string]interfac
 	q := node.Query
 	tlsData := map[string]interface{}{"enabled": true}
 
-	// SNI у v1 исторически зовут peer= (клиенты Hysteria 1.x), sni= — общее.
-	sni := queryGetFold(q, "sni")
-	if sni == "" {
-		sni = queryGetFold(q, "peer")
-	}
-	if sni != "" && sni != "🔒" && (strings.Contains(sni, ".") || strings.Contains(sni, ":")) {
+	// SNI у v1 исторически зовут peer= (клиенты Hysteria 1.x), sni= — общее;
+	// оба написания объявлены в реестре.
+	if sni := tlsServerNameFromQuery(q, "hysteria", node.Server); sni != "" {
 		tlsData["server_name"] = sni
-	} else if node.Server != "" {
-		tlsData["server_name"] = node.Server
 	}
 
-	if tlsInsecureTrue(q) {
-		tlsData["insecure"] = true
-	} else if v := queryGetFold(q, "skip-cert-verify"); v == "true" || v == "1" {
-		tlsData["insecure"] = true
-	}
-
-	if pin := strings.TrimSpace(queryGetFold(q, "pinSHA256")); pin != "" {
+	if pin := queryParam(q, "hysteria", "pinSHA256"); pin != "" {
 		tlsData["certificate_public_key_sha256"] = []string{pin}
 	}
 
-	if alpn := queryGetFold(q, "alpn"); alpn != "" {
-		alpnList := strings.Split(alpn, ",")
-		for i := range alpnList {
-			alpnList[i] = strings.TrimSpace(alpnList[i])
-		}
-		tlsData["alpn"] = alpnList
-	}
+	applyTLSQueryExtras(q, "hysteria", tlsData)
 
 	outbound["tls"] = tlsData
 }

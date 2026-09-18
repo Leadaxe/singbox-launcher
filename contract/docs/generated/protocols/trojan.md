@@ -23,7 +23,7 @@
 | `type` | — | enum `""`, `tcp`, `raw`, `ws`, `grpc`, `http`, `h2`, `httpupgrade`, `xhttp` | `""` | `transport.type` | Transport selector. | Селектор транспорта. |
 | `headerType` | — | enum `""`, `http` | `""` | `transport.type` | Xray TCP/RAW HTTP camouflage selector. | Селектор HTTP-камуфляжа Xray поверх TCP/RAW. |
 | `security` | — | enum `""`, `none`, `tls` | `""` | `tls.enabled` | Whether the link asks for TLS, and in which flavour. | Просит ли ссылка TLS и в каком виде. |
-| `sni` | `peer`, `host (третий fallback — только trojan)` | string | `""` | `tls.server_name` | Server name sent in SNI. | Имя сервера, отправляемое в SNI. |
+| `sni` | `peer`, `host` | string | `""` | `tls.server_name` | Server name sent in SNI. | Имя сервера, отправляемое в SNI. |
 | `fp` | — | alias_enum (allowlist `utls_fingerprints`) | `""` | `tls.utls.fingerprint` | Browser fingerprint mimicked in the ClientHello. | Отпечаток браузера, который подделывается в ClientHello. |
 | `alpn` | — | string | `""` | `tls.alpn` | Comma-separated list of ALPN protocols. | Список протоколов ALPN через запятую. |
 | `insecure` | `allowInsecure`, `allowinsecure`, `allow_insecure`, `allow-insecure`, `skipCertVerify`, `skipcertverify`, `skip_cert_verify`, `skip-cert-verify`, `noverify` | bool | `false` | `tls.insecure` | Skip server certificate verification. | Не проверять сертификат сервера. |

@@ -238,10 +238,11 @@
           "password": {
             "type": "string",
             "required": true,
+            "code": "obfs_password_missing",
             "secret": true,
             "desc_en": "Obfuscation password.",
             "desc_ru": "Пароль обфускации.",
-            "impl": "Пустой = «missing obfs password», код obfs_password_missing. Секрет."
+            "impl": "Пустой = «missing obfs password» на весь конфиг; отсутствие пароля снимает блок obfs целиком (узел живёт без обфускации), код obfs_password_missing — он же объявлен здесь через `code`, иначе санитайзер поставил бы общий field_missing. Секрет."
           },
           "min_packet_size": {
             "type": "int",
@@ -250,9 +251,16 @@
               "action": "drop",
               "code": "type_invalid"
             },
+            "requires": [
+              {
+                "path": "obfs.type",
+                "equals": "gecko",
+                "code": "field_requires"
+              }
+            ],
             "desc_en": "Minimum packet size, gecko only.",
             "desc_ru": "Минимальный размер пакета, только для gecko.",
-            "impl": "Осмыслено только при type=gecko."
+            "impl": "Осмыслено только при type=gecko — выражено requires с equals: у salamander ядро поле молча игнорирует, но в теле узла оно расходилось бы с тем же узлом, пришедшим другим входом."
           },
           "max_packet_size": {
             "type": "int",
@@ -261,9 +269,16 @@
               "action": "drop",
               "code": "type_invalid"
             },
+            "requires": [
+              {
+                "path": "obfs.type",
+                "equals": "gecko",
+                "code": "field_requires"
+              }
+            ],
             "desc_en": "Maximum packet size, gecko only.",
             "desc_ru": "Максимальный размер пакета, только для gecko.",
-            "impl": "Осмыслено только при type=gecko."
+            "impl": "Осмыслено только при type=gecko — выражено requires с equals: у salamander ядро поле молча игнорирует, но в теле узла оно расходилось бы с тем же узлом, пришедшим другим входом."
           }
         },
         "desc_en": "Obfuscation settings.",

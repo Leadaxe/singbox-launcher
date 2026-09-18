@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
-	"singbox-launcher/internal/debuglog"
 )
 
 // xrayMapString returns string value for key in m.
@@ -202,7 +201,6 @@ func xrayBuildVLESSFromOutbound(ob map[string]interface{}, label string) (*confi
 	}
 	// D-119 — по той же причине после создания узла: reality с отпечатком вне
 	// chrome-семейства уходит как есть, узел предупреждает.
-	noteRealityFingerprint(node, outbound)
 	return node, nil
 }
 
@@ -223,43 +221,33 @@ func xrayVLESSTLSFromStreamSettings(streamSettings map[string]interface{}, secur
 		if rs == nil {
 			return tlsData
 		}
-		sni := xrayMapString(rs, "serverName")
-		if sni == "" {
-			sni = xrayMapString(rs, "server_name")
-		}
-		if sni != "" {
+		if sni := xrayFirstString(rs, "serverName", "server_name"); sni != "" {
 			tlsData["server_name"] = sni
 		}
-		fp := NormalizeUTLSFingerprint(xrayMapString(rs, "fingerprint"))
-		if fp == "" {
-			fp = "random"
-		}
+		// Отпечаток: разворачивается только НАПИСАНИЕ значения
+		// (HelloChrome_120 → chrome) — это перевод диалекта. Мусор уезжает
+		// как есть, его заменит санитайзер кодом utls_fp_unknown; прежде
+		// здесь мусор молча превращался в `random`, и один и тот же узел
+		// из ссылки и из Xray-конфига давал РАЗНЫЕ тела (SPEC 131 W2d).
 		tlsData["utls"] = map[string]interface{}{
 			"enabled":     true,
-			"fingerprint": fp,
+			"fingerprint": xrayUTLSFingerprint(rs, "random"),
 		}
-		if b, ok := rs["allowInsecure"].(bool); ok && b {
+		if xrayFlagTrue(rs, "allowInsecure") {
 			tlsData["insecure"] = true
 		}
-		pbk := xrayMapString(rs, "publicKey")
-		if pbk == "" {
-			pbk = xrayMapString(rs, "public_key")
-		}
-		sid := xrayMapString(rs, "shortId")
-		if sid == "" {
-			sid = xrayMapString(rs, "short_id")
-		}
-		// Same guard as the URI path (node_parser_transport.go): a junk or empty
-		// pbk emitted as public_key makes sing-box reject the entire config, so
-		// degrade to plain TLS instead of emitting a broken REALITY block.
-		if isValidRealityPublicKey(pbk) {
-			tlsData["reality"] = map[string]interface{}{
+		// Блок reality заводится по НАЛИЧИЮ ключа, как и на URI-пути: его
+		// пригодность проверит реестр (public_key там required с форматом
+		// base64_32), и мусорный ключ снимет блок целиком.
+		if pbk := xrayFirstString(rs, "publicKey", "public_key"); pbk != "" {
+			reality := map[string]interface{}{
 				"enabled":    true,
-				"public_key": strings.TrimSpace(pbk),
-				"short_id":   normalizeRealityShortID(sid),
+				"public_key": pbk,
 			}
-		} else {
-			debuglog.WarnLog("Parser: xray realitySettings has invalid public_key %q — degrading to plain TLS", pbk)
+			if sid := xrayFirstString(rs, "shortId", "short_id"); sid != "" {
+				reality["short_id"] = sid
+			}
+			tlsData["reality"] = reality
 		}
 		return tlsData
 	}
@@ -267,20 +255,60 @@ func xrayVLESSTLSFromStreamSettings(streamSettings map[string]interface{}, secur
 	// generic tls
 	tlsSettings, _ := streamSettings["tlsSettings"].(map[string]interface{})
 	if tlsSettings != nil {
-		if sni := xrayMapString(tlsSettings, "serverName"); sni != "" {
+		if sni := xrayFirstString(tlsSettings, "serverName", "server_name"); sni != "" {
 			tlsData["server_name"] = sni
 		}
-		if fp := NormalizeUTLSFingerprint(xrayMapString(tlsSettings, "fingerprint")); fp != "" {
+		if fp := xrayUTLSFingerprint(tlsSettings, ""); fp != "" {
 			tlsData["utls"] = map[string]interface{}{
 				"enabled":     true,
 				"fingerprint": fp,
 			}
 		}
-		if b, ok := tlsSettings["allowInsecure"].(bool); ok && b {
+		if xrayFlagTrue(tlsSettings, "allowInsecure") {
 			tlsData["insecure"] = true
 		}
 	}
 	return tlsData
+}
+
+// xrayFirstString — первое непустое значение под любым из написаний ключа.
+func xrayFirstString(m map[string]interface{}, keys ...string) string {
+	for _, k := range keys {
+		if v := strings.TrimSpace(xrayMapString(m, k)); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// xrayUTLSFingerprint — отпечаток из Xray-настроек: написание значения
+// развёрнуто, само значение не судится. Пустое заменяется дефолтом схемы
+// (у reality это `random`, как на URI-пути — D-009).
+func xrayUTLSFingerprint(m map[string]interface{}, def string) string {
+	raw := xrayMapString(m, "fingerprint")
+	if strings.TrimSpace(raw) == "" {
+		return def
+	}
+	if canon, junk := normalizeUTLSFingerprintEx(raw); !junk {
+		return canon
+	}
+	return strings.TrimSpace(raw)
+}
+
+// xrayFlagTrue — булев флаг Xray-настроек: настоящий JSON-bool ЛИБО строка
+// `1`/`true`/`yes`.
+//
+// Строковую форму Xray-ветка прежде игнорировала (DRIFT §2(a)), и узел,
+// у которого панель написала "allowInsecure":"true", терял проверку
+// сертификата ровно там, где ссылка её сохраняла.
+func xrayFlagTrue(m map[string]interface{}, key string) bool {
+	switch v := m[key].(type) {
+	case bool:
+		return v
+	case string:
+		return flagValueTrue(v)
+	}
+	return false
 }
 
 func xrayTransportFromStreamSettings(streamSettings map[string]interface{}, network string) map[string]interface{} {

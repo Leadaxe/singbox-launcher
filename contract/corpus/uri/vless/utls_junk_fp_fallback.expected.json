@@ -20,7 +20,9 @@
       "scheme": "vless",
       "warnings": [
         {
-          "code": "utls_fp_unknown"
+          "code": "utls_fp_unknown",
+          "path": "tls.utls.fingerprint",
+          "value": "enabled"
         }
       ]
     }

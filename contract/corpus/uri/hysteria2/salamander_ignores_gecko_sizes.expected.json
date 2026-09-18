@@ -17,7 +17,13 @@
       },
       "kind": "outbound",
       "label": "hy2-mixed",
-      "scheme": "hysteria2"
+      "scheme": "hysteria2",
+      "warnings": [
+        {
+          "code": "field_requires",
+          "path": "obfs.min_packet_size"
+        }
+      ]
     }
   ],
   "v": 1

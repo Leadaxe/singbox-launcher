@@ -17,7 +17,9 @@
       "scheme": "tuic",
       "warnings": [
         {
-          "code": "tuic_congestion_invalid"
+          "code": "tuic_congestion_invalid",
+          "path": "congestion_control",
+          "value": "bogus"
         }
       ]
     }

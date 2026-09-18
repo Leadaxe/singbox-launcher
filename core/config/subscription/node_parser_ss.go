@@ -1,21 +1,24 @@
 package subscription
 
-// isValidShadowsocksMethod checks if the encryption method is supported by sing-box
-// This prevents invalid methods (like binary data) from causing sing-box to crash
-// Only methods supported by sing-box are allowed (see sing-box documentation)
+import "singbox-launcher/core/config/registry"
+
+// isValidShadowsocksMethod — знает ли ядро такой шифр shadowsocks.
+//
+// Словарь берётся ИЗ РЕЕСТРА (allowlists.json, ss_methods), а не из списка в
+// коде: прежний список держал 9 значений против 18 у ядра и ДРОПАЛ УЗЕЛ на
+// девяти рабочих legacy-шифрах (rc4-md5, aes-*-cfb/ctr, chacha20-ietf,
+// xchacha20) — оба клиента были строже ядра, и пользователь не получал ни
+// узла, ни объяснения (DRIFT §7.10, решение владельца 18.09.2026).
+//
+// На входе узла эта проверка больше не стоит вовсе: там решает санитайзер по
+// правилу реестра (drop_node с кодом ss_method_invalid, а legacy — живой узел
+// с info-кодом ss_method_legacy). Остался один вызывающий — эмиттер share-URI,
+// которому нужно знать, можно ли вообще выразить узел ссылкой.
 func isValidShadowsocksMethod(method string) bool {
-	validMethods := map[string]bool{
-		// 2022 edition (modern, best security)
-		"2022-blake3-aes-128-gcm":       true,
-		"2022-blake3-aes-256-gcm":       true,
-		"2022-blake3-chacha20-poly1305": true,
-		// AEAD ciphers
-		"none":                    true,
-		"aes-128-gcm":             true,
-		"aes-192-gcm":             true,
-		"aes-256-gcm":             true,
-		"chacha20-ietf-poly1305":  true,
-		"xchacha20-ietf-poly1305": true,
+	for _, v := range registry.MustGet().Allowlist("ss_methods") {
+		if v == method {
+			return true
+		}
 	}
-	return validMethods[method]
+	return false
 }

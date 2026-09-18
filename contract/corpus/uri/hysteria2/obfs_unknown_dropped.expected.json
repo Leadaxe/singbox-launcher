@@ -16,7 +16,9 @@
       "scheme": "hysteria2",
       "warnings": [
         {
-          "code": "obfs_unknown"
+          "code": "obfs_unknown",
+          "path": "obfs.type",
+          "value": "xyz"
         }
       ]
     }

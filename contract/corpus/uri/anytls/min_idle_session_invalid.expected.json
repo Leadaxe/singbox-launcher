@@ -20,7 +20,9 @@
       "scheme": "anytls",
       "warnings": [
         {
-          "code": "anytls_min_idle_invalid"
+          "code": "anytls_min_idle_invalid",
+          "path": "min_idle_session",
+          "value": "abc"
         }
       ]
     }

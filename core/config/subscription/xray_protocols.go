@@ -286,11 +286,11 @@ func xrayBuildShadowsocksFromOutbound(ob map[string]interface{}, label string) (
 	if method == "" || password == "" {
 		return nil, errors.New("empty shadowsocks method or password — the server returned a placeholder, subscription may be expired")
 	}
-	if !isValidShadowsocksMethod(method) {
-		// Неподдерживаемый метод роняет весь конфиг — узел отбрасывается,
-		// как и в URI-пути.
-		return nil, fmt.Errorf("unsupported shadowsocks method %q", method)
-	}
+	// Словарь шифров здесь не проверяется (SPEC 131 W2d): решение о значении
+	// принимает санитайзер по реестру — вне словаря ядра узел отбрасывается
+	// с кодом ss_method_invalid, legacy-шифр живёт с ss_method_legacy. Копия
+	// проверки здесь была на 9 значений против 18 у ядра и роняла рабочие
+	// узлы (DRIFT §7.10).
 
 	outbound := map[string]interface{}{
 		"tag":         xrayMapString(ob, "tag"),

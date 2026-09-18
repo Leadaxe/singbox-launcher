@@ -206,10 +206,14 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 					ssMethod = userinfoParts[0]
 					ssPassword = userinfoParts[1]
 					debuglog.DebugLog("Parser: Successfully extracted SS credentials: method=%s, password length=%d", ssMethod, len(ssPassword))
-					if !isValidShadowsocksMethod(ssMethod) {
-						debuglog.WarnLog("Parser: Invalid or unsupported Shadowsocks method '%s'. Skipping node.", ssMethod)
-						return nil, fmt.Errorf("unsupported Shadowsocks encryption method: %s", ssMethod)
-					}
+					// Метод НЕ проверяется здесь (SPEC 131 W2d): словарь ядра
+					// живёт в реестре (shadowsocks.body.method), и он ШИРЕ
+					// прежнего списка в коде — девять рабочих legacy-шифров
+					// (rc4-md5, aes-*-cfb/ctr, chacha20-ietf…) тот список
+					// дропал ВМЕСТЕ С УЗЛОМ, хотя ядро их принимает без
+					// единого warning'а. Решение владельца 18.09.2026
+					// (DRIFT §7.10, вариант А): принимать с info-кодом
+					// ss_method_legacy; дроп остаётся только вне словаря ядра.
 				} else {
 					debuglog.ErrorLog("Parser: SS decoded userinfo doesn't contain ':' separator. Decoded: %s", decodedStr)
 				}
@@ -233,10 +237,6 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 					if len(userinfoParts) == 2 && right != "" {
 						ssMethod = strings.TrimSpace(userinfoParts[0])
 						ssPassword = userinfoParts[1]
-						if !isValidShadowsocksMethod(ssMethod) {
-							debuglog.WarnLog("Parser: Invalid or unsupported Shadowsocks method '%s'. Skipping node.", ssMethod)
-							return nil, fmt.Errorf("unsupported Shadowsocks encryption method: %s", ssMethod)
-						}
 						debuglog.DebugLog("Parser: Decoded legacy SS (method:password@host:port in one blob), host part length=%d", len(right))
 						uriToParse = "ss://" + right + fragSuffix
 					}
@@ -444,6 +444,19 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		if scheme == "ssh" || scheme == "trojan" || scheme == "socks" || scheme == "socks5" || scheme == "naive" || scheme == "tuic" {
 			if password, hasPassword := parsedURL.User.Password(); hasPassword {
 				node.Query.Set("password", password)
+			}
+		}
+		// naive: одиночный userinfo БЕЗ двоеточия — это ПАРОЛЬ, а не имя
+		// пользователя (конвенция DuckSoft, та же что у hysteria2).
+		//
+		// Решение DRIFT §7.3, вариант А, синхронно с LxBox (24.09.2026): до
+		// этого Go клал значение в username, а свой же эмиттер писал пароль в
+		// user-слот (shareuri_naive.go) — то есть ссылка, отданная нами,
+		// читалась нами же «наоборот», и кросс-эмит с LxBox расходился.
+		if scheme == "naive" {
+			if _, hasPassword := parsedURL.User.Password(); !hasPassword && node.UUID != "" {
+				node.Query.Set("password", node.UUID)
+				node.UUID = ""
 			}
 		}
 	}
@@ -681,6 +694,9 @@ func noteWSEarlyDataConverted(node *configtypes.ParsedNode, transport map[string
 
 func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 	outbound := make(map[string]interface{})
+	// `ech=` не переводится никуда ни у одной схемы (D-122): Xray-форма несёт
+	// чужой ключ. Помечаем один раз здесь, а не в каждой TLS-ветке.
+	noteECHIgnored(node)
 	outbound["tag"] = node.Tag
 	// Use "shadowsocks" instead of "ss" for sing-box; "socks" outbound for socks5:// and socks:// URIs
 	if node.Scheme == "ss" {
@@ -703,38 +719,36 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 			noteXHTTPPlacementGuard(node, transport)
 		}
 		if node.Flow != "" {
-			// Convert xtls-rprx-vision-udp443 to compatible format
+			// `xtls-rprx-vision-udp443` — не значение поля flow, а СОСТАВНОЕ
+			// имя: суффикс означает «UDP/443 идёт напрямую», то есть
+			// packet_encoding=xudp. Развернуть его обязан маппер — санитайзер
+			// увидел бы только мусор вне enum'а.
+			//
+			// Порт при этом НЕ переписывается (DRIFT §7.4, решение владельца):
+			// порт — свойство узла, а не флоу, и прежняя правка превращала
+			// `…:8443` в `…:443`, делая узел недозваниваемым.
 			if node.Flow == "xtls-rprx-vision-udp443" {
 				outbound["flow"] = "xtls-rprx-vision"
 				outbound["packet_encoding"] = "xudp"
-				outbound["server_port"] = 443
 			} else {
 				outbound["flow"] = node.Flow
 			}
 		}
-		if pe := strings.TrimSpace(queryGetFold(node.Query, "packetEncoding")); pe != "" {
-			// sing-box accepts only "xudp" / "packetaddr" (or empty/omitted).
-			// Some xray-style subscriptions emit packetEncoding=none for
-			// nodes that don't need xtls — semantically equivalent to
-			// omitting the field. v1.13.x sing-box panics on any other
-			// value (see SPEC 049 upstream report), so filter to the
-			// allow-list and drop everything else with a warning.
-			switch strings.ToLower(pe) {
-			case "xudp", "packetaddr":
-				outbound["packet_encoding"] = strings.ToLower(pe)
-			case "none":
-				// silently drop — common, by-design "no special encoding"
-			default:
-				debuglog.WarnLog("Parser: unknown packetEncoding %q in %s URI %s — dropping field", pe, node.Scheme, node.Tag)
-				node.AddWarning(WarnPacketEncodingUnknown)
+		if pe := queryParam(node.Query, "vless", "packetEncoding"); pe != "" {
+			// `none` — общепринятый способ подписки сказать «без особой
+			// инкапсуляции», то есть синоним отсутствия ключа; ядро такого
+			// значения не знает и падает всем конфигом. Это перевод диалекта,
+			// а не суждение о значении: прочий мусор уезжает как есть и его
+			// снимет санитайзер кодом packet_encoding_unknown.
+			if !strings.EqualFold(pe, "none") {
+				outbound["packet_encoding"] = pe
 			}
 		}
 
 		// VLESS post-quantum encryption layer (lx SPEC 032, core option/vless.go
-		// Encryption). `none` and the empty value mean "layer off" — the field is
-		// then omitted, matching LxBox and CANON §2.4. Dropping it outright made
-		// such a node unusable on desktop while it worked on mobile (SPEC 103).
-		if enc := strings.TrimSpace(queryGetFold(node.Query, "encryption")); enc != "" && !strings.EqualFold(enc, "none") {
+		// Encryption). `none` и пустое значение означают «слой выключен» —
+		// ключ тогда опускается (CANON §2.4, паритет с LxBox).
+		if enc := queryParam(node.Query, "vless", "encryption"); enc != "" && !strings.EqualFold(enc, "none") {
 			outbound["encryption"] = enc
 		}
 
@@ -860,14 +874,14 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 				tlsData["alpn"] = alpnList
 			}
 
-			if fp := utlsFingerprintFromQuery(node.Query, "fp", "fingerprint"); fp != "" {
+			if fp := utlsFingerprintFromQuery(node.Query, "vmess"); fp != "" {
 				tlsData["utls"] = map[string]interface{}{
 					"enabled":     true,
 					"fingerprint": fp,
 				}
 			}
 
-			if tlsInsecureTrue(node.Query) {
+			if tlsInsecureTrue(node.Query, "vmess") {
 				tlsData["insecure"] = true
 			}
 
@@ -880,7 +894,7 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 			noteWSEarlyDataConverted(node, t)
 			noteXHTTPPlacementGuard(node, t)
 		}
-		if tlsData, ok := trojanTLSFromNode(node); ok {
+		if tlsData, ok := trojanTLSFromNode(node, node.Scheme); ok {
 			outbound["tls"] = tlsData
 		}
 	} else if node.Scheme == "ss" {

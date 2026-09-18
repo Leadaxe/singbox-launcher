@@ -1718,7 +1718,7 @@ URI-путь), а расхождение путей записано в `desc` �
 
 ## 24. Единый конвейер узла (SPEC 131, D-122) — схема тела в реестре, `warnings[]` с путём, целевые правила (приоритет 1)
 
-Решение владельца 17–18.09.2026. Полный текст ТЗ — `SPECS/131-F-N-UNIFIED_NODE_PIPELINE/`
+Решение владельца 17–18.09.2026. Полный текст ТЗ — `SPECS/131-F-O-UNIFIED_NODE_PIPELINE/`
 в репозитории лаунчера (`SPEC.md`, `DRIFT.md` — инвентарь расхождений с
 вердиктами ядра, `CORE_SCHEMA.md` — поля из `option/*.go` на теге lx.4);
 в `contract/` едет только норма. Контракт **1.1.0**, аддитивно.
@@ -1882,3 +1882,27 @@ URI-путь), а расхождение путей записано в `desc` �
 Новые типы реестра: `awg_range` (h1–h4 и диапазоны AWG), `int_array` (`peers.reserved`), формат `url_path`; `registry.Load` теперь индексирует схемы по `scheme`+`aliases`+`singbox_type` (ss/socks5/wg/awg). Пара ссылка↔JSON одного мусорного vless (`uri/vless/junk_pair_with_body` ↔ `body/singbox/vless_junk_pair`) даёт одинаковые тела; коды пока различаются путями — правила значений выносятся из URI-парсеров в W2d.
 
 Ядро: lx.5 — паника short_id заменена ошибкой; lx.6 (SPEC 091) — `tuic.udp_relay_mode` мусор стал ошибкой загрузки (вердикт C→B, наш drop совпадает), masque standard без uri — один текст ошибки; lx.7 (SPEC 092) — ошибки называют тип и тег элемента. Лаунчер пинит lx.7 одним бампом.
+
+### 24.7 W2d лаунчера (19.09.2026): парсеры = мапперы, коды с путями; зеркало ответа LxBox §459/460/463
+
+Правила значений ушли из URI-парсеров лаунчера в санитайзер по реестру; в
+реестр добавлены выражения, которых не хватало (`format: base64_32` для
+REALITY `pbk` — 32 байта после декода, `normalize: hex_only` +
+`normalize_code` для `short_id`, условный `advisory` (`except`/`when`) для
+`reality_fp_not_chrome`, `requires` + `equals` для gecko-полей obfs,
+`default_when` для полосы hysteria v1, `code` на `obfs.password`). Алиасы имён
+параметров ссылки читаются из реестра (`uri.query.<param>.aliases`).
+Сгенерированные страницы для общих якорей: `contract/docs/generated/index.md`,
+`warnings.md#<code>`, `protocols/<scheme>.md`.
+
+Что стороне LxBox забрать (подробно — `SPECS/131…/W2D_CHANGES.md` в репозитории лаунчера):
+
+1. `ech_ignored` на URI-`ech=` — Go догнал; три per-app override сняты (`uri/vless/ech_ignored_reality_kept`, `uri/trojan/ech_bare_name_ignored`, `uri/trojan/ech_name_resolver_ignored`).
+2. naive одиночный userinfo = password (7.3) — синхронно, релиз ≥ 24.09.2026; кейс `uri/naive/password_only_userinfo`.
+3. ss legacy-шифры — узел живёт с `ss_method_legacy` (было: дроп у обеих).
+4. hysteria2: `up_mbps`/`down_mbps` как имена параметров ссылки наравне с `upmbps`/`downmbps` (кейс `uri/hysteria2/up_down_mbps` — тело теперь несёт полосу).
+5. REALITY `pbk`: 32 байта после декода (вариант Dart принят целевым); `reality_pbk_invalid` ставится на всех путях — у Dart класса нет (DRIFT §2(b2)).
+6. Порядок `warnings[]` = `body.order` (не порядок разбора) — коды сравнимы поэлементно; у 15 кейсов коды получили `path`/`value` (таблица W2D_CHANGES §3), у 9 — код появился по смыслу (`reality_pbk_invalid` ×4, `utls_fp_unknown` у vmess-JSON, `ech_ignored` ×3, `field_requires` у gecko-полей на salamander).
+7. `-udp443` порт не переписывается (7.4).
+
+Зеркало LxBox (§459/460/463, 19.09): реестр 1.1.0 бандлится в assets, `RegistrySanitizer` по `body`, гард на сборке, `RegistryWarning` один класс на 12 кодов; два отступления совместимы — порядок ключей результата входящий (CANON §7 сравнивает по значению), число под `type:string` (снято типами `awg_range`/`int_array`); пин ядра lx.5 → lx.7 в работе.

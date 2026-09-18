@@ -1,11 +1,7 @@
 package subscription
 
 import (
-	"strconv"
-	"strings"
-
 	"singbox-launcher/core/config/configtypes"
-	"singbox-launcher/internal/debuglog"
 )
 
 // buildAnyTLSOutbound builds the outbound map for an AnyTLS node.
@@ -19,99 +15,60 @@ import (
 // block is mandatory. Optional session-pool tuning maps to the sing-box
 // idle_session_* / min_idle_session fields.
 func buildAnyTLSOutbound(node *configtypes.ParsedNode, outbound map[string]interface{}) {
+	q := node.Query
+	const scheme = "anytls"
+	// Единственный кредентиал лежит в userinfo (ParseNode кладёт его в UUID).
 	if node.UUID != "" {
 		outbound["password"] = node.UUID
-	} else {
-		debuglog.WarnLog("Parser: AnyTLS link missing password (userinfo). URI might be invalid.")
 	}
 
-	// Session-pool tuning (optional). Bare integers on the idle-session durations
-	// are treated as seconds, matching the TUIC heartbeat convention.
-	if v := strings.TrimSpace(queryGetFold(node.Query, "idle_session_check_interval")); v != "" {
+	// Голое число на длительностях — секунды (форма записи, как у tuic).
+	if v := queryParam(q, scheme, "idle_session_check_interval"); v != "" {
 		outbound["idle_session_check_interval"] = normalizeTuicHeartbeat(v)
 	}
-	if v := strings.TrimSpace(queryGetFold(node.Query, "idle_session_timeout")); v != "" {
+	if v := queryParam(q, scheme, "idle_session_timeout"); v != "" {
 		outbound["idle_session_timeout"] = normalizeTuicHeartbeat(v)
 	}
-	if v := strings.TrimSpace(queryGetFold(node.Query, "min_idle_session")); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
-			outbound["min_idle_session"] = n
-		} else {
-			node.AddWarning(WarnAnyTLSMinIdleInvalid)
-			debuglog.WarnLog("Parser: AnyTLS min_idle_session %q is not a non-negative integer, dropping.", v)
-		}
+	// Значение уезжает как есть: не-число снимет санитайзер кодом
+	// anytls_min_idle_invalid (реестр, anytls.body.min_idle_session).
+	if v := queryParam(q, scheme, "min_idle_session"); v != "" {
+		outbound["min_idle_session"] = v
 	}
 
 	buildAnyTLSTLS(node, outbound)
 }
 
-// buildAnyTLSTLS builds the (mandatory) TLS block for an AnyTLS node. It mirrors
-// buildTuicTLS: server_name from sni (or the server address), insecure across the
-// common spellings, uTLS fingerprint, and ALPN.
+// buildAnyTLSTLS собирает обязательный TLS-блок anytls.
+//
+// Форма повторяет vless: тот же дефолт отпечатка `random` у пустого fp
+// (D-009) и тот же гейт блока reality по наличию pbk. Значения полей не
+// судятся — этим занят санитайзер.
 func buildAnyTLSTLS(node *configtypes.ParsedNode, outbound map[string]interface{}) {
 	q := node.Query
+	const scheme = "anytls"
 	tlsData := map[string]interface{}{"enabled": true}
 
-	sni := queryGetFold(q, "sni")
-	if sni == "" {
-		sni = queryGetFold(q, "peer")
-	}
-	if sni != "" && sni != "🔒" && (strings.Contains(sni, ".") || strings.Contains(sni, ":")) {
+	if sni := tlsServerNameFromQuery(q, scheme, node.Server); sni != "" {
 		tlsData["server_name"] = sni
-	} else if node.Server != "" {
-		tlsData["server_name"] = node.Server
-	}
-
-	if tlsInsecureTrue(q) ||
-		tuicQueryFlagTrue(q, "allow_insecure") ||
-		tuicQueryFlagTrue(q, "skip-cert-verify") ||
-		tuicQueryFlagTrue(q, "skipCertVerify") {
-		tlsData["insecure"] = true
-	}
-
-	fp := utlsFingerprintFromQuery(q, "fp", "fingerprint")
-	if fp == "" {
-		// Same default as the vless path (node_parser_transport.go): without it
-		// an anytls node without fp= gets a different identity hash here than in
-		// LxBox, which defaults it too (SPEC 103, D-009).
-		fp = "random"
 	}
 	tlsData["utls"] = map[string]interface{}{
 		"enabled":     true,
-		"fingerprint": fp,
+		"fingerprint": utlsFingerprintOrDefault(q, scheme, "random"),
 	}
-
-	// REALITY on anytls: gate on the key itself, exactly like the vless path —
-	// a junk pbk on a plain TLS node would make sing-box reject the whole config.
-	// LxBox already parses this; without it the two sides emit different nodes.
-	if pbk := queryGetFold(q, "pbk"); isValidRealityPublicKey(pbk) {
+	if pbk := queryParam(q, scheme, "pbk"); pbk != "" {
 		reality := map[string]interface{}{
 			"enabled":    true,
-			"public_key": strings.TrimSpace(pbk),
-			"short_id":   normalizeRealityShortID(queryGetFold(q, "sid")),
+			"public_key": pbk,
 		}
-		// D-121 — тот же гейт, что во vless-пути: key_share читается только
-		// под валидным pbk, мусор снимает поле и предупреждает.
-		if ks, degraded := NormalizeRealityKeyShare(queryGetFold(q, "key_share")); degraded {
-			node.AddWarning(WarnRealityKeyShareInvalid)
-		} else if ks != "" {
+		if sid := queryParam(q, scheme, "sid"); sid != "" {
+			reality["short_id"] = sid
+		}
+		if ks := queryParam(q, scheme, "key_share"); ks != "" {
 			reality["key_share"] = ks
 		}
 		tlsData["reality"] = reality
-		// D-119 — тот же гейт, что во vless-пути: отпечаток вне
-		// chrome-семейства уходит как есть, узел об этом предупреждает.
-		if realityFingerprintRisky(fp) {
-			node.AddWarning(WarnRealityFPNotChrome)
-		}
 	}
-
-	if alpn := queryGetFold(q, "alpn"); alpn != "" {
-		alpnList := strings.Split(alpn, ",")
-		for i := range alpnList {
-			alpnList[i] = strings.TrimSpace(alpnList[i])
-		}
-		tlsData["alpn"] = alpnList
-	}
+	applyTLSQueryExtras(q, scheme, tlsData)
 
 	outbound["tls"] = tlsData
 }

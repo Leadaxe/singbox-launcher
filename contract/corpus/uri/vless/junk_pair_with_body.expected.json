@@ -24,15 +24,19 @@
       "scheme": "vless",
       "warnings": [
         {
-          "code": "packet_encoding_unknown"
-        },
-        {
-          "code": "reality_short_id_invalid"
-        },
-        {
           "code": "flow_deprecated",
           "path": "flow",
           "value": "xtls-rprx-direct"
+        },
+        {
+          "code": "packet_encoding_unknown",
+          "path": "packet_encoding",
+          "value": "teleport"
+        },
+        {
+          "code": "reality_short_id_invalid",
+          "path": "tls.reality.short_id",
+          "value": "abc"
         }
       ]
     }

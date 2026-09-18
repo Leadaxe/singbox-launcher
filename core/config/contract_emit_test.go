@@ -32,22 +32,25 @@ import (
 // видит config.json, — вход эмиттера.
 func nodeToOutboundMap(t *testing.T, node *configtypes.ParsedNode) (map[string]any, bool) {
 	t.Helper()
-	// WireGuard живёт в endpoints[], а не в outbounds[] (sing-box >= 1.11), и
-	// у него свой генератор. GenerateNodeJSON на WG-узле отдаёт обрубок
-	// {tag,type,server,server_port} без ключей и peers — вызывать его здесь
-	// значило бы проверять не тот путь.
-	raw, err := GenerateNodeJSON(node)
-	if node.Scheme == "wireguard" {
-		raw, err = GenerateEndpointJSON(node)
+	// Ссылка эмитится из ТОГО ЖЕ тела, которое лаунчер сохранит, — из выхода
+	// конвейера (SPEC 131 W2d). Пока здесь стоял per-scheme GenerateNodeJSON,
+	// эмиттер получал СЫРУЮ карту парсера: с W2d парсер стал маппером и не
+	// приводит значения, поэтому в ней лежит `fingerprint:"enabled"`, который
+	// санитайзер заменил бы на chrome. Ссылка, построенная из сырой карты,
+	// расходилась с телом узла — ровно то расхождение пары
+	// парсер/эмиттер, ради которого конвейер и заведён.
+	body, _, drop := materializeParsedNodeBody(node)
+	if drop != nil {
+		t.Skipf("узел отбракован конвейером: %s", dropReason(drop))
 	}
-	if err != nil || strings.TrimSpace(raw) == "" {
-		t.Fatalf("генерация узла: err=%v, raw=%q", err, raw)
+	var out map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("тело узла не разбирается как JSON: %v\nbody: %s", err, body)
 	}
-	// Генератор отдаёт ФРАГМЕНТ config.json (комментарий, отступ, хвостовая
-	// запятая) — тот же разбор, что у канонизатора корпуса.
-	out, err := decodeEmittedEntry(raw)
-	if err != nil {
-		t.Fatalf("фрагмент узла не разбирается как JSON: %v\nfragment: %s", err, raw)
+	// Тег в теле не живёт (CANON §2.1), а эмиттеру ссылки он нужен для
+	// фрагмента `#label`.
+	if node.Tag != "" {
+		out["tag"] = node.Tag
 	}
 	return out, true
 }

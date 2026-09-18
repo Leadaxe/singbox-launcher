@@ -17,7 +17,14 @@
       },
       "kind": "outbound",
       "label": "pbk-true",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "reality_pbk_invalid",
+          "path": "tls.reality.public_key",
+          "value": "true"
+        }
+      ]
     }
   ],
   "v": 1

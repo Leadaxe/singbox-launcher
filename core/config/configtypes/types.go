@@ -775,6 +775,13 @@ func (n *ParsedNode) AddWarning(code string) {
 	n.addWarning(Warning{Code: code})
 }
 
+// AddWarningWithParams — код уровня узла с подстановками для текста
+// (`{query_name}` у ech_ignored): сам код о поле в теле не говорит, но
+// пользователю надо назвать ПАРАМЕТР ССЫЛКИ, из-за которого он появился.
+func (n *ParsedNode) AddWarningWithParams(code string, params map[string]string) {
+	n.addWarning(Warning{Code: code, Params: params})
+}
+
 // AddFieldWarning помечает узел кодом деградации уровня поля: путь в теле
 // sing-box (`tls.reality.short_id`) и исходное значение до деградации,
 // обрезанное до WarningValueMax (CANON §6).

@@ -895,38 +895,12 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 		}
 	})
 
-	t.Run("packetEncoding=PacketAddr: normalized to lowercase packetaddr", func(t *testing.T) {
-		uri := "vless://e81b43d3-bb75-07d0-8b11-f526aef4fef4@example.com:443?type=tcp&encryption=none&security=none&packetEncoding=PacketAddr#t"
-		node, err := ParseNode(uri, nil)
-		if err != nil || node == nil {
-			t.Fatalf("ParseNode: err=%v", err)
-		}
-		if node.Outbound["packet_encoding"] != "packetaddr" {
-			t.Fatalf("packet_encoding: %+v (want lowercased packetaddr)", node.Outbound["packet_encoding"])
-		}
-	})
-
-	t.Run("packetEncoding=XUDP: normalized to lowercase xudp", func(t *testing.T) {
-		uri := "vless://e81b43d3-bb75-07d0-8b11-f526aef4fef4@example.com:443?type=tcp&encryption=none&security=none&packetEncoding=XUDP#t"
-		node, err := ParseNode(uri, nil)
-		if err != nil || node == nil {
-			t.Fatalf("ParseNode: err=%v", err)
-		}
-		if node.Outbound["packet_encoding"] != "xudp" {
-			t.Fatalf("packet_encoding: %+v (want lowercased xudp)", node.Outbound["packet_encoding"])
-		}
-	})
-
-	t.Run("packetEncoding=garbage: dropped with warning", func(t *testing.T) {
-		uri := "vless://e81b43d3-bb75-07d0-8b11-f526aef4fef4@example.com:443?type=tcp&encryption=none&security=none&packetEncoding=somethingweird#t"
-		node, err := ParseNode(uri, nil)
-		if err != nil || node == nil {
-			t.Fatalf("ParseNode: err=%v", err)
-		}
-		if v, has := node.Outbound["packet_encoding"]; has {
-			t.Fatalf("expected packet_encoding to be omitted for unknown value, got %q", v)
-		}
-	})
+	// Приведение регистра (PacketAddr → packetaddr) и снятие мусора ушли из
+	// парсера в санитайзер по реестру (SPEC 131 W2d): парсер теперь маппер и
+	// значений не судит. Проверка живёт в корпусе, где видно ИТОГОВОЕ тело —
+	// uri/vless/packet_encoding_case_normalized и packet_encoding_garbage_dropped.
+	// Здесь остаётся только `none`: это перевод диалекта («нет инкапсуляции»
+	// = ключа нет), и его делает именно маппер.
 
 	t.Run("tcp raw headerType=http → http transport (goida-style)", func(t *testing.T) {
 		uri := "vless://c060fdda-385d-aea1-3982-5a6c92876481@85.133.249.43:58387?encryption=none&type=raw&headerType=http&host=arvancloud.ir&path=%2F&security=none#t"
@@ -1356,11 +1330,14 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 		} else if len(serverPorts) != 1 || serverPorts[0] != "27200:28000" {
 			t.Errorf("Expected server_ports ['27200:28000'], got '%v'", serverPorts)
 		}
-		if outbound["up_mbps"] != 100 {
-			t.Errorf("Expected up_mbps 100, got '%v'", outbound["up_mbps"])
+		// Маппер переносит полосу СТРОКОЙ, как она пришла в ссылке: в число
+		// её приводит санитайзер по реестру (hysteria2.body up_mbps: int),
+		// и проверка итогового типа живёт в корпусе — uri/hysteria2/up_down_mbps.
+		if outbound["up_mbps"] != "100" {
+			t.Errorf("Expected up_mbps \"100\", got '%v'", outbound["up_mbps"])
 		}
-		if outbound["down_mbps"] != 500 {
-			t.Errorf("Expected down_mbps 500, got '%v'", outbound["down_mbps"])
+		if outbound["down_mbps"] != "500" {
+			t.Errorf("Expected down_mbps \"500\", got '%v'", outbound["down_mbps"])
 		}
 
 		tls, ok := outbound["tls"].(map[string]interface{})

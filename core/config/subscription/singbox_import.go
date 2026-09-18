@@ -375,7 +375,6 @@ func parseSingboxEntry(entry map[string]interface{}, cfgIdx, entryIdx int) (*con
 	}
 	// D-119 — reality, переживший санитайз, с отпечатком вне chrome-семейства:
 	// отпечаток уходит как есть, узел предупреждает (SPEC 083 ядра).
-	noteRealityFingerprint(node, ob)
 
 	return node, nil
 }

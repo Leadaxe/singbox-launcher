@@ -87,12 +87,10 @@ func xrayBuildHysteriaFromOutbound(ob map[string]interface{}, label string) (*co
 
 	up := xrayHysteriaMbps(hySettings, settings, "up_mbps", "upMbps", "up", "upmbps")
 	down := xrayHysteriaMbps(hySettings, settings, "down_mbps", "downMbps", "down", "downmbps")
-	if version == 1 {
-		// v1 без скорости не стартует и роняет весь конфиг — см.
-		// hysteriaBandwidthOrDefault в URI-пути, правило общее.
-		outbound["up_mbps"] = hysteriaBandwidthOrDefault(up)
-		outbound["down_mbps"] = hysteriaBandwidthOrDefault(down)
-	} else {
+	{
+		// Дефолт полосы у v1 подставляет РЕЕСТР (default_when, SPEC 131 W2d):
+		// прежде тот же дефолт лежал тремя копиями — здесь, в URI-парсере и в
+		// санитайзере импорта, — и узел получал его не на всех дорогах.
 		if up > 0 {
 			outbound["up_mbps"] = up
 		}

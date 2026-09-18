@@ -53,7 +53,7 @@
         "values": [],
         "allowlist": null,
         "default": "",
-        "aliases": ["peer", "host (третий fallback — только trojan)"],
+        "aliases": ["peer", "host"],
         "maps_to": "tls.server_name",
         "desc_en": "Server name sent in SNI.",
         "desc_ru": "Имя сервера, отправляемое в SNI.",

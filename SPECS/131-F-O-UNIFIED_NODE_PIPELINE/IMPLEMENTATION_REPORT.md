@@ -1,0 +1,40 @@
+# IMPLEMENTATION_REPORT — SPEC 131 · Единый конвейер добавления узла
+
+Статус: **O — реализовано в develop, ждёт релиза** (19.09.2026). Закрывается
+в **C** после релиза лаунчера с этими изменениями (релиз — решение владельца).
+
+## Что сделано
+
+| Волна | Коммит | Содержимое |
+|---|---|---|
+| hotfix | `5627be78` | vmess `security` по набору ядра (−`aes-128-ctr`, +`aes-128-cfb`), гард enum-полей xhttp на трёх входах; 3 кейса корпуса |
+| W0+W1 | `b56a93ad` | ТЗ (SPEC/TASKS/CODEMAP/DRIFT/CORE_SCHEMA), контракт 1.1.0: `body`-секции (384 поля), `on_invalid`/`maps_to`/`advisory`, тексты 69 кодов en+ru, CANON §6/§8, схемы, линтер реестра, D-122, TASKS_LXBOX §24 |
+| — | `7d4053ab` | §24.5 — ответы LxBox |
+| W2b | `946dd4ec` | `configtypes.Warning`, `state.Node.Warnings`, швы обеих воронок, релеи, бэкап, раннер корпуса с объектными warnings |
+| W2a | `e9f7e8eb` | `contract/embed.go`, `core/config/registry`, `core/config/nodeflow` (Sanitize/Emit/GateForCore) |
+| W4 | `2c30fa4c` | `contract/tools/gendocs` → `contract/docs/generated` (23 страницы), workflow `Contract`, `docs/Protocols*.md` → ссылка |
+| W3 | `1ac403f5` | ⚠ в списках, секция «Предупреждения» с ссылкой на якорь кода, превью источника, AWG-форма через конвейер, `internal/nodewarn`, locale |
+| W2c | `95791e73` | все входы через `node_materialize.go`, гейт ядра на сборке, миграция warnings при загрузке, `max_uri_length` 65536, `TestCorpusBodiesPassSingboxCheck`; §24.6 |
+| pin | `ccb33731` | ядро 1.14.1-lx.7 (SPEC 090/091/092 ядра) |
+| W2d | см. лог | парсеры → мапперы (21 правило снято, 6 в реестр, 14 структурных), алиасы из реестра, naive userinfo=password, `nodeflow_pipeline_test.go`, `TestRegistryWarningCodesHaveAProducer`; `W2D_CHANGES.md`, §24.7 |
+
+## Критерии приёмки (SPEC §9)
+
+1. Схемных ветвлений в санитайзере/эмиттере нет — ✅ (`nodeflow` без `if scheme ==`; per-scheme switch в `outbound_generator.go` остался только для `LegacyNodeIdentityHash` и превью цепочек — не на пути тела узла).
+2. Пара ссылка↔JSON даёт равные тело и warnings — ✅ (`uri/vless/junk_pair_with_body` ↔ `body/singbox/vless_junk_pair`, тест `nodeflow_pipeline_test.go`).
+3. Пункты DRIFT закрыты кейсом или DECISIONS — ✅ (D-122; §7.1–7.18; порт вне диапазона в ссылке — форма `dropped[]`, отдельное решение, W2D_CHANGES §6).
+4. `sing-box check` на сводном конфиге из всех кейсов — ✅ (`TestCorpusBodiesPassSingboxCheck`, 239 outbound + 43 endpoint).
+5. ⚠ виден, причина в карточке, ссылка на существующий якорь — ✅ (`warnings.md#<code>` генерируется).
+6. `go generate ./contract/...` идемпотентен, CI-диф — ✅ (workflow `Contract`).
+7. Win7 (go1.20) — ✅ (`go vet -modfile=go.win7.mod` на новых пакетах; без `slices`/`maps`/`min`/`max`/`clear`).
+
+## Проверки
+
+`go build ./...`, `go vet`, `go test ./... -count=1` — зелёные (полный прогон в W2d). Корпус: 281 тело, 21 per-app override (было 24).
+
+## Открытые хвосты
+
+- Порт вне 1–65535 в ссылке: `dropped[]` vs код `port_invalid` на узле — решение владельца.
+- `fp→random` (vless) и `vhttp→h3` (masque) остались в парсерах как кросс-проектные конвенции идентичности (W2D_CHANGES §6), не дефолты ядра.
+- naive userinfo=password — релиз лаунчера не раньше 24.09.2026 (синхронно с LxBox).
+- Закрытие папки в **C** после релиза.

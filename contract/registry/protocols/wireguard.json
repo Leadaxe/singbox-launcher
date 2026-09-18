@@ -382,7 +382,7 @@
       },
       "private_key": {
         "type": "string",
-        "format": "base64",
+        "format": "base64_32",
         "on_invalid": {
           "action": "drop_node",
           "code": "field_missing"
@@ -446,7 +446,7 @@
             },
             "public_key": {
               "type": "string",
-              "format": "base64",
+              "format": "base64_32",
               "on_invalid": {
                 "action": "drop_node",
                 "code": "field_missing"
@@ -458,7 +458,7 @@
             },
             "pre_shared_key": {
               "type": "string",
-              "format": "base64",
+              "format": "base64_32",
               "on_invalid": {
                 "action": "drop",
                 "code": "type_invalid"
@@ -811,7 +811,7 @@
       },
       "header_protection_key": {
         "type": "string",
-        "format": "base64",
+        "format": "base64_32",
         "on_invalid": {
           "action": "drop",
           "code": "awg3_field_invalid"

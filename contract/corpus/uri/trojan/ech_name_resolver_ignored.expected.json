@@ -20,7 +20,10 @@
       },
       "kind": "outbound",
       "label": "ech-full",
-      "scheme": "trojan"
+      "scheme": "trojan",
+      "warnings": [
+        "ech_ignored"
+      ]
     }
   ],
   "v": 1

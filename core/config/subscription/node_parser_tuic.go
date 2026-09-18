@@ -1,33 +1,8 @@
 package subscription
 
 import (
-	"net/url"
-	"strings"
-
 	"singbox-launcher/core/config/configtypes"
-	"singbox-launcher/internal/debuglog"
 )
-
-// isValidTuicCongestionControl reports whether cc is a congestion controller
-// sing-box accepts for TUIC. Anything else is dropped (sing-box rejects unknown
-// values at load time).
-func isValidTuicCongestionControl(cc string) bool {
-	switch cc {
-	case "cubic", "new_reno", "bbr":
-		return true
-	default:
-		return false
-	}
-}
-
-// tuicQueryFlagTrue reports whether a boolean-ish query flag is enabled
-// ("1"/"true"/"yes", case-insensitive). queryGetFold makes the key lookup
-// case-insensitive but not separator-insensitive, so callers pass the exact key
-// (e.g. both "allow_insecure" and "skip-cert-verify").
-func tuicQueryFlagTrue(q url.Values, key string) bool {
-	v := strings.ToLower(strings.TrimSpace(queryGetFold(q, key)))
-	return v == "1" || v == "true" || v == "yes"
-}
 
 // normalizeTuicHeartbeat turns a bare integer (seconds, which many TUIC clients
 // emit) into a sing-box duration string ("10" → "10s"); a value already carrying
@@ -54,44 +29,34 @@ func normalizeTuicHeartbeat(v string) string {
 // which ParseNode places into Query["password"]. TUIC always runs over QUIC, so
 // a TLS block is mandatory.
 func buildTuicOutbound(node *configtypes.ParsedNode, outbound map[string]interface{}) {
+	q := node.Query
+	const scheme = "tuic"
 	if node.UUID != "" {
 		outbound["uuid"] = node.UUID
-	} else {
-		debuglog.WarnLog("Parser: TUIC link missing uuid. URI might be invalid.")
 	}
-	if pw := node.Query.Get("password"); pw != "" {
+	if pw := queryParamRaw(q, scheme, "password"); pw != "" {
 		outbound["password"] = pw
-	} else {
-		debuglog.WarnLog("Parser: TUIC link missing password. URI might be invalid.")
 	}
 
-	// congestion_control (optional): cubic | new_reno | bbr
-	if cc := strings.ToLower(strings.TrimSpace(queryGetFold(node.Query, "congestion_control"))); cc != "" {
-		if isValidTuicCongestionControl(cc) {
-			outbound["congestion_control"] = cc
-		} else {
-			node.AddWarning(WarnTuicCongestionInvalid)
-			debuglog.WarnLog("Parser: unsupported TUIC congestion_control %q (want cubic/new_reno/bbr), dropping.", cc)
-		}
+	// Значения enum'ов уезжают как есть: мусор снимет санитайзер кодами
+	// tuic_congestion_invalid / tuic_udp_relay_mode_invalid, а дефолты ядра
+	// (cubic, native) не материализуются (CANON §2.4, DRIFT §7.7).
+	if cc := queryParam(q, scheme, "congestion_control"); cc != "" {
+		outbound["congestion_control"] = cc
+	}
+	if urm := queryParam(q, scheme, "udp_relay_mode"); urm != "" {
+		outbound["udp_relay_mode"] = urm
 	}
 
-	// udp_relay_mode (optional): native | quic
-	if urm := strings.ToLower(strings.TrimSpace(queryGetFold(node.Query, "udp_relay_mode"))); urm != "" {
-		if urm == "native" || urm == "quic" {
-			outbound["udp_relay_mode"] = urm
-		} else {
-			node.AddWarning(WarnTuicUDPRelayModeInvalid)
-			debuglog.WarnLog("Parser: unsupported TUIC udp_relay_mode %q (want native/quic), dropping.", urm)
-		}
-	}
-
-	// zero-RTT handshake: accept the sing-box key and the common reduce_rtt alias.
-	if tuicQueryFlagTrue(node.Query, "zero_rtt_handshake") || tuicQueryFlagTrue(node.Query, "reduce_rtt") {
+	// Три написания одного флага (zero_rtt_handshake / reduce_rtt / zero_rtt)
+	// объявлены в реестре как алиасы.
+	if queryFlagTrue(q, scheme, "reduce_rtt") {
 		outbound["zero_rtt_handshake"] = true
 	}
 
-	// heartbeat (optional): duration; bare integers are treated as seconds.
-	if hb := strings.TrimSpace(queryGetFold(node.Query, "heartbeat")); hb != "" {
+	// heartbeat: голое число в ссылке — секунды, у ядра это duration-строка
+	// (перевод формы записи, не решение о значении).
+	if hb := queryParam(q, scheme, "heartbeat"); hb != "" {
 		outbound["heartbeat"] = normalizeTuicHeartbeat(hb)
 	}
 
@@ -101,40 +66,16 @@ func buildTuicOutbound(node *configtypes.ParsedNode, outbound map[string]interfa
 // buildTuicTLS builds the (mandatory) TLS block for a TUIC node.
 func buildTuicTLS(node *configtypes.ParsedNode, outbound map[string]interface{}) {
 	q := node.Query
-	tlsData := map[string]interface{}{
-		"enabled": true,
-	}
+	const scheme = "tuic"
+	tlsData := map[string]interface{}{"enabled": true}
 
-	// Set SNI if provided and looks like a hostname/IP (skip emoji/invalid),
-	// otherwise fall back to the server address.
-	sni := queryGetFold(q, "sni")
-	if sni != "" && sni != "🔒" && (strings.Contains(sni, ".") || strings.Contains(sni, ":")) {
+	if sni := tlsServerNameFromQuery(q, scheme, node.Server); sni != "" {
 		tlsData["server_name"] = sni
-	} else if node.Server != "" {
-		tlsData["server_name"] = node.Server
 	}
-
-	// insecure: tlsInsecureTrue covers insecure/allowInsecure; TUIC subscriptions
-	// commonly use the snake_case allow_insecure / skip-cert-verify spellings,
-	// which queryGetFold does NOT fold to those keys — check them explicitly.
-	if tlsInsecureTrue(q) ||
-		tuicQueryFlagTrue(q, "allow_insecure") ||
-		tuicQueryFlagTrue(q, "skip-cert-verify") ||
-		tuicQueryFlagTrue(q, "skipCertVerify") {
-		tlsData["insecure"] = true
-	}
-
-	// No utls on QUIC — see the same note in node_parser_hysteria2.go
-	// (SPEC 103, D-033).
-
-	// ALPN (TUIC default is ["h3"]; subscriptions often pass e.g. "h3,spdy/3.1").
-	if alpn := queryGetFold(q, "alpn"); alpn != "" {
-		alpnList := strings.Split(alpn, ",")
-		for i := range alpnList {
-			alpnList[i] = strings.TrimSpace(alpnList[i])
-		}
-		tlsData["alpn"] = alpnList
-	}
+	// uTLS на QUIC не читается — ядро отпечаток не применяет (D-033).
+	// ALPN и insecure (девять написаний) — общие: дефолт ["h3"] НЕ пишем,
+	// это дефолт ядра (DRIFT §7.7).
+	applyTLSQueryExtras(q, scheme, tlsData)
 
 	outbound["tls"] = tlsData
 }

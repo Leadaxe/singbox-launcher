@@ -312,6 +312,20 @@ func (s *sanitizer) object(prefix string, order []string, fields map[string]*reg
 			continue
 		}
 		if !present {
+			// Дефолт, который реестр велит МАТЕРИАЛИЗОВАТЬ (default_when).
+			// Обычный `default` сюда не попадает: дефолты ядра в тело не
+			// пишутся (CANON §2.4). Сюда попадают только поля, без которых
+			// ядро не собирает outbound вовсе — у hysteria v1 отсутствующий
+			// up_mbps даёт «missing upload speed» фаталом на весь конфиг.
+			if dw := f.DefaultWhen; dw != nil && dw.Absent && dw.Value != nil {
+				if v, ok := coerce(f, dw.Value); ok {
+					out[name] = v
+					if dw.Code != "" {
+						s.warn(dw.Code, path, nil, false, map[string]string{"path": path})
+					}
+					continue
+				}
+			}
 			if f.Required {
 				s.requiredFailed(path, codeOr(f.Code, "field_missing"))
 			}
@@ -417,8 +431,35 @@ func (s *sanitizer) value(path, prefix string, f *registry.Field, raw interface{
 	if !s.constraintsOK(f, v) {
 		return s.onInvalid(path, f, raw)
 	}
-	s.advisory(path, f, v)
+	s.noteNormalized(path, f, raw, v)
+	s.advisory(path, prefix, f, v)
 	return v, true
+}
+
+// noteNormalized сообщает, что normalize ВЫБРОСИЛ часть значения.
+//
+// Обрезка пробелов и смена регистра деградацией не считаются: ядро читает
+// такое значение одинаково, и код на каждой второй ноде был бы шумом.
+// Сравнение поэтому идёт с уже обрезанной и приведённой формой — код ставится
+// только там, где исчезли символы (hex_only на short_id: `0x1a2` → `01a2` —
+// ДРУГОЙ идентификатор, и сервер такой узел не узнает).
+func (s *sanitizer) noteNormalized(path string, f *registry.Field, raw, v interface{}) {
+	if f.NormalizeCode == "" {
+		return
+	}
+	before, ok := raw.(string)
+	if !ok {
+		return
+	}
+	after, ok := v.(string)
+	if !ok || after == strings.ToLower(strings.TrimSpace(before)) {
+		return
+	}
+	params := map[string]string{"path": path}
+	if !f.Secret {
+		params["value"] = displayValue(before)
+	}
+	s.warn(f.NormalizeCode, path, before, f.Secret, params)
 }
 
 // objectField обрабатывает вложенный объект: по варианту дискриминатора
@@ -563,7 +604,15 @@ func (s *sanitizer) relationsOK(path, prefix string, f *registry.Field) bool {
 		if rq.Path == "" {
 			continue
 		}
-		if s.pathPresent(rq.Path, prefix) {
+		if rq.Equals != nil {
+			// Требование по ЗНАЧЕНИЮ соседа: поле осмыслено только при
+			// таком-то варианте (границы размера пакета — только у gecko).
+			// Ядро лишнее поле молча игнорирует, но в теле узла оно ломает
+			// сравнение с тем же узлом, пришедшим другим входом.
+			if s.pathEquals(rq.Path, prefix, rq.Equals) {
+				continue
+			}
+		} else if s.pathPresent(rq.Path, prefix) {
 			continue
 		}
 		s.warn(codeOr(rq.Code, "field_requires"), path, nil, false,
@@ -609,6 +658,37 @@ func (s *sanitizer) pathPresent(path, prefix string) bool {
 	return false
 }
 
+// pathEquals — равно ли значение по пути ожидаемому.
+//
+// Читается из ЧИСТОЙ карты, если поле уже обошли, иначе из исходной: у
+// дискриминатора объекта (obfs.type) обход идёт раньше зависимых полей, и
+// его приведённое значение уже готово.
+func (s *sanitizer) pathEquals(path, prefix string, want interface{}) bool {
+	candidates := []string{path}
+	if prefix != "" {
+		if i := strings.Index(path, "."); i >= 0 {
+			head := path[:i]
+			if head == prefix || strings.HasSuffix(prefix, "."+head) {
+				candidates = append(candidates, joinPath(prefix, path[i+1:]))
+			}
+		}
+		candidates = append(candidates, joinPath(prefix, path))
+	}
+	for _, p := range candidates {
+		if s.removed[p] {
+			continue
+		}
+		parts := strings.Split(p, ".")
+		if v, ok := lookupPath(s.cleanRoot, parts); ok {
+			return sameValue(want, v)
+		}
+		if v, ok := lookupPath(s.srcRoot, parts); ok {
+			return sameValue(want, v)
+		}
+	}
+	return false
+}
+
 func (s *sanitizer) lookupNonEmpty(path string) bool {
 	if s.removed[path] {
 		// Поле снято запретом по схеме — для связей его нет.
@@ -640,20 +720,59 @@ func lookupPath(m map[string]interface{}, parts []string) (interface{}, bool) {
 }
 
 // advisory ставит информационный код на значении, которое ядро принимает, но
-// человеку о нём знать стоит (legacy-шифры shadowsocks).
-func (s *sanitizer) advisory(path string, f *registry.Field, v interface{}) {
+// человеку о нём знать стоит (legacy-шифры shadowsocks, отпечаток без
+// гибридного шара под REALITY).
+//
+// Три формы правила, в порядке разбора:
+//
+//   - `values` — код на перечисленных значениях;
+//   - `except` — код на ЛЮБОМ значении, кроме перечисленных (правило вида
+//     «все, кто не умеет X»); пустое значение под него не попадает — это
+//     «не задано», а не выбор автора ссылки;
+//   - `when` — условие по соседнему полю: без него правило сработало бы у
+//     узлов, к которым отношения не имеет.
+func (s *sanitizer) advisory(path, prefix string, f *registry.Field, v interface{}) {
 	for _, a := range f.Advisory {
-		for _, want := range a.Values {
-			if sameValue(want, v) {
-				params := map[string]string{"path": path}
-				if !f.Secret {
-					params["value"] = displayValue(v)
-				}
-				s.warn(a.Code, path, v, f.Secret, params)
-				return
+		if !advisoryValueMatches(a, v) {
+			continue
+		}
+		if a.When != nil && a.When.Path != "" {
+			want := true
+			if a.When.Present != nil {
+				want = *a.When.Present
+			}
+			if s.pathPresent(a.When.Path, prefix) != want {
+				continue
 			}
 		}
+		params := map[string]string{"path": path}
+		if !f.Secret {
+			params["value"] = displayValue(v)
+		}
+		s.warn(a.Code, path, v, f.Secret, params)
+		return
 	}
+}
+
+// advisoryValueMatches — подходит ли значение под values/except правила.
+func advisoryValueMatches(a registry.Advisory, v interface{}) bool {
+	for _, want := range a.Values {
+		if sameValue(want, v) {
+			return true
+		}
+	}
+	if len(a.Except) == 0 {
+		return false
+	}
+	if str, ok := v.(string); ok && str == "" {
+		return false
+	}
+	for _, skip := range a.Except {
+		if sameValue(skip, v) {
+			return false
+		}
+	}
+	return true
 }
 
 // onInvalid исполняет правило on_invalid: снять, подставить или отбросить
@@ -887,6 +1006,17 @@ func formatOK(format, v string) bool {
 		}
 		_, err := base64.RawStdEncoding.DecodeString(v)
 		return err == nil
+	case "base64_32":
+		// Ключ Curve25519/X25519: 32 байта ПОСЛЕ декода (REALITY public_key,
+		// ключи wireguard и masque). Просто «декодируется» здесь мало:
+		// `enabled` и `true` — валидный base64 на 5 и 3 байта, и ядро на них
+		// отвечает «invalid public_key» отказом ВСЕГО конфига (DRIFT §2(b2)).
+		// Длина считается по декоду, а не по строке: один и тот же ключ
+		// записывают base64url без padding (43 символа) и base64std с ним (44).
+		if v == "" {
+			return true
+		}
+		return decodedKeyLen(v) == 32
 	case "host":
 		// Пустую строку решает НЕ формат, а обязательность поля, и решает её
 		// вызывающий (constraintsOK): у обязательного адреса пустое значение
@@ -968,4 +1098,25 @@ func validPercentEscapes(v string) bool {
 		i += 2
 	}
 	return true
+}
+
+// decodedKeyLen — длина ключа после декода base64, -1 если не декодируется.
+//
+// Перебираются все четыре написания (url/std × с padding и без): один и тот
+// же 32-байтный ключ панели пишут по-разному, и отвергнуть рабочий узел
+// из-за формы записи нельзя.
+func decodedKeyLen(v string) int {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
+	}
+	for _, enc := range []*base64.Encoding{
+		base64.StdEncoding, base64.URLEncoding,
+		base64.RawStdEncoding, base64.RawURLEncoding,
+	} {
+		if b, err := enc.DecodeString(v); err == nil {
+			return len(b)
+		}
+	}
+	return -1
 }

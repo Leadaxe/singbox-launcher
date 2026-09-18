@@ -35,7 +35,7 @@ import (
 
 const (
 	registryBodyDir = "../../contract/registry"
-	coreSchemaDraft = "../../SPECS/131-F-N-UNIFIED_NODE_PIPELINE/core_schema.draft.json"
+	coreSchemaDraft = "../../SPECS/131-F-O-UNIFIED_NODE_PIPELINE/core_schema.draft.json"
 )
 
 // registryFieldTypes — словарь типов поля из SPEC 131 §4.
@@ -74,7 +74,7 @@ var registryFieldTypes = map[string]bool{
 // "queryInHeader", и нормализация к lowercase ломает рабочий узел
 // (DRIFT §9.2).
 var registryNormalizeModes = map[string]bool{
-	"trim": true, "lower": true, "trim_lower": true,
+	"trim": true, "lower": true, "trim_lower": true, "hex_only": true,
 }
 
 // registryOnInvalidActions — допустимые действия on_invalid.
@@ -83,7 +83,7 @@ var registryOnInvalidActions = map[string]bool{
 }
 
 // registryPendingCodes — коды, которых в warnings.json ещё нет: они
-// объявлены в SPECS/131-F-N-UNIFIED_NODE_PIPELINE/new_codes.md и доедут
+// объявлены в SPECS/131-F-O-UNIFIED_NODE_PIPELINE/new_codes.md и доедут
 // вместе с правкой реестра кодов (её ведёт отдельный агент).
 //
 // Список обязан пустеть: код, задержавшийся здесь, UI нарисовать не сможет.
@@ -95,6 +95,10 @@ var registryPendingCodes = map[string]bool{
 var registryFieldFormats = map[string]bool{
 	"uuid": true, "hex": true, "base64": true, "host": true,
 	"port": true, "ipv4": true, "cidr": true,
+	// SPEC 131 W2d: ключ Curve25519/X25519 — 32 байта ПОСЛЕ декода. Одного
+	// «декодируется» мало: `enabled` и `true` — валидный base64, и на них
+	// ядро отвечает «invalid public_key» отказом всего конфига.
+	"base64_32": true,
 	// SPEC 131 W2c: путь, который ядро разбирает через url.Parse
 	// (ws/httpupgrade/http). Битое percent-кодирование там = «invalid URL
 	// escape» и отказ ВСЕГО конфига, а не одного узла.
@@ -104,25 +108,35 @@ var registryFieldFormats = map[string]bool{
 // bodyField — поле схемы тела. Разбирается лениво: вложенность описывается
 // теми же структурами, а неизвестные атрибуты ловит проверка по схеме.
 type bodyField struct {
-	Type         string                `json:"type"`
-	Ref          string                `json:"ref"`
-	Inline       bool                  `json:"inline"`
-	Items        *bodyField            `json:"items"`
-	Order        []string              `json:"order"`
-	Fields       map[string]*bodyField `json:"fields"`
-	Values       []interface{}         `json:"values"`
-	Format       string                `json:"format"`
-	Code         string                `json:"code"`
-	ForbiddenFor []string              `json:"forbidden_for"`
-	AllowedFor   []string              `json:"allowed_for"`
-	Conflicts    []bodyRelation        `json:"conflicts"`
-	Requires     []bodyRelation        `json:"requires"`
-	OnInvalid    *bodyOnInvalid        `json:"on_invalid"`
-	Advisory     []bodyAdvisory        `json:"advisory"`
-	Normalize    string                `json:"normalize"`
-	Skip         string                `json:"skip"`
-	DescEn       string                `json:"desc_en"`
-	DescRu       string                `json:"desc_ru"`
+	Type          string                `json:"type"`
+	Ref           string                `json:"ref"`
+	Inline        bool                  `json:"inline"`
+	Items         *bodyField            `json:"items"`
+	Order         []string              `json:"order"`
+	Fields        map[string]*bodyField `json:"fields"`
+	Values        []interface{}         `json:"values"`
+	Format        string                `json:"format"`
+	Code          string                `json:"code"`
+	ForbiddenFor  []string              `json:"forbidden_for"`
+	AllowedFor    []string              `json:"allowed_for"`
+	Conflicts     []bodyRelation        `json:"conflicts"`
+	Requires      []bodyRelation        `json:"requires"`
+	OnInvalid     *bodyOnInvalid        `json:"on_invalid"`
+	Advisory      []bodyAdvisory        `json:"advisory"`
+	Normalize     string                `json:"normalize"`
+	NormalizeCode string                `json:"normalize_code"`
+	DefaultWhen   *bodyDefaultWhen      `json:"default_when"`
+	Skip          string                `json:"skip"`
+	DescEn        string                `json:"desc_en"`
+	DescRu        string                `json:"desc_ru"`
+}
+
+// bodyDefaultWhen — дефолт, который реестр велит МАТЕРИАЛИЗОВАТЬ явно
+// (SPEC 131 §3.2): обычные `default` в тело не пишутся.
+type bodyDefaultWhen struct {
+	Absent bool        `json:"absent"`
+	Value  interface{} `json:"value"`
+	Code   string      `json:"code"`
 }
 
 // bodyOnInvalid — правило SPEC 131 §3.2: что делать со значением, не
@@ -134,9 +148,12 @@ type bodyOnInvalid struct {
 }
 
 // bodyAdvisory — значения enum, которые ядро принимает, но узел получает
-// информационный код (ss legacy-шифры → ss_method_legacy, D-122).
+// информационный код (ss legacy-шифры → ss_method_legacy, D-122;
+// отпечаток без гибридного шара под REALITY → reality_fp_not_chrome, D-119).
 type bodyAdvisory struct {
 	Values []interface{} `json:"values"`
+	Except []interface{} `json:"except"`
+	When   *bodyRelation `json:"when"`
 	Code   string        `json:"code"`
 }
 
@@ -389,17 +406,41 @@ func checkField(t *testing.T, where, path string, f *bodyField, codes map[string
 	if f.Normalize != "" && !registryNormalizeModes[f.Normalize] {
 		t.Errorf("%s: normalize %q вне словаря SPEC 131 §4", full, f.Normalize)
 	}
+	if f.NormalizeCode != "" {
+		if f.Normalize == "" {
+			t.Errorf("%s: normalize_code без normalize — сообщать не о чем", full)
+		}
+		if !codes[f.NormalizeCode] && !registryPendingCodes[f.NormalizeCode] {
+			t.Errorf("%s: normalize_code %q не объявлен в warnings.json", full, f.NormalizeCode)
+		}
+	}
+	if dw := f.DefaultWhen; dw != nil {
+		if !dw.Absent {
+			t.Errorf("%s: default_when без absent — иных условий санитайзер не знает", full)
+		}
+		if dw.Value == nil {
+			t.Errorf("%s: default_when без value — подставлять нечего", full)
+		}
+		if dw.Code != "" && !codes[dw.Code] && !registryPendingCodes[dw.Code] {
+			t.Errorf("%s: default_when.code %q не объявлен в warnings.json", full, dw.Code)
+		}
+	}
 	for i, adv := range f.Advisory {
 		if adv.Code == "" {
 			t.Errorf("%s: advisory[%d] без code", full, i)
 		} else if !codes[adv.Code] && !registryPendingCodes[adv.Code] {
 			t.Errorf("%s: advisory-код %q не объявлен в warnings.json", full, adv.Code)
 		}
-		if len(adv.Values) == 0 {
-			t.Errorf("%s: advisory[%d] без values", full, i)
+		if len(adv.Values) == 0 && len(adv.Except) == 0 {
+			t.Errorf("%s: advisory[%d] без values и без except", full, i)
 		}
-		// advisory-значение обязано быть в enum: иначе оно не «принимается с кодом», а снимается.
-		for _, av := range adv.Values {
+		if len(adv.Values) > 0 && len(adv.Except) > 0 {
+			t.Errorf("%s: advisory[%d] объявляет и values, и except — правило читается двояко", full, i)
+		}
+		// advisory-значение обязано быть в enum: иначе оно не «принимается с
+		// кодом», а снимается. То же и для except: исключение из правила
+		// «все, кроме этих» обязано быть значением, которое вообще бывает.
+		for _, av := range append(append([]interface{}{}, adv.Values...), adv.Except...) {
 			found := false
 			for _, v := range f.Values {
 				if fmt.Sprintf("%v", v) == fmt.Sprintf("%v", av) {

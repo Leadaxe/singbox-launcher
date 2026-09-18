@@ -191,7 +191,17 @@ func walkField(out map[string][]usage, scheme, path string, f *registry.Field) {
 		add(f.OnInvalid.Code, "on_invalid: "+f.OnInvalid.Action)
 	}
 	for _, a := range f.Advisory {
+		if len(a.Except) > 0 {
+			add(a.Code, "advisory кроме / except "+scalarList(a.Except))
+			continue
+		}
 		add(a.Code, "advisory "+scalarList(a.Values))
+	}
+	if dw := f.DefaultWhen; dw != nil && dw.Absent && dw.Code != "" {
+		add(dw.Code, "default_when absent")
+	}
+	if f.NormalizeCode != "" {
+		add(f.NormalizeCode, "normalize "+f.Normalize)
 	}
 	for _, c := range f.Conflicts {
 		add(c.Code, "conflicts "+c.With)

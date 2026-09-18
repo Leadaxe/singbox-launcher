@@ -19,44 +19,38 @@ func TestRealityFingerprintAllEntryPaths(t *testing.T) {
 	const pbk = "AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw"
 
 	cases := []struct {
-		name     string
-		input    string
-		wantWarn bool // ждём ли reality_fp_not_chrome на узле
-		wantFP   string
+		name   string
+		input  string
+		wantFP string
 	}{
 		{
 			// firefox и safari с ядра lx.3 несут гибридный шар — подсказки нет.
-			name:     "uri vless firefox",
-			input:    "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?security=reality&fp=firefox&pbk=" + pbk + "&sid=ab#n",
-			wantWarn: false,
-			wantFP:   "firefox",
+			name:   "uri vless firefox",
+			input:  "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?security=reality&fp=firefox&pbk=" + pbk + "&sid=ab#n",
+			wantFP: "firefox",
 		},
 		{
 			// Пустой fp у vless — наш дефолт `random` (D-009). Warning'а нет
 			// (от явного fp=random неотличим), но на сборке он всё равно
 			// становится chrome: против Xray >= v26.9.8 random мёртв в 4 из 5.
-			name:     "uri vless empty fp defaults to random then healed",
-			input:    "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?security=reality&pbk=" + pbk + "&sid=ab#n",
-			wantWarn: false,
-			wantFP:   "chrome",
+			name:   "uri vless empty fp defaults to random then healed",
+			input:  "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?security=reality&pbk=" + pbk + "&sid=ab#n",
+			wantFP: "chrome",
 		},
 		{
-			name:     "uri vless chrome untouched",
-			input:    "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?security=reality&fp=chrome_pq&pbk=" + pbk + "&sid=ab#n",
-			wantWarn: false,
-			wantFP:   "chrome_pq",
+			name:   "uri vless chrome untouched",
+			input:  "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?security=reality&fp=chrome_pq&pbk=" + pbk + "&sid=ab#n",
+			wantFP: "chrome_pq",
 		},
 		{
-			name:     "uri anytls safari",
-			input:    "anytls://pass@example-1.com:443?security=reality&fp=safari&pbk=" + pbk + "&sid=ab#n",
-			wantWarn: false,
-			wantFP:   "safari",
+			name:   "uri anytls safari",
+			input:  "anytls://pass@example-1.com:443?security=reality&fp=safari&pbk=" + pbk + "&sid=ab#n",
+			wantFP: "safari",
 		},
 		{
-			name:     "uri vless ios still hinted",
-			input:    "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?security=reality&fp=ios&pbk=" + pbk + "&sid=ab#n",
-			wantWarn: true,
-			wantFP:   "ios",
+			name:   "uri vless ios still hinted",
+			input:  "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?security=reality&fp=ios&pbk=" + pbk + "&sid=ab#n",
+			wantFP: "ios",
 		},
 	}
 
@@ -66,7 +60,7 @@ func TestRealityFingerprintAllEntryPaths(t *testing.T) {
 			if err != nil || node == nil {
 				t.Fatalf("ParseNode(%q): node=%v err=%v", tc.input, node, err)
 			}
-			assertRealityHealed(t, node.Outbound, node.Warnings, tc.wantWarn, tc.wantFP)
+			assertRealityHealed(t, node.Outbound, tc.wantFP)
 		})
 	}
 
@@ -79,7 +73,7 @@ func TestRealityFingerprintAllEntryPaths(t *testing.T) {
 			`"streamSettings":{"network":"tcp","security":"reality",` +
 			`"realitySettings":{"serverName":"www.example-3.com","fingerprint":"ios","publicKey":"` + pbk + `","shortId":"ab"}}}]}]`
 		node := parseBodySingleNode(t, raw)
-		assertRealityHealed(t, node.Outbound, node.Warnings, true, "ios")
+		assertRealityHealed(t, node.Outbound, "ios")
 	})
 
 	t.Run("singbox json import ios", func(t *testing.T) {
@@ -89,7 +83,7 @@ func TestRealityFingerprintAllEntryPaths(t *testing.T) {
 			`"utls":{"enabled":true,"fingerprint":"ios"},` +
 			`"reality":{"enabled":true,"public_key":"` + pbk + `","short_id":"ab"}}}]}`
 		node := parseBodySingleNode(t, raw)
-		assertRealityHealed(t, node.Outbound, node.Warnings, true, "ios")
+		assertRealityHealed(t, node.Outbound, "ios")
 	})
 }
 
@@ -108,20 +102,16 @@ func parseBodySingleNode(t *testing.T, body string) *configtypes.ParsedNode {
 }
 
 // assertRealityHealed прогоняет outbound через сборочный шаг и сверяет
-// отпечаток с ожиданием; warnings проверяются отдельно — они с узла, а не с
-// конфига.
-func assertRealityHealed(t *testing.T, outbound map[string]interface{}, warnings []configtypes.Warning, wantWarn bool, wantFP string) {
+// отпечаток с ожиданием.
+//
+// Код reality_fp_not_chrome здесь БОЛЬШЕ НЕ ПРОВЕРЯЕТСЯ: с SPEC 131 W2d его
+// ставит санитайзер по правилу реестра (tls.json, advisory у
+// utls.fingerprint), а не парсер, и увидеть его можно только на выходе
+// конвейера — core/config/nodeflow_pipeline_test.go. Здесь остаётся ровно то,
+// за что отвечает сборка: явный отпечаток узла уходит в конфиг КАК ЕСТЬ, а
+// пустой и наш неявный `random` становятся chrome.
+func assertRealityHealed(t *testing.T, outbound map[string]interface{}, wantFP string) {
 	t.Helper()
-
-	gotWarn := false
-	for _, w := range warnings {
-		if w.Code == subscription.WarnRealityFPNotChrome {
-			gotWarn = true
-		}
-	}
-	if gotWarn != wantWarn {
-		t.Errorf("warning reality_fp_not_chrome: got %v, want %v (warnings=%v)", gotWarn, wantWarn, warnings)
-	}
 
 	raw, err := json.Marshal(outbound)
 	if err != nil {

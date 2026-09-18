@@ -20,7 +20,9 @@
       "scheme": "vless",
       "warnings": [
         {
-          "code": "packet_encoding_unknown"
+          "code": "packet_encoding_unknown",
+          "path": "packet_encoding",
+          "value": "somethingweird"
         }
       ]
     }

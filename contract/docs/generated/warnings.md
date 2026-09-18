@@ -537,6 +537,8 @@ _Где возникает / where it comes from:_
 
 | Схема / scheme | Путь / path | Правило / rule |
 |---|---|---|
+| `hysteria2` | `obfs.max_packet_size` | requires obfs.type |
+| `hysteria2` | `obfs.min_packet_size` | requires obfs.type |
 | `masque` | `private_key` | requires public_key |
 | `masque` | `public_key` | requires private_key |
 | `tls` | `client_certificate` | requires tls.client_key |
@@ -687,7 +689,9 @@ Obfuscation of type {type} was set without a password. The whole obfuscation blo
 
 _Где возникает / where it comes from:_
 
-- уровень узла или подписки — код ставится не правилом поля (no field in the registry points at this code: it is raised at node or subscription level)
+| Схема / scheme | Путь / path | Правило / rule |
+|---|---|---|
+| `hysteria2` | `obfs.password` | code |
 
 <a id="obfs_unknown"></a>
 ### obfs_unknown
@@ -785,7 +789,9 @@ The node uses REALITY with uTLS fingerprint {value}, which was kept as is. Moder
 
 _Где возникает / where it comes from:_
 
-- уровень узла или подписки — код ставится не правилом поля (no field in the registry points at this code: it is raised at node or subscription level)
+| Схема / scheme | Путь / path | Правило / rule |
+|---|---|---|
+| `tls` | `utls.fingerprint` | advisory кроме / except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random` |
 
 <a id="reality_key_share_invalid"></a>
 ### reality_key_share_invalid
@@ -836,6 +842,7 @@ _Где возникает / where it comes from:_
 
 | Схема / scheme | Путь / path | Правило / rule |
 |---|---|---|
+| `tls` | `reality.short_id` | normalize hex_only |
 | `tls` | `reality.short_id` | on_invalid: drop |
 
 <a id="selector_as_auto"></a>

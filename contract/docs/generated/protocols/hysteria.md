@@ -46,9 +46,9 @@
 | `server_ports` | listable_string | — | — | — | — | — | Port ranges used for port hopping. | Диапазоны портов для прыжков по портам. |
 | `hop_interval` | duration | — | — | — | — | — | Interval between port hops. | Интервал между прыжками по портам. |
 | `up` | string | — | — | — | — | — | Upload bandwidth, number or string with units. | Скорость отдачи: число или строка с единицами. |
-| `up_mbps` | int | `0–…` | — | — | drop [`type_invalid`](../warnings.md#type_invalid) | — | Upload bandwidth in Mbps. | Скорость отдачи в Мбит/с. |
+| `up_mbps` | int | `0–…` | — | — | drop [`type_invalid`](../warnings.md#type_invalid); отсутствует → / absent → `100` | — | Upload bandwidth in Mbps. | Скорость отдачи в Мбит/с. |
 | `down` | string | — | — | — | — | — | Download bandwidth, number or string with units. | Скорость приёма: число или строка с единицами. |
-| `down_mbps` | int | `0–…` | — | — | drop [`type_invalid`](../warnings.md#type_invalid) | — | Download bandwidth in Mbps. | Скорость приёма в Мбит/с. |
+| `down_mbps` | int | `0–…` | — | — | drop [`type_invalid`](../warnings.md#type_invalid); отсутствует → / absent → `100` | — | Download bandwidth in Mbps. | Скорость приёма в Мбит/с. |
 | `obfs` | string, secret | — | — | — | — | — | Obfuscation password. | Пароль обфускации. |
 | `auth` | string, secret | формат / format `base64` | — | — | drop [`type_invalid`](../warnings.md#type_invalid) | — | Authentication payload, base64 of raw bytes. | Данные аутентификации, base64 сырых байт. |
 | `auth_str` | string, secret | — | — | — | — | — | Authentication payload as a plain string. | Данные аутентификации обычной строкой. |

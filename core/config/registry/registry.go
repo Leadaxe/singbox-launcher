@@ -39,22 +39,34 @@ type Field struct {
 	Len       *int          `json:"len"`
 	LenParity string        `json:"len_parity"`
 	Normalize string        `json:"normalize"`
+	// NormalizeCode — код, который ставится, когда normalize РЕАЛЬНО изменил
+	// значение (не просто обрезал пробелы или регистр). Нужен чистке, которая
+	// теряет данные: hex_only выбрасывает не-hex руны, и `0x1a2` становится
+	// `01a2` — другим short_id. Сказать об этом обязаны все входы, а не
+	// только URI-путь (DRIFT §2(b), «код ставить на всех путях»).
+	NormalizeCode string `json:"normalize_code"`
 
 	// Поведение.
-	Required      bool        `json:"required"`
-	Secret        bool        `json:"secret"`
-	Tristate      bool        `json:"tristate"`
-	AllOrNothing  bool        `json:"all_or_nothing"`
-	Managed       bool        `json:"managed"`
-	Deprecated    bool        `json:"deprecated"`
-	Skip          string      `json:"skip"`
-	Default       interface{} `json:"default"`
-	OnInvalid     *OnInvalid  `json:"on_invalid"`
-	Advisory      []Advisory  `json:"advisory"`
-	DropAlways    bool        `json:"drop_always"`
-	Aliases       interface{} `json:"aliases"`
-	DefaultWhen   interface{} `json:"default_when"`
-	ForbiddenWhen *Relation   `json:"forbidden_when"`
+	Required     bool        `json:"required"`
+	Secret       bool        `json:"secret"`
+	Tristate     bool        `json:"tristate"`
+	AllOrNothing bool        `json:"all_or_nothing"`
+	Managed      bool        `json:"managed"`
+	Deprecated   bool        `json:"deprecated"`
+	Skip         string      `json:"skip"`
+	Default      interface{} `json:"default"`
+	OnInvalid    *OnInvalid  `json:"on_invalid"`
+	Advisory     []Advisory  `json:"advisory"`
+	DropAlways   bool        `json:"drop_always"`
+	Aliases      interface{} `json:"aliases"`
+	// DefaultWhen — дефолт, который реестр велит МАТЕРИАЛИЗОВАТЬ явно
+	// (SPEC §3.2). Обычные `default` в тело не пишутся: дефолты ядра не
+	// материализуются. Исключение — поля, без которых ядро не собирает
+	// outbound вовсе: у hysteria v1 отсутствующий up_mbps даёт «missing
+	// upload speed» ФАТАЛОМ НА ВЕСЬ config.json, и ссылки сплошь и рядом
+	// скорость не несут.
+	DefaultWhen   *DefaultWhen `json:"default_when"`
+	ForbiddenWhen *Relation    `json:"forbidden_when"`
 
 	// Связи со схемой и другими полями.
 	AllowedFor   []string   `json:"allowed_for"`
@@ -88,9 +100,28 @@ type OnInvalid struct {
 }
 
 // Advisory — значения, которые ядро принимает, но узел получает код.
+//
+// `except` — значения-исключения; `when` — условие по соседнему полю. Пара
+// нужна правилам вида «отпечаток вне гибридного набора, НО только когда у
+// узла есть reality» (reality_fp_not_chrome, D-119): перечислять в `values`
+// весь остальной словарь значило бы дублировать enum, а без условия код
+// вешался бы на каждый plain-TLS узел.
 type Advisory struct {
 	Values []interface{} `json:"values"`
+	Except []interface{} `json:"except"`
+	When   *Relation     `json:"when"`
 	Code   string        `json:"code"`
+}
+
+// DefaultWhen — правило явной подстановки дефолта.
+//
+// `absent: true` — подставить, когда поля нет вовсе (единственная форма,
+// которая сегодня нужна). `value` — что подставить; `code` — код, которым об
+// этом сообщить, если сообщать стоит.
+type DefaultWhen struct {
+	Absent bool        `json:"absent"`
+	Value  interface{} `json:"value"`
+	Code   string      `json:"code"`
 }
 
 // Relation — связь поля с другим полем (conflicts / requires / forbidden_when).
@@ -98,7 +129,12 @@ type Relation struct {
 	With    string `json:"with"`
 	Path    string `json:"path"`
 	Present *bool  `json:"present"`
-	Code    string `json:"code"`
+	// Equals — связь не по наличию соседа, а по его ЗНАЧЕНИЮ: поле осмыслено
+	// только при таком-то варианте дискриминатора (obfs.min_packet_size есть
+	// только у gecko). Без него такие пары описывались бы «наличием», а
+	// дискриминатор присутствует всегда.
+	Equals interface{} `json:"equals"`
+	Code   string      `json:"code"`
 }
 
 // section — секция body/common одного файла реестра, как она лежит на диске.
@@ -177,7 +213,14 @@ type Registry struct {
 	limits   map[string]Limit
 	lists    map[string][]string
 	mapsTo   map[string]map[string][]string
-	schemes  []string
+	// aliases — имена, под которыми параметр ссылки встречается в реальных
+	// подписках: схема → канонический параметр → все его написания
+	// (канон первым). Таблица живёт в реестре (`uri.query.<param>.aliases`),
+	// а не в коде парсера: до SPEC 131 W2d набор написаний `insecure`
+	// отличался в шести парсерах, и один и тот же узел терял `allow_insecure`
+	// на одном пути и принимал на другом (DRIFT §2(a)).
+	aliases map[string]map[string][]string
+	schemes []string
 	// singboxTypes — schema → тип узла в config.json ("ss" → "shadowsocks").
 	// Тип пишет СБОРКА, а не тело (см. buildManagedKeys в nodeflow), поэтому
 	// материализация тела берёт его отсюда, а не из входной карты: иначе
@@ -242,6 +285,7 @@ func Load() (*Registry, error) {
 		limits:       map[string]Limit{},
 		lists:        map[string][]string{},
 		mapsTo:       map[string]map[string][]string{},
+		aliases:      map[string]map[string][]string{},
 		singboxTypes: map[string]string{},
 		schemeByType: map[string]string{},
 	}
@@ -269,6 +313,7 @@ func Load() (*Registry, error) {
 		reg.bodies[scheme] = body
 		reg.schemes = append(reg.schemes, scheme)
 		reg.mapsTo[scheme] = collectMapsTo(f.Raw)
+		reg.aliases[scheme] = collectAliases(f.Raw)
 		sbType := strings.TrimSpace(rawString(f.Raw, "singbox_type"))
 		if sbType != "" && !strings.Contains(sbType, "|") {
 			reg.singboxTypes[scheme] = sbType
@@ -287,6 +332,7 @@ func Load() (*Registry, error) {
 			}
 			reg.bodies[alias] = body
 			reg.mapsTo[alias] = reg.mapsTo[scheme]
+			reg.aliases[alias] = reg.aliases[scheme]
 			if sbType != "" {
 				reg.singboxTypes[alias] = sbType
 			}
@@ -304,6 +350,17 @@ func Load() (*Registry, error) {
 			for param, paths := range shared {
 				if _, ok := reg.mapsTo[scheme][param]; !ok {
 					reg.mapsTo[scheme][param] = paths
+				}
+			}
+		}
+		// Написания общих параметров (sni, insecure, fp, host транспортов)
+		// схема переопределяет своими, если объявила: у tuic `allow_insecure`
+		// канон, а у остальных он алиас `insecure`.
+		sharedAliases := collectAliases(f.Raw)
+		for scheme := range reg.aliases {
+			for param, names := range sharedAliases {
+				if _, ok := reg.aliases[scheme][param]; !ok {
+					reg.aliases[scheme][param] = names
 				}
 			}
 		}
@@ -556,6 +613,90 @@ func collectMapsTo(raw map[string]json.RawMessage) map[string][]string {
 	return out
 }
 
+// collectAliases собирает таблицу написаний параметра ссылки из файла
+// реестра: секции `uri.query.<param>.aliases` и общие `tls.params.*`,
+// `transports.<type>.params.*` (SPEC 131 W2d).
+//
+// Записи реестра писались людьми и местами несут пояснение прямо в строке
+// («host (только trojan, 3-я ступень)», «хвост пути '?ed=N'»). Имя параметра —
+// это первое слово до пробела или скобки; строка, где после чистки не
+// осталось имени параметра (пробелы внутри, кириллица), отбрасывается: такая
+// запись описывает форму, а не второе написание ключа.
+func collectAliases(raw map[string]json.RawMessage) map[string][]string {
+	out := map[string][]string{}
+	var walk func(name string, node interface{})
+	walk = func(name string, node interface{}) {
+		m, ok := node.(map[string]interface{})
+		if !ok {
+			return
+		}
+		if list, ok := m["aliases"].([]interface{}); ok && name != "" {
+			names := []string{name}
+			for _, item := range list {
+				s, ok := item.(string)
+				if !ok {
+					continue
+				}
+				if alias := aliasName(s); alias != "" {
+					names = appendUnique(names, alias)
+				}
+			}
+			if len(names) > 1 {
+				for _, existing := range out[name] {
+					names = appendUnique(names, existing)
+				}
+				out[name] = names
+			}
+		}
+		for k, v := range m {
+			switch k {
+			case "maps_to", "aliases", "values", "allowlist", "default",
+				"desc_en", "desc_ru", "impl", "note", "meaning", "type":
+				continue
+			}
+			walk(k, v)
+		}
+	}
+	for section, body := range raw {
+		if section == "body" || section == "common" {
+			continue
+		}
+		var node interface{}
+		if err := json.Unmarshal(body, &node); err != nil {
+			continue
+		}
+		walk("", node)
+	}
+	return out
+}
+
+// aliasName достаёт имя параметра из записи `aliases`, отбрасывая пояснение
+// в скобках. Пустая строка = запись не про имя ключа.
+func aliasName(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexByte(s, '('); i >= 0 {
+		s = strings.TrimSpace(s[:i])
+	}
+	if s == "" || strings.ContainsAny(s, " \t'\"") {
+		return ""
+	}
+	for _, r := range s {
+		if r > 127 {
+			return ""
+		}
+	}
+	return s
+}
+
+func appendUnique(list []string, v string) []string {
+	for _, existing := range list {
+		if strings.EqualFold(existing, v) {
+			return list
+		}
+	}
+	return append(list, v)
+}
+
 // schemeNameOf — имя схемы, объявленное в файле реестра.
 func schemeNameOf(raw map[string]json.RawMessage) string {
 	return rawString(raw, "scheme")
@@ -698,6 +839,26 @@ func (r *Registry) MapsTo(scheme, param string) ([]string, bool) {
 	}
 	out := make([]string, len(paths))
 	copy(out, paths)
+	return out, true
+}
+
+// QueryAliases — все написания параметра ссылки для схемы, канон первым
+// (SPEC 131 W2d). Второй результат false — реестр знает только само имя.
+//
+// Правило симметрии: обратный эмиттер share-URI обязан писать ПЕРВОЕ имя
+// списка. Иначе пара парсер/эмиттер расходится — та самая болезнь, из-за
+// которой `upmbps` уезжал в конфиг, а читался `up_mbps`.
+func (r *Registry) QueryAliases(scheme, param string) ([]string, bool) {
+	t, ok := r.aliases[scheme]
+	if !ok {
+		return nil, false
+	}
+	names, ok := t[param]
+	if !ok || len(names) == 0 {
+		return nil, false
+	}
+	out := make([]string, len(names))
+	copy(out, names)
 	return out, true
 }
 

@@ -71,7 +71,6 @@ func SanitizeSingboxOutboundMap(ob map[string]interface{}, tag string) []string 
 	sanitizeSingboxTLS(ob, obType, tag)
 	sanitizeSingboxHysteria2Obfs(ob, obType, tag)
 	sanitizeSingboxHysteriaObfs(ob, obType, tag)
-	sanitizeSingboxHysteriaBandwidth(ob, obType, tag)
 	return codes
 }
 
@@ -145,49 +144,11 @@ func sanitizeSingboxTLS(ob map[string]interface{}, obType, tag string) {
 	}
 }
 
-// sanitizeSingboxHysteriaBandwidth дописывает обязательную полосу Hysteria v1.
-//
-// Ядро отказывается инициализировать outbound v1 без up_mbps/down_mbps
-// («missing upload speed»), и это fatal для ВСЕГО конфига, а не для одной
-// ноды. Импортированное тело такую пару нередко не несёт, поэтому недостающая
-// половина добирается тем же дефолтом, что и на URI-пути.
-func sanitizeSingboxHysteriaBandwidth(ob map[string]interface{}, obType, tag string) {
-	if obType != "hysteria" {
-		return
-	}
-	// Ядро принимает и строковую форму up/down («100 mbps») — если она есть,
-	// ничего не выдумываем: значение уже задано.
-	if !singboxHysteriaHasBandwidth(ob, "up_mbps", "up") {
-		debuglog.WarnLog("Parser: singbox import %q: hysteria without upload speed — defaulting up_mbps to %d", tag, hysteriaDefaultMbps)
-		ob["up_mbps"] = hysteriaDefaultMbps
-	}
-	if !singboxHysteriaHasBandwidth(ob, "down_mbps", "down") {
-		debuglog.WarnLog("Parser: singbox import %q: hysteria without download speed — defaulting down_mbps to %d", tag, hysteriaDefaultMbps)
-		ob["down_mbps"] = hysteriaDefaultMbps
-	}
-}
-
-// singboxHysteriaHasBandwidth сообщает, задана ли полоса хотя бы одним из
-// написаний (числовым up_mbps или строковым up вида «100 mbps»).
-func singboxHysteriaHasBandwidth(ob map[string]interface{}, keys ...string) bool {
-	for _, key := range keys {
-		switch v := ob[key].(type) {
-		case string:
-			if strings.TrimSpace(v) != "" {
-				return true
-			}
-		case float64:
-			if v > 0 {
-				return true
-			}
-		case int:
-			if v > 0 {
-				return true
-			}
-		}
-	}
-	return false
-}
+// Дефолт полосы Hysteria v1 здесь БОЛЬШЕ НЕ ПОДСТАВЛЯЕТСЯ: его подставляет
+// реестр (default_when у hysteria.body.up_mbps / down_mbps, SPEC 131 W2d) —
+// одинаково для ссылки, JSON-тела и Xray-объекта. Прежде та же константа 100
+// лежала здесь, в URI-парсере и в Xray-конвертере тремя копиями, и узел
+// получал её не на всех дорогах.
 
 // sanitizeSingboxHysteriaObfs приводит obfs узла Hysteria v1 к форме ядра.
 //
@@ -243,7 +204,9 @@ func sanitizeSingboxHysteria2Obfs(ob map[string]interface{}, obType, tag string)
 		delete(ob, "obfs")
 		return
 	}
-	if !isValidHysteria2ObfsType(obfsType) {
+	// Набор типов — из реестра (hysteria2.body.obfs.type); прежде он жил
+	// константой в парсере ссылок, и та копия ушла в W2d.
+	if obfsType != "salamander" && obfsType != "gecko" {
 		// "unknown obfs type" — fatal для всего конфига.
 		debuglog.WarnLog("Parser: singbox import %q: unsupported hysteria2 obfs %q — dropping obfs", tag, obfsType)
 		delete(ob, "obfs")

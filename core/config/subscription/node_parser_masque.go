@@ -93,15 +93,17 @@ func parseMasqueURI(uri string, skipFilters []map[string]string) (*configtypes.P
 	// gets the h3 default. Accepted values mirror the core enum
 	// (option/masque.go: h3, h2, auto — auto = h3 with an h2 fallback when
 	// the QUIC handshake stalls, core >= lx.27).
-	vhttp := strings.ToLower(strings.TrimSpace(q.Get("vhttp")))
+	// Значение уезжает КАК ЕСТЬ: вне набора ядра его приведёт к h3 санитайзер
+	// по правилу реестра (masque.body.vhttp, on_invalid coerce + код
+	// masque_vhttp_invalid) — SPEC 131 W2d, копии правила в парсере больше нет.
+	//
+	// Дефолт h3 при отсутствии параметра ОСТАЁТСЯ здесь: это конвенция обеих
+	// сторон (как `fp=random` у vless, D-009), а не дефолт ядра — у ядра он
+	// `auto`. Материализуется в парсере, потому что входит в identity-хеш
+	// живых узлов; снимать его — отдельное решение, не волна W2d.
+	vhttp := queryParam(q, "masque", "vhttp")
 	if vhttp == "" {
 		vhttp = "h3"
-	}
-	vhttpDegraded := false
-	if vhttp != "h3" && vhttp != "h2" && vhttp != "auto" {
-		debuglog.WarnLog("Parser: MASQUE vhttp %q invalid (want h3/h2/auto), forcing h3.", vhttp)
-		vhttp = "h3"
-		vhttpDegraded = true
 	}
 	profile := strings.TrimSpace(q.Get("profile"))
 	if profile == "" {
@@ -180,12 +182,6 @@ func parseMasqueURI(uri string, skipFilters []map[string]string) (*configtypes.P
 	}
 	if shouldSkipNode(node, skipFilters) {
 		return nil, nil
-	}
-	// Код деградации ставится на УЗЕЛ (contract/registry/warnings.json):
-	// лог видит только тот, кто его читает, а конверт узла едет в UI и в
-	// LxBox — обе стороны обязаны сообщать об одной деградации одинаково.
-	if vhttpDegraded {
-		node.AddWarning(WarnMasqueVHTTPInvalid)
 	}
 	debuglog.DebugLog("parseMasqueURI: success tag=%s vhttp=%s", tag, vhttp)
 	return node, nil

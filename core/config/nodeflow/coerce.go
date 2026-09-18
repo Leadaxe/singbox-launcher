@@ -178,6 +178,27 @@ func normalize(mode, v string) string {
 		return strings.ToLower(v)
 	case "trim_lower":
 		return strings.ToLower(strings.TrimSpace(v))
+	case "hex_only":
+		// Оставить только hex-цифры, A-F → a-f (REALITY short_id).
+		//
+		// Публичные списки кладут в sid моджибейк (UTF-8, прочитанный как
+		// Latin-1 → U+00C2), пробелы и пунктуацию; ядро декодирует значение
+		// через encoding/hex и падает на любой не-hex руне. Чистка — это
+		// перевод написания, а не подгонка значения: ДЛИНУ полученного
+		// результата проверяет max/len_parity, и нечётный или слишком
+		// длинный sid снимается целиком, а не обрезается (D-032: обрезка
+		// дала бы валидную форму с ЧУЖИМ идентификатором).
+		var b strings.Builder
+		b.Grow(len(v))
+		for _, r := range strings.ToValidUTF8(strings.TrimSpace(v), "") {
+			switch {
+			case r >= '0' && r <= '9', r >= 'a' && r <= 'f':
+				b.WriteRune(r)
+			case r >= 'A' && r <= 'F':
+				b.WriteRune(r - 'A' + 'a')
+			}
+		}
+		return b.String()
 	}
 	return v
 }

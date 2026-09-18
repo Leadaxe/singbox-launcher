@@ -50,8 +50,8 @@
 | `obfs` | object | — | — | — | — | — | Obfuscation settings. | Настройки обфускации. |
 | `obfs.type` | enum | `salamander`, `gecko`; normalize `trim_lower` | — | да / yes | drop [`obfs_unknown`](../warnings.md#obfs_unknown) | — | Obfuscation algorithm. | Алгоритм обфускации. |
 | `obfs.password` | string, secret | — | — | да / yes | — | — | Obfuscation password. | Пароль обфускации. |
-| `obfs.min_packet_size` | int | `0–…` | — | — | drop [`type_invalid`](../warnings.md#type_invalid) | — | Minimum packet size, gecko only. | Минимальный размер пакета, только для gecko. |
-| `obfs.max_packet_size` | int | `0–…` | — | — | drop [`type_invalid`](../warnings.md#type_invalid) | — | Maximum packet size, gecko only. | Максимальный размер пакета, только для gecko. |
+| `obfs.min_packet_size` | int | `0–…` | — | — | drop [`type_invalid`](../warnings.md#type_invalid); требует / requires `obfs.type` = `gecko` [`field_requires`](../warnings.md#field_requires) | — | Minimum packet size, gecko only. | Минимальный размер пакета, только для gecko. |
+| `obfs.max_packet_size` | int | `0–…` | — | — | drop [`type_invalid`](../warnings.md#type_invalid); требует / requires `obfs.type` = `gecko` [`field_requires`](../warnings.md#field_requires) | — | Maximum packet size, gecko only. | Максимальный размер пакета, только для gecko. |
 | `password` | string, secret | — | — | — | — | — | Account password. | Пароль учётной записи. |
 | `network` | listable_string | `tcp`, `udp`; normalize `trim_lower` | — | — | drop [`type_invalid`](../warnings.md#type_invalid) | — | Networks this outbound handles. | Сети, которые обслуживает этот узел. |
 | `tls` | ref | см. / see [_tls.md](_tls.md) | — | — | — | — | TLS settings. | Настройки TLS. |

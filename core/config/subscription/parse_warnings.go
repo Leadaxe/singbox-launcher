@@ -1,7 +1,5 @@
 package subscription
 
-import "strings"
-
 // Коды деградации на узле (SPEC 103, фаза 2).
 //
 // До этого деградация уходила только в debuglog: пользователь видел «нода
@@ -12,39 +10,20 @@ import "strings"
 // Имена констант зеркалят contract/registry/warnings.json. Значение и есть
 // код: он попадает в конверт корпуса и (в дальнейшем) в UI.
 //
-// Коды ставятся ТАМ, ГДЕ УЗЕЛ ПОД РУКОЙ. Нормализаторы (normalizeRealityShortID,
-// canonicalUTLSFingerprint) остаются чистыми функциями: они вызываются из
-// нескольких мест, включая пути без узла (санитайзер конфига), и протаскивать
-// через них *ParsedNode ради диагностики значило бы переписать пол-пакета.
-// Вместо этого рядом с нормализатором живёт предикат «значение будет
-// испорчено», и вызывающий сам помечает узел.
+// ЗДЕСЬ ОСТАЛИСЬ ТОЛЬКО КОДЫ, КОТОРЫЕ СТАВИТ САМ ПАРСЕР (SPEC 131 W2d) —
+// то есть те, где сведения есть у него одного: форма ссылки (`?ed=N` в пути,
+// битая пара extra-headers, выбор контейнера в vpn://-профиле), гейты сборки
+// (ядро без with_tailscale/with_awg) и разбор AWG-полей.
+//
+// Коды о ЗНАЧЕНИЯХ полей отсюда ушли в реестр контракта: их ставит санитайзер
+// (core/config/nodeflow), и ставит одинаково для ссылки, JSON-тела и
+// Xray-объекта. Прежде те же двенадцать кодов жили константами здесь и
+// проставлялись копиями в четырёх парсерах — копии расходились между собой
+// (набор insecure, список отпечатков с гибридным шаром), а два кода
+// (ss_method_invalid, port_invalid) не ставились вовсе: их «деградация» была
+// на деле жёстким дропом узла (DRIFT §4).
 
 const (
-	// WarnRealityShortIDInvalid — sid вне hex или нечётной длины: снимается
-	// целиком (укороченный sid — это ДРУГОЙ short_id, узел молча ломается).
-	WarnRealityShortIDInvalid = "reality_short_id_invalid"
-	// WarnUTLSFingerprintUnknown — отпечаток вне словаря ядра заменён на
-	// канонический; чужое значение валит все outbound'ы.
-	WarnUTLSFingerprintUnknown = "utls_fp_unknown"
-	// WarnRealityFPNotChrome — у узла эмитится reality с явным uTLS-отпечатком
-	// не из chrome-семейства (D-119). Отпечаток уходит в конфиг как есть.
-	//
-	// Зачем сказать: REALITY-сервер Xray ≥ v26.9.8 требует в ClientHello
-	// key_share X25519MLKEM768, который в uTLS ядра несут chrome-спеки, а с
-	// sing-box-lx 1.14.1-lx.3 ещё firefox (Firefox 148) и safari (Safari 26.3);
-	// без него сервер МОЛЧА уводит соединение на камуфляжный сайт. Отпечаток —
-	// выбор подписки, лаунчер его не подменяет; если соединение не
-	// устанавливается — стоит попробовать chrome. Пустой fp, наш дефолт
-	// `random`, firefox и safari под код не попадают (см. realityFingerprintRisky).
-	WarnRealityFPNotChrome = "reality_fp_not_chrome"
-	// WarnRealityKeyShareInvalid — tls.reality.key_share вне закрытого enum
-	// ядра (hybrid|classical, SPEC 089 ядра): ключ снят, узел жив.
-	//
-	// Зачем сказать: ядро отвергает такое значение отказом ВСЕГО конфига, а не
-	// узла (проверено `sing-box check` бинарём 1.14.1-lx.4), поэтому поле не
-	// доезжает — и узел молча идёт с обменом ключами по умолчанию отпечатка,
-	// хотя подписка/тело просили другой. Единый код для URI и JSON-тела.
-	WarnRealityKeyShareInvalid = "reality_key_share_invalid"
 	// WarnNaiveExtraHeadersInvalid — пара из naive `extra-headers` отброшена:
 	// нет ':', запрещённые символы в имени или CR/LF/NUL в значении.
 	//
@@ -52,13 +31,6 @@ const (
 	// до этого отброс уходил только в debuglog, и в отчёте сборки человек не
 	// видел, что заголовок, которым он открывает доступ, до сервера не доедет.
 	WarnNaiveExtraHeadersInvalid = "naive_extra_headers_invalid"
-	// WarnObfsUnknown — тип hysteria2-обфускации вне словаря ядра снят.
-	WarnObfsUnknown = "obfs_unknown"
-	// WarnObfsPasswordMissing — обфускация без пароля снята целиком: ядро
-	// отвергает такой узел и роняет ВЕСЬ конфиг.
-	WarnObfsPasswordMissing = "obfs_password_missing"
-	// WarnPacketEncodingUnknown — packet_encoding вне словаря снят.
-	WarnPacketEncodingUnknown = "packet_encoding_unknown"
 	// WarnXHTTPModeForcedPacketUp — у XHTTP-узла был `uplink_data_placement:
 	// header` без режима, и режим доопределён в `packet-up`.
 	//
@@ -72,10 +44,6 @@ const (
 	// явном режиме, отличном от packet-up: режим пользователя мы не
 	// переписываем, снимается одно поле.
 	WarnXHTTPParamReset = "xhttp_param_reset"
-	// WarnSSMethodInvalid — метод shadowsocks вне словаря ядра.
-	WarnSSMethodInvalid = "ss_method_invalid"
-	// WarnPortInvalid — порт вне 1..65535 заменён значением по умолчанию.
-	WarnPortInvalid = "port_invalid"
 	// WarnSSHUserDefault — ssh без пользователя: подставлен root.
 	WarnSSHUserDefault = "ssh_user_default"
 	// WarnNaivePaddingIgnored — naive padding=… не поддержан ядром.
@@ -111,45 +79,26 @@ const (
 	// WarnAWG3CoreUnsupported — узел с AWG3-полями снят на сборке: ядро
 	// старше 1.14.0-lx.32 или без with_awg. Выброс, а не пометка.
 	WarnAWG3CoreUnsupported = "awg3_core_unsupported"
-	// WarnTuicCongestionInvalid — контроль перегрузки TUIC вне словаря.
-	WarnTuicCongestionInvalid = "tuic_congestion_invalid"
-	// WarnTuicUDPRelayModeInvalid — udp_relay_mode TUIC вне словаря.
-	WarnTuicUDPRelayModeInvalid = "tuic_udp_relay_mode_invalid"
-	// WarnAnyTLSMinIdleInvalid — min_idle_session не число.
-	WarnAnyTLSMinIdleInvalid = "anytls_min_idle_invalid"
-	// WarnMasqueVHTTPInvalid — masque vhttp-параметр не разобран.
-	WarnMasqueVHTTPInvalid = "masque_vhttp_invalid"
 	// WarnWSEarlyDataEDConverted — Xray-хвост ?ed=N разложен в
 	// max_early_data + early_data_header_name.
 	WarnWSEarlyDataEDConverted = "ws_early_data_converted"
+	// WarnECHIgnored — в ссылке был Xray-параметр `ech=`: он несёт ключ
+	// ЧУЖОГО клиента (public_name ≠ SNI узла), и рукопожатие с ним не
+	// состоится (device-verified, §320 LxBox). Параметр снят, узел жив —
+	// отсюда severity=info.
+	//
+	// Код ставит МАППЕР, а не санитайзер: различить «ECH из ссылки» и
+	// «валидный блок tls.ech из sing-box-JSON» может только тот, кто знает
+	// источник значения. Нативный блок проходит нетронутым — ECH в ядре
+	// скомпилирован всегда (D-122, пересмотр D-006).
+	WarnECHIgnored = "ech_ignored"
 	// WarnDialerProxyUnusable — цель streamSettings.sockopt.dialerProxy
 	// непригодна: узел-владелец отбраковывается ЦЕЛИКОМ. Кода на узле не
 	// бывает (узла не будет) — он едет в отбраковке, поэтому severity=error.
 	WarnDialerProxyUnusable = "dialer_proxy_unusable"
 )
 
-// realityShortIDWouldDegrade сообщает, что нормализация ПОТЕРЯЕТ данные
-// short_id: значение непустое, но после чистки обнулится или укоротится.
-//
-// Приведение регистра (ABCD → abcd) деградацией НЕ считается: hex
-// регистронезависим, sing-box декодирует одинаково, и помечать такой узел
-// значило бы кричать на каждую вторую reality-ноду.
-//
-// Проверяется ДО нормализации — после неё исходное значение уже потеряно.
-func realityShortIDWouldDegrade(raw string) bool {
-	if raw == "" {
-		return false
-	}
-	return normalizeRealityShortID(raw) != strings.ToLower(strings.TrimSpace(raw))
-}
-
-// utlsFingerprintWouldDegrade сообщает, что отпечаток будет заменён
-// каноническим (normalizeUTLSFingerprintEx уже отвечает на этот вопрос
-// вторым значением — «мусор»).
-func utlsFingerprintWouldDegrade(raw string) bool {
-	if raw == "" {
-		return false
-	}
-	_, junk := normalizeUTLSFingerprintEx(raw)
-	return junk
-}
+// Предикаты «значение будет испорчено» (realityShortIDWouldDegrade,
+// utlsFingerprintWouldDegrade) сняты вместе с правилами, ради которых жили:
+// с SPEC 131 W2d значение судит санитайзер по реестру, и он видит и исходное
+// значение, и результат — предикат «до нормализации» ему не нужен.

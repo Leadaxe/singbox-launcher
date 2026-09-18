@@ -187,9 +187,13 @@
           "action": "drop",
           "code": "type_invalid"
         },
+        "default_when": {
+          "absent": true,
+          "value": 100
+        },
         "desc_en": "Upload bandwidth in Mbps.",
         "desc_ru": "Скорость отдачи в Мбит/с.",
-        "impl": "Числовая форма up. Из JSON приезжает float64 — приведение обязательно (память json-map-type-assert-trap)."
+        "impl": "Числовая форма up. Из JSON приезжает float64 — приведение обязательно (память json-map-type-assert-trap). ПОЛЕ МАТЕРИАЛИЗУЕТСЯ ЯВНО (default_when, SPEC 131 W2d): без up_mbps ядро отвечает «missing upload speed» и не поднимает outbound — фатал на ВЕСЬ config.json, а не на узел, тогда как ссылки v1 скорость сплошь и рядом не несут. 100 Мбит/с — не лимит, а стартовая оценка для congestion control Hysteria 1.x: реальную полосу сервер согласует сам. Прежде дефолт подставлял парсер ссылки (hysteriaBandwidthOrDefault), то есть узел из JSON-тела его не получал и валил конфиг."
       },
       "down": {
         "type": "string",
@@ -204,9 +208,13 @@
           "action": "drop",
           "code": "type_invalid"
         },
+        "default_when": {
+          "absent": true,
+          "value": 100
+        },
         "desc_en": "Download bandwidth in Mbps.",
         "desc_ru": "Скорость приёма в Мбит/с.",
-        "impl": "Числовая форма down."
+        "impl": "Числовая форма down. Материализуется явно — см. up_mbps."
       },
       "obfs": {
         "type": "string",

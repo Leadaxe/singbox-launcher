@@ -129,8 +129,11 @@ func parseHTTPProxyURI(uri string, skipFilters []map[string]string) (*configtype
 	// alpn, insecure aliases, security=none). Only meaningful on the
 	// https-form — proxy-http never carries TLS regardless of query params.
 	if secure {
-		node := &configtypes.ParsedNode{Server: server, Query: q}
-		if tlsData, ok := trojanTLSFromNode(node); ok {
+		// Схема передаётся явно ("http"): временный ParsedNode здесь нужен
+		// только ради адреса и query, и его пустое поле Scheme увело бы
+		// чтение параметров мимо секции реестра — узел терял бы insecure.
+		node := &configtypes.ParsedNode{Scheme: "http", Server: server, Query: q}
+		if tlsData, ok := trojanTLSFromNode(node, "http"); ok {
 			outbound["tls"] = tlsData
 		}
 	}
