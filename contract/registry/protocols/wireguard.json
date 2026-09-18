@@ -18,7 +18,7 @@
   "uri": {
     "userinfo": {
       "maps_to": "private_key",
-      "meaning": "private_key — base64 32-байтного приватного ключа",
+      "meaning": "private_key — base64 of the 32-byte private key",
       "desc_en": "Client private key.",
       "desc_ru": "Приватный ключ клиента.",
       "impl": "Сырой '/' в base64 percent-энкодится до url.Parse в обоих (percentEncodeWGUserinfoSlashes / encodeUserInfoSlashes). Go валидирует: принимает 4 base64-варианта, нормализует к std-base64 c padding, не-32-байтный ключ (напр. Proton '*****') → нода дропается; Dart не валидирует ключи вовсе — мусорный ключ уедет в конфиг и уронит sing-box check (класс pbk=enabled). Целевое поведение — валидация как в Go."
@@ -300,14 +300,25 @@
     ],
     "note": "Порядок — семантический (Dart insertion-order); Go сейчас эмитит алфавитно (url.Values.Encode) — URI байтово разные, парс-эквивалентные (порядок не нормативен для cross-emit по узлу). Эмитится по правилам: mtu — подавление дефолта только у Go (share-URI: mtu только при !=1420); Dart эмитит mtu всегда, когда задан, а после URI/INI-парса он задан всегда, включая дефолт 1408/1280 — разрыв; name только != singbox-wg0; AWG-числа — по НАЛИЧИЮ поля (явный jc=0 переживает round-trip); i1-i5/id/ip/ib — только непустые. Multi-peer endpoint → ErrShareURINotSupported."
   },
-  "degrade": [
-    "невалидный base64 / не-32-байтный ключ (userinfo, publickey, presharedkey) → нода дропается (Go; Dart пока не валидирует — целевое: как Go)",
-    "битые keepalive / listenport / reserved → параметр опускается, нода живёт; битый mtu → остаётся дефолт (поле mtu в endpoint эмитится всегда)",
-    "битое AWG-число (не uint32; для h1-h4 — и не диапазон lo-hi) → поле опускается: jc/jmin/jmax/s* с debug-логом, h1-h4 с громким warn",
-    "пересечение эффективных диапазонов h1-h4 → НОДА ДРОПАЕТСЯ на разборе (awg_headers_overlap, severity=error): ядро отвергает такой endpoint на загрузке, то есть падает ВЕСЬ конфиг, а не одна нода. Изменено аудитом 2026-08-24 — была пометка на живом узле",
-    "bare IP в address/allowedips → дописывается /32 или /128",
-    "mtu > 1280 при AWG-полях → клампится к 1280 (тихий отказ данных при завышенном MTU хуже мелких пакетов)",
-    "sing-box импорт multi-peer: Go сохраняет всех peers, Dart берёт первого — потеря (разрыв, целевое: сохранять всех)"
+  "mapper": [
+    {
+      "id": "bare_ip_gets_prefix",
+      "from": "a bare IP in `address` or `allowed_ips` (`10.0.0.2`, `fd00::2`)",
+      "to": "`10.0.0.2/32`, `fd00::2/128`",
+      "kind": "spelling",
+      "desc_en": "wg-quick config files write single addresses without a prefix length; the core field is a CIDR.",
+      "desc_ru": "Файлы wg-quick пишут одиночные адреса без длины префикса; поле ядра — CIDR.",
+      "impl": "core/config/subscription/node_parser_wireguard.go, wgconf_text.go."
+    },
+    {
+      "id": "awg_mtu_clamped",
+      "from": "`mtu` above 1280 on a node carrying AmneziaWG fields",
+      "to": "`mtu: 1280`",
+      "kind": "default",
+      "desc_en": "AmneziaWG adds per-packet overhead, and an MTU left too high silently drops data instead of fragmenting it.",
+      "desc_ru": "AmneziaWG добавляет накладные расходы на пакет, и завышенный MTU молча теряет данные вместо фрагментации.",
+      "impl": "core/config/subscription/awg3.go. Решение владельца: тихий отказ данных хуже мелких пакетов."
+    }
   ],
   "refs": {
     "go": [

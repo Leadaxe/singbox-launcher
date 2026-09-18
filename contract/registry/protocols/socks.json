@@ -22,10 +22,6 @@
     "param_order": [],
     "note": "Оба эмитят socks5:// (даже если пришёл socks://). Userinfo: Go при любом непустом user/pass пишет user:pass целиком (url.UserPassword — ':pass@' при пустом user); Dart при пустом username опускает userinfo целиком, т.е. password-only нода теряет пароль в share-URI (минорный разрыв)."
   },
-  "degrade": [
-    "отсутствие hostname → ошибка ноды (Go) / null-skip (Dart)",
-    "невалидный порт → ошибка ноды"
-  ],
   "refs": {
     "go": [
       "core/config/subscription/node_parser_core.go:253-258",

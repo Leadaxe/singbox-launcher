@@ -17,6 +17,8 @@
 | W2c | `95791e73` | все входы через `node_materialize.go`, гейт ядра на сборке, миграция warnings при загрузке, `max_uri_length` 65536, `TestCorpusBodiesPassSingboxCheck`; §24.6 |
 | pin | `ccb33731` | ядро 1.14.1-lx.7 (SPEC 090/091/092 ядра) |
 | W2d | см. лог | парсеры → мапперы (21 правило снято, 6 в реестр, 14 структурных), алиасы из реестра, naive userinfo=password, `nodeflow_pipeline_test.go`, `TestRegistryWarningCodesHaveAProducer`; `W2D_CHANGES.md`, §24.7 |
+| fix xmux | `9379de95` | связи судят ЗНАЧЕНИЕ («0»/«0-0» = не задано), `all_or_nothing` без действия санитайзера, код `partial_object_defaulted` снят; кейс `body/singbox/vless_xhttp_xmux_zero_neighbours`; мёртвый `codes` в `SanitizeSingboxOutboundMap`; DRIFT §7.20, §24.9 |
+| Docs v2 | см. лог | `contract/docs/generated` только по-английски, списки вместо широких таблиц; страница схемы самодостаточна (Link parameters → Body fields → Diagnosed problems → Replacements → Degradation); `cause_*`/`fix_*` у всех кодов, `registry.WarningAdvice`, причина и решения в карточке узла; секция `mapper` (28 правил) со схемой и линтером; старый `degrade[]` снят; контракт 1.1.1 |
 
 ## Критерии приёмки (SPEC §9)
 
@@ -30,11 +32,14 @@
 
 ## Проверки
 
-`go build ./...`, `go vet`, `go test ./... -count=1` — зелёные (полный прогон в W2d). Корпус: 281 тело, 21 per-app override (было 24).
+`go build ./...`, `go vet ./...`, `go test ./core/... ./contract/... ./internal/... -count=1` — зелёные (полный прогон после Docs v2). Корпус: 282 тела, 21 per-app override (было 24). `go generate ./contract/...` идемпотентен (два прогона, побайтно). Win7: `go vet -modfile=go.win7.mod` на `nodeflow`/`nodewarn`/`subscription` — чисто (файлы go.win7.* восстановлены после прогона).
+
+Прогон настоящего state владельца (186 узлов) после фикса xmux: тело не переписывается ни у одного узла (было — у 13), кодов `field_conflict`/`partial_object_defaulted` — 0, ошибок 0; остаются 12 info `reality_fp_not_chrome`. Единственное расхождение с origin.raw — WG-узел с правками AWG-формы в теле (известно, не баг).
 
 ## Открытые хвосты
 
 - Порт вне 1–65535 в ссылке: остаётся отбраковка узла — без `server_port` узел ядру не нужен, оба пути дают один результат (вопрос снят 18.09.2026).
 - `fp→random` (vless) и `vhttp→h3` (masque) остались в парсерах как кросс-проектные конвенции идентичности (W2D_CHANGES §6), не дефолты ядра.
 - naive userinfo=password — ограничение по дате снято владельцем 18.09.2026; LxBox догоняет своим релизом, до тех пор в корпусе per-app override `.expected.lxbox.json`.
+- Кириллица в `desc_ru`/`impl` реестра остаётся (её читает UI и разработчик); в `contract/docs/generated/` её ноль — проверяется грепом по диапазону.
 - Закрытие папки в **C** после релиза.

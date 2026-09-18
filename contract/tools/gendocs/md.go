@@ -20,6 +20,68 @@ func mdCell(s string) string {
 	return strings.TrimSpace(s)
 }
 
+// mdText — значение в обычной строке списка. В отличие от ячейки таблицы,
+// вертикальную черту здесь экранировать не надо: она ничего не ломает.
+func mdText(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	return strings.TrimSpace(s)
+}
+
+// aliasName — имя алиаса без пояснения. Реестр местами пишет рядом с именем
+// человеческую заметку в скобках или после пробела («packetencoding (любой
+// регистр — …)», «sni (fallback)»). Документация английская, и заметка в ней
+// не нужна — нужно само имя, под которым параметр встречается в подписках.
+func aliasName(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexAny(s, " ("); i > 0 {
+		s = s[:i]
+	}
+	return strings.TrimSpace(s)
+}
+
+// aliasNames чистит список алиасов и выкидывает пустые.
+func aliasNames(items []string) []string {
+	out := make([]string, 0, len(items))
+	for _, it := range items {
+		if n := aliasName(it); n != "" {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// list — пункт списка с вложенными строками-атрибутами. Заменяет широкие
+// таблицы: девять колонок на GitHub уезжают за экран, и описание поля
+// оказывается там, куда не доскроллить.
+type list struct {
+	b *strings.Builder
+}
+
+// item открывает пункт: заголовок с именем поля и его описанием.
+func (l *list) item(head, desc string) {
+	l.b.WriteString("- " + head)
+	if d := mdText(desc); d != "" {
+		l.b.WriteString(" — " + d)
+	}
+	l.b.WriteString("\n")
+}
+
+// attr — вложенная строка-атрибут. Пустые не выводятся вовсе: строка
+// «Default: — · Required: —» не несёт ничего, кроме шума.
+func (l *list) attr(parts ...string) {
+	kept := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			kept = append(kept, p)
+		}
+	}
+	if len(kept) == 0 {
+		return
+	}
+	l.b.WriteString("  - " + mdText(strings.Join(kept, " · ")) + "\n")
+}
+
 func code(s string) string {
 	if s == "" {
 		return ""

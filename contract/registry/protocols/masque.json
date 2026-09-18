@@ -13,7 +13,7 @@
   "uri": {
     "userinfo": {
       "maps_to": "private_key",
-      "meaning": "private_key — base64(SEC1 DER) клиентского ECDSA-приватника. СЕКРЕТ",
+      "meaning": "private_key — base64(SEC1 DER) of the client ECDSA private key. SECRET",
       "desc_en": "Client private key.",
       "desc_ru": "Приватный ключ клиента.",
       "impl": "Сырой '/' percent-энкодится до парса (общий с WG хелпер). Fallback из query ?private_key=/?privatekey= принимают оба проекта."
@@ -149,12 +149,25 @@
     ],
     "note": "Порядок — семантический (Dart insertion-order); Go эмитит алфавитно (url.Values.Encode) — байтово разные, парс-эквивалентные URI. profile и vhttp эмитятся всегда (Dart) / vhttp всегда, profile если непуст (Go); mtu: Go всегда (>0), Dart только если задан — на практике URI-парс всегда задаёт 1280. sni/insecure/disable_sni/idle_timeout/keep_alive — только непустые. В config.json эмитится vhttp + вложенный tls{}; legacy network/sni не эмитятся (deprecation-warn ядра, оба имени с разными значениями — fatal)."
   },
-  "degrade": [
-    "vhttp не h3/h2 → warn + принудительно h3 (Go; Dart пропускает как есть — разрыв)",
-    "отсутствие privatekey / publickey / address → нода дропается (оба)",
-    "mtu <= 0 или нечисловой → дефолт 1280",
-    "ключи DER не валидируются на парсе ни одним проектом — битый ключ доедет до ядра (ошибка старта ядра, не check: outbound с lazy-ключами)",
-    "sing-box импорт: плоские network/sni/skip_cert_verify (чужой диалект) → стрип БЕЗ переноса значений (0.8.0; Go sanitizeSingboxMasqueLegacy). Удаление ключей обязательно: плоский sni рядом с tls.server_name роняет ядро fail-fast'ом"
+  "mapper": [
+    {
+      "id": "singbox_flat_fields_stripped",
+      "from": "flat `network` / `sni` / `skip_cert_verify` keys in an imported sing-box masque body",
+      "to": "the keys are removed, without carrying their values over",
+      "kind": "drop",
+      "desc_en": "These are another client's dialect; a flat `sni` sitting next to `tls.server_name` makes the core fail fast on the whole config.",
+      "desc_ru": "Это чужой диалект; плоский `sni` рядом с `tls.server_name` роняет ядро fail-fast'ом на весь конфиг.",
+      "impl": "core/config/subscription/singbox_sanitize.go:sanitizeSingboxMasqueLegacy (контракт 0.8.0). Удаление ключей обязательно."
+    },
+    {
+      "id": "vhttp_empty_defaults_to_h3",
+      "from": "no `vhttp=` in the link",
+      "to": "`vhttp: h3`",
+      "kind": "default",
+      "desc_en": "A convention shared by both apps, not a core default (the core defaults to `auto`). The value is part of the identity hash of live MASQUE nodes.",
+      "desc_ru": "Конвенция обеих сторон, а не дефолт ядра (у ядра `auto`). Значение входит в identity-хеш живых MASQUE-узлов.",
+      "impl": "core/config/subscription/node_parser_masque.go:104-106. Снятие изменило бы identity всех MASQUE-узлов (W2D_CHANGES §6)."
+    }
   ],
   "refs": {
     "go": [

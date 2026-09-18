@@ -14,10 +14,6 @@
     "share_uri": false,
     "note": "Share-URI не эмитится — URI-формы у схемы нет. Тело узла эмитится как есть (канон v7), per-scheme ветки нет; единственная правка эмиттера — подстановка state_directory при его отсутствии."
   },
-  "degrade": [
-    "ядро без тега with_tailscale → узел выбрасывается целиком с warning tailscale_core_unsupported (severity=warning): конфиг с ним не прошёл бы sing-box check ни одним узлом",
-    "узел без непустого exit_node не предлагается в Направления: без выходного узла tailnet в интернет не выпускает, и «страной» такой узел не является (detour на него при этом законен)"
-  ],
   "refs": {
     "go": [
       "core/config/subscription/singbox_import.go:344-359",

@@ -74,7 +74,7 @@
       "pbk": {
         "type": "string",
         "maps_to": "tls.reality.public_key",
-        "validation": "X25519 public key: base64url/base64std, pad/nopad — декод ровно в 32 байта; иначе ключ невалиден",
+        "validation": "X25519 public key: base64url or base64std, padded or not, decoding to exactly 32 bytes; anything else is not a valid key",
         "desc_en": "Server REALITY public key.",
         "desc_ru": "Публичный ключ REALITY сервера.",
         "impl": "Гейт REALITY-блока (оба проекта, §169 / broken-list-pbk-junk): мусор pbk=enabled/true/пустота на security=tls нодах → REALITY НЕ строится, нода деградирует до plain TLS (невалидный public_key отвергает ВЕСЬ конфиг). Нюанс реализации: Go требует длину 43 после среза '=' и пробует RawURL/RawStd; Dart decodeBase64Safe (4 варианта, whitespace срезан) → len==32 — практический паритет на реальных ключах."
@@ -82,7 +82,7 @@
       "sid": {
         "type": "string",
         "maps_to": "tls.reality.short_id",
-        "validation": "hex-only, lowercase, длина чётная и ≤16; пустой short_id легален (нулевой [8]byte)",
+        "validation": "hex only, lowercase, even length and at most 16 characters; an empty short_id is legal (a zero [8]byte)",
         "desc_en": "REALITY short ID.",
         "desc_ru": "Короткий идентификатор REALITY.",
         "impl": "Нормализация: не-hex руны (мojibake U+00C2, пробелы, пунктуация) вычищаются, A-F → a-f. ЗАПИСЬ ИСПРАВЛЕНА (DRIFT §4, прежняя формулировка протухла): расхождения НЕТ — обе стороны СБРАСЫВАЮТ значение в '' и при нечётной длине, и при >16 hex-символов. Go делает это в node_parser_transport.go:798-800 (maxRealityShortIDHexLen = 16 — граница проверки, а НЕ обрезки), Dart — в uri_utils.dart:423. Обрезка запрещена: она даёт валидную форму с ЧУЖИМ идентификатором, сервер такой узел не узнает. Пустой short_id легален (нулевой [8]byte). Вердикты ядра: нечётная длина — B (encoding/hex: odd length hex string), 18 hex-символов — ПАНИКА процесса (common/tls/reality_client.go:79-86, hex.Decode индексирует shortID[8]; проверка длины на строке 84 — мёртвый код). Гард на клиенте — единственная защита от краша ядра; отдельный пункт DRIFT — завести issue в форк ядра на перестановку проверки длины перед hex.Decode. Правило значения живёт в body: tls.reality.short_id."
@@ -93,7 +93,7 @@
         "default": "",
         "aliases": [],
         "maps_to": "tls.reality.key_share",
-        "validation": "закрытый enum ядра hybrid|classical; trim + lower-case; пустая строка = ключа нет (не мусор)",
+        "validation": "a closed core enum, hybrid or classical; trimmed and lower-cased; an empty string means the key is absent, not invalid",
         "policy": "drop",
         "support": "обе",
         "desc_en": "Key exchange used in the REALITY ClientHello.",
@@ -111,6 +111,89 @@
       "emit_allowlist": "Эмиссия tls в тело узла — allowlist по OutboundTLSOptions ядра (sing-box option/tls.go), порядок полей = порядок структуры: enabled, disable_sni, server_name, insecure, alpn, min_version, max_version, cipher_suites, curve_preferences, certificate, certificate_path, certificate_public_key_sha256, client_certificate, client_certificate_path, client_key, client_key_path, fragment, fragment_fallback_delay, record_fragment, kernel_tx, kernel_rx, utls{enabled,fingerprint}, reality{enabled,public_key,short_id,key_share}. Listable-поля (alpn, cipher_suites, curve_preferences, certificate, certificate_public_key_sha256, client_certificate, client_key) принимаются строкой или массивом и эмитятся в той форме, в какой приехали; булевы кроме enabled — только при true (omitempty ядра). НЕ эмитятся: ech (D-006, ядро без with_ech) и неизвестные ключи (ядро отвергает unknown field на всём конфиге). kernel_tx/kernel_rx — только когда ядро крутится на Linux («kTLS is only supported on Linux» = отказ ВСЕГО конфига). Норма с LxBox #140 (17.09.2026): до неё Go-эмиттер знал семь полей и sing-box-импорт терял certificate у naive, а alpn/пины — из-за ассерта []string на []interface{} из JSON (память json-map-type-assert-trap). Код: Go core/config/outbound_tls_emit.go; корпус body/singbox/outbound_array_tls_fields. naive: ядро читает только enabled/server_name/certificate/certificate_path (protocol/naive/outbound.go NewOutbound), остальное — фатал на весь конфиг, certificate_public_key_sha256 молча не применяет — эмиттер режет tls у naive до этих четырёх (§22 TASKS_LXBOX, паритет с LxBox TlsSpec naive-фильтром). Ручной одиночный объект (config_json, EmitRaw) allowlist не проходит — уходит как есть."
     }
   },
+  "mapper": [
+    {
+      "id": "security_none_no_tls",
+      "applies_to": ["vless", "trojan", "vmess", "anytls", "http"],
+      "from": "security=none",
+      "to": "no `tls` block at all",
+      "kind": "structure",
+      "desc_en": "A link that asks for no TLS produces a body with no `tls` key, not `tls.enabled=false`.",
+      "desc_ru": "Ссылка без TLS даёт тело вовсе без ключа `tls`, а не `tls.enabled=false`.",
+      "impl": "core/config/subscription/node_parser_transport.go:vlessTLSFromNode / trojanTLSFromNode. Отсутствие ключа санитайзеру неотличимо от «не задано», поэтому решение принимает маппер; явный `enabled:false` роняет ядра lx.5–lx.18 в SIGSEGV (SPEC 045)."
+    },
+    {
+      "id": "plaintext_port_no_tls",
+      "applies_to": ["vless"],
+      "from": "no `security` param on a plaintext port (80, 8080, 8880, 2052, 2082, 2086, 2095)",
+      "to": "no `tls` block at all",
+      "kind": "structure",
+      "desc_en": "On a well-known plaintext HTTP port a vless link with no `security` is read as plain TCP, not as TLS.",
+      "desc_ru": "На известном открытом HTTP-порту vless-ссылка без `security` читается как открытый TCP, а не как TLS.",
+      "impl": "core/config/subscription/node_parser_transport.go:shouldVLESSSkipTLSForPort, список портов — policy.plaintext_ports в registry/tls.json. Тот же вопрос «есть ли блок», что и у security=none."
+    },
+    {
+      "id": "pbk_makes_reality_block",
+      "applies_to": ["vless", "anytls"],
+      "from": "`pbk=` present in the link",
+      "to": "a `tls.reality` block appears in the body",
+      "kind": "structure",
+      "desc_en": "The presence of `pbk=` is what creates the REALITY block; whether the key itself is usable is decided later by the registry rule on `tls.reality.public_key`.",
+      "desc_ru": "Наличие `pbk=` создаёт блок REALITY; годность самого ключа судит правило реестра на `tls.reality.public_key`.",
+      "impl": "core/config/subscription/node_parser_transport.go:944 (vlessTLSFromNode), node_parser_anytls.go:58. Маппер решает только о НАЛИЧИИ блока."
+    },
+    {
+      "id": "utls_xray_hello_names",
+      "applies_to": ["vless", "vmess", "trojan", "anytls", "hysteria2", "http"],
+      "from": "`fp=HelloChrome_120`, `hellofirefox_auto`, `HelloChrome-106` and other uTLS library identifiers",
+      "to": "the browser family name sing-box understands, e.g. `chrome`",
+      "kind": "spelling",
+      "desc_en": "Xray and v2ray lists spell fingerprints with uTLS Go identifiers; the same family is written plainly for sing-box.",
+      "desc_ru": "Списки Xray и v2ray пишут отпечатки идентификаторами библиотеки uTLS; для sing-box то же семейство записывается простым именем.",
+      "impl": "core/config/subscription/node_parser_transport.go:98 normalizeUTLSFingerprintEx (таблица utlsAliasPrefixes). Написание значения в чужом диалекте, а не суждение о значении."
+    },
+    {
+      "id": "alpn_comma_list",
+      "applies_to": ["vless", "trojan", "vmess", "hysteria", "hysteria2", "tuic", "anytls"],
+      "from": "`alpn=h2,http/1.1` — one comma-separated string",
+      "to": "`tls.alpn` as a list of strings, each trimmed",
+      "kind": "split",
+      "desc_en": "A link carries ALPN as one string; the body needs a list.",
+      "desc_ru": "Ссылка несёт ALPN одной строкой; телу нужен список.",
+      "impl": "core/config/subscription/node_parser_transport.go:879 applyTLSQueryExtras. Форма записи, не значение."
+    },
+    {
+      "id": "sni_heuristic_falls_back_to_server",
+      "applies_to": ["vless", "trojan", "vmess", "hysteria", "hysteria2", "tuic", "anytls", "masque"],
+      "from": "`sni=` whose value carries neither `.` nor `:` (a label, an emoji, a country name)",
+      "to": "`tls.server_name` takes the server address instead",
+      "kind": "structure",
+      "desc_en": "Such a value is not a hostname at all, so the server address is used as the SNI; this picks the SOURCE of the field rather than judging its value.",
+      "desc_ru": "Такое значение — не имя хоста, поэтому SNI берётся с адреса сервера; это выбор ИСТОЧНИКА поля, а не суждение о значении.",
+      "impl": "core/config/subscription/node_parser_transport.go:1014 tlsServerNameFromQuery — одна функция вместо четырёх копий (DRIFT §7.5, вариант А)."
+    },
+    {
+      "id": "ech_param_dropped_with_code",
+      "applies_to": ["vless", "trojan", "vmess", "anytls"],
+      "from": "`ech=` in the link (any Xray-style form)",
+      "to": "nothing in the body; the node gets `ech_ignored`",
+      "kind": "drop",
+      "code": "ech_ignored",
+      "desc_en": "The link form of ECH has no address in the sing-box body; only the mapper knows the value came from a link rather than from a valid `tls.ech{}` object in JSON.",
+      "desc_ru": "Ссылочная форма ECH не имеет адреса в теле sing-box; отличить её от валидного `tls.ech{}` из JSON может только тот, кто знает ИСТОЧНИК.",
+      "impl": "core/config/subscription/node_parser_transport.go:908 noteECHIgnored. `ech=none` кодом не сопровождается — ничего не снято (DRIFT §7.2)."
+    },
+    {
+      "id": "fp_empty_defaults_to_random",
+      "applies_to": ["vless", "anytls"],
+      "from": "no `fp=` in the link",
+      "to": "`tls.utls.fingerprint = random`",
+      "kind": "default",
+      "desc_en": "A convention shared by both apps, not a core default (an empty fingerprint means `chrome` to the core). The value is part of the identity hash of live nodes.",
+      "desc_ru": "Конвенция обеих сторон (D-009), а не дефолт ядра — у ядра пустой `fp` означает `chrome`. Значение входит в identity-хеш живых узлов.",
+      "impl": "core/config/subscription/node_parser_transport.go:994 utlsFingerprintOrDefault(q, scheme, \"random\"); node_parser_anytls.go:56. В реестре не заводился `default_when`: тот означает «ядро без поля не работает», а здесь основание другое (W2D_CHANGES §6)."
+    }
+  ],
   "refs": {
     "go": ["core/config/outbound_tls_emit.go", "core/config/subscription/node_parser_transport.go:36-44", "core/config/subscription/node_parser_transport.go:49-100", "core/config/subscription/node_parser_transport.go:103-110", "core/config/subscription/node_parser_transport.go:562-608", "core/config/subscription/node_parser_transport.go:610-622", "core/config/subscription/node_parser_transport.go:625-744", "core/config/subscription/singbox_sanitize.go:44-51", "core/config/subscription/singbox_sanitize.go:121-218", "core/config/subscription/xray_outbound_convert.go:188-263", "core/config/subscription/shareuri_helpers.go:198-216"],
     "dart": ["lib/services/parser/transport.dart:290-314", "lib/services/parser/transport.dart:317-416", "lib/services/parser/transport.dart:437-460", "lib/services/parser/uri_utils.dart:121-133", "lib/services/parser/uri_utils.dart:228-258", "lib/services/parser/utls_fingerprint.dart:23-90", "lib/models/tls_spec.dart:5-105", "lib/services/parser/json_parsers.dart:705-739", "lib/services/parser/json_parsers.dart:1141-1173"]

@@ -38,11 +38,26 @@
     "param_order": ["extra-headers"],
     "note": "Схема при эмите: Go — naive+quic при quic:true, иначе naive+https; Dart — всегда naive+https (нет quic, §9.B1). Dart опускает порт 443, Go пишет всегда."
   },
-  "degrade": [
-    "битая пара в extra-headers (нет ':', запрещённые символы в имени, CR/LF/NUL в значении) → пара скипается с warning, остальные живут",
-    "padding → игнор с warning",
-    "неизвестный query-параметр → Dart: warning + игнор; Go: молча остаётся в Query и отсекается allowlist-эмиттером",
-    "TLS-блок несёт только enabled+server_name (=server): alpn/utls/reality/insecure намеренно не эмитятся — sing-box naive их отвергает"
+  "mapper": [
+    {
+      "id": "tls_block_kept_minimal",
+      "from": "any TLS options on a naive node",
+      "to": "a `tls` block carrying only `enabled` and `server_name`",
+      "kind": "drop",
+      "code": "tls_field_unsupported_naive",
+      "desc_en": "The naive outbound of sing-box rejects the rest of the TLS options, so they are deliberately not emitted.",
+      "desc_ru": "naive-outbound sing-box отвергает остальные опции TLS, поэтому они намеренно не эмитятся.",
+      "impl": "Правило выражено в реестре: forbidden_for ['naive'] на полях tls.json. Здесь записано, ПОЧЕМУ блок остаётся урезанным."
+    },
+    {
+      "id": "broken_header_pair_skipped",
+      "from": "a broken pair in `extra-headers` (no `:`, a forbidden character in the name, CR/LF/NUL in the value)",
+      "to": "that pair is skipped; the other headers survive",
+      "kind": "drop",
+      "desc_en": "One malformed header does not cost the node its remaining headers.",
+      "desc_ru": "Одна битая пара не стоит узлу остальных заголовков.",
+      "impl": "core/config/subscription/node_parser_naive.go."
+    }
   ],
   "refs": {
     "go": [

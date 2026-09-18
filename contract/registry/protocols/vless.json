@@ -90,15 +90,25 @@
     "param_order": ["alpn", "encryption", "flow", "fp", "host", "insecure", "mode", "packetEncoding", "path", "pbk", "security", "serviceName", "sid", "sni", "type"],
     "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart buildQuery sort). Расхождения формы эмита (для cross-emit фазы 2): Go всегда пишет encryption=none и опускает fp при 'random', reality-ноды идут БЕЗ security=reality (только pbk/sid), insecure=1 под ключом 'insecure'; Dart пишет security=reality|tls|none явно, fp всегда (включая random), флаг под ключом 'allowInsecure'."
   },
-  "degrade": [
-    "невалидный порт (не 1..65535) → drop ноды (битый server_port валит весь конфиг через sing-box check)",
-    "пустой hostname или userinfo → drop ноды",
-    "flow не из {'', vision, vision-udp443} → drop поля, нода живёт",
-    "vision + transport → drop flow (Dart: + warning §115)",
-    "packetEncoding='none' → drop поля молча; иной мусор → drop поля + warning",
-    "fp вне utls_fingerprints: Go → drop utls-блока, для vless дефолт 'random'; Dart → замена на 'chrome' + UnknownFingerprintWarning §281 (расхождение, см. tls.json)",
-    "pbk не X25519 (32 байта) → REALITY не строится, деградация до plain TLS (broken-list-pbk-junk, v1.1.7)",
-    "невалидный UTF-8 во fragment: Go чинит/дропает ноду при неисправимом; Dart — lossy-decode"
+  "mapper": [
+    {
+      "id": "vision_udp443_is_a_compound_name",
+      "from": "`flow=xtls-rprx-vision-udp443`",
+      "to": "`flow=xtls-rprx-vision` + `packet_encoding=xudp`",
+      "kind": "split",
+      "desc_en": "The suffix is part of a compound NAME, not a value the core knows: it means UDP/443 goes direct. The server port is deliberately left alone.",
+      "desc_ru": "Суффикс — часть составного ИМЕНИ, а не значение, известное ядру: он означает «UDP/443 идёт напрямую». Порт узла при этом намеренно не переписывается.",
+      "impl": "core/config/subscription/node_parser_core.go:730. Санитайзер увидел бы только мусор вне enum'а. Порт не трогаем — DRIFT §7.4, решение владельца."
+    },
+    {
+      "id": "packet_encoding_none_means_absent",
+      "from": "`packetEncoding=none`",
+      "to": "no `packet_encoding` key at all",
+      "kind": "drop",
+      "desc_en": "In subscription dialect `none` means \"no special encapsulation\", i.e. the same as an absent key; the core does not know the value and rejects the whole config over it.",
+      "desc_ru": "В диалекте подписок `none` означает «без особой инкапсуляции», то есть синоним отсутствия ключа; ядро такого значения не знает и падает всем конфигом.",
+      "impl": "core/config/subscription/node_parser_core.go:737-745. Прочий мусор уезжает как есть и снимается санитайзером кодом packet_encoding_unknown."
+    }
   ],
   "refs": {
     "go": [

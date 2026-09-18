@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"singbox-launcher/contract"
+	"singbox-launcher/core/config/registry"
 )
 
 // rawRegistry — те части реестра, которые загрузчику лаунчера не нужны и им не
@@ -27,6 +28,69 @@ type rawRegistry struct {
 	transports     map[string]*rawTransport
 	transportOrder []string
 	version        string
+
+	// reg — разрешённый реестр. Странице схемы он нужен, чтобы по адресу
+	// `maps_to` параметра ссылки найти правило ПОЛЯ ТЕЛА: только оно знает,
+	// что случится с негодным значением, а сам параметр ссылки решений о
+	// значениях не принимает.
+	reg *registry.Registry
+
+	// mapper — описательные переводы маппера: общие (tls/transports) и
+	// схемные. Правилами `body` они не выражаются, потому что санитайзер
+	// видит уже готовое тело.
+	sharedMapper []mapperRule
+	schemeMapper map[string][]mapperRule
+}
+
+// mapperRule — запись секции `mapper` реестра (SPEC 131 W2d §2).
+// `impl` объявлен, чтобы заметка разработчика не попала в документацию
+// случайно вместе с прочим.
+type mapperRule struct {
+	ID        string   `json:"id"`
+	AppliesTo []string `json:"applies_to"`
+	From      string   `json:"from"`
+	To        string   `json:"to"`
+	Kind      string   `json:"kind"`
+	Code      string   `json:"code"`
+	DescEn    string   `json:"desc_en"`
+	DescRu    string   `json:"desc_ru"`
+	Impl      string   `json:"impl"` // в документацию НЕ попадает
+}
+
+// appliesTo говорит, относится ли общее правило к схеме.
+func (m mapperRule) appliesTo(scheme string) bool {
+	for _, s := range m.AppliesTo {
+		if s == scheme {
+			return true
+		}
+	}
+	return false
+}
+
+// bodyField — поле тела схемы по его пути. Возвращает nil, если схема или
+// поле неизвестны: у части схем тела в реестре нет вовсе (group).
+func (r *rawRegistry) bodyField(scheme, path string) *registry.Field {
+	if r.reg == nil {
+		return nil
+	}
+	f, ok := r.reg.Field(scheme, path)
+	if !ok {
+		return nil
+	}
+	return f
+}
+
+// mapperFor — все переводы, относящиеся к схеме: сперва её собственные,
+// затем общие. Порядок фиксирован файлами реестра, вывод детерминирован.
+func (r *rawRegistry) mapperFor(scheme string) []mapperRule {
+	out := make([]mapperRule, 0, len(r.schemeMapper[scheme])+len(r.sharedMapper))
+	out = append(out, r.schemeMapper[scheme]...)
+	for _, m := range r.sharedMapper {
+		if m.appliesTo(scheme) {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 type rawProtocol struct {
@@ -38,7 +102,7 @@ type rawProtocol struct {
 	Extension   *string         `json:"extension"`
 	Note        string          `json:"note"`
 	URI         *rawURI         `json:"uri"`
-	Degrade     []string        `json:"degrade"`
+	Mapper      []mapperRule    `json:"mapper"`
 	Body        json.RawMessage `json:"body"`
 }
 
@@ -101,9 +165,11 @@ func (p *uriParam) mapsToPaths() []string {
 	return nil
 }
 
-func loadRaw() (*rawRegistry, error) {
+func loadRaw(reg *registry.Registry) (*rawRegistry, error) {
 	r := &rawRegistry{
-		protocols: map[string]*rawProtocol{},
+		protocols:    map[string]*rawProtocol{},
+		schemeMapper: map[string][]mapperRule{},
+		reg:          reg,
 	}
 
 	entries, err := fs.ReadDir(contract.Registry, "registry/protocols")
@@ -129,12 +195,22 @@ func loadRaw() (*rawRegistry, error) {
 		if p.URI != nil {
 			p.URI.queryOrder = orderedKeys(data, "uri", "query")
 		}
+		if len(p.Mapper) > 0 {
+			r.schemeMapper[name] = p.Mapper
+		}
 		r.protocols[name] = p
 	}
 
 	tlsData, err := contract.ReadRegistry("tls.json")
 	if err != nil {
 		return nil, err
+	}
+	// Общие переводы маппера лежат рядом с общими параметрами ссылки: TLS в
+	// tls.json, транспорты в transports.json.
+	if shared, err := readMapper(tlsData); err != nil {
+		return nil, fmt.Errorf("tls.json: %w", err)
+	} else {
+		r.sharedMapper = append(r.sharedMapper, shared...)
 	}
 	// Секции tls.params и tls.reality несут не только параметры: рядом лежат
 	// служебные заметки строкой (tls.reality.impl). Разбор поэлементный, всё,
@@ -151,6 +227,11 @@ func loadRaw() (*rawRegistry, error) {
 	trData, err := contract.ReadRegistry("transports.json")
 	if err != nil {
 		return nil, err
+	}
+	if shared, err := readMapper(trData); err != nil {
+		return nil, fmt.Errorf("transports.json: %w", err)
+	} else {
+		r.sharedMapper = append(r.sharedMapper, shared...)
 	}
 	var trFile struct {
 		Transports map[string]*rawTransport `json:"transports"`
@@ -169,6 +250,17 @@ func loadRaw() (*rawRegistry, error) {
 	}
 
 	return r, nil
+}
+
+// readMapper читает секцию `mapper` файла реестра.
+func readMapper(data []byte) ([]mapperRule, error) {
+	var f struct {
+		Mapper []mapperRule `json:"mapper"`
+	}
+	if err := json.Unmarshal(data, &f); err != nil {
+		return nil, err
+	}
+	return f.Mapper, nil
 }
 
 // schemes — схемы реестра в алфавитном порядке (порядок файлов на диске

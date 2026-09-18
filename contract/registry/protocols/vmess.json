@@ -8,7 +8,7 @@
   "extension": null,
   "uri": {
     "userinfo": {
-      "meaning": "нет (контейнерная схема)",
+      "meaning": "none (container scheme)",
       "desc_en": "No userinfo: the whole entry is base64 inside the link.",
       "desc_ru": "Userinfo нет: вся запись лежит в base64 внутри ссылки.",
       "impl": "vmess://base64(JSON v2rayN) ЛИБО vmess://base64('method:uuid@host:port[?query]') — legacy cleartext живёт только ВНУТРИ base64 в обоих проектах (§9.B8, паритет). '#fragment' после base64-части читается обоими (percent-decoded label) ТОЛЬКО в legacy-cleartext ветке; в основной JSON-форме fragment выбрасывают оба: Go не передаёт его в parseVMessJSON (node_parser_vmess.go:57, fragmentLabel уходит лишь в parseVMessLegacyCleartext:92), Dart не передаёт в _vmessFromJson (vmess_parser.dart:30-31, fragment уходит лишь в _vmessLegacy:36) — верхнее поле \"fragment\": \"label\" этой схемы работает только для legacy-ветки. Все 4 варианта base64 (std/url × pad/nopad); Dart дополнительно срезает '=' при эмите."
@@ -220,13 +220,16 @@
     "param_order": ["v", "ps", "add", "port", "id", "aid", "scy", "net", "type", "host", "path", "tls", "sni", "alpn", "fp", "insecure"],
     "note": "Эмит = base64(JSON), порядок ключей — как в таблице (фактический у Go — порядок map/json.Marshal, у Dart — insertion order). Расхождения формы: Go порт/aid числами + base64 с padding; Dart строками + padding срезан. ВАЖНО: Go при транспорте httpupgrade пишет net='ws' (shareuri_vmess.go:70-74) — меняет wire-протокол на round-trip, кандидат на баг; Dart честно пишет net='httpupgrade'. Единственный lossy-эмиттер у Dart (каноническая JSON-форма)."
   },
-  "degrade": [
-    "base64 не декодится / пустой payload → drop ноды",
-    "JSON не парсится → попытка legacy cleartext 'method:uuid@host:port'; не подошло → drop ноды",
-    "отсутствуют add/port/id → drop ноды (Go копит список missing fields в ошибке)",
-    "scy/security вне allowlist → 'auto' (нода живёт)",
-    "query-хвост legacy cleartext: Go читает (network/type/tls → транспорт и TLS); Dart отбрасывает всё после '?' — новое расхождение вне §9 PLAN",
-    "невалидный UTF-8 в декоде → Go чинит через ToValidUTF8, Dart utf8Lossy"
+  "mapper": [
+    {
+      "id": "legacy_cleartext_fallback",
+      "from": "a `vmess://` payload that is not JSON",
+      "to": "read as the legacy cleartext form `method:uuid@host:port`",
+      "kind": "structure",
+      "desc_en": "Older panels emit an unencoded vmess link; it is tried before the node is given up on.",
+      "desc_ru": "Старые панели выдают vmess-ссылку без JSON; эта форма пробуется, прежде чем узел отбросят.",
+      "impl": "core/config/subscription/node_parser_vmess.go. Query-хвост такой ссылки читается (network/type/tls → транспорт и TLS)."
+    }
   ],
   "refs": {
     "go": [

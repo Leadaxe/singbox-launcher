@@ -188,6 +188,12 @@ type BodySchema struct {
 }
 
 // WarningEntry — запись кода из registry/warnings.json.
+//
+// Пара «текст / причина / что делать» — три разных вопроса, и путать их
+// нельзя: TextEn говорит, ЧТО случилось с узлом, CauseEn — откуда такое
+// значение обычно берётся (кривая подписка, чужой диалект, старое ядро), а
+// FixEn — что человек может сделать. У info-кодов честный Fix — «ничего не
+// нужно».
 type WarningEntry struct {
 	Severity string   `json:"severity"`
 	Params   []string `json:"params"`
@@ -195,6 +201,10 @@ type WarningEntry struct {
 	TitleRu  string   `json:"title_ru"`
 	TextEn   string   `json:"text_en"`
 	TextRu   string   `json:"text_ru"`
+	CauseEn  string   `json:"cause_en"`
+	CauseRu  string   `json:"cause_ru"`
+	FixEn    []string `json:"fix_en"`
+	FixRu    []string `json:"fix_ru"`
 	Desc     string   `json:"desc"`
 	Doc      string   `json:"doc"`
 }
@@ -815,6 +825,27 @@ func (r *Registry) WarningText(code, lang string, params map[string]string) (tit
 		title, text = w.TitleEn, w.TextEn
 	}
 	return substitute(title, params), substitute(text, params), true
+}
+
+// WarningAdvice отдаёт причину и список действий на языке lang ("ru" —
+// русский, всё прочее — английский). Подстановки здесь не делаются: причина и
+// совет говорят о классе проблемы, а не о конкретном значении, и {path} в них
+// не используется.
+func (r *Registry) WarningAdvice(code, lang string) (cause string, fixes []string, ok bool) {
+	w, found := r.warnings[code]
+	if !found {
+		return "", nil, false
+	}
+	if lang == "ru" {
+		cause, fixes = w.CauseRu, w.FixRu
+	} else {
+		cause, fixes = w.CauseEn, w.FixEn
+	}
+	// Копия: список лежит в кэше реестра на весь процесс, и вызывающий не
+	// должен иметь возможности его переписать.
+	out := make([]string, len(fixes))
+	copy(out, fixes)
+	return cause, out, true
 }
 
 func substitute(s string, params map[string]string) string {

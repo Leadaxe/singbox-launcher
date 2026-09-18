@@ -119,19 +119,40 @@
     "param_order": ["alpn", "auth", "downmbps", "insecure", "mport", "obfs", "obfsParam", "pinSHA256", "sni", "upmbps"],
     "note": "Порядок лексикографический (url.Values.Encode()). Секрет эмитится в auth=, НЕ в userinfo. obfs эмитится парой obfs=xplus&obfsParam=<секрет> — так ссылку понимают сторонние клиенты 1.x и собственный парсер (плоская строка восстанавливается из obfsParam)."
   },
-  "degrade": [
-    "нет up/down → подставляется 100 Мбит/с (иначе fatal ядра на весь конфиг)",
-    "obfs=xplus без obfsParam → обфускация снята (строка-тип не является секретом)",
-    "obfs пришёл объектом {type,password} из singbox-тела → берётся password как строка, иначе блок снят",
-    "sni-мусор → server_name = server",
-    "utls/reality в теле → сняты (QUIC, quicOutboundTypes)",
-    "невалидный порт в authority → нода дропается"
-  ],
   "xray_dialect": {
     "protocol": "hysteria",
     "note": "Форки Xray (сборки с «finalmask») отдают И v1, И hysteria2 под одним protocol:\"hysteria\", различая версии полем version — в streamSettings.hysteriaSettings.version либо в settings.version. version=2 → sing-box type hysteria2 (секрет в password), version=1 или отсутствует → hysteria (секрет в auth_str). Адрес лежит ПЛОСКО в settings.address/port, а не в settings.servers[] — общий xrayServerEndpoint такую форму не берёт, отсюда собственная выемка xrayHysteriaEndpoint. alpn дочитывается из tlsSettings: общая TLS-выемка его не читает, а на QUIC alpn=h3 — рабочая часть рукопожатия.",
     "go": "core/config/subscription/xray_hysteria.go"
   },
+  "mapper": [
+    {
+      "id": "mbps_unit_suffix",
+      "from": "`upmbps=100 mbps`, `downmbps=50m`",
+      "to": "`up_mbps: 100`, `down_mbps: 50`",
+      "kind": "spelling",
+      "desc_en": "Panels write the bandwidth with a unit suffix; the core field is a bare number.",
+      "desc_ru": "Панели пишут полосу с суффиксом единицы; поле ядра — голое число.",
+      "impl": "core/config/subscription/node_parser_hysteria.go:94 hysteriaMbps. Суффикс единицы — форма записи, не значение."
+    },
+    {
+      "id": "obfs_object_to_string",
+      "from": "`obfs` arriving as an object `{type, password}` from a sing-box body",
+      "to": "the `password` string, or no obfuscation block at all",
+      "kind": "structure",
+      "desc_en": "Hysteria v1 takes the obfuscation secret as a bare string; the object form belongs to Hysteria2.",
+      "desc_ru": "Hysteria v1 принимает секрет обфускации голой строкой; объектная форма — от Hysteria2.",
+      "impl": "core/config/subscription/singbox_sanitize.go. Строка-тип секретом не является."
+    },
+    {
+      "id": "quic_has_no_utls_or_reality",
+      "from": "`tls.utls` or `tls.reality` in a hysteria body",
+      "to": "both blocks removed",
+      "kind": "drop",
+      "desc_en": "Hysteria runs over QUIC, which has no TLS handshake for uTLS or REALITY to shape.",
+      "desc_ru": "Hysteria работает поверх QUIC, где нет TLS-рукопожатия, которое могли бы формировать uTLS или REALITY.",
+      "impl": "core/config/subscription/singbox_sanitize.go, набор quicOutboundTypes."
+    }
+  ],
   "refs": {
     "go": [
       "core/config/subscription/node_parser_core.go (ветка hysteria:// / hy://)",

@@ -3,7 +3,11 @@
   "note": "Общие поля тела узла: ServerOptions + network (секция common) и «клиентские» DialerOptions (секция body). Ссылаются из body протоколов как {\"type\":\"ref\",\"ref\":\"dialer\",\"inline\":true} — поля вливаются в тело плоско, без обёртки. Неклиентские поля DialerOptions (bind_address_no_port, protect_path, routing_mark, reuse_addr, netns, tcp_multi_path, disable_tcp_keep_alive, tcp_keep_alive, tcp_keep_alive_interval, network_strategy, network_type, fallback_network_type, fallback_delay, domain_strategy) лаунчер не пишет — они помечены skip в этой же секции. SPEC 131, CORE_SCHEMA §1.1–§1.3.",
   "common": {
     "core": "1.14.1-lx.4",
-    "order": ["server", "server_port", "network"],
+    "order": [
+      "server",
+      "server_port",
+      "network"
+    ],
     "fields": {
       "server": {
         "type": "string",
@@ -33,7 +37,10 @@
       },
       "network": {
         "type": "listable_string",
-        "values": ["tcp", "udp"],
+        "values": [
+          "tcp",
+          "udp"
+        ],
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
@@ -47,7 +54,16 @@
   },
   "body": {
     "core": "1.14.1-lx.4",
-    "order": ["detour", "bind_interface", "inet4_bind_address", "inet6_bind_address", "connect_timeout", "tcp_fast_open", "udp_fragment", "domain_resolver"],
+    "order": [
+      "detour",
+      "bind_interface",
+      "inet4_bind_address",
+      "inet6_bind_address",
+      "connect_timeout",
+      "tcp_fast_open",
+      "udp_fragment",
+      "domain_resolver"
+    ],
     "fields": {
       "detour": {
         "type": "string",
@@ -88,7 +104,9 @@
       "tcp_fast_open": {
         "type": "bool",
         "default": false,
-        "forbidden_for": ["anytls"],
+        "forbidden_for": [
+          "anytls"
+        ],
         "code": "field_conflict",
         "desc_en": "Use TCP Fast Open.",
         "desc_ru": "Использовать TCP Fast Open.",
@@ -109,20 +127,20 @@
       }
     },
     "skipped": {
-      "bind_address_no_port": "серверная/низкоуровневая опция dialer — лаунчер её не пишет ни на одном входе (CORE_SCHEMA §1.2, «клиентские» отмечены отдельно)",
-      "protect_path": "только Android (platform=android); десктопный лаунчер не пишет",
-      "routing_mark": "только Linux; лаунчер не пишет",
-      "reuse_addr": "низкоуровневая опция dialer — лаунчер не пишет",
-      "netns": "только Linux, reference:network_namespace — лаунчер не пишет",
-      "tcp_multi_path": "низкоуровневая опция dialer — лаунчер не пишет",
-      "disable_tcp_keep_alive": "низкоуровневая опция dialer — лаунчер не пишет",
-      "tcp_keep_alive": "низкоуровневая опция dialer — лаунчер не пишет",
-      "tcp_keep_alive_interval": "низкоуровневая опция dialer — лаунчер не пишет",
-      "network_strategy": "enum живёт в C.StringToNetworkStrategy и из option/*.go не виден (CORE_SCHEMA §8) — без словаря правило значения не описать",
-      "network_type": "парное с network_strategy, который не описан; лаунчер не пишет",
-      "fallback_network_type": "парное с network_strategy, который не описан; лаунчер не пишет",
-      "fallback_delay": "парное с network_strategy, который не описан; лаунчер не пишет",
-      "domain_strategy": "deprecated, schema:\"omit\" в ядре — мигрировано в domain_resolver"
+      "bind_address_no_port": "A server-side, low-level dialer option; the launcher never writes it on any input (CORE_SCHEMA 1.2 marks the client-side ones separately).",
+      "protect_path": "Android only (platform=android); the desktop launcher does not write it.",
+      "routing_mark": "Linux only; the launcher does not write it.",
+      "reuse_addr": "A low-level dialer option; the launcher does not write it.",
+      "netns": "Linux only, reference:network_namespace; the launcher does not write it.",
+      "tcp_multi_path": "A low-level dialer option; the launcher does not write it.",
+      "disable_tcp_keep_alive": "A low-level dialer option; the launcher does not write it.",
+      "tcp_keep_alive": "A low-level dialer option; the launcher does not write it.",
+      "tcp_keep_alive_interval": "A low-level dialer option; the launcher does not write it.",
+      "network_strategy": "The enum lives in C.StringToNetworkStrategy and is not visible from option/*.go (CORE_SCHEMA 8); without that dictionary the value rule cannot be described.",
+      "network_type": "Paired with network_strategy, which is not described; the launcher does not write it.",
+      "fallback_network_type": "Paired with network_strategy, which is not described; the launcher does not write it.",
+      "fallback_delay": "Paired with network_strategy, which is not described; the launcher does not write it.",
+      "domain_strategy": "Deprecated, schema:\"omit\" in the core — migrated to domain_resolver."
     }
   }
 }

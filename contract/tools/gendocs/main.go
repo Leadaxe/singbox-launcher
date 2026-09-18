@@ -48,7 +48,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	raw, err := loadRaw()
+	raw, err := loadRaw(reg)
 	if err != nil {
 		return err
 	}

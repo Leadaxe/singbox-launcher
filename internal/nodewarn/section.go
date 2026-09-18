@@ -38,6 +38,12 @@ const SectionTitleText = "Warnings" // l10n-key
 // DetailsButtonText — подпись кнопки на якорь документации.
 const DetailsButtonText = "Details" // l10n-key
 
+// CauseLabelText — подпись строки с причиной.
+const CauseLabelText = "Why it happens:" // l10n-key
+
+// FixLabelText — подпись списка решений.
+const FixLabelText = "What you can do:" // l10n-key
+
 // Section собирает секцию «Предупреждения» для окна узла.
 //
 // nil при пустом списке — вызывающий не добавляет ни заголовка, ни
@@ -81,12 +87,49 @@ func row(t Text) fyne.CanvasObject {
 	bodyLabel.Importance = widget.MediumImportance
 
 	rows := []fyne.CanvasObject{titleLabel, bodyLabel}
+
+	// Причина и решения — за объяснением, в том же порядке, что и в
+	// документации: What happened (Body) → Why it happens → What you can do.
+	if t.Cause != "" {
+		rows = append(rows, caption(locale.T(CauseLabelText)), wrapped(t.Cause))
+	}
+	if len(t.Fixes) > 0 {
+		rows = append(rows, caption(locale.T(FixLabelText)))
+		for _, f := range t.Fixes {
+			if f == "" {
+				continue
+			}
+			rows = append(rows, wrapped("— "+f))
+		}
+	}
+
 	if btn := detailsButton(t); btn != nil {
 		// Кнопка прижата влево спейсером: растянутая на всю ширину, она
 		// читалась бы как действие над всем окном, а не над этой строкой.
 		rows = append(rows, container.NewHBox(btn, layout.NewSpacer()))
 	}
 	return container.NewVBox(rows...)
+}
+
+// caption — подпись блока внутри строки предупреждения.
+//
+// Отдельный виджет, а не приписка к тексту: подпись должна отличаться от
+// самого текста, а рисовать её жирным наравне с заголовком кода значило бы
+// спорить с ним за внимание.
+func caption(s string) *widget.Label {
+	l := widget.NewLabel(s)
+	l.Wrapping = fyne.TextWrapWord
+	l.Importance = widget.LowImportance
+	return l
+}
+
+// wrapped — обычная строка произвольной длины. Wrapping обязателен: без него
+// одна длинная строка реестра раздувает окно на весь экран (Л19).
+func wrapped(s string) *widget.Label {
+	l := widget.NewLabel(s)
+	l.Wrapping = fyne.TextWrapWord
+	l.Importance = widget.MediumImportance
+	return l
 }
 
 // detailsButton — «Подробнее» на якорь кода в документации контракта.

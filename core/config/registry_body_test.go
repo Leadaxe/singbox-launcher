@@ -212,18 +212,22 @@ func loadWarningCodes(t *testing.T) map[string]bool {
 	return codes
 }
 
+// registryProtocolSchemes — схемы протоколов реестра. Список явный (тот же,
+// что у загрузчика в core/config/registry): появление новой схемы должно быть
+// осознанным, а не подхватываться обходом каталога молча.
+var registryProtocolSchemes = []string{
+	"anytls", "chain", "http", "hysteria", "hysteria2", "masque",
+	"naive", "shadowsocks", "socks", "ssh", "tailscale", "trojan", "tuic",
+	"vless", "vmess", "wireguard",
+}
+
 // registryBodyFiles — файлы реестра с секцией body и имена суб-схем, на
 // которые из них можно ссылаться.
 func registryBodyFiles(t *testing.T) map[string]*registryBodyFile {
 	t.Helper()
-	names := []string{
-		"tls.json", "transports.json", "multiplex.json", "dialer.json",
-		"protocols/vless.json", "protocols/vmess.json", "protocols/trojan.json",
-		"protocols/shadowsocks.json", "protocols/hysteria.json", "protocols/hysteria2.json",
-		"protocols/tuic.json", "protocols/anytls.json", "protocols/naive.json",
-		"protocols/socks.json", "protocols/http.json", "protocols/ssh.json",
-		"protocols/masque.json", "protocols/chain.json", "protocols/wireguard.json",
-		"protocols/tailscale.json",
+	names := []string{"tls.json", "transports.json", "multiplex.json", "dialer.json"}
+	for _, scheme := range registryProtocolSchemes {
+		names = append(names, "protocols/"+scheme+".json")
 	}
 	out := make(map[string]*registryBodyFile, len(names))
 	for _, name := range names {
@@ -705,4 +709,169 @@ func refParent(ref string) string {
 		return ref
 	}
 	return ref[:i]
+}
+
+// registryMapperKinds — словарь вида перевода секции mapper.
+//
+// Секция описательная: в рантайме её не исполняет никто, её читает только
+// генератор документации. Именно поэтому линтер здесь строже обычного — у
+// неверной записи нет ни одного шанса упасть на тесте конвейера, она просто
+// молча соврёт в документации.
+var registryMapperKinds = map[string]bool{
+	// structure — решение о НАЛИЧИИ или форме блока: отсутствие ключа
+	// санитайзеру неотличимо от «не задано» (security=none → нет tls).
+	"structure": true,
+	// spelling — то же значение, записанное в чужом диалекте
+	// (HelloChrome_120 → chrome).
+	"spelling": true,
+	// split — один вход разворачивается в несколько полей тела
+	// (?ed=N → max_early_data + early_data_header_name).
+	"split": true,
+	// default — материализация дефолта-КОНВЕНЦИИ, а не дефолта ядра
+	// (пустой fp → random). От default_when отличается основанием: там ядро
+	// без поля не работает, здесь работает, но обе стороны договорились.
+	"default": true,
+	// drop — вход осознанно не доезжает до тела (packetEncoding=none).
+	"drop": true,
+}
+
+// mapperRule — запись секции mapper.
+type mapperRule struct {
+	ID        string   `json:"id"`
+	AppliesTo []string `json:"applies_to"`
+	From      string   `json:"from"`
+	To        string   `json:"to"`
+	Kind      string   `json:"kind"`
+	Code      string   `json:"code"`
+	DescEn    string   `json:"desc_en"`
+	DescRu    string   `json:"desc_ru"`
+	Impl      string   `json:"impl"`
+}
+
+// TestRegistryMapperSection — линтер секции mapper: id уникален по всему
+// реестру, kind из словаря, code объявлен в warnings.json, desc_en непуст,
+// applies_to называет существующие схемы.
+func TestRegistryMapperSection(t *testing.T) {
+	codes := loadWarningCodes(t)
+
+	// `group` секции body не имеет (это не узел, а состав из чужих тегов), но
+	// структурные переводы у неё есть — поэтому mapper читается шире, чем
+	// список схем с телом.
+	mapperSchemes := append(append([]string{}, registryProtocolSchemes...), "group")
+	sort.Strings(mapperSchemes)
+
+	names := []string{"tls.json", "transports.json"}
+	for _, scheme := range mapperSchemes {
+		names = append(names, "protocols/"+scheme+".json")
+	}
+
+	schemes := make(map[string]bool, len(mapperSchemes))
+	for _, s := range mapperSchemes {
+		schemes[s] = true
+	}
+
+	seen := map[string]string{} // id → файл, где он уже встретился
+	total := 0
+	for _, name := range names {
+		var f struct {
+			Mapper []mapperRule `json:"mapper"`
+		}
+		if !readRegistryJSON(t, name, &f) {
+			return
+		}
+		shared := name == "tls.json" || name == "transports.json"
+		for _, r := range f.Mapper {
+			total++
+			where := fmt.Sprintf("%s mapper[%s]", name, r.ID)
+			if strings.TrimSpace(r.ID) == "" {
+				t.Errorf("%s: пустой id", name)
+				continue
+			}
+			if prev, ok := seen[r.ID]; ok {
+				t.Errorf("%s: id %q уже объявлен в %s", name, r.ID, prev)
+			}
+			seen[r.ID] = name
+
+			if !registryMapperKinds[r.Kind] {
+				t.Errorf("%s: kind %q вне словаря", where, r.Kind)
+			}
+			if strings.TrimSpace(r.From) == "" || strings.TrimSpace(r.To) == "" {
+				t.Errorf("%s: from/to обязаны быть непустыми", where)
+			}
+			// desc_en уходит в англоязычную документацию: без него страница
+			// покажет правило без объяснения.
+			if strings.TrimSpace(r.DescEn) == "" {
+				t.Errorf("%s: пустой desc_en", where)
+			}
+			if r.Code != "" && !codes[r.Code] && !registryPendingCodes[r.Code] {
+				t.Errorf("%s: код %q не объявлен в warnings.json", where, r.Code)
+			}
+			// Общее правило обязано называть схемы, к которым относится:
+			// иначе документация не знает, на чью страницу его вывести.
+			if shared && len(r.AppliesTo) == 0 {
+				t.Errorf("%s: общее правило без applies_to", where)
+			}
+			if !shared && len(r.AppliesTo) > 0 {
+				t.Errorf("%s: applies_to у схемного правила (оно и так относится к своей схеме)", where)
+			}
+			for _, s := range r.AppliesTo {
+				if !schemes[s] {
+					t.Errorf("%s: applies_to называет неизвестную схему %q", where, s)
+				}
+			}
+		}
+	}
+	if total == 0 {
+		t.Error("секция mapper пуста во всём реестре — структурные переводы описаны только в коде")
+	}
+}
+
+// TestRegistryWarningsHaveCauseAndFix — у каждого кода есть причина и хотя бы
+// одно действие.
+//
+// Код без этой пары оставляет человека наедине с фактом «что-то сняли»: текст
+// говорит, ЧТО случилось, но не говорит, откуда такое значение берётся и что с
+// ним делать. Для info-кодов честный ответ «ничего делать не нужно» — тоже
+// действие, и он обязан быть написан явно.
+func TestRegistryWarningsHaveCauseAndFix(t *testing.T) {
+	var f struct {
+		Warnings map[string]struct {
+			CauseEn string   `json:"cause_en"`
+			CauseRu string   `json:"cause_ru"`
+			FixEn   []string `json:"fix_en"`
+			FixRu   []string `json:"fix_ru"`
+		} `json:"warnings"`
+	}
+	if !readRegistryJSON(t, "warnings.json", &f) {
+		return
+	}
+	codes := make([]string, 0, len(f.Warnings))
+	for c := range f.Warnings {
+		codes = append(codes, c)
+	}
+	sort.Strings(codes)
+
+	for _, c := range codes {
+		w := f.Warnings[c]
+		if strings.TrimSpace(w.CauseEn) == "" {
+			t.Errorf("%s: пустой cause_en — непонятно, откуда такое значение берётся", c)
+		}
+		if strings.TrimSpace(w.CauseRu) == "" {
+			t.Errorf("%s: пустой cause_ru", c)
+		}
+		if len(w.FixEn) == 0 {
+			t.Errorf("%s: пустой fix_en — человеку не сказано, что делать", c)
+		}
+		for i, fix := range w.FixEn {
+			if strings.TrimSpace(fix) == "" {
+				t.Errorf("%s: fix_en[%d] пуст", c, i)
+			}
+		}
+		// Списки идут парой: UI берёт их по индексу языка, и разъехавшаяся
+		// длина означала бы, что на одном языке совет пропал.
+		if len(w.FixRu) != len(w.FixEn) {
+			t.Errorf("%s: fix_ru (%d) и fix_en (%d) разной длины",
+				c, len(w.FixRu), len(w.FixEn))
+		}
+	}
 }

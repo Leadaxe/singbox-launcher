@@ -53,6 +53,13 @@ type Text struct {
 	Body string
 	// Path — путь поля в теле; пуст у кодов уровня узла.
 	Path string
+	// Cause — откуда такое берётся: не «что случилось с узлом» (это Body), а
+	// почему подписка вообще прислала такое значение. Пусто, если реестр
+	// причины не даёт.
+	Cause string
+	// Fixes — что человек может сделать, по одному действию на пункт. У
+	// info-кодов первый пункт честно говорит «ничего не нужно».
+	Fixes []string
 	// DocURL — якорь кода в сгенерированной документации.
 	DocURL string
 }
@@ -83,6 +90,12 @@ func Describe(in []state.NodeWarning) []Text {
 		if err == nil && reg != nil {
 			if title, body, ok := reg.WarningText(w.Code, lang, paramsOf(w)); ok {
 				t.Title, t.Body = title, body
+			}
+			// Причина и решения — отдельные поля реестра: подстановок они не
+			// несут (говорят о КЛАССЕ проблемы, не об этом значении), поэтому
+			// берутся как есть.
+			if cause, fixes, ok := reg.WarningAdvice(w.Code, lang); ok {
+				t.Cause, t.Fixes = cause, fixes
 			}
 		}
 		if t.Title == "" {

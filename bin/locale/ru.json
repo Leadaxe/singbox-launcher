@@ -985,6 +985,15 @@
   "This outbound cannot be turned into a share link (e.g. selector, direct-out, or fields not supported by the URI encoder).": {
     "value": "Этот outbound нельзя преобразовать в share-ссылку (селектор, direct-out или поля не поддерживаются кодировщиком URI)."
   },
+  "Private key in the link": {
+    "value": "В ссылке приватный ключ"
+  },
+  "This link contains the node's private key. Anyone who gets it will be able to connect as you. Copy?": {
+    "value": "Эта ссылка содержит приватный ключ узла. Любой, кто её получит, сможет подключаться от вашего имени. Скопировать?"
+  },
+  "Some of these links contain node private keys. Anyone who gets them will be able to connect as you. Copy?": {
+    "value": "Некоторые из этих ссылок содержат приватные ключи узлов. Любой, кто их получит, сможет подключаться от вашего имени. Скопировать?"
+  },
   "Config Wizard": {
     "value": "Мастер конфигурации"
   },
@@ -4684,5 +4693,11 @@
   },
   " · %d with warnings": {
     "value": " · из них с предупреждениями: %d"
+  },
+  "Why it happens:": {
+    "value": "Почему так бывает:"
+  },
+  "What you can do:": {
+    "value": "Что можно сделать:"
   }
 }

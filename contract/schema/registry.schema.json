@@ -39,11 +39,35 @@
         "note": { "type": "string" }
       }
     },
-    "degrade": { "type": "array", "items": { "type": "string" } },
+    "mapper": { "type": "array", "items": { "$ref": "#/$defs/mapperRule" } },
     "refs": { "$ref": "#/$defs/refs" },
     "note": { "type": "string" }
   },
   "$defs": {
+    "mapperRule": {
+      "description": "Описательная запись секции mapper: структурный перевод диалекта, который делает МАППЕР, а не санитайзер (SPEC 131 W2d §2). Правилами body такие переводы не выражаются — санитайзер видит готовое тело и решения об ОТСУТСТВИИ ключа, об ИСТОЧНИКЕ поля или о составном ИМЕНИ принять не может. Секция читается только документацией: в рантайме её не исполняет никто, поэтому запись обязана называть место в коде (impl).",
+      "type": "object",
+      "required": ["id", "from", "to", "kind", "desc_en"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "description": "Идентификатор правила, уникальный по всему реестру." },
+        "applies_to": {
+          "type": "array",
+          "description": "Схемы, к которым применяется общее правило (tls.json, transports.json). У схемного правила отсутствует.",
+          "items": { "type": "string" }
+        },
+        "from": { "type": "string", "description": "Что приходит на вход: написание параметра ссылки или форма чужого диалекта." },
+        "to": { "type": "string", "description": "Что получается в теле узла." },
+        "kind": {
+          "description": "structure — решение о наличии/форме блока; spelling — написание того же значения в чужом диалекте; split — один вход в несколько полей; default — материализация дефолта-конвенции; drop — вход осознанно не доезжает до тела.",
+          "enum": ["structure", "spelling", "split", "default", "drop"]
+        },
+        "code": { "type": "string", "description": "Код из registry/warnings.json, если перевод сопровождается кодом." },
+        "desc_en": { "type": "string", "description": "Короткая фраза для человека, EN (уходит в документацию)." },
+        "desc_ru": { "type": "string", "description": "Короткая фраза для человека, RU." },
+        "impl": { "type": "string", "description": "Заметка для разработчика: файл:функция в Go и обоснование. В документацию не попадает." }
+      }
+    },
     "param": {
       "type": "object",
       "required": ["type"],

@@ -100,14 +100,6 @@
     "param_order": ["alpn", "fp", "host", "insecure", "path", "security", "serviceName", "sni", "type"],
     "note": "Порядок лексикографический (url.Values.Encode / buildQuery). Расхождение формы: Go при включённом TLS НЕ пишет security=tls (дефолт схемы), Dart пишет явно; insecure: Go 'insecure=1', Dart 'allowInsecure=1'. Оба парсера принимают обе формы."
   },
-  "degrade": [
-    "пустой hostname или userinfo → drop ноды",
-    "невалидный порт → drop ноды",
-    "security=none → tls-ключ опускается целиком (НЕ enabled:false — SPEC 045)",
-    "fp вне utls_fingerprints: Go → drop utls-блока; Dart → 'chrome' + warning (см. tls.json)",
-    "Xray-импорт: пустой password → drop ноды (missing trojan password)",
-    "sing-box импорт: битые tls/utls/reality чинятся санитайзом (см. tls.json policy)"
-  ],
   "refs": {
     "go": [
       "core/config/subscription/node_parser_core.go:140-141",

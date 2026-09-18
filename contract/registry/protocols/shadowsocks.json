@@ -69,7 +69,6 @@
     "param_order": [],
     "note": "Эмит без query: ss://base64std(method:password)@host:port#frag. Расхождение формы: Go оставляет '='-padding, Dart срезает (оба парсят оба вида). Метод вне allowlist → ErrShareURINotSupported (Go). Dart НЕ эмитит plugin/plugin_opts в URI (см. plugin)."
   },
-  "degrade": ["метод вне ss_methods → drop ноды (оба; философия «неизвестный метод = мусор, который уронит конфиг»)", "userinfo/legacy-blob не декодится base64 → drop ноды (Go: SIP002-ветка логирует и продолжает до финальной проверки method/password)", "нет ':' в декодированном userinfo → drop ноды", "порт: РАСХОЖДЕНИЕ (новое, вне §9) — Go: URI без порта → дефолт 443 (общий defaultPort); Dart: host без ':' → drop ноды, неразбираемый порт → fallback 8388", "пустой пароль → drop ноды"],
   "refs": {
     "go": ["core/config/subscription/node_parser_core.go:143-208", "core/config/subscription/node_parser_core.go:338-345", "core/config/subscription/node_parser_core.go:581-583", "core/config/subscription/node_parser_core.go:767-773", "core/config/subscription/node_parser_ss.go:6-21", "core/config/subscription/xray_protocols.go:222-256", "core/config/subscription/shareuri_ss.go:11-33"],
     "dart": ["lib/services/parser/uri_parsers/shadowsocks_parser.dart:8-89", "lib/services/parser/uri_parsers/shadowsocks_parser.dart:91-104", "lib/services/parser/uri_utils.dart:280-293", "lib/services/parser/json_parsers.dart:615-636", "lib/services/parser/json_parsers.dart:874-885", "lib/models/node_spec_emit.dart:289-308"]

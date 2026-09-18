@@ -110,12 +110,6 @@
     "param_order": ["alpn", "fp", "idle_session_check_interval", "idle_session_timeout", "insecure", "min_idle_session", "pbk", "security", "sid", "sni"],
     "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart toUriAnyTls → _buildUri → buildQuery sort, uri_utils.dart:306-312). insecure: Dart эмитит allowInsecure=1, Go — insecure=1. security/pbk/sid эмитит только Dart (REALITY-разрыв)."
   },
-  "degrade": [
-    "fp вне allowlist → Go: utls не эмитится; Dart: chrome + warning (целевое по D-009 — random при пустом)",
-    "pbk-мусор (enabled/true, не 32 байта X25519) → Dart: REALITY не создаётся, plain TLS; Go pbk не читает",
-    "пустой пароль → drop ноды в обоих: anytls входит в общую валидацию userinfo Go (node_parser_core.go:308-316), warning-ветка node_parser_anytls.go:24-25 с URI-пути недостижима (мёртвый код); Dart: null-skip",
-    "min_idle_session не число → ключ дропнут"
-  ],
   "refs": {
     "go": [
       "core/config/subscription/node_parser_core.go:244-247",

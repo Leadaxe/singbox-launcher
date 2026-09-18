@@ -104,11 +104,16 @@
     "param_order": ["allow_insecure", "alpn", "congestion_control", "reduce_rtt", "sni", "udp_relay_mode"],
     "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart toUriTuic → buildQuery sort, node_spec_emit.dart:456 + uri_utils.dart:306-312). zero-RTT: Dart эмитит reduce_rtt=1, Go — zero_rtt_handshake=1 (оба парсера должны принимать оба). insecure: Dart эмитит allow_insecure=1, Go — insecure=1."
   },
-  "degrade": [
-    "congestion_control вне allowlist → Go: ключ дропнут с warning; Dart: заменён на cubic — семантически эквивалентно",
-    "udp_relay_mode вне allowlist → Go: ключ дропнут; Dart: заменён на native",
-    "отсутствие uuid → Go: ошибка ноды (валидация userinfo); отсутствие password → Go: warning, нода живёт (node_parser_tuic.go:62-66); Dart: null-skip в обоих случаях",
-    "мусорный sni → server_name = server"
+  "mapper": [
+    {
+      "id": "heartbeat_bare_number",
+      "from": "`heartbeat=10`",
+      "to": "`heartbeat: \"10s\"`",
+      "kind": "spelling",
+      "desc_en": "A bare number in the link means seconds; the core field is a duration string.",
+      "desc_ru": "Голое число в ссылке означает секунды; поле ядра — duration-строка.",
+      "impl": "core/config/subscription/node_parser_tuic.go:10 normalizeTuicHeartbeat."
+    }
   ],
   "refs": {
     "go": [

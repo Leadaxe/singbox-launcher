@@ -26,7 +26,7 @@
         "ed": {
           "type": "int",
           "default": null,
-          "aliases": ["хвост пути '?ed=N'"],
+          "aliases": ["the '?ed=N' suffix of path"],
           "maps_to": ["transport.max_early_data", "transport.early_data_header_name"],
           "desc_en": "WebSocket early data size, in bytes.",
           "desc_ru": "Размер early data WebSocket в байтах.",
@@ -353,6 +353,28 @@
       "maps_to": "transport.type"
     }
   },
+  "mapper": [
+    {
+      "id": "ws_early_data_path_suffix",
+      "applies_to": ["vless", "vmess", "trojan"],
+      "from": "`?ed=N` carried inside the WebSocket path",
+      "to": "`transport.max_early_data` + `transport.early_data_header_name`",
+      "kind": "split",
+      "desc_en": "Xray hides WebSocket early data in the path; sing-box needs two separate fields, and a node left unconverted answers 404 at runtime while `check` still passes.",
+      "desc_ru": "Xray прячет ws early data в путь; sing-box требует два раздельных поля, а неконвертированный узел даёт 404 в рантайме при проходящем `check`.",
+      "impl": "core/config/subscription/node_parser_transport.go:748 splitWSEarlyData + :780 applyWSEarlyData. Один параметр ссылки → два поля тела (issue #96)."
+    },
+    {
+      "id": "transport_name_dialect",
+      "applies_to": ["vless", "vmess", "trojan"],
+      "from": "`headerType=http` on `type=tcp|raw`, `net=h2`, Xray `splithttp`",
+      "to": "`transport.type` = `http` / `http` / `xhttp`",
+      "kind": "spelling",
+      "desc_en": "Xray and vmess name transports differently from sing-box; the mapper translates the name, not the settings.",
+      "desc_ru": "Xray и vmess называют транспорты иначе, чем sing-box; маппер переводит имя, а не настройки.",
+      "impl": "core/config/subscription/node_parser_transport.go:162 uriTransportFromQuery (headerType — :164-167, xhttp/splithttp — :235)."
+    }
+  ],
   "refs": {
     "go": [
       "core/config/subscription/node_parser_transport.go:114-192",
@@ -588,7 +610,7 @@
                 ],
                 "desc_en": "Concurrent streams per connection, as a range.",
                 "desc_ru": "Число одновременных потоков на соединение, диапазоном.",
-                "impl": "XmuxRange: «min-max», одно число («4» = 4-4) или массив [min,max]. Взаимоисключающе с max_connections."
+                "impl": "XmuxRange: «min-max», одно число («4» = 4-4) или массив [min,max]. Взаимоисключающе с max_connections, но ядро судит конфликт по ЗНАЧЕНИЮ: срабатывает, только когда оба > 0 (transport/v2rayxhttp/xmux.go). «0»/«0-0» = не задано и конфликта не даёт."
               },
               "max_connections": {
                 "type": "string",
@@ -629,7 +651,7 @@
             "min_core": "1.13.13-lx.1",
             "desc_en": "Connection multiplexing for XHTTP.",
             "desc_ru": "Мультиплексирование соединений XHTTP.",
-            "impl": "option/v2ray_xhttp_xmux_range.go. Всё-или-ничего: секции нет ИЛИ она пуста → дефолты max_concurrency=1-1, h_max_request_times=600-900, h_max_reusable_secs=1800-3000; задано хоть одно поле → остальные становятся 0 (без лимита). Санитайзер дописывает дефолты явно с кодом partial_object_defaulted. nil ≠ выключено — XMUX включён всегда."
+            "impl": "option/v2ray_xhttp_xmux_range.go. Всё-или-ничего: секции нет ИЛИ она пуста → дефолты max_concurrency=1-1, h_max_request_times=600-900, h_max_reusable_secs=1800-3000; задано хоть одно поле → остальные становятся 0 (без лимита). Атрибут описывает ПОВЕДЕНИЕ ЯДРА и действия санитайзера не влечёт: дописывать дефолты соседей нельзя — частичная секция обязана доехать до ядра как есть, иначе у живого узла меняются пределы (SPEC 131 DRIFT §7). nil ≠ выключено — XMUX включён всегда."
           },
           "session_placement": {
             "type": "enum",

@@ -117,11 +117,6 @@
     ],
     "note": "Dart toUriHttp и Go shareURIFromHTTP (shareuri_http.go:16): схема по tls.enabled (proxy-https/proxy-http), insecure эмитится как allowInsecure=1."
   },
-  "degrade": [
-    "fp вне allowlist → chrome + warning (Dart, §281)",
-    "битая пара в headers → скип пары с warning (как naive extra-headers)",
-    "отсутствие hostname → null-skip"
-  ],
   "refs": {
     "go": [
       "core/config/subscription/node_parser_core.go:288",
