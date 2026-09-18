@@ -14,6 +14,136 @@ SPEC 133. Спутник `SPEC.md` (дизайн движка) и `TASKS.md` (в
 
 ---
 
+## 0. ЗАМОРОЗКА ГРАММАТИКИ — финальные имена атрибутов
+
+**Статус на 19.09.2026, вечер.** LxBox пишет движок по этому файлу.
+`FROZEN` = имя атрибута менять нельзя; дальнейшие правки — только
+**добавлением**. Любое переименование FROZEN-атрибута согласуется отдельно.
+`DRAFT` = имя может измениться; на реализацию брать в последнюю очередь.
+
+Машиночитаемая форма — `contract/schema/registry_mapper.schema.json`.
+
+### 0.1. Структура секции
+
+| Атрибут | Где | Статус | Значение |
+|---|---|---|---|
+| `mappers.<kind>` | у протокола | **FROZEN** | секция на вид источника; `kind` ∈ `uri`, `xray`, `singbox`, `conf` |
+| `detect` | у секции, у формы, у вида источника | **FROZEN** | признак «этот контент — мой» (§0.2) |
+| `body_source` | у секции | **FROZEN** | `uri`\|`singbox`\|`xray`\|`wgconf`\|`amnezia` — на это опирается `except_sources` |
+| `forms[]` | у секции | **FROZEN** | оболочка: `id`, `detect`, `decode`, `space`, `base`, `level` |
+| `forms[].base` | у формы | **FROZEN** | якорь пути, подставляется вместо `$base` в `source` |
+| `forms[].level` | у формы | **FROZEN** | `outbound`\|`endpoint` |
+| `userinfo` | у секции | **FROZEN** | `decode`, `split{sep,limit}`, `into[]`, `single_into` |
+| `params.<имя>` | у секции | **FROZEN** | таблица записей |
+| `include[]` | у секции | **FROZEN** | блок с диалектом: `"transports.ws#uri"`, `"tls#xray"` |
+| `scheme_sets` | у секции | **FROZEN** | написание схемы → присваивания |
+| `type_synonyms` | у секции | **FROZEN** | тип чужого диалекта → схема реестра |
+| `unknown_key{action,code}` | у секции | **FROZEN** | `keep`\|`drop` + код |
+| `emit` | у секции | **FROZEN** | `null` = обратного хода нет |
+| `blocks` | в `transports.json`/`tls.json` | **FROZEN** | блок → диалект → записи |
+| `document.sources[]` | в `sources.json` | **FROZEN** | `kind`, `priority`, `mapper`, `detect`, `unwrap`, `redetect`, `split` |
+| `document.max_unwrap_depth` | там же | **FROZEN** | предел рекурсии распаковки |
+| `document.on_unrecognized` | там же | **FROZEN** | `code`, `severity`, `include_fragment` |
+
+### 0.2. Предикаты `detect` (одни и те же на обоих уровнях)
+
+| Атрибут | Статус | Значение |
+|---|---|---|
+| `regex` | **FROZEN** | RE2 ∩ ECMAScript, якоря в самом выражении |
+| `json.required_keys` / `any_keys` / `key_absent` | **FROZEN** | пути точечные; числовой сегмент индексирует массив |
+| `json.type_of` | **FROZEN** | путь → `object`\|`array`\|`string`\|`number`\|`bool` |
+| `json.value_of` / `value_in` | **FROZEN** | путь → значение / набор (строки сравниваются fold-case) |
+| `json.array_elem_any_keys` | **FROZEN** | хотя бы один элемент массива несёт путь |
+| `ini.sections` / `keys` / `keys_any` | **FROZEN** | имена fold-case |
+| `text.prefix_fold` / `line_fold` / `contains` | **FROZEN** | |
+| `scheme_in` | **FROZEN** | написания схемы ссылки |
+| `in_array` | **FROZEN** | `outbounds`\|`endpoints` |
+| `not` / `all` / `any` / `default` | **FROZEN** | композиция; `default` не конкурирует с предикатами |
+
+### 0.3. Запись таблицы (`params.<имя>`)
+
+| Атрибут | Статус | Значение |
+|---|---|---|
+| `source` | **FROZEN** | строка \| массив (приоритет) \| карта по `id` формы. **Единственный** способ получить значение |
+| `maps_to` | **FROZEN** | путь \| `null` (осознанно никуда) \| карта по типу тела |
+| `aliases` | **FROZEN** | существующий атрибут |
+| `type` | **FROZEN** | `string`,`int`,`bool`,`bool_spelled`,`duration`,`base64`,`list`,`object` |
+| `required` | **FROZEN** | |
+| `selector` | **FROZEN** | параметр первого прохода |
+| `priority` | **FROZEN** | порядок двух записей в один путь (меньше = раньше) — **G3** |
+| `merge` | **FROZEN** | `keep_first`\|`overwrite`\|`prepend`\|`append` |
+| `value_map` | **FROZEN** | перевод значений; `null` = ключа нет; поддерживает `prefix`/`strip` |
+| `sets` | **FROZEN** | значение → присваивания; **`null` в присваивании СНИМАЕТ путь** — **G2** |
+| `implies` | **FROZEN** | наличие → присваивания |
+| `when` | **FROZEN** | по телу, `$type`, `$form`, и по источнику (`query.X`/`json.X`/`ini.X`) — **G1** |
+| `extract{re,into}` / `compose` | **FROZEN** | именованные группы ↔ шаблон |
+| `list{sep,item,len,coerce_scalar}` | **FROZEN** | |
+| `split_into` | **FROZEN** | список по нескольким полям по предикату |
+| `normalize` | **FROZEN** | `base64_std`,`cidr_prefix`,`port_range_spec`,`duration_bare_seconds`,`range_order{swap,strict}`,`trim`,`trim_lower` |
+| `decode_extra{mode,passes,max,plus_literal}` | **FROZEN** | §0.4 |
+| `default_from` / `default_when` | **FROZEN** | существующие атрибуты |
+| `materialize_default` | **FROZEN** | маппер ЗАПИСЫВАЕТ дефолт в тело |
+| `coerce{object_to_scalar,scalar_to_list}` | **FROZEN** | приведение ФОРМЫ значения |
+| `flatten[]` | **FROZEN** | члены вложенного объекта в плоский слой — **G5** |
+| `lift` | **FROZEN** | перенос между уровнями вложенности |
+| `sort_keys` | **FROZEN** | детерминированный порядок ключей `type:object` — **G4** |
+| `empty` | **FROZEN** | `absent` (дефолт) \| `significant` |
+| `on_invalid`/`on_present`/`on_item_invalid`/`on_no_match`/`on_len_gt` | **FROZEN** | `{action, code}` |
+| `emit_when` / `omit_default` / `implicit` | **FROZEN** | обратное направление |
+| `since` | **FROZEN** | версия контракта, с которой запись действует |
+
+### 0.4. `decode_extra` — режимы percent-декода
+
+| | Значение | Статус |
+|---|---|---|
+| `mode` | `query` \| `path` | **FROZEN** |
+| `passes` | целое \| `"until_stable"` | **FROZEN** |
+| `max` | предел при `until_stable` | **FROZEN** |
+| `plus_literal` | `+` читается буквально; **по умолчанию выводится из `format: base64*`** | **FROZEN** |
+
+Канон: `alpn` = `{mode:"query", passes:"until_stable", max:16}`;
+`path` = `{mode:"path", passes:2}` — **path-семантика на ОБОИХ проходах**.
+
+### 0.5. Метка и тег
+
+| Атрибут | Статус | Значение |
+|---|---|---|
+| `label.source` | **FROZEN** | цепочка источников метки |
+| `label.normalize[]` | **FROZEN** | `strip_control`, `trim` — **G8** |
+| `label.value_map` | **FROZEN** | 🇪🇳→🇬🇧 и подобное |
+| `label.fallback.template` | **FROZEN** | `"{scheme}-{server}-{server_port}"` |
+| `label.fallback.scheme_source` | **FROZEN** | `as_written` \| `singbox_type`. **Решение владельца: `singbox_type`** |
+
+### 0.6. Нормы, не являющиеся атрибутами
+
+| Норма | Статус |
+|---|---|
+| имена параметров query читаются **регистронезависимо**; при двух написаниях в одной ссылке побеждает **точное совпадение с каноном**, иначе **первое по порядку** | **FROZEN** |
+| дубли одного написания (`?fp=a&fp=b`) — берётся первый | **FROZEN** |
+| `+` в query = пробел; исключение — поля `format: base64*` (`plus_literal`) | **FROZEN** |
+| authority разбирает **лексер движка**, не платформенный парсер URL | **FROZEN** |
+| percent-декод один раз, до всего; `decode_extra` — поверх | **FROZEN** |
+| пусто = отсутствует, опт-аут `empty: "significant"` | **FROZEN** |
+| порядок ключей тела задаёт `body.order` через `Emit`, не порядок примитивов | **FROZEN** |
+| маппер не судит значения — судит санитайзер | **FROZEN** |
+| эмит: `param_order` = **алфавит** (правило, не перечень) | **FROZEN** |
+| эмит: пробел на выходе = `%20` | **FROZEN** |
+| эмит: каноническое имя параметра = первое в `aliases` | **FROZEN** |
+
+### 0.7. DRAFT — имена могут измениться
+
+| Атрибут | Почему draft |
+|---|---|
+| `ini_dialect{key_case,value_case,comment_prefixes,inline_comments,repeated_key,sections.<S>.repeat,on_extra}` | набор ключей устаканится на волне `conf` (W8.6); сегодня выражает сегодняшний разбор дословно |
+| источник `ini.$comment.<Section>` | синтаксис `$comment` не сверен с LxBox — **G7** |
+| `$base` как подстановка в `source` | механика якоря формы проверяется на xray (W8) |
+| служебные записи с `$`-префиксом (`$multiport`, `$plaintext_port`, `$legacy_flat`) | соглашение об имени: `$` помечает запись без `maps_to`, в документацию не идёт |
+| `emit.form_from` | форма выбора схемы по телу нужна только эмиту (W7) |
+| `round_trip: false` + причина | появляется в W7 вместе с исключениями раннера |
+| `unwrap` значения (`base64`, `amnezia_vpn`) | список распаковщиков закрытый, но пополнится при первом новом контейнере |
+
+---
+
 ## 1. Словарь примитивов
 
 Ниже — полный набор. Примитивы **общие**: ни один не назван по схеме и ни
