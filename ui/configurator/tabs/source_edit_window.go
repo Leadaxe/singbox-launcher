@@ -1812,7 +1812,7 @@ func showSourceEditWindowAt(
 									return
 								}
 
-								name.Text = previewRowTitle(pr)
+								name.Text = previewRowTitleShown(pr)
 								name.Color = theme.Color(theme.ColorNameForeground)
 								name.Refresh()
 

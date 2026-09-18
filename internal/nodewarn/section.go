@@ -44,26 +44,58 @@ const CauseLabelText = "Why it happens:" // l10n-key
 // FixLabelText — подпись списка решений.
 const FixLabelText = "What you can do:" // l10n-key
 
+// InfoGroupTitleText — подзаголовок группы info-кодов.
+const InfoGroupTitleText = "For your information" // l10n-key
+
 // Section собирает секцию «Предупреждения» для окна узла.
+//
+// Порядок — error → warning → info: сверху то, из-за чего узел не работает,
+// снизу то, о чём просто стоит знать.
+//
+// Группа info отделена подзаголовком и рисуется БЕЗ глифов: у её записей нет
+// призыва к действию, и знак рядом с каждой читался бы как «тут тоже беда».
+// Когда у узла кроме info ничего нет, секция состоит из одной этой группы, а
+// заголовок «Предупреждения» не показывается вовсе — предупреждать не о чем.
 //
 // nil при пустом списке — вызывающий не добавляет ни заголовка, ни
 // разделителя: секция, за которой ничего нет, обещала бы проблему там, где
 // её нет.
 func Section(in []state.NodeWarning) fyne.CanvasObject {
-	texts := Describe(in)
-	if len(texts) == 0 {
+	errs, warns, infos := byLevel(Describe(in))
+	if len(errs)+len(warns)+len(infos) == 0 {
 		return nil
 	}
-	items := make([]fyne.CanvasObject, 0, len(texts)+1)
+	items := make([]fyne.CanvasObject, 0, len(errs)+len(warns)+len(infos)+2)
 
-	head := widget.NewLabel(Mark + " " + locale.T(SectionTitleText))
-	head.TextStyle.Bold = true
-	head.Wrapping = fyne.TextWrapWord
-	head.Importance = widget.WarningImportance
-	items = append(items, head)
+	if len(errs)+len(warns) > 0 {
+		mark := WarnMark
+		if len(errs) > 0 {
+			mark = ErrorMark
+		}
+		head := widget.NewLabel(mark + " " + locale.T(SectionTitleText))
+		head.TextStyle.Bold = true
+		head.Wrapping = fyne.TextWrapWord
+		head.Importance = widget.WarningImportance
+		items = append(items, head)
 
-	for _, t := range texts {
-		items = append(items, row(t))
+		for _, t := range errs {
+			items = append(items, row(t, MarkOf(t.Severity)))
+		}
+		for _, t := range warns {
+			items = append(items, row(t, MarkOf(t.Severity)))
+		}
+	}
+
+	if len(infos) > 0 {
+		head := widget.NewLabel(locale.T(InfoGroupTitleText))
+		head.TextStyle.Bold = true
+		head.Wrapping = fyne.TextWrapWord
+		head.Importance = widget.LowImportance
+		items = append(items, head)
+		for _, t := range infos {
+			// Без глифа: см. комментарий к Section.
+			items = append(items, row(t, ""))
+		}
 	}
 	return container.NewVBox(items...)
 }
@@ -73,8 +105,14 @@ func Section(in []state.NodeWarning) fyne.CanvasObject {
 // Путь приписан к ЗАГОЛОВКУ, а не отдельной строкой: он отвечает на «где», и
 // в отрыве от «что случилось» читается как технический мусор. У кодов уровня
 // узла его просто нет.
-func row(t Text) fyne.CanvasObject {
+//
+// mark — глиф уровня перед заголовком; пустой у info-группы, где знак не
+// нужен. Маркер «•» остаётся у всех: он держит список списком.
+func row(t Text, mark string) fyne.CanvasObject {
 	title := t.Title
+	if mark != "" {
+		title = mark + " " + title
+	}
 	if t.Path != "" {
 		title += "  ·  " + t.Path
 	}

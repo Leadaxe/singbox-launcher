@@ -185,7 +185,7 @@
       "go": "core/config/subscription/singbox_sanitize.go:177; core/config/subscription/node_parser_transport.go:646"
     },
     "reality_fp_not_chrome": {
-      "severity": "warning",
+      "severity": "info",
       "params": [
         "value"
       ],

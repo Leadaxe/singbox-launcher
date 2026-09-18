@@ -50,7 +50,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`packet_encoding_unknown`](#packet_encoding_unknown) · `warning` — Field removed: unknown packet_encoding
 - [`port_invalid`](#port_invalid) · `error` — Invalid port {value}
 - [`protocol_unsupported`](#protocol_unsupported) · `error` — Protocol {scheme} is not supported
-- [`reality_fp_not_chrome`](#reality_fp_not_chrome) · `warning` — REALITY: fingerprint {value} may not connect
+- [`reality_fp_not_chrome`](#reality_fp_not_chrome) · `info` — REALITY: fingerprint {value} may not connect
 - [`reality_key_share_invalid`](#reality_key_share_invalid) · `info` — REALITY: key_share removed
 - [`reality_pbk_invalid`](#reality_pbk_invalid) · `warning` — REALITY disabled: invalid public key
 - [`reality_short_id_invalid`](#reality_short_id_invalid) · `info` — REALITY: short_id cleaned up
@@ -860,7 +860,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="reality_fp_not_chrome"></a>
 ### reality_fp_not_chrome
 
-**severity:** `warning` · **params:** `value`
+**severity:** `info` · **params:** `value`
 
 **REALITY: fingerprint {value} may not connect**
 

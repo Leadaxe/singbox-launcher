@@ -37,6 +37,17 @@ func previewRowTitle(r previewRow) string {
 	return nodeDisplayLine(r.Node)
 }
 
+// previewRowTitleShown — то же имя, но с «(i)», когда у узла есть info-коды.
+//
+// Отдельная функция, а не приписка внутрь previewRowTitle: тот же результат
+// уходит заголовком окна правки узла и подписью строки в сводке
+// предупреждений, и значок там означал бы «эта запись — информационная», чего
+// он не значит. Имя-ключ остаётся чистым и в этих двух местах, и везде, где
+// адресация идёт через RawTag.
+func previewRowTitleShown(r previewRow) string {
+	return nodewarn.WithInfoMark(previewRowTitle(r), r.Warnings)
+}
+
 // previewRowReason — причина отбраковки на языке пользователя.
 //
 // В состоянии причина хранится АНГЛИЙСКИМ ключом (то же правило, что у фраз

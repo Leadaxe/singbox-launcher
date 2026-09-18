@@ -245,7 +245,13 @@ func coreRuntimeNodeRow(ac *core.AppController, p api.ProxyInfo, cfgPath string,
 // статуса вместо пинга. Нужна tailscale-узлу: пинг через него врал бы, а
 // слово состояния из стрима — нет.
 func coreRuntimeNodeRowWithStatus(ac *core.AppController, p api.ProxyInfo, cfgPath string, scope services.ProxyScope, prefix, status string) fyne.CanvasObject {
-	name := canvas.NewText(prefix+p.DisplayOrName(), theme.Color(theme.ColorNameForeground))
+	// «(i)» у имени — как на вкладке Servers: info-коды в подстроку не идут
+	// (там только error и warning), и знак у имени — единственное место, где
+	// узел говорит «работаю, но есть что знать». В данные значок не попадает:
+	// ключом узла везде остаётся p.Name.
+	warns := nodeWarningsFor(ac, p.Name, scope)
+	name := canvas.NewText(prefix+nodewarn.WithInfoMark(p.DisplayOrName(), warns),
+		theme.Color(theme.ColorNameForeground))
 	name.TextSize = serversNameTextSize
 	name.TextStyle.Bold = true
 
@@ -259,7 +265,7 @@ func coreRuntimeNodeRowWithStatus(ac *core.AppController, p api.ProxyInfo, cfgPa
 	// SPEC 131 §6: деградации конвейера вытесняют состав — тот же порядок
 	// важности, что на вкладке Servers (serversNodeSubtitle). Строка одна, и
 	// «что с узлом не так» в ней главнее «из чего он сделан».
-	if warn := nodewarn.Subtitle(nodeWarningsFor(ac, p.Name, scope)); warn != "" {
+	if warn := nodewarn.Subtitle(warns); warn != "" {
 		subText = warn
 	}
 	sub := canvas.NewText(subText, theme.Color(theme.ColorNamePlaceHolder))

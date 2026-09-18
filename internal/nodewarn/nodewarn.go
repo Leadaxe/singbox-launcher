@@ -37,15 +37,78 @@ import (
 	"singbox-launcher/internal/locale"
 )
 
-// Mark — глиф предупреждения. Тот же «⚠» U+26A0, которым уже отмечены
-// неразобранные записи, недоступные цели detour и потери бэкапа: волна новых
-// глифов не заводит (SPEC 131 §6).
-const Mark = "⚠"
+// Глифы уровней — ОДНО место на все поверхности.
+//
+// Проверено по шрифтам, которые Fyne 2.8.1 несёт с собой
+// (`theme/font/`, цепочка «шрифт темы → эмодзи → символы»):
+//
+//   - «⚠» U+26A0 — есть в Inter, DejaVu и эмодзи-шрифте; уже используется;
+//   - «✖» U+2716 — есть в эмодзи-шрифте и DejaVu; рисуется наравне с
+//     «❌»/«✅», которыми проект пользуется давно;
+//   - «ⓘ» U+24D8 — НЕТ НИ В ОДНОМ встроенном шрифте. Системный шрифт по
+//     руне Fyne подобрать пытается, но на Win7-сборке рассчитывать на это
+//     нельзя, и знак превратился бы в пустой прямоугольник ровно там, где
+//     он должен успокаивать. Поэтому текстовый «(i)».
+const (
+	// ErrorMark — узел отброшен либо непригоден.
+	ErrorMark = "✖"
+	// WarnMark — узел живой, но его поведение изменено.
+	WarnMark = "⚠"
+	// InfoMark — к сведению; делать ничего не нужно.
+	InfoMark = "(i)"
+)
+
+// Mark — глиф предупреждения общего вида. Оставлен под прежним именем: на него
+// смотрят поверхности, которые рисуют «что-то не так» без разбора уровня
+// (заголовок секции, сводки превью).
+const Mark = WarnMark
+
+// Уровни важности кода. Значения совпадают с полем `severity` реестра
+// (contract/registry/warnings.json) — переводить их в свою шкалу незачем.
+const (
+	// SeverityError — узел отброшен: ядро такую запись не приняло бы.
+	SeverityError = "error"
+	// SeverityWarning — узел живой, но конвейер что-то снял или заменил.
+	SeverityWarning = "warning"
+	// SeverityInfo — к сведению: поведение узла не изменилось.
+	SeverityInfo = "info"
+)
+
+// rank — вес уровня для сортировки: меньше = важнее.
+//
+// Неизвестный уровень (код есть в состоянии, но не в реестре, либо реестр не
+// прочитался) считается WARNING, а не INFO: показать проблему сильнее, чем
+// нужно, — досадно; спрятать её в «к сведению» — опасно.
+func rank(sev string) int {
+	switch sev {
+	case SeverityError:
+		return 0
+	case SeverityInfo:
+		return 2
+	default:
+		return 1
+	}
+}
+
+// MarkOf — глиф уровня.
+func MarkOf(sev string) string {
+	switch sev {
+	case SeverityError:
+		return ErrorMark
+	case SeverityInfo:
+		return InfoMark
+	default:
+		return WarnMark
+	}
+}
 
 // Text — предупреждение, готовое к показу.
 type Text struct {
 	// Code — код реестра; он же якорь в документации и ключ кнопки «Подробнее».
 	Code string
+	// Severity — уровень кода из реестра: error / warning / info. У кода,
+	// которого реестр не знает, здесь SeverityWarning (см. rank).
+	Severity string
 	// Title — короткий заголовок (строка списка, тултип).
 	Title string
 	// Body — полное объяснение с подстановками. Длина произвольная: показывать
@@ -86,8 +149,11 @@ func Describe(in []state.NodeWarning) []Text {
 	reg, err := registry.Get()
 	out := make([]Text, 0, len(in))
 	for _, w := range in {
-		t := Text{Code: w.Code, Path: w.Path, DocURL: DocURL(w.Code)}
+		t := Text{Code: w.Code, Path: w.Path, DocURL: DocURL(w.Code), Severity: SeverityWarning}
 		if err == nil && reg != nil {
+			if entry, ok := reg.Warning(w.Code); ok && entry.Severity != "" {
+				t.Severity = entry.Severity
+			}
 			if title, body, ok := reg.WarningText(w.Code, lang, paramsOf(w)); ok {
 				t.Title, t.Body = title, body
 			}
@@ -129,51 +195,149 @@ func paramsOf(w state.NodeWarning) map[string]string {
 	return p
 }
 
-// Summary — краткая подпись для СТРОКИ узла: заголовок первого кода, а при
+// byLevel раскладывает описания на три группы, СОХРАНЯЯ внутри каждой
+// прежний порядок.
+//
+// Порядок внутри уровня — это обход body.order реестра (CANON §6), он
+// детерминирован, и пересортировывать его нельзя: ровно он отвечает на «какое
+// поле раньше». Уровень добавляет к нему второе измерение — «что важнее», —
+// и только его.
+//
+// Отдельная функция, а не sort.SliceStable на месте: устойчивую сортировку
+// пришлось бы звать из трёх мест (подстрока, тултип, секция), и один
+// забытый вызов дал бы три разных порядка у одного узла.
+func byLevel(texts []Text) (errs, warns, infos []Text) {
+	for _, t := range texts {
+		switch rank(t.Severity) {
+		case 0:
+			errs = append(errs, t)
+		case 2:
+			infos = append(infos, t)
+		default:
+			warns = append(warns, t)
+		}
+	}
+	return errs, warns, infos
+}
+
+// Summary — краткая подпись для СТРОКИ узла: заголовок СТАРШЕГО кода, а при
 // нескольких — с хвостом «+N».
 //
-// Первый, а не «самый важный»: порядок warnings задан обходом body.order
-// реестра и потому детерминирован (CANON §6). Сортировать его по severity
-// здесь значило бы завести четвёртое место, где живёт приоритет кодов.
+// Считаются только error и warning: подстрока строки отвечает на вопрос «с
+// этим узлом что-то не так?», и info говорит «нет, всё так». Узел, у которого
+// info — единственное, что есть, подстроки не получает вовсе и показывает свой
+// обычный состав; про info сообщает значок у имени (InfoMark) и тултип.
 //
 // Пустая строка = показывать нечего.
 func Summary(in []state.NodeWarning) string {
-	texts := Describe(in)
-	if len(texts) == 0 {
+	errs, warns, _ := byLevel(Describe(in))
+	shown := make([]Text, 0, len(errs)+len(warns))
+	shown = append(shown, errs...)
+	shown = append(shown, warns...)
+	if len(shown) == 0 {
 		return ""
 	}
-	s := texts[0].Title
-	if len(texts) > 1 {
-		s += " " + locale.Tf("+%d", len(texts)-1)
+	s := shown[0].Title
+	if len(shown) > 1 {
+		s += " " + locale.Tf("+%d", len(shown)-1)
 	}
 	return s
 }
 
-// Subtitle — та же подпись, но с глифом впереди: подстрока строки узла.
-func Subtitle(in []state.NodeWarning) string {
-	s := Summary(in)
-	if s == "" {
+// SubtitleMark — глиф подстроки: старший уровень среди error/warning.
+//
+// Пусто, когда показывать в подстроке нечего (кодов нет либо они все info).
+func SubtitleMark(in []state.NodeWarning) string {
+	errs, warns, _ := byLevel(Describe(in))
+	switch {
+	case len(errs) > 0:
+		return ErrorMark
+	case len(warns) > 0:
+		return WarnMark
+	default:
 		return ""
 	}
-	return Mark + " " + s
 }
 
-// ToolTip — все заголовки списком, по строке на код.
+// Subtitle — та же подпись, но с глифом своего уровня впереди: подстрока
+// строки узла.
 //
-// Полное объяснение сюда не идёт: тексты реестра — абзацы, и тултип из них
-// накрыл бы пол-экрана. Их дом — секция в окне узла, где рядом лежит и
-// кнопка на документацию.
+// Describe зовётся ОДИН раз на обе половины: он ходит в реестр и делает
+// подстановки на каждый код, а строка узла перерисовывается на каждом
+// обновлении списка.
+func Subtitle(in []state.NodeWarning) string {
+	errs, warns, _ := byLevel(Describe(in))
+	shown := make([]Text, 0, len(errs)+len(warns))
+	shown = append(shown, errs...)
+	shown = append(shown, warns...)
+	if len(shown) == 0 {
+		return ""
+	}
+	mark := WarnMark
+	if len(errs) > 0 {
+		mark = ErrorMark
+	}
+	s := mark + " " + shown[0].Title
+	if len(shown) > 1 {
+		s += " " + locale.Tf("+%d", len(shown)-1)
+	}
+	return s
+}
+
+// HasInfo — есть ли у узла хоть один info-код.
+func HasInfo(in []state.NodeWarning) bool {
+	_, _, infos := byLevel(Describe(in))
+	return len(infos) > 0
+}
+
+// InfoMarkFor — значок «есть что сказать к сведению» для приписки К ИМЕНИ
+// узла, без текста: «(i)» либо пусто.
+//
+// ВАЖНО: результат идёт ТОЛЬКО в отображаемый текст. Имя узла служит тегом —
+// ключом поиска, сортировки, клика и адресации записи (SPEC 112, память
+// node-identity-is-tag), и приписка к самому тегу увела бы узел из-под
+// фильтров.
+func InfoMarkFor(in []state.NodeWarning) string {
+	if !HasInfo(in) {
+		return ""
+	}
+	return InfoMark
+}
+
+// WithInfoMark — имя узла с приписанным значком, когда есть info-коды.
+//
+// Сахар над InfoMarkFor, чтобы каждая поверхность не писала свой `if` с
+// пробелом: три разных отступа у одного знака читались бы как три разных
+// знака.
+func WithInfoMark(name string, in []state.NodeWarning) string {
+	if m := InfoMarkFor(in); m != "" {
+		return name + " " + m
+	}
+	return name
+}
+
+// ToolTip — ВСЕ заголовки списком, по строке на код, каждый со своим глифом,
+// в порядке error → warning → info.
+//
+// Тултип — единственное место, где узел показывает свои коды целиком, не
+// открывая окна: подстрока держит только старший уровень, а info в неё не
+// попадает вовсе. Полные объяснения сюда не идут — тексты реестра абзацами
+// накрыли бы пол-экрана; их дом — секция в окне узла.
 func ToolTip(in []state.NodeWarning) string {
-	texts := Describe(in)
-	if len(texts) == 0 {
+	errs, warns, infos := byLevel(Describe(in))
+	ordered := make([]Text, 0, len(errs)+len(warns)+len(infos))
+	ordered = append(ordered, errs...)
+	ordered = append(ordered, warns...)
+	ordered = append(ordered, infos...)
+	if len(ordered) == 0 {
 		return ""
 	}
 	s := ""
-	for i, t := range texts {
+	for i, t := range ordered {
 		if i > 0 {
 			s += "\n"
 		}
-		s += Mark + " " + t.Title
+		s += MarkOf(t.Severity) + " " + t.Title
 		if t.Path != "" {
 			s += "  ·  " + t.Path
 		}

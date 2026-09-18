@@ -603,7 +603,7 @@ func folderDrillNodeRow(
 	identity := pr.RawTag
 
 	spec := sourceNodeRowSpec{
-		Title:        previewRowTitle(pr),
+		Title:        previewRowTitleShown(pr),
 		Subtitle:     previewRowSubtitle(pr),
 		SubtitleWarn: previewRowWarn(pr),
 		Service:      pr.Service,

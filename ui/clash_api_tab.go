@@ -26,6 +26,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/internal/textnorm"
 	"singbox-launcher/ui/components"
@@ -771,7 +772,15 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 		// canvas.Text не умеет ellipsis сам — режем по длине, иначе длинное
 		// имя растянет строку и вытолкнет кнопки за край.
-		nameText.Text = truncateRunes(proxyInfo.DisplayOrName(), serversNameMaxRunes)
+		// Значок «(i)» приписывается ИМЕНИ, а не подстроке: info говорит «всё
+		// работает, но есть что знать», и в подстроке (её место занимают error
+		// и warning) он был бы ложной тревогой. Обрезается ТОЛЬКО имя, значок
+		// приписывается после: обрежь их вместе — и у длинного имени значок
+		// уехал бы за многоточие, то есть пропал бы ровно там, где строка и
+		// так ничего не объясняет.
+		nameText.Text = nodewarn.WithInfoMark(
+			truncateRunes(proxyInfo.DisplayOrName(), serversNameMaxRunes),
+			nodeWarningsFor(ac, proxyInfo.Name, panel.scope))
 		nameText.Color = theme.Color(theme.ColorNameForeground)
 		nameText.Refresh()
 
