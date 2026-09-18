@@ -48,6 +48,174 @@
 начинается с `desc_en`/`desc_ru` в реестре, а не со страницы. Нормативен
 по-прежнему реестр, а не эти страницы: они — его чтение вслух.
 
+## Структура файлов реестра
+
+Раздел описывает УСТРОЙСТВО файлов реестра: какие в них секции, что в секции
+лежит и кто её исполняет. Строгая форма — `schema/registry.schema.json` и
+`schema/registry_body.schema.json`; содержимое, прочитанное вслух, —
+`docs/generated/`. Здесь — карта, по которой читают и то и другое.
+
+Общее для всех файлов: корневой `v` — версия формы файла; `desc_en`/`desc_ru`
+— текст для людей (уезжает в `docs/generated/`), `impl` и `note` — заметки
+разработчикам (в документацию НЕ уезжают, это правило закреплено в схеме),
+`refs {go, dart}` — где место реализовано в коде приложений. `refs` есть не
+везде: у `multiplex.json`, `dialer.json` и словарей его нет.
+
+### Кто что исполняет
+
+Узел идёт по конвейеру (CANON §8): вход → **маппер** → сырое тело →
+**санитайзер** → тело, годное ядру → модель приложения → **эмиттер** тела.
+
+| Секция | Отвечает на вопрос | Кто читает сегодня | Статус |
+|---|---|---|---|
+| `uri` | как прочитать ссылку: какой кусок ссылки в какое поле тела | `tools/gendocs` (страницы «Link parameters») | **описание**: Go-загрузчик секцию не разбирает, парсеры ссылок написаны руками. Исполняемой делает SPEC 133 (`SPECS/133-F-N-REGISTRY_DRIVEN_LINK_MAPPER`) |
+| `mapper` | структурные замены, которые таблицей «параметр → поле» не выразить | `tools/gendocs` (раздел «Replacements») | **описание**: перечень для людей и для сверки глазами; ни автопроверки покрытия, ни исполнения сегодня нет. Формализует SPEC 133; грамматика секций-мапперов будет перенесена сюда после волн 133 |
+| `body` | какие поля бывают в теле, что делать с негодным значением и в каком порядке писать ключи | `core/config/registry` → `core/config/nodeflow` | **исполняется**: один общий движок, схемных `if scheme == …` в коде нет. Второго парсера секции `body` в репозитории тоже нет — `gendocs` берёт её через тот же загрузчик |
+| `emit` | возможна ли у схемы share-ссылка и в каком порядке идут её параметры | никто | **описание**: `share_uri` и `param_order` в Go не читаются ни одной строкой, порядок параметров сегодня даёт `url.Values.Encode()`. Исполняемым делает SPEC 133 |
+| `warnings.json` | что сказать человеку по коду | `core/config/registry` (`WarningText`, `WarningAdvice`), `tools/gendocs` | **исполняется**: приложения своих таблиц текстов не держат, ru/en берутся из реестра |
+
+Правило на будущее: новое поведение добавляется атрибутом в реестре и
+поддержкой атрибута в движке, а не веткой `if scheme == …` в коде.
+
+### `registry/protocols/<scheme>.json` — файл протокола
+
+На примере `vless.json`:
+
+```
+vless.json
+├─ v, scheme:"vless", kind, singbox_type:"vless"        — паспорт
+│     kind: "outbound" (14 схем) | "endpoint" (wireguard, tailscale) | "group"
+├─ aliases: []        — другие написания схемы (socks: socks5/socks4/socks4a; wireguard: wg, awg)
+├─ sources: ["uri","singbox","xray"]   — какими входами узел приходит;
+│     эти же имена — значения условия `except_sources` в правилах тела
+├─ extension: "desktop" | null          — маркер расхождения проектов (README §«Правила
+│     изменения» п.3): схема реализована только на десктопе; НЕ «поля вне тела ядра»
+│
+├─ uri                — КАК ЧИТАТЬ ССЫЛКУ (описание, см. таблицу выше)
+│  ├─ userinfo  { maps_to, meaning, desc_*, impl }                то, что до «@»
+│  ├─ query                                                       свои параметры схемы
+│  │  └─ <param> { type, values, allowlist, default, aliases, maps_to, ext, desc_*, impl }
+│  │       `allowlist` — имя набора в allowlists.json; `ext` — параметр вне ядра
+│  │       общие параметры (sni, alpn, fp, pbk, sid, path, host, …) здесь НЕ
+│  │       повторяются — они в tls.json и transports.json
+│  └─ fragment: "label"                                          то, что после «#», — имя узла
+│
+├─ mapper: [ … ]      — СТРУКТУРНЫЕ ЗАМЕНЫ (описание)
+│  └─ { id, from, to, kind, desc_*, impl, code?, applies_to? }
+│       kind ∈ { drop, spelling, structure, default, split }
+│       пример: flow=xtls-rprx-vision-udp443 → flow=xtls-rprx-vision + packet_encoding=xudp
+│
+├─ body               — КАК ПРОВЕРЯТЬ ТЕЛО (исполняется)
+│  ├─ core: "1.14.1-lx.4"     ядро, по структурам которого описаны поля
+│  ├─ order: [ … ]            порядок ключей при записи; он же порядок полевых кодов (CANON §6)
+│  ├─ fields
+│  │  └─ <поле> { атрибуты — см. ниже }
+│  │       { type:"ref", ref:"tls" | "transports" | "multiplex" | "dialer.common" | … }
+│  │       "__dialer": { type:"ref", ref:"dialer", inline:true }  — поля dialer.json вливаются в корень тела
+│  └─ relations: [ … ]        правила о НАБОРЕ полей, а не о поле (см. ниже)
+│
+├─ emit               — про share-ссылку (описание)
+│  ├─ share_uri: true|false   возможна ли ссылка у схемы вообще
+│  ├─ param_order: [ … ]      нормативный порядок параметров
+│  └─ note
+│
+└─ refs { go:[…], dart:[…] }
+```
+
+Не у каждого файла есть все секции: `chain.json` — только `body` (ссылкой не
+приходит, `sources` нет), `group.json` — без `body` (это не узел ядра, и
+`emit.share_uri` у него `false`).
+
+### Атрибуты поля `body.fields.<поле>`
+
+Полный перечень — `schema/registry_body.schema.json`, определение `field`.
+Ниже — то, что реально исполняет санитайзер (`core/config/nodeflow`), и
+отдельной строкой — то, что сегодня остаётся заметкой.
+
+| Группа | Атрибуты | Смысл |
+|---|---|---|
+| Тип | `type` (`string`/`int`/`uint16`/`bool`/`enum`/`duration`/`object`/`array`/`string_array`/`listable_string`/`awg_range`/`ref`), `values`, `format` (`base64`, `base64_32`, `cidr`, `port`, `uuid`, `host`, `hex`, `ipv4`, `url_path`), `pattern` (RE2 ∩ Dart), `min`/`max`, `len`, `len_parity`, `items` | какое значение годное |
+| До проверки | `normalize` (`trim`, `trim_lower`, `hex_only`, `range_order`), `normalize_code`, `absent_values` | как привести значение и какие значения равны отсутствию ключа |
+| Исход | `on_invalid { action: drop \| coerce \| drop_node, value?, code }`, `default`, `required` | что делать с негодным: снять поле, заменить, отбраковать узел — и каким кодом это назвать |
+| Связи | `conflicts [{with, code}]`, `requires`, `allowed_for` / `forbidden_for` + `forbidden_codes {схема: код}` | поле в зависимости от соседей и от схемы |
+| Условные | `default_when`, `max_when`, `min_when` — с `when.any_set` (судит НАЛИЧИЕ ключей); `except_sources` и `note_code` живут ВНУТРИ `max_when`, не у поля | правило для рода узла, а не для поля; `except_sources` — единственное место, где ВХОД влияет на результат |
+| Без изменения | `advisory [{ values \| except, when, code }]` | значение остаётся, узел получает код |
+| Служебное | `secret` (маскирует значение в warning'е), `tristate` (пустое значение пишется явно), `managed` (ключ пишет сборка, снимается молча) | |
+| Гейты сборки | `min_core`, `platform` | исполняет `nodeflow/gate.go` при сборке config.json, а не при разборе; ⚠ на узле не ставится |
+| Только документация | `all_or_nothing`, `deprecated`, `drop_always`, `skip`, `lx_only`, `build_tag`, `impl_decision`, `decision_pending`, `aliases` | объявлены в схеме (часть — и в Go-структуре `registry.Field`), но ни одной строкой кода не исполняются |
+| Текст | `desc_en`, `desc_ru` (в документацию), `impl` (нет) | |
+
+`body.relations[]` — правило о НАБОРЕ путей, которое парой «поле ↔ поле» не
+выражается: `{ kind, paths, defaults, action, code, desc_*, impl }`. Сегодня
+такой вид один — `ranges_disjoint` (непересечение диапазонов `h1..h4` у
+AmneziaWG); он исполняется санитайзером. Это НЕ атрибут поля.
+
+### Общие файлы
+
+```
+tls.json
+├─ tls
+│  ├─ params   { security, sni, alpn, insecure, fp, ech }   — общие параметры ССЫЛКИ (как uri.query)
+│  ├─ reality  { pbk, sid, key_share }
+│  └─ policy   { quic_strip, disabled_block, plaintext_ports, utls_junk,
+│                singbox_import, emit_allowlist }
+│        НЕ настройки: это записанные прозой РЕШЕНИЯ про TLS с указанием, где
+│        каждое исполнено. Часть из них давно стала правилами в body.fields
+│        (quic_strip = forbidden_for + forbidden_codes), и policy остаётся
+│        объяснением «почему», а не источником поведения
+├─ mapper: [ { id, applies_to:[схемы], from, to, kind, … } ]  — замены, общие для нескольких схем
+├─ body { core, order, fields }                                — поля блока tls тела
+└─ refs
+
+transports.json
+├─ transports { ws, grpc, http, httpupgrade, xhttp }            — сторона ССЫЛКИ
+│  └─ <транспорт> { singbox_type, params:{…как uri.query…}, maps_to, impl }
+├─ mapper: [ … ]
+├─ body { core, discriminator:"type", values:[…], variants }    — сторона ТЕЛА; здесь ещё
+│  │                                                              и quic, у которого параметров
+│  │                                                              ссылки нет, — всего 6 вариантов
+│  └─ variants.<тип> { order, fields }                          — своя таблица полей на каждый тип
+└─ refs
+
+multiplex.json   body { core, order, fields }
+dialer.json      common { core, order, fields } — поля, на которые схемы ссылаются поимённо
+                   (ref:"dialer.common", ref:"dialer.common.network");
+                 body { core, order, fields, skipped } — вливается в корень тела через
+                   "__dialer" с inline:true
+                 skipped — поля ядра, которые тело не несёт НИ ОДНИМ входом
+                   (skipped ≠ «поля нет у ядра»)
+```
+
+### Словари
+
+```
+warnings.json          75 кодов
+├─ text_params_implicit: ["path","value"]      подстановки, доступные каждому тексту
+└─ warnings.<code>
+   { severity: error|warning|info, params:[…],
+     title_en/ru, text_en/ru, cause_en/ru, fix_en/ru,     что показать человеку
+     desc, go, dart }                                      заметки разработчикам
+     params нормативен: санитайзер выбрасывает подстановки, которых код не объявил
+
+backup_warnings.json   warnings.<code> { severity, params, side: export|import|both, desc }
+allowlists.json        allowlists.<имя> { values, note }   — на них ссылается uri.query.<param>.allowlist
+limits.json            limits.<имя> { value, current:{go,dart}, note }
+containers.json        containers.<имя> { desc, refs, + свои ключи на контейнер:
+                         detect, decode, expand, subscription_body, variants, guards,
+                         recursion, selection, limits, label } — vpn://, wgconf INI, base64
+vars.json              vars.<имя> { type, portable, in, note }
+presets.json           presets.<id> { in, label, note }
+```
+
+### Как читать правило целиком
+
+Негодное значение `encryption` у vless: `vless.json` → `body.fields.encryption`
+(`normalize: trim`, `absent_values: ["none"]`, `pattern`,
+`on_invalid.action = drop_node`, `on_invalid.code = vless_encryption_invalid`)
+→ `warnings.json` → `warnings.vless_encryption_invalid` (уровень и тексты на
+двух языках). В коде приложений этого правила нет — есть движок, который умеет
+`pattern` и `drop_node`.
+
 ## Правила изменения
 
 1. **Контракт раньше кода.** Новый протокол/параметр/приём начинается с PR сюда
