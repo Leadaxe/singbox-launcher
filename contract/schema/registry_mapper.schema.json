@@ -126,6 +126,7 @@
           "enum": ["url", "json", "ini"],
           "description": "Итоговое пространство источников."
         },
+        "impl": { "type": "string", "description": "Прозаическая сноска к записи: чем сегодняшний код отличается от таблицы, ссылка на DELTAS/QUIRKS. Движок её не исполняет." },
         "base": {
           "type": "string",
           "description": "Якорь пути: префикс, подставляемый вместо $base в source. Одна таблица параметров обслуживает vnext[0], servers[0] и плоскую форму."
@@ -167,9 +168,13 @@
           "description": "Предел проходов при until_stable — страховка от неограниченного цикла.",
           "minimum": 1
         },
-        "preserve_plus": {
+        "plus_literal": {
           "type": "boolean",
-          "description": "Не превращать '+' в пробел. Сегодня это четыре точечные заплаты в трёх файлах; политика по умолчанию — вопрос владельца (DELTAS.md D133-C1)."
+          "description": "Не превращать '+' в пробел: читать его буквально. Имя FROZEN (PRIMITIVES §0.4); до 1.1.14 схема звала атрибут preserve_plus, реестр и движок — уже plus_literal. По умолчанию выводится из format: base64* у целевого поля; явное значение перекрывает вывод."
+        },
+        "format": {
+          "type": "string",
+          "description": "Формат значения, задающий умолчания декода. 'pem' — PEM-блок в query: внутри заголовочных строк -----BEGIN…----- / -----END…----- '+' читается как ПРОБЕЛ, в base64-теле — литерально (PRIMITIVES §0.4a, DELTAS D133-7)."
         }
       }
     },
@@ -229,6 +234,10 @@
         "normalize": {
           "type": "string",
           "description": "Имя общего нормализатора: base64_std, cidr_prefix, port_range_spec, duration_bare_seconds, range_order{swap,strict}, trim, trim_lower."
+        },
+        "format": {
+          "type": "string",
+          "description": "Формат значения, задающий умолчания декода (PRIMITIVES §0.4a). base64* → plus_literal по умолчанию; 'pem' → '+' в заголовочных строках -----BEGIN…----- / -----END…----- читается как ПРОБЕЛ, в base64-теле литерально. Значения формат не судит — судит санитайзер по body-схеме."
         },
         "decode_extra": { "$ref": "#/definitions/decodeExtra" },
         "default_from": {
@@ -331,7 +340,12 @@
           }
         },
         "into": { "type": "array", "items": { "type": "string" } },
-        "single_into": { "type": "string", "description": "Куда идёт userinfo без разделителя." }
+        "single_into": { "type": "string", "description": "Куда идёт userinfo без разделителя." },
+        "required": {
+          "type": "boolean",
+          "description": "Ссылка без userinfo — не узел этой схемы (vless без uuid, ssh без пользователя): элемент отбраковывается целиком. Отличается от required у отдельного параметра тем, что судит ОБОЛОЧКУ, а не запись таблицы."
+        },
+        "impl": { "type": "string", "description": "Прозаическая сноска: чем сегодняшний код отличается от таблицы. Движок её не исполняет." }
       }
     },
 
@@ -357,7 +371,8 @@
               "description": "as_written — по написанию схемы (hy2-… ≠ hysteria2-…); singbox_type — по типу тела. Решение владельца 19.09.2026: singbox_type. Меняет identity живых узлов — DELTAS.md D133-6."
             }
           }
-        }
+        },
+        "impl": { "type": "string", "description": "Прозаическая сноска: чем сегодняшний код отличается от таблицы. Движок её не исполняет." }
       }
     },
 
@@ -389,6 +404,7 @@
           "description": "Тип тела чужого диалекта → схема реестра (shadowsocks → ss).",
           "additionalProperties": { "type": "string" }
         },
+        "impl": { "type": "string", "description": "Прозаическая сноска ко всей секции: чем сегодняшний код отличается от таблицы. Движок её не исполняет." },
         "defaults": { "type": "object" },
         "unknown_key": {
           "type": "object",
@@ -396,7 +412,8 @@
           "description": "Что делать с неперечисленным ключом источника. Молчание — тот самый дефект, ради которого затеяна кампания.",
           "properties": {
             "action": { "enum": ["keep", "drop"] },
-            "code": { "type": "string" }
+            "code": { "type": "string" },
+            "impl": { "type": "string", "description": "Прозаическая сноска: чем сегодняшний код отличается от таблицы. Движок её не исполняет." }
           }
         },
         "emit": {
@@ -409,9 +426,16 @@
               "properties": {
                 "form": { "type": "string" },
                 "form_from": { "type": "object" },
-                "param_order": { "type": "array", "items": { "type": "string" } },
+                "param_order": {
+                  "description": "Порядок параметров на выходе. Норма — ПРАВИЛО \"alphabetical\" (PRIMITIVES §0.6): q.Encode() во всех эмиттерах уже даёт алфавит, и перечень имён был бы дублем правила. Массив имён остаётся для схем, где порядок задан не алфавитом; имена, не попавшие в перечень, идут следом по алфавиту.",
+                  "oneOf": [
+                    { "enum": ["alphabetical"] },
+                    { "type": "array", "items": { "type": "string" } }
+                  ]
+                },
                 "omit_default": { "type": "array", "items": { "type": "string" } },
-                "emit_when": { "type": "object" }
+                "emit_when": { "type": "object" },
+                "impl": { "type": "string", "description": "Прозаическая сноска: чем сегодняшний код отличается от таблицы. Движок её не исполняет." }
               }
             }
           ]
