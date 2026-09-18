@@ -29,7 +29,7 @@
 
 ### Technical / Internal
 - Linux builds now obtain Wayland header paths from `pkg-config` and fall back to X11 when the optional native Wayland/EGL development files are incomplete, fixing local builds on openSUSE (PR #128, issue #127).
-- Windows release archives now carry `autostart_add.bat` / `autostart_remove.bat` next to the `.exe`: a Task Scheduler entry that starts the launcher at logon with the highest privileges, so an admin-manifested launcher no longer raises a UAC prompt on every logon (issue #79). New guide for Linux desktops with `systemd-resolved`: a narrow Polkit rule that ends the three password prompts on VPN start and one on stop — `docs/LINUX_DNS_POLKIT.md` (issue #126).
+- New guide for Linux desktops with `systemd-resolved`: a narrow Polkit rule that ends the three password prompts on VPN start and one on stop — `docs/LINUX_DNS_POLKIT.md` (issue #126).
 - Node bodies are produced by `Sanitize` + `Emit` over the contract registry (`contract/registry/**`): the per-protocol emitter chain, the TLS/transport field allowlists and the special-case naive filter are gone. Adding a field to a protocol is now a registry edit, not four code edits.
 - The per-field core gate is table-driven from the registry's `min_core`/`platform` instead of one probe per field; `RealityKeyShareSupportProbe` and its cache are removed. Node-level gates (naive/chain/tailscale/AWG3) are unchanged — they drop a node, which the registry does not express.
 - `warnings` are recomputed once on load for nodes saved before the pipeline. A node's stored body is rewritten only when the sanitizer actually removes or coerces something, and each such rewrite is a WARN line naming the node and the codes.
@@ -63,7 +63,7 @@
 
 ### Техническое / Внутреннее
 - Linux-сборка теперь получает пути к заголовкам Wayland через `pkg-config` и использует X11 при неполном наборе опциональных Wayland/EGL-файлов разработки, исправляя локальную сборку в openSUSE (PR #128, issue #127).
-- В Windows-архивы релиза добавлены `autostart_add.bat` / `autostart_remove.bat` рядом с `.exe`: задание Планировщика, запускающее лаунчер при входе в систему с наивысшими правами, — лаунчер с админским манифестом больше не даёт запрос UAC на каждом входе (issue #79). Для Linux-десктопов с `systemd-resolved` появилось руководство: узкое правило Polkit, убирающее три запроса пароля при старте VPN и один при остановке — `docs/LINUX_DNS_POLKIT.ru.md` (issue #126).
+- Для Linux-десктопов с `systemd-resolved` появилось руководство: узкое правило Polkit, убирающее три запроса пароля при старте VPN и один при остановке — `docs/LINUX_DNS_POLKIT.ru.md` (issue #126).
 - Тело узла делают `Sanitize` + `Emit` по реестру контракта (`contract/registry/**`): per-scheme цепочка эмиттера, allowlist-ы полей TLS и транспорта и частный фильтр naive сняты. Новое поле протокола — правка реестра, а не четырёх мест в коде.
 - Полевой гейт ядра стал табличным (`min_core`/`platform` реестра) вместо пробы на каждое поле; `RealityKeyShareSupportProbe` и её кэш удалены. Узловые гейты (naive/chain/tailscale/AWG3) не тронуты — они выбрасывают узел, и реестром это не выражается.
 - `warnings` разово досчитываются при загрузке у узлов, сохранённых до конвейера. Тело переписывается, только если санитайзер реально что-то снял или привёл, и каждая такая перезапись — строка WARN с тегом узла и кодами.
