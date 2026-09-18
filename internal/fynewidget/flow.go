@@ -51,6 +51,17 @@ type FlowLayout struct{}
 func (FlowLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
 	x, y := float32(0), float32(0)
 	rowHeight := float32(0)
+	// line — элементы текущей строки: после того как строка набрана, каждый
+	// центрируется по её высоте (чип 22pt и поле ввода 36pt в одной строке
+	// иначе стояли бы «лесенкой» по верхнему краю).
+	line := make([]fyne.CanvasObject, 0, 8)
+	flush := func() {
+		for _, o := range line {
+			pos := o.Position()
+			o.Move(fyne.NewPos(pos.X, y+(rowHeight-o.Size().Height)/2))
+		}
+		line = line[:0]
+	}
 	for _, o := range objects {
 		if !o.Visible() {
 			continue
@@ -60,17 +71,20 @@ func (FlowLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
 		// элемент шире контейнера остаётся на своей строке, иначе он ушёл бы
 		// в бесконечный перенос).
 		if x > 0 && x+ms.Width > size.Width {
+			flush()
 			x = 0
 			y += rowHeight + flowGapV
 			rowHeight = 0
 		}
 		o.Resize(ms)
 		o.Move(fyne.NewPos(x, y))
+		line = append(line, o)
 		x += ms.Width + flowGapH
 		if ms.Height > rowHeight {
 			rowHeight = ms.Height
 		}
 	}
+	flush()
 }
 
 // MinSize implements fyne.Layout: ширина — самый широкий элемент, высота — одна

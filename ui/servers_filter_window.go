@@ -102,7 +102,7 @@ const (
 	filterChipRowHeight = 24
 	// filterPingEntryWidth — ширина поля порога пинга. Это три цифры, а
 	// растянутое поле читалось бы как поле ввода текста.
-	filterPingEntryWidth = 60
+	filterPingEntryWidth = 64
 )
 
 // serversFilterWindow — открытое окно фильтров одной панели.
@@ -249,7 +249,7 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 		container.NewBorder(nil, nil, nil,
 			container.NewHBox(regexCopy, regexClear),
 			regexEntry,
-		))
+		), regexEntry.MinSize().Height)
 
 	// ── Потоки чипов ───────────────────────────────────────────────────────
 	//
@@ -381,18 +381,9 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 
 	pingEntry := widget.NewEntry()
 	pingEntry.SetText(st().PingText)
-	// Не число — поле с ошибкой, а вариант просто не отбирает (PingMaxMs=0).
-	// Прятать список из-за недопечатанной цифры нельзя, ровно как у регулярки.
-	pingEntry.Validator = func(text string) error {
-		text = strings.TrimSpace(text)
-		if text == "" {
-			return nil
-		}
-		if n, err := strconv.Atoi(text); err != nil || n <= 0 {
-			return fmt.Errorf("%s", locale.T("milliseconds, e.g. 300"))
-		}
-		return nil
-	}
+	// Validator не ставим: он рисует в поле значок ✓/⚠, который съедает
+	// половину ширины узкого поля. Не число — вариант просто не отбирает
+	// (PingMaxMs=0), как недопечатанная регулярка.
 	pingEntryWrap := container.NewGridWrap(
 		fyne.NewSize(filterPingEntryWidth, pingEntry.MinSize().Height), pingEntry)
 
@@ -559,12 +550,16 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 	return fw
 }
 
-// filterCategoryRow — строка категории: «[!] Подпись │ содержимое».
+// filterCategoryRow — строка категории: «Подпись │ [!] │ содержимое».
 //
-// Чип инверсии стоит СЛЕВА от подписи (решение владельца). Когда инверсии у
+// Чип инверсии стоит ПОСЛЕ подписи, перед чипами (решение владельца). Когда инверсии у
 // категории нет (invert == nil), его место занимает распорка той же ширины —
 // иначе подписи Emoji и Test съехали бы влево относительно остальных.
-func filterCategoryRow(invert *fynewidget.Chip, title string, content fyne.CanvasObject) *fyne.Container {
+func filterCategoryRow(invert *fynewidget.Chip, title string, content fyne.CanvasObject, firstLineHeight ...float32) *fyne.Container {
+	h := float32(filterChipRowHeight)
+	if len(firstLineHeight) > 0 && firstLineHeight[0] > h {
+		h = firstLineHeight[0]
+	}
 	var slot fyne.CanvasObject
 	if invert != nil {
 		slot = invert
@@ -575,18 +570,26 @@ func filterCategoryRow(invert *fynewidget.Chip, title string, content fyne.Canva
 	}
 	label := canvas.NewText(title, theme.Color(theme.ColorNameForeground))
 	label.TextSize = theme.Size(theme.SizeNameCaptionText)
+	// Подпись и «!» живут в ячейках высотой ПЕРВОЙ строки содержимого и
+	// центрируются в ней: у категории в две строки чипов они стоят напротив
+	// первой, а не посередине блока.
 	labelCol := container.NewGridWrap(
-		fyne.NewSize(filterLabelColWidth, filterChipRowHeight),
+		fyne.NewSize(filterLabelColWidth, h),
 		container.NewVBox(layout.NewSpacer(), label, layout.NewSpacer()),
 	)
-	lead := container.NewHBox(container.NewCenter(slot), labelCol)
-	return container.NewBorder(nil, nil, lead, nil, content)
+	// Порядок (решение владельца): подпись │ «!» │ чипы.
+	slotCol := container.NewGridWrap(
+		fyne.NewSize(filterInvertSlotWidth+4, h),
+		container.NewCenter(slot),
+	)
+	lead := container.NewHBox(labelCol, slotCol)
+	return container.NewBorder(nil, nil, container.NewVBox(lead), nil, content)
 }
 
 // filterErrorRow — строка ошибки регулярки, выровненная под колонку чипов.
 func filterErrorRow(errText *canvas.Text) fyne.CanvasObject {
 	pad := canvas.NewRectangle(color.Transparent)
-	pad.SetMinSize(fyne.NewSize(filterInvertSlotWidth+filterLabelColWidth, 0))
+	pad.SetMinSize(fyne.NewSize(filterInvertSlotWidth+4+filterLabelColWidth+theme.Padding(), 0))
 	return container.NewBorder(nil, nil, pad, nil, errText)
 }
 
