@@ -174,7 +174,6 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `tls.reality.short_id` — normalized: `hex_only` → [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
 - `tls.reality.key_share` — normalized: `trim_lower`
 - `multiplex.protocol` — normalized: `trim_lower`
-- `transport.grpc.service_name` — normalized: `grpc_service_name`
 
 **Structural translations.** Decisions taken while the link is being read, before any value is judged: whether a block exists at all, where a field comes from, or how one input becomes several fields. The sanitizer sees a finished body and cannot take them.
 

@@ -496,10 +496,9 @@
           "service_name": {
             "type": "string",
             "default": "",
-            "desc_en": "gRPC service name in the request path.",
-            "desc_ru": "Имя gRPC-сервиса в пути запроса.",
-            "normalize": "grpc_service_name",
-            "impl": "Путь собирается как /<service_name>/Tun; enum нет. Ведущий «/» — это Xray-форма «абсолютного пути», где последний сегмент называет ПОТОК, а не сервис (xray-core transport/internet/grpc/config.go getServiceName/getTunStreamName): «/a/b/Tun» на проводе = «/a/b/Tun». Ядро имя потока не настраивает (всегда «Tun», transport/v2raygrpclite/client.go:58), поэтому normalize grpc_service_name снимает ведущий «/» и хвост «/Tun» — путь на проводе сохраняется. ОГРАНИЧЕНИЕ ЯДРА: «/» внутри service_name уезжает на провод как %2F (RawPath, url.PathEscape там же), поэтому многосегментное имя всё равно не совпадёт с сервером; односегментное («/abcde/Tun») чинится полностью. Issue #130."
+            "desc_en": "gRPC service name in the request path. A leading \"/\" makes the value a ready-made request path in Xray's absolute-path form (core >= 1.14.1-lx.8): \"/a/b/Tun\" goes on the wire as \"/a/b/Tun\", each segment escaped on its own. Without a leading \"/\" it is a service name and the core appends \"/Tun\" itself (\"a/b\" -> \"/a%2Fb/Tun\"). The value is passed to the core unchanged in either form.",
+            "desc_ru": "Имя gRPC-сервиса в пути запроса. Ведущий «/» означает, что значение — готовый путь запроса в Xray-форме «абсолютного пути» (ядро ≥ 1.14.1-lx.8): «/a/b/Tun» уезжает на провод как «/a/b/Tun», каждый сегмент экранируется отдельно. Без ведущего «/» это имя сервиса, и ядро само дописывает «/Tun» («a/b» → «/a%2Fb/Tun»). Значение передаётся ядру как есть в любой форме — лаунчер его не меняет.",
+            "impl": "option/v2ray_transport.go V2RayGRPCOptions.ServiceName; enum нет. Ядро sing-box-lx ≥ 1.14.1-lx.8 (SPEC 093 ядра) разбирает ведущий «/» как custom path Xray: сегменты между слэшами экранируются по отдельности, хвост «|…» (вторая половина серверной записи Xray, имя потока TunMulti) отбрасывается. Без ведущего «/» — прежнее поведение: имя сервиса целиком экранируется одним сегментом и ядро дописывает «/Tun». Нормализации НЕТ ни у одной стороны: значение едет в конфиг как есть (прежний перевод «/service/Tun» → «service», issue #130, снят целиком с пином lx.8 — контракт 1.1.3). Парсер share-URI percent-декодирует serviceName, поэтому «%2F» внутри сегмента после разбора становится разделителем — ровно так же, как у Xray."
           },
           "idle_timeout": {
             "type": "duration",

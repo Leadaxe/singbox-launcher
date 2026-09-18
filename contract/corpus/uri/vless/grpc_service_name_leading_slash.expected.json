@@ -13,7 +13,7 @@
           }
         },
         "transport": {
-          "service_name": "abcde/something",
+          "service_name": "/abcde/something/Tun",
           "type": "grpc"
         },
         "type": "vless",

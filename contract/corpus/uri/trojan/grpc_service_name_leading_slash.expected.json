@@ -10,7 +10,7 @@
           "server_name": "example-3.com"
         },
         "transport": {
-          "service_name": "abcde",
+          "service_name": "/abcde/Tun",
           "type": "grpc"
         },
         "type": "trojan"

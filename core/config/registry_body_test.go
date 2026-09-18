@@ -75,9 +75,6 @@ var registryFieldTypes = map[string]bool{
 // (DRIFT §9.2).
 var registryNormalizeModes = map[string]bool{
 	"trim": true, "lower": true, "trim_lower": true, "hex_only": true,
-	// grpc_service_name — перевод Xray-формы «/<сервис>/Tun» в service_name
-	// ядра (issue #130): регистр не трогает, меняет только написание пути.
-	"grpc_service_name": true,
 }
 
 // registryOnInvalidActions — допустимые действия on_invalid.

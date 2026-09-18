@@ -199,51 +199,8 @@ func normalize(mode, v string) string {
 			}
 		}
 		return b.String()
-	case "grpc_service_name":
-		return normalizeGRPCServiceName(v)
 	}
 	return v
-}
-
-// normalizeGRPCServiceName переводит Xray-диалект «абсолютного пути» в
-// service_name, который sing-box кладёт на провод тем же путём.
-//
-// У Xray serviceName с ведущим «/» значит НЕ «то же имя со слэшем»: это
-// отдельная форма записи, где последний сегмент — имя ПОТОКА, а не часть
-// имени сервиса (transport/internet/grpc/config.go getServiceName /
-// getTunStreamName). «/abcde/something/Tun» на проводе даёт путь
-// «/abcde/something/Tun»: сервис «abcde/something», поток «Tun».
-//
-// sing-box имя потока не настраивает — оно всегда «Tun»
-// (transport/v2raygrpclite/client.go:58). Значит форма переводится один в
-// один ровно тогда, когда последний сегмент и есть «Tun»: снимаем ведущий
-// «/» и хвост «/Tun», остальное отдаём как service_name. Это перевод
-// написания, а не подгонка значения — путь на проводе не меняется.
-//
-// Хвост «|multi» (вторая половина серверной записи Xray) к клиенту не
-// относится: он называет поток TunMulti, которого у sing-box нет.
-//
-// Форму с ДРУГИМ именем потока («/svc/Stream») не трогаем: ядро её всё
-// равно не воспроизведёт, и молчаливая правка сделала бы из неё чужой
-// путь. Такое значение едет как есть — пусть ломается заметно.
-func normalizeGRPCServiceName(v string) string {
-	s := strings.TrimSpace(v)
-	if !strings.HasPrefix(s, "/") {
-		return s
-	}
-	last := strings.LastIndex(s, "/")
-	if last < 1 {
-		// «/foo» — сегментов нет, имя сервиса пустое; не наш случай.
-		return s
-	}
-	stream := s[last+1:]
-	if i := strings.IndexByte(stream, '|'); i >= 0 {
-		stream = stream[:i]
-	}
-	if stream != "Tun" {
-		return s
-	}
-	return s[1:last]
 }
 
 func asString(raw interface{}) (string, bool) {

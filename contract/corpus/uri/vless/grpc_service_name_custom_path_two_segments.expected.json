@@ -1,7 +1,4 @@
 {
-  "meta": {
-    "body_kind": "xray-array"
-  },
   "nodes": [
     {
       "entry": {
@@ -9,17 +6,21 @@
         "server_port": 443,
         "tls": {
           "enabled": true,
-          "server_name": "example-1.com"
+          "server_name": "example-1.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
         },
         "transport": {
-          "service_name": "/abcde/Tun",
+          "service_name": "/a/b/Tun",
           "type": "grpc"
         },
         "type": "vless",
         "uuid": "11111111-1111-1111-1111-111111111111"
       },
       "kind": "outbound",
-      "label": "xr-grpc",
+      "label": "gr two",
       "scheme": "vless"
     }
   ],

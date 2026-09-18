@@ -160,8 +160,8 @@ Discriminator: `type` — `http`, `ws`, `quic`, `grpc`, `httpupgrade`, `xhttp`
 
 ### `grpc`
 
-- **`service_name`** — gRPC service name in the request path.
-  - Type: string, normalized: `grpc_service_name`
+- **`service_name`** — gRPC service name in the request path. A leading "/" makes the value a ready-made request path in Xray's absolute-path form (core >= 1.14.1-lx.8): "/a/b/Tun" goes on the wire as "/a/b/Tun", each segment escaped on its own. Without a leading "/" it is a service name and the core appends "/Tun" itself ("a/b" -> "/a%2Fb/Tun"). The value is passed to the core unchanged in either form.
+  - Type: string
   - Default: `""`
 - **`idle_timeout`** — Close the stream after this idle period.
   - Type: duration

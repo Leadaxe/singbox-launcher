@@ -6,7 +6,7 @@ These pages are generated from the `contract/registry/` registry by `go generate
 
 |  | Version |
 |---|---|
-| Contract (`contract/VERSION`) | `1.1.2` |
+| Contract (`contract/VERSION`) | `1.1.3` |
 | Core (`body.core`) | `1.14.1-lx.4` |
 
 ## Pipeline

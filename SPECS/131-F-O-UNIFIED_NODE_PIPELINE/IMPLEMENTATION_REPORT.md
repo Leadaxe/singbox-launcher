@@ -19,6 +19,7 @@
 | W2d | см. лог | парсеры → мапперы (21 правило снято, 6 в реестр, 14 структурных), алиасы из реестра, naive userinfo=password, `nodeflow_pipeline_test.go`, `TestRegistryWarningCodesHaveAProducer`; `W2D_CHANGES.md`, §24.7 |
 | fix xmux | `9379de95` | связи судят ЗНАЧЕНИЕ («0»/«0-0» = не задано), `all_or_nothing` без действия санитайзера, код `partial_object_defaulted` снят; кейс `body/singbox/vless_xhttp_xmux_zero_neighbours`; мёртвый `codes` в `SanitizeSingboxOutboundMap`; DRIFT §7.20, §24.9 |
 | Docs v2 | см. лог | `contract/docs/generated` только по-английски, списки вместо широких таблиц; страница схемы самодостаточна (Link parameters → Body fields → Diagnosed problems → Replacements → Degradation); `cause_*`/`fix_*` у всех кодов, `registry.WarningAdvice`, причина и решения в карточке узла; секция `mapper` (28 правил) со схемой и линтером; старый `degrade[]` снят; контракт 1.1.1 |
+| gRPC #130 откат | см. лог | Ядро `1.14.1-lx.8` (SPEC 093) само разбирает ведущий «/» в `service_name` как custom path Xray (посегментное экранирование, хвост `|…` отбрасывается), поэтому перевод `/service/Tun` → `service` снят **целиком**: правило `normalize: grpc_service_name`, значение в enum схемы, `registryNormalizeModes` линтера и `normalizeGRPCServiceName` с юнитами удалены; значение едет ядру как есть. Пин `RequiredCoreVersion` → `1.14.1-lx.8`, гейт `min_core` не вводится. Корпус: 3 кейса перенормированы, 4 новых (`/x/Tun`, `/a/b/Tun`, `/a/Stream`, `a/b`). Контракт 1.1.3, DRIFT §7.21, `TASKS_LXBOX.md` §24.12 |
 
 ## Критерии приёмки (SPEC §9)
 

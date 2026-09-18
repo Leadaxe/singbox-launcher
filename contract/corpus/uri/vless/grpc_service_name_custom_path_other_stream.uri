@@ -1,0 +1,4 @@
+# gRPC: custom path с именем потока, отличным от «Tun» — «/a/Stream».
+# Для ядра это просто готовый путь: последний сегмент ничем не выделен,
+# на проводе «/a/Stream». Лаунчер значение НЕ трогает.
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?encryption=none&type=grpc&serviceName=%2Fa%2FStream&sni=example-1.com&security=tls&fp=chrome#gr%20stream
