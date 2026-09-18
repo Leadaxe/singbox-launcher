@@ -59,6 +59,24 @@ type Settings struct {
 	// (SPEC 046, LastTemplateLauncherVersion).
 	LastLocaleLauncherVersion string `json:"last_locale_launcher_version,omitempty"`
 
+	// LastLauncherVersion / LastCoreVersion — версии, которые лаунчер видел
+	// в ПРОШЛЫЙ запуск (SPEC 132, core/maintenance): своя и ядра.
+	//
+	// Отдельно от LastTemplateLauncherVersion: та отвечает за свежесть
+	// шаблона, и чужая логика на ней завела бы одно поле на два несвязанных
+	// смысла.
+	//
+	// Версия ядра — та, что сообщает САМ БИНАРЬ (`sing-box version`): ядро
+	// меняется независимо от лаунчера, в том числе подменой файла руками
+	// мимо кнопки обновления.
+	//
+	// Пусто = отметки ещё не было: записывается текущая версия БЕЗ события
+	// (объявлять смену не на чем). Смысл отметок — сделать «а что у вас
+	// менялось?» видимым в логе релиза, который пишет только WARN; список
+	// сервисных работ на этих событиях пока пуст.
+	LastLauncherVersion string `json:"last_launcher_version,omitempty"`
+	LastCoreVersion     string `json:"last_core_version,omitempty"`
+
 	// HWID — random UUIDv4 идентификатор устройства, отправляемый в
 	// `X-Hwid` заголовке при каждом fetch'е подписки. Lazy-generated
 	// (EnsureHWID): пустой строкой при первой инсталляции → генерируется и
