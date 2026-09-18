@@ -101,6 +101,12 @@ type Settings struct {
 	// UX-преимущество daemon-режима.
 	DaemonStopVPNOnExit bool `json:"daemon_stop_vpn_on_exit,omitempty"`
 
+	// HideAppFromDock — пункт трея «Скрыть из Dock» (macOS). Пишется при
+	// каждом переключении пункта, применяется на старте: до этого поля
+	// состояние жило только в памяти и терялось при перезапуске (issue #112).
+	// На других платформах поле игнорируется (Dock есть только у macOS).
+	HideAppFromDock bool `json:"hide_app_from_dock,omitempty"`
+
 	// --- Умолчания подписок (SPEC 118 Т1) ---------------------------------
 	//
 	// Умолчания reload/max_nodes — поведение лаунчера, одни на все состояния

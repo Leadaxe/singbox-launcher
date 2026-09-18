@@ -161,6 +161,7 @@ func (ac *AppController) addHideDockMenuItem(menuItems []*fyne.MenuItem) []*fyne
 
 	menuItems = append(menuItems, fyne.NewMenuItem(hideDockLabel, func() {
 		ac.UIService.HideAppFromDock = !ac.UIService.HideAppFromDock
+		ac.persistHideAppFromDock(ac.UIService.HideAppFromDock)
 
 		if runtime.GOOS == "darwin" {
 			if ac.UIService.HideAppFromDock {
@@ -185,4 +186,27 @@ func (ac *AppController) addHideDockMenuItem(menuItems []*fyne.MenuItem) []*fyne
 	menuItems = append(menuItems, fyne.NewMenuItemSeparator())
 
 	return menuItems
+}
+
+// persistHideAppFromDock сохраняет состояние пункта «Скрыть из Dock» в
+// bin/settings.json, чтобы оно пережило перезапуск (issue #112). Применяется
+// на старте в main.go, до показа окна.
+//
+// Read-modify-write через LoadSettings: settings.json пишут и другие места
+// (язык, backend-режим, debug-API), и целиком его тут пересобирать нельзя.
+// Ошибка записи не откатывает переключение: Dock уже переключён, а следующий
+// запуск просто откроется в прежнем состоянии.
+func (ac *AppController) persistHideAppFromDock(hidden bool) {
+	if ac == nil || ac.FileService == nil {
+		return
+	}
+	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	st := locale.LoadSettings(binDir)
+	if st.HideAppFromDock == hidden {
+		return
+	}
+	st.HideAppFromDock = hidden
+	if err := locale.SaveSettings(binDir, st); err != nil {
+		debuglog.WarnLog("Tray: save hide_app_from_dock=%v: %v", hidden, err)
+	}
 }

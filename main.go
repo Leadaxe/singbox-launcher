@@ -193,6 +193,13 @@ func main() {
 		controller.StateService.SetAutoUpdateEnabled(false)
 		debuglog.InfoLog("Auto-update: disabled by user setting (subscription_auto_update_disabled=true)")
 	}
+	// Пункт трея «Скрыть из Dock» (macOS, issue #112). Флаг ставим здесь, до
+	// CreateTrayMenu: иначе галка в меню при старте не отражала бы сохранённое
+	// состояние. Сама activation policy применяется ниже, перед RunEventLoop.
+	if runtime.GOOS == "darwin" && settings.HideAppFromDock {
+		controller.UIService.HideAppFromDock = true
+		debuglog.InfoLog("Dock: hidden at startup by user setting (hide_app_from_dock=true)")
+	}
 	if settings.AutoPingAfterConnectDisabled {
 		controller.StateService.SetAutoPingAfterConnectEnabled(false)
 		debuglog.InfoLog("Auto-ping: disabled by user setting (auto_ping_after_connect_disabled=true)")
@@ -534,11 +541,29 @@ func main() {
 	// Win7: remove accumulated singbox-tun ghosts from prior sessions (SPEC 065).
 	core.CleanupStaleTunAtStartUtil()
 
+	// Применяем сохранённое «Скрыть из Dock» (issue #112) — до показа окна,
+	// чтобы иконка не успела мигнуть в Dock.
+	//
+	// Место выбрано под требование AppKit: -[NSApp setActivationPolicy:] зовётся
+	// только с главного потока, и launcherHideDockIcon сам на него не уходит.
+	// Здесь это выполнено даром: драйвер Fyne в своём init() делает
+	// runtime.LockOSThread, так что main.main и есть главный поток (загонять
+	// вызов в fyne.Do нельзя — цикл событий стартует строчкой ниже, и очередь
+	// разобралась бы уже после того, как окно показано).
+	//
+	// Окно тоже не показываем: пункт трея прячет его вместе с иконкой Dock,
+	// и старт без окна — то же самое состояние, в котором пользователь вышел.
+	// Лаунчер остаётся доступен из трея, как и в режиме -tray.
+	hiddenFromDock := runtime.GOOS == "darwin" && controller.UIService != nil && controller.UIService.HideAppFromDock
+	if hiddenFromDock {
+		platform.HideDockIcon()
+	}
+
 	// Use app.Run() instead of ShowAndRun() for windowless support
 	// This allows the app to keep running even when window is closed/hidden
 	// On macOS, this enables standard Dock behavior (applicationShouldHandleReopen)
 	// See: https://github.com/fyne-io/fyne/issues/3845
-	if !*startInTray {
+	if !*startInTray && !hiddenFromDock {
 		// Show window on startup if not starting in tray
 		if controller.UIService != nil {
 			controller.UIService.ShowMainWindowOrFocusWizard()
