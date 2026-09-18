@@ -15,7 +15,7 @@
 // # Расклад строки
 //
 //		[захват] [галка] Имя…                                   [кнопки] [gutter]
-//		                 подстрока (протокол·транспорт·security | ⚠ причина)
+//		                 [ⓘ] подстрока (протокол·транспорт·security | ⚠ причина)
 //
 //	  - захват — только там, где порядок принадлежит пользователю (папка); у
 //	    подписки его нет: порядок задаёт тело провайдера, и перестановка
@@ -42,8 +42,10 @@ import (
 	"fyne.io/fyne/v2/widget"
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
+	"singbox-launcher/core/state"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 	"singbox-launcher/ui/components"
 )
 
@@ -59,6 +61,10 @@ type sourceNodeRowSpec struct {
 	// SubtitleWarn — подстрока это ПРИЧИНА отбраковки, а не описание узла:
 	// красится цветом предупреждения.
 	SubtitleWarn bool
+	// SubtitleInfo — коды узла, по которым решается иконка «к сведению» в
+	// подстроке: есть ли она вообще и с какой стороны текста встаёт
+	// (nodewarn.InfoSubtitleLine). Имя строки от них не зависит — оно тег.
+	SubtitleInfo []state.NodeWarning
 	// Dimmed — узел выключен либо неразобран: заголовок гаснет.
 	Dimmed bool
 	// ToolTip — полный текст под курсором; пусто = тултипа нет.
@@ -158,7 +164,14 @@ func newSourceNodeRow(spec sourceNodeRowSpec) (fyne.CanvasObject, *fynewidget.Ho
 		}
 		sub := canvas.NewText(spec.Subtitle, subColor)
 		sub.TextSize = previewSubtitleTextSize
-		lines = append(lines, container.NewBorder(nil, nil, pad, nil, sub))
+		// Иконка «к сведению» — В ПОДСТРОКЕ, не у имени (правка владельца):
+		// имя адресует узел, украшать его нельзя — тот же довод, что у
+		// шестерёнки служебного узла выше. Строка строится на каждый узел
+		// заново (списка-шаблона здесь нет), поэтому место знака решается
+		// сразу.
+		subLine := nodewarn.NewInfoSubtitleLine(sub)
+		subLine.Update(spec.SubtitleInfo)
+		lines = append(lines, container.NewBorder(nil, nil, pad, nil, subLine.Content))
 	}
 
 	var inner fyne.CanvasObject = titleRow

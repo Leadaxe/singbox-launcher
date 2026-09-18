@@ -1,8 +1,9 @@
 // File nodewarn_test.go — ВЫБОР уровня, а не тексты.
 //
 // Тест смотрит только на логику развилки: какой глиф несёт подстрока, сколько
-// кодов она сосчитала, есть ли значок «к сведению» у имени и в каком порядке
-// идут группы в тултипе. Сами заголовки приезжают из реестра контракта и
+// кодов она сосчитала, с какой стороны подстроки встаёт иконка «к сведению» и
+// в каком порядке идут группы в тултипе. Сами заголовки приезжают из реестра
+// контракта и
 // живут своей жизнью — сверять их здесь значило бы ломать тест на каждой
 // правке текста (память `no-ui-format-tests`).
 //
@@ -139,20 +140,16 @@ func TestSeverityLevelsDrivePresentation(t *testing.T) {
 			if got := InfoOnly(c.in); got != wantInfoOnly {
 				t.Errorf("InfoOnly = %v, ожидалось %v", got, wantInfoOnly)
 			}
-			mark := InfoMarkFor(c.in)
-			if c.info && mark != InfoMark {
-				t.Errorf("InfoMarkFor = %q, ожидался %q", mark, InfoMark)
-			}
-			if !c.info && mark != "" {
-				t.Errorf("InfoMarkFor = %q, ожидалось пусто", mark)
-			}
-			// Значок приписывается ТОЛЬКО к показу: имя-ключ остаётся собой.
-			name := WithInfoMark("node-tag", c.in)
-			if c.info && name != "node-tag "+InfoMark {
-				t.Errorf("WithInfoMark = %q", name)
-			}
-			if !c.info && name != "node-tag" {
-				t.Errorf("WithInfoMark = %q, имя должно остаться нетронутым", name)
+			// Иконка info в ПОДСТРОКЕ: есть ли она и с какой стороны текста.
+			// Проверяется ВЫБОР МЕСТА, а не вёрстка: правило «начало
+			// подстроки принадлежит старшему уровню» — то же, по которому
+			// Subtitle ставит ✖/⚠, и разъехаться им нельзя.
+			lead, trail := infoIconSides(c.in)
+			wantLead := c.info && c.mark == ""
+			wantTrail := c.info && c.mark != ""
+			if lead != wantLead || trail != wantTrail {
+				t.Errorf("иконка info: слева=%v справа=%v, ожидалось слева=%v справа=%v",
+					lead, trail, wantLead, wantTrail)
 			}
 		})
 	}

@@ -245,13 +245,10 @@ func coreRuntimeNodeRow(ac *core.AppController, p api.ProxyInfo, cfgPath string,
 // статуса вместо пинга. Нужна tailscale-узлу: пинг через него врал бы, а
 // слово состояния из стрима — нет.
 func coreRuntimeNodeRowWithStatus(ac *core.AppController, p api.ProxyInfo, cfgPath string, scope services.ProxyScope, prefix, status string) fyne.CanvasObject {
-	// «(i)» у имени — как на вкладке Servers: info-коды в подстроку не идут
-	// (там только error и warning), и знак у имени — единственное место, где
-	// узел говорит «работаю, но есть что знать». В данные значок не попадает:
-	// ключом узла везде остаётся p.Name.
+	// Имя — ЧИСТОЕ, как на вкладке Servers: знак info переехал в подстроку
+	// (см. nodewarn/info_icon.go). Ключом узла везде остаётся p.Name.
 	warns := nodeWarningsFor(ac, p.Name, scope)
-	name := canvas.NewText(prefix+nodewarn.WithInfoMark(p.DisplayOrName(), warns),
-		theme.Color(theme.ColorNameForeground))
+	name := canvas.NewText(prefix+p.DisplayOrName(), theme.Color(theme.ColorNameForeground))
 	name.TextSize = serversNameTextSize
 	name.TextStyle.Bold = true
 
@@ -270,7 +267,12 @@ func coreRuntimeNodeRowWithStatus(ac *core.AppController, p api.ProxyInfo, cfgPa
 	}
 	sub := canvas.NewText(subText, theme.Color(theme.ColorNamePlaceHolder))
 	sub.TextSize = serversSubtitleTextSize
-	title := container.New(tightVBoxLayout{gap: serversTitleSubtitleGap}, name, sub)
+	// Иконка info — в подстроке. Строки этого окна не переиспользуются
+	// (обычный VBox, не widget.List), поэтому место знака выбирается сразу и
+	// навсегда — Show/Hide тут не нужен, нужен тот же Update.
+	subLine := nodewarn.NewInfoSubtitleLine(sub)
+	subLine.Update(warns)
+	title := container.New(tightVBoxLayout{gap: serversTitleSubtitleGap}, name, subLine.Content)
 
 	delay := widget.NewLabel(status)
 	delay.Alignment = fyne.TextAlignTrailing

@@ -1754,9 +1754,16 @@ func showSourceEditWindowAt(
 								// наклонного текста.
 								sub := canvas.NewText("", theme.Color(theme.ColorNamePlaceHolder))
 								sub.TextSize = previewSubtitleTextSize
+								// Иконка «к сведению» — в подстроке, обе её
+								// позиции создаются ОДИН раз и дальше только
+								// показываются/прячутся: строки widget.List
+								// переиспользуются, и пересборка контейнера
+								// порвала бы разбор дерева в updateItem ниже.
+								subLine := nodewarn.NewInfoSubtitleLine(sub)
 
 								titleBox := container.New(
-									previewTightVBox{gap: previewTitleSubtitleGap}, name, sub)
+									previewTightVBox{gap: previewTitleSubtitleGap},
+									name, subLine.Content)
 								// Ведущий кластер — ВСЕГДА HBox, даже когда
 								// захвата нет: иначе разбор строки в updateItem
 								// зависел бы от вида контейнера, а это ровно та
@@ -1828,12 +1835,21 @@ func showSourceEditWindowAt(
 									return
 								}
 								name, _ := titleBox.Objects[0].(*canvas.Text)
-								sub, _ := titleBox.Objects[1].(*canvas.Text)
-								if name == nil || sub == nil {
+								// Подстрока — строка с местами под иконку
+								// info: [иконка, текст, иконка].
+								subLine := nodewarn.BindInfoSubtitleLine(titleBox.Objects[1])
+								subBox, _ := titleBox.Objects[1].(*fyne.Container)
+								if name == nil || subLine == nil || subBox == nil {
+									return
+								}
+								sub, _ := subBox.Objects[1].(*canvas.Text)
+								if sub == nil {
 									return
 								}
 
-								name.Text = previewRowTitleShown(pr)
+								// Имя ЧИСТОЕ: знак info переехал в подстроку
+								// (правка владельца) — имя адресует узел.
+								name.Text = previewRowTitle(pr)
 								name.Color = theme.Color(theme.ColorNameForeground)
 								name.Refresh()
 
@@ -1851,6 +1867,10 @@ func showSourceEditWindowAt(
 									sub.Color = theme.Color(theme.ColorNamePlaceHolder)
 								}
 								sub.Refresh()
+								// Слева у здорового узла, в конце — у узла с
+								// ✖/⚠: начало подстроки принадлежит старшему
+								// уровню.
+								subLine.Update(pr.Warnings)
 
 								identity := identities[id]
 								if pr.Unsupported {

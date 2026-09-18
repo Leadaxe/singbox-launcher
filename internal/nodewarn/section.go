@@ -91,7 +91,11 @@ func Section(in []state.NodeWarning) fyne.CanvasObject {
 		head.TextStyle.Bold = true
 		head.Wrapping = fyne.TextWrapWord
 		head.Importance = widget.LowImportance
-		items = append(items, head)
+		// Иконка у ПОДЗАГОЛОВКА группы — та же, что в строке узла: человек,
+		// пришедший в окно по иконке из списка, обязан узнать её здесь. У
+		// записей внутри группы значка по-прежнему нет (см. шапку Section).
+		items = append(items, container.NewBorder(nil, nil,
+			container.NewCenter(InfoIconCell()), nil, head))
 		for _, t := range infos {
 			// Без глифа: см. комментарий к Section.
 			items = append(items, row(t, ""))

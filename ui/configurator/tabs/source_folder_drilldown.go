@@ -603,9 +603,10 @@ func folderDrillNodeRow(
 	identity := pr.RawTag
 
 	spec := sourceNodeRowSpec{
-		Title:        previewRowTitleShown(pr),
+		Title:        previewRowTitle(pr),
 		Subtitle:     previewRowSubtitle(pr),
 		SubtitleWarn: previewRowWarn(pr),
+		SubtitleInfo: pr.Warnings,
 		Service:      pr.Service,
 		ToolTip:      previewRowToolTip(pr),
 		OnOpen:       func() { showPreviewNodeEditWindow(pr, identity, ops) },

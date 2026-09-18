@@ -692,9 +692,16 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		subtitleText := canvas.NewText("", theme.Color(theme.ColorNamePlaceHolder))
 		subtitleText.TextSize = serversSubtitleTextSize
 
+		// Иконка info живёт В ПОДСТРОКЕ (правка владельца): обе её позиции —
+		// перед текстом и после — создаются здесь ОДИН раз и дальше только
+		// показываются/прячутся. widget.List переиспользует строки, и
+		// пересборка контейнера на каждом обновлении сломала бы разбор дерева
+		// в updateItem.
+		subtitleLine := nodewarn.NewInfoSubtitleLine(subtitleText)
+
 		titleBox := container.New(
 			tightVBoxLayout{gap: serversTitleSubtitleGap},
-			nameText, subtitleText,
+			nameText, subtitleLine.Content,
 		)
 
 		switchButton := widget.NewButton("▶️", nil)
@@ -756,7 +763,10 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		// Border кладёт объекты в порядке [center, right]: titleBox, кнопки.
 		titleBox := content.Objects[0].(*fyne.Container)
 		nameText := titleBox.Objects[0].(*canvas.Text)
-		subtitleText := titleBox.Objects[1].(*canvas.Text)
+		// Подстрока — не голый текст, а строка с местами под иконку info
+		// (createItem): [иконка слева, текст, иконка справа].
+		subtitleLine := nodewarn.BindInfoSubtitleLine(titleBox.Objects[1])
+		subtitleText := titleBox.Objects[1].(*fyne.Container).Objects[1].(*canvas.Text)
 
 		// content.Objects: [titleBox, центрированные кнопки].
 		// buttonsBox: [кликабельный замер, ▶, распорка].
@@ -772,15 +782,11 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 		// canvas.Text не умеет ellipsis сам — режем по длине, иначе длинное
 		// имя растянет строку и вытолкнет кнопки за край.
-		// Значок «(i)» приписывается ИМЕНИ, а не подстроке: info говорит «всё
-		// работает, но есть что знать», и в подстроке (её место занимают error
-		// и warning) он был бы ложной тревогой. Обрезается ТОЛЬКО имя, значок
-		// приписывается после: обрежь их вместе — и у длинного имени значок
-		// уехал бы за многоточие, то есть пропал бы ровно там, где строка и
-		// так ничего не объясняет.
-		nameText.Text = nodewarn.WithInfoMark(
-			truncateRunes(proxyInfo.DisplayOrName(), serversNameMaxRunes),
-			nodeWarningsFor(ac, proxyInfo.Name, panel.scope))
+		//
+		// Имя — ЧИСТОЕ. Знака info у него больше нет (правка владельца): имя
+		// служит тегом, и всякая приписка к нему читается как часть тега.
+		nodeWarns := nodeWarningsFor(ac, proxyInfo.Name, panel.scope)
+		nameText.Text = truncateRunes(proxyInfo.DisplayOrName(), serversNameMaxRunes)
 		nameText.Color = theme.Color(theme.ColorNameForeground)
 		nameText.Refresh()
 
@@ -789,6 +795,10 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		subtitleText.Text = truncateSubtitle(serversNodeSubtitle(ac, proxyInfo, panel.scope))
 		subtitleText.Color = theme.Color(theme.ColorNamePlaceHolder)
 		subtitleText.Refresh()
+
+		// Иконка info — во второй строке: перед составом у здорового узла, в
+		// конце у узла с деградацией (там начало строки занято ✖/⚠).
+		subtitleLine.Update(nodeWarns)
 
 		// Замер — цветное число на нейтральной подложке; клик по нему
 		// запускает новый замер (обработчик ниже).
