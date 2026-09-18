@@ -1,0 +1,326 @@
+=== RUN   TestZZRealStateProbe
+A BODY-REWRITE  [vless] "🇭🇺-Венгрия"  warnings: field_conflict@transport.xmux.max_concurrency=; partial_object_defaulted@transport.xmux=
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+B DIFF [vless] "🇭🇺-Венгрия" (origin=json) warnings: field_conflict@transport.xmux.max_concurrency; partial_object_defaulted@transport.xmux
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+A BODY-REWRITE  [vless] "🇬🇧-Англия"  warnings: field_conflict@transport.xmux.max_concurrency=; partial_object_defaulted@transport.xmux=
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+B DIFF [vless] "🇬🇧-Англия" (origin=json) warnings: field_conflict@transport.xmux.max_concurrency; partial_object_defaulted@transport.xmux
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+A BODY-REWRITE  [vless] "🇳🇱-Нидерланды"  warnings: field_conflict@transport.xmux.max_concurrency=; partial_object_defaulted@transport.xmux=
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+B DIFF [vless] "🇳🇱-Нидерланды" (origin=json) warnings: field_conflict@transport.xmux.max_concurrency; partial_object_defaulted@transport.xmux
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+A BODY-REWRITE  [vless] "🇩🇪-Германия"  warnings: field_conflict@transport.xmux.max_concurrency=; partial_object_defaulted@transport.xmux=
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+B DIFF [vless] "🇩🇪-Германия" (origin=json) warnings: field_conflict@transport.xmux.max_concurrency; partial_object_defaulted@transport.xmux
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+A BODY-REWRITE  [vless] "🇵🇱-Польша"  warnings: field_conflict@transport.xmux.max_concurrency=; partial_object_defaulted@transport.xmux=
+      + transport.xmux.h_max_request_times = "600-900"
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+B DIFF [vless] "🇵🇱-Польша" (origin=json) warnings: field_conflict@transport.xmux.max_concurrency; partial_object_defaulted@transport.xmux
+      + transport.xmux.h_max_request_times = "600-900"
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+A BODY-REWRITE  [vless] "🇫🇮-Финляндия-1"  warnings: field_conflict@transport.xmux.max_concurrency=; partial_object_defaulted@transport.xmux=
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+B DIFF [vless] "🇫🇮-Финляндия-1" (origin=json) warnings: field_conflict@transport.xmux.max_concurrency; partial_object_defaulted@transport.xmux
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+A BODY-REWRITE  [vless] "🇫🇮-Финляндия-2"  warnings: field_conflict@transport.xmux.max_concurrency=; partial_object_defaulted@transport.xmux=
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+B DIFF [vless] "🇫🇮-Финляндия-2" (origin=json) warnings: field_conflict@transport.xmux.max_concurrency; partial_object_defaulted@transport.xmux
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+A BODY-REWRITE  [vless] "🇧🇪Бельгия"  warnings: field_conflict@transport.xmux.max_concurrency=; partial_object_defaulted@transport.xmux=
+      + transport.xmux.h_max_request_times = "600-900"
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+B DIFF [vless] "🇧🇪Бельгия" (origin=json) warnings: field_conflict@transport.xmux.max_concurrency; partial_object_defaulted@transport.xmux
+      + transport.xmux.h_max_request_times = "600-900"
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+A BODY-REWRITE  [vless] "Обходы-белых-списков"  warnings: field_conflict@transport.xmux.max_concurrency=; partial_object_defaulted@transport.xmux=
+      + transport.xmux.h_max_request_times = "600-900"
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+B DIFF [vless] "Обходы-белых-списков" (origin=json) warnings: field_conflict@transport.xmux.max_concurrency; partial_object_defaulted@transport.xmux
+      + transport.xmux.h_max_request_times = "600-900"
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+A BODY-REWRITE  [vless] "🇨🇭-Швейцария-БС-1"  warnings: field_conflict@transport.xmux.max_concurrency=; partial_object_defaulted@transport.xmux=
+      + transport.xmux.h_max_request_times = "600-900"
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+B DIFF [vless] "🇨🇭-Швейцария-БС-1" (origin=json) warnings: field_conflict@transport.xmux.max_concurrency; partial_object_defaulted@transport.xmux
+      + transport.xmux.h_max_request_times = "600-900"
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+A BODY-REWRITE  [vless] "🇨🇭-Швейцария-БС-2"  warnings: field_conflict@transport.xmux.max_concurrency=; partial_object_defaulted@transport.xmux=
+      + transport.xmux.h_max_request_times = "600-900"
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+B DIFF [vless] "🇨🇭-Швейцария-БС-2" (origin=json) warnings: field_conflict@transport.xmux.max_concurrency; partial_object_defaulted@transport.xmux
+      + transport.xmux.h_max_request_times = "600-900"
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+A body-same  [vless] "🇭🇰 Hong Kong, Central | [BL]"  warnings: reality_fp_not_chrome@tls.utls.fingerprint=android
+A body-same  [vless] "🇭🇰 Hong Kong, Central | [BL]-3"  warnings: reality_fp_not_chrome@tls.utls.fingerprint=edge
+A body-same  [vless] "🇭🇰 Hong Kong, Central | [BL]-5"  warnings: reality_fp_not_chrome@tls.utls.fingerprint=ios
+A body-same  [vless] "🇭🇰 Hong Kong, Central | [BL]-6"  warnings: reality_fp_not_chrome@tls.utls.fingerprint=qq
+A body-same  [vless] "🇭🇰 Hong Kong, Hong Kong | [BL]"  warnings: reality_fp_not_chrome@tls.utls.fingerprint=android
+A body-same  [vless] "🇭🇰 Hong Kong, Hong Kong | [BL]-3"  warnings: reality_fp_not_chrome@tls.utls.fingerprint=edge
+A body-same  [vless] "🇭🇰 Hong Kong, Hong Kong | [BL]-5"  warnings: reality_fp_not_chrome@tls.utls.fingerprint=ios
+A body-same  [vless] "🇭🇰 Hong Kong, Hong Kong | [BL]-6"  warnings: reality_fp_not_chrome@tls.utls.fingerprint=qq
+A body-same  [vless] "🇻🇳 Vietnam, Go Vap | [BL]"  warnings: reality_fp_not_chrome@tls.utls.fingerprint=android
+A body-same  [vless] "🇻🇳 Vietnam, Go Vap | [BL]-3"  warnings: reality_fp_not_chrome@tls.utls.fingerprint=edge
+A body-same  [vless] "🇻🇳 Vietnam, Go Vap | [BL]-5"  warnings: reality_fp_not_chrome@tls.utls.fingerprint=ios
+A body-same  [vless] "🇻🇳 Vietnam, Go Vap | [BL]-6"  warnings: reality_fp_not_chrome@tls.utls.fingerprint=qq
+A BODY-REWRITE  [vless] "LTE-Белый-список-🇩🇪"  warnings: field_conflict@transport.xmux.max_concurrency=; partial_object_defaulted@transport.xmux=
+      + transport.xmux.h_max_request_times = "600-900"
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+B DIFF [vless] "LTE-Белый-список-🇩🇪" (origin=json) warnings: field_conflict@transport.xmux.max_concurrency; partial_object_defaulted@transport.xmux
+      + transport.xmux.h_max_request_times = "600-900"
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+A BODY-REWRITE  [vless] "LTE-Белый-список-🇳🇱"  warnings: field_conflict@transport.xmux.max_concurrency=; partial_object_defaulted@transport.xmux=
+      + transport.xmux.h_max_request_times = "600-900"
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+B DIFF [vless] "LTE-Белый-список-🇳🇱" (origin=json) warnings: field_conflict@transport.xmux.max_concurrency; partial_object_defaulted@transport.xmux
+      + transport.xmux.h_max_request_times = "600-900"
+      ~ transport.xmux.max_concurrency: "16-32" → "1-1"
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Routerich
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=wg-parnas
+2026/09/18 10:08:53 [DEBUG] parseMasqueURI: success tag=🔥🎭 WARP (MASQUE) vhttp=h3
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=🔥⛈️ WARP (AWG)
+2026/09/18 10:08:53 [DEBUG] parseMasqueURI: success tag=🔥🎭 WARP (MASQUE) vhttp=h2
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=x.x.x.x
+2026/09/18 10:08:53 [DEBUG] parseMasqueURI: success tag=🔥🎭 WARP (MASQUE) vhttp=h3
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=NL-FREE#162
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=NL-FREE#255
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=US-FREE#137
+2026/09/18 10:08:53 [DEBUG] parseMasqueURI: success tag=🔥🎭 WARP (MASQUE) vhttp=h2
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=x.x.x.x
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=x.x.x.x
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=NL-FREE#145
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=CA-FREE#34
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=US-FREE#66
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton NL#145 apteka
+B DIFF [wireguard] "Proton NL#145 apteka" (origin=uri) warnings: 
+      ~ jmax: 70 → 3
+      ~ jmin: 40 → 1
+      − ib = "chrome"
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇨🇦 Канада#7
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇨🇦 Канада#8
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇨🇦 Канада#13
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇨🇦 Канада#30
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇨🇦 Канада#31
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇨🇦 Канада#32
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇨🇦 Канада#33
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇨🇦 Канада#34
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇲🇽 Мексика#4
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇲🇽 Мексика#12
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇲🇽 Мексика#15
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇲🇽 Мексика#16
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#133
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#135
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#136
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#137
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#138
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#139
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#140
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#141
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#142
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#143
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#144
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#145
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#146
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#147
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#148
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#149
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#150
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#151
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#152
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#153
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#157
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#159
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#160
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#162
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#164
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#209
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#210
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#211
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#227
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#228
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#229
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#230
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#233
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#237
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#243
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#248
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#249
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#255
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#278
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#282
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇱 Нидерланды#286
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇴 Норвегия#7
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇴 Норвегия#8
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇳🇴 Норвегия#9
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇵🇱 Польша#2
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇵🇱 Польша#17
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇷🇴 Румыния#21
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇷🇴 Румыния#27
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇷🇴 Румыния#28
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#1
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#2
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#4
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#36
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#51
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#57
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#58
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#60
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#66
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#71
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#76
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#80
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#81
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#82
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#84
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#95
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#96
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#97
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#98
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#99
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#100
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#101
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#102
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#103
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#104
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#105
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇺🇸 США#116
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇸🇬 Сингапур#4
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇸🇬 Сингапур#7
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇸🇬 Сингапур#15
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇸🇬 Сингапур#19
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇨🇭 Швейцария#4
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇯🇵 Япония#18
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇯🇵 Япония#19
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇯🇵 Япония#26
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇯🇵 Япония#27
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇯🇵 Япония#28
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇯🇵 Япония#29
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇯🇵 Япония#30
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=Proton 🇯🇵 Япония#31
+2026/09/18 10:08:53 [DEBUG] parseAmneziaVPNLink: start (link length 1488)
+2026/09/18 10:08:53 [DEBUG] parseAmneziaVPNLink: using container "amnezia-awg2" (host "x.x.x.x")
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: start
+2026/09/18 10:08:53 [DEBUG] parseWireGuardURI: success tag=U1HOST
+
+=== ИТОГ: узлов 186; типы map[hysteria2:4 masque:4 vless:60 vmess:3 wireguard:115]
+A (санитайзер по телу): с кодами 25, тело перепишется у 13, drop 0, ошибок 0; коды map[field_conflict:13 partial_object_defaulted:13 reality_fp_not_chrome:12]
+B (от исходника): тело отличается у 14, ошибок 0, без origin.raw 0
+--- PASS: TestZZRealStateProbe (0.05s)
+PASS
+ok  	singbox-launcher/core/config	1.407s
