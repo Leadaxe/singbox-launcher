@@ -1115,6 +1115,31 @@
             "transport.type": "ws"
           },
           "impl": "Фолбэк-цепочка host → sni → obfsParam; сегодня живёт прозой в aliases."
+        },
+        "ed": {
+          "source": "query.ed",
+          "maps_to": "transport.max_early_data",
+          "type": "int",
+          "priority": 5,
+          "implies": {
+            "transport.early_data_header_name": "Sec-WebSocket-Protocol"
+          },
+          "when": {
+            "transport.type": "ws"
+          },
+          "impl": "QUIRKS Q133-35: ВТОРАЯ форма early data — плоская пара ed/eh в query (node_parser_transport.go:190-201). В реестре её не было вовсе, и движок терял max_early_data на живой форме подписок. priority 5 против хвоста пути (умолчание 0 → позже по объявлению): хвост адресует ОДИН путь, плоская пара — всю ссылку, поэтому хвост побеждает (SPEC 103 §9.E). eh ниже уточняет имя заголовка."
+        },
+        "eh": {
+          "source": "query.eh",
+          "maps_to": "transport.early_data_header_name",
+          "priority": 30,
+          "when": {
+            "transport.type": "ws",
+            "transport.max_early_data": {
+              "present": true
+            }
+          },
+          "impl": "Без ed значение не значит ничего: ядро включает early data по max_early_data > 0. Условие по ТЕЛУ, а не по источнику — ed мог приехать и хвостом пути."
         }
       },
       "httpupgrade": {
@@ -1136,15 +1161,12 @@
           "impl": "Тот же extract, но без группы ed: у httpupgrade хвост срезается, значение отбрасывается."
         },
         "host": {
-          "source": [
-            "query.host",
-            "query.sni"
-          ],
+          "source": "query.host",
           "maps_to": "transport.host",
           "when": {
             "transport.type": "httpupgrade"
           },
-          "impl": "У httpupgrade host — СКАЛЯР (у ws это headers.Host, у http — список): форма различается по типу транспорта, поэтому три записи, а не одна."
+          "impl": "У httpupgrade host — СКАЛЯР (у ws это headers.Host, у http — список): форма различается по типу транспорта, поэтому три записи, а не одна. Источник ОДИН: QUIRKS Q133-32 — фолбэка на sni у httpupgrade в коде нет (node_parser_transport.go:250-252), в отличие от ws. Черновик секции был написан по ws-образцу и начал подставлять sni; расширение фолбэка меняет тела живых узлов и обязано быть дельтой с решением владельца, а не побочным эффектом волны."
         }
       },
       "http": {

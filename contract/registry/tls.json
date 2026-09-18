@@ -1000,12 +1000,14 @@
             "tls.enabled": true,
             "tls.reality.enabled": true
           },
-          "none": {},
+          "none": {
+            "tls": null
+          },
           "": {
             "tls.enabled": true
           }
         },
-        "impl": "security=none → блока tls НЕТ вовсе (не enabled:false): явный блок ронял ядра lx.5..lx.18 в SIGSEGV, SPEC 045. Пустой sets выражает именно это — ключ не появляется."
+        "impl": "security=none → блока tls НЕТ вовсе (не enabled:false): явный блок ронял ядра lx.5..lx.18 в SIGSEGV, SPEC 045. Выражается `sets` со значением null (G2): он СНИМАЕТ путь, а не «не пишет» — QUIRKS Q133-34. Пустой набор {} выражал бы «ничего не писать», и запись sni со своим default_from успевала бы написать tls.server_name в пустоту. Записи блока ниже стоят под when: {tls.enabled: true} — после снятия tls их условие ложно."
       },
       "sni": {
         "source": [
@@ -1013,7 +1015,11 @@
           "query.peer"
         ],
         "maps_to": "tls.server_name",
-        "default_from": "host"
+        "default_from": "host",
+        "when": {
+          "tls.enabled": true
+        },
+        "impl": "when по ТЕЛУ, построенному селектором security (проход A): блок tls либо есть, либо его нет целиком, и поля в несуществующий блок не пишутся."
       },
       "alpn": {
         "source": "query.alpn",
@@ -1025,6 +1031,9 @@
           "mode": "query",
           "passes": "until_stable",
           "max": 16
+        },
+        "when": {
+          "tls.enabled": true
         },
         "impl": "until_stable, а не 2 прохода: фикстура uri/vless/alpn_multiply_encoded несёт ТРИ уровня (http%2525252F1.1 → http/1.1). max=16 — страховка от неограниченного цикла, на корпусе не достигается."
       },
@@ -1039,22 +1048,32 @@
         },
         "implies": {
           "tls.utls.enabled": true
+        },
+        "when": {
+          "tls.enabled": true
         }
       },
       "insecure": {
         "source": "query.insecure",
         "type": "bool_spelled",
         "maps_to": "tls.insecure",
+        "when": {
+          "tls.enabled": true
+        },
         "impl": "Написания берутся из aliases (9 имён, tls.params.insecure); истинность — общий bool_spelled (1|true|yes). До этого у masque был свой список из трёх имён, и 'yes' там не работал."
       },
       "disable_sni": {
         "source": "query.disable_sni",
         "type": "bool_spelled",
         "maps_to": "tls.disable_sni",
+        "when": {
+          "tls.enabled": true
+        },
         "impl": "DELTAS D133-3: объявлен у tuic и masque, но Go не читал его НИ ТАМ НИ ТАМ — поле терялось только на десктопе."
       },
       "pbk": {
         "source": "query.pbk",
+        "selector": true,
         "maps_to": "tls.reality.public_key",
         "decode_extra": {
           "plus_literal": true
@@ -1063,7 +1082,7 @@
           "tls.enabled": true,
           "tls.reality.enabled": true
         },
-        "impl": "REALITY заводится по НАЛИЧИЮ pbk, а не по security=reality. plus_literal — DELTAS D133-7: поле base64, и '+' в нём обязан читаться буквально; сегодня заплаты у pbk НЕТ, поэтому '+' становится пробелом и реестр снимает поле по format."
+        "impl": "selector: запись объявляет СТРУКТУРУ (блок reality), а не значение поля, и обязана отработать в проходе A — иначе sid/key_share со своим when по tls.reality.enabled не увидят её результата. REALITY заводится по НАЛИЧИЮ pbk, а не по security=reality. plus_literal — DELTAS D133-7: поле base64, и '+' в нём обязан читаться буквально; сегодня заплаты у pbk НЕТ, поэтому '+' становится пробелом и реестр снимает поле по format."
       },
       "sid": {
         "source": "query.sid",
@@ -1078,6 +1097,19 @@
         "when": {
           "tls.reality.enabled": true
         }
+      }
+    },
+    "uri_with_host": {
+      "note": "Вариант диалекта uri для схем, у которых `host` адресует TLS, а НЕ транспорт (сегодня — http). Отличается от uri ровно одной записью — цепочкой sni. Заведён вариантом блока, а не третьим источником в общей записи: у vmess и anytls `host` несёт имя транспорта (node_parser_core.go:866-873), и общая цепочка увела бы transport-host в tls.server_name. Подключается вместо \"tls#uri\", не вместе с ним. DELTAS D133-19.",
+      "sni": {
+        "source": [
+          "query.sni",
+          "query.peer",
+          "query.host"
+        ],
+        "maps_to": "tls.server_name",
+        "default_from": "host",
+        "impl": "Цепочка sni→peer→host — наше сегодняшнее поведение у http: trojanTLSFromNode(node, \"http\") читает те же три написания (node_parser_http.go:131-138, node_parser_transport.go:1014-1020). Фолбэк на server — тот же Q133-08, что у trojan: корпус uri/http/proxy_https_default_port_443 ждёт server_name из адреса."
       }
     },
     "xray": {

@@ -304,7 +304,10 @@
           ],
           "maps_to": "tls.server_name",
           "default_from": "host",
-          "impl": "QUIRKS Q133-08: фолбэк на server — НАШЕ сегодняшнее поведение (node_parser_transport.go:1042-1045), и корпус на нём стоит (uri/trojan/basic_password без sni ждёт server_name=example-1.com). LxBox просит эвристику снять; снятие изменило бы тела РАБОЧИХ узлов → открытый вопрос SPEC.md §15.9. До ответа поведение сохраняется."
+          "when": {
+            "tls.enabled": true
+          },
+          "impl": "when по ТЕЛУ, построенному селектором security (QUIRKS Q133-34): при security=none блока tls нет вовсе, и запись в несуществующий блок не идёт. QUIRKS Q133-08: фолбэк на server — НАШЕ сегодняшнее поведение (node_parser_transport.go:1042-1045), и корпус на нём стоит (uri/trojan/basic_password без sni ждёт server_name=example-1.com). LxBox просит эвристику снять; снятие изменило бы тела РАБОЧИХ узлов → открытый вопрос SPEC.md §15.9. До ответа поведение сохраняется."
         }
       },
       "unknown_key": {

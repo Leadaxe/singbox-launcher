@@ -503,6 +503,17 @@ type DocumentSpec struct {
 // sourcesFileName — файл уровня документа.
 const sourcesFileName = "sources.json"
 
+// ProtocolFileNames — имена файлов протоколов реестра.
+//
+// Движку (core/config/linkmap) нужен порядок объявления params, а он живёт
+// только в ИСХОДНОМ тексте файла: имя файла по схеме там не всегда угадывается
+// (ss→shadowsocks), и перебор идёт по этому списку.
+func ProtocolFileNames() []string {
+	out := make([]string, len(protocolFiles))
+	copy(out, protocolFiles)
+	return out
+}
+
 // LoadMappers читает секции `mappers` всех протоколов и уровень документа.
 //
 // Отсутствие sources.json и отсутствие секций `mappers` — НЕ ошибка: реестр
