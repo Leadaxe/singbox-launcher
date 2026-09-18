@@ -160,6 +160,21 @@ type OutboundGenerationResult struct {
 	// пользователю ИСТОЧНИК, у которого сломался переход. Селекторы и
 	// Направления сюда не попадают — у них источника нет.
 	NodeOrigins map[string]NodeOrigin
+
+	// NodeLinks — финальный тег узла → его идентичность в состоянии
+	// ({FolderID, сырой тег}), SPEC 132.
+	//
+	// Обратный путь страховки: ядро отвергло конфиг и назвало ТЕГ, а
+	// выключать надо запись в state.json. Пересчитать этот путь снаружи
+	// нельзя — тег-политика с переменными (`{$num}`) раскрывается только
+	// эмиссией, и суффикс глобальной уникализации знает тоже только она.
+	// Отсюда решение: карту отдаёт та же сборка, которая теги и выдала
+	// (CANON §9.3).
+	//
+	// Попадают ТОЛЬКО узлы канона. Селекторы, Направления, группы шаблона,
+	// `direct`/`block` и хопы, собранные не из канона, узлами не являются:
+	// их тег не сопоставляется, и страховка на них не действует.
+	NodeLinks map[string]configtypes.NodeLink
 }
 
 // NodeOrigin — чей это узел: ULID источника и его человеческая подпись.
@@ -1552,6 +1567,11 @@ func GenerateOutboundsFromParserConfig(
 	// SPEC 121: секции узлов, ДОШЕДШИХ до эмиссии. Заполняется в том же цикле
 	// и только на удачной ветке — фрагмент без своего узла ссылался бы в никуда.
 	var nodeSections []NodeSectionSet
+	// SPEC 132: та же причина и то же место — карта «финальный тег → узел
+	// состояния» описывает ровно то, что уехало в конфиг. Узел, который
+	// эмиссия не выпустила, ядро назвать не может, и запись о нём завела бы
+	// сопоставление на узел, которого в конфиге нет.
+	nodeLinks := make(map[string]configtypes.NodeLink, len(allNodes))
 	for _, node := range allNodes {
 		outJSONs, epJSON, err := EmitNodeJSONs(node)
 		if err != nil {
@@ -1564,6 +1584,15 @@ func GenerateOutboundsFromParserConfig(
 		} else {
 			selectorsJSON = append(selectorsJSON, outJSONs...)
 			nodesCount++
+		}
+		if node.Tag != "" && node.CanonicalLink.Tag != "" {
+			// Первый владелец тега побеждает: столкновение финальных тегов
+			// разрешает уникализация, и двух записей на один тег тут быть не
+			// должно. Если всё же есть — молчим о второй, а не переписываем
+			// первую: выключить не тот узел хуже, чем не выключить никакой.
+			if _, dup := nodeLinks[node.Tag]; !dup {
+				nodeLinks[node.Tag] = node.CanonicalLink
+			}
 		}
 		if decoded := state.NodeSectionsFromConfigTypes(node.Sections); decoded != nil {
 			nodeSections = append(nodeSections, NodeSectionSet{
@@ -1614,6 +1643,7 @@ func GenerateOutboundsFromParserConfig(
 		ParseFailedSources:     parseFailedSources,
 		EmissionWarnings:       emissionWarnings,
 		NodeOrigins:            nodeOrigins,
+		NodeLinks:              nodeLinks,
 		NodeSections:           nodeSections,
 		SkippedNaiveReason:     naiveReason,
 	}, nil

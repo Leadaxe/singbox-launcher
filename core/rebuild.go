@@ -215,43 +215,90 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		res.Validation.Warnings = append(res.Validation.Warnings, cacheSnap.Warnings...)
 	}
 
-	// Step 5: atomic write.
-	if err := atomicWriteConfig(ac.FileService.ConfigPath, res.ConfigJSON); err != nil {
-		return fmt.Errorf("write config: %w", err)
+	// Step 5: кандидат → check → замена (SPEC 132 §5А).
+	//
+	// Инвариант: в config.json попадает ТОЛЬКО конфиг, принятый ядром.
+	// Раньше файл писался первым, а проверялся после, и битый конфиг
+	// оставался на диске — ядро могло стартовать на заведомо отвергнутом.
+	//
+	// Круг отказа, назвавшего НАШ узел, выключает этот узел в состоянии и
+	// пересобирает конфиг — и так до чистого прохода либо до стоп-условия
+	// (CANON §9.5). Всё это живёт в ОБЩЕЙ функции сборки, поэтому цикл
+	// достаётся всем входам сразу: pre-start обоих движков, кнопка Rebuild,
+	// автообновление подписок, API /action/rebuild-config.
+	disabler := &savedStateDisabler{s: s, path: statePath}
+	loop := &coreRejectLoop{
+		check:      coreRejectCheck,
+		singbox:    ac.FileService.SingboxPath,
+		configPath: ac.FileService.ConfigPath,
+		disabler:   disabler,
+		decide:     ac.coreRejectDecider(),
+		progress:   ac.coreRejectProgress(),
 	}
+	first := buildRound{ConfigJSON: res.ConfigJSON, NodeLinks: stateNodeLinks(parserRes)}
+	// Круг цикла: конфиг пересобирается из ТОГО ЖЕ состояния в памяти, в
+	// котором страховка уже выключила узел. Отчёт сборки не переоткрывается —
+	// записи круга те же, меняется только состав.
+	rebuildRound := func() (buildRound, error) {
+		snap, pres, rerr := buildSnapshotFromState(s, execDir, nil, td)
+		if rerr != nil {
+			return buildRound{}, fmt.Errorf("rebuild after disabling a node: %w", rerr)
+		}
+		rctx := ac.buildContextFromState(s, snap, td)
+		rres, rerr := build.BuildConfig(rctx)
+		if rerr != nil {
+			return buildRound{}, fmt.Errorf("rebuild after disabling a node: %w", rerr)
+		}
+		res = rres // итог последней сборки — он и уедет на диск
+		return buildRound{ConfigJSON: rres.ConfigJSON, NodeLinks: stateNodeLinks(pres)}, nil
+	}
+	outcome, loopErr := loop.run(first, rebuildRound)
+	if loopErr != nil {
+		return fmt.Errorf("write config: %w", loopErr)
+	}
+	// Выключения закрепляются на диске ОДИН раз, независимо от исхода:
+	// нажатый Stop и оборвавшийся цикл выключенные узлы не возвращают
+	// (решение владельца, §6.2 SPEC 132).
+	if err := disabler.Commit(); err != nil {
+		debuglog.ErrorLog("RebuildConfigIfDirty: disabled nodes not saved to state.json: %v", err)
+	}
+	// Проекции состояния (индекс предупреждений узлов, разбор состава)
+	// кэшируются по mtime/размеру state.json — Commit выше их и снял.
 
-	// Имя собственного TUN могло смениться этой пересборкой. Реестр netiface
-	// обязан догнать её сразу: по нему пикер аплинков прячет наш TUN, а всё
-	// прочее туннельное — теперь законный выбор (SPEC 113-F).
-	ac.refreshOwnTunNames()
-
-	// Step 5.4: sing-box check — валидация только что записанного config.json
-	// через сам sing-box (`sing-box check -c config.json`). Catches schema
-	// violations (unknown fields, legacy DNS format, type mismatches) ДО того
-	// как юзер нажмёт Connect и получит non-obvious "FATAL: ..." в логе.
-	// Ошибка → ErrorLog + popup через UIService.
-	configValid := true
-	if checkErr := validateConfigViaSingBox(ac.FileService.SingboxPath, ac.FileService.ConfigPath); checkErr != nil {
+	configValid := outcome.Promoted
+	if !configValid {
+		checkErr := outcome.CheckErr
 		debuglog.ErrorLog("RebuildConfigIfDirty: sing-box check failed: %v", checkErr)
 		if ac.UIService != nil && ac.UIService.MainWindow != nil {
 			dialogs.ShowErrorText(ac.UIService.MainWindow,
 				locale.T("Config validation failed"),
-				fmt.Sprintf("sing-box rejected the generated config.json:\n\n%v\n\nConnect won't work until this is fixed. See logs for details.", checkErr))
+				// Текст переписан вместе с §5А: «Connect won't work until
+				// this is fixed» стало бы прямой неправдой — config.json НЕ
+				// заменён, на диске лежит предыдущий рабочий конфиг, и
+				// Connect как раз будет работать, на нём.
+				fmt.Sprintf("sing-box rejected the newly built config:\n\n%v\n\nconfig.json was NOT replaced — the previous working config is still on disk. See logs for details.", checkErr))
 		}
 		if ac.EventBus != nil {
 			ac.EventBus.Publish(events.Event{
 				Kind: events.ConfigBuilt,
 				Payload: events.ConfigBuiltPayload{
-					OK:       false,
-					Warnings: []string{fmt.Sprintf("sing-box check: %v", checkErr)},
+					OK:            false,
+					Warnings:      []string{fmt.Sprintf("sing-box check: %v", checkErr)},
+					DisabledNodes: coreRejectedPayload(outcome.Disabled),
 				},
 			})
 		}
-		// Config записан, но sing-box его ОТВЕРГ: оставляем ConfigStale,
-		// чтобы следующий rebuild перепроверил, а не доверял заведомо битому
-		// config.json (и пропускаем ConfigBuilt{OK:true} ниже). Без return —
-		// поток продолжается; popup + ConfigBuilt{OK:false} уже отправлены.
-		configValid = false
+		// config.json не заменён: ConfigStale остаётся, чтобы следующий
+		// rebuild перепроверил. Без return — поток продолжается, как и раньше.
+	} else {
+		// Имя собственного TUN могло смениться этой пересборкой. Реестр
+		// netiface обязан догнать её сразу: по нему пикер аплинков прячет наш
+		// TUN, а всё прочее туннельное — теперь законный выбор (SPEC 113-F).
+		//
+		// СТРОГО после реальной замены (SPEC 132 §5Б): по конфигу, который
+		// ядро ещё не приняло, реестр начал бы прятать из пикера имя, которого
+		// не существует.
+		ac.refreshOwnTunNames()
 	}
 
 	// Step 5.5: orphan GC для bin/rule-sets/. Параллельно тому что
@@ -262,11 +309,17 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	// SPEC 098: этот путь — только про локальную машину. Каталоги .srs
 	// удалённых машин лежат в их директориях и чистятся своим GC; трогать их
 	// отсюда значило бы удалить файл, живой для другой машины.
-	knownTags := collectAllStageRuleSetTags(execDir, constants.ConfigTargetLocal, "", td)
-	if deleted, gcErr := services.DeleteOrphanRuleSets(execDir, knownTags); gcErr != nil {
-		debuglog.WarnLog("RebuildConfigIfDirty: DeleteOrphanRuleSets: %v", gcErr)
-	} else if len(deleted) > 0 {
-		debuglog.InfoLog("RebuildConfigIfDirty: GC removed %d orphan rule-set file(s): %v", len(deleted), deleted)
+	//
+	// СТРОГО после реальной замены (SPEC 132 §5Б): GC по кандидату удалил бы
+	// `.srs`, на которые ссылается ещё живой ПРЕДЫДУЩИЙ config.json, и откат
+	// на него оставил бы битые ссылки.
+	if configValid {
+		knownTags := collectAllStageRuleSetTags(execDir, constants.ConfigTargetLocal, "", td)
+		if deleted, gcErr := services.DeleteOrphanRuleSets(execDir, knownTags); gcErr != nil {
+			debuglog.WarnLog("RebuildConfigIfDirty: DeleteOrphanRuleSets: %v", gcErr)
+		} else if len(deleted) > 0 {
+			debuglog.InfoLog("RebuildConfigIfDirty: GC removed %d orphan rule-set file(s): %v", len(deleted), deleted)
+		}
 	}
 
 	// Step 6: clear ConfigStale ТОЛЬКО если sing-box принял config (свеж И
@@ -285,8 +338,15 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		ac.StateService.ClearConfigStale()
 		if ac.EventBus != nil {
 			ac.EventBus.Publish(events.Event{
-				Kind:    events.ConfigBuilt,
-				Payload: events.ConfigBuiltPayload{OK: true, Warnings: res.Validation.Warnings},
+				Kind: events.ConfigBuilt,
+				Payload: events.ConfigBuiltPayload{
+					OK:       true,
+					Warnings: res.Validation.Warnings,
+					// SPEC 132: список выключенных страховкой едет в событии,
+					// чтобы плашка главного экрана (волна UI) показала его
+					// после успешного старта.
+					DisabledNodes: coreRejectedPayload(outcome.Disabled),
+				},
 			})
 		}
 	}
