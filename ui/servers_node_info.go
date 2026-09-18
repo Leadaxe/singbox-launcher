@@ -58,23 +58,30 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 	}
 	body.Add(infoRow(locale.T("Last delay"), formatDelay(proxy.Delay)))
 
-	// SPEC 131 §6: секция «Предупреждения» — СРАЗУ под шапкой, до полей узла.
-	// Она отвечает на вопрос, с которым сюда и приходят по ⚠ из списка, и
-	// прятать её под состав значило бы заставить скроллить мимо того, ради
-	// чего окно открыли.
+	// Раздел «Уведомления» — ВНИЗУ окна, под всеми полями узла (дизайн
+	// владельца 18.09.2026). До этого он стоял сразу под шапкой и отодвигал
+	// состав узла, ради которого окно открывают чаще; теперь список кодов
+	// свёрнут в аккордеон и занимает несколько строк, так что скроллить до
+	// него недалеко.
 	//
-	// Выше `node == nil`: коды живут в СОСТОЯНИИ, а не в конфиге, и узел,
-	// которого в config.json ещё нет (гонка перегенерации), свои деградации
-	// имеет ровно так же.
-	if warn := nodewarn.Section(nodeWarningsFor(ac, proxy.Name, scope)); warn != nil {
+	// Данные берутся ЗДЕСЬ, а не у места отрисовки: коды живут в СОСТОЯНИИ, а
+	// не в конфиге, и узел, которого в config.json ещё нет (гонка
+	// перегенерации), свои деградации имеет ровно так же — ветка `node == nil`
+	// ниже обязана показать их наравне с остальными.
+	warnSection := nodewarn.Section(nodeWarningsFor(ac, proxy.Name, scope))
+	// addWarnSection — раздел за разделителем; нет уведомлений — нет раздела.
+	addWarnSection := func() {
+		if warnSection == nil {
+			return
+		}
 		body.Add(widget.NewSeparator())
-		body.Add(warn)
-		body.Add(widget.NewSeparator())
+		body.Add(warnSection)
 	}
 
 	if node == nil {
 		// Узла нет в конфиге: гонка перегенерации либо служебный outbound.
 		body.Add(widget.NewLabel(locale.T("This node is not present in the current config.json.")))
+		addWarnSection()
 		finishNodeInfoWindow(win, body)
 		return
 	}
@@ -286,6 +293,10 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 			body.Add(row)
 		}
 	}
+
+	// Раздел «Уведомления» — ПОСЛЕДНИМ блоком вкладки «Подробности», под
+	// всеми полями узла (дизайн владельца).
+	addWarnSection()
 
 	// JSON — отдельной вкладкой: он длинный и на общей странице оттеснял бы
 	// разобранные поля вниз, ради которых окно и открывают.

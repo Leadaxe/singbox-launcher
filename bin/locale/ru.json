@@ -4676,8 +4676,17 @@
   "%dd": {
     "value": "%d д"
   },
+  "Notifications": {
+    "value": "Уведомления"
+  },
+  "Errors": {
+    "value": "Ошибки"
+  },
   "Warnings": {
     "value": "Предупреждения"
+  },
+  "What happened:": {
+    "value": "Что случилось:"
   },
   "+%d": {
     "value": "+%d"
