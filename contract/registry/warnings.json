@@ -191,6 +191,33 @@
       "dart": null,
       "go": "правило реестра: contract/registry/protocols/vless.json body.fields.encryption (normalize trim + pattern + on_invalid drop_node); исполнение — core/config/nodeflow/sanitize.go patternOK; точное сравнение с 'none' на входах — node_parser_core.go:770-775, xray_outbound_convert.go:145,160"
     },
+    "core_rejected": {
+      "severity": "error",
+      "params": [
+        "reason"
+      ],
+      "title_en": "The core rejected this server",
+      "title_ru": "Ядро не приняло этот сервер",
+      "text_en": "The core rejected this server and said: {reason}. It was turned off so the VPN could start. Turn it back on and the core will check it again.",
+      "text_ru": "Ядро не приняло этот сервер и сообщило: {reason}. Он выключен, чтобы VPN смог запуститься. Включите его обратно, и ядро проверит его заново.",
+      "cause_en": "The core checks the whole configuration at once and refuses to start on the first server it cannot accept — otherwise one broken line would leave every server unusable. Something in this server is outside what the core accepts and outside what the app's own checks look at: a value from a newer or older core, a field the provider filled in by hand, or a combination nobody anticipated. The text above is the core's own, passed on unchanged.",
+      "cause_ru": "Ядро проверяет конфигурацию целиком и отказывается стартовать на первом же сервере, который не может принять, — иначе одна испорченная строка оставила бы без связи все серверы. В этом сервере что-то вне того, что принимает ядро, и вне того, что смотрят собственные проверки приложения: значение от более нового или более старого ядра, поле, заполненное провайдером вручную, либо сочетание, которого никто не предусмотрел. Текст выше — дословно от ядра.",
+      "fix_en": [
+        "Update the subscription: the provider may have already fixed this server.",
+        "Turn the server back on after updating the subscription or the core — it will be checked again at the next start.",
+        "If the server stays broken, remove it or pick another one.",
+        "Tell the developers: a server reaching the core in this state is a gap in the app's own checks."
+      ],
+      "fix_ru": [
+        "Обновите подписку: возможно, провайдер уже исправил этот сервер.",
+        "Включите сервер обратно после обновления подписки или ядра — он будет проверен заново при следующем запуске.",
+        "Если сервер так и остаётся сломанным, удалите его или выберите другой.",
+        "Сообщите разработчикам: сервер, доехавший до ядра в таком виде, — это пробел в собственных проверках приложения."
+      ],
+      "desc": "СТРАХОВКА ПРИЛОЖЕНИЯ, SPEC 132 (общая норма с LxBox, их фича 478). Ядро не приняло конфиг и назвало узел — приложение выключило узел обычным флажком enabled=false и записало рядом причину (поле disabled_reason, дословный text ядра); код ставится при разборе на узле, у которого причина записана. Новых сущностей нет: наличие причины = «выключило приложение», её отсутствие = «выключил человек». Человек включил узел обратно — причина стирается, узел проверится заново; автоснятия нет. Формат строки ошибки ядра и правило сопоставления тега — contract/docs/CANON.md §9 «Core-rejected node». СЛОВАРЬ ТЕКСТОВ (согласован с LxBox 18.09.2026): rejected / turned off / disabled / checking, «server», не «node»; слово «scanning» не использовать. ПРОИЗВОДИТЕЛЬ — страховка приложения, а не правило реестра и не константа парсера: код объявлен заранее, до реализации (решение владельца 18.09.2026: сначала контрактная норма, потом код обеих сторон).",
+      "dart": null,
+      "go": "ещё не реализовано: SPEC 132, волна «разбор ошибки старта» (SPECS/132-F-N-CORE_REJECTED_NODE_AUTO_DISABLE/TASKS.md)"
+    },
     "utls_fp_unknown": {
       "severity": "warning",
       "params": [
