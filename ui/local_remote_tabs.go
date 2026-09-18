@@ -106,10 +106,21 @@ func withMinimalLeftColumn(split *container.Split) fyne.CanvasObject {
 // Возвращает и панель списка: у Local и Remote независимые состояния, и
 // переключение вкладки обязано отдать разделяемые слоты UIService той панели,
 // которую пользователь видит (ProxyListPanel.Activate).
-func CreateLocalTab(ac *core.AppController) (fyne.CanvasObject, *ProxyListPanel) {
+//
+// notice — плашка страховки «ядро отвергло узел» (SPEC 132 §6.1) НАД списком
+// узлов. nil допустим: вкладка строится и без неё (тесты, headless).
+// Только на Local: страховка выключает узлы ЛОКАЛЬНОГО состояния, и на Remote
+// эта полоса говорила бы о чужой машине.
+func CreateLocalTab(ac *core.AppController, notice fyne.CanvasObject) (fyne.CanvasObject, *ProxyListPanel) {
 	panel := CreateProxyListPanel(ac, services.ScopeLocal)
+	left := panel.Content
+	if notice != nil {
+		// Border с плашкой сверху: скрытый контейнер MinSize не занимает, и
+		// пока выключений нет, список стоит ровно там же, где стоял.
+		left = container.NewBorder(notice, nil, nil, nil, panel.Content)
+	}
 	split := container.NewHSplit(
-		panel.Content,
+		left,
 		withColumnWidth(CreateCoreDashboardTab(ac), rightColumnWidth),
 	)
 	return withMinimalLeftColumn(split), panel

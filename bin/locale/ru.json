@@ -4786,5 +4786,44 @@
   },
   "milliseconds, e.g. 300": {
     "value": "миллисекунды, например 300"
+  },
+  "1 server disabled": {
+    "value": "Отключено серверов: 1"
+  },
+  "%d servers disabled": {
+    "value": "Отключено серверов: %d"
+  },
+  "The core rejected it, so it was turned off to let the VPN start: %s": {
+    "value": "Ядро его не приняло — он выключен, чтобы VPN смог запуститься: %s"
+  },
+  "The core rejected them, so they were turned off to let the VPN start: %s": {
+    "value": "Ядро их не приняло — они выключены, чтобы VPN смог запуститься: %s"
+  },
+  "+%d more": {
+    "value": "и ещё %d"
+  },
+  "Show": {
+    "value": "Показать"
+  },
+  "%d servers disabled — there may be more": {
+    "value": "Отключено серверов: %d — возможно, есть ещё"
+  },
+  "The core has rejected %d servers so far, and each was turned off. Keep checking the rest? On a large subscription this can take a while.": {
+    "value": "Ядро не приняло уже %d серверов, каждый из них выключен. Проверять остальные? На большой подписке это может занять время."
+  },
+  "If you stop, the VPN will not start. The servers already turned off will stay off.": {
+    "value": "Если остановить, VPN не запустится. Уже выключенные серверы останутся выключенными."
+  },
+  "Keep checking": {
+    "value": "Проверять дальше"
+  },
+  "Checking servers… (%d disabled)": {
+    "value": "Проверка серверов… (выключено: %d)"
+  },
+  "Servers turned off by the core": {
+    "value": "Серверы, выключенные ядром"
+  },
+  "(unnamed)": {
+    "value": "(без имени)"
   }
 }

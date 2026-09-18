@@ -75,6 +75,14 @@ type AppController struct {
 	// backendModeChangeHook — колбэк после смены backend (traffic-источник).
 	backendModeChangeHook func()
 
+	// Колбэки страховки «ядро отвергло узел» (SPEC 132 §6.2/§6.3). Ставит их
+	// UI на сборке приложения (SetCoreRejectDecider/SetCoreRejectProgress),
+	// читает фоновая горутина сборки — отсюда мьютекс. nil у обоих =
+	// поведение фонового входа: цикл идёт молча до жёсткого потолка.
+	coreRejectHooksMu      sync.Mutex
+	coreRejectDecideHook   coreRejectDecider
+	coreRejectProgressHook coreRejectProgress
+
 	// --- Process State ---
 	SingboxCmd                  *exec.Cmd
 	SingboxPrivilegedMode       bool   // true when sing-box was started with RunWithPrivileges (macOS TUN)

@@ -447,21 +447,63 @@ func coreRejectedPayload(in []CoreRejectedNode) []events.DisabledNode {
 
 // coreRejectDecider — кого спрашивать на пределе.
 //
-// Сегодня — НИКОГО: диалог предела (§6.2 SPEC 132) приезжает волной UI, и
-// заводить его здесь раньше времени значило бы показать окно, за которым нет
-// ни списка, ни плашки. До тех пор все входы ведут себя как фоновые: идут
-// дальше молча до жёсткого потолка coreRejectHardCap.
+// Колбэк ставит UI (волна 5, `ui/core_rejected_notice.go`), и гейт «есть ли
+// кого спрашивать» стоит ВНУТРИ него: цикл один на все входы, и различить
+// нажатие Start от ночного автообновления подписок он не может — а UI может,
+// по видимости главного окна.
 //
-// Решение по умолчанию для фоновых входов (автообновление подписок, API
-// /action/rebuild-config, pre-start без окна) остаётся таким и после волны
-// UI: подписка на 500 узлов с пачкой негодных обязана собраться ночью сама,
-// а спросить там некого.
+// nil (UI не поставил колбэк вовсе — headless-сборка, тесты, ранний старт до
+// NewApp) = поведение фонового входа: идём дальше молча до жёсткого потолка
+// coreRejectHardCap. Решение по умолчанию для фоновых входов остаётся таким и
+// после волны UI: подписка на 500 узлов с пачкой негодных обязана собраться
+// ночью сама, а спросить там некого (§10.4 SPEC 132).
 func (ac *AppController) coreRejectDecider() coreRejectDecider {
-	return nil
+	if ac == nil {
+		return nil
+	}
+	ac.coreRejectHooksMu.Lock()
+	defer ac.coreRejectHooksMu.Unlock()
+	return ac.coreRejectDecideHook
 }
 
 // coreRejectProgress — строка состояния «Checking servers… (%d disabled)»
-// (§6.3 SPEC 132). Приезжает волной UI; пока никто не смотрит.
+// (§6.3 SPEC 132). Ставит UI; nil — никто не смотрит.
 func (ac *AppController) coreRejectProgress() coreRejectProgress {
-	return nil
+	if ac == nil {
+		return nil
+	}
+	ac.coreRejectHooksMu.Lock()
+	defer ac.coreRejectHooksMu.Unlock()
+	return ac.coreRejectProgressHook
+}
+
+// SetCoreRejectDecider отдаёт циклу вопрос человеку на пределе (§6.2).
+//
+// Зовётся из UI один раз на сборке приложения. Под мьютексом: ставится из
+// UI-потока, читается из фоновой горутины сборки.
+func (ac *AppController) SetCoreRejectDecider(fn func(disabled int) bool) {
+	if ac == nil {
+		return
+	}
+	ac.coreRejectHooksMu.Lock()
+	defer ac.coreRejectHooksMu.Unlock()
+	if fn == nil {
+		ac.coreRejectDecideHook = nil
+		return
+	}
+	ac.coreRejectDecideHook = coreRejectDecider(fn)
+}
+
+// SetCoreRejectProgress отдаёт циклу колбэк хода (§6.3).
+func (ac *AppController) SetCoreRejectProgress(fn func(disabled int)) {
+	if ac == nil {
+		return
+	}
+	ac.coreRejectHooksMu.Lock()
+	defer ac.coreRejectHooksMu.Unlock()
+	if fn == nil {
+		ac.coreRejectProgressHook = nil
+		return
+	}
+	ac.coreRejectProgressHook = coreRejectProgress(fn)
 }
