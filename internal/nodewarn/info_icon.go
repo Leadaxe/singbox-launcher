@@ -88,6 +88,17 @@ func InfoIconCell() fyne.CanvasObject {
 	)
 }
 
+// InfoIconAccentCell — та же иконка цветом акцента темы (синий): для раздела
+// «Уведомления», где info — самостоятельный подраздел со своим цветом, как
+// красный у ошибок и оранжевый у предупреждений. В строках списков остаётся
+// приглушённая InfoIconCell: там знак не вправе спорить с именем узла.
+func InfoIconAccentCell() fyne.CanvasObject {
+	return container.NewGridWrap(
+		fyne.NewSize(InfoIconSize+2, InfoIconSize+2),
+		widget.NewIcon(theme.NewColoredResource(theme.InfoIcon(), theme.ColorNamePrimary)),
+	)
+}
+
 // InfoSubtitleLine — подстрока узла с двумя местами под иконку info.
 //
 // Строится ОДИН раз в шаблоне строки списка (createItem), а на каждом

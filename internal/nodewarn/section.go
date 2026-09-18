@@ -126,7 +126,7 @@ func Section(in []state.NodeWarning) fyne.CanvasObject {
 	if group := levelGroup(warns, WarningsGroupTitleText, WarnMark, widget.WarningImportance); group != nil {
 		items = append(items, group)
 	}
-	if group := levelGroup(infos, InfoGroupTitleText, "", widget.LowImportance); group != nil {
+	if group := levelGroup(infos, InfoGroupTitleText, "", widget.HighImportance); group != nil {
 		items = append(items, group)
 	}
 	return container.NewVBox(items...)
@@ -161,8 +161,8 @@ func sectionHeader(errs, warns, infos int) fyne.CanvasObject {
 		// см. info_icon.go) — счётчик получает ту же ИКОНКУ, что строка
 		// списка: человек обязан узнать знак, по которому сюда пришёл.
 		counters = append(counters,
-			container.NewCenter(InfoIconCell()),
-			levelCounter("", infos, widget.LowImportance))
+			container.NewCenter(InfoIconAccentCell()),
+			levelCounter("", infos, widget.HighImportance))
 	}
 	if len(counters) == 0 {
 		return head
@@ -210,7 +210,7 @@ func levelGroup(texts []Text, titleKey, mark string, imp widget.Importance) fyne
 	var headCell fyne.CanvasObject = head
 	if mark == "" {
 		headCell = container.NewBorder(nil, nil,
-			container.NewCenter(InfoIconCell()), nil, head)
+			container.NewCenter(InfoIconAccentCell()), nil, head)
 	}
 
 	// Строки собираются в срез и отдаются КОНСТРУКТОРУ, а не добавляются
