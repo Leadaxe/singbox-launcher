@@ -551,9 +551,10 @@ func main() {
 	// вызов в fyne.Do нельзя — цикл событий стартует строчкой ниже, и очередь
 	// разобралась бы уже после того, как окно показано).
 	//
-	// Окно тоже не показываем: пункт трея прячет его вместе с иконкой Dock,
-	// и старт без окна — то же самое состояние, в котором пользователь вышел.
-	// Лаунчер остаётся доступен из трея, как и в режиме -tray.
+	// Окно при старте ПОКАЗЫВАЕМ, скрыта только иконка Dock (решение владельца
+	// 18.09.2026): если значок трея по какой-то причине не появился, без окна
+	// до запущенного лаунчера было бы не добраться. Старт без окна — только по
+	// явному флагу -tray.
 	hiddenFromDock := runtime.GOOS == "darwin" && controller.UIService != nil && controller.UIService.HideAppFromDock
 	if hiddenFromDock {
 		platform.HideDockIcon()
@@ -563,7 +564,7 @@ func main() {
 	// This allows the app to keep running even when window is closed/hidden
 	// On macOS, this enables standard Dock behavior (applicationShouldHandleReopen)
 	// See: https://github.com/fyne-io/fyne/issues/3845
-	if !*startInTray && !hiddenFromDock {
+	if !*startInTray {
 		// Show window on startup if not starting in tray
 		if controller.UIService != nil {
 			controller.UIService.ShowMainWindowOrFocusWizard()

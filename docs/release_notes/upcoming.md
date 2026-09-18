@@ -11,7 +11,7 @@
 
 ### Fixes
 - gRPC transport: Xray's absolute-path `serviceName` form (`/service/Tun`) is translated on import, so the request path on the wire matches what the server expects instead of a 404 (issue #130). A multi-segment service name still needs a core fix — filed with sing-box-lx.
-- macOS: "Hide app from Dock" now survives a restart. The tray toggle is saved to `bin/settings.json` and applied on the next launch, so a launcher you sent to the tray comes back there instead of reappearing in the Dock every time.
+- macOS: "Hide app from Dock" now survives a restart. The tray toggle is saved to `bin/settings.json` (`hide_app_from_dock`) and applied on the next launch before the window appears. Only the Dock icon is hidden: the main window still opens at startup (use `-tray` to start without it).
 - Core pinned to sing-box-lx 1.14.1-lx.7: a REALITY `short_id` longer than 16 hex characters no longer crashes the core (it is a config error now), an unknown `tuic.udp_relay_mode` is rejected at load instead of silently becoming `native`, MASQUE `standard` profile without `uri` gets one clear error, and core errors name the node type and tag (`initialize outbound[0] vless[proxy-de-1]: …`).
 - gRPC: a `serviceName` written in Xray's absolute-path form (`/my-service/Tun`) is now understood. The leading slash and the trailing `/Tun` are Xray's way of spelling the stream name, not part of the service name, so they are stripped and the request path stays the one the server expects; previously the whole string was sent as the service name and the server answered `404 Not Found` (issue #130).
 - vmess: channel cipher list now matches the core exactly — `aes-128-ctr` (which the core never supported and which killed the whole config) is gone, `aes-128-cfb` is accepted instead of silently falling back to `auto`.
@@ -45,7 +45,7 @@
 
 ### Исправления
 - Транспорт gRPC: форма Xray с абсолютным путём в `serviceName` (`/service/Tun`) переводится при импорте, и путь запроса совпадает с ожидаемым сервером вместо 404 (issue #130). Многосегментное имя сервиса ждёт правки ядра — заявка в sing-box-lx.
-- macOS: «Скрыть из Dock» переживает перезапуск. Переключатель в трее сохраняется в `bin/settings.json` и применяется при следующем запуске, так что убранный в трей лаунчер там и остаётся, а не возвращается в Dock каждый раз.
+- macOS: «Скрыть из Dock» переживает перезапуск. Переключатель в трее сохраняется в `bin/settings.json` (`hide_app_from_dock`) и применяется при следующем запуске до показа окна. Скрывается только иконка Dock: главное окно при старте открывается как обычно (запуск без окна — флагом `-tray`).
 - Ядро закреплено на sing-box-lx 1.14.1-lx.7: REALITY `short_id` длиннее 16 hex больше не роняет ядро паникой (теперь ошибка конфигурации), неизвестный `tuic.udp_relay_mode` отвергается при загрузке, а не молча становится `native`, MASQUE-профиль `standard` без `uri` получает одну понятную ошибку, а ошибки ядра называют тип и тег узла (`initialize outbound[0] vless[proxy-de-1]: …`).
 - gRPC: `serviceName` в Xray-форме «абсолютного пути» (`/my-service/Tun`) теперь понимается правильно. Ведущий «/» и хвост `/Tun` — это способ Xray записать имя потока, а не часть имени сервиса; они снимаются, и путь запроса остаётся тем, которого ждёт сервер. Прежде вся строка уезжала как имя сервиса, и сервер отвечал `404 Not Found` (issue #130).
 - vmess: набор шифров канала сверен с ядром — `aes-128-ctr`, которого ядро не знало и который валил весь конфиг, убран; `aes-128-cfb` принимается вместо молчаливого отката к `auto`.
