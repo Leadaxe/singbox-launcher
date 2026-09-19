@@ -3,6 +3,7 @@ package linkmap
 import (
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 
 	"singbox-launcher/core/config/registry"
@@ -450,4 +451,27 @@ func TestEngineW6Primitives(t *testing.T) {
 			t.Errorf("код обязан назвать chatter, а не %q", st.res.Notes[0].Params["query_name"])
 		}
 	})
+}
+
+// TestNamedValueMapConcurrentAccess — гонка на кэше именованных таблиц
+// value_map (`namedValueMaps`, используется `$ref: "tls.fp_dialect"`).
+//
+// Разбор ссылок движком зовётся не только из одной горутины: фоновая
+// достройка пула узлов (`RebuildNodePool`) идёт параллельно разбору на
+// переднем плане. Прежний код держал ленивую загрузку на голом
+// `if !namedValueMapsLoaded { load(); loaded = true }` без единой
+// синхронизации — первый параллельный вызов `lookupNamedValueMap` из
+// нескольких горутин конкурентно писал в одну map (`go test -race` валит
+// ровно на этом). Тест воспроизводит гонку и проверяет, что после починки
+// (sync.Once) `-race` её больше не видит.
+func TestNamedValueMapConcurrentAccess(t *testing.T) {
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = lookupNamedValueMap("tls.fp_dialect")
+		}()
+	}
+	wg.Wait()
 }

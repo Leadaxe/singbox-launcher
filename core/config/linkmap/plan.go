@@ -720,22 +720,28 @@ func protocolFileFor(scheme string) string {
 //
 // Таблица — это ДАННЫЕ блока, не диалект: у неё нет записей с `source`, и
 // include её не подключает. Её адресует `{"$ref": "<файл>.<имя>"}` у записи.
-var namedValueMaps = map[string]map[string]interface{}{}
-var namedValueMapsLoaded bool
+//
+// Заполняется РОВНО ОДИН РАЗ под `sync.Once`: разбор ссылок зовётся из
+// нескольких горутин (RebuildNodePool в фоне и разбор на переднем плане
+// одновременно), а прежний check-then-act на голом bool гонял конкурентную
+// запись в карту без единой блокировки — `go test -race` валит его на
+// первом же параллельном вызове `lookupNamedValueMap`.
+var (
+	namedValueMapsOnce sync.Once
+	namedValueMaps     map[string]map[string]interface{}
+)
 
 // lookupNamedValueMap разрешает `$ref` записи.
 //
 // Имя строится как "<файл>.<ключ в blocks>" — оба конца приезжают с диска,
 // поэтому ни одного имени схемы или блока в коде нет.
 func lookupNamedValueMap(ref string) map[string]interface{} {
-	if !namedValueMapsLoaded {
-		loadNamedValueMaps()
-		namedValueMapsLoaded = true
-	}
+	namedValueMapsOnce.Do(loadNamedValueMaps)
 	return namedValueMaps[ref]
 }
 
 func loadNamedValueMaps() {
+	namedValueMaps = map[string]map[string]interface{}{}
 	for _, name := range blockFiles {
 		data, err := contract.ReadRegistry(name + ".json")
 		if err != nil {
