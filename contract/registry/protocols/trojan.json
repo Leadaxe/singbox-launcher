@@ -237,6 +237,7 @@
   },
   "mappers": {
     "uri": {
+      "live": true,
       "detect": {
         "scheme_in": [
           "trojan"

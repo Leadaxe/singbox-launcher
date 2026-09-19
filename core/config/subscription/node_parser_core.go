@@ -131,6 +131,14 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		return nil, fmt.Errorf("URI length (%d) exceeds maximum (%d)", len(uri), MaxURILength)
 	}
 
+	// SPEC 133: сначала спрашиваем ДВИЖОК реестра. Ведёт ли он эту ссылку,
+	// решает секция схемы (`live: true` + её собственный detect), а не список
+	// имён здесь. Не ведёт — идём прежним путём ниже; развилка временная и
+	// исчезнет вместе с атрибутом, когда переведены будут все схемы.
+	if node, engErr, handled := parseURIByEngine(uri, skipFilters); handled {
+		return node, engErr
+	}
+
 	// awg://<base64 .conf>#label — панели заворачивают в ссылку целый wg-quick
 	// (AmneziaWG 3.x по подписке). Форма key@host:port идёт штатной веткой ниже.
 	if strings.HasPrefix(uri, "awg://") || strings.HasPrefix(uri, "wireguard://") {

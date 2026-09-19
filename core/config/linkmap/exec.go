@@ -127,10 +127,49 @@ func Exec(plan *Plan, space *Space, form registry.Form, bodyType string, trace *
 	st.applyLabel()
 	st.noteUnknownParams()
 
+	// required — ПОСЛЕ обоих проходов и defaults: запись объявлена
+	// обязательной в теле, а не во входе, и значение туда законно приходит
+	// от materialize_default или defaults секции, а не только из источника.
+	if err := st.checkRequired(); err != nil {
+		return nil, err
+	}
+
 	if trace != nil {
 		trace.ResultEvent(st.mapperName, st.res.Body, st.res.Label, st.res.BodySource)
 	}
 	return st.res, nil
+}
+
+// checkRequired отвергает узел, у которого пуст путь обязательной записи.
+//
+// Отказ разбора, а не код деградации: ссылка без пароля у anytls или без
+// адреса — не узел, и отдавать её дальше значит отдать санитайзеру заведомый
+// мусор. Прежний путь отвергал такие ссылки перед разбором, поимённо
+// перечисляя схемы (node_parser_core.go); здесь это свойство ЗАПИСИ.
+func (st *execState) checkRequired() error {
+	// userinfo целиком: поля, которые он наполняет, приходят ПОЗИЦИЯМИ into,
+	// и записи под ними у части схем нет вовсе (uuid у vless объявлен null).
+	// Проверять приходится сам userinfo, а не путь тела.
+	if ui := st.plan.Mapper.UserInfo; ui != nil && ui.Required && st.space.UserInfo == "" {
+		return fmt.Errorf("linkmap: ссылка без userinfo")
+	}
+	for _, list := range [][]Entry{st.plan.Selectors, st.plan.Rest} {
+		for i := range list {
+			e := &list[i]
+			if e.Param == nil || !e.Param.Required {
+				continue
+			}
+			path := st.pathOf(e.Param)
+			if path == "" {
+				continue
+			}
+			v, ok := getPath(st.res.Body, path)
+			if !ok || toString(v) == "" {
+				return fmt.Errorf("linkmap: обязательное поле %q пусто", path)
+			}
+		}
+	}
+	return nil
 }
 
 // applySchemeSets — присваивания по написанию схемы.
@@ -173,6 +212,31 @@ func (st *execState) applyUserInfo() {
 	if raw == "" {
 		return
 	}
+	// Конвейер декодеров САМОГО userinfo — область применения уже ATOM
+	// грамматики (`userinfo.decode`), и форме ничего добавлять не нужно:
+	// SIP002 кодирует в base64 именно userinfo, оставляя адрес и метку
+	// открытыми. Порядок объявлен секцией: percent ДО base64, потому что
+	// панели экранируют '='-паддинг как %3D.
+	for i, dec := range ui.Decode {
+		if i >= maxDecodeDepth {
+			break
+		}
+		next, err := decodeNamed(dec, raw)
+		if err != nil {
+			// Объявленный декодер не сработал — userinfo остаётся как есть.
+			// Отказ разбора здесь был бы неверен: `base64?` у ss означает
+			// «попробовать», и открытый SS2022 `method:key@host` законен.
+			break
+		}
+		raw = next
+	}
+	st.space.UserInfo = raw
+	if i := strings.Index(raw, ":"); i >= 0 {
+		st.space.UserName, st.space.UserPass = raw[:i], raw[i+1:]
+	} else {
+		st.space.UserName, st.space.UserPass = raw, ""
+	}
+
 	parts := []string{raw}
 	if ui.Split != nil && ui.Split.Sep != "" {
 		limit := ui.Split.Limit
@@ -264,6 +328,18 @@ func (st *execState) applyEntry(e *Entry) {
 
 	// when по телу / по источнику / по $type / по $form.
 	if !st.whenHolds(p.When) {
+		// Код за ПОДАВЛЕНИЕ значения условием: значение во входе было, но
+		// структурное правило не дало ему доехать, и молчать об этом нельзя.
+		// Так `uplink_data_placement=header` при несовместимом режиме
+		// снимается с кодом xhttp_param_reset — иначе поле исчезало бы тихо.
+		//
+		// Код ставится только когда источник И ВПРАВДУ что-то дал: запись,
+		// чьё условие ложно на узле без этого параметра, ни о чём не говорит.
+		if code := codeOf(p.OnWhenFalse); code != "" {
+			if _, _, found := st.lookupSource(p); found {
+				st.note(code, paramsOf(p.OnWhenFalse))
+			}
+		}
 		st.trace.Add(Event{
 			Stage: StageField, Mapper: st.mapperName, Entry: e.Name,
 			Src: "-", Raw: nil, Val: nil, Path: nil, Act: ActSkip, Why: WhyWhenFalse,
@@ -429,7 +505,43 @@ func (st *execState) applyImplies(e *Entry) {
 	if len(e.Param.Implies) == 0 {
 		return
 	}
+	code := codeOf(e.Param.OnImpliesWritten)
+	if code == "" {
+		st.applyAssigns(e.Name, e.Param.Implies, e.Param.Priority, e.Decl, "", e.Param.Merge)
+		return
+	}
+	// Код ставится за ФАКТ дописывания, а не за наличие implies: при занятом
+	// пути присваивание проигрывает владельцу, и сообщать не о чем. Так
+	// xhttp_mode_forced_packet_up появляется только там, где режим сочинили
+	// мы, а не назвала ссылка.
+	before := st.snapshotPaths(e.Param.Implies)
 	st.applyAssigns(e.Name, e.Param.Implies, e.Param.Priority, e.Decl, "", e.Param.Merge)
+	if st.changedAny(e.Param.Implies, before) {
+		st.note(code, paramsOf(e.Param.OnImpliesWritten))
+	}
+}
+
+// snapshotPaths запоминает значения путей присваивания до записи.
+func (st *execState) snapshotPaths(assigns map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{}, len(assigns))
+	for path := range assigns {
+		if v, ok := getPath(st.res.Body, path); ok {
+			out[path] = v
+		}
+	}
+	return out
+}
+
+// changedAny — хоть один путь присваивания изменился.
+func (st *execState) changedAny(assigns map[string]interface{}, before map[string]interface{}) bool {
+	for path := range assigns {
+		now, ok := getPath(st.res.Body, path)
+		was, had := before[path]
+		if ok != had || toString(now) != toString(was) {
+			return true
+		}
+	}
+	return false
 }
 
 // applyAssigns кладёт набор присваиваний. null СНИМАЕТ путь — это отличается
@@ -616,6 +728,12 @@ func (st *execState) applyExtractGroup(e *Entry, src, raw, group, val string, sp
 			out = conv
 		}
 		st.write(e.Name+"."+group, src, raw, out, path, e.Param.Priority, e.Decl, "")
+		// Код за САМО срабатывание группы: узел описан иначе, чем во входе,
+		// и человеку надо об этом сказать. Так `?ed=N` в пути ws становится
+		// max_early_data + early_data_header_name (ws_early_data_converted).
+		if code, _ := t["code"].(string); code != "" {
+			st.note(code, nil)
+		}
 		if impl, ok := t["implies"].(map[string]interface{}); ok {
 			st.applyAssigns(e.Name+"."+group, impl, e.Param.Priority, e.Decl, "", e.Param.Merge)
 		}
@@ -739,7 +857,7 @@ func (st *execState) convert(p *registry.Param, val string) (interface{}, bool) 
 	}
 
 	if len(p.ValueMap) > 0 {
-		mapped, hit, isNull := applyValueMap(p.ValueMap, v)
+		mapped, hit, isNull := applyValueMapCase(p.ValueMap, v, p.ValueMapCase != "sensitive")
 		if isNull {
 			return nil, true
 		}
@@ -755,6 +873,20 @@ func (st *execState) convert(p *registry.Param, val string) (interface{}, bool) 
 	if p.Type != "" {
 		conv, drop := convertType(p.Type, v)
 		if drop {
+			// Тип не сошёлся — решает запись своим `on_invalid`, а не движок.
+			//
+			// `keep` означает «вези КАК ПРИШЛО»: годность значения судит
+			// реестр на стадии санитайзера (body.fields), и привести его
+			// здесь к типу значило бы вынести суждение раньше и молча. Так
+			// объявлен min_idle_session у anytls: `abc` обязан доехать до
+			// тела строкой и получить код anytls_min_idle_invalid от правила
+			// min:0, а не исчезнуть на маппере.
+			if actionOf(p.OnInvalid) == "keep" {
+				if code := codeOf(p.OnInvalid); code != "" {
+					st.note(code, paramsOf(p.OnInvalid))
+				}
+				return v, false
+			}
 			return nil, true
 		}
 		return conv, false
@@ -1068,6 +1200,16 @@ func (st *execState) note(code string, params map[string]string) {
 //
 // Поддерживает и точную карту, и форму {prefix, strip} (диалект uTLS).
 func applyValueMap(vm map[string]interface{}, v string) (string, bool, bool) {
+	return applyValueMapCase(vm, v, true)
+}
+
+// applyValueMapCase — то же с явным указанием, значим ли регистр.
+//
+// Регистронезависимое попадание — общее правило (живые списки шлют
+// `security=NONE`), но там, где ядро сравнивает литерал точно, оно молча
+// проглатывает негодное значение: `encryption=None` у vless обязано доехать
+// до тела и быть отвергнутым, а не стать «слоя нет».
+func applyValueMapCase(vm map[string]interface{}, v string, fold bool) (string, bool, bool) {
 	// $ref — именованная таблица общих блоков, разрешённая при сборке плана.
 	if ref, ok := vm["$ref"].(string); ok {
 		resolved := lookupNamedValueMap(ref)
@@ -1106,6 +1248,9 @@ func applyValueMap(vm map[string]interface{}, v string) (string, bool, bool) {
 			return "", true, true
 		}
 		return toString(mapped), true, false
+	}
+	if !fold {
+		return v, false, false
 	}
 	// Регистронезависимое попадание.
 	low := strings.ToLower(v)
@@ -1367,6 +1512,15 @@ func codeOf(m map[string]interface{}) string {
 		return ""
 	}
 	s, _ := m["code"].(string)
+	return s
+}
+
+// actionOf читает объявленное действие (`keep` / `drop` / `skip`).
+func actionOf(m map[string]interface{}) string {
+	if m == nil {
+		return ""
+	}
+	s, _ := m["action"].(string)
 	return s
 }
 

@@ -119,8 +119,27 @@
         "detect": { "$ref": "#/definitions/detect" },
         "decode": {
           "type": "array",
-          "description": "Конвейер декодеров оболочки: url, percent, base64, base64url, 'base64?' (try-decode с фолбэком «не base64 → как есть»), json, ini, {reparse: url|authority}.",
-          "items": { "type": ["string", "object"] }
+          "description": "Конвейер декодеров оболочки: url, percent, base64, base64url, 'base64?' (try-decode с фолбэком «не base64 → как есть»), json, ini, {reparse: url|authority}. Шаг записывается строкой (область применения — весь текст) либо объектом {decoder, scope}, где scope называет часть ссылки: all (умолчание) | userinfo | authority. Область нужна там, где base64 накрывает РАЗНЫЕ куски в разных формах одной схемы: SIP002 у ss кодирует только userinfo, legacy — весь authority, а метка '#…' в обеих формах остаётся открытым текстом снаружи (PRIMITIVES §0.10).",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "properties": {
+                  "decoder": { "enum": ["percent", "base64", "base64url", "base64?"] },
+                  "scope": { "enum": ["all", "userinfo", "authority"] }
+                },
+                "required": ["decoder"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": { "reparse": { "enum": ["url", "authority"] } },
+                "required": ["reparse"],
+                "additionalProperties": false
+              }
+            ]
+          }
         },
         "space": {
           "enum": ["url", "json", "ini"],
@@ -276,9 +295,21 @@
           "description": "По умолчанию пусто = отсутствует. significant — там, где ядро различает «ключа нет» и «пустая строка»."
         },
         "on_invalid": { "type": "object" },
+        "value_map_case": {
+          "enum": ["sensitive"],
+          "description": "Регистр значения ЗНАЧИМ. Общее правило обратное (живые списки шлют security=NONE), но там, где ядро сравнивает литерал точно, регистронезависимое попадание молча проглатывает негодное значение: encryption=None у vless обязано доехать до тела и быть отвергнутым, а не стать «слоя нет»."
+        },
         "on_present": { "type": "object" },
         "on_item_invalid": { "type": "object" },
         "on_no_match": { "type": "object" },
+        "on_when_false": {
+          "type": "object",
+          "description": "Код за ПОДАВЛЕНИЕ значения условием `when`: значение во входе было, но структурное правило не дало ему доехать до тела. Ставится только когда источник действительно что-то дал — иначе запись, чьё условие ложно на каждом втором узле, шумела бы впустую."
+        },
+        "on_implies_written": {
+          "type": "object",
+          "description": "Код за то, что `implies` И ВПРАВДУ дописал значение, которого во входе не было. Отличается от простого наличия implies: при занятом пути присваивание проигрывает владельцу, и сообщать не о чем."
+        },
         "on_len_gt": { "type": "object" },
         "emit_when": { "type": ["string", "object"] },
         "omit_default": {},
@@ -353,6 +384,10 @@
       "additionalProperties": false,
       "properties": {
         "decode": { "type": "array", "items": { "type": "string" } },
+        "required": {
+          "type": "boolean",
+          "description": "Ссылка БЕЗ userinfo не узел: разбор отказывает. Объявляется у userinfo, а не у записи: поля, которые он наполняет, приходят позициями into, и у части схем записи под ними нет вовсе (uuid у vless объявлен null)."
+        },
         "split": {
           "type": "object",
           "additionalProperties": false,
@@ -404,6 +439,10 @@
       "additionalProperties": false,
       "properties": {
         "detect": { "$ref": "#/definitions/detect" },
+        "live": {
+          "type": "boolean",
+          "description": "ВРЕМЕННЫЙ служебный атрибут кампании SPEC 133: секция ВЕДЁТ разбор на продакшен-пути. Пока переведены не все схемы, в конвейере два пути, и флаг отвечает на единственный вопрос — какой из них ведёт эту схему, — снимая нужду перечислять имена схем в коде. Когда live стоит у всех секций, атрибут удаляется вместе со старым входом; остаток держит страж TestMappersWithoutLive."
+        },
         "body_source": {
           "enum": ["uri", "singbox", "xray", "wgconf", "amnezia"],
           "description": "Каким source тело приходит в санитайзер: на это опирается except_sources в правилах реестра."

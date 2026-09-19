@@ -214,6 +214,7 @@
   },
   "mappers": {
     "uri": {
+      "live": true,
       "body_source": "uri",
       "detect": {
         "scheme_in": [
@@ -276,8 +277,7 @@
         "server": {
           "source": "host",
           "maps_to": "server",
-          "required": true,
-          "impl": "§463 / контракт §24.6 — пустой host отбраковывается: ядро на пустом адресе валит ВЕСЬ конфиг, то есть один такой узел из подписки оставлял человека без VPN."
+          "impl": "§463 / контракт §24.6 — пустой host отбраковывается: ядро на пустом адресе валит ВЕСЬ конфиг, то есть один такой узел из подписки оставлял человека без VPN. Отбраковку делает САНИТАЙЗЕР (body.fields.server → field_missing), а не маппер, поэтому required здесь НЕ объявлен: прежний путь проверял hostname только у vless/trojan/ssh/tuic/anytls (node_parser_core.go:403-405), naive в том списке нет, и узел доезжал до санитайзера. Обе дороги роняют узел, но называют причину по-разному, а причина входит в контракт: корпус naive/empty_host_rejected ждёт emit_error + field_missing, а не parse_error. QUIRKS Q133-46."
         },
         "server_port": {
           "source": "port",

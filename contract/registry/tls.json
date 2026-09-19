@@ -1080,6 +1080,8 @@
         },
         "impl": "DELTAS D133-3: объявлен у tuic и masque, но Go не читал его НИ ТАМ НИ ТАМ — поле терялось только на десктопе."
       },
+      "spx": null,
+      "echfq": null,
       "ech": {
         "source": "query.ech",
         "maps_to": null,

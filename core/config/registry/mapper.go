@@ -305,6 +305,13 @@ type Param struct {
 	Merge    string `json:"merge"`
 
 	ValueMap map[string]interface{}            `json:"value_map"`
+	// ValueMapCase — "sensitive", если регистр значения ЗНАЧИМ.
+	//
+	// Общее правило обратное (живые подписки шлют `security=NONE`), но там,
+	// где ядро сравнивает литерал точно, регистронезависимое попадание
+	// молча проглатывает негодное значение: `encryption=None` у vless
+	// обязано доехать до тела и быть отвергнутым, а не стать «слоя нет».
+	ValueMapCase string `json:"value_map_case"`
 	Sets     map[string]map[string]interface{} `json:"sets"`
 	Implies  map[string]interface{}            `json:"implies"`
 
@@ -338,6 +345,14 @@ type Param struct {
 	OnPresent     map[string]interface{} `json:"on_present"`
 	OnItemInvalid map[string]interface{} `json:"on_item_invalid"`
 	OnNoMatch     map[string]interface{} `json:"on_no_match"`
+	// OnWhenFalse — код за ПОДАВЛЕНИЕ значения условием `when`: значение во
+	// входе было, но структурное правило не дало ему доехать до тела.
+	// Ставится только когда источник действительно что-то дал.
+	OnWhenFalse map[string]interface{} `json:"on_when_false"`
+	// OnImpliesWritten — код за то, что `implies` И ВПРАВДУ дописал значение,
+	// которого во входе не было. Отличается от простого наличия implies: при
+	// занятом пути присваивание проигрывает, и сообщать не о чем.
+	OnImpliesWritten map[string]interface{} `json:"on_implies_written"`
 	OnLenGt       map[string]interface{} `json:"on_len_gt"`
 
 	EmitWhen    json.RawMessage `json:"emit_when"`
@@ -384,6 +399,13 @@ type UserInfo struct {
 	} `json:"split"`
 	Into       []string `json:"into"`
 	SingleInto string   `json:"single_into"`
+	// Required — ссылка БЕЗ userinfo не узел: разбор отказывает.
+	//
+	// Объявляется у userinfo, а не у записи: поля, которые он наполняет,
+	// приходят позициями into, и у части схем записи под ними вовсе нет
+	// (uuid у vless объявлен null). Прежний путь перечислял такие схемы
+	// поимённо — node_parser_core.go:403-405.
+	Required bool `json:"required"`
 }
 
 // LabelSpec — метка узла. Входит в identity, поэтому её нормализация
@@ -439,6 +461,20 @@ type EmitSpec struct {
 // Mapper — одна секция-маппер: вид источника у одного протокола.
 type Mapper struct {
 	Detect *Detect `json:"detect"`
+
+	// Live — секция ВЕДЁТ разбор на продакшен-пути (SPEC 133, временный).
+	//
+	// Атрибут служебный и ЖИВЁТ ТОЛЬКО ДО КОНЦА КАМПАНИИ: кампания переводит
+	// схемы на движок по одной, и пока переведены не все, в конвейере два
+	// пути. Флаг отвечает на единственный вопрос — какой из них ведёт эту
+	// схему, — и снимает нужду перечислять имена схем в коде.
+	//
+	// Когда live проставлен у всех секций, атрибут удаляется вместе со старым
+	// входом: движок становится единственным путём. Страж
+	// TestMappersWithoutLive держит остаток поимённо и краснеет на любом
+	// расхождении с ожидаемым списком.
+	Live bool `json:"live"`
+
 	// BodySource — каким source тело приходит в санитайзер: на это опирается
 	// except_sources в правилах реестра. У нас пять значений
 	// (uri/singbox/xray/wgconf/amnezia), у LxBox — два, и любое правило,

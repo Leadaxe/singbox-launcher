@@ -312,6 +312,7 @@
   },
   "mappers": {
     "uri": {
+      "live": true,
       "detect": {
         "scheme_in": [
           "vless"
@@ -470,8 +471,9 @@
             "": null,
             "none": null
           },
+          "value_map_case": "sensitive",
           "emit_when": "always",
-          "impl": "На разборе `none` = «слоя нет» (ключ не пишется), на эмите параметр пишется ВСЕГДА (shareuri_vless.go:81-87). Асимметрия сохраняется явно."
+          "impl": "На разборе `none` = «слоя нет» (ключ не пишется), на эмите параметр пишется ВСЕГДА (shareuri_vless.go:81-87). Асимметрия сохраняется явно. value_map_case: sensitive — здесь регистр ЗНАЧИМ, в отличие от общего правила: ядро сравнивает свой литерал 'none' точно (protocol/vless/lx_encryption.go, см. body.fields.encryption). 'None' с большой буквы обязано доехать до тела и получить drop_node vless_encryption_invalid, а регистронезависимое попадание проглатывало бы его как «слоя нет» и молча понижало защиту — корпус encryption_none_wrong_case_rejected."
         }
       },
       "unknown_key": {

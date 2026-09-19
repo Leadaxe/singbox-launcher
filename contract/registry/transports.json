@@ -1052,7 +1052,22 @@
             "": null,
             "tcp": null,
             "raw": null
-          }
+          },
+          "when": {
+            "query.type": {
+              "in": [
+                "",
+                "tcp",
+                "raw",
+                "ws",
+                "grpc",
+                "http",
+                "xhttp",
+                "httpupgrade"
+              ]
+            }
+          },
+          "impl": "Набор ЗНАЕМЫХ написаний транспорта. Прежний путь — switch с этими же ветками (node_parser_transport.go:178-262) — на незнакомом значении не возвращал транспорта ВООБЩЕ, и в тело не попадало ничего. Без гейта движок писал незнакомое значение в transport.type как есть, санитайзер снимал его правилом enum и вешал узлу type_invalid: корпус uri/vless/h2_tls ждёт узел БЕЗ transport и БЕЗ кода. h2 в набор не входит намеренно: ветка network==h2 → type:http (node_parser_core.go:838) читает параметр network, то есть принадлежит VMESS, а у vless параметр зовётся type, и значения h2 он не знал. Перевод появится записью секции vmess; общий селектор навязал бы его и vless, изменив тела живых узлов."
         },
         "headerType": {
           "source": "query.headerType",
@@ -1089,6 +1104,7 @@
               "ed": {
                 "path": "transport.max_early_data",
                 "type": "int",
+                "code": "ws_early_data_converted",
                 "implies": {
                   "transport.early_data_header_name": {
                     "value": "Sec-WebSocket-Protocol",
@@ -1320,6 +1336,14 @@
           },
           "implies": {
             "transport.mode": "packet-up"
+          },
+          "on_implies_written": {
+            "action": "note",
+            "code": "xhttp_mode_forced_packet_up"
+          },
+          "on_when_false": {
+            "action": "note",
+            "code": "xhttp_param_reset"
           },
           "priority": 50,
           "impl": "Структурное правило ЯДРА, а не значение поля: uplink_data_placement=header работает ТОЛЬКО в режиме packet-up («uplink_data_placement can be header only in packet-up mode» — фатал на весь конфиг). Выражено ОПЕРАТОРОМ not_in, а не in: при отсутствующем режиме `in` ложен (сравнивать нечего), а нужно обратное — режима нет, значит запрета нет, и implies его допишет. not_in по несуществующему пути истинен по построению. implies дописывает packet-up только когда режим не назвали: priority 50 ставит запись ПОЗЖЕ записи mode (умолчание 0), поэтому явный режим она не перебивает."

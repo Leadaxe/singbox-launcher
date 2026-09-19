@@ -66,7 +66,13 @@ func UnwrapURI(plan *Plan, text string) (*Space, registry.Form, error) {
 		if i >= maxDecodeDepth {
 			return nil, form, fmt.Errorf("linkmap: превышена глубина декодирования")
 		}
-		next, err := applyDecoder(raw, body)
+		name, scope := decodeSpec(raw)
+		if name == "" {
+			// Объектная форма {"reparse": …} — смена пространства, а не
+			// декодирование текста.
+			continue
+		}
+		next, err := decodeScoped(name, scope, body)
 		if err != nil {
 			return nil, form, err
 		}
@@ -163,18 +169,117 @@ func overlayScalar(v interface{}) string {
 // Имена декодеров закрытые и общие для всех схем: url, percent, base64,
 // base64url, base64?, json, ini. "base64?" — «попробовать, а не вышло —
 // оставить как есть» (живые подписки шлют обе формы под одной схемой).
-func applyDecoder(raw json.RawMessage, body string) (string, error) {
-	name := rawString(raw)
-	if name == "" {
-		// Объектная форма {"reparse": "url"} — смена пространства, а не
-		// декодирование текста; на этом шаге она ничего не меняет.
-		return body, nil
+// decodeSpec читает один шаг конвейера формы: имя декодера и область его
+// применения (PRIMITIVES §0.10).
+//
+// Две записи: строка ("base64") — область `all`, прежнее поведение; объект
+// {"decoder": "base64", "scope": "authority"} — область названа явно. Объект
+// {"reparse": …} декодером не является и даёт пустое имя.
+func decodeSpec(raw json.RawMessage) (name, scope string) {
+	if s := rawString(raw); s != "" {
+		return s, scopeAll
 	}
+	var obj struct {
+		Decoder string `json:"decoder"`
+		Scope   string `json:"scope"`
+	}
+	if err := json.Unmarshal(raw, &obj); err != nil || obj.Decoder == "" {
+		return "", ""
+	}
+	if obj.Scope == "" {
+		obj.Scope = scopeAll
+	}
+	return obj.Decoder, obj.Scope
+}
+
+// Области применения декодера формы.
+const (
+	scopeAll       = "all"
+	scopeUserInfo  = "userinfo"
+	scopeAuthority = "authority"
+)
+
+// decodeScoped применяет декодер к НАЗВАННОЙ части ссылки.
+//
+// Нужно потому, что base64 у ss накрывает разные куски в разных формах:
+// SIP002 кодирует только userinfo, legacy — весь authority, а метка `#…` в
+// обеих формах остаётся открытым текстом СНАРУЖИ. Декодер «на весь текст»
+// ломает обе: в первой он спотыкается об открытый адрес, во второй — о метку.
+//
+// Части режутся и собираются обратно в ТЕКСТ, а не в пространство: лексер
+// остаётся единственным местом, где ссылка превращается в источники.
+func decodeScoped(name, scope, text string) (string, error) {
+	if name == "url" {
+		// url — не декодер текста, а объявление пространства.
+		return text, nil
+	}
+	if scope == scopeAll || scope == "" {
+		return decodeNamed(name, text)
+	}
+
+	head, authority, tail := splitAuthorityPart(text)
+	if authority == "" {
+		return text, nil
+	}
+	target := authority
+	prefix := ""
+	if scope == scopeUserInfo {
+		at := strings.LastIndex(authority, "@")
+		if at < 0 {
+			// Формы без userinfo декодировать нечего — не отказ разбора.
+			return text, nil
+		}
+		target, prefix = authority[:at], authority[at:]
+	}
+	dec, err := decodeNamed(name, target)
+	if err != nil {
+		return "", err
+	}
+	if scope == scopeUserInfo {
+		return head + dec + prefix + tail, nil
+	}
+	return head + dec + tail, nil
+}
+
+// splitAuthorityPart режет текст ссылки на «до authority», authority и
+// «после» (путь, query, фрагмент). Фрагмент отрезается ПЕРВЫМ: в legacy-форме
+// ss метка стоит снаружи base64, и утащить её под декодер нельзя.
+func splitAuthorityPart(text string) (head, authority, tail string) {
+	rest := strings.TrimSpace(text)
+	idx := strings.Index(rest, "://")
+	if idx < 0 {
+		return "", "", ""
+	}
+	head, rest = rest[:idx+len("://")], rest[idx+len("://"):]
+
+	cut := len(rest)
+	for _, sep := range []string{"#", "?", "/"} {
+		if i := strings.Index(rest, sep); i >= 0 && i < cut {
+			cut = i
+		}
+	}
+	return head, rest[:cut], rest[cut:]
+}
+
+// decodeNamed применяет ОДИН именованный декодер к куску текста.
+//
+// Общий для конвейера формы (весь текст) и конвейера userinfo: имя декодера
+// значит одно и то же, на какую бы часть ссылки его ни навели. Область
+// применения — свойство объявления (`forms[].decode` против
+// `userinfo.decode`), а не самого декодера.
+func decodeNamed(name, body string) (string, error) {
 	switch name {
-	case "url", "percent", "json", "ini":
-		// url — не декодер текста, а объявление пространства: разбор делает
-		// лексер ниже. json/ini ставятся формой у не-ссылочных видов входа и
-		// сюда не приходят.
+	case "url", "json", "ini":
+		// Объявления ПРОСТРАНСТВА, а не декодеры текста: разбор ведёт
+		// соответствующий разборщик, текст на этом шаге не меняется.
+		return body, nil
+	case "percent":
+		// В отличие от конвейера формы, здесь percent работает: лексер
+		// декодирует части ссылки один раз, а панели экранируют '='-паддинг
+		// base64 как %3D — второй проход нужен ДО base64.
+		if dec, err := percentUnescape(body); err == nil {
+			return dec, nil
+		}
 		return body, nil
 	case "base64", "base64url":
 		dec, err := decodeBase64Any(body)

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"singbox-launcher/contract"
 	"singbox-launcher/core/config/registry"
@@ -135,11 +136,48 @@ func BuildPlans(set *registry.MapperSet, bodyOrder func(scheme string) []string)
 	return out, nil
 }
 
+// Planes — планы реестра, построенные ОДИН раз на процесс.
+//
+// Разбор подписки идёт по 500–2000 узлов, а план — чистая функция от реестра,
+// который за время работы не меняется (он вшит в бинарь). Построение на узел
+// означало бы перечитывание JSON и восстановление порядка объявления для
+// каждой ссылки списка.
+//
+// Возвращаемый набор ТОЛЬКО ДЛЯ ЧТЕНИЯ: исполнение (Exec) состояния планов не
+// трогает, всё изменяемое живёт в execState одного узла.
+func Planes() (*PlanSet, error) {
+	planCacheOnce.Do(func() {
+		set, err := registry.LoadMappers()
+		if err != nil {
+			planCacheErr = err
+			return
+		}
+		reg, err := registry.Get()
+		if err != nil {
+			planCacheErr = err
+			return
+		}
+		planCache, planCacheErr = BuildPlans(set, reg.Order)
+	})
+	return planCache, planCacheErr
+}
+
+var (
+	planCacheOnce sync.Once
+	planCache     *PlanSet
+	planCacheErr  error
+)
+
 // blockTable — один общий блок в одном диалекте: имя записи → запись, плюс
 // порядок объявления.
 type blockTable struct {
 	names  []string
 	params map[string]*registry.Param
+	// declared — имена, объявленные блоком со значением null: параметр
+	// ссылки ЗНАЕМ, читать нечего. Исполнять их нечем, но молчать о них
+	// движок обязан, иначе `uri_param_unknown` срабатывает на параметре,
+	// который блок перечислил своей рукой (spx, echfq у REALITY).
+	declared []string
 }
 
 // blockSet — все общие блоки: "tls" → "uri" → таблица; у транспортов есть
@@ -285,8 +323,13 @@ func parseBlockTable(raw json.RawMessage, names []string) (*blockTable, error) {
 	}
 	params := map[string]*registry.Param{}
 	kept := make([]string, 0, len(names))
+	var declaredOnly []string
 	for _, n := range names {
 		v, ok := top[n]
+		if ok && isJSONNull(v) {
+			declaredOnly = append(declaredOnly, n)
+			continue
+		}
 		if !ok || !hasSourceKey(v) {
 			continue
 		}
@@ -297,7 +340,12 @@ func parseBlockTable(raw json.RawMessage, names []string) (*blockTable, error) {
 		params[n] = &p
 		kept = append(kept, n)
 	}
-	return &blockTable{names: kept, params: params}, nil
+	return &blockTable{names: kept, params: params, declared: declaredOnly}, nil
+}
+
+// isJSONNull — значение записано литералом null.
+func isJSONNull(raw json.RawMessage) bool {
+	return strings.TrimSpace(string(raw)) == "null"
 }
 
 // buildPlan разворачивает одну секцию.
@@ -320,6 +368,11 @@ func buildPlan(scheme, kind string, m *registry.Mapper, blocks blockSet) (*Plan,
 			all = append(all, Entry{Name: n, Param: table.params[n], Decl: decl, From: inc})
 			decl++
 		}
+		// Имена, объявленные блоком со значением null: исполнять нечего,
+		// но неизвестными они быть не должны.
+		for _, n := range table.declared {
+			declare(pl.Declared, n)
+		}
 	}
 
 	// Записи самой секции — в порядке объявления в файле.
@@ -330,6 +383,12 @@ func buildPlan(scheme, kind string, m *registry.Mapper, blocks blockSet) (*Plan,
 	for _, n := range protoNames {
 		p := m.Params[n]
 		if p == nil {
+			// Запись со значением null — «параметр ЗНАЕМ, читать нечего».
+			// Исполнять нечего, но объявленным он быть обязан: иначе движок
+			// зовёт его неизвестным и вешает узлу uri_param_unknown на
+			// параметр, который секция перечислила своей рукой (spx у vless,
+			// корпус reality_tcp_no_flow).
+			declare(pl.Declared, n)
 			continue
 		}
 		all = append(all, Entry{Name: n, Param: p, Decl: decl})
@@ -350,6 +409,21 @@ func buildPlan(scheme, kind string, m *registry.Mapper, blocks blockSet) (*Plan,
 		// Имя параметра ссылки может отличаться от имени записи: запись
 		// читает `query.<name>`, и объявленным считается именно он.
 		for _, src := range e.Param.Source.All() {
+			if strings.HasPrefix(src, "query.") {
+				declare(pl.Declared, strings.TrimPrefix(src, "query."))
+			}
+		}
+	}
+
+	// Источник НАЛОЖЕННОГО пространства — тоже объявленный параметр ссылки.
+	//
+	// SPEC §3B.2 п.2: содержимое `extra` у xhttp перечислять не надо, это
+	// вложенный слой чужого диалекта, адресуемый через `source`. Но САМ
+	// параметр `extra` секция объявила — своим overlay, — и звать его
+	// неизвестным значит ругаться на то, что реестр прочитал (корпус
+	// uri/vless/xhttp_extra_*).
+	for i := range m.Overlays {
+		for _, src := range m.Overlays[i].Source.All() {
 			if strings.HasPrefix(src, "query.") {
 				declare(pl.Declared, strings.TrimPrefix(src, "query."))
 			}

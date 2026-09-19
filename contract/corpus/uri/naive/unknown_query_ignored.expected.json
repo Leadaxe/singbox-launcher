@@ -13,7 +13,12 @@
         "username": "user1"
       },
       "kind": "outbound",
-      "scheme": "naive"
+      "scheme": "naive",
+      "warnings": [
+        {
+          "code": "uri_param_unknown"
+        }
+      ]
     }
   ],
   "v": 1

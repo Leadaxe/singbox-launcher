@@ -139,6 +139,7 @@
   },
   "mappers": {
     "uri": {
+      "live": true,
       "body_source": "uri",
       "detect": {
         "scheme_in": [

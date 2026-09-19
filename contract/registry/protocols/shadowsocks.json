@@ -183,6 +183,7 @@
   },
   "mappers": {
     "uri": {
+      "live": true,
       "body_source": "uri",
       "detect": {
         "scheme_in": [
@@ -207,14 +208,17 @@
             "default": true
           },
           "decode": [
-            "percent",
-            "base64",
             {
-              "reparse": "authority"
+              "decoder": "percent",
+              "scope": "authority"
+            },
+            {
+              "decoder": "base64",
+              "scope": "authority"
             }
           ],
           "space": "url",
-          "impl": "До-SIP002: в base64 уехала вся запись 'method:password@host:port'. Фрагмент отрезается ДО декода."
+          "impl": "До-SIP002: в base64 уехала вся запись 'method:password@host:port'. Область authority объявлена ЯВНО (PRIMITIVES §0.10): метка '#…' стоит СНАРУЖИ base64 и открытым текстом, декодер «на весь текст» о неё спотыкался ('не base64' на кейсах legacy_base64 и legacy_full_base64). Прежний {reparse: authority} выражал ту же мысль задним числом — сначала испортить весь текст, потом перечитать; область применения говорит её прямо и снимает сам примитив reparse."
         }
       ],
       "userinfo": {
