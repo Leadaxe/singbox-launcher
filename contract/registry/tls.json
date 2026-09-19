@@ -1181,12 +1181,12 @@
       },
       "alpn": {
         "source": "json.streamSettings.tlsSettings.alpn",
-        "maps_to": "tls.alpn",
+        "maps_to": null,
         "list": {
           "sep": ",",
           "coerce_scalar": true
         },
-        "impl": "DELTAS D133-C9: сегодня читается ТОЛЬКО в hysteria-ветке (xray_hysteria.go:213-225); vless/vmess/trojan из Xray-конфига теряют alpn. Кандидат — поведение не меняется до решения владельца."
+        "impl": "DELTAS D133-C9, решение владельца 21.09.2026: с ОБЩЕГО блока alpn НЕ ПИШЕТСЯ. Читается он только у hysteria — и там запись объявлена в секции схемы (mappers.xray.hysteria2) со своим merge, а не здесь. Включить запись в общем блоке значило бы добавить tls.alpn всем vless/vmess/trojan из Xray-конфига разом: поведение меняется у трёх схем ради одной, и это отдельная дельта, а не побочный эффект перевода на движок. maps_to:null держит ЧТЕНИЕ объявленным (ключ не попадёт в json_field_unknown), не давая записи."
       },
       "fp": {
         "source": [

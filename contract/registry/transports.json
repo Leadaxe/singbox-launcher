@@ -1619,7 +1619,7 @@
       },
       "ws": {
         "path": {
-          "source": "json.wsSettings.path",
+          "source": "json.streamSettings.wsSettings.path",
           "extract": {
             "re": "^(?P<path>[^?]*)(?:\\?ed=(?P<ed>\\d+))?$",
             "into": {
@@ -1641,7 +1641,7 @@
           }
         },
         "host": {
-          "source": "json.wsSettings.host",
+          "source": "json.streamSettings.wsSettings.host",
           "maps_to": "transport.headers.Host",
           "when": {
             "transport.type": "ws"
@@ -1650,7 +1650,7 @@
       },
       "httpupgrade": {
         "path": {
-          "source": "json.httpupgradeSettings.path",
+          "source": "json.streamSettings.httpupgradeSettings.path",
           "extract": {
             "re": "^(?P<path>[^?]*)(?:\\?ed=\\d+)?$",
             "into": {
@@ -1662,7 +1662,7 @@
           }
         },
         "host": {
-          "source": "json.httpupgradeSettings.host",
+          "source": "json.streamSettings.httpupgradeSettings.host",
           "maps_to": "transport.host",
           "when": {
             "transport.type": "httpupgrade"
@@ -1671,14 +1671,14 @@
       },
       "http": {
         "path": {
-          "source": "json.httpSettings.path",
+          "source": "json.streamSettings.httpSettings.path",
           "maps_to": "transport.path",
           "when": {
             "transport.type": "http"
           }
         },
         "host": {
-          "source": "json.httpSettings.host",
+          "source": "json.streamSettings.httpSettings.host",
           "maps_to": "transport.host",
           "list": {
             "sep": ",",
@@ -1693,8 +1693,8 @@
       "grpc": {
         "serviceName": {
           "source": [
-            "json.grpcSettings.serviceName",
-            "json.grpcSettings.service_name"
+            "json.streamSettings.grpcSettings.serviceName",
+            "json.streamSettings.grpcSettings.service_name"
           ],
           "maps_to": "transport.service_name",
           "when": {
@@ -1703,40 +1703,526 @@
         }
       },
       "xhttp": {
-        "$settings": {
-          "source": [
-            "json.xhttpSettings",
-            "json.splithttpSettings"
-          ],
-          "flatten": [
-            "extra",
-            "xmux"
-          ],
-          "when": {
-            "transport.type": "xhttp"
-          },
-          "impl": "xhttpSettings ∥ splithttpSettings — один транспорт под двумя именами. flatten разворачивает вложенные extra и xmux в плоский слой (сегодня это делает xrayFlattenScalars вручную)."
-        },
+        "$note_v2": "SPEC 002 v2 на ВХОДЕ XRAY: тот же плоский набор полей XHTTP, что у ссылки, но источники — диалекта Xray. Транспорт живёт под двумя именами контейнера (xhttpSettings ∥ splithttpSettings), и каждое написание ключа ищется в обоих. Имена в конфиге camelCase (так их пишет Xray), в теле — snake_case ядра; оба написания перечислены source, регистр не значим. Булевы поля пишутся ТОЛЬКО когда истинны (bool_spelled снимает ложь), поэтому умолчание ядра = отсутствующий ключ. Таблица ЗЕРКАЛИТ blocks.uri.xhttp запись в запись: расходиться им нельзя, поле XHTTP одно и то же, разнится лишь диалект источника.",
+        "$note_extra": "Вложенный слой extra перечислен ПЕРВЫМ источником у каждой записи, КРОМЕ базовой тройки mode/path/host: у прочих ключей extra побеждает плоский слой, у тройки — наоборот. Это не наш выбор: сам Xray в SplitHTTPConfig.Build после разбора extra безусловно затирает тройку внешними значениями (extra.Host = c.Host и т.д.), то есть плоские поля выигрывают ДАЖЕ будучи пустыми (кейс 4PDA #1755, D-097). Порядок источников — то самое место, где это решение принимает САМА запись.",
         "mode": {
-          "source": "json.xhttpSettings.mode",
+          "source": [
+            "json.streamSettings.xhttpSettings.mode",
+            "json.streamSettings.xhttpSettings.mode",
+            "json.streamSettings.splithttpSettings.mode",
+            "json.streamSettings.splithttpSettings.mode"
+          ],
           "maps_to": "transport.mode",
           "when": {
             "transport.type": "xhttp"
-          }
+          },
+          "impl": "Базовая тройка: читается ТОЛЬКО плоский слой, одноимённый ключ из extra игнорируется целиком — см. $note_extra."
         },
         "path": {
-          "source": "json.xhttpSettings.path",
-          "maps_to": "transport.path",
+          "source": [
+            "json.streamSettings.xhttpSettings.path",
+            "json.streamSettings.xhttpSettings.path",
+            "json.streamSettings.splithttpSettings.path",
+            "json.streamSettings.splithttpSettings.path"
+          ],
+          "extract": {
+            "re": "^(?P<path>[^?]*)",
+            "into": {
+              "path": "transport.path"
+            }
+          },
           "when": {
             "transport.type": "xhttp"
-          }
+          },
+          "impl": "Базовая тройка: читается ТОЛЬКО плоский слой, одноимённый ключ из extra игнорируется целиком — см. $note_extra."
         },
         "host": {
-          "source": "json.xhttpSettings.host",
+          "source": [
+            "json.streamSettings.xhttpSettings.host",
+            "json.streamSettings.xhttpSettings.host",
+            "json.streamSettings.splithttpSettings.host",
+            "json.streamSettings.splithttpSettings.host"
+          ],
           "maps_to": "transport.host",
           "when": {
             "transport.type": "xhttp"
+          },
+          "impl": "Базовая тройка: читается ТОЛЬКО плоский слой, одноимённый ключ из extra игнорируется целиком — см. $note_extra."
+        },
+        "xPaddingBytes": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.xPaddingBytes",
+            "json.streamSettings.xhttpSettings.extra.x_padding_bytes",
+            "json.streamSettings.splithttpSettings.extra.xPaddingBytes",
+            "json.streamSettings.splithttpSettings.extra.x_padding_bytes",
+            "json.streamSettings.xhttpSettings.xPaddingBytes",
+            "json.streamSettings.xhttpSettings.x_padding_bytes",
+            "json.streamSettings.splithttpSettings.xPaddingBytes",
+            "json.streamSettings.splithttpSettings.x_padding_bytes"
+          ],
+          "maps_to": "transport.x_padding_bytes",
+          "when": {
+            "transport.type": "xhttp"
           }
+        },
+        "sessionPlacement": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.sessionPlacement",
+            "json.streamSettings.xhttpSettings.extra.session_placement",
+            "json.streamSettings.splithttpSettings.extra.sessionPlacement",
+            "json.streamSettings.splithttpSettings.extra.session_placement",
+            "json.streamSettings.xhttpSettings.sessionPlacement",
+            "json.streamSettings.xhttpSettings.session_placement",
+            "json.streamSettings.splithttpSettings.sessionPlacement",
+            "json.streamSettings.splithttpSettings.session_placement"
+          ],
+          "maps_to": "transport.session_placement",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "sessionKey": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.sessionKey",
+            "json.streamSettings.xhttpSettings.extra.session_key",
+            "json.streamSettings.splithttpSettings.extra.sessionKey",
+            "json.streamSettings.splithttpSettings.extra.session_key",
+            "json.streamSettings.xhttpSettings.sessionKey",
+            "json.streamSettings.xhttpSettings.session_key",
+            "json.streamSettings.splithttpSettings.sessionKey",
+            "json.streamSettings.splithttpSettings.session_key"
+          ],
+          "maps_to": "transport.session_key",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "seqPlacement": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.seqPlacement",
+            "json.streamSettings.xhttpSettings.extra.seq_placement",
+            "json.streamSettings.splithttpSettings.extra.seqPlacement",
+            "json.streamSettings.splithttpSettings.extra.seq_placement",
+            "json.streamSettings.xhttpSettings.seqPlacement",
+            "json.streamSettings.xhttpSettings.seq_placement",
+            "json.streamSettings.splithttpSettings.seqPlacement",
+            "json.streamSettings.splithttpSettings.seq_placement"
+          ],
+          "maps_to": "transport.seq_placement",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "seqKey": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.seqKey",
+            "json.streamSettings.xhttpSettings.extra.seq_key",
+            "json.streamSettings.splithttpSettings.extra.seqKey",
+            "json.streamSettings.splithttpSettings.extra.seq_key",
+            "json.streamSettings.xhttpSettings.seqKey",
+            "json.streamSettings.xhttpSettings.seq_key",
+            "json.streamSettings.splithttpSettings.seqKey",
+            "json.streamSettings.splithttpSettings.seq_key"
+          ],
+          "maps_to": "transport.seq_key",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "uplinkDataPlacement": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.uplinkDataPlacement",
+            "json.streamSettings.xhttpSettings.extra.uplink_data_placement",
+            "json.streamSettings.splithttpSettings.extra.uplinkDataPlacement",
+            "json.streamSettings.splithttpSettings.extra.uplink_data_placement",
+            "json.streamSettings.xhttpSettings.uplinkDataPlacement",
+            "json.streamSettings.xhttpSettings.uplink_data_placement",
+            "json.streamSettings.splithttpSettings.uplinkDataPlacement",
+            "json.streamSettings.splithttpSettings.uplink_data_placement"
+          ],
+          "maps_to": "transport.uplink_data_placement",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "uplinkDataKey": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.uplinkDataKey",
+            "json.streamSettings.xhttpSettings.extra.uplink_data_key",
+            "json.streamSettings.splithttpSettings.extra.uplinkDataKey",
+            "json.streamSettings.splithttpSettings.extra.uplink_data_key",
+            "json.streamSettings.xhttpSettings.uplinkDataKey",
+            "json.streamSettings.xhttpSettings.uplink_data_key",
+            "json.streamSettings.splithttpSettings.uplinkDataKey",
+            "json.streamSettings.splithttpSettings.uplink_data_key"
+          ],
+          "maps_to": "transport.uplink_data_key",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "uplinkChunkSize": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.uplinkChunkSize",
+            "json.streamSettings.xhttpSettings.extra.uplink_chunk_size",
+            "json.streamSettings.splithttpSettings.extra.uplinkChunkSize",
+            "json.streamSettings.splithttpSettings.extra.uplink_chunk_size",
+            "json.streamSettings.xhttpSettings.uplinkChunkSize",
+            "json.streamSettings.xhttpSettings.uplink_chunk_size",
+            "json.streamSettings.splithttpSettings.uplinkChunkSize",
+            "json.streamSettings.splithttpSettings.uplink_chunk_size"
+          ],
+          "maps_to": "transport.uplink_chunk_size",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "uplinkHTTPMethod": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.uplinkHTTPMethod",
+            "json.streamSettings.xhttpSettings.extra.uplink_http_method",
+            "json.streamSettings.splithttpSettings.extra.uplinkHTTPMethod",
+            "json.streamSettings.splithttpSettings.extra.uplink_http_method",
+            "json.streamSettings.xhttpSettings.uplinkHTTPMethod",
+            "json.streamSettings.xhttpSettings.uplink_http_method",
+            "json.streamSettings.splithttpSettings.uplinkHTTPMethod",
+            "json.streamSettings.splithttpSettings.uplink_http_method"
+          ],
+          "maps_to": "transport.uplink_http_method",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "xPaddingKey": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.xPaddingKey",
+            "json.streamSettings.xhttpSettings.extra.x_padding_key",
+            "json.streamSettings.splithttpSettings.extra.xPaddingKey",
+            "json.streamSettings.splithttpSettings.extra.x_padding_key",
+            "json.streamSettings.xhttpSettings.xPaddingKey",
+            "json.streamSettings.xhttpSettings.x_padding_key",
+            "json.streamSettings.splithttpSettings.xPaddingKey",
+            "json.streamSettings.splithttpSettings.x_padding_key"
+          ],
+          "maps_to": "transport.x_padding_key",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "xPaddingHeader": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.xPaddingHeader",
+            "json.streamSettings.xhttpSettings.extra.x_padding_header",
+            "json.streamSettings.splithttpSettings.extra.xPaddingHeader",
+            "json.streamSettings.splithttpSettings.extra.x_padding_header",
+            "json.streamSettings.xhttpSettings.xPaddingHeader",
+            "json.streamSettings.xhttpSettings.x_padding_header",
+            "json.streamSettings.splithttpSettings.xPaddingHeader",
+            "json.streamSettings.splithttpSettings.x_padding_header"
+          ],
+          "maps_to": "transport.x_padding_header",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "xPaddingPlacement": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.xPaddingPlacement",
+            "json.streamSettings.xhttpSettings.extra.x_padding_placement",
+            "json.streamSettings.splithttpSettings.extra.xPaddingPlacement",
+            "json.streamSettings.splithttpSettings.extra.x_padding_placement",
+            "json.streamSettings.xhttpSettings.xPaddingPlacement",
+            "json.streamSettings.xhttpSettings.x_padding_placement",
+            "json.streamSettings.splithttpSettings.xPaddingPlacement",
+            "json.streamSettings.splithttpSettings.x_padding_placement"
+          ],
+          "maps_to": "transport.x_padding_placement",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "xPaddingMethod": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.xPaddingMethod",
+            "json.streamSettings.xhttpSettings.extra.x_padding_method",
+            "json.streamSettings.splithttpSettings.extra.xPaddingMethod",
+            "json.streamSettings.splithttpSettings.extra.x_padding_method",
+            "json.streamSettings.xhttpSettings.xPaddingMethod",
+            "json.streamSettings.xhttpSettings.x_padding_method",
+            "json.streamSettings.splithttpSettings.xPaddingMethod",
+            "json.streamSettings.splithttpSettings.x_padding_method"
+          ],
+          "maps_to": "transport.x_padding_method",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "scMaxEachPostBytes": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.scMaxEachPostBytes",
+            "json.streamSettings.xhttpSettings.extra.sc_max_each_post_bytes",
+            "json.streamSettings.splithttpSettings.extra.scMaxEachPostBytes",
+            "json.streamSettings.splithttpSettings.extra.sc_max_each_post_bytes",
+            "json.streamSettings.xhttpSettings.scMaxEachPostBytes",
+            "json.streamSettings.xhttpSettings.sc_max_each_post_bytes",
+            "json.streamSettings.splithttpSettings.scMaxEachPostBytes",
+            "json.streamSettings.splithttpSettings.sc_max_each_post_bytes"
+          ],
+          "maps_to": "transport.sc_max_each_post_bytes",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "scMinPostsIntervalMs": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.scMinPostsIntervalMs",
+            "json.streamSettings.xhttpSettings.extra.sc_min_posts_interval_ms",
+            "json.streamSettings.splithttpSettings.extra.scMinPostsIntervalMs",
+            "json.streamSettings.splithttpSettings.extra.sc_min_posts_interval_ms",
+            "json.streamSettings.xhttpSettings.scMinPostsIntervalMs",
+            "json.streamSettings.xhttpSettings.sc_min_posts_interval_ms",
+            "json.streamSettings.splithttpSettings.scMinPostsIntervalMs",
+            "json.streamSettings.splithttpSettings.sc_min_posts_interval_ms"
+          ],
+          "maps_to": "transport.sc_min_posts_interval_ms",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "scStreamUpServerSecs": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.scStreamUpServerSecs",
+            "json.streamSettings.xhttpSettings.extra.sc_stream_up_server_secs",
+            "json.streamSettings.splithttpSettings.extra.scStreamUpServerSecs",
+            "json.streamSettings.splithttpSettings.extra.sc_stream_up_server_secs",
+            "json.streamSettings.xhttpSettings.scStreamUpServerSecs",
+            "json.streamSettings.xhttpSettings.sc_stream_up_server_secs",
+            "json.streamSettings.splithttpSettings.scStreamUpServerSecs",
+            "json.streamSettings.splithttpSettings.sc_stream_up_server_secs"
+          ],
+          "maps_to": "transport.sc_stream_up_server_secs",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "noGRPCHeader": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.noGRPCHeader",
+            "json.streamSettings.xhttpSettings.extra.no_grpc_header",
+            "json.streamSettings.splithttpSettings.extra.noGRPCHeader",
+            "json.streamSettings.splithttpSettings.extra.no_grpc_header",
+            "json.streamSettings.xhttpSettings.noGRPCHeader",
+            "json.streamSettings.xhttpSettings.no_grpc_header",
+            "json.streamSettings.splithttpSettings.noGRPCHeader",
+            "json.streamSettings.splithttpSettings.no_grpc_header"
+          ],
+          "maps_to": "transport.no_grpc_header",
+          "type": "bool_spelled",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "noSSEHeader": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.noSSEHeader",
+            "json.streamSettings.xhttpSettings.extra.no_sse_header",
+            "json.streamSettings.splithttpSettings.extra.noSSEHeader",
+            "json.streamSettings.splithttpSettings.extra.no_sse_header",
+            "json.streamSettings.xhttpSettings.noSSEHeader",
+            "json.streamSettings.xhttpSettings.no_sse_header",
+            "json.streamSettings.splithttpSettings.noSSEHeader",
+            "json.streamSettings.splithttpSettings.no_sse_header"
+          ],
+          "maps_to": "transport.no_sse_header",
+          "type": "bool_spelled",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "xPaddingObfsMode": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.xPaddingObfsMode",
+            "json.streamSettings.xhttpSettings.extra.x_padding_obfs_mode",
+            "json.streamSettings.splithttpSettings.extra.xPaddingObfsMode",
+            "json.streamSettings.splithttpSettings.extra.x_padding_obfs_mode",
+            "json.streamSettings.xhttpSettings.xPaddingObfsMode",
+            "json.streamSettings.xhttpSettings.x_padding_obfs_mode",
+            "json.streamSettings.splithttpSettings.xPaddingObfsMode",
+            "json.streamSettings.splithttpSettings.x_padding_obfs_mode"
+          ],
+          "maps_to": "transport.x_padding_obfs_mode",
+          "type": "bool_spelled",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "scMaxBufferedPosts": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.scMaxBufferedPosts",
+            "json.streamSettings.xhttpSettings.extra.sc_max_buffered_posts",
+            "json.streamSettings.splithttpSettings.extra.scMaxBufferedPosts",
+            "json.streamSettings.splithttpSettings.extra.sc_max_buffered_posts",
+            "json.streamSettings.xhttpSettings.scMaxBufferedPosts",
+            "json.streamSettings.xhttpSettings.sc_max_buffered_posts",
+            "json.streamSettings.splithttpSettings.scMaxBufferedPosts",
+            "json.streamSettings.splithttpSettings.sc_max_buffered_posts"
+          ],
+          "maps_to": "transport.sc_max_buffered_posts",
+          "type": "int",
+          "when": {
+            "transport.type": "xhttp"
+          }
+        },
+        "maxConcurrency": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.xmux.maxConcurrency",
+            "json.streamSettings.xhttpSettings.extra.xmux.max_concurrency",
+            "json.streamSettings.splithttpSettings.extra.xmux.maxConcurrency",
+            "json.streamSettings.splithttpSettings.extra.xmux.max_concurrency",
+            "json.streamSettings.xhttpSettings.xmux.maxConcurrency",
+            "json.streamSettings.xhttpSettings.xmux.max_concurrency",
+            "json.streamSettings.splithttpSettings.xmux.maxConcurrency",
+            "json.streamSettings.splithttpSettings.xmux.max_concurrency",
+            "json.streamSettings.xhttpSettings.extra.maxConcurrency",
+            "json.streamSettings.xhttpSettings.extra.max_concurrency",
+            "json.streamSettings.splithttpSettings.extra.maxConcurrency",
+            "json.streamSettings.splithttpSettings.extra.max_concurrency",
+            "json.streamSettings.xhttpSettings.maxConcurrency",
+            "json.streamSettings.xhttpSettings.max_concurrency",
+            "json.streamSettings.splithttpSettings.maxConcurrency",
+            "json.streamSettings.splithttpSettings.max_concurrency"
+          ],
+          "maps_to": "transport.xmux.max_concurrency",
+          "when": {
+            "transport.type": "xhttp"
+          },
+          "impl": "У Xray xmux — НАСТОЯЩИЙ ВЛОЖЕННЫЙ ОБЪЕКТ (в ссылке те же члены приезжают плоскими ключами), и лежать он может как внутри extra, так и рядом с ним. Порядок источников повторяет общее правило слоёв: extra раньше плоского. Плоские написания оставлены последними — ими пишут конвертеры, разворачивающие xmux в один уровень."
+        },
+        "maxConnections": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.xmux.maxConnections",
+            "json.streamSettings.xhttpSettings.extra.xmux.max_connections",
+            "json.streamSettings.splithttpSettings.extra.xmux.maxConnections",
+            "json.streamSettings.splithttpSettings.extra.xmux.max_connections",
+            "json.streamSettings.xhttpSettings.xmux.maxConnections",
+            "json.streamSettings.xhttpSettings.xmux.max_connections",
+            "json.streamSettings.splithttpSettings.xmux.maxConnections",
+            "json.streamSettings.splithttpSettings.xmux.max_connections",
+            "json.streamSettings.xhttpSettings.extra.maxConnections",
+            "json.streamSettings.xhttpSettings.extra.max_connections",
+            "json.streamSettings.splithttpSettings.extra.maxConnections",
+            "json.streamSettings.splithttpSettings.extra.max_connections",
+            "json.streamSettings.xhttpSettings.maxConnections",
+            "json.streamSettings.xhttpSettings.max_connections",
+            "json.streamSettings.splithttpSettings.maxConnections",
+            "json.streamSettings.splithttpSettings.max_connections"
+          ],
+          "maps_to": "transport.xmux.max_connections",
+          "when": {
+            "transport.type": "xhttp"
+          },
+          "impl": "У Xray xmux — НАСТОЯЩИЙ ВЛОЖЕННЫЙ ОБЪЕКТ (в ссылке те же члены приезжают плоскими ключами), и лежать он может как внутри extra, так и рядом с ним. Порядок источников повторяет общее правило слоёв: extra раньше плоского. Плоские написания оставлены последними — ими пишут конвертеры, разворачивающие xmux в один уровень."
+        },
+        "cMaxReuseTimes": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.xmux.cMaxReuseTimes",
+            "json.streamSettings.xhttpSettings.extra.xmux.c_max_reuse_times",
+            "json.streamSettings.splithttpSettings.extra.xmux.cMaxReuseTimes",
+            "json.streamSettings.splithttpSettings.extra.xmux.c_max_reuse_times",
+            "json.streamSettings.xhttpSettings.xmux.cMaxReuseTimes",
+            "json.streamSettings.xhttpSettings.xmux.c_max_reuse_times",
+            "json.streamSettings.splithttpSettings.xmux.cMaxReuseTimes",
+            "json.streamSettings.splithttpSettings.xmux.c_max_reuse_times",
+            "json.streamSettings.xhttpSettings.extra.cMaxReuseTimes",
+            "json.streamSettings.xhttpSettings.extra.c_max_reuse_times",
+            "json.streamSettings.splithttpSettings.extra.cMaxReuseTimes",
+            "json.streamSettings.splithttpSettings.extra.c_max_reuse_times",
+            "json.streamSettings.xhttpSettings.cMaxReuseTimes",
+            "json.streamSettings.xhttpSettings.c_max_reuse_times",
+            "json.streamSettings.splithttpSettings.cMaxReuseTimes",
+            "json.streamSettings.splithttpSettings.c_max_reuse_times"
+          ],
+          "maps_to": "transport.xmux.c_max_reuse_times",
+          "when": {
+            "transport.type": "xhttp"
+          },
+          "impl": "У Xray xmux — НАСТОЯЩИЙ ВЛОЖЕННЫЙ ОБЪЕКТ (в ссылке те же члены приезжают плоскими ключами), и лежать он может как внутри extra, так и рядом с ним. Порядок источников повторяет общее правило слоёв: extra раньше плоского. Плоские написания оставлены последними — ими пишут конвертеры, разворачивающие xmux в один уровень."
+        },
+        "hMaxRequestTimes": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.xmux.hMaxRequestTimes",
+            "json.streamSettings.xhttpSettings.extra.xmux.h_max_request_times",
+            "json.streamSettings.splithttpSettings.extra.xmux.hMaxRequestTimes",
+            "json.streamSettings.splithttpSettings.extra.xmux.h_max_request_times",
+            "json.streamSettings.xhttpSettings.xmux.hMaxRequestTimes",
+            "json.streamSettings.xhttpSettings.xmux.h_max_request_times",
+            "json.streamSettings.splithttpSettings.xmux.hMaxRequestTimes",
+            "json.streamSettings.splithttpSettings.xmux.h_max_request_times",
+            "json.streamSettings.xhttpSettings.extra.hMaxRequestTimes",
+            "json.streamSettings.xhttpSettings.extra.h_max_request_times",
+            "json.streamSettings.splithttpSettings.extra.hMaxRequestTimes",
+            "json.streamSettings.splithttpSettings.extra.h_max_request_times",
+            "json.streamSettings.xhttpSettings.hMaxRequestTimes",
+            "json.streamSettings.xhttpSettings.h_max_request_times",
+            "json.streamSettings.splithttpSettings.hMaxRequestTimes",
+            "json.streamSettings.splithttpSettings.h_max_request_times"
+          ],
+          "maps_to": "transport.xmux.h_max_request_times",
+          "when": {
+            "transport.type": "xhttp"
+          },
+          "impl": "У Xray xmux — НАСТОЯЩИЙ ВЛОЖЕННЫЙ ОБЪЕКТ (в ссылке те же члены приезжают плоскими ключами), и лежать он может как внутри extra, так и рядом с ним. Порядок источников повторяет общее правило слоёв: extra раньше плоского. Плоские написания оставлены последними — ими пишут конвертеры, разворачивающие xmux в один уровень."
+        },
+        "hMaxReusableSecs": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.xmux.hMaxReusableSecs",
+            "json.streamSettings.xhttpSettings.extra.xmux.h_max_reusable_secs",
+            "json.streamSettings.splithttpSettings.extra.xmux.hMaxReusableSecs",
+            "json.streamSettings.splithttpSettings.extra.xmux.h_max_reusable_secs",
+            "json.streamSettings.xhttpSettings.xmux.hMaxReusableSecs",
+            "json.streamSettings.xhttpSettings.xmux.h_max_reusable_secs",
+            "json.streamSettings.splithttpSettings.xmux.hMaxReusableSecs",
+            "json.streamSettings.splithttpSettings.xmux.h_max_reusable_secs",
+            "json.streamSettings.xhttpSettings.extra.hMaxReusableSecs",
+            "json.streamSettings.xhttpSettings.extra.h_max_reusable_secs",
+            "json.streamSettings.splithttpSettings.extra.hMaxReusableSecs",
+            "json.streamSettings.splithttpSettings.extra.h_max_reusable_secs",
+            "json.streamSettings.xhttpSettings.hMaxReusableSecs",
+            "json.streamSettings.xhttpSettings.h_max_reusable_secs",
+            "json.streamSettings.splithttpSettings.hMaxReusableSecs",
+            "json.streamSettings.splithttpSettings.h_max_reusable_secs"
+          ],
+          "maps_to": "transport.xmux.h_max_reusable_secs",
+          "when": {
+            "transport.type": "xhttp"
+          },
+          "impl": "У Xray xmux — НАСТОЯЩИЙ ВЛОЖЕННЫЙ ОБЪЕКТ (в ссылке те же члены приезжают плоскими ключами), и лежать он может как внутри extra, так и рядом с ним. Порядок источников повторяет общее правило слоёв: extra раньше плоского. Плоские написания оставлены последними — ими пишут конвертеры, разворачивающие xmux в один уровень."
+        },
+        "hKeepAlivePeriod": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.xmux.hKeepAlivePeriod",
+            "json.streamSettings.xhttpSettings.extra.xmux.h_keep_alive_period",
+            "json.streamSettings.splithttpSettings.extra.xmux.hKeepAlivePeriod",
+            "json.streamSettings.splithttpSettings.extra.xmux.h_keep_alive_period",
+            "json.streamSettings.xhttpSettings.xmux.hKeepAlivePeriod",
+            "json.streamSettings.xhttpSettings.xmux.h_keep_alive_period",
+            "json.streamSettings.splithttpSettings.xmux.hKeepAlivePeriod",
+            "json.streamSettings.splithttpSettings.xmux.h_keep_alive_period",
+            "json.streamSettings.xhttpSettings.extra.hKeepAlivePeriod",
+            "json.streamSettings.xhttpSettings.extra.h_keep_alive_period",
+            "json.streamSettings.splithttpSettings.extra.hKeepAlivePeriod",
+            "json.streamSettings.splithttpSettings.extra.h_keep_alive_period",
+            "json.streamSettings.xhttpSettings.hKeepAlivePeriod",
+            "json.streamSettings.xhttpSettings.h_keep_alive_period",
+            "json.streamSettings.splithttpSettings.hKeepAlivePeriod",
+            "json.streamSettings.splithttpSettings.h_keep_alive_period"
+          ],
+          "maps_to": "transport.xmux.h_keep_alive_period",
+          "type": "int",
+          "when": {
+            "transport.type": "xhttp"
+          },
+          "impl": "У Xray xmux — НАСТОЯЩИЙ ВЛОЖЕННЫЙ ОБЪЕКТ (в ссылке те же члены приезжают плоскими ключами), и лежать он может как внутри extra, так и рядом с ним. Порядок источников повторяет общее правило слоёв: extra раньше плоского. Плоские написания оставлены последними — ими пишут конвертеры, разворачивающие xmux в один уровень."
         }
       }
     }

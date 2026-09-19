@@ -217,23 +217,76 @@
       }
     },
     "xray": {
+      "$note": "ЗНАК ЗДЕСЬ — ЗНАЧАЩИЙ, и это диалект Xray, а не ядра. tcpKeepAliveIdle/Interval: положительное = длительность, 0 = «НЕ ЗАДАНО» (поле не пишется, действует дефолт ядра), отрицательное = «ВЫКЛЮЧИТЬ keep-alive» (у ядра это отдельное булево поле disable_tcp_keep_alive, а не отрицательная длительность — отрицательный duration ядро не примет). Три исхода одного числа выражены записями под `when` вместо ветки в коде: gt 0 пишет длительность, lt 0 поднимает флаг, ноль не проходит ни одно условие и записи не даёт. `when` не дубль min/max реестра: min/max СУДЯТ значение и ставят код, здесь же негодных значений нет вовсе — любой знак законен, он лишь выбирает, какую запись исполнить. ДВА НАПИСАНИЯ КЛЮЧА — ДВЕ ПАРЫ ЗАПИСЕЙ, а не одна запись с двумя источниками: `when` сравнивает ОДИН источник по имени, и перечисли мы оба написания ключами одного условия, они соединились бы логическим И — отсутствующее написание дало бы false и сняло запись целиком. Фолбэк-цепочка `source` решает, ОТКУДА взять значение, но не умеет сказать, у КОТОРОГО написания проверять знак; пока это так, честнее развернуть пары, чем прятать вторую форму. Написание camelCase — каноническое (так пишет сам Xray), snake_case принимается фолбэком.",
       "tcp_keep_alive": {
-        "source": [
-          "json.streamSettings.sockopt.tcpKeepAliveIdle",
-          "json.streamSettings.sockopt.tcp_keep_alive_idle"
-        ],
+        "source": "json.streamSettings.sockopt.tcpKeepAliveIdle",
         "maps_to": "tcp_keep_alive",
         "type": "duration",
-        "impl": "У Xray keep-alive живёт в streamSettings.sockopt и измеряется ГОЛЫМИ СЕКУНДАМИ (tcpKeepAliveIdle: 30), у ядра — duration (\"30s\"). Нормализация написания (голое число → секунды) переехала в body.fields normalize duration_bare_seconds: это правило ЗНАЧЕНИЯ, и оно обязано действовать на всех входах, а не только на ссылке (SPEC 133 §6.0, как cidr_prefix/base64_std в D133-22)."
+        "when": {
+          "json.streamSettings.sockopt.tcpKeepAliveIdle": {
+            "gt": 0
+          }
+        },
+        "impl": "У Xray keep-alive живёт в streamSettings.sockopt и измеряется ГОЛЫМИ СЕКУНДАМИ (tcpKeepAliveIdle: 30), у ядра — duration (\"30s\"). Нормализация написания (голое число → секунды) переехала в body.fields normalize duration_bare_seconds: это правило ЗНАЧЕНИЯ, и оно обязано действовать на всех входах, а не только на ссылке (SPEC 133 §6.0, как cidr_prefix/base64_std в D133-22). Гейт gt:0 отсекает и ноль («не задано»), и отрицательное (его ведёт disable_tcp_keep_alive)."
+      },
+      "tcp_keep_alive_snake": {
+        "source": "json.streamSettings.sockopt.tcp_keep_alive_idle",
+        "maps_to": "tcp_keep_alive",
+        "type": "duration",
+        "when": {
+          "json.streamSettings.sockopt.tcp_keep_alive_idle": {
+            "gt": 0
+          }
+        },
+        "impl": "Второе написание того же ключа — см. $note блока: знак проверяется у КОНКРЕТНОГО написания, поэтому пара записей, а не одна с фолбэк-цепочкой. Путь тела тот же; спор за него решают общие priority/merge, и camelCase объявлен раньше."
+      },
+      "disable_tcp_keep_alive": {
+        "source": "json.streamSettings.sockopt.tcpKeepAliveIdle",
+        "maps_to": null,
+        "implies": {
+          "disable_tcp_keep_alive": true
+        },
+        "when": {
+          "json.streamSettings.sockopt.tcpKeepAliveIdle": {
+            "lt": 0
+          }
+        },
+        "impl": "Отрицательный idle у Xray означает «keep-alive выключить», и у ядра это ОТДЕЛЬНОЕ БУЛЕВО поле: перенести знак как длительность нельзя — badoption.Duration отрицательное значение не принимает, узел бы упал. Значение НЕ ПИШЕТСЯ (maps_to: null), флаг ставит implies — само отрицательное число в тело не едет ни в каком виде. Фиксированное значение выражено через implies, а не новым примитивом «константа»: implies ровно это и делает, и на ту же запись действует общий спор за путь. Интервал своего выключателя у ядра не имеет, поэтому отрицательный tcpKeepAliveInterval просто не пишется (см. гейт у записи интервала)."
+      },
+      "disable_tcp_keep_alive_snake": {
+        "source": "json.streamSettings.sockopt.tcp_keep_alive_idle",
+        "maps_to": null,
+        "implies": {
+          "disable_tcp_keep_alive": true
+        },
+        "when": {
+          "json.streamSettings.sockopt.tcp_keep_alive_idle": {
+            "lt": 0
+          }
+        },
+        "impl": "Второе написание — см. $note блока."
       },
       "tcp_keep_alive_interval": {
-        "source": [
-          "json.streamSettings.sockopt.tcpKeepAliveInterval",
-          "json.streamSettings.sockopt.tcp_keep_alive_interval"
-        ],
+        "source": "json.streamSettings.sockopt.tcpKeepAliveInterval",
         "maps_to": "tcp_keep_alive_interval",
         "type": "duration",
-        "impl": "У Xray keep-alive живёт в streamSettings.sockopt и измеряется ГОЛЫМИ СЕКУНДАМИ (tcpKeepAliveIdle: 30), у ядра — duration (\"30s\"). Нормализация написания (голое число → секунды) переехала в body.fields normalize duration_bare_seconds: это правило ЗНАЧЕНИЯ, и оно обязано действовать на всех входах, а не только на ссылке (SPEC 133 §6.0, как cidr_prefix/base64_std в D133-22)."
+        "when": {
+          "json.streamSettings.sockopt.tcpKeepAliveInterval": {
+            "gt": 0
+          }
+        },
+        "impl": "У Xray keep-alive живёт в streamSettings.sockopt и измеряется ГОЛЫМИ СЕКУНДАМИ, у ядра — duration. Нормализация голого числа — в body.fields (duration_bare_seconds). Гейт gt:0: ноль = «не задано», а отрицательный интервал ОТДЕЛЬНОГО выключателя у ядра не имеет (disable_tcp_keep_alive снимает keep-alive целиком и вешается только на idle), поэтому он не пишется вовсе — кейс корпуса sockopt_keepalive_negative_interval."
+      },
+      "tcp_keep_alive_interval_snake": {
+        "source": "json.streamSettings.sockopt.tcp_keep_alive_interval",
+        "maps_to": "tcp_keep_alive_interval",
+        "type": "duration",
+        "when": {
+          "json.streamSettings.sockopt.tcp_keep_alive_interval": {
+            "gt": 0
+          }
+        },
+        "impl": "Второе написание — см. $note блока."
       }
     }
   }
