@@ -265,6 +265,12 @@ type coreRejectLoop struct {
 	// noPromote — не заменять config.json (превью Final: кандидат только
 	// для check, боевой файл не трогаем).
 	noPromote bool
+	// forCheck — вид конфига, который уходит на check, если проверять сам
+	// конфиг нельзя: у конфига удалённой машины rule_set[].path ведёт в ЕЁ
+	// файловую систему, и локальное ядро такой файл не откроет. На check
+	// идёт вид с нашими путями, в бой — исходный конфиг. nil = проверяется
+	// сам конфиг.
+	forCheck func([]byte) []byte
 }
 
 // coreRejectOutcome — итог прохода.
@@ -309,7 +315,11 @@ func (l *coreRejectLoop) run(first buildRound, rebuild func() (buildRound, error
 
 	for {
 		out.Rounds++
-		candidate, err := writeCandidate(l.configPath, round.ConfigJSON)
+		checkJSON := round.ConfigJSON
+		if l.forCheck != nil {
+			checkJSON = l.forCheck(round.ConfigJSON)
+		}
+		candidate, err := writeCandidate(l.configPath, checkJSON)
 		if err != nil {
 			return out, err
 		}
@@ -321,6 +331,13 @@ func (l *coreRejectLoop) run(first buildRound, rebuild func() (buildRound, error
 				removeCandidate(candidate)
 				out.Promoted = true
 				return out, nil
+			}
+			if l.forCheck != nil {
+				// Проверялся вид с подменёнными путями — в бой идёт исходный.
+				if _, err := writeCandidate(l.configPath, round.ConfigJSON); err != nil {
+					removeCandidate(candidate)
+					return out, err
+				}
 			}
 			if err := promoteCandidate(candidate, l.configPath); err != nil {
 				removeCandidate(candidate)
@@ -533,6 +550,8 @@ type RejectLoopInput struct {
 	Disabler    NodeDisabler
 	Decide      func(disabled int) bool
 	Progress    func(disabled int)
+	// ForCheck — см. coreRejectLoop.forCheck; nil = проверяется сам конфиг.
+	ForCheck func([]byte) []byte
 }
 
 // RejectLoopResult — итог прохода для вызывающего вне core.
@@ -558,6 +577,7 @@ func RunRejectLoop(in RejectLoopInput) (RejectLoopResult, error) {
 		configPath: in.ConfigPath,
 		disabler:   in.Disabler,
 		noPromote:  in.NoPromote,
+		forCheck:   in.ForCheck,
 	}
 	if in.Decide != nil {
 		loop.decide = coreRejectDecider(in.Decide)

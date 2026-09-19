@@ -457,6 +457,30 @@ func applyServersFilter(
 	return out
 }
 
+// visibleProxiesAfterNameSort — порядок «отсортировать полный список → отфильтровать».
+// Панель Servers держит тот же пайплайн в памяти; кэш видимого среза обязан
+// сбрасываться при смене порядка, иначе фильтр показывает устаревшую проекцию.
+func visibleProxiesAfterNameSort(
+	all []api.ProxyInfo,
+	facets map[string]serversNodeFacets,
+	f serversFilterState,
+	keep func(name string) bool,
+	ascending bool,
+) []api.ProxyInfo {
+	sorted := make([]api.ProxyInfo, len(all))
+	copy(sorted, all)
+	if ascending {
+		sort.Slice(sorted, func(i, j int) bool {
+			return sorted[i].DisplayOrName() < sorted[j].DisplayOrName()
+		})
+	} else {
+		sort.Slice(sorted, func(i, j int) bool {
+			return sorted[i].DisplayOrName() > sorted[j].DisplayOrName()
+		})
+	}
+	return applyServersFilter(sorted, facets, f, keep)
+}
+
 // serversViewCacheKey — дешёвый ключ кэша видимого среза.
 //
 // Сравнимый тип (все поля — значения): панель сверяет его оператором `==`,

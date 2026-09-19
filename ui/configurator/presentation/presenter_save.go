@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -54,6 +55,7 @@ import (
 const (
 	saveDialogSuccessMessageText = "State saved to %s\n\nConfiguration will be rebuilt on next Update or Restart."
 	saveRemoteNeedsConnectText   = "Connect to this machine first: its config points at the machine's own resource store, and that path comes from the daemon when you connect."
+	saveRemoteRejectedText       = "The core rejected this config. The file was written, but the machine will refuse it on Deploy. Fix the problem below and save again."
 	saveRemoteNeedsParseText     = "Could not read the subscriptions for this target, so the config would contain no proxy nodes. Check the sources on the Sources tab and try again."
 )
 
@@ -414,28 +416,47 @@ func (p *WizardPresenter) writeRemoteConfig() (string, error) {
 	// Кандидат → check → атомарная замена (SPEC 132 волна 6А). Выключения
 	// пишутся в черновик тем же адаптером, что на Final. Локальные
 	// dirty-маркеры не поднимаются — этот путь их и не трогает.
-	checked, disabled, loopErr := p.runDraftRejectLoop(configText, outPath, false, nil)
+	res, loopErr := p.runDraftRejectLoop(configText, outPath, false, nil)
 	if loopErr != nil {
 		debuglog.ErrorLog("exportRemoteConfig: reject loop: %v", loopErr)
 		return "", loopErr
 	}
-	if checked != "" {
-		configText = checked
+	if res.Accepted != "" {
+		configText = res.Accepted
 	}
-	if _, err := os.Stat(outPath); err == nil {
-		debuglog.InfoLog("exportRemoteConfig: wrote %s (%d bytes, disabled=%d)", outPath, len(configText), len(disabled))
+	if res.Promoted {
+		debuglog.InfoLog("exportRemoteConfig: wrote %s (%d bytes, disabled=%d)", outPath, len(configText), len(res.Disabled))
 		return outPath, nil
 	}
-	// Цикл не заменил файл (Stop / ошибка не про узел). Последний кандидат
-	// после Stop всё же пишем: state.json уже сохранён, Deploy иначе унесёт
-	// прошлую сборку.
+	// Цикл не заменил файл (Stop / отказ не про узел). Последний кандидат всё
+	// же пишем: state.json уже сохранён, Deploy иначе унесёт прошлую сборку.
+	// Признак — Promoted, а не наличие файла: от прошлого Save он лежит на
+	// месте всегда, и проверка по os.Stat делала эту ветку мёртвой.
+	if res.CheckErr != nil {
+		debuglog.WarnLog("exportRemoteConfig: the core rejected the config, writing it anyway: %v", res.CheckErr)
+	}
 	if err := os.WriteFile(outPath, []byte(configText), platform.DefaultFileMode); err != nil {
 		debuglog.ErrorLog("exportRemoteConfig: write %s: %v", outPath, err)
 		return "", err
 	}
-	debuglog.InfoLog("exportRemoteConfig: wrote %s (%d bytes, disabled=%d)", outPath, len(configText), len(disabled))
+	debuglog.InfoLog("exportRemoteConfig: wrote %s (%d bytes, disabled=%d)", outPath, len(configText), len(res.Disabled))
+	// Отказ ядра — не тихий: файл записан, но машина на Deploy его не примет.
+	// После Stop человек отказ уже видел в диалоге предела.
+	if res.CheckErr != nil && !res.StoppedByHuman {
+		return outPath, &remoteConfigRejectedError{cause: res.CheckErr}
+	}
 	return outPath, nil
 }
+
+// remoteConfigRejectedError — конфиг машины записан, но ядро его не приняло.
+// Отдельный тип, потому что это не провал записи: outPath при нём валиден.
+type remoteConfigRejectedError struct{ cause error }
+
+func (e *remoteConfigRejectedError) Error() string {
+	return locale.T(saveRemoteRejectedText) + "\n\n" + strings.TrimSpace(e.cause.Error())
+}
+
+func (e *remoteConfigRejectedError) Unwrap() error { return e.cause }
 
 // MaterializeAfterClose — материализация только что сохранённого state
 // после закрытия окна визарда: та же развилка по цели, что у Save внутри
@@ -458,8 +479,14 @@ func (p *WizardPresenter) MaterializeAfterClose() {
 		if _, err := p.writeRemoteConfig(); err != nil {
 			debuglog.WarnLog("Close→Save: remote config for machine %q not written: %v", p.ConfigMachineID(), err)
 			if ac.UIService != nil && ac.UIService.MainWindow != nil {
+				shown := fmt.Errorf("%s: %w", locale.T("Failed to build the machine's config"), err)
+				// Отказ ядра — не провал сборки: файл записан, текст у ошибки свой.
+				var rejected *remoteConfigRejectedError
+				if errors.As(err, &rejected) {
+					shown = err
+				}
 				p.UpdateUI(func() {
-					dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Failed to build the machine's config"), err), ac.UIService.MainWindow)
+					dialog.ShowError(shown, ac.UIService.MainWindow)
 				})
 			}
 		}
