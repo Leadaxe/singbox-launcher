@@ -278,7 +278,14 @@ func (b *DaemonBackend) RestartVPN() {
 func (b *DaemonBackend) applyCurrentConfig(caller string, forced bool) {
 	b.applyMu.Lock()
 	defer b.applyMu.Unlock()
-	atomic.StoreInt32(&b.rejectTries, 0)
+	// Сброс — только у настоящего нового захода (Start/Restart). Заход
+	// "core-reject-fatal" — это повтор apply ВНУТРИ того же цикла FATAL→
+	// выключили→apply, счётчик там должен копиться, а не обнуляться, иначе
+	// daemonRejectStartCap не защищает от бесконечной пары
+	// «применили → FATAL → выключили → применили» (SPEC 132 §5, ловушка 8).
+	if caller != "core-reject-fatal" {
+		atomic.StoreInt32(&b.rejectTries, 0)
+	}
 	for {
 		if !b.applyOnce(caller, forced) {
 			return
