@@ -571,7 +571,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **ECH from the link removed**
 
-- **What happened:** The link carried an Xray-style ECH parameter ({query_name}): it holds another client's key, and the handshake with it would fail. The parameter was removed and the node connects without ECH. A tls.ech block from a sing-box configuration is not affected.
+- **What happened:** The link carried an Xray-style ECH parameter ({query_name}={value}): it holds another client's key, and the handshake with it would fail. The parameter was removed and the node connects without ECH. A tls.ech block from a sing-box configuration is not affected.
 - **Why it happens:** The parameter comes from an Xray-style link: Xray passes an ECH key inside the link itself, while sing-box does not read it there. The key in it belongs to another client's configuration, so a handshake with it would fail anyway.
 - **What you can do:**
   - Nothing to do: the node connects without ECH, exactly as it would in any sing-box client.
