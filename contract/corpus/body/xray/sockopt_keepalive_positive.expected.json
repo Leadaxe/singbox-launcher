@@ -7,6 +7,8 @@
       "entry": {
         "server": "a.example",
         "server_port": 443,
+        "tcp_keep_alive": "30s",
+        "tcp_keep_alive_interval": "15s",
         "type": "vless",
         "uuid": "11111111-2222-3333-4444-555555555555"
       },

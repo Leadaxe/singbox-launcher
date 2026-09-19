@@ -86,30 +86,18 @@ func xrayUnsupportedProtocol(err error) (string, bool) {
 // для поддерживаемого протокола с битым содержимым — обычную ошибку с настоящей
 // причиной.
 func xrayNodeFromOutbound(ob map[string]interface{}, label string) (*configtypes.ParsedNode, error) {
-	protocol := strings.ToLower(strings.TrimSpace(xrayMapString(ob, "protocol")))
-	if protocol == "" {
-		return nil, fmt.Errorf("missing protocol")
+	// Разбор ведёт ДВИЖОК реестра: какая схема забирает элемент, решает
+	// `detect` секции по полю `protocol`, а не список имён здесь. Списка
+	// схем в этом файле больше нет — он и был тем скрытым диспетчером
+	// диалекта, ради снятия которого затевалась кампания (SPEC 133).
+	node, err, handled := parseXrayElementByEngine(ob, label)
+	if handled {
+		return node, err
 	}
-	if IsXrayServiceProtocol(protocol) {
-		return nil, nil
-	}
-
-	switch protocol {
-	case "vless":
-		return xrayBuildVLESSFromOutbound(ob, label)
-	case "vmess":
-		return xrayBuildVMessFromOutbound(ob, label)
-	case "trojan":
-		return xrayBuildTrojanFromOutbound(ob, label)
-	case "shadowsocks":
-		return xrayBuildShadowsocksFromOutbound(ob, label)
-	case "hysteria":
-		return xrayBuildHysteriaFromOutbound(ob, label)
-	case "hysteria2":
-		return xrayBuildHysteria2FromOutbound(ob, label)
-	default:
-		return nil, &xrayUnsupportedProtocolError{Protocol: protocol}
-	}
+	// Реестр не собрался — разбирать нечем. Возвращаем ту же ошибку, что и
+	// элемент без протокола: причина общая и на весь процесс, а не свойство
+	// этого элемента.
+	return nil, fmt.Errorf("registry unavailable")
 }
 
 // xrayVNextEndpoint достаёт address/port/users[0] — общая форма vmess и vless.

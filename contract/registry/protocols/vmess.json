@@ -771,19 +771,22 @@
         "address": {
           "source": "json.$base.address",
           "maps_to": "server",
-          "required": true
+          "required": true,
+          "desc_en": "empty server address"
         },
         "port": {
           "source": "json.$base.port",
           "maps_to": "server_port",
           "type": "int",
           "required": true,
+          "desc_en": "server port is missing or out of range",
           "impl": "БЕЗ дефолта 443: xray_protocols.go:133-136 отбраковывает узел при port <= 0 || port > 65535, фолбэка на этом входе нет. Черновик LxBox нёс materialize_default:true — поведение Dart."
         },
         "id": {
           "source": "json.$base.users.0.id",
           "maps_to": "uuid",
-          "required": true
+          "required": true,
+          "desc_en": "empty user id — the server returned a placeholder, subscription may be expired"
         },
         "security": {
           "source": "json.$base.users.0.security",
@@ -843,7 +846,7 @@
           "sendThrough",
           "proxySettings"
         ],
-        "_impl": "Ключи уровня документа плюс контейнеры, чьи листья читают записи таблицы. Список дословно равен списку LxBox и остальных xray-секций — см. развёрнутую сноску у vless."
+        "impl": "Ключи уровня документа плюс контейнеры, чьи листья читают записи таблицы. Список дословно равен списку LxBox и остальных xray-секций — см. развёрнутую сноску у vless."
       },
       "emit": null
     }

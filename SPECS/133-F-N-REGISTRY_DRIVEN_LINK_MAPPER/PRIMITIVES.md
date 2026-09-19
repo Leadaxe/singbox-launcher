@@ -52,7 +52,7 @@ SPEC 133. Спутник `SPEC.md` (дизайн движка) и `TASKS.md` (в
 | `regex` | **FROZEN** | RE2 ∩ ECMAScript, якоря в самом выражении |
 | `json.required_keys` / `any_keys` / `key_absent` | **FROZEN** | пути точечные; числовой сегмент индексирует массив |
 | `json.type_of` | **FROZEN** | путь → `object`\|`array`\|`string`\|`number`\|`bool` |
-| `json.value_of` / `value_in` | **FROZEN** | путь → значение / набор (строки сравниваются fold-case) |
+| `json.value_of` / `value_in` | **FROZEN** | путь → значение / набор. Ожидание — ЛЮБОЙ скаляр JSON (строка, число, булево); строка сравнивается со строкой fold-case, число с числом, булево с булевым, **типы не приводятся** (`"2"` ≠ `2`). Расширено 21.09.2026 добавлением: прежде бралась только строка, и числовое поле (`version: 2`) не сходилось ни с чем — см. TASKS_LXBOX §26 п.1 |
 | `json.array_elem_any_keys` | **FROZEN** | хотя бы один элемент массива несёт путь; массив назван явно через `[]` (`"outbounds[].protocol"`), без `[]` массив — сам документ |
 | `ini.sections` / `keys` / `keys_any` | **FROZEN** | имена fold-case |
 | `text.prefix_fold` / `line_fold` / `contains` | **FROZEN** | |

@@ -9,6 +9,7 @@
         "password": "pw",
         "server": "s.example",
         "server_port": 8388,
+        "tcp_keep_alive": "20s",
         "type": "shadowsocks"
       },
       "kind": "outbound",

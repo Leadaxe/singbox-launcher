@@ -430,12 +430,30 @@ func jsonTypeOf(v interface{}) string {
 	return ""
 }
 
-func equalFoldValue(got interface{}, want string) bool {
-	s, ok := got.(string)
-	if !ok {
-		return false
+// equalFoldValue сравнивает значение по пути с ожиданием предиката.
+//
+// Ожидание — скаляр JSON, и ТИП ЗНАЧИМ: строка сходится только со строкой
+// (регистронезависимо, с обрезкой пробелов), число только с числом, булево
+// только с булевым. Приведение типов друг к другу здесь запрещено, потому
+// что диалекты пишут скаляры по-разному, и «2» строкой означает не то же,
+// что 2 числом: прежний конвертер строковую версию за двойку не считал
+// (xrayJSONInt читает только числа) и вёл такой элемент в v1.
+func equalFoldValue(got interface{}, want interface{}) bool {
+	switch w := want.(type) {
+	case string:
+		s, ok := got.(string)
+		if !ok {
+			return false
+		}
+		return strings.EqualFold(strings.TrimSpace(s), w)
+	case float64:
+		n, ok := got.(float64)
+		return ok && n == w
+	case bool:
+		b, ok := got.(bool)
+		return ok && b == w
 	}
-	return strings.EqualFold(strings.TrimSpace(s), want)
+	return false
 }
 
 func containsFold(list []string, want string) bool {

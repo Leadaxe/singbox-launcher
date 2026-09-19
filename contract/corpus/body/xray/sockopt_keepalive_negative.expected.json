@@ -5,6 +5,7 @@
   "nodes": [
     {
       "entry": {
+        "disable_tcp_keep_alive": true,
         "server": "a.example",
         "server_port": 443,
         "type": "vless",

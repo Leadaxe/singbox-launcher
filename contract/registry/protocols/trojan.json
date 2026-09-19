@@ -381,18 +381,21 @@
         "address": {
           "source": "json.$base.address",
           "maps_to": "server",
-          "required": true
+          "required": true,
+          "desc_en": "empty server address"
         },
         "port": {
           "source": "json.$base.port",
           "maps_to": "server_port",
           "type": "int",
-          "required": true
+          "required": true,
+          "desc_en": "server port is missing or out of range"
         },
         "password": {
           "source": "json.$base.password",
           "maps_to": "password",
-          "required": true
+          "required": true,
+          "desc_en": "empty password — the server returned a placeholder, subscription may be expired"
         },
         "$extra_servers": {
           "source": "json.settings.servers",
@@ -418,7 +421,7 @@
           "sendThrough",
           "proxySettings"
         ],
-        "_impl": "Ключи уровня документа плюс контейнеры, чьи листья читают записи таблицы. Список дословно равен списку LxBox и остальных xray-секций — см. развёрнутую сноску у vless."
+        "impl": "Ключи уровня документа плюс контейнеры, чьи листья читают записи таблицы. Список дословно равен списку LxBox и остальных xray-секций — см. развёрнутую сноску у vless."
       },
       "emit": null
     },

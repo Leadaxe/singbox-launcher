@@ -12,9 +12,6 @@
           "server_name": "s.example"
         },
         "transport": {
-          "host": [
-            "[a.example b.example]"
-          ],
           "path": "/h2",
           "type": "http"
         },

@@ -441,13 +441,15 @@
         "address": {
           "source": "json.$base.address",
           "maps_to": "server",
-          "required": true
+          "required": true,
+          "desc_en": "empty server address"
         },
         "port": {
           "source": "json.$base.port",
           "maps_to": "server_port",
           "type": "int",
           "required": true,
+          "desc_en": "server port is missing or out of range",
           "impl": "Порт ОБЯЗАТЕЛЕН и ненулевой: port==0 даёт null (записи нет). Дефолта у этого входа нет, в отличие от ссылки."
         },
         "method": {
@@ -459,7 +461,8 @@
           "source": "json.$base.password",
           "maps_to": "password",
           "impl": "required, а НЕ empty:significant: xray_protocols.go:284-286 отбраковывает узел при пустом method ИЛИ password. Это рубеж против плейсхолдеров просроченной подписки — «пишется даже пустым» из черновика его бы снесло.",
-          "required": true
+          "required": true,
+          "desc_en": "empty password — the server returned a placeholder, subscription may be expired"
         },
         "$extra_servers": {
           "source": "json.settings.servers",

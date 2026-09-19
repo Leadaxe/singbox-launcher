@@ -1842,8 +1842,28 @@
           ],
           "maps_to": "transport.uplink_data_placement",
           "when": {
-            "transport.type": "xhttp"
-          }
+            "transport.type": "xhttp",
+            "transport.mode": {
+              "not_in": [
+                "auto",
+                "stream-one",
+                "stream-up"
+              ]
+            }
+          },
+          "implies": {
+            "transport.mode": "packet-up"
+          },
+          "on_implies_written": {
+            "action": "note",
+            "code": "xhttp_mode_forced_packet_up"
+          },
+          "on_when_false": {
+            "action": "note",
+            "code": "xhttp_param_reset"
+          },
+          "priority": 50,
+          "impl": "Структурное правило ЯДРА, общее для всех входов: uplink_data_placement=header работает ТОЛЬКО в режиме packet-up («uplink_data_placement can be header only in packet-up mode» — фатал на весь конфиг). Запись повторяет blocks.uri.xhttp дословно, кроме источников: правило ядра от диалекта не зависит, и держать его на входе ссылки данными, а на входе Xray — рукописным гардом (noteXHTTPPlacementGuard) значило бы иметь две копии одного решения. Развёрнутое обоснование операторов — у записи блока uri."
         },
         "uplinkDataKey": {
           "source": [

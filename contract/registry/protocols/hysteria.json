@@ -647,6 +647,246 @@
           "server_port"
         ]
       }
+    },
+    "xray": {
+      "detect": {
+        "all": [
+          {
+            "json": {
+              "value_of": {
+                "protocol": "hysteria"
+              }
+            }
+          },
+          {
+            "not": {
+              "any": [
+                {
+                  "json": {
+                    "value_of": {
+                      "streamSettings.hysteriaSettings.version": 2
+                    }
+                  }
+                },
+                {
+                  "all": [
+                    {
+                      "json": {
+                        "key_absent": [
+                          "streamSettings.hysteriaSettings.version"
+                        ]
+                      }
+                    },
+                    {
+                      "json": {
+                        "value_of": {
+                          "settings.version": 2
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "any": [
+              {
+                "json": {
+                  "value_of": {
+                    "streamSettings.hysteriaSettings.version": 1
+                  }
+                }
+              },
+              {
+                "all": [
+                  {
+                    "json": {
+                      "key_absent": [
+                        "streamSettings.hysteriaSettings.version"
+                      ]
+                    }
+                  },
+                  {
+                    "json": {
+                      "value_of": {
+                        "settings.version": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "all": [
+                  {
+                    "json": {
+                      "key_absent": [
+                        "streamSettings.hysteriaSettings.version"
+                      ]
+                    }
+                  },
+                  {
+                    "json": {
+                      "key_absent": [
+                        "settings.version"
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "body_source": "xray",
+      "forms": [
+        {
+          "id": "flat",
+          "detect": {
+            "json": {
+              "value_of": {
+                "protocol": "hysteria"
+              }
+            }
+          },
+          "space": "json",
+          "base": "settings",
+          "impl": "Единственная форма: апстрим Xray протокола v1 не знает вовсе, и адрес приходит только плоским написанием форка (xray_hysteria.go)."
+        }
+      ],
+      "defaults": {
+        "tls.enabled": true
+      },
+      "include": [
+        "tls#xray",
+        "dialer#xray"
+      ],
+      "params": {
+        "address": {
+          "source": [
+            "json.settings.address",
+            "json.settings.servers.0.address"
+          ],
+          "maps_to": "server",
+          "required": true,
+          "desc_en": "empty server address"
+        },
+        "port": {
+          "source": [
+            "json.settings.port",
+            "json.settings.servers.0.port"
+          ],
+          "maps_to": "server_port",
+          "type": "int",
+          "required": true,
+          "desc_en": "server port is missing or out of range"
+        },
+        "auth": {
+          "source": [
+            "json.streamSettings.hysteriaSettings.auth",
+            "json.streamSettings.hysteriaSettings.auth_str",
+            "json.streamSettings.hysteriaSettings.authStr",
+            "json.streamSettings.hysteriaSettings.password",
+            "json.settings.auth",
+            "json.settings.auth_str",
+            "json.settings.authStr",
+            "json.settings.password"
+          ],
+          "maps_to": "auth_str",
+          "normalize": "trim",
+          "impl": "Тот же вход, что у v2, но ядро v1 держит секрет в auth_str, а не в password. Целевое поле выбирает СХЕМА, и потому запись объявлена в секции своей схемы, а не картой maps_to по типу тела."
+        },
+        "obfs": {
+          "source": [
+            "json.streamSettings.hysteriaSettings.obfs",
+            "json.streamSettings.hysteriaSettings.obfsParam",
+            "json.streamSettings.hysteriaSettings.obfs_password",
+            "json.settings.obfs",
+            "json.settings.obfsParam",
+            "json.settings.obfs_password"
+          ],
+          "maps_to": "obfs",
+          "normalize": "trim",
+          "impl": "У v1 obfs — ПЛОСКАЯ строка-секрет (option/hysteria.go, HysteriaOutboundOptions.Obfs), в отличие от объекта у v2."
+        },
+        "up_mbps": {
+          "source": [
+            "json.streamSettings.hysteriaSettings.up_mbps",
+            "json.streamSettings.hysteriaSettings.upMbps",
+            "json.streamSettings.hysteriaSettings.up",
+            "json.streamSettings.hysteriaSettings.upmbps",
+            "json.settings.up_mbps",
+            "json.settings.upMbps",
+            "json.settings.up",
+            "json.settings.upmbps"
+          ],
+          "maps_to": "up_mbps",
+          "type": "int",
+          "impl": "Дефолт (100) подставляет САНИТАЙЗЕР по default_when реестра, а не маппер: узел без полосы валит весь конфиг «missing upload speed» (SPEC 131 W2d), и подставлять его тремя копиями по дорогам кампания как раз перестала."
+        },
+        "down_mbps": {
+          "source": [
+            "json.streamSettings.hysteriaSettings.down_mbps",
+            "json.streamSettings.hysteriaSettings.downMbps",
+            "json.streamSettings.hysteriaSettings.down",
+            "json.streamSettings.hysteriaSettings.downmbps",
+            "json.settings.down_mbps",
+            "json.settings.downMbps",
+            "json.settings.down",
+            "json.settings.downmbps"
+          ],
+          "maps_to": "down_mbps",
+          "type": "int"
+        },
+        "alpn": {
+          "source": "json.streamSettings.tlsSettings.alpn",
+          "maps_to": "tls.alpn",
+          "list": {
+            "sep": ",",
+            "coerce_scalar": true
+          },
+          "merge": "keep_first",
+          "impl": "См. запись alpn секции hysteria2: с общего блока tls#xray alpn не пишется, у hysteria читается всегда."
+        },
+        "$server_name_fallback": {
+          "source": [
+            "json.settings.address",
+            "json.settings.servers.0.address"
+          ],
+          "maps_to": "tls.server_name",
+          "merge": "keep_first",
+          "impl": "См. запись секции hysteria2: на QUIC без server_name рукопожатие падает на каждом дозвоне."
+        },
+        "$finalmask": {
+          "source": "json.streamSettings.hysteriaSettings.finalmask",
+          "maps_to": null,
+          "impl": "См. запись секции hysteria2."
+        },
+        "$version": {
+          "source": [
+            "json.streamSettings.hysteriaSettings.version",
+            "json.settings.version"
+          ],
+          "maps_to": null,
+          "impl": "Версию читает detect СЕКЦИИ; здесь ключ объявлен только затем, чтобы он не считался неизвестным."
+        }
+      },
+      "unknown_key": {
+        "action": "drop",
+        "code": "json_field_unknown",
+        "ignore": [
+          "protocol",
+          "tag",
+          "remarks",
+          "settings",
+          "streamSettings",
+          "mux",
+          "sendThrough",
+          "proxySettings"
+        ],
+        "impl": "Ключи уровня документа плюс контейнеры, чьи листья читают записи таблицы. Список дословно равен списку остальных xray-секций."
+      },
+      "emit": null
     }
   }
 }

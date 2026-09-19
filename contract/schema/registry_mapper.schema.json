@@ -96,18 +96,26 @@
         },
         "value_of": {
           "type": "object",
-          "description": "Путь → точное значение (сравнение регистронезависимое для строк).",
+          "description": "Путь → точное значение. Ожидание — любой скаляр JSON; строка сравнивается со строкой регистронезависимо, число с числом, булево с булевым, ТИПЫ НЕ ПРИВОДЯТСЯ (значение '2' строкой не равно 2 числом).",
           "additionalProperties": {
-            "type": "string"
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
           }
         },
         "value_in": {
           "type": "object",
-          "description": "Путь → набор допустимых значений. Так объявляются типы-синонимы ('shadowsocks' и 'ss').",
+          "description": "Путь → набор допустимых значений. Так объявляются типы-синонимы ('shadowsocks' и 'ss'). Элементы — скаляры JSON с тем же правилом сравнения, что у value_of.",
           "additionalProperties": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
             }
           }
         },

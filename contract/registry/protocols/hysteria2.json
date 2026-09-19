@@ -727,6 +727,273 @@
           "server_port"
         ]
       }
+    },
+    "xray": {
+      "detect": {
+        "any": [
+          {
+            "json": {
+              "value_of": {
+                "protocol": "hysteria2"
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "json": {
+                  "value_of": {
+                    "protocol": "hysteria"
+                  }
+                }
+              },
+              {
+                "any": [
+                  {
+                    "json": {
+                      "value_of": {
+                        "streamSettings.hysteriaSettings.version": 2
+                      }
+                    }
+                  },
+                  {
+                    "all": [
+                      {
+                        "json": {
+                          "key_absent": [
+                            "streamSettings.hysteriaSettings.version"
+                          ]
+                        }
+                      },
+                      {
+                        "json": {
+                          "value_of": {
+                            "settings.version": 2
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "body_source": "xray",
+      "forms": [
+        {
+          "id": "servers",
+          "detect": {
+            "json": {
+              "value_of": {
+                "protocol": "hysteria2"
+              }
+            }
+          },
+          "space": "json",
+          "base": "settings.servers.0",
+          "impl": "Апстримное написание Xray: адрес и пароль в settings.servers[0], как у trojan и shadowsocks (xray_protocols.go:313 xrayBuildHysteria2FromOutbound). TLS-блока по умолчанию здесь НЕТ: элемент без streamSettings.security приезжал без tls и в старом пути — дефолт секции поставил бы его всем и сменил тела живых узлов."
+        },
+        {
+          "id": "flat",
+          "detect": {
+            "json": {
+              "value_of": {
+                "protocol": "hysteria"
+              }
+            }
+          },
+          "space": "json",
+          "base": "settings",
+          "impl": "Написание форков («finalmask»): адрес лежит ПЛОСКО в settings.address/port, секрет — в streamSettings.hysteriaSettings (xray_hysteria.go). Общая выемка settings.servers[] такую форму не берёт; фолбэк на servers[0] объявлен цепочкой источников записей address/port."
+        }
+      ],
+      "defaults": {
+        "tls.enabled": true
+      },
+      "include": [
+        "tls#xray",
+        "dialer#xray"
+      ],
+      "params": {
+        "address": {
+          "source": {
+            "servers": [
+              "json.$base.address"
+            ],
+            "flat": [
+              "json.settings.address",
+              "json.settings.servers.0.address"
+            ]
+          },
+          "maps_to": "server",
+          "required": true,
+          "desc_en": "empty server address"
+        },
+        "port": {
+          "source": {
+            "servers": [
+              "json.$base.port"
+            ],
+            "flat": [
+              "json.settings.port",
+              "json.settings.servers.0.port"
+            ]
+          },
+          "maps_to": "server_port",
+          "type": "int",
+          "required": true,
+          "desc_en": "server port is missing or out of range"
+        },
+        "password": {
+          "source": {
+            "servers": [
+              "json.$base.password"
+            ],
+            "flat": [
+              "json.streamSettings.hysteriaSettings.auth",
+              "json.streamSettings.hysteriaSettings.auth_str",
+              "json.streamSettings.hysteriaSettings.authStr",
+              "json.streamSettings.hysteriaSettings.password",
+              "json.settings.auth",
+              "json.settings.auth_str",
+              "json.settings.authStr",
+              "json.settings.password"
+            ]
+          },
+          "maps_to": "password",
+          "normalize": "trim",
+          "impl": "Четыре написания секрета в КАЖДОЙ из двух секций диалекта, вложенная сильнее плоской — дословно xrayHysteriaAuth. Порядок нормативен: элемент, написавший и auth, и password, имел в виду auth."
+        },
+        "obfs": {
+          "source": {
+            "flat": [
+              "json.streamSettings.hysteriaSettings.obfs",
+              "json.streamSettings.hysteriaSettings.obfsParam",
+              "json.streamSettings.hysteriaSettings.obfs_password",
+              "json.settings.obfs",
+              "json.settings.obfsParam",
+              "json.settings.obfs_password"
+            ]
+          },
+          "maps_to": "obfs.password",
+          "normalize": "trim",
+          "implies": {
+            "obfs.type": "salamander"
+          },
+          "impl": "У v2 обфускация — ОБЪЕКТ {type,password}, а диалект несёт её одной строкой. Тип подставляется salamander: единственная обфускация, которую Hysteria 2 понимает при строковой записи (xray_hysteria.go:79). Форма servers обфускацию не читала никогда — источник объявлен только у flat."
+        },
+        "up_mbps": {
+          "source": {
+            "flat": [
+              "json.streamSettings.hysteriaSettings.up_mbps",
+              "json.streamSettings.hysteriaSettings.upMbps",
+              "json.streamSettings.hysteriaSettings.up",
+              "json.streamSettings.hysteriaSettings.upmbps",
+              "json.settings.up_mbps",
+              "json.settings.upMbps",
+              "json.settings.up",
+              "json.settings.upmbps"
+            ]
+          },
+          "maps_to": "up_mbps",
+          "type": "int",
+          "when": {
+            "$form": "flat"
+          },
+          "impl": "Полоса объявлена и у v2: xrayHysteriaMbps читает её общим кодом обеих версий, и ядро hysteria2 поля up_mbps/down_mbps принимает. Ноль не пишется — это «не задано», а не «ноль мегабит» (on_invalid не нужен: type int на нечисловом даёт отсутствие значения)."
+        },
+        "down_mbps": {
+          "source": {
+            "flat": [
+              "json.streamSettings.hysteriaSettings.down_mbps",
+              "json.streamSettings.hysteriaSettings.downMbps",
+              "json.streamSettings.hysteriaSettings.down",
+              "json.streamSettings.hysteriaSettings.downmbps",
+              "json.settings.down_mbps",
+              "json.settings.downMbps",
+              "json.settings.down",
+              "json.settings.downmbps"
+            ]
+          },
+          "maps_to": "down_mbps",
+          "type": "int",
+          "when": {
+            "$form": "flat"
+          }
+        },
+        "alpn": {
+          "source": "json.streamSettings.tlsSettings.alpn",
+          "maps_to": "tls.alpn",
+          "list": {
+            "sep": ",",
+            "coerce_scalar": true
+          },
+          "merge": "keep_first",
+          "when": {
+            "$form": "flat"
+          },
+          "impl": "DELTAS D133-C9: с ОБЩЕГО блока tls#xray alpn не пишется (там maps_to:null), потому что запись у vless/vmess/trojan сменила бы тела живых узлов. У hysteria alpn читался всегда (xray_hysteria.go:213): на QUIC alpn=h3 — рабочая часть рукопожатия. merge keep_first повторяет `if _, has := tls[\"alpn\"]; !has`."
+        },
+        "$server_name_fallback": {
+          "source": {
+            "flat": [
+              "json.settings.address",
+              "json.settings.servers.0.address"
+            ]
+          },
+          "maps_to": "tls.server_name",
+          "merge": "keep_first",
+          "when": {
+            "$form": "flat"
+          },
+          "impl": "server_name на QUIC обязателен по смыслу: без него ядро проверяет сертификат по IP и рукопожатие падает на каждом дозвоне (xray_hysteria.go:232). Запись ВТОРАЯ по объявлению после sni общего блока, merge keep_first — потому фолбэк не перебивает написанный serverName. Имя со знаком $ — запись без собственного входа: значение берётся из уже прочитанного адреса."
+        },
+        "$extra_servers": {
+          "source": {
+            "servers": [
+              "json.settings.servers"
+            ]
+          },
+          "maps_to": null,
+          "on_len_gt": {
+            "n": 1,
+            "action": "note",
+            "code": "xray_extra_entries_dropped"
+          },
+          "impl": "QUIRKS Q133-18: servers[1..] отбрасываются молча (xray_protocols.go:159). Поведение то же, но появляется код."
+        },
+        "$finalmask": {
+          "source": "json.streamSettings.hysteriaSettings.finalmask",
+          "maps_to": null,
+          "impl": "finalmask.quicParams у sing-box соответствия не имеет, а незнакомое поле валит весь конфиг. Объявлено чтением без записи, чтобы ключ не уехал в json_field_unknown."
+        },
+        "$version": {
+          "source": [
+            "json.streamSettings.hysteriaSettings.version",
+            "json.settings.version"
+          ],
+          "maps_to": null,
+          "impl": "Версию читает detect СЕКЦИИ, а не запись: от неё зависит СХЕМА (hysteria2 либо hysteria), а схему выбирает detect и дальше не меняет. Здесь ключ объявлен только затем, чтобы он не считался неизвестным."
+        }
+      },
+      "unknown_key": {
+        "action": "drop",
+        "code": "json_field_unknown",
+        "ignore": [
+          "protocol",
+          "tag",
+          "remarks",
+          "settings",
+          "streamSettings",
+          "mux",
+          "sendThrough",
+          "proxySettings"
+        ],
+        "impl": "Ключи уровня документа плюс контейнеры, чьи листья читают записи таблицы. Список дословно равен списку остальных xray-секций."
+      },
+      "emit": null
     }
   }
 }

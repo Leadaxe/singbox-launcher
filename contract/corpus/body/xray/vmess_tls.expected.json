@@ -5,6 +5,7 @@
   "nodes": [
     {
       "entry": {
+        "alter_id": 0,
         "security": "auto",
         "server": "v.example",
         "server_port": 443,

@@ -153,8 +153,14 @@ func TestParseNodesFromXrayJSONArray_WS_EarlyData(t *testing.T) {
 	}
 	assertWSEarlyData(t, tr, "/api/v2/channel", 2560)
 	// Host header must still be preserved alongside the split.
-	h, _ := tr["headers"].(map[string]string)
-	if h["Host"] != "h.test" {
+	//
+	// Читается через общий JSON-скаляр, а не утверждением о типе карты:
+	// движок реестра строит тело из значений JSON и кладёт заголовки
+	// map[string]interface{}, прежний конвертер клал map[string]string. В
+	// конфиг ядра обе формы уезжают одинаково, а утверждение о конкретном
+	// Go-типе пинило бы внутреннюю форму карты вместо содержимого.
+	h, _ := tr["headers"].(map[string]interface{})
+	if host, _ := h["Host"].(string); host != "h.test" {
 		t.Fatalf("Host header lost: %v", tr["headers"])
 	}
 }

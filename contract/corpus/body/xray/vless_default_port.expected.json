@@ -1,7 +1,7 @@
 {
   "dropped": [
     {
-      "reason": "vless outbound rejected: server port is missing or out of range",
+      "reason": "vless outbound rejected: linkmap: обязательное поле \"server_port\" пусто",
       "ref": "proxy"
     }
   ],

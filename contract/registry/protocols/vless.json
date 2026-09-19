@@ -552,18 +552,21 @@
         "address": {
           "source": "json.$base.address",
           "maps_to": "server",
-          "required": true
+          "required": true,
+          "desc_en": "empty server address"
         },
         "port": {
           "source": "json.$base.port",
           "maps_to": "server_port",
           "type": "int",
-          "required": true
+          "required": true,
+          "desc_en": "server port is missing or out of range"
         },
         "id": {
           "source": "json.$base.users.0.id",
           "maps_to": "uuid",
-          "required": true
+          "required": true,
+          "desc_en": "empty user id — the server returned a placeholder, subscription may be expired"
         },
         "flow": {
           "source": "json.$base.users.0.flow",
@@ -619,7 +622,7 @@
           "sendThrough",
           "proxySettings"
         ],
-        "_impl": "Ключи УРОВНЯ ДОКУМЕНТА, полем узла не являющиеся: бухгалтерия элемента (protocol — по нему элемент и опознан, tag/remarks — имя, которое читает сборка документа) ПЛЮС контейнеры, чьи листья читают записи таблицы. Без контейнеров каждый узел получал бы json_field_unknown на ключ, который секция читает своими записями. Список дословно равен списку LxBox — общий, не наш."
+        "impl": "Ключи УРОВНЯ ДОКУМЕНТА, полем узла не являющиеся: бухгалтерия элемента (protocol — по нему элемент и опознан, tag/remarks — имя, которое читает сборка документа) ПЛЮС контейнеры, чьи листья читают записи таблицы. Без контейнеров каждый узел получал бы json_field_unknown на ключ, который секция читает своими записями. Список дословно равен списку LxBox — общий, не наш."
       },
       "emit": null
     },

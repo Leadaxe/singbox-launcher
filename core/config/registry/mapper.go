@@ -57,9 +57,18 @@ type DetectJSON struct {
 	AnyKeys      []string `json:"any_keys"`
 	KeyAbsent    []string `json:"key_absent"`
 
-	TypeOf  map[string]string   `json:"type_of"`
-	ValueOf map[string]string   `json:"value_of"`
-	ValueIn map[string][]string `json:"value_in"`
+	TypeOf map[string]string `json:"type_of"`
+
+	// ValueOf / ValueIn — точное значение по пути. Ожидаемое значение —
+	// ЛЮБОЙ скаляр JSON, а не только строка: строка сравнивается со строкой
+	// регистронезависимо, число с числом, булево с булевым, и ТИПЫ НЕ
+	// ПРИВОДЯТСЯ друг к другу. Приведение здесь было бы не удобством, а
+	// сменой поведения: `version: "2"` (строкой) прежний конвертер за
+	// двойку не считал вовсе (xrayJSONInt строк не читает) и вёл такой
+	// элемент в v1 — сматчи предикат строку с числом, узел уехал бы в
+	// чужую схему.
+	ValueOf map[string]interface{}   `json:"value_of"`
+	ValueIn map[string][]interface{} `json:"value_in"`
 
 	// ArrayElemAnyKeys — хотя бы один элемент массива-документа несёт путь.
 	// Так Xray-конфиг отличается от sing-box: элемент Xray несёт
