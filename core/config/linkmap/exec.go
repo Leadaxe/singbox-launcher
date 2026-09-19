@@ -450,6 +450,9 @@ func (st *execState) applyDefaults() {
 	}
 	sort.Strings(keys)
 	for _, path := range keys {
+		if isReservedAssignKey(path) {
+			continue
+		}
 		if _, taken := st.writtenBy[path]; taken {
 			continue
 		}
@@ -867,6 +870,16 @@ func (st *execState) changedAny(assigns map[string]interface{}, before map[strin
 
 // applyAssigns кладёт набор присваиваний. null СНИМАЕТ путь — это отличается
 // от «не писать» (MAPPER_ENGINE.md §7, G2).
+// isReservedAssignKey — имя, которое присваивание НЕ пишет в тело.
+//
+// Два префикса, и оба означают «это не путь тела»: `$` — служебное значение
+// для записей таблицы, `_` — прозаическая сноска автора реестра. Проверка
+// одна на все приёмы присваивания, потому что вопрос про ИМЯ, а не про то,
+// каким приёмом оно попало в карту.
+func isReservedAssignKey(path string) bool {
+	return strings.HasPrefix(path, "$") || strings.HasPrefix(path, "_")
+}
+
 func (st *execState) applyAssigns(entry string, assigns map[string]interface{}, priority, decl int, why, merge string) {
 	paths := make([]string, 0, len(assigns))
 	for k := range assigns {
@@ -874,6 +887,20 @@ func (st *execState) applyAssigns(entry string, assigns map[string]interface{}, 
 	}
 	sort.Strings(paths)
 	for _, path := range paths {
+		// СЛУЖЕБНОЕ ИМЯ В ТЕЛО НЕ ЕДЕТ — на любом уровне и у любого приёма
+		// присваивания (`sets`, `implies`, `scheme_sets`, `defaults`).
+		//
+		// `$…` — значение для записей таблицы, а не путь тела (`$default_port`
+		// у http); `_…` — прозаическая сноска рядом с присваиваниями, которую
+		// сторона вправе положить где угодно (находка LxBox 21.09.2026).
+		// Отсечение стояло ТОЛЬКО у scheme_sets, и ровно там оно однажды
+		// понадобилось (Q133-44): ключ уезжал в тело литералом, и узел терял
+		// server_port. Остальные приёмы шли той же дорогой и ждали своей
+		// очереди — теперь правило общее для всех, потому что оно про ИМЯ, а
+		// не про приём.
+		if isReservedAssignKey(path) {
+			continue
+		}
 		v := assigns[path]
 		if v == nil {
 			delPath(st.res.Body, path)
