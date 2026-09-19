@@ -1,0 +1,8 @@
+# ws: плоский ?ed=N БЕЗ eh — имя заголовка подразумевается, а не пишется в ссылке
+# Расхождение проектов, зафиксированное per-app override'ами (D-008):
+#   launcher — дописывает early_data_header_name: Sec-WebSocket-Protocol;
+#   lxbox    — оставляет только max_early_data.
+# Цена молчания: ядро при пустом header_name кладёт данные base64 в ПУТЬ, а
+# сервер ждёт их заголовком — рукопожатие отвечает 404, узел мёртв. Живые
+# узлы подписок несут именно эту форму (память проекта ws-early-data-ed-param).
+trojan://pass123@192.0.2.10:2053?ed=2560&host=ws.example-1.com&path=%2F&sni=ws.example-1.com&type=ws#ed-flat-no-eh

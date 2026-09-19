@@ -989,26 +989,6 @@
   "blocks": {
     "note": "SPEC 133: ИСПОЛНЯЕМЫЕ записи общего TLS-блока, по диалектам. Секция протокола подключает их через include (\"tls#uri\", \"tls#xray\"). Описательные tls.params выше НЕ отменяются: там словарь и проза для документации, здесь — таблица, которую исполняет движок. Диалектов два, потому что имена ключей у Xray свои (serverName/publicKey/shortId), а у ссылки — свои (sni/pbk/sid).",
     "uri": {
-      "security": {
-        "source": "query.security",
-        "selector": true,
-        "sets": {
-          "tls": {
-            "tls.enabled": true
-          },
-          "reality": {
-            "tls.enabled": true,
-            "tls.reality.enabled": true
-          },
-          "none": {
-            "tls": null
-          },
-          "": {
-            "tls.enabled": true
-          }
-        },
-        "impl": "security=none → блока tls НЕТ вовсе (не enabled:false): явный блок ронял ядра lx.5..lx.18 в SIGSEGV, SPEC 045. Выражается `sets` со значением null (G2): он СНИМАЕТ путь, а не «не пишет» — QUIRKS Q133-34. Пустой набор {} выражал бы «ничего не писать», и запись sni со своим default_from успевала бы написать tls.server_name в пустоту. Записи блока ниже стоят под when: {tls.enabled: true} — после снятия tls их условие ложно."
-      },
       "sni": {
         "source": [
           "query.sni",
@@ -1102,6 +1082,29 @@
           }
         },
         "impl": "ЕДИНСТВЕННЫЙ параметр ссылки без адреса в теле (D-122): Xray-форма `ech=<public_name>+<resolver>` несёт ключ ЧУЖОГО клиента (public_name ≠ SNI узла), и рукопожатие с ним не состоится. maps_to: null — значение осознанно никуда не едет, но и молчать нельзя, поэтому on_present ставит код. Условие через not_in, а не через отрицание in: `ech=none` — способ подписки сказать «ECH выключен», сообщать не о чем, и пустое значение тоже; not_in по отсутствующему адресу истинен, поэтому пустую строку перечисляем явно. Блок tls.ech из sing-box-JSON НЕ затрагивается: ECH в ядре скомпилирован всегда, и нативная конфигурация рабочая — различить два случая может только маппер, санитайзер видит уже готовое тело (DRIFT §7.2)."
+      }
+    },
+    "uri_security": {
+      "note": "Истина TLS по ссылке через `query.security`. Отдельный блок, потому что у vmess этого параметра нет вовсе — он объявляет свою истину сам (params.tls / params.tls_legacy).",
+      "security": {
+        "source": "query.security",
+        "selector": true,
+        "sets": {
+          "tls": {
+            "tls.enabled": true
+          },
+          "reality": {
+            "tls.enabled": true,
+            "tls.reality.enabled": true
+          },
+          "none": {
+            "tls": null
+          },
+          "": {
+            "tls.enabled": true
+          }
+        },
+        "impl": "ВЫНЕСЕНО из tls#uri отдельным блоком (SPEC 133): истину TLS у ссылки несёт `query.security` НЕ У ВСЕХ схем, подключающих блок. У vmess её несут `json.tls` (форма v2rayN) и `query.tls` (legacy), и написания у них свои — D133-16. Пока запись жила в общем блоке, vmess получал от неё `\"\": {tls.enabled: true}`, то есть TLS у КАЖДОГО узла без security, которого в его ссылке нет никогда: корпус видел лишний блок tls у tcp_no_tls, ws_tls и ещё шести кейсов. Та же ловушка, что у REALITY (QUIRKS Q133-47), и лечится тем же примитивом — разделением блока, а не условием внутри записи. security=none → блока tls НЕТ вовсе (не enabled:false): явный блок ронял ядра lx.5..lx.18 в SIGSEGV, SPEC 045. Выражается `sets` со значением null (G2): он СНИМАЕТ путь, а не «не пишет» — QUIRKS Q133-34. Пустой набор {} выражал бы «ничего не писать», и запись sni со своим default_from успевала бы написать tls.server_name в пустоту. Записи блока ниже стоят под when: {tls.enabled: true} — после снятия tls их условие ложно."
       }
     },
     "uri_reality": {

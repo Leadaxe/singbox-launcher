@@ -154,35 +154,6 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 
 	// Determine scheme and handle protocol-specific parsing
 	switch {
-	case strings.HasPrefix(uri, "vmess://"):
-		base64Part := strings.TrimPrefix(uri, "vmess://")
-		fragment := ""
-		if i := strings.Index(base64Part, "#"); i >= 0 {
-			fragment = base64Part[i+1:]
-			base64Part = base64Part[:i]
-		}
-		decoded, err := decodeBase64WithPadding(base64Part)
-		if err != nil {
-			uriPreview := uri
-			if len(uriPreview) > 50 {
-				uriPreview = uriPreview[:50] + "..."
-			}
-			debuglog.ErrorLog("Parser: Failed to decode VMESS base64 (uri length: %d, base64 length: %d): %v. URI: %s. Skipping node.",
-				len(uri), len(base64Part), err, uriPreview)
-			return nil, fmt.Errorf("failed to decode VMESS base64: %w", err)
-		}
-		if len(decoded) == 0 {
-			debuglog.ErrorLog("Parser: VMESS decoded content is empty. Skipping node.")
-			return nil, fmt.Errorf("VMESS decoded content is empty")
-		}
-		// VMess: base64(JSON) or legacy cleartext method:uuid@host:port (see parseVMessDecoded).
-		if fragment != "" {
-			if dec, err := url.PathUnescape(fragment); err == nil {
-				fragment = dec
-			}
-		}
-		return parseVMessDecoded(decoded, fragment, skipFilters)
-
 	case strings.HasPrefix(uri, "hysteria2://"), strings.HasPrefix(uri, "hy2://"):
 		scheme = "hysteria2"
 		// Handle both hysteria2:// and hy2:// schemes (hy2 is official short form)
@@ -524,29 +495,6 @@ func shouldSkipNode(node *configtypes.ParsedNode, skipFilters []map[string]strin
 	return false // Don't skip
 }
 
-// noteWSEarlyDataConverted ставит info-код, если early data приехала из
-// Xray-хвоста `?ed=N` В ПУТИ: путь из ссылки попал в конфиг не буквально, а
-// разложенным на два поля.
-//
-// Именно из пути, а не из плоских `ed`/`eh` в query (вторая форма, SPEC 103
-// §9.E): там ссылка НЕ вводит в заблуждение — параметры названы своими
-// именами и переносятся один в один, преобразовывать нечего. Проверка идёт
-// по исходному пути, а не по результату: uriTransportFromQuery — чистый
-// построитель транспорта, узла он не знает, и менять его сигнатуру ради
-// info-кода несоразмерно.
-func noteWSEarlyDataConverted(node *configtypes.ParsedNode, transport map[string]interface{}) {
-	if node == nil || transport == nil {
-		return
-	}
-	if _, ok := transport["max_early_data"]; !ok {
-		return
-	}
-	rawPath := queryGetFold(node.Query, "path")
-	if _, maxED := splitWSEarlyData(decodeResidualPercent(rawPath)); maxED > 0 {
-		node.AddWarning(WarnWSEarlyDataEDConverted)
-	}
-}
-
 func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 	outbound := make(map[string]interface{})
 	// `ech=` не переводится никуда ни у одной схемы (D-122): Xray-форма несёт
@@ -560,139 +508,7 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 	outbound["server"] = node.Server
 	outbound["server_port"] = node.Port
 
-	if node.Scheme == "vmess" {
-		outbound["uuid"] = node.UUID
-
-		outbound["security"] = normalizeVMessSecurity(node.Query.Get("security"))
-
-		if alterIDStr := node.Query.Get("alter_id"); alterIDStr != "" {
-			if alterID, err := strconv.Atoi(alterIDStr); err == nil {
-				outbound["alter_id"] = alterID
-			}
-		}
-
-		network := strings.ToLower(strings.TrimSpace(node.Query.Get("network")))
-		if network == "" {
-			network = "tcp"
-		}
-
-		switch {
-		case network == "xhttp":
-			// sing-box-lx xhttp transport (SPEC 071). Distinct from httpupgrade.
-			tr := xhttpTransportFromQuery(node.Query)
-			if _, ok := tr["host"]; !ok {
-				if h := queryGetFold(node.Query, "sni"); h != "" {
-					tr["host"] = h
-				}
-			}
-			outbound["transport"] = tr
-
-		case network == "httpupgrade":
-			tr := map[string]interface{}{"type": "httpupgrade"}
-			if p := node.Query.Get("path"); p != "" {
-				tr["path"] = p
-			}
-			h := queryGetFold(node.Query, "host")
-			if h == "" {
-				h = queryGetFold(node.Query, "sni")
-			}
-			if h != "" {
-				tr["host"] = h
-			}
-			outbound["transport"] = tr
-
-		case network == "h2":
-			tr := map[string]interface{}{"type": "http"}
-			if p := node.Query.Get("path"); p != "" {
-				tr["path"] = p
-			}
-			hostStr := queryGetFold(node.Query, "host")
-			if hostStr == "" {
-				hostStr = queryGetFold(node.Query, "sni")
-			}
-			if hostStr == "" {
-				hostStr = node.Server
-			}
-			if hostStr != "" {
-				tr["host"] = []string{hostStr}
-			}
-			outbound["transport"] = tr
-
-		case network == "ws" || network == "http" || network == "grpc":
-			transport := make(map[string]interface{})
-			transport["type"] = network
-
-			if network == "grpc" {
-				if path := node.Query.Get("path"); path != "" {
-					transport["service_name"] = path
-				}
-			} else if path := node.Query.Get("path"); path != "" {
-				if network == "ws" {
-					// split Xray's `?ed=N` early-data tail out of the path (issue #96)
-					if applyWSEarlyData(transport, path) {
-						node.AddWarning(WarnWSEarlyDataEDConverted)
-					}
-				} else {
-					transport["path"] = path
-				}
-			}
-
-			if network == "ws" {
-				host := queryGetFold(node.Query, "host")
-				if host == "" {
-					host = queryGetFold(node.Query, "sni")
-				}
-				if host != "" {
-					transport["headers"] = map[string]string{"Host": host}
-				}
-			}
-			if network == "http" {
-				if host := node.Query.Get("host"); host != "" {
-					transport["host"] = []string{host}
-				}
-			}
-
-			outbound["transport"] = transport
-		}
-
-		if node.Query.Get("tls_enabled") == "true" {
-			tlsData := map[string]interface{}{
-				"enabled": true,
-			}
-
-			sni := queryGetFold(node.Query, "sni")
-			if sni == "" {
-				sni = queryGetFold(node.Query, "peer")
-			}
-			if sni == "" {
-				sni = node.Server
-			}
-			if sni != "" {
-				tlsData["server_name"] = sni
-			}
-
-			if alpn := node.Query.Get("alpn"); alpn != "" {
-				alpnList := strings.Split(alpn, ",")
-				for i := range alpnList {
-					alpnList[i] = strings.TrimSpace(alpnList[i])
-				}
-				tlsData["alpn"] = alpnList
-			}
-
-			if fp := utlsFingerprintFromQuery(node.Query, "vmess"); fp != "" {
-				tlsData["utls"] = map[string]interface{}{
-					"enabled":     true,
-					"fingerprint": fp,
-				}
-			}
-
-			if tlsInsecureTrue(node.Query, "vmess") {
-				tlsData["insecure"] = true
-			}
-
-			outbound["tls"] = tlsData
-		}
-	} else if node.Scheme == "hysteria2" {
+	if node.Scheme == "hysteria2" {
 		buildHysteria2Outbound(node, outbound)
 	} else if node.Scheme == "hysteria" {
 		buildHysteriaOutbound(node, outbound)

@@ -378,6 +378,7 @@
       "include": [
         "transports#uri",
         "tls#uri",
+        "tls#uri_security",
         "tls#uri_reality"
       ],
       "params": {

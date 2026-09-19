@@ -363,6 +363,16 @@ func iniHasKey(sections map[string]map[string]string, key string) bool {
 // так же, как объектный, — чтобы таблица не различала два вида адресации.
 func lookupPath(v interface{}, path string) (interface{}, bool) {
 	cur := v
+	// "$root" — САМ документ, а не ключ в нём. Нужен предикатам о форме
+	// документа целиком: `type_of: {"$root": "object"}` отличает объект
+	// v2rayN у vmess от cleartext-строки, и выразить это именем ключа
+	// нельзя — вопрос не «есть ли поле», а «что это вообще такое».
+	if strings.TrimSpace(path) == "$root" {
+		if cur == nil {
+			return nil, false
+		}
+		return cur, true
+	}
 	for _, seg := range strings.Split(path, ".") {
 		if seg == "" {
 			continue

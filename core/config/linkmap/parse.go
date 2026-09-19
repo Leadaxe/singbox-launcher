@@ -52,19 +52,98 @@ func ParseURI(plan *Plan, text, bodyType string, trace *Trace) (*Result, error) 
 }
 
 // UnwrapURI выбирает форму и распаковывает текст в пространство источников.
+//
+// Форма опознаётся по ТОМУ ЖЕ тексту, что она и разбирает: сначала её
+// конвейер `decode`, потом её `detect` — над РАСПАКОВАННЫМ телом (§3.1).
+// Проверять detect по исходному тексту нельзя там, где формы различает
+// пейлоад: у vmess обе формы — «base64 на authority», и что под ним лежит —
+// объект JSON v2rayN или cleartext `method:uuid@host:port` — видно только
+// после декодирования. Ровно так решает и прежний путь: декодирует, пробует
+// json.Unmarshal и откатывается в cleartext (node_parser_vmess.go:78-82).
+//
+// Формам, которые различимы по оболочке (`regex` у ss на наличие '@' до
+// фрагмента), это ничего не меняет: их предикат одинаково верен на обоих
+// текстах, а `decode` у них не портит распознаваемое.
+//
+// Порядок объявления форм НОРМАТИВЕН: первая совпавшая и берётся, ветка
+// `default` — последняя. Поэтому «JSON пробуется первым, cleartext —
+// откат» выражается порядком, а не приоритетом.
 func UnwrapURI(plan *Plan, text string) (*Space, registry.Form, error) {
 	if plan == nil || plan.Mapper == nil {
 		return nil, registry.Form{}, fmt.Errorf("linkmap: план не задан")
 	}
-	form, sel := SelectForm(plan.Mapper, NewContent(text))
-	if sel.Index < 0 {
+	forms := plan.Mapper.Forms
+	if len(forms) == 0 {
 		return nil, registry.Form{}, fmt.Errorf("linkmap: форма не распознана")
 	}
 
+	fallback := -1
+	var firstErr error
+	for i := range forms {
+		form := forms[i]
+		if form.Detect != nil && form.Detect.Default {
+			if fallback < 0 {
+				fallback = i
+			}
+			continue
+		}
+		body, err := unwrapBody(form, text)
+		if err != nil {
+			// Форма не разворачивается — она просто не эта форма; ошибку
+			// придержим на случай, если не подойдёт ни одна.
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if form.Detect != nil && !Matches(form.Detect, NewContent(body)) {
+			continue
+		}
+		space, err := lexSpace(form, body, text)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		buildOverlays(plan.Mapper.Overlays, space)
+		return space, form, nil
+	}
+
+	if fallback >= 0 {
+		form := forms[fallback]
+		body, err := unwrapBody(form, text)
+		if err != nil {
+			return nil, form, err
+		}
+		space, err := lexSpace(form, body, text)
+		if err != nil {
+			return nil, form, err
+		}
+		buildOverlays(plan.Mapper.Overlays, space)
+		return space, form, nil
+	}
+	if firstErr != nil {
+		return nil, registry.Form{}, firstErr
+	}
+	return nil, registry.Form{}, fmt.Errorf("linkmap: форма не распознана")
+}
+
+// unwrapBody прогоняет конвейер декодеров одной формы и отдаёт ПЕЙЛОАД —
+// то, что будет разбирать `space`.
+//
+// Декодеры с областью (`scope`) работают над кусками ССЫЛКИ и потому
+// возвращают текст, у которого оболочка на месте: `vmess://{"add":…}`.
+// Лексеру ссылки она нужна (он по ней и режет), а разборщику пейлоада —
+// нет: JSON-объект с приклеенным спереди `vmess://` не JSON ни для
+// json.Unmarshal, ни для предиката detect. Поэтому у формы с чужим
+// пространством оболочка снимается здесь, один раз, — и detect, и lexSpace
+// видят ровно одно и то же тело.
+func unwrapBody(form registry.Form, text string) (string, error) {
 	body := text
 	for i, raw := range form.Decode {
 		if i >= maxDecodeDepth {
-			return nil, form, fmt.Errorf("linkmap: превышена глубина декодирования")
+			return "", fmt.Errorf("linkmap: превышена глубина декодирования")
 		}
 		name, scope := decodeSpec(raw)
 		if name == "" {
@@ -74,17 +153,94 @@ func UnwrapURI(plan *Plan, text string) (*Space, registry.Form, error) {
 		}
 		next, err := decodeScoped(name, scope, body)
 		if err != nil {
-			return nil, form, err
+			return "", err
 		}
 		body = next
 	}
-
-	space, err := lexURI(body)
-	if err != nil {
-		return nil, form, err
+	if form.Space != "" && form.Space != "url" {
+		body = stripURIWrapper(body)
 	}
-	buildOverlays(plan.Mapper.Overlays, space)
-	return space, form, nil
+	return body, nil
+}
+
+// stripURIWrapper снимает `схема://` спереди и `#метку` сзади, оставляя
+// пейлоад. Метка — свойство оболочки: у vmess она стоит СНАРУЖИ base64
+// (`vmess://<base64>#Имя`), и внутрь пейлоада ей нельзя.
+func stripURIWrapper(text string) string {
+	s := strings.TrimSpace(text)
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+len("://"):]
+	}
+	if i := strings.Index(s, "#"); i >= 0 {
+		s = s[:i]
+	}
+	return strings.TrimSpace(s)
+}
+
+// lexSpace превращает распакованный текст в пространство источников ТЕМ
+// разборщиком, который назвала форма (`forms[].space`).
+//
+// Раньше здесь всегда стоял lexURI, и `space` был объявлением без
+// исполнителя: форма v2rayN у vmess несёт под base64 не ссылку, а ОБЪЕКТ
+// JSON — `{"add": "...", "port": "443", "id": "..."}`, — и лексер ссылки
+// видел в нём текст без "://". Записи секции адресуют его `json.add`,
+// `json.port`: имена источников у пространства JSON свои, и Lookup их уже
+// знает — не хватало только того, кто наполнит.
+//
+// Метка узла у формы JSON живёт ВНУТРИ объекта (`ps`), а не во фрагменте
+// ссылки, но фрагмент бывает и там: `vmess://<base64>#Имя` — поэтому
+// фрагмент исходного текста переносится в пространство. Побеждает тот, кого
+// запись `label` назовёт первым (у vmess это `json.ps`, фрагмент — запасной).
+func lexSpace(form registry.Form, body, original string) (*Space, error) {
+	switch form.Space {
+	case "", "url":
+		return lexURI(body)
+	case "json":
+		var v interface{}
+		if err := json.Unmarshal([]byte(strings.TrimSpace(body)), &v); err != nil {
+			return nil, fmt.Errorf("linkmap: json: %w", err)
+		}
+		s := &Space{}
+		s.SetJSON(v)
+		// Скалярные ключи КОНТЕЙНЕРА видны ещё и как `query.<имя>`.
+		//
+		// Не удобство, а условие переиспользования ОБЩИХ БЛОКОВ. Блоки
+		// transports#uri, tls#uri и dialer#uri адресуют поля `query.path`,
+		// `query.host`, `query.sni`: у ссылочных форм эти поля и вправду
+		// лежат в query. Контейнер v2rayN называет ТЕ ЖЕ поля теми же
+		// именами, только ключами объекта, — и без общего пространства
+		// vmess пришлось бы либо переписать блоки на «источник по формам»
+		// в каждой записи, либо завести им копии. Оба пути расходятся
+		// молча, а это ровно то, ради чего затеян один движок.
+		//
+		// Так же устроен и LxBox (contract_draft/uri/vmess.json: контейнер
+		// «раскладывается плоским слоем имён»), и их отступления написаны
+		// в расчёте на это. Собственные записи секции продолжают читать
+		// `json.<путь>`: вложенные пути плоский слой не выражает, а имя,
+		// объявленное обоими способами, берётся записью по её `source`.
+		if obj, ok := v.(map[string]interface{}); ok {
+			for k, item := range obj {
+				if sv := overlayScalar(item); sv != "" {
+					s.AddQuery(k, sv)
+				}
+			}
+		}
+		// Схема и фрагмент — свойства ОБОЛОЧКИ, а не пейлоада: под base64
+		// их нет, а секции они нужны (detect по схеме уже прошёл, но
+		// `label.fallback.scheme_source` и фрагмент читаются позже).
+		if idx := strings.Index(original, "://"); idx > 0 {
+			s.Scheme = strings.ToLower(original[:idx])
+		}
+		if i := strings.Index(original, "#"); i >= 0 {
+			frag := original[i+1:]
+			if dec, err := percentUnescape(frag); err == nil {
+				frag = dec
+			}
+			s.Fragment = frag
+		}
+		return s, nil
+	}
+	return nil, fmt.Errorf("linkmap: неизвестное пространство %q", form.Space)
 }
 
 // buildOverlays распаковывает наложенные пространства, объявленные секцией.
@@ -252,11 +408,22 @@ func splitAuthorityPart(text string) (head, authority, tail string) {
 	}
 	head, rest = rest[:idx+len("://")], rest[idx+len("://"):]
 
+	// Режется ТОЛЬКО по '#'.
+	//
+	// Прежде резалось ещё по '?' и '/' — по синтаксису ссылки, которой
+	// здесь ещё нет: под base64 лежит НЕРАЗОБРАННЫЙ блоб, а '/' и '+' —
+	// законные символы 63-го и 62-го значений стандартного алфавита
+	// (RFC 4648 §4), как и '=' в паддинге. Блоб legacy-формы vmess
+	// (`method:uuid@host:port?type=ws&path=%2Fws`) содержит '/' в теле
+	// кодировки: разрез отдавал декодеру первую половину, base64 её
+	// доедал без ошибки — и query узла терялся МОЛЧА, вместе с
+	// транспортом и TLS (корпус legacy_cleartext_userinfo).
+	//
+	// '#' резать обязательно и безопасно: метка стоит СНАРУЖИ base64
+	// открытым текстом в обеих формах, а в алфавит кодировки не входит.
 	cut := len(rest)
-	for _, sep := range []string{"#", "?", "/"} {
-		if i := strings.Index(rest, sep); i >= 0 && i < cut {
-			cut = i
-		}
+	if i := strings.Index(rest, "#"); i >= 0 {
+		cut = i
 	}
 	return head, rest[:cut], rest[cut:]
 }

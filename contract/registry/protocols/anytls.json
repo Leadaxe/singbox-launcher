@@ -380,6 +380,7 @@
       },
       "include": [
         "tls#uri",
+        "tls#uri_security",
         "tls#uri_reality",
         "dialer#uri"
       ],

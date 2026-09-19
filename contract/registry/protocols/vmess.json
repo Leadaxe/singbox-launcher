@@ -374,6 +374,7 @@
   "mappers": {
     "uri": {
       "body_source": "uri",
+      "live": true,
       "detect": {
         "scheme_in": [
           "vmess"
@@ -390,7 +391,10 @@
             }
           },
           "decode": [
-            "base64",
+            {
+              "decoder": "base64",
+              "scope": "authority"
+            },
             "json"
           ],
           "space": "json",
@@ -402,7 +406,10 @@
             "default": true
           },
           "decode": [
-            "base64",
+            {
+              "decoder": "base64",
+              "scope": "authority"
+            },
             {
               "reparse": "url"
             }
@@ -441,6 +448,8 @@
         "type": "vmess"
       },
       "params": {
+        "v": null,
+        "serverName": null,
         "server": {
           "source": {
             "v2rayn": "json.add",

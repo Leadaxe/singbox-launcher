@@ -147,114 +147,6 @@ func utlsFingerprintFromQuery(q url.Values, scheme string) string {
 	return junkRaw
 }
 
-// uriTransportFromQuery builds sing-box V2Ray transport for VLESS/Trojan from URI query.
-// See: https://sing-box.sagernet.org/configuration/shared/v2ray-transport/
-func uriTransportFromQuery(q url.Values) (map[string]interface{}, bool) {
-	typ := strings.ToLower(strings.TrimSpace(queryGetFold(q, "type")))
-	headerType := strings.ToLower(strings.TrimSpace(queryGetFold(q, "headerType")))
-
-	// Xray: TCP/raw with HTTP header camouflage → sing-box "http" transport (not plain TCP).
-	if (typ == "raw" || typ == "tcp") && headerType == "http" {
-		t := map[string]interface{}{"type": "http"}
-		if p := queryGetFold(q, "path"); p != "" {
-			t["path"] = p
-		}
-		if host := queryGetFold(q, "host"); host != "" {
-			t["host"] = []string{host}
-		}
-		return t, true
-	}
-
-	switch typ {
-	case "ws":
-		t := map[string]interface{}{"type": "ws"}
-		// path may carry Xray's `?ed=N` early-data tail; split it into the
-		// sing-box max_early_data / early_data_header_name fields (issue #96).
-		if p := queryGetFold(q, "path"); p != "" {
-			applyWSEarlyData(t, p)
-		}
-		// Second spelling seen in the wild: flat `ed`/`eh` query params. The
-		// path tail wins — it addresses one path, the flat pair the whole link
-		// (SPEC 103, §9.E). `eh` without `ed` means nothing: the core enables
-		// early data on max_early_data > 0.
-		if _, already := t["max_early_data"]; !already {
-			if ed, err := strconv.Atoi(strings.TrimSpace(queryGetFold(q, "ed"))); err == nil && ed > 0 {
-				t["max_early_data"] = ed
-				header := strings.TrimSpace(queryGetFold(q, "eh"))
-				if header == "" {
-					header = wsEarlyDataHeaderName
-				}
-				t["early_data_header_name"] = header
-			}
-		}
-		// Many subscriptions set only sni= for TLS; reverse proxies expect WS Host to match vhost.
-		host := strings.TrimSpace(queryGetFold(q, "host"))
-		if host == "" {
-			host = strings.TrimSpace(queryGetFold(q, "sni"))
-		}
-		if host == "" {
-			host = strings.TrimSpace(queryGetFold(q, "obfsParam"))
-		}
-		if host != "" {
-			t["headers"] = map[string]string{"Host": host}
-		}
-		return t, true
-	case "grpc":
-		t := map[string]interface{}{"type": "grpc"}
-		sn := queryGetFold(q, "serviceName")
-		if sn == "" {
-			sn = queryGetFold(q, "service_name")
-		}
-		if sn != "" {
-			t["service_name"] = sn
-		} else if p := queryGetFold(q, "path"); p != "" {
-			t["service_name"] = p
-		}
-		return t, true
-	case "http":
-		// HTTP transport: "host" is a list in sing-box (not a plain Host header).
-		t := map[string]interface{}{"type": "http"}
-		if p := queryGetFold(q, "path"); p != "" {
-			t["path"] = p
-		}
-		if host := queryGetFold(q, "host"); host != "" {
-			t["host"] = []string{host}
-		}
-		return t, true
-	case "xhttp":
-		// Xray "xhttp" (splithttp) → sing-box-lx "xhttp" transport. Distinct
-		// wire protocol from httpupgrade; requires a core built with_xhttp
-		// (sing-box-lx). See SPEC 071.
-		return xhttpTransportFromQuery(q), true
-	case "httpupgrade":
-		// sing-box "httpupgrade" (HTTP/1.1 Upgrade). Kept separate from xhttp.
-		t := map[string]interface{}{"type": "httpupgrade"}
-		if p := queryGetFold(q, "path"); p != "" {
-			// httpupgrade has no early data in sing-box: strip the Xray `?ed=N`
-			// tail (and any residual encoding) instead of shipping it inside the
-			// path, which the server answers with 404 (SPEC 103, D-028).
-			//
-			// Путь, состоящий ТОЛЬКО из хвоста (`path=?ed=2048` — реальный
-			// паттерн панелей с корневым путём), даёт clean == "" — фолбэк
-			// на исходную строку вернул бы `?ed=` обратно, ровно то, от чего
-			// D-028 защищался. Корень — честный эквивалент.
-			clean, _ := splitWSEarlyData(decodeResidualPercent(p))
-			if clean == "" {
-				clean = "/"
-			}
-			t["path"] = clean
-		}
-		if host := queryGetFold(q, "host"); host != "" {
-			t["host"] = host
-		}
-		return t, true
-	case "raw", "tcp", "":
-		return nil, false
-	default:
-		return nil, false
-	}
-}
-
 // xhttpStringField maps a transport JSON key (snake_case) to the URL spellings
 // it may arrive under. The first non-empty source wins; queryGetFold already
 // folds case, so we only list distinct spellings (snake vs camelCase).
@@ -487,7 +379,7 @@ func xhttpGuardUplinkPlacement(t map[string]interface{}) string {
 
 // noteXHTTPPlacementGuard вешает на узел пометку о правке, сделанной гардом.
 //
-// Отдельная функция по образцу noteWSEarlyDataConverted: точек, где транспорт
+// Отдельная функция: точек, где транспорт
 // уже собран, а узел под рукой, несколько (URI vless/trojan, Xray
 // streamSettings), и правило «что показать пользователю» должно жить в одном
 // месте.

@@ -284,7 +284,8 @@
       },
       "include": [
         "transports#uri",
-        "tls#uri"
+        "tls#uri",
+        "tls#uri_security"
       ],
       "params": {
         "server": {

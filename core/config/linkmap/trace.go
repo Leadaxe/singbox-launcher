@@ -50,6 +50,10 @@ const (
 	WhyNotDeclared        = "not_declared"
 	WhyDefault            = "default"
 	WhyMaterializeDefault = "materialize_default"
+	// WhyOmitDefault — значение совпало с дефолтом ядра и в тело не пишется
+	// (`omit_default` записи). Не деградация: ядро на отсутствующем ключе
+	// ведёт себя ровно так же, а лишний ключ сдвинул бы identity узла.
+	WhyOmitDefault = "omit_default"
 )
 
 // WhyLowerPriority — запись проиграла другой записи в тот же путь.

@@ -13,6 +13,7 @@ package linkmap
 // slices/maps/min/max/clear.
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
@@ -32,6 +33,13 @@ type Result struct {
 	LabelFallback string
 	// BodySource — как объявила секция (uri/xray/singbox/wgconf/amnezia).
 	BodySource string
+	// FormID — форма, которую выбрал разбор. Нужна вызывающему там, где
+	// свойство узла зависит от ФОРМЫ, а не от тела: у vmess userinfo есть
+	// только у cleartext-формы, а у контейнера v2rayN его нет вовсе.
+	FormID string
+	// HadUserInfo — нёс ли вход userinfo. Отличает «userinfo пуст» от
+	// «userinfo в этой форме не предусмотрен».
+	HadUserInfo bool
 	// Notes — коды, поставленные движком (uri_param_unknown и
 	// объявленные записями on_*). Порядок = порядок появления.
 	Notes []Note
@@ -95,9 +103,11 @@ func Exec(plan *Plan, space *Space, form registry.Form, bodyType string, trace *
 		schemeVals: map[string]interface{}{},
 		bodyType:   bodyType,
 		res: &Result{
-			Body:       map[string]interface{}{},
-			BodySource: plan.Mapper.BodySource,
-			Trace:      trace,
+			Body:        map[string]interface{}{},
+			BodySource:  plan.Mapper.BodySource,
+			FormID:      form.ID,
+			HadUserInfo: space != nil && space.UserInfo != "",
+			Trace:       trace,
 		},
 	}
 	st.mapperName = plan.Mapper.Scheme() + "." + plan.Mapper.Kind()
@@ -415,9 +425,62 @@ func (st *execState) applyEntry(e *Entry) {
 		return
 	}
 
+	// omit_default — значение, равное дефолту ЯДРА, в тело не пишется.
+	//
+	// Это не суждение о годности (маппер значений не судит), а отказ от
+	// лишнего ключа: `aid=0` у vmess ядро понимает так же, как отсутствие
+	// alter_id, но записанный ноль попадает в тело — то есть в identity
+	// узла, — и тела двух проектов на одной ссылке разъезжаются. Правило
+	// объявляет запись, потому что дефолт — свойство ПОЛЯ, а не схемы.
+	//
+	// sets/implies при этом остаются: узел значение НЕСЁТ, просто в теле оно
+	// выражается отсутствием ключа.
+	if matchesOmitDefault(p.OmitDefault, typed) {
+		st.trace.Add(Event{
+			Stage: StageField, Mapper: st.mapperName, Entry: e.Name,
+			Src: src, Raw: rawVal, Val: typed, Path: nil, Act: ActSkip, Why: WhyOmitDefault,
+		})
+		st.applySets(e, val)
+		st.applyImplies(e)
+		return
+	}
+
 	st.writeMerge(e.Name, src, rawVal, typed, path, p.Priority, e.Decl, "", p.Merge)
 	st.applySets(e, val)
 	st.applyImplies(e)
+}
+
+// matchesOmitDefault — совпадает ли значение с объявленным дефолтом.
+//
+// Сравнение идёт по КАНОНУ JSON, а не по Go-типу: реестр разобран
+// encoding/json и отдаёт 0 как float64, а движок уже привёл значение к int
+// (Q133-48). Печать обоих через json.Marshal снимает эту разницу, заодно
+// давая верное сравнение строк, булевых и чисел одним правилом.
+func matchesOmitDefault(raw json.RawMessage, typed interface{}) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var want interface{}
+	if err := json.Unmarshal(raw, &want); err != nil {
+		return false
+	}
+	// Массив дефолтов — «любой из перечисленных». Форма emit.omit_default
+	// (список ИМЁН полей) сюда не попадает: там другое место и другой тип.
+	if list, ok := want.([]interface{}); ok {
+		for _, w := range list {
+			if sameJSON(w, typed) {
+				return true
+			}
+		}
+		return false
+	}
+	return sameJSON(want, typed)
+}
+
+func sameJSON(a, b interface{}) bool {
+	ab, err1 := json.Marshal(a)
+	bb, err2 := json.Marshal(b)
+	return err1 == nil && err2 == nil && string(ab) == string(bb)
 }
 
 // applyMissing — источник промолчал: materialize_default, default_from, sets по
@@ -429,7 +492,23 @@ func (st *execState) applyMissing(e *Entry) {
 	// выражается именно им, а не веткой кода).
 	if len(p.DefaultFrom) > 0 {
 		if name := rawString(p.DefaultFrom); name != "" {
-			if v, ok := st.space.Lookup(name); ok && v != "" {
+			v, ok := st.space.Lookup(name)
+			if !ok || v == "" {
+				// Имя может называть не ИСТОЧНИК, а ПУТЬ ТЕЛА: SNI по
+				// умолчанию равен адресу сервера, а адрес у разных форм
+				// приезжает из разных источников (`host` у ссылки,
+				// `json.add` у контейнера v2rayN). Написать «host» значило
+				// бы назвать источник ОДНОЙ формы, и у другой дефолт молча
+				// не срабатывал — так терялся tls.server_name у vmess.
+				// Путь тела свободен от этого: к моменту чтения его уже
+				// заполнила запись `server`, чей источник объявлен по формам.
+				if bv, hit := getPath(st.res.Body, name); hit {
+					if s := toString(bv); s != "" {
+						v, ok = s, true
+					}
+				}
+			}
+			if ok && v != "" {
 				if path := st.pathOf(p); path != "" {
 					st.write(e.Name, name, v, v, path, p.Priority, e.Decl, WhyDefault)
 					st.applyImplies(e)
@@ -444,6 +523,30 @@ func (st *execState) applyMissing(e *Entry) {
 		if assigns, ok := p.Sets[""]; ok {
 			st.applyAssigns(e.Name, assigns, p.Priority, e.Decl, WhyMaterializeDefault, p.Merge)
 			return
+		}
+		// value_map[""] — перевод ПУСТОГО значения. Записи, у которой нет
+		// sets, он и служит дефолтом: у vmess `security` объявлен
+		// `value_map: {"": "auto", …}`, то есть «нет значения — auto», и
+		// ключ обязан появиться в теле (у ядра поле без omitempty, а
+		// санитайзер за его отсутствие валит узел кодом field_missing).
+		// Прежде ветки не было, и материализация молча не происходила:
+		// корпус видел field_missing на восьми кейсах формы v2rayN, где
+		// панель ключ scy вовсе не пишет.
+		if mapped, hit, isNull := applyValueMapCase(p.ValueMap, "", p.ValueMapCase != "sensitive"); hit && !isNull {
+			if path := st.pathOf(p); path != "" {
+				typed := interface{}(mapped)
+				if p.Type != "" {
+					conv, drop := convertType(p.Type, mapped)
+					if drop {
+						return
+					}
+					typed = conv
+				}
+				st.write(e.Name, "-", "", typed, path,
+					p.Priority, e.Decl, WhyMaterializeDefault)
+				st.applyImplies(e)
+				return
+			}
 		}
 		// Дефолт написания схемы (`$default_port` из scheme_sets) — там, где
 		// одна схема несёт два написания с разными портами (Q133-44).
@@ -771,12 +874,7 @@ func (st *execState) applyFlatten(e *Entry, src string) {
 // этом стоит (sni → peer → host). Возвращает (сырое значение, имя
 // сработавшего источника, найдено ли).
 func (st *execState) lookupSource(p *registry.Param) (string, string, bool) {
-	names := p.Source.List
-	if len(p.Source.ByForm) > 0 {
-		if byForm, ok := p.Source.ByForm[st.form.ID]; ok {
-			names = byForm
-		}
-	}
+	names := p.Source.ForForm(st.form.ID)
 	for _, name := range names {
 		name = st.substituteBase(name)
 		v, ok := st.space.Lookup(name)
@@ -1164,7 +1262,7 @@ func (st *execState) applyLabel() {
 	if spec == nil {
 		return
 	}
-	for _, name := range spec.Source.All() {
+	for _, name := range spec.Source.ForForm(st.form.ID) {
 		v, ok := st.space.Lookup(st.substituteBase(name))
 		if !ok || v == "" {
 			continue

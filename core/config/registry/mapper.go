@@ -189,6 +189,28 @@ func (s *SourceRef) IsZero() bool {
 	return s == nil || (len(s.List) == 0 && len(s.ByForm) == 0)
 }
 
+// ForForm — источники, объявленные ДЛЯ ЭТОЙ формы.
+//
+// Отличается от All() тем, что при записи картой по формам берёт ровно свою
+// ветку, а не склейку всех. Склейка годится линтеру («перечисли всё, что
+// секция называет»), но исполнению — нет: у vmess метка объявлена `{"v2rayn":
+// "json.ps", "legacy": "fragment"}`, и All() отдаёт обе, отсортированные по
+// имени формы, — то есть `fragment` раньше `json.ps`. Узел формы v2rayN
+// получал имя из фрагмента ссылки, хотя секция прямо пишет, что фрагмент у
+// неё не читается вовсе (корпус fragment_after_base64: ждётся `frag` из ps,
+// а приходило `MyNodeName` из #).
+func (s *SourceRef) ForForm(form string) []string {
+	if s == nil {
+		return nil
+	}
+	if len(s.ByForm) > 0 {
+		if names, ok := s.ByForm[form]; ok {
+			return names
+		}
+	}
+	return s.List
+}
+
 // All — все объявленные источники (по всем формам), для линтера.
 func (s *SourceRef) All() []string {
 	if s == nil {

@@ -26,15 +26,18 @@ import (
 // notLiveYet — секции `uri`, которые В РЕЕСТРЕ ЕСТЬ, но разбор ещё не ведут.
 //
 // Волна 19.09.2026 сняла отсюда trojan, vless, anytls, socks, ssh, http,
-// naive и shadowsocks.
+// naive, shadowsocks и vmess — все секции `uri`, которые в реестре есть,
+// разбор теперь ведут.
 //
 // Схемы, у которых секции `uri` НЕТ ВОВСЕ (hysteria, hysteria2, masque, tuic,
 // wireguard), сюда не попадают: переключать нечего, пока секция не написана.
 // Их остаток держит schemesWithoutURISection ниже — иначе «секции нет» и
 // «секция есть, но спит» слились бы в один молчаливый пропуск.
-var notLiveYet = []string{
-	"vmess",
-}
+//
+// Список ПУСТ: удалять атрибут `live` и старый вход разбора рано — сперва
+// должен опустеть schemesWithoutURISection, иначе ссылки пяти схем остались
+// бы без разбора вовсе.
+var notLiveYet = []string{}
 
 // schemesWithoutURISection — схемы ссылок, секции `uri` у которых ещё не
 // написаны (волны W5/W6, `TASKS.md`). Список сокращается по мере написания

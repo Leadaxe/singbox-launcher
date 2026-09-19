@@ -162,23 +162,19 @@ func TestParseNodesFromXrayJSONArray_WS_EarlyData(t *testing.T) {
 // --- Parser 3: VMess JSON (net=ws, path=/x?ed=N) ---
 
 func TestParseVMess_WS_EarlyData(t *testing.T) {
-	// Legacy VMess JSON carries net=ws and the ed tail inside path.
-	vmess := map[string]interface{}{
-		"v":    "2",
-		"ps":   "vmess-ed",
-		"add":  "h.test",
-		"port": float64(443), // JSON numbers decode to float64
-		"id":   "c59eb5ed-6324-4d53-ad4f-8cda48b30811",
-		"aid":  float64(0),
-		"net":  "ws",
-		"type": "none",
-		"host": "h.test",
-		"path": "/api/v2/channel?ed=2048",
-		"tls":  "tls",
-	}
-	node, err := parseVMessJSON(vmess, nil)
+	// Контейнер v2rayN несёт net=ws и хвост ?ed= внутри path. Вход —
+	// ССЫЛКА, а не карта: разбор vmess ведёт движок реестра, и карту он
+	// строит сам. Пейлоад тот же, что был здесь литералом:
+	// {"v":"2","ps":"vmess-ed","add":"h.test","port":443,
+	//  "id":"c59eb5ed-…","aid":0,"net":"ws","type":"none",
+	//  "host":"h.test","path":"/api/v2/channel?ed=2048","tls":"tls"}
+	uri := "vmess://eyJ2IjoiMiIsInBzIjoidm1lc3MtZWQiLCJhZGQiOiJoLnRlc3QiLCJwb3J0Ijo0NDMs" +
+		"ImlkIjoiYzU5ZWI1ZWQtNjMyNC00ZDUzLWFkNGYtOGNkYTQ4YjMwODExIiwiYWlkIjowLCJuZXQi" +
+		"OiJ3cyIsInR5cGUiOiJub25lIiwiaG9zdCI6ImgudGVzdCIsInBhdGgiOiIvYXBpL3YyL2NoYW5u" +
+		"ZWw/ZWQ9MjA0OCIsInRscyI6InRscyJ9"
+	node, err := ParseNode(uri, nil)
 	if err != nil || node == nil {
-		t.Fatalf("parseVMessJSON: err=%v node=%v", err, node)
+		t.Fatalf("ParseNode: err=%v node=%v", err, node)
 	}
 	tr, ok := node.Outbound["transport"].(map[string]interface{})
 	if !ok {

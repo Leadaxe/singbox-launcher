@@ -61,7 +61,7 @@ func parseURIByEngine(uri string, skipFilters []map[string]string) (*configtypes
 		Query: queryOfURI(uri),
 	}
 	applyEngineBody(node, res.Body)
-	node.UUID = credentialFromBody(plan, res.Body)
+	node.UUID = credentialFromBody(plan, res)
 
 	node.Label = textnorm.NormalizeProxyDisplay(sanitizeForDisplay(res.Label))
 	node.Tag, node.Comment = extractTagAndComment(node.Label)
@@ -154,9 +154,29 @@ func applyEngineBody(node *configtypes.ParsedNode, body map[string]interface{}) 
 //
 // Поле выводимое, а не самостоятельное: обратный путь восстанавливает его
 // из готового тела тем же способом (canonicalCredential, canonical_emit.go).
-func credentialFromBody(plan *linkmap.Plan, body map[string]interface{}) string {
+func credentialFromBody(plan *linkmap.Plan, res *linkmap.Result) string {
 	ui := plan.Mapper.UserInfo
 	if ui == nil || len(ui.Into) == 0 {
+		return ""
+	}
+	body := res.Body
+	// `uuid` в теле — учётные данные САМ ПО СЕБЕ, где бы он ни лежал.
+	//
+	// Правило «первый компонент userinfo» описывает не все схемы: у vmess
+	// userinfo это `method:uuid` (как у ss — `method:password`), то есть
+	// первый компонент — ШИФР, а не идентификатор; у формы-контейнера
+	// v2rayN userinfo нет вовсе, и uuid приезжает ключом объекта. Прежний
+	// путь обе формы сводил к одному (`node.UUID = id`,
+	// node_parser_vmess.go:228 и :153), и то же делают оба обратных
+	// перевода — canonicalCredential и singboxCredentialFromMap, у которых
+	// vmess стоит в ветке `uuid`. Так что вопрос решает ТЕЛО, а не позиция
+	// в userinfo.
+	if s, ok := body["uuid"].(string); ok && s != "" {
+		return s
+	}
+	// Форма БЕЗ userinfo и без uuid — поля нет: позиция в `into` относится
+	// к userinfo, которого у этой формы не было.
+	if !res.HadUserInfo {
 		return ""
 	}
 	// Одиночный userinfo, уехавший по single_into, первым компонентом не

@@ -31,6 +31,10 @@ package subscription
 // registry/protocols/naive.json, тесты на реальном пути это проверяют) и
 // ssh_user_default, который на URI-пути был недостижим и до кампании:
 // ссылку с пустым userinfo отбивала валидация раньше подстановки root.
+// С vmess ушёл и ws_early_data_converted: хвост ?ed=N раскладывает запись
+// transports#uri.ws.path своим `extract`…`code`, а Xray-вход кода не ставил
+// никогда (applyWSEarlyData там зовут, отбрасывая его признак).
+//
 // Страж TestRegistryWarningCodesAreActuallySet ищет ИМЯ КОНСТАНТЫ, поэтому
 // осиротевшая константа его и роняет — это правильный сигнал: код без
 // ставящего его кода на Go обязан жить в реестре, а не здесь.
@@ -76,9 +80,6 @@ const (
 	// WarnAWG3CoreUnsupported — узел с AWG3-полями снят на сборке: ядро
 	// старше 1.14.0-lx.32 или без with_awg. Выброс, а не пометка.
 	WarnAWG3CoreUnsupported = "awg3_core_unsupported"
-	// WarnWSEarlyDataEDConverted — Xray-хвост ?ed=N разложен в
-	// max_early_data + early_data_header_name.
-	WarnWSEarlyDataEDConverted = "ws_early_data_converted"
 	// WarnECHIgnored — в ссылке был Xray-параметр `ech=`: он несёт ключ
 	// ЧУЖОГО клиента (public_name ≠ SNI узла), и рукопожатие с ним не
 	// состоится (device-verified, §320 LxBox). Параметр снят, узел жив —

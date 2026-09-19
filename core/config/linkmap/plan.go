@@ -408,9 +408,23 @@ func buildPlan(scheme, kind string, m *registry.Mapper, blocks blockSet) (*Plan,
 		}
 		// Имя параметра ссылки может отличаться от имени записи: запись
 		// читает `query.<name>`, и объявленным считается именно он.
+		//
+		// `json.<имя>` — то же самое для форм с КОНТЕЙНЕРОМ (v2rayN у
+		// vmess): ключи верхнего уровня объекта видны и как `query.<имя>`
+		// (общий плоский слой, без него блоки tls/transports/dialer в
+		// контейнере не читают ничего), а значит попадают под страж
+		// остатка. Не объяви мы их — реестр ругался бы кодом
+		// uri_param_unknown на `scy`, `aid`, `ps`, которые сам же и
+		// перечислил своей рукой. Вложенный путь (`json.a.b`) плоским слоем
+		// не выражается и параметром ссылки не является — он пропускается.
 		for _, src := range e.Param.Source.All() {
 			if strings.HasPrefix(src, "query.") {
 				declare(pl.Declared, strings.TrimPrefix(src, "query."))
+			}
+			if strings.HasPrefix(src, "json.") {
+				if name := strings.TrimPrefix(src, "json."); !strings.Contains(name, ".") {
+					declare(pl.Declared, name)
+				}
 			}
 		}
 	}
@@ -426,6 +440,24 @@ func buildPlan(scheme, kind string, m *registry.Mapper, blocks blockSet) (*Plan,
 		for _, src := range m.Overlays[i].Source.All() {
 			if strings.HasPrefix(src, "query.") {
 				declare(pl.Declared, strings.TrimPrefix(src, "query."))
+			}
+		}
+	}
+
+	// Источник МЕТКИ — тоже объявленный параметр. У ссылочных форм метка
+	// живёт во фрагменте и в query не попадает вовсе, а у контейнера v2rayN
+	// это обычный ключ объекта (`ps`), видимый плоским слоем наравне с
+	// остальными. Не объяви его — страж остатка ругался бы на имя, которое
+	// секция читает своей записью label.
+	if m.Label != nil {
+		for _, src := range m.Label.Source.All() {
+			if strings.HasPrefix(src, "query.") {
+				declare(pl.Declared, strings.TrimPrefix(src, "query."))
+			}
+			if strings.HasPrefix(src, "json.") {
+				if name := strings.TrimPrefix(src, "json."); !strings.Contains(name, ".") {
+					declare(pl.Declared, name)
+				}
 			}
 		}
 	}
