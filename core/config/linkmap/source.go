@@ -129,20 +129,41 @@ func ClassifySource(set *registry.MapperSet, text string, unwrappers map[string]
 		// алфавит base64 ловил бы обычную строку ссылок без спецсимволов.
 		joined := strings.Join(texts, "\n")
 		if kind.RequiresAfterUnwrap != nil && !Matches(kind.RequiresAfterUnwrap, NewContent(joined)) {
+			// Промежуточный слой ТОЙ ЖЕ оболочки: base64 внутри base64
+			// распаковывается в чистый алфавит base64 — ни `://`, ни `{`,
+			// ни `[Interface]` в нём нет, и правдоподобие проваливается,
+			// хотя документа мы ещё просто не достигли. Отличает этот
+			// случай от «обёртки не было» повторный детект: распакованное
+			// снова совпало с предикатом той же оболочки. Продолжаем цикл —
+			// сверху его сторожит `max_unwrap_depth`, ради которого предел
+			// и объявлен таблицей (DELTAS D133-35).
+			again, againSel := SelectSource(set, NewContent(joined))
+			if kind.Redetect && againSel.Index >= 0 && again.SourceKind == kind.SourceKind {
+				res.UnwrapDepth = depth + 1
+				cur = joined
+				continue
+			}
 			// Распакованное на документ не похоже — обёртки не было, и
 			// текст судится как есть: ветка отвергается ЦЕЛИКОМ, а не
 			// заменяет документ мусором.
 			//
 			// Победителем объявляется вид, выигравший ПОВТОРНЫЙ суд, а не
 			// отвергнутая обёртка: её имя уехало бы в лог и в ожидания
-			// корпуса, объявляя обёрткой текст, который ею не был.
-			alt, elems, skipped, ok := reselectWithout(set, kind, cur)
+			// корпуса, объявляя обёрткой текст, который ею не был. Вместе с
+			// видом переезжают и Matched/ByDefault: иначе в них остаётся
+			// след отвергнутой обёртки, и лог сообщает одно, а имя вида —
+			// другое.
+			alt, altSel, elems, skipped, ok := reselectWithout(set, kind, cur)
 			if !ok {
 				res.Recognized = false
 				res.Kind = registry.SourceKind{}
+				res.Matched = nil
+				res.ByDefault = false
 				return res
 			}
 			res.Kind = alt
+			res.Matched = altSel.Matched
+			res.ByDefault = altSel.ByDefault
 			res.Elements, res.SkippedLines = elems, skipped
 			return res
 		}
@@ -163,7 +184,7 @@ func reselectWithout(
 	set *registry.MapperSet,
 	skip registry.SourceKind,
 	text string,
-) (registry.SourceKind, []SourceElement, int, bool) {
+) (registry.SourceKind, SelectResult, []SourceElement, int, bool) {
 	kinds := set.SourceKindsByPriority()
 	cands := make([]Candidate, 0, len(kinds))
 	rest := make([]registry.SourceKind, 0, len(kinds))
@@ -177,14 +198,14 @@ func reselectWithout(
 	content := NewContent(text)
 	sel := Select(cands, content)
 	if sel.Index < 0 {
-		return registry.SourceKind{}, nil, 0, false
+		return registry.SourceKind{}, sel, nil, 0, false
 	}
 	won := rest[sel.Index]
 	// Второй оболочки быть не может: отвергнутый вид исключён, а других
 	// обёрток на один текст таблица не объявляет. Объявит — элементов не
 	// будет, и раннер таблицы это поймает счётчиком.
 	elems, skipped := extractElements(won, content, nil)
-	return won, elems, skipped, true
+	return won, sel, elems, skipped, true
 }
 
 // extractElements исполняет выражение `elements`.

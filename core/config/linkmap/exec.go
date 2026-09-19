@@ -1322,7 +1322,7 @@ func (st *execState) decodeValue(p *registry.Param, raw string) string {
 	val := raw
 	if p.DecodeExtra != nil {
 		n, untilStable := p.DecodeExtra.PassCount()
-		val = decodePasses(val, p.DecodeExtra.Mode, n, untilStable, p.DecodeExtra.Max)
+		val = decodePasses(val, n, untilStable, p.DecodeExtra.Max)
 	}
 	// Формат `pem` — РАЗДЕЛЬНАЯ политика `+` (PRIMITIVES §0.4a): в
 	// заголовочных строках это пробел, в теле ключа — символ алфавита
@@ -1596,6 +1596,7 @@ func (st *execState) writeMerge(entry, src string, raw, val interface{}, path st
 		})
 		return
 	}
+	val = st.mergeInto(path, val, merge)
 	act := ActWrite
 	if _, exists := getPath(st.res.Body, path); exists {
 		act = ActOverride
@@ -1617,6 +1618,7 @@ func (st *execState) writeAssign(entry string, val interface{}, path string, pri
 		})
 		return
 	}
+	val = st.mergeInto(path, val, merge)
 	act := ActWrite
 	if _, exists := getPath(st.res.Body, path); exists {
 		act = ActOverride
@@ -1626,6 +1628,57 @@ func (st *execState) writeAssign(entry string, val interface{}, path string, pri
 		Stage: StageSets, Mapper: st.mapperName, Entry: entry,
 		Src: "-", Raw: nil, Val: val, Path: path, Act: act, Why: orDash(why),
 	})
+}
+
+// mergeInto исполняет `merge: append`/`prepend` — слияние со ЗНАЧЕНИЕМ,
+// которое уже лежит в пути, а не его замену.
+//
+// Норма MAPPER_ENGINE.md §7: `merge` решает, что делать с ЗАНЯТЫМ путём, и
+// `append`/`prepend` отличаются от `overwrite` ровно тем, что старое значение
+// остаётся. Без этого обе формы вели себя как `overwrite`: multi-port из
+// authority (`host:443,20000-30000`) молча вытеснялся диапазонами `?mport=`,
+// и port-hopping терял половину диапазонов без единого кода.
+//
+// Сливаются только СПИСКИ: путь-скаляр списком не становится (это была бы
+// смена типа тела), и у него побеждает пришедшее значение, как при
+// `overwrite` — merge разрешает спор за путь, а не меняет его форму.
+func (st *execState) mergeInto(path string, val interface{}, merge string) interface{} {
+	if merge != "append" && merge != "prepend" {
+		return val
+	}
+	prev, ok := getPath(st.res.Body, path)
+	if !ok {
+		return val
+	}
+	pl, ok1 := asValueList(prev)
+	vl, ok2 := asValueList(val)
+	if !ok1 || !ok2 {
+		return val
+	}
+	out := make([]interface{}, 0, len(pl)+len(vl))
+	if merge == "prepend" {
+		out = append(out, vl...)
+		out = append(out, pl...)
+	} else {
+		out = append(out, pl...)
+		out = append(out, vl...)
+	}
+	return out
+}
+
+// asValueList приводит значение тела к списку элементов, если оно список.
+func asValueList(v interface{}) ([]interface{}, bool) {
+	switch t := v.(type) {
+	case []interface{}:
+		return t, true
+	case []string:
+		out := make([]interface{}, 0, len(t))
+		for _, s := range t {
+			out = append(out, s)
+		}
+		return out, true
+	}
+	return nil, false
 }
 
 // claim решает, кто владеет путём.
@@ -1873,8 +1926,24 @@ func (st *execState) applyLabel() {
 		break
 	}
 	if len(spec.ValueMap) > 0 {
-		for from, to := range spec.ValueMap {
-			if s, ok := to.(string); ok {
+		// Замены идут подстрокой и потому не независимы: при пересекающихся
+		// ключах исход решает порядок, а обход Go-карты его не даёт вовсе.
+		// Порядок тот же, что у префиксов value_map (длинный раньше
+		// короткого), чтобы частный ключ не проигрывал своему началу; равные
+		// длины разводятся алфавитом — лишь бы результат был один и тот же
+		// от запуска к запуску.
+		froms := make([]string, 0, len(spec.ValueMap))
+		for from := range spec.ValueMap {
+			froms = append(froms, from)
+		}
+		sort.Slice(froms, func(i, j int) bool {
+			if len(froms[i]) != len(froms[j]) {
+				return len(froms[i]) > len(froms[j])
+			}
+			return froms[i] < froms[j]
+		})
+		for _, from := range froms {
+			if s, ok := spec.ValueMap[from].(string); ok {
 				st.res.Label = strings.ReplaceAll(st.res.Label, from, s)
 			}
 		}
@@ -2020,7 +2089,12 @@ func (st *execState) applyOnLenGt(e *Entry) {
 		}
 		arr, ok := raw.([]interface{})
 		if !ok || len(arr) <= n {
-			return
+			// Источник есть, но порог не превышен (или это вовсе не
+			// массив) — цепочка источников на этом не кончается: `source`
+			// перечисляет АЛЬТЕРНАТИВЫ, и следующая может оказаться тем
+			// самым длинным массивом. Выход из цикла здесь гасил бы код
+			// на всех именах после первого существующего.
+			continue
 		}
 		count := strconv.Itoa(len(arr))
 		params := paramsOf(p.OnLenGt)
@@ -2250,13 +2324,17 @@ func stripControl(s string) string {
 }
 
 // decodePasses выполняет дополнительные проходы percent-декода.
-func decodePasses(v, mode string, n int, untilStable bool, max int) string {
+//
+// Режима у прохода нет: разницу «путь против query» несёт не он, а
+// `plus_literal` — percent-декод к `+` не прикасается вовсе, и решение о
+// знаке принимается ОДИН раз, декодером формы (см. plusLiteralFor).
+func decodePasses(v string, n int, untilStable bool, max int) string {
 	if untilStable {
 		if max <= 0 {
 			max = 16
 		}
 		for i := 0; i < max; i++ {
-			next := decodeOnce(v, mode)
+			next := decodeOnce(v)
 			if next == v {
 				return v
 			}
@@ -2265,22 +2343,16 @@ func decodePasses(v, mode string, n int, untilStable bool, max int) string {
 		return v
 	}
 	for i := 0; i < n; i++ {
-		v = decodeOnce(v, mode)
+		v = decodeOnce(v)
 	}
 	return v
 }
 
-// decodeOnce — один проход percent-декода в объявленном режиме.
-//
-// Режимы различаются НАМЕРЕННО: в пути `+` литерален, и query-семантика
-// превратила бы `/ws+v2%2Fdata` в `/ws v2/data` — сервер отвечает 404.
-func decodeOnce(v, mode string) string {
+// decodeOnce — один проход percent-декода.
+func decodeOnce(v string) string {
 	dec, err := percentUnescape(v)
 	if err != nil {
 		return v
-	}
-	if mode == "query" {
-		return dec
 	}
 	return dec
 }

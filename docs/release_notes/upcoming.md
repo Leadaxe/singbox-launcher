@@ -41,6 +41,9 @@
 
 - Port hopping no longer costs you the whole VPN. A provider who writes the address and the port list as one value (`mport=198.51.100.24:443,20000-30000`) used to put the host name inside the port list, and the core refused to load the entire configuration with «bad port range». Now that one entry is dropped with a stated reason and the ranges written correctly keep working. A bogus ALPN entry is handled the same way.
 - A REALITY key written with the other base64 alphabet now works. The key is the same 32 bytes either way, but the core decodes this particular field in one spelling only and answered «decode public_key: illegal base64 data» — refusing the whole configuration. The spelling is now normalised on the way in.
+- A subscription whose port ranges are written both in the address and in `mport=` (`host:443,20000-30000?mport=40000-50000`) no longer loses half of them: port hopping used only one of the two lists, and it did so silently — the node connected and looked healthy.
+- A subscription packed into base64 *twice* is now readable. Before, it produced no nodes and no error at all: the launcher mistook the inner layer for plain text and folded the whole subscription into one unreadable element.
+- A subscription file or `.conf` saved with a BOM (Windows Notepad writes one) is read normally. The invisible leading character threw off format detection, and the configuration turned into a list of nonexistent links.
 
 ### Technical / Internal
 - Contract 1.1.38: warning copy review in `warnings.json` — self-sufficient list subtitles, aligned `params` placeholders, updated developer `go` pointers after SPEC 133.
@@ -56,6 +59,7 @@
 - The registry-sync watchdog no longer lies: greping `parse_warnings.go` would have declared a dozen live rules dead once the codes moved. A counter-test now requires every node-field code to have a producer — a Go constant **or** a registry rule.
 - A Go 1.21+ construct in shared code is now caught on every pull request instead of at release time. The new guard `tools/win7guard` fails the test job on `slices`/`maps` imports, builtin `min`/`max`/`clear`, `range` over an integer and `Request.PathValue` — the things the Windows 7 build's Go 1.20 toolchain cannot compile. It reads the AST and the build tags, so a comment mentioning `min`, a method named `clear` and the `go1.22` twin files stay untouched; the same step also runs in `build-win7`. Coverage upload moved to `codecov-action@v5` (its `file` input is gone, the report is named in `files`), and the Ubuntu runner is pinned to `ubuntu-24.04` instead of the floating label.
 - Dead legacy helpers left after the registry-driven link mapper (orphaned URI transport builders, `uri_params.go`, `node_ref.go`, `detour_topo.go`, legacy JSON transport emitter) removed; `LEGACY_AUDIT` addresses updated to match.
+- Contract 1.1.43: `merge: append` on registry entries is executed as list concatenation (delta `D133-41`), a doubly wrapped base64 document is unwrapped up to the declared depth (`D133-42`), a BOM is stripped at source-kind detection (`D133-43`), and the `label.value_map` replacement order plus the `on_len_gt` source chain are brought to the norm (`D133-44`). Counterpart task for LxBox — `contract/TASKS_LXBOX.md` §39.
 
 ## RU
 ### Основное
@@ -93,6 +97,10 @@
 - Прыжки по портам больше не стоят всего VPN. Провайдер, записавший адрес и список портов одним значением (`mport=198.51.100.24:443,20000-30000`), укладывал имя хоста внутрь списка портов, и ядро отказывалось загрузить весь конфиг с «bad port range». Теперь такая запись снимается с названной причиной, а диапазоны, записанные правильно, продолжают работать. С негодной записью ALPN — так же.
 - Ключ REALITY, записанный другим алфавитом base64, теперь работает. Байты ключа в обоих написаниях одни и те же, но ядро декодирует именно это поле в одном написании и отвечало «decode public_key: illegal base64 data», отвергая конфиг целиком. Написание приводится к одному на входе.
 
+- Подписка, у которой диапазоны портов записаны И в адресе, и в `mport=` (`host:443,20000-30000?mport=40000-50000`), больше не теряет половину: прыжки по портам шли только по одному из двух списков, причём молча — узел подключался и выглядел исправным.
+- Подписка, упакованная в base64 ДВАЖДЫ, теперь читается. Прежде из неё не получалось ни одного узла и не появлялось ни одной ошибки: лаунчер принимал внутренний слой за текст и складывал всю подписку в один нечитаемый элемент.
+- Файл подписки или `.conf`, сохранённый с меткой BOM (так пишет, например, «Блокнот» Windows), читается как обычно. Невидимый символ в начале сбивал распознавание формата, и конфигурация превращалась в список несуществующих ссылок.
+
 ### Техническое / Внутреннее
 - Контракт 1.1.38: вычитка текстов предупреждений в `warnings.json` — самодостаточные подзаголовки в списке узлов, согласованные `params`, обновлённые служебные `go` после SPEC 133.
 - Linux-сборка теперь получает пути к заголовкам Wayland через `pkg-config` и использует X11 при неполном наборе опциональных Wayland/EGL-файлов разработки, исправляя локальную сборку в openSUSE (PR #128, issue #127).
@@ -107,3 +115,4 @@
 - Сторожевой тест реестра перестал врать: грепа `parse_warnings.go` после переезда кодов хватило бы, чтобы объявить дюжину живых правил мёртвыми. Встречная проверка требует, чтобы у каждого кода полей узла был производитель — константа Go **или** правило реестра.
 - Конструкция Go 1.21+ в общем коде теперь ловится на каждом pull request, а не на выпуске. Новый страж `tools/win7guard` красит джобу тестов на импорт `slices`/`maps`, builtin `min`/`max`/`clear`, `range` по целому и `Request.PathValue` — то, что не собирает тулчейн Go 1.20 сборки Windows 7. Он смотрит AST и build-теги, поэтому `min` в комментарии, метод с именем `clear` и файлы-близнецы за `go1.22` его не интересуют; тот же шаг стоит и в `build-win7`. Выгрузка покрытия переехала на `codecov-action@v5` (входа `file` у него нет, файл отчёта называется в `files`), а раннер Ubuntu пригвождён к `ubuntu-24.04` вместо плавающей метки.
 - Снят мёртвый легаси после перевода разбора на реестр: осиротевшие транспортные хелперы URI, `uri_params.go`, `node_ref.go`, `detour_topo.go`, эмиттер transport в `outbound_jsonbuilder.go`; адреса в `LEGACY_AUDIT` пересажены на живые файлы.
+- Контракт 1.1.43: `merge: append` у записей реестра исполняется слиянием списков (дельта `D133-41`), двойная оболочка base64 раскрывается до объявленного предела (`D133-42`), BOM снимается на входе определения вида источника (`D133-43`), порядок замен `label.value_map` и цепочка источников `on_len_gt` приведены к норме (`D133-44`). Встречная задача LxBox — `contract/TASKS_LXBOX.md` §39.

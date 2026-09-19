@@ -67,6 +67,16 @@ func TestSourceKinds(t *testing.T) {
 		skipped int
 		// unwrapped — сколько оболочек снято.
 		unwrapped int
+		// unwrapFailed — имя распаковщика, на котором вид отвергнут. Пусто
+		// у всех кейсов, кроме объявленного отказа (исчерпан предел
+		// глубины): отказ обязан быть ОЖИДАЕМЫМ, иначе он неотличим от
+		// сломавшейся распаковки.
+		unwrapFailed string
+		// byDefault — вид выигран веткой «всё остальное». Поле проверяется
+		// ЯВНО только там, где победитель определился ПОВТОРНЫМ судом
+		// (отвергнутая обёртка): Matched/ByDefault обязаны описывать его, а
+		// не отвергнутый вид, иначе лог называет одно, а имя вида — другое.
+		byDefault bool
 		// ambiguous — под предикат подходит НЕ ОДНА ветка, и это объявлено
 		// таблицей: пары sing-box/Xray различаются признаком диалекта, а
 		// неоднозначный вход (есть оба признака либо нет ни одного) решает
@@ -94,13 +104,54 @@ func TestSourceKinds(t *testing.T) {
 			unwrapped: 1,
 		},
 		{
+			// Предел max_unwrap_depth только тогда что-то ограничивает,
+			// когда до него вообще можно дойти: промежуточный слой двойной
+			// обёртки — чистый алфавит base64, и requires_after_unwrap на
+			// нём проваливается. Отличать «обёртка не кончилась» от
+			// «обёртки не было» обязан повторный детект, иначе двойная
+			// подписка даёт ОДИН элемент-блоб и ноль узлов.
+			name:      "base64 внутри base64 — распаковка до документа",
+			text:      base64.StdEncoding.EncodeToString([]byte(base64.StdEncoding.EncodeToString([]byte("vless://u@a.com:443#a\nvless://u@b.com:443#b\n")))),
+			kind:      "uri_lines",
+			elements:  2,
+			unwrapped: 2,
+		},
+		{
+			// Предел исчерпан: вид объявлен (человеку важно знать, чем текст
+			// оказался), элементов нет, отказ тихий — ни паники, ни ухода в
+			// рекурсию.
+			name:         "тройная обёртка — предел глубины, отказ без паники",
+			text:         base64.StdEncoding.EncodeToString([]byte(base64.StdEncoding.EncodeToString([]byte(base64.StdEncoding.EncodeToString([]byte("vless://u@a.com:443#a\nvless://u@b.com:443#b\n")))))),
+			kind:         "base64_wrapped",
+			elements:     0,
+			unwrapped:    2,
+			unwrapFailed: "base64_utf8",
+		},
+		{
 			// Страховка requires_after_unwrap: строка ссылок без спецсимволов
 			// проходит алфавит base64, и без проверки правдоподобия
 			// распакованный мусор вытеснил бы настоящий список.
-			name:     "текст из алфавита base64, но не обёртка",
-			text:     "trojanpasswordlookalike\nanotherlonglineofletters\n",
-			kind:     "uri_lines",
+			name:      "текст из алфавита base64, но не обёртка",
+			text:      "trojanpasswordlookalike\nanotherlonglineofletters\n",
+			kind:      "uri_lines",
+			elements:  2,
+			byDefault: true,
+		},
+		{
+			// BOM — мусор кодировки файла, а не признак формата: невидимый
+			// U+FEFF сдвигает первый значащий символ, и документ перестаёт
+			// быть JSON'ом сразу для ВСЕХ предикатов (уезжал в построчную
+			// ветку одним элементом-блобом).
+			name:     "BOM перед JSON не меняет вид документа",
+			text:     "\uFEFF" + `{"log":{},"outbounds":[{"type":"vless"},{"type":"direct"}]}`,
+			kind:     "singbox_config",
 			elements: 2,
+		},
+		{
+			name:     "BOM перед .conf не меняет вид документа",
+			text:     "\uFEFF" + "[Interface]\nPrivateKey = aaa\nAddress = 10.0.0.2/32\n[Peer]\nPublicKey = bbb\n",
+			kind:     "wireguard_conf",
+			elements: 1,
 		},
 		{
 			name:     "одиночный sing-box outbound",
@@ -227,13 +278,21 @@ func TestSourceKinds(t *testing.T) {
 			if res.UnwrapDepth != tc.unwrapped {
 				t.Errorf("снято оболочек %d, ожидалось %d", res.UnwrapDepth, tc.unwrapped)
 			}
-			if res.UnwrapFailed != "" {
-				t.Errorf("распаковщик %q не справился", res.UnwrapFailed)
+			if res.UnwrapFailed != tc.unwrapFailed {
+				t.Errorf("отказ распаковки %q, ожидался %q", res.UnwrapFailed, tc.unwrapFailed)
 			}
 			// Совпасть обязан РОВНО один вид — кроме объявленных пар
 			// sing-box/Xray, где неоднозначность разводит priority.
 			// Незаявленное перекрытие значит, что поведение держится на
 			// номере, а не на предикате, и переезд ветки его сломает.
+			if tc.byDefault {
+				if !res.ByDefault {
+					t.Errorf("вид %q выигран не default-веткой, а Matched=%v", res.Kind.SourceKind, res.Matched)
+				}
+				if len(res.Matched) != 0 {
+					t.Errorf("Matched=%v у победителя default-ветки — это след отвергнутого вида", res.Matched)
+				}
+			}
 			if !res.ByDefault && !tc.ambiguous && len(res.Matched) > 1 {
 				t.Errorf("сработало несколько видов: %v — незаявленное перекрытие предикатов", res.Matched)
 			}
