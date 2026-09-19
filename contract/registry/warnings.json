@@ -888,23 +888,26 @@
       "severity": "warning",
       "params": [
         "field",
+        "path",
         "value"
       ],
-      "title_en": "AmneziaWG: field {field} removed",
-      "title_ru": "AmneziaWG: поле {field} снято",
-      "text_en": "The AmneziaWG magic header {field} holds {value}, which is neither a number nor a range. The field was removed, because the core rejects such a value and would refuse to start the whole config; the core uses its WireGuard default.",
-      "text_ru": "Magic-заголовок AmneziaWG {field} содержит {value} — это ни число, ни диапазон. Поле снято: ядро отвергает такое значение и не запустит весь конфиг. Ядро возьмёт значение WireGuard по умолчанию.",
+      "title_en": "AmneziaWG: magic header {path} not applied",
+      "title_ru": "AmneziaWG: magic-заголовок {path} не применён",
+      "text_en": "The AmneziaWG magic header {path} holds {value}, which is neither a number nor a min-max range. The field was removed: the core rejects such a value and would refuse to start the whole config. The node stays, but this header is no longer sent — the core falls back to the plain WireGuard header, and if the server expects the AmneziaWG headers, the handshake may not complete.",
+      "text_ru": "Magic-заголовок AmneziaWG {path} содержит {value} — это ни число, ни диапазон вида min-max. Поле снято: ядро отвергает такое значение и не запустило бы весь конфиг. Узел остаётся, но этот заголовок больше не отправляется — ядро откатится на обычный заголовок WireGuard, и если сервер ждёт заголовки AmneziaWG, рукопожатие может не сойтись.",
       "cause_en": "The AmneziaWG magic headers take a number or a min-max range. Junk here usually comes from a .conf file edited by hand, or from a generator that wrote an empty placeholder instead of the value.",
       "cause_ru": "Magic-заголовки AmneziaWG принимают число или диапазон вида min-max. Мусор здесь обычно приходит из файла .conf, поправленного вручную, или от генератора, записавшего пустую заглушку вместо значения.",
       "fix_en": [
-        "Check that the node connects: if the server expects specific magic headers, it will not.",
-        "Take the configuration from the provider again and re-import it."
+        "Check whether the node connects: if the server expects the AmneziaWG headers, it will not.",
+        "Take the configuration from the provider again and re-import it.",
+        "If you edited the file yourself, write a number or a min-max range with the smaller bound first."
       ],
       "fix_ru": [
-        "Проверьте, соединяется ли узел: если сервер ждёт конкретные magic-заголовки, соединения не будет.",
-        "Возьмите конфигурацию у провайдера заново и импортируйте её ещё раз."
+        "Проверьте, соединяется ли узел: если сервер ждёт заголовки AmneziaWG, соединения не будет.",
+        "Возьмите конфигурацию у провайдера заново и импортируйте её ещё раз.",
+        "Если файл правили вы сами, напишите число или диапазон min-max, меньшая граница первой."
       ],
-      "desc": "AWG magic-header (H1..H4/S1/S2 и др.) не uint32 и не lo-hi диапазон — поле снимается, ядро возьмёт WireGuard-дефолт.",
+      "desc": "AWG magic-header (H1..H4/S1/S2 и др.) не uint32 и не lo-hi диапазон — поле снимается, ядро откатывается на обычный заголовок WireGuard. Текст называет ПУТЬ и ЗНАЧЕНИЕ ({path}/{value}) и прямое последствие: рукопожатие может не сойтись. Подстановка работает только в title/text (Registry.WarningText), в cause/fix плейсхолдеров быть не должно — там подстановки нет намеренно.",
       "dart": "AwgHeaderInvalidWarning",
       "go": "core/config/subscription/node_parser_wireguard.go:400"
     },
@@ -912,23 +915,26 @@
       "severity": "warning",
       "params": [
         "field",
+        "path",
         "value"
       ],
-      "title_en": "AmneziaWG 3.x: field {field} removed",
-      "title_ru": "AmneziaWG 3.x: поле {field} снято",
-      "text_en": "The AmneziaWG 3.x field {field} holds {value} — malformed, or a range whose bounds are reversed. The field was removed, because the core rejects such a value and would refuse to start the whole config; the node works on the core defaults.",
-      "text_ru": "Поле AmneziaWG 3.x {field} содержит {value} — мусор либо диапазон с перевёрнутыми границами. Поле снято: ядро отвергает такое значение и не запустит весь конфиг. Узел работает на значениях ядра по умолчанию.",
+      "title_en": "AmneziaWG 3.x: field {path} not applied",
+      "title_ru": "AmneziaWG 3.x: поле {path} не применено",
+      "text_en": "The AmneziaWG 3.x field {path} holds {value} — malformed, or a range whose bounds are reversed. The field was removed: the core rejects such a value and would refuse to start the whole config. The node stays and runs on the core defaults; if this field was part of what the server expects, the core falls back to plain WireGuard behaviour here and the handshake may not complete.",
+      "text_ru": "Поле AmneziaWG 3.x {path} содержит {value} — мусор либо диапазон с перевёрнутыми границами. Поле снято: ядро отвергает такое значение и не запустило бы весь конфиг. Узел остаётся и работает на значениях ядра по умолчанию; если это поле входило в то, чего ждёт сервер, ядро откатится здесь на обычное поведение WireGuard, и рукопожатие может не сойтись.",
       "cause_en": "The AmneziaWG 3.x fields are new and are usually copied by hand out of a .conf file, so a range ends up malformed or with its bounds swapped (a bigger number first). Reversed bounds are not silently corrected, because that is a typo you should see.",
       "cause_ru": "Поля AmneziaWG 3.x новые и обычно переносятся руками из файла .conf, поэтому диапазон получается битым или с перевёрнутыми границами (большее число первым). Перевёрнутые границы молча не исправляются: это опечатка, которую нужно увидеть.",
       "fix_en": [
-        "Nothing to do in most cases: the node works on the core's defaults.",
-        "If you wrote the range yourself, put the smaller bound first and re-import the configuration."
+        "Check whether the node connects: if the server expects this field, it will not.",
+        "If you wrote the range yourself, put the smaller bound first and re-import the configuration.",
+        "Take the configuration from the provider again and re-import it."
       ],
       "fix_ru": [
-        "Чаще всего делать ничего не нужно: узел работает на значениях ядра по умолчанию.",
-        "Если диапазон писали вы сами, поставьте меньшую границу первой и импортируйте конфигурацию заново."
+        "Проверьте, соединяется ли узел: если сервер ждёт это поле, соединения не будет.",
+        "Если диапазон писали вы сами, поставьте меньшую границу первой и импортируйте конфигурацию заново.",
+        "Возьмите конфигурацию у провайдера заново и импортируйте её ещё раз."
       ],
-      "desc": "Поле AWG 3.x (диапазон таймингов content_padding_addition/rekey_after_time/rekey_timeout/reject_after_time/keepalive_timeout/max_handshake_attempts либо булево random_trailers/disable_cookies) с мусором или с перевёрнутым диапазоном N>M — ПОЛЕ снимается, узел живёт: тайминги клиентские, ядро работает на своих дефолтах. Границы НЕ свопаются (в отличие от h1-h4): перевёрнутый диапазон — опечатка, которую человек должен увидеть. SPEC 123 §2.",
+      "desc": "Поле AWG 3.x (диапазон таймингов content_padding_addition/rekey_after_time/rekey_timeout/reject_after_time/keepalive_timeout/max_handshake_attempts либо булево random_trailers/disable_cookies) с мусором или с перевёрнутым диапазоном N>M — ПОЛЕ снимается, узел живёт: тайминги клиентские, ядро работает на своих дефолтах. Границы НЕ свопаются (в отличие от h1-h4): перевёрнутый диапазон — опечатка, которую человек должен увидеть. SPEC 123 §2. Текст называет ПУТЬ и ЗНАЧЕНИЕ ({path}/{value}) и прямое последствие: откат на обычное поведение WireGuard, рукопожатие может не сойтись. Подстановка работает только в title/text (Registry.WarningText), в cause/fix плейсхолдеров быть не должно.",
       "dart": null,
       "go": "core/config/subscription/awg3.go:applyAWG3Fields"
     },

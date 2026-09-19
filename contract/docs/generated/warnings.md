@@ -14,11 +14,11 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`amnezia_container_choice`](#amnezia_container_choice) · `info` — Profile holds {count} containers, took {chosen}
 - [`anytls_min_idle_invalid`](#anytls_min_idle_invalid) · `warning` — Field removed: invalid min_idle_session
 - [`awg3_core_unsupported`](#awg3_core_unsupported) · `warning` — AmneziaWG 3.x: core too old
-- [`awg3_field_invalid`](#awg3_field_invalid) · `warning` — AmneziaWG 3.x: field {field} removed
+- [`awg3_field_invalid`](#awg3_field_invalid) · `warning` — AmneziaWG 3.x: field {path} not applied
 - [`awg3_header_key_invalid`](#awg3_header_key_invalid) · `error` — AmneziaWG 3.x: invalid header key
 - [`awg3_padding_too_short`](#awg3_padding_too_short) · `error` — AmneziaWG 3.x: {field} shorter than {min}
 - [`awg3_random_trailers_wide_headers`](#awg3_random_trailers_wide_headers) · `info` — AmneziaWG 3.x: wide headers with random trailers
-- [`awg_header_invalid`](#awg_header_invalid) · `warning` — AmneziaWG: field {field} removed
+- [`awg_header_invalid`](#awg_header_invalid) · `warning` — AmneziaWG: magic header {path} not applied
 - [`awg_headers_overlap`](#awg_headers_overlap) · `error` — AmneziaWG: headers {a} and {b} overlap
 - [`awg_mtu_clamped`](#awg_mtu_clamped) · `warning` — AmneziaWG: MTU lowered to 1280
 - [`awg_mtu_high`](#awg_mtu_high) · `info` — AmneziaWG: MTU above 1280
@@ -160,15 +160,16 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="awg3_field_invalid"></a>
 ### awg3_field_invalid
 
-**severity:** `warning` · **params:** `field`, `value`
+**severity:** `warning` · **params:** `field`, `path`, `value`
 
-**AmneziaWG 3.x: field {field} removed**
+**AmneziaWG 3.x: field {path} not applied**
 
-- **What happened:** The AmneziaWG 3.x field {field} holds {value} — malformed, or a range whose bounds are reversed. The field was removed, because the core rejects such a value and would refuse to start the whole config; the node works on the core defaults.
+- **What happened:** The AmneziaWG 3.x field {path} holds {value} — malformed, or a range whose bounds are reversed. The field was removed: the core rejects such a value and would refuse to start the whole config. The node stays and runs on the core defaults; if this field was part of what the server expects, the core falls back to plain WireGuard behaviour here and the handshake may not complete.
 - **Why it happens:** The AmneziaWG 3.x fields are new and are usually copied by hand out of a .conf file, so a range ends up malformed or with its bounds swapped (a bigger number first). Reversed bounds are not silently corrected, because that is a typo you should see.
 - **What you can do:**
-  - Nothing to do in most cases: the node works on the core's defaults.
+  - Check whether the node connects: if the server expects this field, it will not.
   - If you wrote the range yourself, put the smaller bound first and re-import the configuration.
+  - Take the configuration from the provider again and re-import it.
 
 **Where it comes from:**
 
@@ -242,15 +243,16 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="awg_header_invalid"></a>
 ### awg_header_invalid
 
-**severity:** `warning` · **params:** `field`, `value`
+**severity:** `warning` · **params:** `field`, `path`, `value`
 
-**AmneziaWG: field {field} removed**
+**AmneziaWG: magic header {path} not applied**
 
-- **What happened:** The AmneziaWG magic header {field} holds {value}, which is neither a number nor a range. The field was removed, because the core rejects such a value and would refuse to start the whole config; the core uses its WireGuard default.
+- **What happened:** The AmneziaWG magic header {path} holds {value}, which is neither a number nor a min-max range. The field was removed: the core rejects such a value and would refuse to start the whole config. The node stays, but this header is no longer sent — the core falls back to the plain WireGuard header, and if the server expects the AmneziaWG headers, the handshake may not complete.
 - **Why it happens:** The AmneziaWG magic headers take a number or a min-max range. Junk here usually comes from a .conf file edited by hand, or from a generator that wrote an empty placeholder instead of the value.
 - **What you can do:**
-  - Check that the node connects: if the server expects specific magic headers, it will not.
+  - Check whether the node connects: if the server expects the AmneziaWG headers, it will not.
   - Take the configuration from the provider again and re-import it.
+  - If you edited the file yourself, write a number or a min-max range with the smaller bound first.
 
 **Where it comes from:**
 
