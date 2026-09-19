@@ -245,7 +245,106 @@ W7 и W8 — patch; W9 — вместе с последним.
 
 ---
 
-# Состояние и следующий шаг (передача, 19.09.2026 ночь)
+# Состояние и следующий шаг (передача, 19.09.2026 поздний вечер)
+
+Предыдущие передачи — в истории (`ddf3b563`, `09557746`). Ниже состояние
+после волны «движок на продакшен-пути».
+
+## Что готово (с sha)
+
+| sha | Что |
+|---|---|
+| `3f22a57c` | **http и naive на движке.** Примитивы `$key`/`$value` (extract по элементам list), `$default_port`, перенаправление пространства у `single_into`. `PRIMITIVES` §0.10 |
+| `90206933` | **Движок ВЕДЁТ РАЗБОР на продакшен-пути**, 8 схем `live: true`. Кэш планов, страж остатка, пять новых атрибутов записи, область `decode`, `space: "json"` исполняемы. Контракт 1.1.16 |
+| `64377c76` | Разбор находок LxBox по сверке 1.1.15: REALITY вынесен в `tls#uri_reality` (trojan и http его не получают), `format: "pem"` исполняется, целые из реестра приводятся к int. Тесты пакета `subscription` переведены на реальный путь |
+
+**На движке восемь схем:** trojan, vless, anytls, socks, ssh, http, naive,
+shadowsocks. Зелено: `TestContractCorpusURI` (весь корпус на РЕАЛЬНОМ пути),
+`TestEngineVsFixtures`, `TestContractMapperSectionsMatchSchema`,
+`TestMappersWithoutLive`, `TestNoSchemeNamesInEngine`, весь пакет
+`core/config/subscription`.
+
+## СЛЕДУЮЩИЙ ШАГ — удалить рукописные ветки восьми схем
+
+Работа начата не была: осмотр сделан, удаление НЕТ. Файл
+`node_parser_core.go` делят другие агенты — удалять аккуратно и проверять
+после каждой схемы.
+
+**Что удалять** (проверено грепом, внешних читателей нет):
+
+| Файл | Что с ним |
+|---|---|
+| `node_parser_http.go` | удалить целиком; вызов — `node_parser_core.go:375` |
+| `node_parser_naive.go` | оставить `parseNaiveExtraHeaders`? НЕТ — движок её не зовёт (в `exec.go` только упоминание в комментарии). Удалить целиком, вызов `buildNaiveOutbound` — `:957` |
+| `node_parser_anytls.go` | удалить целиком, вызов `:953` |
+| `node_parser_ssh.go` | удалить целиком, вызов `:955` |
+| `node_parser_ss.go` | **НЕ целиком**: `isValidShadowsocksMethod` зовёт эмиттер `shareuri_ss.go:19` |
+| `node_parser_socks.go` | **НЕ целиком**: `socksSchemeForVersion` зовёт `shareuri_socks.go:27`; `isSocksScheme`/`socksVersionForScheme` держат ветки `node_parser_core.go` |
+
+**Ветки `node_parser_core.go`:** dispatch-кейсы на строках 187 (vless), 190
+(trojan), 193 (ss), 307 (anytls), 312 (ssh), 316/327/335/340 (socks), 356
+(naive), 368 (http); ветки `buildOutbound` на `:945-965`. До них разбор уже
+не доходит — `parseURIByEngine` возвращает раньше.
+
+**Эмиттеры `shareuri_*.go` НЕ трогать** — это волна W7, обратное
+направление.
+
+Порядок: по одной схеме, после каждой `go build ./core/...` +
+`go test ./core/config -run TestContractCorpusURI` +
+`go test ./core/config/subscription`.
+
+## Дальше по плану
+
+1. **vmess** — единственная секция с `live: false` (страж
+   `TestMappersWithoutLive`, список `notLiveYet`). Формы: base64-JSON
+   (`space: "json"` уже исполняем) и legacy cleartext.
+2. **hysteria2 / tuic / masque** — брать секции LxBox
+   (`~/projects/LxBox/app/assets/contract_draft/uri/`, голова `dcdb6db4`,
+   ТОЛЬКО чтение), сверять с нашим рукописным парсером и корпусом.
+   `hysteria` v1 ссылкой у них нет — брать из `SCHEMES.md`.
+   Список `schemesWithoutURISection` в страже сокращать по мере написания.
+3. **wireguard / awg** — у LxBox в переключении, ждать.
+4. **Xray-вход** — тем же способом: секции `mappers.xray` → `live` →
+   удалить конвертер. У нас socks с Xray-входа = ЗВЕНО ЦЕПОЧКИ, не узел.
+
+## Ловушки этой волны (проверено, не повторять)
+
+- **Сверка ТЕЛ не видит трёх классов расхождений.** Продакшен-прогон нашёл
+  29 красных там, где `TestEngineVsFixtures` был зелёным: коды деградаций,
+  отказы разбора (`parse_error` против `emit_error` санитайзера) и
+  написание схемы в `ParsedNode.Scheme`. Переключая схему, гоняй
+  `TestContractCorpusURI`, а не только сверку.
+- **`ParsedNode.Scheme` — НАПИСАНИЕ, а не имя схемы реестра.** `socks5`
+  остаётся `socks5`: канонизация переименовала бы тег у живых узлов. Решает
+  это `label.fallback.scheme_source`, и фолбэк тега обязан брать
+  `node.Scheme`, а не имя схемы.
+- **`ParsedNode.UUID` — ПЕРВЫЙ компонент userinfo**, а не «секрет». У naive
+  секрет это `password` (второй компонент), а в UUID прежний путь клал
+  `username`. Отметка `secret` в body.fields для этого НЕ годится.
+- **Целое из реестра приезжает float64** и молча даёт ноль коду с
+  ассертом `.(int)`. Канон сверки этого не видит: `json.Marshal` печатает
+  одинаково. Q133-48.
+- **Общий блок отдаёт своё ВСЕМ, кто его включил.** REALITY в `tls#uri`
+  доставался trojan и http, хотя строит его только `vlessTLSFromNode`.
+  Корпус молчал — у trojan и http нет фикстуры с `pbk`. Прежде чем класть
+  запись в общий блок, проверь ВСЕХ его потребителей. Q133-47.
+- **Тесты пакета читали внутренности старого пути.** Помощник
+  `nodeBody(t, node)` + `bodyStrings`/`bodyHeaders`
+  (`node_body_testhelper_test.go`) снимают разницу; файл удаляется вместе с
+  `buildOutbound`.
+
+## Документы
+
+`SPEC.md` · `PRIMITIVES.md` (**§0.9 и §0.10 — добавления к FROZEN**) ·
+`SCHEMES.md` · `DELTAS.md` (**D133-20**) · `QUIRKS.md` (**Q133-41…48**) ·
+`contract/docs/MAPPER_ENGINE.md` · `contract/TASKS_LXBOX.md` **§24.26**
+(ответы по шести находкам LxBox).
+
+
+---
+
+## Прежняя передача (19.09.2026 ночь)
+
 
 Предыдущая передача (вечер) — в истории, коммит `ddf3b563`. Ниже — состояние
 после волны W1: движок ИСПОЛНЯЕТ секции, пять схем переключены.
