@@ -106,18 +106,21 @@ func SelectSource(set *registry.MapperSet, c *Content) (registry.SourceKind, Sel
 	return kinds[res.Index], res
 }
 
-// SelectLiveURI находит ЖИВУЮ секцию `uri`, чей detect опознаёт текст ссылки.
+// SelectURI находит секцию `uri`, чей detect опознаёт текст ссылки.
 //
-// Это единственная развилка «движок или старый путь» (SPEC 133, временная).
-// Имён схем здесь нет и быть не может: вопрос решает атрибут `live` секции и
-// её собственный detect, а не список в коде. Схему выбирает РЕЕСТР, а не
-// префикс ссылки: написание и схема — разные вещи (`hy2://` → hysteria2,
+// Имён схем здесь нет и быть не может: схему выбирает РЕЕСТР своим detect, а
+// не префикс ссылки — написание и схема разные вещи (`hy2://` → hysteria2,
 // `socks5://` → socks, `naive+quic://` → naive).
 //
-// Две живые секции на один текст — ошибка реестра, а не повод гадать: тогда
-// движок отказывается вести ссылку и она уходит старым путём, где ею займётся
-// прежний разбор. Линтер корпуса ловит такой случай отдельно.
-func SelectLiveURI(plans *PlanSet, text string) (string, *Plan, bool) {
+// Две секции на один текст — ошибка реестра, а не повод гадать: движок
+// отказывается вести такую ссылку, и вызывающий получает «схема не
+// поддержана». Линтер корпуса ловит такой случай отдельно.
+//
+// Прежде функция звалась SelectLiveURI и спрашивала ещё и атрибут `live`:
+// пока схемы переводились волнами, в конвейере жили два пути, и флаг отвечал,
+// какой из них ведёт эту схему. Переведены все — атрибут снят вместе с
+// развилкой.
+func SelectURI(plans *PlanSet, text string) (string, *Plan, bool) {
 	if plans == nil {
 		return "", nil, false
 	}
@@ -125,7 +128,7 @@ func SelectLiveURI(plans *PlanSet, text string) (string, *Plan, bool) {
 	hit, plan := "", (*Plan)(nil)
 	for _, scheme := range plans.Schemes() {
 		p, ok := plans.Plan(scheme, "uri")
-		if !ok || p.Mapper == nil || !p.Mapper.Live || p.Mapper.Detect == nil {
+		if !ok || p.Mapper == nil || p.Mapper.Detect == nil {
 			continue
 		}
 		if !Matches(p.Mapper.Detect, content) {

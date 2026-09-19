@@ -3,12 +3,21 @@
   "scheme": "naive",
   "kind": "outbound",
   "singbox_type": "naive",
-  "aliases": ["naive+https", "naive+quic"],
-  "sources": ["uri", "singbox"],
+  "aliases": [
+    "naive+https",
+    "naive+quic"
+  ],
+  "sources": [
+    "uri",
+    "singbox"
+  ],
   "extension": null,
   "uri": {
     "userinfo": {
-      "maps_to": ["username", "password"],
+      "maps_to": [
+        "username",
+        "password"
+      ],
       "meaning": "user:password",
       "desc_en": "user:password of the account.",
       "desc_ru": "user:password учётной записи.",
@@ -35,7 +44,9 @@
   },
   "emit": {
     "share_uri": true,
-    "param_order": ["extra-headers"],
+    "param_order": [
+      "extra-headers"
+    ],
     "note": "Схема при эмите: Go — naive+quic при quic:true, иначе naive+https; Dart — всегда naive+https (нет quic, §9.B1). Dart опускает порт 443, Go пишет всегда."
   },
   "mapper": [
@@ -76,7 +87,21 @@
   },
   "body": {
     "core": "1.14.1-lx.4",
-    "order": ["server", "server_port", "username", "password", "insecure_concurrency", "extra_headers", "stream_receive_window", "udp_over_tcp", "quic", "quic_congestion_control", "quic_session_receive_window", "tls", "__dialer"],
+    "order": [
+      "server",
+      "server_port",
+      "username",
+      "password",
+      "insecure_concurrency",
+      "extra_headers",
+      "stream_receive_window",
+      "udp_over_tcp",
+      "quic",
+      "quic_congestion_control",
+      "quic_session_receive_window",
+      "tls",
+      "__dialer"
+    ],
     "fields": {
       "server": {
         "type": "ref",
@@ -136,7 +161,10 @@
       },
       "udp_over_tcp": {
         "type": "object",
-        "order": ["enabled", "version"],
+        "order": [
+          "enabled",
+          "version"
+        ],
         "fields": {
           "enabled": {
             "type": "bool",
@@ -147,7 +175,10 @@
           },
           "version": {
             "type": "enum",
-            "values": [1, 2],
+            "values": [
+              1,
+              2
+            ],
             "on_invalid": {
               "action": "drop",
               "code": "type_invalid"
@@ -171,7 +202,13 @@
       },
       "quic_congestion_control": {
         "type": "enum",
-        "values": ["", "bbr", "bbr2", "cubic", "reno"],
+        "values": [
+          "",
+          "bbr",
+          "bbr2",
+          "cubic",
+          "reno"
+        ],
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
@@ -214,7 +251,6 @@
   },
   "mappers": {
     "uri": {
-      "live": true,
       "body_source": "uri",
       "detect": {
         "scheme_in": [

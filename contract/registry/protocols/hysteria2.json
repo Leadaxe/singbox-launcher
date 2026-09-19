@@ -514,7 +514,6 @@
         ]
       },
       "body_source": "uri",
-      "live": true,
       "forms": [
         {
           "id": "wrapped",

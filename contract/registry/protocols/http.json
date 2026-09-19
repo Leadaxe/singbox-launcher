@@ -16,7 +16,10 @@
   "extension": null,
   "uri": {
     "userinfo": {
-      "maps_to": ["username", "password"],
+      "maps_to": [
+        "username",
+        "password"
+      ],
       "meaning": "username:password",
       "desc_en": "username:password of the account.",
       "desc_ru": "username:password учётной записи.",
@@ -135,7 +138,16 @@
   },
   "body": {
     "core": "1.14.1-lx.4",
-    "order": ["server", "server_port", "username", "password", "path", "headers", "tls", "__dialer"],
+    "order": [
+      "server",
+      "server_port",
+      "username",
+      "password",
+      "path",
+      "headers",
+      "tls",
+      "__dialer"
+    ],
     "fields": {
       "server": {
         "type": "ref",
@@ -195,7 +207,6 @@
   },
   "mappers": {
     "uri": {
-      "live": true,
       "body_source": "uri",
       "detect": {
         "scheme_in": [

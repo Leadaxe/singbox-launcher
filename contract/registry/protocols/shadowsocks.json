@@ -4,11 +4,18 @@
   "kind": "outbound",
   "singbox_type": "shadowsocks",
   "aliases": [],
-  "sources": ["uri", "singbox", "xray"],
+  "sources": [
+    "uri",
+    "singbox",
+    "xray"
+  ],
   "extension": null,
   "uri": {
     "userinfo": {
-      "maps_to": ["method", "password"],
+      "maps_to": [
+        "method",
+        "password"
+      ],
       "meaning": "base64(method:password)",
       "desc_en": "base64 of method:password.",
       "desc_ru": "base64 от method:password.",
@@ -17,7 +24,17 @@
     "query": {
       "method": {
         "type": "alias_enum",
-        "values": ["2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305", "none", "aes-128-gcm", "aes-192-gcm", "aes-256-gcm", "chacha20-ietf-poly1305", "xchacha20-ietf-poly1305"],
+        "values": [
+          "2022-blake3-aes-128-gcm",
+          "2022-blake3-aes-256-gcm",
+          "2022-blake3-chacha20-poly1305",
+          "none",
+          "aes-128-gcm",
+          "aes-192-gcm",
+          "aes-256-gcm",
+          "chacha20-ietf-poly1305",
+          "xchacha20-ietf-poly1305"
+        ],
         "allowlist": "ss_methods",
         "default": null,
         "aliases": [],
@@ -70,12 +87,38 @@
     "note": "Эмит без query: ss://base64std(method:password)@host:port#frag. Расхождение формы: Go оставляет '='-padding, Dart срезает (оба парсят оба вида). Метод вне allowlist → ErrShareURINotSupported (Go). Dart НЕ эмитит plugin/plugin_opts в URI (см. plugin)."
   },
   "refs": {
-    "go": ["core/config/subscription/node_parser_core.go:143-208", "core/config/subscription/node_parser_core.go:338-345", "core/config/subscription/node_parser_core.go:581-583", "core/config/subscription/node_parser_core.go:767-773", "core/config/subscription/node_parser_ss.go:6-21", "core/config/subscription/xray_protocols.go:222-256", "core/config/subscription/shareuri_ss.go:11-33"],
-    "dart": ["lib/services/parser/uri_parsers/shadowsocks_parser.dart:8-89", "lib/services/parser/uri_parsers/shadowsocks_parser.dart:91-104", "lib/services/parser/uri_utils.dart:280-293", "lib/services/parser/json_parsers.dart:615-636", "lib/services/parser/json_parsers.dart:874-885", "lib/models/node_spec_emit.dart:289-308"]
+    "go": [
+      "core/config/subscription/node_parser_core.go:143-208",
+      "core/config/subscription/node_parser_core.go:338-345",
+      "core/config/subscription/node_parser_core.go:581-583",
+      "core/config/subscription/node_parser_core.go:767-773",
+      "core/config/subscription/node_parser_ss.go:6-21",
+      "core/config/subscription/xray_protocols.go:222-256",
+      "core/config/subscription/shareuri_ss.go:11-33"
+    ],
+    "dart": [
+      "lib/services/parser/uri_parsers/shadowsocks_parser.dart:8-89",
+      "lib/services/parser/uri_parsers/shadowsocks_parser.dart:91-104",
+      "lib/services/parser/uri_utils.dart:280-293",
+      "lib/services/parser/json_parsers.dart:615-636",
+      "lib/services/parser/json_parsers.dart:874-885",
+      "lib/models/node_spec_emit.dart:289-308"
+    ]
   },
   "body": {
     "core": "1.14.1-lx.4",
-    "order": ["server", "server_port", "method", "password", "plugin", "plugin_opts", "network", "udp_over_tcp", "multiplex", "__dialer"],
+    "order": [
+      "server",
+      "server_port",
+      "method",
+      "password",
+      "plugin",
+      "plugin_opts",
+      "network",
+      "udp_over_tcp",
+      "multiplex",
+      "__dialer"
+    ],
     "fields": {
       "server": {
         "type": "ref",
@@ -93,7 +136,26 @@
       },
       "method": {
         "type": "enum",
-        "values": ["none", "aes-128-gcm", "aes-192-gcm", "aes-256-gcm", "chacha20-ietf-poly1305", "xchacha20-ietf-poly1305", "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305", "aes-128-ctr", "aes-192-ctr", "aes-256-ctr", "aes-128-cfb", "aes-192-cfb", "aes-256-cfb", "rc4-md5", "chacha20-ietf", "xchacha20"],
+        "values": [
+          "none",
+          "aes-128-gcm",
+          "aes-192-gcm",
+          "aes-256-gcm",
+          "chacha20-ietf-poly1305",
+          "xchacha20-ietf-poly1305",
+          "2022-blake3-aes-128-gcm",
+          "2022-blake3-aes-256-gcm",
+          "2022-blake3-chacha20-poly1305",
+          "aes-128-ctr",
+          "aes-192-ctr",
+          "aes-256-ctr",
+          "aes-128-cfb",
+          "aes-192-cfb",
+          "aes-256-cfb",
+          "rc4-md5",
+          "chacha20-ietf",
+          "xchacha20"
+        ],
         "required": true,
         "desc_en": "Encryption method.",
         "desc_ru": "Метод шифрования.",
@@ -104,7 +166,17 @@
         },
         "advisory": [
           {
-            "values": ["aes-128-ctr", "aes-192-ctr", "aes-256-ctr", "aes-128-cfb", "aes-192-cfb", "aes-256-cfb", "rc4-md5", "chacha20-ietf", "xchacha20"],
+            "values": [
+              "aes-128-ctr",
+              "aes-192-ctr",
+              "aes-256-ctr",
+              "aes-128-cfb",
+              "aes-192-cfb",
+              "aes-256-cfb",
+              "rc4-md5",
+              "chacha20-ietf",
+              "xchacha20"
+            ],
             "code": "ss_method_legacy"
           }
         ]
@@ -138,7 +210,10 @@
       },
       "udp_over_tcp": {
         "type": "object",
-        "order": ["enabled", "version"],
+        "order": [
+          "enabled",
+          "version"
+        ],
         "fields": {
           "enabled": {
             "type": "bool",
@@ -149,7 +224,10 @@
           },
           "version": {
             "type": "enum",
-            "values": [1, 2],
+            "values": [
+              1,
+              2
+            ],
             "on_invalid": {
               "action": "drop",
               "code": "type_invalid"
@@ -183,7 +261,6 @@
   },
   "mappers": {
     "uri": {
-      "live": true,
       "body_source": "uri",
       "detect": {
         "scheme_in": [

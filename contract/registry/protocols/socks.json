@@ -3,12 +3,22 @@
   "scheme": "socks",
   "kind": "outbound",
   "singbox_type": "socks",
-  "aliases": ["socks5", "socks4", "socks4a"],
-  "sources": ["uri", "singbox"],
+  "aliases": [
+    "socks5",
+    "socks4",
+    "socks4a"
+  ],
+  "sources": [
+    "uri",
+    "singbox"
+  ],
   "extension": null,
   "uri": {
     "userinfo": {
-      "maps_to": ["username", "password"],
+      "maps_to": [
+        "username",
+        "password"
+      ],
       "meaning": "username:password",
       "desc_en": "username:password of the account.",
       "desc_ru": "username:password учётной записи.",
@@ -50,7 +60,16 @@
   },
   "body": {
     "core": "1.14.1-lx.4",
-    "order": ["server", "server_port", "version", "username", "password", "network", "udp_over_tcp", "__dialer"],
+    "order": [
+      "server",
+      "server_port",
+      "version",
+      "username",
+      "password",
+      "network",
+      "udp_over_tcp",
+      "__dialer"
+    ],
     "fields": {
       "server": {
         "type": "ref",
@@ -68,7 +87,12 @@
       },
       "version": {
         "type": "enum",
-        "values": ["", "4", "4a", "5"],
+        "values": [
+          "",
+          "4",
+          "4a",
+          "5"
+        ],
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
@@ -101,7 +125,10 @@
       },
       "udp_over_tcp": {
         "type": "object",
-        "order": ["enabled", "version"],
+        "order": [
+          "enabled",
+          "version"
+        ],
         "fields": {
           "enabled": {
             "type": "bool",
@@ -112,7 +139,10 @@
           },
           "version": {
             "type": "enum",
-            "values": [1, 2],
+            "values": [
+              1,
+              2
+            ],
             "on_invalid": {
               "action": "drop",
               "code": "type_invalid"
@@ -139,7 +169,6 @@
   },
   "mappers": {
     "uri": {
-      "live": true,
       "body_source": "uri",
       "detect": {
         "scheme_in": [

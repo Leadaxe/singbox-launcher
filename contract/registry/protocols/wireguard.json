@@ -274,7 +274,6 @@
         ]
       },
       "body_source": "uri",
-      "live": true,
       "forms": [
         {
           "id": "conf_b64",

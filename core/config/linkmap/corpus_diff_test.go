@@ -34,21 +34,32 @@ const corpusRoot = "../../../contract/corpus/uri"
 // DELTAS.md. Пары: <схема>/<кейс> → причина.
 const allowedDeltasFile = "testdata/deltas_allowed.json"
 
-// switchedSchemes — схемы, ПЕРЕКЛЮЧЁННЫЕ на движок. Сверка гоняется по ним;
-// остальные ещё идут старым путём, и их расхождения не значат ничего.
+// schemesWithURISection — схемы, у которых есть секция `uri`. Сверка гоняется
+// по ним.
 //
-// Список данными, а не кодом с именами схем: это вход теста, а не логика
-// движка (греп-страж читает только исходники пакета, не testdata).
-func switchedSchemes(t *testing.T) []string {
+// Список БОЛЬШЕ НЕ ДАННЫЕ: пока кампания шла волнами, он перечислял
+// переключённые схемы поимённо (testdata/switched.json), потому что остальные
+// ещё вёл рукописный парсер и их расхождения ничего не значили. Рукописных
+// парсеров не осталось, и «переключённая» теперь означает ровно «секция
+// есть» — а это знает реестр. Держать рядом второй список значило бы забыть
+// дописать в него следующую схему и не заметить, что её никто не сверяет.
+//
+// Имён схем в коде по-прежнему нет: они приходят с диска.
+func schemesWithURISection(t *testing.T, set *registry.MapperSet) []string {
 	t.Helper()
-	data, err := os.ReadFile("testdata/switched.json")
-	if err != nil {
-		t.Skipf("нет testdata/switched.json: %v", err)
-	}
 	var out []string
-	if err := json.Unmarshal(data, &out); err != nil {
-		t.Fatalf("switched.json: %v", err)
+	for _, scheme := range set.Schemes() {
+		if _, ok := set.Mapper(scheme, "uri"); !ok {
+			continue
+		}
+		// Каталог корпуса назван по ФАЙЛУ протокола, а не по схеме: у
+		// shadowsocks схема зовётся `ss`, а каталог и файл —
+		// `shadowsocks`. Прежний поимённый список это скрывал, называя
+		// каталог; выведенный из реестра давал `ss`, каталога с таким
+		// именем нет, и вся схема сверялась НУЛЁМ кейсов молча.
+		out = append(out, protocolFileFor(scheme))
 	}
+	sort.Strings(out)
 	return out
 }
 
@@ -67,15 +78,15 @@ func loadAllowedDeltas(t *testing.T) map[string]string {
 
 // TestEngineVsFixtures — главный раннер сверки.
 func TestEngineVsFixtures(t *testing.T) {
-	schemes := switchedSchemes(t)
-	if len(schemes) == 0 {
-		t.Skip("на движок ещё не переключена ни одна схема")
-	}
 	allowed := loadAllowedDeltas(t)
 
 	set, err := registry.LoadMappers()
 	if err != nil {
 		t.Fatalf("LoadMappers: %v", err)
+	}
+	schemes := schemesWithURISection(t, set)
+	if len(schemes) == 0 {
+		t.Fatal("ни у одной схемы нет секции uri — сверять нечего")
 	}
 	reg, err := registry.Get()
 	if err != nil {
@@ -91,6 +102,12 @@ func TestEngineVsFixtures(t *testing.T) {
 		cases, err := filepath.Glob(filepath.Join(corpusRoot, dir, "*.uri"))
 		if err != nil {
 			t.Fatalf("glob %s: %v", dir, err)
+		}
+		// Схема с секцией, но без единого кейса — не «нечего сверять», а
+		// дыра в покрытии: именно так shadowsocks молча выпал из сверки.
+		if len(cases) == 0 {
+			t.Errorf("%s: секция uri есть, а кейсов корпуса нет — сверять нечем", dir)
+			continue
 		}
 		sort.Strings(cases)
 		for _, casePath := range cases {

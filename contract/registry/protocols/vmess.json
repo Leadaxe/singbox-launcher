@@ -4,7 +4,11 @@
   "kind": "outbound",
   "singbox_type": "vmess",
   "aliases": [],
-  "sources": ["uri", "singbox", "xray"],
+  "sources": [
+    "uri",
+    "singbox",
+    "xray"
+  ],
   "extension": null,
   "uri": {
     "userinfo": {
@@ -16,7 +20,9 @@
     "query": {
       "v": {
         "type": "string",
-        "values": ["2"],
+        "values": [
+          "2"
+        ],
         "allowlist": null,
         "default": "2",
         "aliases": [],
@@ -72,7 +78,9 @@
         "values": [],
         "allowlist": null,
         "default": 0,
-        "aliases": ["alter_id (внутренний ключ Go-Query)"],
+        "aliases": [
+          "alter_id (внутренний ключ Go-Query)"
+        ],
         "maps_to": "alter_id",
         "desc_en": "Legacy alterId of VMess.",
         "desc_ru": "Устаревший alterId VMess.",
@@ -80,10 +88,19 @@
       },
       "scy": {
         "type": "alias_enum",
-        "values": ["auto", "none", "zero", "aes-128-cfb", "aes-128-gcm", "chacha20-poly1305"],
+        "values": [
+          "auto",
+          "none",
+          "zero",
+          "aes-128-cfb",
+          "aes-128-gcm",
+          "chacha20-poly1305"
+        ],
         "allowlist": "vmess_security",
         "default": "auto",
-        "aliases": ["security"],
+        "aliases": [
+          "security"
+        ],
         "maps_to": "security",
         "desc_en": "Payload encryption method.",
         "desc_ru": "Метод шифрования полезной нагрузки.",
@@ -91,10 +108,21 @@
       },
       "net": {
         "type": "enum",
-        "values": ["tcp", "ws", "http", "h2", "grpc", "httpupgrade", "xhttp"],
+        "values": [
+          "tcp",
+          "ws",
+          "http",
+          "h2",
+          "grpc",
+          "httpupgrade",
+          "xhttp"
+        ],
         "allowlist": null,
         "default": "tcp",
-        "aliases": ["network (внутренний ключ Go-Query)", "type (fallback в legacy cleartext query, Go)"],
+        "aliases": [
+          "network (внутренний ключ Go-Query)",
+          "type (fallback в legacy cleartext query, Go)"
+        ],
         "maps_to": "transport.type",
         "desc_en": "Transport selector.",
         "desc_ru": "Селектор транспорта.",
@@ -102,7 +130,9 @@
       },
       "type": {
         "type": "string",
-        "values": ["none"],
+        "values": [
+          "none"
+        ],
         "allowlist": null,
         "default": "none",
         "aliases": [],
@@ -147,7 +177,13 @@
       },
       "mode": {
         "type": "string",
-        "values": ["", "auto", "packet-up", "stream-up", "stream-one"],
+        "values": [
+          "",
+          "auto",
+          "packet-up",
+          "stream-up",
+          "stream-one"
+        ],
         "allowlist": null,
         "default": "",
         "aliases": [],
@@ -159,10 +195,15 @@
       },
       "tls": {
         "type": "enum",
-        "values": ["", "tls"],
+        "values": [
+          "",
+          "tls"
+        ],
         "allowlist": null,
         "default": "",
-        "aliases": ["tls_enabled (внутренний ключ Go-Query)"],
+        "aliases": [
+          "tls_enabled (внутренний ключ Go-Query)"
+        ],
         "maps_to": "tls.enabled",
         "desc_en": "Whether TLS is enabled.",
         "desc_ru": "Включён ли TLS.",
@@ -206,7 +247,17 @@
         "values": [],
         "allowlist": null,
         "default": false,
-        "aliases": ["allowInsecure", "allowinsecure", "allow_insecure", "allow-insecure", "skipCertVerify", "skipcertverify", "skip_cert_verify", "skip-cert-verify", "noverify"],
+        "aliases": [
+          "allowInsecure",
+          "allowinsecure",
+          "allow_insecure",
+          "allow-insecure",
+          "skipCertVerify",
+          "skipcertverify",
+          "skip_cert_verify",
+          "skip-cert-verify",
+          "noverify"
+        ],
         "maps_to": "tls.insecure",
         "desc_en": "Skip server certificate verification.",
         "desc_ru": "Не проверять сертификат сервера.",
@@ -217,7 +268,24 @@
   },
   "emit": {
     "share_uri": true,
-    "param_order": ["v", "ps", "add", "port", "id", "aid", "scy", "net", "type", "host", "path", "tls", "sni", "alpn", "fp", "insecure"],
+    "param_order": [
+      "v",
+      "ps",
+      "add",
+      "port",
+      "id",
+      "aid",
+      "scy",
+      "net",
+      "type",
+      "host",
+      "path",
+      "tls",
+      "sni",
+      "alpn",
+      "fp",
+      "insecure"
+    ],
     "note": "Эмит = base64(JSON), порядок ключей — как в таблице (фактический у Go — порядок map/json.Marshal, у Dart — insertion order). Расхождения формы: Go порт/aid числами + base64 с padding; Dart строками + padding срезан. ВАЖНО: Go при транспорте httpupgrade пишет net='ws' (shareuri_vmess.go:70-74) — меняет wire-протокол на round-trip, кандидат на баг; Dart честно пишет net='httpupgrade'. Единственный lossy-эмиттер у Dart (каноническая JSON-форма)."
   },
   "mapper": [
@@ -255,7 +323,21 @@
   },
   "body": {
     "core": "1.14.1-lx.4",
-    "order": ["server", "server_port", "uuid", "security", "alter_id", "global_padding", "authenticated_length", "network", "packet_encoding", "tls", "multiplex", "transport", "__dialer"],
+    "order": [
+      "server",
+      "server_port",
+      "uuid",
+      "security",
+      "alter_id",
+      "global_padding",
+      "authenticated_length",
+      "network",
+      "packet_encoding",
+      "tls",
+      "multiplex",
+      "transport",
+      "__dialer"
+    ],
     "fields": {
       "server": {
         "type": "ref",
@@ -273,7 +355,7 @@
       },
       "uuid": {
         "type": "string",
-                        "required": true,
+        "required": true,
         "secret": true,
         "desc_en": "User identifier.",
         "desc_ru": "Идентификатор пользователя.",
@@ -281,7 +363,14 @@
       },
       "security": {
         "type": "enum",
-        "values": ["auto", "none", "zero", "aes-128-cfb", "aes-128-gcm", "chacha20-poly1305"],
+        "values": [
+          "auto",
+          "none",
+          "zero",
+          "aes-128-cfb",
+          "aes-128-gcm",
+          "chacha20-poly1305"
+        ],
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "coerce",
@@ -329,7 +418,11 @@
       },
       "packet_encoding": {
         "type": "enum",
-        "values": ["", "packetaddr", "xudp"],
+        "values": [
+          "",
+          "packetaddr",
+          "xudp"
+        ],
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
@@ -374,7 +467,6 @@
   "mappers": {
     "uri": {
       "body_source": "uri",
-      "live": true,
       "detect": {
         "scheme_in": [
           "vmess"

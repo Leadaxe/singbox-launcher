@@ -4,11 +4,17 @@
   "kind": "outbound",
   "singbox_type": "ssh",
   "aliases": [],
-  "sources": ["uri", "singbox"],
+  "sources": [
+    "uri",
+    "singbox"
+  ],
   "extension": null,
   "uri": {
     "userinfo": {
-      "maps_to": ["user", "password"],
+      "maps_to": [
+        "user",
+        "password"
+      ],
       "meaning": "user:password",
       "desc_en": "user:password of the account.",
       "desc_ru": "user:password учётной записи.",
@@ -70,7 +76,14 @@
   },
   "emit": {
     "share_uri": true,
-    "param_order": ["client_version", "host_key", "host_key_algorithms", "private_key", "private_key_passphrase", "private_key_path"],
+    "param_order": [
+      "client_version",
+      "host_key",
+      "host_key_algorithms",
+      "private_key",
+      "private_key_passphrase",
+      "private_key_path"
+    ],
     "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart toUriSsh → buildQuery sort, node_spec_emit.dart:494 + uri_utils.dart:306-312); private_key_path/client_version — desktop-хвост Go. Inline private_key эмитят обе стороны (после подтверждения пользователя)."
   },
   "refs": {
@@ -89,7 +102,22 @@
   },
   "body": {
     "core": "1.14.1-lx.4",
-    "order": ["server", "server_port", "user", "password", "private_key", "private_key_path", "private_key_passphrase", "host_key", "host_key_algorithms", "client_version", "cipher", "mac", "kex_algorithm", "__dialer"],
+    "order": [
+      "server",
+      "server_port",
+      "user",
+      "password",
+      "private_key",
+      "private_key_path",
+      "private_key_passphrase",
+      "host_key",
+      "host_key_algorithms",
+      "client_version",
+      "cipher",
+      "mac",
+      "kex_algorithm",
+      "__dialer"
+    ],
     "fields": {
       "server": {
         "type": "ref",
@@ -188,7 +216,6 @@
   },
   "mappers": {
     "uri": {
-      "live": true,
       "body_source": "uri",
       "detect": {
         "scheme_in": [
@@ -263,8 +290,7 @@
             "mode": "query",
             "passes": 1
           },
-          "impl": "Многострочный PEM: %0A раскрывается ОДИН раз, раскрутки до стабильной точки нет — она сломала бы ключ, где '%' законен. format: pem вместо plus_literal (PRIMITIVES §0.4a, DELTAS D133-15): '+' в PEM несёт ДВА смысла — пробел в заголовочных строках -----BEGIN…----- и литерал в base64-теле, — поэтому булев флаг негоден в обоих положениях. Открытое место, помеченное LxBox, закрыто форматом. У нас сегодня заплаты нет вовсе: значение идёт из parsedURL.Query() (node_parser_ssh.go:32), и '+' становится пробелом И в заголовке, И в теле — тело ключа портится молча. QUIRKS Q133-40.",
-          "format": "pem"
+          "impl": "Многострочный PEM: %0A раскрывается ОДИН раз, раскрутки до стабильной точки нет — она сломала бы ключ, где '%' законен. format: pem вместо plus_literal (PRIMITIVES §0.4a, DELTAS D133-15): '+' в PEM несёт ДВА смысла — пробел в заголовочных строках -----BEGIN…----- и литерал в base64-теле, — поэтому булев флаг негоден в обоих положениях. Открытое место, помеченное LxBox, закрыто форматом. У нас сегодня заплаты нет вовсе: значение идёт из parsedURL.Query() (node_parser_ssh.go:32), и '+' становится пробелом И в заголовке, И в теле — тело ключа портится молча. QUIRKS Q133-40."
         },
         "private_key_path": {
           "source": "query.private_key_path",
