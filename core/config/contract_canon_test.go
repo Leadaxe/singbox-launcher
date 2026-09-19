@@ -61,6 +61,24 @@ type contractWarning struct {
 	Value string `json:"value,omitempty"`
 }
 
+// contractWarningValue — value для конверта из Warning (CANON §6).
+//
+// Санитайзер пишет Value напрямую; маппер кладёт подстановки в Params
+// (`on_present` → value, `on_len_gt` → count). Раннер сводит их в одно поле
+// конверта, не дублируя params.
+func contractWarningValue(w configtypes.Warning) string {
+	if w.Value != "" {
+		return w.Value
+	}
+	if w.Params == nil {
+		return ""
+	}
+	if v := w.Params["value"]; v != "" {
+		return configtypes.TruncateWarningValue(v)
+	}
+	return ""
+}
+
 // contractDrop — запись отбраковки в конверте (D-088).
 //
 // Нормативны `ref` (что именно отвергнуто) и `code` (машинная причина из
@@ -153,7 +171,7 @@ func canonNode(node *configtypes.ParsedNode) (contractNode, error) {
 
 	var warnings []contractWarning
 	for _, w := range nodeWarnings {
-		warnings = append(warnings, contractWarning{Code: w.Code, Path: w.Path, Value: w.Value})
+		warnings = append(warnings, contractWarning{Code: w.Code, Path: w.Path, Value: contractWarningValue(w)})
 	}
 
 	sections, err := canonNodeSections(node)

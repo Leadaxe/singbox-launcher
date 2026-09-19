@@ -5537,3 +5537,27 @@ public_key: illegal base64 data» отказом ВСЕГО конфига).
 (владение сервером, дедуп, `dialerProxy` → цепочки, именование тегов). Это
 работа над массивом узлов и связями, движок уровня элемента её не выражает.
 Граница записана в `SCHEMES.md` §13.5 и в `QUIRKS.md` Q133-69.
+
+## 38. Контракт 1.1.42 — `on_len_gt`, порядок warnings[], `wgconf_dns_ignored` value
+
+### 38.1. `on_len_gt` — берёте первый + код
+
+Примитив `on_len_gt{n:1,action:"note",code:"xray_extra_entries_dropped"}`
+у `$extra_vnext`/`$extra_servers`/`$extra_users` **исполняется**: массив
+читается через `LookupRaw`, при `len>n` узлом остаётся первый элемент
+(форма `base` уже указывает `[0]`), код несёт `path` = имя записи,
+`value` = число элементов (`params.count`/`query_name` — для текста UI).
+Кейс `corpus/body/xray/vless_extra_vnext`.
+
+### 38.2. Порядок `warnings[]`
+
+CANON §6 уточнён: коды записей маппера с `maps_to:null` (`path` = имя
+записи) идут **впереди** кодов тела (санитайзера); внутри группы — порядок
+объявления правил. У нас `mergeWarnings` уже склеивает слои в этом порядке.
+
+### 38.3. `wgconf_dns_ignored` — поле `value` в корпусе
+
+`on_present` подставляет содержимое ключа DNS в `params.value`; раннер
+конверта переносит его в поле `value` ожидания. Обновлены ожидания
+`corpus/uri/wireguard/amnezia_*`, `awg_conf_base64*`, `corpus/body/wgconf/*`,
+`corpus/body/vpn/multi_container`.

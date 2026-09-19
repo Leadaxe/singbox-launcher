@@ -1213,7 +1213,7 @@
         "Проверьте, что нужна именно первая запись: узлом стала она.",
         "Если нужны и остальные серверы, разнесите их по отдельным элементам — один сервер на outbound."
       ],
-      "desc": "Примитив on_len_gt{n:1} у записей $extra_vnext / $extra_servers / $extra_users (Q133-18: прежде срез брался нулевым элементом вообще без слов). ОБЪЯВЛЕН, НО ПОКА НЕ ИСПОЛНЯЕТСЯ: on_len_gt разбирается в структуру реестра (registry/mapper.go), а ветки исполнения у движка ещё нет — код заведён здесь, чтобы текст существовал к моменту включения, а не после него (Q133-65).",
+      "desc": "Примитив on_len_gt{n:1} у записей $extra_vnext / $extra_servers / $extra_users (Q133-18, Q133-66 закрыт): при len>1 узлом становится первый элемент, код несёт path=имя записи и value=число элементов; params count/query_name — для текста UI.",
       "dart": null,
       "go": "contract/registry/protocols/{vless,vmess,trojan,shadowsocks,hysteria2}.json mappers.xray.params.$extra_*.on_len_gt"
     },

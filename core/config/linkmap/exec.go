@@ -555,8 +555,18 @@ func (st *execState) applyEntry(e *Entry) {
 		return
 	}
 
+	// on_len_gt — массив в источнике длиннее порога: первый элемент уже в
+	// base формы, остальные отброшены; код называет запись и число элементов.
+	st.applyOnLenGt(e)
+
 	rawVal, src, found := st.lookupSource(p)
 	if !found {
+		// Запись, объявленная только ради on_len_gt / on_present, не несёт
+		// скалярного источника — lookupSource на массиве молчит, и без
+		// раннего выхода applyMissing звал бы лишнюю ветку.
+		if p.MapsTo != nil && p.MapsTo.ExplicitNull {
+			return
+		}
 		st.applyMissing(e)
 		return
 	}
@@ -1982,6 +1992,51 @@ func (st *execState) noteUnknownJSONKeys(uk *registry.UnknownKey, ignored map[st
 // `count` — ОБЩЕЕ число секций этого имени, как их написал человек
 // (две `[Peer]` → count=2), а не число отброшенных: текст кода говорит
 // «в конфигурации {count} секций, узлом стала первая».
+// applyOnLenGt ставит код, когда массив источника длиннее объявленного порога.
+//
+// Источник читается через LookupRaw: lookupSource на массиве молчит, а
+// $extra_vnext/$extra_users существуют ровно ради этого примитива.
+func (st *execState) applyOnLenGt(e *Entry) {
+	p := e.Param
+	if p == nil || p.OnLenGt == nil {
+		return
+	}
+	if actionOf(p.OnLenGt) != "note" {
+		return
+	}
+	code := codeOf(p.OnLenGt)
+	if code == "" {
+		return
+	}
+	n := thresholdFrom(p.OnLenGt)
+	if n <= 0 {
+		return
+	}
+	for _, name := range p.Source.ForForm(st.form.ID) {
+		name = st.substituteBase(name)
+		raw, ok := st.space.LookupRaw(name)
+		if !ok {
+			continue
+		}
+		arr, ok := raw.([]interface{})
+		if !ok || len(arr) <= n {
+			return
+		}
+		count := strconv.Itoa(len(arr))
+		params := paramsOf(p.OnLenGt)
+		if params == nil {
+			params = map[string]string{}
+		}
+		params["count"] = count
+		params["value"] = count
+		if _, has := params["query_name"]; !has {
+			params["query_name"] = e.Name
+		}
+		st.notePath(code, e.Name, params)
+		return
+	}
+}
+
 func (st *execState) noteINIDropped() {
 	d := st.plan.Mapper.IniDialect
 	if d == nil || st.space == nil {
@@ -2476,6 +2531,29 @@ func orDash(why string) string {
 		return WhyNone
 	}
 	return why
+}
+
+// thresholdFrom читает порог on_len_gt{n:…} из разобранного JSON.
+func thresholdFrom(m map[string]interface{}) int {
+	if m == nil {
+		return 0
+	}
+	switch v := m["n"].(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case json.Number:
+		i, err := v.Int64()
+		if err != nil {
+			return 0
+		}
+		return int(i)
+	default:
+		return 0
+	}
 }
 
 func codeOf(m map[string]interface{}) string {
