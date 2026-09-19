@@ -391,6 +391,14 @@ type Param struct {
 	// занятом пути присваивание проигрывает, и сообщать не о чем.
 	OnImpliesWritten map[string]interface{} `json:"on_implies_written"`
 	OnLenGt       map[string]interface{} `json:"on_len_gt"`
+	// OnEmpty — код за ПУСТОЕ либо отсутствующее значение источника.
+	//
+	// Отличается от `required` тем, что узел ОСТАЁТСЯ: «поля нет» бывает и
+	// нормой (у половины схем пустой пароль законен), и признаком протухшей
+	// подписки, и различить это может только человек — значит место кода, а
+	// не отбраковки. Отличается от `on_invalid` тем, что значения нет вовсе:
+	// судить нечего.
+	OnEmpty map[string]interface{} `json:"on_empty"`
 
 	EmitWhen    json.RawMessage `json:"emit_when"`
 	OmitDefault json.RawMessage `json:"omit_default"`

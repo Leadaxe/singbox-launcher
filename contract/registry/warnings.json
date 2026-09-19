@@ -1895,6 +1895,27 @@
       "desc": "Шифр из legacy-набора shadowstream (aes-{128,192,256}-ctr, aes-{128,192,256}-cfb, rc4-md5, chacha20-ietf, xchacha20). Ядро принимает все девять (вердикт D на пине 1.14.1-lx.4, DRIFT 131 §9.3). Решение D-122 (18.09.2026): узел живёт с info-кодом; прежде обе стороны дропали узел (ss_method_invalid). Ставится как advisory у shadowsocks.body.fields.method, не через on_invalid.",
       "dart": null,
       "go": null
+    },
+    "password_empty": {
+      "severity": "warning",
+      "params": [
+        "path"
+      ],
+      "title_en": "Password is empty",
+      "title_ru": "Пароль пуст",
+      "text_en": "The link carries an empty password in {path}. The node is kept as it is, but the server will most likely refuse authentication and the connection will not come up.",
+      "text_ru": "Ссылка несёт пустой пароль в поле {path}. Узел сохранён как есть, но сервер, скорее всего, отклонит аутентификацию, и соединение не поднимется.",
+      "cause_en": "A panel that builds links from a template leaves the password slot empty when the subscription has expired or the account has no active key; copying a link by hand loses the part after the colon just as easily.",
+      "cause_ru": "Панель, собирающая ссылки по шаблону, оставляет место пароля пустым, когда подписка истекла или у аккаунта нет активного ключа; при ручном копировании так же легко теряется часть после двоеточия.",
+      "fix_en": [
+        "Check the link at your subscription provider and copy it again in full.",
+        "If the provider issues the password separately, add it to the node by hand."
+      ],
+      "fix_ru": [
+        "Проверьте ссылку у провайдера подписки и скопируйте её заново целиком.",
+        "Если провайдер выдаёт пароль отдельно, впишите его в узел вручную."
+      ],
+      "desc": "Пустой пароль в источнике. Решение владельца 19.09.2026 (Q133-67): узел ПРИНИМАЕТСЯ с предупреждением, а не отбраковывается — принять строгость LxBox (required: true) значило бы выбросить живые узлы у всех, у кого пароль пуст. Имя кода ОБЩЕЕ, не под схему: поле «пароль» есть у половины схем, и второй такой код под другим именем был бы дублем. Ставится примитивом on_empty у записи маппера."
     }
   }
 }

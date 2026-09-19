@@ -89,6 +89,7 @@ SPEC 133. Спутник `SPEC.md` (дизайн движка) и `TASKS.md` (в
 | `sort_keys` | **FROZEN** | детерминированный порядок ключей `type:object` — **G4** |
 | `empty` | **FROZEN** | `absent` (дефолт) \| `significant` |
 | `on_invalid`/`on_present`/`on_item_invalid`/`on_no_match`/`on_len_gt` | **FROZEN** | `{action, code}` |
+| `on_empty` | **DRAFT** | код за ПУСТОЕ либо отсутствующее значение источника. Отличается от `required` тем, что узел ОСТАЁТСЯ («поля нет» бывает и нормой, и признаком протухшей подписки — различить может только человек); от `on_invalid` — тем, что значения нет вовсе и судить нечего. Путь кода = `maps_to`, у записи без пути — имя записи. Введён решением владельца Q133-67 |
 | `emit_when` / `omit_default` / `implicit` | **FROZEN** | обратное направление |
 | `emit_as` | **FROZEN** | `join`\|`bool01`\|`json`\|`raw`\|`pairs` — сериализация значения, которое тело хранит не строкой (§0.12a) |
 | `emit_pair_sep` | **FROZEN** | разделитель ВНУТРИ пары у `emit_as: "pairs"` |

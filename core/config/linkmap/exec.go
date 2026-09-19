@@ -705,6 +705,19 @@ func sameJSON(a, b interface{}) bool {
 func (st *execState) applyMissing(e *Entry) {
 	p := e.Param
 
+	// on_empty — код за ПУСТОЕ либо отсутствующее значение. Узел остаётся:
+	// «поля нет» бывает и нормой, и признаком протухшей подписки, и
+	// различить это может только человек — значит место кода, а не
+	// отбраковки. Путь берётся из maps_to, иначе — имя записи: у записи без
+	// пути назвать место потери больше нечем.
+	if code := codeOf(p.OnEmpty); code != "" {
+		path := st.pathOf(p)
+		if path == "" {
+			path = e.Name
+		}
+		st.notePath(code, path, paramsOf(p.OnEmpty))
+	}
+
 	// default_from — источник значения по умолчанию (эвристика SNI у trojan
 	// выражается именно им, а не веткой кода).
 	if len(p.DefaultFrom) > 0 {

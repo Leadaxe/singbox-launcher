@@ -2335,6 +2335,34 @@
     },
     "uri": "tuic://11111111-1111-1111-1111-111111111111:p@example-1.com:443?heartbeat=10s\u0026sni=example-1.com"
   },
+  "tuic/password_absent_no_colon": {
+    "body": {
+      "server": "example-1.com",
+      "server_port": 443,
+      "tls": {
+        "enabled": true,
+        "server_name": "example-1.com"
+      },
+      "type": "tuic",
+      "uuid": "11111111-1111-1111-1111-111111111111"
+    },
+    "label": "tuic-no-pass",
+    "err": "outbound cannot be encoded as share URI: tuic needs uuid, password, server, server_port"
+  },
+  "tuic/password_empty_after_colon": {
+    "body": {
+      "server": "example-1.com",
+      "server_port": 443,
+      "tls": {
+        "enabled": true,
+        "server_name": "example-1.com"
+      },
+      "type": "tuic",
+      "uuid": "11111111-1111-1111-1111-111111111111"
+    },
+    "label": "tuic-empty-pass",
+    "err": "outbound cannot be encoded as share URI: tuic needs uuid, password, server, server_port"
+  },
   "tuic/reduce_rtt_alias": {
     "body": {
       "password": "p",
@@ -4316,6 +4344,31 @@
     },
     "label": "t",
     "uri": "vless://11111111-1111-1111-1111-111111111111@192.0.2.21:443?encryption=none\u0026fp=chrome\u0026mode=auto\u0026path=%2Fxh-fin\u0026pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg\u0026sid=7a18cff76f11\u0026sni=example-9.com\u0026type=xhttp#t"
+  },
+  "vless/xhttp_type_splithttp_alias": {
+    "body": {
+      "server": "example-1.com",
+      "server_port": 443,
+      "tls": {
+        "enabled": true,
+        "server_name": "example-1.com",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "random"
+        }
+      },
+      "transport": {
+        "host": "cdn.example-1.com",
+        "mode": "auto",
+        "path": "/split",
+        "type": "xhttp",
+        "x_padding_bytes": "100-1000"
+      },
+      "type": "vless",
+      "uuid": "11111111-1111-1111-1111-111111111111"
+    },
+    "label": "splithttp-alias",
+    "uri": "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?encryption=none\u0026host=cdn.example-1.com\u0026mode=auto\u0026path=%2Fsplit\u0026security=tls\u0026sni=example-1.com\u0026type=xhttp\u0026x_padding_bytes=100-1000#splithttp-alias"
   },
   "vless/xhttp_uplink_get_packet_up_kept": {
     "body": {
