@@ -19,6 +19,7 @@ package linkmap
 import (
 	"encoding/json"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -465,45 +466,135 @@ func containsFold(list []string, want string) bool {
 	return false
 }
 
-// parseINI разбирает ini-текст в секции с ключами в нижнем регистре.
+// parseINI разбирает ini-текст диалектом ПО УМОЛЧАНИЮ.
 //
-// Диалект повторяет сегодняшний разбор wg-quick дословно (ключи lower,
-// значения as-is, комментарии `#`/`;` только целой строкой, повторный ключ —
-// последний выигрывает), потому что кампания переносит РЕШЕНИЯ в данные, а
-// не меняет поведение. Отличия диалекта объявляются в секции (`ini_dialect`),
-// а не появляются здесь сами собой.
+// Зовётся там, где секции ещё нет и спросить диалект не у кого: предикат
+// `detect` выбирает саму секцию, а до выбора её атрибуты недоступны. Для
+// опознания этого довольно — предикат смотрит на имена секций и ключей,
+// которые во всех диалектах одни.
 func parseINI(text string) (map[string]map[string]string, bool) {
+	sections, _, ok := parseINIDialect(text, nil)
+	return sections, ok
+}
+
+// iniRepeat — сколько раз встретилась секция с этим именем.
+type iniRepeat struct {
+	Name  string
+	Count int
+}
+
+// parseINIDialect разбирает ini-текст правилами объявленного диалекта.
+//
+// Второй результат — секции, чьи ПОВТОРЫ отброшены правилом `repeat`,
+// вместе с общим числом вхождений: из него запись `on_extra` делает код с
+// параметром `count`. Пустой диалект (nil) = сегодняшний разбор wg-quick
+// дословно: ключи lower, значения as-is, комментарии `#`/`;` только целой
+// строкой, повторный ключ — последний выигрывает, секции сливаются.
+func parseINIDialect(text string, d *registry.IniDialect) (map[string]map[string]string, []iniRepeat, bool) {
 	if !strings.Contains(text, "[") {
-		return nil, false
+		return nil, nil, false
 	}
+	prefixes := d.Prefixes()
+	keepKeyCase := d != nil && d.KeyCase == "preserve"
+	lowerValue := d != nil && d.ValueCase == "lower"
+	inline := d != nil && d.InlineComments
+	repeatedKey := "last_wins"
+	if d != nil && d.RepeatedKey != "" {
+		repeatedKey = d.RepeatedKey
+	}
+
 	out := map[string]map[string]string{}
+	counts := map[string]int{}
+	// closed — секции, добор ключей в которые запрещён правилом
+	// `repeat: first_only`: имя уже встречалось, и первое вхождение
+	// объявлено единственным.
+	closed := map[string]bool{}
 	section := ""
 	any := false
+
 	for _, raw := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
 		line := strings.TrimSpace(raw)
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+		if line == "" || hasAnyPrefix(line, prefixes) {
 			continue
 		}
 		if strings.HasPrefix(line, "[") {
 			section = strings.ToLower(strings.Trim(line, "[]"))
+			counts[section]++
 			if _, ok := out[section]; !ok {
 				out[section] = map[string]string{}
+			} else if rule := d.Section(section); rule != nil && rule.Repeat == "first_only" {
+				closed[section] = true
 			}
 			any = true
 			continue
 		}
-		idx := strings.Index(line, "=")
-		if idx < 0 || section == "" {
+		if section == "" || closed[section] {
 			continue
 		}
-		key := strings.ToLower(strings.TrimSpace(line[:idx]))
+		idx := strings.Index(line, "=")
+		if idx < 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:idx])
+		if !keepKeyCase {
+			key = strings.ToLower(key)
+		}
 		val := strings.TrimSpace(line[idx+1:])
+		if inline {
+			val = strings.TrimSpace(cutInlineComment(val, prefixes))
+		}
+		if lowerValue {
+			val = strings.ToLower(val)
+		}
 		if key == "" || val == "" {
 			continue
 		}
+		if prev, seen := out[section][key]; seen {
+			switch repeatedKey {
+			case "first_wins":
+				continue
+			case "append":
+				val = prev + "," + val
+			}
+		}
 		out[section][key] = val
 	}
-	return out, any
+
+	var dropped []iniRepeat
+	for name, n := range counts {
+		if n > 1 && closed[name] {
+			dropped = append(dropped, iniRepeat{Name: name, Count: n})
+		}
+	}
+	sort.Slice(dropped, func(i, j int) bool { return dropped[i].Name < dropped[j].Name })
+	return out, dropped, any
+}
+
+// hasAnyPrefix — начинается ли строка с любого из маркеров.
+func hasAnyPrefix(line string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if p != "" && strings.HasPrefix(line, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// cutInlineComment режет хвост-комментарий после значения.
+//
+// Нужен только диалектам, объявившим `inline_comments`: у wg-quick '#' —
+// законный символ значения («US-FREE#137»), и резать его нельзя.
+func cutInlineComment(val string, prefixes []string) string {
+	cut := len(val)
+	for _, p := range prefixes {
+		if p == "" {
+			continue
+		}
+		if i := strings.Index(val, p); i >= 0 && i < cut {
+			cut = i
+		}
+	}
+	return val[:cut]
 }
 
 var (

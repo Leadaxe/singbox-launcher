@@ -233,6 +233,7 @@ func Exec(plan *Plan, space *Space, form registry.Form, bodyType string, trace *
 
 	st.applyLabel()
 	st.noteUnknownParams()
+	st.noteINIDropped()
 
 	// required — ПОСЛЕ обоих проходов и defaults: запись объявлена
 	// обязательной в теле, а не во входе, и значение туда законно приходит
@@ -1804,6 +1805,30 @@ func (st *execState) noteUnknownParams() {
 			Src: "query." + name, Raw: nil, Val: nil, Path: nil,
 			Act: ActKeep, Why: WhyNotDeclared,
 		})
+	}
+}
+
+// noteINIDropped ставит код на секции ini, чьи ПОВТОРЫ снял диалект.
+//
+// Решение «какая секция единственная» принимает разборщик (`repeat`), а
+// КОД объявляет запись `on_extra` того же диалекта: потеря перестаёт быть
+// молчаливой ровно тогда, когда автор секции назвал ей код. Без `on_extra`
+// повтор снимается по-прежнему тихо — это тоже объявленный выбор.
+//
+// `count` — ОБЩЕЕ число секций этого имени, как их написал человек
+// (две `[Peer]` → count=2), а не число отброшенных: текст кода говорит
+// «в конфигурации {count} секций, узлом стала первая».
+func (st *execState) noteINIDropped() {
+	d := st.plan.Mapper.IniDialect
+	if d == nil || st.space == nil {
+		return
+	}
+	for _, drop := range st.space.iniDropped {
+		rule := d.Section(drop.Name)
+		if rule == nil || rule.OnExtra == nil || rule.OnExtra.Code == "" {
+			continue
+		}
+		st.note(rule.OnExtra.Code, map[string]string{"count": strconv.Itoa(drop.Count)})
 	}
 }
 

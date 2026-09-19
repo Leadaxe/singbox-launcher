@@ -121,7 +121,7 @@ func UnwrapURI(plan *Plan, text string) (*Space, registry.Form, error) {
 			!Matches(form.Detect, NewContent(decodeSubject(form, text))) {
 			continue
 		}
-		space, err := lexSpace(form, body, text)
+		space, err := lexSpace(form, body, text, plan.Mapper.IniDialect)
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
@@ -138,7 +138,7 @@ func UnwrapURI(plan *Plan, text string) (*Space, registry.Form, error) {
 		if err != nil {
 			return nil, form, err
 		}
-		space, err := lexSpace(form, body, text)
+		space, err := lexSpace(form, body, text, plan.Mapper.IniDialect)
 		if err != nil {
 			return nil, form, err
 		}
@@ -252,7 +252,7 @@ func stripURIWrapper(text string) string {
 // ссылки, но фрагмент бывает и там: `vmess://<base64>#Имя` — поэтому
 // фрагмент исходного текста переносится в пространство. Побеждает тот, кого
 // запись `label` назовёт первым (у vmess это `json.ps`, фрагмент — запасной).
-func lexSpace(form registry.Form, body, original string) (*Space, error) {
+func lexSpace(form registry.Form, body, original string, dialect *registry.IniDialect) (*Space, error) {
 	switch form.Space {
 	case "", "url":
 		return lexURI(body)
@@ -304,12 +304,13 @@ func lexSpace(form registry.Form, body, original string) (*Space, error) {
 		// wg-quick/.conf: под текстом лежит не ссылка, а ini-документ.
 		// Секции адресуют его `ini.<Секция>.<Ключ>`, и Lookup эти имена уже
 		// знает — не хватало только того, кто наполнит пространство.
-		sections, ok := parseINI(body)
+		sections, dropped, ok := parseINIDialect(body, dialect)
 		if !ok {
 			return nil, fmt.Errorf("linkmap: ini: секций нет")
 		}
 		s := &Space{}
-		s.SetINI(sections, parseINIComments(body))
+		s.SetINI(sections, parseINIComments(body, dialect))
+		s.iniDropped = dropped
 		// Схема и фрагмент — свойства ОБОЛОЧКИ, как и у формы JSON: под
 		// base64 их нет, а `label` и `scheme_source` читают их позже.
 		// У формы `.conf` (голый файл, без "://") оболочки нет вовсе, и оба
@@ -343,7 +344,8 @@ func lexSpace(form registry.Form, body, original string) (*Space, error) {
 // настройка, а не название. Сам '#' внутри значения законен («US-FREE#137»),
 // поэтому режется только ведущий маркер. Диалект тот же, что у parseINI:
 // комментарий — целая строка, начинающаяся с '#' или ';'.
-func parseINIComments(text string) map[string]string {
+func parseINIComments(text string, d *registry.IniDialect) map[string]string {
+	prefixes := d.Prefixes()
 	out := map[string]string{}
 	section := ""
 	for _, raw := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
@@ -358,7 +360,7 @@ func parseINIComments(text string) map[string]string {
 		if section == "" {
 			continue
 		}
-		if !strings.HasPrefix(line, "#") && !strings.HasPrefix(line, ";") {
+		if !hasAnyPrefix(line, prefixes) {
 			// Дошли до настоящего поля — имени в этой секции нет. Отметка
 			// «искать больше нечего» ставится пустой строкой, иначе
 			// комментарий, стоящий НИЖЕ полей, стал бы именем узла.
@@ -370,7 +372,7 @@ func parseINIComments(text string) map[string]string {
 		if _, seen := out[section]; seen {
 			continue
 		}
-		name := strings.TrimSpace(strings.TrimLeft(line, "#;"))
+		name := strings.TrimSpace(strings.TrimLeft(line, strings.Join(prefixes, "")))
 		if name == "" || strings.Contains(name, "=") {
 			continue
 		}

@@ -485,6 +485,87 @@ type Overlay struct {
 	Impl    string    `json:"impl"`
 }
 
+// IniDialect — КАК читать ini-документ: правила разбора, а не отображение.
+//
+// Заведён потому, что на одном и том же месте жили ТРИ разных поведения:
+// движковый `parseINI` вторую `[Peer]` сливал с первой (ключи второй
+// перезаписывали ключи первой), прежний `parseWGConfSections` брал ключи
+// только первой и МОЛЧА отбрасывал остальные, а норма требует «первая плюс
+// код». Пока это решение жило в коде, выбрать между ними было нечем —
+// отсюда атрибуты.
+//
+// Пустая секция = сегодняшний диалект wg-quick: ключи в нижний регистр,
+// значения как есть, комментарий только целой строкой (`#`, `;`), повторный
+// ключ — последний выигрывает, секции сливаются.
+type IniDialect struct {
+	// KeyCase — регистр имён ключей: "lower" (по умолчанию) | "preserve".
+	KeyCase string `json:"key_case"`
+	// ValueCase — регистр значений: "preserve" (по умолчанию) | "lower".
+	// Значения трогать нельзя без нужды: `Id` маскировки — это домен.
+	ValueCase string `json:"value_case"`
+
+	// LineCommentPrefixes — маркеры комментария, занимающего ВСЮ строку.
+	// Алиас `comment_prefixes` — имя из черновика SCHEMES §13.4; читаются
+	// оба, чтобы правка черновика не стала правкой поведения.
+	LineCommentPrefixes []string `json:"line_comment_prefixes"`
+	CommentPrefixes     []string `json:"comment_prefixes"`
+
+	// InlineComments — резать ли комментарий ПОСЛЕ значения. У wg-quick
+	// false: '#' законен внутри значения («US-FREE#137»).
+	InlineComments bool `json:"inline_comments"`
+
+	// RepeatedKey — повторный ключ ВНУТРИ секции:
+	// "last_wins" (по умолчанию) | "first_wins" | "append".
+	RepeatedKey string `json:"repeated_key"`
+
+	// Sections — правила отдельных секций по имени (регистр не важен).
+	Sections map[string]*IniSection `json:"sections"`
+
+	Impl string `json:"impl"`
+}
+
+// IniSection — правило ПОВТОРА секции с одним именем.
+type IniSection struct {
+	// Repeat — что делать со второй секцией того же имени:
+	// "merge" (по умолчанию) | "first_only".
+	Repeat string `json:"repeat"`
+	// OnExtra — код на отброшенные повторы. Параметр `count` получает
+	// ОБЩЕЕ число секций этого имени, как их написал человек.
+	OnExtra *IniOnExtra `json:"on_extra"`
+	Impl    string      `json:"impl"`
+}
+
+// IniOnExtra — код, которым отмечается отброшенный повтор секции.
+type IniOnExtra struct {
+	Code string `json:"code"`
+}
+
+// Prefixes возвращает маркеры строчного комментария с учётом алиаса.
+func (d *IniDialect) Prefixes() []string {
+	if d != nil {
+		if len(d.LineCommentPrefixes) > 0 {
+			return d.LineCommentPrefixes
+		}
+		if len(d.CommentPrefixes) > 0 {
+			return d.CommentPrefixes
+		}
+	}
+	return []string{"#", ";"}
+}
+
+// Section возвращает правило секции по имени без учёта регистра.
+func (d *IniDialect) Section(name string) *IniSection {
+	if d == nil || len(d.Sections) == 0 {
+		return nil
+	}
+	for k, v := range d.Sections {
+		if strings.EqualFold(k, name) {
+			return v
+		}
+	}
+	return nil
+}
+
 // UnknownKey — что делать с неперечисленным ключом источника.
 // Молчание — тот самый дефект, ради которого затеяна кампания.
 type UnknownKey struct {
@@ -528,6 +609,10 @@ type Mapper struct {
 	Forms    []Form     `json:"forms"`
 	UserInfo *UserInfo  `json:"userinfo"`
 	Label    *LabelSpec `json:"label"`
+
+	// IniDialect — правила чтения ini для секций с пространством `ini`.
+	// Отсутствие секции означает диалект по умолчанию (см. IniDialect).
+	IniDialect *IniDialect `json:"ini_dialect"`
 
 	// Overlays — ДОПОЛНИТЕЛЬНЫЕ пространства источников, распакованные из
 	// значения внутри входа: чужой диалект приезжает вложенным слоем (JSON в

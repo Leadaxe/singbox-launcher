@@ -945,6 +945,26 @@
           "level": "endpoint"
         }
       ],
+      "ini_dialect": {
+        "key_case": "lower",
+        "value_case": "preserve",
+        "line_comment_prefixes": [
+          "#",
+          ";"
+        ],
+        "inline_comments": false,
+        "repeated_key": "last_wins",
+        "sections": {
+          "Peer": {
+            "repeat": "first_only",
+            "on_extra": {
+              "code": "wgconf_extra_peer_dropped"
+            },
+            "impl": "Узел sing-box — это ОДИН peer, и вторая [Peer] в него не помещается по построению. Прежний путь брал ключи только первой и отбрасывал остальные МОЛЧА (node_parser_amnezia.go:495), движковый parseINI сливал вторую с первой (ключи второй перезаписывали ключи первой) — три разных поведения на одном месте, пока решение жило в коде. Норма: первая становится узлом, повторы отброшены с кодом."
+          }
+        },
+        "impl": "КАК читать ini, а не что куда класть. Значения не трогаем (value_case preserve): Id маскировки — это домен, и регистр в нём значим. inline_comments=false, потому что у wg-quick \"#\" законен ВНУТРИ значения: имя узла «US-FREE#137» провайдеры пишут именно так, и резать хвост по маркеру нельзя."
+      },
       "label": {
         "source": [
           "ini.$comment.Peer",

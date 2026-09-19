@@ -56,6 +56,11 @@ type Space struct {
 	// iniComments — первый комментарий секции: имя узла в .conf живёт под
 	// [Peer] и больше нигде (G7).
 	iniComments map[string]string
+
+	// iniDropped — секции, чьи ПОВТОРЫ снял диалект (`repeat: first_only`),
+	// с общим числом вхождений. Решение принимает разборщик ini, а код
+	// ставит исполнитель записи `on_extra` — потеря едет отсюда туда.
+	iniDropped []iniRepeat
 }
 
 type kv struct {

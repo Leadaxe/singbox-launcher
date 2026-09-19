@@ -602,6 +602,68 @@
       "type": "object",
       "additionalProperties": true
     },
+    "ini_dialect": {
+      "description": "КАК читать ini-документ: правила РАЗБОРА, а не отображение источников в тело. Заведён потому, что на одном месте жили три разных поведения: движок сливал вторую [Peer] с первой, прежний конвертер брал ключи только первой и молча отбрасывал остальные, а норма требует «первая плюс код» — выбрать между ними было нечем, пока решение жило в коде. Секция целиком необязательна: её отсутствие = диалект wg-quick (ключи lower, значения as-is, комментарий только целой строкой '#'/';', повторный ключ — последний выигрывает, секции сливаются).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "key_case": {
+          "enum": ["lower", "preserve"],
+          "description": "Регистр имён ключей. По умолчанию lower: источники адресуются 'ini.<Секция>.<Ключ>' без учёта того, как ключ написан в файле."
+        },
+        "value_case": {
+          "enum": ["preserve", "lower"],
+          "description": "Регистр значений. По умолчанию preserve, и трогать его без нужды нельзя: Id маскировки — это домен, регистр в нём значим."
+        },
+        "line_comment_prefixes": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Маркеры комментария, занимающего ВСЮ строку. По умолчанию ['#', ';']."
+        },
+        "comment_prefixes": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Алиас line_comment_prefixes (имя из черновика SCHEMES §13.4). Читаются оба; при наличии обоих побеждает line_comment_prefixes."
+        },
+        "inline_comments": {
+          "type": "boolean",
+          "description": "Резать ли комментарий ПОСЛЕ значения. По умолчанию false, и у wg-quick иначе нельзя: '#' законен внутри значения — имя узла «US-FREE#137» провайдеры пишут именно так."
+        },
+        "repeated_key": {
+          "enum": ["last_wins", "first_wins", "append"],
+          "description": "Повторный ключ ВНУТРИ одной секции. По умолчанию last_wins. append склеивает значения запятой — им выражается набор, который диалект разрешает писать и списком, и повтором (Address, AllowedIPs)."
+        },
+        "sections": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/definitions/ini_section"},
+          "description": "Правила ПОВТОРА секций по имени (регистр имени не важен)."
+        },
+        "impl": {"type": "string"}
+      }
+    },
+    "ini_section": {
+      "description": "Правило повтора секции с одним именем.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repeat": {
+          "enum": ["merge", "first_only"],
+          "description": "Что делать со второй секцией того же имени. По умолчанию merge (ключи поздней секции дополняют раннюю). first_only оставляет ПЕРВУЮ и запрещает добор ключей из повторов — так устроен узел sing-box, в который один peer помещается, а второй нет."
+        },
+        "on_extra": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code"],
+          "properties": {
+            "code": {
+              "type": "string",
+              "description": "Код на отброшенные повторы. Параметр count получает ОБЩЕЕ число секций этого имени, как их написал человек. Без on_extra повтор снимается молча — это тоже объявленный выбор, а не умолчание кода."
+            }
+          }
+        },
+        "impl": {"type": "string"}
+      }
+    },
     "overlay": {
       "description": "Наложенное пространство источников: вложенный слой ЧУЖОГО диалекта (JSON в query-параметре) адресуется тем же source под своим именем ('extra.scMaxEachPostBytes'). Слой ОТДЕЛЬНЫЙ, а не слитый с основным: кто из двух побеждает, решает сама запись порядком своих источников — слияние приняло бы это решение за неё и одинаково для всех ключей, на чём горит базовая тройка mode/path/host (D-097). Битый слой НЕ роняет узел: он просто не появляется.",
       "type": "object",
@@ -793,6 +855,9 @@
           "items": {
             "$ref": "#/definitions/form"
           }
+        },
+        "ini_dialect": {
+          "$ref": "#/definitions/ini_dialect"
         },
         "overlays": {
           "type": "array",
