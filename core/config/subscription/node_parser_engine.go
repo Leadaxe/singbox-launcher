@@ -144,6 +144,10 @@ func nodeFromEngine(plan *linkmap.Plan, res *linkmap.Result, scheme, source, bod
 	// Коды движка становятся деградациями узла. Формат warning'а принадлежит
 	// подписке, а не движку, поэтому перекладывает их вызывающий (Result.Note).
 	for _, n := range res.Notes {
+		if n.Path != "" {
+			node.AddSourceWarning(n.Code, n.Path, n.Params)
+			continue
+		}
 		if len(n.Params) > 0 {
 			node.AddWarningWithParams(n.Code, n.Params)
 			continue

@@ -114,6 +114,10 @@ func parseXrayElementByEngine(ob map[string]interface{}, label string) (*configt
 	// припишет конвейер (mergeWarnings) — порядок «сперва разбор, затем
 	// судья значений» нормативен (CANON §6, Л14).
 	for _, n := range res.Notes {
+		if n.Path != "" {
+			node.AddSourceWarning(n.Code, n.Path, n.Params)
+			continue
+		}
 		if len(n.Params) > 0 {
 			node.AddWarningWithParams(n.Code, n.Params)
 			continue

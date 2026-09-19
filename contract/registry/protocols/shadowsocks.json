@@ -479,7 +479,18 @@
       ],
       "unknown_key": {
         "action": "drop",
-        "code": "json_field_unknown"
+        "code": "json_field_unknown",
+        "ignore": [
+          "protocol",
+          "tag",
+          "remarks",
+          "settings",
+          "streamSettings",
+          "mux",
+          "sendThrough",
+          "proxySettings"
+        ],
+        "impl": "Ключи уровня документа плюс контейнеры, чьи листья читают записи таблицы. Список дословно равен списку остальных xray-секций — см. развёрнутую сноску у vless. Заведён вместе с исполнением json_field_unknown: до него секция была единственной без перечня, и элемент получал код на свой же protocol/tag/settings."
       },
       "emit": null
     }

@@ -239,6 +239,32 @@ func (s *Space) QueryNames() []string {
 	return out
 }
 
+// JSONKeys — ключи ВЕРХНЕГО уровня JSON-объекта в устойчивом порядке
+// (по алфавиту), для кода `json_field_unknown`.
+//
+// Порядок здесь алфавитный, а не «как в источнике», по устройству входа:
+// объект JSON в Go разобран в map, и порядок записи в документе не
+// сохраняется ни на одной стороне. У ссылки предмет другой — там порядок
+// появления есть и он нормативен (`QueryNames`).
+//
+// Только верхний уровень: вложенный путь параметром не является
+// (см. noteUnknownJSONKeys).
+func (s *Space) JSONKeys() []string {
+	if s == nil {
+		return nil
+	}
+	obj, ok := s.json.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(obj))
+	for k := range obj {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func (s *Space) iniValue(rest string) (string, bool) {
 	// ini.$comment.<Section> — имя узла из комментария секции (G7).
 	if strings.HasPrefix(rest, "$comment.") {

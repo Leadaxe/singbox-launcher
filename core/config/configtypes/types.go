@@ -826,6 +826,18 @@ func (n *ParsedNode) AddWarningWithParams(code string, params map[string]string)
 	n.addWarning(Warning{Code: code, Params: params})
 }
 
+// AddSourceWarning — код, который называет ИМЯ ИСТОЧНИКА: параметр ссылки,
+// ключ `.conf`, поле JSON-элемента (`uri_param_unknown` и родня).
+//
+// Отличие от AddFieldWarning ровно в предмете пути: там путь в ТЕЛЕ
+// sing-box (`tls.reality.short_id`), здесь — имя во ВХОДЕ, тела не
+// достигшее. Дедуп идёт по паре (Code, Path), поэтому путь тут
+// обязателен: без него ссылка с двумя незнакомыми параметрами оставила бы
+// один код, и про второй человек не узнал бы.
+func (n *ParsedNode) AddSourceWarning(code, path string, params map[string]string) {
+	n.addWarning(Warning{Code: code, Path: path, Params: params})
+}
+
 // AddFieldWarning помечает узел кодом деградации уровня поля: путь в теле
 // sing-box (`tls.reality.short_id`) и исходное значение до деградации,
 // обрезанное до WarningValueMax (CANON §6).

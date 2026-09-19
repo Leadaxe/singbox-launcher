@@ -16,7 +16,12 @@
       "scheme": "naive",
       "warnings": [
         {
-          "code": "uri_param_unknown"
+          "code": "uri_param_unknown",
+          "path": "unknown"
+        },
+        {
+          "code": "uri_param_unknown",
+          "path": "also_unknown"
         }
       ]
     }

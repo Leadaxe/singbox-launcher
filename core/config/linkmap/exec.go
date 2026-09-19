@@ -141,7 +141,16 @@ func kindCondHolds(cond map[string]interface{}, space *Space) bool {
 // Note — код с параметрами; в узел их перекладывает вызывающий, потому что
 // формат warning'а принадлежит подписке, а не движку.
 type Note struct {
-	Code   string
+	Code string
+	// Path — ЧЕГО именно касается код, если код касается одного имени
+	// источника (параметра ссылки, ключа `.conf`, поля JSON-элемента).
+	//
+	// Нужен не для красоты: деградации узла дедуплицируются парой
+	// (код, path) — `ParsedNode.addWarning`. Пока путь был пуст, ссылка с
+	// двумя незнакомыми параметрами получала ОДИН `uri_param_unknown`, и
+	// человек узнавал про первый из них, а второй исчезал молча — ровно
+	// та потеря без слов, против которой код и заведён.
+	Path   string
 	Params map[string]string
 }
 
@@ -1859,13 +1868,15 @@ func (st *execState) noteUnknownParams() {
 		if ignored[strings.ToLower(name)] {
 			continue
 		}
-		st.note(uk.Code, map[string]string{"query_name": name})
+		st.notePath(uk.Code, name, map[string]string{"query_name": name})
 		st.trace.Add(Event{
 			Stage: StageUnknown, Mapper: st.mapperName, Entry: "$unknown",
 			Src: "query." + name, Raw: nil, Val: nil, Path: nil,
 			Act: ActKeep, Why: WhyNotDeclared,
 		})
 	}
+
+	st.noteUnknownJSONKeys(uk, ignored)
 
 	// Ключи ДОКУМЕНТА ini — тот же вопрос, другой предмет.
 	//
@@ -1890,10 +1901,42 @@ func (st *execState) noteUnknownParams() {
 		if ignored[name] || ignored[short] {
 			continue
 		}
-		st.note(uk.Code, map[string]string{"query_name": name})
+		st.notePath(uk.Code, name, map[string]string{"query_name": name})
 		st.trace.Add(Event{
 			Stage: StageUnknown, Mapper: st.mapperName, Entry: "$unknown",
 			Src: "ini." + name, Raw: nil, Val: nil, Path: nil,
+			Act: ActKeep, Why: WhyNotDeclared,
+		})
+	}
+}
+
+// noteUnknownJSONKeys ставит код на каждый необъявленный ключ ВЕРХНЕГО
+// УРОВНЯ JSON-элемента (MAPPER_ENGINE.md §8, парный код `json_field_unknown`).
+//
+// Почему только верхний уровень. Объявленность параметра считается по
+// `source`, а вложенный путь (`json.a.b`) плоским слоем не выражается и
+// параметром не является — то же правило, что в `plan.go` при сборке
+// `Declared`. Спускаться глубже значило бы звать неизвестным лист
+// контейнера, который секция читает своей записью: списки `ignore` у
+// xray-секций для того и перечисляют `settings`/`streamSettings`.
+//
+// Пространство ссылки с КОНТЕЙНЕРОМ (v2rayN у vmess) сюда не попадает
+// дважды: его ключи видны плоским слоем и уже сосчитаны как `query`.
+func (st *execState) noteUnknownJSONKeys(uk *registry.UnknownKey, ignored map[string]bool) {
+	if st.space == nil || len(st.space.QueryNames()) > 0 {
+		return
+	}
+	for _, name := range st.space.JSONKeys() {
+		if st.plan.Declared[strings.ToLower(name)] {
+			continue
+		}
+		if ignored[strings.ToLower(name)] {
+			continue
+		}
+		st.notePath(uk.Code, name, map[string]string{"query_name": name})
+		st.trace.Add(Event{
+			Stage: StageUnknown, Mapper: st.mapperName, Entry: "$unknown",
+			Src: "json." + name, Raw: nil, Val: nil, Path: nil,
 			Act: ActKeep, Why: WhyNotDeclared,
 		})
 	}
@@ -1925,6 +1968,15 @@ func (st *execState) noteINIDropped() {
 
 func (st *execState) note(code string, params map[string]string) {
 	st.res.Notes = append(st.res.Notes, Note{Code: code, Params: params})
+}
+
+// notePath — код, который называет ОДНО имя источника.
+//
+// Отдельно от note, потому что путь тут не украшение: по паре (код, path)
+// идёт дедуп деградаций узла, и без него второй незнакомый ключ той же
+// ссылки терялся бы молча.
+func (st *execState) notePath(code, path string, params map[string]string) {
+	st.res.Notes = append(st.res.Notes, Note{Code: code, Path: path, Params: params})
 }
 
 // --- общие преобразования значений ---
