@@ -43,6 +43,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`flow_deprecated`](#flow_deprecated) · `info` — Obsolete flow removed
 - [`group_empty`](#group_empty) · `warning` — Group {tag} left without members
 - [`group_member_missing`](#group_member_missing) · `warning` — {count} group members not imported
+- [`json_field_unknown`](#json_field_unknown) · `info` — Configuration: field not read
 - [`masque_vhttp_invalid`](#masque_vhttp_invalid) · `warning` — MASQUE: HTTP version set to h3
 - [`max_nodes_exceeded`](#max_nodes_exceeded) · `warning` — {skipped} nodes over the limit skipped
 - [`naive_extra_headers_invalid`](#naive_extra_headers_invalid) · `info` — naive: a header was discarded
@@ -76,6 +77,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`tuic_udp_relay_mode_invalid`](#tuic_udp_relay_mode_invalid) · `warning` — Field removed: unknown UDP relay mode
 - [`type_invalid`](#type_invalid) · `warning` — Field {path} removed: wrong type
 - [`unknown_key`](#unknown_key) · `warning` — Field removed: unknown key
+- [`uri_param_unknown`](#uri_param_unknown) · `info` — Link: parameter not read
 - [`uri_too_long`](#uri_too_long) · `error` — Link too long: {length} characters
 - [`utls_fp_unknown`](#utls_fp_unknown) · `warning` — Unknown uTLS fingerprint replaced
 - [`vision_with_transport`](#vision_with_transport) · `info` — flow removed: incompatible with transport
@@ -88,6 +90,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`ws_early_data_converted`](#ws_early_data_converted) · `info` — WebSocket: early data converted
 - [`xhttp_mode_forced_packet_up`](#xhttp_mode_forced_packet_up) · `warning` — XHTTP mode set to packet-up
 - [`xhttp_param_reset`](#xhttp_param_reset) · `warning` — XHTTP: field {field} removed
+- [`xray_extra_entries_dropped`](#xray_extra_entries_dropped) · `warning` — Configuration: extra entries dropped
 
 <a id="alias_shadowed"></a>
 ### alias_shadowed
@@ -749,6 +752,24 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Nothing to do if the group still has the servers you need.
   - If servers are missing, ask the provider to fix the subscription and import it again.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="json_field_unknown"></a>
+### json_field_unknown
+
+**severity:** `info` · **params:** `query_name`
+
+**Configuration: field not read**
+
+- **What happened:** The element carries the field {query_name}, which is not described for this protocol. The node works and the field changed nothing: it was not read at all. One code is raised per unread field.
+- **Why it happens:** The field belongs to another client's dialect, to a newer version of the core, or it is a typo in a hand-written body. Service keys of the element itself (protocol, tag, remarks) and containers whose leaves the table reads (settings, streamSettings) are expected there and are not reported.
+- **What you can do:**
+  - Nothing to do if the node works: the field had no effect here anyway.
+  - If you wrote the body yourself, check the spelling of the field.
+  - If the field belongs to a newer core, update the core.
 
 **Where it comes from:**
 
@@ -1436,6 +1457,24 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
+<a id="uri_param_unknown"></a>
+### uri_param_unknown
+
+**severity:** `info` · **params:** `query_name`
+
+**Link: parameter not read**
+
+- **What happened:** The link carries the parameter {query_name}, which is not described for this protocol. The node works and the parameter changed nothing: it was not read at all. One code is raised per unread parameter.
+- **Why it happens:** The parameter belongs to another client's dialect, to a newer version of the protocol, or it is a typo in a hand-edited link. Sharing links have no common registry of parameters, so every client writes what it knows; a parameter this protocol does not describe has nowhere to go in the node body.
+- **What you can do:**
+  - Nothing to do if the node works: the parameter had no effect here anyway.
+  - If you edited the link yourself, check the spelling of the parameter.
+  - If the parameter belongs to a newer core, update the core.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
 <a id="uri_too_long"></a>
 ### uri_too_long
 
@@ -1652,4 +1691,21 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`xhttp.uplink_data_placement`](protocols/_transports.md#body-xhttp-uplink-data-placement) — the value does not fit the field → removed
   - [`xhttp.x_padding_method`](protocols/_transports.md#body-xhttp-x-padding-method) — the value does not fit the field → removed
   - [`xhttp.x_padding_placement`](protocols/_transports.md#body-xhttp-x-padding-placement) — the value does not fit the field → removed
+
+<a id="xray_extra_entries_dropped"></a>
+### xray_extra_entries_dropped
+
+**severity:** `warning` · **params:** `query_name`, `count`
+
+**Configuration: extra entries dropped**
+
+- **What happened:** The element holds {count} entries in {query_name}. Only the first one became a node: one node here is one server with one set of credentials. The rest were dropped, and the servers they described are not reachable through this node.
+- **Why it happens:** Xray lets one outbound hold a list of servers (vnext, servers) or of users, and balances between them itself. A node in the launcher is a single server, so there is no place to put the second entry. Such an element usually comes from a provider that packed several locations, or several accounts, into one outbound.
+- **What you can do:**
+  - Check that the first entry is the one you need: it is the one that became the node.
+  - If you need the other servers too, split them into separate elements — one server per outbound.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 

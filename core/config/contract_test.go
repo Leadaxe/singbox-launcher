@@ -92,6 +92,15 @@ func TestContractCorpusURI(t *testing.T) {
 			base := strings.TrimSuffix(casePath, ".uri")
 
 			env := contractEnvelope{V: 1}
+			// meta.extension — свойство КЕЙСА, а не результата разбора: им
+			// помечена ссылка со схемой, которой у одной из сторон нет
+			// (раннер той стороны кейс пропускает). Раннер его не
+			// вычисляет, поэтому переносит из существующего ожидания —
+			// иначе -update стирал бы метку, а обычный прогон падал бы на
+			// «лишнем» поле. Тот же приём, что у раннера тел.
+			if ext := corpusExtensionMark(expectedPathFor(base)); ext != "" {
+				env.Meta = map[string]any{"extension": ext}
+			}
 			node, parseErr := subscription.ParseNode(uri, nil)
 			switch {
 			case parseErr != nil:
