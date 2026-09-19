@@ -389,7 +389,12 @@
       },
       "emit": {
         "form": "sip002",
-        "param_order": "alphabetical"
+        "param_order": "alphabetical",
+        "userinfo": {
+          "form": "base64",
+          "padding": true
+        },
+        "impl": "userinfo.form base64 — SIP002: `method:password` кодируется целиком, адрес и метка остаются открытыми. padding объявлен явно: Go пишет «=», Dart срезает, обе стороны читают обе формы, и по правилу эмита ни одна не меняет своё написание молча."
       }
     },
     "xray": {

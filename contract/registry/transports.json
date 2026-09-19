@@ -1051,8 +1051,10 @@
           "value_map": {
             "": null,
             "tcp": null,
-            "raw": null
+            "raw": null,
+            "splithttp": "xhttp"
           },
+          "emit_as": "raw",
           "when": {
             "query.type": {
               "in": [
@@ -1063,16 +1065,19 @@
                 "grpc",
                 "http",
                 "xhttp",
-                "httpupgrade"
+                "httpupgrade",
+                "splithttp"
               ]
             }
           },
-          "impl": "Набор ЗНАЕМЫХ написаний транспорта. Прежний путь — switch с этими же ветками (node_parser_transport.go:178-262) — на незнакомом значении не возвращал транспорта ВООБЩЕ, и в тело не попадало ничего. Без гейта движок писал незнакомое значение в transport.type как есть, санитайзер снимал его правилом enum и вешал узлу type_invalid: корпус uri/vless/h2_tls ждёт узел БЕЗ transport и БЕЗ кода. h2 в набор не входит намеренно: ветка network==h2 → type:http (node_parser_core.go:838) читает параметр network, то есть принадлежит VMESS, а у vless параметр зовётся type, и значения h2 он не знал. Перевод появится записью секции vmess; общий селектор навязал бы его и vless, изменив тела живых узлов."
+          "impl": "Набор ЗНАЕМЫХ написаний транспорта. Прежний путь — switch с этими же ветками (node_parser_transport.go:178-262) — на незнакомом значении не возвращал транспорта ВООБЩЕ, и в тело не попадало ничего. Без гейта движок писал незнакомое значение в transport.type как есть, санитайзер снимал его правилом enum и вешал узлу type_invalid: корпус uri/vless/h2_tls ждёт узел БЕЗ transport и БЕЗ кода. h2 в набор не входит намеренно: ветка network==h2 → type:http (node_parser_core.go:838) читает параметр network, то есть принадлежит VMESS, а у vless параметр зовётся type, и значения h2 он не знал. Перевод появится записью секции vmess; общий селектор навязал бы его и vless, изменив тела живых узлов. АЛИАС splithttp → xhttp (контракт 1.1.37): ТЕМ ЖЕ примитивом, что в диалекте xray ($selector.network.value_map). Прежде набор when.in был закрыт без него, и ссылка Xray с `type=splithttp` теряла транспорт МОЛЧА — узел уезжал голым TCP. Рукописный парсер алиаса тоже не знал (switch по типу имел только ветку `xhttp`), так что это не регрессия перехода, а давний дефект обеих реализаций. На ВЫХОДЕ пишется канон `xhttp`: обращение value_map неинъективно (в xhttp ведут два ключа), и emit_as: raw объявляет, что писать значение тела как есть."
         },
         "headerType": {
           "source": "query.headerType",
           "selector": true,
           "maps_to": "transport.type",
+          "round_trip": false,
+          "round_trip_why": "Пишет в transport.type, уже занятый записью type: на выходе обе дали бы ссылке два имени одного транспорта. Истину транспорта несёт type.",
           "when": {
             "query.type": {
               "in": [
@@ -1114,7 +1119,16 @@
               }
             }
           },
-          "compose": "{transport.path}?ed={transport.max_early_data}",
+          "compose": {
+            "template": "{transport.path}?ed={transport.max_early_data}",
+            "from": [
+              "transport.path",
+              "transport.max_early_data"
+            ],
+            "omit_when_empty": [
+              "transport.max_early_data"
+            ]
+          },
           "when": {
             "transport.type": "ws"
           },
@@ -1135,6 +1149,8 @@
         "ed": {
           "source": "query.ed",
           "maps_to": "transport.max_early_data",
+          "round_trip": false,
+          "round_trip_why": "Вторая форма early data. Обратный ход ведёт хвост пути (compose у ws.path): величина одна, и писать оба написания значит сказать её дважды.",
           "type": "int",
           "priority": 5,
           "implies": {
@@ -1148,6 +1164,8 @@
         "eh": {
           "source": "query.eh",
           "maps_to": "transport.early_data_header_name",
+          "round_trip": false,
+          "round_trip_why": "Имя заголовка early data подставляется конвенцией (implicit у хвоста пути) и в ссылку не пишется.",
           "priority": 30,
           "when": {
             "transport.type": "ws",
@@ -1203,6 +1221,7 @@
             "sep": ",",
             "coerce_scalar": true
           },
+          "emit_as": "join",
           "when": {
             "transport.type": "http"
           },

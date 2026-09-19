@@ -313,10 +313,15 @@ text ──▶ 1. mapper ──▶ 2. sanitizer ──▶ 3. emitter ──▶ s
                                                       core/platform gate ──▶ config.json
 ```
 
-1. **Mapper** (`core/config/subscription/*`) translates a dialect into the
-   canonical sing-box shape: `sni`→`tls.server_name`, `?ed=N`→`max_early_data`,
-   Xray `streamSettings.*`→`transport.*`. It decides nothing about *values*; its
-   only refusals are "protocol not recognised" and "syntax unparseable".
+1. **Mapper** (`core/config/linkmap`, driven by the `contract/registry/**/mappers.*`
+   tables) translates a dialect into the canonical sing-box shape:
+   `sni`→`tls.server_name`, `?ed=N`→`max_early_data`, Xray
+   `streamSettings.*`→`transport.*`. **Which** value goes **where** is declared by
+   the registry, not written in Go: there is no scheme or protocol name in the
+   engine, because every such name would be a second copy of a rule that already
+   exists as data. It decides nothing about *values*; its only refusals are "form
+   not recognised" and "syntax unparseable". Architecture —
+   `contract/docs/MAPPER_ENGINE.md`.
 2. **Sanitizer** (`core/config/nodeflow.Sanitize`) applies the rules of
    `contract/registry/**` — type, enum, format, per-scheme bans, conflicts,
    unknown keys. Anything removed or coerced produces a `{code, path}` warning.
@@ -355,8 +360,11 @@ latter for nodes saved before the pipeline existed.
    `fetcher.FetchSubscriptionWithMeta` (HTTP GET with HWID/UA headers, max 10 MB,
    announce-header decode) → `decoder.DecodeSubscriptionContent` (base64 strip) →
    `subscription.ClassifySubscriptionBody` picks one of three branches:
-   - **URI list** — `node_parser.ParseNode` per line (scheme dispatch → protocol
-     parser → transport/TLS build → sing-box outbound JSON);
+   - **URI list** — `subscription.ParseNode` per line, which hands the raw text to
+     the registry engine (`core/config/linkmap`): the section is chosen by the
+     registry's `detect`, its table builds the sing-box body. Two branches stand
+     beside the engine: the Amnezia `vpn://` profile, and "scheme not supported"
+     for text no section recognises;
    - **Xray JSON array** — `ParseNodesFromXrayJSONArray`;
    - **sing-box JSON** (single outbound / outbound array / whole config / config
      array, SPEC 094) — `ParseSingboxBody`: `outbounds` + `endpoints` are read as
@@ -517,10 +525,12 @@ keep this document readable:
 
 ➡ **[ARCHITECTURE_PACKAGES.md](ARCHITECTURE_PACKAGES.md)**
 
-That file reflects the **current** post-SPEC-070 layout, including the new split
-files (per-protocol `node_parser_*` / `shareuri_*`, `clash_*`, `load_v*`,
+That file reflects the **current** layout, which is post-SPEC-070 **and**
+post-SPEC-133: the split files of SPEC 070 are still there (`clash_*`, `load_v*`,
 `sync_to_*`, `outbound_validity`/`outbound_jsonbuilder`, the `reconcilers`/`fillers`/
-`validators` DNS split, and the Windows WinTun cleanup split).
+`validators` DNS split, the Windows WinTun cleanup split), but the per-protocol
+`node_parser_*` and `shareuri_*` files are **gone** — one engine
+(`core/config/linkmap`) reads the registry tables in both directions instead.
 
 ---
 
@@ -594,10 +604,15 @@ implemented** · **Planned (deferred)**.
 - **Rationale:** Parser/encoder and URI/Xray paths drift when sing-box's schema
   changes (e.g. a new REALITY field updated in one path only). Single-sourcing the
   spec conversion prevents silent round-trip breakage.
-- **Status:** **Partially implemented.** Per-protocol file split (`node_parser_*`,
-  `shareuri_*`) and shared `utf8_utils.go` / `encoding_utils.go` are **done**. The
-  unified `TransportSpec`/`TLSSpec` builders that merge the URI and Xray paths are
-  **planned (deferred)** — the two transport/TLS builders still exist separately.
+- **Status:** **Superseded by SPEC 133** (the record above is the 2025 decision and is
+  kept as history). Single-sourcing was achieved, but not by builders in Go: both
+  directions and both inputs now read **one registry table** per scheme
+  (`contract/registry/**/mappers.*`) through one engine, `core/config/linkmap`. The
+  per-protocol files the ADR called for (`node_parser_*`, `shareuri_*`) are gone with
+  the hand-written logic itself; the shared `utf8_utils.go` / `encoding_utils.go`
+  remain. The deferred `TransportSpec`/`TLSSpec` unification is therefore **not
+  deferred any more but moot** — there are no longer two transport/TLS builders to
+  merge.
 
 ### ADR-070-7 — Single AppController construction path with focused sub-managers
 - **Decision:** `NewAppController` is the only constructor (delete the `GetController`
@@ -638,6 +653,12 @@ applicable) golden-test guarded.
     per-protocol `node_parser_ss/ssh/vmess/wireguard/hysteria2/naive.go`.
   - `core/config/subscription/share_uri_encode.go` (883 LOC) → `share_uri.go`
     dispatcher + `shareuri_*.go` per protocol + `shareuri_helpers.go`.
+
+  > **As of SPEC 133 these two bullets are history, not layout.** Splitting a
+  > monolith into one file per protocol made the copies visible but kept them:
+  > the same rule lived in the URI parser, the Xray converter and the encoder, and
+  > they drifted. Both families of files are deleted; one engine
+  > (`core/config/linkmap`) reads the registry tables in both directions.
   - `api/clash.go` (599 LOC) → `clash_config/transport/log/error/proxy/switch/delay.go`.
   - `internal/platform/wintun_cleanup_windows.go` (681 LOC) →
     `wintun_cleanup_windows_device/nla_profiles/nla_sigs/syscall.go`.
@@ -668,7 +689,7 @@ above did not.
 | **Dual-state elimination** — make canonical `Rules`/`DNS`/`Connections` the sole stored truth; delete `deriveV6FromLegacy`, `legacyCustomRulesFromV6`, `State.CustomRules`/`DNSOptions`/`SelectableRuleStates`; migrate UI Rules/DNS/source tabs to canonical fields. | ADR-070-2 | **Needs GUI runtime verification.** Every headless `Load → mutate → Save` callsite and every UI tab that reads the legacy view must be migrated and re-verified against real state files (v5 upgrades + native v6). |
 | **Full callback → event retirement** — wire `ConfigBuilt`/`StateChanged` subscriptions in the Core dashboard; retire `UpdateCoreStatusFunc`/`UpdateConfigStatusFunc`; make `VpnStateChanged` single-mechanism. | ADR-070-3 | **Needs GUI runtime verification.** UI status refresh is timing-sensitive (`fyne.Do` dispatch, dirty-marker styling); swapping the delivery mechanism must be observed live. Publishers are already in place so this is low-code-risk but high-verification-cost. |
 | **`JSONBuilder` full adoption** — migrate every protocol field generator in `GenerateNodeJSON` / selector generation onto `JSONBuilder` (insertion-order-safe), behind golden tests. | ADR-070-5 | **Partially done.** The builder exists and is used; finishing the migration is incremental and golden-test-guarded, but not blocking. |
-| **Transport/TLS unification** — merge `uriTransportFromQuery` + `xrayTransportFromStreamSettings` into one `TransportSpec` builder, and the three TLS builders into one `TLSSpec` builder. | ADR-070-6 | **Behavior-change risk on round-trip.** Both paths emit subtly different sing-box shapes today; unifying them requires golden round-trip tests across all protocols (subscription-URI ↔ Xray-JSON) to prove no drift. |
+| ~~**Transport/TLS unification** — merge `uriTransportFromQuery` + `xrayTransportFromStreamSettings` into one `TransportSpec` builder, and the three TLS builders into one `TLSSpec` builder.~~ | ADR-070-6 | **No longer deferred — removed by SPEC 133.** Both hand-written paths are gone: the URI input and the Xray input are led by the same registry table through `core/config/linkmap`, so there is nothing left to merge. The round-trip risk the row describes is now covered by two runners — a byte-for-byte snapshot of the link and `parse(emit(body)) == body` over the whole corpus. |
 | **UI view decomposition** — `clash_api_tab.go` (1701 LOC, still the largest despite the `_helpers`/`_render`/`_autorefresh` peels) → state+handlers; `add_rule_dialog.go` (1154 LOC) → editor-state/tabs/process-picker; `outbounds_configurator/edit_dialog.go` (1095 LOC) → edit-state/form-builder/template-resolver. | (supports ADR-070-1) | **Needs GUI runtime verification + ordered after dual-state.** These closures capture large mutable UI state; extracting it safely is best done once dual-state is gone, with live click-through verification. |
 | **`config_service.go` decomposition** — the file split is **done** (1066 → 538 LOC, with `config_service_context.go` + `config_service_subscriptions.go` peeled off); what remains is promoting those to real `SubscriptionFetcher` / `ConfigContextBuilder` seams and splitting `UpdateConfigFromSubscriptions` itself. | (supports ADR-070-5) | **High concurrency risk.** Must preserve `SubscriptionMu` boundaries across new service seams; needs the existing `refresh_meta`/`update` tests plus runtime verification of auto-update + manual-update races. |
 | **CI import-graph check** enforcing L*n* → L*≤n*. | ADR-070-1 | **Planned tooling**, not yet built; would lock in the layer model and catch V1/V2-style regressions. |

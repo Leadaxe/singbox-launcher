@@ -68,7 +68,7 @@ If the subscription body (plain, or after Base64 decoding) is a **valid JSON arr
 | Decoder | After trimming, the string starts with **`[`**, **`json.Valid`** passes, and `json.Unmarshal` into an array succeeds — the body is not rejected as "not a subscription" (`DecodeSubscriptionContent`). |
 | Parser entry | **`IsXrayJSONArrayBody`**: the same — a `[` prefix, valid JSON, an array of objects. |
 | Array element | **`xrayElementHasProtocolOutbounds`**: **`outbounds`** contains at least one object with a **`protocol`** field (a string) — the marker of the **Xray dialect**. Elements carrying only the sing-box **`type`** without **`protocol`** are not considered Xray for this branch and are **skipped** with a `debuglog` line (follow-up **016** is expected). |
-| Node | Among VLESS entries with **`settings.vnext`** the main outbound is picked (`xrayBuildVLESSFromOutbound`); with **`dialerProxy`** the hop is parsed as **`socks`** or **`vless`** (`xrayChainHopFromOutbound`; the socks hop via `xrayBuildJumpFromSocksOutbound`); any other hop `protocol` skips the element (`WarnLog`). |
+| Node | The main outbound of the element is picked at document level and then translated by the registry engine (`parseXrayElementByEngine` → `core/config/linkmap`); which `mappers.xray` section leads it is decided by the section's own `detect`, not by a list of protocols in the code. With **`dialerProxy`** the hop is parsed as **`socks`** or **`vless`** (`xrayChainHopFromOutbound`; the socks hop via `xrayBuildJumpFromSocksOutbound`); any other hop `protocol` skips the element (`WarnLog`). |
 
 **`remarks` and sing-box tags**
 
@@ -82,7 +82,7 @@ With **`streamSettings.sockopt.dialerProxy`** (or **`dialer`**) pointing at an o
 
 **Example and code**
 
-A structure like the public Xray subscriptions (**`dns`**, **`inbounds`**, **`log`**, **`mux`**, **`tcpSettings`**, **`routing`**, **`freedom`/`blackhole`**), with made-up data: **`docs/examples/xray_subscription_array_sample.json`**. The same scenario in tests: **`core/config/subscription/testdata/xray_provider_anon.json`** (`go:embed` in **`xray_json_array_test.go`**). Implementation: **`xray_json_array.go`**, **`xray_outbound_convert.go`**, **`decoder.go`** (`DecodeSubscriptionContent`), **`source_loader.go`** (`LoadNodesFromSource`, **`applyTagsToXrayNode`**), configurator: **`ui/configurator/tabs/source_tab.go`** (`refreshOneSourceFromUI`).
+A structure like the public Xray subscriptions (**`dns`**, **`inbounds`**, **`log`**, **`mux`**, **`tcpSettings`**, **`routing`**, **`freedom`/`blackhole`**), with made-up data: **`docs/examples/xray_subscription_array_sample.json`**. The same scenario in tests: **`core/config/subscription/testdata/xray_provider_anon.json`** (`go:embed` in **`xray_json_array_test.go`**). Implementation: **`xray_json_array.go`**, **`xray_outbound_convert.go`** and **`xray_protocols.go`** (the **document** level: which element becomes a node, which a chain hop, which a balancer group), **`xray_element_engine.go`** (the element itself, handed to the registry engine), **`decoder.go`** (`DecodeSubscriptionContent`), **`source_loader.go`** (`LoadNodesFromSource`, **`applyTagsToXrayNode`**), configurator: **`ui/configurator/tabs/source_tab.go`** (`refreshOneSourceFromUI`).
 
 ## Degradation codes on a node
 
@@ -130,26 +130,28 @@ declared `severity: error`.
 | **`SPECS/029-Q-С-SUBSCRIPTION_PARSER_CLASH_CONVERTOR_PARITY/SPEC.md`** | Compatibility extensions (029): `type=httpupgrade`, `peer`, `obfsParam`, VMess legacy / `httpupgrade` / `h2`, Hysteria2 TLS; cross-checked against the sing-box schema. |
 | **`SPECS/033-F-N-SUBSCRIPTION_XRAY_JSON_ARRAY/SPEC.md`** | A subscription as a JSON array of full Xray configs: `remarks`, slug tags, `dialerProxy` → `detour`, MVP boundaries (a sing-box array is **016**, follow-up). |
 | **`SPECS/036-F-C-XRAY_JUMP_ANY_PROTOCOL/SPEC.md`** | `dialerProxy`: a **SOCKS** or **VLESS** hop; other protocols as mappings land (**complete** within the SPEC's scope). |
-| The **`core/config/subscription`** package | `ParseNode`, `buildOutbound` — `node_parser_core.go`; VLESS/Trojan transport+TLS — `node_parser_transport.go`; VMess — `node_parser_vmess.go` (`parseVMessDecoded`, `parseVMessJSON`, `parseVMessLegacyCleartext`); Hysteria2 — `node_parser_hysteria2.go`; WireGuard / SSH — `node_parser_wireguard.go`, `node_parser_ssh.go`; share URIs — the `share_uri.go` dispatcher plus the `shareuri_*.go` implementations; the Xray JSON array — `xray_json_array.go`, `xray_outbound_convert.go`, `xray_protocols.go`, `xray_balancer.go`. |
+| **`contract/docs/MAPPER_ENGINE.md`** | How a source is parsed: pipeline stages, the source space, execution order of the registry entries, the reverse pass. The source of truth — a shared contract document. |
+| The **`core/config/linkmap`** package | The engine: one code path for every source, driven by the `mappers.*` tables. No scheme or protocol name appears in it (guarded by `no_scheme_names_test.go`). |
+| The **`core/config/subscription`** package | `ParseNode` — three branches (Amnezia `vpn://`, the engine via `node_parser_engine.go`, "scheme not supported") plus the common helpers in `node_parser_core.go`; document-level decisions about an Xray array — `xray_json_array.go`, `xray_element_engine.go`, `xray_outbound_convert.go`, `xray_protocols.go`, `xray_balancer.go`; pasted wg-quick text — `wgconf_text.go`; share URIs — `share_uri.go`. |
 
 ## Share URIs from an outbound or a WireGuard endpoint (back to a link)
 
 The feature spec (right-click on the Servers tab, the context menu, implementation details): **`SPECS/025-F-C-SERVERS_CONTEXT_MENU_SHARE_URI/`** (SPEC, PLAN, IMPLEMENTATION_REPORT).
 
-The parser turns a **subscription string** (`ParseNode` → `buildOutbound`, or for WireGuard an object in `endpoints[]`) into sing-box JSON. The reverse operation is **building a share URI out of an outbound or WireGuard endpoint already written** into `config.json`, so a link can be shared without keeping the original subscription string.
+The parser turns a **subscription string** (`ParseNode`, or for WireGuard an object in `endpoints[]`) into sing-box JSON. The reverse operation is **building a share URI out of an outbound or WireGuard endpoint already written** into `config.json`, so a link can be shared without keeping the original subscription string.
 
 ### Principle and format mapping
 
-- **Encoder input:** one element of the `outbounds` array **or** one element of `endpoints[]` with `type: wireguard` (the same field set `parseWireGuardURI` / `GenerateEndpointJSON` produces).
+- **Encoder input:** one element of the `outbounds` array **or** one element of `endpoints[]` with `type: wireguard` (the same field set the `wireguard` section and `GenerateEndpointJSON` produce).
 - **Output:** a single URI string in the formats this project can read back: `vless://`, `vmess://` (base64 JSON), `trojan://`, `ss://` (SIP002), `socks5://`, `hysteria2://`, `tuic://`, `ssh://`, **`wireguard://`**.
-- **Query / transport / TLS:** for VLESS and Trojan, encoding follows the same conventions as parsing (`uriTransportFromQuery`, `vlessTLSFromNode`, `trojanTLSFromNode` in `node_parser_transport.go`). VMess does not use a standard URI query in its main format (base64 JSON); the legacy form and the JSON fields are in `node_parser_vmess.go`. The detailed VLESS/Trojan reference: **`SUBSCRIPTION_PARAMS_REPORT.md`** (023); the 029 extensions: the **`029-Q-С-…/SPEC.md`** spec and the [generated scheme pages](../contract/docs/generated/index.md).
+- **Query / transport / TLS:** encoding and parsing follow the same conventions because they read the **same** registry tables in opposite directions — the shape of a link is a property of the scheme, not of a hand-written encoder (`contract/docs/MAPPER_ENGINE.md` §9). The detailed VLESS/Trojan reference: **`SUBSCRIPTION_PARAMS_REPORT.md`** (023); the 029 extensions: the **`029-Q-С-…/SPEC.md`** spec and the [generated scheme pages](../contract/docs/generated/index.md).
 
 ### API in the code
 
 | Function | Package | Purpose |
 |--------|--------|------------|
 | `ShareURIFromOutbound(out map[string]interface{})` | `core/config/subscription` (`share_uri.go`) | Encoding from an outbound JSON object; for `type: wireguard` it delegates to `ShareURIFromWireGuardEndpoint` |
-| `ShareURIFromWireGuardEndpoint(ep map[string]interface{})` | `core/config/subscription` (`shareuri_wireguard.go`) | Encoding a `wireguard://` from a single endpoint (one peer in `peers[]`) |
+| `ShareURIFromWireGuardEndpoint(ep map[string]interface{})` | `core/config/subscription` (`share_uri.go`) | Encoding a `wireguard://` from a single endpoint (one peer in `peers[]`) |
 | `GetOutboundMapByTag(configPath, tag)` | `core/config` (`outbound_share.go`) | Looking an outbound up by its `tag` field in `config.json` |
 | `GetEndpointMapByTag(configPath, tag)` | `core/config` (`outbound_share.go`) | Looking an endpoint up by its `tag` field in `endpoints[]` |
 | `ShareProxyURIForOutboundTag(configPath, tag)` | `core/config` (`outbound_share.go`) | An outbound by tag first, otherwise WireGuard in `endpoints[]` |
@@ -161,7 +163,7 @@ The **`ErrShareURINotSupported`** error (`subscription`) means the outbound type
 | `type` in JSON | URI scheme | Notes |
 |---------------|-----------|-----------|
 | `vless` | `vless://` | `encryption=none`, transport/TLS as in subscriptions |
-| `vmess` | `vmess://` + base64 | The node's JSON fields match `parseVMessJSON` |
+| `vmess` | `vmess://` + base64 | The container's JSON fields are declared by the `vmess` section of the registry, the same ones parsing reads |
 | `trojan` | `trojan://` | Password in the userinfo |
 | `shadowsocks` | `ss://` | SIP002, base64(`method:password`) |
 | `socks` | `socks5://` | `version` 5; user/password when present |
@@ -185,22 +187,25 @@ Round-trip and selected scenarios: `core/config/subscription/share_uri_encode_te
 
 ## Input forms that are not links
 
-A node does not always arrive as a URI. These three forms are handled by the
-launcher before any link parsing happens, and they are not part of the registry's
-`uri.*` sections — the registry sees only the canonical `wireguard://` URI they
-are reduced to.
+A node does not always arrive as a URI. What used to be true here is not any more:
+these forms are **no longer reduced to an intermediate `wireguard://` link**. A
+wg-quick `.conf` is led by its own registry section, **`mappers.conf`**, over the
+ini space, and the Amnezia profile is unpacked into such a `.conf` text and handed
+to the same section. The detour through a link was dropped because it lost what a
+link has no room for: the `wgconf_dns_ignored` code and the label from the `[Peer]`
+comment.
 
 ### Amnezia (`vpn://`)
 
 The **`vpn://…`** links exported by Amnezia VPN / AmneziaWG 2.0 (a `.vpn` file is one such link) are accepted directly: paste the link into Sources or Connections. The format (the reference being `amnezia-vpn/config-decoder`): `vpn://` + base64url without padding, inside it qCompress (4 big-endian length bytes + zlib), and under that the JSON of the whole Amnezia profile.
 
-Only the **WireGuard/AmneziaWG container** is imported from the profile (OpenVPN/Cloak/XRay containers are skipped): `defaultContainer` is tried first, then the rest in order. The `[Interface]/[Peer]` config found there is converted into a canonical `wireguard://` URI (see the [`wireguard`](../contract/docs/generated/protocols/wireguard.md) page), so the same rules apply: bare IPs normalized into CIDRs, the AWG fields `Jc`/`Jmin`/`Jmax`/`S1`–`S4`/`H1`–`H4`/`I1`–`I5` promoted to the endpoint root, and **the AWG endpoint's MTU clamped to 1280** — the `MTU = 1420` from an Amnezia config reliably breaks data transfer (`sendmsg: message too long`). The node name comes from the profile's `description`, then `hostName`, then the container name.
+Only the **WireGuard/AmneziaWG container** is imported from the profile (OpenVPN/Cloak/XRay containers are skipped): `defaultContainer` is tried first, then the rest in order. The `[Interface]/[Peer]` config found there is handed to the registry's `mappers.conf` section (the field set is on the [`wireguard`](../contract/docs/generated/protocols/wireguard.md) page), so the same rules apply as for a pasted `.conf`: bare IPs normalized into CIDRs, the AWG fields `Jc`/`Jmin`/`Jmax`/`S1`–`S4`/`H1`–`H4`/`I1`–`I5` promoted to the endpoint root, and **the AWG endpoint's MTU clamped to 1280** — the `MTU = 1420` from an Amnezia config reliably breaks data transfer (`sendmsg: message too long`). The name of the profile (`description`, then `hostName`, then the container name) travels as the `hint` source; **where it lands in the label chain is decided by the section**, not by the caller: the comment under `[Peer]` wins over it, and the `Endpoint` host is the last resort.
 
 Limits: a link up to 512 KB, an unpacked profile up to 8 MB (zlib-bomb protection). A profile with no WG/AWG container yields an error listing the containers it did have. Implementation: `core/config/subscription/node_parser_amnezia.go`; spec: `SPECS/075-F-C-AMNEZIA_VPN_IMPORT/SPEC.md`; a reference decoder for debugging: `scripts/decode_amnezia_vpn.py`.
 
 ### Raw `.conf` text (`[Interface]/[Peer]`)
 
-The contents of a WireGuard/AmneziaWG `.conf` file can be pasted into the Add field of the Sources tab **as is** — the classifier picks `[Interface]` blocks out of the pasted text before line-by-line parsing and converts each into a canonical `wireguard://` URI (the URI is what gets stored and shared). Several blocks in one paste produce several nodes; links in the same text keep working. The node name is the host from `Endpoint`. AWG fields and the MTU clamp behave as with `vpn://` above. An invalid block is skipped with a log warning instead of failing the whole paste. Implementation: `core/config/subscription/wgconf_text.go` plus the hook in `classifyInputLines` (`ui/configurator/business/parser.go`); spec: `SPECS/076-F-C-WGCONF_PASTE_IMPORT/SPEC.md`.
+The contents of a WireGuard/AmneziaWG `.conf` file can be pasted into the Add field of the Sources tab **as is** — the classifier picks `[Interface]` blocks out of the pasted text before line-by-line parsing, and each block is led by the `mappers.conf` section of the registry. Several blocks in one paste produce several nodes; links in the same text keep working. The node name is the comment right under `[Peer]` when the provider wrote one there (that is the only human-readable name a `.conf` has), otherwise the host from `Endpoint`. AWG fields and the MTU clamp behave as with `vpn://` above. An invalid block is skipped with a log warning instead of failing the whole paste. Implementation: `core/config/subscription/wgconf_text.go` plus the hook in `classifyInputLines` (`ui/configurator/business/parser.go`); spec: `SPECS/076-F-C-WGCONF_PASTE_IMPORT/SPEC.md`.
 
 ### A subscription that serves a `.conf` or a `vpn://` profile
 

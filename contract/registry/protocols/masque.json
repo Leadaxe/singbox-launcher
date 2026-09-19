@@ -489,6 +489,8 @@
             "query.privatekey"
           ],
           "maps_to": "private_key",
+          "round_trip": false,
+          "round_trip_why": "Канон схемы кладёт приватный ключ в userinfo; query-написания — запасной слот ЧТЕНИЯ, и запись в оба места отдала бы секрет дважды.",
           "required": true,
           "decode_extra": {
             "plus_literal": true

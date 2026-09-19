@@ -282,7 +282,12 @@
             "*": "socks5"
           }
         },
-        "param_order": "alphabetical"
+        "param_order": "alphabetical",
+        "userinfo": {
+          "form": "raw",
+          "keep_empty_tail": true
+        },
+        "impl": "userinfo.keep_empty_tail: `socks4://userid:@host` — у socks4 пароля нет по протоколу, но разделитель клиенты пишут всегда, и его отсутствие часть из них читает как «имени нет»."
       }
     }
   }

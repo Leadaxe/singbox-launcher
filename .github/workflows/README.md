@@ -50,6 +50,14 @@
 
 ---
 
+## 🛡 Страж легаси-сборки Win7
+
+Шаг **Win7 (go1.20) constructs guard** (`go run ./tools/win7guard`) стоит в двух джобах: в `test` (Ubuntu, то есть на каждом PR и при `run_mode=tests`) и в `build-win7` перед установкой MSYS2. Он красит джобу, если в коде, попадающем в Win7-сборку, появились конструкции Go 1.21+: импорт `slices`/`maps`, builtin `min`/`max`/`clear`, `range` по целому, `Request.PathValue`.
+
+Набор файлов считается по build-тегам для `windows/386` с релизными тегами не выше `go1.20`, поэтому файлы за `//go:build darwin` и `//go:build go1.22` не проверяются — их в Win7-сборке нет. Разрешённые обходные пути: локальный хелпер (`ui/clash_api_tab_helpers.go`) или близнец за build-тегом (`core/debugapi/pathparam_legacy.go`). Запускается и локально из корня: `go run ./tools/win7guard`.
+
+---
+
 ## 🧪 Примеры команд (cli)
 
 ### Стабильный релиз (тег)
@@ -82,7 +90,7 @@
   gh workflow run golangci-lint.yml --ref develop
 - Автоматически при PR: workflow настроен на срабатывание при событиях `opened`, `reopened`, `synchronize` на pull request — ничего дополнительно делать не нужно.
 
-> Примечание: workflow выполняется по matrix (`ubuntu-latest`, `macos-latest`, `windows-latest`) и использует Go 1.25; для локальной проверки можно запустить `golangci-lint` локально (`golangci-lint run`) после `go mod tidy`.
+> Примечание: workflow выполняется по matrix (`ubuntu-24.04`, `macos-latest`, `windows-latest`) и использует Go 1.25; для локальной проверки можно запустить `golangci-lint` локально (`golangci-lint run`) после `go mod tidy`.
 
 ### 🤖 Dependabot
 

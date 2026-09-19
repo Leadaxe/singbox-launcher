@@ -65,6 +65,13 @@
   репортить как утечку;
 - в коммитах, коде и документах не упоминать AI-агентов и модели.
 
+## Статус
+
+- **2 — сделано.** Доки (`docs/ARCHITECTURE*`, `ARCHITECTURE_PACKAGES*`, `ParserConfig*`, `Protocols*`, `contract/README.md`, `contract/docs/IDENTITY.md`) сверены с движком `core/config/linkmap`; `upcoming.md` дополнен под 2.0.0 и пробелы с `v1.6.3` (фильтр Servers, Tailscale, socks4/socks4a, трей #83, эмит на движке).
+- **3 — сделано.** Контракт 1.1.38: вычитка 82 кодов `warnings.json` (en/ru), закрыты 4 расхождения `params`, заголовки группы A, уточнения B/C, служебные `go` → linkmap/nodeflow; `go generate`, тесты `TestRegistry|TestContractMapperSectionsMatchSchema` — OK.
+- **5 — сделано.** `codecov-action` v5 (вход `file` → `files`), Ubuntu-раннер пригвождён к `ubuntu-24.04` в пяти местах вместе с пятью условиями `if: matrix.os == …`, страж go1.21+-конструкций `tools/win7guard` врезан в `build-win7` и, решением владельца, в частую джобу `test`. Остаток: Win7-джоба со стражем на CI не поднималась (нужна отмашка на `run_mode=build -f target=Win7`); `claude.yml` со своим `ubuntu-latest` не тронут намеренно.
+- **4 — сделано.** ~2.5k строк мёртвого кода в `core/config` (кластеры uri/transport, `node_ref.go`, `detour_topo.go`, `outbound_jsonbuilder` transport, россыпь); `LEGACY_AUDIT` §3 пересажен, §4 дополнен про `staticcheck U1000`; живые пункты и `linkmap/**` не тронуты.
+
 Принципы проекта — [SPECS/CONSTITUTION.md](../CONSTITUTION.md), правила
 реализации и DoD — [SPECS/IMPLEMENTATION_PROMPT.md](../IMPLEMENTATION_PROMPT.md),
 архитектура — [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md).

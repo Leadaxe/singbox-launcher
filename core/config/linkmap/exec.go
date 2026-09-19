@@ -138,6 +138,12 @@ func kindCondHolds(cond map[string]interface{}, space *Space) bool {
 	return matched
 }
 
+// roundTripEmitOnly — значение `round_trip_only`, означающее «только эмит».
+const roundTripEmitOnly = "emit"
+
+// roundTripParseOnly — «только разбор».
+const roundTripParseOnly = "parse"
+
 // Note — код с параметрами; в узел их перекладывает вызывающий, потому что
 // формат warning'а принадлежит подписке, а не движку.
 type Note struct {
@@ -521,6 +527,12 @@ func (st *execState) applyEntry(e *Entry) {
 	if p == nil {
 		return
 	}
+	// Запись, объявленная действующей ТОЛЬКО на выходе, разбором не
+	// исполняется: значение, пришедшее по ссылке, указывало бы на тег чужого
+	// конфига, которого у нас нет.
+	if p.RoundTripOnly == roundTripEmitOnly {
+		return
+	}
 
 	// when по телу / по источнику / по $type / по $form.
 	if !st.whenHolds(p.When) {
@@ -704,6 +716,19 @@ func sameJSON(a, b interface{}) bool {
 // пустому значению.
 func (st *execState) applyMissing(e *Entry) {
 	p := e.Param
+
+	// on_empty — код за ПУСТОЕ либо отсутствующее значение. Узел остаётся:
+	// «поля нет» бывает и нормой, и признаком протухшей подписки, и
+	// различить это может только человек — значит место кода, а не
+	// отбраковки. Путь берётся из maps_to, иначе — имя записи: у записи без
+	// пути назвать место потери больше нечем.
+	if code := codeOf(p.OnEmpty); code != "" {
+		path := st.pathOf(p)
+		if path == "" {
+			path = e.Name
+		}
+		st.notePath(code, path, paramsOf(p.OnEmpty))
+	}
 
 	// default_from — источник значения по умолчанию (эвристика SNI у trojan
 	// выражается именно им, а не веткой кода).

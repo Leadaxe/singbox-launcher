@@ -75,7 +75,7 @@
       ],
       "desc": "Обязательное поле отсутствует. Severity по Dart (error, узел в dropped); Go сегодня мягче — предупреждает и оставляет узел (hysteria2 без password node_parser_hysteria2.go:23, tuic без uuid/password node_parser_tuic.go:60/65, anytls без password node_parser_anytls.go:25) — расхождение отмечено, целевое поведение по Dart.",
       "dart": "MissingFieldWarning",
-      "go": "core/config/subscription/node_parser_tuic.go:60"
+      "go": "contract/registry/protocols/*.json body.fields.* (required); исполнение — core/config/nodeflow/sanitize.go"
     },
     "flow_deprecated": {
       "severity": "info",
@@ -198,8 +198,8 @@
       ],
       "title_en": "The core rejected this server",
       "title_ru": "Ядро не приняло этот сервер",
-      "text_en": "The core rejected this server and said: {reason}. It was turned off so the VPN could start. Turn it back on and the core will check it again.",
-      "text_ru": "Ядро не приняло этот сервер и сообщило: {reason}. Он выключен, чтобы VPN смог запуститься. Включите его обратно, и ядро проверит его заново.",
+      "text_en": "The core rejected this server. Its technical message: {reason}. The server was turned off so the VPN could start. Turn it back on and the core will check it again.",
+      "text_ru": "Ядро не приняло этот сервер. Его техническое сообщение: {reason}. Сервер выключен, чтобы VPN смог запуститься. Включите его обратно, и ядро проверит его заново.",
       "cause_en": "The core checks the whole configuration at once and refuses to start on the first server it cannot accept — otherwise one broken line would leave every server unusable. Something in this server is outside what the core accepts and outside what the app's own checks look at: a value from a newer or older core, a field the provider filled in by hand, or a combination nobody anticipated. The text above is the core's own, passed on unchanged.",
       "cause_ru": "Ядро проверяет конфигурацию целиком и отказывается стартовать на первом же сервере, который не может принять, — иначе одна испорченная строка оставила бы без связи все серверы. В этом сервере что-то вне того, что принимает ядро, и вне того, что смотрят собственные проверки приложения: значение от более нового или более старого ядра, поле, заполненное провайдером вручную, либо сочетание, которого никто не предусмотрел. Текст выше — дословно от ядра.",
       "fix_en": [
@@ -270,13 +270,12 @@
       "severity": "warning",
       "params": [
         "field",
-        "reason",
         "value"
       ],
       "title_en": "XHTTP: field {field} removed",
       "title_ru": "XHTTP: поле {field} снято",
-      "text_en": "The XHTTP parameter {field} ({value}) is not allowed in the mode this node uses ({reason}). The field was removed and the mode left untouched, because the core rejects such a pair and would refuse to start the whole config.",
-      "text_ru": "Параметр XHTTP {field} ({value}) недопустим в том режиме, который использует узел ({reason}). Поле снято, режим не тронут: ядро отвергает такую пару и не запустит весь конфиг.",
+      "text_en": "The XHTTP field {field} ({value}) is not allowed in this node's current mode. The field was removed and the mode left untouched, because the core rejects such a pair and would refuse to start the whole config.",
+      "text_ru": "Поле XHTTP {field} ({value}) недопустимо в текущем режиме узла. Поле снято, режим не тронут: ядро отвергает такую пару и не запустит весь конфиг.",
       "cause_en": "The link came from a generator that copies XHTTP parameters blindly: uplink_data_placement=header is only valid in packet-up mode, and the entry names a different mode. Such a pair is fatal for the whole config, not just for this node.",
       "cause_ru": "Ссылку сделал генератор, копирующий параметры XHTTP вслепую: uplink_data_placement=header допустим только в режиме packet-up, а в записи назван другой режим. Такая пара фатальна для всего конфига, а не только для этого узла.",
       "fix_en": [
@@ -354,7 +353,7 @@
       ],
       "desc": "Тип hysteria2-обфускации вне словаря ядра — снимается, узел подключается без обфускации. Словарь ядра: salamander, gecko (protocol/hysteria2). РАСХОЖДЕНИЕ ЗАКРЫТО (фаза 1): Go принимал только salamander и молча дропал рабочий gecko — добавлен (isValidHysteria2ObfsType). Обе стороны используют один словарь.",
       "dart": "UnknownObfsWarning",
-      "go": "core/config/subscription/node_parser_hysteria2.go:39; core/config/subscription/singbox_sanitize.go:286"
+      "go": "contract/registry/protocols/hysteria2.json body.fields.obfs.type (on_invalid); исполнение — core/config/nodeflow/sanitize.go onInvalid"
     },
     "obfs_password_missing": {
       "severity": "warning",
@@ -377,7 +376,7 @@
       ],
       "desc": "Обфускация задана без пароля — снимается целиком: ядро отвергает такой узел («missing obfs password»), и это роняет ВЕСЬ конфиг, а не одну ноду. РАСХОЖДЕНИЕ ЗАКРЫТО (фаза 1): Go проверял только на singbox-пути, а URI-путь эмитил obfs без password — проверка добавлена в оба (node_parser_hysteria2.go, singbox_sanitize.go).",
       "dart": "MissingObfsPasswordWarning",
-      "go": "core/config/subscription/singbox_sanitize.go:292; core/config/subscription/node_parser_hysteria2.go:44"
+      "go": "contract/registry/protocols/hysteria2.json body.relations (obfs password); исполнение — core/config/nodeflow/sanitize.go relations"
     },
     "detour_cycle_broken": {
       "severity": "warning",
@@ -475,7 +474,7 @@
       "severity": "info",
       "params": [],
       "title_en": "Manual selector imported as auto-select",
-      "title_ru": "Ручной selector импортирован как автовыбор",
+      "title_ru": "Ручная группа selector импортирована как автовыбор",
       "text_en": "The config contained a group with manual server selection, and this application has no such group type. The group was imported as auto-select, so its members stay available.",
       "text_ru": "В конфиге была группа с ручным выбором сервера, а такого типа групп в этом приложении нет. Группа импортирована как автовыбор, её состав сохранён.",
       "cause_en": "The imported config contains a group with manual server selection. That group type exists in sing-box configs, but this application has no equivalent of it, so the group is taken in as an auto-select one.",
@@ -659,8 +658,8 @@
       "params": [
         "entry"
       ],
-      "title_en": "naive: a header was discarded",
-      "title_ru": "naive: заголовок отброшен",
+      "title_en": "naive: header {entry} discarded",
+      "title_ru": "naive: заголовок {entry} отброшен",
       "text_en": "A pair from the naive extra-headers list ({entry}) is not a valid header: the separator is missing or the characters are not allowed. That pair was discarded, the rest were kept; if the server expects the discarded header, the node may be refused access.",
       "text_ru": "Пара из списка naive extra-headers ({entry}) не является корректным заголовком: нет разделителя или использованы недопустимые символы. Эта пара отброшена, остальные сохранены; если сервер ждёт именно её, узел может не получить доступ.",
       "cause_en": "The extra-headers list in the link is written by hand more often than generated, and a pair loses its colon, picks up a space in the header name, or carries a line break — usually when the link was assembled or copied between editors.",
@@ -675,7 +674,7 @@
       ],
       "desc": "Пара из naive `extra-headers` отброшена при разборе (D-105): нет разделителя ':', запрещённые символы в имени (набор допустимых — подмножество RFC 7230 tchar по спецификации DuckSoft 2020) или CR/LF/NUL в значении. Прочие пары той же ссылки сохраняются, узел живёт — отсюда severity=info. ПОЧЕМУ код, а не только лог: заголовок из extra-headers часто и есть то, чем открывают доступ на сервере, и его молчаливая пропажа выглядела для пользователя как отказ узла без причины. Вешается на узел ОДИН раз при первой отброшенной паре. Собственный `headers` у http/https-прокси под код НЕ попадает: параметр объявлен у схемы naive.",
       "dart": "NaiveExtraHeadersInvalidWarning",
-      "go": "core/config/subscription/parse_warnings.go:45 (WarnNaiveExtraHeadersInvalid); эмиссия — node_parser_naive.go buildNaiveOutbound / parseNaiveExtraHeaders"
+      "go": "contract/registry/protocols/naive.json mappers.uri (extra_headers extract on_item_invalid); исполнение — core/config/linkmap/exec.go"
     },
     "ss_method_invalid": {
       "severity": "error",
@@ -768,7 +767,7 @@
       ],
       "desc": "TUIC congestion_control вне {cubic, new_reno, bbr} — поле снимается, узел живёт.",
       "dart": "TuicCongestionInvalidWarning",
-      "go": "core/config/subscription/node_parser_tuic.go:73"
+      "go": "contract/registry/protocols/tuic.json body.fields.congestion_control (on_invalid); исполнение — core/config/nodeflow/sanitize.go onInvalid"
     },
     "tuic_udp_relay_mode_invalid": {
       "severity": "warning",
@@ -791,7 +790,7 @@
       ],
       "desc": "TUIC udp_relay_mode вне {native, quic} — поле снимается, узел живёт.",
       "dart": null,
-      "go": "core/config/subscription/node_parser_tuic.go:82"
+      "go": "contract/registry/protocols/tuic.json body.fields.udp_relay_mode (on_invalid); исполнение — core/config/nodeflow/sanitize.go onInvalid"
     },
     "anytls_min_idle_invalid": {
       "severity": "warning",
@@ -814,15 +813,15 @@
       ],
       "desc": "anytls min_idle_session не неотрицательное целое — поле снимается, узел живёт.",
       "dart": "AnyTlsMinIdleInvalidWarning",
-      "go": "core/config/subscription/node_parser_anytls.go:40"
+      "go": "contract/registry/protocols/anytls.json body.fields.min_idle_session (on_invalid); исполнение — core/config/nodeflow/sanitize.go onInvalid"
     },
     "masque_vhttp_invalid": {
       "severity": "warning",
       "params": [
         "value"
       ],
-      "title_en": "MASQUE: HTTP version set to h3",
-      "title_ru": "MASQUE: версия HTTP приведена к h3",
+      "title_en": "MASQUE: HTTP version {value} set to h3",
+      "title_ru": "MASQUE: версия HTTP {value} приведена к h3",
       "text_en": "The MASQUE HTTP version {value} at {path} is outside the values the core accepts. It was set to h3, because the core rejects such a value and would refuse to start the whole config.",
       "text_ru": "Версия HTTP для MASQUE {value} в поле {path} вне набора, который принимает ядро. Она приведена к h3: ядро отвергает такое значение и не запустит весь конфиг.",
       "cause_en": "The core accepts only h3, h2 and auto here. Another value comes from a typo or from an obsolete spelling of the parameter that older generators still write.",
@@ -837,7 +836,7 @@
       ],
       "desc": "MASQUE vhttp вне {h3, h2, auto} — принудительно h3 (auto принимается с 0.11.1: ядро >= lx.27, h3 с откатом на h2). Есть в ОБОИХ проектах (прежняя пометка «Desktop-протокол, в LxBox нет» протухла: masque в LxBox поддержан). Контракт 0.8.0 (D-078) снёс приём legacy-алиаса `network=` — параметр игнорируется, дефолт h3. ЛОВУШКА с пина lx.4 (DRIFT §9.4): profile:\"standard\" без uri даёт B при ЛЮБОМ vhttp (h2 — «not implemented for the standard profile», h3/auto — «uri is required»), не только на паре h2+standard.",
       "dart": "MasqueVhttpInvalidWarning",
-      "go": "core/config/subscription/node_parser_masque.go:100"
+      "go": "contract/registry/protocols/masque.json body.fields.vhttp (on_invalid coerce); исполнение — core/config/nodeflow/sanitize.go onInvalid"
     },
     "ssh_user_default": {
       "severity": "info",
@@ -858,13 +857,12 @@
       ],
       "desc": "SSH-ссылка без пользователя — подставлен root. Прежняя пометка «Desktop-протокол» протухла: ssh в LxBox поддержан. РАСХОЖДЕНИЕ ЖИВО: Go на URI-пути валит ноду ещё раньше (пустой userinfo, node_parser_core.go:308-316) и root-ветка — мёртвый код; Dart на URI-пути делает null-skip (ssh_parser.dart), а в singbox-импорте дефолтит root (json_parsers.dart). Код ставится только на singbox-пути Dart; выравнивание — за Go.",
       "dart": null,
-      "go": "core/config/subscription/node_parser_ssh.go:22"
+      "go": "contract/registry/protocols/ssh.json mappers.uri (default username); исполнение — core/config/linkmap/exec.go"
     },
     "wg_key_invalid": {
       "severity": "error",
       "params": [
-        "path",
-        "value"
+        "path"
       ],
       "title_en": "WireGuard: invalid key",
       "title_ru": "WireGuard: неверный ключ",
@@ -887,7 +885,6 @@
     "awg_header_invalid": {
       "severity": "warning",
       "params": [
-        "field",
         "path",
         "value"
       ],
@@ -909,12 +906,11 @@
       ],
       "desc": "AWG magic-header (H1..H4/S1/S2 и др.) не uint32 и не lo-hi диапазон — поле снимается, ядро откатывается на обычный заголовок WireGuard. Текст называет ПУТЬ и ЗНАЧЕНИЕ ({path}/{value}) и прямое последствие: рукопожатие может не сойтись. Подстановка работает только в title/text (Registry.WarningText), в cause/fix плейсхолдеров быть не должно — там подстановки нет намеренно.",
       "dart": "AwgHeaderInvalidWarning",
-      "go": "core/config/subscription/node_parser_wireguard.go:400"
+      "go": "contract/registry/protocols/wireguard.json body.fields (AWG magic headers, on_invalid); исполнение — core/config/nodeflow/sanitize.go onInvalid"
     },
     "awg3_field_invalid": {
       "severity": "warning",
       "params": [
-        "field",
         "path",
         "value"
       ],
@@ -1049,7 +1045,7 @@
       ],
       "desc": "Диапазоны AWG-заголовков пересекаются — ядро принимает такой endpoint на `check`, а отвергает на старте: `headers must not overlap` приходит из submodules/wireguard-go/device/uapi.go:839 при конфигурировании устройства (вердикт B на старте, DRIFT 131 §8.2) («headers must not overlap»), то есть падает ВЕСЬ конфиг, а не один узел. Поэтому узел выбрасывается на разборе (dropped), а не помечается предупреждением: узел без правильных заголовков всё равно не заработал бы. Изменено аудитом 2026-08-24 (была пометка на живом узле).",
       "dart": null,
-      "go": "core/config/subscription/node_parser_wireguard.go (parseWireGuardURI: return nil, err)"
+      "go": "contract/registry/protocols/wireguard.json body.relations (ranges_disjoint); исполнение — core/config/nodeflow/sanitize.go relations"
     },
     "awg_mtu_clamped": {
       "severity": "warning",
@@ -1127,8 +1123,8 @@
       "params": [
         "query_name"
       ],
-      "title_en": "WireGuard: unknown key in the configuration",
-      "title_ru": "WireGuard: неизвестный ключ в конфигурации",
+      "title_en": "WireGuard: unknown key {query_name}",
+      "title_ru": "WireGuard: неизвестный ключ {query_name}",
       "text_en": "The configuration holds the key {query_name}, which is not described for a WireGuard node. The node works and the key changed nothing: it was not read at all.",
       "text_ru": "В конфигурации есть ключ {query_name}, который для узла WireGuard не описан. Узел работает, и на него этот ключ никак не повлиял: он просто не был прочитан.",
       "cause_en": "The key belongs to another client's dialect, to a newer version of AmneziaWG, or it is a typo in a hand-edited file. Keys that manage the interface itself rather than describe the node (PostUp, Table, SaveConfig and the like) are expected in a .conf and are not reported.",
@@ -1152,8 +1148,8 @@
       "params": [
         "query_name"
       ],
-      "title_en": "Link: parameter not read",
-      "title_ru": "Ссылка: параметр не прочитан",
+      "title_en": "Link: parameter {query_name} not read",
+      "title_ru": "Ссылка: параметр {query_name} не прочитан",
       "text_en": "The link carries the parameter {query_name}, which is not described for this protocol. The node works and the parameter changed nothing: it was not read at all. One code is raised per unread parameter.",
       "text_ru": "В ссылке есть параметр {query_name}, который для этого протокола не описан. Узел работает, и на него этот параметр никак не повлиял: он просто не был прочитан. На каждый непрочитанный параметр приходится свой код.",
       "cause_en": "The parameter belongs to another client's dialect, to a newer version of the protocol, or it is a typo in a hand-edited link. Sharing links have no common registry of parameters, so every client writes what it knows; a parameter this protocol does not describe has nowhere to go in the node body.",
@@ -1177,8 +1173,8 @@
       "params": [
         "query_name"
       ],
-      "title_en": "Configuration: field not read",
-      "title_ru": "Конфигурация: поле не прочитано",
+      "title_en": "Configuration: field {query_name} not read",
+      "title_ru": "Конфигурация: поле {query_name} не прочитано",
       "text_en": "The element carries the field {query_name}, which is not described for this protocol. The node works and the field changed nothing: it was not read at all. One code is raised per unread field.",
       "text_ru": "В элементе есть поле {query_name}, которое для этого протокола не описано. Узел работает, и на него это поле никак не повлияло: оно просто не было прочитано. На каждое непрочитанное поле приходится свой код.",
       "cause_en": "The field belongs to another client's dialect, to a newer version of the core, or it is a typo in a hand-written body. Service keys of the element itself (protocol, tag, remarks) and containers whose leaves the table reads (settings, streamSettings) are expected there and are not reported.",
@@ -1296,8 +1292,8 @@
       "params": [
         "target"
       ],
-      "title_en": "Chain not applied: node has listen_port",
-      "title_ru": "Цепочка не применена: у узла listen_port",
+      "title_en": "Chain not applied: node listens on a port",
+      "title_ru": "Цепочка не применена: узел слушает порт",
       "text_en": "This node listens on its own port, so it cannot additionally be routed through {target}. The chain was not applied, because the core rejects that combination and would refuse to start the whole config; the node keeps working.",
       "text_ru": "Этот узел слушает собственный порт, поэтому дополнительно вести его через {target} нельзя. Цепочка не применена: ядро отвергает такое сочетание и не запустит весь конфиг. Узел продолжает работать.",
       "cause_en": "The node was set up to listen on its own port, and at the same time a hop was assigned to it — as a source detour or in an imported config. The core does not allow those two together.",
@@ -1555,8 +1551,8 @@
       "title_ru": "Цепочка: нельзя снять uTLS у REALITY",
       "text_en": "The chain strips uTLS from hop {target}, whose node runs REALITY, where the fingerprint is a load-bearing part of the protocol rather than camouflage. The chain was excluded, because the core rejects such an entry and would refuse to start the whole config.",
       "text_ru": "Цепочка снимает uTLS у звена {target}, узел которого поднимает REALITY, где отпечаток — несущая часть протокола, а не маскировка. Цепочка исключена: ядро отвергает такую запись и не запустит весь конфиг.",
-      "cause_en": "The chain was set up to strip uTLS from a hop, and the node in that position runs REALITY. In REALITY the ClientHello fingerprint is a load-bearing part of the protocol, not camouflage, so the core refuses to remove it.",
-      "cause_ru": "В цепочке настроено снятие uTLS у звена, а узел на этой позиции поднимает REALITY. В REALITY отпечаток ClientHello — несущая часть протокола, а не маскировка, поэтому ядро отказывается его снимать.",
+      "cause_en": "The chain was set up to strip uTLS from a hop, and the node in that position runs REALITY. In REALITY the TLS fingerprint (the ClientHello) is a load-bearing part of the protocol, not camouflage, so the core refuses to remove it.",
+      "cause_ru": "В цепочке настроено снятие uTLS у звена, а узел на этой позиции поднимает REALITY. В REALITY отпечаток TLS (ClientHello) — несущая часть протокола, а не маскировка, поэтому ядро отказывается его снимать.",
       "fix_en": [
         "Turn off stripping uTLS for that position in the chain.",
         "Or put a node without REALITY into that position."
@@ -1625,8 +1621,8 @@
       ],
       "title_en": "Preceding proxy {target} is unusable",
       "title_ru": "Предшествующий прокси {target} непригоден",
-      "text_en": "The node goes out through {target}, which cannot serve as a hop: {cause}. The node was dropped on purpose: without that hop its traffic would go directly, revealing the connection.",
-      "text_ru": "Узел выходит через {target}, который не может быть хопом: {cause}. Узел отброшен намеренно: без этого хопа его трафик пошёл бы напрямую и раскрыл соединение.",
+      "text_en": "The node goes out through {target}, which cannot serve as a hop ({cause}). The node was dropped on purpose: without that hop its traffic would go directly, revealing the connection.",
+      "text_ru": "Узел выходит через {target}, который не может быть хопом ({cause}). Узел отброшен намеренно: без этого хопа его трафик пошёл бы напрямую и раскрыл соединение.",
       "cause_en": "The entry comes from an Xray config, where a node is routed through another one via dialerProxy. The hop it names is not there or cannot serve as one, and letting the node out directly would reveal the connection it was supposed to hide.",
       "cause_ru": "Запись пришла из конфига Xray, где узел ведут через другой параметром dialerProxy. Названного хопа нет или он хопом быть не может, а выпустить узел напрямую — значит раскрыть соединение, которое он и должен был прятать.",
       "fix_en": [
@@ -1691,7 +1687,7 @@
         "max_early_data"
       ],
       "title_en": "WebSocket: early data converted",
-      "title_ru": "WebSocket: early data преобразован",
+      "title_ru": "WebSocket: ранние данные преобразованы",
       "text_en": "The WebSocket path carried the Xray tail with early data, which the core describes as separate fields. It was converted to a limit of {max_early_data} bytes and a header name; without the conversion the server would answer 404.",
       "text_ru": "Путь WebSocket нёс хвост Xray с early data, которые ядро описывает отдельными полями. Он преобразован в лимит {max_early_data} байт и имя заголовка; без преобразования сервер отвечал бы 404.",
       "cause_en": "Xray hides the WebSocket early-data setting inside the path as a ?ed=N tail, while sing-box expects it as separate fields. A link copied from an Xray panel carries that tail, and left as is the server would treat it as part of the path.",
@@ -1704,7 +1700,7 @@
       ],
       "desc": "Xray-хвост `?ed=N` в WebSocket-пути разложен на sing-box-поля max_early_data + early_data_header_name — путь из ссылки попадает в конфиг не буквально, узел работает. Без конверсии ядро отдаёт хвост серверу как часть пути и тот отвечает 404 (check при этом проходит). SPEC 103 §9.E / issue #96.",
       "dart": "WsEarlyDataConvertedWarning",
-      "go": "core/config/subscription/node_parser_core.go (noteWSEarlyDataConverted + прямой ws-путь buildOutbound)"
+      "go": "contract/registry/blocks/uri/ws.json (ed tail → max_early_data); исполнение — core/config/linkmap/exec.go"
     },
     "unknown_key": {
       "severity": "warning",
@@ -1875,9 +1871,7 @@
     },
     "ss_method_legacy": {
       "severity": "info",
-      "params": [
-        "method"
-      ],
+      "params": [],
       "title_en": "Shadowsocks: legacy cipher",
       "title_ru": "Shadowsocks: устаревший шифр",
       "text_en": "The node uses the Shadowsocks cipher {value} at {path}. The core accepts it, but it is a stream cipher without authentication, so the traffic is weakly protected. The node is kept as is.",
@@ -1943,6 +1937,27 @@
       "desc": "Формат ЭЛЕМЕНТА списка (item_pattern у tls.body.fields.alpn). Идентификатор ALPN — токен из букв, цифр и `._/+-`; элемент с запятой или пробелом внутри означает, что список не разрезали. Второй случай запроса LxBox 19.09.2026. Ядро такой элемент принимает, но рукопожатие с ним падает на стороне сервера.",
       "dart": null,
       "go": null
+    },
+    "password_empty": {
+      "severity": "warning",
+      "params": [
+        "path"
+      ],
+      "title_en": "Password is empty",
+      "title_ru": "Пароль пуст",
+      "text_en": "The link carries an empty password in {path}. The node is kept as it is, but the server will most likely refuse authentication and the connection will not come up.",
+      "text_ru": "Ссылка несёт пустой пароль в поле {path}. Узел сохранён как есть, но сервер, скорее всего, отклонит аутентификацию, и соединение не поднимется.",
+      "cause_en": "A panel that builds links from a template leaves the password slot empty when the subscription has expired or the account has no active key; copying a link by hand loses the part after the colon just as easily.",
+      "cause_ru": "Панель, собирающая ссылки по шаблону, оставляет место пароля пустым, когда подписка истекла или у аккаунта нет активного ключа; при ручном копировании так же легко теряется часть после двоеточия.",
+      "fix_en": [
+        "Check the link at your subscription provider and copy it again in full.",
+        "If the provider issues the password separately, add it to the node by hand."
+      ],
+      "fix_ru": [
+        "Проверьте ссылку у провайдера подписки и скопируйте её заново целиком.",
+        "Если провайдер выдаёт пароль отдельно, впишите его в узел вручную."
+      ],
+      "desc": "Пустой пароль в источнике. Решение владельца 19.09.2026 (Q133-67): узел ПРИНИМАЕТСЯ с предупреждением, а не отбраковывается — принять строгость LxBox (required: true) значило бы выбросить живые узлы у всех, у кого пароль пуст. Имя кода ОБЩЕЕ, не под схему: поле «пароль» есть у половины схем, и второй такой код под другим именем был бы дублем. Ставится примитивом on_empty у записи маппера."
     }
   }
 }

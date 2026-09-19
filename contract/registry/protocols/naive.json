@@ -345,6 +345,8 @@
               "v": "$value"
             }
           },
+          "emit_as": "pairs",
+          "emit_pair_sep": ": ",
           "on_item_invalid": {
             "action": "skip",
             "code": "naive_extra_headers_invalid"

@@ -361,6 +361,8 @@
           },
           "maps_to": "private_key",
           "required": true,
+          "round_trip": false,
+          "round_trip_why": "Канон схемы кладёт приватный ключ в userinfo; query-написания — запасной слот ЧТЕНИЯ, и запись в оба места отдала бы секрет дважды.",
           "decode_extra": {
             "plus_literal": true
           },
@@ -814,13 +816,17 @@
             "0": null,
             "": null
           },
+          "emit_value_map": {
+            "true": "on"
+          },
           "type": "bool",
           "on_no_match": {
             "action": "keep"
           },
           "on_invalid": {
             "action": "keep"
-          }
+          },
+          "impl": "emit_value_map: таблица неинъективна (on/true/1 читаются в одно `true`), и написание выхода выбирает схема — `on`, как пишут конфигураторы AmneziaWG."
         },
         "disablecookies": {
           "source": {
@@ -837,13 +843,17 @@
             "0": null,
             "": null
           },
+          "emit_value_map": {
+            "true": "on"
+          },
           "type": "bool",
           "on_no_match": {
             "action": "keep"
           },
           "on_invalid": {
             "action": "keep"
-          }
+          },
+          "impl": "emit_value_map: таблица неинъективна (on/true/1 читаются в одно `true`), и написание выхода выбирает схема — `on`, как пишут конфигураторы AmneziaWG."
         }
       },
       "scheme_sets": {
@@ -924,7 +934,25 @@
           "$impl": "Диапазонный keepalive («25-35») сам по себе маркер AWG 3.x, даже когда прочих awg-полей в ссылке нет."
         }
       },
-      "emit": null
+      "emit": {
+        "form": "url",
+        "form_from": {
+          "$kind": {
+            "awg": "wireguard",
+            "awg3": "wireguard",
+            "*": "wireguard"
+          }
+        },
+        "param_order": "alphabetical",
+        "impl": "Секция обратного хода у wireguard появилась вместе с движком эмита (SPEC 133): рукописный эмиттер shareuri_wireguard.go писал Scheme \"wireguard\" и для AWG-узла, и это поведение сохранено. form_from по $kind: написание `awg://` остаётся на случай «род объявлен, awg-полей в теле не осталось» — иначе род теряется на круге (MAPPER_ENGINE.md, «Критерий для эмиссии»); сегодня все ветки ведут в `wireguard`, потому что род несут сами параметры, и отдельного написания живым узлам не нужно. refuse_when peers>1: ссылка выражает ОДНОГО пира, и узел с несколькими выразить ею нельзя — прежний рукописный эмиттер тоже отказывал (ErrShareURINotSupported). Отказ объявлен данными, а не проверкой в коде: «сколько сущностей влезает в ссылку» есть свойство ФОРМАТА схемы.",
+        "refuse_when": [
+          {
+            "path": "peers",
+            "len_gt": 1,
+            "why": "Ссылка подписки несёт ОДИН удалённый сервер: место под второго пира в ней отсутствует по построению. Отдать первого и промолчать значило бы выдать за узел половину его маршрута."
+          }
+        ]
+      }
     },
     "conf": {
       "detect": {

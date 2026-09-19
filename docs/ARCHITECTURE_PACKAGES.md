@@ -167,9 +167,25 @@ handlers + the `ResolveDNS`/`ResolveRoute`/`ExpandPreset` resolvers.
 **Responsibility:** Extract/normalize the `ParserConfig` block from `config.json`.
 - `factory.go` — `ExtractParserConfig`, `NormalizeParserConfig`, duplicate-tag stats.
 
-### `core/config/subscription` — protocol parsers + fetch + encode
+### `core/config/linkmap` — the source-mapping engine
 
-**Responsibility:** Per-protocol URI parsers + share-URI encoders (VLESS/VMess/Trojan/SS/Hysteria2/TUIC/SSH/SOCKS/Naive/WireGuard, plus Amnezia `vpn://`) and subscription transport (fetch + decode + metadata).
+**Responsibility:** Turn the raw text of a node source (a share URI, an element of an Xray JSON array, a wg-quick `.conf` section) into a sing-box node body, driven by the `mappers.*` tables of `contract/registry`. There is **no scheme or protocol name in the engine** — a grep guard (`no_scheme_names_test.go`) keeps it that way, because every such name would be a second copy of a rule that already lives in the registry.
+
+The architecture — pipeline stages, the source space, execution order, the reverse pass — is the shared contract document **`contract/docs/MAPPER_ENGINE.md`**; it is the source of truth and is not restated here.
+
+| File | Purpose |
+|------|---------|
+| `plan.go` | A section compiled into an execution plan: `include` blocks expanded, `$base` substituted, entries laid out into pass A (selectors) and pass B, the set of declared parameter names collected. Built once per process (`Planes()`). |
+| `select.go` / `detect.go` | Which section and which form leads this text — by the registry's `detect` predicates (`SelectURI`, `SelectKind`), with the `default` branch never competing against a real predicate. |
+| `space.go` | The source space: the engine's own authority lexer (multi-port, bare IPv6, last `@`), order-preserving query parsing, `json.<path>` / `ini.<S>.<K>` addressing. |
+| `exec.go` | The table applied: passes A/B, `sets`/`implies`/`extract`/`split_into`, `when`, path conflicts by `priority`/`merge`, section `defaults` last and only into free paths. |
+| `emit.go` | The reverse pass over the **same** table: `maps_to⁻¹`, `value_map⁻¹`, `sets` by matching, `compose`, `emit.form_from`. |
+| `parse.go` / `element.go` | Entry points for text and for an already decoded object element. |
+| `trace.go` | Optional JSON-Lines trace (off by default) for mechanical Go↔Dart diffing. |
+
+### `core/config/subscription` — source intake + fetch + share URIs
+
+**Responsibility:** Subscription transport (fetch + decode + metadata), document-level decisions about a source (what is a node, what is a chain hop, what is a group), and the share-URI direction. Translating one source into a node body is **not** done here — that is `core/config/linkmap` driven by the registry tables.
 
 | File | Purpose |
 |------|---------|
@@ -177,21 +193,15 @@ handlers + the `ResolveDNS`/`ResolveRoute`/`ExpandPreset` resolvers.
 | `fetcher.go` | `FetchSubscriptionWithMeta` HTTP fetch (HWID/UA headers, 10 MB cap) + announce-header decode; deprecated `FetchSubscription` wrapper. |
 | `meta.go` | Header + inline-`#comment` metadata parsing (Profile-Title, Subscription-Userinfo, update interval), provider-announce on empty body. |
 | `decoder.go` | `DecodeSubscriptionContent` (base64 / Xray JSON array detection). |
-| `node_parser_core.go` | `ParseNode` dispatcher + common helpers (`extractTagAndComment`, `generateDefaultTag`, `buildOutbound`, `IsDirectLink`). |
-| `node_parser_transport.go` | VLESS/Trojan transport + TLS from URI query (`uriTransportFromQuery`, `vlessTLSFromNode`, `trojanTLSFromNode`, `queryGetFold`). |
-| `node_parser_vmess.go` | VMess payload (JSON + legacy cleartext) + transports. |
-| `node_parser_ss.go` | Shadowsocks (SIP002 + legacy). |
-| `node_parser_ssh.go` | SSH. |
-| `node_parser_hysteria2.go` | Hysteria2 (+ `hysteria2_ports.go` for mport ranges). |
-| `node_parser_naive.go` | Naive. |
-| `node_parser_tuic.go` | TUIC v5 (SPEC 074). |
-| `node_parser_wireguard.go` | WireGuard + AmneziaWG 2.0 promoted fields (`applyAWGFields`, ranged `h1`–`h4` via `parseAWGHeaderRange`, overlap warning, AWG MTU clamp — SPEC 073/073.2). |
-| `node_parser_amnezia.go` | Amnezia `vpn://` profile import: base64url + qCompress decode → WG/AWG container (`last_config`) → canonical `wireguard://` URI (SPEC 075). |
-| `wgconf_text.go` | Pasted `[Interface]/[Peer]` conf text → `wireguard://` URIs (`ExtractWGConfBlocks` / `ConvertWGConfText`, SPEC 076). |
-| `xray_json_array.go` / `xray_outbound_convert.go` | Xray JSON-array parsing: element → `ParsedNode` (+ jump hop), `remarks`→Label, slug tags; stream-settings→transport/TLS. |
-| `share_uri.go` | `ShareURIFromOutbound` dispatcher (reverse of `ParseNode`). |
-| `shareuri_vless.go` / `shareuri_vmess.go` / `shareuri_trojan.go` / `shareuri_ss.go` / `shareuri_socks.go` / `shareuri_hysteria2.go` / `shareuri_ssh.go` / `shareuri_tuic.go` / `shareuri_naive.go` / `shareuri_wireguard.go` | Per-protocol outbound→share-URI encoders. |
-| `shareuri_helpers.go` | Shared encode helpers (`mapGet*`, `transportToQuery`, TLS-to-query, ALPN/insecure). |
+| `node_parser_core.go` | `ParseNode` — three branches: the Amnezia `vpn://` profile, the registry engine, and "scheme not supported" for text no section recognises. Plus the common helpers (`extractTagAndComment`, `generateDefaultTag`, `normalizeFlagTag`, `IsDirectLink`, skip filters). |
+| `node_parser_engine.go` | The single path into the engine: `parseURIByEngine` hands the **raw text** to `core/config/linkmap`; which section leads the link is decided by the registry's `detect`, not by a list of names here. `ParseWGConfByEngine` / `…Hint` are the pair for input that arrives as a wg-quick `.conf` (section `mappers.conf`, the caller may pass a label the text itself does not carry). |
+| `node_parser_transport.go` | What the tables do not express as data: XHTTP v2 / XMUX assembly, uTLS fingerprint normalisation (`NormalizeUTLSFingerprint`, `EnforceRealityFingerprint`), WS early-data splitting. |
+| `hysteria2_ports.go` | Hysteria2 multi-port ranges — the tables the share-URI direction and Hysteria v1 both need. |
+| `node_parser_amnezia.go` | Amnezia `vpn://` profile import: base64url + qCompress decode → WG/AWG container (`last_config`) → wg-quick text, which is then led by the `mappers.conf` section (SPEC 075). |
+| `wgconf_text.go` | Pasted `[Interface]/[Peer]` conf text: block extraction and a node per block (`ExtractWGConfBlocks`, `WGConfBodyToConvertedBlocks`, `WGConfBodyToURIs`). No intermediate `wireguard://` URI is built any more — the block carries its own node, because the round-trip through a URI dropped what a URI has no room for: the `wgconf_dns_ignored` code and the label from the `[Peer]` comment (SPEC 076, 133). |
+| `xray_json_array.go` / `xray_element_engine.go` / `xray_outbound_convert.go` / `xray_protocols.go` / `xray_balancer.go` | The Xray JSON array at **document** level: which element becomes a node, which becomes a chain hop (`xrayChainHopFromOutbound`, socks hop via `xrayBuildJumpFromSocksOutbound`), which becomes a balancer group; `remarks`→Label, slug tags, server ownership. The element itself is translated by the engine (`parseXrayElementByEngine`). |
+| `share_uri.go` | `ShareURIFromOutbound` / `ShareURIFromWireGuardEndpoint` — the reverse direction: a node body in `config.json` form → a share URI (`contract/docs/MAPPER_ENGINE.md` §9). |
+| `share_uri_secret.go` | `ShareURICarriesPrivateKey` — one predicate for every place a link is handed out: a link carrying a **private key** is only produced after an explicit confirmation. Judged by the node body and its scheme, not by grepping the finished link. |
 | `utf8_utils.go` | Consolidated UTF-8 validate/repair (`FixUTF8*`, `HasControlChars`) — SPEC 070 dedup. |
 | `encoding_utils.go` | Consolidated multi-variant base64 decode — SPEC 070 dedup. |
 

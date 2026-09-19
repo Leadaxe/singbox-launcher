@@ -615,12 +615,13 @@
             "raw": null,
             "h2": "http"
           },
+          "emit_as": "raw",
           "sets": {
             "h2": {
               "tls.enabled": true
             }
           },
-          "impl": "У cleartext-формы транспорт зовётся 'type', а не 'net' (uri.query.net.aliases). net=h2 включает TLS ПРИНУДИТЕЛЬНО (uri.query.tls.impl, оба проекта) — sets на значении селектора, без отдельной ветки."
+          "impl": "У cleartext-формы транспорт зовётся 'type', а не 'net' (uri.query.net.aliases). net=h2 включает TLS ПРИНУДИТЕЛЬНО (uri.query.tls.impl, оба проекта) — sets на значении селектора, без отдельной ветки. emit_as raw: `h2` и `http` читаются в один транспорт, а на выходе канон один — `http`; обращение таблицы вернуло бы устаревшее написание."
         },
         "tls": {
           "source": "json.tls",
@@ -715,7 +716,41 @@
       },
       "emit": {
         "form": "v2rayn",
-        "param_order": "alphabetical"
+        "param_order": "alphabetical",
+        "json_map": {
+          "v": "=2",
+          "ps": "$label",
+          "add": "server",
+          "port": "server_port",
+          "id": "uuid",
+          "aid": "alter_id",
+          "scy": "security",
+          "net": "$param.net",
+          "type": "=none",
+          "host": "$param.host",
+          "path": "$param.path",
+          "tls": "$param.tls",
+          "sni": "tls.server_name",
+          "alpn": "$param.alpn",
+          "fp": "$param.fp",
+          "insecure": "$param.insecure",
+          "mode": "$param.mode"
+        },
+        "json_always": {
+          "v": "2",
+          "ps": "",
+          "aid": 0,
+          "scy": "auto",
+          "net": "tcp",
+          "type": "none",
+          "host": "",
+          "path": "",
+          "tls": ""
+        },
+        "names": {
+          "serviceName": "path"
+        },
+        "impl": "Форма-КОНТЕЙНЕР v2rayN: base64(JSON), а не query-ссылка. json_map называет «ключ контейнера → путь тела | $param.<запись> | $label | =литерал»; json_always — ключи, которые панели ждут ДАЖЕ ПУСТЫМИ (опускание ломает у них чтение, а не экономит байты). names.serviceName → path: имя gRPC-канала v2rayN кладёт в ключ path, то есть emit.names действует и по форме-контейнеру (оверлей LxBox, принят как есть). param_order alphabetical: сегодняшний вывод и есть алфавит."
       }
     },
     "xray": {

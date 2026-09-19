@@ -306,22 +306,6 @@ func materializeWGConfBlock(blocks []string) (*state.MigrationServerResult, erro
 	}, nil
 }
 
-// emitMigrationBody — канонический body узла через конвейер (SPEC 131 W2c):
-// санитайзер реестра + тупой эмиттер. Тело чисто от tag/detour — их владелец
-// модель узла (SPEC Т2), — а `type` стоит первым ключом, как и раньше.
-//
-// Коды отбрасываются: у этой обёртки их некуда деть, а вызывающие, которым
-// они нужны, зовут materializeParsedNodeBody напрямую. Отказ санитайзера —
-// ошибка эмиссии для вызывающего: узел, тело которого ядро отвергнет
-// фаталом, до state доехать не должен.
-func emitMigrationBody(node *configtypes.ParsedNode) (json.RawMessage, error) {
-	body, _, drop := materializeParsedNodeBody(node)
-	if drop != nil {
-		return nil, fmt.Errorf("%s", dropReason(drop))
-	}
-	return body, nil
-}
-
 // stripTagAndDetour убирает из outbound-объекта ключи tag и detour,
 // СОХРАНЯЯ порядок остальных (body_keyorder.go).
 //

@@ -1,9 +1,10 @@
 # LEGACY_AUDIT — что на пути узла ещё исполняется мимо реестра
 
 Аудит по вопросу владельца: «что за старый код, как его диагностировать, если
-всё перевели на новый формат». Снимок на `develop`, 18.09.2026, контракт
-1.1.4. Адреса `файл:строка` проверены `rg -n`; правка выше по файлу сдвигает
-всё, что ниже.
+всё перевели на новый формат». Снимок на `develop`, 19.09.2026, контракт
+1.1.35+. Адреса `файл:строка` проверены `rg -n`; правка выше по файлу сдвигает
+всё, что ниже. **Обновление 19.09.2026 (TASK 4):** адреса §3 пересажены на живые
+файлы; пункты, чьи файлы сняты в SPEC 133, отмечены закрытыми.
 
 ---
 
@@ -72,7 +73,7 @@ sing-box-JSON, Xray-JSON, wg-quick, `vpn://`, ручной JSON, AWG-форма,
 
 | # | Адрес | Что делает | Реестр | Код | Вердикт / трудоёмкость |
 |---|---|---|---|---|---|
-| 3 | `xray_hysteria.go:226` против `xray_outbound_convert.go:266` | SNI hysteria читается только как `server_name`; написание `serverName` (родное для Xray!) не читается, затем `:232` молча подставляет адрес сервера | mapper `tls.sni_heuristic_falls_back_to_server` | **молча теряет** | (в) баг маппера, **мелкое**: одна строка, `xrayFirstString(tlsSettings, "serverName", "server_name")`. Не сделано, потому что меняет тело живых hysteria-узлов из Xray-подписок (identity-хеш) |
+| 3 | ~~`xray_hysteria.go:226`~~ → `contract/registry/protocols/hysteria.json` `mappers.xray` | ✅ **ЗАКРЫТО 19.09.2026 (SPEC 133)**. Рукописный `xray_hysteria.go` снят; SNI hysteria у входа Xray читает движок `core/config/linkmap` по секциям `mappers.xray` с `detect` по версии. Эвристика `serverName`/`server_name` — в mapper `tls.sni_heuristic_falls_back_to_server` (дописать Xray-адрес в реестр — см. §3.4 №18/24, **живой** пункт записи) |
 | 4 | ~~`node_parser_wireguard.go:326` (`normalizeWGKey`), дропы `:79`, `:115`, `:195`~~ | ✅ **ЗАКРЫТО 19.09.2026, контракт 1.1.11** (DRIFT §11.1, TASKS_LXBOX §24.21). `normalizeWGKey` сведён к ПЕРЕВОДУ НАПИСАНИЯ (4 варианта base64 → std с паддингом; записан в секцию `mapper` как `wg_key_spelling_to_std_base64`) и о годности больше не судит: негодное значение переносит как есть. Судит реестр — `private_key` / `peers[].public_key` / `peers[].pre_shared_key`, `on_invalid: drop_node` с НОВЫМ кодом `wg_key_invalid` (отсутствие поля осталось за `field_missing`: это разные вопросы). Молчаливый дроп снят, правило работает на ВСЕХ входах, включая тело sing-box. Расхождение политики у `pre_shared_key` снято решением владельца в пользу УЗЛА: туннель без ожидаемого сервером PSK — тихо сломанный туннель. Тела узлов не изменились |
 | 5 | ~~`awg3.go:113-115` (комментарий) против `node_parser_wireguard.go:431`~~ | ✅ **ЗАКРЫТО 18.09.2026, контракт 1.1.5** (DRIFT §7.23, TASKS_LXBOX §24.14). Правило переведено в реестр: `wireguard.body.fields.mtu` получил `default_when` (1280 у AWG-узла без `mtu`) и новый `max_when` (потолок 1280). Расхождение входов снято — правило читает ТЕЛО, а не query, и потому работает и на sing-box-импорте. Срез больше не молчит: `awg_mtu_clamped` (`warning`). Комментарий `awg3.go` приведён в соответствие коду (AWG3 клампится наравне со всеми). Обход `node_parser_amnezia.go:372` ОСТАВЛЕН с верным обоснованием: к AWG он отношения не имеет — у обычного WG-профиля потолка нет, и без него узел терял бы прописанный сервером MTU. **Решение владельца — исключение по входу**: на `singbox` значение сохраняется с `awg_mtu_high` (`info`), парность входов нарушена намеренно. Тела живых узлов не изменились (кламп и раньше отрабатывал на входе) |
 
@@ -80,23 +81,23 @@ sing-box-JSON, Xray-JSON, wg-quick, `vpn://`, ручной JSON, AWG-форма,
 
 | # | Адрес | Что теряется | Код объявлен? | Вердикт |
 |---|---|---|---|---|
-| 6 | `xray_outbound_convert.go:391` | `default: return nil` — транспорт вне пяти имён (`quic`, `kcp`, `tcp`+`headerType=http`) теряется целиком | `transport_unsupported` объявлен с параметрами `{transport, fallback}`, не ставится нигде | (в)+(б), **крупное**: нужно и mapper-правило, и решение «чем заменять». CODEMAP §2.2 сам зовёт это РАЗРЫВом |
-| 7 | `node_parser_vmess.go:31` (`normalizeVMessSecurity`), копия `xray_protocols.go:371` | Шифр канала вне набора → `auto` молча | ДУБЛЬ `vmess.body.security` (тот же enum, `on_invalid: coerce auto, code type_invalid`) | (а), **мелкое**, но меняет коды на живых узлах: подписка с `aes-128-ctr` начнёт показывать `type_invalid`. Последняя копия allowlist'а значения |
+| 6 | ~~`xray_outbound_convert.go:391`~~ → `core/config/linkmap` (вход Xray) | **ЖИВОЙ.** Конвертер снят (SPEC 133); неизвестный `streamSettings.network` теперь решает движок по `mappers.xray`. Код `transport_unsupported` по-прежнему **без производителя** (§3.5) — разрыв CODEMAP §2.2 не закрыт | `transport_unsupported` объявлен, не ставится | (в)+(б), **крупное** |
+| 7 | ~~`node_parser_vmess.go:31`~~ | ✅ **ЗАКРЫТО 18.09.2026, контракт 1.1.7** (DRIFT, TASKS_LXBOX). `normalizeVMessSecurity` снят; коэрсинг и код `vmess_security_unknown` — только реестр `vmess.body.security` |
 | 8 | ~~`awg3.go:309` (`validateAWG3`), `node_parser_wireguard.go:527` (`awgHeaderOverlap`)~~ | ✅ **ЗАКРЫТО 19.09.2026, контракт 1.1.11** (DRIFT §11.2(4), TASKS_LXBOX §24.21). Все три кода теперь СТАВЯТСЯ, и ставит их реестр: негодный `header_protection_key` → `on_invalid: drop_node` (запрет «все нули» выражен `pattern`'ом — строка из одних `A` с паддингом и есть 32 нулевых байта); порог `s1..s4 >= 12` при заданном ключе → НОВЫЙ атрибут `min_when` с флагом `absent_is_zero` (ядро читает незаданный `s2` как 0); пересечение `h1..h4` → НОВАЯ секция `body.relations`, вид `ranges_disjoint` с `defaults` (незаданный заголовок участвует своим типом сообщения WireGuard). `requires`+`equals` не подошли: связь тут между ЧЕТЫРЬМЯ полями сразу, а не в паре «я и сосед». Рукописные валидаторы удалены; правила работают и на входе sing-box, где их не было вовсе |
 | 9 | ~~`node_parser_wireguard.go:453`~~ | ✅ **ЗАКРЫТО 19.09.2026, контракт 1.1.11** (DRIFT §11.2(2), запрос LxBox (2)). Маппер больше не судит ни одно из одиннадцати полей: значение переносится КАК ЕСТЬ, поле снимает санитайзер с кодом реестра. Асимметрия снята вместе с самим судейством. Тела узлов не сдвинулись — в корпусе изменились только `warnings` |
-| 10 | `node_parser_wireguard.go:500` (`parseReservedTriplet`), `:181` (keepalive) | `reserved` не тройка 0..255 / `keepalive` не число — снимаются молча | `reserved`: ДУБЛЬ (`len: 3`, `on_invalid: drop, code type_invalid`); keepalive — кода нет | (а)/(б), **мелкое** |
-| 11 | `xray_outbound_convert.go:368` | у `httpupgrade` хвост `?ed=N` срезается, значение отбрасывается | mapper `ws_early_data_path_suffix` покрывает только ws | (в), **мелкое** |
-| 12 | `node_parser_transport.go:190` | `eh` без `ed`, `ed<=0` — молча; у пути `?ed=N` код `ws_early_data_converted` есть | вторая форма (плоская пара) в mapper не упомянута | (в)/(б), **мелкое**: асимметрия двух форм одного параметра |
-| 13 | `xray_hysteria.go:94` | полоса пишется только при `> 0`; `0` из подписки теряется вместо `type_invalid` | `hysteria.up_mbps` `default_when` | (б), **мелкое** |
+| 10 | ~~`node_parser_wireguard.go:500`~~ | ✅ **ЗАКРЫТО 19.09.2026, контракт 1.1.11** (вместе с №4/8/9/27). `reserved`/`keepalive` судит реестр `wireguard.json` на всех входах |
+| 11 | ~~`xray_outbound_convert.go:368`~~ → `contract/registry/transports.json` `httpupgrade` | ✅ **ЗАКРЫТО 19.09.2026 (SPEC 133)**. Срез `?ed=` у httpupgrade описан в реестре; исполняет `core/config/linkmap` |
+| 12 | ~~`node_parser_transport.go:190`~~ → `contract/registry/transports.json` `ws_early_data_path_suffix` | ✅ **ЗАКРЫТО 19.09.2026 (SPEC 133)**. Легаси-сборка XHTTP/WS в `node_parser_transport.go` снята; `?ed=` на ws — движок + реестр, код `ws_early_data_converted` |
+| 13 | ~~`xray_hysteria.go:94`~~ | ✅ **ЗАКРЫТО (SPEC 131 W2d)**. Дефолт полосы hysteria v1 — `default_when` в реестре, рукописные копии сняты |
 
 ### 3.3 Дубли реестра, не тронутые из-за identity или объёма
 
 | # | Адрес | Что | Почему не сделано |
 |---|---|---|---|
-| 14 | `xray_protocols.go:286`, `:243`, `:121`/`:134`/`:168`, `xray_hysteria.go:151`, `singbox_import.go:344` | Пустой method/password/порт вне диапазона → отбраковка записи текстом причины, без кода | ДУБЛИ `required`/`drop_node`+код в реестре. Форма отбраковки (`dropped[]` против узла с кодом) — **решение владельца**, W2D §6 уже оставил тот же вопрос открытым для `ParseNode` |
-| 15 | `node_parser_masque.go:108-157` | MASQUE читает query голым `q.Get`: `insecure` знает 3 написания из 9 и не знает `yes`; `sni` минует алиас `peer` и SNI-эвристику; свои дефолты `mtu=1280`, `profile=cloudflare` | (а), **среднее**. W2d отчитался «набор написаний insecure — 6 копий снято», MASQUE остался седьмым. `profile` — дефолт того же класса, что `vhttp=h3`, но в mapper не записан. Трогает identity живых masque-узлов |
-| 16 | `node_parser_transport.go:53` (`singboxUTLSFingerprints`), `:151` (`plaintextVLESSPorts`), `:822` (`NormalizeRealityKeyShare`), `:119` (`utlsJunkFallback`), `awg3.go:156` (`parseAWG3Bool`), `node_parser_transport.go:606` (`xhttpLookupBool`) | Наборы значений константами в Go | (а), **мелкое каждый**. Отпечатки прикрыты `TestRegistrySyncUTLSFingerprints`; `plaintext_ports` в реестре лежит **прозой**, а не в `allowlists.json`; два булевых словаря расходятся (`on/off` знает только AWG3, `yes` — только общий) |
-| 17 | `outbound_tls_emit.go:123`, `:153`; `outbound_generator.go:650`, `:654` | Копии правил `utls_fp_unknown`, `reality_key_share_invalid`, `flow` conflicts/enum в legacy-эмиттере | (а), но **удалять поодиночке нельзя**: вход эмиттера — сырая карта, не прошедшая санитайзер, и снятие проверок изменит БАЙТЫ `LegacyNodeIdentityHash` у живых узлов. Правильный ход — снять потребителя: перевести подпись и превью цепочек на `nodeflow.Emit`. **Крупное, решение владельца** (переписывать ли подписи на апгрейде) |
+| 14 | `singbox_import.go:325-345` (остаток); ~~`xray_protocols.go`~~, ~~`xray_hysteria.go`~~ | **ЖИВОЙ (частично).** Протокольные конвертеры Xray сняты; у sing-box-импорта по-прежнему `return nil, fmt.Errorf(...)` на пустом method/порте без кода реестра | ДУБЛИ `required`/`drop_node`+код. Форма отбраковки — **решение владельца** (W2D §6) |
+| 15 | ~~`node_parser_masque.go:108-157`~~ → `contract/registry/protocols/masque.json` `mappers.uri` | ✅ **ЗАКРЫТО 19.09.2026 (SPEC 133)**. Рукописный парсер снят; query читает `core/config/linkmap` по реестру |
+| 16 | `node_parser_transport.go:22` (`singboxUTLSFingerprints`), `:87` (`utlsJunkFallback`); ~~остальные адреса~~ | **ЖИВОЙ (сужен).** Отпечатки — sync-тест `TestRegistrySyncUTLSFingerprints`; `plaintext_ports`, `parseAWG3Bool`, `xhttpLookupBool` сняты вместе с файлами/легаси-транспортом |
+| 17 | ~~`outbound_tls_emit.go`~~ | ✅ **ЗАКРЫТО 19.09.2026, контракт 1.1.11** (§2, второе обновление). Legacy-эмиттер и четыре дубля сняты; подпись — `nodeflow.Emit`. Открытый хвост — DRIFT §12.2 |
 
 ### 3.4 Структурные правила, не записанные в секцию `mapper`
 
@@ -106,19 +107,19 @@ sing-box-JSON, Xray-JSON, wg-quick, `vpn://`, ручной JSON, AWG-форма,
 
 | # | Правило | Адрес | Куда записать |
 |---|---|---|---|
-| 18 | пустой `fp` у reality → `random`; у generic TLS → блока `utls` нет (два РАЗНЫХ исхода) | `xray_outbound_convert.go:234`, `:261` | `tls.json` mapper `fp_empty_defaults_to_random` — дописать Xray-адрес и второй исход |
-| 19 | нет TLS у hysteria → `tls:{enabled:true}` синтезируется | `xray_hysteria.go:105` | `hysteria.json` mapper: вопрос «есть ли блок» |
-| 20 | `obfs` строкой у v2 → `{type:"salamander",…}` | `xray_hysteria.go:79` | `hysteria2.json` mapper |
-| 21 | `obfs=xplus` без секрета отбрасывается | `node_parser_hysteria.go:53` | `hysteria.json` mapper — правило описано прозой в `uri.query.obfs.impl`, в `mapper` его нет |
-| 22 | vless `encryption` пусто/`none` → ключа нет | `node_parser_core.go:751` | `vless.json` mapper — симметрично записанному `packet_encoding_none_means_absent` из соседних строк |
-| 23 | `security` не `tls`/`reality` → блока TLS нет (Xray) | `xray_outbound_convert.go:211` | дописать Xray в `impl` записанного `security_none_no_tls` |
-| 24 | пустой SNI на QUIC → адрес сервера | `xray_hysteria.go:232` | дописать в `sni_heuristic_falls_back_to_server` |
-| 25 | `alpn` дочитывается из чужой секции, если ещё не задан | `xray_hysteria.go:213` | `tls.json` mapper |
-| 26 | XHTTP: `header` без режима дописывает `mode: packet-up` | `node_parser_transport.go:469` | (б)/(в), **среднее**: выразимо `requires`+`equals`; коды уже объявлены, правило — нет. `transports.json` `impl` сам признаёт «до появления value-условия правило живёт в маппере» — условие появилось в W2d |
+| 18 | пустой `fp` у reality → `random`; у generic TLS → блока `utls` нет | ~~`xray_outbound_convert.go`~~ → `core/config/linkmap` + `tls.json` | **ЖИВОЙ (запись).** Xray-ветка в движке; дописать Xray-адрес в mapper `fp_empty_defaults_to_random` |
+| 19 | нет TLS у hysteria → `tls:{enabled:true}` синтезируется | ~~`xray_hysteria.go:105`~~ → `hysteria.json` `mappers.xray` | **ЖИВОЙ (запись)** — правило в движке, секция `mapper` неполная |
+| 20 | `obfs` строкой у v2 → объект | ~~`xray_hysteria.go:79`~~ → `hysteria2.json` `mappers.xray` | **ЖИВОЙ (запись)** |
+| 21 | `obfs=xplus` без секрета отбрасывается | ~~`node_parser_hysteria.go:53`~~ → `hysteria.json` `mappers.uri` | **ЖИВОЙ (запись)** — проза в `uri.query.obfs.impl`, в `mapper` нет |
+| 22 | vless `encryption` пусто/`none` → ключа нет | `contract/registry/protocols/vless.json` `mappers.uri` (движок) | ✅ **ЗАКРЫТО (SPEC 133)**. ~~`node_parser_core.go:751`~~ снят; правило в реестре |
+| 23 | `security` не `tls`/`reality` → блока TLS нет (Xray) | ~~`xray_outbound_convert.go:211`~~ → `core/config/linkmap` | **ЖИВОЙ (запись)** — дописать Xray в `security_none_no_tls` |
+| 24 | пустой SNI на QUIC → адрес сервера | ~~`xray_hysteria.go:232`~~ → `tls.json` mapper | **ЖИВОЙ (запись)** — см. №18/3 |
+| 25 | `alpn` дочитывается из чужой секции | ~~`xray_hysteria.go:213`~~ → `hysteria.json` `mappers.xray` | **ЖИВОЙ (запись)** |
+| 26 | XHTTP: `header` без режима → `mode: packet-up` | ~~`node_parser_transport.go:469`~~ → `core/config/linkmap/exec.go:541` | ✅ **ЗАКРЫТО 19.09.2026 (SPEC 133)**. Гард `xhttpGuardUplinkPlacement` снят с легаси-транспорта; правило в движке linkmap |
 | 27 | ~~`allowedips` отсутствует → `0.0.0.0/0,::/0` (ДВЕ копии)~~ | ✅ **ЗАКРЫТО 19.09.2026, контракт 1.1.11** (DRIFT §11.2(5)). Обе копии сняты, дефолт выражен `default_when` у `peers[].allowed_ips` — как и предполагала запись. Попутно закрыт вход sing-box: тело без `allowed_ips` узел ТЕРЯЛ (ядро отвергает такого пира фаталом на весь конфиг), теперь дополняется. Тела узлов не изменились |
-| 28 | naive `quic=true` → жёстко `quic_congestion_control: "bbr"` | `node_parser_naive.go:131` | (б): суждение парсера, ссылка его не несёт, ядро не требует; в реестре `default: ""` |
-| 29 | masque: стрип плоских `network`/`sni`/`skip_cert_verify` | `singbox_sanitize.go:84` | **записано** (`masque.singbox_flat_fields_stripped`), но выразимо чище: эти поля УЖЕ есть в `masque.json body.fields`, хватило бы `forbidden_for` |
-| 30 | `tls:{enabled:false}` → блок снимается | `singbox_sanitize.go:126` | правило **записано** в `tls.json enabled.impl`, но `nodeflow` его НЕ исполняет — единственный исполнитель этот код. (г) сейчас, но исполнять должен конвейер. **Среднее** |
+| 28 | naive `quic=true` → `quic_congestion_control: "bbr"` | ~~`node_parser_naive.go:131`~~ → `naive.json` `mappers.uri` | **ЖИВОЙ (запись)** — правило в движке, дефолт в реестре `""` |
+| 29 | masque: стрип плоских `network`/`sni`/`skip_cert_verify` | `singbox_sanitize.go:84` (`sanitizeSingboxMasqueLegacy`) | **ЖИВОЙ.** Записано (`masque.singbox_flat_fields_stripped`), но стрип **без кода** — см. §3.2 |
+| 30 | `tls:{enabled:false}` → блок снимается | ~~`singbox_sanitize.go:126`~~ | ✅ **ЗАКРЫТО, контракт 1.1.12**. Правило `absent_when` у `tls` в реестре; рукописная копия в `sanitizeSingboxTLS` снята |
 
 ### 3.5 Коды, объявленные без производителя
 
@@ -160,6 +161,10 @@ sing-box-JSON, Xray-JSON, wg-quick, `vpn://`, ручной JSON, AWG-форма,
 6. **Два входа делают по-разному.** Ловится парным кейсом корпуса
    `uri/<схема>/<кейс>` ↔ `body/singbox/<кейс>`: тело И коды обязаны совпасть.
    Это и есть главный сторож кампании — дешевле любого грепа и не шумит.
+7. **Мёртвый код — `staticcheck -checks U1000`, не grep.** Греп по одному
+   имени не видит замкнутые графы вызовов (все «используются» друг другом,
+   но ни до одного нет дороги от живого входа). Авторитетный сигнал —
+   `staticcheck U1000` по пакету; `go vet` этот класс не ловит.
 
 ---
 
@@ -177,16 +182,12 @@ sing-box-JSON, Xray-JSON, wg-quick, `vpn://`, ручной JSON, AWG-форма,
 | `chain_validate.go`, `chain_nodes.go:256` | Правила ЦЕПОЧКИ, не поля узла. Своя подсистема |
 | `relay_materialize.go` | Служебный релей BYPASS (`Service: true`), не узел подписки |
 | `xray_json_array.go` целиком | Оркестрация массива: владение серверами, дедуп, теги, `dialerProxy`. Не поля узла |
-| `xray_hysteria.go:41` | Выбор СХЕМЫ (v1 vs v2) по `version` — реестр схему не выбирает |
 | `singbox_import.go:351` | Пустой `tag` → сгенерированный: идентичность, а не поле тела (`tag` — managed-ключ) |
-| `node_parser_naive.go:44` | Charset имени HTTP-заголовка — свойство HTTP-грамматики, не поля sing-box. Mapper-правило записано, код ставится |
-| `node_parser_core.go:428` | Порт вне 1..65535 дропает узел — W2D §6 оставил осознанно |
-| все `shareuri_*.go` | Обратное направление, читают готовое тело без суждений. Единственный валидатор `isValidShadowsocksMethod` читает список ИЗ РЕЕСТРА |
+| `core/config/linkmap/emit.go` | Обратное направление share-URI: эмит по `mappers.uri` + `emit`-атрибутам реестра (SPEC 133). ~~`shareuri_*.go`~~ сняты |
 
-**Мелочь без последствий:** `shareuri_hysteria2.go:27`, `shareuri_tuic.go:41`
-читают `tls.utls.fingerprint`, чтобы вернуть `fp=` в ссылку. После контракта
-1.1.4 у QUIC-узла этого блока не бывает — ветки мёртвые. Вреда нет, удалять
-не за что: та же функция обслуживает тела, сохранённые до 1.1.4.
+> **Снято в SPEC 133 и не переоткрывать:** `xray_hysteria.go` (выбор v1/v2),
+> `node_parser_naive.go:44` (charset заголовка — теперь в `naive.json`),
+> `node_parser_core.go:428` (порт — реестр/drop_node), все `shareuri_*.go`.
 
 ---
 
@@ -196,7 +197,7 @@ sing-box-JSON, Xray-JSON, wg-quick, `vpn://`, ручной JSON, AWG-форма,
 |---|---|---|
 | (а) дубль реестра | 13 | **8 исправлено** (§2; №4 и №9 — контракт 1.1.11; 4 дубля legacy-эмиттера сняты вместе с ним, там же); 5 трогают identity живых узлов или форму отбраковки |
 | (б) правило значения → в реестр | 8 | **4 исправлено**: §3.1 №5 (AWG MTU, контракт 1.1.5) и №8 + №27 (контракт 1.1.11, вместе с решением владельца 19.09.2026 «снятие реестром с сообщением, а не тихое»); 4 мелких ждут своей волны |
-| (в) структурное, не записано в `mapper` | 13 | не сделано; кода не требует, только записи в реестр — самая дешёвая пачка |
+| (в) структурное, не записано в `mapper` | 13 | **7 закрыты** (файлы/правила уехали в linkmap+реестр, TASK 4); **6 живых** — только записи в реестр |
 | (г) законно вне реестра | 13 мест | перечислены, чтобы не переоткрывать |
 
 **Рекомендация по порядку.** Сперва §3.4 (13 записей в реестр, кода не

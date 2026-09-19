@@ -100,12 +100,6 @@ func (o *orderedJSONObject) setLast(key string, val json.RawMessage) {
 	o.values[key] = val
 }
 
-// has — есть ли такой ключ.
-func (o *orderedJSONObject) has(key string) bool {
-	_, ok := o.values[key]
-	return ok
-}
-
 // stringValue — строковое значение ключа ("" — нет ключа или не строка).
 func (o *orderedJSONObject) stringValue(key string) string {
 	raw, ok := o.values[key]

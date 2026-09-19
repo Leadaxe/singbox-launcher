@@ -320,10 +320,13 @@
       "emit": {
         "form": "url",
         "param_order": "alphabetical",
-        "omit_default": [
-          "security"
-        ],
-        "impl": "param_order — ПРАВИЛО, а не перечень: q.Encode() во всех эмиттерах уже даёт алфавит. Прежний ручной список из 9 имён снят как дубль правила."
+        "impl": "param_order — ПРАВИЛО, а не перечень: q.Encode() во всех эмиттерах уже даёт алфавит. omit_default пуст, security объявлен always: у чужих клиентов умолчание security ≠ tls, и trojan без явного security прочёлся бы иначе. names.insecure = allowInsecure (оверлей LxBox).",
+        "emit_when": {
+          "security": "always"
+        },
+        "names": {
+          "insecure": "allowInsecure"
+        }
       }
     },
     "xray": {

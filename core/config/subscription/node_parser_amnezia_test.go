@@ -141,6 +141,7 @@ func TestParseNode_AmneziaVPN_PlainWG(t *testing.T) {
 	if err != nil || node == nil {
 		t.Fatalf("parse failed: err=%v node=%v", err, node)
 	}
+	awgNumericFields, awgStringFields := awgFieldsFromRegistry(t)
 	for _, k := range append(append([]string{}, awgNumericFields...), awgStringFields...) {
 		if _, ok := node.Outbound[k]; ok {
 			t.Errorf("plain WG profile gained AWG key %q", k)

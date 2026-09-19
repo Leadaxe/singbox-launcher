@@ -15,7 +15,8 @@
       "scheme": "naive",
       "warnings": [
         {
-          "code": "naive_padding_ignored"
+          "code": "naive_padding_ignored",
+          "path": "padding"
         }
       ]
     }

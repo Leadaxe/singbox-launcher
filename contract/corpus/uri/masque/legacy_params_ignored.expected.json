@@ -17,7 +17,8 @@
       "scheme": "masque",
       "warnings": [
         {
-          "code": "uri_param_unknown"
+          "code": "uri_param_unknown",
+          "path": "$legacy_flat"
         }
       ]
     }

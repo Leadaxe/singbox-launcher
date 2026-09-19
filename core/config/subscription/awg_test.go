@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"singbox-launcher/core/config/registry"
 )
 
 // awgNum — ЧИСЛОВОЕ значение awg-поля тела, каким бы целым типом Go оно ни
@@ -25,6 +27,45 @@ func awgNum(v interface{}) (int64, bool) {
 		return int64(n), true
 	}
 	return 0, false
+}
+
+// awgFieldsFromRegistry — имена awg-полей ТЕЛА, взятые из секции реестра
+// (`kind_when.awg.any_set`), а не из списка в коде.
+//
+// Список жил рядом с рукописным эмиттером share-URI; эмиттер снят (SPEC 133),
+// и повторять имена здесь значило бы завести вторую их копию, которая
+// разъедется с реестром при первом новом наборе — ровно тот дефект, против
+// которого кампания и затеяна.
+func awgFieldsFromRegistry(t *testing.T) (numeric, str []string) {
+	t.Helper()
+	set, err := registry.LoadMappers()
+	if err != nil {
+		t.Fatalf("LoadMappers: %v", err)
+	}
+	m, ok := set.Mapper("wireguard", "uri")
+	if !ok {
+		t.Fatal("нет секции wireguard.uri")
+	}
+	cond, ok := m.KindWhen["awg"]
+	if !ok {
+		t.Fatal("у секции wireguard.uri нет kind_when.awg")
+	}
+	list, _ := cond["any_set"].([]interface{})
+	for _, item := range list {
+		name, _ := item.(string)
+		if !strings.HasPrefix(name, "query.") {
+			continue
+		}
+		name = strings.TrimPrefix(name, "query.")
+		// Строковые поля маскировки — i1..i5; остальные числовые. Различие
+		// принадлежит схеме ТЕЛА, и его источник — тип поля в body.fields.
+		if len(name) == 2 && name[0] == 'i' && name[1] >= '1' && name[1] <= '5' {
+			str = append(str, name)
+			continue
+		}
+		numeric = append(numeric, name)
+	}
+	return numeric, str
 }
 
 // awgTestURI builds a valid wireguard:// (or awg://) URI with the canonical WG
@@ -99,6 +140,7 @@ func TestParseWireGuardURI_NoAWG_StaysClean(t *testing.T) {
 	if err != nil || node == nil {
 		t.Fatalf("parse failed: err=%v node=%v", err, node)
 	}
+	awgNumericFields, awgStringFields := awgFieldsFromRegistry(t)
 	for _, k := range append(append([]string{}, awgNumericFields...), awgStringFields...) {
 		if _, ok := node.Outbound[k]; ok {
 			t.Errorf("plain WG node gained AWG key %q", k)
@@ -161,6 +203,7 @@ func TestShareURI_AWG_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reparse: %v (uri=%s)", err, shareURI)
 	}
+	awgNumericFields, _ := awgFieldsFromRegistry(t)
 	for _, k := range awgNumericFields {
 		if n1.Outbound[k] != n2.Outbound[k] {
 			t.Errorf("numeric %s drifted: %v(%T) -> %v(%T)", k, n1.Outbound[k], n1.Outbound[k], n2.Outbound[k], n2.Outbound[k])

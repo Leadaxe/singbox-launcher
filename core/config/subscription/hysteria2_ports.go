@@ -170,22 +170,3 @@ func NormalizeHysteria2ServerPortsSlice(ranges []string) []string {
 	}
 	return hysteria2MportSpecToSingBoxServerPorts(strings.Join(ranges, ","))
 }
-
-// hysteria2ServerPortsToMportQuery encodes sing-box server_ports back to Hysteria2 mport query (hyphens, comma-separated).
-func hysteria2ServerPortsToMportQuery(ranges []string) string {
-	if len(ranges) == 0 {
-		return ""
-	}
-	parts := make([]string, 0, len(ranges))
-	for _, r := range ranges {
-		r = strings.TrimSpace(r)
-		if r == "" {
-			continue
-		}
-		parts = append(parts, strings.ReplaceAll(r, ":", "-"))
-	}
-	if len(parts) == 0 {
-		return ""
-	}
-	return strings.Join(parts, ",")
-}

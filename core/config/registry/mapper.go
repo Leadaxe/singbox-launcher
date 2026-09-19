@@ -372,7 +372,7 @@ type Param struct {
 	When map[string]interface{} `json:"when"`
 
 	Extract   *Extract               `json:"extract"`
-	Compose   string                 `json:"compose"`
+	Compose   *Compose               `json:"compose"`
 	List      *ListSpec              `json:"list"`
 	SplitInto map[string]interface{} `json:"split_into"`
 
@@ -414,10 +414,75 @@ type Param struct {
 	// занятом пути присваивание проигрывает, и сообщать не о чем.
 	OnImpliesWritten map[string]interface{} `json:"on_implies_written"`
 	OnLenGt       map[string]interface{} `json:"on_len_gt"`
+	// OnEmpty — код за ПУСТОЕ либо отсутствующее значение источника.
+	//
+	// Отличается от `required` тем, что узел ОСТАЁТСЯ: «поля нет» бывает и
+	// нормой (у половины схем пустой пароль законен), и признаком протухшей
+	// подписки, и различить это может только человек — значит место кода, а
+	// не отбраковки. Отличается от `on_invalid` тем, что значения нет вовсе:
+	// судить нечего.
+	OnEmpty map[string]interface{} `json:"on_empty"`
 
 	EmitWhen    json.RawMessage `json:"emit_when"`
 	OmitDefault json.RawMessage `json:"omit_default"`
 	Implicit    bool            `json:"implicit"`
+
+	// EmitAs — КАК сериализуется значение на выходе, когда тело хранит его не
+	// строкой: `join` (список через разделитель), `bool01` (булев как «1»),
+	// `json` (вложенная структура), `raw` (как есть, булев — словом).
+	//
+	// Угадывать по типу нельзя: булев `true` у одной схемы пишется как `1`
+	// (insecure), у другой — словом true (xhttp-флаги Xray), и это свойство
+	// ДИАЛЕКТА, а не типа значения.
+	EmitAs string `json:"emit_as"`
+
+	// EmitNormalize — обращение `normalize` на ВЫХОДЕ.
+	//
+	// Обратить `normalize` автоматически нельзя: часть нормализаций
+	// необратима (`trim_lower` теряет регистр), а часть обратима лишь
+	// частично. Поэтому обращение ОБЪЯВЛЯЕТСЯ, а не выводится: имя правила
+	// называет запись, и движок исполняет его так же, как прямое.
+	//
+	// Сегодня: `port_range_spec_uri` — форма ядра `20000:50000` обратно в
+	// написание ссылки `20000-50000` (дефис — конвенция hysteria, и на
+	// двоеточии её клиенты спотыкаются).
+	EmitNormalize string `json:"emit_normalize"`
+
+	// EmitPairSep — разделитель ВНУТРИ пары у `emit_as: "pairs"` (карта тела
+	// → строка пар). Вывести его из регулярки `extract` нельзя: она описывает
+	// ЧТЕНИЕ, где после двоеточия допустим любой пробельный хвост, а писать
+	// надо ровно одно написание.
+	EmitPairSep string `json:"emit_pair_sep"`
+
+	// EmitValueMap — ЯВНАЯ обратная таблица значений: «значение тела →
+	// написание ссылки».
+	//
+	// Нужна там, где прямая таблица НЕИНЪЕКТИВНА: у awg-флагов `on`, `true` и
+	// `1` читаются в одно `true`, и обратить их нечем — написание выбирает
+	// схема. Объявлять обращение, а не выводить его, приходится и потому, что
+	// порядок ключей карты JSON в Go не сохраняется: «первый объявленный»
+	// зависел бы от обхода хеш-таблицы.
+	EmitValueMap map[string]string `json:"emit_value_map"`
+
+	// RoundTrip — объявленный ОТКАЗ от обратного хода: поле есть в теле, но в
+	// ссылке его не пишет ни один клиент. Требует RoundTripWhy.
+	//
+	// Указатель, а не булев: умолчание «обратный ход есть», и отличить
+	// «не объявлено» от явного `true` нужно линтеру, который требует причину
+	// ровно у `false`.
+	RoundTrip    *bool  `json:"round_trip"`
+	RoundTripWhy string `json:"round_trip_why"`
+
+	// RoundTripOnly — запись действует ТОЛЬКО в одну сторону: "emit" —
+	// пишется в ссылку, но из неё не читается; "parse" — наоборот.
+	//
+	// Отличается от `round_trip: false` тем, что там направление ЕСТЬ одно
+	// (чтение) и объявлен отказ от второго; здесь объявляется, какое именно
+	// единственное. Живой случай — `detour`: поле `managed`, его пишет сборка
+	// конфига, санитайзер снимает его из тела узла, но ссылка на узел внутри
+	// цепочки обязана нести имя следующего хопа. Читать его обратно нельзя:
+	// тег чужого конфига у нас не существует.
+	RoundTripOnly string `json:"round_trip_only"`
 
 	Since  string `json:"since"`
 	DescEN string `json:"desc_en"`
@@ -430,6 +495,68 @@ type Param struct {
 type Extract struct {
 	Re   string                 `json:"re"`
 	Into map[string]interface{} `json:"into"`
+}
+
+// Compose — обратный шаблон сборки для эмита: обращение `extract`.
+//
+// Регуляркой обратный ход не выражается (по регулярке нельзя однозначно
+// собрать строку), поэтому шаблон объявляется прямо. `From` перечисляет пути
+// тела, подставляемые в `Template` по написанию `{путь}`; `OmitWhenEmpty` —
+// сегменты, вырезаемые вместе с разделителем, когда их путь пуст.
+type Compose struct {
+	Template      string   `json:"template"`
+	From          []string `json:"from"`
+	OmitWhenEmpty []string `json:"omit_when_empty"`
+}
+
+// UnmarshalJSON принимает короткое написание (строка-шаблон) и объект.
+//
+// Короткая форма существует потому, что у большинства шаблонов пути видны в
+// самом тексте: `{transport.path}?ed={transport.max_early_data}` называет их
+// дословно, и повторять их списком значило бы держать вторую копию.
+func (c *Compose) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		return nil
+	}
+	if trimmed[0] == '"' {
+		if err := json.Unmarshal(data, &c.Template); err != nil {
+			return err
+		}
+		c.From = templatePaths(c.Template)
+		return nil
+	}
+	type alias Compose
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	*c = Compose(a)
+	if len(c.From) == 0 {
+		c.From = templatePaths(c.Template)
+	}
+	return nil
+}
+
+// templatePaths достаёт пути из шаблона: всё в фигурных скобках.
+func templatePaths(tpl string) []string {
+	var out []string
+	rest := tpl
+	for {
+		i := strings.Index(rest, "{")
+		if i < 0 {
+			return out
+		}
+		j := strings.Index(rest[i:], "}")
+		if j < 0 {
+			return out
+		}
+		name := rest[i+1 : i+j]
+		if name != "" {
+			out = append(out, name)
+		}
+		rest = rest[i+j+1:]
+	}
 }
 
 // ListSpec — список через разделитель.
@@ -459,6 +586,12 @@ type UserInfo struct {
 	} `json:"split"`
 	Into       []string `json:"into"`
 	SingleInto string   `json:"single_into"`
+	// Emit — писать ли userinfo НА ВЫХОДЕ. Указатель: умолчание «писать», а
+	// явный `false` означает, что канон схемы кладёт то же значение в query
+	// (у hysteria 1.x секрет канонически едет `auth=`, а userinfo — лишь
+	// запасной слот ЧТЕНИЯ), и запись в оба места отдала бы секрет дважды.
+	Emit *bool `json:"emit"`
+
 	// Required — ссылка БЕЗ userinfo не узел: разбор отказывает.
 	//
 	// Объявляется у userinfo, а не у записи: поля, которые он наполняет,
@@ -616,6 +749,87 @@ type EmitSpec struct {
 	ParamOrder  json.RawMessage        `json:"param_order"`
 	OmitDefault []string               `json:"omit_default"`
 	EmitWhen    map[string]interface{} `json:"emit_when"`
+
+	// Names — переименование параметра НА ВЫХОДЕ: канон разбора → написание
+	// ссылки. Норма «канон = первое в aliases» описывает ЧТЕНИЕ, а вид ссылки
+	// есть де-факто формат СХЕМЫ для чужих клиентов: имя флага «не проверять
+	// сертификат» у vless/trojan/http — allowInsecure, у tuic —
+	// allow_insecure, у hysteria2 — insecure, и общий блок выбрать за них не
+	// может. Действует и по форме-контейнеру (имя gRPC-канала у v2rayN
+	// лежит в ключе path).
+	Names map[string]string `json:"names"`
+
+	// OmitPort — порт опускается на выходе, когда равен дефолту схемы.
+	// Обращать `defaults.server_port` напрямую нельзя: у схемы бывает дефолт
+	// РАЗБОРА без права опускать порт на выходе — ссылка перестала бы
+	// читаться клиентами, которые дефолта не знают.
+	OmitPort bool `json:"omit_port"`
+
+	// UserInfo — выходная форма userinfo. Обратить `userinfo.decode` разбора
+	// нельзя: это конвейер ПОПЫТОК, где `base64?` значит «может быть, а может
+	// и нет».
+	UserInfo *EmitUserInfo `json:"userinfo"`
+
+	// JSONMap — форма-КОНТЕЙНЕР: собирает не query-ссылку, а base64(JSON).
+	// Карта «ключ контейнера → путь тела | `$label` | `$param.<имя>` |
+	// `=литерал`».
+	JSONMap map[string]string `json:"json_map"`
+	// JSONAlways — ключи контейнера, которые клиенты ждут ДАЖЕ ПУСТЫМИ:
+	// карта «ключ → заполнитель». Опускание такого ключа ломает чтение у
+	// панелей, а не экономит байты.
+	JSONAlways map[string]interface{} `json:"json_always"`
+
+	// RefuseWhen — условия, при которых узел ссылкой НЕ выражается: движок
+	// отказывает, а не отдаёт половину. «Сколько сущностей влезает в ссылку»
+	// есть свойство ФОРМАТА схемы, и проверке в коде там не место.
+	RefuseWhen []EmitRefuse `json:"refuse_when"`
+
+	Impl string `json:"impl"`
+}
+
+// EmitRefuse — одно условие отказа.
+type EmitRefuse struct {
+	Path  string `json:"path"`
+	LenGt int    `json:"len_gt"`
+	// Why — причина прозой: она едет ЧЕЛОВЕКУ, и «не поддержано» не
+	// отвечает на его вопрос.
+	Why string `json:"why"`
+}
+
+// EmitUserInfo — выходная форма userinfo.
+type EmitUserInfo struct {
+	// Form — `raw` | `base64`.
+	Form string `json:"form"`
+	// Padding — писать ли `=`-паддинг у base64. Указатель: Go пишет с
+	// паддингом, Dart срезает, обе стороны читают обе формы, и по правилу
+	// эмита ни одна не меняет своё написание молча.
+	Padding *bool `json:"padding"`
+	// EmptySeparator — писать «@» у узла БЕЗ userinfo: `hy2://@host` —
+	// способ схемы сказать «пароля нет».
+	EmptySeparator bool `json:"empty_separator"`
+	// KeepEmptyTail — писать разделитель у ПУСТОГО хвостового компонента:
+	// `socks4://userid:@host`. У socks4 пароля нет по протоколу, но
+	// разделитель клиенты пишут всегда, и его отсутствие часть из них читает
+	// как «имени нет».
+	KeepEmptyTail bool `json:"keep_empty_tail"`
+}
+
+// UnmarshalJSON принимает короткое написание (строка-форма) и объект.
+func (e *EmitUserInfo) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		return nil
+	}
+	if trimmed[0] == '"' {
+		return json.Unmarshal(data, &e.Form)
+	}
+	type alias EmitUserInfo
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	*e = EmitUserInfo(a)
+	return nil
 }
 
 // Mapper — одна секция-маппер: вид источника у одного протокола.

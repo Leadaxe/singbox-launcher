@@ -19,7 +19,10 @@
 // по-русски прямо в движке и не переводились никогда.
 package config
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // Фразы эмиссии: ключ локали = АНГЛИЙСКИЙ текст (общий механизм проекта,
 // перевод — `bin/locale/ru.json`). До SPEC 116 W12 они были русскими
@@ -125,6 +128,28 @@ func directionOwningTag(directions []Direction, tag string) string {
 		}
 	}
 	return ""
+}
+
+// sourceDisplayName — как источник зовут в сообщениях (SPEC 112-A, «Понятные
+// ошибки»): сначала подпись, за ней тег узла (server/chain), за ним URL
+// подписки. ULID в текст не выносится — по нему источник не узнать; он идёт в
+// сообщение, только когда другого имени нет вовсе.
+func sourceDisplayName(ps ProxySource, index int) string {
+	if s := strings.TrimSpace(ps.Label); s != "" {
+		return s
+	}
+	if s := strings.TrimSpace(ps.Source); s != "" {
+		return s
+	}
+	if len(ps.Connections) > 0 {
+		if s := strings.TrimSpace(ps.Connections[0]); s != "" {
+			return s
+		}
+	}
+	if s := strings.TrimSpace(ps.ID); s != "" {
+		return "id " + s
+	}
+	return fmt.Sprintf("#%d", index+1)
 }
 
 // emissionWarningsFor проставляет адресата-источник пачке фраз.
