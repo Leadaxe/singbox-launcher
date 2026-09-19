@@ -198,7 +198,9 @@
         "into": [
           "username",
           "password"
-        ]
+        ],
+        "single_into": "username",
+        "impl": "Одиночный userinfo — ИМЯ пользователя: так устроен socks4 («socks4://userid@host», корпус socks4_userid), где пароля нет по протоколу. Совпадает с into[0], но объявлено явно."
       },
       "label": {
         "source": [

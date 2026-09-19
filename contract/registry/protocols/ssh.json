@@ -242,7 +242,9 @@
         "into": [
           "user",
           "password"
-        ]
+        ],
+        "single_into": "user",
+        "impl": "Одиночный userinfo — ИМЯ пользователя: «ssh://admin@host» это вход по ключу, пароля в ссылке нет (корпус default_port_22, user_only_custom_port). Совпадает с into[0], но объявлено явно."
       },
       "label": {
         "source": "fragment",

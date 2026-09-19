@@ -558,7 +558,8 @@
         "into": [
           "password"
         ],
-        "impl": "Пароль — userinfo ЦЕЛИКОМ, вместе с двоеточиями: формы user:pass у hysteria2 нет, и 'p:1@host' значит пароль 'p:1'. Пустой пароль узла НЕ роняет (в отличие от vless/trojan/tuic) — ключ просто не пишется."
+        "single_into": "password",
+        "impl": "Пароль — userinfo ЦЕЛИКОМ, вместе с двоеточиями: формы user:pass у hysteria2 нет, и 'p:1@host' значит пароль 'p:1'. Пустой пароль узла НЕ роняет (в отличие от vless/trojan/tuic) — ключ просто не пишется. Одиночный userinfo — ПАРОЛЬ (конвенция DuckSoft, та же что у naive). Объявлено явно, хотя совпадает с into[0]."
       },
       "label": {
         "source": [

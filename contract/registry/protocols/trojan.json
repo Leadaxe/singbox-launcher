@@ -259,7 +259,8 @@
         "into": [
           "password"
         ],
-        "impl": "DELTAS D133-8 / QUIRKS Q133-07: пароль = ВЕСЬ userinfo, без резки по ':'. Сегодня node_parser_core.go:455-466 берёт часть ДО ':', а хвост уходит в Query['password'] и в тело не попадает — пароль с двоеточием терялся молча."
+        "single_into": "password",
+        "impl": "DELTAS D133-8 / QUIRKS Q133-07: пароль = ВЕСЬ userinfo, без резки по ':'. Сегодня node_parser_core.go:455-466 берёт часть ДО ':', а хвост уходит в Query['password'] и в тело не попадает — пароль с двоеточием терялся молча. Одиночный userinfo — ПАРОЛЬ: у trojan в userinfo он один и есть. Объявлено явно, хотя совпадает с into[0]."
       },
       "label": {
         "source": [

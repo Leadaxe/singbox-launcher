@@ -306,3 +306,80 @@ func resolveRef(doc *jsonSchemaDoc, ref string) *jsonSchemaNode {
 	}
 	return doc.Definitions[strings.TrimPrefix(ref, prefix)]
 }
+
+// TestContractUserInfoDeclaresSingleInto — у каждой секции с `userinfo`
+// написано, куда едет ОДИНОЧНЫЙ (беспарный) userinfo.
+//
+// Умолчания «первое имя `into`» быть не должно — договорённость с LxBox
+// (`TASKS_LXBOX` §24.29 п. 3). Причина не в аккуратности: позиция и смысл
+// расходятся ровно там, где ошибиться дороже всего. У naive одиночный
+// userinfo это ПАРОЛЬ, хотя `into[0]` зовётся `username`; у ssh и socks —
+// наоборот имя, потому что пароля в такой ссылке нет по протоколу; у
+// shadowsocks `into[0]` вообще ШИФР, а не учётные данные. Молчащий атрибут
+// читается как «здесь думать не надо» — и каждый раз это неправда.
+//
+// Линтер требует ЯВНОГО написания даже там, где значение совпадает с
+// `into[0]`: разница между «совпало» и «никто не смотрел» видна только в
+// тексте секции.
+func TestContractUserInfoDeclaresSingleInto(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join(mapperRegistryDir, "protocols", "*.json"))
+	if err != nil {
+		t.Fatalf("обход протоколов: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("файлов протоколов не найдено")
+	}
+
+	checked := 0
+	for _, path := range files {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		var doc struct {
+			Mappers map[string]struct {
+				UserInfo *struct {
+					Into       []string `json:"into"`
+					SingleInto string   `json:"single_into"`
+				} `json:"userinfo"`
+			} `json:"mappers"`
+		}
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		name := strings.TrimSuffix(filepath.Base(path), ".json")
+		for kind, m := range doc.Mappers {
+			if m.UserInfo == nil {
+				continue
+			}
+			checked++
+			where := fmt.Sprintf("%s mappers.%s.userinfo", name, kind)
+			if m.UserInfo.SingleInto == "" {
+				t.Errorf("%s: не объявлен single_into при into=%v — "+
+					"допиши, куда едет БЕСПАРНЫЙ userinfo; умолчания «первое имя into» нет",
+					where, m.UserInfo.Into)
+				continue
+			}
+			// Цель обязана быть одной из объявленных: имя вне `into`
+			// пространство userinfo не перенаправляет, и запись, читающая
+			// `userinfo.user` напрямую, получила бы тот же текст вторым
+			// путём (Q133-43).
+			found := false
+			for _, n := range m.UserInfo.Into {
+				if n == m.UserInfo.SingleInto {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("%s: single_into=%q нет среди into=%v — "+
+					"цель вне into не перенаправляет само пространство",
+					where, m.UserInfo.SingleInto, m.UserInfo.Into)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("ни одной секции с userinfo не проверено — линтер смотрит не туда")
+	}
+	t.Logf("проверено секций с userinfo: %d", checked)
+}
