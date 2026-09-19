@@ -178,6 +178,16 @@ type blockTable struct {
 	// движок обязан, иначе `uri_param_unknown` срабатывает на параметре,
 	// который блок перечислил своей рукой (spx, echfq у REALITY).
 	declared []string
+	// decl — позиция ПОДБЛОКА в объявлении группы (ws, httpupgrade, http,
+	// grpc, xhttp у транспортов). Нужна склейке «блок целиком»: группа
+	// разворачивается в карту, карта порядка не хранит, и без этого числа
+	// склейка восстанавливала бы его сортировкой ИМЁН — то есть выдавала бы
+	// grpc раньше ws только потому, что «g» < «w». Сегодня это было
+	// безвредно (каждая запись подблока закрыта своим `when:
+	// transport.type`, одновременно исполняется ровно один подблок), но
+	// порядок в плане НОРМАТИВЕН, и держать его на алфавите значит ждать
+	// первой же записи без `when` (находка агента LxBox, §9).
+	decl int
 }
 
 // blockSet — все общие блоки: "tls" → "uri" → таблица; у транспортов есть
@@ -265,9 +275,14 @@ func classifyBlock(raw json.RawMessage) (map[string]*blockTable, *blockTable, er
 	}
 
 	// Иначе — группа: каждое значение может быть таблицей.
+	//
+	// Обход идёт по `names` — порядку ОБЪЯВЛЕНИЯ подблоков в файле, а не по
+	// карте: карта порядка не хранит, а склейке «блок целиком» он нужен
+	// (blockTable.decl).
 	group := map[string]*blockTable{}
-	for name, v := range top {
-		if name == "note" {
+	for _, name := range names {
+		v, ok := top[name]
+		if !ok || name == "note" {
 			continue
 		}
 		subNames, err := objectKeyOrder(v)
@@ -292,6 +307,7 @@ func classifyBlock(raw json.RawMessage) (map[string]*blockTable, *blockTable, er
 		if err != nil {
 			return nil, nil, err
 		}
+		t.decl = len(group)
 		group[name] = t
 	}
 	if len(group) == 0 {
@@ -497,8 +513,18 @@ func lookupBlock(blocks blockSet, name, dialect string) *blockTable {
 			return t
 		}
 	}
-	// "transports#uri" без указания подблока = все подблоки: селектор первым
-	// (он объявлен первым в файле), затем типы транспортов.
+	// "transports#uri" без указания подблока = все подблоки В ПОРЯДКЕ
+	// ОБЪЯВЛЕНИЯ файла: сперва $selector (он строит transport.type, по
+	// которому дальше проверяется `when` остальных), затем типы транспортов.
+	//
+	// Порядок берётся из blockTable.decl, а НЕ из сортировки имён. Сортировка
+	// имён давала алфавит (grpc, http, httpupgrade, ws, xhttp) и держалась
+	// лишь на том, что у каждой записи подблока есть свой `when:
+	// transport.type` и одновременно исполняется ровно один подблок; первая
+	// же запись без такого условия получила бы позицию по первой букве
+	// имени. Селектор при этом выносился вперёд отдельной проверкой имени на
+	// суффикс ".$selector" — то есть код всё-таки знал имя. Теперь его ставит
+	// вперёд сам файл, где он и объявлен первым.
 	prefix := name + "."
 	var subs []string
 	for key := range blocks {
@@ -511,22 +537,17 @@ func lookupBlock(blocks blockSet, name, dialect string) *blockTable {
 	if len(subs) == 0 {
 		return nil
 	}
-	sort.Strings(subs)
+	// Имя — вторичный ключ: при равном decl (блоки из разных файлов под одним
+	// префиксом) порядок обязан остаться детерминированным.
+	sort.Slice(subs, func(i, j int) bool {
+		di, dj := blocks[subs[i]][dialect].decl, blocks[subs[j]][dialect].decl
+		if di != dj {
+			return di < dj
+		}
+		return subs[i] < subs[j]
+	})
 	merged := &blockTable{params: map[string]*registry.Param{}}
-	// $selector-подблок идёт первым: его записи строят transport.type, по
-	// которому дальше проверяется when остальных.
-	ordered := make([]string, 0, len(subs))
 	for _, s := range subs {
-		if strings.HasSuffix(s, ".$selector") {
-			ordered = append(ordered, s)
-		}
-	}
-	for _, s := range subs {
-		if !strings.HasSuffix(s, ".$selector") {
-			ordered = append(ordered, s)
-		}
-	}
-	for _, s := range ordered {
 		t := blocks[s][dialect]
 		sub := strings.TrimPrefix(s, prefix)
 		for _, n := range t.names {
