@@ -1,0 +1,34 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "h.example",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "www.example.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "pbk junk",
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "reality_pbk_invalid",
+          "path": "tls.reality.public_key",
+          "value": "!!!not-base64!!!"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

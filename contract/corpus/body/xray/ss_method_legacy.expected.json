@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "method": "aes-256-cfb",
+        "password": "pw",
+        "server": "s.example",
+        "server_port": 8388,
+        "type": "shadowsocks"
+      },
+      "kind": "outbound",
+      "label": "ss legacy",
+      "scheme": "ss",
+      "warnings": [
+        {
+          "code": "ss_method_legacy",
+          "path": "method",
+          "value": "aes-256-cfb"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

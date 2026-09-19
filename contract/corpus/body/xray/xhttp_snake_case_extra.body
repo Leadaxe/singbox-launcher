@@ -1,0 +1,4 @@
+# Вход Xray из набора LxBox (app/test/fixtures/xray/pipeline_identity_before.json,
+# кейс b480_xhttp_snake_case_extra). Снят ДО перевода xray-входа на движок: сверка по бедным входам
+# зелёная и при потере полей — у LxBox так ушло ~25 полей XHTTP.
+[{"remarks":"xhttp snake","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"a.example","port":443,"users":[{"id":"11111111-2222-3333-4444-555555555555","encryption":"none"}]}]},"streamSettings":{"network":"xhttp","security":"none","xhttpSettings":{"path":"/p","mode":"packet-up","extra":{"x_padding_bytes":"50-200","uplink_http_method":"GET","sc_max_each_post_bytes":"1000000","no_grpc_header":true,"xmux":{"max_concurrency":"16-32","h_keep_alive_period":30}}}}}]}]

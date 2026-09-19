@@ -1,0 +1,4 @@
+# Вход Xray из набора LxBox (app/test/fixtures/xray/pipeline_identity_before.json,
+# кейс trojan_ws_fp_junk). Снят ДО перевода xray-входа на движок: сверка по бедным входам
+# зелёная и при потере полей — у LxBox так ушло ~25 полей XHTTP.
+[{"remarks": "trojan ws", "outbounds": [{"tag": "proxy", "protocol": "trojan", "settings": {"servers": [{"address": "t.example", "port": 8443, "password": "pw"}]}, "streamSettings": {"network": "ws", "security": "tls", "tlsSettings": {"serverName": "t.example", "fingerprint": "bogus"}, "wsSettings": {"path": "/tr"}}}]}]

@@ -1,0 +1,4 @@
+# Вход Xray из набора LxBox (app/test/fixtures/xray/pipeline_identity_before.json,
+# кейс vless_fp_alias). Снят ДО перевода xray-входа на движок: сверка по бедным входам
+# зелёная и при потере полей — у LxBox так ушло ~25 полей XHTTP.
+[{"remarks": "fp alias", "outbounds": [{"tag": "proxy", "protocol": "vless", "settings": {"vnext": [{"address": "h.example", "port": 443, "users": [{"id": "11111111-2222-3333-4444-555555555555"}]}]}, "streamSettings": {"network": "tcp", "security": "tls", "tlsSettings": {"serverName": "s.example", "fingerprint": "hellochrome_120"}}}]}]

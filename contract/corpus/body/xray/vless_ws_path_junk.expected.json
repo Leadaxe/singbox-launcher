@@ -1,0 +1,29 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "h.example",
+        "server_port": 443,
+        "transport": {
+          "type": "ws"
+        },
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "pathjunk",
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "type_invalid",
+          "path": "transport.path",
+          "value": "/bad%zz"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

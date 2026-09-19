@@ -1,0 +1,32 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "a.example",
+        "server_port": 443,
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "bal",
+      "scheme": "vless"
+    },
+    {
+      "entry": {
+        "interval": "30s",
+        "outbounds": [
+          "bal proxy"
+        ],
+        "type": "urltest",
+        "url": "http://example.com"
+      },
+      "kind": "group",
+      "label": "bal",
+      "scheme": "group"
+    }
+  ],
+  "v": 1
+}

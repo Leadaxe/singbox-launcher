@@ -1,0 +1,25 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "auth_str": "pw",
+        "down_mbps": 100,
+        "server": "hy.example",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "hy.example"
+        },
+        "type": "hysteria",
+        "up_mbps": 100
+      },
+      "kind": "outbound",
+      "label": "hy1",
+      "scheme": "hysteria"
+    }
+  ],
+  "v": 1
+}

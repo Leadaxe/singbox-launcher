@@ -1,0 +1,4 @@
+# Вход Xray из набора LxBox (app/test/fixtures/xray/pipeline_identity_before.json,
+# кейс dialer_chain_vless_relay). Снят ДО перевода xray-входа на движок: сверка по бедным входам
+# зелёная и при потере полей — у LxBox так ушло ~25 полей XHTTP.
+[{"remarks": "chain vless", "outbounds": [{"tag": "proxy", "protocol": "trojan", "settings": {"servers": [{"address": "a.example", "port": 443, "password": "pw"}]}, "streamSettings": {"network": "tcp", "security": "tls", "sockopt": {"dialerProxy": "relay"}}}, {"tag": "relay", "protocol": "vless", "settings": {"vnext": [{"address": "r.example", "port": 443, "users": [{"id": "33333333-2222-3333-4444-555555555555"}]}]}, "streamSettings": {"network": "tcp", "security": "none"}}]}]

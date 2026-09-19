@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "a.example",
+        "server_port": 443,
+        "transport": {
+          "host": "real.example",
+          "mode": "packet-up",
+          "path": "/real",
+          "type": "xhttp",
+          "x_padding_bytes": "500-600"
+        },
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "extra wins",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

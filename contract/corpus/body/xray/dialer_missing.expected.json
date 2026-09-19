@@ -1,0 +1,14 @@
+{
+  "dropped": [
+    {
+      "code": "dialer_proxy_unusable",
+      "reason": "outbound rejected: dialerProxy \"ghost\" not found",
+      "ref": "proxy"
+    }
+  ],
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [],
+  "v": 1
+}

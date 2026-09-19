@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "security": "auto",
+        "server": "v.example",
+        "server_port": 443,
+        "transport": {
+          "path": "/vm",
+          "type": "ws"
+        },
+        "type": "vmess",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "vmess sec junk",
+      "scheme": "vmess",
+      "warnings": [
+        {
+          "code": "vmess_security_unknown",
+          "path": "security",
+          "value": "rubbish"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

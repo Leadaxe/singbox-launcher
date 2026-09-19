@@ -1,0 +1,4 @@
+# Вход Xray из набора LxBox (app/test/fixtures/xray/pipeline_identity_before.json,
+# кейс vless_vision_with_transport). Снят ДО перевода xray-входа на движок: сверка по бедным входам
+# зелёная и при потере полей — у LxBox так ушло ~25 полей XHTTP.
+[{"remarks": "vision+ws", "outbounds": [{"tag": "proxy", "protocol": "vless", "settings": {"vnext": [{"address": "h.example", "port": 443, "users": [{"id": "11111111-2222-3333-4444-555555555555", "flow": "xtls-rprx-vision"}]}]}, "streamSettings": {"network": "ws", "security": "tls", "tlsSettings": {"serverName": "s.example"}, "wsSettings": {"path": "/ws"}}}]}]

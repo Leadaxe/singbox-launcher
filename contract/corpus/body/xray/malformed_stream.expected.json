@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "a.example",
+        "server_port": 443,
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "malformed",
+      "scheme": "vless"
+    },
+    {
+      "entry": {
+        "server": "b.example",
+        "server_port": 443,
+        "type": "vless",
+        "uuid": "22222222-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "malformed",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

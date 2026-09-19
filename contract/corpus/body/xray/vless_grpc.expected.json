@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "h.example",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "s.example"
+        },
+        "transport": {
+          "service_name": "/pkg/Tun",
+          "type": "grpc"
+        },
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "grpc",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}
