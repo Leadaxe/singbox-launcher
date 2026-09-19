@@ -396,6 +396,33 @@ func TestCoreRejectLoopChecksCandidate(t *testing.T) {
 	}
 }
 
+// TestCoreRejectLoopForCheckPromotesOriginal — у конфига удалённой машины на
+// check уходит вид с нашими путями, а в config.json — исходный, с путями
+// машины: подмена живёт только на время проверки.
+func TestCoreRejectLoopForCheckPromotesOriginal(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	chk := &fakeCheck{verdicts: []string{""}}
+	loop := &coreRejectLoop{
+		check: chk.fn, configPath: configPath, disabler: &memDisabler{},
+		forCheck: func(b []byte) []byte {
+			return []byte(strings.ReplaceAll(string(b), "/machine/", "/ours/"))
+		},
+	}
+	fresh := []byte(`{"path":"/machine/a.srs"}`)
+	out, err := loop.run(buildRound{ConfigJSON: fresh}, nil)
+	if err != nil || !out.Promoted {
+		t.Fatalf("конфиг не принят: promoted=%v err=%v", out.Promoted, err)
+	}
+	if len(chk.seen) != 1 || chk.seen[0] != `{"path":"/ours/a.srs"}` {
+		t.Errorf("на check ушёл не вид с нашими путями: %q", chk.seen)
+	}
+	body, _ := os.ReadFile(configPath)
+	if string(body) != string(fresh) {
+		t.Errorf("config.json = %q, ожидался исходный конфиг с путями машины", body)
+	}
+}
+
 // TestRejectLoopNoPromoteLeavesConfigUntouched — превью Final не заменяет
 // боевой config.json: кандидат проверяется, на диске остаётся прежний файл.
 func TestRejectLoopNoPromoteLeavesConfigUntouched(t *testing.T) {

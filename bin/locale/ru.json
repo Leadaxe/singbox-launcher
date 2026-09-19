@@ -2683,6 +2683,9 @@
   "Failed to build the machine's config": {
     "value": "Не удалось собрать конфиг машины"
   },
+  "The core rejected this config. The file was written, but the machine will refuse it on Deploy. Fix the problem below and save again.": {
+    "value": "Ядро не приняло этот конфиг. Файл записан, но машина откажет на Deploy. Исправьте проблему ниже и сохраните снова."
+  },
   "Could not read the subscriptions for this target, so the config would contain no proxy nodes. Check the sources on the Sources tab and try again.": {
     "value": "Не удалось прочитать подписки для этого назначения — конфиг ушёл бы без единой прокси-ноды. Проверьте источники на вкладке «Источники» и попробуйте снова."
   },
