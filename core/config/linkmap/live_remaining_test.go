@@ -44,7 +44,6 @@ var notLiveYet = []string{}
 // секций; пустой — вся ссылочная область описана реестром.
 var schemesWithoutURISection = []string{
 	"hysteria",
-	"masque",
 	"wireguard",
 }
 

@@ -44,7 +44,10 @@
       "address": {
         "type": "list",
         "default": null,
-        "maps_to": ["ip", "ipv6"],
+        "maps_to": [
+          "ip",
+          "ipv6"
+        ],
         "desc_en": "Addresses assigned to the tunnel interface.",
         "desc_ru": "Адреса, назначенные интерфейсу туннеля.",
         "impl": "Обязателен. Локальные адреса туннеля через запятую; раскладываются в ip (первый v4) / ipv6 (первый v6); bare IP → CIDR в обоих."
@@ -188,7 +191,29 @@
   },
   "body": {
     "core": "1.14.1-lx.4",
-    "order": ["server", "server_port", "profile", "vhttp", "network", "private_key", "public_key", "ip", "ipv6", "uri", "mtu", "idle_timeout", "keep_alive_period", "network_list", "tls", "sni", "skip_cert_verify", "fragment", "fragment_fallback_delay", "record_fragment", "__dialer"],
+    "order": [
+      "server",
+      "server_port",
+      "profile",
+      "vhttp",
+      "network",
+      "private_key",
+      "public_key",
+      "ip",
+      "ipv6",
+      "uri",
+      "mtu",
+      "idle_timeout",
+      "keep_alive_period",
+      "network_list",
+      "tls",
+      "sni",
+      "skip_cert_verify",
+      "fragment",
+      "fragment_fallback_delay",
+      "record_fragment",
+      "__dialer"
+    ],
     "fields": {
       "server": {
         "type": "ref",
@@ -206,7 +231,11 @@
       },
       "profile": {
         "type": "enum",
-        "values": ["", "cloudflare", "standard"],
+        "values": [
+          "",
+          "cloudflare",
+          "standard"
+        ],
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
@@ -219,7 +248,12 @@
       },
       "vhttp": {
         "type": "enum",
-        "values": ["", "h3", "h2", "auto"],
+        "values": [
+          "",
+          "h3",
+          "h2",
+          "auto"
+        ],
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "coerce",
@@ -389,5 +423,198 @@
     "lx_only": true,
     "min_core": "1.14.0-lx.1",
     "build_tag": "with_quic"
+  },
+  "mappers": {
+    "uri": {
+      "detect": {
+        "scheme_in": [
+          "masque"
+        ]
+      },
+      "body_source": "uri",
+      "live": true,
+      "forms": [
+        {
+          "id": "url",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            "url"
+          ],
+          "space": "url"
+        }
+      ],
+      "userinfo": {
+        "into": [
+          "private_key"
+        ],
+        "impl": "Приватный ключ клиента, base64(SEC1 DER). Сырой '/' внутри ключа percent-энкодится ДО разбора authority (§106) — иначе платформа примет его за начало пути и ключ пропадёт."
+      },
+      "label": {
+        "source": [
+          "fragment",
+          "path"
+        ],
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "value_map": {
+          "🇪🇳": "🇬🇧"
+        },
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "singbox_type"
+        }
+      },
+      "defaults": {
+        "server_port": 443
+      },
+      "params": {
+        "server": {
+          "source": "host",
+          "maps_to": "server",
+          "required": true
+        },
+        "server_port": {
+          "source": "port",
+          "maps_to": "server_port",
+          "type": "int"
+        },
+        "private_key": {
+          "source": [
+            "userinfo",
+            "query.private_key",
+            "query.privatekey"
+          ],
+          "maps_to": "private_key",
+          "required": true,
+          "decode_extra": {
+            "plus_literal": true
+          },
+          "impl": "userinfo сильнее query-фолбэка; оба написания принимают обе стороны."
+        },
+        "publickey": {
+          "source": [
+            "query.publickey",
+            "query.public_key"
+          ],
+          "maps_to": "public_key",
+          "required": true,
+          "decode_extra": {
+            "plus_literal": true
+          },
+          "impl": "base64(PKIX DER) серверного ключа (pinning). DELTAS D133-7 / delta480-2: поле base64-формата читает '+' буквально; прежде сырой '+' становился пробелом и ключ терял первый символ."
+        },
+        "address": {
+          "source": "query.address",
+          "list": {
+            "sep": ","
+          },
+          "normalize": "cidr_prefix",
+          "required": true,
+          "split_into": {
+            "ip": {
+              "when": {
+                "item": {
+                  "not_matches": ":"
+                }
+              },
+              "take": "first"
+            },
+            "ipv6": {
+              "when": {
+                "item": {
+                  "matches": ":"
+                }
+              },
+              "take": "first"
+            }
+          },
+          "impl": "Локальные адреса туннеля списком; ядро держит их двумя ОТДЕЛЬНЫМИ полями, по одному на семейство: первый v4 → ip, первый v6 → ipv6. Bare IP получает префикс. Ни одного годного адреса — узла нет."
+        },
+        "profile": {
+          "source": "query.profile",
+          "maps_to": "profile",
+          "default_when": {
+            "absent": true,
+            "value": "cloudflare"
+          },
+          "materialize_default": true,
+          "impl": "Дефолт пишется в тело ЯВНО: default реестра по CANON §2.4 в тело не материализуется, а корпус присутствия ждёт и на нём стоит identity живых узлов."
+        },
+        "vhttp": {
+          "source": "query.vhttp",
+          "maps_to": "vhttp",
+          "default_when": {
+            "absent": true,
+            "value": "h3"
+          },
+          "materialize_default": true,
+          "emit_when": "always",
+          "impl": "vhttp_empty_defaults_to_h3 — КОНВЕНЦИЯ обеих сторон, а не дефолт ядра (у ядра auto), и значение входит в identity-хеш живых MASQUE-узлов. Значение вне enum подменяет реестр кодом masque_vhttp_invalid."
+        },
+        "mtu": {
+          "source": "query.mtu",
+          "maps_to": "mtu",
+          "type": "int",
+          "default_when": {
+            "absent": true,
+            "value": 1280
+          },
+          "materialize_default": true,
+          "impl": "Корпус нормирует присутствие (uri/masque/default_vhttp_h3 несёт mtu: 1280). Клампа как у AWG нет."
+        },
+        "sni": {
+          "source": "query.sni",
+          "maps_to": "tls.server_name",
+          "impl": "Пусто = дефолт профиля ядра, и ключа в теле НЕТ — ни фолбэка на host, ни эвристики написания у masque не бывает. Поэтому секция и НЕ подключает общий блок tls#uri: TLS-диалекта у masque нет вовсе (в query всего два TLS-имени, оба объявлены здесь), а записи общего блока навредили бы — `security` завёл бы `tls.enabled`, которого у masque в теле не бывает, а `default_from: host` дописал бы `tls.server_name` КАЖДОМУ узлу и сдвинул identity всех живых MASQUE-нод."
+        },
+        "disable_sni": {
+          "source": "query.disable_sni",
+          "type": "bool_spelled",
+          "maps_to": "tls.disable_sni",
+          "omit_default": false,
+          "impl": "ClientHello без SNI — не то же, что пустой sni. Снятия tls.server_name, как у tuic, здесь НЕ делается: у masque его и так нет, если параметр молчал."
+        },
+        "idle_timeout": {
+          "source": "query.idle_timeout",
+          "maps_to": "idle_timeout"
+        },
+        "keep_alive": {
+          "source": [
+            "query.keep_alive",
+            "query.keep_alive_period"
+          ],
+          "maps_to": "keep_alive_period",
+          "impl": "Имя ссылки короче имени ядра; только для vhttp=h3."
+        },
+        "$legacy_flat": {
+          "source": [
+            "query.network",
+            "query.server_name"
+          ],
+          "maps_to": null,
+          "since": "0.8.0",
+          "on_present": {
+            "action": "note",
+            "code": "uri_param_unknown"
+          },
+          "impl": "Контракт 0.8.0 / D-078 — legacy-написания снесены: '?network=h2' рядом с vhttp роняло бы ядро fail-fast'ом. Это не потеря значения, а снятое написание."
+        }
+      },
+      "unknown_key": {
+        "action": "keep",
+        "code": "uri_param_unknown"
+      },
+      "emit": {
+        "form": "url",
+        "param_order": "alphabetical",
+        "omit_default": [
+          "server_port"
+        ]
+      }
+    }
   }
 }

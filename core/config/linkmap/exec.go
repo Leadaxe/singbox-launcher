@@ -175,6 +175,25 @@ func (st *execState) checkRequired() error {
 			if e.Param == nil || !e.Param.Required {
 				continue
 			}
+			// Запись без своего maps_to всё равно бывает обязательной:
+			// `split_into` раскладывает ОДИН источник по нескольким путям
+			// тела, и «обязателен» значит «хоть один из них заполнен». У
+			// masque это `address` → ip/ipv6: ссылка без единого годного
+			// адреса не узел, и корпус ждёт parse_error
+			// (missing_address_rejected).
+			if st.pathOf(e.Param) == "" && len(e.Param.SplitInto) > 0 {
+				filled := false
+				for p := range e.Param.SplitInto {
+					if v, ok := getPath(st.res.Body, p); ok && toString(v) != "" {
+						filled = true
+						break
+					}
+				}
+				if !filled {
+					return fmt.Errorf("linkmap: обязательная запись %q не заполнила ни одного пути", e.Name)
+				}
+				continue
+			}
 			path := st.pathOf(e.Param)
 			if path == "" {
 				continue
@@ -399,6 +418,20 @@ func (st *execState) applyEntry(e *Entry) {
 		return
 	}
 
+	// split_into — ОДИН список входа раскладывается по нескольким путям тела
+	// по условию на элемент.
+	//
+	// Нужен там, где ядро держит раздельно то, что ссылка пишет вместе:
+	// локальные адреса туннеля у masque приезжают одним `address=`, а в теле
+	// это два поля по семейству — `ip` и `ipv6`. Выразить это парой записей
+	// нельзя: обе читали бы один источник и обе писали бы весь список.
+	if p.List != nil && len(p.SplitInto) > 0 {
+		st.applySplitInto(e, src, rawVal, val)
+		st.applySets(e, val)
+		st.applyImplies(e)
+		return
+	}
+
 	// normalize / type / value_map — перевод диалекта, не суждение.
 	typed, drop := st.convert(p, val)
 	if drop {
@@ -526,6 +559,32 @@ func (st *execState) applyMissing(e *Entry) {
 			if ok && v != "" {
 				if path := st.pathOf(p); path != "" {
 					st.write(e.Name, name, v, v, path, p.Priority, e.Decl, WhyDefault)
+					st.applyImplies(e)
+					return
+				}
+			}
+		}
+	}
+
+	// default_when — дефолт с УСЛОВИЕМ. Сегодня условие одно: `absent:
+	// true`, то есть «источник молчал», а мы как раз здесь. Значение берётся
+	// из самого объявления, потому что это НЕ дефолт ядра, а конвенция обеих
+	// сторон: у masque `profile: cloudflare`, `vhttp: h3` и `mtu: 1280`
+	// входят в тела живых узлов и в их identity, и не написать их значило бы
+	// переписать каждый такой узел.
+	if len(p.DefaultWhen) > 0 && p.MaterializeDefault {
+		if absent, _ := p.DefaultWhen["absent"].(bool); absent {
+			if val, has := p.DefaultWhen["value"]; has {
+				if path := st.pathOf(p); path != "" {
+					out := val
+					if p.Type != "" {
+						conv, drop := convertType(p.Type, toString(val))
+						if drop {
+							return
+						}
+						out = conv
+					}
+					st.write(e.Name, "-", "", out, path, p.Priority, e.Decl, WhyDefault)
 					st.applyImplies(e)
 					return
 				}
@@ -1089,6 +1148,64 @@ func listSpecOf(t map[string]interface{}) *registry.ListSpec {
 	return ls
 }
 
+// applySplitInto раскладывает список по путям тела: каждый путь объявляет
+// условие на ЭЛЕМЕНТ и то, какой из подошедших берётся.
+//
+// Условие — по элементу (`when.item`), а не по телу: тела на этот момент
+// ещё нет, и вопрос стоит о самом значении. `take: "first"` означает
+// «первый подошедший»: у ядра поле одно на семейство, и второй адрес того
+// же вида в тело не поместится.
+func (st *execState) applySplitInto(e *Entry, src, raw, val string) {
+	items := st.buildListWith(e.Param.List, e.Param.Normalize, val)
+	// Пути перебираются в стабильном порядке имён. Порядок объявления здесь
+	// НЕ нормативен, в отличие от порядка записей таблицы: пути split_into
+	// независимы — каждый отбирает свои элементы по своему условию и пишет
+	// в СВОЙ ключ тела, — и переставить их местами значит получить то же
+	// тело. Сортировка нужна только чтобы трасса не плясала между запусками.
+	paths := make([]string, 0, len(e.Param.SplitInto))
+	for k := range e.Param.SplitInto {
+		paths = append(paths, k)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		spec, _ := e.Param.SplitInto[path].(map[string]interface{})
+		if spec == nil {
+			continue
+		}
+		cond, _ := mapOf(spec["when"])["item"].(map[string]interface{})
+		for _, it := range items {
+			item := toString(it)
+			if item == "" || !itemMatches(cond, item) {
+				continue
+			}
+			st.write(e.Name+"."+path, src, raw, item, path, e.Param.Priority, e.Decl, "")
+			if take, _ := spec["take"].(string); take == "" || take == "first" {
+				break
+			}
+		}
+	}
+}
+
+// itemMatches проверяет условие на элементе: matches / not_matches.
+func itemMatches(cond map[string]interface{}, item string) bool {
+	if len(cond) == 0 {
+		return true
+	}
+	if re, _ := cond["matches"].(string); re != "" {
+		rx, err := compileShared(re)
+		if err != nil || !rx.MatchString(item) {
+			return false
+		}
+	}
+	if re, _ := cond["not_matches"].(string); re != "" {
+		rx, err := compileShared(re)
+		if err != nil || rx.MatchString(item) {
+			return false
+		}
+	}
+	return true
+}
+
 // buildList режет значение по разделителю, обрезая края элементов.
 func (st *execState) buildList(p *registry.Param, v string) []interface{} {
 	return st.buildListWith(p.List, p.Normalize, v)
@@ -1537,6 +1654,18 @@ func normalizeValue(kind, v string) string {
 		return strings.ToLower(strings.TrimSpace(v))
 	case "strip_control":
 		return stripControl(v)
+	case "cidr_prefix":
+		// Голый адрес получает префикс «весь хост»: ядро ждёт CIDR, а
+		// подписки пишут и так, и так. /32 для IPv4, /128 для IPv6 —
+		// семейство видно по двоеточию.
+		t := strings.TrimSpace(v)
+		if t == "" || strings.Contains(t, "/") {
+			return v
+		}
+		if strings.Contains(t, ":") {
+			return t + "/128"
+		}
+		return t + "/32"
 	case "port_range_spec":
 		// Диапазон портов ссылки → форма ядра. Ссылка пишет дефисом
 		// (`20000-30000`, конвенция hysteria2), ядро ждёт ДВОЕТОЧИЕ и на

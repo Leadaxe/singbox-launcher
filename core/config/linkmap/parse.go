@@ -562,11 +562,28 @@ func lexURI(text string) (*Space, error) {
 		rest = rest[:i]
 	}
 
-	// path — по первому '/' ПОСЛЕ authority.
+	// path — по первому '/' ПОСЛЕ userinfo, а не после "://".
+	//
+	// Искать с начала нельзя: в userinfo законно лежит сырой '/'. У masque
+	// это base64(SEC1 DER) приватного ключа, и слэш в нём — 63-е значение
+	// алфавита; прежний разрез уводил половину ключа в путь, а остаток
+	// становился ИМЕНЕМ ХОСТА (корпус masque/*, все восемь кейсов). Чинить
+	// это percent-кодированием ДО разбора, как делал рукописный путь
+	// (percentEncodeWGUserinfoSlashes), движку незачем: он режет сам и
+	// знает, где кончается userinfo.
+	//
+	// Граница — ПОСЛЕДНИЙ '@': '@' законен и внутри userinfo (пароль с
+	// собакой), а вот после authority его уже быть не может — query и
+	// fragment отрезаны выше.
 	authority := rest
-	if i := strings.Index(rest, "/"); i >= 0 {
-		authority = rest[:i]
-		p := rest[i:]
+	from := 0
+	if at := strings.LastIndex(rest, "@"); at >= 0 {
+		from = at + 1
+	}
+	if i := strings.Index(rest[from:], "/"); i >= 0 {
+		cut := from + i
+		authority = rest[:cut]
+		p := rest[cut:]
 		if dec, err := percentUnescape(p); err == nil {
 			p = dec
 		}

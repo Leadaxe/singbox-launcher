@@ -119,13 +119,6 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		return parseAmneziaVPNLink(uri, skipFilters)
 	}
 
-	// MASQUE (CONNECT-IP / WARP) wraps full key material in the URI like
-	// wireguard://; dispatch to its own parser (builds the endpoint directly).
-	// Requires core >= lx.2 (masque outbound; launcher pins lx.3).
-	if strings.HasPrefix(uri, "masque://") {
-		return parseMasqueURI(uri, skipFilters)
-	}
-
 	// Validate URI length
 	if len(uri) > MaxURILength {
 		return nil, fmt.Errorf("URI length (%d) exceeds maximum (%d)", len(uri), MaxURILength)
