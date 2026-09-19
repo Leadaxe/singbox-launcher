@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "fragment": true,
+          "server_name": "example-1.com"
+        },
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "frag-owner",
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "xray_fragment_mapped",
+          "path": "tls.fragment",
+          "value": "packets=tlshello length=100-200 interval=10-20"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

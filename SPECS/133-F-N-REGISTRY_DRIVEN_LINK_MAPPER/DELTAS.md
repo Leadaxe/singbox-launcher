@@ -1054,3 +1054,15 @@ base64: в нём нет ни `://`, ни `{`, ни `[Interface]`, и правд
    декодером формы.
 
 **Кейсов:** 0 (ожидания корпуса не менялись).
+
+### D133-45 · Xray dialerProxy → freedom с fragment — не хоп — **ПРИНЯТО**
+
+**Что меняется:** цель `streamSettings.sockopt.dialerProxy` с протоколом
+`freedom` и `settings.fragment` больше не трактуется звеном цепочки.
+Узел-владелец остаётся прямым; при `tls.enabled` включается
+`tls.fragment=true`. Код `xray_fragment_mapped` (info) несёт исходные
+packets/length/interval в `value`; length/interval в sing-box не
+переносятся. Freedom без fragment — dialerProxy молча игнорируется.
+Прочие служебные цели (blackhole, dns, loopback) — отбраковка как раньше.
+
+**Кейсов:** 1 (`body/xray/dialer_proxy_freedom_fragment`).

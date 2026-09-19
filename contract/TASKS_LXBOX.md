@@ -5628,6 +5628,33 @@ base64, в нём нет ни `://`, ни `{`, ни `[Interface]`, поэтом�
 В реестре сегодня одна запись (`🇪🇳→🇬🇧` у hysteria2), так что для вас
 это норма на будущее, а не правка поведения.
 
+## 41. Контракт 1.1.45 — Xray dialerProxy → freedom с fragment (не хоп)
+
+Норма: цель `streamSettings.sockopt.dialerProxy` с протоколом `freedom` и
+`settings.fragment` — **не хоп цепочки**. Узел-владелец остаётся прямым;
+фрагментация переносится в `tls.fragment=true` при `tls.enabled` на узле.
+Код `xray_fragment_mapped` (severity `info`, `path`=`tls.fragment`,
+`value`=исходные `packets`/`length`/`interval` одной строкой). Параметры
+`length`/`interval` sing-box не поддерживает — не переносятся.
+
+Freedom **без** `settings.fragment` — `dialerProxy` молча игнорируется, код
+не ставится. Прочие служебные цели (`blackhole`, `dns`, `loopback`) —
+отбраковка владельца как раньше (`dialer_proxy_unusable`).
+
+**Что проверить у себя:**
+
+1. Элемент Xray с outbounds `[proxy(vless+tls/reality, dialerProxy=fragment),
+   fragment(freedom+settings.fragment), direct(freedom), block(blackhole)]` →
+   один узел, без `chain`/`detour`, `tls.fragment=true`, код
+   `xray_fragment_mapped`.
+2. Тот же элемент, но `dialerProxy=direct` (freedom без fragment) → узел
+   без кода и без `tls.fragment`.
+3. `security=none` + `dialerProxy=fragment` → узел без `tls.fragment` и без
+   кода.
+4. `dialerProxy=block` (blackhole) → узел отбракован.
+
+Кейс корпуса: `body/xray/dialer_proxy_freedom_fragment`.
+
 ## 40. Контракт 1.1.44 — зеркальные стражи pre-2.0.0 (CIDR, emit, дробные числа)
 
 Партнёрское приложение нашло у себя три дефекта, вероятных и у нас.

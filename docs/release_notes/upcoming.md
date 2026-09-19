@@ -44,6 +44,7 @@
 - A subscription whose port ranges are written both in the address and in `mport=` (`host:443,20000-30000?mport=40000-50000`) no longer loses half of them: port hopping used only one of the two lists, and it did so silently — the node connected and looked healthy.
 - A subscription packed into base64 *twice* is now readable. Before, it produced no nodes and no error at all: the launcher mistook the inner layer for plain text and folded the whole subscription into one unreadable element.
 - A subscription file or `.conf` saved with a BOM (Windows Notepad writes one) is read normally. The invisible leading character threw off format detection, and the configuration turned into a list of nonexistent links.
+- Xray subscriptions that fragment TLS ClientHello through a freedom outbound (`dialerProxy` → `fragment`) no longer lose their servers: the node is kept with `tls.fragment` instead of being dropped as a broken chain hop.
 
 ### Technical / Internal
 - Contract 1.1.38: warning copy review in `warnings.json` — self-sufficient list subtitles, aligned `params` placeholders, updated developer `go` pointers after SPEC 133.
@@ -100,6 +101,7 @@
 - Подписка, у которой диапазоны портов записаны И в адресе, и в `mport=` (`host:443,20000-30000?mport=40000-50000`), больше не теряет половину: прыжки по портам шли только по одному из двух списков, причём молча — узел подключался и выглядел исправным.
 - Подписка, упакованная в base64 ДВАЖДЫ, теперь читается. Прежде из неё не получалось ни одного узла и не появлялось ни одной ошибки: лаунчер принимал внутренний слой за текст и складывал всю подписку в один нечитаемый элемент.
 - Файл подписки или `.conf`, сохранённый с меткой BOM (так пишет, например, «Блокнот» Windows), читается как обычно. Невидимый символ в начале сбивал распознавание формата, и конфигурация превращалась в список несуществующих ссылок.
+- Xray-подписки с фрагментацией TLS ClientHello через freedom-outbound (`dialerProxy` → `fragment`) больше не теряют серверы: узел сохраняется с `tls.fragment` вместо отбраковки как битый хоп цепочки.
 
 ### Техническое / Внутреннее
 - Контракт 1.1.38: вычитка текстов предупреждений в `warnings.json` — самодостаточные подзаголовки в списке узлов, согласованные `params`, обновлённые служебные `go` после SPEC 133.

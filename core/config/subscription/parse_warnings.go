@@ -93,6 +93,10 @@ const (
 	// непригодна: узел-владелец отбраковывается ЦЕЛИКОМ. Кода на узле не
 	// бывает (узла не будет) — он едет в отбраковке, поэтому severity=error.
 	WarnDialerProxyUnusable = "dialer_proxy_unusable"
+	// WarnXrayFragmentMapped — Xray dialerProxy → freedom с settings.fragment
+	// перенесён в tls.fragment узла-владельца; length/interval sing-box не
+	// поддерживает.
+	WarnXrayFragmentMapped = "xray_fragment_mapped"
 )
 
 // Предикаты «значение будет испорчено» (realityShortIDWouldDegrade,
