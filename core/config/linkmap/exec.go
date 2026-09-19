@@ -1577,7 +1577,7 @@ func (st *execState) oneWhen(key string, want interface{}) bool {
 	return false
 }
 
-// whenOperator — операторы условия: in / not_in / present / absent.
+// whenOperator — операторы условия: in / not_in / present / absent / lt / gt.
 func (st *execState) whenOperator(got interface{}, present bool, spec map[string]interface{}) bool {
 	if list, ok := spec["in"].([]interface{}); ok {
 		if !present {
@@ -1597,7 +1597,44 @@ func (st *execState) whenOperator(got interface{}, present bool, spec map[string
 	if v, ok := spec["absent"].(bool); ok {
 		return present != v
 	}
+	// lt / gt — ЧИСЛОВОЕ сравнение (GRAMMAR_SYNC §1 №7). Заведены ради знака
+	// у Xray-sockopt: tcpKeepAliveIdle 0 = «не задано», отрицательное =
+	// «выключить keep-alive» (disable_tcp_keep_alive: true). Без них знак
+	// выражался бы веткой в коде.
+	//
+	// Это НЕ min/max реестра: те судят ЗНАЧЕНИЕ и ставят код, lt/gt выбирают,
+	// исполнять ли запись. Нечисловое значение и отсутствие источника дают
+	// false у обоих операторов: «меньше нуля» неверно для того, чего нет, и
+	// неверно для строки — молчаливое приведение прятало бы мусор во входе.
+	if v, ok := numericBound(spec["lt"]); ok {
+		n, okNum := numericBound(got)
+		return present && okNum && n < v
+	}
+	if v, ok := numericBound(spec["gt"]); ok {
+		n, okNum := numericBound(got)
+		return present && okNum && n > v
+	}
 	return false
+}
+
+// numericBound приводит значение к числу для lt/gt: JSON несёт float64, а
+// пространство источников — строку (query-параметр, поле ini).
+func numericBound(v interface{}) (float64, bool) {
+	switch t := v.(type) {
+	case float64:
+		return t, true
+	case int:
+		return float64(t), true
+	case int64:
+		return float64(t), true
+	case json.Number:
+		f, err := t.Float64()
+		return f, err == nil
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(t), 64)
+		return f, err == nil
+	}
+	return 0, false
 }
 
 func valueInList(got interface{}, list []interface{}) bool {
@@ -1708,8 +1745,18 @@ func (st *execState) noteUnknownParams() {
 	if uk == nil || uk.Code == "" {
 		return
 	}
+	var ignored map[string]bool
+	if len(uk.Ignore) > 0 {
+		ignored = make(map[string]bool, len(uk.Ignore))
+		for _, n := range uk.Ignore {
+			ignored[strings.ToLower(strings.TrimSpace(n))] = true
+		}
+	}
 	for _, name := range st.space.QueryNames() {
 		if st.plan.Declared[strings.ToLower(name)] {
+			continue
+		}
+		if ignored[strings.ToLower(name)] {
 			continue
 		}
 		st.note(uk.Code, map[string]string{"query_name": name})

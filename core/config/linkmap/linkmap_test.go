@@ -338,3 +338,116 @@ func TestTraceCanonicalSerialization(t *testing.T) {
 		}
 	})
 }
+
+// TestEngineW6Primitives — три примитива, заведённые под Xray-вход
+// (GRAMMAR_SYNC §1 №7, №12 и §2). Корпус их видит только вместе с секциями,
+// а здесь проверяется каждый по отдельности — и особенно граница, на которой
+// примитив НЕ должен срабатывать.
+func TestEngineW6Primitives(t *testing.T) {
+	t.Run("when lt/gt судит число, а не присутствие", func(t *testing.T) {
+		st := &execState{res: &Result{Body: map[string]interface{}{
+			"idle":  float64(-1),
+			"zero":  float64(0),
+			"big":   float64(30),
+			"text":  "abc",
+			"strno": "-5",
+		}}}
+		cases := []struct {
+			name string
+			key  string
+			spec string
+			want bool
+		}{
+			// Ровно тот случай, ради которого примитив заведён: знак у
+			// Xray-sockopt. 0 = «не задано», отрицательное = «выключить».
+			{"отрицательное меньше нуля", "idle", `{"lt":0}`, true},
+			{"ноль не меньше нуля", "zero", `{"lt":0}`, false},
+			{"положительное больше нуля", "big", `{"gt":0}`, true},
+			{"ноль не больше нуля", "zero", `{"gt":0}`, false},
+			// Строка-число читается: пространство источников отдаёт строки.
+			{"строка-число сравнивается", "strno", `{"lt":0}`, true},
+			// Нечисловое и отсутствующее — false у ОБОИХ операторов:
+			// молчаливое приведение прятало бы мусор во входе.
+			{"нечисловое не меньше", "text", `{"lt":0}`, false},
+			{"нечисловое не больше", "text", `{"gt":0}`, false},
+			{"отсутствующее не меньше", "nope", `{"lt":0}`, false},
+			{"отсутствующее не больше", "nope", `{"gt":0}`, false},
+		}
+		for _, tc := range cases {
+			var spec map[string]interface{}
+			if err := json.Unmarshal([]byte(tc.spec), &spec); err != nil {
+				t.Fatalf("%s: %v", tc.name, err)
+			}
+			if got := st.oneWhen(tc.key, spec); got != tc.want {
+				t.Errorf("%s: when %s{%s} = %v, ждали %v", tc.name, tc.key, tc.spec, got, tc.want)
+			}
+		}
+	})
+
+	t.Run("изъятие записи блока — имя И набор source", func(t *testing.T) {
+		src := func(names ...string) registry.SourceRef {
+			return registry.SourceRef{List: names}
+		}
+		all := []Entry{
+			// Блок: три записи, две из них одноимённы записям секции.
+			{Name: "sni", Param: &registry.Param{Source: src("query.sni")}, Decl: 0, From: "tls#uri"},
+			{Name: "fp", Param: &registry.Param{Source: src("query.fp")}, Decl: 1, From: "tls#uri"},
+			{Name: "security", Param: &registry.Param{Source: src("query.security")}, Decl: 2, From: "tls#uri"},
+			// Секция: совпал источник — изымаем блочную.
+			{Name: "sni", Param: &registry.Param{Source: src("query.sni")}, Decl: 3},
+			// Совпало имя, источник ДРУГОЙ — обе живут (ws.path против
+			// http.path: разные параметры, а не спор за один).
+			{Name: "fp", Param: &registry.Param{Source: src("query.fingerprint")}, Decl: 4},
+			// Совпал источник, но запись УСЛОВНАЯ — блочную не изымаем:
+			// условная исполняется не всегда, и остальные случаи остались
+			// бы без правила (http.security, QUIRKS Q133-45).
+			{Name: "security", Param: &registry.Param{
+				Source: src("query.security"),
+				When:   map[string]interface{}{"scheme": "x"},
+			}, Decl: 5},
+		}
+		got := overrideBlockEntries(all)
+		var kept []string
+		for _, e := range got {
+			from := "секция"
+			if e.From != "" {
+				from = "блок"
+			}
+			kept = append(kept, e.Name+"/"+from)
+		}
+		want := []string{"fp/блок", "security/блок", "sni/секция", "fp/секция", "security/секция"}
+		if len(kept) != len(want) {
+			t.Fatalf("осталось %v, ждали %v", kept, want)
+		}
+		for i := range want {
+			if kept[i] != want[i] {
+				t.Fatalf("осталось %v, ждали %v", kept, want)
+			}
+		}
+	})
+
+	t.Run("unknown_key.ignore молчит про служебные ключи уровня документа", func(t *testing.T) {
+		space := &Space{}
+		space.AddQuery("protocol", "vless")
+		space.AddQuery("tag", "node-1")
+		space.AddQuery("chatter", "x")
+		st := &execState{
+			plan: &Plan{
+				Mapper: &registry.Mapper{UnknownKey: &registry.UnknownKey{
+					Action: "drop", Code: "json_field_unknown",
+					Ignore: []string{"protocol", "tag", "remarks"},
+				}},
+				Declared: map[string]bool{},
+			},
+			space: space,
+			res:   &Result{Body: map[string]interface{}{}},
+		}
+		st.noteUnknownParams()
+		if len(st.res.Notes) != 1 {
+			t.Fatalf("ждали ровно один код, получили %d: %+v", len(st.res.Notes), st.res.Notes)
+		}
+		if st.res.Notes[0].Params["query_name"] != "chatter" {
+			t.Errorf("код обязан назвать chatter, а не %q", st.res.Notes[0].Params["query_name"])
+		}
+	})
+}

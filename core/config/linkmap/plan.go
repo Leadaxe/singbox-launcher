@@ -411,6 +411,8 @@ func buildPlan(scheme, kind string, m *registry.Mapper, blocks blockSet) (*Plan,
 		decl++
 	}
 
+	all = overrideBlockEntries(all)
+
 	// Проходы A/B: селекторы отдельно, оба — в порядке объявления.
 	for _, e := range all {
 		if e.Param.Selector {
@@ -483,6 +485,79 @@ func buildPlan(scheme, kind string, m *registry.Mapper, blocks blockSet) (*Plan,
 	sortEntries(pl.Selectors)
 	sortEntries(pl.Rest)
 	return pl, nil
+}
+
+// overrideBlockEntries изымает запись include-блока, которую запись секции
+// ПЕРЕОПРЕДЕЛЯЕТ (MAPPER_ENGINE.md, «Коллизия имени записи блока и записи
+// секции»; GRAMMAR_SYNC §2).
+//
+// Переопределением считается совпадение имени И ПОЛНОГО НАБОРА `source`.
+// Совпало имя, но источник другой — обе записи живут: у ws и http свой `path`
+// и свой `host`, и это разные параметры, а не спор за один.
+//
+// Почему изъятие, а не «обе по порядку». Переопределяющая запись обычно ведёт
+// в ДРУГОЙ путь тела — ради этого переопределение и пишут. Исполнить обе
+// значит оставить в теле ОБА пути, и лишний доедет до ядра: `merge` разрешает
+// спор за один путь, а не за два разных. Проигравшего по позиции никто не
+// снимает.
+//
+// Изымается именно запись БЛОКА: она развёрнута раньше (include идёт до
+// записей секции), и «позже объявленное уточняет раньше объявленное» — то же
+// правило, по которому протокол уточняет общий блок в теле.
+func overrideBlockEntries(all []Entry) []Entry {
+	// Ключ переопределения — имя + набор source. Строится только по записям
+	// САМОЙ СЕКЦИИ (From == ""): блок блок не переопределяет, у склейки
+	// транспортов одноимённые записи разных подблоков законны.
+	//
+	// Запись ПОД УСЛОВИЕМ (`when`) переопределением НЕ считается, и это не
+	// послабление, а разные вещи: условная запись исполняется лишь в части
+	// случаев, и изъять за неё блочную значит оставить остальные случаи без
+	// правила вовсе. Живой пример — `http.security` (QUIRKS Q133-45): она
+	// гейтится `when.scheme.not_in: [proxy-https]` и на http-суффиксе
+	// снимает блок TLS, а на https-суффиксе МОЛЧИТ, потому что там истину
+	// ведёт запись блока. Изъятие блочной сломало бы `security=none` на
+	// https-суффиксе — то есть ровно случай, ради которого она там стоит.
+	overriding := map[string]bool{}
+	for i := range all {
+		if all[i].From != "" {
+			continue
+		}
+		if all[i].Param != nil && len(all[i].Param.When) > 0 {
+			continue
+		}
+		overriding[entryOverrideKey(all[i])] = true
+	}
+	if len(overriding) == 0 {
+		return all
+	}
+	out := make([]Entry, 0, len(all))
+	for i := range all {
+		if all[i].From != "" && overriding[entryOverrideKey(all[i])] {
+			continue
+		}
+		out = append(out, all[i])
+	}
+	return out
+}
+
+// entryOverrideKey — имя записи плюс её набор источников, в порядке
+// объявления.
+//
+// Порядок источников значим: `["query.sni", "query.peer"]` и
+// `["query.peer", "query.sni"]` — разные цепочки фолбэка, и считать их одним
+// параметром значило бы изымать запись блока в пользу записи, которая читает
+// то же самое ИНАЧЕ.
+func entryOverrideKey(e Entry) string {
+	var b strings.Builder
+	b.WriteString(strings.ToLower(e.Name))
+	b.WriteByte('\x00')
+	if e.Param != nil {
+		for _, s := range e.Param.Source.All() {
+			b.WriteString(strings.ToLower(s))
+			b.WriteByte('\x01')
+		}
+	}
+	return b.String()
 }
 
 func declare(set map[string]bool, name string) {
