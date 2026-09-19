@@ -53,17 +53,15 @@ func ParseURI(plan *Plan, text, bodyType string, trace *Trace) (*Result, error) 
 
 // UnwrapURI выбирает форму и распаковывает текст в пространство источников.
 //
-// Форма опознаётся по ТОМУ ЖЕ тексту, что она и разбирает: сначала её
-// конвейер `decode`, потом её `detect` — над РАСПАКОВАННЫМ телом (§3.1).
-// Проверять detect по исходному тексту нельзя там, где формы различает
+// Сначала конвейер `decode` формы, потом её `detect` — и предикат
+// проверяется по распакованному телу, а если не сошёлся, то по исходному
+// тексту (подробнее — у самой проверки ниже).
+//
+// По ОДНОМУ ЛИШЬ исходному тексту решать нельзя там, где формы различает
 // пейлоад: у vmess обе формы — «base64 на authority», и что под ним лежит —
 // объект JSON v2rayN или cleartext `method:uuid@host:port` — видно только
 // после декодирования. Ровно так решает и прежний путь: декодирует, пробует
 // json.Unmarshal и откатывается в cleartext (node_parser_vmess.go:78-82).
-//
-// Формам, которые различимы по оболочке (`regex` у ss на наличие '@' до
-// фрагмента), это ничего не меняет: их предикат одинаково верен на обоих
-// текстах, а `decode` у них не портит распознаваемое.
 //
 // Порядок объявления форм НОРМАТИВЕН: первая совпавшая и берётся, ветка
 // `default` — последняя. Поэтому «JSON пробуется первым, cleartext —
@@ -96,7 +94,31 @@ func UnwrapURI(plan *Plan, text string) (*Space, registry.Form, error) {
 			}
 			continue
 		}
-		if form.Detect != nil && !Matches(form.Detect, NewContent(body)) {
+		// Предикат проверяется по РАСПАКОВАННОМУ телу, а если не сошёлся —
+		// по НЕРАСПАКОВАННОМУ куску, над которым работал декодер.
+		//
+		// Два вида предикатов описывают разные вещи, и оба законны:
+		//
+		//   - `json`/`ini` говорят о ПЕЙЛОАДЕ («под оболочкой лежит
+		//     объект») — проверить их можно только ПОСЛЕ decode (формы
+		//     vmess);
+		//   - `regex`/`text` обычно описывают саму ОБОЛОЧКУ («тело — один
+		//     base64-блоб, в нём нет @») — такой предикат по построению
+		//     ложен на распакованном тексте, где `@` и `/` уже появились
+		//     (форма `wrapped` у hysteria2).
+		//
+		// Второй текст — именно кусок под областью декодера, а не вся
+		// ссылка: `^[A-Za-z0-9+/=_-]+$` описывает АЛФАВИТ КОДИРОВКИ, и
+		// приклеенное спереди `hysteria2://` ломает его двоеточием и
+		// слэшем. Автор такого предиката пишет про блоб, а не про ссылку
+		// целиком.
+		//
+		// Помечать, к чему относится предикат, автор не обязан: форма, чей
+		// предикат сошёлся хоть на одном из двух текстов, — эта форма и
+		// есть, потому что распаковка у неё своя.
+		if form.Detect != nil &&
+			!Matches(form.Detect, NewContent(body)) &&
+			!Matches(form.Detect, NewContent(decodeSubject(form, text))) {
 			continue
 		}
 		space, err := lexSpace(form, body, text)
@@ -161,6 +183,31 @@ func unwrapBody(form registry.Form, text string) (string, error) {
 		body = stripURIWrapper(body)
 	}
 	return body, nil
+}
+
+// decodeSubject — НЕраспакованный кусок текста, над которым работает первый
+// декодер формы: он же и есть предмет предиката об оболочке.
+func decodeSubject(form registry.Form, text string) string {
+	for _, raw := range form.Decode {
+		name, scope := decodeSpec(raw)
+		if name == "" {
+			continue
+		}
+		switch scope {
+		case scopeAuthority:
+			_, authority, _ := splitAuthorityPart(text)
+			if authority != "" {
+				return authority
+			}
+		case scopeUserInfo:
+			_, authority, _ := splitAuthorityPart(text)
+			if at := strings.LastIndex(authority, "@"); at >= 0 {
+				return authority[:at]
+			}
+		}
+		break
+	}
+	return text
 }
 
 // stripURIWrapper снимает `схема://` спереди и `#метку` сзади, оставляя

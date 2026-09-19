@@ -154,36 +154,6 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 
 	// Determine scheme and handle protocol-specific parsing
 	switch {
-	case strings.HasPrefix(uri, "hysteria2://"), strings.HasPrefix(uri, "hy2://"):
-		scheme = "hysteria2"
-		// Handle both hysteria2:// and hy2:// schemes (hy2 is official short form)
-		// Normalize to hysteria2:// for parsing
-		uriToParse = uri
-		var base64Part string
-		if strings.HasPrefix(uri, "hy2://") {
-			base64Part = strings.TrimPrefix(uri, "hy2://")
-			uriToParse = strings.Replace(uri, "hy2://", "hysteria2://", 1)
-		} else {
-			base64Part = strings.TrimPrefix(uri, "hysteria2://")
-		}
-
-		// Try to decode base64 (some Hysteria2 links are base64-encoded)
-		decoded, err := decodeBase64WithPadding(base64Part)
-		if err == nil && len(decoded) > 0 {
-			decodedStr, valid := validateAndFixUTF8Bytes(decoded)
-			if !valid {
-				debuglog.ErrorLog("Parser: Decoded base64 contains invalid UTF-8 that cannot be fixed. Skipping node.")
-				return nil, fmt.Errorf("decoded base64 contains invalid UTF-8")
-			}
-			if decodedStr != string(decoded) {
-				debuglog.DebugLog("Parser: Fixed invalid UTF-8 in decoded base64 Hysteria2 link")
-			}
-			if strings.Contains(decodedStr, "@") {
-				uriToParse = "hysteria2://" + decodedStr
-				debuglog.DebugLog("Parser: Successfully decoded base64 Hysteria2 link")
-			}
-		}
-
 	case strings.HasPrefix(uri, "hysteria://"), strings.HasPrefix(uri, "hy://"):
 		// Hysteria v1 (ядро: type "hysteria"). Отдельный протокол, не «старая
 		// запись hysteria2»: учётные данные в query (auth=), obfs — плоская
@@ -228,7 +198,7 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	// Parse URI
 	parsedURL, err := url.Parse(uriToParse)
 	hy2AuthPortList := ""
-	if err != nil && (scheme == "hysteria2" || scheme == "hysteria") {
+	if err != nil && scheme == "hysteria" {
 		if u, plist, recErr := hysteria2RecoverMultiPortAuthority(uriToParse); recErr == nil && u != nil {
 			parsedURL, err, hy2AuthPortList = u, nil, plist
 		}
@@ -261,7 +231,7 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		Query:  parsedURL.Query(),
 	}
 
-	if (scheme == "hysteria2" || scheme == "hysteria") && hy2AuthPortList != "" {
+	if scheme == "hysteria" && hy2AuthPortList != "" {
 		if ex := strings.TrimSpace(queryGetFold(node.Query, "mport")); ex != "" {
 			node.Query.Set("mport", hy2AuthPortList+","+ex)
 		} else {
@@ -508,9 +478,7 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 	outbound["server"] = node.Server
 	outbound["server_port"] = node.Port
 
-	if node.Scheme == "hysteria2" {
-		buildHysteria2Outbound(node, outbound)
-	} else if node.Scheme == "hysteria" {
+	if node.Scheme == "hysteria" {
 		buildHysteriaOutbound(node, outbound)
 	} else if node.Scheme == "tuic" {
 		buildTuicOutbound(node, outbound)

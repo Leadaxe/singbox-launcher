@@ -15,6 +15,7 @@ package linkmap
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -40,6 +41,10 @@ type Result struct {
 	// HadUserInfo — нёс ли вход userinfo. Отличает «userinfo пуст» от
 	// «userinfo в этой форме не предусмотрен».
 	HadUserInfo bool
+	// Query — параметры РАСПАКОВАННОГО входа, как справка вызывающему
+	// (skip-фильтры, UI). Не вход разбора: его движок читает из
+	// пространства сам.
+	Query url.Values
 	// Notes — коды, поставленные движком (uri_param_unknown и
 	// объявленные записями on_*). Порядок = порядок появления.
 	Notes []Note
@@ -107,6 +112,7 @@ func Exec(plan *Plan, space *Space, form registry.Form, bodyType string, trace *
 			BodySource:  plan.Mapper.BodySource,
 			FormID:      form.ID,
 			HadUserInfo: space != nil && space.UserInfo != "",
+			Query:       space.QueryValues(),
 			Trace:       trace,
 		},
 	}
@@ -190,7 +196,16 @@ func (st *execState) applySchemeSets() {
 	}
 	assigns, ok := sets[st.space.Scheme]
 	if !ok {
-		return
+		// "*" — присваивания, общие для ВСЕХ написаний схемы. Нужны там, где
+		// свойство принадлежит протоколу, а не написанию: у hysteria2 TLS
+		// включён всегда (транспорт QUIC, выключить его нельзя), и параметра
+		// `security` в ссылке нет вовсе. Выразить это записью нечем —
+		// источника у неё не будет, — а `defaults` секции пишет ТЕЛО узла
+		// поверх всего и потому не годится для структурного признака.
+		assigns, ok = sets["*"]
+		if !ok {
+			return
+		}
 	}
 	// Служебные ключи (`$…`) отделяются ДО присваивания: в тело они не едут,
 	// их читают записи таблицы. Иначе `$default_port` уезжал литеральным
@@ -790,6 +805,13 @@ func (st *execState) applyExtract(e *Entry, src, raw, val string) {
 		return
 	}
 	names := re.SubexpNames()
+	// Значения групп по ИМЕНИ: их читает prepend_group.
+	byName := map[string]string{}
+	for gi, name := range names {
+		if gi > 0 && name != "" {
+			byName[name] = m[gi]
+		}
+	}
 	// Порядок групп = порядок в регулярке: он объявлен автором записи и
 	// потому нормативен.
 	for gi, name := range names {
@@ -804,13 +826,13 @@ func (st *execState) applyExtract(e *Entry, src, raw, val string) {
 		if g == "" {
 			continue
 		}
-		st.applyExtractGroup(e, src, raw, name, g, spec)
+		st.applyExtractGroup(e, src, raw, name, g, spec, byName)
 	}
 }
 
 // applyExtractGroup кладёт одну группу: либо строкой-путём, либо объектом
 // {path, type, implies}.
-func (st *execState) applyExtractGroup(e *Entry, src, raw, group, val string, spec interface{}) {
+func (st *execState) applyExtractGroup(e *Entry, src, raw, group, val string, spec interface{}, groups map[string]string) {
 	switch t := spec.(type) {
 	case string:
 		st.write(e.Name+"."+group, src, raw, val, t, e.Param.Priority, e.Decl, "")
@@ -819,7 +841,36 @@ func (st *execState) applyExtractGroup(e *Entry, src, raw, group, val string, sp
 		if path == "" {
 			return
 		}
+		// prepend_group — значение ДРУГОЙ группы приписывается спереди.
+		//
+		// Нужно там, где одна величина разрезана регуляркой на две части,
+		// и вторая часть без первой бессмысленна: multi-port authority
+		// `host:443,20000-30000` даёт `first=443` (он же `server_port`) и
+		// `spec=,20000-30000`. Список портов узла — ОБЕ части вместе, то
+		// есть «443,20000-30000». Без этого в тело уезжал бы хвост
+		// `-50000` вместо пары `20000:50000` (корпус
+		// authority_port_range).
+		//
+		// Склейка делается ДО нормализации и резки списка: приписывается
+		// кусок ТЕКСТА, а не готовый элемент, и разделитель уже стоит в
+		// самом хвосте (`,` или `-`), потому что его захватила регулярка.
+		if from, _ := t["prepend_group"].(string); from != "" {
+			if head, ok := groups[from]; ok && head != "" {
+				val = head + val
+			}
+		}
 		var out interface{} = val
+		// normalize у группы — та же форма значения, что и у записи.
+		if n, _ := t["normalize"].(string); n != "" {
+			if ls := listSpecOf(t); ls != nil {
+				out = st.buildListWith(ls, n, val)
+			} else {
+				val = normalizeValue(n, val)
+				out = val
+			}
+		} else if ls := listSpecOf(t); ls != nil {
+			out = st.buildListWith(ls, "", val)
+		}
 		if typ, _ := t["type"].(string); typ != "" {
 			conv, drop := convertType(typ, val)
 			if drop {
@@ -975,7 +1026,12 @@ func (st *execState) plusLiteral(p *registry.Param) bool {
 // и запись объявила on_invalid с drop).
 func (st *execState) convert(p *registry.Param, val string) (interface{}, bool) {
 	v := val
-	if p.Normalize != "" {
+	// У СПИСКА нормализация применяется к ЭЛЕМЕНТУ, а не к строке целиком:
+	// она описывает форму одного значения. `port_range_spec` над
+	// «41000,42000-43000» увидел бы одну строку с дефисом и оставил
+	// первый элемент голым — а ядру нужны обе пары (корпус
+	// hysteria2/mport_comma_list). Элементы нормализует buildList.
+	if p.Normalize != "" && p.List == nil {
 		v = normalizeValue(p.Normalize, v)
 	}
 
@@ -1017,8 +1073,35 @@ func (st *execState) convert(p *registry.Param, val string) (interface{}, bool) 
 	return v, false
 }
 
+// listSpecOf читает объявление списка у ГРУППЫ extract (карта из JSON).
+func listSpecOf(t map[string]interface{}) *registry.ListSpec {
+	raw, ok := t["list"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	ls := &registry.ListSpec{}
+	if s, ok := raw["sep"].(string); ok {
+		ls.Sep = s
+	}
+	if s, ok := raw["item"].(string); ok {
+		ls.Item = s
+	}
+	return ls
+}
+
 // buildList режет значение по разделителю, обрезая края элементов.
 func (st *execState) buildList(p *registry.Param, v string) []interface{} {
+	return st.buildListWith(p.List, p.Normalize, v)
+}
+
+// buildListWith — то же для объявления, пришедшего не от записи, а от
+// группы extract.
+func (st *execState) buildListWith(ls *registry.ListSpec, normalize, v string) []interface{} {
+	p := &registry.Param{List: ls, Normalize: normalize}
+	return st.buildListInner(p, v)
+}
+
+func (st *execState) buildListInner(p *registry.Param, v string) []interface{} {
 	sep := p.List.Sep
 	if sep == "" {
 		sep = ","
@@ -1027,6 +1110,12 @@ func (st *execState) buildList(p *registry.Param, v string) []interface{} {
 	out := make([]interface{}, 0, len(parts))
 	for _, item := range parts {
 		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if p.Normalize != "" {
+			item = normalizeValue(p.Normalize, item)
+		}
 		if p.List.Item != "" {
 			conv, drop := convertType(p.List.Item, item)
 			if drop {
@@ -1433,6 +1522,23 @@ func normalizeValue(kind, v string) string {
 		return strings.ToLower(strings.TrimSpace(v))
 	case "strip_control":
 		return stripControl(v)
+	case "port_range_spec":
+		// Диапазон портов ссылки → форма ядра. Ссылка пишет дефисом
+		// (`20000-30000`, конвенция hysteria2), ядро ждёт ДВОЕТОЧИЕ и на
+		// дефисе валит весь конфиг («bad port range»). Одиночный порт
+		// становится парой N:N — для ядра это и есть «ровно этот порт».
+		//
+		// Перевод диалекта, а не суждение: мусор уезжает как есть и его
+		// судит санитайзер.
+		t := strings.TrimSpace(v)
+		if t == "" {
+			return v
+		}
+		t = strings.ReplaceAll(t, "-", ":")
+		if !strings.Contains(t, ":") {
+			t = t + ":" + t
+		}
+		return t
 	case "duration_bare_seconds":
 		// Голое число — это СЕКУНДЫ: живая конвенция панелей
 		// (`idle_session_timeout=30`), а ядро ждёт единицу измерения и на

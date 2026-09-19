@@ -185,6 +185,27 @@ func (s *Space) queryValue(name string) (string, bool) {
 
 // QueryNames — имена параметров в порядке появления, для кода
 // `uri_param_unknown`: движок обязан назвать то, чего не знает.
+// QueryValues — параметры пространства в виде url.Values.
+//
+// Нужны вызывающему за пределами разбора: skip-фильтры подписки и UI
+// смотрят «что было написано в ссылке». Брать их повторным разбором
+// ИСХОДНОГО текста нельзя — у обёрнутых форм (base64-пейлоад hysteria2,
+// контейнер vmess) снаружи нет ни одного параметра, и справка выходила бы
+// пустой там, где ссылка их несёт.
+//
+// Порядок появления теряется (url.Values — карта): это справка, а не вход
+// разбора, и правило «первое по порядку» применяет сам движок через Lookup.
+func (s *Space) QueryValues() url.Values {
+	out := url.Values{}
+	if s == nil {
+		return out
+	}
+	for _, p := range s.query {
+		out.Add(p.key, p.val)
+	}
+	return out
+}
+
 func (s *Space) QueryNames() []string {
 	if s == nil {
 		return nil

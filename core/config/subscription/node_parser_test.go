@@ -1223,8 +1223,16 @@ func TestParseNode_Hysteria2(t *testing.T) {
 				if node.Port != 443 {
 					t.Errorf("port want 443 got %d", node.Port)
 				}
-				if node.Query.Get("mport") != "443,20000-30000" {
-					t.Errorf("mport merge: %q", node.Query.Get("mport"))
+				// node.Query — справка о том, ЧТО НАПИСАНО в ссылке, и
+				// параметра mport в ней нет: порты стоят прямо в authority
+				// (`:443,20000-30000`). Прежний путь дописывал их в Query
+				// сам — это был побочный след шага восстановления
+				// (hysteria2RecoverMultiPortAuthority), нужного лишь
+				// потому, что net/url такую строку не читает вовсе. Движок
+				// берёт authority своим лексером и кладёт результат В ТЕЛО,
+				// где ему и место; справку он не подделывает.
+				if node.Query.Has("mport") {
+					t.Errorf("mport не писался в ссылке, а в справке есть: %q", node.Query.Get("mport"))
 				}
 				sp, ok := bodyStrings(node.Outbound["server_ports"])
 				if !ok || len(sp) != 2 || sp[0] != "443:443" || sp[1] != "20000:30000" {
@@ -1297,24 +1305,19 @@ func TestParseNode_Hysteria2(t *testing.T) {
 	})
 }
 
-// TestBuildOutbound_Hysteria2 tests Hysteria2 outbound generation
+// TestBuildOutbound_Hysteria2 — тело узла собирается из ССЫЛКИ.
+//
+// Подтесты строили ParsedNode руками и клали значения в node.Query,
+// полагаясь на договорённость «парсер разложил значения обратно». У движка
+// реестра (SPEC 133) её нет: тело строит секция прямо из разобранной ссылки.
 func TestBuildOutbound_Hysteria2(t *testing.T) {
 	t.Run("Hysteria2 with server_ports and ALPN", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Tag:    "test-hysteria2",
-			Scheme: "hysteria2",
-			Server: "hl.kaixincloud.top",
-			Port:   27200,
-			UUID:   "47db373b-d23c-4acb-bfd9-dace39c4f1e4",
-			Query:  make(map[string][]string),
+		node, err := ParseNode("hysteria2://47db373b-d23c-4acb-bfd9-dace39c4f1e4@hl.kaixincloud.top:27200"+
+			"?sni=hl.kaixincloud.top&mport=27200-28000&insecure=0&alpn=h3"+
+			"&upmbps=100&downmbps=500#test-hysteria2", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("sni", "hl.kaixincloud.top")
-		node.Query.Set("mport", "27200-28000")
-		node.Query.Set("insecure", "0")
-		node.Query.Set("alpn", "h3")
-		node.Query.Set("upmbps", "100")
-		node.Query.Set("downmbps", "500")
-
 		outbound := nodeBody(t, node)
 		if outbound["type"] != "hysteria2" {
 			t.Errorf("Expected type 'hysteria2', got '%v'", outbound["type"])
@@ -1328,38 +1331,30 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 		if outbound["server_port"] != 27200 {
 			t.Errorf("Expected server_port 27200, got '%v'", outbound["server_port"])
 		}
-		// Check server_ports (array format for sing-box 1.9+)
-		serverPorts, ok := bodyStrings(outbound["server_ports"])
+		sp, ok := bodyStrings(outbound["server_ports"])
 		if !ok {
-			t.Errorf("Expected server_ports to be []string, got '%v'", outbound["server_ports"])
-		} else if len(serverPorts) != 1 || serverPorts[0] != "27200:28000" {
-			t.Errorf("Expected server_ports ['27200:28000'], got '%v'", serverPorts)
+			t.Fatalf("Expected server_ports to be []string, got '%T'", outbound["server_ports"])
 		}
-		// Маппер переносит полосу СТРОКОЙ, как она пришла в ссылке: в число
-		// её приводит санитайзер по реестру (hysteria2.body up_mbps: int),
-		// и проверка итогового типа живёт в корпусе — uri/hysteria2/up_down_mbps.
-		if outbound["up_mbps"] != "100" {
-			t.Errorf("Expected up_mbps \"100\", got '%v'", outbound["up_mbps"])
+		if len(sp) != 1 || sp[0] != "27200:28000" {
+			t.Errorf("Expected server_ports ['27200:28000'], got %v", sp)
 		}
-		if outbound["down_mbps"] != "500" {
-			t.Errorf("Expected down_mbps \"500\", got '%v'", outbound["down_mbps"])
+		if outbound["up_mbps"] != 100 {
+			t.Errorf("Expected up_mbps 100, got '%v'", outbound["up_mbps"])
 		}
-
+		if outbound["down_mbps"] != 500 {
+			t.Errorf("Expected down_mbps 500, got '%v'", outbound["down_mbps"])
+		}
 		tls, ok := outbound["tls"].(map[string]interface{})
 		if !ok {
 			t.Fatal("Expected TLS configuration")
 		}
-		if tls["enabled"] != true {
-			t.Errorf("Expected TLS enabled true, got '%v'", tls["enabled"])
-		}
 		if tls["server_name"] != "hl.kaixincloud.top" {
 			t.Errorf("Expected server_name 'hl.kaixincloud.top', got '%v'", tls["server_name"])
 		}
-		// insecure=0 means false, so insecure field should not be set (or be false)
+		// insecure=0 означает false: ключа быть не должно (либо false).
 		if insecureVal, ok := tls["insecure"]; ok && insecureVal != false {
 			t.Errorf("Expected insecure false or not set, got '%v'", insecureVal)
 		}
-
 		alpn, ok := bodyStrings(tls["alpn"])
 		if !ok {
 			t.Fatal("Expected ALPN array in TLS configuration")
@@ -1370,16 +1365,10 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 	})
 
 	t.Run("Hysteria2 mport comma-separated in outbound", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Tag:    "hy2-comma",
-			Scheme: "hysteria2",
-			Server: "example.com",
-			Port:   443,
-			UUID:   "x",
-			Query:  make(map[string][]string),
+		node, err := ParseNode("hysteria2://x@example.com:443?mport=443,10000-11000&insecure=1#hy2-comma", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("mport", "443,10000-11000")
-		node.Query.Set("insecure", "1")
 		out := nodeBody(t, node)
 		sp, ok := bodyStrings(out["server_ports"])
 		if !ok || len(sp) != 2 || sp[0] != "443:443" || sp[1] != "10000:11000" {
@@ -1388,17 +1377,10 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 	})
 
 	t.Run("Hysteria2 mport single port becomes start:end for sing-box", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Tag:    "test-hy2-mport",
-			Scheme: "hysteria2",
-			Server: "62.210.30.179",
-			Port:   40022,
-			UUID:   "secret",
-			Query:  make(map[string][]string),
+		node, err := ParseNode("hysteria2://secret@62.210.30.179:40022?mport=41000&insecure=1#test-hy2-mport", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("mport", "41000")
-		node.Query.Set("insecure", "1")
-
 		outbound := nodeBody(t, node)
 		serverPorts, ok := bodyStrings(outbound["server_ports"])
 		if !ok {
@@ -1410,23 +1392,15 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 	})
 
 	t.Run("Hysteria2 with multiple ALPN values", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Tag:    "test-hysteria2",
-			Scheme: "hysteria2",
-			Server: "example.com",
-			Port:   443,
-			UUID:   "password",
-			Query:  make(map[string][]string),
+		node, err := ParseNode("hysteria2://password@example.com:443?sni=example.com&alpn=h3,h2#test-hysteria2", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("sni", "example.com")
-		node.Query.Set("alpn", "h3,h2")
-
 		outbound := nodeBody(t, node)
 		tls, ok := outbound["tls"].(map[string]interface{})
 		if !ok {
 			t.Fatal("Expected TLS configuration")
 		}
-
 		alpn, ok := bodyStrings(tls["alpn"])
 		if !ok {
 			t.Fatal("Expected ALPN array in TLS configuration")
@@ -1437,17 +1411,10 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 	})
 
 	t.Run("Hysteria2 with insecure=1", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Tag:    "test-hysteria2",
-			Scheme: "hysteria2",
-			Server: "example.com",
-			Port:   443,
-			UUID:   "password",
-			Query:  make(map[string][]string),
+		node, err := ParseNode("hysteria2://password@example.com:443?sni=example.com&insecure=1#test-hysteria2", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("sni", "example.com")
-		node.Query.Set("insecure", "1")
-
 		outbound := nodeBody(t, node)
 		tls, ok := outbound["tls"].(map[string]interface{})
 		if !ok {
@@ -1459,18 +1426,13 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 	})
 
 	t.Run("Hysteria2 without password", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Tag:    "test-hysteria2",
-			Scheme: "hysteria2",
-			Server: "example.com",
-			Port:   443,
-			UUID:   "",
-			Query:  make(map[string][]string),
+		// Пустой пароль узел НЕ роняет (в отличие от vless/trojan/tuic):
+		// ключ просто не пишется — uri.userinfo.impl секции.
+		node, err := ParseNode("hysteria2://@example.com:443?sni=example.com#test-hysteria2", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("sni", "example.com")
-
 		outbound := nodeBody(t, node)
-		// Should still generate outbound, but password will be empty
 		if outbound["type"] != "hysteria2" {
 			t.Errorf("Expected type 'hysteria2', got '%v'", outbound["type"])
 		}

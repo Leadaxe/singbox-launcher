@@ -13,7 +13,6 @@ package subscription
 
 import (
 	"fmt"
-	"net/url"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
@@ -58,7 +57,12 @@ func parseURIByEngine(uri string, skipFilters []map[string]string) (*configtypes
 		// Query остаётся ЧИТАЕМЫМ для фильтров и совместимости: это не вход
 		// разбора (движок читает своё пространство), а справка о ссылке, по
 		// которой работают skip-фильтры и вызывающие за пределами разбора.
-		Query: queryOfURI(uri),
+		//
+		// Берётся из РАСПАКОВАННОГО пространства, а не повторным разбором
+		// исходного текста: у обёрнутых форм (base64-пейлоад hysteria2,
+		// контейнер vmess) снаружи нет ни одного параметра, и справка
+		// выходила бы пустой там, где ссылка их несёт.
+		Query: res.Query,
 	}
 	applyEngineBody(node, res.Body)
 	node.UUID = credentialFromBody(plan, res)
@@ -186,25 +190,4 @@ func credentialFromBody(plan *linkmap.Plan, res *linkmap.Result) string {
 		return s
 	}
 	return ""
-}
-
-// queryOfURI достаёт query ссылки для фильтров и вызывающих.
-//
-// Отказ url.Parse здесь НЕ отказ разбора: движок уже разобрал ссылку своим
-// лексером, который принимает то, что net/url отвергает (multi-port
-// authority). Пустой набор означает «справки нет», а не «узел битый».
-func queryOfURI(uri string) url.Values {
-	i := strings.Index(uri, "?")
-	if i < 0 {
-		return url.Values{}
-	}
-	rest := uri[i+1:]
-	if h := strings.Index(rest, "#"); h >= 0 {
-		rest = rest[:h]
-	}
-	q, err := url.ParseQuery(rest)
-	if err != nil {
-		return url.Values{}
-	}
-	return q
 }
