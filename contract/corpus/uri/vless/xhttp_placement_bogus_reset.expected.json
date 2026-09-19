@@ -13,7 +13,6 @@
           }
         },
         "transport": {
-          "session_placement": "bogus",
           "type": "xhttp"
         },
         "type": "vless",
@@ -21,7 +20,14 @@
       },
       "kind": "outbound",
       "label": "xhttp-bogus-plc",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "xhttp_param_reset",
+          "path": "transport.session_placement",
+          "value": "bogus"
+        }
+      ]
     }
   ],
   "v": 1

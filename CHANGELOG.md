@@ -10,6 +10,44 @@
 
 Черновик пользовательских заметок — [docs/release_notes/upcoming.md](docs/release_notes/upcoming.md).
 
+## v2.0.0
+
+Подробные заметки: [docs/release_notes/2-0-0.md](docs/release_notes/2-0-0.md).
+
+### Возможности (6)
+
+- feat(contract)!: SPEC 133 — registry-driven link mapper (`core/config/linkmap`): 14 схем ссылок, Xray JSON, wg-quick `.conf` и эмит share-ссылок идут по таблицам `contract/registry`; 32 рукописных парсера/эмиттера сняты; `source_kinds` — виды источника таблицей; контракт 1.1.46, корпус 1 448 кейсов, 84 кода предупреждений
+- feat(config): страховка «ядро отвергло узел» (SPEC 132) — негодный узел отключается с причиной, конфиг пересобирается, VPN поднимается без него; локально, в демоне, на шаге Final, при записи конфига удалённой машины; баннер не восстанавливается после перезапуска
+- feat(config): предупреждения узла с именованными кодами — `uri_param_unknown`, `json_field_unknown`, `password_empty` вместо молчаливой потери полей
+- feat(ui): фильтр списка Servers — regex по имени, протокол, транспорт, источник, порог пинга
+- feat(ui): окно Core показывает статус Tailscale tailnet при работающем ядре
+- feat(config): порт Shadowsocks по умолчанию 8388 (был 443), канон схемы
+
+### Исправления (15)
+
+- fix(config): hysteria2 `port+mport` — `merge: append` исполняется, диапазоны портов не теряются (`eb090912`)
+- fix(config): двойная base64-обёртка подписки читается, а не даёт ноль узлов (`eb090912`)
+- fix(config): `type=splithttp` в ссылке сохраняет транспорт XHTTP
+- fix(config): tuic с пустым паролем — узел + предупреждение `password_empty`
+- fix(config): share-ссылки — `security=tls` явно, `allowInsecure`, пробел как `%20`, keep-alive и поля xhttp в ссылке
+- fix(config): Xray-подписки с `dialerProxy` → `fragment` через freedom — узел сохраняется с `tls.fragment` (`9e376607`, `48b33781`)
+- fix(config): негодный ключ REALITY в std-base64 и негодный элемент списка портов не роняют весь конфиг
+- fix(config): PSK WireGuard в альтернативном написании, комментарии и «+» в wg-quick `.conf`
+- fix(config): форма обфускации AmneziaWG не теряет type узла (`fe5c0ecb`)
+- fix(daemon): предел попыток перезапуска ядра у демона срабатывает (`dfed276c`)
+- fix(linkmap): гонка на кэше таблиц значений — `sync.Once` (`02691a94`)
+- fix(core): пин sing-box-lx 1.14.1-lx.8 — REALITY short_id, tuic.udp_relay_mode, MASQUE standard, gRPC service_name с `/`
+- fix(grpc): абсолютный путь `serviceName` доезжает до сервера (#130)
+- fix(vmess): `aes-128-ctr` убран, `aes-128-cfb` принимается
+- fix(windows): иконка трея снова полноцветная (#83)
+
+### Прочее (4)
+
+- chore(contract): 43 бампа контракта с 1.0.4 до 1.1.46
+- chore(ci): страж Win7 (`tools/win7guard`), codecov v5, ubuntu-24.04
+- docs: `docs/TROUBLESHOOTING.md`, отчёт кампании `SPECS/133-F-N-REGISTRY_DRIVEN_LINK_MAPPER/REPORT_2_0_0.md`
+- refactor(config): мёртвый легаси после linkmap снят (`uri_params.go`, `node_ref.go`, `detour_topo.go` и др.)
+
 ## v1.6.3
 
 Подробные заметки: [docs/release_notes/1-6-3.md](docs/release_notes/1-6-3.md).

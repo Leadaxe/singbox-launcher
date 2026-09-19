@@ -1,0 +1,34 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "172.16.0.2/32"
+        ],
+        "peers": [
+          {
+            "address": "192.0.2.72",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "port": 2408,
+            "public_key": "ZWZnaGlqa2xtbm9wcXJzdHV2d3h5ent8fX5/Pj4+q80="
+          }
+        ],
+        "private_key": "JSwzOkFIT1ZdZGtyeYCHjpWco6qxuL/GzdTb4unw9/4=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "WARP",
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "type_invalid",
+          "path": "peers[0].reserved",
+          "value": "[1 2 999]"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

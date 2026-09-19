@@ -22,7 +22,13 @@
       },
       "kind": "outbound",
       "label": "ech-reality",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "ech_ignored",
+          "path": "ech"
+        }
+      ]
     }
   ],
   "v": 1

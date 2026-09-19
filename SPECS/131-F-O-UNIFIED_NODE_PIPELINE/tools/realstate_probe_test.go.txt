@@ -1,0 +1,197 @@
+package config
+
+// ВРЕМЕННЫЙ пробник (не коммитить): прогон настоящего state.json через конвейер.
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+	"testing"
+
+	"singbox-launcher/core/state"
+)
+
+type probeNode struct {
+	path   string
+	tag    string
+	origin map[string]interface{}
+	body   json.RawMessage
+}
+
+func probeWalk(v interface{}, path string, out *[]probeNode) {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		if k, _ := t["kind"].(string); k == "server" {
+			if b, ok := t["body"]; ok && b != nil {
+				raw, _ := json.Marshal(b)
+				tag, _ := t["tag"].(string)
+				org, _ := t["origin"].(map[string]interface{})
+				*out = append(*out, probeNode{path: path, tag: tag, origin: org, body: raw})
+			}
+		}
+		keys := make([]string, 0, len(t))
+		for k := range t {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			probeWalk(t[k], path+"/"+k, out)
+		}
+	case []interface{}:
+		for i, x := range t {
+			probeWalk(x, fmt.Sprintf("%s[%d]", path, i), out)
+		}
+	}
+}
+
+func probeSecret(k string) bool {
+	k = strings.ToLower(k)
+	for _, s := range []string{"pass", "uuid", "key", "secret", "psk", "auth", "token"} {
+		if strings.Contains(k, s) {
+			return true
+		}
+	}
+	return false
+}
+
+func probeFlat(prefix string, v interface{}, out map[string]string) {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		for k, x := range t {
+			p := k
+			if prefix != "" {
+				p = prefix + "." + k
+			}
+			probeFlat(p, x, out)
+		}
+	default:
+		b, _ := json.Marshal(t)
+		s := string(b)
+		last := prefix
+		if i := strings.LastIndex(prefix, "."); i >= 0 {
+			last = prefix[i+1:]
+		}
+		if probeSecret(last) {
+			s = "***"
+		} else if len(s) > 70 {
+			s = s[:70] + "…"
+		}
+		out[prefix] = s
+	}
+}
+
+func probeDiff(a, b []byte) []string {
+	var ma, mb map[string]interface{}
+	_ = json.Unmarshal(a, &ma)
+	_ = json.Unmarshal(b, &mb)
+	fa, fb := map[string]string{}, map[string]string{}
+	probeFlat("", ma, fa)
+	probeFlat("", mb, fb)
+	var d []string
+	for k, v := range fa {
+		if nv, ok := fb[k]; !ok {
+			d = append(d, "− "+k+" = "+v)
+		} else if nv != v {
+			d = append(d, "~ "+k+": "+v+" → "+nv)
+		}
+	}
+	for k, v := range fb {
+		if _, ok := fa[k]; !ok {
+			d = append(d, "+ "+k+" = "+v)
+		}
+	}
+	sort.Strings(d)
+	return d
+}
+
+func TestZZRealStateProbe(t *testing.T) {
+	p := os.Getenv("REAL_STATE")
+	if p == "" {
+		t.Skip("REAL_STATE не задан")
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root interface{}
+	if err := json.Unmarshal(data, &root); err != nil {
+		t.Fatal(err)
+	}
+	var nodes []probeNode
+	probeWalk(root, "", &nodes)
+
+	var sanChanged, sanWarn, sanDrop, sanErr, remapDiff, remapErr, remapSkip int
+	codeCount := map[string]int{}
+	typeCount := map[string]int{}
+	for _, n := range nodes {
+		var bm map[string]interface{}
+		_ = json.Unmarshal(n.body, &bm)
+		typ, _ := bm["type"].(string)
+		typeCount[typ]++
+
+		// A. санитайзер по сохранённому телу (то, что сделает миграция при загрузке)
+		res, err := sanitizeStoredNodeBody(state.SanitizeBodyRequest{Body: n.body})
+		head := fmt.Sprintf("[%s] %q", typ, n.tag)
+		if err != nil {
+			sanErr++
+			fmt.Printf("A ERR  %s: %v\n", head, err)
+		} else {
+			if len(res.Warnings) > 0 || res.Drop || len(res.Body) > 0 {
+				var ws []string
+				for _, w := range res.Warnings {
+					codeCount[w.Code]++
+					ws = append(ws, w.Code+"@"+w.Path+"="+w.Value)
+				}
+				if len(res.Warnings) > 0 {
+					sanWarn++
+				}
+				fmt.Printf("A %s%s  %s  warnings: %s\n", map[bool]string{true: "DROP ", false: ""}[res.Drop], map[bool]string{true: "BODY-REWRITE", false: "body-same"}[len(res.Body) > 0], head, strings.Join(ws, "; "))
+				if res.Drop {
+					sanDrop++
+				}
+				if len(res.Body) > 0 {
+					sanChanged++
+					for _, l := range probeDiff(n.body, res.Body) {
+						fmt.Println("      " + l)
+					}
+				}
+			}
+		}
+
+		// B. полный путь от исходника: маппер → санитайзер → эмиттер
+		kind, _ := n.origin["kind"].(string)
+		raw, _ := n.origin["raw"].(string)
+		if raw == "" {
+			remapSkip++
+			continue
+		}
+		var mat *ServerNodeMaterial
+		switch kind {
+		case "json":
+			mat, err = MaterializeServerNode("", json.RawMessage(raw))
+		default:
+			mat, err = MaterializeServerNode(raw, nil)
+		}
+		if err != nil {
+			remapErr++
+			fmt.Printf("B ERR  %s (origin=%s): %v\n", head, kind, err)
+			continue
+		}
+		if !bodiesEquivalent(n.body, mat.Body) {
+			remapDiff++
+			var ws []string
+			for _, w := range mat.Warnings {
+				ws = append(ws, w.Code+"@"+w.Path)
+			}
+			fmt.Printf("B DIFF %s (origin=%s) warnings: %s\n", head, kind, strings.Join(ws, "; "))
+			for _, l := range probeDiff(n.body, mat.Body) {
+				fmt.Println("      " + l)
+			}
+		}
+	}
+	fmt.Printf("\n=== ИТОГ: узлов %d; типы %v\n", len(nodes), typeCount)
+	fmt.Printf("A (санитайзер по телу): с кодами %d, тело перепишется у %d, drop %d, ошибок %d; коды %v\n", sanWarn, sanChanged, sanDrop, sanErr, codeCount)
+	fmt.Printf("B (от исходника): тело отличается у %d, ошибок %d, без origin.raw %d\n", remapDiff, remapErr, remapSkip)
+}

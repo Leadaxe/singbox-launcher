@@ -37,7 +37,14 @@
       },
       "kind": "endpoint",
       "label": "awg-server",
-      "scheme": "wireguard"
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "awg_mtu_clamped",
+          "path": "mtu",
+          "value": "1408"
+        }
+      ]
     }
   ],
   "v": 1

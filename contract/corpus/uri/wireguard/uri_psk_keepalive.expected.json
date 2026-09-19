@@ -16,6 +16,7 @@
             ],
             "persistent_keepalive_interval": 25,
             "port": 51820,
+            "pre_shared_key": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeE=",
             "public_key": "ddddddddddddddddddddddddddddddddddddddddddA="
           }
         ],

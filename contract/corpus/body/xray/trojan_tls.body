@@ -1,0 +1,4 @@
+# Вход Xray из набора LxBox (app/test/fixtures/xray/pipeline_identity_before.json,
+# кейс trojan_tls). Снят ДО перевода xray-входа на движок: сверка по бедным входам
+# зелёная и при потере полей — у LxBox так ушло ~25 полей XHTTP.
+[{"remarks": "trojan", "outbounds": [{"tag": "proxy", "protocol": "trojan", "settings": {"servers": [{"address": "t.example", "port": 443, "password": "secret"}]}, "streamSettings": {"network": "tcp", "security": "tls", "tlsSettings": {"serverName": "t.example", "fingerprint": "firefox"}}}]}]

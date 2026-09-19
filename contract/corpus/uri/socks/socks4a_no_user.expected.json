@@ -1,0 +1,16 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-2.com",
+        "server_port": 1080,
+        "type": "socks",
+        "version": "4a"
+      },
+      "kind": "outbound",
+      "label": "socks4a-anon",
+      "scheme": "socks4a"
+    }
+  ],
+  "v": 1
+}

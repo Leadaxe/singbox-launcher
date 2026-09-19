@@ -13,6 +13,7 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 )
 
@@ -235,6 +236,15 @@ func serversNodeSubtitle(ac *core.AppController, proxyInfo api.ProxyInfo, scope 
 
 	if node.IsGroup() {
 		return groupSubtitle(node, proxyInfo.NowOrEmpty())
+	}
+	// SPEC 131 §6: узел, у которого конвейер что-то снял или привёл, говорит
+	// об этом ПЕРВЫМ делом. Состав («vless·ws·tls») читается и из окна Info,
+	// а снятое поле не видно больше нигде и молча меняет поведение узла.
+	//
+	// Глиф тот же ⚠, что у остальных пометок списка: новых знаков волна не
+	// заводит, а развилка «какой именно смысл» живёт в окне узла.
+	if warn := nodewarn.Subtitle(nodeWarningsFor(ac, proxyInfo.Name, scope)); warn != "" {
+		return warn
 	}
 	return strings.Join(node.SubtitleParts(), "·")
 }

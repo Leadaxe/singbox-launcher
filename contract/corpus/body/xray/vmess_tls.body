@@ -1,0 +1,4 @@
+# Вход Xray из набора LxBox (app/test/fixtures/xray/pipeline_identity_before.json,
+# кейс vmess_tls). Снят ДО перевода xray-входа на движок: сверка по бедным входам
+# зелёная и при потере полей — у LxBox так ушло ~25 полей XHTTP.
+[{"remarks": "vmess", "outbounds": [{"tag": "proxy", "protocol": "vmess", "settings": {"vnext": [{"address": "v.example", "port": 443, "users": [{"id": "11111111-2222-3333-4444-555555555555", "alterId": 0, "security": "auto"}]}]}, "streamSettings": {"network": "tcp", "security": "tls", "tlsSettings": {"serverName": "v.example"}}}]}]

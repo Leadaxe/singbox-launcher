@@ -17,162 +17,1387 @@
   "note": "Endpoint (sing-box >= 1.11): в конфиге живёт в endpoints[], не в outbounds[]. awg:// — алиас обоих проектов (нормализуется в wireguard, AWG-поля промоутятся в корень endpoint); вторая форма awg://<base64 .conf>#label (панели раздают AmneziaWG 3.x целым wg-quick в base64; авторитет без '@'/':') — payload декодируется, первый [Interface]-блок конвертируется тем же путём, что вставленный .conf (SPEC 076), метка = фрагмент, без фрагмента — комментарий пира или хост Endpoint (кейсы awg_conf_base64*; Go с 1.6.2, Dart — задача §20 TASKS_LXBOX); алиас wg:// знает только Dart (Go IsDirectLink его не принимает — разрыв). D-010: дефолтные name=\"singbox-wg0\" и system=false НЕ эмитятся (Go убирает из parseWireGuardURI). Multi-peer: URI/share-URI — строго один peer; sing-box импорт: Go сохраняет всех peers как есть, Dart берёт только peers.first (тихая потеря — разрыв).",
   "uri": {
     "userinfo": {
-      "meaning": "private_key — base64 32-байтного приватного ключа",
-      "note": "Сырой '/' в base64 percent-энкодится до url.Parse в обоих (percentEncodeWGUserinfoSlashes / encodeUserInfoSlashes). Go валидирует: принимает 4 base64-варианта, нормализует к std-base64 c padding, не-32-байтный ключ (напр. Proton '*****') → нода дропается; Dart не валидирует ключи вовсе — мусорный ключ уедет в конфиг и уронит sing-box check (класс pbk=enabled). Целевое поведение — валидация как в Go."
+      "maps_to": "private_key",
+      "meaning": "private_key — base64 of the 32-byte private key",
+      "desc_en": "Client private key.",
+      "desc_ru": "Приватный ключ клиента.",
+      "impl": "Сырой '/' в base64 percent-энкодится до url.Parse в обоих (percentEncodeWGUserinfoSlashes / encodeUserInfoSlashes). Маппер Go ТОЛЬКО переводит написание: принимает 4 варианта base64 и приводит к std-base64 с паддингом (секция mapper, wg_key_spelling_to_std_base64). ГОДНОСТЬ судит реестр — body.private_key, format base64_32, on_invalid drop_node с кодом wg_key_invalid; не-32-байтный ключ (напр. Proton '*****') роняет узел С КОДОМ, а не молча, и одинаково на всех входах, включая sing-box-импорт (контракт 1.1.11). Dart ключи не валидирует вовсе — мусорный ключ уедет в конфиг и уронит sing-box check (класс pbk=enabled); целевое поведение — суд реестра."
     },
     "query": {
       "publickey": {
         "type": "base64",
+        "default": null,
         "aliases": [
           "public_key"
         ],
-        "default": null,
-        "note": "Обязателен. Ключ пира (32 байта). Go: нормализация к std-base64, невалидный → нода дропается; '+' сохраняется через PathUnescape (queryParamPreservePlus). Алиас public_key — только Dart."
+        "maps_to": "peers[].public_key",
+        "desc_en": "Peer public key.",
+        "desc_ru": "Публичный ключ пира.",
+        "impl": "Обязателен. Ключ пира (32 байта). Маппер Go приводит написание к std-base64, '+' сохраняется через PathUnescape (queryParamPreservePlus); годность судит реестр (body.peers[].public_key, on_invalid drop_node, код wg_key_invalid — контракт 1.1.11). Алиас public_key — только Dart."
       },
       "privatekey": {
         "type": "base64",
+        "default": null,
         "aliases": [
           "private_key"
         ],
         "ext": "mobile",
-        "default": null,
-        "note": "Fallback приватника при пустом userinfo — только Dart; Go требует userinfo (разрыв; у masque Go такой fallback имеет)."
+        "maps_to": "private_key",
+        "desc_en": "Client private key.",
+        "desc_ru": "Приватный ключ клиента.",
+        "impl": "Fallback приватника при пустом userinfo — только Dart; Go требует userinfo (разрыв; у masque Go такой fallback имеет)."
       },
       "address": {
         "type": "list",
         "default": null,
-        "note": "Обязателен в обоих. CIDR-список через запятую; bare IP чинится в /32 (v4) / /128 (v6) в обоих (normalizeWGPrefixes / ensureCidr)."
+        "maps_to": "address",
+        "desc_en": "Addresses assigned to the tunnel interface.",
+        "desc_ru": "Адреса, назначенные интерфейсу туннеля.",
+        "impl": "Обязателен в обоих. CIDR-список через запятую; bare IP чинится в /32 (v4) / /128 (v6) в обоих (normalizeWGPrefixes / ensureCidr)."
       },
       "allowedips": {
         "type": "list",
+        "default": "0.0.0.0/0,::/0",
         "aliases": [
           "allowed_ips"
         ],
-        "default": "0.0.0.0/0,::/0",
-        "note": "Дефолт 0.0.0.0/0,::/0 при отсутствии параметра — в обоих проектах (D-022). ВАЖНО (D-041): `::/0` при отсутствии IPv6-адреса в `address` — нормальная ссылка (так отдаёт Proton и др.), парсер её НЕ правит и ноду не дропает: ядро читает allowed_ips только в system-режиме, а стек выбирает по адресу назначения. Алиас allowed_ips — только Dart."
+        "maps_to": "peers[].allowed_ips",
+        "desc_en": "Networks routed into the peer.",
+        "desc_ru": "Сети, маршрутизируемые в пира.",
+        "impl": "Дефолт 0.0.0.0/0,::/0 при отсутствии параметра — правило РЕЕСТРА (body.peers[].allowed_ips.default_when, D-022); прежде он стоял двумя копиями в парсерах ссылки и профиля Amnezia и на входе singbox не работал (находка №27 LEGACY_AUDIT, контракт 1.1.11). ВАЖНО (D-041): `::/0` при отсутствии IPv6-адреса в `address` — нормальная ссылка (так отдаёт Proton и др.), парсер её НЕ правит и ноду не дропает: ядро читает allowed_ips только в system-режиме, а стек выбирает по адресу назначения. Алиас allowed_ips — только Dart."
       },
       "mtu": {
         "type": "int",
         "default": null,
-        "note": "Plain WG: дефолт Go 1420 (upstream) vs Dart 1408 (sing-box) — РАСХОЖДЕНИЕ, влияет на identity-хеш plain-WG нод без mtu=. AWG (есть любое awg-поле): дефолт 1280, всё что выше клампится к 1280 в обоих (awgMaxMTU / awgClampMtu); явно меньший уважается. Битое значение → остаётся дефолт (поле mtu в endpoint эмитится всегда, в отличие от keepalive/listenport/reserved)."
+        "maps_to": "mtu",
+        "desc_en": "Tunnel MTU.",
+        "desc_ru": "MTU туннеля.",
+        "impl": "Parser-уровень: параметр только ПЕРЕНОСИТСЯ в body.mtu как есть, битое значение снимается общим правилом поля (on_invalid). Всё остальное решает реестр: дефолт 1280 у AWG-узла без mtu (default_when) и потолок 1280 (max_when) — см. body.fields.mtu. Plain WG без mtu поля не получает вовсе: ядро берёт свой 1408 (прежний Go-дефолт 1420 в парсере снят вместе с клампом, контракт 1.1.5). У Dart правило то же — awgClampMtu переводится на реестр, TASKS_LXBOX §24.14."
       },
       "keepalive": {
         "type": "int",
         "default": null,
-        "note": "peer.persistent_keepalive_interval. Битое значение → параметр опускается, нода живёт."
+        "maps_to": "peers[].persistent_keepalive_interval",
+        "desc_en": "Persistent keep-alive interval.",
+        "desc_ru": "Интервал постоянного keep-alive.",
+        "impl": "peer.persistent_keepalive_interval. Битое значение → параметр опускается, нода живёт."
       },
       "presharedkey": {
         "type": "base64",
+        "default": null,
         "aliases": [
           "preshared_key"
         ],
-        "default": null,
-        "note": "peer.pre_shared_key. Go валидирует 32 байта (битый → нода дропается: битый psk чинить нечем); Dart не валидирует. Алиас preshared_key — только Dart."
+        "maps_to": "peers[].pre_shared_key",
+        "desc_en": "Pre-shared key of the peer.",
+        "desc_ru": "Общий предварительный ключ пира.",
+        "impl": "peer.pre_shared_key. Маппер Go приводит написание к std-base64; годность судит реестр. Негодный psk роняет УЗЕЛ (on_invalid drop_node, код wg_key_invalid, решение владельца 19.09.2026): сервер ждёт PSK, и туннель без него — тихо сломанный туннель. Прежде реестр ронял здесь ПОЛЕ, а парсер ссылки — узел; расхождение снято контрактом 1.1.11. Dart не валидирует. Алиас preshared_key — только Dart."
       },
       "reserved": {
         "type": "string",
+        "default": null,
         "aliases": [
           "client_id"
         ],
-        "default": null,
-        "note": "WARP: три десятичных байта \"b0,b1,b2\" (peer.reserved). Dart дополнительно принимает base64-форму client_id (3 байта) и алиас-параметр client_id — Go только десятичную тройку (разрыв). Битое значение → параметр опускается, нода живёт."
+        "maps_to": "peers[].reserved",
+        "desc_en": "Reserved bytes of the WireGuard header.",
+        "desc_ru": "Зарезервированные байты заголовка WireGuard.",
+        "impl": "WARP: три десятичных байта \"b0,b1,b2\" (peer.reserved). Dart дополнительно принимает base64-форму client_id (3 байта) и алиас-параметр client_id — Go только десятичную тройку (разрыв). Битое значение → параметр опускается, нода живёт."
       },
       "listenport": {
         "type": "int",
-        "ext": "desktop",
         "default": null,
-        "note": "endpoint.listen_port; только Go."
+        "ext": "desktop",
+        "maps_to": "listen_port",
+        "desc_en": "Local UDP port the tunnel listens on.",
+        "desc_ru": "Локальный UDP-порт, который слушает туннель.",
+        "impl": "endpoint.listen_port; только Go."
       },
       "name": {
         "type": "string",
-        "ext": "desktop",
         "default": "singbox-wg0",
-        "note": "Имя интерфейса; D-010 — дефолт не эмитится (ни в endpoint, ни в share-URI). В Go также fallback label при пустом fragment."
+        "ext": "desktop",
+        "desc_en": "Node label shown to the user.",
+        "desc_ru": "Подпись узла, которую видит пользователь.",
+        "impl": "Имя интерфейса; D-010 — дефолт не эмитится (ни в endpoint, ни в share-URI). В Go также fallback label при пустом fragment."
       },
       "dns": {
         "type": "list",
-        "ext": "desktop",
         "default": null,
-        "note": "Пишется эмиттерами Go (share-URI из endpoint-map, INI-конвертер), но URI-парсер Go его ИГНОРИРУЕТ — у sing-box endpoint нет dns-поля; параметр лоссы by design (IPv6/DNS-политика лаунчера живёт вне endpoint)."
+        "ext": "desktop",
+        "desc_en": "DNS servers of the profile: the launcher does not write them into the body.",
+        "desc_ru": "DNS-серверы профиля: в тело узла лаунчер их не пишет.",
+        "impl": "Пишется эмиттерами Go (share-URI из endpoint-map, INI-конвертер), но URI-парсер Go его ИГНОРИРУЕТ — у sing-box endpoint нет dns-поля; параметр лоссы by design (IPv6/DNS-политика лаунчера живёт вне endpoint)."
       },
       "jc": {
         "type": "int",
-        "note": "AWG: junk packet count, uint32 → JSON number в корне endpoint. Битое → поле опускается."
+        "maps_to": "jc",
+        "desc_en": "AmneziaWG obfuscation parameter jc.",
+        "desc_ru": "Параметр обфускации AmneziaWG jc.",
+        "impl": "AWG: junk packet count, uint32 → JSON number в корне endpoint. Битое значение снимает ПОЛЕ с кодом реестра (body.jc.on_invalid, awg_header_invalid) — прежде парсер ронял его молча (находка №9 LEGACY_AUDIT, контракт 1.1.11)."
       },
       "jmin": {
         "type": "int",
-        "note": "AWG: junk min size, uint32."
+        "maps_to": "jmin",
+        "desc_en": "AmneziaWG obfuscation parameter jmin.",
+        "desc_ru": "Параметр обфускации AmneziaWG jmin.",
+        "impl": "AWG: junk min size, uint32. Битое значение снимает ПОЛЕ с кодом awg_header_invalid (прежде парсер ронял его молча)."
       },
       "jmax": {
         "type": "int",
-        "note": "AWG: junk max size, uint32."
+        "maps_to": "jmax",
+        "desc_en": "AmneziaWG obfuscation parameter jmax.",
+        "desc_ru": "Параметр обфускации AmneziaWG jmax.",
+        "impl": "AWG: junk max size, uint32. Битое значение снимает ПОЛЕ с кодом awg_header_invalid (прежде парсер ронял его молча)."
       },
       "s1": {
         "type": "int",
-        "note": "AWG: init packet junk size, uint32."
+        "maps_to": "s1",
+        "desc_en": "AmneziaWG obfuscation parameter s1.",
+        "desc_ru": "Параметр обфускации AmneziaWG s1.",
+        "impl": "AWG: init packet junk size, uint32. Битое значение снимает ПОЛЕ с кодом awg_header_invalid (прежде парсер ронял его молча); при заданном headerprotectionkey значение ниже 12 роняет УЗЕЛ (min_when, код awg3_padding_too_short)."
       },
       "s2": {
         "type": "int",
-        "note": "AWG: response packet junk size, uint32."
+        "maps_to": "s2",
+        "desc_en": "AmneziaWG obfuscation parameter s2.",
+        "desc_ru": "Параметр обфускации AmneziaWG s2.",
+        "impl": "AWG: response packet junk size, uint32. Битое значение снимает ПОЛЕ с кодом awg_header_invalid (прежде парсер ронял его молча); при заданном headerprotectionkey значение ниже 12 роняет УЗЕЛ (min_when, код awg3_padding_too_short)."
       },
       "s3": {
         "type": "int",
-        "note": "AWG: transport padding, uint32."
+        "maps_to": "s3",
+        "desc_en": "AmneziaWG obfuscation parameter s3.",
+        "desc_ru": "Параметр обфускации AmneziaWG s3.",
+        "impl": "AWG: transport padding, uint32. Битое значение снимает ПОЛЕ с кодом awg_header_invalid (прежде парсер ронял его молча); при заданном headerprotectionkey значение ниже 12 роняет УЗЕЛ (min_when, код awg3_padding_too_short)."
       },
       "s4": {
         "type": "int",
-        "note": "AWG: transport padding, uint32."
+        "maps_to": "s4",
+        "desc_en": "AmneziaWG obfuscation parameter s4.",
+        "desc_ru": "Параметр обфускации AmneziaWG s4.",
+        "impl": "AWG: transport padding, uint32. Битое значение снимает ПОЛЕ с кодом awg_header_invalid (прежде парсер ронял его молча); при заданном headerprotectionkey значение ниже 12 роняет УЗЕЛ (min_when, код awg3_padding_too_short)."
       },
       "h1": {
         "type": "int",
-        "note": "AWG magic header: uint32 ИЛИ строка-диапазон \"lo-hi\" (AWG 2.0, ядро >= lx.6; эмитится строкой). Go нормализует порядок границ; при overlap h1-h4 нода дропается (ядро отвергло бы весь конфиг); Dart — только regex ^\\d+(-\\d+)?$. Битое → поле опускается с громким warn (дефолтный WG-header не совпадёт с сервером)."
+        "maps_to": "h1",
+        "desc_en": "AmneziaWG magic header H1.",
+        "desc_ru": "Magic-заголовок AmneziaWG H1.",
+        "impl": "AWG magic header: uint32 ИЛИ строка-диапазон \"lo-hi\" (AWG 2.0, ядро >= lx.6; эмитится строкой). Порядок границ нормализует РЕЕСТР (normalize range_order), тихо: своп смысла диапазона не меняет; при overlap h1-h4 узел дропается связью реестра ranges_disjoint с кодом awg_headers_overlap — прежде рукописный awgHeaderOverlap ронял его молча (находка №8 LEGACY_AUDIT, контракт 1.1.11); Dart — только regex ^\\d+(-\\d+)?$. Битое значение снимает ПОЛЕ с кодом awg_header_invalid (ядро возьмёт дефолтный WG-header, и он не совпадёт с сервером). Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "h2": {
         "type": "int",
-        "note": "AWG magic header, как h1."
+        "maps_to": "h2",
+        "desc_en": "AmneziaWG magic header H2.",
+        "desc_ru": "Magic-заголовок AmneziaWG H2.",
+        "impl": "AWG magic header, как h1. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "h3": {
         "type": "int",
-        "note": "AWG magic header, как h1."
+        "maps_to": "h3",
+        "desc_en": "AmneziaWG magic header H3.",
+        "desc_ru": "Magic-заголовок AmneziaWG H3.",
+        "impl": "AWG magic header, как h1. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "h4": {
         "type": "int",
-        "note": "AWG magic header, как h1."
+        "maps_to": "h4",
+        "desc_en": "AmneziaWG magic header H4.",
+        "desc_ru": "Magic-заголовок AmneziaWG H4.",
+        "impl": "AWG magic header, как h1. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "i1": {
         "type": "string",
-        "note": "AWG 2.0 CPS-тег (<b 0xHEX>, <r N>, <c>…); регистр сохраняется, URL-decode штатный."
+        "maps_to": "i1",
+        "desc_en": "AmneziaWG 3.x junk packet I1.",
+        "desc_ru": "Мусорный пакет AmneziaWG 3.x I1.",
+        "impl": "AWG 2.0 CPS-тег (<b 0xHEX>, <r N>, <c>…); регистр сохраняется, URL-decode штатный."
       },
       "i2": {
         "type": "string",
-        "note": "AWG CPS-тег, как i1."
+        "maps_to": "i2",
+        "desc_en": "AmneziaWG 3.x junk packet I2.",
+        "desc_ru": "Мусорный пакет AmneziaWG 3.x I2.",
+        "impl": "AWG CPS-тег, как i1."
       },
       "i3": {
         "type": "string",
-        "note": "AWG CPS-тег, как i1."
+        "maps_to": "i3",
+        "desc_en": "AmneziaWG 3.x junk packet I3.",
+        "desc_ru": "Мусорный пакет AmneziaWG 3.x I3.",
+        "impl": "AWG CPS-тег, как i1."
       },
       "i4": {
         "type": "string",
-        "note": "AWG CPS-тег, как i1."
+        "maps_to": "i4",
+        "desc_en": "AmneziaWG 3.x junk packet I4.",
+        "desc_ru": "Мусорный пакет AmneziaWG 3.x I4.",
+        "impl": "AWG CPS-тег, как i1."
       },
       "i5": {
         "type": "string",
-        "note": "AWG CPS-тег, как i1."
+        "maps_to": "i5",
+        "desc_en": "AmneziaWG 3.x junk packet I5.",
+        "desc_ru": "Мусорный пакет AmneziaWG 3.x I5.",
+        "impl": "AWG CPS-тег, как i1."
       },
       "id": {
         "type": "string",
-        "note": "Masquerade-сахар над i1 (SPEC 009, домен — регистр сохраняется). Go не ставит при явном i1 (ядро отвергает совместно), Dart guard'а не имеет; из INI [Interface] читает только Dart (разрыв)."
+        "maps_to": "id",
+        "desc_en": "AmneziaWG 3.x cover protocol domain.",
+        "desc_ru": "Домен протокола прикрытия AmneziaWG 3.x.",
+        "impl": "Masquerade-сахар над i1 (SPEC 009, домен — регистр сохраняется). Go не ставит при явном i1 (ядро отвергает совместно), Dart guard'а не имеет; из INI [Interface] читает только Dart (разрыв)."
       },
       "ip": {
         "type": "string",
-        "note": "Masquerade-сахар, как id."
+        "maps_to": "ip",
+        "desc_en": "AmneziaWG 3.x cover protocol.",
+        "desc_ru": "Протокол прикрытия AmneziaWG 3.x.",
+        "impl": "Masquerade-сахар, как id."
       },
       "ib": {
         "type": "string",
-        "note": "Masquerade-сахар, как id."
+        "maps_to": "ib",
+        "desc_en": "AmneziaWG 3.x browser signature.",
+        "desc_ru": "Сигнатура браузера AmneziaWG 3.x.",
+        "impl": "Masquerade-сахар, как id."
       }
     },
     "fragment": "label"
+  },
+  "mappers": {
+    "uri": {
+      "detect": {
+        "scheme_in": [
+          "wireguard",
+          "awg"
+        ]
+      },
+      "body_source": "uri",
+      "forms": [
+        {
+          "id": "conf_b64",
+          "detect": {
+            "all": [
+              {
+                "not": {
+                  "text": {
+                    "contains": "@"
+                  }
+                }
+              },
+              {
+                "regex": "^[A-Za-z0-9+/=_-]+\\s*$"
+              }
+            ]
+          },
+          "decode": [
+            {
+              "decoder": "base64",
+              "scope": "authority"
+            },
+            "ini"
+          ],
+          "space": "ini",
+          "level": "endpoint",
+          "impl": "Панели AmneziaWG 3.x раздают ЦЕЛЫЙ wg-quick в base64 вместо формы key@host. Признак — отсутствие «@» плюс весь текст из алфавита base64: у формы key@host «@» есть всегда, а у «wireguard://host:port?privatekey=…» (ключ в query) есть и «:», и «?», то есть байты вне алфавита. Проверять надо ОБА условия: authority без «@» бывает и у ссылки с ключом в query (корпус uri_basic)."
+        },
+        {
+          "id": "url",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            "url"
+          ],
+          "space": "url",
+          "level": "endpoint"
+        }
+      ],
+      "userinfo": {
+        "into": [
+          "private_key"
+        ],
+        "single_into": "private_key",
+        "impl": "Приватник клиента. Сырой «/» внутри base64 percent-энкодится ДО разбора authority, иначе платформа примет его за начало пути и ключ пропадёт (корпус raw_slash_in_private_key). ОБЯЗАТЕЛЬНЫМ userinfo НЕ объявлен: ключ законно приезжает и параметром ?privatekey= (корпус uri_basic, D-021), а «ключа нет ни там, ни там» ловит required у записи privatekey. single_into объявлен явно: умолчания «первое имя into» быть не должно (TASKS_LXBOX §24.29 п. 3)."
+      },
+      "label": {
+        "source": {
+          "url": [
+            "fragment",
+            "query.name"
+          ],
+          "conf_b64": [
+            "fragment",
+            "ini.$comment.Peer",
+            "hint",
+            "peers[].address"
+          ]
+        },
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "value_map": {
+          "🇪🇳": "🇬🇧"
+        },
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "singbox_type",
+          "server_path": "peers[].address",
+          "port_path": "peers[].port"
+        },
+        "impl": "Второе звено — «name», а НЕ «path»: путь у этой схемы занят (сырой «/» приватника percent-энкодится, и остаток пути значения не несёт), а ?name= это имя интерфейса, которым лаунчер называет узел без фрагмента. Расхождение с LxBox зафиксировано: у них fragment → path. Сам ?name= в тело НЕ едет (maps_to null у записи name, D-010)."
+      },
+      "params": {
+        "privatekey": {
+          "source": {
+            "url": [
+              "userinfo",
+              "query.privatekey",
+              "query.private_key"
+            ],
+            "conf_b64": "ini.Interface.PrivateKey"
+          },
+          "maps_to": "private_key",
+          "required": true,
+          "round_trip": false,
+          "round_trip_why": "Канон схемы кладёт приватный ключ в userinfo; query-написания — запасной слот ЧТЕНИЯ, и запись в оба места отдала бы секрет дважды.",
+          "decode_extra": {
+            "plus_literal": true
+          },
+          "impl": "Перевод написания base64 (url-safe, без паддинга) и суд о годности — ПРАВИЛА ЗНАЧЕНИЯ, живут в теле: body.private_key, normalize base64_std, format base64_32, on_invalid drop_node с кодом wg_key_invalid (D133-22). Так они действуют на всех входах, а не только на ссылке."
+        },
+        "publickey": {
+          "source": {
+            "url": [
+              "query.publickey",
+              "query.public_key"
+            ],
+            "conf_b64": "ini.Peer.PublicKey"
+          },
+          "maps_to": "peers[].public_key",
+          "required": true,
+          "decode_extra": {
+            "plus_literal": true
+          }
+        },
+        "presharedkey": {
+          "source": {
+            "url": [
+              "query.presharedkey",
+              "query.preshared_key"
+            ],
+            "conf_b64": "ini.Peer.PresharedKey"
+          },
+          "maps_to": "peers[].pre_shared_key",
+          "decode_extra": {
+            "plus_literal": true
+          }
+        },
+        "peer_address": {
+          "source": {
+            "url": "host"
+          },
+          "maps_to": "peers[].address",
+          "required": true
+        },
+        "peer_port": {
+          "source": {
+            "url": "port"
+          },
+          "maps_to": "peers[].port",
+          "type": "int",
+          "default_when": {
+            "absent": true,
+            "value": 51820
+          },
+          "materialize_default": true
+        },
+        "endpoint": {
+          "source": {
+            "conf_b64": "ini.Peer.Endpoint"
+          },
+          "selector": true,
+          "extract": {
+            "re": "^(?:\\[(?P<h6>[^\\]]+)\\](?::(?P<p6>\\d+))?|(?P<h>[^:]+):(?P<p>\\d+))$",
+            "into": {
+              "h6": "peers[].address",
+              "p6": {
+                "path": "peers[].port",
+                "type": "int"
+              },
+              "h": "peers[].address",
+              "p": {
+                "path": "peers[].port",
+                "type": "int"
+              }
+            }
+          },
+          "on_no_match": {
+            "action": "take_all",
+            "into": "peers[].address",
+            "defaults": {
+              "peers[].port": 51820
+            }
+          },
+          "impl": "Только у формы conf_b64: у ссылки хост и порт приезжают authority отдельными записями. Ветка h6/p6 — IPv6 в скобках («[2001:db8::1]:51820»), где двоеточий много и последнее портом не является. Без порта вовсе — всё значение хостом и 51820."
+        },
+        "address": {
+          "source": {
+            "url": "query.address",
+            "conf_b64": "ini.Interface.Address"
+          },
+          "maps_to": "address",
+          "list": {
+            "sep": ","
+          },
+          "required": true
+        },
+        "allowedips": {
+          "source": {
+            "url": [
+              "query.allowedips",
+              "query.allowed_ips"
+            ],
+            "conf_b64": "ini.Peer.AllowedIPs"
+          },
+          "maps_to": "peers[].allowed_ips",
+          "list": {
+            "sep": ","
+          },
+          "default_when": {
+            "absent": true,
+            "value": "0.0.0.0/0,::/0"
+          },
+          "materialize_default": true,
+          "impl": "Дефолт «маршрутизировать всё» МАТЕРИАЛИЗУЕТСЯ маппером: пустой список ядро читает как «missing allowed ips for peer N» и валит весь конфиг, поэтому пустоты в теле быть не должно (корпус missing_allowedips_rejected — узел живёт с дефолтом)."
+        },
+        "keepalive": {
+          "source": {
+            "url": [
+              "query.keepalive",
+              "query.persistentkeepalive"
+            ],
+            "conf_b64": "ini.Peer.PersistentKeepalive"
+          },
+          "maps_to": "peers[].persistent_keepalive_interval",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          },
+          "impl": "AWG3 добавил ДИАПАЗОН «25-35» (ядро перевыбирает при каждом взводе таймера), поэтому негодное для int значение едет строкой как есть и его судит тело. Диапазонный keepalive сам по себе маркер AWG3 — см. kind_when."
+        },
+        "reserved": {
+          "source": {
+            "url": [
+              "query.reserved",
+              "query.client_id"
+            ],
+            "conf_b64": [
+              "ini.Peer.Reserved",
+              "ini.Peer.ClientId"
+            ]
+          },
+          "maps_to": "peers[].reserved",
+          "list": {
+            "sep": ",",
+            "item": "int",
+            "len": 3
+          },
+          "on_invalid": {
+            "action": "drop"
+          },
+          "impl": "Cloudflare WARP: три десятичных байта из client_id, ядро дописывает их в каждый пакет. Негодное значение снимается ПОЛЕМ (узел без reserved на многих путях работает) — политика та же, что у mtu/keepalive."
+        },
+        "mtu": {
+          "source": {
+            "url": "query.mtu",
+            "conf_b64": "ini.Interface.MTU"
+          },
+          "maps_to": "mtu",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "listenport": {
+          "source": {
+            "url": "query.listenport",
+            "conf_b64": "ini.Interface.ListenPort"
+          },
+          "maps_to": "listen_port",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "name": {
+          "source": "query.name",
+          "maps_to": null,
+          "omit_default": "singbox-wg0",
+          "impl": "Имя интерфейса в тело НЕ едет: дефолты name=«singbox-wg0» и system=false не эмитятся (D-010), а непустое имя читается ЗВЕНОМ МЕТКИ (label.source), а не полем тела."
+        },
+        "dns": {
+          "source": {
+            "url": "query.dns",
+            "conf_b64": "ini.Interface.DNS"
+          },
+          "maps_to": null,
+          "on_present": {
+            "action": "note",
+            "code": "wgconf_dns_ignored"
+          },
+          "impl": "DNS туннеля лаунчер не исполняет: DNS у него общий для всего приложения, а не свойство узла. Прежде параметр терялся МОЛЧА."
+        },
+        "jc": {
+          "source": {
+            "url": "query.jc",
+            "conf_b64": "ini.Interface.Jc"
+          },
+          "maps_to": "jc",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "jmin": {
+          "source": {
+            "url": "query.jmin",
+            "conf_b64": "ini.Interface.Jmin"
+          },
+          "maps_to": "jmin",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "jmax": {
+          "source": {
+            "url": "query.jmax",
+            "conf_b64": "ini.Interface.Jmax"
+          },
+          "maps_to": "jmax",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "s1": {
+          "source": {
+            "url": "query.s1",
+            "conf_b64": "ini.Interface.S1"
+          },
+          "maps_to": "s1",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "s2": {
+          "source": {
+            "url": "query.s2",
+            "conf_b64": "ini.Interface.S2"
+          },
+          "maps_to": "s2",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "s3": {
+          "source": {
+            "url": "query.s3",
+            "conf_b64": "ini.Interface.S3"
+          },
+          "maps_to": "s3",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "s4": {
+          "source": {
+            "url": "query.s4",
+            "conf_b64": "ini.Interface.S4"
+          },
+          "maps_to": "s4",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "h1": {
+          "source": {
+            "url": "query.h1",
+            "conf_b64": "ini.Interface.H1"
+          },
+          "maps_to": "h1",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "h2": {
+          "source": {
+            "url": "query.h2",
+            "conf_b64": "ini.Interface.H2"
+          },
+          "maps_to": "h2",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "h3": {
+          "source": {
+            "url": "query.h3",
+            "conf_b64": "ini.Interface.H3"
+          },
+          "maps_to": "h3",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "h4": {
+          "source": {
+            "url": "query.h4",
+            "conf_b64": "ini.Interface.H4"
+          },
+          "maps_to": "h4",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "i1": {
+          "source": {
+            "url": "query.i1",
+            "conf_b64": "ini.Interface.I1"
+          },
+          "maps_to": "i1"
+        },
+        "i2": {
+          "source": {
+            "url": "query.i2",
+            "conf_b64": "ini.Interface.I2"
+          },
+          "maps_to": "i2"
+        },
+        "i3": {
+          "source": {
+            "url": "query.i3",
+            "conf_b64": "ini.Interface.I3"
+          },
+          "maps_to": "i3"
+        },
+        "i4": {
+          "source": {
+            "url": "query.i4",
+            "conf_b64": "ini.Interface.I4"
+          },
+          "maps_to": "i4"
+        },
+        "i5": {
+          "source": {
+            "url": "query.i5",
+            "conf_b64": "ini.Interface.I5"
+          },
+          "maps_to": "i5"
+        },
+        "id": {
+          "source": {
+            "url": "query.id",
+            "conf_b64": "ini.Interface.Id"
+          },
+          "maps_to": "id",
+          "when": {
+            "query.i1": {
+              "present": false
+            },
+            "ini.Interface.I1": {
+              "present": false
+            }
+          }
+        },
+        "ip": {
+          "source": {
+            "url": "query.ip",
+            "conf_b64": "ini.Interface.Ip"
+          },
+          "maps_to": "ip",
+          "when": {
+            "query.i1": {
+              "present": false
+            },
+            "ini.Interface.I1": {
+              "present": false
+            }
+          }
+        },
+        "ib": {
+          "source": {
+            "url": "query.ib",
+            "conf_b64": "ini.Interface.Ib"
+          },
+          "maps_to": "ib",
+          "when": {
+            "query.i1": {
+              "present": false
+            },
+            "ini.Interface.I1": {
+              "present": false
+            }
+          }
+        },
+        "headerprotectionkey": {
+          "source": {
+            "url": "query.headerprotectionkey",
+            "conf_b64": "ini.Interface.HeaderProtectionKey"
+          },
+          "maps_to": "header_protection_key",
+          "format": "base64_32"
+        },
+        "contentpaddingaddition": {
+          "source": {
+            "url": "query.contentpaddingaddition",
+            "conf_b64": "ini.Interface.ContentPaddingAddition"
+          },
+          "maps_to": "content_padding_addition"
+        },
+        "rekeyaftertime": {
+          "source": {
+            "url": "query.rekeyaftertime",
+            "conf_b64": "ini.Interface.RekeyAfterTime"
+          },
+          "maps_to": "rekey_after_time"
+        },
+        "rekeytimeout": {
+          "source": {
+            "url": "query.rekeytimeout",
+            "conf_b64": "ini.Interface.RekeyTimeout"
+          },
+          "maps_to": "rekey_timeout"
+        },
+        "rejectaftertime": {
+          "source": {
+            "url": "query.rejectaftertime",
+            "conf_b64": "ini.Interface.RejectAfterTime"
+          },
+          "maps_to": "reject_after_time"
+        },
+        "keepalivetimeout": {
+          "source": {
+            "url": "query.keepalivetimeout",
+            "conf_b64": "ini.Interface.KeepaliveTimeout"
+          },
+          "maps_to": "keepalive_timeout"
+        },
+        "maxhandshakeattempts": {
+          "source": {
+            "url": "query.maxhandshakeattempts",
+            "conf_b64": "ini.Interface.MaxHandshakeAttempts"
+          },
+          "maps_to": "max_handshake_attempts"
+        },
+        "randomtrailers": {
+          "source": {
+            "url": "query.randomtrailers",
+            "conf_b64": "ini.Interface.RandomTrailers"
+          },
+          "maps_to": "random_trailers",
+          "value_map": {
+            "on": "true",
+            "true": "true",
+            "1": "true",
+            "off": null,
+            "false": null,
+            "0": null,
+            "": null
+          },
+          "emit_value_map": {
+            "true": "on"
+          },
+          "type": "bool",
+          "on_no_match": {
+            "action": "keep"
+          },
+          "on_invalid": {
+            "action": "keep"
+          },
+          "impl": "emit_value_map: таблица неинъективна (on/true/1 читаются в одно `true`), и написание выхода выбирает схема — `on`, как пишут конфигураторы AmneziaWG."
+        },
+        "disablecookies": {
+          "source": {
+            "url": "query.disablecookies",
+            "conf_b64": "ini.Interface.DisableCookies"
+          },
+          "maps_to": "disable_cookies",
+          "value_map": {
+            "on": "true",
+            "true": "true",
+            "1": "true",
+            "off": null,
+            "false": null,
+            "0": null,
+            "": null
+          },
+          "emit_value_map": {
+            "true": "on"
+          },
+          "type": "bool",
+          "on_no_match": {
+            "action": "keep"
+          },
+          "on_invalid": {
+            "action": "keep"
+          },
+          "impl": "emit_value_map: таблица неинъективна (on/true/1 читаются в одно `true`), и написание выхода выбирает схема — `on`, как пишут конфигураторы AmneziaWG."
+        }
+      },
+      "scheme_sets": {
+        "*": {
+          "type": "wireguard"
+        }
+      },
+      "unknown_key": {
+        "action": "keep",
+        "code": "uri_param_unknown"
+      },
+      "kind_when": {
+        "awg": {
+          "any_set": [
+            "query.jc",
+            "query.jmin",
+            "query.jmax",
+            "query.s1",
+            "query.s2",
+            "query.s3",
+            "query.s4",
+            "query.h1",
+            "query.h2",
+            "query.h3",
+            "query.h4",
+            "query.i1",
+            "query.i2",
+            "query.i3",
+            "query.i4",
+            "query.i5",
+            "query.id",
+            "query.ip",
+            "query.ib",
+            "query.headerprotectionkey",
+            "query.contentpaddingaddition",
+            "query.rekeyaftertime",
+            "query.rekeytimeout",
+            "query.rejectaftertime",
+            "query.keepalivetimeout",
+            "query.maxhandshakeattempts",
+            "query.randomtrailers",
+            "query.disablecookies",
+            "ini.Interface.Jc",
+            "ini.Interface.Jmin",
+            "ini.Interface.Jmax",
+            "ini.Interface.S1",
+            "ini.Interface.S2",
+            "ini.Interface.S3",
+            "ini.Interface.S4",
+            "ini.Interface.H1",
+            "ini.Interface.H2",
+            "ini.Interface.H3",
+            "ini.Interface.H4",
+            "ini.Interface.I1",
+            "ini.Interface.I2",
+            "ini.Interface.I3",
+            "ini.Interface.I4",
+            "ini.Interface.I5",
+            "ini.Interface.Id",
+            "ini.Interface.Ip",
+            "ini.Interface.Ib",
+            "ini.Interface.HeaderProtectionKey",
+            "ini.Interface.ContentPaddingAddition",
+            "ini.Interface.RekeyAfterTime",
+            "ini.Interface.RekeyTimeout",
+            "ini.Interface.RejectAfterTime",
+            "ini.Interface.KeepaliveTimeout",
+            "ini.Interface.MaxHandshakeAttempts",
+            "ini.Interface.RandomTrailers",
+            "ini.Interface.DisableCookies"
+          ],
+          "$impl": "Род узла объявляет ВХОД, а не уцелевшие поля тела: ссылка awg:// с негодными awg-значениями (jc=abc при одиноком jmin — корпус awg_bad_numeric_skipped, awg_jc_invalid_dropped) оставляет тело, неотличимое от обычного WireGuard, а потолок MTU есть свойство ЗАПРОШЕННОГО протокола. Без него туннель поднимается, но данные по нему не идут."
+        },
+        "awg3": {
+          "query.keepalive": {
+            "matches": "-"
+          },
+          "$impl": "Диапазонный keepalive («25-35») сам по себе маркер AWG 3.x, даже когда прочих awg-полей в ссылке нет."
+        }
+      },
+      "emit": {
+        "form": "url",
+        "form_from": {
+          "$kind": {
+            "awg": "wireguard",
+            "awg3": "wireguard",
+            "*": "wireguard"
+          }
+        },
+        "param_order": "alphabetical",
+        "impl": "Секция обратного хода у wireguard появилась вместе с движком эмита (SPEC 133): рукописный эмиттер shareuri_wireguard.go писал Scheme \"wireguard\" и для AWG-узла, и это поведение сохранено. form_from по $kind: написание `awg://` остаётся на случай «род объявлен, awg-полей в теле не осталось» — иначе род теряется на круге (MAPPER_ENGINE.md, «Критерий для эмиссии»); сегодня все ветки ведут в `wireguard`, потому что род несут сами параметры, и отдельного написания живым узлам не нужно. refuse_when peers>1: ссылка выражает ОДНОГО пира, и узел с несколькими выразить ею нельзя — прежний рукописный эмиттер тоже отказывал (ErrShareURINotSupported). Отказ объявлен данными, а не проверкой в коде: «сколько сущностей влезает в ссылку» есть свойство ФОРМАТА схемы.",
+        "refuse_when": [
+          {
+            "path": "peers",
+            "len_gt": 1,
+            "why": "Ссылка подписки несёт ОДИН удалённый сервер: место под второго пира в ней отсутствует по построению. Отдать первого и промолчать значило бы выдать за узел половину его маршрута."
+          }
+        ]
+      }
+    },
+    "conf": {
+      "detect": {
+        "ini": {
+          "sections": [
+            "Interface"
+          ]
+        }
+      },
+      "body_source": "wgconf",
+      "forms": [
+        {
+          "id": "conf",
+          "detect": {
+            "default": true
+          },
+          "space": "ini",
+          "level": "endpoint"
+        }
+      ],
+      "ini_dialect": {
+        "key_case": "lower",
+        "value_case": "preserve",
+        "line_comment_prefixes": [
+          "#",
+          ";"
+        ],
+        "inline_comments": false,
+        "repeated_key": "last_wins",
+        "sections": {
+          "Peer": {
+            "repeat": "first_only",
+            "on_extra": {
+              "code": "wgconf_extra_peer_dropped"
+            },
+            "impl": "Узел sing-box — это ОДИН peer, и вторая [Peer] в него не помещается по построению. Прежний путь брал ключи только первой и отбрасывал остальные МОЛЧА (node_parser_amnezia.go:495), движковый parseINI сливал вторую с первой (ключи второй перезаписывали ключи первой) — три разных поведения на одном месте, пока решение жило в коде. Норма: первая становится узлом, повторы отброшены с кодом."
+          }
+        },
+        "impl": "КАК читать ini, а не что куда класть. Значения не трогаем (value_case preserve): Id маскировки — это домен, и регистр в нём значим. inline_comments=false, потому что у wg-quick \"#\" законен ВНУТРИ значения: имя узла «US-FREE#137» провайдеры пишут именно так, и резать хвост по маркеру нельзя."
+      },
+      "label": {
+        "source": [
+          "ini.$comment.Peer",
+          "hint",
+          "peers[].address"
+        ],
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "fallback": {
+          "template": "WireGuard",
+          "server_path": "peers[].address",
+          "port_path": "peers[].port"
+        },
+        "impl": "Провайдеры пишут локацию голым комментарием сразу под [Peer] («# US-FREE#137») — это единственное человекочитаемое имя в .conf, и узел с таким файлом не должен называться «194.180.34.8». Второе звено «hint» — имя ОТ ВЫЗЫВАЮЩЕГО (файл, импорт, сохранённый тег); источник НЕОБЯЗАТЕЛЬНЫЙ, лаунчер его не передаёт, и звено пропускается. Третье звено, хост Endpoint, — НАШЕ (per-app): корпус ждёт именно его (awg_conf_base64_no_label → «91.247.235.94»), у LxBox безымянный .conf становится литералом «WireGuard». Открытый пункт DELTAS."
+      },
+      "params": {
+        "privatekey": {
+          "source": "ini.Interface.PrivateKey",
+          "maps_to": "private_key",
+          "required": true
+        },
+        "address": {
+          "source": "ini.Interface.Address",
+          "maps_to": "address",
+          "list": {
+            "sep": ","
+          },
+          "required": true
+        },
+        "publickey": {
+          "source": "ini.Peer.PublicKey",
+          "maps_to": "peers[].public_key",
+          "required": true
+        },
+        "presharedkey": {
+          "source": "ini.Peer.PresharedKey",
+          "maps_to": "peers[].pre_shared_key"
+        },
+        "endpoint": {
+          "source": "ini.Peer.Endpoint",
+          "selector": true,
+          "required": true,
+          "extract": {
+            "re": "^(?:\\[(?P<h6>[^\\]]+)\\](?::(?P<p6>\\d+))?|(?P<h>[^:]+):(?P<p>\\d+))$",
+            "into": {
+              "h6": "peers[].address",
+              "p6": {
+                "path": "peers[].port",
+                "type": "int"
+              },
+              "h": "peers[].address",
+              "p": {
+                "path": "peers[].port",
+                "type": "int"
+              }
+            }
+          },
+          "on_no_match": {
+            "action": "take_all",
+            "into": "peers[].address",
+            "defaults": {
+              "peers[].port": 51820
+            }
+          },
+          "impl": "Одно значение «host:port» раскладывается по двум путям тела. Ветка h6/p6 — IPv6 в скобках («[2001:db8::1]:51820»), где двоеточий много и «последнее» портом не является. Без порта вовсе — берём всё значение хостом и ставим 51820."
+        },
+        "allowedips": {
+          "source": "ini.Peer.AllowedIPs",
+          "maps_to": "peers[].allowed_ips",
+          "list": {
+            "sep": ","
+          },
+          "default_when": {
+            "absent": true,
+            "value": "0.0.0.0/0,::/0"
+          },
+          "materialize_default": true
+        },
+        "keepalive": {
+          "source": "ini.Peer.PersistentKeepalive",
+          "maps_to": "peers[].persistent_keepalive_interval",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "reserved": {
+          "source": [
+            "ini.Peer.Reserved",
+            "ini.Peer.ClientId"
+          ],
+          "maps_to": "peers[].reserved",
+          "list": {
+            "sep": ",",
+            "item": "int",
+            "len": 3
+          },
+          "on_invalid": {
+            "action": "drop"
+          }
+        },
+        "mtu": {
+          "source": "ini.Interface.MTU",
+          "maps_to": "mtu",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "listenport": {
+          "source": "ini.Interface.ListenPort",
+          "maps_to": "listen_port",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "dns": {
+          "source": "ini.Interface.DNS",
+          "maps_to": null,
+          "on_present": {
+            "action": "note",
+            "code": "wgconf_dns_ignored"
+          }
+        },
+        "jc": {
+          "source": "ini.Interface.Jc",
+          "maps_to": "jc",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "jmin": {
+          "source": "ini.Interface.Jmin",
+          "maps_to": "jmin",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "jmax": {
+          "source": "ini.Interface.Jmax",
+          "maps_to": "jmax",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "s1": {
+          "source": "ini.Interface.S1",
+          "maps_to": "s1",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "s2": {
+          "source": "ini.Interface.S2",
+          "maps_to": "s2",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "s3": {
+          "source": "ini.Interface.S3",
+          "maps_to": "s3",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "s4": {
+          "source": "ini.Interface.S4",
+          "maps_to": "s4",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "h1": {
+          "source": "ini.Interface.H1",
+          "maps_to": "h1",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "h2": {
+          "source": "ini.Interface.H2",
+          "maps_to": "h2",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "h3": {
+          "source": "ini.Interface.H3",
+          "maps_to": "h3",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "h4": {
+          "source": "ini.Interface.H4",
+          "maps_to": "h4",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "i1": {
+          "source": "ini.Interface.I1",
+          "maps_to": "i1"
+        },
+        "i2": {
+          "source": "ini.Interface.I2",
+          "maps_to": "i2"
+        },
+        "i3": {
+          "source": "ini.Interface.I3",
+          "maps_to": "i3"
+        },
+        "i4": {
+          "source": "ini.Interface.I4",
+          "maps_to": "i4"
+        },
+        "i5": {
+          "source": "ini.Interface.I5",
+          "maps_to": "i5"
+        },
+        "id": {
+          "source": "ini.Interface.Id",
+          "maps_to": "id",
+          "when": {
+            "query.i1": {
+              "present": false
+            },
+            "ini.Interface.I1": {
+              "present": false
+            }
+          }
+        },
+        "ip": {
+          "source": "ini.Interface.Ip",
+          "maps_to": "ip",
+          "when": {
+            "query.i1": {
+              "present": false
+            },
+            "ini.Interface.I1": {
+              "present": false
+            }
+          }
+        },
+        "ib": {
+          "source": "ini.Interface.Ib",
+          "maps_to": "ib",
+          "when": {
+            "query.i1": {
+              "present": false
+            },
+            "ini.Interface.I1": {
+              "present": false
+            }
+          }
+        },
+        "headerprotectionkey": {
+          "source": "ini.Interface.HeaderProtectionKey",
+          "maps_to": "header_protection_key",
+          "format": "base64_32"
+        },
+        "contentpaddingaddition": {
+          "source": "ini.Interface.ContentPaddingAddition",
+          "maps_to": "content_padding_addition"
+        },
+        "rekeyaftertime": {
+          "source": "ini.Interface.RekeyAfterTime",
+          "maps_to": "rekey_after_time"
+        },
+        "rekeytimeout": {
+          "source": "ini.Interface.RekeyTimeout",
+          "maps_to": "rekey_timeout"
+        },
+        "rejectaftertime": {
+          "source": "ini.Interface.RejectAfterTime",
+          "maps_to": "reject_after_time"
+        },
+        "keepalivetimeout": {
+          "source": "ini.Interface.KeepaliveTimeout",
+          "maps_to": "keepalive_timeout"
+        },
+        "maxhandshakeattempts": {
+          "source": "ini.Interface.MaxHandshakeAttempts",
+          "maps_to": "max_handshake_attempts"
+        },
+        "randomtrailers": {
+          "source": "ini.Interface.RandomTrailers",
+          "maps_to": "random_trailers",
+          "value_map": {
+            "on": "true",
+            "true": "true",
+            "1": "true",
+            "off": null,
+            "false": null,
+            "0": null,
+            "": null
+          },
+          "type": "bool",
+          "on_no_match": {
+            "action": "keep"
+          },
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "disablecookies": {
+          "source": "ini.Interface.DisableCookies",
+          "maps_to": "disable_cookies",
+          "value_map": {
+            "on": "true",
+            "true": "true",
+            "1": "true",
+            "off": null,
+            "false": null,
+            "0": null,
+            "": null
+          },
+          "type": "bool",
+          "on_no_match": {
+            "action": "keep"
+          },
+          "on_invalid": {
+            "action": "keep"
+          }
+        }
+      },
+      "scheme_sets": {
+        "*": {
+          "type": "wireguard"
+        }
+      },
+      "unknown_key": {
+        "action": "keep",
+        "code": "wgconf_param_unknown",
+        "ignore": [
+          "postup",
+          "postdown",
+          "preup",
+          "predown",
+          "table",
+          "saveconfig",
+          "fwmark",
+          "presharedkeyfile",
+          "privatekeyfile"
+        ],
+        "impl": "Незнакомый ключ .conf до тела не доходит по построению — тело строят только объявленные записи, — и потому он не ломает узел, а исчезает МОЛЧА (Q133-58): человек не узнаёт, что часть его файла не прочитана. Запись СТОЯЛА здесь и раньше, но не срабатывала никогда: проверка необъявленного спрашивала только имена query, а у документа .conf предмет другой — ключи секций ini. action=keep, потому что снимать нечего: код тут единственное действие. Игнор-список — ключи wg-quick, которые НЕ описывают узел: PostUp/PreDown и прочее управляют интерфейсом и маршрутами на машине, Table/SaveConfig — поведением самого wg-quick, *KeyFile — путями к секретам. Ругаться на них значило бы ругаться на исправный конфиг."
+      },
+      "kind_when": {
+        "awg": {
+          "any_set": [
+            "ini.Interface.Jc",
+            "ini.Interface.Jmin",
+            "ini.Interface.Jmax",
+            "ini.Interface.S1",
+            "ini.Interface.S2",
+            "ini.Interface.S3",
+            "ini.Interface.S4",
+            "ini.Interface.H1",
+            "ini.Interface.H2",
+            "ini.Interface.H3",
+            "ini.Interface.H4",
+            "ini.Interface.I1",
+            "ini.Interface.I2",
+            "ini.Interface.I3",
+            "ini.Interface.I4",
+            "ini.Interface.I5",
+            "ini.Interface.Id",
+            "ini.Interface.Ip",
+            "ini.Interface.Ib",
+            "ini.Interface.HeaderProtectionKey",
+            "ini.Interface.ContentPaddingAddition",
+            "ini.Interface.RekeyAfterTime",
+            "ini.Interface.RekeyTimeout",
+            "ini.Interface.RejectAfterTime",
+            "ini.Interface.KeepaliveTimeout",
+            "ini.Interface.MaxHandshakeAttempts",
+            "ini.Interface.RandomTrailers",
+            "ini.Interface.DisableCookies"
+          ],
+          "$impl": "Зеркало kind_when секции uri: потолок и дефолт MTU — свойство ЗАПРОШЕННОГО протокола, и .conf может нести awg-поля, ни одно из которых не доедет до тела годным."
+        },
+        "awg3": {
+          "ini.Peer.PersistentKeepalive": {
+            "matches": "-"
+          },
+          "$impl": "Диапазонный keepalive — маркер AWG 3.x и в .conf."
+        }
+      },
+      "emit": null
+    }
   },
   "emit": {
     "share_uri": true,
@@ -209,14 +1434,25 @@
     ],
     "note": "Порядок — семантический (Dart insertion-order); Go сейчас эмитит алфавитно (url.Values.Encode) — URI байтово разные, парс-эквивалентные (порядок не нормативен для cross-emit по узлу). Эмитится по правилам: mtu — подавление дефолта только у Go (share-URI: mtu только при !=1420); Dart эмитит mtu всегда, когда задан, а после URI/INI-парса он задан всегда, включая дефолт 1408/1280 — разрыв; name только != singbox-wg0; AWG-числа — по НАЛИЧИЮ поля (явный jc=0 переживает round-trip); i1-i5/id/ip/ib — только непустые. Multi-peer endpoint → ErrShareURINotSupported."
   },
-  "degrade": [
-    "невалидный base64 / не-32-байтный ключ (userinfo, publickey, presharedkey) → нода дропается (Go; Dart пока не валидирует — целевое: как Go)",
-    "битые keepalive / listenport / reserved → параметр опускается, нода живёт; битый mtu → остаётся дефолт (поле mtu в endpoint эмитится всегда)",
-    "битое AWG-число (не uint32; для h1-h4 — и не диапазон lo-hi) → поле опускается: jc/jmin/jmax/s* с debug-логом, h1-h4 с громким warn",
-    "пересечение эффективных диапазонов h1-h4 → НОДА ДРОПАЕТСЯ на разборе (awg_headers_overlap, severity=error): ядро отвергает такой endpoint на загрузке, то есть падает ВЕСЬ конфиг, а не одна нода. Изменено аудитом 2026-08-24 — была пометка на живом узле",
-    "bare IP в address/allowedips → дописывается /32 или /128",
-    "mtu > 1280 при AWG-полях → клампится к 1280 (тихий отказ данных при завышенном MTU хуже мелких пакетов)",
-    "sing-box импорт multi-peer: Go сохраняет всех peers, Dart берёт первого — потеря (разрыв, целевое: сохранять всех)"
+  "mapper": [
+    {
+      "id": "wg_key_spelling_to_std_base64",
+      "from": "a WireGuard key written url-safe or without padding (`a-b_c…`, 43 chars)",
+      "to": "the same 32 bytes as std base64 with padding (44 chars)",
+      "kind": "spelling",
+      "desc_en": "Panels write the same key in all four base64 spellings; the core decodes these fields with std base64 only.",
+      "desc_ru": "Панели пишут один и тот же ключ во всех четырёх написаниях base64; ядро декодирует эти поля только std-base64.",
+      "impl": "core/config/subscription/node_parser_wireguard.go:normalizeWGKey, wgconf_text.go, node_parser_amnezia.go. Маппер ТОЛЬКО переводит написание и НИЧЕГО не решает о годности: ключ, который не декодируется в 32 байта, он переносит как есть, и судит его реестр (private_key / peers[].public_key / peers[].pre_shared_key, format base64_32, on_invalid drop_node wg_key_invalid). Прежде проверка стояла в парсере, роняла узел МОЛЧА и на входе singbox не работала вовсе — находка №4 LEGACY_AUDIT, решение владельца 19.09.2026."
+    },
+    {
+      "id": "bare_ip_gets_prefix",
+      "from": "a bare IP in `address` or `allowed_ips` (`10.0.0.2`, `fd00::2`)",
+      "to": "`10.0.0.2/32`, `fd00::2/128`",
+      "kind": "spelling",
+      "desc_en": "wg-quick config files write single addresses without a prefix length; the core field is a CIDR.",
+      "desc_ru": "Файлы wg-quick пишут одиночные адреса без длины префикса; поле ядра — CIDR.",
+      "impl": "core/config/subscription/node_parser_wireguard.go, wgconf_text.go."
+    }
   ],
   "refs": {
     "go": [
@@ -246,5 +1482,887 @@
       "app/lib/models/node_spec_emit.dart:614",
       "app/lib/services/parser/json_parsers.dart:1014-1071"
     ]
+  },
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": [
+      "system",
+      "name",
+      "mtu",
+      "address",
+      "private_key",
+      "listen_port",
+      "peers",
+      "udp_timeout",
+      "udp_mapping",
+      "udp_filtering",
+      "udp_nat_max",
+      "workers",
+      "jc",
+      "jmin",
+      "jmax",
+      "s1",
+      "s2",
+      "s3",
+      "s4",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "i1",
+      "i2",
+      "i3",
+      "i4",
+      "i5",
+      "id",
+      "ip",
+      "ib",
+      "header_protection_key",
+      "content_padding_addition",
+      "rekey_after_time",
+      "rekey_timeout",
+      "reject_after_time",
+      "keepalive_timeout",
+      "max_handshake_attempts",
+      "random_trailers",
+      "disable_cookies",
+      "__dialer"
+    ],
+    "fields": {
+      "system": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Use a system interface instead of the userspace stack.",
+        "desc_ru": "Использовать системный интерфейс вместо стека в пространстве пользователя.",
+        "impl": "option/wireguard.go WireGuardEndpointOptions.System."
+      },
+      "name": {
+        "type": "string",
+        "desc_en": "Interface name when a system interface is used.",
+        "desc_ru": "Имя интерфейса при system=true.",
+        "impl": "Осмысленно только при system=true."
+      },
+      "mtu": {
+        "type": "int",
+        "min": 576,
+        "max": 1500,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "default": 1408,
+        "default_when": {
+          "absent": true,
+          "value": 1280,
+          "when": {
+            "source_kind": [
+              "awg",
+              "awg3"
+            ],
+            "any_set": [
+              "jc",
+              "jmin",
+              "jmax",
+              "s1",
+              "s2",
+              "s3",
+              "s4",
+              "h1",
+              "h2",
+              "h3",
+              "h4",
+              "i1",
+              "i2",
+              "i3",
+              "i4",
+              "i5",
+              "id",
+              "ip",
+              "ib",
+              "header_protection_key",
+              "content_padding_addition",
+              "rekey_after_time",
+              "rekey_timeout",
+              "reject_after_time",
+              "keepalive_timeout",
+              "max_handshake_attempts",
+              "random_trailers",
+              "disable_cookies"
+            ]
+          }
+        },
+        "max_when": {
+          "max": 1280,
+          "code": "awg_mtu_clamped",
+          "except_sources": [
+            "singbox"
+          ],
+          "note_code": "awg_mtu_high",
+          "when": {
+            "source_kind": [
+              "awg",
+              "awg3"
+            ],
+            "any_set": [
+              "jc",
+              "jmin",
+              "jmax",
+              "s1",
+              "s2",
+              "s3",
+              "s4",
+              "h1",
+              "h2",
+              "h3",
+              "h4",
+              "i1",
+              "i2",
+              "i3",
+              "i4",
+              "i5",
+              "id",
+              "ip",
+              "ib",
+              "header_protection_key",
+              "content_padding_addition",
+              "rekey_after_time",
+              "rekey_timeout",
+              "reject_after_time",
+              "keepalive_timeout",
+              "max_handshake_attempts",
+              "random_trailers",
+              "disable_cookies"
+            ]
+          }
+        },
+        "desc_en": "Tunnel MTU in bytes.",
+        "desc_ru": "MTU туннеля в байтах.",
+        "impl": "uint32, дефолт ядра 1408; при s4 > 0 дефолт 1280. Ядро предупреждает при mtu > 1492-60-s4. У AmneziaWG-узлов слишком большой mtu даёт «sendmsg: message too long» при успешном рукопожатии (память awg-mtu-too-high): рукопожатие проходит, данные не идут. Потолок 1280 для ЛЮБОГО AmneziaWG-узла — решение владельца 05.09.2026; условие «узел AWG» читается ДВУМЯ способами через ИЛИ. Первый — `source_kind`: род объявил ВХОД (`kind_when` маппера по написанию `awg://`), и это единственный способ узнать род, когда ни одно awg-поле не уцелело: негодные значения снимает правило поля, и к проверке потолка тело становится неотличимо от обычного WireGuard, хотя протокол автор просил AmneziaWG (кейсы awg_bad_numeric_skipped, awg_jc_invalid_dropped — в теле только mtu). Второй — прежний `any_set` по awg-ключам корня (тот же набор, что был у hasAWGParams/hasAWG3Params в Go); он остаётся НАВСЕГДА, потому что у входа `singbox` рода от входа нет вовсе и судить можно только по телу. Условие смотрит на НАЛИЧИЕ ключа, а не на непустоту: jc=0 — законное «мусор выключен» у настоящего AWG-узла (кейс awg_jc_zero_explicit). Род переживает перезапуск наравне с body_source: пересчёт кодов идёт по сохранённому телу без повторного разбора ссылки, поэтому род лежит в Origin (launcher-only расширение), у старых узлов выводится перепарсом Origin.Raw, а иначе работает any_set — contract/docs/MAPPER_ENGINE.md, «Контекст санитайзера: body_source + kind». Прежде правило жило кодом в парсере ссылки (awgMaxMTU в node_parser_wireguard.go) и потому НЕ применялось к телу из sing-box-импорта — расхождение входов, находка №5 LEGACY_AUDIT; с контрактом 1.1.5 оно правило реестра. ИСКЛЮЧЕНИЕ ПО ВХОДУ (решение владельца 18.09.2026): на входе `singbox` тело написано в собственной форме ядра человеком или подпиской — значение сохраняется, узел получает info-код awg_mtu_high; на прочих входах (ссылка wg/awg, .conf, awg://base64, форма AWG) значение заменяется на 1280 с кодом awg_mtu_clamped. Парность входов здесь нарушена НАМЕРЕННО (DRIFT §7.23). Подстановка 1280 при отсутствии mtu кода НЕ даёт (это дефолт, а не замена) и действует на ВСЕХ входах, включая singbox. Plain WG правило не трогает: без awg-ключей mtu не эмитится, ядро берёт свой 1408."
+      },
+      "address": {
+        "type": "string_array",
+        "format": "cidr",
+        "normalize": "cidr_prefix",
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "required": true,
+        "desc_en": "Addresses assigned to the tunnel interface.",
+        "desc_ru": "Адреса, назначенные интерфейсу туннеля.",
+        "impl": "listable CIDR; json-тег без omitempty. Голый адрес достраивается маской-хостом (10.0.0.2 → 10.0.0.2/32, IPv6 → /128): ядро требует префикс, а подписки пишут адрес голым. Прежде операция жила рукописным normalizeWGPrefixes (node_parser_wireguard.go) и потому не работала на входе singbox; normalize реестра действует на всех входах (SPEC 133 §6.0)."
+      },
+      "private_key": {
+        "type": "string",
+        "format": "base64_32",
+        "normalize": "base64_std",
+        "on_invalid": {
+          "action": "drop_node",
+          "code": "wg_key_invalid"
+        },
+        "required": true,
+        "secret": true,
+        "desc_en": "Local private key.",
+        "desc_ru": "Локальный закрытый ключ.",
+        "impl": "Без omitempty; пустой = «missing private key». Отсутствие поля даёт field_missing, негодное ЗНАЧЕНИЕ — wg_key_invalid (контракт 1.1.11). Годность судит ТОЛЬКО реестр: маппер переводит написание ключа (url-safe/без паддинга → std-base64) и больше ничего не решает — прежде проверка стояла в парсере ссылки, роняла узел МОЛЧА и не работала на входе singbox (находка №4 LEGACY_AUDIT, решение владельца 19.09.2026). Успешное рукопожатие без трафика = ключ занят другим клиентом либо испорчен на сервере (память wg-handshake-ok-no-data-shared-key). Секрет."
+      },
+      "listen_port": {
+        "type": "uint16",
+        "format": "port",
+        "min": 1,
+        "max": 65535,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "conflicts": [
+          {
+            "with": "detour",
+            "code": "field_conflict"
+          }
+        ],
+        "desc_en": "Local UDP port the tunnel listens on.",
+        "desc_ru": "Локальный порт UDP, который слушает туннель.",
+        "impl": "Конфликт с detour — «`listen_port` is conflict with `detour`» (protocol/wireguard/endpoint.go:110); код detour_with_listen_port."
+      },
+      "peers": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "order": [
+            "address",
+            "port",
+            "public_key",
+            "pre_shared_key",
+            "allowed_ips",
+            "persistent_keepalive_interval",
+            "reserved"
+          ],
+          "fields": {
+            "address": {
+              "type": "string",
+              "format": "host",
+              "on_invalid": {
+                "action": "drop_node",
+                "code": "field_missing"
+              },
+              "required": true,
+              "desc_en": "Peer endpoint address.",
+              "desc_ru": "Адрес точки подключения пира.",
+              "impl": "option/wireguard.go WireGuardPeer.Address."
+            },
+            "port": {
+              "type": "uint16",
+              "format": "port",
+              "min": 1,
+              "max": 65535,
+              "on_invalid": {
+                "action": "drop_node",
+                "code": "port_invalid"
+              },
+              "required": true,
+              "desc_en": "Peer endpoint port.",
+              "desc_ru": "Порт точки подключения пира.",
+              "impl": "option/wireguard.go WireGuardPeer.Port."
+            },
+            "public_key": {
+              "type": "string",
+              "format": "base64_32",
+              "on_invalid": {
+                "action": "drop_node",
+                "code": "wg_key_invalid"
+              },
+              "required": true,
+              "normalize": "base64_std",
+              "desc_en": "Peer public key.",
+              "desc_ru": "Публичный ключ пира.",
+              "impl": "base64; невалидный = ошибка декодирования на весь конфиг. Отсутствие поля даёт field_missing, негодное ЗНАЧЕНИЕ — wg_key_invalid (контракт 1.1.11). Секретом НЕ помечен: публичный ключ пира тайной не является, и показать его в предупреждении — единственный способ дать человеку сверить значение с тем, что выдал провайдер."
+            },
+            "pre_shared_key": {
+              "type": "string",
+              "format": "base64_32",
+              "on_invalid": {
+                "action": "drop_node",
+                "code": "wg_key_invalid"
+              },
+              "secret": true,
+              "normalize": "base64_std",
+              "desc_en": "Optional pre-shared key.",
+              "desc_ru": "Необязательный общий предварительный ключ.",
+              "impl": "base64. Поле НЕобязательное, но негодное значение роняет УЗЕЛ наравне с private_key и public_key (решение владельца 19.09.2026, контракт 1.1.11): сервер ждёт PSK, и туннель без него — тихо сломанный туннель, рукопожатие не пройдёт. Прежнее правило (`drop`/type_invalid) снимало ПОЛЕ и давало узел, который выглядит рабочим и молчит; оно же расходилось с парсером ссылки, где узел дропался. Секрет."
+            },
+            "allowed_ips": {
+              "type": "string_array",
+              "format": "cidr",
+              "normalize": "cidr_prefix",
+              "on_invalid": {
+                "action": "drop",
+                "code": "type_invalid"
+              },
+              "default_when": {
+                "absent": true,
+                "value": [
+                  "0.0.0.0/0",
+                  "::/0"
+                ]
+              },
+              "required": true,
+              "desc_en": "Prefixes routed to this peer.",
+              "desc_ru": "Префиксы, маршрутизируемые в этого пира.",
+              "impl": "Пустой список = «missing allowed ips for peer N» на весь конфиг. Отсутствие ключа = «маршрутизировать всё» у любого клиента WireGuard, поэтому реестр материализует 0.0.0.0/0,::/0 (D-022); кода нет — это дефолт-конвенция, а не замена значения. Прежде дефолт стоял ДВУМЯ копиями в парсерах ссылки и профиля Amnezia и на входе singbox не работал вовсе (находка №27 LEGACY_AUDIT, контракт 1.1.11)."
+            },
+            "persistent_keepalive_interval": {
+              "type": "awg_range",
+              "desc_en": "Keepalive interval in seconds, number or range.",
+              "desc_ru": "Интервал keepalive в секундах: число или диапазон.",
+              "impl": "AWGRange форка: число (как в upstream) ИЛИ «min-max». Форма-диапазон требует сборки с with_awg и ядра >= 1.14.0-lx.32. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
+            },
+            "reserved": {
+              "type": "int_array",
+              "min": 0,
+              "max": 255,
+              "len": 3,
+              "on_invalid": {
+                "action": "drop",
+                "code": "type_invalid"
+              },
+              "desc_en": "Three reserved bytes prepended to packets.",
+              "desc_ru": "Три резервных байта в начале пакетов.",
+              "impl": "[]uint8 ровно из 3 элементов, иначе ошибка. Тип int_array: значения ЧИСЛА (Go parseReservedTriplet → []int), string_array ронял поле целиком (SPEC 131 W2c). Границы 0..255 относятся к ЭЛЕМЕНТУ (тип int_array): reserved — три БАЙТА идентификатора устройства WARP, и значение вне байта ядро припишет к каждому пакету. Прежде диапазон судил рукописный parseReservedTriplet на разборе ссылки, то есть не работал ни на теле sing-box, ни на .conf."
+            }
+          },
+          "desc_en": "One WireGuard peer.",
+          "desc_ru": "Один пир WireGuard.",
+          "impl": "option/wireguard.go WireGuardPeer."
+        },
+        "required": true,
+        "desc_en": "List of WireGuard peers.",
+        "desc_ru": "Список пиров WireGuard.",
+        "impl": "Пустой список = узел не собирается."
+      },
+      "udp_timeout": {
+        "type": "duration",
+        "desc_en": "Idle timeout of a UDP session.",
+        "desc_ru": "Таймаут простоя сессии UDP.",
+        "impl": "option/wireguard.go UDPTimeout."
+      },
+      "udp_mapping": {
+        "type": "string",
+        "desc_en": "UDP NAT mapping behaviour.",
+        "desc_ru": "Поведение отображения NAT для UDP.",
+        "impl": "UDPNATBehavior; enum из option/*.go не извлечён (CORE_SCHEMA §8) — значение принимается как строка."
+      },
+      "udp_filtering": {
+        "type": "string",
+        "desc_en": "UDP NAT filtering behaviour.",
+        "desc_ru": "Поведение фильтрации NAT для UDP.",
+        "impl": "UDPNATBehavior; enum не извлечён (CORE_SCHEMA §8)."
+      },
+      "udp_nat_max": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Maximum number of UDP NAT entries.",
+        "desc_ru": "Максимум записей в таблице NAT для UDP.",
+        "impl": "option/wireguard.go UDPNATMax."
+      },
+      "workers": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Number of packet processing workers.",
+        "desc_ru": "Число обработчиков пакетов.",
+        "impl": "option/wireguard.go Workers."
+      },
+      "jc": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg_header_invalid"
+        },
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "desc_en": "Number of junk packets sent before the handshake.",
+        "desc_ru": "Сколько мусорных пакетов слать перед рукопожатием.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build»."
+      },
+      "jmin": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg_header_invalid"
+        },
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "requires": [
+          {
+            "path": "jmax",
+            "code": "awg_header_invalid"
+          }
+        ],
+        "desc_en": "Minimum size of a junk packet.",
+        "desc_ru": "Минимальный размер мусорного пакета.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Требование jmin <= jmax, иначе ошибка. jmin БЕЗ jmax = фатал на весь конфиг («jmin (N) must be <= jmax (0)», проверено `sing-box check`): ядро читает отсутствующий jmax как 0. Поэтому requires jmax — в одиночку поле бессмысленно и смертельно (SPEC 131 W2c)."
+      },
+      "jmax": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg_header_invalid"
+        },
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "desc_en": "Maximum size of a junk packet.",
+        "desc_ru": "Максимальный размер мусорного пакета.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Требование jmin <= jmax."
+      },
+      "s1": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg_header_invalid"
+        },
+        "min_when": {
+          "min": 12,
+          "code": "awg3_padding_too_short",
+          "action": "drop_node",
+          "absent_is_zero": true,
+          "when": {
+            "any_set": [
+              "header_protection_key"
+            ]
+          }
+        },
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "desc_en": "Junk prepended to the handshake initiation packet.",
+        "desc_ru": "Мусор перед пакетом инициации рукопожатия.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Мусор перед пакетом инициации рукопожатия. min_when: при заданном header_protection_key значение не ниже 12 — nonce шифра заголовка берётся из первых 12 байт паддинга, и ядро отвергает такую пару на загрузке ВСЕГО конфига (docs-lx §2.9/§2.10), поэтому action=drop_node, а не снятие поля. absent_is_zero: незаданный паддинг ядро читает как 0, и «ключ есть, паддинга нет» так же фатально, как «ключ + паддинг 5». Прежде правило жило рукописным validateAWG3 в awg3.go, роняло узел МОЛЧА и не работало на входе singbox (находка №8 LEGACY_AUDIT, контракт 1.1.11)."
+      },
+      "s2": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg_header_invalid"
+        },
+        "min_when": {
+          "min": 12,
+          "code": "awg3_padding_too_short",
+          "action": "drop_node",
+          "absent_is_zero": true,
+          "when": {
+            "any_set": [
+              "header_protection_key"
+            ]
+          }
+        },
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "desc_en": "Junk prepended to the handshake response packet.",
+        "desc_ru": "Мусор перед пакетом ответа на рукопожатие.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Мусор перед пакетом ответа на рукопожатие. Порог при header_protection_key — как у s1 (min_when 12, drop_node, absent_is_zero)."
+      },
+      "s3": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg3_field_invalid"
+        },
+        "min_when": {
+          "min": 12,
+          "code": "awg3_padding_too_short",
+          "action": "drop_node",
+          "absent_is_zero": true,
+          "when": {
+            "any_set": [
+              "header_protection_key"
+            ]
+          }
+        },
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "desc_en": "Junk prepended to the cookie reply packet.",
+        "desc_ru": "Мусор перед пакетом cookie-reply.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Мусор перед пакетом cookie-reply. На MTU НЕ влияет. Порог при header_protection_key — как у s1 (min_when 12, drop_node, absent_is_zero)."
+      },
+      "s4": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg3_field_invalid"
+        },
+        "min_when": {
+          "min": 12,
+          "code": "awg3_padding_too_short",
+          "action": "drop_node",
+          "absent_is_zero": true,
+          "when": {
+            "any_set": [
+              "header_protection_key"
+            ]
+          }
+        },
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "desc_en": "Junk prepended to every transport packet.",
+        "desc_ru": "Мусор перед каждым транспортным пакетом.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Мусор перед каждым транспортным пакетом. Влияет на MTU: при s4 > 0 дефолт mtu становится 1280. Порог при header_protection_key — как у s1 (min_when 12, drop_node, absent_is_zero)."
+      },
+      "h1": {
+        "type": "awg_range",
+        "normalize": "range_order",
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg_header_invalid"
+        },
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "desc_en": "Magic header of the handshake initiation packet.",
+        "desc_ru": "Магический заголовок пакета инициации рукопожатия.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». MagicHeader = AWGRange: ЧИСЛО либо строка «min-max», границы uint32 (шире 2^32-1 ядро отвергает разбором и роняет весь конфиг). normalize range_order СВОПАЕТ перевёрнутую пару («40-10» → «10-40») МОЛЧА: порядок границ смысла не несёт — ядро выбирает значение ИЗ диапазона, и [10,40] = [40,10]; кода тут нет по тому же правилу, что у trim — замена, не меняющая смысла, человеку не сообщается. У таймингов AWG 3.x своп ЗАПРЕЩЁН: там перевёрнутая пара — опечатка человека, и он обязан её увидеть (SPEC 123 §2). Негодное значение снимает ПОЛЕ с кодом awg_header_invalid; пересечение диапазонов h1..h4 — связь body.relations ranges_disjoint, код awg_headers_overlap, узел отбрасывается."
+      },
+      "h2": {
+        "type": "awg_range",
+        "normalize": "range_order",
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg_header_invalid"
+        },
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "desc_en": "Magic header of the handshake response packet.",
+        "desc_ru": "Магический заголовок пакета ответа на рукопожатие.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». MagicHeader = AWGRange, правила как у h1: границы uint32, normalize range_order (тихий своп), on_invalid awg_header_invalid, связь ranges_disjoint."
+      },
+      "h3": {
+        "type": "awg_range",
+        "normalize": "range_order",
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg_header_invalid"
+        },
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "desc_en": "Magic header of the cookie reply packet.",
+        "desc_ru": "Магический заголовок пакета cookie-reply.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». MagicHeader = AWGRange, правила как у h1: границы uint32, normalize range_order (тихий своп), on_invalid awg_header_invalid, связь ranges_disjoint."
+      },
+      "h4": {
+        "type": "awg_range",
+        "normalize": "range_order",
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg_header_invalid"
+        },
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "desc_en": "Magic header of the transport packet.",
+        "desc_ru": "Магический заголовок транспортного пакета.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». MagicHeader = AWGRange, правила как у h1: границы uint32, normalize range_order (тихий своп), on_invalid awg_header_invalid, связь ranges_disjoint."
+      },
+      "i1": {
+        "type": "string",
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "conflicts": [
+          {
+            "with": "id",
+            "code": "field_conflict"
+          },
+          {
+            "with": "ip",
+            "code": "field_conflict"
+          },
+          {
+            "with": "ib",
+            "code": "field_conflict"
+          }
+        ],
+        "desc_en": "First custom junk packet.",
+        "desc_ru": "Первый пользовательский мусорный пакет.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Конфликтует с маскировкой (id/ip/ib) — «masquerade conflicts with an explicit i1» (transport/wireguard/masque_awg.go:73)."
+      },
+      "i2": {
+        "type": "string",
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "conflicts": [
+          {
+            "with": "ip",
+            "code": "field_conflict"
+          }
+        ],
+        "desc_en": "Second custom junk packet.",
+        "desc_ru": "Второй пользовательский мусорный пакет.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Конфликтует с ip=sip — «sip masquerade fills i2» (device_awg.go:108)."
+      },
+      "i3": {
+        "type": "string",
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "desc_en": "Third custom junk packet.",
+        "desc_ru": "Третий пользовательский мусорный пакет.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build»."
+      },
+      "i4": {
+        "type": "string",
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "desc_en": "Fourth custom junk packet.",
+        "desc_ru": "Четвёртый пользовательский мусорный пакет.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build»."
+      },
+      "i5": {
+        "type": "string",
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "desc_en": "Fifth custom junk packet.",
+        "desc_ru": "Пятый пользовательский мусорный пакет.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build»."
+      },
+      "id": {
+        "type": "string",
+        "format": "host",
+        "max": 253,
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg3_field_invalid"
+        },
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "requires": [
+          {
+            "path": "ip",
+            "code": "field_requires"
+          }
+        ],
+        "desc_en": "Masquerade domain name.",
+        "desc_ru": "Домен маскировки.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Обязателен при ip=quic|dns|sip, необязателен при stun. Не длиннее 253 байт, метки должны быть валидны. Без ip = «ip (masquerade protocol) is required when id/ib is set» (masque_awg.go:78)."
+      },
+      "ip": {
+        "type": "enum",
+        "values": [
+          "",
+          "quic",
+          "dns",
+          "stun",
+          "sip"
+        ],
+        "normalize": "trim_lower",
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg3_field_invalid"
+        },
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "desc_en": "Protocol the traffic is masqueraded as.",
+        "desc_ru": "Протокол, под который маскируется трафик.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Обязателен, если задан id или ib; иное значение = ошибка старта."
+      },
+      "ib": {
+        "type": "enum",
+        "values": [
+          "",
+          "chrome",
+          "firefox",
+          "curl"
+        ],
+        "normalize": "trim_lower",
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg3_field_invalid"
+        },
+        "lx_only": true,
+        "min_core": "1.13.13-lx.1",
+        "build_tag": "with_awg",
+        "requires": [
+          {
+            "path": "ip",
+            "code": "field_requires"
+          }
+        ],
+        "desc_en": "Client profile imitated inside the masquerade.",
+        "desc_ru": "Профиль клиента, имитируемый внутри маскировки.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Осмыслен ТОЛЬКО при ip=quic, иначе ошибка (masque_awg.go:78)."
+      },
+      "header_protection_key": {
+        "type": "string",
+        "format": "base64_32",
+        "pattern": "^$|^[A-Za-z0-9+/_-]*[B-Za-z0-9+/_-][A-Za-z0-9+/_-]*={0,2}$",
+        "normalize": "base64_std",
+        "on_invalid": {
+          "action": "drop_node",
+          "code": "awg3_header_key_invalid"
+        },
+        "secret": true,
+        "lx_only": true,
+        "min_core": "1.14.0-lx.32",
+        "build_tag": "with_awg",
+        "desc_en": "Key protecting packet headers.",
+        "desc_ru": "Ключ защиты заголовков пакетов.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x: base64 ровно 32 байта (format base64_32) и НЕ все нули — запрет всех нулей выражен pattern'ом: строка из одних 'A' с паддингом и есть 32 нулевых байта, а пустую строку pattern пропускает, её снимает omitAsUnset как «не задано». Негодный ключ роняет УЗЕЛ (on_invalid drop_node, код awg3_header_key_invalid): без верного ключа рукопожатие невозможно, а ядро отвергает такой конфиг ЦЕЛИКОМ. Порог паддинга s1..s4 >= 12 выражен их min_when (код awg3_padding_too_short). Прежде обе проверки жили рукописным validateAWG3 в awg3.go, роняли узел МОЛЧА, и объявленные коды не ставились никогда (находка №8 LEGACY_AUDIT, контракт 1.1.11). Секрет."
+      },
+      "content_padding_addition": {
+        "type": "awg_range",
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg3_field_invalid"
+        },
+        "lx_only": true,
+        "min_core": "1.14.0-lx.32",
+        "build_tag": "with_awg",
+        "desc_en": "Extra content padding, number or range.",
+        "desc_ru": "Добавочная набивка содержимого: число или диапазон.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c). Негодное значение (мусор либо, у диапазона, перевёрнутые границы N>M) снимает ПОЛЕ с кодом awg3_field_invalid: тайминги клиентские, узел живёт на дефолтах ядра. Своп перевёрнутой пары здесь ЗАПРЕЩЁН (normalize range_order не стоит) — это опечатка человека, и он обязан её увидеть, в отличие от h1..h4, где порядок границ смысла не несёт (SPEC 123 §2, контракт 1.1.11)."
+      },
+      "rekey_after_time": {
+        "type": "awg_range",
+        "default": "120",
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg3_field_invalid"
+        },
+        "lx_only": true,
+        "min_core": "1.14.0-lx.32",
+        "build_tag": "with_awg",
+        "desc_en": "Rekey after this many seconds.",
+        "desc_ru": "Смена ключей через столько секунд.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 120 секунд. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c). Негодное значение (мусор либо, у диапазона, перевёрнутые границы N>M) снимает ПОЛЕ с кодом awg3_field_invalid: тайминги клиентские, узел живёт на дефолтах ядра. Своп перевёрнутой пары здесь ЗАПРЕЩЁН (normalize range_order не стоит) — это опечатка человека, и он обязан её увидеть, в отличие от h1..h4, где порядок границ смысла не несёт (SPEC 123 §2, контракт 1.1.11)."
+      },
+      "rekey_timeout": {
+        "type": "awg_range",
+        "default": "5",
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg3_field_invalid"
+        },
+        "lx_only": true,
+        "min_core": "1.14.0-lx.32",
+        "build_tag": "with_awg",
+        "desc_en": "Rekey attempt timeout in seconds.",
+        "desc_ru": "Таймаут попытки смены ключей в секундах.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 5 секунд. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c). Негодное значение (мусор либо, у диапазона, перевёрнутые границы N>M) снимает ПОЛЕ с кодом awg3_field_invalid: тайминги клиентские, узел живёт на дефолтах ядра. Своп перевёрнутой пары здесь ЗАПРЕЩЁН (normalize range_order не стоит) — это опечатка человека, и он обязан её увидеть, в отличие от h1..h4, где порядок границ смысла не несёт (SPEC 123 §2, контракт 1.1.11)."
+      },
+      "reject_after_time": {
+        "type": "awg_range",
+        "default": "180",
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg3_field_invalid"
+        },
+        "lx_only": true,
+        "min_core": "1.14.0-lx.32",
+        "build_tag": "with_awg",
+        "desc_en": "Reject the session after this many seconds.",
+        "desc_ru": "Отбрасывать сессию через столько секунд.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 180 секунд. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c). Негодное значение (мусор либо, у диапазона, перевёрнутые границы N>M) снимает ПОЛЕ с кодом awg3_field_invalid: тайминги клиентские, узел живёт на дефолтах ядра. Своп перевёрнутой пары здесь ЗАПРЕЩЁН (normalize range_order не стоит) — это опечатка человека, и он обязан её увидеть, в отличие от h1..h4, где порядок границ смысла не несёт (SPEC 123 §2, контракт 1.1.11)."
+      },
+      "keepalive_timeout": {
+        "type": "awg_range",
+        "default": "10",
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg3_field_invalid"
+        },
+        "lx_only": true,
+        "min_core": "1.14.0-lx.32",
+        "build_tag": "with_awg",
+        "desc_en": "Keepalive timeout in seconds.",
+        "desc_ru": "Таймаут keepalive в секундах.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 10 секунд. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c). Негодное значение (мусор либо, у диапазона, перевёрнутые границы N>M) снимает ПОЛЕ с кодом awg3_field_invalid: тайминги клиентские, узел живёт на дефолтах ядра. Своп перевёрнутой пары здесь ЗАПРЕЩЁН (normalize range_order не стоит) — это опечатка человека, и он обязан её увидеть, в отличие от h1..h4, где порядок границ смысла не несёт (SPEC 123 §2, контракт 1.1.11)."
+      },
+      "max_handshake_attempts": {
+        "type": "awg_range",
+        "default": "18",
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg3_field_invalid"
+        },
+        "lx_only": true,
+        "min_core": "1.14.0-lx.32",
+        "build_tag": "with_awg",
+        "desc_en": "Maximum handshake attempts, count not seconds.",
+        "desc_ru": "Максимум попыток рукопожатия — попытки, не секунды.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 18 попыток. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c). Негодное значение (мусор либо, у диапазона, перевёрнутые границы N>M) снимает ПОЛЕ с кодом awg3_field_invalid: тайминги клиентские, узел живёт на дефолтах ядра. Своп перевёрнутой пары здесь ЗАПРЕЩЁН (normalize range_order не стоит) — это опечатка человека, и он обязан её увидеть, в отличие от h1..h4, где порядок границ смысла не несёт (SPEC 123 §2, контракт 1.1.11)."
+      },
+      "random_trailers": {
+        "type": "bool",
+        "default": false,
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg3_field_invalid"
+        },
+        "lx_only": true,
+        "min_core": "1.14.0-lx.32",
+        "build_tag": "with_awg",
+        "desc_en": "Append random trailing bytes to packets.",
+        "desc_ru": "Дописывать случайные байты в хвост пакетов.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.1. Код awg3_random_trailers_wide_headers. Негодное значение (не булево) снимает ПОЛЕ с кодом awg3_field_invalid; узел живёт на дефолте ядра. Прежде поле ронял парсер ссылки молча, а на входе singbox проверки не было вовсе (контракт 1.1.11)."
+      },
+      "disable_cookies": {
+        "type": "bool",
+        "default": false,
+        "on_invalid": {
+          "action": "drop",
+          "code": "awg3_field_invalid"
+        },
+        "lx_only": true,
+        "min_core": "1.14.0-lx.32",
+        "build_tag": "with_awg",
+        "desc_en": "Disable the cookie mechanism.",
+        "desc_ru": "Отключить механизм cookie.",
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.1. Негодное значение (не булево) снимает ПОЛЕ с кодом awg3_field_invalid; узел живёт на дефолте ядра. Прежде поле ронял парсер ссылки молча, а на входе singbox проверки не было вовсе (контракт 1.1.11)."
+      },
+      "__dialer": {
+        "type": "ref",
+        "ref": "dialer",
+        "inline": true,
+        "desc_en": "Common dialer fields, inlined flat into the body.",
+        "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
+        "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
+      }
+    },
+    "relations": [
+      {
+        "kind": "ranges_disjoint",
+        "paths": [
+          "h1",
+          "h2",
+          "h3",
+          "h4"
+        ],
+        "defaults": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "action": "drop_node",
+        "code": "awg_headers_overlap",
+        "desc_en": "The magic header ranges h1-h4 must not overlap: the core tells message types apart by them.",
+        "desc_ru": "Диапазоны magic-заголовков h1-h4 не должны пересекаться: по ним ядро различает типы сообщений.",
+        "impl": "Свойство НАБОРА, а не пары «поле и сосед», поэтому conflicts/requires его не выражают: виноват может быть любой из четырёх, и снятие одного пару не развело бы. Незаданный заголовок участвует своим дефолтом ядра (h1=1 … h4=4) — отсюда defaults. Ядро принимает такой endpoint на `sing-box check`, но отвергает на конфигурировании устройства («headers must not overlap», submodules/wireguard-go/device/uapi.go), то есть падает ВЕСЬ конфиг, а не один узел — потому drop_node. Прежде правило жило рукописным awgHeaderOverlap в node_parser_wireguard.go, роняло узел МОЛЧА и не работало на входе singbox (находка №8 LEGACY_AUDIT, контракт 1.1.11)."
+      },
+      {
+        "kind": "cooccurrence",
+        "paths": [
+          "random_trailers",
+          "h1",
+          "h2",
+          "h3",
+          "h4"
+        ],
+        "when": {
+          "random_trailers": true,
+          "$range_width": {
+            "paths": [
+              "h1",
+              "h2",
+              "h3",
+              "h4"
+            ],
+            "gt": 65535
+          }
+        },
+        "action": "warn",
+        "code": "awg3_random_trailers_wide_headers",
+        "desc_en": "Random trailers together with a very wide magic-header range cost upload speed against reference-implementation servers.",
+        "desc_ru": "Случайные хвосты вместе с очень широким диапазоном magic-заголовков стоят скорости отдачи на серверах референсной реализации.",
+        "impl": "Свойство ПАРЫ настроек, ни одна из которых не битая, поэтому ни on_invalid, ни conflicts тут не подходят: узел живёт, менять нечего, человеку сообщается цена сочетания. Условие разнородное (булев флаг + ширина диапазона), отсюда kind cooccurrence, а не ranges_disjoint. Порог: ширина/2^32 на каждый data-пакет перестаёт быть пренебрежимой при hi-lo >= 65536 (docs-lx §2.10, SPEC 123 §91) — в записи это `gt: 65535`, потому что оператор строгий, а правило кода нестрогое (>=). Диапазоном считается только значение вида «lo-hi»: заголовок-ЧИСЛО ширины не имеет и условие не выполняет. Прежде правило жило рукописным awg3RandomTrailersWithWideHeaders (awg3.go:256) и потому не работало на входе singbox — тот же класс, что находка №8 LEGACY_AUDIT; связь реестра снимает и это расхождение входов. severity здесь НЕ дублируется: info несёт сам код (warnings.json)."
+      }
+    ],
+    "build_tag": "with_wireguard"
   }
 }

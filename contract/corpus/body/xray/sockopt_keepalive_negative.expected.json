@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "disable_tcp_keep_alive": true,
+        "server": "a.example",
+        "server_port": 443,
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "sockopt negative",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

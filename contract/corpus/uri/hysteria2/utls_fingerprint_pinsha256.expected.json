@@ -16,7 +16,14 @@
       },
       "kind": "outbound",
       "label": "h",
-      "scheme": "hysteria2"
+      "scheme": "hysteria2",
+      "warnings": [
+        {
+          "code": "tls_not_applicable_quic",
+          "path": "tls.utls",
+          "value": "map[enabled:true fingerprint:firefox]"
+        }
+      ]
     }
   ],
   "v": 1

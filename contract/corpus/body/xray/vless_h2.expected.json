@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "h.example",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "s.example"
+        },
+        "transport": {
+          "path": "/h2",
+          "type": "http"
+        },
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "h2",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

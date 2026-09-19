@@ -49,8 +49,13 @@ func materializedBody(t *testing.T, body string, tag string) map[string]interfac
 // hysteria v1 это фатально: ядро отвергает outbound без полосы («missing
 // upload speed») и роняет ВЕСЬ config.json.
 func TestHysteriaV1KeepsBandwidthAndPortsFromJSONBody(t *testing.T) {
+	// tls в фикстуре обязателен: ядро отвергает hysteria/hysteria2/tuic без
+	// него фаталом «TLS required» на ВЕСЬ конфиг, и с SPEC 131 W2c конвейер
+	// такой узел до state не доносит. Проверяемое здесь — не TLS, а
+	// сохранность float64/[]interface{} на стыке разбора и эмиссии (Л8).
 	body := `{"outbounds":[{"type":"hysteria","tag":"HY1","server":"h1.test","server_port":443,
-	  "auth_str":"secret","up_mbps":50,"down_mbps":100,"server_ports":["1000:2000"]}]}`
+	  "auth_str":"secret","up_mbps":50,"down_mbps":100,"server_ports":["1000:2000"],
+	  "tls":{"enabled":true,"server_name":"h1.test"}}]}`
 
 	ob := materializedBody(t, body, "HY1")
 
@@ -70,7 +75,8 @@ func TestHysteriaV1KeepsBandwidthAndPortsFromJSONBody(t *testing.T) {
 // провайдером терять нельзя — она ограничивает реальную скорость.
 func TestHysteria2KeepsBandwidthAndPortsFromJSONBody(t *testing.T) {
 	body := `{"outbounds":[{"type":"hysteria2","tag":"HY2","server":"h2.test","server_port":443,
-	  "password":"pw","up_mbps":50,"down_mbps":100,"server_ports":["1000:2000"]}]}`
+	  "password":"pw","up_mbps":50,"down_mbps":100,"server_ports":["1000:2000"],
+	  "tls":{"enabled":true,"server_name":"h2.test"}}]}`
 
 	ob := materializedBody(t, body, "HY2")
 
@@ -91,7 +97,7 @@ func TestHysteria2KeepsBandwidthAndPortsFromJSONBody(t *testing.T) {
 // дефолт и заведён.
 func TestHysteriaV1DefaultBandwidthReachesConfig(t *testing.T) {
 	body := `{"outbounds":[{"type":"hysteria","tag":"HY0","server":"h0.test","server_port":443,
-	  "auth_str":"secret"}]}`
+	  "auth_str":"secret","tls":{"enabled":true,"server_name":"h0.test"}}]}`
 
 	ob := materializedBody(t, body, "HY0")
 

@@ -380,10 +380,13 @@ To run GUI tests locally, set `TEST_PACKAGE` manually inside the script or invok
 - **[docs/API.md](docs/API.md)** — Debug API reference with a curl cookbook.
 - **[docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md)** — daemon core engine, pairing, and remote-machine management.
 - **[docs/WIZARD_TEMPLATE.md](docs/WIZARD_TEMPLATE.md)** — `wizard_template.json` syntax reference for VPN providers shipping a custom template.
-- **[docs/Protocols.md](docs/Protocols.md)** — supported protocols and URI link formats.
+- **[contract/docs/generated/index.md](contract/docs/generated/index.md)** — the per-scheme field reference, generated from the shared registry: link parameters, body fields and the [degradation codes](contract/docs/generated/warnings.md) a node can carry.
+- **[docs/Protocols.md](docs/Protocols.md)** — the launcher-side machinery around a node: build tags, Xray JSON arrays, share URIs, and the input forms that are not links.
 - **[docs/ParserConfig.md](docs/ParserConfig.md)** — subscription parser configuration reference.
 - **[docs/TRAFFIC_PROFILER.md](docs/TRAFFIC_PROFILER.md)** — Traffic Profiler internals and usage.
 - **[docs/TEMPLATE_REFERENCE.md](docs/TEMPLATE_REFERENCE.md)** — `wizard_template.json` schema reference.
+- **[docs/BUILD_LINUX.md](docs/BUILD_LINUX.md)** — building and running on Linux.
+- **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** — known problems by platform and where their solutions live.
 
 ## Troubleshooting
 
@@ -394,6 +397,7 @@ To run GUI tests locally, set `TEST_PACKAGE` manually inside the script or invok
 | Server list is empty / disabled | sing-box is not running (the list is intentionally inert until the engine is up). |
 | Subscription returns empty / errors | Check **Subscription identification** in Settings — HWID-binding panels need `Send device ID` enabled. Look at the ⚠ badge tooltip for provider announce. |
 | TUN doesn't capture traffic (Linux/macOS) | TUN interface usually needs root: `sudo ./singbox-launcher` or `sudo setcap cap_net_admin+ep ./singbox-launcher` (Linux). |
+| Linux: password asked 3× on VPN start, 1× on stop | `systemd-resolved` + Polkit authorize each `resolvectl` D-Bus action separately — see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#linux). |
 | Win7 32-bit: tray icon shows but window is blank / empty frame | OpenGL 2.0 vs Fyne's 2.1+ requirement — see [docs/WIN7_OPENGL.md](docs/WIN7_OPENGL.md) for the Mesa3D drop-in fix. |
 | Subscription auto-update silent | Open **Settings → Subscriptions** — confirm `Auto-update subscriptions` is on. Heartbeat is hourly; immediate retry fires on VPN-event. |
 | Need full state for a bug report | **Diagnostics → Copy snapshot** packages template + state + cache + config into one JSON. |

@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "password": "pw",
+        "server": "hy.example",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "hy.example"
+        },
+        "type": "hysteria2"
+      },
+      "kind": "outbound",
+      "label": "hy2",
+      "scheme": "hysteria2"
+    }
+  ],
+  "v": 1
+}

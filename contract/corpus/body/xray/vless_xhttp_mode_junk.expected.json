@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "h.example",
+        "server_port": 443,
+        "transport": {
+          "path": "/xh",
+          "type": "xhttp"
+        },
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "xhttp junk",
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "xhttp_param_reset",
+          "path": "transport.mode",
+          "value": "bogus-mode"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

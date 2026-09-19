@@ -16,7 +16,11 @@
 //
 // Протокол маскировки (`ip`) — константа `quic`: единственный проверенный
 // режим, и домен требуется именно им. MTU у AWG-узла правится своим полем
-// формы (потолок держит парсер, см. awgMaxMTU).
+// формы; потолок 1280 держит РЕЕСТР (wireguard.body.fields.mtu.max_when,
+// контракт 1.1.5), и форма с ним не спорит — своего значения она не
+// подставляет и мимо конвейера не пишет. Значение выше потолка будет заменено
+// при сохранении, и узел получит ⚠ awg_mtu_clamped; ветка отката тела
+// (writeAWGBody) на это не срабатывает — замена не теряет ключ.
 //
 // Чего здесь нет намеренно. h1–h4 при значениях 1/2/3/4 — это и есть
 // дефолтные типы сообщений WireGuard: писать их незачем, результат тот же.
@@ -41,8 +45,11 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/nodeflow"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -266,12 +273,109 @@ func applyAWGSettings(node *wizardmodels.Node, s awgSettings) error {
 		delete(ob, k)
 	}
 
-	body, err := json.Marshal(ob)
+	return writeAWGBody(node, ob)
+}
+
+// awgPipelineScheme — схема реестра, по правилам которой проверяется тело.
+//
+// Строкой, а не через `configtypes`: общей константы на «wireguard» в
+// проекте нет, а заводить её в чужом пакете ради одной формы — цена выше
+// пользы. Имя нормативно: это ключ `contract/registry/protocols/wireguard.json`.
+const awgPipelineScheme = "wireguard"
+
+// writeAWGBody — единственная запись тела обеими кнопками формы (Л23).
+//
+// # Что было и почему поменялось
+//
+// Форма правила ключи готового тела и писала его обратно `json.Marshal`,
+// минуя конвейер целиком: ни санитайзера, ни эмиттера. Значит и `warnings`
+// узла после правки оставались от ПРОШЛОГО его состояния — набор кодов на
+// узле расходился с его же телом, и ⚠ на строке говорил про поле, которого
+// там уже нет (или молчал про только что вписанное).
+//
+// Теперь тело проходит `nodeflow.Sanitize` → `nodeflow.Emit`, и коды
+// пересчитываются по тому же реестру, что и на всех остальных входах.
+//
+// # Почему санитайзер не владеет телом безоговорочно
+//
+// Реестр — живой документ волны W2, и его правила по AWG-полям ещё
+// доезжают (типы `h1`–`h4` объявлены строками, а ядро и все наши корпусные
+// тела несут там числа). Форма обфускации правит РАБОТАЮЩИЙ узел
+// пользователя: отдать его тело под перезапись правилу, которое сегодня
+// снимает живое поле, значит сломать соединение молча — ровно тот исход, от
+// которого волна и защищает.
+//
+// Поэтому правило такое: коды берём всегда, а ТЕЛО — только когда конвейер
+// ничего не потерял, то есть снял ровно то, что и должен был снять
+// (`type`/`tag` — их пишет сборка, см. buildManagedKeys). Потерял больше —
+// пишем пропатченное тело, а коды всё равно показываем: пользователь узнает
+// про деградацию, а узел продолжит работать. Когда реестр по AWG дозреет,
+// ветка отката перестанет срабатывать сама — без правки этого файла.
+//
+// То же и с вердиктом уровня узла (`Drop`): он становится КОДОМ на узле, а
+// не отказом формы. Отказ запер бы пользователя — тело без `address` или
+// `private_key` (неполный импорт) правится ровно этой формой и соседним
+// редактором JSON, и запрет на запись не оставил бы ему пути починки.
+func writeAWGBody(node *wizardmodels.Node, ob map[string]interface{}) error {
+	patched, err := json.Marshal(ob)
 	if err != nil {
 		return err
 	}
-	node.Body = body
+	bodyBefore := node.Body
+
+	res := nodeflow.Sanitize(awgPipelineScheme, ob)
+
+	// Коды — всегда, включая вердикт уровня узла. `Drop` здесь НЕ отказ
+	// формы: правка обфускации не обязана чинить узел целиком, а её отказ
+	// из-за неполного тела (нет `address`, нет `private_key`) запер бы
+	// пользователя — починить тело он может только этой же формой и
+	// редактором JSON рядом с ней.
+	warns := res.Warnings
+	if res.Drop != nil {
+		warns = append([]nodeflow.Warning{*res.Drop}, warns...)
+	}
+	// Замещаются ПРОИЗВОДНЫЕ коды: вердикт ядра поставил не пересчёт, и
+	// стирать его пересчётом нельзя (SPEC 132).
+	node.ReplaceDerivedWarnings(nodewarn.FromParsed(warns))
+
+	// Тело отдаём конвейеру только когда он ничего не потерял. Подробности
+	// правила — в шапке функции.
+	emitted, eerr := nodeflow.Emit(awgPipelineScheme, res.Clean)
+	if eerr == nil {
+		// Emit снимает managed-ключ "type" — вернуть его обязан пишущий тело.
+		var stamped json.RawMessage
+		if stamped, eerr = config.StampBodyType(awgPipelineScheme, emitted, ob); eerr == nil {
+			emitted = stamped
+		}
+	}
+	if res.Drop != nil || eerr != nil || awgPipelineLostFields(ob, res.Clean) {
+		node.Body = patched
+	} else {
+		node.Body = emitted
+	}
+	// Вердикт ядра привязан к ТЕЛУ: правка обфускации сменила тело — приговор
+	// о прежнем недействителен, узел включается обратно и проверится
+	// следующей сборкой (SPEC 132, CANON §9.4).
+	node.RevalidateCoreVerdictAfterBodyChange(bodyBefore)
 	return nil
+}
+
+// awgPipelineLostFields — снял ли санитайзер что-то СВЕРХ ключей, которыми
+// владеет сборка.
+//
+// `tag`/`type` в теле узла не живут по построению (SPEC 112: тег — это
+// идентичность узла, тип — его схема), и их снятие деградацией не является.
+// Всё остальное, чего нет в чистой карте, — потеря.
+func awgPipelineLostFields(src, clean map[string]interface{}) bool {
+	for k := range src {
+		if k == "tag" || k == "type" {
+			continue
+		}
+		if _, ok := clean[k]; !ok {
+			return true
+		}
+	}
+	return false
 }
 
 // clearAWGSettings снимает обфускацию с узла: снятая галочка обязана вернуть
@@ -302,12 +406,7 @@ func clearAWGSettings(node *wizardmodels.Node) error {
 		delete(ob, k)
 	}
 	clearRangedKeepalive(ob)
-	body, err := json.Marshal(ob)
-	if err != nil {
-		return err
-	}
-	node.Body = body
-	return nil
+	return writeAWGBody(node, ob)
 }
 
 // clearRangedKeepalive заменяет диапазонный persistent_keepalive_interval
@@ -446,13 +545,17 @@ func newAWGBlock(
 	// выпадающий список — по подписи. В Border
 	// растягивается ровно центр, поэтому домен стоит там, а всё прочее ушло
 	// в правый край одной HBox-лентой.
+	// Имена полей AmneziaWG (id/ib/jc/jmin/jmax) — ключи протокола, а не
+	// подписи: ровно так они пишутся в .conf и в awg://. Перевод увёл бы
+	// подпись от того, что пользователь ищет в своём конфиге.
 	tail := container.NewHBox(
-		widget.NewLabel("ib"), b.browser,
-		widget.NewLabel("jc"), awgNumCell(b.jc, awgJCDigits),
-		widget.NewLabel("jmin"), awgNumCell(b.jmin, awgJSizeDigits),
-		widget.NewLabel("jmax"), awgNumCell(b.jmax, awgJSizeDigits),
+		widget.NewLabel("ib"), b.browser, // l10n-exempt
+		widget.NewLabel("jc"), awgNumCell(b.jc, awgJCDigits), // l10n-exempt
+		widget.NewLabel("jmin"), awgNumCell(b.jmin, awgJSizeDigits), // l10n-exempt
+		widget.NewLabel("jmax"), awgNumCell(b.jmax, awgJSizeDigits), // l10n-exempt
 	)
 	b.rows = []fyne.CanvasObject{
+		// l10n-exempt
 		container.NewBorder(nil, nil, widget.NewLabel("id"), tail, b.domain),
 		b.note,
 	}

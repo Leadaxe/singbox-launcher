@@ -4,29 +4,52 @@
   "kind": "outbound",
   "singbox_type": "vless",
   "aliases": [],
-  "sources": ["uri", "singbox", "xray"],
+  "sources": [
+    "uri",
+    "singbox",
+    "xray"
+  ],
   "extension": null,
   "uri": {
     "userinfo": {
+      "maps_to": "uuid",
       "meaning": "uuid",
-      "note": "Percent-decoded; часть до ':' (Go Username(); Dart split(':').first). Пробел в userinfo percent-кодируется до парса (Go percentEncodeUserinfoSpaces; Dart — неявно через SDK, §9.B3). Пустой userinfo = drop ноды."
+      "desc_en": "User identifier.",
+      "desc_ru": "Идентификатор пользователя.",
+      "impl": "Percent-decoded; часть до ':' (Go Username(); Dart split(':').first). Пробел в userinfo percent-кодируется до парса (Go percentEncodeUserinfoSpaces; Dart — неявно через SDK, §9.B3). Пустой userinfo = drop ноды."
     },
     "query": {
       "flow": {
         "type": "enum",
-        "values": ["", "xtls-rprx-vision", "xtls-rprx-vision-udp443"],
+        "values": [
+          "",
+          "xtls-rprx-vision",
+          "xtls-rprx-vision-udp443"
+        ],
         "allowlist": null,
         "default": "",
         "aliases": [],
-        "note": "Ядро принимает ровно '' и 'xtls-rprx-vision'. 'xtls-rprx-vision-udp443' — quirk: разворачивается в vision + packet_encoding=xudp. Переписывание server_port=443 при этом НЕ паритет: Go переписывает порт на обоих путях (node_parser_core.go:600-607, xray_outbound_convert.go:153-156), Dart — только в Xray-JSON ветке (json_parsers.dart:424-428); Dart URI-парсер меняет лишь flow и packetEncoding, порт из URI остаётся (vless_parser.dart:31-35) — новое расхождение вне §9. vision несовместим с транспортом: при transport != null flow гасится (Dart — с warning VisionWithTransportWarning, Go — молча в sanitize). Прочее (none/deprecated/мусор) — drop поля."
+        "maps_to": "flow",
+        "desc_en": "XTLS flow control mode.",
+        "desc_ru": "Режим управления потоком XTLS.",
+        "impl": "Ядро принимает ровно '' и 'xtls-rprx-vision'. 'xtls-rprx-vision-udp443' — quirk: разворачивается в vision + packet_encoding=xudp. Переписывание server_port=443 при этом НЕ паритет: Go переписывает порт на обоих путях (node_parser_core.go:600-607, xray_outbound_convert.go:153-156), Dart — только в Xray-JSON ветке (json_parsers.dart:424-428); Dart URI-парсер меняет лишь flow и packetEncoding, порт из URI остаётся (vless_parser.dart:31-35) — новое расхождение вне §9. vision несовместим с транспортом: при transport != null flow гасится (Dart — с warning VisionWithTransportWarning, Go — молча в sanitize). Прочее (none/deprecated/мусор) — drop поля."
       },
       "packetEncoding": {
         "type": "alias_enum",
-        "values": ["", "xudp", "packetaddr"],
+        "values": [
+          "",
+          "xudp",
+          "packetaddr"
+        ],
         "allowlist": "packet_encoding",
         "default": "",
-        "aliases": ["packetencoding (любой регистр — оба парсера читают ключ case-insensitively)"],
-        "note": "'none' = эквивалент отсутствия, drop молча; неизвестное значение = panic ядра (SPEC 049) — drop поля с warning."
+        "aliases": [
+          "packetencoding (любой регистр — оба парсера читают ключ case-insensitively)"
+        ],
+        "maps_to": "packet_encoding",
+        "desc_en": "How UDP packets are encapsulated.",
+        "desc_ru": "Способ инкапсуляции UDP-пакетов.",
+        "impl": "'none' = эквивалент отсутствия, drop молча; иное значение — drop поля с warning. ЗАПИСЬ ИСПРАВЛЕНА (DRIFT §4/§2(i)): «паника ядра (SPEC 049)» протухла — на пине это аккуратный ФАТАЛ B «unknown packet encoding: <value>», а не паника; ядро починили, но фатальность осталась и гард по-прежнему обязателен (валит ВЕСЬ конфиг, не один узел). 'none' — алиас отсутствия поля: ядро его НЕ принимает (прогон: B «unknown packet encoding: none»), поэтому обе стороны снимают его молча. Прочий мусор — снять поле + packet_encoding_unknown."
       },
       "encryption": {
         "type": "string",
@@ -34,50 +57,105 @@
         "allowlist": null,
         "default": "",
         "aliases": [],
-        "ext": "mobile",
-        "note": "§335 LxBox — постквантовый слой VLESS (ядро SPEC 032): значение как есть, 'none' = слой выключен (не эмитится). Go параметр НЕ парсит (только статично пишет encryption=none в share-URI) — новое расхождение вне §9 PLAN."
+        "maps_to": "encryption",
+        "desc_en": "Post-quantum encryption layer.",
+        "desc_ru": "Постквантовый слой шифрования.",
+        "impl": "§335 LxBox — постквантовый слой VLESS (ядро SPEC 032): значение URL-декодируется, у него обрезаются края, и пустое либо ТОЧНОЕ 'none' означают «слоя нет» (поле в тело не кладётся); всё остальное едет в тело, где форму судит правило body.fields.encryption. Сравнение с 'none' ТОЧНОЕ, а не EqualFold (изменено 18.09.2026): ядро сличает свой литерал с учётом регистра, поэтому 'None' для него настоящее значение — прятать его под видом «слоя нет» нельзя, оно обязано дойти до правила и уехать в drop_node одинаково на всех входах. ЗАПИСЬ ИСПРАВЛЕНА 18.09.2026: пометка ext=mobile и заметка «Go параметр НЕ парсит» отстали от кода — Go читает параметр в core/config/subscription/node_parser_core.go:770-775, Xray-ветка в xray_outbound_convert.go:145,160. Эмиссия share-URI в Go по-прежнему статично пишет encryption=none — это расхождение формы эмита, оно описано в emit.note."
       },
       "type": {
         "type": "enum",
-        "values": ["", "tcp", "raw", "ws", "grpc", "http", "h2", "httpupgrade", "xhttp"],
+        "values": [
+          "",
+          "tcp",
+          "raw",
+          "ws",
+          "grpc",
+          "http",
+          "h2",
+          "httpupgrade",
+          "xhttp"
+        ],
         "allowlist": null,
         "default": "",
         "aliases": [],
-        "note": "Селектор транспорта — полная суб-схема в registry/transports.json (path/host/serviceName/ed/eh/mode/extra и семейство xhttp-полей там же). 'h2' в URI-ветке читает только Dart (Go — лишь vmess net=h2 и Xray-JSON) — новое расхождение."
+        "maps_to": "transport.type",
+        "desc_en": "Transport selector.",
+        "desc_ru": "Селектор транспорта.",
+        "impl": "Селектор транспорта — полная суб-схема в registry/transports.json (path/host/serviceName/ed/eh/mode/extra и семейство xhttp-полей там же). 'h2' в URI-ветке читает только Dart (Go — лишь vmess net=h2 и Xray-JSON) — новое расхождение."
       },
       "headerType": {
         "type": "enum",
-        "values": ["", "http"],
+        "values": [
+          "",
+          "http"
+        ],
         "allowlist": null,
         "default": "",
         "aliases": [],
-        "note": "Xray TCP/RAW c HTTP-камуфляжем: type=tcp|raw + headerType=http → sing-box transport 'http'. См. transports.json."
+        "maps_to": "transport.type",
+        "desc_en": "Xray TCP/RAW HTTP camouflage selector.",
+        "desc_ru": "Селектор HTTP-камуфляжа Xray поверх TCP/RAW.",
+        "impl": "Xray TCP/RAW c HTTP-камуфляжем: type=tcp|raw + headerType=http → sing-box transport 'http'. См. transports.json."
       },
       "security": {
         "type": "enum",
-        "values": ["", "none", "tls", "reality"],
+        "values": [
+          "",
+          "none",
+          "tls",
+          "reality"
+        ],
         "allowlist": null,
         "default": "",
         "aliases": [],
-        "note": "TLS-суб-схема — registry/tls.json (sni/peer, fp/fingerprint, pbk, sid, alpn, insecure-семейство, ech). Особенность vless: security='' на портах {80,8080,8880,2052,2082,2086,2095} = TLS выключен (plaintext-эвристика, оба проекта)."
+        "maps_to": "tls.enabled",
+        "desc_en": "Whether the link asks for TLS, and in which flavour.",
+        "desc_ru": "Просит ли ссылка TLS и в каком виде.",
+        "impl": "TLS-суб-схема — registry/tls.json (sni/peer, fp/fingerprint, pbk, sid, alpn, insecure-семейство, ech). Особенность vless: security='' на портах {80,8080,8880,2052,2082,2086,2095} = TLS выключен (plaintext-эвристика, оба проекта)."
       }
     },
     "fragment": "label"
   },
   "emit": {
     "share_uri": true,
-    "param_order": ["alpn", "encryption", "flow", "fp", "host", "insecure", "mode", "packetEncoding", "path", "pbk", "security", "serviceName", "sid", "sni", "type"],
+    "param_order": [
+      "alpn",
+      "encryption",
+      "flow",
+      "fp",
+      "host",
+      "insecure",
+      "mode",
+      "packetEncoding",
+      "path",
+      "pbk",
+      "security",
+      "serviceName",
+      "sid",
+      "sni",
+      "type"
+    ],
     "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart buildQuery sort). Расхождения формы эмита (для cross-emit фазы 2): Go всегда пишет encryption=none и опускает fp при 'random', reality-ноды идут БЕЗ security=reality (только pbk/sid), insecure=1 под ключом 'insecure'; Dart пишет security=reality|tls|none явно, fp всегда (включая random), флаг под ключом 'allowInsecure'."
   },
-  "degrade": [
-    "невалидный порт (не 1..65535) → drop ноды (битый server_port валит весь конфиг через sing-box check)",
-    "пустой hostname или userinfo → drop ноды",
-    "flow не из {'', vision, vision-udp443} → drop поля, нода живёт",
-    "vision + transport → drop flow (Dart: + warning §115)",
-    "packetEncoding='none' → drop поля молча; иной мусор → drop поля + warning",
-    "fp вне utls_fingerprints: Go → drop utls-блока, для vless дефолт 'random'; Dart → замена на 'chrome' + UnknownFingerprintWarning §281 (расхождение, см. tls.json)",
-    "pbk не X25519 (32 байта) → REALITY не строится, деградация до plain TLS (broken-list-pbk-junk, v1.1.7)",
-    "невалидный UTF-8 во fragment: Go чинит/дропает ноду при неисправимом; Dart — lossy-decode"
+  "mapper": [
+    {
+      "id": "vision_udp443_is_a_compound_name",
+      "from": "`flow=xtls-rprx-vision-udp443`",
+      "to": "`flow=xtls-rprx-vision` + `packet_encoding=xudp`",
+      "kind": "split",
+      "desc_en": "The suffix is part of a compound NAME, not a value the core knows: it means UDP/443 goes direct. The server port is deliberately left alone.",
+      "desc_ru": "Суффикс — часть составного ИМЕНИ, а не значение, известное ядру: он означает «UDP/443 идёт напрямую». Порт узла при этом намеренно не переписывается.",
+      "impl": "core/config/subscription/node_parser_core.go:730. Санитайзер увидел бы только мусор вне enum'а. Порт не трогаем — DRIFT §7.4, решение владельца."
+    },
+    {
+      "id": "packet_encoding_none_means_absent",
+      "from": "`packetEncoding=none`",
+      "to": "no `packet_encoding` key at all",
+      "kind": "drop",
+      "desc_en": "In subscription dialect `none` means \"no special encapsulation\", i.e. the same as an absent key; the core does not know the value and rejects the whole config over it.",
+      "desc_ru": "В диалекте подписок `none` означает «без особой инкапсуляции», то есть синоним отсутствия ключа; ядро такого значения не знает и падает всем конфигом.",
+      "impl": "core/config/subscription/node_parser_core.go:737-745. Прочий мусор уезжает как есть и снимается санитайзером кодом packet_encoding_unknown."
+    }
   ],
   "refs": {
     "go": [
@@ -86,7 +164,7 @@
       "core/config/subscription/node_parser_core.go:439",
       "core/config/subscription/node_parser_core.go:593-627",
       "core/config/subscription/node_parser_transport.go:625-701",
-      "core/config/subscription/xray_outbound_convert.go:103-186",
+      "core/config/subscription/xray_element_engine.go",
       "core/config/subscription/singbox_sanitize.go:221-263",
       "core/config/subscription/shareuri_vless.go:64-97"
     ],
@@ -98,5 +176,498 @@
       "lib/services/parser/json_parsers.dart:797-823",
       "lib/models/node_spec_emit.dart:37-115"
     ]
+  },
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": [
+      "server",
+      "server_port",
+      "uuid",
+      "flow",
+      "encryption",
+      "network",
+      "packet_encoding",
+      "tls",
+      "multiplex",
+      "transport",
+      "__dialer"
+    ],
+    "fields": {
+      "server": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server address: domain or IP.",
+        "desc_ru": "Адрес сервера: домен или IP.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "server_port": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server port.",
+        "desc_ru": "Порт сервера.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "uuid": {
+        "type": "string",
+        "required": true,
+        "secret": true,
+        "desc_en": "User identifier.",
+        "desc_ru": "Идентификатор пользователя.",
+        "impl": "json-тег без omitempty. Секрет: в warnings и логах маскируется. Формат uuid — только документация: ядро мусорную строку ПРИНИМАЕТ (хеширует в vless.NewClient), проверено `sing-box check` на 1.14.1-lx.4 — DRIFT §(t), SPEC 131 W2c."
+      },
+      "flow": {
+        "type": "enum",
+        "values": [
+          "",
+          "xtls-rprx-vision"
+        ],
+        "normalize": "trim_lower",
+        "on_invalid": {
+          "action": "drop",
+          "code": "flow_deprecated"
+        },
+        "default": "",
+        "conflicts": [
+          {
+            "with": "transport",
+            "code": "vision_with_transport"
+          }
+        ],
+        "desc_en": "XTLS flow control mode.",
+        "desc_ru": "Режим управления потоком XTLS.",
+        "impl": "Проверка в sing-vmess/vless.NewClient; иное значение = код flow_deprecated, поле снимается. Vision несовместим с транспортом и не поддерживает UDP. Конфликт назван СВОИМ кодом vision_with_transport, а не общим field_conflict: у общего кода текст «ядро отвергает такую пару и не запустит весь конфиг», а здесь ядро пару ПРИНИМАЕТ (вердикт D) — снимается бессмыслица, узел живёт, и severity тут info, а не warning. Снимается при этом сам flow: связи читают исходное тело (pathPresent → srcRoot), поэтому transport виден, хотя по body.order он идёт ПОЗЖЕ flow, — «младшее по order» описывает не то, какое поле снимается, а лишь то, что сторона-декларант уступает."
+      },
+      "encryption": {
+        "type": "string",
+        "normalize": "trim",
+        "absent_values": [
+          "none"
+        ],
+        "pattern": "^mlkem768x25519plus(\\.[^.]+){3,}$",
+        "lx_only": true,
+        "min_core": "1.14.0-lx.18",
+        "on_invalid": {
+          "action": "drop_node",
+          "code": "vless_encryption_invalid"
+        },
+        "desc_en": "Post-quantum encryption layer.",
+        "desc_ru": "Постквантовый слой шифрования.",
+        "impl": "SPEC 032 форка, protocol/vless/lx_encryption.go. НОРМАТИВНЫЙ ПОРЯДОК (одинаков на всех входах): (1) на входе ссылки маппер URL-декодирует параметр; (2) обрезаются пробельные символы ПО КРАЯМ всей строки — normalize trim, тихо, без кода: ядро само делает TrimSpace всей строки, и в тело кладётся уже ОБРЕЗАННОЕ значение; (3) результат пуст или ТОЧНО 'none' — поля в теле нет, слоя нет, кода нет (ядро сравнивает свой литерал точно и с учётом регистра); (4) иначе значение обязано совпасть с pattern, иначе drop_node vless_encryption_invalid, и в код уезжает СЫРОЕ значение, до обрезки. Проверяется только ФОРМА: имя метода, а дальше не меньше трёх непустых частей через точку. Вид, RTT, padding-блоки и ключи НЕ проверяем — полная грамматика (справка SPECS/131-F-O-UNIFIED_NODE_PIPELINE/VLESS_ENCRYPTION_GRAMMAR.md) решением владельца 18.09.2026 в клиентах не дублируется: копия разошлась бы с ядром на первом же бампе пина и начала бы резать годные узлы, а всё тоньше формы ловит страховка «ядро отвергло узел» (SPEC 132). ИМЯ МЕТОДА ЗАШИТО в выражение — при бампе пина ядра сверить с protocol/vless/lx_encryption.go. Пробелы ВНУТРИ сегментов законны: ядро тримит сегменты начиная с четвёртого, поэтому '….0rtt. KEY' — годное значение, и в тело оно едет как есть (обрезаются только края всей строки). Отказ — именно drop_node, а не снятие поля: узел без encryption к серверу, который слой требует, не подключится, а тихое снятие шифрования — тихое понижение защиты."
+      },
+      "network": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Networks this outbound handles.",
+        "desc_ru": "Сети, которые обслуживает этот узел.",
+        "impl": "NetworkList; правило значения — registry/dialer.json, секция common."
+      },
+      "packet_encoding": {
+        "type": "enum",
+        "values": [
+          "",
+          "packetaddr",
+          "xudp"
+        ],
+        "normalize": "trim_lower",
+        "on_invalid": {
+          "action": "drop",
+          "code": "packet_encoding_unknown"
+        },
+        "default": "xudp",
+        "tristate": true,
+        "desc_en": "How UDP packets are encapsulated.",
+        "desc_ru": "Способ инкапсуляции UDP-пакетов.",
+        "impl": "*string — три состояния: ключа НЕТ = xudp (дефолт ядра), явная \"\" = без инкапсуляции, значение = как задано. Эмиттер обязан писать явную пустую строку, а не опускать ключ. ЗАПИСЬ ИСПРАВЛЕНА (DRIFT §4/§2(i)): «паника ядра (SPEC 049)» протухла — на пине это аккуратный ФАТАЛ B «unknown packet encoding: <value>», а не паника; ядро починили, но фатальность осталась и гард по-прежнему обязателен (валит ВЕСЬ конфиг, не один узел). 'none' — алиас отсутствия поля: ядро его НЕ принимает (прогон: B «unknown packet encoding: none»), поэтому обе стороны снимают его молча. Прочий мусор — снять поле + packet_encoding_unknown."
+      },
+      "tls": {
+        "type": "ref",
+        "ref": "tls",
+        "desc_en": "TLS settings.",
+        "desc_ru": "Настройки TLS.",
+        "impl": "OutboundTLSOptions; поля — registry/tls.json."
+      },
+      "multiplex": {
+        "type": "ref",
+        "ref": "multiplex",
+        "desc_en": "Stream multiplexing settings.",
+        "desc_ru": "Настройки мультиплексирования потоков.",
+        "impl": "OutboundMultiplexOptions — registry/multiplex.json."
+      },
+      "transport": {
+        "type": "ref",
+        "ref": "transports",
+        "desc_en": "V2Ray transport settings.",
+        "desc_ru": "Настройки транспорта V2Ray.",
+        "impl": "V2RayTransportOptions; варианты по transport.type — registry/transports.json."
+      },
+      "__dialer": {
+        "type": "ref",
+        "ref": "dialer",
+        "inline": true,
+        "desc_en": "Common dialer fields, inlined flat into the body.",
+        "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
+        "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
+      }
+    }
+  },
+  "mappers": {
+    "uri": {
+      "detect": {
+        "scheme_in": [
+          "vless"
+        ]
+      },
+      "body_source": "uri",
+      "forms": [
+        {
+          "id": "url",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            "url"
+          ],
+          "space": "url"
+        }
+      ],
+      "overlays": [
+        {
+          "name": "extra",
+          "source": "query.extra",
+          "decode": [
+            "percent"
+          ],
+          "flatten": [
+            "xmux"
+          ],
+          "impl": "Примитив overlay: вложенный слой ЧУЖОГО диалекта (JSON в query-параметре) становится отдельным пространством источников и адресуется тем же source под своим именем — `extra.scMaxEachPostBytes`. Слой именно ОТДЕЛЬНЫЙ, а не слитый с query: кто из двух побеждает, решает сама запись порядком источников, и у базовой тройки mode/path/host это решение обратное (D-097). flatten: xmux — члены вложенного объекта поднимаются в плоский слой, как сегодня делает xhttpMergeSource вручную. Битый JSON слоя НЕ роняет узел: слой не появляется, плоские значения остаются рабочими."
+        }
+      ],
+      "userinfo": {
+        "split": {
+          "sep": ":",
+          "limit": 2
+        },
+        "into": [
+          "uuid"
+        ],
+        "single_into": "uuid",
+        "required": true,
+        "impl": "Режется по ПЕРВОМУ ':', берётся только первая часть: у vless userinfo — UUID, а второй компонент (пароля у схемы нет) отбрасывается. Так читает Go (Username(), node_parser_core.go:458) и Dart (split(':').first). Отличается от trojan, где пароль — ВЕСЬ userinfo (D133-8): там резка теряет пароли с двоеточием, здесь отбрасывается мусор публичных списков (кейс uri/vless/userinfo_raw_space: 'Promo:Configs '). Одиночный userinfo — UUID. Разделитель объявлен (limit 2), потому что UUID сам может нести двоеточие, но второго КОМПОНЕНТА у схемы нет: всё значение целиком и есть идентификатор. Объявлено явно, хотя совпадает с into[0]."
+      },
+      "label": {
+        "source": [
+          "fragment",
+          "path"
+        ],
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "value_map": {
+          "🇪🇳": "🇬🇧"
+        },
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "singbox_type"
+        }
+      },
+      "defaults": {
+        "server_port": 443
+      },
+      "include": [
+        "transports#uri",
+        "tls#uri",
+        "tls#uri_security",
+        "tls#uri_reality",
+        "dialer#uri"
+      ],
+      "params": {
+        "server": {
+          "source": "host",
+          "maps_to": "server",
+          "required": true
+        },
+        "server_port": {
+          "source": "port",
+          "maps_to": "server_port",
+          "type": "int"
+        },
+        "fp": {
+          "source": [
+            "query.fp",
+            "query.fingerprint"
+          ],
+          "maps_to": "tls.utls.fingerprint",
+          "normalize": "trim_lower",
+          "value_map": {
+            "$ref": "tls.fp_dialect"
+          },
+          "implies": {
+            "tls.utls.enabled": true
+          },
+          "materialize_default": true,
+          "sets": {
+            "": {
+              "tls.utls.enabled": true,
+              "tls.utls.fingerprint": "random"
+            }
+          },
+          "when": {
+            "tls.enabled": true
+          },
+          "impl": "D-009: у vless ПУСТОЙ fp означает `random`, и это НЕ дефолт ядра (у него пустой fp = chrome), а конвенция обеих сторон — отсюда materialize_default: маппер ОБЯЗАН записать значение в тело. Без него санитайзер снимает tls.reality.enabled по requires tls.utls.enabled, и блок REALITY рассыпается (node_parser_transport.go:920-929). У trojan/anytls дефолта нет: там пустой fp = блока utls нет, и общая запись блока tls#uri остаётся как есть. Эта запись перекрывает одноимённую из include, потому что объявлена ПОЗЖЕ него."
+        },
+        "$plaintext_port": {
+          "source": "query.security",
+          "selector": true,
+          "priority": 5,
+          "when": {
+            "query.security": "",
+            "port": {
+              "in": [
+                80,
+                8080,
+                8880,
+                2052,
+                2082,
+                2086,
+                2095
+              ]
+            }
+          },
+          "sets": {
+            "": {
+              "tls": null
+            }
+          },
+          "impl": "Служебная запись без maps_to: её единственная работа — СНЯТЬ блок tls, который дефолт security ''→tls.enabled успел завести. Выражается sets со значением null (G2), а не пустым набором {}: пустой набор означает «ничего не писать», и блок оставался бы (QUIRKS Q133-34, тот же корень, что у trojan security=none). priority 5 — больше, чем у security из блока tls#uri (0): security исполняется РАНЬШЕ, эта запись снимает его результат. Сегодня это node_parser_transport.go:150-158 и :912-914 (plaintextVLESSPorts)."
+        },
+        "flow": {
+          "source": "query.flow",
+          "maps_to": "flow",
+          "value_map": {
+            "xtls-rprx-vision-udp443": "xtls-rprx-vision"
+          },
+          "sets": {
+            "xtls-rprx-vision-udp443": {
+              "packet_encoding": "xudp"
+            }
+          },
+          "priority": 10,
+          "impl": "`xtls-rprx-vision-udp443` — не значение поля, а СОСТАВНОЕ имя: суффикс означает «UDP/443 идёт напрямую», то есть packet_encoding=xudp. Порт при этом НЕ переписывается (DRIFT §7.4, решение владельца): порт — свойство узла, а не флоу."
+        },
+        "packetEncoding": {
+          "source": "query.packetEncoding",
+          "maps_to": "packet_encoding",
+          "value_map": {
+            "none": null
+          },
+          "priority": 20,
+          "merge": "overwrite",
+          "impl": "QUIRKS: корпус packet_encoding_udp443_quirk_wins ждёт xudp при packetEncoding=none И flow=…-udp443. Это работает не потому, что «sets побеждает», а потому что `none` отображается в null и записи НЕ делает. Явное значение (xudp/packetaddr) перебивает — priority 20 > 10 плюс merge overwrite, ровно как сегодня (node_parser_core.go:759-768 пишет ПОСЛЕ flow)."
+        },
+        "encryption": {
+          "source": "query.encryption",
+          "maps_to": "encryption",
+          "normalize": "trim",
+          "value_map": {
+            "": null,
+            "none": null
+          },
+          "value_map_case": "sensitive",
+          "emit_when": "always",
+          "impl": "На разборе `none` = «слоя нет» (ключ не пишется), на эмите параметр пишется ВСЕГДА (shareuri_vless.go:81-87). Асимметрия сохраняется явно. value_map_case: sensitive — здесь регистр ЗНАЧИМ, в отличие от общего правила: ядро сравнивает свой литерал 'none' точно (protocol/vless/lx_encryption.go, см. body.fields.encryption). 'None' с большой буквы обязано доехать до тела и получить drop_node vless_encryption_invalid, а регистронезависимое попадание проглатывало бы его как «слоя нет» и молча понижало защиту — корпус encryption_none_wrong_case_rejected."
+        }
+      },
+      "unknown_key": {
+        "action": "keep",
+        "code": "uri_param_unknown"
+      },
+      "emit": {
+        "form": "url",
+        "param_order": "alphabetical",
+        "omit_default": [
+          "fp:random",
+          "security:reality"
+        ],
+        "emit_when": {
+          "encryption": "always",
+          "security": "always"
+        },
+        "impl": "omit_default `fp:random`: у vless `fp=random` НЕ пишется (конвенция D-009 «пусто = random»), прочие написания пишутся. security вычеркнут из omit_default и объявлен always: у Xray-клиентов умолчание security у vless = none, и узел без явного security прочёлся бы БЕЗ TLS. names.insecure = allowInsecure — де-факто написание схемы для чужих клиентов (оверлей LxBox, принят как есть).",
+        "names": {
+          "insecure": "allowInsecure"
+        }
+      }
+    },
+    "xray": {
+      "detect": {
+        "json": {
+          "value_of": {
+            "protocol": "vless"
+          }
+        }
+      },
+      "body_source": "xray",
+      "forms": [
+        {
+          "id": "vnext",
+          "detect": {
+            "all": [
+              {
+                "json": {
+                  "type_of": {
+                    "settings": "object"
+                  }
+                }
+              },
+              {
+                "any": [
+                  {
+                    "json": {
+                      "type_of": {
+                        "streamSettings": "object"
+                      }
+                    }
+                  },
+                  {
+                    "json": {
+                      "key_absent": [
+                        "streamSettings"
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "space": "json",
+          "base": "settings.vnext.0",
+          "impl": "ФОРМУ ОПОЗНАЁТ ТИП КОНТЕЙНЕРА, а не ветка default. Мусорный ТИП поля (streamSettings: \"none\", settings: []) означает БИТУЮ ЗАПИСЬ, а не «транспорта нет»: ветка default собирала из неё РАБОЧИЙ plain-TCP узел без транспорта и TLS (xray_outbound_convert.go:148-153 давал nil-карту) — узел, которого провайдер не присылал. Кейс корпуса malformed_stream; дельты нет, это починка дефекта. ОТСУТСТВИЕ streamSettings — НЕ битая запись, а plain-TCP без транспорта: старый конвертер строил из такого элемента рабочий узел (network по умолчанию tcp, та же :148-153), и голое `type_of` его бы отняло, потому что отсутствующий ключ предикат не проходит. Поэтому «объект ИЛИ ключа нет» — через any/key_absent, новых примитивов не требуется. Контейнер settings при этом обязан быть объектом всегда: без него нет ни адреса, ни users."
+        }
+      ],
+      "include": [
+        "transports#xray",
+        "tls#xray",
+        "dialer#xray"
+      ],
+      "params": {
+        "address": {
+          "source": "json.$base.address",
+          "maps_to": "server",
+          "required": true,
+          "desc_en": "empty server address"
+        },
+        "port": {
+          "source": "json.$base.port",
+          "maps_to": "server_port",
+          "type": "int",
+          "required": true,
+          "desc_en": "server port is missing or out of range"
+        },
+        "id": {
+          "source": "json.$base.users.0.id",
+          "maps_to": "uuid",
+          "required": true,
+          "desc_en": "empty user id — the server returned a placeholder, subscription may be expired"
+        },
+        "flow": {
+          "source": "json.$base.users.0.flow",
+          "maps_to": "flow",
+          "value_map": {
+            "xtls-rprx-vision-udp443": "xtls-rprx-vision"
+          },
+          "sets": {
+            "xtls-rprx-vision-udp443": {
+              "packet_encoding": "xudp"
+            }
+          }
+        },
+        "encryption": {
+          "source": "json.$base.users.0.encryption",
+          "maps_to": "encryption",
+          "value_map": {
+            "": null,
+            "none": null
+          },
+          "impl": "Сравнение у Xray-ветки сегодня ТОЧНОЕ (не EqualFold, xray_outbound_convert.go:164) — value_map это сохраняет."
+        },
+        "$extra_vnext": {
+          "source": "json.settings.vnext",
+          "maps_to": null,
+          "on_len_gt": {
+            "n": 1,
+            "action": "note",
+            "code": "xray_extra_entries_dropped"
+          },
+          "impl": "QUIRKS Q133-18: vnext[1..] и users[1..] отбрасываются молча."
+        },
+        "$extra_users": {
+          "source": "json.$base.users",
+          "maps_to": null,
+          "on_len_gt": {
+            "n": 1,
+            "action": "note",
+            "code": "xray_extra_entries_dropped"
+          }
+        }
+      },
+      "unknown_key": {
+        "action": "drop",
+        "code": "json_field_unknown",
+        "ignore": [
+          "protocol",
+          "tag",
+          "remarks",
+          "settings",
+          "streamSettings",
+          "mux",
+          "sendThrough",
+          "proxySettings"
+        ],
+        "impl": "Ключи УРОВНЯ ДОКУМЕНТА, полем узла не являющиеся: бухгалтерия элемента (protocol — по нему элемент и опознан, tag/remarks — имя, которое читает сборка документа) ПЛЮС контейнеры, чьи листья читают записи таблицы. Без контейнеров каждый узел получал бы json_field_unknown на ключ, который секция читает своими записями. Список дословно равен списку LxBox — общий, не наш."
+      },
+      "emit": null
+    },
+    "singbox": {
+      "detect": {
+        "json": {
+          "value_in": {
+            "type": [
+              "vless"
+            ]
+          }
+        }
+      },
+      "body_source": "singbox",
+      "forms": [
+        {
+          "id": "outbound",
+          "detect": {
+            "default": true
+          },
+          "space": "json",
+          "level": "outbound"
+        }
+      ],
+      "params": {
+        "$xmux": {
+          "source": [
+            "json.transport.xmux",
+            "json.transport.extra.xmux"
+          ],
+          "flatten": [
+            "xmux"
+          ],
+          "maps_to": "transport.xmux",
+          "impl": "Диалект форков: реестр уже объявляет двойные написания (max_concurrency/maxConcurrency, c_max_reuse_times/cMaxReuseTimes) и вложенность extra.xmux. Живое состояние владельца несёт xmux.max_concurrency='16-32' на 186 узлах origin=json."
+        }
+      },
+      "unknown_key": {
+        "action": "keep",
+        "code": "json_field_unknown"
+      }
+    }
   }
 }

@@ -22,7 +22,14 @@
       },
       "kind": "outbound",
       "label": "flow-none",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "flow_deprecated",
+          "path": "flow",
+          "value": "none"
+        }
+      ]
     }
   ],
   "v": 1

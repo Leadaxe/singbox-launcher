@@ -192,6 +192,7 @@ func AppendManualConfigJSON(ctx UIUpdater, body []byte, label string) error {
 			Tag:      label,
 			Body:     mat.Body,
 			Origin:   &corestate.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw},
+			Warnings: mat.Warnings,
 			Sections: sections,
 		},
 		ID:    corestate.MakeULID(),

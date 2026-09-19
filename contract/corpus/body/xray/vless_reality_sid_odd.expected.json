@@ -1,0 +1,38 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "h.example",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "reality": {
+            "enabled": true,
+            "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          },
+          "server_name": "s.example",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "sid odd",
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "reality_short_id_invalid",
+          "path": "tls.reality.short_id",
+          "value": "abc"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

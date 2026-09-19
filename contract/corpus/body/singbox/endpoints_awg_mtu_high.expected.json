@@ -1,0 +1,39 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.0.0.2/32"
+        ],
+        "jc": 10,
+        "mtu": 1420,
+        "peers": [
+          {
+            "address": "example-3.com",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "port": 51820,
+            "public_key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA="
+          }
+        ],
+        "private_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "awg-ep",
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "awg_mtu_high",
+          "path": "mtu",
+          "value": "1420"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

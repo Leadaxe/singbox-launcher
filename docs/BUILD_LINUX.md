@@ -20,12 +20,37 @@
      libxkbcommon-x11-dev libxxf86vm-dev libwayland-dev
    ```
 
-   **Fedora / RHEL:**
+   **Fedora:**
    ```bash
    sudo dnf install -y \
      mesa-libGL-devel libXcursor-devel libXrandr-devel libXi-devel \
      libXinerama-devel libXft-devel libxkbcommon-x11-devel \
-     libXxf86vm-devel libwayland-devel
+     libXxf86vm-devel wayland-devel
+   ```
+
+   **RHEL 9 and compatible distributions:**
+
+   The `libxkbcommon-x11-devel` and `libXxf86vm-devel` packages are provided by CodeReady Builder (CRB). Enable it first, then install the Fedora package list above.
+
+   On RHEL with an active subscription:
+   ```bash
+   sudo subscription-manager repos \
+     --enable="codeready-builder-for-rhel-9-$(arch)-rpms"
+   ```
+
+   On Rocky Linux 9 or AlmaLinux 9:
+   ```bash
+   sudo dnf install -y dnf-plugins-core
+   sudo dnf config-manager --set-enabled crb
+   ```
+
+   **openSUSE (Leap / Tumbleweed):**
+   ```bash
+   sudo zypper install -y \
+     gcc gcc-c++ make pkg-config Mesa-libGL-devel Mesa-libEGL-devel \
+     libXcursor-devel libXrandr-devel libXi-devel libXinerama-devel \
+     libXft-devel \
+     libxkbcommon-x11-devel libXxf86vm-devel wayland-devel
    ```
 
 3. **CGO** — must be enabled (`CGO_ENABLED=1` by default).
@@ -34,7 +59,7 @@
 
 ### Option 1: the script (recommended)
 
-The script checks for the dependencies and prints the install commands when they are missing.
+The script checks for the dependencies and prints the install commands when they are missing. It enables both X11 and native Wayland when their development files are available; otherwise it builds the X11 backend, which also works in Wayland sessions through XWayland.
 
 ```bash
 cd /path/to/singbox-launcher
@@ -60,6 +85,7 @@ Once the dependencies are installed:
 
 ```bash
 export CGO_ENABLED=1
+export CGO_CFLAGS="$(pkg-config --cflags-only-I wayland-client wayland-cursor wayland-egl xkbcommon)"
 GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o singbox-launcher
 ```
 
@@ -67,15 +93,28 @@ GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o singbox-lau
 
 ### Package gl was not found / pkg-config
 
-- Install `pkg-config` and the OpenGL packages: on Debian/Ubuntu that's `libgl1-mesa-dev`, see the "System packages" block above.
+- Install `pkg-config` and the OpenGL packages: on Debian/Ubuntu that's `libgl1-mesa-dev`; on openSUSE, `Mesa-libGL-devel`. See the "System packages" block above.
 
 ### X11/Xcursor/Xcursor.h: No such file or directory
 
-- X11 headers are missing. On Debian/Ubuntu: `libxcursor-dev` and the rest of the list above (libxrandr-dev, libxi-dev and so on).
+- X11 headers are missing. On Debian/Ubuntu: `libxcursor-dev`; on openSUSE: `libXcursor-devel` and the rest of the list above (`libXrandr-devel`, `libXi-devel`, and so on).
+
+### wayland-client-core.h: No such file or directory
+
+- GLFW enables its Wayland backend on Linux. On openSUSE, Wayland headers live under `/usr/include/wayland`; `build_linux.sh` automatically adds this path from `pkg-config`. For a manual build, use the `CGO_CFLAGS` command shown above.
+- Verify the setup with `pkg-config --cflags wayland-client`; on openSUSE it should include `-I/usr/include/wayland`.
+
+### EGL/egl.h: No such file or directory
+
+- EGL headers are needed for GLFW's native Wayland backend. They are installed transitively by the package lists tested on Debian 12, Ubuntu 24.04, Fedora 44, and Rocky Linux 9. If they are missing on another release, install `libegl1-mesa-dev` on Debian/Ubuntu, `mesa-libEGL-devel` on Fedora/RHEL, or `Mesa-libEGL-devel` on openSUSE. `build_linux.sh` falls back to the X11 backend when they are unavailable.
 
 ### Docker build: COPY failed / no such file
 
 - Run `docker build` **from the repository root** (where `go.mod` and `go.sum` live), with `.` as the context and `-f build/Dockerfile.linux`.
+
+### A password is asked three times when the VPN starts (and once when it stops)
+
+- Not a build problem — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md#linux).
 
 ## Running
 

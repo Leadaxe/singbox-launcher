@@ -1,0 +1,7 @@
+# ПАРНОСТЬ ВХОДОВ (находка №8): ключ защиты заголовков из одних нулей. Ядро
+# отвергает такой конфиг целиком, узел отбраковывается с кодом
+# awg3_header_key_invalid (реестр: format base64_32 + pattern, on_invalid
+# drop_node). Запрет всех нулей выражен pattern'ом — строка из одних 'A' с
+# паддингом и есть 32 нулевых байта. Прежде правило жило рукописным
+# validateAWG3 в парсере ссылки и на это тело не действовало.
+{"endpoints":[{"type":"wireguard","tag":"awg3-zero-key","address":["10.0.0.2/32"],"private_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=","s1":55,"s2":42,"s3":40,"s4":12,"header_protection_key":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","peers":[{"address":"example-3.com","port":51820,"public_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=","allowed_ips":["0.0.0.0/0"]}]}]}

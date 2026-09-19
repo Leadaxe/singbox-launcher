@@ -1,0 +1,37 @@
+{
+  "meta": {
+    "body_kind": "singbox-outbound"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "password": "p",
+        "server": "m.example-1.com",
+        "server_port": 443,
+        "tls": {
+          "certificate": "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n",
+          "enabled": true,
+          "server_name": "m.example-1.com"
+        },
+        "type": "naive",
+        "username": "u"
+      },
+      "kind": "outbound",
+      "label": "manual-junk",
+      "scheme": "naive",
+      "warnings": [
+        {
+          "code": "tls_field_unsupported_naive",
+          "path": "tls.insecure",
+          "value": "true"
+        },
+        {
+          "code": "unknown_key",
+          "path": "totally_unknown_key",
+          "value": "whatever"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

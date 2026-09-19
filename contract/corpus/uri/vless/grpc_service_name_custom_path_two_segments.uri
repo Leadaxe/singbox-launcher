@@ -1,0 +1,4 @@
+# gRPC: двусегментный custom path «/a/b/Tun». Каждый сегмент ядро
+# экранирует ОТДЕЛЬНО (SPEC 093 ядра), поэтому на проводе «/a/b/Tun», а не
+# «/a%2Fb/Tun». Лаунчер значение НЕ трогает.
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?encryption=none&type=grpc&serviceName=%2Fa%2Fb%2FTun&sni=example-1.com&security=tls&fp=chrome#gr%20two

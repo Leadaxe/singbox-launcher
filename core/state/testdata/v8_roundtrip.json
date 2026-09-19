@@ -24,6 +24,15 @@
         "folder_id": "01J00000000000000000000SUB",
         "tag": "NL-1"
       },
+      "warnings": [
+        {
+          "code": "field_missing",
+          "path": "uuid",
+          "params": {
+            "field": "uuid"
+          }
+        }
+      ],
       "sections": {
         "rules": [
           {
@@ -89,7 +98,23 @@
             "type": "shadowsocks",
             "server": "de.example",
             "server_port": 8388
-          }
+          },
+          "warnings": [
+            {
+              "code": "field_missing",
+              "path": "method",
+              "params": {
+                "field": "method"
+              }
+            },
+            {
+              "code": "field_missing",
+              "path": "password",
+              "params": {
+                "field": "password"
+              }
+            }
+          ]
         },
         {
           "kind": "auto",
@@ -140,7 +165,16 @@
             "type": "vless",
             "server": "nl.example",
             "server_port": 443
-          }
+          },
+          "warnings": [
+            {
+              "code": "field_missing",
+              "path": "uuid",
+              "params": {
+                "field": "uuid"
+              }
+            }
+          ]
         },
         {
           "kind": "server",
@@ -154,7 +188,16 @@
             "type": "vless",
             "server": "de2.example",
             "server_port": 443
-          }
+          },
+          "warnings": [
+            {
+              "code": "field_missing",
+              "path": "uuid",
+              "params": {
+                "field": "uuid"
+              }
+            }
+          ]
         },
         {
           "kind": "auto",

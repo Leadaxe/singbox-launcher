@@ -1,0 +1,5 @@
+# Битое s1 снимается С КОДОМ awg_header_invalid. Прежде парсер ронял поле
+# МОЛЧА, а реестр код объявлял (находка №9 LEGACY_AUDIT): норма по решению
+# владельца 19.09.2026 — снятие реестром с сообщением, а не тихое.
+# Запрос LxBox (2).
+wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@example-1.com:51820?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.0.0.2/32&allowedips=0.0.0.0/0&s1=abc&s2=20#awg-bads1

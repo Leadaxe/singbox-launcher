@@ -13,7 +13,14 @@
       },
       "kind": "outbound",
       "label": "hy2-fp",
-      "scheme": "hysteria2"
+      "scheme": "hysteria2",
+      "warnings": [
+        {
+          "code": "tls_not_applicable_quic",
+          "path": "tls.utls",
+          "value": "map[enabled:true fingerprint:chrome]"
+        }
+      ]
     }
   ],
   "v": 1

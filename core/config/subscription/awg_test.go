@@ -5,7 +5,68 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"singbox-launcher/core/config/registry"
 )
+
+// awgNum — ЧИСЛОВОЕ значение awg-поля тела, каким бы целым типом Go оно ни
+// было представлено.
+//
+// Тесты долго требовали именно int64: столько выдавал рукописный парсер,
+// писавший `int64(n)` явно. Контракт же — ЧИСЛО JSON, а не ширина типа Go:
+// конвейер кладёт int там, где значение в него влезает, и int64 там, где
+// нет (normalizeNumber движка). Требовать здесь конкретный тип значит
+// проверять реализацию вместо поведения — и краснеть на каждой её правке.
+func awgNum(v interface{}) (int64, bool) {
+	switch n := v.(type) {
+	case int:
+		return int64(n), true
+	case int64:
+		return n, true
+	case float64:
+		return int64(n), true
+	}
+	return 0, false
+}
+
+// awgFieldsFromRegistry — имена awg-полей ТЕЛА, взятые из секции реестра
+// (`kind_when.awg.any_set`), а не из списка в коде.
+//
+// Список жил рядом с рукописным эмиттером share-URI; эмиттер снят (SPEC 133),
+// и повторять имена здесь значило бы завести вторую их копию, которая
+// разъедется с реестром при первом новом наборе — ровно тот дефект, против
+// которого кампания и затеяна.
+func awgFieldsFromRegistry(t *testing.T) (numeric, str []string) {
+	t.Helper()
+	set, err := registry.LoadMappers()
+	if err != nil {
+		t.Fatalf("LoadMappers: %v", err)
+	}
+	m, ok := set.Mapper("wireguard", "uri")
+	if !ok {
+		t.Fatal("нет секции wireguard.uri")
+	}
+	cond, ok := m.KindWhen["awg"]
+	if !ok {
+		t.Fatal("у секции wireguard.uri нет kind_when.awg")
+	}
+	list, _ := cond["any_set"].([]interface{})
+	for _, item := range list {
+		name, _ := item.(string)
+		if !strings.HasPrefix(name, "query.") {
+			continue
+		}
+		name = strings.TrimPrefix(name, "query.")
+		// Строковые поля маскировки — i1..i5; остальные числовые. Различие
+		// принадлежит схеме ТЕЛА, и его источник — тип поля в body.fields.
+		if len(name) == 2 && name[0] == 'i' && name[1] >= '1' && name[1] <= '5' {
+			str = append(str, name)
+			continue
+		}
+		numeric = append(numeric, name)
+	}
+	return numeric, str
+}
 
 // awgTestURI builds a valid wireguard:// (or awg://) URI with the canonical WG
 // query plus whatever AWG params are passed in `extra`.
@@ -40,7 +101,7 @@ func awgFullExtra() url.Values {
 }
 
 func TestParseWireGuardURI_AWGFields(t *testing.T) {
-	node, err := parseWireGuardURI(awgTestURI("wireguard", awgFullExtra()), nil)
+	node, err := ParseNode(awgTestURI("wireguard", awgFullExtra()), nil)
 	if err != nil || node == nil {
 		t.Fatalf("parse failed: err=%v node=%v", err, node)
 	}
@@ -50,9 +111,9 @@ func TestParseWireGuardURI_AWGFields(t *testing.T) {
 		"h1": 1234567890, "h2": 1234567891, "h3": 1234567892, "h4": 1234567893,
 	}
 	for k, want := range wantNum {
-		got, ok := node.Outbound[k].(int64)
+		got, ok := awgNum(node.Outbound[k])
 		if !ok {
-			t.Errorf("%s: want int64, got %T (%v)", k, node.Outbound[k], node.Outbound[k])
+			t.Errorf("%s: ожидалось целое число, пришло %T (%v)", k, node.Outbound[k], node.Outbound[k])
 			continue
 		}
 		if got != want {
@@ -75,10 +136,11 @@ func TestParseWireGuardURI_AWGFields(t *testing.T) {
 }
 
 func TestParseWireGuardURI_NoAWG_StaysClean(t *testing.T) {
-	node, err := parseWireGuardURI(awgTestURI("wireguard", nil), nil)
+	node, err := ParseNode(awgTestURI("wireguard", nil), nil)
 	if err != nil || node == nil {
 		t.Fatalf("parse failed: err=%v node=%v", err, node)
 	}
+	awgNumericFields, awgStringFields := awgFieldsFromRegistry(t)
 	for _, k := range append(append([]string{}, awgNumericFields...), awgStringFields...) {
 		if _, ok := node.Outbound[k]; ok {
 			t.Errorf("plain WG node gained AWG key %q", k)
@@ -86,18 +148,23 @@ func TestParseWireGuardURI_NoAWG_StaysClean(t *testing.T) {
 	}
 }
 
-func TestParseWireGuardURI_BadNumeric_Skipped(t *testing.T) {
+// Битое число AWG не роняет узел — и не снимается МАППЕРОМ: значение едет в
+// тело как есть, а поле снимает реестр с кодом awg_header_invalid (контракт
+// 1.1.11, находка №9 LEGACY_AUDIT — прежде маппер ронял jc/jmin/jmax/s1..s4
+// МОЛЧА, хотя код был объявлен). Итог проверяется кейсами корпуса
+// awg_bad_numeric_skipped и парным ему endpoints_awg_jc_invalid_code.
+func TestParseWireGuardURI_BadNumeric_ReachesTheRegistry(t *testing.T) {
 	e := url.Values{}
 	e.Set("jc", "not-a-number")
 	e.Set("jmin", "50")
-	node, err := parseWireGuardURI(awgTestURI("wireguard", e), nil)
+	node, err := ParseNode(awgTestURI("wireguard", e), nil)
 	if err != nil || node == nil {
 		t.Fatalf("a bad numeric must not fail the whole node: err=%v", err)
 	}
-	if _, ok := node.Outbound["jc"]; ok {
-		t.Error("invalid jc should be skipped, not stored")
+	if got, ok := node.Outbound["jc"]; !ok || got != "not-a-number" {
+		t.Errorf("jc = %v (ok=%v), want значение как есть — снимать его обязан реестр", got, ok)
 	}
-	if v, _ := node.Outbound["jmin"].(int64); v != 50 {
+	if v, _ := awgNum(node.Outbound["jmin"]); v != 50 {
 		t.Errorf("jmin should still parse: got %v", node.Outbound["jmin"])
 	}
 }
@@ -118,13 +185,13 @@ func TestParseNode_AWGScheme_RoutesToWireguard(t *testing.T) {
 	if node.Scheme != "wireguard" {
 		t.Errorf("awg:// node.Scheme = %q, want wireguard", node.Scheme)
 	}
-	if v, _ := node.Outbound["jc"].(int64); v != 10 {
+	if v, _ := awgNum(node.Outbound["jc"]); v != 10 {
 		t.Errorf("awg:// jc not parsed: %v", node.Outbound["jc"])
 	}
 }
 
 func TestShareURI_AWG_RoundTrip(t *testing.T) {
-	n1, err := parseWireGuardURI(awgTestURI("wireguard", awgFullExtra()), nil)
+	n1, err := ParseNode(awgTestURI("wireguard", awgFullExtra()), nil)
 	if err != nil {
 		t.Fatalf("initial parse: %v", err)
 	}
@@ -132,10 +199,11 @@ func TestShareURI_AWG_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("share: %v", err)
 	}
-	n2, err := parseWireGuardURI(shareURI, nil)
+	n2, err := ParseNode(shareURI, nil)
 	if err != nil {
 		t.Fatalf("reparse: %v (uri=%s)", err, shareURI)
 	}
+	awgNumericFields, _ := awgFieldsFromRegistry(t)
 	for _, k := range awgNumericFields {
 		if n1.Outbound[k] != n2.Outbound[k] {
 			t.Errorf("numeric %s drifted: %v(%T) -> %v(%T)", k, n1.Outbound[k], n1.Outbound[k], n2.Outbound[k], n2.Outbound[k])
@@ -151,12 +219,12 @@ func TestShareURI_AWG_RoundTrip(t *testing.T) {
 func TestShareURI_AWG_ZeroJc_Preserved(t *testing.T) {
 	e := url.Values{}
 	e.Set("jc", "0") // explicit junk-off — must survive
-	n1, err := parseWireGuardURI(awgTestURI("wireguard", e), nil)
+	n1, err := ParseNode(awgTestURI("wireguard", e), nil)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if v, ok := n1.Outbound["jc"].(int64); !ok || v != 0 {
-		t.Fatalf("jc=0 should be stored as int64(0), got %T %v", n1.Outbound["jc"], n1.Outbound["jc"])
+	if v, ok := awgNum(n1.Outbound["jc"]); !ok || v != 0 {
+		t.Fatalf("jc=0 обязан доехать числом 0, пришло %T %v", n1.Outbound["jc"], n1.Outbound["jc"])
 	}
 	shareURI, err := ShareURIFromWireGuardEndpoint(n1.Outbound)
 	if err != nil {
@@ -165,8 +233,8 @@ func TestShareURI_AWG_ZeroJc_Preserved(t *testing.T) {
 	if !strings.Contains(shareURI, "jc=0") {
 		t.Errorf("explicit jc=0 lost in share URI: %s", shareURI)
 	}
-	n2, _ := parseWireGuardURI(shareURI, nil)
-	if v, ok := n2.Outbound["jc"].(int64); !ok || v != 0 {
+	n2, _ := ParseNode(shareURI, nil)
+	if v, ok := awgNum(n2.Outbound["jc"]); !ok || v != 0 {
 		t.Errorf("jc=0 lost on round-trip: %T %v", n2.Outbound["jc"], n2.Outbound["jc"])
 	}
 }
@@ -178,7 +246,7 @@ func TestAWG_TypeFidelity_JSON(t *testing.T) {
 	e.Set("jc", "10")
 	e.Set("h1", "4000000000") // > int32 max — must not overflow / become string
 	e.Set("i1", "<r 24>")
-	n, err := parseWireGuardURI(awgTestURI("wireguard", e), nil)
+	n, err := ParseNode(awgTestURI("wireguard", e), nil)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -201,12 +269,19 @@ func TestAWG_TypeFidelity_JSON(t *testing.T) {
 	}
 }
 
-// TestParseWireGuardURI_MTUClamp verifies the AWG MTU policy (SPEC 073 follow-up):
-// AmneziaWG endpoints default to / are clamped to awgMaxMTU (1280) because AWG's
-// S3/S4 transport padding would otherwise push data packets past the path MTU and
-// fail with EMSGSIZE (handshake OK, data silently stops). Plain WireGuard keeps
-// the upstream 1420 default and honors the URI value verbatim.
-func TestParseWireGuardURI_MTUClamp(t *testing.T) {
+// TestParseWireGuardURI_MTUPassthrough — граница ответственности по MTU.
+//
+// Парсер ссылки MTU только ПЕРЕНОСИТ: ни дефолта AWG, ни потолка здесь
+// больше нет. И то и другое — правила ЗНАЧЕНИЯ, и живут они в реестре
+// (wireguard.body.fields.mtu: default_when и max_when, контракт 1.1.5).
+// Пока правило стояло здесь, оно не применялось к телу из sing-box-импорта, и
+// один и тот же узел ссылкой и объектом получал разный MTU (находка №5
+// LEGACY_AUDIT).
+//
+// Результат ПОСЛЕ правил реестра проверяется на конвейере целиком —
+// TestPipelineAWGMTUCeiling в пакете config и кейсы корпуса; здесь только то,
+// за что отвечает парсер.
+func TestParseWireGuardURI_MTUPassthrough(t *testing.T) {
 	const (
 		pk   = "UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA="
 		pub  = "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU="
@@ -220,18 +295,21 @@ func TestParseWireGuardURI_MTUClamp(t *testing.T) {
 		extra string
 		want  int
 	}{
-		{"awg high mtu clamped", "&jc=10&mtu=1420", 1280},
-		{"awg no mtu defaults low", "&jc=10", 1280},
-		{"awg explicit lower honored", "&jc=10&mtu=1200", 1200},
-		{"awg string-only field still AWG", "&i1=%3Cr+24%3E&mtu=1500", 1280},
+		// Значение ссылки доезжает как записано — у AWG-узла тоже: потолок
+		// накладывает санитайзер по телу, а не парсер по query.
+		{"awg high mtu carried as written", "&jc=10&mtu=1420", 1420},
+		{"awg explicit lower carried", "&jc=10&mtu=1200", 1200},
+		{"awg string-only field, mtu as written", "&i1=%3Cr+24%3E&mtu=1500", 1500},
 		{"plain wg keeps high mtu", "&mtu=1500", 1500},
-		// want 0 = no mtu key at all: the core defaults plain WireGuard to 1408
-		// itself, so emitting our own value would fight it (SPEC 103, D-026).
+		// want 0 = no mtu key at all. У обычного WG ядро само ставит 1408
+		// (SPEC 103, D-026), у AWG-узла ключ дописывает РЕЕСТР (default_when),
+		// а не парсер — поэтому здесь его нет в обоих случаях.
 		{"plain wg default is left to the core", "", 0},
+		{"awg without mtu gets nothing from the parser", "&jc=10", 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			n, err := parseWireGuardURI(uri(c.extra), nil)
+			n, err := ParseNode(uri(c.extra), nil)
 			if err != nil || n == nil {
 				t.Fatalf("parse: err=%v node=%v", err, n)
 			}
@@ -253,13 +331,17 @@ func TestParseWireGuardURI_MTUClamp(t *testing.T) {
 	}
 }
 
-// wgConfToURI обязан переносить masquerade-сахар ip/id/ib.
+// Вход `.conf` обязан доносить masquerade-сахар ip/id/ib ДО ТЕЛА.
 //
 // Без него .conf с маскировкой терял её МОЛЧА: числа junk доезжали, узел
 // выглядел настроенным, и только первый decoy-пакет уходил без маскировки —
 // то есть ровно та настройка, ради которой конфиг и брали, пропадала без
 // единого слова.
-func TestWgConfToURI_CarriesMasquerade(t *testing.T) {
+//
+// Спрашивается ТЕЛО, а не промежуточная ссылка: с переводом `.conf` на
+// секцию реестра (SPEC 133) ссылки в этом пути больше нет, а вопрос теста
+// всегда был про тело.
+func TestWGConfCarriesMasquerade(t *testing.T) {
 	const conf = `[Interface]
 PrivateKey = UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
 Address = 10.0.0.2/32
@@ -276,33 +358,15 @@ PublicKey = QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=
 Endpoint = vpn.example:51820
 AllowedIPs = 0.0.0.0/0
 `
-	uri, err := wgConfToURI(conf, "conf-node")
-	if err != nil {
-		t.Fatalf("wgConfToURI: %v", err)
+	node, err, known := ParseWGConfByEngine(conf, nil)
+	if err != nil || !known || node == nil {
+		t.Fatalf("parse conf: err=%v known=%v node=%v", err, known, node)
 	}
-	u, err := url.Parse(uri)
-	if err != nil {
-		t.Fatalf("parse built URI: %v", err)
-	}
-	q := u.Query()
 	for key, want := range map[string]string{
 		"ip": "quic",
 		// Регистр домена сохраняется: id едет на провод как есть.
 		"id": "Telemost.Example.COM",
 		"ib": "chrome",
-	} {
-		if got := q.Get(key); got != want {
-			t.Errorf("%s: got %q, want %q", key, got, want)
-		}
-	}
-
-	// И сам узел обязан их получить — до тела, а не только до ссылки.
-	node, err := parseWireGuardURI(uri, nil)
-	if err != nil || node == nil {
-		t.Fatalf("parse node: err=%v node=%v", err, node)
-	}
-	for key, want := range map[string]string{
-		"ip": "quic", "id": "Telemost.Example.COM", "ib": "chrome",
 	} {
 		if got, _ := node.Outbound[key].(string); got != want {
 			t.Errorf("node %s: got %v, want %q", key, node.Outbound[key], want)
@@ -311,22 +375,24 @@ AllowedIPs = 0.0.0.0/0
 }
 
 // Ссылка, несущая ТОЛЬКО masquerade-сахар, — тоже AWG-узел: ядро разворачивает
-// сахар в i1. Без этого MTU не ужимался до потолка AmneziaWG, а слишком
-// высокий MTU у AWG отказывает молча — рукопожатие проходит, данные не идут.
-func TestParseWireGuardURI_MasqueradeOnly_ClampsMTU(t *testing.T) {
+// сахар в i1, и потолок MTU обязан к ней применяться наравне с прочими.
+//
+// Проверяется то, от чего это зависит ПОСЛЕ переноса правила в реестр: сахар
+// доезжает до тела отдельными ключами ip/id, а условие правила
+// (`any_set`) их перечисляет. Сам потолок — на конвейере
+// (TestPipelineAWGMTUCeiling).
+func TestParseWireGuardURI_MasqueradeOnlyReachesBody(t *testing.T) {
 	extra := url.Values{}
 	extra.Set("ip", "quic")
 	extra.Set("id", "example.com")
 
-	node, err := parseWireGuardURI(awgTestURI("wireguard", extra), nil)
+	node, err := ParseNode(awgTestURI("wireguard", extra), nil)
 	if err != nil || node == nil {
 		t.Fatalf("parse failed: err=%v node=%v", err, node)
 	}
-	mtu, ok := node.Outbound["mtu"].(int)
-	if !ok {
-		t.Fatalf("mtu type: %T (%v)", node.Outbound["mtu"], node.Outbound["mtu"])
-	}
-	if mtu != awgMaxMTU {
-		t.Errorf("mtu = %d, want %d (masquerade sugar alone must count as AWG)", mtu, awgMaxMTU)
+	for key, want := range map[string]string{"ip": "quic", "id": "example.com"} {
+		if got, _ := node.Outbound[key].(string); got != want {
+			t.Errorf("%s = %v, want %q (сахар — маркер AWG для правила реестра)", key, node.Outbound[key], want)
+		}
 	}
 }

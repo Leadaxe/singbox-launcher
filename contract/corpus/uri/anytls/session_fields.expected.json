@@ -20,7 +20,14 @@
       },
       "kind": "outbound",
       "label": "node",
-      "scheme": "anytls"
+      "scheme": "anytls",
+      "warnings": [
+        {
+          "code": "tls_insecure",
+          "path": "tls.insecure",
+          "value": "true"
+        }
+      ]
     }
   ],
   "v": 1

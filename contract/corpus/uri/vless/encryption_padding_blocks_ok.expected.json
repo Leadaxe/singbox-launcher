@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "encryption": "mlkem768x25519plus.native.0rtt.100-111-1111.75-0-111.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "server": "example-1.com",
+        "server_port": 443,
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "enc-padding",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

@@ -45,6 +45,7 @@ func TestMarkTemplateInstalled_PreservesOtherFields(t *testing.T) {
 		PingTestURL:                    "https://example.com/ping",
 		PingTestAllConcurrency:         8,
 		SubscriptionAutoUpdateDisabled: true,
+		HideAppFromDock:                true,
 	}
 	if err := SaveSettings(binDir, seed); err != nil {
 		t.Fatalf("SaveSettings seed: %v", err)
@@ -54,7 +55,7 @@ func TestMarkTemplateInstalled_PreservesOtherFields(t *testing.T) {
 	}
 	got := readSettings(t, binDir)
 	if got.Lang != "ru" || got.PingTestURL != "https://example.com/ping" ||
-		got.PingTestAllConcurrency != 8 || !got.SubscriptionAutoUpdateDisabled {
+		got.PingTestAllConcurrency != 8 || !got.SubscriptionAutoUpdateDisabled || !got.HideAppFromDock {
 		t.Fatalf("MarkTemplateInstalled clobbered unrelated fields: %+v", got)
 	}
 	if got.LastTemplateLauncherVersion != "v0.8.8" {

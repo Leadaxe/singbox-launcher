@@ -23,7 +23,11 @@
       "kind": "outbound",
       "scheme": "vless",
       "warnings": [
-        "reality_short_id_invalid"
+        {
+          "code": "reality_short_id_invalid",
+          "path": "tls.reality.short_id",
+          "value": "48 ab12"
+        }
       ]
     }
   ],

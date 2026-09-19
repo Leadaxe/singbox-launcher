@@ -637,6 +637,21 @@ func (oc *Direction) IsPresetRef() bool {
 // UnsetSourceIndex means SourceIndex was not assigned; exclude_from_global must not apply.
 const UnsetSourceIndex = -1
 
+// Входы узла (ParsedNode.Source) — имена из секции `sources` схем реестра.
+//
+// Их читают правила значений, которым важно, КТО сочинил значение: тело в
+// форме ядра (NodeSourceSingbox) написано человеком или подпиской напрямую,
+// остальное собрал маппер из ссылки, .conf или профиля. Список намеренно
+// повторяет словарь реестра, а не заводит свой: правило пишется в контракте
+// именами оттуда, и второй словарь разъехался бы с первым.
+const (
+	NodeSourceURI     = "uri"
+	NodeSourceSingbox = "singbox"
+	NodeSourceXray    = "xray"
+	NodeSourceWGConf  = "wgconf"
+	NodeSourceAmnezia = "amnezia"
+)
+
 // SchemeGroup marks a ParsedNode that is an outbound group (selector/urltest)
 // imported from a sing-box config (SPEC 094 A5).
 //
@@ -685,6 +700,21 @@ type ParsedNode struct {
 	// carries the full path. Jump stays in sync with Chain[0] so existing
 	// readers and state.json files written before SPEC 094 keep working.
 	Jump *ParsedJump
+	// Source — ВХОД, которым узел приехал: имя из секции `sources` схемы
+	// реестра (nodeflow.SourceURI / SourceSingbox / …). Пусто = вход не
+	// назван.
+	//
+	// Нужен правилам значений, которые различают, КТО сочинил значение.
+	// Сегодня такое правило одно — потолок MTU у AmneziaWG: тело в форме
+	// ядра (`singbox`) писал человек или подписка напрямую, и переписывать
+	// его молча лаунчер не вправе (он предупреждает), а значение из ссылки
+	// или .conf собрал генератор провайдера, и там правило работает заменой
+	// (решение владельца 18.09.2026).
+	//
+	// Поле обязано совпадать с Origin.Kind сохранённого узла: пересчёт кодов
+	// на загрузке state идёт по origin, и разъехавшаяся пара означала бы, что
+	// узел меняет правила после перезапуска.
+	Source string
 	// SourceTag is the node's tag exactly as it appeared in an imported
 	// sing-box config, before prefix/mask/uniquification (SPEC 094 A5).
 	//
@@ -747,35 +777,133 @@ type ParsedNode struct {
 	// Sections; финальный тег для этого не годится — он зависит от
 	// тег-политики контейнера.
 	SectionsLink NodeLink
+	// CanonicalLink — та же идентичность, но у КАЖДОГО узла канона, а не
+	// только у носителя секций (SPEC 132).
+	//
+	// Нужна обратному пути «финальный тег из ошибки ядра → узел состояния»:
+	// ядро называет тег собранного конфига, а выключать надо запись в
+	// state.json, адресуемую {FolderID, СЫРОЙ тег}. Пересчитать этот путь
+	// снаружи нельзя — тег-политика с переменными ({$num}) раскрывается
+	// только здесь, а глобальную уникализацию (суффикс при столкновении)
+	// знает только эмиссия.
+	//
+	// Пустой Tag = узел собран не из канона (служебная запись, WARP): такой
+	// тег узлу не сопоставляется, и страховка на него не действует
+	// (CANON §9.3).
+	CanonicalLink NodeLink
 	// CanonicalGroupMembers / CanonicalGroupDefault — состав провайдерской
 	// Auto-группы канона и её умолчание по ссылкам NodeLink. Резолв на
 	// проходе 2 переписывает их в финальные теги членов.
 	CanonicalGroupMembers []NodeLink
 	CanonicalGroupDefault *NodeLink
-	// Warnings — коды деградаций, применённых к узлу при разборе
-	// (SPEC 103, фаза 2). Словарь кодов — contract/registry/warnings.json.
+	// Warnings — записи деградаций, применённых к узлу при разборе
+	// (SPEC 103 фаза 2, расширены путём и значением в SPEC 131 W2b).
+	// Словарь кодов — contract/registry/warnings.json.
 	//
 	// До этого деградация уходила только в debuglog: пользователь видел
 	// «нода есть», но не знал, что у неё срезали обфускацию или заменили
 	// отпечаток. Коды позволяют показать это в UI и сверять поведение
 	// обоих приложений по общему корпусу, а не по тексту лога.
 	//
-	// Порядок не нормируется, дубли не хранятся: код отвечает на вопрос
-	// «что случилось», а не «сколько раз».
-	Warnings []string
+	// Порядок = порядок вызовов AddWarning/AddFieldWarning (CANON §6, Л14):
+	// сортировать его при записи в state нельзя — сверка с корпусом идёт по
+	// последовательности слоёв разбора. Дубли по паре (Code, Path) не
+	// хранятся: запись отвечает на вопрос «что случилось с этим полем», а не
+	// «сколько раз».
+	Warnings []Warning
 }
 
-// AddWarning помечает узел кодом деградации, не создавая дублей.
+// AddWarning помечает узел кодом деградации уровня узла (Path пуст),
+// не создавая дублей.
 func (n *ParsedNode) AddWarning(code string) {
-	if n == nil || code == "" {
+	n.addWarning(Warning{Code: code})
+}
+
+// AddWarningWithParams — код уровня узла с подстановками для текста
+// (`{query_name}` у ech_ignored): сам код о поле в теле не говорит, но
+// пользователю надо назвать ПАРАМЕТР ССЫЛКИ, из-за которого он появился.
+func (n *ParsedNode) AddWarningWithParams(code string, params map[string]string) {
+	n.addWarning(Warning{Code: code, Params: params})
+}
+
+// AddSourceWarning — код, который называет ИМЯ ИСТОЧНИКА: параметр ссылки,
+// ключ `.conf`, поле JSON-элемента (`uri_param_unknown` и родня).
+//
+// Отличие от AddFieldWarning ровно в предмете пути: там путь в ТЕЛЕ
+// sing-box (`tls.reality.short_id`), здесь — имя во ВХОДЕ, тела не
+// достигшее. Дедуп идёт по паре (Code, Path), поэтому путь тут
+// обязателен: без него ссылка с двумя незнакомыми параметрами оставила бы
+// один код, и про второй человек не узнал бы.
+func (n *ParsedNode) AddSourceWarning(code, path string, params map[string]string) {
+	n.addWarning(Warning{Code: code, Path: path, Params: params})
+}
+
+// AddFieldWarning помечает узел кодом деградации уровня поля: путь в теле
+// sing-box (`tls.reality.short_id`) и исходное значение до деградации,
+// обрезанное до WarningValueMax (CANON §6).
+//
+// Маскировать секреты здесь нечем: реестр протоколов (какие поля объявлены
+// `secret: true`) читает санитайзер — он и подменяет значение на "***".
+// Парсеры зовут этот метод на полях, значение которых и так уходит в warning
+// как мусор.
+func (n *ParsedNode) AddFieldWarning(code, path, value string) {
+	n.addWarning(Warning{Code: code, Path: path, Value: TruncateWarningValue(value)})
+}
+
+// addWarning — общая запись с дедупом по паре (Code, Path).
+//
+// Дедуп именно по паре, а не по коду: один и тот же код законно возникает на
+// разных полях узла (например неизвестный ключ в tls и в transport), и
+// дедуп по коду потерял бы второе место.
+func (n *ParsedNode) addWarning(w Warning) {
+	if n == nil || w.Code == "" {
 		return
 	}
 	for _, existing := range n.Warnings {
-		if existing == code {
+		if existing.Code == w.Code && existing.Path == w.Path {
 			return
 		}
 	}
-	n.Warnings = append(n.Warnings, code)
+	n.Warnings = append(n.Warnings, w)
+}
+
+// HasWarning — узлу проставлен код деградации (на любом поле).
+func (n *ParsedNode) HasWarning(code string) bool {
+	if n == nil {
+		return false
+	}
+	for _, w := range n.Warnings {
+		if w.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
+// Warning — запись деградации узла (CANON §6, контракт 1.1.0, SPEC 131):
+// код из contract/registry/warnings.json плюс путь поля в теле sing-box
+// (`tls.reality.short_id`), исходное значение (≤64 символов; у secret-полей
+// реестра — "***") и подстановки шаблона text_* кода. Path пуст у кодов
+// уровня узла. Тип общий для санитайзера (core/config/nodeflow), парсеров и
+// материализации; в state он копируется в state.NodeWarning (state не
+// импортирует config).
+type Warning struct {
+	Code   string            `json:"code"`
+	Path   string            `json:"path,omitempty"`
+	Value  string            `json:"value,omitempty"`
+	Params map[string]string `json:"params,omitempty"`
+}
+
+// WarningValueMax — предел длины Warning.Value (CANON §6).
+const WarningValueMax = 64
+
+// TruncateWarningValue обрезает исходное значение до WarningValueMax рун.
+func TruncateWarningValue(v string) string {
+	r := []rune(v)
+	if len(r) <= WarningValueMax {
+		return v
+	}
+	return string(r[:WarningValueMax]) + "…"
 }
 
 // SchemeTailscale — схема узла tailnet (contract/registry/protocols/tailscale.json).
@@ -794,6 +922,11 @@ const SchemeTailscale = "tailscale"
 // (адреса 100.64.0.0/10 и MagicDNS), а не выход наружу, и Направление,
 // выбравшее такой узел, отправило бы трафик в никуда. С непустым `exit_node`
 // он выходом становится и в пул возвращается.
+//
+// `advertise_exit_node` сюда НЕ добавляется, хотя слова похожи: это
+// противоположная роль — узел служит выходом ДЛЯ ДРУГИХ участников tailnet,
+// сам наружу через него трафик не идёт. Ядро эти две роли вместе и не
+// принимает (отказ на старте), так что условие остаётся одним полем.
 //
 // Detour на такой узел предикат не запрещает: гнать чужой трафик через
 // tailnet — законный осознанный выбор, и запретов на цели detour здесь нет.
@@ -942,6 +1075,10 @@ type BuiltChain struct {
 	Tag string
 	// Chain — настройки маршрута и позиции финальными тегами.
 	Chain *SourceChain
+	// Link — идентичность узла-цепочки в состоянии ({FolderID, сырой тег}),
+	// та же роль, что у ParsedNode.CanonicalLink (SPEC 132). Пусто у
+	// сборочной формы, положенной вызывающим напрямую (минуя канон).
+	Link NodeLink
 }
 
 // ChainOutboundType — значение поля `type` в конфиге ядра.

@@ -1,0 +1,4 @@
+# disable_tcp_keep_alive из ссылки доезжает до тела и у trojan
+# (include dialer#uri, SPEC 133 D133-26). Пара «disable + tcp_keep_alive»
+# ядром принимается молча, связь conflicts не описана — тело несёт оба.
+trojan://pass123@example-1.com:443?disableTcpKeepAlive=true&tcp_keep_alive=60#trojan-ka

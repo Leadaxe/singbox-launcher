@@ -1,0 +1,2 @@
+# reserved с отрицательным элементом — то же правило границ элемента (0..255).
+wireguard://JSwzOkFIT1ZdZGtyeYCHjpWco6qxuL/GzdTb4unw9/4=@192.0.2.72:2408?publickey=ZWZnaGlqa2xtbm9wcXJzdHV2d3h5ent8fX5%2FPj4%2Bq80%3D&address=172.16.0.2%2F32&allowedips=0.0.0.0%2F0&reserved=-1%2C2%2C3#WARP

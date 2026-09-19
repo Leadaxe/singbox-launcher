@@ -16,9 +16,11 @@ import (
 	"singbox-launcher/api"
 	"singbox-launcher/core"
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 )
 
@@ -35,7 +37,7 @@ import (
 // cfgPath — config.json той области, из которой открыли строку (см.
 // effectiveNodeConfigPath): для узла удалённой машины это её собранный
 // конфиг, локальный описывает другое ядро.
-func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath string) {
+func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath string, scope services.ProxyScope) {
 	if ac == nil || ac.FileService == nil || ac.UIService == nil {
 		return
 	}
@@ -56,9 +58,30 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 	}
 	body.Add(infoRow(locale.T("Last delay"), formatDelay(proxy.Delay)))
 
+	// Раздел «Уведомления» — ВНИЗУ окна, под всеми полями узла (дизайн
+	// владельца 18.09.2026). До этого он стоял сразу под шапкой и отодвигал
+	// состав узла, ради которого окно открывают чаще; теперь список кодов
+	// свёрнут в аккордеон и занимает несколько строк, так что скроллить до
+	// него недалеко.
+	//
+	// Данные берутся ЗДЕСЬ, а не у места отрисовки: коды живут в СОСТОЯНИИ, а
+	// не в конфиге, и узел, которого в config.json ещё нет (гонка
+	// перегенерации), свои деградации имеет ровно так же — ветка `node == nil`
+	// ниже обязана показать их наравне с остальными.
+	warnSection := nodewarn.Section(nodeWarningsFor(ac, proxy.Name, scope))
+	// addWarnSection — раздел за разделителем; нет уведомлений — нет раздела.
+	addWarnSection := func() {
+		if warnSection == nil {
+			return
+		}
+		body.Add(widget.NewSeparator())
+		body.Add(warnSection)
+	}
+
 	if node == nil {
 		// Узла нет в конфиге: гонка перегенерации либо служебный outbound.
 		body.Add(widget.NewLabel(locale.T("This node is not present in the current config.json.")))
+		addWarnSection()
 		finishNodeInfoWindow(win, body)
 		return
 	}
@@ -247,6 +270,12 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 		addChainSection(ac, body, win, proxy.Name)
 	}
 
+	// Tailnet: состояние, вход, пиры. Только у tailscale-endpoint'а и только
+	// там, где ядро отдаёт статус по gRPC (SPEC 130, addTailscaleSection).
+	if node.Type == configtypes.SchemeTailscale {
+		addTailscaleSection(ac, body, proxy.Name)
+	}
+
 	// TLS-подробности отдельной секцией: их много и они длинные.
 	if tlsRows := tlsInfoRows(node); len(tlsRows) > 0 {
 		body.Add(widget.NewSeparator())
@@ -264,6 +293,10 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 			body.Add(row)
 		}
 	}
+
+	// Раздел «Уведомления» — ПОСЛЕДНИМ блоком вкладки «Подробности», под
+	// всеми полями узла (дизайн владельца).
+	addWarnSection()
 
 	// JSON — отдельной вкладкой: он длинный и на общей странице оттеснял бы
 	// разобранные поля вниз, ради которых окно и открывают.

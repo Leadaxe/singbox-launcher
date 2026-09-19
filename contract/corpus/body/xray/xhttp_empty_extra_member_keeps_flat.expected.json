@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "a.example",
+        "server_port": 443,
+        "transport": {
+          "mode": "packet-up",
+          "type": "xhttp",
+          "x_padding_bytes": "10-20",
+          "xmux": {
+            "max_concurrency": "16"
+          }
+        },
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "empty extra",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

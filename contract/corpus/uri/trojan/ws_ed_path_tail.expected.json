@@ -24,7 +24,9 @@
       "label": "ed-path",
       "scheme": "trojan",
       "warnings": [
-        "ws_early_data_converted"
+        {
+          "code": "ws_early_data_converted"
+        }
       ]
     }
   ],

@@ -1,0 +1,4 @@
+# Вход Xray из набора LxBox (app/test/fixtures/xray/pipeline_identity_before.json,
+# кейс hysteria2). Снят ДО перевода xray-входа на движок: сверка по бедным входам
+# зелёная и при потере полей — у LxBox так ушло ~25 полей XHTTP.
+[{"remarks": "hy2", "outbounds": [{"tag": "proxy", "protocol": "hysteria", "settings": {"address": "hy.example", "port": 443, "version": 2}, "streamSettings": {"security": "tls", "tlsSettings": {"serverName": "hy.example"}, "hysteriaSettings": {"version": 2, "auth": "pw"}}}]}]

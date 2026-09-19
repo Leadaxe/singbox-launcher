@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"singbox-launcher/core/config/configtypes"
@@ -248,4 +249,53 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// Конфиг для ЧУЖОЙ машины несёт её путь, а не наш.
+//
+// Дыра, которую закрывает тест: state_directory штамповался из глобального
+// корня `<execDir>/bin/tailscale`, посчитанного на машине лаунчера, и уезжал
+// в конфиг роутера как есть. Ядро на той стороне создавало его от своего
+// корня — состояние узла оказывалось в `/Applications/…/bin/tailscale/<тег>`
+// на OpenWrt: рабочем каталоге, который сносит первая же чистка overlay.
+func TestTailscaleStateDirRemoteRootWins(t *testing.T) {
+	local := tsStateRoot(t) // ставит локальный корень и снимает его после теста
+	const remote = "/etc/sing-box/tailscale"
+
+	prev := TailscaleRemoteStateDirRoot()
+	SetTailscaleRemoteStateDirRoot(remote)
+	defer SetTailscaleRemoteStateDirRoot(prev)
+
+	ep := map[string]interface{}{"type": SchemeTailscale}
+	applyTailscaleStateDirectory(ep, SchemeTailscale, "Tailscale LexNet", TailscaleRemoteStateDirRoot())
+
+	got, _ := ep["state_directory"].(string)
+	if want := remote + "/Tailscale_LexNet"; got != want {
+		t.Fatalf("state_directory = %q, want %q", got, want)
+	}
+	if strings.Contains(got, local) {
+		t.Fatalf("в конфиг чужой машины уехал локальный путь: %q", got)
+	}
+	// Разделитель пути — целевой машины, не нашей: собранный на Windows
+	// конфиг для linux-роутера не должен нести обратные слэши.
+	if strings.Contains(got, `\`) {
+		t.Fatalf("в пути чужой машины обратные слэши: %q", got)
+	}
+
+	// Local (пустой remote-корень) возвращается к локальному корню — иначе
+	// после визита в Remote своя же сборка унесла бы путь роутера.
+	SetTailscaleRemoteStateDirRoot("")
+	ep2 := map[string]interface{}{"type": SchemeTailscale}
+	applyTailscaleStateDirectory(ep2, SchemeTailscale, "ts", TailscaleRemoteStateDirRoot())
+	if got2, _ := ep2["state_directory"].(string); !strings.HasPrefix(got2, local) {
+		t.Fatalf("local-сборка не вернулась к локальному корню: %q", got2)
+	}
+
+	// Явное значение пользователя не перебивается ни в одном из режимов.
+	SetTailscaleRemoteStateDirRoot(remote)
+	ep3 := map[string]interface{}{"type": SchemeTailscale, "state_directory": "/custom/path"}
+	applyTailscaleStateDirectory(ep3, SchemeTailscale, "ts", TailscaleRemoteStateDirRoot())
+	if got3, _ := ep3["state_directory"].(string); got3 != "/custom/path" {
+		t.Fatalf("явный state_directory перебит: %q", got3)
+	}
 }

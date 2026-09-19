@@ -385,10 +385,13 @@ build\test_windows.bat   # Windows
 - **[docs/API.md](docs/API.md)** — референс Debug API с curl-рецептами.
 - **[docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md)** — daemon-режим ядра, сопряжение, управление удалёнными машинами.
 - **[docs/WIZARD_TEMPLATE.ru.md](docs/WIZARD_TEMPLATE.ru.md)** — справочник по синтаксису `wizard_template.json` (для VPN-провайдеров, поставляющих собственный шаблон).
-- **[docs/Protocols.ru.md](docs/Protocols.ru.md)** — поддерживаемые протоколы и форматы ссылок.
+- **[contract/docs/generated/index.md](contract/docs/generated/index.md)** — справочник полей по схемам, генерируется из общего реестра: параметры ссылки, поля тела и [коды деградации](contract/docs/generated/warnings.md) на узле.
+- **[docs/Protocols.ru.md](docs/Protocols.ru.md)** — обвязка лаунчера вокруг узла: теги сборки, JSON-массивы Xray, share URI и входные формы, которые не являются ссылками.
 - **[docs/ParserConfig.ru.md](docs/ParserConfig.ru.md)** — справочник по настройке парсера подписок.
 - **[docs/TRAFFIC_PROFILER.md](docs/TRAFFIC_PROFILER.md)** — внутренности и использование Traffic Profiler.
 - **[docs/TEMPLATE_REFERENCE.md](docs/TEMPLATE_REFERENCE.md)** — справочник схемы `wizard_template.json`.
+- **[docs/BUILD_LINUX.ru.md](docs/BUILD_LINUX.ru.md)** — сборка и запуск на Linux.
+- **[docs/TROUBLESHOOTING.ru.md](docs/TROUBLESHOOTING.ru.md)** — известные проблемы по платформам и где лежат их решения.
 
 ## Решение проблем
 
@@ -399,6 +402,7 @@ build\test_windows.bat   # Windows
 | Вкладка Clash API недоступна | sing-box не запущен (вкладка намеренно disabled, пока движок не поднят). |
 | Подписка возвращает пусто / ошибки | Проверьте **Subscription identification** в Settings — HWID-binding панели требуют `Send device ID` включённым. Смотрите tooltip ⚠ badge — там announce от провайдера. |
 | TUN не захватывает трафик (Linux/macOS) | Для TUN-интерфейса обычно нужен root: `sudo ./singbox-launcher` или `sudo setcap cap_net_admin+ep ./singbox-launcher` (Linux). |
+| Linux: пароль спрашивают 3 раза при старте VPN и 1 при остановке | `systemd-resolved` + Polkit авторизуют каждое действие `resolvectl` по D-Bus отдельно — см. [docs/TROUBLESHOOTING.ru.md](docs/TROUBLESHOOTING.ru.md#linux). |
 | Win7 32-bit: иконка в трее есть, окно пустое / без виджетов | OpenGL 2.0 против требования Fyne 2.1+ — см. [docs/WIN7_OPENGL.md](docs/WIN7_OPENGL.md), drop-in фикс через Mesa3D. |
 | Auto-update подписок молчит | Откройте **Settings → Subscriptions** — убедитесь, что `Auto-update subscriptions` включён. Heartbeat раз в час; immediate retry срабатывает на VPN-event. |
 | Нужен полный state для bug-report | **Diagnostics → Copy snapshot** упакует template + state + cache + config одним JSON. |

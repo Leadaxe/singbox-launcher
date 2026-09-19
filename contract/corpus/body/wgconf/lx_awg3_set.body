@@ -1,0 +1,19 @@
+# Набор AmneziaWG 3.x в .conf: HeaderProtectionKey, RandomTrailers=on,
+# RekeyAfterTime диапазоном «100-200».
+# Источник: LxBox pipeline_identity_before.json, кейс awg3.
+[Interface]
+PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=
+Address = 10.2.0.2/32
+Jc = 4
+S1 = 50
+S2 = 100
+S3 = 20
+S4 = 20
+HeaderProtectionKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=
+RandomTrailers = on
+RekeyAfterTime = 100-200
+
+[Peer]
+PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=
+AllowedIPs = 0.0.0.0/0
+Endpoint = 1.2.3.4:51820

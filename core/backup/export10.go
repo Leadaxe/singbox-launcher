@@ -187,6 +187,7 @@ func export10Source(src state.Source) (Source10, bool) {
 		Group:    node.Group,
 		Service:  node.Service,
 		Reason:   node.Reason,
+		Warnings: node.Warnings,
 		Sections: node.Sections,
 
 		ID:        src.ID,
@@ -340,6 +341,11 @@ func cloneNode(n state.Node) state.Node {
 	if len(n.Hops) > 0 {
 		out.Hops = append([]state.NodeLink(nil), n.Hops...)
 	}
+	// Записи деградаций копируются вместе с картой params: иначе клон делил
+	// бы с оригиналом изменяемую карту.
+	if len(n.Warnings) > 0 {
+		out.Warnings = cloneNodeWarnings(n.Warnings)
+	}
 	if n.Group != nil {
 		g := *n.Group
 		g.Members = append([]state.NodeLink(nil), n.Group.Members...)
@@ -350,5 +356,24 @@ func cloneNode(n state.Node) state.Node {
 		out.Group = &g
 	}
 	out.Sections = n.Sections.Clone()
+	return out
+}
+
+// cloneNodeWarnings — копия записей деградаций узла вместе с params.
+func cloneNodeWarnings(in []state.NodeWarning) []state.NodeWarning {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]state.NodeWarning, 0, len(in))
+	for _, w := range in {
+		c := w
+		if len(w.Params) > 0 {
+			c.Params = make(map[string]string, len(w.Params))
+			for k, v := range w.Params {
+				c.Params[k] = v
+			}
+		}
+		out = append(out, c)
+	}
 	return out
 }

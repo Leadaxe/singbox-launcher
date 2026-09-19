@@ -52,11 +52,13 @@ func TestConvertWGConfText_AWG(t *testing.T) {
 	if node.Tag != "203.0.113.7" {
 		t.Errorf("Tag = %q, want endpoint host", node.Tag)
 	}
-	if got, _ := node.Outbound["jc"].(int64); got != 4 {
+	if got, _ := awgNum(node.Outbound["jc"]); got != 4 {
 		t.Errorf("jc = %v, want 4", node.Outbound["jc"])
 	}
-	if got, _ := node.Outbound["mtu"].(int); got != 1280 {
-		t.Errorf("mtu = %v, want clamped 1280", node.Outbound["mtu"])
+	// MTU из .conf доезжает как записан; потолок 1280 у AWG-узла накладывает
+	// санитайзер по телу (wireguard.body.fields.mtu.max_when), а не конвертер.
+	if got, _ := node.Outbound["mtu"].(int); got != 1420 {
+		t.Errorf("mtu = %v, want 1420 verbatim (потолок — правило реестра)", node.Outbound["mtu"])
 	}
 }
 

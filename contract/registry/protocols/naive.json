@@ -3,38 +3,72 @@
   "scheme": "naive",
   "kind": "outbound",
   "singbox_type": "naive",
-  "aliases": ["naive+https", "naive+quic"],
-  "sources": ["uri", "singbox"],
+  "aliases": [
+    "naive+https",
+    "naive+quic"
+  ],
+  "sources": [
+    "uri",
+    "singbox"
+  ],
   "extension": null,
   "uri": {
     "userinfo": {
+      "maps_to": [
+        "username",
+        "password"
+      ],
       "meaning": "user:password",
-      "note": "user:pass → username+password. РАЗРЫВ ОДИНОЧНОГО USERINFO (новое, вне §9): naive+https://secret@host — Go кладёт secret в username (node_parser_core.go:366-374), Dart — в password (naive_parser.dart:21-29). Go share-URI при password-без-username пишет пароль в user-слот (конвенция hysteria2) — т.е. Go-эмит Dart прочитает «наоборот». Выровнять на ревью. naive+quic — §9.B1: Dart добавляет (сейчас naive+quic парсит только Go; транспорт запоминается как quic:true + quic_congestion_control:bbr). Dart toUriNaive опускает порт 443 (каноничная форма DuckSoft) и всегда пишет naive+https."
+      "desc_en": "user:password of the account.",
+      "desc_ru": "user:password учётной записи.",
+      "impl": "user:pass → username+password. ОДИНОЧНЫЙ USERINFO БЕЗ ДВОЕТОЧИЯ — ЭТО PASSWORD (naive+https://secret@host → password=secret, username пуст): конвенция DuckSoft, та же что у hysteria2. РАЗРЫВ ЗАКРЫТ (DRIFT §7.3, вариант А, решение владельца 18.09.2026, дата синхронизации с LxBox снята владельцем 18.09.2026): прежде Go клал значение в username, тогда как его же эмиттер share-URI пишет пароль в user-слот — ссылка, отданная Go, читалась Go же «наоборот», а кросс-эмит с Dart не сходился. Кейс корпуса — uri/naive/password_only_userinfo. naive+quic — §9.B1: Dart добавляет (сейчас naive+quic парсит только Go; транспорт запоминается как quic:true + quic_congestion_control:bbr). Dart toUriNaive опускает порт 443 (каноничная форма DuckSoft) и всегда пишет naive+https."
     },
     "query": {
       "extra-headers": {
         "type": "string",
         "default": null,
-        "note": "URL-encoded «H1: V1\\r\\nH2: V2» → extra_headers map. Имя валидируется по charset де-факто-спеки DuckSoft (подмножество RFC 7230 tchar); битая пара скипается с warning, остальные живут. При эмите ключи сортируются лексикографически (оба проекта)."
+        "maps_to": "extra_headers",
+        "desc_en": "Extra HTTP headers of the request.",
+        "desc_ru": "Дополнительные HTTP-заголовки запроса.",
+        "impl": "URL-encoded «H1: V1\\r\\nH2: V2» → extra_headers map. Имя валидируется по charset де-факто-спеки DuckSoft (подмножество RFC 7230 tchar); битая пара скипается с warning, остальные живут. При эмите ключи сортируются лексикографически (оба проекта)."
       },
       "padding": {
         "type": "bool",
         "default": null,
-        "note": "Нет sing-box-эквивалента — игнорируется с warning в обоих (Go дополнительно удаляет из Query)."
+        "desc_en": "Ignored: sing-box has no naive padding switch.",
+        "desc_ru": "Игнорируется: переключателя набивки у naive в sing-box нет.",
+        "impl": "Нет sing-box-эквивалента — игнорируется с warning в обоих (Go дополнительно удаляет из Query)."
       }
     },
     "fragment": "label"
   },
   "emit": {
     "share_uri": true,
-    "param_order": ["extra-headers"],
+    "param_order": [
+      "extra-headers"
+    ],
     "note": "Схема при эмите: Go — naive+quic при quic:true, иначе naive+https; Dart — всегда naive+https (нет quic, §9.B1). Dart опускает порт 443, Go пишет всегда."
   },
-  "degrade": [
-    "битая пара в extra-headers (нет ':', запрещённые символы в имени, CR/LF/NUL в значении) → пара скипается с warning, остальные живут",
-    "padding → игнор с warning",
-    "неизвестный query-параметр → Dart: warning + игнор; Go: молча остаётся в Query и отсекается allowlist-эмиттером",
-    "TLS-блок несёт только enabled+server_name (=server): alpn/utls/reality/insecure намеренно не эмитятся — sing-box naive их отвергает"
+  "mapper": [
+    {
+      "id": "tls_block_kept_minimal",
+      "from": "any TLS options on a naive node",
+      "to": "a `tls` block carrying only `enabled` and `server_name`",
+      "kind": "drop",
+      "code": "tls_field_unsupported_naive",
+      "desc_en": "The naive outbound of sing-box rejects the rest of the TLS options, so they are deliberately not emitted.",
+      "desc_ru": "naive-outbound sing-box отвергает остальные опции TLS, поэтому они намеренно не эмитятся.",
+      "impl": "Правило выражено в реестре: forbidden_for ['naive'] на полях tls.json. Здесь записано, ПОЧЕМУ блок остаётся урезанным."
+    },
+    {
+      "id": "broken_header_pair_skipped",
+      "from": "a broken pair in `extra-headers` (no `:`, a forbidden character in the name, CR/LF/NUL in the value)",
+      "to": "that pair is skipped; the other headers survive",
+      "kind": "drop",
+      "desc_en": "One malformed header does not cost the node its remaining headers.",
+      "desc_ru": "Одна битая пара не стоит узлу остальных заголовков.",
+      "impl": "core/config/subscription/node_parser_naive.go."
+    }
   ],
   "refs": {
     "go": [
@@ -50,5 +84,305 @@
       "lib/models/node_spec_emit.dart:371-426",
       "lib/services/parser/json_parsers.dart:797"
     ]
+  },
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": [
+      "server",
+      "server_port",
+      "username",
+      "password",
+      "insecure_concurrency",
+      "extra_headers",
+      "stream_receive_window",
+      "udp_over_tcp",
+      "quic",
+      "quic_congestion_control",
+      "quic_session_receive_window",
+      "tls",
+      "__dialer"
+    ],
+    "fields": {
+      "server": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server address: domain or IP.",
+        "desc_ru": "Адрес сервера: домен или IP.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "server_port": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server port.",
+        "desc_ru": "Порт сервера.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "username": {
+        "type": "string",
+        "desc_en": "Account user name.",
+        "desc_ru": "Имя пользователя учётной записи.",
+        "impl": "option/naive.go Username."
+      },
+      "password": {
+        "type": "string",
+        "secret": true,
+        "desc_en": "Account password.",
+        "desc_ru": "Пароль учётной записи.",
+        "impl": "option/naive.go Password. Секрет."
+      },
+      "insecure_concurrency": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "default": 0,
+        "desc_en": "Number of concurrent insecure connections.",
+        "desc_ru": "Число параллельных небезопасных соединений.",
+        "impl": "option/naive.go InsecureConcurrency."
+      },
+      "extra_headers": {
+        "type": "object",
+        "desc_en": "Extra HTTP headers added to requests.",
+        "desc_ru": "Дополнительные HTTP-заголовки в запросах.",
+        "impl": "HTTPHeader, но cronet берёт ТОЛЬКО первое значение каждого ключа — код naive_extra_headers_invalid."
+      },
+      "stream_receive_window": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Receive window of a single stream.",
+        "desc_ru": "Окно приёма одного потока.",
+        "impl": "MemoryBytes: число или строка с суффиксом."
+      },
+      "udp_over_tcp": {
+        "type": "object",
+        "order": [
+          "enabled",
+          "version"
+        ],
+        "fields": {
+          "enabled": {
+            "type": "bool",
+            "default": false,
+            "desc_en": "Tunnel UDP over the TCP connection.",
+            "desc_ru": "Передавать UDP внутри TCP-соединения.",
+            "impl": "option/shadowsocks.go UDPOverTCPOptions.Enabled."
+          },
+          "version": {
+            "type": "enum",
+            "values": [
+              1,
+              2
+            ],
+            "on_invalid": {
+              "action": "drop",
+              "code": "type_invalid"
+            },
+            "default": 2,
+            "desc_en": "UDP-over-TCP protocol version.",
+            "desc_ru": "Версия протокола UDP-over-TCP.",
+            "impl": "Ядро принимает и краткую форму — булево вместо объекта; в теле узла пишем объект."
+          }
+        },
+        "desc_en": "UDP-over-TCP settings.",
+        "desc_ru": "Настройки передачи UDP внутри TCP.",
+        "impl": "UDPOverTCPOptions (§1.9): форма — bool ИЛИ объект {enabled,version}."
+      },
+      "quic": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Use QUIC instead of TCP.",
+        "desc_ru": "Использовать QUIC вместо TCP.",
+        "impl": "option/naive.go QUIC."
+      },
+      "quic_congestion_control": {
+        "type": "enum",
+        "values": [
+          "",
+          "bbr",
+          "bbr2",
+          "cubic",
+          "reno"
+        ],
+        "normalize": "trim_lower",
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "default": "",
+        "desc_en": "QUIC congestion control algorithm.",
+        "desc_ru": "Алгоритм управления перегрузкой QUIC.",
+        "impl": "Иное значение = ошибка старта."
+      },
+      "quic_session_receive_window": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Receive window of the QUIC session.",
+        "desc_ru": "Окно приёма сессии QUIC.",
+        "impl": "MemoryBytes."
+      },
+      "tls": {
+        "type": "ref",
+        "ref": "tls",
+        "required": true,
+        "desc_en": "TLS settings.",
+        "desc_ru": "Настройки TLS.",
+        "impl": "C.ErrTLSRequired без tls.enabled=true. ПОДМНОЖЕСТВО: cronet читает только enabled/server_name/certificate/certificate_path и блок ech; остальные поля помечены в registry/tls.json как forbidden_for naive с кодом tls_field_unsupported_naive (16 фатальных на старте + 6 молча игнорируемых, CORE_SCHEMA §5). Требует libcronet.* рядом с бинарём — код naive_unavailable."
+      },
+      "__dialer": {
+        "type": "ref",
+        "ref": "dialer",
+        "inline": true,
+        "desc_en": "Common dialer fields, inlined flat into the body.",
+        "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
+        "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
+      }
+    },
+    "build_tag": "with_naive_outbound"
+  },
+  "mappers": {
+    "uri": {
+      "body_source": "uri",
+      "detect": {
+        "scheme_in": [
+          "naive+https",
+          "naive+quic"
+        ]
+      },
+      "forms": [
+        {
+          "id": "url",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            "url"
+          ],
+          "space": "url"
+        }
+      ],
+      "userinfo": {
+        "split": {
+          "sep": ":",
+          "limit": 2
+        },
+        "into": [
+          "username",
+          "password"
+        ],
+        "single_into": "password",
+        "impl": "§465 — одиночный userinfo это PASSWORD (конвенция DuckSoft, та же что у hysteria2): 'naive+https://secret@host' даёт password=secret с пустым username. Наличие ':' отличает форму «только имя»: 'user:' — это username."
+      },
+      "label": {
+        "source": "fragment",
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "singbox_type"
+        }
+      },
+      "defaults": {
+        "type": "naive",
+        "server_port": 443
+      },
+      "scheme_sets": {
+        "naive+https": {
+          "tls.enabled": true,
+          "tls.server_name": "$host"
+        },
+        "naive+quic": {
+          "tls.enabled": true,
+          "tls.server_name": "$host",
+          "quic": true,
+          "quic_congestion_control": "bbr"
+        }
+      },
+      "params": {
+        "server": {
+          "source": "host",
+          "maps_to": "server",
+          "impl": "§463 / контракт §24.6 — пустой host отбраковывается: ядро на пустом адресе валит ВЕСЬ конфиг, то есть один такой узел из подписки оставлял человека без VPN. Отбраковку делает САНИТАЙЗЕР (body.fields.server → field_missing), а не маппер, поэтому required здесь НЕ объявлен: прежний путь проверял hostname только у vless/trojan/ssh/tuic/anytls (node_parser_core.go:403-405), naive в том списке нет, и узел доезжал до санитайзера. Обе дороги роняют узел, но называют причину по-разному, а причина входит в контракт: корпус naive/empty_host_rejected ждёт emit_error + field_missing, а не parse_error. QUIRKS Q133-46."
+        },
+        "server_port": {
+          "source": "port",
+          "maps_to": "server_port",
+          "type": "int",
+          "materialize_default": true,
+          "impl": "Каноничная форма DuckSoft — 443."
+        },
+        "username": {
+          "source": "userinfo.user",
+          "maps_to": "username"
+        },
+        "password": {
+          "source": "userinfo.pass",
+          "maps_to": "password"
+        },
+        "extra-headers": {
+          "source": "query.extra-headers",
+          "maps_to": "extra_headers",
+          "type": "object",
+          "sort_keys": true,
+          "list": {
+            "sep": "\r\n"
+          },
+          "extract": {
+            "re": "^(?P<k>[!#$%&'*+.0-9A-Z\\\\^_`a-z|~-]+):[ \\t]*(?P<v>[^\\r\\n\\x00]*)$",
+            "into": {
+              "k": "$key",
+              "v": "$value"
+            }
+          },
+          "emit_as": "pairs",
+          "emit_pair_sep": ": ",
+          "on_item_invalid": {
+            "action": "skip",
+            "code": "naive_extra_headers_invalid"
+          },
+          "impl": "Правило broken_header_pair_skipped: битая пара пропускается, остальные живут; код ставится ОДИН раз на узел, о первой отброшенной паре. sort_keys — порядок входит в identity. Годность пары решает САМА регулярка (PRIMITIVES §0.10): алфавит имени — дословный charset гиста DuckSoft (подмножество RFC 7230 tchar, уже нужного намеренно, ради interop), он же naiveHeaderNameCharset прежнего пути; запрет CR/LF/NUL в значении — класс [^\\r\\n\\x00]. Класс [^:]+ этого не выражал: 'X User:bad' с пробелом в имени обязан отбраковываться, а он его принимал (QUIRKS Q133-41, корпус extra_headers_bad_name_dropped)."
+        },
+        "padding": {
+          "source": "query.padding",
+          "maps_to": null,
+          "on_present": {
+            "action": "drop",
+            "code": "naive_padding_ignored"
+          },
+          "impl": "sing-box-эквивалента нет. Предупреждение О ПЕРЕВОДЕ: значения в теле уже нет, и санитайзеру сказать о нём нечего."
+        }
+      },
+      "include": [
+        "dialer#uri"
+      ],
+      "unknown_key": {
+        "action": "keep",
+        "code": "uri_param_unknown"
+      },
+      "emit": {
+        "form": "url",
+        "form_from": {
+          "quic": {
+            "true": "naive+quic",
+            "*": "naive+https"
+          }
+        },
+        "param_order": "alphabetical",
+        "omit_default": [
+          "quic_congestion_control"
+        ]
+      }
+    }
   }
 }

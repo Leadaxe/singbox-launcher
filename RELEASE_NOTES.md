@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v2.0.0
+
+Мажорный релиз после v1.6.3, ядро `sing-box-lx 1.14.1-lx.8`, контракт 1.1.46. **Начало единой экосистемы с LxBox:** один реестр правил (`contract/registry` + corpus), разбор ссылок / Xray JSON / wg-quick `.conf` и сборка share-ссылок — общим движком; одинаковое поведение на одних подписках (LxBox v2.25.0 на 1.1.37, лаунчер на 1.1.46 — разница аддитивная). **Страховка «ядро отвергло узел»:** негодный узел отключается с причиной, VPN поднимается без него. Новые предупреждения: неизвестный параметр ссылки, неизвестное поле JSON, пустой пароль. Порт Shadowsocks по умолчанию 8388. Исправления: hysteria2 port+mport, двойная base64-обёртка, splithttp в ссылке, Xray-подписки с фрагментацией через freedom, негодный ключ REALITY и элемент списка портов больше не роняют весь конфиг. Подробнее: [docs/release_notes/2-0-0.md](docs/release_notes/2-0-0.md).
+
+### Highlights (EN) — v2.0.0
+
+A major release after v1.6.3, core `sing-box-lx 1.14.1-lx.8`, contract 1.1.46. **Start of a unified ecosystem with LxBox:** one rule registry (`contract/registry` + corpus), share links / Xray JSON / wg-quick `.conf` parsing and share-link emission through a single engine; the same behaviour on the same subscriptions (LxBox v2.25.0 on 1.1.37, launcher on 1.1.46 — additive gap). **"Core rejected node" insurance:** a bad node is turned off with a reason, the VPN starts without it. New warnings: unknown link parameter, unknown JSON field, empty password. Shadowsocks default port 8388. Fixes: hysteria2 port+mport, double base64 wrap, splithttp in links, Xray subscriptions with fragmentation via freedom, a bad REALITY key and a bad port-list element no longer take down the whole config. Details: [docs/release_notes/2-0-0.md](docs/release_notes/2-0-0.md).
+
 ### Выжимка (RU) — v1.6.3
 
 Патч после v1.6.2, ядро `sing-box-lx 1.14.1-lx.4`. **Импорт sing-box JSON больше не теряет поля TLS:** массив outbound'ов, целый конфиг и подписка в этом формате шли через эмиттер, знавший семь ключей, — у `naive` терялся `tls.certificate`, у любых схем `alpn`, пины, `min_version`/`max_version`, `cipher_suites`, `client_*` и `fragment`. **Узел `naive` с чужим ключом TLS больше не роняет конфиг целиком:** ядро naive принимает ровно четыре ключа, остальные валят старт, и теперь эмиттер пишет только их. В ссылках REALITY читается `key_share=hybrid|classical` (нужен серверам Xray старше v26.9.8). Ядро lx.4: `tls.reality.key_share` из JSON-тела доезжает до ядра, а флаги фрагментации TLS из шаблона теперь применяются и к REALITY-узлам. Подробнее: [docs/release_notes/1-6-3.md](docs/release_notes/1-6-3.md).
@@ -680,6 +688,7 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v2.0.0** | [docs/release_notes/2-0-0.md](docs/release_notes/2-0-0.md) |
 | **v1.6.3** | [docs/release_notes/1-6-3.md](docs/release_notes/1-6-3.md) |
 | **v1.6.2** | [docs/release_notes/1-6-2.md](docs/release_notes/1-6-2.md) |
 | **v1.6.1** | [docs/release_notes/1-6-1.md](docs/release_notes/1-6-1.md) |

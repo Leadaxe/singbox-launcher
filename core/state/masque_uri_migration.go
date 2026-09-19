@@ -99,6 +99,10 @@ func rewriteNodeMasqueURI(node *Node) int {
 			return 0
 		}
 		node.Body = res.Body
+		// Тело пересобрано из исправленного URI — набор ПРОИЗВОДНЫХ кодов
+		// тоже новый и замещает прежний целиком (Л5). Вердикт ядра
+		// пересчётом тела не снимается (SPEC 132).
+		node.ReplaceDerivedWarnings(res.Warnings)
 	}
 	node.Origin.Raw = fixed
 	debuglog.InfoLog("state: masque node %q: legacy ?network= rewritten to ?vhttp= (contract 0.8.0)", node.Tag)

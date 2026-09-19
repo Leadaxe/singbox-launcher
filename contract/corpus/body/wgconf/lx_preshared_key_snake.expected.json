@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "body_kind": "wgconf"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.0.0.2/32"
+        ],
+        "peers": [
+          {
+            "address": "example-1.com",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "port": 51820,
+            "public_key": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI="
+          }
+        ],
+        "private_key": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "example-1.com",
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "wgconf_param_unknown",
+          "path": "peer.preshared_key"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

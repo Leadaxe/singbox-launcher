@@ -1,0 +1,26 @@
+# sing-box: dial-поля keepalive в теле, написанном в форме ядра (запрос LxBox,
+# контракт 1.1.6). disable_tcp_keep_alive / tcp_keep_alive /
+# tcp_keep_alive_interval есть в DialerOptions ядра (option/outbound.go,
+# 1.14.1-lx.8; CORE_SCHEMA §1.2), но в реестре числились строками `skipped` —
+# и санитайзер снимал их как unknown_key, то есть вешал ⚠ на рабочий узел за
+# поля, которые ядро принимает. Сам лаунчер их не пишет, но тело входом
+# singbox их несёт, и описать их в fields обязано: skip годится только тому,
+# что не приезжает НИ ОДНИМ входом.
+#
+# Ожидание: поля переживают разбор → эмиссию, warnings у обоих узлов нет.
+# keepalive-off: disable_tcp_keep_alive без пары — ядро принимает, связь
+# conflicts намеренно не описана (снятие меняло бы тело без пользы).
+#
+# net-strategy: та же история у network_strategy и тройки при нём
+# (network_type, fallback_network_type, fallback_delay). Их словари живут в
+# C.StringToNetworkStrategy и C.StringToInterfaceType и из option/*.go не
+# видны, поэтому поля описаны БЕЗ enum-values — значение судит ядро.
+# Отсутствие словаря НЕ повод снимать настройку: unknown_key на поле, которое
+# ядро принимает, хуже, чем непроверенное значение (решение владельца
+# 18.09.2026). fallback_delay осмыслен только при стратегии, но requires не
+# заведён — ядро одинокое значение принимает молча.
+[
+  {"type":"vless","tag":"keepalive-full","server":"example-1.com","server_port":443,"uuid":"11111111-1111-1111-1111-111111111111","tcp_keep_alive":"30s","tcp_keep_alive_interval":"15s"},
+  {"type":"trojan","tag":"keepalive-off","server":"example-2.com","server_port":443,"password":"pw","disable_tcp_keep_alive":true},
+  {"type":"vless","tag":"net-strategy","server":"example-3.com","server_port":443,"uuid":"22222222-2222-2222-2222-222222222222","network_strategy":"hybrid","network_type":["wifi","cellular"],"fallback_network_type":"cellular","fallback_delay":"300ms"}
+]

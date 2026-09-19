@@ -373,7 +373,7 @@ func buildFolderDrillRows(sources []corestate.Source, folderID string) (folderDr
 	if len(src.Nodes) > 0 {
 		emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), idx, map[string]int{})
 		out.Rows = buildPreviewRows(src.Nodes, emitted.Nodes)
-		annotatePreviewGroupRows(out.Rows, src.Nodes, sources)
+		annotatePreviewGroupRows(out.Rows, src.Nodes, sources, src.ID)
 	}
 	out.Identities = make([]string, len(out.Rows))
 	for i := range out.Rows {
@@ -481,6 +481,19 @@ func folderDrillHeader(
 		w := widget.NewLabel(fmt.Sprintf("%s %d %s",
 			previewUnsupportedMark, warnCount, locale.T("node error(s)")))
 		w.Importance = widget.WarningImportance
+		rightItems = append(rightItems, w)
+	}
+
+	// SPEC 131 §6: узлы, у которых конвейер что-то снял или привёл. Отдельным
+	// счётчиком от «node error(s)», а не слагаемым к нему: отбракованная
+	// запись в конфиг не поедет вовсе, а этот узел поедет — просто не таким,
+	// каким его прислал провайдер. Сложить их в одно число значило бы
+	// объявить сломанным то, что работает.
+	if warned := previewRowsWarned(rows); warned > 0 {
+		w := widget.NewLabel(fmt.Sprintf("%s %d",
+			previewUnsupportedMark, warned))
+		w.Importance = widget.MediumImportance
+		fynewidget.SetToolTipSafe(w, locale.Tf("⚠ %d node(s) with warnings", warned))
 		rightItems = append(rightItems, w)
 	}
 
@@ -592,7 +605,8 @@ func folderDrillNodeRow(
 	spec := sourceNodeRowSpec{
 		Title:        previewRowTitle(pr),
 		Subtitle:     previewRowSubtitle(pr),
-		SubtitleWarn: pr.Unsupported,
+		SubtitleWarn: previewRowWarn(pr),
+		SubtitleInfo: pr.Warnings,
 		Service:      pr.Service,
 		ToolTip:      previewRowToolTip(pr),
 		OnOpen:       func() { showPreviewNodeEditWindow(pr, identity, ops) },
@@ -1091,11 +1105,10 @@ func folderDrillSetNodeEnabled(
 	nodes := m.Sources[idx].Nodes
 	for i := range nodes {
 		if nodes[i].Tag == rawTag {
-			if nodes[i].Enabled == enabled {
-				return false
-			}
-			nodes[i].Enabled = enabled
-			return true
+			// Единый сеттер: он же стирает вердикт ядра при включении рукой
+			// (SPEC 132) и отвечает «изменилось ли что-нибудь» — по его
+			// ответу вызывающий решает, поднимать ли ревизию модели.
+			return nodes[i].SetNodeEnabled(enabled)
 		}
 	}
 	return false
@@ -1177,11 +1190,15 @@ func folderDrillSetNodesEnabled(
 	changed := false
 	nodes := m.Sources[idx].Nodes
 	for i := range nodes {
-		if !want[nodes[i].Tag] || nodes[i].Enabled == enabled {
+		if !want[nodes[i].Tag] {
 			continue
 		}
-		nodes[i].Enabled = enabled
-		changed = true
+		// Единый сеттер (SPEC 132): «включить все» стирает вердикты ядра у
+		// всех включаемых узлов — иначе половина состава осталась бы с
+		// объяснением, которого больше нет.
+		if nodes[i].SetNodeEnabled(enabled) {
+			changed = true
+		}
 	}
 	return changed
 }

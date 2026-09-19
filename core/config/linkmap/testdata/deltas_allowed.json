@@ -1,0 +1,14 @@
+{
+  "trojan/ws_path_broken_percent_kept": "Q133-36: путь с битым '%zz' снимает САНИТАЙЗЕР (format url_path), а не маппер. Фикстура снята после санитайзера, тело маппера отличается по построению. Граница 'маппер не судит значения' соблюдена обеими сторонами.",
+
+  "xray/sockopt_keepalive_positive": "D133-19: keep-alive из streamSettings.sockopt на входе Xray не читался ВОВСЕ (старый конвертер трогает sockopt только ради dialerProxy). include dialer#xray включает чтение — в теле появляются tcp_keep_alive/tcp_keep_alive_interval. Поля ЖИЛИ во входе и терялись; дельта в сторону полноты.",
+  "xray/vless_sockopt_keepalive": "D133-19, та же пара полей — см. sockopt_keepalive_positive.",
+  "xray/ss_method_legacy": "D133-19: у shadowsocks include dialer#xray уже был объявлен, но блок не исполнялся до перевода входа на движок. Теперь tcp_keep_alive из sockopt доезжает.",
+  "xray/sockopt_keepalive_negative": "D133-19 + знак sockopt: отрицательный tcpKeepAliveIdle у Xray означает «выключить keep-alive», у ядра это отдельное булево disable_tcp_keep_alive. Старый конвертер не читал ни того, ни другого.",
+  "xray/sockopt_keepalive_negative_interval": "D133-19 + знак sockopt: положительный idle пишется, отрицательный ИНТЕРВАЛ не пишется вовсе (своего выключателя у ядра нет). Старый конвертер не читал ни одного из полей.",
+
+  "xray/vmess_tls": "D133-25 (TASKS_LXBOX §24.20 п.4): alter_id у входа Xray объявлен materialize_default — ключ пишется ВСЕГДА, в том числе нулём. Старая ветка писала его только при alterID > 0. Расхождение заявлено LxBox и принято реестром; переключение схемы на движок меняет тело узлов с alterId=0.",
+  "xray/vmess_security_junk": "D133-25, тот же alter_id: 0 — см. vmess_tls.",
+
+  "xray/vless_h2": "Q133-16 РАЗРЕШЁН В СТОРОНУ ЧИНКИ: httpSettings.host в Xray — массив строк, а xrayMapString склеивал его через fmt.Sprint и клал в тело мусор transport.host: [\"[a.example b.example]\"] (типовой реальный конфиг давал недозваниваемый узел). Движок массив к скаляру НЕ приводит (jsonScalar отвечает «значения нет»), и мусорного ключа в теле больше не появляется. Ожидание корпуса пинит СТАРОЕ поведение — оно и есть дефект. Правильное чтение массива host — запись волны W8 вместе с кодами селектора (Q133-17)."
+}

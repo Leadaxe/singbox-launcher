@@ -1,0 +1,299 @@
+{
+  "v": 1,
+  "note": "Общие поля тела узла: ServerOptions + network (секция common) и «клиентские» DialerOptions (секция body). Ссылаются из body протоколов как {\"type\":\"ref\",\"ref\":\"dialer\",\"inline\":true} — поля вливаются в тело плоско, без обёртки. Неклиентские поля DialerOptions (bind_address_no_port, protect_path, routing_mark, reuse_addr, netns, tcp_multi_path, domain_strategy) лаунчер не пишет — они помечены skip в этой же секции. ВНИМАНИЕ (контракт 1.1.6): skipped ≠ «поля нет у ядра». Санитайзер снимает всё, чего нет в fields, кодом unknown_key, поэтому skip годится только тому, что тело узла не несёт НИ ОДНИМ входом; поле, которое ядро принимает и которое может приехать входом singbox, обязано быть в fields, даже если лаунчер его не пишет сам (так вернулись disable_tcp_keep_alive, tcp_keep_alive, tcp_keep_alive_interval, а следом network_strategy с тройкой при нём). ОТСУТСТВИЕ `values` — не повод для skip: словарь network_strategy/InterfaceType живёт в C.* и из option/*.go не виден, но снимать настройку, которую ядро принимает, хуже, чем не проверять её значение (решение владельца 18.09.2026) — такие поля описаны БЕЗ enum, значение судит ядро. SPEC 131, CORE_SCHEMA §1.1–§1.3.",
+  "common": {
+    "core": "1.14.1-lx.4",
+    "order": [
+      "server",
+      "server_port",
+      "network"
+    ],
+    "fields": {
+      "server": {
+        "type": "string",
+        "format": "host",
+        "on_invalid": {
+          "action": "drop_node",
+          "code": "field_missing"
+        },
+        "required": true,
+        "desc_en": "Server address: domain or IP.",
+        "desc_ru": "Адрес сервера: домен или IP.",
+        "impl": "ServerOptions, option/outbound.go; json-тег БЕЗ omitempty — ключ пишется всегда."
+      },
+      "server_port": {
+        "type": "uint16",
+        "format": "port",
+        "min": 1,
+        "max": 65535,
+        "on_invalid": {
+          "action": "drop_node",
+          "code": "port_invalid"
+        },
+        "required": true,
+        "desc_en": "Server port.",
+        "desc_ru": "Порт сервера.",
+        "impl": "ServerOptions; без omitempty. Значение вне 1..65535 валит весь config.json через sing-box check — код port_invalid, узел в dropped."
+      },
+      "network": {
+        "type": "listable_string",
+        "values": [
+          "tcp",
+          "udp"
+        ],
+        "normalize": "trim_lower",
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Networks this outbound handles.",
+        "desc_ru": "Сети, которые обслуживает этот узел.",
+        "impl": "NetworkList: строка или массив; допустимы только tcp и udp, иное = ошибка разбора. Пустое значение = обе сети. У masque ту же роль играет network_list — поле network там устаревшее и означает другое."
+      }
+    }
+  },
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": [
+      "detour",
+      "bind_interface",
+      "inet4_bind_address",
+      "inet6_bind_address",
+      "connect_timeout",
+      "tcp_fast_open",
+      "disable_tcp_keep_alive",
+      "tcp_keep_alive",
+      "tcp_keep_alive_interval",
+      "udp_fragment",
+      "domain_resolver",
+      "network_strategy",
+      "network_type",
+      "fallback_network_type",
+      "fallback_delay"
+    ],
+    "fields": {
+      "detour": {
+        "type": "string",
+        "managed": true,
+        "desc_en": "Tag of the outbound this connection is routed through.",
+        "desc_ru": "Тег узла, через который идёт это соединение.",
+        "impl": "reference:outbound. ПИШЕТ СБОРКА: detour вычисляется из Направлений и цепочек, в теле узла в state его быть не должно — санитайзер снимает. Непустой detour включает авто-record_fragment (SPEC 060). Конфликт с wireguard.listen_port."
+      },
+      "bind_interface": {
+        "type": "string",
+        "desc_en": "Network interface the connection is bound to.",
+        "desc_ru": "Сетевой интерфейс, к которому привязано соединение.",
+        "impl": "option/outbound.go DialerOptions.BindInterface."
+      },
+      "inet4_bind_address": {
+        "type": "string",
+        "format": "ipv4",
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "desc_en": "Local IPv4 address to bind to.",
+        "desc_ru": "Локальный адрес IPv4 для привязки.",
+        "impl": "badoption.Addr — только адрес, без маски."
+      },
+      "inet6_bind_address": {
+        "type": "string",
+        "desc_en": "Local IPv6 address to bind to.",
+        "desc_ru": "Локальный адрес IPv6 для привязки.",
+        "impl": "badoption.Addr — только адрес, без маски."
+      },
+      "connect_timeout": {
+        "type": "duration",
+        "desc_en": "Timeout for establishing the connection.",
+        "desc_ru": "Таймаут установления соединения.",
+        "impl": "option/outbound.go DialerOptions.ConnectTimeout."
+      },
+      "tcp_fast_open": {
+        "type": "bool",
+        "default": false,
+        "forbidden_for": [
+          "anytls"
+        ],
+        "code": "field_conflict",
+        "desc_en": "Use TCP Fast Open.",
+        "desc_ru": "Использовать TCP Fast Open.",
+        "impl": "Запрещён у anytls: «tcp_fast_open is not supported with anytls outbound» (protocol/anytls/outbound.go:60) — одна такая нода не даёт ядру стартовать, поэтому поле снимается."
+      },
+      "disable_tcp_keep_alive": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Disable TCP keepalive on this connection.",
+        "desc_ru": "Отключить TCP keepalive для этого соединения.",
+        "impl": "option/outbound.go DialerOptions.DisableTCPKeepAlive. Лаунчер поле не ПИШЕТ сам, но описать его обязан: тело в форме ядра (вход singbox) может его нести, и без записи в fields санитайзер снимал его как unknown_key — ⚠ на рабочем узле за поле, которое ядро принимает (запрос LxBox, контракт 1.1.6)."
+      },
+      "tcp_keep_alive": {
+        "type": "duration",
+        "desc_en": "Idle time before the first TCP keepalive probe.",
+        "desc_ru": "Время простоя до первой пробы TCP keepalive.",
+        "impl": "option/outbound.go DialerOptions.TCPKeepAlive, badoption.Duration. Осмысленно только при выключенном disable_tcp_keep_alive, но связь НЕ описана conflicts: ядро пару принимает молча, а снятие поля меняло бы тело узла без пользы. Голое число из источника — СЕКУНДЫ (конвенция панелей и Xray-sockopt): normalize duration_bare_seconds дописывает единицу. Правило ЗНАЧЕНИЯ, поэтому живёт в теле и действует на ВСЕХ входах — ссылка, xray-sockopt, тело в форме ядра (SPEC 133, ответ LxBox §24.33). Негодное после нормализации снимается общим правилом duration с кодом type_invalid.",
+        "normalize": "duration_bare_seconds"
+      },
+      "tcp_keep_alive_interval": {
+        "type": "duration",
+        "desc_en": "Interval between TCP keepalive probes.",
+        "desc_ru": "Интервал между пробами TCP keepalive.",
+        "impl": "option/outbound.go DialerOptions.TCPKeepAliveInterval, badoption.Duration. Голое число из источника — СЕКУНДЫ (конвенция панелей и Xray-sockopt): normalize duration_bare_seconds дописывает единицу. Правило ЗНАЧЕНИЯ, поэтому живёт в теле и действует на ВСЕХ входах — ссылка, xray-sockopt, тело в форме ядра (SPEC 133, ответ LxBox §24.33). Негодное после нормализации снимается общим правилом duration с кодом type_invalid.",
+        "normalize": "duration_bare_seconds"
+      },
+      "udp_fragment": {
+        "type": "bool",
+        "tristate": true,
+        "desc_en": "Allow fragmenting UDP packets.",
+        "desc_ru": "Разрешать фрагментацию UDP-пакетов.",
+        "impl": "*bool — три состояния: ключа нет (дефолт ядра), true, false. Эмиттер обязан различать отсутствие ключа и явное false."
+      },
+      "domain_resolver": {
+        "type": "string",
+        "desc_en": "DNS server tag used to resolve the server domain.",
+        "desc_ru": "Тег DNS-сервера для разрешения домена сервера.",
+        "impl": "Короткая форма — строка с тегом сервера; ядро принимает и объект {server,timeout,strategy,disable_cache,disable_optimistic_cache,rewrite_ttl,client_subnet} и сериализует обратно строкой, если задан только server. В теле узла лаунчер пишет короткую форму."
+      },
+      "network_strategy": {
+        "type": "string",
+        "desc_en": "Strategy for picking the outbound network interface. The core judges the value: the launcher passes it through unchecked.",
+        "desc_ru": "Стратегия выбора сетевого интерфейса. Значение судит ЯДРО: лаунчер пропускает его без проверки.",
+        "impl": "option/outbound.go DialerOptions.NetworkStrategy (*NetworkStrategy). Словарь значений живёт в C.StringToNetworkStrategy и из option/*.go НЕ ВИДЕН (CORE_SCHEMA §8), поэтому поле описано БЕЗ `values` — тип string, а не enum. Решение владельца 18.09.2026: снимать как unknown_key настройку, которую ядро принимает, хуже, чем не проверять её значение. Мусор здесь отвергнет ядро на старте, и это честнее молчаливой потери поля."
+      },
+      "network_type": {
+        "type": "listable_string",
+        "desc_en": "Interface types allowed for this connection. The core judges the values.",
+        "desc_ru": "Типы интерфейсов, разрешённые этому соединению. Значения судит ЯДРО.",
+        "impl": "option/outbound.go DialerOptions.NetworkType, InterfaceType, listable. Словарь — C.StringToInterfaceType, из option/*.go не виден, поэтому без `values` (см. network_strategy)."
+      },
+      "fallback_network_type": {
+        "type": "listable_string",
+        "desc_en": "Interface types used when the primary ones are unavailable. The core judges the values.",
+        "desc_ru": "Типы интерфейсов на случай недоступности основных. Значения судит ЯДРО.",
+        "impl": "option/outbound.go DialerOptions.FallbackNetworkType, тот же InterfaceType и тот же невидимый словарь — без `values`."
+      },
+      "fallback_delay": {
+        "type": "duration",
+        "desc_en": "Delay before falling back to the secondary network type.",
+        "desc_ru": "Задержка перед переходом на запасной тип сети.",
+        "impl": "option/outbound.go DialerOptions.FallbackDelay, badoption.Duration. Описан вместе с тройкой network_strategy: поле осмысленно только при ней, но связь requires НЕ заведена — ядро одинокое значение принимает молча, и снятие меняло бы тело узла без пользы."
+      }
+    },
+    "skipped": {
+      "bind_address_no_port": "A server-side, low-level dialer option; the launcher never writes it on any input (CORE_SCHEMA 1.2 marks the client-side ones separately).",
+      "protect_path": "Android only (platform=android); the desktop launcher does not write it.",
+      "routing_mark": "Linux only; the launcher does not write it.",
+      "reuse_addr": "A low-level dialer option; the launcher does not write it.",
+      "netns": "Linux only, reference:network_namespace; the launcher does not write it.",
+      "tcp_multi_path": "A low-level dialer option; the launcher does not write it.",
+      "domain_strategy": "Deprecated, schema:\"omit\" in the core — migrated to domain_resolver."
+    }
+  },
+  "blocks": {
+    "note": "SPEC 133: ИСПОЛНЯЕМЫЕ записи keep-alive по диалектам. Поля описаны в секции body выше (контракт 1.1.6) и ядром принимаются, но ни один парсер лаунчера не читает их НИ ИЗ ОДНОЙ ссылки — не хватало именно исполняемых записей. Дельта односторонняя: тела рабочих узлов не меняются, добавляется только принимаемый вход. DELTAS D133-19.",
+    "uri": {
+      "tcp_keep_alive": {
+        "source": "query.tcp_keep_alive",
+        "aliases": [
+          "tcpKeepAlive"
+        ],
+        "maps_to": "tcp_keep_alive",
+        "type": "duration"
+      },
+      "tcp_keep_alive_interval": {
+        "source": "query.tcp_keep_alive_interval",
+        "aliases": [
+          "tcpKeepAliveInterval"
+        ],
+        "maps_to": "tcp_keep_alive_interval",
+        "type": "duration"
+      },
+      "disable_tcp_keep_alive": {
+        "source": "query.disable_tcp_keep_alive",
+        "aliases": [
+          "disableTcpKeepAlive"
+        ],
+        "maps_to": "disable_tcp_keep_alive",
+        "type": "bool_spelled"
+      },
+      "detour": {
+        "source": "query.detour",
+        "maps_to": "detour",
+        "round_trip_only": "emit",
+        "impl": "ЭМИТ-ОНЛИ (round_trip_only: \"emit\"). `detour` не читается из ссылки ни одной стороной: поле `managed` (body.fields.detour) — его пишет СБОРКА конфига из Направлений и цепочек, а санитайзер снимает его из тела узла молча. Но ShareURIFromOutbound получает тело из ГОТОВОГО config.json, где сборка его уже поставила, и прежний рукописный эмиттер писал его литералом (shareAppendDetourLiteral) — ссылка на узел внутри цепочки несла имя следующего хопа. Чтение НЕ заводится намеренно: пришедший по ссылке detour указывал бы на тег, которого в чужом конфиге нет, и узел уехал бы в fail-closed (SPEC 077 упразднён единой строгостью detour)."
+      }
+    },
+    "xray": {
+      "$note": "ЗНАК ЗДЕСЬ — ЗНАЧАЩИЙ, и это диалект Xray, а не ядра. tcpKeepAliveIdle/Interval: положительное = длительность, 0 = «НЕ ЗАДАНО» (поле не пишется, действует дефолт ядра), отрицательное = «ВЫКЛЮЧИТЬ keep-alive» (у ядра это отдельное булево поле disable_tcp_keep_alive, а не отрицательная длительность — отрицательный duration ядро не примет). Три исхода одного числа выражены записями под `when` вместо ветки в коде: gt 0 пишет длительность, lt 0 поднимает флаг, ноль не проходит ни одно условие и записи не даёт. `when` не дубль min/max реестра: min/max СУДЯТ значение и ставят код, здесь же негодных значений нет вовсе — любой знак законен, он лишь выбирает, какую запись исполнить. ДВА НАПИСАНИЯ КЛЮЧА — ДВЕ ПАРЫ ЗАПИСЕЙ, а не одна запись с двумя источниками: `when` сравнивает ОДИН источник по имени, и перечисли мы оба написания ключами одного условия, они соединились бы логическим И — отсутствующее написание дало бы false и сняло запись целиком. Фолбэк-цепочка `source` решает, ОТКУДА взять значение, но не умеет сказать, у КОТОРОГО написания проверять знак; пока это так, честнее развернуть пары, чем прятать вторую форму. Написание camelCase — каноническое (так пишет сам Xray), snake_case принимается фолбэком.",
+      "tcp_keep_alive": {
+        "source": "json.streamSettings.sockopt.tcpKeepAliveIdle",
+        "maps_to": "tcp_keep_alive",
+        "type": "duration",
+        "when": {
+          "json.streamSettings.sockopt.tcpKeepAliveIdle": {
+            "gt": 0
+          }
+        },
+        "impl": "У Xray keep-alive живёт в streamSettings.sockopt и измеряется ГОЛЫМИ СЕКУНДАМИ (tcpKeepAliveIdle: 30), у ядра — duration (\"30s\"). Нормализация написания (голое число → секунды) переехала в body.fields normalize duration_bare_seconds: это правило ЗНАЧЕНИЯ, и оно обязано действовать на всех входах, а не только на ссылке (SPEC 133 §6.0, как cidr_prefix/base64_std в D133-22). Гейт gt:0 отсекает и ноль («не задано»), и отрицательное (его ведёт disable_tcp_keep_alive)."
+      },
+      "tcp_keep_alive_snake": {
+        "source": "json.streamSettings.sockopt.tcp_keep_alive_idle",
+        "maps_to": "tcp_keep_alive",
+        "type": "duration",
+        "when": {
+          "json.streamSettings.sockopt.tcp_keep_alive_idle": {
+            "gt": 0
+          }
+        },
+        "impl": "Второе написание того же ключа — см. $note блока: знак проверяется у КОНКРЕТНОГО написания, поэтому пара записей, а не одна с фолбэк-цепочкой. Путь тела тот же; спор за него решают общие priority/merge, и camelCase объявлен раньше."
+      },
+      "disable_tcp_keep_alive": {
+        "source": "json.streamSettings.sockopt.tcpKeepAliveIdle",
+        "maps_to": null,
+        "implies": {
+          "disable_tcp_keep_alive": true
+        },
+        "when": {
+          "json.streamSettings.sockopt.tcpKeepAliveIdle": {
+            "lt": 0
+          }
+        },
+        "impl": "Отрицательный idle у Xray означает «keep-alive выключить», и у ядра это ОТДЕЛЬНОЕ БУЛЕВО поле: перенести знак как длительность нельзя — badoption.Duration отрицательное значение не принимает, узел бы упал. Значение НЕ ПИШЕТСЯ (maps_to: null), флаг ставит implies — само отрицательное число в тело не едет ни в каком виде. Фиксированное значение выражено через implies, а не новым примитивом «константа»: implies ровно это и делает, и на ту же запись действует общий спор за путь. Интервал своего выключателя у ядра не имеет, поэтому отрицательный tcpKeepAliveInterval просто не пишется (см. гейт у записи интервала)."
+      },
+      "disable_tcp_keep_alive_snake": {
+        "source": "json.streamSettings.sockopt.tcp_keep_alive_idle",
+        "maps_to": null,
+        "implies": {
+          "disable_tcp_keep_alive": true
+        },
+        "when": {
+          "json.streamSettings.sockopt.tcp_keep_alive_idle": {
+            "lt": 0
+          }
+        },
+        "impl": "Второе написание — см. $note блока."
+      },
+      "tcp_keep_alive_interval": {
+        "source": "json.streamSettings.sockopt.tcpKeepAliveInterval",
+        "maps_to": "tcp_keep_alive_interval",
+        "type": "duration",
+        "when": {
+          "json.streamSettings.sockopt.tcpKeepAliveInterval": {
+            "gt": 0
+          }
+        },
+        "impl": "У Xray keep-alive живёт в streamSettings.sockopt и измеряется ГОЛЫМИ СЕКУНДАМИ, у ядра — duration. Нормализация голого числа — в body.fields (duration_bare_seconds). Гейт gt:0: ноль = «не задано», а отрицательный интервал ОТДЕЛЬНОГО выключателя у ядра не имеет (disable_tcp_keep_alive снимает keep-alive целиком и вешается только на idle), поэтому он не пишется вовсе — кейс корпуса sockopt_keepalive_negative_interval."
+      },
+      "tcp_keep_alive_interval_snake": {
+        "source": "json.streamSettings.sockopt.tcp_keep_alive_interval",
+        "maps_to": "tcp_keep_alive_interval",
+        "type": "duration",
+        "when": {
+          "json.streamSettings.sockopt.tcp_keep_alive_interval": {
+            "gt": 0
+          }
+        },
+        "impl": "Второе написание — см. $note блока."
+      }
+    }
+  }
+}

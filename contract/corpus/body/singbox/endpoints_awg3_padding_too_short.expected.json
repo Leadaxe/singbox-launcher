@@ -1,0 +1,14 @@
+{
+  "dropped": [
+    {
+      "code": "awg3_padding_too_short",
+      "reason": "emit_error",
+      "ref": "awg3-short-pad"
+    }
+  ],
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [],
+  "v": 1
+}

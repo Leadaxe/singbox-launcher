@@ -14,7 +14,13 @@
       },
       "kind": "outbound",
       "label": "x",
-      "scheme": "masque"
+      "scheme": "masque",
+      "warnings": [
+        {
+          "code": "uri_param_unknown",
+          "path": "$legacy_flat"
+        }
+      ]
     }
   ],
   "v": 1

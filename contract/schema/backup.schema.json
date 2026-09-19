@@ -244,6 +244,20 @@
           "type": "string",
           "description": "unsupported only: почему запись не разобралась. Текст парсера (английский), тот же, что едет в диагностику fetch."
         },
+        "warnings": {
+          "type": "array",
+          "description": "server only, необязательно (контракт 1.1.0, SPEC 131): записи деградаций {code, path?, value?, params?} как в node.schema.json. Производные данные: читатель при импорте им НЕ доверяет и пересчитывает конвейером из origin.raw (или санитайзером по body); пишутся для переноса ⚠ между приложениями «как было». ИСКЛЮЧЕНИЕ — код `core_rejected` (CANON §9 «Core-rejected node», SPEC 132 лаунчера / фича 478 LxBox): это не деградация разбора, а вердикт ядра о КОНКРЕТНОМ теле узла, сопровождающий `enabled: false`. Он АВТОРИТЕТЕН — пересчёт по телу его не воспроизводит и стирать не вправе; снимают его только смена тела узла и включение узла человеком.",
+          "items": {
+            "type": "object",
+            "required": ["code"],
+            "properties": {
+              "code": { "type": "string" },
+              "path": { "type": "string" },
+              "value": { "type": "string" },
+              "params": { "type": "object", "additionalProperties": { "type": "string" } }
+            }
+          }
+        },
         "sections": {
           "$ref": "#/$defs/sections"
         },
@@ -617,6 +631,20 @@
         "reason": {
           "type": "string",
           "description": "unsupported only: почему запись не разобралась. Текст парсера (английский), тот же, что едет в диагностику fetch."
+        },
+        "warnings": {
+          "type": "array",
+          "description": "server only, необязательно (контракт 1.1.0, SPEC 131): записи деградаций {code, path?, value?, params?} как в node.schema.json. Производные данные: читатель при импорте им НЕ доверяет и пересчитывает конвейером из origin.raw (или санитайзером по body); пишутся для переноса ⚠ между приложениями «как было». ИСКЛЮЧЕНИЕ — код `core_rejected` (CANON §9 «Core-rejected node», SPEC 132 лаунчера / фича 478 LxBox): это не деградация разбора, а вердикт ядра о КОНКРЕТНОМ теле узла, сопровождающий `enabled: false`. Он АВТОРИТЕТЕН — пересчёт по телу его не воспроизводит и стирать не вправе; снимают его только смена тела узла и включение узла человеком.",
+          "items": {
+            "type": "object",
+            "required": ["code"],
+            "properties": {
+              "code": { "type": "string" },
+              "path": { "type": "string" },
+              "value": { "type": "string" },
+              "params": { "type": "object", "additionalProperties": { "type": "string" } }
+            }
+          }
         },
         "sections": {
           "$ref": "#/$defs/sections"

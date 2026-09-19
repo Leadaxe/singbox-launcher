@@ -741,6 +741,23 @@ func attachXrayDialerChain(
 		}
 		visited[ref] = struct{}{}
 
+		hopProtocol := strings.ToLower(strings.TrimSpace(xrayMapString(hopOb, "protocol")))
+		if hopProtocol == "freedom" {
+			// Служебный freedom с fragment — не хоп, а TLS ClientHello
+			// fragmentation (Xray DPI trick). Основной узел остаётся прямым;
+			// без fragment dialerProxy молча игнорируется.
+			// Предупреждение не ставится (решение владельца): Xray режет
+			// ClientHello вслепую по length и ждёт фиксированный interval;
+			// sing-box парсит ClientHello, режет каждую метку SNI (public
+			// suffix не трогается), включает TCP_NODELAY, ждёт ACK или
+			// fragment_fallback_delay (500 мс по умолчанию); record_fragment —
+			// тот же разрез на уровне TLS-записей. Механика ядра строго лучше.
+			if xrayFreedomFragmentSpec(hopOb) {
+				applyXrayFreedomFragment(node)
+			}
+			return nil
+		}
+
 		hopTag := fmt.Sprintf("%s%s", ownerTag, xrayJumpOutboundTagSuffix)
 		if depth > 0 {
 			hopTag = fmt.Sprintf("%s%s%d", ownerTag, xrayJumpOutboundTagSuffix, depth+1)
@@ -778,6 +795,35 @@ func attachXrayDialerChain(
 
 	node.SyncJumpFromChain()
 	return nil
+}
+
+func xrayFreedomFragmentSpec(ob map[string]interface{}) bool {
+	settings, _ := ob["settings"].(map[string]interface{})
+	if settings == nil {
+		return false
+	}
+	frag, _ := settings["fragment"].(map[string]interface{})
+	return frag != nil
+}
+
+func nodeOutboundTLSEnabled(node *configtypes.ParsedNode) bool {
+	if node == nil || node.Outbound == nil {
+		return false
+	}
+	tls, ok := node.Outbound["tls"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	enabled, ok := tls["enabled"].(bool)
+	return ok && enabled
+}
+
+func applyXrayFreedomFragment(node *configtypes.ParsedNode) {
+	if !nodeOutboundTLSEnabled(node) {
+		return
+	}
+	tls, _ := node.Outbound["tls"].(map[string]interface{})
+	tls["fragment"] = true
 }
 
 // xrayChainHopFromOutbound строит звено цепочки.

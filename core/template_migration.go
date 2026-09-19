@@ -159,6 +159,19 @@ func (ac *AppController) StartTemplateRefresh() {
 		parent = context.Background()
 	}
 
+	// SPEC 132: отметки версий — СВОЕЙ горутиной, а не внутри шаблонной.
+	// Ворота сборки (awaitTemplateRefresh) ждут именно докачку шаблона, и
+	// вешать на них ещё и `sing-box version` значило бы задерживать первый
+	// старт ради записи в лог.
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				debuglog.WarnLog("version marks: recovered from panic: %v", r)
+			}
+		}()
+		ac.CheckVersionMarks()
+	}()
+
 	go func() {
 		defer close(done)
 		defer func() {

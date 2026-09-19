@@ -18,6 +18,7 @@ import (
 	daemonpb "singbox-launcher/internal/daemonpb"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/lxdclient"
+	"singbox-launcher/internal/textnorm"
 	"singbox-launcher/internal/traffic"
 )
 
@@ -52,6 +53,10 @@ type LxdRemoteTransport struct {
 	clientsMap  map[string]lxdclient.ClientInfo
 	clientsErr  error
 	clientsBusy bool
+
+	// ts — ленивый стрим статуса tailnet и его кеш (SPEC 130,
+	// lxd_remote_tailscale.go).
+	ts tailscaleStream
 }
 
 // clientsInfoTTL — срок жизни кэша справочника устройств.
@@ -129,6 +134,10 @@ func (t *LxdRemoteTransport) Addr() string { return t.client.AddrString() }
 // Close закрывает gRPC-соединение. Идемпотентен: повторный вызов и вызов на
 // неподключённом транспорте безопасны.
 func (t *LxdRemoteTransport) Close() error {
+	// Стрим статуса tailnet живёт с транспортом — гасим до соединения,
+	// иначе runResilientStream переподпишется на закрытом conn и будет
+	// молотить ошибки до отмены контекста.
+	t.stopTailscaleStream()
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.conn == nil {
@@ -196,29 +205,53 @@ func (t *LxdRemoteTransport) GroupProxies(group string) ([]api.ProxyInfo, string
 	if strings.TrimSpace(group) == "" {
 		return nil, "", errRemoteGroupUnknown
 	}
-	for _, g := range groups.GetGroup() {
-		if g.GetTag() != group {
-			continue
-		}
-		selected := g.GetSelected()
-		proxies := make([]api.ProxyInfo, 0, len(g.GetItems()))
-		for _, item := range g.GetItems() {
-			info := api.ProxyInfo{
-				Name:      item.GetTag(),
-				ClashType: item.GetType(),
-				Delay:     int64(item.GetUrlTestDelay()),
-			}
-			// GetGroups отдаёт выбор на уровне группы; Servers-tab рисует
-			// маркер по per-node Now — разворачиваем (как локальный
-			// daemon-транспорт).
-			if item.GetTag() == selected {
-				info.Now = selected
-			}
-			proxies = append(proxies, info)
-		}
-		return proxies, selected, nil
+	proxies, selected, ok := ProxyInfosFromGroups(groups, group)
+	if !ok {
+		return nil, "", fmt.Errorf("lxd remote: group %q not found", group)
 	}
-	return nil, "", fmt.Errorf("lxd remote: group %q not found", group)
+	return proxies, selected, nil
+}
+
+// ProxyInfosFromGroups разворачивает ответ GetGroups в строки группы group;
+// ok=false — такой группы в ответе нет.
+//
+// Общий для обоих gRPC-транспортов — удалённого и локального демона
+// (core/backend_daemon_darwin.go): цикл жил копией в каждом, и одна ошибка
+// сидела в обоих.
+//
+// Now строки — выбор САМОЙ строки, когда она группа, как поле "now" на
+// Clash-пути. Не отметка «эту строку выбрала просматриваемая группа»: выбор
+// группы уходит вторым значением, и подсветка выбранной строки рисуется по
+// нему. Прежняя подстановка Now=selected у выбранной строки давала подпись
+// «🚩 [3] fastest ‣ proxy-out-auto» — вложенная группа показывала саму себя
+// вместо узла, через который идёт трафик. GetGroups отдаёт все группы разом,
+// поэтому выбор вложенной берётся из того же ответа, без запроса на строку.
+func ProxyInfosFromGroups(groups *daemonpb.Groups, group string) (proxies []api.ProxyInfo, selected string, ok bool) {
+	selectedByTag := make(map[string]string, len(groups.GetGroup()))
+	var target *daemonpb.Group
+	for _, g := range groups.GetGroup() {
+		selectedByTag[g.GetTag()] = g.GetSelected()
+		if target == nil && g.GetTag() == group {
+			target = g
+		}
+	}
+	if target == nil {
+		return nil, "", false
+	}
+	proxies = make([]api.ProxyInfo, 0, len(target.GetItems()))
+	for _, item := range target.GetItems() {
+		info := api.ProxyInfo{
+			Name:      item.GetTag(),
+			ClashType: item.GetType(),
+			Delay:     int64(item.GetUrlTestDelay()),
+		}
+		if now := selectedByTag[item.GetTag()]; now != "" {
+			info.Now = now
+			info.NowDisplay = textnorm.NormalizeProxyDisplay(now)
+		}
+		proxies = append(proxies, info)
+	}
+	return proxies, target.GetSelected(), true
 }
 
 // SwitchProxy implements ProxyTransport через SelectOutbound.

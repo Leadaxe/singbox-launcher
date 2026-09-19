@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "testpass123",
+        "server": "example-3.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-3.com"
+        },
+        "transport": {
+          "service_name": "/abcde/Tun",
+          "type": "grpc"
+        },
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "Trojan gRPC abs",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

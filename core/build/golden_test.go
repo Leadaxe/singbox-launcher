@@ -57,6 +57,16 @@ var nodeCommentRegex = regexp.MustCompile(`(?m)^[ \t]*//[^\n]*\n`)
 //
 // Префикс `marker-fill-` = синтетический под-компонентный тест
 // (substitute vars + populate-existing-markers); проходит всегда.
+//
+// **Сценарии `real-*` привязаны к платформе съёмки.** Шаблон живой установки
+// несёт платформенные `params` (`inbounds` для `darwin` против
+// `windows`/`linux`) и платформенные дефолты переменных (`enable_proxy_in` =
+// true только на darwin). `GetEffectiveConfig` берёт `runtime.GOOS`, поэтому
+// на linux/windows честный выхлоп отличается от эталона по составу
+// `inbounds[]` — и это правильный выхлоп, а не расхождение. Эталон снят на
+// macOS (см. `platformOfGoldenScenario`), на прочих ОС сценарий
+// пропускается: перезаписывать эталон под каждую ОС значило бы держать три
+// копии одного снимка.
 func TestGoldenScenarios(t *testing.T) {
 	root := "testdata/golden"
 	entries, err := os.ReadDir(root)
@@ -77,6 +87,11 @@ func TestGoldenScenarios(t *testing.T) {
 				t.Skipf("scenario %s incomplete (need template.json / state.json / cache.json / expected.config.json)", name)
 				return
 			}
+			if goos := platformOfGoldenScenario(dir); goos != "" && goos != runtime.GOOS {
+				skipped++
+				t.Skipf("scenario %s снят на %s, здесь %s — платформенные params/дефолты дают другой (верный) выхлоп", name, goos, runtime.GOOS)
+				return
+			}
 			runGoldenScenario(t, dir)
 			ran++
 		})
@@ -85,6 +100,22 @@ func TestGoldenScenarios(t *testing.T) {
 	if ran == 0 {
 		t.Logf("no complete scenarios in %s (skipped=%d); add inputs+expected to enable", root, skipped)
 	}
+}
+
+// platformOfGoldenScenario — GOOS, на котором снят эталон сценария.
+//
+// Читается из необязательного файла `platform` в каталоге сценария (одна
+// строка, значение `runtime.GOOS`). Пусто/нет файла = сценарий платформо-
+// независим и прогоняется везде. Файл нужен сценариям с живым шаблоном:
+// `params` с `platforms` и `default_value` вида `{"darwin":…, "default":…}`
+// делают честный выхлоп разным на разных ОС, и байтовое сравнение с одним
+// снимком имеет смысл только на его собственной платформе.
+func platformOfGoldenScenario(dir string) string {
+	raw, err := os.ReadFile(filepath.Join(dir, "platform"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(raw))
 }
 
 // scenarioComplete — все ли четыре обязательных файла на месте.

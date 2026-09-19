@@ -1,0 +1,6 @@
+# gRPC: serviceName в Xray-форме «абсолютного пути» «/<сервис>/Tun».
+# Значение едет в тело КАК ЕСТЬ: ядро sing-box-lx ≥ 1.14.1-lx.8 разбирает
+# ведущий «/» само — это готовый путь запроса, на проводе «/abcde/Tun».
+# Прежний перевод формы (снятие «/» и хвоста «/Tun», issue #130) снят
+# целиком вместе с пином lx.8 — контракт 1.1.3.
+trojan://testpass123@example-3.com:443?type=grpc&security=tls&serviceName=%2Fabcde%2FTun&sni=example-3.com#Trojan%20gRPC%20abs

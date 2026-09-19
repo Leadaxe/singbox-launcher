@@ -24,7 +24,11 @@
       "label": "ks-bad",
       "scheme": "vless",
       "warnings": [
-        "reality_key_share_invalid"
+        {
+          "code": "reality_key_share_invalid",
+          "path": "tls.reality.key_share",
+          "value": "quantum"
+        }
       ]
     }
   ],

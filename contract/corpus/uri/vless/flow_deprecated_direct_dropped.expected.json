@@ -22,7 +22,14 @@
       },
       "kind": "outbound",
       "label": "flow-direct",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "flow_deprecated",
+          "path": "flow",
+          "value": "xtls-rprx-direct"
+        }
+      ]
     }
   ],
   "v": 1

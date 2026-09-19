@@ -43,7 +43,40 @@ type contractNode struct {
 	// Отсутствует у узла без секций (обычное тело, узел не один в конфиге).
 	Sections json.RawMessage `json:"sections,omitempty"`
 	Chain    []contractNode  `json:"chain,omitempty"`
-	Warnings []string        `json:"warnings,omitempty"`
+	// Warnings — записи деградаций конверта (CANON §6, контракт 1.1.0):
+	// {code, path?, value?}. `params` раннер пока не пишет — их ставит
+	// санитайзер реестра (W2a), до него параметров ни у одного кода нет.
+	//
+	// Старые ожидания корпуса несут здесь ГОЛЫЕ СТРОКИ-коды; сравнение это
+	// терпит (normalizeWarningsForCompare): строка в ожидании = «нормативен
+	// только код». Перегенерировать весь корпус ради формы записи — значит
+	// смешать шум с настоящими расхождениями.
+	Warnings []contractWarning `json:"warnings,omitempty"`
+}
+
+// contractWarning — запись warnings[] конверта.
+type contractWarning struct {
+	Code  string `json:"code"`
+	Path  string `json:"path,omitempty"`
+	Value string `json:"value,omitempty"`
+}
+
+// contractWarningValue — value для конверта из Warning (CANON §6).
+//
+// Санитайзер пишет Value напрямую; маппер кладёт подстановки в Params
+// (`on_present` → value, `on_len_gt` → count). Раннер сводит их в одно поле
+// конверта, не дублируя params.
+func contractWarningValue(w configtypes.Warning) string {
+	if w.Value != "" {
+		return w.Value
+	}
+	if w.Params == nil {
+		return ""
+	}
+	if v := w.Params["value"]; v != "" {
+		return configtypes.TruncateWarningValue(v)
+	}
+	return ""
 }
 
 // contractDrop — запись отбраковки в конверте (D-088).
@@ -59,6 +92,28 @@ type contractDrop struct {
 	Reason string `json:"reason"`
 }
 
+// canonNodeDrop — canonNode плюс МАШИННАЯ причина отказа.
+//
+// `code` в записи отбраковки нормативен (D-088, corpus/README §«Отбраковки»),
+// а `reason` — нет: он человеческий текст стороны. Пока раннеры знали только
+// текст ошибки Go, любая отбраковка приезжала в конверт без кода, и вторая
+// сторона сверяла у неё ровно одно поле — `ref`. Отличить «узел выброшен за
+// негодный ключ» от «узел выброшен за пересечение заголовков» такой конверт
+// не позволял, то есть перенос правил в реестр проверить было нечем.
+//
+// Код берётся у отказа санитайзера. Пустая строка = отказ пришёл не от него
+// (ошибка эмиссии, битый JSON) — там кода и нет.
+func canonNodeDrop(node *configtypes.ParsedNode) (contractNode, string, error) {
+	if node != nil && node.Scheme != configtypes.SchemeGroup {
+		if _, _, drop := materializeParsedNodeBody(node); drop != nil {
+			cn, err := canonNode(node)
+			return cn, drop.Code, err
+		}
+	}
+	cn, err := canonNode(node)
+	return cn, "", err
+}
+
 // canonNode превращает разобранный узел в канонический вид конверта.
 func canonNode(node *configtypes.ParsedNode) (contractNode, error) {
 	if node == nil {
@@ -66,41 +121,58 @@ func canonNode(node *configtypes.ParsedNode) (contractNode, error) {
 	}
 
 	kind := "outbound"
-	var raw string
-	var err error
-	switch {
-	case node.Scheme == configtypes.SchemeGroup:
-		kind = "group"
-		raw, err = GenerateNodeJSON(node)
-	case IsEndpointScheme(node.Scheme):
-		// Предикат, а не строка `== "wireguard"`: таблица схем-endpoint'ов
-		// одна (endpoint_schemes.go), и вторая её копия здесь уводила бы
-		// новую схему (tailscale) в outbounds[] — с пустыми server/server_port
-		// от эмиттера outbound'ов, то есть с ЛОЖНЫМ каноном в ожидании.
-		kind = "endpoint"
-		raw, err = GenerateEndpointJSON(node)
-	default:
-		raw, err = GenerateNodeJSON(node)
-	}
-	if err != nil {
-		return contractNode{}, fmt.Errorf("emit %s: %w", node.Scheme, err)
-	}
+	var entry map[string]any
+	// Коды деградации (SPEC 103, фаза 2) — часть контракта: они отвечают на
+	// вопрос «что узлу отняли при разборе», и расхождение кодов между
+	// приложениями означает, что одно из них молча портит узел.
+	//
+	// Порядок — как проставлен разбором (CANON §6, Л14), без сортировки:
+	// последовательность слоёв нормативна, и сортировка кодов скрыла бы
+	// расхождение в том, ЧТО именно сработало первым.
+	nodeWarnings := node.Warnings
 
-	entry, err := decodeEmittedEntry(raw)
-	if err != nil {
-		return contractNode{}, fmt.Errorf("decode emitted %s: %w", node.Scheme, err)
+	if node.Scheme == configtypes.SchemeGroup {
+		// Группа тела не имеет: у неё нет ни схемы в реестре, ни полей для
+		// санитайзера — её форму задаёт свой эмиттер.
+		kind = "group"
+		raw, err := GenerateNodeJSON(node)
+		if err != nil {
+			return contractNode{}, fmt.Errorf("emit %s: %w", node.Scheme, err)
+		}
+		entry, err = decodeEmittedEntry(raw)
+		if err != nil {
+			return contractNode{}, fmt.Errorf("decode emitted %s: %w", node.Scheme, err)
+		}
+	} else {
+		// SPEC 131 W2c: конверт корпуса показывает ровно то тело, которое
+		// лаунчер СОХРАНИТ, — то есть выход конвейера. Пока здесь стоял
+		// GenerateNodeJSON, ожидание описывало per-scheme эмиттер, а в
+		// state.Node.Body уезжало другое: контракт сверял не тот артефакт,
+		// который живёт.
+		//
+		// Предикат схемы-endpoint'а нужен только для поля kind конверта:
+		// тело обе ветки получают одним конвейером (CANON §2.3).
+		if IsEndpointScheme(node.Scheme) {
+			kind = "endpoint"
+		}
+		body, warns, drop := materializeParsedNodeBody(node)
+		if drop != nil {
+			return contractNode{}, fmt.Errorf("emit %s: %s", node.Scheme, dropReason(drop))
+		}
+		nodeWarnings = warns
+		if err := json.Unmarshal(body, &entry); err != nil {
+			return contractNode{}, fmt.Errorf("decode emitted %s: %w", node.Scheme, err)
+		}
 	}
 
 	// CANON §2.1-2.2: tag и detour в канон не входят.
 	delete(entry, "tag")
 	delete(entry, "detour")
 
-	// Коды деградации (SPEC 103, фаза 2) — часть контракта: они отвечают на
-	// вопрос «что узлу отняли при разборе», и расхождение кодов между
-	// приложениями означает, что одно из них молча портит узел.
-	// Порядок не нормируется — сортируем.
-	warnings := append([]string(nil), node.Warnings...)
-	sort.Strings(warnings)
+	var warnings []contractWarning
+	for _, w := range nodeWarnings {
+		warnings = append(warnings, contractWarning{Code: w.Code, Path: w.Path, Value: contractWarningValue(w)})
+	}
 
 	sections, err := canonNodeSections(node)
 	if err != nil {

@@ -1,0 +1,12 @@
+# Ключ DNS с ПУСТЫМ значением: «DNS =». Разборщик отбрасывает пустые
+# значения, поэтому on_present кода wgconf_dns_ignored не даёт.
+# Источник: LxBox pipeline_identity_before.json, кейс b480_empty_dns_value.
+[Interface]
+PrivateKey = AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=
+Address = 10.0.0.2/32
+DNS =
+
+[Peer]
+PublicKey = AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=
+Endpoint = example-1.com:51820
+AllowedIPs = 0.0.0.0/0

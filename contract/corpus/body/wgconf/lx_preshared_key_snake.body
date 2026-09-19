@@ -1,0 +1,12 @@
+# PresharedKey, написанный в snake_case («preshared_key»). У нас объявлено
+# только каноническое имя — ключ незнакомый и сегодня теряется молча.
+# Источник: LxBox pipeline_identity_before.json, кейс b480_preshared_key_snake.
+[Interface]
+PrivateKey = AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=
+Address = 10.0.0.2/32
+
+[Peer]
+PublicKey = AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=
+preshared_key = AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM=
+Endpoint = example-1.com:51820
+AllowedIPs = 0.0.0.0/0

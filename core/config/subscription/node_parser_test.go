@@ -296,7 +296,7 @@ func TestParseNode_VMess(t *testing.T) {
 		if tr["type"] != "http" {
 			t.Fatalf("transport type: %+v", tr)
 		}
-		hosts, _ := tr["host"].([]string)
+		hosts, _ := bodyStrings(tr["host"])
 		if len(hosts) != 1 || hosts[0] != "cdn.h2" {
 			t.Fatalf("host: %+v", tr["host"])
 		}
@@ -420,11 +420,14 @@ func TestParseNode_Shadowsocks(t *testing.T) {
 		if node.Scheme != "ss" {
 			t.Errorf("Expected scheme 'ss', got '%s'", node.Scheme)
 		}
-		if node.Query.Get("method") != method {
-			t.Errorf("Expected method '%s', got '%s'", method, node.Query.Get("method"))
+		// method/password проверяются в ТЕЛЕ: досочинение значений обратно
+		// в node.Query было договорённостью рукописного ss-парсера с его же
+		// buildOutbound, а не контрактом узла.
+		if got, _ := node.Outbound["method"].(string); got != method {
+			t.Errorf("Expected method '%s', got '%s'", method, got)
 		}
-		if node.Query.Get("password") != password {
-			t.Errorf("Expected password '%s', got '%s'", password, node.Query.Get("password"))
+		if got, _ := node.Outbound["password"].(string); got != password {
+			t.Errorf("Expected password '%s', got '%s'", password, got)
 		}
 	})
 
@@ -446,8 +449,11 @@ func TestParseNode_Shadowsocks(t *testing.T) {
 		if node == nil || node.Scheme != "ss" {
 			t.Fatalf("Expected ss node, got %#v", node)
 		}
-		if node.Query.Get("method") != "chacha20-ietf-poly1305" || node.Query.Get("password") != "testpwd" {
-			t.Errorf("method/password: %q / %q", node.Query.Get("method"), node.Query.Get("password"))
+		if m, _ := node.Outbound["method"].(string); m != "chacha20-ietf-poly1305" {
+			t.Errorf("method: %q", m)
+		}
+		if pw, _ := node.Outbound["password"].(string); pw != "testpwd" {
+			t.Errorf("password: %q", pw)
 		}
 		if node.Server != "203.0.113.5" || node.Port != 990 {
 			t.Errorf("server/port: %s:%d", node.Server, node.Port)
@@ -465,8 +471,11 @@ func TestParseNode_Shadowsocks(t *testing.T) {
 		if node == nil || node.Scheme != "ss" {
 			t.Fatalf("Expected ss node, got %#v", node)
 		}
-		if node.Query.Get("method") != "chacha20-ietf-poly1305" || node.Query.Get("password") != "secret-pass" {
-			t.Errorf("method/password: %q / %q", node.Query.Get("method"), node.Query.Get("password"))
+		if m, _ := node.Outbound["method"].(string); m != "chacha20-ietf-poly1305" {
+			t.Errorf("method: %q", m)
+		}
+		if pw, _ := node.Outbound["password"].(string); pw != "secret-pass" {
+			t.Errorf("password: %q", pw)
 		}
 		if node.Server != "192.0.2.10" || node.Port != 8388 {
 			t.Errorf("server/port: %s:%d", node.Server, node.Port)
@@ -634,26 +643,25 @@ func TestParseNode_RealWorldExamples(t *testing.T) {
 	}
 }
 
-// TestBuildOutbound tests outbound generation
+// TestBuildOutbound — тело узла собирается из ССЫЛКИ.
+//
+// Прежде тест строил ParsedNode руками и звал buildOutbound, полагаясь на
+// договорённость «парсер разложил значения обратно в node.Query, а сборщик
+// тела читает их оттуда». У движка реестра (SPEC 133) такой договорённости
+// нет и быть не должно: тело строит секция схемы прямо из разобранной
+// ссылки, а Query — деталь снятого пути. Поэтому вход здесь теперь ссылка.
 func TestBuildOutbound(t *testing.T) {
 	t.Run("VLESS with Reality", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Tag:    "test-vless",
-			Scheme: "vless",
-			Server: "example.com",
-			Port:   443,
-			UUID:   "test-uuid",
-			Flow:   "xtls-rprx-vision",
-			Query:  make(map[string][]string),
+		// Ключ обязан быть настоящим X25519 (base64url, 43 символа):
+		// заглушку санитайзер отвергает, чтобы мусорный pbk не отравил конфиг.
+		uri := "vless://test-uuid@example.com:443?security=reality&flow=xtls-rprx-vision" +
+			"&sni=example.com&fp=chrome" +
+			"&pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg&sid=abcd#test-vless"
+		node, err := ParseNode(uri, nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("sni", "example.com")
-		node.Query.Set("fp", "chrome")
-		// Must be a real X25519 public key (base64url, 43 chars) — a placeholder
-		// is now rejected so junk pbk values can't poison the generated config.
-		node.Query.Set("pbk", "mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg")
-		node.Query.Set("sid", "test-short-id")
-
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 		if outbound["type"] != "vless" {
 			t.Errorf("Expected type 'vless', got '%v'", outbound["type"])
 		}
@@ -677,17 +685,14 @@ func TestBuildOutbound(t *testing.T) {
 	})
 
 	t.Run("Shadowsocks type conversion", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Tag:    "test-ss",
-			Scheme: "ss",
-			Server: "example.com",
-			Port:   443,
-			Query:  make(map[string][]string),
+		// ss:// несёт method:password в base64 на userinfo (SIP002). Тип тела
+		// «shadowsocks» против схемы «ss» объявлен в defaults секции.
+		userinfo := base64.StdEncoding.EncodeToString([]byte("aes-256-gcm:test-password"))
+		node, err := ParseNode("ss://"+userinfo+"@example.com:443#test-ss", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("method", "aes-256-gcm")
-		node.Query.Set("password", "test-password")
-
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 		if outbound["type"] != "shadowsocks" {
 			t.Errorf("Expected type 'shadowsocks', got '%v'", outbound["type"])
 		}
@@ -712,7 +717,7 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 		if !ok || tr["type"] != "ws" || tr["path"] != "/vless/" {
 			t.Fatalf("transport: %+v", node.Outbound["transport"])
 		}
-		h, _ := tr["headers"].(map[string]string)
+		h := bodyHeaders(tr["headers"])
 		if h["Host"] != "cdn.test" {
 			t.Fatalf("headers Host: %+v", h)
 		}
@@ -728,7 +733,7 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 			t.Fatalf("ParseNode: err=%v node=%v", err, node)
 		}
 		tr := node.Outbound["transport"].(map[string]interface{})
-		h, _ := tr["headers"].(map[string]string)
+		h := bodyHeaders(tr["headers"])
 		if h["Host"] != "alb1.abvpn.ru" {
 			t.Fatalf("headers Host want alb1.abvpn.ru got %+v", tr)
 		}
@@ -774,7 +779,7 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 		if tr["type"] != "http" {
 			t.Fatalf("transport: %+v", tr)
 		}
-		hosts, ok := tr["host"].([]string)
+		hosts, ok := bodyStrings(tr["host"])
 		if !ok || len(hosts) != 1 || hosts[0] != "cdn.example" {
 			t.Fatalf("host list: %+v", tr["host"])
 		}
@@ -829,7 +834,7 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 			t.Fatalf("ParseNode: err=%v", err)
 		}
 		tr := node.Outbound["transport"].(map[string]interface{})
-		h, _ := tr["headers"].(map[string]string)
+		h := bodyHeaders(tr["headers"])
 		if h["Host"] != "obs.example" {
 			t.Fatalf("want obfsParam as Host, got %+v", tr)
 		}
@@ -858,7 +863,7 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 			t.Fatalf("ParseNode: err=%v", err)
 		}
 		tls := node.Outbound["tls"].(map[string]interface{})
-		alpn, _ := tls["alpn"].([]string)
+		alpn, _ := bodyStrings(tls["alpn"])
 		if len(alpn) != 1 || alpn[0] != "http/1.1" {
 			t.Fatalf("alpn: %+v", tls["alpn"])
 		}
@@ -895,38 +900,12 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 		}
 	})
 
-	t.Run("packetEncoding=PacketAddr: normalized to lowercase packetaddr", func(t *testing.T) {
-		uri := "vless://e81b43d3-bb75-07d0-8b11-f526aef4fef4@example.com:443?type=tcp&encryption=none&security=none&packetEncoding=PacketAddr#t"
-		node, err := ParseNode(uri, nil)
-		if err != nil || node == nil {
-			t.Fatalf("ParseNode: err=%v", err)
-		}
-		if node.Outbound["packet_encoding"] != "packetaddr" {
-			t.Fatalf("packet_encoding: %+v (want lowercased packetaddr)", node.Outbound["packet_encoding"])
-		}
-	})
-
-	t.Run("packetEncoding=XUDP: normalized to lowercase xudp", func(t *testing.T) {
-		uri := "vless://e81b43d3-bb75-07d0-8b11-f526aef4fef4@example.com:443?type=tcp&encryption=none&security=none&packetEncoding=XUDP#t"
-		node, err := ParseNode(uri, nil)
-		if err != nil || node == nil {
-			t.Fatalf("ParseNode: err=%v", err)
-		}
-		if node.Outbound["packet_encoding"] != "xudp" {
-			t.Fatalf("packet_encoding: %+v (want lowercased xudp)", node.Outbound["packet_encoding"])
-		}
-	})
-
-	t.Run("packetEncoding=garbage: dropped with warning", func(t *testing.T) {
-		uri := "vless://e81b43d3-bb75-07d0-8b11-f526aef4fef4@example.com:443?type=tcp&encryption=none&security=none&packetEncoding=somethingweird#t"
-		node, err := ParseNode(uri, nil)
-		if err != nil || node == nil {
-			t.Fatalf("ParseNode: err=%v", err)
-		}
-		if v, has := node.Outbound["packet_encoding"]; has {
-			t.Fatalf("expected packet_encoding to be omitted for unknown value, got %q", v)
-		}
-	})
+	// Приведение регистра (PacketAddr → packetaddr) и снятие мусора ушли из
+	// парсера в санитайзер по реестру (SPEC 131 W2d): парсер теперь маппер и
+	// значений не судит. Проверка живёт в корпусе, где видно ИТОГОВОЕ тело —
+	// uri/vless/packet_encoding_case_normalized и packet_encoding_garbage_dropped.
+	// Здесь остаётся только `none`: это перевод диалекта («нет инкапсуляции»
+	// = ключа нет), и его делает именно маппер.
 
 	t.Run("tcp raw headerType=http → http transport (goida-style)", func(t *testing.T) {
 		uri := "vless://c060fdda-385d-aea1-3982-5a6c92876481@85.133.249.43:58387?encryption=none&type=raw&headerType=http&host=arvancloud.ir&path=%2F&security=none#t"
@@ -938,7 +917,7 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 		if tr["type"] != "http" {
 			t.Fatalf("transport: %+v", tr)
 		}
-		hosts := tr["host"].([]string)
+		hosts, _ := bodyStrings(tr["host"])
 		if len(hosts) != 1 || hosts[0] != "arvancloud.ir" {
 			t.Fatalf("host: %+v", tr["host"])
 		}
@@ -1020,7 +999,7 @@ func testTrojanWSOne(t *testing.T, uri, wantHost, wantPath string) {
 	if !ok || tr["type"] != "ws" || tr["path"] != wantPath {
 		t.Fatalf("transport: %+v", tr)
 	}
-	h, _ := tr["headers"].(map[string]string)
+	h := bodyHeaders(tr["headers"])
 	if h["Host"] != wantHost {
 		t.Fatalf("headers Host want %q got %+v", wantHost, tr)
 	}
@@ -1216,7 +1195,7 @@ func TestParseNode_Hysteria2(t *testing.T) {
 				if node == nil {
 					t.Fatal("Expected node, got nil")
 				}
-				sp, ok := node.Outbound["server_ports"].([]string)
+				sp, ok := bodyStrings(node.Outbound["server_ports"])
 				if !ok || len(sp) != 2 || sp[0] != "41000:41000" || sp[1] != "42000:43000" {
 					t.Fatalf("server_ports: %#v", node.Outbound["server_ports"])
 				}
@@ -1227,7 +1206,7 @@ func TestParseNode_Hysteria2(t *testing.T) {
 			uri:         "hysteria2://pw@example.com:443?ports=5000-6000&sni=example.com#t",
 			expectError: false,
 			checkFields: func(t *testing.T, node *config.ParsedNode) {
-				sp, ok := node.Outbound["server_ports"].([]string)
+				sp, ok := bodyStrings(node.Outbound["server_ports"])
 				if !ok || len(sp) != 1 || sp[0] != "5000:6000" {
 					t.Fatalf("server_ports: %#v", node.Outbound["server_ports"])
 				}
@@ -1244,10 +1223,18 @@ func TestParseNode_Hysteria2(t *testing.T) {
 				if node.Port != 443 {
 					t.Errorf("port want 443 got %d", node.Port)
 				}
-				if node.Query.Get("mport") != "443,20000-30000" {
-					t.Errorf("mport merge: %q", node.Query.Get("mport"))
+				// node.Query — справка о том, ЧТО НАПИСАНО в ссылке, и
+				// параметра mport в ней нет: порты стоят прямо в authority
+				// (`:443,20000-30000`). Прежний путь дописывал их в Query
+				// сам — это был побочный след шага восстановления
+				// (hysteria2RecoverMultiPortAuthority), нужного лишь
+				// потому, что net/url такую строку не читает вовсе. Движок
+				// берёт authority своим лексером и кладёт результат В ТЕЛО,
+				// где ему и место; справку он не подделывает.
+				if node.Query.Has("mport") {
+					t.Errorf("mport не писался в ссылке, а в справке есть: %q", node.Query.Get("mport"))
 				}
-				sp, ok := node.Outbound["server_ports"].([]string)
+				sp, ok := bodyStrings(node.Outbound["server_ports"])
 				if !ok || len(sp) != 2 || sp[0] != "443:443" || sp[1] != "20000:30000" {
 					t.Fatalf("server_ports: %#v", node.Outbound["server_ports"])
 				}
@@ -1261,7 +1248,7 @@ func TestParseNode_Hysteria2(t *testing.T) {
 				if node.Port != 20000 {
 					t.Errorf("port want 20000 got %d", node.Port)
 				}
-				sp, ok := node.Outbound["server_ports"].([]string)
+				sp, ok := bodyStrings(node.Outbound["server_ports"])
 				if !ok || len(sp) != 1 || sp[0] != "20000:50000" {
 					t.Fatalf("server_ports: %#v", node.Outbound["server_ports"])
 				}
@@ -1299,44 +1286,39 @@ func TestParseNode_Hysteria2(t *testing.T) {
 		}
 	})
 
-	t.Run("Hysteria2 drops fingerprint (QUIC), keeps pinSHA256", func(t *testing.T) {
+	t.Run("Hysteria2 keeps pinSHA256", func(t *testing.T) {
 		uri := "hysteria2://secret@203.0.113.1:443?sni=hy.example&fingerprint=firefox&pinSHA256=YWJjZGVmZ2g=#h"
 		node, err := ParseNode(uri, nil)
 		if err != nil || node == nil {
 			t.Fatalf("ParseNode: %v", err)
 		}
 		tls := node.Outbound["tls"].(map[string]interface{})
-		// QUIC doesn't use uTLS ClientHello fingerprints — fp= on hysteria2 is
-		// subscription noise and must not reach the config (SPEC 103, D-033).
-		if _, present := tls["utls"]; present {
-			t.Fatalf("utls must not be emitted on a QUIC protocol: %+v", tls["utls"])
-		}
-		pins, _ := tls["certificate_public_key_sha256"].([]string)
+		// Проверка «utls не эмитится на QUIC» СНЯТА (контракт 1.1.4): маппер
+		// переводит fp в тело как есть, а снимает его реестр —
+		// tls.json forbidden_for + forbidden_codes → tls_not_applicable_quic.
+		// Здесь карта СЫРАЯ, до санитайзера, и utls в ней быть обязан.
+		// Правило сверяют парные кейсы корпуса (uri↔body у hysteria2/tuic).
+		pins, _ := bodyStrings(tls["certificate_public_key_sha256"])
 		if len(pins) != 1 || pins[0] != "YWJjZGVmZ2g=" {
 			t.Fatalf("pins: %+v", tls["certificate_public_key_sha256"])
 		}
 	})
 }
 
-// TestBuildOutbound_Hysteria2 tests Hysteria2 outbound generation
+// TestBuildOutbound_Hysteria2 — тело узла собирается из ССЫЛКИ.
+//
+// Подтесты строили ParsedNode руками и клали значения в node.Query,
+// полагаясь на договорённость «парсер разложил значения обратно». У движка
+// реестра (SPEC 133) её нет: тело строит секция прямо из разобранной ссылки.
 func TestBuildOutbound_Hysteria2(t *testing.T) {
 	t.Run("Hysteria2 with server_ports and ALPN", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Tag:    "test-hysteria2",
-			Scheme: "hysteria2",
-			Server: "hl.kaixincloud.top",
-			Port:   27200,
-			UUID:   "47db373b-d23c-4acb-bfd9-dace39c4f1e4",
-			Query:  make(map[string][]string),
+		node, err := ParseNode("hysteria2://47db373b-d23c-4acb-bfd9-dace39c4f1e4@hl.kaixincloud.top:27200"+
+			"?sni=hl.kaixincloud.top&mport=27200-28000&insecure=0&alpn=h3"+
+			"&upmbps=100&downmbps=500#test-hysteria2", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("sni", "hl.kaixincloud.top")
-		node.Query.Set("mport", "27200-28000")
-		node.Query.Set("insecure", "0")
-		node.Query.Set("alpn", "h3")
-		node.Query.Set("upmbps", "100")
-		node.Query.Set("downmbps", "500")
-
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 		if outbound["type"] != "hysteria2" {
 			t.Errorf("Expected type 'hysteria2', got '%v'", outbound["type"])
 		}
@@ -1349,12 +1331,12 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 		if outbound["server_port"] != 27200 {
 			t.Errorf("Expected server_port 27200, got '%v'", outbound["server_port"])
 		}
-		// Check server_ports (array format for sing-box 1.9+)
-		serverPorts, ok := outbound["server_ports"].([]string)
+		sp, ok := bodyStrings(outbound["server_ports"])
 		if !ok {
-			t.Errorf("Expected server_ports to be []string, got '%v'", outbound["server_ports"])
-		} else if len(serverPorts) != 1 || serverPorts[0] != "27200:28000" {
-			t.Errorf("Expected server_ports ['27200:28000'], got '%v'", serverPorts)
+			t.Fatalf("Expected server_ports to be []string, got '%T'", outbound["server_ports"])
+		}
+		if len(sp) != 1 || sp[0] != "27200:28000" {
+			t.Errorf("Expected server_ports ['27200:28000'], got %v", sp)
 		}
 		if outbound["up_mbps"] != 100 {
 			t.Errorf("Expected up_mbps 100, got '%v'", outbound["up_mbps"])
@@ -1362,23 +1344,18 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 		if outbound["down_mbps"] != 500 {
 			t.Errorf("Expected down_mbps 500, got '%v'", outbound["down_mbps"])
 		}
-
 		tls, ok := outbound["tls"].(map[string]interface{})
 		if !ok {
 			t.Fatal("Expected TLS configuration")
 		}
-		if tls["enabled"] != true {
-			t.Errorf("Expected TLS enabled true, got '%v'", tls["enabled"])
-		}
 		if tls["server_name"] != "hl.kaixincloud.top" {
 			t.Errorf("Expected server_name 'hl.kaixincloud.top', got '%v'", tls["server_name"])
 		}
-		// insecure=0 means false, so insecure field should not be set (or be false)
+		// insecure=0 означает false: ключа быть не должно (либо false).
 		if insecureVal, ok := tls["insecure"]; ok && insecureVal != false {
 			t.Errorf("Expected insecure false or not set, got '%v'", insecureVal)
 		}
-
-		alpn, ok := tls["alpn"].([]string)
+		alpn, ok := bodyStrings(tls["alpn"])
 		if !ok {
 			t.Fatal("Expected ALPN array in TLS configuration")
 		}
@@ -1388,37 +1365,24 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 	})
 
 	t.Run("Hysteria2 mport comma-separated in outbound", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Tag:    "hy2-comma",
-			Scheme: "hysteria2",
-			Server: "example.com",
-			Port:   443,
-			UUID:   "x",
-			Query:  make(map[string][]string),
+		node, err := ParseNode("hysteria2://x@example.com:443?mport=443,10000-11000&insecure=1#hy2-comma", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("mport", "443,10000-11000")
-		node.Query.Set("insecure", "1")
-		out := buildOutbound(node)
-		sp, ok := out["server_ports"].([]string)
+		out := nodeBody(t, node)
+		sp, ok := bodyStrings(out["server_ports"])
 		if !ok || len(sp) != 2 || sp[0] != "443:443" || sp[1] != "10000:11000" {
 			t.Fatalf("server_ports %#v", out["server_ports"])
 		}
 	})
 
 	t.Run("Hysteria2 mport single port becomes start:end for sing-box", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Tag:    "test-hy2-mport",
-			Scheme: "hysteria2",
-			Server: "62.210.30.179",
-			Port:   40022,
-			UUID:   "secret",
-			Query:  make(map[string][]string),
+		node, err := ParseNode("hysteria2://secret@62.210.30.179:40022?mport=41000&insecure=1#test-hy2-mport", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("mport", "41000")
-		node.Query.Set("insecure", "1")
-
-		outbound := buildOutbound(node)
-		serverPorts, ok := outbound["server_ports"].([]string)
+		outbound := nodeBody(t, node)
+		serverPorts, ok := bodyStrings(outbound["server_ports"])
 		if !ok {
 			t.Fatalf("Expected server_ports []string, got %T", outbound["server_ports"])
 		}
@@ -1428,24 +1392,16 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 	})
 
 	t.Run("Hysteria2 with multiple ALPN values", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Tag:    "test-hysteria2",
-			Scheme: "hysteria2",
-			Server: "example.com",
-			Port:   443,
-			UUID:   "password",
-			Query:  make(map[string][]string),
+		node, err := ParseNode("hysteria2://password@example.com:443?sni=example.com&alpn=h3,h2#test-hysteria2", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("sni", "example.com")
-		node.Query.Set("alpn", "h3,h2")
-
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 		tls, ok := outbound["tls"].(map[string]interface{})
 		if !ok {
 			t.Fatal("Expected TLS configuration")
 		}
-
-		alpn, ok := tls["alpn"].([]string)
+		alpn, ok := bodyStrings(tls["alpn"])
 		if !ok {
 			t.Fatal("Expected ALPN array in TLS configuration")
 		}
@@ -1455,18 +1411,11 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 	})
 
 	t.Run("Hysteria2 with insecure=1", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Tag:    "test-hysteria2",
-			Scheme: "hysteria2",
-			Server: "example.com",
-			Port:   443,
-			UUID:   "password",
-			Query:  make(map[string][]string),
+		node, err := ParseNode("hysteria2://password@example.com:443?sni=example.com&insecure=1#test-hysteria2", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("sni", "example.com")
-		node.Query.Set("insecure", "1")
-
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 		tls, ok := outbound["tls"].(map[string]interface{})
 		if !ok {
 			t.Fatal("Expected TLS configuration")
@@ -1477,18 +1426,13 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 	})
 
 	t.Run("Hysteria2 without password", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Tag:    "test-hysteria2",
-			Scheme: "hysteria2",
-			Server: "example.com",
-			Port:   443,
-			UUID:   "",
-			Query:  make(map[string][]string),
+		// Пустой пароль узел НЕ роняет (в отличие от vless/trojan/tuic):
+		// ключ просто не пишется — uri.userinfo.impl секции.
+		node, err := ParseNode("hysteria2://@example.com:443?sni=example.com#test-hysteria2", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("sni", "example.com")
-
-		outbound := buildOutbound(node)
-		// Should still generate outbound, but password will be empty
+		outbound := nodeBody(t, node)
 		if outbound["type"] != "hysteria2" {
 			t.Errorf("Expected type 'hysteria2', got '%v'", outbound["type"])
 		}
@@ -1520,8 +1464,10 @@ func TestParseNode_SSH(t *testing.T) {
 				if node.UUID != "root" {
 					t.Errorf("Expected user 'root', got '%s'", node.UUID)
 				}
-				if node.Query.Get("password") != "admin" {
-					t.Errorf("Expected password 'admin', got '%s'", node.Query.Get("password"))
+				// Пароль — в ТЕЛЕ: досочинение значения обратно в node.Query
+				// было договорённостью рукописного парсера с buildOutbound.
+				if pw, _ := node.Outbound["password"].(string); pw != "admin" {
+					t.Errorf("Expected password 'admin', got '%s'", pw)
 				}
 				if node.Tag != "Local SSH" {
 					t.Errorf("Expected tag 'Local SSH', got '%s'", node.Tag)
@@ -1539,8 +1485,8 @@ func TestParseNode_SSH(t *testing.T) {
 				if node.Port != 2222 {
 					t.Errorf("Expected port 2222, got %d", node.Port)
 				}
-				if node.Query.Get("password") != "" {
-					t.Errorf("Expected empty password, got '%s'", node.Query.Get("password"))
+				if pw, has := node.Outbound["password"]; has {
+					t.Errorf("Expected empty password, got '%v'", pw)
 				}
 			},
 		},
@@ -1562,8 +1508,8 @@ func TestParseNode_SSH(t *testing.T) {
 			uri:         "ssh://root:password@192.168.1.1:22?private_key_path=/home/user/.ssh/id_rsa&private_key_passphrase=myphrase&host_key=ecdsa-sha2-nistp256%20AAAAE2VjZHNhLXNoYTItbmlzdH...&client_version=SSH-2.0-OpenSSH_7.4p1#My SSH Server",
 			expectError: false,
 			checkFields: func(t *testing.T, node *config.ParsedNode) {
-				if node.Query.Get("password") != "password" {
-					t.Errorf("Expected password 'password', got '%s'", node.Query.Get("password"))
+				if pw, _ := node.Outbound["password"].(string); pw != "password" {
+					t.Errorf("Expected password 'password', got '%s'", pw)
 				}
 				if node.Query.Get("private_key_path") != "/home/user/.ssh/id_rsa" {
 					t.Errorf("Expected private_key_path '/home/user/.ssh/id_rsa', got '%s'", node.Query.Get("private_key_path"))
@@ -1688,8 +1634,8 @@ func TestParseNode_SOCKS5(t *testing.T) {
 				if node.UUID != "myuser" {
 					t.Errorf("Expected username 'myuser', got '%s'", node.UUID)
 				}
-				if node.Query.Get("password") != "mypass" {
-					t.Errorf("Expected password 'mypass', got '%s'", node.Query.Get("password"))
+				if pw, _ := node.Outbound["password"].(string); pw != "mypass" {
+					t.Errorf("Expected password 'mypass', got '%s'", pw)
 				}
 				if node.Tag != "Office SOCKS5" {
 					t.Errorf("Expected tag 'Office SOCKS5', got '%s'", node.Tag)
@@ -1710,8 +1656,8 @@ func TestParseNode_SOCKS5(t *testing.T) {
 				if node.UUID != "" {
 					t.Errorf("Expected empty username, got '%s'", node.UUID)
 				}
-				if node.Query.Get("password") != "" {
-					t.Errorf("Expected empty password, got '%s'", node.Query.Get("password"))
+				if pw, has := node.Outbound["password"]; has {
+					t.Errorf("Expected empty password, got '%v'", pw)
 				}
 				if node.Tag != "socks5-proxy.example.com-1080" {
 					t.Errorf("Expected default tag 'socks5-proxy.example.com-1080', got '%s'", node.Tag)
@@ -1890,10 +1836,16 @@ func TestParseNode_Wireguard(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error when address is missing")
 	}
-	// Invalid: missing allowedips
-	_, err = ParseNode("wireguard://key@10.0.0.1:51820?publickey=x&address=10.10.10.2/32", nil)
-	if err == nil {
-		t.Error("Expected error when allowedips is missing")
+	// allowedips ОТСУТСТВУЕТ — это НЕ ошибка: «маршрутизировать всё»
+	// подставляет реестр (peers[].allowed_ips.default_when, D-022), и узел
+	// живёт. Проверка стояла здесь с ожиданием ошибки и всё это время
+	// проходила по ЧУЖОЙ причине: ключ "key" не 32 байта, и узел ронял
+	// снятый ныне валидатор ключей парсера, а не отсутствие allowedips
+	// (контракт 1.1.11, находка №27 LEGACY_AUDIT; итог — кейс корпуса
+	// uri/wireguard/missing_allowedips_rejected, где тело собирается).
+	node, err = ParseNode("wireguard://"+wgTestPub+"@10.0.0.1:51820?publickey="+wgTestPub+"&address=10.10.10.2/32", nil)
+	if err != nil || node == nil {
+		t.Errorf("узел без allowedips обязан выжить (дефолт ставит реестр): err=%v", err)
 	}
 	// Invalid: missing hostname
 	_, err = ParseNode("wireguard://key@:51820?publickey=x&address=10.10.10.2/32&allowedips=0.0.0.0/0", nil)
@@ -1918,20 +1870,23 @@ func TestParseNode_Wireguard(t *testing.T) {
 	}
 }
 
-// TestBuildOutbound_SSH tests SSH outbound building
+// TestBuildOutbound_SSH — тело ssh-узла собирается из ССЫЛКИ.
+//
+// Подсхемы строили ParsedNode руками и клали значения в node.Query, включая
+// пароль: старый путь сливал туда и userinfo-пароль, и одноимённый query
+// (QUIRKS Q133-49). На движке источник объявлен точно — userinfo.pass против
+// query.* — поэтому вход здесь ссылка, как её и присылает подписка.
+//
+// Подсхема «без пользователя → root» снята: ssh-ссылку с пустым userinfo
+// отбивает валидация (секция объявляет user как required), и до подстановки
+// дело не доходило ни на движке, ни на прежнем пути. См. parse_warnings_test.
 func TestBuildOutbound_SSH(t *testing.T) {
 	t.Run("SSH outbound with password", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Scheme: "ssh",
-			Server: "example.com",
-			Port:   22,
-			UUID:   "root",
-			Tag:    "SSH Server",
-			Query:  make(map[string][]string),
+		node, err := ParseNode("ssh://root:secret123@example.com:22#SSH Server", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("password", "secret123")
-
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 
 		if outbound["type"] != "ssh" {
 			t.Errorf("Expected type 'ssh', got '%v'", outbound["type"])
@@ -1951,18 +1906,13 @@ func TestBuildOutbound_SSH(t *testing.T) {
 	})
 
 	t.Run("SSH outbound with private key path", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Scheme: "ssh",
-			Server: "server.com",
-			Port:   22,
-			UUID:   "deploy",
-			Tag:    "Deploy Server",
-			Query:  make(map[string][]string),
+		node, err := ParseNode("ssh://deploy@server.com:22"+
+			"?private_key_path=/home/user/.ssh/id_rsa"+
+			"&private_key_passphrase=mypassphrase#Deploy Server", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("private_key_path", "/home/user/.ssh/id_rsa")
-		node.Query.Set("private_key_passphrase", "mypassphrase")
-
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 
 		if outbound["private_key_path"] != "/home/user/.ssh/id_rsa" {
 			t.Errorf("Expected private_key_path '/home/user/.ssh/id_rsa', got '%v'", outbound["private_key_path"])
@@ -1973,19 +1923,13 @@ func TestBuildOutbound_SSH(t *testing.T) {
 	})
 
 	t.Run("SSH outbound with host keys", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Scheme: "ssh",
-			Server: "server.com",
-			Port:   22,
-			UUID:   "user",
-			Tag:    "Verified Server",
-			Query:  make(map[string][]string),
+		node, err := ParseNode("ssh://user@server.com:22?host_key=key1,key2,key3#Verified Server", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("host_key", "key1,key2,key3")
+		outbound := nodeBody(t, node)
 
-		outbound := buildOutbound(node)
-
-		hostKeys, ok := outbound["host_key"].([]string)
+		hostKeys, ok := bodyStrings(outbound["host_key"])
 		if !ok {
 			t.Errorf("Expected host_key to be []string, got '%T'", outbound["host_key"])
 			return
@@ -1999,37 +1943,14 @@ func TestBuildOutbound_SSH(t *testing.T) {
 	})
 
 	t.Run("SSH outbound with client version", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Scheme: "ssh",
-			Server: "server.com",
-			Port:   22,
-			UUID:   "user",
-			Tag:    "Custom Client",
-			Query:  make(map[string][]string),
+		node, err := ParseNode("ssh://user@server.com:22?client_version=SSH-2.0-OpenSSH_7.4p1#Custom Client", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("client_version", "SSH-2.0-OpenSSH_7.4p1")
-
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 
 		if outbound["client_version"] != "SSH-2.0-OpenSSH_7.4p1" {
 			t.Errorf("Expected client_version 'SSH-2.0-OpenSSH_7.4p1', got '%v'", outbound["client_version"])
-		}
-	})
-
-	t.Run("SSH outbound without user (should use default)", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Scheme: "ssh",
-			Server: "server.com",
-			Port:   22,
-			UUID:   "", // No user
-			Tag:    "Default User",
-			Query:  make(map[string][]string),
-		}
-
-		outbound := buildOutbound(node)
-
-		if outbound["user"] != "root" {
-			t.Errorf("Expected default user 'root', got '%v'", outbound["user"])
 		}
 	})
 }

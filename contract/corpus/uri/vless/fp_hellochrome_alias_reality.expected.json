@@ -9,8 +9,7 @@
           "enabled": true,
           "reality": {
             "enabled": true,
-            "public_key": "AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw",
-            "short_id": ""
+            "public_key": "AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw"
           },
           "server_name": "example-1.com",
           "utls": {

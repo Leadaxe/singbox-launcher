@@ -44,6 +44,20 @@ Regression-protection harness для strangler-fig порта (SPEC 045 phase 5.
 
 **Падает на текущем `BuildConfig`** — это и есть target для порта `BuildTemplateConfig`. Каждый порт-шаг закрывает часть расхождения с expected.
 
+## Файл `platform` — на какой ОС снят эталон
+
+Необязательный файл `platform` в каталоге сценария (одна строка со значением `runtime.GOOS`, например `darwin`) говорит раннеру, что эталон платформенно-зависим: на других ОС сценарий **пропускается**.
+
+Метка нужна сценариям с живым шаблоном. Живой `wizard_template.json` несёт:
+- `params` с полем `platforms` — `inbounds` для `darwin` и отдельный для `windows`/`linux` (у второго есть `interface_name`);
+- переменные с `default_value` вида `{"darwin": "true", "default": "false"}` — так устроен `enable_proxy_in`, от которого зависит наличие `mixed`-инбаунда `proxy-in`.
+
+`GetEffectiveConfig` берёт `runtime.GOOS`, поэтому на linux/windows честный выхлоп отличается от снятого на macOS по составу `inbounds[]` — и это **правильный** выхлоп, а не расхождение. Байтовое сравнение с одним снимком осмысленно только на его собственной платформе; держать три копии одного снимка — хуже, чем пропустить сценарий.
+
+Сценарии без этого файла (`marker-fill-*`) платформо-независимы и прогоняются везде.
+
+Снимаете новый реальный сценарий — положите рядом `platform` с GOOS своей машины.
+
 ## Как добавить ещё один реальный сценарий
 
 С dev-машины:
@@ -57,6 +71,7 @@ jq '.files.template' /tmp/snap.json > "$DST/template.json"
 jq '.files.state'    /tmp/snap.json > "$DST/state.json"
 jq '.files.cache'    /tmp/snap.json > "$DST/cache.json"
 jq '.files.config'   /tmp/snap.json > "$DST/expected.config.json"
+go env GOOS                          > "$DST/platform"
 ```
 
 Если `cache` отсутствует (`null`):

@@ -3,13 +3,26 @@
   "scheme": "socks",
   "kind": "outbound",
   "singbox_type": "socks",
-  "aliases": ["socks5"],
-  "sources": ["uri", "singbox"],
+  "aliases": [
+    "socks5",
+    "socks4",
+    "socks4a"
+  ],
+  "sources": [
+    "uri",
+    "singbox"
+  ],
   "extension": null,
   "uri": {
     "userinfo": {
+      "maps_to": [
+        "username",
+        "password"
+      ],
       "meaning": "username:password",
-      "note": "Оба компонента опциональны. Дефолтный порт 1080. socks:// и socks5:// эквивалентны, оба → sing-box type socks с version \"5\" (Go пишет version всегда; Dart хранит version в SocksSpec, дефолт '5'). version '4'/'4a' НЕ достижим ни одним parse-путём: Dart parseSingboxEntry в socks-ветке entry['version'] не читает (json_parsers.dart:973-984), поле модели с дефолтом '5' (node_spec.dart:542,553) никем не заполняется — мёртвое поле модели, не расширение. Query-параметров у схемы нет ни в одном парсере."
+      "desc_en": "username:password of the account.",
+      "desc_ru": "username:password учётной записи.",
+      "impl": "Оба компонента опциональны. Дефолтный порт 1080. Версию протокола ссылка несёт СХЕМОЙ (правило маппера socks_scheme_is_version): socks:// и socks5:// эквивалентны и дают version \"5\", socks4:// → \"4\", socks4a:// → \"4a\". У версии 4 пароля нет вовсе — userinfo это userid, но написанный в ссылке пароль переносится как есть: годность пары судит ядро (option/socks.go шлёт username как userid). Query-параметров у схемы нет ни в одном парсере. ВХОД singbox читает version полем тела независимо от схемы — см. body.version."
     },
     "query": {},
     "fragment": "label"
@@ -17,19 +30,26 @@
   "emit": {
     "share_uri": true,
     "param_order": [],
-    "note": "Оба эмитят socks5:// (даже если пришёл socks://). Userinfo: Go при любом непустом user/pass пишет user:pass целиком (url.UserPassword — ':pass@' при пустом user); Dart при пустом username опускает userinfo целиком, т.е. password-only нода теряет пароль в share-URI (минорный разрыв)."
+    "note": "Схему выбирает version тела: \"4\" → socks4://, \"4a\" → socks4a://, \"5\" и пусто → socks5:// (даже если пришёл socks://). Эмиттер и парсер обязаны читать одну таблицу — узел с version 4/4a обязан пережить round-trip своей же ссылки. Userinfo: Go при любом непустом user/pass пишет user:pass целиком (url.UserPassword — ':pass@' при пустом user); Dart при пустом username опускает userinfo целиком, т.е. password-only нода теряет пароль в share-URI (минорный разрыв)."
   },
-  "degrade": [
-    "отсутствие hostname → ошибка ноды (Go) / null-skip (Dart)",
-    "невалидный порт → ошибка ноды"
+  "mapper": [
+    {
+      "id": "socks_scheme_is_version",
+      "from": "the URI scheme itself: socks4:// / socks4a:// / socks:// / socks5://",
+      "to": "`version` = \"4\" / \"4a\" / \"5\"",
+      "kind": "structure",
+      "desc_en": "A SOCKS link has no parameter for the protocol version in any dialect — the scheme carries it, the way the proxy-https:// suffix carries TLS.",
+      "desc_ru": "У socks-ссылки нет параметра под версию протокола ни в одном диалекте — её несёт схема, как суффикс proxy-https:// несёт TLS.",
+      "impl": "core/config/subscription/node_parser_socks.go — таблица socksVersionByScheme одна на парсер (socksVersionForScheme) и эмиттер (socksSchemeForVersion). Версия \"5\" пишется В ТЕЛО ЯВНО, хотя ядру хватило бы отсутствия ключа: значение стоит в ожиданиях корпуса и в телах всех живых socks-узлов обеих сторон, и снятие переписало бы их все ради нуля разницы для ядра."
+    }
   ],
   "refs": {
     "go": [
-      "core/config/subscription/node_parser_core.go:253-258",
-      "core/config/subscription/node_parser_core.go:317-320",
-      "core/config/subscription/node_parser_core.go:784-791",
-      "core/config/subscription/shareuri_socks.go:10-29",
-      "core/config/outbound_generator.go:205"
+      "core/config/subscription/node_parser_socks.go",
+      "core/config/subscription/node_parser_core.go:306-334",
+      "core/config/subscription/node_parser_core.go:714-726",
+      "core/config/subscription/shareuri_socks.go",
+      "core/config/outbound_generator.go:331-340"
     ],
     "dart": [
       "lib/services/parser/uri_parsers.dart:67-69",
@@ -37,5 +57,238 @@
       "lib/models/node_spec_emit.dart:503-520",
       "lib/services/parser/json_parsers.dart:797"
     ]
+  },
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": [
+      "server",
+      "server_port",
+      "version",
+      "username",
+      "password",
+      "network",
+      "udp_over_tcp",
+      "__dialer"
+    ],
+    "fields": {
+      "server": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server address: domain or IP.",
+        "desc_ru": "Адрес сервера: домен или IP.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "server_port": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server port.",
+        "desc_ru": "Порт сервера.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "version": {
+        "type": "enum",
+        "values": [
+          "",
+          "4",
+          "4a",
+          "5"
+        ],
+        "normalize": "trim_lower",
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "default": "5",
+        "desc_en": "SOCKS protocol version.",
+        "desc_ru": "Версия протокола SOCKS.",
+        "impl": "Пустое значение = 5. Из ссылки значение приходит от СХЕМЫ (mapper socks_scheme_is_version), из тела sing-box — как написано: явное \"5\" проходит как есть (дефолт ядра не снимается, равно как и не материализуется — CANON §2.4). Негодное значение снимается кодом type_invalid, и узел работает как socks5 по дефолту ядра."
+      },
+      "username": {
+        "type": "string",
+        "desc_en": "Account user name.",
+        "desc_ru": "Имя пользователя учётной записи.",
+        "impl": "option/socks.go Username."
+      },
+      "password": {
+        "type": "string",
+        "secret": true,
+        "desc_en": "Account password.",
+        "desc_ru": "Пароль учётной записи.",
+        "impl": "option/socks.go Password. Секрет."
+      },
+      "network": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Networks this outbound handles.",
+        "desc_ru": "Сети, которые обслуживает этот узел.",
+        "impl": "NetworkList; правило значения — registry/dialer.json, секция common."
+      },
+      "udp_over_tcp": {
+        "type": "object",
+        "order": [
+          "enabled",
+          "version"
+        ],
+        "fields": {
+          "enabled": {
+            "type": "bool",
+            "default": false,
+            "desc_en": "Tunnel UDP over the TCP connection.",
+            "desc_ru": "Передавать UDP внутри TCP-соединения.",
+            "impl": "option/shadowsocks.go UDPOverTCPOptions.Enabled."
+          },
+          "version": {
+            "type": "enum",
+            "values": [
+              1,
+              2
+            ],
+            "on_invalid": {
+              "action": "drop",
+              "code": "type_invalid"
+            },
+            "default": 2,
+            "desc_en": "UDP-over-TCP protocol version.",
+            "desc_ru": "Версия протокола UDP-over-TCP.",
+            "impl": "Ядро принимает и краткую форму — булево вместо объекта; в теле узла пишем объект."
+          }
+        },
+        "desc_en": "UDP-over-TCP settings.",
+        "desc_ru": "Настройки передачи UDP внутри TCP.",
+        "impl": "UDPOverTCPOptions (§1.9): форма — bool ИЛИ объект {enabled,version}."
+      },
+      "__dialer": {
+        "type": "ref",
+        "ref": "dialer",
+        "inline": true,
+        "desc_en": "Common dialer fields, inlined flat into the body.",
+        "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
+        "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
+      }
+    }
+  },
+  "mappers": {
+    "uri": {
+      "body_source": "uri",
+      "detect": {
+        "scheme_in": [
+          "socks",
+          "socks5",
+          "socks4",
+          "socks4a"
+        ]
+      },
+      "forms": [
+        {
+          "id": "url",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            "url"
+          ],
+          "space": "url"
+        }
+      ],
+      "userinfo": {
+        "split": {
+          "sep": ":",
+          "limit": 2
+        },
+        "into": [
+          "username",
+          "password"
+        ],
+        "single_into": "username",
+        "impl": "Одиночный userinfo — ИМЯ пользователя: так устроен socks4 («socks4://userid@host», корпус socks4_userid), где пароля нет по протоколу. Совпадает с into[0], но объявлено явно."
+      },
+      "label": {
+        "source": [
+          "fragment",
+          "path"
+        ],
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "as_written"
+        },
+        "impl": "scheme_source=as_written, а НЕ singbox_type: node_parser_core.go:309-317 намеренно сохраняет написание схемы (socks5 против socks), и корпус на этом стоит — у socks заведён per-app override (corpus/uri/socks/*.expected.lxbox.json, docs/IDENTITY.md §4a-C). D133-6 меняет фолбэк тега вообще, но не отменяет уже зафиксированное расхождение приложений; снятие override — отдельное решение владельца."
+      },
+      "defaults": {
+        "type": "socks",
+        "server_port": 1080
+      },
+      "scheme_sets": {
+        "socks": {
+          "version": "5"
+        },
+        "socks5": {
+          "version": "5"
+        },
+        "socks4": {
+          "version": "4"
+        },
+        "socks4a": {
+          "version": "4a"
+        }
+      },
+      "params": {
+        "server": {
+          "source": "host",
+          "maps_to": "server",
+          "required": true,
+          "impl": "Адрес сервера; без него записи не построить (маппер отвечает null)."
+        },
+        "server_port": {
+          "source": "port",
+          "maps_to": "server_port",
+          "type": "int",
+          "materialize_default": true,
+          "impl": "Порт; по умолчанию 1080 (uri.userinfo.impl)."
+        },
+        "username": {
+          "source": "userinfo.user",
+          "maps_to": "username",
+          "impl": "Опционален; пустой в тело не пишется."
+        },
+        "password": {
+          "source": "userinfo.pass",
+          "maps_to": "password",
+          "impl": "Опционален. У версии 4 пароля нет вовсе, но написанный переносится как есть — маппер значения не судит."
+        },
+        "version": {
+          "source": "scheme",
+          "maps_to": "version",
+          "materialize_default": true,
+          "impl": "§475 socks_scheme_is_version — версию несёт СХЕМА, значение подставляет scheme_sets. Пишется в тело ЯВНО: значение стоит в телах всех живых узлов обеих сторон."
+        }
+      },
+      "include": [
+        "dialer#uri"
+      ],
+      "unknown_key": {
+        "action": "keep",
+        "code": "uri_param_unknown"
+      },
+      "emit": {
+        "form": "url",
+        "form_from": {
+          "version": {
+            "4": "socks4",
+            "4a": "socks4a",
+            "*": "socks5"
+          }
+        },
+        "param_order": "alphabetical",
+        "userinfo": {
+          "form": "raw",
+          "keep_empty_tail": true
+        },
+        "impl": "userinfo.keep_empty_tail: `socks4://userid:@host` — у socks4 пароля нет по протоколу, но разделитель клиенты пишут всегда, и его отсутствие часть из них читает как «имени нет»."
+      }
+    }
   }
 }

@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "h.example",
+        "server_port": 443,
+        "tcp_keep_alive": "30s",
+        "tcp_keep_alive_interval": "15s",
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "ka",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

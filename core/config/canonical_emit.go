@@ -118,17 +118,6 @@ func EmitCanonicalSource(ps ProxySource, sourceIndex int, tagCounts map[string]i
 	return res
 }
 
-// canonicalSourceLabel — как назвать источник пользователю в отчёте.
-func canonicalSourceLabel(ps ProxySource) string {
-	if s := strings.TrimSpace(ps.Label); s != "" {
-		return s
-	}
-	if s := strings.TrimSpace(ps.Source); s != "" {
-		return s
-	}
-	return ps.ID
-}
-
 // applyCanonicalDetourLink навешивает узлу ссылку detour: личную, а при её
 // отсутствии — ОБЩУЮ ссылку папки.
 //
@@ -209,6 +198,9 @@ func buildCanonicalServer(cs *configtypes.CanonicalSource, cn *configtypes.Canon
 	}
 	node.UUID = canonicalCredential(outbound, scheme)
 	node.Flow = canonicalString(outbound["flow"])
+	// SPEC 132: обратный путь «финальный тег → узел состояния». Ставится
+	// ВСЕГДА, в отличие от SectionsLink (тот едет только с секциями).
+	node.CanonicalLink = configtypes.NodeLink{FolderID: cs.FolderID, Tag: cn.Tag}
 	// Секции узла (SPEC 121): едут до эмиссии сырыми. Ссылка на узел —
 	// {FolderID контейнера, СЫРОЙ тег}: именно ею адресует якорь правил, и
 	// финальный тег для этого не годится (он зависит от тег-политики).
@@ -248,6 +240,8 @@ func buildCanonicalAuto(cs *configtypes.CanonicalSource, cn *configtypes.Canonic
 		Outbound:    outbound,
 		IdentityTag: cn.Tag,
 		SourceIndex: configtypes.UnsetSourceIndex,
+		// SPEC 132: обратный путь «финальный тег → узел состояния».
+		CanonicalLink: configtypes.NodeLink{FolderID: cs.FolderID, Tag: cn.Tag},
 	}
 	applyCanonicalDisplay(node, cn)
 	node.Tag = applyEmissionTagMachine(node, cs, cn, num, tagCounts)
@@ -329,6 +323,8 @@ func ResolveCanonicalChainHops(parserConfig *ParserConfig, targets *NodeLinkTarg
 			built = append(built, configtypes.BuiltChain{
 				Tag:   strings.TrimSpace(cn.Tag),
 				Chain: configtypes.ChainFromBody(cn.Body, hops),
+				// SPEC 132: обратный путь «финальный тег → узел состояния».
+				Link: configtypes.NodeLink{FolderID: cs.FolderID, Tag: cn.Tag},
 			})
 		}
 		// Источник без собираемых цепочек записей не получает: сборочную

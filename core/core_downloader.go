@@ -146,6 +146,12 @@ func (ac *AppController) DownloadCore(ctx context.Context, version string, progr
 	// 7. Done! Invalidate the session version cache so the dashboard shows
 	// the freshly installed core without a launcher restart.
 	ac.InvalidateInstalledCoreVersionCache()
+
+	// 7.5. SPEC 132: отметка версии ядра — СРАЗУ после сброса кэша, чтобы
+	// событие «core updated X → Y» встало в лог сейчас, а не через
+	// перезапуск. Кнопка — не единственный путь смены ядра (dev-сборки
+	// кладут руками), поэтому та же сверка идёт и на старте.
+	ac.CheckVersionMarks()
 	progressChan <- DownloadProgress{Progress: 100, Message: fmt.Sprintf("sing-box v%s installed successfully!", version), Status: "done"}
 }
 

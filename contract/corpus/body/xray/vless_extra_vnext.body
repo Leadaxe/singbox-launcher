@@ -1,0 +1,2 @@
+# Xray vless: два vnext в одном outbound — узлом становится первый, остальные с кодом.
+[{"remarks": "extra vnext", "outbounds": [{"tag": "proxy", "protocol": "vless", "settings": {"vnext": [{"address": "a.example", "port": 443, "users": [{"id": "11111111-2222-3333-4444-555555555555", "encryption": "none"}]}, {"address": "b.example", "port": 444, "users": [{"id": "22222222-2222-3333-4444-555555555555", "encryption": "none"}]}]}, "streamSettings": {"network": "tcp", "security": "none"}}]}]

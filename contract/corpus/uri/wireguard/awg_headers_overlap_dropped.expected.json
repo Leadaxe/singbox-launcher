@@ -1,0 +1,11 @@
+{
+  "dropped": [
+    {
+      "code": "awg_headers_overlap",
+      "reason": "emit_error",
+      "ref": "wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@example-1.com:51820?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.0.0.2/32&allowedips=0.0.0.0/0&h1=500&h2=400-600&h3=700&h4=800#awg-overlap"
+    }
+  ],
+  "nodes": [],
+  "v": 1
+}

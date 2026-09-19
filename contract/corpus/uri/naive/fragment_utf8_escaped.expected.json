@@ -16,7 +16,10 @@
       "label": "✅ JP-01",
       "scheme": "naive",
       "warnings": [
-        "naive_padding_ignored"
+        {
+          "code": "naive_padding_ignored",
+          "path": "padding"
+        }
       ]
     }
   ],

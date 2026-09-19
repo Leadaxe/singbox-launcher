@@ -189,6 +189,26 @@ func NodeRuleRefNodeEnabled(m *WizardModel, ref *NodeRuleRef) bool {
 	return node != nil && node.Enabled
 }
 
+// NodeRuleRefRecord — запись правила, на которую смотрит строка.
+//
+// Строка списка несёт только ссылку на узел и позицию внутри его секций: тело
+// живёт в узле и остаётся там единственным (SPEC 121 §10.4 — копий тела в
+// модели нет, иначе их пришлось бы держать в согласии). Просмотру тело нужно,
+// поэтому оно достаётся здесь же тем обходом, что и всё прочее про узел.
+//
+// nil — узла нет или позиция уехала (узел отредактировали, правил стало
+// меньше): показывать нечего, и звать это ошибкой не за что.
+func NodeRuleRefRecord(m *WizardModel, ref *NodeRuleRef) *corestate.Rule {
+	if m == nil || ref == nil {
+		return nil
+	}
+	node := FindNodeByLink(m, ref.Link)
+	if node == nil || ref.Index < 0 || ref.Index >= len(node.Sections.Rules) {
+		return nil
+	}
+	return &node.Sections.Rules[ref.Index]
+}
+
 // FindNodeByLink — узел источников по ссылке {FolderID, Tag}.
 //
 // Корневой узел адресуется тем же именем, что его знает конфиг

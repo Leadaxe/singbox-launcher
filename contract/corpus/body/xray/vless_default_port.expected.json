@@ -1,0 +1,13 @@
+{
+  "dropped": [
+    {
+      "reason": "vless outbound rejected: linkmap: обязательное поле \"server_port\" пусто",
+      "ref": "proxy"
+    }
+  ],
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [],
+  "v": 1
+}

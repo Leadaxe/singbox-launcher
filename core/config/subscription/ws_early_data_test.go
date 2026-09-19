@@ -67,25 +67,6 @@ func TestApplyWSEarlyData(t *testing.T) {
 	}
 }
 
-func TestAppendEarlyDataToPath(t *testing.T) {
-	tests := []struct {
-		path string
-		ed   int
-		want string
-	}{
-		{"/api/v2/channel", 2560, "/api/v2/channel?ed=2560"},
-		{"/p", 0, "/p"},                // no ed → untouched
-		{"/p", -1, "/p"},               // invalid → untouched
-		{"/p?x=1", 64, "/p?x=1&ed=64"}, // existing query → &ed
-		{"", 32, "?ed=32"},             // empty path
-	}
-	for _, tt := range tests {
-		if got := appendEarlyDataToPath(tt.path, tt.ed); got != tt.want {
-			t.Errorf("appendEarlyDataToPath(%q, %d) = %q, want %q", tt.path, tt.ed, got, tt.want)
-		}
-	}
-}
-
 // --- Parser 1: share-URI (type=ws&path=...) ---
 
 func TestParseNode_VLESS_WS_EarlyDataFromURI(t *testing.T) {
@@ -153,8 +134,14 @@ func TestParseNodesFromXrayJSONArray_WS_EarlyData(t *testing.T) {
 	}
 	assertWSEarlyData(t, tr, "/api/v2/channel", 2560)
 	// Host header must still be preserved alongside the split.
-	h, _ := tr["headers"].(map[string]string)
-	if h["Host"] != "h.test" {
+	//
+	// Читается через общий JSON-скаляр, а не утверждением о типе карты:
+	// движок реестра строит тело из значений JSON и кладёт заголовки
+	// map[string]interface{}, прежний конвертер клал map[string]string. В
+	// конфиг ядра обе формы уезжают одинаково, а утверждение о конкретном
+	// Go-типе пинило бы внутреннюю форму карты вместо содержимого.
+	h, _ := tr["headers"].(map[string]interface{})
+	if host, _ := h["Host"].(string); host != "h.test" {
 		t.Fatalf("Host header lost: %v", tr["headers"])
 	}
 }
@@ -162,23 +149,19 @@ func TestParseNodesFromXrayJSONArray_WS_EarlyData(t *testing.T) {
 // --- Parser 3: VMess JSON (net=ws, path=/x?ed=N) ---
 
 func TestParseVMess_WS_EarlyData(t *testing.T) {
-	// Legacy VMess JSON carries net=ws and the ed tail inside path.
-	vmess := map[string]interface{}{
-		"v":    "2",
-		"ps":   "vmess-ed",
-		"add":  "h.test",
-		"port": float64(443), // JSON numbers decode to float64
-		"id":   "c59eb5ed-6324-4d53-ad4f-8cda48b30811",
-		"aid":  float64(0),
-		"net":  "ws",
-		"type": "none",
-		"host": "h.test",
-		"path": "/api/v2/channel?ed=2048",
-		"tls":  "tls",
-	}
-	node, err := parseVMessJSON(vmess, nil)
+	// Контейнер v2rayN несёт net=ws и хвост ?ed= внутри path. Вход —
+	// ССЫЛКА, а не карта: разбор vmess ведёт движок реестра, и карту он
+	// строит сам. Пейлоад тот же, что был здесь литералом:
+	// {"v":"2","ps":"vmess-ed","add":"h.test","port":443,
+	//  "id":"c59eb5ed-…","aid":0,"net":"ws","type":"none",
+	//  "host":"h.test","path":"/api/v2/channel?ed=2048","tls":"tls"}
+	uri := "vmess://eyJ2IjoiMiIsInBzIjoidm1lc3MtZWQiLCJhZGQiOiJoLnRlc3QiLCJwb3J0Ijo0NDMs" +
+		"ImlkIjoiYzU5ZWI1ZWQtNjMyNC00ZDUzLWFkNGYtOGNkYTQ4YjMwODExIiwiYWlkIjowLCJuZXQi" +
+		"OiJ3cyIsInR5cGUiOiJub25lIiwiaG9zdCI6ImgudGVzdCIsInBhdGgiOiIvYXBpL3YyL2NoYW5u" +
+		"ZWw/ZWQ9MjA0OCIsInRscyI6InRscyJ9"
+	node, err := ParseNode(uri, nil)
 	if err != nil || node == nil {
-		t.Fatalf("parseVMessJSON: err=%v node=%v", err, node)
+		t.Fatalf("ParseNode: err=%v node=%v", err, node)
 	}
 	tr, ok := node.Outbound["transport"].(map[string]interface{})
 	if !ok {

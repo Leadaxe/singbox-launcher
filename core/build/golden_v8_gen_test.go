@@ -41,7 +41,9 @@ func TestGenerateGoldenV8Scenario(t *testing.T) {
 	}
 	// template/cache/expected — копии: входы сборки от формы состояния не
 	// зависят, а ожидание обязано совпасть с v7-сценарием байт-в-байт.
-	for _, name := range []string{"template.json", "cache.json", "expected.config.json"} {
+	// `platform` — оттуда же: эталон снят на той же машине, что и соседний,
+	// и без метки сценарий проверялся бы на чужой ОС против чужого снимка.
+	for _, name := range []string{"template.json", "cache.json", "expected.config.json", "platform"} {
 		data, err := os.ReadFile(filepath.Join(goldenV7Dir, name))
 		if err != nil {
 			t.Fatal(err)

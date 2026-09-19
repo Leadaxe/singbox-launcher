@@ -1,0 +1,32 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "a.example",
+        "server_port": 443,
+        "transport": {
+          "mode": "packet-up",
+          "no_grpc_header": true,
+          "path": "/p",
+          "sc_max_each_post_bytes": "1000000",
+          "type": "xhttp",
+          "uplink_http_method": "GET",
+          "x_padding_bytes": "50-200",
+          "xmux": {
+            "h_keep_alive_period": 30,
+            "max_concurrency": "16-32"
+          }
+        },
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "xhttp snake",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

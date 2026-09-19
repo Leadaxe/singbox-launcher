@@ -16,7 +16,11 @@
       "label": "tuic-bogus",
       "scheme": "tuic",
       "warnings": [
-        "tuic_congestion_invalid"
+        {
+          "code": "tuic_congestion_invalid",
+          "path": "congestion_control",
+          "value": "bogus"
+        }
       ]
     }
   ],

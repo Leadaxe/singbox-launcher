@@ -33,7 +33,17 @@ For pre-releases CI additionally prefixes the body with a `> ⚠️ **Pre-releas
 
 ### 1.1. Pre-flight
 
-1. Everything on `develop` is green (`go build ./... && go test ./... && go vet ./...`). The linter (`golangci-lint run`) — at least on the changed packages.
+1. Everything on `develop` is green — **according to CI, not a local run**. Before a release the full test run, `go vet`, the linter and the builds for every platform (including the Win7 job on go1.20) are done ONLY in CI; `go test ./...`, a repo-wide `go vet ./...` and the Win7 build are never run locally — not even "once before the release" (the developer machine is overloaded, a full local run takes tens of minutes and covers neither the other OSes nor go1.20). Locally `go build ./...` is enough.
+   ```bash
+   # ci.yml does NOT start on a push to develop (only main / PR / dispatch) — start it by hand:
+   gh workflow run ci.yml --ref develop -f run_mode=tests
+   gh run list --workflow=ci.yml --branch develop -L 1          # take the ID
+   gh run watch <ID> --exit-status                               # wait for it
+   gh run view <ID> --log-failed                                 # if red — read the failed steps
+   # Then the builds for every platform (Win7 included), without publishing a release:
+   gh workflow run ci.yml --ref develop -f run_mode=build
+   ```
+   Red is fixed in a separate pass (fix → push → dispatch again) until both runs are green. The linter (`golangci-lint`) and the contract check run in CI on the PR to `main`; the linter truncates repeats of one rule (`max-same-issues`) — take the full list from the log rather than fixing three findings per round. The `Contract` workflow runs on `develop` by itself on every push — it must be green too.
 2. `develop` is a direct descendant of the last stable tag. Check:
    ```bash
    git fetch --tags
@@ -260,7 +270,7 @@ People who already downloaded the previous artifact are unaffected, but their ch
 ## 4. Checklist for the agent (copy into your reply to the user)
 
 ### Stable vX.Y.Z
-- [ ] `develop` is green and a descendant of the previous stable tag.
+- [ ] `develop` is green **in CI** (`run_mode=tests` and `run_mode=build` via `gh workflow run ci.yml --ref develop`, plus `Contract`); no full local run was made, none is needed. It is a descendant of the previous stable tag.
 - [ ] `RequiredCoreVersion` matches the sing-box version that was tested (see §1.1, §5).
 - [ ] `bin/wizard_template.json` on `develop` reflects the final template state.
 - [ ] `upcoming.md` → `docs/release_notes/X-Y-Z.md`, tidied up.
@@ -275,7 +285,7 @@ People who already downloaded the previous artifact are unaffected, but their ch
 - [ ] `gh release view vX.Y.Z` → `isLatest:true`.
 
 ### Prerelease
-- [ ] `develop` is green and a descendant of the previous stable tag.
+- [ ] `develop` is green **in CI** (`run_mode=tests` and `run_mode=build` via `gh workflow run ci.yml --ref develop`, plus `Contract`); no full local run was made, none is needed. It is a descendant of the previous stable tag.
 - [ ] If `RequiredCoreVersion` was bumped — the commit is pushed **before** the workflow (§2.1, §5).
 - [ ] The SLUG was computed locally (`git describe ... + '-prerelease'`).
 - [ ] `docs/release_notes/<SLUG>.md` exists and holds 1–3 entries about what's new in this pre-release.

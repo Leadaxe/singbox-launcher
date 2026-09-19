@@ -75,6 +75,14 @@ type AppController struct {
 	// backendModeChangeHook — колбэк после смены backend (traffic-источник).
 	backendModeChangeHook func()
 
+	// Колбэки страховки «ядро отвергло узел» (SPEC 132 §6.2/§6.3). Ставит их
+	// UI на сборке приложения (SetCoreRejectDecider/SetCoreRejectProgress),
+	// читает фоновая горутина сборки — отсюда мьютекс. nil у обоих =
+	// поведение фонового входа: цикл идёт молча до жёсткого потолка.
+	coreRejectHooksMu      sync.Mutex
+	coreRejectDecideHook   coreRejectDecider
+	coreRejectProgressHook coreRejectProgress
+
 	// --- Process State ---
 	SingboxCmd                  *exec.Cmd
 	SingboxPrivilegedMode       bool   // true when sing-box was started with RunWithPrivileges (macOS TUN)
@@ -133,9 +141,10 @@ type AppController struct {
 	awg3SupportCache   *awg3SupportVerdict
 	awg3SupportCacheMu sync.Mutex
 
-	// D-121: тот же кэш для гейта tls.reality.key_share (только версия ядра).
-	keyShareSupportCache   *keyShareSupportVerdict
-	keyShareSupportCacheMu sync.Mutex
+	// D-121 / SPEC 131 W2c: кэша для гейта tls.reality.key_share здесь
+	// больше нет — полевые гейты считает табличный проход по реестру
+	// (core/config/node_build_gate.go), а версию ядра кэширует уже
+	// GetInstalledCoreVersion.
 
 	// --- Chain-support probe cache (SPEC 110) ---
 	// Тип `chain` есть только в ядрах, собранных с `with_lx_chain`, и ядро
@@ -283,9 +292,12 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	// SPEC 123: то же для полей AmneziaWG 3.x — ядро до 1.14.0-lx.32
 	// отвергает конфиг с любым из них целиком.
 	config.AWG3SupportProbe = ac.CoreSupportsAWG3
-	// D-121: то же для tls.reality.key_share — ядро до 1.14.1-lx.4 не знает
-	// ключа и отвергает весь конфиг. Гейт полевой: снимается поле, узел живёт.
-	config.RealityKeyShareSupportProbe = ac.CoreSupportsRealityKeyShare
+	// SPEC 131 W2c: полевые гейты (снимается ПОЛЕ, узел живёт) больше не
+	// заводятся пробой на каждое поле — их считает один табличный проход по
+	// реестру, которому нужна лишь версия ядра. Так ушла
+	// RealityKeyShareSupportProbe, и так же уйдёт всякое следующее поле с
+	// min_core: правка реестра вместо пробы, хука и ветки в эмиттере.
+	config.CoreVersionProbe = ac.coreVersionForBuildGate
 
 	// SPEC 122: корень каталогов состояния tailnet. Тот же корень
 	// `<execDir>/bin`, относительно которого лежат локальные .srs — эмиссия

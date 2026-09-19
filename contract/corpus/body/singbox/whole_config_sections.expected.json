@@ -62,7 +62,7 @@
             },
             "enabled": true,
             "kind": "inline",
-            "name": "@{self} rule 1"
+            "name": "@{self}"
           },
           {
             "body": {

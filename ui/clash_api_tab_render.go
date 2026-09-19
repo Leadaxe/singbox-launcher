@@ -11,8 +11,12 @@ import (
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/services"
+	"singbox-launcher/core/state"
+	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
+	wizardbusiness "singbox-launcher/ui/configurator/business"
 )
 
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
@@ -35,6 +39,32 @@ func effectiveNodeConfigPath(ac *core.AppController, scope services.ProxyScope) 
 		}
 	}
 	return ac.FileService.ConfigPath
+}
+
+// effectiveNodeStatePath — state.json той же области, что и
+// effectiveNodeConfigPath (SPEC 131 §6).
+//
+// Пара с ним обязательна: предупреждения узла живут в СОСТОЯНИИ, а тег, по
+// которому строка их ищет, — в конфиге. Взять конфиг удалённой машины и
+// состояние локальной значило бы показать чужие деградации на её узлах —
+// ровно та ошибка, которую уже ловили на remote-override (память
+// `remote-override-is-global`).
+func effectiveNodeStatePath(ac *core.AppController, scope services.ProxyScope) string {
+	if ac == nil || ac.FileService == nil {
+		return ""
+	}
+	if scope == services.ScopeRemote {
+		if id, _, active := GetLxdRemoteOverride(); active && id != "" {
+			return platform.GetWizardStatePathFor(
+				ac.FileService.ExecDir, constants.ConfigTargetRemote, id)
+		}
+	}
+	return platform.GetWizardStatePath(ac.FileService.ExecDir)
+}
+
+// nodeWarningsFor — предупреждения узла с финальным тегом tag в области scope.
+func nodeWarningsFor(ac *core.AppController, tag string, scope services.ProxyScope) []state.NodeWarning {
+	return wizardbusiness.LoadNodeWarnings(effectiveNodeStatePath(ac, scope)).Lookup(tag)
 }
 
 // serversProxyContextMenu is the ПКМ menu for one proxy row: type line + copy link actions.
@@ -62,7 +92,7 @@ func serversProxyContextMenu(ac *core.AppController, status *widget.Label, win f
 		// полный JSON. Пунктом меню, а не кнопкой в строке: строка плотная,
 		// а Info нужен изредка.
 		fyne.NewMenuItem(locale.T("Node info…"), func() {
-			showNodeInfoWindow(ac, proxy, cfgPath)
+			showNodeInfoWindow(ac, proxy, cfgPath, scope)
 		}),
 		fyne.NewMenuItem(locale.T("Copy server link"), func() {
 			serversRunCopyShareURIToClipboard(ac, status, win, proxy.Name, cfgPath)
@@ -83,7 +113,7 @@ func serversRunCopyShareURIToClipboard(ac *core.AppController, status *widget.La
 		fyne.Do(func() {
 			status.SetText(locale.T("Building share URI from outbound…"))
 		})
-		line, err := config.ShareMainURIForOutboundTag(cfgPath, tag)
+		line, hasKey, err := config.ShareMainURIWithSecretForOutboundTag(cfgPath, tag)
 		fyne.Do(func() {
 			if err != nil {
 				if errors.Is(err, subscription.ErrShareURINotSupported) {
@@ -93,10 +123,12 @@ func serversRunCopyShareURIToClipboard(ac *core.AppController, status *widget.La
 				}
 				return
 			}
-			if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
-				app.Clipboard().SetContent(line)
-			}
-			status.SetText(locale.T("Share URI copied to clipboard"))
+			fynewidget.ConfirmShareURISecret(win, hasKey, func() {
+				if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
+					app.Clipboard().SetContent(line)
+				}
+				status.SetText(locale.T("Share URI copied to clipboard"))
+			})
 		})
 	}()
 }
@@ -106,7 +138,7 @@ func serversRunCopyJumpShareURIToClipboard(ac *core.AppController, status *widge
 		fyne.Do(func() {
 			status.SetText(locale.T("Building share URI for jump outbound…"))
 		})
-		line, err := config.ShareJumpURIForOutboundTag(cfgPath, tag)
+		line, hasKey, err := config.ShareJumpURIWithSecretForOutboundTag(cfgPath, tag)
 		fyne.Do(func() {
 			if err != nil {
 				if errors.Is(err, subscription.ErrShareURINotSupported) {
@@ -116,10 +148,12 @@ func serversRunCopyJumpShareURIToClipboard(ac *core.AppController, status *widge
 				}
 				return
 			}
-			if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
-				app.Clipboard().SetContent(line)
-			}
-			status.SetText(locale.T("Jump share URI copied to clipboard"))
+			fynewidget.ConfirmShareURISecret(win, hasKey, func() {
+				if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
+					app.Clipboard().SetContent(line)
+				}
+				status.SetText(locale.T("Jump share URI copied to clipboard"))
+			})
 		})
 	}()
 }

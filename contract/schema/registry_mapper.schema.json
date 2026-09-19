@@ -1,0 +1,1271 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/Leadaxe/singbox-launcher/contract/schema/registry_mapper.schema.json",
+  "title": "Секции-мапперы реестра (SPEC 133)",
+  "description": "Исполняемые таблицы превращения ВНЕШНЕГО источника в тело узла. Секция на вид источника (uri / xray / singbox / conf): таблицы разные, движок один. Отличается от описательной секции `mapper` (registry_body.schema.json), которую в рантайме не исполняет никто: здесь каждая запись ИСПОЛНЯЕТСЯ, и значение доступно параметру только через `source`. Значений секция не судит — их судит санитайзер по body-схеме (CANON §8).",
+  "type": "object",
+  "definitions": {
+    "detect": {
+      "description": "Декларативный признак «этот контент — мой». Один и тот же словарь на обоих уровнях: вид источника (source_kinds.json) и секция/форма протокола. Предикаты внутри объекта — конъюнкция.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "regex": {
+          "type": "string",
+          "description": "Регулярное выражение по сырому тексту. Диалект — общее подмножество Go RE2 и ECMAScript/Dart: без lookaround, без обратных ссылок, без inline-флагов. Совпадение по всей строке задаётся якорями в самом выражении."
+        },
+        "json": {
+          "$ref": "#/definitions/detectJSON"
+        },
+        "ini": {
+          "$ref": "#/definitions/detectINI"
+        },
+        "text": {
+          "$ref": "#/definitions/detectText"
+        },
+        "scheme_in": {
+          "type": "array",
+          "description": "Написания схемы ссылки, на которые отзывается секция (с учётом aliases протокола).",
+          "items": {
+            "type": "string"
+          }
+        },
+        "in_array": {
+          "type": "string",
+          "description": "Элемент пришёл из массива с этим именем ('outbounds' / 'endpoints') — различает уровень документа sing-box."
+        },
+        "not": {
+          "$ref": "#/definitions/detect"
+        },
+        "all": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/detect"
+          }
+        },
+        "any": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/detect"
+          }
+        },
+        "default": {
+          "type": "boolean",
+          "description": "Ветка «всё остальное». Ровно одна на уровень — проверяет линтер."
+        }
+      }
+    },
+    "detectJSON": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Предикаты по разобранному JSON. Пути — точечные ('settings.vnext').",
+      "properties": {
+        "required_keys": {
+          "type": "array",
+          "description": "Все перечисленные пути обязаны присутствовать.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "any_keys": {
+          "type": "array",
+          "description": "Хотя бы один из путей присутствует.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "key_absent": {
+          "type": "array",
+          "description": "Ни одного из путей нет. Так одиночный selector (несёт и type, и outbounds) отличается от конфига.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "type_of": {
+          "type": "object",
+          "description": "Путь → тип значения.",
+          "additionalProperties": {
+            "enum": [
+              "object",
+              "array",
+              "string",
+              "number",
+              "bool"
+            ]
+          }
+        },
+        "value_of": {
+          "type": "object",
+          "description": "Путь → точное значение. Ожидание — любой скаляр JSON; строка сравнивается со строкой регистронезависимо, число с числом, булево с булевым, ТИПЫ НЕ ПРИВОДЯТСЯ (значение '2' строкой не равно 2 числом).",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        },
+        "value_in": {
+          "type": "object",
+          "description": "Путь → набор допустимых значений. Так объявляются типы-синонимы ('shadowsocks' и 'ss'). Элементы — скаляры JSON с тем же правилом сравнения, что у value_of.",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          }
+        },
+        "array_elem_any_keys": {
+          "type": "array",
+          "description": "Хотя бы один элемент массива несёт путь. Массив называется явно через [] — \"outbounds[].protocol\" значит «в массиве outbounds есть элемент с ключом protocol»; путь без [] считает массивом сам документ. Так Xray-конфиг отличается от sing-box: элемент Xray несёт outbounds[].protocol. Уровней [] может быть НЕСКОЛЬКО (PRIMITIVES §0.11): \"[].outbounds[].protocol\" — массив конфигов, у каждого свой массив outbound'ов; ведущий [] называет сам документ-массив. Рукописный сниффер смотрел ПЕРВЫЙ элемент и решал за весь массив, предикат спрашивает массив целиком.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "detectINI": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Предикаты по ini-тексту. Имена секций и ключей сравниваются регистронезависимо.",
+      "properties": {
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "first_section_fold": {
+          "type": "string",
+          "description": "Имя ПЕРВОЙ не-комментарной секции, fold-case (PRIMITIVES §0.11). Отличается от sections (наличие в любом месте): .conf, у которого первой идёт [Peer], конфигом wg-quick не является. Комментарий над [Interface] законен и несёт имя узла (G7)."
+        },
+        "keys": {
+          "type": "array",
+          "description": "Все ключи присутствуют (в любой секции).",
+          "items": {
+            "type": "string"
+          }
+        },
+        "keys_any": {
+          "type": "array",
+          "description": "Хотя бы один ключ присутствует. Так род узла (awg3 / awg / wg) объявляется данными, а не функцией hasAWGParams.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "detectText": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prefix_fold": {
+          "type": "string",
+          "description": "Префикс текста, регистронезависимо."
+        },
+        "prefix_trim": {
+          "type": "string",
+          "description": "Первый НЕпробельный символ текста (PRIMITIVES §0.11): '{' или '[' после отступа. Отличается от prefix_fold, который смотрит с позиции 0."
+        },
+        "min_len": {
+          "type": "integer",
+          "description": "Длина текста не меньше n (PRIMITIVES §0.11). Порог отсекает случайный короткий текст, проходящий алфавит base64.",
+          "minimum": 1
+        },
+        "line_fold": {
+          "type": "string",
+          "description": "Строка целиком (после trim), регистронезависимо."
+        },
+        "contains": {
+          "type": "string"
+        }
+      }
+    },
+    "form": {
+      "description": "Оболочка источника: как из текста получить пространство источников. Формы пробуются по порядку, первая сработавшая выигрывает.",
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "detect": {
+          "$ref": "#/definitions/detect"
+        },
+        "decode": {
+          "type": "array",
+          "description": "Конвейер декодеров оболочки: url, percent, base64, base64url, 'base64?' (try-decode с фолбэком «не base64 → как есть»), json, ini, {reparse: url|authority}. Шаг записывается строкой (область применения — весь текст) либо объектом {decoder, scope}, где scope называет часть ссылки: all (умолчание) | userinfo | authority. Область нужна там, где base64 накрывает РАЗНЫЕ куски в разных формах одной схемы: SIP002 у ss кодирует только userinfo, legacy — весь authority, а метка '#…' в обеих формах остаётся открытым текстом снаружи (PRIMITIVES §0.10).",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "decoder": {
+                    "enum": [
+                      "percent",
+                      "base64",
+                      "base64url",
+                      "base64?"
+                    ]
+                  },
+                  "scope": {
+                    "enum": [
+                      "all",
+                      "userinfo",
+                      "authority"
+                    ]
+                  }
+                },
+                "required": [
+                  "decoder"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "reparse": {
+                    "enum": [
+                      "url",
+                      "authority"
+                    ]
+                  }
+                },
+                "required": [
+                  "reparse"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "space": {
+          "enum": [
+            "url",
+            "json",
+            "ini"
+          ],
+          "description": "Итоговое пространство источников."
+        },
+        "impl": {
+          "type": "string",
+          "description": "Прозаическая сноска к записи: чем сегодняшний код отличается от таблицы, ссылка на DELTAS/QUIRKS. Движок её не исполняет."
+        },
+        "base": {
+          "type": "string",
+          "description": "Якорь пути: префикс, подставляемый вместо $base в source. Одна таблица параметров обслуживает vnext[0], servers[0] и плоскую форму."
+        },
+        "level": {
+          "enum": [
+            "outbound",
+            "endpoint"
+          ],
+          "description": "Уровень документа sing-box, из которого пришёл элемент."
+        }
+      }
+    },
+    "sourceRef": {
+      "description": "Откуда параметр берёт значение. Строка — один источник; массив — цепочка приоритета (первый найденный выигрывает); объект — карта по id формы. ЕДИНСТВЕННЫЙ способ получить значение: сырого url.Values/карты JSON у движка нет.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "decodeExtra": {
+      "description": "Дополнительный percent-декод ПОВЕРХ декодера формы. Режимы различаются намеренно: в пути литеральный '+' легален, и query-семантика превратила бы /ws+v2 в /ws v2.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "query",
+            "path"
+          ]
+        },
+        "passes": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "const": "until_stable"
+            }
+          ],
+          "description": "Число проходов либо «до стабилизации». alpn сегодня декодируется до стабилизации (фикстура alpn_multiply_encoded несёт ТРИ уровня), path — ровно 2."
+        },
+        "max": {
+          "type": "integer",
+          "description": "Предел проходов при until_stable — страховка от неограниченного цикла.",
+          "minimum": 1
+        },
+        "plus_literal": {
+          "type": "boolean",
+          "description": "Не превращать '+' в пробел: читать его буквально. Имя FROZEN (PRIMITIVES §0.4); до 1.1.14 схема звала атрибут preserve_plus, реестр и движок — уже plus_literal. По умолчанию выводится из format: base64* у целевого поля; явное значение перекрывает вывод."
+        },
+        "format": {
+          "type": "string",
+          "description": "Формат значения, задающий умолчания декода. 'pem' — PEM-блок в query: внутри заголовочных строк -----BEGIN…----- / -----END…----- '+' читается как ПРОБЕЛ, в base64-теле — литерально (PRIMITIVES §0.4a, DELTAS D133-7)."
+        }
+      }
+    },
+    "param": {
+      "description": "Запись таблицы: один параметр источника.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "$ref": "#/definitions/sourceRef"
+        },
+        "maps_to": {
+          "description": "Путь в теле узла. null — значение осознанно никуда не едет (снимается с кодом). Объект — карта по типу тела, когда один вход ведёт в разные поля (hysteria v1 auth_str против v2 password).",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "type": {
+          "enum": [
+            "string",
+            "int",
+            "bool",
+            "bool_spelled",
+            "duration",
+            "base64",
+            "list",
+            "object"
+          ],
+          "description": "bool_spelled — общий набор написаний истины (1|true|yes), одно правило на все булевы параметры всех схем."
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "selector": {
+          "type": "boolean",
+          "description": "Параметр первого прохода: его значение строит тело, по которому дальше проверяется when у зависимых."
+        },
+        "priority": {
+          "type": "integer",
+          "description": "Явный порядок двух записей, пишущих в один путь. Меньше = раньше."
+        },
+        "merge": {
+          "enum": [
+            "keep_first",
+            "overwrite",
+            "prepend",
+            "append"
+          ],
+          "description": "Что делать, когда путь уже занят."
+        },
+        "value_map": {
+          "type": "object",
+          "description": "Перевод значений чужого диалекта. null в значении = ключа нет. Первое написание каноническое (для эмита)."
+        },
+        "sets": {
+          "type": "object",
+          "description": "Значение параметра → набор присваиваний в тело. null в присваивании СНИМАЕТ путь (отличается от «не писать»): tuic disable_sni убирает tls.server_name."
+        },
+        "implies": {
+          "type": "object",
+          "description": "Одно лишь НАЛИЧИЕ параметра даёт присваивания (REALITY заводится по наличию pbk)."
+        },
+        "when": {
+          "$ref": "#/definitions/when"
+        },
+        "extract": {
+          "$ref": "#/definitions/extract"
+        },
+        "compose": {
+          "description": "Обратный шаблон сборки для эмита: обращение extract, один параметр собирается из нескольких путей тела (plugin;opts у ss, extra-headers у naive). Регуляркой обратный ход не выражается — шаблон объявляет его прямо. Строка — короткое написание одного шаблона; объект (PRIMITIVES §0.12) называет пути явно: from — пути тела, подставляемые в template, omit_when_empty — не писать параметр вовсе, когда собранное значение пусто.",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "template": {
+                  "type": "string"
+                },
+                "from": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "omit_when_empty": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "template"
+              ]
+            }
+          ]
+        },
+        "list": {
+          "$ref": "#/definitions/list"
+        },
+        "split_into": {
+          "type": "object",
+          "description": "Список разбрасывается по нескольким полям по предикату на элементе (masque address → ip/ipv6)."
+        },
+        "normalize": {
+          "type": "string",
+          "description": "Имя общего нормализатора МАППЕРА: port_range_spec, trim, trim_lower. По норме «маппер не судит значения» (PRIMITIVES §0.13) здесь остаётся только то, без чего ТЕЛО НЕ ПОСТРОИТЬ: port_range_spec задаёт структуру server_ports. Перевод написания — cidr_prefix (10.0.0.2 → 10.0.0.2/32), base64_std (url-алфавит → стандартный) — принадлежит body.fields.normalize: тело строится и без него. range_order там же и уже исполняется (wireguard.json, nodeflow/coerce.go); в маппере он был бы дублем, и различение «своп у h1-h4 разрешён, у таймингов AWG 3.x запрещён» привязано к полю ТЕЛА, а не к параметру ссылки. duration_bare_seconds (голое число секунд → \"30s\") переехал туда же и по той же причине: голые секунды приезжают не только со ссылки, но и из xray-sockopt и из тела в форме ядра, а правило, живущее в маппере, действовало бы на одном входе из трёх (ответ LxBox §24.33). Имена cidr_prefix/base64_std/range_order/duration_bare_seconds читаются здесь как legacy до переноса (GRAMMAR_SYNC §9 пп. 3-4)."
+        },
+        "format": {
+          "type": "string",
+          "description": "Формат значения, задающий умолчания декода (PRIMITIVES §0.4a). base64* → plus_literal по умолчанию; 'pem' → '+' в заголовочных строках -----BEGIN…----- / -----END…----- читается как ПРОБЕЛ, в base64-теле литерально. Значения формат не судит — судит санитайзер по body-схеме."
+        },
+        "decode_extra": {
+          "$ref": "#/definitions/decodeExtra"
+        },
+        "default_from": {
+          "description": "Источник значения по умолчанию (SNI-эвристика: sni → peer → server). Значение с префиксом 'body.' читает УЖЕ ПОСТРОЕННОЕ тело, а не источник (PRIMITIVES §0.11): у объектного входа адрес лежит под якорем формы ($base), и общий блок его пути не знает.",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "default_when": {
+          "type": "object"
+        },
+        "materialize_default": {
+          "type": "boolean",
+          "description": "Маппер ЗАПИСЫВАЕТ дефолт в тело, даже когда источник молчал. Отличается от default в body.fields: там это правило санитайзера («чем заполнить пустоту»), здесь — обязанность маппера (vmess.security пишется всегда)."
+        },
+        "coerce": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Приведение ФОРМЫ значения (не смысла): объект→скаляр по имени поля, скаляр→список.",
+          "properties": {
+            "object_to_scalar": {
+              "type": "string"
+            },
+            "scalar_to_list": {
+              "type": "boolean"
+            }
+          }
+        },
+        "flatten": {
+          "type": "array",
+          "description": "Имена вложенных объектов, чьи члены вливаются в плоский слой (extra, xmux).",
+          "items": {
+            "type": "string"
+          }
+        },
+        "lift": {
+          "type": "string",
+          "description": "Перенос значения между уровнями вложенности (outbound ↔ endpoint, peers[] ↔ плоские поля)."
+        },
+        "sort_keys": {
+          "type": "boolean",
+          "description": "Детерминированный порядок ключей у type:object. Порядок входит в identity, и оставлять его свойством реализации нельзя."
+        },
+        "empty": {
+          "enum": [
+            "absent",
+            "significant"
+          ],
+          "description": "По умолчанию пусто = отсутствует. significant — там, где ядро различает «ключа нет» и «пустая строка»."
+        },
+        "on_invalid": {
+          "type": "object",
+          "description": "Реакция на негодное значение. В МАППЕРЕ допускается только при СТРУКТУРНОМ отказе, когда без разбора значения тело не построить (PRIMITIVES §0.13, норма «маппер не судит значения»): (1) значение само задаёт структуру — port_range_spec не разобрался, и server_ports нечем наполнить; (2) action:\"default_from\" — негодное значение выбирает ДРУГОЙ источник (выбор источника есть структура, а не суд над значением). Всё прочее судит body.fields.on_invalid, и код ставит он же: иначе человек получает два кода за одно значение от двух судей. Проверка при заведении правила — «если это убрать, тело построится?»; построится, значит правило принадлежит body.fields."
+        },
+        "value_map_case": {
+          "enum": [
+            "sensitive"
+          ],
+          "description": "Регистр значения ЗНАЧИМ. Общее правило обратное (живые списки шлют security=NONE), но там, где ядро сравнивает литерал точно, регистронезависимое попадание молча проглатывает негодное значение: encryption=None у vless обязано доехать до тела и быть отвергнутым, а не стать «слоя нет»."
+        },
+        "on_present": {
+          "type": "object"
+        },
+        "on_item_invalid": {
+          "type": "object"
+        },
+        "on_no_match": {
+          "type": "object"
+        },
+        "on_when_false": {
+          "type": "object",
+          "description": "Код за ПОДАВЛЕНИЕ значения условием `when`: значение во входе было, но структурное правило не дало ему доехать до тела. Ставится только когда источник действительно что-то дал — иначе запись, чьё условие ложно на каждом втором узле, шумела бы впустую."
+        },
+        "on_implies_written": {
+          "type": "object",
+          "description": "Код за то, что `implies` И ВПРАВДУ дописал значение, которого во входе не было. Отличается от простого наличия implies: при занятом пути присваивание проигрывает владельцу, и сообщать не о чем."
+        },
+        "on_len_gt": {
+          "type": "object"
+        },
+        "emit_when": {
+          "type": [
+            "string",
+            "object"
+          ]
+        },
+        "omit_default": {},
+        "emit_as": {
+          "enum": [
+            "join",
+            "bool01",
+            "json",
+            "raw",
+            "pairs"
+          ],
+          "description": "Как сериализуется значение на выходе, когда тело хранит его не строкой (PRIMITIVES §0.12). join — список через разделитель (alpn: тело хранит массив, ссылка — строку через запятую); bool01 — булев пишется как 1 (insecure=1, shareuri_helpers.go:251-252); json — вложенная структура ключом JSON-формы; raw — как есть. Угадывать по типу НЕЛЬЗЯ: булев, писанный true, и булев, писанный 1, — разные ссылки у живых панелей, и смена написания переписала бы rawSource ручного узла. pairs — карта тела в строку пар (заголовки): разделитель пар берётся из list.sep, разделитель ВНУТРИ пары объявляет emit_pair_sep."
+        },
+        "round_trip": {
+          "type": "boolean",
+          "description": "false — у записи обратного хода НЕТ: поле есть в теле, но в ссылке его не пишет ни один клиент (PRIMITIVES §0.12). Требует round_trip_why. Без объявления потеря на круге молчалива; объявленная — видна линтеру и отчёту, а не телу узла пользователя."
+        },
+        "round_trip_why": {
+          "type": "string",
+          "description": "Причина отсутствия обратного хода, прозой для человека. Обязательна при round_trip:false — без причины флаг превращается в «так вышло» и переживает повод, по которому поставлен."
+        },
+        "implicit": {
+          "type": "boolean",
+          "description": "Значение подставлено конвенцией, а не источником: в ссылку при эмите не пишется (early_data_header_name)."
+        },
+        "since": {
+          "type": "string",
+          "description": "Версия контракта, с которой запись действует (legacy-ключи)."
+        },
+        "desc_en": {
+          "type": "string"
+        },
+        "desc_ru": {
+          "type": "string"
+        },
+        "impl": {
+          "type": "string"
+        },
+        "emit_pair_sep": {
+          "type": "string",
+          "description": "Разделитель ВНУТРИ пары у emit_as: \"pairs\". Вывести его из регулярки extract нельзя: она описывает ЧТЕНИЕ, где после двоеточия допустим любой пробельный хвост, а писать надо ровно одно написание («: »)."
+        },
+        "emit_normalize": {
+          "enum": [
+            "port_range_spec_uri"
+          ],
+          "description": "Обращение normalize на ВЫХОДЕ. Автоматически обратить normalize нельзя: часть правил необратима (trim_lower теряет регистр), поэтому обращение ОБЪЯВЛЯЕТСЯ. port_range_spec_uri — форма ядра `low:high` обратно в написание ссылки `low-high` (дефис — конвенция hysteria, на двоеточии её клиенты спотыкаются)."
+        },
+        "emit_value_map": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "ЯВНАЯ обратная таблица «значение тела → написание ссылки». Нужна там, где прямая таблица НЕИНЪЕКТИВНА (у awg-флагов on/true/1 читаются в одно true, и обратить их нечем — написание выбирает схема). Объявлять, а не выводить, приходится и потому, что порядок ключей карты JSON в Go не сохраняется: «первый объявленный» зависел бы от обхода хеш-таблицы."
+        },
+        "on_empty": {
+          "type": "object",
+          "description": "Код за ПУСТОЕ либо отсутствующее значение источника («пусто = отсутствует», §0.6 — ведут сюда обе формы). Отличается от `required` тем, что узел ОСТАЁТСЯ: «поля нет» бывает и нормой, и признаком протухшей подписки, и различить это может только человек — значит место кода, а не отбраковки. Отличается от `on_invalid` тем, что значения нет вовсе: судить нечего. Путь кода — `maps_to`, а у записи без пути — имя записи."
+        },
+        "round_trip_only": {
+          "enum": [
+            "emit",
+            "parse"
+          ],
+          "description": "Запись действует ТОЛЬКО в одну сторону: \"emit\" — пишется в ссылку, но из неё не читается; \"parse\" — наоборот. Отличается от round_trip: false тем, что там направление ЕСТЬ одно (чтение) и объявлен отказ от второго, здесь объявляется, какое именно единственное. Живой случай — detour: поле managed, его пишет сборка конфига, санитайзер снимает его из тела узла, но ссылка на узел внутри цепочки обязана нести имя следующего хопа; читать его обратно нельзя — тег чужого конфига у нас не существует."
+        }
+      }
+    },
+    "when": {
+      "description": "Условие по УЖЕ ПОСТРОЕННОМУ телу и/или по источнику. Ключ — путь тела, '$type' — тип тела, 'query.X'/'json.X'/'ini.X' — источник, '$form' — id формы, 'any_set' — служебный ключ «задан ЛЮБОЙ из перечисленных путей» (массив путей; считается НАЛИЧИЕ ключа, а не непустота значения). any_set — то же имя и тот же оператор, что в body (registry_body.schema.json, anyOf-условие правил значения): второго имени для одной операции не заводится, оператор переносится во второй словарь (PRIMITIVES §0.13). Одного пути мало там, где условие называет не поле, а РОД узла: «узел AmneziaWG» — это набор из двух десятков полей, любого из которых довольно. Значение — скаляр (равенство, строки fold-case), null («адреса нет») либо объект-оператор: {\"in\": […]}, {\"not_in\": […]}, {\"present\": true|false}, {\"absent\": true|false}, {\"lt\": n}, {\"gt\": n}. Числовые lt/gt (PRIMITIVES §0.11) нужны диалекту, где ЗНАК несёт смысл («любое отрицательное = выключено совсем»), и набором значений он не выражается; это НЕ дубль min/max из body.fields: те судят ЗНАЧЕНИЕ и ставят код санитайзера, а lt/gt решают, исполнять ли ЗАПИСЬ. ВАЖНО для not_in: по НЕСУЩЕСТВУЮЩЕМУ адресу он истинен, а in — ложен; это не симметрия, а разные вопросы («значение вне набора» против «значение в наборе»), и правило вида «запрещено при таких-то значениях» выражается только через not_in.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ini_dialect": {
+      "description": "КАК читать ini-документ: правила РАЗБОРА, а не отображение источников в тело. Заведён потому, что на одном месте жили три разных поведения: движок сливал вторую [Peer] с первой, прежний конвертер брал ключи только первой и молча отбрасывал остальные, а норма требует «первая плюс код» — выбрать между ними было нечем, пока решение жило в коде. Секция целиком необязательна: её отсутствие = диалект wg-quick (ключи lower, значения as-is, комментарий только целой строкой '#'/';', повторный ключ — последний выигрывает, секции сливаются).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "key_case": {
+          "enum": [
+            "lower",
+            "preserve"
+          ],
+          "description": "Регистр имён ключей. По умолчанию lower: источники адресуются 'ini.<Секция>.<Ключ>' без учёта того, как ключ написан в файле."
+        },
+        "value_case": {
+          "enum": [
+            "preserve",
+            "lower"
+          ],
+          "description": "Регистр значений. По умолчанию preserve, и трогать его без нужды нельзя: Id маскировки — это домен, регистр в нём значим."
+        },
+        "line_comment_prefixes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Маркеры комментария, занимающего ВСЮ строку. По умолчанию ['#', ';']."
+        },
+        "comment_prefixes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Алиас line_comment_prefixes (имя из черновика SCHEMES §13.4). Читаются оба; при наличии обоих побеждает line_comment_prefixes."
+        },
+        "inline_comments": {
+          "type": "boolean",
+          "description": "Резать ли комментарий ПОСЛЕ значения. По умолчанию false, и у wg-quick иначе нельзя: '#' законен внутри значения — имя узла «US-FREE#137» провайдеры пишут именно так."
+        },
+        "repeated_key": {
+          "enum": [
+            "last_wins",
+            "first_wins",
+            "append"
+          ],
+          "description": "Повторный ключ ВНУТРИ одной секции. По умолчанию last_wins. append склеивает значения запятой — им выражается набор, который диалект разрешает писать и списком, и повтором (Address, AllowedIPs)."
+        },
+        "sections": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/ini_section"
+          },
+          "description": "Правила ПОВТОРА секций по имени (регистр имени не важен)."
+        },
+        "impl": {
+          "type": "string"
+        }
+      }
+    },
+    "ini_section": {
+      "description": "Правило повтора секции с одним именем.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repeat": {
+          "enum": [
+            "merge",
+            "first_only"
+          ],
+          "description": "Что делать со второй секцией того же имени. По умолчанию merge (ключи поздней секции дополняют раннюю). first_only оставляет ПЕРВУЮ и запрещает добор ключей из повторов — так устроен узел sing-box, в который один peer помещается, а второй нет."
+        },
+        "on_extra": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code"
+          ],
+          "properties": {
+            "code": {
+              "type": "string",
+              "description": "Код на отброшенные повторы. Параметр count получает ОБЩЕЕ число секций этого имени, как их написал человек. Без on_extra повтор снимается молча — это тоже объявленный выбор, а не умолчание кода."
+            }
+          }
+        },
+        "impl": {
+          "type": "string"
+        }
+      }
+    },
+    "overlay": {
+      "description": "Наложенное пространство источников: вложенный слой ЧУЖОГО диалекта (JSON в query-параметре) адресуется тем же source под своим именем ('extra.scMaxEachPostBytes'). Слой ОТДЕЛЬНЫЙ, а не слитый с основным: кто из двух побеждает, решает сама запись порядком своих источников — слияние приняло бы это решение за неё и одинаково для всех ключей, на чём горит базовая тройка mode/path/host (D-097). Битый слой НЕ роняет узел: он просто не появляется.",
+      "type": "object",
+      "required": [
+        "name",
+        "source"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Префикс, под которым слой адресуется в source."
+        },
+        "source": {
+          "$ref": "#/definitions/source"
+        },
+        "decode": {
+          "type": "array",
+          "description": "Конвейер декодеров текста слоя: 'percent' (панели кодируют дважды), 'base64?'.",
+          "items": {
+            "enum": [
+              "percent",
+              "base64?",
+              "base64"
+            ]
+          }
+        },
+        "flatten": {
+          "type": "array",
+          "description": "Имена вложенных объектов слоя, чьи члены поднимаются в плоский слой (xmux у xhttp).",
+          "items": {
+            "type": "string"
+          }
+        },
+        "impl": {
+          "type": "string"
+        }
+      }
+    },
+    "extract": {
+      "type": "object",
+      "required": [
+        "re"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "re": {
+          "type": "string",
+          "description": "Регулярка с ИМЕНОВАННЫМИ группами. Диалект — RE2 ∩ ECMAScript; все группы обязаны быть покрыты into (проверяет линтер)."
+        },
+        "into": {
+          "type": "object"
+        }
+      }
+    },
+    "list": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sep": {
+          "type": "string"
+        },
+        "item": {
+          "enum": [
+            "string",
+            "int"
+          ]
+        },
+        "len": {
+          "type": "integer"
+        },
+        "coerce_scalar": {
+          "type": "boolean",
+          "description": "Скаляр принимается как список из одного элемента (Xray httpSettings.host бывает и строкой, и массивом)."
+        }
+      }
+    },
+    "userinfo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "decode": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Ссылка без userinfo — не узел этой схемы (vless без uuid, ssh без пользователя): элемент отбраковывается целиком. Отличается от required у отдельного параметра тем, что судит ОБОЛОЧКУ, а не запись таблицы."
+        },
+        "split": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sep": {
+              "type": "string"
+            },
+            "limit": {
+              "type": "integer",
+              "description": "limit:2 — резать по ПЕРВОМУ разделителю: пароль с двоеточием иначе теряется."
+            }
+          }
+        },
+        "into": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "single_into": {
+          "type": "string",
+          "description": "Куда идёт userinfo без разделителя."
+        },
+        "impl": {
+          "type": "string",
+          "description": "Прозаическая сноска: чем сегодняшний код отличается от таблицы. Движок её не исполняет."
+        },
+        "emit": {
+          "type": "boolean",
+          "description": "Писать ли userinfo НА ВЫХОДЕ. Умолчание — писать; явный false означает, что канон схемы кладёт то же значение в query (у hysteria 1.x секрет канонически едет `auth=`, а userinfo — лишь ЗАПАСНОЙ слот ЧТЕНИЯ), и запись в оба места отдала бы секрет дважды."
+        }
+      }
+    },
+    "labelSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Метка узла. Входит в identity, поэтому её нормализация объявляется, а не остаётся свойством кода.",
+      "properties": {
+        "source": {
+          "$ref": "#/definitions/sourceRef"
+        },
+        "normalize": {
+          "type": "array",
+          "description": "strip_control, trim.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "value_map": {
+          "type": "object"
+        },
+        "fallback": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "template": {
+              "type": "string"
+            },
+            "scheme_source": {
+              "enum": [
+                "as_written",
+                "singbox_type"
+              ],
+              "description": "as_written — по написанию схемы (hy2-… ≠ hysteria2-…); singbox_type — по типу тела. Решение владельца 19.09.2026: singbox_type. Меняет identity живых узлов — DELTAS.md D133-6."
+            },
+            "server_path": {
+              "type": "string",
+              "description": "Путь тела, откуда шаблон метки берёт АДРЕС, когда тот лежит не в корне (PRIMITIVES §0.13). У объектного входа адрес лежит под якорем формы ($base), и шаблон его пути не знает — та же причина, по которой заведён default_from: \"body.<путь>\"."
+            },
+            "port_path": {
+              "type": "string",
+              "description": "Путь тела, откуда шаблон метки берёт ПОРТ. Парен к server_path: у схем с многопортовым телом (server_ports) порт метки берётся не оттуда, где его ждёт корень."
+            }
+          }
+        },
+        "impl": {
+          "type": "string",
+          "description": "Прозаическая сноска: чем сегодняшний код отличается от таблицы. Движок её не исполняет."
+        }
+      }
+    },
+    "mapper": {
+      "description": "Одна секция-маппер: вид источника у одного протокола.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "detect": {
+          "$ref": "#/definitions/detect"
+        },
+        "body_source": {
+          "enum": [
+            "uri",
+            "singbox",
+            "xray",
+            "wgconf",
+            "amnezia"
+          ],
+          "description": "Каким source тело приходит в санитайзер: на это опирается except_sources в правилах реестра."
+        },
+        "forms": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/form"
+          }
+        },
+        "ini_dialect": {
+          "$ref": "#/definitions/ini_dialect"
+        },
+        "overlays": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/overlay"
+          }
+        },
+        "userinfo": {
+          "$ref": "#/definitions/userinfo"
+        },
+        "label": {
+          "$ref": "#/definitions/labelSpec"
+        },
+        "kind_when": {
+          "type": "object",
+          "description": "РОД узла, объявляемый по условию на ВХОД: имя рода → условие. В тело род НЕ пишется — он доезжает до санитайзера контекстом рядом с body_source, и правила реестра читают его оператором `when.source_kind`.\n\nНужен там, где судить по телу нельзя ПО ПОСТРОЕНИЮ: ссылка `awg://` с негодными awg-значениями оставляет тело, неотличимое от обычного WireGuard, а потолок MTU есть свойство ЗАПРОШЕННОГО протокола. Роды проверяются в алфавитном порядке имён, побеждает первый подошедший — имена выбираются так, чтобы порядок не был значимым.\n\nФормы условия: {\"any_set\": [<источники>]} — задан любой из источников; {\"<источник>\": {\"matches\": \"…\"}} — источник содержит подстроку.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "any_set": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/param"
+          }
+        },
+        "include": {
+          "type": "array",
+          "description": "Переиспользуемые блоки с диалектными вариантами ('transports.ws#uri', 'tls#xray'). Разворачиваются загрузчиком до исполнения; конфликт имён — ошибка линтера, а не молчаливое перекрытие.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scheme_sets": {
+          "type": "object",
+          "description": "Написание схемы → набор присваиваний (socks4/socks5 → version, naive+quic → quic+bbr)."
+        },
+        "type_synonyms": {
+          "type": "object",
+          "description": "Тип тела чужого диалекта → схема реестра (shadowsocks → ss).",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "impl": {
+          "type": "string",
+          "description": "Прозаическая сноска ко всей секции: чем сегодняшний код отличается от таблицы. Движок её не исполняет."
+        },
+        "defaults": {
+          "type": "object"
+        },
+        "unknown_key": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Что делать с неперечисленным ключом источника. Молчание — тот самый дефект, ради которого затеяна кампания.",
+          "properties": {
+            "action": {
+              "enum": [
+                "keep",
+                "drop"
+              ]
+            },
+            "code": {
+              "type": "string"
+            },
+            "ignore": {
+              "type": "array",
+              "description": "Ключи УРОВНЯ ДОКУМЕНТА, полем узла не являющиеся (protocol, tag, remarks): не считаются неизвестными и кода не дают (PRIMITIVES §0.11). Без перечня xray-секция вешает узлу json_field_unknown на собственный protocol.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "impl": {
+              "type": "string",
+              "description": "Прозаическая сноска: чем сегодняшний код отличается от таблицы. Движок её не исполняет."
+            }
+          }
+        },
+        "emit": {
+          "description": "Обратное направление. null — обратного хода нет (xray, conf), и линтер не требует param_order.",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "form": {
+                  "type": "string"
+                },
+                "form_from": {
+                  "type": "object"
+                },
+                "param_order": {
+                  "description": "Порядок параметров на выходе. Норма — ПРАВИЛО \"alphabetical\" (PRIMITIVES §0.6): q.Encode() во всех эмиттерах уже даёт алфавит, и перечень имён был бы дублем правила. Массив имён остаётся для схем, где порядок задан не алфавитом; имена, не попавшие в перечень, идут следом по алфавиту.",
+                  "oneOf": [
+                    {
+                      "enum": [
+                        "alphabetical"
+                      ]
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "omit_default": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "emit_when": {
+                  "type": "object"
+                },
+                "omit_port": {
+                  "type": "boolean",
+                  "description": "Порт опускается на выходе, когда равен дефолту схемы (PRIMITIVES §0.12). Обращать defaults.server_port напрямую НЕЛЬЗЯ: у схемы бывает дефолт РАЗБОРА без права опускать порт на выходе — иначе ссылка перестала бы читаться клиентами, которые дефолта не знают. Префикс emit_ внутри объекта emit не пишется: он назвал бы emit дважды. У нас сегодня не выставлен нигде — hostPort (shareuri_helpers.go:96-101) пишет порт всегда, naive включительно; включение = строка в DELTAS.md."
+                },
+                "userinfo": {
+                  "description": "Выходная форма userinfo (PRIMITIVES §0.12). Обратить userinfo.decode разбора нельзя: это конвейер ПОПЫТОК, где base64? значит «может быть, а может и нет». Строка — короткое написание; объект называет паддинг явно, потому что Go пишет base64 с '=' (shareuri_ss.go:24-26), а Dart срезает, обе стороны читают обе формы, и по правилу эмита ни одна не меняет своё написание молча.",
+                  "oneOf": [
+                    {
+                      "enum": [
+                        "raw",
+                        "base64"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "form": {
+                          "enum": [
+                            "raw",
+                            "base64"
+                          ]
+                        },
+                        "padding": {
+                          "type": "boolean"
+                        },
+                        "empty_separator": {
+                          "type": "boolean",
+                          "description": "Писать «@» у узла БЕЗ userinfo: `hy2://@host` — способ схемы сказать «пароля нет», и без разделителя часть клиентов читает адрес как пароль."
+                        },
+                        "keep_empty_tail": {
+                          "type": "boolean",
+                          "description": "Писать разделитель у ПУСТОГО хвостового компонента: `socks4://userid:@host`. У socks4 пароля нет по протоколу, но разделитель клиенты пишут всегда, и его отсутствие часть из них читает как «имени нет»."
+                        }
+                      },
+                      "required": [
+                        "form"
+                      ]
+                    }
+                  ]
+                },
+                "json_map": {
+                  "type": "object",
+                  "description": "Форма, собирающая не query-ссылку, а base64(JSON): карта «ключ JSON → путь тела» (vmess v2rayn, shareuri_vmess.go:20-35). Значение — путь тела либо литерал.",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "json_always": {
+                  "type": "object",
+                  "description": "Ключи json_map, которые клиенты ждут ДАЖЕ ПУСТЫМИ: карта «ключ → заполнитель». Опускание такого ключа ломает чтение у панелей, а не экономит байты. Прежде объявлялся списком имён; карта нужна потому, что заполнитель у ключей разный (v: \"2\", aid: 0, net: \"tcp\", host: \"\")."
+                },
+                "impl": {
+                  "type": "string",
+                  "description": "Прозаическая сноска: чем сегодняшний код отличается от таблицы. Движок её не исполняет."
+                },
+                "names": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Переименование параметра НА ВЫХОДЕ: канон разбора → написание ссылки. Норма «канон = первый источник записи» описывает ЧТЕНИЕ, а вид ссылки есть де-факто формат СХЕМЫ для чужих клиентов: имя флага «не проверять сертификат» у vless/trojan/http — allowInsecure, у tuic — allow_insecure, у hysteria2 — insecure, и общий блок выбрать за них не может. Действует и по форме-контейнеру (имя gRPC-канала v2rayN лежит в ключе path)."
+                },
+                "refuse_when": {
+                  "type": "array",
+                  "description": "Условия, при которых узел ссылкой НЕ выражается: движок отказывает, а не отдаёт половину. «Сколько сущностей влезает в ссылку» есть свойство ФОРМАТА схемы, и проверке в коде там не место. Сегодня одна форма — {path, len_gt, why}: массив по пути длиннее len_gt.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "path",
+                      "why"
+                    ],
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "len_gt": {
+                        "type": "integer"
+                      },
+                      "why": {
+                        "type": "string",
+                        "description": "Причина прозой: она едет ЧЕЛОВЕКУ, и «не поддержано» не отвечает на его вопрос."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "sourceKind": {
+      "description": "ВИД ИСТОЧНИКА: чем оказался текст подписки целиком (registry/source_kinds.json). Уровнем ниже стоит секция-маппер (`mappers.<kind>`): вид источника говорит, как текст разрезать на элементы и каким маппером читать элемент, а маппер — как из элемента собрать узел.",
+      "type": "object",
+      "required": [
+        "source_kind",
+        "detect"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source_kind": {
+          "type": "string",
+          "description": "Имя вида; им же вид зовётся в логах и ожиданиях корпуса."
+        },
+        "priority": {
+          "type": "integer",
+          "description": "Порядок проверки; меньше = раньше. Уникален в пределах уровня — при совпадении нескольких detect побеждает меньший priority."
+        },
+        "mapper": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Секция-маппер, которой достаётся элемент. null — это распаковщик, а не маппер (vpn://, base64)."
+        },
+        "detect": {
+          "$ref": "#/definitions/detect"
+        },
+        "unwrap": {
+          "type": "string",
+          "description": "Оболочка-декодер: base64, amnezia_vpn."
+        },
+        "redetect": {
+          "type": "boolean",
+          "description": "Результат распаковки отправляется на повторный детект (подписка base64 внутри base64). Имя FROZEN (PRIMITIVES §0.1); черновик LxBox звал его reunwrap."
+        },
+        "requires_after_unwrap": {
+          "$ref": "#/definitions/detect",
+          "description": "Предикат, которому обязан удовлетворять РАСПАКОВАННЫЙ текст (PRIMITIVES §0.11). Страховка от ложного срабатывания base64-ветки: случайный текст из букв и цифр тоже проходит алфавит base64, и без проверки правдоподобия распакованный мусор вытеснил бы настоящий список ссылок."
+        },
+        "elements": {
+          "type": "string",
+          "description": "Где у документа лежат элементы (PRIMITIVES §0.11): '$self' (документ и есть элемент), 'lines' (построчно), '[]' (сам массив), 'outbounds[]+endpoints[]', '[].outbounds[]'. Упраздняет split: 'lines' как частный случай — старое написание остаётся читаемым, новые файлы пишут elements.",
+          "minLength": 1
+        },
+        "line_comment_prefixes": {
+          "type": "array",
+          "description": "Префиксы строк-комментариев построчного документа ('#', '//', ';'). Сегодня зашиты в код; счётчик пропущенных строк — наблюдаемый выход.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "split": {
+          "enum": [
+            "lines"
+          ],
+          "description": "УСТАРЕЛО в пользу elements: 'lines' (PRIMITIVES §0.11). Читается ради уже написанных файлов."
+        },
+        "desc_en": {
+          "type": "string"
+        },
+        "desc_ru": {
+          "type": "string"
+        },
+        "impl": {
+          "type": "string",
+          "description": "Пояснение для человека: чем ветка была в рукописном коде и почему стоит именно здесь. Движком не читается."
+        }
+      }
+    }
+  },
+  "properties": {
+    "mappers": {
+      "description": "Секции-мапперы протокола: ключ — вид источника (uri / xray / singbox / conf).",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/mapper"
+      }
+    },
+    "source_kinds": {
+      "description": "Только в registry/source_kinds.json: таблица видов источника.",
+      "type": "object",
+      "required": [
+        "kinds"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "note": {
+          "type": "string"
+        },
+        "note_order": {
+          "type": "string"
+        },
+        "note_unrecognized": {
+          "type": "string"
+        },
+        "max_unwrap_depth": {
+          "type": "integer",
+          "description": "Предел рекурсии распаковки. Сегодня предела нет вовсе (DELTAS D133-35).",
+          "minimum": 1
+        },
+        "on_unrecognized": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "severity": {
+              "enum": [
+                "info",
+                "warning",
+                "error"
+              ]
+            },
+            "include_fragment": {
+              "type": "integer"
+            }
+          }
+        },
+        "kinds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/sourceKind"
+          }
+        }
+      }
+    },
+    "blocks": {
+      "description": "Переиспользуемые блоки с диалектными вариантами (transports.json, tls.json): блок → диалект → записи.",
+      "type": "object"
+    }
+  }
+}

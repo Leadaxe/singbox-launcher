@@ -1,0 +1,3 @@
+# Приватный ключ декодируется в 33 байта вместо 32 — граница с другой стороны:
+# узел отбраковывается с тем же кодом wg_key_invalid. Ключ синтетический.
+wireguard://AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyAh@192.0.2.72:51820?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=&address=10.0.0.2/32&allowedips=0.0.0.0/0#node

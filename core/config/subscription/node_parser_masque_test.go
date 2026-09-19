@@ -61,9 +61,11 @@ func TestMasque_VHTTPDefaultAndValidation(t *testing.T) {
 	// default h3
 	n, _ := ParseNode(base+"#x", nil)
 	assertEq(t, n.Outbound["vhttp"], "h3")
-	// invalid value forced to h3
+	// Мусорное значение уезжает КАК ЕСТЬ: приведение к h3 с кодом
+	// masque_vhttp_invalid делает санитайзер по реестру (SPEC 131 W2d).
+	// Итог проверяет корпус — uri/masque/vhttp_invalid_forced_h3.
 	n2, _ := ParseNode(base+"&vhttp=tcp#x", nil)
-	assertEq(t, n2.Outbound["vhttp"], "h3")
+	assertEq(t, n2.Outbound["vhttp"], "tcp")
 	// h2 honored
 	n3, _ := ParseNode(base+"&vhttp=h2#x", nil)
 	assertEq(t, n3.Outbound["vhttp"], "h2")
@@ -162,22 +164,11 @@ func TestSanitizeSingboxOutboundMap_MasqueCanonicalSurvives(t *testing.T) {
 	assertEq(t, tls["server_name"], "current.example")
 }
 
-// masque идёт поверх QUIC — utls/reality ядро для него игнорирует, снимаем.
-func TestSanitizeSingboxOutboundMap_MasqueStripsUTLS(t *testing.T) {
-	ob := map[string]interface{}{
-		"type": "masque",
-		"tls": map[string]interface{}{
-			"server_name": "x.example",
-			"utls":        map[string]interface{}{"enabled": true, "fingerprint": "chrome"},
-		},
-	}
-	SanitizeSingboxOutboundMap(ob, "imported")
-
-	tls, _ := ob["tls"].(map[string]interface{})
-	if _, has := tls["utls"]; has {
-		t.Error("utls must be stripped on QUIC-based masque")
-	}
-}
+// СНЯТО (контракт 1.1.4): TestSanitizeSingboxOutboundMap_MasqueStripsUTLS.
+// masque идёт поверх QUIC, и utls/reality на нём снимает теперь реестр
+// (tls.json forbidden_for + forbidden_codes → tls_not_applicable_quic), а не
+// частная ветка санитайзера импорта. Правило проверяется на выходе конвейера
+// корпусом, а не копией посылки в юните.
 
 // Метка узла НИКОГДА не берётся из userinfo: там лежат учётные данные
 // (vless/tuic — UUID, wireguard/masque — приватный ключ, ss/trojan — пароль).

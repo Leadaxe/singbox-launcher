@@ -45,6 +45,35 @@ const (
 	OriginKindWGIni = state.OriginKindWGIni
 )
 
+// NodeSourceFromOriginKind — ВХОД узла (configtypes.NodeSource*) по
+// происхождению (Origin.Kind). ЕДИНСТВЕННЫЙ перевод между этими двумя
+// словарями.
+//
+// Словари разные не по недосмотру: origin.kind отвечает на вопрос «чем узел
+// чинить» (ссылка, .conf, JSON — три значения, они же лежат в state), а
+// `sources` реестра — «кто сочинил значение» (там различимы ещё xray, wgconf,
+// amnezia). Перевод нужен правилам значений с `except_sources`: тело в форме
+// ядра человек или подписка написали сами, и лаунчер его не переписывает — он
+// предупреждает (потолок MTU у AmneziaWG, решение владельца 18.09.2026).
+//
+// Перевод ОБЯЗАН быть один на оба пути — разбор подписки и пересчёт кодов при
+// загрузке state. Две копии разъехались бы, и узел менял бы правила от
+// перезапуска: ровно та болезнь, которую кампания и лечит.
+//
+// wg_ini → wgconf: .conf того же рода, что ссылка, его текст сочинял генератор
+// провайдера, и правило там работает заменой.
+func NodeSourceFromOriginKind(kind string) string {
+	switch strings.TrimSpace(kind) {
+	case OriginKindJSON:
+		return configtypes.NodeSourceSingbox
+	case OriginKindURI:
+		return configtypes.NodeSourceURI
+	case OriginKindWGIni:
+		return configtypes.NodeSourceWGConf
+	}
+	return ""
+}
+
 // ParsedBodyEntry — одна принятая запись тела: узел или провайдерская группа.
 type ParsedBodyEntry struct {
 	// RawTag — сырой тег, уникализированный в пределах тела (идентичность
@@ -220,17 +249,16 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 				st.reject(block.Err.Error(), OriginKindWGIni, block.Raw)
 				continue
 			}
-			node, err := ParseNode(block.URI, skip)
-			if err != nil {
-				// Блок разобрался в URI, но узлом не стал: запись остаётся в
-				// составе со СВОИМ исходником — показывать надо блок, а не
-				// промежуточную ссылку.
-				st.warn(fmt.Sprintf("record rejected: %v", err))
-				st.reject(err.Error(), OriginKindWGIni, block.Raw)
-				continue
+			// Узел уже собран СЕКЦИЕЙ из самого блока (SPEC 133):
+			// промежуточной ссылки в этом пути больше нет, и разбирать её
+			// обратно значило бы терять код `wgconf_dns_ignored` и метку
+			// из комментария [Peer].
+			node := block.Node
+			if node != nil && shouldSkipNode(node, skip) {
+				continue // отсечено skip-фильтром
 			}
 			if node == nil {
-				continue // отсечено skip-фильтром
+				continue
 			}
 			st.accept(node, OriginKindWGIni, block.Raw)
 		}
@@ -432,6 +460,15 @@ func (st *bodyParseState) accept(node *configtypes.ParsedNode, originKind, origi
 	// связку он получает у себя.
 	if node.Scheme == configtypes.SchemeTailscale {
 		node.AddWarning(WarnTailscaleFromSubscription)
+	}
+
+	// ВХОД узла проставляется здесь, из того же origin.kind, который поедет в
+	// state. Это не удобство, а инвариант: правила значений с `except_sources`
+	// (потолок MTU у AmneziaWG) читают вход и на разборе, и на пересчёте кодов
+	// при загрузке state, — и если бы вход брался из двух разных мест, узел
+	// менял бы правила после перезапуска. Один источник, один перевод.
+	if s := NodeSourceFromOriginKind(originKind); s != "" {
+		node.Source = s
 	}
 
 	entry := &ParsedBodyEntry{

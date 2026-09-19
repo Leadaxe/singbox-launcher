@@ -24,6 +24,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -99,14 +100,17 @@ func setNodeEnabled(src *wizardmodels.Source, rawTag string, enabled bool) {
 	if src == nil || rawTag == "" {
 		return
 	}
+	// Через corestate.Node.SetNodeEnabled, а не присваиванием: включение
+	// рукой стирает вердикт ядра (SPEC 132, CANON §9.4) — человек сказал
+	// «пробуй снова», и следующая сборка проверит узел заново.
 	for i := range src.Nodes {
 		if src.Nodes[i].Tag == rawTag {
-			src.Nodes[i].Enabled = enabled
+			src.Nodes[i].SetNodeEnabled(enabled)
 		}
 	}
 	// Узловой источник (server/chain/auto): узел один, и он сам источник.
 	if len(src.Nodes) == 0 && src.Tag == rawTag {
-		src.Enabled = enabled
+		src.Node.SetNodeEnabled(enabled)
 	}
 }
 
@@ -1186,7 +1190,12 @@ func showSourceEditWindowAt(
 	// как и любая другая правка формы. Cancel окна отменяет и это.
 
 	originCopyBtn := widget.NewButton(locale.T("Copy"), func() {
-		fynewidget.SetClipboard(uriEntry.Text)
+		// Тела узла тут нет: поле правится руками, и в буфер уходит ИМЕННО
+		// набранный текст, а не то, из чего собран scratch. Признак «несёт
+		// приватный ключ» считаем по самой строке — разбором тем же
+		// парсером (нечитаемая строка тела не имеет, диалога нет).
+		uri := uriEntry.Text
+		fynewidget.ConfirmShareURISecretCopy(win, subscription.ShareURITextCarriesPrivateKey(uri), uri)
 	})
 	originEditBtn := widget.NewButton(locale.T("Edit"), func() {
 		setOriginMode(true)
@@ -1376,10 +1385,19 @@ func showSourceEditWindowAt(
 			}
 			settingsContent.Add(widget.NewSeparator())
 			// Подпись по виду происхождения: «Server URI» над блоком
-			// wg-quick врала бы про природу текста (SPEC 119).
+			// wg-quick врала бы про природу текста (SPEC 119). Над JSON она
+			// врёт так же: у узла, рождённого объектом (вставленный конфиг,
+			// конструктор Tailscale — share-URI у него не бывает вовсе),
+			// в поле лежит не URI, и «Regen from raw» пересобирает узел
+			// именно из него.
 			uriLabel := locale.T("Server URI")
-			if scratch.Origin != nil && scratch.Origin.Kind == wizardmodels.OriginKindWGIni {
-				uriLabel = locale.T("Origin (wg-quick config)")
+			if scratch.Origin != nil {
+				switch scratch.Origin.Kind {
+				case wizardmodels.OriginKindWGIni:
+					uriLabel = locale.T("Origin (wg-quick config)")
+				case wizardmodels.OriginKindJSON:
+					uriLabel = locale.T("Origin (raw JSON)")
+				}
 			}
 			// Заголовок и кнопки — ОДНОЙ строкой: Origin занимает всю
 			// оставшуюся высоту, и кнопки под ним уезжали бы за прокрутку.
@@ -1391,10 +1409,12 @@ func showSourceEditWindowAt(
 			uriSizeRect := canvas.NewRectangle(color.Transparent)
 			uriSizeRect.SetMinSize(fyne.NewSize(0, uriEntryMinHeightFor(&scratch)))
 			settingsContent.Add(container.NewStack(uriSizeRect, uriEntry))
-			// Ручной config_json переопределяет URI — без пометки правка URI
-			// «молча не работает» и путает.
+			// Ручной config_json переопределяет происхождение — без пометки
+			// правка «молча не работает» и путает. Текст говорит «origin», а
+			// не «URI»: у JSON-узла в поле выше лежит объект, и звать его URI
+			// значило бы повторить ту же ложь, что и подпись поля.
 			if scratch.Origin != nil && scratch.Origin.Kind == wizardmodels.OriginKindJSON {
-				manualNote := widget.NewLabel(locale.T("A manual config_json is set — the URI above is ignored at build time (see the JSON tab)."))
+				manualNote := widget.NewLabel(locale.T("A manual config_json is set — the origin above is ignored at build time (see the JSON tab). Regen from raw rebuilds the node from it."))
 				manualNote.Wrapping = fyne.TextWrapWord
 				manualNote.Importance = widget.LowImportance
 				settingsContent.Add(manualNote)
@@ -1444,6 +1464,26 @@ func showSourceEditWindowAt(
 			// форму: показываем тег — единственное, что есть у всякой строки.
 			settingsContent.Add(widget.NewLabel(locale.T("Node tag")))
 			settingsContent.Add(nodeTagEntry)
+		}
+
+		// Раздел «Уведомления» — ПОСЛЕДНИМ блоком формы, под всеми
+		// настройками, за разделителем (дизайн владельца 18.09.2026). Та же
+		// функция, что в окне Info вкладки Servers (`nodewarn.Section`), а не
+		// копия вёрстки: иначе один и тот же код читался бы здесь и там
+		// разными словами — ровно то, ради чего пакет `nodewarn` и заведён.
+		//
+		// Прежде раздел стоял ПЕРВЫМ и отодвигал вниз поля, ради которых окно
+		// открывают чаще. Теперь коды свёрнуты в аккордеон и занимают
+		// несколько строк — место внизу им по размеру.
+		//
+		// Источник данных — рабочий буфер окна (`scratch.Node.Warnings`): у
+		// окна на УЗЕЛ это коды самого узла, у окна на строку корня —
+		// узлового источника (server/chain/auto). У контейнера (папка,
+		// подписка) своих кодов нет, Section вернёт nil, и блока не будет —
+		// состав со своими кодами живёт на вкладке Preview.
+		if warn := nodewarn.Section(scratch.Node.Warnings); warn != nil {
+			settingsContent.Add(widget.NewSeparator())
+			settingsContent.Add(warn)
 		}
 		settingsContent.Refresh()
 	}
@@ -1617,7 +1657,7 @@ func showSourceEditWindowAt(
 					} else {
 						emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), sourceIndex, map[string]int{})
 						rows = buildPreviewRows(src.Nodes, emitted.Nodes)
-						annotatePreviewGroupRows(rows, src.Nodes, model.Sources)
+						annotatePreviewGroupRows(rows, src.Nodes, model.Sources, src.ID)
 					}
 				default:
 					emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), sourceIndex, map[string]int{})
@@ -1722,9 +1762,16 @@ func showSourceEditWindowAt(
 								// наклонного текста.
 								sub := canvas.NewText("", theme.Color(theme.ColorNamePlaceHolder))
 								sub.TextSize = previewSubtitleTextSize
+								// Иконка «к сведению» — в подстроке, обе её
+								// позиции создаются ОДИН раз и дальше только
+								// показываются/прячутся: строки widget.List
+								// переиспользуются, и пересборка контейнера
+								// порвала бы разбор дерева в updateItem ниже.
+								subLine := nodewarn.NewInfoSubtitleLine(sub)
 
 								titleBox := container.New(
-									previewTightVBox{gap: previewTitleSubtitleGap}, name, sub)
+									previewTightVBox{gap: previewTitleSubtitleGap},
+									name, subLine.Content)
 								// Ведущий кластер — ВСЕГДА HBox, даже когда
 								// захвата нет: иначе разбор строки в updateItem
 								// зависел бы от вида контейнера, а это ровно та
@@ -1796,26 +1843,42 @@ func showSourceEditWindowAt(
 									return
 								}
 								name, _ := titleBox.Objects[0].(*canvas.Text)
-								sub, _ := titleBox.Objects[1].(*canvas.Text)
-								if name == nil || sub == nil {
+								// Подстрока — строка с местами под иконку
+								// info: [иконка, текст, иконка].
+								subLine := nodewarn.BindInfoSubtitleLine(titleBox.Objects[1])
+								subBox, _ := titleBox.Objects[1].(*fyne.Container)
+								if name == nil || subLine == nil || subBox == nil {
+									return
+								}
+								sub, _ := subBox.Objects[1].(*canvas.Text)
+								if sub == nil {
 									return
 								}
 
+								// Имя ЧИСТОЕ: знак info переехал в подстроку
+								// (правка владельца) — имя адресует узел.
 								name.Text = previewRowTitle(pr)
 								name.Color = theme.Color(theme.ColorNameForeground)
 								name.Refresh()
 
 								sub.Text = previewRowSubtitle(pr)
-								if pr.Unsupported {
+								if previewRowWarn(pr) {
 									// Причина — там же, где у остальных строк
 									// «протокол·транспорт·security»: подстрока
 									// строки отвечает на «что это», и у
 									// неразобранной записи ответ ровно такой.
+									// SPEC 131 §6: тем же цветом красится
+									// подстрока узла с деградацией — знак один
+									// на оба смысла, развилки в строке нет.
 									sub.Color = theme.Color(theme.ColorNameWarning)
 								} else {
 									sub.Color = theme.Color(theme.ColorNamePlaceHolder)
 								}
 								sub.Refresh()
+								// Слева у здорового узла, в конце — у узла с
+								// ✖/⚠: начало подстроки принадлежит старшему
+								// уровню.
+								subLine.Update(pr.Warnings)
 
 								identity := identities[id]
 								if pr.Unsupported {
@@ -1849,7 +1912,16 @@ func showSourceEditWindowAt(
 								}
 							},
 						)
-						previewListHost.Add(srvList)
+						// SPEC 131 §6: сводка деградаций конвейера — ПОД
+						// списком, одной строкой с раскрытием. Над списком её
+						// быть не может: список виртуализирован и растёт на
+						// всю высоту, а сводка отвечает на вопрос, который
+						// возникает уже после взгляда на состав.
+						if block := previewWarningsBlock(nn); block != nil {
+							previewListHost.Add(container.NewBorder(nil, block, nil, nil, srvList))
+						} else {
+							previewListHost.Add(srvList)
+						}
 					}
 				}
 				previewListHost.Refresh()

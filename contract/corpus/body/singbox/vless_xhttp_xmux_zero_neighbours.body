@@ -1,0 +1,18 @@
+# sing-box: vless + xhttp с полной секцией xmux, где НЕЗАДАННЫЕ соседи
+# выписаны нулями ("0" и 0). Кейс из реального бага 18.09.2026: так пишет
+# секцию живая подписка (13 страновых узлов), значения анонимизированы.
+#
+# Тело обязано пройти БЕЗ ИЗМЕНЕНИЙ и БЕЗ warnings. Две ловушки разом:
+#
+# 1) conflicts max_concurrency ↔ max_connections: ядро судит их по ЗНАЧЕНИЮ
+#    и считает конфликтом только оба > 0 (transport/v2rayxhttp/xmux.go).
+#    "0" = «не задано». Санитайзер, сверявший НАЛИЧИЕ ключа, снимал
+#    max_concurrency="16-32" и подставлял дефолт "1-1" — у живого узла
+#    молча падала пропускная способность.
+#
+# 2) all_or_nothing у xmux — документация о поведении ядра, не действие:
+#    при частичной секции ядро оставляет незаданные поля нулями (= без
+#    лимита), поэтому дописывать дефолты соседей нельзя.
+#
+# См. SPECS/131-F-O-UNIFIED_NODE_PIPELINE/DRIFT.md §7.
+{"type":"vless","tag":"xmux-zero-neighbours","server":"example-1.com","server_port":8443,"uuid":"11111111-1111-1111-1111-111111111111","transport":{"type":"xhttp","path":"/api/v2/stream/by-group-id/a0672485620ba65b","mode":"stream-one","x_padding_bytes":"50-150","xmux":{"max_concurrency":"16-32","max_connections":"0","c_max_reuse_times":"0","h_max_request_times":"600-900","h_max_reusable_secs":"1800-3000","h_keep_alive_period":0}},"tls":{"enabled":true,"server_name":"example-2.com","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw","short_id":"6c3a75b342477f24"}}}

@@ -1,4 +1,7 @@
 {
+  "meta": {
+    "extension": "desktop"
+  },
   "nodes": [
     {
       "entry": {

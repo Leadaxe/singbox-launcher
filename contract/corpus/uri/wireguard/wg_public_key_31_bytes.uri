@@ -1,0 +1,4 @@
+# Публичный ключ пира в 31 байт — узел отбраковывается реестром
+# (peers[].public_key, on_invalid drop_node, код wg_key_invalid). Значение в
+# коде видно целиком: ключ пира секретом не помечен. Ключ синтетический.
+wireguard://UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=@192.0.2.72:51820?publickey=AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHw==&address=10.0.0.2/32&allowedips=0.0.0.0/0#node

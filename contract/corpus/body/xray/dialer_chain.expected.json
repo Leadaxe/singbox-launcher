@@ -1,0 +1,34 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "chain": [
+        {
+          "entry": {
+            "password": "p",
+            "server": "r.example",
+            "server_port": 1080,
+            "type": "socks",
+            "username": "u",
+            "version": "5"
+          },
+          "kind": "outbound",
+          "label": "relay",
+          "scheme": "socks"
+        }
+      ],
+      "entry": {
+        "server": "a.example",
+        "server_port": 443,
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "chain",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

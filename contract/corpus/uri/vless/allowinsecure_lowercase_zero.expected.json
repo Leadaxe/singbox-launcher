@@ -25,7 +25,11 @@
       "label": "t",
       "scheme": "vless",
       "warnings": [
-        "reality_fp_not_chrome"
+        {
+          "code": "reality_fp_not_chrome",
+          "path": "tls.utls.fingerprint",
+          "value": "qq"
+        }
       ]
     }
   ],

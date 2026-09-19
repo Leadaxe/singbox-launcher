@@ -19,21 +19,30 @@
         "random",
         "randomized"
       ],
-      "note": "Зеркало uTLSClientHelloID ядра (common/tls/utls_client.go); списки Go (singboxUTLSFingerprints, node_parser_transport.go:49-56) и Dart (kUtlsFingerprints, utls_fingerprint.dart:21-37) байт-идентичны. Xray-алиасы канонизируются по префиксу hello* (hellochrome_120 → chrome) в обоих; префикс hellorandom→random есть только в Go (Dart знает только hellorandomized). РАЗРЫВ ДЕГРАДАЦИИ: мусор вне списка Go срезает в '' (без utls-блока), Dart заменяет на chrome + UnknownFingerprintWarning — расходится и identity, и поведение; выровнять на ревью. Канонический список сверять с uTLSClientHelloID в module cache, не по памяти."
+      "note": "Зеркало uTLSClientHelloID ядра (common/tls/utls_client.go:380; память utls-fp-allowlist). СВЕРЕНО с tls.json: uri /tls/params/fp/values и body /tls/utls/fingerprint/values совпадают с этим списком байт-в-байт (у body дополнительно есть \"\" — отсутствие значения). Списки Go (singboxUTLSFingerprints, node_parser_transport.go:47-58) и Dart (kUtlsFingerprints, utls_fingerprint.dart:21-37) тоже байт-идентичны. Xray-алиасы канонизируются по префиксу hello* (hellochrome_120 → chrome) в обоих; префикс hellorandom→random (без 'ized') есть только в Go — целевое = вариант Go (DRIFT §7.1): HelloRandom реальная Xray-запись, а Dart уводит её в junk и подменяет случайный отпечаток хромовым молча. РАЗРЫВ ДЕГРАДАЦИИ ЗАКРЫТ (DRIFT §2(c), целевое = вариант Dart): мусор вне списка → coerce 'chrome' + код utls_fp_unknown на ВСЕХ путях. Было: Go срезал в '' (URI-путь затем подставлял 'random', санитайзер — 'chrome', эмиттер снимал ключ), Dart заменял на 'chrome' с кодом — расходились и identity, и поведение. Снять блок нельзя: под REALITY ядро требует uTLS (B «uTLS is required by reality client»), а вне REALITY «снять» = молча сменить ClientHello на голый Go-TLS, что отличимо на DPI. Сам мусор даёт B «unknown uTLS fingerprint». Канонический список сверять с uTLSClientHelloID в module cache, не по памяти."
     },
     "ss_methods": {
       "values": [
-        "2022-blake3-aes-128-gcm",
-        "2022-blake3-aes-256-gcm",
-        "2022-blake3-chacha20-poly1305",
         "none",
         "aes-128-gcm",
         "aes-192-gcm",
         "aes-256-gcm",
         "chacha20-ietf-poly1305",
-        "xchacha20-ietf-poly1305"
+        "xchacha20-ietf-poly1305",
+        "2022-blake3-aes-128-gcm",
+        "2022-blake3-aes-256-gcm",
+        "2022-blake3-chacha20-poly1305",
+        "aes-128-ctr",
+        "aes-192-ctr",
+        "aes-256-ctr",
+        "aes-128-cfb",
+        "aes-192-cfb",
+        "aes-256-cfb",
+        "rc4-md5",
+        "chacha20-ietf",
+        "xchacha20"
       ],
-      "note": "Go isValidShadowsocksMethod (node_parser_ss.go:6-21) и Dart shadowsocksMethods (uri_utils.dart:280-293) идентичны. Метод вне списка → нода дропается (ошибка/null-skip) в обоих."
+      "note": "СПИСОК ПРИВЕДЁН К ЯДРУ (DRIFT §9.3, прогон на пине 1.14.1-lx.4): 18 методов из sing-shadowsocks2 v0.2.1 cipher/method_registry.go, четыре источника регистрации — method_none.go:15 (none), shadowaead/method.go:24-29 (5 AEAD), shadowaead_2022/method.go:33-36 (3 значения 2022-blake3), shadowstream/method.go:24-33 (9 legacy-stream). Все 18 прогнаны — все D. Контроль: 'garbage' → B «unknown method: garbage», 'AES-128-GCM' → B (реестр ядра регистрозависим), '' → B «unknown method: » (дефолта у пустого значения нет, в отличие от enum'ов key_share и xhttp). БЫЛО: Go isValidShadowsocksMethod (node_parser_ss.go:6-21) и Dart shadowsocksMethods (uri_utils.dart:470-483) держали идентичные 9 значений (AEAD + 2022) и ДРОПАЛИ УЗЕЛ на девяти рабочих legacy-stream-шифрах, которые ядро принимает без единого warning'а — оба клиента строже ядра, пользователь не получал ни узла, ни объяснения. РЕШЕНИЕ ВЛАДЕЛЬЦА 18.09.2026 (D-122, вариант А §7.10): legacy-шифры принимаются, узел живёт с info-кодом ss_method_legacy (advisory у shadowsocks.body.fields.method); дроп (ss_method_invalid) — только вне 18. Код Go/Dart догоняет реестр в W2; сторожевого теста по ss_methods в Go пока нет (заявка в SPECS/131-.../new_codes.md)."
     },
     "tuic_congestion": {
       "values": [
@@ -41,21 +50,21 @@
         "new_reno",
         "bbr"
       ],
-      "note": "Go isValidTuicCongestionControl (node_parser_tuic.go:14-21) и Dart _normalizeCongestion (tuic_parser.dart:62-63) — один набор. Деградация мусора различается по форме (Go дропает ключ, Dart пишет cubic), для ядра эквивалентно (дефолт cubic)."
+      "note": "Go isValidTuicCongestionControl (node_parser_tuic.go:14-16) и Dart _normalizeCongestion (tuic_parser.dart:59-61) — один набор; ядро на мусоре даёт B «unknown congestion control algorithm», то есть гард обязателен. ЦЕЛЕВОЕ (DRIFT §7.7, против правила «целевое = LxBox»): мусор → снять ключ + код (вариант Go), и ДЕФОЛТ НЕ ПИШЕТСЯ. Dart сегодня материализует congestion_control:cubic и alpn:[\"h3\"] всегда — это ломает identity-паритет tuic-узлов между платформами, мешает ядру сменить дефолт и прямо противоречит CANON «дефолты не пишутся» и ТЗ §3.2 «дефолты ядра не материализуются»."
     },
     "tuic_udp_relay_mode": {
       "values": [
         "native",
         "quic"
       ],
-      "note": "Go node_parser_tuic.go:78-84, Dart tuic_parser.dart:55. Мусор: Go дропает ключ, Dart пишет native."
+      "note": "Go node_parser_tuic.go:79-86, Dart tuic_parser.dart:32-35. ЦЕЛЕВОЕ (DRIFT §7.8, против правила «целевое = LxBox») = вариант Go: мусор → снять ключ + код tuic_udp_relay_mode_invalid. Обоснование: ядро мусор ПРИНИМАЕТ (вердикт C — switch без default, protocol/tuic/outbound.go:59-63, значение молча проваливается в native), значит подстановка 'native' (вариант Dart) ни от чего не спасает — она лишь скрывает от пользователя, что подписка просила режим, которого нет. Симметрично congestion_control, где обе стороны уже ставят код. Дополнительно: udp_relay_mode конфликтует с udp_over_stream (B «udp_over_stream is conflict with udp_relay_mode») — правило conflicts в body."
     },
     "hysteria2_obfs": {
       "values": [
         "salamander",
         "gecko"
       ],
-      "note": "Ядро lx реализует оба типа (protocol/hysteria2). РАЗРЫВ ЗАКРЫТ (SPEC 103, фаза 1): Go-allowlist принимал только salamander и молча дропал рабочий gecko — добавлен (isValidHysteria2ObfsType, node_parser_hysteria2.go). Dart принимал оба изначально (kHysteria2ObfsTypes, hysteria2_obfs.dart). Сверяется тестом TestRegistrySyncHysteria2Obfs."
+      "note": "Ядро lx реализует оба типа (protocol/hysteria2). РАЗРЫВ ЗАКРЫТ (SPEC 103, фаза 1): Go-allowlist принимал только salamander и молча дропал рабочий gecko — добавлен (isValidHysteria2ObfsType, node_parser_hysteria2.go). Dart принимал оба изначально (kHysteria2ObfsTypes, hysteria2_obfs.dart). Сверяется тестом TestRegistrySyncHysteria2Obfs. ЦЕЛЕВОЕ (DRIFT §2(l)) = вариант Dart: trim + toLowerCase на ВСЕХ путях (Go на URI-пути сверяет регистрозависимо, node_parser_hysteria2.go:15-17,39, а лоуэркейсит только санитайзер). obfs без пароля — снять весь блок + код obfs_password_missing на всех путях (ядро: B «missing obfs password»); у Go санитайзер сегодня делает это без кода."
     },
     "packet_encoding": {
       "values": [
@@ -63,14 +72,25 @@
         "packetaddr",
         "xudp"
       ],
-      "note": "Go node_parser_core.go:609-624, Dart normalizePacketEncoding (uri_utils.dart:151-159). Алиас none → '' (молчаливый дроп, by-design «без encoding») — оба. Прочий мусор → дроп поля с warning — оба. Регистр нормализуется к lowercase."
+      "note": "Go node_parser_core.go:689-704, Dart normalizePacketEncoding (uri_utils.dart:254-267). Алиас none → '' (молчаливый дроп, by-design «без encoding») — оба. Прочий мусор → дроп поля с warning packet_encoding_unknown — оба. Регистр нормализуется к lowercase. ЗАПИСЬ ИСПРАВЛЕНА (DRIFT §4): «иначе паника ядра (SPEC 049)» протухла — на пине это аккуратный ФАТАЛ B («unknown packet encoding: none» / «…: garbage»), не паника. Ядро починили, но фатальность осталась: гард по-прежнему обязателен, потому что валит ВЕСЬ конфиг. Дыра эмиттера Go (outbound_generator.go:676-678 пишет любую непустую строку) закрывается табличным эмиттером W2."
     },
     "vless_flow": {
       "values": [
         "",
         "xtls-rprx-vision"
       ],
-      "note": "Алиас xtls-rprx-vision-udp443 → xtls-rprx-vision + packet_encoding=xudp + порт 443 (Go node_parser_core.go:600-607 и xray_outbound_convert.go:153-155; Dart json_parsers.dart:424-426). Dart-эмит гасит flow при любом транспорте (§115, node_spec_emit.dart:48-79); Go фильтрует flow на финальном эмиттере на ВСЕХ путях (outbound_generator.go:351-358): гасит и значения вне {'', xtls-rprx-vision}, и vision при наличии транспорта — в buildOutbound мусор попадает в Outbound['flow'], но до config.json не доезжает (плюс гейт на singbox-импорте, singbox_sanitize.go:220-236). Разрыва строгости в итоговом конфиге нет — см. vless.json degrade «drop поля»."
+      "note": "Ядро принимает ровно '' и 'xtls-rprx-vision' (sing-vmess/vless.NewClient); иное значение — B «unsupported flow», весь конфиг мёртв. Алиас xtls-rprx-vision-udp443 разворачивается в vision + packet_encoding=xudp. ЦЕЛЕВОЕ (DRIFT §2(g)/(h)): (а) ОДИН гейт на конвейере вместо двух Go-гейтов, ни один из которых не покрывал URI-путь до эмита (форма Dart строго лучше); мусор → снять поле + flow_deprecated; (б) vision + транспорт → снять flow + vision_with_transport: ядро такую пару ПРИНИМАЕТ (D), но Vision поверх ws/grpc бессмыслен — его инспектор не видит TLS-рекордов, узел «работает» без обещанной обфускации, и молчание Go тут хуже кода; (в) порт при -udp443 НЕ ПЕРЕПИСЫВАЕТСЯ ни на одном пути (DRIFT §7.4 — баг у обоих: Go переписывал на URI-пути, Dart на Xray-пути; суффикс означает «UDP/443 идёт напрямую», а не «TCP-порт = 443», и переписывание делает узел :8443 недозваниваемым)."
+    },
+    "vmess_security": {
+      "values": [
+        "auto",
+        "none",
+        "zero",
+        "aes-128-cfb",
+        "aes-128-gcm",
+        "chacha20-poly1305"
+      ],
+      "note": "Точный набор ядра — sing-vmess/client.go:44-52, подтверждён прогоном на пине 1.14.1-lx.4 (DRIFT §9.5): auto/none/zero/aes-128-cfb/aes-128-gcm/chacha20-poly1305 — D; 'aes-128-ctr' и 'garbage' — B «unsupported security type», весь конфиг мёртв; '' — D (дефолт). БЫЛО (DRIFT §4/§7.11, ОБЩИЙ БАГ обеих сторон в обе стороны сразу): Go normalizeVMessSecurity (node_parser_vmess.go:18-31) и Dart normalizeVmessSecurity (uri_utils.dart:451-467) держали 6 значений с НЕСУЩЕСТВУЮЩИМ 'aes-128-ctr' и теряли РЕАЛЬНЫЙ 'aes-128-cfb' (узел молча уезжал на auto). Xray-ветка Go (xray_protocols.go:368-377) была ближе к истине (5 значений без ctr), но тоже без cfb. Алиас chacha20-ietf-poly1305 → chacha20-poly1305 сохраняется в обоих. Мусор и пусто → coerce 'auto' с кодом (как сегодня в uri.query.scy). Знать при сверке identity: при включённом TLS ядро молча переписывает auto→zero (protocol/vmess/outbound.go:106). Код Go/Dart догоняет реестр в W2 — сторожевой тест по vmess_security до тех пор красный ОЖИДАЕМО."
     }
   }
 }

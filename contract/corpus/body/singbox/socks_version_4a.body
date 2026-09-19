@@ -1,0 +1,2 @@
+# sing-box: socks с version "4a".
+{"type":"socks","tag":"sb-socks4a","server":"example-2.com","server_port":1080,"version":"4a"}

@@ -1,0 +1,6 @@
+# ПАРНОСТЬ ВХОДОВ (находка №27): у пира НЕТ allowed_ips. Дефолт
+# 0.0.0.0/0,::/0 подставляет РЕЕСТР (default_when), поэтому тело собирается так
+# же, как из ссылки без allowedips= (uri/wireguard/missing_allowedips_rejected).
+# Прежде дефолт жил двумя копиями в парсерах ссылки и профиля Amnezia, а это
+# тело узел терял: ядро отвергает пира без allowed_ips фаталом на весь конфиг.
+{"endpoints":[{"type":"wireguard","tag":"wg-no-aips","address":["10.0.0.2/32"],"private_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=","peers":[{"address":"example-3.com","port":51820,"public_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="}]}]}

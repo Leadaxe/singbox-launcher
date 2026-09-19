@@ -1,0 +1,5 @@
+# Граница диапазона h1 шире uint32 — ядро отвергает такое значение разбором и
+# роняет ВЕСЬ конфиг, поэтому поле снимается с кодом awg_header_invalid, а узел
+# живёт на дефолтном WireGuard-заголовке. Границы объявлены типом реестра
+# awg_range (запрос LxBox (1)).
+wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@example-1.com:51820?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.0.0.2/32&allowedips=0.0.0.0/0&h1=1-4294967296&h2=500&h3=600&h4=700#awg-wide

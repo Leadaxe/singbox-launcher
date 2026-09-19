@@ -4,59 +4,88 @@
   "kind": "outbound",
   "singbox_type": "ssh",
   "aliases": [],
-  "sources": ["uri", "singbox"],
+  "sources": [
+    "uri",
+    "singbox"
+  ],
   "extension": null,
   "uri": {
     "userinfo": {
+      "maps_to": [
+        "user",
+        "password"
+      ],
       "meaning": "user:password",
-      "note": "user обязателен по-разному. URI-путь: Go при пустом userinfo валит ноду (валидация hostname+userinfo, node_parser_core.go:308-316); root-ветка node_parser_ssh.go:20-23 вызывается только с URI-пути (node_parser_core.go:781), где пустой userinfo уже отсечён — мёртвый код; Dart при пустом user — null-skip (ssh_parser.dart:17). Singbox-импорт: root при пустом user дефолтит ДАРТ (json_parsers.dart:967); Go кладёт map как есть без дефолта (singbox_import.go:248-298), GenerateNodeJSON пустой user просто не эмитит (outbound_generator.go:310-316) — РАЗРЫВ (новое, вне §9). Go share-URI эмиттер дефолтит root без warning (shareuri_ssh.go:12-15). password опционален. Дефолтный порт 22."
+      "desc_en": "user:password of the account.",
+      "desc_ru": "user:password учётной записи.",
+      "impl": "user обязателен по-разному. URI-путь: Go при пустом userinfo валит ноду (валидация hostname+userinfo, node_parser_core.go:308-316); root-ветка node_parser_ssh.go:20-23 вызывается только с URI-пути (node_parser_core.go:781), где пустой userinfo уже отсечён — мёртвый код; Dart при пустом user — null-skip (ssh_parser.dart:17). Singbox-импорт: root при пустом user дефолтит ДАРТ (json_parsers.dart:967); Go кладёт map как есть без дефолта (singbox_import.go:248-298), GenerateNodeJSON пустой user просто не эмитит (outbound_generator.go:310-316) — РАЗРЫВ (новое, вне §9). Go share-URI эмиттер дефолтит root без warning (shareuri_ssh.go:12-15). password опционален. Дефолтный порт 22."
     },
     "query": {
       "private_key": {
         "type": "string",
         "default": null,
-        "note": "Inline приватный ключ (PEM; значения уже percent-decoded — '+' в base64 не портится). РАЗРЫВ ЭМИТА (новое, вне §9): Go отказывается кодировать share-URI с inline private_key (ErrShareURINotSupported, shareuri_ssh.go:24-26); Dart пишет ключ прямо в query (node_spec_emit.dart:482). Секрет в URI — решить политику на ревью."
+        "maps_to": "private_key",
+        "desc_en": "Inline private key.",
+        "desc_ru": "Приватный ключ строкой.",
+        "impl": "Inline приватный ключ (PEM; значения уже percent-decoded — '+' в base64 не портится). Эмит сведён 18.09.2026 (решение владельца, TASKS_LXBOX §24.10): обе стороны пишут ключ в query `private_key=` и отдают такую ссылку только после предупреждения и подтверждения пользователя; Go эмитит private_key_path лишь при пустом private_key; список из нескольких ключей Go не кодирует (ErrShareURINotSupported) — склейка обратно не разберётся."
       },
       "private_key_path": {
         "type": "string",
         "default": null,
         "ext": "desktop",
-        "note": "Путь к файлу ключа; учитывается только если private_key пуст. Только Go (на мобиле путей ФС нет by design)."
+        "maps_to": "private_key_path",
+        "desc_en": "Path to the private key file.",
+        "desc_ru": "Путь к файлу приватного ключа.",
+        "impl": "Путь к файлу ключа; учитывается только если private_key пуст. Только Go (на мобиле путей ФС нет by design)."
       },
       "private_key_passphrase": {
         "type": "string",
         "default": null,
-        "note": "Пассфраза приватного ключа."
+        "maps_to": "private_key_passphrase",
+        "desc_en": "Passphrase of the private key.",
+        "desc_ru": "Пароль приватного ключа.",
+        "impl": "Пассфраза приватного ключа."
       },
       "host_key": {
         "type": "string",
         "default": null,
-        "note": "Список через запятую → host_key []string (пустые элементы отбрасываются)."
+        "maps_to": "host_key",
+        "desc_en": "Accepted server host keys.",
+        "desc_ru": "Принимаемые ключи хоста сервера.",
+        "impl": "Список через запятую → host_key []string (пустые элементы отбрасываются)."
       },
       "host_key_algorithms": {
         "type": "string",
         "default": null,
-        "note": "Список через запятую → host_key_algorithms []string."
+        "maps_to": "host_key_algorithms",
+        "desc_en": "Accepted host key algorithms.",
+        "desc_ru": "Принимаемые алгоритмы ключа хоста.",
+        "impl": "Список через запятую → host_key_algorithms []string."
       },
       "client_version": {
         "type": "string",
         "default": null,
         "ext": "desktop",
-        "note": "→ client_version. Только Go."
+        "maps_to": "client_version",
+        "desc_en": "SSH client version string.",
+        "desc_ru": "Строка версии SSH-клиента.",
+        "impl": "→ client_version. Только Go."
       }
     },
     "fragment": "label"
   },
   "emit": {
     "share_uri": true,
-    "param_order": ["client_version", "host_key", "host_key_algorithms", "private_key", "private_key_passphrase", "private_key_path"],
-    "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart toUriSsh → buildQuery sort, node_spec_emit.dart:494 + uri_utils.dart:306-312); private_key_path/client_version — desktop-хвост Go. Go с inline private_key URI не эмитит вовсе."
+    "param_order": [
+      "client_version",
+      "host_key",
+      "host_key_algorithms",
+      "private_key",
+      "private_key_passphrase",
+      "private_key_path"
+    ],
+    "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart toUriSsh → buildQuery sort, node_spec_emit.dart:494 + uri_utils.dart:306-312); private_key_path/client_version — desktop-хвост Go. Inline private_key эмитят обе стороны (после подтверждения пользователя)."
   },
-  "degrade": [
-    "пустой user → URI-путь: Go ошибка ноды, Dart null-skip; singbox-импорт: Go эмитит outbound без user (root НЕ дефолтит), Dart дефолтит 'root' — выровнять",
-    "пустые элементы в host_key / host_key_algorithms → отбрасываются",
-    "private_key задан → private_key_path игнорируется (Go)"
-  ],
   "refs": {
     "go": [
       "core/config/subscription/node_parser_core.go:249-251",
@@ -70,5 +99,253 @@
       "lib/models/node_spec_emit.dart:465-497",
       "lib/services/parser/json_parsers.dart:797"
     ]
+  },
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": [
+      "server",
+      "server_port",
+      "user",
+      "password",
+      "private_key",
+      "private_key_path",
+      "private_key_passphrase",
+      "host_key",
+      "host_key_algorithms",
+      "client_version",
+      "cipher",
+      "mac",
+      "kex_algorithm",
+      "__dialer"
+    ],
+    "fields": {
+      "server": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server address: domain or IP.",
+        "desc_ru": "Адрес сервера: домен или IP.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "server_port": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server port.",
+        "desc_ru": "Порт сервера.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "user": {
+        "type": "string",
+        "default": "root",
+        "desc_en": "SSH user name.",
+        "desc_ru": "Имя пользователя SSH.",
+        "impl": "Пусто → root (код ssh_user_default). server_port по умолчанию 22 — подставляет реализация, не option/."
+      },
+      "password": {
+        "type": "string",
+        "secret": true,
+        "desc_en": "SSH password.",
+        "desc_ru": "Пароль SSH.",
+        "impl": "option/ssh.go Password. Секрет."
+      },
+      "private_key": {
+        "type": "listable_string",
+        "secret": true,
+        "desc_en": "Private key contents, PEM form.",
+        "desc_ru": "Содержимое закрытого ключа в форме PEM.",
+        "impl": "Listable: строка или массив строк. Секрет."
+      },
+      "private_key_path": {
+        "type": "string",
+        "secret": true,
+        "desc_en": "Path to the private key file.",
+        "desc_ru": "Путь к файлу закрытого ключа.",
+        "impl": "Путь к секрету — маскируется вместе с ключом."
+      },
+      "private_key_passphrase": {
+        "type": "string",
+        "secret": true,
+        "desc_en": "Passphrase of the private key.",
+        "desc_ru": "Парольная фраза закрытого ключа.",
+        "impl": "option/ssh.go PrivateKeyPassphrase. Секрет."
+      },
+      "host_key": {
+        "type": "listable_string",
+        "desc_en": "Expected server host keys.",
+        "desc_ru": "Ожидаемые ключи хоста сервера.",
+        "impl": "Строки формата authorized_keys; несовпадение = «host key mismatch» на подключении."
+      },
+      "host_key_algorithms": {
+        "type": "listable_string",
+        "desc_en": "Accepted host key algorithms.",
+        "desc_ru": "Допустимые алгоритмы ключа хоста.",
+        "impl": "Закрытого enum в ядре нет."
+      },
+      "client_version": {
+        "type": "string",
+        "desc_en": "SSH client version string.",
+        "desc_ru": "Строка версии SSH-клиента.",
+        "impl": "Пусто → случайная из списка ядра."
+      },
+      "cipher": {
+        "type": "listable_string",
+        "desc_en": "Accepted ciphers.",
+        "desc_ru": "Допустимые шифры.",
+        "impl": "Закрытого enum в ядре нет (upstream 1.14, не форк)."
+      },
+      "mac": {
+        "type": "listable_string",
+        "desc_en": "Accepted MAC algorithms.",
+        "desc_ru": "Допустимые алгоритмы MAC.",
+        "impl": "Закрытого enum в ядре нет."
+      },
+      "kex_algorithm": {
+        "type": "listable_string",
+        "desc_en": "Accepted key exchange algorithms.",
+        "desc_ru": "Допустимые алгоритмы обмена ключами.",
+        "impl": "Закрытого enum в ядре нет."
+      },
+      "__dialer": {
+        "type": "ref",
+        "ref": "dialer",
+        "inline": true,
+        "desc_en": "Common dialer fields, inlined flat into the body.",
+        "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
+        "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
+      }
+    }
+  },
+  "mappers": {
+    "uri": {
+      "body_source": "uri",
+      "detect": {
+        "scheme_in": [
+          "ssh"
+        ]
+      },
+      "forms": [
+        {
+          "id": "url",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            "url"
+          ],
+          "space": "url"
+        }
+      ],
+      "userinfo": {
+        "split": {
+          "sep": ":",
+          "limit": 2
+        },
+        "into": [
+          "user",
+          "password"
+        ],
+        "single_into": "user",
+        "impl": "Одиночный userinfo — ИМЯ пользователя: «ssh://admin@host» это вход по ключу, пароля в ссылке нет (корпус default_port_22, user_only_custom_port). Совпадает с into[0], но объявлено явно."
+      },
+      "label": {
+        "source": "fragment",
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "singbox_type"
+        }
+      },
+      "defaults": {
+        "type": "ssh",
+        "server_port": 22
+      },
+      "params": {
+        "server": {
+          "source": "host",
+          "maps_to": "server",
+          "required": true
+        },
+        "server_port": {
+          "source": "port",
+          "maps_to": "server_port",
+          "type": "int",
+          "materialize_default": true,
+          "impl": "Канонический порт ssh — 22."
+        },
+        "user": {
+          "source": "userinfo.user",
+          "maps_to": "user",
+          "required": true,
+          "impl": "Обязателен. У нас отбраковка РАНЬШЕ секции — node_parser_core.go:394-400 (ssh в списке схем с обязательным userinfo), корпус uri/ssh/missing_user_rejected ждёт parse_error. Дефолт 'root' реестра не материализуется: ветка node_parser_ssh.go:20-23 с WarnSSHUserDefault МЁРТВАЯ, до неё исполнение не доходит (QUIRKS-кандидат на чистку)."
+        },
+        "password": {
+          "source": "userinfo.pass",
+          "maps_to": "password"
+        },
+        "private_key": {
+          "source": "query.private_key",
+          "maps_to": "private_key",
+          "format": "pem",
+          "decode_extra": {
+            "mode": "query",
+            "passes": 1
+          },
+          "impl": "Многострочный PEM: %0A раскрывается ОДИН раз, раскрутки до стабильной точки нет — она сломала бы ключ, где '%' законен. format: pem вместо plus_literal (PRIMITIVES §0.4a, DELTAS D133-15): '+' в PEM несёт ДВА смысла — пробел в заголовочных строках -----BEGIN…----- и литерал в base64-теле, — поэтому булев флаг негоден в обоих положениях. Открытое место, помеченное LxBox, закрыто форматом. У нас сегодня заплаты нет вовсе: значение идёт из parsedURL.Query() (node_parser_ssh.go:32), и '+' становится пробелом И в заголовке, И в теле — тело ключа портится молча. QUIRKS Q133-40."
+        },
+        "private_key_path": {
+          "source": "query.private_key_path",
+          "maps_to": "private_key_path",
+          "when": {
+            "private_key": {
+              "present": false
+            }
+          },
+          "impl": "Учитывается только при пустом private_key — node_parser_ssh.go:32-36. Поле launcher-only, у LxBox его нет: per-app override uri/ssh/private_key_path.expected.lxbox.json."
+        },
+        "private_key_passphrase": {
+          "source": "query.private_key_passphrase",
+          "maps_to": "private_key_passphrase"
+        },
+        "host_key": {
+          "source": "query.host_key",
+          "maps_to": "host_key",
+          "type": "list",
+          "list": {
+            "sep": ",",
+            "item": "string"
+          },
+          "normalize": "trim",
+          "impl": "Список через запятую; пустые элементы отбрасываются, остальные trim (uri.query.host_key.impl)."
+        },
+        "host_key_algorithms": {
+          "source": "query.host_key_algorithms",
+          "maps_to": "host_key_algorithms",
+          "type": "list",
+          "list": {
+            "sep": ",",
+            "item": "string"
+          },
+          "normalize": "trim"
+        },
+        "client_version": {
+          "source": "query.client_version",
+          "maps_to": "client_version",
+          "impl": "ext: desktop. Наш парсер его ЧИТАЕТ — node_parser_ssh.go:72-74, и корпус это фиксирует per-app override'ом: uri/ssh/full_config.expected.launcher.json несёт client_version, .expected.lxbox.json — нет. Прежняя оговорка «если корпус покажет расхождение, снимается» снята приёмкой."
+        }
+      },
+      "include": [
+        "dialer#uri"
+      ],
+      "unknown_key": {
+        "action": "keep",
+        "code": "uri_param_unknown"
+      },
+      "emit": {
+        "form": "url",
+        "param_order": "alphabetical"
+      }
+    }
   }
 }

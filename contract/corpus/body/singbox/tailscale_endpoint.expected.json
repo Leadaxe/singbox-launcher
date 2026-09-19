@@ -41,18 +41,14 @@
         "rules": [
           {
             "body": {
-              "domain_suffix": [
-                ".ts.net"
-              ],
-              "ip_cidr": [
-                "100.64.0.0/10",
-                "fd7a:115c:a1e0::/48"
-              ],
-              "outbound": "@self"
+              "outbound": "@self",
+              "preferred_by": [
+                "@self"
+              ]
             },
             "enabled": true,
             "kind": "inline",
-            "name": "@{self} rule 1"
+            "name": "@{self} tailscale route"
           }
         ]
       }

@@ -49,70 +49,22 @@ func TestXrayHysteriaDialectVersionSplit(t *testing.T) {
 			if got, _ := node.Outbound[tc.secretField].(string); got != tc.wantSecret {
 				t.Fatalf("%s = %q, ожидалось %q", tc.secretField, got, tc.wantSecret)
 			}
-			// uTLS на QUIC ядро не примет — fingerprint обязан быть снят.
-			if tls, ok := node.Outbound["tls"].(map[string]interface{}); ok {
-				if _, has := tls["utls"]; has {
-					t.Fatalf("utls остался в TLS-блоке QUIC-протокола: %v", tls)
-				}
-			}
+			// Проверка «utls снят на QUIC» СНЯТА ОТСЮДА (контракт 1.1.4):
+			// правило переехало в реестр (tls.json forbidden_for +
+			// forbidden_codes → tls_not_applicable_quic), и увидеть его
+			// можно только в готовом теле — здесь же карта СЫРАЯ, прямо
+			// с маппера, и utls в ней быть обязан. Та же судьба, что у
+			// дефолта полосы v1 абзацем ниже. Сверяет правило корпус:
+			// пары uri↔body у hysteria2 и tuic.
 		})
 	}
 }
 
-// TestHysteriaV1BandwidthAlwaysEmitted — ядро отказывается инициализировать
-// outbound v1 без up_mbps/down_mbps («missing upload speed»), и это fatal для
-// ВСЕГО config.json. Полоса обязана появиться на каждом пути разбора.
-func TestHysteriaV1BandwidthAlwaysEmitted(t *testing.T) {
-	t.Run("uri", func(t *testing.T) {
-		node, err := ParseNode("hysteria://host.example.com:36712?auth=a", nil)
-		if err != nil {
-			t.Fatalf("разбор URI: %v", err)
-		}
-		assertHysteriaBandwidth(t, node.Outbound)
-	})
-
-	t.Run("singbox", func(t *testing.T) {
-		body := `{"outbounds":[{"type":"hysteria","tag":"n","server":"1.2.3.4","server_port":443,"auth_str":"pw","tls":{"enabled":true,"server_name":"a.b"}}]}`
-		res, err := ParseSubscriptionBody([]byte(body), nil, 100)
-		if err != nil {
-			t.Fatalf("разбор тела: %v", err)
-		}
-		if len(res.Entries) != 1 {
-			t.Fatalf("узлов %d, ожидался 1", len(res.Entries))
-		}
-		assertHysteriaBandwidth(t, res.Entries[0].Node.Outbound)
-	})
-
-	t.Run("xray", func(t *testing.T) {
-		body := `[{"outbounds":[{"protocol":"hysteria","settings":{"address":"1.2.3.4","port":36712},"streamSettings":{"hysteriaSettings":{"auth":"pw"},"network":"hysteria","security":"tls","tlsSettings":{"serverName":"a.b"}},"tag":"t"}]}]`
-		res, err := ParseSubscriptionBody([]byte(body), nil, 100)
-		if err != nil {
-			t.Fatalf("разбор тела: %v", err)
-		}
-		if len(res.Entries) != 1 {
-			t.Fatalf("узлов %d, ожидался 1", len(res.Entries))
-		}
-		assertHysteriaBandwidth(t, res.Entries[0].Node.Outbound)
-	})
-}
-
-func assertHysteriaBandwidth(t *testing.T, ob map[string]interface{}) {
-	t.Helper()
-	for _, key := range []string{"up_mbps", "down_mbps"} {
-		switch v := ob[key].(type) {
-		case int:
-			if v <= 0 {
-				t.Fatalf("%s = %d, ядро отвергнет конфиг", key, v)
-			}
-		case float64:
-			if v <= 0 {
-				t.Fatalf("%s = %v, ядро отвергнет конфиг", key, v)
-			}
-		default:
-			t.Fatalf("%s отсутствует (%T) — ядро отвергнет ВЕСЬ конфиг", key, ob[key])
-		}
-	}
-}
+// Гарантия «полоса v1 есть на каждом входе» переехала на выход конвейера:
+// дефолт подставляет реестр (default_when), а не парсер, и увидеть его можно
+// только в готовом теле — core/config TestPipelineHysteriaV1BandwidthDefault.
+// Прежде тот же дефолт лежал ТРЕМЯ копиями (URI-парсер, санитайзер импорта,
+// Xray-конвертер), и тест проверял, что все три на месте.
 
 // TestSingboxHysteriaObfsObjectFlattened — провайдеры кладут в v1 obfs-объект
 // от v2; ядро ждёт строку и на объекте роняет разбор всего конфига.

@@ -1,0 +1,35 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "chain": [
+        {
+          "entry": {
+            "server": "r.example",
+            "server_port": 443,
+            "type": "vless",
+            "uuid": "33333333-2222-3333-4444-555555555555"
+          },
+          "kind": "outbound",
+          "label": "relay",
+          "scheme": "vless"
+        }
+      ],
+      "entry": {
+        "password": "pw",
+        "server": "a.example",
+        "server_port": 443,
+        "tls": {
+          "enabled": true
+        },
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "chain vless",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

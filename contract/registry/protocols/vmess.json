@@ -4,21 +4,31 @@
   "kind": "outbound",
   "singbox_type": "vmess",
   "aliases": [],
-  "sources": ["uri", "singbox", "xray"],
+  "sources": [
+    "uri",
+    "singbox",
+    "xray"
+  ],
   "extension": null,
   "uri": {
     "userinfo": {
-      "meaning": "нет (контейнерная схема)",
-      "note": "vmess://base64(JSON v2rayN) ЛИБО vmess://base64('method:uuid@host:port[?query]') — legacy cleartext живёт только ВНУТРИ base64 в обоих проектах (§9.B8, паритет). '#fragment' после base64-части читается обоими (percent-decoded label) ТОЛЬКО в legacy-cleartext ветке; в основной JSON-форме fragment выбрасывают оба: Go не передаёт его в parseVMessJSON (node_parser_vmess.go:57, fragmentLabel уходит лишь в parseVMessLegacyCleartext:92), Dart не передаёт в _vmessFromJson (vmess_parser.dart:30-31, fragment уходит лишь в _vmessLegacy:36) — верхнее поле \"fragment\": \"label\" этой схемы работает только для legacy-ветки. Все 4 варианта base64 (std/url × pad/nopad); Dart дополнительно срезает '=' при эмите."
+      "meaning": "none (container scheme)",
+      "desc_en": "No userinfo: the whole entry is base64 inside the link.",
+      "desc_ru": "Userinfo нет: вся запись лежит в base64 внутри ссылки.",
+      "impl": "vmess://base64(JSON v2rayN) ЛИБО vmess://base64('method:uuid@host:port[?query]') — legacy cleartext живёт только ВНУТРИ base64 в обоих проектах (§9.B8, паритет). '#fragment' после base64-части читается обоими (percent-decoded label) ТОЛЬКО в legacy-cleartext ветке; в основной JSON-форме fragment выбрасывают оба: Go не передаёт его в parseVMessJSON (node_parser_vmess.go:57, fragmentLabel уходит лишь в parseVMessLegacyCleartext:92), Dart не передаёт в _vmessFromJson (vmess_parser.dart:30-31, fragment уходит лишь в _vmessLegacy:36) — верхнее поле \"fragment\": \"label\" этой схемы работает только для legacy-ветки. Все 4 варианта base64 (std/url × pad/nopad); Dart дополнительно срезает '=' при эмите."
     },
     "query": {
       "v": {
         "type": "string",
-        "values": ["2"],
+        "values": [
+          "2"
+        ],
         "allowlist": null,
         "default": "2",
         "aliases": [],
-        "note": "Ключ JSON-контейнера v2rayN (не URL-query). Оба игнорируют при парсе, пишут '2' при эмите."
+        "desc_en": "v2rayN container format version.",
+        "desc_ru": "Версия формата контейнера v2rayN.",
+        "impl": "Ключ JSON-контейнера v2rayN (не URL-query). Оба игнорируют при парсе, пишут '2' при эмите."
       },
       "ps": {
         "type": "string",
@@ -26,7 +36,9 @@
         "allowlist": null,
         "default": "",
         "aliases": [],
-        "note": "Имя ноды (label). Санитизация display-строки в обоих (C0/DEL вычищаются)."
+        "desc_en": "Node label shown to the user.",
+        "desc_ru": "Подпись узла, которую видит пользователь.",
+        "impl": "Имя ноды (label). Санитизация display-строки в обоих (C0/DEL вычищаются)."
       },
       "add": {
         "type": "string",
@@ -34,7 +46,10 @@
         "allowlist": null,
         "default": null,
         "aliases": [],
-        "note": "Сервер. Обязательное: отсутствие → drop ноды."
+        "maps_to": "server",
+        "desc_en": "Server address.",
+        "desc_ru": "Адрес сервера.",
+        "impl": "Сервер. Обязательное: отсутствие → drop ноды."
       },
       "port": {
         "type": "int",
@@ -42,7 +57,10 @@
         "allowlist": null,
         "default": null,
         "aliases": [],
-        "note": "Число или строка. Go: неразбираемая строка → drop ноды; Dart: fallback 443 (мелкое расхождение деградации)."
+        "maps_to": "server_port",
+        "desc_en": "Server port.",
+        "desc_ru": "Порт сервера.",
+        "impl": "Число или строка. Go: неразбираемая строка → drop ноды; Dart: fallback 443 (мелкое расхождение деградации)."
       },
       "id": {
         "type": "string",
@@ -50,39 +68,78 @@
         "allowlist": null,
         "default": null,
         "aliases": [],
-        "note": "UUID. Обязательное: отсутствие → drop ноды."
+        "maps_to": "uuid",
+        "desc_en": "User identifier.",
+        "desc_ru": "Идентификатор пользователя.",
+        "impl": "UUID. Обязательное: отсутствие → drop ноды."
       },
       "aid": {
         "type": "int",
         "values": [],
         "allowlist": null,
         "default": 0,
-        "aliases": ["alter_id (внутренний ключ Go-Query)"],
-        "note": "alter_id; 0 не эмитится в outbound. Go эмитит числом в share-URI, Dart — строкой (оба парсят оба вида)."
+        "aliases": [
+          "alter_id (внутренний ключ Go-Query)"
+        ],
+        "maps_to": "alter_id",
+        "desc_en": "Legacy alterId of VMess.",
+        "desc_ru": "Устаревший alterId VMess.",
+        "impl": "alter_id; 0 не эмитится в outbound. Go эмитит числом в share-URI, Dart — строкой (оба парсят оба вида)."
       },
       "scy": {
         "type": "alias_enum",
-        "values": ["auto", "none", "zero", "aes-128-gcm", "chacha20-poly1305", "aes-128-ctr"],
+        "values": [
+          "auto",
+          "none",
+          "zero",
+          "aes-128-cfb",
+          "aes-128-gcm",
+          "chacha20-poly1305"
+        ],
         "allowlist": "vmess_security",
         "default": "auto",
-        "aliases": ["security"],
-        "note": "Шифр канала (НЕ TLS-режим). 'chacha20-ietf-poly1305' → 'chacha20-poly1305'; ''/null/undefined/мусор → 'auto'. В Xray-JSON ветке Go allowlist чуть уже (без aes-128-ctr, normalizeVMessSecurityValue) — внутренняя несимметрия Go."
+        "aliases": [
+          "security"
+        ],
+        "maps_to": "security",
+        "desc_en": "Payload encryption method.",
+        "desc_ru": "Метод шифрования полезной нагрузки.",
+        "impl": "Шифр канала (НЕ TLS-режим). 'chacha20-ietf-poly1305' → 'chacha20-poly1305'; ''/null/undefined/мусор → 'auto'. ЗАПИСЬ ИСПРАВЛЕНА (DRIFT §4/§7.11, прогон на пине §9.5): прежняя формулировка описывала расхождение Go/Dart, а на деле это ОБЩИЙ БАГ обеих сторон в обе стороны сразу. Точный набор ядра — sing-vmess/client.go:44-52: auto, none, zero, aes-128-cfb, aes-128-gcm, chacha20-poly1305. Оба проекта держали несуществующий 'aes-128-ctr' (прогон: B «unsupported security type: aes-128-ctr», весь конфиг мёртв) и теряли реальный 'aes-128-cfb' (прогон: D — узел молча уезжал на auto, то есть шифр канала не тот, что просила подписка). Целевое — набор ядра; список брать из module cache sing-vmess, а не по памяти (память utls-fp-allowlist). Внутренняя несимметрия Go (Xray-ветка normalizeVMessSecurityValue без aes-128-ctr) снимается тем же набором. Знать при сверке identity: при включённом TLS ядро молча переписывает auto→zero (protocol/vmess/outbound.go:106). Правило значения живёт в body: security."
       },
       "net": {
         "type": "enum",
-        "values": ["tcp", "ws", "http", "h2", "grpc", "httpupgrade", "xhttp"],
+        "values": [
+          "tcp",
+          "ws",
+          "http",
+          "h2",
+          "grpc",
+          "httpupgrade",
+          "xhttp"
+        ],
         "allowlist": null,
         "default": "tcp",
-        "aliases": ["network (внутренний ключ Go-Query)", "type (fallback в legacy cleartext query, Go)"],
-        "note": "Транспорт — суб-схема registry/transports.json. net=h2 подразумевает TLS (transport 'http' + tls_enabled) в обоих."
+        "aliases": [
+          "network (внутренний ключ Go-Query)",
+          "type (fallback в legacy cleartext query, Go)"
+        ],
+        "maps_to": "transport.type",
+        "desc_en": "Transport selector.",
+        "desc_ru": "Селектор транспорта.",
+        "impl": "Транспорт — суб-схема registry/transports.json. net=h2 подразумевает TLS (transport 'http' + tls_enabled) в обоих."
       },
       "type": {
         "type": "string",
-        "values": ["none"],
+        "values": [
+          "none"
+        ],
         "allowlist": null,
         "default": "none",
         "aliases": [],
-        "note": "Поле контейнера v2rayN (headerType); при парсе игнорируется обоими, при эмите пишется 'none'."
+        "maps_to": "transport.type",
+        "desc_en": "Header camouflage of the tcp transport.",
+        "desc_ru": "Камуфляж заголовка у транспорта tcp.",
+        "impl": "Поле контейнера v2rayN (headerType); при парсе игнорируется обоими, при эмите пишется 'none'."
       },
       "host": {
         "type": "string",
@@ -90,7 +147,10 @@
         "allowlist": null,
         "default": "",
         "aliases": [],
-        "note": "Host транспорта; для ws/xhttp fallback → sni. См. transports.json."
+        "maps_to": "transport.host",
+        "desc_en": "Host of the transport request.",
+        "desc_ru": "Host запроса транспорта.",
+        "impl": "Host транспорта; для ws/xhttp fallback → sni. См. transports.json."
       },
       "path": {
         "type": "string",
@@ -98,7 +158,10 @@
         "allowlist": null,
         "default": "",
         "aliases": [],
-        "note": "Path транспорта; для ws несёт хвост '?ed=N' (D-008). Для grpc path = service_name."
+        "maps_to": "transport.path",
+        "desc_en": "Path of the transport request.",
+        "desc_ru": "Путь запроса транспорта.",
+        "impl": "Path транспорта; для ws несёт хвост '?ed=N' (D-008). Для grpc path = service_name."
       },
       "serviceName": {
         "type": "string",
@@ -107,24 +170,44 @@
         "default": "",
         "aliases": [],
         "ext": "mobile",
-        "note": "gRPC service name отдельным ключом vmess-JSON: читает только Dart (_vmessFromJson → parseTransport); Go берёт grpc service_name только из path — новое расхождение вне §9 PLAN."
+        "maps_to": "transport.service_name",
+        "desc_en": "gRPC service name.",
+        "desc_ru": "Имя сервиса gRPC.",
+        "impl": "gRPC service name отдельным ключом vmess-JSON: читает только Dart (_vmessFromJson → parseTransport); Go берёт grpc service_name только из path — новое расхождение вне §9 PLAN."
       },
       "mode": {
         "type": "string",
-        "values": ["", "auto", "packet-up", "stream-up", "stream-one"],
+        "values": [
+          "",
+          "auto",
+          "packet-up",
+          "stream-up",
+          "stream-one"
+        ],
         "allowlist": null,
         "default": "",
         "aliases": [],
         "ext": "desktop",
-        "note": "xhttp mode из vmess-JSON (SPEC 071): читает только Go (parseVMessJSON net=xhttp); Dart не прокидывает 'mode' в parseTransport из vmess-JSON — новое расхождение вне §9 PLAN (зеркальное к serviceName)."
+        "maps_to": "transport.mode",
+        "desc_en": "XHTTP transfer mode.",
+        "desc_ru": "Режим передачи XHTTP.",
+        "impl": "xhttp mode из vmess-JSON (SPEC 071): читает только Go (parseVMessJSON net=xhttp); Dart не прокидывает 'mode' в parseTransport из vmess-JSON — новое расхождение вне §9 PLAN (зеркальное к serviceName)."
       },
       "tls": {
         "type": "enum",
-        "values": ["", "tls"],
+        "values": [
+          "",
+          "tls"
+        ],
         "allowlist": null,
         "default": "",
-        "aliases": ["tls_enabled (внутренний ключ Go-Query)"],
-        "note": "tls='tls' → TLS on; net=h2 → TLS on принудительно (оба). В legacy cleartext query Go принимает tls=1|true|tls; Dart query legacy-формы не читает вовсе (см. degrade)."
+        "aliases": [
+          "tls_enabled (внутренний ключ Go-Query)"
+        ],
+        "maps_to": "tls.enabled",
+        "desc_en": "Whether TLS is enabled.",
+        "desc_ru": "Включён ли TLS.",
+        "impl": "tls='tls' → TLS on; net=h2 → TLS on принудительно (оба). В legacy cleartext query Go принимает tls=1|true|tls; Dart query legacy-формы не читает вовсе (см. degrade)."
       },
       "sni": {
         "type": "string",
@@ -132,7 +215,10 @@
         "allowlist": null,
         "default": "",
         "aliases": [],
-        "note": "SNI; fallback host → server. Суб-схема registry/tls.json."
+        "maps_to": "tls.server_name",
+        "desc_en": "Server name sent in SNI.",
+        "desc_ru": "Имя сервера, отправляемое в SNI.",
+        "impl": "SNI; fallback host → server. Суб-схема registry/tls.json."
       },
       "alpn": {
         "type": "string",
@@ -140,7 +226,10 @@
         "allowlist": null,
         "default": "",
         "aliases": [],
-        "note": "Comma-list. См. tls.json."
+        "maps_to": "tls.alpn",
+        "desc_en": "Comma-separated list of ALPN protocols.",
+        "desc_ru": "Список протоколов ALPN через запятую.",
+        "impl": "Comma-list. См. tls.json."
       },
       "fp": {
         "type": "alias_enum",
@@ -148,31 +237,67 @@
         "allowlist": "utls_fingerprints",
         "default": "",
         "aliases": [],
-        "note": "uTLS fingerprint. У vmess НЕТ дефолта (в отличие от vless 'random'). См. tls.json."
+        "maps_to": "tls.utls.fingerprint",
+        "desc_en": "Browser fingerprint mimicked in the ClientHello.",
+        "desc_ru": "Отпечаток браузера, который подделывается в ClientHello.",
+        "impl": "uTLS fingerprint. У vmess НЕТ дефолта (в отличие от vless 'random'). См. tls.json."
       },
       "insecure": {
         "type": "bool",
         "values": [],
         "allowlist": null,
         "default": false,
-        "aliases": [],
-        "note": "В vmess-JSON строка '1' (Go) или '1'/true (Dart). Dart toUriVmess флаг НЕ эмитит — новое расхождение вне §9 (insecure теряется на mobile round-trip)."
+        "aliases": [
+          "allowInsecure",
+          "allowinsecure",
+          "allow_insecure",
+          "allow-insecure",
+          "skipCertVerify",
+          "skipcertverify",
+          "skip_cert_verify",
+          "skip-cert-verify",
+          "noverify"
+        ],
+        "maps_to": "tls.insecure",
+        "desc_en": "Skip server certificate verification.",
+        "desc_ru": "Не проверять сертификат сервера.",
+        "impl": "В vmess-JSON строка '1' (Go) или '1'/true (Dart). Dart toUriVmess флаг НЕ эмитит — новое расхождение вне §9 (insecure теряется на mobile round-trip). ЦЕЛЕВОЙ НАБОР ИМЁН — объединение обоих проектов (DRIFT §2(a), общая запись — tls.json /tls/params/insecure): insecure, allowinsecure, allow_insecure, allow-insecure, skipcertverify, skip_cert_verify, skip-cert-verify, noverify; сверка по strings.ToLower со снятием '-'/'_'; истина 1|true|yes единообразно."
       }
     },
     "fragment": "label"
   },
   "emit": {
     "share_uri": true,
-    "param_order": ["v", "ps", "add", "port", "id", "aid", "scy", "net", "type", "host", "path", "tls", "sni", "alpn", "fp", "insecure"],
+    "param_order": [
+      "v",
+      "ps",
+      "add",
+      "port",
+      "id",
+      "aid",
+      "scy",
+      "net",
+      "type",
+      "host",
+      "path",
+      "tls",
+      "sni",
+      "alpn",
+      "fp",
+      "insecure"
+    ],
     "note": "Эмит = base64(JSON), порядок ключей — как в таблице (фактический у Go — порядок map/json.Marshal, у Dart — insertion order). Расхождения формы: Go порт/aid числами + base64 с padding; Dart строками + padding срезан. ВАЖНО: Go при транспорте httpupgrade пишет net='ws' (shareuri_vmess.go:70-74) — меняет wire-протокол на round-trip, кандидат на баг; Dart честно пишет net='httpupgrade'. Единственный lossy-эмиттер у Dart (каноническая JSON-форма)."
   },
-  "degrade": [
-    "base64 не декодится / пустой payload → drop ноды",
-    "JSON не парсится → попытка legacy cleartext 'method:uuid@host:port'; не подошло → drop ноды",
-    "отсутствуют add/port/id → drop ноды (Go копит список missing fields в ошибке)",
-    "scy/security вне allowlist → 'auto' (нода живёт)",
-    "query-хвост legacy cleartext: Go читает (network/type/tls → транспорт и TLS); Dart отбрасывает всё после '?' — новое расхождение вне §9 PLAN",
-    "невалидный UTF-8 в декоде → Go чинит через ToValidUTF8, Dart utf8Lossy"
+  "mapper": [
+    {
+      "id": "legacy_cleartext_fallback",
+      "from": "a `vmess://` payload that is not JSON",
+      "to": "read as the legacy cleartext form `method:uuid@host:port`",
+      "kind": "structure",
+      "desc_en": "Older panels emit an unencoded vmess link; it is tried before the node is given up on.",
+      "desc_ru": "Старые панели выдают vmess-ссылку без JSON; эта форма пробуется, прежде чем узел отбросят.",
+      "impl": "core/config/subscription/node_parser_vmess.go. Query-хвост такой ссылки читается (network/type/tls → транспорт и TLS)."
+    }
   ],
   "refs": {
     "go": [
@@ -182,7 +307,7 @@
       "core/config/subscription/node_parser_vmess.go:43-58",
       "core/config/subscription/node_parser_vmess.go:92-169",
       "core/config/subscription/node_parser_vmess.go:176-319",
-      "core/config/subscription/xray_protocols.go:134-179",
+      "core/config/subscription/xray_element_engine.go",
       "core/config/subscription/shareuri_vmess.go:12-108"
     ],
     "dart": [
@@ -195,5 +320,570 @@
       "lib/services/parser/json_parsers.dart:824-838",
       "lib/models/node_spec_emit.dart:121-193"
     ]
+  },
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": [
+      "server",
+      "server_port",
+      "uuid",
+      "security",
+      "alter_id",
+      "global_padding",
+      "authenticated_length",
+      "network",
+      "packet_encoding",
+      "tls",
+      "multiplex",
+      "transport",
+      "__dialer"
+    ],
+    "fields": {
+      "server": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server address: domain or IP.",
+        "desc_ru": "Адрес сервера: домен или IP.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "server_port": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server port.",
+        "desc_ru": "Порт сервера.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "uuid": {
+        "type": "string",
+        "required": true,
+        "secret": true,
+        "desc_en": "User identifier.",
+        "desc_ru": "Идентификатор пользователя.",
+        "impl": "json-тег без omitempty. Секрет. Формат uuid — только документация: ядро мусорную строку ПРИНИМАЕТ (хеширует в vless.NewClient), проверено `sing-box check` на 1.14.1-lx.4 — DRIFT §(t), SPEC 131 W2c."
+      },
+      "security": {
+        "type": "enum",
+        "values": [
+          "auto",
+          "none",
+          "zero",
+          "aes-128-cfb",
+          "aes-128-gcm",
+          "chacha20-poly1305"
+        ],
+        "normalize": "trim_lower",
+        "on_invalid": {
+          "action": "coerce",
+          "value": "auto",
+          "code": "vmess_security_unknown"
+        },
+        "required": true,
+        "default": "auto",
+        "desc_en": "Payload encryption method.",
+        "desc_ru": "Метод шифрования полезной нагрузки.",
+        "impl": "json-тег без omitempty — ключ эмитируется всегда, даже с дефолтом auto. Код замены — свой (`vmess_security_unknown`), а не общий `type_invalid`: здесь значение не снимается, а ПОДМЕНЯЕТСЯ, и узел уезжает не на том шифре, который просила подписка; текст type_invalid («поле снято: неверный тип») врал бы о вдвойне. Правило исполняет ТОЛЬКО реестр: рукописные normalizeVMessSecurity/normalizeVMessSecurityValue сведения значения больше не делают (иначе замена шла бы молча на входах uri и xray, а код появлялся бы только на теле sing-box). В маппере остался единственный перевод диалекта — chacha20-ietf-poly1305 → chacha20-poly1305; кода он не даёт."
+      },
+      "alter_id": {
+        "type": "int",
+        "min": 0,
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid"
+        },
+        "default": 0,
+        "desc_en": "Legacy alterId of the VMess user.",
+        "desc_ru": "Устаревший alterId пользователя VMess.",
+        "impl": "0 = современный режим AEAD; ненулевое значение включает legacy-протокол."
+      },
+      "global_padding": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Enable global padding.",
+        "desc_ru": "Включить глобальную набивку.",
+        "impl": "option/vmess.go VMessOutboundOptions.GlobalPadding."
+      },
+      "authenticated_length": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Authenticate the payload length field.",
+        "desc_ru": "Аутентифицировать поле длины полезной нагрузки.",
+        "impl": "option/vmess.go VMessOutboundOptions.AuthenticatedLength."
+      },
+      "network": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Networks this outbound handles.",
+        "desc_ru": "Сети, которые обслуживает этот узел.",
+        "impl": "NetworkList; правило значения — registry/dialer.json, секция common."
+      },
+      "packet_encoding": {
+        "type": "enum",
+        "values": [
+          "",
+          "packetaddr",
+          "xudp"
+        ],
+        "normalize": "trim_lower",
+        "on_invalid": {
+          "action": "drop",
+          "code": "packet_encoding_unknown"
+        },
+        "default": "",
+        "desc_en": "How UDP packets are encapsulated.",
+        "desc_ru": "Способ инкапсуляции UDP-пакетов.",
+        "impl": "Здесь НЕ указатель (в отличие от vless): пустое значение = без инкапсуляции, tri-state нет."
+      },
+      "tls": {
+        "type": "ref",
+        "ref": "tls",
+        "desc_en": "TLS settings.",
+        "desc_ru": "Настройки TLS.",
+        "impl": "OutboundTLSOptions; поля — registry/tls.json."
+      },
+      "multiplex": {
+        "type": "ref",
+        "ref": "multiplex",
+        "desc_en": "Stream multiplexing settings.",
+        "desc_ru": "Настройки мультиплексирования потоков.",
+        "impl": "OutboundMultiplexOptions — registry/multiplex.json."
+      },
+      "transport": {
+        "type": "ref",
+        "ref": "transports",
+        "desc_en": "V2Ray transport settings.",
+        "desc_ru": "Настройки транспорта V2Ray.",
+        "impl": "V2RayTransportOptions; варианты по transport.type — registry/transports.json."
+      },
+      "__dialer": {
+        "type": "ref",
+        "ref": "dialer",
+        "inline": true,
+        "desc_en": "Common dialer fields, inlined flat into the body.",
+        "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
+        "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
+      }
+    }
+  },
+  "mappers": {
+    "uri": {
+      "body_source": "uri",
+      "detect": {
+        "scheme_in": [
+          "vmess"
+        ]
+      },
+      "forms": [
+        {
+          "id": "v2rayn",
+          "detect": {
+            "json": {
+              "type_of": {
+                "$root": "object"
+              }
+            }
+          },
+          "decode": [
+            {
+              "decoder": "base64",
+              "scope": "authority"
+            },
+            "json"
+          ],
+          "space": "json",
+          "impl": "Основная форма. Порядок форм НОРМАТИВЕН: JSON пробуется первым, cleartext — правило legacy_cleartext_fallback, то есть именно откат."
+        },
+        {
+          "id": "legacy",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            {
+              "decoder": "base64",
+              "scope": "authority"
+            },
+            {
+              "reparse": "url"
+            }
+          ],
+          "space": "url",
+          "impl": "legacy cleartext 'method:uuid@host:port?type=ws&tls=1'. IPv6 в скобках снимается лексером движка — delta480 D133-13: было (ручной lastIndexOf(':') в vmess_mapper.dart:197) — '[2001:db8::1]:443' давал server '[2001:db8::1]', стало — '2001:db8::1'. ВНИМАНИЕ, дельта касается ТОЛЬКО этой формы: у формы v2rayN адрес приходит готовым ключом json.add, скобки в нём — часть значения, и фикстура b480 legacy_ipv6_authority (несмотря на имя, это JSON-форма) ждёт server '[::1]' СО скобками. Снятие скобок там сдвинуло бы identity."
+        }
+      ],
+      "userinfo": {
+        "split": {
+          "sep": ":",
+          "limit": 2
+        },
+        "into": [
+          "security",
+          "uuid"
+        ],
+        "single_into": "security",
+        "impl": "Только у формы legacy: 'method:uuid@'. Двоеточие обязательно; uuid может содержать свои — limit:2. Позиционно то же, что into[0]. Практически недостижимо: у формы legacy двоеточие в userinfo ОБЯЗАТЕЛЬНО («method:uuid@»), беспарного userinfo у схемы не бывает, а у формы-контейнера v2rayN userinfo нет вовсе. Объявлено ради запрета умолчаний: молчащий атрибут читался бы как «здесь думать не надо»."
+      },
+      "label": {
+        "source": {
+          "v2rayn": "json.ps",
+          "legacy": "fragment"
+        },
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "singbox_type"
+        },
+        "impl": "У JSON-формы фрагмент НЕ читается вовсе (uri.userinfo.impl — Go не передаёт фрагмент в parseVMessJSON, Dart не передавал в _vmessFromJson); имя берётся из ключа ps."
+      },
+      "defaults": {
+        "type": "vmess"
+      },
+      "params": {
+        "v": null,
+        "serverName": null,
+        "server": {
+          "source": {
+            "v2rayn": "json.add",
+            "legacy": "host"
+          },
+          "maps_to": "server",
+          "required": true,
+          "impl": "uri.query.add.impl — отсутствие даёт drop ноды."
+        },
+        "server_port": {
+          "source": {
+            "v2rayn": "json.port",
+            "legacy": "port"
+          },
+          "maps_to": "server_port",
+          "type": "int",
+          "impl": "БЕЗ дефолта и без materialize_default: у нас отсутствующий или нечисловой порт кладётся в missingFields и узел отбраковывается (node_parser_vmess.go:215-225, :233) — фолбэка 443 на этом входе нет. Черновик LxBox нёс materialize_default:true при impl «поведение сохранено как было»; таблица противоречила собственной сноске, приёмка выбрала поведение кода. Расхождение Go/Dart остаётся открытым (TASKS_LXBOX §24.20 п.4).",
+          "required": true
+        },
+        "uuid": {
+          "source": {
+            "v2rayn": "json.id",
+            "legacy": "userinfo.pass"
+          },
+          "maps_to": "uuid",
+          "normalize": "trim",
+          "required": true
+        },
+        "security": {
+          "source": {
+            "v2rayn": [
+              "json.scy",
+              "json.security"
+            ],
+            "legacy": "userinfo.user"
+          },
+          "maps_to": "security",
+          "normalize": "trim_lower",
+          "materialize_default": true,
+          "value_map": {
+            "chacha20-ietf-poly1305": "chacha20-poly1305",
+            "": "auto",
+            "null": "auto",
+            "undefined": "auto"
+          },
+          "emit_when": "always",
+          "impl": "Ключ security ОБЯЗАН появиться в теле: у ядра поле без omitempty, у схемы required, опущенный ключ уронил бы узел кодом field_missing. Перевод chacha20-ietf-poly1305 → chacha20-poly1305 — имя того же шифра в диалекте Xray; без перевода реальный шифр подписки схлопнулся бы в auto. Пусто/'null'/'undefined' строкой (их шлют реальные панели, корпус json_scy_null_to_auto) → auto. §474: сведение МУСОРА к auto отсюда СНЯТО — судит реестр (enum + on_invalid coerce auto, код vmess_security_unknown)."
+        },
+        "alter_id": {
+          "source": {
+            "v2rayn": "json.aid",
+            "legacy": "query.aid"
+          },
+          "maps_to": "alter_id",
+          "type": "int",
+          "omit_default": 0,
+          "impl": "Числом или строкой — оба вида читают обе стороны. Нулевой в тело не пишется."
+        },
+        "net": {
+          "source": {
+            "v2rayn": "json.net",
+            "legacy": "query.type"
+          },
+          "selector": true,
+          "maps_to": "transport.type",
+          "normalize": "trim_lower",
+          "value_map": {
+            "": null,
+            "tcp": null,
+            "raw": null,
+            "h2": "http"
+          },
+          "emit_as": "raw",
+          "sets": {
+            "h2": {
+              "tls.enabled": true
+            }
+          },
+          "impl": "У cleartext-формы транспорт зовётся 'type', а не 'net' (uri.query.net.aliases). net=h2 включает TLS ПРИНУДИТЕЛЬНО (uri.query.tls.impl, оба проекта) — sets на значении селектора, без отдельной ветки. emit_as raw: `h2` и `http` читаются в один транспорт, а на выходе канон один — `http`; обращение таблицы вернуло бы устаревшее написание."
+        },
+        "tls": {
+          "source": "json.tls",
+          "selector": true,
+          "maps_to": null,
+          "normalize": "trim_lower",
+          "when": {
+            "$form": "v2rayn"
+          },
+          "sets": {
+            "tls": {
+              "tls.enabled": true
+            },
+            "": {},
+            "none": {}
+          },
+          "impl": "ФОРМА v2rayN: истина ровно одна — строка 'tls' (cfg['tls']=='tls', vmess_mapper.dart:130). Значения '1' и 'true' истиной ЗДЕСЬ НЕ являются, и это проверено фикстурами b480 legacy_tls_1 и legacy_tls_true: обе несут JSON с tls:\"1\"/\"true\" и дают тело БЕЗ блока tls. Разведение по формам — не украшение: одна общая таблица завела бы этим узлам TLS и сдвинула их тела и identity."
+        },
+        "tls_legacy": {
+          "source": "query.tls",
+          "selector": true,
+          "maps_to": null,
+          "normalize": "trim_lower",
+          "when": {
+            "$form": "legacy"
+          },
+          "sets": {
+            "tls": {
+              "tls.enabled": true
+            },
+            "1": {
+              "tls.enabled": true
+            },
+            "true": {
+              "tls.enabled": true
+            },
+            "": {},
+            "none": {}
+          },
+          "impl": "ФОРМА legacy cleartext: семейство истины '1|true|tls' (uri.query.tls.impl, vmess_mapper.dart:228). Отдельная запись, потому что у формы v2rayN набор УЖЕ (см. параметр tls)."
+        },
+        "mode": {
+          "source": {
+            "v2rayn": "json.mode",
+            "legacy": "query.mode"
+          },
+          "maps_to": "transport.mode",
+          "when": {
+            "transport.type": "xhttp"
+          },
+          "impl": "SPEC 071/103 vmess/json_net_xhttp — при net=xhttp ключ mode лежит в самом объекте v2rayN, наравне с path/host."
+        },
+        "sni": {
+          "source": {
+            "v2rayn": [
+              "json.sni",
+              "json.host"
+            ],
+            "legacy": [
+              "query.sni",
+              "query.peer"
+            ]
+          },
+          "maps_to": "tls.server_name",
+          "default_from": "server",
+          "when": {
+            "tls.enabled": true
+          },
+          "impl": "SNI-цепочка расходится СЕРЕДИНОЙ: у контейнера v2rayN это sni → host → сервер (ключа peer у него нет), у legacy-формы sni → peer → сервер (ключ host там адресует транспорт). Этим формы и отличаются."
+        },
+        "ech": {
+          "source": {
+            "v2rayn": "json.ech",
+            "legacy": "query.ech"
+          },
+          "maps_to": null,
+          "on_present": {
+            "action": "drop",
+            "code": "ech_ignored"
+          },
+          "impl": "§320 — ссылочная форма ECH адреса в теле sing-box не имеет, а чужой ключ рвёт рукопожатие. Код — ech_ignored, существующий идентификатор (node_parser_transport.go:868+ noteECHIgnored); 'ech_param_dropped_with_code' из черновика было описанием, а не именем. ОТКРЫТО: у нас код не ставится на ech=none (node_parser_transport.go::879-881) — выключенный ECH сообщать не о чем; выражение этого исключения предикатом when требует отрицания по источнику, которого в грамматике сегодня нет (TASKS_LXBOX §24.20 п.7). Чтение из JSON-формы (json.ech) — РАСШИРЕНИЕ: сегодня noteECHIgnored смотрит только node.Query, и в v2rayN-форме ech не виден вовсе."
+        }
+      },
+      "include": [
+        "transports#uri",
+        "tls#uri",
+        "dialer#uri"
+      ],
+      "unknown_key": {
+        "action": "keep",
+        "code": "uri_param_unknown"
+      },
+      "emit": {
+        "form": "v2rayn",
+        "param_order": "alphabetical",
+        "json_map": {
+          "v": "=2",
+          "ps": "$label",
+          "add": "server",
+          "port": "server_port",
+          "id": "uuid",
+          "aid": "alter_id",
+          "scy": "security",
+          "net": "$param.net",
+          "type": "=none",
+          "host": "$param.host",
+          "path": "$param.path",
+          "tls": "$param.tls",
+          "sni": "tls.server_name",
+          "alpn": "$param.alpn",
+          "fp": "$param.fp",
+          "insecure": "$param.insecure",
+          "mode": "$param.mode"
+        },
+        "json_always": {
+          "v": "2",
+          "ps": "",
+          "aid": 0,
+          "scy": "auto",
+          "net": "tcp",
+          "type": "none",
+          "host": "",
+          "path": "",
+          "tls": ""
+        },
+        "names": {
+          "serviceName": "path"
+        },
+        "impl": "Форма-КОНТЕЙНЕР v2rayN: base64(JSON), а не query-ссылка. json_map называет «ключ контейнера → путь тела | $param.<запись> | $label | =литерал»; json_always — ключи, которые панели ждут ДАЖЕ ПУСТЫМИ (опускание ломает у них чтение, а не экономит байты). names.serviceName → path: имя gRPC-канала v2rayN кладёт в ключ path, то есть emit.names действует и по форме-контейнеру (оверлей LxBox, принят как есть). param_order alphabetical: сегодняшний вывод и есть алфавит."
+      }
+    },
+    "xray": {
+      "body_source": "xray",
+      "detect": {
+        "json": {
+          "value_of": {
+            "protocol": "vmess"
+          }
+        }
+      },
+      "forms": [
+        {
+          "id": "vnext",
+          "detect": {
+            "all": [
+              {
+                "json": {
+                  "type_of": {
+                    "settings": "object"
+                  }
+                }
+              },
+              {
+                "any": [
+                  {
+                    "json": {
+                      "type_of": {
+                        "streamSettings": "object"
+                      }
+                    }
+                  },
+                  {
+                    "json": {
+                      "key_absent": [
+                        "streamSettings"
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "space": "json",
+          "base": "settings.vnext.0",
+          "impl": "ФОРМУ ОПОЗНАЁТ ТИП КОНТЕЙНЕРА, а не ветка default: мусорный ТИП поля (streamSettings: \"none\", settings: []) означает БИТУЮ ЗАПИСЬ, а не «транспорта нет». Прежняя сноска «разбирать его иначе не из чего» верна для ЦЕЛОГО элемента, но не для битого. Отсутствие streamSettings при этом законно (plain-TCP) — развёрнуто у vless."
+        }
+      ],
+      "defaults": {
+        "type": "vmess"
+      },
+      "params": {
+        "address": {
+          "source": "json.$base.address",
+          "maps_to": "server",
+          "required": true,
+          "desc_en": "empty server address"
+        },
+        "port": {
+          "source": "json.$base.port",
+          "maps_to": "server_port",
+          "type": "int",
+          "required": true,
+          "desc_en": "server port is missing or out of range",
+          "impl": "БЕЗ дефолта 443: xray_protocols.go:133-136 отбраковывает узел при port <= 0 || port > 65535, фолбэка на этом входе нет. Черновик LxBox нёс materialize_default:true — поведение Dart."
+        },
+        "id": {
+          "source": "json.$base.users.0.id",
+          "maps_to": "uuid",
+          "required": true,
+          "desc_en": "empty user id — the server returned a placeholder, subscription may be expired"
+        },
+        "security": {
+          "source": "json.$base.users.0.security",
+          "maps_to": "security",
+          "normalize": "trim_lower",
+          "materialize_default": true,
+          "value_map": {
+            "chacha20-ietf-poly1305": "chacha20-poly1305",
+            "": "auto",
+            "null": "auto",
+            "undefined": "auto"
+          },
+          "impl": "§459 — то же правило написания, что у маппера ссылки. Ключ обязан ПОЯВИТЬСЯ в теле даже при пустом значении: у ядра поле без omitempty, опущенный ключ снял бы узел кодом field_missing. Годность судит реестр (enum + on_invalid coerce auto)."
+        },
+        "alterId": {
+          "source": "json.$base.users.0.alterId",
+          "maps_to": "alter_id",
+          "type": "int",
+          "materialize_default": true,
+          "impl": "В отличие от ссылки, здесь alter_id пишется ВСЕГДА, в том числе нулём (прежняя ветка Xray клала его безусловно). РАСХОЖДЕНИЕ: у нас ноль НЕ пишется — xray_protocols.go:209-211 (if alterID > 0). materialize_default оставлен как заявка LxBox; переключение схемы на движок изменит тело узлов с alterId=0 (TASKS_LXBOX §24.20 п.4)."
+        },
+        "$extra_vnext": {
+          "source": "json.settings.vnext",
+          "maps_to": null,
+          "on_len_gt": {
+            "n": 1,
+            "action": "note",
+            "code": "xray_extra_entries_dropped"
+          },
+          "impl": "vnext[1..] отбрасываются; сегодня молча."
+        },
+        "$extra_users": {
+          "source": "json.$base.users",
+          "maps_to": null,
+          "on_len_gt": {
+            "n": 1,
+            "action": "note",
+            "code": "xray_extra_entries_dropped"
+          }
+        }
+      },
+      "include": [
+        "transports#xray",
+        "tls#xray",
+        "dialer#xray"
+      ],
+      "unknown_key": {
+        "action": "drop",
+        "code": "json_field_unknown",
+        "ignore": [
+          "protocol",
+          "tag",
+          "remarks",
+          "settings",
+          "streamSettings",
+          "mux",
+          "sendThrough",
+          "proxySettings"
+        ],
+        "impl": "Ключи уровня документа плюс контейнеры, чьи листья читают записи таблицы. Список дословно равен списку LxBox и остальных xray-секций — см. развёрнутую сноску у vless."
+      },
+      "emit": null
+    }
   }
 }

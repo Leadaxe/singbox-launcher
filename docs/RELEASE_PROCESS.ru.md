@@ -33,7 +33,17 @@ CI (`ci.yml`, job `release`) формирует тело релиза из дв�
 
 ### 1.1. Pre-flight
 
-1. На `develop` всё зелёное (`go build ./... && go test ./... && go vet ./...`). Линтер (`golangci-lint run`) — как минимум на изменённых пакетах.
+1. На `develop` всё зелёное — **по CI, не по локальному прогону**. Полный прогон тестов, `go vet`, линтер и сборки всех платформ (включая Win7-джобу на go1.20) перед релизом выполняются ТОЛЬКО в CI; локально `go test ./...`, `go vet ./...` по всему репозиторию и Win7-сборка не запускаются — даже «один раз перед релизом» (машина разработчика перегружена, полный локальный прогон идёт десятки минут и не покрывает ни чужие ОС, ни go1.20). Локально достаточно `go build ./...`.
+   ```bash
+   # ci.yml на push в develop сам НЕ стартует (только main / PR / dispatch) — запускаем руками:
+   gh workflow run ci.yml --ref develop -f run_mode=tests
+   gh run list --workflow=ci.yml --branch develop -L 1          # взять ID
+   gh run watch <ID> --exit-status                               # дождаться
+   gh run view <ID> --log-failed                                 # если красное — смотреть упавшие шаги
+   # Затем сборки всех платформ (Win7 в их числе), без публикации релиза:
+   gh workflow run ci.yml --ref develop -f run_mode=build
+   ```
+   Красное — чинится отдельным заходом (правка → push → повторный dispatch), пока оба прогона не зелёные. Линтер (`golangci-lint`) и проверка контракта идут в CI на PR в `main`; линтер обрезает повторы одного правила (`max-same-issues`) — полный список брать из лога, а не чинить по три находки за круг. Workflow `Contract` на `develop` идёт сам на каждый push — он тоже должен быть зелёным.
 2. `develop` — прямой потомок последнего stable-тега. Проверка:
    ```bash
    git fetch --tags
@@ -260,7 +270,7 @@ git tag -d vX.Y.Z
 ## 4. Чеклист для агента (копируй в ответ пользователю)
 
 ### Stable vX.Y.Z
-- [ ] `develop` зелёная, descendant от прошлого stable-тега.
+- [ ] `develop` зелёная **в CI** (`run_mode=tests` и `run_mode=build` через `gh workflow run ci.yml --ref develop`, плюс `Contract`); локальный полный прогон не запускался и не нужен. Descendant от прошлого stable-тега.
 - [ ] `RequiredCoreVersion` соответствует протестированной sing-box версии (см. §1.1, §5).
 - [ ] `bin/wizard_template.json` в `develop` отражает финальное состояние шаблона.
 - [ ] `upcoming.md` → `docs/release_notes/X-Y-Z.md`, причёсан.
@@ -275,7 +285,7 @@ git tag -d vX.Y.Z
 - [ ] `gh release view vX.Y.Z` → `isLatest:true`.
 
 ### Prerelease
-- [ ] `develop` зелёная, descendant от прошлого stable-тега.
+- [ ] `develop` зелёная **в CI** (`run_mode=tests` и `run_mode=build` через `gh workflow run ci.yml --ref develop`, плюс `Contract`); локальный полный прогон не запускался и не нужен. Descendant от прошлого stable-тега.
 - [ ] Если бампали `RequiredCoreVersion` — коммит запушен **до** workflow (§2.1, §5).
 - [ ] SLUG посчитан локально (`git describe ... + '-prerelease'`).
 - [ ] `docs/release_notes/<SLUG>.md` создан, содержит 1–3 пункта о новом в этом пререлизе.

@@ -41,14 +41,13 @@ func IsSingboxGroupType(t string) bool {
 	return ok
 }
 
-// quicOutboundTypes — типы, работающие поверх QUIC. Для них ядро не умеет
-// uTLS/REALITY: STDConfig() возвращает ошибку, а QUIC-путь фолбэчит именно
-// на него, и нода становится мёртвой.
-// masque: h3 несёт TLS внутри QUIC, а ядро (SPEC 062 §1.3) для него игнорирует
-// utls/reality/ech с предупреждением — снимаем их здесь, как у остальных QUIC.
-var quicOutboundTypes = map[string]struct{}{
-	"hysteria": {}, "hysteria2": {}, "tuic": {}, "masque": {},
-}
+// СНЯТО (SPEC 131, контракт 1.1.4): частный набор quicOutboundTypes и срез
+// utls/reality по нему. Правило переехало в реестр — tls.json
+// body.fields.utls/reality, `forbidden_for` с четырьмя QUIC-схемами и
+// `forbidden_codes` → tls_not_applicable_quic. Исполняет его санитайзер
+// конвейера (core/config/nodeflow), одинаково для ссылки, JSON-тела и
+// Xray-объекта, и — главное — С КОДОМ: здесь срез был молчаливым (только
+// debuglog), и пользователь не узнавал, что отпечаток из подписки не сработал.
 
 // SanitizeSingboxOutboundMap приводит импортированный outbound к форме,
 // которую ядро гарантированно принимает. Правит ob на месте.
@@ -66,19 +65,10 @@ func SanitizeSingboxOutboundMap(ob map[string]interface{}, tag string) []string 
 	}
 	obType := strings.ToLower(strings.TrimSpace(mapString(ob, "type")))
 
-	var codes []string
 	sanitizeSingboxMasqueLegacy(ob, obType, tag)
-	if code := sanitizeSingboxTLS(ob, obType, tag); code != "" {
-		codes = append(codes, code)
-	}
-	sanitizeSingboxFlow(ob, tag)
-	if sanitizeSingboxPacketEncoding(ob, tag) {
-		codes = append(codes, WarnPacketEncodingUnknown)
-	}
-	sanitizeSingboxHysteria2Obfs(ob, obType, tag)
+	sanitizeSingboxTLS(ob, tag)
 	sanitizeSingboxHysteriaObfs(ob, obType, tag)
-	sanitizeSingboxHysteriaBandwidth(ob, obType, tag)
-	return codes
+	return nil
 }
 
 // sanitizeSingboxMasqueLegacy СТРИПАЕТ у masque-outbound ключи чужого
@@ -107,231 +97,42 @@ func sanitizeSingboxMasqueLegacy(ob map[string]interface{}, obType, tag string) 
 	}
 }
 
-// sanitizeSingboxTLS чистит блок tls: uTLS allowlist, REALITY pbk/short_id,
-// key_share, снятие uTLS/REALITY на QUIC-типах.
+// sanitizeSingboxTLS снимает блок tls в единственном случае, где его форма
+// роняет ядро ДО того, как тело доедет до санитайзера реестра: tls не объект.
+// Ядро отвергает такой конфиг на РАЗБОРЕ, то есть раньше любых правил
+// значений, и никакой атрибут реестра этого не выразит — он описывает поля
+// объекта, а объекта тут нет.
 //
-// Возвращает код деградации (или "") — прокидывает наружу код из
-// sanitizeSingboxReality, вешать его здесь не на что.
-func sanitizeSingboxTLS(ob map[string]interface{}, obType, tag string) string {
+// Правил значения здесь больше нет. uTLS allowlist, REALITY pbk/short_id и
+// key_share ушли в реестр волной W2d, срез utls/reality на QUIC — контрактом
+// 1.1.4 (см. комментарий про quicOutboundTypes выше), а правило
+// «`tls:{enabled:false}` = TLS не задан» — атрибутом `absent_when` у секции
+// tls (контракт 1.1.12). Прежде оно жило здесь рукописной копией и потому
+// работало только на этом входе: тело, приехавшее мимо импорта (ручной JSON
+// вкладки, чужой бэкап), доезжало до конфига с выключенным блоком.
+func sanitizeSingboxTLS(ob map[string]interface{}, tag string) {
 	tlsRaw, ok := ob["tls"]
 	if !ok {
-		return ""
+		return
 	}
 	tlsMap, ok := tlsRaw.(map[string]interface{})
 	if !ok {
 		// tls не объект — ядро отвергнет конфиг; безопаснее снять поле.
 		debuglog.WarnLog("Parser: singbox import %q: tls is not an object — dropping field", tag)
 		delete(ob, "tls")
-		return ""
-	}
-
-	// Явный tls:{enabled:false} роняет ядра 1.14.0-lx.5..lx.18 SIGSEGV'ом при
-	// первом dial (SPEC 045). Блок в этом случае не нужен вовсе.
-	if enabled, ok := tlsMap["enabled"].(bool); ok && !enabled {
-		delete(ob, "tls")
-		return ""
-	}
-
-	code := ""
-	if _, isQUIC := quicOutboundTypes[obType]; isQUIC {
-		// SPEC 094 A2: на QUIC срезаем utls и reality целиком.
-		if _, had := tlsMap["utls"]; had {
-			delete(tlsMap, "utls")
-			debuglog.DebugLog("Parser: singbox import %q: stripped utls from %s (QUIC)", tag, obType)
-		}
-		if _, had := tlsMap["reality"]; had {
-			// key_share уезжает вместе с блоком и кода не даёт: снят не он,
-			// а весь REALITY (policy.quic_strip).
-			delete(tlsMap, "reality")
-			debuglog.DebugLog("Parser: singbox import %q: stripped reality from %s (QUIC)", tag, obType)
-		}
-	} else {
-		sanitizeSingboxUTLS(tlsMap, tag)
-		code = sanitizeSingboxReality(tlsMap, tag)
+		return
 	}
 
 	if len(tlsMap) == 0 {
 		delete(ob, "tls")
 	}
-	return code
 }
 
-// sanitizeSingboxUTLS прогоняет fingerprint через allowlist sing-box.
-func sanitizeSingboxUTLS(tlsMap map[string]interface{}, tag string) {
-	utlsRaw, ok := tlsMap["utls"]
-	if !ok {
-		return
-	}
-	utlsMap, ok := utlsRaw.(map[string]interface{})
-	if !ok {
-		delete(tlsMap, "utls")
-		return
-	}
-	fp := mapString(utlsMap, "fingerprint")
-	normalized := utlsFingerprintOrFallback(fp)
-	if normalized == "" {
-		// Поле пустое (а не мусорное) — блока utls тут просто нет.
-		delete(tlsMap, "utls")
-		return
-	}
-	// Мусор канонизируется в chrome (D-029), а не снимает блок целиком: раньше
-	// одна и та же нода получала utls на URI-пути и теряла его на импорте.
-	utlsMap["fingerprint"] = normalized
-}
-
-// sanitizeSingboxReality валидирует public_key, чистит short_id и key_share.
-//
-// Возвращает код деградации (или "") — как и у остальных санитайзеров, узла
-// здесь нет, и код вешает вызывающий через SanitizeSingboxOutboundMap.
-func sanitizeSingboxReality(tlsMap map[string]interface{}, tag string) string {
-	realityRaw, ok := tlsMap["reality"]
-	if !ok {
-		return ""
-	}
-	realityMap, ok := realityRaw.(map[string]interface{})
-	if !ok {
-		delete(tlsMap, "reality")
-		return ""
-	}
-	if enabled, ok := realityMap["enabled"].(bool); ok && !enabled {
-		delete(tlsMap, "reality")
-		return ""
-	}
-
-	pbk := mapString(realityMap, "public_key")
-	if !isValidRealityPublicKey(pbk) {
-		// pbk=enabled / true / мусор: ядро отвергает весь конфиг
-		// ("invalid public_key"). Деградируем ноду до plain TLS.
-		debuglog.WarnLog("Parser: singbox import %q: invalid REALITY public_key — degrading to plain TLS", tag)
-		delete(tlsMap, "reality")
-		return ""
-	}
-
-	if sid, ok := realityMap["short_id"]; ok {
-		normalized := normalizeRealityShortID(toStringValue(sid))
-		if normalized == "" {
-			// Пустой short_id для REALITY легален; мусорный — нет.
-			delete(realityMap, "short_id")
-		} else {
-			realityMap["short_id"] = normalized
-		}
-	}
-
-	if ks, ok := realityMap["key_share"]; ok {
-		// Нормализатор общий с URI-путём (node_parser_transport.go): одно и то
-		// же значение обязано дать один и тот же результат откуда угодно.
-		normalized, degraded := NormalizeRealityKeyShare(toStringValue(ks))
-		switch {
-		case degraded:
-			// Enum ядра закрытый (SPEC 089): чужое значение — отказ ВСЕГО
-			// конфига. Деградирует поле, а не узел и не конфиг. Код едет на
-			// узел через возврат — см. SanitizeSingboxOutboundMap.
-			debuglog.WarnLog("Parser: singbox import %q: unknown REALITY key_share %q — dropping the key", tag, toStringValue(ks))
-			delete(realityMap, "key_share")
-			return WarnRealityKeyShareInvalid
-		case normalized == "":
-			// Пусто = «как несёт отпечаток», ключа в конфиге просто нет.
-			delete(realityMap, "key_share")
-		default:
-			// Канонический lower-case: ядро сверяет enum побуквенно.
-			realityMap["key_share"] = normalized
-		}
-	}
-	return ""
-}
-
-// sanitizeSingboxFlow оставляет только xtls-rprx-vision и гасит flow при транспорте.
-func sanitizeSingboxFlow(ob map[string]interface{}, tag string) {
-	flowRaw, ok := ob["flow"]
-	if !ok {
-		return
-	}
-	flow := strings.TrimSpace(toStringValue(flowRaw))
-	if flow == "" {
-		delete(ob, "flow")
-		return
-	}
-	if flow != "xtls-rprx-vision" {
-		// none, deprecated xtls-rprx-direct/origin/splice, мусор —
-		// всё это ядро либо отвергает, либо трактует неверно.
-		debuglog.DebugLog("Parser: singbox import %q: dropping unsupported flow %q", tag, flow)
-		delete(ob, "flow")
-		return
-	}
-	// vision валиден только на голом TLS: с транспортом ядро отвергает узел.
-	if _, hasTransport := ob["transport"]; hasTransport {
-		debuglog.DebugLog("Parser: singbox import %q: dropping vision flow (transport present)", tag)
-		delete(ob, "flow")
-	}
-}
-
-// sanitizeSingboxPacketEncoding применяет allowlist sing-box.
-// Возвращает true, если значение было неизвестным и поле снято (код ставит
-// вызывающий — см. SanitizeSingboxOutboundMap).
-func sanitizeSingboxPacketEncoding(ob map[string]interface{}, tag string) bool {
-	peRaw, ok := ob["packet_encoding"]
-	if !ok {
-		return false
-	}
-	pe := strings.ToLower(strings.TrimSpace(toStringValue(peRaw)))
-	switch pe {
-	case "xudp", "packetaddr":
-		ob["packet_encoding"] = pe
-	case "", "none":
-		// "no special encoding" — эквивалентно отсутствию поля.
-		delete(ob, "packet_encoding")
-	default:
-		// Неизвестное значение даёт панику в ядре (SPEC 049).
-		debuglog.WarnLog("Parser: singbox import %q: unknown packet_encoding %q — dropping field", tag, pe)
-		delete(ob, "packet_encoding")
-		return true
-	}
-	return false
-}
-
-// sanitizeSingboxHysteriaBandwidth дописывает обязательную полосу Hysteria v1.
-//
-// Ядро отказывается инициализировать outbound v1 без up_mbps/down_mbps
-// («missing upload speed»), и это fatal для ВСЕГО конфига, а не для одной
-// ноды. Импортированное тело такую пару нередко не несёт, поэтому недостающая
-// половина добирается тем же дефолтом, что и на URI-пути.
-func sanitizeSingboxHysteriaBandwidth(ob map[string]interface{}, obType, tag string) {
-	if obType != "hysteria" {
-		return
-	}
-	// Ядро принимает и строковую форму up/down («100 mbps») — если она есть,
-	// ничего не выдумываем: значение уже задано.
-	if !singboxHysteriaHasBandwidth(ob, "up_mbps", "up") {
-		debuglog.WarnLog("Parser: singbox import %q: hysteria without upload speed — defaulting up_mbps to %d", tag, hysteriaDefaultMbps)
-		ob["up_mbps"] = hysteriaDefaultMbps
-	}
-	if !singboxHysteriaHasBandwidth(ob, "down_mbps", "down") {
-		debuglog.WarnLog("Parser: singbox import %q: hysteria without download speed — defaulting down_mbps to %d", tag, hysteriaDefaultMbps)
-		ob["down_mbps"] = hysteriaDefaultMbps
-	}
-}
-
-// singboxHysteriaHasBandwidth сообщает, задана ли полоса хотя бы одним из
-// написаний (числовым up_mbps или строковым up вида «100 mbps»).
-func singboxHysteriaHasBandwidth(ob map[string]interface{}, keys ...string) bool {
-	for _, key := range keys {
-		switch v := ob[key].(type) {
-		case string:
-			if strings.TrimSpace(v) != "" {
-				return true
-			}
-		case float64:
-			if v > 0 {
-				return true
-			}
-		case int:
-			if v > 0 {
-				return true
-			}
-		}
-	}
-	return false
-}
+// Дефолт полосы Hysteria v1 здесь БОЛЬШЕ НЕ ПОДСТАВЛЯЕТСЯ: его подставляет
+// реестр (default_when у hysteria.body.up_mbps / down_mbps, SPEC 131 W2d) —
+// одинаково для ссылки, JSON-тела и Xray-объекта. Прежде та же константа 100
+// лежала здесь, в URI-парсере и в Xray-конвертере тремя копиями, и узел
+// получал её не на всех дорогах.
 
 // sanitizeSingboxHysteriaObfs приводит obfs узла Hysteria v1 к форме ядра.
 //
@@ -368,39 +169,16 @@ func sanitizeSingboxHysteriaObfs(ob map[string]interface{}, obType, tag string) 
 	}
 }
 
-// sanitizeSingboxHysteria2Obfs снимает обфускацию с неподдерживаемым типом.
-func sanitizeSingboxHysteria2Obfs(ob map[string]interface{}, obType, tag string) {
-	if obType != "hysteria2" {
-		return
-	}
-	obfsRaw, ok := ob["obfs"]
-	if !ok {
-		return
-	}
-	obfsMap, ok := obfsRaw.(map[string]interface{})
-	if !ok {
-		delete(ob, "obfs")
-		return
-	}
-	obfsType := strings.ToLower(strings.TrimSpace(mapString(obfsMap, "type")))
-	if obfsType == "" {
-		delete(ob, "obfs")
-		return
-	}
-	if !isValidHysteria2ObfsType(obfsType) {
-		// "unknown obfs type" — fatal для всего конфига.
-		debuglog.WarnLog("Parser: singbox import %q: unsupported hysteria2 obfs %q — dropping obfs", tag, obfsType)
-		delete(ob, "obfs")
-		return
-	}
-	if strings.TrimSpace(mapString(obfsMap, "password")) == "" {
-		// "missing obfs password" — тоже fatal.
-		debuglog.WarnLog("Parser: singbox import %q: hysteria2 obfs without password — dropping obfs", tag)
-		delete(ob, "obfs")
-		return
-	}
-	obfsMap["type"] = obfsType
-}
+// СНЯТО (SPEC 131, аудит остатков): sanitizeSingboxHysteria2Obfs.
+//
+// Все четыре его решения выражены в реестре и исполняются санитайзером:
+// obfs не объект и тип вне набора — hysteria2.json body.obfs.type (enum
+// salamander|gecko, on_invalid drop + obfs_unknown); пустой пароль —
+// body.obfs.password (required + code obfs_password_missing), а
+// nodeflow.objectField снимает необязательный объект целиком, когда в нём
+// не собралось required-поле. Здесь то же самое делалось МОЛЧА (WarnLog),
+// то есть код съедался: два объявленных кода не доезжали до узла, и
+// пользователь не узнавал, что обфускация из подписки не сработала.
 
 // mapString возвращает строковое поле map или "".
 func mapString(m map[string]interface{}, key string) string {
@@ -408,12 +186,5 @@ func mapString(m map[string]interface{}, key string) string {
 		return ""
 	}
 	s, _ := m[key].(string)
-	return s
-}
-
-// toStringValue приводит значение к строке, если это строка; иначе "".
-// Числовые/булевы значения в этих полях не легальны и должны быть отброшены.
-func toStringValue(v interface{}) string {
-	s, _ := v.(string)
 	return s
 }

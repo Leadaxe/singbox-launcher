@@ -24,7 +24,14 @@
       },
       "kind": "outbound",
       "label": "🇦🇪 United Arab Emirates",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "tls_insecure",
+          "path": "tls.insecure",
+          "value": "true"
+        }
+      ]
     }
   ],
   "v": 1

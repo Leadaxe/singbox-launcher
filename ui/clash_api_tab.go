@@ -24,9 +24,9 @@ import (
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
-	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/internal/textnorm"
 	"singbox-launcher/ui/components"
@@ -72,6 +72,11 @@ type ProxyListPanel struct {
 	autoPingAfterConnect func()
 	setEnabled           func(bool)
 	clear                func()
+
+	// syncFilterGroup — смена Selector group: снимок фильтра прежней группы
+	// запоминается, у новой восстанавливается свой (память пер-группа,
+	// см. servers_filter.go).
+	syncFilterGroup func(group string)
 
 	// autoRefresh — тикер тихого перечитывания списка (только Remote,
 	// см. clash_api_tab_autorefresh.go). nil на Local.
@@ -224,12 +229,43 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		pingAllGeneration                uint64                      // инкремент при новом «ping all» — устаревшие воркеры не трогают UI
 		selectedProxyNames               = make(map[string]struct{}) // выделение по тегу (устойчиво к фильтру/сортировке)
 		selectionAnchorVis               = -1                        // якорь для Shift+клик (индекс в текущем отображаемом списке)
-		hidePingErrors                   bool                        // скрывать в списке прокси с Delay == -1 (ошибка пинга)
 		reconcileListSelection           func()
 		applyServersPointerSelection     func(rowID int, proxyName string, tapMods fyne.KeyModifier)
 		refreshServersProxySelectionUI   func()
 		exportShareURIsButton            *ttwidget.Button
 		syncExportShareURIsButtonTooltip func()
+
+		// --- Фильтр списка (servers_filter.go / servers_filter_window.go) ---
+		//
+		// В ПАМЯТИ панели, на диск не пишется: отбор — рабочее состояние
+		// сеанса, а не настройка (так же в LxBox §048 #5).
+		//
+		// serversFilter — фильтр ТЕКУЩЕЙ группы; снимки остальных лежат в
+		// serversFilterByGroup (память пер-группа, LxBox §083). Один общий
+		// фильтр означал бы, что регулярка, набранная под пул одной страны,
+		// молча прячет весь список соседнего Направления.
+		serversFilter        = newServersFilterState()
+		serversFilterByGroup = map[string]serversFilterState{}
+		serversFilterGroup   = selectedGroup
+		// serversFilterRev — ревизия фильтра; растёт на каждую правку и входит
+		// в ключ кэша видимого среза.
+		serversFilterRev uint64
+		// serversFacets — сводка по текущему списку (протоколы, транспорты,
+		// источники, эмодзи). Обновляется вместе со срезом, а не на строку:
+		// внутри неё разбор config.json и state.json.
+		serversFacets serversFilterFacets
+
+		serversViewCache      []api.ProxyInfo
+		serversViewCacheState serversViewCacheKey
+		serversViewCacheValid bool
+
+		serversFilterButton          *ttwidget.Button
+		serversFilterBadge           *fynewidget.BadgeDot
+		serversFilterWin             *serversFilterWindow
+		applyServersFilterUI         func()
+		syncServersFilterButton      func()
+		refreshServersFacets         func()
+		updatePingErrorsFilterButton func()
 	)
 
 	// --- Логика обновления и сброса ---
@@ -290,6 +326,18 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				// Keep "direct-out" and active proxy at the top regardless of sort.
 				ac.SetProxiesList(reorderWithPinned(ac, proxies))
 				ac.SetActiveProxyName(now)
+
+				// Сводка фильтра — по СВЕЖЕМУ составу: чипы перечисляют то,
+				// что реально есть в списке, и на прежнем составе предлагали
+				// бы протоколы и источники исчезнувших узлов.
+				if refreshServersFacets != nil {
+					refreshServersFacets()
+					applyServersFilterUI()
+					if serversFilterWin != nil {
+						serversFilterWin.rebuildChips()
+						serversFilterWin.refreshTitle()
+					}
+				}
 
 				// Применяем сохраненную сортировку после загрузки
 				if applySavedSort != nil {
@@ -649,20 +697,68 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		}()
 	}
 
-	// Срез для отображения в списке (полный или без прокси с ошибкой пинга).
-	// Выбранная строка не скрывается, чтобы не терять контекст при фильтре.
+	// keepVisibleRow — строки, которые не скрываются НИКОГДА.
+	//
+	// Контракт существующий (был у «глаза», теперь общий с окном фильтров):
+	// выделенная строка обязана остаться на месте, иначе человек теряет
+	// контекст ровно в тот момент, когда с ней работает; direct-out и
+	// активный прокси — аварийный выход и то, через что идёт трафик прямо
+	// сейчас, и спрятать их фильтром значит спрятать состояние подключения.
+	keepVisibleRow := func(name string) bool {
+		if _, sel := selectedProxyNames[name]; sel {
+			return true
+		}
+		if name == "direct-out" {
+			return true
+		}
+		return name != "" && name == ac.GetActiveProxyName()
+	}
+
+	// Срез для отображения в списке.
+	//
+	// Считается ОДИН раз на изменение (фильтра, данных, выделения) и лежит в
+	// кэше: widget.List зовёт эту функцию на каждую строку — и в Length, и в
+	// updateItem, — а на 500 узлах подписки компиляция регулярки и прогон
+	// предиката на строку означали бы сотни тысяч сопоставлений за одну
+	// перерисовку.
+	//
+	// Ключ кэша дешёвый и САМОПРОВЕРЯЮЩИЙСЯ: длина списка, ревизия фильтра,
+	// размер выделения, активный прокси и контрольная сумма замеров.
+	// Отдельного сигнала «данные поменялись» не заводится — его пришлось бы
+	// ставить в девяти местах, где список переписывается, и забытое десятое
+	// давало бы вечно устаревший срез (ровно та ошибка, что уже ловилась на
+	// кэшах узлов).
 	proxiesForListView := func() []api.ProxyInfo {
 		all := ac.GetProxiesList()
-		if !hidePingErrors {
-			return all
+		key := serversViewCacheKey{
+			total:     len(all),
+			filterRev: serversFilterRev,
+			selected:  len(selectedProxyNames),
+			active:    ac.GetActiveProxyName(),
 		}
-		out := make([]api.ProxyInfo, 0, len(all))
 		for i := range all {
-			_, sel := selectedProxyNames[all[i].Name]
-			if all[i].Delay != -1 || sel {
-				out = append(out, all[i])
-			}
+			// Сумма замеров ловит и новый пинг, и смену состава при равной
+			// длине; имена в неё не входят намеренно — состав без замеров
+			// меняется только вместе с длиной либо активным узлом.
+			key.delaySum += all[i].Delay
 		}
+		if serversViewCacheValid && serversViewCacheState == key {
+			return serversViewCache
+		}
+		// Сводка ДОГОНЯЕТ состав сама, а не только по явному сигналу
+		// перезагрузки: авто-обновление вкладки Remote дописывает узлы мимо
+		// него, и узел без фасетов выглядел бы для фильтра как «протокол
+		// неизвестен» — то есть исчезал бы при активной категории. Пересчёт
+		// идёт только на промахе кэша и только когда узлов стало больше, так
+		// что файловый разбор (кэшированный по mtime) сюда не зачастит.
+		if refreshServersFacets != nil && serversFilter.Active() &&
+			len(all) != len(serversFacets.ByName) {
+			refreshServersFacets()
+		}
+		out := applyServersFilter(all, serversFacets.ByName, serversFilter, keepVisibleRow)
+		serversViewCache = out
+		serversViewCacheState = key
+		serversViewCacheValid = true
 		return out
 	}
 
@@ -692,9 +788,16 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		subtitleText := canvas.NewText("", theme.Color(theme.ColorNamePlaceHolder))
 		subtitleText.TextSize = serversSubtitleTextSize
 
+		// Иконка info живёт В ПОДСТРОКЕ (правка владельца): обе её позиции —
+		// перед текстом и после — создаются здесь ОДИН раз и дальше только
+		// показываются/прячутся. widget.List переиспользует строки, и
+		// пересборка контейнера на каждом обновлении сломала бы разбор дерева
+		// в updateItem.
+		subtitleLine := nodewarn.NewInfoSubtitleLine(subtitleText)
+
 		titleBox := container.New(
 			tightVBoxLayout{gap: serversTitleSubtitleGap},
-			nameText, subtitleText,
+			nameText, subtitleLine.Content,
 		)
 
 		switchButton := widget.NewButton("▶️", nil)
@@ -756,7 +859,10 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		// Border кладёт объекты в порядке [center, right]: titleBox, кнопки.
 		titleBox := content.Objects[0].(*fyne.Container)
 		nameText := titleBox.Objects[0].(*canvas.Text)
-		subtitleText := titleBox.Objects[1].(*canvas.Text)
+		// Подстрока — не голый текст, а строка с местами под иконку info
+		// (createItem): [иконка слева, текст, иконка справа].
+		subtitleLine := nodewarn.BindInfoSubtitleLine(titleBox.Objects[1])
+		subtitleText := titleBox.Objects[1].(*fyne.Container).Objects[1].(*canvas.Text)
 
 		// content.Objects: [titleBox, центрированные кнопки].
 		// buttonsBox: [кликабельный замер, ▶, распорка].
@@ -772,6 +878,10 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 		// canvas.Text не умеет ellipsis сам — режем по длине, иначе длинное
 		// имя растянет строку и вытолкнет кнопки за край.
+		//
+		// Имя — ЧИСТОЕ. Знака info у него больше нет (правка владельца): имя
+		// служит тегом, и всякая приписка к нему читается как часть тега.
+		nodeWarns := nodeWarningsFor(ac, proxyInfo.Name, panel.scope)
 		nameText.Text = truncateRunes(proxyInfo.DisplayOrName(), serversNameMaxRunes)
 		nameText.Color = theme.Color(theme.ColorNameForeground)
 		nameText.Refresh()
@@ -781,6 +891,10 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		subtitleText.Text = truncateSubtitle(serversNodeSubtitle(ac, proxyInfo, panel.scope))
 		subtitleText.Color = theme.Color(theme.ColorNamePlaceHolder)
 		subtitleText.Refresh()
+
+		// Иконка info — во второй строке: перед составом у здорового узла, в
+		// конце у узла с деградацией (там начало строки занято ✖/⚠).
+		subtitleLine.Update(nodeWarns)
 
 		// Замер — цветное число на нейтральной подложке; клик по нему
 		// запускает новый замер (обработчик ниже).
@@ -1036,6 +1150,77 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	}
 
 	panel.proxiesList = proxiesListWidget
+
+	// refreshServersFacets — пересобрать сводку по текущему списку.
+	//
+	// Здесь и только здесь читаются config.json и state.json ради фильтра:
+	// оба разбора кэшированы по mtime, но даже попадание в кэш — это Stat на
+	// файл, и делать его на строку списка нельзя.
+	refreshServersFacets = func() {
+		serversFacets = collectServersFacets(ac, ac.GetProxiesList(), panel.scope)
+	}
+
+	syncServersFilterButton = func() {
+		if serversFilterBadge == nil {
+			return
+		}
+		// Признак того, что список неполон, — ТОЧКА в углу кнопки, а не её
+		// подсветка: без признака человек, вернувшийся к вкладке через час,
+		// читал бы усечённый список как «узлы пропали», а подсвеченная целиком
+		// кнопка читалась бы как «нажата» и спорила бы с обычной важностью
+		// соседей в ряду (решение владельца).
+		serversFilterBadge.SetVisible(serversFilter.Active())
+	}
+
+	// applyServersFilterUI — общий хвост любой правки фильтра: сбросить кэш
+	// среза, пересчитать его и перерисовать список.
+	applyServersFilterUI = func() {
+		serversFilterRev++
+		serversViewCacheValid = false
+		// Иконка «глаза» описывает то, что НА ЭКРАНЕ, а не то, какой кнопкой
+		// этого добились: ошибки мог скрыть и сам Тест (см. ExcludesErrors).
+		if updatePingErrorsFilterButton != nil {
+			updatePingErrorsFilterButton()
+		}
+		syncServersFilterButton()
+		reconcileListSelection()
+		if proxiesListWidget != nil {
+			proxiesListWidget.Refresh()
+		}
+		// Сколько строк осталось — В СТРОКЕ СТАТУСА, а не только в заголовке
+		// окна: окно человек закрывает, а усечённый список остаётся, и без
+		// числа он читается как пропавшие узлы.
+		if serversFilter.Active() {
+			status.SetText(locale.Tf("Filter: %d of %d shown",
+				len(proxiesForListView()), len(ac.GetProxiesList())))
+		}
+	}
+
+	// syncServersFilterGroup — смена Selector group: снимок прежней группы
+	// запоминается, у новой восстанавливается свой (LxBox §083).
+	syncServersFilterGroup := func(group string) {
+		if group == serversFilterGroup {
+			return
+		}
+		if serversFilterGroup != "" {
+			serversFilterByGroup[serversFilterGroup] = serversFilter.clone()
+		}
+		if saved, ok := serversFilterByGroup[group]; ok {
+			serversFilter = saved.clone()
+		} else {
+			serversFilter = newServersFilterState()
+		}
+		serversFilterGroup = group
+		refreshServersFacets()
+		applyServersFilterUI()
+		if serversFilterWin != nil {
+			// Окно открыто на другой группе: у него и состав чипов, и
+			// значения полей теперь чужие.
+			serversFilterWin.rebuildChips()
+			serversFilterWin.refreshTitle()
+		}
+	}
+	panel.syncFilterGroup = syncServersFilterGroup
 
 	// Переменные для отслеживания направления сортировки
 	sortNameAscending := true
@@ -1299,7 +1484,10 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			fyne.Do(func() {
 				status.SetText(locale.T("Preparing export…"))
 			})
-			lines, err := config.BuildShareURILinesForOutboundTags(cfgPath, tags)
+			// hasKey — по всему блоку сразу: подтверждение одно на операцию,
+			// а не на каждый узел (иначе экспорт 500-узловой подписки
+			// превратился бы в 500 диалогов).
+			lines, hasKey, err := config.BuildShareURILinesWithSecretForOutboundTags(cfgPath, tags)
 			fyne.Do(func() {
 				if err != nil {
 					ShowError(win, err)
@@ -1309,12 +1497,14 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 					ShowErrorText(win, locale.T("🖥️ Servers"), locale.T("No share links could be built for this list."))
 					return
 				}
-				// One line per server URI; full block to clipboard.
-				clipboardText := strings.Join(lines, "\n")
-				if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
-					app.Clipboard().SetContent(clipboardText)
-				}
-				status.SetText(locale.Tf("Clipboard: %d lines (one URI per line)", len(lines)))
+				fynewidget.ConfirmShareURISecretBulk(win, hasKey, func() {
+					// One line per server URI; full block to clipboard.
+					clipboardText := strings.Join(lines, "\n")
+					if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
+						app.Clipboard().SetContent(clipboardText)
+					}
+					status.SetText(locale.Tf("Clipboard: %d lines (one URI per line)", len(lines)))
+				})
 			})
 		}()
 	})
@@ -1329,6 +1519,35 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		}
 	}
 	syncExportShareURIsButtonTooltip()
+
+	// Кнопка окна фильтров — СПРАВА от копирования ссылок: и то, и другое
+	// работает с тем, что сейчас на экране, и стоять они должны рядом.
+	//
+	// Иконка темы, а не новый глиф: своих знаков вкладка не заводит
+	// (память `ui-visuals-approve-first`).
+	serversFilterButton = ttwidget.NewButtonWithIcon("", theme.SearchIcon(), func() {
+		// Сводка — перед открытием: до первого фильтра её никто не считал (и
+		// правильно: файловый разбор ради окна, которое могут не открыть),
+		// а окно без чипов выглядело бы пустым.
+		if refreshServersFacets != nil {
+			refreshServersFacets()
+		}
+		serversFilterWin = showServersFilterWindow(serversFilterHost{
+			State:  func() *serversFilterState { return &serversFilter },
+			Facets: func() serversFilterFacets { return serversFacets },
+			Apply:  func() { applyServersFilterUI() },
+			Counts: func() (int, int) {
+				return len(proxiesForListView()), len(ac.GetProxiesList())
+			},
+			Status: func(text string) { status.SetText(text) },
+			Closed: func() { serversFilterWin = nil },
+		}, serversFilterWin)
+	})
+	serversFilterButton.SetToolTip(locale.T("Filters…"))
+	// Точка-индикатор активного фильтра поверх лупы; сама кнопка остаётся
+	// обычной важности (см. syncServersFilterButton).
+	serversFilterBadge = fynewidget.NewBadgeDot(serversFilterButton, theme.ColorNameWarning)
+	syncServersFilterButton()
 
 	// Кнопки пинга и сортировки по задержке (справа)
 	var sortByDelayButton *ttwidget.Button
@@ -1348,8 +1567,8 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 	filterPingErrorsButton := ttwidget.NewButtonWithIcon("", theme.VisibilityOffIcon(), nil)
 	// Default (medium) importance — same gray style as sort arrows and Test in this row.
-	updatePingErrorsFilterButton := func() {
-		if hidePingErrors {
+	updatePingErrorsFilterButton = func() {
+		if serversFilter.ExcludesErrors() {
 			filterPingErrorsButton.SetIcon(theme.VisibilityIcon())
 			filterPingErrorsButton.SetText("")
 			filterPingErrorsButton.SetToolTip(locale.T("Show all servers"))
@@ -1371,11 +1590,33 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		}
 		status.SetText(locale.Tf("Total / Available: %d / %d", total, avail))
 	}
+	// «Глаз» — ЯРЛЫК к категории «Тест» окна фильтров, а не второе состояние
+	// рядом с ней.
+	//
+	// Два независимых переключателя над одним и тем же рядом строк спорили бы:
+	// глаз прячет ошибки, Тест их показывает, и кто победил, зависело бы от
+	// того, что нажали последним. Поэтому кнопка не владеет ничем — она
+	// ставит поле HideErrors фильтра, и оба переключателя смотрят в него.
+	//
+	// Обратная связь тоже есть: выбор «ok»/«untested» в окне зажигает глаз,
+	// выбор «error» его гасит — иконка всегда описывает то, что на экране.
 	filterPingErrorsButton.OnTapped = func() {
-		hidePingErrors = !hidePingErrors
-		updatePingErrorsFilterButton()
-		reconcileListSelection()
-		proxiesListWidget.Refresh()
+		if serversFilter.ExcludesErrors() {
+			// Гасим оба пути: если ошибки прятал Тест, снятие одного лишь
+			// HideErrors не изменило бы ни строки, и кнопка выглядела бы
+			// сломанной.
+			serversFilter.SetHideErrors(false)
+			if serversFilter.Test == serversTestOK || serversFilter.Test == serversTestUntested {
+				serversFilter.SetTest(serversTestAny)
+			}
+		} else {
+			serversFilter.SetHideErrors(true)
+		}
+		applyServersFilterUI()
+		if serversFilterWin != nil {
+			serversFilterWin.rebuildChips()
+			serversFilterWin.refreshTitle()
+		}
 		setListFilterStatus()
 	}
 
@@ -1532,6 +1773,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		sortByNameButton,
 		sortNameLabel,
 		exportShareURIsButton,
+		serversFilterBadge.Container,
 		layout.NewSpacer(),
 		filterPingErrorsButton,
 		sortByDelayButton,
@@ -1556,57 +1798,19 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		}
 		transport := EffectiveProxyTransportIn(ac, scope)
 
-		// Run queries in background to avoid blocking UI
-		go func() {
-			// Используем актуальный список селекторов из groupSelect или перечитываем из конфига
-			var currentSelectorOptions []string
-			if groupSelect != nil && len(groupSelect.Options) > 0 {
-				// Используем актуальный список из виджета (обновляется через updateSelectorList)
-				currentSelectorOptions = groupSelect.Options
-			} else {
-				// Fallback: перечитываем из конфига, если groupSelect еще не инициализирован
-				updatedOptions, _, err := config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath)
-				if err != nil {
-					if os.IsNotExist(err) {
-						debuglog.DebugLog("clash_api_tab: config.json not present yet (popup): %v", err)
-					} else {
-						debuglog.ErrorLog("clash_api_tab: failed to get selector groups for popup: %v", err)
-					}
-					currentSelectorOptions = selectorOptions // Используем старый список как fallback
-				} else if len(updatedOptions) > 0 {
-					currentSelectorOptions = updatedOptions
-				} else {
-					currentSelectorOptions = selectorOptions // Fallback на старый список
-				}
-			}
+		// Список групп — тот же, что в выпадашке (обновляется через
+		// updateSelectorList); до её инициализации — перечитываем из конфига.
+		currentSelectorOptions := selectorOptions
+		if groupSelect != nil && len(groupSelect.Options) > 0 {
+			currentSelectorOptions = groupSelect.Options
+		} else if updated, _, err := config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath); err == nil && len(updated) > 0 {
+			currentSelectorOptions = updated
+		} else if err != nil && !os.IsNotExist(err) {
+			debuglog.ErrorLog("clash_api_tab: failed to get selector groups for runtime window: %v", err)
+		}
 
-			results := make([]string, 0, len(currentSelectorOptions))
-			for _, sel := range currentSelectorOptions {
-				_, now, err := transport.GroupProxies(sel)
-				if err != nil {
-					results = append(results, locale.Tf("%s -> error: %v", sel, err))
-					continue
-				}
-				if now == "" {
-					results = append(results, locale.Tf("%s -> (no active outbound)", sel))
-				} else {
-					results = append(results, locale.Tf("%s -> %s", sel, textnorm.NormalizeProxyDisplay(now)))
-				}
-			}
-
-			// Show dialog on UI thread
-			fyne.Do(func() {
-				content := container.NewVBox()
-				for _, line := range results {
-					lbl := widget.NewLabel(line)
-					content.Add(lbl)
-				}
-				scroll := container.NewVScroll(content)
-				scroll.SetMinSize(fyne.NewSize(480, 260))
-				dlg := dialogs.NewCustom(locale.T("Selector -> Active Outbound"), scroll, nil, locale.T("Close"), ac.UIService.MainWindow)
-				dlg.Show()
-			})
-		}()
+		// Окно опрашивает ядро само, в фоне (core_runtime_window.go).
+		showCoreRuntimeWindow(ac, scope, transport, currentSelectorOptions)
 	})
 	// subtle importance to avoid visual noise
 	mapButton.Importance = widget.LowImportance
@@ -1618,6 +1822,13 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		selectedGroup = value
 		if ac.APIService != nil {
 			ac.APIService.SetSelectedClashGroupIn(panel.scope, value)
+		}
+		// Фильтр переключается ДО выхода по suppressSelectCallback: группа
+		// сменилась в любом случае, и её отбор обязан поехать за ней, даже
+		// когда сам выбор поставлен программно (восстановление после
+		// перечитывания групп).
+		if panel.syncFilterGroup != nil {
+			panel.syncFilterGroup(value)
 		}
 		if suppressSelectCallback {
 			return

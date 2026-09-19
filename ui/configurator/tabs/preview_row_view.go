@@ -10,8 +10,10 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 	"singbox-launcher/internal/textnorm"
 )
 
@@ -35,6 +37,11 @@ func previewRowTitle(r previewRow) string {
 	}
 	return nodeDisplayLine(r.Node)
 }
+
+// Знака info у ИМЕНИ больше нет (правка владельца к разведению уровней):
+// previewRowTitleShown снят, и previewRowTitle — единственное имя строки.
+// Про info говорит иконка в подстроке (nodewarn.InfoSubtitleLine), и решает
+// её место тот же набор кодов, что и цвет подстроки: r.Warnings.
 
 // previewRowReason — причина отбраковки на языке пользователя.
 //
@@ -63,6 +70,18 @@ func previewRowSubtitle(r previewRow) string {
 	}
 	if r.Node == nil {
 		// Узел в составе есть, эмиссия его не выпустила: он выключен.
+		//
+		// SPEC 132 §6.4: выключил его мог не человек, а СТРАХОВКА — ядро
+		// отвергло конфиг, назвав этот узел. Тогда честный ответ подстроки не
+		// «off», а за что именно: «✖ <заголовок кода>». Голое «off» делало
+		// выключенный ядром узел неотличимым от выключенного рукой, то есть
+		// прятало ровно ту причину, ради показа которой вердикт и хранится.
+		//
+		// Коды берутся из СОСТОЯНИЯ (r.Warnings), поэтому доступны и у строки,
+		// которую эмиссия не выпустила, — в отличие от r.Node.
+		if sub := nodewarn.Subtitle(r.Warnings); sub != "" {
+			return sub
+		}
 		return locale.T("off")
 	}
 	if r.GroupCounted {
@@ -75,7 +94,39 @@ func previewRowSubtitle(r previewRow) string {
 		}
 		return sub
 	}
+	// SPEC 131 §6: у здорового узла подстрока отвечает «что это такое», а у
+	// узла с деградацией — «что с ним сделали». Второе важнее: состав узел
+	// описывает и без подстроки (окно узла, тултип), а снятое поле не
+	// показывает больше НИЧЕГО и молча меняет поведение.
+	//
+	// Глиф тот же, что у неразобранной записи: развилки «⚠ означает одно» и
+	// «⚠ означает другое» в строке нет — есть один знак «с этим узлом что-то
+	// не так», а подробности берёт на себя окно узла.
+	if sub := nodewarn.Subtitle(r.Warnings); sub != "" {
+		return sub
+	}
 	return previewNodeSubtitle(r.Node)
+}
+
+// previewRowWarn — подстроку красить цветом предупреждения.
+//
+// Одно место на все три списка: корневой, drill-down и Preview окна
+// источника красили её каждый своим `if pr.Unsupported`, и добавление
+// второго повода разъехалось бы по трём файлам.
+//
+// Из кодов узла красит только ПРОБЛЕМА (error/warning): оранжевая подстрока —
+// это призыв разбираться, а info говорит ровно обратное. По `len(Warnings)`
+// узел с единственным «к сведению» (reality_fp_not_chrome) выглядел
+// сломанным, показывая при этом свой обычный состав «vless·tcp·Reality+Vision»
+// — цвет тревоги и текст «всё в порядке» в одной строке.
+func previewRowWarn(r previewRow) bool {
+	if r.Unsupported {
+		return true
+	}
+	if r.Node != nil && r.GroupCounted && r.GroupAlive == 0 {
+		return true
+	}
+	return nodewarn.HasProblems(r.Warnings)
 }
 
 // previewRowToolTip — полный текст под курсором.
@@ -86,7 +137,11 @@ func previewRowSubtitle(r previewRow) string {
 // У собравшегося узла тултипа нет: его подстрока помещается целиком.
 func previewRowToolTip(r previewRow) string {
 	if !r.Unsupported {
-		return ""
+		// SPEC 131 §6: у выжившего узла тултип появляется только когда есть
+		// что сказать — заголовки его деградаций. Подстрока показывает
+		// первый из них и «+N», тултип раскрывает все: иначе про второй и
+		// третий код узнать было бы негде, кроме окна узла.
+		return nodewarn.ToolTip(r.Warnings)
 	}
 	tip := previewRowReason(r)
 	if r.OriginRaw != "" {
@@ -129,7 +184,11 @@ func showPreviewRowContextMenu(
 			showPreviewNodeEditWindow(r, rawTag, ops)
 		}),
 		fyne.NewMenuItem(locale.T("Copy source line"), func() {
-			fynewidget.SetClipboard(origin)
+			// Исходник неразобранной строки — это ссылка как приехала, и
+			// она может нести приватный ключ (wireguard/masque/ssh
+			// разбираются, даже когда узел из них не собрался). Признак
+			// считаем по самой строке: тела у такой записи нет.
+			fynewidget.ConfirmShareURISecretCopy(win, subscription.ShareURITextCarriesPrivateKey(origin), origin)
 		}),
 	}
 	widget.ShowPopUpMenuAtPosition(fyne.NewMenu("", items...), win.Canvas(), pe.AbsolutePosition)

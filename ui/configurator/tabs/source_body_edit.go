@@ -85,7 +85,16 @@ func applyServerBodyJSON(node *wizardmodels.Node, text string) error {
 	if err != nil {
 		return err
 	}
+	bodyBefore := node.Body
 	node.Body = mat.Body
+	// Коды пересчитаны по НОВОМУ телу и замещают прежние целиком (Л5):
+	// после правки тела старый набор описывает узел, которого больше нет.
+	// Вердикт ядра — не код разбора, пересчётом он не снимается.
+	node.ReplaceDerivedWarnings(mat.Warnings)
+	// А вот СМЕНА ТЕЛА его снимает (SPEC 132, CANON §9.4): ядро судило о
+	// прежнем теле, и к новому его приговор неприменим — узел включается
+	// обратно и проверится следующей сборкой.
+	node.RevalidateCoreVerdictAfterBodyChange(bodyBefore)
 	node.Sections = sections
 	node.NormalizeNodeSections()
 
@@ -163,7 +172,14 @@ func regenServerBodyFromRawText(node *wizardmodels.Node, raw string) error {
 	if err != nil {
 		return err
 	}
+	bodyBefore := node.Body
 	node.Body = mat.Body
+	// Regen пересобирает узел из исходника — значит и коды считаются заново
+	// и замещают прежние (Л5, §3.5 «warnings замещаются, не дописываются»).
+	// Вердикт ядра — не код разбора, пересчётом он не снимается; его снимает
+	// СМЕНА ТЕЛА (SPEC 132, CANON §9.4).
+	node.ReplaceDerivedWarnings(mat.Warnings)
+	node.RevalidateCoreVerdictAfterBodyChange(bodyBefore)
 	node.Origin = &wizardmodels.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw}
 	return nil
 }

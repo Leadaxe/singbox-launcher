@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "security": "auto",
+        "server": "vm.example-20.com",
+        "server_port": 80,
+        "type": "vmess",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "ctr-node",
+      "scheme": "vmess",
+      "warnings": [
+        {
+          "code": "vmess_security_unknown",
+          "path": "security",
+          "value": "aes-128-ctr"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "body_kind": "singbox-outbound"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 1080,
+        "type": "socks",
+        "username": "userid",
+        "version": "4"
+      },
+      "kind": "outbound",
+      "label": "sb-socks4",
+      "scheme": "socks"
+    }
+  ],
+  "v": 1
+}

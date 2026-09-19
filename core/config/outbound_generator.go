@@ -37,10 +37,10 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
@@ -159,6 +159,21 @@ type OutboundGenerationResult struct {
 	// пользователю ИСТОЧНИК, у которого сломался переход. Селекторы и
 	// Направления сюда не попадают — у них источника нет.
 	NodeOrigins map[string]NodeOrigin
+
+	// NodeLinks — финальный тег узла → его идентичность в состоянии
+	// ({FolderID, сырой тег}), SPEC 132.
+	//
+	// Обратный путь страховки: ядро отвергло конфиг и назвало ТЕГ, а
+	// выключать надо запись в state.json. Пересчитать этот путь снаружи
+	// нельзя — тег-политика с переменными (`{$num}`) раскрывается только
+	// эмиссией, и суффикс глобальной уникализации знает тоже только она.
+	// Отсюда решение: карту отдаёт та же сборка, которая теги и выдала
+	// (CANON §9.3).
+	//
+	// Попадают ТОЛЬКО узлы канона. Селекторы, Направления, группы шаблона,
+	// `direct`/`block` и хопы, собранные не из канона, узлами не являются:
+	// их тег не сопоставляется, и страховка на них не действует.
+	NodeLinks map[string]configtypes.NodeLink
 }
 
 // NodeOrigin — чей это узел: ULID источника и его человеческая подпись.
@@ -269,25 +284,10 @@ var TailscaleSupportProbe func() (supported bool, reason string)
 // отвергает ВЕСЬ конфиг как невалидный JSON. nil → считаем, что ядро умеет.
 var AWG3SupportProbe func() (supported bool, reason string)
 
-// RealityKeyShareSupportProbe — та же схема для поля tls.reality.key_share
-// (D-121, SPEC 089 ядра): ядро до 1.14.1-lx.4 не знает ключа, а неизвестный
-// ключ = отказ ВСЕГО конфига. nil → считаем, что ядро умеет.
-//
-// В отличие от соседей гейт ПОЛЕВОЙ: узел не выбрасывается, снимается одно
-// поле — REALITY без key_share работает, обмен ключами берётся из
-// uTLS-отпечатка. Поэтому вердикт читает эмиттер (outbound_tls_emit.go), а не
-// фильтр узлов в GenerateOutboundsFromParserConfig.
-var RealityKeyShareSupportProbe func() (supported bool, reason string)
-
-// coreSupportsRealityKeyShare — вердикт пробы для эмиттера. Отдельная функция,
-// чтобы nil-хук (юнит-тесты, standalone) читался в одном месте.
-func coreSupportsRealityKeyShare() bool {
-	if RealityKeyShareSupportProbe == nil {
-		return true
-	}
-	supported, _ := RealityKeyShareSupportProbe()
-	return supported
-}
+// Полевого гейта tls.reality.key_share здесь БОЛЬШЕ НЕТ (SPEC 131 W2c):
+// частная проба на одно поле заменена табличной проверкой по реестру
+// (`min_core` в registry/tls.json, node_build_gate.go). Соседи выше остаются:
+// они выбрасывают УЗЕЛ и в реестре не выразимы (ловушка Л17).
 
 // GenerateNodeJSON returns a single JSON object string for one proxy node (sing-box outbound).
 // Field order and presence follow sing-box expectations. Supports: vless, vmess, trojan, shadowsocks, hysteria, hysteria2, tuic, naive, masque, anytls, ssh, socks.
@@ -336,373 +336,26 @@ func GenerateNodeJSONBare(node *ParsedNode) (string, error) {
 		return generateRawNodeJSON(node)
 	}
 
-	// Build JSON with correct field order
-	var parts []string
-
-	// 1. tag
-	parts = append(parts, fmt.Sprintf(`"tag":%s`, marshalJSONString(node.Tag)))
-
-	// 2. type (sing-box uses "socks" + version for SOCKS5 URIs, not a separate socks5 type)
-	if node.Scheme == "ss" {
-		parts = append(parts, fmt.Sprintf(`"type":%s`, marshalJSONString("shadowsocks")))
-	} else if node.Scheme == "socks" || node.Scheme == "socks5" {
-		parts = append(parts, fmt.Sprintf(`"type":%s`, marshalJSONString("socks")))
-	} else {
-		parts = append(parts, fmt.Sprintf(`"type":%s`, marshalJSONString(node.Scheme)))
-	}
-
-	// 3. server
-	parts = append(parts, fmt.Sprintf(`"server":%s`, marshalJSONString(node.Server)))
-
-	// 4. server_port (prefer outbound map: buildOutbound may adjust port, e.g. vision-udp443 → 443)
-	serverPort := node.Port
-	if node.Outbound != nil {
-		if sp, ok := node.Outbound["server_port"].(int); ok && sp > 0 {
-			serverPort = sp
-		}
-	}
-	parts = append(parts, fmt.Sprintf(`"server_port":%d`, serverPort))
-
-	// 5. uuid (for vless/vmess) or password (for trojan) or method/password (for ss)
-	if node.Scheme == "vless" || node.Scheme == "vmess" {
-		parts = append(parts, fmt.Sprintf(`"uuid":%s`, marshalJSONString(node.UUID)))
-
-		if node.Scheme == "vmess" {
-			if security, ok := node.Outbound["security"].(string); ok && security != "" {
-				parts = append(parts, fmt.Sprintf(`"security":%s`, marshalJSONString(security)))
-			}
-			if alterID, ok := node.Outbound["alter_id"].(int); ok {
-				parts = append(parts, fmt.Sprintf(`"alter_id":%d`, alterID))
-			}
-		}
-	} else if node.Scheme == "trojan" {
-		parts = append(parts, fmt.Sprintf(`"password":%s`, marshalJSONString(node.UUID)))
-	} else if node.Scheme == "hysteria2" {
-		// Password is required for Hysteria2
-		if password, ok := node.Outbound["password"].(string); ok && password != "" {
-			passwordJSON, err := json.Marshal(password)
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal hysteria2 password: %w", err)
-			}
-			parts = append(parts, fmt.Sprintf(`"password":%s`, string(passwordJSON)))
-		}
-		// server_ports (optional): sing-box expects each entry as low:high; normalize bare ports from sources.
-		if serverPorts := tolerantStringSlice(node.Outbound["server_ports"]); len(serverPorts) > 0 {
-			serverPorts = subscription.NormalizeHysteria2ServerPortsSlice(serverPorts)
-			serverPortsJSON, err := json.Marshal(serverPorts)
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal hysteria2 server_ports: %w", err)
-			}
-			parts = append(parts, fmt.Sprintf(`"server_ports":%s`, string(serverPortsJSON)))
-		}
-		// up_mbps (optional)
-		if upMbps := tolerantInt(node.Outbound["up_mbps"]); upMbps > 0 {
-			parts = append(parts, fmt.Sprintf(`"up_mbps":%d`, upMbps))
-		}
-		// down_mbps (optional)
-		if downMbps := tolerantInt(node.Outbound["down_mbps"]); downMbps > 0 {
-			parts = append(parts, fmt.Sprintf(`"down_mbps":%d`, downMbps))
-		}
-		// obfs (optional)
-		if obfs, ok := node.Outbound["obfs"].(map[string]interface{}); ok && len(obfs) > 0 {
-			var obfsParts []string
-			if obfsType, ok := obfs["type"].(string); ok {
-				obfsParts = append(obfsParts, fmt.Sprintf(`"type":%s`, marshalJSONString(obfsType)))
-			}
-			if obfsPassword, ok := obfs["password"].(string); ok && obfsPassword != "" {
-				obfsPasswordJSON, err := json.Marshal(obfsPassword)
-				if err != nil {
-					return "", fmt.Errorf("failed to marshal hysteria2 obfs password: %w", err)
-				}
-				obfsParts = append(obfsParts, fmt.Sprintf(`"password":%s`, string(obfsPasswordJSON)))
-			}
-			// Gecko packet-size bounds sit flat inside obfs (option/hysteria2.go,
-			// Hysteria2ObfsGecko). Without these the parser reads them and the
-			// emitter silently drops them — the emitter/parser pairing trap.
-			for _, key := range []string{"min_packet_size", "max_packet_size"} {
-				if n := obfsIntField(obfs[key]); n > 0 {
-					obfsParts = append(obfsParts, fmt.Sprintf(`"%s":%d`, key, n))
-				}
-			}
-			if len(obfsParts) > 0 {
-				obfsJSON := "{" + strings.Join(obfsParts, ",") + "}"
-				parts = append(parts, fmt.Sprintf(`"obfs":%s`, obfsJSON))
-			}
-		}
-	} else if node.Scheme == "hysteria" {
-		// Hysteria v1: секрет — auth_str (не password), obfs — ПЛОСКАЯ строка
-		// (option/hysteria.go, HysteriaOutboundOptions.Obfs), а не объект
-		// {type,password}, как у hysteria2. TLS-блок печатает общая секция ниже.
-		if auth, ok := node.Outbound["auth_str"].(string); ok && auth != "" {
-			authJSON, err := json.Marshal(auth)
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal hysteria auth_str: %w", err)
-			}
-			parts = append(parts, fmt.Sprintf(`"auth_str":%s`, string(authJSON)))
-		}
-		if serverPorts := tolerantStringSlice(node.Outbound["server_ports"]); len(serverPorts) > 0 {
-			serverPorts = subscription.NormalizeHysteria2ServerPortsSlice(serverPorts)
-			serverPortsJSON, err := json.Marshal(serverPorts)
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal hysteria server_ports: %w", err)
-			}
-			parts = append(parts, fmt.Sprintf(`"server_ports":%s`, string(serverPortsJSON)))
-		}
-		// Полоса у v1 ОБЯЗАТЕЛЬНА: ядро отвергает outbound без неё («missing
-		// upload speed») и роняет весь config.json. Импорт JSON-тела ставит
-		// дефолт (sanitizeSingboxHysteria), но читает его float64 — эмиттер
-		// обязан читать так же, иначе дефолт есть в Outbound и нет в конфиге.
-		if upMbps := tolerantInt(node.Outbound["up_mbps"]); upMbps > 0 {
-			parts = append(parts, fmt.Sprintf(`"up_mbps":%d`, upMbps))
-		}
-		if downMbps := tolerantInt(node.Outbound["down_mbps"]); downMbps > 0 {
-			parts = append(parts, fmt.Sprintf(`"down_mbps":%d`, downMbps))
-		}
-		if obfs, ok := node.Outbound["obfs"].(string); ok && obfs != "" {
-			obfsJSON, err := json.Marshal(obfs)
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal hysteria obfs: %w", err)
-			}
-			parts = append(parts, fmt.Sprintf(`"obfs":%s`, string(obfsJSON)))
-		}
-	} else if node.Scheme == "ss" {
-		// Extract method and password from outbound
-		// Use json.Marshal to properly escape strings for JSON (handles binary data correctly)
-		// This prevents invalid \xXX escape sequences that JSON doesn't support
-		if method, ok := node.Outbound["method"].(string); ok && method != "" {
-			methodJSON, err := json.Marshal(method)
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal shadowsocks method: %w", err)
-			}
-			parts = append(parts, fmt.Sprintf(`"method":%s`, string(methodJSON)))
-		}
-		if password, ok := node.Outbound["password"].(string); ok && password != "" {
-			passwordJSON, err := json.Marshal(password)
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal shadowsocks password: %w", err)
-			}
-			parts = append(parts, fmt.Sprintf(`"password":%s`, string(passwordJSON)))
-		}
-	} else if (node.Scheme == "socks" || node.Scheme == "socks5") && node.Outbound != nil {
-		if ver, ok := node.Outbound["version"].(string); ok && ver != "" {
-			parts = append(parts, fmt.Sprintf(`"version":%s`, marshalJSONString(ver)))
-		}
-		if username, ok := node.Outbound["username"].(string); ok && username != "" {
-			usernameJSON, err := json.Marshal(username)
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal socks username: %w", err)
-			}
-			parts = append(parts, fmt.Sprintf(`"username":%s`, string(usernameJSON)))
-		}
-		if password, ok := node.Outbound["password"].(string); ok && password != "" {
-			passwordJSON, err := json.Marshal(password)
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal socks password: %w", err)
-			}
-			parts = append(parts, fmt.Sprintf(`"password":%s`, string(passwordJSON)))
-		}
-	} else if node.Scheme == "naive" && node.Outbound != nil {
-		// buildNaiveOutbound (node_parser_naive.go) populates username/password and
-		// optional quic / quic_congestion_control / extra_headers; emit them here so
-		// sing-box receives a complete naive outbound. Anonymous URIs (no userinfo)
-		// legitimately have neither username nor password — both are emitted only when set.
-		if username, ok := node.Outbound["username"].(string); ok && username != "" {
-			usernameJSON, err := json.Marshal(username)
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal naive username: %w", err)
-			}
-			parts = append(parts, fmt.Sprintf(`"username":%s`, string(usernameJSON)))
-		}
-		if password, ok := node.Outbound["password"].(string); ok && password != "" {
-			passwordJSON, err := json.Marshal(password)
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal naive password: %w", err)
-			}
-			parts = append(parts, fmt.Sprintf(`"password":%s`, string(passwordJSON)))
-		}
-		if quic, ok := node.Outbound["quic"].(bool); ok && quic {
-			parts = append(parts, `"quic":true`)
-			if cc, ok := node.Outbound["quic_congestion_control"].(string); ok && cc != "" {
-				parts = append(parts, fmt.Sprintf(`"quic_congestion_control":%s`, marshalJSONString(cc)))
-			}
-		}
-		if hdrs, ok := node.Outbound["extra_headers"].(map[string]interface{}); ok && len(hdrs) > 0 {
-			hdrJSON, err := json.Marshal(hdrs)
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal naive extra_headers: %w", err)
-			}
-			parts = append(parts, fmt.Sprintf(`"extra_headers":%s`, string(hdrJSON)))
-		}
-	} else if node.Scheme == "http" && node.Outbound != nil {
-		// parseHTTPProxyURI (node_parser_http.go) populates username/password,
-		// path and headers; the TLS block (https-form only) is emitted by the
-		// shared section below. This branch is required — without it the
-		// per-scheme switch falls through to the trailing } and the outbound
-		// silently loses everything but {tag,type,server,server_port} (known
-		// emitter-parser-pairing trap; also affects sing-box-import http nodes,
-		// see singbox_import.go:315).
-		if username, ok := node.Outbound["username"].(string); ok && username != "" {
-			usernameJSON, err := json.Marshal(username)
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal http username: %w", err)
-			}
-			parts = append(parts, fmt.Sprintf(`"username":%s`, string(usernameJSON)))
-		}
-		if password, ok := node.Outbound["password"].(string); ok && password != "" {
-			passwordJSON, err := json.Marshal(password)
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal http password: %w", err)
-			}
-			parts = append(parts, fmt.Sprintf(`"password":%s`, string(passwordJSON)))
-		}
-		if path, ok := node.Outbound["path"].(string); ok && path != "" {
-			parts = append(parts, fmt.Sprintf(`"path":%s`, marshalJSONString(path)))
-		}
-		if hdrs, ok := node.Outbound["headers"].(map[string]interface{}); ok && len(hdrs) > 0 {
-			hdrJSON, err := json.Marshal(hdrs)
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal http headers: %w", err)
-			}
-			parts = append(parts, fmt.Sprintf(`"headers":%s`, string(hdrJSON)))
-		}
-	} else if node.Scheme == "tuic" && node.Outbound != nil {
-		// uuid + password required; congestion_control / udp_relay_mode /
-		// zero_rtt_handshake / heartbeat optional. The TLS block is emitted by the
-		// shared section below (buildTuicTLS always sets node.Outbound["tls"]).
-		if uuid, ok := node.Outbound["uuid"].(string); ok && uuid != "" {
-			parts = append(parts, fmt.Sprintf(`"uuid":%s`, marshalJSONString(uuid)))
-		}
-		if password, ok := node.Outbound["password"].(string); ok && password != "" {
-			passwordJSON, err := json.Marshal(password)
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal tuic password: %w", err)
-			}
-			parts = append(parts, fmt.Sprintf(`"password":%s`, string(passwordJSON)))
-		}
-		if cc, ok := node.Outbound["congestion_control"].(string); ok && cc != "" {
-			parts = append(parts, fmt.Sprintf(`"congestion_control":%s`, marshalJSONString(cc)))
-		}
-		if urm, ok := node.Outbound["udp_relay_mode"].(string); ok && urm != "" {
-			parts = append(parts, fmt.Sprintf(`"udp_relay_mode":%s`, marshalJSONString(urm)))
-		}
-		if zr, ok := node.Outbound["zero_rtt_handshake"].(bool); ok && zr {
-			parts = append(parts, `"zero_rtt_handshake":true`)
-		}
-		if hb, ok := node.Outbound["heartbeat"].(string); ok && hb != "" {
-			parts = append(parts, fmt.Sprintf(`"heartbeat":%s`, marshalJSONString(hb)))
-		}
-	} else if node.Scheme == "masque" && node.Outbound != nil {
-		// parseMasqueURI / warp.ToMasqueOutbound populate base64-DER keys, ip/ipv6
-		// tunnel addresses and transport knobs; sing-box rejects the outbound
-		// without them ("at least one of ip/ipv6 is required").
-		//
-		// The HTTP version is `vhttp` and the server name lives in the shared
-		// `tls` block below — masque no longer has its own dialect (core SPEC
-		// 062, schema present since 1.14.0-lx.26). The legacy `network`/`sni`
-		// spellings are accepted on input by the parsers and normalized there,
-		// so nothing flat reaches this point.
-		for _, key := range []string{"private_key", "public_key", "ip", "ipv6", "profile", "vhttp", "idle_timeout", "keep_alive_period"} {
-			if v, ok := node.Outbound[key].(string); ok && v != "" {
-				parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(key), marshalJSONString(v)))
-			}
-		}
-		if mtu, ok := node.Outbound["mtu"].(int); ok && mtu > 0 {
-			parts = append(parts, fmt.Sprintf(`"mtu":%d`, mtu))
-		}
-	} else if node.Scheme == "anytls" && node.Outbound != nil {
-		// buildAnyTLSOutbound stores the credential and session-pool tuning in the
-		// outbound map; the mandatory TLS block is emitted by the shared section below.
-		for _, key := range []string{"password", "idle_session_check_interval", "idle_session_timeout"} {
-			if v, ok := node.Outbound[key].(string); ok && v != "" {
-				parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(key), marshalJSONString(v)))
-			}
-		}
-		if n, ok := node.Outbound["min_idle_session"].(int); ok {
-			parts = append(parts, fmt.Sprintf(`"min_idle_session":%d`, n))
-		}
-	} else if node.Scheme == "ssh" && node.Outbound != nil {
-		// buildSSHOutbound stores credentials and host-key material in the outbound map.
-		for _, key := range []string{"user", "password", "private_key", "private_key_path", "private_key_passphrase", "client_version"} {
-			if v, ok := node.Outbound[key].(string); ok && v != "" {
-				parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(key), marshalJSONString(v)))
-			}
-		}
-		for _, key := range []string{"host_key", "host_key_algorithms"} {
-			if list, ok := node.Outbound[key].([]string); ok && len(list) > 0 {
-				listJSON, err := json.Marshal(list)
-				if err != nil {
-					return "", fmt.Errorf("failed to marshal ssh %s: %w", key, err)
-				}
-				parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(key), string(listJSON)))
-			}
-		}
-	}
-
-	// 6. flow (if present) — use node.Outbound["flow"] when set so Xray-only values like
-	// xtls-rprx-vision-udp443 stay in node.Flow for filters but sing-box gets xtls-rprx-vision
-	flowOut := node.Flow
-	if node.Outbound != nil {
-		if f, ok := node.Outbound["flow"].(string); ok && f != "" {
-			flowOut = f
-		}
-	}
-	// flow has exactly two valid outputs in sing-box: "" (plain VLESS) or
-	// "xtls-rprx-vision". Two filters enforce that:
+	// Всё остальное — НОВЫЙ КОНВЕЙЕР. Здесь стояла цепочка per-scheme веток
+	// на 366 строк: второй экземпляр правил, уже описанных реестром
+	// (utls_fp_unknown, reality_key_share_invalid, конфликты и enum flow — их
+	// копии жили в outbound_tls_emit.go), и вечный источник расхождения с ним.
+	// Решение владельца 19.09.2026: «Никаких копий в старых эмиттерах не должно
+	// быть — все проверки должны идти по новой схеме» (контракт 1.1.11).
 	//
-	//  1. Transport guard — vision is valid ONLY over "bare" TLS/Reality; it is
-	//     incompatible with any v2ray transport (ws/grpc/http/httpupgrade/xhttp),
-	//     which sing-box rejects at load time. Drop flow when a transport is
-	//     present (a stray flow in the URI, or an xhttp node that also carries
-	//     one). See the XHTTP/XTLS-Vision note in sing-box-lx docs/lx-config.md.
-	//  2. Value whitelist — only "xtls-rprx-vision" is emitted. Everything else
-	//     (literal "none" that x3-ui writes, the removed xtls-rprx-direct/origin/
-	//     splice, or any junk) is NOT a value sing-box understands and would make
-	//     it reject the config — so it is dropped to "" = plain VLESS. node.Flow
-	//     keeps the original value for skip-filters; only emission is filtered.
-	//     (xtls-rprx-vision-udp443 was already normalized to xtls-rprx-vision in
-	//     buildOutbound, so it passes the whitelist.)
-	if flowOut != "" && outboundHasTransport(node.Outbound) {
-		debuglog.DebugLog("GenerateNodeJSON: dropping flow=%q on %q — incompatible with a v2ray transport", flowOut, node.Tag)
-		flowOut = ""
+	// Форма тела при этом та же: конвейер пишет ключи в порядке body.order
+	// реестра, то есть в порядке структур ядра, — а именно его прежний switch
+	// и воспроизводил руками. Отличия там, где реестр ПРАВИЛЬНЕЕ: мусор
+	// снимается, дефолты, без которых ядро не собирает outbound,
+	// материализуются, регистр приводится (DRIFT §12).
+	body, _, drop := materializeParsedNodeBody(node)
+	if drop != nil {
+		return "", fmt.Errorf("%s: %s", node.Scheme, dropReason(drop))
 	}
-	if flowOut != "" && flowOut != "xtls-rprx-vision" {
-		debuglog.DebugLog("GenerateNodeJSON: dropping unsupported flow=%q on %q — sing-box accepts only \"\" or xtls-rprx-vision", flowOut, node.Tag)
-		flowOut = ""
-	}
-	if flowOut != "" {
-		parts = append(parts, fmt.Sprintf(`"flow":%s`, marshalJSONString(flowOut)))
-	}
-	if node.Scheme == "vless" && node.Outbound != nil {
-		if pe, ok := node.Outbound["packet_encoding"].(string); ok && pe != "" {
-			parts = append(parts, fmt.Sprintf(`"packet_encoding":%s`, marshalJSONString(pe)))
-		}
-		// VLESS post-quantum encryption layer (core option/vless.go Encryption).
-		// Without this the parser read the field and the emitter dropped it —
-		// the emitter/parser pairing trap (SPEC 103).
-		if enc, ok := node.Outbound["encryption"].(string); ok && enc != "" {
-			parts = append(parts, fmt.Sprintf(`"encryption":%s`, marshalJSONString(enc)))
-		}
-	}
-
-	parts = appendOutboundTransportParts(parts, node.Outbound)
-
-	// 7. tls (if present) — allowlist по OutboundTLSOptions ядра, см. outbound_tls_emit.go
-	if tlsJSON, ok := emitOutboundTLSJSON(node.Scheme, node.Outbound); ok {
-		parts = append(parts, fmt.Sprintf(`"tls":%s`, tlsJSON))
-	}
-
-	// 8. detour (sing-box dial field; Xray dialerProxy chains)
-	if node.Outbound != nil {
-		if d, ok := node.Outbound["detour"].(string); ok {
-			d = strings.TrimSpace(d)
-			if d != "" {
-				parts = append(parts, fmt.Sprintf(`"detour":%s`, marshalJSONString(d)))
-			}
-		}
-	}
-
-	// Build final JSON
-	return "{" + strings.Join(parts, ",") + "}", nil
+	// tag и detour владеет МОДЕЛЬ узла, а не тело (SPEC Т2), и конвейер их
+	// снимает. Для config.json они обязаны вернуться на свои места — тем же
+	// способом, что у узла с готовым телом (generateCanonicalBodyJSON).
+	return stampTagAndDetour(body, node)
 }
 
 // wrapOutboundForConfig одевает голый outbound в форму строки config.json:
@@ -1067,13 +720,37 @@ func generateEndpointJSONBare(node *ParsedNode, forConfig bool) (string, error) 
 		endpoint["tag"] = node.Tag
 	}
 	if forConfig {
-		applyTailscaleStateDirectory(endpoint, node.Scheme, node.Tag)
+		applyTailscaleStateDirectory(endpoint, node.Scheme, node.Tag, TailscaleRemoteStateDirRoot())
 	}
 	jsonBytes, err := json.MarshalIndent(endpoint, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal %s endpoint: %w", node.Scheme, err)
 	}
-	return string(jsonBytes), nil
+	if !forConfig {
+		// Голая форма пишет КАНОНИЧЕСКОЕ тело узла (материализация, подпись
+		// содержимого): гейт по ядру ей противопоказан — тело не должно
+		// зависеть от того, какое ядро стояло в момент сохранения, ровно как
+		// и state_directory этой машины (SPEC 122).
+		return string(jsonBytes), nil
+	}
+	// Полевой гейт ядра для endpoint'ов (SPEC 131 §3.4): у wireguard добрая
+	// половина AWG-полей несёт min_core и build_tag, и на ядре постарше любое
+	// из них отвергает ВЕСЬ конфиг.
+	//
+	// Форма секции endpoints — pretty-printed (сборка кеширует её строками,
+	// core/build/build.go:472), а гейт возвращает компактный JSON, поэтому
+	// отступы восстанавливаются: иначе на ядре постарше endpoints уезжал бы
+	// в конфиг одной строкой — рабочей, но нечитаемой человеку, который в
+	// этот конфиг и заглядывает, когда что-то не так.
+	gated, changed := gateBodyForCore(node.Scheme, node.Tag, jsonBytes)
+	if !changed {
+		return string(jsonBytes), nil
+	}
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, gated, "", "  "); err != nil {
+		return string(gated), nil
+	}
+	return buf.String(), nil
 }
 
 // EmitNodeJSONs renders one parsed node exactly as the final config carries
@@ -1541,6 +1218,11 @@ func GenerateOutboundsFromParserConfig(
 	// SPEC 121: секции узлов, ДОШЕДШИХ до эмиссии. Заполняется в том же цикле
 	// и только на удачной ветке — фрагмент без своего узла ссылался бы в никуда.
 	var nodeSections []NodeSectionSet
+	// SPEC 132: та же причина и то же место — карта «финальный тег → узел
+	// состояния» описывает ровно то, что уехало в конфиг. Узел, который
+	// эмиссия не выпустила, ядро назвать не может, и запись о нём завела бы
+	// сопоставление на узел, которого в конфиге нет.
+	nodeLinks := make(map[string]configtypes.NodeLink, len(allNodes))
 	for _, node := range allNodes {
 		outJSONs, epJSON, err := EmitNodeJSONs(node)
 		if err != nil {
@@ -1553,6 +1235,15 @@ func GenerateOutboundsFromParserConfig(
 		} else {
 			selectorsJSON = append(selectorsJSON, outJSONs...)
 			nodesCount++
+		}
+		if node.Tag != "" && node.CanonicalLink.Tag != "" {
+			// Первый владелец тега побеждает: столкновение финальных тегов
+			// разрешает уникализация, и двух записей на один тег тут быть не
+			// должно. Если всё же есть — молчим о второй, а не переписываем
+			// первую: выключить не тот узел хуже, чем не выключить никакой.
+			if _, dup := nodeLinks[node.Tag]; !dup {
+				nodeLinks[node.Tag] = node.CanonicalLink
+			}
 		}
 		if decoded := state.NodeSectionsFromConfigTypes(node.Sections); decoded != nil {
 			nodeSections = append(nodeSections, NodeSectionSet{
@@ -1603,6 +1294,7 @@ func GenerateOutboundsFromParserConfig(
 		ParseFailedSources:     parseFailedSources,
 		EmissionWarnings:       emissionWarnings,
 		NodeOrigins:            nodeOrigins,
+		NodeLinks:              nodeLinks,
 		NodeSections:           nodeSections,
 		SkippedNaiveReason:     naiveReason,
 	}, nil
@@ -1726,9 +1418,27 @@ func generateRawNodeJSON(node *ParsedNode) (string, error) {
 // эмиттер, из которого тело и получилось. Порядок остальных ключей не
 // трогается вовсе, поэтому байты совпадают со старым движком.
 func generateCanonicalBodyJSON(node *ParsedNode) (string, error) {
-	obj, err := decodeOrderedJSONObject(node.EmitBody)
+	// Полевой гейт ядра (SPEC 131 §3.4): тело заморожено и от ядра не
+	// зависит, но ключ, которого ЭТО ядро не знает, отвергает весь конфиг.
+	// Здесь единственное место, где сохранённое тело становится outbound'ом
+	// config.json, — значит и гейту место здесь, одной табличной проверкой
+	// по реестру вместо частной пробы на каждое поле.
+	gated, _ := gateBodyForCore(node.Scheme, node.Tag, node.EmitBody)
+	return stampTagAndDetour(gated, node)
+}
+
+// stampTagAndDetour возвращает `tag` и `detour` на их места в теле.
+//
+// Тело узла ими не владеет — владеет МОДЕЛЬ узла (SPEC Т2), и конвейер их
+// снимает как managed-ключи сборки. Но outbound в config.json без тега не
+// существует, а detour приезжает резолвом Направлений (проход 2), поэтому
+// ровно здесь, на границе «тело → outbound», они дописываются обратно:
+// tag первым ключом, detour последним — так их писал и прежний per-scheme
+// эмиттер, и так их ждут глаза читающего config.json.
+func stampTagAndDetour(body []byte, node *ParsedNode) (string, error) {
+	obj, err := decodeOrderedJSONObject(body)
 	if err != nil {
-		return "", fmt.Errorf("canonical node %q: %w", node.Tag, err)
+		return "", fmt.Errorf("node %q: %w", node.Tag, err)
 	}
 	obj.setFirst("tag", marshalJSONStringRaw(node.Tag))
 	// Detour приезжает резолвом (проход 2) через ту же карту Outbound, что
@@ -1994,65 +1704,9 @@ func pruneNodesBySource(nodesBySource map[int][]*ParsedNode, allNodes []*ParsedN
 	}
 }
 
-// obfsIntField reads an integer obfs field regardless of whether it arrived as
-// an int (URI parser) or a float64 (JSON import). Returns 0 when absent.
-func obfsIntField(v interface{}) int {
-	return tolerantInt(v)
-}
-
-// tolerantInt — целое поле outbound'а, каким бы числовым типом оно ни
-// приехало.
-//
-// Один и тот же ключ попадает в Outbound из ДВУХ разных источников: URI-парсер
-// кладёт `int`, а разбор JSON-тела (sing-box/Xray) — `float64` либо
-// `json.Number`. Жёсткий `.(int)` в эмиттере молча роняет поле у половины
-// источников — так у hysteria/hysteria2 терялась полоса, а без неё ядро
-// отвергает весь config.json («missing upload speed»).
-func tolerantInt(v interface{}) int {
-	switch t := v.(type) {
-	case int:
-		return t
-	case int64:
-		return int(t)
-	case float64:
-		return int(t)
-	case json.Number:
-		n, err := t.Int64()
-		if err != nil {
-			return 0
-		}
-		return int(n)
-	}
-	return 0
-}
-
-// tolerantStringSlice — список строк outbound'а из любой формы, в которой он
-// приехал: `[]string` от URI-парсера или `[]interface{}` от разбора JSON.
-//
-// Элемент-число принимается тоже: `server_ports` в чужом JSON пишут и как
-// ["1000:2000"], и как [8443] — второе после разбора становится float64, и
-// отбрасывать его значило бы потерять порт, который провайдер задал.
-func tolerantStringSlice(v interface{}) []string {
-	switch t := v.(type) {
-	case []string:
-		return t
-	case []interface{}:
-		out := make([]string, 0, len(t))
-		for _, item := range t {
-			switch s := item.(type) {
-			case string:
-				if s != "" {
-					out = append(out, s)
-				}
-			case float64:
-				out = append(out, strconv.Itoa(int(s)))
-			case int:
-				out = append(out, strconv.Itoa(s))
-			case json.Number:
-				out = append(out, s.String())
-			}
-		}
-		return out
-	}
-	return nil
-}
+// СНЯТЫ вместе с per-scheme эмиттером (контракт 1.1.11): obfsIntField,
+// tolerantInt, tolerantStringSlice. Они существовали, чтобы эмиттер читал
+// число и список из ЛЮБОЙ формы, в которой те приехали (int от URI-парсера,
+// float64 от разбора JSON, строка от маппера W2d) — ловушка Л8 «JSON-карта и
+// .(int)-ассерты». Приведением типов теперь занимается nodeflow/coerce.go по
+// реестру, ровно один раз и на все схемы сразу.

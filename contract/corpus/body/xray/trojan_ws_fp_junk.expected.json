@@ -1,0 +1,38 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "password": "pw",
+        "server": "t.example",
+        "server_port": 8443,
+        "tls": {
+          "enabled": true,
+          "server_name": "t.example",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "transport": {
+          "path": "/tr",
+          "type": "ws"
+        },
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "trojan ws",
+      "scheme": "trojan",
+      "warnings": [
+        {
+          "code": "utls_fp_unknown",
+          "path": "tls.utls.fingerprint",
+          "value": "bogus"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

@@ -103,7 +103,13 @@ func TestSingboxImportFullConfigFixture(t *testing.T) {
 		}
 	})
 
-	t.Run("xray utls alias is canonicalized during import", func(t *testing.T) {
+	// SPEC 131 W2c: импорт БОЛЬШЕ не канонизирует значения — он маппер.
+	// Отпечаток приезжает сюда как в источнике (xray-псевдоним), а к
+	// каноническому виду его приводит санитайзер реестра уже при
+	// материализации тела (кейс корпуса uri/vless/fp_hellochrome_alias_reality,
+	// табличный тест пакета nodeflow). Здесь проверяется ровно то, за что
+	// отвечает импорт: блоки на месте и ничего не потеряно.
+	t.Run("reality node keeps its tls blocks through import", func(t *testing.T) {
 		node := findNodeByTag(res, "reality-node")
 		if node == nil {
 			t.Fatal("reality-node missing")
@@ -112,12 +118,8 @@ func TestSingboxImportFullConfigFixture(t *testing.T) {
 		if !ok {
 			t.Fatal("reality-node lost its tls block")
 		}
-		utls, ok := tls["utls"].(map[string]interface{})
-		if !ok {
+		if _, ok := tls["utls"].(map[string]interface{}); !ok {
 			t.Fatal("reality-node lost its utls block")
-		}
-		if utls["fingerprint"] != "chrome" {
-			t.Errorf("fingerprint = %v, want chrome", utls["fingerprint"])
 		}
 		if _, ok := tls["reality"]; !ok {
 			t.Error("valid REALITY block must survive")

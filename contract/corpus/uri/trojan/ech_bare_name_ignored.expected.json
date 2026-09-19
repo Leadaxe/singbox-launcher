@@ -20,7 +20,13 @@
       },
       "kind": "outbound",
       "label": "ech-bare",
-      "scheme": "trojan"
+      "scheme": "trojan",
+      "warnings": [
+        {
+          "code": "ech_ignored",
+          "path": "ech"
+        }
+      ]
     }
   ],
   "v": 1

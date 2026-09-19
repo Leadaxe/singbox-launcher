@@ -109,7 +109,9 @@ func TestTailscaleEmittedAsEndpoint(t *testing.T) {
 	if emitted["tag"] != "ts node/1" {
 		t.Errorf("tag = %v, want %q", emitted["tag"], "ts node/1")
 	}
-	if got, want := emitted["state_directory"], "/opt/lx/bin/tailscale/ts_node_1"; got != want {
+	// Ожидание собирается filepath.Join'ом — эмиттер клеит ЛОКАЛЬНЫЙ корень
+	// тем же вызовом, и на Windows путь приходит с обратными слэшами.
+	if got, want := emitted["state_directory"], filepath.Join("/opt/lx/bin/tailscale", "ts_node_1"); got != want {
 		t.Errorf("state_directory = %v, want %q", got, want)
 	}
 
@@ -297,10 +299,11 @@ func TestTailscaleConfigPassesSingboxCheck(t *testing.T) {
 // формулировок, не поймав того, ради чего норма писалась — расхождения трёх
 // входов между собой.
 func TestTailscaleCanonicalBundle(t *testing.T) {
-	// Норма (1): состав связки и ОДНО правило маршрута сразу с обоими
-	// признаками. Разнесение на два правила — тихая потеря трафика при
-	// FakeIP, поэтому число правил проверяется явно.
-	t.Run("состав: одно правило с domain_suffix и обеими подсетями", func(t *testing.T) {
+	// Норма (1): состав связки и ОДНО правило маршрута через `preferred_by`
+	// (D-120): матчер ядра берёт MagicDNS-зону и allowed IPs пиров из живого
+	// состояния tailnet, включая subnet routes — литералы `.ts.net` и
+	// `100.64.0.0/10` их не покрывали. Число правил проверяется явно.
+	t.Run("состав: одно правило preferred_by=@self", func(t *testing.T) {
 		sections, err := state.TailscaleCanonicalSections()
 		if err != nil {
 			t.Fatalf("TailscaleCanonicalSections: %v", err)
@@ -327,15 +330,17 @@ func TestTailscaleCanonicalBundle(t *testing.T) {
 		if err := json.Unmarshal(raw, &match); err != nil {
 			t.Fatalf("match правила: %v", err)
 		}
-		// Имена не матчатся одним ip_cidr при FakeIP — суффикс обязан быть
-		// в ТОМ ЖЕ правиле.
-		if got := toStringList(match["domain_suffix"]); len(got) != 1 || got[0] != state.TailscaleMagicDNSSuffix {
-			t.Errorf("domain_suffix правила = %v, ожидался [%s]", got, state.TailscaleMagicDNSSuffix)
+		// Матчер — ссылка на САМ узел, как и цель: подставляется тем же
+		// SubstituteSelf (массив строк — substituteSelfInValue обходит его).
+		if got := toStringList(match["preferred_by"]); len(got) != 1 || got[0] != state.SelfPlaceholder {
+			t.Errorf("preferred_by правила = %v, ожидался [%s]", got, state.SelfPlaceholder)
 		}
-		gotCIDR := toStringList(match["ip_cidr"])
-		wantCIDR := []string{state.TailscaleCGNATRange, state.TailscaleCGNATRange6}
-		if strings.Join(gotCIDR, ",") != strings.Join(wantCIDR, ",") {
-			t.Errorf("ip_cidr правила = %v, ожидались обе подсети tailnet %v", gotCIDR, wantCIDR)
+		// Литералов прежней нормы в правиле нет: они дублировали бы матчер
+		// и снова не покрывали subnet routes.
+		for _, stale := range []string{"domain_suffix", "ip_cidr"} {
+			if _, has := match[stale]; has {
+				t.Errorf("в правиле связки остался литерал %q — норма D-120 его сняла", stale)
+			}
 		}
 
 		// DNS-сервер и DNS-правило: тег сервера локален (`@{self}-dns`), и
@@ -503,7 +508,7 @@ func TestTailscaleCanonicalBundle(t *testing.T) {
 		node := pb.Entries[0].Node
 		var found bool
 		for _, w := range node.Warnings {
-			if w == subscription.WarnTailscaleFromSubscription {
+			if w.Code == subscription.WarnTailscaleFromSubscription {
 				found = true
 			}
 		}

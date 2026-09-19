@@ -65,12 +65,50 @@ type MigrationServerResult struct {
 	OriginRaw  string
 	// LegacyHash — контент-хэш узла (адресат detour_node_hash).
 	LegacyHash string
+	// Warnings — коды деградаций, проставленных разбором этому узлу
+	// (SPEC 131 W2b). Едут до самой записи узла: до этого они умирали в
+	// материализации, и пользователь видел узел без следа того, что у него
+	// сняли поле.
+	Warnings []NodeWarning
+}
+
+// SanitizeBodyRequest — разовый пересчёт кодов по УЖЕ СОХРАНЁННОМУ телу
+// (SPEC 131 W2c §3.5, ловушка Л3).
+type SanitizeBodyRequest struct {
+	// Body — тело узла из state как есть; схема определяется по его "type".
+	Body json.RawMessage
+	// OriginKind — вход, которым узел когда-то приехал (Origin.Kind:
+	// "uri" | "wg_ini" | "json"); пусто, если происхождения у узла нет.
+	//
+	// Его читают правила значений, различающие, КТО сочинил значение: тело в
+	// форме ядра человек или подписка написали сами, и лаунчер его не
+	// переписывает — он предупреждает (потолок MTU у AmneziaWG). Без этого
+	// поля исключение жило бы ровно до первой загрузки state: пересчёт кодов
+	// увидел бы «вход неизвестен» и заклампил бы тело задним числом — то
+	// есть настройка пользователя исчезала бы от перезапуска.
+	OriginKind string
+}
+
+// SanitizeBodyResult — итог пересчёта.
+type SanitizeBodyResult struct {
+	// Body — тело после санитайзера. Непусто ТОЛЬКО если санитайзер что-то
+	// снял или привёл: перезаписывать байты, в которых ничего не изменилось,
+	// нельзя — это «менялось» у каждого узла на каждом апгрейде.
+	Body json.RawMessage
+	// Warnings — коды по этому телу; пустой (не nil) список = «считали, чисто».
+	Warnings []NodeWarning
+	// Drop — тело не проходит правила реестра совсем (ядро отвергло бы весь
+	// конфиг). Узел при этом НЕ выбрасывается: он уже в состоянии, и
+	// молчаливый снос чужого узла на апгрейде хуже, чем узел с кодами.
+	Drop bool
 }
 
 // MigrationHooks — набор реализаций, подставляемых пакетом config.
 type MigrationHooks struct {
 	MaterializeSubscription func(req MigrationSubRequest) (*MigrationSubResult, error)
 	MaterializeServer       func(req MigrationServerRequest) (*MigrationServerResult, error)
+	// SanitizeBody — пересчёт кодов по сохранённому телу (без origin.raw).
+	SanitizeBody func(req SanitizeBodyRequest) (*SanitizeBodyResult, error)
 }
 
 var migrationHooks MigrationHooks

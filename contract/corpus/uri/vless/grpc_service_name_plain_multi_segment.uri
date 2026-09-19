@@ -1,0 +1,4 @@
+# gRPC: имя сервиса БЕЗ ведущего «/» — старое поведение. Ядро дописывает
+# «/Tun» и экранирует имя одним сегментом: на проводе «/a%2Fb/Tun».
+# Значение в теле остаётся «a/b» — лаунчер его не трогает.
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?encryption=none&type=grpc&serviceName=a%2Fb&sni=example-1.com&security=tls&fp=chrome#gr%20plain

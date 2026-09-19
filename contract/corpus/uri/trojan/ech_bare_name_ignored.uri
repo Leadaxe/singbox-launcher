@@ -1,3 +1,7 @@
 # bare ech (без resolver) -> тоже игнор + warning
 # источник: LxBox app/test/parser/ech_import_test.dart:40-48 (анонимизировано)
+#
+# SPEC 131 W2d: per-app override .expected.lxbox.json СНЯТ — Go ставит
+# ech_ignored так же, как LxBox. Xray-форма ech= несёт ключ чужого клиента
+# и снимается; блок tls.ech{} из sing-box-JSON не затрагивается (D-122).
 trojan://pass123@example-1.com:443?type=ws&path=%2Fx&security=tls&ech=probe.example-5.com&sni=example-1.com#ech-bare

@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "a.example",
+        "server_port": 443,
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "extra vnext",
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "xray_extra_entries_dropped",
+          "path": "$extra_vnext",
+          "value": "2"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

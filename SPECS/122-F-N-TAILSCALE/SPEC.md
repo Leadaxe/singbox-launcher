@@ -89,6 +89,29 @@ Detour на такой узел не запрещается (пользоват�
 | Ephemeral | check | `ephemeral` |
 | Accept routes | check | `accept_routes` |
 | Exit node | text (пусто = нет) | `exit_node` |
+| Keep local network reachable… | check (только при непустом Exit node) | `exit_node_allow_lan_access` |
+| Advertise this node as an exit node | check | `advertise_exit_node` |
+| Advertise routes | text, CIDR через запятую | `advertise_routes` |
+| ACL tags | text, `tag:имя` через запятую | `advertise_tags` |
+
+**Две роли исключают друг друга.** Ядро отказывается стартовать с
+`advertise_exit_node` и непустым `exit_node` разом, и проверка эта живёт в
+`NewEndpoint` — `sing-box check` её не ловит, падает только запуск (ловушка
+chain-check-misses-start-errors). Поэтому форма не даёт собрать такую пару:
+галка «быть выходом» гасит строку «Exit node» вместе с её спутником
+`exit_node_allow_lan_access` (тот и сам по себе не значит ничего — ядро
+применяет его только внутри ветки `if t.exitNode != ""`), и на анонсе
+`exit_node` в тело не пишется, даже если строка осталась заполненной.
+
+**Маршруты проверяются в форме.** `advertise_routes` — это `[]netip.Prefix`,
+а не строки: мусор оттуда свалил бы разбор всего конфига
+(broken-list-pbk-junk). `parseTailscalePrefixList` отбивает непарсящийся CIDR
+и отдельно — дефолтный маршрут (ядро на нём тоже падает в рантайме, советуя
+галку), а хостовые биты нормализует: `192.168.10.5/24` → `192.168.10.0/24`,
+иначе `netip` отвергнет префикс.
+
+Подсказка под блоком анонсов нормативна ровно в одном: анонс сам по себе
+ничего не включает — маршруты и выход ждут подтверждения в админке tailnet.
 
 Подсказка под ключом: «One-off keys are consumed at first login; the node
 identity then lives in the state directory. Deleting the profile registers
@@ -203,8 +226,12 @@ a new device — use a reusable key for that.»
   `Add server → Tailscale` с другим тегом; каталоги состояния разведены
   по тегу (§2.1). Правило на `100.64.0.0/10` у второго узла пользователь
   снимает сам в JSON узла.
-- `advertise_routes`/`advertise_exit_node`/`system_interface` — не в
-  форме; доступны через JSON узла.
+- Режимные поля — не в форме; доступны через JSON узла. `system_interface`
+  (+`_name`/`_mtu`) меняет режим стека: вместо netstack поднимается второй
+  системный TUN рядом с TUN лаунчера, с правами и конфликтом маршрутов.
+  `relay_server_port`/`relay_server_static_endpoints` — роль DERP-релея для
+  чужих узлов, нужна публично достижимому серверу, а не рабочей машине.
+  Класть их в форму значило бы предлагать смену режима наравне с настройкой.
 - Тег узла как цель чужих правил (`GetAvailableOutbounds`) — отдельно,
   если попросят.
 - LxBox: libbox без tailscale (`// lx:no-tailscale`), в контракте только

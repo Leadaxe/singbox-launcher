@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"sync"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
@@ -34,6 +36,14 @@ type App struct {
 	// overlay is a concrete ClickRedirect component from `ui/components`.
 	// nil when `wizardOverlayEnabled` is false (current default).
 	overlay *components.ClickRedirect
+
+	// rejected — плашка «ядро выключило N серверов» на вкладке Local
+	// (SPEC 132 §6.1, core_rejected_notice.go).
+	rejected *coreRejectedNotice
+	// windowShown — видно ли главное окно (не в трее). Ведём сами: диалог
+	// предела за скрытым окном остановил бы цикл страховки навсегда.
+	windowShown     bool
+	windowVisibleMu sync.Mutex
 }
 
 // NewApp creates a new App instance
@@ -52,7 +62,11 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	// Emoji-in-label (💡 default emoji presentation) — colour rendering
 	// via OS font fallback to Apple Color Emoji, matching sibling tabs
 	// (⚙️ Settings / 🔍 Diagnostics).
-	localContent, localPanel := CreateLocalTab(controller)
+	// Плашка страховки (SPEC 132 §6.1) живёт НАД списком узлов вкладки Local:
+	// выключенные серверы — это про состав списка, и сообщение о них должно
+	// стоять там же, где человек его увидит. Контейнер отдаём пустым и
+	// скрытым — до первого выключения места он не занимает.
+	localContent, localPanel := CreateLocalTab(controller, app.coreRejectedBar())
 	remoteContent, remotePanel := CreateRemoteTab(controller)
 	app.localPanel, app.remotePanel = localPanel, remotePanel
 	// SPEC 100 §3.8: Debug API получает Connect/Disconnect вкладки Remote.
@@ -226,7 +240,18 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 		// демону), и локальный config.json ей не собеседник.
 		controller.EventBus.Subscribe(events.ConfigBuilt, func(e events.Event) {
 			payload, ok := e.Payload.(events.ConfigBuiltPayload)
-			if !ok || !payload.OK {
+			if !ok {
+				return
+			}
+			// SPEC 132 §6.1: плашка показывается по ЛЮБОМУ исходу сборки, у
+			// которого есть выключенные. При OK:false цикл мог выключить
+			// несколько узлов и упереться в ошибку не про узел — человек
+			// обязан узнать о выключенных и этим путём тоже (§10.4).
+			if len(payload.DisabledNodes) > 0 {
+				disabled := payload.DisabledNodes
+				fyne.Do(func() { app.showCoreRejected(disabled) })
+			}
+			if !payload.OK {
 				return
 			}
 			fyne.Do(func() {
@@ -254,6 +279,7 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	// неактивна, а окно — видимо (режим -tray скроет его сам, дёрнув
 	// OnWindowHidden). Тикер поднимется при первом заходе на Remote.
 	app.remotePanel.AutoRefresh().SetWindowVisible(true)
+	app.setWindowVisible(true)
 	// Пока окно в трее, обновлять нечего: данные никто не видит, а запросы
 	// продолжали бы будить машину.
 	if controller.UIService != nil {
@@ -263,6 +289,9 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 				prevShown()
 			}
 			app.remotePanel.AutoRefresh().SetWindowVisible(true)
+			// Тот же признак нужен страховке: диалог предела за скрытым окном
+			// остановил бы её цикл навсегда (SPEC 132 §6.2).
+			app.setWindowVisible(true)
 		}
 		prevHidden := controller.UIService.OnWindowHidden
 		controller.UIService.OnWindowHidden = func() {
@@ -270,8 +299,14 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 				prevHidden()
 			}
 			app.remotePanel.AutoRefresh().SetWindowVisible(false)
+			app.setWindowVisible(false)
 		}
 	}
+
+	// Страховка «ядро отвергло узел» получает свои UI-колбэки (SPEC 132
+	// волна 5): строку хода и диалог предела. До этого момента все входы
+	// вели себя как фоновые — шли молча до жёсткого потолка.
+	app.installCoreRejectHooks(controller)
 
 	// Инициализируем состояние вкладки + первичный рендер иконки Core.
 	// EventBus.Subscribe не fires backfill — рендерим вручную для startup'а.

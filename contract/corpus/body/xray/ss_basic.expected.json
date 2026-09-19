@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "method": "aes-256-gcm",
+        "password": "pw",
+        "server": "s.example",
+        "server_port": 8388,
+        "type": "shadowsocks"
+      },
+      "kind": "outbound",
+      "label": "ss",
+      "scheme": "ss"
+    }
+  ],
+  "v": 1
+}

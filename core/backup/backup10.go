@@ -103,8 +103,14 @@ type Source10 struct {
 	// Service и Reason — признаки узла, приехавшего из чужой записи или не
 	// разобранного вовсе. У корневого источника их не бывает, но у узлов
 	// внутри папки бывают, и там едет state.Node целиком.
-	Service  bool                `json:"service,omitempty"`
-	Reason   string              `json:"reason,omitempty"`
+	Service bool   `json:"service,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+	// Warnings — коды деградаций узла (контракт 1.1.0, SPEC 131). Пишутся,
+	// чтобы ⚠ переехало «как было»; ЧИТАЮТСЯ, но в состояние не кладутся:
+	// данные производные и при переносе не авторитетны (CANON §6) —
+	// приёмник считает их сам по своему реестру. Поле объявлено, поэтому
+	// неизвестным ключом оно не считается и импорт на него не ругается.
+	Warnings []state.NodeWarning `json:"warnings,omitempty"`
 	Sections *state.NodeSections `json:"sections,omitempty"`
 
 	// ── контейнер (папка | подписка) ──

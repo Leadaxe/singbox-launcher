@@ -26,14 +26,18 @@ func TestBuildOutbound_AnyTLS(t *testing.T) {
 		t.Fatalf("ParseNode: %v", err)
 	}
 	node.Tag = "anytls-out"
-	out := buildOutbound(node)
+	out := nodeBody(t, node)
 
 	assertEq(t, out["type"], "anytls")
 	assertEq(t, out["tag"], "anytls-out")
 	assertEq(t, out["server"], "any.example.test")
 	assertEq(t, out["server_port"], 443)
 	assertEq(t, out["password"], "secret")
-	assertEq(t, out["idle_session_timeout"], "30s") // bare int → seconds
+	// Голые секунды → "30s": правило ЗНАЧЕНИЯ, живёт в body.fields
+	// (normalize duration_bare_seconds), а значит видно только ПОСЛЕ
+	// санитайзера. Проверяет корпус uri/anytls/idle_session_bare_seconds;
+	// здесь смотрим лишь на то, что маппер довёз параметр до тела.
+	assertEq(t, out["idle_session_timeout"], "30")
 	assertEq(t, out["min_idle_session"], 2)
 
 	tls, ok := out["tls"].(map[string]interface{})
@@ -61,7 +65,7 @@ func TestAnyTLS_ShareURIRoundTrip(t *testing.T) {
 		t.Fatalf("ParseNode: %v", err)
 	}
 	node.Tag = "rt"
-	out := buildOutbound(node)
+	out := nodeBody(t, node)
 
 	share, err := ShareURIFromOutbound(out)
 	if err != nil {
@@ -71,7 +75,7 @@ func TestAnyTLS_ShareURIRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reparse %q: %v", share, err)
 	}
-	out2 := buildOutbound(node2)
+	out2 := nodeBody(t, node2)
 	for _, k := range []string{"type", "server", "server_port", "password"} {
 		if out[k] != out2[k] {
 			t.Errorf("round-trip %s: %v != %v", k, out[k], out2[k])

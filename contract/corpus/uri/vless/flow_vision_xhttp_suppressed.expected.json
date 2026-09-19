@@ -26,7 +26,13 @@
       },
       "kind": "outbound",
       "label": "flow-xhttp",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "vision_with_transport",
+          "path": "flow"
+        }
+      ]
     }
   ],
   "v": 1

@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "a.example",
+        "server_port": 443,
+        "transport": {
+          "host": "h.example",
+          "mode": "stream-one",
+          "path": "/p",
+          "sc_max_buffered_posts": 12,
+          "type": "xhttp",
+          "x_padding_bytes": "100-1000",
+          "xmux": {
+            "max_concurrency": "4-8"
+          }
+        },
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "splithttp alias",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

@@ -27,6 +27,24 @@ type ConfigBuiltPayload struct {
 	Error error
 	// Warnings — non-fatal предупреждения от build/validate.
 	Warnings []string
+	// DisabledNodes — узлы, выключенные страховкой «ядро отвергло узел»
+	// (SPEC 132) в ЭТОМ проходе сборки. Пусто в подавляющем большинстве
+	// сборок: успешная проверка не выключает ничего.
+	//
+	// Едет и при OK:false: цикл мог выключить несколько узлов и упереться в
+	// ошибку не про узел — выключенные при этом остаются выключенными, и
+	// человек обязан узнать об этом обоими путями.
+	DisabledNodes []DisabledNode
+}
+
+// DisabledNode — одна строка списка «выключено ядром» (SPEC 132 §6.1).
+type DisabledNode struct {
+	// SourceLabel — подпись источника ("" — не определён).
+	SourceLabel string
+	// Tag — финальный тег, которым узел назвало ядро.
+	Tag string
+	// Reason — дословный текст ядра.
+	Reason string
 }
 
 // VpnStateChangedPayload сопровождает Kind VpnStateChanged.

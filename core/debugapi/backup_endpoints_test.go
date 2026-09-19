@@ -7,6 +7,11 @@ package debugapi
 // тест — круг export → import в пустое состояние → export, и сравнение по
 // БАЙТАМ: равенство отдельных полей пропустило бы ровно то, что теряется
 // на переносе чаще всего, — поле, о котором забыли и в проверке.
+//
+// Из сравнения вынуто ровно два поля, и оба — не про содержимое переноса:
+// номера оси (импорт вправе их переписать, `stripAPIAxisNums`) и `exported_at`
+// (`stripAPIExportedAt`). Сравниваются РАЗНЫЕ экспорты, а отметка времени
+// берётся часами в момент каждого из них.
 
 import (
 	"bytes"
@@ -14,6 +19,7 @@ import (
 	"net/http"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"singbox-launcher/core/backup"
@@ -209,7 +215,7 @@ func TestBackupExportImportRoundTripOverAPI(t *testing.T) {
 	if resp2.StatusCode != 200 {
 		t.Fatalf("re-export status %d: %s", resp2.StatusCode, second)
 	}
-	if stripAPIAxisNums(string(second)) != stripAPIAxisNums(string(first)) {
+	if stripAPIExportedAt(stripAPIAxisNums(string(second))) != stripAPIExportedAt(stripAPIAxisNums(string(first))) {
 		t.Fatalf("перенос через API потерял не только номера оси:\n--- отправлено ---\n%s\n--- получено обратно ---\n%s", first, second)
 	}
 
@@ -221,9 +227,29 @@ func TestBackupExportImportRoundTripOverAPI(t *testing.T) {
 		t.Fatalf("второй импорт status %d: %s", status, raw)
 	}
 	third, _ := fetchBackup(t, dst2Base, "?format=1.0")
-	if string(third) != string(second) {
+	if stripAPIExportedAt(string(third)) != stripAPIExportedAt(string(second)) {
 		t.Fatalf("круг не байт-идентичен:\n--- до ---\n%s\n--- после ---\n%s", second, third)
 	}
+}
+
+// stripAPIExportedAt — `exported_at` вне сравнения кругов.
+//
+// Поле штампуется временем ЭКСПОРТА (`now.UTC()` в `backup.Export10`), а круг
+// сравнивает два РАЗНЫХ экспорта. Совпадали они только пока оба укладывались
+// в одну секунду: стоило второму перешагнуть границу секунды — и байтовое
+// равенство ломалось на ровном месте. Инвариант круга про содержимое бэкапа,
+// а не про часы, поэтому отметка времени снимается так же, как номера оси.
+func stripAPIExportedAt(doc string) string {
+	const key = `"exported_at": "`
+	i := strings.Index(doc, key)
+	if i < 0 {
+		return doc
+	}
+	j := strings.IndexByte(doc[i+len(key):], '"')
+	if j < 0 {
+		return doc
+	}
+	return doc[:i+len(key)] + "<TS>" + doc[i+len(key)+j:]
 }
 
 // stripAPIAxisNums — см. пояснение к кругу выше: номера оси импорт вправе
@@ -281,7 +307,9 @@ func TestBackupFormatsWriteOnly10(t *testing.T) {
 		t.Fatalf("экспорт без ?format отдал не файл 1.0: %v lx_backup=%d", err, head.LxBackup)
 	}
 	explicit, _ := fetchBackup(t, base, "?format=1.0")
-	if string(implicit) != string(explicit) {
+	// Это тоже два разных экспорта — `exported_at` у них вправе разойтись на
+	// границе секунды, а сравниваем мы формат файла, а не часы.
+	if stripAPIExportedAt(string(implicit)) != stripAPIExportedAt(string(explicit)) {
 		t.Errorf("файл без ?format не совпал с файлом ?format=1.0")
 	}
 }

@@ -24,7 +24,11 @@
       "label": "sid-clean",
       "scheme": "vless",
       "warnings": [
-        "reality_short_id_invalid"
+        {
+          "code": "reality_short_id_invalid",
+          "path": "tls.reality.short_id",
+          "value": "0x1a2"
+        }
       ]
     }
   ],

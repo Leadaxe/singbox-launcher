@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "password": "secret",
+        "server": "t.example",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "t.example",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "firefox"
+          }
+        },
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "trojan",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

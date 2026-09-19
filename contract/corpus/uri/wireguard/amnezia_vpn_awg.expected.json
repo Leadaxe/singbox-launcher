@@ -34,7 +34,19 @@
       },
       "kind": "endpoint",
       "label": "AWG Node",
-      "scheme": "wireguard"
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "wgconf_dns_ignored",
+          "path": "dns",
+          "value": "1.1.1.1, 1.0.0.1"
+        },
+        {
+          "code": "awg_mtu_clamped",
+          "path": "mtu",
+          "value": "1420"
+        }
+      ]
     }
   ],
   "v": 1

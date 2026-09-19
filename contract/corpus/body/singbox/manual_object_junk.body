@@ -1,0 +1,13 @@
+# SPEC 131 W2c: РУЧНОЙ JSON-объект идёт тем же конвейером, что и ссылка.
+# До этой волны ветка config_json ехала в тело ДОСЛОВНО (stripTagAndDetour без
+# санитайзера и эмиттера, ловушка Л2): вставленная опечатка валила `sing-box
+# check` на ВСЁМ конфиге, и человек оставался без VPN, не зная, какой узел
+# виноват.
+# Кейс несёт три класса мусора разом:
+#   - ключ вне схемы (totally_unknown_key)        → unknown_key;
+#   - TLS-поле, запрещённое naive (insecure)      → tls_field_unsupported_naive
+#     (ядро отвергает такой naive фаталом на старте);
+#   - порт дробным числом (443.0 приезжает из JSON как float64, ловушка Л8)
+#     → приводится к целому без кода: дробной части нет, значение то же.
+# certificate при этом ОСТАЁТСЯ: у naive ядро читает ровно его (LxBox #140).
+{"type":"naive","tag":"manual-junk","server":"m.example-1.com","server_port":443.0,"username":"u","password":"p","totally_unknown_key":"whatever","tls":{"enabled":true,"server_name":"m.example-1.com","insecure":true,"certificate":"-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"}}

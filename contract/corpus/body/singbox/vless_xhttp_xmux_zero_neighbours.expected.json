@@ -1,0 +1,46 @@
+{
+  "meta": {
+    "body_kind": "singbox-outbound"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 8443,
+        "tls": {
+          "enabled": true,
+          "reality": {
+            "enabled": true,
+            "public_key": "AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw",
+            "short_id": "6c3a75b342477f24"
+          },
+          "server_name": "example-2.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "transport": {
+          "mode": "stream-one",
+          "path": "/api/v2/stream/by-group-id/a0672485620ba65b",
+          "type": "xhttp",
+          "x_padding_bytes": "50-150",
+          "xmux": {
+            "c_max_reuse_times": "0",
+            "h_keep_alive_period": 0,
+            "h_max_request_times": "600-900",
+            "h_max_reusable_secs": "1800-3000",
+            "max_concurrency": "16-32",
+            "max_connections": "0"
+          }
+        },
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "xmux-zero-neighbours",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

@@ -1,6 +1,8 @@
 package subscription
 
 import (
+	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -16,14 +18,7 @@ func TestWireGuardReservedRoundTrip(t *testing.T) {
 		t.Fatalf("parse: %v", err)
 	}
 	ep := node.Outbound
-	peers, ok := ep["peers"].([]map[string]interface{})
-	if !ok || len(peers) == 0 {
-		t.Fatalf("no peers in endpoint: %#v", ep["peers"])
-	}
-	res, ok := peers[0]["reserved"].([]int)
-	if !ok {
-		t.Fatalf("reserved wrong type: %#v", peers[0]["reserved"])
-	}
+	res := reservedOfFirstPeer(t, ep)
 	if len(res) != 3 || res[0] != 29 || res[1] != 172 || res[2] != 92 {
 		t.Fatalf("reserved = %v, want [29 172 92]", res)
 	}
@@ -37,8 +32,7 @@ func TestWireGuardReservedRoundTrip(t *testing.T) {
 	if err != nil || node2 == nil {
 		t.Fatalf("reparse: %v", err)
 	}
-	peers2 := node2.Outbound["peers"].([]map[string]interface{})
-	res2 := peers2[0]["reserved"].([]int)
+	res2 := reservedOfFirstPeer(t, node2.Outbound)
 	if len(res2) != 3 || res2[0] != 29 || res2[1] != 172 || res2[2] != 92 {
 		t.Fatalf("reserved lost in round-trip: %v", res2)
 	}
@@ -96,28 +90,81 @@ func TestWireGuardExplicitI1SuppressesMasquerade(t *testing.T) {
 	}
 }
 
+// Разбор reserved проверяется ЧЕРЕЗ ССЫЛКУ: рукописного parseReservedTriplet
+// больше нет. Маппер только РЕЖЕТ значение по запятой в список чисел (запись
+// секции, list {sep: ",", item: "int", len: 3}), а ГОДНОСТЬ судит тело —
+// peers[].reserved, type int_array, len 3, границы элемента 0..255, on_invalid
+// drop с кодом type_invalid. Поэтому здесь остаётся только то, что относится к
+// мапперу: годная тройка доезжает, синтаксический мусор до тела не доходит.
+//
+// Негодные ЗНАЧЕНИЯ (длина не 3, элемент вне байта) проверяет корпус, где виден
+// весь конвейер вместе с кодом: uri/wireguard/warp_reserved_triplet,
+// reserved_byte_out_of_range, reserved_negative_byte.
 func TestReservedTripletParsing(t *testing.T) {
 	cases := map[string][]int{
 		"29,172,92":   {29, 172, 92},
 		" 1 , 2 , 3 ": {1, 2, 3},
 		"":            nil,
-		"1,2":         nil,
-		"1,2,3,4":     nil,
-		"1,2,999":     nil, // out of byte range
-		"a,b,c":       nil,
-		"-1,2,3":      nil,
+		"a,b,c":       nil, // не числа — элементов не остаётся
 	}
 	for in, want := range cases {
-		got := parseReservedTriplet(in)
+		node, err := ParseNode(warpURIWithReserved(in), nil)
+		if err != nil || node == nil {
+			t.Errorf("reserved=%q: узел обязан выжить, err=%v", in, err)
+			continue
+		}
+		got := reservedOfFirstPeer(t, node.Outbound)
 		if len(got) != len(want) {
-			t.Errorf("parseReservedTriplet(%q) = %v, want %v", in, got, want)
+			t.Errorf("reserved=%q дал %v, ожидалось %v", in, got, want)
 			continue
 		}
 		for i := range want {
 			if got[i] != want[i] {
-				t.Errorf("parseReservedTriplet(%q) = %v, want %v", in, got, want)
+				t.Errorf("reserved=%q дал %v, ожидалось %v", in, got, want)
 				break
 			}
 		}
 	}
+}
+
+// warpURIWithReserved — ссылка WARP с заданным значением reserved.
+// Пустое значение параметр не пишет вовсе: «reserved=» и «нет reserved» —
+// для разбора одно и то же, а ожидание тут — узел без поля.
+func warpURIWithReserved(reserved string) string {
+	uri := "wireguard://JSwzOkFIT1ZdZGtyeYCHjpWco6qxuL/GzdTb4unw9/4=@192.0.2.72:2408" +
+		"?publickey=ZWZnaGlqa2xtbm9wcXJzdHV2d3h5ent8fX5%2FPj4%2Bq80%3D" +
+		"&address=172.16.0.2%2F32&allowedips=0.0.0.0%2F0"
+	if strings.TrimSpace(reserved) != "" {
+		uri += "&reserved=" + url.QueryEscape(reserved)
+	}
+	return uri + "#WARP"
+}
+
+// reservedOfFirstPeer достаёт peers[0].reserved из тела узла.
+func reservedOfFirstPeer(t *testing.T, ep map[string]interface{}) []int {
+	t.Helper()
+	peers, err := wireGuardPeerMaps(ep)
+	if err != nil || len(peers) == 0 {
+		return nil
+	}
+	raw, ok := peers[0]["reserved"]
+	if !ok {
+		return nil
+	}
+	list, ok := raw.([]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]int, 0, len(list))
+	for _, v := range list {
+		switch n := v.(type) {
+		case int:
+			out = append(out, n)
+		case float64:
+			out = append(out, int(n))
+		default:
+			return nil
+		}
+	}
+	return out
 }

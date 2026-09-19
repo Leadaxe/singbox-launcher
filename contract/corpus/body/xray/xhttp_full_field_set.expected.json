@@ -1,0 +1,52 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "a.example",
+        "server_port": 443,
+        "transport": {
+          "host": "h.example",
+          "mode": "packet-up",
+          "no_grpc_header": true,
+          "no_sse_header": true,
+          "path": "/p",
+          "sc_max_buffered_posts": 30,
+          "sc_max_each_post_bytes": "1000000",
+          "sc_min_posts_interval_ms": "30",
+          "sc_stream_up_server_secs": "20-80",
+          "seq_key": "x_seq",
+          "seq_placement": "query",
+          "session_key": "X-Session",
+          "session_placement": "header",
+          "type": "xhttp",
+          "uplink_chunk_size": "3000-4000",
+          "uplink_data_key": "X-Data",
+          "uplink_data_placement": "header",
+          "uplink_http_method": "GET",
+          "x_padding_bytes": "100-1000",
+          "x_padding_header": "X-Padding",
+          "x_padding_key": "x_padding",
+          "x_padding_method": "tokenish",
+          "x_padding_obfs_mode": true,
+          "x_padding_placement": "header",
+          "xmux": {
+            "c_max_reuse_times": "5",
+            "h_keep_alive_period": 30,
+            "h_max_request_times": "600",
+            "h_max_reusable_secs": "1800",
+            "max_connections": "1"
+          }
+        },
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "xhttp full",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

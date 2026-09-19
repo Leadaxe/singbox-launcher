@@ -1,0 +1,574 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/Leadaxe/singbox-launcher/contract/schema/registry_body.schema.json",
+  "title": "Registry body section (SPEC 131)",
+  "description": "Схема секции \"body\" реестра контракта: описание тела узла sing-box, из которого работают санитайзер и эмиттер обеих сторон (лаунчер и LxBox). Применяется к contract/registry/protocols/<scheme>.json, tls.json, transports.json, multiplex.json, dialer.json. Существующие секции uri.* и policy.* этой схемой не покрываются.",
+  "type": "object",
+  "definitions": {
+    "mapperRule": {
+      "description": "Описательная запись секции mapper: структурный перевод диалекта, который делает МАППЕР, а не санитайзер (SPEC 131 W2d §2). Правилами body такие переводы не выражаются — санитайзер видит готовое тело и решения об ОТСУТСТВИИ ключа, об ИСТОЧНИКЕ поля или о составном ИМЕНИ принять не может. Секция читается только документацией; в рантайме её не исполняет никто, поэтому запись обязана называть место в коде (impl).",
+      "type": "object",
+      "required": ["id", "from", "to", "kind", "desc_en"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "description": "Идентификатор правила, уникальный по всему реестру." },
+        "applies_to": {
+          "type": "array",
+          "description": "Схемы, к которым применяется общее правило (tls.json, transports.json). У схемного правила отсутствует.",
+          "items": { "type": "string" }
+        },
+        "from": { "type": "string", "description": "Что приходит на вход: написание параметра ссылки или форма чужого диалекта." },
+        "to": { "type": "string", "description": "Что получается в теле узла." },
+        "kind": {
+          "description": "structure — решение о наличии/форме блока; spelling — написание того же значения в чужом диалекте; split — один вход в несколько полей; default — материализация дефолта-конвенции; drop — вход осознанно не доезжает до тела.",
+          "enum": ["structure", "spelling", "split", "default", "drop"]
+        },
+        "code": { "type": "string", "description": "Код из registry/warnings.json, если перевод сопровождается кодом." },
+        "desc_en": { "type": "string", "description": "Короткая фраза для человека, EN (уходит в документацию)." },
+        "desc_ru": { "type": "string", "description": "Короткая фраза для человека, RU." },
+        "impl": { "type": "string", "description": "Заметка для разработчика: файл:функция в Go и обоснование. В документацию не попадает." }
+      }
+    },
+    "fieldType": {
+      "description": "Словарь типов поля — SPEC 131 §4, плюс два типа из W2c (awg_range, int_array): оба описывают форму ЯДРА, которую словарь §4 не выражал, и без них санитайзер снимал валидные поля рабочих AWG-узлов.",
+      "enum": [
+        "string",
+        "int",
+        "uint16",
+        "bool",
+        "duration",
+        "listable_string",
+        "string_array",
+        "object",
+        "enum",
+        "ref",
+        "array",
+        "awg_range",
+        "int_array"
+      ]
+    },
+    "format": {
+      "description": "Формат значения; ставится только там, где он очевиден из структур ядра.",
+      "enum": ["uuid", "hex", "base64", "base64_32", "host", "port", "ipv4", "cidr",
+        "url_path"]
+    },
+    "relation": {
+      "description": "Связь поля с другим полем: путь в теле плюс код предупреждения.",
+      "type": "object",
+      "properties": {
+        "with": {
+          "type": "string",
+          "description": "Путь конфликтующего поля (для conflicts)."
+        },
+        "path": {
+          "type": "string",
+          "description": "Путь требуемого поля (для requires)."
+        },
+        "equals": {
+          "description": "Связь не по наличию соседа, а по его ЗНАЧЕНИЮ: поле осмысленно только при таком-то варианте дискриминатора (границы размера пакета есть только у obfs=gecko). Без него такие пары описывались бы «наличием», а дискриминатор присутствует всегда.",
+          "type": ["string", "number", "boolean"]
+        },
+        "code": {
+          "type": "string",
+          "description": "Код из registry/warnings.json."
+        }
+      },
+      "required": ["code"],
+      "additionalProperties": false
+    },
+    "advisoryWhen": {
+      "description": "Условие advisory-правила по СОСЕДНЕМУ полю: правило действует, только когда поле по `path` задано (`present: false` — наоборот, когда не задано). Кода у условия нет — код несёт само правило.",
+      "type": "object",
+      "properties": {
+        "path": { "type": "string", "description": "Путь соседнего поля от корня тела." },
+        "present": { "type": "boolean", "description": "Ожидаемое наличие; по умолчанию true." }
+      },
+      "required": ["path"],
+      "additionalProperties": false
+    },
+    "onInvalid": {
+      "description": "Что делать со значением, не прошедшим ограничение поля (enum/format/min/max/len/len_parity). SPEC 131 §3.2.",
+      "type": "object",
+      "properties": {
+        "action": {
+          "description": "drop — снять поле; coerce — заменить на value; drop_node — узел уходит в dropped целиком.",
+          "enum": ["drop", "coerce", "drop_node"]
+        },
+        "value": {
+          "description": "Значение для action=coerce.",
+          "type": ["string", "number", "boolean"]
+        },
+        "code": {
+          "type": "string",
+          "description": "Код из registry/warnings.json."
+        }
+      },
+      "required": ["action", "code"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "coerce"
+              }
+            },
+            "required": ["action"]
+          },
+          "then": {
+            "required": ["value"]
+          }
+        }
+      ]
+    },
+    "condition": {
+      "description": "Условие применимости правила значения. `any_set` — задан ЛЮБОЙ из перечисленных ключей тела (пути от корня, как в conflicts/requires); считается НАЛИЧИЕ ключа, а не непустота значения. Одного пути здесь мало там, где условие называет не поле, а РОД узла: «узел AmneziaWG» — это набор из двух десятков полей, любого из которых довольно, и `jc: 0` («мусор выключен») — такой же маркер, как jc: 10.\n\n`source_kind` — РОД узла, объявленный ВХОДОМ: маппер называет его атрибутом `kind_when` по написанию схемы и форме (`awg://` → awg), в тело не пишет, и род доезжает до санитайзера КОНТЕКСТОМ рядом с `body_source`. Нужен там, где `any_set` по телу бессилен по построению: вход попросил AmneziaWG, но ни одно awg-поле не уцелело (негодные значения сняты правилом поля), и тело стало неотличимо от обычного WireGuard — а потолок MTU есть свойство ЗАПРОШЕННОГО протокола, без которого туннель поднимается и не несёт данных. Список значений открыт реестром схемы (у wireguard: wg | awg | awg3).\n\nПеречислены оба ключа — условие верно, когда верен ЛЮБОЙ (ИЛИ, не И): у входа `singbox` рода от входа нет вовсе, и судить там можно только по телу, поэтому `any_set` из правила не уходит никогда. Подробности и порядок восстановления рода — `contract/docs/MAPPER_ENGINE.md`, «Контекст санитайзера: body_source + kind».",
+      "type": "object",
+      "properties": {
+        "any_set": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "source_kind": {
+          "type": "array",
+          "description": "Роды узла, при которых правило действует. Род объявлен входом через `kind_when` маппера; у тела без известного рода (старое состояние, вход `singbox`) условие ложно, и правило опирается на парный `any_set`.",
+          "items": { "type": "string" },
+          "minItems": 1
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+    "absentWhen": {
+      "description": "Условие, при котором ОБЪЕКТ считается НЕ ЗАДАННЫМ: если перечисленные ключи объекта равны указанным значениям, объект снимается ЦЕЛИКОМ и ТИХО — это запись «настройки нет», а не ошибка. Ставится там, где выключатель секции живёт ВНУТРИ неё самой: `tls: {enabled: false}` у ядра значит «TLS не задан» (конструктор возвращает (nil, nil)), а не «TLS с выключенным флагом»; те же `utls`, `reality`, `ech` со своим `enabled: false`. Атрибутом `absent_values` это не пишется — тот про ЗНАЧЕНИЕ САМОГО поля и только строковый.\n\nНОРМА ПОРЯДКА: `absent_when` судится ДО правил полей объекта и ДО связей (`conflicts`/`requires`/`forbidden_for`) у соседей. Снятый объект для любой проверки наличия «не задан». Иначе `tls: {enabled: false, reality: {…}}` дал бы коды на поля несуществующего объекта, а сосед потерял бы своё значение из-за конфликта с блоком, которого в теле не будет.\n\nСравнение значений — по печатной форме скаляра (как в `values`/`advisory`), поэтому `false` и `\"false\"` для него одно и то же: тело приезжает и из JSON, и от маппера, где булев флаг бывает строкой. Перечислено несколько ключей — объект снимается, только когда совпали ВСЕ.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "type": ["string", "number", "boolean"] }
+    },
+    "defaultWhen": {
+      "description": "Дефолт, который реестр велит МАТЕРИАЛИЗОВАТЬ явно: обычный `default` в тело не пишется (дефолты ядра не материализуются). Ставится там, где без поля ядро не собирает outbound вовсе (hysteria v1 up_mbps — «missing upload speed» фаталом на весь config.json), либо где дефолт зависит от рода узла (mtu у AmneziaWG). Код не обязателен: подстановка дефолта — не замена значения, и сообщать о ней человеку чаще всего нечего.",
+      "type": "object",
+      "properties": {
+        "absent": {
+          "type": "boolean",
+          "description": "true — подставить, когда поля нет вовсе. Единственная форма, которую знает санитайзер."
+        },
+        "value": {
+          "type": ["string", "number", "boolean"],
+          "description": "Что подставить."
+        },
+        "code": {
+          "type": "string",
+          "description": "Код из registry/warnings.json, если о подстановке стоит сообщить."
+        },
+        "when": { "$ref": "#/definitions/condition" }
+      },
+      "required": ["absent", "value"],
+      "additionalProperties": false
+    },
+    "maxWhen": {
+      "description": "УСЛОВНЫЙ потолок значения: обычный `max` действует всегда, этот — только когда выполнено `when`. Нужен там, где потолок диктует не поле, а род узла: у AmneziaWG накладные расходы на пакет делают mtu выше 1280 нерабочим (рукопожатие проходит, данные молча не идут), а у plain WireGuard того же поля потолка нет — обычный `max` снял бы mtu у каждого обычного WG-узла. `except_sources` — входы, на которых потолок НЕ применяется: значение остаётся, узел получает `note_code`. Основание не техническое, а по владению: тело в форме ядра (sing-box JSON) человек или подписка написали сами, и молча переписывать его лаунчер не вправе; значение из ссылки или .conf сочинял генератор провайдера, и там правило работает заменой (решение владельца 18.09.2026).",
+      "type": "object",
+      "properties": {
+        "max": { "type": "number", "description": "Потолок значения." },
+        "code": { "type": "string", "description": "Код замены из registry/warnings.json (severity warning)." },
+        "when": { "$ref": "#/definitions/condition" },
+        "except_sources": {
+          "type": "array",
+          "description": "Входы из секции `sources` схемы, на которых значение сохраняется: там тело написано в собственной форме ядра.",
+          "items": { "enum": ["uri", "singbox", "xray", "wgconf", "amnezia"] },
+          "minItems": 1
+        },
+        "note_code": {
+          "type": "string",
+          "description": "Код-уведомление для входов из except_sources (severity info): значение оставлено, человеку сказано, чем это грозит."
+        }
+      },
+      "required": ["max", "code"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "required": ["except_sources"] },
+          "then": { "required": ["note_code"] }
+        }
+      ]
+    },
+    "minWhen": {
+      "description": "УСЛОВНЫЙ минимум значения — зеркало max_when, но БЕЗ исключения по входу и БЕЗ замены значения. Нужен там, где порог диктует не само поле, а СОСЕД: у AmneziaWG 3.x паддинг s1-s4 обязан быть не ниже 12 только когда задан header_protection_key (nonce шифра заголовка берётся из первых 12 байт паддинга). Обычным `min` это не записать — он снял бы паддинг у каждого обычного AmneziaWG-узла, где порога нет вовсе. Исключения по входу тут нет и быть не может: ядро отвергает такую пару на загрузке ВСЕГО конфига, и «сохранить как написал человек» оставило бы пользователя без VPN — в отличие от потолка MTU, где узел собирается и просто работает хуже. Замены тоже нет: подставить минимум значило бы выдумать за провайдера размер паддинга, от которого зависит рукопожатие.",
+      "type": "object",
+      "properties": {
+        "min": { "type": "number", "description": "Порог значения." },
+        "code": { "type": "string", "description": "Код из registry/warnings.json." },
+        "action": {
+          "description": "drop — снять поле; drop_node — узел уходит в dropped целиком. Второе ставится там, где ядро отвергает пару на загрузке всего конфига: снять поле значило бы отдать ядру узел, который оно всё равно не примет, и уронить чужие узлы вместе с ним.",
+          "enum": ["drop", "drop_node"]
+        },
+        "absent_is_zero": {
+          "type": "boolean",
+          "description": "Порог действует и на ОТСУТСТВУЮЩЕЕ поле: ядро читает незаданный ключ как 0, и «сосед задан, а поля нет» так же фатально, как заниженное значение. Без флага правило молчало бы ровно на том случае, который в живых подписках встречается чаще битого значения."
+        },
+        "when": { "$ref": "#/definitions/condition" }
+      },
+      "required": ["min", "code", "action"],
+      "additionalProperties": false
+    },
+    "bodyRelation": {
+      "description": "Именованная связь МЕЖДУ НЕСКОЛЬКИМИ полями тела, которую атрибутами одного поля не записать. `conflicts`/`requires` живут у поля и говорят про пару «я и сосед»; здесь свойство НАБОРА: у AmneziaWG диапазоны magic-заголовков h1-h4 обязаны попарно не пересекаться, виноват может быть любой из четырёх, и снятие одного пару не развело бы. Неизвестный вид связи санитайзер пропускает молча — реестр вправе уехать вперёд кода, и правило-опечатка не должна ронять узлы; новый вид заводится вместе с его исполнением.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "description": "ranges_disjoint — диапазоны перечисленных полей (тип awg_range) не пересекаются попарно. cooccurrence — перечисленные поля ВМЕСТЕ образуют сочетание, о котором человеку стоит знать; отличие от ranges_disjoint в том, что тот судит набор по ОДНОМУ свойству, а этот — по разнородному условию `when` над разными полями (булев флаг и ширина диапазона в одной связи).",
+          "enum": ["ranges_disjoint", "cooccurrence"]
+        },
+        "paths": {
+          "type": "array",
+          "description": "Пути участвующих полей от корня тела.",
+          "items": { "type": "string" },
+          "minItems": 2
+        },
+        "defaults": {
+          "type": "array",
+          "description": "Значение участника, когда ключа в теле нет: у h1-h4 незаданный заголовок равен своему типу сообщения WireGuard (1…4), и «поля нет» тут не значит «участника нет». Длина — как у paths.",
+          "items": { "type": "number" }
+        },
+        "action": {
+          "description": "drop_node — узел уходит в dropped; warn — только код.",
+          "enum": ["warn", "drop_node"]
+        },
+        "code": { "type": "string", "description": "Код из registry/warnings.json. `severity` тут НЕ дублируется: громкость несёт сам код, второе место объявления разъехалось бы с первым. `action` говорит только про судьбу узла." },
+        "when": {
+          "description": "Условие срабатывания связи — обязательно у `cooccurrence`, где сочетание само по себе ещё не повод для кода. Ключи — пути из `paths`, значения — скаляр (сравнение по печатной форме, как в absent_when) либо служебный оператор над подмножеством путей. Служебный ключ начинается с `$` и потому с путём тела не сталкивается.\n\n`$range_width` — ширина диапазона у полей типа awg_range: `{\"paths\": [...], \"gt\": N}` верно, когда ХОТЯ БЫ У ОДНОГО из перечисленных полей значение записано диапазоном «lo-hi» и `hi - lo >= N`. Поле-число диапазоном не считается и условие не выполняет. Без этого оператора «ширина» не записывается вовсе, а именно она и есть предмет правила (SPEC 123 §91).",
+          "type": "object",
+          "minProperties": 1
+        },
+        "desc_en": { "type": "string", "description": "Короткая фраза для человека, EN (уходит в документацию)." },
+        "desc_ru": { "type": "string", "description": "Короткая фраза для человека, RU." },
+        "impl": { "type": "string", "description": "Заметка для разработчика. В документацию не попадает." }
+      },
+      "required": ["kind", "paths", "action", "code", "desc_en"],
+      "additionalProperties": false
+    },
+    "field": {
+      "type": "object",
+      "properties": {
+        "type": { "$ref": "#/definitions/fieldType" },
+        "ref": {
+          "type": "string",
+          "description": "Имя общей суб-схемы: tls, transports, multiplex, dialer, dialer.common."
+        },
+        "inline": {
+          "type": "boolean",
+          "description": "true у ref: поля суб-схемы вливаются в тело плоско, без обёртки (dialer)."
+        },
+        "items": {
+          "$ref": "#/definitions/field",
+          "description": "Описание элемента массива; обязательно при type=array."
+        },
+        "order": {
+          "type": "array",
+          "description": "Порядок полей вложенного объекта; обязателен при type=object с fields.",
+          "items": { "type": "string" }
+        },
+        "fields": {
+          "type": "object",
+          "description": "Поля вложенного объекта.",
+          "additionalProperties": { "$ref": "#/definitions/field" }
+        },
+        "values": {
+          "type": "array",
+          "description": "Допустимые значения; обязательны при type=enum.",
+          "items": { "type": ["string", "integer"] }
+        },
+        "format": { "$ref": "#/definitions/format" },
+        "absent_values": {
+          "type": "array",
+          "description": "Литералы, означающие «этого нет»: значение признаётся эквивалентом отсутствия ключа, поле в тело не пишется, кода нет. Проверяется ПОСЛЕ normalize и ДО остальных ограничений. Нужен там, где выключатель настройки записан СЛОВОМ внутри того же поля, что и значение (vless.encryption: `none` — собственный литерал ядра, выключающий постквантовый слой); без него правило значения судило бы выключатель как значение и хоронило узел за выключенную настройку. Сравнение ТОЧНОЕ и только строковое: атрибут повторяет литерал ядра буква в букву, поэтому `None` сюда не попадает — ядро сличает свой литерал с учётом регистра, и для него это негодное значение, а не выключатель.",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "absent_when": { "$ref": "#/definitions/absentWhen" },
+        "pattern": {
+          "type": "string",
+          "description": "Регулярное выражение, которому обязано соответствовать строковое значение. Заводится там, где форма значения ЕСТЬ, но именем формата не выражается: закрытого enum нет, а произвольную строку ядро всё же разбирает по своей грамматике (vless.encryption). Проверяется ПОСЛЕ normalize, то есть по значению, которое реально уедет в тело; провал обрабатывает общий on_invalid. ДИАЛЕКТ — общее подмножество Go RE2 и ECMAScript/Dart: без lookaround, без обратных ссылок, без inline-флагов; выражение обязано компилироваться обеими сторонами. Совпадение по ВСЕЙ строке задаётся якорями в самом выражении (^…$), а не режимом проверки — иначе одно и то же выражение значило бы у сторон разное."
+        },
+        "item_pattern": {
+          "type": "string",
+          "description": "Регулярное выражение, которому обязан соответствовать ЭЛЕМЕНТ списка. Формат ЭЛЕМЕНТА и формат поля — разные вещи: `pattern` и `format` судят значение ЦЕЛИКОМ, и провал одного элемента снимает список со всеми остальными, а ядру одного негодного элемента довольно, чтобы отвергнуть ВЕСЬ конфиг (hysteria2 `server_ports` с элементом `198.51.100.24:443` — «bad port range», и человек остаётся без VPN, а не без узла). Негодный элемент выбрасывается, годные доезжают; не осталось ни одного — поля нет. Проверяется только форма МАССИВА: у скалярной записи listable-поля элемент и есть всё значение, и судит его `pattern`. Диалект и якоря — как у `pattern`."
+        },
+        "on_item_invalid": {
+          "type": "object",
+          "description": "Реакция на элемент, не прошедший `item_pattern`. Имя то же, что у одноимённого оператора маппера (`extract` по элементам списка): операция одна, словарей два.",
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "enum": ["drop_item"],
+              "description": "Исход один — элемент выбрасывается, остальные остаются. Снять поле целиком умеет `pattern`, и второе значение здесь означало бы дубль."
+            },
+            "code": {
+              "type": "string",
+              "description": "Код из registry/warnings.json. Путь кода — элемент (`server_ports[0]`), а не поле: человек обязан увидеть, ЧТО именно выброшено."
+            }
+          }
+        },
+        "min": { "type": "number", "description": "Минимум значения (число) или длины." },
+        "max": { "type": "number", "description": "Максимум значения (число) или длины." },
+        "len": { "type": "integer", "description": "Точная длина значения или массива." },
+        "len_parity": {
+          "description": "Требование к чётности длины (reality.short_id — hex чётной длины).",
+          "enum": ["even", "odd"]
+        },
+        "on_invalid": {
+          "$ref": "#/definitions/onInvalid"
+        },
+        "normalize": {
+          "description": "Нормализация значения ДО проверки enum/format. Ставится только там, где ядро case-sensitive и обе стороны нормализуют (SPEC 131 §4): без флага регистр не трогается — x_padding_placement принимает только camelCase queryInHeader. Режим range_order относится ТОЛЬКО к типу awg_range: он свопает перевёрнутую пару границ («40-10» → «10-40») и делает это МОЛЧА — у magic-заголовков h1-h4 порядок границ смысла не несёт (ядро выбирает значение ИЗ диапазона, и [10,40] = [40,10]), а замена, не меняющая смысла, человеку не сообщается, как и обрезка пробелов. У таймингов AWG 3.x флаг НЕ ставится: там перевёрнутая пара — опечатка человека, которую он обязан увидеть, и такое значение уходит на on_invalid (SPEC 123 §2). Режим cidr_prefix достраивает голому адресу маску-хост (`10.0.0.2` → `10.0.0.2/32`, IPv6 → `/128`): ядро требует префикс, а подписки пишут адрес голым, и без достройки узел не стартует; значение уже с префиксом не трогается. Режим base64_std приводит четыре написания base64 (std/url-safe, с паддингом и без) к одному — std с паддингом; ставится у полей с format base64*, потому что ОДИН И ТОТ ЖЕ ключ в разных написаниях давал бы узлу два разных identity-хеша (DELTAS D133-22). Оба режима перенесены из маппера: они правят ЗНАЧЕНИЕ, а значит принадлежат телу, и обязаны действовать на всех входах, а не только на ссылке (SPEC 133 §6.0, GRAMMAR_SYNC §9 п. 3-4). Режим duration_bare_seconds дописывает единицу голому числу секунд (`30` → `30s`): конвенция панелей и Xray-sockopt, а ядро на голом числе валит ВЕСЬ конфиг (badoption.Duration читает только строку). Он тоже перенесён из маппера и по той же причине: голые секунды приезжают со ссылки, из streamSettings.sockopt и из тела в форме ядра, и правило обязано действовать на всех трёх входах. Негодное ПОСЛЕ нормализации поле снимается по общему правилу duration — on_invalid, по умолчанию type_invalid. Режим base64_rawurl — зеркало base64_std для полей, чьё ядро декодирует ключ ТОЛЬКО base64.RawURLEncoding: у tls.reality.public_key написание со «+», «/» и «=» проходит format base64_32 (32 байта после декода — правда), а ядро отвечает «decode public_key: illegal base64 data» отказом ВСЕГО конфига. Оба режима симметричны и различаются только целевым алфавитом; какой из них нужен полю, решает не форма значения, а ядро, поэтому имя стоит у поля, а не выводится из format.",
+          "enum": ["trim", "lower", "trim_lower", "hex_only", "range_order", "cidr_prefix", "base64_std", "base64_rawurl", "duration_bare_seconds"]
+        },
+        "normalize_code": {
+          "type": "string",
+          "description": "Код из registry/warnings.json на случай, когда normalize ВЫБРОСИЛ часть значения. Обрезка пробелов и смена регистра кода не дают — ядро читает такое значение одинаково; код ставится там, где исчезли символы (hex_only на short_id: 0x1a2 → 01a2 — ДРУГОЙ идентификатор). Требует normalize."
+        },
+        "default_when": { "$ref": "#/definitions/defaultWhen" },
+        "max_when": { "$ref": "#/definitions/maxWhen" },
+        "min_when": { "$ref": "#/definitions/minWhen" },
+        "required": {
+          "type": "boolean",
+          "description": "Без поля узел не собирается — уходит в dropped с кодом field_missing."
+        },
+        "secret": {
+          "type": "boolean",
+          "description": "Значение — тайна: в warnings и логах пишется как ***."
+        },
+        "default": {
+          "type": ["string", "number", "boolean"],
+          "description": "Дефолт ядра. Санитайзер его НЕ материализует, если реестр явно не велит."
+        },
+        "tristate": {
+          "type": "boolean",
+          "description": "Указательное поле ядра (*string / *bool): «ключа нет» и «пустое значение» различаются; эмиттер не опускает пустое."
+        },
+        "all_or_nothing": {
+          "type": "boolean",
+          "description": "Объект, где задание одного поля обнуляет дефолты соседних (transport.xmux). ДОКУМЕНТАЦИЯ о поведении ядра: действия санитайзера не влечёт — частичный объект едет как есть, дефолты соседей не дописываются (SPEC 131 DRIFT §7)."
+        },
+        "managed": {
+          "type": "boolean",
+          "description": "Поле пишет сборка конфига, а не тело узла (detour)."
+        },
+        "deprecated": {
+          "type": "boolean",
+          "description": "Ядро поле принимает, но не применяет либо помечает schema:\"omit\"."
+        },
+        "decision_pending": {
+          "type": "string",
+          "description": "Правило поля не утверждено: ссылка на пункт решения владельца. До решения действует сегодняшнее поведение, on_invalid не ставится."
+        },
+        "advisory": {
+          "description": "Значения, которые ядро принимает, но узел получает информационный код (ss legacy-шифры → ss_method_legacy; tls.insecure=true → tls_insecure). Поле НЕ меняется — этим advisory отличается от on_invalid. Три формы: `values` — код на перечисленных значениях; `except` — код на любом значении, КРОМЕ перечисленных (правило вида «все, кто не умеет X» — перечислять в values весь остальной словарь значило бы дублировать enum); `when` — условие по соседнему полю, без которого правило вешалось бы на узлы, к которым отношения не имеет (отпечаток без гибридного шара — только при заданном reality, D-119). Значение бывает и булевым: у bool-поля домен закрыт типом, а не списком `values`, и правило «код ровно на true» иначе не записать (контракт 1.1.6).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "values": { "type": "array", "items": { "type": ["string", "number", "boolean"] }, "minItems": 1 },
+              "except": { "type": "array", "items": { "type": ["string", "number", "boolean"] }, "minItems": 1 },
+              "when": { "$ref": "#/definitions/advisoryWhen" },
+              "code": { "type": "string", "description": "Код из registry/warnings.json (severity info)." }
+            },
+            "required": ["code"],
+            "additionalProperties": false,
+            "oneOf": [
+              { "required": ["values"] },
+              { "required": ["except"] }
+            ]
+          }
+        },
+        "drop_always": {
+          "type": "boolean",
+          "description": "Параметр ссылки читается только чтобы поставить код и снимается всегда, независимо от значения (URI-ech= Xray-формы → ech_ignored, D-122). Только у uri-параметров."
+        },
+        "impl_decision": {
+          "type": "string",
+          "description": "Краткая ссылка на решение владельца, определившее правило поля (D-NNN)."
+        },
+        "lx_only": {
+          "type": "boolean",
+          "description": "Поля нет в upstream sing-box — только в форке lx."
+        },
+        "min_core": {
+          "type": "string",
+          "description": "Минимальная версия ядра; ниже неё ключ снимается на сборке."
+        },
+        "platform": {
+          "type": "string",
+          "description": "ОС, на которой поле работает; на прочих ключ снимается на сборке.",
+          "enum": ["linux", "darwin", "windows", "android", "ios"]
+        },
+        "build_tag": {
+          "type": "string",
+          "description": "Тег сборки ядра, без которого поле не поддержано."
+        },
+        "forbidden_for": {
+          "type": "array",
+          "description": "Схемы, которым это поле запрещено; требует code.",
+          "items": { "type": "string" }
+        },
+        "allowed_for": {
+          "type": "array",
+          "description": "Схемы, которым это поле разрешено (остальным запрещено); требует code.",
+          "items": { "type": "string" }
+        },
+        "code": {
+          "type": "string",
+          "description": "Код из registry/warnings.json для allowed_for / forbidden_for."
+        },
+        "forbidden_codes": {
+          "type": "object",
+          "description": "Код запрета для КОНКРЕТНОЙ схемы из forbidden_for, когда исход у неё другой: у naive снятое TLS-поле — потерянная настройка (warning), на QUIC uTLS/REALITY не применились бы вовсе (info). Схема без записи берёт общий code.",
+          "additionalProperties": { "type": "string" }
+        },
+        "conflicts": {
+          "type": "array",
+          "description": "Взаимоисключающие поля; снимается младшее по приоритету.",
+          "items": { "$ref": "#/definitions/relation" }
+        },
+        "requires": {
+          "type": "array",
+          "description": "Поля, без которых это поле снимается.",
+          "items": { "$ref": "#/definitions/relation" }
+        },
+        "skip": {
+          "type": "string",
+          "description": "Причина, по которой поле описано не полностью либо лаунчером не пишется."
+        },
+        "desc_en": { "type": "string", "description": "Короткая фраза для человека, EN (уходит в документацию)." },
+        "desc_ru": { "type": "string", "description": "Короткая фраза для человека, RU (уходит в документацию)." },
+        "impl": { "type": "string", "description": "Заметка для разработчика: где проверяется, откуда дефолт, файл:строка ядра. В документацию не попадает." }
+      },
+      "required": ["type"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "enum" } }, "required": ["type"] },
+          "then": { "required": ["values"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "ref" } }, "required": ["type"] },
+          "then": { "required": ["ref"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "array" } }, "required": ["type"] },
+          "then": { "required": ["items"] }
+        },
+        {
+          "if": { "required": ["fields"] },
+          "then": { "required": ["order"] }
+        },
+        {
+          "comment": "absent_when снимает ОБЪЕКТ целиком, поэтому живёт только у поля-объекта: у скаляра ту же роль играет absent_values.",
+          "if": { "required": ["absent_when"] },
+          "then": { "properties": { "type": { "const": "object" } }, "required": ["type"] }
+        },
+        {
+          "if": { "required": ["forbidden_for"] },
+          "then": { "required": ["code"] }
+        },
+        {
+          "if": { "required": ["allowed_for"] },
+          "then": { "required": ["code"] }
+        }
+      ]
+    },
+    "bodySection": {
+      "description": "Секция body: версия ядра, порядок полей и сами поля. Порядок = порядок структур ядра; по нему идут и санитайзер, и эмиттер, поэтому список warnings детерминирован.",
+      "type": "object",
+      "properties": {
+        "core": {
+          "type": "string",
+          "description": "Тег ядра, по которому сверен список полей."
+        },
+        "order": {
+          "type": "array",
+          "description": "Порядок полей; обязан покрывать ровно fields.",
+          "items": { "type": "string" }
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/field" }
+        },
+        "absent_when": {
+          "allOf": [{ "$ref": "#/definitions/absentWhen" }],
+          "description": "Условие «этой секции нет» у СУБ-СХЕМЫ, которую схемы подключают через `ref` (tls). Живёт у секции, а не у ссылающегося поля: «tls:{enabled:false} = TLS не задан» — правило самой секции, и повторять его у полутора десятков протоколов значило бы завести копию. При разрешении `ref` условие переезжает в поле-объект и работает там обычным `absent_when`."
+        },
+        "skipped": {
+          "type": "object",
+          "description": "Поля ядра, сознательно не описанные: имя → причина.",
+          "additionalProperties": { "type": "string" }
+        },
+        "relations": {
+          "type": "array",
+          "description": "Связи между несколькими полями тела (см. bodyRelation).",
+          "items": { "$ref": "#/definitions/bodyRelation" }
+        },
+        "lx_only": { "type": "boolean" },
+        "min_core": { "type": "string" },
+        "build_tag": { "type": "string" },
+        "note": { "type": "string" }
+      },
+      "required": ["core", "order", "fields"],
+      "additionalProperties": false
+    },
+    "variantsSection": {
+      "description": "Секция body с вариантами по дискриминатору (транспорты: выбор по transport.type).",
+      "type": "object",
+      "properties": {
+        "core": { "type": "string" },
+        "discriminator": {
+          "type": "string",
+          "description": "Поле-дискриминатор, по которому выбирается вариант."
+        },
+        "values": {
+          "type": "array",
+          "description": "Допустимые значения дискриминатора.",
+          "items": { "type": "string" }
+        },
+        "note": { "type": "string" },
+        "variants": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "order": { "type": "array", "items": { "type": "string" } },
+              "fields": {
+                "type": "object",
+                "additionalProperties": { "$ref": "#/definitions/field" }
+              },
+              "lx_only": { "type": "boolean" },
+              "min_core": { "type": "string" },
+              "build_tag": { "type": "string" },
+              "note": { "type": "string" }
+            },
+            "required": ["order", "fields"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["core", "discriminator", "values", "variants"],
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "body": {
+      "oneOf": [
+        { "$ref": "#/definitions/bodySection" },
+        { "$ref": "#/definitions/variantsSection" }
+      ]
+    },
+    "common": { "$ref": "#/definitions/bodySection" },
+    "mapper": {
+      "type": "array",
+      "description": "Переводы, которые делает МАППЕР, а не санитайзер (SPEC 131 W2d §2).",
+      "items": { "$ref": "#/definitions/mapperRule" }
+    }
+  }
+}

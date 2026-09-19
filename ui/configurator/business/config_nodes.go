@@ -3,6 +3,7 @@ package business
 import (
 	"encoding/json"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 
@@ -104,6 +105,28 @@ func (c *ConfigNodes) Len() int {
 		return 0
 	}
 	return len(c.byTag)
+}
+
+// Endpoints — узлы массива `endpoints` конфига (wireguard, tailscale) в
+// устойчивом порядке по тегу.
+//
+// Состав endpoint'ов — свойство КОНФИГА, а не ответа ядра: Clash API и
+// gRPC GetGroups отдают только членов групп, а endpoint без роли выхода
+// (tailscale с advertise_exit_node) ни в одну группу не входит и для них
+// невидим. Отсюда список берётся из config.json; транспорт нужен только за
+// живым статусом строки.
+func (c *ConfigNodes) Endpoints() []*ConfigNode {
+	if c == nil || c.byTag == nil {
+		return nil
+	}
+	out := make([]*ConfigNode, 0, 4)
+	for _, n := range c.byTag {
+		if n != nil && n.Kind == "endpoint" {
+			out = append(out, n)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Tag < out[j].Tag })
+	return out
 }
 
 // configNodesCache — кэш разбора: список перерисовывается часто, а на 500+

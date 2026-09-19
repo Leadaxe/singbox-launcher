@@ -1,3 +1,9 @@
 # битое percent-кодирование (%zz) не роняет разбор и не портит путь
 # источник: LxBox app/test/parser/path_double_encoding_test.dart:33-35
+#
+# SPEC 131 W2c: «kept» относится к РАЗБОРУ — он и правда не падает. Но в ТЕЛО
+# такой путь попасть не может: ядро разбирает его url.Parse и на «%zz» роняет
+# ВЕСЬ config.json («ws: parse path: invalid URL escape», проверено на
+# 1.14.0-lx.39; то же у httpupgrade и http). Поле снимается с кодом, узел
+# живёт — format url_path в registry/transports.json.
 trojan://pass123@example-1.com:443?type=ws&path=%2Fx%25zz&security=tls&sni=example-1.com#pct-broken

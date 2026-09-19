@@ -18,7 +18,9 @@
       "kind": "outbound",
       "scheme": "naive",
       "warnings": [
-        "naive_extra_headers_invalid"
+        {
+          "code": "naive_extra_headers_invalid"
+        }
       ]
     }
   ],

@@ -153,6 +153,10 @@ func normalizePastedNode(n *corestate.Node) {
 		return
 	}
 	n.Body = mat.Body
+	// Замещение, а не дописывание (Л5): коды описывают ровно это тело, и
+	// прежние (у вставленной записи их вообще быть не должно) к нему
+	// отношения не имеют.
+	n.ReplaceDerivedWarnings(mat.Warnings)
 }
 
 // repointRecordLinks переписывает ссылки ВНУТРИ записи с прежнего ULID

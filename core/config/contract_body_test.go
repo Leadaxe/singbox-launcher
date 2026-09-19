@@ -80,8 +80,19 @@ func parseCorpusBody(t *testing.T, body string) ([]*configtypes.ParsedNode, []co
 		return nodes, nil, kind
 
 	case kind == subscription.BodyKindWGConf:
-		uris, _ := subscription.WGConfBodyToURIs(body)
-		return parseURILines(strings.Join(uris, "\n")), nil, kind
+		// Узлы собирает СЕКЦИЯ из самих блоков — как и боевой разбор тела
+		// (SPEC 133). Прежний путь гонял блок через промежуточную ссылку и
+		// терял на обратном переводе то, чего в ссылке нет: код
+		// `wgconf_dns_ignored` (DNS в тело не едет вовсе).
+		converted, _ := subscription.WGConfBodyToConvertedBlocks(body)
+		nodes := make([]*configtypes.ParsedNode, 0, len(converted))
+		for _, block := range converted {
+			if block.Err != nil || block.Node == nil {
+				continue
+			}
+			nodes = append(nodes, block.Node)
+		}
+		return nodes, nil, kind
 
 	case kind.IsSingbox():
 		res, err := subscription.ParseSingboxBody(body, kind, nil)
@@ -181,7 +192,7 @@ func corpusExtensionMark(expPath string) string {
 func TestContractCorpusBody(t *testing.T) {
 	root := filepath.Join(contractCorpusRelPath, "body")
 	if _, err := os.Stat(root); os.IsNotExist(err) {
-		t.Skipf("корпус контракта не найден: %s", root)
+		t.Fatalf("корпус контракта не найден: %s", root)
 	}
 
 	var cases []string
@@ -198,8 +209,9 @@ func TestContractCorpusBody(t *testing.T) {
 		t.Fatalf("обход корпуса тел: %v", err)
 	}
 	sort.Strings(cases)
+	// Ноль кейсов — ОТКАЗ, а не пропуск (см. TestContractCorpusURI).
 	if len(cases) == 0 {
-		t.Skip("корпус тел пуст")
+		t.Fatalf("корпус тел пуст: %s не дал ни одного .body", root)
 	}
 
 	for _, casePath := range cases {
@@ -220,9 +232,11 @@ func TestContractCorpusBody(t *testing.T) {
 				env.Meta["extension"] = ext
 			}
 			for _, node := range nodes {
-				cn, err := canonNode(node)
+				cn, code, err := canonNodeDrop(node)
 				if err != nil {
-					env.Dropped = append(env.Dropped, contractDrop{Ref: node.Tag, Reason: "emit_error"})
+					// `code` нормативен, `reason` — нет (D-088): см.
+					// canonNodeDrop.
+					env.Dropped = append(env.Dropped, contractDrop{Ref: node.Tag, Code: code, Reason: "emit_error"})
 					continue
 				}
 				env.Nodes = append(env.Nodes, cn)

@@ -1,0 +1,5 @@
+# Диапазоны ИЗ ОБОИХ источников сразу: authority (:443,20000-30000) и ?mport=.
+# Норма MAPPER_ENGINE §7: у записи mport объявлен merge:append, то есть она
+# ДОПОЛНЯЕТ server_ports, записанные селектором $multiport, а не заменяет их.
+# Порядок слияния — authority, потом query.
+hysteria2://pass123@example-1.com:443,20000-30000?mport=40000-50000&sni=example-1.com#mix

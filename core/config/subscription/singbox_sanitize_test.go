@@ -8,303 +8,40 @@ import "testing"
 // оставляет узел рабочим. Ядро отвергает конфиг целиком на невалидном
 // значении, поэтому «выкинуть ноду» и «пропустить мусор» одинаково плохи.
 
-func TestSanitizeSingboxUTLSFingerprint(t *testing.T) {
-	t.Run("xray alias is canonicalized (HelloChrome_120 → chrome)", func(t *testing.T) {
-		ob := map[string]interface{}{
-			"type": "vless",
-			"tls": map[string]interface{}{
-				"enabled": true,
-				"utls":    map[string]interface{}{"enabled": true, "fingerprint": "HelloChrome_120"},
-			},
-		}
-		SanitizeSingboxOutboundMap(ob, "n")
+// SPEC 131 W2c: тесты на ЗНАЧЕНИЯ (utls-отпечаток, REALITY, flow,
+// packet_encoding) отсюда сняты вместе с самими проверками — эти правила
+// живут в реестре, их исполняет nodeflow.Sanitize, и сверяют их табличный
+// тест пакета nodeflow и корпус контракта. Здесь остаётся то, что реестром
+// не выражается: СТРУКТУРНЫЕ преобразования диалекта (форма obfs, плоский
+// masque, снятие tls-блока негодной ФОРМЫ) — работа маппера.
+//
+// Контракт 1.1.4: TestSanitizeSingboxQUICStripsUTLSAndReality снят вместе со
+// своим правилом — срез utls/reality на QUIC переехал в реестр (forbidden_for
+// + forbidden_codes → tls_not_applicable_quic), и проверяют его парные кейсы
+// корпуса uri/hysteria2/reality_fp_stripped_quic_pair ↔
+// body/singbox/hysteria2_quic_tls_pair (и та же пара у tuic). Проверять здесь
+// значило бы держать копию правила в тесте после того, как копию сняли
+// из кода.
 
-		tls := ob["tls"].(map[string]interface{})
-		utls, ok := tls["utls"].(map[string]interface{})
-		if !ok {
-			t.Fatal("utls block must survive a known alias")
-		}
-		if utls["fingerprint"] != "chrome" {
-			t.Fatalf("fingerprint = %v, want chrome", utls["fingerprint"])
-		}
-	})
+// СНЯТО вместе с правилом (контракт 1.1.12):
+// TestSanitizeSingboxTLSDisabledBlockRemoved. «`tls:{enabled:false}` = TLS не
+// задан» стало атрибутом реестра `absent_when` у секции tls, и тем же
+// атрибутом описаны вложенные utls/reality/ech. Рукописная копия здесь
+// работала только на ЭТОМ входе: то же тело, приехавшее ручным JSON вкладки
+// или чужим бэкапом, доезжало до конфига с выключенным блоком.
+//
+// Проверяют правило теперь TestAbsentWhenObjects пакета nodeflow (там же
+// норма порядка: снятый объект «не задан» для связей соседей) и кейс корпуса
+// body/singbox/tls_disabled_block. Держать проверку здесь значило бы оставить
+// копию правила в тесте после того, как копию сняли из кода.
 
-	// Junk canonicalizes to chrome and keeps the block: dropping utls here while
-	// the URI path kept it made the same node differ between the two import
-	// paths — and between desktop and mobile (SPEC 103, D-029).
-	t.Run("unknown fingerprint canonicalizes to chrome, block survives", func(t *testing.T) {
-		ob := map[string]interface{}{
-			"type": "vless",
-			"tls": map[string]interface{}{
-				"enabled": true,
-				"utls":    map[string]interface{}{"enabled": true, "fingerprint": "totally-bogus"},
-			},
-		}
-		SanitizeSingboxOutboundMap(ob, "n")
-
-		tls := ob["tls"].(map[string]interface{})
-		utls, ok := tls["utls"].(map[string]interface{})
-		if !ok {
-			t.Fatal("utls block must survive an unknown fingerprint")
-		}
-		if utls["fingerprint"] != "chrome" {
-			t.Fatalf("fingerprint = %v, want chrome", utls["fingerprint"])
-		}
-		if tls["enabled"] != true {
-			t.Fatal("tls block itself must survive")
-		}
-	})
-}
-
-func TestSanitizeSingboxReality(t *testing.T) {
-	const validPBK = "jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0"
-
-	t.Run("invalid public_key degrades node to plain TLS", func(t *testing.T) {
-		ob := map[string]interface{}{
-			"type": "vless",
-			"tls": map[string]interface{}{
-				"enabled":     true,
-				"server_name": "example.com",
-				"reality":     map[string]interface{}{"enabled": true, "public_key": "enabled"},
-			},
-		}
-		SanitizeSingboxOutboundMap(ob, "n")
-
-		tls := ob["tls"].(map[string]interface{})
-		if _, present := tls["reality"]; present {
-			t.Fatal("invalid pbk must drop the reality block")
-		}
-		if tls["server_name"] != "example.com" {
-			t.Fatal("plain TLS settings must survive")
-		}
-	})
-
-	t.Run("valid public_key is kept", func(t *testing.T) {
-		ob := map[string]interface{}{
-			"type": "vless",
-			"tls": map[string]interface{}{
-				"enabled": true,
-				"reality": map[string]interface{}{"enabled": true, "public_key": validPBK},
-			},
-		}
-		SanitizeSingboxOutboundMap(ob, "n")
-
-		tls := ob["tls"].(map[string]interface{})
-		if _, present := tls["reality"]; !present {
-			t.Fatal("valid reality block must survive")
-		}
-	})
-
-	t.Run("junk short_id is dropped, hex is normalized", func(t *testing.T) {
-		ob := map[string]interface{}{
-			"type": "vless",
-			"tls": map[string]interface{}{
-				"enabled": true,
-				"reality": map[string]interface{}{
-					"enabled":    true,
-					"public_key": validPBK,
-					"short_id":   "AB CD",
-				},
-			},
-		}
-		SanitizeSingboxOutboundMap(ob, "n")
-
-		reality := ob["tls"].(map[string]interface{})["reality"].(map[string]interface{})
-		if reality["short_id"] != "abcd" {
-			t.Fatalf("short_id = %v, want abcd", reality["short_id"])
-		}
-	})
-
-	t.Run("non-hex short_id is removed entirely", func(t *testing.T) {
-		ob := map[string]interface{}{
-			"type": "vless",
-			"tls": map[string]interface{}{
-				"enabled": true,
-				"reality": map[string]interface{}{
-					"enabled":    true,
-					"public_key": validPBK,
-					"short_id":   "zzz",
-				},
-			},
-		}
-		SanitizeSingboxOutboundMap(ob, "n")
-
-		reality := ob["tls"].(map[string]interface{})["reality"].(map[string]interface{})
-		if _, present := reality["short_id"]; present {
-			t.Fatalf("non-hex short_id must be removed, got %v", reality["short_id"])
-		}
-	})
-}
-
-func TestSanitizeSingboxQUICStripsUTLSAndReality(t *testing.T) {
-	for _, quicType := range []string{"hysteria2", "tuic"} {
-		t.Run(quicType+": utls and reality are stripped", func(t *testing.T) {
-			ob := map[string]interface{}{
-				"type": quicType,
-				"tls": map[string]interface{}{
-					"enabled":     true,
-					"server_name": "example.com",
-					"utls":        map[string]interface{}{"enabled": true, "fingerprint": "chrome"},
-					"reality":     map[string]interface{}{"enabled": true, "public_key": "x"},
-				},
-			}
-			SanitizeSingboxOutboundMap(ob, "n")
-
-			tls := ob["tls"].(map[string]interface{})
-			if _, present := tls["utls"]; present {
-				t.Error("utls must be stripped on QUIC outbounds")
-			}
-			if _, present := tls["reality"]; present {
-				t.Error("reality must be stripped on QUIC outbounds")
-			}
-			if tls["server_name"] != "example.com" {
-				t.Error("server_name must survive")
-			}
-		})
-	}
-}
-
-func TestSanitizeSingboxTLSDisabledBlockRemoved(t *testing.T) {
-	// SPEC 045: явный tls:{enabled:false} роняет ядро SIGSEGV'ом при dial.
-	ob := map[string]interface{}{
-		"type": "vless",
-		"tls":  map[string]interface{}{"enabled": false},
-	}
-	SanitizeSingboxOutboundMap(ob, "n")
-
-	if _, present := ob["tls"]; present {
-		t.Fatal("tls:{enabled:false} must be removed entirely")
-	}
-}
-
-func TestSanitizeSingboxFlow(t *testing.T) {
-	tests := []struct {
-		name      string
-		ob        map[string]interface{}
-		wantFlow  string
-		wantThere bool
-	}{
-		{
-			name:      "vision on bare TLS is kept",
-			ob:        map[string]interface{}{"type": "vless", "flow": "xtls-rprx-vision"},
-			wantFlow:  "xtls-rprx-vision",
-			wantThere: true,
-		},
-		{
-			name: "vision with transport is dropped",
-			ob: map[string]interface{}{
-				"type":      "vless",
-				"flow":      "xtls-rprx-vision",
-				"transport": map[string]interface{}{"type": "ws"},
-			},
-			wantThere: false,
-		},
-		{
-			name:      "deprecated flow is dropped",
-			ob:        map[string]interface{}{"type": "vless", "flow": "xtls-rprx-direct"},
-			wantThere: false,
-		},
-		{
-			name:      "none is dropped",
-			ob:        map[string]interface{}{"type": "vless", "flow": "none"},
-			wantThere: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			SanitizeSingboxOutboundMap(tt.ob, "n")
-			got, present := tt.ob["flow"]
-			if present != tt.wantThere {
-				t.Fatalf("flow present = %v, want %v (value %v)", present, tt.wantThere, got)
-			}
-			if tt.wantThere && got != tt.wantFlow {
-				t.Fatalf("flow = %v, want %v", got, tt.wantFlow)
-			}
-		})
-	}
-}
-
-func TestSanitizeSingboxPacketEncoding(t *testing.T) {
-	tests := []struct {
-		name      string
-		value     interface{}
-		want      string
-		wantThere bool
-	}{
-		{name: "xudp kept", value: "xudp", want: "xudp", wantThere: true},
-		{name: "packetaddr kept", value: "packetaddr", want: "packetaddr", wantThere: true},
-		{name: "none dropped", value: "none", wantThere: false},
-		{name: "garbage dropped", value: "teleport", wantThere: false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ob := map[string]interface{}{"type": "vless", "packet_encoding": tt.value}
-			SanitizeSingboxOutboundMap(ob, "n")
-
-			got, present := ob["packet_encoding"]
-			if present != tt.wantThere {
-				t.Fatalf("packet_encoding present = %v, want %v (value %v)", present, tt.wantThere, got)
-			}
-			if tt.wantThere && got != tt.want {
-				t.Fatalf("packet_encoding = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestSanitizeSingboxHysteria2Obfs(t *testing.T) {
-	t.Run("salamander with password is kept", func(t *testing.T) {
-		ob := map[string]interface{}{
-			"type": "hysteria2",
-			"obfs": map[string]interface{}{"type": "salamander", "password": "secret"},
-		}
-		SanitizeSingboxOutboundMap(ob, "n")
-
-		if _, present := ob["obfs"]; !present {
-			t.Fatal("valid obfs must survive")
-		}
-	})
-
-	t.Run("unsupported obfs type is dropped", func(t *testing.T) {
-		ob := map[string]interface{}{
-			"type": "hysteria2",
-			"obfs": map[string]interface{}{"type": "quicksand", "password": "secret"},
-		}
-		SanitizeSingboxOutboundMap(ob, "n")
-
-		if _, present := ob["obfs"]; present {
-			t.Fatal("unsupported obfs type must be dropped (fatal for the whole config)")
-		}
-	})
-
-	// gecko is implemented by sing-box-lx (protocol/hysteria2/outbound.go) and
-	// accepted by LxBox, so it must survive the import (SPEC 103, D-016(а)).
-	t.Run("gecko obfs is kept", func(t *testing.T) {
-		ob := map[string]interface{}{
-			"type": "hysteria2",
-			"obfs": map[string]interface{}{"type": "gecko", "password": "secret"},
-		}
-		SanitizeSingboxOutboundMap(ob, "n")
-
-		if _, present := ob["obfs"]; !present {
-			t.Fatal("gecko obfs must be kept — the core supports it")
-		}
-	})
-
-	t.Run("obfs without password is dropped", func(t *testing.T) {
-		ob := map[string]interface{}{
-			"type": "hysteria2",
-			"obfs": map[string]interface{}{"type": "salamander"},
-		}
-		SanitizeSingboxOutboundMap(ob, "n")
-
-		if _, present := ob["obfs"]; present {
-			t.Fatal("obfs without password must be dropped")
-		}
-	})
-}
+// СНЯТО вместе с правилом (SPEC 131, аудит остатков):
+// TestSanitizeSingboxHysteria2Obfs. Все четыре его посылки — enum типов,
+// пустой тип, пустой пароль, сохранение gecko — выражены в
+// hysteria2.json (body.obfs.type enum + on_invalid, body.obfs.password
+// required + code) и проверяются на выходе конвейера. Прежний код снимал
+// obfs МОЛЧА; теперь узел получает obfs_unknown / obfs_password_missing —
+// проверено прогоном nodeflow.Sanitize на обоих кейсах.
 
 func TestSanitizeSingboxHandlesMalformedBlocks(t *testing.T) {
 	// tls не объект: ядро отвергло бы конфиг, поле снимается.

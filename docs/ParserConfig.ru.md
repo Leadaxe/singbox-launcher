@@ -54,7 +54,9 @@ xhttp, поля AmneziaWG, коды деградации узла и списо�
 | **`SPECS/029-Q-С-SUBSCRIPTION_PARSER_CLASH_CONVERTOR_PARITY/SPEC.md`** | Расширения совместимости (029): `type=httpupgrade`, `peer`, `obfsParam`, VMess legacy / `httpupgrade` / `h2`, Hysteria2 TLS; сверка со схемой sing-box. |
 | **`SPECS/033-F-N-SUBSCRIPTION_XRAY_JSON_ARRAY/SPEC.md`** | Подписка как JSON-массив полных конфигов Xray: `remarks`, slug-теги, `dialerProxy` → `detour`, границы MVP (sing-box-массив — **016**, follow-up). |
 | **`SPECS/036-F-C-XRAY_JUMP_ANY_PROTOCOL/SPEC.md`** | `dialerProxy`: hop **SOCKS** или **VLESS**; прочие протоколы — по мере маппинга (**завершено** по объёму SPEC). |
-| Пакет **`core/config/subscription`** | `ParseNode`, `buildOutbound` — `node_parser_core.go`; VLESS/Trojan transport+TLS — `node_parser_transport.go`; VMess — `node_parser_vmess.go` (`parseVMessDecoded`, `parseVMessJSON`, `parseVMessLegacyCleartext`); Hysteria2 — `node_parser_hysteria2.go`; WireGuard / SSH — `node_parser_wireguard.go`, `node_parser_ssh.go`; share URI — диспетчер `share_uri.go` + реализации `shareuri_*.go`; JSON-массив Xray — `xray_json_array.go`, `xray_outbound_convert.go`, `xray_protocols.go`, `xray_balancer.go`. |
+| **`contract/docs/MAPPER_ENGINE.md`** | Как разбирается источник: стадии конвейера, пространство источников, порядок исполнения записей реестра, обратный ход. Источник истины — общий документ контракта, чтобы оба проекта читали одни таблицы одинаково. |
+| Пакет **`core/config/linkmap`** | Сам движок: один путь разбора на все источники. `plan.go` компилирует секцию `mappers.*` в план, `select.go`/`detect.go` выбирают секцию и форму, `space.go` — пространство источников и лексер authority, `exec.go` исполняет таблицу, `emit.go` — обратный ход. Имён схем и протоколов в нём нет: что и куда кладётся, объявляет `contract/registry`. |
+| Пакет **`core/config/subscription`** | `ParseNode` — три ветки (Amnezia `vpn://`, движок через `node_parser_engine.go`, «схема не поддержана») и общие хелперы в `node_parser_core.go`; решения уровня документа по массиву Xray — `xray_json_array.go`, `xray_element_engine.go`, `xray_outbound_convert.go`, `xray_protocols.go`, `xray_balancer.go`; вставленный текст wg-quick — `wgconf_text.go`; share URI — `share_uri.go`. Парсеров ссылок по протоколам больше нет: есть движок и таблицы реестра. |
 
 ## Версионирование конфигурации
 
@@ -631,14 +633,18 @@ API. В этом и смысл того, что она источник: буд�
 Парсер принимает прямые ссылки в массиве `connections` — формат зависит от
 протокола.
 
-📄 Параметры каждой схемы вынесены в [`Protocols.ru.md`](Protocols.ru.md):
-[VLESS](Protocols.ru.md#vless-vless), [VMess](Protocols.ru.md#vmess-vmess),
-[Trojan](Protocols.ru.md#trojan-trojan), [Shadowsocks](Protocols.ru.md#shadowsocks-ss),
-[Hysteria2](Protocols.ru.md#hysteria2-hysteria2-или-hy2), [SSH](Protocols.ru.md#ssh-ssh),
-[SOCKS5](Protocols.ru.md#socks5-socks5-или-socks), [NaïveProxy](Protocols.ru.md#naïveproxy-naivehttps--naivequic),
-[TUIC](Protocols.ru.md#tuic-tuic), [AnyTLS](Protocols.ru.md#anytls-anytls),
-[MASQUE](Protocols.ru.md#masque-masque), [WireGuard](Protocols.ru.md#wireguard-wireguard),
-[Amnezia](Protocols.ru.md#amnezia-vpn), [`.conf`-текст](Protocols.ru.md#голый-conf-текст-interfacepeer).
+📄 Параметры каждой схемы **генерируются из реестра** — оглавление в
+[`contract/docs/generated/index.md`](../contract/docs/generated/index.md):
+[VLESS](../contract/docs/generated/protocols/vless.md), [VMess](../contract/docs/generated/protocols/vmess.md),
+[Trojan](../contract/docs/generated/protocols/trojan.md), [Shadowsocks](../contract/docs/generated/protocols/shadowsocks.md),
+[Hysteria2](../contract/docs/generated/protocols/hysteria2.md), [SSH](../contract/docs/generated/protocols/ssh.md),
+[SOCKS5](../contract/docs/generated/protocols/socks.md), [NaïveProxy](../contract/docs/generated/protocols/naive.md),
+[TUIC](../contract/docs/generated/protocols/tuic.md), [AnyTLS](../contract/docs/generated/protocols/anytls.md),
+[MASQUE](../contract/docs/generated/protocols/masque.md), [WireGuard](../contract/docs/generated/protocols/wireguard.md),
+[HTTP(S)-прокси](../contract/docs/generated/protocols/http.md), плюс общие страницы
+[TLS/REALITY](../contract/docs/generated/protocols/_tls.md) и [транспортов](../contract/docs/generated/protocols/_transports.md).
+Входные формы без ссылки (Amnezia `vpn://`, голый `.conf`-текст) остались в
+[`Protocols.ru.md`](Protocols.ru.md#входные-формы-которые-не-являются-ссылками).
 
 
 ## Маркерная секция в `config.json`

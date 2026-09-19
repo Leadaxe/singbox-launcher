@@ -1,0 +1,34 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "h.example",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "s.example",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "fp junk",
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "utls_fp_unknown",
+          "path": "tls.utls.fingerprint",
+          "value": "bogus-fp"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

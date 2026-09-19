@@ -1,0 +1,25 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "flow": "xtls-rprx-vision",
+        "packet_encoding": "xudp",
+        "server": "h.example",
+        "server_port": 8443,
+        "tls": {
+          "enabled": true,
+          "server_name": "s.example"
+        },
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "udp443",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

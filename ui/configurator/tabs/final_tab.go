@@ -106,6 +106,10 @@ func CreateFinalTab(presenter *wizardpresentation.WizardPresenter, guiState *wiz
 	// объект, внутри которого его и объявляют. Копированием структуры это не
 	// решить — в ней мьютекс.
 	runner := &finalBuildRunner{presenter: presenter}
+	runner.onProgress = func(disabled int) {
+		progressLabel.SetText(locale.Tf("Checking servers… (%d disabled)", disabled))
+		progressLabel.Show()
+	}
 	runner.onStart = func() {
 		progress.Show()
 		progressLabel.Show()
@@ -335,8 +339,9 @@ type finalBuildRunner struct {
 	state   finalBuildState
 
 	// onStart / onDone мутируют виджеты — зовутся ТОЛЬКО из fyne.Do.
-	onStart func()
-	onDone  func(text string, err error)
+	onStart    func()
+	onDone     func(text string, err error)
+	onProgress func(disabled int)
 }
 
 // State — текущее состояние сборки; читается гейтом Save.
@@ -422,7 +427,27 @@ func (r *finalBuildRunner) build() (string, config.BuildGeneration, error) {
 	if !r.presenter.PrepareFinalBuild() {
 		return "", 0, errors.New(locale.T(finalNoNodesText))
 	}
-	return wizardbusiness.BuildFinalReportConfig(r.presenter.Model())
+	text, gen, err := wizardbusiness.BuildFinalReportConfig(r.presenter.Model())
+	if err != nil {
+		return "", gen, err
+	}
+	progress := func(n int) {
+		if r.onProgress == nil {
+			return
+		}
+		fyne.Do(func() { r.onProgress(n) })
+	}
+	checked, _, loopErr := r.presenter.RunDraftRejectPreview(text, progress)
+	if loopErr != nil {
+		return text, gen, loopErr
+	}
+	if checked != "" {
+		text = checked
+	}
+	if m := r.presenter.Model(); m != nil && m.BuildReportGen != 0 {
+		gen = m.BuildReportGen
+	}
+	return text, gen, nil
 }
 
 // showConfigWindow открывает собранный конфиг в собственном окне.

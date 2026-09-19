@@ -274,6 +274,10 @@ func buildChainNode(
 		Outbound:    ChainOutboundObject(tag, bc.Chain),
 		SourceIndex: sourceIndex,
 		EmitRaw:     true,
+		// SPEC 132: обратный путь «финальный тег → узел состояния». У
+		// сборочной формы, положенной вызывающим напрямую, ссылки нет —
+		// такому узлу тег не сопоставится, и страховка на него не действует.
+		CanonicalLink: bc.Link,
 	}, ChainDegradation{}
 }
 

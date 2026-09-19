@@ -17,7 +17,10 @@ func TestParseNode_Tuic_Canonical(t *testing.T) {
 	assertEq(t, node.Server, "tuic.example.test")
 	assertEq(t, node.Port, 443)
 	assertEq(t, node.UUID, "00000000-0000-0000-0000-000000000001")
-	assertEq(t, node.Query.Get("password"), "testpass")
+	// node.Query — справка о ТОМ, ЧТО НАПИСАНО в ссылке. Пароль стоит в
+	// userinfo, а не параметром: в Query его клала воронка прежнего пути
+	// (QUIRKS Q133-49). Проверяем там, где он и живёт, — в теле.
+	assertEq(t, nodeBody(t, node)["password"], "testpass")
 	assertEq(t, node.Label, "TUIC-smoke")
 }
 
@@ -28,7 +31,7 @@ func TestBuildOutbound_Tuic(t *testing.T) {
 		t.Fatalf("ParseNode: %v", err)
 	}
 	node.Tag = "tuic-out"
-	out := buildOutbound(node)
+	out := nodeBody(t, node)
 
 	assertEq(t, out["type"], "tuic")
 	assertEq(t, out["tag"], "tuic-out")
@@ -46,7 +49,7 @@ func TestBuildOutbound_Tuic(t *testing.T) {
 	assertEq(t, tls["enabled"], true)
 	assertEq(t, tls["server_name"], "tuic.example.test")
 	assertEq(t, tls["insecure"], true) // from allow_insecure=1
-	alpn, ok := tls["alpn"].([]string)
+	alpn, ok := bodyStrings(tls["alpn"])
 	if !ok || len(alpn) != 2 || alpn[0] != "h3" || alpn[1] != "spdy/3.1" {
 		t.Errorf("alpn = %v, want [h3 spdy/3.1]", tls["alpn"])
 	}
@@ -66,26 +69,23 @@ func TestParseNode_Tuic_MissingUserinfoRejected(t *testing.T) {
 	}
 }
 
-func TestBuildOutbound_Tuic_UnknownCongestionDropped(t *testing.T) {
-	node, err := ParseNode("tuic://u:p@host.tld/?congestion_control=reno-xyz", nil)
-	if err != nil {
-		t.Fatalf("ParseNode: %v", err)
-	}
-	node.Tag = "t"
-	out := buildOutbound(node)
-	if _, has := out["congestion_control"]; has {
-		t.Errorf("unknown congestion_control must be dropped, got %v", out["congestion_control"])
-	}
-}
+// Снятие congestion_control вне словаря переехало в санитайзер
+// (tuic.json: on_invalid drop + tuic_congestion_invalid). Проверка —
+// corpus uri/tuic/unknown_congestion_dropped и TestPipelineSetsDegradationCodes.
 
+// Нормализация голых секунд (heartbeat=10 → "10s") переехала в body.fields
+// (normalize duration_bare_seconds, SPEC 133): правило ЗНАЧЕНИЯ действует на
+// всех входах, а не только на ссылке, и видно ПОСЛЕ санитайзера. Проверка —
+// corpus uri/tuic/heartbeat_bare_seconds. Здесь осталось лишь то, что маппер
+// довозит параметр до тела.
 func TestBuildOutbound_Tuic_HeartbeatSeconds(t *testing.T) {
 	node, err := ParseNode("tuic://u:p@host.tld/?heartbeat=10", nil)
 	if err != nil {
 		t.Fatalf("ParseNode: %v", err)
 	}
 	node.Tag = "t"
-	out := buildOutbound(node)
-	assertEq(t, out["heartbeat"], "10s")
+	out := nodeBody(t, node)
+	assertEq(t, out["heartbeat"], "10")
 }
 
 func TestBuildOutbound_Tuic_ZeroRTTAlias(t *testing.T) {
@@ -94,7 +94,7 @@ func TestBuildOutbound_Tuic_ZeroRTTAlias(t *testing.T) {
 		t.Fatalf("ParseNode: %v", err)
 	}
 	node.Tag = "t"
-	out := buildOutbound(node)
+	out := nodeBody(t, node)
 	assertEq(t, out["zero_rtt_handshake"], true)
 }
 
@@ -107,7 +107,7 @@ func TestShareURIRoundtrip_Tuic(t *testing.T) {
 	if node.Tag == "" {
 		node.Tag = "t"
 	}
-	out := buildOutbound(node)
+	out := nodeBody(t, node)
 	got, err := ShareURIFromOutbound(out)
 	if err != nil {
 		t.Fatalf("ShareURIFromOutbound: %v", err)
@@ -128,7 +128,9 @@ func TestShareURIRoundtrip_Tuic(t *testing.T) {
 	assertEq(t, q.Get("congestion_control"), "bbr")
 	assertEq(t, q.Get("udp_relay_mode"), "native")
 	assertEq(t, q.Get("alpn"), "h3")
-	assertEq(t, q.Get("insecure"), "1")
+	// Имя флага на выходе — написание tuic-клиентов (emit.names реестра):
+	// единое `insecure` читают не все (DELTAS D133-E2).
+	assertEq(t, q.Get("allow_insecure"), "1")
 	frag, _ := url.PathUnescape(u.Fragment)
 	assertEq(t, frag, "My TUIC")
 }

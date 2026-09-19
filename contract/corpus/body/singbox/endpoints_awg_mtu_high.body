@@ -1,0 +1,7 @@
+# AWG-endpoint телом sing-box с mtu=1420: значение СОХРАНЯЕТСЯ, узел получает
+# info-код awg_mtu_high. Парность входов здесь нарушена НАМЕРЕННО (решение
+# владельца 18.09.2026, DRIFT 131 §7.23): та же ссылка wireguard:// с mtu=1420
+# даёт 1280 + warning awg_mtu_clamped (кейс uri/wireguard/awg_mtu_1420_clamped).
+# Основание не техническое, а по владению: тело sing-box человек или подписка
+# написали в собственной форме ядра, и молча переписывать его лаунчер не вправе.
+{"endpoints":[{"type":"wireguard","tag":"awg-ep","mtu":1420,"address":["10.0.0.2/32"],"private_key":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=","jc":10,"peers":[{"address":"example-3.com","port":51820,"public_key":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=","allowed_ips":["0.0.0.0/0"]}]}]}

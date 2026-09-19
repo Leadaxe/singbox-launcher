@@ -1,0 +1,70 @@
+name: Contract
+
+# Контракт против кода: первая контрактная джоба репозитория (SPEC 131 §7).
+#
+# Проверяет две вещи и ничего больше — она обязана быть дешёвой и быстрой:
+#
+# 1. Документация `contract/docs/generated/` собрана из текущего реестра.
+#    Страницы генерируются, а не пишутся руками, поэтому единственный способ
+#    поймать расхождение — перегенерировать и сравнить.
+# 2. Линтер реестра (`TestRegistry*` в core/config) — реестр читается,
+#    ссылки разрешаются, у каждого правила есть код.
+#
+# Бинарь не собирается, GUI-зависимости (GL/GTK/wayland) не ставятся:
+# оба шага — чистый Go без CGO.
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'contract/**'
+      - 'core/config/registry/**'
+      - 'core/config/registry_body_test.go'
+      - '.github/workflows/contract.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'contract/**'
+      - 'core/config/registry/**'
+      - 'core/config/registry_body_test.go'
+      - '.github/workflows/contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Registry & generated docs
+    runs-on: ubuntu-24.04
+    env:
+      CGO_ENABLED: '0'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Regenerate contract docs
+        run: go generate ./contract/...
+
+      # Расхождение показывается диффом: человеку видно, какое поле реестра
+      # уехало, а не просто «джоба красная».
+      - name: Generated docs are in sync with the registry
+        run: |
+          if ! git diff --exit-code contract/docs/generated; then
+            echo "::error::contract/docs/generated устарел. Запустите 'go generate ./contract/...' и закоммитьте результат."
+            exit 1
+          fi
+          if [ -n "$(git status --porcelain contract/docs/generated)" ]; then
+            echo "::error::Генератор создал или удалил страницу, которой нет в коммите:"
+            git status --porcelain contract/docs/generated
+            exit 1
+          fi
+
+      - name: Registry linter
+        run: go test ./core/config/ -run 'Registry' -count=1

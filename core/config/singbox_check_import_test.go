@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 )
 
@@ -206,13 +207,9 @@ func TestUnsanitizedValuesAreRejectedByCore(t *testing.T) {
 				t.Logf("core rejected with: %s", out)
 			}
 
-			// А после санитайза — тот же outbound проходит.
-			// Импорт использует ту же функцию, что и здесь.
-			sanitized := map[string]interface{}{}
-			for k, v := range tc.outbound {
-				sanitized[k] = v
-			}
-			sanitizeForTest(t, sanitized)
+			// А после конвейера — тот же outbound проходит.
+			// Зовём ровно тот путь, которым рождается тело узла.
+			sanitized := sanitizeForTest(t, tc.outbound)
 
 			out2, err2 := runSingboxCheck(t, binary, buildCheckableConfig(t, []map[string]interface{}{sanitized}))
 			if err2 != nil {
@@ -222,8 +219,33 @@ func TestUnsanitizedValuesAreRejectedByCore(t *testing.T) {
 	}
 }
 
-// sanitizeForTest вызывает ровно тот санитайзер, которым пользуется импорт.
-func sanitizeForTest(t *testing.T, ob map[string]interface{}) {
+// sanitizeForTest прогоняет карту ровно тем конвейером, которым рождается
+// тело узла (SPEC 131 W2c): маппер уже отработал, дальше санитайзер реестра и
+// эмиттер. Проверяется инвариант §3.2 — значение, которое ядро отвергает
+// фаталом, после конвейера в теле остаться НЕ МОЖЕТ.
+func sanitizeForTest(t *testing.T, ob map[string]interface{}) map[string]interface{} {
 	t.Helper()
-	subscription.SanitizeSingboxOutboundMap(ob, "test")
+	src := map[string]interface{}{}
+	for k, v := range ob {
+		src[k] = v
+	}
+	// Диалектные преобразования (плоский masque, tls на QUIC) остаются за
+	// маппером — конвейер начинается после него.
+	subscription.SanitizeSingboxOutboundMap(src, "test")
+
+	scheme, ok := subscription.SchemeFromSingboxType(mapStringValue(src, "type"))
+	if !ok {
+		t.Fatalf("тип %q вне таблицы схем", mapStringValue(src, "type"))
+	}
+	body, _, drop := materializeBody(scheme, configtypes.NodeSourceSingbox, src)
+	if drop != nil {
+		t.Fatalf("конвейер отверг узел целиком: %s", dropReason(drop))
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("тело узла нечитаемо: %v", err)
+	}
+	// tag узлу возвращает сборка; здесь он нужен, чтобы конфиг был валиден.
+	out["tag"] = mapStringValue(ob, "tag")
+	return out
 }

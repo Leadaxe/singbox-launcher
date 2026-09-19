@@ -1,0 +1,4 @@
+# Вход Xray из набора LxBox (app/test/fixtures/xray/pipeline_identity_before.json,
+# кейс ss_basic). Снят ДО перевода xray-входа на движок: сверка по бедным входам
+# зелёная и при потере полей — у LxBox так ушло ~25 полей XHTTP.
+[{"remarks": "ss", "outbounds": [{"tag": "proxy", "protocol": "shadowsocks", "settings": {"servers": [{"address": "s.example", "port": 8388, "method": "aes-256-gcm", "password": "pw"}]}}]}]

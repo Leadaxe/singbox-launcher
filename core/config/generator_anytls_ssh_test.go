@@ -44,7 +44,13 @@ func TestGenerateNodeJSON_AnyTLS(t *testing.T) {
 // before the ssh branch existed user/password/host-key material were silently
 // dropped, leaving a bare {tag,type,server,server_port} object.
 func TestGenerateNodeJSON_SSH(t *testing.T) {
-	uri := "ssh://deploy@ssh.example.test:2222?password=smokepass&host_key=ssh-ed25519%20AAAAC3fake&client_version=SSH-2.0-smoke#ssh-smoke"
+	// Пароль — в userinfo: это ЕДИНСТВЕННОЕ объявленное написание
+	// (registry/protocols/ssh.json uri.userinfo.maps_to = [user, password];
+	// в uri.query его нет). Прежний `?password=` разбирался лишь потому, что
+	// старый путь сливал userinfo-пароль в node.Query того же имени — QUIRKS
+	// Q133-49. Отдать такую ссылку не мог никто: shareuri_ssh пишет пароль
+	// через url.UserPassword.
+	uri := "ssh://deploy:smokepass@ssh.example.test:2222?host_key=ssh-ed25519%20AAAAC3fake&client_version=SSH-2.0-smoke#ssh-smoke"
 	node, err := subscription.ParseNode(uri, nil)
 	if err != nil || node == nil {
 		t.Fatalf("ParseNode: %v", err)

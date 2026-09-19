@@ -4,21 +4,44 @@
   "kind": "outbound",
   "singbox_type": "shadowsocks",
   "aliases": [],
-  "sources": ["uri", "singbox", "xray"],
+  "sources": [
+    "uri",
+    "singbox",
+    "xray"
+  ],
   "extension": null,
   "uri": {
     "userinfo": {
+      "maps_to": [
+        "method",
+        "password"
+      ],
       "meaning": "base64(method:password)",
-      "note": "Две формы, обе поддержаны обоими: SIP002 ss://base64(method:password)@host:port[?query]#frag и legacy ss://base64(method:password@host:port)#frag. Userinfo сперва percent-декодируется, потом base64 (все 4 варианта). ПЛОСКИЙ (не-base64) SIP002-userinfo 'method:password@host' (разрешён RFC для ss2022) НЕ поддержан ни одним проектом — паритетная дыра, фиксируется фикстурой. ss2022 (2022-blake3-*) работает в обоих через base64-форму."
+      "desc_en": "base64 of method:password.",
+      "desc_ru": "base64 от method:password.",
+      "impl": "Две формы, обе поддержаны обоими: SIP002 ss://base64(method:password)@host:port[?query]#frag и legacy ss://base64(method:password@host:port)#frag. Userinfo сперва percent-декодируется, потом base64 (все 4 варианта). ПЛОСКИЙ (не-base64) SIP002-userinfo 'method:password@host' (разрешён RFC для ss2022) НЕ поддержан ни одним проектом — паритетная дыра, фиксируется фикстурой. ss2022 (2022-blake3-*) работает в обоих через base64-форму."
     },
     "query": {
       "method": {
         "type": "alias_enum",
-        "values": ["2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305", "none", "aes-128-gcm", "aes-192-gcm", "aes-256-gcm", "chacha20-ietf-poly1305", "xchacha20-ietf-poly1305"],
+        "values": [
+          "2022-blake3-aes-128-gcm",
+          "2022-blake3-aes-256-gcm",
+          "2022-blake3-chacha20-poly1305",
+          "none",
+          "aes-128-gcm",
+          "aes-192-gcm",
+          "aes-256-gcm",
+          "chacha20-ietf-poly1305",
+          "xchacha20-ietf-poly1305"
+        ],
         "allowlist": "ss_methods",
         "default": null,
         "aliases": [],
-        "note": "Не URL-параметр, а компонент userinfo; в Go живёт во внутреннем Query['method']. Allowlist идентичен посимвольно (Go isValidShadowsocksMethod ↔ Dart shadowsocksMethods). Метод вне allowlist → drop НОДЫ (не поля): неизвестный метод валит весь конфиг ядра."
+        "maps_to": "method",
+        "desc_en": "Encryption method.",
+        "desc_ru": "Метод шифрования.",
+        "impl": "Не URL-параметр, а компонент userinfo; в Go живёт во внутреннем Query['method']. Allowlist идентичен посимвольно (Go isValidShadowsocksMethod ↔ Dart shadowsocksMethods). Метод вне allowlist → drop НОДЫ (не поля): неизвестный метод валит весь конфиг ядра."
       },
       "password": {
         "type": "string",
@@ -26,7 +49,10 @@
         "allowlist": null,
         "default": null,
         "aliases": [],
-        "note": "Компонент userinfo (после первого ':'). Пустой → drop ноды."
+        "maps_to": "password",
+        "desc_en": "Account password.",
+        "desc_ru": "Пароль учётной записи.",
+        "impl": "Компонент userinfo (после первого ':'). Пустой → drop ноды."
       },
       "plugin": {
         "type": "string",
@@ -35,7 +61,10 @@
         "default": "",
         "aliases": [],
         "ext": "mobile",
-        "note": "SIP003: 'name;k=v;…' — имя до первого ';'. Читает только Dart (→ outbound.plugin/plugin_opts); Go молча теряет query целиком — новое расхождение вне §9 PLAN. При этом Dart toUriShadowsocks plugin в URI НЕ возвращает (теряется на mobile URI-round-trip; в sing-box outbound эмитится)."
+        "maps_to": "plugin",
+        "desc_en": "SIP003 plugin name.",
+        "desc_ru": "Имя плагина SIP003.",
+        "impl": "SIP003: 'name;k=v;…' — имя до первого ';'. Читает только Dart (→ outbound.plugin/plugin_opts); Go молча теряет query целиком — новое расхождение вне §9 PLAN. При этом Dart toUriShadowsocks plugin в URI НЕ возвращает (теряется на mobile URI-round-trip; в sing-box outbound эмитится)."
       },
       "plugin_opts": {
         "type": "string",
@@ -44,7 +73,10 @@
         "default": "",
         "aliases": [],
         "ext": "mobile",
-        "note": "SIP003 opts: хвост plugin после первого ';' либо отдельный параметр plugin_opts. Только Dart (см. plugin)."
+        "maps_to": "plugin_opts",
+        "desc_en": "SIP003 plugin options.",
+        "desc_ru": "Параметры плагина SIP003.",
+        "impl": "SIP003 opts: хвост plugin после первого ';' либо отдельный параметр plugin_opts. Только Dart (см. plugin)."
       }
     },
     "fragment": "label"
@@ -54,13 +86,6 @@
     "param_order": [],
     "note": "Эмит без query: ss://base64std(method:password)@host:port#frag. Расхождение формы: Go оставляет '='-padding, Dart срезает (оба парсят оба вида). Метод вне allowlist → ErrShareURINotSupported (Go). Dart НЕ эмитит plugin/plugin_opts в URI (см. plugin)."
   },
-  "degrade": [
-    "метод вне ss_methods → drop ноды (оба; философия «неизвестный метод = мусор, который уронит конфиг»)",
-    "userinfo/legacy-blob не декодится base64 → drop ноды (Go: SIP002-ветка логирует и продолжает до финальной проверки method/password)",
-    "нет ':' в декодированном userinfo → drop ноды",
-    "порт: РАСХОЖДЕНИЕ (новое, вне §9) — Go: URI без порта → дефолт 443 (общий defaultPort); Dart: host без ':' → drop ноды, неразбираемый порт → fallback 8388",
-    "пустой пароль → drop ноды"
-  ],
   "refs": {
     "go": [
       "core/config/subscription/node_parser_core.go:143-208",
@@ -68,7 +93,7 @@
       "core/config/subscription/node_parser_core.go:581-583",
       "core/config/subscription/node_parser_core.go:767-773",
       "core/config/subscription/node_parser_ss.go:6-21",
-      "core/config/subscription/xray_protocols.go:222-256",
+      "core/config/subscription/xray_element_engine.go",
       "core/config/subscription/shareuri_ss.go:11-33"
     ],
     "dart": [
@@ -79,5 +104,400 @@
       "lib/services/parser/json_parsers.dart:874-885",
       "lib/models/node_spec_emit.dart:289-308"
     ]
+  },
+  "body": {
+    "core": "1.14.1-lx.4",
+    "order": [
+      "server",
+      "server_port",
+      "method",
+      "password",
+      "plugin",
+      "plugin_opts",
+      "network",
+      "udp_over_tcp",
+      "multiplex",
+      "__dialer"
+    ],
+    "fields": {
+      "server": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server address: domain or IP.",
+        "desc_ru": "Адрес сервера: домен или IP.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "server_port": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server port.",
+        "desc_ru": "Порт сервера.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "method": {
+        "type": "enum",
+        "values": [
+          "none",
+          "aes-128-gcm",
+          "aes-192-gcm",
+          "aes-256-gcm",
+          "chacha20-ietf-poly1305",
+          "xchacha20-ietf-poly1305",
+          "2022-blake3-aes-128-gcm",
+          "2022-blake3-aes-256-gcm",
+          "2022-blake3-chacha20-poly1305",
+          "aes-128-ctr",
+          "aes-192-ctr",
+          "aes-256-ctr",
+          "aes-128-cfb",
+          "aes-192-cfb",
+          "aes-256-cfb",
+          "rc4-md5",
+          "chacha20-ietf",
+          "xchacha20"
+        ],
+        "required": true,
+        "desc_en": "Encryption method.",
+        "desc_ru": "Метод шифрования.",
+        "impl": "json-тег без omitempty; enum = 18 методов ядра (sing-shadowsocks2 v0.2.1 method_registry, DRIFT §9.3), неизвестное значение = ошибка CreateMethod на весь конфиг → drop_node ss_method_invalid. Решение D-122 (18.09.2026): девять stream-шифров (shadowstream) ядро принимает — узел живёт, получает info-код ss_method_legacy (advisory). До этого оба клиента дропали такие узлы.",
+        "on_invalid": {
+          "action": "drop_node",
+          "code": "ss_method_invalid"
+        },
+        "advisory": [
+          {
+            "values": [
+              "aes-128-ctr",
+              "aes-192-ctr",
+              "aes-256-ctr",
+              "aes-128-cfb",
+              "aes-192-cfb",
+              "aes-256-cfb",
+              "rc4-md5",
+              "chacha20-ietf",
+              "xchacha20"
+            ],
+            "code": "ss_method_legacy"
+          }
+        ]
+      },
+      "password": {
+        "type": "string",
+        "required": true,
+        "secret": true,
+        "desc_en": "Account password.",
+        "desc_ru": "Пароль учётной записи.",
+        "impl": "Без omitempty. Для методов 2022-blake3-* обязан быть base64 нужной длины, иначе ядро не стартует. Секрет."
+      },
+      "plugin": {
+        "type": "string",
+        "desc_en": "SIP003 plugin name.",
+        "desc_ru": "Имя плагина SIP003.",
+        "impl": "Закрытого enum в ядре нет; практические значения obfs-local, v2ray-plugin."
+      },
+      "plugin_opts": {
+        "type": "string",
+        "desc_en": "Options string passed to the plugin.",
+        "desc_ru": "Строка настроек, передаваемая плагину.",
+        "impl": "option/shadowsocks.go PluginOptions."
+      },
+      "network": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Networks this outbound handles.",
+        "desc_ru": "Сети, которые обслуживает этот узел.",
+        "impl": "NetworkList; правило значения — registry/dialer.json, секция common."
+      },
+      "udp_over_tcp": {
+        "type": "object",
+        "order": [
+          "enabled",
+          "version"
+        ],
+        "fields": {
+          "enabled": {
+            "type": "bool",
+            "default": false,
+            "desc_en": "Tunnel UDP over the TCP connection.",
+            "desc_ru": "Передавать UDP внутри TCP-соединения.",
+            "impl": "option/shadowsocks.go UDPOverTCPOptions.Enabled."
+          },
+          "version": {
+            "type": "enum",
+            "values": [
+              1,
+              2
+            ],
+            "on_invalid": {
+              "action": "drop",
+              "code": "type_invalid"
+            },
+            "default": 2,
+            "desc_en": "UDP-over-TCP protocol version.",
+            "desc_ru": "Версия протокола UDP-over-TCP.",
+            "impl": "Ядро принимает и краткую форму — булево вместо объекта; в теле узла пишем объект."
+          }
+        },
+        "desc_en": "UDP-over-TCP settings.",
+        "desc_ru": "Настройки передачи UDP внутри TCP.",
+        "impl": "UDPOverTCPOptions (§1.9): форма — bool ИЛИ объект {enabled,version}."
+      },
+      "multiplex": {
+        "type": "ref",
+        "ref": "multiplex",
+        "desc_en": "Stream multiplexing settings.",
+        "desc_ru": "Настройки мультиплексирования потоков.",
+        "impl": "OutboundMultiplexOptions — registry/multiplex.json."
+      },
+      "__dialer": {
+        "type": "ref",
+        "ref": "dialer",
+        "inline": true,
+        "desc_en": "Common dialer fields, inlined flat into the body.",
+        "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
+        "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
+      }
+    }
+  },
+  "mappers": {
+    "uri": {
+      "body_source": "uri",
+      "detect": {
+        "scheme_in": [
+          "ss"
+        ]
+      },
+      "forms": [
+        {
+          "id": "sip002",
+          "detect": {
+            "regex": "^[^#]*@"
+          },
+          "decode": [
+            "url"
+          ],
+          "space": "url",
+          "impl": "Наличие '@' до фрагмента: userinfo кодирован, адрес открыт."
+        },
+        {
+          "id": "legacy",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            {
+              "decoder": "percent",
+              "scope": "authority"
+            },
+            {
+              "decoder": "base64",
+              "scope": "authority"
+            }
+          ],
+          "space": "url",
+          "impl": "До-SIP002: в base64 уехала вся запись 'method:password@host:port'. Область authority объявлена ЯВНО (PRIMITIVES §0.10): метка '#…' стоит СНАРУЖИ base64 и открытым текстом, декодер «на весь текст» о неё спотыкался ('не base64' на кейсах legacy_base64 и legacy_full_base64). Прежний {reparse: authority} выражал ту же мысль задним числом — сначала испортить весь текст, потом перечитать; область применения говорит её прямо и снимает сам примитив reparse."
+        }
+      ],
+      "userinfo": {
+        "decode": [
+          "percent",
+          "base64?"
+        ],
+        "split": {
+          "sep": ":",
+          "limit": 2
+        },
+        "into": [
+          "method",
+          "password"
+        ],
+        "single_into": "method",
+        "impl": "percent ДО base64 — панели экранируют '='-паддинг как %3D (корпус sip002_escaped_padding). 'base64?' — try-decode с фолбэком «не base64 → как есть»: delta480, открытый SS2022 'method:key@host' теперь читается (было — уходил в безусловный base64 и давал мусор). limit:2 — пароль это ВСЁ после первого ':': у SS2022 он бывает составным (k1:k2). Одиночный компонент — ШИФР, а не пароль: userinfo здесь «method:password», и без двоеточия перед нами метод без пароля. Такой узел уронит правило значения (password required), и это верно: ss без пароля не узел. Позиция та же, что у into[0], но написать её надо руками — умолчания нет."
+      },
+      "label": {
+        "source": "fragment",
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "as_written"
+        },
+        "impl": "scheme_source: singbox_type — тег безымянного узла 'shadowsocks-host-8388', а не 'ss-host-8388'. Так делал старый парсер, identity живых узлов не двигается. scheme_source=as_written: generateDefaultTag зовётся со scheme='ss' (node_parser_core.go:186, :543), тег выходит ss-host-port. Переход на singbox_type (D133-6) сменил бы ТЕГ, то есть identity живых узлов, — делается волной D133-6 целиком, а не по одной схеме."
+      },
+      "defaults": {
+        "type": "shadowsocks",
+        "server_port": 8388
+      },
+      "params": {
+        "server": {
+          "source": "host",
+          "maps_to": "server",
+          "required": true
+        },
+        "server_port": {
+          "source": "port",
+          "maps_to": "server_port",
+          "type": "int",
+          "materialize_default": true,
+          "impl": "Дефолт 8388 — канонический порт shadowsocks (решение владельца, SPEC 133). ПРЕЖДЕ здесь стояло 443: node_parser_core.go:145 ставил 443 всем схемам, и ss-ветка его не переопределяла — в отличие от socks и ssh. Это был наш дефект, который корпус не ловил: ни одна из 9 фикстур uri/shadowsocks порт не опускает, поэтому дефолт не исполнялся нигде и разойтись было не с чем. Кейс на опущенный порт заведён вместе со сменой (uri/shadowsocks/no_port_default_8388)."
+        },
+        "method": {
+          "source": "userinfo.user",
+          "maps_to": "method",
+          "normalize": "trim",
+          "required": true,
+          "impl": "Значение КАК ПРИШЛО: набор из восемнадцати методов и info-код для девяти stream-шифров — правила реестра (body.fields.method)."
+        },
+        "password": {
+          "source": "userinfo.pass",
+          "maps_to": "password",
+          "required": true,
+          "impl": "Пустой пароль = «записи нет» (uri.query.password.impl: «Пустой → drop ноды»). Это структура: поля санитайзеру судить бы не досталось."
+        },
+        "plugin": {
+          "source": "query.plugin",
+          "maps_to": "plugin",
+          "extract": {
+            "re": "^(?P<name>[^;]*)(?:;(?P<opts>.*))?$",
+            "into": {
+              "name": "plugin",
+              "opts": "plugin_opts"
+            }
+          },
+          "priority": 1,
+          "impl": "SIP003 'plugin=name;k=v;k=v…': имя до первого ';', опции хвостом. Закрытого enum у имени плагина ядро не держит."
+        },
+        "plugin_opts": {
+          "source": "query.plugin_opts",
+          "aliases": [
+            "pluginOpts"
+          ],
+          "maps_to": "plugin_opts",
+          "priority": 2,
+          "merge": "keep_first",
+          "impl": "Опции берутся из хвоста `plugin`, а при его отсутствии — отсюда (priority 2 + keep_first). Алиас pluginOpts — delta480: было — не читался, стало — читается (имена параметров регистронезависимо)."
+        }
+      },
+      "include": [
+        "dialer#uri"
+      ],
+      "unknown_key": {
+        "action": "keep",
+        "code": "uri_param_unknown"
+      },
+      "emit": {
+        "form": "sip002",
+        "param_order": "alphabetical",
+        "userinfo": {
+          "form": "base64",
+          "padding": true
+        },
+        "impl": "userinfo.form base64 — SIP002: `method:password` кодируется целиком, адрес и метка остаются открытыми. padding объявлен явно: Go пишет «=», Dart срезает, обе стороны читают обе формы, и по правилу эмита ни одна не меняет своё написание молча."
+      }
+    },
+    "xray": {
+      "body_source": "xray",
+      "detect": {
+        "json": {
+          "value_in": {
+            "protocol": [
+              "shadowsocks",
+              "ss"
+            ]
+          }
+        }
+      },
+      "type_synonyms": {
+        "shadowsocks": "ss"
+      },
+      "forms": [
+        {
+          "id": "servers",
+          "detect": {
+            "json": {
+              "type_of": {
+                "settings": "object"
+              }
+            }
+          },
+          "space": "json",
+          "base": "settings.servers.0",
+          "impl": "ФОРМУ ОПОЗНАЁТ ТИП КОНТЕЙНЕРА, а не ветка default: мусорный ТИП поля означает БИТУЮ ЗАПИСЬ, а не «транспорта нет». См. развёрнутую запись у vless. ЗДЕСЬ ПРОВЕРЯЕТСЯ ТОЛЬКО settings, без streamSettings: транспорта у plain-SS в Xray не бывает, include этой секции несёт один dialer#xray, и элемент БЕЗ streamSettings — норма, а не битая запись (кейс корпуса ss_basic; требование объекта отняло бы у него узел). Условие называет контейнеры, которые секция ЧИТАЕТ, — у vless/vmess/trojan их два, здесь один."
+        }
+      ],
+      "defaults": {
+        "type": "shadowsocks"
+      },
+      "label": {
+        "source": "json.remarks",
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "as_written"
+        },
+        "impl": "У Xray-входа имя схемы для фолбэка не равно типу тела: 'ss' при 'shadowsocks' (tagScheme в XrayMapping). Тег И ЕСТЬ identity, поэтому as_written здесь нормативен."
+      },
+      "params": {
+        "address": {
+          "source": "json.$base.address",
+          "maps_to": "server",
+          "required": true,
+          "desc_en": "empty server address"
+        },
+        "port": {
+          "source": "json.$base.port",
+          "maps_to": "server_port",
+          "type": "int",
+          "required": true,
+          "desc_en": "server port is missing or out of range",
+          "impl": "Порт ОБЯЗАТЕЛЕН и ненулевой: port==0 даёт null (записи нет). Дефолта у этого входа нет, в отличие от ссылки."
+        },
+        "method": {
+          "source": "json.$base.method",
+          "maps_to": "method",
+          "required": true
+        },
+        "password": {
+          "source": "json.$base.password",
+          "maps_to": "password",
+          "impl": "required, а НЕ empty:significant: xray_protocols.go:284-286 отбраковывает узел при пустом method ИЛИ password. Это рубеж против плейсхолдеров просроченной подписки — «пишется даже пустым» из черновика его бы снесло.",
+          "required": true,
+          "desc_en": "empty password — the server returned a placeholder, subscription may be expired"
+        },
+        "$extra_servers": {
+          "source": "json.settings.servers",
+          "maps_to": null,
+          "on_len_gt": {
+            "n": 1,
+            "action": "note",
+            "code": "xray_extra_entries_dropped"
+          }
+        }
+      },
+      "include": [
+        "dialer#xray"
+      ],
+      "unknown_key": {
+        "action": "drop",
+        "code": "json_field_unknown",
+        "ignore": [
+          "protocol",
+          "tag",
+          "remarks",
+          "settings",
+          "streamSettings",
+          "mux",
+          "sendThrough",
+          "proxySettings"
+        ],
+        "impl": "Ключи уровня документа плюс контейнеры, чьи листья читают записи таблицы. Список дословно равен списку остальных xray-секций — см. развёрнутую сноску у vless. Заведён вместе с исполнением json_field_unknown: до него секция была единственной без перечня, и элемент получал код на свой же protocol/tag/settings."
+      },
+      "emit": null
+    }
   }
 }

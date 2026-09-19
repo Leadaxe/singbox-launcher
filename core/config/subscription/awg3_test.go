@@ -18,93 +18,39 @@ func awg3URI(extra string) string {
 		"&allowedips=0.0.0.0/0,::/0" + extra
 }
 
-// SPEC 123 §2 «Политика ошибок»: битый ключ защиты и слишком короткий паддинг
-// роняют УЗЕЛ (ядро отвергает такой конфиг целиком), а мусор в тайминге или
-// булевом снимает ПОЛЕ и оставляет узел жить.
-func TestParseWireGuardURI_AWG3Negatives(t *testing.T) {
-	// s1–s4 >= 12 обязательны везде, где задан ключ защиты.
-	padding := "&s1=55&s2=42&s3=40&s4=12"
-	cases := []struct {
-		name       string
-		query      string
-		wantDrop   bool
-		wantErrHas string
-		wantCode   string
-		absentKeys []string
-	}{
-		{
-			name:       "header key decodes to 16 bytes",
-			query:      padding + "&headerprotectionkey=AQIDBAUGBwgJCgsMDQ4PEA%3D%3D",
-			wantDrop:   true,
-			wantErrHas: "32",
-		},
-		{
-			name:       "header key is all zeros",
-			query:      padding + "&headerprotectionkey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA%3D",
-			wantDrop:   true,
-			wantErrHas: "all zeros",
-		},
-		{
-			name:       "header key is not base64",
-			query:      padding + "&headerprotectionkey=%21%21not-base64%21%21",
-			wantDrop:   true,
-			wantErrHas: "not base64",
-		},
-		{
-			name:       "s4 below the header nonce minimum",
-			query:      "&s1=55&s2=42&s3=40&s4=8&headerprotectionkey=Bw4VHCMqMTg%2FRk1UW2JpcHd%2BhYyTmqGor7a9xMvS2eA%3D",
-			wantDrop:   true,
-			wantErrHas: "s4=8 is below the minimum 12",
-		},
-		{
-			name:       "reversed timing range keeps the node, drops the field",
-			query:      "&rekeyaftertime=180-150",
-			wantCode:   WarnAWG3FieldInvalid,
-			absentKeys: []string{"rekey_after_time"},
-		},
-		{
-			name:       "non-boolean random trailers keeps the node, drops the field",
-			query:      "&randomtrailers=maybe",
-			wantCode:   WarnAWG3FieldInvalid,
-			absentKeys: []string{"random_trailers"},
-		},
-		{
-			// Свойство протокола, а не ошибка: ничего не снимаем, только info.
-			// h2–h4 отодвинуты, иначе узел упал бы раньше на overlap заголовков.
-			name:     "random trailers with a wide header range is info only",
-			query:    "&h1=1000-200000&h2=300000&h3=300001&h4=300002&randomtrailers=on",
-			wantCode: WarnAWG3RandomTrailersWideHeaders,
-		},
+// Негативы AWG 3.x проверяются КОРПУСОМ, а не здесь: правила уехали в реестр
+// (контракт 1.1.11, находка №8 LEGACY_AUDIT, запросы LxBox (2) и (4)).
+//
+//   - негодный header_protection_key (16 байт, все нули, не base64) →
+//     on_invalid drop_node, код awg3_header_key_invalid: кейсы
+//     uri/wireguard/awg3_header_key_short_dropped и парный ему
+//     body/singbox/endpoints_awg3_header_key_zeros;
+//   - s1..s4 ниже 12 при заданном ключе (и их полное ОТСУТСТВИЕ — ядро читает
+//     незаданное поле как 0) → min_when с absent_is_zero, код
+//     awg3_padding_too_short: кейсы uri/wireguard/awg3_padding_absent_with_header_key
+//     и body/singbox/endpoints_awg3_padding_too_short;
+//   - перевёрнутый диапазон тайминга и небулево значение → on_invalid drop,
+//     код awg3_field_invalid: кейс uri/wireguard/awg3_timing_range_reversed_dropped.
+//
+// Прежний TestParseWireGuardURI_AWG3Negatives проверял рукописный
+// validateAWG3, которого больше нет; здесь остаётся только то, что реестром не
+// выражается — свойство ПАРЫ настроек, которое ничего не снимает.
+func TestParseWireGuardURI_AWG3RandomTrailersWideHeaders(t *testing.T) {
+	// h2-h4 отодвинуты, иначе узел упал бы раньше на пересечении заголовков.
+	node, err := ParseNode(awg3URI("&h1=1000-200000&h2=300000&h3=300001&h4=300002&randomtrailers=on"), nil)
+	if err != nil || node == nil {
+		t.Fatalf("node must survive, got err=%v", err)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			node, err := ParseNode(awg3URI(tc.query), nil)
-			if tc.wantDrop {
-				if err == nil || node != nil {
-					t.Fatalf("node must be dropped, got node=%v err=%v", node, err)
-				}
-				if tc.wantErrHas != "" && !contains(err.Error(), tc.wantErrHas) {
-					t.Errorf("error %q must mention %q", err.Error(), tc.wantErrHas)
-				}
-				return
-			}
-			if err != nil || node == nil {
-				t.Fatalf("node must survive, got err=%v", err)
-			}
-			if tc.wantCode != "" && !hasWarning(node.Warnings, tc.wantCode) {
-				t.Errorf("warnings = %v, want %s", node.Warnings, tc.wantCode)
-			}
-			for _, k := range tc.absentKeys {
-				if _, ok := node.Outbound[k]; ok {
-					t.Errorf("%s = %v, want the field dropped", k, node.Outbound[k])
-				}
-			}
-			if tc.wantCode == WarnAWG3RandomTrailersWideHeaders {
-				if v, _ := node.Outbound["random_trailers"].(bool); !v {
-					t.Error("random_trailers must stay set: the info code removes nothing")
-				}
-			}
-		})
+	// САМ КОД ставит санитайзер связью реестра (cooccurrence + $range_width),
+	// то есть ниже по конвейеру: здесь, на выходе маппера, его ещё нет и быть
+	// не должно. Предмет этого теста — что маппер довёз до тела ОБА условия
+	// связи в годном виде: булев флаг и диапазон строкой.
+	if v, _ := node.Outbound["random_trailers"].(bool); !v {
+		t.Error("random_trailers обязан доехать булевым true: без него связь не сработает")
+	}
+	if v, _ := node.Outbound["h1"].(string); v != "1000-200000" {
+		t.Errorf("h1 = %v (%T), ожидался диапазон строкой: ширину меряет $range_width",
+			node.Outbound["h1"], node.Outbound["h1"])
 	}
 }
 
@@ -125,9 +71,11 @@ func TestShareURIFromWireGuardEndpoint_AWG3RoundTrip(t *testing.T) {
 	if got, _ := first.Outbound["header_protection_key"].(string); got != awg3ValidHeaderKey {
 		t.Fatalf("header_protection_key = %q, want %q ('+' must survive the query decode)", got, awg3ValidHeaderKey)
 	}
-	// AWG3 выведен из-под клампа AWG2: MTU задаёт сервер.
-	if got, _ := first.Outbound["mtu"].(int); got != 1280 {
-		t.Errorf("mtu = %v, want 1376 clamped to 1280 (AWG3 clamps like AWG2)", first.Outbound["mtu"])
+	// MTU ссылки доезжает как записан: потолок 1280 накладывает уже санитайзер
+	// по телу (wireguard.body.fields.mtu.max_when, контракт 1.1.5), и здесь
+	// проверяется именно round-trip значения, а не правило.
+	if got, _ := first.Outbound["mtu"].(int); got != 1376 {
+		t.Errorf("mtu = %v, want 1376 verbatim (потолок — правило реестра, не парсера)", first.Outbound["mtu"])
 	}
 	share, err := ShareURIFromWireGuardEndpoint(first.Outbound)
 	if err != nil {

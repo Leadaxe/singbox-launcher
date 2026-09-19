@@ -169,9 +169,25 @@
 **Ответственность:** извлечение и нормализация блока `ParserConfig` из `config.json`.
 - `factory.go` — `ExtractParserConfig`, `NormalizeParserConfig`, duplicate-tag stats.
 
-### `core/config/subscription` — парсеры протоколов, загрузка и кодирование
+### `core/config/linkmap` — движок разбора источников узла
 
-**Ответственность:** парсеры URI по протоколам и кодировщики share-URI (VLESS/VMess/Trojan/SS/Hysteria2/TUIC/SSH/SOCKS/Naive/WireGuard, плюс профили Amnezia `vpn://`) и транспорт подписок (загрузка, декодирование, метаданные).
+**Ответственность:** перевести сырой текст источника (share-ссылка, элемент JSON-массива Xray, секция wg-quick `.conf`) в тело узла в форме sing-box — по таблицам `mappers.*` реестра `contract/registry`. **Имён схем и протоколов в движке нет**, и это сторожит греп-страж (`no_scheme_names_test.go`): каждое такое имя было бы второй копией правила, уже объявленного данными.
+
+Устройство — стадии конвейера, пространство источников, порядок исполнения, обратный ход — общий документ контракта **`contract/docs/MAPPER_ENGINE.md`**; он источник истины, и здесь не пересказывается.
+
+| Файл | Назначение |
+|------|------------|
+| `plan.go` | Секция, скомпилированная в план исполнения: развёрнуты `include`-блоки, подставлен `$base`, записи разложены на проход A (селекторы) и проход B, собрано множество объявленных имён параметров. Строится один раз на процесс (`Planes()`). |
+| `select.go` / `detect.go` | Какая секция и какая форма ведёт этот текст — по предикатам `detect` реестра (`SelectURI`, `SelectKind`); ветка `default` с настоящим предикатом не конкурирует. |
+| `space.go` | Пространство источников: собственный лексер authority (multi-port, голый IPv6, последний `@`), разбор query с сохранением порядка, адресация `json.<путь>` и `ini.<секция>.<ключ>`. |
+| `exec.go` | Исполнение таблицы: проходы A/B, `sets`/`implies`/`extract`/`split_into`, `when`, спор за путь по `priority`/`merge`, `defaults` секции — последними и только в незанятый путь. |
+| `emit.go` | Обратный ход по ТОЙ ЖЕ таблице: `maps_to⁻¹`, `value_map⁻¹`, `sets` сопоставлением, `compose`, `emit.form_from`. |
+| `parse.go` / `element.go` | Точки входа для текста и для уже разобранного объектного элемента. |
+| `trace.go` | Необязательная трасса в JSON Lines (по умолчанию выключена) для механической сверки Go↔Dart диффом. |
+
+### `core/config/subscription` — приём источников, загрузка и share-ссылки
+
+**Ответственность:** транспорт подписок (загрузка, декодирование, метаданные), решения УРОВНЯ ДОКУМЕНТА об источнике (что становится узлом, что звеном цепочки, что группой) и обратное направление — сборка share-ссылки. Перевода источника в тело узла здесь **нет**: его ведёт `core/config/linkmap` по таблицам реестра.
 
 | Файл | Назначение |
 |------|---------|
@@ -179,21 +195,15 @@
 | `fetcher.go` | HTTP-загрузка `FetchSubscriptionWithMeta` (заголовки HWID/UA, лимит 10 МБ) и декодирование announce-заголовков; устаревшая обёртка `FetchSubscription`. |
 | `meta.go` | Разбор метаданных из заголовков и inline-`#comment` (Profile-Title, Subscription-Userinfo, интервал обновления), announce провайдера при пустом теле. |
 | `decoder.go` | `DecodeSubscriptionContent` (определение base64 / JSON-массива Xray). |
-| `node_parser_core.go` | Диспетчер `ParseNode` и общие хелперы (`extractTagAndComment`, `generateDefaultTag`, `buildOutbound`, `IsDirectLink`). |
-| `node_parser_transport.go` | Транспорт и TLS для VLESS/Trojan из query URI (`uriTransportFromQuery`, `vlessTLSFromNode`, `trojanTLSFromNode`, `queryGetFold`). |
-| `node_parser_vmess.go` | Полезная нагрузка VMess (JSON и легаси в открытом виде) и транспорты. |
-| `node_parser_ss.go` | Shadowsocks (SIP002 и легаси). |
-| `node_parser_ssh.go` | SSH. |
-| `node_parser_hysteria2.go` | Hysteria2 (плюс `hysteria2_ports.go` для диапазонов mport). |
-| `node_parser_naive.go` | Naive. |
-| `node_parser_tuic.go` | TUIC v5 (SPEC 074). |
-| `node_parser_wireguard.go` | WireGuard и поднятые поля AmneziaWG 2.0 (`applyAWGFields`, диапазонные `h1`–`h4`, предупреждение о пересечении, кламп MTU до 1280). |
-| `node_parser_amnezia.go` | Импорт профиля Amnezia `vpn://`: декодирование base64url + qCompress → контейнер WG/AWG (`last_config`) → канонический URI `wireguard://` (SPEC 075). |
-| `wgconf_text.go` | Вставленный текст конфига `[Interface]/[Peer]` → URI `wireguard://` (`ExtractWGConfBlocks` / `ConvertWGConfText`, SPEC 076). |
-| `xray_json_array.go` / `xray_outbound_convert.go` | Разбор JSON-массива Xray: элемент → `ParsedNode` (плюс jump-хоп), `remarks`→Label, slug-теги; streamSettings→транспорт/TLS. |
-| `share_uri.go` | Диспетчер `ShareURIFromOutbound` (обратный к `ParseNode`). |
-| `shareuri_vless.go` / `shareuri_vmess.go` / `shareuri_trojan.go` / `shareuri_ss.go` / `shareuri_socks.go` / `shareuri_hysteria2.go` / `shareuri_ssh.go` / `shareuri_tuic.go` / `shareuri_naive.go` / `shareuri_wireguard.go` | Кодировщики outbound→share-URI по протоколам. |
-| `shareuri_helpers.go` | Общие хелперы кодирования (`mapGet*`, `transportToQuery`, TLS в query, ALPN/insecure). |
+| `node_parser_core.go` | `ParseNode` — три ветки: профиль Amnezia `vpn://`, движок реестра и «схема не поддержана» для текста, который не опознала ни одна секция. Плюс общие хелперы (`extractTagAndComment`, `generateDefaultTag`, `normalizeFlagTag`, `IsDirectLink`, skip-фильтры). |
+| `node_parser_engine.go` | Единственный вход в движок: `parseURIByEngine` отдаёт `core/config/linkmap` СЫРОЙ ТЕКСТ; какая секция ведёт ссылку, решает `detect` реестра, а не список имён здесь. `ParseWGConfByEngine` / `…Hint` — пара для входа, который приезжает файлом wg-quick `.conf` (секция `mappers.conf`; вызывающий может передать имя, которого в самом тексте нет). |
+| `node_parser_transport.go` | То, что таблицами не выражено: сборка XHTTP v2 / XMUX, нормализация отпечатка uTLS (`NormalizeUTLSFingerprint`, `EnforceRealityFingerprint`), разбор WS early data. |
+| `hysteria2_ports.go` | Диапазоны multi-port hysteria2 — таблицы, нужные и обратному ходу, и hysteria v1. |
+| `node_parser_amnezia.go` | Импорт профиля Amnezia `vpn://`: декодирование base64url + qCompress → контейнер WG/AWG (`last_config`) → текст wg-quick, который дальше ведёт секция `mappers.conf` (SPEC 075). |
+| `wgconf_text.go` | Вставленный текст конфига `[Interface]/[Peer]`: выемка блоков и узел на каждый блок (`ExtractWGConfBlocks`, `WGConfBodyToConvertedBlocks`, `WGConfBodyToURIs`). Промежуточная ссылка `wireguard://` больше не строится — блок несёт СВОЙ узел, потому что обратный перевод терял то, чего в ссылке нет по построению: код `wgconf_dns_ignored` и метку из комментария `[Peer]` (SPEC 076, 133). |
+| `xray_json_array.go` / `xray_element_engine.go` / `xray_outbound_convert.go` / `xray_protocols.go` / `xray_balancer.go` | JSON-массив Xray на уровне ДОКУМЕНТА: какой элемент становится узлом, какой звеном цепочки (`xrayChainHopFromOutbound`, socks-звено — `xrayBuildJumpFromSocksOutbound`), какой группой-балансером; `remarks`→Label, slug-теги, владение сервером. Сам элемент переводит движок (`parseXrayElementByEngine`). |
+| `share_uri.go` | `ShareURIFromOutbound` / `ShareURIFromWireGuardEndpoint` — обратное направление: тело узла в форме `config.json` → share-ссылка (`contract/docs/MAPPER_ENGINE.md` §9). |
+| `share_uri_secret.go` | `ShareURICarriesPrivateKey` — один предикат на все точки выдачи ссылки: ссылка с ПРИВАТНЫМ КЛЮЧОМ отдаётся только после явного подтверждения. Судим по телу узла и схеме, а не грепом по готовой ссылке. |
 | `utf8_utils.go` | Сведённые воедино валидация и починка UTF-8 (`FixUTF8*`, `HasControlChars`) — дедупликация SPEC 070. |
 | `encoding_utils.go` | Сведённое воедино декодирование base64 в нескольких вариантах — дедупликация SPEC 070. |
 

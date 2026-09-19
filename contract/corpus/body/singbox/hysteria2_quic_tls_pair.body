@@ -1,0 +1,10 @@
+# SPEC 131, контракт 1.1.4: JSON-половина пары к
+# uri/hysteria2/reality_fp_stripped_quic_pair.uri. Тот же узел, тот же
+# неприменимый TLS — тело и коды обязаны совпасть со ссылочной половиной.
+#
+# Прежде две половины расходились ровно здесь: тело JSON проходило через
+# частную ветку quicOutboundTypes в singbox_sanitize.go и теряло блоки МОЛЧА
+# (только debuglog), а ссылка теряла их ещё раньше — в парсере, тоже молча.
+# Оба входа давали одно тело и НИ ОДНОГО кода. Теперь правило одно на оба:
+# forbidden_for в реестре, код tls_not_applicable_quic уровня info.
+{"type":"hysteria2","tag":"hy2-quic-pair","server":"example-1.com","server_port":443,"password":"pass123","tls":{"enabled":true,"server_name":"x.example.com","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw","short_id":"ab"}}}

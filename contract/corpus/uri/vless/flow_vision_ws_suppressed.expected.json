@@ -24,7 +24,13 @@
       },
       "kind": "outbound",
       "label": "flow-ws",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "vision_with_transport",
+          "path": "flow"
+        }
+      ]
     }
   ],
   "v": 1

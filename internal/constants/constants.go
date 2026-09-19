@@ -120,6 +120,16 @@ const (
 	// роутер или VPS, и начало документа (что такое демон, установка на
 	// macOS) на этом шаге только отвлекает.
 	RemoteDaemonDocsURL = "https://github.com/Leadaxe/sing-box-lx/blob/lx/docs-lx/lxd-daemon.md#8-linux--setup-approaches"
+	// ContractWarningsDocBaseURL — база ссылки «Подробнее» у предупреждения
+	// узла (SPEC 131 §6). Полный адрес = база + код: у каждого кода в
+	// сгенерированном документе свой якорь `<a id="<code>">`.
+	//
+	// Документ живёт в ЭТОМ репозитории (contract/docs/generated/warnings.md):
+	// он генерируется из реестра контракта, который лежит здесь же, и
+	// обновляется той же волной, что и коды. Ветка main, а не тег: у
+	// пользователя релизная сборка, и ссылка обязана вести на актуальный
+	// текст, а не на срез времени сборки.
+	ContractWarningsDocBaseURL = "https://github.com/Leadaxe/singbox-launcher/blob/main/contract/docs/generated/warnings.md#"
 )
 
 // sing-box core download source (SPEC 072, Variant A). The launcher ships the
@@ -145,7 +155,7 @@ const SingboxCoreRepo = "Leadaxe/sing-box-lx" // core for all platforms (XHTTP +
 // `sing-box version`, so the strict-equality reinstall check still holds.
 // Manually bumped per release; source-of-truth here. See
 // docs/RELEASE_PROCESS.md §5.1.
-const RequiredCoreVersion = "1.14.1-lx.4"
+const RequiredCoreVersion = "1.14.1-lx.8"
 
 // AppVersion — git describe output. Set by build scripts via -ldflags.
 //
@@ -159,7 +169,7 @@ const RequiredCoreVersion = "1.14.1-lx.4"
 // HEAD. See docs/RELEASE_PROCESS.md §5.2.
 var (
 	AppVersion          = "v-local-test"
-	RequiredTemplateRef = "ff6a8f2c0539550a1fc23c7361d3c7c61674d26c"
+	RequiredTemplateRef = "d9c2cb262a91cfc6254935d6332adb16cb603e07"
 )
 
 // GetMyBranch возвращает ветку репозитория для загрузки ассетов, у которых нет

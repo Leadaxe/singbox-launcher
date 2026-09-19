@@ -1,0 +1,14 @@
+{
+  "dropped": [
+    {
+      "code": "wg_key_invalid",
+      "reason": "emit_error",
+      "ref": "wg-short-priv"
+    }
+  ],
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [],
+  "v": 1
+}

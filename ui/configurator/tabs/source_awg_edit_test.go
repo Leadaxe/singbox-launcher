@@ -190,3 +190,40 @@ func TestAWGEditableNode(t *testing.T) {
 		t.Error("node without a body must not show the block")
 	}
 }
+
+// Запись тела через конвейер обязана сохранить "type".
+//
+// `nodeflow.Emit` отдаёт тело без managed-ключа "type". На реальном теле
+// (wg-quick от Proton: address / private_key / peers) конвейер ничего не
+// теряет, и форма писала результат Emit как есть — узел оставался без типа:
+// выпадал из сборки («body has no "type"») и терял саму форму обфускации
+// (awgEditableNode смотрит type). Соседние тесты этого не ловили: их тела
+// несут поле вне реестра, и запись шла веткой отката (patched), где type цел.
+func TestWriteAWGBody_KeepsTypeOnCleanPipeline(t *testing.T) {
+	body := map[string]interface{}{
+		"type":        "wireguard",
+		"address":     []interface{}{"10.2.0.2/32"},
+		"private_key": "2BfWIBWcDEZnpn/iMT272pAFH0lmX+ix1xHP4QDM+28=",
+		"peers": []interface{}{map[string]interface{}{
+			"address": "79.127.186.193", "port": float64(51820),
+			"public_key":  "tw0rM/g0IiZKM+Hz0T7jJTSDk8aiOgGEUuG6NkR2mik=",
+			"allowed_ips": []interface{}{"0.0.0.0/0", "::/0"},
+		}},
+	}
+	node := wgNodeWithBody(t, body)
+	if err := writeAWGBody(node, body); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got, _ := bodyOf(t, node)["type"].(string); got != "wireguard" {
+		t.Fatalf("type lost after write: body=%s", string(node.Body))
+	}
+	if !awgEditableNode(node) {
+		t.Fatalf("node must stay editable by the AWG form")
+	}
+	if err := clearAWGSettings(node); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if got, _ := bodyOf(t, node)["type"].(string); got != "wireguard" {
+		t.Fatalf("type lost after clear: body=%s", string(node.Body))
+	}
+}

@@ -1,17 +1,11 @@
 {
-  "nodes": [
+  "dropped": [
     {
-      "entry": {
-        "server": "",
-        "server_port": 443,
-        "tls": {
-          "enabled": true
-        },
-        "type": "naive"
-      },
-      "kind": "outbound",
-      "scheme": "naive"
+      "code": "field_missing",
+      "reason": "emit_error",
+      "ref": "naive+https://"
     }
   ],
+  "nodes": [],
   "v": 1
 }

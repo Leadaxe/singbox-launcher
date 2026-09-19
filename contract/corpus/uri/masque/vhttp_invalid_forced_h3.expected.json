@@ -16,7 +16,11 @@
       "label": "x",
       "scheme": "masque",
       "warnings": [
-        "masque_vhttp_invalid"
+        {
+          "code": "masque_vhttp_invalid",
+          "path": "vhttp",
+          "value": "tcp"
+        }
       ]
     }
   ],

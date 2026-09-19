@@ -1,0 +1,25 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "alter_id": 0,
+        "security": "auto",
+        "server": "v.example",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "v.example"
+        },
+        "type": "vmess",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "vmess",
+      "scheme": "vmess"
+    }
+  ],
+  "v": 1
+}

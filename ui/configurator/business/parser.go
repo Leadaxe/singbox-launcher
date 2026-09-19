@@ -28,7 +28,9 @@ import (
 	corepkg "singbox-launcher/core"
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
+	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardutils "singbox-launcher/ui/configurator/utils"
@@ -163,6 +165,7 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 		debuglog.InfoLog("parseAndPreview: model revision changed during generation, discarding outbound results")
 		model.GeneratedOutbounds = nil
 		model.GeneratedEndpoints = nil
+		model.NodeLinks = nil
 		model.PreviewNeedsParse = true
 		// Попытки не было: результат выброшен, и оставленный номер разрешил бы
 		// сборке «Итога» дописать санитайзерные записи в чужую попытку.
@@ -202,6 +205,7 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 	model.OutboundStats.GlobalSelectorsCount = result.GlobalSelectorsCount
 	model.GeneratedOutbounds = result.OutboundsJSON
 	model.GeneratedEndpoints = result.EndpointsJSON
+	model.NodeLinks = nodeLinksFromEmit(result.NodeLinks)
 
 	timing.LogTiming("total outbound generation", time.Since(generateStartTime))
 
@@ -351,4 +355,16 @@ func sanitizeTagPrefixFromURLFragment(s string) string {
 		n++
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// nodeLinksFromEmit копирует карту эмиссии в форму состояния.
+func nodeLinksFromEmit(in map[string]configtypes.NodeLink) map[string]corestate.NodeLink {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]corestate.NodeLink, len(in))
+	for tag, link := range in {
+		out[tag] = corestate.NodeLink{FolderID: link.FolderID, Tag: link.Tag}
+	}
+	return out
 }

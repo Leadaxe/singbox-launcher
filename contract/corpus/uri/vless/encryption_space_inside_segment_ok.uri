@@ -1,0 +1,4 @@
+# SPEC 132: пробел ВНУТРИ четвёртого сегмента законен — ядро тримит сегменты
+# начиная с четвёртого. Значение едет в тело как есть: обрезаются только края
+# всей строки, а не внутренности.
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?type=tcp&security=none&encryption=mlkem768x25519plus.native.0rtt.%20AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA#enc-space-in

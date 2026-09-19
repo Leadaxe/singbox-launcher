@@ -1,0 +1,2 @@
+# SOCKS4a: версия "4a" из схемы, userinfo пуст (анонимный прокси).
+socks4a://example-2.com:1080#socks4a-anon

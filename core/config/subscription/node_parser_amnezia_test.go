@@ -107,18 +107,19 @@ func TestParseNode_AmneziaVPN_AWG(t *testing.T) {
 	wantNum := map[string]int64{"jc": 4, "jmin": 40, "jmax": 70, "s1": 116, "s2": 61,
 		"h1": 1239197098, "h2": 1929999940, "h3": 1499605721, "h4": 992706287}
 	for k, want := range wantNum {
-		if got, _ := node.Outbound[k].(int64); got != want {
+		if got, _ := awgNum(node.Outbound[k]); got != want {
 			t.Errorf("%s = %v (%T), want %d", k, node.Outbound[k], node.Outbound[k], want)
 		}
 	}
 	if got, _ := node.Outbound["i1"].(string); got != "<b 0x000100002112a442><r 12>" {
 		t.Errorf("i1 mismatch: %q", got)
 	}
-	// AWG endpoint: MTU=1420 from the Amnezia conf must be clamped (SPEC 073).
-	if got, _ := node.Outbound["mtu"].(int); got != 1280 {
-		t.Errorf("mtu = %v, want clamped 1280", node.Outbound["mtu"])
+	// MTU из .conf Amnezia доезжает как записан; потолок 1280 у AWG-узла
+	// накладывает санитайзер по телу (max_when), а не конвертер .conf.
+	if got, _ := node.Outbound["mtu"].(int); got != 1420 {
+		t.Errorf("mtu = %v, want 1420 verbatim (потолок — правило реестра)", node.Outbound["mtu"])
 	}
-	peers, _ := node.Outbound["peers"].([]map[string]interface{})
+	peers, _ := wireGuardPeerMaps(node.Outbound)
 	if len(peers) != 1 {
 		t.Fatalf("peers = %v, want exactly 1", node.Outbound["peers"])
 	}
@@ -140,6 +141,7 @@ func TestParseNode_AmneziaVPN_PlainWG(t *testing.T) {
 	if err != nil || node == nil {
 		t.Fatalf("parse failed: err=%v node=%v", err, node)
 	}
+	awgNumericFields, awgStringFields := awgFieldsFromRegistry(t)
 	for _, k := range append(append([]string{}, awgNumericFields...), awgStringFields...) {
 		if _, ok := node.Outbound[k]; ok {
 			t.Errorf("plain WG profile gained AWG key %q", k)
@@ -310,7 +312,7 @@ func amneziaAWG3Container() map[string]interface{} {
 
 // SPEC 123: импорт AWG 3.1-профиля Amnezia. Проверяет весь путь целиком —
 // .conf → URI → endpoint: AWG3-поля на корне с нужными типами, MTU из
-// last_config без клампа 1280, диапазонный keepalive строкой и подстановку
+// last_config (потолок накладывает реестр, не этот путь), диапазонный keepalive строкой и подстановку
 // $PRIMARY_DNS/$SECONDARY_DNS из корня профиля.
 func TestParseNode_AmneziaVPN_AWG3(t *testing.T) {
 	profile := map[string]interface{}{
@@ -354,11 +356,12 @@ func TestParseNode_AmneziaVPN_AWG3(t *testing.T) {
 			t.Errorf("%s = %v, want true", k, node.Outbound[k])
 		}
 	}
-	// MTU лежит в last_config, а не в [Interface]; AWG3 выведен из-под клампа 1280.
-	if got, _ := node.Outbound["mtu"].(int); got != 1280 {
-		t.Errorf("mtu = %v (%T), want last_config 1376 clamped to 1280", node.Outbound["mtu"], node.Outbound["mtu"])
+	// MTU лежит в last_config, а не в [Interface] — и доезжает оттуда как
+	// записан (1376). Потолок 1280 накладывает уже санитайзер по телу.
+	if got, _ := node.Outbound["mtu"].(int); got != 1376 {
+		t.Errorf("mtu = %v (%T), want last_config 1376 verbatim", node.Outbound["mtu"], node.Outbound["mtu"])
 	}
-	peers, _ := node.Outbound["peers"].([]map[string]interface{})
+	peers, _ := wireGuardPeerMaps(node.Outbound)
 	if len(peers) != 1 {
 		t.Fatalf("peers = %v, want exactly 1", node.Outbound["peers"])
 	}
@@ -368,8 +371,20 @@ func TestParseNode_AmneziaVPN_AWG3(t *testing.T) {
 	}
 	// Плейсхолдеры Amnezia разрешаются из корня профиля: иначе имя сервера
 	// «$PRIMARY_DNS» уезжало в конфиг как есть.
-	if got := node.Query.Get("dns"); got != "172.29.172.254,1.0.0.1" {
-		t.Errorf("dns = %q, want the profile dns1/dns2 with no $ placeholders", got)
+	//
+	// Спрашивается КОД деградации, а не node.Query: с переводом `.conf` на
+	// секцию реестра (SPEC 133) промежуточной ссылки больше нет, и справки
+	// о её query у узла-файла тоже. Проверка от этого стала строже, а не
+	// слабее: `wgconf_dns_ignored` несёт разрешённое значение и вдобавок
+	// доказывает, что потеря DNS дошла до ЧЕЛОВЕКА, а не только до теста.
+	var dnsNote string
+	for _, w := range node.Warnings {
+		if w.Code == "wgconf_dns_ignored" {
+			dnsNote = w.Params["value"]
+		}
+	}
+	if dnsNote != "172.29.172.254, 1.0.0.1" {
+		t.Errorf("wgconf_dns_ignored value = %q, want the profile dns1/dns2 with no $ placeholders", dnsNote)
 	}
 	// Тот же профиль через мульти-импорт обязан дать тот же узел.
 	all, _, err := ParseAmneziaVPNLinkAll(link, nil)

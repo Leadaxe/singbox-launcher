@@ -29,6 +29,7 @@ func init() {
 	state.SetMigrationHooks(state.MigrationHooks{
 		MaterializeSubscription: materializeSubscriptionForMigration,
 		MaterializeServer:       materializeServerForMigration,
+		SanitizeBody:            sanitizeStoredNodeBody,
 	})
 }
 
@@ -116,6 +117,42 @@ func materializeSubscriptionForMigration(req state.MigrationSubRequest) (*state.
 	return res, nil
 }
 
+// stateWarnings — записи деградаций разбора в форме состояния.
+//
+// Пара конвертеров живёт здесь, а не в state: направление импорта
+// config → state, и обратной зависимости у state быть не может (иначе цикл).
+// Форма у типов одна (CANON §6) — конверсия механическая. Обратный
+// конвертер (state → configtypes) заводится волной W2c вместе со своим
+// вызывающим: пустой, он немедленно уехал бы в `unused`.
+func stateWarnings(in []configtypes.Warning) []state.NodeWarning {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]state.NodeWarning, 0, len(in))
+	for _, w := range in {
+		out = append(out, state.NodeWarning{
+			Code:   w.Code,
+			Path:   w.Path,
+			Value:  w.Value,
+			Params: copyWarningParams(w.Params),
+		})
+	}
+	return out
+}
+
+// copyWarningParams — копия карты подстановок (общая карта у двух записей
+// означала бы правку одной через другую).
+func copyWarningParams(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
 // canonicalNodeFromEntry — общая конверсия принятой записи тела в
 // канонический узел v7 (server с body/origin либо auto с group).
 //
@@ -154,9 +191,9 @@ func canonicalNodeFromEntry(subID string, e *subscription.ParsedBodyEntry) (stat
 		}, nil
 	}
 
-	bodyJSON, emitErr := emitMigrationBody(e.Node)
-	if emitErr != nil {
-		return state.Node{}, emitErr
+	bodyJSON, warns, drop := materializeParsedNodeBody(e.Node)
+	if drop != nil {
+		return state.Node{}, fmt.Errorf("%s", dropReason(drop))
 	}
 	return state.Node{
 		Kind:    state.SourceKindServer,
@@ -164,6 +201,11 @@ func canonicalNodeFromEntry(subID string, e *subscription.ParsedBodyEntry) (stat
 		Enabled: true,
 		Origin:  origin,
 		Body:    bodyJSON,
+		// Коды разбора едут с узлом (SPEC 131 W2b, шов Л1): до этого они
+		// доживали до записи и молча терялись здесь. SubUpdateStatus.Warnings
+		// не трогаем — это сводка по ИСТОЧНИКУ, другая сущность (Л15).
+		// Набор — парсерные коды плюс санитайзерные, в этом порядке (W2c).
+		Warnings: stateWarnings(warns),
 	}, nil
 }
 
@@ -177,15 +219,21 @@ func materializeServerForMigration(req state.MigrationServerRequest) (*state.Mig
 		if err != nil {
 			return nil, fmt.Errorf("manual config_json: %w", err)
 		}
-		body, err := stripTagAndDetour(req.ConfigJSON)
-		if err != nil {
-			return nil, fmt.Errorf("manual config_json: %w", err)
+		// Ручной объект идёт ТЕМ ЖЕ конвейером, что и ссылка (ловушка Л2):
+		// до W2c он ехал в тело дословно через stripTagAndDetour, и
+		// вставленный мусор валил `sing-box check` на ВСЁМ конфиге. Схема
+		// определяется по "type" тела (обратная карта реестра), а `tag` и
+		// `detour` снимает сам санитайзер — они managed-ключи сборки.
+		body, warns, drop := materializeParsedNodeBody(node)
+		if drop != nil {
+			return nil, fmt.Errorf("manual config_json: %s", dropReason(drop))
 		}
 		return &state.MigrationServerResult{
 			Body:       body,
 			OriginKind: state.OriginKindJSON,
 			OriginRaw:  string(req.ConfigJSON),
 			LegacyHash: LegacyNodeIdentityHash(node),
+			Warnings:   stateWarnings(warns),
 		}, nil
 	}
 
@@ -210,15 +258,16 @@ func materializeServerForMigration(req state.MigrationServerRequest) (*state.Mig
 	if node == nil {
 		return nil, fmt.Errorf("URI parsed to no node")
 	}
-	body, err := emitMigrationBody(node)
-	if err != nil {
-		return nil, err
+	body, warns, drop := materializeParsedNodeBody(node)
+	if drop != nil {
+		return nil, fmt.Errorf("%s", dropReason(drop))
 	}
 	return &state.MigrationServerResult{
 		Body:       body,
 		OriginKind: state.OriginKindURI,
 		OriginRaw:  req.URI, // байт в байт, как хранился
 		LegacyHash: LegacyNodeIdentityHash(node),
+		Warnings:   stateWarnings(warns),
 	}, nil
 }
 
@@ -232,44 +281,29 @@ func materializeWGConfBlock(blocks []string) (*state.MigrationServerResult, erro
 		return nil, fmt.Errorf("wg-quick text carries %d [Interface] blocks — one node needs exactly one", len(blocks))
 	}
 	raw := blocks[0]
-	uri, err := subscription.ConvertWGConfText(raw)
-	if err != nil {
-		return nil, fmt.Errorf("wg-quick block: %w", err)
+	// Текст `.conf` ведёт СЕКЦИЯ реестра напрямую: промежуточная ссылка
+	// `wireguard://` больше не строится (SPEC 133).
+	node, err, known := subscription.ParseWGConfByEngine(raw, nil)
+	if !known {
+		return nil, fmt.Errorf("wg-quick block: not recognized as a WireGuard config")
 	}
-	node, err := subscription.ParseNode(uri, nil)
 	if err != nil {
 		return nil, fmt.Errorf("wg-quick block: %w", err)
 	}
 	if node == nil {
 		return nil, fmt.Errorf("wg-quick block parsed to no node")
 	}
-	body, err := emitMigrationBody(node)
-	if err != nil {
-		return nil, err
+	body, warns, drop := materializeParsedNodeBody(node)
+	if drop != nil {
+		return nil, fmt.Errorf("wg-quick block: %s", dropReason(drop))
 	}
 	return &state.MigrationServerResult{
 		Body:       body,
 		OriginKind: state.OriginKindWGIni,
 		OriginRaw:  raw, // блок байт в байт, а не выведенный из него URI
 		LegacyHash: LegacyNodeIdentityHash(node),
+		Warnings:   stateWarnings(warns),
 	}, nil
-}
-
-// emitMigrationBody — канонический body узла: эмиссия существующим
-// эмиттером (endpoint-схемы — endpoint-эмиттером, SPEC 101/122) и зачистка
-// tag/detour — body чист от detour (SPEC Т2), тег живёт в Node.Tag.
-func emitMigrationBody(node *configtypes.ParsedNode) (json.RawMessage, error) {
-	var emitted string
-	var err error
-	if IsEndpointScheme(node.Scheme) {
-		emitted, err = GenerateEndpointJSONBare(node)
-	} else {
-		emitted, err = GenerateNodeJSONBare(node)
-	}
-	if err != nil {
-		return nil, err
-	}
-	return stripTagAndDetour(json.RawMessage(emitted))
 }
 
 // stripTagAndDetour убирает из outbound-объекта ключи tag и detour,
@@ -329,6 +363,16 @@ type ServerNodeMaterial struct {
 	// OriginKind / OriginRaw — происхождение записи (state.OriginKind*).
 	OriginKind string
 	OriginRaw  string
+	// Warnings — коды деградаций этого разбора (SPEC 131 W2b, Л1).
+	//
+	// Потребитель кладёт их в state.Node.Warnings ПОЛНЫМ ЗАМЕЩЕНИЕМ, а не
+	// дописыванием (Л5): warnings — производная тела, и Regen из того же
+	// origin.raw обязан дать ровно тот набор, что даёт первая материализация.
+	// Дописывание оставило бы на узле коды правил, которые он давно перерос.
+	//
+	// Пусто у ветки ручного config_json: тот путь идёт мимо парсеров и
+	// собственных кодов пока не имеет — его переводит W2c.
+	Warnings []state.NodeWarning
 }
 
 // MaterializeServerNode — ЕДИНСТВЕННАЯ точка превращения «share-URI или
@@ -343,5 +387,10 @@ func MaterializeServerNode(uri string, configJSON json.RawMessage) (*ServerNodeM
 	if err != nil {
 		return nil, err
 	}
-	return &ServerNodeMaterial{Body: res.Body, OriginKind: res.OriginKind, OriginRaw: res.OriginRaw}, nil
+	return &ServerNodeMaterial{
+		Body:       res.Body,
+		OriginKind: res.OriginKind,
+		OriginRaw:  res.OriginRaw,
+		Warnings:   res.Warnings,
+	}, nil
 }

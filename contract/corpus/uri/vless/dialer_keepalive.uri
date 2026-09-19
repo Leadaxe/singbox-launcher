@@ -1,0 +1,6 @@
+# keep-alive из ссылки доезжает до тела и у vless (include dialer#uri).
+# Раньше dialer#uri стоял у семи схем из девяти, а vless/trojan параметры
+# молча игнорировали — SPEC 133, D133-26. Голые секунды у tcp_keep_alive
+# нормализует ТЕЛО (normalize duration_bare_seconds), с единицей — проходит
+# как есть; disable_tcp_keep_alive читается написанием (bool_spelled).
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?encryption=none&type=tcp&tcp_keep_alive=30&tcpKeepAliveInterval=15s#vless-ka

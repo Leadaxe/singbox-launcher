@@ -1,162 +1,123 @@
-// File flag_picker.go — emoji-flag picker popup for the Filter input.
+// File flag_picker.go — эмодзи-пикер поля Filter формы Направления.
 //
-// Юзер кликает 🌐 справа от Filters → tag → вылезает popup поверх Edit-окна:
+// Юзер кликает 🌐 справа от Filters → tag → открывается отдельное окно:
 //
-//	┌──────────────────────────────────────────────────────────────────────┐
-//	│ Flag picker                                                          │
-//	├──────────────────────────────────────────────────────────────────────┤
-//	│ Available flags (click to toggle):                                   │
-//	│  ☐ 🇳🇱 (8)  ☐ 🇺🇸 (12)  ☐ 🇩🇪 (4) ...                                │
-//	│  ☐ Exclude these flags instead (negation)                           │
-//	│                                                                      │
-//	│ Filter regex (editable, live-applied):                               │
-//	│  [/(🇳🇱|🇺🇸)/i____________________________________________]          │
-//	│                                                                      │
-//	│ ▶ matches 20 of 84 total nodes                                       │
-//	├──────────────────────────────────────────────────────────────────────┤
-//	│ ✓ 🇳🇱 amsterdam-1 — sub-1                       (green: matches)     │
-//	│ ✓ 🇳🇱 amsterdam-2 — sub-1                       (green)              │
-//	│ ✗ 🇷🇺 moscow      — sub-2                       (red:   excluded)    │
-//	│ ✓ 🇺🇸 nyc         — sub-2                       (green)              │
-//	│ ...                                                                  │
-//	├──────────────────────────────────────────────────────────────────────┤
-//	│                                            [Cancel] [Apply]          │
-//	└──────────────────────────────────────────────────────────────────────┘
+//	┌─ Emoji picker — 7 / 7 match ─────────────────────┐
+//	│ Regex   ! [ 🇷🇺|🇳🇱                      ] ⧉ ✕    │
+//	│ Emoji     🔥³ 🎭² ☂¹ 🇨🇦¹ 🇨🇭¹ 🇳🇱¹ 🇺🇸¹            │
+//	│ ──────────────────────────────────────────────── │
+//	│ ✓ 🔥🎭 WARP (MASQUE) auto                         │
+//	│ ✓ Proton 🇨🇦 Канада #31                           │
+//	│ ✗ Proton 🇺🇸 USA #137           (список в скролле)│
+//	│                              [Cancel]  [Apply]   │
+//	└──────────────────────────────────────────────────┘
 //
-// Live: при клике на чип ИЛИ ручной правке regex'а — node-list re-filter'ится,
-// зелёные/красные строки обновляются мгновенно.
+// # Почему так
 //
-// Используем тот же `config.PreviewSelectorNodes` что Preview-tab — гарантия
-// что попадание/непопадание ноды показывается так же, как в финальном emit'е.
+// Вид — тот же, что у окна фильтров вкладки Servers (ui/servers_filter_window.go):
+// строка категории «подпись │ [!] │ содержимое», компактные чипы
+// fynewidget.Chip со счётчиком, поток fynewidget.FlowBox с потолком высоты,
+// высота окна по содержимому. Обе формы отбирают узлы по значку и регулярке
+// одним и тем же механизмом, и разная вёрстка читалась бы как разные
+// инструменты. Общие куски (CategoryRow, HintText, NewInvertChip, метрики)
+// живут в internal/fynewidget — пакет ui пикеру недоступен, ui сам тянет
+// конфигуратор.
+//
+// Отдельных подписей-заголовков («Emoji found in node names…», «Filter body…»)
+// в форме нет: смысл ушёл в плейсхолдер поля и тултипы чипов, а строки
+// съедали высоту, ради которой и затевалась компактность. Счётчик совпадений
+// стоит в ЗАГОЛОВКЕ окна — там же, где у окна фильтров «показано / всего».
+//
+// Live: клик по чипу ИЛИ ручная правка поля — список перефильтровывается
+// сразу. Используем тот же config.PreviewSelectorNodes, что Preview-вкладка:
+// гарантия, что попадание ноды показывается так же, как в финальном emit'е.
+//
+// go1.20-совместимо (Win7-джоба): без slices/maps/min/max/clear.
 package outbounds_configurator
 
 import (
 	"fmt"
 	"image/color"
-	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	fynetooltip "github.com/dweymouth/fyne-tooltip"
+	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/internal/emojitag"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/textnorm"
+	"singbox-launcher/ui/components"
 )
 
-// flagEntry — один флаг + сколько нод его содержит.
-type flagEntry struct {
-	Flag  string
-	Count int
-}
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	pickerInvertTooltipText = "Invert: keep nodes that do NOT match"
+	pickerEmojiChipTooltip  = "Toggle this emoji in the Regex field (OR pattern)."
+	pickerNoEmojiText       = "No emoji in the names of these nodes."
+	pickerRegexTooltipText  = "Filter body: a regex over node names, applied live. Emoji chips above toggle terms in it."
+	pickerCopyTooltipText   = "Copy the pattern body."
+	pickerRegexPlaceholder  = "regex, e.g. NL|DE|Proton"
+)
 
-// extractFlags — пробегает по тэгам всех нод, собирает уникальные эмодзи с
-// count'ами, sorted by count desc.
+// Метрики формы. Ширина колонки подписей, ячейка «!» и высота ряда чипов —
+// общие с окном фильтров (fynewidget.CategoryLabelWidth и соседи).
+const (
+	// pickerEmojiMaxRows — потолок высоты потока эмодзи в рядах чипов: в
+	// подписке на 500 узлов эмодзи бывает под сотню.
+	pickerEmojiMaxRows = 3
+	// pickerListRows — сколько строк превью видно без прокрутки.
+	pickerListRows = 10
+	// pickerRowHeight — высота строки превью (мелкий кегль, плотно).
+	pickerRowHeight = 18
+	// pickerWindowWidth / pickerWindowMaxHeight — как у окна фильтров.
+	pickerWindowWidth     = 460
+	pickerWindowMaxHeight = 640
+)
+
+// Цвета строк превью — те же, что на вкладке Preview: зелёный «узел вошёл»,
+// приглушённо-красный «не вошёл».
+var (
+	pickerRowInColor  = color.RGBA{R: 0, G: 160, B: 0, A: 255}
+	pickerRowOutColor = color.RGBA{R: 190, G: 90, B: 90, A: 255}
+)
+
+// extractFlags — эмодзи тегов всех нод с частотой, по убыванию частоты.
 //
 // SPEC 104: не только флаги. Провайдеры кладут в имена 🚀, ⭐, 🔒, 💎 и
 // прочее — это такие же маркеры категории, как флаг страны, и отбирать по
 // ним должно быть так же легко. Флаг (пара Regional Indicator) остаётся
 // одним элементом, а не двумя буквами.
-func extractFlags(nodes []*config.ParsedNode) []flagEntry {
-	counts := map[string]int{}
+//
+// Сам разбор живёт в internal/emojitag — общий с окном фильтров списка
+// серверов: два места предлагают один и тот же отбор по значку, и второй
+// копии алгоритма у них быть не должно.
+func extractFlags(nodes []*config.ParsedNode) []emojitag.Entry {
+	names := make([]string, 0, len(nodes))
 	for _, n := range nodes {
 		if n == nil {
 			continue
 		}
-		for _, f := range findFlagsInString(n.Tag) {
-			counts[f]++
-		}
+		names = append(names, n.Tag)
 	}
-	out := make([]flagEntry, 0, len(counts))
-	for f, c := range counts {
-		out = append(out, flagEntry{Flag: f, Count: c})
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Count != out[j].Count {
-			return out[i].Count > out[j].Count
-		}
-		return out[i].Flag < out[j].Flag
-	})
-	return out
+	return emojitag.Entries(names)
 }
 
-func findFlagsInString(s string) []string {
-	seen := map[string]bool{}
-	var out []string
-	add := func(e string) {
-		if !seen[e] {
-			seen[e] = true
-			out = append(out, e)
-		}
-	}
-	runes := []rune(s)
-	for i := 0; i < len(runes); i++ {
-		r := runes[i]
-		// Флаг — пара Regional Indicator, один элемент.
-		if i+1 < len(runes) && isRegionalIndicator(r) && isRegionalIndicator(runes[i+1]) {
-			add(string(runes[i : i+2]))
-			i++
-			continue
-		}
-		if isEmojiRune(r) {
-			// Захватываем следующий за эмодзи селектор вариации / модификатор
-			// тона кожи, чтобы «⭐️» и «⭐» не считались разными.
-			end := i + 1
-			for end < len(runes) && isEmojiModifier(runes[end]) {
-				end++
-			}
-			add(string(runes[i:end]))
-			i = end - 1
-		}
-	}
-	return out
-}
-
-func isRegionalIndicator(r rune) bool {
-	return r >= 0x1F1E6 && r <= 0x1F1FF
-}
-
-// isEmojiRune — основные блоки эмодзи Unicode. Буквы, цифры и пунктуацию
-// не трогаем: пикер нужен для символов, которые неудобно набирать.
-func isEmojiRune(r rune) bool {
-	switch {
-	case r >= 0x1F300 && r <= 0x1FAFF: // Misc Symbols & Pictographs … Symbols Extended-A
-		return true
-	case r >= 0x2600 && r <= 0x27BF: // Misc Symbols, Dingbats (☀ ⭐ ✅ ✈)
-		return true
-	case r >= 0x1F900 && r <= 0x1F9FF: // Supplemental Symbols & Pictographs
-		return true
-	case r == 0x2B50 || r == 0x2B55 || r == 0x231A || r == 0x231B || r == 0x23F0 || r == 0x23F3:
-		return true
-	}
-	return false
-}
-
-// isEmojiModifier — селектор вариации (U+FE0F) и модификаторы тона кожи.
-func isEmojiModifier(r rune) bool {
-	return r == 0xFE0F || (r >= 0x1F3FB && r <= 0x1F3FF)
-}
-
-// buildFlagRegex — ТЕЛО регулярки из выбранных чипов: `flag1|flag2`.
+// showFlagPickerPopup открывает окно пикера. На Apply зовёт onApply с телом
+// регулярки и флагом инверсии; Cancel закрывает без изменений.
 //
-// SPEC 104: пикер работает в тех же терминах, что и форма Направления —
-// тело без обёртки, инверсия отдельной галкой. Обёртку `/…/i` ставит
-// форма при сохранении, и пикеру выдумывать её нельзя: иначе в поле тела
-// оказывался бы полный паттерн, и генератор искал бы символы «/» в тегах.
-func buildFlagRegex(selected []string) string {
-	return strings.Join(selected, "|")
-}
-
-// showFlagPickerPopup — modal popup поверх parent-canvas'а. На Apply вызывает
-// onApply с финальным regex. Cancel / клик вне → закрыть.
-//
-// `nodes` = model.NodePool (если nil/empty — chips и list пустые,
-// regex-поле всё равно работает).
+// `nodes` = model.NodePool (если nil/empty — чипы и список пусты, поле
+// регулярки всё равно работает).
 func showFlagPickerPopup(
 	parent fyne.Window,
 	nodes []*config.ParsedNode,
@@ -167,36 +128,28 @@ func showFlagPickerPopup(
 	if parent == nil || parent.Canvas() == nil {
 		return
 	}
+	app := fyne.CurrentApp()
+	if app == nil {
+		return
+	}
 
 	flags := extractFlags(nodes)
 	total := len(nodes)
+	invert := currentInvert
 
-	// ── State ──────────────────────────────────────────────────────────────
-	//
-	// Отмечаем чипы, соответствующие текущему фильтру: пользователь открыл
-	// пикер поверх готового отбора и должен видеть, что в нём уже выбрано,
-	// а не пустые галки при непустом поле.
-	//
-	// Скобки вокруг тела — наследие прежнего формата `/(🇷🇺)/i`; для
-	// сопоставления с чипами они значения не имеют.
-	selected := map[string]bool{}
-	for _, part := range strings.Split(strings.Trim(currentBody, "()"), "|") {
-		part = strings.TrimSpace(strings.Trim(part, "()"))
-		if part != "" {
-			selected[part] = true
-		}
-	}
-	excludeCheck := widget.NewCheck(locale.T("Invert: keep nodes that do NOT match"), nil)
-	excludeCheck.SetChecked(currentInvert)
+	win := app.NewWindow(locale.T("Emoji picker"))
 
+	// ── Regex ──────────────────────────────────────────────────────────────
 	regexEntry := widget.NewEntry()
+	regexEntry.SetPlaceHolder(locale.T(pickerRegexPlaceholder))
 	regexEntry.SetText(currentBody)
-	regexEntry.SetPlaceHolder("🇳🇱|🇺🇸")
+	fynewidget.SetToolTipSafe(regexEntry, locale.T(pickerRegexTooltipText))
 
-	countLabel := widget.NewLabel("")
-	countLabel.TextStyle = fyne.TextStyle{Bold: true}
-
-	// ── Node list (mirror Preview tab look) ────────────────────────────────
+	// ── Список превью ──────────────────────────────────────────────────────
+	//
+	// canvas.Text мелким кеглем, а не widget.Label: у Label минимальная ширина
+	// считается по единственной строке и раздувала бы окно (память
+	// `fyne-label-minwidth-trap`), да и строки шли бы вдвое реже.
 	type listRow struct {
 		text  string
 		color color.Color
@@ -205,7 +158,11 @@ func showFlagPickerPopup(
 
 	nodeList := widget.NewList(
 		func() int { return len(rows) },
-		func() fyne.CanvasObject { return canvas.NewText("", color.White) },
+		func() fyne.CanvasObject {
+			t := canvas.NewText("", color.White)
+			t.TextSize = theme.Size(theme.SizeNameCaptionText)
+			return t
+		},
 		func(id int, o fyne.CanvasObject) {
 			if id < 0 || id >= len(rows) {
 				return
@@ -217,20 +174,25 @@ func showFlagPickerPopup(
 			}
 		},
 	)
-	nodeListScroll := container.NewScroll(nodeList)
-	nodeListScroll.SetMinSize(fyne.NewSize(520, 280))
+	// Плотные строки: высоту ряда задаёт MinSize шаблона (canvas.Text
+	// капитального кегля), а разделители между рядами убраны — в списке из
+	// полусотни узлов они добавляли бы по пикселю на строку и ничего не
+	// разделяли: строки и так разного цвета.
+	nodeList.HideSeparators = true
 
-	// recomputeMatches — applies current filter regex via the SAME function
-	// as Preview tab (config.PreviewSelectorNodes) and rebuilds the row list.
+	var chipRefresh func()
+
+	// recomputeMatches — прогоняет текущее тело через ТУ ЖЕ функцию, что
+	// Preview-вкладка (config.PreviewSelectorNodes), и пересобирает строки.
 	recomputeMatches := func() {
 		rows = rows[:0]
 
-		// Build synthetic Direction with only the filter — we only care
-		// about which nodes match.
+		// Синтетическое Направление с одним лишь фильтром: нас интересует
+		// только то, какие узлы в него попадают.
 		cfg := config.Direction{
 			Tag:     "_flag_picker_",
 			Type:    "selector",
-			Filters: configtypes.SetDirectionFilterTag(nil, regexEntry.Text, excludeCheck.Checked),
+			Filters: configtypes.SetDirectionFilterTag(nil, regexEntry.Text, invert),
 		}
 
 		filtered, _ := config.PreviewSelectorNodes(nodes, cfg)
@@ -239,11 +201,12 @@ func showFlagPickerPopup(
 			filteredSet[n] = true
 		}
 
-		matched := len(filtered)
-		countLabel.SetText(locale.Tf("matches %d of %d total nodes", matched, total))
+		// Счётчик — в заголовке окна, как «показано / всего» у окна фильтров:
+		// отдельная строка «matches N of M» занимала высоту ради числа,
+		// которому есть готовое место.
+		win.SetTitle(locale.Tf("Emoji picker — %d / %d match", len(filtered), total))
 
-		// Build rows: matching nodes first, then non-matching. Same color
-		// scheme as Preview (green=in, red=out).
+		// Сперва попавшие, затем отсеянные — как в Preview.
 		var inRows, outRows []listRow
 		for _, n := range nodes {
 			if n == nil {
@@ -261,20 +224,10 @@ func showFlagPickerPopup(
 			}
 			text = textnorm.NormalizeProxyDisplay(text)
 
-			var c color.Color
-			var prefix string
 			if filteredSet[n] {
-				c = color.RGBA{R: 0, G: 160, B: 0, A: 255}
-				prefix = "✓ "
+				inRows = append(inRows, listRow{text: "✓ " + text, color: pickerRowInColor})
 			} else {
-				c = color.RGBA{R: 200, G: 0, B: 0, A: 255}
-				prefix = "✗ "
-			}
-			row := listRow{text: prefix + text, color: c}
-			if filteredSet[n] {
-				inRows = append(inRows, row)
-			} else {
-				outRows = append(outRows, row)
+				outRows = append(outRows, listRow{text: "✗ " + text, color: pickerRowOutColor})
 			}
 		}
 		rows = append(rows, inRows...)
@@ -282,114 +235,154 @@ func showFlagPickerPopup(
 		nodeList.Refresh()
 	}
 
-	// Initial render.
-	recomputeMatches()
-
-	// ── Chip → regex rebuild ───────────────────────────────────────────────
-	rebuildFromChips := func() {
-		picked := make([]string, 0, len(selected))
-		for _, fe := range flags {
-			if selected[fe.Flag] {
-				picked = append(picked, fe.Flag)
-			}
+	// Подсветка чипов идёт СРАЗУ за текстом поля (без ожидания пересчёта): она
+	// отражает то, что в поле, а не результат отбора.
+	regexEntry.OnChanged = func(_ string) {
+		if chipRefresh != nil {
+			chipRefresh()
 		}
-		regexEntry.SetText(buildFlagRegex(picked))
-		// SetText triggers OnChanged → recomputeMatches called transitively.
+		recomputeMatches()
 	}
-	excludeCheck.OnChanged = func(_ bool) { recomputeMatches() }
 
-	// ── Live-apply on regex edit (manual or chip-driven) ───────────────────
-	regexEntry.OnChanged = func(_ string) { recomputeMatches() }
+	invertChip := fynewidget.NewInvertChip(invert, func(on bool) {
+		invert = on
+		recomputeMatches()
+	})
+	// Подсказка пикера отличается от общей «инверсии категории»: здесь она
+	// переворачивает весь отбор Направления, и текст остаётся прежним —
+	// человек видит его и в форме Направления на кнопке «!».
+	invertChip.SetToolTip(locale.T(pickerInvertTooltipText))
 
-	// ── Chips grid ─────────────────────────────────────────────────────────
-	var chipsContent fyne.CanvasObject
-	if len(flags) == 0 {
-		chipsContent = widget.NewLabel(locale.T("No emoji found in node names. Refresh subscriptions first, or type a regex below manually."))
-	} else {
-		chipObjs := make([]fyne.CanvasObject, 0, len(flags))
+	regexCopy := ttwidget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+		body := strings.TrimSpace(regexEntry.Text)
+		if body == "" {
+			return
+		}
+		if a := fyne.CurrentApp(); a != nil && a.Clipboard() != nil {
+			a.Clipboard().SetContent(body)
+		}
+	})
+	regexCopy.Importance = widget.LowImportance
+	regexCopy.SetToolTip(locale.T(pickerCopyTooltipText))
+
+	regexClear := ttwidget.NewButtonWithIcon("", theme.ContentClearIcon(), func() {
+		regexEntry.SetText("") // OnChanged сам обновит чипы и список
+	})
+	regexClear.Importance = widget.LowImportance
+	regexClear.SetToolTip(locale.T("Clear the pattern"))
+
+	regexRow := fynewidget.CategoryRow(invertChip, locale.T("Regex"),
+		container.NewBorder(nil, nil, nil,
+			container.NewHBox(regexCopy, regexClear),
+			regexEntry,
+		), regexEntry.MinSize().Height)
+
+	// ── Поток чипов ────────────────────────────────────────────────────────
+	//
+	// Подписи чипов собираются strconv/данными, а не locale.Tf: переводить в
+	// них нечего — это эмодзи из чужой подписки и число рядом.
+	emojiFlow := fynewidget.NewFlowBox()
+	emojiFlow.MaxHeight = pickerEmojiMaxRows * fynewidget.ChipRowHeight
+
+	chipRefresh = func() {
+		if len(flags) == 0 {
+			emojiFlow.SetObjects([]fyne.CanvasObject{
+				fynewidget.HintText(locale.T(pickerNoEmojiText)),
+			})
+			return
+		}
+		// Выбранным считается то, что СТОИТ В ПОЛЕ: человек мог набрать терм
+		// руками, и чип обязан это показать — иначе клик по нему добавил бы
+		// дубль вместо снятия.
+		selected := map[string]bool{}
+		for _, term := range emojitag.SplitORPattern(regexEntry.Text) {
+			selected[term] = true
+		}
+		objs := make([]fyne.CanvasObject, 0, len(flags))
 		for _, fe := range flags {
 			fe := fe
-			label := fmt.Sprintf("%s (%d)", fe.Flag, fe.Count)
-			chk := widget.NewCheck(label, nil)
-			chk.SetChecked(selected[fe.Flag])
-			// Обработчик ПОСЛЕ SetChecked — иначе он сработал бы на
-			// восстановлении состояния и перезаписал поле фильтра.
-			chk.OnChanged = func(checked bool) {
-				selected[fe.Flag] = checked
-				rebuildFromChips()
+			chip := fynewidget.NewChip(fe.Emoji, selected[fe.Emoji], nil).
+				SetCount(strconv.Itoa(fe.Count))
+			chip.OnChanged = func(bool) {
+				// Клик = toggle терма в OR-паттерне поля. Поле остаётся
+				// ЕДИНСТВЕННЫМ носителем отбора: второй набор «выбранных
+				// эмодзи» рядом с ним разошёлся бы с ним на первой ручной правке.
+				regexEntry.SetText(emojitag.ToggleInORPattern(regexEntry.Text, fe.Emoji))
 			}
-			chipObjs = append(chipObjs, chk)
+			chip.SetToolTip(locale.T(pickerEmojiChipTooltip))
+			objs = append(objs, chip)
 		}
-		// 5 чипов в ряд — компактно. В прокрутку, потому что эмодзи в именах
-		// узлов бывает много: без ограничения высоты окно вырастало за
-		// пределы экрана и кнопки уезжали под док.
-		grid := container.NewGridWithColumns(5, chipObjs...)
-		chipsScroll := container.NewVScroll(grid)
-		rows := (len(chipObjs) + 4) / 5
-		height := float32(rows) * 38
-		if height > 190 {
-			height = 190 // ≈5 рядов, дальше прокрутка
-		}
-		chipsScroll.SetMinSize(fyne.NewSize(0, height))
-		chipsContent = chipsScroll
+		emojiFlow.SetObjects(objs)
 	}
+	chipRefresh()
 
-	// ── Layout ─────────────────────────────────────────────────────────────
-	header := widget.NewLabelWithStyle(
-		locale.T("Emoji picker"),
-		fyne.TextAlignLeading,
-		fyne.TextStyle{Bold: true},
-	)
+	emojiRow := fynewidget.CategoryRow(nil, locale.T("Emoji"), emojiFlow)
 
-	cancelBtn := widget.NewButton(locale.T("Cancel"), nil)
-	applyBtn := widget.NewButton(locale.T("Apply"), nil)
-	applyBtn.Importance = widget.HighImportance
-
-	buttonRow := container.NewBorder(nil, nil, nil,
-		container.NewHBox(layout.NewSpacer(), cancelBtn, applyBtn),
-	)
-
-	// Top stack: header + chips + exclude + regex + count.
-	topStack := container.NewVBox(
-		header,
-		widget.NewSeparator(),
-		widget.NewLabel(locale.T("Emoji found in node names (click to toggle):")),
-		chipsContent,
-		excludeCheck,
-		widget.NewSeparator(),
-		widget.NewLabel(locale.T("Filter body (editable, live-applied):")),
-		regexEntry,
-		countLabel,
-		widget.NewSeparator(),
-	)
-
-	// Main layout: topStack at top, node-list filling middle, buttons at bottom.
-	content := container.NewBorder(
-		topStack,
-		buttonRow,
-		nil,
-		nil,
-		nodeListScroll,
-	)
-
-	// Separate OS-level window (not a popup overlaying parent canvas).
-	// User wants to see/move it independently of the Edit-Outbound window.
-	app := fyne.CurrentApp()
-	if app == nil {
-		return
-	}
-	win := app.NewWindow(locale.T("Emoji picker"))
-	win.SetContent(content)
-	win.Resize(fyne.NewSize(580, 620))
-	fynewidget.CenterOnScreen(win)
-
-	cancelBtn.OnTapped = func() { win.Close() }
-	applyBtn.OnTapped = func() {
+	// ── Нижний ряд ─────────────────────────────────────────────────────────
+	cancelBtn := widget.NewButton(locale.T("Cancel"), func() { win.Close() })
+	applyBtn := widget.NewButton(locale.T("Apply"), func() {
 		if onApply != nil {
-			onApply(strings.TrimSpace(regexEntry.Text), excludeCheck.Checked)
+			onApply(strings.TrimSpace(regexEntry.Text), invert)
 		}
 		win.Close()
-	}
+	})
+	applyBtn.Importance = widget.HighImportance
+	bottomRow := container.NewBorder(nil, nil, nil,
+		container.NewHBox(cancelBtn, applyBtn), layout.NewSpacer())
 
+	// ── Сборка ─────────────────────────────────────────────────────────────
+	//
+	// Форма (две строки категорий) — сверху, список превью занимает остаток.
+	//
+	// Gutter — отдельной колонкой СПРАВА ОТ списка, а не оборачиванием в
+	// components.WrapInScrollWithGutter: widget.List прокручивает себя сам, и
+	// вложить его во внешний Scroll значило бы убить виртуализацию — на пуле в
+	// 500 узлов форма строила бы все строки разом.
+	form := container.NewVBox(regexRow, emojiRow, widget.NewSeparator())
+
+	// Минимальная высота списка — распоркой в стопке под ним: GridWrap задал бы
+	// и ширину (нулевую), а SetMinSize есть только у Scroll, которого здесь нет.
+	listMinH := canvas.NewRectangle(color.Transparent)
+	listMinH.SetMinSize(fyne.NewSize(0, pickerListRows*pickerRowHeight))
+	listBox := container.NewBorder(nil, nil, nil, components.NewScrollGutter(),
+		container.NewStack(listMinH, nodeList))
+
+	content := container.NewBorder(
+		container.NewPadded(form), bottomRow, nil, nil,
+		container.NewPadded(listBox),
+	)
+
+	// Слой тултипов обязателен: без него SetToolTip у чипов и кнопок молчит.
+	// Разрушается на закрытии — он держит ссылку на канву закрытого окна.
+	win.SetContent(fynetooltip.AddWindowToolTipLayer(content, win.Canvas()))
+	closed := false
+	win.SetOnClosed(func() {
+		closed = true
+		fynetooltip.DestroyWindowToolTipLayer(win.Canvas())
+	})
+
+	recomputeMatches() // и заголовок, и строки
+	win.Resize(fyne.NewSize(pickerWindowWidth, 360))
+	fynewidget.CenterOnScreen(win)
 	win.Show()
+
+	// Высота окна — ПО СОДЕРЖИМОМУ, с потолком: настоящая высота потока чипов
+	// известна только после первой раскладки (она зависит от ширины), поэтому
+	// подгонка идёт вдогонку показу — тот же приём, что в окне фильтров.
+	fitHeight := func() {
+		// Окно могли закрыть за эти 120 мс: тянуть размер у разрушенной канвы
+		// нечего.
+		if closed || win.Canvas() == nil {
+			return
+		}
+		h := form.MinSize().Height + listBox.MinSize().Height +
+			bottomRow.MinSize().Height + 6*theme.Padding()
+		if h > pickerWindowMaxHeight {
+			h = pickerWindowMaxHeight
+		}
+		win.Resize(fyne.NewSize(win.Canvas().Size().Width, h))
+	}
+	// Вдогонку показу, а не сразу: FlowBox знает свою высоту только после того,
+	// как получил настоящую ширину в первой раскладке.
+	time.AfterFunc(120*time.Millisecond, func() { fyne.Do(fitHeight) })
 }

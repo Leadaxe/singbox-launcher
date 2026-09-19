@@ -1,0 +1,6 @@
+# ПАРНОСТЬ ВХОДОВ (находка №8): пересечение magic-заголовков телом sing-box.
+# Узел отбраковывается связью реестра ranges_disjoint с кодом
+# awg_headers_overlap — как и ссылка (uri/wireguard/awg_headers_overlap_dropped).
+# Прежде рукописный awgHeaderOverlap стоял в парсере ссылки, это тело проверки
+# не проходило, и ядро падало на конфигурировании устройства целиком.
+{"endpoints":[{"type":"wireguard","tag":"awg-overlap","address":["10.0.0.2/32"],"private_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=","h1":500,"h2":"400-600","h3":700,"h4":800,"peers":[{"address":"example-3.com","port":51820,"public_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=","allowed_ips":["0.0.0.0/0"]}]}]}

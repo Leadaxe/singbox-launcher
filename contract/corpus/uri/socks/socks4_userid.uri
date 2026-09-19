@@ -1,0 +1,3 @@
+# SOCKS4: версию протокола несёт СХЕМА (mapper socks_scheme_is_version).
+# У версии 4 пароля нет — userinfo это userid, он едет в username.
+socks4://useridonly@example-1.com:1080#socks4-userid

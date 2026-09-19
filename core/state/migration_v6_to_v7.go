@@ -270,6 +270,9 @@ func (m *migrationV7) materializeServer(src *Source, leg *legacySourceV6) {
 		return
 	}
 	src.Body = res.Body
+	// Коды деградации — производная ровно этого тела, поэтому замещение
+	// (SPEC 131 W2b, Л5): у мигрируемого узла своих кодов и не было.
+	src.Warnings = res.Warnings
 	src.Origin = &Origin{Kind: res.OriginKind, Raw: res.OriginRaw}
 	if res.LegacyHash != "" {
 		m.hashLinkGlobal[res.LegacyHash] = NodeLink{Tag: m.rootFinalOrRaw(src, leg)}

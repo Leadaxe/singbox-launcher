@@ -25,7 +25,9 @@
       "label": "vmess-ed",
       "scheme": "vmess",
       "warnings": [
-        "ws_early_data_converted"
+        {
+          "code": "ws_early_data_converted"
+        }
       ]
     }
   ],

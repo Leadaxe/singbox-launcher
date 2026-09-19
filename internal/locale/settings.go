@@ -59,6 +59,24 @@ type Settings struct {
 	// (SPEC 046, LastTemplateLauncherVersion).
 	LastLocaleLauncherVersion string `json:"last_locale_launcher_version,omitempty"`
 
+	// LastLauncherVersion / LastCoreVersion — версии, которые лаунчер видел
+	// в ПРОШЛЫЙ запуск (SPEC 132, core/maintenance): своя и ядра.
+	//
+	// Отдельно от LastTemplateLauncherVersion: та отвечает за свежесть
+	// шаблона, и чужая логика на ней завела бы одно поле на два несвязанных
+	// смысла.
+	//
+	// Версия ядра — та, что сообщает САМ БИНАРЬ (`sing-box version`): ядро
+	// меняется независимо от лаунчера, в том числе подменой файла руками
+	// мимо кнопки обновления.
+	//
+	// Пусто = отметки ещё не было: записывается текущая версия БЕЗ события
+	// (объявлять смену не на чем). Смысл отметок — сделать «а что у вас
+	// менялось?» видимым в логе релиза, который пишет только WARN; список
+	// сервисных работ на этих событиях пока пуст.
+	LastLauncherVersion string `json:"last_launcher_version,omitempty"`
+	LastCoreVersion     string `json:"last_core_version,omitempty"`
+
 	// HWID — random UUIDv4 идентификатор устройства, отправляемый в
 	// `X-Hwid` заголовке при каждом fetch'е подписки. Lazy-generated
 	// (EnsureHWID): пустой строкой при первой инсталляции → генерируется и
@@ -100,6 +118,12 @@ type Settings struct {
 	// лаунчера. Default false: выход из лаунчера НЕ трогает VPN — главное
 	// UX-преимущество daemon-режима.
 	DaemonStopVPNOnExit bool `json:"daemon_stop_vpn_on_exit,omitempty"`
+
+	// HideAppFromDock — пункт трея «Скрыть из Dock» (macOS). Пишется при
+	// каждом переключении пункта, применяется на старте: до этого поля
+	// состояние жило только в памяти и терялось при перезапуске (issue #112).
+	// На других платформах поле игнорируется (Dock есть только у macOS).
+	HideAppFromDock bool `json:"hide_app_from_dock,omitempty"`
 
 	// --- Умолчания подписок (SPEC 118 Т1) ---------------------------------
 	//

@@ -411,11 +411,29 @@ func (p *WizardPresenter) writeRemoteConfig() (string, error) {
 		debuglog.ErrorLog("exportRemoteConfig: mkdir %s: %v", filepath.Dir(outPath), err)
 		return "", err
 	}
+	// Кандидат → check → атомарная замена (SPEC 132 волна 6А). Выключения
+	// пишутся в черновик тем же адаптером, что на Final. Локальные
+	// dirty-маркеры не поднимаются — этот путь их и не трогает.
+	checked, disabled, loopErr := p.runDraftRejectLoop(configText, outPath, false, nil)
+	if loopErr != nil {
+		debuglog.ErrorLog("exportRemoteConfig: reject loop: %v", loopErr)
+		return "", loopErr
+	}
+	if checked != "" {
+		configText = checked
+	}
+	if _, err := os.Stat(outPath); err == nil {
+		debuglog.InfoLog("exportRemoteConfig: wrote %s (%d bytes, disabled=%d)", outPath, len(configText), len(disabled))
+		return outPath, nil
+	}
+	// Цикл не заменил файл (Stop / ошибка не про узел). Последний кандидат
+	// после Stop всё же пишем: state.json уже сохранён, Deploy иначе унесёт
+	// прошлую сборку.
 	if err := os.WriteFile(outPath, []byte(configText), platform.DefaultFileMode); err != nil {
 		debuglog.ErrorLog("exportRemoteConfig: write %s: %v", outPath, err)
 		return "", err
 	}
-	debuglog.InfoLog("exportRemoteConfig: wrote %s (%d bytes)", outPath, len(configText))
+	debuglog.InfoLog("exportRemoteConfig: wrote %s (%d bytes, disabled=%d)", outPath, len(configText), len(disabled))
 	return outPath, nil
 }
 

@@ -1,0 +1,4 @@
+# mode вне закрытого enum ядра → поле снято + xhttp_param_reset
+# (initialize outbound[0]: create client transport: xhttp: v2ray-xhttp: unknown mode: garbage)
+# источник: DRIFT 131 §7.14/§9.2 (прогон на пине 1.14.1-lx.4: B)
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?type=xhttp&mode=garbage&path=%2Fx&security=tls&sni=example-1.com#xhttp-mode-invalid

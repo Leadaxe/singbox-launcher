@@ -1,0 +1,3 @@
+# sing-box: socks с version "4" — тело в форме ядра читается как есть,
+# схема ссылки тут ни при чём (вход singbox).
+{"type":"socks","tag":"sb-socks4","server":"example-1.com","server_port":1080,"version":"4","username":"userid"}
