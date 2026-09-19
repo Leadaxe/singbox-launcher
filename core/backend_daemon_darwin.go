@@ -4,11 +4,13 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc"
@@ -47,6 +49,10 @@ type DaemonBackend struct {
 
 	// applyMu сериализует Start/Restart/Stop от дребезга кнопок.
 	applyMu sync.Mutex
+
+	// rejectTries — сколько узлов выключено за текущий заход Start/Restart
+	// по второму источнику сигнала (422 / FATAL). Сбрасывается при STARTED.
+	rejectTries int32
 
 	// Кольцевой буфер логов ядра из gRPC SubscribeLog: в daemon-режиме
 	// stdout/stderr ядра принадлежат службе (файл в root-каталоге 0700),
@@ -267,10 +273,22 @@ func (b *DaemonBackend) RestartVPN() {
 
 // applyCurrentConfig — общий путь Start/Restart: rebuild → read → apply.
 // forced прокидывается в RebuildConfigIfDirty: Restart форсирует полную
-// пересборку, Start — обычный dirty-путь.
+// пересборку, Start — обычный dirty-путь. 422 с именем узла выключает
+// узел и повторяет apply в этом же заходе (потолок daemonRejectStartCap).
 func (b *DaemonBackend) applyCurrentConfig(caller string, forced bool) {
 	b.applyMu.Lock()
 	defer b.applyMu.Unlock()
+	atomic.StoreInt32(&b.rejectTries, 0)
+	for {
+		if !b.applyOnce(caller, forced) {
+			return
+		}
+		forced = true
+	}
+}
+
+// applyOnce — один проход rebuild→apply. true = повторить (узел выключен).
+func (b *DaemonBackend) applyOnce(caller string, forced bool) bool {
 	ac := b.ac
 
 	// Pre-start rebuild — тот же хук, что в classic ProcessService.Start:
@@ -282,7 +300,7 @@ func (b *DaemonBackend) applyCurrentConfig(caller string, forced bool) {
 		debuglog.ErrorLog("daemon.%s: config rebuild failed, config not applied: %v", caller, err)
 		ac.ShowRebuildError(err)
 		b.refreshUI()
-		return
+		return false
 	}
 
 	// Синхронизируем APIService с пересобранным config.json. В daemon-режиме
@@ -302,7 +320,7 @@ func (b *DaemonBackend) applyCurrentConfig(caller string, forced bool) {
 	config, err := os.ReadFile(ac.FileService.ConfigPath)
 	if err != nil {
 		ac.ShowStartupError(fmt.Errorf("daemon apply: cannot read config.json: %w", err))
-		return
+		return false
 	}
 
 	// Pre-flight: убеждаемся, что демон жив и его сертификат совпадает с
@@ -311,7 +329,7 @@ func (b *DaemonBackend) applyCurrentConfig(caller string, forced bool) {
 	if _, err := b.admin.Status(); err != nil {
 		msg := b.diagnoseReachError(err)
 		ac.ShowStartupError(fmt.Errorf("%s", msg))
-		return
+		return false
 	}
 
 	// Подготовка конфига для демона: (1) абсолютизация cache_file в каталог,
@@ -329,24 +347,30 @@ func (b *DaemonBackend) applyCurrentConfig(caller string, forced bool) {
 	config, err = prepareConfigForDaemon(config, runtimeDir)
 	if err != nil {
 		ac.ShowStartupError(fmt.Errorf("daemon apply: prepare config: %w", err))
-		return
+		return false
 	}
 
 	debuglog.InfoLog("daemon.%s: applying config.json (%d bytes) to %s", caller, len(config), b.admin.AddrString())
 	if err := b.admin.Apply(config); err != nil {
+		var applyErr *lxdclient.ApplyError
+		if errors.As(err, &applyErr) && applyErr.Rejected() && b.retryCoreReject(applyErr.Message) {
+			debuglog.WarnLog("daemon.%s: apply rejected a node — rebuild and retry", caller)
+			return true
+		}
 		debuglog.ErrorLog("daemon.%s: apply failed: %v", caller, err)
 		ac.ShowStartupError(fmt.Errorf("daemon apply: %w", err))
 		// Статус мог смениться (откат/фатал) — supervisor подтянет.
 		b.refreshUI()
-		return
+		return false
 	}
 
 	if !b.isActive() {
 		// Backend вытеснен (смена адреса/пересопряжение) пока летел apply —
 		// не трогаем общее состояние: им владеет новый backend.
 		debuglog.InfoLog("daemon.%s: applied but backend is no longer active; skipping state update", caller)
-		return
+		return false
 	}
+	atomic.StoreInt32(&b.rejectTries, 0)
 	ac.RunningState.Set(true) // стрим статусов подтвердит
 	ac.StateService.ResetAutoUpdateFailedAttempts()
 	debuglog.InfoLog("daemon.%s: config applied, core is up", caller)
@@ -360,6 +384,30 @@ func (b *DaemonBackend) applyCurrentConfig(caller string, forced bool) {
 		}
 		ac.AutoLoadProxies()
 	}()
+	return false
+}
+
+// retryCoreReject выключает названный узел, если не исчерпан потолок захода.
+func (b *DaemonBackend) retryCoreReject(errText string) bool {
+	if b == nil || b.ac == nil {
+		return false
+	}
+	if atomic.LoadInt32(&b.rejectTries) >= int32(daemonRejectStartCap) {
+		debuglog.WarnLog("daemon: core-reject start cap of %d reached — stopping", daemonRejectStartCap)
+		return false
+	}
+	if !b.ac.DisableNodeNamedByCore(errText) {
+		return false
+	}
+	atomic.AddInt32(&b.rejectTries, 1)
+	return true
+}
+
+func (b *DaemonBackend) retryAfterCoreFatal(msg string) {
+	if !b.retryCoreReject(msg) {
+		return
+	}
+	b.applyCurrentConfig("core-reject-fatal", true)
 }
 
 // StopVPN implements CoreBackend: ядро гаснет, демон и канал остаются жить.
@@ -520,6 +568,7 @@ func (b *DaemonBackend) consumeStatusStream(stream grpc.ServerStreamingClient[da
 		switch status.GetStatus() {
 		case daemonpb.ServiceStatus_STARTED:
 			running = true
+			atomic.StoreInt32(&b.rejectTries, 0)
 		case daemonpb.ServiceStatus_STARTING, daemonpb.ServiceStatus_STOPPING:
 			// In-process reload (apply конфига) проходит STOPPING→STARTING→
 			// STARTED без разрыва туннеля. Не мигаем RunningState в false на
@@ -529,7 +578,9 @@ func (b *DaemonBackend) consumeStatusStream(stream grpc.ServerStreamingClient[da
 			running = false
 		case daemonpb.ServiceStatus_FATAL:
 			running = false
-			debuglog.ErrorLog("daemon.supervisor: core FATAL: %s", status.GetErrorMessage())
+			msg := status.GetErrorMessage()
+			debuglog.ErrorLog("daemon.supervisor: core FATAL: %s", msg)
+			go b.retryAfterCoreFatal(msg)
 		}
 		ac.RunningState.Set(running)
 		if running && !wasRunning {
