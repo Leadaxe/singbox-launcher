@@ -1043,6 +1043,7 @@
           "query.fingerprint"
         ],
         "maps_to": "tls.utls.fingerprint",
+        "normalize": "trim_lower",
         "value_map": {
           "$ref": "tls.fp_dialect"
         },
@@ -1190,6 +1191,7 @@
           "json.streamSettings.tlsSettings.fingerprint"
         ],
         "maps_to": "tls.utls.fingerprint",
+        "normalize": "trim_lower",
         "value_map": {
           "$ref": "tls.fp_dialect"
         },
