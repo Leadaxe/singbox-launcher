@@ -167,10 +167,6 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 			uriToParse = uri
 		}
 
-	case strings.HasPrefix(uri, "tuic://"):
-		// TUIC v5 (uuid:password@host:port). Runs over QUIC; default port 443.
-		scheme = "tuic"
-
 	case strings.HasPrefix(uri, "wireguard://"), strings.HasPrefix(uri, "awg://"):
 		// AmneziaWG (SPEC 073): awg:// is an alias — same endpoint shape as
 		// wireguard:// plus promoted obfuscation params (jc/jmin/.../i1-i5),
@@ -207,17 +203,6 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		return nil, fmt.Errorf("failed to parse URI: %w", err)
 	}
 
-	// TUIC: хост и userinfo обязательны. У схем на движке это же правило
-	// объявлено в их секциях (`server.required`, `userinfo.required`) —
-	// сюда они не доходят.
-	if scheme == "tuic" {
-		if parsedURL.Hostname() == "" {
-			return nil, fmt.Errorf("invalid %s URI: missing hostname", scheme)
-		}
-		if parsedURL.User == nil || parsedURL.User.Username() == "" {
-			return nil, fmt.Errorf("invalid %s URI: missing userinfo (UUID/password/user)", scheme)
-		}
-	}
 	// Hysteria v1: хост обязателен, учётные данные живут в query (auth=),
 	// поэтому userinfo здесь не требуем — в отличие от блока выше.
 	if scheme == "hysteria" && parsedURL.Hostname() == "" {
@@ -251,24 +236,16 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		node.Port = p
 	}
 
-	// Extract UUID/user
-	// For hysteria2, password is in username part of userinfo (hysteria2://password@server:port)
-	// For SSH and Trojan, password can be in userinfo (user:password@server:port)
-	// url.Parse has already percent-decoded the userinfo: Username()/Password()
-	// return the plain values. Re-decoding them (historically via QueryUnescape)
-	// corrupted legal credentials — '+' became a space and literal %XX sequences
-	// were decoded a second time.
+	// Учётные данные из userinfo. url.Parse уже снял percent-кодирование:
+	// Username() отдаёт готовое значение, и повторный разбор портил бы
+	// законные пароли ('+' становился пробелом, %XX декодировалось дважды).
+	//
+	// Воронка «userinfo-пароль в node.Query» отсюда УШЛА вместе с tuic —
+	// последней схемой, которой она была нужна. Из-за неё у ssh «работало»
+	// ненаписанное ?password= (QUIRKS Q133-49). У hysteria v1 учётные данные
+	// живут в query (auth=), и второго компонента userinfo у неё нет.
 	if parsedURL.User != nil {
 		node.UUID = parsedURL.User.Username()
-		// TUIC: пароль — второй компонент userinfo. Воронка в Query
-		// осталась только здесь; у схем на движке пароль объявлен
-		// источником `userinfo.pass` и берётся прямо оттуда (QUIRKS Q133-49
-		// — из-за этой воронки у ssh «работало» и ненаписанное ?password=).
-		if scheme == "tuic" {
-			if password, hasPassword := parsedURL.User.Password(); hasPassword {
-				node.Query.Set("password", password)
-			}
-		}
 	}
 
 	// Extract fragment (label)
@@ -480,8 +457,6 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 
 	if node.Scheme == "hysteria" {
 		buildHysteriaOutbound(node, outbound)
-	} else if node.Scheme == "tuic" {
-		buildTuicOutbound(node, outbound)
 	}
 
 	return outbound

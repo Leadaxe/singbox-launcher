@@ -45,7 +45,6 @@ var notLiveYet = []string{}
 var schemesWithoutURISection = []string{
 	"hysteria",
 	"masque",
-	"tuic",
 	"wireguard",
 }
 

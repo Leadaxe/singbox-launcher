@@ -4,11 +4,17 @@
   "kind": "outbound",
   "singbox_type": "tuic",
   "aliases": [],
-  "sources": ["uri", "singbox"],
+  "sources": [
+    "uri",
+    "singbox"
+  ],
   "extension": null,
   "uri": {
     "userinfo": {
-      "maps_to": ["uuid", "password"],
+      "maps_to": [
+        "uuid",
+        "password"
+      ],
       "meaning": "uuid:password",
       "desc_en": "uuid:password of the account.",
       "desc_ru": "uuid:password учётной записи.",
@@ -36,7 +42,10 @@
       "reduce_rtt": {
         "type": "bool",
         "default": null,
-        "aliases": ["zero_rtt_handshake", "zero_rtt"],
+        "aliases": [
+          "zero_rtt_handshake",
+          "zero_rtt"
+        ],
         "maps_to": "zero_rtt_handshake",
         "desc_en": "Use a 0-RTT handshake.",
         "desc_ru": "Использовать рукопожатие 0-RTT.",
@@ -80,7 +89,9 @@
         "type": "alias_enum",
         "allowlist": "utls_fingerprints",
         "default": null,
-        "aliases": ["fingerprint"],
+        "aliases": [
+          "fingerprint"
+        ],
         "ext": "desktop",
         "maps_to": "tls.utls.fingerprint",
         "desc_en": "Browser fingerprint mimicked in the ClientHello.",
@@ -90,7 +101,17 @@
       "allow_insecure": {
         "type": "bool",
         "default": null,
-        "aliases": ["allowInsecure", "allowinsecure", "allow_insecure", "allow-insecure", "skipCertVerify", "skipcertverify", "skip_cert_verify", "skip-cert-verify", "noverify"],
+        "aliases": [
+          "allowInsecure",
+          "allowinsecure",
+          "allow_insecure",
+          "allow-insecure",
+          "skipCertVerify",
+          "skipcertverify",
+          "skip_cert_verify",
+          "skip-cert-verify",
+          "noverify"
+        ],
         "maps_to": "tls.insecure",
         "desc_en": "Skip server certificate verification.",
         "desc_ru": "Не проверять сертификат сервера.",
@@ -101,7 +122,14 @@
   },
   "emit": {
     "share_uri": true,
-    "param_order": ["allow_insecure", "alpn", "congestion_control", "reduce_rtt", "sni", "udp_relay_mode"],
+    "param_order": [
+      "allow_insecure",
+      "alpn",
+      "congestion_control",
+      "reduce_rtt",
+      "sni",
+      "udp_relay_mode"
+    ],
     "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart toUriTuic → buildQuery sort, node_spec_emit.dart:456 + uri_utils.dart:306-312). zero-RTT: Dart эмитит reduce_rtt=1, Go — zero_rtt_handshake=1 (оба парсера должны принимать оба). insecure: Dart эмитит allow_insecure=1, Go — insecure=1."
   },
   "mapper": [
@@ -130,7 +158,27 @@
   },
   "body": {
     "core": "1.14.1-lx.4",
-    "order": ["server", "server_port", "uuid", "password", "congestion_control", "udp_relay_mode", "udp_over_stream", "zero_rtt_handshake", "heartbeat", "network", "tls", "idle_timeout", "keep_alive_period", "stream_receive_window", "connection_receive_window", "max_concurrent_streams", "initial_packet_size", "disable_path_mtu_discovery", "__dialer"],
+    "order": [
+      "server",
+      "server_port",
+      "uuid",
+      "password",
+      "congestion_control",
+      "udp_relay_mode",
+      "udp_over_stream",
+      "zero_rtt_handshake",
+      "heartbeat",
+      "network",
+      "tls",
+      "idle_timeout",
+      "keep_alive_period",
+      "stream_receive_window",
+      "connection_receive_window",
+      "max_concurrent_streams",
+      "initial_packet_size",
+      "disable_path_mtu_discovery",
+      "__dialer"
+    ],
     "fields": {
       "server": {
         "type": "ref",
@@ -168,7 +216,12 @@
       },
       "congestion_control": {
         "type": "enum",
-        "values": ["", "cubic", "new_reno", "bbr"],
+        "values": [
+          "",
+          "cubic",
+          "new_reno",
+          "bbr"
+        ],
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
@@ -181,7 +234,11 @@
       },
       "udp_relay_mode": {
         "type": "enum",
-        "values": ["", "native", "quic"],
+        "values": [
+          "",
+          "native",
+          "quic"
+        ],
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
@@ -307,5 +364,157 @@
       }
     },
     "build_tag": "with_quic"
+  },
+  "mappers": {
+    "uri": {
+      "detect": {
+        "scheme_in": [
+          "tuic"
+        ]
+      },
+      "body_source": "uri",
+      "live": true,
+      "forms": [
+        {
+          "id": "url",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            "url"
+          ],
+          "space": "url"
+        }
+      ],
+      "userinfo": {
+        "split": {
+          "sep": ":",
+          "limit": 2
+        },
+        "into": [
+          "uuid",
+          "password"
+        ],
+        "single_into": "uuid",
+        "impl": "userinfo = uuid:password, в отличие от hysteria2, где двоеточие часть пароля. Пароль — всё ПОСЛЕ первого ':' (limit:2), чтобы двоеточие внутри пароля не потерялось. single_into объявлен ЯВНО (GRAMMAR_SYNC §1 №15): одинокий userinfo — это uuid."
+      },
+      "label": {
+        "source": [
+          "fragment",
+          "path"
+        ],
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "value_map": {
+          "🇪🇳": "🇬🇧"
+        },
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "singbox_type"
+        }
+      },
+      "defaults": {
+        "server_port": 443
+      },
+      "include": [
+        "tls#uri"
+      ],
+      "params": {
+        "server": {
+          "source": "host",
+          "maps_to": "server",
+          "required": true
+        },
+        "server_port": {
+          "source": "port",
+          "maps_to": "server_port",
+          "type": "int"
+        },
+        "uuid": {
+          "source": "userinfo.user",
+          "maps_to": "uuid",
+          "required": true
+        },
+        "password": {
+          "source": "userinfo.pass",
+          "maps_to": "password",
+          "impl": "РАСХОЖДЕНИЕ СТРОГОСТИ, сохранено осознанно (TASKS_LXBOX §24.31). У LxBox здесь `required: true` — ссылка с пустым паролем не узел. У нас пустой пароль ключа не даёт, но узел живёт: node_parser_tuic.go:37 писал поле только непустым, и отбраковки не было. Принять их строгость значит выбросить живые узлы у тех, у кого пароль пуст, — решения владельца на это нет, а корпус разницы не видит (кейса с пустым паролем в нём нет вовсе). Их собственная пометка говорит то же: «снимать его этой волной не уполномочены»."
+        },
+        "congestion_control": {
+          "source": "query.congestion_control",
+          "maps_to": "congestion_control",
+          "impl": "§103 D-016(в) — ключа не было в ссылке ⇒ поле не задано, дефолт подставит ядро. Значение вне enum уезжает КАК ЕСТЬ: снимет реестр кодом tuic_congestion_invalid."
+        },
+        "udp_relay_mode": {
+          "source": "query.udp_relay_mode",
+          "maps_to": "udp_relay_mode"
+        },
+        "reduce_rtt": {
+          "source": [
+            "query.reduce_rtt",
+            "query.zero_rtt",
+            "query.zero_rtt_handshake"
+          ],
+          "type": "bool_spelled",
+          "maps_to": "zero_rtt_handshake",
+          "omit_default": false,
+          "impl": "Три написания 0-RTT; целевой набор контракта — объединение обоих проектов. false в тело не пишется."
+        },
+        "heartbeat": {
+          "source": "query.heartbeat",
+          "maps_to": "heartbeat",
+          "normalize": "duration_bare_seconds",
+          "impl": "heartbeat_bare_number: голое число это секунды (10 → '10s'), поле ядра — duration-строка."
+        },
+        "disable_sni": {
+          "source": "query.disable_sni",
+          "type": "bool_spelled",
+          "maps_to": "tls.disable_sni",
+          "sets": {
+            "true": {
+              "tls.server_name": null
+            }
+          },
+          "priority": 100,
+          "impl": "G2 / DELTAS D133-3 — sets с null СНИМАЕТ tls.server_name: расширение SNI не отправляется вовсе, значит имени сервера в теле быть не должно. Сам ключ disable_sni при этом в теле есть — его знает и ядро, и sing-box-вход; без него намерение автора не выражено ничем, и toUri() не мог вернуть disable_sni=1. priority: 100 обязателен — запись приходит из общего блока tls#uri и наследует его место в таблице, то есть исполнилась бы ДО sni, а та потом вернула бы server_name обратно (у tuic sni пишется всегда: при пустом параметре срабатывает default_from: host). Снятие пути должно быть последним."
+        },
+        "sni": {
+          "source": [
+            "query.sni",
+            "query.peer"
+          ],
+          "maps_to": "tls.server_name",
+          "default_from": "host",
+          "when": {
+            "query.disable_sni": {
+              "not_in": [
+                "1",
+                "true",
+                "yes"
+              ]
+            }
+          },
+          "impl": "Запись общего блока tls#uri переопределена ровно одним условием: при disable_sni имени сервера в теле быть не должно ВОВСЕ, а фолбэк default_from исполняется отдельной стадией ПОСЛЕ всех записей и вернул бы снятое значение обратно. Условие по ИСТОЧНИКУ (G1), потому что к моменту стадии дефолтов тело уже не помнит, снимали путь или его не было. Эвристики НАПИСАНИЯ SNI у tuic нет: реестр говорит только про ПУСТОЙ sni, и прежний парсер откатывался на сервер ровно на пустом — проверка точки и двоеточия сдвинула бы тела и identity живых узлов, как у trojan и vless."
+        }
+      },
+      "scheme_sets": {
+        "*": {
+          "tls.enabled": true
+        }
+      },
+      "unknown_key": {
+        "action": "keep",
+        "code": "uri_param_unknown"
+      },
+      "emit": {
+        "form": "url",
+        "param_order": "alphabetical",
+        "omit_default": [
+          "server_port"
+        ]
+      }
+    }
   }
 }

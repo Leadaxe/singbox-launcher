@@ -1351,20 +1351,35 @@ func (st *execState) applyLabel() {
 	if spec == nil {
 		return
 	}
+	// Звено цепочки считается ОТВЕТИВШИМ только после нормализации.
+	//
+	// Прежде нормализация шла ПОСЛЕ выбора, и звено занимало место сырым:
+	// у tuic цепочка объявлена ["fragment", "path"], а ссылка
+	// `tuic://…@host/?reduce_rtt=1` несёт путь «/» и не несёт фрагмента —
+	// узел получал имя «/». То же и с пробельной подсказкой: она глушила
+	// следующие звенья, ничего не дав взамен. Пусто после нормализации —
+	// значит звено не ответило, и слово переходит дальше.
 	for _, name := range spec.Source.ForForm(st.form.ID) {
 		v, ok := st.space.Lookup(st.substituteBase(name))
 		if !ok || v == "" {
 			continue
 		}
-		st.res.Label = v
+		cand := v
+		for _, n := range spec.Normalize {
+			cand = normalizeValue(n, cand)
+		}
+		// Путь «/» — не имя: это остаток синтаксиса ссылки. Отдельного
+		// правила для него не нужно — его снимает та же чистка, что и
+		// пробелы, если объявить её частью выбора.
+		if strings.Trim(cand, "/") == "" {
+			continue
+		}
+		st.res.Label = cand
 		st.trace.Add(Event{
 			Stage: StageLabel, Mapper: st.mapperName, Entry: "$label",
-			Src: name, Raw: v, Val: v, Path: nil, Act: ActWrite, Why: WhyNone,
+			Src: name, Raw: v, Val: cand, Path: nil, Act: ActWrite, Why: WhyNone,
 		})
 		break
-	}
-	for _, n := range spec.Normalize {
-		st.res.Label = normalizeValue(n, st.res.Label)
 	}
 	if len(spec.ValueMap) > 0 {
 		for from, to := range spec.ValueMap {

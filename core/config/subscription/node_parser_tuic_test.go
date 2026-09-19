@@ -17,7 +17,10 @@ func TestParseNode_Tuic_Canonical(t *testing.T) {
 	assertEq(t, node.Server, "tuic.example.test")
 	assertEq(t, node.Port, 443)
 	assertEq(t, node.UUID, "00000000-0000-0000-0000-000000000001")
-	assertEq(t, node.Query.Get("password"), "testpass")
+	// node.Query — справка о ТОМ, ЧТО НАПИСАНО в ссылке. Пароль стоит в
+	// userinfo, а не параметром: в Query его клала воронка прежнего пути
+	// (QUIRKS Q133-49). Проверяем там, где он и живёт, — в теле.
+	assertEq(t, nodeBody(t, node)["password"], "testpass")
 	assertEq(t, node.Label, "TUIC-smoke")
 }
 
@@ -28,7 +31,7 @@ func TestBuildOutbound_Tuic(t *testing.T) {
 		t.Fatalf("ParseNode: %v", err)
 	}
 	node.Tag = "tuic-out"
-	out := buildOutbound(node)
+	out := nodeBody(t, node)
 
 	assertEq(t, out["type"], "tuic")
 	assertEq(t, out["tag"], "tuic-out")
@@ -46,7 +49,7 @@ func TestBuildOutbound_Tuic(t *testing.T) {
 	assertEq(t, tls["enabled"], true)
 	assertEq(t, tls["server_name"], "tuic.example.test")
 	assertEq(t, tls["insecure"], true) // from allow_insecure=1
-	alpn, ok := tls["alpn"].([]string)
+	alpn, ok := bodyStrings(tls["alpn"])
 	if !ok || len(alpn) != 2 || alpn[0] != "h3" || alpn[1] != "spdy/3.1" {
 		t.Errorf("alpn = %v, want [h3 spdy/3.1]", tls["alpn"])
 	}
@@ -76,7 +79,7 @@ func TestBuildOutbound_Tuic_HeartbeatSeconds(t *testing.T) {
 		t.Fatalf("ParseNode: %v", err)
 	}
 	node.Tag = "t"
-	out := buildOutbound(node)
+	out := nodeBody(t, node)
 	assertEq(t, out["heartbeat"], "10s")
 }
 
@@ -86,7 +89,7 @@ func TestBuildOutbound_Tuic_ZeroRTTAlias(t *testing.T) {
 		t.Fatalf("ParseNode: %v", err)
 	}
 	node.Tag = "t"
-	out := buildOutbound(node)
+	out := nodeBody(t, node)
 	assertEq(t, out["zero_rtt_handshake"], true)
 }
 
@@ -99,7 +102,7 @@ func TestShareURIRoundtrip_Tuic(t *testing.T) {
 	if node.Tag == "" {
 		node.Tag = "t"
 	}
-	out := buildOutbound(node)
+	out := nodeBody(t, node)
 	got, err := ShareURIFromOutbound(out)
 	if err != nil {
 		t.Fatalf("ShareURIFromOutbound: %v", err)
