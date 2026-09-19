@@ -5627,3 +5627,34 @@ base64, в нём нет ни `://`, ни `{`, ни `[Interface]`, поэтом�
 `value_map`: длинный ключ раньше короткого, равные длины — алфавитом.
 В реестре сегодня одна запись (`🇪🇳→🇬🇧` у hysteria2), так что для вас
 это норма на будущее, а не правка поведения.
+
+## 40. Контракт 1.1.44 — зеркальные стражи pre-2.0.0 (CIDR, emit, дробные числа)
+
+Партнёрское приложение нашло у себя три дефекта, вероятных и у нас.
+Проверено на `develop` перед релизом 2.0.0: **у нас чисто**, добавлены
+тесты и кейсы корпуса.
+
+### 40.1. CIDR — у нас чисто
+
+`format cidr` в `nodeflow` (`net.ParseCIDR`, без fallback на голый IP при
+слэше) отвергает `1.2.3.4/64`, `::::/128`, `10.0.0.1/33`, `fe80::1/129`,
+`10.0.0.1/-1`, ` 10.0.0.1/24`. Кейс `uri/wireguard/address_cidr_invalid`:
+поле `address` снято, узел отбракован с `type_invalid`. Страж:
+`TestCIDRFormatRejectsInvalidPrefixes`.
+
+### 40.2. WireGuard emit с несколькими peers — у нас чисто
+
+`emit.refuse_when` (`peers`, `len_gt: 1`) отказывает с именованной
+причиной («ОДИН удалённый сервер»), а не собирает ссылку по первому пиру.
+Проверены `[]interface{}` и нативные `[]map[string]interface{}`. Стражи:
+`TestShareURIFromWireGuardEndpoint_MultiPeer`,
+`TestEmitWireGuardRefusesMultiplePeers`.
+
+### 40.3. Дробные JSON-числа — у нас чисто
+
+`443.9` во входе vmess v2rayN JSON и Xray JSON **не** усекается до 443:
+`asInt`/`coerce` отбраковывает дробную часть; целое `443.0` допустимо.
+То же для `mtu` и элементов `reserved`. Кейсы:
+`uri/vmess/fractional_port`, `body/xray/vmess_fractional_port`. Стражи:
+`TestFractionalPortRejectedBySanitize`, `TestFractionalMTUAndReservedRejectedBySanitize`,
+`TestVMessJSONFractionalPortRejected`, `TestXrayJSONFractionalPortRejected`.

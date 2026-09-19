@@ -1,0 +1,2 @@
+# vmess vnext.port дробный (443.9) — не усекается до 443; узел отбракован.
+[{"remarks":"vmess frac port","outbounds":[{"tag":"proxy","protocol":"vmess","settings":{"vnext":[{"address":"v.example","port":443.9,"users":[{"id":"11111111-2222-3333-4444-555555555555","alterId":0}]}]},"streamSettings":{"network":"tcp","security":"none"}}]}]

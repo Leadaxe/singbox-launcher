@@ -1,0 +1,13 @@
+{
+  "dropped": [
+    {
+      "reason": "vmess outbound rejected: server port is missing or out of range",
+      "ref": "proxy"
+    }
+  ],
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [],
+  "v": 1
+}
