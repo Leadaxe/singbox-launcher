@@ -1,5 +1,5 @@
 // Package subscription: share URI generation from sing-box outbounds and WireGuard endpoints (reverse of ParseNode / parseWireGuardURI).
-// Formats follow docs/ParserConfig.md and the same query keys as uriTransportFromQuery / vlessTLSFromNode.
+// Formats follow docs/ParserConfig.md and the same query keys as uriTransportFromQuery.
 package subscription
 
 import (

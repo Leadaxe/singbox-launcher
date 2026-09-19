@@ -22,15 +22,20 @@ package subscription
 // (набор insecure, список отпечатков с гибридным шаром), а два кода
 // (ss_method_invalid, port_invalid) не ставились вовсе: их «деградация» была
 // на деле жёстким дропом узла (DRIFT §4).
+//
+// SPEC 133: у схем НА ДВИЖКЕ константы здесь не заводятся вовсе. Код
+// объявлен в самой секции реестра — `on_item_invalid.code`,
+// `on_present.code`, `on_when_false.code`, — и движок ставит его строкой,
+// не зная о Go-именах. Вместе с рукописными ветками naive и ssh отсюда ушли
+// naive_extra_headers_invalid и naive_padding_ignored (оба теперь из
+// registry/protocols/naive.json, тесты на реальном пути это проверяют) и
+// ssh_user_default, который на URI-пути был недостижим и до кампании:
+// ссылку с пустым userinfo отбивала валидация раньше подстановки root.
+// Страж TestRegistryWarningCodesAreActuallySet ищет ИМЯ КОНСТАНТЫ, поэтому
+// осиротевшая константа его и роняет — это правильный сигнал: код без
+// ставящего его кода на Go обязан жить в реестре, а не здесь.
 
 const (
-	// WarnNaiveExtraHeadersInvalid — пара из naive `extra-headers` отброшена:
-	// нет ':', запрещённые символы в имени или CR/LF/NUL в значении.
-	//
-	// Прочие пары той же ссылки живут, узел живёт — отсюда severity=info; но
-	// до этого отброс уходил только в debuglog, и в отчёте сборки человек не
-	// видел, что заголовок, которым он открывает доступ, до сервера не доедет.
-	WarnNaiveExtraHeadersInvalid = "naive_extra_headers_invalid"
 	// WarnXHTTPModeForcedPacketUp — у XHTTP-узла был `uplink_data_placement:
 	// header` без режима, и режим доопределён в `packet-up`.
 	//
@@ -44,10 +49,6 @@ const (
 	// явном режиме, отличном от packet-up: режим пользователя мы не
 	// переписываем, снимается одно поле.
 	WarnXHTTPParamReset = "xhttp_param_reset"
-	// WarnSSHUserDefault — ssh без пользователя: подставлен root.
-	WarnSSHUserDefault = "ssh_user_default"
-	// WarnNaivePaddingIgnored — naive padding=… не поддержан ядром.
-	WarnNaivePaddingIgnored = "naive_padding_ignored"
 	// WarnAmneziaContainerChoice — в vpn://-профиле несколько контейнеров,
 	// одиночный путь взял дефолтный.
 	WarnAmneziaContainerChoice = "amnezia_container_choice"

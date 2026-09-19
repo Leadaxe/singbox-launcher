@@ -71,7 +71,7 @@ func TestAnyTLS_ShareURIRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reparse %q: %v", share, err)
 	}
-	out2 := buildOutbound(node2)
+	out2 := nodeBody(t, node2)
 	for _, k := range []string{"type", "server", "server_port", "password"} {
 		if out[k] != out2[k] {
 			t.Errorf("round-trip %s: %v != %v", k, out[k], out2[k])

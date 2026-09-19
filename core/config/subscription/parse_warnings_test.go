@@ -39,11 +39,13 @@ func TestCleanNodeHasNoWarnings(t *testing.T) {
 // декодирует одинаково) — проверка переехала на выход конвейера вместе с
 // самой чисткой: core/config TestPipelineCleanNodeStaysClean.
 
-// WarnSSHUserDefault остаётся в словаре, но на URI-пути недостижим:
-// ParseNode отвергает ssh-ссылку с пустым username раньше, чем дело дойдёт
-// до подстановки root (node_parser_core.go: «missing userinfo»). Ветка жива
-// для sing-box-импорта, где узел приходит уже разобранным; тест на неё
-// появится вместе с покрытием того пути.
+// ssh_user_default объявлен в реестре (warnings.json, protocols/ssh.json),
+// но Go-константы у него больше нет: на URI-пути он был недостижим и до
+// SPEC 133 — ссылку с пустым userinfo отбивает валидация раньше подстановки
+// root, — а рукописная ветка с подстановкой удалена вместе с парсером.
+// Сегодня ssh ведёт движок, и `user` у него объявлен required. Дефолт root
+// остаётся у sing-box-импорта, где узел приходит уже разобранным; тест на
+// него появится вместе с покрытием того пути.
 
 func hasWarning(list []configtypes.Warning, code string) bool {
 	for _, w := range list {

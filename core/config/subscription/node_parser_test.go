@@ -643,25 +643,24 @@ func TestParseNode_RealWorldExamples(t *testing.T) {
 	}
 }
 
-// TestBuildOutbound tests outbound generation
+// TestBuildOutbound — тело узла собирается из ССЫЛКИ.
+//
+// Прежде тест строил ParsedNode руками и звал buildOutbound, полагаясь на
+// договорённость «парсер разложил значения обратно в node.Query, а сборщик
+// тела читает их оттуда». У движка реестра (SPEC 133) такой договорённости
+// нет и быть не должно: тело строит секция схемы прямо из разобранной
+// ссылки, а Query — деталь снятого пути. Поэтому вход здесь теперь ссылка.
 func TestBuildOutbound(t *testing.T) {
 	t.Run("VLESS with Reality", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Tag:    "test-vless",
-			Scheme: "vless",
-			Server: "example.com",
-			Port:   443,
-			UUID:   "test-uuid",
-			Flow:   "xtls-rprx-vision",
-			Query:  make(map[string][]string),
+		// Ключ обязан быть настоящим X25519 (base64url, 43 символа):
+		// заглушку санитайзер отвергает, чтобы мусорный pbk не отравил конфиг.
+		uri := "vless://test-uuid@example.com:443?security=reality&flow=xtls-rprx-vision" +
+			"&sni=example.com&fp=chrome" +
+			"&pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg&sid=abcd#test-vless"
+		node, err := ParseNode(uri, nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("sni", "example.com")
-		node.Query.Set("fp", "chrome")
-		// Must be a real X25519 public key (base64url, 43 chars) — a placeholder
-		// is now rejected so junk pbk values can't poison the generated config.
-		node.Query.Set("pbk", "mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg")
-		node.Query.Set("sid", "test-short-id")
-
 		outbound := nodeBody(t, node)
 		if outbound["type"] != "vless" {
 			t.Errorf("Expected type 'vless', got '%v'", outbound["type"])
@@ -686,16 +685,13 @@ func TestBuildOutbound(t *testing.T) {
 	})
 
 	t.Run("Shadowsocks type conversion", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Tag:    "test-ss",
-			Scheme: "ss",
-			Server: "example.com",
-			Port:   443,
-			Query:  make(map[string][]string),
+		// ss:// несёт method:password в base64 на userinfo (SIP002). Тип тела
+		// «shadowsocks» против схемы «ss» объявлен в defaults секции.
+		userinfo := base64.StdEncoding.EncodeToString([]byte("aes-256-gcm:test-password"))
+		node, err := ParseNode("ss://"+userinfo+"@example.com:443#test-ss", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("method", "aes-256-gcm")
-		node.Query.Set("password", "test-password")
-
 		outbound := nodeBody(t, node)
 		if outbound["type"] != "shadowsocks" {
 			t.Errorf("Expected type 'shadowsocks', got '%v'", outbound["type"])
@@ -1912,19 +1908,22 @@ func TestParseNode_Wireguard(t *testing.T) {
 	}
 }
 
-// TestBuildOutbound_SSH tests SSH outbound building
+// TestBuildOutbound_SSH — тело ssh-узла собирается из ССЫЛКИ.
+//
+// Подсхемы строили ParsedNode руками и клали значения в node.Query, включая
+// пароль: старый путь сливал туда и userinfo-пароль, и одноимённый query
+// (QUIRKS Q133-49). На движке источник объявлен точно — userinfo.pass против
+// query.* — поэтому вход здесь ссылка, как её и присылает подписка.
+//
+// Подсхема «без пользователя → root» снята: ssh-ссылку с пустым userinfo
+// отбивает валидация (секция объявляет user как required), и до подстановки
+// дело не доходило ни на движке, ни на прежнем пути. См. parse_warnings_test.
 func TestBuildOutbound_SSH(t *testing.T) {
 	t.Run("SSH outbound with password", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Scheme: "ssh",
-			Server: "example.com",
-			Port:   22,
-			UUID:   "root",
-			Tag:    "SSH Server",
-			Query:  make(map[string][]string),
+		node, err := ParseNode("ssh://root:secret123@example.com:22#SSH Server", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("password", "secret123")
-
 		outbound := nodeBody(t, node)
 
 		if outbound["type"] != "ssh" {
@@ -1945,17 +1944,12 @@ func TestBuildOutbound_SSH(t *testing.T) {
 	})
 
 	t.Run("SSH outbound with private key path", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Scheme: "ssh",
-			Server: "server.com",
-			Port:   22,
-			UUID:   "deploy",
-			Tag:    "Deploy Server",
-			Query:  make(map[string][]string),
+		node, err := ParseNode("ssh://deploy@server.com:22"+
+			"?private_key_path=/home/user/.ssh/id_rsa"+
+			"&private_key_passphrase=mypassphrase#Deploy Server", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("private_key_path", "/home/user/.ssh/id_rsa")
-		node.Query.Set("private_key_passphrase", "mypassphrase")
-
 		outbound := nodeBody(t, node)
 
 		if outbound["private_key_path"] != "/home/user/.ssh/id_rsa" {
@@ -1967,16 +1961,10 @@ func TestBuildOutbound_SSH(t *testing.T) {
 	})
 
 	t.Run("SSH outbound with host keys", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Scheme: "ssh",
-			Server: "server.com",
-			Port:   22,
-			UUID:   "user",
-			Tag:    "Verified Server",
-			Query:  make(map[string][]string),
+		node, err := ParseNode("ssh://user@server.com:22?host_key=key1,key2,key3#Verified Server", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("host_key", "key1,key2,key3")
-
 		outbound := nodeBody(t, node)
 
 		hostKeys, ok := bodyStrings(outbound["host_key"])
@@ -1993,37 +1981,14 @@ func TestBuildOutbound_SSH(t *testing.T) {
 	})
 
 	t.Run("SSH outbound with client version", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Scheme: "ssh",
-			Server: "server.com",
-			Port:   22,
-			UUID:   "user",
-			Tag:    "Custom Client",
-			Query:  make(map[string][]string),
+		node, err := ParseNode("ssh://user@server.com:22?client_version=SSH-2.0-OpenSSH_7.4p1#Custom Client", nil)
+		if err != nil {
+			t.Fatalf("ParseNode: %v", err)
 		}
-		node.Query.Set("client_version", "SSH-2.0-OpenSSH_7.4p1")
-
 		outbound := nodeBody(t, node)
 
 		if outbound["client_version"] != "SSH-2.0-OpenSSH_7.4p1" {
 			t.Errorf("Expected client_version 'SSH-2.0-OpenSSH_7.4p1', got '%v'", outbound["client_version"])
-		}
-	})
-
-	t.Run("SSH outbound without user (should use default)", func(t *testing.T) {
-		node := &config.ParsedNode{
-			Scheme: "ssh",
-			Server: "server.com",
-			Port:   22,
-			UUID:   "", // No user
-			Tag:    "Default User",
-			Query:  make(map[string][]string),
-		}
-
-		outbound := nodeBody(t, node)
-
-		if outbound["user"] != "root" {
-			t.Errorf("Expected default user 'root', got '%v'", outbound["user"])
 		}
 	})
 }

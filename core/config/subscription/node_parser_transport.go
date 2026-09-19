@@ -147,16 +147,6 @@ func utlsFingerprintFromQuery(q url.Values, scheme string) string {
 	return junkRaw
 }
 
-// plaintextVLESSPorts are common subscription ports where TLS is typically off (plain HTTP / CF HTTP).
-var plaintextVLESSPorts = map[int]struct{}{
-	80: {}, 8080: {}, 8880: {}, 2052: {}, 2082: {}, 2086: {}, 2095: {},
-}
-
-func shouldVLESSSkipTLSForPort(port int) bool {
-	_, ok := plaintextVLESSPorts[port]
-	return ok
-}
-
 // uriTransportFromQuery builds sing-box V2Ray transport for VLESS/Trojan from URI query.
 // See: https://sing-box.sagernet.org/configuration/shared/v2ray-transport/
 func uriTransportFromQuery(q url.Values) (map[string]interface{}, bool) {
@@ -884,78 +874,12 @@ func noteECHIgnored(node *configtypes.ParsedNode) {
 	node.AddWarningWithParams(WarnECHIgnored, map[string]string{"query_name": "ech"})
 }
 
-// vlessTLSFromNode — карта tls для vless и признак «блок вообще есть».
-//
-// Маппер (SPEC 131 §3.1): переводит параметры ссылки в пути тела и решает
-// ровно один вопрос — ЕСТЬ ли у узла блок tls. Этот вопрос санитайзеру
-// недоступен (отсутствующий ключ для него неотличим от «не задан»), и он же
-// единственный, где ссылка несёт структуру, а не значение:
-//
-//   - `security=none` → ключа tls нет ВОВСЕ (не `enabled:false`: явный
-//     выключенный блок роняет ядра 1.14.0-lx.5..lx.18 в SIGSEGV, SPEC 045);
-//   - `security=”` на портах открытого HTTP → того же вида «TLS не
-//     предполагался» (registry/tls.json policy.plaintext_ports);
-//   - `pbk=` в ссылке → в теле появляется блок reality.
-//
-// Значения полей дальше не судятся: мусорный pbk снимет санитайзер правилом
-// `reality_pbk_invalid` (а с ним и весь блок reality — public_key там
-// required), sid — `reality_short_id_invalid`, key_share — своим кодом,
-// отпечаток вне словаря станет `chrome` с `utls_fp_unknown`.
-func vlessTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, bool) {
-	q := node.Query
-	const scheme = "vless"
-	sec := strings.ToLower(queryParam(q, scheme, "security"))
-
-	if sec == "none" {
-		return nil, false
-	}
-	if sec == "" && shouldVLESSSkipTLSForPort(node.Port) {
-		return nil, false
-	}
-
-	sni := queryParam(q, scheme, "sni")
-	if sni == "" {
-		sni = node.Server
-	}
-	tlsData := map[string]interface{}{
-		"enabled":     true,
-		"server_name": sni,
-		"utls": map[string]interface{}{
-			"enabled": true,
-			// Пустой fp у vless — дефолт `random` (D-009, паритет с LxBox).
-			// Это не дефолт ЯДРА (у него пустой fp = chrome), а конвенция
-			// обеих сторон, поэтому материализуется здесь: реестр выражает
-			// дефолты только через default_when, которого у этого поля нет.
-			"fingerprint": utlsFingerprintOrDefault(q, scheme, "random"),
-		},
-	}
-	// Блок reality заводится по НАЛИЧИЮ pbk, а не по security=reality: живые
-	// xhttp+reality-ссылки несут ключ без явного security. Пустой pbk блока
-	// не создаёт — иначе у каждого plain-TLS узла появлялся бы reality с
-	// required-полем и кодом на ровном месте.
-	if pbk := queryParam(q, scheme, "pbk"); pbk != "" {
-		reality := map[string]interface{}{
-			"enabled":    true,
-			"public_key": pbk,
-		}
-		if sid := queryParam(q, scheme, "sid"); sid != "" {
-			reality["short_id"] = sid
-		}
-		if ks := queryParam(q, scheme, "key_share"); ks != "" {
-			reality["key_share"] = ks
-		}
-		tlsData["reality"] = reality
-	}
-	applyTLSQueryExtras(q, scheme, tlsData)
-	return tlsData, true
-}
-
 // applyTLSCamouflageFromQuery переводит в тело маскировочные параметры ссылки:
 // `fp` → блок tls.utls, `pbk`/`sid`/`key_share` → блок tls.reality.
 //
 // Маппер, а не суждение: он решает только вопрос «есть ли блок», который
 // санитайзеру недоступен (отсутствующий ключ неотличим от «не задано»), —
-// ровно тот же вопрос, что у vlessTLSFromNode. Годность значений и
+// ровно тот же вопрос, что решают секции-мапперы реестра. Годность значений и
 // применимость блока к схеме судит реестр: мусорный отпечаток станет `chrome`
 // с utls_fp_unknown, мусорный pbk снимет блок целиком (reality_pbk_invalid),
 // а на QUIC-протоколах оба блока запрещены (forbidden_for + forbidden_codes,
@@ -990,14 +914,6 @@ func applyTLSCamouflageFromQuery(q url.Values, scheme string, tlsData map[string
 	}
 }
 
-// utlsFingerprintOrDefault — отпечаток из ссылки либо конвенция схемы.
-func utlsFingerprintOrDefault(q url.Values, scheme, def string) string {
-	if fp := utlsFingerprintFromQuery(q, scheme); fp != "" {
-		return fp
-	}
-	return def
-}
-
 // tlsServerNameFromQuery — SNI узла: `sni` (со всеми написаниями реестра),
 // иначе адрес сервера.
 //
@@ -1017,47 +933,6 @@ func tlsServerNameFromQuery(q url.Values, scheme, server string) string {
 		return sni
 	}
 	return server
-}
-
-// trojanTLSFromNode returns the sing-box tls map for Trojan (WebSocket/raw over
-// TLS) and whether a tls block should be emitted at all.
-//
-// security=none omits the key entirely rather than emitting
-// `"tls":{"enabled":false}` — same contract as vlessTLSFromNode. The explicit
-// disabled block is what sing-box cores 1.14.0-lx.5..lx.18 crash on: the
-// upstream ECH-retry commit builds a TLS dialer whenever a tls block is
-// present, while the config constructor returns (nil, nil) for enabled:false,
-// so the dialer wraps a nil config and SIGSEGVs on the first dial — URL test
-// included, killing the whole core process (sing-box-lx SPEC 045). Omitting
-// the key yields the same plain-TCP dial on every core version.
-// Схему передаёт вызывающий: ту же функцию зовёт http-proxy-парсер, а
-// написания параметров (sni→peer→host, девять имён insecure) берутся из
-// секции реестра ИМЕННО этой схемы.
-func trojanTLSFromNode(node *configtypes.ParsedNode, scheme string) (map[string]interface{}, bool) {
-	q := node.Query
-	if strings.ToLower(queryParam(q, scheme, "security")) == "none" {
-		return nil, false
-	}
-
-	sni := queryParam(q, scheme, "sni")
-	if sni == "" {
-		sni = node.Server
-	}
-
-	tlsData := map[string]interface{}{
-		"enabled":     true,
-		"server_name": sni,
-	}
-	// У trojan/http дефолта отпечатка нет (в отличие от vless, D-009): нет
-	// параметра — нет и блока utls.
-	if fp := utlsFingerprintFromQuery(q, scheme); fp != "" {
-		tlsData["utls"] = map[string]interface{}{
-			"enabled":     true,
-			"fingerprint": fp,
-		}
-	}
-	applyTLSQueryExtras(q, scheme, tlsData)
-	return tlsData, true
 }
 
 // EnforceRealityFingerprint дописывает uTLS-блок у tls, где РЕАЛЬНО эмитится

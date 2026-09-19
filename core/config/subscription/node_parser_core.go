@@ -150,8 +150,7 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	// Determine scheme
 	scheme := ""
 	uriToParse := uri
-	defaultPort := 443              // Default port for most protocols
-	var ssMethod, ssPassword string // For SS links: method and password extracted from base64
+	defaultPort := 443 // Default port for most protocols
 
 	// Determine scheme and handle protocol-specific parsing
 	switch {
@@ -183,79 +182,6 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 			}
 		}
 		return parseVMessDecoded(decoded, fragment, skipFilters)
-
-	case strings.HasPrefix(uri, "vless://"):
-		scheme = "vless"
-
-	case strings.HasPrefix(uri, "trojan://"):
-		scheme = "trojan"
-
-	case strings.HasPrefix(uri, "ss://"):
-		scheme = "ss"
-		ssPart := strings.TrimPrefix(uri, "ss://")
-		var fragSuffix string
-		if i := strings.Index(ssPart, "#"); i >= 0 {
-			fragSuffix = ssPart[i:]
-			ssPart = ssPart[:i]
-		}
-		ssPart = strings.TrimSpace(ssPart)
-
-		if atIdx := strings.Index(ssPart, "@"); atIdx > 0 {
-			encodedUserinfo := ssPart[:atIdx]
-			rest := ssPart[atIdx+1:]
-			if dec, err := url.PathUnescape(encodedUserinfo); err == nil {
-				encodedUserinfo = dec
-			}
-			decoded, err := decodeBase64WithPadding(encodedUserinfo)
-			if err != nil {
-				debuglog.ErrorLog("Parser: Failed to decode SS base64 userinfo. Encoded: %s, Error: %v", encodedUserinfo, err)
-			} else {
-				decodedStr := string(decoded)
-				userinfoParts := strings.SplitN(decodedStr, ":", 2)
-				if len(userinfoParts) == 2 {
-					ssMethod = userinfoParts[0]
-					ssPassword = userinfoParts[1]
-					debuglog.DebugLog("Parser: Successfully extracted SS credentials: method=%s, password length=%d", ssMethod, len(ssPassword))
-					// Метод НЕ проверяется здесь (SPEC 131 W2d): словарь ядра
-					// живёт в реестре (shadowsocks.body.method), и он ШИРЕ
-					// прежнего списка в коде — девять рабочих legacy-шифров
-					// (rc4-md5, aes-*-cfb/ctr, chacha20-ietf…) тот список
-					// дропал ВМЕСТЕ С УЗЛОМ, хотя ядро их принимает без
-					// единого warning'а. Решение владельца 18.09.2026
-					// (DRIFT §7.10, вариант А): принимать с info-кодом
-					// ss_method_legacy; дроп остаётся только вне словаря ядра.
-				} else {
-					debuglog.ErrorLog("Parser: SS decoded userinfo doesn't contain ':' separator. Decoded: %s", decodedStr)
-				}
-			}
-			uriToParse = "ss://" + rest + fragSuffix
-		} else {
-			// Legacy Shadowsocks URI: ss://base64("method:password@host:port")#tag (no userinfo@host before decoding).
-			bare := ssPart
-			if dec, err := url.PathUnescape(bare); err == nil {
-				bare = dec
-			}
-			if decoded, err := decodeBase64WithPadding(bare); err != nil {
-				debuglog.WarnLog("Parser: SS link is not SIP002 and legacy base64 decode failed: %v", err)
-			} else {
-				decStr := string(decoded)
-				at := strings.Index(decStr, "@")
-				if at > 0 {
-					left := decStr[:at]
-					right := strings.TrimSpace(decStr[at+1:])
-					userinfoParts := strings.SplitN(left, ":", 2)
-					if len(userinfoParts) == 2 && right != "" {
-						ssMethod = strings.TrimSpace(userinfoParts[0])
-						ssPassword = userinfoParts[1]
-						debuglog.DebugLog("Parser: Decoded legacy SS (method:password@host:port in one blob), host part length=%d", len(right))
-						uriToParse = "ss://" + right + fragSuffix
-					}
-				}
-			}
-			if ssMethod == "" {
-				debuglog.WarnLog("Parser: SS link is not in SIP002 format (no @ found): %s", uri)
-			}
-		}
 
 	case strings.HasPrefix(uri, "hysteria2://"), strings.HasPrefix(uri, "hy2://"):
 		scheme = "hysteria2"
@@ -304,43 +230,6 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		// TUIC v5 (uuid:password@host:port). Runs over QUIC; default port 443.
 		scheme = "tuic"
 
-	case strings.HasPrefix(uri, "anytls://"):
-		// AnyTLS (password@host:port). Single credential in userinfo like Trojan;
-		// always over TLS; default port 443.
-		scheme = "anytls"
-
-	case strings.HasPrefix(uri, "ssh://"):
-		scheme = "ssh"
-		defaultPort = 22 // Default port for SSH
-
-	case strings.HasPrefix(uri, "socks5://"):
-		// ВНИМАНИЕ: алиас НЕ канонизируется в "socks" (CANON §1), хотя канон
-		// схемы — именно "socks". Причина не в контракте, а в дефолтном теге:
-		// он строится из схемы (`fmt.Sprintf("%s-%s-%d", scheme, ...)`, :551),
-		// и канонизация переименовала бы socks5-host-1080 → socks-host-1080
-		// у ВСЕХ существующих узлов. Тег входит в identity-хеш и в ключи
-		// disabled-отметок — переименование сбросило бы пользовательские
-		// отметки и порвало ссылки detour/цепочек. Расхождение с Dart
-		// остаётся в корпусе как per-app override (docs/IDENTITY.md §4a-C).
-		scheme = "socks5"
-		defaultPort = 1080
-	case strings.HasPrefix(uri, "socks4a://"):
-		// SOCKS4a: версия протокола живёт в САМОЙ СХЕМЕ — у ядра это
-		// `version: "4a"` в теле (option/socks.go). Схема-дискриминатор, как
-		// суффикс у proxy-https:// (registry/protocols/http.json). Запись
-		// остальной ссылки общая с socks5://, поэтому веток разбора ниже это
-		// не касается — различает их только socksVersionForScheme.
-		scheme = "socks4a"
-		defaultPort = 1080
-	case strings.HasPrefix(uri, "socks4://"):
-		// SOCKS4: userinfo несёт ОДИН компонент — userid (пароля у версии 4
-		// нет, ядро шлёт username как userid). Годность значения судит ядро.
-		scheme = "socks4"
-		defaultPort = 1080
-	case strings.HasPrefix(uri, "socks://"):
-		scheme = "socks"
-		defaultPort = 1080
-
 	case strings.HasPrefix(uri, "wireguard://"), strings.HasPrefix(uri, "awg://"):
 		// AmneziaWG (SPEC 073): awg:// is an alias — same endpoint shape as
 		// wireguard:// plus promoted obfuscation params (jc/jmin/.../i1-i5),
@@ -352,27 +241,6 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 			wgURI = strings.Replace(uri, "awg://", "wireguard://", 1)
 		}
 		return parseWireGuardURI(wgURI, skipFilters)
-
-	case strings.HasPrefix(uri, "naive+https://"), strings.HasPrefix(uri, "naive+quic://"):
-		// NaïveProxy URI (de-facto spec: DuckSoft 2020).
-		// Replace "naive+xxx" prefix with "https" so net/url can parse the rest;
-		// transport mode (HTTP/2 vs QUIC) is remembered in node.Query["quic"].
-		scheme = "naive"
-		defaultPort = 443
-		if strings.HasPrefix(uri, "naive+quic://") {
-			uriToParse = strings.Replace(uri, "naive+quic://", "https://", 1)
-		} else {
-			uriToParse = strings.Replace(uri, "naive+https://", "https://", 1)
-		}
-
-	case strings.HasPrefix(uri, "proxy-http://"), strings.HasPrefix(uri, "proxy-https://"),
-		strings.HasPrefix(uri, "proxy+http://"), strings.HasPrefix(uri, "proxy+https://"):
-		// HTTP(S) CONNECT proxy (SPEC 103 §9.B6; LxBox http_parser.dart). Custom
-		// scheme instead of bare http(s):// — those are intercepted upstream as
-		// subscription URLs. Has its own parser (dispatched below, mirrors
-		// masque/vpn): userinfo, TLS-by-suffix and headers don't fit the generic
-		// net/url branch below.
-		return parseHTTPProxyURI(uri, skipFilters)
 
 	default:
 		return nil, fmt.Errorf("unsupported scheme")
@@ -398,8 +266,10 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		return nil, fmt.Errorf("failed to parse URI: %w", err)
 	}
 
-	// Validate VLESS/Trojan/SSH/TUIC/AnyTLS URI format (must have hostname and userinfo)
-	if scheme == "vless" || scheme == "trojan" || scheme == "ssh" || scheme == "tuic" || scheme == "anytls" {
+	// TUIC: хост и userinfo обязательны. У схем на движке это же правило
+	// объявлено в их секциях (`server.required`, `userinfo.required`) —
+	// сюда они не доходят.
+	if scheme == "tuic" {
 		if parsedURL.Hostname() == "" {
 			return nil, fmt.Errorf("invalid %s URI: missing hostname", scheme)
 		}
@@ -411,10 +281,6 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	// поэтому userinfo здесь не требуем — в отличие от блока выше.
 	if scheme == "hysteria" && parsedURL.Hostname() == "" {
 		return nil, fmt.Errorf("invalid hysteria URI: missing hostname")
-	}
-	// Validate SOCKS / SOCKS5: hostname required, user/password optional
-	if isSocksScheme(scheme) && parsedURL.Hostname() == "" {
-		return nil, fmt.Errorf("invalid socks URI: missing hostname")
 	}
 
 	// Extract components
@@ -430,16 +296,6 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		} else {
 			node.Query.Set("mport", hy2AuthPortList)
 		}
-	}
-
-	// For SS, store method and password in Query (if extracted during parsing)
-	if scheme == "ss" {
-		if ssMethod == "" || ssPassword == "" {
-			debuglog.ErrorLog("Parser: SS link missing method or password. URI: %s", uri)
-			return nil, fmt.Errorf("SS link missing required method or password")
-		}
-		node.Query.Set("method", ssMethod)
-		node.Query.Set("password", ssPassword)
 	}
 
 	// Extract port (defaultPort was set in scheme detection). Out-of-range
@@ -463,41 +319,14 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	// were decoded a second time.
 	if parsedURL.User != nil {
 		node.UUID = parsedURL.User.Username()
-		// Extract password for SSH, Trojan, SOCKS, Naive and TUIC (user:password@server)
-		// У socks4/socks4a пароля нет вовсе (userinfo = userid), но
-		// написанный в ссылке он переносится как есть: годность пары
-		// судит ядро, а не парсер («маппер не судит значения»).
-		if scheme == "ssh" || scheme == "trojan" || isSocksScheme(scheme) || scheme == "naive" || scheme == "tuic" {
+		// TUIC: пароль — второй компонент userinfo. Воронка в Query
+		// осталась только здесь; у схем на движке пароль объявлен
+		// источником `userinfo.pass` и берётся прямо оттуда (QUIRKS Q133-49
+		// — из-за этой воронки у ssh «работало» и ненаписанное ?password=).
+		if scheme == "tuic" {
 			if password, hasPassword := parsedURL.User.Password(); hasPassword {
 				node.Query.Set("password", password)
 			}
-		}
-		// naive: одиночный userinfo БЕЗ двоеточия — это ПАРОЛЬ, а не имя
-		// пользователя (конвенция DuckSoft, та же что у hysteria2).
-		//
-		// Решение DRIFT §7.3, вариант А, дата синхронизации с LxBox снята владельцем 18.09.2026: до
-		// этого Go клал значение в username, а свой же эмиттер писал пароль в
-		// user-слот (shareuri_naive.go) — то есть ссылка, отданная нами,
-		// читалась нами же «наоборот», и кросс-эмит с LxBox расходился.
-		if scheme == "naive" {
-			if _, hasPassword := parsedURL.User.Password(); !hasPassword && node.UUID != "" {
-				node.Query.Set("password", node.UUID)
-				node.UUID = ""
-			}
-		}
-	}
-
-	// Naive-specific: remember transport mode (HTTP/2 vs QUIC) from the original
-	// scheme prefix, and strip the `padding` query param which has no sing-box
-	// equivalent and would otherwise leak into logs as an "unknown option".
-	if scheme == "naive" {
-		if strings.HasPrefix(uri, "naive+quic://") {
-			node.Query.Set("quic", "true")
-		}
-		if node.Query.Has("padding") {
-			debuglog.WarnLog("Parser: naive: 'padding' URI parameter has no sing-box equivalent, ignoring (value=%q)", node.Query.Get("padding"))
-			node.Query.Del("padding")
-			node.AddWarning(WarnNaivePaddingIgnored)
 		}
 	}
 
@@ -724,77 +553,14 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 	// чужой ключ. Помечаем один раз здесь, а не в каждой TLS-ветке.
 	noteECHIgnored(node)
 	outbound["tag"] = node.Tag
-	// Use "shadowsocks" instead of "ss" for sing-box; "socks" outbound for
-	// socks://, socks5://, socks4:// and socks4a:// URIs — версию протокола
-	// у ядра несёт поле тела, а в ссылке её несёт схема.
-	if node.Scheme == "ss" {
-		outbound["type"] = "shadowsocks"
-	} else if isSocksScheme(node.Scheme) {
-		outbound["type"] = "socks"
-		if v := socksVersionForScheme(node.Scheme); v != "" {
-			outbound["version"] = v
-		}
-	} else {
-		outbound["type"] = node.Scheme
-	}
+	// Переименований типа здесь больше нет: ss → "shadowsocks" и
+	// socks*/version — свойство СХЕМЫ, и его объявляют `defaults` секций
+	// (shadowsocks.json, socks.json). Обе схемы на движке, сюда не доходят.
+	outbound["type"] = node.Scheme
 	outbound["server"] = node.Server
 	outbound["server_port"] = node.Port
 
-	if node.Scheme == "vless" {
-		outbound["uuid"] = node.UUID
-		transport, hasTransport := uriTransportFromQuery(node.Query)
-		if hasTransport {
-			outbound["transport"] = transport
-			noteWSEarlyDataConverted(node, transport)
-			noteXHTTPPlacementGuard(node, transport)
-		}
-		if node.Flow != "" {
-			// `xtls-rprx-vision-udp443` — не значение поля flow, а СОСТАВНОЕ
-			// имя: суффикс означает «UDP/443 идёт напрямую», то есть
-			// packet_encoding=xudp. Развернуть его обязан маппер — санитайзер
-			// увидел бы только мусор вне enum'а.
-			//
-			// Порт при этом НЕ переписывается (DRIFT §7.4, решение владельца):
-			// порт — свойство узла, а не флоу, и прежняя правка превращала
-			// `…:8443` в `…:443`, делая узел недозваниваемым.
-			if node.Flow == "xtls-rprx-vision-udp443" {
-				outbound["flow"] = "xtls-rprx-vision"
-				outbound["packet_encoding"] = "xudp"
-			} else {
-				outbound["flow"] = node.Flow
-			}
-		}
-		if pe := queryParam(node.Query, "vless", "packetEncoding"); pe != "" {
-			// `none` — общепринятый способ подписки сказать «без особой
-			// инкапсуляции», то есть синоним отсутствия ключа; ядро такого
-			// значения не знает и падает всем конфигом. Это перевод диалекта,
-			// а не суждение о значении: прочий мусор уезжает как есть и его
-			// снимет санитайзер кодом packet_encoding_unknown.
-			if !strings.EqualFold(pe, "none") {
-				outbound["packet_encoding"] = pe
-			}
-		}
-
-		// VLESS post-quantum encryption layer (lx SPEC 032, core
-		// protocol/vless/lx_encryption.go). Порядок нормативен и одинаков на
-		// всех входах (реестр, body.fields.encryption): значение уже
-		// URL-декодировано, дальше обрезаются края, и пустое либо ТОЧНОЕ
-		// `none` означают «слоя нет» — ключ опускается (CANON §2.4).
-		//
-		// Сравнение точное, а НЕ EqualFold: ядро сличает свой литерал с
-		// учётом регистра, поэтому `None` для него настоящее значение, на
-		// котором падает весь конфиг. Пропускать его дальше — правильно:
-		// форму судит правило реестра, и `None` уходит в drop_node
-		// vless_encryption_invalid одинаково на всех входах. EqualFold здесь
-		// прятал бы негодное значение под видом «слоя нет».
-		if enc := strings.TrimSpace(queryParam(node.Query, "vless", "encryption")); enc != "" && enc != "none" {
-			outbound["encryption"] = enc
-		}
-
-		if tlsData, ok := vlessTLSFromNode(node); ok {
-			outbound["tls"] = tlsData
-		}
-	} else if node.Scheme == "vmess" {
+	if node.Scheme == "vmess" {
 		outbound["uuid"] = node.UUID
 
 		outbound["security"] = normalizeVMessSecurity(node.Query.Get("security"))
@@ -926,42 +692,12 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 
 			outbound["tls"] = tlsData
 		}
-	} else if node.Scheme == "trojan" {
-		outbound["password"] = node.UUID
-		if t, ok := uriTransportFromQuery(node.Query); ok {
-			outbound["transport"] = t
-			noteWSEarlyDataConverted(node, t)
-			noteXHTTPPlacementGuard(node, t)
-		}
-		if tlsData, ok := trojanTLSFromNode(node, node.Scheme); ok {
-			outbound["tls"] = tlsData
-		}
-	} else if node.Scheme == "ss" {
-		if method := node.Query.Get("method"); method != "" {
-			outbound["method"] = method
-		}
-		if password := node.Query.Get("password"); password != "" {
-			outbound["password"] = password
-		}
 	} else if node.Scheme == "hysteria2" {
 		buildHysteria2Outbound(node, outbound)
 	} else if node.Scheme == "hysteria" {
 		buildHysteriaOutbound(node, outbound)
 	} else if node.Scheme == "tuic" {
 		buildTuicOutbound(node, outbound)
-	} else if node.Scheme == "anytls" {
-		buildAnyTLSOutbound(node, outbound)
-	} else if node.Scheme == "ssh" {
-		buildSSHOutbound(node, outbound)
-	} else if node.Scheme == "naive" {
-		buildNaiveOutbound(node, outbound)
-	} else if isSocksScheme(node.Scheme) {
-		if node.UUID != "" {
-			outbound["username"] = node.UUID
-		}
-		if password := node.Query.Get("password"); password != "" {
-			outbound["password"] = password
-		}
 	}
 
 	return outbound

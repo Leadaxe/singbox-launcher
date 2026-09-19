@@ -9,109 +9,6 @@ import (
 	config "singbox-launcher/core/config/configtypes"
 )
 
-// --- isValidNaiveHeaderName ----------------------------------------------
-
-func TestIsValidNaiveHeaderName(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  bool
-	}{
-		{"empty rejected", "", false},
-		{"plain ASCII", "X-Username", true},
-		{"plain upper", "CONTENT-TYPE", true},
-		{"digits allowed", "X-Version-2", true},
-		{"underscore allowed", "X_Secret", true},
-		{"pipe allowed", "X|Weird", true},
-		{"space rejected", "X Forwarded", false},
-		{"colon rejected (reserved as separator)", "X:Y", false},
-		{"tab rejected", "X\tY", false},
-		{"newline rejected", "X\nY", false},
-		{"NUL rejected", "X\x00Y", false},
-		{"non-ASCII rejected", "Привет", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := isValidNaiveHeaderName(tt.input); got != tt.want {
-				t.Errorf("isValidNaiveHeaderName(%q) = %v, want %v", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
-// --- parseNaiveExtraHeaders ----------------------------------------------
-
-func TestParseNaiveExtraHeaders(t *testing.T) {
-	t.Run("nil on empty", func(t *testing.T) {
-		if got, _ := parseNaiveExtraHeaders(""); got != nil {
-			t.Errorf("expected nil, got %v", got)
-		}
-	})
-
-	t.Run("single pair", func(t *testing.T) {
-		got, _ := parseNaiveExtraHeaders("X-Username: user")
-		want := map[string]string{"X-Username": "user"}
-		if !mapsEqual(got, want) {
-			t.Errorf("got %v, want %v", got, want)
-		}
-	})
-
-	t.Run("two pairs with CRLF", func(t *testing.T) {
-		got, _ := parseNaiveExtraHeaders("X-A: 1\r\nX-B: 2")
-		want := map[string]string{"X-A": "1", "X-B": "2"}
-		if !mapsEqual(got, want) {
-			t.Errorf("got %v, want %v", got, want)
-		}
-	})
-
-	t.Run("value with colons preserved", func(t *testing.T) {
-		got, _ := parseNaiveExtraHeaders("X-Time: 12:34:56")
-		want := map[string]string{"X-Time": "12:34:56"}
-		if !mapsEqual(got, want) {
-			t.Errorf("got %v, want %v", got, want)
-		}
-	})
-
-	t.Run("leading/trailing spaces trimmed", func(t *testing.T) {
-		got, _ := parseNaiveExtraHeaders("  X-A :  1  ")
-		want := map[string]string{"X-A": "1"}
-		if !mapsEqual(got, want) {
-			t.Errorf("got %v, want %v", got, want)
-		}
-	})
-
-	t.Run("invalid name skipped, valid kept", func(t *testing.T) {
-		got, _ := parseNaiveExtraHeaders("X A: bad\r\nX-B: good")
-		want := map[string]string{"X-B": "good"}
-		if !mapsEqual(got, want) {
-			t.Errorf("got %v, want %v", got, want)
-		}
-	})
-
-	t.Run("no separator skipped", func(t *testing.T) {
-		got, _ := parseNaiveExtraHeaders("no-colon-here\r\nX-Good: v")
-		want := map[string]string{"X-Good": "v"}
-		if !mapsEqual(got, want) {
-			t.Errorf("got %v, want %v", got, want)
-		}
-	})
-
-	t.Run("all invalid → nil", func(t *testing.T) {
-		got, _ := parseNaiveExtraHeaders("no-colon\r\nalso-no-colon")
-		if got != nil {
-			t.Errorf("expected nil, got %v", got)
-		}
-	})
-
-	t.Run("UTF-8 in value allowed", func(t *testing.T) {
-		got, _ := parseNaiveExtraHeaders("X-Note: Привет")
-		want := map[string]string{"X-Note": "Привет"}
-		if !mapsEqual(got, want) {
-			t.Errorf("got %v, want %v", got, want)
-		}
-	})
-}
-
 // --- ParseNode for naive URIs --------------------------------------------
 
 func TestParseNode_Naive_Canonical(t *testing.T) {
@@ -477,18 +374,6 @@ func mustNaiveRoundtrip(t *testing.T, input string) string {
 		t.Fatalf("ShareURIFromOutbound: %v", err)
 	}
 	return got
-}
-
-func mapsEqual(a, b map[string]string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		if b[k] != v {
-			return false
-		}
-	}
-	return true
 }
 
 func assertEq(t *testing.T, got, want interface{}) {
