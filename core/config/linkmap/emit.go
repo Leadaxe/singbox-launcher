@@ -113,6 +113,9 @@ func Emit(plan *Plan, in EmitInput) (string, error) {
 	if st.in.Body == nil {
 		st.in.Body = map[string]interface{}{}
 	}
+	if err := st.checkRefuse(); err != nil {
+		return "", err
+	}
 	st.scheme = st.resolveScheme()
 
 	// Формa-контейнер объявляется `json_map`: она собирает не query-ссылку, а
@@ -121,6 +124,39 @@ func Emit(plan *Plan, in EmitInput) (string, error) {
 		return st.emitContainer()
 	}
 	return st.emitURL()
+}
+
+// checkRefuse — объявленные секцией условия «ссылкой не выражается».
+//
+// Отказ, а не молчаливая выдача части: узел с двумя пирами, отданный ссылкой
+// про одного, выглядит рабочим и ведёт половиной маршрута.
+func (st *emitState) checkRefuse() error {
+	for _, r := range st.spec.RefuseWhen {
+		if r.Path == "" {
+			continue
+		}
+		v, ok := getPath(st.in.Body, r.Path)
+		if !ok {
+			continue
+		}
+		if n, counted := lengthOf(v); counted && n > r.LenGt {
+			return fmt.Errorf("linkmap: %s", r.Why)
+		}
+	}
+	return nil
+}
+
+// lengthOf — длина массива; (0, false) у всего прочего.
+func lengthOf(v interface{}) (int, bool) {
+	switch t := v.(type) {
+	case []interface{}:
+		return len(t), true
+	case []map[string]interface{}:
+		return len(t), true
+	case []string:
+		return len(t), true
+	}
+	return 0, false
 }
 
 // resolveScheme выбирает НАПИСАНИЕ схемы.
@@ -421,6 +457,10 @@ func (st *emitState) emitEntry(e *Entry) {
 	}
 	// Объявленный отказ от обратного хода — данные, а не исключение кода.
 	if p.RoundTrip != nil && !*p.RoundTrip {
+		return
+	}
+	// Запись, действующая только на разборе, на выходе молчит.
+	if p.RoundTripOnly == roundTripParseOnly {
 		return
 	}
 	// implicit — значение подставлено конвенцией, а не источником: в ссылку
@@ -1571,6 +1611,71 @@ func boolOf(v interface{}) bool {
 		return t != 0
 	case int:
 		return t != 0
+	}
+	return false
+}
+
+// KindFromBody восстанавливает РОД узла по ТЕЛУ.
+//
+// `kind_when` объявляет род условием на ВХОД (`query.jc` и родня), и при
+// разборе иначе нельзя: ссылка `awg://` с негодными значениями оставляет тело,
+// неотличимое от обычного WireGuard. Но узел, сохранённый ТЕЛОМ, входа больше
+// не имеет, а род ему всё равно нужен — его читает `emit.form_from`.
+//
+// Соответствие «источник → путь тела» берётся из САМИХ записей секции: имя
+// `query.jc` принадлежит записи, у которой есть `maps_to`. Второй список
+// awg-имён в коде разъехался бы с первым при первом же новом наборе, и род
+// стал бы зависеть от того, какой из двух забыли дописать.
+//
+// Это ПРИБЛИЖЕНИЕ, и лучшего из тела не получить: условие по входу, чьё
+// значение санитайзер снял, здесь не восстановится. Ровно поэтому норма
+// требует хранить род рядом с телом (`Origin.Kind`), а этот вывод остаётся
+// последним звеном цепочки восстановления.
+func KindFromBody(spec map[string]map[string]interface{}, body map[string]interface{}) string {
+	if len(spec) == 0 || len(body) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(spec))
+	for name := range spec {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if kindCondHoldsInBody(spec[name], body) {
+			return name
+		}
+	}
+	return ""
+}
+
+// kindCondHoldsInBody — то же условие, прочитанное по телу.
+//
+// Поддерживается только `any_set`: остальные формы условия спрашивают про
+// НАПИСАНИЕ входа (`{matches: …}` по схеме), которого у тела нет по
+// построению, и выдумывать ответ хуже, чем не отвечать.
+func kindCondHoldsInBody(cond map[string]interface{}, body map[string]interface{}) bool {
+	for key, want := range cond {
+		if strings.HasPrefix(key, "$") {
+			continue
+		}
+		if key != emitKeyAnySet {
+			return false
+		}
+		list, _ := want.([]interface{})
+		for _, item := range list {
+			name, _ := item.(string)
+			tail, ok := paramTail(name, prefixQuery)
+			if !ok {
+				continue
+			}
+			// Имя параметра и имя поля тела совпадают не всегда; здесь
+			// проверяется НАЛИЧИЕ пути, а не значение — `jc: 0` есть
+			// законное «мусор выключен» у настоящего AmneziaWG-узла.
+			if _, exists := getPath(body, tail); exists {
+				return true
+			}
+		}
+		return false
 	}
 	return false
 }

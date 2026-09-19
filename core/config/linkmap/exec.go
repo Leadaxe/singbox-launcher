@@ -138,6 +138,12 @@ func kindCondHolds(cond map[string]interface{}, space *Space) bool {
 	return matched
 }
 
+// roundTripEmitOnly — значение `round_trip_only`, означающее «только эмит».
+const roundTripEmitOnly = "emit"
+
+// roundTripParseOnly — «только разбор».
+const roundTripParseOnly = "parse"
+
 // Note — код с параметрами; в узел их перекладывает вызывающий, потому что
 // формат warning'а принадлежит подписке, а не движку.
 type Note struct {
@@ -519,6 +525,12 @@ func (st *execState) applyDefaults() {
 func (st *execState) applyEntry(e *Entry) {
 	p := e.Param
 	if p == nil {
+		return
+	}
+	// Запись, объявленная действующей ТОЛЬКО на выходе, разбором не
+	// исполняется: значение, пришедшее по ссылке, указывало бы на тег чужого
+	// конфига, которого у нас нет.
+	if p.RoundTripOnly == roundTripEmitOnly {
 		return
 	}
 

@@ -67,25 +67,6 @@ func TestApplyWSEarlyData(t *testing.T) {
 	}
 }
 
-func TestAppendEarlyDataToPath(t *testing.T) {
-	tests := []struct {
-		path string
-		ed   int
-		want string
-	}{
-		{"/api/v2/channel", 2560, "/api/v2/channel?ed=2560"},
-		{"/p", 0, "/p"},                // no ed → untouched
-		{"/p", -1, "/p"},               // invalid → untouched
-		{"/p?x=1", 64, "/p?x=1&ed=64"}, // existing query → &ed
-		{"", 32, "?ed=32"},             // empty path
-	}
-	for _, tt := range tests {
-		if got := appendEarlyDataToPath(tt.path, tt.ed); got != tt.want {
-			t.Errorf("appendEarlyDataToPath(%q, %d) = %q, want %q", tt.path, tt.ed, got, tt.want)
-		}
-	}
-}
-
 // --- Parser 1: share-URI (type=ws&path=...) ---
 
 func TestParseNode_VLESS_WS_EarlyDataFromURI(t *testing.T) {

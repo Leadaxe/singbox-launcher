@@ -740,6 +740,19 @@ JSON-аналога нет». Аналог написан, объявление 
 `wgconf_param_unknown`). Порядок `warnings[]` — порядок правил, не
 тронут.
 
+**ДОСНЯТО позже (волна эмита):** тем же прогоном `-update` дописан `path` в
+восьми ожиданиях, до которых обновление не дошло в свой заход —
+`uri/naive/canonical_full`, `fragment_utf8_escaped`,
+`https_anonymous_padding_true`, `https_userpass_padding_false`
+(`naive_padding_ignored` → `path: "padding"`),
+`uri/trojan/ech_bare_name_ignored`, `ech_name_resolver_ignored`,
+`uri/vless/ech_ignored_reality_kept` (`ech_ignored` → `path: "ech"`),
+`uri/masque/legacy_params_ignored` (`uri_param_unknown`). Поведение не
+менялось — код `path` ставил и тогда; расхождение просто не было снято
+прогоном, и ожидания описывали мир до D133-32. Урок тот же, что в
+«Рекомендациях» §5: ожидания снимаются прогоном, а не дописываются руками
+по списку затронутых файлов — список забывается.
+
 ---
 
 ## Обратный ход: отличия движка от рукописного эмита

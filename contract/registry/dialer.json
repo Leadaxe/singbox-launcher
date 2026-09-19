@@ -214,6 +214,12 @@
         ],
         "maps_to": "disable_tcp_keep_alive",
         "type": "bool_spelled"
+      },
+      "detour": {
+        "source": "query.detour",
+        "maps_to": "detour",
+        "round_trip_only": "emit",
+        "impl": "ЭМИТ-ОНЛИ (round_trip_only: \"emit\"). `detour` не читается из ссылки ни одной стороной: поле `managed` (body.fields.detour) — его пишет СБОРКА конфига из Направлений и цепочек, а санитайзер снимает его из тела узла молча. Но ShareURIFromOutbound получает тело из ГОТОВОГО config.json, где сборка его уже поставила, и прежний рукописный эмиттер писал его литералом (shareAppendDetourLiteral) — ссылка на узел внутри цепочки несла имя следующего хопа. Чтение НЕ заводится намеренно: пришедший по ссылке detour указывал бы на тег, которого в чужом конфиге нет, и узел уехал бы в fail-closed (SPEC 077 упразднён единой строгостью detour)."
       }
     },
     "xray": {

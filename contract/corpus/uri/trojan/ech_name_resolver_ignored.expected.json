@@ -23,7 +23,8 @@
       "scheme": "trojan",
       "warnings": [
         {
-          "code": "ech_ignored"
+          "code": "ech_ignored",
+          "path": "ech"
         }
       ]
     }

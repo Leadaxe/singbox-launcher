@@ -659,20 +659,6 @@ func decodeResidualPercent(raw string) string {
 	return v
 }
 
-// appendEarlyDataToPath re-encodes a positive max_early_data back into an Xray
-// `?ed=N` path tail. Used by the share-URI exporters so a node → share-link →
-// node round-trip preserves WebSocket early data (the inverse of splitWSEarlyData).
-func appendEarlyDataToPath(path string, maxED int) string {
-	if maxED <= 0 {
-		return path
-	}
-	sep := "?"
-	if strings.ContainsRune(path, '?') {
-		sep = "&"
-	}
-	return path + sep + "ed=" + strconv.Itoa(maxED)
-}
-
 // xhttpRange normalizes an sc*-range value to the "min-max" string the core
 // wants. A bare number N is left as "N" (the core accepts "N" and "N-N" alike);
 // xhttpStringifyJSON has already dropped any ".0" float tail. Empty stays empty.
@@ -685,33 +671,6 @@ func xhttpRange(v string) string {
 // format base64_32 с required внутри блока reality. Прежние
 // normalizeRealityShortID и isValidRealityPublicKey сняты: держать вторую
 // копию правила рядом с реестром значило бы снова их рассинхронизировать.
-
-// NormalizeRealityKeyShare приводит значение tls.reality.key_share к
-// каноническому виду ядра: trim + lower-case, и только два значения enum'а
-// (SPEC 089 ядра, sing-box-lx ≥ 1.14.1-lx.4, option/tls.go
-// OutboundRealityOptions.KeyShare `enum:"hybrid,classical"`).
-//
-// Возвращает ("", false) на пустом значении — «как несёт отпечаток», ключа в
-// конфиге просто нет, и это НЕ деградация. Возвращает ("", true) на мусоре:
-// enum ядра закрытый, и чужое значение — ошибка загрузки ВСЕГО конфига (не
-// узла), проверено `sing-box check` бинарём lx.4. Поэтому деградирует ПОЛЕ:
-// ключ снимается, узел живёт с REALITY и поведением по умолчанию отпечатка
-// (мягче гейта pbk, где невалидный ключ роняет весь REALITY-блок).
-//
-// Второе значение — «значение было испорчено», по образцу
-// realityShortIDWouldDegrade: нормализатор зовут и с узлом под рукой
-// (URI-парсеры), и без него (санитайзер импорта), поэтому код вешает
-// вызывающий.
-func NormalizeRealityKeyShare(s string) (value string, degraded bool) {
-	switch v := strings.ToLower(strings.TrimSpace(s)); v {
-	case "hybrid", "classical":
-		return v, false
-	case "":
-		return "", false
-	default:
-		return "", true
-	}
-}
 
 // EnforceRealityFingerprint дописывает uTLS-блок у tls, где РЕАЛЬНО эмитится
 // reality, и ставит отпечаток там, где его не выбирал никто (D-119, заменяет

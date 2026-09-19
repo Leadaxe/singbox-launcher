@@ -450,6 +450,17 @@ type Param struct {
 	RoundTrip    *bool  `json:"round_trip"`
 	RoundTripWhy string `json:"round_trip_why"`
 
+	// RoundTripOnly — запись действует ТОЛЬКО в одну сторону: "emit" —
+	// пишется в ссылку, но из неё не читается; "parse" — наоборот.
+	//
+	// Отличается от `round_trip: false` тем, что там направление ЕСТЬ одно
+	// (чтение) и объявлен отказ от второго; здесь объявляется, какое именно
+	// единственное. Живой случай — `detour`: поле `managed`, его пишет сборка
+	// конфига, санитайзер снимает его из тела узла, но ссылка на узел внутри
+	// цепочки обязана нести имя следующего хопа. Читать его обратно нельзя:
+	// тег чужого конфига у нас не существует.
+	RoundTripOnly string `json:"round_trip_only"`
+
 	Since  string `json:"since"`
 	DescEN string `json:"desc_en"`
 	DescRU string `json:"desc_ru"`
@@ -745,7 +756,21 @@ type EmitSpec struct {
 	// панелей, а не экономит байты.
 	JSONAlways map[string]interface{} `json:"json_always"`
 
+	// RefuseWhen — условия, при которых узел ссылкой НЕ выражается: движок
+	// отказывает, а не отдаёт половину. «Сколько сущностей влезает в ссылку»
+	// есть свойство ФОРМАТА схемы, и проверке в коде там не место.
+	RefuseWhen []EmitRefuse `json:"refuse_when"`
+
 	Impl string `json:"impl"`
+}
+
+// EmitRefuse — одно условие отказа.
+type EmitRefuse struct {
+	Path  string `json:"path"`
+	LenGt int    `json:"len_gt"`
+	// Why — причина прозой: она едет ЧЕЛОВЕКУ, и «не поддержано» не
+	// отвечает на его вопрос.
+	Why string `json:"why"`
 }
 
 // EmitUserInfo — выходная форма userinfo.

@@ -128,7 +128,9 @@ func TestShareURIRoundtrip_Tuic(t *testing.T) {
 	assertEq(t, q.Get("congestion_control"), "bbr")
 	assertEq(t, q.Get("udp_relay_mode"), "native")
 	assertEq(t, q.Get("alpn"), "h3")
-	assertEq(t, q.Get("insecure"), "1")
+	// Имя флага на выходе — написание tuic-клиентов (emit.names реестра):
+	// единое `insecure` читают не все (DELTAS D133-E2).
+	assertEq(t, q.Get("allow_insecure"), "1")
 	frag, _ := url.PathUnescape(u.Fragment)
 	assertEq(t, frag, "My TUIC")
 }

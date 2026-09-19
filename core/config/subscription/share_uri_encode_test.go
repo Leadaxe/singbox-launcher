@@ -37,7 +37,11 @@ func TestShareURIFromOutbound_RoundTripXHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ShareURIFromOutbound: %v", err)
 	}
-	for _, want := range []string{"type=xhttp", "mode=stream-one", "x_padding_bytes=100-1000"} {
+	// Имя xhttp-поля на выходе — написание Xray (camelCase), объявленное
+	// первым источником записи реестра: клиенты Xray ждут именно его
+	// (DELTAS D133-E5). Прежде эмиттер писал snake_case — наш парсер читает
+	// оба, чужой только своё.
+	for _, want := range []string{"type=xhttp", "mode=stream-one", "xPaddingBytes=100-1000"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected %q in share URI: %s", want, got)
 		}
