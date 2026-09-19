@@ -1,0 +1,28 @@
+# wg-quick INI с полным набором AmneziaWG 2.0 (Jc/Jmin/Jmax, S1-S4, H1-H4, I1-I5).
+# Проверяет, что секция mappers.conf везёт весь AWG-набор, а не только базу WG.
+[Interface]
+PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=
+Address = 10.0.0.2/32
+MTU = 1280
+Jc = 4
+Jmin = 40
+Jmax = 70
+S1 = 15
+S2 = 33
+S3 = 21
+S4 = 9
+H1 = 1234567
+H2 = 2345678
+H3 = 3456789
+H4 = 4567890
+I1 = <b 0xf1f2f3f4>
+I2 = <r 16>
+I3 = <c>
+I4 = <t>
+I5 = <b 0xaabb>
+
+[Peer]
+PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=
+Endpoint = awg.example.com:51820
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25

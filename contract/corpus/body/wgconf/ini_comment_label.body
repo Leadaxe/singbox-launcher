@@ -1,0 +1,10 @@
+# Имя узла голым комментарием сразу под [Peer] — единственное
+# человекочитаемое имя в .conf (звено метки ini.$comment.Peer).
+[Interface]
+PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=
+Address = 10.0.0.2/32
+
+[Peer]
+# US-FREE#137
+PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=
+Endpoint = 194.180.34.8:51820

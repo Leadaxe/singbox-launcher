@@ -179,7 +179,21 @@ func unwrapBody(form registry.Form, text string) (string, error) {
 		}
 		body = next
 	}
-	if form.Space != "" && form.Space != "url" {
+	// Снимать оболочку `схема://…#метка` нужно лишь тому, у кого она ЕСТЬ.
+	//
+	// Признак — само наличие "://" в тексте, и различает он не формы, а
+	// ВХОДЫ. Декодер со `scope` собирает результат обратно как
+	// `head + dec + tail` (см. decodeScoped), то есть возвращает пейлоад
+	// СНОВА в обёртке вместе с меткой: и у vmess (`vmess://<base64>#Имя`),
+	// и у wireguard (`awg://<base64>#Имя`) её после декодирования надо
+	// снять. Голый же документ — `.conf` файлом — обёртки не имеет вовсе.
+	//
+	// Резать голый ini по '#' было разрушительно: там это законный
+	// синтаксис тела (комментарий, и им же провайдеры пишут имя узла сразу
+	// под `[Peer]`). Файл с «# US-FREE#137» терял всё, что стояло ниже
+	// первого комментария, и отвергался как «обязательное поле
+	// peers[].public_key пусто» (Q133-60).
+	if form.Space != "" && form.Space != "url" && strings.Contains(body, "://") {
 		body = stripURIWrapper(body)
 	}
 	return body, nil
@@ -301,15 +315,21 @@ func lexSpace(form registry.Form, body, original string) (*Space, error) {
 		// У формы `.conf` (голый файл, без "://") оболочки нет вовсе, и оба
 		// имени остаются пустыми — метку тогда даёт цепочка `ini.$comment`
 		// и `hint`.
+		// Оболочка есть только у формы СО ссылкой (`awg://<base64>#Имя`).
+		// У голого файла её нет, и там первый '#' — комментарий тела, а не
+		// метка: взять его хвост фрагментом значило бы объявить меткой узла
+		// весь остаток файла. Признак тот же, что и у снятия обёртки выше, —
+		// наличие "://"; имя узла у голого `.conf` даёт цепочка
+		// `ini.$comment.<Секция>`.
 		if idx := strings.Index(original, "://"); idx > 0 {
 			s.Scheme = strings.ToLower(original[:idx])
-		}
-		if i := strings.Index(original, "#"); i >= 0 {
-			frag := original[i+1:]
-			if dec, err := percentUnescape(frag); err == nil {
-				frag = dec
+			if i := strings.Index(original, "#"); i >= 0 {
+				frag := original[i+1:]
+				if dec, err := percentUnescape(frag); err == nil {
+					frag = dec
+				}
+				s.Fragment = frag
 			}
-			s.Fragment = frag
 		}
 		return s, nil
 	}

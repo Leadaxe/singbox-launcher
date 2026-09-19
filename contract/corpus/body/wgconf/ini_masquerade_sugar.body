@@ -1,0 +1,14 @@
+# Сахар маскировки ip/id/ib (без явного I1). Старый конвертер везёт их
+# отдельной веткой; регистр значения id сохраняется — это домен.
+# ip — ПРОТОКОЛ маскировки (enum quic/dns/stun/sip), ib — профиль клиента.
+[Interface]
+PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=
+Address = 10.0.0.2/32
+Jc = 3
+Ip = quic
+Id = Example.COM
+Ib = chrome
+
+[Peer]
+PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=
+Endpoint = masq.example.com:51820

@@ -1,0 +1,11 @@
+# AllowedIPs отсутствует: «маршрутизировать всё» подставляет РЕЕСТР
+# (peers[].allowed_ips.default_when, D-022), а не конвертер.
+[Interface]
+PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=
+Address = 10.0.0.2/32
+ListenPort = 51821
+
+[Peer]
+PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=
+Endpoint = noallowed.example.com:51820
+PresharedKey = eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeE=

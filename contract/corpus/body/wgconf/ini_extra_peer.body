@@ -1,0 +1,13 @@
+# Две секции [Peer]. Норма: берётся ПЕРВАЯ, вторая отбрасывается.
+# Старый путь берёт первую молча; движковый parseINI сливал их.
+[Interface]
+PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=
+Address = 10.0.0.2/32
+
+[Peer]
+PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=
+Endpoint = first.example.com:51820
+
+[Peer]
+PublicKey = ccccccccccccccccccccccccccccccccccccccccccA=
+Endpoint = second.example.com:51821

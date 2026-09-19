@@ -1,0 +1,13 @@
+# Незнакомый ключ (BogusKey) и не-узловые ключи wg-quick (PostUp/Table).
+# Сегодня всё это отбрасывается МОЛЧА.
+[Interface]
+PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=
+Address = 10.0.0.2/32
+Table = off
+PostUp = iptables -A FORWARD -i %i -j ACCEPT
+SaveConfig = true
+BogusKey = whatever
+
+[Peer]
+PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=
+Endpoint = unknown.example.com:51820

@@ -1,0 +1,48 @@
+{
+  "meta": {
+    "body_kind": "wgconf"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.0.0.2/32"
+        ],
+        "h1": 1234567,
+        "h2": 2345678,
+        "h3": 3456789,
+        "h4": 4567890,
+        "i1": "<b 0xf1f2f3f4>",
+        "i2": "<r 16>",
+        "i3": "<c>",
+        "i4": "<t>",
+        "i5": "<b 0xaabb>",
+        "jc": 4,
+        "jmax": 70,
+        "jmin": 40,
+        "mtu": 1280,
+        "peers": [
+          {
+            "address": "awg.example.com",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "persistent_keepalive_interval": 25,
+            "port": 51820,
+            "public_key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA="
+          }
+        ],
+        "private_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=",
+        "s1": 15,
+        "s2": 33,
+        "s3": 21,
+        "s4": 9,
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "awg.example.com",
+      "scheme": "wireguard"
+    }
+  ],
+  "v": 1
+}

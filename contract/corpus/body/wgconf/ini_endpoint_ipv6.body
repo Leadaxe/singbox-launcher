@@ -1,0 +1,10 @@
+# Endpoint IPv6 в скобках: двоеточий много, «последнее» портом не является.
+# Ветка h6/p6 регулярки записи endpoint.
+[Interface]
+PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=
+Address = 10.0.0.2/32
+
+[Peer]
+PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=
+Endpoint = [2001:db8::1]:51820
+AllowedIPs = 0.0.0.0/0, ::/0
