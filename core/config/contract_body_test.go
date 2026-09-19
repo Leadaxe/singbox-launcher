@@ -192,7 +192,7 @@ func corpusExtensionMark(expPath string) string {
 func TestContractCorpusBody(t *testing.T) {
 	root := filepath.Join(contractCorpusRelPath, "body")
 	if _, err := os.Stat(root); os.IsNotExist(err) {
-		t.Skipf("корпус контракта не найден: %s", root)
+		t.Fatalf("корпус контракта не найден: %s", root)
 	}
 
 	var cases []string
@@ -209,8 +209,9 @@ func TestContractCorpusBody(t *testing.T) {
 		t.Fatalf("обход корпуса тел: %v", err)
 	}
 	sort.Strings(cases)
+	// Ноль кейсов — ОТКАЗ, а не пропуск (см. TestContractCorpusURI).
 	if len(cases) == 0 {
-		t.Skip("корпус тел пуст")
+		t.Fatalf("корпус тел пуст: %s не дал ни одного .body", root)
 	}
 
 	for _, casePath := range cases {

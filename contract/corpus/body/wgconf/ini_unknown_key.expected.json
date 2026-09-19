@@ -27,7 +27,8 @@
       "scheme": "wireguard",
       "warnings": [
         {
-          "code": "wgconf_param_unknown"
+          "code": "wgconf_param_unknown",
+          "path": "interface.boguskey"
         }
       ]
     }

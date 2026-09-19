@@ -1135,6 +1135,89 @@ func TestRegistryMapperSection(t *testing.T) {
 	}
 }
 
+// TestRegistryMapperCodesDeclared — каждый код СЕКЦИЙ-МАППЕРОВ объявлен
+// в warnings.json.
+//
+// Почему отдельным проходом, а не внутри линтера тела: предмет другой.
+// Линтер тела судит схему ТЕЛА узла и ходит по типизированным структурам
+// (`body.fields.*.on_invalid.code` и родня). Коды мапперов живут в секции
+// `mappers.*` — `unknown_key.code`, `params.*.on_present|on_invalid|
+// on_no_match.code`, `ini_dialect.*.on_extra.code` — и до этого прохода их
+// не собирал никто (Q133-65). Два живых кода доехали до узла, не имея в
+// warnings.json ни заголовка, ни текста, ни подсказки «что делать»: UI
+// такую деградацию нарисовать не может, то есть человек получал потерю
+// без слов — ровно то, против чего заведён сам линтер.
+//
+// Обход рекурсивный и по СЫРОМУ JSON намеренно. Типизировать секцию
+// мапперов значило бы завести второй её читатель рядом с движком и
+// разойтись с ним на первой же новой записи; страж же обязан ловить код
+// В ЛЮБОМ месте секции, включая те, которых сегодня ещё нет. Ключом
+// считается любое поле с именем `code` и строковым значением — ровно так
+// код и объявляется везде в реестре.
+func TestRegistryMapperCodesDeclared(t *testing.T) {
+	codes := loadWarningCodes(t)
+
+	names := []string{"tls.json", "transports.json", "multiplex.json", "dialer.json"}
+	for _, scheme := range registryProtocolSchemes {
+		names = append(names, "protocols/"+scheme+".json")
+	}
+
+	seen := 0
+	for _, name := range names {
+		var f struct {
+			Mappers json.RawMessage `json:"mappers"`
+		}
+		if !readRegistryJSON(t, name, &f) {
+			return
+		}
+		if len(f.Mappers) == 0 {
+			continue
+		}
+		var tree interface{}
+		if err := json.Unmarshal(f.Mappers, &tree); err != nil {
+			t.Fatalf("%s: разбор mappers: %v", name, err)
+		}
+		walkRegistryCodes(tree, "mappers", func(where, code string) {
+			seen++
+			if !codes[code] && !registryPendingCodes[code] {
+				t.Errorf("%s %s: код %q не объявлен в warnings.json", name, where, code)
+			}
+		})
+	}
+	if seen == 0 {
+		t.Error("в секциях mappers не найдено ни одного кода — страж смотрит не туда")
+	}
+}
+
+// walkRegistryCodes зовёт fn на каждом поле `code` со строковым значением.
+//
+// Go 1.20-совместимо: ни generics поверх карт, ни maps/slices (win7-джоба
+// собирает модуль тулчейном go1.20).
+func walkRegistryCodes(v interface{}, path string, fn func(where, code string)) {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		keys := make([]string, 0, len(t))
+		for k := range t {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			child := path + "." + k
+			if k == "code" {
+				if s, ok := t[k].(string); ok && strings.TrimSpace(s) != "" {
+					fn(child, s)
+					continue
+				}
+			}
+			walkRegistryCodes(t[k], child, fn)
+		}
+	case []interface{}:
+		for i := range t {
+			walkRegistryCodes(t[i], fmt.Sprintf("%s[%d]", path, i), fn)
+		}
+	}
+}
+
 // TestRegistryWarningsHaveCauseAndFix — у каждого кода есть причина и хотя бы
 // одно действие.
 //

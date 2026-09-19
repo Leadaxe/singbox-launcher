@@ -109,6 +109,10 @@ func TestEngineVsConfCorpus(t *testing.T) {
 			t.Errorf("тело движка расходится с ожиданием\n got: %s\nwant: %s", got, wantStr)
 		})
 	}
+	// Ноль СВЕРЕННЫХ кейсов — отказ (см. TestEngineVsXrayCorpus).
+	if checked == 0 {
+		t.Fatal("ни один кейс wgconf не сверен — все пропущены")
+	}
 	t.Logf("сверено кейсов: %d", checked)
 }
 

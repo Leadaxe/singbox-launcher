@@ -62,7 +62,7 @@ func expectedPathFor(base string) string {
 func TestContractCorpusURI(t *testing.T) {
 	root := filepath.Join(contractCorpusRelPath, "uri")
 	if _, err := os.Stat(root); os.IsNotExist(err) {
-		t.Skipf("корпус контракта не найден: %s", root)
+		t.Fatalf("корпус контракта не найден: %s", root)
 	}
 
 	var cases []string
@@ -78,8 +78,11 @@ func TestContractCorpusURI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("обход корпуса: %v", err)
 	}
+	// Ноль кейсов — ОТКАЗ, а не пропуск. Зелёный прогон при пустом обходе
+	// читается как «контракт сверен», хотя не сверено ничего: так молча
+	// зеленеет переезд каталога, опечатка в суффиксе и обрезанный vendor.
 	if len(cases) == 0 {
-		t.Skip("корпус пуст")
+		t.Fatalf("корпус пуст: %s не дал ни одного .uri", root)
 	}
 
 	for _, casePath := range cases {

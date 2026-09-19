@@ -27,7 +27,8 @@
       "scheme": "wireguard",
       "warnings": [
         {
-          "code": "wgconf_dns_ignored"
+          "code": "wgconf_dns_ignored",
+          "path": "dns"
         }
       ]
     },
@@ -55,7 +56,8 @@
       "scheme": "wireguard",
       "warnings": [
         {
-          "code": "wgconf_dns_ignored"
+          "code": "wgconf_dns_ignored",
+          "path": "dns"
         }
       ]
     }

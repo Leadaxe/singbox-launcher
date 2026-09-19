@@ -1147,6 +1147,80 @@
       "dart": null,
       "go": "contract/registry/protocols/wireguard.json mappers.conf.unknown_key"
     },
+    "uri_param_unknown": {
+      "severity": "info",
+      "params": [
+        "query_name"
+      ],
+      "title_en": "Link: parameter not read",
+      "title_ru": "Ссылка: параметр не прочитан",
+      "text_en": "The link carries the parameter {query_name}, which is not described for this protocol. The node works and the parameter changed nothing: it was not read at all. One code is raised per unread parameter.",
+      "text_ru": "В ссылке есть параметр {query_name}, который для этого протокола не описан. Узел работает, и на него этот параметр никак не повлиял: он просто не был прочитан. На каждый непрочитанный параметр приходится свой код.",
+      "cause_en": "The parameter belongs to another client's dialect, to a newer version of the protocol, or it is a typo in a hand-edited link. Sharing links have no common registry of parameters, so every client writes what it knows; a parameter this protocol does not describe has nowhere to go in the node body.",
+      "cause_ru": "Параметр относится к диалекту другого клиента, к более новой версии протокола либо это опечатка в ссылке, которую правили руками. Общего реестра параметров у share-ссылок нет, и каждый клиент пишет своё; параметру, которого у этого протокола нет, в теле узла просто некуда встать.",
+      "fix_en": [
+        "Nothing to do if the node works: the parameter had no effect here anyway.",
+        "If you edited the link yourself, check the spelling of the parameter.",
+        "If the parameter belongs to a newer core, update the core."
+      ],
+      "fix_ru": [
+        "Если узел работает, делать ничего не нужно: параметр здесь всё равно ни на что не влиял.",
+        "Если ссылку правили вы сами, проверьте написание параметра.",
+        "Если параметр относится к более новому ядру, обновите ядро."
+      ],
+      "desc": "Параметр ссылки не объявлен ни одной записью секции uri (ни params, ни include-блоками, ни aliases — MAPPER_ENGINE.md §8). До тела он не доходит по построению, поэтому severity=info: узел исправен. Код ставится ПО ОДНОМУ на каждое необъявленное имя, имя уезжает в path: дедуп деградаций идёт по паре (код, path), и с пустым путём второй параметр терялся бы молча. Запись со значением null («знаем, читать нечего») кода не даёт — это объявленное молчание, а не потеря.",
+      "dart": null,
+      "go": "contract/registry/protocols/*.json mappers.uri.unknown_key"
+    },
+    "json_field_unknown": {
+      "severity": "info",
+      "params": [
+        "query_name"
+      ],
+      "title_en": "Configuration: field not read",
+      "title_ru": "Конфигурация: поле не прочитано",
+      "text_en": "The element carries the field {query_name}, which is not described for this protocol. The node works and the field changed nothing: it was not read at all. One code is raised per unread field.",
+      "text_ru": "В элементе есть поле {query_name}, которое для этого протокола не описано. Узел работает, и на него это поле никак не повлияло: оно просто не было прочитано. На каждое непрочитанное поле приходится свой код.",
+      "cause_en": "The field belongs to another client's dialect, to a newer version of the core, or it is a typo in a hand-written body. Service keys of the element itself (protocol, tag, remarks) and containers whose leaves the table reads (settings, streamSettings) are expected there and are not reported.",
+      "cause_ru": "Поле относится к диалекту другого клиента, к более новой версии ядра либо это опечатка в теле, которое писали руками. Служебные ключи самого элемента (protocol, tag, remarks) и контейнеры, чьи листья читает таблица (settings, streamSettings), там ожидаемы и не сообщаются.",
+      "fix_en": [
+        "Nothing to do if the node works: the field had no effect here anyway.",
+        "If you wrote the body yourself, check the spelling of the field.",
+        "If the field belongs to a newer core, update the core."
+      ],
+      "fix_ru": [
+        "Если узел работает, делать ничего не нужно: поле здесь всё равно ни на что не влияло.",
+        "Если тело писали вы сами, проверьте написание поля.",
+        "Если поле относится к более новому ядру, обновите ядро."
+      ],
+      "desc": "Парный к uri_param_unknown код для JSON-входов (MAPPER_ENGINE.md §8): ключ ВЕРХНЕГО уровня элемента не объявлен записями секции. Вложенный путь параметром не является и сюда не попадает. Действие объявляет секция: drop у xray (чужой ключ уронил бы конфиг ядра), keep у singbox (тело уже в каноне, и ключ может быть расширением форка) — но молчать нельзя ни там, ни там. Отличие от unknown_key: тот судит ТЕЛО и снимает поле (severity warning), этот — ВХОД, до тела не дошедший.",
+      "dart": null,
+      "go": "contract/registry/protocols/*.json mappers.xray.unknown_key / mappers.singbox.unknown_key"
+    },
+    "xray_extra_entries_dropped": {
+      "severity": "warning",
+      "params": [
+        "query_name",
+        "count"
+      ],
+      "title_en": "Configuration: extra entries dropped",
+      "title_ru": "Конфигурация: лишние записи отброшены",
+      "text_en": "The element holds {count} entries in {query_name}. Only the first one became a node: one node here is one server with one set of credentials. The rest were dropped, and the servers they described are not reachable through this node.",
+      "text_ru": "В элементе {count} записей в {query_name}. Узлом стала только первая: один узел здесь — это один сервер с одним набором учётных данных. Остальные отброшены, и описанные ими серверы через этот узел недоступны.",
+      "cause_en": "Xray lets one outbound hold a list of servers (vnext, servers) or of users, and balances between them itself. A node in the launcher is a single server, so there is no place to put the second entry. Such an element usually comes from a provider that packed several locations, or several accounts, into one outbound.",
+      "cause_ru": "Xray разрешает одному outbound'у держать список серверов (vnext, servers) или пользователей и сам распределяет между ними нагрузку. Узел в лаунчере — это один сервер, и второй записи просто некуда встать. Такой элемент обычно приходит от провайдера, упаковавшего несколько локаций или несколько учёток в один outbound.",
+      "fix_en": [
+        "Check that the first entry is the one you need: it is the one that became the node.",
+        "If you need the other servers too, split them into separate elements — one server per outbound."
+      ],
+      "fix_ru": [
+        "Проверьте, что нужна именно первая запись: узлом стала она.",
+        "Если нужны и остальные серверы, разнесите их по отдельным элементам — один сервер на outbound."
+      ],
+      "desc": "Примитив on_len_gt{n:1} у записей $extra_vnext / $extra_servers / $extra_users (Q133-18: прежде срез брался нулевым элементом вообще без слов). ОБЪЯВЛЕН, НО ПОКА НЕ ИСПОЛНЯЕТСЯ: on_len_gt разбирается в структуру реестра (registry/mapper.go), а ветки исполнения у движка ещё нет — код заведён здесь, чтобы текст существовал к моменту включения, а не после него (Q133-65).",
+      "dart": null,
+      "go": "contract/registry/protocols/{vless,vmess,trojan,shadowsocks,hysteria2}.json mappers.xray.params.$extra_*.on_len_gt"
+    },
     "wgconf_extra_peer_dropped": {
       "severity": "warning",
       "params": [
