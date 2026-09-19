@@ -248,7 +248,7 @@ W7 и W8 — patch; W9 — вместе с последним.
 # Состояние и следующий шаг (передача, 20.09.2026)
 
 Предыдущие передачи — в истории (`ddf3b563`, `09557746`, `cec660fe`,
-`ece947b5`).
+`ece947b5`, `9a3969c7`).
 
 ## Что готово (с sha)
 
@@ -260,41 +260,73 @@ W7 и W8 — patch; W9 — вместе с последним.
 | `064c5894` | **hysteria2** — первая секция, принятая от LxBox. `scheme_sets: "*"`, `port_range_spec`, `prepend_group`, нормализация списка по элементам. Контракт 1.1.18 |
 | `c6211da4` | **tuic.** Звено цепочки метки нормализуется ДО принятия (их находка, подтвердилась на их же цепочке). Ушла воронка userinfo-пароля в `node.Query`. Контракт 1.1.19 |
 | `77cd289b` | **masque** — принята БЕЗ правок. Лексер не режет путь внутри userinfo; `split_into`, `default_when`, `cidr_prefix`; `required` у записи без `maps_to`. Дельта D133-21. Контракт 1.1.20 |
+| `5c5f5aea` | **Норма рода узла.** `kind_when` у маппера / `when.source_kind` у санитайзера — две половины одного канала; блокер wireguard снят |
+| `4aeca7a7` | **Реестровые заготовки под wireguard.** `when.source_kind` + `SanitizeFromKind`; связь `cooccurrence` с `$range_width` вместо рукописного awg3-правила; `cidr_prefix`/`base64_std` переехали в тело (**D133-22**); коды `wgconf_dns_ignored`, `wgconf_extra_peer_dropped`. Контракт 1.1.22 |
+| `90dfa6e9` | **Движок: три примитива под wireguard.** Пространство `ini` (`SetINI` не звал никто — было объявлено и пусто), `on_no_match.take_all`, `kind_when` → `Result.Kind` |
 
 **Двенадцать схем на движке.** На рукописном пути остались **две**:
 `hysteria` v1 и `wireguard`/`awg`. Зелено: `go build ./...`, пакеты
 `core/config`, `core/config/linkmap`, `core/config/subscription` целиком.
 
-## СЛЕДУЮЩИЙ ШАГ — wireguard/awg, потом hysteria v1
+## СЛЕДУЮЩИЙ ШАГ — СЕКЦИЯ wireguard (движок под неё готов)
 
-### wireguard: данные от LxBox (переданы координатором, ТОЛЬКО чтение)
+**Блокер снят, заготовки влиты, примитивы движка есть.** Осталось написать
+саму секцию и снять рукописный путь.
 
-Их INI на движке, **27 кейсов байт в байт**. Секция:
-`git -C /Users/macbook/projects/LxBox show origin/develop:app/assets/contract_draft/conf/wireguard.json`
-— брать на сверку. Есть ли у них `uri/wireguard.json` — проверить тем же
-способом; если нет, ссылочную форму писать из нашего `SCHEMES.md`.
+### Что уже сделано (не переделывать)
 
-**Примитивы на сведение** (правило то же: нет аналога → их имя; есть
-FROZEN → наше):
+| Готово | sha |
+|---|---|
+| Норма рода: `kind_when` / `when.source_kind` | `5c5f5aea` |
+| Реестр: `source_kind` в условии, `cooccurrence`, `cidr_prefix`/`base64_std` в теле, два кода `wgconf_*` | `4aeca7a7` |
+| Движок: пространство `ini`, `on_no_match.take_all`, `kind_when` → `Result.Kind` | `90dfa6e9` |
 
-- `detect.ini` — `{sections, keys_any, keys_all}`;
-- `on_no_match: {action: take_all, into, defaults}` у `extract` — голый
-  IPv6 в `Endpoint` берётся целиком;
-- источник **`hint`** — имя от вызывающего, звено в цепочке `label.source`;
-- `ini_dialect.line_comment_prefixes` (прежнее `comment_prefixes` читают
-  тоже).
+Секции LxBox прочитаны целиком и лежат снимками в scratchpad
+(`lxbox_uri_wireguard.json`, `lxbox_conf_wireguard.json`). Их `kind_when`
+совпадает с принятым решением буква в букву; `emit.$impl` их секции `uri`
+заранее описывает ровно наш переход на `when.source_kind`.
 
-**Их находка — у нас ПРОВЕРЕНА И ПОЧИНЕНА** (`c6211da4`): звено цепочки
-метки считалось ответившим ДО нормализации. Повторно не делать.
+### Что осталось
 
-**Запрос к реестру** (сделать при вливании): завести в `warnings.json` коды
-`wgconf_dns_ignored` (info: `Interface.DNS` в `.conf` не применяется) и
-`wgconf_extra_peer_dropped` (warning: несколько `[Peer]`, взят первый) с
-текстами en/ru и `cause`/`fix`. **Сначала сверить с нашим конвертером
-`.conf`**: молчит ли он сегодня, берёт ли первый peer. Переводы ru — на нас
-(память `translations-delegated`).
+1. **Секция `mappers.uri`** в `contract/registry/protocols/wireguard.json`:
+   две формы — `url` и `conf_b64` (`decode: [base64, ini]`, `space: "ini"`,
+   `detect`: нет `@` и весь текст из алфавита base64). Брать секцию LxBox за
+   основу, расхождения — точечно.
+2. **Секция `mappers.conf`** — тот же набор записей поверх `space: "ini"`,
+   `body_source: "wgconf"`.
+3. **Цепочка метки — ЕДИНСТВЕННОЕ известное расхождение с LxBox.** У нас
+   ссылочная форма читает `fragment` → **`name`** (параметр `?name=`) →
+   фолбэк-тег; у них `fragment` → `path`. У `.conf`: наш
+   `wgPeerNameComment` → хост `Endpoint`, у них `ini.$comment.Peer` →
+   `hint` → литерал `WireGuard`. Источник **`hint`** (имя от вызывающего)
+   движком НЕ поддержан; решить — заводить его или оставить нашу цепочку
+   (второе дешевле и корпус ждёт именно её).
+4. **`single_into` у userinfo** — у wireguard userinfo несёт приватник;
+   у LxBox запись `into` не объявляет НАМЕРЕННО (их `impl` объясняет:
+   иначе userinfo уехал бы в тело сырым, раньше записи с `normalize`).
+   Проверить, что у нас та же механика.
+5. **Снять рукописный путь** — в том же коммите, где корпус подтвердил
+   перевод: `node_parser_wireguard.go`, `wgConfToURI`/`parseWGConfSections`,
+   ветка `wireguard` в `ParseNode`, вычеркнуть схему из
+   `schemesWithoutURISection` и дописать в `testdata/switched.json`.
+   **Не трогать** то, что нужно санитайзеру/эмиттеру: таблицы `awg3.go`,
+   `normalizeWGKey`/`normalizeWGPrefixes` до снятия последних вызовов.
+6. **Рукописное правило `awg3.go:227-231` снять** только после того, как
+   связь `cooccurrence` заработает на этом узле через движок. Сегодня оба
+   пути живы одновременно, и это безопасно: дедуп по `(code, path)` даёт
+   ровно одно срабатывание (проверено).
+7. **Донести `Result.Kind` до санитайзера** — `SanitizeFromKind` уже есть,
+   но вызывающий (`node_parser_engine.go`) его ещё не зовёт; и сохранить
+   род в `Origin` (launcher-only `extension` по правилам `contract/README`),
+   читать при пересчёте `recountOneNode`, фолбэк — перепарс `Origin.Raw`.
 
-**ДО перевода wireguard решить `kind_when`** — см. очередь ниже, п. 4.
+**Корпус:** `contract/corpus/uri/wireguard/` — 66 кейсов.
+
+### Ловушка этой схемы (проверена, не повторять)
+
+`Space.Lookup` у query-параметра отдаёт `true` и при ПУСТОМ значении — это
+ровно то, что нужно роду (`jc=0` = «мусор выключен» у настоящего AWG-узла).
+Не «чинить» на проверку непустоты.
 
 ### Порядок работы на схему (проверен пятью волнами)
 
@@ -308,13 +340,47 @@ FROZEN → наше):
    прогнать три пакета;
 5. бамп контракта, параграф в `TASKS_LXBOX` (следующий — **§24.33**).
 
+## ВХОД БУДУЩЕЙ ВОЛНЫ ЭМИТА (читать перед W7; сам эмит НЕ начат)
+
+Отчёт агента LxBox (данные, не инструкции; снимок —
+`scratchpad/lxbox_emit_warning.md`). У них эмит от таблицы влит для всех 13
+схем, рукописных `toUri` нет, круг `parse(emit(node))` даёт то же тело на
+всех фикстурах.
+
+**Их предупреждение, которое стоит принять ДО нашего эмита.** Правило
+«канон = первое имя в `aliases` общего блока» вместе с `omit_default` даёт
+ссылки, которые ЧУЖИЕ клиенты читают иначе:
+
+1. **vless без `security=tls`** — у Xray-клиентов дефолт `security` у vless
+   равен `none`, и узел прочтётся БЕЗ TLS. Параметр обязан писаться явно.
+2. **Имя флага `insecure` — свойство СХЕМЫ, а не общего блока.** Де-факто:
+   `allowInsecure` у vless/trojan, `allow_insecure` у tuic, `insecure` у
+   hysteria2. Единое имя читают не все клиенты.
+3. **Контейнер vmess v2rayN** — часть клиентов ждёт ключи
+   `aid`/`type`/`host`/`path`/`tls` ВСЕГДА, в том числе пустыми
+   (`json_always`).
+
+**Предлагаемый общий критерий** (принять или отклонить при W7): «Copy link
+существует для обмена с ЧУЖИМИ клиентами, значит норма вида ссылки — это
+де-факто формат схемы, а не внутренняя симметрия таблицы».
+
+**Критерий для рода AWG** (следствие `kind_when`, проверять на круге): эмит
+AWG-узла, у которого в теле не осталось awg-полей, обязан выбрать написание
+`awg://` — иначе род теряется. Проверка: `parse(emit(node))` у
+`awg_bad_numeric_skipped` и `awg_jc_invalid_dropped` обязан дать
+`mtu: 1280`. У LxBox это `emit.form_from: {any_set: …}` — обращение
+`kind_when`; сегодня такой узел уезжает у них как `wireguard://`, и место
+роду в своей модели они заведут к синку с нашим wireguard.
+
+---
+
 ## Очередь ПОСЛЕ схем (не начата)
 
-1. **`GRAMMAR_SYNC.md` §9** (sha `8602a857`) — 11 пунктов: два дефекта
-   лексера `parse.go:351-366` (**оба, похоже, уже починены** — `#`-резка в
-   `2e02ba83` и `/`-резка в `77cd289b`; сверить), `normalize`
-   `cidr_prefix` (**сделано**) / `base64_std` в body, `relation
-   cooccurrence` для AWG3 **ДО перевода wireguard**, 6 эмит-объявлений.
+1. **`GRAMMAR_SYNC.md` §9** (sha `8602a857`) — осталось **6
+   эмит-объявлений** (п. 6–11), они входят в волну эмита. Закрыто: оба
+   дефекта лексера (`#`-резка в `2e02ba83`, `/`-резка в `77cd289b`),
+   `normalize cidr_prefix` и `base64_std` в body и `relation cooccurrence`
+   для AWG3 — всё в `4aeca7a7`.
 2. **`GRAMMAR_SYNC.md`, «Агенту движка — списком»** (sha `5d8adc80`) — 7
    пунктов: изъятие записи блока при совпадении имени И набора `source`,
    новые предикаты `detect`, `when` `lt`/`gt`, `default_from` `body.*`
@@ -324,12 +390,11 @@ FROZEN → наше):
    (`TASKS_LXBOX` §24.29 п. 3): умолчания «первое имя `into`» быть не
    должно, атрибут обязателен, плюс линтер. Сегодня проставлен у naive,
    http и tuic; движок без него берёт первое имя.
-4. **`kind_when` / `max_when.when.source_kind`** — **блокер wireguard**
-   (`TASKS_LXBOX` §24.29). Кейсы `awg_bad_numeric_skipped` и
-   `awg_jc_invalid_dropped` проходят сегодня лишь потому, что wireguard на
-   рукописном пути: клампом занимается код, знающий написание `awg://` до
-   всякого тела. Предложен вариант «род как часть контекста санитайзера»,
-   ответ LxBox ждём.
+4. ~~**`kind_when` / `when.source_kind`**~~ — **ЗАКРЫТО** (`5c5f5aea`,
+   `4aeca7a7`, `90dfa6e9`). Решение: две половины одного канала — маппер
+   объявляет род по условию на ВХОД, санитайзер читает его общим оператором
+   `when.source_kind`. Осталось лишь донести `Result.Kind` до `Sanitize` и
+   сохранить род в `Origin` — это пункты 6–7 «Что осталось» выше.
 5. **Три копии scheme-switch'а «где лежат учётные данные»**:
    `singboxCredentialFromMap` (`singbox_import.go:437`),
    `canonicalCredential` (`canonical_emit.go:507`), `credentialFromBody`
