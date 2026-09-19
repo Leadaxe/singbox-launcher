@@ -9,7 +9,7 @@ import (
 // Candidate — кандидат выбора: что-то, у чего есть `detect` и порядок.
 //
 // Интерфейс, а не конкретный тип, потому что выбирают одинаково на ОБОИХ
-// уровнях: вид источника (sources.json) и форма секции (forms[]). Если бы
+// уровнях: вид источника (source_kinds.json) и форма секции (forms[]). Если бы
 // уровни выбирали по-своему, «порядок значим» пришлось бы чинить дважды.
 type Candidate interface {
 	DetectSpec() *registry.Detect
@@ -22,7 +22,7 @@ type SourceCandidate struct{ Kind registry.SourceKind }
 
 func (c SourceCandidate) DetectSpec() *registry.Detect { return c.Kind.Detect }
 func (c SourceCandidate) OrderKey() int                { return c.Kind.Priority }
-func (c SourceCandidate) Name() string                 { return c.Kind.Kind }
+func (c SourceCandidate) Name() string                 { return c.Kind.SourceKind }
 
 // FormCandidate — форма секции-маппера. Порядок задаёт позиция в массиве:
 // у форм своего priority нет, и вводить его незачем — их немного и они
@@ -94,7 +94,7 @@ func Select(cands []Candidate, c *Content) SelectResult {
 
 // SelectSource выбирает вид источника уровня документа.
 func SelectSource(set *registry.MapperSet, c *Content) (registry.SourceKind, SelectResult) {
-	kinds := set.SourcesByPriority()
+	kinds := set.SourceKindsByPriority()
 	cands := make([]Candidate, 0, len(kinds))
 	for _, k := range kinds {
 		cands = append(cands, SourceCandidate{Kind: k})

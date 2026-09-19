@@ -173,6 +173,10 @@ func UnwrapURI(plan *Plan, text string) (*Space, registry.Form, error) {
 // видят ровно одно и то же тело.
 func unwrapBody(form registry.Form, text string) (string, error) {
 	body := text
+	// scoped — конвейер формы содержал декодер с ОБЛАСТЬЮ (`scope`).
+	// Ровно он и порождает оболочку в результате, и ровно он же её снимает
+	// ниже: признак структурный, из самой формы.
+	scoped := false
 	for i, raw := range form.Decode {
 		if i >= maxDecodeDepth {
 			return "", fmt.Errorf("linkmap: превышена глубина декодирования")
@@ -183,6 +187,9 @@ func unwrapBody(form registry.Form, text string) (string, error) {
 			// декодирование текста.
 			continue
 		}
+		if scope != scopeAll {
+			scoped = true
+		}
 		next, err := decodeScoped(name, scope, body)
 		if err != nil {
 			return "", err
@@ -191,19 +198,24 @@ func unwrapBody(form registry.Form, text string) (string, error) {
 	}
 	// Снимать оболочку `схема://…#метка` нужно лишь тому, у кого она ЕСТЬ.
 	//
-	// Признак — само наличие "://" в тексте, и различает он не формы, а
-	// ВХОДЫ. Декодер со `scope` собирает результат обратно как
-	// `head + dec + tail` (см. decodeScoped), то есть возвращает пейлоад
-	// СНОВА в обёртке вместе с меткой: и у vmess (`vmess://<base64>#Имя`),
-	// и у wireguard (`awg://<base64>#Имя`) её после декодирования надо
-	// снять. Голый же документ — `.conf` файлом — обёртки не имеет вовсе.
+	// Признак СТРУКТУРНЫЙ: оболочку оставляет за собой декодер с областью
+	// (`scope`) — он собирает результат обратно как `head + dec + tail`
+	// (см. decodeScoped), то есть возвращает пейлоад СНОВА в обёртке
+	// вместе с меткой: и у vmess (`vmess://<base64>#Имя`), и у wireguard
+	// (`awg://<base64>#Имя`). Голый документ (`.conf` файлом, элемент
+	// JSON) через такой декодер не проходит и обёртки не имеет вовсе.
+	//
+	// Раньше здесь стояло наличие "://" в ТЕКСТЕ — временный признак,
+	// переживший появление уровня вида источника: он судил вход вместо
+	// формы и потому срабатывал бы на любом теле, где "://" встретилось
+	// случайно (URL в комментарии `.conf`, значение внутри JSON).
 	//
 	// Резать голый ini по '#' было разрушительно: там это законный
 	// синтаксис тела (комментарий, и им же провайдеры пишут имя узла сразу
 	// под `[Peer]`). Файл с «# US-FREE#137» терял всё, что стояло ниже
 	// первого комментария, и отвергался как «обязательное поле
 	// peers[].public_key пусто» (Q133-60).
-	if form.Space != "" && form.Space != "url" && strings.Contains(body, "://") {
+	if form.Space != "" && form.Space != "url" && scoped {
 		body = stripURIWrapper(body)
 	}
 	return body, nil

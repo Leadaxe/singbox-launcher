@@ -44,6 +44,9 @@ type Content struct {
 	asJSON interface{}
 	asINI  map[string]map[string]string
 	iniOK  bool
+	// iniFirst — имя первой не-комментарной секции, в нижнем регистре.
+	// Порядок секций теряется в карте asINI, а предикату он нужен.
+	iniFirst string
 }
 
 // NewContent — контент из сырого текста.
@@ -107,8 +110,30 @@ func (c *Content) parse() {
 				}
 			}
 			c.asINI, c.iniOK = parseINI(trimmed)
+			c.iniFirst = firstINISection(trimmed)
 		}
 	})
+}
+
+// firstINISection — имя первой не-комментарной секции ini, в нижнем регистре.
+//
+// Комментарии над первой секцией законны и несут имя узла, поэтому строки с
+// маркером комментария пропускаются; первая же непустая строка, не являющаяся
+// секцией, означает, что секции впереди нет — текст не ini.
+func firstINISection(text string) string {
+	var d *registry.IniDialect
+	prefixes := d.Prefixes()
+	for _, raw := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || hasAnyPrefix(line, prefixes) {
+			continue
+		}
+		if strings.HasPrefix(line, "[") {
+			return strings.ToLower(strings.Trim(line, "[]"))
+		}
+		return ""
+	}
+	return ""
 }
 
 // JSON — разобранное значение (nil, если текст не JSON).
@@ -166,6 +191,10 @@ func Matches(d *registry.Detect, c *Content) bool {
 		if !ok || !matchINI(d.INI, sections) {
 			return false
 		}
+		if d.INI.FirstSectionFold != "" &&
+			!strings.EqualFold(c.iniFirst, strings.TrimSpace(d.INI.FirstSectionFold)) {
+			return false
+		}
 	}
 	if d.Not != nil && Matches(d.Not, c) {
 		return false
@@ -195,6 +224,15 @@ func matchText(t *registry.DetectText, text string) bool {
 		if len(text) < len(t.PrefixFold) || !strings.EqualFold(text[:len(t.PrefixFold)], t.PrefixFold) {
 			return false
 		}
+	}
+	if t.PrefixTrim != "" {
+		trimmed := strings.TrimSpace(text)
+		if len(trimmed) < len(t.PrefixTrim) || trimmed[:len(t.PrefixTrim)] != t.PrefixTrim {
+			return false
+		}
+	}
+	if t.MinLen > 0 && len(strings.TrimSpace(text)) < t.MinLen {
+		return false
 	}
 	if t.Contains != "" && !strings.Contains(text, t.Contains) {
 		return false
@@ -283,43 +321,65 @@ func matchJSON(j *registry.DetectJSON, v interface{}) bool {
 // Так Xray-конфиг отличается от sing-box: элемент Xray несёт
 // outbounds[].protocol, и без этой проверки он уехал бы в ветку массива
 // конфигов, где разбор не нашёл бы ни одного "type".
+//
+// Сегментов `[]` в пути может быть несколько: "[].outbounds[].protocol"
+// означает «в массиве-документе есть конфиг, у которого в outbounds есть
+// элемент с protocol» — так вид источника «массив Xray-конфигов» отличается
+// от «массив outbound-ов sing-box», не заводя второго примитива.
 func matchArrayElem(v interface{}, paths []string) bool {
 	for _, p := range paths {
-		arrPath, elemPath := splitArrayPath(p)
-		node := v
-		if arrPath != "" {
-			found, ok := lookupPath(v, arrPath)
-			if !ok {
-				continue
-			}
-			node = found
-		}
-		arr, ok := node.([]interface{})
-		if !ok {
-			continue
-		}
-		for _, elem := range arr {
-			if elemPath == "" {
-				return true
-			}
-			if _, ok := lookupPath(elem, elemPath); ok {
-				return true
-			}
+		if pathExistsAny(v, p) {
+			return true
 		}
 	}
 	return false
 }
 
-// splitArrayPath делит "outbounds[].protocol" на ("outbounds", "protocol").
-// Путь без "[]" даёт ("", path): массив — сам документ.
-func splitArrayPath(p string) (string, string) {
+// pathExistsAny — есть ли по пути хотя бы одно значение. Сегмент `[]`
+// означает «любой элемент массива» и разветвляет обход.
+func pathExistsAny(v interface{}, path string) bool {
+	arrPath, elemPath, split := cutArrayPath(path)
+	if !split {
+		if path == "" {
+			return v != nil
+		}
+		_, ok := lookupPath(v, path)
+		return ok
+	}
+	node := v
+	if arrPath != "" {
+		found, ok := lookupPath(v, arrPath)
+		if !ok {
+			return false
+		}
+		node = found
+	}
+	arr, ok := node.([]interface{})
+	if !ok {
+		return false
+	}
+	for _, elem := range arr {
+		if elemPath == "" {
+			return true
+		}
+		if pathExistsAny(elem, elemPath) {
+			return true
+		}
+	}
+	return false
+}
+
+// cutArrayPath делит путь по ПЕРВОМУ "[]": "outbounds[].protocol" даёт
+// ("outbounds", "protocol", true). Пустое имя массива означает сам документ
+// (форма "[].outbounds[]" для тела-массива). Путь без "[]" — ("", "", false).
+func cutArrayPath(p string) (string, string, bool) {
 	idx := strings.Index(p, "[]")
 	if idx < 0 {
-		return "", p
+		return "", "", false
 	}
 	arr := strings.TrimSuffix(p[:idx], ".")
 	elem := strings.TrimPrefix(p[idx+2:], ".")
-	return arr, elem
+	return arr, elem, true
 }
 
 func matchINI(spec *registry.DetectINI, sections map[string]map[string]string) bool {

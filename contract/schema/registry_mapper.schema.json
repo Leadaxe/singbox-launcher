@@ -6,7 +6,7 @@
   "type": "object",
   "definitions": {
     "detect": {
-      "description": "Декларативный признак «этот контент — мой». Один и тот же словарь на обоих уровнях: вид источника (sources.json) и секция/форма протокола. Предикаты внутри объекта — конъюнкция.",
+      "description": "Декларативный признак «этот контент — мой». Один и тот же словарь на обоих уровнях: вид источника (source_kinds.json) и секция/форма протокола. Предикаты внутри объекта — конъюнкция.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -1043,16 +1043,17 @@
       }
     },
     "sourceKind": {
-      "description": "Вид источника на уровне ДОКУМЕНТА (registry/sources.json).",
+      "description": "ВИД ИСТОЧНИКА: чем оказался текст подписки целиком (registry/source_kinds.json). Уровнем ниже стоит секция-маппер (`mappers.<kind>`): вид источника говорит, как текст разрезать на элементы и каким маппером читать элемент, а маппер — как из элемента собрать узел.",
       "type": "object",
       "required": [
-        "kind",
+        "source_kind",
         "detect"
       ],
       "additionalProperties": false,
       "properties": {
-        "kind": {
-          "type": "string"
+        "source_kind": {
+          "type": "string",
+          "description": "Имя вида; им же вид зовётся в логах и ожиданиях корпуса."
         },
         "priority": {
           "type": "integer",
@@ -1103,6 +1104,10 @@
         },
         "desc_ru": {
           "type": "string"
+        },
+        "impl": {
+          "type": "string",
+          "description": "Пояснение для человека: чем ветка была в рукописном коде и почему стоит именно здесь. Движком не читается."
         }
       }
     }
@@ -1115,17 +1120,26 @@
         "$ref": "#/definitions/mapper"
       }
     },
-    "document": {
-      "description": "Только в registry/sources.json: уровень документа.",
+    "source_kinds": {
+      "description": "Только в registry/source_kinds.json: таблица видов источника.",
       "type": "object",
       "required": [
-        "sources"
+        "kinds"
       ],
       "additionalProperties": false,
       "properties": {
+        "note": {
+          "type": "string"
+        },
+        "note_order": {
+          "type": "string"
+        },
+        "note_unrecognized": {
+          "type": "string"
+        },
         "max_unwrap_depth": {
           "type": "integer",
-          "description": "Предел рекурсии распаковки. Сегодня предела нет вовсе.",
+          "description": "Предел рекурсии распаковки. Сегодня предела нет вовсе (DELTAS D133-35).",
           "minimum": 1
         },
         "on_unrecognized": {
@@ -1147,7 +1161,7 @@
             }
           }
         },
-        "sources": {
+        "kinds": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/sourceKind"

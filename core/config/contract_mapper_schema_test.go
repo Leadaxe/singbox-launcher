@@ -122,6 +122,25 @@ func TestContractMapperSectionsMatchSchema(t *testing.T) {
 			}
 		}
 
+		// source_kinds.kinds[] — виды источника (source_kinds.json).
+		// Судятся тем же линтером и тем же определением схемы: уровень
+		// документа не должен получить собственный, более слабый рубеж —
+		// опечатка в имени атрибута теряется здесь так же молча, как в
+		// секции-маппере.
+		if rawKinds, ok := top["source_kinds"]; ok {
+			var spec struct {
+				Kinds []any `json:"kinds"`
+			}
+			if err := json.Unmarshal(rawKinds, &spec); err != nil {
+				t.Errorf("%s: source_kinds не разбирается: %v", name, err)
+				continue
+			}
+			errs := validateAgainst(&doc, doc.Properties["source_kinds"], rawJSONAny(t, rawKinds),
+				fmt.Sprintf("%s: source_kinds", name))
+			reportSchemaErrors(t, errs)
+			checked += len(spec.Kinds)
+		}
+
 		// blocks.<блок>.<диалект> — записи общих блоков (tls.json, transports.json):
 		// по форме это те же params, поэтому судятся определением param.
 		if rawBlocks, ok := top["blocks"]; ok {
@@ -184,6 +203,17 @@ func reportSchemaErrors(t *testing.T, errs []string) {
 	for _, e := range errs {
 		t.Error(e)
 	}
+}
+
+// rawJSONAny перекладывает сырой фрагмент в any: обходчик схемы работает по
+// динамическому значению (map/[]any), а не по типизированной модели.
+func rawJSONAny(t *testing.T, raw json.RawMessage) any {
+	t.Helper()
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		t.Fatalf("фрагмент не разбирается: %v", err)
+	}
+	return v
 }
 
 func sortedKeys(m map[string]any) []string {

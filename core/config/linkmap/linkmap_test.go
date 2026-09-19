@@ -16,7 +16,7 @@ import (
 // коснуться не может, пока ни одна схема на движок не переведена.
 func TestLinkmapEngineW0(t *testing.T) {
 	t.Run("detect различает четыре вида источника", func(t *testing.T) {
-		// Предикаты — те же, что уедут в registry/sources.json; проверяется,
+		// Предикаты — те же, что уедут в registry/source_kinds.json; проверяется,
 		// что они разделяют реальные тела, а не абстрактные строки.
 		xray := mustDetect(t, `{"json":{"type_of":{"outbounds":"array"},"array_elem_any_keys":["outbounds[].protocol"]}}`)
 		sbOutbound := mustDetect(t, `{"json":{"required_keys":["type"]}}`)
@@ -83,13 +83,13 @@ func TestLinkmapEngineW0(t *testing.T) {
 		text := `{"type":"selector","outbounds":["a","b"]}`
 		cands := []Candidate{
 			SourceCandidate{Kind: registry.SourceKind{
-				Kind: "singbox_config", Priority: 50,
+				SourceKind: "singbox_config", Priority: 50,
 				Detect: mustDetect(t, `{"json":{"any_keys":["outbounds"]}}`)}},
 			SourceCandidate{Kind: registry.SourceKind{
-				Kind: "singbox_outbound", Priority: 40,
+				SourceKind: "singbox_outbound", Priority: 40,
 				Detect: mustDetect(t, `{"json":{"required_keys":["type"]}}`)}},
 			SourceCandidate{Kind: registry.SourceKind{
-				Kind: "uri_list", Priority: 10,
+				SourceKind: "uri_lines", Priority: 10,
 				Detect: mustDetect(t, `{"default":true}`)}},
 		}
 
@@ -106,7 +106,7 @@ func TestLinkmapEngineW0(t *testing.T) {
 
 		// Ничего не подошло — берётся default, хотя его priority наименьший.
 		res = Select(cands, NewContent("vless://x@h:443"))
-		if res.Index < 0 || cands[res.Index].Name() != "uri_list" || !res.ByDefault {
+		if res.Index < 0 || cands[res.Index].Name() != "uri_lines" || !res.ByDefault {
 			t.Fatalf("фолбэк не сработал: %+v", res)
 		}
 	})

@@ -24,7 +24,7 @@ import (
 // Detect — декларативный признак «этот контент — мой».
 //
 // Один словарь на ДВА уровня (SPEC 133 §3A): вид источника целиком
-// (sources.json) и принадлежность элемента протоколу/диалекту
+// (source_kinds.json) и принадлежность элемента протоколу/диалекту
 // (mappers.<kind>.detect, forms[].detect). Движок исполняет их одинаково —
 // отдельного «документного» языка нет, иначе сниффер формата вернулся бы в
 // код через заднюю дверь.
@@ -83,6 +83,13 @@ type DetectINI struct {
 	// KeysAny — хотя бы один ключ. Так род узла (awg3/awg/wg) объявляется
 	// данными, а не функцией hasAWGParams.
 	KeysAny []string `json:"keys_any"`
+	// FirstSectionFold — имя ПЕРВОЙ не-комментарной секции (fold-case).
+	//
+	// Отличается от Sections («секция есть где-нибудь»): `.conf`, у которого
+	// первой идёт [Peer], конфигом wg-quick не является, а комментарий над
+	// [Interface] законен и несёт имя узла. Имя примитива — LxBox
+	// (GRAMMAR_SYNC §1 №6).
+	FirstSectionFold string `json:"first_section_fold"`
 }
 
 // DetectText — предикаты по сырому тексту.
@@ -90,6 +97,13 @@ type DetectText struct {
 	PrefixFold string `json:"prefix_fold"`
 	LineFold   string `json:"line_fold"`
 	Contains   string `json:"contains"`
+	// PrefixTrim — первый НЕпробельный символ текста ('{' или '[' после
+	// отступа). Отличается от PrefixFold, который смотрит с позиции 0.
+	// Имя примитива — LxBox (GRAMMAR_SYNC §1 №4).
+	PrefixTrim string `json:"prefix_trim"`
+	// MinLen — длина текста не меньше n. Порог отсекает случайный короткий
+	// текст, проходящий алфавит base64 (GRAMMAR_SYNC §1 №5).
+	MinLen int `json:"min_len"`
 }
 
 // IsZero сообщает, что предикат пуст: такую запись выбрать нельзя, и линтер
@@ -100,6 +114,15 @@ func (d *Detect) IsZero() bool {
 	}
 	if d.Default {
 		return false
+	}
+	if d.Text != nil && d.Text.PrefixFold == "" && d.Text.LineFold == "" &&
+		d.Text.Contains == "" && d.Text.PrefixTrim == "" && d.Text.MinLen == 0 {
+		// Пустой словарь text предикатом не является: такую запись выбрать
+		// нельзя, а «text: {}» рядом с непустым JSON-предикатом молча
+		// расширил бы ветку до «любой текст».
+		return d.Regex == "" && d.JSON == nil && d.INI == nil &&
+			len(d.SchemeIn) == 0 && d.InArray == "" &&
+			d.Not == nil && len(d.All) == 0 && len(d.Any) == 0
 	}
 	return d.Regex == "" && d.JSON == nil && d.INI == nil && d.Text == nil &&
 		len(d.SchemeIn) == 0 && d.InArray == "" &&
@@ -670,29 +693,56 @@ func (m *Mapper) Kind() string { return m.kind }
 // Scheme — схема протокола, которой принадлежит секция.
 func (m *Mapper) Scheme() string { return m.scheme }
 
-// SourceKind — вид источника на уровне ДОКУМЕНТА (registry/sources.json).
+// SourceKind — ВИД ИСТОЧНИКА: чем оказался текст подписки целиком
+// (registry/source_kinds.json).
+//
+// Уровнем ниже стоит СЕКЦИЯ-МАППЕР (`mappers.<kind>` у схемы): вид источника
+// говорит, как текст разрезать на элементы и каким маппером читать элемент, а
+// маппер — как из элемента собрать узел.
 type SourceKind struct {
-	Kind string `json:"kind"`
+	// SourceKind — имя вида; им же вид зовётся в логах и ожиданиях корпуса.
+	SourceKind string `json:"source_kind"`
 	// Priority — порядок проверки, меньше = раньше. При совпадении
 	// нескольких detect побеждает меньший priority; уникальность проверяет
 	// линтер, иначе порядок зависел бы от порядка строк в файле.
-	Priority int     `json:"priority"`
-	Mapper   *string `json:"mapper"`
-	Detect   *Detect `json:"detect"`
+	Priority int `json:"priority"`
+	// Mapper — имя секции-маппера (`mappers.<mapper>`), которой читается
+	// ЭЛЕМЕНТ этого вида. nil у вида, который сам элементов не даёт (только
+	// unwrap + redetect): маппер определится у вида, найденного после
+	// распаковки.
+	Mapper *string `json:"mapper"`
+	Detect *Detect `json:"detect"`
 
-	// Unwrap — оболочка-декодер ("base64", "amnezia_vpn"); Redetect
-	// отправляет результат на повторный детект (подписка base64 внутри
-	// base64).
+	// Unwrap — имя оболочки-декодера ("base64_utf8", "amnezia_vpn");
+	// Redetect отправляет результат на повторный детект (подписка base64
+	// внутри base64).
 	Unwrap   string `json:"unwrap"`
 	Redetect bool   `json:"redetect"`
-	Split    string `json:"split"`
+	// RequiresAfterUnwrap — чем ОБЯЗАН оказаться текст после распаковки.
+	// Без этого условия алфавит base64 («буквы, цифры, +/=») ловил бы
+	// обычную строку ссылок без спецсимволов: она тоже из этих букв. Имя
+	// примитива — LxBox (GRAMMAR_SYNC §1 №3).
+	RequiresAfterUnwrap *Detect `json:"requires_after_unwrap"`
+
+	// Elements — НАРЕЗКА: откуда брать элементы. Выражение читает движок
+	// (core/config/linkmap), имён схем в нём нет:
+	//   "$self"            — элемент один, это сам документ;
+	//   "lines"            — строки текста (пустые и комментарии вон);
+	//   "texts"            — тексты, которые дала распаковка;
+	//   "[]"               — элементы JSON-массива-документа;
+	//   "outbounds[]"      — массив по пути, в т.ч. вложенный "[].outbounds[]";
+	//   "a[]+b[]"          — несколько путей подряд, порядок как записан.
+	Elements string `json:"elements"`
+	// LineCommentPrefixes — начала строк-комментариев для нарезки "lines".
+	LineCommentPrefixes []string `json:"line_comment_prefixes"`
 
 	DescEN string `json:"desc_en"`
 	DescRU string `json:"desc_ru"`
+	Impl   string `json:"impl"`
 }
 
-// DocumentSpec — уровень документа целиком.
-type DocumentSpec struct {
+// SourceKindSet — таблица видов источника целиком.
+type SourceKindSet struct {
 	// MaxUnwrapDepth — предел рекурсии распаковки. Сегодня предела нет
 	// вовсе: подписка base64 внутри base64 раскрывается неограниченно.
 	MaxUnwrapDepth int `json:"max_unwrap_depth"`
@@ -701,11 +751,11 @@ type DocumentSpec struct {
 		Severity        string `json:"severity"`
 		IncludeFragment int    `json:"include_fragment"`
 	} `json:"on_unrecognized"`
-	Sources []SourceKind `json:"sources"`
+	Kinds []SourceKind `json:"kinds"`
 }
 
-// sourcesFileName — файл уровня документа.
-const sourcesFileName = "sources.json"
+// sourceKindsFileName — файл уровня документа.
+const sourceKindsFileName = "source_kinds.json"
 
 // ProtocolFileNames — имена файлов протоколов реестра.
 //
@@ -720,7 +770,7 @@ func ProtocolFileNames() []string {
 
 // LoadMappers читает секции `mappers` всех протоколов и уровень документа.
 //
-// Отсутствие sources.json и отсутствие секций `mappers` — НЕ ошибка: реестр
+// Отсутствие source_kinds.json и отсутствие секций `mappers` — НЕ ошибка: реестр
 // переезжает на новую грамматику волнами (SPEC 133), и до перевода схемы
 // секции у неё нет. Движок в этом случае просто не находит таблицу и схема
 // продолжает идти старым парсером.
@@ -756,15 +806,15 @@ func LoadMappers() (*MapperSet, error) {
 		set.byScheme[scheme] = byKind
 	}
 
-	// sources.json может ещё не существовать — см. докстроку.
-	if data, err := contract.ReadRegistry(sourcesFileName); err == nil {
+	// source_kinds.json может ещё не существовать — см. докстроку.
+	if data, err := contract.ReadRegistry(sourceKindsFileName); err == nil {
 		var doc struct {
-			Document *DocumentSpec `json:"document"`
+			SourceKinds *SourceKindSet `json:"source_kinds"`
 		}
 		if err := json.Unmarshal(data, &doc); err != nil {
-			return nil, fmt.Errorf("registry: %s: %w", sourcesFileName, err)
+			return nil, fmt.Errorf("registry: %s: %w", sourceKindsFileName, err)
 		}
-		set.document = doc.Document
+		set.sourceKinds = doc.SourceKinds
 	}
 
 	return set, nil
@@ -772,8 +822,8 @@ func LoadMappers() (*MapperSet, error) {
 
 // MapperSet — все секции-мапперы реестра плюс уровень документа.
 type MapperSet struct {
-	byScheme map[string]map[string]*Mapper
-	document *DocumentSpec
+	byScheme    map[string]map[string]*Mapper
+	sourceKinds *SourceKindSet
 }
 
 // Mapper возвращает секцию схемы по виду источника.
@@ -819,24 +869,25 @@ func (s *MapperSet) Kinds(scheme string) []string {
 	return out
 }
 
-// Document — уровень документа; nil, пока sources.json не заведён.
-func (s *MapperSet) Document() *DocumentSpec {
+// SourceKinds — таблица видов источника; nil, пока source_kinds.json не
+// заведён.
+func (s *MapperSet) SourceKinds() *SourceKindSet {
 	if s == nil {
 		return nil
 	}
-	return s.document
+	return s.sourceKinds
 }
 
-// SourcesByPriority — виды источника в порядке проверки.
+// SourceKindsByPriority — виды источника в порядке проверки.
 //
 // Порядок задаёт priority, а не позиция в файле: перестановка строк не
 // должна менять поведение, а совпадение двух detect обязано разрешаться
 // объявленным правилом, а не случайностью.
-func (s *MapperSet) SourcesByPriority() []SourceKind {
-	if s == nil || s.document == nil {
+func (s *MapperSet) SourceKindsByPriority() []SourceKind {
+	if s == nil || s.sourceKinds == nil {
 		return nil
 	}
-	out := append([]SourceKind{}, s.document.Sources...)
+	out := append([]SourceKind{}, s.sourceKinds.Kinds...)
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Priority < out[j].Priority })
 	return out
 }
