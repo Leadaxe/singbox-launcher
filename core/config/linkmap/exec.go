@@ -34,6 +34,14 @@ type Result struct {
 	LabelFallback string
 	// BodySource — как объявила секция (uri/xray/singbox/wgconf/amnezia).
 	BodySource string
+	// Kind — РОД узла, объявленный секцией через `kind_when` по условию на
+	// ВХОД (у wireguard: "awg"/"awg3"). Пустая строка = род не объявлен.
+	//
+	// В тело не пишется: род нужен ПРАВИЛАМ ЗНАЧЕНИЯ санитайзера, которые
+	// читают его оператором `when.source_kind`. Вызывающий обязан донести
+	// его до Sanitize и сохранить рядом с телом там, где источник не
+	// хранится (contract/docs/MAPPER_ENGINE.md).
+	Kind string
 	// FormID — форма, которую выбрал разбор. Нужна вызывающему там, где
 	// свойство узла зависит от ФОРМЫ, а не от тела: у vmess userinfo есть
 	// только у cleartext-формы, а у контейнера v2rayN его нет вовсе.
@@ -50,6 +58,84 @@ type Result struct {
 	Notes []Note
 	// Trace — трасса, если она была включена.
 	Trace *Trace
+}
+
+// resolveKind — РОД узла по условию на ВХОД (`kind_when` секции).
+//
+// Судит ИСКЛЮЧИТЕЛЬНО пространство источников, а не тело: к моменту, когда
+// записи снимут негодные значения, в теле может не остаться ни одного
+// признака рода — ссылка `awg://` с битыми awg-параметрами оставляет тело,
+// неотличимое от обычного WireGuard. Ровно ради этого случая примитив и
+// заведён (contract/docs/MAPPER_ENGINE.md).
+//
+// Имена родов перебираются в АЛФАВИТНОМ порядке, побеждает первый
+// подошедший: порядок ключей карты в Go не определён, а род входит в
+// поведение правил, и оставлять его на волю обхода нельзя.
+//
+// Поддержаны две формы условия:
+//
+//	{"any_set": ["query.jc", …]}          — задан любой из источников;
+//	{"query.keepalive": {"matches": "-"}} — источник содержит подстроку.
+func resolveKind(spec map[string]map[string]interface{}, space *Space) string {
+	if len(spec) == 0 || space == nil {
+		return ""
+	}
+	names := make([]string, 0, len(spec))
+	for name := range spec {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if kindCondHolds(spec[name], space) {
+			return name
+		}
+	}
+	return ""
+}
+
+// kindCondHolds — одно условие рода. Служебные ключи с ведущим `$` (`$impl`)
+// пропускаются: это заметки автора секции, а не предикаты.
+func kindCondHolds(cond map[string]interface{}, space *Space) bool {
+	matched := false
+	for key, want := range cond {
+		if strings.HasPrefix(key, "$") {
+			continue
+		}
+		if key == "any_set" {
+			list, _ := want.([]interface{})
+			hit := false
+			for _, item := range list {
+				name, _ := item.(string)
+				if name == "" {
+					continue
+				}
+				// Считается НАЛИЧИЕ источника, а не непустота значения:
+				// `jc=0` — законное «мусор выключен» у настоящего
+				// AmneziaWG-узла, и прочесть его как «поля нет» значило бы
+				// снять с узла потолок MTU.
+				if _, ok := space.Lookup(name); ok {
+					hit = true
+					break
+				}
+			}
+			if !hit {
+				return false
+			}
+			matched = true
+			continue
+		}
+		v, ok := space.Lookup(key)
+		if !ok {
+			return false
+		}
+		spec, _ := want.(map[string]interface{})
+		sub, _ := spec["matches"].(string)
+		if sub == "" || !strings.Contains(v, sub) {
+			return false
+		}
+		matched = true
+	}
+	return matched
 }
 
 // Note — код с параметрами; в узел их перекладывает вызывающий, потому что
@@ -120,6 +206,11 @@ func Exec(plan *Plan, space *Space, form registry.Form, bodyType string, trace *
 	if form.ID != "" {
 		st.mapperName += "." + form.ID
 	}
+
+	// Род узла судится по ВХОДУ и потому раньше всякой таблицы: к моменту,
+	// когда записи начнут снимать негодные значения, судить уже не по чему —
+	// в этом весь смысл примитива.
+	st.res.Kind = resolveKind(plan.Mapper.KindWhen, space)
 
 	// scheme_sets — написание схемы задаёт присваивания (socks4/socks4a).
 	st.applySchemeSets()
@@ -858,6 +949,15 @@ func (st *execState) applyExtract(e *Entry, src, raw, val string) {
 	}
 	m := re.FindStringSubmatch(val)
 	if m == nil {
+		// `take_all` — значение не разложилось, но выбрасывать его нельзя:
+		// оно осмысленно ЦЕЛИКОМ. Так в wg-quick читается ГОЛЫЙ IPv6 в
+		// Endpoint: несколько ':' без скобок, и отличить адрес от пары
+		// «хост:порт» нечем, поэтому вся строка идёт адресом, а порт берётся
+		// из `defaults` записи.
+		if actionOf(e.Param.OnNoMatch) == "take_all" {
+			st.applyExtractTakeAll(e, src, raw, val)
+			return
+		}
 		if code := codeOf(e.Param.OnNoMatch); code != "" {
 			st.note(code, nil)
 		}
@@ -886,6 +986,31 @@ func (st *execState) applyExtract(e *Entry, src, raw, val string) {
 			continue
 		}
 		st.applyExtractGroup(e, src, raw, name, g, spec, byName)
+	}
+}
+
+// applyExtractTakeAll кладёт НЕРАЗЛОЖИВШЕЕСЯ значение целиком.
+//
+// Случай один и он настоящий: голый IPv6 в `Endpoint` файла wg-quick.
+// Несколько ':' без скобок, и отличить адрес от пары «хост:порт» нечем —
+// значит вся строка есть адрес, а порт берётся из `defaults` записи.
+// Выбросить её было бы хуже всего: узел с рабочим адресом просто исчез бы.
+//
+// `defaults` пишутся с приоритетом записи и потому проигрывают тому, что
+// уже заняло путь: это ДОПОЛНЕНИЕ недостающего, а не переназначение.
+func (st *execState) applyExtractTakeAll(e *Entry, src, raw, val string) {
+	spec := e.Param.OnNoMatch
+	path, _ := spec["into"].(string)
+	if path == "" {
+		return
+	}
+	st.write(e.Name, src, raw, val, path, e.Param.Priority, e.Decl, "")
+	defs, _ := spec["defaults"].(map[string]interface{})
+	for p, dv := range defs {
+		st.write(e.Name+"."+p, src, raw, dv, p, e.Param.Priority, e.Decl, "")
+	}
+	if code := codeOf(spec); code != "" {
+		st.note(code, nil)
 	}
 }
 

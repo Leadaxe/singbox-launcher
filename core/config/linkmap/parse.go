@@ -286,8 +286,77 @@ func lexSpace(form registry.Form, body, original string) (*Space, error) {
 			s.Fragment = frag
 		}
 		return s, nil
+	case "ini":
+		// wg-quick/.conf: под текстом лежит не ссылка, а ini-документ.
+		// Секции адресуют его `ini.<Секция>.<Ключ>`, и Lookup эти имена уже
+		// знает — не хватало только того, кто наполнит пространство.
+		sections, ok := parseINI(body)
+		if !ok {
+			return nil, fmt.Errorf("linkmap: ini: секций нет")
+		}
+		s := &Space{}
+		s.SetINI(sections, parseINIComments(body))
+		// Схема и фрагмент — свойства ОБОЛОЧКИ, как и у формы JSON: под
+		// base64 их нет, а `label` и `scheme_source` читают их позже.
+		// У формы `.conf` (голый файл, без "://") оболочки нет вовсе, и оба
+		// имени остаются пустыми — метку тогда даёт цепочка `ini.$comment`
+		// и `hint`.
+		if idx := strings.Index(original, "://"); idx > 0 {
+			s.Scheme = strings.ToLower(original[:idx])
+		}
+		if i := strings.Index(original, "#"); i >= 0 {
+			frag := original[i+1:]
+			if dec, err := percentUnescape(frag); err == nil {
+				frag = dec
+			}
+			s.Fragment = frag
+		}
+		return s, nil
 	}
 	return nil, fmt.Errorf("linkmap: неизвестное пространство %q", form.Space)
+}
+
+// parseINIComments — ПЕРВЫЙ комментарий каждой секции, то есть имя узла,
+// которое провайдеры пишут сразу под заголовком (`[Peer]` / `# CH-FREE#11`).
+//
+// Строка с '=' именем НЕ считается: `# Bouncing = 0` — это отключённая
+// настройка, а не название. Сам '#' внутри значения законен («US-FREE#137»),
+// поэтому режется только ведущий маркер. Диалект тот же, что у parseINI:
+// комментарий — целая строка, начинающаяся с '#' или ';'.
+func parseINIComments(text string) map[string]string {
+	out := map[string]string{}
+	section := ""
+	for _, raw := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "[") {
+			section = strings.ToLower(strings.Trim(line, "[]"))
+			continue
+		}
+		if section == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "#") && !strings.HasPrefix(line, ";") {
+			// Дошли до настоящего поля — имени в этой секции нет. Отметка
+			// «искать больше нечего» ставится пустой строкой, иначе
+			// комментарий, стоящий НИЖЕ полей, стал бы именем узла.
+			if _, seen := out[section]; !seen {
+				out[section] = ""
+			}
+			continue
+		}
+		if _, seen := out[section]; seen {
+			continue
+		}
+		name := strings.TrimSpace(strings.TrimLeft(line, "#;"))
+		if name == "" || strings.Contains(name, "=") {
+			continue
+		}
+		out[section] = name
+	}
+	return out
 }
 
 // buildOverlays распаковывает наложенные пространства, объявленные секцией.
