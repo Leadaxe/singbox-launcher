@@ -3,8 +3,14 @@
   "scheme": "hysteria",
   "kind": "outbound",
   "singbox_type": "hysteria",
-  "aliases": ["hy"],
-  "sources": ["uri", "singbox", "xray"],
+  "aliases": [
+    "hy"
+  ],
+  "sources": [
+    "uri",
+    "singbox",
+    "xray"
+  ],
   "extension": "desktop",
   "note": "Hysteria v1 разбирает ТОЛЬКО лаунчер: у LxBox парсера для него нет. По правилу 3 контракта различие обязано быть помечено, а не остаться бесхозным — отсюда extension:desktop. Следствие для корпуса: раннер стороны пропускает каталоги и кейсы с чужим extension, иначе мобильная сторона падала бы на фикстурах протокола, которого не поддерживает (кейс hysteria_bandwidth помечен meta.extension:desktop в expected). Сам протокол при этом жив и развивается: hysteria2 — отдельный файл реестра, поддержан обеими сторонами.",
   "uri": {
@@ -19,7 +25,11 @@
       "auth": {
         "type": "string",
         "default": null,
-        "aliases": ["auth_str", "authStr", "password"],
+        "aliases": [
+          "auth_str",
+          "authStr",
+          "password"
+        ],
         "maps_to": "auth_str",
         "desc_en": "Authentication secret.",
         "desc_ru": "Секрет авторизации.",
@@ -28,7 +38,10 @@
       "upmbps": {
         "type": "int",
         "default": 100,
-        "aliases": ["up_mbps", "up"],
+        "aliases": [
+          "up_mbps",
+          "up"
+        ],
         "maps_to": "up_mbps",
         "desc_en": "Uplink bandwidth, Mbps.",
         "desc_ru": "Полоса вверх, Мбит/с.",
@@ -37,7 +50,10 @@
       "downmbps": {
         "type": "int",
         "default": 100,
-        "aliases": ["down_mbps", "down"],
+        "aliases": [
+          "down_mbps",
+          "down"
+        ],
         "maps_to": "down_mbps",
         "desc_en": "Downlink bandwidth, Mbps.",
         "desc_ru": "Полоса вниз, Мбит/с.",
@@ -54,7 +70,9 @@
       "obfsParam": {
         "type": "string",
         "default": null,
-        "aliases": ["obfs-password"],
+        "aliases": [
+          "obfs-password"
+        ],
         "maps_to": "obfs",
         "desc_en": "Obfuscation password, alternative spelling.",
         "desc_ru": "Пароль обфускации, другое написание.",
@@ -63,7 +81,9 @@
       "mport": {
         "type": "string",
         "default": null,
-        "aliases": ["ports"],
+        "aliases": [
+          "ports"
+        ],
         "maps_to": "server_ports",
         "desc_en": "Port range for port hopping.",
         "desc_ru": "Диапазон портов для port hopping.",
@@ -72,7 +92,9 @@
       "sni": {
         "type": "string",
         "default": null,
-        "aliases": ["peer"],
+        "aliases": [
+          "peer"
+        ],
         "maps_to": "tls.server_name",
         "desc_en": "Server name sent in SNI.",
         "desc_ru": "Имя сервера, отправляемое в SNI.",
@@ -89,7 +111,17 @@
       "insecure": {
         "type": "bool",
         "default": null,
-        "aliases": ["allowInsecure", "allowinsecure", "allow_insecure", "allow-insecure", "skipCertVerify", "skipcertverify", "skip_cert_verify", "skip-cert-verify", "noverify"],
+        "aliases": [
+          "allowInsecure",
+          "allowinsecure",
+          "allow_insecure",
+          "allow-insecure",
+          "skipCertVerify",
+          "skipcertverify",
+          "skip_cert_verify",
+          "skip-cert-verify",
+          "noverify"
+        ],
         "maps_to": "tls.insecure",
         "desc_en": "Skip server certificate verification.",
         "desc_ru": "Не проверять сертификат сервера.",
@@ -108,7 +140,9 @@
         "type": "alias_enum",
         "allowlist": "utls_fingerprints",
         "default": null,
-        "aliases": ["fingerprint"],
+        "aliases": [
+          "fingerprint"
+        ],
         "maps_to": "tls.utls.fingerprint",
         "desc_en": "Browser fingerprint mimicked in the ClientHello.",
         "desc_ru": "Отпечаток браузера, который подделывается в ClientHello.",
@@ -119,7 +153,18 @@
   },
   "emit": {
     "share_uri": true,
-    "param_order": ["alpn", "auth", "downmbps", "insecure", "mport", "obfs", "obfsParam", "pinSHA256", "sni", "upmbps"],
+    "param_order": [
+      "alpn",
+      "auth",
+      "downmbps",
+      "insecure",
+      "mport",
+      "obfs",
+      "obfsParam",
+      "pinSHA256",
+      "sni",
+      "upmbps"
+    ],
     "note": "Порядок лексикографический (url.Values.Encode()). Секрет эмитится в auth=, НЕ в userinfo. obfs эмитится парой obfs=xplus&obfsParam=<секрет> — так ссылку понимают сторонние клиенты 1.x и собственный парсер (плоская строка восстанавливается из obfsParam)."
   },
   "xray_dialect": {
@@ -170,7 +215,32 @@
   },
   "body": {
     "core": "1.14.1-lx.4",
-    "order": ["server", "server_port", "server_ports", "hop_interval", "up", "up_mbps", "down", "down_mbps", "obfs", "auth", "auth_str", "network", "tls", "recv_window_conn", "recv_window", "disable_mtu_discovery", "idle_timeout", "keep_alive_period", "stream_receive_window", "connection_receive_window", "max_concurrent_streams", "initial_packet_size", "disable_path_mtu_discovery", "__dialer"],
+    "order": [
+      "server",
+      "server_port",
+      "server_ports",
+      "hop_interval",
+      "up",
+      "up_mbps",
+      "down",
+      "down_mbps",
+      "obfs",
+      "auth",
+      "auth_str",
+      "network",
+      "tls",
+      "recv_window_conn",
+      "recv_window",
+      "disable_mtu_discovery",
+      "idle_timeout",
+      "keep_alive_period",
+      "stream_receive_window",
+      "connection_receive_window",
+      "max_concurrent_streams",
+      "initial_packet_size",
+      "disable_path_mtu_discovery",
+      "__dialer"
+    ],
     "fields": {
       "server": {
         "type": "ref",
@@ -375,5 +445,209 @@
       }
     },
     "build_tag": "with_quic"
+  },
+  "mappers": {
+    "uri": {
+      "detect": {
+        "scheme_in": [
+          "hysteria",
+          "hy"
+        ]
+      },
+      "body_source": "uri",
+      "live": true,
+      "forms": [
+        {
+          "id": "url",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            "url"
+          ],
+          "space": "url"
+        }
+      ],
+      "userinfo": {
+        "into": [
+          "auth_str"
+        ],
+        "single_into": "auth_str",
+        "impl": "ЗАПАСНОЙ слот секрета. У Hysteria 1.x он канонически лежит в query (`auth=`), а не перед '@' — этим v1 и отличается от hysteria2. Но часть панелей выписывает `hysteria://secret@host:port`, и терять такой узел нельзя (корпус userinfo_auth_fallback). Порядок «query сильнее userinfo» объявлен цепочкой источников записи `auth`, а не здесь."
+      },
+      "label": {
+        "source": [
+          "fragment",
+          "path"
+        ],
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "value_map": {
+          "🇪🇳": "🇬🇧"
+        },
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "singbox_type"
+        }
+      },
+      "defaults": {
+        "server_port": 443
+      },
+      "include": [
+        "tls#uri"
+      ],
+      "params": {
+        "server": {
+          "source": "host",
+          "maps_to": "server",
+          "required": true
+        },
+        "server_port": {
+          "source": "port",
+          "maps_to": "server_port",
+          "type": "int"
+        },
+        "$multiport": {
+          "source": "port_raw",
+          "selector": true,
+          "extract": {
+            "re": "^(?P<first>\\d+)(?P<spec>[,:-][^#]*)?$",
+            "into": {
+              "first": {
+                "path": "server_port",
+                "type": "int"
+              },
+              "spec": {
+                "path": "server_ports",
+                "list": {
+                  "sep": ","
+                },
+                "normalize": "port_range_spec",
+                "prepend_group": "first"
+              }
+            }
+          },
+          "impl": "Порт-хоппинг прямо в authority (`host:20000-30000`) — та же запись, что у hysteria2: ядро принимает `server_ports` у обоих типов. Платформенный парсер URL такую строку не читает вовсе, её берёт лексер движка из `port_raw`."
+        },
+        "mport": {
+          "source": [
+            "query.mport",
+            "query.ports"
+          ],
+          "maps_to": "server_ports",
+          "merge": "append",
+          "list": {
+            "sep": ","
+          },
+          "normalize": "port_range_spec",
+          "impl": "Форма ядра — 'low:high' через ДВОЕТОЧИЕ; дефис ссылки даёт фатал «bad port range»."
+        },
+        "auth": {
+          "source": [
+            "query.auth",
+            "query.auth_str",
+            "query.authStr",
+            "query.password",
+            "userinfo"
+          ],
+          "maps_to": "auth_str",
+          "normalize": "trim",
+          "impl": "Цепочка «первый непустой» повторяет hysteriaAuthFromNode: четыре написания query, и лишь затем userinfo. Порядок нормативен — панель, написавшая и то и другое, имела в виду query."
+        },
+        "obfs_param": {
+          "source": [
+            "query.obfsParam",
+            "query.obfs-password"
+          ],
+          "maps_to": "obfs",
+          "normalize": "trim",
+          "priority": 10,
+          "impl": "obfs у v1 — ПЛОСКАЯ строка-секрет, а не объект {type,password} как у hysteria2 (option/hysteria.go, HysteriaOutboundOptions.Obfs). Секрет клиенты 1.x пишут в obfsParam; он сильнее голого obfs= (priority 10 против 20), потому что ядру нужна ровно одна строка."
+        },
+        "obfs": {
+          "source": "query.obfs",
+          "maps_to": "obfs",
+          "normalize": "trim",
+          "priority": 20,
+          "value_map": {
+            "xplus": null
+          },
+          "impl": "Голое `obfs=xplus` без секрета обфускацией НЕ является — это объявление ТИПА (в оригинальном Hysteria 1.x тип задавал obfs=, а секрет ехал в obfsParam). Ядру такая строка велела бы шифровать по слову «xplus», и узел молча перестал бы соединяться: value_map в null снимает путь. Корпус obfs_type_only_dropped. Сравнение регистронезависимое — так же, как EqualFold прежнего пути."
+        },
+        "upmbps": {
+          "source": [
+            "query.upmbps",
+            "query.up_mbps",
+            "query.up"
+          ],
+          "maps_to": "up_mbps",
+          "type": "int",
+          "extract": {
+            "re": "^(?P<v>\\d+)",
+            "into": {
+              "v": {
+                "path": "up_mbps",
+                "type": "int"
+              }
+            }
+          },
+          "impl": "Суффикс единицы («100 mbps», «50m») панели пишут как придётся, а ядру нужно число: регулярка берёт ведущие цифры. Дефолт (100) подставляет САНИТАЙЗЕР по default_when реестра, а не маппер: узел, пришедший JSON-телом, иначе его не получал бы и валил весь конфиг «missing upload speed» (SPEC 131 W2d)."
+        },
+        "downmbps": {
+          "source": [
+            "query.downmbps",
+            "query.down_mbps",
+            "query.down"
+          ],
+          "maps_to": "down_mbps",
+          "type": "int",
+          "extract": {
+            "re": "^(?P<v>\\d+)",
+            "into": {
+              "v": {
+                "path": "down_mbps",
+                "type": "int"
+              }
+            }
+          }
+        },
+        "pinSHA256": {
+          "source": "query.pinSHA256",
+          "maps_to": "tls.certificate_public_key_sha256",
+          "list": {
+            "sep": ",",
+            "coerce_scalar": true
+          },
+          "impl": "Пиннинг публичного ключа сертификата; на QUIC валиден, в отличие от utls/reality. Та же запись, что у hysteria2."
+        },
+        "sni": {
+          "source": [
+            "query.sni",
+            "query.peer"
+          ],
+          "maps_to": "tls.server_name",
+          "default_from": "host",
+          "impl": "SNI у v1 исторически зовут peer= (клиенты Hysteria 1.x), sni= — общее написание; оба объявлены в контракте. Фолбэк на адрес сервера повторяет tlsServerNameFromQuery прежнего пути. Эвристики НАПИСАНИЯ (точка/двоеточие), как у hysteria2, здесь НЕТ: снятие её сдвинуло бы тела живых узлов."
+        }
+      },
+      "scheme_sets": {
+        "*": {
+          "tls.enabled": true
+        }
+      },
+      "unknown_key": {
+        "action": "keep",
+        "code": "uri_param_unknown"
+      },
+      "emit": {
+        "form": "url",
+        "param_order": "alphabetical",
+        "omit_default": [
+          "server_port"
+        ]
+      }
+    }
   }
 }

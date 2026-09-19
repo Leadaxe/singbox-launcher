@@ -31,6 +31,10 @@ package subscription
 // registry/protocols/naive.json, тесты на реальном пути это проверяют) и
 // ssh_user_default, который на URI-пути был недостижим и до кампании:
 // ссылку с пустым userinfo отбивала валидация раньше подстановки root.
+// С hysteria v1 — последней схемой рукописного пути — ушли ech_ignored (его
+// ставит запись `ech` общего блока tls#uri своим on_present) и весь
+// buildOutbound: у ссылочного входа рукописного пути больше НЕТ.
+//
 // С vmess ушёл и ws_early_data_converted: хвост ?ed=N раскладывает запись
 // transports#uri.ws.path своим `extract`…`code`, а Xray-вход кода не ставил
 // никогда (applyWSEarlyData там зовут, отбрасывая его признак).
@@ -80,16 +84,6 @@ const (
 	// WarnAWG3CoreUnsupported — узел с AWG3-полями снят на сборке: ядро
 	// старше 1.14.0-lx.32 или без with_awg. Выброс, а не пометка.
 	WarnAWG3CoreUnsupported = "awg3_core_unsupported"
-	// WarnECHIgnored — в ссылке был Xray-параметр `ech=`: он несёт ключ
-	// ЧУЖОГО клиента (public_name ≠ SNI узла), и рукопожатие с ним не
-	// состоится (device-verified, §320 LxBox). Параметр снят, узел жив —
-	// отсюда severity=info.
-	//
-	// Код ставит МАППЕР, а не санитайзер: различить «ECH из ссылки» и
-	// «валидный блок tls.ech из sing-box-JSON» может только тот, кто знает
-	// источник значения. Нативный блок проходит нетронутым — ECH в ядре
-	// скомпилирован всегда (D-122, пересмотр D-006).
-	WarnECHIgnored = "ech_ignored"
 	// WarnDialerProxyUnusable — цель streamSettings.sockopt.dialerProxy
 	// непригодна: узел-владелец отбраковывается ЦЕЛИКОМ. Кода на узле не
 	// бывает (узла не будет) — он едет в отбраковке, поэтому severity=error.

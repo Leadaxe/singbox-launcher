@@ -5,14 +5,10 @@ package subscription
 
 import (
 	"fmt"
-	"net/url"
-	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/registry"
-	"singbox-launcher/internal/debuglog"
-	"singbox-launcher/internal/textnorm"
 )
 
 // IsDirectLink checks if the input string is a direct proxy link (vless://, vmess://, wireguard://, etc.)
@@ -140,173 +136,28 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		}
 	}
 
-	// Determine scheme
-	scheme := ""
-	uriToParse := uri
-	defaultPort := 443 // Default port for most protocols
-
-	// Determine scheme and handle protocol-specific parsing
-	switch {
-	case strings.HasPrefix(uri, "hysteria://"), strings.HasPrefix(uri, "hy://"):
-		// Hysteria v1 (ядро: type "hysteria"). Отдельный протокол, не «старая
-		// запись hysteria2»: учётные данные в query (auth=), obfs — плоская
-		// строка, bandwidth согласуется с сервером. Схема hy:// — короткий
-		// алиас клиентов 1.x, нормализуем к hysteria:// для net/url.
-		scheme = "hysteria"
-		defaultPort = 443
-		if strings.HasPrefix(uri, "hy://") {
-			uriToParse = strings.Replace(uri, "hy://", "hysteria://", 1)
-		} else {
-			uriToParse = uri
-		}
-
-	case strings.HasPrefix(uri, "wireguard://"), strings.HasPrefix(uri, "awg://"):
-		// AmneziaWG (SPEC 073): awg:// is an alias — same endpoint shape as
-		// wireguard:// plus promoted obfuscation params (jc/jmin/.../i1-i5),
-		// handled inside parseWireGuardURI via applyAWGFields. Normalize the
-		// scheme so net/url parses it; node.Scheme stays "wireguard" (AWG is a
-		// superset of the WG endpoint — keeps GenerateEndpointJSON guard happy).
+	// Единственная схема, ещё не переведённая на движок: wireguard/awg.
+	//
+	// Своего вида «ссылка» у неё две — key@host:port и целый wg-quick под
+	// base64 (форма выше), — и обе ведёт собственный парсер: он строит
+	// ENDPOINT, а не outbound, и общий разбор ссылки ему не нужен.
+	//
+	// Прежний универсальный путь (switch по написанию, buildOutbound по
+	// схеме) отсюда ушёл вместе с последней схемой, которой он был нужен, —
+	// hysteria v1.
+	if strings.HasPrefix(uri, "wireguard://") || strings.HasPrefix(uri, "awg://") {
+		// awg:// — алиас: та же форма endpoint'а плюс поднятые параметры
+		// обфускации (jc/jmin/…/i1-i5), их разбирает applyAWGFields внутри.
+		// node.Scheme остаётся "wireguard": AWG — надмножество WG-эндпоинта,
+		// и GenerateEndpointJSON рассчитывает именно на это написание.
 		wgURI := uri
 		if strings.HasPrefix(uri, "awg://") {
 			wgURI = strings.Replace(uri, "awg://", "wireguard://", 1)
 		}
 		return parseWireGuardURI(wgURI, skipFilters)
-
-	default:
-		return nil, fmt.Errorf("unsupported scheme")
 	}
 
-	// Public lists sometimes paste a raw space into the userinfo
-	// (`vless://Telegramjoin:TurboConfigs @host:port`), usually a stray
-	// separator in a promo login. net/url rejects it outright with
-	// "invalid userinfo", so the whole node was lost. Percent-encode spaces in
-	// that segment before parsing; everything downstream reads the userinfo
-	// through PathUnescape / QueryUnescape and gets the original value back.
-	uriToParse = percentEncodeUserinfoSpaces(uriToParse)
-
-	// Parse URI
-	parsedURL, err := url.Parse(uriToParse)
-	hy2AuthPortList := ""
-	if err != nil && scheme == "hysteria" {
-		if u, plist, recErr := hysteria2RecoverMultiPortAuthority(uriToParse); recErr == nil && u != nil {
-			parsedURL, err, hy2AuthPortList = u, nil, plist
-		}
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse URI: %w", err)
-	}
-
-	// Hysteria v1: хост обязателен, учётные данные живут в query (auth=),
-	// поэтому userinfo здесь не требуем — в отличие от блока выше.
-	if scheme == "hysteria" && parsedURL.Hostname() == "" {
-		return nil, fmt.Errorf("invalid hysteria URI: missing hostname")
-	}
-
-	// Extract components
-	node := &configtypes.ParsedNode{
-		Scheme: scheme,
-		Server: parsedURL.Hostname(),
-		Query:  parsedURL.Query(),
-	}
-
-	if scheme == "hysteria" && hy2AuthPortList != "" {
-		if ex := strings.TrimSpace(queryGetFold(node.Query, "mport")); ex != "" {
-			node.Query.Set("mport", hy2AuthPortList+","+ex)
-		} else {
-			node.Query.Set("mport", hy2AuthPortList)
-		}
-	}
-
-	// Extract port (defaultPort was set in scheme detection). Out-of-range
-	// ports are a node-level error: sing-box check rejects the whole config
-	// over a single bad server_port, so the node must degrade here instead.
-	node.Port = defaultPort
-	if port := parsedURL.Port(); port != "" {
-		p, err := strconv.Atoi(port)
-		if err != nil || p < 1 || p > 65535 {
-			return nil, fmt.Errorf("invalid port %q in URI", port)
-		}
-		node.Port = p
-	}
-
-	// Учётные данные из userinfo. url.Parse уже снял percent-кодирование:
-	// Username() отдаёт готовое значение, и повторный разбор портил бы
-	// законные пароли ('+' становился пробелом, %XX декодировалось дважды).
-	//
-	// Воронка «userinfo-пароль в node.Query» отсюда УШЛА вместе с tuic —
-	// последней схемой, которой она была нужна. Из-за неё у ssh «работало»
-	// ненаписанное ?password= (QUIRKS Q133-49). У hysteria v1 учётные данные
-	// живут в query (auth=), и второго компонента userinfo у неё нет.
-	if parsedURL.User != nil {
-		node.UUID = parsedURL.User.Username()
-	}
-
-	// Extract fragment (label)
-	node.Label = parsedURL.Fragment
-	// URL decode and validate UTF-8. Use PathUnescape (not QueryUnescape): in fragments '+' is literal;
-	// QueryUnescape would turn '+' into space and corrupt names like "A+B".
-	if node.Label != "" {
-		if decoded, err := url.PathUnescape(node.Label); err == nil {
-			node.Label = decoded
-		}
-
-		// Validate and fix UTF-8 encoding
-		fixed, valid := validateAndFixUTF8(node.Label)
-		if !valid {
-			debuglog.ErrorLog("Parser: Fragment contains invalid UTF-8 that cannot be fixed: %q. Skipping node.", parsedURL.Fragment)
-			return nil, fmt.Errorf("fragment contains invalid UTF-8: %q", parsedURL.Fragment)
-		}
-
-		if fixed != node.Label {
-			debuglog.DebugLog("Parser: Fixed invalid UTF-8 in fragment: %q -> %q", parsedURL.Fragment, fixed)
-			node.Label = fixed
-		}
-	}
-
-	// For some formats, label might be in the path.
-	//
-	// Из userinfo метка НЕ берётся: там лежат учётные данные, а не имя.
-	// vless/vmess — UUID, tuic — UUID, wireguard/masque — приватный ключ,
-	// ss/trojan — пароль, ssh/socks — имя пользователя. Прежняя ветка
-	// подставляла всё это в Label, и узел без `#fragment` получал в имя
-	// свой же секрет: имя едет в UI, логи, скриншоты поддержки и бэкап,
-	// то есть значение утекало за пределы локального файла (в отличие от
-	// секретов в state.json, которые там by design). Продуктово оно тоже
-	// бесполезно — «11111111-1111-…» ничего не говорит пользователю.
-	// Пустой Label ниже разворачивается в `scheme-server-port`
-	// (generateDefaultTag) — осмысленное имя без секрета.
-	// Паритет с LxBox: та сторона userinfo в метку не берёт вовсе.
-	if node.Label == "" && parsedURL.Path != "" && parsedURL.Path != "/" {
-		node.Label = strings.TrimPrefix(parsedURL.Path, "/")
-	}
-
-	node.Label = sanitizeForDisplay(node.Label)
-	node.Label = textnorm.NormalizeProxyDisplay(node.Label)
-
-	// Extract tag and comment from label
-	node.Tag, node.Comment = extractTagAndComment(node.Label)
-
-	// Generate tag if missing
-	if node.Tag == "" {
-		node.Tag = generateDefaultTag(scheme, node.Server, node.Port)
-		node.Comment = node.Tag
-	}
-
-	// Normalize flag
-	node.Tag = normalizeFlagTag(node.Tag)
-
-	// Extract flow
-	node.Flow = parsedURL.Query().Get("flow")
-
-	// Apply skip filters
-	if shouldSkipNode(node, skipFilters) {
-		return nil, nil // Node should be skipped
-	}
-
-	// Build outbound JSON based on scheme
-	node.Outbound = buildOutbound(node)
-
-	return node, nil
+	return nil, fmt.Errorf("unsupported scheme")
 }
 
 // Private helper functions (migrated from parser.go)
@@ -433,24 +284,4 @@ func shouldSkipNode(node *configtypes.ParsedNode, skipFilters []map[string]strin
 		}
 	}
 	return false // Don't skip
-}
-
-func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
-	outbound := make(map[string]interface{})
-	// `ech=` не переводится никуда ни у одной схемы (D-122): Xray-форма несёт
-	// чужой ключ. Помечаем один раз здесь, а не в каждой TLS-ветке.
-	noteECHIgnored(node)
-	outbound["tag"] = node.Tag
-	// Переименований типа здесь больше нет: ss → "shadowsocks" и
-	// socks*/version — свойство СХЕМЫ, и его объявляют `defaults` секций
-	// (shadowsocks.json, socks.json). Обе схемы на движке, сюда не доходят.
-	outbound["type"] = node.Scheme
-	outbound["server"] = node.Server
-	outbound["server_port"] = node.Port
-
-	if node.Scheme == "hysteria" {
-		buildHysteriaOutbound(node, outbound)
-	}
-
-	return outbound
 }

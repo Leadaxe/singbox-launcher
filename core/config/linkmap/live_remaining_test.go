@@ -43,7 +43,6 @@ var notLiveYet = []string{}
 // написаны (волны W5/W6, `TASKS.md`). Список сокращается по мере написания
 // секций; пустой — вся ссылочная область описана реестром.
 var schemesWithoutURISection = []string{
-	"hysteria",
 	"wireguard",
 }
 
