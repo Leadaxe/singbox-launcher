@@ -17,14 +17,7 @@
       },
       "kind": "outbound",
       "label": "frag-owner",
-      "scheme": "vless",
-      "warnings": [
-        {
-          "code": "xray_fragment_mapped",
-          "path": "tls.fragment",
-          "value": "packets=tlshello length=100-200 interval=10-20"
-        }
-      ]
+      "scheme": "vless"
     }
   ],
   "v": 1

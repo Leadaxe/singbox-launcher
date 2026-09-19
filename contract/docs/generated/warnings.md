@@ -94,7 +94,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`xhttp_mode_forced_packet_up`](#xhttp_mode_forced_packet_up) · `warning` — XHTTP mode set to packet-up
 - [`xhttp_param_reset`](#xhttp_param_reset) · `warning` — XHTTP: field {field} removed
 - [`xray_extra_entries_dropped`](#xray_extra_entries_dropped) · `warning` — Configuration: extra entries dropped
-- [`xray_fragment_mapped`](#xray_fragment_mapped) · `info` — Xray TLS fragmentation mapped
 
 <a id="alias_shadowed"></a>
 ### alias_shadowed
@@ -1759,23 +1758,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Check that the first entry is the one you need: it is the one that became the node.
   - If you need the other servers too, split them into separate elements — one server per outbound.
-
-**Where it comes from:**
-
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
-
-<a id="xray_fragment_mapped"></a>
-### xray_fragment_mapped
-
-**severity:** `info` · **params:** `path`, `value`
-
-**Xray TLS fragmentation mapped**
-
-- **What happened:** The Xray config routed this node through a freedom outbound with fragment settings ({value}). That is not a relay hop: fragmentation was mapped to {path}=true. sing-box does not support the original length and interval values — they were dropped.
-- **Why it happens:** Some Xray subscriptions split TLS ClientHello across TCP segments to evade DPI: the main outbound sets streamSettings.sockopt.dialerProxy to a freedom outbound whose settings.fragment carries packets/length/interval. There is no server behind that outbound — it is a local dialer trick, not a chain hop.
-- **What you can do:**
-  - Nothing to do if the node connects: fragmentation is enabled through tls.fragment.
-  - If it does not connect, ask the provider for a config without the freedom fragment trick or pick another node.
 
 **Where it comes from:**
 

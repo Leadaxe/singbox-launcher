@@ -1,7 +1,6 @@
 package subscription
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -16,7 +15,6 @@ func TestParseNodesFromXrayJSONArray_DialerProxyFreedomFragment(t *testing.T) {
 		proxyStream  string
 		wantNodes    int
 		wantFragment bool
-		wantWarn     bool
 		wantChain    int
 	}{
 		{
@@ -29,7 +27,6 @@ func TestParseNodesFromXrayJSONArray_DialerProxyFreedomFragment(t *testing.T) {
 			}`,
 			wantNodes:    1,
 			wantFragment: true,
-			wantWarn:     true,
 			wantChain:    0,
 		},
 		{
@@ -42,7 +39,6 @@ func TestParseNodesFromXrayJSONArray_DialerProxyFreedomFragment(t *testing.T) {
 			}`,
 			wantNodes:    1,
 			wantFragment: true,
-			wantWarn:     true,
 			wantChain:    0,
 		},
 		{
@@ -55,7 +51,6 @@ func TestParseNodesFromXrayJSONArray_DialerProxyFreedomFragment(t *testing.T) {
 			}`,
 			wantNodes:    1,
 			wantFragment: false,
-			wantWarn:     false,
 			wantChain:    0,
 		},
 		{
@@ -67,7 +62,6 @@ func TestParseNodesFromXrayJSONArray_DialerProxyFreedomFragment(t *testing.T) {
 			}`,
 			wantNodes:    1,
 			wantFragment: false,
-			wantWarn:     false,
 			wantChain:    0,
 		},
 		{
@@ -119,20 +113,8 @@ func TestParseNodesFromXrayJSONArray_DialerProxyFreedomFragment(t *testing.T) {
 			if gotFrag != tc.wantFragment {
 				t.Fatalf("tls.fragment: got %v want %v", gotFrag, tc.wantFragment)
 			}
-			hasWarn := false
-			for _, w := range n.Warnings {
-				if w.Code == WarnXrayFragmentMapped {
-					hasWarn = true
-					if w.Path != "tls.fragment" {
-						t.Fatalf("warning path: %q", w.Path)
-					}
-					if !strings.Contains(w.Value, "packets=tlshello") {
-						t.Fatalf("warning value: %q", w.Value)
-					}
-				}
-			}
-			if hasWarn != tc.wantWarn {
-				t.Fatalf("xray_fragment_mapped: got %v want %v (%v)", hasWarn, tc.wantWarn, n.Warnings)
+			if len(n.Warnings) != 0 {
+				t.Fatalf("unexpected warnings: %v", n.Warnings)
 			}
 		})
 	}

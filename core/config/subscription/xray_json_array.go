@@ -746,8 +746,14 @@ func attachXrayDialerChain(
 			// Служебный freedom с fragment — не хоп, а TLS ClientHello
 			// fragmentation (Xray DPI trick). Основной узел остаётся прямым;
 			// без fragment dialerProxy молча игнорируется.
-			if spec, has := xrayFreedomFragmentSpec(hopOb); has {
-				applyXrayFreedomFragment(node, spec)
+			// Предупреждение не ставится (решение владельца): Xray режет
+			// ClientHello вслепую по length и ждёт фиксированный interval;
+			// sing-box парсит ClientHello, режет каждую метку SNI (public
+			// suffix не трогается), включает TCP_NODELAY, ждёт ACK или
+			// fragment_fallback_delay (500 мс по умолчанию); record_fragment —
+			// тот же разрез на уровне TLS-записей. Механика ядра строго лучше.
+			if xrayFreedomFragmentSpec(hopOb) {
+				applyXrayFreedomFragment(node)
 			}
 			return nil
 		}
@@ -791,29 +797,13 @@ func attachXrayDialerChain(
 	return nil
 }
 
-func xrayFreedomFragmentSpec(ob map[string]interface{}) (string, bool) {
+func xrayFreedomFragmentSpec(ob map[string]interface{}) bool {
 	settings, _ := ob["settings"].(map[string]interface{})
 	if settings == nil {
-		return "", false
+		return false
 	}
 	frag, _ := settings["fragment"].(map[string]interface{})
-	if frag == nil {
-		return "", false
-	}
-	parts := make([]string, 0, 3)
-	if v := strings.TrimSpace(xrayMapString(frag, "packets")); v != "" {
-		parts = append(parts, "packets="+v)
-	}
-	if v := strings.TrimSpace(xrayMapString(frag, "length")); v != "" {
-		parts = append(parts, "length="+v)
-	}
-	if v := strings.TrimSpace(xrayMapString(frag, "interval")); v != "" {
-		parts = append(parts, "interval="+v)
-	}
-	if len(parts) == 0 {
-		return "", false
-	}
-	return strings.Join(parts, " "), true
+	return frag != nil
 }
 
 func nodeOutboundTLSEnabled(node *configtypes.ParsedNode) bool {
@@ -828,13 +818,12 @@ func nodeOutboundTLSEnabled(node *configtypes.ParsedNode) bool {
 	return ok && enabled
 }
 
-func applyXrayFreedomFragment(node *configtypes.ParsedNode, spec string) {
+func applyXrayFreedomFragment(node *configtypes.ParsedNode) {
 	if !nodeOutboundTLSEnabled(node) {
 		return
 	}
 	tls, _ := node.Outbound["tls"].(map[string]interface{})
 	tls["fragment"] = true
-	node.AddFieldWarning(WarnXrayFragmentMapped, "tls.fragment", spec)
 }
 
 // xrayChainHopFromOutbound строит звено цепочки.

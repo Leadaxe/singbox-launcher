@@ -1217,30 +1217,6 @@
       "dart": null,
       "go": "contract/registry/protocols/{vless,vmess,trojan,shadowsocks,hysteria2}.json mappers.xray.params.$extra_*.on_len_gt"
     },
-    "xray_fragment_mapped": {
-      "severity": "info",
-      "params": [
-        "path",
-        "value"
-      ],
-      "title_en": "Xray TLS fragmentation mapped",
-      "title_ru": "Фрагментация TLS из Xray перенесена",
-      "text_en": "The Xray config routed this node through a freedom outbound with fragment settings ({value}). That is not a relay hop: fragmentation was mapped to {path}=true. sing-box does not support the original length and interval values — they were dropped.",
-      "text_ru": "Конфиг Xray вёл этот узел через freedom-outbound с фрагментацией ({value}). Это не релей-хоп: фрагментация перенесена в {path}=true. Параметры length и interval sing-box не поддерживает — они отброшены.",
-      "cause_en": "Some Xray subscriptions split TLS ClientHello across TCP segments to evade DPI: the main outbound sets streamSettings.sockopt.dialerProxy to a freedom outbound whose settings.fragment carries packets/length/interval. There is no server behind that outbound — it is a local dialer trick, not a chain hop.",
-      "cause_ru": "Часть Xray-подписок дробит TLS ClientHello по TCP-сегментам против DPI: у основного outbound в streamSettings.sockopt.dialerProxy указан freedom-outbound с settings.fragment (packets/length/interval). За ним нет сервера — это локальный приём Xray, а не хоп цепочки.",
-      "fix_en": [
-        "Nothing to do if the node connects: fragmentation is enabled through tls.fragment.",
-        "If it does not connect, ask the provider for a config without the freedom fragment trick or pick another node."
-      ],
-      "fix_ru": [
-        "Если узел соединяется, делать ничего не нужно: фрагментация включена через tls.fragment.",
-        "Если не соединяется, попросите у провайдера конфиг без freedom-фрагментации или выберите другой узел."
-      ],
-      "desc": "Xray dialerProxy → freedom с settings.fragment: не хоп, tls.fragment=true на узле-владельце при включённом TLS; value — исходные packets/length/interval одной строкой; length/interval в sing-box не переносятся.",
-      "dart": null,
-      "go": "core/config/subscription/xray_json_array.go (attachXrayDialerChain)"
-    },
     "wgconf_extra_peer_dropped": {
       "severity": "warning",
       "params": [

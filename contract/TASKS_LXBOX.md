@@ -5628,14 +5628,19 @@ base64, в нём нет ни `://`, ни `{`, ни `[Interface]`, поэтом�
 В реестре сегодня одна запись (`🇪🇳→🇬🇧` у hysteria2), так что для вас
 это норма на будущее, а не правка поведения.
 
-## 41. Контракт 1.1.45 — Xray dialerProxy → freedom с fragment (не хоп)
+## 41. Контракт 1.1.45–1.1.46 — Xray dialerProxy → freedom с fragment (не хоп)
 
 Норма: цель `streamSettings.sockopt.dialerProxy` с протоколом `freedom` и
 `settings.fragment` — **не хоп цепочки**. Узел-владелец остаётся прямым;
-фрагментация переносится в `tls.fragment=true` при `tls.enabled` на узле.
-Код `xray_fragment_mapped` (severity `info`, `path`=`tls.fragment`,
-`value`=исходные `packets`/`length`/`interval` одной строкой). Параметры
-`length`/`interval` sing-box не поддерживает — не переносятся.
+фрагментация переносится в `tls.fragment=true` при `tls.enabled` на узле
+**молча** (контракт 1.1.46).
+
+Код `xray_fragment_mapped` снят решением владельца (1.1.46): Xray режет
+ClientHello вслепую по length и ждёт фиксированный interval; sing-box парсит
+ClientHello, режет каждую метку SNI (public suffix не трогается), включает
+TCP_NODELAY, ждёт ACK или `fragment_fallback_delay` (500 мс по умолчанию);
+`record_fragment` — тот же разрез на уровне TLS-записей. Механика ядра
+строго лучше, потери поведения нет — предупреждать не о чем.
 
 Freedom **без** `settings.fragment` — `dialerProxy` молча игнорируется, код
 не ставится. Прочие служебные цели (`blackhole`, `dns`, `loopback`) —
@@ -5645,8 +5650,7 @@ Freedom **без** `settings.fragment` — `dialerProxy` молча игнори
 
 1. Элемент Xray с outbounds `[proxy(vless+tls/reality, dialerProxy=fragment),
    fragment(freedom+settings.fragment), direct(freedom), block(blackhole)]` →
-   один узел, без `chain`/`detour`, `tls.fragment=true`, код
-   `xray_fragment_mapped`.
+   один узел, без `chain`/`detour`, `tls.fragment=true`, **без кодов**.
 2. Тот же элемент, но `dialerProxy=direct` (freedom без fragment) → узел
    без кода и без `tls.fragment`.
 3. `security=none` + `dialerProxy=fragment` → узел без `tls.fragment` и без

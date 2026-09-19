@@ -1066,3 +1066,17 @@ packets/length/interval в `value`; length/interval в sing-box не
 Прочие служебные цели (blackhole, dns, loopback) — отбраковка как раньше.
 
 **Кейсов:** 1 (`body/xray/dialer_proxy_freedom_fragment`).
+
+### D133-46 · Xray dialerProxy → freedom: код `xray_fragment_mapped` снят — **ПРИНЯТО**
+
+**Что меняется:** норма D133-45 без изменений (`tls.fragment=true` молча при
+`settings.fragment` и включённом TLS). Код `xray_fragment_mapped` снят
+решением владельца: Xray режет ClientHello вслепую по length и ждёт
+фиксированный interval; sing-box парсит ClientHello, режет каждую метку SNI
+(public suffix не трогается), включает TCP_NODELAY, ждёт ACK или
+`fragment_fallback_delay` (500 мс по умолчанию); `record_fragment` — тот же
+разрез на уровне TLS-записей. Механика ядра строго лучше, потери поведения
+нет — предупреждать не о чем.
+
+**Кейсов:** 1 (тот же `body/xray/dialer_proxy_freedom_fragment`, ожидания без
+warnings).
