@@ -414,7 +414,7 @@ func (p *WizardPresenter) writeRemoteConfig() (string, error) {
 	// Кандидат → check → атомарная замена (SPEC 132 волна 6А). Выключения
 	// пишутся в черновик тем же адаптером, что на Final. Локальные
 	// dirty-маркеры не поднимаются — этот путь их и не трогает.
-	checked, disabled, loopErr := p.runDraftRejectLoop(configText, outPath, false, nil)
+	checked, disabled, promoted, loopErr := p.runDraftRejectLoop(configText, outPath, false, nil)
 	if loopErr != nil {
 		debuglog.ErrorLog("exportRemoteConfig: reject loop: %v", loopErr)
 		return "", loopErr
@@ -422,13 +422,15 @@ func (p *WizardPresenter) writeRemoteConfig() (string, error) {
 	if checked != "" {
 		configText = checked
 	}
-	if _, err := os.Stat(outPath); err == nil {
+	if promoted {
 		debuglog.InfoLog("exportRemoteConfig: wrote %s (%d bytes, disabled=%d)", outPath, len(configText), len(disabled))
 		return outPath, nil
 	}
 	// Цикл не заменил файл (Stop / ошибка не про узел). Последний кандидат
-	// после Stop всё же пишем: state.json уже сохранён, Deploy иначе унесёт
-	// прошлую сборку.
+	// всё же пишем: state.json уже сохранён, Deploy иначе унесёт прошлую
+	// сборку. Признак — promoted, а не наличие файла: от прошлого Save он
+	// лежит на месте всегда, и проверка по os.Stat делала эту ветку мёртвой.
+	debuglog.WarnLog("exportRemoteConfig: local check did not accept the config — writing it as is, the machine's daemon validates on Deploy")
 	if err := os.WriteFile(outPath, []byte(configText), platform.DefaultFileMode); err != nil {
 		debuglog.ErrorLog("exportRemoteConfig: write %s: %v", outPath, err)
 		return "", err

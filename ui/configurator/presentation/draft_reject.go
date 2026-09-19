@@ -18,30 +18,36 @@ import (
 // RunDraftRejectPreview — цикл на Final: кандидат проверяется, боевой
 // config.json не заменяется. Save остаётся доступной и после Stop.
 func (p *WizardPresenter) RunDraftRejectPreview(first string, progress func(int)) (string, []core.CoreRejectedNode, error) {
-	return p.runDraftRejectLoop(first, "", true, progress)
+	accepted, disabled, _, err := p.runDraftRejectLoop(first, "", true, progress)
+	return accepted, disabled, err
 }
 
 // runDraftRejectLoop гоняет кандидат → check → выключение в черновике.
 //
 // promotePath — куда писать принятый конфиг (remote config.json). Путь
 // пустой + noPromote: только превью Final, боевой файл не трогаем.
-func (p *WizardPresenter) runDraftRejectLoop(first string, promotePath string, noPromote bool, progress func(int)) (string, []core.CoreRejectedNode, error) {
+//
+// promoted — цикл сам заменил promotePath принятым конфигом. false = файл
+// на диске остался прежним (отказ не про узел, Stop, проверять нечем), и
+// записать последний кандидат должен вызывающий. Судить об этом по наличию
+// файла нельзя: от прошлого Save он лежит там всегда.
+func (p *WizardPresenter) runDraftRejectLoop(first string, promotePath string, noPromote bool, progress func(int)) (accepted string, disabled []core.CoreRejectedNode, promoted bool, err error) {
 	if p == nil || p.model == nil {
-		return first, nil, nil
+		return first, nil, false, nil
 	}
 	ac := core.GetController()
 	if ac == nil || ac.FileService == nil {
-		return first, nil, nil
+		return first, nil, false, nil
 	}
 	configPath := promotePath
 	if configPath == "" {
 		configPath = ac.FileService.ConfigPath
 	}
 	if configPath == "" {
-		return first, nil, nil
+		return first, nil, false, nil
 	}
 	if err := os.MkdirAll(filepath.Dir(configPath), platform.DefaultDirMode); err != nil {
-		return first, nil, err
+		return first, nil, false, err
 	}
 
 	rebuild := func() ([]byte, map[string]state.NodeLink, error) {
@@ -75,17 +81,17 @@ func (p *WizardPresenter) runDraftRejectLoop(first string, promotePath string, n
 	}
 	out, err := core.RunRejectLoop(in)
 	if err != nil {
-		return first, nil, err
+		return first, nil, false, err
 	}
 	if err := in.Disabler.Commit(); err != nil {
 		debuglog.ErrorLog("draft reject: commit: %v", err)
 	}
 	publishDraftReject(ac, out)
-	accepted := first
+	accepted = first
 	if len(out.AcceptedJSON) > 0 {
 		accepted = string(out.AcceptedJSON)
 	}
-	return accepted, out.Disabled, nil
+	return accepted, out.Disabled, out.Promoted, nil
 }
 
 func composeRejectProgress(ac *core.AppController, extra func(int)) func(int) {
@@ -121,4 +127,3 @@ func publishDraftReject(ac *core.AppController, out core.RejectLoopResult) {
 		},
 	})
 }
-
