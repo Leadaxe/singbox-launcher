@@ -34,7 +34,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`detour_cycle_broken`](#detour_cycle_broken) · `warning` — Loop in the chain broken
 - [`detour_target_missing`](#detour_target_missing) · `warning` — Chain cut: {target} not found
 - [`detour_to_group`](#detour_to_group) · `warning` — Chain cut: {target} is a group
-- [`detour_with_listen_port`](#detour_with_listen_port) · `warning` — Chain not applied: node has listen_port
+- [`detour_with_listen_port`](#detour_with_listen_port) · `warning` — Chain not applied: node listens on a port
 - [`dialer_proxy_unusable`](#dialer_proxy_unusable) · `error` — Preceding proxy {target} is unusable
 - [`ech_ignored`](#ech_ignored) · `info` — ECH from the link removed
 - [`field_conflict`](#field_conflict) · `warning` — Field {path} removed: conflicts with {with}
@@ -43,15 +43,16 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`flow_deprecated`](#flow_deprecated) · `info` — Obsolete flow removed
 - [`group_empty`](#group_empty) · `warning` — Group {tag} left without members
 - [`group_member_missing`](#group_member_missing) · `warning` — {count} group members not imported
-- [`json_field_unknown`](#json_field_unknown) · `info` — Configuration: field not read
-- [`masque_vhttp_invalid`](#masque_vhttp_invalid) · `warning` — MASQUE: HTTP version set to h3
+- [`json_field_unknown`](#json_field_unknown) · `info` — Configuration: field {query_name} not read
+- [`masque_vhttp_invalid`](#masque_vhttp_invalid) · `warning` — MASQUE: HTTP version {value} set to h3
 - [`max_nodes_exceeded`](#max_nodes_exceeded) · `warning` — {skipped} nodes over the limit skipped
-- [`naive_extra_headers_invalid`](#naive_extra_headers_invalid) · `info` — naive: a header was discarded
+- [`naive_extra_headers_invalid`](#naive_extra_headers_invalid) · `info` — naive: header {entry} discarded
 - [`naive_padding_ignored`](#naive_padding_ignored) · `info` — naive: padding parameter ignored
 - [`naive_unavailable`](#naive_unavailable) · `error` — naive is unavailable in this build
 - [`obfs_password_missing`](#obfs_password_missing) · `warning` — Obfuscation removed: no password
 - [`obfs_unknown`](#obfs_unknown) · `warning` — Unknown obfuscation removed
 - [`packet_encoding_unknown`](#packet_encoding_unknown) · `warning` — Field removed: unknown packet_encoding
+- [`password_empty`](#password_empty) · `warning` — Password is empty
 - [`port_invalid`](#port_invalid) · `error` — Invalid port {value}
 - [`protocol_unsupported`](#protocol_unsupported) · `error` — Protocol {scheme} is not supported
 - [`reality_fp_not_chrome`](#reality_fp_not_chrome) · `info` — REALITY: fingerprint {value} may not connect
@@ -77,7 +78,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`tuic_udp_relay_mode_invalid`](#tuic_udp_relay_mode_invalid) · `warning` — Field removed: unknown UDP relay mode
 - [`type_invalid`](#type_invalid) · `warning` — Field {path} removed: wrong type
 - [`unknown_key`](#unknown_key) · `warning` — Field removed: unknown key
-- [`uri_param_unknown`](#uri_param_unknown) · `info` — Link: parameter not read
+- [`uri_param_unknown`](#uri_param_unknown) · `info` — Link: parameter {query_name} not read
 - [`uri_too_long`](#uri_too_long) · `error` — Link too long: {length} characters
 - [`utls_fp_unknown`](#utls_fp_unknown) · `warning` — Unknown uTLS fingerprint replaced
 - [`vision_with_transport`](#vision_with_transport) · `info` — flow removed: incompatible with transport
@@ -86,7 +87,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`wg_key_invalid`](#wg_key_invalid) · `error` — WireGuard: invalid key
 - [`wgconf_dns_ignored`](#wgconf_dns_ignored) · `info` — WireGuard: DNS from the configuration not applied
 - [`wgconf_extra_peer_dropped`](#wgconf_extra_peer_dropped) · `warning` — WireGuard: extra [Peer] sections dropped
-- [`wgconf_param_unknown`](#wgconf_param_unknown) · `info` — WireGuard: unknown key in the configuration
+- [`wgconf_param_unknown`](#wgconf_param_unknown) · `info` — WireGuard: unknown key {query_name}
 - [`ws_early_data_converted`](#ws_early_data_converted) · `info` — WebSocket: early data converted
 - [`xhttp_mode_forced_packet_up`](#xhttp_mode_forced_packet_up) · `warning` — XHTTP mode set to packet-up
 - [`xhttp_param_reset`](#xhttp_param_reset) · `warning` — XHTTP: field {field} removed
@@ -163,7 +164,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="awg3_field_invalid"></a>
 ### awg3_field_invalid
 
-**severity:** `warning` · **params:** `field`, `path`, `value`
+**severity:** `warning` · **params:** `path`, `value`
 
 **AmneziaWG 3.x: field {path} not applied**
 
@@ -246,7 +247,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="awg_header_invalid"></a>
 ### awg_header_invalid
 
-**severity:** `warning` · **params:** `field`, `path`, `value`
+**severity:** `warning` · **params:** `path`, `value`
 
 **AmneziaWG: magic header {path} not applied**
 
@@ -400,7 +401,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Chain: cannot strip uTLS on REALITY**
 
 - **What happened:** The chain strips uTLS from hop {target}, whose node runs REALITY, where the fingerprint is a load-bearing part of the protocol rather than camouflage. The chain was excluded, because the core rejects such an entry and would refuse to start the whole config.
-- **Why it happens:** The chain was set up to strip uTLS from a hop, and the node in that position runs REALITY. In REALITY the ClientHello fingerprint is a load-bearing part of the protocol, not camouflage, so the core refuses to remove it.
+- **Why it happens:** The chain was set up to strip uTLS from a hop, and the node in that position runs REALITY. In REALITY the TLS fingerprint (the ClientHello) is a load-bearing part of the protocol, not camouflage, so the core refuses to remove it.
 - **What you can do:**
   - Turn off stripping uTLS for that position in the chain.
   - Or put a node without REALITY into that position.
@@ -450,7 +451,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **The core rejected this server**
 
-- **What happened:** The core rejected this server and said: {reason}. It was turned off so the VPN could start. Turn it back on and the core will check it again.
+- **What happened:** The core rejected this server. Its technical message: {reason}. The server was turned off so the VPN could start. Turn it back on and the core will check it again.
 - **Why it happens:** The core checks the whole configuration at once and refuses to start on the first server it cannot accept — otherwise one broken line would leave every server unusable. Something in this server is outside what the core accepts and outside what the app's own checks look at: a value from a newer or older core, a field the provider filled in by hand, or a combination nobody anticipated. The text above is the core's own, passed on unchanged.
 - **What you can do:**
   - Update the subscription: the provider may have already fixed this server.
@@ -535,7 +536,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **severity:** `warning` · **params:** `target`
 
-**Chain not applied: node has listen_port**
+**Chain not applied: node listens on a port**
 
 - **What happened:** This node listens on its own port, so it cannot additionally be routed through {target}. The chain was not applied, because the core rejects that combination and would refuse to start the whole config; the node keeps working.
 - **Why it happens:** The node was set up to listen on its own port, and at the same time a hop was assigned to it — as a source detour or in an imported config. The core does not allow those two together.
@@ -554,7 +555,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **Preceding proxy {target} is unusable**
 
-- **What happened:** The node goes out through {target}, which cannot serve as a hop: {cause}. The node was dropped on purpose: without that hop its traffic would go directly, revealing the connection.
+- **What happened:** The node goes out through {target}, which cannot serve as a hop ({cause}). The node was dropped on purpose: without that hop its traffic would go directly, revealing the connection.
 - **Why it happens:** The entry comes from an Xray config, where a node is routed through another one via dialerProxy. The hop it names is not there or cannot serve as one, and letting the node out directly would reveal the connection it was supposed to hide.
 - **What you can do:**
   - Ask the provider for a config that carries all the nodes its chains reference.
@@ -762,7 +763,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **severity:** `info` · **params:** `query_name`
 
-**Configuration: field not read**
+**Configuration: field {query_name} not read**
 
 - **What happened:** The element carries the field {query_name}, which is not described for this protocol. The node works and the field changed nothing: it was not read at all. One code is raised per unread field.
 - **Why it happens:** The field belongs to another client's dialect, to a newer version of the core, or it is a typo in a hand-written body. Service keys of the element itself (protocol, tag, remarks) and containers whose leaves the table reads (settings, streamSettings) are expected there and are not reported.
@@ -780,7 +781,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **severity:** `warning` · **params:** `value`
 
-**MASQUE: HTTP version set to h3**
+**MASQUE: HTTP version {value} set to h3**
 
 - **What happened:** The MASQUE HTTP version {value} at {path} is outside the values the core accepts. It was set to h3, because the core rejects such a value and would refuse to start the whole config.
 - **Why it happens:** The core accepts only h3, h2 and auto here. Another value comes from a typo or from an obsolete spelling of the parameter that older generators still write.
@@ -815,7 +816,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **severity:** `info` · **params:** `entry`
 
-**naive: a header was discarded**
+**naive: header {entry} discarded**
 
 - **What happened:** A pair from the naive extra-headers list ({entry}) is not a valid header: the separator is missing or the characters are not allowed. That pair was discarded, the rest were kept; if the server expects the discarded header, the node may be refused access.
 - **Why it happens:** The extra-headers list in the link is written by hand more often than generated, and a pair loses its colon, picks up a space in the header name, or carries a line break — usually when the link was assembled or copied between editors.
@@ -915,6 +916,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`packet_encoding`](protocols/vless.md#body-packet-encoding) — the value does not fit the field → removed
 - [`vmess`](protocols/vmess.md)
   - [`packet_encoding`](protocols/vmess.md#body-packet-encoding) — the value does not fit the field → removed
+
+<a id="password_empty"></a>
+### password_empty
+
+**severity:** `warning` · **params:** `path`
+
+**Password is empty**
+
+- **What happened:** The link carries an empty password in {path}. The node is kept as it is, but the server will most likely refuse authentication and the connection will not come up.
+- **Why it happens:** A panel that builds links from a template leaves the password slot empty when the subscription has expired or the account has no active key; copying a link by hand loses the part after the colon just as easily.
+- **What you can do:**
+  - Check the link at your subscription provider and copy it again in full.
+  - If the provider issues the password separately, add it to the node by hand.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
 <a id="port_invalid"></a>
 ### port_invalid
@@ -1083,7 +1101,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="ss_method_legacy"></a>
 ### ss_method_legacy
 
-**severity:** `info` · **params:** `method`
+**severity:** `info`
 
 **Shadowsocks: legacy cipher**
 
@@ -1462,7 +1480,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **severity:** `info` · **params:** `query_name`
 
-**Link: parameter not read**
+**Link: parameter {query_name} not read**
 
 - **What happened:** The link carries the parameter {query_name}, which is not described for this protocol. The node works and the parameter changed nothing: it was not read at all. One code is raised per unread parameter.
 - **Why it happens:** The parameter belongs to another client's dialect, to a newer version of the protocol, or it is a typo in a hand-edited link. Sharing links have no common registry of parameters, so every client writes what it knows; a parameter this protocol does not describe has nowhere to go in the node body.
@@ -1567,7 +1585,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="wg_key_invalid"></a>
 ### wg_key_invalid
 
-**severity:** `error` · **params:** `path`, `value`
+**severity:** `error` · **params:** `path`
 
 **WireGuard: invalid key**
 
@@ -1623,7 +1641,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **severity:** `info` · **params:** `query_name`
 
-**WireGuard: unknown key in the configuration**
+**WireGuard: unknown key {query_name}**
 
 - **What happened:** The configuration holds the key {query_name}, which is not described for a WireGuard node. The node works and the key changed nothing: it was not read at all.
 - **Why it happens:** The key belongs to another client's dialect, to a newer version of AmneziaWG, or it is a typo in a hand-edited file. Keys that manage the interface itself rather than describe the node (PostUp, Table, SaveConfig and the like) are expected in a .conf and are not reported.
@@ -1672,11 +1690,11 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="xhttp_param_reset"></a>
 ### xhttp_param_reset
 
-**severity:** `warning` · **params:** `field`, `reason`, `value`
+**severity:** `warning` · **params:** `field`, `value`
 
 **XHTTP: field {field} removed**
 
-- **What happened:** The XHTTP parameter {field} ({value}) is not allowed in the mode this node uses ({reason}). The field was removed and the mode left untouched, because the core rejects such a pair and would refuse to start the whole config.
+- **What happened:** The XHTTP field {field} ({value}) is not allowed in this node's current mode. The field was removed and the mode left untouched, because the core rejects such a pair and would refuse to start the whole config.
 - **Why it happens:** The link came from a generator that copies XHTTP parameters blindly: uplink_data_placement=header is only valid in packet-up mode, and the entry names a different mode. Such a pair is fatal for the whole config, not just for this node.
 - **What you can do:**
   - Nothing to do: the node works in the mode the entry asked for, without the invalid parameter.

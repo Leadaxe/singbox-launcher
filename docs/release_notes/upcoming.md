@@ -40,6 +40,7 @@
 - Windows: the tray icon is sharp again — Fyne was picking a 16-colour thumbnail layer instead of the full icon (#83).
 
 ### Technical / Internal
+- Contract 1.1.38: warning copy review in `warnings.json` — self-sufficient list subtitles, aligned `params` placeholders, updated developer `go` pointers after SPEC 133.
 - Linux builds now obtain Wayland header paths from `pkg-config` and fall back to X11 when the optional native Wayland/EGL development files are incomplete, fixing local builds on openSUSE (PR #128, issue #127).
 - New `docs/TROUBLESHOOTING.md`: known problems by platform with links to their solutions (first entry — repeated `systemd-resolved` password prompts on Linux, issue #126).
 - Node bodies are produced by `Sanitize` + `Emit` over the contract registry (`contract/registry/**`): the per-protocol emitter chain, the TLS/transport field allowlists and the special-case naive filter are gone. Adding a field to a protocol is now a registry edit, not four code edits.
@@ -86,6 +87,7 @@
 - Windows: иконка в трее снова чёткая — Fyne брал 16-цветный слой-миниатюру вместо полноцветной (#83).
 
 ### Техническое / Внутреннее
+- Контракт 1.1.38: вычитка текстов предупреждений в `warnings.json` — самодостаточные подзаголовки в списке узлов, согласованные `params`, обновлённые служебные `go` после SPEC 133.
 - Linux-сборка теперь получает пути к заголовкам Wayland через `pkg-config` и использует X11 при неполном наборе опциональных Wayland/EGL-файлов разработки, исправляя локальную сборку в openSUSE (PR #128, issue #127).
 - Новый `docs/TROUBLESHOOTING.ru.md`: известные проблемы по платформам со ссылками на решения (первая запись — повторные запросы пароля `systemd-resolved` на Linux, issue #126).
 - Тело узла делают `Sanitize` + `Emit` по реестру контракта (`contract/registry/**`): per-scheme цепочка эмиттера, allowlist-ы полей TLS и транспорта и частный фильтр naive сняты. Новое поле протокола — правка реестра, а не четырёх мест в коде.
