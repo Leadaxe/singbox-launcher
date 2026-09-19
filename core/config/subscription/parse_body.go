@@ -249,17 +249,16 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 				st.reject(block.Err.Error(), OriginKindWGIni, block.Raw)
 				continue
 			}
-			node, err := ParseNode(block.URI, skip)
-			if err != nil {
-				// Блок разобрался в URI, но узлом не стал: запись остаётся в
-				// составе со СВОИМ исходником — показывать надо блок, а не
-				// промежуточную ссылку.
-				st.warn(fmt.Sprintf("record rejected: %v", err))
-				st.reject(err.Error(), OriginKindWGIni, block.Raw)
-				continue
+			// Узел уже собран СЕКЦИЕЙ из самого блока (SPEC 133):
+			// промежуточной ссылки в этом пути больше нет, и разбирать её
+			// обратно значило бы терять код `wgconf_dns_ignored` и метку
+			// из комментария [Peer].
+			node := block.Node
+			if node != nil && shouldSkipNode(node, skip) {
+				continue // отсечено skip-фильтром
 			}
 			if node == nil {
-				continue // отсечено skip-фильтром
+				continue
 			}
 			st.accept(node, OriginKindWGIni, block.Raw)
 		}

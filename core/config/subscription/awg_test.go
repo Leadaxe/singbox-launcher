@@ -288,13 +288,17 @@ func TestParseWireGuardURI_MTUPassthrough(t *testing.T) {
 	}
 }
 
-// wgConfToURI обязан переносить masquerade-сахар ip/id/ib.
+// Вход `.conf` обязан доносить masquerade-сахар ip/id/ib ДО ТЕЛА.
 //
 // Без него .conf с маскировкой терял её МОЛЧА: числа junk доезжали, узел
 // выглядел настроенным, и только первый decoy-пакет уходил без маскировки —
 // то есть ровно та настройка, ради которой конфиг и брали, пропадала без
 // единого слова.
-func TestWgConfToURI_CarriesMasquerade(t *testing.T) {
+//
+// Спрашивается ТЕЛО, а не промежуточная ссылка: с переводом `.conf` на
+// секцию реестра (SPEC 133) ссылки в этом пути больше нет, а вопрос теста
+// всегда был про тело.
+func TestWGConfCarriesMasquerade(t *testing.T) {
 	const conf = `[Interface]
 PrivateKey = UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
 Address = 10.0.0.2/32
@@ -311,33 +315,15 @@ PublicKey = QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=
 Endpoint = vpn.example:51820
 AllowedIPs = 0.0.0.0/0
 `
-	uri, err := wgConfToURI(conf, "conf-node")
-	if err != nil {
-		t.Fatalf("wgConfToURI: %v", err)
+	node, err, known := ParseWGConfByEngine(conf, nil)
+	if err != nil || !known || node == nil {
+		t.Fatalf("parse conf: err=%v known=%v node=%v", err, known, node)
 	}
-	u, err := url.Parse(uri)
-	if err != nil {
-		t.Fatalf("parse built URI: %v", err)
-	}
-	q := u.Query()
 	for key, want := range map[string]string{
 		"ip": "quic",
 		// Регистр домена сохраняется: id едет на провод как есть.
 		"id": "Telemost.Example.COM",
 		"ib": "chrome",
-	} {
-		if got := q.Get(key); got != want {
-			t.Errorf("%s: got %q, want %q", key, got, want)
-		}
-	}
-
-	// И сам узел обязан их получить — до тела, а не только до ссылки.
-	node, err := ParseNode(uri, nil)
-	if err != nil || node == nil {
-		t.Fatalf("parse node: err=%v node=%v", err, node)
-	}
-	for key, want := range map[string]string{
-		"ip": "quic", "id": "Telemost.Example.COM", "ib": "chrome",
 	} {
 		if got, _ := node.Outbound[key].(string); got != want {
 			t.Errorf("node %s: got %v, want %q", key, node.Outbound[key], want)

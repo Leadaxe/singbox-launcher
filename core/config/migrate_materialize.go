@@ -281,11 +281,12 @@ func materializeWGConfBlock(blocks []string) (*state.MigrationServerResult, erro
 		return nil, fmt.Errorf("wg-quick text carries %d [Interface] blocks — one node needs exactly one", len(blocks))
 	}
 	raw := blocks[0]
-	uri, err := subscription.ConvertWGConfText(raw)
-	if err != nil {
-		return nil, fmt.Errorf("wg-quick block: %w", err)
+	// Текст `.conf` ведёт СЕКЦИЯ реестра напрямую: промежуточная ссылка
+	// `wireguard://` больше не строится (SPEC 133).
+	node, err, known := subscription.ParseWGConfByEngine(raw, nil)
+	if !known {
+		return nil, fmt.Errorf("wg-quick block: not recognized as a WireGuard config")
 	}
-	node, err := subscription.ParseNode(uri, nil)
 	if err != nil {
 		return nil, fmt.Errorf("wg-quick block: %w", err)
 	}

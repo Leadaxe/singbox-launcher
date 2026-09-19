@@ -370,8 +370,20 @@ func TestParseNode_AmneziaVPN_AWG3(t *testing.T) {
 	}
 	// Плейсхолдеры Amnezia разрешаются из корня профиля: иначе имя сервера
 	// «$PRIMARY_DNS» уезжало в конфиг как есть.
-	if got := node.Query.Get("dns"); got != "172.29.172.254,1.0.0.1" {
-		t.Errorf("dns = %q, want the profile dns1/dns2 with no $ placeholders", got)
+	//
+	// Спрашивается КОД деградации, а не node.Query: с переводом `.conf` на
+	// секцию реестра (SPEC 133) промежуточной ссылки больше нет, и справки
+	// о её query у узла-файла тоже. Проверка от этого стала строже, а не
+	// слабее: `wgconf_dns_ignored` несёт разрешённое значение и вдобавок
+	// доказывает, что потеря DNS дошла до ЧЕЛОВЕКА, а не только до теста.
+	var dnsNote string
+	for _, w := range node.Warnings {
+		if w.Code == "wgconf_dns_ignored" {
+			dnsNote = w.Params["value"]
+		}
+	}
+	if dnsNote != "172.29.172.254, 1.0.0.1" {
+		t.Errorf("wgconf_dns_ignored value = %q, want the profile dns1/dns2 with no $ placeholders", dnsNote)
 	}
 	// Тот же профиль через мульти-импорт обязан дать тот же узел.
 	all, _, err := ParseAmneziaVPNLinkAll(link, nil)

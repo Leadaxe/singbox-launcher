@@ -575,11 +575,8 @@ func parseAddServerInput(input string) []*config.ParsedNode {
 	rest, blocks := subscription.ExtractWGConfBlocks(input)
 	nodes := make([]*config.ParsedNode, 0, 4)
 	for _, b := range blocks {
-		uri, err := subscription.ConvertWGConfText(b)
-		if err != nil {
-			continue
-		}
-		if n, err := subscription.ParseNode(uri, nil); err == nil {
+		// `.conf` разбирает секция реестра напрямую (SPEC 133).
+		if n, err, known := subscription.ParseWGConfByEngine(b, nil); known && err == nil && n != nil {
 			nodes = append(nodes, n)
 		}
 	}

@@ -24,7 +24,12 @@
       },
       "kind": "endpoint",
       "label": "first.example.com",
-      "scheme": "wireguard"
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "wgconf_extra_peer_dropped"
+        }
+      ]
     }
   ],
   "v": 1

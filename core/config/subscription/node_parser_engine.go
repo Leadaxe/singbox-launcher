@@ -51,9 +51,67 @@ func parseURIByEngine(uri string, skipFilters []map[string]string) (*configtypes
 		return nil, fmt.Errorf("invalid %s URI: %w", scheme, execErr), true
 	}
 
+	return nodeFromEngine(plan, res, schemeOfNode(plan, uri, scheme), nodeflow.SourceURI, bodyType, skipFilters)
+}
+
+// ParseWGConfByEngine разбирает текст wg-quick `.conf` СЕКЦИЕЙ реестра.
+//
+// Пара к parseURIByEngine для входа, который приезжает не ссылкой, а файлом.
+// Схемы в тексте нет вовсе, поэтому секцию выбирает предикат по ini
+// (`SelectKind` с видом `conf`), а не написание префикса.
+//
+// Прежде этот вход вёл рукописный конвертер `.conf` → ссылка `wireguard://`
+// с последующим разбором получившегося URI секцией `uri`. Перевод снял
+// лишнее преобразование: ~90 строк перечисления ключей, где каждый новый
+// набор (AWG3, сахар маскировки) приходилось дописывать вторым списком
+// поверх объявленного в реестре.
+//
+// Второе возвращаемое — «секции на этот текст нет»: отличать «не наш
+// формат» от «наш, но битый» обязан вызывающий.
+func ParseWGConfByEngine(confText string, skipFilters []map[string]string) (*configtypes.ParsedNode, error, bool) {
+	return ParseWGConfByEngineHint(confText, "", skipFilters)
+}
+
+// ParseWGConfByEngineHint — то же с ИМЕНЕМ ОТ ВЫЗЫВАЮЩЕГО.
+//
+// `hint` — имя, которое знает вызывающий, но которого нет в самом тексте:
+// описание профиля `vpn://`, имя контейнера, имя файла. Куда оно встанет в
+// цепочке метки, решает СЕКЦИЯ (`label.source`), а не вызывающий: у
+// wireguard объявлено `ini.$comment.Peer` → `hint` → хост Endpoint, то есть
+// имя из файла сильнее внешнего, а внешнее — сильнее адреса.
+func ParseWGConfByEngineHint(confText, hint string, skipFilters []map[string]string) (*configtypes.ParsedNode, error, bool) {
+	plans, err := linkmap.Planes()
+	if err != nil {
+		return nil, nil, false
+	}
+	scheme, plan, ok := linkmap.SelectKind(plans, "conf", confText)
+	if !ok {
+		return nil, nil, false
+	}
+	reg, regErr := registry.Get()
+	if regErr != nil {
+		return nil, nil, false
+	}
+	bodyType := reg.SingboxType(scheme)
+
+	res, execErr := linkmap.ParseURIHint(plan, confText, bodyType, hint, nil)
+	if execErr != nil {
+		return nil, fmt.Errorf("invalid %s config: %w", scheme, execErr), true
+	}
+	return nodeFromEngine(plan, res, scheme, plan.Mapper.BodySource, bodyType, skipFilters)
+}
+
+// nodeFromEngine собирает ParsedNode из результата движка.
+//
+// Общая часть обоих входов: что делать с телом, меткой, тегом и кодами, от
+// того, ССЫЛКОЙ или ФАЙЛОМ приехал текст, не зависит — разными были только
+// выбор секции и то, чем текст распаковывается.
+func nodeFromEngine(plan *linkmap.Plan, res *linkmap.Result, scheme, source, bodyType string,
+	skipFilters []map[string]string) (*configtypes.ParsedNode, error, bool) {
+
 	node := &configtypes.ParsedNode{
-		Scheme: schemeOfNode(plan, uri, scheme),
-		Source: nodeflow.SourceURI,
+		Scheme: scheme,
+		Source: source,
 		// Query остаётся ЧИТАЕМЫМ для фильтров и совместимости: это не вход
 		// разбора (движок читает своё пространство), а справка о ссылке, по
 		// которой работают skip-фильтры и вызывающие за пределами разбора.

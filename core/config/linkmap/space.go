@@ -34,6 +34,11 @@ type Space struct {
 	Path     string
 	Fragment string
 
+	// Hint — имя узла, известное ВЫЗЫВАЮЩЕМУ, но не написанное во входе:
+	// описание профиля `vpn://`, имя контейнера, имя файла. Звено `hint`
+	// цепочки `label` читает именно его.
+	Hint string
+
 	// query — значения с сохранённым ПОРЯДКОМ появления: при двух написаниях
 	// одного имени побеждает точное совпадение с каноном, иначе первое по
 	// порядку. url.Values этого дать не может (Go-map), и сегодняшний
@@ -113,6 +118,12 @@ func (s *Space) Lookup(name string) (string, bool) {
 		return s.Path, s.Path != ""
 	case name == "fragment":
 		return s.Fragment, s.Fragment != ""
+	case name == "hint":
+		// Имя ОТ ВЫЗЫВАЮЩЕГО: у входа-файла метки внутри может не быть
+		// вовсе, а снаружи она известна (описание профиля `vpn://`, имя
+		// контейнера, имя файла). Источник НЕОБЯЗАТЕЛЬНЫЙ — не передали,
+		// и звено цепочки просто пропускается.
+		return s.Hint, s.Hint != ""
 	case strings.HasPrefix(name, "query."):
 		return s.queryValue(strings.TrimPrefix(name, "query."))
 	case strings.HasPrefix(name, "json."):

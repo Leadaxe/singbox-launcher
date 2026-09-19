@@ -22,7 +22,7 @@
         "type": "wireguard"
       },
       "kind": "endpoint",
-      "label": "2001:db8::1",
+      "label": "2001:db8::1:51820",
       "scheme": "wireguard"
     }
   ],

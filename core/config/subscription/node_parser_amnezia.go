@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/url"
 	"strconv"
 	"strings"
 
@@ -73,15 +72,18 @@ func parseAmneziaVPNLink(uri string, skipFilters []map[string]string) (*configty
 		label = containerName
 	}
 
-	wgURI, err := wgConfToURI(confText, label)
+	// Текст `.conf` ведёт СЕКЦИЯ реестра напрямую; имя профиля едет
+	// источником `hint`, и куда его поставить в цепочке метки, решает сама
+	// секция (SPEC 133).
+	node, err, known := ParseWGConfByEngineHint(confText, label, skipFilters)
+	if !known {
+		return nil, fmt.Errorf("vpn:// container %q is not a WireGuard config", containerName)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("invalid WireGuard config in vpn:// container %q: %w", containerName, err)
 	}
-	// Разбор канонической ссылки — общий вход ParseNode: своего парсера у
-	// схемы больше нет, её ведёт движок реестра (SPEC 133).
-	node, err := ParseNode(wgURI, skipFilters)
-	if err != nil || node == nil {
-		return node, err
+	if node == nil {
+		return nil, nil
 	}
 	// Одиночный путь отдал один контейнер из нескольких — на узел ставится
 	// info-код: остальные локации профиля в этот вызов не попали.
@@ -285,13 +287,12 @@ func ParseAmneziaVPNLinkAll(uri string, skipFilters []map[string]string) ([]*con
 			label = label + " " + names[i]
 		}
 
-		wgURI, convErr := wgConfToURI(confText, label)
-		if convErr != nil {
-			debuglog.WarnLog("Parser: vpn:// container %q: %v", names[i], convErr)
+		node, parseErr, known := ParseWGConfByEngineHint(confText, label, skipFilters)
+		if !known {
+			debuglog.WarnLog("Parser: vpn:// container %q: not a WireGuard config", names[i])
 			skipped++
 			continue
 		}
-		node, parseErr := ParseNode(wgURI, skipFilters)
 		if parseErr != nil {
 			debuglog.WarnLog("Parser: vpn:// container %q: %v", names[i], parseErr)
 			skipped++
@@ -362,7 +363,7 @@ func findWGIniText(v interface{}, depth int) (string, map[string]interface{}) {
 }
 
 // amneziaPrepareConf доводит [Interface]-текст экспорта до вида, из которого
-// wgConfToURI соберёт полную ссылку. Две правки, обе — потеря данных без неё:
+// секция реестра соберёт полное тело. Две правки, обе — потеря данных без неё:
 //
 //   - MTU у экспорта Amnezia лежит НЕ в [Interface], а рядом с `config` в
 //     last_config ("1376"). Явный MTU в [Interface] приоритетнее — он ближе к
@@ -500,105 +501,6 @@ func parseWGConfSections(text string) (iface, peer map[string]string) {
 		}
 	}
 	return iface, peer
-}
-
-// wgConfToURI converts parsed [Interface]/[Peer] data into the canonical
-// wireguard:// URI accepted by ParseNode. AWG fields (Jc/Jmin/.../I1-I5)
-// map 1:1 to their lower-case query params; MTU is passed through verbatim —
-// потолок AWG-узла держит правило реестра уже по ТЕЛУ
-// (wireguard.body.fields.mtu.max_when, контракт 1.1.5), а не парсер ссылки.
-func wgConfToURI(confText, label string) (string, error) {
-	iface, peer := parseWGConfSections(confText)
-
-	var missing []string
-	for _, req := range []struct{ key, section string }{
-		{"privatekey", "Interface"}, {"address", "Interface"},
-		{"publickey", "Peer"}, {"endpoint", "Peer"},
-	} {
-		m := iface
-		if req.section == "Peer" {
-			m = peer
-		}
-		if m[req.key] == "" {
-			missing = append(missing, "["+req.section+"] "+req.key)
-		}
-	}
-	if len(missing) > 0 {
-		return "", fmt.Errorf("missing required fields: %s", strings.Join(missing, ", "))
-	}
-	endpoint := peer["endpoint"]
-	if !strings.Contains(endpoint, ":") {
-		return "", fmt.Errorf("peer endpoint %q has no port", endpoint)
-	}
-
-	q := url.Values{}
-	q.Set("publickey", peer["publickey"])
-	q.Set("address", stripSpaces(iface["address"]))
-	// AllowedIPs нет в профиле — параметр не ставим вовсе: «маршрутизировать
-	// всё» подставит РЕЕСТР (peers[].allowed_ips.default_when, D-022). Копия
-	// дефолта, стоявшая здесь, была ВТОРОЙ (первая — в парсере ссылки) и
-	// расходилась бы с ним при любой правке правила; на входе sing-box не
-	// работала ни та ни другая (находка №27 LEGACY_AUDIT, контракт 1.1.11).
-	if allowed := stripSpaces(peer["allowedips"]); allowed != "" {
-		q.Set("allowedips", allowed)
-	}
-	for confKey, param := range map[string]string{
-		"persistentkeepalive": "keepalive",
-		"presharedkey":        "presharedkey",
-		"listenport":          "listenport",
-		"mtu":                 "mtu",
-	} {
-		if v := peer[confKey]; v != "" {
-			q.Set(param, v)
-		} else if v := iface[confKey]; v != "" {
-			q.Set(param, v)
-		}
-	}
-	if v := iface["dns"]; v != "" {
-		q.Set("dns", stripSpaces(v))
-	}
-	for _, k := range awgNumericFields {
-		if v := iface[k]; v != "" {
-			q.Set(k, v)
-		}
-	}
-	for _, k := range awgStringFields {
-		if v := iface[k]; v != "" {
-			q.Set(k, v)
-		}
-	}
-	// Masquerade-сахар ip/id/ib. Без него .conf с маскировкой терял её МОЛЧА:
-	// числа junk доезжали, узел выглядел настроенным, а первый decoy-пакет
-	// уходил без маскировки. Регистр значения сохраняем — id это домен.
-	//
-	// Явный i1 в INI и сахар несовместимы (ядро отвергает пару), и ту же
-	// проверку делает СЕКЦИЯ реестра на разборе получившейся ссылки (записи
-	// id/ip/ib объявлены с `when: нет query.i1`): сюда кладём оба, а
-	// отбрасывает лишнее одна точка, а не две.
-	for _, k := range awgMasqueradeFields {
-		if v := iface[k]; v != "" {
-			q.Set(k, v)
-		}
-	}
-	// AmneziaWG 3.x (SPEC 123): ключи .conf в нижнем регистре 1:1 совпадают с
-	// параметрами ссылки, значения (диапазоны, on/off, base64) едут дословно —
-	// разбор и валидация живут в одной точке, секции реестра. Без этой
-	// ветки AWG3-набор ВЫБРАСЫВАЛСЯ молча: узел выглядел настроенным, а
-	// хендшейк с сервером, шифрующим заголовок, не проходил никогда.
-	for _, k := range awg3ParamKeys() {
-		if v := iface[k]; v != "" {
-			q.Set(k, v)
-		}
-	}
-
-	u := url.URL{
-		Scheme:   "wireguard",
-		User:     url.User(iface["privatekey"]),
-		Host:     endpoint,
-		RawQuery: q.Encode(),
-		Fragment: label,
-	}
-	return u.String(), nil
 }
 
 // amneziaContainerNames lists container names for error messages.

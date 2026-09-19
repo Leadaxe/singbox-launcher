@@ -295,6 +295,42 @@ func (st *execState) checkRequired() error {
 				}
 				continue
 			}
+			// То же и у записи, раскладывающей значение ВЫЕМКОЙ: своего
+			// `maps_to` у неё нет, пути называет `extract.into`, и
+			// «обязательна» значит «хоть один из них заполнен».
+			//
+			// Без этой ветки `required` у такой записи не проверялся ВООБЩЕ:
+			// `pathOf` отдавал пустую строку, и проверка молча пропускалась.
+			// Ровно так блок `.conf` с `[Peer]` без `Endpoint` становился
+			// «узлом» с пиром без адреса и порта — узлом, который никуда не
+			// соединяется (регрессия поймана TestWGConfBrokenBlockBecomes-
+			// UnsupportedRecord на переводе боевого пути, SPEC 133).
+			if st.pathOf(e.Param) == "" && e.Param.Extract != nil {
+				filled := false
+				for _, spec := range e.Param.Extract.Into {
+					p := ""
+					switch t := spec.(type) {
+					case string:
+						p = t
+					case map[string]interface{}:
+						p, _ = t["path"].(string)
+					}
+					if p == "" || strings.HasPrefix(p, "$") {
+						continue
+					}
+					if v, ok := getPath(st.res.Body, p); ok && !isEmptyValue(v) {
+						filled = true
+						break
+					}
+				}
+				if !filled {
+					if reason := strings.TrimSpace(e.Param.DescEN); reason != "" {
+						return fmt.Errorf("%s", reason)
+					}
+					return fmt.Errorf("linkmap: обязательная запись %q не заполнила ни одного пути", e.Name)
+				}
+				continue
+			}
 			path := st.pathOf(e.Param)
 			if path == "" {
 				continue
@@ -1246,10 +1282,34 @@ func (st *execState) decodeValue(p *registry.Param, raw string) string {
 	if p.Format == "pem" {
 		return plusInPEM(val)
 	}
-	if !st.plusLiteral(p) {
+	if st.formEncoded() && !st.plusLiteral(p) {
 		val = PlusToSpace(val)
 	}
 	return val
+}
+
+// formEncoded — есть ли у пространства формы ФОРМ-КОДИРОВАНИЕ, то есть
+// семантика `+` = пробел.
+//
+// Свойство ПРОСТРАНСТВА, а не поля. `+` = пробел придумано для
+// application/x-www-form-urlencoded, и живёт оно ровно там, где значения
+// приезжают query-строкой. В ini-документе `.conf` такого кодирования нет
+// вовсе: `+` там всегда литерал — и в ключе base64, и в любом другом
+// значении.
+//
+// Без этой проверки ключ Proton `0GCSi+xv9…` превращался в `0GCSi xv9…`,
+// переставал быть 32 байтами и ронял узел на санитайзере. Поле-то объявило
+// формат в ТЕЛЕ (`body.fields.private_key.normalize: base64_std`), а запись
+// маппера ни `type`, ни `format` не несёт — и правило по формату поля,
+// верное для ссылок, здесь просто не за что зацепиться. Чинить перечислением
+// форматов у каждой записи значило бы лечить следствие: вопрос не в том,
+// какое это поле, а в том, что документ не является формой.
+func (st *execState) formEncoded() bool {
+	switch st.form.Space {
+	case "ini", "json":
+		return false
+	}
+	return true
 }
 
 // plusInPEM применяет политику `+` к PEM-блоку построчно.
@@ -1706,7 +1766,7 @@ func isSourceName(key string) bool {
 		}
 	}
 	switch key {
-	case "scheme", "authority", "host", "port", "port_raw", "path", "fragment":
+	case "scheme", "authority", "host", "port", "port_raw", "path", "fragment", "hint":
 		return true
 	}
 	return false

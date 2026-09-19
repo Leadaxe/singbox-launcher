@@ -3,6 +3,8 @@ package subscription
 import (
 	"fmt"
 	"strings"
+
+	"singbox-launcher/core/config/configtypes"
 )
 
 // Pasted WireGuard/AmneziaWG .conf import (SPEC 076).
@@ -48,70 +50,28 @@ func ExtractWGConfBlocks(input string) (rest string, blocks []string) {
 // ConvertWGConfText converts one [Interface]/[Peer] block to the canonical
 // wireguard:// URI accepted by ParseNode.
 //
-// The URI fragment (node label) comes from the peer's own name comment when
-// the file carries one, and falls back to the Endpoint host otherwise.
-// Providers write the location right under [Peer] as a bare comment:
+// Ссылка строится ИЗ ТЕЛА, собранного секцией реестра (SPEC 133): текст
+// `.conf` разбирает движок, а эмиттер схемы печатает результат обратно
+// ссылкой. Рукописный конвертер (~90 строк перечисления ключей, где каждый
+// новый набор — AWG3, сахар маскировки — приходилось дописывать вторым
+// списком поверх объявленного в реестре) снят.
 //
-//	[Peer]
-//	# US-FREE#137
-//	PublicKey = ...
-//
-// That comment is the only human-readable name in a .conf, so a node named
-// "US-FREE#137" must not end up tagged "194.180.34.8".
+// Метку считает та же секция своей цепочкой `label.source`
+// (`ini.$comment.Peer` → `hint` → хост Endpoint), а не правило, написанное
+// здесь во второй раз: провайдеры пишут локацию голым комментарием сразу
+// под [Peer], и узел с таким файлом не должен называться «194.180.34.8».
 func ConvertWGConfText(confText string) (string, error) {
-	_, peer := parseWGConfSections(confText)
-	label := wgPeerNameComment(confText)
-	if label == "" {
-		label = wgEndpointHost(peer["endpoint"])
+	node, err, known := ParseWGConfByEngine(confText, nil)
+	if !known {
+		return "", fmt.Errorf("not a WireGuard config")
 	}
-	if label == "" {
-		return "", fmt.Errorf("missing required fields: [Peer] endpoint")
+	if err != nil {
+		return "", err
 	}
-	return wgConfToURI(confText, label)
-}
-
-// wgPeerNameComment — имя пира из комментария сразу после [Peer].
-//
-// Берётся ПЕРВЫЙ комментарий секции, и только если он не содержит «=»:
-// строки вида «# Bouncing = 0» — это отключённые настройки, а не имя. Сам
-// «#» в значении допустим («US-FREE#137»), поэтому режется лишь ведущий
-// маркер комментария.
-func wgPeerNameComment(confText string) string {
-	inPeer := false
-	for _, raw := range strings.Split(confText, "\n") {
-		line := strings.TrimSpace(raw)
-		if line == "" {
-			continue
-		}
-		if strings.HasPrefix(line, "[") {
-			inPeer = strings.EqualFold(strings.TrimSpace(line), "[Peer]")
-			continue
-		}
-		if !inPeer {
-			continue
-		}
-		if !strings.HasPrefix(line, "#") {
-			// Дошли до настоящего поля — имени в этой секции нет.
-			return ""
-		}
-		name := strings.TrimSpace(strings.TrimPrefix(line, "#"))
-		if name == "" || strings.Contains(name, "=") {
-			continue
-		}
-		return name
+	if node == nil {
+		return "", fmt.Errorf("wg-quick block parsed to no node")
 	}
-	return ""
-}
-
-// wgEndpointHost extracts the host from a host:port endpoint ("" if malformed).
-// IPv6 brackets are stripped: "[2001:db8::1]:51820" → "2001:db8::1".
-func wgEndpointHost(endpoint string) string {
-	i := strings.LastIndex(endpoint, ":")
-	if i <= 0 {
-		return ""
-	}
-	host := strings.TrimSpace(endpoint[:i])
-	return strings.Trim(host, "[]")
+	return ShareURIFromWireGuardEndpoint(node.Outbound)
 }
 
 // WGConfBodyToURIs превращает тело подписки формата wg-quick в список
@@ -169,6 +129,13 @@ type ConvertedWGBlock struct {
 	URI string
 	// Raw — блок [Interface]…[Peer] БАЙТ В БАЙТ, как он стоял в теле.
 	Raw string
+	// Node — узел, собранный секцией реестра ИЗ БЛОКА, а не из URI.
+	//
+	// Разбирать обратно свою же ссылку значило бы терять то, чего в ней
+	// нет по построению: DNS в тело не едет вовсе (код
+	// `wgconf_dns_ignored`), а метка из комментария `[Peer]` живёт во
+	// фрагменте, которого у канонической ссылки может не быть.
+	Node *configtypes.ParsedNode
 	// Err — почему блок не стал ссылкой; nil у собравшихся.
 	//
 	// Блок с ошибкой ОСТАЁТСЯ в списке, на своём месте: разбор тела обязан
@@ -188,13 +155,25 @@ func WGConfBodyToConvertedBlocks(body string) (converted []ConvertedWGBlock, ski
 	_, blocks := ExtractWGConfBlocks(body)
 	converted = make([]ConvertedWGBlock, 0, len(blocks))
 	for _, block := range blocks {
-		uri, err := ConvertWGConfText(block)
+		// Узел собирает СЕКЦИЯ из самого блока (SPEC 133). Ссылка рядом
+		// остаётся для тех, кто умеет только URI-список, но узлом из неё
+		// больше не разбираются: обратный перевод теряет то, чего в ссылке
+		// нет по построению — код `wgconf_dns_ignored` (DNS в тело не
+		// едет) и метку из комментария.
+		node, err, known := ParseWGConfByEngine(block, nil)
+		if err == nil && !known {
+			err = fmt.Errorf("not a WireGuard config")
+		}
 		if err != nil {
 			skipped++
 			converted = append(converted, ConvertedWGBlock{Raw: block, Err: err})
 			continue
 		}
-		converted = append(converted, ConvertedWGBlock{URI: uri, Raw: block})
+		uri := ""
+		if node != nil {
+			uri, _ = ShareURIFromWireGuardEndpoint(node.Outbound)
+		}
+		converted = append(converted, ConvertedWGBlock{URI: uri, Raw: block, Node: node})
 	}
 	return converted, skipped
 }

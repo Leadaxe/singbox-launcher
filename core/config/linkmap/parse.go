@@ -44,10 +44,20 @@ type ParseInput struct {
 // Схему выбирает ВЫЗЫВАЮЩИЙ (по detect секций либо по написанию), потому что
 // выбор плана — уровень документа, а не таблицы. Движок только исполняет.
 func ParseURI(plan *Plan, text, bodyType string, trace *Trace) (*Result, error) {
+	return ParseURIHint(plan, text, bodyType, "", trace)
+}
+
+// ParseURIHint — то же с ИМЕНЕМ ОТ ВЫЗЫВАЮЩЕГО (источник `hint`).
+//
+// Имя, которого во входе нет, но которое знает вызывающий: описание
+// профиля `vpn://`, имя контейнера, имя файла. Куда его поставить в
+// цепочке метки, решает секция своим `label.source`, а не вызывающий.
+func ParseURIHint(plan *Plan, text, bodyType, hint string, trace *Trace) (*Result, error) {
 	space, form, err := UnwrapURI(plan, text)
 	if err != nil {
 		return nil, err
 	}
+	space.Hint = hint
 	return Exec(plan, space, form, bodyType, trace)
 }
 

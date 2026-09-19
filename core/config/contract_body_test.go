@@ -80,8 +80,19 @@ func parseCorpusBody(t *testing.T, body string) ([]*configtypes.ParsedNode, []co
 		return nodes, nil, kind
 
 	case kind == subscription.BodyKindWGConf:
-		uris, _ := subscription.WGConfBodyToURIs(body)
-		return parseURILines(strings.Join(uris, "\n")), nil, kind
+		// Узлы собирает СЕКЦИЯ из самих блоков — как и боевой разбор тела
+		// (SPEC 133). Прежний путь гонял блок через промежуточную ссылку и
+		// терял на обратном переводе то, чего в ссылке нет: код
+		// `wgconf_dns_ignored` (DNS в тело не едет вовсе).
+		converted, _ := subscription.WGConfBodyToConvertedBlocks(body)
+		nodes := make([]*configtypes.ParsedNode, 0, len(converted))
+		for _, block := range converted {
+			if block.Err != nil || block.Node == nil {
+				continue
+			}
+			nodes = append(nodes, block.Node)
+		}
+		return nodes, nil, kind
 
 	case kind.IsSingbox():
 		res, err := subscription.ParseSingboxBody(body, kind, nil)

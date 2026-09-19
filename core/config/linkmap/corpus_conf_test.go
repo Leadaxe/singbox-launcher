@@ -5,14 +5,15 @@ package linkmap
 //
 // Третий в семье после TestEngineVsFixtures (ссылки) и TestEngineVsXrayCorpus
 // (Xray-JSON), и роль та же: ожидания `contract/corpus/body/wgconf` сняты
-// БОЕВЫМ путём, который сегодня ведёт не секция `mappers.conf`, а конвертер
-// `.conf` → ссылка (`wgConfToURI`) с разбором получившегося URI секцией
-// `mappers.uri`. Перевод входа на секцию `conf` обязан их сохранить.
+// БОЕВЫМ путём — тем, что вёл рукописный конвертер `.conf` → ссылка с
+// разбором получившегося URI секцией `mappers.uri`. Перевод входа на секцию
+// `conf` обязан был их сохранить, и раннер это стерёг.
 //
 // Раннер заведён ДО перевода намеренно: секция `mappers.conf` написана
 // волнами раньше и не исполнялась никем — а «написано, но не подключено»
 // по правилу кампании считается НЕПРОВЕРЕННЫМ. Ровно так в общем блоке
 // `transports#xray` пережили несколько ревизий неверные пути у ВСЕХ записей.
+// Оправдалось: на расширенном корпусе раннер сразу нашёл Q133-60.
 //
 // Запуск:
 //
@@ -166,28 +167,10 @@ func singleExpectedEntry(t *testing.T, bodyPath string) (map[string]interface{},
 
 // selectConfSection находит секцию вида `conf`, чей detect опознаёт текст.
 //
-// Пара к SelectURI и SelectElementSection: вход приезжает ТЕКСТОМ (как у
-// ссылки), но схему выбирает `detect` по ini-предикату, а не по написанию
-// схемы. Живёт в тесте, а не в движке: имя вида — параметр, и общая функция
-// выбора по виду появится в движке вместе с боевым переключением.
+// Тонкая обёртка над SelectKind движка: вход приезжает ТЕКСТОМ (как у
+// ссылки), но секцию выбирает `detect` по ini-предикату, а не по написанию
+// схемы. Общая функция выбора по виду появилась в движке вместе с боевым
+// переключением — раннер зовёт ровно ту, что работает в бою.
 func selectConfSection(plans *PlanSet, text string) (string, *Plan, bool) {
-	content := NewContent(text)
-	hit, plan := "", (*Plan)(nil)
-	for _, scheme := range plans.Schemes() {
-		p, ok := plans.Plan(scheme, confKind)
-		if !ok || p.Mapper == nil || p.Mapper.Detect == nil {
-			continue
-		}
-		if !Matches(p.Mapper.Detect, content) {
-			continue
-		}
-		if hit != "" {
-			return "", nil, false
-		}
-		hit, plan = scheme, p
-	}
-	if hit == "" {
-		return "", nil, false
-	}
-	return hit, plan, true
+	return SelectKind(plans, confKind, text)
 }
