@@ -598,6 +598,8 @@
         },
         "$multiport": {
           "source": "port_raw",
+          "round_trip": false,
+          "round_trip_why": "Читает диапазон из authority, а пишет его запись mport: на выходе обе дали бы ссылке диапазон дважды.",
           "selector": true,
           "extract": {
             "re": "^(?P<first>\\d+)(?P<spec>[,:-][^#]*)?$",
@@ -630,6 +632,8 @@
             "sep": ","
           },
           "normalize": "port_range_spec",
+          "emit_normalize": "port_range_spec_uri",
+          "emit_as": "join",
           "impl": "Форма ядра — 'low:high' через ДВОЕТОЧИЕ; дефис ссылки даёт фатал «bad port range». Одиночный порт становится парой N:N."
         },
         "obfs": {
@@ -725,7 +729,12 @@
         "param_order": "alphabetical",
         "omit_default": [
           "server_port"
-        ]
+        ],
+        "userinfo": {
+          "form": "raw",
+          "empty_separator": true
+        },
+        "impl": "userinfo.empty_separator: у узла БЕЗ пароля ссылка обязана нести «@» (`hy2://@host`) — так её пишут клиенты hysteria2, и без разделителя часть из них читает адрес как пароль (оверлей LxBox, принят как есть)."
       }
     },
     "xray": {

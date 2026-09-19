@@ -1073,6 +1073,8 @@
           "source": "query.headerType",
           "selector": true,
           "maps_to": "transport.type",
+          "round_trip": false,
+          "round_trip_why": "Пишет в transport.type, уже занятый записью type: на выходе обе дали бы ссылке два имени одного транспорта. Истину транспорта несёт type.",
           "when": {
             "query.type": {
               "in": [
@@ -1114,7 +1116,16 @@
               }
             }
           },
-          "compose": "{transport.path}?ed={transport.max_early_data}",
+          "compose": {
+            "template": "{transport.path}?ed={transport.max_early_data}",
+            "from": [
+              "transport.path",
+              "transport.max_early_data"
+            ],
+            "omit_when_empty": [
+              "transport.max_early_data"
+            ]
+          },
           "when": {
             "transport.type": "ws"
           },
@@ -1135,6 +1146,8 @@
         "ed": {
           "source": "query.ed",
           "maps_to": "transport.max_early_data",
+          "round_trip": false,
+          "round_trip_why": "Вторая форма early data. Обратный ход ведёт хвост пути (compose у ws.path): величина одна, и писать оба написания значит сказать её дважды.",
           "type": "int",
           "priority": 5,
           "implies": {
@@ -1148,6 +1161,8 @@
         "eh": {
           "source": "query.eh",
           "maps_to": "transport.early_data_header_name",
+          "round_trip": false,
+          "round_trip_why": "Имя заголовка early data подставляется конвенцией (implicit у хвоста пути) и в ссылку не пишется.",
           "priority": 30,
           "when": {
             "transport.type": "ws",
@@ -1203,6 +1218,7 @@
             "sep": ",",
             "coerce_scalar": true
           },
+          "emit_as": "join",
           "when": {
             "transport.type": "http"
           },

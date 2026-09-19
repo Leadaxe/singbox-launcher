@@ -391,7 +391,14 @@
       },
       "emit": {
         "form": "url",
-        "param_order": "alphabetical"
+        "param_order": "alphabetical",
+        "emit_when": {
+          "security": "always"
+        },
+        "names": {
+          "insecure": "insecure"
+        },
+        "impl": "security объявлен always по той же причине, что у vless/trojan: вид ссылки есть де-факто формат схемы для ЧУЖИХ клиентов, а не симметрия таблицы. Имя флага у anytls совпадает с каноном — объявлено явно, чтобы смена канона в общем блоке не переименовала параметр у схемы молча."
       }
     }
   }

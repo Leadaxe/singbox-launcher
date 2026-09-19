@@ -488,13 +488,17 @@
         "form": "url",
         "param_order": "alphabetical",
         "omit_default": [
-          "fp",
-          "security"
+          "fp:random",
+          "security:reality"
         ],
         "emit_when": {
-          "encryption": "always"
+          "encryption": "always",
+          "security": "always"
         },
-        "impl": "omit_default fp: у vless `fp=random` НЕ пишется (shareuri_vless.go:49-51), у trojan/vmess пишется — асимметрия становится данными. security=reality не пишется: REALITY-ветка пишет только pbk (implies обратно)."
+        "impl": "omit_default `fp:random`: у vless `fp=random` НЕ пишется (конвенция D-009 «пусто = random»), прочие написания пишутся. security вычеркнут из omit_default и объявлен always: у Xray-клиентов умолчание security у vless = none, и узел без явного security прочёлся бы БЕЗ TLS. names.insecure = allowInsecure — де-факто написание схемы для чужих клиентов (оверлей LxBox, принят как есть).",
+        "names": {
+          "insecure": "allowInsecure"
+        }
       }
     },
     "xray": {

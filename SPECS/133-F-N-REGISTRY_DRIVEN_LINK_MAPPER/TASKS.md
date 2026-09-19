@@ -1034,6 +1034,36 @@ AWG-узла, у которого в теле не осталось awg-поле
   замысел («почему masque НЕ подключает `tls#uri`», «почему `priority: 100`
   у `disable_sni`») и экономят часы разбора.
 
+## Волна W-EMIT · обратный ход (контракт 1.1.36)
+
+**Состояние: движок и стражи готовы; боевой путь ЕЩЁ на рукописных
+эмиттерах.** Переключение — отдельный шаг, делается только при зелёном
+страже по всем схемам (он зелёный).
+
+Сделано:
+
+- `core/config/linkmap/emit.go` — обратный ход по тем же секциям
+  `mappers.uri`. Имён схем нет (`TestNoSchemeNamesInEngine` зелёный);
+- снимок рукописного эмита на 314 телах корпуса
+  (`core/config/subscription/emit_snapshot_test.go`, снимается прогоном с
+  `-update`, лежит в `core/config/linkmap/testdata/emit_snapshot.json`);
+- `TestEngineEmitVsSnapshot` — ссылка = снимок байт в байт, кроме 81
+  объявленного отличия; список судится в обе стороны;
+- `TestEngineEmitRoundTrip` — круг `parse(emit(body)) == body`, одно
+  объявленное отличие;
+- атрибуты эмита в реестре (оверлеи LxBox приняты, см.
+  `contract/TASKS_LXBOX.md` §33), схема `registry_mapper.schema.json`
+  расширена, грамматика — `PRIMITIVES.md` §0.6b и §0.12a.
+
+Остаток волны:
+
+1. **Переключить боевой путь**: `subscription.ShareURIFromOutbound` →
+   движок; удалить `shareuri_*.go` и осиротевшие функции разбора ss/socks,
+   которыми они пользуются.
+2. **Старые тесты эмиттеров** — заменить стражем; снимок остаётся эталоном.
+3. `emit.omit_port` реализован, но не выставлен нигде — ждёт ответа LxBox
+   (`TASKS_LXBOX.md` §33.6).
+
 ## Документы
 
 `SPEC.md` · `PRIMITIVES.md` · `SCHEMES.md` · `DELTAS.md` (**D133-21**) ·
@@ -1335,5 +1365,5 @@ shadowsocks. Зелено: `TestContractCorpusURI` (весь корпус на �
 
 `SPEC.md` · `PRIMITIVES.md` (**§0 — замороженная грамматика, §0.9 —
 добавления волны W1**) · `SCHEMES.md` · `DELTAS.md` · `QUIRKS.md`
-(**Q133-32…36 — найдено сверкой**) · `contract/docs/MAPPER_ENGINE.md`
+(**Q133-32…36 — найдено сверкой; Q133-70…75 — обратным ходом**) · `contract/docs/MAPPER_ENGINE.md`
 (норма движка, общая с LxBox) · `contract/TASKS_LXBOX.md` §24.25.

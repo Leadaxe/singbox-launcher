@@ -1007,6 +1007,7 @@
         "list": {
           "sep": ","
         },
+        "emit_as": "join",
         "decode_extra": {
           "mode": "query",
           "passes": "until_stable",
@@ -1047,6 +1048,7 @@
         ],
         "type": "bool_spelled",
         "maps_to": "tls.insecure",
+        "emit_as": "bool01",
         "when": {
           "tls.enabled": true
         },
@@ -1066,6 +1068,8 @@
       "ech": {
         "source": "query.ech",
         "maps_to": null,
+        "round_trip": false,
+        "round_trip_why": "Значение принадлежит ЧУЖОМУ клиенту (public_name ≠ SNI узла) и в тело не едет вовсе (maps_to: null). Собирать его обратно не из чего.",
         "when": {
           "query.ech": {
             "not_in": [

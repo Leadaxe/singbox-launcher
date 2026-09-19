@@ -512,7 +512,11 @@
         "param_order": "alphabetical",
         "omit_default": [
           "server_port"
-        ]
+        ],
+        "names": {
+          "insecure": "allow_insecure"
+        },
+        "impl": "names.insecure = allow_insecure — написание tuic-клиентов (оверлей LxBox, принят как есть)."
       }
     }
   }

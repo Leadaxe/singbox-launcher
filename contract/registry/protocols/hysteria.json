@@ -472,7 +472,8 @@
           "auth_str"
         ],
         "single_into": "auth_str",
-        "impl": "ЗАПАСНОЙ слот секрета. У Hysteria 1.x он канонически лежит в query (`auth=`), а не перед '@' — этим v1 и отличается от hysteria2. Но часть панелей выписывает `hysteria://secret@host:port`, и терять такой узел нельзя (корпус userinfo_auth_fallback). Порядок «query сильнее userinfo» объявлен цепочкой источников записи `auth`, а не здесь."
+        "impl": "ЗАПАСНОЙ слот секрета. У Hysteria 1.x он канонически лежит в query (`auth=`), а не перед '@' — этим v1 и отличается от hysteria2. Но часть панелей выписывает `hysteria://secret@host:port`, и терять такой узел нельзя (корпус userinfo_auth_fallback). Порядок «query сильнее userinfo» объявлен цепочкой источников записи `auth`, а не здесь. На ВЫХОДЕ userinfo не пишется (emit: false): канон v1 — `auth=` в query, и запись секрета в оба места отдала бы его дважды.",
+        "emit": false
       },
       "label": {
         "source": [
@@ -510,6 +511,8 @@
         },
         "$multiport": {
           "source": "port_raw",
+          "round_trip": false,
+          "round_trip_why": "Читает диапазон из authority, а пишет его запись mport: на выходе обе дали бы ссылке диапазон дважды.",
           "selector": true,
           "extract": {
             "re": "^(?P<first>\\d+)(?P<spec>[,:-][^#]*)?$",
@@ -541,6 +544,8 @@
             "sep": ","
           },
           "normalize": "port_range_spec",
+          "emit_normalize": "port_range_spec_uri",
+          "emit_as": "join",
           "impl": "Форма ядра — 'low:high' через ДВОЕТОЧИЕ; дефис ссылки даёт фатал «bad port range»."
         },
         "auth": {
@@ -568,6 +573,8 @@
         "obfs": {
           "source": "query.obfs",
           "maps_to": "obfs",
+          "round_trip": false,
+          "round_trip_why": "Объявляет ТИП обфускации, а секрет пишет obfsParam — обе записи ведут в один `obfs`, и на выходе тип занял бы место секрета. Тип v1 из тела не восстанавливается: ядро держит одну плоскую строку.",
           "normalize": "trim",
           "priority": 20,
           "value_map": {
