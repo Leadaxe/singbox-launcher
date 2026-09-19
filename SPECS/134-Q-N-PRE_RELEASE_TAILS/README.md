@@ -65,6 +65,10 @@
   репортить как утечку;
 - в коммитах, коде и документах не упоминать AI-агентов и модели.
 
+## Статус
+
+- **5 — сделано.** `codecov-action` v5 (вход `file` → `files`), Ubuntu-раннер пригвождён к `ubuntu-24.04` в пяти местах вместе с пятью условиями `if: matrix.os == …`, страж go1.21+-конструкций `tools/win7guard` врезан в `build-win7` и, решением владельца, в частую джобу `test`. Остаток: Win7-джоба со стражем на CI не поднималась (нужна отмашка на `run_mode=build -f target=Win7`); `claude.yml` со своим `ubuntu-latest` не тронут намеренно.
+
 Принципы проекта — [SPECS/CONSTITUTION.md](../CONSTITUTION.md), правила
 реализации и DoD — [SPECS/IMPLEMENTATION_PROMPT.md](../IMPLEMENTATION_PROMPT.md),
 архитектура — [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md).

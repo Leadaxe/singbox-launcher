@@ -88,7 +88,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') ||
         (github.event_name == 'workflow_dispatch' &&
           (github.event.inputs.run_mode == 'build' || github.event.inputs.run_mode == 'prerelease'))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.meta.outputs.version }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
@@ -153,7 +153,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Ubuntu пиннится версией: на плавающем образе GitHub меняет набор
+        # системных пакетов молча, и зелёная сборка краснеет сама собой.
+        os: [ubuntu-24.04, macos-latest, windows-latest]
 
     steps:
       - name: Checkout code
@@ -168,7 +170,7 @@ jobs:
           cache: true
 
       - name: Install build dependencies (Linux)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-24.04'
         shell: bash
         run: |
           sudo apt-get update
@@ -187,6 +189,16 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      # Тот же страж стоит в build-win7, но та джоба идёт только на теге и
+      # ручном запуске с целью Win7 — сигнал приезжал бы на выпуске. Здесь он
+      # приезжает на каждом PR и до тестов, за пару секунд.
+      - name: Win7 (go1.20) constructs guard
+        if: matrix.os == 'ubuntu-24.04'
+        shell: bash
+        run: |
+          set -euo pipefail
+          go run ./tools/win7guard
+
       - name: Clean previous coverage files (Linux/macOS)
         if: matrix.os != 'windows-latest'
         shell: bash
@@ -202,7 +214,7 @@ jobs:
           if exist coverage.html del /q coverage.html
 
       - name: Run tests (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-24.04'
         env:
           CGO_ENABLED: 1
         shell: bash
@@ -233,22 +245,25 @@ jobs:
           call build\test_windows.bat nopause
 
       - name: L10n checks (SPEC 111)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-24.04'
         shell: bash
         run: |
           go run ./tools/l10n/l10n_check --strict
           go run ./tools/l10n/hardcoded_check --strict
 
       - name: Upload coverage (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
-        uses: codecov/codecov-action@v4
+        if: matrix.os == 'ubuntu-24.04'
+        uses: codecov/codecov-action@v5
         with:
-          file: ./coverage.out
+          # v5 загружает отчёт через Codecov CLI, и входа `file` у него нет:
+          # список файлов теперь `files` (через запятую). Старый ключ
+          # действие молча игнорирует — отчёт уезжал бы пустым.
+          files: ./coverage.out
           flags: unittests
           name: codecov-umbrella
 
       - name: Check go mod tidy is clean (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-24.04'
         shell: bash
         run: |
           set -euo pipefail
@@ -470,6 +485,19 @@ jobs:
           (Get-Content go.win7.mod) -replace '^go\s+[0-9]+\.[0-9]+(\.[0-9]+)?$','go 1.20' | Set-Content go.win7.mod
           Select-String -Path go.win7.mod -Pattern '^go ' | ForEach-Object { $_.Line }
 
+      # Конструкции go1.21+ валят сборку тулчейном 1.20.14 ошибкой компилятора
+      # где-то в середине лога; страж называет файл, строку и версию сразу и
+      # до установки MSYS2. Модульный файл — win7-овский, тот же, что у шага
+      # сборки: он уже выкачан шагами выше. `-mod=readonly` перебивает
+      # GOFLAGS джобы, чтобы шаг не мог тронуть go.win7.mod — директиву `go`
+      # в нём только что вернули на 1.20. Сам страж на stdlib, догружать
+      # нечего.
+      - name: Win7 (go1.20) constructs guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          go run -mod=readonly "-modfile=go.win7.mod" ./tools/win7guard
+
       # MSYS2 нужен ТОЛЬКО для сборки
       - name: Setup MSYS2 (MINGW32)
         uses: msys2/setup-msys2@v2
@@ -560,7 +588,7 @@ jobs:
   release:
     name: Create Release
     needs: [meta, build-darwin, build-windows, build-win7]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     if: always() &&
