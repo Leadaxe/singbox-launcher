@@ -303,7 +303,7 @@
             "sep": "\r\n"
           },
           "extract": {
-            "re": "^(?P<k>[^:]+):\\s*(?P<v>.*)$",
+            "re": "^(?P<k>[!#$%&'*+.0-9A-Z\\\\^_`a-z|~-]+):[ \\t]*(?P<v>[^\\r\\n\\x00]*)$",
             "into": {
               "k": "$key",
               "v": "$value"
@@ -313,7 +313,7 @@
             "action": "skip",
             "code": "naive_extra_headers_invalid"
           },
-          "impl": "Правило broken_header_pair_skipped: битая пара пропускается, остальные живут; код ставится ОДИН раз на узел, о первой отброшенной паре. sort_keys — порядок входит в identity."
+          "impl": "Правило broken_header_pair_skipped: битая пара пропускается, остальные живут; код ставится ОДИН раз на узел, о первой отброшенной паре. sort_keys — порядок входит в identity. Годность пары решает САМА регулярка (PRIMITIVES §0.10): алфавит имени — дословный charset гиста DuckSoft (подмножество RFC 7230 tchar, уже нужного намеренно, ради interop), он же naiveHeaderNameCharset прежнего пути; запрет CR/LF/NUL в значении — класс [^\\r\\n\\x00]. Класс [^:]+ этого не выражал: 'X User:bad' с пробелом в имени обязан отбраковываться, а он его принимал (QUIRKS Q133-41, корпус extra_headers_bad_name_dropped)."
         },
         "padding": {
           "source": "query.padding",

@@ -61,7 +61,16 @@ type execState struct {
 	bodyType string
 	// mapperName — "<схема>.<вид>[.<форма>]" для трассы.
 	mapperName string
+	// schemeVals — служебные ключи `scheme_sets`, начинающиеся с `$`: они НЕ
+	// пишутся в тело, а питают записи таблицы (сегодня — `$default_port`,
+	// PRIMITIVES §0.10). Дефолт порта бывает свойством НАПИСАНИЯ, а не схемы:
+	// у одной схемы `http` написание `proxy-http` даёт 80, `proxy-https` — 443.
+	schemeVals map[string]interface{}
 }
+
+// schemeValDefaultPort — имя служебного ключа `scheme_sets`, задающего порт по
+// умолчанию для записи с `materialize_default`.
+const schemeValDefaultPort = "$default_port"
 
 type writeMark struct {
 	entry    string
@@ -78,12 +87,13 @@ func Exec(plan *Plan, space *Space, form registry.Form, bodyType string, trace *
 		return nil, fmt.Errorf("linkmap: план не задан")
 	}
 	st := &execState{
-		plan:      plan,
-		space:     space,
-		form:      form,
-		trace:     trace,
-		writtenBy: map[string]*writeMark{},
-		bodyType:  bodyType,
+		plan:       plan,
+		space:      space,
+		form:       form,
+		trace:      trace,
+		writtenBy:  map[string]*writeMark{},
+		schemeVals: map[string]interface{}{},
+		bodyType:   bodyType,
 		res: &Result{
 			Body:       map[string]interface{}{},
 			BodySource: plan.Mapper.BodySource,
@@ -133,7 +143,21 @@ func (st *execState) applySchemeSets() {
 	if !ok {
 		return
 	}
-	st.applyAssigns("$scheme_sets", assigns, 0, 0, "", "")
+	// Служебные ключи (`$…`) отделяются ДО присваивания: в тело они не едут,
+	// их читают записи таблицы. Иначе `$default_port` уезжал литеральным
+	// ключом тела, и узел терял `server_port` (Q133-44).
+	//
+	// Карта присваиваний принадлежит РЕЕСТРУ и общая для всех узлов — правится
+	// не она, а её копия.
+	body := make(map[string]interface{}, len(assigns))
+	for k, v := range assigns {
+		if strings.HasPrefix(k, "$") {
+			st.schemeVals[k] = v
+			continue
+		}
+		body[k] = v
+	}
+	st.applyAssigns("$scheme_sets", body, 0, 0, "", "")
 }
 
 // applyUserInfo раскладывает userinfo по объявленным полям.
@@ -163,8 +187,29 @@ func (st *execState) applyUserInfo() {
 	}
 	// Одиночный userinfo без разделителя при объявленном single_into едет
 	// туда, а не в первый into (конвенция naive/hysteria2).
+	//
+	// Перенаправляется САМО ПРОСТРАНСТВО, а не только цель записи: лексер
+	// кладёт беспарный userinfo в `userinfo.user`, и запись `username`, читая
+	// свой источник напрямую, получала бы тот же текст — узел выходил бы и с
+	// username, и с password (Q133-43). Источник обязан быть одной истиной
+	// для всех записей.
 	if ui.SingleInto != "" && len(parts) == 1 {
 		targets = []string{ui.SingleInto}
+		// Какой компонент пространства несёт значение, решает ПОЗИЦИЯ цели в
+		// `into`, а не её имя: имена полей принадлежат схеме, а userinfo.0 /
+		// userinfo.1 — пространству. Цель вне `into` пространство не трогает.
+		for i, name := range ui.Into {
+			if name != ui.SingleInto {
+				continue
+			}
+			st.space.UserName, st.space.UserPass = "", ""
+			if i == 0 {
+				st.space.UserName = raw
+			} else {
+				st.space.UserPass = raw
+			}
+			break
+		}
 	}
 	for i, target := range targets {
 		if i >= len(parts) || target == "" {
@@ -242,6 +287,17 @@ func (st *execState) applyEntry(e *Entry) {
 	// Декодирование поверх декодера формы, потом форм-семантика `+`.
 	val := st.decodeValue(p, rawVal)
 
+	// list + extract = СПИСОК ПАР в объект тела (PRIMITIVES §0.10).
+	// Перехватывается до convert: иначе list резал значение в срез, а extract
+	// применялся к его печати — регулярка ловила первую пару и клала её не
+	// туда, а остальные заголовки пропадали (Q133-42).
+	if p.List != nil && p.Extract != nil {
+		st.applyPairList(e, src, rawVal, val)
+		st.applySets(e, val)
+		st.applyImplies(e)
+		return
+	}
+
 	// normalize / type / value_map — перевод диалекта, не суждение.
 	typed, drop := st.convert(p, val)
 	if drop {
@@ -312,6 +368,24 @@ func (st *execState) applyMissing(e *Entry) {
 		if assigns, ok := p.Sets[""]; ok {
 			st.applyAssigns(e.Name, assigns, p.Priority, e.Decl, WhyMaterializeDefault, p.Merge)
 			return
+		}
+		// Дефолт написания схемы (`$default_port` из scheme_sets) — там, где
+		// одна схема несёт два написания с разными портами (Q133-44).
+		if v, ok := st.schemeVals[schemeValDefaultPort]; ok {
+			if path := st.pathOf(p); path != "" {
+				typed := v
+				if p.Type != "" {
+					conv, drop := convertType(p.Type, toString(v))
+					if drop {
+						return
+					}
+					typed = conv
+				}
+				st.write(e.Name, schemeValDefaultPort, v, typed, path,
+					p.Priority, e.Decl, WhyMaterializeDefault)
+				st.applyImplies(e)
+				return
+			}
 		}
 	}
 
@@ -403,6 +477,88 @@ func (st *execState) applyAssigns(entry string, assigns map[string]interface{}, 
 		}
 		st.writeAssign(entry, v, path, priority, decl, why, merge)
 	}
+}
+
+// applyPairList собирает объект тела из СПИСКА ПАР одного параметра ссылки
+// (PRIMITIVES §0.10): `list` режет значение на элементы, `extract` разбирает
+// каждый, группы `$key` / `$value` строят пару.
+//
+// Годность пары решает сама РЕГУЛЯРКА записи, а не код движка: алфавит имени
+// заголовка и запрет CR/LF/NUL в значении — свойства формата, и место им в
+// объявлении (Q133-41). Не совпавший элемент пропускается, остальные живут;
+// `on_item_invalid` ставит код ОДИН раз на узел, о первом отброшенном.
+func (st *execState) applyPairList(e *Entry, src string, raw interface{}, val string) {
+	p := e.Param
+	path := st.pathOf(p)
+	if path == "" {
+		return
+	}
+	re, err := compileShared(p.Extract.Re)
+	if err != nil {
+		return
+	}
+	keyGroup, valGroup := "", ""
+	for name, spec := range p.Extract.Into {
+		switch spec {
+		case "$key":
+			keyGroup = name
+		case "$value":
+			valGroup = name
+		}
+	}
+	if keyGroup == "" {
+		return
+	}
+
+	sep := p.List.Sep
+	if sep == "" {
+		sep = ","
+	}
+	out := map[string]interface{}{}
+	dropped := false
+	for _, item := range strings.Split(val, sep) {
+		if strings.TrimSpace(item) == "" {
+			continue
+		}
+		m := re.FindStringSubmatch(item)
+		if m == nil {
+			dropped = true
+			continue
+		}
+		key, value := "", ""
+		for gi, name := range re.SubexpNames() {
+			switch name {
+			case keyGroup:
+				key = strings.TrimSpace(m[gi])
+			case valGroup:
+				value = strings.TrimSpace(m[gi])
+			}
+		}
+		if key == "" {
+			dropped = true
+			continue
+		}
+		out[key] = value
+	}
+	if dropped {
+		if code := codeOf(p.OnItemInvalid); code != "" {
+			st.note(code, paramsOf(p.OnItemInvalid))
+		}
+	}
+	if len(out) == 0 {
+		// Ни одной годной пары — ключа в теле нет вовсе (так вёл себя и
+		// прежний путь: parseNaiveExtraHeaders возвращал nil).
+		st.trace.Add(Event{
+			Stage: StageField, Mapper: st.mapperName, Entry: e.Name,
+			Src: src, Raw: raw, Val: nil, Path: path, Act: ActSkip, Why: WhyEmpty,
+		})
+		return
+	}
+	// `sort_keys` здесь не исполняется отдельным шагом: канон сериализации
+	// (WriteCanonicalJSON) и так печатает ключи карты по порядку, и объект
+	// пар доезжает до тела картой. Атрибут остаётся объявлением НОРМЫ для
+	// эмита и для LxBox, где карта порядок несёт.
+	st.write(e.Name, src, raw, out, path, p.Priority, e.Decl, "")
 }
 
 // applyExtract раскладывает значение регуляркой с именованными группами.
