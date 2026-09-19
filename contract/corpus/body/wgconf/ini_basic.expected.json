@@ -32,7 +32,8 @@
       "warnings": [
         {
           "code": "wgconf_dns_ignored",
-          "path": "dns"
+          "path": "dns",
+          "value": "1.1.1.1"
         }
       ]
     }

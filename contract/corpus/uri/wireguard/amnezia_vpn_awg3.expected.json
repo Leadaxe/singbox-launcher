@@ -48,7 +48,8 @@
       "warnings": [
         {
           "code": "wgconf_dns_ignored",
-          "path": "dns"
+          "path": "dns",
+          "value": "172.29.172.254, 1.0.0.1"
         },
         {
           "code": "awg_mtu_clamped",

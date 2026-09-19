@@ -972,3 +972,21 @@ vless `encryption`, wireguard `i1`…`i5`).
 записанный рукописным эмиттером, читается так же.
 
 **Кейсов:** 1 (`vmess/legacy_cleartext_userinfo`).
+
+### D133-39 · Порядок `warnings[]`: маппер впереди санитайзера — **ПРИНЯТО**
+
+**Что меняется:** норма закреплена в CANON §6: коды записей маппера с
+`maps_to:null` (`path` = имя записи) идут впереди кодов тела; внутри
+группы — порядок объявления правил. Движок уже склеивал слои так
+(`mergeWarnings`: парсерные, затем санитайзерные).
+
+**Кейсов:** 0 (ожидания корпуса не менялись).
+
+### D133-40 · `wgconf_dns_ignored` и `xray_extra_entries_dropped` несут `value` — **ПРИНЯТО**
+
+**Что меняется:** раннер конверта переносит `params.value` маппера в поле
+`value` ожидания (`on_present` / `on_len_gt`). Ожидания дополнены:
+`uri/wireguard/amnezia_vpn_awg*`, `awg_conf_base64*`, `body/wgconf/ini_basic`,
+`body/vpn/multi_container`, `body/xray/vless_extra_vnext`.
+
+**Кейсов:** 7.
