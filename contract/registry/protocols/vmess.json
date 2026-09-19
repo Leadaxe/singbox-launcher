@@ -307,7 +307,7 @@
       "core/config/subscription/node_parser_vmess.go:43-58",
       "core/config/subscription/node_parser_vmess.go:92-169",
       "core/config/subscription/node_parser_vmess.go:176-319",
-      "core/config/subscription/xray_protocols.go:134-179",
+      "core/config/subscription/xray_element_engine.go",
       "core/config/subscription/shareuri_vmess.go:12-108"
     ],
     "dart": [

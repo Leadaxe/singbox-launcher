@@ -182,7 +182,7 @@
       "core/config/subscription/node_parser_hysteria2.go:13-116",
       "core/config/subscription/hysteria2_ports.go:75-179",
       "core/config/subscription/shareuri_hysteria2.go:12-83",
-      "core/config/subscription/xray_protocols.go:258-290",
+      "core/config/subscription/xray_element_engine.go",
       "core/config/outbound_generator.go:143"
     ],
     "dart": [

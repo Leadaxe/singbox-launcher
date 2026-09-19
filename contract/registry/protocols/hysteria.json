@@ -169,8 +169,8 @@
   },
   "xray_dialect": {
     "protocol": "hysteria",
-    "note": "Форки Xray (сборки с «finalmask») отдают И v1, И hysteria2 под одним protocol:\"hysteria\", различая версии полем version — в streamSettings.hysteriaSettings.version либо в settings.version. version=2 → sing-box type hysteria2 (секрет в password), version=1 или отсутствует → hysteria (секрет в auth_str). Адрес лежит ПЛОСКО в settings.address/port, а не в settings.servers[] — общий xrayServerEndpoint такую форму не берёт, отсюда собственная выемка xrayHysteriaEndpoint. alpn дочитывается из tlsSettings: общая TLS-выемка его не читает, а на QUIC alpn=h3 — рабочая часть рукопожатия.",
-    "go": "core/config/subscription/xray_hysteria.go"
+    "note": "Форки Xray (сборки с «finalmask») отдают И v1, И hysteria2 под одним protocol:\"hysteria\", различая версии полем version — в streamSettings.hysteriaSettings.version либо в settings.version. version=2 → sing-box type hysteria2 (секрет в password), version=1 или отсутствует → hysteria (секрет в auth_str). Адрес лежит ПЛОСКО в settings.address/port, а не в settings.servers[] — апстримная форма settings.servers[] такую запись не берёт, отсюда своя форма `flat` в секциях mappers.xray. alpn дочитывается из tlsSettings: общая TLS-выемка его не читает, а на QUIC alpn=h3 — рабочая часть рукопожатия.",
+    "go": "core/config/subscription/xray_element_engine.go + mappers.xray секций hysteria/hysteria2"
   },
   "mapper": [
     {
@@ -207,7 +207,7 @@
       "core/config/subscription/node_parser_hysteria.go",
       "core/config/subscription/hysteria2_ports.go (общее восстановление authority)",
       "core/config/subscription/shareuri_hysteria.go",
-      "core/config/subscription/xray_hysteria.go",
+      "core/config/subscription/xray_element_engine.go",
       "core/config/subscription/singbox_sanitize.go (obfs-форма, обязательная полоса)",
       "core/config/outbound_generator.go (ветка эмиссии hysteria)"
     ],

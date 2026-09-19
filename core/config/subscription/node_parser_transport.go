@@ -499,7 +499,9 @@ func xhttpLookupBool(primary, fallback map[string]string, keys ...string) bool {
 // `xmux` — единственный вложенный объект, который XHTTP определяет, и Xray
 // пишет его в `extra` именно объектом. Его члены разворачиваются в тот же
 // плоский слой (их имена не конфликтуют с верхнеуровневыми, а builder собирает
-// объект обратно) — ровно как это делает xrayFlattenScalars для JSON-ветки.
+// объект обратно). Xray-ветка делает то же самое записями блока
+// `transports#xray` реестра: свой конвертер (xrayFlattenScalars) снят вместе
+// с переводом входа Xray на движок.
 // Без этого вложенная форма молча терялась: share-URI понимал только плоскую,
 // а импорт того же узла из Xray-конфига — обе (SPEC 102 R2).
 func xhttpMergeSource(q url.Values) map[string]string {

@@ -288,7 +288,7 @@
       "core/config/subscription/node_parser_transport.go:625-744",
       "core/config/subscription/singbox_sanitize.go:44-51",
       "core/config/subscription/singbox_sanitize.go:121-218",
-      "core/config/subscription/xray_outbound_convert.go:188-263",
+      "core/config/subscription/xray_element_engine.go",
       "core/config/subscription/shareuri_helpers.go:198-216"
     ],
     "dart": [

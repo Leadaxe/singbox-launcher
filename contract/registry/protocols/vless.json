@@ -164,7 +164,7 @@
       "core/config/subscription/node_parser_core.go:439",
       "core/config/subscription/node_parser_core.go:593-627",
       "core/config/subscription/node_parser_transport.go:625-701",
-      "core/config/subscription/xray_outbound_convert.go:103-186",
+      "core/config/subscription/xray_element_engine.go",
       "core/config/subscription/singbox_sanitize.go:221-263",
       "core/config/subscription/shareuri_vless.go:64-97"
     ],

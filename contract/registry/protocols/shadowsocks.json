@@ -93,7 +93,7 @@
       "core/config/subscription/node_parser_core.go:581-583",
       "core/config/subscription/node_parser_core.go:767-773",
       "core/config/subscription/node_parser_ss.go:6-21",
-      "core/config/subscription/xray_protocols.go:222-256",
+      "core/config/subscription/xray_element_engine.go",
       "core/config/subscription/shareuri_ss.go:11-33"
     ],
     "dart": [

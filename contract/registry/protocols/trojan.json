@@ -151,7 +151,7 @@
       "core/config/subscription/node_parser_core.go:366-374",
       "core/config/subscription/node_parser_core.go:759-766",
       "core/config/subscription/node_parser_transport.go:714-744",
-      "core/config/subscription/xray_protocols.go:182-219",
+      "core/config/subscription/xray_element_engine.go",
       "core/config/subscription/shareuri_trojan.go:10-59"
     ],
     "dart": [
