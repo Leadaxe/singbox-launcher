@@ -523,3 +523,49 @@ shadowsocks, socks, ssh, vmess). У **vless и trojan** блок не подкл
 `queryGetFold` обходит Go-map, поэтому при ДВУХ написаниях одного имени в
 одной ссылке победитель сегодня **недетерминирован** — норма «точное
 совпадение с каноном, иначе первое по порядку» это чинит.
+
+### D133-27 · Вход Xray на движке: keep-alive из sockopt, `alter_id: 0`, массив `host` — **ПРИНЯТО**
+
+Пачка дельт, вскрывшихся при переводе входа Xray на движок (контракт
+1.1.27). Все объявлены машинно в
+`core/config/linkmap/testdata/deltas_allowed.json`.
+
+**1. Keep-alive из `streamSettings.sockopt` не читался ВОВСЕ.** Старый
+конвертер трогает `sockopt` единственный раз — ради `dialerProxy`
+(`xray_outbound_convert.go:87-99`); `tcpKeepAliveIdle`/`Interval` не читает
+ни одна ветка. `include dialer#xray` включает чтение, и узел получает
+`tcp_keep_alive` / `tcp_keep_alive_interval`. Поля ЖИЛИ во входе и
+терялись — дельта в сторону полноты. Кейсы `sockopt_keepalive_positive`,
+`vless_sockopt_keepalive`, `ss_method_legacy`.
+
+**Знак — часть диалекта, а не значение.** `tcpKeepAliveIdle` > 0 —
+длительность, 0 — «не задано», < 0 — «выключить keep-alive», и у ядра это
+ОТДЕЛЬНОЕ булево `disable_tcp_keep_alive`: отрицательный `duration`
+`badoption.Duration` не примет. Выражено `when {lt,gt}` + `implies`, без
+ветки в коде. Отрицательный ИНТЕРВАЛ не пишется вовсе — своего
+выключателя у ядра нет. Кейсы `sockopt_keepalive_negative`,
+`sockopt_keepalive_negative_interval`.
+
+**2. `alter_id: 0` теперь пишется** (пара к D133-25). У vmess на входе
+Xray `alterId` объявлен `materialize_default`, и ключ попадает в тело
+всегда, в том числе нулём; прежняя ветка писала его только при
+`alterID > 0` (`xray_protocols.go:209-211`). Расхождение заявлено LxBox
+(§24.20 п. 4) и принято реестром. Кейсы `vmess_tls`,
+`vmess_security_junk`.
+
+**3. Массив `host` больше не даёт мусора — Q133-16 разрешён в сторону
+чинки.** `httpSettings.host` в Xray — массив строк, а `xrayMapString`
+склеивал его через `fmt.Sprint`, и в тело уезжало
+`transport.host: ["[a.example b.example]"]`: типовой реальный конфиг давал
+недозваниваемый узел. Движок массив к скаляру НЕ приводит (`jsonScalar`
+отвечает «значения нет»), и мусорного ключа в теле не появляется.
+Ожидание корпуса `vless_h2` пинит СТАРОЕ поведение — оно и есть дефект.
+Правильное ЧТЕНИЕ массива `host` — запись волны эмита, вместе с кодами
+селектора (Q133-17).
+
+**Чего в этой пачке НЕТ.** `unknown_key.ignore` объявлен у всех четырёх
+секций, но дельтой не является: на JSON-входе `unknown_key` не
+исполняется вовсе — у движка есть обход имён query-параметров
+(`Space.QueryNames`), JSON-аналога у него нет, и `Plan.Declared`
+собирается только из источников `query.`. Кода `json_field_unknown` с
+входа Xray не ставится ни одного, список — объявление вперёд.
