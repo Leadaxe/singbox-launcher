@@ -45,7 +45,7 @@
 
 - chore(contract): 43 бампа контракта с 1.0.4 до 1.1.46
 - chore(ci): страж Win7 (`tools/win7guard`), codecov v5, ubuntu-24.04
-- docs: `docs/TROUBLESHOOTING.md`, отчёт кампании `SPECS/133-F-N-REGISTRY_DRIVEN_LINK_MAPPER/REPORT_2_0_0.html`
+- docs: `docs/TROUBLESHOOTING.md`, отчёт кампании `SPECS/133-F-N-REGISTRY_DRIVEN_LINK_MAPPER/REPORT_2_0_0.md`
 - refactor(config): мёртвый легаси после linkmap снят (`uri_params.go`, `node_ref.go`, `detour_topo.go` и др.)
 
 ## v1.6.3
