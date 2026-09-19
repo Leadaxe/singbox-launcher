@@ -1254,6 +1254,9 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		currentSortType = "name"
 		savedSortNameAscending = ascending // Сохраняем направление для восстановления
 		ac.SetProxiesList(reorderWithPinned(ac, sorted))
+		// Сортировка меняет порядок при том же delaySum — кэш видимого среза
+		// иначе отдаёт прежнюю проекцию до следующего события фильтра/выбора.
+		serversViewCacheValid = false
 		if ac.UIService.ProxiesListWidget != nil {
 			ac.UIService.ProxiesListWidget.Refresh()
 		}
@@ -1304,6 +1307,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		currentSortType = "delay"
 		savedSortDelayAscending = ascending // Сохраняем направление для восстановления
 		ac.SetProxiesList(reorderWithPinned(ac, sorted))
+		serversViewCacheValid = false
 		if ac.UIService.ProxiesListWidget != nil {
 			ac.UIService.ProxiesListWidget.Refresh()
 		}
