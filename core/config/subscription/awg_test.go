@@ -7,6 +7,26 @@ import (
 	"testing"
 )
 
+// awgNum — ЧИСЛОВОЕ значение awg-поля тела, каким бы целым типом Go оно ни
+// было представлено.
+//
+// Тесты долго требовали именно int64: столько выдавал рукописный парсер,
+// писавший `int64(n)` явно. Контракт же — ЧИСЛО JSON, а не ширина типа Go:
+// конвейер кладёт int там, где значение в него влезает, и int64 там, где
+// нет (normalizeNumber движка). Требовать здесь конкретный тип значит
+// проверять реализацию вместо поведения — и краснеть на каждой её правке.
+func awgNum(v interface{}) (int64, bool) {
+	switch n := v.(type) {
+	case int:
+		return int64(n), true
+	case int64:
+		return n, true
+	case float64:
+		return int64(n), true
+	}
+	return 0, false
+}
+
 // awgTestURI builds a valid wireguard:// (or awg://) URI with the canonical WG
 // query plus whatever AWG params are passed in `extra`.
 func awgTestURI(scheme string, extra url.Values) string {
@@ -40,7 +60,7 @@ func awgFullExtra() url.Values {
 }
 
 func TestParseWireGuardURI_AWGFields(t *testing.T) {
-	node, err := parseWireGuardURI(awgTestURI("wireguard", awgFullExtra()), nil)
+	node, err := ParseNode(awgTestURI("wireguard", awgFullExtra()), nil)
 	if err != nil || node == nil {
 		t.Fatalf("parse failed: err=%v node=%v", err, node)
 	}
@@ -50,9 +70,9 @@ func TestParseWireGuardURI_AWGFields(t *testing.T) {
 		"h1": 1234567890, "h2": 1234567891, "h3": 1234567892, "h4": 1234567893,
 	}
 	for k, want := range wantNum {
-		got, ok := node.Outbound[k].(int64)
+		got, ok := awgNum(node.Outbound[k])
 		if !ok {
-			t.Errorf("%s: want int64, got %T (%v)", k, node.Outbound[k], node.Outbound[k])
+			t.Errorf("%s: ожидалось целое число, пришло %T (%v)", k, node.Outbound[k], node.Outbound[k])
 			continue
 		}
 		if got != want {
@@ -75,7 +95,7 @@ func TestParseWireGuardURI_AWGFields(t *testing.T) {
 }
 
 func TestParseWireGuardURI_NoAWG_StaysClean(t *testing.T) {
-	node, err := parseWireGuardURI(awgTestURI("wireguard", nil), nil)
+	node, err := ParseNode(awgTestURI("wireguard", nil), nil)
 	if err != nil || node == nil {
 		t.Fatalf("parse failed: err=%v node=%v", err, node)
 	}
@@ -95,14 +115,14 @@ func TestParseWireGuardURI_BadNumeric_ReachesTheRegistry(t *testing.T) {
 	e := url.Values{}
 	e.Set("jc", "not-a-number")
 	e.Set("jmin", "50")
-	node, err := parseWireGuardURI(awgTestURI("wireguard", e), nil)
+	node, err := ParseNode(awgTestURI("wireguard", e), nil)
 	if err != nil || node == nil {
 		t.Fatalf("a bad numeric must not fail the whole node: err=%v", err)
 	}
 	if got, ok := node.Outbound["jc"]; !ok || got != "not-a-number" {
 		t.Errorf("jc = %v (ok=%v), want значение как есть — снимать его обязан реестр", got, ok)
 	}
-	if v, _ := node.Outbound["jmin"].(int64); v != 50 {
+	if v, _ := awgNum(node.Outbound["jmin"]); v != 50 {
 		t.Errorf("jmin should still parse: got %v", node.Outbound["jmin"])
 	}
 }
@@ -123,13 +143,13 @@ func TestParseNode_AWGScheme_RoutesToWireguard(t *testing.T) {
 	if node.Scheme != "wireguard" {
 		t.Errorf("awg:// node.Scheme = %q, want wireguard", node.Scheme)
 	}
-	if v, _ := node.Outbound["jc"].(int64); v != 10 {
+	if v, _ := awgNum(node.Outbound["jc"]); v != 10 {
 		t.Errorf("awg:// jc not parsed: %v", node.Outbound["jc"])
 	}
 }
 
 func TestShareURI_AWG_RoundTrip(t *testing.T) {
-	n1, err := parseWireGuardURI(awgTestURI("wireguard", awgFullExtra()), nil)
+	n1, err := ParseNode(awgTestURI("wireguard", awgFullExtra()), nil)
 	if err != nil {
 		t.Fatalf("initial parse: %v", err)
 	}
@@ -137,7 +157,7 @@ func TestShareURI_AWG_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("share: %v", err)
 	}
-	n2, err := parseWireGuardURI(shareURI, nil)
+	n2, err := ParseNode(shareURI, nil)
 	if err != nil {
 		t.Fatalf("reparse: %v (uri=%s)", err, shareURI)
 	}
@@ -156,12 +176,12 @@ func TestShareURI_AWG_RoundTrip(t *testing.T) {
 func TestShareURI_AWG_ZeroJc_Preserved(t *testing.T) {
 	e := url.Values{}
 	e.Set("jc", "0") // explicit junk-off — must survive
-	n1, err := parseWireGuardURI(awgTestURI("wireguard", e), nil)
+	n1, err := ParseNode(awgTestURI("wireguard", e), nil)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if v, ok := n1.Outbound["jc"].(int64); !ok || v != 0 {
-		t.Fatalf("jc=0 should be stored as int64(0), got %T %v", n1.Outbound["jc"], n1.Outbound["jc"])
+	if v, ok := awgNum(n1.Outbound["jc"]); !ok || v != 0 {
+		t.Fatalf("jc=0 обязан доехать числом 0, пришло %T %v", n1.Outbound["jc"], n1.Outbound["jc"])
 	}
 	shareURI, err := ShareURIFromWireGuardEndpoint(n1.Outbound)
 	if err != nil {
@@ -170,8 +190,8 @@ func TestShareURI_AWG_ZeroJc_Preserved(t *testing.T) {
 	if !strings.Contains(shareURI, "jc=0") {
 		t.Errorf("explicit jc=0 lost in share URI: %s", shareURI)
 	}
-	n2, _ := parseWireGuardURI(shareURI, nil)
-	if v, ok := n2.Outbound["jc"].(int64); !ok || v != 0 {
+	n2, _ := ParseNode(shareURI, nil)
+	if v, ok := awgNum(n2.Outbound["jc"]); !ok || v != 0 {
 		t.Errorf("jc=0 lost on round-trip: %T %v", n2.Outbound["jc"], n2.Outbound["jc"])
 	}
 }
@@ -183,7 +203,7 @@ func TestAWG_TypeFidelity_JSON(t *testing.T) {
 	e.Set("jc", "10")
 	e.Set("h1", "4000000000") // > int32 max — must not overflow / become string
 	e.Set("i1", "<r 24>")
-	n, err := parseWireGuardURI(awgTestURI("wireguard", e), nil)
+	n, err := ParseNode(awgTestURI("wireguard", e), nil)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -246,7 +266,7 @@ func TestParseWireGuardURI_MTUPassthrough(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			n, err := parseWireGuardURI(uri(c.extra), nil)
+			n, err := ParseNode(uri(c.extra), nil)
 			if err != nil || n == nil {
 				t.Fatalf("parse: err=%v node=%v", err, n)
 			}
@@ -312,7 +332,7 @@ AllowedIPs = 0.0.0.0/0
 	}
 
 	// И сам узел обязан их получить — до тела, а не только до ссылки.
-	node, err := parseWireGuardURI(uri, nil)
+	node, err := ParseNode(uri, nil)
 	if err != nil || node == nil {
 		t.Fatalf("parse node: err=%v node=%v", err, node)
 	}
@@ -337,7 +357,7 @@ func TestParseWireGuardURI_MasqueradeOnlyReachesBody(t *testing.T) {
 	extra.Set("ip", "quic")
 	extra.Set("id", "example.com")
 
-	node, err := parseWireGuardURI(awgTestURI("wireguard", extra), nil)
+	node, err := ParseNode(awgTestURI("wireguard", extra), nil)
 	if err != nil || node == nil {
 		t.Fatalf("parse failed: err=%v node=%v", err, node)
 	}

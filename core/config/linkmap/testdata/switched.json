@@ -1,1 +1,16 @@
-["trojan", "vless", "anytls", "socks", "ssh", "http", "naive", "shadowsocks", "vmess", "hysteria2", "tuic", "masque", "hysteria"]
+[
+  "anytls",
+  "http",
+  "hysteria",
+  "hysteria2",
+  "masque",
+  "naive",
+  "shadowsocks",
+  "socks",
+  "ssh",
+  "trojan",
+  "tuic",
+  "vless",
+  "vmess",
+  "wireguard"
+]

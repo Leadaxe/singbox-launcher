@@ -64,7 +64,7 @@ func parseURIByEngine(uri string, skipFilters []map[string]string) (*configtypes
 		// выходила бы пустой там, где ссылка их несёт.
 		Query: res.Query,
 	}
-	applyEngineBody(node, res.Body)
+	applyEngineBody(node, plan, res.Body)
 	node.UUID = credentialFromBody(plan, res)
 
 	node.Label = textnorm.NormalizeProxyDisplay(sanitizeForDisplay(res.Label))
@@ -133,15 +133,27 @@ func schemeOfNode(plan *linkmap.Plan, uri, scheme string) string {
 //
 // Сервер и порт дублируются: тело едет в конфиг ядра, а поля структуры читают
 // дедуп, фильтры и UI. Разъехаться они не могут — источник один.
-func applyEngineBody(node *configtypes.ParsedNode, body map[string]interface{}) {
-	if s, ok := body["server"].(string); ok {
+//
+// Где именно лежит адрес, знает СЕКЦИЯ: у обычного outbound'а это корневые
+// `server`/`server_port`, а у endpoint'а wireguard — `peers[].address` и
+// `peers[].port`, и секция объявляет их в label.fallback.server_path/port_path
+// (тем же местом, откуда шаблон дефолтного тега берёт адрес). Списка схем
+// здесь нет по той же причине, что и в движке.
+func applyEngineBody(node *configtypes.ParsedNode, plan *linkmap.Plan, body map[string]interface{}) {
+	serverPath, portPath := "server", "server_port"
+	if plan != nil && plan.Mapper != nil && plan.Mapper.Label != nil && plan.Mapper.Label.Fallback != nil {
+		if p := plan.Mapper.Label.Fallback.ServerPath; p != "" {
+			serverPath = p
+		}
+		if p := plan.Mapper.Label.Fallback.PortPath; p != "" {
+			portPath = p
+		}
+	}
+	if s, ok := linkmap.BodyString(body, serverPath); ok {
 		node.Server = s
 	}
-	switch p := body["server_port"].(type) {
-	case int:
+	if p, ok := linkmap.BodyInt(body, portPath); ok {
 		node.Port = p
-	case float64:
-		node.Port = int(p)
 	}
 }
 

@@ -42,7 +42,12 @@
       },
       "kind": "endpoint",
       "label": "91.247.235.94",
-      "scheme": "wireguard"
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "wgconf_dns_ignored"
+        }
+      ]
     }
   ],
   "v": 1

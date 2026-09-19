@@ -28,7 +28,12 @@
       },
       "kind": "endpoint",
       "label": "example-3.com",
-      "scheme": "wireguard"
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "wgconf_dns_ignored"
+        }
+      ]
     }
   ],
   "v": 1

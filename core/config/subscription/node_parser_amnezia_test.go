@@ -107,7 +107,7 @@ func TestParseNode_AmneziaVPN_AWG(t *testing.T) {
 	wantNum := map[string]int64{"jc": 4, "jmin": 40, "jmax": 70, "s1": 116, "s2": 61,
 		"h1": 1239197098, "h2": 1929999940, "h3": 1499605721, "h4": 992706287}
 	for k, want := range wantNum {
-		if got, _ := node.Outbound[k].(int64); got != want {
+		if got, _ := awgNum(node.Outbound[k]); got != want {
 			t.Errorf("%s = %v (%T), want %d", k, node.Outbound[k], node.Outbound[k], want)
 		}
 	}
@@ -119,7 +119,7 @@ func TestParseNode_AmneziaVPN_AWG(t *testing.T) {
 	if got, _ := node.Outbound["mtu"].(int); got != 1420 {
 		t.Errorf("mtu = %v, want 1420 verbatim (потолок — правило реестра)", node.Outbound["mtu"])
 	}
-	peers, _ := node.Outbound["peers"].([]map[string]interface{})
+	peers, _ := wireGuardPeerMaps(node.Outbound)
 	if len(peers) != 1 {
 		t.Fatalf("peers = %v, want exactly 1", node.Outbound["peers"])
 	}
@@ -360,7 +360,7 @@ func TestParseNode_AmneziaVPN_AWG3(t *testing.T) {
 	if got, _ := node.Outbound["mtu"].(int); got != 1376 {
 		t.Errorf("mtu = %v (%T), want last_config 1376 verbatim", node.Outbound["mtu"], node.Outbound["mtu"])
 	}
-	peers, _ := node.Outbound["peers"].([]map[string]interface{})
+	peers, _ := wireGuardPeerMaps(node.Outbound)
 	if len(peers) != 1 {
 		t.Fatalf("peers = %v, want exactly 1", node.Outbound["peers"])
 	}

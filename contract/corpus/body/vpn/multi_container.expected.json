@@ -24,7 +24,12 @@
       },
       "kind": "endpoint",
       "label": "Test Profile amnezia-awg",
-      "scheme": "wireguard"
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "wgconf_dns_ignored"
+        }
+      ]
     },
     {
       "entry": {
@@ -47,7 +52,12 @@
       },
       "kind": "endpoint",
       "label": "Test Profile amnezia-wireguard",
-      "scheme": "wireguard"
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "wgconf_dns_ignored"
+        }
+      ]
     }
   ],
   "v": 1

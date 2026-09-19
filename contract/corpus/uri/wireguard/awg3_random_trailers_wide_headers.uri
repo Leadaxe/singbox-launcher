@@ -1,0 +1,5 @@
+# SPEC 123 §2: random_trailers вместе с ШИРОКИМ диапазоном h1-h4 (>= 65536) —
+# свойство ПАРЫ настроек: сервер референсной реализации начинает принимать
+# data-пакеты за рукопожатия. Узел живёт, ничего не снимается, человеку едет
+# info-код. Связь body.relations kind: cooccurrence + оператор $range_width.
+wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@host.example.com:30565?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.8.1.7/32&allowedips=0.0.0.0/0,::/0&h1=1000-200000&h2=300000&h3=300001&h4=300002&randomtrailers=on#awg3-wide

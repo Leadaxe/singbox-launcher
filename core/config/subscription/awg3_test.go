@@ -41,11 +41,16 @@ func TestParseWireGuardURI_AWG3RandomTrailersWideHeaders(t *testing.T) {
 	if err != nil || node == nil {
 		t.Fatalf("node must survive, got err=%v", err)
 	}
-	if !hasWarning(node.Warnings, WarnAWG3RandomTrailersWideHeaders) {
-		t.Errorf("warnings = %v, want %s", node.Warnings, WarnAWG3RandomTrailersWideHeaders)
-	}
+	// САМ КОД ставит санитайзер связью реестра (cooccurrence + $range_width),
+	// то есть ниже по конвейеру: здесь, на выходе маппера, его ещё нет и быть
+	// не должно. Предмет этого теста — что маппер довёз до тела ОБА условия
+	// связи в годном виде: булев флаг и диапазон строкой.
 	if v, _ := node.Outbound["random_trailers"].(bool); !v {
-		t.Error("random_trailers must stay set: the info code removes nothing")
+		t.Error("random_trailers обязан доехать булевым true: без него связь не сработает")
+	}
+	if v, _ := node.Outbound["h1"].(string); v != "1000-200000" {
+		t.Errorf("h1 = %v (%T), ожидался диапазон строкой: ширину меряет $range_width",
+			node.Outbound["h1"], node.Outbound["h1"])
 	}
 }
 

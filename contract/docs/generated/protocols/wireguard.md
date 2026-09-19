@@ -222,7 +222,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-peers-persistent-keepalive-interval"></a>**`peers.persistent_keepalive_interval`** — Keepalive interval in seconds, number or range.
   - Type: awg_range
 - <a id="body-peers-reserved"></a>**`peers.reserved`** — Three reserved bytes prepended to packets.
-  - Type: int_array, len `3`
+  - Type: int_array, `0–255`, len `3`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 - <a id="body-udp-timeout"></a>**`udp_timeout`** — Idle timeout of a UDP session.
   - Type: duration

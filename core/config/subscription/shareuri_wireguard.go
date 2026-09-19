@@ -11,8 +11,40 @@ import (
 
 // --- WireGuard (sing-box endpoints[]) ---
 
+// AmneziaWG (AWG 2.0) field names, promoted to the WireGuard endpoint root in
+// the sing-box-lx `with_awg` config shape (SPEC 073):
+//   - numeric: jc/jmin/jmax, s1–s4, h1–h4 — uint32 (emitted as JSON number)
+//   - string:  i1–i5 — case-sensitive tag strings (<b 0xHEX>, <r N>, <c>, …)
+//   - masquerade: ip/id/ib — id/ip/ib sugar (SPEC 009); the core expands them
+//     into i1 (and i2 for quic). Mutually exclusive with an explicit i1.
+//
+// Таблицы живут ЗДЕСЬ, рядом с эмиттером, потому что читающая сторона их
+// больше не использует: разбор ссылки ведёт секция реестра, где те же имена
+// перечислены записями (SPEC 133). Остались два потребителя — этот эмиттер и
+// конвертер .conf → канонический URI (node_parser_amnezia.go), то есть обе
+// стороны ЗАПИСИ ссылки.
+var (
+	awgNumericFields    = []string{"jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4"}
+	awgStringFields     = []string{"i1", "i2", "i3", "i4", "i5"}
+	awgMasqueradeFields = []string{"ip", "id", "ib"}
+)
+
+// splitAndTrim splits a string by separator, trims whitespace from each part,
+// and returns only non-empty parts.
+func splitAndTrim(s string, sep string) []string {
+	parts := strings.Split(s, sep)
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // ShareURIFromWireGuardEndpoint builds wireguard:// from one sing-box endpoint object in config.json `endpoints[]`
-// (same shape as produced by parseWireGuardURI / GenerateEndpointJSON). Only **single-peer** endpoints are supported:
+// (same shape as produced by the registry mapper / GenerateEndpointJSON). Only **single-peer** endpoints are supported:
 // subscription-style URIs have one remote server; multiple peers return ErrShareURINotSupported.
 func ShareURIFromWireGuardEndpoint(ep map[string]interface{}) (string, error) {
 	if ep == nil {
@@ -129,8 +161,20 @@ func ShareURIFromWireGuardEndpoint(ep map[string]interface{}) (string, error) {
 		}
 	}
 	u := &url.URL{
-		Scheme:   "wireguard",
-		User:     url.User(url.PathEscape(priv)),
+		Scheme: "wireguard",
+		// Ключ кладётся СЫРЫМ: url.User сам percent-энкодит то, что в
+		// userinfo литералом стоять не может, при сериализации — `/`
+		// внутри std-base64 уезжает как `%2F`.
+		//
+		// Прежде здесь стоял ещё и PathEscape, и кодирование шло ДВАЖДЫ:
+		// ссылка получала `%252F`, то есть литеральные символы «%», «2»,
+		// «F» вместо слэша. Чужой клиент читал такой ключ как мусор, а наш
+		// собственный обратный разбор спасала лишь симметричная ошибка —
+		// старый путь распаковывал userinfo вторым PathUnescape поверх
+		// того, что уже сделала платформа. Разбор через движок делает ровно
+		// один проход (как и всякий обычный клиент), и двойное
+		// кодирование стало видно кругом parse(emit(node)).
+		User:     url.User(priv),
 		Host:     net.JoinHostPort(server, strconv.Itoa(port)),
 		RawQuery: q.Encode(),
 		Fragment: fragmentFromTag(ep),

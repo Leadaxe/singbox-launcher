@@ -47,6 +47,9 @@
       "scheme": "wireguard",
       "warnings": [
         {
+          "code": "wgconf_dns_ignored"
+        },
+        {
           "code": "awg_mtu_clamped",
           "path": "mtu",
           "value": "1376"

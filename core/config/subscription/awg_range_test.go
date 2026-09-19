@@ -10,7 +10,7 @@ import (
 // SPEC 073.2: AWG 2.0 header randomization ranges (H1-H4 = "lo-hi") доезжают
 // до endpoint'а — ядро sing-box-lx (>= 1.13.13-lx.6) принимает "h1": "N-M" и
 // выбирает значение из диапазона на каждое рукопожатие. Голое число остаётся
-// int64 (JSON-числом), как и раньше.
+// ЧИСЛОМ JSON, как и раньше.
 //
 // Контракт 1.1.11: маппер больше НЕ судит значение. Своп перевёрнутой пары,
 // границы uint32 и снятие мусора — правила реестра (type awg_range, normalize
@@ -25,15 +25,15 @@ func TestParseWireGuardURI_AWGHeaderRanges(t *testing.T) {
 	e.Set("h3", "10-x")    // мусор: снятие с кодом — дело санитайзера
 	e.Set("h4", "992706287")
 	e.Set("jc", "10-20")
-	node, err := parseWireGuardURI(awgTestURI("wireguard", e), nil)
+	node, err := ParseNode(awgTestURI("wireguard", e), nil)
 	if err != nil || node == nil {
 		t.Fatalf("parse failed: err=%v", err)
 	}
 	if v, _ := node.Outbound["h1"].(string); v != "43613244-384550127" {
 		t.Errorf("h1 = %v (%T), want range string", node.Outbound["h1"], node.Outbound["h1"])
 	}
-	if v, _ := node.Outbound["h4"].(int64); v != 992706287 {
-		t.Errorf("h4 = %v (%T), want plain int64", node.Outbound["h4"], node.Outbound["h4"])
+	if v, _ := awgNum(node.Outbound["h4"]); v != 992706287 {
+		t.Errorf("h4 = %v (%T), ожидалось число 992706287", node.Outbound["h4"], node.Outbound["h4"])
 	}
 	// Значение, которое маппер разобрать не смог, он обязан ПЕРЕНЕСТИ как
 	// есть: молчаливый дроп здесь означал бы, что до реестра оно не доедет и
@@ -51,7 +51,7 @@ func TestShareURI_AWGHeaderRanges_RoundTrip(t *testing.T) {
 	e := url.Values{}
 	e.Set("h1", "43613244-384550127")
 	e.Set("h4", "992706287")
-	n1, err := parseWireGuardURI(awgTestURI("wireguard", e), nil)
+	n1, err := ParseNode(awgTestURI("wireguard", e), nil)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestShareURI_AWGHeaderRanges_RoundTrip(t *testing.T) {
 	if !strings.Contains(shareURI, "h1=43613244-384550127") {
 		t.Errorf("share URI lost the h1 range: %s", shareURI)
 	}
-	n2, err := parseWireGuardURI(shareURI, nil)
+	n2, err := ParseNode(shareURI, nil)
 	if err != nil {
 		t.Fatalf("reparse: %v", err)
 	}
@@ -127,7 +127,7 @@ PersistentKeepalive = 25
 	}
 	wantNum := map[string]int64{"jc": 5, "jmin": 10, "jmax": 50, "s1": 28, "s2": 121, "s3": 25, "s4": 9}
 	for k, w := range wantNum {
-		if v, _ := node.Outbound[k].(int64); v != w {
+		if v, _ := awgNum(node.Outbound[k]); v != w {
 			t.Errorf("%s = %v, want %d", k, node.Outbound[k], w)
 		}
 	}

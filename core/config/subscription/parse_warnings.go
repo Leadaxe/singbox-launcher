@@ -78,9 +78,12 @@ const (
 	// написать вторую копию правила — ровно то, от чего кампания уходит
 	// (решение владельца 19.09.2026).
 	//
-	// WarnAWG3RandomTrailersWideHeaders — random_trailers при широких
-	// диапазонах h1–h4: потери на data-пакетах, свойство протокола (info).
-	WarnAWG3RandomTrailersWideHeaders = "awg3_random_trailers_wide_headers"
+	// Сюда же ушёл awg3_random_trailers_wide_headers: сочетание
+	// random_trailers с широким диапазоном h1–h4 судит связь
+	// body.relations kind: cooccurrence с оператором $range_width, и
+	// ставит код САНИТАЙЗЕР — то есть на всех входах, а не только на
+	// ссылке. Рукописный awg3RandomTrailersWithWideHeaders снят
+	// (SPEC 133, секция wireguard).
 	// WarnAWG3CoreUnsupported — узел с AWG3-полями снят на сборке: ядро
 	// старше 1.14.0-lx.32 или без with_awg. Выброс, а не пометка.
 	WarnAWG3CoreUnsupported = "awg3_core_unsupported"

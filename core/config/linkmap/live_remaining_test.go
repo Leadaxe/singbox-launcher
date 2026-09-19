@@ -42,9 +42,7 @@ var notLiveYet = []string{}
 // schemesWithoutURISection — схемы ссылок, секции `uri` у которых ещё не
 // написаны (волны W5/W6, `TASKS.md`). Список сокращается по мере написания
 // секций; пустой — вся ссылочная область описана реестром.
-var schemesWithoutURISection = []string{
-	"wireguard",
-}
+var schemesWithoutURISection = []string{}
 
 func TestMappersWithoutLive(t *testing.T) {
 	set, err := registry.LoadMappers()

@@ -1444,26 +1444,48 @@ func (s *sanitizer) constraintsOK(f *registry.Field, v interface{}) bool {
 	// min/max: у строк это длина, у чисел — значение (реестр так и
 	// использует: short_id max:16 — длина, server_port max:65535 — значение).
 	if f.Min != nil || f.Max != nil {
-		var measure float64
-		switch vv := v.(type) {
-		case string:
-			measure = float64(len(vv))
-		case float64:
-			measure = vv
-		case int:
-			measure = float64(vv)
-		case int64:
-			measure = float64(vv)
-		case []string:
-			measure = float64(len(vv))
-		default:
-			measure = 0
-		}
-		if f.Min != nil && measure < *f.Min {
-			return false
-		}
-		if f.Max != nil && measure > *f.Max {
-			return false
+		// У МАССИВА ЧИСЕЛ границы относятся к ЭЛЕМЕНТУ, а не к длине:
+		// длину такого поля задаёт `len` (он тут же ниже), и мерить её ещё
+		// и через min/max было бы вторым способом сказать то же самое.
+		// Элемент вне границ делает негодным всё поле — `reserved` у WARP
+		// это тройка БАЙТ, и «1,2,999» не «почти годное» значение, а
+		// испорченное (ядро припишет его к каждому пакету).
+		//
+		// Прежде []int проваливался в ветку default с measure = 0, то есть
+		// объявленные границы не проверялись вовсе и значение уезжало в
+		// ядро как есть.
+		if items, ok := v.([]int); ok {
+			for _, item := range items {
+				m := float64(item)
+				if f.Min != nil && m < *f.Min {
+					return false
+				}
+				if f.Max != nil && m > *f.Max {
+					return false
+				}
+			}
+		} else {
+			var measure float64
+			switch vv := v.(type) {
+			case string:
+				measure = float64(len(vv))
+			case float64:
+				measure = vv
+			case int:
+				measure = float64(vv)
+			case int64:
+				measure = float64(vv)
+			case []string:
+				measure = float64(len(vv))
+			default:
+				measure = 0
+			}
+			if f.Min != nil && measure < *f.Min {
+				return false
+			}
+			if f.Max != nil && measure > *f.Max {
+				return false
+			}
 		}
 	}
 	if f.Len != nil {

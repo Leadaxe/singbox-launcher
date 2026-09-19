@@ -128,35 +128,11 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		return node, engErr
 	}
 
-	// awg://<base64 .conf>#label — панели заворачивают в ссылку целый wg-quick
-	// (AmneziaWG 3.x по подписке). Форма key@host:port идёт штатной веткой ниже.
-	if strings.HasPrefix(uri, "awg://") || strings.HasPrefix(uri, "wireguard://") {
-		if node, ok, err := parseWGConfBase64Link(uri, skipFilters); ok {
-			return node, err
-		}
-	}
-
-	// Единственная схема, ещё не переведённая на движок: wireguard/awg.
+	// Рукописных парсеров ссылок больше НЕТ: последней ушла wireguard/awg, и
+	// обе её формы — `key@host:port` и целый wg-quick под base64 — ведёт
+	// секция реестра двумя `forms` одной таблицей записей.
 	//
-	// Своего вида «ссылка» у неё две — key@host:port и целый wg-quick под
-	// base64 (форма выше), — и обе ведёт собственный парсер: он строит
-	// ENDPOINT, а не outbound, и общий разбор ссылки ему не нужен.
-	//
-	// Прежний универсальный путь (switch по написанию, buildOutbound по
-	// схеме) отсюда ушёл вместе с последней схемой, которой он был нужен, —
-	// hysteria v1.
-	if strings.HasPrefix(uri, "wireguard://") || strings.HasPrefix(uri, "awg://") {
-		// awg:// — алиас: та же форма endpoint'а плюс поднятые параметры
-		// обфускации (jc/jmin/…/i1-i5), их разбирает applyAWGFields внутри.
-		// node.Scheme остаётся "wireguard": AWG — надмножество WG-эндпоинта,
-		// и GenerateEndpointJSON рассчитывает именно на это написание.
-		wgURI := uri
-		if strings.HasPrefix(uri, "awg://") {
-			wgURI = strings.Replace(uri, "awg://", "wireguard://", 1)
-		}
-		return parseWireGuardURI(wgURI, skipFilters)
-	}
-
+	// Сюда попадает только текст, который не опознала ни одна секция.
 	return nil, fmt.Errorf("unsupported scheme")
 }
 

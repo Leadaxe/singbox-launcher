@@ -502,6 +502,16 @@
         "overlays": { "type": "array", "items": { "$ref": "#/definitions/overlay" } },
         "userinfo": { "$ref": "#/definitions/userinfo" },
         "label": { "$ref": "#/definitions/labelSpec" },
+        "kind_when": {
+          "type": "object",
+          "description": "РОД узла, объявляемый по условию на ВХОД: имя рода → условие. В тело род НЕ пишется — он доезжает до санитайзера контекстом рядом с body_source, и правила реестра читают его оператором `when.source_kind`.\n\nНужен там, где судить по телу нельзя ПО ПОСТРОЕНИЮ: ссылка `awg://` с негодными awg-значениями оставляет тело, неотличимое от обычного WireGuard, а потолок MTU есть свойство ЗАПРОШЕННОГО протокола. Роды проверяются в алфавитном порядке имён, побеждает первый подошедший — имена выбираются так, чтобы порядок не был значимым.\n\nФормы условия: {\"any_set\": [<источники>]} — задан любой из источников; {\"<источник>\": {\"matches\": \"…\"}} — источник содержит подстроку.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "any_set": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
         "params": { "type": "object", "additionalProperties": { "$ref": "#/definitions/param" } },
         "include": {
           "type": "array",

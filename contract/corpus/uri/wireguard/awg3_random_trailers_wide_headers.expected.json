@@ -1,0 +1,40 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.8.1.7/32"
+        ],
+        "h1": "1000-200000",
+        "h2": 300000,
+        "h3": 300001,
+        "h4": 300002,
+        "mtu": 1280,
+        "peers": [
+          {
+            "address": "host.example.com",
+            "allowed_ips": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "port": 30565,
+            "public_key": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
+          }
+        ],
+        "private_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "random_trailers": true,
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "awg3-wide",
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "awg3_random_trailers_wide_headers",
+          "path": "random_trailers"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

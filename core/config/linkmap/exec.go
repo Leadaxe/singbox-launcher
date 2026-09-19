@@ -290,7 +290,7 @@ func (st *execState) checkRequired() error {
 				continue
 			}
 			v, ok := getPath(st.res.Body, path)
-			if !ok || toString(v) == "" {
+			if !ok || isEmptyValue(v) {
 				return fmt.Errorf("linkmap: обязательное поле %q пусто", path)
 			}
 		}
@@ -492,7 +492,19 @@ func (st *execState) applyEntry(e *Entry) {
 	// куда-нибудь или нет. Нужен записям с `maps_to: null`: значение осознанно
 	// никуда не переводится, и без кода оно исчезало бы молча.
 	if code := codeOf(p.OnPresent); code != "" {
-		st.note(code, paramsOf(p.OnPresent))
+		// `value` подставляется САМИМ значением, если объявление не задало
+		// его дословно: текст такого кода про значение и говорит («в секции
+		// [Interface] указан DNS {value}»), а объявить его в таблице нельзя
+		// — оно приходит со входом. Прочие параметры берутся из объявления
+		// как есть.
+		params := paramsOf(p.OnPresent)
+		if _, has := params["value"]; !has {
+			if params == nil {
+				params = map[string]string{}
+			}
+			params["value"] = rawVal
+		}
+		st.note(code, params)
 	}
 
 	// Декодирование поверх декодера формы, потом форм-семантика `+`.
@@ -667,8 +679,37 @@ func (st *execState) applyMissing(e *Entry) {
 		if absent, _ := p.DefaultWhen["absent"].(bool); absent {
 			if val, has := p.DefaultWhen["value"]; has {
 				if path := st.pathOf(p); path != "" {
+					// Дефолт ЗАПОЛНЯЕТ ПУСТОТУ, а не спорит за путь: схема
+					// «маппер записывает дефолт, даже когда источник молчал»
+					// про молчащий источник и говорит. Путь, который уже
+					// занят НАСТОЯЩИМ значением, он не трогает — иначе
+					// порядок объявления двух записей решал бы, доедет ли до
+					// тела прочитанное значение. Так и было: у формы
+					// `conf_b64` порт пира приезжает выемкой из `Endpoint`
+					// («91.247.235.94:51821»), а объявленный выше `peer_port`
+					// перебивал его своим 51820 — узел молча уходил на
+					// дефолтный порт.
+					if _, taken := getPath(st.res.Body, path); taken {
+						by := "-"
+						if mark := st.writtenBy[path]; mark != nil {
+							by = mark.entry
+						}
+						st.trace.Add(Event{
+							Stage: StageField, Mapper: st.mapperName, Entry: e.Name,
+							Src: "-", Val: val, Path: path, Act: ActSkip,
+							Why: WhyLowerPriority(by),
+						})
+						return
+					}
 					out := val
-					if p.Type != "" {
+					switch {
+					case p.List != nil:
+						// Дефолт записи со СПИСКОМ разбирается тем же
+						// разделителем, что и значение источника: иначе
+						// `allowed_ips` приезжал бы в тело одной строкой
+						// "0.0.0.0/0,::/0", а ядро ждёт массив CIDR.
+						out = st.buildList(p, toString(val))
+					case p.Type != "":
 						conv, drop := convertType(p.Type, toString(val))
 						if drop {
 							return
@@ -1201,7 +1242,14 @@ func (st *execState) plusLiteral(p *registry.Param) bool {
 		// В пути `+` литерален: `/ws+v2` не должен стать `/ws v2` (D133-14).
 		return true
 	}
-	return strings.HasPrefix(p.Type, "base64")
+	// Формат ПОЛЯ и тип записи оба называют base64 одним словом, и правило
+	// одно на обоих (D133-7: «политика `+` — свойство ПОЛЯ»). Читался же
+	// только `type`, и запись, объявившая `format: base64_32` (ключ защиты
+	// заголовка AWG3), получала query-семантику: `+` внутри ключа
+	// превращался в пробел, ключ переставал быть 32 байтами и санитайзер
+	// ронял узел кодом awg3_header_key_invalid — ровно тот класс «знаем, но
+	// читаем не так», ради которого затеяна кампания.
+	return strings.HasPrefix(p.Type, "base64") || strings.HasPrefix(p.Format, "base64")
 }
 
 // convert применяет normalize, type и value_map.
@@ -1602,7 +1650,22 @@ func (st *execState) applyLabel() {
 	// следующие звенья, ничего не дав взамен. Пусто после нормализации —
 	// значит звено не ответило, и слово переходит дальше.
 	for _, name := range spec.Source.ForForm(st.form.ID) {
-		v, ok := st.space.Lookup(st.substituteBase(name))
+		// Имя-НЕ-источник читается из УЖЕ ПОСТРОЕННОГО тела — тем же
+		// правилом, по которому их различает `when` (isSourceName).
+		//
+		// Нужно там, где звено метки это не сырое значение входа, а его
+		// РАЗОБРАННАЯ часть: у формы `.conf` имя безымянного узла берётся с
+		// хоста Endpoint, а во входе `Endpoint` лежит целиком,
+		// «91.247.235.94:51821». Сырое звено дало бы узлу имя с портом;
+		// хост из него уже выделен выемкой в peers[].address, и читать надо
+		// его, а не резать значение второй раз своим правилом.
+		var v string
+		var ok bool
+		if isSourceName(name) {
+			v, ok = st.space.Lookup(st.substituteBase(name))
+		} else if raw, has := getPath(st.res.Body, name); has {
+			v, ok = toString(raw), true
+		}
 		if !ok || v == "" {
 			continue
 		}
@@ -1954,37 +2017,105 @@ func normalizeNumber(v interface{}) interface{} {
 	return int(n)
 }
 
+// arrayStep — уровень пути, записанный как массив: "peers[]".
+//
+// Второе возвращаемое — было ли "[]"; первое — имя без него.
+//
+// Массив ОДНОЭЛЕМЕНТНЫЙ по построению: ссылка и .conf несут ровно один peer
+// (форма `key@host:port` другого и не выражает), а многопировый sing-box-вход
+// приезжает готовым телом и маппера не касается. Поэтому элемент не
+// индексируется: "peers[].address" читается как «поле address единственного
+// элемента peers».
+func arrayStep(part string) (string, bool) {
+	if strings.HasSuffix(part, "[]") {
+		return strings.TrimSuffix(part, "[]"), true
+	}
+	return part, false
+}
+
+// descendPath спускается по пути до ПРЕДПОСЛЕДНЕГО уровня, создавая
+// недостающие. create=false — только чтение (nil, если уровня нет).
+//
+// Уровень с "[]" материализуется как []interface{} из одной карты: тело
+// wireguard держит peers массивом, и без этого шага путь "peers[].address"
+// оседал бы в теле буквальным ключом "peers[]" — ядро такого поля не знает, а
+// санитайзер не находил обязательный peers[].address и ронял узел с
+// field_missing.
+func descendPath(root map[string]interface{}, parts []string, create bool) map[string]interface{} {
+	cur := root
+	for _, part := range parts {
+		name, isArray := arrayStep(part)
+		if !isArray {
+			next, ok := cur[name].(map[string]interface{})
+			if !ok {
+				if !create {
+					return nil
+				}
+				next = map[string]interface{}{}
+				cur[name] = next
+			}
+			cur = next
+			continue
+		}
+		switch existing := cur[name].(type) {
+		case []interface{}:
+			if len(existing) > 0 {
+				if m, ok := existing[0].(map[string]interface{}); ok {
+					cur = m
+					continue
+				}
+			}
+			if !create {
+				return nil
+			}
+			m := map[string]interface{}{}
+			cur[name] = []interface{}{m}
+			cur = m
+		default:
+			if !create {
+				return nil
+			}
+			m := map[string]interface{}{}
+			cur[name] = []interface{}{m}
+			cur = m
+		}
+	}
+	return cur
+}
+
 // setPath кладёт значение по точечному пути, создавая недостающие уровни.
 func setPath(root map[string]interface{}, path string, v interface{}) {
 	v = normalizeNumber(v)
 	parts := strings.Split(path, ".")
-	cur := root
-	for i := 0; i < len(parts)-1; i++ {
-		next, ok := cur[parts[i]].(map[string]interface{})
-		if !ok {
-			next = map[string]interface{}{}
-			cur[parts[i]] = next
-		}
-		cur = next
+	cur := descendPath(root, parts[:len(parts)-1], true)
+	last, isArray := arrayStep(parts[len(parts)-1])
+	if isArray {
+		// Последний уровень сам массив ("peers[]" целиком): значение —
+		// единственный элемент.
+		cur[last] = []interface{}{v}
+		return
 	}
-	cur[parts[len(parts)-1]] = v
+	cur[last] = v
 }
 
 // getPath читает значение по точечному пути.
 func getPath(root map[string]interface{}, path string) (interface{}, bool) {
 	parts := strings.Split(path, ".")
-	var cur interface{} = root
-	for _, p := range parts {
-		m, ok := cur.(map[string]interface{})
-		if !ok {
-			return nil, false
-		}
-		cur, ok = m[p]
-		if !ok {
-			return nil, false
+	cur := descendPath(root, parts[:len(parts)-1], false)
+	if cur == nil {
+		return nil, false
+	}
+	last, isArray := arrayStep(parts[len(parts)-1])
+	v, ok := cur[last]
+	if !ok {
+		return nil, false
+	}
+	if isArray {
+		if arr, isSlice := v.([]interface{}); isSlice && len(arr) > 0 {
+			return arr[0], true
 		}
 	}
-	return cur, true
+	return v, true
 }
 
 // delPath снимает путь; опустевшие родительские уровни убираются вместе с ним,
@@ -1994,22 +2125,51 @@ func delPath(root map[string]interface{}, path string) {
 	maps := []map[string]interface{}{root}
 	cur := root
 	for i := 0; i < len(parts)-1; i++ {
-		next, ok := cur[parts[i]].(map[string]interface{})
-		if !ok {
+		next := descendPath(cur, parts[i:i+1], false)
+		if next == nil {
 			return
 		}
 		maps = append(maps, next)
 		cur = next
 	}
-	delete(cur, parts[len(parts)-1])
+	last, _ := arrayStep(parts[len(parts)-1])
+	delete(cur, last)
+	// Опустевший уровень снимается вместе с путём. Имя уровня берётся БЕЗ
+	// "[]": в теле лежит ключ "peers", массив — его значение.
 	for i := len(maps) - 1; i > 0; i-- {
 		if len(maps[i]) == 0 {
-			delete(maps[i-1], parts[i-1])
+			name, _ := arrayStep(parts[i-1])
+			delete(maps[i-1], name)
 		}
 	}
 }
 
 // --- мелочи ---
+
+// isEmptyValue — «поле пусто» для проверки `required`.
+//
+// Отдельно от toString потому, что toString отвечает на другой вопрос: он
+// даёт ПЕЧАТНУЮ форму скаляра и у составного значения честно возвращает "".
+// Проверке обязательности это давало ложное «пусто» у записи со `list`:
+// `address=10.0.0.2/32` разбирался в непустой []string, и узел отказывался
+// разбираться с текстом «обязательное поле "address" пусто». До wireguard
+// пара `required` + `list` встречалась лишь у masque, где она идёт веткой
+// `split_into` выше и до этой строки не доходит.
+func isEmptyValue(v interface{}) bool {
+	switch t := v.(type) {
+	case nil:
+		return true
+	case []string:
+		return len(t) == 0
+	case []interface{}:
+		return len(t) == 0
+	case []int:
+		return len(t) == 0
+	case map[string]interface{}:
+		return len(t) == 0
+	}
+	return toString(v) == ""
+}
 
 func toString(v interface{}) string {
 	switch t := v.(type) {
@@ -2080,3 +2240,33 @@ func rawString(raw []byte) string {
 
 // сохраняем ссылку на regexp, чтобы импорт не выпал при правках выше.
 var _ = regexp.MustCompile
+
+// BodyString / BodyInt — чтение готового тела по тому же точечному пути, что
+// понимают записи секции, включая уровень-массив ("peers[].address").
+//
+// Нужны вызывающему за пределами движка: ParsedNode держит адрес и порт
+// отдельными полями, а ГДЕ они лежат в теле, знает секция, не код.
+func BodyString(body map[string]interface{}, path string) (string, bool) {
+	v, ok := getPath(body, path)
+	if !ok {
+		return "", false
+	}
+	s, isStr := v.(string)
+	return s, isStr
+}
+
+func BodyInt(body map[string]interface{}, path string) (int, bool) {
+	v, ok := getPath(body, path)
+	if !ok {
+		return 0, false
+	}
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case float64:
+		return int(n), true
+	}
+	return 0, false
+}

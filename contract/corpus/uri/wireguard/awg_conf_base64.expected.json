@@ -42,7 +42,12 @@
       },
       "kind": "endpoint",
       "label": "AmneziaWG-3.1",
-      "scheme": "wireguard"
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "wgconf_dns_ignored"
+        }
+      ]
     }
   ],
   "v": 1

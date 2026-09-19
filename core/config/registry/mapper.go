@@ -448,6 +448,14 @@ type LabelSpec struct {
 // LabelFallback — имя узла, когда метки во входе нет.
 type LabelFallback struct {
 	Template string `json:"template"`
+	// ServerPath / PortPath — где в ТЕЛЕ лежат адрес и порт, если не в
+	// корне (`server`/`server_port`). У wireguard узел это ENDPOINT, и
+	// адрес сервера живёт в `peers[].address`; шаблон `{scheme}-{server}-
+	// {server_port}` без этих путей подставил бы пустоту, а ParsedNode
+	// остался бы без Server/Port — по ним работают дедуп, skip-фильтры и
+	// UI (PRIMITIVES §0.13).
+	ServerPath string `json:"server_path"`
+	PortPath   string `json:"port_path"`
 	// SchemeSource: "as_written" — по написанию схемы (hy2-… ≠ hysteria2-…);
 	// "singbox_type" — по типу тела. Решение владельца 19.09.2026:
 	// singbox_type. Меняет identity живых узлов (DELTAS.md D133-6).

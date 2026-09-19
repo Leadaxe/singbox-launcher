@@ -2,10 +2,7 @@ package subscription
 
 import (
 	"fmt"
-	"net/url"
 	"strings"
-
-	"singbox-launcher/core/config/configtypes"
 )
 
 // Pasted WireGuard/AmneziaWG .conf import (SPEC 076).
@@ -15,7 +12,7 @@ import (
 // the conf blocks out of the pasted text and convert each to the canonical
 // wireguard:// URI (SPEC 075 converter), so downstream storage/parse/share
 // paths stay URI-only. AWG fields and the AWG MTU clamp are handled by
-// parseWireGuardURI as usual.
+// the registry mapper section as usual.
 
 // ExtractWGConfBlocks splits pasted text into [Interface]/[Peer] blocks and the
 // remaining text. A block starts at a line equal to "[Interface]" (case-
@@ -200,64 +197,4 @@ func WGConfBodyToConvertedBlocks(body string) (converted []ConvertedWGBlock, ski
 		converted = append(converted, ConvertedWGBlock{URI: uri, Raw: block})
 	}
 	return converted, skipped
-}
-
-// parseWGConfBase64Link разбирает ссылку вида `awg://<base64 .conf>#label`.
-//
-// Панели, раздающие AmneziaWG 3.x по подписке, заворачивают в ссылку ЦЕЛЫЙ
-// wg-quick/.conf (base64 текста с [Interface]/[Peer]) вместо формы
-// `key@host:port?...`. У такой ссылки в «авторитете» нет ни '@', ни ':' —
-// parseWireGuardURI видел в base64 хост без ключа и выбрасывал узел как
-// «missing private key», а человек получал пустой источник без объяснения.
-//
-// Возвращает ok=false, когда ссылка НЕ этой формы (обычный key@host —
-// разбирает штатная ветка) или payload не декодируется в текст с
-// [Interface]; тогда вызывающий продолжает штатный путь и получает его
-// штатную ошибку. Найденный блок конвертируется тем же wgConfToURI, что и
-// вставленный .conf (SPEC 076) — AWG 2/3-поля, MTU-клэмп и валидация ключей
-// живут в одной точке, parseWireGuardURI. Один share-link = один узел:
-// берётся первый [Interface]-блок. Метка — фрагмент ссылки; без фрагмента
-// имя берётся из комментария пира или хоста Endpoint, как у .conf.
-func parseWGConfBase64Link(uri string, skipFilters []map[string]string) (*configtypes.ParsedNode, bool, error) {
-	i := strings.Index(uri, "://")
-	if i < 0 {
-		return nil, false, nil
-	}
-	payload := uri[i+3:]
-	label := ""
-	if j := strings.Index(payload, "#"); j >= 0 {
-		label = strings.TrimSpace(payload[j+1:])
-		payload = payload[:j]
-	}
-	payload = strings.TrimSpace(payload)
-	// Форма key@host:port — не наш случай. В base64 нет ни '@', ни ':', ни '?'.
-	if payload == "" || strings.ContainsAny(payload, "@:?") {
-		return nil, false, nil
-	}
-	raw, err := decodeBase64WithPadding(payload)
-	if err != nil {
-		return nil, false, nil
-	}
-	text, valid := FixUTF8Bytes(raw)
-	if !valid {
-		return nil, false, nil
-	}
-	blocks := WGConfBlocksOf(text)
-	if len(blocks) == 0 {
-		return nil, false, nil
-	}
-	var converted string
-	if label == "" {
-		converted, err = ConvertWGConfText(blocks[0])
-	} else {
-		if unescaped, uerr := url.PathUnescape(label); uerr == nil {
-			label = unescaped
-		}
-		converted, err = wgConfToURI(blocks[0], label)
-	}
-	if err != nil {
-		return nil, true, fmt.Errorf("invalid wireguard conf link: %w", err)
-	}
-	node, err := parseWireGuardURI(converted, skipFilters)
-	return node, true, err
 }

@@ -29,7 +29,7 @@ import (
 //	          classic [Interface]/[Peer] INI text (incl. AWG Jc/Jmin/.../I1-I5 fields).
 //
 // Only WireGuard/AmneziaWG containers are importable. The INI is converted to the
-// canonical wireguard:// URI and delegated to parseWireGuardURI, so CIDR
+// canonical wireguard:// URI and delegated to ParseNode, so CIDR
 // normalization, AWG param promotion and the AWG MTU clamp (SPEC 073) all apply
 // unchanged.
 
@@ -77,7 +77,9 @@ func parseAmneziaVPNLink(uri string, skipFilters []map[string]string) (*configty
 	if err != nil {
 		return nil, fmt.Errorf("invalid WireGuard config in vpn:// container %q: %w", containerName, err)
 	}
-	node, err := parseWireGuardURI(wgURI, skipFilters)
+	// Разбор канонической ссылки — общий вход ParseNode: своего парсера у
+	// схемы больше нет, её ведёт движок реестра (SPEC 133).
+	node, err := ParseNode(wgURI, skipFilters)
 	if err != nil || node == nil {
 		return node, err
 	}
@@ -289,7 +291,7 @@ func ParseAmneziaVPNLinkAll(uri string, skipFilters []map[string]string) ([]*con
 			skipped++
 			continue
 		}
-		node, parseErr := parseWireGuardURI(wgURI, skipFilters)
+		node, parseErr := ParseNode(wgURI, skipFilters)
 		if parseErr != nil {
 			debuglog.WarnLog("Parser: vpn:// container %q: %v", names[i], parseErr)
 			skipped++
@@ -501,7 +503,7 @@ func parseWGConfSections(text string) (iface, peer map[string]string) {
 }
 
 // wgConfToURI converts parsed [Interface]/[Peer] data into the canonical
-// wireguard:// URI accepted by parseWireGuardURI. AWG fields (Jc/Jmin/.../I1-I5)
+// wireguard:// URI accepted by ParseNode. AWG fields (Jc/Jmin/.../I1-I5)
 // map 1:1 to their lower-case query params; MTU is passed through verbatim —
 // потолок AWG-узла держит правило реестра уже по ТЕЛУ
 // (wireguard.body.fields.mtu.max_when, контракт 1.1.5), а не парсер ссылки.
@@ -570,8 +572,9 @@ func wgConfToURI(confText, label string) (string, error) {
 	// уходил без маскировки. Регистр значения сохраняем — id это домен.
 	//
 	// Явный i1 в INI и сахар несовместимы (ядро отвергает пару), и ту же
-	// проверку делает applyAWGFields на разборе получившейся ссылки: сюда
-	// кладём оба, а отбрасывает лишнее одна точка, а не две.
+	// проверку делает СЕКЦИЯ реестра на разборе получившейся ссылки (записи
+	// id/ip/ib объявлены с `when: нет query.i1`): сюда кладём оба, а
+	// отбрасывает лишнее одна точка, а не две.
 	for _, k := range awgMasqueradeFields {
 		if v := iface[k]; v != "" {
 			q.Set(k, v)
@@ -579,7 +582,7 @@ func wgConfToURI(confText, label string) (string, error) {
 	}
 	// AmneziaWG 3.x (SPEC 123): ключи .conf в нижнем регистре 1:1 совпадают с
 	// параметрами ссылки, значения (диапазоны, on/off, base64) едут дословно —
-	// разбор и валидация живут в одной точке, parseWireGuardURI. Без этой
+	// разбор и валидация живут в одной точке, секции реестра. Без этой
 	// ветки AWG3-набор ВЫБРАСЫВАЛСЯ молча: узел выглядел настроенным, а
 	// хендшейк с сервером, шифрующим заголовок, не проходил никогда.
 	for _, k := range awg3ParamKeys() {
