@@ -361,13 +361,6 @@ func ApplyCanonicalNodeLinks(
 	return kept, warnings
 }
 
-// nodeWarning — фраза и узел, к которому она относится: адресата ставит
-// вызывающий, у которого на руках список источников.
-type nodeWarning struct {
-	node *ParsedNode
-	text string
-}
-
 // resolveCanonicalDetour штампует detour узлу. Возвращает непустую причину,
 // если носитель обязан выпасть (fail-closed).
 func resolveCanonicalDetour(n *ParsedNode, targets *NodeLinkTargets, dropped map[*ParsedNode]bool) string {

@@ -138,26 +138,11 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 
 // Private helper functions (migrated from parser.go)
 
-// decodeBase64WithPadding attempts to decode base64 string with automatic padding.
-// Thin wrapper over the shared DecodeBase64Multi helper (encoding_utils.go),
-// which tries the same four variants in the same order.
-func decodeBase64WithPadding(s string) ([]byte, error) {
-	decoded, _, err := DecodeBase64Multi(s)
-	return decoded, err
-}
-
 // validateAndFixUTF8 validates and fixes invalid UTF-8 in a string.
 // Returns fixed string and true if valid, or original string and false if unfixable.
 // Thin wrapper over the shared FixUTF8String helper (utf8_utils.go).
 func validateAndFixUTF8(s string) (string, bool) {
 	return FixUTF8String(s)
-}
-
-// validateAndFixUTF8Bytes validates and fixes invalid UTF-8 in bytes.
-// Returns fixed string and true if valid, or empty string and false if unfixable.
-// Thin wrapper over the shared FixUTF8Bytes helper (utf8_utils.go).
-func validateAndFixUTF8Bytes(b []byte) (string, bool) {
-	return FixUTF8Bytes(b)
 }
 
 // sanitizeForDisplay removes control characters that are unsafe for UI

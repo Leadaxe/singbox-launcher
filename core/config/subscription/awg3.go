@@ -88,17 +88,3 @@ func HasAWG3Fields(endpoint map[string]interface{}) bool {
 	}
 	return false
 }
-
-// awg3ParamKeys lists every AWG3 URI/.conf query key (header key, ranges,
-// bools). Used by the query-side detection and by the .conf → URI converter.
-func awg3ParamKeys() []string {
-	keys := make([]string, 0, 1+len(awg3RangeFields)+len(awg3BoolFields))
-	keys = append(keys, awg3HeaderKeyField.Param)
-	for _, f := range awg3RangeFields {
-		keys = append(keys, f.Param)
-	}
-	for _, f := range awg3BoolFields {
-		keys = append(keys, f.Param)
-	}
-	return keys
-}

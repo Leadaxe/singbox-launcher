@@ -188,10 +188,3 @@ func mapString(m map[string]interface{}, key string) string {
 	s, _ := m[key].(string)
 	return s
 }
-
-// toStringValue приводит значение к строке, если это строка; иначе "".
-// Числовые/булевы значения в этих полях не легальны и должны быть отброшены.
-func toStringValue(v interface{}) string {
-	s, _ := v.(string)
-	return s
-}

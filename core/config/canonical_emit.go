@@ -118,17 +118,6 @@ func EmitCanonicalSource(ps ProxySource, sourceIndex int, tagCounts map[string]i
 	return res
 }
 
-// canonicalSourceLabel — как назвать источник пользователю в отчёте.
-func canonicalSourceLabel(ps ProxySource) string {
-	if s := strings.TrimSpace(ps.Label); s != "" {
-		return s
-	}
-	if s := strings.TrimSpace(ps.Source); s != "" {
-		return s
-	}
-	return ps.ID
-}
-
 // applyCanonicalDetourLink навешивает узлу ссылку detour: личную, а при её
 // отсутствии — ОБЩУЮ ссылку папки.
 //

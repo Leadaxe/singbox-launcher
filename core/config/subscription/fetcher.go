@@ -92,14 +92,6 @@ type SourceIdentity struct {
 	HashModel *bool
 }
 
-// applySubscriptionRequestHeaders sets User-Agent + (when enabled) the four
-// X-Hwid-family headers on an outbound subscription request. Centralized so
-// FetchSubscriptionWithMeta and the legacy FetchSubscription wrapper stay
-// in lockstep — see SPEC 061 §"Request headers".
-func applySubscriptionRequestHeaders(req *http.Request) {
-	applySubscriptionRequestHeadersFor(req, SourceIdentity{})
-}
-
 // applySubscriptionRequestHeadersFor — заголовки с переопределениями
 // КОНКРЕТНОГО источника.
 //

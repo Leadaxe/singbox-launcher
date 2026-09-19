@@ -113,23 +113,6 @@ func uniquifyAgainstCounts(name string, counts map[string]int) string {
 	}
 }
 
-// nodeIdentity — идентичность узла через хук, с встроенным запасным правилом.
-func nodeIdentity(node *configtypes.ParsedNode) string {
-	if node == nil {
-		return ""
-	}
-	if NodeIdentityFunc != nil {
-		return NodeIdentityFunc(node)
-	}
-	if node.Scheme == configtypes.SchemeGroup {
-		return ""
-	}
-	if id := strings.TrimSpace(node.IdentityTag); id != "" {
-		return id
-	}
-	return strings.TrimSpace(node.Tag)
-}
-
 // SPEC 112 снёс dedupNodesByIdentity вместе с контент-хешем — и вместе с ним
 // уехал дедуп байтовых копий (регресс v1.5.2: подписка из 39 записей, где 32
 // одинаковых ss:// различались только `#fragment`, показывала 32 узла вместо

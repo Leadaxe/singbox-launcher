@@ -522,8 +522,3 @@ func amneziaString(profile map[string]interface{}, key string) string {
 	s, _ := profile[key].(string)
 	return strings.TrimSpace(s)
 }
-
-// stripSpaces removes blanks inside comma-separated lists ("10.8.1.2/32, ::/0").
-func stripSpaces(s string) string {
-	return strings.ReplaceAll(s, " ", "")
-}
