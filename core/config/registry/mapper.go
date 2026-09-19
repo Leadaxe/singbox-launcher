@@ -322,6 +322,12 @@ type Param struct {
 	List      *ListSpec              `json:"list"`
 	SplitInto map[string]interface{} `json:"split_into"`
 
+	// Format — ФОРМАТ значения: задаёт умолчания декода, не судит значение
+	// (судит санитайзер). Так политика `+` становится свойством ПОЛЯ, а не
+	// заплатой у каждого ключа: `base64*` читает `+` литералом, `pem` —
+	// раздельно в заголовке и в теле (PRIMITIVES §0.4a).
+	Format string `json:"format"`
+
 	Normalize   string       `json:"normalize"`
 	DecodeExtra *DecodeExtra `json:"decode_extra"`
 

@@ -174,21 +174,33 @@ func TestParseNode_Naive_Canonical(t *testing.T) {
 			if node.Port != tc.wantPort {
 				t.Errorf("Port = %d, want %d", node.Port, tc.wantPort)
 			}
+			// Проверяется ТЕЛО узла, а не промежуточное состояние разбора.
+			//
+			// Прежний путь досочинял значения обратно в node.Query (пароль,
+			// quic) и вычёркивал оттуда padding — это была внутренняя
+			// договорённость рукописного парсера с его же buildOutbound.
+			// Движок тело собирает сам, и такой договорённости у него нет:
+			// query остаётся СПРАВКОЙ о ссылке, какой приехала.
 			if node.UUID != tc.wantUser {
 				t.Errorf("UUID (username) = %q, want %q", node.UUID, tc.wantUser)
 			}
-			if got := node.Query.Get("password"); got != tc.wantPass {
+			if got, _ := node.Outbound["password"].(string); got != tc.wantPass {
 				t.Errorf("password = %q, want %q", got, tc.wantPass)
 			}
-			gotQUIC := node.Query.Get("quic") == "true"
+			gotQUIC, _ := node.Outbound["quic"].(bool)
 			if gotQUIC != tc.wantQUIC {
 				t.Errorf("quic = %v, want %v", gotQUIC, tc.wantQUIC)
 			}
 			if node.Label != tc.wantLabel {
 				t.Errorf("Label = %q, want %q", node.Label, tc.wantLabel)
 			}
-			if node.Query.Has("padding") {
-				t.Errorf("padding must be stripped from Query; got %q", node.Query.Get("padding"))
+			// padding не имеет эквивалента у sing-box: в теле его быть не
+			// должно, и узел обязан получить об этом код.
+			if _, has := node.Outbound["padding"]; has {
+				t.Errorf("padding не должен попадать в тело: %v", node.Outbound["padding"])
+			}
+			if node.Query.Has("padding") && !node.HasWarning("naive_padding_ignored") {
+				t.Error("padding во входе есть, а кода naive_padding_ignored нет")
 			}
 		})
 	}
@@ -228,8 +240,13 @@ func TestParseNode_Naive_PasswordOnly(t *testing.T) {
 	if node.UUID != "" {
 		t.Errorf("UUID = %q, want empty (одиночный userinfo — пароль)", node.UUID)
 	}
-	if got := node.Query.Get("password"); got != "secret" {
+	// Пароль проверяется в ТЕЛЕ: досочинение значения обратно в node.Query
+	// было договорённостью рукописного парсера с его же buildOutbound.
+	if got, _ := node.Outbound["password"].(string); got != "secret" {
 		t.Errorf("password = %q, want %q", got, "secret")
+	}
+	if _, has := node.Outbound["username"]; has {
+		t.Errorf("username не должен появляться: %v", node.Outbound["username"])
 	}
 }
 
@@ -283,7 +300,7 @@ func TestBuildOutbound_Naive_HTTPS(t *testing.T) {
 		t.Fatalf("ParseNode: %v", err)
 	}
 	node.Tag = "naive-out"
-	out := buildOutbound(node)
+	out := nodeBody(t, node)
 
 	assertEq(t, out["type"], "naive")
 	assertEq(t, out["tag"], "naive-out")
@@ -318,7 +335,7 @@ func TestBuildOutbound_Naive_QUIC(t *testing.T) {
 		t.Fatalf("ParseNode: %v", err)
 	}
 	node.Tag = "naive-quic"
-	out := buildOutbound(node)
+	out := nodeBody(t, node)
 
 	assertEq(t, out["quic"], true)
 	assertEq(t, out["quic_congestion_control"], "bbr")
@@ -331,7 +348,7 @@ func TestBuildOutbound_Naive_WithExtraHeaders(t *testing.T) {
 		t.Fatalf("ParseNode: %v", err)
 	}
 	node.Tag = "naive-hdr"
-	out := buildOutbound(node)
+	out := nodeBody(t, node)
 
 	hdrs, ok := out["extra_headers"].(map[string]interface{})
 	if !ok {
@@ -347,7 +364,7 @@ func TestBuildOutbound_Naive_Anonymous(t *testing.T) {
 		t.Fatalf("ParseNode: %v", err)
 	}
 	node.Tag = "anon"
-	out := buildOutbound(node)
+	out := nodeBody(t, node)
 	if _, ok := out["username"]; ok {
 		t.Errorf("username must be absent for anonymous URI")
 	}
@@ -454,7 +471,7 @@ func mustNaiveRoundtrip(t *testing.T, input string) string {
 	if node.Tag == "" {
 		node.Tag = "t"
 	}
-	out := buildOutbound(node)
+	out := nodeBody(t, node)
 	got, err := ShareURIFromOutbound(out)
 	if err != nil {
 		t.Fatalf("ShareURIFromOutbound: %v", err)

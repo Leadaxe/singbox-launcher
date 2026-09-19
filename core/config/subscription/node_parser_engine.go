@@ -66,10 +66,14 @@ func parseURIByEngine(uri string, skipFilters []map[string]string) (*configtypes
 	node.Label = textnorm.NormalizeProxyDisplay(sanitizeForDisplay(res.Label))
 	node.Tag, node.Comment = extractTagAndComment(node.Label)
 	if node.Tag == "" {
-		// Фолбэк метки объявлен САМОЙ секцией (label.fallback), и движок его
-		// уже применил. Пустой тег здесь значит, что секция фолбэка не
-		// объявила, — тогда работает общее правило входа.
-		node.Tag = generateDefaultTag(scheme, node.Server, node.Port)
+		// Фолбэк тега — `{scheme}-{server}-{server_port}`, и ИМЕННО ТО
+		// написание схемы, которое объявила секция своим
+		// label.fallback.scheme_source: node.Scheme его уже несёт. Подставить
+		// сюда имя схемы реестра значило бы переименовать socks5-host-1080 в
+		// socks-host-1080 у всех живых узлов — тег входит в identity, и за
+		// ним тянутся отметки disabled и ссылки цепочек (D133-6, пока НЕ
+		// принято к исполнению).
+		node.Tag = generateDefaultTag(node.Scheme, node.Server, node.Port)
 		node.Comment = node.Tag
 	}
 	node.Tag = normalizeFlagTag(node.Tag)

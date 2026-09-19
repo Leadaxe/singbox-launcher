@@ -825,10 +825,35 @@ func (st *execState) decodeValue(p *registry.Param, raw string) string {
 		n, untilStable := p.DecodeExtra.PassCount()
 		val = decodePasses(val, p.DecodeExtra.Mode, n, untilStable, p.DecodeExtra.Max)
 	}
+	// Формат `pem` — РАЗДЕЛЬНАЯ политика `+` (PRIMITIVES §0.4a): в
+	// заголовочных строках это пробел, в теле ключа — символ алфавита
+	// base64. Булев plus_literal тут не работает ни в одном положении:
+	// true ломает заголовок, false ломает тело (QUIRKS Q133-40).
+	if p.Format == "pem" {
+		return plusInPEM(val)
+	}
 	if !st.plusLiteral(p) {
 		val = PlusToSpace(val)
 	}
 	return val
+}
+
+// plusInPEM применяет политику `+` к PEM-блоку построчно.
+//
+// Заголовок (-----BEGIN …----- / -----END …-----) читает `+` как пробел,
+// всё остальное — как литерал. Строка, не похожая ни на то, ни на другое,
+// считается телом: испортить ключ хуже, чем оставить лишний плюс в тексте.
+func plusInPEM(val string) string {
+	if !strings.Contains(val, "+") {
+		return val
+	}
+	lines := strings.Split(val, "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "-----") {
+			lines[i] = PlusToSpace(line)
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // plusLiteral — читается ли `+` буквально.
@@ -1428,8 +1453,37 @@ func unhex(c byte) (byte, bool) {
 
 // --- пути тела ---
 
+// normalizeNumber приводит ЦЕЛОЕ число из JSON к int.
+//
+// Значения `defaults`, `sets` и `scheme_sets` приезжают из реестра через
+// encoding/json, а он делает из любого числа float64. В теле узла это мина:
+// `json.Marshal` печатает float64 так же, как int, поэтому канон сверки и
+// корпус разницы не видят, — а код, читающий тело ассертом `.(int)`, молча
+// получает ноль. Ровно так у hysteria v1 терялись up_mbps и server_ports, и
+// ядро не стартовало (память проекта json-map-type-assert-trap).
+//
+// Дробное число остаётся float64: превращать 1.5 в 1 значило бы судить
+// значение, а маппер значений не судит.
+func normalizeNumber(v interface{}) interface{} {
+	f, ok := v.(float64)
+	if !ok {
+		return v
+	}
+	if f != float64(int64(f)) {
+		return v
+	}
+	// Диапазон int на 32-битных сборках уже int64 — значение, не влезающее в
+	// int, оставляем как есть: порча тихим переполнением хуже float64.
+	n := int64(f)
+	if int64(int(n)) != n {
+		return v
+	}
+	return int(n)
+}
+
 // setPath кладёт значение по точечному пути, создавая недостающие уровни.
 func setPath(root map[string]interface{}, path string, v interface{}) {
+	v = normalizeNumber(v)
 	parts := strings.Split(path, ".")
 	cur := root
 	for i := 0; i < len(parts)-1; i++ {

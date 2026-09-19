@@ -377,7 +377,8 @@
       },
       "include": [
         "transports#uri",
-        "tls#uri"
+        "tls#uri",
+        "tls#uri_reality"
       ],
       "params": {
         "server": {

@@ -195,7 +195,7 @@ func TestParseNode_HTTPProxy_Table(t *testing.T) {
 					}
 				}
 				if len(tc.wantAlpn) > 0 {
-					alpn, _ := tlsData["alpn"].([]string)
+					alpn, _ := bodyStrings(tlsData["alpn"])
 					if len(alpn) != len(tc.wantAlpn) {
 						t.Errorf("tls.alpn = %v, want %v", alpn, tc.wantAlpn)
 					} else {

@@ -296,7 +296,7 @@ func TestParseNode_VMess(t *testing.T) {
 		if tr["type"] != "http" {
 			t.Fatalf("transport type: %+v", tr)
 		}
-		hosts, _ := tr["host"].([]string)
+		hosts, _ := bodyStrings(tr["host"])
 		if len(hosts) != 1 || hosts[0] != "cdn.h2" {
 			t.Fatalf("host: %+v", tr["host"])
 		}
@@ -420,11 +420,14 @@ func TestParseNode_Shadowsocks(t *testing.T) {
 		if node.Scheme != "ss" {
 			t.Errorf("Expected scheme 'ss', got '%s'", node.Scheme)
 		}
-		if node.Query.Get("method") != method {
-			t.Errorf("Expected method '%s', got '%s'", method, node.Query.Get("method"))
+		// method/password проверяются в ТЕЛЕ: досочинение значений обратно
+		// в node.Query было договорённостью рукописного ss-парсера с его же
+		// buildOutbound, а не контрактом узла.
+		if got, _ := node.Outbound["method"].(string); got != method {
+			t.Errorf("Expected method '%s', got '%s'", method, got)
 		}
-		if node.Query.Get("password") != password {
-			t.Errorf("Expected password '%s', got '%s'", password, node.Query.Get("password"))
+		if got, _ := node.Outbound["password"].(string); got != password {
+			t.Errorf("Expected password '%s', got '%s'", password, got)
 		}
 	})
 
@@ -446,8 +449,11 @@ func TestParseNode_Shadowsocks(t *testing.T) {
 		if node == nil || node.Scheme != "ss" {
 			t.Fatalf("Expected ss node, got %#v", node)
 		}
-		if node.Query.Get("method") != "chacha20-ietf-poly1305" || node.Query.Get("password") != "testpwd" {
-			t.Errorf("method/password: %q / %q", node.Query.Get("method"), node.Query.Get("password"))
+		if m, _ := node.Outbound["method"].(string); m != "chacha20-ietf-poly1305" {
+			t.Errorf("method: %q", m)
+		}
+		if pw, _ := node.Outbound["password"].(string); pw != "testpwd" {
+			t.Errorf("password: %q", pw)
 		}
 		if node.Server != "203.0.113.5" || node.Port != 990 {
 			t.Errorf("server/port: %s:%d", node.Server, node.Port)
@@ -465,8 +471,11 @@ func TestParseNode_Shadowsocks(t *testing.T) {
 		if node == nil || node.Scheme != "ss" {
 			t.Fatalf("Expected ss node, got %#v", node)
 		}
-		if node.Query.Get("method") != "chacha20-ietf-poly1305" || node.Query.Get("password") != "secret-pass" {
-			t.Errorf("method/password: %q / %q", node.Query.Get("method"), node.Query.Get("password"))
+		if m, _ := node.Outbound["method"].(string); m != "chacha20-ietf-poly1305" {
+			t.Errorf("method: %q", m)
+		}
+		if pw, _ := node.Outbound["password"].(string); pw != "secret-pass" {
+			t.Errorf("password: %q", pw)
 		}
 		if node.Server != "192.0.2.10" || node.Port != 8388 {
 			t.Errorf("server/port: %s:%d", node.Server, node.Port)
@@ -653,7 +662,7 @@ func TestBuildOutbound(t *testing.T) {
 		node.Query.Set("pbk", "mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg")
 		node.Query.Set("sid", "test-short-id")
 
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 		if outbound["type"] != "vless" {
 			t.Errorf("Expected type 'vless', got '%v'", outbound["type"])
 		}
@@ -687,7 +696,7 @@ func TestBuildOutbound(t *testing.T) {
 		node.Query.Set("method", "aes-256-gcm")
 		node.Query.Set("password", "test-password")
 
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 		if outbound["type"] != "shadowsocks" {
 			t.Errorf("Expected type 'shadowsocks', got '%v'", outbound["type"])
 		}
@@ -712,7 +721,7 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 		if !ok || tr["type"] != "ws" || tr["path"] != "/vless/" {
 			t.Fatalf("transport: %+v", node.Outbound["transport"])
 		}
-		h, _ := tr["headers"].(map[string]string)
+		h := bodyHeaders(tr["headers"])
 		if h["Host"] != "cdn.test" {
 			t.Fatalf("headers Host: %+v", h)
 		}
@@ -728,7 +737,7 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 			t.Fatalf("ParseNode: err=%v node=%v", err, node)
 		}
 		tr := node.Outbound["transport"].(map[string]interface{})
-		h, _ := tr["headers"].(map[string]string)
+		h := bodyHeaders(tr["headers"])
 		if h["Host"] != "alb1.abvpn.ru" {
 			t.Fatalf("headers Host want alb1.abvpn.ru got %+v", tr)
 		}
@@ -774,7 +783,7 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 		if tr["type"] != "http" {
 			t.Fatalf("transport: %+v", tr)
 		}
-		hosts, ok := tr["host"].([]string)
+		hosts, ok := bodyStrings(tr["host"])
 		if !ok || len(hosts) != 1 || hosts[0] != "cdn.example" {
 			t.Fatalf("host list: %+v", tr["host"])
 		}
@@ -829,7 +838,7 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 			t.Fatalf("ParseNode: err=%v", err)
 		}
 		tr := node.Outbound["transport"].(map[string]interface{})
-		h, _ := tr["headers"].(map[string]string)
+		h := bodyHeaders(tr["headers"])
 		if h["Host"] != "obs.example" {
 			t.Fatalf("want obfsParam as Host, got %+v", tr)
 		}
@@ -858,7 +867,7 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 			t.Fatalf("ParseNode: err=%v", err)
 		}
 		tls := node.Outbound["tls"].(map[string]interface{})
-		alpn, _ := tls["alpn"].([]string)
+		alpn, _ := bodyStrings(tls["alpn"])
 		if len(alpn) != 1 || alpn[0] != "http/1.1" {
 			t.Fatalf("alpn: %+v", tls["alpn"])
 		}
@@ -912,7 +921,7 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 		if tr["type"] != "http" {
 			t.Fatalf("transport: %+v", tr)
 		}
-		hosts := tr["host"].([]string)
+		hosts, _ := bodyStrings(tr["host"])
 		if len(hosts) != 1 || hosts[0] != "arvancloud.ir" {
 			t.Fatalf("host: %+v", tr["host"])
 		}
@@ -994,7 +1003,7 @@ func testTrojanWSOne(t *testing.T, uri, wantHost, wantPath string) {
 	if !ok || tr["type"] != "ws" || tr["path"] != wantPath {
 		t.Fatalf("transport: %+v", tr)
 	}
-	h, _ := tr["headers"].(map[string]string)
+	h := bodyHeaders(tr["headers"])
 	if h["Host"] != wantHost {
 		t.Fatalf("headers Host want %q got %+v", wantHost, tr)
 	}
@@ -1190,7 +1199,7 @@ func TestParseNode_Hysteria2(t *testing.T) {
 				if node == nil {
 					t.Fatal("Expected node, got nil")
 				}
-				sp, ok := node.Outbound["server_ports"].([]string)
+				sp, ok := bodyStrings(node.Outbound["server_ports"])
 				if !ok || len(sp) != 2 || sp[0] != "41000:41000" || sp[1] != "42000:43000" {
 					t.Fatalf("server_ports: %#v", node.Outbound["server_ports"])
 				}
@@ -1201,7 +1210,7 @@ func TestParseNode_Hysteria2(t *testing.T) {
 			uri:         "hysteria2://pw@example.com:443?ports=5000-6000&sni=example.com#t",
 			expectError: false,
 			checkFields: func(t *testing.T, node *config.ParsedNode) {
-				sp, ok := node.Outbound["server_ports"].([]string)
+				sp, ok := bodyStrings(node.Outbound["server_ports"])
 				if !ok || len(sp) != 1 || sp[0] != "5000:6000" {
 					t.Fatalf("server_ports: %#v", node.Outbound["server_ports"])
 				}
@@ -1221,7 +1230,7 @@ func TestParseNode_Hysteria2(t *testing.T) {
 				if node.Query.Get("mport") != "443,20000-30000" {
 					t.Errorf("mport merge: %q", node.Query.Get("mport"))
 				}
-				sp, ok := node.Outbound["server_ports"].([]string)
+				sp, ok := bodyStrings(node.Outbound["server_ports"])
 				if !ok || len(sp) != 2 || sp[0] != "443:443" || sp[1] != "20000:30000" {
 					t.Fatalf("server_ports: %#v", node.Outbound["server_ports"])
 				}
@@ -1235,7 +1244,7 @@ func TestParseNode_Hysteria2(t *testing.T) {
 				if node.Port != 20000 {
 					t.Errorf("port want 20000 got %d", node.Port)
 				}
-				sp, ok := node.Outbound["server_ports"].([]string)
+				sp, ok := bodyStrings(node.Outbound["server_ports"])
 				if !ok || len(sp) != 1 || sp[0] != "20000:50000" {
 					t.Fatalf("server_ports: %#v", node.Outbound["server_ports"])
 				}
@@ -1285,7 +1294,7 @@ func TestParseNode_Hysteria2(t *testing.T) {
 		// tls.json forbidden_for + forbidden_codes → tls_not_applicable_quic.
 		// Здесь карта СЫРАЯ, до санитайзера, и utls в ней быть обязан.
 		// Правило сверяют парные кейсы корпуса (uri↔body у hysteria2/tuic).
-		pins, _ := tls["certificate_public_key_sha256"].([]string)
+		pins, _ := bodyStrings(tls["certificate_public_key_sha256"])
 		if len(pins) != 1 || pins[0] != "YWJjZGVmZ2g=" {
 			t.Fatalf("pins: %+v", tls["certificate_public_key_sha256"])
 		}
@@ -1310,7 +1319,7 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 		node.Query.Set("upmbps", "100")
 		node.Query.Set("downmbps", "500")
 
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 		if outbound["type"] != "hysteria2" {
 			t.Errorf("Expected type 'hysteria2', got '%v'", outbound["type"])
 		}
@@ -1324,7 +1333,7 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 			t.Errorf("Expected server_port 27200, got '%v'", outbound["server_port"])
 		}
 		// Check server_ports (array format for sing-box 1.9+)
-		serverPorts, ok := outbound["server_ports"].([]string)
+		serverPorts, ok := bodyStrings(outbound["server_ports"])
 		if !ok {
 			t.Errorf("Expected server_ports to be []string, got '%v'", outbound["server_ports"])
 		} else if len(serverPorts) != 1 || serverPorts[0] != "27200:28000" {
@@ -1355,7 +1364,7 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 			t.Errorf("Expected insecure false or not set, got '%v'", insecureVal)
 		}
 
-		alpn, ok := tls["alpn"].([]string)
+		alpn, ok := bodyStrings(tls["alpn"])
 		if !ok {
 			t.Fatal("Expected ALPN array in TLS configuration")
 		}
@@ -1375,8 +1384,8 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 		}
 		node.Query.Set("mport", "443,10000-11000")
 		node.Query.Set("insecure", "1")
-		out := buildOutbound(node)
-		sp, ok := out["server_ports"].([]string)
+		out := nodeBody(t, node)
+		sp, ok := bodyStrings(out["server_ports"])
 		if !ok || len(sp) != 2 || sp[0] != "443:443" || sp[1] != "10000:11000" {
 			t.Fatalf("server_ports %#v", out["server_ports"])
 		}
@@ -1394,8 +1403,8 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 		node.Query.Set("mport", "41000")
 		node.Query.Set("insecure", "1")
 
-		outbound := buildOutbound(node)
-		serverPorts, ok := outbound["server_ports"].([]string)
+		outbound := nodeBody(t, node)
+		serverPorts, ok := bodyStrings(outbound["server_ports"])
 		if !ok {
 			t.Fatalf("Expected server_ports []string, got %T", outbound["server_ports"])
 		}
@@ -1416,13 +1425,13 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 		node.Query.Set("sni", "example.com")
 		node.Query.Set("alpn", "h3,h2")
 
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 		tls, ok := outbound["tls"].(map[string]interface{})
 		if !ok {
 			t.Fatal("Expected TLS configuration")
 		}
 
-		alpn, ok := tls["alpn"].([]string)
+		alpn, ok := bodyStrings(tls["alpn"])
 		if !ok {
 			t.Fatal("Expected ALPN array in TLS configuration")
 		}
@@ -1443,7 +1452,7 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 		node.Query.Set("sni", "example.com")
 		node.Query.Set("insecure", "1")
 
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 		tls, ok := outbound["tls"].(map[string]interface{})
 		if !ok {
 			t.Fatal("Expected TLS configuration")
@@ -1464,7 +1473,7 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 		}
 		node.Query.Set("sni", "example.com")
 
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 		// Should still generate outbound, but password will be empty
 		if outbound["type"] != "hysteria2" {
 			t.Errorf("Expected type 'hysteria2', got '%v'", outbound["type"])
@@ -1497,8 +1506,10 @@ func TestParseNode_SSH(t *testing.T) {
 				if node.UUID != "root" {
 					t.Errorf("Expected user 'root', got '%s'", node.UUID)
 				}
-				if node.Query.Get("password") != "admin" {
-					t.Errorf("Expected password 'admin', got '%s'", node.Query.Get("password"))
+				// Пароль — в ТЕЛЕ: досочинение значения обратно в node.Query
+				// было договорённостью рукописного парсера с buildOutbound.
+				if pw, _ := node.Outbound["password"].(string); pw != "admin" {
+					t.Errorf("Expected password 'admin', got '%s'", pw)
 				}
 				if node.Tag != "Local SSH" {
 					t.Errorf("Expected tag 'Local SSH', got '%s'", node.Tag)
@@ -1516,8 +1527,8 @@ func TestParseNode_SSH(t *testing.T) {
 				if node.Port != 2222 {
 					t.Errorf("Expected port 2222, got %d", node.Port)
 				}
-				if node.Query.Get("password") != "" {
-					t.Errorf("Expected empty password, got '%s'", node.Query.Get("password"))
+				if pw, has := node.Outbound["password"]; has {
+					t.Errorf("Expected empty password, got '%v'", pw)
 				}
 			},
 		},
@@ -1539,8 +1550,8 @@ func TestParseNode_SSH(t *testing.T) {
 			uri:         "ssh://root:password@192.168.1.1:22?private_key_path=/home/user/.ssh/id_rsa&private_key_passphrase=myphrase&host_key=ecdsa-sha2-nistp256%20AAAAE2VjZHNhLXNoYTItbmlzdH...&client_version=SSH-2.0-OpenSSH_7.4p1#My SSH Server",
 			expectError: false,
 			checkFields: func(t *testing.T, node *config.ParsedNode) {
-				if node.Query.Get("password") != "password" {
-					t.Errorf("Expected password 'password', got '%s'", node.Query.Get("password"))
+				if pw, _ := node.Outbound["password"].(string); pw != "password" {
+					t.Errorf("Expected password 'password', got '%s'", pw)
 				}
 				if node.Query.Get("private_key_path") != "/home/user/.ssh/id_rsa" {
 					t.Errorf("Expected private_key_path '/home/user/.ssh/id_rsa', got '%s'", node.Query.Get("private_key_path"))
@@ -1665,8 +1676,8 @@ func TestParseNode_SOCKS5(t *testing.T) {
 				if node.UUID != "myuser" {
 					t.Errorf("Expected username 'myuser', got '%s'", node.UUID)
 				}
-				if node.Query.Get("password") != "mypass" {
-					t.Errorf("Expected password 'mypass', got '%s'", node.Query.Get("password"))
+				if pw, _ := node.Outbound["password"].(string); pw != "mypass" {
+					t.Errorf("Expected password 'mypass', got '%s'", pw)
 				}
 				if node.Tag != "Office SOCKS5" {
 					t.Errorf("Expected tag 'Office SOCKS5', got '%s'", node.Tag)
@@ -1687,8 +1698,8 @@ func TestParseNode_SOCKS5(t *testing.T) {
 				if node.UUID != "" {
 					t.Errorf("Expected empty username, got '%s'", node.UUID)
 				}
-				if node.Query.Get("password") != "" {
-					t.Errorf("Expected empty password, got '%s'", node.Query.Get("password"))
+				if pw, has := node.Outbound["password"]; has {
+					t.Errorf("Expected empty password, got '%v'", pw)
 				}
 				if node.Tag != "socks5-proxy.example.com-1080" {
 					t.Errorf("Expected default tag 'socks5-proxy.example.com-1080', got '%s'", node.Tag)
@@ -1914,7 +1925,7 @@ func TestBuildOutbound_SSH(t *testing.T) {
 		}
 		node.Query.Set("password", "secret123")
 
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 
 		if outbound["type"] != "ssh" {
 			t.Errorf("Expected type 'ssh', got '%v'", outbound["type"])
@@ -1945,7 +1956,7 @@ func TestBuildOutbound_SSH(t *testing.T) {
 		node.Query.Set("private_key_path", "/home/user/.ssh/id_rsa")
 		node.Query.Set("private_key_passphrase", "mypassphrase")
 
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 
 		if outbound["private_key_path"] != "/home/user/.ssh/id_rsa" {
 			t.Errorf("Expected private_key_path '/home/user/.ssh/id_rsa', got '%v'", outbound["private_key_path"])
@@ -1966,9 +1977,9 @@ func TestBuildOutbound_SSH(t *testing.T) {
 		}
 		node.Query.Set("host_key", "key1,key2,key3")
 
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 
-		hostKeys, ok := outbound["host_key"].([]string)
+		hostKeys, ok := bodyStrings(outbound["host_key"])
 		if !ok {
 			t.Errorf("Expected host_key to be []string, got '%T'", outbound["host_key"])
 			return
@@ -1992,7 +2003,7 @@ func TestBuildOutbound_SSH(t *testing.T) {
 		}
 		node.Query.Set("client_version", "SSH-2.0-OpenSSH_7.4p1")
 
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 
 		if outbound["client_version"] != "SSH-2.0-OpenSSH_7.4p1" {
 			t.Errorf("Expected client_version 'SSH-2.0-OpenSSH_7.4p1', got '%v'", outbound["client_version"])
@@ -2009,7 +2020,7 @@ func TestBuildOutbound_SSH(t *testing.T) {
 			Query:  make(map[string][]string),
 		}
 
-		outbound := buildOutbound(node)
+		outbound := nodeBody(t, node)
 
 		if outbound["user"] != "root" {
 			t.Errorf("Expected default user 'root', got '%v'", outbound["user"])

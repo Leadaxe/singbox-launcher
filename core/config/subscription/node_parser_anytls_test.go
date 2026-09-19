@@ -26,7 +26,7 @@ func TestBuildOutbound_AnyTLS(t *testing.T) {
 		t.Fatalf("ParseNode: %v", err)
 	}
 	node.Tag = "anytls-out"
-	out := buildOutbound(node)
+	out := nodeBody(t, node)
 
 	assertEq(t, out["type"], "anytls")
 	assertEq(t, out["tag"], "anytls-out")
@@ -61,7 +61,7 @@ func TestAnyTLS_ShareURIRoundTrip(t *testing.T) {
 		t.Fatalf("ParseNode: %v", err)
 	}
 	node.Tag = "rt"
-	out := buildOutbound(node)
+	out := nodeBody(t, node)
 
 	share, err := ShareURIFromOutbound(out)
 	if err != nil {

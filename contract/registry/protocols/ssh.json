@@ -258,6 +258,7 @@
         "private_key": {
           "source": "query.private_key",
           "maps_to": "private_key",
+          "format": "pem",
           "decode_extra": {
             "mode": "query",
             "passes": 1
