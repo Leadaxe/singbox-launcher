@@ -137,6 +137,16 @@ func stampBodyType(scheme string, body []byte, outbound map[string]interface{}) 
 	return obj.encode(), nil
 }
 
+// StampBodyType — экспортная обёртка stampBodyType для вызывающих вне пакета.
+//
+// `nodeflow.Emit` отдаёт тело БЕЗ managed-ключа "type": ставит его тот, кто
+// записывает тело в узел. Форма обфускации AmneziaWG писала результат Emit
+// как есть — узел оставался без типа, выпадал из сборки («body has no
+// "type"») и терял саму форму (она показывается по type == wireguard).
+func StampBodyType(scheme string, body []byte, outbound map[string]interface{}) (json.RawMessage, error) {
+	return stampBodyType(scheme, body, outbound)
+}
+
 // materializeParsedNodeBody — тело разобранного узла плюс ПОЛНЫЙ набор его
 // кодов: сначала парсерные (что маппер уже снял на входе), затем
 // санитайзерные (что сняли правила реестра).

@@ -45,6 +45,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/nodeflow"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/locale"
@@ -340,6 +341,13 @@ func writeAWGBody(node *wizardmodels.Node, ob map[string]interface{}) error {
 	// Тело отдаём конвейеру только когда он ничего не потерял. Подробности
 	// правила — в шапке функции.
 	emitted, eerr := nodeflow.Emit(awgPipelineScheme, res.Clean)
+	if eerr == nil {
+		// Emit снимает managed-ключ "type" — вернуть его обязан пишущий тело.
+		var stamped json.RawMessage
+		if stamped, eerr = config.StampBodyType(awgPipelineScheme, emitted, ob); eerr == nil {
+			emitted = stamped
+		}
+	}
 	if res.Drop != nil || eerr != nil || awgPipelineLostFields(ob, res.Clean) {
 		node.Body = patched
 	} else {
