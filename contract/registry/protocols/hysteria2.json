@@ -237,6 +237,11 @@
       },
       "server_ports": {
         "type": "listable_string",
+        "item_pattern": "^[0-9]{1,5}:[0-9]{1,5}$",
+        "on_item_invalid": {
+          "action": "drop_item",
+          "code": "hysteria2_server_ports_item_invalid"
+        },
         "conflicts": [
           {
             "with": "realm",
@@ -245,7 +250,7 @@
         ],
         "desc_en": "Port ranges used for port hopping.",
         "desc_ru": "Диапазоны портов для прыжков по портам.",
-        "impl": "Конфликт с realm: «realm conflicts with server, server_port, and server_ports» (protocol/hysteria2/outbound.go:172)."
+        "impl": "Конфликт с realm: «realm conflicts with server, server_port, and server_ports» (protocol/hysteria2/outbound.go:172). item_pattern — формат ЭЛЕМЕНТА (запрос LxBox 19.09.2026, их починка 44f26d11): ядро разбирает каждый элемент как пару `low:high` и на «198.51.100.24:443» отвечает «bad port range» отказом ВСЕГО конфига. Такой элемент приезжает из mport, где адрес и порты записаны одной строкой (`mport=198.51.100.24:443,20000-30000`). Годные элементы остаются — прыжки по портам продолжают работать по тем диапазонам, которые провайдер записал правильно."
       },
       "hop_interval": {
         "type": "duration",

@@ -182,7 +182,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Set by link parameter: [`allow_insecure`](#link-proto-allow-insecure), [`insecure`](#link-tls-insecure)
   - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
 - <a id="body-tls-alpn"></a>**`tls.alpn`** — ALPN protocols offered in the handshake.
-  - Type: listable_string
+  - Type: listable_string, normalized: `trim`
   - Set by link parameter: [`alpn`](#link-proto-alpn)
 - <a id="body-tls-min-version"></a>**`tls.min_version`** — Minimum accepted TLS version.
   - Type: enum, `1.0`, `1.1`, `1.2`, `1.3`
@@ -279,7 +279,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Conflicts with: `tls.spoof`
   - Meaningless without: `tls.utls.enabled`
 - <a id="body-tls-reality-public-key"></a>**`tls.reality.public_key`** — Server REALITY public key (x25519).
-  - Type: string, format `base64_32`
+  - Type: string, format `base64_32`, normalized: `base64_rawurl`
   - Required: the node is dropped without it
 - <a id="body-tls-reality-short-id"></a>**`tls.reality.short_id`** — REALITY short ID (hex, even length).
   - Type: string, format `hex`, `…–16`, len `even`, normalized: `hex_only`
@@ -404,9 +404,11 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `heartbeat` — normalized: `duration_bare_seconds`
 - `network` — normalized: `trim_lower`
 - `tls.engine` — normalized: `trim_lower`
+- `tls.alpn` — normalized: `trim`
 - `tls.spoof_method` — normalized: `trim_lower`
 - `tls.utls.fingerprint` — normalized: `trim_lower`
 - `tls.utls.fingerprint` — an invalid value is replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
+- `tls.reality.public_key` — normalized: `base64_rawurl`
 - `tls.reality.short_id` — normalized: `hex_only` → [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
 - `tls.reality.key_share` — normalized: `trim_lower`
 - `tcp_keep_alive` — normalized: `duration_bare_seconds`

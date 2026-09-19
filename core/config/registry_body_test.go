@@ -86,6 +86,22 @@ var registryNormalizeModes = map[string]bool{
 	// принадлежат телу и обязаны действовать на всех входах, не только на
 	// ссылке.
 	"cidr_prefix": true, "base64_std": true, "duration_bare_seconds": true,
+	// base64_rawurl — зеркало base64_std для ядра, которое декодирует ключ
+	// только RawURL (tls.reality.public_key).
+	"base64_rawurl": true,
+}
+
+// registryItemInvalidActions — допустимые действия реакции на негодный
+// ЭЛЕМЕНТ списка. Исход один: элемент выбрасывается, остальные остаются;
+// снять поле целиком умеет `pattern`.
+var registryItemInvalidActions = map[string]bool{"": true, "drop_item": true}
+
+// registryItemPatternTypes — типы полей, у которых элемент вообще есть.
+//
+// `item_pattern` у скалярного поля не сработал бы ни разу и читался бы как
+// рабочее правило — ровно тот класс дефекта, от которого стоит линтер.
+var registryItemPatternTypes = map[string]bool{
+	"listable_string": true, "string_array": true,
 }
 
 // registryMinWhenActions — допустимые действия условного минимума.
@@ -183,6 +199,8 @@ type bodyField struct {
 	Values         []interface{}         `json:"values"`
 	Format         string                `json:"format"`
 	Pattern        string                `json:"pattern"`
+	ItemPattern    string                `json:"item_pattern"`
+	OnItemInvalid  *bodyOnItemInvalid    `json:"on_item_invalid"`
 	AbsentValues   []interface{}         `json:"absent_values"`
 	Code           string                `json:"code"`
 	ForbiddenFor   []string              `json:"forbidden_for"`
@@ -253,6 +271,12 @@ type bodyOnInvalid struct {
 	Action string      `json:"action"`
 	Value  interface{} `json:"value"`
 	Code   string      `json:"code"`
+}
+
+// bodyOnItemInvalid — реакция на негодный ЭЛЕМЕНТ списка (`item_pattern`).
+type bodyOnItemInvalid struct {
+	Action string `json:"action"`
+	Code   string `json:"code"`
 }
 
 // bodyAdvisory — значения enum, которые ядро принимает, но узел получает
@@ -600,6 +624,38 @@ func checkField(t *testing.T, where, path string, f *bodyField, codes map[string
 			if strings.Contains(f.Pattern, bad) {
 				t.Errorf("%s: pattern %q содержит %q — вне общего подмножества RE2 и ECMAScript/Dart", full, f.Pattern, bad)
 			}
+		}
+	}
+	// Формат ЭЛЕМЕНТА списка. Проверяется тем же набором правил, что
+	// `pattern`: выражение обязано компилироваться, стоять в якорях и лежать
+	// в общем подмножестве RE2 и ECMAScript/Dart.
+	if f.ItemPattern != "" {
+		if _, err := regexp.Compile(f.ItemPattern); err != nil {
+			t.Errorf("%s: item_pattern %q не компилируется: %v", full, f.ItemPattern, err)
+		}
+		if !strings.HasPrefix(f.ItemPattern, "^") || !strings.HasSuffix(f.ItemPattern, "$") {
+			t.Errorf("%s: item_pattern %q без якорей ^…$ — правило проверяло бы подстроку элемента", full, f.ItemPattern)
+		}
+		for _, bad := range []string{"(?=", "(?!", "(?<", "(?i)", "(?m)", "(?s)", "\\1", "\\2"} {
+			if strings.Contains(f.ItemPattern, bad) {
+				t.Errorf("%s: item_pattern %q содержит %q — вне общего подмножества RE2 и ECMAScript/Dart", full, f.ItemPattern, bad)
+			}
+		}
+		if !registryItemPatternTypes[f.Type] {
+			t.Errorf("%s: item_pattern при type=%q — у скалярного поля элемента нет, правило не сработает ни разу", full, f.Type)
+		}
+	}
+	if f.OnItemInvalid != nil {
+		if f.ItemPattern == "" {
+			t.Errorf("%s: on_item_invalid без item_pattern — реакция на то, чего никто не проверяет", full)
+		}
+		if !registryItemInvalidActions[f.OnItemInvalid.Action] {
+			t.Errorf("%s: on_item_invalid.action %q вне словаря", full, f.OnItemInvalid.Action)
+		}
+		if f.OnItemInvalid.Code == "" {
+			t.Errorf("%s: on_item_invalid без code — выброс элемента остался бы молчаливым", full)
+		} else if !codes[f.OnItemInvalid.Code] && !registryPendingCodes[f.OnItemInvalid.Code] {
+			t.Errorf("%s: on_item_invalid.code %q не объявлен в warnings.json", full, f.OnItemInvalid.Code)
 		}
 	}
 	if len(f.Fields) > 0 && f.Type != "object" {

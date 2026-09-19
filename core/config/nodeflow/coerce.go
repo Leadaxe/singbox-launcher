@@ -255,6 +255,28 @@ func normalize(mode, v string) string {
 			return base64.StdEncoding.EncodeToString(raw)
 		}
 		return v
+	case "base64_rawurl":
+		// Зеркало base64_std для ядра, которое декодирует ключ ТОЛЬКО
+		// base64.RawURLEncoding (REALITY public_key: common/tls/reality_client.go
+		// зовёт RawURLEncoding.DecodeString). Написание со «+», «/» и «=»
+		// формат base64_32 проходит — 32 байта после декода там правда, —
+		// а ядро отвечает «decode public_key: illegal base64 data» отказом
+		// ВСЕГО конфига.
+		//
+		// О годности не судит, как и base64_std: значение, которое не
+		// декодируется ни одним алфавитом, возвращается КАК ЕСТЬ, и его
+		// судит format со своим on_invalid.
+		for _, enc := range []*base64.Encoding{
+			base64.RawURLEncoding, base64.URLEncoding,
+			base64.RawStdEncoding, base64.StdEncoding,
+		} {
+			raw, err := enc.DecodeString(v)
+			if err != nil || len(raw) != 32 {
+				continue
+			}
+			return base64.RawURLEncoding.EncodeToString(raw)
+		}
+		return v
 	case "duration_bare_seconds":
 		// Голое число — это СЕКУНДЫ: живая конвенция панелей
 		// (`heartbeat=10`, `tcpKeepAliveIdle: 30`), а ядро ждёт единицу

@@ -29,6 +29,9 @@
 - The Xray `ech=` parameter is now removed with a stated reason instead of vanishing: it carries another client's key and the handshake cannot succeed with it. A `tls.ech` block from a sing-box configuration is untouched and still works.
 - A junk REALITY public key is reported instead of being dropped in silence, and keys that merely *look* like base64 (`enabled`, `true`) no longer slip through — the key is checked to be 32 bytes after decoding, which is what the core checks.
 
+- Port hopping no longer costs you the whole VPN. A provider who writes the address and the port list as one value (`mport=198.51.100.24:443,20000-30000`) used to put the host name inside the port list, and the core refused to load the entire configuration with «bad port range». Now that one entry is dropped with a stated reason and the ranges written correctly keep working. A bogus ALPN entry is handled the same way.
+- A REALITY key written with the other base64 alphabet now works. The key is the same 32 bytes either way, but the core decodes this particular field in one spelling only and answered «decode public_key: illegal base64 data» — refusing the whole configuration. The spelling is now normalised on the way in.
+
 ### Technical / Internal
 - Linux builds now obtain Wayland header paths from `pkg-config` and fall back to X11 when the optional native Wayland/EGL development files are incomplete, fixing local builds on openSUSE (PR #128, issue #127).
 - New `docs/TROUBLESHOOTING.md`: known problems by platform with links to their solutions (first entry — repeated `systemd-resolved` password prompts on Linux, issue #126).
@@ -64,6 +67,9 @@
 - `naive+https://secret@host` читает единственный кредентиал как **пароль** — как велит спека, как читает мобильное приложение и как этот же лаунчер такие ссылки выписывает. Ссылка, отданная отсюда, прежде читалась обратно с кредентиалом не в том поле.
 - Параметр `ech=` формата Xray снимается с названной причиной, а не исчезает молча: он несёт ключ чужого клиента, и рукопожатие с ним не состоится. Блок `tls.ech` из конфигурации sing-box не затрагивается и продолжает работать.
 - Мусорный публичный ключ REALITY теперь называется, а не снимается молча, и ключи, которые лишь ПОХОЖИ на base64 (`enabled`, `true`), больше не проходят: ключ проверяется на 32 байта после декода — ровно так, как проверяет ядро.
+
+- Прыжки по портам больше не стоят всего VPN. Провайдер, записавший адрес и список портов одним значением (`mport=198.51.100.24:443,20000-30000`), укладывал имя хоста внутрь списка портов, и ядро отказывалось загрузить весь конфиг с «bad port range». Теперь такая запись снимается с названной причиной, а диапазоны, записанные правильно, продолжают работать. С негодной записью ALPN — так же.
+- Ключ REALITY, записанный другим алфавитом base64, теперь работает. Байты ключа в обоих написаниях одни и те же, но ядро декодирует именно это поле в одном написании и отвечало «decode public_key: illegal base64 data», отвергая конфиг целиком. Написание приводится к одному на входе.
 
 ### Техническое / Внутреннее
 - Linux-сборка теперь получает пути к заголовкам Wayland через `pkg-config` и использует X11 при неполном наборе опциональных Wayland/EGL-файлов разработки, исправляя локальную сборку в openSUSE (PR #128, issue #127).

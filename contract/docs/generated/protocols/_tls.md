@@ -70,7 +70,7 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
   - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
   - Not supported by: `naive`
 - <a id="body-alpn"></a>**`alpn`** — ALPN protocols offered in the handshake.
-  - Type: listable_string
+  - Type: listable_string, normalized: `trim`
   - Not supported by: `naive`
 - <a id="body-min-version"></a>**`min_version`** — Minimum accepted TLS version.
   - Type: enum, `1.0`, `1.1`, `1.2`, `1.3`
@@ -187,7 +187,7 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
   - Conflicts with: `tls.spoof`
   - Meaningless without: `tls.utls.enabled`
 - <a id="body-reality-public-key"></a>**`reality.public_key`** — Server REALITY public key (x25519).
-  - Type: string, format `base64_32`
+  - Type: string, format `base64_32`, normalized: `base64_rawurl`
   - Required: the node is dropped without it
   - If invalid: removed → [`reality_pbk_invalid`](../warnings.md#reality_pbk_invalid)
 - <a id="body-reality-short-id"></a>**`reality.short_id`** — REALITY short ID (hex, even length).

@@ -613,6 +613,12 @@ func (s *sanitizer) value(path, prefix string, f *registry.Field, raw interface{
 	if isAbsentValue(f, v) {
 		return nil, false
 	}
+	// Формат ЭЛЕМЕНТА судится ДО ограничений поля: негодный элемент обязан
+	// уйти сам, не забирая с собой годных соседей.
+	v, keep := s.filterItems(path, f, v)
+	if !keep {
+		return nil, false
+	}
 	if !s.constraintsOK(f, v) {
 		return s.onInvalid(path, f, raw)
 	}
@@ -623,6 +629,54 @@ func (s *sanitizer) value(path, prefix string, f *registry.Field, raw interface{
 	s.noteNormalized(path, f, raw, v)
 	s.advisory(path, prefix, f, v)
 	return v, true
+}
+
+// filterItems выбрасывает ЭЛЕМЕНТЫ списка, не подходящие под `item_pattern`.
+//
+// Зачем отдельно от `pattern`/`format`: те судят значение ЦЕЛИКОМ, и провал
+// одного элемента снимает список со всеми остальными. Ядру же одного негодного
+// элемента довольно, чтобы отвергнуть ВЕСЬ конфиг — у hysteria2 элемент
+// `198.51.100.24:443` в `server_ports` даёт «bad port range», и человек
+// остаётся без VPN, а не без одного узла (запрос LxBox 19.09.2026).
+//
+// Проверяется только форма МАССИВА. У скалярной записи listable-поля элемент и
+// есть всё значение, и судит его `pattern`: двух имён для одной операции быть
+// не должно.
+//
+// Не осталось ни одного годного элемента — поля нет, и второго кода на это не
+// ставится: причину уже назвал код на каждом выброшенном элементе.
+func (s *sanitizer) filterItems(path string, f *registry.Field, v interface{}) (interface{}, bool) {
+	if f.ItemPattern == "" {
+		return v, true
+	}
+	items, ok := v.([]string)
+	if !ok {
+		return v, true
+	}
+	code := "type_invalid"
+	if f.OnItemInvalid != nil && f.OnItemInvalid.Code != "" {
+		code = f.OnItemInvalid.Code
+	}
+	out := make([]string, 0, len(items))
+	for i, item := range items {
+		if patternOK(f.ItemPattern, item) {
+			out = append(out, item)
+			continue
+		}
+		// Путь — ЭЛЕМЕНТ, а не поле: человеку надо увидеть, что именно
+		// выброшено, а дедуп по (code, path) иначе схлопнул бы два разных
+		// негодных элемента одного списка в одно сообщение.
+		itemPath := path + "[" + strconv.Itoa(i) + "]"
+		params := map[string]string{"path": itemPath}
+		if !f.Secret {
+			params["value"] = item
+		}
+		s.warn(code, itemPath, item, f.Secret, params)
+	}
+	if len(out) == 0 {
+		return nil, false
+	}
+	return out, true
 }
 
 // isAbsentValue — значение является литералом-выключателем (Field.AbsentValues).

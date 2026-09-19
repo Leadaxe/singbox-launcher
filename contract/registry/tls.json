@@ -417,13 +417,19 @@
       },
       "alpn": {
         "type": "listable_string",
+        "normalize": "trim",
+        "item_pattern": "^[A-Za-z0-9][A-Za-z0-9._/+-]*$",
+        "on_item_invalid": {
+          "action": "drop_item",
+          "code": "tls_alpn_item_invalid"
+        },
         "forbidden_for": [
           "naive"
         ],
         "code": "tls_field_unsupported_naive",
         "desc_en": "ALPN protocols offered in the handshake.",
         "desc_ru": "Список протоколов ALPN, предлагаемых в рукопожатии.",
-        "impl": "Фиксированного enum в ядре нет; практические значения http/1.1, h2, h3. Listable: пишется в той форме, в какой пришло. У naive — фатал старта."
+        "impl": "Фиксированного enum в ядре нет; практические значения http/1.1, h2, h3. Listable: пишется в той форме, в какой пришло. У naive — фатал старта. item_pattern — формат ЭЛЕМЕНТА (второй случай запроса LxBox 19.09.2026): идентификатор ALPN — это токен из букв, цифр и `._/+-`, и элемент с запятой или пробелом внутри означает, что список не разрезали. Такой элемент уезжает в ClientHello как отдельный протокол, которого не существует, и сервер обрывает рукопожатие; годные соседи при этом остаются. normalize trim стоит рядом НАМЕРЕННО: `alpn=h2, h3` даёт элемент с ведущим пробелом, и без обрезки формат выбросил бы живое значение вместо того, чтобы его починить."
       },
       "min_version": {
         "type": "enum",
@@ -924,6 +930,7 @@
           "public_key": {
             "type": "string",
             "format": "base64_32",
+            "normalize": "base64_rawurl",
             "on_invalid": {
               "action": "drop",
               "code": "reality_pbk_invalid"
@@ -931,7 +938,7 @@
             "required": true,
             "desc_en": "Server REALITY public key (x25519).",
             "desc_ru": "Публичный ключ REALITY сервера (x25519).",
-            "impl": "base64 (любое из четырёх написаний), ровно 32 байта ПОСЛЕ декода — format base64_32; невалидный = «invalid public_key» на весь конфиг. Длину считаем по декоду, а не по строке: `enabled` и `true` — валидный base64 на 5 и 3 байта, и прежний format base64 их пропускал (DRIFT §2(b2), целевое = вариант Dart). Гейт всего блока reality: public_key здесь required, поэтому мусорный pbk снимает блок целиком и узел деградирует до plain TLS (broken-list-pbk-junk, v1.1.7)."
+            "impl": "normalize base64_rawurl (запрос LxBox 19.09.2026, у них кодом 9b072ca7; симметрия к base64_std у ключей wireguard): ядро декодирует ЭТОТ ключ только base64.RawURLEncoding, и написание со «+», «/», «=» проходит format base64_32 — 32 байта после декода там правда, — а ядро отвечает «decode public_key: illegal base64 data» отказом ВСЕГО конфига. Канонизация обязательна и ради identity: один и тот же ключ в двух написаниях давал бы узлу два разных хеша (тот же довод, что у D133-22). base64 (любое из четырёх написаний), ровно 32 байта ПОСЛЕ декода — format base64_32; невалидный = «invalid public_key» на весь конфиг. Длину считаем по декоду, а не по строке: `enabled` и `true` — валидный base64 на 5 и 3 байта, и прежний format base64 их пропускал (DRIFT §2(b2), целевое = вариант Dart). Гейт всего блока reality: public_key здесь required, поэтому мусорный pbk снимает блок целиком и узел деградирует до plain TLS (broken-list-pbk-junk, v1.1.7)."
           },
           "short_id": {
             "type": "string",

@@ -1,0 +1,30 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "example-1.com",
+        "server_port": 443,
+        "server_ports": [
+          "20000:30000"
+        ],
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com"
+        },
+        "type": "hysteria2"
+      },
+      "kind": "outbound",
+      "label": "mport-host",
+      "scheme": "hysteria2",
+      "warnings": [
+        {
+          "code": "hysteria2_server_ports_item_invalid",
+          "path": "server_ports[0]",
+          "value": "198.51.100.24:443"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

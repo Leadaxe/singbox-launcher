@@ -43,6 +43,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`flow_deprecated`](#flow_deprecated) · `info` — Obsolete flow removed
 - [`group_empty`](#group_empty) · `warning` — Group {tag} left without members
 - [`group_member_missing`](#group_member_missing) · `warning` — {count} group members not imported
+- [`hysteria2_server_ports_item_invalid`](#hysteria2_server_ports_item_invalid) · `warning` — Hysteria2: port hopping range dropped
 - [`json_field_unknown`](#json_field_unknown) · `info` — Configuration: field not read
 - [`masque_vhttp_invalid`](#masque_vhttp_invalid) · `warning` — MASQUE: HTTP version set to h3
 - [`max_nodes_exceeded`](#max_nodes_exceeded) · `warning` — {skipped} nodes over the limit skipped
@@ -69,6 +70,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`template_int_invalid`](#template_int_invalid) · `warning` — Variable {name} is not a number
 - [`template_unknown_directive`](#template_unknown_directive) · `warning` — Unknown template directive {key}
 - [`template_var_undeclared`](#template_var_undeclared) · `warning` — Variable {name} is not declared
+- [`tls_alpn_item_invalid`](#tls_alpn_item_invalid) · `warning` — TLS: bogus ALPN entry dropped
 - [`tls_field_unsupported_naive`](#tls_field_unsupported_naive) · `warning` — naive: TLS field {path} removed
 - [`tls_insecure`](#tls_insecure) · `info` — Certificate verification disabled
 - [`tls_not_applicable_quic`](#tls_not_applicable_quic) · `info` — QUIC: TLS field {path} not applicable
@@ -757,6 +759,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
+<a id="hysteria2_server_ports_item_invalid"></a>
+### hysteria2_server_ports_item_invalid
+
+**severity:** `warning` · **params:** `path`, `value`
+
+**Hysteria2: port hopping range dropped**
+
+- **What happened:** The port hopping list holds {value} at {path}, which is not a pair of port numbers. That single entry was dropped; the remaining ranges were kept and port hopping still works on them. Had it been kept, the core would have refused to load the whole configuration.
+- **Why it happens:** The provider wrote the address and the ports as one string in the `mport` parameter (`mport=198.51.100.24:443,20000-30000`), so the host name ended up inside the port list.
+- **What you can do:**
+  - Nothing to do: the node works, and port hopping uses the ranges that were written correctly.
+  - If the node does not connect, take the link from the provider again — their panel writes the port list in a form the core does not accept.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
 <a id="json_field_unknown"></a>
 ### json_field_unknown
 
@@ -1211,6 +1230,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Check the spelling of the name against the template's list of variables.
   - Add the variable to the list if it is really needed.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="tls_alpn_item_invalid"></a>
+### tls_alpn_item_invalid
+
+**severity:** `warning` · **params:** `path`, `value`
+
+**TLS: bogus ALPN entry dropped**
+
+- **What happened:** The ALPN list holds {value} at {path}, which is not a protocol identifier. That single entry was dropped; the remaining ones were kept. Offered as is, it would have made the server abort the handshake, because no such protocol exists.
+- **Why it happens:** The source wrote several protocols as one value and nothing split them, so a comma or a space stayed inside a single entry.
+- **What you can do:**
+  - Nothing to do: the node works with the protocols that were written correctly.
+  - If the node stops negotiating TLS, remove the ALPN setting from the entry — the core then offers the protocol the transport implies.
 
 **Where it comes from:**
 
