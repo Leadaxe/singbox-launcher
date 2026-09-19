@@ -1381,3 +1381,29 @@ http-`headers` — `extra-headers`, и первое из `aliases` есть им
 
 Выражено данными: `round_trip: false` у запасной записи (masque,
 wireguard) либо `userinfo.emit: false` (hysteria, где канон — query).
+
+### Q133-76 · «Кто ставит код» — два места, страж смотрел в одно
+
+Снятие рукописного транспортного входа ссылки уронило
+`TestRegistryWarningCodesAreActuallySet`: коды `xhttp_mode_forced_packet_up`
+и `xhttp_param_reset` объявлены «не ставящимися нигде».
+
+На деле они СТАВЯТСЯ и ставились всё время — движком по данным реестра:
+`on_implies_written` записи `mode` дописывает `packet-up` под
+`uplink_data_placement: header`, `on_when_false` снимает параметр,
+несовместимый с явным режимом (`contract/registry/transports.json`). Движок
+берёт код строкой (`codeOf` в `core/config/linkmap/exec.go`) и Go-имён не
+знает. Корпус это подтверждает на РЕАЛЬНОМ пути:
+`contract/corpus/uri/vless/xhttp_uplink_header_placement_adds_packet_up`,
+`…_reset`, `xhttp_mode_invalid`, `xhttp_placement_bogus_reset`.
+
+Ошибался страж: он грепал ИМЯ Go-константы и о стороне реестра не знал,
+хотя соседний `TestRegistryWarningCodesHaveAProducer` умеет обе стороны
+ещё с SPEC 131 W2d. После SPEC 133 у схем на движке код живёт в секции, и
+«нет Go-имени» = норма, а не деградация.
+
+Правило: «поставлен» = строка в Go ЛИБО правило секции реестра. Требовать
+Go-константу к registry-коду — значит звать написать вторую, рукописную
+копию правила: ровно то, от чего уходит кампания. Осиротевшие константы
+сняты, страж научен стороне реестра (те же помощники `registryRuleFiles` /
+`registryCodesIn`).

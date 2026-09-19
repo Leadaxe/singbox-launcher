@@ -44,19 +44,21 @@ package subscription
 // ставящего его кода на Go обязан жить в реестре, а не здесь.
 
 const (
-	// WarnXHTTPModeForcedPacketUp — у XHTTP-узла был `uplink_data_placement:
-	// header` без режима, и режим доопределён в `packet-up`.
+	// СНЯТЫ (контракт 1.1.42): xhttp_mode_forced_packet_up, xhttp_param_reset.
+	// Оба кода СТАВЯТСЯ — но их ставит движок по данным реестра, а не парсер:
+	// `on_implies_written` записи `mode` дописывает packet-up под
+	// `uplink_data_placement: header` (transports.json), а `on_when_false`
+	// снимает параметр, несовместимый с явным режимом. Движок берёт код
+	// строкой из секции (`codeOf` в core/config/linkmap/exec.go) и Go-имён не
+	// знает. Проверено корпусом на РЕАЛЬНОМ пути: кейсы
+	// contract/corpus/uri/vless/xhttp_uplink_header_placement_adds_packet_up,
+	// …_reset, xhttp_mode_invalid, xhttp_placement_bogus_reset.
 	//
-	// Молчать нельзя: пара «header вне packet-up» роняет ВЕСЬ конфиг ядра
-	// (проверено на 1.14.0-lx.30), то есть без правки человек остаётся без
-	// VPN, — но и правка меняет проволочный протокол узла, и он вправе об
-	// этом знать.
-	WarnXHTTPModeForcedPacketUp = "xhttp_mode_forced_packet_up"
-	// WarnXHTTPParamReset — XHTTP-параметр снят, потому что ядро отвергает
-	// его в заданном режиме. Сегодня это `uplink_data_placement: header` при
-	// явном режиме, отличном от packet-up: режим пользователя мы не
-	// переписываем, снимается одно поле.
-	WarnXHTTPParamReset = "xhttp_param_reset"
+	// Рукописный транспортный вход, который ставил их копией, снят вместе с
+	// остальным легаси ссылки. Константа Go рядом читалась бы как «код ставит
+	// парсер» и звала бы написать вторую копию правила — ровно то, от чего
+	// уходит кампания (тот же довод, что у awg_*/wg_key_invalid ниже).
+
 	// WarnAmneziaContainerChoice — в vpn://-профиле несколько контейнеров,
 	// одиночный путь взял дефолтный.
 	WarnAmneziaContainerChoice = "amnezia_container_choice"

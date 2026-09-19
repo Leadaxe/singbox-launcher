@@ -182,9 +182,27 @@ func TestRegistrySyncWarningCodesDeclared(t *testing.T) {
 // то есть описывать ОТБРОШЕННЫЙ узел, для которого объекта ParsedNode не
 // существует. Любой warning/info-код без AddWarning означает обещанную, но
 // не выдаваемую диагностику: пользователь и LxBox о деградации не узнают.
+//
+// «Ставится» — это ДВА способа, а не один: строка `name` в Go-коде и правило
+// в секции реестра. После SPEC 133 у схем на движке код объявлен прямо в
+// секции (`on_when_false`, `on_implies_written`, `on_invalid`…), движок берёт
+// его строкой и Go-имени не знает вовсе — считать такой код «непоставленным»
+// значит требовать вторую, рукописную копию правила. Так этот тест и упал на
+// xhttp_mode_forced_packet_up / xhttp_param_reset: рукописный транспортный
+// вход сняли, а коды всё это время ставил реестр (корпус
+// contract/corpus/uri/vless/xhttp_* зелёный на РЕАЛЬНОМ пути).
 func TestRegistryWarningCodesAreActuallySet(t *testing.T) {
 	reg := loadWarningsRegistry(t)
 	consts := goWarningConstants(t)
+
+	// Сторона реестра: коды, названные ЛЮБЫМ правилом секций. Те же помощники,
+	// что у TestRegistryWarningCodesHaveAProducer, — один взгляд на «кто ставит».
+	registrySets := map[string]bool{}
+	for _, f := range registryRuleFiles(t) {
+		for _, code := range registryCodesIn(t, f) {
+			registrySets[code] = true
+		}
+	}
 
 	// Где по коду ставятся коды: и прямым node.AddWarning, и через возврат
 	// из построителей (санитайзер sing-box, AWG-поля) — их вызывающие
@@ -218,7 +236,7 @@ func TestRegistryWarningCodesAreActuallySet(t *testing.T) {
 	}
 
 	for name, code := range consts {
-		if setNames[name] {
+		if setNames[name] || registrySets[code] {
 			continue
 		}
 		entry, ok := reg.Warnings[code]
@@ -226,8 +244,9 @@ func TestRegistryWarningCodesAreActuallySet(t *testing.T) {
 			continue // покрыто TestRegistrySyncWarningCodesDeclared
 		}
 		if entry.Severity != "error" {
-			t.Errorf("код %q (%s, severity=%s) не ставится нигде в коде: "+
-				"либо проставьте его на узле, либо зафиксируйте в реестре как "+
+			t.Errorf("код %q (%s, severity=%s) не ставится нигде: ни строкой в Go, "+
+				"ни правилом секции реестра. Либо проставьте его на узле, либо "+
+				"объявите правилом в contract/registry/**, либо зафиксируйте как "+
 				"severity=error (узел отбрасывается, вешать код не на что)",
 				code, name, entry.Severity)
 		}
