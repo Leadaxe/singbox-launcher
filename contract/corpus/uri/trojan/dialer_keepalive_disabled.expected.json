@@ -1,0 +1,22 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "disable_tcp_keep_alive": true,
+        "password": "pass123",
+        "server": "example-1.com",
+        "server_port": 443,
+        "tcp_keep_alive": "60s",
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com"
+        },
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "trojan-ka",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

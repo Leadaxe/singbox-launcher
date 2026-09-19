@@ -130,13 +130,15 @@
         "type": "duration",
         "desc_en": "Idle time before the first TCP keepalive probe.",
         "desc_ru": "Время простоя до первой пробы TCP keepalive.",
-        "impl": "option/outbound.go DialerOptions.TCPKeepAlive, badoption.Duration. Осмысленно только при выключенном disable_tcp_keep_alive, но связь НЕ описана conflicts: ядро пару принимает молча, а снятие поля меняло бы тело узла без пользы."
+        "impl": "option/outbound.go DialerOptions.TCPKeepAlive, badoption.Duration. Осмысленно только при выключенном disable_tcp_keep_alive, но связь НЕ описана conflicts: ядро пару принимает молча, а снятие поля меняло бы тело узла без пользы. Голое число из источника — СЕКУНДЫ (конвенция панелей и Xray-sockopt): normalize duration_bare_seconds дописывает единицу. Правило ЗНАЧЕНИЯ, поэтому живёт в теле и действует на ВСЕХ входах — ссылка, xray-sockopt, тело в форме ядра (SPEC 133, ответ LxBox §24.33). Негодное после нормализации снимается общим правилом duration с кодом type_invalid.",
+        "normalize": "duration_bare_seconds"
       },
       "tcp_keep_alive_interval": {
         "type": "duration",
         "desc_en": "Interval between TCP keepalive probes.",
         "desc_ru": "Интервал между пробами TCP keepalive.",
-        "impl": "option/outbound.go DialerOptions.TCPKeepAliveInterval, badoption.Duration."
+        "impl": "option/outbound.go DialerOptions.TCPKeepAliveInterval, badoption.Duration. Голое число из источника — СЕКУНДЫ (конвенция панелей и Xray-sockopt): normalize duration_bare_seconds дописывает единицу. Правило ЗНАЧЕНИЯ, поэтому живёт в теле и действует на ВСЕХ входах — ссылка, xray-sockopt, тело в форме ядра (SPEC 133, ответ LxBox §24.33). Негодное после нормализации снимается общим правилом duration с кодом type_invalid.",
+        "normalize": "duration_bare_seconds"
       },
       "udp_fragment": {
         "type": "bool",
@@ -222,8 +224,7 @@
         ],
         "maps_to": "tcp_keep_alive",
         "type": "duration",
-        "normalize": "duration_bare_seconds",
-        "impl": "У Xray keep-alive живёт в streamSettings.sockopt и измеряется ГОЛЫМИ СЕКУНДАМИ (tcpKeepAliveIdle: 30), у ядра — duration (\"30s\"); перевод общим нормализатором duration_bare_seconds, а не своей веткой. Сегодня sockopt не читается вовсе."
+        "impl": "У Xray keep-alive живёт в streamSettings.sockopt и измеряется ГОЛЫМИ СЕКУНДАМИ (tcpKeepAliveIdle: 30), у ядра — duration (\"30s\"). Нормализация написания (голое число → секунды) переехала в body.fields normalize duration_bare_seconds: это правило ЗНАЧЕНИЯ, и оно обязано действовать на всех входах, а не только на ссылке (SPEC 133 §6.0, как cidr_prefix/base64_std в D133-22)."
       },
       "tcp_keep_alive_interval": {
         "source": [
@@ -232,7 +233,7 @@
         ],
         "maps_to": "tcp_keep_alive_interval",
         "type": "duration",
-        "normalize": "duration_bare_seconds"
+        "impl": "У Xray keep-alive живёт в streamSettings.sockopt и измеряется ГОЛЫМИ СЕКУНДАМИ (tcpKeepAliveIdle: 30), у ядра — duration (\"30s\"). Нормализация написания (голое число → секунды) переехала в body.fields normalize duration_bare_seconds: это правило ЗНАЧЕНИЯ, и оно обязано действовать на всех входах, а не только на ссылке (SPEC 133 §6.0, как cidr_prefix/base64_std в D133-22)."
       }
     }
   }

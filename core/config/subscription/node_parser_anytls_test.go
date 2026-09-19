@@ -33,7 +33,11 @@ func TestBuildOutbound_AnyTLS(t *testing.T) {
 	assertEq(t, out["server"], "any.example.test")
 	assertEq(t, out["server_port"], 443)
 	assertEq(t, out["password"], "secret")
-	assertEq(t, out["idle_session_timeout"], "30s") // bare int → seconds
+	// Голые секунды → "30s": правило ЗНАЧЕНИЯ, живёт в body.fields
+	// (normalize duration_bare_seconds), а значит видно только ПОСЛЕ
+	// санитайзера. Проверяет корпус uri/anytls/idle_session_bare_seconds;
+	// здесь смотрим лишь на то, что маппер довёз параметр до тела.
+	assertEq(t, out["idle_session_timeout"], "30")
 	assertEq(t, out["min_idle_session"], 2)
 
 	tls, ok := out["tls"].(map[string]interface{})

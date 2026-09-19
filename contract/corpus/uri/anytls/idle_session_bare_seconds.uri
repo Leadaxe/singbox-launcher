@@ -1,0 +1,6 @@
+# idle_session_* голым числом — секунды: "30" → "30s"
+# источник: core/config/subscription/node_parser_anytls_test.go:36
+# (TestBuildOutbound_AnyTLS до SPEC 133 — проверка переехала сюда, когда
+# normalize duration_bare_seconds уехал из маппера в body.fields: правило
+# ЗНАЧЕНИЯ действует на всех входах, и проверять его надо ПОСЛЕ санитайзера).
+anytls://pass123@example-1.com:8443?idle_session_check_interval=20&idle_session_timeout=30#at-bare

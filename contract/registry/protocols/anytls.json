@@ -192,14 +192,16 @@
         "default": "30s",
         "desc_en": "How often idle sessions are checked.",
         "desc_ru": "Как часто проверяются простаивающие сессии.",
-        "impl": "Дефолт и кламп (<= 5s → 30s) живут в библиотеке sing-anytls (session/client.go:52-56), не в option/ — санитайзер их НЕ материализует."
+        "impl": "Дефолт и кламп (<= 5s → 30s) живут в библиотеке sing-anytls (session/client.go:52-56), не в option/ — санитайзер их НЕ материализует. Голое число из источника — СЕКУНДЫ (конвенция панелей и Xray-sockopt): normalize duration_bare_seconds дописывает единицу. Правило ЗНАЧЕНИЯ, поэтому живёт в теле и действует на ВСЕХ входах — ссылка, xray-sockopt, тело в форме ядра (SPEC 133, ответ LxBox §24.33). Негодное после нормализации снимается общим правилом duration с кодом type_invalid.",
+        "normalize": "duration_bare_seconds"
       },
       "idle_session_timeout": {
         "type": "duration",
         "default": "30s",
         "desc_en": "Idle time after which a session is closed.",
         "desc_ru": "Время простоя, после которого сессия закрывается.",
-        "impl": "Дефолт и кламп — в sing-anytls (session/client.go:52-56), не в ядре."
+        "impl": "Дефолт и кламп — в sing-anytls (session/client.go:52-56), не в ядре. Голое число из источника — СЕКУНДЫ (конвенция панелей и Xray-sockopt): normalize duration_bare_seconds дописывает единицу. Правило ЗНАЧЕНИЯ, поэтому живёт в теле и действует на ВСЕХ входах — ссылка, xray-sockopt, тело в форме ядра (SPEC 133, ответ LxBox §24.33). Негодное после нормализации снимается общим правилом duration с кодом type_invalid.",
+        "normalize": "duration_bare_seconds"
       },
       "min_idle_session": {
         "type": "int",
@@ -350,14 +352,13 @@
           "source": "query.idle_session_check_interval",
           "maps_to": "idle_session_check_interval",
           "type": "duration",
-          "normalize": "duration_bare_seconds",
-          "impl": "Голое число это секунды — та же конвенция, что heartbeat_bare_number у tuic. Форма записи это работа маппера; годность судит реестр."
+          "impl": "Нормализация написания (голое число → секунды) переехала в body.fields normalize duration_bare_seconds: это правило ЗНАЧЕНИЯ, и оно обязано действовать на всех входах, а не только на ссылке (SPEC 133 §6.0, как cidr_prefix/base64_std в D133-22)."
         },
         "idle_session_timeout": {
           "source": "query.idle_session_timeout",
           "maps_to": "idle_session_timeout",
           "type": "duration",
-          "normalize": "duration_bare_seconds"
+          "impl": "Нормализация написания (голое число → секунды) переехала в body.fields normalize duration_bare_seconds: это правило ЗНАЧЕНИЯ, и оно обязано действовать на всех входах, а не только на ссылке (SPEC 133 §6.0, как cidr_prefix/base64_std в D133-22)."
         },
         "min_idle_session": {
           "source": "query.min_idle_session",

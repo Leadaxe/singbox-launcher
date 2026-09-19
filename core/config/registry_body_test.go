@@ -85,7 +85,7 @@ var registryNormalizeModes = map[string]bool{
 	// Перенесены из маппера (SPEC 133 §6.0): правят ЗНАЧЕНИЕ, а значит
 	// принадлежат телу и обязаны действовать на всех входах, не только на
 	// ссылке.
-	"cidr_prefix": true, "base64_std": true,
+	"cidr_prefix": true, "base64_std": true, "duration_bare_seconds": true,
 }
 
 // registryMinWhenActions — допустимые действия условного минимума.

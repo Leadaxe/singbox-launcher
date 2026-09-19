@@ -42,7 +42,7 @@ func coerce(f *registry.Field, raw interface{}) (interface{}, bool) {
 	case "bool":
 		return asBool(raw)
 	case "duration":
-		return asDuration(raw)
+		return asDuration(f, raw)
 	case "awg_range":
 		return asAWGRange(f, raw)
 	case "int_array":
@@ -255,6 +255,26 @@ func normalize(mode, v string) string {
 			return base64.StdEncoding.EncodeToString(raw)
 		}
 		return v
+	case "duration_bare_seconds":
+		// Голое число — это СЕКУНДЫ: живая конвенция панелей
+		// (`heartbeat=10`, `tcpKeepAliveIdle: 30`), а ядро ждёт единицу
+		// измерения и на голом числе валит весь конфиг. Значение с уже
+		// написанной единицей не трогаем: это перевод диалекта, а не
+		// нормализация величины.
+		//
+		// Правило ЗНАЧЕНИЯ, поэтому живёт в теле, а не в маппере: голые
+		// секунды приезжают не только из ссылки, но и из xray-sockopt и из
+		// тела в форме ядра (SPEC 133, ответ LxBox §24.33).
+		t := strings.TrimSpace(v)
+		if t == "" {
+			return v
+		}
+		for i := 0; i < len(t); i++ {
+			if t[i] < '0' || t[i] > '9' {
+				return v
+			}
+		}
+		return t + "s"
 	}
 	return v
 }
@@ -330,14 +350,31 @@ func asBool(raw interface{}) (interface{}, bool) {
 // badoption.Duration в ядре читает ИСКЛЮЧИТЕЛЬНО JSON-строку
 // (sing/common/json/badoption/duration.go: UnmarshalJSON разбирает string и
 // зовёт my_time.ParseDuration), число даёт ошибку разбора на весь конфиг.
-// Поэтому число сюда не приводится: молчаливая замена 30 → "30s" угадывала
-// бы единицу измерения за источник. Набор единиц шире стандартного Go: к
-// ns/us/ms/s/m/h добавлен d (сутки), и голый "0" легален.
-func asDuration(raw interface{}) (interface{}, bool) {
+// Поэтому число сюда не приводится САМО ПО СЕБЕ: молчаливая замена 30 → "30s"
+// угадывала бы единицу измерения за источник. Угадывание объявляется полем:
+// normalize duration_bare_seconds говорит, что у ЭТОГО поля голое число —
+// секунды (конвенция панелей: heartbeat=10, tcpKeepAliveIdle: 30). Набор
+// единиц шире стандартного Go: к ns/us/ms/s/m/h добавлен d (сутки), и голый
+// "0" легален.
+//
+// Число из JSON (float64/int) тоже проходит через нормализатор: у входа
+// xray/singbox голые секунды приезжают ЧИСЛОМ, а не строкой, и требовать
+// строку значило бы читать правило только со ссылки.
+func asDuration(f *registry.Field, raw interface{}) (interface{}, bool) {
 	s, ok := raw.(string)
 	if !ok {
-		return nil, false
+		if f == nil || f.Normalize != "duration_bare_seconds" {
+			return nil, false
+		}
+		// Только для объявившего поля: иначе любое число у duration тихо
+		// стало бы секундами вопреки докстроке выше.
+		n, okNum := asInt(raw)
+		if !okNum {
+			return nil, false
+		}
+		s = strconv.Itoa(n.(int))
 	}
+	s = normalize(f.Normalize, s)
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return nil, false

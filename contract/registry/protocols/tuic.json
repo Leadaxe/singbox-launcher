@@ -274,7 +274,8 @@
         "default": "10s",
         "desc_en": "Interval between heartbeat packets.",
         "desc_ru": "Интервал между пакетами heartbeat.",
-        "impl": "Дефолт применяет библиотека sing-quic (tuic/client.go:54), не option/ — санитайзер его НЕ материализует."
+        "impl": "Дефолт применяет библиотека sing-quic (tuic/client.go:54), не option/ — санитайзер его НЕ материализует. Голое число из источника — СЕКУНДЫ (конвенция панелей и Xray-sockopt): normalize duration_bare_seconds дописывает единицу. Правило ЗНАЧЕНИЯ, поэтому живёт в теле и действует на ВСЕХ входах — ссылка, xray-sockopt, тело в форме ядра (SPEC 133, ответ LxBox §24.33). Негодное после нормализации снимается общим правилом duration с кодом type_invalid.",
+        "normalize": "duration_bare_seconds"
       },
       "network": {
         "type": "ref",
@@ -464,8 +465,7 @@
         "heartbeat": {
           "source": "query.heartbeat",
           "maps_to": "heartbeat",
-          "normalize": "duration_bare_seconds",
-          "impl": "heartbeat_bare_number: голое число это секунды (10 → '10s'), поле ядра — duration-строка."
+          "impl": "Нормализация написания (голое число → секунды) переехала в body.fields normalize duration_bare_seconds: это правило ЗНАЧЕНИЯ, и оно обязано действовать на всех входах, а не только на ссылке (SPEC 133 §6.0, как cidr_prefix/base64_std в D133-22)."
         },
         "disable_sni": {
           "source": "query.disable_sni",

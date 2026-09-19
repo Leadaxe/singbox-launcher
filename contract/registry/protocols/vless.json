@@ -379,7 +379,8 @@
         "transports#uri",
         "tls#uri",
         "tls#uri_security",
-        "tls#uri_reality"
+        "tls#uri_reality",
+        "dialer#uri"
       ],
       "params": {
         "server": {

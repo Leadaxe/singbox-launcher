@@ -127,11 +127,11 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: string, secret
   - Set by link parameter: [`userinfo`](#link-common-userinfo)
 - <a id="body-idle-session-check-interval"></a>**`idle_session_check_interval`** — How often idle sessions are checked.
-  - Type: duration
+  - Type: duration, normalized: `duration_bare_seconds`
   - Default: `30s`
   - Set by link parameter: [`idle_session_check_interval`](#link-proto-idle-session-check-interval)
 - <a id="body-idle-session-timeout"></a>**`idle_session_timeout`** — Idle time after which a session is closed.
-  - Type: duration
+  - Type: duration, normalized: `duration_bare_seconds`
   - Default: `30s`
   - Set by link parameter: [`idle_session_timeout`](#link-proto-idle-session-timeout)
 - <a id="body-min-idle-session"></a>**`min_idle_session`** — Minimum number of idle sessions kept open.
@@ -298,9 +298,9 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: bool
   - Default: `false`
 - <a id="body-tcp-keep-alive"></a>**`tcp_keep_alive`** — Idle time before the first TCP keepalive probe.
-  - Type: duration
+  - Type: duration, normalized: `duration_bare_seconds`
 - <a id="body-tcp-keep-alive-interval"></a>**`tcp_keep_alive_interval`** — Interval between TCP keepalive probes.
-  - Type: duration
+  - Type: duration, normalized: `duration_bare_seconds`
 - <a id="body-udp-fragment"></a>**`udp_fragment`** — Allow fragmenting UDP packets.
   - Type: bool, tristate
 - <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.
@@ -377,12 +377,16 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 **Values.** What the sanitizer does to a value before it reaches the node body.
 
+- `idle_session_check_interval` — normalized: `duration_bare_seconds`
+- `idle_session_timeout` — normalized: `duration_bare_seconds`
 - `tls.engine` — normalized: `trim_lower`
 - `tls.spoof_method` — normalized: `trim_lower`
 - `tls.utls.fingerprint` — normalized: `trim_lower`
 - `tls.utls.fingerprint` — an invalid value is replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
 - `tls.reality.short_id` — normalized: `hex_only` → [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
 - `tls.reality.key_share` — normalized: `trim_lower`
+- `tcp_keep_alive` — normalized: `duration_bare_seconds`
+- `tcp_keep_alive_interval` — normalized: `duration_bare_seconds`
 
 **Structural translations.** Decisions taken while the link is being read, before any value is judged: whether a block exists at all, where a field comes from, or how one input becomes several fields. The sanitizer sees a finished body and cannot take them.
 

@@ -137,9 +137,9 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: bool
   - Default: `false`
 - <a id="body-tcp-keep-alive"></a>**`tcp_keep_alive`** — Idle time before the first TCP keepalive probe.
-  - Type: duration
+  - Type: duration, normalized: `duration_bare_seconds`
 - <a id="body-tcp-keep-alive-interval"></a>**`tcp_keep_alive_interval`** — Interval between TCP keepalive probes.
-  - Type: duration
+  - Type: duration, normalized: `duration_bare_seconds`
 - <a id="body-udp-fragment"></a>**`udp_fragment`** — Allow fragmenting UDP packets.
   - Type: bool, tristate
 - <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.
@@ -166,7 +166,10 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 ## Replacements
 
-Nothing is silently replaced for this scheme.
+**Values.** What the sanitizer does to a value before it reaches the node body.
+
+- `tcp_keep_alive` — normalized: `duration_bare_seconds`
+- `tcp_keep_alive_interval` — normalized: `duration_bare_seconds`
 
 ## Degradation
 

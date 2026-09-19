@@ -73,6 +73,11 @@ func TestParseNode_Tuic_MissingUserinfoRejected(t *testing.T) {
 // (tuic.json: on_invalid drop + tuic_congestion_invalid). Проверка —
 // corpus uri/tuic/unknown_congestion_dropped и TestPipelineSetsDegradationCodes.
 
+// Нормализация голых секунд (heartbeat=10 → "10s") переехала в body.fields
+// (normalize duration_bare_seconds, SPEC 133): правило ЗНАЧЕНИЯ действует на
+// всех входах, а не только на ссылке, и видно ПОСЛЕ санитайзера. Проверка —
+// corpus uri/tuic/heartbeat_bare_seconds. Здесь осталось лишь то, что маппер
+// довозит параметр до тела.
 func TestBuildOutbound_Tuic_HeartbeatSeconds(t *testing.T) {
 	node, err := ParseNode("tuic://u:p@host.tld/?heartbeat=10", nil)
 	if err != nil {
@@ -80,7 +85,7 @@ func TestBuildOutbound_Tuic_HeartbeatSeconds(t *testing.T) {
 	}
 	node.Tag = "t"
 	out := nodeBody(t, node)
-	assertEq(t, out["heartbeat"], "10s")
+	assertEq(t, out["heartbeat"], "10")
 }
 
 func TestBuildOutbound_Tuic_ZeroRTTAlias(t *testing.T) {

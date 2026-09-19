@@ -43,9 +43,9 @@ Core the schema was checked against: `1.14.1-lx.4`
   - Type: bool
   - Default: `false`
 - <a id="body-tcp-keep-alive"></a>**`tcp_keep_alive`** — Idle time before the first TCP keepalive probe.
-  - Type: duration
+  - Type: duration, normalized: `duration_bare_seconds`
 - <a id="body-tcp-keep-alive-interval"></a>**`tcp_keep_alive_interval`** — Interval between TCP keepalive probes.
-  - Type: duration
+  - Type: duration, normalized: `duration_bare_seconds`
 - <a id="body-udp-fragment"></a>**`udp_fragment`** — Allow fragmenting UDP packets.
   - Type: bool, tristate
 - <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.

@@ -1,0 +1,26 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "idle_session_check_interval": "20s",
+        "idle_session_timeout": "30s",
+        "password": "pass123",
+        "server": "example-1.com",
+        "server_port": 8443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "random"
+          }
+        },
+        "type": "anytls"
+      },
+      "kind": "outbound",
+      "label": "at-bare",
+      "scheme": "anytls"
+    }
+  ],
+  "v": 1
+}
