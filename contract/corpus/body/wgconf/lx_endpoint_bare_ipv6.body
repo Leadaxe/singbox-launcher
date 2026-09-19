@@ -1,0 +1,11 @@
+# Endpoint — голый IPv6 БЕЗ скобок: «2001:db8::1:51820». Двоеточий много,
+# и портом является последнее. Ветка h6/p6 регулярки тут не работает.
+# Источник: LxBox pipeline_identity_before.json, кейс b480_endpoint_bare_ipv6.
+[Interface]
+PrivateKey = AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=
+Address = 10.0.0.2/32
+
+[Peer]
+PublicKey = AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=
+Endpoint = 2001:db8::1:51820
+AllowedIPs = 0.0.0.0/0

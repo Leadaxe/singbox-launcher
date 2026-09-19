@@ -121,13 +121,23 @@ func SelectSource(set *registry.MapperSet, c *Content) (registry.SourceKind, Sel
 // какой из них ведёт эту схему. Переведены все — атрибут снят вместе с
 // развилкой.
 func SelectURI(plans *PlanSet, text string) (string, *Plan, bool) {
+	return SelectKind(plans, "uri", text)
+}
+
+// SelectKind находит секцию НАЗВАННОГО вида, чей detect опознаёт текст.
+//
+// Общая форма SelectURI: вид источника — параметр, потому что называть его
+// движок не вправе (его называет вызывающий, знающий, откуда приехал текст).
+// Текст `.conf` приезжает файлом, схемы в нём нет вовсе, и выбирает секцию
+// предикат по ini — ровно так же, как у ссылки выбирает предикат по тексту.
+func SelectKind(plans *PlanSet, kind, text string) (string, *Plan, bool) {
 	if plans == nil {
 		return "", nil, false
 	}
 	content := NewContent(text)
 	hit, plan := "", (*Plan)(nil)
 	for _, scheme := range plans.Schemes() {
-		p, ok := plans.Plan(scheme, "uri")
+		p, ok := plans.Plan(scheme, kind)
 		if !ok || p.Mapper == nil || p.Mapper.Detect == nil {
 			continue
 		}
