@@ -396,6 +396,55 @@ func TestCoreRejectLoopChecksCandidate(t *testing.T) {
 	}
 }
 
+// TestRejectLoopNoPromoteLeavesConfigUntouched — превью Final не заменяет
+// боевой config.json: кандидат проверяется, на диске остаётся прежний файл.
+func TestRejectLoopNoPromoteLeavesConfigUntouched(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	prev := []byte(`{"previous":true}`)
+	if err := os.WriteFile(configPath, prev, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	node := &state.Node{Kind: state.SourceKindServer, Tag: "bad", Enabled: true, Body: []byte(`{}`)}
+	dis := &memDisabler{nodes: map[string]*state.Node{"/bad": node}}
+	links := map[string]state.NodeLink{"bad": {Tag: "bad"}}
+	fresh := []byte(`{"fresh":true}`)
+	chk := &fakeCheck{verdicts: []string{
+		rejectLine(0, "bad", "missing uuid"),
+		"",
+	}}
+	loop := &coreRejectLoop{
+		check:      chk.fn,
+		configPath: configPath,
+		disabler:   dis,
+		noPromote:  true,
+	}
+	rebuilt := 0
+	out, err := loop.run(buildRound{ConfigJSON: fresh, NodeLinks: links}, func() (buildRound, error) {
+		rebuilt++
+		return buildRound{ConfigJSON: []byte(`{"clean":true}`), NodeLinks: links}, nil
+	})
+	if err != nil {
+		t.Fatalf("цикл вернул ошибку: %v", err)
+	}
+	if !out.Promoted {
+		t.Fatal("превью должно считать конфиг принятым")
+	}
+	if rebuilt != 1 {
+		t.Errorf("пересборок %d, ожидалась 1", rebuilt)
+	}
+	if node.Enabled {
+		t.Error("узел не выключен в черновике")
+	}
+	body, _ := os.ReadFile(configPath)
+	if string(body) != string(prev) {
+		t.Errorf("боевой config.json заменён: %s", body)
+	}
+	if _, err := os.Stat(configPath + ".candidate"); !os.IsNotExist(err) {
+		t.Error("кандидат не убран")
+	}
+}
+
 // TestSavedStateDisablerAddressesNodes — адресация «ссылка → узел состояния»:
 // узел контейнера, корневой узел (адресуется своим именем в конфиге),
 // несуществующая ссылка.

@@ -63,6 +63,13 @@ const (
 	// бесконечно: 200 кругов заведомо больше любой реальной пачки и
 	// заведомо конечны.
 	coreRejectHardCap = 200
+
+	// daemonRejectStartCap — сколько узлов асинхронный путь демона
+	// (ApplyError 422 / FATAL) выключает за один заход Start/Restart.
+	// У цикла есть coreRejectHardCap; у потока статусов своего потолка не
+	// было — без него пара «применили → FATAL → выключили → применили»
+	// крутилась бы бесконечно.
+	daemonRejectStartCap = 10
 )
 
 // candidateConfigName — имя файла-кандидата. НЕ `.tmp`: так зовётся
@@ -92,14 +99,12 @@ type coreRejectDecider func(disabled int) (keepChecking bool)
 // (%d disabled)»). nil — никто не смотрит.
 type coreRejectProgress func(disabled int)
 
-// nodeDisabler — «выключатель» узла: узкий шов между циклом и хранилищем.
+// NodeDisabler — «выключатель» узла: узкий шов между циклом и хранилищем.
 //
-// Реализация волны 1-2 — сохранённый state (savedStateDisabler). Реализация
-// для ЧЕРНОВИКА Конфигуратора (вкладка Final, волна 6) встанет сюда же: у
-// черновика тот же тип узла (`state.Node` в `model.Sources`), и адаптер
-// сводится к `FindNodeByLink(m, link).SetCoreRejected(reason)`. Цикл о
-// разнице не знает.
-type nodeDisabler interface {
+// Две реализации, цикл о разнице не знает: savedStateDisabler над
+// сохранённым state и адаптер черновика Конфигуратора
+// (`FindNodeByLink(m, link).SetCoreRejected(reason)`).
+type NodeDisabler interface {
 	// Disable выключает узел по ссылке и записывает причину.
 	// false = узел не найден либо уже выключен этой же причиной — цикл на
 	// таком круге обязан остановиться.
@@ -254,9 +259,12 @@ type coreRejectLoop struct {
 	check      checkFunc
 	singbox    string
 	configPath string
-	disabler   nodeDisabler
+	disabler   NodeDisabler
 	decide     coreRejectDecider
 	progress   coreRejectProgress
+	// noPromote — не заменять config.json (превью Final: кандидат только
+	// для check, боевой файл не трогаем).
+	noPromote bool
 }
 
 // coreRejectOutcome — итог прохода.
@@ -309,6 +317,11 @@ func (l *coreRejectLoop) run(first buildRound, rebuild func() (buildRound, error
 		if checkErr == nil {
 			// Принят (или проверять было нечем — graceful skip, §5А SPEC 132:
 			// страховка тогда не действует, запись идёт как раньше).
+			if l.noPromote {
+				removeCandidate(candidate)
+				out.Promoted = true
+				return out, nil
+			}
 			if err := promoteCandidate(candidate, l.configPath); err != nil {
 				removeCandidate(candidate)
 				return out, err
@@ -506,4 +519,144 @@ func (ac *AppController) SetCoreRejectProgress(fn func(disabled int)) {
 		return
 	}
 	ac.coreRejectProgressHook = coreRejectProgress(fn)
+}
+
+// RejectLoopInput — вход общего цикла для черновика Конфигуратора
+// (Final и remote-Save). Боевой rebuild собирает loop сам.
+type RejectLoopInput struct {
+	SingboxPath string
+	ConfigPath  string
+	NoPromote   bool
+	FirstJSON   []byte
+	FirstLinks  map[string]state.NodeLink
+	Rebuild     func() ([]byte, map[string]state.NodeLink, error)
+	Disabler    NodeDisabler
+	Decide      func(disabled int) bool
+	Progress    func(disabled int)
+}
+
+// RejectLoopResult — итог прохода для вызывающего вне core.
+type RejectLoopResult struct {
+	AcceptedJSON   []byte
+	Disabled       []CoreRejectedNode
+	Promoted       bool
+	CheckErr       error
+	StoppedByHuman bool
+}
+
+// RunRejectLoop гоняет тот же цикл, что и боевая сборка, с чужим выключателем.
+func RunRejectLoop(in RejectLoopInput) (RejectLoopResult, error) {
+	if in.Disabler == nil {
+		return RejectLoopResult{}, fmt.Errorf("reject loop: no disabler")
+	}
+	if in.ConfigPath == "" {
+		return RejectLoopResult{}, fmt.Errorf("reject loop: empty config path")
+	}
+	loop := &coreRejectLoop{
+		check:      coreRejectCheck,
+		singbox:    in.SingboxPath,
+		configPath: in.ConfigPath,
+		disabler:   in.Disabler,
+		noPromote:  in.NoPromote,
+	}
+	if in.Decide != nil {
+		loop.decide = coreRejectDecider(in.Decide)
+	}
+	if in.Progress != nil {
+		loop.progress = coreRejectProgress(in.Progress)
+	}
+	lastJSON := in.FirstJSON
+	rebuild := func() (buildRound, error) {
+		if in.Rebuild == nil {
+			return buildRound{}, fmt.Errorf("reject loop: rebuild not provided")
+		}
+		next, links, err := in.Rebuild()
+		if err != nil {
+			return buildRound{}, err
+		}
+		lastJSON = next
+		return buildRound{ConfigJSON: next, NodeLinks: links}, nil
+	}
+	out, err := loop.run(buildRound{ConfigJSON: in.FirstJSON, NodeLinks: in.FirstLinks}, rebuild)
+	return RejectLoopResult{
+		AcceptedJSON:   lastJSON,
+		Disabled:       out.Disabled,
+		Promoted:       out.Promoted,
+		CheckErr:       out.CheckErr,
+		StoppedByHuman: out.StoppedByHuman,
+	}, err
+}
+
+// CoreRejectDecideFn — колбэк предела, который поставил UI; nil = фоновый вход.
+func (ac *AppController) CoreRejectDecideFn() func(int) bool {
+	d := ac.coreRejectDecider()
+	if d == nil {
+		return nil
+	}
+	return func(n int) bool { return d(n) }
+}
+
+// CoreRejectProgressFn — колбэк хода, который поставил UI; nil = никто не смотрит.
+func (ac *AppController) CoreRejectProgressFn() func(int) {
+	p := ac.coreRejectProgress()
+	if p == nil {
+		return nil
+	}
+	return func(n int) { p(n) }
+}
+
+// DisableNodeNamedByCore выключает в СОХРАНЁННОМ состоянии узел, который
+// назвала ошибка реального старта демона. false = тег не сопоставлен,
+// ошибка не про узел, или записать не удалось — вызывающий ведёт себя как
+// раньше (лог, сообщение).
+func (ac *AppController) DisableNodeNamedByCore(errText string) bool {
+	if ac == nil || ac.FileService == nil {
+		return false
+	}
+	return ac.disableNodeNamedByCoreAt(errText, platform.GetWizardStatePath(ac.FileService.ExecDir))
+}
+
+func (ac *AppController) disableNodeNamedByCoreAt(errText, statePath string) bool {
+	if ac == nil || ac.FileService == nil || strings.TrimSpace(errText) == "" || statePath == "" {
+		return false
+	}
+	errText = stripANSI(errText)
+	s, err := state.Load(statePath)
+	if err != nil {
+		debuglog.WarnLog("corereject: load state for start reject: %v", err)
+		return false
+	}
+	td, _, terr := ac.loadTemplateForBuild(ac.FileService.ExecDir)
+	if terr != nil {
+		debuglog.WarnLog("corereject: template for start reject: %v", terr)
+		td = nil
+	}
+	_, parserRes, snapErr := buildSnapshotFromState(s, ac.FileService.ExecDir, nil, td)
+	if snapErr != nil {
+		debuglog.WarnLog("corereject: snapshot for start reject: %v", snapErr)
+		return false
+	}
+	links := stateNodeLinks(parserRes)
+	tags := make(map[string]bool, len(links))
+	for tag := range links {
+		tags[tag] = true
+	}
+	rej, ok := corereject.Parse(errText, corereject.TagsOf(tags))
+	if !ok {
+		return false
+	}
+	link, has := links[rej.Tag]
+	if !has || link.Tag == "" {
+		return false
+	}
+	d := &savedStateDisabler{s: s, path: statePath}
+	if !d.Disable(link, strings.TrimSpace(rej.Text)) {
+		return false
+	}
+	if err := d.Commit(); err != nil {
+		debuglog.ErrorLog("corereject: start-reject disable not saved: %v", err)
+		return false
+	}
+	debuglog.WarnLog("corereject: start named %q — turned off (%s)", rej.Tag, rej.Text)
+	return true
 }

@@ -87,6 +87,10 @@ type WizardModel struct {
 	GeneratedOutbounds []string
 	GeneratedEndpoints []string
 	OutboundStats      OutboundStats
+	// NodeLinks — финальный тег → узел черновика с последней эмиссии.
+	// Карту строит ParseAndPreview; цикл страховки на Final / remote-Save
+	// выключает по ней, а не угадывает тег-политику.
+	NodeLinks map[string]corestate.NodeLink
 
 	// Template данные
 	TemplateData *wizardtemplate.TemplateData
