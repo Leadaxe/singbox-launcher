@@ -20,6 +20,7 @@ package linkmap
 //	go test ./core/config/linkmap -run TestEngineVsConfCorpus -v
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"sort"
@@ -108,6 +109,59 @@ func TestEngineVsConfCorpus(t *testing.T) {
 		})
 	}
 	t.Logf("сверено кейсов: %d", checked)
+}
+
+// stripCorpusComments снимает ШАПКУ кейса — ведущие строки `#`, которыми
+// корпус описывает происхождение тела.
+//
+// Пара к xrayElements, но резать приходится иначе и осторожнее: у ini
+// комментарий — ЗАКОННАЯ часть тела (`ini.$comment.Peer` — первое звено
+// метки), и снести все строки `#` значило бы отобрать у кейса имя узла.
+// Поэтому режется только непрерывная шапка до первой непустой строки,
+// которая комментарием не является.
+func stripCorpusComments(text string) string {
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	cut := 0
+	for _, line := range lines {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") {
+			cut++
+			continue
+		}
+		break
+	}
+	return strings.Join(lines[cut:], "\n")
+}
+
+// singleExpectedEntry читает ожидание корпуса, когда в нём ровно один узел.
+//
+// Копия xraySingleExpected: снимаются `tag` и `type`. Оба — ключи СБОРКИ,
+// а не тела узла (`nodeflow.buildManagedKeys`): тег приходит с идентичности
+// узла (SPEC 112), тип — из реестра схемы. Ожидание корпуса снято боевым
+// путём и потому несёт их оба; маппер не ставит ни того, ни другого.
+func singleExpectedEntry(t *testing.T, bodyPath string) (map[string]interface{}, bool) {
+	t.Helper()
+	path := strings.TrimSuffix(bodyPath, ".body") + ".expected.json"
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	var env struct {
+		Nodes []struct {
+			Entry map[string]interface{} `json:"entry"`
+		} `json:"nodes"`
+		Dropped []json.RawMessage `json:"dropped"`
+	}
+	if err := json.Unmarshal(data, &env); err != nil {
+		t.Fatalf("%s: %v", path, err)
+	}
+	if len(env.Nodes) != 1 || len(env.Dropped) > 0 {
+		return nil, false
+	}
+	body := env.Nodes[0].Entry
+	delete(body, "tag")
+	delete(body, "type")
+	return body, true
 }
 
 // selectConfSection находит секцию вида `conf`, чей detect опознаёт текст.
