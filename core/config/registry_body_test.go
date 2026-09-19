@@ -82,6 +82,10 @@ var registryFieldTypes = map[string]bool{
 var registryNormalizeModes = map[string]bool{
 	"trim": true, "lower": true, "trim_lower": true, "hex_only": true,
 	"range_order": true,
+	// Перенесены из маппера (SPEC 133 §6.0): правят ЗНАЧЕНИЕ, а значит
+	// принадлежат телу и обязаны действовать на всех входах, не только на
+	// ссылке.
+	"cidr_prefix": true, "base64_std": true,
 }
 
 // registryMinWhenActions — допустимые действия условного минимума.
@@ -92,7 +96,13 @@ var registryMinWhenActions = map[string]bool{"drop": true, "drop_node": true}
 // Вид, которого нет в словаре, санитайзер пропускает МОЛЧА (реестр вправе
 // уехать вперёд кода), то есть опечатка в `kind` тихо отключила бы правило —
 // ловим её здесь, как и опечатку в `pattern`.
-var registryRelationKinds = map[string]bool{"ranges_disjoint": true}
+var registryRelationKinds = map[string]bool{"ranges_disjoint": true, "cooccurrence": true}
+
+// registryRelationWhenOps — служебные операторы условия связи (`$…`).
+//
+// Оператора, которого нет в словаре, санитайзер считает НЕвыполненным, и
+// правило молча не срабатывает — опечатку ловим здесь.
+var registryRelationWhenOps = map[string]bool{"$range_width": true}
 
 // registryRelationActions — что связь делает с узлом.
 var registryRelationActions = map[string]bool{"warn": true, "drop_node": true}
@@ -228,6 +238,8 @@ type bodyRelation2 struct {
 	Code     string    `json:"code"`
 	DescEn   string    `json:"desc_en"`
 	DescRu   string    `json:"desc_ru"`
+	// When — условие срабатывания связи; у `cooccurrence` обязательно.
+	When map[string]interface{} `json:"when"`
 }
 
 // bodyCondition — условие применимости правила значения.
@@ -510,6 +522,27 @@ func checkBodyRelations(t *testing.T, where string, rels []bodyRelation2, order 
 		}
 		if rel.DescEn == "" || rel.DescRu == "" {
 			t.Errorf("%s: нет desc_en/desc_ru — связь не попадёт в документацию", full)
+		}
+		// `cooccurrence` без условия санитайзер пропускает молча: связь,
+		// срабатывающая на одном лишь наличии полей, ставила бы код каждому
+		// узлу, у которого они есть, — заведомо не то, что имел в виду
+		// реестр. Ловим здесь, иначе правило тихо не работает.
+		if rel.Kind == "cooccurrence" && len(rel.When) == 0 {
+			t.Errorf("%s: cooccurrence без when — санитайзер такую связь пропустит молча", full)
+		}
+		// Ключи `when` — либо путь из paths, либо служебный оператор с
+		// ведущим `$`. Опечатка в пути дала бы условие, которое не выполнится
+		// никогда, то есть снова молчащее правило.
+		for k := range rel.When {
+			if strings.HasPrefix(k, "$") {
+				if !registryRelationWhenOps[k] {
+					t.Errorf("%s: when: оператор %q вне словаря — санитайзер считает его невыполненным", full, k)
+				}
+				continue
+			}
+			if !known[k] {
+				t.Errorf("%s: when: путь %q не описан в fields — условие не выполнится никогда", full, k)
+			}
 		}
 	}
 }

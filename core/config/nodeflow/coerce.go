@@ -1,6 +1,7 @@
 package nodeflow
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"strconv"
 	"strings"
@@ -217,6 +218,43 @@ func normalize(mode, v string) string {
 			}
 		}
 		return b.String()
+	case "cidr_prefix":
+		// Голый адрес получает префикс «весь хост»: ядро требует CIDR
+		// (`netip.ParsePrefix("172.16.0.2"): no '/'` — фатал на весь
+		// конфиг), а подписки пишут адрес и так, и так. Семейство видно по
+		// двоеточию: /32 для IPv4, /128 для IPv6.
+		//
+		// Перевод написания, а не суждение: значение с префиксом и мусор
+		// уезжают как есть, годность судит format cidr.
+		t := strings.TrimSpace(v)
+		if t == "" || strings.Contains(t, "/") {
+			return v
+		}
+		if strings.Contains(t, ":") {
+			return t + "/128"
+		}
+		return t + "/32"
+	case "base64_std":
+		// Четыре написания одних и тех же 32 байт → одно. Ядро декодирует
+		// ключи WireGuard исключительно base64.StdEncoding, а панели пишут
+		// тот же ключ url-safe и без паддинга.
+		//
+		// Канонизация обязательна не только ради ядра: ОДИН И ТОТ ЖЕ ключ в
+		// разных написаниях давал бы узлу два разных identity-хеша
+		// (DELTAS D133-22). О годности не судит — значение, которое не
+		// декодируется или декодируется не в 32 байта, возвращается КАК
+		// ЕСТЬ, и его судит format base64_32 с своим on_invalid.
+		for _, enc := range []*base64.Encoding{
+			base64.StdEncoding, base64.URLEncoding,
+			base64.RawStdEncoding, base64.RawURLEncoding,
+		} {
+			raw, err := enc.DecodeString(v)
+			if err != nil || len(raw) != 32 {
+				continue
+			}
+			return base64.StdEncoding.EncodeToString(raw)
+		}
+		return v
 	}
 	return v
 }

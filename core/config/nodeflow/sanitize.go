@@ -71,7 +71,12 @@ type sanitizer struct {
 	// своей ОСНОВНОЙ форме (замена), потому что неизвестный вход — это не
 	// «пользователь написал сам».
 	source string
-	res    Result
+	// kind — РОД узла, объявленный входом (`kind_when` маппера: "awg",
+	// "awg3", …). Пустая строка = род неизвестен, и правила опираются на
+	// парный `any_set` по телу. Отдельно от source: тот отвечает «кто сочинил
+	// тело», этот — «какой протокол вход просил».
+	kind string
+	res  Result
 	seen   map[string]bool // дедуп по (code, path)
 	// srcRoot — исходная карта тела целиком, cleanRoot — уже собранная
 	// чистая. Пути в conflicts/requires реестра пишутся ОТ КОРНЯ тела
@@ -123,6 +128,21 @@ func Sanitize(scheme string, m map[string]interface{}) Result {
 // Неизвестная схема — не повод молча пропустить мусор: тело возвращается
 // пустым с кодом уровня узла protocol_unsupported.
 func SanitizeFrom(scheme, source string, m map[string]interface{}) Result {
+	return SanitizeFromKind(scheme, source, "", m)
+}
+
+// SanitizeFromKind — то же с явным РОДОМ узла (`kind_when` маппера).
+//
+// Род отвечает на вопрос «какой протокол просил ВХОД», а не «что уцелело в
+// теле», и нужен правилам, чей `any_set` по телу бессилен по построению:
+// ссылка `awg://` с негодными awg-значениями оставляет тело, неотличимое от
+// обычного WireGuard, — а потолок MTU есть свойство запрошенного протокола
+// (contract/docs/MAPPER_ENGINE.md, «Контекст санитайзера: body_source + kind»).
+//
+// Пустой род — законное «неизвестен»: у входа `singbox` рода от входа нет
+// вовсе, у старого состояния он не сохранён. Правило тогда работает своим
+// парным `any_set`, и поведение остаётся прежним.
+func SanitizeFromKind(scheme, source, kind string, m map[string]interface{}) Result {
 	reg, err := registry.Get()
 	if err != nil {
 		return Result{
@@ -140,7 +160,7 @@ func SanitizeFrom(scheme, source string, m map[string]interface{}) Result {
 			},
 		}
 	}
-	s := &sanitizer{reg: reg, scheme: scheme, source: source, seen: map[string]bool{}, srcRoot: m, removed: map[string]bool{}, absent: map[string]bool{}}
+	s := &sanitizer{reg: reg, scheme: scheme, source: source, kind: kind, seen: map[string]bool{}, srcRoot: m, removed: map[string]bool{}, absent: map[string]bool{}}
 	s.cleanRoot = map[string]interface{}{}
 	s.res.Clean = s.cleanRoot
 	// Запреты по схеме размечаются ДО обхода, а не по ходу: связи
@@ -741,10 +761,110 @@ func (s *sanitizer) minWhenAbsent(order []string, fields map[string]*registry.Fi
 // кода, и правило, которого исполнитель ещё не знает, не должно ронять узлы.
 func (s *sanitizer) relations(rels []registry.Relation2) {
 	for i := range rels {
-		if rels[i].Kind == "ranges_disjoint" {
+		switch rels[i].Kind {
+		case "ranges_disjoint":
 			s.rangesDisjoint(&rels[i])
+		case "cooccurrence":
+			s.cooccurrence(&rels[i])
 		}
 	}
+}
+
+// cooccurrence — сочетание полей, о котором человеку стоит знать.
+//
+// Отличие от rangesDisjoint: тот судит набор по ОДНОМУ свойству (попарная
+// непересекаемость), этот — по разнородному условию `when` над разными
+// полями. У AmneziaWG 3.x это `random_trailers` вместе с широким диапазоном
+// magic-заголовков: ни одно из полей не битое, менять нечего, узел живёт —
+// сообщается лишь цена сочетания (сервер референсной реализации принимает
+// часть исходящих пакетов за хендшейки и отбрасывает их).
+//
+// Условие читается по ЧИСТОЙ карте: поле, снятое санитайзером за негодное
+// значение, в тело не поедет, и судить по нему сочетание значило бы винить
+// настройку, которой не будет (тот же довод, что у rangesDisjoint).
+func (s *sanitizer) cooccurrence(rel *registry.Relation2) {
+	if len(rel.When) == 0 {
+		// Связь без условия сработала бы на каждом узле, где поля просто
+		// есть. Это заведомо не то, что имел в виду реестр, — молчим.
+		return
+	}
+	for key, want := range rel.When {
+		if !s.relationWhenHolds(key, want) {
+			return
+		}
+	}
+	if rel.Action == "drop_node" {
+		s.dropNode(rel.Code, rel.Paths[0], nil, false, nil)
+		return
+	}
+	s.warn(rel.Code, rel.Paths[0], nil, false, nil)
+}
+
+// relationWhenHolds — одно звено условия связи.
+//
+// Служебный оператор отличается ведущим `$` и потому с путём тела не
+// сталкивается. Неизвестный оператор считается НЕвыполненным: реестр вправе
+// уехать вперёд кода, и правило, которого исполнитель не знает, не должно
+// ставить код наугад.
+func (s *sanitizer) relationWhenHolds(key string, want interface{}) bool {
+	if strings.HasPrefix(key, "$") {
+		if key == "$range_width" {
+			return s.rangeWidthHolds(want)
+		}
+		return false
+	}
+	v, ok := lookupPath(s.cleanRoot, strings.Split(key, "."))
+	if !ok {
+		return false
+	}
+	// Сравнение по печатной форме скаляра, как в absent_when: тело приезжает
+	// и из JSON, и от маппера, где булев флаг бывает строкой.
+	return fmt.Sprintf("%v", v) == fmt.Sprintf("%v", want)
+}
+
+// rangeWidthHolds — `{paths: [...], gt: N}`: ХОТЯ БЫ у одного из полей
+// значение записано диапазоном «lo-hi» и hi-lo > N.
+//
+// Поле-ЧИСЛО ширины не имеет и условие не выполняет: у AmneziaWG одиночный
+// magic-заголовок — это ровно одно значение, и ложных срабатываний
+// классификатора он не даёт.
+func (s *sanitizer) rangeWidthHolds(want interface{}) bool {
+	spec, ok := want.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	gt, ok := numericValue(spec["gt"])
+	if !ok {
+		return false
+	}
+	paths, ok := spec["paths"].([]interface{})
+	if !ok {
+		return false
+	}
+	for _, p := range paths {
+		name, ok := p.(string)
+		if !ok {
+			continue
+		}
+		v, ok := lookupPath(s.cleanRoot, strings.Split(name, "."))
+		if !ok {
+			continue
+		}
+		// Диапазоном считается только запись «lo-hi»: rangeBounds отдаёт
+		// lo==hi и для одиночного числа, а у него ширины нет.
+		str, isStr := v.(string)
+		if !isStr || !strings.Contains(str, "-") {
+			continue
+		}
+		lo, hi, parsed := rangeBounds(v)
+		if !parsed || hi < lo {
+			continue
+		}
+		if hi-lo > gt {
+			return true
+		}
+	}
+	return false
 }
 
 // rangesDisjoint — попарно непересекающиеся диапазоны перечисленных полей.
@@ -862,8 +982,20 @@ func (s *sanitizer) sourceExcepted(sources []string) bool {
 // «поля нет» значило бы снять с такого узла потолок MTU и вернуть ему ровно
 // ту тихую поломку, от которой правило заведено.
 func (s *sanitizer) conditionHolds(c *registry.Condition) bool {
-	if c == nil || len(c.AnySet) == 0 {
+	if c == nil || (len(c.AnySet) == 0 && len(c.SourceKind) == 0) {
 		return true
+	}
+	// Род узла объявил ВХОД, и это ИЛИ-ветка условия, а не отдельное правило:
+	// ссылка `awg://` с негодными awg-значениями оставляет тело, неотличимое
+	// от обычного WireGuard, и any_set по телу здесь бессилен по построению.
+	// Пустой род (вход `singbox`, старое состояние) ветку просто не проходит —
+	// решает парный any_set ниже.
+	if s.kind != "" {
+		for _, k := range c.SourceKind {
+			if k == s.kind {
+				return true
+			}
+		}
 	}
 	for _, p := range c.AnySet {
 		if s.gone(p) {

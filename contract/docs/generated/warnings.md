@@ -82,6 +82,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`vless_encryption_invalid`](#vless_encryption_invalid) · `error` — VLESS encryption string is malformed
 - [`vmess_security_unknown`](#vmess_security_unknown) · `warning` — VMess: unknown cipher replaced with auto
 - [`wg_key_invalid`](#wg_key_invalid) · `error` — WireGuard: invalid key
+- [`wgconf_dns_ignored`](#wgconf_dns_ignored) · `info` — WireGuard: DNS from the configuration not applied
+- [`wgconf_extra_peer_dropped`](#wgconf_extra_peer_dropped) · `warning` — WireGuard: extra [Peer] sections dropped
 - [`ws_early_data_converted`](#ws_early_data_converted) · `info` — WebSocket: early data converted
 - [`xhttp_mode_forced_packet_up`](#xhttp_mode_forced_packet_up) · `warning` — XHTTP mode set to packet-up
 - [`xhttp_param_reset`](#xhttp_param_reset) · `warning` — XHTTP: field {field} removed
@@ -1539,6 +1541,40 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`peers.pre_shared_key`](protocols/wireguard.md#body-peers-pre-shared-key) — the value does not fit the field → node dropped
   - [`peers.public_key`](protocols/wireguard.md#body-peers-public-key) — the value does not fit the field → node dropped
   - [`private_key`](protocols/wireguard.md#body-private-key) — the value does not fit the field → node dropped
+
+<a id="wgconf_dns_ignored"></a>
+### wgconf_dns_ignored
+
+**severity:** `info` · **params:** `value`
+
+**WireGuard: DNS from the configuration not applied**
+
+- **What happened:** The configuration asked for DNS {value} in its [Interface] section. The node works, but this address is not applied: a sing-box WireGuard endpoint has no DNS field of its own, and the launcher resolves names through its own DNS settings.
+- **Why it happens:** DNS in a .conf file is an instruction to wg-quick, which rewrites the system resolver while the tunnel is up. sing-box does not work that way: it routes and resolves names itself, so the key has nowhere to go in the node body. Providers write it into every configuration they hand out, so its presence says nothing about the node being broken.
+- **What you can do:**
+  - Nothing to do if names resolve: the launcher's own DNS settings are already in charge.
+  - If you need exactly this server, add it in the launcher's DNS settings instead of the node.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="wgconf_extra_peer_dropped"></a>
+### wgconf_extra_peer_dropped
+
+**severity:** `warning` · **params:** `count`
+
+**WireGuard: extra [Peer] sections dropped**
+
+- **What happened:** The configuration holds {count} [Peer] sections. Only the first one became a node, because one node here is one peer; the rest were dropped, and any traffic those peers were meant to carry will not go through this node.
+- **Why it happens:** wg-quick lets one interface hold several peers and splits traffic between them by AllowedIPs. A node in the launcher is a single server, so there is no place to put the second peer. Such a file usually comes from a site-to-site setup, or from a provider that packed several locations into one configuration.
+- **What you can do:**
+  - Check that the first peer is the one you need: it is the one that became the node.
+  - If you need the others, import each peer as its own configuration, with the same [Interface] and one [Peer] each.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
 <a id="ws_early_data_converted"></a>
 ### ws_early_data_converted

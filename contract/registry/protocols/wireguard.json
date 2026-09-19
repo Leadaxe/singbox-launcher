@@ -379,6 +379,7 @@
           "absent": true,
           "value": 1280,
           "when": {
+            "source_kind": ["awg", "awg3"],
             "any_set": ["jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4", "i1", "i2", "i3", "i4", "i5", "id", "ip", "ib", "header_protection_key", "content_padding_addition", "rekey_after_time", "rekey_timeout", "reject_after_time", "keepalive_timeout", "max_handshake_attempts", "random_trailers", "disable_cookies"]
           }
         },
@@ -388,16 +389,18 @@
           "except_sources": ["singbox"],
           "note_code": "awg_mtu_high",
           "when": {
+            "source_kind": ["awg", "awg3"],
             "any_set": ["jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4", "i1", "i2", "i3", "i4", "i5", "id", "ip", "ib", "header_protection_key", "content_padding_addition", "rekey_after_time", "rekey_timeout", "reject_after_time", "keepalive_timeout", "max_handshake_attempts", "random_trailers", "disable_cookies"]
           }
         },
         "desc_en": "Tunnel MTU in bytes.",
         "desc_ru": "MTU туннеля в байтах.",
-        "impl": "uint32, дефолт ядра 1408; при s4 > 0 дефолт 1280. Ядро предупреждает при mtu > 1492-60-s4. У AmneziaWG-узлов слишком большой mtu даёт «sendmsg: message too long» при успешном рукопожатии (память awg-mtu-too-high): рукопожатие проходит, данные не идут. Потолок 1280 для ЛЮБОГО AmneziaWG-узла — решение владельца 05.09.2026; условие «узел AWG» = задан любой из awg-ключей корня (тот же набор, что был у hasAWGParams/hasAWG3Params в Go). Условие смотрит на НАЛИЧИЕ ключа, а не на непустоту: jc=0 — законное «мусор выключен» у настоящего AWG-узла (кейс awg_jc_zero_explicit). Прежде правило жило кодом в парсере ссылки (awgMaxMTU в node_parser_wireguard.go) и потому НЕ применялось к телу из sing-box-импорта — расхождение входов, находка №5 LEGACY_AUDIT; с контрактом 1.1.5 оно правило реестра. ИСКЛЮЧЕНИЕ ПО ВХОДУ (решение владельца 18.09.2026): на входе `singbox` тело написано в собственной форме ядра человеком или подпиской — значение сохраняется, узел получает info-код awg_mtu_high; на прочих входах (ссылка wg/awg, .conf, awg://base64, форма AWG) значение заменяется на 1280 с кодом awg_mtu_clamped. Парность входов здесь нарушена НАМЕРЕННО (DRIFT §7.23). Подстановка 1280 при отсутствии mtu кода НЕ даёт (это дефолт, а не замена) и действует на ВСЕХ входах, включая singbox. Plain WG правило не трогает: без awg-ключей mtu не эмитится, ядро берёт свой 1408."
+        "impl": "uint32, дефолт ядра 1408; при s4 > 0 дефолт 1280. Ядро предупреждает при mtu > 1492-60-s4. У AmneziaWG-узлов слишком большой mtu даёт «sendmsg: message too long» при успешном рукопожатии (память awg-mtu-too-high): рукопожатие проходит, данные не идут. Потолок 1280 для ЛЮБОГО AmneziaWG-узла — решение владельца 05.09.2026; условие «узел AWG» читается ДВУМЯ способами через ИЛИ. Первый — `source_kind`: род объявил ВХОД (`kind_when` маппера по написанию `awg://`), и это единственный способ узнать род, когда ни одно awg-поле не уцелело: негодные значения снимает правило поля, и к проверке потолка тело становится неотличимо от обычного WireGuard, хотя протокол автор просил AmneziaWG (кейсы awg_bad_numeric_skipped, awg_jc_invalid_dropped — в теле только mtu). Второй — прежний `any_set` по awg-ключам корня (тот же набор, что был у hasAWGParams/hasAWG3Params в Go); он остаётся НАВСЕГДА, потому что у входа `singbox` рода от входа нет вовсе и судить можно только по телу. Условие смотрит на НАЛИЧИЕ ключа, а не на непустоту: jc=0 — законное «мусор выключен» у настоящего AWG-узла (кейс awg_jc_zero_explicit). Род переживает перезапуск наравне с body_source: пересчёт кодов идёт по сохранённому телу без повторного разбора ссылки, поэтому род лежит в Origin (launcher-only расширение), у старых узлов выводится перепарсом Origin.Raw, а иначе работает any_set — contract/docs/MAPPER_ENGINE.md, «Контекст санитайзера: body_source + kind». Прежде правило жило кодом в парсере ссылки (awgMaxMTU в node_parser_wireguard.go) и потому НЕ применялось к телу из sing-box-импорта — расхождение входов, находка №5 LEGACY_AUDIT; с контрактом 1.1.5 оно правило реестра. ИСКЛЮЧЕНИЕ ПО ВХОДУ (решение владельца 18.09.2026): на входе `singbox` тело написано в собственной форме ядра человеком или подпиской — значение сохраняется, узел получает info-код awg_mtu_high; на прочих входах (ссылка wg/awg, .conf, awg://base64, форма AWG) значение заменяется на 1280 с кодом awg_mtu_clamped. Парность входов здесь нарушена НАМЕРЕННО (DRIFT §7.23). Подстановка 1280 при отсутствии mtu кода НЕ даёт (это дефолт, а не замена) и действует на ВСЕХ входах, включая singbox. Plain WG правило не трогает: без awg-ключей mtu не эмитится, ядро берёт свой 1408."
       },
       "address": {
         "type": "string_array",
         "format": "cidr",
+        "normalize": "cidr_prefix",
         "on_invalid": {
           "action": "drop",
           "code": "type_invalid"
@@ -405,11 +408,12 @@
         "required": true,
         "desc_en": "Addresses assigned to the tunnel interface.",
         "desc_ru": "Адреса, назначенные интерфейсу туннеля.",
-        "impl": "listable CIDR; json-тег без omitempty."
+        "impl": "listable CIDR; json-тег без omitempty. Голый адрес достраивается маской-хостом (10.0.0.2 → 10.0.0.2/32, IPv6 → /128): ядро требует префикс, а подписки пишут адрес голым. Прежде операция жила рукописным normalizeWGPrefixes (node_parser_wireguard.go) и потому не работала на входе singbox; normalize реестра действует на всех входах (SPEC 133 §6.0)."
       },
       "private_key": {
         "type": "string",
         "format": "base64_32",
+        "normalize": "base64_std",
         "on_invalid": {
           "action": "drop_node",
           "code": "wg_key_invalid"
@@ -479,6 +483,7 @@
                 "code": "wg_key_invalid"
               },
               "required": true,
+              "normalize": "base64_std",
               "desc_en": "Peer public key.",
               "desc_ru": "Публичный ключ пира.",
               "impl": "base64; невалидный = ошибка декодирования на весь конфиг. Отсутствие поля даёт field_missing, негодное ЗНАЧЕНИЕ — wg_key_invalid (контракт 1.1.11). Секретом НЕ помечен: публичный ключ пира тайной не является, и показать его в предупреждении — единственный способ дать человеку сверить значение с тем, что выдал провайдер."
@@ -491,6 +496,7 @@
                 "code": "wg_key_invalid"
               },
               "secret": true,
+              "normalize": "base64_std",
               "desc_en": "Optional pre-shared key.",
               "desc_ru": "Необязательный общий предварительный ключ.",
               "impl": "base64. Поле НЕобязательное, но негодное значение роняет УЗЕЛ наравне с private_key и public_key (решение владельца 19.09.2026, контракт 1.1.11): сервер ждёт PSK, и туннель без него — тихо сломанный туннель, рукопожатие не пройдёт. Прежнее правило (`drop`/type_invalid) снимало ПОЛЕ и давало узел, который выглядит рабочим и молчит; оно же расходилось с парсером ссылки, где узел дропался. Секрет."
@@ -498,6 +504,7 @@
             "allowed_ips": {
               "type": "string_array",
               "format": "cidr",
+              "normalize": "cidr_prefix",
               "on_invalid": {
                 "action": "drop",
                 "code": "type_invalid"
@@ -903,6 +910,7 @@
         "type": "string",
         "format": "base64_32",
         "pattern": "^$|^[A-Za-z0-9+/_-]*[B-Za-z0-9+/_-][A-Za-z0-9+/_-]*={0,2}$",
+        "normalize": "base64_std",
         "on_invalid": {
           "action": "drop_node",
           "code": "awg3_header_key_invalid"
@@ -1045,6 +1053,22 @@
         "desc_en": "The magic header ranges h1-h4 must not overlap: the core tells message types apart by them.",
         "desc_ru": "Диапазоны magic-заголовков h1-h4 не должны пересекаться: по ним ядро различает типы сообщений.",
         "impl": "Свойство НАБОРА, а не пары «поле и сосед», поэтому conflicts/requires его не выражают: виноват может быть любой из четырёх, и снятие одного пару не развело бы. Незаданный заголовок участвует своим дефолтом ядра (h1=1 … h4=4) — отсюда defaults. Ядро принимает такой endpoint на `sing-box check`, но отвергает на конфигурировании устройства («headers must not overlap», submodules/wireguard-go/device/uapi.go), то есть падает ВЕСЬ конфиг, а не один узел — потому drop_node. Прежде правило жило рукописным awgHeaderOverlap в node_parser_wireguard.go, роняло узел МОЛЧА и не работало на входе singbox (находка №8 LEGACY_AUDIT, контракт 1.1.11)."
+      },
+      {
+        "kind": "cooccurrence",
+        "paths": ["random_trailers", "h1", "h2", "h3", "h4"],
+        "when": {
+          "random_trailers": true,
+          "$range_width": {
+            "paths": ["h1", "h2", "h3", "h4"],
+            "gt": 65535
+          }
+        },
+        "action": "warn",
+        "code": "awg3_random_trailers_wide_headers",
+        "desc_en": "Random trailers together with a very wide magic-header range cost upload speed against reference-implementation servers.",
+        "desc_ru": "Случайные хвосты вместе с очень широким диапазоном magic-заголовков стоят скорости отдачи на серверах референсной реализации.",
+        "impl": "Свойство ПАРЫ настроек, ни одна из которых не битая, поэтому ни on_invalid, ни conflicts тут не подходят: узел живёт, менять нечего, человеку сообщается цена сочетания. Условие разнородное (булев флаг + ширина диапазона), отсюда kind cooccurrence, а не ranges_disjoint. Порог: ширина/2^32 на каждый data-пакет перестаёт быть пренебрежимой при hi-lo >= 65536 (docs-lx §2.10, SPEC 123 §91) — в записи это `gt: 65535`, потому что оператор строгий, а правило кода нестрогое (>=). Диапазоном считается только значение вида «lo-hi»: заголовок-ЧИСЛО ширины не имеет и условие не выполняет. Прежде правило жило рукописным awg3RandomTrailersWithWideHeaders (awg3.go:256) и потому не работало на входе singbox — тот же класс, что находка №8 LEGACY_AUDIT; связь реестра снимает и это расхождение входов. severity здесь НЕ дублируется: info несёт сам код (warnings.json)."
       }
     ],
     "build_tag": "with_wireguard"

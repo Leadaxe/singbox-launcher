@@ -182,12 +182,12 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - If absent: filled in with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more)
   - Above `1280`: replaced with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more) → [`awg_mtu_clamped`](../warnings.md#awg_mtu_clamped). From `singbox`: kept as written, with a note → [`awg_mtu_high`](../warnings.md#awg_mtu_high)
 - <a id="body-address"></a>**`address`** — Addresses assigned to the tunnel interface.
-  - Type: string_array, format `cidr`
+  - Type: string_array, format `cidr`, normalized: `cidr_prefix`
   - Required: the node is dropped without it
   - Set by link parameter: [`address`](#link-proto-address)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 - <a id="body-private-key"></a>**`private_key`** — Local private key.
-  - Type: string, secret, format `base64_32`
+  - Type: string, secret, format `base64_32`, normalized: `base64_std`
   - Required: the node is dropped without it
   - Set by link parameter: [`userinfo`](#link-common-userinfo), [`privatekey`](#link-proto-privatekey)
   - If invalid: node dropped → [`wg_key_invalid`](../warnings.md#wg_key_invalid)
@@ -208,14 +208,14 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Required: the node is dropped without it
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
 - <a id="body-peers-public-key"></a>**`peers.public_key`** — Peer public key.
-  - Type: string, format `base64_32`
+  - Type: string, format `base64_32`, normalized: `base64_std`
   - Required: the node is dropped without it
   - If invalid: node dropped → [`wg_key_invalid`](../warnings.md#wg_key_invalid)
 - <a id="body-peers-pre-shared-key"></a>**`peers.pre_shared_key`** — Optional pre-shared key.
-  - Type: string, secret, format `base64_32`
+  - Type: string, secret, format `base64_32`, normalized: `base64_std`
   - If invalid: node dropped → [`wg_key_invalid`](../warnings.md#wg_key_invalid)
 - <a id="body-peers-allowed-ips"></a>**`peers.allowed_ips`** — Prefixes routed to this peer.
-  - Type: string_array, format `cidr`
+  - Type: string_array, format `cidr`, normalized: `cidr_prefix`
   - Required: the node is dropped without it
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
   - If absent: filled in with `0.0.0.0/0`, `::/0`
@@ -334,7 +334,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Meaningless without: `ip`
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - <a id="body-header-protection-key"></a>**`header_protection_key`** — Key protecting packet headers.
-  - Type: string, secret, format `base64_32`, must match `^$|^[A-Za-z0-9+/_-]*[B-Za-z0-9+/_-][A-Za-z0-9+/_-]*={0,2}$`
+  - Type: string, secret, format `base64_32`, must match `^$|^[A-Za-z0-9+/_-]*[B-Za-z0-9+/_-][A-Za-z0-9+/_-]*={0,2}$`, normalized: `base64_std`
   - If invalid: node dropped → [`awg3_header_key_invalid`](../warnings.md#awg3_header_key_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
 - <a id="body-content-padding-addition"></a>**`content_padding_addition`** — Extra content padding, number or range.
@@ -487,6 +487,11 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 - `mtu` — when absent, filled in with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more)
 - `mtu` — above `1280`: replaced with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more) → [`awg_mtu_clamped`](../warnings.md#awg_mtu_clamped). From `singbox`: kept as written, with a note → [`awg_mtu_high`](../warnings.md#awg_mtu_high)
+- `address` — normalized: `cidr_prefix`
+- `private_key` — normalized: `base64_std`
+- `peers.public_key` — normalized: `base64_std`
+- `peers.pre_shared_key` — normalized: `base64_std`
+- `peers.allowed_ips` — normalized: `cidr_prefix`
 - `peers.allowed_ips` — when absent, filled in with `0.0.0.0/0`, `::/0`
 - `h1` — normalized: `range_order`
 - `h2` — normalized: `range_order`
@@ -494,6 +499,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `h4` — normalized: `range_order`
 - `ip` — normalized: `trim_lower`
 - `ib` — normalized: `trim_lower`
+- `header_protection_key` — normalized: `base64_std`
 
 **Structural translations.** Decisions taken while the link is being read, before any value is judged: whether a block exists at all, where a field comes from, or how one input becomes several fields. The sanitizer sees a finished body and cannot take them.
 
