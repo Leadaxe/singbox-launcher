@@ -24,7 +24,12 @@
       },
       "kind": "endpoint",
       "label": "unknown.example.com",
-      "scheme": "wireguard"
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "wgconf_param_unknown"
+        }
+      ]
     }
   ],
   "v": 1

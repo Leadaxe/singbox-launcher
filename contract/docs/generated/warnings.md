@@ -84,6 +84,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`wg_key_invalid`](#wg_key_invalid) · `error` — WireGuard: invalid key
 - [`wgconf_dns_ignored`](#wgconf_dns_ignored) · `info` — WireGuard: DNS from the configuration not applied
 - [`wgconf_extra_peer_dropped`](#wgconf_extra_peer_dropped) · `warning` — WireGuard: extra [Peer] sections dropped
+- [`wgconf_param_unknown`](#wgconf_param_unknown) · `info` — WireGuard: unknown key in the configuration
 - [`ws_early_data_converted`](#ws_early_data_converted) · `info` — WebSocket: early data converted
 - [`xhttp_mode_forced_packet_up`](#xhttp_mode_forced_packet_up) · `warning` — XHTTP mode set to packet-up
 - [`xhttp_param_reset`](#xhttp_param_reset) · `warning` — XHTTP: field {field} removed
@@ -1571,6 +1572,24 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Check that the first peer is the one you need: it is the one that became the node.
   - If you need the others, import each peer as its own configuration, with the same [Interface] and one [Peer] each.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="wgconf_param_unknown"></a>
+### wgconf_param_unknown
+
+**severity:** `info` · **params:** `query_name`
+
+**WireGuard: unknown key in the configuration**
+
+- **What happened:** The configuration holds the key {query_name}, which is not described for a WireGuard node. The node works and the key changed nothing: it was not read at all.
+- **Why it happens:** The key belongs to another client's dialect, to a newer version of AmneziaWG, or it is a typo in a hand-edited file. Keys that manage the interface itself rather than describe the node (PostUp, Table, SaveConfig and the like) are expected in a .conf and are not reported.
+- **What you can do:**
+  - Nothing to do if the node works: the key had no effect here anyway.
+  - If you edited the file yourself, check the spelling of the key.
+  - If the key belongs to a newer AmneziaWG, update the core.
 
 **Where it comes from:**
 

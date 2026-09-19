@@ -53,6 +53,15 @@ type Plan struct {
 	// (MAPPER_ENGINE.md §8): иначе tcp_keep_alive* давали бы по три info на
 	// каждый узел.
 	Declared map[string]bool
+	// DeclaredINI — множество ОБЪЯВЛЕННЫХ источников ini как «секция.ключ»
+	// (обе части в нижнем регистре).
+	//
+	// Отдельно от Declared, потому что предмет другой: у ссылки имя записи
+	// и имя параметра совпадают, а у документа `.conf` запись `keepalive`
+	// читает ключ `ini.Peer.PersistentKeepalive` — по имени записи такой
+	// ключ объявленным не выглядит. Секция в ключе значима: `MTU` у
+	// `[Interface]` и `MTU` у `[Peer]` — разные ключи.
+	DeclaredINI map[string]bool
 	// BodyOrder — порядок ключей тела схемы; нужен канону сериализации.
 	BodyOrder []string
 }
@@ -442,6 +451,19 @@ func buildPlan(scheme, kind string, m *registry.Mapper, blocks blockSet) (*Plan,
 			if strings.HasPrefix(src, "json.") {
 				if name := strings.TrimPrefix(src, "json."); !strings.Contains(name, ".") {
 					declare(pl.Declared, name)
+				}
+			}
+			// `ini.<Секция>.<Ключ>` — объявленный ключ ДОКУМЕНТА. Имя
+			// записи тут не годится: `keepalive` читает
+			// `ini.Peer.PersistentKeepalive`, и по имени записи ключ
+			// объявленным не выглядит.
+			if strings.HasPrefix(src, "ini.") {
+				rest := strings.TrimPrefix(src, "ini.")
+				if !strings.HasPrefix(rest, "$") && strings.Count(rest, ".") == 1 {
+					if pl.DeclaredINI == nil {
+						pl.DeclaredINI = map[string]bool{}
+					}
+					pl.DeclaredINI[strings.ToLower(rest)] = true
 				}
 			}
 		}

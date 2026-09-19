@@ -1866,6 +1866,37 @@ func (st *execState) noteUnknownParams() {
 			Act: ActKeep, Why: WhyNotDeclared,
 		})
 	}
+
+	// Ключи ДОКУМЕНТА ini — тот же вопрос, другой предмет.
+	//
+	// Незнакомый ключ `.conf` до тела не доходит по построению (тело строят
+	// только объявленные записи), и потому он не «ломает узел» — он
+	// исчезает МОЛЧА (Q133-58). Человек не узнаёт, что часть его файла не
+	// прочитана: ни кода, ни строки в логе. Имя ключа несёт `query_name` —
+	// параметр у кода один и означает «имя того, что не прочитано»,
+	// заводить второй ради пространства незачем.
+	for _, name := range st.space.INIKeys() {
+		if st.plan.DeclaredINI[name] {
+			continue
+		}
+		// Игнор-список сверяется и с полным «секция.ключ», и с голым
+		// ключом: не-узловые ключи wg-quick (PostUp, Table) осмысленны
+		// независимо от секции, а перечислять их дважды — лишний повод
+		// разойтись.
+		short := name
+		if i := strings.Index(name, "."); i >= 0 {
+			short = name[i+1:]
+		}
+		if ignored[name] || ignored[short] {
+			continue
+		}
+		st.note(uk.Code, map[string]string{"query_name": name})
+		st.trace.Add(Event{
+			Stage: StageUnknown, Mapper: st.mapperName, Entry: "$unknown",
+			Src: "ini." + name, Raw: nil, Val: nil, Path: nil,
+			Act: ActKeep, Why: WhyNotDeclared,
+		})
+	}
 }
 
 // noteINIDropped ставит код на секции ini, чьи ПОВТОРЫ снял диалект.

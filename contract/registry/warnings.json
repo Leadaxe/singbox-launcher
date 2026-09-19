@@ -1116,6 +1116,31 @@
       "dart": null,
       "go": "contract/registry/protocols/wireguard.json mappers.conf.params.dns / mappers.uri.params.dns (on_present.note)"
     },
+    "wgconf_param_unknown": {
+      "severity": "info",
+      "params": [
+        "query_name"
+      ],
+      "title_en": "WireGuard: unknown key in the configuration",
+      "title_ru": "WireGuard: неизвестный ключ в конфигурации",
+      "text_en": "The configuration holds the key {query_name}, which is not described for a WireGuard node. The node works and the key changed nothing: it was not read at all.",
+      "text_ru": "В конфигурации есть ключ {query_name}, который для узла WireGuard не описан. Узел работает, и на него этот ключ никак не повлиял: он просто не был прочитан.",
+      "cause_en": "The key belongs to another client's dialect, to a newer version of AmneziaWG, or it is a typo in a hand-edited file. Keys that manage the interface itself rather than describe the node (PostUp, Table, SaveConfig and the like) are expected in a .conf and are not reported.",
+      "cause_ru": "Ключ относится к диалекту другого клиента, к более новой версии AmneziaWG либо это опечатка в файле, который правили руками. Ключи, управляющие самим интерфейсом, а не описывающие узел (PostUp, Table, SaveConfig и подобные), в .conf ожидаемы и не сообщаются.",
+      "fix_en": [
+        "Nothing to do if the node works: the key had no effect here anyway.",
+        "If you edited the file yourself, check the spelling of the key.",
+        "If the key belongs to a newer AmneziaWG, update the core."
+      ],
+      "fix_ru": [
+        "Если узел работает, делать ничего не нужно: ключ здесь всё равно ни на что не влиял.",
+        "Если файл правили вы сами, проверьте написание ключа.",
+        "Если ключ относится к более новой версии AmneziaWG, обновите ядро."
+      ],
+      "desc": "Ключ секции ini не объявлен ни одной записью mappers.conf. До тела он не доходит по построению (тело строят только объявленные записи), поэтому severity=info: узел исправен. Код заведён, чтобы потеря перестала быть молчаливой (Q133-58) — прежде часть файла не читалась без единого слова. Игнор-список не-узловых ключей wg-quick — в самой записи unknown_key.",
+      "dart": null,
+      "go": "contract/registry/protocols/wireguard.json mappers.conf.unknown_key"
+    },
     "wgconf_extra_peer_dropped": {
       "severity": "warning",
       "params": [

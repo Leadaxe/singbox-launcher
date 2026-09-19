@@ -285,6 +285,27 @@ func jsonScalar(root interface{}, path string) (string, bool) {
 }
 
 // INISections — имена разобранных секций, по алфавиту (линтеру и диагностике).
+// INIKeys — все ключи ini-документа как «секция.ключ» (обе части в нижнем
+// регистре), в устойчивом порядке.
+//
+// Нужен проверке необъявленных ключей: у ссылки её предмет — имена query
+// (`QueryNames`), у документа `.conf` — ключи секций. Секция в имени
+// обязательна: `MTU` у `[Interface]` и `MTU` у `[Peer]` — разные ключи, и
+// объявленность одного не делает объявленным другой.
+func (s *Space) INIKeys() []string {
+	if s == nil {
+		return nil
+	}
+	out := make([]string, 0, len(s.ini)*4)
+	for section, kv := range s.ini {
+		for k := range kv {
+			out = append(out, section+"."+k)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 func (s *Space) INISections() []string {
 	if s == nil {
 		return nil
