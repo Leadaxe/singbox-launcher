@@ -66,7 +66,7 @@
 | Декодер | После trim строка начинается с **`[`**, **`json.Valid`**, успешный `json.Unmarshal` в массив — тело не отвергается как «не подписка» (`DecodeSubscriptionContent`). |
 | Вход в парсер | **`IsXrayJSONArrayBody`**: то же — префикс `[`, валидный JSON, массив объектов. |
 | Элемент массива | **`xrayElementHasProtocolOutbounds`**: в **`outbounds`** есть хотя бы один объект с полем **`protocol`** (строка) — признак **Xray-диалекта**. Элементы только с sing-box **`type`** без **`protocol`** не считаются Xray для этой ветки и **пропускаются** с `debuglog` (ожидается follow-up **016**). |
-| Нода | Среди VLESS с **`settings.vnext`** выбирается основной outbound (`xrayBuildVLESSFromOutbound`); при **`dialerProxy`** hop разбирается как **`socks`** или **`vless`** (`xrayChainHopFromOutbound`; socks-звено — `xrayBuildJumpFromSocksOutbound`); иные `protocol` у hop — пропуск элемента (`WarnLog`). |
+| Нода | Основной outbound элемента выбирается на уровне документа, а переводит его движок реестра (`parseXrayElementByEngine` → `core/config/linkmap`); какая секция `mappers.xray` его ведёт, решает её собственный `detect`, а не список протоколов в коде. При **`dialerProxy`** hop разбирается как **`socks`** или **`vless`** (`xrayChainHopFromOutbound`; socks-звено — `xrayBuildJumpFromSocksOutbound`); иные `protocol` у hop — пропуск элемента (`WarnLog`). |
 
 **`remarks` и теги sing-box**
 
@@ -80,7 +80,7 @@
 
 **Пример и код**
 
-Структура как у публичных Xray-подписок (**`dns`**, **`inbounds`**, **`log`**, **`mux`**, **`tcpSettings`**, **`routing`**, **`freedom`/`blackhole`**), с вымышленными данными: **`docs/examples/xray_subscription_array_sample.json`**. Тот же сценарий в тестах: **`core/config/subscription/testdata/xray_provider_anon.json`** (`go:embed` в **`xray_json_array_test.go`**). Реализация: **`xray_json_array.go`**, **`xray_outbound_convert.go`**, **`decoder.go`** (`DecodeSubscriptionContent`), **`source_loader.go`** (`LoadNodesFromSource`, **`applyTagsToXrayNode`**), configurator: **`ui/configurator/tabs/source_tab.go`** (`refreshOneSourceFromUI`).
+Структура как у публичных Xray-подписок (**`dns`**, **`inbounds`**, **`log`**, **`mux`**, **`tcpSettings`**, **`routing`**, **`freedom`/`blackhole`**), с вымышленными данными: **`docs/examples/xray_subscription_array_sample.json`**. Тот же сценарий в тестах: **`core/config/subscription/testdata/xray_provider_anon.json`** (`go:embed` в **`xray_json_array_test.go`**). Реализация: **`xray_json_array.go`**, **`xray_outbound_convert.go`** и **`xray_protocols.go`** (уровень **документа**: какой элемент становится узлом, какой звеном цепочки, какой группой-балансером), **`xray_element_engine.go`** (сам элемент — движку реестра), **`decoder.go`** (`DecodeSubscriptionContent`), **`source_loader.go`** (`LoadNodesFromSource`, **`applyTagsToXrayNode`**), configurator: **`ui/configurator/tabs/source_tab.go`** (`refreshOneSourceFromUI`).
 
 ## Коды деградации на узле
 
@@ -127,26 +127,28 @@
 | **`SPECS/029-Q-С-SUBSCRIPTION_PARSER_CLASH_CONVERTOR_PARITY/SPEC.md`** | Расширения совместимости (029): `type=httpupgrade`, `peer`, `obfsParam`, VMess legacy / `httpupgrade` / `h2`, Hysteria2 TLS; сверка со схемой sing-box. |
 | **`SPECS/033-F-N-SUBSCRIPTION_XRAY_JSON_ARRAY/SPEC.md`** | Подписка как JSON-массив полных конфигов Xray: `remarks`, slug-теги, `dialerProxy` → `detour`, границы MVP (sing-box-массив — **016**, follow-up). |
 | **`SPECS/036-F-C-XRAY_JUMP_ANY_PROTOCOL/SPEC.md`** | `dialerProxy`: hop **SOCKS** или **VLESS**; прочие протоколы — по мере маппинга (**завершено** по объёму SPEC). |
-| Пакет **`core/config/subscription`** | `ParseNode`, `buildOutbound` — `node_parser_core.go`; VLESS/Trojan transport+TLS — `node_parser_transport.go`; VMess — `node_parser_vmess.go` (`parseVMessDecoded`, `parseVMessJSON`, `parseVMessLegacyCleartext`); Hysteria2 — `node_parser_hysteria2.go`; WireGuard / SSH — `node_parser_wireguard.go`, `node_parser_ssh.go`; share URI — диспетчер `share_uri.go` + реализации `shareuri_*.go`; JSON-массив Xray — `xray_json_array.go`, `xray_outbound_convert.go`, `xray_protocols.go`, `xray_balancer.go`. |
+| **`contract/docs/MAPPER_ENGINE.md`** | Как разбирается источник: стадии конвейера, пространство источников, порядок исполнения записей реестра, обратный ход. Источник истины — общий документ контракта. |
+| Пакет **`core/config/linkmap`** | Движок: один путь разбора на все источники, по таблицам `mappers.*`. Имён схем и протоколов в нём нет (сторожит `no_scheme_names_test.go`). |
+| Пакет **`core/config/subscription`** | `ParseNode` — три ветки (Amnezia `vpn://`, движок через `node_parser_engine.go`, «схема не поддержана») и общие хелперы в `node_parser_core.go`; решения уровня документа по массиву Xray — `xray_json_array.go`, `xray_element_engine.go`, `xray_outbound_convert.go`, `xray_protocols.go`, `xray_balancer.go`; вставленный текст wg-quick — `wgconf_text.go`; share URI — `share_uri.go`. |
 
 ## Share URI из outbound и WireGuard endpoint (обратно к ссылке)
 
 Спецификация фичи (ПКМ на вкладке Servers, контекстное меню, детали реализации): **`SPECS/025-F-C-SERVERS_CONTEXT_MENU_SHARE_URI/`** (SPEC, PLAN, IMPLEMENTATION_REPORT).
 
-Парсер переводит **строку подписки** (`ParseNode` → `buildOutbound` или для WireGuard — объект в `endpoints[]`) в JSON sing-box. Обратная операция — **сборка share URI из уже записанного outbound или WireGuard endpoint** в `config.json`, чтобы делиться ссылкой без хранения исходной строки подписки.
+Парсер переводит **строку подписки** (`ParseNode` или для WireGuard — объект в `endpoints[]`) в JSON sing-box. Обратная операция — **сборка share URI из уже записанного outbound или WireGuard endpoint** в `config.json`, чтобы делиться ссылкой без хранения исходной строки подписки.
 
 ### Принцип и соответствие форматам
 
-- **Вход кодировщика:** один элемент массива `outbounds` **или** один элемент `endpoints[]` с `type: wireguard` (тот же набор полей, что даёт `parseWireGuardURI` / `GenerateEndpointJSON`).
+- **Вход кодировщика:** один элемент массива `outbounds` **или** один элемент `endpoints[]` с `type: wireguard` (тот же набор полей, что дают секция `wireguard` реестра и `GenerateEndpointJSON`).
 - **Выход:** одна строка URI в форматах, которые снова понимает этот проект: `vless://`, `vmess://` (base64 JSON), `trojan://`, `ss://` (SIP002), `socks5://`, `hysteria2://`, `tuic://`, `ssh://`, **`wireguard://`**.
-- **Query / transport / TLS:** для VLESS и Trojan при кодировании используются те же соглашения, что и при разборе (`uriTransportFromQuery`, `vlessTLSFromNode`, `trojanTLSFromNode` в `node_parser_transport.go`). VMess при разборе не использует стандартный URI-query в основном формате (JSON в base64); legacy и поля JSON — в `node_parser_vmess.go`. Подробный справочник VLESS/Trojan: **`SUBSCRIPTION_PARAMS_REPORT.md`** (023); расширения 029 — спека **`029-Q-С-…/SPEC.md`** и [сгенерированные страницы схем](../contract/docs/generated/index.md).
+- **Query / transport / TLS:** соглашения кодирования и разбора совпадают, потому что читаются ОДНИ И ТЕ ЖЕ таблицы реестра в обе стороны — вид ссылки есть свойство схемы, а не рукописного эмиттера (`contract/docs/MAPPER_ENGINE.md` §9). Подробный справочник VLESS/Trojan: **`SUBSCRIPTION_PARAMS_REPORT.md`** (023); расширения 029 — спека **`029-Q-С-…/SPEC.md`** и [сгенерированные страницы схем](../contract/docs/generated/index.md).
 
 ### API в коде
 
 | Функция | Пакет | Назначение |
 |--------|--------|------------|
 | `ShareURIFromOutbound(out map[string]interface{})` | `core/config/subscription` (`share_uri.go`) | Кодирование из JSON-объекта outbound; для `type: wireguard` делегирует в `ShareURIFromWireGuardEndpoint` |
-| `ShareURIFromWireGuardEndpoint(ep map[string]interface{})` | `core/config/subscription` (`shareuri_wireguard.go`) | Кодирование `wireguard://` из одного endpoint (один peer в `peers[]`) |
+| `ShareURIFromWireGuardEndpoint(ep map[string]interface{})` | `core/config/subscription` (`share_uri.go`) | Кодирование `wireguard://` из одного endpoint (один peer в `peers[]`) |
 | `GetOutboundMapByTag(configPath, tag)` | `core/config` (`outbound_share.go`) | Поиск outbound по полю `tag` в `config.json` |
 | `GetEndpointMapByTag(configPath, tag)` | `core/config` (`outbound_share.go`) | Поиск endpoint по полю `tag` в `endpoints[]` |
 | `ShareProxyURIForOutboundTag(configPath, tag)` | `core/config` (`outbound_share.go`) | Сначала outbound по тегу, иначе WireGuard в `endpoints[]` |
@@ -158,7 +160,7 @@
 | `type` в JSON | Схема URI | Замечания |
 |---------------|-----------|-----------|
 | `vless` | `vless://` | `encryption=none`, transport/TLS как в подписках |
-| `vmess` | `vmess://` + base64 | Поля JSON узла согласованы с `parseVMessJSON` |
+| `vmess` | `vmess://` + base64 | Поля JSON контейнера объявлены секцией `vmess` реестра — теми же, что читает разбор |
 | `trojan` | `trojan://` | Пароль в userinfo |
 | `shadowsocks` | `ss://` | SIP002, base64(`method:password`) |
 | `socks` | `socks5://` | `version` 5; user/password при наличии |
@@ -182,21 +184,24 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
 
 ## Входные формы, которые не являются ссылками
 
-Узел приезжает не всегда в виде URI. Три формы ниже лаунчер обрабатывает до
-всякого разбора ссылок, и в секциях `uri.*` реестра их нет — реестр видит уже
-канонический `wireguard://`-URI, к которому они сводятся.
+Узел приезжает не всегда в виде URI. Прежнее утверждение здесь больше не верно:
+формы ниже **не сводятся к промежуточной ссылке `wireguard://`**. Текст wg-quick
+`.conf` ведёт своя секция реестра — **`mappers.conf`** поверх ini-пространства, а
+профиль Amnezia распаковывается в такой же текст `.conf` и уезжает в ту же секцию.
+Обход через ссылку снят потому, что терял то, чего в ссылке нет по построению: код
+`wgconf_dns_ignored` и метку из комментария `[Peer]`.
 
 ### Amnezia (`vpn://`)
 
 Ссылки **`vpn://…`**, которые экспортирует Amnezia VPN / AmneziaWG 2.0 (файл `.vpn` — это одна такая ссылка), принимаются напрямую: вставьте ссылку в Sources или Connections. Формат (эталон — `amnezia-vpn/config-decoder`): `vpn://` + base64url без padding, внутри qCompress (4 байта big-endian длины + zlib), под ним JSON всего профиля Amnezia.
 
-Из профиля импортируется **только WireGuard/AmneziaWG-контейнер** (OpenVPN/Cloak/XRay-контейнеры пропускаются): сначала пробуется `defaultContainer`, затем остальные по порядку. Найденный `[Interface]/[Peer]`-конфиг конвертируется в канонический `wireguard://`-URI (см. страницу [`wireguard`](../contract/docs/generated/protocols/wireguard.md)), поэтому применяются те же правила: нормализация голых IP до CIDR, promote AWG-полей `Jc`/`Jmin`/`Jmax`/`S1`–`S4`/`H1`–`H4`/`I1`–`I5` в корень endpoint и **кламп MTU AWG-эндпоинта до 1280** — `MTU = 1420` из амнезиевского конфига заведомо ломает передачу данных (`sendmsg: message too long`). Имя узла берётся из `description` профиля, затем `hostName`, затем имя контейнера.
+Из профиля импортируется **только WireGuard/AmneziaWG-контейнер** (OpenVPN/Cloak/XRay-контейнеры пропускаются): сначала пробуется `defaultContainer`, затем остальные по порядку. Найденный `[Interface]/[Peer]`-конфиг уезжает в секцию `mappers.conf` реестра (набор полей — на странице [`wireguard`](../contract/docs/generated/protocols/wireguard.md)), поэтому применяются те же правила, что и у вставленного `.conf`: нормализация голых IP до CIDR, promote AWG-полей `Jc`/`Jmin`/`Jmax`/`S1`–`S4`/`H1`–`H4`/`I1`–`I5` в корень endpoint и **кламп MTU AWG-эндпоинта до 1280** — `MTU = 1420` из амнезиевского конфига заведомо ломает передачу данных (`sendmsg: message too long`). Имя профиля (`description`, затем `hostName`, затем имя контейнера) едет источником `hint`, а **куда его поставить в цепочке метки, решает секция**, а не вызывающий: комментарий под `[Peer]` его перебивает, хост `Endpoint` — последнее звено.
 
 Лимиты: ссылка до 512 КБ, распакованный профиль до 8 МБ (защита от zlib-бомб). Профиль без WG/AWG-контейнера даёт ошибку с перечислением контейнеров. Реализация: `core/config/subscription/node_parser_amnezia.go`; спека: `SPECS/075-F-C-AMNEZIA_VPN_IMPORT/SPEC.md`; референс-декодер для отладки: `scripts/decode_amnezia_vpn.py`.
 
 ### Голый `.conf`-текст (`[Interface]/[Peer]`)
 
-Содержимое `.conf`-файла WireGuard/AmneziaWG можно вставить в поле Add вкладки Sources **как есть** — классификатор сам выделяет `[Interface]`-блоки из вставленного текста до построчного разбора и конвертирует каждый в канонический `wireguard://`-URI (хранится и шарится именно URI). Несколько блоков за одну вставку → несколько узлов; ссылки в том же тексте продолжают работать. Имя узла — хост из `Endpoint`. AWG-поля и кламп MTU — как у `vpn://` выше. Невалидный блок пропускается с предупреждением в лог, не срывая вставку. Реализация: `core/config/subscription/wgconf_text.go` + врезка в `classifyInputLines` (`ui/configurator/business/parser.go`); спека: `SPECS/076-F-C-WGCONF_PASTE_IMPORT/SPEC.md`.
+Содержимое `.conf`-файла WireGuard/AmneziaWG можно вставить в поле Add вкладки Sources **как есть** — классификатор сам выделяет `[Interface]`-блоки из вставленного текста до построчного разбора, и каждый блок ведёт секция `mappers.conf` реестра. Несколько блоков за одну вставку → несколько узлов; ссылки в том же тексте продолжают работать. Имя узла — комментарий сразу под `[Peer]`, если провайдер его написал (в `.conf` это единственное человекочитаемое имя), иначе хост из `Endpoint`. AWG-поля и кламп MTU — как у `vpn://` выше. Невалидный блок пропускается с предупреждением в лог, не срывая вставку. Реализация: `core/config/subscription/wgconf_text.go` + врезка в `classifyInputLines` (`ui/configurator/business/parser.go`); спека: `SPECS/076-F-C-WGCONF_PASTE_IMPORT/SPEC.md`.
 
 ### Подписка, отдающая `.conf` или профиль `vpn://`
 
