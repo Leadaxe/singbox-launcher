@@ -5,21 +5,24 @@
   "nodes": [
     {
       "entry": {
-        "server": "h.example",
+        "server": "a.example",
         "server_port": 443,
         "tls": {
-          "alpn": [
-            "h2",
-            "http/1.1"
-          ],
           "enabled": true,
-          "server_name": "s.example"
+          "server_name": "a.example"
+        },
+        "transport": {
+          "mode": "auto",
+          "path": "/x",
+          "session_key": "sid",
+          "session_placement": "query",
+          "type": "xhttp"
         },
         "type": "vless",
         "uuid": "11111111-2222-3333-4444-555555555555"
       },
       "kind": "outbound",
-      "label": "alpn",
+      "label": "xhttp-flat-sessionid",
       "scheme": "vless"
     }
   ],

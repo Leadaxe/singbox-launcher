@@ -1,0 +1,7 @@
+# То же для network: "quic" — второй транспорт Xray без пары у ядра. Отдельным
+# кейсом, потому что путь санитайзера у него отличался: у quic он транспорт НЕ
+# снимал (тип попадал в enum ядра как имя QUIC-протокола), и узел уезжал с
+# transport.type: "quic", которого ядро в V2RayTransportOptions не знает, —
+# то есть ронял бы ВЕСЬ конфиг на unknown field. У kcp терялся молча, здесь
+# ломался конфиг: одна причина, два разных исхода.
+[{"remarks":"quic","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"a.example","port":443,"users":[{"id":"11111111-2222-3333-4444-555555555555","encryption":"none"}]}]},"streamSettings":{"network":"quic","security":"none","quicSettings":{"key":"testkey","security":"aes-128-gcm","header":{"type":"none"}}}}]}]

@@ -1,0 +1,9 @@
+# Xray-элемент wireguard с domainStrategy и полями, которым у endpoint ядра
+# эквивалента нет. Эквивалент domainStrategy у ядра ЕСТЬ
+# (domain_resolver.strategy), но реестр объявляет domain_resolver КОРОТКОЙ
+# формой — строкой с тегом DNS-сервера, — и стратегия без сервера ядром
+# отбрасывается. Потеря объявлена КОДОМ (xray_domain_strategy_ignored), а не
+# молчанием: узел, которому провайдер задал ForceIPv4, иначе молча пошёл бы и
+# по AAAA. noKernelTun/remoteDNS — объявленное чтение без записи и без кода:
+# эквивалента нет вовсе, а ключ обязан не попасть в json_field_unknown.
+[{"remarks":"wg-strategy","outbounds":[{"tag":"proxy","protocol":"wireguard","settings":{"secretKey":"RJJ18D1GWq3zP807h/ZJMnrRvqWnuvyikLF1UYdXvgc=","address":["10.13.13.2/32"],"domainStrategy":"ForceIPv4","noKernelTun":false,"remoteDNS":"1.1.1.1","peers":[{"publicKey":"KfAA0pw6WUOvuXHUWb5c+PxqlaIrItCzyzo78KlUYqk=","endpoint":"engage.example:2408","allowedIPs":["0.0.0.0/0"]}]}}]}]

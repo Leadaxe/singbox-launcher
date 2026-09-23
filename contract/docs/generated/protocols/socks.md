@@ -4,7 +4,7 @@
 
 [← index](../index.md) · [diagnosed problems](../warnings.md)
 
-`socks` — an outbound, sing-box type `socks`. Also written as `socks5`, `socks4`, `socks4a`. Accepted from: share link, sing-box JSON.
+`socks` — an outbound, sing-box type `socks`. Also written as `socks5`, `socks4`, `socks4a`. Accepted from: share link, sing-box JSON, Xray JSON.
 
 <sub>Schema checked against core `1.14.1-lx.4` · the link fragment (`#…`) is the node `label`</sub>
 
@@ -14,7 +14,7 @@
 | `singbox_type` | `socks` |
 | `kind` | `outbound` |
 | `aliases` | `socks5`, `socks4`, `socks4a` |
-| `sources` | `uri`, `singbox` |
+| `sources` | `uri`, `singbox`, `xray` |
 | Core the schema was checked against | `1.14.1-lx.4` |
 | URI fragment | `label` |
 

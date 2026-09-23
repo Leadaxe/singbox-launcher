@@ -4,12 +4,29 @@
   "kind": "group",
   "singbox_type": "selector|urltest",
   "genus": {
-    "values": ["selector", "urltest"],
-    "by_source": { "singbox": "$as_is", "xray": "urltest", "uri": "urltest" },
-    "impl": "Род группы ЕСТЬ тип тела sing-box (решение владельца 19.09.2026, TASKS_LXBOX §42; §32.6 закрыт). Отдельного имени рода — «balancer_group» черновика — не заводится: имя у него уже есть, это значение entry.type, и вторая номенклатура рядом означала бы две правды об одной сущности. values повторяет CANON §5 и перечисляет допустимые значения entry.type у kind:group. by_source называет, во что род разрешается у каждого ВИДА ИСТОЧНИКА: singbox несёт тип собой ($as_is — selector остаётся selector, urltest остаётся urltest), Xray-балансировщик рода не объявляет вовсе (routing.balancers[] — пул, а не переключатель) и разрешается в urltest, синтетический autogroup:// LxBox — тоже urltest. Сборка документа (xray_balancer.go) в маппер не входит по границе PRIMITIVES §10, но ЗНАЧЕНИЕ, которое она ставит, объявлено здесь: иначе «urltest» оставался бы литералом кода без встречной записи в контракте, и расхождение сторон по роду было бы нечем судить."
+    "values": [
+      "selector",
+      "urltest"
+    ],
+    "by_source": {
+      "singbox": "$as_is",
+      "xray": "urltest",
+      "uri": "urltest"
+    },
+    "impl": "Род группы ЕСТЬ тип тела sing-box (решение владельца 19.09.2026, TASKS_LXBOX §42; §32.6 закрыт). Отдельного имени рода — «balancer_group» черновика — не заводится: имя у него уже есть, это значение entry.type, и вторая номенклатура рядом означала бы две правды об одной сущности. values повторяет CANON §5 и перечисляет допустимые значения entry.type у kind:group. by_source называет, во что род разрешается у каждого ВИДА ИСТОЧНИКА: singbox несёт тип собой ($as_is — selector остаётся selector, urltest остаётся urltest), Xray-балансировщик рода не объявляет вовсе (routing.balancers[] — пул, а не переключатель) и разрешается в urltest, синтетический autogroup:// LxBox — тоже urltest. Сборка документа (xray_balancer.go) в маппер не входит по границе PRIMITIVES §10, но ЗНАЧЕНИЕ, которое она ставит, объявлено здесь: иначе «urltest» оставался бы литералом кода без встречной записи в контракте, и расхождение сторон по роду было бы нечем судить.",
+    "round_trip": {
+      "preserve_unexecuted": true,
+      "impl": "НОРМА КРУГА, контракт 1.1.50 (решение владельца 24.09.2026, согласовано обеими сторонами). Поле рода, которое сторона НЕ ИСПОЛНЯЕТ, она обязана СОХРАНИТЬ сквозным — в состоянии узла и в бэкапе, — не интерпретируя. Предмет сегодня один: `default` у selector (имя члена, выбранного вручную). LxBox ручного рода не имеет и приводит обе формы к urltest с кодом `selector_as_auto`, но приведение РОДА и потеря ПОЛЯ — разные вещи: прежде `default` исчезал безвозвратно, и круг «импорт → бэкап → импорт» у selector'а терял выбор пользователя молча, без кода и без возможности его восстановить. Сохранение сквозным стоит ничего и возвращает полю обратимость. В ТЕЛО ЯДРА при этом идут ТОЛЬКО поля объявленного рода: ядро декодирует с DisallowUnknownFields, и `default`, дописанный к телу с type: urltest, роняет ВЕСЬ конфиг — то есть сохранять поле обязательно ВНЕ тела (модель и бэкап), а не подмешивая его к эмиту. Отсюда и имя: preserve, а не map."
+    }
   },
-  "aliases": ["autogroup"],
-  "sources": ["singbox", "xray", "uri"],
+  "aliases": [
+    "autogroup"
+  ],
+  "sources": [
+    "singbox",
+    "xray",
+    "uri"
+  ],
   "extension": null,
   "note": "Импортированная группа — рядовой узел списка (kind:group), не канал приложения. Члены группы в каноническом узле — по label (§2 PLAN). Источники: sing-box импорт (selector/urltest из outbounds[]) и Xray-балансировщик (routing.balancers[0] элемента → urltest); source 'uri' — ТОЛЬКО синтетический autogroup:// LxBox (mobile-internal, непереносимая ссылка: правило написано под состав своей папки). Семантический разрыв импорта sing-box: Go сохраняет selector selector'ом (+default), Dart конвертит обе формы в urltest-узел AutoSelectSpec (selector → warning SelectorAsAutoWarning, default теряется); члены у Go — по тегам, у Dart — по identity-ключам (ExplicitMembers). Xray: Go игнорирует strategy (всегда urltest c url/interval из burstObservatory.pingConfig, дефолты gstatic/3m); Dart маппит strategy → mode/pool (leastPing→least_test, leastLoad expected>1→round_robin, дефолты cp.cloudflare.com/15m) — дефолты urltest-опций у проектов РАЗНЫЕ.",
   "uri": {
@@ -20,19 +37,123 @@
       "impl": "autogroup:// авторитета не имеет: host/userinfo пустые, всё в query + fragment."
     },
     "query": {
-      "include": { "type": "string", "default": "", "ext": "mobile", "desc_en": "Regex that selects members by tag.", "desc_ru": "Regex отбора членов по тегу.", "impl": "Regex членства по итоговому тегу узла И его синонимам (§321 P6); пустой = все члены контейнера. Из Xray selector строится ^(tag1|tag2) — префикс-матчинг Xray." },
-      "exclude": { "type": "string", "default": "", "ext": "mobile", "desc_en": "Regex that subtracts members from the pool.", "desc_ru": "Regex вычитания членов из пула.", "impl": "Regex вычитания из пула." },
-      "members": { "type": "list", "default": null, "ext": "mobile", "maps_to": "outbounds", "desc_en": "Explicit list of members.", "desc_ru": "Явный список членов.", "impl": "Явный список identity-ключей (protocol|server|port|credential) через запятую; per-key экранирование только ',' и '%' (%2C/%25, §352). Присутствие members = режим явного списка (include/exclude игнорируются)." },
-      "mode": { "type": "enum", "values": ["least_test", "round_robin"], "default": "least_test", "ext": "mobile", "desc_en": "How the group picks the outbound.", "desc_ru": "Как группа выбирает узел.", "impl": "Режим выбора (§208). round_robin включает вложенный balancer{} ядра SPEC 019 (расширение lx-ядра, у апстримного urltest его нет)." },
-      "url": { "type": "string", "default": "https://cp.cloudflare.com/generate_204", "ext": "mobile", "maps_to": "url", "desc_en": "URL probed by urltest.", "desc_ru": "URL, который проверяет urltest.", "impl": "Цель проверки urltest." },
-      "interval": { "type": "string", "default": "15m", "ext": "mobile", "maps_to": "interval", "desc_en": "How often urltest probes.", "desc_ru": "Как часто выполняется проверка urltest.", "impl": "Период проверки (Go-duration)." },
-      "tolerance": { "type": "int", "default": 50, "ext": "mobile", "maps_to": "tolerance", "desc_en": "Latency window from the best node, ms.", "desc_ru": "Окно задержки от лучшего узла, мс.", "impl": "Окно от лучшего, мс." },
-      "idle_timeout": { "type": "string", "default": "30m", "ext": "mobile", "maps_to": "idle_timeout", "desc_en": "How long urltest stays idle before stopping.", "desc_ru": "Сколько urltest простаивает до остановки.", "impl": "urltest idle timeout." },
-      "interrupt": { "type": "bool", "default": false, "ext": "mobile", "maps_to": "interrupt_exist_connections", "desc_en": "Drop existing connections on a switch.", "desc_ru": "Рвать существующие соединения при переключении.", "impl": "'1' → interrupt_exist_connections." },
-      "pool": { "type": "int", "default": 3, "ext": "mobile", "maps_to": "balancer.pool", "desc_en": "How many nodes the round-robin pool holds.", "desc_ru": "Сколько узлов держит пул round-robin.", "impl": "balancer.pool (только round_robin); 0 = весь набор." },
-      "pool_tolerance": { "type": "int", "default": 0, "ext": "mobile", "maps_to": "balancer.pool_tolerance", "desc_en": "Latency window of the pool, ms.", "desc_ru": "Окно задержки пула, мс.", "impl": "balancer.pool_tolerance, clamp 0..15000 (ядро SPEC 019)." },
-      "sticky": { "type": "list", "default": null, "ext": "mobile", "maps_to": "balancer.sticky_hash", "desc_en": "Connection attributes that pin a node.", "desc_ru": "Признаки соединения, закрепляющие узел.", "impl": "balancer.sticky_hash через запятую; пустая строка = осознанно снятые чипы → sentinel [\"none\"] (§210: ядро схлопывает []→nil)." },
-      "badge": { "type": "string", "default": "[\\u{1F1E6}-\\u{1F1FF}]{2}", "ext": "mobile", "desc_en": "UI-only regex of the pool badge.", "desc_ru": "Regex значка пула, только для интерфейса.", "impl": "UI-only regex значка пула; в конфиг не уходит." }
+      "include": {
+        "type": "string",
+        "default": "",
+        "ext": "mobile",
+        "desc_en": "Regex that selects members by tag.",
+        "desc_ru": "Regex отбора членов по тегу.",
+        "impl": "Regex членства по итоговому тегу узла И его синонимам (§321 P6); пустой = все члены контейнера. Из Xray selector строится ^(tag1|tag2) — префикс-матчинг Xray."
+      },
+      "exclude": {
+        "type": "string",
+        "default": "",
+        "ext": "mobile",
+        "desc_en": "Regex that subtracts members from the pool.",
+        "desc_ru": "Regex вычитания членов из пула.",
+        "impl": "Regex вычитания из пула."
+      },
+      "members": {
+        "type": "list",
+        "default": null,
+        "ext": "mobile",
+        "maps_to": "outbounds",
+        "desc_en": "Explicit list of members.",
+        "desc_ru": "Явный список членов.",
+        "impl": "Явный список identity-ключей (protocol|server|port|credential) через запятую; per-key экранирование только ',' и '%' (%2C/%25, §352). Присутствие members = режим явного списка (include/exclude игнорируются)."
+      },
+      "mode": {
+        "type": "enum",
+        "values": [
+          "least_test",
+          "round_robin"
+        ],
+        "default": "least_test",
+        "ext": "mobile",
+        "desc_en": "How the group picks the outbound.",
+        "desc_ru": "Как группа выбирает узел.",
+        "impl": "Режим выбора (§208). round_robin включает вложенный balancer{} ядра SPEC 019 (расширение lx-ядра, у апстримного urltest его нет)."
+      },
+      "url": {
+        "type": "string",
+        "default": "https://cp.cloudflare.com/generate_204",
+        "ext": "mobile",
+        "maps_to": "url",
+        "desc_en": "URL probed by urltest.",
+        "desc_ru": "URL, который проверяет urltest.",
+        "impl": "Цель проверки urltest."
+      },
+      "interval": {
+        "type": "string",
+        "default": "15m",
+        "ext": "mobile",
+        "maps_to": "interval",
+        "desc_en": "How often urltest probes.",
+        "desc_ru": "Как часто выполняется проверка urltest.",
+        "impl": "Период проверки (Go-duration)."
+      },
+      "tolerance": {
+        "type": "int",
+        "default": 50,
+        "ext": "mobile",
+        "maps_to": "tolerance",
+        "desc_en": "Latency window from the best node, ms.",
+        "desc_ru": "Окно задержки от лучшего узла, мс.",
+        "impl": "Окно от лучшего, мс."
+      },
+      "idle_timeout": {
+        "type": "string",
+        "default": "30m",
+        "ext": "mobile",
+        "maps_to": "idle_timeout",
+        "desc_en": "How long urltest stays idle before stopping.",
+        "desc_ru": "Сколько urltest простаивает до остановки.",
+        "impl": "urltest idle timeout."
+      },
+      "interrupt": {
+        "type": "bool",
+        "default": false,
+        "ext": "mobile",
+        "maps_to": "interrupt_exist_connections",
+        "desc_en": "Drop existing connections on a switch.",
+        "desc_ru": "Рвать существующие соединения при переключении.",
+        "impl": "'1' → interrupt_exist_connections."
+      },
+      "pool": {
+        "type": "int",
+        "default": 3,
+        "ext": "mobile",
+        "maps_to": "balancer.pool",
+        "desc_en": "How many nodes the round-robin pool holds.",
+        "desc_ru": "Сколько узлов держит пул round-robin.",
+        "impl": "balancer.pool (только round_robin); 0 = весь набор."
+      },
+      "pool_tolerance": {
+        "type": "int",
+        "default": 0,
+        "ext": "mobile",
+        "maps_to": "balancer.pool_tolerance",
+        "desc_en": "Latency window of the pool, ms.",
+        "desc_ru": "Окно задержки пула, мс.",
+        "impl": "balancer.pool_tolerance, clamp 0..15000 (ядро SPEC 019)."
+      },
+      "sticky": {
+        "type": "list",
+        "default": null,
+        "ext": "mobile",
+        "maps_to": "balancer.sticky_hash",
+        "desc_en": "Connection attributes that pin a node.",
+        "desc_ru": "Признаки соединения, закрепляющие узел.",
+        "impl": "balancer.sticky_hash через запятую; пустая строка = осознанно снятые чипы → sentinel [\"none\"] (§210: ядро схлопывает []→nil)."
+      },
+      "badge": {
+        "type": "string",
+        "default": "[\\u{1F1E6}-\\u{1F1FF}]{2}",
+        "ext": "mobile",
+        "desc_en": "UI-only regex of the pool badge.",
+        "desc_ru": "Regex значка пула, только для интерфейса.",
+        "impl": "UI-only regex значка пула; в конфиг не уходит."
+      }
     },
     "fragment": "label"
   },

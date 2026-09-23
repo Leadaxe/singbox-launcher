@@ -293,6 +293,75 @@
           }
         },
         "impl": "Второе написание — см. $note блока."
+      },
+      "tcpFastOpen": {
+        "source": [
+          "json.streamSettings.sockopt.tcpFastOpen",
+          "json.streamSettings.sockopt.tcp_fast_open"
+        ],
+        "maps_to": "tcp_fast_open",
+        "type": "bool_spelled",
+        "impl": "option/outbound.go DialerOptions.TCPFastOpen. У Xray тип interface{} — булево ИЛИ число (0/false = выкл, >0 = размер очереди): bool_spelled читает оба написания, а положительное число трактуется как истина. Размер очереди у ядра не настраивается, и терять тут нечего — смысл поля «включено» переносится целиком."
+      },
+      "interface": {
+        "source": "json.streamSettings.sockopt.interface",
+        "maps_to": "bind_interface",
+        "impl": "option/outbound.go DialerOptions.BindInterface — эквивалент 1:1."
+      },
+      "sendThrough": {
+        "source": "json.sendThrough",
+        "selector": true,
+        "extract": {
+          "re": "^(?P<v4>(?:[0-9]{1,3}\\.){3}[0-9]{1,3})$",
+          "into": {
+            "v4": "inet4_bind_address"
+          }
+        },
+        "on_no_match": {
+          "action": "skip"
+        },
+        "when": {
+          "json.sendThrough": {
+            "not_in": [
+              "0.0.0.0",
+              "::",
+              ""
+            ]
+          }
+        },
+        "impl": "Xray принимает ЛИТЕРАЛ АДРЕСА, и 0.0.0.0/:: у него означают «не задано» — они исключены условием, иначе узел получил бы явную привязку к «любому адресу», которой не просили. IPv4-литерал едет в inet4_bind_address; прочие написания (IPv6, имя интерфейса у свежих версий) РАЗБИРАЮТСЯ отдельной записью sendThroughV6/sendThroughIface — разнесено по записям, потому что путь тела у них разный, а одна запись писала бы все формы в один. on_no_match: skip — значение, не похожее ни на одну форму, поля не даёт."
+      },
+      "sendThroughV6": {
+        "source": "json.sendThrough",
+        "selector": true,
+        "extract": {
+          "re": "^(?P<v6>[0-9A-Fa-f:]*:[0-9A-Fa-f:]+)$",
+          "into": {
+            "v6": "inet6_bind_address"
+          }
+        },
+        "on_no_match": {
+          "action": "skip"
+        },
+        "when": {
+          "json.sendThrough": {
+            "not_in": [
+              "0.0.0.0",
+              "::",
+              ""
+            ]
+          }
+        },
+        "impl": "IPv6-литерал (признак — двоеточие). Парная запись к sendThrough."
+      },
+      "domainStrategy": {
+        "source": "json.streamSettings.sockopt.domainStrategy",
+        "maps_to": null,
+        "on_present": {
+          "action": "note",
+          "code": "xray_domain_strategy_ignored"
+        },
+        "impl": "То же, что у одноимённой записи секции wireguard: эквивалент у ядра ЕСТЬ (domain_resolver.strategy), но реестр объявляет domain_resolver КОРОТКОЙ формой — строкой с тегом DNS-сервера, — и стратегия без сервера ядром отбрасывается. Значения Xray здесь UseIPv4/UseIPv6/UseIP (у wireguard — ForceIPv4/…), словарь тот же по смыслу. Код общий: причина потери одна, и второй код на неё завёл бы второе имя одному правилу."
       }
     }
   }

@@ -9,6 +9,9 @@
         "server": "example-2.com",
         "server_port": 8443,
         "tls": {
+          "alpn": [
+            "h2"
+          ],
           "enabled": true,
           "server_name": "example-2.com"
         },
@@ -19,14 +22,14 @@
       "scheme": "hysteria2",
       "warnings": [
         {
-          "code": "type_invalid",
-          "path": "server_ports",
-          "value": "[443]"
+          "code": "hysteria2_server_ports_item_invalid",
+          "path": "server_ports[0]",
+          "value": "443"
         },
         {
-          "code": "type_invalid",
-          "path": "tls.alpn",
-          "value": "[443 h2]"
+          "code": "tls_alpn_item_invalid",
+          "path": "tls.alpn[0]",
+          "value": "443"
         }
       ]
     }

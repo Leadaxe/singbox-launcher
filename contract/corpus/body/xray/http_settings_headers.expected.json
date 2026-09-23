@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "headers": {
+          "User-Agent": "Mozilla/5.0"
+        },
+        "password": "testpass123",
+        "server": "192.0.2.20",
+        "server_port": 8080,
+        "tls": {
+          "enabled": true,
+          "server_name": "proxy.example"
+        },
+        "type": "http",
+        "username": "testuser"
+      },
+      "kind": "outbound",
+      "label": "http-xray",
+      "scheme": "http"
+    }
+  ],
+  "v": 1
+}

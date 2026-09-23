@@ -1,0 +1,6 @@
+# Xray-элемент protocol: "http" — секции mappers.xray не было, узел терялся
+# целиком. Вместе с парой user/pass читается headers: у ядра это
+# badoption.HTTPHeader (map[string]listable_string), и Xray пишет ровно карту —
+# значение берётся КАРТОЙ, без склейки в строку. TLS такого элемента объявляет
+# streamSettings.security, и его читает подключённый tls#xray.
+[{"remarks":"http-xray","outbounds":[{"tag":"proxy","protocol":"http","settings":{"servers":[{"address":"192.0.2.20","port":8080,"users":[{"user":"testuser","pass":"testpass123"}],"headers":{"User-Agent":"Mozilla/5.0"}}]},"streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"serverName":"proxy.example"}}}]}]

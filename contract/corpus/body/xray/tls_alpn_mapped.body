@@ -1,0 +1,9 @@
+# РЕШЕНИЕ ВЛАДЕЛЬЦА 24.09.2026 (DELTAS D133-C9, прежнее решение 21.09.2026
+# отменено): tlsSettings.alpn ПЕРЕНОСИТСЯ с общего блока tls#xray, то есть у
+# vless/vmess/trojan из Xray-конфига тоже, а не только у hysteria.
+# Прежде запись стояла с maps_to: null — объявленное чтение без записи, — и
+# узел с h2-only сервером НЕ СОЕДИНЯЛСЯ: ALPN есть часть рукопожатия, и сервер,
+# которому нечего выбрать из предложенного, обрывает соединение. Потеря была
+# объявлена, но от этого не переставала быть отказом.
+# Сервер здесь h2-only: узел без alpn к нему не подключится вовсе.
+[{"remarks":"alpn-h2-only","outbounds":[{"tag":"proxy","protocol":"trojan","settings":{"servers":[{"address":"a.example","port":443,"password":"testpass123"}]},"streamSettings":{"network":"grpc","security":"tls","tlsSettings":{"serverName":"a.example","alpn":["h2"]},"grpcSettings":{"serviceName":"GunService"}}}]}]

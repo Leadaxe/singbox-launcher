@@ -3,7 +3,7 @@
     {
       "code": "protocol_unsupported",
       "index": 1,
-      "reason": "unsupported protocol \"wireguard\"",
+      "reason": "unsupported protocol \"trojan-go\"",
       "ref": "x"
     }
   ],

@@ -13,6 +13,9 @@
         },
         "transport": {
           "early_data_header_name": "Sec-WebSocket-Protocol",
+          "headers": {
+            "Host": "cdn.example"
+          },
           "max_early_data": 2560,
           "path": "/x",
           "type": "ws"

@@ -3,7 +3,15 @@
   "note": "Общая суб-схема мультиплексирования (OutboundMultiplexOptions ядра, option/multiplex.go) — ссылается из body протоколов как {\"type\":\"ref\",\"ref\":\"multiplex\"}. Есть у vless/vmess/trojan/shadowsocks. SPEC 131, CORE_SCHEMA §1.8.",
   "body": {
     "core": "1.14.1-lx.4",
-    "order": ["enabled", "protocol", "max_connections", "min_streams", "max_streams", "padding", "brutal"],
+    "order": [
+      "enabled",
+      "protocol",
+      "max_connections",
+      "min_streams",
+      "max_streams",
+      "padding",
+      "brutal"
+    ],
     "fields": {
       "enabled": {
         "type": "bool",
@@ -14,7 +22,12 @@
       },
       "protocol": {
         "type": "enum",
-        "values": ["", "h2mux", "smux", "yamux"],
+        "values": [
+          "",
+          "h2mux",
+          "smux",
+          "yamux"
+        ],
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
@@ -70,7 +83,11 @@
       },
       "brutal": {
         "type": "object",
-        "order": ["enabled", "up_mbps", "down_mbps"],
+        "order": [
+          "enabled",
+          "up_mbps",
+          "down_mbps"
+        ],
         "fields": {
           "enabled": {
             "type": "bool",
@@ -107,6 +124,51 @@
         "desc_en": "TCP Brutal congestion control settings.",
         "desc_ru": "Настройки управления перегрузкой TCP Brutal.",
         "impl": "option/multiplex.go BrutalOptions; требует поддержки на сервере."
+      }
+    }
+  },
+  "blocks": {
+    "note": "Источники мультиплексирования. Подключается протоколами через include (\"multiplex#xray\") — у ядра блок multiplex есть у vless/vmess/trojan/shadowsocks, и таблица одна на все четыре.",
+    "xray": {
+      "enabled": {
+        "source": "json.mux.enabled",
+        "selector": true,
+        "maps_to": "multiplex.enabled",
+        "type": "bool_spelled",
+        "impl": "Селектор блока: остальные записи гейтятся по multiplex.enabled, как записи TLS по tls.enabled. bool_spelled — Xray пишет и булево, и строку."
+      },
+      "concurrency": {
+        "source": "json.mux.concurrency",
+        "maps_to": "multiplex.max_streams",
+        "type": "int",
+        "when": {
+          "multiplex.enabled": true
+        },
+        "sets": {
+          "-1": {
+            "multiplex": null
+          },
+          "0": {
+            "multiplex": null
+          }
+        },
+        "impl": "СЕМАНТИКА СВЕРЕНА С XRAY: concurrency — максимум подпотоков в одном соединении, то есть max_streams ядра (option/multiplex.go MaxStreams), а НЕ max_connections. Отрицательное значение и ноль у Xray означают «mux выключен» (common/mux: concurrency<=0 → мультиплексор не создаётся), и это не «без ограничения», как читает ноль ядро: поэтому оба значения СНИМАЮТ блок целиком через sets: null (§7), а не пишут число. Иначе элемент, явно отключивший mux, получил бы в теле enabled: true с неограниченным числом потоков — ровно обратное тому, что просил."
+      },
+      "xudpConcurrency": {
+        "source": "json.mux.xudpConcurrency",
+        "maps_to": null,
+        "when": {
+          "multiplex.enabled": true
+        },
+        "impl": "Отдельного предела для XUDP-подпотоков у ядра нет: option/multiplex.go знает один max_streams на весь мультиплексор. Объявленное чтение без записи — ключ не попадёт в json_field_unknown."
+      },
+      "xudpProxyUDP443": {
+        "source": "json.mux.xudpProxyUDP443",
+        "maps_to": null,
+        "when": {
+          "multiplex.enabled": true
+        },
+        "impl": "Значения reject/allow/skip решают у Xray, пускать ли UDP/443 (QUIC) через мультиплексор. У ядра это не настройка mux, а packet_encoding узла, и отображение неоднозначно: skip означает «мимо mux, но через узел», чего одним полем тела не выразить. Маппить наугад значило бы менять путь трафика QUIC молча, поэтому чтение объявлено без записи."
       }
     }
   }

@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "password": "testpass123",
+        "server": "a.example",
+        "server_port": 443,
+        "tls": {
+          "alpn": [
+            "h2"
+          ],
+          "enabled": true,
+          "server_name": "a.example"
+        },
+        "transport": {
+          "service_name": "GunService",
+          "type": "grpc"
+        },
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "alpn-h2-only",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

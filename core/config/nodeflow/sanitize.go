@@ -615,8 +615,19 @@ func (s *sanitizer) value(path, prefix string, f *registry.Field, raw interface{
 	}
 	// Формат ЭЛЕМЕНТА судится ДО ограничений поля: негодный элемент обязан
 	// уйти сам, не забирая с собой годных соседей.
+	// Элемент НЕСТРОКОВОГО типа снят приведением (listableItems) — код о нём
+	// ставится здесь, рядом с кодом за формат элемента: путь и дедуп у них
+	// общие, а самому приведению судить значения не положено.
+	s.noteNonStringItems(path, f, raw)
 	v, keep := s.filterItems(path, f, v)
 	if !keep {
+		return nil, false
+	}
+	// Список, из которого приведение сняло ВСЕ элементы, — отсутствие
+	// значения, а не негодный тип: причину уже назвал код на каждом снятом
+	// элементе, и `type_invalid` поверх него говорил бы человеку про
+	// негодность списка, которого он не писал.
+	if items, ok := v.([]string); ok && len(items) == 0 {
 		return nil, false
 	}
 	if !s.constraintsOK(f, v) {
@@ -629,6 +640,43 @@ func (s *sanitizer) value(path, prefix string, f *registry.Field, raw interface{
 	s.noteNormalized(path, f, raw, v)
 	s.advisory(path, prefix, f, v)
 	return v, true
+}
+
+// noteNonStringItems ставит код на элементы listable-списка, снятые за ТИП.
+//
+// Парная половина к filterItems: та судит ФОРМУ строки (`item_pattern`), эта —
+// то, что элемент вовсе не строка (`alpn: [443, "h2"]`). Обе снимают элемент, а
+// не поле, и обе называют путь элементом (`alpn[0]`), чтобы человек увидел,
+// что именно выброшено. Код берётся тот же — `on_item_invalid` поля, иначе
+// `type_invalid`: причина у элемента одна («ядру такой элемент не годится»), и
+// второе имя для неё завело бы второй словарь на одно правило.
+//
+// Индекс считается по СЫРОМУ значению: приведение годные элементы уже
+// переупаковало, и после него номер снятого не восстановить.
+func (s *sanitizer) noteNonStringItems(path string, f *registry.Field, raw interface{}) {
+	if f.Type != "listable_string" && f.Type != "string_array" {
+		return
+	}
+	items, ok := raw.([]interface{})
+	if !ok {
+		return
+	}
+	code := "type_invalid"
+	if f.OnItemInvalid != nil && f.OnItemInvalid.Code != "" {
+		code = f.OnItemInvalid.Code
+	}
+	for i, item := range items {
+		if _, isStr := item.(string); isStr {
+			continue
+		}
+		itemPath := path + "[" + strconv.Itoa(i) + "]"
+		shown := fmt.Sprintf("%v", item)
+		params := map[string]string{"path": itemPath}
+		if !f.Secret {
+			params["value"] = shown
+		}
+		s.warn(code, itemPath, shown, f.Secret, params)
+	}
 }
 
 // filterItems выбрасывает ЭЛЕМЕНТЫ списка, не подходящие под `item_pattern`.

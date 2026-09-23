@@ -10,7 +10,8 @@
   ],
   "sources": [
     "uri",
-    "singbox"
+    "singbox",
+    "xray"
   ],
   "extension": null,
   "uri": {
@@ -289,6 +290,110 @@
         },
         "impl": "userinfo.keep_empty_tail: `socks4://userid:@host` — у socks4 пароля нет по протоколу, но разделитель клиенты пишут всегда, и его отсутствие часть из них читает как «имени нет»."
       }
+    },
+    "xray": {
+      "body_source": "xray",
+      "detect": {
+        "json": {
+          "value_in": {
+            "protocol": [
+              "socks"
+            ]
+          }
+        }
+      },
+      "forms": [
+        {
+          "id": "servers",
+          "detect": {
+            "json": {
+              "type_of": {
+                "settings": "object"
+              }
+            }
+          },
+          "space": "json",
+          "base": "settings.servers.0",
+          "impl": "Условие называет ТОЛЬКО settings — ровно те контейнеры, которые секция читает, как у shadowsocks. Транспорта у socks в Xray не бывает (streamSettings у такого outbound'а осмыслен лишь sockopt'ом, его читает dialer#xray), и требование объекта streamSettings отняло бы узел у обычного элемента без него."
+        }
+      ],
+      "defaults": {
+        "type": "socks",
+        "version": "5"
+      },
+      "label": {
+        "source": "json.remarks",
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "as_written"
+        }
+      },
+      "params": {
+        "address": {
+          "source": "json.$base.address",
+          "maps_to": "server",
+          "required": true,
+          "desc_en": "empty server address"
+        },
+        "port": {
+          "source": "json.$base.port",
+          "maps_to": "server_port",
+          "type": "int",
+          "required": true,
+          "desc_en": "server port is missing or out of range",
+          "impl": "Дефолта 1080 у этого входа НЕТ, в отличие от ссылки: элемент Xray порт пишет всегда, а подставленный дефолт увёл бы узел на чужой порт молча."
+        },
+        "user": {
+          "source": "json.$base.users.0.user",
+          "maps_to": "username",
+          "impl": "Xray зовёт пару user/pass, ядро — username/password (option/simple.go SOCKSOutboundOptions). У версии 4 пароля нет вовсе, но написанный в элементе переносится как есть: годность пары судит ядро — то же решение, что у URI-входа (mapper socks_scheme_is_version)."
+        },
+        "pass": {
+          "source": "json.$base.users.0.pass",
+          "maps_to": "password"
+        },
+        "$extra_servers": {
+          "source": "json.settings.servers",
+          "maps_to": null,
+          "on_len_gt": {
+            "n": 1,
+            "action": "note",
+            "code": "xray_extra_entries_dropped"
+          }
+        },
+        "$extra_users": {
+          "source": "json.$base.users",
+          "maps_to": null,
+          "on_len_gt": {
+            "n": 1,
+            "action": "note",
+            "code": "xray_extra_entries_dropped"
+          }
+        }
+      },
+      "include": [
+        "dialer#xray"
+      ],
+      "unknown_key": {
+        "action": "drop",
+        "code": "json_field_unknown",
+        "ignore": [
+          "protocol",
+          "tag",
+          "remarks",
+          "settings",
+          "streamSettings",
+          "mux",
+          "sendThrough",
+          "proxySettings"
+        ],
+        "impl": "Список дословно равен списку остальных xray-секций — см. развёрнутую сноску у vless."
+      },
+      "emit": null
     }
   }
 }

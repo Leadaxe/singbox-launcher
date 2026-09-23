@@ -45,6 +45,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`form_unrecognized`](#form_unrecognized) · `error` — Entry could not be read
 - [`group_empty`](#group_empty) · `warning` — Group {tag} left without members
 - [`group_member_missing`](#group_member_missing) · `warning` — {count} group members not imported
+- [`grpc_multi_mode_ignored`](#grpc_multi_mode_ignored) · `warning` — gRPC: multi mode not applied
 - [`hysteria2_server_ports_item_invalid`](#hysteria2_server_ports_item_invalid) · `warning` — Hysteria2: port hopping range dropped
 - [`hysteria_server_ports_item_invalid`](#hysteria_server_ports_item_invalid) · `warning` — Hysteria: port hopping range dropped
 - [`json_field_unknown`](#json_field_unknown) · `info` — Configuration: field {query_name} not read
@@ -98,7 +99,10 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`ws_early_data_converted`](#ws_early_data_converted) · `info` — WebSocket: early data converted
 - [`xhttp_mode_forced_packet_up`](#xhttp_mode_forced_packet_up) · `warning` — XHTTP mode set to packet-up
 - [`xhttp_param_reset`](#xhttp_param_reset) · `warning` — XHTTP: field {field} removed
+- [`xray_cert_chain_pin_unsupported`](#xray_cert_chain_pin_unsupported) · `warning` — TLS: certificate pinning not applied
+- [`xray_domain_strategy_ignored`](#xray_domain_strategy_ignored) · `info` — WireGuard: address family preference not applied
 - [`xray_extra_entries_dropped`](#xray_extra_entries_dropped) · `warning` — Configuration: extra entries dropped
+- [`xray_reserved_base64_unsupported`](#xray_reserved_base64_unsupported) · `warning` — WireGuard: reserved bytes written as text not applied
 
 <a id="alias_shadowed"></a>
 ### alias_shadowed
@@ -794,6 +798,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Nothing to do if the group still has the servers you need.
   - If servers are missing, ask the provider to fix the subscription and import it again.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="grpc_multi_mode_ignored"></a>
+### grpc_multi_mode_ignored
+
+**severity:** `warning`
+
+**gRPC: multi mode not applied**
+
+- **What happened:** The element asks for the gRPC multi mode. This build of the core has only the regular mode, and the node was imported with it. If the server accepts multi-mode clients only, this node will not connect.
+- **Why it happens:** Xray can carry a gRPC stream two ways — one request per connection (gun) or several multiplexed inside one (multi). sing-box implements the first one only, and there is no field to ask for the second. Most servers accept both, so the node usually works; a server configured for multi alone will refuse it.
+- **What you can do:**
+  - Check whether the node connects — if it does, nothing needs doing.
+  - If it does not, ask the provider for a node without multi mode, or pick another transport.
 
 **Where it comes from:**
 
@@ -1836,6 +1857,40 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`xhttp.x_padding_method`](protocols/_transports.md#body-xhttp-x-padding-method) — the value does not fit the field → removed
   - [`xhttp.x_padding_placement`](protocols/_transports.md#body-xhttp-x-padding-placement) — the value does not fit the field → removed
 
+<a id="xray_cert_chain_pin_unsupported"></a>
+### xray_cert_chain_pin_unsupported
+
+**severity:** `warning` · **params:** `value`
+
+**TLS: certificate pinning not applied**
+
+- **What happened:** The element pins the server certificate chain by its hash. The node works and the certificate is still verified the usual way, but this extra check is not applied: the core pins a different thing — the hash of the server's public key, not of the certificate chain — and the two values never match.
+- **Why it happens:** Both clients can pin the server certificate, but they hash different things: Xray hashes the raw certificates of the chain, sing-box hashes the public key taken from the leaf certificate. Carrying the value across would not add protection — it would break every handshake, which is the opposite of what pinning is for, so the value is deliberately not carried.
+- **What you can do:**
+  - Nothing to do if the node connects: the certificate is still verified against the usual trust store.
+  - If you need pinning exactly, ask the provider for the hash of the server public key — that is the form this application can apply.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="xray_domain_strategy_ignored"></a>
+### xray_domain_strategy_ignored
+
+**severity:** `info` · **params:** `value`
+
+**WireGuard: address family preference not applied**
+
+- **What happened:** The element asked for the {value} address strategy. The node works, but the preference is not applied: the launcher writes the DNS server for a node as a plain tag, and a strategy without a server is dropped by the core. Names may resolve to IPv6 where the provider expected IPv4.
+- **Why it happens:** Xray carries the address-family preference on the outbound itself. In sing-box the same setting lives inside the node's DNS resolver object, next to the name of the server that does the resolving — and the element never names such a server. Writing the strategy alone would either change the shape of that field for every scheme at once or invent a server tag the element did not ask for.
+- **What you can do:**
+  - Nothing to do if the node connects: the preference only affects which address is tried first.
+  - If the node needs IPv4 only, set the address strategy in the launcher's DNS settings.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
 <a id="xray_extra_entries_dropped"></a>
 ### xray_extra_entries_dropped
 
@@ -1848,6 +1903,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Check that the first entry is the one you need: it is the one that became the node.
   - If you need the other servers too, split them into separate elements — one server per outbound.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="xray_reserved_base64_unsupported"></a>
+### xray_reserved_base64_unsupported
+
+**severity:** `warning` · **params:** `value`
+
+**WireGuard: reserved bytes written as text not applied**
+
+- **What happened:** The element carries the reserved field as the text {value} instead of three numbers. The value was not applied. If the provider requires these bytes, the node completes the handshake but carries no traffic.
+- **Why it happens:** Xray declares the field as a byte string, so the same three bytes may be written either as a list of numbers or as one base64 line, and different panels pick different spellings. The launcher reads the list of numbers, which is the form the core expects; translating the text spelling would need a separate rule that does not exist yet.
+- **What you can do:**
+  - Ask the provider for the configuration with reserved written as three numbers, for example [1, 2, 3].
+  - If the node connects but carries no traffic, these bytes are the first thing to check.
 
 **Where it comes from:**
 
