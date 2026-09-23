@@ -13,6 +13,7 @@ import (
 type MigrationResult struct {
 	Migrated     bool   // копирование выполнено
 	Source       string // откуда (App/bin), пусто если источника нет
+	Dest         string // куда (Data/bin); заполнено всегда
 	DataHadState bool   // в Data уже был state.json — мигрировать нечего
 	Report       CopyReport
 }
@@ -36,6 +37,7 @@ func MigrateLegacyData(l Layout, log func(format string, args ...interface{})) (
 
 	srcBin := l.App.Bin()
 	dstBin := l.Data.Bin()
+	res.Dest = dstBin
 	if exists(stateFile(dstBin)) {
 		res.DataHadState = true
 	}
@@ -66,14 +68,21 @@ func MigrateLegacyData(l Layout, log func(format string, args ...interface{})) (
 	res.Migrated = true
 
 	if log != nil {
-		line := fmt.Sprintf("migration: %s -> %s: files=%d dirs=%d bytes=%d skipped=%d",
-			srcBin, dstBin, rep.Files, rep.Dirs, rep.Bytes, rep.Skipped)
-		if len(rep.SkippedExamples) > 0 {
-			line += " examples: " + strings.Join(rep.SkippedExamples, "; ")
-		}
-		log("%s", line)
+		log("%s", res.Summary())
 	}
 	return res, nil
+}
+
+// Summary — итог миграции одной строкой для лога:
+// «migration: <src> -> <dst>: files=… dirs=… bytes=… skipped=…[ examples: …]».
+func (r MigrationResult) Summary() string {
+	rep := r.Report
+	line := fmt.Sprintf("migration: %s -> %s: files=%d dirs=%d bytes=%d skipped=%d",
+		r.Source, r.Dest, rep.Files, rep.Dirs, rep.Bytes, rep.Skipped)
+	if len(rep.SkippedExamples) > 0 {
+		line += " examples: " + strings.Join(rep.SkippedExamples, "; ")
+	}
+	return line
 }
 
 func stateFile(bin string) string {

@@ -347,6 +347,7 @@ ui/traffic_bootstrap.go, settings_tun_darwin.go. `OpenLogFiles()` (:99) без
 | `SingboxPath`, `CoreSource`, `ShadowedCorePath` | `ResolveCore()` (file_service.go:111) = `ResolveSingboxExecPath(Layout, os.Getenv)`; зовут `NewFileService` (:99) и `DownloadCore` после установки (core_downloader.go:141) |
 | `WintunPath` | `GetWintunPathFor(Dir(SingboxPath))` там же, в `ResolveCore` |
 | `ChildLogPath` | см. выше |
+| `Migration`, `MigrationErr` | этап 6: `paths.MigrateLegacyData(layout, nil)` в `NewFileService` (file_service.go:109) до `EnsureDirectories`; ошибка старт не прерывает. Читает main.go: строка WARN после `layout.LogLine()` (:190, `MigrationResult.Summary()` migrate.go:78 / «migration failed: …») и `firstRunNoticeDue` (:73) → `scheduleFirstRunNotice` (:88) из `OnStarted` (:480); флаг `first_run_notice_shown` (`locale.MarkFirstRunNoticeShown`, settings.go:250) |
 
 ### 3.2 Debug API
 

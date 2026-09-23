@@ -85,6 +85,12 @@ type Settings struct {
 	// каждой успешной сборки. Пусто — сборки ещё не было.
 	ConfigDataRoot string `json:"config_data_root,omitempty"`
 
+	// FirstRunNoticeShown — одноразовое уведомление «данных предыдущей
+	// версии не найдено» (SPEC 135 §3.4) уже показано. Ставится сразу после
+	// показа; до тех пор уведомление всплывает на каждом старте, где в
+	// DataDir нет state.json и мигрировать нечего.
+	FirstRunNoticeShown bool `json:"first_run_notice_shown,omitempty"`
+
 	// HWID — random UUIDv4 идентификатор устройства, отправляемый в
 	// `X-Hwid` заголовке при каждом fetch'е подписки. Lazy-generated
 	// (EnsureHWID): пустой строкой при первой инсталляции → генерируется и
@@ -236,6 +242,17 @@ func MarkConfigDataRoot(binDir, root string) error {
 		return nil
 	}
 	s.ConfigDataRoot = root
+	return SaveSettings(binDir, s)
+}
+
+// MarkFirstRunNoticeShown persists that the one-time "no previous data found"
+// notice was shown (SPEC 135 §3.4).
+func MarkFirstRunNoticeShown(binDir string) error {
+	s := LoadSettings(binDir)
+	if s.FirstRunNoticeShown {
+		return nil
+	}
+	s.FirstRunNoticeShown = true
 	return SaveSettings(binDir, s)
 }
 

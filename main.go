@@ -51,6 +51,9 @@ const (
 	// по истечении процесс завершается всё равно (решение владельца 15.09.2026).
 	// Сам GracefulExit ждёт остановки ядра до 2 с, остальное — запас.
 	macQuitBudget = 5 * time.Second
+	// firstRunNoticeDelay — пауза перед уведомлением «данных не найдено»
+	// (SPEC 135 §3.4): OnStarted приходит до первого кадра окна.
+	firstRunNoticeDelay = 1 * time.Second
 )
 
 // rememberOfferedRenderer запоминает renderer железа, про который мы уже
@@ -60,6 +63,58 @@ func rememberOfferedRenderer(d paths.DataDir, renderer string) {
 	platform.UpdateGLState(d, func(s *platform.GLState) {
 		s.OfferedHWRenderer = renderer
 	})
+}
+
+// firstRunNoticeDue — условие одноразового уведомления «данных предыдущей
+// версии не найдено» (SPEC 135 §3.4): системная раскладка (System/Env), в
+// DataDir нет state.json, источника миграции рядом с бинарём нет, и
+// уведомление ещё не показывалось. Portable/Legacy не показывают: там данные
+// и есть «рядом с бинарём», искать их больше негде.
+func firstRunNoticeDue(fsvc *services.FileService, s locale.Settings) bool {
+	if fsvc == nil || s.FirstRunNoticeShown {
+		return false
+	}
+	if m := fsvc.Layout.Mode; m != paths.ModeSystem && m != paths.ModeEnv {
+		return false
+	}
+	r := fsvc.Migration
+	return !r.Migrated && !r.DataHadState && r.Source == ""
+}
+
+// scheduleFirstRunNotice показывает уведомление, когда окно видно: при
+// обычном старте — чуть позже появления окна; при -tray — при первом
+// раскрытии окна из трея в этой сессии. Не раскрыли — флаг не ставится, и
+// уведомление ждёт следующего старта. Флаг ставится сразу после показа.
+func scheduleFirstRunNotice(controller *core.AppController, data paths.DataDir, inTray bool) {
+	show := func() {
+		win := controller.UIService.MainWindow
+		if win == nil {
+			return
+		}
+		dialog.ShowInformation(locale.T("No previous data found"),
+			locale.T("No data from a previous launcher version was found in the data folder. If you had settings and subscriptions, restore them from an LX Backup (Settings → Backup). Data folder:")+
+				"\n"+string(data), win)
+		if err := locale.MarkFirstRunNoticeShown(data.Bin()); err != nil {
+			debuglog.WarnLog("first-run notice: persist flag: %v", err)
+		}
+	}
+	if !inTray {
+		time.AfterFunc(firstRunNoticeDelay, func() { fyne.Do(show) })
+		return
+	}
+	// OnWindowShown зовётся из fyne.Do (UIService.ShowMainWindowOrFocusWizard),
+	// то есть в UI-потоке, как и этот код из OnStarted — guard без мьютекса.
+	shown := false
+	prev := controller.UIService.OnWindowShown
+	controller.UIService.OnWindowShown = func() {
+		if prev != nil {
+			prev()
+		}
+		if !shown {
+			shown = true
+			show()
+		}
+	}
 }
 
 // main is the application's entry point. It simply creates and runs the AppController.
@@ -130,6 +185,13 @@ func main() {
 	// Раскладка данных — в той же строке (SPEC 135): где искать state и логи.
 	debuglog.WarnLog("launcher %s %s/%s started, exec=%s, %s",
 		constants.AppVersion, runtime.GOOS, runtime.GOARCH, exe, layout.LogLine())
+	// Итог миграции (SPEC 135 §3.4) выполнен ещё в NewFileService, до
+	// открытия логов; пишем здесь, чтобы строка попала в файл.
+	if fsvc := controller.FileService; fsvc.MigrationErr != nil {
+		debuglog.WarnLog("migration failed: %v — starting with an empty data folder, will retry next launch", fsvc.MigrationErr)
+	} else if fsvc.Migration.Migrated {
+		debuglog.WarnLog("%s", fsvc.Migration.Summary())
+	}
 
 	// Issue #105: в RDP-сессии Windows Server без GPU системный OpenGL — это
 	// «GDI Generic» 1.1, и окно Fyne молча не отрисовывается. Гейт проверяет
@@ -412,6 +474,12 @@ func main() {
 					len(s.Directions),
 					len(s.CustomRules))
 			}()
+
+			// SPEC 135 §3.4: данных предыдущей версии нет и переносить нечего —
+			// один раз подсказать про LX Backup.
+			if firstRunNoticeDue(controller.FileService, settings) {
+				scheduleFirstRunNotice(controller, layout.Data, *startInTray)
+			}
 
 			// Auto-start VPN if -start flag is provided
 			if *autoStart {

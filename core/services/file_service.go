@@ -4,6 +4,7 @@
 //
 // Ответственности:
 //   - Раскладка данных (Layout: AppDir/DataDir/LogDir, SPEC 135) и пути от неё (ConfigPath, SingboxPath, SingboxBundledPath)
+//   - Миграция унаследованных данных App/bin → Data/bin при старте (SPEC 135 §3.4)
 //   - Создание writable-директорий (Data/bin, Logs) при старте
 //   - Управление жизненным циклом лог-файлов (открытие, закрытие)
 //   - Ротация логов при превышении размера (максимум 1 старый файл на каждый лог)
@@ -82,13 +83,30 @@ type FileService struct {
 
 	// ChildLogPath — абсолютный путь лога sing-box: <Logs>/sing-box.log.
 	ChildLogPath string
+
+	// Migration — итог переноса унаследованных данных App/bin → Data/bin
+	// (SPEC 135 §3.4), выполненного в NewFileService. Читает main: строка в
+	// лог после открытия логов и решение об одноразовом уведомлении.
+	Migration paths.MigrationResult
+
+	// MigrationErr — сбой миграции. Старт не прерывается: приложение
+	// поднимается с пустым DataDir, а state.json в Data так и не появился,
+	// поэтому следующий старт повторит попытку.
+	MigrationErr error
 }
 
 // NewFileService создаёт и инициализирует FileService от раскладки layout.
-// Определяет все пути и создаёт writable-директории (Data/bin, Logs).
+// Переносит унаследованные данные (SPEC 135 §3.4), определяет все пути и
+// создаёт writable-директории (Data/bin, Logs).
 // Вызывается один раз при создании AppController.
 func NewFileService(layout paths.Layout) (*FileService, error) {
 	fs := &FileService{Layout: layout}
+
+	// SPEC 135 §3.4: до EnsureDirectories и до любого чтения settings/state
+	// из Data — копия должна лечь раньше, чем кто-то увидит пустой Data/bin.
+	// Логов ещё нет (они открываются следом, в OpenLogFiles), и debuglog
+	// ранние строки не буферизует — итог пишет main после открытия логов.
+	fs.Migration, fs.MigrationErr = paths.MigrateLegacyData(layout, nil)
 
 	if err := platform.EnsureDirectories(layout); err != nil {
 		return nil, fmt.Errorf("NewFileService: cannot create directories: %w", err)

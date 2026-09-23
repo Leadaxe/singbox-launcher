@@ -41,11 +41,11 @@
 - [x] `core/template_migration_test.go` по имени зелёный.
 
 ## Этап 6 · Миграция
-- [ ] `internal/paths/copytree.go`: временный каталог → права → пропуск нечитаемого с подсчётом → rename.
-- [ ] `internal/paths/migrate.go`: условие (§3.4), `.migrated_from` последним, одна строка в лог.
-- [ ] Вызов в `NewFileService`/`main` до `EnsureDirectories`.
-- [ ] Одноразовое уведомление «данных предыдущей версии не найдено» (флаг в `settings.json`).
-- [ ] Интеграционный тест миграции (§8).
+- [x] `internal/paths/copytree.go`: временный каталог → права → пропуск нечитаемого с подсчётом → rename.
+- [x] `internal/paths/migrate.go`: условие (§3.4), `.migrated_from` последним, одна строка в лог.
+- [x] Вызов в `NewFileService`/`main` до `EnsureDirectories`.
+- [x] Одноразовое уведомление «данных предыдущей версии не найдено» (флаг в `settings.json`).
+- [x] Интеграционный тест миграции (§8).
 
 ## Этап 7 · Storage и пути
 - [ ] `ui/settings_storage.go`: раздел Storage, строки Mode/Program/Data/Logs/Core/Template/wintun, кнопки Open, Copy paths.
