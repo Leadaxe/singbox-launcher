@@ -20,7 +20,13 @@
       },
       "kind": "outbound",
       "label": "empty extra",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "json_field_unknown",
+          "path": "streamSettings.xhttpSettings.extra.mode"
+        }
+      ]
     }
   ],
   "v": 1

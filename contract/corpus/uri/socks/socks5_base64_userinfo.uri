@@ -1,0 +1,4 @@
+# v2rayN пишет socks-ссылку как base64url(«user:pass») ВСЕГДА (SocksFmt.ToUri):
+# base64 от «testuser:testpass123». Прежде реестр резал строку по ':', которого
+# в ней нет — username становился всей base64-строкой, пароль терялся МОЛЧА.
+socks5://dGVzdHVzZXI6dGVzdHBhc3MxMjM@example-1.com:1080#socks5-b64-userinfo

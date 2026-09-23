@@ -476,17 +476,47 @@ func asListable(f *registry.Field, raw interface{}) (interface{}, bool) {
 		}
 		return out, true
 	case []interface{}:
-		out := make([]string, 0, len(v))
-		for _, item := range v {
-			s, ok := item.(string)
-			if !ok {
-				return nil, false
-			}
-			out = append(out, normalize(f.Normalize, s))
-		}
-		return out, true
+		return listableItems(f, v)
 	}
 	return nil, false
+}
+
+// listableItems приводит элементы разнотипного массива к строкам.
+//
+// НЕСТРОКОВЫЙ элемент снимается ЭЛЕМЕНТОМ, а не роняет поле целиком (решение
+// владельца 24.09.2026, согласовано с LxBox §510 M1; по духу нормы 1.1.40
+// `item_pattern`/`on_item_invalid`). Прежде один `443` числом в
+// `alpn: [443, "h2"]` возвращал (nil, false) — поле исчезало со ВСЕМИ годными
+// соседями и получало один `type_invalid` на весь список. Ядру же довольно
+// одного негодного элемента, чтобы отвергнуть весь конфиг, и цена ошибки
+// провайдера ложилась на человека целиком: он оставался без ALPN вовсе, хотя
+// «h2» рядом был годен.
+//
+// Возвращается ТОЛЬКО срез годных; о каждом снятом элементе код ставит
+// noteNonStringItems — там же, где судит `item_pattern`, и тем же путём
+// `alpn[0]`. Здесь кода нет намеренно: двух судей на одно значение быть не
+// должно.
+//
+// Список, оставшийся ПУСТЫМ, = ОТСУТСТВИЕ значения (поле не пишется в тело), а
+// не `type_invalid`: это та же норма, что у filterItems, и причину уже назвал
+// код на каждом снятом элементе — второй код на поле сказал бы человеку про
+// негодный тип списка, которого он не писал. Пустой срез отличим от «не
+// массив»: тот возвращает (nil, false) выше и законно идёт в on_invalid.
+//
+// Число к строке НЕ приводится: `443` не является идентификатором ALPN, и
+// подстановка «443» строкой уехала бы в ClientHello отдельным протоколом,
+// которого не существует, — сервер оборвал бы рукопожатие. Приведение здесь
+// починило бы тип и сломало смысл.
+func listableItems(f *registry.Field, v []interface{}) (interface{}, bool) {
+	out := make([]string, 0, len(v))
+	for _, item := range v {
+		s, ok := item.(string)
+		if !ok {
+			continue
+		}
+		out = append(out, normalize(f.Normalize, s))
+	}
+	return out, true
 }
 
 // asStringArray — только массив (certificate_public_key_sha256, allowed_ips).

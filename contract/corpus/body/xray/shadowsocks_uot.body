@@ -1,0 +1,3 @@
+# Xray-элемент shadowsocks с uot: поле тела udp_over_tcp.enabled в реестре было
+# объявлено, а ИСТОЧНИКА не было — и UDP через такой сервер не шёл вовсе.
+[{"remarks":"ss-uot","outbounds":[{"tag":"proxy","protocol":"shadowsocks","settings":{"servers":[{"address":"192.0.2.30","port":8388,"method":"aes-256-gcm","password":"testpass123","uot":true}]}}]}]

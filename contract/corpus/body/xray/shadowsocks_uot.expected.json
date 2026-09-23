@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "method": "aes-256-gcm",
+        "password": "testpass123",
+        "server": "192.0.2.30",
+        "server_port": 8388,
+        "type": "shadowsocks",
+        "udp_over_tcp": {
+          "enabled": true
+        }
+      },
+      "kind": "outbound",
+      "label": "ss-uot",
+      "scheme": "ss"
+    }
+  ],
+  "v": 1
+}

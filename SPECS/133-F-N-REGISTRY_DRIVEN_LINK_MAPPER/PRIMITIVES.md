@@ -558,6 +558,7 @@ FROZEN с §0.1.
 | `omit_port` у naive | `emit.omit_port` | не выставлен нигде (§33.6) | `hostPort` | `naive_omit_port_declared_unset` (страж: появление атрибута без кейса — красное) |
 | `refuse_when` | `emit.refuse_when` | `wireguard.json` `mappers.uri.emit` | `checkRefuse` | `wireguard_refuse_when` (один пир — круг, два — отказ) |
 | `round_trip_only` | `round_trip_only: "emit"` у записи | `dialer.json` `blocks.uri.detour` | `emitEntry` (пишет), `applyEntry` в `exec.go` (не читает) | `detour_round_trip_only_emit` |
+| `keep_empty_tail` (1.1.51, Q133-74) | `emit.userinfo.keep_empty_tail` | `socks.json` `mappers.uri.emit.userinfo` | `keepEmptyTail` — сильнее `single_into` и срезки пустого хвоста | `socks4_keep_empty_tail` (`socks4://userid:@host`; круг — тело без пароля) |
 
 Раннер — `core/config/linkmap/emit_overlays_test.go` (`TestEmitOverlays`).
 Расхождения, найденные сверкой: `refuse_when` и `round_trip_only` не были

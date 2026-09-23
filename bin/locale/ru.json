@@ -3704,14 +3704,8 @@
   "Create a folder first: Sources → ⋮ → Add folder.": {
     "value": "Сначала создайте папку: «Источники» → ⋮ → «Добавить папку»."
   },
-  "Node tag cannot be empty.": {
-    "value": "Тег узла не может быть пустым."
-  },
   "Tag %q is already taken in this container.": {
     "value": "Тег %q в этом контейнере уже занят."
-  },
-  "Node %q is gone.": {
-    "value": "Узла %q больше нет."
   },
   "Delete node": {
     "value": "Удалить узел"

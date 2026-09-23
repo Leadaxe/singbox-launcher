@@ -61,6 +61,23 @@ var MaxURILength = maxURILengthFromRegistry()
 // maxURILengthDefault — запасной предел, если реестр не прочитался.
 const maxURILengthDefault = 65536
 
+// CheckURILength — отказ `uri_too_long`, если ссылка длиннее предела реестра
+// (MaxURILength, limits.json `max_uri_length`); nil — длина в пределе.
+//
+// Одна проверка на всех, кто принимает ссылку: разбор подписки (ParseNode) и
+// форма прямой ссылки конфигуратора (ValidateURI). До 1.1.51 конфигуратор
+// держал своё число 8192 константой кода и отвергал длинную, но валидную
+// ссылку (awg://, xhttp с extra) целиком — второй источник истины рядом с
+// реестром (TASKS_LXBOX §47.8).
+func CheckURILength(uri string) error {
+	if len(uri) <= MaxURILength {
+		return nil
+	}
+	return linkmap.NewReject(WarnURITooLong,
+		map[string]string{"length": strconv.Itoa(len(uri)), "limit": strconv.Itoa(MaxURILength)},
+		fmt.Errorf("URI length (%d) exceeds maximum (%d)", len(uri), MaxURILength))
+}
+
 func maxURILengthFromRegistry() int {
 	reg, err := registry.Get()
 	if err != nil {
@@ -119,10 +136,8 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	}
 
 	// Validate URI length
-	if len(uri) > MaxURILength {
-		return nil, linkmap.NewReject(WarnURITooLong,
-			map[string]string{"length": strconv.Itoa(len(uri)), "limit": strconv.Itoa(MaxURILength)},
-			fmt.Errorf("URI length (%d) exceeds maximum (%d)", len(uri), MaxURILength))
+	if err := CheckURILength(uri); err != nil {
+		return nil, err
 	}
 
 	// SPEC 133: сначала спрашиваем ДВИЖОК реестра. Ведёт ли он эту ссылку,

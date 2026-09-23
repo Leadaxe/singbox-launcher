@@ -1,0 +1,32 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "a.example",
+        "server_port": 443,
+        "transport": {
+          "headers": {
+            "X-Custom": "kept"
+          },
+          "path": "/x",
+          "type": "ws"
+        },
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "nested-unknown",
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "json_field_unknown",
+          "path": "streamSettings.wsSettings.zzzUnknown"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

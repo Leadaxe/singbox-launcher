@@ -469,6 +469,15 @@
           "required": true,
           "desc_en": "empty password — the server returned a placeholder, subscription may be expired"
         },
+        "uot": {
+          "source": [
+            "json.$base.uot",
+            "json.$base.UoT"
+          ],
+          "maps_to": "udp_over_tcp.enabled",
+          "type": "bool_spelled",
+          "impl": "Поле тела было объявлено (body.fields.udp_over_tcp), источника не было: без него UDP через такой сервер не идёт вовсе. Два написания перечислены ЯВНО, хотя имена читаются регистронезависимо (§5) — второе стоит ради читателя: именно так пишет его Xray (infra/conf/shadowsocks.go зовёт поле UoT), и увидеть это в таблице полезнее, чем вывести из общего правила."
+        },
         "$extra_servers": {
           "source": "json.settings.servers",
           "maps_to": null,
@@ -480,6 +489,7 @@
         }
       },
       "include": [
+        "multiplex#xray",
         "dialer#xray"
       ],
       "unknown_key": {
@@ -494,6 +504,9 @@
           "mux",
           "sendThrough",
           "proxySettings"
+        ],
+        "nested_quiet": [
+          "streamSettings.sockopt"
         ],
         "impl": "Ключи уровня документа плюс контейнеры, чьи листья читают записи таблицы. Список дословно равен списку остальных xray-секций — см. развёрнутую сноску у vless. Заведён вместе с исполнением json_field_unknown: до него секция была единственной без перечня, и элемент получал код на свой же protocol/tag/settings."
       },

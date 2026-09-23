@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	config "singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/linkmap"
 )
 
 // TestIsDirectLink tests the IsDirectLink function
@@ -907,22 +908,22 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 	// Здесь остаётся только `none`: это перевод диалекта («нет инкапсуляции»
 	// = ключа нет), и его делает именно маппер.
 
-	t.Run("tcp raw headerType=http → http transport (goida-style)", func(t *testing.T) {
+	// Обфускация Xray заголовком поверх plain-TCP ОТБРАКОВЫВАЕТ узел
+	// (контракт 1.1.52, решение владельца 24.09.2026). Прежде тест ждал
+	// здесь transport.type == "http", и это был НЕВЕРНЫЙ маппинг: у sing-box
+	// http есть транспорт HTTP/2, на проводе другой протокол, а Xray
+	// оставляет транспорт TCP и лишь подделывает первый пакет. Сервер,
+	// ждущий камуфляж, получал h2-рукопожатие и обрывал соединение — узел
+	// выглядел рабочим и не работал.
+	t.Run("tcp raw headerType=http → узел отбракован (goida-style)", func(t *testing.T) {
 		uri := "vless://c060fdda-385d-aea1-3982-5a6c92876481@85.133.249.43:58387?encryption=none&type=raw&headerType=http&host=arvancloud.ir&path=%2F&security=none#t"
 		node, err := ParseNode(uri, nil)
-		if err != nil || node == nil {
-			t.Fatalf("ParseNode: err=%v", err)
+		if err == nil {
+			t.Fatalf("ожидалась отбраковка, получен узел: %+v", node)
 		}
-		tr := node.Outbound["transport"].(map[string]interface{})
-		if tr["type"] != "http" {
-			t.Fatalf("transport: %+v", tr)
-		}
-		hosts, _ := bodyStrings(tr["host"])
-		if len(hosts) != 1 || hosts[0] != "arvancloud.ir" {
-			t.Fatalf("host: %+v", tr["host"])
-		}
-		if _, has := node.Outbound["tls"]; has {
-			t.Fatal("expected no tls for security=none")
+		// Код едет МАШИННЫМ полем отказа, а не подстрокой текста.
+		if code := linkmap.RejectCode(err); code != "transport_header_unsupported" {
+			t.Fatalf("код отбраковки = %q, ожидался transport_header_unsupported (err=%v)", code, err)
 		}
 	})
 

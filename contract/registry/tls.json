@@ -1070,7 +1070,13 @@
         },
         "impl": "DELTAS D133-3: объявлен у tuic и masque, но Go не читал его НИ ТАМ НИ ТАМ — поле терялось только на десктопе."
       },
-      "spx": null,
+      "spx": {
+        "source": "query.spx",
+        "maps_to": null,
+        "impl": "РЕШЕНИЕ, НЕ НЕДОСМОТР (сноска дописана в 1.1.52; в 1.1.50 её получила ТОЛЬКО xray-запись spiderX, а эта половина нормы осталась голым null, и следующий читатель не мог отличить решение от пропуска). spiderX — часть маскировочного профиля Xray-REALITY: путь, по которому клиент ходит на сайт-прикрытие. У sing-box такого механизма нет вовсе, и подставить значение некуда. Кода нет намеренно: 3x-ui пишет spx ВСЕГДА (детерминированный «/»+15 символов из sha256), Marzban/Remnawave/v2rayN — при непустом значении, и код на каждом узле каждой такой панели был бы шумом, а не сведением — поведение узла от отсутствия spiderX не меняется. Написание `spx` — единственное у ссылки: полного `spiderX` в query не пишет ни одна из четырёх панелей (аудит 24.09.2026, D-6).",
+        "desc_en": "REALITY spiderX: the cover-site path of the Xray masquerade profile. Read and deliberately not written — the core has no such mechanism.",
+        "desc_ru": "spiderX у REALITY: путь на сайт-прикрытие в маскировочном профиле Xray. Читается и осознанно не пишется — у ядра такого механизма нет."
+      },
       "echfq": null,
       "ech": {
         "source": "query.ech",
@@ -1192,12 +1198,16 @@
       },
       "alpn": {
         "source": "json.streamSettings.tlsSettings.alpn",
-        "maps_to": null,
+        "maps_to": "tls.alpn",
         "list": {
           "sep": ",",
           "coerce_scalar": true
         },
-        "impl": "DELTAS D133-C9, решение владельца 21.09.2026: с ОБЩЕГО блока alpn НЕ ПИШЕТСЯ. Читается он только у hysteria — и там запись объявлена в секции схемы (mappers.xray.hysteria2) со своим merge, а не здесь. Включить запись в общем блоке значило бы добавить tls.alpn всем vless/vmess/trojan из Xray-конфига разом: поведение меняется у трёх схем ради одной, и это отдельная дельта, а не побочный эффект перевода на движок. maps_to:null держит ЧТЕНИЕ объявленным (ключ не попадёт в json_field_unknown), не давая записи."
+        "normalize": "trim",
+        "when": {
+          "tls.enabled": true
+        },
+        "impl": "РЕШЕНИЕ ВЛАДЕЛЬЦА 24.09.2026 (DELTAS D133-C9, прежнее решение 21.09.2026 отменено): alpn ПЕРЕНОСИТСЯ с общего блока, то есть у vless/vmess/trojan из Xray-конфига тоже. Прежде здесь стоял maps_to: null — объявленное чтение без записи, — и узел с h2-only или h3-only сервером не соединялся: ALPN есть часть рукопожатия, а не украшение, и сервер, которому нечего выбрать из предложенного, обрывает соединение. Потеря была объявлена, но от этого не переставала быть отказом. Форма значения: у Xray это массив строк, у ядра Listable[string] (option/tls.go ALPN) — список едет как есть, БЕЗ склейки в строку; coerce_scalar принимает скалярное написание, sep — написание одной строкой через запятую. normalize: trim снимает пробел у элемента («h2, h3»), как у записи URI-блока: годность элемента судит поле ТЕЛА (item_pattern, код tls_alpn_item_invalid), а не маппер. Запись hysteria2 остаётся своей (merge: keep_first при $form: flat): у неё другой набор источников."
       },
       "fp": {
         "source": [
@@ -1241,6 +1251,117 @@
         "when": {
           "tls.reality.enabled": true
         }
+      },
+      "minVersion": {
+        "source": "json.streamSettings.tlsSettings.minVersion",
+        "maps_to": "tls.min_version",
+        "when": {
+          "tls.enabled": true
+        },
+        "impl": "Эквивалент 1:1 (option/tls.go MinVersion, enum 1.0–1.3). Годность значения судит поле ТЕЛА, не маппер."
+      },
+      "maxVersion": {
+        "source": "json.streamSettings.tlsSettings.maxVersion",
+        "maps_to": "tls.max_version",
+        "when": {
+          "tls.enabled": true
+        }
+      },
+      "cipherSuites": {
+        "source": "json.streamSettings.tlsSettings.cipherSuites",
+        "maps_to": "tls.cipher_suites",
+        "list": {
+          "sep": ":",
+          "coerce_scalar": true
+        },
+        "when": {
+          "tls.enabled": true
+        },
+        "impl": "У Xray это ОДНА СТРОКА через двоеточие (Go crypto/tls именует наборы так же), у ядра Listable[string] — отсюда list с sep \":\". coerce_scalar принимает и массивное написание."
+      },
+      "curvePreferences": {
+        "source": "json.streamSettings.tlsSettings.curvePreferences",
+        "maps_to": "tls.curve_preferences",
+        "list": {
+          "sep": ",",
+          "coerce_scalar": true
+        },
+        "when": {
+          "tls.enabled": true
+        },
+        "impl": "Эквивалент есть (option/tls.go CurvePreferences, Listable[CurvePreference]); у Xray уже массив."
+      },
+      "certificates": {
+        "source": "json.streamSettings.tlsSettings.certificates.0.certificate",
+        "maps_to": "tls.certificate",
+        "list": {
+          "sep": "\n",
+          "coerce_scalar": true
+        },
+        "when": {
+          "tls.enabled": true
+        },
+        "impl": "Self-signed сервер без allowInsecure иначе даёт отказ соединения. Берётся ПЕРВЫЙ сертификат: тело узла держит одну цепочку. Парная запись certificateFile ведёт в tls.certificate_path."
+      },
+      "certificateFile": {
+        "source": "json.streamSettings.tlsSettings.certificates.0.certificateFile",
+        "maps_to": "tls.certificate_path",
+        "when": {
+          "tls.enabled": true
+        }
+      },
+      "echConfigList": {
+        "source": "json.streamSettings.tlsSettings.echConfigList",
+        "maps_to": "tls.ech.config",
+        "list": {
+          "sep": "\n",
+          "coerce_scalar": true
+        },
+        "implies": {
+          "tls.ech.enabled": true
+        },
+        "when": {
+          "tls.enabled": true
+        },
+        "impl": "option/tls.go OutboundECHOptions.Config (Listable[string]); enabled выводится записью, потому что ядро блок без него игнорирует. Сервер с обязательным ECH иначе даёт отказ."
+      },
+      "pinnedPeerCertificateChainSha256": {
+        "source": [
+          "json.streamSettings.tlsSettings.pinnedPeerCertificateChainSha256",
+          "json.streamSettings.tlsSettings.pinnedPeerCertSha256"
+        ],
+        "maps_to": null,
+        "on_present": {
+          "action": "note",
+          "code": "xray_cert_chain_pin_unsupported"
+        },
+        "when": {
+          "tls.enabled": true
+        },
+        "impl": "НЕ МАППИТСЯ В certificate_public_key_sha256, и это не недосмотр: ПРООБРАЗ ХЕША РАЗНЫЙ. Ядро хеширует SPKI ЛИСТОВОГО сертификата (x509.MarshalPKIXPublicKey от leaf, затем sha256 — common/tls/std_client.go:278 VerifyPublicKeySHA256), Xray — сырой DER сертификатов ЦЕПОЧКИ. Значение, годное в Xray, в sing-box не совпадёт никогда, и перенос сломал бы рукопожатие у КАЖДОГО узла, который пин задал, — то есть дал бы ровно тот отказ, от которого пин защищает. Потеря объявлена кодом: MITM-защита ослаблена, и человек обязан это знать."
+      },
+      "verifyPeerCertInNames": {
+        "source": "json.streamSettings.tlsSettings.verifyPeerCertInNames",
+        "maps_to": null,
+        "impl": "Проверка сертификата по СПИСКУ имён: у ядра эквивалента нет (сверяется одно server_name). Объявленное чтение без записи — ключ не попадёт в json_field_unknown."
+      },
+      "mldsa65Verify": {
+        "source": "json.streamSettings.realitySettings.mldsa65Verify",
+        "maps_to": null,
+        "impl": "Пост-квантовая верификация REALITY (ML-DSA-65): ядром пока не поддержана, поля нет. Чтение без записи."
+      },
+      "realityPassword": {
+        "source": "json.streamSettings.realitySettings.password",
+        "maps_to": null,
+        "impl": "Новое поле апстрима — альтернатива publicKey. У ядра пары нет (tls.reality знает public_key/short_id/key_share). Чтение без записи."
+      },
+      "spiderX": {
+        "source": [
+          "json.streamSettings.realitySettings.spiderX",
+          "json.streamSettings.realitySettings.spx"
+        ],
+        "maps_to": null,
+        "impl": "РЕШЕНИЕ, НЕ НЕДОСМОТР (сноска дописана в 1.1.50; та же норма, что у URI-записи spx в blocks.uri). spiderX — часть маскировочного профиля Xray-REALITY: путь, по которому клиент ходит на сайт-прикрытие. У sing-box такого механизма нет вовсе, и подставить значение некуда. Кода нет намеренно: 3x-ui пишет spx ВСЕГДА (детерминированный «/»+15 символов из sha256), и код на каждом узле каждой такой панели был бы шумом, а не сведением — поведение узла от отсутствия spiderX не меняется."
       }
     },
     "fp_dialect": {

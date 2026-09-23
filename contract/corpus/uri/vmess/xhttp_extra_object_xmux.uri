@@ -1,0 +1,8 @@
+# Слой `extra` у vmess приезжает ВЛОЖЕННЫМ ОБЪЕКТОМ внутри контейнера: так его
+# пишет Marzban (payload["extra"] = extra, app/subscription/v2ray.py:249), и так
+# же кладёт xmux 3x-ui (buildXhttpExtra, internal/sub/service.go:2507).
+# Прежде overlay у vmess не был объявлен вовсе, а значение-объект не доезжало и
+# до него (jsonScalar на объекте молчит намеренно), поэтому xmux вместе со
+# sc*-полями терялся МОЛЧА — тот же вход у vless разбирался полностью
+# (D-7 аудита панелей 24.09.2026).
+vmess://eyJhZGQiOiAiZXhhbXBsZS0xLmNvbSIsICJhaWQiOiAiMCIsICJleHRyYSI6IHsibm9HUlBDSGVhZGVyIjogdHJ1ZSwgInNjTWF4RWFjaFBvc3RCeXRlcyI6ICI4MDAwMDAiLCAieFBhZGRpbmdCeXRlcyI6ICIxMDAtMTAwMCIsICJ4bXV4IjogeyJoS2VlcEFsaXZlUGVyaW9kIjogNDUsICJtYXhDb25jdXJyZW5jeSI6ICI4LTE2In19LCAiaG9zdCI6ICJleGFtcGxlLTEuY29tIiwgImlkIjogIjExMTExMTExLTExMTEtMTExMS0xMTExLTExMTExMTExMTExMSIsICJuZXQiOiAieGh0dHAiLCAicGF0aCI6ICIveGh0dHAiLCAicG9ydCI6ICI0NDMiLCAicHMiOiAidm1lc3MtZXh0cmEteG11eCIsICJzY3kiOiAiYXV0byIsICJzbmkiOiAiZXhhbXBsZS0xLmNvbSIsICJ0bHMiOiAidGxzIiwgInR5cGUiOiAic3RyZWFtLW9uZSIsICJ2IjogIjIifQ==

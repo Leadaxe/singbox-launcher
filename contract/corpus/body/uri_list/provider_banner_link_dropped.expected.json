@@ -1,0 +1,56 @@
+{
+  "dropped": [
+    {
+      "code": "provider_banner_link",
+      "index": 1,
+      "reason": "provider notice, not a server: ⚠ Subscription expired",
+      "ref": "vless://00000000-0000-0000-0000-000000000000@0.0.0.0:1?type=tcp&security=none#%E2%9A%A0%20Subscription%20expired"
+    },
+    {
+      "code": "provider_banner_link",
+      "index": 2,
+      "reason": "provider notice, not a server: Traffic limit reached",
+      "ref": "socks://127.0.0.1:1080#Traffic%20limit%20reached"
+    }
+  ],
+  "meta": {
+    "body_kind": "uri-list"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "random"
+          }
+        },
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "node-a",
+      "scheme": "vless"
+    },
+    {
+      "entry": {
+        "password": "testpass123",
+        "server": "example-2.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-2.com"
+        },
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "node-b",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

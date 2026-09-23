@@ -696,6 +696,7 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v2.0.2** | [docs/release_notes/2-0-2.md](docs/release_notes/2-0-2.md) |
 | **v2.0.1** | [docs/release_notes/2-0-1.md](docs/release_notes/2-0-1.md) |
 | **v2.0.0** | [docs/release_notes/2-0-0.md](docs/release_notes/2-0-0.md) |
 | **v1.6.3** | [docs/release_notes/1-6-3.md](docs/release_notes/1-6-3.md) |

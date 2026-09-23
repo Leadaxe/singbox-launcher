@@ -14,6 +14,9 @@
         "server": "example-1.com",
         "server_port": 443,
         "tls": {
+          "alpn": [
+            "h3"
+          ],
           "enabled": true,
           "server_name": "example-1.com"
         },
@@ -24,6 +27,14 @@
       "label": "hy2-finalmask",
       "scheme": "hysteria2",
       "warnings": [
+        {
+          "code": "json_field_unknown",
+          "path": "streamSettings.hysteriaSettings.udpIdleTimeout"
+        },
+        {
+          "code": "json_field_unknown",
+          "path": "streamSettings.network"
+        },
         {
           "code": "tls_not_applicable_quic",
           "path": "tls.utls",

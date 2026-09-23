@@ -1,0 +1,5 @@
+# Xray-элемент protocol: "socks" — секции mappers.xray не было, узел терялся
+# целиком. Xray зовёт пару user/pass, ядро — username/password. Версию тела
+# ставит defaults секции ("5"): у элемента Xray поля под неё нет вовсе, а
+# socks4 приезжает отдельной схемой ссылки, не JSON-элементом.
+[{"remarks":"socks-xray","outbounds":[{"tag":"proxy","protocol":"socks","settings":{"servers":[{"address":"192.0.2.10","port":1080,"users":[{"user":"testuser","pass":"testpass123"}]}]}}]}]

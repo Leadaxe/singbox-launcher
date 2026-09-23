@@ -12,7 +12,8 @@
     "uri",
     "singbox",
     "wgconf",
-    "amnezia"
+    "amnezia",
+    "xray"
   ],
   "extension": null,
   "note": "Endpoint (sing-box >= 1.11): в конфиге живёт в endpoints[], не в outbounds[]. awg:// — алиас обоих проектов (нормализуется в wireguard, AWG-поля промоутятся в корень endpoint); amneziawg:// — ПОЛНОЕ имя той же схемы, третий алиас: панели (rrtrg и соседи) пишут его целиком, и без литерала такая ссылка отбраковывалась как «unsupported scheme», хотя все её поля секция уже умела читать — те же узлы приезжали рядом через vpn:// (контракт 1.1.48); вторая форма awg://<base64 .conf>#label (панели раздают AmneziaWG 3.x целым wg-quick в base64; авторитет без '@'/':') — payload декодируется, первый [Interface]-блок конвертируется тем же путём, что вставленный .conf (SPEC 076), метка = фрагмент, без фрагмента — комментарий пира или хост Endpoint (кейсы awg_conf_base64*; Go с 1.6.2, Dart — задача §20 TASKS_LXBOX); алиас wg:// знает только Dart (Go IsDirectLink его не принимает — разрыв). D-010: дефолтные name=\"singbox-wg0\" и system=false НЕ эмитятся (Go убирает из parseWireGuardURI). Multi-peer: URI/share-URI — строго один peer; sing-box импорт: Go сохраняет всех peers как есть, Dart берёт только peers.first (тихая потеря — разрыв).",
@@ -1405,6 +1406,226 @@
           },
           "$impl": "Диапазонный keepalive — маркер AWG 3.x и в .conf."
         }
+      },
+      "emit": null
+    },
+    "xray": {
+      "body_source": "xray",
+      "detect": {
+        "json": {
+          "value_in": {
+            "protocol": [
+              "wireguard"
+            ]
+          }
+        }
+      },
+      "forms": [
+        {
+          "id": "settings",
+          "detect": {
+            "json": {
+              "type_of": {
+                "settings": "object"
+              }
+            }
+          },
+          "space": "json",
+          "base": "settings",
+          "level": "endpoint",
+          "impl": "Род узла — endpoint, как у формы .conf: WireGuard у ядра не outbound (option/wireguard.go WireGuardEndpointOptions). Условие называет ТОЛЬКО settings: streamSettings у wireguard-элемента Xray не бывает, транспорта у него нет."
+        }
+      ],
+      "defaults": {
+        "type": "wireguard"
+      },
+      "label": {
+        "source": "json.remarks",
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "fallback": {
+          "template": "WireGuard",
+          "server_path": "peers[].address",
+          "port_path": "peers[].port"
+        },
+        "impl": "Фолбэк тот же, что у формы .conf: у безымянного элемента имя строится по хосту Endpoint пира, а не по адресу интерфейса."
+      },
+      "kind_when": {
+        "awg": {
+          "any_set": [],
+          "$impl": "Пусто НАМЕРЕННО: у Xray-диалекта awg-полей нет ни одного (infra/conf/wireguard.go их не знает), и род такого узла — всегда обычный WireGuard. Ключ объявлен, чтобы следующий читатель видел решение, а не недосмотр."
+        }
+      },
+      "params": {
+        "secretKey": {
+          "source": "json.$base.secretKey",
+          "maps_to": "private_key",
+          "required": true,
+          "desc_en": "empty WireGuard private key"
+        },
+        "address": {
+          "source": "json.$base.address",
+          "maps_to": "address",
+          "list": {
+            "sep": ","
+          },
+          "required": true,
+          "impl": "Xray отдаёт МАССИВ строк, ядро — Listable[netip.Prefix]. Значение берётся списком как есть, БЕЗ склейки в строку (§4, Q133-16); sep объявлен для скалярного написания."
+        },
+        "mtu": {
+          "source": "json.$base.mtu",
+          "maps_to": "mtu",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "workers": {
+          "source": "json.$base.workers",
+          "maps_to": "workers",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "publicKey": {
+          "source": "json.$base.peers.0.publicKey",
+          "maps_to": "peers[].public_key",
+          "required": true,
+          "desc_en": "empty peer public key"
+        },
+        "preSharedKey": {
+          "source": "json.$base.peers.0.preSharedKey",
+          "maps_to": "peers[].pre_shared_key"
+        },
+        "endpoint": {
+          "source": "json.$base.peers.0.endpoint",
+          "selector": true,
+          "required": true,
+          "extract": {
+            "re": "^(?:\\[(?P<h6>[^\\]]+)\\](?::(?P<p6>\\d+))?|(?P<h>[^:]+):(?P<p>\\d+))$",
+            "into": {
+              "h6": "peers[].address",
+              "p6": {
+                "path": "peers[].port",
+                "type": "int"
+              },
+              "h": "peers[].address",
+              "p": {
+                "path": "peers[].port",
+                "type": "int"
+              }
+            }
+          },
+          "on_no_match": {
+            "action": "take_all",
+            "into": "peers[].address",
+            "defaults": {
+              "peers[].port": 51820
+            }
+          },
+          "impl": "Регекс и фолбэк дословно те же, что у записи endpoint формы .conf: одно «host:port» раскладывается по двум путям тела, ветка h6/p6 — IPv6 в скобках. Второго определения «что такое endpoint» секция не заводит."
+        },
+        "allowedIPs": {
+          "source": "json.$base.peers.0.allowedIPs",
+          "maps_to": "peers[].allowed_ips",
+          "list": {
+            "sep": ","
+          },
+          "default_when": {
+            "absent": true,
+            "value": "0.0.0.0/0,::/0"
+          },
+          "materialize_default": true,
+          "impl": "Дефолт и его материализация — как у формы .conf: пир без allowedIPs в Xray означает весь трафик, а ядро пустой список читает как «ничего не маршрутизировать»."
+        },
+        "keepAlive": {
+          "source": "json.$base.peers.0.keepAlive",
+          "maps_to": "peers[].persistent_keepalive_interval",
+          "type": "int",
+          "on_invalid": {
+            "action": "keep"
+          }
+        },
+        "reserved": {
+          "source": "json.$base.reserved",
+          "maps_to": "peers[].reserved",
+          "list": {
+            "sep": ",",
+            "item": "int",
+            "len": 3
+          },
+          "on_invalid": {
+            "action": "drop"
+          },
+          "impl": "Длина 3 и on_invalid: drop — как у записи reserved формы .conf: негодное значение снимает ПОЛЕ, а не узел. ТИП У XRAY ДВОЯКИЙ: поле объявлено []byte, и json.Unmarshal принимает как массив чисел, так и base64-строку. Читается ТОЛЬКО массив: примитива «base64 → список байтов» у движка нет, а завести его ради одного написания одного поля значило бы расширить грамматику под частный случай. Строковое написание снимается тем же on_invalid и объявлено кодом отдельной записью $reserved_base64 — потеря названа, а не молчалива."
+        },
+        "domainStrategy": {
+          "source": "json.$base.domainStrategy",
+          "maps_to": null,
+          "on_present": {
+            "action": "note",
+            "code": "xray_domain_strategy_ignored"
+          },
+          "impl": "Эквивалент у ядра ЕСТЬ (domain_resolver.strategy, option/outbound.go DomainResolveOptions.Strategy), но реестр объявляет domain_resolver КОРОТКОЙ формой — строкой с тегом DNS-сервера (dialer.json body.fields.domain_resolver), и strategy без server ядро сериализует в «{}». Записать стратегию значило бы либо сменить форму поля в теле узла у всех схем, либо выдумать тег сервера, которого элемент не называл. Потеря объявлена кодом, а не молча: узел, которому провайдер задал ForceIPv4, пойдёт и по AAAA."
+        },
+        "noKernelTun": {
+          "source": "json.$base.noKernelTun",
+          "maps_to": null,
+          "impl": "Эквивалента у endpoint ядра нет вовсе: выбор между kernel-tun и userspace у sing-box не настраивается полем узла. Чтение объявлено, чтобы ключ не попал в json_field_unknown."
+        },
+        "remoteDNS": {
+          "source": "json.$base.remoteDNS",
+          "maps_to": null,
+          "impl": "Эквивалента у endpoint ядра нет: DNS туннеля у sing-box задаётся секцией dns конфига, а не полем узла. Как и noKernelTun — объявленное чтение без записи."
+        },
+        "$reserved_base64": {
+          "source": "json.$base.reserved",
+          "maps_to": null,
+          "when": {
+            "json.settings.reserved": {
+              "is_type": "string"
+            }
+          },
+          "on_present": {
+            "action": "note",
+            "code": "xray_reserved_base64_unsupported"
+          },
+          "impl": "Парная запись к reserved: base64-написание того же поля. Движок читает список, строку приводит on_invalid: drop — и без этого кода трёхбайтовый префикс WARP терялся бы молча, а узел без него не проходит рукопожатие у провайдеров, которые его требуют."
+        },
+        "$extra_peers": {
+          "source": "json.$base.peers",
+          "maps_to": null,
+          "on_len_gt": {
+            "n": 1,
+            "action": "note",
+            "code": "xray_extra_entries_dropped"
+          },
+          "impl": "Узлом становится первый пир: тело узла лаунчера несёт один peers[]-элемент, как и у формы .conf."
+        }
+      },
+      "include": [
+        "dialer#xray"
+      ],
+      "unknown_key": {
+        "action": "drop",
+        "code": "json_field_unknown",
+        "ignore": [
+          "protocol",
+          "tag",
+          "remarks",
+          "settings",
+          "streamSettings",
+          "mux",
+          "sendThrough",
+          "proxySettings"
+        ],
+        "nested_quiet": [
+          "streamSettings.sockopt"
+        ],
+        "impl": "Список дословно равен списку остальных xray-секций — см. развёрнутую сноску у vless."
       },
       "emit": null
     }

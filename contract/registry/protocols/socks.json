@@ -10,7 +10,8 @@
   ],
   "sources": [
     "uri",
-    "singbox"
+    "singbox",
+    "xray"
   ],
   "extension": null,
   "uri": {
@@ -191,6 +192,11 @@
         }
       ],
       "userinfo": {
+        "decode": [
+          "percent",
+          "base64?"
+        ],
+        "decode_requires_separator": ":",
         "split": {
           "sep": ":",
           "limit": 2
@@ -200,7 +206,7 @@
           "password"
         ],
         "single_into": "username",
-        "impl": "Одиночный userinfo — ИМЯ пользователя: так устроен socks4 («socks4://userid@host», корпус socks4_userid), где пароля нет по протоколу. Совпадает с into[0], но объявлено явно."
+        "impl": "Одиночный userinfo — ИМЯ пользователя: так устроен socks4 («socks4://userid@host», корпус socks4_userid), где пароля нет по протоколу. Совпадает с into[0], но объявлено явно. `decode` + `decode_requires_separator` — форма v2rayN: он пишет socks-ссылку как base64url(«user:pass») ВСЕГДА (`SocksFmt.ToUri`), и прежде реестр резал такую строку по ':', которого в ней нет — `username` становился всей base64-строкой, а ПАРОЛЬ терялся МОЛЧА (D-10 аудита панелей). Признак `:` работает В ОБЕ СТОРОНЫ, и обе половины обязательны: двоеточие в алфавит base64 не входит, поэтому его наличие ВО ВХОДЕ доказывает открытую форму и снимает конвейер, а его отсутствие В РЕЗУЛЬТАТЕ декодирования означает ложное срабатывание — открытое одиночное имя «useridonly» (userid socks4, пароля у версии 4 нет по протоколу) проходит RawStdEncoding и уехало бы семью байтами мусора. Проверено прогоном: без второй половины признака кейс socks4_userid ломался ровно так. Ровно этим признаком читает и сам v2rayN: `rawUserInfo.Contains(':') ? split : Base64Decode(...)`. `limit: 2` ловит пароль с двоеточием ВНУТРИ (base64 от «user:pa:ss» → «user» + «pa:ss», корпус socks5_base64_userinfo_colon_password). percent ДО base64 — как у ss: панели экранируют '='-паддинг как %3D."
       },
       "label": {
         "source": [
@@ -289,6 +295,113 @@
         },
         "impl": "userinfo.keep_empty_tail: `socks4://userid:@host` — у socks4 пароля нет по протоколу, но разделитель клиенты пишут всегда, и его отсутствие часть из них читает как «имени нет»."
       }
+    },
+    "xray": {
+      "body_source": "xray",
+      "detect": {
+        "json": {
+          "value_in": {
+            "protocol": [
+              "socks"
+            ]
+          }
+        }
+      },
+      "forms": [
+        {
+          "id": "servers",
+          "detect": {
+            "json": {
+              "type_of": {
+                "settings": "object"
+              }
+            }
+          },
+          "space": "json",
+          "base": "settings.servers.0",
+          "impl": "Условие называет ТОЛЬКО settings — ровно те контейнеры, которые секция читает, как у shadowsocks. Транспорта у socks в Xray не бывает (streamSettings у такого outbound'а осмыслен лишь sockopt'ом, его читает dialer#xray), и требование объекта streamSettings отняло бы узел у обычного элемента без него."
+        }
+      ],
+      "defaults": {
+        "type": "socks",
+        "version": "5"
+      },
+      "label": {
+        "source": "json.remarks",
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "as_written"
+        }
+      },
+      "params": {
+        "address": {
+          "source": "json.$base.address",
+          "maps_to": "server",
+          "required": true,
+          "desc_en": "empty server address"
+        },
+        "port": {
+          "source": "json.$base.port",
+          "maps_to": "server_port",
+          "type": "int",
+          "required": true,
+          "desc_en": "server port is missing or out of range",
+          "impl": "Дефолта 1080 у этого входа НЕТ, в отличие от ссылки: элемент Xray порт пишет всегда, а подставленный дефолт увёл бы узел на чужой порт молча."
+        },
+        "user": {
+          "source": "json.$base.users.0.user",
+          "maps_to": "username",
+          "impl": "Xray зовёт пару user/pass, ядро — username/password (option/simple.go SOCKSOutboundOptions). У версии 4 пароля нет вовсе, но написанный в элементе переносится как есть: годность пары судит ядро — то же решение, что у URI-входа (mapper socks_scheme_is_version)."
+        },
+        "pass": {
+          "source": "json.$base.users.0.pass",
+          "maps_to": "password"
+        },
+        "$extra_servers": {
+          "source": "json.settings.servers",
+          "maps_to": null,
+          "on_len_gt": {
+            "n": 1,
+            "action": "note",
+            "code": "xray_extra_entries_dropped"
+          }
+        },
+        "$extra_users": {
+          "source": "json.$base.users",
+          "maps_to": null,
+          "on_len_gt": {
+            "n": 1,
+            "action": "note",
+            "code": "xray_extra_entries_dropped"
+          }
+        }
+      },
+      "include": [
+        "dialer#xray"
+      ],
+      "unknown_key": {
+        "action": "drop",
+        "code": "json_field_unknown",
+        "ignore": [
+          "protocol",
+          "tag",
+          "remarks",
+          "settings",
+          "streamSettings",
+          "mux",
+          "sendThrough",
+          "proxySettings"
+        ],
+        "nested_quiet": [
+          "streamSettings.sockopt"
+        ],
+        "impl": "Список дословно равен списку остальных xray-секций — см. развёрнутую сноску у vless."
+      },
+      "emit": null
     }
   }
 }

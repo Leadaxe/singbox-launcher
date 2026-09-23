@@ -1,0 +1,40 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.13.13.2/32",
+          "fd00::2/128"
+        ],
+        "mtu": 1420,
+        "peers": [
+          {
+            "address": "engage.example",
+            "allowed_ips": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "persistent_keepalive_interval": 25,
+            "port": 2408,
+            "public_key": "KfAA0pw6WUOvuXHUWb5c+PxqlaIrItCzyzo78KlUYqk=",
+            "reserved": [
+              1,
+              2,
+              3
+            ]
+          }
+        ],
+        "private_key": "RJJ18D1GWq3zP807h/ZJMnrRvqWnuvyikLF1UYdXvgc=",
+        "type": "wireguard",
+        "workers": 2
+      },
+      "kind": "endpoint",
+      "label": "wg-xray",
+      "scheme": "wireguard"
+    }
+  ],
+  "v": 1
+}

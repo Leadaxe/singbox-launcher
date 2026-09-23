@@ -1,0 +1,7 @@
+# XHTTP: имена ИЗ JSON-ТЕГА Xray (sessionIDPlacement / sessionIDKey,
+# transport_method.go:269-270) в ПЛОСКОМ написании, без слоя extra.
+# В 1.1.47 эти два имени добавлены только в extra.*, а форки пишут тот же ключ и
+# плоско — тогда он не читался ни одним источником и уезжал молча (запрос LxBox,
+# контракт 1.1.50). Парный кейс к xhttp_extra_session_id_aliases, где те же
+# имена лежат внутри extra.
+[{"remarks":"xhttp-flat-sessionid","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"a.example","port":443,"users":[{"id":"11111111-2222-3333-4444-555555555555","encryption":"none"}]}]},"streamSettings":{"network":"xhttp","security":"tls","tlsSettings":{"serverName":"a.example"},"xhttpSettings":{"path":"/x","mode":"auto","sessionIDPlacement":"query","sessionIDKey":"sid"}}}]}]

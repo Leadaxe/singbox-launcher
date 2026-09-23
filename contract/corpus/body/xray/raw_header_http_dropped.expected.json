@@ -1,0 +1,15 @@
+{
+  "dropped": [
+    {
+      "code": "transport_header_unsupported",
+      "index": 0,
+      "reason": "vless outbound rejected: linkmap: обфускация заголовком \"http\" поверх TCP ядром не поддержана",
+      "ref": "proxy"
+    }
+  ],
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [],
+  "v": 1
+}

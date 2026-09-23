@@ -13,9 +13,12 @@
 // и могут быть использованы для тестирования бизнес-логики без Fyne.
 //
 // Валидаторы находятся в wizard/business, а не в core/config:
-// используют константы из wizard/utils (MaxURILength и т.д.) и core/config/parser (MaxConfigFileSize)
+// используют константы из wizard/utils (MinURILength и т.д.) и core/config/parser (MaxConfigFileSize)
 // которые специфичны для визарда (лимиты для UI операций),
 // используются только в контексте визарда (parser.go, loader.go, create_config.go).
+// Предел ДЛИНЫ ссылки своего числа здесь не имеет: он берётся из реестра
+// контракта (limits.json max_uri_length) через subscription.CheckURILength /
+// subscription.MaxURILength — тот же, что у разбора подписки.
 //
 // Они используются в:
 //   - parser.go - для валидации URL и ParserConfig перед обработкой
@@ -31,6 +34,7 @@ import (
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/parser"
+	"singbox-launcher/core/config/subscription"
 	wizardutils "singbox-launcher/ui/configurator/utils"
 )
 
@@ -87,7 +91,10 @@ func ValidateURL(urlStr string) error {
 		return fmt.Errorf("URL is empty")
 	}
 
-	if err := ValidateStringLength(urlStr, "URL", wizardutils.MinURILength, wizardutils.MaxURILength); err != nil {
+	// Своего предела у адреса подписки в контракте нет; единственный предел
+	// длины ссылки — max_uri_length реестра (прежнее 8192 было копией старого
+	// числа Go, а не решением про адрес подписки).
+	if err := ValidateStringLength(urlStr, "URL", wizardutils.MinURILength, subscription.MaxURILength); err != nil {
 		return err
 	}
 
@@ -113,7 +120,14 @@ func ValidateURI(uri string) error {
 		return fmt.Errorf("URI is empty")
 	}
 
-	if err := ValidateStringLength(uri, "URI", wizardutils.MinURILength, wizardutils.MaxURILength); err != nil {
+	// Предел длины — из реестра (limits.json max_uri_length) той же проверкой,
+	// что у разбора подписки: отказ несёт код uri_too_long с length/limit.
+	// Константа 8192 конфигуратора отвергала длинную, но валидную ссылку
+	// (awg://, xhttp с extra) и вместе с ней весь разбор (TASKS_LXBOX §47.8).
+	if err := subscription.CheckURILength(uri); err != nil {
+		return err
+	}
+	if err := ValidateStringLength(uri, "URI", wizardutils.MinURILength, subscription.MaxURILength); err != nil {
 		return err
 	}
 

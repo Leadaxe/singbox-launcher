@@ -8,6 +8,10 @@
         "server": "h.example",
         "server_port": 443,
         "tls": {
+          "alpn": [
+            "h2",
+            "http/1.1"
+          ],
           "enabled": true,
           "server_name": "s.example"
         },

@@ -29,7 +29,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`chain_nested_position`](#chain_nested_position) · `error` — Chain: nested chain at position {position}
 - [`chain_strip_utls_on_reality`](#chain_strip_utls_on_reality) · `error` — Chain: cannot strip uTLS on REALITY
 - [`chain_unsupported_by_core`](#chain_unsupported_by_core) · `error` — Chains are unavailable in core {version}
-- [`clash_yaml_unsupported`](#clash_yaml_unsupported) · `warning` — Clash YAML format is not supported
 - [`core_rejected`](#core_rejected) · `error` — The core rejected this server
 - [`detour_chain_too_deep`](#detour_chain_too_deep) · `warning` — Chain shortened to {limit} hops
 - [`detour_cycle_broken`](#detour_cycle_broken) · `warning` — Loop in the chain broken
@@ -45,6 +44,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`form_unrecognized`](#form_unrecognized) · `error` — Entry could not be read
 - [`group_empty`](#group_empty) · `warning` — Group {tag} left without members
 - [`group_member_missing`](#group_member_missing) · `warning` — {count} group members not imported
+- [`grpc_multi_mode_ignored`](#grpc_multi_mode_ignored) · `warning` — gRPC: multi mode not applied
 - [`hysteria2_server_ports_item_invalid`](#hysteria2_server_ports_item_invalid) · `warning` — Hysteria2: port hopping range dropped
 - [`hysteria_server_ports_item_invalid`](#hysteria_server_ports_item_invalid) · `warning` — Hysteria: port hopping range dropped
 - [`json_field_unknown`](#json_field_unknown) · `info` — Configuration: field {query_name} not read
@@ -59,6 +59,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`password_empty`](#password_empty) · `warning` — Password is empty
 - [`port_invalid`](#port_invalid) · `error` — Invalid port {value}
 - [`protocol_unsupported`](#protocol_unsupported) · `error` — Protocol {scheme} is not supported
+- [`provider_banner_link`](#provider_banner_link) · `info` — Subscription: provider notice instead of a server
 - [`reality_fp_not_chrome`](#reality_fp_not_chrome) · `info` — REALITY: fingerprint {value} may not connect
 - [`reality_key_share_invalid`](#reality_key_share_invalid) · `info` — REALITY: key_share removed
 - [`reality_pbk_invalid`](#reality_pbk_invalid) · `warning` — REALITY disabled: invalid public key
@@ -80,6 +81,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`tls_field_unsupported_naive`](#tls_field_unsupported_naive) · `warning` — naive: TLS field {path} removed
 - [`tls_insecure`](#tls_insecure) · `info` — Certificate verification disabled
 - [`tls_not_applicable_quic`](#tls_not_applicable_quic) · `info` — QUIC: TLS field {path} not applicable
+- [`transport_header_unsupported`](#transport_header_unsupported) · `error` — TCP header obfuscation {value} is not supported
 - [`transport_unsupported`](#transport_unsupported) · `warning` — Transport replaced with {fallback}
 - [`tuic_congestion_invalid`](#tuic_congestion_invalid) · `warning` — Field removed: unknown congestion control
 - [`tuic_udp_relay_mode_invalid`](#tuic_udp_relay_mode_invalid) · `warning` — Field removed: unknown UDP relay mode
@@ -98,7 +100,10 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`ws_early_data_converted`](#ws_early_data_converted) · `info` — WebSocket: early data converted
 - [`xhttp_mode_forced_packet_up`](#xhttp_mode_forced_packet_up) · `warning` — XHTTP mode set to packet-up
 - [`xhttp_param_reset`](#xhttp_param_reset) · `warning` — XHTTP: field {field} removed
+- [`xray_cert_chain_pin_unsupported`](#xray_cert_chain_pin_unsupported) · `warning` — TLS: certificate pinning not applied
+- [`xray_domain_strategy_ignored`](#xray_domain_strategy_ignored) · `info` — WireGuard: address family preference not applied
 - [`xray_extra_entries_dropped`](#xray_extra_entries_dropped) · `warning` — Configuration: extra entries dropped
+- [`xray_reserved_base64_unsupported`](#xray_reserved_base64_unsupported) · `warning` — WireGuard: reserved bytes written as text not applied
 
 <a id="alias_shadowed"></a>
 ### alias_shadowed
@@ -451,23 +456,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
-<a id="clash_yaml_unsupported"></a>
-### clash_yaml_unsupported
-
-**severity:** `warning`
-
-**Clash YAML format is not supported**
-
-- **What happened:** The subscription body is a Clash configuration in YAML, which this application does not read. No nodes were imported; ask the provider for a link in sing-box, Xray or base64 format.
-- **Why it happens:** The link points at a subscription for the Clash client: providers often publish several formats at one address and hand out the Clash one by default, or the address carries a format parameter that was lost.
-- **What you can do:**
-  - Ask the provider for the subscription link in sing-box, Xray or base64 format.
-  - Check the provider's page for a format switch — many offer one next to the link.
-
-**Where it comes from:**
-
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
-
 <a id="core_rejected"></a>
 ### core_rejected
 
@@ -799,6 +787,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
+<a id="grpc_multi_mode_ignored"></a>
+### grpc_multi_mode_ignored
+
+**severity:** `warning`
+
+**gRPC: multi mode not applied**
+
+- **What happened:** The element asks for the gRPC multi mode. This build of the core has only the regular mode, and the node was imported with it. If the server accepts multi-mode clients only, this node will not connect.
+- **Why it happens:** Xray can carry a gRPC stream two ways — one request per connection (gun) or several multiplexed inside one (multi). sing-box implements the first one only, and there is no field to ask for the second. Most servers accept both, so the node usually works; a server configured for multi alone will refuse it.
+- **What you can do:**
+  - Check whether the node connects — if it does, nothing needs doing.
+  - If it does not, ask the provider for a node without multi mode, or pick another transport.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
 <a id="hysteria2_server_ports_item_invalid"></a>
 ### hysteria2_server_ports_item_invalid
 
@@ -1041,6 +1046,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Pick another node from this subscription — this one cannot work here.
   - Ask the provider whether they have a link for the same server in a supported protocol.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="provider_banner_link"></a>
+### provider_banner_link
+
+**severity:** `info` · **params:** `message`
+
+**Subscription: provider notice instead of a server**
+
+- **What happened:** The subscription carries an entry that looks like a link but points nowhere — the panel writes its notice this way. The provider's message: {message}. The entry was skipped; every other entry of the subscription was imported as usual.
+- **Why it happens:** When a subscription has expired, is disabled or has run out of traffic, panels do not send an empty body: Remnawave writes a valid `vless://` to `0.0.0.0:1` and 3x-ui a `socks://` to `127.0.0.1:1080`, putting the explanation into the remark after `#`. On expiry such an entry may be the only one in the body. Addresses like these are not servers — they are a way to deliver text to the user through a list that has room only for links.
+- **What you can do:**
+  - Read the provider's message — usually it says the subscription has expired or the device limit is reached.
+  - Renew or re-activate the subscription in the provider's panel, then update the subscription in the app.
 
 **Where it comes from:**
 
@@ -1432,6 +1454,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Nothing to do: the node works, and the removed settings have no meaning over QUIC.
   - If you need a fingerprint or REALITY, take a node on a TCP protocol — vless, trojan, vmess or anytls.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="transport_header_unsupported"></a>
+### transport_header_unsupported
+
+**severity:** `error` · **params:** `value`
+
+**TCP header obfuscation {value} is not supported**
+
+- **What happened:** The entry asks for Xray header obfuscation {value} over plain TCP. The core has no counterpart for it, so the node was dropped: it could only have been built as a node without obfuscation, and the server expects an HTTP header in the very first packet and would break the connection.
+- **Why it happens:** Xray disguises a plain TCP stream as HTTP: the first packet carries a fabricated HTTP request, and the transport stays TCP. This is not the HTTP/2 transport of sing-box, which is a different protocol on the wire, so the value cannot be carried over to it. Panels write this obfuscation for nodes meant to pass DPI.
+- **What you can do:**
+  - Pick another node from this subscription — this one cannot work here.
+  - Ask the provider for a link to the same server with a real transport (ws, grpc, httpupgrade, xhttp) instead of TCP header obfuscation.
 
 **Where it comes from:**
 
@@ -1836,6 +1875,40 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`xhttp.x_padding_method`](protocols/_transports.md#body-xhttp-x-padding-method) — the value does not fit the field → removed
   - [`xhttp.x_padding_placement`](protocols/_transports.md#body-xhttp-x-padding-placement) — the value does not fit the field → removed
 
+<a id="xray_cert_chain_pin_unsupported"></a>
+### xray_cert_chain_pin_unsupported
+
+**severity:** `warning` · **params:** `value`
+
+**TLS: certificate pinning not applied**
+
+- **What happened:** The element pins the server certificate chain by its hash. The node works and the certificate is still verified the usual way, but this extra check is not applied: the core pins a different thing — the hash of the server's public key, not of the certificate chain — and the two values never match.
+- **Why it happens:** Both clients can pin the server certificate, but they hash different things: Xray hashes the raw certificates of the chain, sing-box hashes the public key taken from the leaf certificate. Carrying the value across would not add protection — it would break every handshake, which is the opposite of what pinning is for, so the value is deliberately not carried.
+- **What you can do:**
+  - Nothing to do if the node connects: the certificate is still verified against the usual trust store.
+  - If you need pinning exactly, ask the provider for the hash of the server public key — that is the form this application can apply.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="xray_domain_strategy_ignored"></a>
+### xray_domain_strategy_ignored
+
+**severity:** `info` · **params:** `value`
+
+**WireGuard: address family preference not applied**
+
+- **What happened:** The element asked for the {value} address strategy. The node works, but the preference is not applied: the launcher writes the DNS server for a node as a plain tag, and a strategy without a server is dropped by the core. Names may resolve to IPv6 where the provider expected IPv4.
+- **Why it happens:** Xray carries the address-family preference on the outbound itself. In sing-box the same setting lives inside the node's DNS resolver object, next to the name of the server that does the resolving — and the element never names such a server. Writing the strategy alone would either change the shape of that field for every scheme at once or invent a server tag the element did not ask for.
+- **What you can do:**
+  - Nothing to do if the node connects: the preference only affects which address is tried first.
+  - If the node needs IPv4 only, set the address strategy in the launcher's DNS settings.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
 <a id="xray_extra_entries_dropped"></a>
 ### xray_extra_entries_dropped
 
@@ -1848,6 +1921,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Check that the first entry is the one you need: it is the one that became the node.
   - If you need the other servers too, split them into separate elements — one server per outbound.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="xray_reserved_base64_unsupported"></a>
+### xray_reserved_base64_unsupported
+
+**severity:** `warning` · **params:** `value`
+
+**WireGuard: reserved bytes written as text not applied**
+
+- **What happened:** The element carries the reserved field as the text {value} instead of three numbers. The value was not applied. If the provider requires these bytes, the node completes the handshake but carries no traffic.
+- **Why it happens:** Xray declares the field as a byte string, so the same three bytes may be written either as a list of numbers or as one base64 line, and different panels pick different spellings. The launcher reads the list of numbers, which is the form the core expects; translating the text spelling would need a separate rule that does not exist yet.
+- **What you can do:**
+  - Ask the provider for the configuration with reserved written as three numbers, for example [1, 2, 3].
+  - If the node connects but carries no traffic, these bytes are the first thing to check.
 
 **Where it comes from:**
 

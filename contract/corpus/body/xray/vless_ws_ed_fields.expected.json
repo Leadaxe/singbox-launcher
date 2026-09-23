@@ -16,7 +16,17 @@
       },
       "kind": "outbound",
       "label": "ws ed fields",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "json_field_unknown",
+          "path": "streamSettings.wsSettings.ed"
+        },
+        {
+          "code": "json_field_unknown",
+          "path": "streamSettings.wsSettings.eh"
+        }
+      ]
     }
   ],
   "v": 1
