@@ -1,12 +1,15 @@
 package ui
 
 import (
+	"image/color"
 	"path/filepath"
 	"runtime"
 	"strings"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -133,10 +136,21 @@ func buildStorageSection(ac *core.AppController) (fyne.CanvasObject, func()) {
 		}
 	}
 
+	// Место этапов 8–9 SPEC 135 под таблицей путей: чекбокс Portable (§4.2)
+	// и кнопка «Remove all data…» (§4.3).
+	extra := container.NewVBox()
+	refreshPortable := func() {}
+	if core.PortableToggleAvailable() {
+		var portable fyne.CanvasObject
+		portable, refreshPortable = buildPortableToggle(ac)
+		extra.Add(portable)
+	}
+
 	// Версия ядра — только из сессионного кэша контроллера. Если её ещё
 	// никто не спрашивал, спрашиваем один раз в фоне: результат кэшируется,
 	// и следующие вызовы бинарь уже не запускают.
 	refresh := func() {
+		refreshPortable()
 		info = ac.PathsInfo()
 		render()
 		if info.CoreVersion != "" || info.CoreSource == "" {
@@ -159,10 +173,6 @@ func buildStorageSection(ac *core.AppController) (fyne.CanvasObject, func()) {
 		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow,
 			locale.T("Paths copied"), locale.T("Data, logs, core and template paths copied. Paste them into the bug report."))
 	})
-
-	// Место этапов 8–9 SPEC 135: чекбокс Portable (§4.2) и кнопка
-	// «Remove all data…» (§4.3) встают сюда, под таблицу путей.
-	extra := container.NewVBox()
 
 	return container.NewVBox(
 		title,
@@ -191,4 +201,119 @@ func storageModeText(l paths.Layout) string {
 		return s
 	}
 	return string(l.Mode)
+}
+
+// buildPortableToggle — чекбокс Portable раздела Storage (SPEC 135 §4.2) и
+// серая строка под ним: куда уедут данные или почему переключать нельзя.
+//
+// Клик не меняет режим сам: чекбокс сразу возвращается в прежнее состояние,
+// а переезд идёт только после подтверждения и заканчивается перезапуском —
+// раскладка считается один раз при старте. Второе значение — refresh,
+// зовётся вместе с остальными строками Storage при выборе вкладки.
+func buildPortableToggle(ac *core.AppController) (fyne.CanvasObject, func()) {
+	check := ttwidget.NewCheck(locale.T("Portable mode (keep data next to the program)"), nil)
+	note := widget.NewLabel("")
+	note.Wrapping = fyne.TextWrapBreak
+	note.Importance = widget.LowImportance
+
+	var onChanged func(bool)
+	setChecked := func(v bool) {
+		check.OnChanged = nil
+		check.SetChecked(v)
+		check.OnChanged = onChanged
+	}
+
+	refresh := func() {
+		checked, enabled, reason := ac.PortableToggleState()
+		setChecked(checked)
+		if !enabled {
+			check.Disable()
+			check.SetToolTip(reason)
+			note.SetText(reason)
+			return
+		}
+		check.Enable()
+		check.SetToolTip("")
+		to, err := ac.PortableSwitchTarget(!checked)
+		if err != nil {
+			debuglog.WarnLog("settings.storage: portable target: %v", err)
+			note.SetText(err.Error())
+			return
+		}
+		note.SetText(locale.Tf("Switching moves the data to: %s", to))
+	}
+
+	onChanged = func(on bool) {
+		setChecked(!on)
+		confirmPortableSwitch(ac, on, refresh)
+	}
+	check.OnChanged = onChanged
+	refresh()
+
+	return container.NewVBox(check, note), refresh
+}
+
+// confirmPortableSwitch — подтверждение «откуда → куда», переезд в фоне под
+// модальным прогрессом (он же не даёт нажать Start в окне, пока идёт
+// копирование) и перезапуск тем же путём, что у переключения Mesa:
+// RequestRestartAfterExit + GracefulExit, сам RestartSelf — в конце main(),
+// когда ядро остановлено и логи закрыты.
+func confirmPortableSwitch(ac *core.AppController, on bool, refresh func()) {
+	win := ac.UIService.MainWindow
+	from := ac.FileService.Layout.Data.Bin()
+	to, err := ac.PortableSwitchTarget(on)
+	if err != nil {
+		ShowError(win, err)
+		return
+	}
+	confirm := dialog.NewConfirm(
+		locale.T("Move launcher data"),
+		locale.Tf("Data will be moved from:\n%s\nto:\n%s\n\nThe launcher will restart after the move.", from, to),
+		func(yes bool) {
+			if !yes {
+				return
+			}
+			progress := showPortableSwitchProgress(win)
+			go func() {
+				rep, err := ac.SwitchPortable(on)
+				fyne.Do(func() {
+					progress.Hide()
+					if err != nil {
+						dialog.ShowError(err, win)
+						refresh()
+						return
+					}
+					msg := locale.T("The launcher will restart now.")
+					if rep.Leftover != "" {
+						msg += "\n\n" + locale.Tf("Some files could not be removed and were left at:\n%s", rep.Leftover)
+					}
+					done := dialog.NewInformation(locale.T("Data moved"), msg, win)
+					// Любое закрытие — перезапуск: данные уже переехали, а
+					// раскладка процесса старая.
+					done.SetOnClosed(func() {
+						debuglog.WarnLog("storage: restarting to apply the new data layout")
+						platform.RequestRestartAfterExit()
+						ac.GracefulExit()
+					})
+					done.Show()
+				})
+			}()
+		}, win)
+	confirm.SetConfirmText(locale.T("Yes"))
+	confirm.SetDismissText(locale.T("Cancel"))
+	confirm.Show()
+}
+
+// showPortableSwitchProgress — модальный прогресс на время копирования.
+func showPortableSwitchProgress(win fyne.Window) dialog.Dialog {
+	label := widget.NewLabel(locale.T("Moving data…"))
+	// Wrapping: Label без переноса раздувает диалог по всей строке;
+	// ширину задаёт распорка.
+	label.Wrapping = fyne.TextWrapWord
+	spacer := canvas.NewRectangle(color.Transparent)
+	spacer.SetMinSize(fyne.NewSize(280, 1))
+	d := dialog.NewCustomWithoutButtons(locale.T("Move launcher data"),
+		container.NewVBox(label, widget.NewProgressBarInfinite(), spacer), win)
+	d.Show()
+	return d
 }

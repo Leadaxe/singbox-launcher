@@ -507,3 +507,19 @@ platform/restart_windows.go:33, glprobe_windows.go:189, :742.
   `handlePaths` + `pathsView` — core/debugapi/snapshot.go; фасад
   `GetPathsInfo()` — server.go, core/debugapi_wiring.go, fakeFacade в
   server_test.go. Документация — docs/API.md, docs/API.ru.md.
+
+### Этап 8 — сделано
+
+- **Библиотека**: internal/paths/switch.go — `SystemDefault` (правило 4 через
+  выделенный `platformDefault` в paths.go), `SwitchToPortable`,
+  `SwitchToSystem`, `SwitchReport{From, To, Copy, Leftover}` + `Summary()`,
+  `MovedBinPrefix` («bin.moved-») для очистки §4.3, `ErrEnvLayout`. Тест —
+  `TestSwitchPortable` (switch_test.go).
+- **Обвязка**: core/storage_switch.go — `PortableToggleAvailable()` (не
+  darwin), `PortableToggleState()`, `PortableSwitchTarget(on)`,
+  `SwitchPortable(on)` (повторная проверка условий, WARN со сводкой).
+- **UI**: `buildPortableToggle` / `confirmPortableSwitch` — ui/settings_storage.go,
+  в `extra` раздела Storage; перечитывается общим refresh раздела.
+- **Перезапуск**: как у Mesa — `platform.RequestRestartAfterExit()` +
+  `GracefulExit()`, `RestartSelf` в конце main(); `RestartSelf` вне Windows
+  теперь настоящий (internal/platform/restart_other.go, `Setsid`).

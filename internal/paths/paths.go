@@ -180,7 +180,13 @@ func resolveWithoutEnv(app AppDir, exe string, env func(string) string, goos str
 			return portable(app, ModeLegacy), nil
 		}
 	}
+	return platformDefault(app, bundle, env, goos, probe)
+}
 
+// platformDefault — правило 4: платформенный дефолт из таблицы §3.1. Кроме
+// двух случаев, где дефолт сам по себе portable: Windows без LOCALAPPDATA и
+// USERPROFILE и голый бинарь macOS.
+func platformDefault(app AppDir, bundle bool, env func(string) string, goos string, probe func(string) bool) (Layout, error) {
 	switch {
 	case goos == "windows":
 		root := env("LOCALAPPDATA")
