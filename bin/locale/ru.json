@@ -4403,12 +4403,6 @@
   "Data from before the migration, next to the program": {
     "value": "Данные до переезда, рядом с программой"
   },
-  "Data moved": {
-    "value": "Данные перенесены"
-  },
-  "Data will be moved from:\n%s\nto:\n%s\n\nThe launcher will restart after the move.": {
-    "value": "Данные будут перенесены из:\n%s\nв:\n%s\n\nПосле переноса лаунчер перезапустится."
-  },
   "Data": {
     "value": "Данные"
   },
@@ -4478,9 +4472,6 @@
   "Shadows: %s": {
     "value": "Затеняет: %s"
   },
-  "Some files could not be removed and were left at:\n%s": {
-    "value": "Часть файлов удалить не удалось, они остались здесь:\n%s"
-  },
   "Source: %s": {
     "value": "Источник: %s"
   },
@@ -4531,5 +4522,29 @@
   },
   "unknown": {
     "value": "неизвестно"
+  },
+  "Existing data found": {
+    "value": "Найдены существующие данные"
+  },
+  "Your settings and subscriptions were found in:\n%s\n\nThe launcher is running in portable mode because portable.txt lies next to the program. Switch to the found data? The launcher will restart.": {
+    "value": "Ваши настройки и подписки найдены в:\n%s\n\nЛаунчер работает в portable-режиме, потому что рядом с программой лежит portable.txt. Переключиться на найденные данные? Лаунчер перезапустится."
+  },
+  "Data move in progress": {
+    "value": "Идёт перенос данных"
+  },
+  "The launcher will restart immediately after the move.": {
+    "value": "Сразу после переноса лаунчер перезапустится."
+  },
+  "Data will be moved from:\n%s\nto:\n%s": {
+    "value": "Данные будут перенесены из:\n%s\nв:\n%s"
+  },
+  "Left over from the move: %s": {
+    "value": "Осталось после переноса: %s"
+  },
+  "System data folder with settings — kept by default": {
+    "value": "Системная папка данных с настройками — по умолчанию сохраняется"
+  },
+  "Only: %s": {
+    "value": "Только: %s"
   }
 }
