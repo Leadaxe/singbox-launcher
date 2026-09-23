@@ -608,6 +608,41 @@ type LabelSpec struct {
 	Normalize []string               `json:"normalize"`
 	ValueMap  map[string]interface{} `json:"value_map"`
 	Fallback  *LabelFallback         `json:"fallback"`
+	// Comment — какой комментарий секции ini считается ИМЕНЕМ узла
+	// (источник `ini.$comment.<Секция>`, PRIMITIVES §0.8). Не всякий
+	// комментарий им является: `# Bouncing = 0` — отключённая настройка,
+	// а не название. Признак — атрибут источника, а не правило движка:
+	// без него годится первый непустой комментарий как есть.
+	Comment *LabelComment `json:"comment"`
+}
+
+// LabelComment — предикат «этот комментарий секции есть имя узла».
+type LabelComment struct {
+	// Take — какой из подходящих комментариев брать: "first" (единственное
+	// значение грамматики и умолчание).
+	Take string `json:"take"`
+	// RequireNo — подстрока, наличие которой означает «не имя, а
+	// закомментированная настройка». Пусто = годится любой.
+	RequireNo string `json:"require_no"`
+}
+
+// Accepts — годится ли текст комментария в имя узла.
+//
+// nil-правило = годится любой непустой комментарий: умолчания «`=` значит
+// настройка» в движке нет, его объявляет диалект данными.
+func (c *LabelComment) Accepts(name string) bool {
+	if c == nil || c.RequireNo == "" {
+		return true
+	}
+	return !strings.Contains(name, c.RequireNo)
+}
+
+// CommentRule — правило комментария-имени у метки (nil, если не объявлено).
+func (l *LabelSpec) CommentRule() *LabelComment {
+	if l == nil {
+		return nil
+	}
+	return l.Comment
 }
 
 // LabelFallback — имя узла, когда метки во входе нет.

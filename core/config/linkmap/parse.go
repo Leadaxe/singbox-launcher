@@ -131,7 +131,7 @@ func UnwrapURI(plan *Plan, text string) (*Space, registry.Form, error) {
 			!Matches(form.Detect, NewContent(decodeSubject(form, text))) {
 			continue
 		}
-		space, err := lexSpace(form, body, text, plan.Mapper.IniDialect)
+		space, err := lexSpace(form, body, text, plan.Mapper.IniDialect, plan.Mapper.Label.CommentRule())
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
@@ -148,7 +148,7 @@ func UnwrapURI(plan *Plan, text string) (*Space, registry.Form, error) {
 		if err != nil {
 			return nil, form, err
 		}
-		space, err := lexSpace(form, body, text, plan.Mapper.IniDialect)
+		space, err := lexSpace(form, body, text, plan.Mapper.IniDialect, plan.Mapper.Label.CommentRule())
 		if err != nil {
 			return nil, form, err
 		}
@@ -274,7 +274,7 @@ func stripURIWrapper(text string) string {
 // ссылки, но фрагмент бывает и там: `vmess://<base64>#Имя` — поэтому
 // фрагмент исходного текста переносится в пространство. Побеждает тот, кого
 // запись `label` назовёт первым (у vmess это `json.ps`, фрагмент — запасной).
-func lexSpace(form registry.Form, body, original string, dialect *registry.IniDialect) (*Space, error) {
+func lexSpace(form registry.Form, body, original string, dialect *registry.IniDialect, comment *registry.LabelComment) (*Space, error) {
 	switch form.Space {
 	case "", "url":
 		return lexURI(body)
@@ -331,7 +331,7 @@ func lexSpace(form registry.Form, body, original string, dialect *registry.IniDi
 			return nil, fmt.Errorf("linkmap: ini: секций нет")
 		}
 		s := &Space{}
-		s.SetINI(sections, parseINIComments(body, dialect))
+		s.SetINI(sections, parseINIComments(body, dialect, comment))
 		s.iniDropped = dropped
 		// Схема и фрагмент — свойства ОБОЛОЧКИ, как и у формы JSON: под
 		// base64 их нет, а `label` и `scheme_source` читают их позже.
@@ -362,11 +362,14 @@ func lexSpace(form registry.Form, body, original string, dialect *registry.IniDi
 // parseINIComments — ПЕРВЫЙ комментарий каждой секции, то есть имя узла,
 // которое провайдеры пишут сразу под заголовком (`[Peer]` / `# CH-FREE#11`).
 //
-// Строка с '=' именем НЕ считается: `# Bouncing = 0` — это отключённая
-// настройка, а не название. Сам '#' внутри значения законен («US-FREE#137»),
-// поэтому режется только ведущий маркер. Диалект тот же, что у parseINI:
-// комментарий — целая строка, начинающаяся с '#' или ';'.
-func parseINIComments(text string, d *registry.IniDialect) map[string]string {
+// Что именем НЕ считается, объявляет метка секции (`label.comment`,
+// PRIMITIVES §0.8): у wg-quick `require_no: "="` — `# Bouncing = 0` это
+// отключённая настройка, а не название. Своего умолчания у движка нет: без
+// правила годится первый непустой комментарий. Сам '#' внутри значения
+// законен («US-FREE#137»), поэтому режется только ведущий маркер. Диалект
+// тот же, что у parseINI: комментарий — целая строка, начинающаяся с '#'
+// или ';'.
+func parseINIComments(text string, d *registry.IniDialect, rule *registry.LabelComment) map[string]string {
 	prefixes := d.Prefixes()
 	out := map[string]string{}
 	section := ""
@@ -395,7 +398,7 @@ func parseINIComments(text string, d *registry.IniDialect) map[string]string {
 			continue
 		}
 		name := strings.TrimSpace(strings.TrimLeft(line, strings.Join(prefixes, "")))
-		if name == "" || strings.Contains(name, "=") {
+		if name == "" || !rule.Accepts(name) {
 			continue
 		}
 		out[section] = name
