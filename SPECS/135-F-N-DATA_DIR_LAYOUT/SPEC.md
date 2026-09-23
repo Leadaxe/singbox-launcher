@@ -598,3 +598,45 @@ func Describe(l Layout, core CoreInfo, tmpl TemplateInfo) string
    дополнительной, не единственной, проверкой для остальных случаев смены
    DataDir (переключатель Portable, ручной перенос `bin/`, переменная
    окружения).
+
+ж) **wintun скачивается в каталог выбранного ядра.** `FileService.WintunPath`
+   = `Dir(SingboxPath)/wintun.dll` (`core/services/file_service.go`,
+   `core/wintun_downloader.go`): wintun обязан лежать рядом с `sing-box.exe`.
+   При поставляемом ядре (`win64-full`) в пишущемся AppDir это запись в
+   `AppDir/bin` — под защитой `paths.ProbeWritable` (каталог не пишется →
+   отказ с подсказкой, без попытки записи). Осознанное исключение из «в
+   AppDir не пишем» наравне с Mesa (§3, `DisableMesa`/`EnableMesa`).
+
+з) **Данные в системном каталоге, скрытые маркером (по итогам ревью).**
+   Сценарий: Portable выключен (данные уехали в `%LOCALAPPDATA%`, `AppDir/bin`
+   удалён), затем поверх папки распакован новый zip с `portable.txt` —
+   режим Portable с пустым `AppDir/bin`, данные не видны, а очистка удалила
+   бы их как «unused system data folder». Добавлено:
+   - `paths.HiddenSystemData`: Portable/Legacy, в `AppDir/bin` нет
+     `state.json`, в системном `Data/bin` есть → на старте диалог
+     «Existing data found» (как уведомление первого запуска, с `-tray` — при
+     первом показе окна). Yes — удалить `portable.txt` и перезапуститься
+     (копировать нечего); Cancel — `hidden_data_notice_shown` в settings.json,
+     больше не спрашивать.
+   - Очистка: системный DataDir с `state.json` при Portable/Legacy — в плане
+     с пометкой «system data folder with settings — kept by default», чекбокс
+     по умолчанию снят (и `-purge-data -yes` его не трогает). Исключение —
+     `state.json` внутри записанного остатка переезда (`storage_leftover`).
+   - `SwitchToSystem`: в системном `Data/bin` есть `state.json`, а в
+     `AppDir/bin` нет → `ErrTargetHasData` без изменений; `SwitchPortable(false)`
+     в этом случае удаляет `portable.txt` и перезапускается — для
+     пользователя это не ошибка.
+
+и) **Переезд переключателем: пропуски копировщика, блокировка записи,
+   немедленный перезапуск (по итогам ревью).** Решение Б («старое удаляется»)
+   уточнено: если копировщик пропустил хоть один файл, источник не стирается
+   (включение — `Data/bin` остаётся целиком; выключение — переименование в
+   `bin.moved-<метка>` без стирания), путь — `Leftover`. Пропуск
+   `wizard_states/state.json` — отказ `CopyTree` (`ErrStateNotCopied`) до
+   продвижения копии и до маркера: обе раскладки целы. На время копирования
+   старт ядра и автообновление подписок отказывают (флаг контроллера);
+   после переезда лаунчер перезапускается сразу, без диалога «Data moved»:
+   сводка — в лог, остаток — в `storage_leftover` settings.json нового места
+   (строка в Storage, элемент очистки «moved-away data»). В режиме `Env`
+   очистка удаляет только `Data/bin`, `Data/.migrated_from` и файлы логов
+   лаунчера, а не каталоги, выбранные пользователем.

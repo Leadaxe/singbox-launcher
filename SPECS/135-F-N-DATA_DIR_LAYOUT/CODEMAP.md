@@ -559,3 +559,26 @@ platform/restart_windows.go:33, glprobe_windows.go:189, :742.
 - **`-purge-data [-yes]`**: main.go сразу за `-paths`, до crash-лога.
   С `-yes` отказ с кодом 1, если жив процесс из `<Data>/bin/singbox.pid`
   (только проверка по списку процессов, без сигналов).
+
+### Ревью data-критичного кода — сделано (SPEC §11 з, и)
+
+- **Скрытые данные**: `paths.HiddenSystemData`, `paths.RemovePortableMarker`,
+  `paths.ErrTargetHasData` — internal/paths/switch.go; диалог —
+  `hiddenDataNoticeDue`/`scheduleHiddenDataNotice` в main.go (общий показ с
+  first-run notice — `whenWindowVisible`); флаг `hidden_data_notice_shown` —
+  internal/locale/settings.go.
+- **Копировщик**: `CopyReport.SkippedPaths` + `SkippedPath(rel)`,
+  `ErrStateNotCopied`, разворот корня-симлинка, `wizard_states` последним —
+  internal/paths/copytree.go. Lock миграции `Data/.migrating.lock`
+  (`MigrationResult.Busy`) — internal/paths/migrate.go.
+- **Очистка**: `PurgeItem.Files` (список путей, каталог не трогается; счётчик
+  переименован в `FileCount`), Env-режим, `storage_leftover`,
+  `PurgeNoteSystemDataHasState` — internal/paths/purge.go;
+  `purgeBlockingProcess` (лаунчер по имени, sing-box по имени и пути) —
+  core/purge.go; `debuglog.ReleaseLogFiles` — internal/debuglog/close.go.
+- **Переезд**: `storageSwitching` на контроллере, отказ в
+  `StartSingBoxProcess` (core/controller.go) и в `runScheduledRefresh`/
+  `refreshSourceWithRetry` (core/auto_update.go); перезапуск и
+  `storage_leftover` — `SwitchPortable` (core/storage_switch.go); строка
+  остатка — ui/settings_storage.go.
+- **Затенённое ядро из PATH**: `logCoreResolution` — core/version_marks.go.

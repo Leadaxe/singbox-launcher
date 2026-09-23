@@ -66,6 +66,13 @@
 - [x] Флаг `-purge-data [-yes]`.
 - [x] Интеграционный тест `-purge-data`.
 
+## Ревью data-критичного кода (SPEC §11 з, и)
+- [x] Скрытые маркером системные данные: `HiddenSystemData` + диалог «Existing data found», защита в очистке, `ErrTargetHasData` в `SwitchToSystem`.
+- [x] Пропуски копировщика: источник не стирается, `state.json` — отказ до продвижения (`ErrStateNotCopied`).
+- [x] Флаг переезда: отказ старта ядра и автообновления; перезапуск сразу после переезда; `storage_leftover`.
+- [x] Симлинк-корень в `CopyTree`; `wizard_states` последним при слиянии; lock миграции.
+- [x] Env-очистка по списку файлов; `debuglog.ReleaseLogFiles`; проверка живого лаунчера/ядра в `-purge-data -yes`; WARN о затенённом ядре из PATH.
+
 ## Этап 10 · macOS
 - [x] `build_darwin.sh`: без переноса `bin`/`logs`, `codesign --verify` в строю, `-i` = замена бинаря.
 - [x] `DaemonStatusSnapshot`: `ProgramArguments[0]` из plist против `SingboxPath`, статус и команда `--service=install`.
