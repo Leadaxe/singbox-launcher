@@ -108,7 +108,6 @@ func ParseWGConfByEngineHint(confText, hint string, skipFilters []map[string]str
 // выбор секции и то, чем текст распаковывается.
 func nodeFromEngine(plan *linkmap.Plan, res *linkmap.Result, scheme, source, bodyType string,
 	skipFilters []map[string]string) (*configtypes.ParsedNode, error, bool) {
-
 	node := &configtypes.ParsedNode{
 		Scheme: scheme,
 		Source: source,

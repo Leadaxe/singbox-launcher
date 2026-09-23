@@ -354,11 +354,3 @@ func warningCodes() []string {
 	sort.Strings(out)
 	return out
 }
-
-// oneLine схлопывает перевод строки внутри текста кода: шаблоны `{path}` и
-// прочие подстановки остаются как есть — их подставляет приложение.
-func oneLine(s string) string {
-	s = strings.ReplaceAll(s, "\r\n", " ")
-	s = strings.ReplaceAll(s, "\n", " ")
-	return strings.TrimSpace(s)
-}

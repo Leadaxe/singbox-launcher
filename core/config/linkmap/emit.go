@@ -83,8 +83,6 @@ type emitState struct {
 	scheme string
 	// jsonObj — тело JSON-формы (`emit.json_map`), когда она объявлена.
 	jsonObj map[string]interface{}
-	// jsonOrder — порядок ключей JSON-формы.
-	jsonOrder []string
 }
 
 // emitPair — один параметр выхода.

@@ -322,7 +322,7 @@ func copyMesaFromBundle(execDir string) ([]string, error) {
 
 // removeMesaFiles сносит перечисленные файлы рядом с exe. Используется для
 // отката только что скопированной/скачанной Mesa, когда проба её не приняла.
-func removeMesaFiles(execDir string, names []string) {
+func removeMesaFiles(execDir string, names []string) { //nolint:unused // вызывается только из glprobe_windows.go (//go:build windows)
 	for _, name := range names {
 		if err := os.Remove(filepath.Join(execDir, name)); err != nil && !os.IsNotExist(err) {
 			debuglog.WarnLog("gl: rollback: cannot remove %s: %v", name, err)

@@ -373,21 +373,6 @@ func (svc *ConfigService) loadParserConfigForUpdate() (*config.ParserConfig, *st
 	return &pcCopy, s, nil
 }
 
-// atomicWriteConfig — атомарная запись config.json через .tmp + os.Rename.
-// Защищает работающий sing-box: в худшем случае (crash, power loss) старый
-// config.json остаётся целым.
-func atomicWriteConfig(path string, data []byte) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, platform.DefaultFileMode); err != nil {
-		return fmt.Errorf("write tmp: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("rename: %w", err)
-	}
-	return nil
-}
-
 // collectAllStageRuleSetTags возвращает объединение rule-set tags из ВСЕХ
 // state-файлов в `bin/wizard_states/`. Источники tag'ов:
 //   - CustomRule[i].RuleSet[].tag (legacy / user inline/srs правила; и enabled,

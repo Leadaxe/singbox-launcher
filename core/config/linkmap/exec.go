@@ -2140,14 +2140,6 @@ func (st *execState) notePath(code, path string, params map[string]string) {
 
 // --- общие преобразования значений ---
 
-// applyValueMap переводит значение. Возвращает (новое значение, было ли
-// попадание, означает ли попадание «ключа нет»).
-//
-// Поддерживает и точную карту, и форму {prefix, strip} (диалект uTLS).
-func applyValueMap(vm map[string]interface{}, v string) (string, bool, bool) {
-	return applyValueMapCase(vm, v, true)
-}
-
 // applyValueMapCase — то же с явным указанием, значим ли регистр.
 //
 // Регистронезависимое попадание — общее правило (живые списки шлют

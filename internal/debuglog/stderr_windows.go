@@ -12,7 +12,7 @@ import (
 
 // nativeStderrFile — файл держится открытым весь сеанс: закрой его, и хендл,
 // отданный в SetStdHandle, станет невалидным.
-var nativeStderrFile *os.File
+var nativeStderrFile *os.File //nolint:unused // держит хендл SetStdHandle живым весь сеанс; читать его незачем
 
 // RedirectNativeStderr уводит stderr процесса в файл path.
 //

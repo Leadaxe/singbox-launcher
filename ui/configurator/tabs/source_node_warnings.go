@@ -186,23 +186,3 @@ func previewWarningLines(rows []previewRow, pick func([]corestate.NodeWarning) b
 	}
 	return items
 }
-
-// nodeWarningsOfSource — деградации узла источника по его сырому тегу.
-//
-// Нужен окнам узла, которые адресуют узел тегом в рамках источника
-// (идентичность, SPEC 112), а не индексом строки: пока висит окно, состав
-// вправе поехать фоновым fetch'ем.
-func nodeWarningsOfSource(src *wizardmodels.Source, rawTag string) []corestate.NodeWarning {
-	if src == nil || rawTag == "" {
-		return nil
-	}
-	for i := range src.Nodes {
-		if src.Nodes[i].Tag == rawTag {
-			return src.Nodes[i].Warnings
-		}
-	}
-	if src.Tag == rawTag {
-		return src.Warnings
-	}
-	return nil
-}
