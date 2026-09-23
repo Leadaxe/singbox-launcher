@@ -2,7 +2,8 @@
 //
 // Файл constants.go содержит константы таймаутов и лимитов для операций визарда:
 //   - Таймауты: HTTPRequestTimeout, SubscriptionFetchTimeout, URIParseTimeout, MaxWaitTime
-//   - Лимиты размеров: MaxSubscriptionSize, MaxURILength, MinURILength
+//   - Лимиты размеров: MaxSubscriptionSize, MinURILength (предел ДЛИНЫ ссылки — не здесь:
+//     он в реестре контракта, subscription.MaxURILength ← limits.json max_uri_length)
 //
 // Эти константы используются в бизнес-логике (validator.go, parser.go) для валидации
 // и ограничения размеров данных, а также для установки таймаутов сетевых операций.
@@ -34,8 +35,6 @@ const (
 const (
 	// MaxSubscriptionSize is the maximum size of subscription response (10MB)
 	MaxSubscriptionSize = 10 * 1024 * 1024
-	// MaxURILength is the maximum length of URI for parsing
-	MaxURILength = 8192
 	// MinURILength is the minimum length of URI for validation
 	MinURILength = 10
 )

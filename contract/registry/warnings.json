@@ -765,7 +765,7 @@
       ],
       "desc": "URI длиннее max_uri_length (см. limits.json, D-013: канон 65536) — строка в dropped. vpn:// исключён — у него свой amnezia_link_max_bytes.",
       "dart": null,
-      "go": "core/config/subscription/node_parser_core.go:96"
+      "go": "core/config/subscription/node_parser_core.go (CheckURILength — общая для ParseNode и ValidateURI конфигуратора, 1.1.51)"
     },
     "tuic_congestion_invalid": {
       "severity": "warning",
