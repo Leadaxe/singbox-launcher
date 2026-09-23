@@ -72,7 +72,7 @@
 - [ ] Проверка владельцем: `-i`, daemon-режим, sudo-команды.
 
 ## Этап 11 · Windows
-- [ ] `portable.txt` в `win64`, `win64-full`, `win7-32`.
+- [x] `portable.txt` в `win64`, `win64-full`, `win7-32`.
 
 ## Этап 12 · Закрытие
 - [ ] `docs/ARCHITECTURE.md`, `docs/release_notes/upcoming.md` (EN/RU; порядок поиска ядра на Linux; `setcap` и `nosuid`), README про пути и очистку, `RELEASE_NOTES.md`.

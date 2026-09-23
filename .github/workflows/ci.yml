@@ -671,6 +671,11 @@ jobs:
             echo "✓ Created: singbox-launcher-${VERSION}-macos-catalina.zip"
           fi
 
+          # Маркер portable-режима (SPEC 135 §3.2): кладётся во все Windows-архивы
+          # (win64, win64-full, win7-32), содержимое не парсится приложением.
+          PORTABLE_MARKER="$(pwd)/portable.txt"
+          printf 'Portable mode: the launcher keeps its data next to this file. Delete this file to store data in %%LOCALAPPDATA%%\\singbox-launcher instead.\r\n' > "$PORTABLE_MARKER"
+
           WIN_EXE=$(find . -name "singbox-launcher.exe" -type f -size +0 | head -1 || true)
           if [ -n "${WIN_EXE:-}" ]; then
             echo "✓ Found singbox-launcher.exe at: $WIN_EXE"
@@ -678,8 +683,9 @@ jobs:
             EXE_DIR=$(dirname "$WIN_EXE")
             EXE_NAME=$(basename "$WIN_EXE")
             ORIGINAL_DIR=$(pwd)
+            cp "$PORTABLE_MARKER" "$EXE_DIR/portable.txt"
             cd "$EXE_DIR"
-            zip -j "${ORIGINAL_DIR}/singbox-launcher-${VERSION}-win64.zip" "$EXE_NAME"
+            zip -j "${ORIGINAL_DIR}/singbox-launcher-${VERSION}-win64.zip" "$EXE_NAME" "portable.txt"
             cd "$ORIGINAL_DIR"
             echo "✓ Created: singbox-launcher-${VERSION}-win64.zip"
             echo ""
@@ -711,6 +717,7 @@ jobs:
             rm -rf "$FULL_DIR"
             mkdir -p "$FULL_DIR/bin" "$FULL_DIR/mesa3d"
             cp "$WIN_EXE" "$FULL_DIR/singbox-launcher.exe"
+            cp "$PORTABLE_MARKER" "$FULL_DIR/portable.txt"
             DL_TMP="$(mktemp -d)"
             curl -fsSL --retry 3 -o "$DL_TMP/core.zip" \
               "https://github.com/Leadaxe/sing-box-lx/releases/download/v${CORE_VER}/sing-box-${CORE_VER}-windows-amd64.zip"
@@ -736,8 +743,9 @@ jobs:
             EXE_DIR=$(dirname "$WIN7_EXE")
             EXE_NAME=$(basename "$WIN7_EXE")
             ORIGINAL_DIR=$(pwd)
+            cp "$PORTABLE_MARKER" "$EXE_DIR/portable.txt"
             cd "$EXE_DIR"
-            zip -j "${ORIGINAL_DIR}/singbox-launcher-${VERSION}-win7-32.zip" "$EXE_NAME"
+            zip -j "${ORIGINAL_DIR}/singbox-launcher-${VERSION}-win7-32.zip" "$EXE_NAME" "portable.txt"
             cd "$ORIGINAL_DIR"
             echo "✓ Created: singbox-launcher-${VERSION}-win7-32.zip"
           else
