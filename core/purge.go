@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/internal/process"
@@ -20,8 +21,9 @@ import (
 // locale: при -purge-data локали ещё не загружены, а после ExecutePurge
 // лог уже закрыт.
 
-// errPurgeCoreRunning — очистка при запущенном ядре не начинается.
-var errPurgeCoreRunning = errors.New("stop the VPN first")
+// errPurgeCoreRunning — очистка при запущенном ядре не начинается. Уходит
+// в диалог, поэтому через locale (в отличие от строк stdout ниже).
+func errPurgeCoreRunning() error { return errors.New(locale.T("Stop the VPN first")) }
 
 // PurgePlan — что удалит очистка для текущей раскладки.
 func (ac *AppController) PurgePlan() paths.PurgePlan {
@@ -86,7 +88,7 @@ func (ac *AppController) DaemonUninstallHint() string {
 // возвращается только до начала удаления (ядро запущено).
 func (ac *AppController) ExecutePurgeAndExit(p paths.PurgePlan, network bool) error {
 	if ac.RunningState != nil && ac.RunningState.IsRunning() {
-		return errPurgeCoreRunning
+		return errPurgeCoreRunning()
 	}
 	ac.FileService.CloseLogFiles()
 	rep := paths.ExecutePurge(p)

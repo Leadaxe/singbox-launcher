@@ -62,7 +62,7 @@
 
 ## Этап 9 · Очистка
 - [x] `core/purge.go`: план (пути, размеры, лишнее), выполнение по порядку §4.3, сетевая очистка.
-- [ ] Диалог «Remove all data…» с чекбоксами; команда `--service=uninstall --purge` при установленном plist.
+- [x] Диалог «Remove all data…» с чекбоксами; команда `--service=uninstall --purge` при установленном plist.
 - [x] Флаг `-purge-data [-yes]`.
 - [x] Интеграционный тест `-purge-data`.
 

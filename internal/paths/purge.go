@@ -33,8 +33,7 @@ const (
 // shippedBinNames — поставляемое внутри <App>/bin, которое очистка не
 // трогает, даже когда удаляет сам <App>/bin (portable-данные, источник
 // миграции): шаблон с маркером, локали, ядро со спутниками. Папку с
-// программой пользователь удаляет сам (§4.3); в portable скачанное ядро от
-// поставляемого не отличить, поэтому ядро остаётся тоже.
+// программой пользователь удаляет сам (§4.3).
 var shippedBinNames = []string{
 	constants.WizardTemplateFileName,
 	constants.WizardTemplateVersionFileName,
@@ -45,6 +44,15 @@ var shippedBinNames = []string{
 	"libcronet.dll",
 	"libcronet.dylib",
 	"libcronet.so",
+}
+
+// alwaysShippedBinNames — поставляемое всегда, в любом архиве: локали.
+// Когда <App>/bin — данные (portable, legacy), а маркера шаблона
+// (wizard_template.version) рядом нет, остальное из shippedBinNames
+// (шаблон, ядро, спутники) скачал сам лаунчер: маркер кладут только полные
+// архивы и установщик. Тогда это данные и удаляются вместе с ними.
+var alwaysShippedBinNames = []string{
+	"locale",
 }
 
 // PurgeItem — один удаляемый каталог.
@@ -75,7 +83,9 @@ type PurgeReport struct {
 // BuildPurgePlan собирает, что удалять (SPEC 135 §4.3):
 //
 //	data      DataDir целиком; если DataDir совпадает с App (portable,
-//	          legacy) — только <App>/bin без поставляемого;
+//	          legacy) — только <App>/bin без поставляемого (без маркера
+//	          шаблона поставляемыми считаются только локали, см.
+//	          alwaysShippedBinNames);
 //	logs      LogDir (отдельным элементом, даже если лежит внутри DataDir);
 //	leftover  <App>/bin.moved-*; системный DataDir при Mode portable/legacy;
 //	          <App>/logs при Mode system/env; источник миграции из
@@ -88,7 +98,11 @@ func BuildPurgePlan(l Layout, exe string, env func(string) string, goos string, 
 	bundle := IsAppBundle(exe, goos)
 
 	var p PurgePlan
-	for _, name := range shippedBinNames {
+	keepNames := shippedBinNames
+	if app != "" && sameDir(string(l.Data), app) && !fileExists(filepath.Join(l.App.Bin(), constants.WizardTemplateVersionFileName)) {
+		keepNames = alwaysShippedBinNames
+	}
+	for _, name := range keepNames {
 		p.keep = append(p.keep, filepath.Join(l.App.Bin(), name))
 	}
 
@@ -268,6 +282,11 @@ func migratedFrom(d DataDir) string {
 		return ""
 	}
 	return filepath.Clean(src)
+}
+
+func fileExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
 }
 
 func isDir(p string) bool {

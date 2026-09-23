@@ -145,6 +145,7 @@ func buildStorageSection(ac *core.AppController) (fyne.CanvasObject, func()) {
 		portable, refreshPortable = buildPortableToggle(ac)
 		extra.Add(portable)
 	}
+	extra.Add(buildPurgeButton(ac))
 
 	// Версия ядра — только из сессионного кэша контроллера. Если её ещё
 	// никто не спрашивал, спрашиваем один раз в фоне: результат кэшируется,

@@ -156,6 +156,7 @@ func TestPurge(t *testing.T) {
 		write(t, exe, "exe")
 		write(t, filepath.Join(app, "portable.txt"), "")
 		write(t, filepath.Join(app, "bin", "wizard_template.json"), `{}`)
+		write(t, filepath.Join(app, "bin", "wizard_template.version"), "1.0.0\n")
 		write(t, filepath.Join(app, "bin", "wizard_states", "state.json"), `{"version":3}`)
 		sys := filepath.Join(home, ".local", "share", "singbox-launcher")
 		write(t, filepath.Join(sys, "bin", "wizard_states", "state.json"), `{"stale":true}`)
@@ -185,5 +186,58 @@ func TestPurge(t *testing.T) {
 		kept(t, filepath.Join(app, "bin", "wizard_template.json"))
 		kept(t, filepath.Join(app, "portable.txt"))
 		kept(t, exe)
+	})
+
+	// Portable без маркера шаблона (zip только с exe): ядро, спутники и
+	// шаблон скачал лаунчер — это данные. С маркером — поставляемое, остаётся.
+	// Локали остаются всегда.
+	t.Run("portable shipped marker", func(t *testing.T) {
+		for _, marker := range []bool{false, true} {
+			app := filepath.Join(t.TempDir(), "app")
+			bin := filepath.Join(app, "bin")
+			exe := filepath.Join(app, "singbox-launcher")
+			write(t, exe, "exe")
+			write(t, filepath.Join(app, "portable.txt"), "")
+			write(t, filepath.Join(bin, "wizard_states", "state.json"), `{"version":3}`)
+			write(t, filepath.Join(bin, "locale", "ru.json"), `{}`)
+			downloaded := []string{
+				filepath.Join(bin, "sing-box"),
+				filepath.Join(bin, "wintun.dll"),
+				filepath.Join(bin, "libcronet.so"),
+				filepath.Join(bin, "wizard_template.json"),
+			}
+			for _, p := range downloaded {
+				write(t, p, "x")
+			}
+			if marker {
+				write(t, filepath.Join(bin, "wizard_template.version"), "1.0.0\n")
+			}
+			l := Layout{App: AppDir(app), Data: DataDir(app), Logs: LogDir(filepath.Join(app, "logs")), Mode: ModePortable}
+			p := BuildPurgePlan(l, exe, noEnv, "linux", probe)
+			wantFiles := 5 // state + ядро, wintun, cronet, шаблон
+			if marker {
+				wantFiles = 1
+			}
+			if it := findItem(p, bin); it == nil || it.Files != wantFiles {
+				t.Fatalf("marker=%v: data item files, want %d:\n%s", marker, wantFiles, p.Text())
+			}
+			if rep := ExecutePurge(p); len(rep.Failed) != 0 {
+				t.Fatalf("marker=%v: failed: %v", marker, rep.Failed)
+			}
+			gone(t, filepath.Join(bin, "wizard_states"))
+			kept(t, filepath.Join(bin, "locale", "ru.json"))
+			kept(t, exe)
+			kept(t, filepath.Join(app, "portable.txt"))
+			for _, p := range downloaded {
+				if marker {
+					kept(t, p)
+				} else {
+					gone(t, p)
+				}
+			}
+			if marker {
+				kept(t, filepath.Join(bin, "wizard_template.version"))
+			}
+		}
 	})
 }

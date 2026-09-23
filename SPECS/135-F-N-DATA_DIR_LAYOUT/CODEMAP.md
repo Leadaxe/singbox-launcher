@@ -524,7 +524,7 @@ platform/restart_windows.go:33, glprobe_windows.go:189, :742.
   `GracefulExit()`, `RestartSelf` в конце main(); `RestartSelf` вне Windows
   теперь настоящий (internal/platform/restart_other.go, `Setsid`).
 
-### Этап 9 — ядро сделано (диалог — следующим шагом)
+### Этап 9 — очистка
 
 - **Библиотека**: internal/paths/purge.go — `BuildPurgePlan(l, exe, env,
   goos, probe) PurgePlan`, `ExecutePurge(PurgePlan) PurgeReport`,
@@ -532,15 +532,24 @@ platform/restart_windows.go:33, glprobe_windows.go:189, :742.
   `PurgeLogs`, `PurgeLeftover`; пояснения — константы `PurgeNote*`. Системный
   DataDir для остатка при portable — `SystemDefault` (switch.go), остаток
   выключения Portable — `MovedBinPrefix`. Поставляемое в `<App>/bin`
-  (шаблон, маркер, locale/, ядро со спутниками) — `shippedBinNames`, не
-  удаляется никогда; при Data == App элемент data — `<App>/bin`. Тест —
-  `TestPurge` (purge_test.go).
+  (шаблон, маркер, locale/, ядро со спутниками) — `shippedBinNames`; при
+  Data == App элемент data — `<App>/bin`, и если в нём нет
+  `wizard_template.version` (zip только с exe), поставляемыми считаются только
+  локали (`alwaysShippedBinNames`): скачанные ядро, спутники и шаблон уходят с
+  данными. Тест — `TestPurge` (purge_test.go).
 - **Обвязка**: core/purge.go — `(*AppController).PurgePlan()`,
   `NetworkCleanup()` (Windows, `GhostTunCleanupAggressive` + правила
   sing-tun), `DaemonUninstallHint()`, `ExecutePurgeAndExit(plan, network)`;
   `PurgeCLI(layout, exe, yes, out) int` для флага. Подсказка службы демона —
   core/purge_darwin.go (plist → `DaemonUninstallCommand(true)`), заглушка —
   core/purge_other.go.
+- **Диалог**: ui/settings_purge.go — `buildPurgeButton(ac)` (в `extra`
+  раздела Storage после чекбокса Portable; при запущенном ядре — «Stop the VPN
+  first»), `showPurgeDialog(ac, plan, hint)`: `dialog.NewCustomConfirm`,
+  список в `VScroll` — пустой Check + Label с `TextWrapBreak`, Data
+  отключён; на Windows чекбокс сетевой очистки; команда службы демона —
+  общий `CommandRow` (ui/command_row.go). Подтверждение → `Selected` из
+  чекбоксов → `ExecutePurgeAndExit` в горутине.
 - **`-purge-data [-yes]`**: main.go сразу за `-paths`, до crash-лога.
   С `-yes` отказ с кодом 1, если жив процесс из `<Data>/bin/singbox.pid`
   (только проверка по списку процессов, без сигналов).
