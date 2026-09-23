@@ -4,17 +4,29 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 
 	"singbox-launcher/internal/constants"
 )
 
 func TestResolveMatrix(t *testing.T) {
-	const (
-		dataEnv = "/env/data"
-		logEnv  = "/env/logs"
-		home    = "/home/u"
+	// Корни фикстур — абсолютные на хосте: на Windows «/env/data» без тома
+	// не IsAbs (Resolve доводит его до «D:\env\data», XDG отбрасывает).
+	hostAbs := func(p string) string {
+		a, err := filepath.Abs(filepath.FromSlash(p))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return a
+	}
+	var (
+		dataEnv = hostAbs("/env/data")
+		logEnv  = hostAbs("/env/logs")
+		xdgData = hostAbs("/xd")
+		xdgStat = hostAbs("/xs")
 	)
+	const home = "/home/u"
 	join := filepath.Join
 	portableAt := func(app string, m Mode) Layout {
 		return Layout{App: AppDir(app), Data: DataDir(app), Logs: LogDir(join(app, "logs")), Mode: m}
@@ -39,7 +51,7 @@ func TestResolveMatrix(t *testing.T) {
 			name: "env data only", goos: "linux", marker: true,
 			env: map[string]string{constants.EnvDataDir: dataEnv},
 			want: func(app string) Layout {
-				return Layout{App: AppDir(app), Data: dataEnv, Logs: LogDir(join(dataEnv, "logs")), Mode: ModeEnv, EnvSource: []string{constants.EnvDataDir}}
+				return Layout{App: AppDir(app), Data: DataDir(dataEnv), Logs: LogDir(join(dataEnv, "logs")), Mode: ModeEnv, EnvSource: []string{constants.EnvDataDir}}
 			},
 		},
 		{
@@ -53,21 +65,21 @@ func TestResolveMatrix(t *testing.T) {
 			name: "env log only, data by marker", goos: "linux", marker: true,
 			env: map[string]string{constants.EnvLogDir: logEnv},
 			want: func(app string) Layout {
-				return Layout{App: AppDir(app), Data: DataDir(app), Logs: logEnv, Mode: ModeEnv, EnvSource: []string{constants.EnvLogDir}}
+				return Layout{App: AppDir(app), Data: DataDir(app), Logs: LogDir(logEnv), Mode: ModeEnv, EnvSource: []string{constants.EnvLogDir}}
 			},
 		},
 		{
 			name: "env log only, data by xdg default", goos: "linux",
 			env: map[string]string{constants.EnvLogDir: logEnv, "HOME": home},
 			want: func(app string) Layout {
-				return Layout{App: AppDir(app), Data: DataDir(join(home, ".local", "share", "singbox-launcher")), Logs: logEnv, Mode: ModeEnv, EnvSource: []string{constants.EnvLogDir}}
+				return Layout{App: AppDir(app), Data: DataDir(join(home, ".local", "share", "singbox-launcher")), Logs: LogDir(logEnv), Mode: ModeEnv, EnvSource: []string{constants.EnvLogDir}}
 			},
 		},
 		{
 			name: "env both", goos: "windows",
 			env: map[string]string{constants.EnvDataDir: dataEnv, constants.EnvLogDir: logEnv, "LOCALAPPDATA": "/lad"},
 			want: func(app string) Layout {
-				return Layout{App: AppDir(app), Data: dataEnv, Logs: logEnv, Mode: ModeEnv, EnvSource: []string{constants.EnvDataDir, constants.EnvLogDir}}
+				return Layout{App: AppDir(app), Data: DataDir(dataEnv), Logs: LogDir(logEnv), Mode: ModeEnv, EnvSource: []string{constants.EnvDataDir, constants.EnvLogDir}}
 			},
 		},
 		{
@@ -94,9 +106,9 @@ func TestResolveMatrix(t *testing.T) {
 		},
 		{
 			name: "linux xdg set", goos: "linux",
-			env: map[string]string{"HOME": home, "XDG_DATA_HOME": "/xd", "XDG_STATE_HOME": "/xs"},
+			env: map[string]string{"HOME": home, "XDG_DATA_HOME": xdgData, "XDG_STATE_HOME": xdgStat},
 			want: func(app string) Layout {
-				return Layout{App: AppDir(app), Data: DataDir(join("/xd", "singbox-launcher")), Logs: LogDir(join("/xs", "singbox-launcher", "logs")), Mode: ModeSystem}
+				return Layout{App: AppDir(app), Data: DataDir(join(xdgData, "singbox-launcher")), Logs: LogDir(join(xdgStat, "singbox-launcher", "logs")), Mode: ModeSystem}
 			},
 		},
 		{
@@ -108,9 +120,9 @@ func TestResolveMatrix(t *testing.T) {
 		},
 		{
 			name: "linux xdg set, no home", goos: "linux",
-			env: map[string]string{"XDG_DATA_HOME": "/xd", "XDG_STATE_HOME": "/xs"},
+			env: map[string]string{"XDG_DATA_HOME": xdgData, "XDG_STATE_HOME": xdgStat},
 			want: func(app string) Layout {
-				return Layout{App: AppDir(app), Data: DataDir(join("/xd", "singbox-launcher")), Logs: LogDir(join("/xs", "singbox-launcher", "logs")), Mode: ModeSystem}
+				return Layout{App: AppDir(app), Data: DataDir(join(xdgData, "singbox-launcher")), Logs: LogDir(join(xdgStat, "singbox-launcher", "logs")), Mode: ModeSystem}
 			},
 		},
 		{name: "linux no home", goos: "linux", env: map[string]string{"XDG_DATA_HOME": "/xd"}, wantErr: true},
@@ -231,6 +243,9 @@ func TestProbeWritable(t *testing.T) {
 		t.Error("regular file: want not writable")
 	}
 
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows не запрещает запись в каталог по биту 0555 (атрибут read-only каталогу не мешает)")
+	}
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores directory permissions")
 	}
