@@ -250,6 +250,7 @@ jobs:
         run: |
           go run ./tools/l10n/l10n_check --strict
           go run ./tools/l10n/hardcoded_check --strict
+          go run ./tools/paths_guard --strict
 
       - name: Upload coverage (Ubuntu)
         if: matrix.os == 'ubuntu-24.04'
