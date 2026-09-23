@@ -56,6 +56,19 @@ LxBox приводит имя (`_canonScheme`). Расхождение косм�
 исходных узлов (теги в контракте не существуют). Синтетические группы приложений
 (autogroup LxBox) — вне контракта, в фикстурах не появляются.
 
+**Род группы — это тип тела sing-box** (`entry.type`), отдельного имени рода
+нет (решение владельца 19.09.2026, контракт 1.1.47). Таблица —
+`registry/protocols/group.json` → `genus`:
+
+- `genus.values` — допустимые значения `entry.type` узла-группы. `scheme`
+  группы в конверте — `group` (§1: имя схемы, не тип); сторона, которая пишет
+  в конверт тип, приводит `selector`/`urltest` к `group` по этому списку —
+  `singbox_type: "selector|urltest"` обратного хода не даёт;
+- `genus.by_source` — во что разрешается род у вида источника: sing-box несёт
+  тип сам (`$as_is`, `selector` остаётся `selector`), Xray-балансировщик
+  (`routing.balancers[0]`) рода не объявляет и становится `urltest`.
+  Кейс — `body/xray/balancer_group`.
+
 ## 6. Warnings
 
 `warnings[]` — список `{code, path?, value?, params?}` (контракт 1.1.0, SPEC 131;

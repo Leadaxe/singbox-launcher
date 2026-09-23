@@ -5758,3 +5758,30 @@ Freedom **без** `settings.fragment` — `dialerProxy` молча игнори
 и читайте `label.comment`; иначе вторая секция с тем же источником и без
 атрибута у вас будет вести себя иначе, чем у нас. Кейс корпуса —
 `body/wgconf/ini_comment_setting_not_label` (ожидаемая метка `CH-FREE#11`).
+
+### 43.2. Род группы — тип тела sing-box (§32.6 закрыт)
+
+Решение владельца: отдельного рода у группы нет, род — это `entry.type`.
+Выражено данными в `registry/protocols/group.json`:
+
+```jsonc
+"genus": {
+  "values": ["selector", "urltest"],
+  "by_source": { "singbox": "$as_is", "xray": "urltest", "uri": "urltest" }
+}
+```
+
+- `values` — допустимые типы тела узла-группы. **Это и есть то, чего не
+  хватало вашему `_canonScheme`**: `singbox_type: "selector|urltest"` через
+  черту обратного хода «тип → схема» не даёт (у нас загрузчик такую строку
+  тоже пропускает), поэтому `urltest` у вас оставался `urltest`, а у нас —
+  `group`. Приводите тип к схеме `group` по `genus.values`.
+- `by_source` — во что разрешается род у вида источника: sing-box несёт тип
+  сам (`selector` остаётся `selector`), Xray-балансировщик рода не объявляет
+  и становится `urltest`; синтетический autogroup — `urltest`.
+
+Конверт у нас не менялся: `scheme` группы — `group` (CANON §1: имя схемы, не
+тип), `entry.type` — `urltest` в `body/xray/balancer_group`. CANON §5
+дополнен. Страж `TestContractGroupGenus` сверяет род каждого узла-группы
+корпуса тел с таблицей; если у вас `xray/balancer_group` был красным только
+из-за `scheme` — после приведения по `values` он обязан позеленеть.
