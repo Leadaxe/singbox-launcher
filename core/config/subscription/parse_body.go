@@ -177,18 +177,28 @@ const RejectReasonProviderBannerLink = "provider notice, not a server"
 // иначе эвристика «что не бывает сервером» размазалась бы по коду и разошлась
 // бы со второй стороной. Реестр не прочитался — предикат просто молчит:
 // потерять узел из-за недоступного списка нельзя.
-var bannerTargets = sync.OnceValue(func() *registry.BannerTargets {
-	set, err := registry.LoadMappers()
-	if err != nil || set == nil {
-		return nil
-	}
-	for _, k := range set.SourceKindsByPriority() {
-		if k.BannerTargets != nil {
-			return k.BannerTargets
+// sync.Once, а НЕ sync.OnceValue: последняя появилась в go1.21, а легаси-сборка
+// Windows 7 идёт тулчейном go1.20 (см. tools/win7guard).
+var (
+	bannerTargetsOnce  sync.Once
+	bannerTargetsValue *registry.BannerTargets
+)
+
+func bannerTargets() *registry.BannerTargets {
+	bannerTargetsOnce.Do(func() {
+		set, err := registry.LoadMappers()
+		if err != nil || set == nil {
+			return
 		}
-	}
-	return nil
-})
+		for _, k := range set.SourceKindsByPriority() {
+			if k.BannerTargets != nil {
+				bannerTargetsValue = k.BannerTargets
+				return
+			}
+		}
+	})
+	return bannerTargetsValue
+}
 
 // isProviderBannerNode — РАЗОБРАННАЯ запись, ведущая на цель, которая сервером
 // не бывает (см. RejectReasonProviderBannerLink).

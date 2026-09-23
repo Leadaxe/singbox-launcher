@@ -55,6 +55,13 @@ var forbiddenBuiltins = map[string]string{
 	"clear": "go1.21",
 }
 
+// forbiddenSyncFuncs — ленивые обёртки пакета sync, появившиеся в go1.21.
+var forbiddenSyncFuncs = map[string]string{
+	"OnceValue":  "go1.21",
+	"OnceValues": "go1.21",
+	"OnceFunc":   "go1.21",
+}
+
 var skipDirs = map[string]bool{
 	"dist":         true,
 	"temp":         true,
@@ -259,6 +266,15 @@ func inspect(fset *token.FileSet, file *ast.File, declared map[string]bool) []fi
 			case *ast.SelectorExpr:
 				if fun.Sel.Name == "PathValue" {
 					add(v, "Request.PathValue (go1.22)")
+				}
+				// sync.OnceValue/OnceFunc/OnceValues — go1.21. Судим по
+				// имени пакета-квалификатора: «sync» может быть и локальной
+				// переменной, но ложное срабатывание здесь дешевле пропуска —
+				// именно эта дыра пустила sync.OnceValue в легаси-сборку.
+				if pkg, ok := fun.X.(*ast.Ident); ok && pkg.Name == "sync" {
+					if since := forbiddenSyncFuncs[fun.Sel.Name]; since != "" {
+						add(v, fmt.Sprintf("sync.%s (%s)", fun.Sel.Name, since))
+					}
 				}
 			}
 		case *ast.RangeStmt:
