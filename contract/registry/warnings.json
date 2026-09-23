@@ -82,10 +82,10 @@
       "params": [],
       "title_en": "Entry could not be read",
       "title_ru": "Запись не прочитана",
-      "text_en": "The entry is not a link or a configuration this app can read: it has no recognizable scheme, or its encoded part (base64, a compressed profile) does not decode. The node was dropped; the rest of the subscription was read as usual.",
-      "text_ru": "Запись — не ссылка и не конфигурация, которую приложение умеет читать: у неё нет узнаваемой схемы или её закодированная часть (base64, сжатый профиль) не раскрывается. Узел отброшен, остальная подписка прочитана как обычно.",
-      "cause_en": "The link was cut short or damaged when it was copied, a panel produced a broken payload, or the line is not a node link at all — a bare scheme, a stray word or a piece of HTML.",
-      "cause_ru": "Ссылку обрезали или повредили при копировании, панель выдала битый пейлоад, либо строка вовсе не ссылка на узел — голая схема, случайное слово или кусок HTML.",
+      "text_en": "The entry is not a link or a configuration this app can read: it is not a link at all, or its encoded part (base64, a compressed profile) does not decode. The node was dropped; the rest of the subscription was read as usual.",
+      "text_ru": "Запись — не ссылка и не конфигурация, которую приложение умеет читать: это вовсе не ссылка или её закодированная часть (base64, сжатый профиль) не раскрывается. Узел отброшен, остальная подписка прочитана как обычно.",
+      "cause_en": "The link was cut short or damaged when it was copied, a panel produced a broken payload, or the line is not a node link at all — a stray word or a piece of HTML.",
+      "cause_ru": "Ссылку обрезали или повредили при копировании, панель выдала битый пейлоад, либо строка вовсе не ссылка на узел — случайное слово или кусок HTML.",
       "fix_en": [
         "Copy the link again from the provider's page — a truncated link is the usual cause.",
         "Ask the provider to fix the entry in the subscription."
@@ -94,7 +94,7 @@
         "Скопируйте ссылку с сайта провайдера заново — чаще всего её обрезали при копировании.",
         "Попросите провайдера исправить запись в подписке."
       ],
-      "desc": "Отказ РАЗБОРА: ни одна форма секции не прочитала текст (оболочка не распаковалась, пейлоад не JSON/ini, схемы нет), либо ни одна секция не опознала текст вовсе. Заведён в 1.1.48 (TASKS_LXBOX §32.5/§44.4): до этого отбраковка разбора ехала в dropped[] без кода. Кода на узле не бывает — узла нет, код живёт в dropped[].code.",
+      "desc": "Отказ РАЗБОРА: ни одна форма секции не прочитала текст (оболочка не распаковалась, пейлоад не JSON/ini), у тела не опознан ни один вид источника, либо у строки нет схемы вовсе. Граница (CANON §4.1): строка формы xxx://, схему которой не ведёт ни одна секция, получает scheme_unsupported, а не этот код. Заведён в 1.1.48 (TASKS_LXBOX §32.5/§44.4): до этого отбраковка разбора ехала в dropped[] без кода. Кода на узле не бывает — узла нет, код живёт в dropped[].code.",
       "dart": null,
       "go": "core/config/linkmap/exec.go CodeFormUnrecognized (UnwrapURI/UnwrapElement); core/config/subscription/node_parser_core.go (секции нет), node_parser_amnezia.go (vpn:// не раскрылся)"
     },
@@ -2003,6 +2003,73 @@
         "Если провайдер выдаёт пароль отдельно, впишите его в узел вручную."
       ],
       "desc": "Пустой пароль в источнике. Решение владельца 19.09.2026 (Q133-67): узел ПРИНИМАЕТСЯ с предупреждением, а не отбраковывается — принять строгость LxBox (required: true) значило бы выбросить живые узлы у всех, у кого пароль пуст. Имя кода ОБЩЕЕ, не под схему: поле «пароль» есть у половины схем, и второй такой код под другим именем был бы дублем. Ставится примитивом on_empty у записи маппера."
+    },
+    "service_record_ignored": {
+      "severity": "info",
+      "params": [
+        "scheme"
+      ],
+      "title_en": "Subscription: service record {scheme} skipped",
+      "title_ru": "Подписка: служебная запись {scheme} пропущена",
+      "text_en": "The subscription body carries a record with the service scheme {scheme}, which is a routing command for a neighbouring client rather than a server. It was skipped; every other entry of the subscription was imported as usual.",
+      "text_ru": "В теле подписки есть запись со служебной схемой {scheme} — это команда маршрутизации соседнему клиенту, а не сервер. Запись пропущена; все остальные записи подписки импортированы как обычно.",
+      "cause_en": "Panels hand one body to several clients at once and mix routing commands (`incy://routing/…`, `happ://routing/…`) in with the links, and repeat them in the `Routing:` header. Such a record never claimed to be a node, and this application does not execute another client's routing rules.",
+      "cause_ru": "Панели отдают одно тело сразу нескольким клиентам и подмешивают к ссылкам команды маршрутизации (`incy://routing/…`, `happ://routing/…`), повторяя их ещё и заголовком `Routing:`. Узлом такая запись не притворялась, а правила маршрутизации чужого клиента это приложение не исполняет.",
+      "fix_en": [
+        "Nothing to do: the subscription is healthy and its nodes were imported.",
+        "Set up routing rules in the application itself — the provider's command was not applied."
+      ],
+      "fix_ru": [
+        "Делать ничего не нужно: подписка исправна, её узлы импортированы.",
+        "Правила маршрутизации настройте в самом приложении — команда провайдера не применена."
+      ],
+      "desc": "Строка состава со СЛУЖЕБНОЙ схемой (source_kinds.json uri_lines.service_schemes): узлом не является и никогда им не была. Прежде отбраковывалась общим «unsupported scheme», и формально рабочая подписка показывала отказ на своём же служебном заголовке (наблюдалось: 5 отказов при 8 живых узлах). severity=info: терять тут нечего, но выпадение обязано быть названным, а не молчаливым — иначе оно неотличимо от потерянного узла. Обращение как с provider_banner, отличается только признаком (у баннера схемы нет вовсе).",
+      "dart": null,
+      "go": "core/config/subscription/parse_body.go isServiceSchemeLine"
+    },
+    "scheme_unsupported": {
+      "severity": "error",
+      "params": [
+        "scheme"
+      ],
+      "title_en": "Link: scheme {scheme} is not supported",
+      "title_ru": "Ссылка: схема {scheme} не поддержана",
+      "text_en": "The composition line starts with the scheme {scheme}, which no protocol section of the registry describes. The record was dropped: there is nothing to read it with.",
+      "text_ru": "Строка состава начинается схемой {scheme}, которой не описывает ни одна секция протоколов реестра. Запись отброшена: читать её нечем.",
+      "cause_en": "The link belongs to another client's world, or it is a newer scheme than this application knows. Aggregated public subscriptions collect links from different panels, and a panel sometimes writes the protocol's full name where the short alias was expected.",
+      "cause_ru": "Ссылка относится к миру другого клиента либо её схема новее, чем знает это приложение. Сборные публичные подписки собирают ссылки с разных панелей, а панель иногда пишет полное имя протокола там, где ожидался короткий алиас.",
+      "fix_en": [
+        "Update the application: a newer version may know this scheme.",
+        "Ask the provider for a link to the same server in a supported protocol."
+      ],
+      "fix_ru": [
+        "Обновите приложение: в более новой версии схема может быть известна.",
+        "Попросите у провайдера ссылку на тот же сервер в поддерживаемом протоколе."
+      ],
+      "desc": "Строка состава со схемой, которую не ведёт ни одна секция реестра (последний отказ ParseNode). Прежде причина ехала только текстом Go «unsupported scheme» без машинного кода, и мобильная сторона не могла сверить отбраковку. Отличается от protocol_unsupported: там ядро не умеет ТИП outbound'а из JSON-тела, здесь реестр не знает СХЕМУ ссылки. От service_record_ignored — тем, что про эту схему мы не знаем ничего, а про служебную знаем, что она узлом не является. Граница с form_unrecognized (CANON §4.1): этот код ставится только строке формы xxx://; текст без схемы, а также строка с опознанной схемой и непрочитанным пейлоадом — form_unrecognized.",
+      "dart": null,
+      "go": "core/config/subscription/node_parser_core.go ParseNode"
+    },
+    "body_dialect_unrecognized": {
+      "severity": "error",
+      "params": [],
+      "title_en": "Subscription: config dialect was read as the wrong one",
+      "title_ru": "Подписка: диалект конфига прочитан не тот",
+      "text_en": "The subscription body is a whole config, but its dialect was determined incorrectly, and the entries were read by a parser meant for another dialect. No nodes were imported.",
+      "text_ru": "Тело подписки — целый конфиг, но его диалект определён неверно, и записи читал разбор, предназначенный другому диалекту. Ни один узел не импортирован.",
+      "cause_en": "An Xray config and a sing-box config have the same shape (`outbounds` with a list of entries) and differ only in what the entry itself is called: `protocol` for Xray, `type` for sing-box. A classifier that asks only for `outbounds` hands an Xray config to the sing-box parser, which finds no `type` in a single entry.",
+      "cause_ru": "Конфиг Xray и конфиг sing-box имеют одну форму (`outbounds` со списком записей) и различаются только тем, как называется сама запись: у Xray — `protocol`, у sing-box — `type`. Классификатор, спрашивающий лишь `outbounds`, отдаёт конфиг Xray разбору sing-box, и тот не находит `type` ни у одной записи.",
+      "fix_en": [
+        "Update the application: the dialect check is part of the parser.",
+        "As a workaround, wrap the config in a JSON array of one element — an array of configs is recognised correctly."
+      ],
+      "fix_ru": [
+        "Обновите приложение: проверка диалекта — часть разбора.",
+        "Как обходной путь оберните конфиг в JSON-массив из одного элемента — массив конфигов опознаётся верно."
+      ],
+      "desc": "Диагностический код ступени КЛАССИФИКАЦИИ, а не разбора записи: тело опознано целым конфигом, но диалект спрошен не был. Заведён вместе с исправлением (source_kinds.json xray_config, prio 35): реестр признак диалекта объявлял, а рукописный сниффер body_classify.go его не спрашивал, и одиночный конфиг Xray давал ноль узлов с отбраковкой «missing type» на каждой записи. Ставится там, где ступень всё же промахнулась — код без пути к нему был бы мёртвыми данными, поэтому он объявлен body-level (на подписку, не на узел).",
+      "dart": null,
+      "go": "core/config/subscription/body_classify.go classifyJSONObjectBody"
     }
   }
 }

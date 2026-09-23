@@ -4,7 +4,7 @@
 
 [← index](../index.md) · [diagnosed problems](../warnings.md)
 
-`wireguard` — an endpoint (a tunnel interface, not a plain outbound), sing-box type `wireguard`. Also written as `wg`, `awg`. Accepted from: share link, sing-box JSON, WireGuard .conf, AmneziaWG .conf.
+`wireguard` — an endpoint (a tunnel interface, not a plain outbound), sing-box type `wireguard`. Also written as `wg`, `awg`, `amneziawg`. Accepted from: share link, sing-box JSON, WireGuard .conf, AmneziaWG .conf.
 
 <sub>Schema checked against core `1.14.1-lx.4` · the link fragment (`#…`) is the node `label`</sub>
 
@@ -13,7 +13,7 @@
 | `scheme` | `wireguard` |
 | `singbox_type` | `wireguard` |
 | `kind` | `endpoint` |
-| `aliases` | `wg`, `awg` |
+| `aliases` | `wg`, `awg`, `amneziawg` |
 | `sources` | `uri`, `singbox`, `wgconf`, `amnezia` |
 | Core the schema was checked against | `1.14.1-lx.4` |
 | URI fragment | `label` |

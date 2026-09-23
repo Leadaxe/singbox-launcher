@@ -55,9 +55,23 @@ func parseAmneziaVPNLink(uri string, skipFilters []map[string]string) (*configty
 			fmt.Errorf("vpn:// link length (%d) exceeds maximum (%d)", len(uri), maxAmneziaLinkLength))
 	}
 	payload := strings.TrimPrefix(strings.TrimSpace(uri), "vpn://")
-	profile, err := decodeAmneziaProfile(payload)
+	profile, bareConf, err := decodeAmneziaPayload(payload)
 	if err != nil {
 		return nil, linkmap.NewReject(linkmap.CodeFormUnrecognized, nil, fmt.Errorf("failed to decode vpn:// profile: %w", err))
+	}
+	// Голый `.conf` под оболочкой — форма `bare_conf` реестра: контейнеров
+	// тут нет вовсе, и судить его надо веткой `.conf`, а не искать в нём
+	// профиль. Метку даёт сам конфиг (комментарий над [Interface] либо хост
+	// Endpoint), потому что подсказывать её из профиля нечем.
+	if profile == nil && bareConf != "" {
+		node, parseErr, known := ParseWGConfByEngineHint(bareConf, "", skipFilters)
+		if !known {
+			return nil, fmt.Errorf("vpn:// payload is not a WireGuard config")
+		}
+		if parseErr != nil {
+			return nil, fmt.Errorf("invalid WireGuard config in vpn:// payload: %w", parseErr)
+		}
+		return node, nil
 	}
 
 	confText, containerName, containerCount := amneziaWGConfText(profile)
@@ -96,11 +110,25 @@ func parseAmneziaVPNLink(uri string, skipFilters []map[string]string) (*configty
 	return node, nil
 }
 
-// decodeAmneziaProfile turns the base64url payload of a vpn:// link into the
-// profile JSON. Tolerant input: whitespace/newlines are dropped (links pasted
-// from chats get wrapped), padding is stripped, and the standard base64
-// alphabet is accepted as a fallback.
-func decodeAmneziaProfile(payload string) (map[string]interface{}, error) {
+// decodeAmneziaPayload снимает оболочку `vpn://` (base64url либо base64,
+// пробелы и переводы строк отбрасываются — ссылку из чата переносят с
+// переносами) и говорит, ЧЕМ оказалась
+// полезная нагрузка: профилем Amnezia (первое значение) либо голым
+// `.conf`-текстом wg-quick/AmneziaWG (второе).
+//
+// Норма — contract/registry/source_kinds.json, ветка `amnezia_link`,
+// `payload_forms`: форма `profile_json` (голый JSON либо qCompress-фрейминг) и
+// форма `bare_conf` (первая НЕ-комментарная секция — `[Interface]`, тот же
+// предикат, что у вида источника `wireguard_conf`). Панели раздают под
+// `vpn://` именно вторую форму, и прежде она уходила в ветку qCompress, где
+// первые четыре байта INI читались как объявленная длина: пользователь
+// получал ноль узлов с диагнозом «declared uncompressed size … out of range»
+// — сообщением, уводившим чинить не то (контракт 1.1.48).
+//
+// Паддинг `=` необязателен: панели его срезают (наблюдалось на живой ссылке),
+// поэтому обе азбуки пробуются в Raw-виде, а хвостовые `=` снимаются до
+// декода.
+func decodeAmneziaPayload(payload string) (map[string]interface{}, string, error) {
 	payload = strings.Map(func(r rune) rune {
 		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
 			return -1
@@ -109,7 +137,7 @@ func decodeAmneziaProfile(payload string) (map[string]interface{}, error) {
 	}, payload)
 	payload = strings.TrimRight(payload, "=")
 	if payload == "" {
-		return nil, fmt.Errorf("empty payload")
+		return nil, "", fmt.Errorf("empty payload")
 	}
 
 	raw, err := base64.RawURLEncoding.DecodeString(payload)
@@ -117,57 +145,70 @@ func decodeAmneziaProfile(payload string) (map[string]interface{}, error) {
 		var stdErr error
 		raw, stdErr = base64.RawStdEncoding.DecodeString(payload)
 		if stdErr != nil {
-			return nil, fmt.Errorf("invalid base64: %w", err)
+			return nil, "", fmt.Errorf("invalid base64: %w", err)
 		}
 	}
+	plain := bytes.TrimSpace(raw)
 	// Несжатый профиль: голый base64(JSON) без qCompress-фрейминга.
 	// Amnezia так экспортирует часть ссылок (паритет importController), и
 	// LxBox это принимает; проверка идёт ДО фрейминга, потому что первые
 	// 4 байта такого payload — начало JSON, а не длина (SPEC 103 §9.B12).
-	if plain := bytes.TrimSpace(raw); len(plain) > 0 && plain[0] == '{' {
+	if len(plain) > 0 && plain[0] == '{' {
 		if len(plain) > maxAmneziaProfileJSON {
-			return nil, fmt.Errorf("uncompressed profile exceeds %d bytes", maxAmneziaProfileJSON)
+			return nil, "", fmt.Errorf("uncompressed profile exceeds %d bytes", maxAmneziaProfileJSON)
 		}
 		var profile map[string]interface{}
 		if err := json.Unmarshal(plain, &profile); err == nil {
-			return profile, nil
+			return profile, "", nil
 		}
 		// Начинается с '{', но не разбирается — это не «почти JSON», а битые
 		// данные: qCompress-ветка ниже на них всё равно упадёт, зато сообщение
 		// будет про zlib и уведёт диагностику не туда.
-		return nil, fmt.Errorf("payload looks like JSON but does not parse")
+		return nil, "", fmt.Errorf("payload looks like JSON but does not parse")
+	}
+	// Голый `.conf`: под оболочкой не пакет-профиль, а сам wg-quick/AWG INI
+	// (форма `bare_conf` реестра). Признак — ТОТ ЖЕ, что у вида источника
+	// `wireguard_conf`: первая не-комментарная секция — `[Interface]`, и
+	// второго определения «что такое .conf» тут не заводится. Проверка идёт
+	// до фрейминга по той же причине, что и JSON: первые байты INI — это
+	// текст, а не объявленная длина.
+	if len(plain) > 0 && plain[0] == '[' && looksLikeWGConf(string(plain)) {
+		if len(plain) > maxAmneziaProfileJSON {
+			return nil, "", fmt.Errorf("bare config exceeds %d bytes", maxAmneziaProfileJSON)
+		}
+		return nil, string(plain), nil
 	}
 
 	// qCompress framing: 4-byte big-endian uncompressed size + zlib stream.
 	if len(raw) < 5 {
-		return nil, fmt.Errorf("payload too short for qCompress framing (%d bytes)", len(raw))
+		return nil, "", fmt.Errorf("payload too short for qCompress framing (%d bytes)", len(raw))
 	}
 	expected := binary.BigEndian.Uint32(raw[:4])
 	if expected == 0 || expected > maxAmneziaProfileJSON {
-		return nil, fmt.Errorf("declared uncompressed size %d out of range", expected)
+		return nil, "", fmt.Errorf("declared uncompressed size %d out of range", expected)
 	}
 	zr, err := zlib.NewReader(bytes.NewReader(raw[4:]))
 	if err != nil {
-		return nil, fmt.Errorf("invalid zlib stream: %w", err)
+		return nil, "", fmt.Errorf("invalid zlib stream: %w", err)
 	}
 	defer func() { _ = zr.Close() }()
 	data, err := io.ReadAll(io.LimitReader(zr, maxAmneziaProfileJSON+1))
 	if err != nil {
-		return nil, fmt.Errorf("zlib decompression failed: %w", err)
+		return nil, "", fmt.Errorf("zlib decompression failed: %w", err)
 	}
 	if len(data) > maxAmneziaProfileJSON {
-		return nil, fmt.Errorf("decompressed profile exceeds %d bytes", maxAmneziaProfileJSON)
+		return nil, "", fmt.Errorf("decompressed profile exceeds %d bytes", maxAmneziaProfileJSON)
 	}
 	if uint32(len(data)) != expected {
 		// Header mismatch is suspicious but not fatal: trust the actual stream.
-		debuglog.DebugLog("decodeAmneziaProfile: qCompress header says %d bytes, got %d", expected, len(data))
+		debuglog.DebugLog("decodeAmneziaPayload: qCompress header says %d bytes, got %d", expected, len(data))
 	}
 
 	var profile map[string]interface{}
 	if err := json.Unmarshal(data, &profile); err != nil {
-		return nil, fmt.Errorf("profile is not valid JSON: %w", err)
+		return nil, "", fmt.Errorf("profile is not valid JSON: %w", err)
 	}
-	return profile, nil
+	return profile, "", nil
 }
 
 // amneziaWGConfText picks the WG/AWG [Interface]/[Peer] text out of the profile.
@@ -263,9 +304,25 @@ func ParseAmneziaVPNLinkAll(uri string, skipFilters []map[string]string) ([]*con
 			fmt.Errorf("vpn:// link length (%d) exceeds maximum (%d)", len(uri), maxAmneziaLinkLength))
 	}
 	payload := strings.TrimPrefix(strings.TrimSpace(uri), "vpn://")
-	profile, err := decodeAmneziaProfile(payload)
+	profile, bareConf, err := decodeAmneziaPayload(payload)
 	if err != nil {
 		return nil, 0, linkmap.NewReject(linkmap.CodeFormUnrecognized, nil, fmt.Errorf("failed to decode vpn:// profile: %w", err))
+	}
+	// Голый `.conf` (форма `bare_conf` реестра) даёт РОВНО один узел:
+	// контейнеров у него нет, и множественный путь отличается от одиночного
+	// только тем, что отдаёт список из одного элемента.
+	if profile == nil && bareConf != "" {
+		node, parseErr, known := ParseWGConfByEngineHint(bareConf, "", skipFilters)
+		if !known {
+			return nil, 0, fmt.Errorf("vpn:// payload is not a WireGuard config")
+		}
+		if parseErr != nil {
+			return nil, 0, fmt.Errorf("invalid WireGuard config in vpn:// payload: %w", parseErr)
+		}
+		if node == nil {
+			return nil, 0, nil
+		}
+		return []*configtypes.ParsedNode{node}, 0, nil
 	}
 
 	texts, names := amneziaAllWGConfTexts(profile)

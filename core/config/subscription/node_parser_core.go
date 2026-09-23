@@ -4,6 +4,7 @@
 package subscription
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -137,8 +138,32 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	// секция реестра двумя `forms` одной таблицей записей.
 	//
 	// Сюда попадает только текст, который не опознала ни одна секция.
-	return nil, linkmap.NewReject(linkmap.CodeFormUnrecognized, nil, fmt.Errorf("unsupported scheme"))
+	// Строка формы `xxx://` — схему не ведёт никто (`scheme_unsupported`);
+	// у прочего текста схемы нет вовсе, и он просто не прочитан
+	// (`form_unrecognized`) — граница по CANON §4.1.
+	if scheme := linkmap.SchemeOfText(uri); scheme != "" {
+		return nil, linkmap.NewReject(WarnSchemeUnsupported, map[string]string{"scheme": scheme}, ErrUnsupportedScheme)
+	}
+	return nil, linkmap.NewReject(linkmap.CodeFormUnrecognized, nil, errors.New("not a link: no scheme"))
 }
+
+// ErrUnsupportedScheme — последний отказ ParseNode: схему строки не ведёт ни
+// одна секция реестра.
+//
+// Сторожевая переменная, а не строка на месте: отбраковке нужен МАШИННЫЙ код
+// (`scheme_unsupported`, D-088), а различать «эту схему мы не знаем вовсе» от
+// прочих отказов разбора по тексту ошибки нельзя — текст у каждой стороны
+// свой. Обёртки над ней (`%w`) сохраняют признак для errors.Is.
+//
+// ParseNode отдаёт её обёрнутой в linkmap.RejectError с кодом
+// `scheme_unsupported` и параметром `scheme`: код едет тем же путём, что у
+// отказов движка (rejectCodeOf, linkmap.RejectCode), а признак для
+// errors.Is не теряется. Граница с `form_unrecognized` (CANON §4.1): схему
+// строки `xxx://` не ведёт ни одна секция — `scheme_unsupported`; текст не
+// прочитан (схемы у строки нет, у тела не опознан ни один вид источника,
+// либо секция схему опознала, но ни одна её форма пейлоад не прочитала) —
+// `form_unrecognized`.
+var ErrUnsupportedScheme = errors.New("unsupported scheme")
 
 // Private helper functions (migrated from parser.go)
 

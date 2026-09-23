@@ -22,7 +22,7 @@
         "properties": {
           "ref": { "type": "string", "description": "Что отвергнуто, как это видно глазами: тег outbound'а у JSON-тел, сама ссылка у одиночной ссылки." },
           "index": { "type": "integer", "minimum": 0, "description": "С 1.1.48. Позиция отвергнутого элемента в нарезке elements вида источника (registry/source_kinds.json), с нуля. Дополнительный адрес рядом с ref, а не его замена: у одиночной ссылки всегда 0." },
-          "code": { "type": "string", "description": "Машинная причина — код из registry/warnings.json. С 1.1.48 обязателен у каждой отбраковки, в том числе у отказа РАЗБОРА (form_unrecognized, field_missing, protocol_unsupported, uri_too_long)." },
+          "code": { "type": "string", "description": "Машинная причина — код из registry/warnings.json. С 1.1.48 обязателен у каждой отбраковки, в том числе у отказа РАЗБОРА (form_unrecognized, scheme_unsupported, field_missing, protocol_unsupported, uri_too_long); граница form_unrecognized/scheme_unsupported — CANON §4.1." },
           "reason": { "type": "string", "description": "Человеческий текст причины стороны. Ненормативен (D-088): раннеры его не сравнивают." }
         }
       }

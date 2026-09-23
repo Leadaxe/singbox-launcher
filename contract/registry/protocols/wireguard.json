@@ -5,7 +5,8 @@
   "singbox_type": "wireguard",
   "aliases": [
     "wg",
-    "awg"
+    "awg",
+    "amneziawg"
   ],
   "sources": [
     "uri",
@@ -14,7 +15,7 @@
     "amnezia"
   ],
   "extension": null,
-  "note": "Endpoint (sing-box >= 1.11): в конфиге живёт в endpoints[], не в outbounds[]. awg:// — алиас обоих проектов (нормализуется в wireguard, AWG-поля промоутятся в корень endpoint); вторая форма awg://<base64 .conf>#label (панели раздают AmneziaWG 3.x целым wg-quick в base64; авторитет без '@'/':') — payload декодируется, первый [Interface]-блок конвертируется тем же путём, что вставленный .conf (SPEC 076), метка = фрагмент, без фрагмента — комментарий пира или хост Endpoint (кейсы awg_conf_base64*; Go с 1.6.2, Dart — задача §20 TASKS_LXBOX); алиас wg:// знает только Dart (Go IsDirectLink его не принимает — разрыв). D-010: дефолтные name=\"singbox-wg0\" и system=false НЕ эмитятся (Go убирает из parseWireGuardURI). Multi-peer: URI/share-URI — строго один peer; sing-box импорт: Go сохраняет всех peers как есть, Dart берёт только peers.first (тихая потеря — разрыв).",
+  "note": "Endpoint (sing-box >= 1.11): в конфиге живёт в endpoints[], не в outbounds[]. awg:// — алиас обоих проектов (нормализуется в wireguard, AWG-поля промоутятся в корень endpoint); amneziawg:// — ПОЛНОЕ имя той же схемы, третий алиас: панели (rrtrg и соседи) пишут его целиком, и без литерала такая ссылка отбраковывалась как «unsupported scheme», хотя все её поля секция уже умела читать — те же узлы приезжали рядом через vpn:// (контракт 1.1.48); вторая форма awg://<base64 .conf>#label (панели раздают AmneziaWG 3.x целым wg-quick в base64; авторитет без '@'/':') — payload декодируется, первый [Interface]-блок конвертируется тем же путём, что вставленный .conf (SPEC 076), метка = фрагмент, без фрагмента — комментарий пира или хост Endpoint (кейсы awg_conf_base64*; Go с 1.6.2, Dart — задача §20 TASKS_LXBOX); алиас wg:// знает только Dart (Go IsDirectLink его не принимает — разрыв). D-010: дефолтные name=\"singbox-wg0\" и system=false НЕ эмитятся (Go убирает из parseWireGuardURI). Multi-peer: URI/share-URI — строго один peer; sing-box импорт: Go сохраняет всех peers как есть, Dart берёт только peers.first (тихая потеря — разрыв).",
   "uri": {
     "userinfo": {
       "maps_to": "private_key",
@@ -270,7 +271,8 @@
       "detect": {
         "scheme_in": [
           "wireguard",
-          "awg"
+          "awg",
+          "amneziawg"
         ]
       },
       "body_source": "uri",

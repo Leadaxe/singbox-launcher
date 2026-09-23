@@ -407,8 +407,14 @@ func LoadNodesFromSourceEx(
 					}
 					debuglog.DebugLog("LoadNodesFromSource: Parsed subscription %d/%d: %d nodes in %v (%s)",
 						subscriptionIndex+1, totalSubscriptions, nodesFromThisSource, time.Since(parseStartTime), bodyKind)
-				} else if bodyKind == BodyKindXrayArray {
-					arrayNodes, xrayReasons, err := ParseNodesFromXrayJSONArrayEx(contentStr, proxySource.Skip)
+				} else if bodyKind == BodyKindXrayArray || bodyKind == BodyKindXrayConfig {
+					// Одиночный конфиг Xray — массив из одного элемента
+					// (реестр: xray_config, элементы `outbounds[]`).
+					xrayBody := contentStr
+					if bodyKind == BodyKindXrayConfig {
+						xrayBody = XrayConfigToArray(contentStr)
+					}
+					arrayNodes, xrayReasons, err := ParseNodesFromXrayJSONArrayEx(xrayBody, proxySource.Skip)
 					rejected.AddAll(xrayReasons)
 					if err != nil {
 						debuglog.WarnLog("Parser: Xray JSON array subscription %s: %v", proxySource.Source, err)

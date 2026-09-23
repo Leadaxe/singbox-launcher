@@ -38,6 +38,19 @@ const (
 	// Проверяется ПЕРВОЙ, до base64-эвристики: ':' не входит в base64-алфавит,
 	// и без явной ветки тело уходило бы в декодер как испорченный base64.
 	BodyKindVPNLink
+	// BodyKindXrayConfig — ОДИНОЧНЫЙ целый конфиг Xray: объект с outbounds,
+	// записи которого несут "protocol", а не "type".
+	//
+	// Норма — contract/registry/source_kinds.json, ветка `xray_config`
+	// (priority 35): признак диалекта — ключ `protocol` у ЭЛЕМЕНТА, и
+	// отрицание `type` у корня. Реестр это решал с самого своего появления, а
+	// рукописный классификатор диалект не спрашивал вовсе и отдавал такой
+	// объект ветке sing-box-конфига: каждая запись отбраковывалась «missing
+	// type», и подписка давала НОЛЬ узлов (контракт 1.1.48).
+	//
+	// Разбирается тем же входом, что массив Xray-конфигов: элементом там
+	// служит конфиг, и одиночный — это массив из одного (XrayConfigToArray).
+	BodyKindXrayConfig
 )
 
 // String — человекочитаемое имя для логов.
@@ -57,6 +70,8 @@ func (k BodyKind) String() string {
 		return "wgconf"
 	case BodyKindVPNLink:
 		return "vpn-link"
+	case BodyKindXrayConfig:
+		return "xray-config"
 	default:
 		return "uri-list"
 	}
@@ -187,6 +202,16 @@ func classifyJSONObjectBody(trimmed string) BodyKind {
 	// "type" раньше "outbounds": одиночный selector несёт оба поля.
 	if _, ok := obj["type"].(string); ok {
 		return BodyKindSingboxOutbound
+	}
+	// Диалект спрашивается ДО ветки sing-box-конфига (реестр: xray_config,
+	// priority 35 против singbox_config 50). Признак — ключ `protocol` у
+	// ЭЛЕМЕНТА outbounds: у конфига Xray и конфига sing-box одна форма, и
+	// различаются они только тем, как называется сама запись. Без этой
+	// проверки конфиг Xray уезжал в sing-box-разбор, который не находил в
+	// нём ни одного `type`, и узлов выходило ноль (код
+	// body_dialect_unrecognized описывает ровно тот промах).
+	if xrayElementHasProtocolOutbounds(obj) {
+		return BodyKindXrayConfig
 	}
 	if hasJSONArrayField(obj, "outbounds") || hasJSONArrayField(obj, "endpoints") {
 		return BodyKindSingboxConfig

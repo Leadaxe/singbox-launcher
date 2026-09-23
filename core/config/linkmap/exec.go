@@ -171,7 +171,9 @@ const (
 	// заполнены; параметр `field` — путь тела либо имя записи.
 	CodeFieldMissing = "field_missing"
 	// CodeFormUnrecognized — текст не прочитан ни одной формой секции:
-	// оболочка не распаковалась, пейлоад не JSON/ini, схемы нет.
+	// оболочка не распаковалась, пейлоад не JSON/ini, схемы у строки нет.
+	// Строке `xxx://` со схемой, которую не ведёт ни одна секция, ставится
+	// не он, а `scheme_unsupported` слоя подписки (CANON §4.1).
 	CodeFormUnrecognized = "form_unrecognized"
 )
 
@@ -2351,6 +2353,18 @@ func normalizeValue(kind, v string) string {
 			t = t + ":" + t
 		}
 		return t
+	case "bandwidth_mbps":
+		// Полоса с ЕДИНИЦЕЙ ИЗМЕРЕНИЯ → число мегабит. Форки Xray пишут её
+		// строкой («100mbps», «300 Mbps», «1gbps»), а поле ядра — целое
+		// в мегабитах: `type: int` на такой строке давал отсутствие значения,
+		// и полоса терялась МОЛЧА на обеих сторонах
+		// (contract/registry/protocols/hysteria2.json, up_mbps/down_mbps).
+		//
+		// Перевод написания диалекта, а не суждение о величине: годность
+		// результата по-прежнему судит `type: int` и правило поля тела.
+		// Неизвестный суффикс значения не даёт — такую строку мы не понимаем,
+		// и выдумывать за автора нельзя.
+		return normalizeBandwidthMbps(v)
 	case "duration_bare_seconds":
 		// Голое число — это СЕКУНДЫ: живая конвенция панелей
 		// (`idle_session_timeout=30`), а ядро ждёт единицу измерения и на
@@ -2367,6 +2381,53 @@ func normalizeValue(kind, v string) string {
 		}
 		return t + "s"
 	}
+	return v
+}
+
+// normalizeBandwidthMbps приводит полосу с суффиксом к целому числу мегабит.
+//
+// Порядок проверки суффиксов от ДЛИННОГО к короткому: «mbps» обязан выиграть
+// у «bps», иначе «100mbps» прочиталось бы как сто бит. Дробная часть после
+// пересчёта отбрасывается вниз — поле ядра целое, а округление вверх
+// обещало бы полосу, которой сервер не давал.
+func normalizeBandwidthMbps(v string) string {
+	t := strings.ToLower(strings.TrimSpace(v))
+	if t == "" {
+		return v
+	}
+	// Голое число уже в мегабитах — не трогаем (и не переписываем написание).
+	if _, err := strconv.ParseFloat(t, 64); err == nil {
+		return v
+	}
+	// Множитель к мегабитам. «mbit/s» и «mbit» — те же мегабиты другим
+	// написанием; «m»/«k»/«g» в одиночку двусмысленны и не принимаются.
+	units := []struct {
+		suffix string
+		mul    float64
+	}{
+		{"mbit/s", 1},
+		{"mbit", 1},
+		{"gbit/s", 1000},
+		{"gbit", 1000},
+		{"kbit/s", 1.0 / 1000},
+		{"kbit", 1.0 / 1000},
+		{"mbps", 1},
+		{"gbps", 1000},
+		{"kbps", 1.0 / 1000},
+		{"bps", 1.0 / 1000000},
+	}
+	for _, u := range units {
+		if !strings.HasSuffix(t, u.suffix) {
+			continue
+		}
+		num := strings.TrimSpace(strings.TrimSuffix(t, u.suffix))
+		f, err := strconv.ParseFloat(num, 64)
+		if err != nil || f < 0 {
+			return v
+		}
+		return strconv.FormatInt(int64(f*u.mul), 10)
+	}
+	// Суффикс не опознан — значение уезжает как есть, и его судит `type`.
 	return v
 }
 

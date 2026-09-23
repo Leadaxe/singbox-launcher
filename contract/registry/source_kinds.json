@@ -15,9 +15,32 @@
         "unwrap": "amnezia_vpn",
         "mapper": "conf",
         "elements": "texts",
-        "desc_en": "Amnezia container export (`vpn://`): base64url of a compressed JSON bundle, unwrapped into one INI text per WireGuard/AmneziaWG container.",
-        "desc_ru": "Контейнерный экспорт Amnezia (`vpn://`): base64url сжатого JSON-пакета; распаковывается в один INI-текст на WireGuard/AmneziaWG-контейнер.",
-        "impl": "Оболочку снимает ИМЕНОВАННЫЙ распаковщик-код (base64url от qCompress(JSON, 8) либо голый base64-JSON): формат предикатами не выражается, но ВЫЗЫВАЕТСЯ он по имени через `unwrap`, а не веткой в сниффере. Даёт по одному ini-тексту на WG/AWG-контейнер, и каждый читается маппером conf. `redetect` тут НЕ стоит: вид элемента известен заранее — распаковщик обещает ini, а не «что-нибудь». Ветка идёт ПЕРВОЙ: base64-эвристика её и так не зацепит (`:` вне алфавита), но порядок обязан быть объявлен, а не выведен."
+        "payload_forms": [
+          {
+            "id": "profile_json",
+            "detect": {
+              "default": true
+            },
+            "desc_en": "Amnezia profile bundle: JSON with `containers[]`, either bare or inside qCompress framing. The branch by default: qCompress framing is not expressible by predicates.",
+            "desc_ru": "Пакет-профиль Amnezia: JSON с `containers[]`, голый либо под фреймингом qCompress. Форма по умолчанию: фрейминг qCompress предикатами не выражается.",
+            "impl": "Историческая и основная форма: распаковщик достаёт из профиля по одному ini-тексту на WG/AWG-контейнер. `default: true`, а не предикат: голый JSON опознался бы по `prefix_trim: \"{\"`, но сжатый профиль начинается с четырёх байт ДЛИНЫ, и выразить его предикатом о тексте нельзя — фрейминг судит сам распаковщик. Объявить половину условия значило бы соврать, что вторая половина проверяется здесь же. Как и у видов источника, форма по умолчанию ровно одна и с настоящими предикатами не конкурирует."
+          },
+          {
+            "id": "bare_conf",
+            "detect": {
+              "ini": {
+                "first_section_fold": "interface"
+              }
+            },
+            "redetect": "wireguard_conf",
+            "desc_en": "A bare wg-quick / AmneziaWG `.conf` under `vpn://`: the base64 payload is INI, not a profile bundle.",
+            "desc_ru": "Голый `.conf` wg-quick / AmneziaWG под `vpn://`: полезная нагрузка base64 — это INI, а не пакет-профиль.",
+            "impl": "Панели (rrtrg и соседи) кладут под `vpn://` сам конфиг, без обёртки-профиля. Форма судится ТЕМ ЖЕ предикатом, что и ветка `wireguard_conf` (60), и потому не заводит второго определения «что такое .conf»: первая НЕ-комментарная секция — `[Interface]`. Прежде такой payload уходил в ветку qCompress, где первые четыре байта INI читались как длина, и пользователь получал ноль узлов с диагнозом про zlib («declared uncompressed size … out of range») — сообщение, уводившее чинить не то. `redetect` называет вид ЯВНО, а не оставляет его на общий повторный суд: распаковщик уже знает, что отдал, и повторное угадывание добавило бы ветку, которой нечего решать."
+          }
+        ],
+        "desc_en": "Amnezia container export (`vpn://`): base64url of either a compressed JSON bundle (unwrapped into one INI text per WireGuard/AmneziaWG container) or a bare wg-quick / AmneziaWG `.conf`.",
+        "desc_ru": "Контейнерный экспорт Amnezia (`vpn://`): base64url либо сжатого JSON-пакета (распаковывается в один INI-текст на WireGuard/AmneziaWG-контейнер), либо голого `.conf` wg-quick / AmneziaWG.",
+        "impl": "Оболочку снимает ИМЕНОВАННЫЙ распаковщик-код (base64url/base64 от qCompress(JSON, 8), голого JSON-профиля либо голого INI): формат предикатами не выражается, но ВЫЗЫВАЕТСЯ он по имени через `unwrap`, а не веткой в сниффере. Что именно оказалось под base64, решает `payload_forms` — вид элемента заранее известен ТОЛЬКО у формы профиля, поэтому общий `redetect` у ветки не стоит, а объявлен у той формы, которой он нужен. Паддинг `=` у payload необязателен: панели его срезают, и обе азбуки (rawurl и std) пробуются без него. Ветка идёт ПЕРВОЙ: base64-эвристика её и так не зацепит (`:` вне алфавита), но порядок обязан быть объявлен, а не выведен."
       },
       {
         "source_kind": "base64_wrapped",
@@ -40,7 +63,7 @@
         },
         "desc_en": "Whole subscription re-encoded as base64. The decoded text is classified again from scratch, and must look like a real document before it wins.",
         "desc_ru": "Подписка, перекодированная в base64 целиком. Распакованный текст судится заново с самого начала и обязан быть похож на настоящий документ.",
-        "impl": "`redetect` — распакованный текст судится ЗАНОВО с самого начала (предел `max_unwrap_depth`): внутри бывает и список ссылок, и JSON, и ini, поэтому своего маппера у ветки нет. `requires_after_unwrap` — страховка от ложного срабатывания: строка ссылок без спецсимволов тоже проходит алфавит base64, и без проверки правдоподобия распакованный мусор вытеснил бы настоящий список. Сегодня то же делает DecodeSubscriptionContent (core/config/subscription/subscription_decode.go) до классификации, и предела вложенности у неё нет вовсе — ограничение новое (DELTAS D133-35)."
+        "impl": "`redetect` — распакованный текст судится ЗАНОВО с самого начала (предел `max_unwrap_depth`): внутри бывает и список ссылок, и JSON, и ini, поэтому своего маппера у ветки нет. `requires_after_unwrap` — страховка от ложного срабатывания: строка ссылок без спецсимволов тоже проходит алфавит base64, и без проверки правдоподобия распакованный мусор вытеснил бы настоящий список. Сегодня то же делает DecodeSubscriptionContent (core/config/subscription/decoder.go) до классификации, и предела вложенности у неё нет вовсе — ограничение новое (DELTAS D133-35)."
       },
       {
         "source_kind": "singbox_config_array",
@@ -194,6 +217,19 @@
         "mapper": "uri",
         "elements": "lines",
         "line_comment_prefixes": ["#", "//", ";"],
+        "service_schemes": {
+          "note": "СЛУЖЕБНЫЕ схемы строки состава: запись со схемой, которая узлом не является и никогда им не была. Это не «неподдержанный протокол» (`protocol_unsupported`, узел сломан и его надо чинить) и не баннер провайдера (у баннера схемы нет вовсе, признак — отсутствие `://`): это команда СОСЕДНЕЙ подсистеме, которую данный клиент не исполняет. Разбирать её незачем, а шуметь «unsupported scheme» — значит объявлять ошибкой то, что ошибкой не является: у пользователя формально рабочая подписка показывает пять отказов при живых узлах. Обращение с такой записью — как с баннером (`provider_banner`): в состав она не идёт, из списка тихо выпадает, а чтобы выпадение не было МОЛЧАЛИВЫМ, ей назначен info-код.",
+          "schemes": [
+            "incy",
+            "happ"
+          ],
+          "path_prefix_fold": "routing/",
+          "action": "drop",
+          "code": "service_record_ignored",
+          "desc_en": "Service schemes of the composition line: routing commands for a neighbouring client (`incy://routing/…`, `happ://routing/…`). Not nodes; dropped with an info code instead of an `unsupported scheme` error.",
+          "desc_ru": "Служебные схемы строки состава: команды маршрутизации соседнему клиенту (`incy://routing/…`, `happ://routing/…`). Узлами не являются; отбраковываются с info-кодом, а не ошибкой «unsupported scheme».",
+          "impl": "Тот же набор приезжает и ЗАГОЛОВКОМ подписки (`Routing: happ://routing/onadd/<base64>`, `Routing-Enable: true` — наблюдалось у панели rrtrg). Заголовки контрактом не описаны вовсе (протокол живёт в SPEC 061 на стороне лаунчера), поэтому здесь объявлена только форма строки ТЕЛА; заголовок обязан молчать по тому же правилу. `path_prefix_fold` требует, чтобы за схемой шёл именно `routing/`: схема, объявившая что-то другое, тихого игнора не заслуживает — про неё мы не знаем ничего. Проверка регистронезависимая, как у остальных схемных предикатов."
+        },
         "desc_en": "Catch-all branch: a line-by-line list of links. Blank lines and comments are skipped; no lines left means the document was not parsed.",
         "desc_ru": "Ветка «всё остальное»: построчный список ссылок. Пустые строки и комментарии пропускаются; не осталось ни одной строки — документ не разобран.",
         "impl": "Ветка «всё остальное»: построчный список ссылок. Пустые строки и комментарии пропускаются; префиксы комментариев объявлены данными (`line_comment_prefixes`), а не зашиты в обходчик. Ни одной строки не осталось — документ не разобран."
