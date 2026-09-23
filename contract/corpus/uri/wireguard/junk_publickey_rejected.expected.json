@@ -2,6 +2,7 @@
   "dropped": [
     {
       "code": "wg_key_invalid",
+      "index": 0,
       "reason": "emit_error",
       "ref": "wireguard://QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=@192.0.2.71:51820?publickey=enabled&address=10.0.0.2/32&allowedips=0.0.0.0/0#node"
     }

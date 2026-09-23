@@ -82,7 +82,7 @@ func UnwrapURI(plan *Plan, text string) (*Space, registry.Form, error) {
 	}
 	forms := plan.Mapper.Forms
 	if len(forms) == 0 {
-		return nil, registry.Form{}, fmt.Errorf("linkmap: форма не распознана")
+		return nil, registry.Form{}, rejectUnrecognized(fmt.Errorf("linkmap: форма не распознана"))
 	}
 
 	fallback := -1
@@ -146,19 +146,19 @@ func UnwrapURI(plan *Plan, text string) (*Space, registry.Form, error) {
 		form := forms[fallback]
 		body, err := unwrapBody(form, text)
 		if err != nil {
-			return nil, form, err
+			return nil, form, rejectUnrecognized(err)
 		}
 		space, err := lexSpace(form, body, text, plan.Mapper.IniDialect, plan.Mapper.Label.CommentRule())
 		if err != nil {
-			return nil, form, err
+			return nil, form, rejectUnrecognized(err)
 		}
 		buildOverlays(plan.Mapper.Overlays, space)
 		return space, form, nil
 	}
 	if firstErr != nil {
-		return nil, registry.Form{}, firstErr
+		return nil, registry.Form{}, rejectUnrecognized(firstErr)
 	}
-	return nil, registry.Form{}, fmt.Errorf("linkmap: форма не распознана")
+	return nil, registry.Form{}, rejectUnrecognized(fmt.Errorf("linkmap: форма не распознана"))
 }
 
 // unwrapBody прогоняет конвейер декодеров одной формы и отдаёт ПЕЙЛОАД —

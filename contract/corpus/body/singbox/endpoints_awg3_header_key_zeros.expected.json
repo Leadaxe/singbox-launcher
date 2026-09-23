@@ -2,6 +2,7 @@
   "dropped": [
     {
       "code": "awg3_header_key_invalid",
+      "index": 0,
       "reason": "emit_error",
       "ref": "awg3-zero-key"
     }

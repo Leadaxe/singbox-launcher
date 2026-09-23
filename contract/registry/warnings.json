@@ -77,6 +77,27 @@
       "dart": "MissingFieldWarning",
       "go": "contract/registry/protocols/*.json body.fields.* (required); исполнение — core/config/nodeflow/sanitize.go"
     },
+    "form_unrecognized": {
+      "severity": "error",
+      "params": [],
+      "title_en": "Entry could not be read",
+      "title_ru": "Запись не прочитана",
+      "text_en": "The entry is not a link or a configuration this app can read: it has no recognizable scheme, or its encoded part (base64, a compressed profile) does not decode. The node was dropped; the rest of the subscription was read as usual.",
+      "text_ru": "Запись — не ссылка и не конфигурация, которую приложение умеет читать: у неё нет узнаваемой схемы или её закодированная часть (base64, сжатый профиль) не раскрывается. Узел отброшен, остальная подписка прочитана как обычно.",
+      "cause_en": "The link was cut short or damaged when it was copied, a panel produced a broken payload, or the line is not a node link at all — a bare scheme, a stray word or a piece of HTML.",
+      "cause_ru": "Ссылку обрезали или повредили при копировании, панель выдала битый пейлоад, либо строка вовсе не ссылка на узел — голая схема, случайное слово или кусок HTML.",
+      "fix_en": [
+        "Copy the link again from the provider's page — a truncated link is the usual cause.",
+        "Ask the provider to fix the entry in the subscription."
+      ],
+      "fix_ru": [
+        "Скопируйте ссылку с сайта провайдера заново — чаще всего её обрезали при копировании.",
+        "Попросите провайдера исправить запись в подписке."
+      ],
+      "desc": "Отказ РАЗБОРА: ни одна форма секции не прочитала текст (оболочка не распаковалась, пейлоад не JSON/ini, схемы нет), либо ни одна секция не опознала текст вовсе. Заведён в 1.1.47 (TASKS_LXBOX §32.5/§43.4): до этого отбраковка разбора ехала в dropped[] без кода. Кода на узле не бывает — узла нет, код живёт в dropped[].code.",
+      "dart": null,
+      "go": "core/config/linkmap/exec.go CodeFormUnrecognized (UnwrapURI/UnwrapElement); core/config/subscription/node_parser_core.go (секции нет), node_parser_amnezia.go (vpn:// не раскрылся)"
+    },
     "flow_deprecated": {
       "severity": "info",
       "params": [

@@ -14,14 +14,16 @@
     },
     "dropped": {
       "type": "array",
-      "description": "Отброшенные целиком входы (битая нода → подписка живёт).",
+      "description": "Отброшенные целиком входы (битая нода → подписка живёт). CANON §4. С контракта 1.1.47 нормативны ref, index и code; reason — человеческий текст стороны, сравнением не покрывается (D-088).",
       "items": {
         "type": "object",
-        "required": ["ref", "reason"],
+        "required": ["ref", "index", "code"],
         "additionalProperties": false,
         "properties": {
-          "ref": { "type": "string", "description": "Строка/индекс входа, как в исходном теле" },
-          "reason": { "type": "string", "description": "Код причины из registry/warnings.json" }
+          "ref": { "type": "string", "description": "Что отвергнуто, как это видно глазами: тег outbound'а у JSON-тел, сама ссылка у одиночной ссылки." },
+          "index": { "type": "integer", "minimum": 0, "description": "С 1.1.47. Позиция отвергнутого элемента в нарезке elements вида источника (registry/source_kinds.json), с нуля. Дополнительный адрес рядом с ref, а не его замена: у одиночной ссылки всегда 0." },
+          "code": { "type": "string", "description": "Машинная причина — код из registry/warnings.json. С 1.1.47 обязателен у каждой отбраковки, в том числе у отказа РАЗБОРА (form_unrecognized, field_missing, protocol_unsupported, uri_too_long)." },
+          "reason": { "type": "string", "description": "Человеческий текст причины стороны. Ненормативен (D-088): раннеры его не сравнивают." }
         }
       }
     },

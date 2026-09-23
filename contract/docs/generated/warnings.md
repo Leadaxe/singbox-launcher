@@ -41,6 +41,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`field_missing`](#field_missing) · `error` — Required field {field} is missing
 - [`field_requires`](#field_requires) · `warning` — Field {path} removed: {requires} is missing
 - [`flow_deprecated`](#flow_deprecated) · `info` — Obsolete flow removed
+- [`form_unrecognized`](#form_unrecognized) · `error` — Entry could not be read
 - [`group_empty`](#group_empty) · `warning` — Group {tag} left without members
 - [`group_member_missing`](#group_member_missing) · `warning` — {count} group members not imported
 - [`hysteria2_server_ports_item_invalid`](#hysteria2_server_ports_item_invalid) · `warning` — Hysteria2: port hopping range dropped
@@ -725,6 +726,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - [`vless`](protocols/vless.md)
   - [`flow`](protocols/vless.md#body-flow) — the value does not fit the field → removed
+
+<a id="form_unrecognized"></a>
+### form_unrecognized
+
+**severity:** `error`
+
+**Entry could not be read**
+
+- **What happened:** The entry is not a link or a configuration this app can read: it has no recognizable scheme, or its encoded part (base64, a compressed profile) does not decode. The node was dropped; the rest of the subscription was read as usual.
+- **Why it happens:** The link was cut short or damaged when it was copied, a panel produced a broken payload, or the line is not a node link at all — a bare scheme, a stray word or a piece of HTML.
+- **What you can do:**
+  - Copy the link again from the provider's page — a truncated link is the usual cause.
+  - Ask the provider to fix the entry in the subscription.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
 <a id="group_empty"></a>
 ### group_empty

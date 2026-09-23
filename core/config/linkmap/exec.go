@@ -14,6 +14,7 @@ package linkmap
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -160,6 +161,80 @@ type Note struct {
 	Params map[string]string
 }
 
+// Коды ОТКАЗА разбора (CANON §4, D-088, контракт 1.1.47).
+//
+// Общие для всех схем: что именно обязательно и какие формы у секции есть,
+// объявляет реестр, а движок называет только ВИД отказа. Тот же приём, что у
+// санитайзера с `field_missing`/`type_invalid` по умолчанию.
+const (
+	// CodeFieldMissing — обязательное поле, запись или userinfo не
+	// заполнены; параметр `field` — путь тела либо имя записи.
+	CodeFieldMissing = "field_missing"
+	// CodeFormUnrecognized — текст не прочитан ни одной формой секции:
+	// оболочка не распаковалась, пейлоад не JSON/ini, схемы нет.
+	CodeFormUnrecognized = "form_unrecognized"
+)
+
+// RejectError — отказ разбора с машинным кодом причины.
+//
+// Текст остаётся человеческим — он едет в диагностику и в ненормативный
+// `reason` отбраковки. Нормативен код: по нему две стороны сверяют, ПОЧЕМУ
+// узел отброшен (`dropped[].code`). Пока отказ был голой строкой, отбраковка
+// разбора приезжала в конверт без кода вовсе (TASKS_LXBOX §32.5).
+type RejectError struct {
+	Code   string
+	Params map[string]string
+	Err    error
+}
+
+func (e *RejectError) Error() string { return e.Err.Error() }
+
+// Unwrap отдаёт исходную ошибку: цепочка `%w` у вызывающих не рвётся.
+func (e *RejectError) Unwrap() error { return e.Err }
+
+// NewReject оборачивает ошибку кодом отказа.
+func NewReject(code string, params map[string]string, err error) error {
+	return &RejectError{Code: code, Params: params, Err: err}
+}
+
+// RejectCode — код отказа из цепочки ошибок; "" — код не назначен.
+func RejectCode(err error) string {
+	var r *RejectError
+	if errors.As(err, &r) {
+		return r.Code
+	}
+	return ""
+}
+
+// rejectMissing — отказ «обязательное не заполнено» с именем поля.
+func rejectMissing(field string, err error) error {
+	return NewReject(CodeFieldMissing, map[string]string{"field": field}, err)
+}
+
+// rejectUnrecognized — отказ «ни одна форма не прочитала текст». Уже
+// закодированную ошибку не перекрывает: её код точнее.
+func rejectUnrecognized(err error) error {
+	if RejectCode(err) != "" {
+		return err
+	}
+	return NewReject(CodeFormUnrecognized, nil, err)
+}
+
+// userInfoField — имя поля, которое наполняет userinfo: первое объявленное
+// в `into`/`single_into`. Им отказ «ссылка без userinfo» называет, ЧЕГО
+// именно нет, — не зная схемы.
+func userInfoField(ui *registry.UserInfo) string {
+	for _, f := range ui.Into {
+		if f = strings.TrimSpace(f); f != "" {
+			return f
+		}
+	}
+	if f := strings.TrimSpace(ui.SingleInto); f != "" {
+		return f
+	}
+	return "userinfo"
+}
+
 // execState — рабочее состояние одного исполнения.
 type execState struct {
 	plan  *Plan
@@ -283,7 +358,7 @@ func (st *execState) checkRequired() error {
 	// и записи под ними у части схем нет вовсе (uuid у vless объявлен null).
 	// Проверять приходится сам userinfo, а не путь тела.
 	if ui := st.plan.Mapper.UserInfo; ui != nil && ui.Required && st.space.UserInfo == "" {
-		return fmt.Errorf("linkmap: ссылка без userinfo")
+		return rejectMissing(userInfoField(ui), fmt.Errorf("linkmap: ссылка без userinfo"))
 	}
 	for _, list := range [][]Entry{st.plan.Selectors, st.plan.Rest} {
 		for i := range list {
@@ -306,7 +381,7 @@ func (st *execState) checkRequired() error {
 					}
 				}
 				if !filled {
-					return fmt.Errorf("linkmap: обязательная запись %q не заполнила ни одного пути", e.Name)
+					return rejectMissing(e.Name, fmt.Errorf("linkmap: обязательная запись %q не заполнила ни одного пути", e.Name))
 				}
 				continue
 			}
@@ -340,9 +415,9 @@ func (st *execState) checkRequired() error {
 				}
 				if !filled {
 					if reason := strings.TrimSpace(e.Param.DescEN); reason != "" {
-						return fmt.Errorf("%s", reason)
+						return rejectMissing(e.Name, fmt.Errorf("%s", reason))
 					}
-					return fmt.Errorf("linkmap: обязательная запись %q не заполнила ни одного пути", e.Name)
+					return rejectMissing(e.Name, fmt.Errorf("linkmap: обязательная запись %q не заполнила ни одного пути", e.Name))
 				}
 				continue
 			}
@@ -353,9 +428,9 @@ func (st *execState) checkRequired() error {
 			v, ok := getPath(st.res.Body, path)
 			if !ok || isEmptyValue(v) {
 				if reason := strings.TrimSpace(e.Param.DescEN); reason != "" {
-					return fmt.Errorf("%s", reason)
+					return rejectMissing(path, fmt.Errorf("%s", reason))
 				}
-				return fmt.Errorf("linkmap: обязательное поле %q пусто", path)
+				return rejectMissing(path, fmt.Errorf("linkmap: обязательное поле %q пусто", path))
 			}
 		}
 	}

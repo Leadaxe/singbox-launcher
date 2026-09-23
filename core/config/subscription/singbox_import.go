@@ -234,8 +234,9 @@ func parseSingboxConfig(
 			debuglog.WarnLog("Parser: singbox import: config %d entry %d (%s): %v",
 				cfgIdx, entryIdx, entryType, err)
 			unsupported[entryType] = struct{}{}
-			result.rejected.add(len(result.Nodes),
+			result.rejected.addCoded(len(result.Nodes),
 				fmt.Sprintf("%s outbound rejected: %v", entryType, err),
+				rejectCodeOf(err),
 				marshalRawJSONElement(entry))
 			continue
 		}

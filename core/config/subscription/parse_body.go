@@ -246,7 +246,7 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 			// чему.
 			if block.Err != nil {
 				st.warn(fmt.Sprintf("record rejected: %v", block.Err))
-				st.reject(block.Err.Error(), OriginKindWGIni, block.Raw)
+				st.rejectCoded(block.Err.Error(), rejectCodeOf(block.Err), OriginKindWGIni, block.Raw)
 				continue
 			}
 			// Узел уже собран СЕКЦИЕЙ из самого блока (SPEC 133):
@@ -368,7 +368,7 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 				// SPEC 116 W11: и не молчаливая пропажа — запись остаётся в
 				// составе узлом kind=unsupported со своим исходником.
 				st.warn(fmt.Sprintf("record rejected: %v", err))
-				st.reject(err.Error(), OriginKindURI, line)
+				st.rejectCoded(err.Error(), rejectCodeOf(err), OriginKindURI, line)
 				continue
 			}
 			if node == nil {

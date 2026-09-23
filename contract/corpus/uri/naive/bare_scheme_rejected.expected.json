@@ -1,6 +1,8 @@
 {
   "dropped": [
     {
+      "code": "form_unrecognized",
+      "index": 0,
       "reason": "parse_error",
       "ref": "naive://user1:pass123@example-1.com:443"
     }

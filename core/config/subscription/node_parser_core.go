@@ -5,9 +5,11 @@ package subscription
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/linkmap"
 	"singbox-launcher/core/config/registry"
 )
 
@@ -117,7 +119,9 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 
 	// Validate URI length
 	if len(uri) > MaxURILength {
-		return nil, fmt.Errorf("URI length (%d) exceeds maximum (%d)", len(uri), MaxURILength)
+		return nil, linkmap.NewReject(WarnURITooLong,
+			map[string]string{"length": strconv.Itoa(len(uri)), "limit": strconv.Itoa(MaxURILength)},
+			fmt.Errorf("URI length (%d) exceeds maximum (%d)", len(uri), MaxURILength))
 	}
 
 	// SPEC 133: сначала спрашиваем ДВИЖОК реестра. Ведёт ли он эту ссылку,
@@ -133,7 +137,7 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	// секция реестра двумя `forms` одной таблицей записей.
 	//
 	// Сюда попадает только текст, который не опознала ни одна секция.
-	return nil, fmt.Errorf("unsupported scheme")
+	return nil, linkmap.NewReject(linkmap.CodeFormUnrecognized, nil, fmt.Errorf("unsupported scheme"))
 }
 
 // Private helper functions (migrated from parser.go)

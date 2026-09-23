@@ -621,7 +621,7 @@ func parseXrayJSONArrayElementNodes(
 				// поддержан» намеренно отсутствует — он не объясняет
 				// «почему источник пуст» и уводил бы от протухшей подписки.
 				unsupported[protocol] = struct{}{}
-				records.add(len(out), err.Error(), marshalRawJSONElement(ob))
+				records.addCoded(len(out), err.Error(), WarnProtocolUnsupported, marshalRawJSONElement(ob))
 				debuglog.DebugLog("Parser: Xray element %d outbound %d: %v", elemIndex, idx, err)
 				continue
 			}
@@ -633,7 +633,7 @@ func parseXrayJSONArrayElementNodes(
 			}
 			reason := fmt.Sprintf("%s outbound rejected: %v", protocol, err)
 			rejected.Add(reason)
-			records.add(len(out), reason, marshalRawJSONElement(ob))
+			records.addCoded(len(out), reason, rejectCodeOf(err), marshalRawJSONElement(ob))
 			debuglog.WarnLog("Parser: Xray element %d: %s", elemIndex, reason)
 			continue
 		}

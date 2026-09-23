@@ -2,6 +2,7 @@
   "dropped": [
     {
       "code": "wg_key_invalid",
+      "index": 0,
       "reason": "emit_error",
       "ref": "wg-short-priv"
     }

@@ -93,6 +93,11 @@ const (
 	// непригодна: узел-владелец отбраковывается ЦЕЛИКОМ. Кода на узле не
 	// бывает (узла не будет) — он едет в отбраковке, поэтому severity=error.
 	WarnDialerProxyUnusable = "dialer_proxy_unusable"
+	// WarnProtocolUnsupported — тип/протокол записи ядру неизвестен: запись
+	// отбракована целиком (dropped[].code, контракт 1.1.47).
+	WarnProtocolUnsupported = "protocol_unsupported"
+	// WarnURITooLong — ссылка длиннее предела (limits.json): не разбиралась.
+	WarnURITooLong = "uri_too_long"
 )
 
 // Предикаты «значение будет испорчено» (realityShortIDWouldDegrade,

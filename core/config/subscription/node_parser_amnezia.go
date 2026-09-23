@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/linkmap"
 	"singbox-launcher/internal/debuglog"
 )
 
@@ -49,12 +50,14 @@ const (
 func parseAmneziaVPNLink(uri string, skipFilters []map[string]string) (*configtypes.ParsedNode, error) {
 	debuglog.DebugLog("parseAmneziaVPNLink: start (link length %d)", len(uri))
 	if len(uri) > maxAmneziaLinkLength {
-		return nil, fmt.Errorf("vpn:// link length (%d) exceeds maximum (%d)", len(uri), maxAmneziaLinkLength)
+		return nil, linkmap.NewReject(WarnURITooLong,
+			map[string]string{"length": strconv.Itoa(len(uri)), "limit": strconv.Itoa(maxAmneziaLinkLength)},
+			fmt.Errorf("vpn:// link length (%d) exceeds maximum (%d)", len(uri), maxAmneziaLinkLength))
 	}
 	payload := strings.TrimPrefix(strings.TrimSpace(uri), "vpn://")
 	profile, err := decodeAmneziaProfile(payload)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode vpn:// profile: %w", err)
+		return nil, linkmap.NewReject(linkmap.CodeFormUnrecognized, nil, fmt.Errorf("failed to decode vpn:// profile: %w", err))
 	}
 
 	confText, containerName, containerCount := amneziaWGConfText(profile)
@@ -255,12 +258,14 @@ func amneziaAllWGConfTexts(profile map[string]interface{}) (texts []string, name
 // одна из которых без Endpoint, обязан дать три ноды, а не ошибку.
 func ParseAmneziaVPNLinkAll(uri string, skipFilters []map[string]string) ([]*configtypes.ParsedNode, int, error) {
 	if len(uri) > maxAmneziaLinkLength {
-		return nil, 0, fmt.Errorf("vpn:// link length (%d) exceeds maximum (%d)", len(uri), maxAmneziaLinkLength)
+		return nil, 0, linkmap.NewReject(WarnURITooLong,
+			map[string]string{"length": strconv.Itoa(len(uri)), "limit": strconv.Itoa(maxAmneziaLinkLength)},
+			fmt.Errorf("vpn:// link length (%d) exceeds maximum (%d)", len(uri), maxAmneziaLinkLength))
 	}
 	payload := strings.TrimPrefix(strings.TrimSpace(uri), "vpn://")
 	profile, err := decodeAmneziaProfile(payload)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to decode vpn:// profile: %w", err)
+		return nil, 0, linkmap.NewReject(linkmap.CodeFormUnrecognized, nil, fmt.Errorf("failed to decode vpn:// profile: %w", err))
 	}
 
 	texts, names := amneziaAllWGConfTexts(profile)

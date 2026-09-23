@@ -93,7 +93,7 @@ func UnwrapElement(plan *Plan, value interface{}) (*Space, registry.Form, error)
 		// Отказ ИМЕНОВАННЫЙ: элемент опознан как своя схема (detect секции
 		// сошёлся), но ни одна форма его не приняла. Молчаливый nil на этом
 		// месте выглядел бы как «схемы нет» и увёл бы разбирательство не туда.
-		return nil, registry.Form{}, fmt.Errorf("linkmap: форма не распознана")
+		return nil, registry.Form{}, rejectUnrecognized(fmt.Errorf("linkmap: форма не распознана"))
 	}
 
 	space := &Space{}
