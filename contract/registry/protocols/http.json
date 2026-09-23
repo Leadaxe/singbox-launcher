@@ -480,6 +480,9 @@
           "sendThrough",
           "proxySettings"
         ],
+        "nested_quiet": [
+          "streamSettings.sockopt"
+        ],
         "impl": "Список дословно равен списку остальных xray-секций — см. развёрнутую сноску у vless."
       },
       "emit": null

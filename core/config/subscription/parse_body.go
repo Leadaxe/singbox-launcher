@@ -29,9 +29,12 @@ package subscription
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
+	"sync"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/textnorm"
@@ -151,6 +154,76 @@ const RejectReasonServiceRecord = "service routing record, not a server"
 var serviceSchemePrefixes = []string{
 	"incy://routing/",
 	"happ://routing/",
+}
+
+// RejectReasonProviderBannerLink — причина отбраковки записи-БАННЕРА,
+// притворившейся ссылкой.
+//
+// Отличается от RejectReasonProviderBanner ПРИЗНАКОМ, а не обращением: у
+// баннера-строки схемы нет вовсе, а здесь ссылка синтаксически безупречна и
+// выдаёт себя ЦЕЛЬЮ — адресом, который сервером не бывает. Панели пишут так
+// сообщение об истёкшей подписке: Remnawave — `vless://…@0.0.0.0:1`
+// (createFallbackHosts), 3x-ui — `socks://127.0.0.1:1080` (service.go:483),
+// и при истечении эта запись бывает в теле ЕДИНСТВЕННОЙ.
+//
+// Ключ АНГЛИЙСКИЙ — как у остальных причин отбраковки: перевод живёт в
+// `bin/locale/ru.json`, а в состоянии хранится ключ.
+const RejectReasonProviderBannerLink = "provider notice, not a server"
+
+// bannerTargets — объявление признака баннера из реестра
+// (source_kinds.json, ветка `uri_lines`, `banner_targets`).
+//
+// Читается ОДИН РАЗ и лениво: список живёт в реестре, а не в этом файле, —
+// иначе эвристика «что не бывает сервером» размазалась бы по коду и разошлась
+// бы со второй стороной. Реестр не прочитался — предикат просто молчит:
+// потерять узел из-за недоступного списка нельзя.
+var bannerTargets = sync.OnceValue(func() *registry.BannerTargets {
+	set, err := registry.LoadMappers()
+	if err != nil || set == nil {
+		return nil
+	}
+	for _, k := range set.SourceKindsByPriority() {
+		if k.BannerTargets != nil {
+			return k.BannerTargets
+		}
+	}
+	return nil
+})
+
+// isProviderBannerNode — РАЗОБРАННАЯ запись, ведущая на цель, которая сервером
+// не бывает (см. RejectReasonProviderBannerLink).
+//
+// Проверяется ПОСЛЕ разбора, а не по тексту строки: цель надо прочитать, а до
+// чтения `vless://…@0.0.0.0:1` от годной ссылки ничем не отличается. Судится
+// только АДРЕС: схема у баннера любая, а порт признаком не является — у 3x-ui
+// он законный 1080.
+func isProviderBannerNode(node *configtypes.ParsedNode) bool {
+	if node == nil {
+		return false
+	}
+	return bannerTargets().IsBannerHost(node.Server)
+}
+
+// providerBannerMessage — сообщение провайдера из ремарки записи.
+//
+// Ремарка после `#` есть ТО САМОЕ содержимое, ради которого баннер написан
+// («⚠ Subscription expired»), и она уезжает параметром кода: отбраковать
+// запись, выбросив её текст, значило бы скрыть от человека единственное, что
+// провайдер хотел сказать.
+func providerBannerMessage(node *configtypes.ParsedNode, raw string) string {
+	if bt := bannerTargets(); bt == nil || bt.MessageFrom != "fragment" {
+		return ""
+	}
+	if node != nil && node.Label != "" {
+		return node.Label
+	}
+	if i := strings.Index(raw, "#"); i >= 0 && i+1 < len(raw) {
+		if dec, err := url.QueryUnescape(raw[i+1:]); err == nil {
+			return dec
+		}
+		return raw[i+1:]
+	}
+	return ""
 }
 
 // isServiceSchemeLine — строка состава со служебной схемой (см.
@@ -438,6 +511,24 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 			}
 			if node == nil {
 				continue // отсечено skip-фильтром
+			}
+			// Баннер, притворившийся ссылкой: разобрался безупречно, но ведёт
+			// на цель, которая сервером не бывает. Проверяется ЗДЕСЬ, после
+			// разбора, потому что признак — прочитанный адрес, а не вид
+			// строки (см. isProviderBannerNode).
+			if isProviderBannerNode(node) {
+				// Сообщение провайдера приписывается к ТЕКСТУ причины:
+				// параметра у записи отбраковки нет (RejectedBodyRecord
+				// несёт код и текст, но не карту params), а выбросить
+				// ремарку нельзя — она единственное содержимое баннера.
+				// Материализация кода подставит {message} из этого же текста.
+				reason := RejectReasonProviderBannerLink
+				if msg := providerBannerMessage(node, line); msg != "" {
+					reason = reason + ": " + msg
+				}
+				st.warn(fmt.Sprintf("record rejected: %s", reason))
+				st.rejectCoded(reason, WarnProviderBannerLink, OriginKindURI, line)
+				continue
 			}
 			st.accept(node, OriginKindURI, line)
 		}

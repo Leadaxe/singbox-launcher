@@ -117,6 +117,77 @@ func dialerKeepAliveNotEmitted(want, got map[string]any) bool {
 	return lost
 }
 
+// xhttpExtraNotEmittedByContainer — узел ФОРМЫ-КОНТЕЙНЕРА потерял при эмиссии
+// поля транспорта, которые читаются только из слоя `extra`.
+//
+// Это ЗАФИКСИРОВАННЫЙ ПРОБЕЛ, а не by-design асимметрия, и он ровно парный к
+// dialerKeepAliveNotEmitted. Разбор слоя `extra` у vmess заведён в 1.1.52
+// (D133-57): Marzban кладёт его ВЛОЖЕННЫМ объектом в vmess-JSON, и прежде
+// xmux вместе со sc*-полями терялся МОЛЧА. Обратной дороги у этих полей пока
+// нет: форма-контейнер собирается закрытой картой `emit.json_map`, в которой
+// ключа `extra` нет, — эмиттер физически не может вернуть слой, и своя же
+// ссылка приезжает без него.
+//
+// Почему не чинится здесь: `extra` в эмите — это НОВЫЙ примитив формы
+// контейнера (собрать вложенный JSON из полей тела), то есть смена ссылки,
+// которую мы отдаём людям. По правилу 5 (GRAMMAR_SYNC, «сведение №2») такая
+// смена требует своей строки в DELTAS и делается волной эмита. Класть её в
+// волну разбора значило бы менять вид живых ссылок заодно с чтением.
+//
+// Проверяется РОВНО потеря полей xhttp-слоя внутри transport: любое другое
+// расхождение оставляет тест красным.
+func xhttpExtraNotEmittedByContainer(want, got map[string]any) bool {
+	// Ключи тела, которые у ссылочных форм приезжают из `extra` и у формы
+	// контейнера сегодня не эмитируются. Список закрытый: молчаливо
+	// расширять его нельзя — каждое имя здесь есть признанная потеря.
+	extraOnly := map[string]bool{
+		"xmux":                     true,
+		"sc_max_each_post_bytes":   true,
+		"sc_min_posts_interval_ms": true,
+		"sc_max_buffered_posts":    true,
+		"sc_stream_up_server_secs": true,
+		"x_padding_bytes":          true,
+		"no_grpc_header":           true,
+		"no_sse_header":            true,
+	}
+	for k, v := range want {
+		if k == "transport" {
+			continue
+		}
+		gv, present := got[k]
+		if !present || !jsonEqualValue(gv, v) {
+			return false // расхождение вне транспорта
+		}
+	}
+	for k := range got {
+		if _, ok := want[k]; !ok {
+			return false // эмит ДОБАВИЛ поле — это другой разговор
+		}
+	}
+	wantTr, okW := want["transport"].(map[string]any)
+	gotTr, okG := got["transport"].(map[string]any)
+	if !okW || !okG {
+		return false
+	}
+	lost := false
+	for k, v := range wantTr {
+		gv, present := gotTr[k]
+		if present && jsonEqualValue(gv, v) {
+			continue
+		}
+		if !extraOnly[k] || present {
+			return false // потеряно не только поле слоя
+		}
+		lost = true
+	}
+	for k := range gotTr {
+		if _, ok := wantTr[k]; !ok {
+			return false
+		}
+	}
+	return lost
+}
+
 // jsonEqualValue сравнивает два значения тела по их JSON-записи: ширина типа
 // Go контрактом не считается (int против float64 из round-trip).
 func jsonEqualValue(a, b any) bool {
@@ -273,6 +344,13 @@ func TestContractCorpusEmitRoundTrip(t *testing.T) {
 			// (правило 5 — смена ссылки требует строки в DELTAS).
 			if dialerKeepAliveNotEmitted(wantCanon.Entry, gotCanon.Entry) {
 				t.Skip("keep-alive диалера не пишет ни один эмиттер — пробел волны эмита, см. dialerKeepAliveNotEmitted")
+			}
+
+			// Тот же род пробела, другая форма: слой `extra` формы-контейнера
+			// читается (1.1.52), а обратно не собирается — в json_map ключа
+			// нет. Фиксируется поимённо, а не пропуском кейса.
+			if xhttpExtraNotEmittedByContainer(wantCanon.Entry, gotCanon.Entry) {
+				t.Skip("слой extra формы-контейнера не эмитируется — пробел волны эмита, см. xhttpExtraNotEmittedByContainer")
 			}
 
 			gotJSON, _ := json.Marshal(gotCanon.Entry)

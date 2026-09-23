@@ -29,6 +29,29 @@
       "dart": "UnsupportedTransportWarning",
       "go": "core/config/subscription/xray_outbound_convert.go:337"
     },
+    "transport_header_unsupported": {
+      "severity": "error",
+      "params": [
+        "value"
+      ],
+      "title_en": "TCP header obfuscation {value} is not supported",
+      "title_ru": "Обфускация TCP-заголовком {value} не поддержана",
+      "text_en": "The entry asks for Xray header obfuscation {value} over plain TCP. The core has no counterpart for it, so the node was dropped: it could only have been built as a node without obfuscation, and the server expects an HTTP header in the very first packet and would break the connection.",
+      "text_ru": "Запись просит обфускацию Xray заголовком {value} поверх обычного TCP. У ядра пары для неё нет, поэтому узел отброшен: собрать его можно было бы только без обфускации, а сервер ждёт HTTP-заголовок в самом первом пакете и оборвёт соединение.",
+      "cause_en": "Xray disguises a plain TCP stream as HTTP: the first packet carries a fabricated HTTP request, and the transport stays TCP. This is not the HTTP/2 transport of sing-box, which is a different protocol on the wire, so the value cannot be carried over to it. Panels write this obfuscation for nodes meant to pass DPI.",
+      "cause_ru": "Xray маскирует обычный TCP-поток под HTTP: в первом пакете едет поддельный HTTP-запрос, а транспорт остаётся TCP. Это не транспорт HTTP/2 у sing-box — на проводе он другой протокол, — поэтому значение туда не переносится. Панели пишут такую обфускацию узлам, которым нужно проходить DPI.",
+      "fix_en": [
+        "Pick another node from this subscription — this one cannot work here.",
+        "Ask the provider for a link to the same server with a real transport (ws, grpc, httpupgrade, xhttp) instead of TCP header obfuscation."
+      ],
+      "fix_ru": [
+        "Выберите другой узел из этой подписки — этот здесь работать не может.",
+        "Попросите у провайдера ссылку на тот же сервер с настоящим транспортом (ws, grpc, httpupgrade, xhttp) вместо обфускации TCP-заголовком."
+      ],
+      "desc": "Обфускация Xray заголовком поверх TCP/RAW (`headerType=http` у ссылки, `tcpSettings.header.type`/`rawSettings.header.type` у Xray-JSON). РЕШЕНИЕ ВЛАДЕЛЬЦА 24.09.2026 (делегировано): обе формы отбраковывают УЗЕЛ, а не теряют свойство. Прежде ссылочная форма маппилась в `transport.type: \"http\"` — НЕВЕРНЫЙ маппинг: у sing-box это транспорт HTTP/2, на проводе другой протокол, и такой узел не соединялся; JSON-форма терялась МОЛЧА и узел выходил чистым TCP, который сервер с обфускацией обрывает. Оба пути давали «рабочий» на вид узел, который не работает, — отбраковка с кодом называет причину вместо молчания. severity=error: это отказ, а не деградация. Значение заголовка едет в `value` (`http` у всех живых написаний).",
+      "dart": null,
+      "go": "core/config/linkmap (селектор headerType у transports#uri, запись header у transports#xray)"
+    },
     "protocol_unsupported": {
       "severity": "error",
       "params": [
@@ -1982,6 +2005,29 @@
         "Если провайдер выдаёт пароль отдельно, впишите его в узел вручную."
       ],
       "desc": "Пустой пароль в источнике. Решение владельца 19.09.2026 (Q133-67): узел ПРИНИМАЕТСЯ с предупреждением, а не отбраковывается — принять строгость LxBox (required: true) значило бы выбросить живые узлы у всех, у кого пароль пуст. Имя кода ОБЩЕЕ, не под схему: поле «пароль» есть у половины схем, и второй такой код под другим именем был бы дублем. Ставится примитивом on_empty у записи маппера."
+    },
+    "provider_banner_link": {
+      "severity": "info",
+      "params": [
+        "message"
+      ],
+      "title_en": "Subscription: provider notice instead of a server",
+      "title_ru": "Подписка: сообщение провайдера вместо сервера",
+      "text_en": "The subscription carries an entry that looks like a link but points nowhere — the panel writes its notice this way. The provider's message: {message}. The entry was skipped; every other entry of the subscription was imported as usual.",
+      "text_ru": "В подписке есть запись, похожая на ссылку, но ведущая в никуда — так панель пишет своё сообщение. Текст провайдера: {message}. Запись пропущена; все остальные записи подписки импортированы как обычно.",
+      "cause_en": "When a subscription has expired, is disabled or has run out of traffic, panels do not send an empty body: Remnawave writes a valid `vless://` to `0.0.0.0:1` and 3x-ui a `socks://` to `127.0.0.1:1080`, putting the explanation into the remark after `#`. On expiry such an entry may be the only one in the body. Addresses like these are not servers — they are a way to deliver text to the user through a list that has room only for links.",
+      "cause_ru": "Когда подписка истекла, отключена или исчерпала трафик, панели не отдают пустое тело: Remnawave пишет валидную `vless://` на `0.0.0.0:1`, 3x-ui — `socks://` на `127.0.0.1:1080`, а объяснение кладёт в ремарку после `#`. При истечении такая запись бывает В ТЕЛЕ ЕДИНСТВЕННОЙ. Адреса эти серверами не являются — это способ передать человеку текст через список, в котором место есть только для ссылок.",
+      "fix_en": [
+        "Read the provider's message — usually it says the subscription has expired or the device limit is reached.",
+        "Renew or re-activate the subscription in the provider's panel, then update the subscription in the app."
+      ],
+      "fix_ru": [
+        "Прочитайте сообщение провайдера — обычно в нём сказано, что подписка истекла или исчерпан лимит устройств.",
+        "Продлите или активируйте подписку в панели провайдера и обновите подписку в приложении."
+      ],
+      "desc": "Запись-БАННЕР, притворившаяся ссылкой: цель из списка «заведомо не сервер» (source_kinds.json uri_lines.banner_targets). Прежде признаком баннера было ОТСУТСТВИЕ `://` (isProviderBannerLine), а обе крупные панели пишут баннер синтаксически валидной ссылкой — и он становился ПОЛНОЦЕННЫМ узлом: `vless://…@0.0.0.0:1` у Remnawave (createFallbackHosts), `socks://127.0.0.1:1080` у 3x-ui (service.go:483). При истечении подписки 3x-ui отдаёт баннер единственной записью, и пользователь получал «рабочую» подписку из одного узла-пустышки вместо сообщения «подписка истекла». severity=info: узла тут не было никогда, терять нечего, но выпадение обязано быть названным. Текст ремарки после `#` едет в `message` — это и есть сообщение провайдера, ради которого запись существует. Обращение как с provider_banner (строка без схемы) и service_record_ignored (служебная схема): в состав не идёт, из списка выпадает с info-кодом.",
+      "dart": null,
+      "go": "core/config/subscription/parse_body.go (признак — registry/source_kinds.json uri_lines.banner_targets)"
     },
     "service_record_ignored": {
       "severity": "info",

@@ -21,7 +21,17 @@
       },
       "kind": "outbound",
       "label": "xhttp sessionid",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "json_field_unknown",
+          "path": "streamSettings.xhttpSettings.extra.sessionIDLength"
+        },
+        {
+          "code": "json_field_unknown",
+          "path": "streamSettings.xhttpSettings.extra.sessionIDTable"
+        }
+      ]
     }
   ],
   "v": 1

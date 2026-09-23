@@ -896,6 +896,9 @@
           "sendThrough",
           "proxySettings"
         ],
+        "nested_quiet": [
+          "streamSettings.sockopt"
+        ],
         "impl": "Ключи уровня документа плюс контейнеры, чьи листья читают записи таблицы. Список дословно равен списку остальных xray-секций."
       },
       "emit": null

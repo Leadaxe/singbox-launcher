@@ -1,0 +1,9 @@
+# tcpSettings.header.type = "http" — обфускация Xray заголовком поверх plain-TCP.
+# Источника не знала ни одна запись, и форма терялась АБСОЛЮТНО МОЛЧА: узел
+# собирался чистым TCP ({server, server_port, uuid} — аудит Xray-outbound D-07),
+# а сервер, ждущий HTTP-заголовок в первом пакете, такое соединение обрывает.
+# Перенести значение в transport.type:"http" НЕЛЬЗЯ — у ядра это HTTP/2, на
+# проводе другой протокол. С контракта 1.1.52 узел отбраковывается с кодом
+# transport_header_unsupported (решение владельца 24.09.2026); пара к
+# ссылочной форме headerType=http.
+[{"remarks":"raw-http-hdr","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"a.example","port":443,"users":[{"id":"11111111-2222-3333-4444-555555555555","encryption":"none"}]}]},"streamSettings":{"network":"tcp","security":"none","tcpSettings":{"header":{"type":"http","request":{"path":["/"],"headers":{"Host":["cdn.example-1.com"]}}}}}}]}]

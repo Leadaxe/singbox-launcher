@@ -417,35 +417,57 @@ func buildOverlays(specs []registry.Overlay, space *Space) {
 		if spec.Name == "" {
 			continue
 		}
+		// Слой приезжает ДВУМЯ формами, и обе живые.
+		//
+		// ТЕКСТОМ — у ссылки: `extra` есть query-параметр с JSON внутри
+		// (vless, форки Xray), и его надо разобрать самим.
+		//
+		// УЖЕ ОБЪЕКТОМ — у контейнера: vmess-ссылка сама есть JSON, и
+		// Marzban кладёт `extra` его ВЛОЖЕННЫМ объектом
+		// (`payload["extra"] = extra`, app/subscription/v2ray.py:249).
+		// Такое значение до слоя не доезжало вовсе: `Lookup` ведёт объект
+		// через `jsonScalar`, а тот на объекте молчит намеренно (§4), и
+		// xmux с sc*-полями vmess-узла терялись МОЛЧА — тот же вход у vless
+		// разбирался полностью (D-7 аудита панелей).
+		var obj map[string]interface{}
 		raw := ""
 		for _, name := range spec.Source.All() {
+			if v, ok := space.LookupRaw(name); ok {
+				if m, isObj := v.(map[string]interface{}); isObj {
+					obj = m
+					break
+				}
+			}
 			if v, ok := space.Lookup(name); ok && strings.TrimSpace(v) != "" {
 				raw = strings.TrimSpace(v)
 				break
 			}
 		}
-		if raw == "" {
+		if obj == nil && raw == "" {
 			continue
 		}
-		for _, dec := range spec.Decode {
-			switch dec {
-			case "base64?":
-				if s, err := decodeBase64Any(raw); err == nil {
-					raw = s
-				}
-			case "percent":
-				// Значение уже percent-декодировано лексером один раз;
-				// второй проход нужен панелям, кодирующим слой дважды.
-				if !strings.HasPrefix(raw, "{") {
-					if s, err := percentUnescape(raw); err == nil {
+		// Декодеры объявлены для ТЕКСТОВОЙ формы: объект уже разобран, и
+		// применять к нему percent/base64 нечего.
+		if obj == nil {
+			for _, dec := range spec.Decode {
+				switch dec {
+				case "base64?":
+					if s, err := decodeBase64Any(raw); err == nil {
 						raw = s
+					}
+				case "percent":
+					// Значение уже percent-декодировано лексером один раз;
+					// второй проход нужен панелям, кодирующим слой дважды.
+					if !strings.HasPrefix(raw, "{") {
+						if s, err := percentUnescape(raw); err == nil {
+							raw = s
+						}
 					}
 				}
 			}
-		}
-		var obj map[string]interface{}
-		if err := json.Unmarshal([]byte(raw), &obj); err != nil {
-			continue
+			if err := json.Unmarshal([]byte(raw), &obj); err != nil {
+				continue
+			}
 		}
 		flat := map[string]string{}
 		for k, v := range obj {

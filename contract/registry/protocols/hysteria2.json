@@ -71,23 +71,25 @@
         "type": "int",
         "default": null,
         "aliases": [
-          "up_mbps"
+          "up_mbps",
+          "up"
         ],
         "maps_to": "up_mbps",
-        "desc_en": "Uplink bandwidth, Mbps.",
-        "desc_ru": "Полоса вверх, Мбит/с.",
-        "impl": "up_mbps (Мбит/с). РАЗРЫВ ИМЁН (новое, вне §9): Go читает/пишет upmbps, Dart читает/пишет up_mbps — кросс-эмит теряет значение. Целевое: оба принимают оба ключа; канон эмита — решить на ревью."
+        "desc_en": "Uplink bandwidth, Mbps. The short spelling `up` is read as an alias; a unit suffix (`100 mbps`) is stripped.",
+        "desc_ru": "Полоса вверх, Мбит/с. Короткое написание `up` читается алиасом; суффикс единицы (`100 mbps`) снимается.",
+        "impl": "up_mbps (Мбит/с). РАЗРЫВ ИМЁН (новое, вне §9): Go читает/пишет upmbps, Dart читает/пишет up_mbps — кросс-эмит теряет значение. Целевое: оба принимают оба ключа; канон эмита — решить на ревью. Алиас `up` — написание официального клиента hysteria2 и форков панелей; у hysteria v1 он читался с самого перевода на движок, а у v2 не читался вовсе, и параметр давал `uri_param_unknown` при ПОТЕРЕ полосы (асимметрия D-8 аудита панелей)."
       },
       "downmbps": {
         "type": "int",
         "default": null,
         "aliases": [
-          "down_mbps"
+          "down_mbps",
+          "down"
         ],
         "maps_to": "down_mbps",
-        "desc_en": "Downlink bandwidth, Mbps.",
-        "desc_ru": "Полоса вниз, Мбит/с.",
-        "impl": "down_mbps (Мбит/с). Тот же разрыв имён, что upmbps."
+        "desc_en": "Downlink bandwidth, Mbps. The short spelling `down` is read as an alias; a unit suffix is stripped.",
+        "desc_ru": "Полоса вниз, Мбит/с. Короткое написание `down` читается алиасом; суффикс единицы снимается.",
+        "impl": "down_mbps (Мбит/с). Тот же разрыв имён и тот же алиас `down`, что upmbps."
       },
       "sni": {
         "type": "string",
@@ -679,19 +681,24 @@
         "upmbps": {
           "source": [
             "query.upmbps",
-            "query.up_mbps"
+            "query.up_mbps",
+            "query.up"
           ],
           "maps_to": "up_mbps",
           "type": "int",
-          "impl": "§464 — на входе читаются ОБА написания; канон эмита один (upmbps), иначе round-trip разошёлся бы с лаунчером побайтно."
+          "normalize": "bandwidth_mbps",
+          "impl": "§464 — на входе читаются ВСЕ написания; канон эмита один (upmbps), иначе round-trip разошёлся бы с лаунчером побайтно. `query.up` — написание официального клиента hysteria2, у v1 оно читалось с самого начала (`hysteria.json`), а у v2 отсутствовало: `up=100&down=500` давало ДВА `uri_param_unknown` и полосу терялo молча (D-8 аудита панелей). `normalize: bandwidth_mbps` — тот же примитив, что у xray-ветки этого файла с 1.1.48: суффикс единицы (`100mbps`, `300 Mbps`) снимается, иначе `type: int` на такой строке даёт отсутствие значения. Порядок источников нормативен: канон `upmbps` стоит первым и побеждает при двух написаниях рядом."
         },
         "downmbps": {
           "source": [
             "query.downmbps",
-            "query.down_mbps"
+            "query.down_mbps",
+            "query.down"
           ],
           "maps_to": "down_mbps",
-          "type": "int"
+          "type": "int",
+          "normalize": "bandwidth_mbps",
+          "impl": "Симметрично upmbps: алиас `query.down` и снятие суффикса единицы."
         },
         "pinSHA256": {
           "source": "query.pinSHA256",
@@ -1037,6 +1044,9 @@
           "mux",
           "sendThrough",
           "proxySettings"
+        ],
+        "nested_quiet": [
+          "streamSettings.sockopt"
         ],
         "impl": "Ключи уровня документа плюс контейнеры, чьи листья читают записи таблицы. Список дословно равен списку остальных xray-секций."
       },

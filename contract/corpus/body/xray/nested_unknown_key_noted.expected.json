@@ -7,12 +7,10 @@
       "entry": {
         "server": "a.example",
         "server_port": 443,
-        "tls": {
-          "enabled": true
-        },
         "transport": {
-          "early_data_header_name": "Sec-WebSocket-Protocol",
-          "max_early_data": 700,
+          "headers": {
+            "X-Custom": "kept"
+          },
           "path": "/x",
           "type": "ws"
         },
@@ -20,16 +18,12 @@
         "uuid": "11111111-2222-3333-4444-555555555555"
       },
       "kind": "outbound",
-      "label": "ed both places",
+      "label": "nested-unknown",
       "scheme": "vless",
       "warnings": [
         {
           "code": "json_field_unknown",
-          "path": "streamSettings.wsSettings.ed"
-        },
-        {
-          "code": "json_field_unknown",
-          "path": "streamSettings.wsSettings.eh"
+          "path": "streamSettings.wsSettings.zzzUnknown"
         }
       ]
     }

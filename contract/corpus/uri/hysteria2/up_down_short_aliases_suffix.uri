@@ -1,0 +1,7 @@
+# Короткие написания полосы `up`/`down` — форма официального клиента hysteria2
+# и форков панелей (3x-ui, v2rayN). У hysteria v1 они читались с самого перевода
+# на движок, а у v2 не читались вовсе: `up=100&down=500` давало ДВА
+# uri_param_unknown и полосу теряло МОЛЧА (D-8 аудита панелей 24.09.2026).
+# Здесь же проверяется normalize: bandwidth_mbps — суффикс единицы у `down`
+# снимается, как в xray-ветке этого файла с 1.1.48.
+hysteria2://testpass123@example-1.com:443?up=100&down=500%20Mbps&sni=example-1.com#hy2-up-down-short

@@ -25,7 +25,13 @@
       },
       "kind": "outbound",
       "label": "ks",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "json_field_unknown",
+          "path": "streamSettings.realitySettings.keyShare"
+        }
+      ]
     }
   ],
   "v": 1

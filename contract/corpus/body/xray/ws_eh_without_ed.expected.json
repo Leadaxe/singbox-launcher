@@ -19,7 +19,13 @@
       },
       "kind": "outbound",
       "label": "eh alone",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "json_field_unknown",
+          "path": "streamSettings.wsSettings.eh"
+        }
+      ]
     }
   ],
   "v": 1

@@ -1,3 +1,6 @@
 # Сырой пробел в userinfo (промо-подпись в логине) — net/url отвергает, нужен percent-encode перед парсом
+# Транспорт ws, а не `type=raw&headerType=http` живой ссылки: с контракта 1.1.52
+# обфускация Xray заголовком отбраковывает узел, а предмет ЭТОГО кейса —
+# пробел в userinfo, и он обязан доехать до собранного узла.
 # источник: core/config/subscription/userinfo_space_test.go:9 (TestParseNodeAcceptsSpaceInUserinfo)
-vless://Promo:Configs @192.0.2.16:80?encryption=none&type=raw&headerType=http&host=play.example-11.com&path=%2F&security=none#node
+vless://Promo:Configs @192.0.2.16:80?encryption=none&type=ws&host=play.example-11.com&path=%2F&security=none#node
