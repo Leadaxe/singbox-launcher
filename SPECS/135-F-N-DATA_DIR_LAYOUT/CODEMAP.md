@@ -46,8 +46,8 @@
 | `GetRemoteDaemonIdentityDir` | platform_common.go:105 | `bin/remote-daemons/<id>` | `(DataDir, id)` |
 | `GetRuleSetsDirFor` | platform_common.go:119 | local → `bin/rule-sets`, remote → `…/remote/<id>/srs` | `(DataDir, target, id)` |
 | `GetSubscriptionsDirFor` | platform_common.go:136 | local → `bin/subscriptions`, remote → `…/<id>/subscriptions` | `(DataDir, target, id)` |
-| `GetWizardTemplatePath` | platform_common.go:148 | `<Data>/bin/wizard_template.json` — цель скачивания; до этапа 5 и точка чтения | `(DataDir)` |
-| `GetShippedTemplatePath` (новый) | platform_common.go:154 | `<App>/bin/wizard_template.json` — поставляемый seed; вызовов пока нет, заведён под резолвер §3.3 (этап 5) | `(AppDir)` |
+| `GetWizardTemplatePath` | platform_common.go:148 | `<Data>/bin/wizard_template.json` — цель скачивания; читать через `template.ResolveTemplate` (этап 5) | `(DataDir)` |
+| `GetShippedTemplatePath` | platform_common.go:154 | `<App>/bin/wizard_template.json` — поставляемый seed; зовёт только `template.ResolveTemplate` | `(AppDir)` |
 | `GetWizardStatesDir` | platform_common.go:161 | `bin/wizard_states` | `(DataDir)` |
 | `GetWizardStatePath` | platform_common.go:171 | `bin/wizard_states/state.json` | `(DataDir)` |
 | `GetWizardStatesDirFor` | platform_common.go:194 | local/remote каталог состояний | `(DataDir, target, id)` |
@@ -67,8 +67,8 @@
 | `probeHardware` | glprobe_windows.go:703 | `opengl32.dll` рядом с exe | `(AppDir)` |
 | `downloadMesa` | glprobe_windows.go:795 | распаковывает DLL в AppDir | `(AppDir)` — **исключение** |
 | `RunGLProbeChild` / `probeDesktopOpenGL` (`-gl-probe-local`) | glprobe_windows.go:119 / :170 (стаб glprobe_stub.go:16) | `opengl32.dll` из AppDir вместо `os.Executable` | `(AppDir, local)` |
-| `GetWintunPath` | platform_windows.go:24 (стабы platform_darwin.go, platform_linux.go → `""`) | `<Data>/bin/wintun.dll` | этап 3: `(DataDir)`; этап 5: `Dir(SingboxPath)/wintun.dll` |
-| `ResolveSingboxExecPath` | singbox_exec_path.go:9, singbox_exec_path_linux.go (PATH первым) | путь ядра | `(DataDir, bundledPath)` (первый аргумент не используется); этап 5: цепочка `SINGBOX_LAUNCHER_CORE` → Data → App → PATH |
+| `GetWintunPathFor` | platform_windows.go:24 (стабы platform_darwin.go:20, platform_linux.go:23 → `""`) | `<coreDir>/wintun.dll` | `(coreDir string)`; зовёт `FileService.ResolveCore` с `Dir(SingboxPath)` (этап 5; `GetWintunPath(DataDir)` удалён) |
+| `ResolveSingboxExecPath` | singbox_exec_path.go:45 (один файл без build-тегов; `singbox_exec_path_linux.go` удалён) | путь ядра | `(Layout, env func(string) string) CoreResolution{Path, Source, Shadowed}`; цепочка `SINGBOX_LAUNCHER_CORE` → Data → App → PATH на всех ОС (этап 5) |
 | `WritePrivilegedStartScript` | privileged_darwin.go:115 (стаб privileged_stub.go:27) | скрипт/pid в `binDir`, лог в `logPath` | строки: `binDir` = `Data.Bin()`, `logPath` = `FileService.ChildLogPath` (process_service.go) |
 
 ### 1.2 Хелперы вне `internal/platform`
@@ -84,12 +84,13 @@ Data, с этапа 5 — резолвер App/Data), принимают `paths.
 | `locale.GetLocaleDir(binDir)` / `LoadExternalLocales(dir)` | internal/locale/locale.go:384 / :255 | строки; main.go:170-173 грузит `App.Bin()/locale`, затем `Data.Bin()/locale` (поздний перекрывает; в portable один каталог — второй вызов пропускается) |
 | `locale.DownloadAllRemoteLocales(dir)` | locale.go:367 | строка; вызывается с `Data.Bin()/locale` (main.go, settings_tab.go) |
 | `locale.LoadSettings` / `SaveSettings` / `MarkTemplateInstalled` / `MarkLocalesRefreshed` | internal/locale/settings.go | строковый `binDir` = `layout.Data.Bin()` |
-| `template.LoadTemplateData` | core/template/loader.go:257 | `(Layout)`; читает `GetWizardTemplatePath(l.Data)` — этап 5 меняет тело |
+| `template.LoadTemplateData` | core/template/loader.go:256 | `(Layout)`; читает `ResolveTemplate(l).Path` (этап 5) |
+| `template.ResolveTemplate` / `ReadTemplateMarker` | core/template/resolve.go:45 / :83 | `(Layout) TemplateResolution{Path, Source, ShippedCurrent}` — единственное правило §3.3; `ReadTemplateMarker(binDir)` |
 | `template.DownloadTemplate` | core/template/download.go:53 | `(ctx, DataDir, fetch)` |
 | `template.EnsureTemplate` | core/template/download.go:137 | `(ctx, Layout, fetch)` |
 | `wizardbusiness.TemplateLoader.LoadTemplateData` | ui/configurator/business/template_loader.go:20 | `(Layout)` |
-| `core.RefreshTemplateIfStale` | core/template_migration.go:70 | `(ctx, Layout, fetch)`; маркер `wizard_template.version` пока из `Data.Bin()` (этап 5 — из App) |
-| `config.BuildVarSubstituterFromDisk` | core/config/varsubst.go:126 | `(Layout)`; `loadTemplateVarDefaults(Layout)` :157, `loadStateSettingsVars(DataDir)` :249 |
+| `core.RefreshTemplateIfStale` | core/template_migration.go:82 | `(ctx, Layout, fetch)`; маркер из App (нет в App — из Data), штамп и скачивание в Data; `keptShippedTemplate` :163; проверка `config_data_root` :89 (этап 5) |
+| `config.BuildVarSubstituterFromDisk` | core/config/varsubst.go:127 | `(Layout)`; `loadTemplateVarDefaults(Layout)` :158 читает `template.ResolveTemplate(l).Path` :163, `loadStateSettingsVars(DataDir)` |
 | `config.SetTailscaleStateDirRoot` | вызов core/controller.go:300 | `GetTailscaleStateDir(Layout.Data)` |
 | `snapshot.Build` | core/snapshot/snapshot.go:61 | `(Layout, launcherVersion, singboxVersion)` |
 | `core.DaemonIdentityDir` | core/backend_daemon_darwin.go:123 | `(DataDir)` |
@@ -343,8 +344,8 @@ ui/traffic_bootstrap.go, settings_tun_darwin.go. `OpenLogFiles()` (:99) без
 | `Layout` | все бывшие читатели `ExecDir` (§2): `.Data` — состояние/кэши, `.Logs` — логи, `.App` — Mesa |
 | `ConfigPath` | без изменений (`GetConfigPath(Layout.Data)`) |
 | `SingboxBundledPath` | `Data/bin/sing-box` — цель скачивания (core_downloader.go) |
-| `SingboxPath` | `ResolveSingboxExecPath(Layout.Data, SingboxBundledPath)` — логика прежняя |
-| `WintunPath` | `GetWintunPath(Layout.Data)` до этапа 5 |
+| `SingboxPath`, `CoreSource`, `ShadowedCorePath` | `ResolveCore()` (file_service.go:111) = `ResolveSingboxExecPath(Layout, os.Getenv)`; зовут `NewFileService` (:99) и `DownloadCore` после установки (core_downloader.go:141) |
+| `WintunPath` | `GetWintunPathFor(Dir(SingboxPath))` там же, в `ResolveCore` |
 | `ChildLogPath` | см. выше |
 
 ### 3.2 Debug API
@@ -393,16 +394,20 @@ platform/restart_windows.go:33, glprobe_windows.go:189, :742.
 
 ## 4. Поставляемое vs скачанное
 
-| Что | Чтение | Запись/скачивание | Этап 5 |
+После этапа 5. Чтение — по цепочке Data → App (для шаблона с правилом
+маркера), запись — только в Data.
+
+| Что | Чтение | Запись/скачивание | Как решено (этап 5) |
 |---|---|---|---|
-| Шаблон `wizard_template.json` | `template.LoadTemplateData` (loader.go:254) ← config_service.go:249, :561; rebuild.go:389, :446; debugapi_wiring.go:141; configurator.go:140, :821 (через template_loader.go:26); `EnsureTemplate` (download.go:137, :146); напрямую по пути: varsubst.go:161, snapshot.go:62, template_migration.go:90 (stat), core_dashboard_tab_status.go:252 (stat) | `DownloadTemplate` (download.go:52) ← template_migration.go:126, core_dashboard_tab.go:941, `EnsureTemplate` ← rebuild.go:396, configurator.go:156 | один резолвер для всех 13 точек чтения; запись только Data |
-| Маркер `wizard_template.version` | template_migration.go:99 | CI `win64-full` (.github/workflows/ci.yml:721) | читать из App |
-| Штамп `LastTemplateLauncherVersion` | template_migration.go:77 | `MarkTemplateInstalled` (settings.go:214) ← download.go:90, template_migration.go:137 | Data |
-| Локали `bin/locale/*.json` | main.go:150 (`LoadExternalLocales`) | main.go:171, settings_tab.go:205 (`DownloadAllRemoteLocales`) | загрузка App → Data; скачивание в Data |
-| Штамп `LastLocaleLauncherVersion` | main.go:158 | `MarkLocalesRefreshed` ← main.go:165, :175 | Data |
-| Ядро | `SingboxPath` (file_service.go:95; `ResolveSingboxExecPath`) | `SingboxBundledPath` (file_service.go:94) ← core_downloader.go:121; спутники :131-137 | `SINGBOX_LAUNCHER_CORE` → Data → App → PATH |
-| wintun.dll | `CheckWintunDLL` (wintun_downloader.go:30-40) | `DownloadWintunDLL` (:44; запись :179-213) | `Dir(SingboxPath)/wintun.dll` |
-| libcronet | загрузчик ОС рядом с ядром | core_downloader.go:131-137 | от каталога ядра |
+| Шаблон `wizard_template.json` | **`template.ResolveTemplate(Layout)`** (core/template/resolve.go:45) — одно правило §3.3 для всех точек: `LoadTemplateData` (loader.go:256) ← config_service.go:250, :562; rebuild.go:395 (`loadTemplateForBuild`), :452; debugapi_wiring.go:142; configurator.go:140, :821 (через template_loader.go:28); `EnsureTemplate` (download.go:137); напрямую по пути: varsubst.go:163, snapshot.go:64, core_dashboard_tab_status.go:254 (есть ли шаблон — `Source != ""`), configurator.go:147 (строка лога) | `DownloadTemplate(DataDir)` (download.go:53) ← template_migration.go (`RefreshTemplateIfStale`), core_dashboard_tab.go:941, `EnsureTemplate` ← rebuild.go:402, configurator.go:156 | A = App/bin, D = Data/bin: A с маркером == `AppVersion` и (нет D, штамп пуст или < `AppVersion`) → A; иначе D; иначе A; иначе путь D. `template_migration.go:91` (stat D) остаётся на Data намеренно: это проверка цели скачивания |
+| Маркер `wizard_template.version` | `template.ReadTemplateMarker` (resolve.go:83) ← `ResolveTemplate` (App), `keptShippedTemplate` (template_migration.go:163; App, при отсутствии — Data) | CI `win64-full` (.github/workflows/ci.yml:721) | читается из App |
+| Штамп `LastTemplateLauncherVersion` | `ResolveTemplate` (правило 1), `RefreshTemplateIfStale` | `MarkTemplateInstalled` (settings.go:222) ← download.go:91, `stampTemplateCheck` | Data. Ветка «поставляемый под эту версию» удаляет устаревший D (иначе после штампа резолвер вернулся бы к нему); не удалился — штамп не ставится |
+| Штамп `config_data_root` | `RefreshTemplateIfStale` (template_migration.go:89) → `RebuildConfig` → `MarkConfigStale` (:264) | `stampConfigDataRoot` (template_migration.go:196) → `locale.MarkConfigDataRoot` ← rebuild.go:307 (единственная успешная запись локального `config.json`, после `promoteCandidate`) | §3.5; проверка работает и на dev-сборках |
+| Локали `bin/locale/*.json` | main.go (`LoadExternalLocales` App, затем Data) | main.go, settings_tab.go (`DownloadAllRemoteLocales` в Data) | этап 4 |
+| Штамп `LastLocaleLauncherVersion` | main.go | `MarkLocalesRefreshed` | Data |
+| Ядро | `FileService.SingboxPath` ← `ResolveCore` (file_service.go:111) ← `platform.ResolveSingboxExecPath` (singbox_exec_path.go:45) | `SingboxBundledPath` = Data/bin/sing-box ← core_downloader.go:121; после установки `ResolveCore()` (:141) | `SINGBOX_LAUNCHER_CORE` (`constants.EnvCorePath`) → Data → App → PATH. Лог старта `core: <path> (source=…)` и `core: <src> <v> shadows <kind> <v> (<path>)` — `logCoreResolution` (version_marks.go:114) в горутине отметок версий (template_migration.go:241) |
+| wintun.dll | `CheckWintunDLL` (wintun_downloader.go:40) по `WintunPath` | `DownloadWintunDLL` (:52) в `Dir(WintunPath)`; каталог не пишется (`paths.ProbeWritable`, :67) → `ErrCoreDirReadOnly` + текст для диалога (core_dashboard_tab.go:1134) | `Dir(SingboxPath)/wintun.dll` |
+| libcronet | загрузчик ОС рядом с ядром; проверка `cronetLibAvailable` (core_capabilities.go:342) от `Dir(SingboxPath)` | core_downloader.go:131 рядом со скачанным ядром (Data/bin) | уже от каталога ядра, правка не понадобилась |
 | Mesa3D (`mesa3d/`, `opengl32.dll`) | glstate.go:193-212, glprobe_windows.go:193 | glstate.go:222-330, glprobe_windows.go:798 | остаётся App (исключение) |
 | `get_free.json` | get_free_dialog.go:67-80 | `downloadGetFree` в тот же путь | Data (в zip не входит) |
 

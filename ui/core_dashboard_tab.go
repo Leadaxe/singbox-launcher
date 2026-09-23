@@ -1127,9 +1127,15 @@ func (tab *CoreDashboardTab) handleWintunDownload() {
 				} else if progress.Status == "error" {
 					tab.wintunDownloadInProgress = false
 					tab.setWintunState("", locale.T("Download"), -1)
-					binDir := tab.controller.FileService.Layout.Data.Bin()
+					// wintun.dll ищется рядом с выбранным ядром (SPEC 135 §3.3) —
+					// туда же её и класть руками.
+					coreDir := filepath.Dir(tab.controller.FileService.WintunPath)
+					reason := ""
+					if errors.Is(progress.Error, core.ErrCoreDirReadOnly) {
+						reason = progress.Message
+					}
 					debuglog.DebugLog("core_dashboard: showing download failed manual (wintun)")
-					dialogs.ShowDownloadFailedManual(tab.controller.GetMainWindow(), "wintun.dll download failed", constants.WintunHomeURL, binDir)
+					dialogs.ShowDownloadFailedManualWithReason(tab.controller.GetMainWindow(), "wintun.dll download failed", reason, constants.WintunHomeURL, coreDir)
 				}
 			})
 		}

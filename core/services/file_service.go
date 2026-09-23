@@ -52,10 +52,21 @@ type FileService struct {
 	// SingboxBundledPath — <Data>/bin/sing-box (или .exe): цель установки ядра из лаунчера (Core → Download).
 	SingboxBundledPath string
 
-	// SingboxPath — путь для запуска sing-box, проверки версии и capabilities (на Linux может быть из PATH).
+	// SingboxPath — путь для запуска sing-box, проверки версии и capabilities:
+	// итог цепочки SINGBOX_LAUNCHER_CORE → Data/bin → App/bin → PATH
+	// (SPEC 135 §3.3, platform.ResolveSingboxExecPath). Пересчитывает ResolveCore.
 	SingboxPath string
 
-	// WintunPath — полный путь к wintun.dll (только Windows, пустая строка на других платформах).
+	// CoreSource — откуда взят SingboxPath: env / data / app / path; "" — ядро
+	// не найдено (SingboxPath тогда = SingboxBundledPath, цель скачивания).
+	CoreSource string
+
+	// ShadowedCorePath — второе найденное ядро, затенённое выбранным (Data над
+	// App, env над Data/App); пусто, если затенять нечего. Только для лога.
+	ShadowedCorePath string
+
+	// WintunPath — wintun.dll рядом с выбранным ядром: Dir(SingboxPath)/wintun.dll
+	// (только Windows, пустая строка на других платформах).
 	WintunPath string
 
 	// MainLogFile — лог приложения (singbox-launcher.log).
@@ -85,11 +96,36 @@ func NewFileService(layout paths.Layout) (*FileService, error) {
 
 	fs.ConfigPath = platform.GetConfigPath(layout.Data)
 	fs.SingboxBundledPath = filepath.Join(layout.Data.Bin(), platform.GetExecutableNames())
-	fs.SingboxPath = platform.ResolveSingboxExecPath(layout.Data, fs.SingboxBundledPath)
-	fs.WintunPath = platform.GetWintunPath(layout.Data)
+	fs.ResolveCore()
 	fs.ChildLogPath = filepath.Join(string(layout.Logs), constants.ChildLogFileName)
 
 	return fs, nil
+}
+
+// ResolveCore пересчитывает путь ядра и его спутников (SPEC 135 §3.3, §5):
+// сначала ядро по цепочке, затем wintun.dll от каталога выбранного ядра —
+// загрузчик ОС ищет спутники рядом с sing-box, а не рядом с лаунчером.
+//
+// Зовётся из NewFileService и после успешного скачивания ядра (оно ложится
+// в Data/bin и должно сменить поставляемое или системное).
+func (fs *FileService) ResolveCore() {
+	r := platform.ResolveSingboxExecPath(fs.Layout, os.Getenv)
+	wintun := platform.GetWintunPathFor(filepath.Dir(r.Path))
+	// Поля читают другие горутины без блокировки; пишем только изменившиеся,
+	// чтобы повторный вызов с тем же итогом (обычный случай после скачивания
+	// в Data/bin) ничего не трогал.
+	if fs.SingboxPath != r.Path {
+		fs.SingboxPath = r.Path
+	}
+	if fs.CoreSource != r.Source {
+		fs.CoreSource = r.Source
+	}
+	if fs.ShadowedCorePath != r.Shadowed {
+		fs.ShadowedCorePath = r.Shadowed
+	}
+	if fs.WintunPath != wintun {
+		fs.WintunPath = wintun
+	}
 }
 
 // OpenLogFiles открывает все лог-файлы приложения с ротацией.

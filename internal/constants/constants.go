@@ -1,6 +1,9 @@
 package constants
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // File names
 const (
@@ -88,6 +91,10 @@ const (
 	// друг от друга (Flatpak-обёртки, пакеты, CI, отладка).
 	EnvDataDir = "SINGBOX_LAUNCHER_DATA_DIR"
 	EnvLogDir  = "SINGBOX_LAUNCHER_LOG_DIR"
+	// EnvCorePath — явный путь к бинарю ядра; первый в цепочке поиска
+	// (SPEC 135 §3.3: env → Data/bin → App/bin → PATH). Срабатывает, только
+	// если файл существует.
+	EnvCorePath = "SINGBOX_LAUNCHER_CORE"
 	// MigratedFromMarkerFileName — маркер в DataDir после миграции данных из
 	// старой раскладки (SPEC 135 §3.4).
 	MigratedFromMarkerFileName = ".migrated_from"
@@ -232,3 +239,73 @@ const (
 	// Theme options: "dark", "light", or "default" (follows system theme)
 	AppTheme = "default" // Set to "dark", "light", or "default"
 )
+
+// CompareVersions сравнивает две версии (формат X.Y.Z или X.Y.Z-N-hash или X.Y.Z-dev.branch-hash).
+// Возвращает: -1 если v1 < v2, 0 если v1 == v2, 1 если v1 > v2.
+//
+// Живёт здесь, а не в core: правило выбора шаблона (core/template,
+// SPEC 135 §3.3) сравнивает штамп с AppVersion, а core/template не может
+// импортировать core. core.CompareVersions — обёртка над этой функцией.
+func CompareVersions(v1, v2 string) int {
+	v1 = strings.TrimPrefix(v1, "v")
+	v2 = strings.TrimPrefix(v2, "v")
+
+	base1, hasSuffix1 := extractBaseVersion(v1)
+	base2, hasSuffix2 := extractBaseVersion(v2)
+
+	baseCompare := compareBaseVersions(base1, base2)
+	if baseCompare != 0 {
+		return baseCompare
+	}
+
+	// Если базовые версии равны — версия с суффиксом (коммиты после тега
+	// или dev) считается новее. v0.7.1-96-gc1343cc > v0.7.1.
+	if hasSuffix1 && !hasSuffix2 {
+		return 1
+	}
+	if !hasSuffix1 && hasSuffix2 {
+		return -1
+	}
+
+	return 0
+}
+
+// extractBaseVersion извлекает базовую версию и проверяет наличие суффикса.
+// Форматы: "0.7.1", "0.7.1-96-gc1343cc", "0.7.1-dev.branch-hash".
+func extractBaseVersion(version string) (base string, hasSuffix bool) {
+	idx := strings.Index(version, "-")
+	if idx == -1 {
+		return version, false
+	}
+	return version[:idx], true
+}
+
+// compareBaseVersions сравнивает базовые версии (формат X.Y.Z).
+func compareBaseVersions(base1, base2 string) int {
+	parts1 := strings.Split(base1, ".")
+	parts2 := strings.Split(base2, ".")
+
+	maxLen := len(parts1)
+	if len(parts2) > maxLen {
+		maxLen = len(parts2)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		var num1, num2 int
+		if i < len(parts1) {
+			_, _ = fmt.Sscanf(parts1[i], "%d", &num1)
+		}
+		if i < len(parts2) {
+			_, _ = fmt.Sscanf(parts2[i], "%d", &num2)
+		}
+
+		if num1 < num2 {
+			return -1
+		}
+		if num1 > num2 {
+			return 1
+		}
+	}
+
+	return 0
+}

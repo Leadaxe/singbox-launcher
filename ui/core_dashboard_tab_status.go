@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
 
+	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
@@ -249,8 +250,8 @@ func (tab *CoreDashboardTab) updateConfigInfo() {
 		configExists = false
 	}
 
-	templatePath := platform.GetWizardTemplatePath(tab.controller.FileService.Layout.Data)
-	if _, err := os.Stat(templatePath); err != nil {
+	// Шаблон годится любой из двух (App или Data) — решает резолвер SPEC 135 §3.3.
+	if wizardtemplate.ResolveTemplate(tab.controller.FileService.Layout).Source == "" {
 		// Template not found — show download button, hide configurator + update.
 		if tab.templateDownloadButton != nil {
 			tab.templateDownloadButton.Show()

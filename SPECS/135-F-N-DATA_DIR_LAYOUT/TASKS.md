@@ -34,11 +34,11 @@
 - [ ] Страж «AppDir не пишем»: `tools/paths_guard` (AST-скан по образцу `tools/l10n/l10n_check/scan.go:131`) с поимённым исключением Mesa; запуск в CI-lint.
 
 ## Этап 5 · Двухуровневое чтение
-- [ ] Ядро: `SINGBOX_LAUNCHER_CORE` → `Data/bin` → `App/bin` → `PATH`; лог обеих версий и `shadowed`.
-- [ ] `WintunPath = Dir(SingboxPath)/wintun.dll`; проверка/скачивание wintun с этим каталогом; сообщение при read-only каталоге.
-- [ ] Шаблон: правило маркера (§3.3); `RefreshTemplateIfStale` читает маркер из `App`, штамп и скачивание в `Data`; все места загрузки шаблона через один резолвер.
-- [ ] `settings.json`: `config_data_root`; старт сравнивает с `Data` → `MarkConfigStale`; успешная сборка пишет штамп.
-- [ ] `core/template_migration_test.go` по имени зелёный.
+- [x] Ядро: `SINGBOX_LAUNCHER_CORE` → `Data/bin` → `App/bin` → `PATH`; лог обеих версий и `shadowed`.
+- [x] `WintunPath = Dir(SingboxPath)/wintun.dll`; проверка/скачивание wintun с этим каталогом; сообщение при read-only каталоге.
+- [x] Шаблон: правило маркера (§3.3); `RefreshTemplateIfStale` читает маркер из `App`, штамп и скачивание в `Data`; все места загрузки шаблона через один резолвер.
+- [x] `settings.json`: `config_data_root`; старт сравнивает с `Data` → `MarkConfigStale`; успешная сборка пишет штамп.
+- [x] `core/template_migration_test.go` по имени зелёный.
 
 ## Этап 6 · Миграция
 - [ ] `internal/paths/copytree.go`: временный каталог → права → пропуск нечитаемого с подсчётом → rename.

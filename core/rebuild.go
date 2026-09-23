@@ -300,6 +300,11 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		// ядро ещё не приняло, реестр начал бы прятать из пикера имя, которого
 		// не существует.
 		ac.refreshOwnTunNames()
+
+		// SPEC 135 §3.5: config.json на диске теперь собран от этого DataDir
+		// (абсолютные пути .srs и tailscale). Единственная точка успешной
+		// записи локального config.json — здесь.
+		stampConfigDataRoot(layout)
 	}
 
 	// Step 5.5: orphan GC для bin/rule-sets/. Параллельно тому что

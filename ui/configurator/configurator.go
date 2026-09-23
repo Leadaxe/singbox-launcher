@@ -144,7 +144,7 @@ func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, r
 	}
 	templateFileName := wizardtemplate.GetTemplateFileName()
 	debuglog.InfoLog("ConfigWizard: %s unreadable at %s (%v) — trying to download it",
-		templateFileName, platform.GetWizardTemplatePath(ac.FileService.Layout.Data), loadErr)
+		templateFileName, wizardtemplate.ResolveTemplate(ac.FileService.Layout).Path, loadErr)
 
 	// Сеть — не на UI-потоке: сюда приходят из OnTapped кнопок Local и
 	// Remote → Configure. Всё, что трогает виджеты после, идёт через fyne.Do.

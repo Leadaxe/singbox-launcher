@@ -77,6 +77,14 @@ type Settings struct {
 	LastLauncherVersion string `json:"last_launcher_version,omitempty"`
 	LastCoreVersion     string `json:"last_core_version,omitempty"`
 
+	// ConfigDataRoot — DataDir, с которым config.json собран в последний раз
+	// (SPEC 135 §3.5). config.json держит абсолютные пути (.srs, tailscale):
+	// после смены корня данных (миграция, portable, переменная окружения,
+	// перенос руками) они ложны. На старте несовпадение с текущим DataDir
+	// форсирует пересборку (core.RefreshTemplateIfStale); пишется после
+	// каждой успешной сборки. Пусто — сборки ещё не было.
+	ConfigDataRoot string `json:"config_data_root,omitempty"`
+
 	// HWID — random UUIDv4 идентификатор устройства, отправляемый в
 	// `X-Hwid` заголовке при каждом fetch'е подписки. Lazy-generated
 	// (EnsureHWID): пустой строкой при первой инсталляции → генерируется и
@@ -217,6 +225,17 @@ func MarkTemplateInstalled(binDir, appVersion string) error {
 		return nil
 	}
 	s.LastTemplateLauncherVersion = appVersion
+	return SaveSettings(binDir, s)
+}
+
+// MarkConfigDataRoot persists the data root config.json was just built with
+// (SPEC 135 §3.5). No write when it is already recorded: rebuilds are frequent.
+func MarkConfigDataRoot(binDir, root string) error {
+	s := LoadSettings(binDir)
+	if s.ConfigDataRoot == root {
+		return nil
+	}
+	s.ConfigDataRoot = root
 	return SaveSettings(binDir, s)
 }
 

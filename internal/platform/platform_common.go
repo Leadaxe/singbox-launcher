@@ -141,10 +141,10 @@ func GetSubscriptionsDirFor(d paths.DataDir, target, id string) string {
 }
 
 // GetWizardTemplatePath returns the downloaded / working copy of the wizard
-// template: <DataDir>/bin/wizard_template.json. It is the download target;
-// until the two-level read (SPEC 135 §3.3) it is also where the template is
-// read from. The only sanctioned way to locate it — do NOT compose from
-// string literals.
+// template: <DataDir>/bin/wizard_template.json — the download target. Which
+// file is READ (this one or the shipped one) is decided by
+// template.ResolveTemplate (SPEC 135 §3.3); readers go through it. Do NOT
+// compose the path from string literals.
 func GetWizardTemplatePath(d paths.DataDir) string {
 	return filepath.Join(d.Bin(), constants.WizardTemplateFileName)
 }

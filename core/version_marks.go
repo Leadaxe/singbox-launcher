@@ -11,12 +11,14 @@
 package core
 
 import (
+	"path/filepath"
 	"strings"
 
 	"singbox-launcher/core/maintenance"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/platform"
 )
 
 // CheckVersionMarks сверяет текущие версии лаунчера и ядра с отметками и
@@ -100,4 +102,39 @@ func (ac *AppController) checkCoreMark(last string) (string, bool) {
 		return "", false
 	}
 	return current, true
+}
+
+// logCoreResolution пишет в лог, какое ядро выбрано и откуда (SPEC 135 §3.3).
+// Если выбранное затеняет второе найденное (Data над App, env над Data/App),
+// спрашивает версии у обоих и пишет одну строку со словом shadows: иначе
+// «почему ядро не то» на машине пользователя не разобрать.
+//
+// Запускает `sing-box version` — звать вне UI-потока (горутина отметок
+// версий на старте).
+func (ac *AppController) logCoreResolution() {
+	if ac == nil || ac.FileService == nil {
+		return
+	}
+	fs := ac.FileService
+	src := fs.CoreSource
+	if src == "" {
+		src = "none"
+	}
+	debuglog.WarnLog("core: %s (source=%s)", fs.SingboxPath, src)
+	if fs.ShadowedCorePath == "" {
+		return
+	}
+	cur, err := ac.GetInstalledCoreVersion()
+	if err != nil || cur == "" {
+		cur = "?"
+	}
+	shadowed, err := coreVersionAt(fs.ShadowedCorePath)
+	if err != nil || shadowed == "" {
+		shadowed = "?"
+	}
+	kind := platform.CoreSourceApp
+	if filepath.Clean(fs.ShadowedCorePath) == filepath.Clean(filepath.Join(fs.Layout.Data.Bin(), platform.GetExecutableNames())) {
+		kind = platform.CoreSourceData
+	}
+	debuglog.WarnLog("core: %s %s shadows %s %s (%s)", src, cur, kind, shadowed, fs.ShadowedCorePath)
 }

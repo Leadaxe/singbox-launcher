@@ -32,6 +32,7 @@ import (
 	"strconv"
 	"strings"
 
+	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
@@ -106,9 +107,9 @@ func knownPlaceholderFallback(name string) (interface{}, bool) {
 	return nil, false
 }
 
-// BuildVarSubstituterFromDisk reads the wizard template and state files via
-// canonical path helpers (platform.GetWizardTemplatePath /
-// GetWizardStatePath) and returns a VarSubstituter that resolves `@name`
+// BuildVarSubstituterFromDisk reads the wizard template (the file chosen by
+// template.ResolveTemplate, SPEC 135 §3.3) and the state file
+// (platform.GetWizardStatePath) and returns a VarSubstituter that resolves `@name`
 // placeholders against them.
 //
 // Resolution order per name:
@@ -159,7 +160,7 @@ func loadTemplateVarDefaults(l paths.Layout) templateVarDefaults {
 		values:    map[string]string{},
 		boolNames: map[string]struct{}{},
 	}
-	path := platform.GetWizardTemplatePath(l.Data)
+	path := template.ResolveTemplate(l).Path
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		debuglog.DebugLog("varsubst: cannot read %s: %v", path, err)

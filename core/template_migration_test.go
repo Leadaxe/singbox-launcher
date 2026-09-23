@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
@@ -104,6 +105,9 @@ func TestRefreshTemplateIfStale(t *testing.T) {
 		marker       string // last_template_launcher_version; "" = legacy install
 		installed    string // template on disk; "" = no file
 		bundled      string // bin/wizard_template.version
+		shipped      string // split layout: App/bin/wizard_template.json ("" = portable, App == Data)
+		shippedMark  string // split layout: App/bin/wizard_template.version
+		dataRoot     string // config_data_root in settings.json; "@" = the current Data
 		state        bool
 		fetch        *templateFetchStub
 		wantTemplate string
@@ -154,6 +158,29 @@ func TestRefreshTemplateIfStale(t *testing.T) {
 			wantRes: TemplateRefreshResult{RebuildConfig: true},
 		},
 		{
+			name: "split: shipped template for this version supersedes the previous download", marker: "v0.8.7", installed: installedTemplate,
+			shipped: refreshedTemplate, shippedMark: "v0.8.8\n", state: true, fetch: ok(),
+			wantTemplate: "", wantMarker: "v0.8.8", wantCalls: 0,
+			wantRes: TemplateRefreshResult{RebuildConfig: true},
+		},
+		{
+			name: "split: shipped template of another version — the download is refreshed", marker: "v0.8.7", installed: installedTemplate,
+			shipped: installedTemplate, shippedMark: "v0.8.7\n", state: true, fetch: ok(),
+			wantTemplate: refreshedTemplate, wantMarker: "v0.8.8", wantCalls: 1,
+			wantRes: TemplateRefreshResult{RebuildConfig: true, Downloaded: true},
+		},
+		{
+			name: "data root moved since the last build forces a rebuild", marker: "v0.8.8", installed: installedTemplate, state: true,
+			dataRoot: "/somewhere/else", fetch: ok(),
+			wantTemplate: installedTemplate, wantMarker: "v0.8.8", wantCalls: 0,
+			wantRes: TemplateRefreshResult{RebuildConfig: true},
+		},
+		{
+			name: "same data root is no reason to rebuild", marker: "v0.8.8", installed: installedTemplate, state: true,
+			dataRoot: "@", fetch: ok(),
+			wantTemplate: installedTemplate, wantMarker: "v0.8.8", wantCalls: 0,
+		},
+		{
 			name: "same version is untouched", marker: "v0.8.8", installed: installedTemplate, state: true, fetch: ok(),
 			wantTemplate: installedTemplate, wantMarker: "v0.8.8", wantCalls: 0,
 		},
@@ -170,8 +197,25 @@ func TestRefreshTemplateIfStale(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			d := newLauncherDir(t)
-			if tc.marker != "" {
-				d.write("bin/settings.json", `{"lang":"en","last_template_launcher_version":"`+tc.marker+`"}`)
+			dataRoot := tc.dataRoot
+			if dataRoot == "@" {
+				dataRoot = filepath.Clean(d.root)
+			}
+			if tc.marker != "" || dataRoot != "" {
+				raw, err := json.Marshal(map[string]string{
+					"lang": "en", "last_template_launcher_version": tc.marker, "config_data_root": dataRoot,
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				d.write("bin/settings.json", string(raw))
+			}
+			layout := paths.Layout{App: paths.AppDir(d.root), Data: paths.DataDir(d.root)}
+			if tc.shipped != "" {
+				app := newLauncherDir(t)
+				app.write("bin/"+constants.WizardTemplateFileName, tc.shipped)
+				app.write("bin/"+constants.WizardTemplateVersionFileName, tc.shippedMark)
+				layout.App = paths.AppDir(app.root)
 			}
 			if tc.installed != "" {
 				d.write("bin/"+constants.WizardTemplateFileName, tc.installed)
@@ -192,7 +236,7 @@ func TestRefreshTemplateIfStale(t *testing.T) {
 				version = "v0.8.8"
 			}
 			withAppVersion(t, version, func() {
-				res, err := RefreshTemplateIfStale(context.Background(), paths.Layout{App: paths.AppDir(d.root), Data: paths.DataDir(d.root)}, tc.fetch.fetch)
+				res, err := RefreshTemplateIfStale(context.Background(), layout, tc.fetch.fetch)
 				if (err != nil) != tc.wantErr {
 					t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
 				}

@@ -20,6 +20,7 @@ import (
 
 	"github.com/muhammadmuzzammil1998/jsonc"
 
+	"singbox-launcher/core/template"
 	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
@@ -60,7 +61,7 @@ type fileSpec struct {
 // Missing/Errors, чтобы вызывающий мог различать сценарии без try/catch.
 func Build(l paths.Layout, launcherVersion, singboxVersion string) Snapshot {
 	files := []fileSpec{
-		{name: "template", path: platform.GetWizardTemplatePath(l.Data)},
+		{name: "template", path: template.ResolveTemplate(l).Path},
 		{name: "state", path: platform.GetWizardStatePath(l.Data)},
 		{name: "cache", path: platform.GetOutboundsCachePath(l.Data)},
 		{name: "config", path: platform.GetConfigPath(l.Data)},

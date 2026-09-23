@@ -136,6 +136,11 @@ func (ac *AppController) DownloadCore(ctx context.Context, version string, progr
 		}
 	}
 
+	// 6.6. Скачанное ядро лежит в Data/bin и по цепочке SPEC 135 §3.3
+	// побеждает поставляемое и системное: пересчитать путь ядра и спутников.
+	ac.FileService.ResolveCore()
+	debuglog.InfoLog("core: %s (source=%s)", ac.FileService.SingboxPath, ac.FileService.CoreSource)
+
 	// 6.7. Daemon-режим: установленная launchd-служба держит СТАРЫЙ бинарь в
 	// памяти (plist указывает на тот же путь bin/sing-box, но замена файла не
 	// перезапускает процесс). Привилегированных вызовов у лаунчера нет —

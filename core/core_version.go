@@ -27,11 +27,22 @@ func (ac *AppController) GetInstalledCoreVersion() (string, error) {
 		return ac.installedCoreVersionCache, nil
 	}
 
-	if _, err := os.Stat(ac.FileService.SingboxPath); os.IsNotExist(err) {
-		return "", fmt.Errorf("sing-box not found at %s", ac.FileService.SingboxPath)
+	v, err := coreVersionAt(ac.FileService.SingboxPath)
+	if err != nil {
+		return "", err
+	}
+	ac.installedCoreVersionCache = v
+	return v, nil
+}
+
+// coreVersionAt запускает `<path> version` и разбирает версию. Без кэша:
+// кроме выбранного ядра, так спрашивают и затенённое (SPEC 135 §3.3).
+func coreVersionAt(path string) (string, error) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return "", fmt.Errorf("sing-box not found at %s", path)
 	}
 
-	cmd := exec.Command(ac.FileService.SingboxPath, "version")
+	cmd := exec.Command(path, "version")
 	platform.PrepareCommand(cmd)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -43,8 +54,7 @@ func (ac *AppController) GetInstalledCoreVersion() (string, error) {
 	versionRegex := regexp.MustCompile(`sing-box version\s+(\S+)`)
 	matches := versionRegex.FindStringSubmatch(outputStr)
 	if len(matches) > 1 {
-		ac.installedCoreVersionCache = matches[1]
-		return ac.installedCoreVersionCache, nil
+		return matches[1], nil
 	}
 
 	debuglog.WarnLog("GetInstalledCoreVersion: unable to parse version from output: %q", outputStr)
@@ -191,68 +201,9 @@ func (ac *AppController) getLatestVersionFromURLWithPrefix(url string, keepPrefi
 
 // CompareVersions сравнивает две версии (формат X.Y.Z или X.Y.Z-N-hash или X.Y.Z-dev.branch-hash).
 // Возвращает: -1 если v1 < v2, 0 если v1 == v2, 1 если v1 > v2.
+// Реализация — constants.CompareVersions (её зовёт и core/template).
 func CompareVersions(v1, v2 string) int {
-	v1 = strings.TrimPrefix(v1, "v")
-	v2 = strings.TrimPrefix(v2, "v")
-
-	base1, hasSuffix1 := extractBaseVersion(v1)
-	base2, hasSuffix2 := extractBaseVersion(v2)
-
-	baseCompare := compareBaseVersions(base1, base2)
-	if baseCompare != 0 {
-		return baseCompare
-	}
-
-	// Если базовые версии равны — версия с суффиксом (коммиты после тега
-	// или dev) считается новее. v0.7.1-96-gc1343cc > v0.7.1.
-	if hasSuffix1 && !hasSuffix2 {
-		return 1
-	}
-	if !hasSuffix1 && hasSuffix2 {
-		return -1
-	}
-
-	return 0
-}
-
-// extractBaseVersion извлекает базовую версию и проверяет наличие суффикса.
-// Форматы: "0.7.1", "0.7.1-96-gc1343cc", "0.7.1-dev.branch-hash".
-func extractBaseVersion(version string) (base string, hasSuffix bool) {
-	idx := strings.Index(version, "-")
-	if idx == -1 {
-		return version, false
-	}
-	return version[:idx], true
-}
-
-// compareBaseVersions сравнивает базовые версии (формат X.Y.Z).
-func compareBaseVersions(base1, base2 string) int {
-	parts1 := strings.Split(base1, ".")
-	parts2 := strings.Split(base2, ".")
-
-	maxLen := len(parts1)
-	if len(parts2) > maxLen {
-		maxLen = len(parts2)
-	}
-
-	for i := 0; i < maxLen; i++ {
-		var num1, num2 int
-		if i < len(parts1) {
-			_, _ = fmt.Sscanf(parts1[i], "%d", &num1)
-		}
-		if i < len(parts2) {
-			_, _ = fmt.Sscanf(parts2[i], "%d", &num2)
-		}
-
-		if num1 < num2 {
-			return -1
-		}
-		if num1 > num2 {
-			return 1
-		}
-	}
-
-	return 0
+	return constants.CompareVersions(v1, v2)
 }
 
 // ShowUpdatePopupIfAvailable проверяет наличие обновления лаунчера и показывает

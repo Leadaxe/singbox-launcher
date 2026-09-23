@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"singbox-launcher/internal/debuglog"
-	"singbox-launcher/internal/paths"
 )
 
 // GetExecutableNames returns platform-specific executable names
@@ -19,8 +18,9 @@ func GetExecutableNames() string {
 	return "sing-box"
 }
 
-// GetWintunPath returns empty string on Linux (wintun is Windows-only)
-func GetWintunPath(_ paths.DataDir) string {
+// GetWintunPathFor — wintun.dll рядом с выбранным ядром (SPEC 135 §3.3):
+// загрузчик ОС ищет её рядом с sing-box.exe. Только Windows, иначе "".
+func GetWintunPathFor(coreDir string) string {
 	return ""
 }
 
