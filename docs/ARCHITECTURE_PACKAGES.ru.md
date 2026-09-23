@@ -33,7 +33,21 @@
 | `fs_unix.go` / `fs_windows.go` | Хелперы атомарной записи и fsync по ОС. |
 | `dock_handler.go` / `dock_handler_stub.go` | Скрытие иконки в Dock на macOS; на остальных — заглушка. |
 | `privileged_darwin.go` / `privileged_stub.go` | Привилегированные операции на macOS (удаление кеша и логов TUN); на остальных — заглушка. |
-| `singbox_exec_path.go` / `singbox_exec_path_linux.go` | Разрешение пути к исполняемому файлу sing-box (на Linux может использоваться `PATH`). |
+| `singbox_exec_path.go` | Разрешение пути к исполняемому файлу sing-box: `SINGBOX_LAUNCHER_CORE` → `DataDir/bin` → `AppDir/bin` → `PATH` (SPEC 135 §3.3; порядок единый для всех платформ, `PATH` теперь последний везде — раньше был первым и только на Linux). |
+
+### `internal/paths` (SPEC 135)
+
+**Ответственность:** раскладка данных AppDir/DataDir/LogDir — лист-пакет (только
+stdlib и `internal/constants`), лежит **ниже** `internal/platform` (тот его
+импортирует), поэтому доступен из `main`, тестов и любого слоя без циклов.
+
+| Файл | Назначение |
+|------|---------|
+| `paths.go` | Типы `AppDir`/`DataDir`/`LogDir`/`Mode`/`Layout`, `Resolve` (env → маркер `portable.txt` → детект legacy → платформенный дефолт), `ProbeWritable`, `Executable` (`EvalSymlinks`), `IsAppBundle`, `Layout.LogLine()`, `PathsInfo` (блок для Settings/`-paths`/`/debug/paths`). |
+| `copytree.go` | `CopyTree` — общий копировщик для миграции и переключателя Portable: временный `dst.migrating`, нормализация прав владельца (rwx/rw), пропуск нечитаемого со счётчиком, атомарное продвижение переименованием. |
+| `migrate.go` | `MigrateLegacyData` — копирует `AppDir/bin` → `DataDir/bin` при первом старте, если раскладка system/env и `state.json` есть только в унаследованном месте; маркер `.migrated_from` пишется последним. |
+| `switch.go` | `SwitchToPortable` / `SwitchToSystem` / `SystemDefault` для чекбокса Portable в Settings → Storage; `MovedBinPrefix` для остатков неудачного переключения. |
+| `purge.go` | `BuildPurgePlan` / `ExecutePurge` для диалога «Remove all data…» и `-purge-data [-yes]`: что считается данными, а что поставляемым и не удаляется, поиск остатков, подсчёт байт/файлов. |
 
 ---
 

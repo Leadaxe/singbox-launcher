@@ -32,7 +32,22 @@ path getters. Platform-tagged files (`*_darwin.go`/`*_linux.go`/`*_windows.go`/
 | `fs_unix.go` / `fs_windows.go` | Atomic-write / fsync filesystem helpers per OS. |
 | `dock_handler.go` / `dock_handler_stub.go` | macOS Dock hide; stub elsewhere. |
 | `privileged_darwin.go` / `privileged_stub.go` | macOS privileged escalation (TUN cache/log removal); stub elsewhere. |
-| `singbox_exec_path.go` / `singbox_exec_path_linux.go` | Resolve the sing-box executable path (Linux may use `PATH`). |
+| `singbox_exec_path.go` | Resolve the sing-box executable path: `SINGBOX_LAUNCHER_CORE` → `DataDir/bin` → `AppDir/bin` → `PATH` (SPEC 135 §3.3; unified across platforms, `PATH` last everywhere — previously Linux-only and first). |
+
+### `internal/paths` (SPEC 135)
+
+**Responsibility:** resolves the AppDir/DataDir/LogDir data-directory layout — a
+package-leaf (stdlib + `internal/constants` only) sitting **below** `internal/platform`,
+which imports it, so it stays importable from `main`, tests and every layer without
+cycles.
+
+| File | Purpose |
+|------|---------|
+| `paths.go` | `AppDir`/`DataDir`/`LogDir`/`Mode`/`Layout` types, `Resolve` (env → `portable.txt` → legacy detection → platform default), `ProbeWritable`, `Executable` (`EvalSymlinks`), `IsAppBundle`, `Layout.LogLine()`, `PathsInfo` (Settings/`-paths`/`/debug/paths` block). |
+| `copytree.go` | `CopyTree` — shared copier for migration and the Portable switch: temp `dst.migrating`, owner rwx/rw normalization, unreadable-entry skip with a report, atomic promote-by-rename. |
+| `migrate.go` | `MigrateLegacyData` — copies `AppDir/bin` → `DataDir/bin` on first start when the layout is system/env and only the legacy location has `state.json`; writes `.migrated_from` last. |
+| `switch.go` | `SwitchToPortable` / `SwitchToSystem` / `SystemDefault` for the Settings → Storage Portable checkbox; `MovedBinPrefix` for leftovers from a failed switch. |
+| `purge.go` | `BuildPurgePlan` / `ExecutePurge` for the “Remove all data…” dialog and `-purge-data [-yes]`: what counts as data vs. shipped-and-kept, leftover detection, byte/file counting. |
 
 ---
 

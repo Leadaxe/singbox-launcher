@@ -309,29 +309,35 @@ chmod +x singbox-launcher
 ./singbox-launcher
 ```
 
-`sing-box` is auto-downloaded on first launch into `bin/`. If `sing-box` is on `PATH` (e.g. from a distro package), the launcher uses that binary instead.
+`sing-box` is auto-downloaded on first launch into the data directory's `bin/` (see [Where data lives](#where-data-lives)). Search order: `SINGBOX_LAUNCHER_CORE` (explicit path) → downloaded/data `bin/sing-box` → a core shipped next to the binary → `PATH`. `PATH` is checked **last**, not first — a distro-packaged `sing-box` is almost never the `sing-box-lx` fork this launcher needs (XHTTP, AmneziaWG). Set `SINGBOX_LAUNCHER_CORE` to point at a specific binary if you need one from `PATH` anyway. Note: `setcap cap_net_admin+ep` does not stick on a home partition mounted `nosuid` — either run with `sudo` or move the binary to a partition without that flag.
 
-## Folder layout
+## Where data lives
 
-```
-singbox-launcher/
-├── bin/
-│   ├── sing-box(.exe)             — engine, auto-downloaded
-│   ├── wintun.dll                  — Windows only, auto-downloaded
-│   ├── config.json                 — sing-box runtime config (derived view)
-│   ├── wizard_template.json        — community template with preset bundles
-│   ├── wizard_states/
-│   │   ├── state.json              — this machine's wizard state
-│   │   ├── <name>.json             — named state snapshots
-│   │   └── remote/<machine-id>/    — one directory per paired machine:
-│   │                                 state.json, config.json, srs/, subscriptions/
-│   ├── subscriptions/<id>.raw      — per-source raw cache (SPEC 052)
-│   ├── rule-sets/*.srs             — cached SRS rule-sets
-│   └── logs/                       — sing-box.log + rotated history
-└── singbox-launcher(.exe)
-```
+The launcher separates three roles instead of keeping everything next to the executable: the **program** (read-only: the binary, shipped template/locales/core), **data** (state, subscriptions, downloaded core/template, caches), and **logs**.
 
-`bin/` layout is a stable contract — external tools (backup scripts, MCP servers, CI) can rely on it.
+| Platform | Program (read-only) | Data | Logs |
+|---|---|---|---|
+| Linux | directory of the executable | `$XDG_DATA_HOME/singbox-launcher` (default `~/.local/share/singbox-launcher`) | `$XDG_STATE_HOME/singbox-launcher/logs` (default `~/.local/state/singbox-launcher/logs`) |
+| macOS, installed as `.app` | `…app/Contents/MacOS` | `~/Library/Application Support/singbox-launcher` | `~/Library/Logs/singbox-launcher` |
+| macOS, bare binary | directory of the executable | same as program (portable) | `<program>/logs` |
+| Windows | directory of the `.exe` | `%LOCALAPPDATA%\singbox-launcher` | `%LOCALAPPDATA%\singbox-launcher\logs` |
+| Any platform, **portable mode** | directory of the executable | same as program | `<program>/logs` |
+
+Inside the data directory, the layout is the same `bin/…` tree previous versions kept next to the executable — `bin/config.json`, `bin/wizard_states/` (`state.json`, named snapshots, `remote/<machine-id>/` per paired machine), `bin/subscriptions/<id>.raw`, `bin/rule-sets/*.srs`, `bin/sing-box(.exe)`, `bin/wintun.dll` — it is a stable contract external tools (backup scripts, MCP servers, CI) can rely on.
+
+**Portable mode** keeps everything next to the program folder — the classic "flash drive" layout. It is on by default in every Windows zip release (a `portable.txt` marker ships with it); toggle it from **Settings → Storage → Portable mode**, which moves your data and restarts the app, or drop/remove `portable.txt` next to the executable yourself. It is unavailable on macOS `.app` builds and unnecessary on a bare macOS binary (already portable).
+
+**Environment overrides** (for Flatpak wrappers, packaging, CI, or a non-default disk layout), each independent of the others:
+
+- `SINGBOX_LAUNCHER_DATA_DIR` — where state/cache/downloaded core live.
+- `SINGBOX_LAUNCHER_LOG_DIR` — where logs are written.
+- `SINGBOX_LAUNCHER_CORE` — an explicit path to the `sing-box` binary to run, bypassing the search order above.
+
+**See where things actually are**: **Settings → Storage** lists Mode/Program/Data/Logs/Core/Template with per-row **Open** buttons and a **Copy paths** button (paste the result into a bug report). On a machine where the window won't come up (e.g. NixOS without a working GL driver), run `singbox-launcher -paths` to print the same block to stdout and exit.
+
+**Remove the launcher and its data**: the program folder itself (the executable, on macOS the `.app`) is yours to delete however you like — the launcher never touches it. To also remove data and logs cleanly, use **Settings → Storage → Remove all data…**, or run `singbox-launcher -purge-data` for a dry-run listing (add `-yes` to actually delete). The VPN must be stopped first either way.
+
+**Upgrading on macOS**: if data used to live inside an older `.app` bundle, the first launch of a version with this data layout migrates it automatically into `~/Library/Application Support/singbox-launcher`. Dragging a new `.app` over the old one in Finder replaces the bundle (and anything still inside it) *before* the new binary ever runs, so migration cannot save data that way — **take a Backup first** (Settings → Backup → LX Backup) or update in place with `build/build_darwin.sh -i`, which only swaps the executable.
 
 ## Building from source
 

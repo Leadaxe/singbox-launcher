@@ -74,7 +74,7 @@
 - **019** — фича завершена (F-C): WIN7_ADAPTATION
 - **020** — фича завершена (F-C): CUSTOM_SRS_LOCAL_DOWNLOAD
 - **021** — фича завершена (F-C): SOCKS5_URI (парсинг socks5:// и socks:// в Source/Connections)
-- **022** — фича в плане (F-N): MACOS_APP_SUPPORT_DIRECTORIES (данные в `~/Library` при запуске из `.app`, изменяемый Bundle ID, по умолчанию `com.singbox-launcher`)
+- **022** — поглощена SPEC 135 (F-C): MACOS_APP_SUPPORT_DIRECTORIES (данные в `~/Library` при запуске из `.app`; реализовано в **SPECS/135-F-N-DATA_DIR_LAYOUT/SPEC.md** — модель AppDir/DataDir/LogDir вместо изменяемого Bundle ID; папка **SPECS/022-F-C-MACOS_APP_SUPPORT_DIRECTORIES/** оставлена как история постановки)
 - **023** — фича завершена (F-C): SUBSCRIPTION_TRANSPORT_VLESS_TROJAN (transport/TLS для VLESS и Trojan из подписки по схеме sing-box, VMess gRPC `service_name`, MakeTagUnique в превью визарда)
 - **024** — фича завершена (F-C): WIZARD_DNS_SECTION (вкладка DNS в визарде; см. **SPEC.md**)
 - **025** — фича завершена (F-C): SERVERS_CONTEXT_MENU_SHARE_URI (ПКМ на вкладке Servers, share URI из config.json outbounds/endpoints; см. **IMPLEMENTATION_REPORT.md**)
@@ -94,6 +94,7 @@
 - **074** — фича завершена (F-C): TUIC_PROTOCOL (TUIC v5, v1.1.2; **SPECS/074-F-C-TUIC_PROTOCOL/**)
 - **075** — фича завершена (F-C): AMNEZIA_VPN_IMPORT (импорт `vpn://`-профилей Amnezia — base64url + qCompress + JSON → WG/AWG-узел, v1.1.3; **SPECS/075-F-C-AMNEZIA_VPN_IMPORT/**)
 - **076** — фича завершена (F-C): WGCONF_PASTE_IMPORT (вставка голого `[Interface]/[Peer]`-текста в поле Add, v1.1.3; **SPECS/076-F-C-WGCONF_PASTE_IMPORT/**)
+- **080** — поглощена SPEC 135 (F-C): XDG_PORTABLE_DATA_DIR (XDG-пути для writable-данных на Linux, portable-режим, миграция без потери данных — issue #85; реализовано в **SPECS/135-F-N-DATA_DIR_LAYOUT/SPEC.md**; папка **SPECS/080-F-C-XDG_PORTABLE_DATA_DIR/** оставлена как история постановки)
 - **083** — баг диагностика (B-W): RUTRACKER_SSL_RECORD_TOO_LONG — `SSL_ERROR_RX_RECORD_TOO_LONG` = не дефект туннеля/кода: `rutracker.org` в geosite-ru-blocked → direct → DPI-заглушка РКН вместо TLS. Amnezia открывает (full-tunnel). Диагностика+рекомендации, решение за владельцем.
 - **084** — фича (F-O, backend): WARP_GENERATOR — `core/warp` регистрация Cloudflare API (X25519 on-device), AWG-обфускация, endpoint-пул; +парсер `reserved`/`ip/id/ib`. e2e `sing-box check` OK. UI-визард — 084.1.
 - **085** — фича (F-O, backend): FAKEIP — пресет `fakeip` + `PresetDNSServer.Inet4/6Range` + `store_fakeip`. HTTPS/SVCB-блок — **085.1** (`dns_rules`-plural, нужен live-GUI).
@@ -109,6 +110,6 @@
 - **097** — фича завершена (F-C): REMOTE_CONFIG_TARGET — таргет генерации (`local` | `remote`) как шаг 0 визарда, независимая ось роли (`gateway_mode`), платформа целевой машины подменяет `runtime.GOOS` во всей генерации, реестр машин и доставка конфига по каналу lxd; **SPECS/097-F-C-REMOTE_CONFIG_TARGET/**
 - **098** — фича завершена (F-C): LOCAL_REMOTE_TABS — вкладки **Local** и **Remote** вместо Core/Servers (обе двухколоночные: слева список прокси, справа управление); **конфиг на каждую машину** — своя директория `bin/wizard_states/remote/<id>/` с состоянием, снапшотами, `config.json`, `srs/` и `subscriptions/`; GC в границах машины; платформа машины переехала в реестр; миграция singleton-профиля; окно 1000×700; **SPECS/098-F-C-LOCAL_REMOTE_TABS/**
 - **099** — фича завершена (F-C): REMOTE_TRAFFIC_PROFILER — профайлер трафика на каждую машину (свой экземпляр, окно и буфер; локальный синглтон не трогается), источники только gRPC, разбивка по клиентам сети вместо процессов, плюс окно телеметрии хоста машины; **SPECS/099-F-C-REMOTE_TRAFFIC_PROFILER/**
-- **135** — фича в плане (F-N): DATA_DIR_LAYOUT — три роли путей AppDir/DataDir/LogDir, XDG на Linux, `~/Library` на macOS, `%LOCALAPPDATA%` на Windows, portable по маркеру и унаследованной раскладке с переключателем в Settings, миграция копированием, раздел Storage с путями (`-paths`, `/debug/paths`), удаление с очисткой (`-purge-data`); закрывает #85, поглощает SPEC 022 и 080; **SPECS/135-F-N-DATA_DIR_LAYOUT/SPEC.md**
+- **135** — фича реализована в ветке, ждёт CI и приёмки владельцем (F-N): DATA_DIR_LAYOUT — три роли путей AppDir/DataDir/LogDir, XDG на Linux, `~/Library` на macOS, `%LOCALAPPDATA%` на Windows, portable по маркеру и унаследованной раскладке с переключателем в Settings, миграция копированием, раздел Storage с путями (`-paths`, `/debug/paths`), удаление с очисткой (`-purge-data`); закрывает #85, поглощает SPEC 022 и 080; **SPECS/135-F-N-DATA_DIR_LAYOUT/SPEC.md** (отступления от документа при реализации — его §11)
 
 Подробное описание каждой задачи — в SPEC.md соответствующей папки.
