@@ -1,6 +1,6 @@
 package linkmap
 
-// Сверка ОВЕРЛЕЕВ эмита (TASKS_LXBOX §42 «После релиза», §33, §45.3).
+// Сверка ОВЕРЛЕЕВ эмита (TASKS_LXBOX §42 «После релиза», §33, §45.3, §47.2).
 //
 // Шесть правил обратного хода, принятых в реестр волной 1.1.36, до сих пор
 // проверялись только косвенно — снимком рукописных эмиттеров
@@ -337,5 +337,36 @@ func TestEmitOverlays(t *testing.T) {
 			}
 		}
 		requireSameBody(t, h, "trojan", want, got, uri)
+	})
+
+	// keep_empty_tail у socks4 — `emit.userinfo.keep_empty_tail: true`
+	// (QUIRKS Q133-74, TASKS_LXBOX §47.2).
+	//
+	// У socks4 пароля нет по протоколу, но разделитель клиенты пишут всегда
+	// (`socks4://userid:@host`), и его отсутствие часть из них читает как
+	// «имени нет». Явное объявление схемы сильнее общей конвенции одиночного
+	// userinfo (`single_into` → `userid@host`): конвенция существует ради
+	// схем, ничего не объявивших. Круг обязан вернуть тело без пароля —
+	// пустой хвост на входе не материализуется.
+	t.Run("socks4_keep_empty_tail", func(t *testing.T) {
+		em := emitSpecFor(t, set, "socks")
+		if em.UserInfo == nil || !em.UserInfo.KeepEmptyTail {
+			t.Fatal("реестр socks не объявил emit.userinfo.keep_empty_tail — разделитель решал бы код")
+		}
+		body := map[string]interface{}{
+			"type":        "socks",
+			"server":      "example-1.com",
+			"server_port": 1080,
+			"version":     "4",
+			"username":    "useridonly",
+		}
+		uri, got := emitOverlayRoundTrip(t, h, "socks", body, "socks4")
+		if !strings.HasPrefix(uri, "socks4://useridonly:@") {
+			t.Errorf("разделитель у пустого хвоста не записан, хотя keep_empty_tail: true: %s", uri)
+		}
+		if _, has := got["password"]; has {
+			t.Errorf("пустой хвост вернулся паролем: %v (ссылка %s)", got, uri)
+		}
+		requireSameBody(t, h, "socks", body, got, uri)
 	})
 }
