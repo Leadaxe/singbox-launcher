@@ -29,7 +29,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`chain_nested_position`](#chain_nested_position) · `error` — Chain: nested chain at position {position}
 - [`chain_strip_utls_on_reality`](#chain_strip_utls_on_reality) · `error` — Chain: cannot strip uTLS on REALITY
 - [`chain_unsupported_by_core`](#chain_unsupported_by_core) · `error` — Chains are unavailable in core {version}
-- [`clash_yaml_unsupported`](#clash_yaml_unsupported) · `warning` — Clash YAML format is not supported
 - [`core_rejected`](#core_rejected) · `error` — The core rejected this server
 - [`detour_chain_too_deep`](#detour_chain_too_deep) · `warning` — Chain shortened to {limit} hops
 - [`detour_cycle_broken`](#detour_cycle_broken) · `warning` — Loop in the chain broken
@@ -446,23 +445,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Update the core to a build of the lx fork that includes the with_lx_chain tag.
   - Use a direction or a single node instead of the chain until then.
-
-**Where it comes from:**
-
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
-
-<a id="clash_yaml_unsupported"></a>
-### clash_yaml_unsupported
-
-**severity:** `warning`
-
-**Clash YAML format is not supported**
-
-- **What happened:** The subscription body is a Clash configuration in YAML, which this application does not read. No nodes were imported; ask the provider for a link in sing-box, Xray or base64 format.
-- **Why it happens:** The link points at a subscription for the Clash client: providers often publish several formats at one address and hand out the Clash one by default, or the address carries a format parameter that was lost.
-- **What you can do:**
-  - Ask the provider for the subscription link in sing-box, Xray or base64 format.
-  - Check the provider's page for a format switch — many offer one next to the link.
 
 **Where it comes from:**
 

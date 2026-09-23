@@ -1379,27 +1379,6 @@
       "dart": null,
       "go": "core/config/subscription/source_loader.go:606"
     },
-    "clash_yaml_unsupported": {
-      "severity": "warning",
-      "params": [],
-      "title_en": "Clash YAML format is not supported",
-      "title_ru": "Формат Clash YAML не поддержан",
-      "text_en": "The subscription body is a Clash configuration in YAML, which this application does not read. No nodes were imported; ask the provider for a link in sing-box, Xray or base64 format.",
-      "text_ru": "Тело подписки — конфигурация Clash в YAML, которую это приложение не читает. Ни один узел не импортирован; попросите у провайдера ссылку в формате sing-box, Xray или base64.",
-      "cause_en": "The link points at a subscription for the Clash client: providers often publish several formats at one address and hand out the Clash one by default, or the address carries a format parameter that was lost.",
-      "cause_ru": "Ссылка ведёт на подписку для клиента Clash: провайдеры часто публикуют по одному адресу несколько форматов и по умолчанию отдают именно Clash, либо в адресе потерялся параметр формата.",
-      "fix_en": [
-        "Ask the provider for the subscription link in sing-box, Xray or base64 format.",
-        "Check the provider's page for a format switch — many offer one next to the link."
-      ],
-      "fix_ru": [
-        "Попросите у провайдера ссылку на подписку в формате sing-box, Xray или base64.",
-        "Посмотрите на странице провайдера переключатель формата — у многих он есть рядом со ссылкой."
-      ],
-      "desc": "§9.B5: тело подписки — Clash YAML (детект по proxies) — 0 узлов + внятная подсказка вместо generic-ошибки. Body-level код (на подписку, не на узел). Dart уже детектит (body_decoder.dart:201, JsonFlavor.clashYaml + parse_hints.dart), но без NodeWarning-класса; Go добавляет детект в ClassifySubscriptionBody.",
-      "dart": null,
-      "go": null
-    },
     "template_var_undeclared": {
       "severity": "warning",
       "params": [
