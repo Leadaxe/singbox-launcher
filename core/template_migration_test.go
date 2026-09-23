@@ -13,6 +13,7 @@ import (
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -179,10 +180,10 @@ func TestRefreshTemplateIfStale(t *testing.T) {
 				d.write("bin/"+constants.WizardTemplateVersionFileName, tc.bundled)
 			}
 			if tc.state {
-				if err := os.MkdirAll(filepath.Dir(platform.GetWizardStatePath(d.root)), 0o755); err != nil {
+				if err := os.MkdirAll(filepath.Dir(platform.GetWizardStatePath(paths.DataDir(d.root))), 0o755); err != nil {
 					t.Fatal(err)
 				}
-				if err := state.New().Save(platform.GetWizardStatePath(d.root)); err != nil {
+				if err := state.New().Save(platform.GetWizardStatePath(paths.DataDir(d.root))); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -191,7 +192,7 @@ func TestRefreshTemplateIfStale(t *testing.T) {
 				version = "v0.8.8"
 			}
 			withAppVersion(t, version, func() {
-				res, err := RefreshTemplateIfStale(context.Background(), d.root, tc.fetch.fetch)
+				res, err := RefreshTemplateIfStale(context.Background(), paths.Layout{App: paths.AppDir(d.root), Data: paths.DataDir(d.root)}, tc.fetch.fetch)
 				if (err != nil) != tc.wantErr {
 					t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
 				}
@@ -225,7 +226,7 @@ func TestRefreshTemplateIfStale_RetriesUntilSuccessThenOncePerVersion(t *testing
 
 	withAppVersion(t, "v0.8.8", func() {
 		offline := &templateFetchStub{err: errors.New("connection reset")}
-		if _, err := RefreshTemplateIfStale(context.Background(), d.root, offline.fetch); err == nil {
+		if _, err := RefreshTemplateIfStale(context.Background(), paths.Layout{App: paths.AppDir(d.root), Data: paths.DataDir(d.root)}, offline.fetch); err == nil {
 			t.Fatal("launch 1: expected the offline refresh to fail")
 		}
 		if d.template() != installedTemplate {
@@ -233,7 +234,7 @@ func TestRefreshTemplateIfStale_RetriesUntilSuccessThenOncePerVersion(t *testing
 		}
 
 		online := &templateFetchStub{body: refreshedTemplate, status: http.StatusOK}
-		if _, err := RefreshTemplateIfStale(context.Background(), d.root, online.fetch); err != nil {
+		if _, err := RefreshTemplateIfStale(context.Background(), paths.Layout{App: paths.AppDir(d.root), Data: paths.DataDir(d.root)}, online.fetch); err != nil {
 			t.Fatalf("launch 2: %v", err)
 		}
 		if d.template() != refreshedTemplate || d.marker() != "v0.8.8" {
@@ -243,7 +244,7 @@ func TestRefreshTemplateIfStale_RetriesUntilSuccessThenOncePerVersion(t *testing
 		const handMade = `{"placed": "by hand"}`
 		d.write("bin/"+constants.WizardTemplateFileName, handMade)
 		again := &templateFetchStub{body: refreshedTemplate, status: http.StatusOK}
-		if _, err := RefreshTemplateIfStale(context.Background(), d.root, again.fetch); err != nil {
+		if _, err := RefreshTemplateIfStale(context.Background(), paths.Layout{App: paths.AppDir(d.root), Data: paths.DataDir(d.root)}, again.fetch); err != nil {
 			t.Fatalf("launch 3: %v", err)
 		}
 		if again.calls != 0 || d.template() != handMade {
@@ -258,10 +259,10 @@ func TestRefreshTemplateIfStale_RetriesUntilSuccessThenOncePerVersion(t *testing
 // on a hand-managed config.json.
 func TestProcessServiceStart_RebuildFailureDoesNotStartCore(t *testing.T) {
 	d := newLauncherDir(t)
-	if err := os.MkdirAll(filepath.Dir(platform.GetWizardStatePath(d.root)), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(platform.GetWizardStatePath(paths.DataDir(d.root))), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.New().Save(platform.GetWizardStatePath(d.root)); err != nil {
+	if err := state.New().Save(platform.GetWizardStatePath(paths.DataDir(d.root))); err != nil {
 		t.Fatal(err)
 	}
 	// Present but unusable: the build fails without reaching for the network.
@@ -270,7 +271,7 @@ func TestProcessServiceStart_RebuildFailureDoesNotStartCore(t *testing.T) {
 
 	ac := &AppController{
 		FileService: &services.FileService{
-			ExecDir:     d.root,
+			Layout:      paths.Layout{App: paths.AppDir(d.root), Data: paths.DataDir(d.root)},
 			ConfigPath:  filepath.Join(d.root, "bin", "config.json"),
 			SingboxPath: filepath.Join(d.root, "bin", "sing-box-absent"),
 		},
@@ -287,7 +288,7 @@ func TestProcessServiceStart_RebuildFailureDoesNotStartCore(t *testing.T) {
 		t.Fatalf("sing-box must not be started after a failed rebuild (cmd %v, running %v)", ac.SingboxCmd, ac.RunningState.IsRunning())
 	}
 
-	if err := os.Remove(platform.GetWizardStatePath(d.root)); err != nil {
+	if err := os.Remove(platform.GetWizardStatePath(paths.DataDir(d.root))); err != nil {
 		t.Fatal(err)
 	}
 	if err := ac.rebuildConfigBeforeStart(false); err != nil {

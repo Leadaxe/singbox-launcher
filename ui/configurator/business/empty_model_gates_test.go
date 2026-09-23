@@ -16,19 +16,20 @@ import (
 	"singbox-launcher/core/config"
 	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/internal/paths"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
 func TestEmptyModelGate_BuildPreviewConfig(t *testing.T) {
 	execDir := findProjectRoot(t)
-	td, err := wizardtemplate.LoadTemplateData(execDir)
+	td, err := wizardtemplate.LoadTemplateData(paths.Layout{App: paths.AppDir(execDir), Data: paths.DataDir(execDir)})
 	if err != nil {
 		t.Fatalf("load template: %v", err)
 	}
 
 	model := wizardmodels.NewWizardModel()
 	model.TemplateData = td
-	model.ExecDir = execDir
+	model.DataDir = paths.DataDir(execDir)
 	model.RulesLibraryMerged = true
 	ApplyWizardDNSTemplate(model)
 	ApplyDNSVarsFromSettingsToModel(model)

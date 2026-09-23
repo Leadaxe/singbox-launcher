@@ -1,7 +1,9 @@
 # SPEC 135 · CODEMAP обращений к путям
 
-Карта для этапов 3–5 и 7–9. Строки — по дереву после этапа 2 (коммит
-`32c21ec9`, литералы уже на хелперах). Тестовые файлы — только в §5.
+Карта для этапов 3–5 и 7–9. §1 и §3 — по дереву после этапа 4 (новые
+сигнатуры и швы); §2 и §5 — снимок до этапа 3 (коммит `32c21ec9`): строки
+`ExecDir` оттуда все переведены, `ExecDir` в `.go` больше нет. Тестовые
+файлы — только в §5.
 
 Классы:
 
@@ -27,94 +29,93 @@
 
 ### 1.1 `internal/platform`
 
-| Функция | Файл:строка | Строит | Тип после рефакторинга |
+Сигнатуры после этапа 3. `GetBinDir` и `GetLogsDir` удалены: `bin/` —
+`DataDir.Bin()` / `AppDir.Bin()`, каталог логов — `string(Layout.Logs)`.
+
+| Функция | Файл:строка | Строит | Сигнатура |
 |---|---|---|---|
-| `GetConfigPath` | platform_common.go:32 | `bin/config.json` | `DataDir` |
-| `GetRemoteMachineDir` | platform_common.go:46 | `bin/wizard_states/remote/<id>` | `DataDir` |
-| `GetRemoteConfigPathFor` | platform_common.go:64 | `…/remote/<id>/config.json` | `DataDir` |
-| `GetBinDir` | platform_common.go:69 | `bin` | `DataDir`; для поставляемого — `AppDir.Bin()` |
-| `GetRuleSetsDir` | platform_common.go:74 | `bin/rule-sets` | `DataDir` |
-| `GetRuleSetPath` (этап 2) | platform_common.go:81 | `bin/rule-sets/<tag>.srs` | `DataDir` |
-| `TailscaleDirName`, `TempDirName`, `DaemonIdentityDirName`, `RemoteDaemonsDirName` | platform_common.go:86-96 | константы | перенести в `internal/constants` на этапе 3 |
-| `GetTailscaleStateDir` (этап 2) | platform_common.go:100 | `bin/tailscale` | `DataDir` |
-| `GetTempDir` (этап 2) | platform_common.go:106 | `temp` (НЕ под `bin/`) | `DataDir` |
-| `GetDaemonIdentityDir` (этап 2) | platform_common.go:112 | `bin/daemon` | `DataDir` |
-| `GetRemoteDaemonIdentityDir` (этап 2) | platform_common.go:118 | `bin/remote-daemons/<id>` | `DataDir` |
-| `GetRuleSetsDirFor` | platform_common.go:132 | local → `bin/rule-sets`, remote → `…/remote/<id>/srs` | `DataDir` |
-| `GetSubscriptionsDirFor` | platform_common.go:149 | local → `bin/subscriptions`, remote → `…/<id>/subscriptions` | `DataDir` |
-| `GetWizardTemplatePath` | platform_common.go:160 | `bin/wizard_template.json` | **два варианта**: `GetWizardTemplatePath(DataDir)` — цель скачивания; `AppDir.Bin()+имя` — поставляемый seed; чтение через резолвер §3.3 (этап 5) |
-| `GetWizardStatesDir` | platform_common.go:167 | `bin/wizard_states` | `DataDir` |
-| `GetWizardStatePath` | platform_common.go:177 | `bin/wizard_states/state.json` | `DataDir` |
-| `GetWizardStatesDirFor` | platform_common.go:200 | local/remote каталог состояний | `DataDir` |
-| `GetWizardStatePathFor` | platform_common.go:210 | `…/state.json` для таргета | `DataDir` |
-| `GetOutboundsCachePath` | platform_common.go:231 | `bin/outbounds.cache.json` (legacy, только удаляется) | `DataDir` |
-| `GetSubscriptionsDir` | platform_common.go:239 | `bin/subscriptions` | `DataDir` |
-| `GetLogsDir` | platform_common.go:244 | `logs` | `LogDir` (вырождается, см. выше) |
-| `EnsureDirectories` | platform_common.go:249 | MkdirAll `logs`, `bin`, `bin/rule-sets` | `Layout`: только `Data/bin`, `Data/bin/rule-sets`, `Logs` |
-| `GLStatePath` | glstate.go:84 | `bin/gl-state.json` | `DataDir` |
-| `LoadGLState` / `SaveGLState` | glstate.go:90 / :106 | чтение/запись gl-state (`SaveGLState` сам строит путь на :111, дубль `GLStatePath`) | `DataDir` |
-| `MarkGLStarting` / `UpdateGLState` / `MarkGLRendered` | glstate.go:132 / :142 / :157 | мутация gl-state | `DataDir` |
-| `IsMesaInstalled` / `IsMesaDisabled` / `HasMesaBundle` / `HasForeignOpenGL` | glstate.go:193 / :199 / :205 / :210 | `opengl32.dll`, `libgallium_wgl.dll`, `*.off`, `mesa3d/` рядом с exe | `AppDir` (чтение) |
-| `DisableMesa` / `EnableMesa` / `copyMesaFromBundle` / `removeMesaFiles` | glstate.go:222 / :249 / :281 / :325 | переименование/копирование DLL рядом с exe | `AppDir` — **исключение §3/§5**, пишет в AppDir |
-| `EnsureDesktopOpenGL` | glprobe_windows.go:323 (стаб glprobe_stub.go:19) | gl-state + Mesa | **два корня**: `(AppDir, DataDir)` или `Layout` |
-| `restartToApply` | glprobe_windows.go:534 | `UpdateGLState` | `DataDir` |
-| `installAndVerifyMesa` | glprobe_windows.go:602 | копия/скачивание Mesa + gl-state | `(AppDir, DataDir)` |
-| `startBackgroundHardwareProbe` | glprobe_windows.go:669 | проба + gl-state | `(AppDir, DataDir)` |
-| `probeHardware` | glprobe_windows.go:706 | читает `opengl32.dll` рядом с exe | `AppDir` |
-| `downloadMesa` | glprobe_windows.go:798 | распаковывает DLL в каталог exe (tmp — `os.CreateTemp("")`) | `AppDir` — **исключение**, пишет в AppDir |
-| `probeDesktopOpenGL` (`-gl-probe-local`) | glprobe_windows.go:189-193, :742 | `os.Executable()` → `opengl32.dll`, перезапуск себя с флагом | `AppDir` (по TASKS: `RunGLProbeChild` получает `AppDir`) |
-| `GetWintunPath` | platform_windows.go:23 (стабы platform_darwin.go:19, platform_linux.go:22 → `""`) | `bin/wintun.dll` | этап 3: `DataDir`; этап 5: `Dir(SingboxPath)/wintun.dll` |
-| `ResolveSingboxExecPath` | singbox_exec_path.go:7 (non-linux: bundled), singbox_exec_path_linux.go:14 (PATH первым) | путь ядра | этап 5: цепочка `SINGBOX_LAUNCHER_CORE` → Data → App → PATH, возвращать и источник |
-| `WritePrivilegedStartScript` | privileged_darwin.go:115 (стаб privileged_stub.go:27) | скрипт/pid в `binDir`, лог в `logPath` | `binDir` ← `DataDir`, `logPath` ← `LogDir` |
+| `GetConfigPath` | platform_common.go:37 | `bin/config.json` | `(DataDir)` |
+| `GetRemoteMachineDir` | platform_common.go:51 | `bin/wizard_states/remote/<id>` | `(DataDir, id)` |
+| `GetRemoteConfigPathFor` | platform_common.go:69 | `…/remote/<id>/config.json` | `(DataDir, id)` |
+| `GetRuleSetsDir` | platform_common.go:74 | `bin/rule-sets` | `(DataDir)` |
+| `GetRuleSetPath` | platform_common.go:81 | `bin/rule-sets/<tag>.srs` | `(DataDir, tag)` |
+| `TailscaleDirName`, `TempDirName`, `DaemonIdentityDirName`, `RemoteDaemonsDirName` | internal/constants/constants.go:68-75 | константы | перенесены на этапе 3 |
+| `GetTailscaleStateDir` | platform_common.go:87 | `bin/tailscale` | `(DataDir)` |
+| `GetTempDir` | platform_common.go:93 | `temp` (НЕ под `bin/`) | `(DataDir)` |
+| `GetDaemonIdentityDir` | platform_common.go:99 | `bin/daemon` | `(DataDir)` |
+| `GetRemoteDaemonIdentityDir` | platform_common.go:105 | `bin/remote-daemons/<id>` | `(DataDir, id)` |
+| `GetRuleSetsDirFor` | platform_common.go:119 | local → `bin/rule-sets`, remote → `…/remote/<id>/srs` | `(DataDir, target, id)` |
+| `GetSubscriptionsDirFor` | platform_common.go:136 | local → `bin/subscriptions`, remote → `…/<id>/subscriptions` | `(DataDir, target, id)` |
+| `GetWizardTemplatePath` | platform_common.go:148 | `<Data>/bin/wizard_template.json` — цель скачивания; до этапа 5 и точка чтения | `(DataDir)` |
+| `GetShippedTemplatePath` (новый) | platform_common.go:154 | `<App>/bin/wizard_template.json` — поставляемый seed; вызовов пока нет, заведён под резолвер §3.3 (этап 5) | `(AppDir)` |
+| `GetWizardStatesDir` | platform_common.go:161 | `bin/wizard_states` | `(DataDir)` |
+| `GetWizardStatePath` | platform_common.go:171 | `bin/wizard_states/state.json` | `(DataDir)` |
+| `GetWizardStatesDirFor` | platform_common.go:194 | local/remote каталог состояний | `(DataDir, target, id)` |
+| `GetWizardStatePathFor` | platform_common.go:204 | `…/state.json` для таргета | `(DataDir, target, id)` |
+| `GetOutboundsCachePath` | platform_common.go:225 | `bin/outbounds.cache.json` (legacy, только удаляется) | `(DataDir)` |
+| `GetSubscriptionsDir` | platform_common.go:233 | `bin/subscriptions` | `(DataDir)` |
+| `EnsureDirectories` | platform_common.go:239 | MkdirAll `Logs`, `Data/bin`, `Data/bin/rule-sets`; AppDir не трогает | `(Layout)` |
+| `GLStatePath` | glstate.go:85 | `<Data>/bin/gl-state.json` | `(DataDir)` |
+| `LoadGLState` / `SaveGLState` | glstate.go:91 / :107 | чтение/запись gl-state (`SaveGLState` берёт путь из `GLStatePath`) | `(DataDir, …)` |
+| `MarkGLStarting` / `UpdateGLState` / `MarkGLRendered` | glstate.go:132 / :142 / :157 | мутация gl-state | `(DataDir, …)` |
+| `IsMesaInstalled` / `IsMesaDisabled` / `HasMesaBundle` / `HasForeignOpenGL` | glstate.go:198 / :204 / :210 / :215 | `opengl32.dll`, `libgallium_wgl.dll`, `*.off`, `mesa3d/` рядом с exe | `(AppDir)` |
+| `DisableMesa` / `EnableMesa` / `copyMesaFromBundle` / `removeMesaFiles` | glstate.go:227 / :254 / :286 / :330 | переименование/копирование DLL рядом с exe | `(AppDir)` — **исключение §3/§5**, пишет в AppDir; комментарий над группой glstate.go:187 |
+| `EnsureDesktopOpenGL` | glprobe_windows.go:320 (стаб glprobe_stub.go:23) | gl-state (Data) + Mesa (App) | `(Layout, interactive)` |
+| `restartToApply` | glprobe_windows.go:531 | `UpdateGLState` | `(DataDir, …)` |
+| `installAndVerifyMesa` | glprobe_windows.go:599 | копия/скачивание Mesa + gl-state | `(Layout, interactive)` |
+| `startBackgroundHardwareProbe` | glprobe_windows.go:666 | проба железа | `(AppDir, renderer)` |
+| `probeHardware` | glprobe_windows.go:703 | `opengl32.dll` рядом с exe | `(AppDir)` |
+| `downloadMesa` | glprobe_windows.go:795 | распаковывает DLL в AppDir | `(AppDir)` — **исключение** |
+| `RunGLProbeChild` / `probeDesktopOpenGL` (`-gl-probe-local`) | glprobe_windows.go:119 / :170 (стаб glprobe_stub.go:16) | `opengl32.dll` из AppDir вместо `os.Executable` | `(AppDir, local)` |
+| `GetWintunPath` | platform_windows.go:24 (стабы platform_darwin.go, platform_linux.go → `""`) | `<Data>/bin/wintun.dll` | этап 3: `(DataDir)`; этап 5: `Dir(SingboxPath)/wintun.dll` |
+| `ResolveSingboxExecPath` | singbox_exec_path.go:9, singbox_exec_path_linux.go (PATH первым) | путь ядра | `(DataDir, bundledPath)` (первый аргумент не используется); этап 5: цепочка `SINGBOX_LAUNCHER_CORE` → Data → App → PATH |
+| `WritePrivilegedStartScript` | privileged_darwin.go:115 (стаб privileged_stub.go:27) | скрипт/pid в `binDir`, лог в `logPath` | строки: `binDir` = `Data.Bin()`, `logPath` = `FileService.ChildLogPath` (process_service.go) |
 
-### 1.2 Хелперы вне `internal/platform` (принимают `execDir`/`binDir`)
+### 1.2 Хелперы вне `internal/platform`
 
-| Функция | Файл:строка | Корень | Тип |
-|---|---|---|---|
-| `locale.GetLocaleDir(binDir)` | internal/locale/locale.go:384 (литерал `"locale"` на :385) | `bin/locale` | **два**: App (поставляемые) + Data (скачанные) |
-| `locale.LoadExternalLocales(dir)` | locale.go:255 | каталог | вызывать дважды: App, затем Data (§3.3) |
-| `locale.DownloadAllRemoteLocales(dir)` | locale.go:367 | запись | `DataDir` |
-| `locale.LoadSettings` / `SaveSettings` | internal/locale/settings.go:236 / :259 (литерал `"settings.json"`) | `bin/settings.json` | `DataDir` |
-| `locale.MarkTemplateInstalled` / `MarkLocalesRefreshed` | settings.go:214 / :225 | штампы в settings.json | `DataDir` |
-| `template.LoadTemplateData` | core/template/loader.go:254 | чтение шаблона | **M** → резолвер App/Data (этап 5) |
-| `template.DownloadTemplate` | core/template/download.go:52 | запись шаблона + `MarkTemplateInstalled` (:90) | `DataDir` |
-| `template.EnsureTemplate` | core/template/download.go:136 | чтение, при провале скачивание | **M** (`Layout`) |
-| `wizardbusiness.DefaultTemplateLoader.LoadTemplateData` | ui/configurator/business/template_loader.go:26 (интерфейс :19) | обёртка | **M** |
-| `core.RefreshTemplateIfStale` | core/template_migration.go:69 | маркер `wizard_template.version` (:99), штамп, скачивание | **M** (`Layout`: маркер из App, штамп/скачивание в Data) |
-| `core.stampTemplateCheck(binDir)` | template_migration.go:136 | штамп | `DataDir` |
-| `config.BuildVarSubstituterFromDisk` | core/config/varsubst.go:125 | шаблон + state | **M** |
-| `config.loadTemplateVarDefaults` / `loadStateSettingsVars` | varsubst.go:156 / :248 | шаблон / state | M / D |
-| `config.SetTailscaleStateDirRoot` | вызов core/controller.go:305 | `bin/tailscale` | `DataDir` |
-| `snapshot.Build` | core/snapshot/snapshot.go:60 (пути :62-65) | template/state/cache/config | **M** (template из резолвера, остальное Data) |
-| `core.DaemonIdentityDir` | core/backend_daemon_darwin.go:122 | `bin/daemon` | `DataDir` |
-| `services.NewRemoteRegistry` | core/services/lxd_remote_registry.go:87 (пути :92, :100, :128, :370-392, :529) | `bin/remote-daemons.json`, `bin/remote-daemons/<id>`, remote-машины | `DataDir` |
-| `services.MigrateLegacyRemoteProfile` | core/services/lxd_remote_migration.go:34 (:39-86) | remote/ + `bin/remote-config.json` | `DataDir` |
-| `services.RuleSRSPath` / `RuleSRSPathFor` / `SRSFileExists*` / `AllSRSDownloaded*` / `DownloadSRSGroup*` / `DeleteOrphanRuleSets*` | core/services/srs_downloader.go:29-319 | `.srs` | `DataDir` |
-| `services.localResourceFiles` / `CollectDeployResources` / методы `r.execDir` | core/services/lxd_remote_resources.go:125, :160, :178, :203, :228; lxd_remote_deploy.go:48 | remote `srs/`, config | `DataDir` |
-| `build.convertPresetRuleSetRemoteToLocal` / `CollectSrsCachedPaths` | core/build/preset_merge.go:44 / :730 | абсолютный путь `.srs` в config.json | `DataDir` |
-| `build.convertRuleSetToLocalRequired` | core/build/route_merge.go:189 | то же через `services.RuleSRSPath` | `DataDir` |
-| `state.MigrationReportPath` / `PersistMigrationReport` / `ReadMigrationReport` / `ClearMigrationReport` | core/state/migration_report.go:35 / :106 / :127 / :143 | `bin/…` отчёт миграции | `DataDir` |
-| `state` load-router | core/state/load_router.go:203-217 | выводит `bin/subscriptions` из пути state.json (относительно) | не трогать: работает под любым корнем |
-| `core.directionBuildOptions` | core/config_service.go:560 | шаблон | **M** |
-| `core.collectAllStageRuleSetTags` | config_service.go:409 | states | `DataDir` |
-| `core.refreshSubscriptionsMetaAndCache` / `persistFetchResultForSource` | config_service_subscriptions.go:43 / :353 | settings + state | `DataDir` |
-| `core.loadTemplateForBuild` | core/rebuild.go:388 | шаблон с докачкой | **M** |
-| `core.cleanupLegacyOutboundsCache` | rebuild.go:458 | legacy cache | `DataDir` |
-| `core.buildSnapshotFromState` | core/rebuild_snapshot.go:39 (execDir → varsubst :72) | M через varsubst | **M** |
-| `main.rememberOfferedRenderer` | main.go:57 | gl-state | `DataDir` |
-| `wizardbusiness.ListCloneSources` / `stateExistsFor` / `LoadCloneState` | ui/configurator/business/clone_source.go:116 / :149 / :175 | states | `DataDir` |
-| `tabs.currentIdentityDefaults` | ui/configurator/tabs/source_identity_block.go:338 | settings.json | `DataDir` |
-| `dialogs.fetchOrLoadGetFree` | ui/configurator/dialogs/get_free_dialog.go:67 | `bin/get_free.json` (в дистрибутив не кладётся) | `DataDir` |
-| `configurator.maybeShowMigrationReport` / `migrationReportBody` | ui/configurator/migration_report_dialog.go:49 / :93 | binDir | `DataDir` |
-| `ui.buildSubscriptionDefaultsBlock` / `buildSubscriptionIdentificationBlock` | ui/settings_tab.go:285 / :478 | binDir → settings | `DataDir` |
+Правило этапа 4: чистые Data-функции принимают `paths.DataDir` (параметр
+переименован `execDir` → `dataDir`); функции, которым нужен шаблон (сейчас из
+Data, с этапа 5 — резолвер App/Data), принимают `paths.Layout` целиком, чтобы
+этап 5 менял только тела. Строковый `binDir` оставлен там, где пакет-лист
+(`internal/locale`) не должен знать `paths`.
 
-Правило для **M**: функции, которым нужны шаблон и state одновременно
-(`BuildVarSubstituterFromDisk`, `snapshot.Build`, `EnsureTemplate`,
-`loadTemplateForBuild`, `buildSnapshotFromState`, `RefreshTemplateIfStale`),
-получают `paths.Layout` (или пару `AppDir, DataDir`); чисто шаблонные
-(`LoadTemplateData`, `directionBuildOptions`) — тот же резолвер шаблона
-этапа 5. До этапа 5 резолвер может смотреть только в Data, но сигнатуру
-лучше сразу завести двухкорневой, чтобы не перекраивать вызовы дважды.
+| Функция | Файл:строка | Сигнатура после этапа 4 |
+|---|---|---|
+| `locale.GetLocaleDir(binDir)` / `LoadExternalLocales(dir)` | internal/locale/locale.go:384 / :255 | строки; main.go:170-173 грузит `App.Bin()/locale`, затем `Data.Bin()/locale` (поздний перекрывает; в portable один каталог — второй вызов пропускается) |
+| `locale.DownloadAllRemoteLocales(dir)` | locale.go:367 | строка; вызывается с `Data.Bin()/locale` (main.go, settings_tab.go) |
+| `locale.LoadSettings` / `SaveSettings` / `MarkTemplateInstalled` / `MarkLocalesRefreshed` | internal/locale/settings.go | строковый `binDir` = `layout.Data.Bin()` |
+| `template.LoadTemplateData` | core/template/loader.go:257 | `(Layout)`; читает `GetWizardTemplatePath(l.Data)` — этап 5 меняет тело |
+| `template.DownloadTemplate` | core/template/download.go:53 | `(ctx, DataDir, fetch)` |
+| `template.EnsureTemplate` | core/template/download.go:137 | `(ctx, Layout, fetch)` |
+| `wizardbusiness.TemplateLoader.LoadTemplateData` | ui/configurator/business/template_loader.go:20 | `(Layout)` |
+| `core.RefreshTemplateIfStale` | core/template_migration.go:70 | `(ctx, Layout, fetch)`; маркер `wizard_template.version` пока из `Data.Bin()` (этап 5 — из App) |
+| `config.BuildVarSubstituterFromDisk` | core/config/varsubst.go:126 | `(Layout)`; `loadTemplateVarDefaults(Layout)` :157, `loadStateSettingsVars(DataDir)` :249 |
+| `config.SetTailscaleStateDirRoot` | вызов core/controller.go:300 | `GetTailscaleStateDir(Layout.Data)` |
+| `snapshot.Build` | core/snapshot/snapshot.go:61 | `(Layout, launcherVersion, singboxVersion)` |
+| `core.DaemonIdentityDir` | core/backend_daemon_darwin.go:123 | `(DataDir)` |
+| `services.NewRemoteRegistry` | core/services/lxd_remote_registry.go:88 | `(DataDir)`; поле `RemoteRegistry.dataDir` |
+| `services.MigrateLegacyRemoteProfile` | core/services/lxd_remote_migration.go:35 | `(DataDir, *RemoteRegistry)` |
+| `services.RuleSRSPath` / `RuleSRSPathFor` / `SRSFileExists*` / `AllSRSDownloaded*` / `DownloadSRSGroup*` / `DeleteOrphanRuleSets*` | core/services/srs_downloader.go:30… | первый аргумент `DataDir` |
+| `services.localResourceFiles` / `CollectDeployResources` | core/services/lxd_remote_resources.go:125 / :161 | `(DataDir, …)` |
+| `build.convertPresetRuleSetRemoteToLocal` / `CollectSrsCachedPaths` / `convertRuleSetToLocalRequired` / `ResolveRoute*` | core/build/preset_merge.go, route_merge.go, resolve_route.go | `DataDir`; поля `PresetMergeContext.DataDir` (preset_merge.go:164), `RouteConfig.DataDir` (route_merge.go:46) |
+| `state` load-router | core/state/load_router.go:203-217 | не тронут: выводит пути из пути state.json |
+| `core.directionBuildOptions` | core/config_service.go:561 | `(Layout)` |
+| `core.collectAllStageRuleSetTags` | config_service.go:410 | `(DataDir, …)` |
+| `core.refreshSubscriptionsMetaAndCache` / `persistFetchResultForSource` | config_service_subscriptions.go | `(…, DataDir)` |
+| `core.loadTemplateForBuild` | core/rebuild.go:389 | `(Layout)` |
+| `core.cleanupLegacyOutboundsCache` | rebuild.go:459 | `(DataDir)` |
+| `core.buildSnapshotFromState` | core/rebuild_snapshot.go:40 | `(state, Layout, subst, td)` |
+| `main.rememberOfferedRenderer` | main.go | `(DataDir, renderer)` |
+| `wizardbusiness.ListCloneSources` / `stateExistsFor` / `LoadCloneState` | ui/configurator/business/clone_source.go | `(DataDir, …)` |
+| `tabs.currentIdentityDefaults` | ui/configurator/tabs/source_identity_block.go | `(DataDir)` |
+| `dialogs.fetchOrLoadGetFree` | ui/configurator/dialogs/get_free_dialog.go | `(DataDir)` |
+
+Решения по **M** на этапах 3–4: шаблон читается из Data; маркер шаблона —
+из Data; `GetCoreBinaryPath` (core_version.go:57) показывает путь ядра
+относительно Data (ядро качается в `Data/bin`; в portable Data = App);
+`SingboxCmd.Dir` = `Data.Bin()`; privileged-скрипт macOS — `Data.Bin()`,
+его лог — `ChildLogPath`; Mesa-кнопка Diagnostics — `App`, её
+`UpdateGLState` — `Data`.
 
 ---
 
@@ -326,35 +327,46 @@ D ≈ 121, M ≈ 24 (включая file_service.go:88 D+L), L ≈ 11, A = 2
 
 ## 3. Швы
 
-### 3.1 Поля `FileService` (core/services/file_service.go:43-74) и их читатели
+### 3.1 Поля `FileService` (core/services/file_service.go:44-74)
+
+После этапа 3: `ExecDir` удалён, вместо него `Layout paths.Layout`
+(file_service.go:47); `NewFileService(layout)` (:79) не зовёт
+`os.Executable`; `ChildLogRelativePath` заменён абсолютным `ChildLogPath`
+(:73, `<Logs>/sing-box.log`), его читают controller.go (`RunHidden`),
+process_service.go (ротация, privileged-старт), ui/log_viewer_window.go,
+ui/traffic_bootstrap.go, settings_tun_darwin.go. `OpenLogFiles()` (:99) без
+аргументов: имена логов — `constants.*LogFileName` под `Layout.Logs`;
+константы `"logs/…"` в controller.go удалены.
 
 | Поле | Читатели |
 |---|---|
-| `ExecDir` | 190 строк §2 |
-| `ConfigPath` | controller.go:322, :385-386, :850-851, :916; process_service.go:208, :223, :264; rebuild.go:233; own_tun_names.go:28; backend_daemon_darwin.go:327; debugapi_wiring.go:54; ui/clash_api_tab.go:172, :387, :1451, :1486, :1810; clash_api_tab_render.go:41; traffic_bootstrap.go:202; core_dashboard_tab_status.go:227; configurator/presentation/draft_reject.go:58; FileServiceAdapter.ConfigPath (file_service_adapter.go:18) |
-| `SingboxBundledPath` | core_downloader.go:121 (установка), :131 (спутники) |
-| `SingboxPath` | controller.go:270 (→ `uiservice.SingboxPath`, ui_service.go:90/146/254), :590, :594; process_service.go:181, :184, :223, :273; core_version.go:30-34, :56; core_capabilities.go:45, :137, :223; core_chain_capability.go:51; rebuild.go:232; daemon_manager_darwin.go:204, :402, :421, :427; configurator/presentation/draft_reject.go:86; FileServiceAdapter.SingboxPath (:26) |
-| `WintunPath` | wintun_downloader.go:37 (`CheckWintunDLL`), :179, :203, :213 (`DownloadWintunDLL`) |
-| `ChildLogRelativePath` | file_service.go:106, :141, :203-204; log_viewer_window.go:105 |
+| `Layout` | все бывшие читатели `ExecDir` (§2): `.Data` — состояние/кэши, `.Logs` — логи, `.App` — Mesa |
+| `ConfigPath` | без изменений (`GetConfigPath(Layout.Data)`) |
+| `SingboxBundledPath` | `Data/bin/sing-box` — цель скачивания (core_downloader.go) |
+| `SingboxPath` | `ResolveSingboxExecPath(Layout.Data, SingboxBundledPath)` — логика прежняя |
+| `WintunPath` | `GetWintunPath(Layout.Data)` до этапа 5 |
+| `ChildLogPath` | см. выше |
 
 ### 3.2 Debug API
 
-- `ControllerFacade.GetExecDir()` — core/debugapi/server.go:57; реализация
-  core/debugapi_wiring.go:57-62; фейк в тестах server_test.go:54.
-  Читатели: settings_endpoints.go:52 (D), snapshot.go:22 (M), state_endpoints.go:62 (D).
-  TASKS: → `GetDataDir()` (+ `GetAppDir()`/`Layout` для снапшота, где шаблон M).
-- `RemoteAPI.ExecDir` — remote_endpoints.go:39; заполняется debugapi_wiring.go:197;
-  читатели remote_endpoints.go:577, remote_resources_endpoints.go:66/:77,
-  remote_state_endpoints.go:22. Всё D.
+- `ControllerFacade.GetExecDir() string` → `GetLayout() paths.Layout`
+  (core/debugapi/server.go:59); реализация core/debugapi_wiring.go:58;
+  фейк в тестах server_test.go (`fakeFacade.dataDir` → portable-раскладка).
+  Читатели: settings_endpoints.go (`GetLayout().Data.Bin()`), snapshot.go
+  (`snapshot.Build(GetLayout(), …)`), state_endpoints.go (`GetLayout().Data`).
+- `RemoteAPI.ExecDir string` → `RemoteAPI.DataDir paths.DataDir`
+  (remote_endpoints.go:40); заполняется debugapi_wiring.go; читатели
+  remote_endpoints.go, remote_resources_endpoints.go, remote_state_endpoints.go.
 
 ### 3.3 Мастер
 
-- `WizardModel.ExecDir` — models/wizard_model.go:224, пишется configurator.go:224.
-- `FileServiceInterface.ExecDir()` — business/interfaces.go:37; реализация
-  file_service_adapter.go:22; создаётся configurator.go:291, :816,
-  presentation/presenter_state_helpers.go:246; потребители
-  state_store.go:45 (`NewStateStore`), :59 (`NewStateStoreFor`,
-  presenter_state_helpers.go:258). Всё D → `DataDir()`.
+- `WizardModel.ExecDir string` → `WizardModel.DataDir paths.DataDir`
+  (models/wizard_model.go:225); пишется configurator.go:224
+  (`ac.FileService.Layout.Data`). AppDir модели не понадобился: все 20
+  читателей — Data.
+- `FileServiceInterface.ExecDir() string` → `Layout() paths.Layout`
+  (business/interfaces.go:38; адаптер file_service_adapter.go:23);
+  потребители state_store.go (`fileService.Layout().Data`).
 
 ### 3.4 Порядок старта
 
@@ -397,6 +409,10 @@ platform/restart_windows.go:33, glprobe_windows.go:189, :742.
 ---
 
 ## 5. Тесты, которые сломаются при смене сигнатур
+
+Переведены на этапе 4 минимальной правкой (`paths.DataDir(t.TempDir())`,
+`paths.Layout{Data: …}`; где тест читает поставляемый шаблон из корня
+репозитория — `paths.Layout{App: root, Data: root}`). Новых тестов нет.
 
 | Файл | Что делает с путями |
 |---|---|

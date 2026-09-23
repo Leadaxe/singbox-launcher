@@ -29,6 +29,7 @@ import (
 	"singbox-launcher/core/services"
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -67,11 +68,11 @@ func newSpec129Launcher(t *testing.T) *spec129Launcher {
 	return &spec129Launcher{
 		td: td,
 		ac: &AppController{
-			FileService:  &services.FileService{ExecDir: execDir, ConfigPath: configPath},
+			FileService:  &services.FileService{Layout: paths.Layout{Data: paths.DataDir(execDir)}, ConfigPath: configPath},
 			StateService: ss,
 			EventBus:     bus,
 		},
-		statePath:  platform.GetWizardStatePath(execDir),
+		statePath:  platform.GetWizardStatePath(paths.DataDir(execDir)),
 		configPath: configPath,
 	}
 }

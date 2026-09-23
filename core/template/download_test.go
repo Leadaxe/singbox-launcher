@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"singbox-launcher/internal/paths"
 )
 
 // minimalTemplate — самый маленький шаблон, который проходит LoadTemplateData.
@@ -40,7 +42,7 @@ func TestDownloadTemplate_WritesFileAndMarksInstall(t *testing.T) {
 	execDir := t.TempDir()
 	fetch, calls := fetcherReturning(minimalTemplate, http.StatusOK, nil)
 
-	got, err := DownloadTemplate(context.Background(), execDir, fetch)
+	got, err := DownloadTemplate(context.Background(), paths.DataDir(execDir), fetch)
 	if err != nil {
 		t.Fatalf("DownloadTemplate: %v", err)
 	}
@@ -64,7 +66,7 @@ func TestDownloadTemplate_HTTPErrorCarriesReason(t *testing.T) {
 	netErr := errors.New("dial tcp: connection refused")
 	fetch, _ := fetcherReturning("", 0, netErr)
 
-	_, err := DownloadTemplate(context.Background(), execDir, fetch)
+	_, err := DownloadTemplate(context.Background(), paths.DataDir(execDir), fetch)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -81,7 +83,7 @@ func TestDownloadTemplate_NonOKStatusIsReported(t *testing.T) {
 	execDir := t.TempDir()
 	fetch, _ := fetcherReturning("not found", http.StatusNotFound, nil)
 
-	_, err := DownloadTemplate(context.Background(), execDir, fetch)
+	_, err := DownloadTemplate(context.Background(), paths.DataDir(execDir), fetch)
 	if err == nil {
 		t.Fatal("expected an error on HTTP 404")
 	}
@@ -94,7 +96,7 @@ func TestDownloadTemplate_EmptyBodyIsRejected(t *testing.T) {
 	execDir := t.TempDir()
 	fetch, _ := fetcherReturning("", http.StatusOK, nil)
 
-	if _, err := DownloadTemplate(context.Background(), execDir, fetch); err == nil {
+	if _, err := DownloadTemplate(context.Background(), paths.DataDir(execDir), fetch); err == nil {
 		t.Fatal("empty body must not be installed as a template")
 	}
 	if _, statErr := os.Stat(templatePath(t, execDir)); !os.IsNotExist(statErr) {
@@ -103,7 +105,7 @@ func TestDownloadTemplate_EmptyBodyIsRejected(t *testing.T) {
 }
 
 func TestDownloadTemplate_NoFetcher(t *testing.T) {
-	if _, err := DownloadTemplate(context.Background(), t.TempDir(), nil); err == nil {
+	if _, err := DownloadTemplate(context.Background(), paths.DataDir(t.TempDir()), nil); err == nil {
 		t.Fatal("nil fetcher must be an error, not a panic")
 	}
 }
@@ -120,7 +122,7 @@ func TestEnsureTemplate_PresentFileSkipsDownload(t *testing.T) {
 	}
 	fetch, calls := fetcherReturning(minimalTemplate, http.StatusOK, nil)
 
-	data, downloaded, err := EnsureTemplate(context.Background(), execDir, fetch)
+	data, downloaded, err := EnsureTemplate(context.Background(), paths.Layout{Data: paths.DataDir(execDir)}, fetch)
 	if err != nil {
 		t.Fatalf("EnsureTemplate: %v", err)
 	}
@@ -141,7 +143,7 @@ func TestEnsureTemplate_MissingFileDownloadsThenLoads(t *testing.T) {
 	execDir := t.TempDir()
 	fetch, calls := fetcherReturning(minimalTemplate, http.StatusOK, nil)
 
-	data, downloaded, err := EnsureTemplate(context.Background(), execDir, fetch)
+	data, downloaded, err := EnsureTemplate(context.Background(), paths.Layout{Data: paths.DataDir(execDir)}, fetch)
 	if err != nil {
 		t.Fatalf("EnsureTemplate: %v", err)
 	}
@@ -164,7 +166,7 @@ func TestEnsureTemplate_MissingFileDownloadFailureIsReported(t *testing.T) {
 	netErr := errors.New("i/o timeout")
 	fetch, calls := fetcherReturning("", 0, netErr)
 
-	_, downloaded, err := EnsureTemplate(context.Background(), execDir, fetch)
+	_, downloaded, err := EnsureTemplate(context.Background(), paths.Layout{Data: paths.DataDir(execDir)}, fetch)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -185,7 +187,7 @@ func TestEnsureTemplate_DownloadedGarbageReportsParseError(t *testing.T) {
 	execDir := t.TempDir()
 	fetch, _ := fetcherReturning("<html>404</html>", http.StatusOK, nil)
 
-	_, downloaded, err := EnsureTemplate(context.Background(), execDir, fetch)
+	_, downloaded, err := EnsureTemplate(context.Background(), paths.Layout{Data: paths.DataDir(execDir)}, fetch)
 	if err == nil {
 		t.Fatal("unparseable template must be an error")
 	}

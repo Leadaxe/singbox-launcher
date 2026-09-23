@@ -22,6 +22,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -479,5 +480,10 @@ func buildMesaToggleButton(ac *core.AppController) *widget.Button {
 		}, ac.UIService.MainWindow).Show()
 	})
 	refresh()
+	// Переключение переименовывает DLL рядом с exe: в каталоге только для
+	// чтения (установка в Program Files) оно заведомо не сработает.
+	if !paths.ProbeWritable(string(appDir)) {
+		btn.Disable()
+	}
 	return btn
 }

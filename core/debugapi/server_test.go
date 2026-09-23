@@ -11,6 +11,7 @@ import (
 	"singbox-launcher/api"
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
+	"singbox-launcher/internal/paths"
 )
 
 // fakeFacade lets tests drive the server without booting a whole controller.
@@ -22,7 +23,7 @@ type fakeFacade struct {
 	version     string
 	lastSuccess time.Time
 	updateErr   error
-	execDir     string // optional; only used by snapshot tests
+	dataDir     string // optional; portable layout root for snapshot/state tests
 
 	// state surface (SPEC 053/056/057/058 endpoints)
 	stateValue    *state.State
@@ -45,13 +46,15 @@ type fakeFacade struct {
 	rebuildErrV error
 }
 
-func (f *fakeFacade) IsRunning() bool                     { return f.running }
-func (f *fakeFacade) GetProxiesList() []api.ProxyInfo     { return f.proxies }
-func (f *fakeFacade) GetActiveProxyName() string          { return f.active }
-func (f *fakeFacade) GetSelectedClashGroup() string       { return f.group }
-func (f *fakeFacade) GetSingboxVersion() string           { return f.version }
-func (f *fakeFacade) GetConfigPath() string               { return "/tmp/config.json" }
-func (f *fakeFacade) GetExecDir() string                  { return f.execDir }
+func (f *fakeFacade) IsRunning() bool                 { return f.running }
+func (f *fakeFacade) GetProxiesList() []api.ProxyInfo { return f.proxies }
+func (f *fakeFacade) GetActiveProxyName() string      { return f.active }
+func (f *fakeFacade) GetSelectedClashGroup() string   { return f.group }
+func (f *fakeFacade) GetSingboxVersion() string       { return f.version }
+func (f *fakeFacade) GetConfigPath() string           { return "/tmp/config.json" }
+func (f *fakeFacade) GetLayout() paths.Layout {
+	return paths.Layout{App: paths.AppDir(f.dataDir), Data: paths.DataDir(f.dataDir)}
+}
 func (f *fakeFacade) GetLauncherVersion() string          { return "v-test" }
 func (f *fakeFacade) GetLastUpdateSucceededAt() time.Time { return f.lastSuccess }
 func (f *fakeFacade) StartSingBox() error                 { return nil }

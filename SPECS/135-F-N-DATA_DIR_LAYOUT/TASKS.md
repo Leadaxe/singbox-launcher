@@ -3,34 +3,34 @@
 Отмечать по факту коммита. Номера этапов — PLAN.md.
 
 ## Этап 0 · CODEMAP
-- [ ] `CODEMAP.md`: хелперы путей с предлагаемым типом аргумента; все обращения к `ExecDir` по файлам с классификацией; швы; поставляемое vs скачанное; тесты под удар; инструменты для этапов 7–9.
+- [x] `CODEMAP.md`: хелперы путей с предлагаемым типом аргумента; все обращения к `ExecDir` по файлам с классификацией; швы; поставляемое vs скачанное; тесты под удар; инструменты для этапов 7–9.
 
 ## Этап 1 · `internal/paths`
-- [ ] Типы `AppDir`, `DataDir`, `LogDir`, `Mode`, `Layout`.
-- [ ] `Resolve(exe, env, goos, probe)` по §3.1–3.2, включая фоллбэки `%LOCALAPPDATA%` и отключение правил 2–3 для macOS `.app`.
-- [ ] `Executable()` с `EvalSymlinks`, `ProbeWritable`, `IsAppBundle`, `LogLine()`.
-- [ ] Константы: `portable.txt`, имя каталога, имена переменных окружения, `.migrated_from`.
-- [ ] `TestResolveMatrix`.
+- [x] Типы `AppDir`, `DataDir`, `LogDir`, `Mode`, `Layout`.
+- [x] `Resolve(exe, env, goos, probe)` по §3.1–3.2, включая фоллбэки `%LOCALAPPDATA%` и отключение правил 2–3 для macOS `.app`.
+- [x] `Executable()` с `EvalSymlinks`, `ProbeWritable`, `IsAppBundle`, `LogLine()`.
+- [x] Константы: `portable.txt`, имя каталога, имена переменных окружения, `.migrated_from`.
+- [x] `TestResolveMatrix`.
 
 ## Этап 2 · Литералы
-- [ ] `GetRuleSetPath`, `GetTailscaleStateDir` в `platform_common.go`.
-- [ ] `preset_merge.go:58,760`, `file_service.go:94`, `core_dashboard_tab_status.go:254`, `controller.go:306` и всё найденное грепом.
-- [ ] golden-тест по имени зелёный.
+- [x] `GetRuleSetPath`, `GetTailscaleStateDir` в `platform_common.go`.
+- [x] `preset_merge.go:58,760`, `file_service.go:94`, `core_dashboard_tab_status.go:254`, `controller.go:306` и всё найденное грепом.
+- [x] golden-тест по имени зелёный.
 
 ## Этап 3 · Ядро раскладки
-- [ ] `main()`: `paths.Executable` + `Resolve` первым; `crash.log`/`native-stderr.log` в `LogDir`; `RunGLProbeChild` получает `AppDir`; ошибка резолва — понятный текст и выход.
-- [ ] `platform_common.go`: все хелперы на именованные типы; `EnsureDirectories(Layout)` создаёт только `Data/bin`, `Data/bin/rule-sets`, `Logs`.
-- [ ] `glstate.go`: `gl-state.json` от `DataDir`; Mesa-функции от `AppDir` с комментарием-исключением.
-- [ ] `FileService`: поле `Layout`, `ExecDir` удалён; `OpenLogFiles`/`ReopenChildLogFile` от `LogDir`; `WintunPath` временно от `Data` (до этапа 5).
-- [ ] `NewAppController(layout)`.
+- [x] `main()`: `paths.Executable` + `Resolve` первым; `crash.log`/`native-stderr.log` в `LogDir`; `RunGLProbeChild` получает `AppDir`; ошибка резолва — понятный текст и выход.
+- [x] `platform_common.go`: все хелперы на именованные типы; `EnsureDirectories(Layout)` создаёт только `Data/bin`, `Data/bin/rule-sets`, `Logs`.
+- [x] `glstate.go`: `gl-state.json` от `DataDir`; Mesa-функции от `AppDir` с комментарием-исключением.
+- [x] `FileService`: поле `Layout`, `ExecDir` удалён; `OpenLogFiles`/`ReopenChildLogFile` от `LogDir`; `WintunPath` временно от `Data` (до этапа 5).
+- [x] `NewAppController(layout)`.
 
 ## Этап 4 · Прокидка
-- [ ] `core/*` по CODEMAP: каждое обращение получает `Data`/`App`/`Logs`.
-- [ ] `wizard_model.ExecDir` → `DataDir`; `FileServiceInterface.ExecDir()` → `DataDir()`/`AppDir()`.
-- [ ] `debugapi.ControllerFacade.GetExecDir()` → `GetDataDir()` (+ `GetAppDir()` если нужно снапшоту); `remote_endpoints.ExecDir` → `DataDir`.
-- [ ] Локали: `LoadExternalLocales(App/bin/locale)` затем `LoadExternalLocales(Data/bin/locale)`; скачивание локалей — в `Data`.
-- [ ] Diagnostics: Mesa-кнопки недоступны, когда `ProbeWritable(App)` ложь.
-- [ ] Тесты из CODEMAP §5 переведены на новые сигнатуры (без новых тестов).
+- [x] `core/*` по CODEMAP: каждое обращение получает `Data`/`App`/`Logs`.
+- [x] `wizard_model.ExecDir` → `DataDir`; `FileServiceInterface.ExecDir()` → `Layout()`.
+- [x] `debugapi.ControllerFacade.GetExecDir()` → `GetLayout()` (снапшоту нужны шаблон и state); `remote_endpoints.ExecDir` → `DataDir`.
+- [x] Локали: `LoadExternalLocales(App/bin/locale)` затем `LoadExternalLocales(Data/bin/locale)`; скачивание локалей — в `Data`.
+- [x] Diagnostics: Mesa-кнопки недоступны, когда `ProbeWritable(App)` ложь.
+- [x] Тесты из CODEMAP §5 переведены на новые сигнатуры (без новых тестов).
 - [ ] Страж «AppDir не пишем»: `tools/paths_guard` (AST-скан по образцу `tools/l10n/l10n_check/scan.go:131`) с поимённым исключением Mesa; запуск в CI-lint.
 
 ## Этап 5 · Двухуровневое чтение

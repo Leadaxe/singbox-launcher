@@ -163,9 +163,14 @@ func main() {
 		debuglog.WarnLog("remote migration: %v", err)
 	}
 
-	// Load locale settings and external translations
+	// Load locale settings and external translations. Каталоги двух уровней
+	// (SPEC 135 §3.3): поставляемые рядом с бинарём, затем скачанные в
+	// DataDir — поздний перекрывает. В portable-раскладке это один каталог.
 	binDir := layout.Data.Bin()
-	locale.LoadExternalLocales(locale.GetLocaleDir(binDir))
+	locale.LoadExternalLocales(locale.GetLocaleDir(layout.App.Bin()))
+	if binDir != layout.App.Bin() {
+		locale.LoadExternalLocales(locale.GetLocaleDir(binDir))
+	}
 	settings := locale.LoadSettings(binDir)
 	locale.SetLang(settings.Lang)
 	// Самолечение каталога после апдейта (SPEC 111): апдейт меняет только

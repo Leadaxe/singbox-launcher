@@ -11,6 +11,7 @@ import (
 
 	"singbox-launcher/core/services"
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/internal/paths"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -39,7 +40,7 @@ func stubLocalSRSForRules(t *testing.T, execDir string, rules []*wizardmodels.Ru
 			if tag == "" {
 				continue
 			}
-			path := services.RuleSRSPath(execDir, tag)
+			path := services.RuleSRSPath(paths.DataDir(execDir), tag)
 			if _, err := os.Stat(path); err == nil {
 				continue // already present, leave alone
 			}
@@ -63,7 +64,7 @@ func TestDefaultWizardFlow_NextNextFinish(t *testing.T) {
 	execDir := findProjectRoot(t)
 
 	// Load template (as wizard does on initialization)
-	templateData, err := wizardtemplate.LoadTemplateData(execDir)
+	templateData, err := wizardtemplate.LoadTemplateData(paths.Layout{App: paths.AppDir(execDir), Data: paths.DataDir(execDir)})
 	if err != nil {
 		t.Fatalf("Failed to load template: %v", err)
 	}
@@ -74,7 +75,7 @@ func TestDefaultWizardFlow_NextNextFinish(t *testing.T) {
 	// Initialize wizard model
 	model := wizardmodels.NewWizardModel()
 	model.TemplateData = templateData
-	model.ExecDir = execDir
+	model.DataDir = paths.DataDir(execDir)
 
 	// Emulate user entering subscription URL (Page 1 of wizard).
 	// SPEC 117: гейт «нечего собирать» смотрит на canonical model.Sources —
@@ -137,14 +138,14 @@ func TestDefaultWizardFlow_NextNextFinish(t *testing.T) {
 func TestWizardFlowWithCustomRules(t *testing.T) {
 	execDir := findProjectRoot(t)
 
-	templateData, err := wizardtemplate.LoadTemplateData(execDir)
+	templateData, err := wizardtemplate.LoadTemplateData(paths.Layout{App: paths.AppDir(execDir), Data: paths.DataDir(execDir)})
 	if err != nil {
 		t.Fatalf("Failed to load template: %v", err)
 	}
 
 	model := wizardmodels.NewWizardModel()
 	model.TemplateData = templateData
-	model.ExecDir = execDir
+	model.DataDir = paths.DataDir(execDir)
 
 	// Emulate user entering subscription URL.
 	// SPEC 117: canonical-источник для гейта «нечего собирать» (см. выше).

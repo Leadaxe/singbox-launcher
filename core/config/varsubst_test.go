@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"singbox-launcher/internal/paths"
 )
 
 // newPCWithAutoProxyOptions builds a ParserConfig containing one auto-proxy-out
@@ -176,7 +178,7 @@ func TestBuildVarSubstituterFromDisk_TemplateDefaults(t *testing.T) {
 	}
 	writeTemplateFile(t, execDir, template)
 
-	subst := BuildVarSubstituterFromDisk(execDir)
+	subst := BuildVarSubstituterFromDisk(paths.Layout{Data: paths.DataDir(execDir)})
 
 	if val, ok := subst("urltest_interval"); !ok || val != "10m" {
 		t.Errorf("urltest_interval: %v ok=%v, want %q", val, ok, "10m")
@@ -205,7 +207,7 @@ func TestBuildVarSubstituterFromDisk_StateOverridesTemplate(t *testing.T) {
 		},
 	})
 
-	subst := BuildVarSubstituterFromDisk(execDir)
+	subst := BuildVarSubstituterFromDisk(paths.Layout{Data: paths.DataDir(execDir)})
 	if val, ok := subst("urltest_interval"); !ok || val != "30m" {
 		t.Errorf("urltest_interval: %v ok=%v, want user override %q", val, ok, "30m")
 	}
@@ -230,7 +232,7 @@ func TestBuildVarSubstituterFromDisk_StateOverrideRealSchema(t *testing.T) {
 		},
 	})
 
-	subst := BuildVarSubstituterFromDisk(execDir)
+	subst := BuildVarSubstituterFromDisk(paths.Layout{Data: paths.DataDir(execDir)})
 	if val, ok := subst("urltest_interval"); !ok || val != "1m" {
 		t.Errorf("interval override: %v ok=%v, want %q", val, ok, "1m")
 	}
@@ -248,7 +250,7 @@ func TestBuildVarSubstituterFromDisk_BoolCoercion(t *testing.T) {
 		},
 	})
 
-	subst := BuildVarSubstituterFromDisk(execDir)
+	subst := BuildVarSubstituterFromDisk(paths.Layout{Data: paths.DataDir(execDir)})
 	if val, ok := subst("tun_enabled"); !ok || val != true {
 		t.Errorf("tun_enabled: %v (%T) ok=%v, want bool true", val, val, ok)
 	}
@@ -260,7 +262,7 @@ func TestBuildVarSubstituterFromDisk_BoolCoercion(t *testing.T) {
 func TestBuildVarSubstituterFromDisk_MissingFiles(t *testing.T) {
 	execDir := newTestLayout(t)
 	// No template, no state. Should not panic; returns ok=false for everything.
-	subst := BuildVarSubstituterFromDisk(execDir)
+	subst := BuildVarSubstituterFromDisk(paths.Layout{Data: paths.DataDir(execDir)})
 	if val, ok := subst("urltest_interval"); ok {
 		t.Errorf("missing files: ok=true val=%v, want ok=false", val)
 	}
@@ -279,7 +281,7 @@ func TestBuildVarSubstituterFromDisk_PlatformObjectDefault(t *testing.T) {
 		},
 	})
 
-	subst := BuildVarSubstituterFromDisk(execDir)
+	subst := BuildVarSubstituterFromDisk(paths.Layout{Data: paths.DataDir(execDir)})
 	if val, ok := subst("tun_stack"); !ok || val != "system" {
 		t.Errorf("tun_stack: %v ok=%v, want %q (default key)", val, ok, "system")
 	}
@@ -307,7 +309,7 @@ func TestSubstituteParserConfigPlaceholders_EndToEndWithDiskSubstituter(t *testi
 		"interval":  "@urltest_interval",
 		"tolerance": "@urltest_tolerance",
 	})
-	subst := BuildVarSubstituterFromDisk(execDir)
+	subst := BuildVarSubstituterFromDisk(paths.Layout{Data: paths.DataDir(execDir)})
 	SubstituteParserConfigPlaceholders(pc, subst)
 
 	opts := pc.ParserConfig.Outbounds[0].Options
@@ -351,7 +353,7 @@ func TestBuildVarSubstituterFromDisk_RealFixture(t *testing.T) {
 		},
 	})
 
-	subst := BuildVarSubstituterFromDisk(execDir)
+	subst := BuildVarSubstituterFromDisk(paths.Layout{Data: paths.DataDir(execDir)})
 
 	// Fixture has tun=true (overrides template default false).
 	if val, ok := subst("tun"); !ok || val != true {
