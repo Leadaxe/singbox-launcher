@@ -8,6 +8,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/paths"
+	"singbox-launcher/internal/platform"
 )
 
 // PortableToggleAvailable — показывается ли переключатель Portable вообще
@@ -76,10 +77,44 @@ func systemDefaultLayout() (paths.Layout, error) {
 	return paths.SystemDefault(exe, os.Getenv, runtime.GOOS, paths.ProbeWritable)
 }
 
+// StorageLeftover — остаток прошлого переезда из settings.json
+// (storage_leftover), если путь ещё существует; иначе "".
+func (ac *AppController) StorageLeftover() string {
+	if ac == nil || ac.FileService == nil {
+		return ""
+	}
+	p := locale.LoadSettings(ac.FileService.Layout.Data.Bin()).StorageLeftover
+	if p == "" {
+		return ""
+	}
+	if _, err := os.Stat(p); err != nil {
+		return ""
+	}
+	return p
+}
+
+// IsStorageSwitching — идёт переезд данных переключателем Portable: старт
+// ядра и автообновление подписок в это время отказывают.
+func (ac *AppController) IsStorageSwitching() bool {
+	return ac != nil && ac.storageSwitching.Load()
+}
+
 // SwitchPortable переносит данные между AppDir и системным DataDir (SPEC 135
-// §4.2). Условия проверяются заново: между показом диалога и подтверждением
-// пользователь мог запустить ядро. Раскладка процесса не меняется — её
-// применит перезапуск, который делает вызывающий.
+// §4.2) и сразу же перезапускает лаунчер (RequestRestartAfterExit +
+// GracefulExit): раскладка процесса старая, и любая запись после переезда
+// ушла бы на старое место. Условия проверяются заново: между показом
+// диалога и подтверждением пользователь мог запустить ядро.
+//
+// На время копирования поднят storageSwitching: старт ядра и автообновление
+// подписок отказывают. При ошибке флаг снимается, раскладки целы.
+//
+// Итог и остаток (Leftover) пишутся в лог, остаток — ещё и в settings.json
+// нового места (storage_leftover): раздел Storage покажет его после
+// перезапуска, очистка удалит.
+//
+// Выключение, когда в системном каталоге уже лежат данные, а в AppDir/bin
+// их нет (paths.ErrTargetHasData), — не ошибка: переезжать нечему, удаляется
+// только portable.txt, и перезапуск подхватит найденные данные.
 func (ac *AppController) SwitchPortable(on bool) (paths.SwitchReport, error) {
 	if ac == nil || ac.FileService == nil {
 		return paths.SwitchReport{}, errors.New("file service is not initialized")
@@ -88,24 +123,56 @@ func (ac *AppController) SwitchPortable(on bool) (paths.SwitchReport, error) {
 	if err := ac.portableSwitchBlocker(l); err != nil {
 		return paths.SwitchReport{}, err
 	}
+	if !ac.storageSwitching.CompareAndSwap(false, true) {
+		return paths.SwitchReport{}, errors.New(locale.T("Data move in progress"))
+	}
 
 	var (
-		rep paths.SwitchReport
-		err error
+		rep    paths.SwitchReport
+		err    error
+		target paths.Layout
 	)
 	if on {
 		rep, err = paths.SwitchToPortable(l)
 	} else {
-		var target paths.Layout
 		target, err = systemDefaultLayout()
 		if err == nil {
 			rep, err = paths.SwitchToSystem(l, target)
 		}
 	}
+	if !on && errors.Is(err, paths.ErrTargetHasData) {
+		if rmErr := paths.RemovePortableMarker(l.App); rmErr != nil {
+			ac.storageSwitching.Store(false)
+			debuglog.ErrorLog("storage: %v", rmErr)
+			return rep, rmErr
+		}
+		debuglog.WarnLog("storage: %s already holds settings; portable.txt removed instead of moving", target.Data)
+		ac.restartForNewLayout()
+		return rep, nil
+	}
 	if err != nil {
+		ac.storageSwitching.Store(false)
 		debuglog.ErrorLog("storage: portable switch (on=%v) failed: %v; %s", on, err, rep.Summary())
 		return rep, err
 	}
 	debuglog.WarnLog("storage: %s", rep.Summary())
+	if rep.Leftover != "" {
+		debuglog.WarnLog("storage: left over from the move (shown in Storage, removed by Remove all data): %s", rep.Leftover)
+	}
+	// Всегда: пустая строка стирает запись, приехавшую в settings.json
+	// вместе с данными от прошлого переезда.
+	if err := locale.MarkStorageLeftover(rep.To, rep.Leftover); err != nil {
+		debuglog.WarnLog("storage: persist leftover: %v", err)
+	}
+	ac.restartForNewLayout()
 	return rep, nil
+}
+
+// restartForNewLayout — перезапуск тем же путём, что у переключения Mesa:
+// RequestRestartAfterExit + GracefulExit, сам RestartSelf — в конце main(),
+// когда ядро остановлено и логи закрыты.
+func (ac *AppController) restartForNewLayout() {
+	debuglog.WarnLog("storage: restarting to apply the new data layout")
+	platform.RequestRestartAfterExit()
+	ac.GracefulExit()
 }

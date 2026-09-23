@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // migFile — файл унаследованной раскладки: путь относительно app, режим, содержимое.
@@ -274,6 +275,30 @@ func TestMigrateLegacyData(t *testing.T) {
 		}
 	})
 
+	// Свежий lock другого экземпляра — миграция пропускается; брошенный
+	// (старше TTL) — сносится, миграция идёт, lock после неё убран.
+	t.Run("lock", func(t *testing.T) {
+		app, data := t.TempDir(), t.TempDir()
+		legacyFixture(t, app)
+		lock := filepath.Join(data, migrationLockName)
+		put(t, lock, "1\n")
+		res, err := MigrateLegacyData(migLayout(app, data, ModeSystem), nil)
+		if err != nil || res.Migrated || !res.Busy {
+			t.Fatalf("fresh lock: %+v %v", res, err)
+		}
+		old := time.Now().Add(-2 * migrationLockTTL)
+		if err := os.Chtimes(lock, old, old); err != nil {
+			t.Fatal(err)
+		}
+		res, err = MigrateLegacyData(migLayout(app, data, ModeSystem), nil)
+		if err != nil || !res.Migrated {
+			t.Fatalf("stale lock: %+v %v", res, err)
+		}
+		if _, err := os.Stat(lock); !os.IsNotExist(err) {
+			t.Fatalf("lock must be removed: %v", err)
+		}
+	})
+
 	t.Run("unreadable", func(t *testing.T) {
 		if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 			t.Skip("chmod 000 does not deny read here")
@@ -334,6 +359,34 @@ func TestCopyTree(t *testing.T) {
 		}
 		if target, _ := os.Readlink(filepath.Join(dst, "link")); target != "a.txt" {
 			t.Fatalf("link target = %q", target)
+		}
+	})
+
+	// Корень-симлинк: разворачивается, копируется содержимое цели (раньше
+	// Walk принимал корень за ссылку и продвижение падало на пустом dirs).
+	t.Run("symlink root", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("symlinks need privilege on windows")
+		}
+		real, base := t.TempDir(), t.TempDir()
+		put(t, filepath.Join(real, "wizard_states", "state.json"), "s")
+		src := filepath.Join(base, "bin")
+		if err := os.Symlink(real, src); err != nil {
+			t.Fatal(err)
+		}
+		dst := filepath.Join(base, "out")
+		rep, err := CopyTree(src, dst)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rep.Files != 1 || rep.Skipped != 0 {
+			t.Fatalf("report = %+v", rep)
+		}
+		if got := mustRead(t, filepath.Join(dst, "wizard_states", "state.json")); got != "s" {
+			t.Fatalf("state = %q", got)
+		}
+		if fi, err := os.Lstat(dst); err != nil || !fi.IsDir() {
+			t.Fatalf("dst must be a real dir: %v %v", fi, err)
 		}
 	})
 

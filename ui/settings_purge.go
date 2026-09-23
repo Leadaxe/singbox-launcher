@@ -2,6 +2,7 @@ package ui
 
 import (
 	"runtime"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -62,16 +63,25 @@ func showPurgeDialog(ac *core.AppController, plan paths.PurgePlan, daemonHint st
 	checks := make([]*widget.Check, len(plan.Items))
 	for i, it := range plan.Items {
 		check := widget.NewCheck("", nil)
-		check.SetChecked(true)
+		// Системная папка с state.json при portable по умолчанию снята:
+		// это могут быть настоящие данные, скрытые маркером.
+		check.SetChecked(it.Selected)
 		if it.Kind == paths.PurgeData {
 			check.Disable()
 		}
 		checks[i] = check
 
 		text := widget.NewLabel(purgeKindText(it.Kind) + ": " + it.Path + " (" +
-			locale.Tf("%d files, %s", it.Files, paths.FormatBytes(it.Bytes)) + ")")
+			locale.Tf("%d files, %s", it.FileCount, paths.FormatBytes(it.Bytes)) + ")")
 		text.Wrapping = fyne.TextWrapBreak
 		lines := container.NewVBox(text)
+		if len(it.Files) > 0 {
+			// Env: удаляется только перечисленное, сам каталог остаётся.
+			only := widget.NewLabel(locale.Tf("Only: %s", strings.Join(it.FileNames(), ", ")))
+			only.Wrapping = fyne.TextWrapWord
+			only.Importance = widget.LowImportance
+			lines.Add(only)
+		}
 		if it.Note != "" {
 			note := widget.NewLabel(purgeNoteText(it.Note))
 			note.Wrapping = fyne.TextWrapWord
@@ -146,6 +156,8 @@ func purgeNoteText(note string) string {
 		return locale.T("Left over from a data move")
 	case paths.PurgeNoteUnusedSystem:
 		return locale.T("Unused system data folder")
+	case paths.PurgeNoteSystemDataHasState:
+		return locale.T("System data folder with settings — kept by default")
 	case paths.PurgeNoteOldLogs:
 		return locale.T("Old logs next to the program")
 	case paths.PurgeNotePreMigration:

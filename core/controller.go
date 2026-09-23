@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -112,6 +113,11 @@ type AppController struct {
 	// GracefulExit из трея выполняется на main-потоке Fyne, и диалог там
 	// никогда не отрисуется, а окно уже закрывается.
 	exiting atomic.Bool
+	// storageSwitching — идёт переезд данных переключателем Portable
+	// (SwitchPortable): старт ядра и автообновление подписок отказывают,
+	// чтобы ничего не писалось в каталог, который копируется. При успехе не
+	// снимается — процесс уходит в перезапуск.
+	storageSwitching atomic.Bool
 
 	// --- Update popup state ---
 	updatePopupShown bool         // Флаг, что попап обновления уже был показан в этой сессии
@@ -726,6 +732,15 @@ func StartSingBoxProcess(skipRunningCheck ...bool) {
 	if ac.ProcessService == nil {
 		debuglog.WarnLog("StartSingBoxProcess: ProcessService is nil, this should not happen. Initializing...")
 		ac.ProcessService = NewProcessService(ac)
+	}
+	// Единая точка старта ядра (UI, трей, -start, Debug API): во время
+	// переезда данных ядро не стартует — оно писало бы в копируемый каталог.
+	if ac.IsStorageSwitching() {
+		debuglog.WarnLog("StartSingBoxProcess: refused, data move in progress")
+		if ac.hasUI() {
+			dialogs.ShowError(ac.UIService.MainWindow, errors.New(locale.T("Data move in progress")))
+		}
+		return
 	}
 	if b := ac.Backend(); b != nil {
 		b.StartVPN(skipRunningCheck...)

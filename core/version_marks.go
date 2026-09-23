@@ -11,6 +11,8 @@
 package core
 
 import (
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -121,6 +123,19 @@ func (ac *AppController) logCoreResolution() {
 		src = "none"
 	}
 	debuglog.WarnLog("core: %s (source=%s)", fs.SingboxPath, src)
+	// Ядро из PATH, которое выбранное затеняет: версию не спрашиваем, только
+	// путь — иначе «в терминале sing-box другой» не объяснить по логу.
+	switch fs.CoreSource {
+	case platform.CoreSourceData, platform.CoreSourceApp, platform.CoreSourceEnv:
+		if p, err := exec.LookPath(platform.GetExecutableNames()); err == nil {
+			if abs, err := filepath.Abs(p); err == nil {
+				p = abs
+			}
+			if !sameCoreFile(p, fs.SingboxPath) {
+				debuglog.WarnLog("core: %s %s shadows path %s", fs.CoreSource, fs.SingboxPath, p)
+			}
+		}
+	}
 	if fs.ShadowedCorePath == "" {
 		return
 	}
@@ -137,4 +152,15 @@ func (ac *AppController) logCoreResolution() {
 		kind = platform.CoreSourceData
 	}
 	debuglog.WarnLog("core: %s %s shadows %s %s (%s)", src, cur, kind, shadowed, fs.ShadowedCorePath)
+}
+
+// sameCoreFile — один и тот же файл: по очищенному пути или, если оба
+// существуют, по идентичности (симлинки, регистр на macOS/Windows).
+func sameCoreFile(a, b string) bool {
+	if filepath.Clean(a) == filepath.Clean(b) {
+		return true
+	}
+	ai, errA := os.Stat(a)
+	bi, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(ai, bi)
 }

@@ -26,6 +26,13 @@ const portableMarkerContent = "portable\n"
 // ErrEnvLayout — раскладку задают переменные окружения, переключать нечего.
 var ErrEnvLayout = errors.New("paths are set by environment variables")
 
+// ErrTargetHasData — при выключении Portable в системном DataDir уже есть
+// state.json, а в AppDir/bin его нет: переезжать нечему, а копия поверх
+// смешала бы поставляемое с настоящими данными. Вызывающий вместо переезда
+// удаляет portable.txt (RemovePortableMarker) и перезапускается — это
+// нормальный исход, не ошибка для пользователя.
+var ErrTargetHasData = errors.New("the data folder already holds settings; remove portable.txt instead of moving")
+
 // SwitchReport — итог переключения Portable.
 type SwitchReport struct {
 	From, To string     // каталоги bin: откуда и куда переехали данные
@@ -79,7 +86,11 @@ func SystemDefault(exe string, env func(string) string, goos string, probe func(
 //     удалилось — Leftover, не ошибка: правило 2 сильнее правила 4.
 //
 // Сбой на шагах 1–2 оставляет обе раскладки рабочими: копировщик стирает
-// свой временный каталог, маркер без полной копии не пишется.
+// свой временный каталог, маркер без полной копии не пишется. Если
+// копировщик пропустил state.json — ошибка до записи маркера
+// (ErrStateNotCopied, AppDir/bin не тронут); если пропустил
+// что-то другое — маркер пишется, но источник не стирается (Leftover = From):
+// пропущенное осталось только там.
 func SwitchToPortable(l Layout) (SwitchReport, error) {
 	var rep SwitchReport
 	switch l.Mode {
@@ -114,6 +125,10 @@ func SwitchToPortable(l Layout) (SwitchReport, error) {
 		return rep, fmt.Errorf("write %s: %w", marker, err)
 	}
 
+	if rep.Copy.Skipped > 0 {
+		rep.Leftover = rep.From
+		return rep, nil
+	}
 	if err := os.RemoveAll(rep.From); err != nil || exists(rep.From) {
 		rep.Leftover = rep.From
 	}
@@ -132,6 +147,13 @@ func SwitchToPortable(l Layout) (SwitchReport, error) {
 //     включает правило 3, — затем остальное; остаток — Leftover.
 //
 // AppDir/logs не трогается: логи держит текущий процесс.
+//
+// В target.Data уже есть state.json, а в AppDir/bin нет — ErrTargetHasData
+// без каких-либо изменений (переезжать нечему, см. HiddenSystemData).
+// Копировщик пропустил state.json — ErrStateNotCopied до удаления маркера,
+// обе раскладки целы. Пропустил что-то другое — источник не стирается, а только
+// переименовывается в bin.moved-<метка> (Leftover): пропущенное осталось
+// только там, а правило 3 гасить всё равно нужно.
 //
 // Порядок выбран так, что любой сбой оставляет рабочую раскладку: до
 // удаления маркера данные на старом месте целы (Portable как был), после —
@@ -158,6 +180,9 @@ func SwitchToSystem(l Layout, target Layout) (SwitchReport, error) {
 
 	rep.From = l.App.Bin()
 	rep.To = target.Data.Bin()
+	if exists(stateFile(rep.To)) && !exists(stateFile(rep.From)) {
+		return rep, ErrTargetHasData
+	}
 	if err := os.MkdirAll(string(target.Data), 0o755); err != nil {
 		return rep, fmt.Errorf("create %s: %w", target.Data, err)
 	}
@@ -179,8 +204,12 @@ func SwitchToSystem(l Layout, target Layout) (SwitchReport, error) {
 	if !exists(rep.From) {
 		return rep, nil
 	}
-	moved := filepath.Join(string(l.App), MovedBinPrefix+time.Now().Format(movedStampLayout))
+	moved := movedBinPath(l.App)
 	if err := os.Rename(rep.From, moved); err == nil {
+		if rep.Copy.Skipped > 0 {
+			rep.Leftover = moved // пропущенное живёт только здесь — не стирать
+			return rep, nil
+		}
 		if err := os.RemoveAll(moved); err != nil || exists(moved) {
 			rep.Leftover = moved
 		}
@@ -192,8 +221,56 @@ func SwitchToSystem(l Layout, target Layout) (SwitchReport, error) {
 	if err := os.Remove(state); err != nil && !os.IsNotExist(err) {
 		return rep, fmt.Errorf("remove %s: %w", state, err)
 	}
+	if rep.Copy.Skipped > 0 {
+		rep.Leftover = rep.From
+		return rep, nil
+	}
 	if err := os.RemoveAll(rep.From); err != nil || exists(rep.From) {
 		rep.Leftover = rep.From
 	}
 	return rep, nil
+}
+
+// movedBinPath — свободное имя AppDir/bin.moved-<метка>[-N]: остаток
+// прошлого переезда в ту же секунду не должен сорвать переименование.
+func movedBinPath(app AppDir) string {
+	base := filepath.Join(string(app), MovedBinPrefix+time.Now().Format(movedStampLayout))
+	p := base
+	for i := 2; pathExists(p) && i < 100; i++ {
+		p = fmt.Sprintf("%s-%d", base, i)
+	}
+	return p
+}
+
+// RemovePortableMarker удаляет AppDir/portable.txt (отсутствие — не ошибка):
+// выход из Portable без переезда, когда данные уже лежат в системном DataDir
+// (ErrTargetHasData, HiddenSystemData). Раскладку применит перезапуск.
+func RemovePortableMarker(app AppDir) error {
+	marker := filepath.Join(string(app), constants.PortableMarkerFileName)
+	if err := os.Remove(marker); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove %s: %w", marker, err)
+	}
+	return nil
+}
+
+// HiddenSystemData — данные в системном DataDir, скрытые маркером: режим
+// Portable/Legacy, в AppDir/bin нет state.json, а в SystemDefault(...).Data/bin
+// он есть. Типичный путь: Portable выключили (данные уехали в системный
+// каталог), затем распаковали новый zip с portable.txt поверх папки
+// программы. Возвращает системный DataDir.
+func HiddenSystemData(l Layout, exe string, env func(string) string, goos string, probe func(string) bool) (dataDir string, found bool) {
+	if l.Mode != ModePortable && l.Mode != ModeLegacy {
+		return "", false
+	}
+	if exists(stateFile(l.App.Bin())) {
+		return "", false
+	}
+	sys, err := SystemDefault(exe, env, goos, probe)
+	if err != nil || sameDir(string(sys.Data), string(l.App)) {
+		return "", false
+	}
+	if !exists(stateFile(sys.Data.Bin())) {
+		return "", false
+	}
+	return string(sys.Data), true
 }

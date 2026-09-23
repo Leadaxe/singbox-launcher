@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"singbox-launcher/internal/constants"
 )
@@ -12,6 +13,7 @@ import (
 // MigrationResult — что произошло при старте.
 type MigrationResult struct {
 	Migrated     bool   // копирование выполнено
+	Busy         bool   // другой экземпляр мигрирует прямо сейчас — пропущено
 	Source       string // откуда (App/bin), пусто если источника нет
 	Dest         string // куда (Data/bin); заполнено всегда
 	DataHadState bool   // в Data уже был state.json — мигрировать нечего
@@ -30,6 +32,11 @@ type MigrationResult struct {
 // Data/.migrated_from последним шагом. Обрыв до продвижения копии оставляет
 // Data без state.json, и следующий старт повторяет миграцию. Логи не
 // копируются: они вне bin/. Источник не трогается.
+//
+// Два экземпляра, стартовавшие одновременно, не мигрируют наперегонки:
+// Data/.migrating.lock создаётся через O_EXCL; свежий чужой lock (моложе
+// migrationLockTTL) — миграция в этом старте пропускается (Busy), старый —
+// остаток упавшего процесса, сносится.
 //
 // log — куда писать одну итоговую строку (nil допустим).
 func MigrateLegacyData(l Layout, log func(format string, args ...interface{})) (MigrationResult, error) {
@@ -54,6 +61,23 @@ func MigrateLegacyData(l Layout, log func(format string, args ...interface{})) (
 
 	if err := os.MkdirAll(string(l.Data), 0o755); err != nil {
 		return res, fmt.Errorf("migration: create %s: %w", l.Data, err)
+	}
+	release, busy, err := acquireMigrationLock(l.Data)
+	if err != nil {
+		return res, fmt.Errorf("migration: %w", err)
+	}
+	if busy {
+		res.Busy = true
+		if log != nil {
+			log("migration: another instance is migrating, skipping")
+		}
+		return res, nil
+	}
+	defer release()
+	// Пока ждали lock, другой экземпляр мог закончить.
+	if exists(stateFile(dstBin)) {
+		res.DataHadState = true
+		return res, nil
 	}
 	rep, err := CopyTree(srcBin, dstBin)
 	res.Report = rep
@@ -83,6 +107,40 @@ func (r MigrationResult) Summary() string {
 		line += " examples: " + strings.Join(rep.SkippedExamples, "; ")
 	}
 	return line
+}
+
+// migrationLockName — lock-файл миграции в DataDir.
+const migrationLockName = ".migrating.lock"
+
+// migrationLockTTL — lock старше этого считается брошенным.
+const migrationLockTTL = 10 * time.Minute
+
+// acquireMigrationLock создаёт Data/.migrating.lock (O_EXCL). busy — свежий
+// lock держит другой экземпляр; release удаляет свой lock.
+func acquireMigrationLock(d DataDir) (release func(), busy bool, err error) {
+	p := filepath.Join(string(d), migrationLockName)
+	for attempt := 0; attempt < 2; attempt++ {
+		f, err := os.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		if err == nil {
+			_, _ = fmt.Fprintf(f, "%d\n", os.Getpid())
+			_ = f.Close()
+			return func() { _ = os.Remove(p) }, false, nil
+		}
+		if !os.IsExist(err) {
+			return nil, false, fmt.Errorf("create %s: %w", p, err)
+		}
+		info, statErr := os.Stat(p)
+		if statErr != nil {
+			continue // lock исчез между попытками — ещё раз
+		}
+		if time.Since(info.ModTime()) < migrationLockTTL {
+			return nil, true, nil
+		}
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return nil, false, fmt.Errorf("remove stale %s: %w", p, err)
+		}
+	}
+	return nil, true, nil
 }
 
 func stateFile(bin string) string {

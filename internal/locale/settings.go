@@ -91,6 +91,18 @@ type Settings struct {
 	// DataDir нет state.json и мигрировать нечего.
 	FirstRunNoticeShown bool `json:"first_run_notice_shown,omitempty"`
 
+	// HiddenDataNoticeShown — пользователь отказался (Cancel) переключиться
+	// на данные, найденные в системном каталоге при включённом portable.txt
+	// (SPEC 135, paths.HiddenSystemData). Больше не спрашивать.
+	HiddenDataNoticeShown bool `json:"hidden_data_notice_shown,omitempty"`
+
+	// StorageLeftover — что переключатель Portable не смог стереть на
+	// старом месте (SPEC 135 §4.2, paths.SwitchReport.Leftover). Пишется в
+	// settings.json НОВОГО места сразу после переезда; раздел Storage
+	// показывает его строкой, очистка (§4.3) удаляет как остаток переезда.
+	// Пусто — остатка нет. Путь абсолютный.
+	StorageLeftover string `json:"storage_leftover,omitempty"`
+
 	// HWID — random UUIDv4 идентификатор устройства, отправляемый в
 	// `X-Hwid` заголовке при каждом fetch'е подписки. Lazy-generated
 	// (EnsureHWID): пустой строкой при первой инсталляции → генерируется и
@@ -253,6 +265,28 @@ func MarkFirstRunNoticeShown(binDir string) error {
 		return nil
 	}
 	s.FirstRunNoticeShown = true
+	return SaveSettings(binDir, s)
+}
+
+// MarkHiddenDataNoticeShown persists that the user declined to switch to the
+// data found in the system folder while portable.txt is present (SPEC 135).
+func MarkHiddenDataNoticeShown(binDir string) error {
+	s := LoadSettings(binDir)
+	if s.HiddenDataNoticeShown {
+		return nil
+	}
+	s.HiddenDataNoticeShown = true
+	return SaveSettings(binDir, s)
+}
+
+// MarkStorageLeftover persists what a Portable switch left behind at the old
+// place ("" clears it) into settings.json of the new place (SPEC 135 §4.2).
+func MarkStorageLeftover(binDir, path string) error {
+	s := LoadSettings(binDir)
+	if s.StorageLeftover == path {
+		return nil
+	}
+	s.StorageLeftover = path
 	return SaveSettings(binDir, s)
 }
 

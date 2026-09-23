@@ -3,6 +3,7 @@ package paths
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 )
 
@@ -94,12 +95,12 @@ func TestPurge(t *testing.T) {
 				t.Errorf("no item for %s:\n%s", w.path, p.Text())
 				continue
 			}
-			if it.Kind != w.kind || it.Note != w.note || !it.Selected || it.Bytes <= 0 || it.Files <= 0 {
+			if it.Kind != w.kind || it.Note != w.note || !it.Selected || it.Bytes <= 0 || it.FileCount <= 0 {
 				t.Errorf("item %s: %+v, want kind=%s note=%q selected, bytes>0", w.path, *it, w.kind, w.note)
 			}
 		}
-		if it := findItem(p, f.oldBin); it != nil && it.Files != 1 {
-			t.Errorf("pre-migration item counts shipped template: files=%d want 1", it.Files)
+		if it := findItem(p, f.oldBin); it != nil && it.FileCount != 1 {
+			t.Errorf("pre-migration item counts shipped template: files=%d want 1", it.FileCount)
 		}
 		for _, it := range p.Items {
 			if filepath.Clean(it.Path) == filepath.Clean(f.app) || filepath.Base(it.Path) == "portable.txt" {
@@ -170,10 +171,30 @@ func TestPurge(t *testing.T) {
 			return ""
 		}
 		l := Layout{App: AppDir(app), Data: DataDir(app), Logs: LogDir(filepath.Join(app, "logs")), Mode: ModePortable}
+
+		// С state.json системная папка — возможно, скрытые маркером данные:
+		// в плане, но не отмечена, и по умолчанию не удаляется.
 		p := BuildPurgePlan(l, exe, env, "linux", probe)
 		it := findItem(p, sys)
-		if it == nil || it.Kind != PurgeLeftover || it.Note != PurgeNoteUnusedSystem {
-			t.Fatalf("want unused system data folder %s:\n%s", sys, p.Text())
+		if it == nil || it.Kind != PurgeLeftover || it.Note != PurgeNoteSystemDataHasState || it.Selected {
+			t.Fatalf("want unselected system data folder with settings %s:\n%s", sys, p.Text())
+		}
+		if rep := ExecutePurge(p); len(rep.Failed) != 0 {
+			t.Fatalf("failed: %v", rep.Failed)
+		}
+		kept(t, filepath.Join(sys, "bin", "wizard_states", "state.json"))
+
+		// Остаток переезда записан в settings.json — это известная старая
+		// копия: отмечена и она, и системная папка.
+		write(t, filepath.Join(app, "bin", "wizard_states", "state.json"), `{"version":3}`)
+		write(t, filepath.Join(app, "bin", "settings.json"), `{"storage_leftover":`+strconv.Quote(filepath.Join(sys, "bin"))+`}`)
+		p = BuildPurgePlan(l, exe, env, "linux", probe)
+		if it := findItem(p, filepath.Join(sys, "bin")); it == nil || it.Note != PurgeNoteMovedAway || !it.Selected {
+			t.Fatalf("want recorded leftover %s/bin selected:\n%s", sys, p.Text())
+		}
+		it = findItem(p, sys)
+		if it == nil || it.Note != PurgeNoteUnusedSystem || !it.Selected {
+			t.Fatalf("want selected unused system data folder %s:\n%s", sys, p.Text())
 		}
 		if d := findItem(p, filepath.Join(app, "bin")); d == nil || d.Kind != PurgeData {
 			t.Fatalf("portable data item must be app/bin:\n%s", p.Text())
@@ -218,7 +239,7 @@ func TestPurge(t *testing.T) {
 			if marker {
 				wantFiles = 1
 			}
-			if it := findItem(p, bin); it == nil || it.Files != wantFiles {
+			if it := findItem(p, bin); it == nil || it.FileCount != wantFiles {
 				t.Fatalf("marker=%v: data item files, want %d:\n%s", marker, wantFiles, p.Text())
 			}
 			if rep := ExecutePurge(p); len(rep.Failed) != 0 {
@@ -239,5 +260,39 @@ func TestPurge(t *testing.T) {
 				kept(t, filepath.Join(bin, "wizard_template.version"))
 			}
 		}
+	})
+	// Env: каталоги выбрал пользователь — удаляются только bin/,
+	// .migrated_from и файлы логов лаунчера; чужое и сами каталоги остаются.
+	t.Run("env layout", func(t *testing.T) {
+		root := t.TempDir()
+		app := filepath.Join(root, "app")
+		data := filepath.Join(root, "mydata")
+		logs := filepath.Join(root, "mylogs")
+		exe := filepath.Join(app, "singbox-launcher")
+		write(t, exe, "exe")
+		write(t, filepath.Join(data, "bin", "wizard_states", "state.json"), `{}`)
+		write(t, filepath.Join(data, ".migrated_from"), "/old\n")
+		write(t, filepath.Join(data, "notes.txt"), "user file")
+		write(t, filepath.Join(logs, "singbox-launcher.log"), "log")
+		write(t, filepath.Join(logs, "sing-box.log.old"), "log")
+		write(t, filepath.Join(logs, "crash.log"), "crash")
+		write(t, filepath.Join(logs, "other.log"), "not ours")
+		l := Layout{App: AppDir(app), Data: DataDir(data), Logs: LogDir(logs), Mode: ModeEnv}
+		p := BuildPurgePlan(l, exe, noEnv, "linux", probe)
+		if d := findItem(p, data); d == nil || d.Kind != PurgeData || len(d.Files) != 2 {
+			t.Fatalf("env data item must list bin and .migrated_from:\n%s", p.Text())
+		}
+		if lg := findItem(p, logs); lg == nil || lg.Kind != PurgeLogs || len(lg.Files) != 3 {
+			t.Fatalf("env logs item must list 3 launcher logs:\n%s", p.Text())
+		}
+		if rep := ExecutePurge(p); len(rep.Failed) != 0 {
+			t.Fatalf("failed: %v", rep.Failed)
+		}
+		gone(t, filepath.Join(data, "bin"))
+		gone(t, filepath.Join(data, ".migrated_from"))
+		gone(t, filepath.Join(logs, "singbox-launcher.log"))
+		gone(t, filepath.Join(logs, "crash.log"))
+		kept(t, filepath.Join(data, "notes.txt"))
+		kept(t, filepath.Join(logs, "other.log"))
 	})
 }

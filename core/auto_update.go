@@ -116,6 +116,10 @@ func (ac *AppController) startAutoUpdateLoop() {
 // Trigger source: "startup" / "heartbeat" / "vpn-state-changed" /
 // "proxy-active-changed" — для логирования.
 func (ac *AppController) runScheduledRefresh(trigger string) {
+	if ac.IsStorageSwitching() {
+		debuglog.DebugLog("Auto-update[%s]: data move in progress, skipping", trigger)
+		return
+	}
 	statePath := platform.GetWizardStatePath(ac.FileService.Layout.Data)
 	s, err := state.Load(statePath)
 	if err != nil {
@@ -186,6 +190,10 @@ func effectiveReload(src *state.Source, settings locale.Settings) time.Duration 
 // refreshSourceWithRetry — fetch + meta + raw для одного source.
 // На failure планирует один retry через 15 секунд.
 func (ac *AppController) refreshSourceWithRetry(sourceID, trigger string) {
+	if ac.IsStorageSwitching() {
+		debuglog.DebugLog("Auto-update[%s]: data move in progress, skipping %s", trigger, sourceID)
+		return
+	}
 	if ac.ConfigService == nil {
 		return
 	}

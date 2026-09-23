@@ -136,9 +136,25 @@ func buildStorageSection(ac *core.AppController) (fyne.CanvasObject, func()) {
 		}
 	}
 
+	// Остаток прошлого переезда (storage_leftover): что переключатель
+	// Portable не смог стереть. Строка видна, пока путь существует.
+	leftoverVal := widget.NewLabel("")
+	leftoverVal.Wrapping = fyne.TextWrapBreak
+	leftoverVal.Importance = widget.WarningImportance
+	leftoverVal.Hide()
+	renderLeftover := func() {
+		p := ac.StorageLeftover()
+		if p == "" {
+			leftoverVal.Hide()
+			return
+		}
+		leftoverVal.SetText(locale.Tf("Left over from the move: %s", p))
+		leftoverVal.Show()
+	}
+
 	// Место этапов 8–9 SPEC 135 под таблицей путей: чекбокс Portable (§4.2)
 	// и кнопка «Remove all data…» (§4.3).
-	extra := container.NewVBox()
+	extra := container.NewVBox(leftoverVal)
 	refreshPortable := func() {}
 	if core.PortableToggleAvailable() {
 		var portable fyne.CanvasObject
@@ -152,6 +168,7 @@ func buildStorageSection(ac *core.AppController) (fyne.CanvasObject, func()) {
 	// и следующие вызовы бинарь уже не запускают.
 	refresh := func() {
 		refreshPortable()
+		renderLeftover()
 		info = ac.PathsInfo()
 		render()
 		if info.CoreVersion != "" || info.CoreSource == "" {
@@ -254,11 +271,10 @@ func buildPortableToggle(ac *core.AppController) (fyne.CanvasObject, func()) {
 	return container.NewVBox(check, note), refresh
 }
 
-// confirmPortableSwitch — подтверждение «откуда → куда», переезд в фоне под
-// модальным прогрессом (он же не даёт нажать Start в окне, пока идёт
-// копирование) и перезапуск тем же путём, что у переключения Mesa:
-// RequestRestartAfterExit + GracefulExit, сам RestartSelf — в конце main(),
-// когда ядро остановлено и логи закрыты.
+// confirmPortableSwitch — подтверждение «откуда → куда» и переезд в фоне под
+// модальным прогрессом (он же не даёт нажать Start в окне; трей и Debug API
+// останавливает флаг переезда в контроллере). Перезапуск делает сам
+// SwitchPortable сразу после переезда.
 func confirmPortableSwitch(ac *core.AppController, on bool, refresh func()) {
 	win := ac.UIService.MainWindow
 	from := ac.FileService.Layout.Data.Bin()
@@ -269,35 +285,24 @@ func confirmPortableSwitch(ac *core.AppController, on bool, refresh func()) {
 	}
 	confirm := dialog.NewConfirm(
 		locale.T("Move launcher data"),
-		locale.Tf("Data will be moved from:\n%s\nto:\n%s\n\nThe launcher will restart after the move.", from, to),
+		locale.Tf("Data will be moved from:\n%s\nto:\n%s", from, to)+
+			"\n\n"+locale.T("The launcher will restart immediately after the move."),
 		func(yes bool) {
 			if !yes {
 				return
 			}
 			progress := showPortableSwitchProgress(win)
 			go func() {
-				rep, err := ac.SwitchPortable(on)
-				fyne.Do(func() {
-					progress.Hide()
-					if err != nil {
+				// Успех перезапускает лаунчер изнутри SwitchPortable (прогресс
+				// остаётся до выхода); итог и остаток — в логе и в Storage
+				// после перезапуска. Сюда возвращается только ошибка.
+				if _, err := ac.SwitchPortable(on); err != nil {
+					fyne.Do(func() {
+						progress.Hide()
 						dialog.ShowError(err, win)
 						refresh()
-						return
-					}
-					msg := locale.T("The launcher will restart now.")
-					if rep.Leftover != "" {
-						msg += "\n\n" + locale.Tf("Some files could not be removed and were left at:\n%s", rep.Leftover)
-					}
-					done := dialog.NewInformation(locale.T("Data moved"), msg, win)
-					// Любое закрытие — перезапуск: данные уже переехали, а
-					// раскладка процесса старая.
-					done.SetOnClosed(func() {
-						debuglog.WarnLog("storage: restarting to apply the new data layout")
-						platform.RequestRestartAfterExit()
-						ac.GracefulExit()
 					})
-					done.Show()
-				})
+				}
 			}()
 		}, win)
 	confirm.SetConfirmText(locale.T("Yes"))

@@ -10,3 +10,13 @@ func RunAndLog(label string, fn func() error) {
 		log.Printf("%s: %v", label, err)
 	}
 }
+
+// ReleaseLogFiles отпускает файлы в LogDir, которые держит не FileService:
+// crash.log (копия дескриптора у runtime после EnableCrashOutput) и
+// native-stderr.log (RedirectNativeStderr). Зовётся очисткой перед удалением
+// LogDir (SPEC 135 §4.3): на Windows открытый файл не удалить. После вызова
+// трасса паники и нативный stderr больше не пишутся в файлы.
+func ReleaseLogFiles() {
+	releaseCrashOutput()
+	releaseNativeStderr()
+}

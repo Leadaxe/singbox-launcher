@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
@@ -91,6 +92,9 @@ func (ac *AppController) ExecutePurgeAndExit(p paths.PurgePlan, network bool) er
 		return errPurgeCoreRunning()
 	}
 	ac.FileService.CloseLogFiles()
+	// crash.log и native-stderr.log держит не FileService: без этого на
+	// Windows LogDir не удалить до выхода процесса.
+	debuglog.ReleaseLogFiles()
 	rep := paths.ExecutePurge(p)
 	out := rep.Text()
 	if network && runtime.GOOS == "windows" {
@@ -105,8 +109,9 @@ func (ac *AppController) ExecutePurgeAndExit(p paths.PurgePlan, network bool) er
 // план и выходит; с yes удаляет и печатает итог. Вызывается из main до
 // контроллера и GUI: логи ещё не открыты, закрывать нечего. Служба демона
 // не трогается — печатается команда. Возвращает код выхода процесса: 1,
-// если ядро живо по pid-файлу привилегированного запуска (процесс не
-// трогаем) или часть удалить не вышло.
+// если работает другой экземпляр лаунчера или ядро из каталога данных
+// (purgeBlockingProcess), ядро живо по pid-файлу привилегированного запуска
+// (процессы не трогаем), или часть удалить не вышло.
 func PurgeCLI(l paths.Layout, exe string, yes bool, out io.Writer) int {
 	plan := paths.BuildPurgePlan(l, exe, os.Getenv, runtime.GOOS, paths.ProbeWritable)
 	hint := daemonUninstallHintFor(platform.ResolveSingboxExecPath(l, os.Getenv).Path)
@@ -120,6 +125,10 @@ func PurgeCLI(l paths.Layout, exe string, yes bool, out io.Writer) int {
 		return 0
 	}
 
+	if msg := purgeBlockingProcess(l, exe); msg != "" {
+		fmt.Fprintf(out, "%s. Quit it first; nothing was removed.\n", msg)
+		return 1
+	}
 	if pid, alive := purgeCoreAliveByPidFile(l.Data); alive {
 		fmt.Fprintf(out, "sing-box is running (pid %d). Stop the VPN first; nothing was removed.\n", pid)
 		return 1
@@ -134,6 +143,63 @@ func PurgeCLI(l paths.Layout, exe string, yes bool, out io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// purgeBlockingProcess — что мешает очистке без окна: другой процесс
+// лаунчера (то же имя исполняемого файла, как в
+// CheckIfLauncherAlreadyRunningUtil) или sing-box, запущенный из каталога
+// данных или программы. Чужой sing-box (путь известен и лежит в другом
+// месте) не мешает; путь неизвестен — считаем своим. Процессы только
+// читаются, ничего не убивается. "" — мешающих нет (или список процессов не
+// получить: очистку это не блокирует, пишется предупреждение).
+func purgeBlockingProcess(l paths.Layout, exe string) string {
+	procs, err := process.GetProcesses()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: cannot list processes: %v\n", err)
+		return ""
+	}
+	self := os.Getpid()
+	launcher := strings.ToLower(filepath.Base(exe))
+	coreName := strings.ToLower(platform.GetExecutableNames())
+	corePath := platform.ResolveSingboxExecPath(l, os.Getenv).Path
+
+	var pathByPID map[int]string // лениво: ListProcesses дороже go-ps
+	pathOf := func(pid int) string {
+		if pathByPID == nil {
+			pathByPID = map[int]string{}
+			if list, err := platform.ListProcesses(); err == nil {
+				for _, e := range list {
+					pathByPID[e.PID] = e.Path
+				}
+			}
+		}
+		return pathByPID[pid]
+	}
+	ours := func(p string) bool {
+		if p == "" {
+			return true
+		}
+		for _, dir := range []string{l.Data.Bin(), l.App.Bin()} {
+			if rel, err := filepath.Rel(dir, p); err == nil && !strings.HasPrefix(rel, "..") {
+				return true
+			}
+		}
+		return corePath != "" && strings.EqualFold(filepath.Clean(p), filepath.Clean(corePath))
+	}
+
+	for _, p := range procs {
+		if p.PID == self {
+			continue
+		}
+		name := strings.ToLower(p.Name)
+		if launcher != "" && name == launcher {
+			return fmt.Sprintf("The launcher is running (pid %d)", p.PID)
+		}
+		if name == coreName && ours(pathOf(p.PID)) {
+			return fmt.Sprintf("sing-box is running (pid %d)", p.PID)
+		}
+	}
+	return ""
 }
 
 // purgeCoreAliveByPidFile — жив ли процесс из pid-файла привилегированного

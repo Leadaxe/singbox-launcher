@@ -81,25 +81,72 @@ func firstRunNoticeDue(fsvc *services.FileService, s locale.Settings) bool {
 	return !r.Migrated && !r.DataHadState && r.Source == ""
 }
 
-// scheduleFirstRunNotice показывает уведомление, когда окно видно: при
-// обычном старте — чуть позже появления окна; при -tray — при первом
-// раскрытии окна из трея в этой сессии. Не раскрыли — флаг не ставится, и
-// уведомление ждёт следующего старта. Флаг ставится сразу после показа.
+// scheduleFirstRunNotice показывает уведомление, когда окно видно (см.
+// whenWindowVisible). Флаг ставится сразу после показа.
 func scheduleFirstRunNotice(controller *core.AppController, data paths.DataDir, inTray bool) {
-	show := func() {
-		win := controller.UIService.MainWindow
-		if win == nil {
-			return
-		}
+	whenWindowVisible(controller, inTray, func(win fyne.Window) {
 		dialog.ShowInformation(locale.T("No previous data found"),
 			locale.T("No data from a previous launcher version was found in the data folder. If you had settings and subscriptions, restore them from an LX Backup (Settings → Backup). Data folder:")+
 				"\n"+string(data), win)
 		if err := locale.MarkFirstRunNoticeShown(data.Bin()); err != nil {
 			debuglog.WarnLog("first-run notice: persist flag: %v", err)
 		}
+	})
+}
+
+// hiddenDataNoticeDue — данные в системном каталоге скрыты маркером
+// portable.txt (paths.HiddenSystemData): Portable/Legacy, в AppDir/bin нет
+// state.json, а в системном DataDir он есть, и пользователь ещё не
+// отказался. Возвращает найденный каталог.
+func hiddenDataNoticeDue(l paths.Layout, exe string, s locale.Settings) (string, bool) {
+	if s.HiddenDataNoticeShown {
+		return "", false
+	}
+	return paths.HiddenSystemData(l, exe, os.Getenv, runtime.GOOS, paths.ProbeWritable)
+}
+
+// scheduleHiddenDataNotice предлагает переключиться на найденные данные:
+// Yes — удалить portable.txt и перезапуститься (копировать нечего: в
+// AppDir/bin только поставляемое), Cancel — больше не спрашивать. Показ —
+// как у уведомления первого запуска (whenWindowVisible).
+func scheduleHiddenDataNotice(controller *core.AppController, l paths.Layout, dir string, inTray bool) {
+	whenWindowVisible(controller, inTray, func(win fyne.Window) {
+		confirm := dialog.NewConfirm(locale.T("Existing data found"),
+			locale.Tf("Your settings and subscriptions were found in:\n%s\n\nThe launcher is running in portable mode because portable.txt lies next to the program. Switch to the found data? The launcher will restart.", dir),
+			func(yes bool) {
+				if !yes {
+					if err := locale.MarkHiddenDataNoticeShown(l.Data.Bin()); err != nil {
+						debuglog.WarnLog("hidden data notice: persist flag: %v", err)
+					}
+					return
+				}
+				if err := paths.RemovePortableMarker(l.App); err != nil {
+					debuglog.ErrorLog("hidden data notice: %v", err)
+					ui.ShowError(win, err)
+					return
+				}
+				debuglog.WarnLog("storage: portable.txt removed to use the data found in %s; restarting", dir)
+				platform.RequestRestartAfterExit()
+				controller.GracefulExit()
+			}, win)
+		confirm.SetConfirmText(locale.T("Yes"))
+		confirm.SetDismissText(locale.T("Cancel"))
+		confirm.Show()
+	})
+}
+
+// whenWindowVisible вызывает show, когда окно видно: при обычном старте —
+// чуть позже появления окна; при -tray — при первом раскрытии окна из трея
+// в этой сессии. Не раскрыли — show не вызывается, и уведомление ждёт
+// следующего старта.
+func whenWindowVisible(controller *core.AppController, inTray bool, show func(win fyne.Window)) {
+	run := func() {
+		if win := controller.UIService.MainWindow; win != nil {
+			show(win)
+		}
 	}
 	if !inTray {
-		time.AfterFunc(firstRunNoticeDelay, func() { fyne.Do(show) })
+		time.AfterFunc(firstRunNoticeDelay, func() { fyne.Do(run) })
 		return
 	}
 	// OnWindowShown зовётся из fyne.Do (UIService.ShowMainWindowOrFocusWizard),
@@ -112,7 +159,7 @@ func scheduleFirstRunNotice(controller *core.AppController, data paths.DataDir, 
 		}
 		if !shown {
 			shown = true
-			show()
+			run()
 		}
 	}
 }
@@ -210,6 +257,8 @@ func main() {
 		debuglog.WarnLog("migration failed: %v — starting with an empty data folder, will retry next launch", fsvc.MigrationErr)
 	} else if fsvc.Migration.Migrated {
 		debuglog.WarnLog("%s", fsvc.Migration.Summary())
+	} else if fsvc.Migration.Busy {
+		debuglog.WarnLog("migration: another instance is migrating, skipping")
 	}
 
 	// Issue #105: в RDP-сессии Windows Server без GPU системный OpenGL — это
@@ -498,6 +547,12 @@ func main() {
 			// один раз подсказать про LX Backup.
 			if firstRunNoticeDue(controller.FileService, settings) {
 				scheduleFirstRunNotice(controller, layout.Data, *startInTray)
+			}
+			// Данные в системном каталоге, скрытые portable.txt (новый zip
+			// распакован поверх папки после выключения Portable).
+			if dir, found := hiddenDataNoticeDue(layout, exe, settings); found {
+				debuglog.WarnLog("storage: portable mode, but settings were found in %s", dir)
+				scheduleHiddenDataNotice(controller, layout, dir, *startInTray)
 			}
 
 			// Auto-start VPN if -start flag is provided

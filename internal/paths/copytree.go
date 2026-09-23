@@ -6,6 +6,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+
+	"singbox-launcher/internal/constants"
 )
 
 // migratingSuffix — суффикс временного каталога копирования (SPEC 135 §3.4, §4.2).
@@ -19,14 +22,36 @@ type CopyReport struct {
 	Files, Dirs, Skipped int
 	Bytes                int64
 	SkippedExamples      []string // до 5 путей (относительно src) с причиной через ": "
+	// SkippedPaths — все пропущенные пути (относительно src, через "/"),
+	// без причины и без ограничения числа: по ним вызывающий решает,
+	// можно ли стирать источник (SkippedPath).
+	SkippedPaths []string
+}
+
+// SkippedPath — пропущен ли путь rel (относительно src) или каталог, в
+// котором он лежит (пропущенный каталог не обходится целиком).
+func (r CopyReport) SkippedPath(rel string) bool {
+	rel = filepath.ToSlash(filepath.Clean(rel))
+	for _, p := range r.SkippedPaths {
+		if p == rel || (len(rel) > len(p) && rel[:len(p)] == p && rel[len(p)] == '/') {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *CopyReport) skip(rel string, reason error) {
 	r.Skipped++
+	r.SkippedPaths = append(r.SkippedPaths, filepath.ToSlash(rel))
 	if len(r.SkippedExamples) < maxSkippedExamples {
 		r.SkippedExamples = append(r.SkippedExamples, filepath.ToSlash(rel)+": "+reason.Error())
 	}
 }
+
+// ErrStateNotCopied — копировщик пропустил wizard_states/state.json: копия
+// без него — пустая раскладка, а слияние затёрло бы wizard_states в dst.
+// Продвижения нет, dst нетронут.
+var ErrStateNotCopied = errors.New("wizard_states/state.json could not be copied")
 
 // dstError — сбой на стороне назначения: копия не может быть полной,
 // продвигать её нельзя.
@@ -44,7 +69,10 @@ func (e dstError) Unwrap() error { return e.err }
 //     пропускаются со счётом в Skipped — копирование не прерывается;
 //  3. продвигает результат: dst нет — rename tmp → dst; dst есть — каждый
 //     элемент верхнего уровня tmp заменяет одноимённый в dst (источник
-//     побеждает: это данные пользователя), затем tmp удаляется.
+//     побеждает: это данные пользователя; wizard_states — последним), затем
+//     tmp удаляется.
+//
+// Корень src, если это символьная ссылка, разворачивается.
 //
 // Права переносятся с исходных с одной поправкой: владелец всегда получает
 // rwx на каталоги и rw на файлы, иначе копию нельзя было бы ни дописывать,
@@ -53,11 +81,17 @@ func (e dstError) Unwrap() error { return e.err }
 //
 // Ошибка возвращается, только когда копирование невозможно как таковое:
 // src не каталог или не читается, не создаётся tmp, сбой записи в tmp,
-// не удалось продвижение. Кроме сбоя посреди слияния шага 3, tmp при
+// пропущен wizard_states/state.json (ErrStateNotCopied), не удалось
+// продвижение. Кроме сбоя посреди слияния шага 3, tmp при
 // ошибке стирается, а dst остаётся нетронутым.
 func CopyTree(src, dst string) (CopyReport, error) {
 	var rep CopyReport
 
+	// Корень-симлинк разворачивается: Walk делает Lstat корня и принял бы
+	// его за ссылку, не спустившись внутрь.
+	if resolved, err := filepath.EvalSymlinks(src); err == nil {
+		src = resolved
+	}
 	srcInfo, err := os.Stat(src)
 	if err != nil {
 		return rep, fmt.Errorf("copy %s: %w", src, err)
@@ -148,6 +182,13 @@ func CopyTree(src, dst string) (CopyReport, error) {
 		return rep, fmt.Errorf("copy %s -> %s: %w", src, tmp, walkErr)
 	}
 
+	// Без state.json продвигать нельзя: при слиянии пустой wizard_states из
+	// tmp заменил бы настоящий в dst.
+	if rep.SkippedPath(filepath.Join(constants.WizardStatesDirName, constants.WizardStateFileName)) {
+		_ = os.RemoveAll(tmp)
+		return rep, fmt.Errorf("copy %s: %w", src, ErrStateNotCopied)
+	}
+
 	// Права каталогов — после наполнения, глубокие первыми (Walk идёт
 	// в прямом порядке, значит обратный обход ставит детей раньше родителей).
 	for i := len(dirs) - 1; i >= 0; i-- {
@@ -157,7 +198,11 @@ func CopyTree(src, dst string) (CopyReport, error) {
 		}
 	}
 
-	if err := promote(tmp, dst, dirs[0].perm); err != nil {
+	rootPerm := os.FileMode(0o755)
+	if len(dirs) > 0 {
+		rootPerm = dirs[0].perm
+	}
+	if err := promote(tmp, dst, rootPerm); err != nil {
 		return rep, err
 	}
 	return rep, nil
@@ -245,6 +290,11 @@ func promote(tmp, dst string, rootPerm os.FileMode) error {
 	if err != nil {
 		return fmt.Errorf("read %s: %w", tmp, err)
 	}
+	// wizard_states — последним: обрыв посреди слияния не должен оставить
+	// новый state.json рядом со старыми подписками и кэшами.
+	sort.SliceStable(names, func(i, j int) bool {
+		return names[i] != constants.WizardStatesDirName && names[j] == constants.WizardStatesDirName
+	})
 	for _, name := range names {
 		from := filepath.Join(tmp, name)
 		to := filepath.Join(dst, name)

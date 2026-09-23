@@ -1,6 +1,7 @@
 package paths
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -190,6 +191,131 @@ func TestSwitchPortable(t *testing.T) {
 		}
 		if m := resolveMode(t); m != ModeSystem {
 			t.Fatalf("mode %s, want system", m)
+		}
+	})
+
+	// Копировщик пропустил файл: источник не стирается, а переименовывается
+	// в bin.moved-* (пропущенное живёт только там); правило 3 погашено.
+	t.Run("to system with skipped file", func(t *testing.T) {
+		if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+			t.Skip("chmod 000 does not deny read here")
+		}
+		write(filepath.Join(appBin, statePath), "state3", 0o644)
+		secret := filepath.Join(appBin, "secret")
+		write(secret, "s", 0o644)
+		if err := os.Chmod(secret, 0); err != nil {
+			t.Fatal(err)
+		}
+		marker := filepath.Join(app, constants.PortableMarkerFileName)
+		write(marker, "portable\n", 0o644)
+
+		l, err := Resolve(exe, env, "linux", always)
+		if err != nil || l.Mode != ModePortable {
+			t.Fatalf("resolve %+v %v", l, err)
+		}
+		rep, err := SwitchToSystem(l, target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rep.Copy.Skipped != 1 || !rep.Copy.SkippedPath("secret") {
+			t.Fatalf("copy report %+v", rep.Copy)
+		}
+		if !strings.HasPrefix(filepath.Base(rep.Leftover), MovedBinPrefix) || filepath.Dir(rep.Leftover) != app {
+			t.Fatalf("leftover %q, want %s/%s*", rep.Leftover, app, MovedBinPrefix)
+		}
+		t.Cleanup(func() { _ = os.Chmod(filepath.Join(rep.Leftover, "secret"), 0o644) })
+		if _, err := os.Lstat(filepath.Join(rep.Leftover, "secret")); err != nil {
+			t.Fatalf("skipped file must stay in the leftover: %v", err)
+		}
+		if got := read(filepath.Join(rep.Leftover, statePath)); got != "state3" {
+			t.Fatalf("leftover state = %q", got)
+		}
+		if got := read(filepath.Join(target.Data.Bin(), statePath)); got != "state3" {
+			t.Fatalf("state = %q", got)
+		}
+		mustAbsent(appBin)
+		mustAbsent(marker)
+		if m := resolveMode(t); m != ModeSystem {
+			t.Fatalf("mode %s, want system", m)
+		}
+	})
+
+	// Копировщик пропустил state.json: ошибка до удаления маркера, обе
+	// раскладки как были.
+	t.Run("to system with skipped state", func(t *testing.T) {
+		if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+			t.Skip("chmod 000 does not deny read here")
+		}
+		st := filepath.Join(appBin, statePath)
+		write(st, "state4", 0o644)
+		if err := os.Chmod(st, 0); err != nil {
+			t.Fatal(err)
+		}
+		marker := filepath.Join(app, constants.PortableMarkerFileName)
+		write(marker, "portable\n", 0o644)
+		t.Cleanup(func() {
+			_ = os.Chmod(st, 0o644)
+			_ = os.RemoveAll(appBin)
+			_ = os.Remove(marker)
+		})
+
+		l, err := Resolve(exe, env, "linux", always)
+		if err != nil || l.Mode != ModePortable {
+			t.Fatalf("resolve %+v %v", l, err)
+		}
+		if _, err := SwitchToSystem(l, target); !errors.Is(err, ErrStateNotCopied) {
+			t.Fatalf("want copy error for skipped state.json, got %v", err)
+		}
+		if _, err := os.Stat(marker); err != nil {
+			t.Fatalf("marker must stay: %v", err)
+		}
+		if _, err := os.Lstat(st); err != nil {
+			t.Fatalf("source state must stay: %v", err)
+		}
+		if got := read(filepath.Join(target.Data.Bin(), statePath)); got != "state3" {
+			t.Fatalf("target state = %q", got)
+		}
+	})
+
+	// Новый zip с portable.txt распакован поверх папки, а данные уже в
+	// системном каталоге: они найдены, переезд отказывает без изменений,
+	// выход — удалить маркер.
+	t.Run("hidden system data", func(t *testing.T) {
+		_ = os.RemoveAll(appBin)
+		write(filepath.Join(appBin, "wizard_template.json"), "shipped2", 0o644)
+		marker := filepath.Join(app, constants.PortableMarkerFileName)
+		write(marker, "portable\n", 0o644)
+
+		l, err := Resolve(exe, env, "linux", always)
+		if err != nil || l.Mode != ModePortable {
+			t.Fatalf("resolve %+v %v", l, err)
+		}
+		dir, found := HiddenSystemData(l, exe, env, "linux", always)
+		if !found || !sameDir(dir, string(target.Data)) {
+			t.Fatalf("hidden data = %q %v, want %s", dir, found, target.Data)
+		}
+		if _, err := SwitchToSystem(l, target); err != ErrTargetHasData {
+			t.Fatalf("want ErrTargetHasData, got %v", err)
+		}
+		if _, err := os.Stat(marker); err != nil {
+			t.Fatalf("marker must stay: %v", err)
+		}
+		if got := read(filepath.Join(appBin, "wizard_template.json")); got != "shipped2" {
+			t.Fatalf("app bin touched: %q", got)
+		}
+		if got := read(filepath.Join(target.Data.Bin(), "wizard_template.json")); got == "shipped2" {
+			t.Fatalf("target overwritten")
+		}
+		if err := RemovePortableMarker(l.App); err != nil {
+			t.Fatal(err)
+		}
+		mustAbsent(marker)
+		sysL, err := Resolve(exe, env, "linux", always)
+		if err != nil || sysL.Mode != ModeSystem {
+			t.Fatalf("after marker removal: %+v %v", sysL, err)
+		}
+		if _, found := HiddenSystemData(sysL, exe, env, "linux", always); found {
+			t.Fatal("system layout must not report hidden data")
 		}
 	})
 
