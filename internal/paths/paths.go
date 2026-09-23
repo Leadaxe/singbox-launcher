@@ -251,3 +251,65 @@ func xdgDir(env func(string) string, name string) string {
 func portable(app AppDir, mode Mode) Layout {
 	return Layout{App: app, Data: DataDir(app), Logs: LogDir(filepath.Join(string(app), constants.LogsDirName)), Mode: mode}
 }
+
+// PathsInfo — всё, что показывают пользователю о раскладке (SPEC 135 §4.1):
+// один блок для раздела Storage, кнопки Copy paths, флага -paths и
+// GET /debug/paths. Заполняет core (AppController.PathsInfo, PathsInfoFor):
+// пакет-лист не знает ни про ядро, ни про шаблон.
+type PathsInfo struct {
+	Layout         Layout
+	CorePath       string // FileService.SingboxPath
+	CoreSource     string // env|data|app|path|"" (не найдено)
+	CoreVersion    string // "" — ещё не известна
+	ShadowedCore   string // второе найденное ядро, затенённое выбранным
+	TemplatePath   string
+	TemplateSource string // data|app|"" (шаблона нет)
+	WintunPath     string // только Windows, иначе ""
+	WintunFound    bool
+}
+
+// pathsInfoNone — подстановка пустого значения в Lines.
+const pathsInfoNone = "(none)"
+
+func orNone(s string) string {
+	if s == "" {
+		return pathsInfoNone
+	}
+	return s
+}
+
+// Lines — строки "Key: value" в фиксированном порядке: Mode (с
+// переменными окружения), Program, Data, Logs, Core (путь, версия,
+// источник), Shadowed core (только если есть), Template (путь, источник),
+// wintun (только когда путь известен, то есть на Windows). Пустые значения —
+// "(none)". Текст не локализуется: его прикладывают к issue.
+func (p PathsInfo) Lines() []string {
+	mode := orNone(string(p.Layout.Mode))
+	if len(p.Layout.EnvSource) > 0 {
+		mode += " (" + strings.Join(p.Layout.EnvSource, ", ") + ")"
+	}
+	lines := []string{
+		"Mode: " + mode,
+		"Program: " + orNone(string(p.Layout.App)),
+		"Data: " + orNone(string(p.Layout.Data)),
+		"Logs: " + orNone(string(p.Layout.Logs)),
+		fmt.Sprintf("Core: %s (version: %s, source: %s)", orNone(p.CorePath), orNone(p.CoreVersion), orNone(p.CoreSource)),
+	}
+	if p.ShadowedCore != "" {
+		lines = append(lines, "Shadowed core: "+p.ShadowedCore)
+	}
+	lines = append(lines, fmt.Sprintf("Template: %s (source: %s)", orNone(p.TemplatePath), orNone(p.TemplateSource)))
+	if p.WintunPath != "" {
+		found := "not found"
+		if p.WintunFound {
+			found = "found"
+		}
+		lines = append(lines, fmt.Sprintf("wintun: %s (%s)", p.WintunPath, found))
+	}
+	return lines
+}
+
+// Text — Lines через "\n": для Copy paths и -paths.
+func (p PathsInfo) Text() string {
+	return strings.Join(p.Lines(), "\n")
+}

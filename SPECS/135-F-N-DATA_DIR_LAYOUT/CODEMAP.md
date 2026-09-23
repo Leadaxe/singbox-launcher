@@ -491,3 +491,19 @@ platform/restart_windows.go:33, glprobe_windows.go:189, :742.
 - **Закрытие логов для очистки**: `FileService.CloseLogFiles` file_service.go:161;
   `debuglog` crash/native stderr открыты main.go:81/:90 до контроллера — их
   тоже закрывать перед удалением LogDir (Windows держит дескрипторы).
+
+### Этап 7 — сделано
+
+- **Блок путей**: `paths.PathsInfo` + `Lines()`/`Text()` — internal/paths/paths.go
+  (конец файла); заполняют `(*AppController).PathsInfo()` (из FileService,
+  версия ядра только из кэша) и `core.PathsInfoFor(layout)` (лёгкий, для
+  `-paths`) — core/paths_info.go.
+- **Storage**: `buildStorageSection(ac) (obj, refresh)` — ui/settings_storage.go;
+  встаёт последним разделом в `BuildSettingsContent` (теперь возвращает ещё
+  `refresh`), refresh зовётся в `app.tabs.OnSelected` на вкладке Settings
+  (ui/app.go). Место под этапы 8–9 — пустой `extra` VBox под Copy paths.
+- **`-paths`**: main.go сразу после `flag.Parse()`, до crash-лога и GL-пробы.
+- **`GET /debug/paths`**: реестр server.go (рядом с `/debug/snapshot`),
+  `handlePaths` + `pathsView` — core/debugapi/snapshot.go; фасад
+  `GetPathsInfo()` — server.go, core/debugapi_wiring.go, fakeFacade в
+  server_test.go. Документация — docs/API.md, docs/API.ru.md.

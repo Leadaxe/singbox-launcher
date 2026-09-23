@@ -55,6 +55,9 @@ func (f *fakeFacade) GetConfigPath() string           { return "/tmp/config.json
 func (f *fakeFacade) GetLayout() paths.Layout {
 	return paths.Layout{App: paths.AppDir(f.dataDir), Data: paths.DataDir(f.dataDir)}
 }
+func (f *fakeFacade) GetPathsInfo() paths.PathsInfo {
+	return paths.PathsInfo{Layout: f.GetLayout()}
+}
 func (f *fakeFacade) GetLauncherVersion() string          { return "v-test" }
 func (f *fakeFacade) GetLastUpdateSucceededAt() time.Time { return f.lastSuccess }
 func (f *fakeFacade) StartSingBox() error                 { return nil }

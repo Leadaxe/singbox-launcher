@@ -48,11 +48,11 @@
 - [x] Интеграционный тест миграции (§8).
 
 ## Этап 7 · Storage и пути
-- [ ] `ui/settings_storage.go`: раздел Storage, строки Mode/Program/Data/Logs/Core/Template/wintun, кнопки Open, Copy paths.
-- [ ] `paths.Describe`-подобный блок общий для лога, UI, `-paths`, `/debug/paths`.
-- [ ] Флаг `-paths` в `main.go`.
-- [ ] `GET /debug/paths` + манифест.
-- [ ] Diagnostics «Logs folder»/«Config folder» → `Logs`/`Data`.
+- [x] `ui/settings_storage.go`: раздел Storage, строки Mode/Program/Data/Logs/Core/Template/wintun, кнопки Open, Copy paths.
+- [x] `paths.Describe`-подобный блок общий для лога, UI, `-paths`, `/debug/paths`.
+- [x] Флаг `-paths` в `main.go`.
+- [x] `GET /debug/paths` + манифест.
+- [x] Diagnostics «Logs folder»/«Config folder» → `Logs`/`Data`.
 - [ ] Показать владельцу.
 
 ## Этап 8 · Переключатель Portable

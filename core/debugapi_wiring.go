@@ -62,6 +62,10 @@ func (f *debugAPIFacade) GetLayout() paths.Layout {
 	return f.ac.FileService.Layout
 }
 
+func (f *debugAPIFacade) GetPathsInfo() paths.PathsInfo {
+	return f.ac.PathsInfo()
+}
+
 func (f *debugAPIFacade) GetLauncherVersion() string {
 	return constants.AppVersion
 }

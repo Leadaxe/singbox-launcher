@@ -49,7 +49,10 @@ const (
 // locale.SaveSettings with load-mutate-save — we explicitly avoid the
 // `Settings{Lang: code}` "fresh struct" anti-pattern which silently wiped
 // every other field.
-func BuildSettingsContent(ac *core.AppController) fyne.CanvasObject {
+//
+// Второе значение — refresh для вкладки: перечитывает то, что меняется без
+// участия Settings (пути раздела Storage). Зовётся при выборе вкладки.
+func BuildSettingsContent(ac *core.AppController) (fyne.CanvasObject, func()) {
 	binDir := ac.FileService.Layout.Data.Bin()
 
 	// ---- Subscriptions section ---------------------------------------------
@@ -240,6 +243,11 @@ func BuildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 	// языком и идентификацией подписки.
 	debugAPIBlock := buildDebugAPIRow(ac)
 
+	// ---- Storage (SPEC 135 §4.1) --------------------------------------------
+	// Внизу: справочный блок путей, под ним встанут переключатель Portable и
+	// «Remove all data…» — опасное действие в конце вкладки.
+	storageBlock, refreshStorage := buildStorageSection(ac)
+
 	// Language first so the two subscription sections (Subscriptions +
 	// Subscription identification) sit together instead of being split by the
 	// Language block.
@@ -260,8 +268,10 @@ func BuildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 		subIDBlock,
 		widget.NewSeparator(),
 		debugAPIBlock,
+		widget.NewSeparator(),
+		storageBlock,
 	)
-	return content
+	return content, refreshStorage
 }
 
 // buildSubscriptionDefaultsBlock — два умолчания подписок (SPEC 118 Т8):

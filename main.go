@@ -138,7 +138,17 @@ func main() {
 	startInTray := flag.Bool("tray", false, "Start minimized to system tray (hide window on launch)")
 	glProbe := flag.Bool("gl-probe", false, "Internal: probe desktop OpenGL and exit (used by the launcher itself)")
 	glProbeLocal := flag.Bool("gl-probe-local", false, "Internal: probe the opengl32.dll next to the exe (Mesa3D verification)")
+	pathsFlag := flag.Bool("paths", false, "Print resolved data/log/core paths and exit")
 	flag.Parse()
+
+	// SPEC 135 §4.1: единственный способ увидеть пути там, где окно не
+	// поднимается (NixOS без GL, headless CI). До crash-лога и GL-пробы:
+	// ничего не создаём на диске, окно не открываем. Версии ядра нет —
+	// бинарь ради неё не запускается.
+	if *pathsFlag {
+		fmt.Println(core.PathsInfoFor(layout).Text())
+		os.Exit(0)
+	}
 
 	// Windows-бинарь собран с -H windowsgui: stderr у процесса нет, и паника
 	// на старте выглядит как «окно мелькнуло и пропало» без единой строки в
