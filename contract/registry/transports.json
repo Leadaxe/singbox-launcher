@@ -38,17 +38,16 @@
           ],
           "desc_en": "WebSocket early data size, in bytes.",
           "desc_ru": "Размер early data WebSocket в байтах.",
-          "impl": "WebSocket Early Data → max_early_data. Две формы записи: (1) хвост пути path='/x?ed=2560' — оба проекта; (2) плоский query-параметр ed=N — только Dart (§320); Go плоскую форму не читает — новое расхождение вне §9 PLAN. Приоритет: хвост пути выше плоского. ed ≤ 0 / не число → значение отбрасывается (path всё равно чистится). D-008: ed без eh → эмитится max_early_data + early_data_header_name='Sec-WebSocket-Protocol' (конвенция v2ray/Xray; поведение Go — Dart добавляет дефолт, сейчас эмитит только max_early_data, §9.A2)."
+          "impl": "WebSocket Early Data → max_early_data. Две формы записи: (1) хвост пути path='/x?ed=2560' — оба проекта; (2) плоский query-параметр ed=N — читают обе стороны (запись ed блока uri/ws, §320; прежняя пометка «только Dart» устарела с переводом ссылки на движок, 1.1.36). Приоритет: хвост пути выше плоского. ed ≤ 0 / не число → значение отбрасывается (path всё равно чистится). D-008: ed без eh → эмитится max_early_data + early_data_header_name='Sec-WebSocket-Protocol' (конвенция v2ray/Xray; поведение Go — Dart добавляет дефолт, сейчас эмитит только max_early_data, §9.A2)."
         },
         "eh": {
           "type": "string",
           "default": "Sec-WebSocket-Protocol",
           "aliases": [],
-          "ext": "mobile",
           "maps_to": "transport.early_data_header_name",
           "desc_en": "Header name that carries the early data.",
           "desc_ru": "Имя заголовка, который несёт early data.",
-          "impl": "Имя заголовка early data → early_data_header_name. Читает только Dart (плоский параметр §320; в Xray-JSON — wsSettings.eh); eh без ed — ничто (режим включается по max_early_data > 0). Go имя заголовка не параметризует: всегда константа Sec-WebSocket-Protocol. Round-trip: Dart возвращает пару ed+eh в query, ed — хвостом пути."
+          "impl": "Имя заголовка early data → early_data_header_name. Читают ОБЕ стороны: запись eh блока uri/ws (плоский параметр §320; в Xray-JSON — wsSettings.eh); eh без ed — ничто (режим включается по max_early_data > 0). Пометка ext: mobile снята в 1.1.47 — она устарела с переводом ссылки на движок (1.1.36), и сгенерированная документация называла параметр «только LxBox». Обратный ход (норма, blocks.uri.ws.eh round_trip: false): в ссылку eh НЕ пишется, имя подставляется конвенцией на хвосте пути вместе с ed; ed тоже в query не пишется — его несёт хвост пути (compose у ws.path). Круг узла с нестандартным именем заголовка возвращает конвенциональное — объявленная потеря, а не дефект. Сторона, пишущая пару ed+eh в query, расходится с нормой написания ссылки (TASKS_LXBOX §43.3)."
         }
       },
       "impl": "Emit в sing-box: {type:'ws', path, headers:{Host}, max_early_data?, early_data_header_name?}.",

@@ -25,7 +25,6 @@ These are repeated on the page of every scheme that carries a transport block, t
   - Type: int
   - Maps to: `transport.max_early_data`, `transport.early_data_header_name`
 - **`eh`** — Header name that carries the early data.
-  - Supported by LxBox only
   - Type: string · Default: `Sec-WebSocket-Protocol`
   - Maps to: `transport.early_data_header_name`
 

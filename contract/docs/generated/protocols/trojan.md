@@ -117,7 +117,6 @@ Read when the link says `type=ws`; the reference page is [`_transports.md`](_tra
   - Maps to: [`transport.ws.max_early_data`](#body-transport-ws-max-early-data), [`transport.ws.early_data_header_name`](#body-transport-ws-early-data-header-name)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 - <a id="link-tr-ws-eh"></a>**`eh`** — Header name that carries the early data.
-  - Supported by LxBox only
   - Type: string · Default: `Sec-WebSocket-Protocol`
   - Maps to: [`transport.ws.early_data_header_name`](#body-transport-ws-early-data-header-name)
 

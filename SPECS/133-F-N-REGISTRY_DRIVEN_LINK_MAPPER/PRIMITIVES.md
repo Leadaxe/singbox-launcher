@@ -516,15 +516,17 @@ FROZEN с §0.1.
 | `round_trip: false` + `round_trip_why` | объявленный отказ от обратного хода с причиной прозой. Без объявления потеря на круге молчалива; объявленная видна линтеру и отчёту, а не телу узла |
 | `emit_as` | `join` \| `bool01` \| `json` \| `raw` — как сериализуется значение, когда тело хранит его не строкой. Угадывать по типу нельзя: булев, писанный `true`, и булев, писанный `1`, — разные ссылки живых панелей. У нас: `insecure` → `bool01`, `alpn` → `join` |
 | `compose` | **расширение значений, имя прежнее (§0.3):** строка (шаблон) ЛИБО объект `{template, from, omit_when_empty}` — обращение `extract`, один параметр из нескольких путей тела (`plugin;opts`, `extra-headers`) |
+| `round_trip_only` | **ДОБАВЛЕНИЕ (описано здесь с 1.1.47, в схеме — с 1.1.36):** `"emit"` \| `"parse"` — запись действует в ОДНУ сторону. Отличие от `round_trip: false`: там направление одно (чтение) и объявлен отказ от второго, здесь объявляется, какое именно единственное. Живой случай — `detour` (`dialer#uri`): поле `managed`, его ставит сборка конфига; ссылка из готового `config.json` его несёт, а чтение не заводится — чужой тег увёл бы узел в fail-closed |
 
 #### Внутри `emit` — **FROZEN**
 
 | Атрибут | Значение |
 |---|---|
 | `emit.omit_port` | порт, опускаемый на выходе. Обращать `defaults.server_port` напрямую нельзя: дефолт РАЗБОРА ≠ право опускать на выходе. У нас не выставлен нигде — `hostPort` пишет порт всегда; включение = дельта |
-| `emit.userinfo` | выходная форма userinfo: `"raw"` \| `"base64"` либо пара `{form, padding}`. `userinfo.decode` разбора — конвейер ПОПЫТОК (`base64?` = «может быть, а может и нет»), обратить его нечем. `padding` нужен потому, что Go пишет base64 с `=`, Dart срезает, и по правилу эмита ни одна сторона не меняет своё молча |
+| `emit.userinfo` | выходная форма userinfo: `"raw"` \| `"base64"` либо объект `{form, padding, empty_separator, keep_empty_tail}` (`empty_separator` — «@» у узла без userinfo, `hy2://@host`; `keep_empty_tail` — разделитель у пустого хвоста, `socks4://userid:@host`; оба — добавлением 1.1.36). `userinfo.decode` разбора — конвейер ПОПЫТОК (`base64?` = «может быть, а может и нет»), обратить его нечем. `padding` нужен потому, что Go пишет base64 с `=`, Dart срезает, и по правилу эмита ни одна сторона не меняет своё молча |
 | `emit.json_map` | карта «ключ JSON → путь тела» у формы, собирающей не query-ссылку, а base64(JSON) (vmess v2rayn) |
-| `emit.json_always` | ключи, которые клиенты ждут даже пустыми (у нас 11: `v,ps,add,port,id,aid,scy,net,type,host,path,tls`) |
+| `emit.json_always` | ключи, которые клиенты ждут даже пустыми. **Уточнено 1.1.47 (норма с 1.1.36, TASKS_LXBOX §33.2): КАРТА «ключ → заполнитель», а не список имён** — заполнитель у ключей разный (`v: "2"`, `aid: 0`, `net: "tcp"`, `host: ""`), и списком его не выразить |
+| `emit.refuse_when` | **ДОБАВЛЕНИЕ (описано здесь с 1.1.47, в схеме — с 1.1.36):** список `{path, len_gt, why}` — условия, при которых узел ссылкой НЕ выражается: массив по `path` длиннее `len_gt` → отказ с текстом `why`, а не ссылка по первому элементу. «Сколько сущностей влезает в ссылку» — свойство ФОРМАТА схемы; у wireguard `peers` > 1 |
 
 Префикс `emit_` внутри объекта `emit` не пишется: `emit.emit_omit_port`
 называет `emit` дважды. У записи префикс, наоборот, обязателен — он
@@ -542,6 +544,26 @@ FROZEN с §0.1.
 `aliases` решает сразу три вопроса (ключ выхода, приоритет чтения при двух
 написаниях в одной ссылке — §15.5, имя в `param_order`), и разводить их
 нельзя. У нас перестановок не требуется: `upmbps`/`downmbps` уже канон.
+
+### 0.12b. Сверка оверлеев эмита (контракт 1.1.47, TASKS_LXBOX §42/§43.3)
+
+Шесть правил обратного хода, пришедших оверлеями LxBox (§33), сверены «примитив
+↔ реестр ↔ исполнитель ↔ круг». Имён под них в коде нет: движок читает атрибут.
+
+| Оверлей | Примитив | Где в реестре | Кто исполняет (`linkmap/emit.go`) | Круг |
+|---|---|---|---|---|
+| `ws.eh` | `round_trip: false` у записи | `transports.json` `blocks.uri.ws.eh` | `emitEntry` — запись молчит на выходе | `ws_eh_round_trip_false` |
+| ss padding | `emit.userinfo.padding` | `shadowsocks.json` `mappers.uri.emit.userinfo` | `encodeUserInfoWith` | `ss_userinfo_padding` |
+| vmess `json_map` | `emit.json_map` + `emit.json_always` | `vmess.json` `mappers.uri.emit` | `emitContainer` | `vmess_json_map` |
+| `omit_port` у naive | `emit.omit_port` | не выставлен нигде (§33.6) | `hostPort` | `naive_omit_port_declared_unset` (страж: появление атрибута без кейса — красное) |
+| `refuse_when` | `emit.refuse_when` | `wireguard.json` `mappers.uri.emit` | `checkRefuse` | `wireguard_refuse_when` (один пир — круг, два — отказ) |
+| `round_trip_only` | `round_trip_only: "emit"` у записи | `dialer.json` `blocks.uri.detour` | `emitEntry` (пишет), `applyEntry` в `exec.go` (не читает) | `detour_round_trip_only_emit` |
+
+Раннер — `core/config/linkmap/emit_overlays_test.go` (`TestEmitOverlays`).
+Расхождения, найденные сверкой: `refuse_when` и `round_trip_only` не были
+описаны в этом документе (только в схеме), `json_always` значился списком;
+у старой таблицы `transports.ws.params` висела пометка `eh` «только LxBox» и
+проза «Go `ed`/`eh` не читает» — обе устарели с переводом ссылки на движок.
 
 ### 0.13. Разбор: добавления волны W4 (19.09.2026, сведение №2)
 
