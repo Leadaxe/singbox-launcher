@@ -1,6 +1,6 @@
 # Закомментированная НАСТРОЙКА под [Peer] именем узла не становится:
 # «# Bouncing = 0» — отключённый ключ, а не название. Предикат — атрибут
-# метки label.comment.require_no "=" (PRIMITIVES §0.8, контракт 1.1.47),
+# метки label.comment.require_no "=" (PRIMITIVES §0.8, контракт 1.1.48),
 # а не правило движка; имя даёт следующий комментарий секции.
 [Interface]
 PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=
