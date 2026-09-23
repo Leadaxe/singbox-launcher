@@ -340,54 +340,6 @@ func cloneSource(src *wizardmodels.Source) wizardmodels.Source {
 	return c
 }
 
-// cloneDirection — копия Направления с собственными ссылочными полями
-// верхнего уровня (для cloneSource; форма Направления целиком не правит,
-// но общий backing-слайс с моделью недопустим — риск Р4).
-func cloneDirection(d *configtypes.Direction) configtypes.Direction {
-	if d == nil {
-		return configtypes.Direction{}
-	}
-	c := *d
-	c.AddOutbounds = append([]string(nil), d.AddOutbounds...)
-	if d.Options != nil {
-		c.Options = make(map[string]interface{}, len(d.Options))
-		for k, v := range d.Options {
-			c.Options[k] = v
-		}
-	}
-	if d.Filters != nil {
-		c.Filters = make(map[string]interface{}, len(d.Filters))
-		for k, v := range d.Filters {
-			c.Filters[k] = v
-		}
-	}
-	if d.PreferredDefault != nil {
-		c.PreferredDefault = make(map[string]interface{}, len(d.PreferredDefault))
-		for k, v := range d.PreferredDefault {
-			c.PreferredDefault[k] = v
-		}
-	}
-	if d.Auto != nil {
-		a := *d.Auto
-		c.Auto = &a
-	}
-	if d.Updates != nil {
-		c.Updates = make([]configtypes.OutboundUpdate, len(d.Updates))
-		for i := range d.Updates {
-			u := d.Updates[i]
-			if u.Patch != nil {
-				p := make(map[string]interface{}, len(u.Patch))
-				for k, v := range u.Patch {
-					p[k] = v
-				}
-				u.Patch = p
-			}
-			c.Updates[i] = u
-		}
-	}
-	return c
-}
-
 // mergeEditedSourceIntoModel — data-часть Save окна источника: рабочая
 // deep-copy записывается в canonical `m.Sources[sourceIndex]` ЦЕЛИКОМ,
 // полевого маппинга (бывший applyProxyEditToSource) больше нет.

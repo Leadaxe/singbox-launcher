@@ -2,6 +2,7 @@
   "dropped": [
     {
       "code": "type_invalid",
+      "index": 0,
       "reason": "emit_error",
       "ref": "wireguard://QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=@192.0.2.71:51820?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU%3D&address=1.2.3.4%2F64&allowedips=0.0.0.0%2F0#bad-cidr"
     }

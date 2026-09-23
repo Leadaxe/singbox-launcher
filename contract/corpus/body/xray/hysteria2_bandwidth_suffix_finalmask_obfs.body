@@ -1,0 +1,13 @@
+# Форк Xray («finalmask»): `protocol: "hysteria"` с `version: 2` — то есть
+# hysteria2 — и ДВЕ потери, которые обе стороны несли молча (контракт 1.1.48):
+#  1. полоса написана СТРОКОЙ С СУФФИКСОМ (`"100mbps"`, `"300 Mbps"`), а поле
+#     ядра целое в мегабитах: `type: int` на такой строке давал отсутствие
+#     значения (normalize bandwidth_mbps у up_mbps/down_mbps);
+#  2. обфускация лежит не строкой в `hysteriaSettings.obfs`, а ОБЪЕКТОМ в
+#     `finalmask.udp[]`: тип в `type`, секрет вложенно в `settings.password`
+#     (записи obfs_type_finalmask / obfs_password_finalmask). Весь блок
+#     finalmask был объявлен чтением-без-записи, и salamander вместе с паролём
+#     терялся целиком — узел приезжал без обфускации и не поднимался.
+# Ожидание: up_mbps=100, down_mbps=300, obfs{type:salamander,password}.
+# Снят с живого входа (адреса, секреты и пароль — корпусные).
+[{"remarks": "hy2-finalmask", "outbounds": [{"tag": "example-node", "protocol": "hysteria", "settings": {"version": 2, "address": "example-1.com", "port": 443}, "streamSettings": {"network": "hysteria", "security": "tls", "tlsSettings": {"serverName": "example-1.com", "fingerprint": "firefox", "alpn": ["h3"]}, "hysteriaSettings": {"version": 2, "auth": "testpass123", "up": "100mbps", "down": "300 Mbps", "udpIdleTimeout": 120}, "finalmask": {"udp": [{"type": "salamander", "settings": {"password": "testobfs456"}}]}}}]}]

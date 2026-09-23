@@ -93,6 +93,35 @@ const (
 	// непригодна: узел-владелец отбраковывается ЦЕЛИКОМ. Кода на узле не
 	// бывает (узла не будет) — он едет в отбраковке, поэтому severity=error.
 	WarnDialerProxyUnusable = "dialer_proxy_unusable"
+	// WarnProtocolUnsupported — тип/протокол записи ядру неизвестен: запись
+	// отбракована целиком (dropped[].code, контракт 1.1.49).
+	WarnProtocolUnsupported = "protocol_unsupported"
+	// WarnURITooLong — ссылка длиннее предела (limits.json): не разбиралась.
+	WarnURITooLong = "uri_too_long"
+	// WarnServiceRecordIgnored — строка состава со СЛУЖЕБНОЙ схемой
+	// (`incy://routing/…`, `happ://routing/…`): команда маршрутизации
+	// соседнему клиенту, а не сервер. Узла не будет, поэтому код едет в
+	// отбраковке; severity=info — терять тут нечего, но выпадение обязано
+	// быть названным, иначе оно неотличимо от потерянного узла
+	// (source_kinds.json, uri_lines.service_schemes).
+	WarnServiceRecordIgnored = "service_record_ignored"
+	// WarnProviderBannerLink — запись-БАННЕР, притворившаяся ссылкой: цель
+	// из списка «заведомо не сервер» (source_kinds.json,
+	// uri_lines.banner_targets). Прежде признаком баннера было отсутствие
+	// `://`, а Remnawave и 3x-ui пишут баннер СИНТАКСИЧЕСКИ ВАЛИДНОЙ
+	// ссылкой (`vless://…@0.0.0.0:1`, `socks://127.0.0.1:1080`) — и он
+	// становился полноценным узлом-пустышкой. severity=info: узла тут не
+	// было никогда, но выпадение обязано быть названным.
+	WarnProviderBannerLink = "provider_banner_link"
+	// WarnSchemeUnsupported — схему строки не ведёт ни одна секция реестра.
+	// Отбраковка, а не пометка (узла не будет), поэтому severity=error:
+	// прежде причина ехала только текстом Go, и сверить её по коду вторая
+	// сторона не могла (D-088).
+	WarnSchemeUnsupported = "scheme_unsupported"
+	// WarnBodyDialectUnrecognized — тело опознано целым конфигом, но диалект
+	// (Xray против sing-box) спрошен не был, и записи читал чужой разбор.
+	// Код ступени КЛАССИФИКАЦИИ и уровня ПОДПИСКИ, а не узла; severity=error.
+	WarnBodyDialectUnrecognized = "body_dialect_unrecognized"
 )
 
 // Предикаты «значение будет испорчено» (realityShortIDWouldDegrade,

@@ -1,7 +1,9 @@
 {
   "dropped": [
     {
-      "reason": "unsupported protocol \"wireguard\"",
+      "code": "protocol_unsupported",
+      "index": 1,
+      "reason": "unsupported protocol \"trojan-go\"",
       "ref": "x"
     }
   ],

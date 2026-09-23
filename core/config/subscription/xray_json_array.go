@@ -24,6 +24,18 @@ func IsXrayJSONArrayBody(s string) bool {
 	return json.Unmarshal([]byte(s), &raw) == nil
 }
 
+// XrayConfigToArray оборачивает ОДИНОЧНЫЙ конфиг Xray в массив из одного
+// элемента — форму, которую читает разбор массива.
+//
+// Отдельной ветки разбора одиночному конфигу не нужно: элементом массива
+// служит как раз целый конфиг (`[].outbounds[]` у реестра), и «один» — это
+// частный случай «многих». Обёртка текстовая, а не через re-marshal: тело
+// обязано уехать в разбор ДОСЛОВНО (rawSource — истина, §454), а повторная
+// сериализация переставила бы ключи и переписала числа.
+func XrayConfigToArray(body string) string {
+	return "[" + strings.TrimSpace(body) + "]"
+}
+
 // ParseNodesFromXrayJSONArray parses a JSON array of Xray-style full configs into ParsedNode list.
 // Non-Xray elements (e.g. sing-box-only outbounds) are skipped with a debug log.
 // skip uses the same rules as URI subscriptions (shouldSkipNode).
@@ -621,7 +633,7 @@ func parseXrayJSONArrayElementNodes(
 				// поддержан» намеренно отсутствует — он не объясняет
 				// «почему источник пуст» и уводил бы от протухшей подписки.
 				unsupported[protocol] = struct{}{}
-				records.add(len(out), err.Error(), marshalRawJSONElement(ob))
+				records.addCoded(len(out), err.Error(), WarnProtocolUnsupported, marshalRawJSONElement(ob))
 				debuglog.DebugLog("Parser: Xray element %d outbound %d: %v", elemIndex, idx, err)
 				continue
 			}
@@ -633,7 +645,7 @@ func parseXrayJSONArrayElementNodes(
 			}
 			reason := fmt.Sprintf("%s outbound rejected: %v", protocol, err)
 			rejected.Add(reason)
-			records.add(len(out), reason, marshalRawJSONElement(ob))
+			records.addCoded(len(out), reason, rejectCodeOf(err), marshalRawJSONElement(ob))
 			debuglog.WarnLog("Parser: Xray element %d: %s", elemIndex, reason)
 			continue
 		}

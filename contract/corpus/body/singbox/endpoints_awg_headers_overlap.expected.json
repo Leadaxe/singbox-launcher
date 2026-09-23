@@ -2,6 +2,7 @@
   "dropped": [
     {
       "code": "awg_headers_overlap",
+      "index": 0,
       "reason": "emit_error",
       "ref": "awg-overlap"
     }

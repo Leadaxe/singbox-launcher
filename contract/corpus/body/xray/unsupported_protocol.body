@@ -1,4 +1,12 @@
 # Вход Xray из набора LxBox (app/test/fixtures/xray/pipeline_identity_before.json,
 # кейс unsupported_protocol). Снят ДО перевода xray-входа на движок: сверка по бедным входам
 # зелёная и при потере полей — у LxBox так ушло ~25 полей XHTTP.
-[{"remarks": "unsup", "outbounds": [{"tag": "proxy", "protocol": "vless", "settings": {"vnext": [{"address": "a.example", "port": 443, "users": [{"id": "11111111-2222-3333-4444-555555555555"}]}]}, "streamSettings": {"network": "tcp", "security": "none"}}, {"tag": "x", "protocol": "wireguard", "settings": {}}]}]
+# Протокол второго элемента — trojan-go: ни одна секция его не ведёт и ведать
+# не будет, а в набор СЛУЖЕБНЫХ (freedom/blackhole/dns — законная часть
+# конфига, узлом не становятся молча) он не входит. Прежде здесь стоял
+# wireguard — с контракта 1.1.50 у него есть mappers.xray, и элемент перестал
+# быть «неподдержанным»: он стал разбираемым и при пустых settings законно
+# отбраковывается за незаполненный endpoint. Кейс проверяет ИМЕННО класс
+# «протокол нам неизвестен», и держать в нём схему, которую мы только что
+# научились читать, значило бы проверять обратное заявленному.
+[{"remarks": "unsup", "outbounds": [{"tag": "proxy", "protocol": "vless", "settings": {"vnext": [{"address": "a.example", "port": 443, "users": [{"id": "11111111-2222-3333-4444-555555555555"}]}]}, "streamSettings": {"network": "tcp", "security": "none"}}, {"tag": "x", "protocol": "trojan-go", "settings": {}}]}]

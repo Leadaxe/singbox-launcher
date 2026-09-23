@@ -1,6 +1,8 @@
 {
   "dropped": [
     {
+      "code": "form_unrecognized",
+      "index": 0,
       "reason": "vless outbound rejected: linkmap: форма не распознана",
       "ref": "proxy"
     }

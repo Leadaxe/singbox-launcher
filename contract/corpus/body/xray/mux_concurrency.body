@@ -1,0 +1,7 @@
+# Xray-элемент с блоком mux: multiplex.json несла только body, источников не
+# было ни одного — сервер с обязательным mux одиночные соединения не принимает.
+# СЕМАНТИКА concurrency сверена с Xray: это максимум подпотоков в ОДНОМ
+# соединении, то есть max_streams ядра, а не max_connections.
+# xudpConcurrency и xudpProxyUDP443 — объявленное чтение без записи: у ядра
+# отдельного предела для XUDP нет, а reject/allow/skip выражается не полем mux.
+[{"remarks":"mux","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"a.example","port":443,"users":[{"id":"11111111-2222-3333-4444-555555555555","encryption":"none"}]}]},"streamSettings":{"network":"tcp","security":"none"},"mux":{"enabled":true,"concurrency":8,"xudpConcurrency":16,"xudpProxyUDP443":"reject"}}]}]

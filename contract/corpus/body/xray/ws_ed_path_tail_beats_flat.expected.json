@@ -21,7 +21,17 @@
       },
       "kind": "outbound",
       "label": "ed both places",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "json_field_unknown",
+          "path": "streamSettings.wsSettings.ed"
+        },
+        {
+          "code": "json_field_unknown",
+          "path": "streamSettings.wsSettings.eh"
+        }
+      ]
     }
   ],
   "v": 1

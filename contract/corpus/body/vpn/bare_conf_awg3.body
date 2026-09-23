@@ -1,0 +1,9 @@
+# Голый `.conf` wg-quick/AmneziaWG под оболочкой `vpn://` — форма `bare_conf`
+# ветки `amnezia_link` (contract/registry/source_kinds.json): панели кладут под
+# `vpn://` сам конфиг, без пакета-профиля Amnezia. Прежде такой payload уходил в
+# ветку qCompress, где первые четыре байта INI читались как объявленная длина, и
+# подписка давала НОЛЬ узлов с диагнозом про zlib (контракт 1.1.48).
+# Завершающий `=` паддинга срезан НАМЕРЕННО — панель его теряет, и терпимость к
+# этому проверяется кейсом, а не обещается прозой.
+# Снят с живого входа пользователя (ключи и адрес заменены корпусными).
+vpn://W0ludGVyZmFjZV0KUHJpdmF0ZUtleSA9IGVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZUU9CkFkZHJlc3MgPSAxMC44LjEuMi8zMgpETlMgPSA4LjguOC44LCAxLjEuMS4xCk1UVSA9IDEzODAKSmMgPSA0CkptaW4gPSA0OApKbWF4ID0gMTI4ClMxID0gMjAKUzIgPSAxMTkKUzMgPSA1NQpTNCA9IDE3CkgxID0gMQpIMiA9IDIKSDMgPSAzCkg0ID0gNApIZWFkZXJQcm90ZWN0aW9uS2V5ID0gZ0FNVnBna3pUTkpKYXZta28wZXRzYXBncGJjZ1JCY2Y1YzY3NVFMOEFibz0KQ29udGVudFBhZGRpbmdBZGRpdGlvbiA9IDE3LTI5ClJla2V5QWZ0ZXJUaW1lID0gMTIwLTE1NQpSZWtleVRpbWVvdXQgPSAzLTYKUmVqZWN0QWZ0ZXJUaW1lID0gMTk4LTIzNwpLZWVwYWxpdmVUaW1lb3V0ID0gMTItMTUKTWF4SGFuZHNoYWtlQXR0ZW1wdHMgPSAxOC0zMwpSYW5kb21UcmFpbGVycyA9IG9uCkRpc2FibGVDb29raWVzID0gb24KCiMgQW1uZXppYVdHIGVudHJ5LWV4YW1wbGUKW1BlZXJdClB1YmxpY0tleSA9IGZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZkU9CkFsbG93ZWRJUHMgPSAwLjAuMC4wLzAsIDo6LzAKRW5kcG9pbnQgPSAxOTIuMC4yLjY1OjU2MTAwClBlcnNpc3RlbnRLZWVwYWxpdmUgPSAyCg

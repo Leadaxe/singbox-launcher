@@ -1,0 +1,2 @@
+# #131 приоритет в Xray-JSON: канон sing-box в `extra` побеждает proto-алиас Xray рядом с ним.
+[{"remarks":"xhttp sessionid canon","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"example-1.com","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","encryption":"none"}]}]},"streamSettings":{"network":"xhttp","security":"none","xhttpSettings":{"path":"/p","mode":"packet-up","extra":{"sessionPlacement":"header","sessionIDPlacement":"cookie","sessionKey":"X-Session","sessionIDKey":"stream_auth"}}}}]}]

@@ -39,7 +39,7 @@ func jsonKeys(t reflect.Type) map[string]bool {
 	out := map[string]bool{}
 	var walk func(reflect.Type)
 	walk = func(rt reflect.Type) {
-		for rt.Kind() == reflect.Ptr {
+		for rt.Kind() == reflect.Pointer {
 			rt = rt.Elem()
 		}
 		if rt.Kind() != reflect.Struct {

@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "a.example",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "a.example"
+        },
+        "transport": {
+          "mode": "auto",
+          "path": "/x",
+          "session_key": "sid",
+          "session_placement": "query",
+          "type": "xhttp"
+        },
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "xhttp-flat-sessionid",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

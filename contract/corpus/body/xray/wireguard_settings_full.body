@@ -1,0 +1,8 @@
+# Xray-элемент protocol: "wireguard" — секции mappers.xray у wireguard не было
+# вовсе до контракта 1.1.50, и такой узел ТЕРЯЛСЯ ЦЕЛИКОМ («ни одна секция не
+# опознала элемент» → класс «протокол не поддержан»), хотя все целевые поля у
+# ядра есть. Род узла — endpoint, как у формы .conf.
+# Здесь же проверяются: массив address (список едет как есть, без склейки в
+# строку), endpoint пира одним «host:port» → два поля тела, reserved списком
+# трёх чисел, keepAlive → persistent_keepalive_interval.
+[{"remarks":"wg-xray","outbounds":[{"tag":"proxy","protocol":"wireguard","settings":{"secretKey":"RJJ18D1GWq3zP807h/ZJMnrRvqWnuvyikLF1UYdXvgc=","address":["10.13.13.2/32","fd00::2/128"],"mtu":1420,"workers":2,"reserved":[1,2,3],"peers":[{"publicKey":"KfAA0pw6WUOvuXHUWb5c+PxqlaIrItCzyzo78KlUYqk=","endpoint":"engage.example:2408","allowedIPs":["0.0.0.0/0","::/0"],"keepAlive":25}]}}]}]

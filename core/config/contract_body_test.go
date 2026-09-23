@@ -23,6 +23,8 @@ import (
 	"testing"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/linkmap"
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/core/config/subscription"
 )
 
@@ -101,15 +103,44 @@ func parseCorpusBody(t *testing.T, body string) ([]*configtypes.ParsedNode, []co
 		}
 		return res.Nodes, nil, kind
 
-	case kind == subscription.BodyKindXrayArray:
-		nodes, err := subscription.ParseNodesFromXrayJSONArray(body, nil)
+	case kind == subscription.BodyKindXrayArray || kind == subscription.BodyKindXrayConfig:
+		// Одиночный конфиг Xray — массив из одного элемента, ровно как у
+		// боевого разбора (реестр: xray_config, priority 35).
+		xrayBody := body
+		if kind == subscription.BodyKindXrayConfig {
+			xrayBody = subscription.XrayConfigToArray(body)
+		}
+		nodes, err := subscription.ParseNodesFromXrayJSONArray(xrayBody, nil)
 		if err != nil {
 			return nil, nil, kind
 		}
-		return nodes, corpusXrayDrops(body), kind
+		return nodes, corpusXrayDrops(xrayBody), kind
 
 	default:
-		return parseURILines(body), nil, kind
+		// Построчная ветка идёт через ЧИСТЫЙ парсер тела, а не через свой
+		// обход строк: отбраковки — часть контракта тела (D-088), и у
+		// служебной записи (`incy://routing/…`) нормативен именно её код.
+		// Свой обход их не отдавал вовсе, и тихий игнор был неотличим от
+		// молчаливой пропажи.
+		res, err := subscription.ParseSubscriptionBody([]byte(body), nil, 0)
+		if err != nil || res == nil {
+			return nil, nil, kind
+		}
+		nodes := make([]*configtypes.ParsedNode, 0, len(res.Entries))
+		for _, e := range res.Entries {
+			if e != nil && e.Node != nil {
+				nodes = append(nodes, e.Node)
+			}
+		}
+		drops := make([]contractDrop, 0, len(res.Rejected))
+		for _, r := range res.Rejected {
+			drops = append(drops, contractDrop{
+				Ref:    r.OriginRaw,
+				Code:   r.Code,
+				Reason: r.Reason,
+			})
+		}
+		return nodes, drops, kind
 	}
 }
 
@@ -138,6 +169,117 @@ func corpusXrayDrops(body string) []contractDrop {
 	return out
 }
 
+// corpusDropIndexes проставляет отбраковкам тела `index` — позицию элемента
+// в нарезке `elements` вида источника (source_kinds.json, CANON §4).
+//
+// Нарезку делает движок (`linkmap.ClassifySource`) по той же таблице, что
+// читают обе стороны, — раннер свою не выдумывает. Отбраковка находит свой
+// элемент по `ref`: у JSON-элемента это `tag`, у текстового — сама строка.
+// Элемент, уже занятый предыдущей отбраковкой, пропускается: два outbound'а
+// с одним тегом получают два разных адреса по порядку появления.
+func corpusDropIndexes(t *testing.T, body string, drops []contractDrop) {
+	t.Helper()
+	if len(drops) == 0 {
+		return
+	}
+	set, err := registry.LoadMappers()
+	if err != nil {
+		t.Fatalf("LoadMappers: %v", err)
+	}
+	res := linkmap.ClassifySource(set, body, map[string]linkmap.Unwrapper{
+		"base64_utf8": func(text string) ([]string, error) {
+			raw, err := subscription.DecodeSubscriptionContent([]byte(text))
+			if err != nil {
+				return nil, err
+			}
+			return []string{string(raw)}, nil
+		},
+	})
+	claimed := make([]bool, len(res.Elements))
+	for i := range drops {
+		found := -1
+		for j, el := range res.Elements {
+			if !claimed[j] && corpusElementRef(el) == drops[i].Ref {
+				found = j
+				break
+			}
+		}
+		// Тег узла мог быть ВЫВЕДЕН (Xray берёт его из remarks элемента-
+		// конфига, а не из outbound'а). Тогда элемент ищется по делу: тот,
+		// из которого движок собирает то же тело, что у отвергнутого узла.
+		if found < 0 && drops[i].node != nil && res.Kind.Mapper != nil {
+			for j, el := range res.Elements {
+				if !claimed[j] && corpusElementBuilds(t, *res.Kind.Mapper, el, drops[i].node) {
+					found = j
+					break
+				}
+			}
+		}
+		if found < 0 {
+			t.Errorf("отбраковка %q: элемента в нарезке вида %q нет", drops[i].Ref, res.Kind.SourceKind)
+			continue
+		}
+		claimed[found] = true
+		drops[i].Index = dropIndex(found)
+	}
+}
+
+// corpusElementBuilds — собирает ли движок из элемента тело отвергнутого узла.
+//
+// Сравниваются ключи тела, которые дал маппер: сборка документа потом
+// дописывает своё (тег, цепочку), и полное равенство здесь не нужно — нужен
+// ответ «этот ли элемент». Имён схем нет: секцию выбирает detect реестра.
+func corpusElementBuilds(t *testing.T, kind string, el linkmap.SourceElement, node *configtypes.ParsedNode) bool {
+	t.Helper()
+	if el.Value == nil || node == nil || node.Outbound == nil {
+		return false
+	}
+	plans, err := linkmap.Planes()
+	if err != nil {
+		t.Fatalf("linkmap.Planes: %v", err)
+	}
+	reg, err := registry.Get()
+	if err != nil {
+		t.Fatalf("registry.Get: %v", err)
+	}
+	scheme, plan, ok := linkmap.SelectElementSection(plans, kind, el.Value)
+	if !ok {
+		return false
+	}
+	res, err := linkmap.ParseElement(plan, el.Value, reg.SingboxType(scheme), nil)
+	if err != nil || res == nil || len(res.Body) == 0 {
+		return false
+	}
+	for k, v := range res.Body {
+		if k == "tag" || k == "type" {
+			continue
+		}
+		if corpusJSONText(v) != corpusJSONText(node.Outbound[k]) {
+			return false
+		}
+	}
+	return true
+}
+
+// corpusJSONText — значение в JSON-тексте: снимает разницу int/float64 между
+// телом движка и телом узла.
+func corpusJSONText(v interface{}) string {
+	b, _ := json.Marshal(v)
+	var back interface{}
+	_ = json.Unmarshal(b, &back)
+	out, _ := json.Marshal(back)
+	return string(out)
+}
+
+// corpusElementRef — чем элемент нарезки называет себя в `ref` отбраковки.
+func corpusElementRef(el linkmap.SourceElement) string {
+	if m, ok := el.Value.(map[string]interface{}); ok {
+		tag, _ := m["tag"].(string)
+		return tag
+	}
+	return strings.TrimSpace(el.Text)
+}
+
 // corpusRejectRef достаёт тег из исходника отбракованной JSON-записи.
 func corpusRejectRef(originRaw string) string {
 	var ob struct {
@@ -151,22 +293,6 @@ func corpusRejectRef(originRaw string) string {
 
 // parseURILines разбирает построчный URI-список, пропуская пустые строки и
 // комментарии — как это делает загрузчик.
-func parseURILines(body string) []*configtypes.ParsedNode {
-	var out []*configtypes.ParsedNode
-	for _, line := range strings.Split(body, "\n") {
-		line = subscription.NormalizeSubscriptionTextLine(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		node, err := subscription.ParseNode(line, nil)
-		if err != nil || node == nil {
-			continue
-		}
-		out = append(out, node)
-	}
-	return out
-}
-
 // corpusExtensionMark читает пометку meta.extension из существующего ожидания.
 //
 // Ожидания генерирует раннер, но эта пометка приходит не из разбора, а от
@@ -236,12 +362,14 @@ func TestContractCorpusBody(t *testing.T) {
 				if err != nil {
 					// `code` нормативен, `reason` — нет (D-088): см.
 					// canonNodeDrop.
-					env.Dropped = append(env.Dropped, contractDrop{Ref: node.Tag, Code: code, Reason: "emit_error"})
+					env.Dropped = append(env.Dropped, contractDrop{Ref: node.Tag, Code: code, Reason: "emit_error", node: node})
 					continue
 				}
 				env.Nodes = append(env.Nodes, cn)
 			}
 			env.Dropped = append(env.Dropped, drops...)
+			corpusDropIndexes(t, body, env.Dropped)
+			requireDropCodes(t, env)
 
 			got, err := marshalEnvelopePretty(env)
 			if err != nil {

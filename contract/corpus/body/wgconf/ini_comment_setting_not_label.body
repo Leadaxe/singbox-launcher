@@ -1,0 +1,13 @@
+# Закомментированная НАСТРОЙКА под [Peer] именем узла не становится:
+# «# Bouncing = 0» — отключённый ключ, а не название. Предикат — атрибут
+# метки label.comment.require_no "=" (PRIMITIVES §0.8, контракт 1.1.49),
+# а не правило движка; имя даёт следующий комментарий секции.
+[Interface]
+PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=
+Address = 10.0.0.2/32
+
+[Peer]
+# Bouncing = 0
+# CH-FREE#11
+PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=
+Endpoint = 194.180.34.8:51820

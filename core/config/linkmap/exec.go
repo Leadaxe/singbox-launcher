@@ -14,6 +14,7 @@ package linkmap
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -160,6 +161,82 @@ type Note struct {
 	Params map[string]string
 }
 
+// Коды ОТКАЗА разбора (CANON §4, D-088, контракт 1.1.49).
+//
+// Общие для всех схем: что именно обязательно и какие формы у секции есть,
+// объявляет реестр, а движок называет только ВИД отказа. Тот же приём, что у
+// санитайзера с `field_missing`/`type_invalid` по умолчанию.
+const (
+	// CodeFieldMissing — обязательное поле, запись или userinfo не
+	// заполнены; параметр `field` — путь тела либо имя записи.
+	CodeFieldMissing = "field_missing"
+	// CodeFormUnrecognized — текст не прочитан ни одной формой секции:
+	// оболочка не распаковалась, пейлоад не JSON/ini, схемы у строки нет.
+	// Строке `xxx://` со схемой, которую не ведёт ни одна секция, ставится
+	// не он, а `scheme_unsupported` слоя подписки (CANON §4.1).
+	CodeFormUnrecognized = "form_unrecognized"
+)
+
+// RejectError — отказ разбора с машинным кодом причины.
+//
+// Текст остаётся человеческим — он едет в диагностику и в ненормативный
+// `reason` отбраковки. Нормативен код: по нему две стороны сверяют, ПОЧЕМУ
+// узел отброшен (`dropped[].code`). Пока отказ был голой строкой, отбраковка
+// разбора приезжала в конверт без кода вовсе (TASKS_LXBOX §32.5).
+type RejectError struct {
+	Code   string
+	Params map[string]string
+	Err    error
+}
+
+func (e *RejectError) Error() string { return e.Err.Error() }
+
+// Unwrap отдаёт исходную ошибку: цепочка `%w` у вызывающих не рвётся.
+func (e *RejectError) Unwrap() error { return e.Err }
+
+// NewReject оборачивает ошибку кодом отказа.
+func NewReject(code string, params map[string]string, err error) error {
+	return &RejectError{Code: code, Params: params, Err: err}
+}
+
+// RejectCode — код отказа из цепочки ошибок; "" — код не назначен.
+func RejectCode(err error) string {
+	var r *RejectError
+	if errors.As(err, &r) {
+		return r.Code
+	}
+	return ""
+}
+
+// rejectMissing — отказ «обязательное не заполнено» с именем поля.
+func rejectMissing(field string, err error) error {
+	return NewReject(CodeFieldMissing, map[string]string{"field": field}, err)
+}
+
+// rejectUnrecognized — отказ «ни одна форма не прочитала текст». Уже
+// закодированную ошибку не перекрывает: её код точнее.
+func rejectUnrecognized(err error) error {
+	if RejectCode(err) != "" {
+		return err
+	}
+	return NewReject(CodeFormUnrecognized, nil, err)
+}
+
+// userInfoField — имя поля, которое наполняет userinfo: первое объявленное
+// в `into`/`single_into`. Им отказ «ссылка без userinfo» называет, ЧЕГО
+// именно нет, — не зная схемы.
+func userInfoField(ui *registry.UserInfo) string {
+	for _, f := range ui.Into {
+		if f = strings.TrimSpace(f); f != "" {
+			return f
+		}
+	}
+	if f := strings.TrimSpace(ui.SingleInto); f != "" {
+		return f
+	}
+	return "userinfo"
+}
+
 // execState — рабочее состояние одного исполнения.
 type execState struct {
 	plan  *Plan
@@ -180,6 +257,14 @@ type execState struct {
 	// PRIMITIVES §0.10). Дефолт порта бывает свойством НАПИСАНИЯ, а не схемы:
 	// у одной схемы `http` написание `proxy-http` даёт 80, `proxy-https` — 443.
 	schemeVals map[string]interface{}
+	// dropCode / dropValue — узел снят СЕЛЕКТОРОМ по его `on_invalid: drop`.
+	//
+	// Решение ставится флагом, а не немедленным возвратом: оба прохода обязаны
+	// договориться до конца, чтобы трасса осталась полной и остальные записи
+	// успели поставить свои коды. Причину читает checkRequired — там же, где
+	// отвергается узел без обязательного поля.
+	dropCode  string
+	dropValue string
 }
 
 // schemeValDefaultPort — имя служебного ключа `scheme_sets`, задающего порт по
@@ -250,6 +335,27 @@ func Exec(plan *Plan, space *Space, form registry.Form, bodyType string, trace *
 	st.noteUnknownParams()
 	st.noteINIDropped()
 
+	// Селектор снял узел своим `on_invalid: drop` — раньше required: у такого
+	// узла обязательные поля как раз в порядке (адрес, порт и uuid на месте), и
+	// отказ по ним назвал бы человеку не ту причину. Транспорт, которого ядро
+	// не умеет, делает узел неработоспособным целиком, и сказать надо про него.
+	if st.dropCode != "" {
+		// Код едет МАШИННЫМ полем отказа, а не подстрокой текста: нормативен в
+		// ожиданиях корпуса именно он (`dropped[].code`), а `reason` — текст
+		// стороны, который раннеры не сравнивают.
+		//
+		// Текст всё же разный по КОДУ: «транспорт http ядром не поддержан»
+		// было бы прямой неправдой про обфускацию заголовком — транспорт
+		// `http` у ядра как раз есть (это HTTP/2), не поддержана ИМЕННО
+		// подделка заголовка поверх TCP, и назвать её транспортом значит
+		// увести читателя лога чинить не то.
+		msg := fmt.Errorf("linkmap: транспорт %q ядром не поддержан", st.dropValue)
+		if st.dropCode == "transport_header_unsupported" {
+			msg = fmt.Errorf("linkmap: обфускация заголовком %q поверх TCP ядром не поддержана", st.dropValue)
+		}
+		return nil, NewReject(st.dropCode, map[string]string{"transport": st.dropValue}, msg)
+	}
+
 	// required — ПОСЛЕ обоих проходов и defaults: запись объявлена
 	// обязательной в теле, а не во входе, и значение туда законно приходит
 	// от materialize_default или defaults секции, а не только из источника.
@@ -283,7 +389,7 @@ func (st *execState) checkRequired() error {
 	// и записи под ними у части схем нет вовсе (uuid у vless объявлен null).
 	// Проверять приходится сам userinfo, а не путь тела.
 	if ui := st.plan.Mapper.UserInfo; ui != nil && ui.Required && st.space.UserInfo == "" {
-		return fmt.Errorf("linkmap: ссылка без userinfo")
+		return rejectMissing(userInfoField(ui), fmt.Errorf("linkmap: ссылка без userinfo"))
 	}
 	for _, list := range [][]Entry{st.plan.Selectors, st.plan.Rest} {
 		for i := range list {
@@ -306,7 +412,7 @@ func (st *execState) checkRequired() error {
 					}
 				}
 				if !filled {
-					return fmt.Errorf("linkmap: обязательная запись %q не заполнила ни одного пути", e.Name)
+					return rejectMissing(e.Name, fmt.Errorf("linkmap: обязательная запись %q не заполнила ни одного пути", e.Name))
 				}
 				continue
 			}
@@ -340,9 +446,9 @@ func (st *execState) checkRequired() error {
 				}
 				if !filled {
 					if reason := strings.TrimSpace(e.Param.DescEN); reason != "" {
-						return fmt.Errorf("%s", reason)
+						return rejectMissing(e.Name, fmt.Errorf("%s", reason))
 					}
-					return fmt.Errorf("linkmap: обязательная запись %q не заполнила ни одного пути", e.Name)
+					return rejectMissing(e.Name, fmt.Errorf("linkmap: обязательная запись %q не заполнила ни одного пути", e.Name))
 				}
 				continue
 			}
@@ -353,9 +459,9 @@ func (st *execState) checkRequired() error {
 			v, ok := getPath(st.res.Body, path)
 			if !ok || isEmptyValue(v) {
 				if reason := strings.TrimSpace(e.Param.DescEN); reason != "" {
-					return fmt.Errorf("%s", reason)
+					return rejectMissing(path, fmt.Errorf("%s", reason))
 				}
-				return fmt.Errorf("linkmap: обязательное поле %q пусто", path)
+				return rejectMissing(path, fmt.Errorf("linkmap: обязательное поле %q пусто", path))
 			}
 		}
 	}
@@ -416,18 +522,29 @@ func (st *execState) applyUserInfo() {
 	// SIP002 кодирует в base64 именно userinfo, оставляя адрес и метку
 	// открытыми. Порядок объявлен секцией: percent ДО base64, потому что
 	// панели экранируют '='-паддинг как %3D.
-	for i, dec := range ui.Decode {
-		if i >= maxDecodeDepth {
-			break
-		}
-		next, err := decodeNamed(dec, raw)
-		if err != nil {
-			// Объявленный декодер не сработал — userinfo остаётся как есть.
-			// Отказ разбора здесь был бы неверен: `base64?` у ss означает
-			// «попробовать», и открытый SS2022 `method:key@host` законен.
-			break
-		}
-		raw = next
+	// Разделитель как ПРИЗНАК формы: `decode_requires_separator`.
+	//
+	// Развилка тут не про декодер, а про ФОРМУ, и объявлена данными, потому
+	// что у socks base64 отличается от открытого текста ТОЛЬКО отсутствием
+	// разделителя. Признак работает в обе стороны, и обе нужны:
+	//
+	//   1. Разделитель УЖЕ ЕСТЬ во входе — форма открытая, конвейер не
+	//      применяется вовсе. `user:pass` двоеточие в алфавит base64 не
+	//      пускает, так что его наличие ДОКАЗЫВАЕТ открытую форму.
+	//   2. Разделителя нет — форма под вопросом, декодер пробуется, но его
+	//      результат ПРИНИМАЕТСЯ лишь тогда, когда разделитель в нём
+	//      появился. Иначе декодирование считается ложным срабатыванием и
+	//      значение остаётся как было.
+	//
+	// Без второй половины `base64?` рушит открытое ОДИНОЧНОЕ имя:
+	// `socks4://useridonly@host` — законный userid socks4 (пароля у версии 4
+	// нет по протоколу), но "useridonly" проходит RawStdEncoding и уезжает
+	// семью байтами мусора. Ровно этой парой условий читает и v2rayN,
+	// который форму и пишет: он берёт раскодированное только тогда, когда
+	// оно разделилось на ДВА компонента (SocksFmt.ResolveSocksNew).
+	sep := ui.DecodeRequiresSeparator
+	if sep == "" || !strings.Contains(raw, sep) {
+		raw = st.decodeUserInfo(ui, raw, sep)
 	}
 	st.space.UserInfo = raw
 	if i := strings.Index(raw, ":"); i >= 0 {
@@ -448,6 +565,43 @@ func (st *execState) applyUserInfo() {
 	if len(targets) == 0 && ui.SingleInto != "" {
 		targets = []string{ui.SingleInto}
 	}
+	st.writeUserInfoParts(ui, parts, targets, raw)
+}
+
+// decodeUserInfo прогоняет объявленный конвейер декодеров userinfo.
+//
+// `sep` непустой — результат принимается ТОЛЬКО с разделителем внутри
+// (см. applyUserInfo): декодер, не давший разделителя, сработал ложно, и
+// открытое значение возвращается нетронутым.
+func (st *execState) decodeUserInfo(ui *registry.UserInfo, raw, sep string) string {
+	decoded := raw
+	for i, dec := range ui.Decode {
+		if i >= maxDecodeDepth {
+			break
+		}
+		next, err := decodeNamed(dec, decoded)
+		if err != nil {
+			// Объявленный декодер не сработал — userinfo остаётся как есть.
+			// Отказ разбора здесь был бы неверен: `base64?` у ss означает
+			// «попробовать», и открытый SS2022 `method:key@host` законен.
+			break
+		}
+		decoded = next
+	}
+	// Разделителя в результате нет — считаем декодирование ЛОЖНЫМ.
+	//
+	// Открытое одиночное имя проходит base64 «успешно» и превращается в
+	// мусор, а отличить его от настоящей base64 больше нечем: у обеих форм
+	// один алфавит и любая длина. Признак объявлен секцией, и без него
+	// остаётся только выдумывать за автора ссылки.
+	if sep != "" && !strings.Contains(decoded, sep) {
+		return raw
+	}
+	return decoded
+}
+
+// writeUserInfoParts раскладывает компоненты userinfo по объявленным целям.
+func (st *execState) writeUserInfoParts(ui *registry.UserInfo, parts, targets []string, raw string) {
 	// Одиночный userinfo без разделителя при объявленном single_into едет
 	// туда, а не в первый into (конвенция naive/hysteria2).
 	//
@@ -558,6 +712,40 @@ func (st *execState) applyEntry(e *Entry) {
 	// on_len_gt — массив в источнике длиннее порога: первый элемент уже в
 	// base формы, остальные отброшены; код называет запись и число элементов.
 	st.applyOnLenGt(e)
+
+	// Запись со СПИСКОМ и МАССИВОМ в источнике: элементы берутся как есть.
+	//
+	// `jsonScalar` на массиве молчит намеренно (§4: массив НЕ приводится к
+	// строке — склейка через fmt.Sprint давала `host: ["[a.com b.com]"]`,
+	// Q133-16). Но запись, объявившая `list`, скаляра и не ждёт: у Xray одно
+	// и то же поле пишут обоими написаниями — `httpSettings.host` бывает
+	// строкой и массивом, `wireguard settings.address` всегда массив. Без
+	// этой ветки массивное написание не доезжало ВООВСЕ, и потеря была
+	// молчаливой: узел с `host: ["a.com","b.com"]` уходил без host, а
+	// `coerce_scalar` у той же записи покрывал лишь обратный случай.
+	//
+	// Значение массива не проходит decode_extra и форм-семантику `+`: они
+	// определены на ТЕКСТЕ параметра, а здесь элементы уже разобраны JSON'ом.
+	if p.List != nil && p.Extract == nil && len(p.SplitInto) == 0 {
+		if items, src, ok := st.lookupSourceList(p); ok {
+			st.applyRawList(e, src, items)
+			return
+		}
+	}
+
+	// Запись с `type: object` и КАРТОЙ в источнике: карта едет в тело как есть.
+	//
+	// У входа-ссылки карту собирает `extract` из строки «H1: V1\r\nH2: V2» —
+	// там она пришла текстом. У JSON-элемента она УЖЕ карта (Xray пишет
+	// `headers` объектом, и ядро ждёт того же — badoption.HTTPHeader), и
+	// разбирать её нечем: `jsonScalar` на объекте молчит той же нормой §4, что
+	// и на массиве, и без этой ветки запись не доезжала вовсе.
+	if p.Type == "object" && p.Extract == nil {
+		if m, src, ok := st.lookupSourceMap(p); ok {
+			st.applyRawMap(e, src, m)
+			return
+		}
+	}
 
 	rawVal, src, found := st.lookupSource(p)
 	if !found {
@@ -1309,6 +1497,140 @@ func (st *execState) lookupSource(p *registry.Param) (string, string, bool) {
 	return "", "", false
 }
 
+// lookupSourceList — значение записи со `list`, когда источник МАССИВ.
+//
+// Цепочка та же, что у lookupSource, и правило то же: первый источник, который
+// дал непустой массив. Скаляр здесь НЕ подхватывается — его ведёт lookupSource
+// своим путём, и перехватить его тут значило бы обойти decode_extra.
+//
+// Пустой массив считается отсутствием значения, как пустая строка у скаляра:
+// `allowedIPs: []` у Xray означает «поле не заполнено», а не «маршрутизировать
+// нечего», и materialize_default обязан сработать по ветке applyMissing.
+func (st *execState) lookupSourceList(p *registry.Param) ([]interface{}, string, bool) {
+	for _, name := range p.Source.ForForm(st.form.ID) {
+		name = st.substituteBase(name)
+		raw, ok := st.space.LookupRaw(name)
+		if !ok {
+			continue
+		}
+		arr, ok := raw.([]interface{})
+		if !ok || len(arr) == 0 {
+			continue
+		}
+		return arr, name, true
+	}
+	return nil, "", false
+}
+
+// applyRawList пишет в тело список, пришедший МАССИВОМ, применяя к каждому
+// элементу те же normalize/item, что buildList применяет к куску строки.
+//
+// `sep` к массиву не применяется: разделитель — свойство СТРОКОВОГО написания,
+// и резать по нему уже разобранный элемент значило бы ломать значение, внутри
+// которого запятая законна.
+func (st *execState) applyRawList(e *Entry, src string, items []interface{}) {
+	p := e.Param
+	out := make([]interface{}, 0, len(items))
+	for _, item := range items {
+		s := toString(item)
+		if strings.TrimSpace(s) == "" {
+			continue
+		}
+		if p.Normalize != "" {
+			s = normalizeValue(p.Normalize, s)
+		}
+		if p.List.Item != "" {
+			conv, drop := convertType(p.List.Item, s)
+			if drop {
+				continue
+			}
+			out = append(out, conv)
+			continue
+		}
+		out = append(out, s)
+	}
+	// Объявленная длина не сошлась — решает `on_invalid` записи, как у
+	// строкового написания: `reserved` из двух элементов ядру не годится.
+	if p.List.Len > 0 && len(out) != p.List.Len {
+		if actionOf(p.OnInvalid) != "keep" {
+			st.trace.Add(Event{
+				Stage: StageField, Mapper: st.mapperName, Entry: e.Name,
+				Src: src, Raw: items, Val: nil, Path: nil, Act: ActSkip, Why: WhyEmpty,
+			})
+			return
+		}
+	}
+	if len(out) == 0 {
+		st.trace.Add(Event{
+			Stage: StageField, Mapper: st.mapperName, Entry: e.Name,
+			Src: src, Raw: items, Val: nil, Path: nil, Act: ActSkip, Why: WhyEmpty,
+		})
+		return
+	}
+	path := st.pathOf(p)
+	if path == "" {
+		st.applySets(e, toString(items))
+		st.applyImplies(e)
+		return
+	}
+	st.write(e.Name, src, items, out, path, p.Priority, e.Decl, "")
+	st.applySets(e, toString(items))
+	st.applyImplies(e)
+}
+
+// lookupSourceMap — значение записи с `type: object`, когда источник КАРТА.
+// Правила цепочки те же, что у lookupSourceList; пустая карта = нет значения.
+func (st *execState) lookupSourceMap(p *registry.Param) (map[string]interface{}, string, bool) {
+	for _, name := range p.Source.ForForm(st.form.ID) {
+		name = st.substituteBase(name)
+		raw, ok := st.space.LookupRaw(name)
+		if !ok {
+			continue
+		}
+		m, ok := raw.(map[string]interface{})
+		if !ok || len(m) == 0 {
+			continue
+		}
+		return m, name, true
+	}
+	return nil, "", false
+}
+
+// applyRawMap пишет карту источника в тело.
+//
+// Значения НЕ приводятся к строке: у ядра `headers` — map[string]listable_string,
+// то есть значением законны и строка, и массив строк, и Xray пишет оба. Привести
+// их здесь значило бы решить за ядро, какую форму оно примет, — а `sort_keys`
+// над картой обеспечивает сам сериализатор тела (порядок ключей входит в
+// identity).
+func (st *execState) applyRawMap(e *Entry, src string, m map[string]interface{}) {
+	p := e.Param
+	path := st.pathOf(p)
+	if path == "" {
+		st.applySets(e, "")
+		st.applyImplies(e)
+		return
+	}
+	out := make(map[string]interface{}, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	st.write(e.Name, src, m, out, path, p.Priority, e.Decl, "")
+	st.applySets(e, "")
+	st.applyImplies(e)
+}
+
+// valueAllowed — значение перечислено в `allow` записи (регистронезависимо,
+// по тому же правилу, что имена параметров, §5).
+func valueAllowed(p *registry.Param, v string) bool {
+	for _, a := range p.Allow {
+		if strings.EqualFold(a, v) {
+			return true
+		}
+	}
+	return false
+}
+
 // substituteBase подставляет якорь формы вместо $base.
 func (st *execState) substituteBase(name string) string {
 	if st.form.Base == "" || !strings.Contains(name, "$base") {
@@ -1423,6 +1745,44 @@ func (st *execState) convert(p *registry.Param, val string) (interface{}, bool) 
 		}
 		if hit {
 			v = mapped
+		}
+		// ЗНАЧЕНИЕ НЕ НАЗВАНО ТАБЛИЦЕЙ, и запись объявила on_invalid с drop.
+		//
+		// Прежде on_invalid у записи с value_map не исполнялся вовсе: промах
+		// таблицы означал «вези как пришло», и `network: "kcp"` уезжал в
+		// transport.type дословно. Санитайзер снимал такой транспорт правилом
+		// enum — МОЛЧА, — и узел выходил рабочим plain-TCP: сервер, который
+		// ждёт mKCP, такое соединение не примет, а человек не получал ни кода,
+		// ни причины. Это худший вид расхождения — молчаливая подмена узла, и
+		// объявленное `on_invalid: {action: drop, code: transport_unsupported}`
+		// (Q133-17, M-01) стояло в реестре ровно против него.
+		//
+		// `drop` у СЕЛЕКТОРА снимает узел целиком, у обычной записи — только
+		// своё поле: селектор строит ось, по которой гейтятся остальные записи
+		// (`transport.type`), и «оси нет» значит, что узла нет. Действие
+		// `keep` сохраняет прежнее поведение — вези как пришло.
+		//
+		// Промахом считается лишь значение, которого нет и в `allow`: таблица
+		// перечисляет то, что ПЕРЕВОДИТСЯ («h2» → «http»), а имена, совпадающие
+		// с каноном ядра («ws», «grpc»), проходят через неё как есть и промахом
+		// не являются. Набор знаемых написаний объявляет реестр — тем же
+		// приёмом, что `when.in` у селектора URI, — а не код движка.
+		if !hit && !valueAllowed(p, v) && actionOf(p.OnInvalid) == "drop" {
+			if code := codeOf(p.OnInvalid); code != "" {
+				params := paramsOf(p.OnInvalid)
+				if params == nil {
+					params = map[string]string{}
+				}
+				if _, has := params["transport"]; !has {
+					params["transport"] = val
+				}
+				st.notePath(code, val, params)
+			}
+			if p.Selector {
+				st.dropCode = codeOf(p.OnInvalid)
+				st.dropValue = val
+			}
+			return nil, true
 		}
 	}
 
@@ -2049,6 +2409,153 @@ func (st *execState) noteUnknownJSONKeys(uk *registry.UnknownKey, ignored map[st
 			Act: ActKeep, Why: WhyNotDeclared,
 		})
 	}
+	st.noteUnknownNestedJSONKeys(uk, ignored)
+}
+
+// noteUnknownNestedJSONKeys ставит тот же код на необъявленный ключ ВНУТРИ
+// объявленного контейнера (`settings.*`, `streamSettings.*`).
+//
+// Зачем вообще. Верхний уровень молчит про контейнеры намеренно: их листья
+// читают записи таблицы, и `ignore` у xray-секций перечисляет
+// `settings`/`streamSettings` ровно за этим. Но следствие было хуже болезни:
+// ВСЁ, что лежит внутри контейнера и не названо ни одним `source`, терялось
+// АБСОЛЮТНО МОЛЧА — ни кода, ни ноты, ни деградации (аудит outbound-параметров
+// Xray-core 24.09.2026, §0). Человек не узнавал, что часть его конфига не
+// прочитана, и отличить это от «прочитано и не нужно» было нечем.
+//
+// Отбраковки тут нет и быть не может: непрочитанный лист не ломает узел, он
+// лишь не доезжает. Код — тот же info (`json_field_unknown`), путь — ПОЛНЫЙ
+// (`streamSettings.xhttpSettings.foo`), чтобы человек нашёл место в своём
+// конфиге, а не гадал, какой из вложенных объектов имелся в виду.
+//
+// Молчат (и это объявлено, а не случайно):
+//   - объявленные пути, включая чтение-без-записи (`maps_to: null`) — секция
+//     их назвала своей рукой, а «читаем и не пишем» есть прочитанное;
+//   - `sockopt` целиком: объявлен ЧАСТИЧНО (`dialerProxy`, `tcpKeepAlive…`),
+//     и остальные его поля серверные либо неприменимые — код на каждом узле
+//     с sockopt был бы шумом;
+//   - контейнеры-дороги: путь внутреннего объекта листом не считается.
+func (st *execState) noteUnknownNestedJSONKeys(uk *registry.UnknownKey, ignored map[string]bool) {
+	roots := make([]string, 0, len(uk.Ignore))
+	for _, n := range uk.Ignore {
+		roots = append(roots, n)
+	}
+	if len(roots) == 0 {
+		return
+	}
+	quiet := make(map[string]bool, len(uk.NestedQuiet))
+	for _, q := range uk.NestedQuiet {
+		quiet[strings.ToLower(strings.TrimSpace(q))] = true
+	}
+	declared := st.declaredJSONPaths()
+	for _, path := range st.space.JSONLeafPaths(roots) {
+		low := strings.ToLower(path)
+		if declared[low] {
+			continue
+		}
+		// Объявленным считается и путь-РОДИТЕЛЬ: запись, читающая объект
+		// целиком (`wsSettings.headers` с `type: object`), читает и каждый
+		// его лист, а перечислить листья она не может — их имена принадлежат
+		// подписке. Тем же правилом молчит ЧАСТИЧНО объявленный `sockopt`:
+		// его поддерево названо записью `sockopt.dialerProxy`, и код на
+		// каждом остальном его поле был бы шумом.
+		if declaredByAncestor(declared, low) {
+			continue
+		}
+		// Игнор-список верхнего уровня сюда НЕ переносится целиком: он
+		// перечисляет сами КОНТЕЙНЕРЫ (`settings`, `streamSettings`), то есть
+		// корни этого обхода, и сверка по префиксу заглушила бы ровно то, ради
+		// чего обход затеян. Молчание ВНУТРИ контейнера объявляется путями
+		// `source` либо отдельным списком `nested_quiet`.
+		if ignored[low] || quietByPrefix(quiet, low) {
+			continue
+		}
+		st.notePath(uk.Code, path, map[string]string{"query_name": path})
+		st.trace.Add(Event{
+			Stage: StageUnknown, Mapper: st.mapperName, Entry: "$unknown",
+			Src: "json." + path, Raw: nil, Val: nil, Path: nil,
+			Act: ActKeep, Why: WhyNotDeclared,
+		})
+	}
+}
+
+// declaredJSONPaths — пути `json.*`, названные планом, с подставленным $base.
+//
+// Собирается ЗДЕСЬ, а не в плане, потому что якорь формы ($base) известен
+// только на исполнении: одна и та же запись у формы `vnext` и формы `servers`
+// адресует разные пути.
+//
+// Объявленным считается и путь-РОДИТЕЛЬ: запись, читающая объект целиком
+// (`wsSettings.headers` с `type: object`), читает и каждый его лист, а
+// перечислить их она не может — их имена принадлежат подписке.
+func (st *execState) declaredJSONPaths() map[string]bool {
+	out := make(map[string]bool, 128)
+	add := func(src string) {
+		if !strings.HasPrefix(src, "json.") {
+			return
+		}
+		name := strings.ToLower(st.substituteBase(strings.TrimPrefix(src, "json.")))
+		if name == "" {
+			return
+		}
+		out[name] = true
+	}
+	for _, e := range st.plan.Selectors {
+		for _, s := range e.Param.Source.All() {
+			add(s)
+		}
+	}
+	for _, e := range st.plan.Rest {
+		for _, s := range e.Param.Source.All() {
+			add(s)
+		}
+	}
+	for i := range st.plan.Mapper.Overlays {
+		for _, s := range st.plan.Mapper.Overlays[i].Source.All() {
+			add(s)
+		}
+	}
+	if st.plan.Mapper.Label != nil {
+		for _, s := range st.plan.Mapper.Label.Source.All() {
+			add(s)
+		}
+	}
+	return out
+}
+
+// declaredByAncestor — путь прочитан записью, объявившей его ПРЕДКА.
+//
+// Объект, объявленный целиком (`type: object` у `headers`), несёт листья,
+// имена которых принадлежат подписке, а не реестру: перечислить их секция не
+// может, и звать их неизвестными значило бы ругаться на прочитанное. Тем же
+// правилом молчит частично объявленное поддерево `sockopt`.
+// quietByPrefix — путь молчит, если он сам или любой его предок объявлен
+// молчащим поддеревом (`nested_quiet`).
+func quietByPrefix(quiet map[string]bool, path string) bool {
+	if len(quiet) == 0 {
+		return false
+	}
+	if quiet[path] {
+		return true
+	}
+	for i := len(path) - 1; i > 0; i-- {
+		if path[i] == '.' && quiet[path[:i]] {
+			return true
+		}
+	}
+	return false
+}
+
+func declaredByAncestor(declared map[string]bool, path string) bool {
+	for i := len(path) - 1; i > 0; i-- {
+		if path[i] != '.' {
+			continue
+		}
+		if declared[path[:i]] {
+			return true
+		}
+	}
+	return false
 }
 
 // noteINIDropped ставит код на секции ini, чьи ПОВТОРЫ снял диалект.
@@ -2139,14 +2646,6 @@ func (st *execState) notePath(code, path string, params map[string]string) {
 }
 
 // --- общие преобразования значений ---
-
-// applyValueMap переводит значение. Возвращает (новое значение, было ли
-// попадание, означает ли попадание «ключа нет»).
-//
-// Поддерживает и точную карту, и форму {prefix, strip} (диалект uTLS).
-func applyValueMap(vm map[string]interface{}, v string) (string, bool, bool) {
-	return applyValueMapCase(vm, v, true)
-}
 
 // applyValueMapCase — то же с явным указанием, значим ли регистр.
 //
@@ -2284,6 +2783,18 @@ func normalizeValue(kind, v string) string {
 			t = t + ":" + t
 		}
 		return t
+	case "bandwidth_mbps":
+		// Полоса с ЕДИНИЦЕЙ ИЗМЕРЕНИЯ → число мегабит. Форки Xray пишут её
+		// строкой («100mbps», «300 Mbps», «1gbps»), а поле ядра — целое
+		// в мегабитах: `type: int` на такой строке давал отсутствие значения,
+		// и полоса терялась МОЛЧА на обеих сторонах
+		// (contract/registry/protocols/hysteria2.json, up_mbps/down_mbps).
+		//
+		// Перевод написания диалекта, а не суждение о величине: годность
+		// результата по-прежнему судит `type: int` и правило поля тела.
+		// Неизвестный суффикс значения не даёт — такую строку мы не понимаем,
+		// и выдумывать за автора нельзя.
+		return normalizeBandwidthMbps(v)
 	case "duration_bare_seconds":
 		// Голое число — это СЕКУНДЫ: живая конвенция панелей
 		// (`idle_session_timeout=30`), а ядро ждёт единицу измерения и на
@@ -2300,6 +2811,53 @@ func normalizeValue(kind, v string) string {
 		}
 		return t + "s"
 	}
+	return v
+}
+
+// normalizeBandwidthMbps приводит полосу с суффиксом к целому числу мегабит.
+//
+// Порядок проверки суффиксов от ДЛИННОГО к короткому: «mbps» обязан выиграть
+// у «bps», иначе «100mbps» прочиталось бы как сто бит. Дробная часть после
+// пересчёта отбрасывается вниз — поле ядра целое, а округление вверх
+// обещало бы полосу, которой сервер не давал.
+func normalizeBandwidthMbps(v string) string {
+	t := strings.ToLower(strings.TrimSpace(v))
+	if t == "" {
+		return v
+	}
+	// Голое число уже в мегабитах — не трогаем (и не переписываем написание).
+	if _, err := strconv.ParseFloat(t, 64); err == nil {
+		return v
+	}
+	// Множитель к мегабитам. «mbit/s» и «mbit» — те же мегабиты другим
+	// написанием; «m»/«k»/«g» в одиночку двусмысленны и не принимаются.
+	units := []struct {
+		suffix string
+		mul    float64
+	}{
+		{"mbit/s", 1},
+		{"mbit", 1},
+		{"gbit/s", 1000},
+		{"gbit", 1000},
+		{"kbit/s", 1.0 / 1000},
+		{"kbit", 1.0 / 1000},
+		{"mbps", 1},
+		{"gbps", 1000},
+		{"kbps", 1.0 / 1000},
+		{"bps", 1.0 / 1000000},
+	}
+	for _, u := range units {
+		if !strings.HasSuffix(t, u.suffix) {
+			continue
+		}
+		num := strings.TrimSpace(strings.TrimSuffix(t, u.suffix))
+		f, err := strconv.ParseFloat(num, 64)
+		if err != nil || f < 0 {
+			return v
+		}
+		return strconv.FormatInt(int64(f*u.mul), 10)
+	}
+	// Суффикс не опознан — значение уезжает как есть, и его судит `type`.
 	return v
 }
 

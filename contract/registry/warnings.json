@@ -29,6 +29,29 @@
       "dart": "UnsupportedTransportWarning",
       "go": "core/config/subscription/xray_outbound_convert.go:337"
     },
+    "transport_header_unsupported": {
+      "severity": "error",
+      "params": [
+        "value"
+      ],
+      "title_en": "TCP header obfuscation {value} is not supported",
+      "title_ru": "Обфускация TCP-заголовком {value} не поддержана",
+      "text_en": "The entry asks for Xray header obfuscation {value} over plain TCP. The core has no counterpart for it, so the node was dropped: it could only have been built as a node without obfuscation, and the server expects an HTTP header in the very first packet and would break the connection.",
+      "text_ru": "Запись просит обфускацию Xray заголовком {value} поверх обычного TCP. У ядра пары для неё нет, поэтому узел отброшен: собрать его можно было бы только без обфускации, а сервер ждёт HTTP-заголовок в самом первом пакете и оборвёт соединение.",
+      "cause_en": "Xray disguises a plain TCP stream as HTTP: the first packet carries a fabricated HTTP request, and the transport stays TCP. This is not the HTTP/2 transport of sing-box, which is a different protocol on the wire, so the value cannot be carried over to it. Panels write this obfuscation for nodes meant to pass DPI.",
+      "cause_ru": "Xray маскирует обычный TCP-поток под HTTP: в первом пакете едет поддельный HTTP-запрос, а транспорт остаётся TCP. Это не транспорт HTTP/2 у sing-box — на проводе он другой протокол, — поэтому значение туда не переносится. Панели пишут такую обфускацию узлам, которым нужно проходить DPI.",
+      "fix_en": [
+        "Pick another node from this subscription — this one cannot work here.",
+        "Ask the provider for a link to the same server with a real transport (ws, grpc, httpupgrade, xhttp) instead of TCP header obfuscation."
+      ],
+      "fix_ru": [
+        "Выберите другой узел из этой подписки — этот здесь работать не может.",
+        "Попросите у провайдера ссылку на тот же сервер с настоящим транспортом (ws, grpc, httpupgrade, xhttp) вместо обфускации TCP-заголовком."
+      ],
+      "desc": "Обфускация Xray заголовком поверх TCP/RAW (`headerType=http` у ссылки, `tcpSettings.header.type`/`rawSettings.header.type` у Xray-JSON). РЕШЕНИЕ ВЛАДЕЛЬЦА 24.09.2026 (делегировано): обе формы отбраковывают УЗЕЛ, а не теряют свойство. Прежде ссылочная форма маппилась в `transport.type: \"http\"` — НЕВЕРНЫЙ маппинг: у sing-box это транспорт HTTP/2, на проводе другой протокол, и такой узел не соединялся; JSON-форма терялась МОЛЧА и узел выходил чистым TCP, который сервер с обфускацией обрывает. Оба пути давали «рабочий» на вид узел, который не работает, — отбраковка с кодом называет причину вместо молчания. severity=error: это отказ, а не деградация. Значение заголовка едет в `value` (`http` у всех живых написаний).",
+      "dart": null,
+      "go": "core/config/linkmap (селектор headerType у transports#uri, запись header у transports#xray)"
+    },
     "protocol_unsupported": {
       "severity": "error",
       "params": [
@@ -76,6 +99,27 @@
       "desc": "Обязательное поле отсутствует. Severity по Dart (error, узел в dropped); Go сегодня мягче — предупреждает и оставляет узел (hysteria2 без password node_parser_hysteria2.go:23, tuic без uuid/password node_parser_tuic.go:60/65, anytls без password node_parser_anytls.go:25) — расхождение отмечено, целевое поведение по Dart.",
       "dart": "MissingFieldWarning",
       "go": "contract/registry/protocols/*.json body.fields.* (required); исполнение — core/config/nodeflow/sanitize.go"
+    },
+    "form_unrecognized": {
+      "severity": "error",
+      "params": [],
+      "title_en": "Entry could not be read",
+      "title_ru": "Запись не прочитана",
+      "text_en": "The entry is not a link or a configuration this app can read: it is not a link at all, or its encoded part (base64, a compressed profile) does not decode. The node was dropped; the rest of the subscription was read as usual.",
+      "text_ru": "Запись — не ссылка и не конфигурация, которую приложение умеет читать: это вовсе не ссылка или её закодированная часть (base64, сжатый профиль) не раскрывается. Узел отброшен, остальная подписка прочитана как обычно.",
+      "cause_en": "The link was cut short or damaged when it was copied, a panel produced a broken payload, or the line is not a node link at all — a stray word or a piece of HTML.",
+      "cause_ru": "Ссылку обрезали или повредили при копировании, панель выдала битый пейлоад, либо строка вовсе не ссылка на узел — случайное слово или кусок HTML.",
+      "fix_en": [
+        "Copy the link again from the provider's page — a truncated link is the usual cause.",
+        "Ask the provider to fix the entry in the subscription."
+      ],
+      "fix_ru": [
+        "Скопируйте ссылку с сайта провайдера заново — чаще всего её обрезали при копировании.",
+        "Попросите провайдера исправить запись в подписке."
+      ],
+      "desc": "Отказ РАЗБОРА: ни одна форма секции не прочитала текст (оболочка не распаковалась, пейлоад не JSON/ini), у тела не опознан ни один вид источника, либо у строки нет схемы вовсе. Граница (CANON §4.1): строка формы xxx://, схему которой не ведёт ни одна секция, получает scheme_unsupported, а не этот код. Заведён в 1.1.49 (TASKS_LXBOX §32.5/§45.4): до этого отбраковка разбора ехала в dropped[] без кода. Кода на узле не бывает — узла нет, код живёт в dropped[].code.",
+      "dart": null,
+      "go": "core/config/linkmap/exec.go CodeFormUnrecognized (UnwrapURI/UnwrapElement); core/config/subscription/node_parser_core.go (секции нет), node_parser_amnezia.go (vpn:// не раскрылся)"
     },
     "flow_deprecated": {
       "severity": "info",
@@ -744,7 +788,7 @@
       ],
       "desc": "URI длиннее max_uri_length (см. limits.json, D-013: канон 65536) — строка в dropped. vpn:// исключён — у него свой amnezia_link_max_bytes.",
       "dart": null,
-      "go": "core/config/subscription/node_parser_core.go:96"
+      "go": "core/config/subscription/node_parser_core.go (CheckURILength — общая для ParseNode и ValidateURI конфигуратора, 1.1.51)"
     },
     "tuic_congestion_invalid": {
       "severity": "warning",
@@ -1358,27 +1402,6 @@
       "dart": null,
       "go": "core/config/subscription/source_loader.go:606"
     },
-    "clash_yaml_unsupported": {
-      "severity": "warning",
-      "params": [],
-      "title_en": "Clash YAML format is not supported",
-      "title_ru": "Формат Clash YAML не поддержан",
-      "text_en": "The subscription body is a Clash configuration in YAML, which this application does not read. No nodes were imported; ask the provider for a link in sing-box, Xray or base64 format.",
-      "text_ru": "Тело подписки — конфигурация Clash в YAML, которую это приложение не читает. Ни один узел не импортирован; попросите у провайдера ссылку в формате sing-box, Xray или base64.",
-      "cause_en": "The link points at a subscription for the Clash client: providers often publish several formats at one address and hand out the Clash one by default, or the address carries a format parameter that was lost.",
-      "cause_ru": "Ссылка ведёт на подписку для клиента Clash: провайдеры часто публикуют по одному адресу несколько форматов и по умолчанию отдают именно Clash, либо в адресе потерялся параметр формата.",
-      "fix_en": [
-        "Ask the provider for the subscription link in sing-box, Xray or base64 format.",
-        "Check the provider's page for a format switch — many offer one next to the link."
-      ],
-      "fix_ru": [
-        "Попросите у провайдера ссылку на подписку в формате sing-box, Xray или base64.",
-        "Посмотрите на странице провайдера переключатель формата — у многих он есть рядом со ссылкой."
-      ],
-      "desc": "§9.B5: тело подписки — Clash YAML (детект по proxies) — 0 узлов + внятная подсказка вместо generic-ошибки. Body-level код (на подписку, не на узел). Dart уже детектит (body_decoder.dart:201, JsonFlavor.clashYaml + parse_hints.dart), но без NodeWarning-класса; Go добавляет детект в ClassifySubscriptionBody.",
-      "dart": null,
-      "go": null
-    },
     "template_var_undeclared": {
       "severity": "warning",
       "params": [
@@ -1890,18 +1913,18 @@
       "dart": null,
       "go": null
     },
-    "hysteria2_server_ports_item_invalid": {
+    "hysteria_server_ports_item_invalid": {
       "severity": "warning",
       "params": [
         "path",
         "value"
       ],
-      "title_en": "Hysteria2: port hopping range dropped",
-      "title_ru": "Hysteria2: диапазон прыжков по портам отброшен",
-      "text_en": "The port hopping list holds {value} at {path}, which is not a pair of port numbers. That single entry was dropped; the remaining ranges were kept and port hopping still works on them. Had it been kept, the core would have refused to load the whole configuration.",
-      "text_ru": "В списке прыжков по портам в {path} стоит {value} — это не пара номеров портов. Отброшена только эта запись; остальные диапазоны сохранены, и прыжки по портам по ним работают. Если бы её оставили, ядро отказалось бы загрузить весь конфиг целиком.",
-      "cause_en": "The provider wrote the address and the ports as one string in the `mport` parameter (`mport=198.51.100.24:443,20000-30000`), so the host name ended up inside the port list.",
-      "cause_ru": "Провайдер записал адрес и порты одной строкой в параметре `mport` (`mport=198.51.100.24:443,20000-30000`), и имя хоста оказалось внутри списка портов.",
+      "title_en": "Hysteria: port hopping range dropped",
+      "title_ru": "Hysteria: диапазон прыжков по портам отброшен",
+      "text_en": "The port hopping list holds {value} at {path}, which is not a pair of port numbers from 0 to 65535. That single entry was dropped; the remaining ranges were kept and port hopping still works on them. Had it been kept, the core would have refused to load the whole configuration.",
+      "text_ru": "В списке прыжков по портам в {path} стоит {value} — это не пара номеров портов от 0 до 65535. Отброшена только эта запись; остальные диапазоны сохранены, и прыжки по портам по ним работают. Если бы её оставили, ядро отказалось бы загрузить весь конфиг целиком.",
+      "cause_en": "The provider wrote the address and the ports as one string in the `mport` parameter (`mport=198.51.100.24:443,20000-30000`), so the host name ended up inside the port list; or the panel wrote a port above 65535 or with leading zeros (`99999:99999`, `00443:00444`).",
+      "cause_ru": "Провайдер записал адрес и порты одной строкой в параметре `mport` (`mport=198.51.100.24:443,20000-30000`), и имя хоста оказалось внутри списка портов; либо панель написала порт больше 65535 или с ведущими нулями (`99999:99999`, `00443:00444`).",
       "fix_en": [
         "Nothing to do: the node works, and port hopping uses the ranges that were written correctly.",
         "If the node does not connect, take the link from the provider again — their panel writes the port list in a form the core does not accept."
@@ -1910,7 +1933,31 @@
         "Делать ничего не нужно: узел работает, а прыжки идут по тем диапазонам, что записаны правильно.",
         "Если узел не подключается, возьмите ссылку у провайдера заново: его панель пишет список портов в форме, которую ядро не принимает."
       ],
-      "desc": "Формат ЭЛЕМЕНТА списка (item_pattern у hysteria2.body.fields.server_ports). Ядро разбирает каждый элемент как пару `low:high` и на «198.51.100.24:443» отвечает «bad port range» отказом ВСЕГО конфига. Запрос LxBox 19.09.2026 (их починка на маппере — 44f26d11); у нас правило значения живёт в теле и действует на всех входах.",
+      "desc": "Формат ЭЛЕМЕНТА списка (item_pattern у hysteria.body.fields.server_ports), заведён в 1.1.49 (ревью LxBox): у hysteria v1 формат элемента не судился вовсе. Пара uint16 без ведущих нулей — тот же паттерн, что у hysteria2; ядро на негодном элементе отвечает «bad port range» отказом ВСЕГО конфига.",
+      "dart": null,
+      "go": null
+    },
+    "hysteria2_server_ports_item_invalid": {
+      "severity": "warning",
+      "params": [
+        "path",
+        "value"
+      ],
+      "title_en": "Hysteria2: port hopping range dropped",
+      "title_ru": "Hysteria2: диапазон прыжков по портам отброшен",
+      "text_en": "The port hopping list holds {value} at {path}, which is not a pair of port numbers from 0 to 65535. That single entry was dropped; the remaining ranges were kept and port hopping still works on them. Had it been kept, the core would have refused to load the whole configuration.",
+      "text_ru": "В списке прыжков по портам в {path} стоит {value} — это не пара номеров портов от 0 до 65535. Отброшена только эта запись; остальные диапазоны сохранены, и прыжки по портам по ним работают. Если бы её оставили, ядро отказалось бы загрузить весь конфиг целиком.",
+      "cause_en": "The provider wrote the address and the ports as one string in the `mport` parameter (`mport=198.51.100.24:443,20000-30000`), so the host name ended up inside the port list; or the panel wrote a port above 65535 or with leading zeros (`99999:99999`, `00443:00444`).",
+      "cause_ru": "Провайдер записал адрес и порты одной строкой в параметре `mport` (`mport=198.51.100.24:443,20000-30000`), и имя хоста оказалось внутри списка портов; либо панель написала порт больше 65535 или с ведущими нулями (`99999:99999`, `00443:00444`).",
+      "fix_en": [
+        "Nothing to do: the node works, and port hopping uses the ranges that were written correctly.",
+        "If the node does not connect, take the link from the provider again — their panel writes the port list in a form the core does not accept."
+      ],
+      "fix_ru": [
+        "Делать ничего не нужно: узел работает, а прыжки идут по тем диапазонам, что записаны правильно.",
+        "Если узел не подключается, возьмите ссылку у провайдера заново: его панель пишет список портов в форме, которую ядро не принимает."
+      ],
+      "desc": "Формат ЭЛЕМЕНТА списка (item_pattern у hysteria2.body.fields.server_ports). Ядро разбирает каждый элемент как пару `low:high` и на «198.51.100.24:443» отвечает «bad port range» отказом ВСЕГО конфига. Запрос LxBox 19.09.2026 (их починка на маппере — 44f26d11); у нас правило значения живёт в теле и действует на всех входах. С 1.1.49 элемент — пара uint16 без ведущих нулей: прежний паттерн пропускал 99999:99999, 65536:65536, 00443:00444 (ревью LxBox).",
       "dart": null,
       "go": null
     },
@@ -1958,6 +2005,186 @@
         "Если провайдер выдаёт пароль отдельно, впишите его в узел вручную."
       ],
       "desc": "Пустой пароль в источнике. Решение владельца 19.09.2026 (Q133-67): узел ПРИНИМАЕТСЯ с предупреждением, а не отбраковывается — принять строгость LxBox (required: true) значило бы выбросить живые узлы у всех, у кого пароль пуст. Имя кода ОБЩЕЕ, не под схему: поле «пароль» есть у половины схем, и второй такой код под другим именем был бы дублем. Ставится примитивом on_empty у записи маппера."
+    },
+    "provider_banner_link": {
+      "severity": "info",
+      "params": [
+        "message"
+      ],
+      "title_en": "Subscription: provider notice instead of a server",
+      "title_ru": "Подписка: сообщение провайдера вместо сервера",
+      "text_en": "The subscription carries an entry that looks like a link but points nowhere — the panel writes its notice this way. The provider's message: {message}. The entry was skipped; every other entry of the subscription was imported as usual.",
+      "text_ru": "В подписке есть запись, похожая на ссылку, но ведущая в никуда — так панель пишет своё сообщение. Текст провайдера: {message}. Запись пропущена; все остальные записи подписки импортированы как обычно.",
+      "cause_en": "When a subscription has expired, is disabled or has run out of traffic, panels do not send an empty body: Remnawave writes a valid `vless://` to `0.0.0.0:1` and 3x-ui a `socks://` to `127.0.0.1:1080`, putting the explanation into the remark after `#`. On expiry such an entry may be the only one in the body. Addresses like these are not servers — they are a way to deliver text to the user through a list that has room only for links.",
+      "cause_ru": "Когда подписка истекла, отключена или исчерпала трафик, панели не отдают пустое тело: Remnawave пишет валидную `vless://` на `0.0.0.0:1`, 3x-ui — `socks://` на `127.0.0.1:1080`, а объяснение кладёт в ремарку после `#`. При истечении такая запись бывает В ТЕЛЕ ЕДИНСТВЕННОЙ. Адреса эти серверами не являются — это способ передать человеку текст через список, в котором место есть только для ссылок.",
+      "fix_en": [
+        "Read the provider's message — usually it says the subscription has expired or the device limit is reached.",
+        "Renew or re-activate the subscription in the provider's panel, then update the subscription in the app."
+      ],
+      "fix_ru": [
+        "Прочитайте сообщение провайдера — обычно в нём сказано, что подписка истекла или исчерпан лимит устройств.",
+        "Продлите или активируйте подписку в панели провайдера и обновите подписку в приложении."
+      ],
+      "desc": "Запись-БАННЕР, притворившаяся ссылкой: цель из списка «заведомо не сервер» (source_kinds.json uri_lines.banner_targets). Прежде признаком баннера было ОТСУТСТВИЕ `://` (isProviderBannerLine), а обе крупные панели пишут баннер синтаксически валидной ссылкой — и он становился ПОЛНОЦЕННЫМ узлом: `vless://…@0.0.0.0:1` у Remnawave (createFallbackHosts), `socks://127.0.0.1:1080` у 3x-ui (service.go:483). При истечении подписки 3x-ui отдаёт баннер единственной записью, и пользователь получал «рабочую» подписку из одного узла-пустышки вместо сообщения «подписка истекла». severity=info: узла тут не было никогда, терять нечего, но выпадение обязано быть названным. Текст ремарки после `#` едет в `message` — это и есть сообщение провайдера, ради которого запись существует. Обращение как с provider_banner (строка без схемы) и service_record_ignored (служебная схема): в состав не идёт, из списка выпадает с info-кодом.",
+      "dart": null,
+      "go": "core/config/subscription/parse_body.go (признак — registry/source_kinds.json uri_lines.banner_targets)"
+    },
+    "service_record_ignored": {
+      "severity": "info",
+      "params": [
+        "scheme"
+      ],
+      "title_en": "Subscription: service record {scheme} skipped",
+      "title_ru": "Подписка: служебная запись {scheme} пропущена",
+      "text_en": "The subscription body carries a record with the service scheme {scheme}, which is a routing command for a neighbouring client rather than a server. It was skipped; every other entry of the subscription was imported as usual.",
+      "text_ru": "В теле подписки есть запись со служебной схемой {scheme} — это команда маршрутизации соседнему клиенту, а не сервер. Запись пропущена; все остальные записи подписки импортированы как обычно.",
+      "cause_en": "Panels hand one body to several clients at once and mix routing commands (`incy://routing/…`, `happ://routing/…`) in with the links, and repeat them in the `Routing:` header. Such a record never claimed to be a node, and this application does not execute another client's routing rules.",
+      "cause_ru": "Панели отдают одно тело сразу нескольким клиентам и подмешивают к ссылкам команды маршрутизации (`incy://routing/…`, `happ://routing/…`), повторяя их ещё и заголовком `Routing:`. Узлом такая запись не притворялась, а правила маршрутизации чужого клиента это приложение не исполняет.",
+      "fix_en": [
+        "Nothing to do: the subscription is healthy and its nodes were imported.",
+        "Set up routing rules in the application itself — the provider's command was not applied."
+      ],
+      "fix_ru": [
+        "Делать ничего не нужно: подписка исправна, её узлы импортированы.",
+        "Правила маршрутизации настройте в самом приложении — команда провайдера не применена."
+      ],
+      "desc": "Строка состава со СЛУЖЕБНОЙ схемой (source_kinds.json uri_lines.service_schemes): узлом не является и никогда им не была. Прежде отбраковывалась общим «unsupported scheme», и формально рабочая подписка показывала отказ на своём же служебном заголовке (наблюдалось: 5 отказов при 8 живых узлах). severity=info: терять тут нечего, но выпадение обязано быть названным, а не молчаливым — иначе оно неотличимо от потерянного узла. Обращение как с provider_banner, отличается только признаком (у баннера схемы нет вовсе).",
+      "dart": null,
+      "go": "core/config/subscription/parse_body.go isServiceSchemeLine"
+    },
+    "scheme_unsupported": {
+      "severity": "error",
+      "params": [
+        "scheme"
+      ],
+      "title_en": "Link: scheme {scheme} is not supported",
+      "title_ru": "Ссылка: схема {scheme} не поддержана",
+      "text_en": "The composition line starts with the scheme {scheme}, which no protocol section of the registry describes. The record was dropped: there is nothing to read it with.",
+      "text_ru": "Строка состава начинается схемой {scheme}, которой не описывает ни одна секция протоколов реестра. Запись отброшена: читать её нечем.",
+      "cause_en": "The link belongs to another client's world, or it is a newer scheme than this application knows. Aggregated public subscriptions collect links from different panels, and a panel sometimes writes the protocol's full name where the short alias was expected.",
+      "cause_ru": "Ссылка относится к миру другого клиента либо её схема новее, чем знает это приложение. Сборные публичные подписки собирают ссылки с разных панелей, а панель иногда пишет полное имя протокола там, где ожидался короткий алиас.",
+      "fix_en": [
+        "Update the application: a newer version may know this scheme.",
+        "Ask the provider for a link to the same server in a supported protocol."
+      ],
+      "fix_ru": [
+        "Обновите приложение: в более новой версии схема может быть известна.",
+        "Попросите у провайдера ссылку на тот же сервер в поддерживаемом протоколе."
+      ],
+      "desc": "Строка состава со схемой, которую не ведёт ни одна секция реестра (последний отказ ParseNode). Прежде причина ехала только текстом Go «unsupported scheme» без машинного кода, и мобильная сторона не могла сверить отбраковку. Отличается от protocol_unsupported: там ядро не умеет ТИП outbound'а из JSON-тела, здесь реестр не знает СХЕМУ ссылки. От service_record_ignored — тем, что про эту схему мы не знаем ничего, а про служебную знаем, что она узлом не является. Граница с form_unrecognized (CANON §4.1): этот код ставится только строке формы xxx://; текст без схемы, а также строка с опознанной схемой и непрочитанным пейлоадом — form_unrecognized.",
+      "dart": null,
+      "go": "core/config/subscription/node_parser_core.go ParseNode"
+    },
+    "body_dialect_unrecognized": {
+      "severity": "error",
+      "params": [],
+      "title_en": "Subscription: config dialect was read as the wrong one",
+      "title_ru": "Подписка: диалект конфига прочитан не тот",
+      "text_en": "The subscription body is a whole config, but its dialect was determined incorrectly, and the entries were read by a parser meant for another dialect. No nodes were imported.",
+      "text_ru": "Тело подписки — целый конфиг, но его диалект определён неверно, и записи читал разбор, предназначенный другому диалекту. Ни один узел не импортирован.",
+      "cause_en": "An Xray config and a sing-box config have the same shape (`outbounds` with a list of entries) and differ only in what the entry itself is called: `protocol` for Xray, `type` for sing-box. A classifier that asks only for `outbounds` hands an Xray config to the sing-box parser, which finds no `type` in a single entry.",
+      "cause_ru": "Конфиг Xray и конфиг sing-box имеют одну форму (`outbounds` со списком записей) и различаются только тем, как называется сама запись: у Xray — `protocol`, у sing-box — `type`. Классификатор, спрашивающий лишь `outbounds`, отдаёт конфиг Xray разбору sing-box, и тот не находит `type` ни у одной записи.",
+      "fix_en": [
+        "Update the application: the dialect check is part of the parser.",
+        "As a workaround, wrap the config in a JSON array of one element — an array of configs is recognised correctly."
+      ],
+      "fix_ru": [
+        "Обновите приложение: проверка диалекта — часть разбора.",
+        "Как обходной путь оберните конфиг в JSON-массив из одного элемента — массив конфигов опознаётся верно."
+      ],
+      "desc": "Диагностический код ступени КЛАССИФИКАЦИИ, а не разбора записи: тело опознано целым конфигом, но диалект спрошен не был. Заведён вместе с исправлением (source_kinds.json xray_config, prio 35): реестр признак диалекта объявлял, а рукописный сниффер body_classify.go его не спрашивал, и одиночный конфиг Xray давал ноль узлов с отбраковкой «missing type» на каждой записи. Ставится там, где ступень всё же промахнулась — код без пути к нему был бы мёртвыми данными, поэтому он объявлен body-level (на подписку, не на узел).",
+      "dart": null,
+      "go": "core/config/subscription/body_classify.go classifyJSONObjectBody"
+    },
+    "xray_domain_strategy_ignored": {
+      "severity": "info",
+      "params": [
+        "value"
+      ],
+      "title_en": "WireGuard: address family preference not applied",
+      "title_ru": "WireGuard: предпочтение семейства адресов не применяется",
+      "text_en": "The element asked for the {value} address strategy. The node works, but the preference is not applied: the launcher writes the DNS server for a node as a plain tag, and a strategy without a server is dropped by the core. Names may resolve to IPv6 where the provider expected IPv4.",
+      "text_ru": "Элемент запрашивает стратегию адресов {value}. Узел работает, но предпочтение не применяется: DNS-сервер узла лаунчер пишет простым тегом, а стратегию без сервера ядро отбрасывает. Имена могут разрешаться в IPv6 там, где провайдер ожидал IPv4.",
+      "cause_en": "Xray carries the address-family preference on the outbound itself. In sing-box the same setting lives inside the node's DNS resolver object, next to the name of the server that does the resolving — and the element never names such a server. Writing the strategy alone would either change the shape of that field for every scheme at once or invent a server tag the element did not ask for.",
+      "cause_ru": "У Xray предпочтение семейства адресов стоит на самом outbound'е. У sing-box та же настройка живёт внутри объекта DNS-резолвера узла, рядом с именем сервера, который и разрешает имена, — а сервера элемент не называет. Записать одну стратегию значило бы либо сменить форму этого поля сразу у всех схем, либо выдумать тег сервера, которого элемент не просил.",
+      "fix_en": [
+        "Nothing to do if the node connects: the preference only affects which address is tried first.",
+        "If the node needs IPv4 only, set the address strategy in the launcher's DNS settings."
+      ],
+      "fix_ru": [
+        "Если узел соединяется, делать ничего не нужно: предпочтение влияет лишь на то, какой адрес пробуется первым.",
+        "Если узлу нужен только IPv4, задайте стратегию адресов в настройках DNS лаунчера."
+      ],
+      "desc": "settings.domainStrategy Xray-элемента wireguard (ForceIPv4/ForceIPv6/ForceIP/…). Эквивалент у ядра ЕСТЬ — domain_resolver.strategy (option/outbound.go DomainResolveOptions.Strategy), но реестр объявляет domain_resolver КОРОТКОЙ формой (строка с тегом сервера, dialer.json body.fields.domain_resolver), и strategy без server ядро сериализует в «{}». Код объявляет потерю; смена формы поля — отдельная дельта на все схемы.",
+      "dart": null,
+      "go": "contract/registry/protocols/wireguard.json mappers.xray.params.domainStrategy (on_present.note)"
+    },
+    "xray_reserved_base64_unsupported": {
+      "severity": "warning",
+      "params": [
+        "value"
+      ],
+      "title_en": "WireGuard: reserved bytes written as text not applied",
+      "title_ru": "WireGuard: резервные байты, записанные текстом, не применены",
+      "text_en": "The element carries the reserved field as the text {value} instead of three numbers. The value was not applied. If the provider requires these bytes, the node completes the handshake but carries no traffic.",
+      "text_ru": "В элементе поле reserved записано текстом {value}, а не тремя числами. Значение не применено. Если провайдер эти байты требует, узел завершает рукопожатие, но трафик по нему не идёт.",
+      "cause_en": "Xray declares the field as a byte string, so the same three bytes may be written either as a list of numbers or as one base64 line, and different panels pick different spellings. The launcher reads the list of numbers, which is the form the core expects; translating the text spelling would need a separate rule that does not exist yet.",
+      "cause_ru": "У Xray поле объявлено строкой байтов, поэтому одни и те же три байта пишут либо списком чисел, либо одной base64-строкой, и разные панели выбирают разные написания. Лаунчер читает список чисел — ту форму, которую ждёт ядро; для перевода текстового написания нужно отдельное правило, которого пока нет.",
+      "fix_en": [
+        "Ask the provider for the configuration with reserved written as three numbers, for example [1, 2, 3].",
+        "If the node connects but carries no traffic, these bytes are the first thing to check."
+      ],
+      "fix_ru": [
+        "Попросите у провайдера конфигурацию, где reserved записан тремя числами, например [1, 2, 3].",
+        "Если узел соединяется, но трафик не идёт, эти байты стоит проверить первыми."
+      ],
+      "desc": "settings.reserved Xray-элемента wireguard в СТРОКОВОМ (base64) написании. Тип у Xray двоякий ([]byte принимает массив чисел и base64-строку), ядро ждёт []uint8. Запись reserved читает массив; примитива «base64 → список байтов» у движка нет, и заводить его ради одного написания одного поля — расширение грамматики под частный случай. Код объявляет потерю трёхбайтового префикса (WARP и подобные): без него узел не проходит у провайдеров, которые его требуют.",
+      "dart": null,
+      "go": "contract/registry/protocols/wireguard.json mappers.xray.params.$reserved_base64 (on_present.note)"
+    },
+    "xray_cert_chain_pin_unsupported": {
+      "severity": "warning",
+      "params": [
+        "value"
+      ],
+      "title_en": "TLS: certificate pinning not applied",
+      "title_ru": "TLS: пиннинг сертификата не применяется",
+      "text_en": "The element pins the server certificate chain by its hash. The node works and the certificate is still verified the usual way, but this extra check is not applied: the core pins a different thing — the hash of the server's public key, not of the certificate chain — and the two values never match.",
+      "text_ru": "Элемент закрепляет цепочку сертификатов сервера по её хешу. Узел работает, и сертификат по-прежнему проверяется обычным образом, но эта дополнительная проверка не применяется: ядро закрепляет другое — хеш открытого ключа сервера, а не цепочки сертификатов, — и одно значение никогда не совпадёт с другим.",
+      "cause_en": "Both clients can pin the server certificate, but they hash different things: Xray hashes the raw certificates of the chain, sing-box hashes the public key taken from the leaf certificate. Carrying the value across would not add protection — it would break every handshake, which is the opposite of what pinning is for, so the value is deliberately not carried.",
+      "cause_ru": "Закреплять сертификат сервера умеют оба клиента, но хешируют они РАЗНОЕ: Xray — сырые сертификаты цепочки, sing-box — открытый ключ из листового сертификата. Перенести значение как есть значило бы не усилить защиту, а сорвать каждое рукопожатие, то есть добиться обратного тому, ради чего пиннинг ставят, — поэтому значение сознательно не переносится.",
+      "fix_en": [
+        "Nothing to do if the node connects: the certificate is still verified against the usual trust store.",
+        "If you need pinning exactly, ask the provider for the hash of the server public key — that is the form this application can apply."
+      ],
+      "fix_ru": [
+        "Если узел соединяется, делать ничего не нужно: сертификат по-прежнему проверяется обычным образом.",
+        "Если пиннинг нужен именно как проверка, попросите у провайдера хеш ОТКРЫТОГО КЛЮЧА сервера — эту форму приложение применить умеет."
+      ],
+      "desc": "tlsSettings.pinnedPeerCertificateChainSha256 (алиас pinnedPeerCertSha256) Xray-элемента. НЕ маппится в certificate_public_key_sha256: прообраз хеша РАЗНЫЙ — ядро хеширует SPKI ЛИСТОВОГО сертификата (common/tls/std_client.go:278 VerifyPublicKeySHA256: x509.MarshalPKIXPublicKey от leaf → sha256), Xray — сырой DER сертификатов ЦЕПОЧКИ. Значение, годное в Xray, в sing-box не совпадёт никогда, и перенос сломал бы рукопожатие у каждого узла с пином. Проверено по коду ядра, а не по имени поля (имена похожи, семантика нет).",
+      "dart": null,
+      "go": "contract/registry/tls.json blocks.xray.pinnedPeerCertificateChainSha256 (on_present.note)"
+    },
+    "grpc_multi_mode_ignored": {
+      "severity": "warning",
+      "params": [],
+      "title_en": "gRPC: multi mode not applied",
+      "title_ru": "gRPC: режим multi не применяется",
+      "text_en": "The element asks for the gRPC multi mode. This build of the core has only the regular mode, and the node was imported with it. If the server accepts multi-mode clients only, this node will not connect.",
+      "text_ru": "Элемент запрашивает режим multi у транспорта gRPC. Эта сборка ядра умеет только обычный режим, с ним узел и импортирован. Если сервер принимает исключительно multi-клиентов, этот узел не соединится.",
+      "cause_en": "Xray can carry a gRPC stream two ways — one request per connection (gun) or several multiplexed inside one (multi). sing-box implements the first one only, and there is no field to ask for the second. Most servers accept both, so the node usually works; a server configured for multi alone will refuse it.",
+      "cause_ru": "Xray умеет гонять gRPC-поток двумя способами: по запросу на соединение (gun) или несколькими внутри одного (multi). sing-box реализует только первый, и поля, которым можно попросить второй, у него нет. Большинство серверов принимают оба, поэтому узел обычно работает; сервер, настроенный только на multi, его отвергнет.",
+      "fix_en": [
+        "Check whether the node connects — if it does, nothing needs doing.",
+        "If it does not, ask the provider for a node without multi mode, or pick another transport."
+      ],
+      "fix_ru": [
+        "Проверьте, соединяется ли узел, — если да, делать ничего не нужно.",
+        "Если нет, попросите у провайдера узел без режима multi либо выберите другой транспорт."
+      ],
+      "desc": "grpcSettings.multiMode Xray-элемента при ИСТИННОМ значении. Эквивалента у ядра нет (V2RayGRPCOptions знает service_name/idle_timeout/ping_timeout/permit_without_stream); режим gun — сегодняшнее поведение, и он принимается молча. Ложное значение кода не даёт: терять нечего, когда режим и не просили. Парный случай authority кода НЕ имеет намеренно — та потеря поведения не меняет и шумела бы на каждом grpc-узле всех четырёх панелей.",
+      "dart": null,
+      "go": "contract/registry/transports.json blocks.xray.grpc.multiMode (on_present.note)"
     }
   }
 }

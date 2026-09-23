@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"testing"
 
 	"singbox-launcher/core/config/configtypes"
 )
@@ -86,10 +87,42 @@ func contractWarningValue(w configtypes.Warning) string {
 // формат ошибки Go, у LxBox — свой; сравнением он не покрывается, иначе
 // вторая сторона была бы обязана копировать наши строки. `code` необязателен:
 // в старых URI-ожиданиях его нет, там нормативен только `ref`.
+//
+// `index` (контракт 1.1.49, TASKS_LXBOX §32.5/§45.4) — ДОПОЛНИТЕЛЬНЫЙ адрес
+// рядом с `ref`, а не его замена: позиция отбракованного элемента в нарезке
+// `elements` вида источника (source_kinds.json), с нуля. `ref` остаётся тем,
+// что видно глазами (тег у JSON-тел, сама ссылка у корпуса uri/), `index` —
+// адресом для подсветки места во входе. Указатель, потому что 0 — законное
+// значение, а «поле не объявлено» у старых ожиданий должно отличаться от него.
 type contractDrop struct {
 	Ref    string `json:"ref"`
+	Index  *int   `json:"index,omitempty"`
 	Code   string `json:"code,omitempty"`
 	Reason string `json:"reason"`
+
+	// node — узел, отвергнутый санитайзером (у отказа разбора узла нет).
+	// В конверт не едет: нужен раннеру, чтобы найти элемент входа там, где
+	// тег узла ВЫВЕДЕН, а не взят из элемента (Xray строит его из remarks).
+	node *configtypes.ParsedNode
+}
+
+// dropIndex — адрес `index` записи отбраковки.
+func dropIndex(i int) *int { return &i }
+
+// requireDropCodes — на нашей стороне у КАЖДОЙ отбраковки есть код и индекс
+// (контракт 1.1.49). Ожидания без них сравниваются снисходительно (старые
+// файлы, чужая сторона), а вот раннер сам обязан их выдавать: отбраковка без
+// кода — ровно тот конверт, по которому нельзя понять, почему узел выброшен.
+func requireDropCodes(t *testing.T, env contractEnvelope) {
+	t.Helper()
+	for _, d := range env.Dropped {
+		if d.Code == "" {
+			t.Errorf("отбраковка %q без кода (reason: %s)", d.Ref, d.Reason)
+		}
+		if d.Index == nil {
+			t.Errorf("отбраковка %q без index", d.Ref)
+		}
+	}
 }
 
 // canonNodeDrop — canonNode плюс МАШИННАЯ причина отказа.

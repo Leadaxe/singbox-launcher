@@ -6,7 +6,7 @@ These pages are generated from the `contract/registry/` registry by `go generate
 
 |  | Version |
 |---|---|
-| Contract (`contract/VERSION`) | `1.1.46` |
+| Contract (`contract/VERSION`) | `1.1.52` |
 | Core (`body.core`) | `1.14.1-lx.4` |
 
 ## How to read these pages
@@ -37,20 +37,20 @@ The normative text is [`contract/docs/CANON.md` §8](../CANON.md).
 | [`anytls`](protocols/anytls.md) | `anytls` | `outbound` | share link, sing-box JSON | yes |
 | [`chain`](protocols/chain.md) | `chain` | `outbound` | — | no |
 | [`group`](protocols/group.md) | `selector\|urltest` | `group` | sing-box JSON, Xray JSON, share link | yes |
-| [`http`](protocols/http.md) | `http` | `outbound` | share link, sing-box JSON | yes |
+| [`http`](protocols/http.md) | `http` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
 | [`hysteria`](protocols/hysteria.md) — Supported by the desktop launcher only | `hysteria` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
 | [`hysteria2`](protocols/hysteria2.md) | `hysteria2` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
 | [`masque`](protocols/masque.md) | `masque` | `outbound` | share link, sing-box JSON | yes |
 | [`naive`](protocols/naive.md) | `naive` | `outbound` | share link, sing-box JSON | yes |
 | [`shadowsocks`](protocols/shadowsocks.md) | `shadowsocks` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
-| [`socks`](protocols/socks.md) | `socks` | `outbound` | share link, sing-box JSON | yes |
+| [`socks`](protocols/socks.md) | `socks` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
 | [`ssh`](protocols/ssh.md) | `ssh` | `outbound` | share link, sing-box JSON | yes |
 | [`tailscale`](protocols/tailscale.md) | `tailscale` | `endpoint` | sing-box JSON | no |
 | [`trojan`](protocols/trojan.md) | `trojan` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
 | [`tuic`](protocols/tuic.md) | `tuic` | `outbound` | share link, sing-box JSON | yes |
 | [`vless`](protocols/vless.md) | `vless` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
 | [`vmess`](protocols/vmess.md) | `vmess` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
-| [`wireguard`](protocols/wireguard.md) | `wireguard` | `endpoint` | share link, sing-box JSON, WireGuard .conf, AmneziaWG .conf | yes |
+| [`wireguard`](protocols/wireguard.md) | `wireguard` | `endpoint` | share link, sing-box JSON, WireGuard .conf, AmneziaWG .conf, Xray JSON | yes |
 
 ## Shared sub-schemas
 

@@ -82,7 +82,7 @@ func UnwrapURI(plan *Plan, text string) (*Space, registry.Form, error) {
 	}
 	forms := plan.Mapper.Forms
 	if len(forms) == 0 {
-		return nil, registry.Form{}, fmt.Errorf("linkmap: форма не распознана")
+		return nil, registry.Form{}, rejectUnrecognized(fmt.Errorf("linkmap: форма не распознана"))
 	}
 
 	fallback := -1
@@ -131,7 +131,7 @@ func UnwrapURI(plan *Plan, text string) (*Space, registry.Form, error) {
 			!Matches(form.Detect, NewContent(decodeSubject(form, text))) {
 			continue
 		}
-		space, err := lexSpace(form, body, text, plan.Mapper.IniDialect)
+		space, err := lexSpace(form, body, text, plan.Mapper.IniDialect, plan.Mapper.Label.CommentRule())
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
@@ -146,19 +146,19 @@ func UnwrapURI(plan *Plan, text string) (*Space, registry.Form, error) {
 		form := forms[fallback]
 		body, err := unwrapBody(form, text)
 		if err != nil {
-			return nil, form, err
+			return nil, form, rejectUnrecognized(err)
 		}
-		space, err := lexSpace(form, body, text, plan.Mapper.IniDialect)
+		space, err := lexSpace(form, body, text, plan.Mapper.IniDialect, plan.Mapper.Label.CommentRule())
 		if err != nil {
-			return nil, form, err
+			return nil, form, rejectUnrecognized(err)
 		}
 		buildOverlays(plan.Mapper.Overlays, space)
 		return space, form, nil
 	}
 	if firstErr != nil {
-		return nil, registry.Form{}, firstErr
+		return nil, registry.Form{}, rejectUnrecognized(firstErr)
 	}
-	return nil, registry.Form{}, fmt.Errorf("linkmap: форма не распознана")
+	return nil, registry.Form{}, rejectUnrecognized(fmt.Errorf("linkmap: форма не распознана"))
 }
 
 // unwrapBody прогоняет конвейер декодеров одной формы и отдаёт ПЕЙЛОАД —
@@ -274,7 +274,7 @@ func stripURIWrapper(text string) string {
 // ссылки, но фрагмент бывает и там: `vmess://<base64>#Имя` — поэтому
 // фрагмент исходного текста переносится в пространство. Побеждает тот, кого
 // запись `label` назовёт первым (у vmess это `json.ps`, фрагмент — запасной).
-func lexSpace(form registry.Form, body, original string, dialect *registry.IniDialect) (*Space, error) {
+func lexSpace(form registry.Form, body, original string, dialect *registry.IniDialect, comment *registry.LabelComment) (*Space, error) {
 	switch form.Space {
 	case "", "url":
 		return lexURI(body)
@@ -331,7 +331,7 @@ func lexSpace(form registry.Form, body, original string, dialect *registry.IniDi
 			return nil, fmt.Errorf("linkmap: ini: секций нет")
 		}
 		s := &Space{}
-		s.SetINI(sections, parseINIComments(body, dialect))
+		s.SetINI(sections, parseINIComments(body, dialect, comment))
 		s.iniDropped = dropped
 		// Схема и фрагмент — свойства ОБОЛОЧКИ, как и у формы JSON: под
 		// base64 их нет, а `label` и `scheme_source` читают их позже.
@@ -362,11 +362,14 @@ func lexSpace(form registry.Form, body, original string, dialect *registry.IniDi
 // parseINIComments — ПЕРВЫЙ комментарий каждой секции, то есть имя узла,
 // которое провайдеры пишут сразу под заголовком (`[Peer]` / `# CH-FREE#11`).
 //
-// Строка с '=' именем НЕ считается: `# Bouncing = 0` — это отключённая
-// настройка, а не название. Сам '#' внутри значения законен («US-FREE#137»),
-// поэтому режется только ведущий маркер. Диалект тот же, что у parseINI:
-// комментарий — целая строка, начинающаяся с '#' или ';'.
-func parseINIComments(text string, d *registry.IniDialect) map[string]string {
+// Что именем НЕ считается, объявляет метка секции (`label.comment`,
+// PRIMITIVES §0.8): у wg-quick `require_no: "="` — `# Bouncing = 0` это
+// отключённая настройка, а не название. Своего умолчания у движка нет: без
+// правила годится первый непустой комментарий. Сам '#' внутри значения
+// законен («US-FREE#137»), поэтому режется только ведущий маркер. Диалект
+// тот же, что у parseINI: комментарий — целая строка, начинающаяся с '#'
+// или ';'.
+func parseINIComments(text string, d *registry.IniDialect, rule *registry.LabelComment) map[string]string {
 	prefixes := d.Prefixes()
 	out := map[string]string{}
 	section := ""
@@ -395,7 +398,7 @@ func parseINIComments(text string, d *registry.IniDialect) map[string]string {
 			continue
 		}
 		name := strings.TrimSpace(strings.TrimLeft(line, strings.Join(prefixes, "")))
-		if name == "" || strings.Contains(name, "=") {
+		if name == "" || !rule.Accepts(name) {
 			continue
 		}
 		out[section] = name
@@ -414,35 +417,57 @@ func buildOverlays(specs []registry.Overlay, space *Space) {
 		if spec.Name == "" {
 			continue
 		}
+		// Слой приезжает ДВУМЯ формами, и обе живые.
+		//
+		// ТЕКСТОМ — у ссылки: `extra` есть query-параметр с JSON внутри
+		// (vless, форки Xray), и его надо разобрать самим.
+		//
+		// УЖЕ ОБЪЕКТОМ — у контейнера: vmess-ссылка сама есть JSON, и
+		// Marzban кладёт `extra` его ВЛОЖЕННЫМ объектом
+		// (`payload["extra"] = extra`, app/subscription/v2ray.py:249).
+		// Такое значение до слоя не доезжало вовсе: `Lookup` ведёт объект
+		// через `jsonScalar`, а тот на объекте молчит намеренно (§4), и
+		// xmux с sc*-полями vmess-узла терялись МОЛЧА — тот же вход у vless
+		// разбирался полностью (D-7 аудита панелей).
+		var obj map[string]interface{}
 		raw := ""
 		for _, name := range spec.Source.All() {
+			if v, ok := space.LookupRaw(name); ok {
+				if m, isObj := v.(map[string]interface{}); isObj {
+					obj = m
+					break
+				}
+			}
 			if v, ok := space.Lookup(name); ok && strings.TrimSpace(v) != "" {
 				raw = strings.TrimSpace(v)
 				break
 			}
 		}
-		if raw == "" {
+		if obj == nil && raw == "" {
 			continue
 		}
-		for _, dec := range spec.Decode {
-			switch dec {
-			case "base64?":
-				if s, err := decodeBase64Any(raw); err == nil {
-					raw = s
-				}
-			case "percent":
-				// Значение уже percent-декодировано лексером один раз;
-				// второй проход нужен панелям, кодирующим слой дважды.
-				if !strings.HasPrefix(raw, "{") {
-					if s, err := percentUnescape(raw); err == nil {
+		// Декодеры объявлены для ТЕКСТОВОЙ формы: объект уже разобран, и
+		// применять к нему percent/base64 нечего.
+		if obj == nil {
+			for _, dec := range spec.Decode {
+				switch dec {
+				case "base64?":
+					if s, err := decodeBase64Any(raw); err == nil {
 						raw = s
+					}
+				case "percent":
+					// Значение уже percent-декодировано лексером один раз;
+					// второй проход нужен панелям, кодирующим слой дважды.
+					if !strings.HasPrefix(raw, "{") {
+						if s, err := percentUnescape(raw); err == nil {
+							raw = s
+						}
 					}
 				}
 			}
-		}
-		var obj map[string]interface{}
-		if err := json.Unmarshal([]byte(raw), &obj); err != nil {
-			continue
+			if err := json.Unmarshal([]byte(raw), &obj); err != nil {
+				continue
+			}
 		}
 		flat := map[string]string{}
 		for k, v := range obj {

@@ -92,6 +92,12 @@ func schemeOfText(text string) string {
 	return strings.ToLower(t[:i])
 }
 
+// SchemeOfText — схема ссылки формы `scheme://` в нижнем регистре; "" —
+// текст этой формы не имеет. Слою подписки нужна та же граница, что у
+// движка: отказ `scheme_unsupported` ставится только строке `xxx://`
+// (CANON §4.1), прочий непрочитанный текст — `form_unrecognized`.
+func SchemeOfText(text string) string { return schemeOfText(text) }
+
 // NewElementContent — контент одного элемента документа: разобранное
 // значение JSON плюс сведения об уровне, откуда он взят.
 func NewElementContent(value interface{}, scheme, inArray string) *Content {

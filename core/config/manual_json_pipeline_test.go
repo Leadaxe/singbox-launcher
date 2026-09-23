@@ -24,7 +24,9 @@ func TestManualJSONGoesThroughPipeline(t *testing.T) {
 	t.Logf("body=%s", res.Body)
 	t.Logf("warnings=%+v", res.Warnings)
 	var m map[string]interface{}
-	json.Unmarshal(res.Body, &m)
+	if err := json.Unmarshal(res.Body, &m); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
 	for _, k := range []string{"bogus_key", "flow", "tag", "detour"} {
 		if _, bad := m[k]; bad {
 			t.Errorf("%q must not survive in the body", k)
@@ -45,7 +47,9 @@ func TestManualJSONGoesThroughPipeline(t *testing.T) {
 	}
 	t.Logf("exotic body=%s", res2.Body)
 	var m2 map[string]interface{}
-	json.Unmarshal(res2.Body, &m2)
+	if err := json.Unmarshal(res2.Body, &m2); err != nil {
+		t.Fatalf("unmarshal exotic body: %v", err)
+	}
 	if m2["custom"] != "keepme" {
 		t.Errorf("exotic type must stay passthrough, got %v", m2)
 	}

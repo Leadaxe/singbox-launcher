@@ -1,0 +1,13 @@
+# ОДИНОЧНЫЙ целый конфиг Xray (объект, не массив) — вид источника `xray_config`
+# реестра (priority 35, признак диалекта — `protocol` у элемента outbounds).
+# Реестр это решал с самого своего появления, а рукописный классификатор
+# диалект не спрашивал вовсе и отдавал объект ветке sing-box-конфига: каждая
+# запись отбраковывалась «missing type», и подписка давала НОЛЬ узлов
+# (контракт 1.1.48, код body_dialect_unrecognized описывает тот промах).
+# Кейс несёт ровно то, что было у живого входа: vless + reality + tcp,
+# `encryption` mlkem дословно, `fp=firefox` (для REALITY разрешён с 16.09.2026
+# и кода reality_fp_not_chrome НЕ даёт), flow vision, служебные outbound'ы
+# freedom/blackhole (узлами не являются) и секции dns/inbounds/routing, которые
+# импорт не читает. Ключи и адреса — корпусные; mlkem-ключ укорочен, но форму
+# (имя метода + ≥3 непустых частей) сохраняет.
+{"remarks": "single-xray-config", "log": {"loglevel": "warning"}, "dns": {"servers": ["8.8.8.8"]}, "inbounds": [{"port": 10808, "protocol": "socks"}], "routing": {"rules": [{"type": "field", "outboundTag": "direct", "domain": ["geosite:private"]}]}, "outbounds": [{"tag": "example-node", "protocol": "vless", "settings": {"vnext": [{"address": "example-1.com", "port": 443, "users": [{"id": "11111111-1111-1111-1111-111111111111", "encryption": "mlkem768x25519plus.native.0rtt.ZJuiKcEm9ejNVVOlYLdXlNQdhzszmcfP89CCJelkxEUQRbhL5_uq5zjIn6F0V5utiwUvY9K", "flow": "xtls-rprx-vision"}]}]}, "streamSettings": {"network": "tcp", "tcpSettings": {}, "security": "reality", "realitySettings": {"serverName": "example-2.com", "publicKey": "mnL3vXjnwysMjlryreyJyrXZ5eaEuhDTpCD3r7UoBBU", "shortId": "d48964df7db5", "spiderX": "/a8335a74a2a1813", "fingerprint": "firefox"}, "sockopt": {"tcpKeepAliveIdle": 30, "tcpKeepAliveInterval": 15}}}, {"tag": "direct", "protocol": "freedom"}, {"tag": "block", "protocol": "blackhole"}]}

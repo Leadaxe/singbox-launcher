@@ -4,10 +4,13 @@
 package subscription
 
 import (
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/linkmap"
 	"singbox-launcher/core/config/registry"
 )
 
@@ -57,6 +60,23 @@ var MaxURILength = maxURILengthFromRegistry()
 
 // maxURILengthDefault — запасной предел, если реестр не прочитался.
 const maxURILengthDefault = 65536
+
+// CheckURILength — отказ `uri_too_long`, если ссылка длиннее предела реестра
+// (MaxURILength, limits.json `max_uri_length`); nil — длина в пределе.
+//
+// Одна проверка на всех, кто принимает ссылку: разбор подписки (ParseNode) и
+// форма прямой ссылки конфигуратора (ValidateURI). До 1.1.51 конфигуратор
+// держал своё число 8192 константой кода и отвергал длинную, но валидную
+// ссылку (awg://, xhttp с extra) целиком — второй источник истины рядом с
+// реестром (TASKS_LXBOX §47.8).
+func CheckURILength(uri string) error {
+	if len(uri) <= MaxURILength {
+		return nil
+	}
+	return linkmap.NewReject(WarnURITooLong,
+		map[string]string{"length": strconv.Itoa(len(uri)), "limit": strconv.Itoa(MaxURILength)},
+		fmt.Errorf("URI length (%d) exceeds maximum (%d)", len(uri), MaxURILength))
+}
 
 func maxURILengthFromRegistry() int {
 	reg, err := registry.Get()
@@ -116,8 +136,8 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	}
 
 	// Validate URI length
-	if len(uri) > MaxURILength {
-		return nil, fmt.Errorf("URI length (%d) exceeds maximum (%d)", len(uri), MaxURILength)
+	if err := CheckURILength(uri); err != nil {
+		return nil, err
 	}
 
 	// SPEC 133: сначала спрашиваем ДВИЖОК реестра. Ведёт ли он эту ссылку,
@@ -133,8 +153,32 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	// секция реестра двумя `forms` одной таблицей записей.
 	//
 	// Сюда попадает только текст, который не опознала ни одна секция.
-	return nil, fmt.Errorf("unsupported scheme")
+	// Строка формы `xxx://` — схему не ведёт никто (`scheme_unsupported`);
+	// у прочего текста схемы нет вовсе, и он просто не прочитан
+	// (`form_unrecognized`) — граница по CANON §4.1.
+	if scheme := linkmap.SchemeOfText(uri); scheme != "" {
+		return nil, linkmap.NewReject(WarnSchemeUnsupported, map[string]string{"scheme": scheme}, ErrUnsupportedScheme)
+	}
+	return nil, linkmap.NewReject(linkmap.CodeFormUnrecognized, nil, errors.New("not a link: no scheme"))
 }
+
+// ErrUnsupportedScheme — последний отказ ParseNode: схему строки не ведёт ни
+// одна секция реестра.
+//
+// Сторожевая переменная, а не строка на месте: отбраковке нужен МАШИННЫЙ код
+// (`scheme_unsupported`, D-088), а различать «эту схему мы не знаем вовсе» от
+// прочих отказов разбора по тексту ошибки нельзя — текст у каждой стороны
+// свой. Обёртки над ней (`%w`) сохраняют признак для errors.Is.
+//
+// ParseNode отдаёт её обёрнутой в linkmap.RejectError с кодом
+// `scheme_unsupported` и параметром `scheme`: код едет тем же путём, что у
+// отказов движка (rejectCodeOf, linkmap.RejectCode), а признак для
+// errors.Is не теряется. Граница с `form_unrecognized` (CANON §4.1): схему
+// строки `xxx://` не ведёт ни одна секция — `scheme_unsupported`; текст не
+// прочитан (схемы у строки нет, у тела не опознан ни один вид источника,
+// либо секция схему опознала, но ни одна её форма пейлоад не прочитала) —
+// `form_unrecognized`.
+var ErrUnsupportedScheme = errors.New("unsupported scheme")
 
 // Private helper functions (migrated from parser.go)
 

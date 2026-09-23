@@ -1,6 +1,7 @@
 %% Нормативная классификация тела подписки (SPEC 103, PLAN §4).
 %% Расхождения текущих реализаций: B4 (Go режет одиночный JSON-объект на fetch-пути),
-%% B5 (Go: нет Clash-подсказки), B11 (Go: нет INI-ветки) — целевое состояние ниже.
+%% B11 (Go: нет INI-ветки) — целевое состояние ниже. B5 (Clash-подсказка) снят в контракте 1.1.51:
+%% код clash_yaml_unsupported не ставила ни одна сторона; детект Clash YAML — отдельной фичей по спросу.
 flowchart TD
   A["Тело подписки (после fetch)"] --> T["trim + UTF-8-проверка"]
   T --> V{"начинается с vpn:// ?"}
@@ -19,8 +20,6 @@ base64url + qCompress/zlib
   F -->|"массив объектов с type"| S2["sing-box массив outbound'ов"]
   F -->|"объект с outbounds/endpoints"| S3["sing-box полный конфиг"]
   F -->|"массив таких конфигов"| S4["sing-box массив конфигов"]
-  F -->|"map с proxies"| CY["Clash YAML → 0 узлов + подсказка
-warning: clash_yaml_unsupported"]
   F -->|"иначе"| UNK["unknown → диагностика"]
   J -- нет --> I{"[Interface] + [Peer] ?"}
   I -- да --> INI["wgconf INI → wireguard-узлы"]

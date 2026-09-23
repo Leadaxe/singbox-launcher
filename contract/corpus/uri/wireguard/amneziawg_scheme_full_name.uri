@@ -1,0 +1,11 @@
+# Схема `amneziawg://` — ПОЛНОЕ имя wireguard-секции, третий алиас рядом с
+# `wg://` и `awg://` (contract/registry/protocols/wireguard.json, scheme_in).
+# Панели (rrtrg и соседи) пишут его целиком, и без литерала такая ссылка
+# отбраковывалась как «unsupported scheme», хотя все её поля секция уже умела
+# читать: те же узлы приезжали рядом через `vpn://` (контракт 1.1.48).
+# Поля кейса — форма живого входа: h1-h4 ДИАПАЗОНАМИ, i1 с сигнатурой
+# `<b 0x…>` (percent-энкоденная, с литеральными `+`), headerprotectionkey,
+# presharedkey. `dns` в тело НЕ едет и даёт wgconf_dns_ignored — так же, как
+# у формы `.conf`: потеря обязана быть названной, а не молчаливой.
+# Ключи и адрес — корпусные, i1 укорочена до той же формы.
+amneziawg://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@host.example.com:9494?address=10.200.0.6%2F32&dns=1.1.1.1%2C+1.0.0.1&h1=11758-81984&h2=129715-170451&h3=216120-285919&h4=305575-388085&i1=%3Cb+0xc300000001088cf07a7e17c709%3E%3Cr+32%3E&jc=5&jmax=50&jmin=10&mtu=1320&presharedkey=Bw4VHCMqMTg%2FRk1UW2JpcHd%2BhYyTmqGor7a9xMvS2eA%3D&publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&s1=57&s2=105&s3=52&s4=12#DE-example-awg2%20AWG

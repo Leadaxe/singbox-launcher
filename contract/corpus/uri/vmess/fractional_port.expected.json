@@ -1,6 +1,8 @@
 {
   "dropped": [
     {
+      "code": "field_missing",
+      "index": 0,
       "reason": "parse_error",
       "ref": "vmess://eyJ2IjoiMiIsInBzIjoiZnJhYyIsImFkZCI6InZtLmV4YW1wbGUuY29tIiwicG9ydCI6NDQzLjksImlkIjoiMTExMTExMTEtMjIyMi0zMzMzLTQ0NDQtNTU1NTU1NTU1NTU1IiwiYWlkIjoiMCIsIm5ldCI6InRjcCIsInR5cGUiOiJub25lIiwiaG9zdCI6IiIsInBhdGgiOiIiLCJ0bHMiOiIifQ==#frac-port"
     }

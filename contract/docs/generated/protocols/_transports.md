@@ -25,7 +25,6 @@ These are repeated on the page of every scheme that carries a transport block, t
   - Type: int
   - Maps to: `transport.max_early_data`, `transport.early_data_header_name`
 - **`eh`** — Header name that carries the early data.
-  - Supported by LxBox only
   - Type: string · Default: `Sec-WebSocket-Protocol`
   - Maps to: `transport.early_data_header_name`
 
@@ -80,11 +79,11 @@ These are repeated on the page of every scheme that carries a transport block, t
   - Type: bool · Default: `false`
   - Maps to: `transport.no_grpc_header`
 - **`session_placement`** — Where the session identifier is carried.
-  - Also spelled: `sessionPlacement`
+  - Also spelled: `sessionPlacement`, `sessionIDPlacement`
   - Type: enum: `path`, `query`, `header`, `cookie` · Default: `""`
   - Maps to: `transport.session_placement`
 - **`session_key`** — Name of the session identifier.
-  - Also spelled: `sessionKey`
+  - Also spelled: `sessionKey`, `sessionIDKey`
   - Type: string · Default: `""`
   - Maps to: `transport.session_key`
 - **`seq_placement`** — Where the packet sequence number is carried.

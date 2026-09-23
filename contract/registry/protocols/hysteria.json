@@ -258,9 +258,14 @@
       },
       "server_ports": {
         "type": "listable_string",
+        "item_pattern": "^(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3}|0):(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3}|0)$",
+        "on_item_invalid": {
+          "action": "drop_item",
+          "code": "hysteria_server_ports_item_invalid"
+        },
         "desc_en": "Port ranges used for port hopping.",
         "desc_ru": "Диапазоны портов для прыжков по портам.",
-        "impl": "Форма диапазона «a:b»; listable."
+        "impl": "Форма диапазона «a:b»; listable. item_pattern с 1.1.49 (ревью LxBox): прежде формат элемента не судился вовсе, и 99999:99999 или адрес вместо диапазона доезжали до ядра, которое отвечало «bad port range» отказом ВСЕГО конфига. Паттерн — пара uint16 без ведущих нулей, тот же, что у hysteria2 (продублирован: ref на общее определение не переносит on_item_invalid, см. hysteria2.json server_ports.impl)."
       },
       "hop_interval": {
         "type": "duration",
@@ -890,6 +895,9 @@
           "mux",
           "sendThrough",
           "proxySettings"
+        ],
+        "nested_quiet": [
+          "streamSettings.sockopt"
         ],
         "impl": "Ключи уровня документа плюс контейнеры, чьи листья читают записи таблицы. Список дословно равен списку остальных xray-секций."
       },

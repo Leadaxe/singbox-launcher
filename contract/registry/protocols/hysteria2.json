@@ -71,23 +71,25 @@
         "type": "int",
         "default": null,
         "aliases": [
-          "up_mbps"
+          "up_mbps",
+          "up"
         ],
         "maps_to": "up_mbps",
-        "desc_en": "Uplink bandwidth, Mbps.",
-        "desc_ru": "Полоса вверх, Мбит/с.",
-        "impl": "up_mbps (Мбит/с). РАЗРЫВ ИМЁН (новое, вне §9): Go читает/пишет upmbps, Dart читает/пишет up_mbps — кросс-эмит теряет значение. Целевое: оба принимают оба ключа; канон эмита — решить на ревью."
+        "desc_en": "Uplink bandwidth, Mbps. The short spelling `up` is read as an alias; a unit suffix (`100 mbps`) is stripped.",
+        "desc_ru": "Полоса вверх, Мбит/с. Короткое написание `up` читается алиасом; суффикс единицы (`100 mbps`) снимается.",
+        "impl": "up_mbps (Мбит/с). РАЗРЫВ ИМЁН (новое, вне §9): Go читает/пишет upmbps, Dart читает/пишет up_mbps — кросс-эмит теряет значение. Целевое: оба принимают оба ключа; канон эмита — решить на ревью. Алиас `up` — написание официального клиента hysteria2 и форков панелей; у hysteria v1 он читался с самого перевода на движок, а у v2 не читался вовсе, и параметр давал `uri_param_unknown` при ПОТЕРЕ полосы (асимметрия D-8 аудита панелей)."
       },
       "downmbps": {
         "type": "int",
         "default": null,
         "aliases": [
-          "down_mbps"
+          "down_mbps",
+          "down"
         ],
         "maps_to": "down_mbps",
-        "desc_en": "Downlink bandwidth, Mbps.",
-        "desc_ru": "Полоса вниз, Мбит/с.",
-        "impl": "down_mbps (Мбит/с). Тот же разрыв имён, что upmbps."
+        "desc_en": "Downlink bandwidth, Mbps. The short spelling `down` is read as an alias; a unit suffix is stripped.",
+        "desc_ru": "Полоса вниз, Мбит/с. Короткое написание `down` читается алиасом; суффикс единицы снимается.",
+        "impl": "down_mbps (Мбит/с). Тот же разрыв имён и тот же алиас `down`, что upmbps."
       },
       "sni": {
         "type": "string",
@@ -237,7 +239,7 @@
       },
       "server_ports": {
         "type": "listable_string",
-        "item_pattern": "^[0-9]{1,5}:[0-9]{1,5}$",
+        "item_pattern": "^(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3}|0):(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3}|0)$",
         "on_item_invalid": {
           "action": "drop_item",
           "code": "hysteria2_server_ports_item_invalid"
@@ -250,7 +252,7 @@
         ],
         "desc_en": "Port ranges used for port hopping.",
         "desc_ru": "Диапазоны портов для прыжков по портам.",
-        "impl": "Конфликт с realm: «realm conflicts with server, server_port, and server_ports» (protocol/hysteria2/outbound.go:172). item_pattern — формат ЭЛЕМЕНТА (запрос LxBox 19.09.2026, их починка 44f26d11): ядро разбирает каждый элемент как пару `low:high` и на «198.51.100.24:443» отвечает «bad port range» отказом ВСЕГО конфига. Такой элемент приезжает из mport, где адрес и порты записаны одной строкой (`mport=198.51.100.24:443,20000-30000`). Годные элементы остаются — прыжки по портам продолжают работать по тем диапазонам, которые провайдер записал правильно."
+        "impl": "Конфликт с realm: «realm conflicts with server, server_port, and server_ports» (protocol/hysteria2/outbound.go:172). item_pattern — формат ЭЛЕМЕНТА (запрос LxBox 19.09.2026, их починка 44f26d11): ядро разбирает каждый элемент как пару `low:high` и на «198.51.100.24:443» отвечает «bad port range» отказом ВСЕГО конфига. Такой элемент приезжает из mport, где адрес и порты записаны одной строкой (`mport=198.51.100.24:443,20000-30000`). Годные элементы остаются — прыжки по портам продолжают работать по тем диапазонам, которые провайдер записал правильно. С 1.1.49 элемент судится как пара uint16 без ведущих нулей (0–65535): прежний ^[0-9]{1,5}:[0-9]{1,5}$ пропускал 99999:99999, 65536:65536 и 00443:00444, и ядро отвечало «bad port range» отказом ВСЕГО конфига (ревью LxBox). Тот же паттерн стоит у hysteria (v1) — продублирован намеренно: ref на общее определение (dialer.common) переносит поверх только required/code/forbidden_for/allowed_for/forbidden_codes, и on_item_invalid со своим кодом и conflicts с realm на ссылке терялись бы."
       },
       "hop_interval": {
         "type": "duration",
@@ -679,19 +681,24 @@
         "upmbps": {
           "source": [
             "query.upmbps",
-            "query.up_mbps"
+            "query.up_mbps",
+            "query.up"
           ],
           "maps_to": "up_mbps",
           "type": "int",
-          "impl": "§464 — на входе читаются ОБА написания; канон эмита один (upmbps), иначе round-trip разошёлся бы с лаунчером побайтно."
+          "normalize": "bandwidth_mbps",
+          "impl": "§464 — на входе читаются ВСЕ написания; канон эмита один (upmbps), иначе round-trip разошёлся бы с лаунчером побайтно. `query.up` — написание официального клиента hysteria2, у v1 оно читалось с самого начала (`hysteria.json`), а у v2 отсутствовало: `up=100&down=500` давало ДВА `uri_param_unknown` и полосу терялo молча (D-8 аудита панелей). `normalize: bandwidth_mbps` — тот же примитив, что у xray-ветки этого файла с 1.1.48: суффикс единицы (`100mbps`, `300 Mbps`) снимается, иначе `type: int` на такой строке даёт отсутствие значения. Порядок источников нормативен: канон `upmbps` стоит первым и побеждает при двух написаниях рядом."
         },
         "downmbps": {
           "source": [
             "query.downmbps",
-            "query.down_mbps"
+            "query.down_mbps",
+            "query.down"
           ],
           "maps_to": "down_mbps",
-          "type": "int"
+          "type": "int",
+          "normalize": "bandwidth_mbps",
+          "impl": "Симметрично upmbps: алиас `query.down` и снятие суффикса единицы."
         },
         "pinSHA256": {
           "source": "query.pinSHA256",
@@ -913,10 +920,11 @@
           },
           "maps_to": "up_mbps",
           "type": "int",
+          "normalize": "bandwidth_mbps",
           "when": {
             "$form": "flat"
           },
-          "impl": "Полоса объявлена и у v2: xrayHysteriaMbps читает её общим кодом обеих версий, и ядро hysteria2 поля up_mbps/down_mbps принимает. Ноль не пишется — это «не задано», а не «ноль мегабит» (on_invalid не нужен: type int на нечисловом даёт отсутствие значения)."
+          "impl": "Полоса объявлена и у v2: xrayHysteriaMbps читает её общим кодом обеих версий, и ядро hysteria2 поля up_mbps/down_mbps принимает. Ноль не пишется — это «не задано», а не «ноль мегабит» (on_invalid не нужен: type int на нечисловом даёт отсутствие значения). `bandwidth_mbps` снимает ЕДИНИЦУ ИЗМЕРЕНИЯ: форки пишут полосу строкой с суффиксом (`\"100 mbps\"`, `\"300Mbps\"`, `\"50 mbit/s\"` — наблюдалось у панели assassin-cdn), а `type: int` на такой строке давал отсутствие значения, и полоса терялась МОЛЧА на обеих сторонах. Перевод написания диалекта, а не суждение о величине: `kbps` и `bps` округляются вниз до мегабит (0 после округления = «не задано», как и у ноля), `gbps` умножается на 1000; неизвестный суффикс значения не даёт — такую строку мы не понимаем и выдумывать за автора нельзя."
         },
         "down_mbps": {
           "source": {
@@ -933,9 +941,11 @@
           },
           "maps_to": "down_mbps",
           "type": "int",
+          "normalize": "bandwidth_mbps",
           "when": {
             "$form": "flat"
-          }
+          },
+          "impl": "Тот же суффикс написания, что у up_mbps."
         },
         "alpn": {
           "source": "json.streamSettings.tlsSettings.alpn",
@@ -978,10 +988,40 @@
           },
           "impl": "QUIRKS Q133-18: servers[1..] отбрасываются молча (xray_protocols.go:159). Поведение то же, но появляется код."
         },
+        "obfs_type_finalmask": {
+          "source": {
+            "flat": [
+              "json.streamSettings.finalmask.udp.0.type",
+              "json.streamSettings.hysteriaSettings.finalmask.udp.0.type"
+            ]
+          },
+          "maps_to": "obfs.type",
+          "normalize": "trim_lower",
+          "merge": "keep_first",
+          "when": {
+            "$form": "flat"
+          },
+          "impl": "ВТОРОЕ написание обфускации у форков: блок `finalmask.udp[]` — список маскировщиков UDP, где `type` называет обфускацию, а секрет лежит вложенно в `settings.password` (наблюдалось у панели assassin-cdn: `{\"type\":\"salamander\",\"settings\":{\"password\":\"…\"}}`). Прежде весь блок `finalmask` был объявлен чтением-без-записи, и обфускация вместе с паролём терялась МОЛЧА на обеих сторонах — узел приезжал без salamander и не поднимался. Годность типа судит РЕЕСТР, как и у строковой записи: body.fields.obfs.type — enum salamander/gecko с кодом obfs_unknown, и второй проверки в маппере не заводится. Берётся ПЕРВЫЙ элемент списка: ядро hysteria2 держит одну обфускацию, а не цепочку; остальные элементы объявлены отдельной записью со своим кодом. `merge: keep_first` — строковая запись `hysteriaSettings.obfs` (запись `obfs` выше) объявлена РАНЬШЕ и сильнее: элемент, написавший обфускацию оба раза, имел в виду ближнюю к секрету."
+        },
+        "obfs_password_finalmask": {
+          "source": {
+            "flat": [
+              "json.streamSettings.finalmask.udp.0.settings.password",
+              "json.streamSettings.hysteriaSettings.finalmask.udp.0.settings.password"
+            ]
+          },
+          "maps_to": "obfs.password",
+          "normalize": "trim",
+          "merge": "keep_first",
+          "when": {
+            "$form": "flat"
+          },
+          "impl": "Пароль той же формы; секретность и обязательность объявлены полем ТЕЛА (body.fields.obfs.password: secret, required, код obfs_password_missing), а не здесь — тип без пароля снимает блок obfs целиком, и это правило одно на все входы. `merge: keep_first` уступает строковой записи по той же причине, что и тип."
+        },
         "$finalmask": {
           "source": "json.streamSettings.hysteriaSettings.finalmask",
           "maps_to": null,
-          "impl": "finalmask.quicParams у sing-box соответствия не имеет, а незнакомое поле валит весь конфиг. Объявлено чтением без записи, чтобы ключ не уехал в json_field_unknown."
+          "impl": "finalmask.quicParams у sing-box соответствия не имеет, а незнакомое поле валит весь конфиг. Объявлено чтением без записи, чтобы ключ не уехал в json_field_unknown. Читаемые ЛИСТЬЯ блока (`udp[0].type` и `udp[0].settings.password`) объявлены записями obfs_type_finalmask/obfs_password_finalmask выше; `udp[1..]` отбрасываются: ядро держит одну обфускацию, а не цепочку — второй маскировщик применить некуда."
         },
         "$version": {
           "source": [
@@ -1004,6 +1044,9 @@
           "mux",
           "sendThrough",
           "proxySettings"
+        ],
+        "nested_quiet": [
+          "streamSettings.sockopt"
         ],
         "impl": "Ключи уровня документа плюс контейнеры, чьи листья читают записи таблицы. Список дословно равен списку остальных xray-секций."
       },

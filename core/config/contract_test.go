@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	"singbox-launcher/core/config/linkmap"
 	"singbox-launcher/core/config/subscription"
 )
 
@@ -104,22 +105,26 @@ func TestContractCorpusURI(t *testing.T) {
 			node, parseErr := subscription.ParseNode(uri, nil)
 			switch {
 			case parseErr != nil:
-				// CANON §4: битая нода → dropped, подписка живёт.
-				env.Dropped = append(env.Dropped, contractDrop{Ref: uri, Reason: "parse_error"})
+				// CANON §4: битая нода → dropped, подписка живёт. Код ставит
+				// тот, кто отказал (linkmap.RejectError); ссылка корпуса —
+				// документ из ОДНОГО элемента, поэтому index всегда 0.
+				env.Dropped = append(env.Dropped, contractDrop{Ref: uri, Index: dropIndex(0),
+					Code: linkmap.RejectCode(parseErr), Reason: "parse_error"})
 			case node == nil:
-				env.Dropped = append(env.Dropped, contractDrop{Ref: uri, Reason: "filtered"})
+				env.Dropped = append(env.Dropped, contractDrop{Ref: uri, Index: dropIndex(0), Reason: "filtered"})
 			default:
 				cn, code, err := canonNodeDrop(node)
 				if err != nil {
 					// `code` — машинная причина из warnings.json, и она
 					// нормативна (D-088); `reason` остаётся человеческим
 					// текстом стороны и сравнением не покрывается.
-					env.Dropped = append(env.Dropped, contractDrop{Ref: uri, Code: code, Reason: "emit_error"})
+					env.Dropped = append(env.Dropped, contractDrop{Ref: uri, Index: dropIndex(0), Code: code, Reason: "emit_error"})
 				} else {
 					env.Nodes = append(env.Nodes, cn)
 				}
 			}
 
+			requireDropCodes(t, env)
 			got, err := marshalEnvelopePretty(env)
 			if err != nil {
 				t.Fatalf("сериализация конверта: %v", err)
@@ -215,22 +220,25 @@ func canonJSONString(t *testing.T, v any) string {
 }
 
 // normalizeDropsForCompare вычёркивает из `dropped[]` обеих сторон поля,
-// сравнением не покрытые (D-088): `reason` всегда, `code` — когда ожидание
-// его не объявляет.
+// сравнением не покрытые (D-088): `reason` всегда, `code` и `index` — когда
+// ожидание их не объявляет (контракт 1.1.49: поля нормативны там, где они
+// есть; ожидание без них — старый файл, и требовать их у него значило бы
+// ломать чужой корпус правкой нормы).
 func normalizeDropsForCompare(got, want any) {
 	gotDrops := envelopeDrops(got)
 	wantDrops := envelopeDrops(want)
 	for i, d := range gotDrops {
 		delete(d, "reason")
-		// Ожидание без code — контракт на этот кейс кода не требует; чтобы
+		// Ожидание без поля — контракт на этот кейс его не требует; чтобы
 		// прогон не падал на «лишнем» поле, снимаем его и у результата.
-		if i < len(wantDrops) {
-			if _, ok := wantDrops[i]["code"]; !ok {
-				delete(d, "code")
+		for _, key := range []string{"code", "index"} {
+			if i < len(wantDrops) {
+				if _, ok := wantDrops[i][key]; ok {
+					continue
+				}
 			}
-			continue
+			delete(d, key)
 		}
-		delete(d, "code")
 	}
 	for _, d := range wantDrops {
 		delete(d, "reason")

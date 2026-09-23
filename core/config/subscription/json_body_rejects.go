@@ -30,6 +30,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"singbox-launcher/core/config/linkmap"
 )
 
 // jsonRejectedRecord — одна неразобранная запись JSON-тела с её местом.
@@ -47,6 +49,22 @@ type jsonRejectedRecord struct {
 	// элемента — единственная форма «как пришло», которая у них есть
 	// пофрагментно.
 	OriginRaw string
+}
+
+// rejectCodeOf — машинный код отказа разбора из цепочки ошибок (D-088).
+//
+// Код ставит тот, кто отказал: движок (`linkmap.RejectError`) или класс
+// «протокол не поддержан» Xray-ветки. "" — отказу код ещё не назначен.
+// Пока здесь был голый текст, отбраковка разбора приезжала в `dropped[]`
+// без кода, и две стороны сверяли у неё одно поле `ref` (TASKS_LXBOX §32.5).
+func rejectCodeOf(err error) string {
+	if code := linkmap.RejectCode(err); code != "" {
+		return code
+	}
+	if _, ok := xrayUnsupportedProtocol(err); ok {
+		return WarnProtocolUnsupported
+	}
+	return ""
 }
 
 // jsonRejectSink — накопитель отбраковок одной JSON-ветки.

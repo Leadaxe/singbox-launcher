@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/linkmap"
 	"singbox-launcher/core/config/parser"
+	"singbox-launcher/core/config/subscription"
 	wizardutils "singbox-launcher/ui/configurator/utils"
 )
 
@@ -160,7 +162,7 @@ func TestValidateURL(t *testing.T) {
 		{"Valid HTTPS URL", "https://example.com/subscription", false},
 		{"Valid HTTP URL", "http://example.com/subscription", false},
 		{"Empty URL", "", true},
-		{"URL too long", "https://example.com/" + strings.Repeat("a", wizardutils.MaxURILength), true},
+		{"URL too long", "https://example.com/" + strings.Repeat("a", subscription.MaxURILength), true},
 		{"URL too short", "http://a", true},
 		{"URL without scheme", "example.com/subscription", true},
 		{"URL without host", "https://", true},
@@ -194,7 +196,7 @@ func TestValidateURI(t *testing.T) {
 		{"Valid VMess URI", "vmess://base64", false},
 		{"Valid Trojan URI", "trojan://password@server:443", false},
 		{"Empty URI", "", true},
-		{"URI too long", "vless://" + strings.Repeat("a", wizardutils.MaxURILength), true},
+		{"URI too long", "vless://" + strings.Repeat("a", subscription.MaxURILength), true},
 		{"URI too short", "vless://", true},
 		{"URI without protocol", "uuid@server:443", true},
 		{"Invalid URI format", "not-a-uri", true},
@@ -213,6 +215,43 @@ func TestValidateURI(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestValidateURILengthFromRegistry — предел длины прямой ссылки берётся из
+// реестра контракта (limits.json max_uri_length = 65536), а не из константы
+// конфигуратора (прежние 8192 отвергали длинные awg:// и xhttp-ссылки и с
+// ними весь разбор). Отказ несёт код uri_too_long — тот же, что у разбора
+// подписки, — и не теряет его сквозь обёртку ValidateParserConfig.
+func TestValidateURILengthFromRegistry(t *testing.T) {
+	if subscription.MaxURILength != 65536 {
+		t.Fatalf("предел реестра %d, ожидался 65536 (limits.json max_uri_length)", subscription.MaxURILength)
+	}
+	link := func(n int) string {
+		const head = "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?x="
+		return head + strings.Repeat("a", n-len(head))
+	}
+
+	if err := ValidateURI(link(9000)); err != nil {
+		t.Errorf("ссылка длиной 9000 отвергнута: %v", err)
+	}
+
+	long := link(65537)
+	err := ValidateURI(long)
+	if err == nil {
+		t.Fatal("ссылка длиной 65537 принята")
+	}
+	if code := linkmap.RejectCode(err); code != subscription.WarnURITooLong {
+		t.Errorf("код отказа %q, ожидался %q (%v)", code, subscription.WarnURITooLong, err)
+	}
+	if !strings.Contains(err.Error(), "65537") || !strings.Contains(err.Error(), "65536") {
+		t.Errorf("сообщение не называет длину и предел: %v", err)
+	}
+
+	cfg := &config.ParserConfig{}
+	cfg.ParserConfig.Proxies = []config.ProxySource{{Connections: []string{long}}}
+	if code := linkmap.RejectCode(ValidateParserConfig(cfg)); code != subscription.WarnURITooLong {
+		t.Errorf("ValidateParserConfig потерял код отказа: %q", code)
 	}
 }
 

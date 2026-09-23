@@ -7,7 +7,6 @@
 package tabs
 
 import (
-	"bytes"
 	"encoding/json"
 	"strings"
 
@@ -65,19 +64,6 @@ func withPendingDetour(body string, node *config.ParsedNode) string {
 		return body
 	}
 	return "{\"detour\": " + string(enc) + "," + trimmed[1:]
-}
-
-// emittedToEditableJSON превращает строку эмиттера в pretty JSON-объект.
-//
-// json.Indent (а не Unmarshal→MarshalIndent): работает на токенах и сохраняет
-// порядок полей эмиттера — tag/type первыми, как в config.json.
-func emittedToEditableJSON(s string) string {
-	clean := stripEmittedDecorations(s)
-	var buf bytes.Buffer
-	if err := json.Indent(&buf, []byte(clean), "", "  "); err != nil {
-		return clean
-	}
-	return buf.String()
 }
 
 // unpackedNodesResult — итог сборки документа из эмитированных узлов.

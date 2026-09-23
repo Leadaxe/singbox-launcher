@@ -1,0 +1,65 @@
+{
+  "meta": {
+    "body_kind": "vpn-link"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.8.1.2/32"
+        ],
+        "content_padding_addition": "17-29",
+        "disable_cookies": true,
+        "h1": 1,
+        "h2": 2,
+        "h3": 3,
+        "h4": 4,
+        "header_protection_key": "gAMVpgkzTNJJavmko0etsapgpbcgRBcf5c675QL8Abo=",
+        "jc": 4,
+        "jmax": 128,
+        "jmin": 48,
+        "keepalive_timeout": "12-15",
+        "max_handshake_attempts": "18-33",
+        "mtu": 1280,
+        "peers": [
+          {
+            "address": "192.0.2.65",
+            "allowed_ips": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "persistent_keepalive_interval": 2,
+            "port": 56100,
+            "public_key": "ffffffffffffffffffffffffffffffffffffffffffE="
+          }
+        ],
+        "private_key": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeE=",
+        "random_trailers": true,
+        "reject_after_time": "198-237",
+        "rekey_after_time": "120-155",
+        "rekey_timeout": "3-6",
+        "s1": 20,
+        "s2": 119,
+        "s3": 55,
+        "s4": 17,
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "192.0.2.65",
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "wgconf_dns_ignored",
+          "path": "dns",
+          "value": "8.8.8.8, 1.1.1.1"
+        },
+        {
+          "code": "awg_mtu_clamped",
+          "path": "mtu",
+          "value": "1380"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

@@ -29,9 +29,12 @@ package subscription
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
+	"sync"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/textnorm"
@@ -120,6 +123,129 @@ const RejectReasonProviderBanner = "provider banner, not a server"
 // «это баннер».
 func isProviderBannerLine(line string) bool {
 	return !strings.Contains(line, "://")
+}
+
+// RejectReasonServiceRecord — причина отбраковки СЛУЖЕБНОЙ записи состава.
+//
+// Норма — contract/registry/source_kinds.json, ветка `uri_lines`,
+// `service_schemes`: панели отдают одно тело сразу нескольким клиентам и
+// подмешивают к ссылкам команды маршрутизации (`incy://routing/…`,
+// `happ://routing/…`), повторяя их ещё и заголовком `Routing:`. Узлом такая
+// запись не притворялась, а правила маршрутизации чужого клиента это
+// приложение не исполняет.
+//
+// Прежде она отбраковывалась общим «unsupported scheme», и формально рабочая
+// подписка показывала отказ на своём же служебном заголовке (наблюдалось: пять
+// отказов при восьми живых узлах). Обращение — как с анонсом провайдера, но
+// признак другой: у баннера схемы нет вовсе, а здесь схема есть и она
+// ОПОЗНАНА как служебная. Ключ английский — как у баннера.
+//
+// Параметр {scheme} кода `service_record_ignored` берётся из исходника записи
+// (`OriginRaw` едет в отбраковке целиком), а не выделяется здесь отдельным
+// полем: строка отбраковки и без того несёт схему первой, а второе место, где
+// она живёт, разошлось бы с первым.
+const RejectReasonServiceRecord = "service routing record, not a server"
+
+// serviceSchemePrefixes — схемы служебных записей и обязательный хвост за
+// ними. Тихого игнора заслуживает не сама схема, а объявленное ею НАЗНАЧЕНИЕ:
+// про `incy://routing/…` мы знаем, что это маршрутизация, а про `incy://`
+// с чем-то другим не знаем ничего — и молчать о нём было бы обещанием, за
+// которым ничего не стоит.
+var serviceSchemePrefixes = []string{
+	"incy://routing/",
+	"happ://routing/",
+}
+
+// RejectReasonProviderBannerLink — причина отбраковки записи-БАННЕРА,
+// притворившейся ссылкой.
+//
+// Отличается от RejectReasonProviderBanner ПРИЗНАКОМ, а не обращением: у
+// баннера-строки схемы нет вовсе, а здесь ссылка синтаксически безупречна и
+// выдаёт себя ЦЕЛЬЮ — адресом, который сервером не бывает. Панели пишут так
+// сообщение об истёкшей подписке: Remnawave — `vless://…@0.0.0.0:1`
+// (createFallbackHosts), 3x-ui — `socks://127.0.0.1:1080` (service.go:483),
+// и при истечении эта запись бывает в теле ЕДИНСТВЕННОЙ.
+//
+// Ключ АНГЛИЙСКИЙ — как у остальных причин отбраковки: перевод живёт в
+// `bin/locale/ru.json`, а в состоянии хранится ключ.
+const RejectReasonProviderBannerLink = "provider notice, not a server"
+
+// bannerTargets — объявление признака баннера из реестра
+// (source_kinds.json, ветка `uri_lines`, `banner_targets`).
+//
+// Читается ОДИН РАЗ и лениво: список живёт в реестре, а не в этом файле, —
+// иначе эвристика «что не бывает сервером» размазалась бы по коду и разошлась
+// бы со второй стороной. Реестр не прочитался — предикат просто молчит:
+// потерять узел из-за недоступного списка нельзя.
+// sync.Once, а НЕ sync.OnceValue: последняя появилась в go1.21, а легаси-сборка
+// Windows 7 идёт тулчейном go1.20 (см. tools/win7guard).
+var (
+	bannerTargetsOnce  sync.Once
+	bannerTargetsValue *registry.BannerTargets
+)
+
+func bannerTargets() *registry.BannerTargets {
+	bannerTargetsOnce.Do(func() {
+		set, err := registry.LoadMappers()
+		if err != nil || set == nil {
+			return
+		}
+		for _, k := range set.SourceKindsByPriority() {
+			if k.BannerTargets != nil {
+				bannerTargetsValue = k.BannerTargets
+				return
+			}
+		}
+	})
+	return bannerTargetsValue
+}
+
+// isProviderBannerNode — РАЗОБРАННАЯ запись, ведущая на цель, которая сервером
+// не бывает (см. RejectReasonProviderBannerLink).
+//
+// Проверяется ПОСЛЕ разбора, а не по тексту строки: цель надо прочитать, а до
+// чтения `vless://…@0.0.0.0:1` от годной ссылки ничем не отличается. Судится
+// только АДРЕС: схема у баннера любая, а порт признаком не является — у 3x-ui
+// он законный 1080.
+func isProviderBannerNode(node *configtypes.ParsedNode) bool {
+	if node == nil {
+		return false
+	}
+	return bannerTargets().IsBannerHost(node.Server)
+}
+
+// providerBannerMessage — сообщение провайдера из ремарки записи.
+//
+// Ремарка после `#` есть ТО САМОЕ содержимое, ради которого баннер написан
+// («⚠ Subscription expired»), и она уезжает параметром кода: отбраковать
+// запись, выбросив её текст, значило бы скрыть от человека единственное, что
+// провайдер хотел сказать.
+func providerBannerMessage(node *configtypes.ParsedNode, raw string) string {
+	if bt := bannerTargets(); bt == nil || bt.MessageFrom != "fragment" {
+		return ""
+	}
+	if node != nil && node.Label != "" {
+		return node.Label
+	}
+	if i := strings.Index(raw, "#"); i >= 0 && i+1 < len(raw) {
+		if dec, err := url.QueryUnescape(raw[i+1:]); err == nil {
+			return dec
+		}
+		return raw[i+1:]
+	}
+	return ""
+}
+
+// isServiceSchemeLine — строка состава со служебной схемой (см.
+// RejectReasonServiceRecord). Регистронезависимо, как и остальные схемные
+// предикаты реестра.
+func isServiceSchemeLine(line string) bool {
+	for _, p := range serviceSchemePrefixes {
+		if len(line) >= len(p) && strings.EqualFold(line[:len(p)], p) {
+			return true
+		}
+	}
+	return false
 }
 
 // RejectedBodyRecord — запись тела, которую разобрать не удалось
@@ -246,7 +372,7 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 			// чему.
 			if block.Err != nil {
 				st.warn(fmt.Sprintf("record rejected: %v", block.Err))
-				st.reject(block.Err.Error(), OriginKindWGIni, block.Raw)
+				st.rejectCoded(block.Err.Error(), rejectCodeOf(block.Err), OriginKindWGIni, block.Raw)
 				continue
 			}
 			// Узел уже собран СЕКЦИЕЙ из самого блока (SPEC 133):
@@ -294,8 +420,14 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 			flushJSON(i + 1)
 		}
 
-	case bodyKind == BodyKindXrayArray:
-		arrayNodes, xrayReasons, xrayRejects, err := parseNodesFromXrayJSONArrayFull(contentStr, skip)
+	case bodyKind == BodyKindXrayArray || bodyKind == BodyKindXrayConfig:
+		// Одиночный конфиг — массив из одного элемента: элементом у реестра
+		// служит как раз целый конфиг, и второй ветви разбора ему не нужно.
+		xrayBody := contentStr
+		if bodyKind == BodyKindXrayConfig {
+			xrayBody = XrayConfigToArray(contentStr)
+		}
+		arrayNodes, xrayReasons, xrayRejects, err := parseNodesFromXrayJSONArrayFull(xrayBody, skip)
 		for _, r := range xrayReasons {
 			st.warn(r)
 		}
@@ -353,6 +485,15 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 				st.reject(RejectReasonProviderBanner, OriginKindURI, line)
 				continue
 			}
+			// Служебная запись маршрутизации — схему она заявила, но узлом
+			// не является (см. RejectReasonServiceRecord). Проверяется ПОСЛЕ
+			// баннера и ДО ParseNode: разбирать её незачем, а ошибкой
+			// объявлять нельзя — код у неё info.
+			if isServiceSchemeLine(line) {
+				st.warn(fmt.Sprintf("record rejected: %s", RejectReasonServiceRecord))
+				st.rejectCoded(RejectReasonServiceRecord, WarnServiceRecordIgnored, OriginKindURI, line)
+				continue
+			}
 			// Кап проверяется ПОСЛЕ отсечек комментария и баннера: он
 			// считает ЗАПИСИ состава, а ни `#`-строка, ни анонс провайдера
 			// записью не являются. Стоя выше, он засчитывал каждый заголовок
@@ -367,12 +508,37 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 				// Битая запись — деградация записи с warning, не подписки.
 				// SPEC 116 W11: и не молчаливая пропажа — запись остаётся в
 				// составе узлом kind=unsupported со своим исходником.
+				//
+				// Машинный код отказа (D-088) ставит тот, кто отказал, и он
+				// едет в цепочке ошибки (rejectCodeOf): схему не ведёт ни
+				// одна секция — `scheme_unsupported` (ParseNode оборачивает
+				// ErrUnsupportedScheme); секция схему опознала, но формы
+				// текст не прочитали — `form_unrecognized`. По тексту ошибки
+				// код здесь не выдумывается: текст у каждой стороны свой.
 				st.warn(fmt.Sprintf("record rejected: %v", err))
-				st.reject(err.Error(), OriginKindURI, line)
+				st.rejectCoded(err.Error(), rejectCodeOf(err), OriginKindURI, line)
 				continue
 			}
 			if node == nil {
 				continue // отсечено skip-фильтром
+			}
+			// Баннер, притворившийся ссылкой: разобрался безупречно, но ведёт
+			// на цель, которая сервером не бывает. Проверяется ЗДЕСЬ, после
+			// разбора, потому что признак — прочитанный адрес, а не вид
+			// строки (см. isProviderBannerNode).
+			if isProviderBannerNode(node) {
+				// Сообщение провайдера приписывается к ТЕКСТУ причины:
+				// параметра у записи отбраковки нет (RejectedBodyRecord
+				// несёт код и текст, но не карту params), а выбросить
+				// ремарку нельзя — она единственное содержимое баннера.
+				// Материализация кода подставит {message} из этого же текста.
+				reason := RejectReasonProviderBannerLink
+				if msg := providerBannerMessage(node, line); msg != "" {
+					reason = reason + ": " + msg
+				}
+				st.warn(fmt.Sprintf("record rejected: %s", reason))
+				st.rejectCoded(reason, WarnProviderBannerLink, OriginKindURI, line)
+				continue
 			}
 			st.accept(node, OriginKindURI, line)
 		}

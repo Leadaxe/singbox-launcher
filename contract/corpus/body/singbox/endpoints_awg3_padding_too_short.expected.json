@@ -2,6 +2,7 @@
   "dropped": [
     {
       "code": "awg3_padding_too_short",
+      "index": 0,
       "reason": "emit_error",
       "ref": "awg3-short-pad"
     }

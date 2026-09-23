@@ -705,6 +705,22 @@
           "impl": "§320 — ссылочная форма ECH адреса в теле sing-box не имеет, а чужой ключ рвёт рукопожатие. Код — ech_ignored, существующий идентификатор (node_parser_transport.go:868+ noteECHIgnored); 'ech_param_dropped_with_code' из черновика было описанием, а не именем. ОТКРЫТО: у нас код не ставится на ech=none (node_parser_transport.go::879-881) — выключенный ECH сообщать не о чем; выражение этого исключения предикатом when требует отрицания по источнику, которого в грамматике сегодня нет (TASKS_LXBOX §24.20 п.7). Чтение из JSON-формы (json.ech) — РАСШИРЕНИЕ: сегодня noteECHIgnored смотрит только node.Query, и в v2rayN-форме ech не виден вовсе."
         }
       },
+      "overlays": [
+        {
+          "name": "extra",
+          "source": [
+            "json.extra",
+            "query.extra"
+          ],
+          "decode": [
+            "percent"
+          ],
+          "flatten": [
+            "xmux"
+          ],
+          "impl": "Тот же примитив overlay, что у vless, но у vmess слой приезжает ДВУМЯ формами, и обе живые. (1) УЖЕ ОБЪЕКТОМ внутри контейнера — `json.extra`: vmess-ссылка сама есть JSON, и Marzban кладёт `extra` его ВЛОЖЕННЫМ объектом (`payload[\"extra\"] = extra`, app/subscription/v2ray.py:249). Такое значение до слоя не доезжало вовсе — `jsonScalar` на объекте молчит намеренно (§4), — и `xmux` вместе со sc*-полями терялся МОЛЧА, хотя ТОТ ЖЕ вход у vless разбирался полностью (D-7 аудита панелей 24.09.2026). (2) ТЕКСТОМ — `query.extra`: форма legacy-cleartext той же схемы, где `extra` есть обычный query-параметр с JSON внутри. Порядок источников нормативен: у формы v2rayN query нет вовсе, у формы legacy нет json, так что спора между ними не возникает. flatten: xmux — 3x-ui кладёт xmux ОБЪЕКТОМ (`buildXhttpExtra`, internal/sub/service.go:2507-2511), и его члены поднимаются в плоский слой. ПЛОСКОЕ написание 3x-ui отдельного объявления не требует: панель разливает те же ключи прямо в корень vmess-JSON (`applyXhttpExtraObj`, maps.Copy на obj, :1710-1716), а ключи корня контейнера видны общим плоским слоем и читаются записями `query.*` из transports#uri. Битый JSON слоя НЕ роняет узел: слой не появляется, плоские значения остаются рабочими."
+        }
+      ],
       "include": [
         "transports#uri",
         "tls#uri",
@@ -861,9 +877,31 @@
             "action": "note",
             "code": "xray_extra_entries_dropped"
           }
+        },
+        "experiments_authlen": {
+          "source": "json.$base.users.0.experiments",
+          "maps_to": "authenticated_length",
+          "when": {
+            "json.settings.vnext.0.users.0.experiments": {
+              "contains": "AuthenticatedLength"
+            }
+          },
+          "sets": {
+            "": {
+              "authenticated_length": true
+            }
+          },
+          "materialize_default": true,
+          "impl": "option/vmess.go VMessOutboundOptions.AuthenticatedLength. У Xray это СТРОКА-ПЕРЕЧЕНЬ («AuthenticatedLength|NoTerminationSignal»), а не булево, и смысл несёт наличие ПОДСТРОКИ — отсюда предикат contains, а не value_map. Сервер, требующий authenticated length, рвёт соединение с клиентом без него: по влиянию это отказ, а не деградация. NoTerminationSignal пары у ядра не имеет (global_padding — другое свойство, из другого поля Xray) и объявлен отдельной записью без записи в тело."
+        },
+        "experiments_rest": {
+          "source": "json.$base.users.0.experiments",
+          "maps_to": null,
+          "impl": "Парная запись к experiments_authlen: объявляет ЧТЕНИЕ строки целиком, чтобы ключ не попал в json_field_unknown при написании без AuthenticatedLength (например одинокий NoTerminationSignal, у которого пары у ядра нет)."
         }
       },
       "include": [
+        "multiplex#xray",
         "transports#xray",
         "tls#xray",
         "dialer#xray"
@@ -880,6 +918,9 @@
           "mux",
           "sendThrough",
           "proxySettings"
+        ],
+        "nested_quiet": [
+          "streamSettings.sockopt"
         ],
         "impl": "Ключи уровня документа плюс контейнеры, чьи листья читают записи таблицы. Список дословно равен списку LxBox и остальных xray-секций — см. развёрнутую сноску у vless."
       },

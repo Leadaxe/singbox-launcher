@@ -1,6 +1,8 @@
 {
   "dropped": [
     {
+      "code": "field_missing",
+      "index": 0,
       "reason": "vmess outbound rejected: server port is missing or out of range",
       "ref": "proxy"
     }

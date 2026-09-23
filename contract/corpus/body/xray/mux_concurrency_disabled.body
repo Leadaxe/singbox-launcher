@@ -1,0 +1,7 @@
+# Тот же mux, но concurrency: -1. У Xray отрицательное значение и ноль означают
+# «mux ВЫКЛЮЧЕН» (common/mux: мультиплексор не создаётся), и это НЕ «без
+# ограничения», как прочитало бы ядро у max_streams: 0. Поэтому оба значения
+# СНИМАЮТ блок multiplex целиком через sets: null, а не пишут число — иначе
+# элемент, явно отключивший mux, получил бы в теле enabled: true с
+# неограниченным числом потоков, то есть ровно обратное запрошенному.
+[{"remarks":"mux-off","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"a.example","port":443,"users":[{"id":"11111111-2222-3333-4444-555555555555","encryption":"none"}]}]},"streamSettings":{"network":"tcp","security":"none"},"mux":{"enabled":true,"concurrency":-1}}]}]

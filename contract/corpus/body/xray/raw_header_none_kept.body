@@ -1,0 +1,5 @@
+# Пара к raw_header_http_dropped: header.type = "none" — это ОТСУТСТВИЕ
+# обфускации, а не обфускация. Узел собирается как обычный plain-TCP, кода
+# не даёт (value_map: none → null), и отбраковка его не касается.
+# Кейс держит границу нормы: отбраковывается только настоящий камуфляж.
+[{"remarks":"raw-hdr-none","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"a.example","port":443,"users":[{"id":"11111111-2222-3333-4444-555555555555","encryption":"none"}]}]},"streamSettings":{"network":"tcp","security":"none","tcpSettings":{"header":{"type":"none"}}}}]}]

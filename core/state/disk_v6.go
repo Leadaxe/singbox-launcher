@@ -37,26 +37,6 @@ const SchemaVersionV6 = 6
 // файлов). Канонический — SchemaNameV7 (disk_v7.go, SPEC 118).
 const SchemaNameV6 = "presets_v1"
 
-// diskStateV6 — корневая модель на диске v6 (SPEC 053 + SPEC 056-R-N).
-//
-// SPEC 118 (W1): запись v6 умерла (Save пишет только v7); тип остаётся
-// справочной формой для parseV6Legacy и будущей миграции W2.
-//
-// Изменения vs v5:
-//   - meta.version: 5 → 6
-//   - meta.schema: новое поле "presets_v1"
-//   - custom_rules[] → rules[] с kind discriminator (preset/inline/srs) (SPEC 053)
-//   - config_params[] удалено (vars per-preset в body.vars) (SPEC 053)
-//   - dns → dns_options (flat kind discriminator) (SPEC 056-R-N)
-type diskStateV6 struct {
-	Meta         MetaSection          `json:"meta"`
-	Connections  ConnectionsSection   `json:"connections"`
-	Rules        []Rule               `json:"rules"`
-	Vars         []SettingVar         `json:"vars,omitempty"`
-	DNSOptions   DNSOptions           `json:"dns_options"`
-	WarpAccounts *WarpAccountsSection `json:"warp_accounts,omitempty"`
-}
-
 // WarpAccountsSection — кеш выданных Cloudflare регистраций WARP.
 //
 // Зачем: Cloudflare привязывает выданные адреса к ключу, а каждая регистрация —
