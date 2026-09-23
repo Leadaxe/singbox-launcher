@@ -67,6 +67,24 @@ const (
 	RemoteRuleSetsDirName = "srs"
 )
 
+// Data layout (SPEC 135): где лежат поставляемое (AppDir), состояние (DataDir)
+// и логи (LogDir). Раскладку решает internal/paths.Resolve.
+const (
+	// PortableMarkerFileName — маркер рядом с бинарём: данные и логи живут в
+	// каталоге бинаря. Содержимое не читается, достаточно существования.
+	PortableMarkerFileName = "portable.txt"
+	// DataDirAppName — имя каталога приложения в платформенных корнях
+	// ($XDG_DATA_HOME, ~/Library/Application Support, %LOCALAPPDATA%).
+	DataDirAppName = "singbox-launcher"
+	// EnvDataDir и EnvLogDir переопределяют DataDir и LogDir независимо
+	// друг от друга (Flatpak-обёртки, пакеты, CI, отладка).
+	EnvDataDir = "SINGBOX_LAUNCHER_DATA_DIR"
+	EnvLogDir  = "SINGBOX_LAUNCHER_LOG_DIR"
+	// MigratedFromMarkerFileName — маркер в DataDir после миграции данных из
+	// старой раскладки (SPEC 135 §3.4).
+	MigratedFromMarkerFileName = ".migrated_from"
+)
+
 // Config targets (SPEC 097) — для какой машины лаунчер готовит config.json.
 //
 // ConfigTargetLocal — эта машина: состояние живёт прямо в
