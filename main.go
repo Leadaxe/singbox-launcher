@@ -139,6 +139,8 @@ func main() {
 	glProbe := flag.Bool("gl-probe", false, "Internal: probe desktop OpenGL and exit (used by the launcher itself)")
 	glProbeLocal := flag.Bool("gl-probe-local", false, "Internal: probe the opengl32.dll next to the exe (Mesa3D verification)")
 	pathsFlag := flag.Bool("paths", false, "Print resolved data/log/core paths and exit")
+	purgeData := flag.Bool("purge-data", false, "Remove all launcher data (dry run; add -yes to execute)")
+	purgeYes := flag.Bool("yes", false, "Confirm -purge-data")
 	flag.Parse()
 
 	// SPEC 135 §4.1: единственный способ увидеть пути там, где окно не
@@ -148,6 +150,13 @@ func main() {
 	if *pathsFlag {
 		fmt.Println(core.PathsInfoFor(layout).Text())
 		os.Exit(0)
+	}
+
+	// SPEC 135 §4.3, решение Е: очистка без окна (uninstall-хук установщика
+	// #99, поддержка). Тоже до crash-лога: LogDir не создаётся заново и не
+	// держится открытым. Без -yes — только план.
+	if *purgeData {
+		os.Exit(core.PurgeCLI(layout, exe, *purgeYes, os.Stdout))
 	}
 
 	// Windows-бинарь собран с -H windowsgui: stderr у процесса нет, и паника

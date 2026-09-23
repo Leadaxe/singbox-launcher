@@ -523,3 +523,24 @@ platform/restart_windows.go:33, glprobe_windows.go:189, :742.
 - **Перезапуск**: как у Mesa — `platform.RequestRestartAfterExit()` +
   `GracefulExit()`, `RestartSelf` в конце main(); `RestartSelf` вне Windows
   теперь настоящий (internal/platform/restart_other.go, `Setsid`).
+
+### Этап 9 — ядро сделано (диалог — следующим шагом)
+
+- **Библиотека**: internal/paths/purge.go — `BuildPurgePlan(l, exe, env,
+  goos, probe) PurgePlan`, `ExecutePurge(PurgePlan) PurgeReport`,
+  `PurgePlan.Text()`, `PurgeReport.Text()`, `FormatBytes`. Виды — `PurgeData`,
+  `PurgeLogs`, `PurgeLeftover`; пояснения — константы `PurgeNote*`. Системный
+  DataDir для остатка при portable — `SystemDefault` (switch.go), остаток
+  выключения Portable — `MovedBinPrefix`. Поставляемое в `<App>/bin`
+  (шаблон, маркер, locale/, ядро со спутниками) — `shippedBinNames`, не
+  удаляется никогда; при Data == App элемент data — `<App>/bin`. Тест —
+  `TestPurge` (purge_test.go).
+- **Обвязка**: core/purge.go — `(*AppController).PurgePlan()`,
+  `NetworkCleanup()` (Windows, `GhostTunCleanupAggressive` + правила
+  sing-tun), `DaemonUninstallHint()`, `ExecutePurgeAndExit(plan, network)`;
+  `PurgeCLI(layout, exe, yes, out) int` для флага. Подсказка службы демона —
+  core/purge_darwin.go (plist → `DaemonUninstallCommand(true)`), заглушка —
+  core/purge_other.go.
+- **`-purge-data [-yes]`**: main.go сразу за `-paths`, до crash-лога.
+  С `-yes` отказ с кодом 1, если жив процесс из `<Data>/bin/singbox.pid`
+  (только проверка по списку процессов, без сигналов).
