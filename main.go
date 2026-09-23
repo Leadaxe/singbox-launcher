@@ -76,7 +76,7 @@ func main() {
 	// NewAppController, поэтому путь считается здесь напрямую — тем же
 	// правилом, что и FileService.ExecDir.
 	if ex, err := os.Executable(); err == nil {
-		logsDir := filepath.Join(filepath.Dir(ex), "logs")
+		logsDir := platform.GetLogsDir(filepath.Dir(ex))
 		crashLog := filepath.Join(logsDir, constants.CrashLogFileName)
 		if err := debuglog.EnableCrashOutput(crashLog); err != nil {
 			debuglog.WarnLog("crash log: %v", err)

@@ -91,7 +91,7 @@ func NewFileService() (*FileService, error) {
 
 	fs.ConfigPath = platform.GetConfigPath(fs.ExecDir)
 	singboxName := platform.GetExecutableNames()
-	fs.SingboxBundledPath = filepath.Join(fs.ExecDir, "bin", singboxName)
+	fs.SingboxBundledPath = filepath.Join(platform.GetBinDir(fs.ExecDir), singboxName)
 	fs.SingboxPath = platform.ResolveSingboxExecPath(fs.ExecDir, fs.SingboxBundledPath)
 	fs.WintunPath = platform.GetWintunPath(fs.ExecDir)
 

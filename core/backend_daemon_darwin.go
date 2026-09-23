@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -121,7 +120,7 @@ func (b *DaemonBackend) noteLinkFail(err error) bool {
 
 // DaemonIdentityDir — каталог клиентской пары сопряжения (bin/daemon).
 func DaemonIdentityDir(execDir string) string {
-	return filepath.Join(platform.GetBinDir(execDir), "daemon")
+	return platform.GetDaemonIdentityDir(execDir)
 }
 
 // DaemonConfigFromSettings строит конфиг клиента демона из settings.json.

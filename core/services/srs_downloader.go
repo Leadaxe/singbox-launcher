@@ -27,7 +27,7 @@ import (
 // Локальная машина. Для удалённой — RuleSRSPathFor: у каждой машины свой
 // каталог .srs (SPEC 098 §2.3).
 func RuleSRSPath(execDir string, tag string) string {
-	return filepath.Join(execDir, constants.BinDirName, constants.RuleSetsDirName, tag+".srs")
+	return platform.GetRuleSetPath(execDir, tag)
 }
 
 // RuleSRSPathFor возвращает путь .srs в каталоге конкретной машины

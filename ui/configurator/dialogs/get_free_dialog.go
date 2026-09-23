@@ -33,6 +33,7 @@ import (
 	"singbox-launcher/internal/constants"
 	internaldialogs "singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui/components"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
@@ -64,7 +65,7 @@ const (
 // сборки (best-effort; ошибки не фатальны), затем читает локальный файл.
 // Если ни кэша, ни свежескачанной копии нет — возвращает ошибку.
 func fetchOrLoadGetFree(execDir string) (*getFreeData, error) {
-	binDir := filepath.Join(execDir, "bin")
+	binDir := platform.GetBinDir(execDir)
 	target := filepath.Join(binDir, getFreeFileName)
 
 	stale := true

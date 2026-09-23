@@ -521,7 +521,7 @@ func (tab *CoreDashboardTab) createVersionBlock() fyne.CanvasObject {
 		}
 		msg += locale.T(singboxHelpExtractText) +
 			locale.T("You can download with the button above, or manually from:")
-		binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
+		binDir := platform.GetBinDir(tab.controller.FileService.ExecDir)
 		urlLink := widget.NewHyperlink(constants.SingboxReleasesURL, nil)
 		_ = urlLink.SetURLFromString(constants.SingboxReleasesURL)
 		urlLink.OnTapped = func() {
@@ -944,7 +944,7 @@ func (tab *CoreDashboardTab) downloadConfigTemplate() {
 				if tab.templateDownloadButton != nil {
 					tab.templateDownloadButton.Enable()
 				}
-				binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
+				binDir := platform.GetBinDir(tab.controller.FileService.ExecDir)
 				debuglog.DebugLog("core_dashboard: showing download failed manual (template: %v)", err)
 				// С причиной, а не «см. лог»: диалог без неё был тупиком.
 				dialogs.ShowDownloadFailedManualWithReason(tab.controller.GetMainWindow(),
@@ -998,7 +998,7 @@ func (tab *CoreDashboardTab) handleDownload() {
 				case "error":
 					tab.downloadInProgress = false
 					tab.setSingboxState("", locale.Tf("Download v%s", constants.RequiredCoreVersion), -1)
-					binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
+					binDir := platform.GetBinDir(tab.controller.FileService.ExecDir)
 					// Log the real cause: the dialog only ever said "see the log",
 					// while nothing actually wrote the failure to the log.
 					debuglog.ErrorLog("core_dashboard: sing-box download failed: %s (err=%v)", progress.Message, progress.Error)
@@ -1043,7 +1043,7 @@ func (tab *CoreDashboardTab) createWintunBlock() fyne.CanvasObject {
 			locale.Tf(wintunHelpInArchiveText, archDir) +
 			locale.T(wintunHelpPlaceText) +
 			locale.T("You can download with the button above, or manually from:")
-		binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
+		binDir := platform.GetBinDir(tab.controller.FileService.ExecDir)
 		urlLink := widget.NewHyperlink(constants.WintunHomeURL, nil)
 		_ = urlLink.SetURLFromString(constants.WintunHomeURL)
 		urlLink.OnTapped = func() {
@@ -1127,7 +1127,7 @@ func (tab *CoreDashboardTab) handleWintunDownload() {
 				} else if progress.Status == "error" {
 					tab.wintunDownloadInProgress = false
 					tab.setWintunState("", locale.T("Download"), -1)
-					binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
+					binDir := platform.GetBinDir(tab.controller.FileService.ExecDir)
 					debuglog.DebugLog("core_dashboard: showing download failed manual (wintun)")
 					dialogs.ShowDownloadFailedManual(tab.controller.GetMainWindow(), "wintun.dll download failed", constants.WintunHomeURL, binDir)
 				}

@@ -11,6 +11,7 @@
 package build
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -35,7 +36,7 @@ func TestCollectSrsCachedPaths_URLDerived(t *testing.T) {
 	got := gotPaths[0]
 	// Filename должно быть URL-derived (SRSTagFromURL), а НЕ просто identity.
 	expectedTag := SRSTagFromURL(url)
-	wantPath := "/exec/bin/rule-sets/" + expectedTag + ".srs"
+	wantPath := filepath.Join("/exec", "bin", "rule-sets", expectedTag+".srs")
 	if got != wantPath {
 		t.Errorf("path: got %q, want %q", got, wantPath)
 	}
@@ -73,7 +74,7 @@ func TestCollectSrsCachedPaths_TwoRulesSameURL_OneFile(t *testing.T) {
 func TestCollectSrsCachedPaths_RenameDoesNotInvalidate(t *testing.T) {
 	url := "https://example.com/list.srs"
 	expectedTag := SRSTagFromURL(url)
-	wantPath := "/exec/bin/rule-sets/" + expectedTag + ".srs"
+	wantPath := filepath.Join("/exec", "bin", "rule-sets", expectedTag+".srs")
 
 	before := []state.Rule{srsRule("OldName", url, "direct-out")}
 	after := []state.Rule{srsRule("NewName", url, "direct-out")}

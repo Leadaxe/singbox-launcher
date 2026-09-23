@@ -18,7 +18,6 @@ package tabs
 import (
 	"context"
 	"image/color"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -34,11 +33,11 @@ import (
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/services"
 	wizardtemplate "singbox-launcher/core/template"
-	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -129,7 +128,7 @@ func runSRSDownloadAsync(
 			btn.Enable()
 			if err != nil {
 				btn.SetText(srsBtnDownload())
-				ruleSetsDir := filepath.Join(model.ExecDir, constants.BinDirName, constants.RuleSetsDirName)
+				ruleSetsDir := platform.GetRuleSetsDir(model.ExecDir)
 				downloadURL := ""
 				if len(srsEntries) > 0 {
 					downloadURL = srsEntries[0].URL
@@ -597,7 +596,7 @@ func srsTargetDirHint(model *wizardmodels.WizardModel) string {
 	}
 	dir := model.SrsDir()
 	if dir == "" {
-		dir = filepath.Join(model.ExecDir, constants.BinDirName, constants.RuleSetsDirName)
+		dir = platform.GetRuleSetsDir(model.ExecDir)
 	}
 	return locale.Tf("Downloads to: %s", dir)
 }

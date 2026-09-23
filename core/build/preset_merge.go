@@ -20,6 +20,7 @@ import (
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/platform"
 	"singbox-launcher/internal/srstag"
 )
 
@@ -55,7 +56,7 @@ func convertPresetRuleSetRemoteToLocal(rs map[string]interface{}, execDir, resou
 	}
 	// path — куда посмотрит ЯДРО (на машине-исполнителе);
 	// checkPath — где файл лежит У НАС, его наличие и проверяем.
-	path := execDir + "/bin/rule-sets/" + contentTag + ".srs"
+	path := platform.GetRuleSetPath(execDir, contentTag)
 	checkPath := path
 	if resourceDir != "" {
 		path = resourceDir + "/" + ResourceNameForSRS(contentTag)
@@ -757,7 +758,7 @@ func CollectSrsCachedPaths(rules []state.Rule, execDir, resourceDir string) map[
 			if resourceDir != "" {
 				paths = append(paths, resourceDir+"/"+ResourceNameForSRS(tag))
 			} else {
-				paths = append(paths, execDir+"/bin/rule-sets/"+tag+".srs")
+				paths = append(paths, platform.GetRuleSetPath(execDir, tag))
 			}
 		}
 		out[state.StableRuleID(r)] = paths

@@ -75,6 +75,50 @@ func GetRuleSetsDir(execDir string) string {
 	return filepath.Join(execDir, constants.BinDirName, constants.RuleSetsDirName)
 }
 
+// GetRuleSetPath returns the local .srs file of one rule set:
+// <execDir>/bin/rule-sets/<tag>.srs. The only sanctioned way to compose it —
+// the path is emitted into config.json as rule_set[].path.
+func GetRuleSetPath(execDir, tag string) string {
+	return filepath.Join(GetRuleSetsDir(execDir), tag+".srs")
+}
+
+// Имена каталогов под execDir, у которых пока нет констант в internal/constants.
+// Перенести в constants на этапе 3 SPEC 135.
+const (
+	// TailscaleDirName — корень каталогов состояния tailnet под bin/ (SPEC 122).
+	TailscaleDirName = "tailscale"
+	// TempDirName — временный каталог скачивания ядра и wintun.
+	TempDirName = "temp"
+	// DaemonIdentityDirName — клиентская пара сопряжения с локальным демоном под bin/.
+	DaemonIdentityDirName = "daemon"
+	// RemoteDaemonsDirName — клиентские пары удалённых демонов под bin/, по каталогу на машину.
+	RemoteDaemonsDirName = "remote-daemons"
+)
+
+// GetTailscaleStateDir returns the root of tailnet state directories:
+// <execDir>/bin/tailscale (SPEC 122).
+func GetTailscaleStateDir(execDir string) string {
+	return filepath.Join(GetBinDir(execDir), TailscaleDirName)
+}
+
+// GetTempDir returns the scratch directory for core / wintun downloads:
+// <execDir>/temp.
+func GetTempDir(execDir string) string {
+	return filepath.Join(execDir, TempDirName)
+}
+
+// GetDaemonIdentityDir returns the local daemon pairing identity directory:
+// <execDir>/bin/daemon.
+func GetDaemonIdentityDir(execDir string) string {
+	return filepath.Join(GetBinDir(execDir), DaemonIdentityDirName)
+}
+
+// GetRemoteDaemonIdentityDir returns the pairing identity directory of one
+// remote daemon: <execDir>/bin/remote-daemons/<id>.
+func GetRemoteDaemonIdentityDir(execDir, id string) string {
+	return filepath.Join(GetBinDir(execDir), RemoteDaemonsDirName, id)
+}
+
 // GetRuleSetsDirFor returns the .srs directory for a config target
 // (SPEC 098 §2.3).
 //

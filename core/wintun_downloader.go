@@ -55,7 +55,7 @@ func (ac *AppController) DownloadWintunDLL(ctx context.Context, progressChan cha
 	}
 
 	// 1. Create temporary directory
-	tempDir := filepath.Join(ac.FileService.ExecDir, "temp")
+	tempDir := platform.GetTempDir(ac.FileService.ExecDir)
 	if err := os.MkdirAll(tempDir, platform.DefaultDirMode); err != nil {
 		progressChan <- DownloadProgress{
 			Progress: 0,

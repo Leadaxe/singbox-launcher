@@ -34,7 +34,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"image/color"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -145,7 +144,7 @@ func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, r
 	}
 	templateFileName := wizardtemplate.GetTemplateFileName()
 	debuglog.InfoLog("ConfigWizard: %s unreadable at %s (%v) — trying to download it",
-		templateFileName, filepath.Join(ac.FileService.ExecDir, constants.BinDirName, templateFileName), loadErr)
+		templateFileName, platform.GetWizardTemplatePath(ac.FileService.ExecDir), loadErr)
 
 	// Сеть — не на UI-потоке: сюда приходят из OnTapped кнопок Local и
 	// Remote → Configure. Всё, что трогает виджеты после, идёт через fyne.Do.
@@ -162,7 +161,7 @@ func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, r
 			}
 			if err != nil {
 				debuglog.ErrorLog("ConfigWizard: template download failed: %v", err)
-				binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
+				binDir := platform.GetBinDir(ac.FileService.ExecDir)
 				dialogs.ShowDownloadFailedManualWithReason(parent,
 					locale.T("Config template failed to load"), err.Error(),
 					wizardtemplate.GetTemplateURL(), binDir)
@@ -307,7 +306,7 @@ func buildWizardWindow(
 			} else {
 				debuglog.InfoLog("ShowConfigWizard: loaded state from state.json")
 				maybeShowMigrationReport(wizardWindow, stateFile,
-					filepath.Join(ac.FileService.ExecDir, constants.BinDirName))
+					platform.GetBinDir(ac.FileService.ExecDir))
 			}
 			// LoadState восстанавливает Target из meta файла. Для машины id и
 			// каталоги всегда из реестра (§5.8 — их в файле нет и быть не
@@ -378,7 +377,7 @@ func loadConfigFromFile(presenter *wizardpresentation.WizardPresenter, fileServi
 		// If we didn't load from template or config.json - show manual download dialog
 		if model.TemplateData == nil || model.TemplateData.ParserConfig == "" {
 			ac := core.GetController()
-			binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
+			binDir := platform.GetBinDir(ac.FileService.ExecDir)
 			debuglog.DebugLog("wizard: showing download failed manual (template missing)")
 			dialogs.ShowDownloadFailedManual(wizardWindow, locale.T("Config template missing"), wizardtemplate.GetTemplateURL(), binDir)
 			wizardWindow.Close()
@@ -826,7 +825,7 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 					// необходимости скачав), так что сюда попадают, только
 					// если файл унесли из-под работающего окна. Причина —
 					// текстом ошибки, а не «см. лог».
-					binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
+					binDir := platform.GetBinDir(ac.FileService.ExecDir)
 					debuglog.ErrorLog("wizard: template load on New failed: %v", err)
 					dialogs.ShowDownloadFailedManualWithReason(wizardWindow,
 						locale.T("Config template failed to load"), err.Error(),
@@ -877,7 +876,7 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 			return
 		}
 		maybeShowMigrationReport(wizardWindow, stateFile,
-			filepath.Join(presenter.Model().ExecDir, constants.BinDirName))
+			platform.GetBinDir(presenter.Model().ExecDir))
 
 		// Синхронизируем GUI
 		presenter.SyncModelToGUI()

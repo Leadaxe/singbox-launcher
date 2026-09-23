@@ -97,7 +97,7 @@ func (r *RemoteRegistry) path() string {
 // устройства означал бы, что отзыв доступа на одном роутере отзывает его
 // везде.
 func (r *RemoteRegistry) identityDir(id string) string {
-	return filepath.Join(platform.GetBinDir(r.execDir), "remote-daemons", id)
+	return platform.GetRemoteDaemonIdentityDir(r.execDir, id)
 }
 
 // List возвращает сохранённые подключения, отсортированные по имени.

@@ -87,7 +87,7 @@ func RefreshTemplateIfStale(ctx context.Context, execDir string, fetch template.
 	hasState := stateErr == nil
 	res.RebuildConfig = hasState
 
-	templatePath := filepath.Join(binDir, constants.WizardTemplateFileName)
+	templatePath := platform.GetWizardTemplatePath(execDir)
 	_, statErr := os.Stat(templatePath)
 
 	// Шаблон, положенный установщиком под ЭТУ версию (архив win64-full,

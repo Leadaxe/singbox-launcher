@@ -302,8 +302,7 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	// SPEC 122: корень каталогов состояния tailnet. Тот же корень
 	// `<execDir>/bin`, относительно которого лежат локальные .srs — эмиссия
 	// ExecDir не знает, и путь приходит сюда единственной точкой.
-	config.SetTailscaleStateDirRoot(
-		filepath.Join(platform.GetBinDir(ac.FileService.ExecDir), "tailscale"))
+	config.SetTailscaleStateDirRoot(platform.GetTailscaleStateDir(ac.FileService.ExecDir))
 
 	// SPEC 112: идентичность узла (тег) и УПРАЗДНЁННЫЙ контент-хеш для
 	// миграции legacy-отметок. Обе живут в config (эмиттер нужен второй),

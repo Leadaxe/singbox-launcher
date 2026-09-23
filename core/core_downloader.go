@@ -89,7 +89,7 @@ func (ac *AppController) DownloadCore(ctx context.Context, version string, progr
 	}
 
 	// 3. Create temporary directory
-	tempDir := filepath.Join(ac.FileService.ExecDir, "temp")
+	tempDir := platform.GetTempDir(ac.FileService.ExecDir)
 	if err := os.MkdirAll(tempDir, platform.DefaultDirMode); err != nil {
 		progressChan <- DownloadProgress{Progress: 0, Message: fmt.Sprintf("Failed to create temp dir: %v", err), Status: "error", Error: fmt.Errorf("DownloadCore: failed to create temp dir: %w", err)}
 		return
