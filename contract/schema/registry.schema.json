@@ -14,7 +14,7 @@
     "genus": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Только у kind:group. Род группы ЕСТЬ тип тела sing-box (entry.type): отдельного имени рода не заводится (TASKS_LXBOX §42, §44.2). values — допустимые значения entry.type узла-группы; по ним любая сторона приводит тип тела к схеме реестра (singbox_type с «|» обратного хода не даёт). by_source — во что разрешается род у каждого вида источника: «$as_is» — тип несёт сам вход (sing-box), иначе литерал из values (Xray-балансировщик рода не объявляет → urltest).",
+      "description": "Только у kind:group. Род группы ЕСТЬ тип тела sing-box (entry.type): отдельного имени рода не заводится (TASKS_LXBOX §42, §45.2). values — допустимые значения entry.type узла-группы; по ним любая сторона приводит тип тела к схеме реестра (singbox_type с «|» обратного хода не даёт). by_source — во что разрешается род у каждого вида источника: «$as_is» — тип несёт сам вход (sing-box), иначе литерал из values (Xray-балансировщик рода не объявляет → urltest).",
       "required": ["values", "by_source"],
       "properties": {
         "values": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
