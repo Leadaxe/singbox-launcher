@@ -1,0 +1,15 @@
+# Служебная запись маршрутизации среди ссылок: `incy://routing/onadd/<base64>`
+# (contract/registry/source_kinds.json, uri_lines.service_schemes).
+# Панели отдают одно тело сразу нескольким клиентам и подмешивают такие команды
+# к ссылкам, повторяя их ещё и заголовком `Routing:`. Узлом запись не
+# притворялась, и прежде она отбраковывалась общим «unsupported scheme»: у
+# формально рабочей подписки пользователь читал отказ на её же служебном
+# заголовке (живой вход: 5 отказов при 8 узлах).
+# Ожидание: соседние узлы НА МЕСТЕ, запись в dropped[] с info-кодом
+# service_record_ignored — тихо, но НЕ молча (контракт 1.1.48).
+# Вторая служебная схема того же рода — `happ://routing/…`, она здесь же
+# третьей строкой: набор объявлен реестром списком, и обе обязаны молчать.
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?type=tcp&security=tls&sni=example-1.com#node-a
+incy://routing/onadd/eyJOYW1lIjoiRXhhbXBsZSBSb3V0aW5nIn0K
+happ://routing/onadd/eyJOYW1lIjoiRXhhbXBsZSBSb3V0aW5nIn0K
+trojan://testpass123@example-2.com:443?sni=example-2.com#node-b

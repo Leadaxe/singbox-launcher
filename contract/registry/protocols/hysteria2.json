@@ -913,10 +913,11 @@
           },
           "maps_to": "up_mbps",
           "type": "int",
+          "normalize": "bandwidth_mbps",
           "when": {
             "$form": "flat"
           },
-          "impl": "Полоса объявлена и у v2: xrayHysteriaMbps читает её общим кодом обеих версий, и ядро hysteria2 поля up_mbps/down_mbps принимает. Ноль не пишется — это «не задано», а не «ноль мегабит» (on_invalid не нужен: type int на нечисловом даёт отсутствие значения)."
+          "impl": "Полоса объявлена и у v2: xrayHysteriaMbps читает её общим кодом обеих версий, и ядро hysteria2 поля up_mbps/down_mbps принимает. Ноль не пишется — это «не задано», а не «ноль мегабит» (on_invalid не нужен: type int на нечисловом даёт отсутствие значения). `bandwidth_mbps` снимает ЕДИНИЦУ ИЗМЕРЕНИЯ: форки пишут полосу строкой с суффиксом (`\"100 mbps\"`, `\"300Mbps\"`, `\"50 mbit/s\"` — наблюдалось у панели assassin-cdn), а `type: int` на такой строке давал отсутствие значения, и полоса терялась МОЛЧА на обеих сторонах. Перевод написания диалекта, а не суждение о величине: `kbps` и `bps` округляются вниз до мегабит (0 после округления = «не задано», как и у ноля), `gbps` умножается на 1000; неизвестный суффикс значения не даёт — такую строку мы не понимаем и выдумывать за автора нельзя."
         },
         "down_mbps": {
           "source": {
@@ -933,9 +934,11 @@
           },
           "maps_to": "down_mbps",
           "type": "int",
+          "normalize": "bandwidth_mbps",
           "when": {
             "$form": "flat"
-          }
+          },
+          "impl": "Тот же суффикс написания, что у up_mbps."
         },
         "alpn": {
           "source": "json.streamSettings.tlsSettings.alpn",
@@ -978,10 +981,40 @@
           },
           "impl": "QUIRKS Q133-18: servers[1..] отбрасываются молча (xray_protocols.go:159). Поведение то же, но появляется код."
         },
+        "obfs_type_finalmask": {
+          "source": {
+            "flat": [
+              "json.streamSettings.finalmask.udp.0.type",
+              "json.streamSettings.hysteriaSettings.finalmask.udp.0.type"
+            ]
+          },
+          "maps_to": "obfs.type",
+          "normalize": "trim_lower",
+          "merge": "keep_first",
+          "when": {
+            "$form": "flat"
+          },
+          "impl": "ВТОРОЕ написание обфускации у форков: блок `finalmask.udp[]` — список маскировщиков UDP, где `type` называет обфускацию, а секрет лежит вложенно в `settings.password` (наблюдалось у панели assassin-cdn: `{\"type\":\"salamander\",\"settings\":{\"password\":\"…\"}}`). Прежде весь блок `finalmask` был объявлен чтением-без-записи, и обфускация вместе с паролём терялась МОЛЧА на обеих сторонах — узел приезжал без salamander и не поднимался. Годность типа судит РЕЕСТР, как и у строковой записи: body.fields.obfs.type — enum salamander/gecko с кодом obfs_unknown, и второй проверки в маппере не заводится. Берётся ПЕРВЫЙ элемент списка: ядро hysteria2 держит одну обфускацию, а не цепочку; остальные элементы объявлены отдельной записью со своим кодом. `merge: keep_first` — строковая запись `hysteriaSettings.obfs` (запись `obfs` выше) объявлена РАНЬШЕ и сильнее: элемент, написавший обфускацию оба раза, имел в виду ближнюю к секрету."
+        },
+        "obfs_password_finalmask": {
+          "source": {
+            "flat": [
+              "json.streamSettings.finalmask.udp.0.settings.password",
+              "json.streamSettings.hysteriaSettings.finalmask.udp.0.settings.password"
+            ]
+          },
+          "maps_to": "obfs.password",
+          "normalize": "trim",
+          "merge": "keep_first",
+          "when": {
+            "$form": "flat"
+          },
+          "impl": "Пароль той же формы; секретность и обязательность объявлены полем ТЕЛА (body.fields.obfs.password: secret, required, код obfs_password_missing), а не здесь — тип без пароля снимает блок obfs целиком, и это правило одно на все входы. `merge: keep_first` уступает строковой записи по той же причине, что и тип."
+        },
         "$finalmask": {
           "source": "json.streamSettings.hysteriaSettings.finalmask",
           "maps_to": null,
-          "impl": "finalmask.quicParams у sing-box соответствия не имеет, а незнакомое поле валит весь конфиг. Объявлено чтением без записи, чтобы ключ не уехал в json_field_unknown."
+          "impl": "finalmask.quicParams у sing-box соответствия не имеет, а незнакомое поле валит весь конфиг. Объявлено чтением без записи, чтобы ключ не уехал в json_field_unknown. Читаемые ЛИСТЬЯ блока (`udp[0].type` и `udp[0].settings.password`) объявлены записями obfs_type_finalmask/obfs_password_finalmask выше; `udp[1..]` отбрасываются: ядро держит одну обфускацию, а не цепочку — второй маскировщик применить некуда."
         },
         "$version": {
           "source": [

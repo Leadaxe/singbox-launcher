@@ -4,6 +4,7 @@
 package subscription
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -133,8 +134,17 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	// секция реестра двумя `forms` одной таблицей записей.
 	//
 	// Сюда попадает только текст, который не опознала ни одна секция.
-	return nil, fmt.Errorf("unsupported scheme")
+	return nil, ErrUnsupportedScheme
 }
+
+// ErrUnsupportedScheme — последний отказ ParseNode: схему строки не ведёт ни
+// одна секция реестра.
+//
+// Сторожевая переменная, а не строка на месте: отбраковке нужен МАШИННЫЙ код
+// (`scheme_unsupported`, D-088), а различать «эту схему мы не знаем вовсе» от
+// прочих отказов разбора по тексту ошибки нельзя — текст у каждой стороны
+// свой. Обёртки над ней (`%w`) сохраняют признак для errors.Is.
+var ErrUnsupportedScheme = errors.New("unsupported scheme")
 
 // Private helper functions (migrated from parser.go)
 

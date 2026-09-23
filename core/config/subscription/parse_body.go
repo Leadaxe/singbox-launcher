@@ -28,6 +28,7 @@ package subscription
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -120,6 +121,49 @@ const RejectReasonProviderBanner = "provider banner, not a server"
 // «это баннер».
 func isProviderBannerLine(line string) bool {
 	return !strings.Contains(line, "://")
+}
+
+// RejectReasonServiceRecord — причина отбраковки СЛУЖЕБНОЙ записи состава.
+//
+// Норма — contract/registry/source_kinds.json, ветка `uri_lines`,
+// `service_schemes`: панели отдают одно тело сразу нескольким клиентам и
+// подмешивают к ссылкам команды маршрутизации (`incy://routing/…`,
+// `happ://routing/…`), повторяя их ещё и заголовком `Routing:`. Узлом такая
+// запись не притворялась, а правила маршрутизации чужого клиента это
+// приложение не исполняет.
+//
+// Прежде она отбраковывалась общим «unsupported scheme», и формально рабочая
+// подписка показывала отказ на своём же служебном заголовке (наблюдалось: пять
+// отказов при восьми живых узлах). Обращение — как с анонсом провайдера, но
+// признак другой: у баннера схемы нет вовсе, а здесь схема есть и она
+// ОПОЗНАНА как служебная. Ключ английский — как у баннера.
+//
+// Параметр {scheme} кода `service_record_ignored` берётся из исходника записи
+// (`OriginRaw` едет в отбраковке целиком), а не выделяется здесь отдельным
+// полем: строка отбраковки и без того несёт схему первой, а второе место, где
+// она живёт, разошлось бы с первым.
+const RejectReasonServiceRecord = "service routing record, not a server"
+
+// serviceSchemePrefixes — схемы служебных записей и обязательный хвост за
+// ними. Тихого игнора заслуживает не сама схема, а объявленное ею НАЗНАЧЕНИЕ:
+// про `incy://routing/…` мы знаем, что это маршрутизация, а про `incy://`
+// с чем-то другим не знаем ничего — и молчать о нём было бы обещанием, за
+// которым ничего не стоит.
+var serviceSchemePrefixes = []string{
+	"incy://routing/",
+	"happ://routing/",
+}
+
+// isServiceSchemeLine — строка состава со служебной схемой (см.
+// RejectReasonServiceRecord). Регистронезависимо, как и остальные схемные
+// предикаты реестра.
+func isServiceSchemeLine(line string) bool {
+	for _, p := range serviceSchemePrefixes {
+		if len(line) >= len(p) && strings.EqualFold(line[:len(p)], p) {
+			return true
+		}
+	}
+	return false
 }
 
 // RejectedBodyRecord — запись тела, которую разобрать не удалось
@@ -294,8 +338,14 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 			flushJSON(i + 1)
 		}
 
-	case bodyKind == BodyKindXrayArray:
-		arrayNodes, xrayReasons, xrayRejects, err := parseNodesFromXrayJSONArrayFull(contentStr, skip)
+	case bodyKind == BodyKindXrayArray || bodyKind == BodyKindXrayConfig:
+		// Одиночный конфиг — массив из одного элемента: элементом у реестра
+		// служит как раз целый конфиг, и второй ветви разбора ему не нужно.
+		xrayBody := contentStr
+		if bodyKind == BodyKindXrayConfig {
+			xrayBody = XrayConfigToArray(contentStr)
+		}
+		arrayNodes, xrayReasons, xrayRejects, err := parseNodesFromXrayJSONArrayFull(xrayBody, skip)
 		for _, r := range xrayReasons {
 			st.warn(r)
 		}
@@ -353,6 +403,15 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 				st.reject(RejectReasonProviderBanner, OriginKindURI, line)
 				continue
 			}
+			// Служебная запись маршрутизации — схему она заявила, но узлом
+			// не является (см. RejectReasonServiceRecord). Проверяется ПОСЛЕ
+			// баннера и ДО ParseNode: разбирать её незачем, а ошибкой
+			// объявлять нельзя — код у неё info.
+			if isServiceSchemeLine(line) {
+				st.warn(fmt.Sprintf("record rejected: %s", RejectReasonServiceRecord))
+				st.rejectCoded(RejectReasonServiceRecord, WarnServiceRecordIgnored, OriginKindURI, line)
+				continue
+			}
 			// Кап проверяется ПОСЛЕ отсечек комментария и баннера: он
 			// считает ЗАПИСИ состава, а ни `#`-строка, ни анонс провайдера
 			// записью не являются. Стоя выше, он засчитывал каждый заголовок
@@ -367,8 +426,18 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 				// Битая запись — деградация записи с warning, не подписки.
 				// SPEC 116 W11: и не молчаливая пропажа — запись остаётся в
 				// составе узлом kind=unsupported со своим исходником.
+				//
+				// Схема, которую не ведёт ни одна секция реестра, получает
+				// МАШИННЫЙ код (D-088): текст ошибки у каждой стороны свой,
+				// и без кода мобильная сторона не могла сверить причину.
+				// Прочие отказы разбора кода пока не имеют — он назначается
+				// по норме warnings.json, а не выдумывается на месте.
+				code := ""
+				if errors.Is(err, ErrUnsupportedScheme) {
+					code = WarnSchemeUnsupported
+				}
 				st.warn(fmt.Sprintf("record rejected: %v", err))
-				st.reject(err.Error(), OriginKindURI, line)
+				st.rejectCoded(err.Error(), code, OriginKindURI, line)
 				continue
 			}
 			if node == nil {

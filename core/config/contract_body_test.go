@@ -101,15 +101,44 @@ func parseCorpusBody(t *testing.T, body string) ([]*configtypes.ParsedNode, []co
 		}
 		return res.Nodes, nil, kind
 
-	case kind == subscription.BodyKindXrayArray:
-		nodes, err := subscription.ParseNodesFromXrayJSONArray(body, nil)
+	case kind == subscription.BodyKindXrayArray || kind == subscription.BodyKindXrayConfig:
+		// Одиночный конфиг Xray — массив из одного элемента, ровно как у
+		// боевого разбора (реестр: xray_config, priority 35).
+		xrayBody := body
+		if kind == subscription.BodyKindXrayConfig {
+			xrayBody = subscription.XrayConfigToArray(body)
+		}
+		nodes, err := subscription.ParseNodesFromXrayJSONArray(xrayBody, nil)
 		if err != nil {
 			return nil, nil, kind
 		}
-		return nodes, corpusXrayDrops(body), kind
+		return nodes, corpusXrayDrops(xrayBody), kind
 
 	default:
-		return parseURILines(body), nil, kind
+		// Построчная ветка идёт через ЧИСТЫЙ парсер тела, а не через свой
+		// обход строк: отбраковки — часть контракта тела (D-088), и у
+		// служебной записи (`incy://routing/…`) нормативен именно её код.
+		// Свой обход их не отдавал вовсе, и тихий игнор был неотличим от
+		// молчаливой пропажи.
+		res, err := subscription.ParseSubscriptionBody([]byte(body), nil, 0)
+		if err != nil || res == nil {
+			return nil, nil, kind
+		}
+		nodes := make([]*configtypes.ParsedNode, 0, len(res.Entries))
+		for _, e := range res.Entries {
+			if e != nil && e.Node != nil {
+				nodes = append(nodes, e.Node)
+			}
+		}
+		drops := make([]contractDrop, 0, len(res.Rejected))
+		for _, r := range res.Rejected {
+			drops = append(drops, contractDrop{
+				Ref:    r.OriginRaw,
+				Code:   r.Code,
+				Reason: r.Reason,
+			})
+		}
+		return nodes, drops, kind
 	}
 }
 
@@ -151,22 +180,6 @@ func corpusRejectRef(originRaw string) string {
 
 // parseURILines разбирает построчный URI-список, пропуская пустые строки и
 // комментарии — как это делает загрузчик.
-func parseURILines(body string) []*configtypes.ParsedNode {
-	var out []*configtypes.ParsedNode
-	for _, line := range strings.Split(body, "\n") {
-		line = subscription.NormalizeSubscriptionTextLine(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		node, err := subscription.ParseNode(line, nil)
-		if err != nil || node == nil {
-			continue
-		}
-		out = append(out, node)
-	}
-	return out
-}
-
 // corpusExtensionMark читает пометку meta.extension из существующего ожидания.
 //
 // Ожидания генерирует раннер, но эта пометка приходит не из разбора, а от

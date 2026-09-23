@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "down_mbps": 300,
+        "obfs": {
+          "password": "testobfs456",
+          "type": "salamander"
+        },
+        "password": "testpass123",
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com"
+        },
+        "type": "hysteria2",
+        "up_mbps": 100
+      },
+      "kind": "outbound",
+      "label": "hy2-finalmask",
+      "scheme": "hysteria2",
+      "warnings": [
+        {
+          "code": "tls_not_applicable_quic",
+          "path": "tls.utls",
+          "value": "map[enabled:true fingerprint:firefox]"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

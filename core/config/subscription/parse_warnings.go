@@ -93,6 +93,22 @@ const (
 	// непригодна: узел-владелец отбраковывается ЦЕЛИКОМ. Кода на узле не
 	// бывает (узла не будет) — он едет в отбраковке, поэтому severity=error.
 	WarnDialerProxyUnusable = "dialer_proxy_unusable"
+	// WarnServiceRecordIgnored — строка состава со СЛУЖЕБНОЙ схемой
+	// (`incy://routing/…`, `happ://routing/…`): команда маршрутизации
+	// соседнему клиенту, а не сервер. Узла не будет, поэтому код едет в
+	// отбраковке; severity=info — терять тут нечего, но выпадение обязано
+	// быть названным, иначе оно неотличимо от потерянного узла
+	// (source_kinds.json, uri_lines.service_schemes).
+	WarnServiceRecordIgnored = "service_record_ignored"
+	// WarnSchemeUnsupported — схему строки не ведёт ни одна секция реестра.
+	// Отбраковка, а не пометка (узла не будет), поэтому severity=error:
+	// прежде причина ехала только текстом Go, и сверить её по коду вторая
+	// сторона не могла (D-088).
+	WarnSchemeUnsupported = "scheme_unsupported"
+	// WarnBodyDialectUnrecognized — тело опознано целым конфигом, но диалект
+	// (Xray против sing-box) спрошен не был, и записи читал чужой разбор.
+	// Код ступени КЛАССИФИКАЦИИ и уровня ПОДПИСКИ, а не узла; severity=error.
+	WarnBodyDialectUnrecognized = "body_dialect_unrecognized"
 )
 
 // Предикаты «значение будет испорчено» (realityShortIDWouldDegrade,
