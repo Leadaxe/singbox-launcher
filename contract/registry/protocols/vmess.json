@@ -861,9 +861,31 @@
             "action": "note",
             "code": "xray_extra_entries_dropped"
           }
+        },
+        "experiments_authlen": {
+          "source": "json.$base.users.0.experiments",
+          "maps_to": "authenticated_length",
+          "when": {
+            "json.settings.vnext.0.users.0.experiments": {
+              "contains": "AuthenticatedLength"
+            }
+          },
+          "sets": {
+            "": {
+              "authenticated_length": true
+            }
+          },
+          "materialize_default": true,
+          "impl": "option/vmess.go VMessOutboundOptions.AuthenticatedLength. У Xray это СТРОКА-ПЕРЕЧЕНЬ («AuthenticatedLength|NoTerminationSignal»), а не булево, и смысл несёт наличие ПОДСТРОКИ — отсюда предикат contains, а не value_map. Сервер, требующий authenticated length, рвёт соединение с клиентом без него: по влиянию это отказ, а не деградация. NoTerminationSignal пары у ядра не имеет (global_padding — другое свойство, из другого поля Xray) и объявлен отдельной записью без записи в тело."
+        },
+        "experiments_rest": {
+          "source": "json.$base.users.0.experiments",
+          "maps_to": null,
+          "impl": "Парная запись к experiments_authlen: объявляет ЧТЕНИЕ строки целиком, чтобы ключ не попал в json_field_unknown при написании без AuthenticatedLength (например одинокий NoTerminationSignal, у которого пары у ядра нет)."
         }
       },
       "include": [
+        "multiplex#xray",
         "transports#xray",
         "tls#xray",
         "dialer#xray"

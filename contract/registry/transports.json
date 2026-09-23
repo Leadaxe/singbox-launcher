@@ -1634,11 +1634,17 @@
             "h2": "http",
             "splithttp": "xhttp"
           },
+          "allow": [
+            "ws",
+            "grpc",
+            "httpupgrade",
+            "xhttp"
+          ],
           "on_invalid": {
             "action": "drop",
             "code": "transport_unsupported"
           },
-          "impl": "QUIRKS Q133-17: сегодня неизвестный network (kcp/quic/ds) возвращает nil МОЛЧА — узел приезжает чистым TCP. Код transport_unsupported объявлен, но из Xray не ставится."
+          "impl": "Селектор транспорта Xray. value_map называет ПЕРЕВОДИМЫЕ написания (h2 → http, splithttp → xhttp) и те, что означают отсутствие транспорта (tcp/raw/пусто → null); allow перечисляет имена, совпадающие с каноном ядра и едущие дословно (ws, grpc, httpupgrade, xhttp). Значение, которого нет ни там, ни там, — транспорт, которого у ядра НЕТ: kcp/mkcp, quic, domainsocket. on_invalid: drop снимает такой узел с кодом transport_unsupported, и с контракта 1.1.50 это объявление ИСПОЛНЯЕТСЯ (прежде — Q133-17/M-01: неизвестный network уезжал в transport.type дословно, санитайзер снимал транспорт правилом enum МОЛЧА, и узел выходил рабочим plain-TCP; сервер, который ждёт mKCP, такое соединение не примет, а человек не получал ни кода, ни причины). Отбраковка, а не нота: узел без своего транспорта не «хуже», он не работает вовсе, и оставить его в списке значило бы предложить человеку заведомо мёртвый сервер."
         }
       },
       "ws": {
@@ -1670,6 +1676,16 @@
           "when": {
             "transport.type": "ws"
           }
+        },
+        "headers": {
+          "source": "json.streamSettings.wsSettings.headers",
+          "maps_to": "transport.headers",
+          "type": "object",
+          "sort_keys": true,
+          "when": {
+            "transport.type": "ws"
+          },
+          "impl": "option/v2ray_transport.go V2RayWebsocketOptions.Headers (badoption.HTTPHeader). Xray пишет карту, ядро ждёт карту — значение едет КАРТОЙ, без склейки (§4). ПОРЯДОК ОТНОСИТЕЛЬНО host НОРМАТИВЕН и повторяет Xray: у него headers.Host ПОБЕЖДАЕТ отдельный host, и запись объявлена ПОСЛЕ host с записью карты целиком — карта перекрывает уже записанный transport.headers.Host, а при её отсутствии остаётся значение из host. Своего поля host у ws-транспорта ядра НЕТ вовсе (только headers), поэтому оба написания законно ведут в один путь, и спор решает позиция объявления, а не merge. Проверено обеими формами и их сочетанием: host+headers → headers, host один → host в headers.Host, headers с соседними ключами → все ключи доезжают. Прежде карта терялась целиком (кейс vless_ws_ed_path: Host cdn.example не доезжал)."
         }
       },
       "httpupgrade": {
@@ -1691,6 +1707,16 @@
           "when": {
             "transport.type": "httpupgrade"
           }
+        },
+        "headers": {
+          "source": "json.streamSettings.httpupgradeSettings.headers",
+          "maps_to": "transport.headers",
+          "type": "object",
+          "sort_keys": true,
+          "when": {
+            "transport.type": "httpupgrade"
+          },
+          "impl": "option/v2ray_transport.go V2RayHTTPUpgradeOptions.Headers."
         }
       },
       "http": {
@@ -1712,6 +1738,46 @@
             "transport.type": "http"
           },
           "impl": "QUIRKS Q133-16: сегодня массив ['a.com','b.com'] уходит через fmt.Sprint и даёт host ['[a.com b.com]'] — типовой реальный конфиг даёт мусор. coerce_scalar принимает ОБЕ формы."
+        },
+        "method": {
+          "source": "json.streamSettings.httpSettings.method",
+          "maps_to": "transport.method",
+          "when": {
+            "transport.type": "http"
+          },
+          "impl": "option/v2ray_transport.go V2RayHTTPOptions.Method."
+        },
+        "headers": {
+          "source": "json.streamSettings.httpSettings.headers",
+          "maps_to": "transport.headers",
+          "type": "object",
+          "sort_keys": true,
+          "when": {
+            "transport.type": "http"
+          }
+        },
+        "read_idle_timeout": {
+          "source": [
+            "json.streamSettings.httpSettings.read_idle_timeout",
+            "json.streamSettings.httpSettings.readIdleTimeout"
+          ],
+          "maps_to": "transport.idle_timeout",
+          "type": "duration",
+          "when": {
+            "transport.type": "http"
+          },
+          "impl": "option/v2ray_transport.go V2RayHTTPOptions.IdleTimeout. У Xray значение в СЕКУНДАХ числом, у ядра badoption.Duration — единицу дописывает санитайзер (type: duration), маппер значения не судит."
+        },
+        "health_check_timeout": {
+          "source": [
+            "json.streamSettings.httpSettings.health_check_timeout",
+            "json.streamSettings.httpSettings.healthCheckTimeout"
+          ],
+          "maps_to": "transport.ping_timeout",
+          "type": "duration",
+          "when": {
+            "transport.type": "http"
+          }
         }
       },
       "grpc": {
@@ -1724,6 +1790,70 @@
           "when": {
             "transport.type": "grpc"
           }
+        },
+        "idle_timeout": {
+          "source": [
+            "json.streamSettings.grpcSettings.idle_timeout",
+            "json.streamSettings.grpcSettings.idleTimeout"
+          ],
+          "maps_to": "transport.idle_timeout",
+          "type": "duration",
+          "when": {
+            "transport.type": "grpc"
+          },
+          "impl": "option/v2ray_transport.go V2RayGRPCOptions.IdleTimeout."
+        },
+        "health_check_timeout": {
+          "source": [
+            "json.streamSettings.grpcSettings.health_check_timeout",
+            "json.streamSettings.grpcSettings.healthCheckTimeout"
+          ],
+          "maps_to": "transport.ping_timeout",
+          "type": "duration",
+          "when": {
+            "transport.type": "grpc"
+          }
+        },
+        "permit_without_stream": {
+          "source": [
+            "json.streamSettings.grpcSettings.permit_without_stream",
+            "json.streamSettings.grpcSettings.permitWithoutStream"
+          ],
+          "maps_to": "transport.permit_without_stream",
+          "type": "bool_spelled",
+          "when": {
+            "transport.type": "grpc"
+          }
+        },
+        "authority": {
+          "source": "json.streamSettings.grpcSettings.authority",
+          "maps_to": null,
+          "when": {
+            "transport.type": "grpc"
+          },
+          "impl": "Псевдо-Host gRPC-запроса. У ядра отдельного authority НЕТ (option/v2ray_transport.go V2RayGRPCOptions знает service_name/idle_timeout/ping_timeout/permit_without_stream), и transport.headers у grpc ядро не читает — записать значение некуда. Чтение объявлено БЕЗ кода: authority пишут ВСЕ ЧЕТЫРЕ панели на каждом grpc-узле, и код был бы шумом на исправной подписке; молчание здесь дешевле, потому что поведение узла от отсутствия псевдо-Host не меняется — имя сервиса несёт service_name. Прежде ключ давал uri_param_unknown/json_field_unknown, то есть шумел, ничего не сообщая."
+        },
+        "multiMode": {
+          "source": [
+            "json.streamSettings.grpcSettings.multiMode",
+            "json.streamSettings.grpcSettings.multi_mode"
+          ],
+          "maps_to": null,
+          "when": {
+            "transport.type": "grpc",
+            "json.streamSettings.grpcSettings.multiMode": {
+              "in": [
+                true,
+                "true",
+                "1"
+              ]
+            }
+          },
+          "on_present": {
+            "action": "note",
+            "code": "grpc_multi_mode_ignored"
+          },
+          "impl": "multi-mode у ядра НЕТ вовсе (у Xray это второй способ гонять поток — GunService против TunMultiService). Узел соединится, но сервер, настроенный ТОЛЬКО на multi, обычного клиента не примет — поэтому код, в отличие от authority: потеря меняет ПОВЕДЕНИЕ, а не только вид запроса. Условие требует ИСТИННОГО значения: multiMode: false у панелей встречается чаще true, и код на нём был бы ложной тревогой — терять нечего, когда режим и не просили. Написания перечислены, потому что Xray пишет и булево, и строку. Режим gun (значение по умолчанию, сегодняшнее поведение ядра) принимается молча — он и есть то, что мы делаем."
         }
       },
       "xhttp": {
@@ -1794,36 +1924,50 @@
             "json.streamSettings.xhttpSettings.extra.sessionPlacement",
             "json.streamSettings.xhttpSettings.extra.session_placement",
             "json.streamSettings.xhttpSettings.extra.sessionIDPlacement",
+            "json.streamSettings.xhttpSettings.extra.session_id_placement",
             "json.streamSettings.splithttpSettings.extra.sessionPlacement",
             "json.streamSettings.splithttpSettings.extra.session_placement",
             "json.streamSettings.splithttpSettings.extra.sessionIDPlacement",
+            "json.streamSettings.splithttpSettings.extra.session_id_placement",
             "json.streamSettings.xhttpSettings.sessionPlacement",
             "json.streamSettings.xhttpSettings.session_placement",
+            "json.streamSettings.xhttpSettings.sessionIDPlacement",
+            "json.streamSettings.xhttpSettings.session_id_placement",
             "json.streamSettings.splithttpSettings.sessionPlacement",
-            "json.streamSettings.splithttpSettings.session_placement"
+            "json.streamSettings.splithttpSettings.session_placement",
+            "json.streamSettings.splithttpSettings.sessionIDPlacement",
+            "json.streamSettings.splithttpSettings.session_id_placement"
           ],
           "maps_to": "transport.session_placement",
           "when": {
             "transport.type": "xhttp"
-          }
+          },
+          "impl": " ПЛОСКИЕ написания sessionID* (контракт 1.1.50, запрос LxBox): в 1.1.47 имя из json-тега Xray (transport_method.go:269-270 SessionIDPlacement/SessionIDKey) добавлено только в слой extra, а тот же ключ форки пишут и ПЛОСКО — тогда он не читался ни одним источником. Порядок тот же, что у остальных: слой extra впереди плоского (норма $note_extra), канон впереди алиаса."
         },
         "sessionKey": {
           "source": [
             "json.streamSettings.xhttpSettings.extra.sessionKey",
             "json.streamSettings.xhttpSettings.extra.session_key",
             "json.streamSettings.xhttpSettings.extra.sessionIDKey",
+            "json.streamSettings.xhttpSettings.extra.session_id_key",
             "json.streamSettings.splithttpSettings.extra.sessionKey",
             "json.streamSettings.splithttpSettings.extra.session_key",
             "json.streamSettings.splithttpSettings.extra.sessionIDKey",
+            "json.streamSettings.splithttpSettings.extra.session_id_key",
             "json.streamSettings.xhttpSettings.sessionKey",
             "json.streamSettings.xhttpSettings.session_key",
+            "json.streamSettings.xhttpSettings.sessionIDKey",
+            "json.streamSettings.xhttpSettings.session_id_key",
             "json.streamSettings.splithttpSettings.sessionKey",
-            "json.streamSettings.splithttpSettings.session_key"
+            "json.streamSettings.splithttpSettings.session_key",
+            "json.streamSettings.splithttpSettings.sessionIDKey",
+            "json.streamSettings.splithttpSettings.session_id_key"
           ],
           "maps_to": "transport.session_key",
           "when": {
             "transport.type": "xhttp"
-          }
+          },
+          "impl": " ПЛОСКИЕ написания sessionID* (контракт 1.1.50, запрос LxBox): в 1.1.47 имя из json-тега Xray (transport_method.go:269-270 SessionIDPlacement/SessionIDKey) добавлено только в слой extra, а тот же ключ форки пишут и ПЛОСКО — тогда он не читался ни одним источником. Порядок тот же, что у остальных: слой extra впереди плоского (норма $note_extra), канон впереди алиаса."
         },
         "seqPlacement": {
           "source": [

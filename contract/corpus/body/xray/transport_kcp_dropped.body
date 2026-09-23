@@ -1,0 +1,10 @@
+# network: "kcp" — транспорт, которого у ядра НЕТ. Объявление
+# on_invalid: {action: drop, code: transport_unsupported} стояло у селектора
+# сети с самого перевода на движок, но НЕ ИСПОЛНЯЛОСЬ (Q133-17, M-01): промах
+# value_map означал «вези как пришло», transport.type уезжал в тело дословно
+# («kcp»), санитайзер снимал такой транспорт правилом enum МОЛЧА — и узел
+# выходил РАБОЧИМ plain-TCP. Сервер, который ждёт mKCP, такое соединение не
+# примет, а человек не получал ни кода, ни причины: молчаливая подмена узла.
+# С контракта 1.1.50 объявленное действие исполняется — узел уезжает в
+# dropped[] со своим кодом.
+[{"remarks":"kcp","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"a.example","port":443,"users":[{"id":"11111111-2222-3333-4444-555555555555","encryption":"none"}]}]},"streamSettings":{"network":"kcp","security":"none","kcpSettings":{"seed":"testseed","mtu":1350,"header":{"type":"srtp"}}}}]}]

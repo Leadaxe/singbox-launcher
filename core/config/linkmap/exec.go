@@ -257,6 +257,14 @@ type execState struct {
 	// PRIMITIVES §0.10). Дефолт порта бывает свойством НАПИСАНИЯ, а не схемы:
 	// у одной схемы `http` написание `proxy-http` даёт 80, `proxy-https` — 443.
 	schemeVals map[string]interface{}
+	// dropCode / dropValue — узел снят СЕЛЕКТОРОМ по его `on_invalid: drop`.
+	//
+	// Решение ставится флагом, а не немедленным возвратом: оба прохода обязаны
+	// договориться до конца, чтобы трасса осталась полной и остальные записи
+	// успели поставить свои коды. Причину читает checkRequired — там же, где
+	// отвергается узел без обязательного поля.
+	dropCode  string
+	dropValue string
 }
 
 // schemeValDefaultPort — имя служебного ключа `scheme_sets`, задающего порт по
@@ -326,6 +334,18 @@ func Exec(plan *Plan, space *Space, form registry.Form, bodyType string, trace *
 	st.applyLabel()
 	st.noteUnknownParams()
 	st.noteINIDropped()
+
+	// Селектор снял узел своим `on_invalid: drop` — раньше required: у такого
+	// узла обязательные поля как раз в порядке (адрес, порт и uuid на месте), и
+	// отказ по ним назвал бы человеку не ту причину. Транспорт, которого ядро
+	// не умеет, делает узел неработоспособным целиком, и сказать надо про него.
+	if st.dropCode != "" {
+		// Код едет МАШИННЫМ полем отказа, а не подстрокой текста: нормативен в
+		// ожиданиях корпуса именно он (`dropped[].code`), а `reason` — текст
+		// стороны, который раннеры не сравнивают.
+		return nil, NewReject(st.dropCode, map[string]string{"transport": st.dropValue},
+			fmt.Errorf("linkmap: транспорт %q ядром не поддержан", st.dropValue))
+	}
 
 	// required — ПОСЛЕ обоих проходов и defaults: запись объявлена
 	// обязательной в теле, а не во входе, и значение туда законно приходит
@@ -635,6 +655,40 @@ func (st *execState) applyEntry(e *Entry) {
 	// on_len_gt — массив в источнике длиннее порога: первый элемент уже в
 	// base формы, остальные отброшены; код называет запись и число элементов.
 	st.applyOnLenGt(e)
+
+	// Запись со СПИСКОМ и МАССИВОМ в источнике: элементы берутся как есть.
+	//
+	// `jsonScalar` на массиве молчит намеренно (§4: массив НЕ приводится к
+	// строке — склейка через fmt.Sprint давала `host: ["[a.com b.com]"]`,
+	// Q133-16). Но запись, объявившая `list`, скаляра и не ждёт: у Xray одно
+	// и то же поле пишут обоими написаниями — `httpSettings.host` бывает
+	// строкой и массивом, `wireguard settings.address` всегда массив. Без
+	// этой ветки массивное написание не доезжало ВООВСЕ, и потеря была
+	// молчаливой: узел с `host: ["a.com","b.com"]` уходил без host, а
+	// `coerce_scalar` у той же записи покрывал лишь обратный случай.
+	//
+	// Значение массива не проходит decode_extra и форм-семантику `+`: они
+	// определены на ТЕКСТЕ параметра, а здесь элементы уже разобраны JSON'ом.
+	if p.List != nil && p.Extract == nil && len(p.SplitInto) == 0 {
+		if items, src, ok := st.lookupSourceList(p); ok {
+			st.applyRawList(e, src, items)
+			return
+		}
+	}
+
+	// Запись с `type: object` и КАРТОЙ в источнике: карта едет в тело как есть.
+	//
+	// У входа-ссылки карту собирает `extract` из строки «H1: V1\r\nH2: V2» —
+	// там она пришла текстом. У JSON-элемента она УЖЕ карта (Xray пишет
+	// `headers` объектом, и ядро ждёт того же — badoption.HTTPHeader), и
+	// разбирать её нечем: `jsonScalar` на объекте молчит той же нормой §4, что
+	// и на массиве, и без этой ветки запись не доезжала вовсе.
+	if p.Type == "object" && p.Extract == nil {
+		if m, src, ok := st.lookupSourceMap(p); ok {
+			st.applyRawMap(e, src, m)
+			return
+		}
+	}
 
 	rawVal, src, found := st.lookupSource(p)
 	if !found {
@@ -1386,6 +1440,140 @@ func (st *execState) lookupSource(p *registry.Param) (string, string, bool) {
 	return "", "", false
 }
 
+// lookupSourceList — значение записи со `list`, когда источник МАССИВ.
+//
+// Цепочка та же, что у lookupSource, и правило то же: первый источник, который
+// дал непустой массив. Скаляр здесь НЕ подхватывается — его ведёт lookupSource
+// своим путём, и перехватить его тут значило бы обойти decode_extra.
+//
+// Пустой массив считается отсутствием значения, как пустая строка у скаляра:
+// `allowedIPs: []` у Xray означает «поле не заполнено», а не «маршрутизировать
+// нечего», и materialize_default обязан сработать по ветке applyMissing.
+func (st *execState) lookupSourceList(p *registry.Param) ([]interface{}, string, bool) {
+	for _, name := range p.Source.ForForm(st.form.ID) {
+		name = st.substituteBase(name)
+		raw, ok := st.space.LookupRaw(name)
+		if !ok {
+			continue
+		}
+		arr, ok := raw.([]interface{})
+		if !ok || len(arr) == 0 {
+			continue
+		}
+		return arr, name, true
+	}
+	return nil, "", false
+}
+
+// applyRawList пишет в тело список, пришедший МАССИВОМ, применяя к каждому
+// элементу те же normalize/item, что buildList применяет к куску строки.
+//
+// `sep` к массиву не применяется: разделитель — свойство СТРОКОВОГО написания,
+// и резать по нему уже разобранный элемент значило бы ломать значение, внутри
+// которого запятая законна.
+func (st *execState) applyRawList(e *Entry, src string, items []interface{}) {
+	p := e.Param
+	out := make([]interface{}, 0, len(items))
+	for _, item := range items {
+		s := toString(item)
+		if strings.TrimSpace(s) == "" {
+			continue
+		}
+		if p.Normalize != "" {
+			s = normalizeValue(p.Normalize, s)
+		}
+		if p.List.Item != "" {
+			conv, drop := convertType(p.List.Item, s)
+			if drop {
+				continue
+			}
+			out = append(out, conv)
+			continue
+		}
+		out = append(out, s)
+	}
+	// Объявленная длина не сошлась — решает `on_invalid` записи, как у
+	// строкового написания: `reserved` из двух элементов ядру не годится.
+	if p.List.Len > 0 && len(out) != p.List.Len {
+		if actionOf(p.OnInvalid) != "keep" {
+			st.trace.Add(Event{
+				Stage: StageField, Mapper: st.mapperName, Entry: e.Name,
+				Src: src, Raw: items, Val: nil, Path: nil, Act: ActSkip, Why: WhyEmpty,
+			})
+			return
+		}
+	}
+	if len(out) == 0 {
+		st.trace.Add(Event{
+			Stage: StageField, Mapper: st.mapperName, Entry: e.Name,
+			Src: src, Raw: items, Val: nil, Path: nil, Act: ActSkip, Why: WhyEmpty,
+		})
+		return
+	}
+	path := st.pathOf(p)
+	if path == "" {
+		st.applySets(e, toString(items))
+		st.applyImplies(e)
+		return
+	}
+	st.write(e.Name, src, items, out, path, p.Priority, e.Decl, "")
+	st.applySets(e, toString(items))
+	st.applyImplies(e)
+}
+
+// lookupSourceMap — значение записи с `type: object`, когда источник КАРТА.
+// Правила цепочки те же, что у lookupSourceList; пустая карта = нет значения.
+func (st *execState) lookupSourceMap(p *registry.Param) (map[string]interface{}, string, bool) {
+	for _, name := range p.Source.ForForm(st.form.ID) {
+		name = st.substituteBase(name)
+		raw, ok := st.space.LookupRaw(name)
+		if !ok {
+			continue
+		}
+		m, ok := raw.(map[string]interface{})
+		if !ok || len(m) == 0 {
+			continue
+		}
+		return m, name, true
+	}
+	return nil, "", false
+}
+
+// applyRawMap пишет карту источника в тело.
+//
+// Значения НЕ приводятся к строке: у ядра `headers` — map[string]listable_string,
+// то есть значением законны и строка, и массив строк, и Xray пишет оба. Привести
+// их здесь значило бы решить за ядро, какую форму оно примет, — а `sort_keys`
+// над картой обеспечивает сам сериализатор тела (порядок ключей входит в
+// identity).
+func (st *execState) applyRawMap(e *Entry, src string, m map[string]interface{}) {
+	p := e.Param
+	path := st.pathOf(p)
+	if path == "" {
+		st.applySets(e, "")
+		st.applyImplies(e)
+		return
+	}
+	out := make(map[string]interface{}, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	st.write(e.Name, src, m, out, path, p.Priority, e.Decl, "")
+	st.applySets(e, "")
+	st.applyImplies(e)
+}
+
+// valueAllowed — значение перечислено в `allow` записи (регистронезависимо,
+// по тому же правилу, что имена параметров, §5).
+func valueAllowed(p *registry.Param, v string) bool {
+	for _, a := range p.Allow {
+		if strings.EqualFold(a, v) {
+			return true
+		}
+	}
+	return false
+}
+
 // substituteBase подставляет якорь формы вместо $base.
 func (st *execState) substituteBase(name string) string {
 	if st.form.Base == "" || !strings.Contains(name, "$base") {
@@ -1500,6 +1688,44 @@ func (st *execState) convert(p *registry.Param, val string) (interface{}, bool) 
 		}
 		if hit {
 			v = mapped
+		}
+		// ЗНАЧЕНИЕ НЕ НАЗВАНО ТАБЛИЦЕЙ, и запись объявила on_invalid с drop.
+		//
+		// Прежде on_invalid у записи с value_map не исполнялся вовсе: промах
+		// таблицы означал «вези как пришло», и `network: "kcp"` уезжал в
+		// transport.type дословно. Санитайзер снимал такой транспорт правилом
+		// enum — МОЛЧА, — и узел выходил рабочим plain-TCP: сервер, который
+		// ждёт mKCP, такое соединение не примет, а человек не получал ни кода,
+		// ни причины. Это худший вид расхождения — молчаливая подмена узла, и
+		// объявленное `on_invalid: {action: drop, code: transport_unsupported}`
+		// (Q133-17, M-01) стояло в реестре ровно против него.
+		//
+		// `drop` у СЕЛЕКТОРА снимает узел целиком, у обычной записи — только
+		// своё поле: селектор строит ось, по которой гейтятся остальные записи
+		// (`transport.type`), и «оси нет» значит, что узла нет. Действие
+		// `keep` сохраняет прежнее поведение — вези как пришло.
+		//
+		// Промахом считается лишь значение, которого нет и в `allow`: таблица
+		// перечисляет то, что ПЕРЕВОДИТСЯ («h2» → «http»), а имена, совпадающие
+		// с каноном ядра («ws», «grpc»), проходят через неё как есть и промахом
+		// не являются. Набор знаемых написаний объявляет реестр — тем же
+		// приёмом, что `when.in` у селектора URI, — а не код движка.
+		if !hit && !valueAllowed(p, v) && actionOf(p.OnInvalid) == "drop" {
+			if code := codeOf(p.OnInvalid); code != "" {
+				params := paramsOf(p.OnInvalid)
+				if params == nil {
+					params = map[string]string{}
+				}
+				if _, has := params["transport"]; !has {
+					params["transport"] = val
+				}
+				st.notePath(code, val, params)
+			}
+			if p.Selector {
+				st.dropCode = codeOf(p.OnInvalid)
+				st.dropValue = val
+			}
+			return nil, true
 		}
 	}
 

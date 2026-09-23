@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "password": "testpass123",
+        "server": "192.0.2.10",
+        "server_port": 1080,
+        "type": "socks",
+        "username": "testuser",
+        "version": "5"
+      },
+      "kind": "outbound",
+      "label": "socks-xray",
+      "scheme": "socks"
+    }
+  ],
+  "v": 1
+}
