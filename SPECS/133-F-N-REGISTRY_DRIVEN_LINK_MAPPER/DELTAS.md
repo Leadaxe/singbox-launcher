@@ -1080,3 +1080,25 @@ packets/length/interval в `value`; length/interval в sing-box не
 
 **Кейсов:** 1 (тот же `body/xray/dialer_proxy_freedom_fragment`, ожидания без
 warnings).
+
+### D133-47 · XHTTP `extra`: proto-имена Xray как алиасы канона — **ПРИНЯТО**
+
+**Что меняется:** записи `sessionPlacement` и `sessionKey` читают в `source`
+дополнительно написание Xray-прото — `sessionIDPlacement` и `sessionIDKey` —
+во всех трёх входах: URI `extra`, URI `query` и Xray-JSON `extra`
+(`xhttpSettings` и `splithttpSettings`). Канон sing-box перечислен ПЕРВЫМ:
+когда рядом лежат оба написания, побеждает канон. До правки идентификатор
+сессии живой ссылки уходил в дефолт ядра `path`, хотя сервер ждал cookie
+с кастомным ключом; `seqPlacement`/`seqKey` доезжали и раньше — у них имена
+прото и sing-box совпадают.
+
+`sessionIDLength`/`sessionIDTable` не заведены умышленно: `"0"` без таблицы
+означает «не задано», а протащить одно поле пары без второго — отказ ядра
+«must be set together». Правило D-097 (пустые `host`/`path`/`mode` из `extra`
+не перекрывают плоские) не тронуто. Тела прежних узлов не изменились: алиас
+читается только там, где канона нет.
+
+**Кейсов:** 4 (`uri/vless/xhttp_extra_session_id_aliases`,
+`uri/vless/xhttp_extra_session_canon_beats_id_alias`,
+`body/xray/xhttp_extra_session_id_aliases`,
+`body/xray/xhttp_extra_session_canon_beats_id_alias`).

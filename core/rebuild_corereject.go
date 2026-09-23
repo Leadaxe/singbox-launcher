@@ -69,7 +69,7 @@ const (
 	// У цикла есть coreRejectHardCap; у потока статусов своего потолка не
 	// было — без него пара «применили → FATAL → выключили → применили»
 	// крутилась бы бесконечно.
-	daemonRejectStartCap = 10
+	daemonRejectStartCap = 10 //nolint:unused // читается только в backend_daemon_darwin.go (//go:build darwin)
 )
 
 // candidateConfigName — имя файла-кандидата. НЕ `.tmp`: так зовётся

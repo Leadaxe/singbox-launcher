@@ -206,7 +206,8 @@
           ],
           "default": "",
           "aliases": [
-            "sessionPlacement"
+            "sessionPlacement",
+            "sessionIDPlacement"
           ],
           "maps_to": "transport.session_placement",
           "desc_en": "Where the session identifier is carried.",
@@ -217,7 +218,8 @@
           "type": "string",
           "default": "",
           "aliases": [
-            "sessionKey"
+            "sessionKey",
+            "sessionIDKey"
           ],
           "maps_to": "transport.session_key",
           "desc_en": "Name of the session identifier.",
@@ -1290,8 +1292,10 @@
           "source": [
             "extra.sessionPlacement",
             "extra.session_placement",
+            "extra.sessionIDPlacement",
             "query.sessionPlacement",
-            "query.session_placement"
+            "query.session_placement",
+            "query.sessionIDPlacement"
           ],
           "maps_to": "transport.session_placement",
           "when": {
@@ -1302,8 +1306,10 @@
           "source": [
             "extra.sessionKey",
             "extra.session_key",
+            "extra.sessionIDKey",
             "query.sessionKey",
-            "query.session_key"
+            "query.session_key",
+            "query.sessionIDKey"
           ],
           "maps_to": "transport.session_key",
           "when": {
@@ -1787,8 +1793,10 @@
           "source": [
             "json.streamSettings.xhttpSettings.extra.sessionPlacement",
             "json.streamSettings.xhttpSettings.extra.session_placement",
+            "json.streamSettings.xhttpSettings.extra.sessionIDPlacement",
             "json.streamSettings.splithttpSettings.extra.sessionPlacement",
             "json.streamSettings.splithttpSettings.extra.session_placement",
+            "json.streamSettings.splithttpSettings.extra.sessionIDPlacement",
             "json.streamSettings.xhttpSettings.sessionPlacement",
             "json.streamSettings.xhttpSettings.session_placement",
             "json.streamSettings.splithttpSettings.sessionPlacement",
@@ -1803,8 +1811,10 @@
           "source": [
             "json.streamSettings.xhttpSettings.extra.sessionKey",
             "json.streamSettings.xhttpSettings.extra.session_key",
+            "json.streamSettings.xhttpSettings.extra.sessionIDKey",
             "json.streamSettings.splithttpSettings.extra.sessionKey",
             "json.streamSettings.splithttpSettings.extra.session_key",
+            "json.streamSettings.splithttpSettings.extra.sessionIDKey",
             "json.streamSettings.xhttpSettings.sessionKey",
             "json.streamSettings.xhttpSettings.session_key",
             "json.streamSettings.splithttpSettings.sessionKey",

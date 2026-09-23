@@ -1,0 +1,4 @@
+# #131 Xray-JSON: `streamSettings.xhttpSettings.extra` несёт proto-имена Xray.
+# Алиасы `sessionIDPlacement`/`sessionIDKey` доводят их до transport.session_placement/session_key.
+# `sessionIDLength`/`sessionIDTable` реестру неизвестны и НЕ протаскиваются (пара «must be set together» у ядра).
+[{"remarks":"xhttp sessionid","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"example-1.com","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","encryption":"none"}]}]},"streamSettings":{"network":"xhttp","security":"none","xhttpSettings":{"path":"/p","mode":"packet-up","extra":{"sessionIDPlacement":"cookie","sessionIDKey":"stream_auth","seqPlacement":"cookie","seqKey":"part_index","sessionIDLength":"0","sessionIDTable":""}}}}]}]

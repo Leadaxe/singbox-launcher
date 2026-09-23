@@ -3,12 +3,9 @@ package tabs
 import (
 	"encoding/json"
 	"fmt"
-	"image/color"
 	"strings"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
-	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/config"
@@ -25,12 +22,6 @@ import (
 // происхождение, и правка там же, где просмотр. Держать три окна на одну строку
 // значило бы разводить три набора текстов вокруг одного узла, а пользователю,
 // увидевшему битое тело, всё равно было бы нечем его починить.
-
-// previewInfoKeyColumnWidth — ширина колонки с названиями полей.
-//
-// Фиксированная: иначе «Tag» и «REALITY public key» дают разный отступ, и
-// колонка значений разъезжается.
-const previewInfoKeyColumnWidth = 168
 
 // showPreviewNodeContextMenu показывает меню строки превью по правому клику.
 //
@@ -139,31 +130,4 @@ func previewNodeJSON(node *config.ParsedNode) string {
 		return fmt.Sprintf("// %v", err)
 	}
 	return string(data)
-}
-
-// previewSectionHeader — заголовок секции.
-func previewSectionHeader(text string) *widget.Label {
-	l := widget.NewLabel(text)
-	l.TextStyle.Bold = true
-	return l
-}
-
-// previewInfoRow — строка «ключ: значение».
-//
-// Значение в Entry, а не Label: его можно выделить и скопировать, а длинное
-// значение не растягивает окно.
-func previewInfoRow(key, value string) *fyne.Container {
-	keyLabel := widget.NewLabel(key)
-	keyLabel.TextStyle.Bold = true
-	keyLabel.Truncation = fyne.TextTruncateEllipsis
-
-	keySpacer := canvas.NewRectangle(color.Transparent)
-	keySpacer.SetMinSize(fyne.NewSize(previewInfoKeyColumnWidth, 0))
-	keyCell := container.NewStack(keySpacer, keyLabel)
-
-	valueEntry := widget.NewEntry()
-	valueEntry.SetText(value)
-	valueEntry.Wrapping = fyne.TextWrapOff
-
-	return container.NewBorder(nil, nil, keyCell, nil, valueEntry)
 }

@@ -409,70 +409,6 @@ func (o *previewNodeOps) moveIsNoop(m *wizardmodels.WizardModel, dstID string) b
 	return o.inFolder() && strings.TrimSpace(m.Sources[o.sourceIndex].ID) == dstID
 }
 
-// applyRename переименовывает узел контейнера и переписывает ссылки на него.
-//
-// Единственный вызывающий — кнопка Rename в окне узла
-// (preview_node_edit_window.go). Своего диалога переименования у меню больше
-// нет (обкатка заход 3): он вёл к тому же действию, что поле окна, и два пути
-// к одному только путали. Сырой тег — ИДЕНТИЧНОСТЬ узла в рамках контейнера
-// (SPEC 112): смена тега = появление другого узла, поэтому ссылки на прежний
-// адрес переписываются реестром W2, а не гасятся вслепую.
-func (o *previewNodeOps) applyRename(oldTag, newTag string) {
-	if newTag == "" {
-		dialog.ShowError(fmt.Errorf("%s", locale.T("Node tag cannot be empty.")), o.win)
-		return
-	}
-	if newTag == oldTag {
-		return
-	}
-	m := o.presenter.Model()
-	if m == nil || o.sourceIndex < 0 || o.sourceIndex >= len(m.Sources) {
-		return
-	}
-	src := &m.Sources[o.sourceIndex]
-	var target *corestate.Node
-	for i := range src.Nodes {
-		if src.Nodes[i].Tag == newTag {
-			dialog.ShowError(fmt.Errorf("%s", locale.Tf(
-				"Tag %q is already taken in this container.", newTag)), o.win)
-			return
-		}
-		if src.Nodes[i].Tag == oldTag {
-			target = &src.Nodes[i]
-		}
-	}
-	if target == nil {
-		dialog.ShowError(fmt.Errorf("%s", locale.Tf("Node %q is gone.", oldTag)), o.win)
-		return
-	}
-
-	// Д5, критерий A4: ручная правка тега — это «ручной чих» по копии узла
-	// подписки, и она разыменовывает её НЕМЕДЛЕННО. Иначе следующая заливка
-	// той же подписки нашла бы узел по прежнему сырому тегу... точнее, НЕ
-	// нашла бы — и добавила рядом второй экземпляр, а переименованный сочла
-	// исчезнувшим у провайдера.
-	dereferenced := wizardbusiness.DereferenceNodeOrigin(target)
-
-	folderID := strings.TrimSpace(src.ID)
-	target.Tag = newTag
-	// SPEC 122 норма 2: у узла tailnet вместе с тегом переезжает и каталог
-	// состояния — в нём ключ устройства, и оставить его под прежним именем
-	// значило бы отправить узел логиниться заново.
-	wizardbusiness.RenameTailscaleStateDirForNode(src, oldTag, src, target)
-	affected := wizardbusiness.RepointContainerNodeLinks(m, folderID, oldTag, newTag)
-
-	applySourceMutation(o.presenter, o.guiState)
-	o.afterModelMutation()
-
-	if dereferenced {
-		o.notifyDereferenced(newTag)
-	}
-	showStaleSelectionDialog(o.win, staleSelectionScope{NodesRenamed: true})
-	if len(affected) > 0 {
-		showNodeRefsRepointedDialog(o.win, affected)
-	}
-}
-
 // showDeleteDialog — удаление узла из контейнера, с подтверждением.
 //
 // Подтверждение обязательно: узел, добавленный руками, восстановить неоткуда
@@ -546,11 +482,6 @@ func (o *previewNodeOps) afterModelMutation() {
 	if o.refreshPreview != nil {
 		o.refreshPreview()
 	}
-}
-
-// notifyDereferenced — уведомление об авторазыменовании (Д5, критерий A4).
-func (o *previewNodeOps) notifyDereferenced(rawTag string) {
-	notifyNodeDereferenced(o.win, rawTag)
 }
 
 // notifyNodeDereferenced — единственный текст об авторазыменовании на все его

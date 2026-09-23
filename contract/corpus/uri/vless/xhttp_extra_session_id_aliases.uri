@@ -1,0 +1,5 @@
+# #131 живая ссылка: в `extra` Xray пишет proto-имена `sessionIDPlacement`/`sessionIDKey`.
+# Алиасы доводят их до transport.session_placement/session_key; seqPlacement/seqKey едут по имени.
+# `sessionIDLength`/`sessionIDTable` реестру неизвестны и НЕ протаскиваются («0» без таблицы = не задано,
+# протащить без пары — отказ ядра «must be set together»).
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?type=xhttp&security=tls&sni=example-1.com&mode=packet-up&extra=%7B%22sessionIDPlacement%22%3A%22cookie%22%2C%22sessionIDKey%22%3A%22stream_auth%22%2C%22seqPlacement%22%3A%22cookie%22%2C%22seqKey%22%3A%22part_index%22%2C%22sessionIDLength%22%3A%220%22%2C%22sessionIDTable%22%3A%22%22%7D#xhttp-sessionid

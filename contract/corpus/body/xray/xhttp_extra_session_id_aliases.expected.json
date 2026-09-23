@@ -1,0 +1,28 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 443,
+        "transport": {
+          "mode": "packet-up",
+          "path": "/p",
+          "seq_key": "part_index",
+          "seq_placement": "cookie",
+          "session_key": "stream_auth",
+          "session_placement": "cookie",
+          "type": "xhttp"
+        },
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "xhttp sessionid",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

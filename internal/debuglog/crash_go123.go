@@ -22,6 +22,12 @@ func EnableCrashOutput(path string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	return debug.SetCrashOutput(f, debug.CrashOptions{})
+	err = debug.SetCrashOutput(f, debug.CrashOptions{})
+	// Свой дескриптор закрываем сразу: runtime уже держит собственную копию,
+	// и в этот файл мы больше не пишем — ошибка закрытия read-only для нас
+	// ничего не меняет, но ошибку SetCrashOutput она затирать не должна.
+	if cerr := f.Close(); cerr != nil && err == nil {
+		err = cerr
+	}
+	return err
 }

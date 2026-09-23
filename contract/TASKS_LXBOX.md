@@ -5728,12 +5728,54 @@ Freedom **без** `settings.fragment` — `dialerProxy` молча игнори
 - **Сверка оверлеев эмита**: `ws.eh`, ss padding, vmess `json_map`,
   `omit_port` у naive, `refuse_when`, `round_trip_only` (§33).
 
-## 43. Контракт 1.1.47 — хвосты после релиза (§42 «После релиза», приоритет 1)
+## 43. Контракт 1.1.47 — XHTTP `extra`: алиасы `sessionIDPlacement` / `sessionIDKey`
 
-Все пункты этой волны идут ОДНИМ номером контракта — **1.1.47**; подпункты
-ниже дописываются по мере закрытия.
+Норма: записи `sessionPlacement` и `sessionKey` читают дополнительно написание
+Xray-прото — `sessionIDPlacement` и `sessionIDKey`. Алиас добавлен во все три
+входа: URI `extra`, URI `query` и Xray-JSON `extra` (`xhttpSettings` и
+`splithttpSettings`). **Канон sing-box перечислен первым** — когда рядом лежат
+оба написания, побеждает канон.
 
-### 43.1. «Комментарий с `=`» у ini — данными (§28)
+Почему: живые `vless+xhttp` ссылки несут в `extra` (URL-encoded JSON) именно
+proto-имена Xray — `{"sessionIDPlacement":"cookie","sessionIDKey":"stream_auth",
+"seqPlacement":"cookie","seqKey":"part_index"}`. Реестр читал только написание
+sing-box, и идентификатор сессии уходил в дефолт ядра `path`, хотя сервер ждал
+cookie с кастомным ключом. `seqPlacement`/`seqKey` доезжали и до правки: у них
+имена прото и sing-box совпадают. Ядро документирует ту же пару
+(`option/v2ray_xhttp.go`): прото — `sessionIDPlacement`, JSON —
+`session_placement`.
+
+`sessionIDLength`/`sessionIDTable` **не заведены умышленно**: `"0"` без таблицы
+означает «не задано», а протащить одно поле пары без второго — отказ ядра
+«must be set together». D-097 (пустые `host`/`path`/`mode` из `extra` не
+перекрывают плоские) не тронут.
+
+**Что проверить у себя:**
+
+1. Ссылка `vless+xhttp` с `extra={"sessionIDPlacement":"cookie",
+   "sessionIDKey":"stream_auth","seqPlacement":"cookie","seqKey":"part_index"}`
+   → `transport.session_placement=cookie`, `session_key=stream_auth`,
+   `seq_placement=cookie`, `seq_key=part_index`.
+2. Тот же вход с `sessionIDLength`/`sessionIDTable` рядом → оба ключа в тело
+   НЕ попадают.
+3. `extra` с обоими написаниями (`sessionPlacement` и `sessionIDPlacement`) →
+   побеждает канон.
+4. То же по Xray-JSON: `streamSettings.xhttpSettings.extra`.
+
+Кейсы корпуса: `uri/vless/xhttp_extra_session_id_aliases`,
+`uri/vless/xhttp_extra_session_canon_beats_id_alias`,
+`body/xray/xhttp_extra_session_id_aliases`,
+`body/xray/xhttp_extra_session_canon_beats_id_alias`.
+
+*За LxBox:* sync копии контракта, прогон корпуса (4 новых кейса), зеркало
+алиасов в своей стороне разбора.
+
+## 44. Контракт 1.1.48 — хвосты после релиза (§42 «После релиза», приоритет 1)
+
+Все пункты этой волны идут ОДНИМ номером контракта — **1.1.48** (1.1.47 занят
+алиасами XHTTP, §43); подпункты ниже дописываются по мере закрытия.
+
+### 44.1. «Комментарий с `=`» у ini — данными (§28)
 
 Атрибут метки `label.comment` — в той форме, что у нас обоих записана в
 `PRIMITIVES.md` §0.8, без новых имён:
@@ -5759,7 +5801,7 @@ Freedom **без** `settings.fragment` — `dialerProxy` молча игнори
 атрибута у вас будет вести себя иначе, чем у нас. Кейс корпуса —
 `body/wgconf/ini_comment_setting_not_label` (ожидаемая метка `CH-FREE#11`).
 
-### 43.2. Род группы — тип тела sing-box (§32.6 закрыт)
+### 44.2. Род группы — тип тела sing-box (§32.6 закрыт)
 
 Решение владельца: отдельного рода у группы нет, род — это `entry.type`.
 Выражено данными в `registry/protocols/group.json`:
@@ -5786,7 +5828,7 @@ Freedom **без** `settings.fragment` — `dialerProxy` молча игнори
 корпуса тел с таблицей; если у вас `xray/balancer_group` был красным только
 из-за `scheme` — после приведения по `values` он обязан позеленеть.
 
-### 43.3. Сверка оверлеев эмита (§33) — движок чист, отставали документы
+### 44.3. Сверка оверлеев эмита (§33) — движок чист, отставали документы
 
 Шесть правил проверены парой «реестр ↔ исполнитель», на каждое — свой круг
 `emit → parse → sanitize` (`core/config/linkmap/emit_overlays_test.go`).
@@ -5820,7 +5862,7 @@ early data пишется только хвостом пути (`compose` у `ws
 это расхождение написания ссылки, и его нужно либо снять, либо завести
 дельтой.
 
-### 43.4. `dropped[]`: `index` и `code` (ответ на §32.5)
+### 44.4. `dropped[]`: `index` и `code` (ответ на §32.5)
 
 Сделано в форме, которую мы предлагали в §32.5, — **без смены смысла `ref`**:
 
@@ -5862,7 +5904,7 @@ early data пишется только хвостом пути (`compose` у `ws
 (`enc-junk` у `xray/vless_encryption_junk`), поэтому элемент ищется не по
 тегу, а по тому, из какого outbound'а собрано тело (у кейса — `0`).
 
-### 43.5. Ваше ревью `server_ports`: две дыры закрыты, третья — не дыра
+### 44.5. Ваше ревью `server_ports`: две дыры закрыты, третья — не дыра
 
 Спасибо за ревью — обе находки подтвердились.
 

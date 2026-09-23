@@ -11,8 +11,10 @@ import (
 )
 
 var (
-	hwGLMu       sync.Mutex
-	hwGLCallback func(renderer string)
+	hwGLMu sync.Mutex
+	// hwGLCallback читается только в notifyHardwareGLAvailable, который зовёт
+	// один windows-файл, — вне Windows вся цепочка выглядит мёртвой.
+	hwGLCallback func(renderer string) //nolint:unused // см. notifyHardwareGLAvailable
 	// hwGLPending — результат, пришедший раньше регистрации обработчика.
 	// Гонка реальна: фоновая проба стартует в гейте (до NewWindow), а
 	// подписка — в SetOnStarted. Потерянный результат означал бы, что
@@ -36,7 +38,7 @@ func SetOnHardwareGLAvailable(fn func(renderer string)) {
 
 // notifyHardwareGLAvailable вызывается фоновой пробой гейта, когда лаунчер
 // рисует через Mesa, а железо ответило >= 2.1.
-func notifyHardwareGLAvailable(renderer string) {
+func notifyHardwareGLAvailable(renderer string) { //nolint:unused // вызывается только из glprobe_windows.go (//go:build windows)
 	hwGLMu.Lock()
 	fn := hwGLCallback
 	if fn == nil {
