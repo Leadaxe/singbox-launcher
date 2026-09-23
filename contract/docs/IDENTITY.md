@@ -206,7 +206,7 @@ label-fallback §5.2): тег трактуется как ФИНАЛЬНЫЙ и 
 | Класс | Причина | Решение |
 |---|---|---|
 | строки с `<>&` (и ` /29`) | Go HTML/юникод-escaping | Go → без escaping (D-007) ✅ |
-| ws `?ed=N` без `eh` | Dart не эмитил `early_data_header_name` | Dart добавил дефолт `Sec-WebSocket-Protocol` (D-008) ✅ |
+| ws `?ed=N` хвостом пути без `eh` | Dart не эмитил `early_data_header_name` | Dart добавил дефолт `Sec-WebSocket-Protocol` (D-008) ✅. Плоская `ed=N` без `eh` — per-app: лаунчер имя дописывает, LxBox нет (кейс `uri/trojan/ws_ed_flat_no_eh`, `TASKS_LXBOX` §47.1) |
 | anytls без `fp=` | Go не эмитил utls | Go добавил дефолт `random` по vless-конвенции (D-009) ✅ |
 | wireguard | Go эмитил `name`/`system` | Go убрал дефолтные поля (D-010) ✅ |
 
