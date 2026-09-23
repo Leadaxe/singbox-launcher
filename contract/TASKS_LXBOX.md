@@ -5727,3 +5727,45 @@ Freedom **без** `settings.fragment` — `dialerProxy` молча игнори
 - **Предикат «комментарий с =» у ini** — данными, не кодом (§28).
 - **Сверка оверлеев эмита**: `ws.eh`, ss padding, vmess `json_map`,
   `omit_port` у naive, `refuse_when`, `round_trip_only` (§33).
+
+## 43. Контракт 1.1.47 — XHTTP `extra`: алиасы `sessionIDPlacement` / `sessionIDKey`
+
+Норма: записи `sessionPlacement` и `sessionKey` читают дополнительно написание
+Xray-прото — `sessionIDPlacement` и `sessionIDKey`. Алиас добавлен во все три
+входа: URI `extra`, URI `query` и Xray-JSON `extra` (`xhttpSettings` и
+`splithttpSettings`). **Канон sing-box перечислен первым** — когда рядом лежат
+оба написания, побеждает канон.
+
+Почему: живые `vless+xhttp` ссылки несут в `extra` (URL-encoded JSON) именно
+proto-имена Xray — `{"sessionIDPlacement":"cookie","sessionIDKey":"stream_auth",
+"seqPlacement":"cookie","seqKey":"part_index"}`. Реестр читал только написание
+sing-box, и идентификатор сессии уходил в дефолт ядра `path`, хотя сервер ждал
+cookie с кастомным ключом. `seqPlacement`/`seqKey` доезжали и до правки: у них
+имена прото и sing-box совпадают. Ядро документирует ту же пару
+(`option/v2ray_xhttp.go`): прото — `sessionIDPlacement`, JSON —
+`session_placement`.
+
+`sessionIDLength`/`sessionIDTable` **не заведены умышленно**: `"0"` без таблицы
+означает «не задано», а протащить одно поле пары без второго — отказ ядра
+«must be set together». D-097 (пустые `host`/`path`/`mode` из `extra` не
+перекрывают плоские) не тронут.
+
+**Что проверить у себя:**
+
+1. Ссылка `vless+xhttp` с `extra={"sessionIDPlacement":"cookie",
+   "sessionIDKey":"stream_auth","seqPlacement":"cookie","seqKey":"part_index"}`
+   → `transport.session_placement=cookie`, `session_key=stream_auth`,
+   `seq_placement=cookie`, `seq_key=part_index`.
+2. Тот же вход с `sessionIDLength`/`sessionIDTable` рядом → оба ключа в тело
+   НЕ попадают.
+3. `extra` с обоими написаниями (`sessionPlacement` и `sessionIDPlacement`) →
+   побеждает канон.
+4. То же по Xray-JSON: `streamSettings.xhttpSettings.extra`.
+
+Кейсы корпуса: `uri/vless/xhttp_extra_session_id_aliases`,
+`uri/vless/xhttp_extra_session_canon_beats_id_alias`,
+`body/xray/xhttp_extra_session_id_aliases`,
+`body/xray/xhttp_extra_session_canon_beats_id_alias`.
+
+*За LxBox:* sync копии контракта, прогон корпуса (4 новых кейса), зеркало
+алиасов в своей стороне разбора.

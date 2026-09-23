@@ -181,12 +181,12 @@ Read when the link says `type=xhttp`; the reference page is [`_transports.md`](_
   - Type: bool · Default: `false`
   - Maps to: [`transport.xhttp.no_grpc_header`](#body-transport-xhttp-no-grpc-header)
 - <a id="link-tr-xhttp-session-placement"></a>**`session_placement`** — Where the session identifier is carried.
-  - Also spelled: `sessionPlacement`
+  - Also spelled: `sessionPlacement`, `sessionIDPlacement`
   - Type: enum: `path`, `query`, `header`, `cookie` · Default: `""`
   - Maps to: [`transport.xhttp.session_placement`](#body-transport-xhttp-session-placement)
   - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
 - <a id="link-tr-xhttp-session-key"></a>**`session_key`** — Name of the session identifier.
-  - Also spelled: `sessionKey`
+  - Also spelled: `sessionKey`, `sessionIDKey`
   - Type: string · Default: `""`
   - Maps to: [`transport.xhttp.session_key`](#body-transport-xhttp-session-key)
 - <a id="link-tr-xhttp-seq-placement"></a>**`seq_placement`** — Where the packet sequence number is carried.
