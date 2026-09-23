@@ -67,8 +67,8 @@
 - [x] Интеграционный тест `-purge-data`.
 
 ## Этап 10 · macOS
-- [ ] `build_darwin.sh`: без переноса `bin`/`logs`, `codesign --verify` в строю, `-i` = замена бинаря.
-- [ ] `DaemonStatusSnapshot`: `ProgramArguments[0]` из plist против `SingboxPath`, статус и команда `--service=install`.
+- [x] `build_darwin.sh`: без переноса `bin`/`logs`, `codesign --verify` в строю, `-i` = замена бинаря.
+- [x] `DaemonStatusSnapshot`: `ProgramArguments[0]` из plist против `SingboxPath`, статус и команда `--service=install`.
 - [ ] Проверка владельцем: `-i`, daemon-режим, sudo-команды.
 
 ## Этап 11 · Windows

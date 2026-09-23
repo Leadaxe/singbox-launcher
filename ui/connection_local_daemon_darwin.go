@@ -65,6 +65,23 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	renderStatus := func(snap core.DaemonUIStatus) string {
 		return renderDaemonStatusText(ac, snap, true)
 	}
+
+	// Служба запускает другое ядро (SPEC 135 §5.1): после переезда данных
+	// plist держит старый путь. Предупреждение и команда переустановки — на
+	// вкладке Status, куда смотрят при проблеме; содержимое блока собирается
+	// ниже, когда есть commandRowLocal. Скрыт, пока расхождения нет.
+	coreMismatchLabel := widget.NewLabel("")
+	coreMismatchLabel.Wrapping = fyne.TextWrapWord
+	coreMismatchBox := container.NewVBox(coreMismatchLabel)
+	coreMismatchBox.Hide()
+	applyCoreMismatch := func(snap core.DaemonUIStatus) {
+		if !snap.ServiceCoreMismatch {
+			coreMismatchBox.Hide()
+			return
+		}
+		coreMismatchLabel.SetText(locale.Tf("The service runs another core binary:\n%s\nReinstall the service to switch it to the current core.", snap.ServiceCorePath))
+		coreMismatchBox.Show()
+	}
 	// onSnapshot — дополнительный потребитель того же снапшота (выбор
 	// стартовой вкладки). Отдельной горутины он не заводит: DaemonStatusSnapshot
 	// ходит по сети, и два независимых опроса на каждое открытие окна — это
@@ -75,6 +92,7 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 			snap := ac.DaemonStatusSnapshot()
 			fyne.Do(func() {
 				status.SetText(renderStatus(snap))
+				applyCoreMismatch(snap)
 				if onSnapshot != nil {
 					onSnapshot(snap)
 				}
@@ -89,6 +107,11 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	commandRowLocal := func(labelKey string, command func() (string, error)) fyne.CanvasObject {
 		return CommandRow(win, labelKey, command, true)
 	}
+
+	// Та же команда установки, что на вкладке Install (второй экземпляр
+	// строки: объект Fyne не живёт в двух вкладках сразу). `--service=install`
+	// поверх существующей службы переписывает plist на текущее ядро.
+	coreMismatchBox.Add(commandRowLocal("Reinstall the service (run in Terminal, your sudo):", ac.DaemonInstallCommand)) // l10n-key
 
 	kickstartRow := commandRowLocal("Restart the service (after a core update):", func() (string, error) { // l10n-key
 		return ac.DaemonKickstartCommand(), nil
@@ -256,6 +279,7 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	// обновления ядра), и только затем параметры подключения.
 	statusTab := container.NewVBox(
 		container.NewBorder(nil, nil, nil, refreshBtn, status),
+		coreMismatchBox,
 		widget.NewSeparator(),
 		kickstartRow,
 		widget.NewSeparator(),

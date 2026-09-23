@@ -4,7 +4,10 @@ package core
 
 import (
 	"encoding/json"
+	"encoding/xml"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -153,6 +156,15 @@ type DaemonUIStatus struct {
 	// демон недостижим или собран до появления info-эндпоинта.
 	DaemonVersion string
 	StateDir      string
+	// ServiceCorePath — ProgramArguments[0] из plist установленной службы:
+	// бинарь ядра, который запускает launchd. Пусто, если службы нет или
+	// plist не разобрался.
+	ServiceCorePath string
+	// ServiceCoreMismatch — служба запускает не то ядро, что лаунчер
+	// (SingboxPath). Типичный случай — переезд данных SPEC 135: служба
+	// осталась на бандловом бинаре, обновление ядра до неё не доходит.
+	// Лечится повторной установкой службы.
+	ServiceCoreMismatch bool
 }
 
 // DaemonStatusSnapshot собирает состояние службы/сопряжения/демона.
@@ -169,6 +181,7 @@ func (ac *AppController) DaemonStatusSnapshot() DaemonUIStatus {
 	}
 	if _, err := os.Stat(daemonSystemPlistPath()); err == nil {
 		status.ServiceInstalled = true
+		ac.fillServiceCorePath(&status)
 	}
 	status.Paired = st.DaemonServerFingerprint != "" && lxdclient.HasIdentity(DaemonIdentityDir(ac.FileService.Layout.Data))
 	if !status.Paired && st.DaemonAddress == "" {
@@ -195,6 +208,99 @@ func (ac *AppController) DaemonStatusSnapshot() DaemonUIStatus {
 		status.StateDir = passport.StateDir
 	}
 	return status
+}
+
+// fillServiceCorePath сверяет ядро, которое запускает launchd-служба, с ядром
+// лаунчера (SPEC 135 §5.1). `--service=install` фиксирует путь к бинарю в
+// plist; после переезда данных SingboxPath уезжает в DataDir, а служба
+// продолжает запускать старый бинарь. plist — 0644, читается без root.
+func (ac *AppController) fillServiceCorePath(status *DaemonUIStatus) {
+	plistPath := daemonSystemPlistPath()
+	corePath, err := readPlistProgramPath(plistPath)
+	if err != nil {
+		debuglog.DebugLog("DaemonStatusSnapshot: service core path from %s: %v", plistPath, err)
+		return
+	}
+	status.ServiceCorePath = corePath
+	launcherCore := ac.FileService.SingboxPath
+	if corePath == "" || launcherCore == "" || sameFilePath(corePath, launcherCore) {
+		return
+	}
+	status.ServiceCoreMismatch = true
+	debuglog.WarnLog("daemon: service runs %s, launcher core is %s — reinstall the service", corePath, launcherCore)
+}
+
+// sameFilePath — два пути указывают на один файл: сначала лексически, затем
+// с раскрытием симлинков (ядро в DataDir бывает ссылкой на dev-сборку).
+func sameFilePath(a, b string) bool {
+	if filepath.Clean(a) == filepath.Clean(b) {
+		return true
+	}
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	return errA == nil && errB == nil && ra == rb
+}
+
+// readPlistProgramPath достаёт ProgramArguments[0] из XML-plist launchd:
+// первую <string> массива, идущего за <key>ProgramArguments</key>. Разбор
+// минимальный — plist службы пишет сам `lxd --service=install`, бинарные
+// plist там не встречаются.
+func readPlistProgramPath(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	dec := xml.NewDecoder(f)
+	var (
+		inKey    bool
+		afterKey bool
+		inArray  bool
+		keyText  strings.Builder
+	)
+	for {
+		tok, err := dec.Token()
+		if errors.Is(err, io.EOF) {
+			return "", errors.New("ProgramArguments not found")
+		}
+		if err != nil {
+			return "", err
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			switch {
+			case inArray:
+				if t.Name.Local != "string" {
+					return "", fmt.Errorf("ProgramArguments[0] is <%s>, want <string>", t.Name.Local)
+				}
+				var value string
+				if err := dec.DecodeElement(&value, &t); err != nil {
+					return "", err
+				}
+				return value, nil
+			case afterKey:
+				if t.Name.Local != "array" {
+					return "", fmt.Errorf("ProgramArguments is <%s>, want <array>", t.Name.Local)
+				}
+				inArray = true
+			case t.Name.Local == "key":
+				inKey = true
+				keyText.Reset()
+			}
+		case xml.CharData:
+			if inKey {
+				keyText.Write(t)
+			}
+		case xml.EndElement:
+			switch {
+			case inKey && t.Name.Local == "key":
+				inKey = false
+				afterKey = strings.TrimSpace(keyText.String()) == "ProgramArguments"
+			case inArray && t.Name.Local == "array":
+				return "", errors.New("ProgramArguments is empty")
+			}
+		}
+	}
 }
 
 // CoreSupportsLxd проверяет, собрано ли установленное ядро с сабкомандой lxd

@@ -241,7 +241,13 @@ process_service.go:228/:265, log_viewer_window.go:105).
 remote (daemon_manager_darwin.go:251). `SingboxPath` — в sudo-командах
 службы (:204 `CoreSupportsLxd`, :402, :421, :427) и в plist
 (`daemonSystemPlistPath` :59, `DaemonStatusSnapshot` :160 — точка проверки
-`ProgramArguments[0]` по §5.1, этап 10).
+`ProgramArguments[0]` по §5.1, этап 10). Этап 10 сделан: `fillServiceCorePath`
+(:217) читает plist через `readPlistProgramPath` (:248, `encoding/xml`) и
+ставит `ServiceCorePath` / `ServiceCoreMismatch`; предупреждение и команда
+установки — `coreMismatchBox` на вкладке Status
+(ui/connection_local_daemon_darwin.go:75). `build/build_darwin.sh -i`:
+вынос `bin`/`logs` ради печати только при старых данных в бандле
+(`LEGACY_DATA`), чистый бандл проверяется `codesign --verify` на месте.
 
 ### Прочие core
 
