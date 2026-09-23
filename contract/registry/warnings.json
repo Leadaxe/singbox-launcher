@@ -1911,18 +1911,18 @@
       "dart": null,
       "go": null
     },
-    "hysteria2_server_ports_item_invalid": {
+    "hysteria_server_ports_item_invalid": {
       "severity": "warning",
       "params": [
         "path",
         "value"
       ],
-      "title_en": "Hysteria2: port hopping range dropped",
-      "title_ru": "Hysteria2: диапазон прыжков по портам отброшен",
-      "text_en": "The port hopping list holds {value} at {path}, which is not a pair of port numbers. That single entry was dropped; the remaining ranges were kept and port hopping still works on them. Had it been kept, the core would have refused to load the whole configuration.",
-      "text_ru": "В списке прыжков по портам в {path} стоит {value} — это не пара номеров портов. Отброшена только эта запись; остальные диапазоны сохранены, и прыжки по портам по ним работают. Если бы её оставили, ядро отказалось бы загрузить весь конфиг целиком.",
-      "cause_en": "The provider wrote the address and the ports as one string in the `mport` parameter (`mport=198.51.100.24:443,20000-30000`), so the host name ended up inside the port list.",
-      "cause_ru": "Провайдер записал адрес и порты одной строкой в параметре `mport` (`mport=198.51.100.24:443,20000-30000`), и имя хоста оказалось внутри списка портов.",
+      "title_en": "Hysteria: port hopping range dropped",
+      "title_ru": "Hysteria: диапазон прыжков по портам отброшен",
+      "text_en": "The port hopping list holds {value} at {path}, which is not a pair of port numbers from 0 to 65535. That single entry was dropped; the remaining ranges were kept and port hopping still works on them. Had it been kept, the core would have refused to load the whole configuration.",
+      "text_ru": "В списке прыжков по портам в {path} стоит {value} — это не пара номеров портов от 0 до 65535. Отброшена только эта запись; остальные диапазоны сохранены, и прыжки по портам по ним работают. Если бы её оставили, ядро отказалось бы загрузить весь конфиг целиком.",
+      "cause_en": "The provider wrote the address and the ports as one string in the `mport` parameter (`mport=198.51.100.24:443,20000-30000`), so the host name ended up inside the port list; or the panel wrote a port above 65535 or with leading zeros (`99999:99999`, `00443:00444`).",
+      "cause_ru": "Провайдер записал адрес и порты одной строкой в параметре `mport` (`mport=198.51.100.24:443,20000-30000`), и имя хоста оказалось внутри списка портов; либо панель написала порт больше 65535 или с ведущими нулями (`99999:99999`, `00443:00444`).",
       "fix_en": [
         "Nothing to do: the node works, and port hopping uses the ranges that were written correctly.",
         "If the node does not connect, take the link from the provider again — their panel writes the port list in a form the core does not accept."
@@ -1931,7 +1931,31 @@
         "Делать ничего не нужно: узел работает, а прыжки идут по тем диапазонам, что записаны правильно.",
         "Если узел не подключается, возьмите ссылку у провайдера заново: его панель пишет список портов в форме, которую ядро не принимает."
       ],
-      "desc": "Формат ЭЛЕМЕНТА списка (item_pattern у hysteria2.body.fields.server_ports). Ядро разбирает каждый элемент как пару `low:high` и на «198.51.100.24:443» отвечает «bad port range» отказом ВСЕГО конфига. Запрос LxBox 19.09.2026 (их починка на маппере — 44f26d11); у нас правило значения живёт в теле и действует на всех входах.",
+      "desc": "Формат ЭЛЕМЕНТА списка (item_pattern у hysteria.body.fields.server_ports), заведён в 1.1.47 (ревью LxBox): у hysteria v1 формат элемента не судился вовсе. Пара uint16 без ведущих нулей — тот же паттерн, что у hysteria2; ядро на негодном элементе отвечает «bad port range» отказом ВСЕГО конфига.",
+      "dart": null,
+      "go": null
+    },
+    "hysteria2_server_ports_item_invalid": {
+      "severity": "warning",
+      "params": [
+        "path",
+        "value"
+      ],
+      "title_en": "Hysteria2: port hopping range dropped",
+      "title_ru": "Hysteria2: диапазон прыжков по портам отброшен",
+      "text_en": "The port hopping list holds {value} at {path}, which is not a pair of port numbers from 0 to 65535. That single entry was dropped; the remaining ranges were kept and port hopping still works on them. Had it been kept, the core would have refused to load the whole configuration.",
+      "text_ru": "В списке прыжков по портам в {path} стоит {value} — это не пара номеров портов от 0 до 65535. Отброшена только эта запись; остальные диапазоны сохранены, и прыжки по портам по ним работают. Если бы её оставили, ядро отказалось бы загрузить весь конфиг целиком.",
+      "cause_en": "The provider wrote the address and the ports as one string in the `mport` parameter (`mport=198.51.100.24:443,20000-30000`), so the host name ended up inside the port list; or the panel wrote a port above 65535 or with leading zeros (`99999:99999`, `00443:00444`).",
+      "cause_ru": "Провайдер записал адрес и порты одной строкой в параметре `mport` (`mport=198.51.100.24:443,20000-30000`), и имя хоста оказалось внутри списка портов; либо панель написала порт больше 65535 или с ведущими нулями (`99999:99999`, `00443:00444`).",
+      "fix_en": [
+        "Nothing to do: the node works, and port hopping uses the ranges that were written correctly.",
+        "If the node does not connect, take the link from the provider again — their panel writes the port list in a form the core does not accept."
+      ],
+      "fix_ru": [
+        "Делать ничего не нужно: узел работает, а прыжки идут по тем диапазонам, что записаны правильно.",
+        "Если узел не подключается, возьмите ссылку у провайдера заново: его панель пишет список портов в форме, которую ядро не принимает."
+      ],
+      "desc": "Формат ЭЛЕМЕНТА списка (item_pattern у hysteria2.body.fields.server_ports). Ядро разбирает каждый элемент как пару `low:high` и на «198.51.100.24:443» отвечает «bad port range» отказом ВСЕГО конфига. Запрос LxBox 19.09.2026 (их починка на маппере — 44f26d11); у нас правило значения живёт в теле и действует на всех входах. С 1.1.47 элемент — пара uint16 без ведущих нулей: прежний паттерн пропускал 99999:99999, 65536:65536, 00443:00444 (ревью LxBox).",
       "dart": null,
       "go": null
     },

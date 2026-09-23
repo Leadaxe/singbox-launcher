@@ -1,0 +1,5 @@
+# hysteria v1: формат элемента server_ports не судился вовсе. С 1.1.47 — та же
+# пара uint16 без ведущих нулей, что у hysteria2; негодный элемент снимается
+# с кодом hysteria_server_ports_item_invalid, годный диапазон остаётся.
+# источник: ревью реестра LxBox (TASKS_LXBOX §43.5)
+hysteria://example-1.com:443?auth=a&upmbps=10&downmbps=10&mport=20000-30000%2C65536%3A65536#Hop-range

@@ -45,6 +45,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`group_empty`](#group_empty) · `warning` — Group {tag} left without members
 - [`group_member_missing`](#group_member_missing) · `warning` — {count} group members not imported
 - [`hysteria2_server_ports_item_invalid`](#hysteria2_server_ports_item_invalid) · `warning` — Hysteria2: port hopping range dropped
+- [`hysteria_server_ports_item_invalid`](#hysteria_server_ports_item_invalid) · `warning` — Hysteria: port hopping range dropped
 - [`json_field_unknown`](#json_field_unknown) · `info` — Configuration: field {query_name} not read
 - [`masque_vhttp_invalid`](#masque_vhttp_invalid) · `warning` — MASQUE: HTTP version {value} set to h3
 - [`max_nodes_exceeded`](#max_nodes_exceeded) · `warning` — {skipped} nodes over the limit skipped
@@ -785,8 +786,25 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **Hysteria2: port hopping range dropped**
 
-- **What happened:** The port hopping list holds {value} at {path}, which is not a pair of port numbers. That single entry was dropped; the remaining ranges were kept and port hopping still works on them. Had it been kept, the core would have refused to load the whole configuration.
-- **Why it happens:** The provider wrote the address and the ports as one string in the `mport` parameter (`mport=198.51.100.24:443,20000-30000`), so the host name ended up inside the port list.
+- **What happened:** The port hopping list holds {value} at {path}, which is not a pair of port numbers from 0 to 65535. That single entry was dropped; the remaining ranges were kept and port hopping still works on them. Had it been kept, the core would have refused to load the whole configuration.
+- **Why it happens:** The provider wrote the address and the ports as one string in the `mport` parameter (`mport=198.51.100.24:443,20000-30000`), so the host name ended up inside the port list; or the panel wrote a port above 65535 or with leading zeros (`99999:99999`, `00443:00444`).
+- **What you can do:**
+  - Nothing to do: the node works, and port hopping uses the ranges that were written correctly.
+  - If the node does not connect, take the link from the provider again — their panel writes the port list in a form the core does not accept.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="hysteria_server_ports_item_invalid"></a>
+### hysteria_server_ports_item_invalid
+
+**severity:** `warning` · **params:** `path`, `value`
+
+**Hysteria: port hopping range dropped**
+
+- **What happened:** The port hopping list holds {value} at {path}, which is not a pair of port numbers from 0 to 65535. That single entry was dropped; the remaining ranges were kept and port hopping still works on them. Had it been kept, the core would have refused to load the whole configuration.
+- **Why it happens:** The provider wrote the address and the ports as one string in the `mport` parameter (`mport=198.51.100.24:443,20000-30000`), so the host name ended up inside the port list; or the panel wrote a port above 65535 or with leading zeros (`99999:99999`, `00443:00444`).
 - **What you can do:**
   - Nothing to do: the node works, and port hopping uses the ranges that were written correctly.
   - If the node does not connect, take the link from the provider again — their panel writes the port list in a form the core does not accept.

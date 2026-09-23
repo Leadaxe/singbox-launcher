@@ -1,0 +1,35 @@
+{
+  "meta": {
+    "body_kind": "singbox-outbound-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "password": "testpass123",
+        "server": "example-2.com",
+        "server_port": 8443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-2.com"
+        },
+        "type": "hysteria2"
+      },
+      "kind": "outbound",
+      "label": "hy2-mixed",
+      "scheme": "hysteria2",
+      "warnings": [
+        {
+          "code": "type_invalid",
+          "path": "server_ports",
+          "value": "[443]"
+        },
+        {
+          "code": "type_invalid",
+          "path": "tls.alpn",
+          "value": "[443 h2]"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

@@ -1,0 +1,21 @@
+# sing-box: НЕстроковые элементы в строковых списках — tls.alpn [443, "h2"] и
+# server_ports [443]. Ядро такой список не разберёт и откажет всему конфигу,
+# поэтому в тело узла он доехать не вправе: список, где элемент не строка, —
+# это ошибка ТИПА поля (type_invalid, поле снимается), а не формата элемента
+# (item_pattern судит строковые элементы). Узел живёт.
+# источник: ревью реестра LxBox (TASKS_LXBOX §43.5)
+[
+  {
+    "type": "hysteria2",
+    "tag": "hy2-mixed",
+    "server": "example-2.com",
+    "server_port": 8443,
+    "server_ports": [443],
+    "password": "testpass123",
+    "tls": {
+      "enabled": true,
+      "server_name": "example-2.com",
+      "alpn": [443, "h2"]
+    }
+  }
+]
