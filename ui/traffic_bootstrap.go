@@ -5,7 +5,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -13,9 +12,7 @@ import (
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/services"
-	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
-	"singbox-launcher/internal/platform"
 	tprof "singbox-launcher/internal/traffic"
 	uitraffic "singbox-launcher/ui/traffic"
 
@@ -60,7 +57,7 @@ func wireTrafficBadgeToProfiler(cb func()) {
 // underlying profiler is itself singleton-guarded.
 //
 // Called from main.go after the AppController is fully wired so that
-// FileService.ExecDir is known. The profiler runs whether or not the
+// FileService.Layout is known. The profiler runs whether or not the
 // Traffic Profiler window is open — recording survives window close.
 func EnsureTrafficProfilerStarted(ac *core.AppController) {
 	tprof.SetPollerWarn(debuglog.WarnLog)
@@ -92,7 +89,7 @@ func EnsureTrafficProfilerStarted(ac *core.AppController) {
 		}
 		return ac.APIService.GetClashAPIConfig()
 	}
-	logPath := filepath.Join(platform.GetLogsDir(ac.FileService.ExecDir), constants.ChildLogFileName)
+	logPath := ac.FileService.ChildLogPath
 	p.Start(cfg, logPath, profilerHTTPClient)
 
 	// Источник трафика по режиму: daemon → gRPC SubscribeConnections,

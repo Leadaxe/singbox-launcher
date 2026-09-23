@@ -7,11 +7,12 @@ import (
 	"os/exec"
 
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/paths"
 )
 
 // ResolveSingboxExecPath returns the sing-box binary path used to run the core.
 // If sing-box is found in PATH (e.g. distro package), that path is used; otherwise bundledPath.
-func ResolveSingboxExecPath(_ string, bundledPath string) string {
+func ResolveSingboxExecPath(_ paths.DataDir, bundledPath string) string {
 	name := GetExecutableNames()
 	p, err := exec.LookPath(name)
 	if err != nil {

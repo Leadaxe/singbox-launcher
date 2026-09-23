@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/paths"
 )
 
 // GetExecutableNames returns platform-specific executable names
@@ -19,7 +20,7 @@ func GetExecutableNames() string {
 }
 
 // GetWintunPath returns empty string on Linux (wintun is Windows-only)
-func GetWintunPath(execDir string) string {
+func GetWintunPath(_ paths.DataDir) string {
 	return ""
 }
 

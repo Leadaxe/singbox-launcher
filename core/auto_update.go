@@ -116,7 +116,7 @@ func (ac *AppController) startAutoUpdateLoop() {
 // Trigger source: "startup" / "heartbeat" / "vpn-state-changed" /
 // "proxy-active-changed" — для логирования.
 func (ac *AppController) runScheduledRefresh(trigger string) {
-	statePath := platform.GetWizardStatePath(ac.FileService.ExecDir)
+	statePath := platform.GetWizardStatePath(ac.FileService.Layout.Data)
 	s, err := state.Load(statePath)
 	if err != nil {
 		debuglog.DebugLog("Auto-update[%s]: state.Load failed: %v", trigger, err)
@@ -125,7 +125,7 @@ func (ac *AppController) runScheduledRefresh(trigger string) {
 
 	// Дефолт интервала — настройки приложения (SPEC 118 Т1); читаются один
 	// раз на sweep.
-	settings := locale.LoadSettings(platform.GetBinDir(ac.FileService.ExecDir))
+	settings := locale.LoadSettings(ac.FileService.Layout.Data.Bin())
 
 	now := time.Now().UTC()
 	stale := 0
@@ -270,7 +270,7 @@ func (ac *AppController) triggerRetryForFailedSources(trigger string) {
 	if !ac.StateService.IsAutoUpdateEnabled() {
 		return
 	}
-	statePath := platform.GetWizardStatePath(ac.FileService.ExecDir)
+	statePath := platform.GetWizardStatePath(ac.FileService.Layout.Data)
 	s, err := state.Load(statePath)
 	if err != nil {
 		return

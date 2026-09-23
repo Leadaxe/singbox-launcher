@@ -12,6 +12,7 @@ import (
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -64,16 +65,16 @@ type TemplateRefreshResult struct {
 // would either always or never fire. Both are annoying during inner-loop
 // development; we leave the local template alone in those cases.
 //
-// NETWORK: call off the UI thread. execDir and fetch are parameters so tests
+// NETWORK: call off the UI thread. l and fetch are parameters so tests
 // run without an AppController and without a network.
-func RefreshTemplateIfStale(ctx context.Context, execDir string, fetch template.URLFetcher) (TemplateRefreshResult, error) {
+func RefreshTemplateIfStale(ctx context.Context, l paths.Layout, fetch template.URLFetcher) (TemplateRefreshResult, error) {
 	var res TemplateRefreshResult
 	if isDevAppVersion(constants.AppVersion) {
 		debuglog.DebugLog("template: skipping stale-check on dev build %q", constants.AppVersion)
 		return res, nil
 	}
 
-	binDir := platform.GetBinDir(execDir)
+	binDir := l.Data.Bin()
 	last := locale.LoadSettings(binDir).LastTemplateLauncherVersion
 	if last != "" && CompareVersions(last, constants.AppVersion) >= 0 {
 		// Same launcher (or downgrade — leave the file, user knows what
@@ -83,11 +84,11 @@ func RefreshTemplateIfStale(ctx context.Context, execDir string, fetch template.
 
 	// config.json on disk was built by another launcher version, maybe from
 	// another template: whatever happens below, the first start rebuilds it.
-	_, stateErr := os.Stat(platform.GetWizardStatePath(execDir))
+	_, stateErr := os.Stat(platform.GetWizardStatePath(l.Data))
 	hasState := stateErr == nil
 	res.RebuildConfig = hasState
 
-	templatePath := platform.GetWizardTemplatePath(execDir)
+	templatePath := platform.GetWizardTemplatePath(l.Data)
 	_, statErr := os.Stat(templatePath)
 
 	// Шаблон, положенный установщиком под ЭТУ версию (архив win64-full,
@@ -123,7 +124,7 @@ func RefreshTemplateIfStale(ctx context.Context, execDir string, fetch template.
 		return res, fmt.Errorf("template refresh: stat %s: %w", templatePath, statErr)
 	}
 
-	if _, err := template.DownloadTemplate(ctx, execDir, fetch); err != nil {
+	if _, err := template.DownloadTemplate(ctx, l.Data, fetch); err != nil {
 		return res, fmt.Errorf("template refresh: %w", err)
 	}
 	res.Downloaded = true
@@ -153,7 +154,7 @@ func (ac *AppController) StartTemplateRefresh() {
 	}
 	done := make(chan struct{})
 	ac.templateRefreshDone.Store(&done)
-	execDir := ac.FileService.ExecDir
+	layout := ac.FileService.Layout
 	parent := ac.ctx
 	if parent == nil {
 		parent = context.Background()
@@ -182,7 +183,7 @@ func (ac *AppController) StartTemplateRefresh() {
 		ctx, cancel := context.WithTimeout(parent, templateRefreshTimeout)
 		defer cancel()
 
-		res, err := RefreshTemplateIfStale(ctx, execDir, ac.GetURLBytes)
+		res, err := RefreshTemplateIfStale(ctx, layout, ac.GetURLBytes)
 		if err != nil {
 			debuglog.WarnLog("template: %v — the installed template stays in use", err)
 		} else if res.Downloaded {

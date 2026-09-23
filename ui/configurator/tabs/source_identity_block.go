@@ -37,7 +37,7 @@ import (
 	"singbox-launcher/core/config/subscription"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/locale"
-	"singbox-launcher/internal/platform"
+	"singbox-launcher/internal/paths"
 )
 
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
@@ -335,8 +335,8 @@ type sourceIdentityDefaults struct {
 //
 // Читается на каждое заполнение формы, а не кэшируется: глобальные настройки
 // правятся в другом окне, и снимок протух бы молча.
-func currentIdentityDefaults(execDir string) sourceIdentityDefaults {
-	st := locale.LoadSettings(platform.GetBinDir(execDir))
+func currentIdentityDefaults(dataDir paths.DataDir) sourceIdentityDefaults {
+	st := locale.LoadSettings(dataDir.Bin())
 	ua := strings.TrimSpace(st.SubscriptionUserAgent)
 	if ua == "" {
 		ua = configtypes.BuildSubscriptionUserAgent()

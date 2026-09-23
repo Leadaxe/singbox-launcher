@@ -25,6 +25,7 @@ import (
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/internal/process"
 )
@@ -32,13 +33,6 @@ import (
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
 	configNotFoundMessageText = "⚠️ Configuration file not found!\n\nThe file %s is missing from the bin/ folder.\n\nTo get started:\n1. open ⚙️ Configurator\n2. add subscription URLs in the Sources tab and click Save\n3. click 🔄 Update on this dashboard to fetch and build config\n4. press Start\n"
-)
-
-// Constants for log file names
-const (
-	logFileName      = "logs/" + constants.MainLogFileName
-	childLogFileName = "logs/" + constants.ChildLogFileName
-	apiLogFileName   = "logs/" + constants.APILogFileName
 )
 
 // AppController - the main structure encapsulating all application state and logic.
@@ -242,19 +236,20 @@ func (*AppController) GetURLBytes(ctx context.Context, url string, timeout time.
 // NewAppController creates and initializes a new AppController instance.
 // This function should be called only once at application startup (typically in main.go).
 // It sets the global singleton instance that can be accessed via GetController().
-func NewAppController(appIconData, greyIconData, greenIconData, redIconData []byte) (*AppController, error) {
+// layout is the data layout resolved once in main() (SPEC 135).
+func NewAppController(layout paths.Layout, appIconData, greyIconData, greenIconData, redIconData []byte) (*AppController, error) {
 	ac := &AppController{}
 	locale.CreateHTTPClientFunc = CreateHTTPClient
 
 	// Initialize FileService first (needed by other services)
-	fileService, err := services.NewFileService()
+	fileService, err := services.NewFileService(layout)
 	if err != nil {
 		return nil, fmt.Errorf("NewAppController: cannot create FileService: %w", err)
 	}
 	ac.FileService = fileService
 
 	// Open log files with rotation support
-	if err := ac.FileService.OpenLogFiles(logFileName, childLogFileName, apiLogFileName); err != nil {
+	if err := ac.FileService.OpenLogFiles(); err != nil {
 		return nil, fmt.Errorf("NewAppController: cannot open log files: %w", err)
 	}
 	api.SetAPILogFile(ac.FileService.ApiLogFile)
@@ -300,9 +295,9 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	config.CoreVersionProbe = ac.coreVersionForBuildGate
 
 	// SPEC 122: корень каталогов состояния tailnet. Тот же корень
-	// `<execDir>/bin`, относительно которого лежат локальные .srs — эмиссия
-	// ExecDir не знает, и путь приходит сюда единственной точкой.
-	config.SetTailscaleStateDirRoot(platform.GetTailscaleStateDir(ac.FileService.ExecDir))
+	// `<DataDir>/bin`, относительно которого лежат локальные .srs — эмиссия
+	// DataDir не знает, и путь приходит сюда единственной точкой.
+	config.SetTailscaleStateDirRoot(platform.GetTailscaleStateDir(ac.FileService.Layout.Data))
 
 	// SPEC 112: идентичность узла (тег) и УПРАЗДНЁННЫЙ контент-хеш для
 	// миграции legacy-отметок. Обе живут в config (эмиттер нужен второй),
@@ -558,7 +553,7 @@ func (ac *AppController) RunHidden(name string, args []string, logPath string, d
 	}
 
 	if logPath != "" {
-		if logPath == filepath.Join(ac.FileService.ExecDir, childLogFileName) && ac.FileService.ChildLogFile != nil {
+		if logPath == ac.FileService.ChildLogPath && ac.FileService.ChildLogFile != nil {
 			// For sing-box logs, check and rotate if needed before writing
 			ac.FileService.CheckAndRotateLogFile(logPath)
 			logFile := ac.FileService.ChildLogFile

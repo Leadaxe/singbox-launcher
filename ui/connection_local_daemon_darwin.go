@@ -16,7 +16,6 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
-	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui/components"
 )
 
@@ -47,7 +46,7 @@ func wrappedLabel(key string) *widget.Label {
 // onPaired — колбэк успешного сопряжения (вкладка доводит переключение
 // движка, если пользователь уже выбрал daemon).
 func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) fyne.CanvasObject {
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 
 	// Длинный рассказ про daemon-движок читают один раз, а место он занимает
 	// в каждом открытии окна: над вкладками остаётся одна строка, полный

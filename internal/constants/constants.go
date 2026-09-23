@@ -29,7 +29,7 @@ const (
 	LegacyRemoteConfigFileName = "remote-config.json"
 	WizardStateFileName        = "state.json"
 	// OutboundsCacheFileName — кеш-файл outbounds (SPEC 045 phase 5.1).
-	// Лежит в <execDir>/bin/. Scope = последний активный state. Парсер
+	// Лежит в <DataDir>/bin/. Scope = последний активный state. Парсер
 	// перезаписывает его при каждом успешном Update; на переключении
 	// state'а файл не инвалидируется (см. PLAN.md outboundscache).
 	OutboundsCacheFileName = "outbounds.cache.json"
@@ -53,7 +53,7 @@ const (
 	RuleSetsDirName     = "rule-sets"
 	WizardStatesDirName = "wizard_states"
 	// SubscriptionsDirName — каталог raw-body cache подписок (SPEC 052):
-	// <execDir>/bin/subscriptions/<source-id>.raw. Один файл per Source(id),
+	// <DataDir>/bin/subscriptions/<source-id>.raw. Один файл per Source(id),
 	// атомарная запись через .tmp + Rename, lazy GC orphan-файлов.
 	//
 	// SPEC 098: для удалённой машины тот же базовый имя каталога, но внутри
@@ -65,6 +65,14 @@ const (
 	// Имя короче локального rule-sets/ намеренно: путь и так длинный, а
 	// каталог лежит внутри директории машины, где двусмысленности нет.
 	RemoteRuleSetsDirName = "srs"
+	// TailscaleDirName — корень каталогов состояния tailnet под bin/ (SPEC 122).
+	TailscaleDirName = "tailscale"
+	// TempDirName — временный каталог скачивания ядра и wintun (под DataDir, не под bin/).
+	TempDirName = "temp"
+	// DaemonIdentityDirName — клиентская пара сопряжения с локальным демоном под bin/.
+	DaemonIdentityDirName = "daemon"
+	// RemoteDaemonsDirName — клиентские пары удалённых демонов под bin/, по каталогу на машину.
+	RemoteDaemonsDirName = "remote-daemons"
 )
 
 // Data layout (SPEC 135): где лежат поставляемое (AppDir), состояние (DataDir)

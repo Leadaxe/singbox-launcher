@@ -22,6 +22,7 @@ import (
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/lxdclient"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -119,15 +120,15 @@ func (b *DaemonBackend) noteLinkFail(err error) bool {
 }
 
 // DaemonIdentityDir — каталог клиентской пары сопряжения (bin/daemon).
-func DaemonIdentityDir(execDir string) string {
-	return platform.GetDaemonIdentityDir(execDir)
+func DaemonIdentityDir(dataDir paths.DataDir) string {
+	return platform.GetDaemonIdentityDir(dataDir)
 }
 
 // DaemonConfigFromSettings строит конфиг клиента демона из settings.json.
 // Ошибка — если daemon-режим не сконфигурирован (нет адреса) или не удалось
 // поднять клиентскую пару при включённом TLS.
 func DaemonConfigFromSettings(ac *AppController) (lxdclient.Config, error) {
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	st := locale.LoadSettings(binDir)
 	if st.DaemonAddress == "" {
 		return lxdclient.Config{}, fmt.Errorf("daemon is not configured: install the service or pair via invite")
@@ -138,7 +139,7 @@ func DaemonConfigFromSettings(ac *AppController) (lxdclient.Config, error) {
 		Secret:            st.DaemonSecret,
 	}
 	if cfg.TLSEnabled() {
-		ident, err := lxdclient.LoadOrCreateIdentity(DaemonIdentityDir(ac.FileService.ExecDir))
+		ident, err := lxdclient.LoadOrCreateIdentity(DaemonIdentityDir(ac.FileService.Layout.Data))
 		if err != nil {
 			return lxdclient.Config{}, err
 		}
@@ -437,7 +438,7 @@ func (b *DaemonBackend) StopVPN() {
 // VPN работать (это и есть смысл daemon-режима); опция DaemonStopVPNOnExit
 // возвращает классическое поведение.
 func (b *DaemonBackend) OnAppExit() bool {
-	binDir := platform.GetBinDir(b.ac.FileService.ExecDir)
+	binDir := b.ac.FileService.Layout.Data.Bin()
 	if !locale.LoadSettings(binDir).DaemonStopVPNOnExit {
 		return false
 	}

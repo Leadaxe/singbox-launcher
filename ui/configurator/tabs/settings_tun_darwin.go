@@ -15,7 +15,6 @@ import (
 
 	"singbox-launcher/core/config"
 	wizardtemplate "singbox-launcher/core/template"
-	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
@@ -86,8 +85,8 @@ func maybeTunOffDarwin(presenter *wizardpresentation.WizardPresenter, model *wiz
 	}
 
 	var targets []string
-	binDir := filepath.Clean(platform.GetBinDir(ac.FileService.ExecDir))
-	execDir := filepath.Clean(ac.FileService.ExecDir)
+	binDir := filepath.Clean(ac.FileService.Layout.Data.Bin())
+	logsDir := filepath.Clean(string(ac.FileService.Layout.Logs))
 
 	expRaw, expOK, expErr := wizardbusiness.EffectiveConfigSection(model, "experimental")
 	if expErr != nil {
@@ -111,10 +110,10 @@ func maybeTunOffDarwin(presenter *wizardpresentation.WizardPresenter, model *wiz
 		}
 	}
 
-	logPath := filepath.Join(execDir, constants.LogsDirName, constants.ChildLogFileName)
+	logPath := ac.FileService.ChildLogPath
 	var removedCoreLogs bool
 	for _, p := range []string{logPath, logPath + ".old"} {
-		if !pathUnderRoot(execDir, p) {
+		if !pathUnderRoot(logsDir, p) {
 			continue
 		}
 		if _, err := os.Lstat(p); err == nil {

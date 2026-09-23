@@ -17,7 +17,6 @@ import (
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
-	"singbox-launcher/internal/platform"
 )
 
 // CheckVersionMarks сверяет текущие версии лаунчера и ядра с отметками и
@@ -32,7 +31,7 @@ func (ac *AppController) CheckVersionMarks() {
 	if ac == nil || ac.FileService == nil {
 		return
 	}
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	settings := locale.LoadSettings(binDir)
 	changed := false
 

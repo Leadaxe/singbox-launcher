@@ -30,7 +30,7 @@ func ReadCurrentLogLevelFromState(ac *AppController) (string, bool, error) {
 	if ac == nil || ac.FileService == nil {
 		return "", false, errors.New("core: no controller")
 	}
-	statePath := platform.GetWizardStatePath(ac.FileService.ExecDir)
+	statePath := platform.GetWizardStatePath(ac.FileService.Layout.Data)
 	s, err := state.Load(statePath)
 	if err != nil {
 		if errors.Is(err, state.ErrNotFound) {
@@ -59,7 +59,7 @@ func ApplyLogLevelAndReloadCore(ac *AppController, level string) error {
 	if ac == nil || ac.FileService == nil {
 		return errors.New("core: no controller")
 	}
-	statePath := platform.GetWizardStatePath(ac.FileService.ExecDir)
+	statePath := platform.GetWizardStatePath(ac.FileService.Layout.Data)
 	s, err := state.Load(statePath)
 	if err != nil {
 		return fmt.Errorf("load state: %w", err)

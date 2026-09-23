@@ -133,7 +133,7 @@ func OpenAddMachineWindow(ac *core.AppController, onAdded func()) {
 		// Сопряжение — блокирующий сетевой вызов (enroll по mTLS), поэтому в
 		// горутине: недоступная машина отвечает по таймауту.
 		go func() {
-			registry := services.NewRemoteRegistry(ac.FileService.ExecDir)
+			registry := services.NewRemoteRegistry(ac.FileService.Layout.Data)
 			entry, err := registry.PairWithAddr(invite, nameEntry.Text,
 				strings.TrimSpace(addrEntry.Text), strings.TrimSpace(secretEntry.Text))
 			if err == nil {

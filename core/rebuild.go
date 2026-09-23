@@ -19,6 +19,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -105,7 +106,7 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	if ac.FileService == nil {
 		return fmt.Errorf("FileService not initialized")
 	}
-	execDir := ac.FileService.ExecDir
+	layout := ac.FileService.Layout
 
 	// Шаблон после апгрейда докачивается в фоне (StartTemplateRefresh). Сборка
 	// из старого шаблона, пока новый в пути, дала бы ровно тот config.json,
@@ -113,10 +114,10 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	ac.awaitTemplateRefresh()
 
 	// One-time legacy cleanup: bin/outbounds.cache.json больше не используется.
-	cleanupLegacyOutboundsCache(execDir)
+	cleanupLegacyOutboundsCache(layout.Data)
 
 	// Step 1: load state.
-	statePath := platform.GetWizardStatePath(execDir)
+	statePath := platform.GetWizardStatePath(layout.Data)
 	s, err := state.Load(statePath)
 	if err != nil {
 		return fmt.Errorf("load state: %w", err)
@@ -126,13 +127,13 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	// pre-patch внутри buildSnapshotFromState. Это лёгкая операция (file
 	// read + JSON parse), переиспользуется в Step 4 для BuildConfig.
 	// Отсутствующий файл сначала скачивается (loadTemplateForBuild).
-	td, templateFetched, err := ac.loadTemplateForBuild(execDir)
+	td, templateFetched, err := ac.loadTemplateForBuild(layout)
 	if err != nil {
 		return fmt.Errorf("load template: %w", err)
 	}
 
 	// Step 2: попытаться построить snapshot из материализованных узлов.
-	cacheSnap, parserRes, snapErr := buildSnapshotFromState(s, execDir, nil, td)
+	cacheSnap, parserRes, snapErr := buildSnapshotFromState(s, layout, nil, td)
 	cacheMissing := errors.Is(snapErr, ErrNoMaterializedNodes)
 	if snapErr != nil && !cacheMissing {
 		// Сборка не состоялась — но если разбор успел объяснить, почему
@@ -158,7 +159,7 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		if err != nil {
 			return fmt.Errorf("reload state after auto-update: %w", err)
 		}
-		cacheSnap, parserRes, snapErr = buildSnapshotFromState(s, execDir, nil, td)
+		cacheSnap, parserRes, snapErr = buildSnapshotFromState(s, layout, nil, td)
 		if snapErr != nil {
 			feedParserDiagnosticsOnFailure(parserRes)
 			return fmt.Errorf("rebuild snapshot after auto-update: %w", snapErr)
@@ -240,7 +241,7 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	// котором страховка уже выключила узел. Отчёт сборки не переоткрывается —
 	// записи круга те же, меняется только состав.
 	rebuildRound := func() (buildRound, error) {
-		snap, pres, rerr := buildSnapshotFromState(s, execDir, nil, td)
+		snap, pres, rerr := buildSnapshotFromState(s, layout, nil, td)
 		if rerr != nil {
 			return buildRound{}, fmt.Errorf("rebuild after disabling a node: %w", rerr)
 		}
@@ -314,8 +315,8 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	// `.srs`, на которые ссылается ещё живой ПРЕДЫДУЩИЙ config.json, и откат
 	// на него оставил бы битые ссылки.
 	if configValid {
-		knownTags := collectAllStageRuleSetTags(execDir, constants.ConfigTargetLocal, "", td)
-		if deleted, gcErr := services.DeleteOrphanRuleSets(execDir, knownTags); gcErr != nil {
+		knownTags := collectAllStageRuleSetTags(layout.Data, constants.ConfigTargetLocal, "", td)
+		if deleted, gcErr := services.DeleteOrphanRuleSets(layout.Data, knownTags); gcErr != nil {
 			debuglog.WarnLog("RebuildConfigIfDirty: DeleteOrphanRuleSets: %v", gcErr)
 		} else if len(deleted) > 0 {
 			debuglog.InfoLog("RebuildConfigIfDirty: GC removed %d orphan rule-set file(s): %v", len(deleted), deleted)
@@ -385,15 +386,15 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 //
 // fetched=true means the template was just downloaded, so config.json on disk
 // was built without it.
-func (ac *AppController) loadTemplateForBuild(execDir string) (td *template.TemplateData, fetched bool, err error) {
-	td, err = template.LoadTemplateData(execDir)
+func (ac *AppController) loadTemplateForBuild(l paths.Layout) (td *template.TemplateData, fetched bool, err error) {
+	td, err = template.LoadTemplateData(l)
 	if err == nil || !errors.Is(err, os.ErrNotExist) {
 		return td, false, err
 	}
 	debuglog.WarnLog("RebuildConfigIfDirty: %s is missing — downloading it before the build", template.GetTemplateFileName())
 	ctx, cancel := context.WithTimeout(context.Background(), template.DownloadTimeout)
 	defer cancel()
-	td, _, err = template.EnsureTemplate(ctx, execDir, ac.GetURLBytes)
+	td, _, err = template.EnsureTemplate(ctx, l, ac.GetURLBytes)
 	if err != nil {
 		return nil, false, err
 	}
@@ -442,21 +443,21 @@ func (ac *AppController) CleanOrphanRuleSets() ([]string, error) {
 	if ac == nil || ac.FileService == nil {
 		return nil, fmt.Errorf("CleanOrphanRuleSets: controller not initialized")
 	}
-	execDir := ac.FileService.ExecDir
-	td, err := template.LoadTemplateData(execDir)
+	layout := ac.FileService.Layout
+	td, err := template.LoadTemplateData(layout)
 	if err != nil {
 		return nil, fmt.Errorf("CleanOrphanRuleSets: load template: %w", err)
 	}
-	known := collectAllStageRuleSetTags(execDir, constants.ConfigTargetLocal, "", td)
-	return services.DeleteOrphanRuleSets(execDir, known)
+	known := collectAllStageRuleSetTags(layout.Data, constants.ConfigTargetLocal, "", td)
+	return services.DeleteOrphanRuleSets(layout.Data, known)
 }
 
 // cleanupLegacyOutboundsCache удаляет `bin/outbounds.cache.json`, если он
 // существует (legacy SPEC 045 cache, выпиленный в SPEC 052). One-shot:
 // файл не пересоздаётся новым кодом, поэтому достаточно удалить однажды
 // и забыть. Best-effort — ошибки не критичны.
-func cleanupLegacyOutboundsCache(execDir string) {
-	path := platform.GetOutboundsCachePath(execDir)
+func cleanupLegacyOutboundsCache(d paths.DataDir) {
+	path := platform.GetOutboundsCachePath(d)
 	if _, err := os.Stat(path); err == nil {
 		if remErr := os.Remove(path); remErr == nil {
 			debuglog.InfoLog("cleanupLegacyOutboundsCache: removed legacy %s", path)

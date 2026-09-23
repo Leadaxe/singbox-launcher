@@ -158,7 +158,7 @@ type DaemonUIStatus struct {
 // DaemonStatusSnapshot собирает состояние службы/сопряжения/демона.
 // Сетевые вызовы — с REST-таймаутом клиента; зовите из горутины, не из UI.
 func (ac *AppController) DaemonStatusSnapshot() DaemonUIStatus {
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	st := locale.LoadSettings(binDir)
 	status := DaemonUIStatus{
 		CoreSupportsLxd: ac.CoreSupportsLxd(),
@@ -170,7 +170,7 @@ func (ac *AppController) DaemonStatusSnapshot() DaemonUIStatus {
 	if _, err := os.Stat(daemonSystemPlistPath()); err == nil {
 		status.ServiceInstalled = true
 	}
-	status.Paired = st.DaemonServerFingerprint != "" && lxdclient.HasIdentity(DaemonIdentityDir(ac.FileService.ExecDir))
+	status.Paired = st.DaemonServerFingerprint != "" && lxdclient.HasIdentity(DaemonIdentityDir(ac.FileService.Layout.Data))
 	if !status.Paired && st.DaemonAddress == "" {
 		return status
 	}
@@ -229,7 +229,7 @@ func (ac *AppController) PairDaemonWithInvite(inviteRaw, secret string) error {
 	if err != nil {
 		return err
 	}
-	identity, err := lxdclient.LoadOrCreateIdentity(DaemonIdentityDir(ac.FileService.ExecDir))
+	identity, err := lxdclient.LoadOrCreateIdentity(DaemonIdentityDir(ac.FileService.Layout.Data))
 	if err != nil {
 		return err
 	}
@@ -248,10 +248,10 @@ func (ac *AppController) PairDaemonWithInvite(inviteRaw, secret string) error {
 	// продолжал стучаться на роутер). Не-loopback сопряжение уходит в реестр
 	// удалённых машин, локальные поля не трогаем.
 	if !lxdclient.IsLoopbackAddr(invite.Addr) {
-		registry := services.NewRemoteRegistry(ac.FileService.ExecDir)
+		registry := services.NewRemoteRegistry(ac.FileService.Layout.Data)
 		entry, impErr := registry.ImportPairedDaemon(
 			invite.Addr, invite.Addr, invite.ServerFingerprint, secret,
-			DaemonIdentityDir(ac.FileService.ExecDir))
+			DaemonIdentityDir(ac.FileService.Layout.Data))
 		if impErr != nil {
 			return fmt.Errorf("pair: register remote daemon: %w", impErr)
 		}
@@ -260,7 +260,7 @@ func (ac *AppController) PairDaemonWithInvite(inviteRaw, secret string) error {
 		return nil
 	}
 
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	st := locale.LoadSettings(binDir)
 	st.DaemonAddress = invite.Addr
 	st.DaemonServerFingerprint = invite.ServerFingerprint
@@ -279,16 +279,16 @@ func (ac *AppController) PairDaemonWithInvite(inviteRaw, secret string) error {
 // адрес. Регистрация на стороне демона (если он жив) остаётся — её снимает
 // `sing-box lxd client remove` или полное удаление службы.
 func (ac *AppController) UnpairDaemon() error {
-	if err := lxdclient.RemoveIdentity(DaemonIdentityDir(ac.FileService.ExecDir)); err != nil {
+	if err := lxdclient.RemoveIdentity(DaemonIdentityDir(ac.FileService.Layout.Data)); err != nil {
 		return err
 	}
 	// Файл секрета старой модели (до ревизии владения): больше не создаётся,
 	// но у ранних установок мог остаться — подчищаем.
-	legacySecretPath := filepath.Join(DaemonIdentityDir(ac.FileService.ExecDir), daemonLegacySecretFileName)
+	legacySecretPath := filepath.Join(DaemonIdentityDir(ac.FileService.Layout.Data), daemonLegacySecretFileName)
 	if err := os.Remove(legacySecretPath); err != nil && !os.IsNotExist(err) {
 		debuglog.WarnLog("UnpairDaemon: remove legacy secret file: %v", err)
 	}
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	st := locale.LoadSettings(binDir)
 	st.DaemonAddress = ""
 	st.DaemonServerFingerprint = ""
@@ -299,7 +299,7 @@ func (ac *AppController) UnpairDaemon() error {
 // SetDaemonAddress сохраняет откорректированный адрес управляющего канала и
 // пересоздаёт активный daemon-backend.
 func (ac *AppController) SetDaemonAddress(address string) error {
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	st := locale.LoadSettings(binDir)
 	st.DaemonAddress = strings.TrimSpace(address)
 	if err := locale.SaveSettings(binDir, st); err != nil {
@@ -316,7 +316,7 @@ func (ac *AppController) SetDaemonAddress(address string) error {
 // исключительно для loopback-адресов: авто-даунгрейд по сети — это подарок
 // MITM'у (downgrade-атака), там решение остаётся за пользователем.
 func (ac *AppController) followDaemonPlainChannel() {
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	st := locale.LoadSettings(binDir)
 	debuglog.InfoLog("followDaemonPlainChannel: daemon at %s dropped TLS; clearing the pinned fingerprint to follow", st.DaemonAddress)
 	st.DaemonServerFingerprint = ""
@@ -339,7 +339,7 @@ func (ac *AppController) DaemonShowSecretCommand() string {
 // сопряжения, и секрет — весь канал аутентификации; для mTLS-демона
 // сертификат — полный мандат, а секрет не используется.
 func (ac *AppController) SetDaemonSecret(secret string) error {
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	st := locale.LoadSettings(binDir)
 	st.DaemonSecret = strings.TrimSpace(secret)
 	if err := locale.SaveSettings(binDir, st); err != nil {

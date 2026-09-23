@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"singbox-launcher/internal/paths"
 )
 
 // GetExecutableNames returns platform-specific executable names
@@ -16,7 +18,7 @@ func GetExecutableNames() string {
 }
 
 // GetWintunPath returns empty string on macOS (wintun is Windows-only)
-func GetWintunPath(execDir string) string {
+func GetWintunPath(_ paths.DataDir) string {
 	return ""
 }
 

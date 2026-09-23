@@ -19,15 +19,16 @@ import (
 
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
-// RuleSRSPath возвращает путь к локальному SRS файлу: {ExecDir}/bin/rule-sets/{tag}.srs
+// RuleSRSPath возвращает путь к локальному SRS файлу: {DataDir}/bin/rule-sets/{tag}.srs
 //
 // Локальная машина. Для удалённой — RuleSRSPathFor: у каждой машины свой
 // каталог .srs (SPEC 098 §2.3).
-func RuleSRSPath(execDir string, tag string) string {
-	return platform.GetRuleSetPath(execDir, tag)
+func RuleSRSPath(dataDir paths.DataDir, tag string) string {
+	return platform.GetRuleSetPath(dataDir, tag)
 }
 
 // RuleSRSPathFor возвращает путь .srs в каталоге конкретной машины
@@ -41,20 +42,20 @@ func RuleSRSPath(execDir string, tag string) string {
 // SPEC 097 §6 — на самой удалённой машине такого пути нет. Пока такие наборы
 // у remote следует оставлять type:remote; здесь функция отвечает только за
 // то, ГДЕ лаунчер держит скачанный файл.
-func RuleSRSPathFor(execDir, target, machineID, tag string) string {
-	return filepath.Join(platform.GetRuleSetsDirFor(execDir, target, machineID), tag+".srs")
+func RuleSRSPathFor(dataDir paths.DataDir, target, machineID, tag string) string {
+	return filepath.Join(platform.GetRuleSetsDirFor(dataDir, target, machineID), tag+".srs")
 }
 
 // SRSFileExists проверяет наличие локального SRS файла
-func SRSFileExists(execDir string, tag string) bool {
-	path := RuleSRSPath(execDir, tag)
+func SRSFileExists(dataDir paths.DataDir, tag string) bool {
+	path := RuleSRSPath(dataDir, tag)
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
 }
 
 // SRSFileExistsFor — SRSFileExists в границах конкретной машины.
-func SRSFileExistsFor(execDir, target, machineID, tag string) bool {
-	info, err := os.Stat(RuleSRSPathFor(execDir, target, machineID, tag))
+func SRSFileExistsFor(dataDir paths.DataDir, target, machineID, tag string) bool {
+	info, err := os.Stat(RuleSRSPathFor(dataDir, target, machineID, tag))
 	return err == nil && !info.IsDir()
 }
 
@@ -164,8 +165,8 @@ type SRSEntry struct {
 
 // AllSRSDownloadedForEntries проверяет, что для всех переданных SRS-энтри существуют локальные файлы.
 // Используется и для встроенных, и для пользовательских SRS-правил.
-func AllSRSDownloadedForEntries(execDir string, entries []SRSEntry) bool {
-	return AllSRSDownloadedIn(execDir, "", entries)
+func AllSRSDownloadedForEntries(dataDir paths.DataDir, entries []SRSEntry) bool {
+	return AllSRSDownloadedIn(dataDir, "", entries)
 }
 
 // AllSRSDownloadedIn — проверка наличия в каталоге КОНКРЕТНОЙ машины
@@ -174,12 +175,12 @@ func AllSRSDownloadedForEntries(execDir string, entries []SRSEntry) bool {
 // Разделение обязательно: каталоги у профилей разные, и проверка по общему
 // показывала бы «скачано» для машины, у которой файла нет, — правило молча
 // выпадало бы из её конфига при сборке.
-func AllSRSDownloadedIn(execDir, srsDir string, entries []SRSEntry) bool {
-	if execDir == "" || len(entries) == 0 {
+func AllSRSDownloadedIn(dataDir paths.DataDir, srsDir string, entries []SRSEntry) bool {
+	if dataDir == "" || len(entries) == 0 {
 		return true
 	}
 	for _, e := range entries {
-		path := RuleSRSPath(execDir, e.Tag)
+		path := RuleSRSPath(dataDir, e.Tag)
 		if srsDir != "" {
 			path = filepath.Join(srsDir, e.Tag+".srs")
 		}
@@ -268,9 +269,9 @@ func normalizeSRSURL(rawURL string) string {
 // Разделение обязательно: у каждой машины свой профиль, и складывать её
 // наборы в общий каталог значило бы, что окно ресурсов машины их не видит, а
 // GC одной машины удаляет файлы другой.
-func DownloadSRSGroupTo(ctx context.Context, execDir, destDir string, entries []SRSEntry) error {
+func DownloadSRSGroupTo(ctx context.Context, dataDir paths.DataDir, destDir string, entries []SRSEntry) error {
 	for _, e := range entries {
-		destPath := RuleSRSPath(execDir, e.Tag)
+		destPath := RuleSRSPath(dataDir, e.Tag)
 		if destDir != "" {
 			destPath = filepath.Join(destDir, e.Tag+".srs")
 		}
@@ -282,8 +283,8 @@ func DownloadSRSGroupTo(ctx context.Context, execDir, destDir string, entries []
 }
 
 // DownloadSRSGroup — загрузка для ЛОКАЛЬНОЙ машины (bin/rule-sets/).
-func DownloadSRSGroup(ctx context.Context, execDir string, entries []SRSEntry) error {
-	return DownloadSRSGroupTo(ctx, execDir, "", entries)
+func DownloadSRSGroup(ctx context.Context, dataDir paths.DataDir, entries []SRSEntry) error {
+	return DownloadSRSGroupTo(ctx, dataDir, "", entries)
 }
 
 // DeleteOrphanRuleSets удаляет файлы из bin/rule-sets/, чьих tags нет в knownTags.
@@ -299,8 +300,8 @@ func DownloadSRSGroup(ctx context.Context, execDir string, entries []SRSEntry) e
 // активного state'а сметёт .srs нужные другому (неактивному) stage'у.
 //
 // Локальная машина. Для удалённой — DeleteOrphanRuleSetsFor.
-func DeleteOrphanRuleSets(execDir string, knownTags []string) ([]string, error) {
-	return DeleteOrphanRuleSetsFor(execDir, constants.ConfigTargetLocal, "", knownTags)
+func DeleteOrphanRuleSets(dataDir paths.DataDir, knownTags []string) ([]string, error) {
+	return DeleteOrphanRuleSetsFor(dataDir, constants.ConfigTargetLocal, "", knownTags)
 }
 
 // DeleteOrphanRuleSetsFor чистит каталог .srs КОНКРЕТНОЙ машины
@@ -310,13 +311,13 @@ func DeleteOrphanRuleSets(execDir string, knownTags []string) ([]string, error) 
 // состояниям этой же машины (collectAllStageRuleSetTags с тем же
 // target/machineID). Смешать одно с другим — значит либо удалить чужой живой
 // файл, либо вечно держать свой мёртвый.
-func DeleteOrphanRuleSetsFor(execDir, target, machineID string, knownTags []string) ([]string, error) {
+func DeleteOrphanRuleSetsFor(dataDir paths.DataDir, target, machineID string, knownTags []string) ([]string, error) {
 	knownSet := make(map[string]struct{}, len(knownTags))
 	for _, tag := range knownTags {
 		knownSet[tag] = struct{}{}
 	}
 
-	dir := platform.GetRuleSetsDirFor(execDir, target, machineID)
+	dir := platform.GetRuleSetsDirFor(dataDir, target, machineID)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {

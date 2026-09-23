@@ -54,7 +54,7 @@ func (ac *AppController) GetInstalledCoreVersion() (string, error) {
 // GetCoreBinaryPath возвращает путь к бинарнику sing-box для отображения.
 func (ac *AppController) GetCoreBinaryPath() string {
 	p := ac.FileService.SingboxPath
-	rel, err := filepath.Rel(ac.FileService.ExecDir, p)
+	rel, err := filepath.Rel(string(ac.FileService.Layout.Data), p)
 	if err == nil && rel != "" && !strings.HasPrefix(rel, "..") {
 		return rel
 	}

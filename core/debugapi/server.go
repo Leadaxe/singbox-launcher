@@ -33,6 +33,7 @@ import (
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/paths"
 )
 
 // DefaultPort — desktop debug-API default. Mobile LxBox uses 9269; we
@@ -52,9 +53,10 @@ type ControllerFacade interface {
 	GetConfigPath() string
 	GetLastUpdateSucceededAt() time.Time
 	GetLauncherVersion() string
-	// GetExecDir — used by /debug/snapshot to resolve canonical wizard
-	// file paths via internal/platform helpers (SUB_SPEC_SNAPSHOT.md §2.2).
-	GetExecDir() string
+	// GetLayout — data layout (SPEC 135): /debug/snapshot, /state and
+	// /settings resolve canonical file paths from it via internal/platform
+	// helpers (SUB_SPEC_SNAPSHOT.md §2.2).
+	GetLayout() paths.Layout
 
 	// Actions — may be no-ops if the facade doesn't want to expose them.
 	StartSingBox() error

@@ -3,6 +3,7 @@ package main
 import (
 	_ "embed" // For embedding resource files (icons)
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -22,6 +23,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui"
 )
@@ -54,14 +56,28 @@ const (
 // rememberOfferedRenderer запоминает renderer железа, про который мы уже
 // спросили: пока строка не сменится, диалог возврата больше не всплывает —
 // иначе «Later» переспрашивался бы каждый старт.
-func rememberOfferedRenderer(execDir, renderer string) {
-	platform.UpdateGLState(execDir, func(s *platform.GLState) {
+func rememberOfferedRenderer(d paths.DataDir, renderer string) {
+	platform.UpdateGLState(d, func(s *platform.GLState) {
 		s.OfferedHWRenderer = renderer
 	})
 }
 
 // main is the application's entry point. It simply creates and runs the AppController.
 func main() {
+	// SPEC 135: раскладка данных (AppDir/DataDir/LogDir) решается один раз,
+	// первым действием, и дальше передаётся значением. Локали и логов ещё
+	// нет — ошибка уходит в stderr, код выхода 2.
+	exe, err := paths.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "singbox-launcher: cannot determine executable path: %v\n", err)
+		os.Exit(2)
+	}
+	layout, err := paths.Resolve(exe, os.Getenv, runtime.GOOS, paths.ProbeWritable)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "singbox-launcher: %v\n", err)
+		os.Exit(2)
+	}
+
 	// Parse command line arguments
 	autoStart := flag.Bool("start", false, "Automatically start VPN on launch")
 	startInTray := flag.Bool("tray", false, "Start minimized to system tray (hide window on launch)")
@@ -72,11 +88,12 @@ func main() {
 	// Windows-бинарь собран с -H windowsgui: stderr у процесса нет, и паника
 	// на старте выглядит как «окно мелькнуло и пропало» без единой строки в
 	// логе (репорт 09.09.2026). SetCrashOutput дублирует трассу фатальной
-	// паники в logs/crash.log. Обычные логи открываются позже, в
-	// NewAppController, поэтому путь считается здесь напрямую — тем же
-	// правилом, что и FileService.ExecDir.
-	if ex, err := os.Executable(); err == nil {
-		logsDir := platform.GetLogsDir(filepath.Dir(ex))
+	// паники в <LogDir>/crash.log. Обычные логи открываются позже, в
+	// NewAppController; каталог логов создаётся здесь, до них.
+	logsDir := string(layout.Logs)
+	if err := os.MkdirAll(logsDir, platform.DefaultDirMode); err != nil {
+		debuglog.WarnLog("logs dir: %v", err)
+	} else {
 		crashLog := filepath.Join(logsDir, constants.CrashLogFileName)
 		if err := debuglog.EnableCrashOutput(crashLog); err != nil {
 			debuglog.WarnLog("crash log: %v", err)
@@ -97,12 +114,12 @@ func main() {
 	// чтобы проверить версию GL в отдельном процессе (issue #105, SPEC 125).
 	// Печатает результат в stdout и завершается, не доходя до инициализации UI.
 	if *glProbe || *glProbeLocal {
-		platform.RunGLProbeChild(*glProbeLocal)
+		platform.RunGLProbeChild(layout.App, *glProbeLocal)
 	}
 
 	// Create the application controller. If an error occurs, print it and exit the program.
 	// Use greyIconData for red icon (no separate red icon yet)
-	controller, err := core.NewAppController(appIconData, greyIconData, greenIconData, greyIconData)
+	controller, err := core.NewAppController(layout, appIconData, greyIconData, greenIconData, greyIconData)
 	if err != nil {
 		log.Fatalf("Failed to initialize application: %v", err)
 	}
@@ -110,8 +127,9 @@ func main() {
 	// Первая WARN-строка любого старта. Успешный запуск не писал ни одной
 	// строки уровня WARN, и по логу с релиза (GlobalLevel=LevelWarn) нельзя
 	// было понять даже, какая версия упала (репорт 09.09.2026, SPEC 125 §2.7).
-	debuglog.WarnLog("launcher %s %s/%s started, exec=%s",
-		constants.AppVersion, runtime.GOOS, runtime.GOARCH, controller.FileService.ExecDir)
+	// Раскладка данных — в той же строке (SPEC 135): где искать state и логи.
+	debuglog.WarnLog("launcher %s %s/%s started, exec=%s, %s",
+		constants.AppVersion, runtime.GOOS, runtime.GOARCH, exe, layout.LogLine())
 
 	// Issue #105: в RDP-сессии Windows Server без GPU системный OpenGL — это
 	// «GDI Generic» 1.1, и окно Fyne молча не отрисовывается. Гейт проверяет
@@ -121,7 +139,7 @@ func main() {
 	//
 	// interactive = не -tray: в трей-режиме окна никто не ждёт, и диалоги
 	// гейта показывать некому (SPEC 125 §2.2).
-	platform.EnsureDesktopOpenGL(controller.FileService.ExecDir, !*startInTray)
+	platform.EnsureDesktopOpenGL(layout, !*startInTray)
 
 	// Replace the wizard template in the background if it was installed by an
 	// older launcher version (SPEC 046). The stale file stays until the new
@@ -140,13 +158,13 @@ func main() {
 	// лежать файлом, на который больше никто не смотрит.
 	//
 	// Non-fatal: при неудаче старые файлы остаются на месте нетронутыми.
-	if err := services.MigrateLegacyRemoteProfile(controller.FileService.ExecDir,
-		services.NewRemoteRegistry(controller.FileService.ExecDir)); err != nil {
+	if err := services.MigrateLegacyRemoteProfile(layout.Data,
+		services.NewRemoteRegistry(layout.Data)); err != nil {
 		debuglog.WarnLog("remote migration: %v", err)
 	}
 
 	// Load locale settings and external translations
-	binDir := platform.GetBinDir(controller.FileService.ExecDir)
+	binDir := layout.Data.Bin()
 	locale.LoadExternalLocales(locale.GetLocaleDir(binDir))
 	settings := locale.LoadSettings(binDir)
 	locale.SetLang(settings.Lang)
@@ -325,9 +343,8 @@ func main() {
 			// практический признак, что кадр действительно нарисован; умерли
 			// раньше — в bin/gl-state.json останется phase=starting, и
 			// следующий старт переспросит про OpenGL (SPEC 125 §2.1).
-			glExecDir := controller.FileService.ExecDir
 			time.AfterFunc(glRenderedGrace, func() {
-				platform.MarkGLRendered(glExecDir)
+				platform.MarkGLRendered(layout.Data)
 			})
 
 			// Сценарий возврата на железо (SPEC 125 §2.5): гейт в режиме mesa
@@ -343,11 +360,11 @@ func main() {
 						locale.T("OpenGL"),
 						locale.Tf("Hardware OpenGL is now available:\n%s\nDisable Mesa3D and use it? The launcher will restart now.", renderer),
 						func(yes bool) {
-							rememberOfferedRenderer(glExecDir, renderer)
+							rememberOfferedRenderer(layout.Data, renderer)
 							if !yes {
 								return
 							}
-							if err := platform.DisableMesa(glExecDir); err != nil {
+							if err := platform.DisableMesa(layout.App); err != nil {
 								debuglog.ErrorLog("gl: disable Mesa3D from UI failed: %v", err)
 								ui.ShowError(win, err)
 								return
@@ -356,7 +373,7 @@ func main() {
 							// opengl32.dll отображён загрузчиком при старте процесса, и
 							// переключение применит только новый процесс. Выходим штатно —
 							// ядро остановится, логи закроются, RestartSelf в конце main().
-							platform.UpdateGLState(glExecDir, func(s *platform.GLState) {
+							platform.UpdateGLState(layout.Data, func(s *platform.GLState) {
 								s.Phase = platform.GLPhaseRestart
 								s.Mode = platform.GLModeHardware
 							})
@@ -376,7 +393,7 @@ func main() {
 			// during the same cleanup).
 			go func() {
 				debuglog.InfoLog("Application startup: Reading state...")
-				statePath := platform.GetWizardStatePath(controller.FileService.ExecDir)
+				statePath := platform.GetWizardStatePath(layout.Data)
 				s, err := state.Load(statePath)
 				if err != nil {
 					debuglog.WarnLog("Application startup: state.json not loaded: %v", err)

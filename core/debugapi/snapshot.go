@@ -19,7 +19,7 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	snap := snapshot.Build(
-		s.facade.GetExecDir(),
+		s.facade.GetLayout(),
 		s.facade.GetLauncherVersion(),
 		s.facade.GetSingboxVersion(),
 	)

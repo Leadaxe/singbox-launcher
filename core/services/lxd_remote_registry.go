@@ -16,6 +16,7 @@ import (
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/lxdclient"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -79,17 +80,17 @@ const remoteRegistryFile = "remote-daemons.json"
 // Файл читается/пишется целиком: записей единицы, а атомарная перезапись
 // проще и надёжнее частичных апдейтов.
 type RemoteRegistry struct {
-	execDir string
+	dataDir paths.DataDir
 	mu      sync.Mutex
 }
 
-// NewRemoteRegistry создаёт реестр, живущий в <execDir>/bin/.
-func NewRemoteRegistry(execDir string) *RemoteRegistry {
-	return &RemoteRegistry{execDir: execDir}
+// NewRemoteRegistry создаёт реестр, живущий в <DataDir>/bin/.
+func NewRemoteRegistry(dataDir paths.DataDir) *RemoteRegistry {
+	return &RemoteRegistry{dataDir: dataDir}
 }
 
 func (r *RemoteRegistry) path() string {
-	return filepath.Join(platform.GetBinDir(r.execDir), remoteRegistryFile)
+	return filepath.Join(r.dataDir.Bin(), remoteRegistryFile)
 }
 
 // identityDir — папка клиентской пары для конкретной удалённой машины.
@@ -97,7 +98,7 @@ func (r *RemoteRegistry) path() string {
 // устройства означал бы, что отзыв доступа на одном роутере отзывает его
 // везде.
 func (r *RemoteRegistry) identityDir(id string) string {
-	return platform.GetRemoteDaemonIdentityDir(r.execDir, id)
+	return platform.GetRemoteDaemonIdentityDir(r.dataDir, id)
 }
 
 // List возвращает сохранённые подключения, отсортированные по имени.
@@ -125,7 +126,7 @@ func (r *RemoteRegistry) listLocked() ([]RemoteDaemon, error) {
 }
 
 func (r *RemoteRegistry) saveLocked(list []RemoteDaemon) error {
-	binDir := platform.GetBinDir(r.execDir)
+	binDir := r.dataDir.Bin()
 	if err := os.MkdirAll(binDir, platform.DefaultDirMode); err != nil {
 		return fmt.Errorf("remote registry: mkdir: %w", err)
 	}
@@ -367,7 +368,7 @@ func (r *RemoteRegistry) CopyProfileFrom(srcID, dstID string) error {
 		return fmt.Errorf("remote registry: unknown id %q", dstID)
 	}
 
-	srcPath := platform.GetWizardStatePathFor(r.execDir, constants.ConfigTargetRemote, srcID)
+	srcPath := platform.GetWizardStatePathFor(r.dataDir, constants.ConfigTargetRemote, srcID)
 	raw, err := os.ReadFile(srcPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -385,11 +386,11 @@ func (r *RemoteRegistry) CopyProfileFrom(srcID, dstID string) error {
 		return fmt.Errorf("remote profile copy: %w", err)
 	}
 
-	dstDir := platform.GetRemoteMachineDir(r.execDir, dstID)
+	dstDir := platform.GetRemoteMachineDir(r.dataDir, dstID)
 	if err := os.MkdirAll(dstDir, platform.DefaultDirMode); err != nil {
 		return fmt.Errorf("remote profile copy: mkdir %s: %w", dstDir, err)
 	}
-	dstPath := platform.GetWizardStatePathFor(r.execDir, constants.ConfigTargetRemote, dstID)
+	dstPath := platform.GetWizardStatePathFor(r.dataDir, constants.ConfigTargetRemote, dstID)
 	tmp := dstPath + ".tmp"
 	if err := os.WriteFile(tmp, patched, platform.DefaultFileMode); err != nil {
 		return fmt.Errorf("remote profile copy: write: %w", err)
@@ -526,7 +527,7 @@ func (r *RemoteRegistry) Remove(id string) error {
 	// проходит validation при добавлении, так что сюда он попасть не может.
 	// Проверка стоит на случай, если запись попала в реестр правкой файла.
 	if strings.TrimSpace(id) != "" {
-		if err := os.RemoveAll(platform.GetRemoteMachineDir(r.execDir, id)); err != nil {
+		if err := os.RemoveAll(platform.GetRemoteMachineDir(r.dataDir, id)); err != nil {
 			debuglog.WarnLog("remote registry: remove state dir for %q: %v", id, err)
 		}
 	}
@@ -603,7 +604,7 @@ func (d RemoteDaemon) ResourceDir() string {
 //
 // Парная к ResourceDir и по той же причине: путь резолвит ядро на той
 // стороне, и путь лаунчера там не существует. Без этого в конфиг уезжал
-// локальный `<execDir>/bin/tailscale/<тег>` — на роутере ядро создавало его
+// локальный `<DataDir>/bin/tailscale/<тег>` — на роутере ядро создавало его
 // от корня, и состояние узла оказывалось в каталоге вида
 // `/Applications/…app/Contents/MacOS/bin/tailscale/<тег>`: рабочем, но
 // абсурдном и сносимом первой же чисткой overlay.

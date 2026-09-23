@@ -33,6 +33,7 @@ import (
 	"strings"
 
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -122,9 +123,9 @@ func knownPlaceholderFallback(name string) (interface{}, bool) {
 //
 // Failure to read either file is non-fatal — substituter then knows nothing
 // and the caller falls through to the hard-coded URLTest fallback.
-func BuildVarSubstituterFromDisk(execDir string) VarSubstituter {
-	defaults := loadTemplateVarDefaults(execDir)
-	overrides := loadStateSettingsVars(execDir)
+func BuildVarSubstituterFromDisk(l paths.Layout) VarSubstituter {
+	defaults := loadTemplateVarDefaults(l)
+	overrides := loadStateSettingsVars(l.Data)
 	intVars := intCastVarNames()
 	boolVars := defaults.boolNames
 
@@ -153,12 +154,12 @@ type templateVarDefaults struct {
 //
 // Robust to missing file / parse errors — returns empty maps and lets the
 // caller fall through to defaults.
-func loadTemplateVarDefaults(execDir string) templateVarDefaults {
+func loadTemplateVarDefaults(l paths.Layout) templateVarDefaults {
 	out := templateVarDefaults{
 		values:    map[string]string{},
 		boolNames: map[string]struct{}{},
 	}
-	path := platform.GetWizardTemplatePath(execDir)
+	path := platform.GetWizardTemplatePath(l.Data)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		debuglog.DebugLog("varsubst: cannot read %s: %v", path, err)
@@ -241,13 +242,13 @@ func readVarDefaultValue(raw json.RawMessage) (string, bool) {
 //   - value is an array of {name, value} objects (PersistedSettingVar).
 //
 // Path resolution: platform.GetWizardStatePath — the canonical
-// <execDir>/bin/wizard_states/state.json. Do not hard-code this.
+// <DataDir>/bin/wizard_states/state.json. Do not hard-code this.
 //
 // Robust to missing file / parse errors — returns empty map and lets the
 // caller fall through to template defaults / hard-coded fallback.
-func loadStateSettingsVars(execDir string) map[string]string {
+func loadStateSettingsVars(d paths.DataDir) map[string]string {
 	out := map[string]string{}
-	path := platform.GetWizardStatePath(execDir)
+	path := platform.GetWizardStatePath(d)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		debuglog.DebugLog("varsubst: cannot read %s: %v", path, err)

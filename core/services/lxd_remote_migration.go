@@ -8,6 +8,7 @@ import (
 
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -31,14 +32,14 @@ import (
 // файлов и не делает ничего. Ошибки не фатальны — лаунчер продолжает работу,
 // просто машина откроется с пустым состоянием, а старые файлы останутся на
 // диске нетронутыми (потерять их хуже, чем не мигрировать).
-func MigrateLegacyRemoteProfile(execDir string, registry *RemoteRegistry) error {
+func MigrateLegacyRemoteProfile(dataDir paths.DataDir, registry *RemoteRegistry) error {
 	if registry == nil {
 		return nil
 	}
 
-	legacyDir := platform.GetRemoteMachineDir(execDir, "")
+	legacyDir := platform.GetRemoteMachineDir(dataDir, "")
 	legacyState := filepath.Join(legacyDir, constants.WizardStateFileName)
-	legacyConfig := filepath.Join(platform.GetBinDir(execDir), constants.LegacyRemoteConfigFileName)
+	legacyConfig := filepath.Join(dataDir.Bin(), constants.LegacyRemoteConfigFileName)
 
 	stateExists := fileExists(legacyState)
 	configExists := fileExists(legacyConfig)
@@ -64,7 +65,7 @@ func MigrateLegacyRemoteProfile(execDir string, registry *RemoteRegistry) error 
 		debuglog.WarnLog("remote migration: single registry entry has empty id; files left in place")
 		return nil
 	}
-	dstDir := platform.GetRemoteMachineDir(execDir, id)
+	dstDir := platform.GetRemoteMachineDir(dataDir, id)
 	if err := os.MkdirAll(dstDir, platform.DefaultDirMode); err != nil {
 		return fmt.Errorf("remote migration: mkdir %s: %w", dstDir, err)
 	}
@@ -83,7 +84,7 @@ func MigrateLegacyRemoteProfile(execDir string, registry *RemoteRegistry) error 
 	// Конфиг переезжает под каноническим для машины именем config.json —
 	// singleton-имя remote-config.json больше не существует.
 	if configExists {
-		if moveFile(legacyConfig, platform.GetRemoteConfigPathFor(execDir, id)) {
+		if moveFile(legacyConfig, platform.GetRemoteConfigPathFor(dataDir, id)) {
 			moved++
 		}
 	}

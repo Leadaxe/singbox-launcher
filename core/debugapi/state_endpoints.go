@@ -59,7 +59,7 @@ func (s *Server) localStateAccess() stateAccess {
 		load: s.facade.LoadState,
 		save: s.facade.SaveState,
 		mu:   &s.stateMu,
-		path: platform.GetWizardStatePath(s.facade.GetExecDir()),
+		path: platform.GetWizardStatePath(s.facade.GetLayout().Data),
 	}
 }
 

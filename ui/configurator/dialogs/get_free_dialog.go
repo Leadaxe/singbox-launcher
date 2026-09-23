@@ -23,17 +23,18 @@ import (
 	"path/filepath"
 	"time"
 
+	"image/color"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
-	"image/color"
 
 	"singbox-launcher/internal/constants"
 	internaldialogs "singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
-	"singbox-launcher/internal/platform"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/ui/components"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
@@ -64,8 +65,8 @@ const (
 // fetchOrLoadGetFree пытается обновить bin/get_free.json с pinned-ref'а
 // сборки (best-effort; ошибки не фатальны), затем читает локальный файл.
 // Если ни кэша, ни свежескачанной копии нет — возвращает ошибку.
-func fetchOrLoadGetFree(execDir string) (*getFreeData, error) {
-	binDir := platform.GetBinDir(execDir)
+func fetchOrLoadGetFree(dataDir paths.DataDir) (*getFreeData, error) {
+	binDir := dataDir.Bin()
 	target := filepath.Join(binDir, getFreeFileName)
 
 	stale := true
@@ -150,7 +151,7 @@ func ShowGetFreeVPNDialog(presenter *wizardpresentation.WizardPresenter) {
 			})
 			return
 		}
-		data, err := fetchOrLoadGetFree(ac.FileService.ExecDir)
+		data, err := fetchOrLoadGetFree(ac.FileService.Layout.Data)
 		fyne.Do(func() {
 			loading.Hide()
 			if err != nil {

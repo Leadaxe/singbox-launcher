@@ -12,6 +12,7 @@ import (
 
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/paths"
 )
 
 // GetExecutableNames returns platform-specific executable names
@@ -20,8 +21,8 @@ func GetExecutableNames() string {
 }
 
 // GetWintunPath returns the path to wintun.dll (Windows only)
-func GetWintunPath(execDir string) string {
-	return filepath.Join(execDir, constants.BinDirName, constants.WinTunDLLName)
+func GetWintunPath(d paths.DataDir) string {
+	return filepath.Join(d.Bin(), constants.WinTunDLLName)
 }
 
 // OpenFolder opens a folder in the default file manager
