@@ -260,7 +260,16 @@ func (ac *AppController) StartTemplateRefresh() {
 		}
 		// Before the gate opens: a start waiting on it must already see the
 		// marker, or its rebuild takes the no-op path and runs the old file.
-		if res.RebuildConfig && ac.StateService != nil {
+		//
+		// SPEC 135 §3.4: after a migration the copied config.json still points
+		// at the old root. The data-root stamp catches that only when the old
+		// settings.json carried one (post-135 releases); the version check is
+		// skipped on dev builds. The migration flag covers both gaps.
+		migrated := ac.FileService != nil && ac.FileService.Migration.Migrated
+		if (res.RebuildConfig || migrated) && ac.StateService != nil {
+			if migrated && !res.RebuildConfig {
+				debuglog.WarnLog("config: data migrated from %s, rebuilding config.json", ac.FileService.Migration.Source)
+			}
 			ac.StateService.MarkConfigStale()
 		}
 		if res.Downloaded && ac.UIService != nil && ac.UIService.UpdateConfigStatusFunc != nil {
