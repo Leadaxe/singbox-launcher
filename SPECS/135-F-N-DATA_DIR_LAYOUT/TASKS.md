@@ -85,5 +85,6 @@
 - [ ] `docs/ARCHITECTURE.md`, `docs/release_notes/upcoming.md` (EN/RU; порядок поиска ядра на Linux; `setcap` и `nosuid`), README про пути и очистку, `RELEASE_NOTES.md`.
 - [ ] `bin/locale/ru.json`: переводы всех новых ключей.
 - [ ] SPEC 022 и 080 → `…-C-…` со ссылкой на 135; `SPECS/README.md`.
-- [ ] Ответ в #85, ссылка из #99.
-- [ ] CI dispatch зелёный; слияние в `develop`.
+- [ ] Ответ в #85 (черновик — `ISSUE_85_REPLY.md`, публикует владелец), ссылка из #99.
+- [x] CI dispatch зелёный: run 35936117518 (ветка после слияния `develop` a6417e75) — Ubuntu, Windows, macOS.
+- [ ] Слияние в `develop` — после показа UI владельцу (его решение).
