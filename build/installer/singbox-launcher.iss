@@ -452,10 +452,14 @@ end;
 
 procedure RemoveLeftovers;
 begin
-  // Only what old unpacked copies left behind; {app} itself only when empty:
-  // the user may have picked a shared folder.
-  DelTree(ExpandConstant('{app}\bin'), True, True, True);
-  DelTree(ExpandConstant('{app}\logs'), True, True, True);
+  // Only what old unpacked copies left behind, and only in a folder of our
+  // own name: typed in by hand, {app} may be a shared folder (C:\Tools) whose
+  // bin and logs belong to someone else. {app} itself goes only when empty.
+  if CompareText(ExtractFileName(RemoveBackslash(ExpandConstant('{app}'))), '{#AppName}') = 0 then begin
+    DelTree(ExpandConstant('{app}\bin'), True, True, True);
+    DelTree(ExpandConstant('{app}\logs'), True, True, True);
+  end else
+    Log('Leftovers kept: the program folder is not named {#AppName}');
   if RemoveDir(ExpandConstant('{app}')) then
     Log('Program folder removed')
   else
