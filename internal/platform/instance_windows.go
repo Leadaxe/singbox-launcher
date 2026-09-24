@@ -59,6 +59,9 @@ func RegisterInstance(onQuit func()) {
 
 	ev, err := createNamedObject(quitEventName, quitEventSDDL, func(sa *windows.SecurityAttributes, name *uint16) (windows.Handle, error) {
 		// Ручной сброс: SetEvent будит все экземпляры сеанса, а не один.
+		// Поднятым событие не остаётся: при отмене установщик его
+		// сбрасывает (ResetEvent), иначе следующий лаунчер сеанса вышел бы
+		// сразу после старта.
 		return windows.CreateEvent(sa, 1, 0, name)
 	})
 	if err != nil {

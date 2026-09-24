@@ -179,6 +179,8 @@ function WinOpenEvent(dwDesiredAccess: DWORD; bInheritHandle: BOOL; lpName: Stri
   external 'OpenEventW@kernel32.dll stdcall';
 function WinSetEvent(hEvent: THandle): BOOL;
   external 'SetEvent@kernel32.dll stdcall';
+function WinResetEvent(hEvent: THandle): BOOL;
+  external 'ResetEvent@kernel32.dll stdcall';
 function WinCloseHandle(hObject: THandle): BOOL;
   external 'CloseHandle@kernel32.dll stdcall';
 
@@ -267,6 +269,22 @@ begin
   WinCloseHandle(H);
 end;
 
+// ResetLauncherQuit lowers the manual-reset event after Cancel: left raised,
+// it would close the next launcher of this session right after its start.
+procedure ResetLauncherQuit;
+var
+  H: THandle;
+begin
+  H := WinOpenEvent(QuitEventAccess, False, QuitEventName);
+  if H = 0 then
+    Exit;
+  if WinResetEvent(H) then
+    Log('CloseLauncher: quit event reset')
+  else
+    Log('CloseLauncher: ResetEvent failed: ' + SysErrorMessage(DLLGetLastError));
+  WinCloseHandle(H);
+end;
+
 function WaitLauncherGone: Boolean;
 var
   Waited: Integer;
@@ -318,6 +336,7 @@ begin
       end;
       if Answer <> IDIGNORE then begin
         Log('CloseLauncher: cancelled by the user');
+        ResetLauncherQuit;
         Result := False;
         Exit;
       end;
