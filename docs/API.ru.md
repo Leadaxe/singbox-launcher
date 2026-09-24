@@ -385,7 +385,7 @@ Start/stop ядра при daemon-движке идут через общие `/
 
 | Метод | Путь | Что делает |
 |---|---|---|
-| GET | `/daemon/status` | Сопряжение, служба, доступность, статус ядра, паспорт демона; `service_state` (`not_installed`\|`unsafe`\|`stale`\|`not_running`\|`process_stale`\|`ok`\|`core_too_old`), `service_path`, `service_detail` — классификатор службы (SPEC 136); при `core_too_old` (ядро лаунчера ниже lx.11) `/daemon/commands` отдаёт `install` пустым |
+| GET | `/daemon/status` | Сопряжение, служба, доступность, статус ядра, паспорт демона; `service_state` (`not_installed`\|`unsafe`\|`stale`\|`not_running`\|`process_stale`\|`ok`\|`core_too_old`), `service_path`, `service_detail` — классификатор службы (SPEC 136); при `core_too_old` (ядро лаунчера ниже lx.12) `/daemon/commands` отдаёт `install` пустым |
 | POST | `/daemon/pair` | `{invite, secret?}` — сопряжение с локальным демоном |
 | POST | `/daemon/unpair` | Забыть сопряжение (ключи, пин, секрет) |
 | PATCH | `/daemon/settings` | `{addr?, secret?}` |

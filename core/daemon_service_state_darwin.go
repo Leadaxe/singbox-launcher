@@ -71,11 +71,14 @@ const (
 	// launchdNotLoaded — LaunchdState, когда launchd службу не знает.
 	launchdNotLoaded = "not loaded"
 	// minCoreForRootOwnedService — первое ядро форка, чей `lxd
-	// --service=install` копирует себя в root-owned файл и переводит plist на
-	// копию (с ним же — `--service=copy`, SPEC 137). Ядро ниже на той же
-	// команде пишет в plist СВОЙ путь — файл пользователя в DataDir или
-	// бандле: это откат к дыре §1, поэтому такой команды лаунчер не даёт.
-	minCoreForRootOwnedService = "1.14.1-lx.11"
+	// --service=install` копирует себя в каноническую root-owned копию
+	// (daemonServiceCorePath) и переводит plist на неё (с ним же —
+	// `--service=copy`, SPEC 137). Его пре-релизы (lx.12-rc1) уже кладут
+	// копию туда же и гейт проходят. lx.11 (dev-сборки) копировал в раннюю
+	// раскладку — у нас это Unsafe (legacy); ядро до lx.11 пишет в plist
+	// СВОЙ путь — файл пользователя в DataDir или бандле: откат к дыре §1.
+	// Таким ядрам команды лаунчер не даёт.
+	minCoreForRootOwnedService = "1.14.1-lx.12"
 )
 
 // daemonServiceCorePath — каноническая root-owned копия ядра службы.
@@ -240,15 +243,17 @@ func serviceCoreGate(version string) error {
 	return &serviceCoreTooOldError{version: version}
 }
 
-// coreSupportsRootOwnedCopy — version ≥ minCoreForRootOwnedService.
-// Неразборчивая версия (пусто, dev-сборка "unknown", апстрим без -lx.N) —
-// не умеет: безопасный дефолт.
+// coreSupportsRootOwnedCopy — version ≥ minCoreForRootOwnedService по базе
+// и номеру lx; пре-релиз порогового релиза (lx.12-rc1) проходит — копия у
+// него уже каноническая. Неразборчивая версия (пусто, dev-сборка
+// "unknown", апстрим без -lx.N) — не умеет: безопасный дефолт.
 func coreSupportsRootOwnedCopy(version string) bool {
 	have, ok := parseCoreBuild(version)
 	if !ok {
 		return false
 	}
 	want, _ := parseCoreBuild(minCoreForRootOwnedService)
+	have.pre, have.preNum = false, 0
 	return compareCoreBuilds(have, want) >= 0
 }
 

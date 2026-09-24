@@ -61,26 +61,32 @@
 | **NotRunning** | файлы как у OK (plist на безопасную копию, sha совпал), но `launchctl print system/com.leadaxe.sing-box-lxd` (без sudo, таймаут 2 с, без кэша) — службы нет (exit 113) или `state` ≠ `running` | жёлтая плашка «The service is installed but not running» с командой `sudo launchctl bootstrap system /Library/LaunchDaemons/com.leadaxe.sing-box-lxd.plist` — **не** install; WARN перед apply |
 | **ProcessStale** | файл совпал, но работающий локальный демон отвечает `executable_sha256` ≠ sha256(копии) или `executable` ≠ каноническому пути; у ядра без этих полей (lx.8/lx.10) — `version` ≠ версии ядра лаунчера | жёлтая плашка |
 | **OK** | иначе | ничего |
-| **CoreTooOld** (`core_too_old`) | вердикт выше — Unsafe, Stale или ProcessStale (лечится install), но ядро лаунчера ниже `minCoreForRootOwnedService` = **1.14.1-lx.11** или его версия не разбирается (§4.1) | плашка без команды: «The launcher core (…) is older than 1.14.1-lx.11 and cannot install a root-owned service. Update the core first (Core → Download v<пин>), then install or update the service.»; поверх Unsafe — красная, иначе жёлтая |
+| **CoreTooOld** (`core_too_old`) | вердикт выше — Unsafe, Stale или ProcessStale (лечится install), но ядро лаунчера ниже `minCoreForRootOwnedService` = **1.14.1-lx.12** (его пре-релизы, `lx.12-rc1`, проходят) или его версия не разбирается (§4.1) | плашка без команды: «The launcher core (…) is older than 1.14.1-lx.12 and cannot install a root-owned service. Update the core first: Local tab → Download/Reinstall v<пин>, then install or update the service.»; поверх Unsafe — красная, иначе жёлтая |
 
 ### 4.1 Гейт команд по ядру лаунчера (приёмка 24.09.2026)
 
 Команду install (и copy SPEC 137) исполняет под sudo **ядро лаунчера**. До
 lx.11 оно себя не копирует и пишет в plist свой путь — файл пользователя в
-DataDir или бандле: это возврат к дыре §1. Дефект приёмки: служба на копии
+DataDir или бандле: это возврат к дыре §1. lx.11 (dev-сборки, пользователям
+не выдавался) копирует себя в раннюю раскладку `com.leadaxe.sing-box-lxd` —
+у нас это Unsafe (legacy). Каноническую копию кладёт lx.12 (и его rc), пин —
+lx.12. Дефект приёмки: служба на копии
 1.14.1-lx.12-rc1, ядро лаунчера — 1.14.1-lx.8, плашка звала обновить службу
 «на текущее ядро» командой от lx.8.
 
 - Признак «ядро умеет root-owned копию» — версия ядра лаунчера
   (`sing-box version`, кэш по `(dev, inode, size, mtime)` файла: диалог после
   скачивания зовётся до сброса сессионного кэша версии, dev-сборки кладут
-  руками) ≥ `minCoreForRootOwnedService`. Разбор — база `X.Y.Z` и `-lx.N`
-  числом, пре-релиз ниже релиза той же базы: `lx.12-rc1` выше `lx.11`,
-  но ниже `lx.12`. `CompareVersions` для этого не годится: он сравнивает
-  только базу (`lx.10` == `lx.11`). Неразборчивая версия (пусто, `unknown` у
+  руками) ≥ `minCoreForRootOwnedService` = `1.14.1-lx.12` по базе и номеру
+  lx; пре-релиз порогового релиза проходит (`lx.12-rc1` — копия у него уже
+  каноническая), `lx.11` и `lx.11-rc*` — нет. Разбор — база `X.Y.Z` и
+  `-lx.N` числом, пре-релиз ниже релиза той же базы: `lx.12-rc1` выше
+  `lx.11`, но ниже `lx.12`. `CompareVersions` для этого не годится: он
+  сравнивает только базу (`lx.10` == `lx.11`). Неразборчивая версия (пусто, `unknown` у
   dev-сборки, апстрим без `-lx.N`) — **не умеет**.
 - Гейт один (`serviceCoreGate`), через него идут все каналы команды:
-  плашка и шаг 1 вкладки Install (вместо строки — подсказка обновить ядро),
+  плашка и шаг 1 вкладки Install (вместо строки — подсказка обновить ядро
+  кнопкой «Download v…» / «Reinstall v…» на вкладке Local),
   диалог после обновления ядра (не показывается), модальное предупреждение
   §6 (текст с подсказкой, без команды), classic-гейт SPEC 137 (диалог
   «missing / outdated / not protected» с подсказкой вместо команды copy или
@@ -125,7 +131,7 @@ ProcessStale для ядра без `executable_sha256` (значения `""` �
 
 | Операция | Команда | Бинарь |
 |---|---|---|
-| **Install or update service** | `sudo '<bin>' lxd --service=install` | всегда `SingboxPath`: ядро копирует **себя**; только ядро ≥ lx.11, иначе команды нет (§4.1) |
+| **Install or update service** | `sudo '<bin>' lxd --service=install` | всегда `SingboxPath`: ядро копирует **себя**; только ядро ≥ lx.12 (и его rc), иначе команды нет (§4.1) |
 | Uninstall (вкладка Uninstall, Debug API) | `sudo '<bin>' lxd --service=uninstall --keep-copy [--purge]` | копия, если plist указывает на неё и цепочка безопасна; иначе `SingboxPath`. `--keep-copy`: копию запускает classic-старт с TUN (SPEC 137) |
 | Uninstall при удалении данных | `sudo '<bin>' lxd --service=uninstall --purge` | то же правило; без `--keep-copy` — копия уходит вместе с данными (§7) |
 | Свежее приглашение | `sudo '<bin>' lxd client add --name singbox-launcher` | то же правило, что у Uninstall |
@@ -140,7 +146,7 @@ ProcessStale для ядра без `executable_sha256` (значения `""` �
 `notifyDaemonServiceAfterCoreUpdate`): условие — plist существует (в любом
 движке: служба запускается launchd и без лаунчера) и вердикт по файлам не OK
 (скачано то же ядро, что уже в копии, — диалога нет); вместо kickstart
-показывает ту же команду install. Скачанное ядро ниже lx.11 — диалога нет,
+показывает ту же команду install. Скачанное ядро ниже lx.12 — диалога нет,
 WARN в лог (§4.1).
 
 ## 6. UI (`ui/connection_local_daemon_darwin.go`)
@@ -161,13 +167,13 @@ WARN в лог (§4.1).
   OK и NotInstalled — плашки нет.
 - Строка «Restart the service (after a core update)» (kickstart) убрана.
 - Вкладка **Install**, шаг 1 — «Install or update the service»; ядро
-  лаунчера ниже lx.11 — вместо строки подсказка обновить ядро.
+  лаунчера ниже lx.12 — вместо строки подсказка обновить ядро.
 - Строка статуса про ядро без lxd — без номера релиза (граница фичи
   проверяется запуском бинаря, не номером).
 - **Модальное предупреждение** при Unsafe — одно на версию лаунчера:
   на старте, когда окно видно (как уведомления SPEC 135), в любом движке;
   флаг `daemon_unsafe_notice_version` в `settings.json` хранит версию, на
-  которой показано. Ядро лаунчера ниже lx.11 — то же предупреждение без
+  которой показано. Ядро лаунчера ниже lx.12 — то же предупреждение без
   команды, с подсказкой обновить ядро (после обновления команду даст диалог
   «Core updated»).
 - **WARN в лог** перед каждым apply daemon-движка, если служба не OK.
@@ -187,9 +193,9 @@ WARN в лог (§4.1).
 (`not_installed|unsafe|stale|not_running|process_stale|ok|core_too_old`),
 `service_path` (`ProgramArguments[0]`) и `service_detail` (английская
 причина для диагностики; у `core_too_old` — версия ядра лаунчера, порог
-lx.11 и исходный вердикт). Аддитивно, старые поля не меняются.
+lx.12 и исходный вердикт). Аддитивно, старые поля не меняются.
 `GET /daemon/commands` отдаёт `install` пустым, пока ядро лаунчера ниже
-lx.11 (§4.1), — в том числе при `not_installed`.
+lx.12 (§4.1), — в том числе при `not_installed`.
 
 ## 9. Ручная проверка (Mac владельца, ядро lx.11)
 
@@ -219,14 +225,15 @@ lx.11 (§4.1), — в том числе при `not_installed`.
 4. **Отрицательный.** Подменить ядро в DataDir (другая сборка) → Refresh →
    жёлтая Stale-плашка «runs a different core (…) than the launcher (…)» с
    разными sha; команда — возврат в OK.
-   **Ядро лаунчера ниже lx.11** (§4.1). Служба на копии lx.12, в DataDir —
-   ядро lx.8 (или dev-сборка с `version unknown`) → Refresh → плашка «The
-   launcher core (1.14.1-lx.8) is older than 1.14.1-lx.11 … Update the core
-   first (Core → Download v1.14.1-lx.12) …» **без строки команды**; на
+   **Ядро лаунчера ниже lx.12** (§4.1). Служба на копии lx.12, в DataDir —
+   ядро lx.8 (или lx.11, или dev-сборка с `version unknown`) → Refresh →
+   плашка «The launcher core (1.14.1-lx.8) is older than 1.14.1-lx.12 …
+   Update the core first: Local tab → Download/Reinstall v1.14.1-lx.12 …»
+   **без строки команды**; на
    вкладке Install вместо шага 1 та же подсказка; `GET /daemon/status` →
    `"service_state": "core_too_old"`, `GET /daemon/commands` → `"install": ""`;
    Start в classic с TUN при отстающей копии — диалог без команды и без
-   Retry. Скачать ядро (Core → Download) → диалог «Core updated» с командой
+   Retry. Вкладка Local → «Reinstall v1.14.1-lx.12» → диалог «Core updated» с командой
    install → команда → OK.
    **Не запущена.** `sudo launchctl bootout system/com.leadaxe.sing-box-lxd`
    → Refresh → жёлтая плашка «The service is installed but not running»

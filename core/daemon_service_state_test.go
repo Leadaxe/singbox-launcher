@@ -388,9 +388,9 @@ func TestDaemonServiceCommandQuoting(t *testing.T) {
 }
 
 // TestServiceCoreVersionGate — сравнение версий ядра форка и граница
-// «ядро умеет root-owned копию» (minCoreForRootOwnedService = lx.11):
-// номер lx числом, пре-релиз ниже релиза той же базы, неразборчивая
-// версия — не умеет.
+// «ядро умеет root-owned копию» (minCoreForRootOwnedService = lx.12):
+// номер lx числом, пре-релиз ниже релиза той же базы (но rc порогового
+// lx.12 гейт проходит), неразборчивая версия — не умеет.
 func TestServiceCoreVersionGate(t *testing.T) {
 	for _, tc := range []struct {
 		a, b string
@@ -418,22 +418,23 @@ func TestServiceCoreVersionGate(t *testing.T) {
 		}
 	}
 	for version, want := range map[string]bool{
-		"1.14.1-lx.8":      false,
-		"1.14.1-lx.10":     false,
-		"1.14.1-lx.11-rc1": false,
-		"1.14.1-lx.11":     true,
-		"1.14.1-lx.12-rc1": true,
-		"1.14.1-lx.12":     true,
-		"v1.14.1-lx.12":    true,
-		"1.14.0-lx.40":     false,
-		"1.15.0-lx.1":      true,
-		"1.14.1":           false, // апстрим: lxd нет вовсе
-		"unknown":          false, // dev-сборка
-		"unnamed-dev":      false,
-		"v-local-test":     false,
-		"1.14.1-lx.":       false,
-		"1.14.1-lx.12x":    false,
-		"":                 false,
+		"1.14.1-lx.8":       false,
+		"1.14.1-lx.10":      false,
+		"1.14.1-lx.11-rc1":  false,
+		"1.14.1-lx.11":      false, // ранняя раскладка — Unsafe (legacy)
+		"1.14.1-lx.12-rc1":  true,
+		"1.14.1-lx.12-rc.2": true,
+		"1.14.1-lx.12":      true,
+		"v1.14.1-lx.12":     true,
+		"1.14.0-lx.40":      false,
+		"1.15.0-lx.1":       true,
+		"1.14.1":            false, // апстрим: lxd нет вовсе
+		"unknown":           false, // dev-сборка
+		"unnamed-dev":       false,
+		"v-local-test":      false,
+		"1.14.1-lx.":        false,
+		"1.14.1-lx.12x":     false,
+		"":                  false,
 	} {
 		if got := coreSupportsRootOwnedCopy(version); got != want {
 			t.Fatalf("coreSupportsRootOwnedCopy(%q) = %v, want %v", version, got, want)
@@ -446,7 +447,7 @@ func TestServiceCoreVersionGate(t *testing.T) {
 
 // TestDaemonServiceCoreTooOld — живой дефект приёмки SPEC 136: служба на
 // root-owned копии lx.12-rc1, ядро лаунчера lx.8 (до lx.11 install пишет в
-// plist свой путь в DataDir). Ни один канал не отдаёт команду: плашка
+// plist свой путь в DataDir, lx.11 — копию в раннюю раскладку). Ни один канал не отдаёт команду: плашка
 // (вердикт без install/bootstrap), диалог после обновления ядра, модальное
 // предупреждение и classic-гейт (daemonInstallCommandFor /
 // privilegedCopyCommandFor), Debug API /daemon/commands. Ядро lx.12 при
@@ -485,8 +486,8 @@ func TestDaemonServiceCoreTooOld(t *testing.T) {
 	if !c.CopyUsable() || c.CopyVersion != "1.14.1-lx.12-rc1" || c.LauncherVersion != oldCore {
 		t.Fatalf("usable=%v copy %q launcher %q", c.CopyUsable(), c.CopyVersion, c.LauncherVersion)
 	}
-	// Версия не читается (dev-сборка, нет ядра) — тот же отказ.
-	for _, version := range []string{"", "unknown"} {
+	// Версия не читается (dev-сборка, нет ядра) или lx.11 — тот же отказ.
+	for _, version := range []string{"", "unknown", "1.14.1-lx.11"} {
 		noCommand(t, classifyDaemonServiceFiles(l.daemonServiceLayout, l.launcherCore, version, &hashes), DaemonServiceStale)
 	}
 
@@ -521,7 +522,7 @@ func TestDaemonServiceCoreTooOld(t *testing.T) {
 	noCommand(t, c, DaemonServiceProcessStale)
 
 	// Команды: install (плашка, вкладка Install, модальное предупреждение)
-	// и copy/install classic-гейта — только для ядра lx.11+.
+	// и copy/install classic-гейта — только для ядра lx.12+.
 	for _, withPlist := range []bool{false, true} {
 		if withPlist {
 			writeTestPlist(t, l.PlistPath, l.CorePath)
@@ -540,7 +541,7 @@ func TestDaemonServiceCoreTooOld(t *testing.T) {
 	}
 
 	// Debug API /daemon/commands на настоящем «ядре»: версию лаунчер берёт
-	// из `sing-box version`, install пуст, пока ядро ниже lx.11.
+	// из `sing-box version`, install пуст, пока ядро ниже lx.12.
 	for version, wantInstall := range map[string]bool{oldCore: false, "unknown": false, newCore: true} {
 		fake := filepath.Join(t.TempDir(), "sing-box")
 		writeTestFile(t, fake, "#!/bin/sh\necho 'sing-box version "+version+"'\n")

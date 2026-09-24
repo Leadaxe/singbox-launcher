@@ -43,7 +43,7 @@
 - [x] Ссылка из SPEC 135 §5.1; запись в `SPECS/README.md`.
 
 ## Приёмка
-- [x] Дефект приёмки 24.09 (§4.1): команды install/copy — только от ядра лаунчера ≥ lx.11, иначе `core_too_old` и подсказка обновить ядро во всех каналах (плашка, Install, диалог после обновления ядра, модальное предупреждение, classic-гейт, Debug API); текст Stale/ProcessStale нейтральный («a different core»); `TestServiceCoreVersionGate`, `TestDaemonServiceCoreTooOld`.
+- [x] Дефект приёмки 24.09 (§4.1): команды install/copy — только от ядра лаунчера ≥ lx.12 (и его rc; lx.11 клал копию в раннюю раскладку), иначе `core_too_old` и подсказка обновить ядро во всех каналах (плашка, Install, диалог после обновления ядра, модальное предупреждение, classic-гейт, Debug API); текст Stale/ProcessStale нейтральный («a different core»); `TestServiceCoreVersionGate`, `TestDaemonServiceCoreTooOld`.
 - [ ] Ядро lx.12 собрано; ручная проверка SPEC §9 на Mac владельца.
 - [ ] CI `run_mode=tests` зелёный (macOS: `sh -n`, `osascript`).
 - [x] `RequiredCoreVersion` → lx.12 — отдельным коммитом `chore(core): pin sing-box-lx 1.14.1-lx.12` при слиянии в develop.

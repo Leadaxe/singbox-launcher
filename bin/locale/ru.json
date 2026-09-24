@@ -4541,11 +4541,11 @@
   "The service runs a different core (%s) than the launcher (%s). Install or update the service to switch it to the launcher core.": {
     "value": "Служба запускает другое ядро (%s), не ядро лаунчера (%s). Установите или обновите службу, чтобы перевести её на ядро лаунчера."
   },
-  "The launcher core (%s) is older than %s and cannot install a root-owned service. Update the core first (Core → Download v%s), then install or update the service.": {
-    "value": "Версия ядра лаунчера (%s) ниже %s: оно не умеет ставить службу на копию, принадлежащую root. Сначала обновите ядро (Core → Скачать v%s), затем установите или обновите службу."
+  "The launcher core (%s) is older than %s and cannot install a root-owned service. Update the core first: Local tab → Download/Reinstall v%s, then install or update the service.": {
+    "value": "Версия ядра лаунчера (%s) ниже %s: оно не умеет ставить службу на копию, принадлежащую root. Сначала обновите ядро: вкладка «Локально» → «Скачать/Переустановить v%s», затем установите или обновите службу."
   },
-  "The launcher core (%s) is not a numbered sing-box-lx release, so the launcher cannot confirm it installs a root-owned service. Update the core first (Core → Download v%s), then install or update the service.": {
-    "value": "Ядро лаунчера (%s) — не нумерованный релиз sing-box-lx, и лаунчер не может убедиться, что оно ставит службу на копию, принадлежащую root. Сначала обновите ядро (Core → Скачать v%s), затем установите или обновите службу."
+  "The launcher core (%s) is not a numbered sing-box-lx release, so the launcher cannot confirm it installs a root-owned service. Update the core first: Local tab → Download/Reinstall v%s, then install or update the service.": {
+    "value": "Ядро лаунчера (%s) — не нумерованный релиз sing-box-lx, и лаунчер не может убедиться, что оно ставит службу на копию, принадлежащую root. Сначала обновите ядро: вкладка «Локально» → «Скачать/Переустановить v%s», затем установите или обновите службу."
   },
   "The service has no core binary to run. Install or update the service to restore it.": {
     "value": "У службы нет бинаря ядра для запуска. Установите или обновите службу, чтобы восстановить его."

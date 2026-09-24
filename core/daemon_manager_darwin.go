@@ -29,8 +29,10 @@ const (
 	daemonCoreUpdatedBodyText = "The daemon service still runs the previous core. Run this command in Terminal to install the new core into the service and restart it (it asks for your sudo password):"
 	// Подсказка вместо команды install/copy, пока ядро лаунчера не умеет
 	// root-owned копию (serviceCoreGate).
-	daemonServiceCoreTooOldText  = "The launcher core (%s) is older than %s and cannot install a root-owned service. Update the core first (Core → Download v%s), then install or update the service."
-	daemonServiceCoreUnknownText = "The launcher core (%s) is not a numbered sing-box-lx release, so the launcher cannot confirm it installs a root-owned service. Update the core first (Core → Download v%s), then install or update the service."
+	// Кнопка ядра на вкладке Local: «Download v…», когда ядра нет, и
+	// «Reinstall v…», когда стоит другая версия (core_dashboard_tab_status.go).
+	daemonServiceCoreTooOldText  = "The launcher core (%s) is older than %s and cannot install a root-owned service. Update the core first: Local tab → Download/Reinstall v%s, then install or update the service."
+	daemonServiceCoreUnknownText = "The launcher core (%s) is not a numbered sing-box-lx release, so the launcher cannot confirm it installs a root-owned service. Update the core first: Local tab → Download/Reinstall v%s, then install or update the service."
 )
 
 // Управление launchd-службой демона `sing-box lxd` (задача 057 форка,
@@ -251,8 +253,9 @@ func (ac *AppController) launcherCoreVersion() string {
 }
 
 // DaemonServiceCoreHint — подсказка вместо команды install/copy, пока ядро
-// лаунчера версии version не умеет root-owned копию: обновить ядро на
-// вкладке Core (закреплённая версия), затем установить службу. Без команды.
+// лаунчера версии version не умеет root-owned копию: обновить ядро кнопкой
+// на вкладке Local (закреплённая версия), затем установить службу. Без
+// команды.
 func DaemonServiceCoreHint(version string) string {
 	if _, ok := parseCoreBuild(version); ok {
 		return locale.Tf(daemonServiceCoreTooOldText, version, minCoreForRootOwnedService, constants.RequiredCoreVersion)
@@ -629,8 +632,8 @@ func (ac *AppController) DaemonRepairCommand() string {
 
 // DaemonInstallCommand — «Install or update service» (SPEC 136 §5): одна
 // команда для первой установки, старого небезопасного plist и обновления
-// после скачивания ядра. Бинарь — всегда ядро лаунчера: ядро lx.11+ копирует
-// СЕБЯ в root-owned каталог службы и переписывает plist на копию
+// после скачивания ядра. Бинарь — всегда ядро лаунчера: ядро lx.12+ копирует
+// СЕБЯ в root-owned копию службы и переписывает plist на копию
 // (идемпотентно по sha, daemon.json и клиенты сохраняются, служба
 // перезапускается). Никаких параметров: install сам выбирает loopback-порт
 // (19091+, либо адрес существующей установки), генерирует секрет, включает
