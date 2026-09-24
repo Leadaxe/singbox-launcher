@@ -1,0 +1,25 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "congestion_control": "bbr",
+        "password": "testpass123",
+        "server": "example-3.com",
+        "server_port": 443,
+        "tls": {
+          "alpn": [
+            "h3"
+          ],
+          "disable_sni": true,
+          "enabled": true
+        },
+        "type": "tuic",
+        "uuid": "33333333-4444-5555-6666-777777777777"
+      },
+      "kind": "outbound",
+      "label": "tuic-disable-sni",
+      "scheme": "tuic"
+    }
+  ],
+  "v": 1
+}

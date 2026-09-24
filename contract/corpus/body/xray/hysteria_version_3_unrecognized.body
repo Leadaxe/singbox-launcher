@@ -1,0 +1,7 @@
+# Xray-элемент hysteria с `version: 3` — версия ВНЕ {1, 2}. По D133-28 версию читает
+# `detect` СЕКЦИИ, и такой элемент не опознаётся ни одной: узлом он не становится.
+# Прежний конвертер отказывал своим кодом «unsupported hysteria version N», движок —
+# общим кодом неопознанного элемента; исход для пользователя тот же (узла нет).
+# Кейс заведён ревизией зеркала §3 п.1: у LxBox `json.key_absent`/`type_of` исполняются
+# иначе, и элемент с version: 3 давал у него узел v1 — чего D133-28 прямо запрещает.
+[{"remarks": "hy3", "outbounds": [{"tag": "proxy", "protocol": "hysteria", "settings": {"address": "hy.example", "port": 443, "version": 3}, "streamSettings": {"hysteriaSettings": {"version": 3, "auth": "pw"}}}]}]

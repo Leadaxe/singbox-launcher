@@ -1,0 +1,19 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "password": "testpass123",
+        "server": "tj.example",
+        "server_port": 443,
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "tj-bare",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

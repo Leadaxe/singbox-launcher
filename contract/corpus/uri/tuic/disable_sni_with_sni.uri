@@ -1,0 +1,10 @@
+# `sni` ЗАДАН явно И `disable_sni=1`: расширение SNI не отправляется вовсе, значит имени
+# сервера в теле быть НЕ ДОЛЖНО, а сам флаг — должен (D133-3, G2). Ждём tls без
+# server_name и `disable_sni: true`.
+#
+# Кейс заведён задачей 532 LxBox (Dart-движок приводили к MAPPER_ENGINE §7.1): при
+# ПРАВИЛЬНОЙ §7.1 запись блока `tls#uri` не изымается, когда `when` записи схемы не
+# совпал, и её `default_from: host` возвращает снятый server_name обратно — identity
+# узла ехала 7e4334b9… → 87b72b21…. Семантически прав LxBox: disable_sni=1 ⇒
+# server_name отсутствует. Кейс закрепляет это для ОБЕИХ сторон.
+tuic://33333333-4444-5555-6666-777777777777:testpass123@example-3.com:443?congestion_control=bbr&alpn=h3&sni=cover.example-3.com&disable_sni=1#tuic-disable-sni
