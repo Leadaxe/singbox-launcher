@@ -22,6 +22,7 @@ import (
 
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/lxdclient"
+	"singbox-launcher/internal/platform"
 )
 
 // Классификатор состояния launchd-службы демона (SPEC 136).
@@ -32,20 +33,25 @@ import (
 // сверяет sha256 копии с ядром лаунчера и с тем, что отвечает работающий
 // демон. Всё читается без root: plist и сайдкар 0644, копия 0755.
 //
-// Раскладка lx.11 (решение владельца 24.09.2026): копия — плоский файл
-// /Library/PrivilegedHelperTools/<label>, сайдкар — <копия>.install.json;
-// каталога службы нет. Цепочка владения: /Library → PrivilegedHelperTools →
-// файл.
+// Раскладка (решение владельца 24.09.2026, ядро lx.12): копия — плоский
+// файл /Library/PrivilegedHelperTools/sing-box-lxd, сайдкар —
+// <копия>.install.json; каталога службы нет. Цепочка владения: /Library →
+// PrivilegedHelperTools → файл. Ранние сборки lx.11 клали копию в
+// /Library/PrivilegedHelperTools/<label>/sing-box или в плоский
+// /Library/PrivilegedHelperTools/<label> — это legacy: убрать `sudo rm -rf`.
 
 const (
 	// daemonServiceChainRoot — верх цепочки владения копии: от него вниз до
 	// файла каждое звено обязано быть root-owned без g/o-записи.
 	daemonServiceChainRoot = "/Library"
 	// daemonServiceHelperToolsDir — каталог привилегированных помощников
-	// macOS (root:wheel 1755); копия лежит в нём плоским файлом с именем
-	// ярлыка службы (platform.PrivilegedCopyName — то же имя, тест держит их
-	// вместе).
+	// macOS (root:wheel 1755); копия лежит в нём плоским файлом
+	// platform.PrivilegedCopyName (`sing-box-lxd` — так же зовётся процесс).
 	daemonServiceHelperToolsDir = "/Library/PrivilegedHelperTools"
+	// daemonServiceLegacyCopyPath — раскладка ранних сборок lx.11: каталог
+	// <label>/ с sing-box внутри или плоский файл <label>. Не используется;
+	// лаунчер советует её удалить.
+	daemonServiceLegacyCopyPath = daemonServiceHelperToolsDir + "/" + daemonLaunchdLabel
 	// daemonServiceSidecarSuffix — сайдкар установки рядом с копией,
 	// <копия>.install.json (root:wheel 0644):
 	// {source, sha256, version, installed_at, plist_path, label}.
@@ -67,7 +73,24 @@ const (
 
 // daemonServiceCorePath — каноническая root-owned копия ядра службы.
 func daemonServiceCorePath() string {
-	return filepath.Join(daemonServiceHelperToolsDir, daemonLaunchdLabel)
+	return filepath.Join(daemonServiceHelperToolsDir, platform.PrivilegedCopyName)
+}
+
+// isLegacyCopyPath — path — копия ранней раскладки lx.11 (legacy — сам
+// файл или что-то внутри каталога <label>/).
+func isLegacyCopyPath(path, legacy string) bool {
+	if legacy == "" {
+		return false
+	}
+	path = filepath.Clean(path)
+	legacy = filepath.Clean(legacy)
+	return path == legacy || strings.HasPrefix(path, legacy+string(filepath.Separator))
+}
+
+// legacyCopyRemoveCommand — команда удаления остатков ранней раскладки:
+// сам путь (файл или каталог) и сайдкар плоского варианта.
+func legacyCopyRemoveCommand(legacy string) string {
+	return "sudo rm -rf " + shellQuote(legacy) + " " + shellQuote(daemonServiceSidecarPath(legacy))
 }
 
 // daemonServiceSidecarPath — сайдкар установки копии corePath.
@@ -155,16 +178,19 @@ func (c DaemonServiceCheck) CopyUsable() bool {
 type daemonServiceLayout struct {
 	PlistPath string
 	CorePath  string
-	ChainRoot string
-	OwnerUID  uint32
+	// LegacyPath — копия ранней раскладки lx.11 (<label>/ или <label>).
+	LegacyPath string
+	ChainRoot  string
+	OwnerUID   uint32
 }
 
 func systemDaemonServiceLayout() daemonServiceLayout {
 	return daemonServiceLayout{
-		PlistPath: daemonSystemPlistPath(),
-		CorePath:  daemonServiceCorePath(),
-		ChainRoot: daemonServiceChainRoot,
-		OwnerUID:  0,
+		PlistPath:  daemonSystemPlistPath(),
+		CorePath:   daemonServiceCorePath(),
+		LegacyPath: daemonServiceLegacyCopyPath,
+		ChainRoot:  daemonServiceChainRoot,
+		OwnerUID:   0,
 	}
 }
 
@@ -193,6 +219,10 @@ func inspectDaemonServiceDefinition(l daemonServiceLayout) DaemonServiceCheck {
 	if filepath.Clean(servicePath) != filepath.Clean(l.CorePath) {
 		c.State = DaemonServiceUnsafe
 		c.Detail = fmt.Sprintf("the service runs %s, not the root-owned copy %s", servicePath, l.CorePath)
+		if isLegacyCopyPath(servicePath, l.LegacyPath) {
+			c.Detail = fmt.Sprintf("the service runs %s, a copy in the legacy layout of early lx.11 builds: run Install or update service, then remove it (%s)",
+				servicePath, legacyCopyRemoveCommand(l.LegacyPath))
+		}
 		return c
 	}
 	if err := checkRootOwnedChain(l.CorePath, l.ChainRoot, l.OwnerUID); err != nil {
@@ -249,9 +279,7 @@ func checkRootOwnedEntry(path string, ownerUID uint32, wantDir bool) error {
 	case wantDir && !fi.IsDir():
 		return fmt.Errorf("%s is not a directory", path)
 	case !wantDir && fi.IsDir():
-		// Ранние сборки lx.11 клали копию в каталог службы
-		// (<label>/sing-box): на месте плоского файла — каталог.
-		return fmt.Errorf("%s is a directory: legacy layout of the root-owned copy, remove it (sudo rm -rf %s) and run the command again",
+		return fmt.Errorf("%s is a directory, not the copy file: remove it (sudo rm -rf %s) and run the command again",
 			path, shellQuote(path))
 	case !wantDir && !mode.IsRegular():
 		return fmt.Errorf("%s is not a regular file", path)

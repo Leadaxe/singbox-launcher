@@ -6,7 +6,7 @@
 - [x] SPEC.md, PLAN.md, TASKS.md.
 
 ## Этап 2 · Классификатор
-- [x] Константы раскладки lx.11: каталог службы, `sing-box`, `install.json`, корень цепочки `/Library` (24.09 — заменено плоским файлом `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd` и сайдкаром `….install.json`, коммит в ветке SPEC 137).
+- [x] Константы раскладки lx.11: каталог службы, `sing-box`, `install.json`, корень цепочки `/Library` (24.09 — заменено плоским файлом `/Library/PrivilegedHelperTools/sing-box-lxd` и сайдкаром `sing-box-lxd.install.json`, ядро lx.12; коммиты в ветке SPEC 137).
 - [x] `inspectDaemonServiceDefinition`: NotInstalled / Unsafe (plist, путь, цепочка `Lstat`).
 - [x] `compareDaemonServiceFiles`: Stale по sha (кэш `(dev, inode, size, mtime)`), отсутствующая копия.
 - [x] `compareDaemonServiceProcess`: ProcessStale по `executable_sha256`/`executable`, запасной путь по версии.

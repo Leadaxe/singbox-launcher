@@ -67,7 +67,7 @@ gRPC для daemon), поэтому список серверов одинако
 
 `<ядро-лаунчера>` — ядро, которым пользуется лаунчер (Settings → Storage → Core).
 `<ядро-службы>` — root-owned копия службы (§2.1), если служба на ней, иначе ядро
-лаунчера. `--keep-copy` (ядро lx.11+) снимает plist и задание launchd, а
+лаунчера. `--keep-copy` (ядро lx.12+) снимает plist и задание launchd, а
 копию и её `.install.json` оставляет — её запускает старт TUN в classic (§2.2).
 **Remove all data…** предлагает полный uninstall без него: копия уходит вместе с
 данными.
@@ -86,13 +86,13 @@ launchd запускает службу от root. Прежние ядра за�
 учётной записи, так что любая программа, работающая от вашего имени, могла подменить
 файл и получить root на ближайшем старте службы.
 
-С ядра **1.14.1-lx.11** команда установки копирует ядро в место, принадлежащее root,
+С ядра **lx.12** команда установки копирует ядро в место, принадлежащее root,
 и переписывает plist на копию:
 
 | Что | Где |
 |---|---|
-| Копия ядра | плоский файл `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd` (`root:wheel 0755`); каталога службы нет |
-| Запись установки | `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd.install.json` (`root:wheel 0644`): источник, sha256, версия, время, plist, метка |
+| Копия ядра | плоский файл `/Library/PrivilegedHelperTools/sing-box-lxd` (`root:wheel 0755`, ядро lx.12+); каталога службы нет; процесс под root зовётся `sing-box-lxd` |
+| Запись установки | `/Library/PrivilegedHelperTools/sing-box-lxd.install.json` (`root:wheel 0644`): источник, sha256, версия, время, plist, метка |
 
 Одна команда на все случаи — первая установка, старый plist на ваши файлы,
 обновление ядра: `sudo <ядро-лаунчера> lxd --service=install`. Она идемпотентна
@@ -106,7 +106,7 @@ launchd запускает службу от root. Прежние ядра за�
 | Состояние | Что значит | Как показано |
 |---|---|---|
 | не установлена | plist нет | ничего |
-| небезопасна | plist не на копию, либо копия, `/Library/PrivilegedHelperTools` или `/Library` — симлинк, не root, или пишутся группой/остальными; каталог на месте копии (ранняя раскладка `<label>/sing-box`) — «legacy layout, remove it» | красным, с командой; диалог раз на версию лаунчера; WARN в логе перед каждым apply |
+| небезопасна | plist не на копию, либо копия, `/Library/PrivilegedHelperTools` или `/Library` — симлинк, не root, или пишутся группой/остальными; plist на раскладку dev-сборок lx.11 (`/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/` или плоский `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd`) — «legacy layout: install, затем удалить: `sudo rm -rf /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd.install.json`» | красным, с командой; диалог раз на версию лаунчера; WARN в логе перед каждым apply |
 | устарела | копия отличается от ядра лаунчера (sha256) или её нет | жёлтым, с командой |
 | не запущена | файлы в порядке (plist на безопасную копию, sha256 совпал), но launchd службу не держит: не загружена или `state` ≠ `running` (`launchctl print`, без sudo) | жёлтым, с командой `sudo launchctl bootstrap system /Library/LaunchDaemons/com.leadaxe.sing-box-lxd.plist` — загрузка, а не переустановка |
 | процесс устарел | файлы совпали, но работающий демон сообщает другой бинарь (`executable_sha256` из `/admin/info`; у старого ядра — другую версию) | жёлтым, с командой |
@@ -162,7 +162,7 @@ sha256 копии против ядра лаунчера. Нет копии, о�
 
 | Случай | Команда |
 |---|---|
-| службы демона нет | `sudo <ядро-лаунчера> lxd --service=copy` — ядро lx.11+: только копия и её `.install.json`, без plist и launchd |
+| службы демона нет | `sudo <ядро-лаунчера> lxd --service=copy` — ядро lx.12+: только копия и её `.install.json`, без plist и launchd |
 | служба демона установлена | `sudo <ядро-лаунчера> lxd --service=install` — команда из §2; обновит ту же копию и перезапустит службу |
 
 После скачивания ядра в логе — WARN с обоими sha256, а ближайший старт с TUN
@@ -348,7 +348,7 @@ gRPC-подписки переживают Deploy/Start/Stop. Пересозда
 - **Ядро должно уметь `lxd`** (`with_lx_command`). Пин `constants.RequiredCoreVersion`
   (актуальный пин — в `internal/constants/constants.go`) эту сборку включает. Проверять границу фичи следует
   запуском бинаря (`sing-box lxd --help`), а не по номеру релиза.
-- **Root-owned копии нужно ядро lx.11+.** Со старым ядром команда установки
+- **Root-owned копии нужно ядро lx.12+.** Со старым ядром команда установки
   по-прежнему пишет в plist ядро лаунчера, и служба остаётся «небезопасной».
 - **Clash API у remote-конфига нет** by design — отсюда и gRPC-источники для
   списка узлов и профайлера.

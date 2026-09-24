@@ -6,8 +6,9 @@ SPEC 136, до следующего релиза лаунчера. Парная 
 у службы демона SPEC 136, плюс новая команда ядра `lxd --service=copy`.
 
 Статус: **реализовано в ветке `spec-137-classic-root-owned` (от
-`spec-136-daemon-root-owned`); ядро lx.11 с `--service=copy` готово в ветке
-форка (`27e245e2e`), не выпущено; ждёт релиза ядра, ручной проверки
+`spec-136-daemon-root-owned`); ядро с `--service=copy` и копией
+`/Library/PrivilegedHelperTools/sing-box-lxd` выходит как **lx.12** (раскладка
+dev-сборок lx.11 — legacy, §9 п. 9); ждёт релиза ядра, ручной проверки
 владельцем и CI**.
 
 ## 1. Проблема: что исполнялось под root
@@ -48,7 +49,7 @@ Linux и Windows этой задачей не затрагиваются (§8).
 ## 2. Нормы
 
 1. **root исполняет только root-owned файлы**: копию ядра
-   `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd` (SPEC 136
+   `/Library/PrivilegedHelperTools/sing-box-lxd` (SPEC 136
    §3, интерфейс lx.11) и системные утилиты по абсолютным путям —
    `/usr/bin/env`, `/bin/sh`, `/bin/kill`, `/usr/bin/pkill`, а в теле старта
    `/bin/mkdir`, `/bin/chmod`, `/bin/mv`, `/usr/bin/stat`. Никаких файлов из
@@ -69,7 +70,7 @@ Linux и Windows этой задачей не затрагиваются (§8).
 |---|---|
 | Старт TUN | `/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/sh -c '<тело>' start-singbox-privileged <Data>/bin <копия> config.json /Library/Logs/sing-box-lxd 0 <uid лаунчера> 2097152` |
 | Stop / рестарт | `/bin/kill -TERM <PID шелла> [<PID ядра>]` |
-| «Sing-Box already running» → Kill, Diagnostics → Kill | `/usr/bin/pkill -TERM -f 'sing-box run\|com.leadaxe.sing-box-lxd run\|start-singbox-privileged'` |
+| «Sing-Box already running» → Kill, Diagnostics → Kill | `/usr/bin/pkill -TERM -f 'sing-box run\|sing-box-lxd run\|start-singbox-privileged'` |
 | Снятие галки TUN | — (без root, §3.2) |
 
 ### 3.1 Тело старта (`platform.privilegedStartBody`)
@@ -138,14 +139,15 @@ wait
   аргумент после тела становится `$0`, и имя держит совпадение с
   `platform.PrivilegedPkillPattern` — `pgrep`/`pkill` находят обёртку, как
   находили прежний скрипт.
-- `ps` показывает `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd run -c config.json` от root.
-  Копия — плоский файл с именем ярлыка службы (SPEC 136 §3, решение
-  владельца 24.09.2026), поэтому процесс ядра зовётся не `sing-box`:
-  `platform.PrivilegedPkillPattern` включает `com.leadaxe.sing-box-lxd run`
-  (`pgrep` в диалоге «already running», `pkill` в Kill), проверка живого
-  PID из pid-файла при удалении данных узнаёт и усечённое до 16 символов
-  имя (`platform.IsPrivilegedCoreProcessName`). Демон службы
-  (`… lxd --state-dir`) под шаблон не попадает.
+- `ps` показывает `/Library/PrivilegedHelperTools/sing-box-lxd run -c config.json` от root.
+  Копия — плоский файл `sing-box-lxd` (SPEC 136 §3, решение владельца
+  24.09.2026, ядро lx.12), и процесс ядра зовётся так же, а не `sing-box`:
+  `platform.PrivilegedPkillPattern` = `sing-box run|sing-box-lxd run|start-singbox-privileged`
+  («sing-box run» копию не ловит — после `sing-box` идёт `-lxd`) — `pgrep`
+  в диалоге «already running», `pkill` в Kill; проверка живого PID из
+  pid-файла при удалении данных узнаёт имя `sing-box-lxd`
+  (`platform.IsPrivilegedCoreProcessName`, 12 символов — `p_comm` не
+  усекает). Демон службы (`… lxd --state-dir`) под шаблон не попадает.
 - pid-файл `<Data>/bin/singbox.pid` пишет и удаляет лаунчер от имени
   пользователя; `rm` под root больше нет. PID ≤ 0 в `kill` не передаются
   (`kill 0` — группа процессов).
@@ -178,7 +180,7 @@ uid**: право удаления даёт каталог (`bin/`, `logs/` — 
 |---|---|---|
 | **no core** | ядро лаунчера (`EvalSymlinks(SingboxPath)`) не найдено или не читается | обычная ошибка старта: сравнивать не с чем, и команде копирования нечего копировать |
 | **missing** | звено цепочки или сама копия отсутствует при root-owned родителях | диалог «missing» |
-| **unsafe** | цепочка `/Library` → `/Library/PrivilegedHelperTools` → файл копии не проходит инвариант SPEC 136 §4 (`Lstat`: не симлинк, uid 0, `mode & 022 == 0`, каталоги — каталоги, файл — обычный файл; каталог на месте файла — ранняя раскладка, причина «legacy layout, remove it» с командой `sudo rm -rf`), либо копия не прочиталась | диалог «not protected» |
+| **unsafe** | цепочка `/Library` → `/Library/PrivilegedHelperTools` → файл копии не проходит инвариант SPEC 136 §4 (`Lstat`: не симлинк, uid 0, `mode & 022 == 0`, каталоги — каталоги, файл — обычный файл; каталог на месте файла — «is a directory, not the copy file: remove it»), либо копия не прочиталась | диалог «not protected» |
 | **outdated** | sha256(копии) ≠ sha256(ядра лаунчера) | диалог «outdated», WARN с обоими sha |
 | **ok** | иначе | старт копии |
 
@@ -285,27 +287,27 @@ SPEC 136), **Retry** (закрывает диалог и повторяет Star
 ## 9. Ручная проверка (Mac владельца, ядро lx.11, classic-движок, конфиг с TUN)
 
 1. **До.** Службы демона нет (`ls /Library/LaunchDaemons/com.leadaxe.sing-box-lxd.plist`
-   → нет), копии нет (`ls -l /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd`
+   → нет), копии нет (`ls -l /Library/PrivilegedHelperTools/sing-box-lxd`
    → нет). Start → пароль **не** спрашивается, диалог «Core copy for privileged
    start is missing» с командой `sudo '…/sing-box' lxd --service=copy`; в логе
    WARN «privileged start refused». `ls <Data>/bin/start-singbox-privileged.sh`
    → нет (удалён при старте).
 2. Run in Terminal → выполнить команду (sudo вводит владелец). В выводе —
-   `lxd: copied <src> -> /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd (sha256 <hex>, root:wheel 0755)`;
+   `lxd: copied <src> -> /Library/PrivilegedHelperTools/sing-box-lxd (sha256 <hex>, root:wheel 0755)`;
    повтор той же команды — `lxd: already up to date <hex>`.
 3. **После.**
-   - `ls -l /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd*` —
+   - `ls -l /Library/PrivilegedHelperTools/sing-box-lxd*` —
      обычный файл копии `root wheel -rwxr-xr-x` и сайдкар
-     `com.leadaxe.sing-box-lxd.install.json` `root wheel -rw-r--r--`; каталога
+     `sing-box-lxd.install.json` `root wheel -rw-r--r--`; каталога
      службы нет; plist службы не появился;
-     `cat /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd.install.json`
+     `cat /Library/PrivilegedHelperTools/sing-box-lxd.install.json`
      — `"plist_path": ""`;
    - `~/Library/Application\ Support/singbox-launcher/bin/sing-box lxd --service=status`
      — exit 4 (COPY ONLY: копия без службы);
-   - `shasum -a 256 /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd` == `shasum -a 256 ~/Library/Application\ Support/singbox-launcher/bin/sing-box`;
+   - `shasum -a 256 /Library/PrivilegedHelperTools/sing-box-lxd` == `shasum -a 256 ~/Library/Application\ Support/singbox-launcher/bin/sing-box`;
    - Retry → пароль AEWP (раз за сессию), VPN работает;
    - `ps -axo user,pid,command | grep -E 'sing-box-lxd run|start-singbox-privileged'`
-     — `root … /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd run -c config.json`
+     — `root … /Library/PrivilegedHelperTools/sing-box-lxd run -c config.json`
      и `root … /bin/sh -c … start-singbox-privileged …`;
    - Stop / Start / применение конфига из визарда (рестарт ядра) — без
      нового пароля (вариант А); Stop гасит оба процесса,
@@ -330,16 +332,19 @@ SPEC 136), **Retry** (закрывает диалог и повторяет Star
 6. **Служба демона установлена**, копия устарела → Start в classic → диалог с
    командой `--service=install` и строкой о службе.
 7. **Kill** в диалоге «Sing-Box already running» и в Diagnostics → процесс
-   ядра (`com.leadaxe.sing-box-lxd run`) и шелл обёртки гаснут (pkill по
-   абсолютному пути); `pgrep -f 'sing-box run|com.leadaxe.sing-box-lxd run|start-singbox-privileged'`
+   ядра (`sing-box-lxd run`) и шелл обёртки гаснут (pkill по
+   абсолютному пути); `pgrep -f 'sing-box run|sing-box-lxd run|start-singbox-privileged'`
    до Kill находит оба, после — ничего.
 8. **Снятие TUN** в визарде при остановленном ядре → пароль **не**
    спрашивается; root-owned `bin/cache.db` и `<Logs>/sing-box.log[.old]`
    прежних версий удалены (в логе лаунчера INFO «removed …»).
-9. **Ранняя раскладка.** На месте копии каталог от dev-сборок lx.11
-   (`/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/`) → Start →
-   диалог «not protected» с причиной «legacy layout of the root-owned copy,
-   remove it (sudo rm -rf …)»; после `sudo rm -rf` и команды copy — старт.
+9. **Ранняя раскладка (legacy).** Копии `sing-box-lxd` нет, а от dev-сборок
+   lx.11 остался каталог `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/`
+   или плоский файл `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd`
+   → Start → диалог «missing» с командой copy; в логе WARN с причиной
+   «… legacy layout of early lx.11 builds, not used: remove it
+   (`sudo rm -rf /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd.install.json`)». Команда copy (ядро lx.12) → Retry → старт; затем
+   та же `sudo rm -rf` убирает оба варианта legacy.
 
 ## 10. Что зависит от lx.11
 

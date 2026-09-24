@@ -92,28 +92,21 @@ const (
 	PrivilegedLegacyScriptName = PrivilegedStartName + ".sh"
 	PrivilegedPidFileName      = "singbox.pid"
 	// PrivilegedCopyName — имя файла root-owned копии ядра
-	// (/Library/PrivilegedHelperTools/<ярлык службы>, SPEC 136/137, lx.11):
-	// процесс ядра под root зовётся так, а не sing-box. Путь копии держит
-	// core; тест сверяет имя.
-	PrivilegedCopyName = "com.leadaxe.sing-box-lxd"
+	// (/Library/PrivilegedHelperTools/sing-box-lxd, SPEC 136/137, ядро lx.12):
+	// процесс ядра под root зовётся так (12 символов — p_comm не усекает).
+	// Путь копии в core строится от этого имени.
+	PrivilegedCopyName = "sing-box-lxd"
 	// PrivilegedPkillPattern — командные строки привилегированного запуска
 	// для pgrep/pkill -f: ядро лаунчера (`sing-box run`), копия
-	// (`com.leadaxe.sing-box-lxd run`) и root-шелл обёртки. Демон службы
-	// (`… lxd --state-dir`) под шаблон не попадает.
+	// (`sing-box-lxd run`; «sing-box run» её не ловит — после sing-box идёт
+	// «-lxd») и root-шелл обёртки. Демон службы (`… lxd --state-dir`) под
+	// шаблон не попадает.
 	PrivilegedPkillPattern = "sing-box run|" + PrivilegedCopyName + " run|" + PrivilegedStartName
 )
 
-// privilegedCommMax — длина имени процесса в kinfo_proc.p_comm (MAXCOMLEN):
-// длинное имя копии список процессов показывает усечённым.
-const privilegedCommMax = 16
-
-// IsPrivilegedCoreProcessName — имя процесса (в том числе усечённое до
-// p_comm) — это root-owned копия ядра.
+// IsPrivilegedCoreProcessName — имя процесса — это root-owned копия ядра.
 func IsPrivilegedCoreProcessName(name string) bool {
-	if name == PrivilegedCopyName {
-		return true
-	}
-	return len(name) == privilegedCommMax && strings.HasPrefix(PrivilegedCopyName, name)
+	return name == PrivilegedCopyName
 }
 
 // Что исполняет root (SPEC 137 §3): только root-owned файлы по абсолютным

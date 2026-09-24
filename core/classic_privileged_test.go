@@ -50,13 +50,25 @@ func TestPrivilegedCoreCopyGate(t *testing.T) {
 	if c.LauncherSHA256 == "" || c.CopySHA256 != "" {
 		t.Fatalf("missing: launcher sha %q, copy sha %q", c.LauncherSHA256, c.CopySHA256)
 	}
+	// Копии нет, а от ранней lx.11 остался каталог <label>/ — он не
+	// используется, причина советует его убрать.
+	if err := os.Mkdir(l.LegacyPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if c = gate(t, l.launcherCore, privilegedCopyMissing); !strings.Contains(c.Detail, "legacy layout") ||
+		!strings.Contains(c.Detail, "sudo rm -rf "+shellQuote(l.LegacyPath)) {
+		t.Fatalf("missing copy with a legacy folder: %q", c.Detail)
+	}
+	if err := os.Remove(l.LegacyPath); err != nil {
+		t.Fatal(err)
+	}
 
-	// Unsafe: на месте плоской копии — каталог ранней раскладки.
+	// Unsafe: на месте файла копии — каталог.
 	if err := os.Mkdir(l.CorePath, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if c = gate(t, l.launcherCore, privilegedCopyUnsafe); !strings.Contains(c.Detail, "legacy layout") {
-		t.Fatalf("legacy folder detail: %q", c.Detail)
+	if c = gate(t, l.launcherCore, privilegedCopyUnsafe); !strings.Contains(c.Detail, "remove it") {
+		t.Fatalf("folder in place of the copy: %q", c.Detail)
 	}
 	if err := os.Remove(l.CorePath); err != nil {
 		t.Fatal(err)
@@ -142,8 +154,13 @@ func TestPrivilegedCoreCopyGate(t *testing.T) {
 	// Имя плоской копии — то же, что знает platform: по нему pgrep/pkill
 	// находят ядро под root, а pid-файл отличает его от чужого PID.
 	copyName := filepath.Base(daemonServiceCorePath())
-	if copyName != platform.PrivilegedCopyName || daemonServiceCorePath() != "/Library/PrivilegedHelperTools/"+daemonLaunchdLabel {
+	if copyName != platform.PrivilegedCopyName || daemonServiceCorePath() != "/Library/PrivilegedHelperTools/sing-box-lxd" ||
+		daemonServiceSidecarPath(daemonServiceCorePath()) != "/Library/PrivilegedHelperTools/sing-box-lxd.install.json" {
 		t.Fatalf("copy %s, platform name %s", daemonServiceCorePath(), platform.PrivilegedCopyName)
+	}
+	// «sing-box run» копию не ловит — ради неё в шаблоне своя альтернатива.
+	if regexp.MustCompile("sing-box run").MatchString(daemonServiceCorePath() + " run -c config.json") {
+		t.Fatal(`"sing-box run" must not match the copy's command line`)
 	}
 	pattern := regexp.MustCompile(platform.PrivilegedPkillPattern)
 	for cmdline, want := range map[string]bool{
@@ -157,7 +174,7 @@ func TestPrivilegedCoreCopyGate(t *testing.T) {
 			t.Fatalf("pkill pattern on %q: %v, want %v", cmdline, got, want)
 		}
 	}
-	for name, want := range map[string]bool{copyName: true, copyName[:16]: true, copyName[:10]: false, "sing-box": false} {
+	for name, want := range map[string]bool{copyName: true, "sing-box": false, "com.leadaxe.sing": false, "sing-box-lx": false} {
 		if got := platform.IsPrivilegedCoreProcessName(name); got != want {
 			t.Fatalf("IsPrivilegedCoreProcessName(%q) = %v, want %v", name, got, want)
 		}

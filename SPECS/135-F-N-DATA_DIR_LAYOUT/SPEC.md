@@ -429,7 +429,7 @@ func Describe(l Layout, core CoreInfo, tmpl TemplateInfo) string
 > **Заменено SPEC 136** ([136-F-N-DAEMON_SERVICE_ROOT_OWNED_CORE](../136-F-N-DAEMON_SERVICE_ROOT_OWNED_CORE/SPEC.md)):
 > plist на ядро лаунчера — само по себе дыра (root запускает файл
 > пользователя). С ядра lx.11 служба работает из root-owned копии
-> `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd`, а сверка
+> `/Library/PrivilegedHelperTools/sing-box-lxd`, а сверка
 > путей заменена классификатором (Unsafe / Stale / ProcessStale) и одной
 > командой «Install or update service».
 

@@ -13,7 +13,8 @@ import (
 )
 
 // testServiceLayout — раскладка службы lx.11 во временном каталоге:
-// копия — плоский файл <base>/Library/PrivilegedHelperTools/<label>, plist в
+// копия — плоский файл <base>/Library/PrivilegedHelperTools/sing-box-lxd,
+// legacy ранних lx.11 — <base>/Library/PrivilegedHelperTools/<label>, plist в
 // <base>/LaunchDaemons, ядро лаунчера в <base>/data/bin. Владелец цепочки —
 // текущий uid (root-owned файлы тест создать не может).
 type testServiceLayout struct {
@@ -40,10 +41,11 @@ func newTestServiceLayout(t *testing.T) testServiceLayout {
 	}
 	l := testServiceLayout{
 		daemonServiceLayout: daemonServiceLayout{
-			PlistPath: filepath.Join(base, "LaunchDaemons", daemonLaunchdLabel+".plist"),
-			CorePath:  filepath.Join(tools, filepath.Base(daemonServiceCorePath())),
-			ChainRoot: root,
-			OwnerUID:  uint32(os.Getuid()),
+			PlistPath:  filepath.Join(base, "LaunchDaemons", daemonLaunchdLabel+".plist"),
+			CorePath:   filepath.Join(tools, filepath.Base(daemonServiceCorePath())),
+			LegacyPath: filepath.Join(tools, filepath.Base(daemonServiceLegacyCopyPath)),
+			ChainRoot:  root,
+			OwnerUID:   uint32(os.Getuid()),
 		},
 		toolsDir:     tools,
 		launcherCore: filepath.Join(base, "data", "bin", "sing-box"),
@@ -133,20 +135,34 @@ func TestDaemonServiceClassifier(t *testing.T) {
 		t.Fatalf("missing copy: CopyMissing=%v usable=%v", c.CopyMissing, c.CopyUsable())
 	}
 
-	// Unsafe: на месте плоской копии — каталог ранней раскладки
-	// (<label>/sing-box); причина говорит, что его убрать.
+	// Unsafe: на месте файла копии — каталог; причина говорит его убрать.
 	if err := os.Mkdir(l.CorePath, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeTestFile(t, filepath.Join(l.CorePath, "sing-box"), "core v1")
 	c = classifyTestService(l, &hashes)
 	expect(t, c, DaemonServiceUnsafe)
-	if !strings.Contains(c.Detail, "legacy layout") || !strings.Contains(c.Detail, "remove it") {
-		t.Fatalf("legacy folder detail: %q", c.Detail)
+	if !strings.Contains(c.Detail, "is a directory") || !strings.Contains(c.Detail, "remove it") {
+		t.Fatalf("folder in place of the copy: %q", c.Detail)
 	}
-	if err := os.RemoveAll(l.CorePath); err != nil {
+	if err := os.Remove(l.CorePath); err != nil {
 		t.Fatal(err)
 	}
+
+	// Unsafe: plist на копию ранней раскладки lx.11 — каталог <label>/sing-box
+	// или плоский <label>; причина — install, затем убрать остатки.
+	writeTestFile(t, l.LegacyPath, "core v1")
+	for _, legacyProgram := range []string{l.LegacyPath, filepath.Join(l.LegacyPath, "sing-box")} {
+		writeTestPlist(t, l.PlistPath, legacyProgram)
+		c = classifyTestService(l, &hashes)
+		expect(t, c, DaemonServiceUnsafe)
+		if !strings.Contains(c.Detail, "legacy layout") || !strings.Contains(c.Detail, "sudo rm -rf "+shellQuote(l.LegacyPath)) {
+			t.Fatalf("legacy plist %s: %q", legacyProgram, c.Detail)
+		}
+	}
+	if err := os.Remove(l.LegacyPath); err != nil {
+		t.Fatal(err)
+	}
+	writeTestPlist(t, l.PlistPath, l.CorePath)
 
 	// OK: копия = ядро лаунчера. Повтор с теми же файлами — из кэша.
 	writeTestFile(t, l.CorePath, "core v1")

@@ -97,6 +97,10 @@ func checkPrivilegedCoreCopy(l daemonServiceLayout, launcherCore string, hashes 
 			c.State = privilegedCopyUnsafe
 		}
 		c.Detail = err.Error()
+		if _, lerr := os.Lstat(l.LegacyPath); l.LegacyPath != "" && lerr == nil {
+			c.Detail += fmt.Sprintf("; %s is a copy in the legacy layout of early lx.11 builds, not used: remove it (%s)",
+				l.LegacyPath, legacyCopyRemoveCommand(l.LegacyPath))
+		}
 		return c
 	}
 	copySum, err := hashes.sum(l.CorePath)
