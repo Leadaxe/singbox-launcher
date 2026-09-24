@@ -23,7 +23,7 @@ through the active engine (`CoreBackend`).
 
 | | **Classic** | **Daemon (lxd)** |
 |---|---|---|
-| Platforms | Windows, macOS, Linux | **macOS only** |
+| Platforms | Windows, macOS, Linux | **macOS only** (Windows x64/arm64 — SPEC 141, with core v1.14.2-lx.2) |
 | Default | yes | no, opt-in |
 | How the core lives | child process `sing-box run` | inside the long-lived system service `sing-box lxd` |
 | Control plane | Clash HTTP API | gRPC (`daemon.StartedService`) + admin REST |
@@ -36,8 +36,20 @@ Implementation: `LegacyBackend` — the classic spawn; `DaemonBackend` — lxd. 
 group operations are abstracted behind the `ProxyTransport` seam (Clash HTTP for
 classic, gRPC for daemon), so the server list is identical in both modes.
 
-All daemon code and gRPC sit behind darwin build tags and never enter
-`go.win7.mod` — the Win7 build compiles without them.
+Build tags (SPEC 141). The engine code — `DaemonBackend` with its DNS, traffic
+and tailscale streams, the chain probe, the service classifier and its version
+gate, the classic privileged-start gate verdicts, pairing, config preparation,
+command assembly, the Debug API wiring — is shared by the *daemon platforms*:
+`//go:build darwin || (windows && !386)`. Per-OS parts live next to it:
+`*_darwin.go` — launchd, plist, the uid ownership chain (`Stat_t`), the hash
+cache key by dev/inode, sudo rendering, Terminal, dialog texts; `*_windows.go` —
+extension-point stubs until the Windows service layer lands, and until then the
+engine stays closed there (`daemonEngineAvailable`) and the launcher remains on
+classic. Linux and Win7 (`windows/386`, Go 1.20, `go.win7.mod`) compile the
+stubs tagged `!darwin && (!windows || 386)`; `tools/win7guard` never sees the
+daemon files. The gRPC client (`internal/lxdclient`, `internal/daemonpb`) and the
+remote-machine code (`core/services/lxd_remote_*.go`) carry no tags and build
+everywhere.
 
 ### 1.1 Where to switch it
 
@@ -353,7 +365,10 @@ examples lives in [API.md](API.md); this section is about the principles.
 ## 6. Boundaries and requirements
 
 - **Classic does not change.** The same spawn, the same Clash API, the same behavior.
-- **Daemon is macOS-only.** All of its code sits behind darwin build tags.
+- **Daemon is macOS-only for now.** Its engine code is shared by the daemon
+  platforms (`darwin || (windows && !386)`, §1); on Windows it stays closed until
+  the service layer of SPEC 141 and core v1.14.2-lx.2; Linux and Win7 compile
+  stubs.
 - **The core must support `lxd`** (`with_lx_command`). The pinned
   `constants.RequiredCoreVersion` includes that build (the current pin lives in `internal/constants/constants.go`).
   Check the feature boundary by running the binary (`sing-box lxd --help`), not by

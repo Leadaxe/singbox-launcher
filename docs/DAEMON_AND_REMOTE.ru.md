@@ -23,7 +23,7 @@
 
 | | **Classic** | **Daemon (lxd)** |
 |---|---|---|
-| Платформы | Windows, macOS, Linux | **только macOS** |
+| Платформы | Windows, macOS, Linux | **только macOS** (Windows x64/arm64 — SPEC 141, с ядром v1.14.2-lx.2) |
 | По умолчанию | да | нет, включается вручную |
 | Как живёт ядро | дочерний процесс `sing-box run` | внутри долгоживущей системной службы `sing-box lxd` |
 | Управление | Clash HTTP API | gRPC (`daemon.StartedService`) + admin REST |
@@ -36,8 +36,19 @@
 с группами прокси абстрагированы швом `ProxyTransport` (Clash HTTP для classic,
 gRPC для daemon), поэтому список серверов одинаков в обоих режимах.
 
-Весь daemon-код и gRPC собраны под darwin build-tags и в `go.win7.mod` не
-попадают — Win7-сборка компилируется без них.
+Build-теги (SPEC 141). Код движка — `DaemonBackend` со стримами DNS, трафика и
+tailscale, проба цепочки, классификатор службы и его гейт версий, вердикты
+гейта привилегированного старта classic, сопряжение, подготовка конфига,
+сборка команд, разводка Debug API — общий для *daemon-платформ*:
+`//go:build darwin || (windows && !386)`. Платформенное лежит рядом:
+`*_darwin.go` — launchd, plist, цепочка владения по uid (`Stat_t`), ключ кэша
+хэшей по dev/inode, рендер sudo, Terminal, тексты диалогов; `*_windows.go` —
+заглушки точек расширения, пока нет слоя службы Windows, и до тех пор движок
+там закрыт (`daemonEngineAvailable`), лаунчер остаётся на classic. Linux и Win7
+(`windows/386`, Go 1.20, `go.win7.mod`) собирают заглушки с тегом
+`!darwin && (!windows || 386)`; `tools/win7guard` daemon-файлов не видит.
+gRPC-клиент (`internal/lxdclient`, `internal/daemonpb`) и код удалённых машин
+(`core/services/lxd_remote_*.go`) тегов не несут и собираются везде.
 
 ### 1.1 Где переключается
 
@@ -344,7 +355,9 @@ gRPC-подписки переживают Deploy/Start/Stop. Пересозда
 ## 6. Границы и требования
 
 - **Classic не меняется.** Тот же spawn, тот же Clash API, то же поведение.
-- **Daemon — только macOS.** Весь код под darwin build-tags.
+- **Daemon — пока только macOS.** Код движка общий для daemon-платформ
+  (`darwin || (windows && !386)`, §1); на Windows он закрыт до слоя службы
+  SPEC 141 и ядра v1.14.2-lx.2; Linux и Win7 собирают заглушки.
 - **Ядро должно уметь `lxd`** (`with_lx_command`). Пин `constants.RequiredCoreVersion`
   (актуальный пин — в `internal/constants/constants.go`) эту сборку включает. Проверять границу фичи следует
   запуском бинаря (`sing-box lxd --help`), а не по номеру релиза.
