@@ -151,7 +151,8 @@ Name: "{autodesktop}\{#AppTitle}"; Filename: "{app}\{#AppExeName}"; WorkingDir: 
 ; user: HKCU of an elevated Setup may be another account's hive.
 Filename: "{app}\{#AppExeName}"; Parameters: "-autostart=on"; WorkingDir: "{app}"; Tasks: autostart; StatusMsg: "{cm:StatusAutostart}"; Flags: runasoriginaluser runhidden
 #ifdef DaemonService
-Filename: "{app}\bin\sing-box.exe"; Parameters: "lxd --service=install"; WorkingDir: "{app}\bin"; Tasks: daemonservice; StatusMsg: "{cm:StatusDaemonService}"; Flags: runhidden
+; Elevated: only from inside Program Files (AppDirTrusted).
+Filename: "{app}\bin\sing-box.exe"; Parameters: "lxd --service=install"; WorkingDir: "{app}\bin"; Tasks: daemonservice; StatusMsg: "{cm:StatusDaemonService}"; Flags: runhidden; Check: AppDirTrusted
 #endif
 ; Not elevated: an elevated launcher would resolve a different data layout.
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppTitle}}"; WorkingDir: "{app}"; Flags: postinstall nowait skipifsilent runasoriginaluser
@@ -196,6 +197,22 @@ end;
 function LauncherExe: String;
 begin
   Result := ExpandConstant('{app}\{#AppExeName}');
+end;
+
+// AppDirTrusted: Setup and Uninstall run with administrator rights and start
+// programs from {app} only when it lies inside Program Files. Elsewhere
+// (D:\Apps\...) a regular user could replace the exe and get code run as
+// administrator; the step is skipped then. runasoriginaluser entries are not
+// affected.
+function AppDirTrusted: Boolean;
+var
+  AppDir, ProgramFiles: String;
+begin
+  AppDir := AddBackslash(ExpandConstant('{app}'));
+  ProgramFiles := AddBackslash(ExpandConstant('{commonpf64}'));
+  Result := CompareText(Copy(AppDir, 1, Length(ProgramFiles)), ProgramFiles) = 0;
+  if not Result then
+    Log(Format('Program folder %s is outside %s: not starting programs from it with administrator rights', [AppDir, ProgramFiles]));
 end;
 
 procedure LogOutput(const What: String; const Output: TExecOutput);
@@ -415,6 +432,10 @@ var
   ResultCode: Integer;
   Output: TExecOutput;
 begin
+  if not AppDirTrusted then begin
+    Log('Autostart entry not removed: -autostart=off skipped');
+    Exit;
+  end;
   if FileExists(LauncherExe) then
     RunAndLog(LauncherExe, '-autostart=off', ResultCode, Output);
 end;
@@ -439,6 +460,10 @@ var
   Output: TExecOutput;
 begin
   DelTree(ExpandConstant('{app}\bin\wizard_states'), True, True, True);
+  if not AppDirTrusted then begin
+    Log('User data not removed: -purge-data skipped');
+    Exit;
+  end;
   if not FileExists(LauncherExe) then
     Exit;
   if not RunAndLog(LauncherExe, '-purge-data -yes', ResultCode, Output) then
