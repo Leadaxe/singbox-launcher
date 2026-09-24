@@ -661,11 +661,17 @@ jobs:
           if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
           # Скрипт требует 6.4+ (x64os и UTF-8 без BOM — 6.3,
           # ExecAndCaptureOutput — 6.4); образ несёт новее, и тогда ставить
-          # ничего не нужно — только проверка.
-          $vi = (Get-Item $iscc).VersionInfo
-          $ver = [version]::new($vi.FileMajorPart, $vi.FileMinorPart, $vi.FileBuildPart)
-          Write-Host "ISCC: $iscc ($ver)"
-          if ($ver -lt [version]'6.4.0') { throw "Inno Setup $ver is too old, 6.4+ required" }
+          # ничего не нужно — только проверка. У ISCC.exe нет ресурса версии,
+          # поэтому версия — из записи удаления Inno Setup; нет записи —
+          # остаётся проверка #if VER в самом .iss.
+          $key = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1'
+          $display = (Get-ItemProperty -Path $key -ErrorAction SilentlyContinue).DisplayVersion
+          Write-Host "ISCC: $iscc (Inno Setup $display)"
+          if ($display) {
+            if ([version]$display -lt [version]'6.4.0') { throw "Inno Setup $display is too old, 6.4+ required" }
+          } else {
+            Write-Host "::warning::Inno Setup version unknown; the .iss checks it at compile time"
+          }
           "path=$iscc" >> $env:GITHUB_OUTPUT
 
       - name: Build installer
