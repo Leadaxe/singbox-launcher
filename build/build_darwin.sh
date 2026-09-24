@@ -1,6 +1,12 @@
 #!/bin/bash
 
 # Build script for macOS (Darwin)
+#
+# With -i it also installs the build into /Applications: replaces the
+# executable (or copies the whole .app on first install), re-signs it and
+# re-seals the bundle, then restarts the launcher — a running instance is
+# asked to quit and the new build is started. SB_NO_RESTART=1 skips the
+# restart.
 
 set -e
 
@@ -38,6 +44,10 @@ print_usage() {
     echo "                                      inside the bundle, if any, are left untouched);"
     echo "                                      otherwise the full .app bundle is copied (first install)."
     echo "                                      The built .app in the repo directory is removed afterward."
+    echo "                                      Then the launcher is restarted: a running instance is asked"
+    echo "                                      to quit (SIGTERM if it is still there after 15 s, never"
+    echo "                                      SIGKILL) and the new build is started. Set SB_NO_RESTART=1"
+    echo "                                      to install without restarting."
     echo "  -h, --help                          Show this help"
 }
 
@@ -536,10 +546,98 @@ if [ "$COPY_TO_APPLICATIONS" = true ]; then
         done
         rmdir "$SEAL_HOLD" 2>/dev/null || true
     fi
+
+    # Restart the launcher, so that the build just installed is what runs.
+    # This comes after the re-sign and re-seal on purpose: macOS refuses or
+    # kills a process started from a bundle whose signature does not match.
+    #
+    # The running instance is found by the exact executable path and this
+    # user's UID, never by name: sing-box processes (the core, a live VPN)
+    # and a root-owned process must not be touched. Quit goes through the
+    # regular macOS request (Apple Event quit -> applicationShouldTerminate:,
+    # the launcher stops the core via GracefulExit); SIGTERM, which the
+    # launcher also handles gracefully, is the fallback. There is no SIGKILL:
+    # a launcher killed that way leaves a classic core running with its TUN
+    # routes. If the instance does not exit, the new build is not started.
+    if [ "${SB_NO_RESTART:-}" = "1" ]; then
+        echo "=== Launcher restart skipped (SB_NO_RESTART=1) ==="
+    else
+        echo "=== Restarting the launcher ==="
+        LAUNCHER_UID=$(id -u)
+        DEST_BIN_RE=$(printf '%s' "$DEST_BIN" | sed 's/\./\\./g')
+
+        # PIDs of this user's instances of the installed launcher, space-separated.
+        launcher_pids() {
+            pgrep -d ' ' -U "$LAUNCHER_UID" -f "^${DEST_BIN_RE}( |\$)" 2>/dev/null || true
+        }
+
+        # Polls every 0.5 s for up to $1 seconds; succeeds once no instance is left.
+        wait_launcher_exit() {
+            local tries=$(( $1 * 2 ))
+            while [ -n "$(launcher_pids)" ]; do
+                [ "$tries" -gt 0 ] || return 1
+                sleep 0.5
+                tries=$((tries - 1))
+            done
+            return 0
+        }
+
+        START_LAUNCHER=true
+        RUNNING_PIDS=$(launcher_pids)
+        if [ -n "$RUNNING_PIDS" ]; then
+            echo "Launcher is running (PID $RUNNING_PIDS) — asking it to quit..."
+            # The app is addressed by its path: a copy with the same name or
+            # bundle id elsewhere (a build in the repo) must not get the quit.
+            QUIT_START=$SECONDS
+            osascript -e 'with timeout of 15 seconds' \
+                      -e "tell application \"$DEST_APP\" to quit" \
+                      -e 'end timeout' >/dev/null 2>&1 || true
+            QUIT_LEFT=$(( 15 - (SECONDS - QUIT_START) ))
+            [ "$QUIT_LEFT" -ge 1 ] || QUIT_LEFT=1
+            if wait_launcher_exit "$QUIT_LEFT"; then
+                echo "Launcher quit."
+            else
+                STILL_PIDS=$(launcher_pids)
+                echo "Still running after 15 s — sending SIGTERM to PID $STILL_PIDS"
+                for pid in $STILL_PIDS; do
+                    kill -TERM "$pid" 2>/dev/null || true
+                done
+                if wait_launcher_exit 5; then
+                    echo "Launcher exited on SIGTERM."
+                else
+                    echo "WARNING: the launcher (PID $(launcher_pids)) did not exit; the new build is NOT started."
+                    echo "  Quit it yourself, then run: open $DEST_APP"
+                    START_LAUNCHER=false
+                fi
+            fi
+            if [ "$START_LAUNCHER" = true ]; then
+                # Right after the exit LaunchServices may still hold the old
+                # instance and answer open with error -600.
+                sleep 2
+            fi
+        else
+            echo "Launcher is not running — starting it."
+        fi
+
+        if [ "$START_LAUNCHER" = true ]; then
+            if open "$DEST_APP" 2>/dev/null; then
+                echo "Started: $DEST_APP"
+            else
+                echo "open failed (the old instance may still be shutting down) — retrying in 3 s..."
+                sleep 3
+                if open "$DEST_APP"; then
+                    echo "Started: $DEST_APP"
+                else
+                    echo "WARNING: could not start the launcher. Start it yourself: open $DEST_APP"
+                fi
+            fi
+        fi
+    fi
     echo "========================================"
 else
     echo "To install or update in /Applications:"
-    echo "  $0 -i $BUILD_TYPE   # updates binary only if the app is already there; else full .app"
+    echo "  $0 -i $BUILD_TYPE   # updates binary only if the app is already there; else full .app;"
+    echo "  #                     then restarts the launcher (SB_NO_RESTART=1 to skip)"
     echo ""
     echo "Manual full copy (replaces the entire app). Safe once this version has run at least once:"
     echo "  data then lives in ~/Library/Application Support/singbox-launcher. Before that, it wipes"
