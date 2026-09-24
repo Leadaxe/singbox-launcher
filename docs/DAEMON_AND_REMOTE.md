@@ -70,6 +70,14 @@ forces mTLS on, and prints a **one-time invite** at the end.
 
 After that, starting/stopping the VPN and applying configs need no password.
 
+**The service remembers the core path.** `--service=install` writes the path of
+the core binary into `/Library/LaunchDaemons/com.leadaxe.sing-box-lxd.plist`.
+After the data moved out of the bundle (SPEC 135), the launcher's core lives in
+`~/Library/Application Support/singbox-launcher/bin`, but the service keeps
+starting the old binary until it is reinstalled, so core updates do not reach it.
+The launcher compares the two paths: on a mismatch the Status tab shows the path
+the service runs and the install command; run it once, and the warning disappears.
+
 ---
 
 ## 3. Pairing (mTLS)

@@ -32,13 +32,14 @@ import (
 	"singbox-launcher/core/config"
 	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/internal/paths"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
 func TestBackupRestoreKeepsDNSRouteOnNewMachine(t *testing.T) {
 	root := findRepoRootForTemplate(t)
-	td, err := wizardtemplate.LoadTemplateData(root)
+	td, err := wizardtemplate.LoadTemplateData(paths.Layout{App: paths.AppDir(root), Data: paths.DataDir(root)})
 	if err != nil {
 		t.Fatalf("load template: %v", err)
 	}
@@ -177,7 +178,7 @@ func TestBackupRestoreKeepsDNSRouteOnNewMachine(t *testing.T) {
 		t.Helper()
 		m := wizardmodels.NewWizardModel()
 		m.TemplateData = td
-		m.ExecDir = t.TempDir()
+		m.DataDir = paths.DataDir(t.TempDir())
 		p := NewWizardPresenter(m, &GUIState{}, nil)
 		loaded, parserJSON, _, err := wizardbusiness.LoadConfigFromFile(nil, td)
 		if err != nil || !loaded {

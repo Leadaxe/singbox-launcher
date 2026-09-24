@@ -61,7 +61,7 @@ func TestUIEndpoints(t *testing.T) {
 
 	// С EnableUI.
 	port := freeLocalPort(t)
-	s, err := New(&fakeFacade{execDir: execDir}, port, tok)
+	s, err := New(&fakeFacade{dataDir: execDir}, port, tok)
 	if err != nil {
 		t.Fatal(err)
 	}

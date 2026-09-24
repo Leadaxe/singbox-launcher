@@ -265,7 +265,7 @@ func (p *WizardPresenter) SaveCurrentState() error {
 	// Путь — только для лога, но ЧЕСТНЫЙ: по цели и машине. Раньше здесь
 	// печатался локальный bin/wizard_states/state.json, тогда как файл
 	// уходил в папку удалённой машины, — лог врал при разборе инцидентов.
-	statePath := platform.GetWizardStatePathFor(ac.FileService.ExecDir, p.ConfigTarget(), p.ConfigMachineID())
+	statePath := platform.GetWizardStatePathFor(ac.FileService.Layout.Data, p.ConfigTarget(), p.ConfigMachineID())
 
 	debuglog.InfoLog("SaveCurrentState: saving to state.json at %s", statePath)
 	if err := stateStore.SaveCurrentState(state); err != nil {

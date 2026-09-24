@@ -20,6 +20,7 @@ import (
 
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -30,7 +31,7 @@ import (
 // и требуется подделать.
 func writeMachineStateOfSchema(t *testing.T, execDir, id string, major int) string {
 	t.Helper()
-	path := platform.GetWizardStatePathFor(execDir, constants.ConfigTargetRemote, id)
+	path := platform.GetWizardStatePathFor(paths.DataDir(execDir), constants.ConfigTargetRemote, id)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -45,7 +46,7 @@ func writeMachineStateOfSchema(t *testing.T, execDir, id string, major int) stri
 // исходника, и приёмника, а seedMachine пишет файл реестра целиком.
 func seedMachines(t *testing.T, execDir string, ids []string, addr string) {
 	t.Helper()
-	binDir := platform.GetBinDir(execDir)
+	binDir := paths.DataDir(execDir).Bin()
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin: %v", err)
 	}
@@ -119,7 +120,7 @@ func TestRemoteStatePatchRefusesNewerSchema(t *testing.T) {
 	requireMismatch(t, "PATCH state/dns", resp, body, future)
 
 	// Файл не тронут: отказ обязан быть отказом, а не половиной записи.
-	path := platform.GetWizardStatePathFor(execDir, constants.ConfigTargetRemote, "router")
+	path := platform.GetWizardStatePathFor(paths.DataDir(execDir), constants.ConfigTargetRemote, "router")
 	after, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read state: %v", err)
@@ -139,7 +140,7 @@ func TestRemoteStatePatchWorksOnMatchingSchema(t *testing.T) {
 	base, execDir, _ := newRemoteTestServer(t)
 	seedMachine(t, execDir, "router", addr)
 
-	path := platform.GetWizardStatePathFor(execDir, constants.ConfigTargetRemote, "router")
+	path := platform.GetWizardStatePathFor(paths.DataDir(execDir), constants.ConfigTargetRemote, "router")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -193,7 +194,7 @@ func TestRemoteProfileCopyFromRefusesNewerSchema(t *testing.T) {
 		map[string]any{"source_id": "src", "overwrite": true})
 	requireMismatch(t, "copy-from", resp, body, future)
 
-	dstPath := platform.GetWizardStatePathFor(execDir, constants.ConfigTargetRemote, "dst")
+	dstPath := platform.GetWizardStatePathFor(paths.DataDir(execDir), constants.ConfigTargetRemote, "dst")
 	if _, err := os.Stat(dstPath); !os.IsNotExist(err) {
 		t.Fatalf("отказавший copy-from всё равно создал state приёмника (%v)", err)
 	}
@@ -208,7 +209,7 @@ func TestRemoteProfileCopyFromWorksOnMatchingSchema(t *testing.T) {
 	base, execDir, _ := newRemoteTestServer(t)
 	seedMachines(t, execDir, []string{"src", "dst"}, addr)
 
-	srcPath := platform.GetWizardStatePathFor(execDir, constants.ConfigTargetRemote, "src")
+	srcPath := platform.GetWizardStatePathFor(paths.DataDir(execDir), constants.ConfigTargetRemote, "src")
 	if err := os.MkdirAll(filepath.Dir(srcPath), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -221,7 +222,7 @@ func TestRemoteProfileCopyFromWorksOnMatchingSchema(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("copy-from на своей схеме: status %d (%s)", resp.StatusCode, body)
 	}
-	dstPath := platform.GetWizardStatePathFor(execDir, constants.ConfigTargetRemote, "dst")
+	dstPath := platform.GetWizardStatePathFor(paths.DataDir(execDir), constants.ConfigTargetRemote, "dst")
 	if _, err := os.Stat(dstPath); err != nil {
 		t.Fatalf("copy-from не создал state приёмника: %v", err)
 	}
@@ -236,7 +237,7 @@ func TestRemoteProfileCopyFromWorksOnMatchingSchema(t *testing.T) {
 // урезать собственный state.json.
 func TestLocalStatePatchRefusesNewerSchema(t *testing.T) {
 	execDir := t.TempDir()
-	path := platform.GetWizardStatePath(execDir)
+	path := platform.GetWizardStatePath(paths.DataDir(execDir))
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -246,7 +247,7 @@ func TestLocalStatePatchRefusesNewerSchema(t *testing.T) {
 		t.Fatalf("write state: %v", err)
 	}
 
-	ff := &fakeFacade{execDir: execDir, stateValue: state.New()}
+	ff := &fakeFacade{dataDir: execDir, stateValue: state.New()}
 	base, _ := newTestServer(t, ff)
 
 	status, body := doJSON(t, authedReq(t, "PATCH", base+"/state/rules", []byte(`{"mode":"replace","rules":[]}`)), nil)

@@ -41,7 +41,7 @@ func SetLxdRemoteOverride(ac *core.AppController, id string) error {
 	if ac == nil || ac.FileService == nil {
 		return errNoController
 	}
-	registry := services.NewRemoteRegistry(ac.FileService.ExecDir)
+	registry := services.NewRemoteRegistry(ac.FileService.Layout.Data)
 	entry, ok, err := registry.Get(id)
 	if err != nil {
 		return err

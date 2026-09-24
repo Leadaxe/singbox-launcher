@@ -19,7 +19,7 @@ import (
 
 // machineStatePath — state.json профиля машины (SPEC 098 layout).
 func (s *Server) machineStatePath(id string) string {
-	return platform.GetWizardStatePathFor(s.remote.ExecDir, constants.ConfigTargetRemote, id)
+	return platform.GetWizardStatePathFor(s.remote.DataDir, constants.ConfigTargetRemote, id)
 }
 
 // machineStateAccess — stateAccess профиля машины.

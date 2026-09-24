@@ -89,7 +89,7 @@ func (ac *AppController) DownloadCore(ctx context.Context, version string, progr
 	}
 
 	// 3. Create temporary directory
-	tempDir := filepath.Join(ac.FileService.ExecDir, "temp")
+	tempDir := platform.GetTempDir(ac.FileService.Layout.Data)
 	if err := os.MkdirAll(tempDir, platform.DefaultDirMode); err != nil {
 		progressChan <- DownloadProgress{Progress: 0, Message: fmt.Sprintf("Failed to create temp dir: %v", err), Status: "error", Error: fmt.Errorf("DownloadCore: failed to create temp dir: %w", err)}
 		return
@@ -135,6 +135,11 @@ func (ac *AppController) DownloadCore(ctx context.Context, version string, progr
 			debuglog.WarnLog("DownloadCore: failed to install companion library %s: %v — naive outbounds won't work", filepath.Base(libPath), err)
 		}
 	}
+
+	// 6.6. Скачанное ядро лежит в Data/bin и по цепочке SPEC 135 §3.3
+	// побеждает поставляемое и системное: пересчитать путь ядра и спутников.
+	ac.FileService.ResolveCore()
+	debuglog.InfoLog("core: %s (source=%s)", ac.FileService.SingboxPath, ac.FileService.CoreSource)
 
 	// 6.7. Daemon-режим: установленная launchd-служба держит СТАРЫЙ бинарь в
 	// памяти (plist указывает на тот же путь bin/sing-box, но замена файла не

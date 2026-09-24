@@ -4,7 +4,10 @@ package core
 
 import (
 	"encoding/json"
+	"encoding/xml"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -153,12 +156,21 @@ type DaemonUIStatus struct {
 	// демон недостижим или собран до появления info-эндпоинта.
 	DaemonVersion string
 	StateDir      string
+	// ServiceCorePath — ProgramArguments[0] из plist установленной службы:
+	// бинарь ядра, который запускает launchd. Пусто, если службы нет или
+	// plist не разобрался.
+	ServiceCorePath string
+	// ServiceCoreMismatch — служба запускает не то ядро, что лаунчер
+	// (SingboxPath). Типичный случай — переезд данных SPEC 135: служба
+	// осталась на бандловом бинаре, обновление ядра до неё не доходит.
+	// Лечится повторной установкой службы.
+	ServiceCoreMismatch bool
 }
 
 // DaemonStatusSnapshot собирает состояние службы/сопряжения/демона.
 // Сетевые вызовы — с REST-таймаутом клиента; зовите из горутины, не из UI.
 func (ac *AppController) DaemonStatusSnapshot() DaemonUIStatus {
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	st := locale.LoadSettings(binDir)
 	status := DaemonUIStatus{
 		CoreSupportsLxd: ac.CoreSupportsLxd(),
@@ -169,8 +181,9 @@ func (ac *AppController) DaemonStatusSnapshot() DaemonUIStatus {
 	}
 	if _, err := os.Stat(daemonSystemPlistPath()); err == nil {
 		status.ServiceInstalled = true
+		ac.fillServiceCorePath(&status)
 	}
-	status.Paired = st.DaemonServerFingerprint != "" && lxdclient.HasIdentity(DaemonIdentityDir(ac.FileService.ExecDir))
+	status.Paired = st.DaemonServerFingerprint != "" && lxdclient.HasIdentity(DaemonIdentityDir(ac.FileService.Layout.Data))
 	if !status.Paired && st.DaemonAddress == "" {
 		return status
 	}
@@ -195,6 +208,99 @@ func (ac *AppController) DaemonStatusSnapshot() DaemonUIStatus {
 		status.StateDir = passport.StateDir
 	}
 	return status
+}
+
+// fillServiceCorePath сверяет ядро, которое запускает launchd-служба, с ядром
+// лаунчера (SPEC 135 §5.1). `--service=install` фиксирует путь к бинарю в
+// plist; после переезда данных SingboxPath уезжает в DataDir, а служба
+// продолжает запускать старый бинарь. plist — 0644, читается без root.
+func (ac *AppController) fillServiceCorePath(status *DaemonUIStatus) {
+	plistPath := daemonSystemPlistPath()
+	corePath, err := readPlistProgramPath(plistPath)
+	if err != nil {
+		debuglog.DebugLog("DaemonStatusSnapshot: service core path from %s: %v", plistPath, err)
+		return
+	}
+	status.ServiceCorePath = corePath
+	launcherCore := ac.FileService.SingboxPath
+	if corePath == "" || launcherCore == "" || sameFilePath(corePath, launcherCore) {
+		return
+	}
+	status.ServiceCoreMismatch = true
+	debuglog.WarnLog("daemon: service runs %s, launcher core is %s — reinstall the service", corePath, launcherCore)
+}
+
+// sameFilePath — два пути указывают на один файл: сначала лексически, затем
+// с раскрытием симлинков (ядро в DataDir бывает ссылкой на dev-сборку).
+func sameFilePath(a, b string) bool {
+	if filepath.Clean(a) == filepath.Clean(b) {
+		return true
+	}
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	return errA == nil && errB == nil && ra == rb
+}
+
+// readPlistProgramPath достаёт ProgramArguments[0] из XML-plist launchd:
+// первую <string> массива, идущего за <key>ProgramArguments</key>. Разбор
+// минимальный — plist службы пишет сам `lxd --service=install`, бинарные
+// plist там не встречаются.
+func readPlistProgramPath(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	dec := xml.NewDecoder(f)
+	var (
+		inKey    bool
+		afterKey bool
+		inArray  bool
+		keyText  strings.Builder
+	)
+	for {
+		tok, err := dec.Token()
+		if errors.Is(err, io.EOF) {
+			return "", errors.New("ProgramArguments not found")
+		}
+		if err != nil {
+			return "", err
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			switch {
+			case inArray:
+				if t.Name.Local != "string" {
+					return "", fmt.Errorf("ProgramArguments[0] is <%s>, want <string>", t.Name.Local)
+				}
+				var value string
+				if err := dec.DecodeElement(&value, &t); err != nil {
+					return "", err
+				}
+				return value, nil
+			case afterKey:
+				if t.Name.Local != "array" {
+					return "", fmt.Errorf("ProgramArguments is <%s>, want <array>", t.Name.Local)
+				}
+				inArray = true
+			case t.Name.Local == "key":
+				inKey = true
+				keyText.Reset()
+			}
+		case xml.CharData:
+			if inKey {
+				keyText.Write(t)
+			}
+		case xml.EndElement:
+			switch {
+			case inKey && t.Name.Local == "key":
+				inKey = false
+				afterKey = strings.TrimSpace(keyText.String()) == "ProgramArguments"
+			case inArray && t.Name.Local == "array":
+				return "", errors.New("ProgramArguments is empty")
+			}
+		}
+	}
 }
 
 // CoreSupportsLxd проверяет, собрано ли установленное ядро с сабкомандой lxd
@@ -229,7 +335,7 @@ func (ac *AppController) PairDaemonWithInvite(inviteRaw, secret string) error {
 	if err != nil {
 		return err
 	}
-	identity, err := lxdclient.LoadOrCreateIdentity(DaemonIdentityDir(ac.FileService.ExecDir))
+	identity, err := lxdclient.LoadOrCreateIdentity(DaemonIdentityDir(ac.FileService.Layout.Data))
 	if err != nil {
 		return err
 	}
@@ -248,10 +354,10 @@ func (ac *AppController) PairDaemonWithInvite(inviteRaw, secret string) error {
 	// продолжал стучаться на роутер). Не-loopback сопряжение уходит в реестр
 	// удалённых машин, локальные поля не трогаем.
 	if !lxdclient.IsLoopbackAddr(invite.Addr) {
-		registry := services.NewRemoteRegistry(ac.FileService.ExecDir)
+		registry := services.NewRemoteRegistry(ac.FileService.Layout.Data)
 		entry, impErr := registry.ImportPairedDaemon(
 			invite.Addr, invite.Addr, invite.ServerFingerprint, secret,
-			DaemonIdentityDir(ac.FileService.ExecDir))
+			DaemonIdentityDir(ac.FileService.Layout.Data))
 		if impErr != nil {
 			return fmt.Errorf("pair: register remote daemon: %w", impErr)
 		}
@@ -260,7 +366,7 @@ func (ac *AppController) PairDaemonWithInvite(inviteRaw, secret string) error {
 		return nil
 	}
 
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	st := locale.LoadSettings(binDir)
 	st.DaemonAddress = invite.Addr
 	st.DaemonServerFingerprint = invite.ServerFingerprint
@@ -279,16 +385,16 @@ func (ac *AppController) PairDaemonWithInvite(inviteRaw, secret string) error {
 // адрес. Регистрация на стороне демона (если он жив) остаётся — её снимает
 // `sing-box lxd client remove` или полное удаление службы.
 func (ac *AppController) UnpairDaemon() error {
-	if err := lxdclient.RemoveIdentity(DaemonIdentityDir(ac.FileService.ExecDir)); err != nil {
+	if err := lxdclient.RemoveIdentity(DaemonIdentityDir(ac.FileService.Layout.Data)); err != nil {
 		return err
 	}
 	// Файл секрета старой модели (до ревизии владения): больше не создаётся,
 	// но у ранних установок мог остаться — подчищаем.
-	legacySecretPath := filepath.Join(DaemonIdentityDir(ac.FileService.ExecDir), daemonLegacySecretFileName)
+	legacySecretPath := filepath.Join(DaemonIdentityDir(ac.FileService.Layout.Data), daemonLegacySecretFileName)
 	if err := os.Remove(legacySecretPath); err != nil && !os.IsNotExist(err) {
 		debuglog.WarnLog("UnpairDaemon: remove legacy secret file: %v", err)
 	}
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	st := locale.LoadSettings(binDir)
 	st.DaemonAddress = ""
 	st.DaemonServerFingerprint = ""
@@ -299,7 +405,7 @@ func (ac *AppController) UnpairDaemon() error {
 // SetDaemonAddress сохраняет откорректированный адрес управляющего канала и
 // пересоздаёт активный daemon-backend.
 func (ac *AppController) SetDaemonAddress(address string) error {
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	st := locale.LoadSettings(binDir)
 	st.DaemonAddress = strings.TrimSpace(address)
 	if err := locale.SaveSettings(binDir, st); err != nil {
@@ -316,7 +422,7 @@ func (ac *AppController) SetDaemonAddress(address string) error {
 // исключительно для loopback-адресов: авто-даунгрейд по сети — это подарок
 // MITM'у (downgrade-атака), там решение остаётся за пользователем.
 func (ac *AppController) followDaemonPlainChannel() {
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	st := locale.LoadSettings(binDir)
 	debuglog.InfoLog("followDaemonPlainChannel: daemon at %s dropped TLS; clearing the pinned fingerprint to follow", st.DaemonAddress)
 	st.DaemonServerFingerprint = ""
@@ -339,7 +445,7 @@ func (ac *AppController) DaemonShowSecretCommand() string {
 // сопряжения, и секрет — весь канал аутентификации; для mTLS-демона
 // сертификат — полный мандат, а секрет не используется.
 func (ac *AppController) SetDaemonSecret(secret string) error {
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	st := locale.LoadSettings(binDir)
 	st.DaemonSecret = strings.TrimSpace(secret)
 	if err := locale.SaveSettings(binDir, st); err != nil {

@@ -222,10 +222,10 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 	debuglog.WarnLog("startSingBox: Starting Sing-Box...")
 	ac.SingboxCmd = exec.Command(ac.FileService.SingboxPath, "run", "-c", filepath.Base(ac.FileService.ConfigPath))
 	platform.PrepareCommand(ac.SingboxCmd)
-	ac.SingboxCmd.Dir = platform.GetBinDir(ac.FileService.ExecDir)
+	ac.SingboxCmd.Dir = ac.FileService.Layout.Data.Bin()
 	if ac.FileService.ChildLogFile != nil {
 		// Check and rotate log file before starting new process to prevent unbounded growth
-		ac.FileService.CheckAndRotateLogFile(filepath.Join(ac.FileService.ExecDir, childLogFileName))
+		ac.FileService.CheckAndRotateLogFile(ac.FileService.ChildLogPath)
 
 		// Write directly to file - no buffering in memory
 		// This prevents memory leaks from accumulating log output
@@ -260,9 +260,9 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 // Скрипт создаётся в platform; оркестрация и состояние — здесь.
 func (svc *ProcessService) startSingBoxPrivileged() error {
 	ac := svc.ac
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	configName := filepath.Base(ac.FileService.ConfigPath)
-	logPath := filepath.Join(ac.FileService.ExecDir, childLogFileName)
+	logPath := ac.FileService.ChildLogPath
 	if ac.FileService.ChildLogFile != nil {
 		ac.FileService.CheckAndRotateLogFile(logPath)
 	}

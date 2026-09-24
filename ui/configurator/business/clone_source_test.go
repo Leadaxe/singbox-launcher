@@ -7,13 +7,14 @@ import (
 
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
 // writeCloneState кладёт состояние в каталог машины и возвращает execDir.
 func writeCloneState(t *testing.T, execDir, target, machineID string, st *corestate.State) {
 	t.Helper()
-	path := platform.GetWizardStatePathFor(execDir, target, machineID)
+	path := platform.GetWizardStatePathFor(paths.DataDir(execDir), target, machineID)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -42,7 +43,7 @@ func TestCloneDropsMachineBoundVars(t *testing.T) {
 	writeCloneState(t, execDir, constants.ConfigTargetRemote, "home", donor)
 
 	src := CloneSource{Kind: CloneSourceRemote, MachineID: "home", Name: "Home"}
-	got, summary, err := LoadCloneState(execDir, src)
+	got, summary, err := LoadCloneState(paths.DataDir(execDir), src)
 	if err != nil {
 		t.Fatalf("LoadCloneState: %v", err)
 	}
@@ -86,7 +87,7 @@ func TestCloneClearsDonorIdentity(t *testing.T) {
 	donor.TargetArch = "amd64"
 	writeCloneState(t, execDir, constants.ConfigTargetRemote, "home", donor)
 
-	got, _, err := LoadCloneState(execDir, CloneSource{
+	got, _, err := LoadCloneState(paths.DataDir(execDir), CloneSource{
 		Kind: CloneSourceRemote, MachineID: "home", Name: "Home"})
 	if err != nil {
 		t.Fatalf("LoadCloneState: %v", err)
@@ -121,7 +122,7 @@ func TestCloneCountsChainsAndSources(t *testing.T) {
 	}
 	writeCloneState(t, execDir, constants.ConfigTargetLocal, "", donor)
 
-	_, summary, err := LoadCloneState(execDir, CloneSource{Kind: CloneSourceLocal, Name: "Local"})
+	_, summary, err := LoadCloneState(paths.DataDir(execDir), CloneSource{Kind: CloneSourceLocal, Name: "Local"})
 	if err != nil {
 		t.Fatalf("LoadCloneState: %v", err)
 	}
@@ -142,7 +143,7 @@ func TestCloneCountsChainsAndSources(t *testing.T) {
 func TestCloneCountsLegacyV5Rules(t *testing.T) {
 	execDir := t.TempDir()
 
-	path := platform.GetWizardStatePathFor(execDir, constants.ConfigTargetLocal, "")
+	path := platform.GetWizardStatePathFor(paths.DataDir(execDir), constants.ConfigTargetLocal, "")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -157,7 +158,7 @@ func TestCloneCountsLegacyV5Rules(t *testing.T) {
 		t.Fatalf("write legacy state: %v", err)
 	}
 
-	_, summary, err := LoadCloneState(execDir, CloneSource{Kind: CloneSourceLocal, Name: "Local"})
+	_, summary, err := LoadCloneState(paths.DataDir(execDir), CloneSource{Kind: CloneSourceLocal, Name: "Local"})
 	if err != nil {
 		t.Fatalf("LoadCloneState: %v", err)
 	}
@@ -179,7 +180,7 @@ func TestCloneSourceListExcludesSelf(t *testing.T) {
 		{MachineID: "ira", Name: "IRA"},
 	}
 
-	got := ListCloneSources(execDir, machines, constants.ConfigTargetRemote, "ira")
+	got := ListCloneSources(paths.DataDir(execDir), machines, constants.ConfigTargetRemote, "ira")
 	for _, s := range got {
 		if s.Kind == CloneSourceRemote && s.MachineID == "ira" {
 			t.Fatal("current machine offered as its own clone source")
@@ -198,7 +199,7 @@ func TestCloneSourceListExcludesSelf(t *testing.T) {
 	// Машина без состояния остаётся в списке, но помечена: «нечего
 	// клонировать» — это ответ, а исчезнувшая строка — загадка.
 	var ira CloneSource
-	got2 := ListCloneSources(execDir, machines, constants.ConfigTargetRemote, "home")
+	got2 := ListCloneSources(paths.DataDir(execDir), machines, constants.ConfigTargetRemote, "home")
 	for _, s := range got2 {
 		if s.MachineID == "ira" {
 			ira = s
@@ -218,7 +219,7 @@ func TestCloneSourceListOmitsLocalWhenLocal(t *testing.T) {
 	execDir := t.TempDir()
 	writeCloneState(t, execDir, constants.ConfigTargetRemote, "home", corestate.New())
 
-	got := ListCloneSources(execDir, []CloneSource{{MachineID: "home", Name: "Home"}},
+	got := ListCloneSources(paths.DataDir(execDir), []CloneSource{{MachineID: "home", Name: "Home"}},
 		constants.ConfigTargetLocal, "")
 
 	for _, s := range got {

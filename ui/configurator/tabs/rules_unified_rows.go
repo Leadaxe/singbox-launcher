@@ -311,8 +311,8 @@ func buildSinglePresetRefRow(
 		enableCh.Disable()
 	}
 	enableCh.OnChanged = func(on bool) {
-		if on && len(srsEntries) > 0 && model.ExecDir != "" &&
-			!services.AllSRSDownloadedIn(model.ExecDir, model.SrsDir(), srsEntries) {
+		if on && len(srsEntries) > 0 && model.DataDir != "" &&
+			!services.AllSRSDownloadedIn(model.DataDir, model.SrsDir(), srsEntries) {
 			if srsBtn != nil {
 				enableOnSRSSuccess = true
 				srsBtn.OnTapped()
@@ -396,7 +396,7 @@ func buildSinglePresetRefRow(
 	var srsHF *fynewidget.HoverForwardTTButton
 	var srsWarn *ttwidget.Label
 	srsMissingEnabled := false
-	if len(srsEntries) > 0 && model.ExecDir != "" {
+	if len(srsEntries) > 0 && model.DataDir != "" {
 		srsHF = makePresetSRSButton(presenter, model, guiState, srsEntries, showAddRuleDialog, pr, &enableOnSRSSuccess, rowGetter)
 		srsBtn = srsHF.TTWidget()
 		// SRS-warning badge: preset enabled в state но файлы не скачены →
@@ -404,7 +404,7 @@ func buildSinglePresetRefRow(
 		// Visual ⚠ + auto-download silently в фоне ниже. Defensive против
 		// сценариев: (a) файлы потёрли вручную, (b) template добавил srs_url
 		// в уже-enabled preset, (c) load state'а с broken cache.
-		if pr.Enabled && !services.AllSRSDownloadedIn(model.ExecDir, model.SrsDir(), srsEntries) {
+		if pr.Enabled && !services.AllSRSDownloadedIn(model.DataDir, model.SrsDir(), srsEntries) {
 			srsMissingEnabled = true
 			srsWarn = ttwidget.NewLabel("⚠")
 			srsWarn.Importance = widget.WarningImportance
@@ -480,7 +480,7 @@ func makePresetSRSButton(
 	rowGetter fynewidget.RowHoverGetter,
 ) *fynewidget.HoverForwardTTButton {
 	initialText := srsBtnDownload()
-	if services.AllSRSDownloadedIn(model.ExecDir, model.SrsDir(), entries) {
+	if services.AllSRSDownloadedIn(model.DataDir, model.SrsDir(), entries) {
 		initialText = srsBtnDone()
 	}
 	btn := fynewidget.NewHoverForwardTTButton(initialText, nil, rowGetter)

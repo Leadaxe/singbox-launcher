@@ -12,17 +12,18 @@ package business
 
 import (
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/internal/paths"
 )
 
 // TemplateLoader загружает TemplateData.
 type TemplateLoader interface {
-	LoadTemplateData(execDir string) (*wizardtemplate.TemplateData, error)
+	LoadTemplateData(layout paths.Layout) (*wizardtemplate.TemplateData, error)
 }
 
 // DefaultTemplateLoader - реализация TemplateLoader по умолчанию.
 type DefaultTemplateLoader struct{}
 
 // LoadTemplateData загружает TemplateData из файла.
-func (l *DefaultTemplateLoader) LoadTemplateData(execDir string) (*wizardtemplate.TemplateData, error) {
-	return wizardtemplate.LoadTemplateData(execDir)
+func (*DefaultTemplateLoader) LoadTemplateData(layout paths.Layout) (*wizardtemplate.TemplateData, error) {
+	return wizardtemplate.LoadTemplateData(layout)
 }

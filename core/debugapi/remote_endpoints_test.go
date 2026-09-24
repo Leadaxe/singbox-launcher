@@ -14,6 +14,7 @@ import (
 	"singbox-launcher/core/services"
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -22,7 +23,7 @@ import (
 func newRemoteTestServer(t *testing.T) (base, execDir string, srv *Server) {
 	t.Helper()
 	execDir = t.TempDir()
-	registry := services.NewRemoteRegistry(execDir)
+	registry := services.NewRemoteRegistry(paths.DataDir(execDir))
 	port := freeLocalPort(t)
 	s, err := New(&fakeFacade{}, port, "remote-test-token")
 	if err != nil {
@@ -31,7 +32,7 @@ func newRemoteTestServer(t *testing.T) (base, execDir string, srv *Server) {
 	s.EnableRemote(&RemoteAPI{
 		Registry: registry,
 		Pool:     services.NewTransportPool(registry),
-		ExecDir:  execDir,
+		DataDir:  paths.DataDir(execDir),
 	})
 	s.Start()
 	t.Cleanup(s.Stop)
@@ -71,7 +72,7 @@ func authDo(t *testing.T, method, url string, body any) (*http.Response, []byte)
 // enroll — в тестах канал заменяет httptest-демон, доверие не нужно).
 func seedMachine(t *testing.T, execDir, id, addr string) {
 	t.Helper()
-	binDir := platform.GetBinDir(execDir)
+	binDir := paths.DataDir(execDir).Bin()
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin: %v", err)
 	}
@@ -221,7 +222,7 @@ func TestRemoteRawRESTHealthAndDeploy(t *testing.T) {
 	}
 
 	// Кладём собранный конфиг машины и деплоим.
-	cfgPath := platform.GetRemoteConfigPathFor(execDir, "router")
+	cfgPath := platform.GetRemoteConfigPathFor(paths.DataDir(execDir), "router")
 	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
 		t.Fatalf("mkdir machine dir: %v", err)
 	}
@@ -345,7 +346,7 @@ func TestRemoteMachineStateMirror(t *testing.T) {
 	}
 
 	// Кладём state машины и патчим его через API.
-	statePath := platform.GetWizardStatePathFor(execDir, constants.ConfigTargetRemote, "router")
+	statePath := platform.GetWizardStatePathFor(paths.DataDir(execDir), constants.ConfigTargetRemote, "router")
 	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}

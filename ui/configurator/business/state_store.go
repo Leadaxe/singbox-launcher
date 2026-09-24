@@ -42,7 +42,7 @@ type StateStore struct {
 func NewStateStore(fileService FileServiceInterface) *StateStore {
 	return &StateStore{
 		fileService: fileService,
-		statesDir:   platform.GetWizardStatesDir(fileService.ExecDir()),
+		statesDir:   platform.GetWizardStatesDir(fileService.Layout().Data),
 	}
 }
 
@@ -56,7 +56,7 @@ func NewStateStore(fileService FileServiceInterface) *StateStore {
 func NewStateStoreFor(fileService FileServiceInterface, target, machineID string) *StateStore {
 	return &StateStore{
 		fileService: fileService,
-		statesDir:   platform.GetWizardStatesDirFor(fileService.ExecDir(), target, machineID),
+		statesDir:   platform.GetWizardStatesDirFor(fileService.Layout().Data, target, machineID),
 	}
 }
 

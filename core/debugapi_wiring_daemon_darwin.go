@@ -10,7 +10,6 @@ import (
 	"singbox-launcher/core/debugapi"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/lxdclient"
-	"singbox-launcher/internal/platform"
 )
 
 // debugAPIDaemonWiring adapts *AppController to debugapi.DaemonFacade
@@ -87,7 +86,7 @@ func (f *debugAPIDaemonWiring) SwitchEngine(mode string) error {
 	if err := f.ac.SwitchBackendMode(m); err != nil {
 		return err
 	}
-	binDir := platform.GetBinDir(f.ac.FileService.ExecDir)
+	binDir := f.ac.FileService.Layout.Data.Bin()
 	st := locale.LoadSettings(binDir)
 	st.CoreBackendMode = string(m)
 	if err := locale.SaveSettings(binDir, st); err != nil {

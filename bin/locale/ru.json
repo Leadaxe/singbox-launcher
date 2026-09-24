@@ -4384,5 +4384,161 @@
   },
   "(unnamed)": {
     "value": "(без имени)"
+  },
+  "%d files, %s": {
+    "value": "%d файлов, %s"
+  },
+  "Copy paths": {
+    "value": "Скопировать пути"
+  },
+  "Data from before the migration, inside the app bundle": {
+    "value": "Данные до переезда, внутри бандла приложения"
+  },
+  "Data from before the migration, next to the program": {
+    "value": "Данные до переезда, рядом с программой"
+  },
+  "Data": {
+    "value": "Данные"
+  },
+  "Data, logs, core and template paths copied. Paste them into the bug report.": {
+    "value": "Пути к данным, логам, ядру и шаблону скопированы. Вставьте их в сообщение об ошибке."
+  },
+  "Environment": {
+    "value": "Переменные окружения"
+  },
+  "Left over from a data move": {
+    "value": "Осталось после переноса данных"
+  },
+  "Legacy": {
+    "value": "Унаследованный"
+  },
+  "Move launcher data": {
+    "value": "Перенести данные лаунчера"
+  },
+  "Moving data…": {
+    "value": "Перенос данных…"
+  },
+  "Network cleanup: ghost wintun adapters and orphan firewall rules": {
+    "value": "Сетевая очистка: призрачные адаптеры wintun и осиротевшие правила файрвола"
+  },
+  "No data from a previous launcher version was found in the data folder. If you had settings and subscriptions, restore them from an LX Backup (Settings → Backup). Data folder:": {
+    "value": "В папке данных не найдено данных предыдущей версии лаунчера. Если у вас были настройки и подписки, восстановите их из LX Backup (Settings → Backup). Папка данных:"
+  },
+  "No previous data found": {
+    "value": "Данные предыдущей версии не найдены"
+  },
+  "Not found: the core will be downloaded to this path": {
+    "value": "Не найдено: ядро будет скачано по этому пути"
+  },
+  "Not found: the template will be downloaded to this path": {
+    "value": "Не найдено: шаблон будет скачан по этому пути"
+  },
+  "Nothing to remove.": {
+    "value": "Удалять нечего."
+  },
+  "Old logs next to the program": {
+    "value": "Старые логи рядом с программой"
+  },
+  "Paths are set by environment variables": {
+    "value": "Пути заданы переменными окружения"
+  },
+  "Paths copied": {
+    "value": "Пути скопированы"
+  },
+  "Portable mode (keep data next to the program)": {
+    "value": "Portable-режим (хранить данные рядом с программой)"
+  },
+  "Portable": {
+    "value": "Portable"
+  },
+  "Program": {
+    "value": "Программа"
+  },
+  "Reinstall the service (run in Terminal, your sudo):": {
+    "value": "Переустановите службу (выполнить в Terminal, ваш sudo):"
+  },
+  "Remove all data…": {
+    "value": "Удалить все данные…"
+  },
+  "Remove all launcher data": {
+    "value": "Удалить все данные лаунчера"
+  },
+  "Shadows: %s": {
+    "value": "Затеняет: %s"
+  },
+  "Source: %s": {
+    "value": "Источник: %s"
+  },
+  "Stop the VPN first": {
+    "value": "Сначала остановите VPN"
+  },
+  "Storage": {
+    "value": "Хранилище"
+  },
+  "Switching moves the data to: %s": {
+    "value": "Переключение перенесёт данные в: %s"
+  },
+  "System": {
+    "value": "Системный"
+  },
+  "Template": {
+    "value": "Шаблон"
+  },
+  "The core folder is read-only; download the core into the data folder first": {
+    "value": "Папка ядра доступна только для чтения; сначала скачайте ядро в папку данных"
+  },
+  "The daemon service is installed. Remove it first with this command, otherwise the launcher will not be able to do it after the data is gone:": {
+    "value": "Служба демона установлена. Сначала удалите её этой командой, иначе после удаления данных лаунчер сделать этого уже не сможет:"
+  },
+  "The following will be deleted. The program folder itself is not touched — delete it yourself afterwards.": {
+    "value": "Будет удалено следующее. Папка с программой не затрагивается — удалите её сами после этого."
+  },
+  "The program folder is read-only": {
+    "value": "Папка программы доступна только для чтения"
+  },
+  "The service runs another core binary:\n%s\nReinstall the service to switch it to the current core.": {
+    "value": "Служба запускает другой бинарь ядра:\n%s\nПереустановите службу, чтобы перевести её на текущее ядро."
+  },
+  "Unused data": {
+    "value": "Неиспользуемые данные"
+  },
+  "Unused system data folder": {
+    "value": "Неиспользуемая системная папка данных"
+  },
+  "Version: %s, source: %s": {
+    "value": "Версия: %s, источник: %s"
+  },
+  "Where the launcher keeps its files. Attach “Copy paths” to bug reports.": {
+    "value": "Где лаунчер хранит свои файлы. Прикладывайте «Скопировать пути» к сообщениям об ошибках."
+  },
+  "found": {
+    "value": "найден"
+  },
+  "unknown": {
+    "value": "неизвестно"
+  },
+  "Existing data found": {
+    "value": "Найдены существующие данные"
+  },
+  "Your settings and subscriptions were found in:\n%s\n\nThe launcher is running in portable mode because portable.txt lies next to the program. Switch to the found data? The launcher will restart.": {
+    "value": "Ваши настройки и подписки найдены в:\n%s\n\nЛаунчер работает в portable-режиме, потому что рядом с программой лежит portable.txt. Переключиться на найденные данные? Лаунчер перезапустится."
+  },
+  "Data move in progress": {
+    "value": "Идёт перенос данных"
+  },
+  "The launcher will restart immediately after the move.": {
+    "value": "Сразу после переноса лаунчер перезапустится."
+  },
+  "Data will be moved from:\n%s\nto:\n%s": {
+    "value": "Данные будут перенесены из:\n%s\nв:\n%s"
+  },
+  "Left over from the move: %s": {
+    "value": "Осталось после переноса: %s"
+  },
+  "System data folder with settings — kept by default": {
+    "value": "Системная папка данных с настройками — по умолчанию сохраняется"
+  },
+  "Only: %s": {
+    "value": "Только: %s"
   }
 }

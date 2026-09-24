@@ -17,7 +17,6 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
-	"singbox-launcher/internal/platform"
 )
 
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
@@ -59,7 +58,7 @@ func buildLocalEngineTab(ac *core.AppController, win fyne.Window, onChanged func
 	radio.Required = true
 
 	persistMode := func(mode core.BackendMode) {
-		binDir := platform.GetBinDir(ac.FileService.ExecDir)
+		binDir := ac.FileService.Layout.Data.Bin()
 		st := locale.LoadSettings(binDir)
 		st.CoreBackendMode = string(mode)
 		if err := locale.SaveSettings(binDir, st); err != nil {

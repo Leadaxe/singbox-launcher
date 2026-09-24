@@ -28,6 +28,7 @@ import (
 
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/paths"
 )
 
 // Пороги и таймауты пробы. Живут здесь, а не в glprobe_windows.go, потому что
@@ -80,16 +81,16 @@ type GLState struct {
 // пользователь нажал кнопку. Без замка одна запись затирала бы поле другой.
 var glStateMu sync.Mutex
 
-// GLStatePath — путь к bin/gl-state.json.
-func GLStatePath(execDir string) string {
-	return filepath.Join(GetBinDir(execDir), constants.GLStateFileName)
+// GLStatePath — путь к <DataDir>/bin/gl-state.json.
+func GLStatePath(d paths.DataDir) string {
+	return filepath.Join(d.Bin(), constants.GLStateFileName)
 }
 
 // LoadGLState читает состояние гейта. ok=false — файла нет (первый запуск)
 // или JSON битый; в обоих случаях гейт обязан сделать пробу, а не гадать.
-func LoadGLState(execDir string) (GLState, bool) {
+func LoadGLState(d paths.DataDir) (GLState, bool) {
 	var s GLState
-	data, err := os.ReadFile(GLStatePath(execDir))
+	data, err := os.ReadFile(GLStatePath(d))
 	if err != nil {
 		return GLState{}, false
 	}
@@ -103,12 +104,11 @@ func LoadGLState(execDir string) (GLState, bool) {
 // SaveGLState пишет состояние атомарно (tmp + rename, как locale.SaveSettings).
 // Обрыв записи на середине оставил бы битый JSON, а его гейт трактует как
 // «первый запуск» — то есть лишняя проба при каждом старте.
-func SaveGLState(execDir string, s GLState) error {
-	binDir := GetBinDir(execDir)
-	if err := os.MkdirAll(binDir, DefaultDirMode); err != nil {
+func SaveGLState(d paths.DataDir, s GLState) error {
+	if err := os.MkdirAll(d.Bin(), DefaultDirMode); err != nil {
 		return fmt.Errorf("gl: create bin dir: %w", err)
 	}
-	path := filepath.Join(binDir, constants.GLStateFileName)
+	path := GLStatePath(d)
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return fmt.Errorf("gl: marshal state: %w", err)
@@ -129,8 +129,8 @@ func SaveGLState(execDir string, s GLState) error {
 // Renderer, Driver и OfferedHWRenderer берутся из прежней записи: потеря
 // OfferedHWRenderer означала бы, что диалог возврата на железо всплывает при
 // каждом старте, хотя пользователь уже ответил «Later».
-func MarkGLStarting(execDir, mode string) {
-	UpdateGLState(execDir, func(s *GLState) {
+func MarkGLStarting(d paths.DataDir, mode string) {
+	UpdateGLState(d, func(s *GLState) {
 		s.Phase = GLPhaseStarting
 		s.Mode = mode
 	})
@@ -139,23 +139,23 @@ func MarkGLStarting(execDir, mode string) {
 // UpdateGLState читает запись, даёт её изменить и пишет обратно под замком.
 // Единственный способ менять gl-state.json: LauncherVersion и UpdatedAt
 // проставляются здесь, а не в каждом вызывающем.
-func UpdateGLState(execDir string, mutate func(*GLState)) {
+func UpdateGLState(d paths.DataDir, mutate func(*GLState)) {
 	glStateMu.Lock()
 	defer glStateMu.Unlock()
 
-	s, _ := LoadGLState(execDir)
+	s, _ := LoadGLState(d)
 	mutate(&s)
 	s.LauncherVersion = constants.AppVersion
 	s.UpdatedAt = time.Now().UTC()
-	if err := SaveGLState(execDir, s); err != nil {
+	if err := SaveGLState(d, s); err != nil {
 		debuglog.WarnLog("gl: cannot persist gate state: %v", err)
 	}
 }
 
 // MarkGLRendered фиксирует, что окно дожило до кадра. Остальные поля —
 // из прежней записи.
-func MarkGLRendered(execDir string) {
-	UpdateGLState(execDir, func(s *GLState) {
+func MarkGLRendered(d paths.DataDir) {
+	UpdateGLState(d, func(s *GLState) {
 		if s.Mode == "" {
 			// Гейт до нас не дошёл (не-Windows или ошибка записи). Ставим
 			// честный минимум, чтобы следующий старт не считал это смертью.
@@ -184,32 +184,37 @@ func RestartRequested() bool { return restartPending.Load() }
 // Трогать её мы не имеем права.
 var errForeignOpenGL = errors.New("local opengl32.dll is not our Mesa3D (libgallium_wgl.dll is missing)")
 
+// Mesa-функции ниже принимают AppDir и ПИШУТ в него: это единственное
+// разрешённое место записи в AppDir (SPEC 135 §3). opengl32.dll обязан лежать
+// рядом с exe, иначе загрузчик Windows его не найдёт. В UI кнопки Mesa
+// недоступны, когда AppDir не пишется.
+
 // mesaDLLs — файлы, которыми оперируют DisableMesa/EnableMesa. Порядок важен
 // только для читаемости лога.
 var mesaDLLs = []string{"opengl32.dll", "libgallium_wgl.dll", "dxil.dll"}
 
 // IsMesaInstalled — рядом с exe лежит именно наша Mesa3D: opengl32.dll вместе
 // с libgallium_wgl.dll. Одиночный opengl32.dll — чужой, см. errForeignOpenGL.
-func IsMesaInstalled(execDir string) bool {
-	return fileExists(filepath.Join(execDir, "opengl32.dll")) &&
-		fileExists(filepath.Join(execDir, "libgallium_wgl.dll"))
+func IsMesaInstalled(a paths.AppDir) bool {
+	return fileExists(filepath.Join(string(a), "opengl32.dll")) &&
+		fileExists(filepath.Join(string(a), "libgallium_wgl.dll"))
 }
 
 // IsMesaDisabled — Mesa отключена переименованием (opengl32.dll.off).
-func IsMesaDisabled(execDir string) bool {
-	return fileExists(filepath.Join(execDir, "opengl32.dll"+constants.MesaDisabledSuffix))
+func IsMesaDisabled(a paths.AppDir) bool {
+	return fileExists(filepath.Join(string(a), "opengl32.dll"+constants.MesaDisabledSuffix))
 }
 
 // HasMesaBundle — рядом с exe есть папка mesa3d/ с DLL (архив win64-full),
 // то есть установку можно сделать без сети.
-func HasMesaBundle(execDir string) bool {
-	return fileExists(filepath.Join(execDir, constants.MesaBundleDirName, "opengl32.dll"))
+func HasMesaBundle(a paths.AppDir) bool {
+	return fileExists(filepath.Join(string(a), constants.MesaBundleDirName, "opengl32.dll"))
 }
 
 // HasForeignOpenGL — рядом с exe одиночный opengl32.dll без Mesa-спутника.
-func HasForeignOpenGL(execDir string) bool {
-	return fileExists(filepath.Join(execDir, "opengl32.dll")) &&
-		!fileExists(filepath.Join(execDir, "libgallium_wgl.dll"))
+func HasForeignOpenGL(a paths.AppDir) bool {
+	return fileExists(filepath.Join(string(a), "opengl32.dll")) &&
+		!fileExists(filepath.Join(string(a), "libgallium_wgl.dll"))
 }
 
 func fileExists(path string) bool {
@@ -219,13 +224,13 @@ func fileExists(path string) bool {
 
 // DisableMesa переименовывает DLL Mesa3D рядом с exe в <имя>.off.
 // Переименование обратимо без сети и без папки mesa3d/ — в отличие от удаления.
-func DisableMesa(execDir string) error {
-	if HasForeignOpenGL(execDir) {
+func DisableMesa(a paths.AppDir) error {
+	if HasForeignOpenGL(a) {
 		return errForeignOpenGL
 	}
 	var moved []string
 	for _, name := range mesaDLLs {
-		src := filepath.Join(execDir, name)
+		src := filepath.Join(string(a), name)
 		if !fileExists(src) {
 			continue
 		}
@@ -246,9 +251,9 @@ func DisableMesa(execDir string) error {
 
 // EnableMesa возвращает отключённые DLL обратно. Если .off нет, но есть папка
 // mesa3d/ — копирует оттуда (кнопка «Enable» в Диагностике на чистой машине).
-func EnableMesa(execDir string) error {
-	if !IsMesaDisabled(execDir) {
-		names, err := copyMesaFromBundle(execDir)
+func EnableMesa(a paths.AppDir) error {
+	if !IsMesaDisabled(a) {
+		names, err := copyMesaFromBundle(a)
 		if err != nil {
 			return err
 		}
@@ -257,11 +262,11 @@ func EnableMesa(execDir string) error {
 	}
 	var restored []string
 	for _, name := range mesaDLLs {
-		src := filepath.Join(execDir, name+constants.MesaDisabledSuffix)
+		src := filepath.Join(string(a), name+constants.MesaDisabledSuffix)
 		if !fileExists(src) {
 			continue
 		}
-		dst := filepath.Join(execDir, name)
+		dst := filepath.Join(string(a), name)
 		_ = os.Remove(dst)
 		if err := os.Rename(src, dst); err != nil {
 			return fmt.Errorf("gl: enable %s: %w", name, err)
@@ -278,13 +283,13 @@ func EnableMesa(execDir string) error {
 // copyMesaFromBundle копирует все *.dll из mesa3d/ рядом с exe через .tmp и
 // rename (обрыв на середине не должен оставить обрезанный opengl32.dll).
 // Preload сюда не входит: сначала установленную Mesa надо проверить пробой.
-func copyMesaFromBundle(execDir string) ([]string, error) {
+func copyMesaFromBundle(a paths.AppDir) ([]string, error) {
 	// Чужой одиночный opengl32.dll рядом с exe затирать нельзя: это не наша
 	// установка, а чья-то ещё (SPEC 125 §2.1 — такой файл только WARN'ится).
-	if HasForeignOpenGL(execDir) {
+	if HasForeignOpenGL(a) {
 		return nil, errForeignOpenGL
 	}
-	srcDir := filepath.Join(execDir, constants.MesaBundleDirName)
+	srcDir := filepath.Join(string(a), constants.MesaBundleDirName)
 	if !fileExists(filepath.Join(srcDir, "opengl32.dll")) {
 		return nil, fmt.Errorf("gl: %s has no opengl32.dll", constants.MesaBundleDirName)
 	}
@@ -298,12 +303,12 @@ func copyMesaFromBundle(execDir string) ([]string, error) {
 		if ent.IsDir() || !strings.EqualFold(filepath.Ext(base), ".dll") {
 			continue
 		}
-		tmpPath := filepath.Join(execDir, base+".tmp")
+		tmpPath := filepath.Join(string(a), base+".tmp")
 		if copyErr := copyFileGL(filepath.Join(srcDir, base), tmpPath); copyErr != nil {
 			_ = os.Remove(tmpPath)
 			return names, fmt.Errorf("gl: copy %s: %w", base, copyErr)
 		}
-		finalPath := filepath.Join(execDir, base)
+		finalPath := filepath.Join(string(a), base)
 		_ = os.Remove(finalPath)
 		if renameErr := os.Rename(tmpPath, finalPath); renameErr != nil {
 			_ = os.Remove(tmpPath)
@@ -322,9 +327,9 @@ func copyMesaFromBundle(execDir string) ([]string, error) {
 
 // removeMesaFiles сносит перечисленные файлы рядом с exe. Используется для
 // отката только что скопированной/скачанной Mesa, когда проба её не приняла.
-func removeMesaFiles(execDir string, names []string) { //nolint:unused // вызывается только из glprobe_windows.go (//go:build windows)
+func removeMesaFiles(a paths.AppDir, names []string) { //nolint:unused // вызывается только из glprobe_windows.go (//go:build windows)
 	for _, name := range names {
-		if err := os.Remove(filepath.Join(execDir, name)); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(filepath.Join(string(a), name)); err != nil && !os.IsNotExist(err) {
 			debuglog.WarnLog("gl: rollback: cannot remove %s: %v", name, err)
 		}
 	}

@@ -20,6 +20,7 @@ package models
 import (
 	"encoding/json"
 	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 
 	"singbox-launcher/core/config"
@@ -220,14 +221,14 @@ type WizardModel struct {
 	AvailableOutboundsMemoRev  uint64   `json:"-"`
 	AvailableOutboundsMemoTags []string `json:"-"`
 
-	// ExecDir — директория исполняемого файла (для путей к SRS и т.д.)
-	ExecDir string
+	// DataDir — корень данных лаунчера (SPEC 135): пути к SRS, settings.json и т.д.
+	DataDir paths.DataDir
 
 	// ResourceDir — каталог ресурсов машины, для которой собирается конфиг:
 	// `<state_dir>/resources` её демона (SPEC 063). Пусто для local.
 	//
 	// Путь резолвит ядро НА ТОЙ СТОРОНЕ, поэтому в rule_set[].path для
-	// удалённой машины должен уезжать он, а не ExecDir лаунчера: своего пути
+	// удалённой машины должен уезжать он, а не DataDir лаунчера: своего пути
 	// на роутере нет, и ядро не нашло бы набор.
 	ResourceDir string
 
@@ -313,5 +314,5 @@ func (m *WizardModel) SrsDir() string {
 	if m == nil || m.MachineID == "" {
 		return ""
 	}
-	return platform.GetRuleSetsDirFor(m.ExecDir, constants.ConfigTargetRemote, m.MachineID)
+	return platform.GetRuleSetsDirFor(m.DataDir, constants.ConfigTargetRemote, m.MachineID)
 }

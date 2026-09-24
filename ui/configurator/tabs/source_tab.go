@@ -643,7 +643,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 
 		// Дефолт интервала обновления — настройки приложения (SPEC 118 Т1);
 		// читается один раз на перерисовку списка, а не на строку.
-		defaultReload := locale.LoadSettings(platform.GetBinDir(m.ExecDir)).DefaultSubscriptionReload
+		defaultReload := locale.LoadSettings(m.DataDir.Bin()).DefaultSubscriptionReload
 
 		for i := range m.Sources {
 			// IIFE so each row's closures capture the correct index (avoids loop variable capture bug)

@@ -3,7 +3,6 @@
 package ui
 
 import (
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -76,7 +75,7 @@ func levelColor(l debuglog.Level) string {
 
 // OpenLogViewerWindow opens a separate window with Internal, Core, and API log tabs.
 // If the window is already open, focuses it instead of opening a duplicate.
-// Registers sinks on show and clears them on close. Core tab uses ChildLogRelativePath from FileService.
+// Registers sinks on show and clears them on close. Core tab uses ChildLogPath from FileService.
 func OpenLogViewerWindow(ac *core.AppController) {
 	logViewerMu.Lock()
 	if logViewerWindow != nil {
@@ -102,7 +101,7 @@ func OpenLogViewerWindow(ac *core.AppController) {
 		apiLevel       debuglog.Level
 		coreLines      []string
 		coreList       *widget.List
-		corePath       = filepath.Join(ac.FileService.ExecDir, ac.FileService.ChildLogRelativePath)
+		corePath       = ac.FileService.ChildLogPath
 		internalCh     = make(chan logEntry, 64)
 		apiCh          = make(chan logEntry, 64)
 		coreTickStop   func()

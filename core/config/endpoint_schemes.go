@@ -46,7 +46,7 @@ const SchemeTailscale = configtypes.SchemeTailscale
 
 // tailscaleStateDirRoot — каталог, ВНУТРИ которого лежат каталоги состояния
 // узлов tailnet. Ставится приложением (core.AppController) тем же приёмом,
-// что и хуки проб: пакет config не знает ни про ExecDir, ни про файловый
+// что и хуки проб: пакет config не знает ни про DataDir, ни про файловый
 // сервис, а эмиссия одна и та же для сборки и для превью вкладки JSON.
 //
 // Пусто = состояние ставить некуда (превью, тесты): поле не подставляется
@@ -71,8 +71,8 @@ var (
 )
 
 // SetTailscaleStateDirRoot задаёт корень каталогов состояния tailnet.
-// Ожидается абсолютный путь вида `<execDir>/bin/tailscale` — тот же корень
-// `<execDir>/bin`, относительно которого эмитятся локальные .srs
+// Ожидается абсолютный путь вида `<DataDir>/bin/tailscale` — тот же корень
+// `<DataDir>/bin`, относительно которого эмитятся локальные .srs
 // (build.CollectSrsCachedPaths).
 func SetTailscaleStateDirRoot(root string) {
 	root = strings.TrimSpace(root)

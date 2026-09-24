@@ -1017,7 +1017,7 @@ func showSourceEditWindowAt(
 			return
 		}
 		urlEntry.SetText(p.URL)
-		identityBlock.syncFromModel(p, currentIdentityDefaults(m.ExecDir))
+		identityBlock.syncFromModel(p, currentIdentityDefaults(m.DataDir))
 		ts := tagSpecOf(p)
 		prefixEntry.SetText(ts.Prefix)
 		postfixEntry.SetText(ts.Postfix)

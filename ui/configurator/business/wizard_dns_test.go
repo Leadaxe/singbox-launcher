@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/internal/paths"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -85,7 +86,7 @@ func TestPickDNSStrategy_SkeletonWhenOptsMissingOrEmpty(t *testing.T) {
 
 func TestApplyWizardDNSTemplate_StrategyFromSkeleton(t *testing.T) {
 	root := findWizardTemplateRoot(t)
-	td, err := wizardtemplate.LoadTemplateData(root)
+	td, err := wizardtemplate.LoadTemplateData(paths.Layout{App: paths.AppDir(root), Data: paths.DataDir(root)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +101,7 @@ func TestApplyWizardDNSTemplate_StrategyFromSkeleton(t *testing.T) {
 
 func TestApplyWizardDNSTemplate_OrderAndLocks(t *testing.T) {
 	root := findWizardTemplateRoot(t)
-	td, err := wizardtemplate.LoadTemplateData(root)
+	td, err := wizardtemplate.LoadTemplateData(paths.Layout{App: paths.AppDir(root), Data: paths.DataDir(root)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +131,7 @@ func TestApplyWizardDNSTemplate_OrderAndLocks(t *testing.T) {
 
 func TestDNSEnabledTagOptions_ExcludesDisabledLockedAndCustom(t *testing.T) {
 	root := findWizardTemplateRoot(t)
-	td, err := wizardtemplate.LoadTemplateData(root)
+	td, err := wizardtemplate.LoadTemplateData(paths.Layout{App: paths.AppDir(root), Data: paths.DataDir(root)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +174,7 @@ func TestDNSEnabledTagOptions_ExcludesDisabledLockedAndCustom(t *testing.T) {
 
 func TestValidateDNSModel_FinalRejectsDisabledLockedSkeleton(t *testing.T) {
 	root := findWizardTemplateRoot(t)
-	td, err := wizardtemplate.LoadTemplateData(root)
+	td, err := wizardtemplate.LoadTemplateData(paths.Layout{App: paths.AppDir(root), Data: paths.DataDir(root)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +208,7 @@ func TestValidateDNSModel_FinalRejectsDisabledLockedSkeleton(t *testing.T) {
 
 func TestValidateDNSModel_FinalRejectsDisabledCustom(t *testing.T) {
 	root := findWizardTemplateRoot(t)
-	td, err := wizardtemplate.LoadTemplateData(root)
+	td, err := wizardtemplate.LoadTemplateData(paths.Layout{App: paths.AppDir(root), Data: paths.DataDir(root)})
 	if err != nil {
 		t.Fatal(err)
 	}

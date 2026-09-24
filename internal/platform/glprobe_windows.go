@@ -41,6 +41,7 @@ import (
 
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/paths"
 
 	"golang.org/x/sys/windows"
 )
@@ -115,8 +116,8 @@ type pixelFormatDescriptor struct {
 // opengl32.dll рядом с exe, то есть установленная Mesa3D).
 // Печатает в stdout строки version=/renderer=/vendor= и завершает процесс.
 // Никогда не возвращается.
-func RunGLProbeChild(local bool) {
-	version, renderer, vendor, err := probeDesktopOpenGL(local)
+func RunGLProbeChild(app paths.AppDir, local bool) {
+	version, renderer, vendor, err := probeDesktopOpenGL(app, local)
 	if err != nil {
 		fmt.Printf("error=%v\n", err)
 		os.Exit(1)
@@ -166,7 +167,7 @@ func (s localGLSource) proc(name string) *windows.Proc {
 // единственный каталог поиска). Чтобы проверить саму установленную Mesa,
 // нужен LoadLibraryEx по полному пути с LOAD_WITH_ALTERED_SEARCH_PATH и
 // процедуры от этого хендла.
-func probeDesktopOpenGL(local bool) (version, renderer, vendor string, err error) {
+func probeDesktopOpenGL(app paths.AppDir, local bool) (version, renderer, vendor string, err error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -186,11 +187,7 @@ func probeDesktopOpenGL(local bool) (version, renderer, vendor string, err error
 
 	var src glProcSource
 	if local {
-		exe, exeErr := os.Executable()
-		if exeErr != nil {
-			return "", "", "", fmt.Errorf("os.Executable: %w", exeErr)
-		}
-		dllPath := filepath.Join(filepath.Dir(exe), "opengl32.dll")
+		dllPath := filepath.Join(string(app), "opengl32.dll")
 		// LOAD_WITH_ALTERED_SEARCH_PATH: зависимости Mesa (libgallium_wgl.dll)
 		// резолвятся из каталога самого opengl32.dll, а не из system32.
 		h, loadErr := windows.LoadLibraryEx(dllPath, 0, windows.LOAD_WITH_ALTERED_SEARCH_PATH)
@@ -320,14 +317,14 @@ func probeDesktopOpenGL(local bool) (version, renderer, vendor string, err error
 //
 // Никогда не роняет запуск: в худшем случае поведение прежнее (окно не
 // откроется), но с внятным логом и подсказкой.
-func EnsureDesktopOpenGL(execDir string, interactive bool) {
+func EnsureDesktopOpenGL(l paths.Layout, interactive bool) {
 	if os.Getenv("SINGBOX_LAUNCHER_NO_MESA") == "1" {
 		debuglog.InfoLog("gl: gate skipped (SINGBOX_LAUNCHER_NO_MESA=1)")
 		return
 	}
 
-	state, hasState := LoadGLState(execDir)
-	mesaInstalled := IsMesaInstalled(execDir)
+	state, hasState := LoadGLState(l.Data)
+	mesaInstalled := IsMesaInstalled(l.App)
 	mode := GLModeHardware
 	if mesaInstalled {
 		mode = GLModeMesa
@@ -341,7 +338,7 @@ func EnsureDesktopOpenGL(execDir string, interactive bool) {
 
 	// Чужой одиночный opengl32.dll рядом с exe (не наша Mesa) — только WARN:
 	// ни отключать, ни считать его Mesa мы не вправе.
-	if HasForeignOpenGL(execDir) {
+	if HasForeignOpenGL(l.App) {
 		debuglog.WarnLog("gl: a foreign opengl32.dll sits next to the exe (no libgallium_wgl.dll) — leaving it alone")
 	}
 
@@ -366,9 +363,9 @@ func EnsureDesktopOpenGL(execDir string, interactive bool) {
 		if mode == GLModeMesa {
 			debuglog.WarnLog("gl: rendering via local Mesa3D (driver=%s, renderer=%s) — hardware OpenGL is not in use; Diagnostics → \"Disable Mesa3D\" to switch",
 				mesaActualDriver(), mesaVerifiedRenderer(state))
-			startBackgroundHardwareProbe(execDir, state.OfferedHWRenderer)
+			startBackgroundHardwareProbe(l.App, state.OfferedHWRenderer)
 		}
-		MarkGLStarting(execDir, mode)
+		MarkGLStarting(l.Data, mode)
 		return
 	}
 
@@ -380,7 +377,7 @@ func EnsureDesktopOpenGL(execDir string, interactive bool) {
 	// Цикл ради Retry в D2: каждая итерация — отдельный клик пользователя,
 	// поэтому ограничения на число повторов нет.
 	for {
-		probe := probeHardware(execDir)
+		probe := probeHardware(l.App)
 		in.Probed = true
 		in.Probe = probe
 		if probe.ok() {
@@ -399,7 +396,7 @@ func EnsureDesktopOpenGL(execDir string, interactive bool) {
 				debuglog.WarnLog("gl: hardware OpenGL unavailable (%s) — keeping the installed Mesa3D", in.Probe.describe())
 				mode = GLModeMesa
 			}
-			MarkGLStarting(execDir, mode)
+			MarkGLStarting(l.Data, mode)
 			return
 
 		case actAskDisableMesa:
@@ -413,20 +410,20 @@ func EnsureDesktopOpenGL(execDir string, interactive bool) {
 					"but hardware OpenGL works on this machine:\n  %s\n\nDisable Mesa3D and use hardware OpenGL?", in.Probe.Renderer)
 			}
 			if messageBox(dlgTitle, text, mbYesNo|mbIconWarning|mbTopmost|mbSetForeground) == idYes {
-				if err := DisableMesa(execDir); err != nil {
+				if err := DisableMesa(l.App); err != nil {
 					debuglog.ErrorLog("gl: disable Mesa3D failed: %v", err)
 				} else {
 					// Продолжать этот старт бессмысленно: Mesa уже отображена
 					// загрузчиком (см. шапку файла), и именно так RC умирал
 					// второй раз подряд после «Yes».
-					restartToApply(execDir, GLModeHardware,
+					restartToApply(l.Data, GLModeHardware,
 						"Mesa3D disabled — hardware OpenGL will be used.")
 					mode = GLModeHardware
 				}
 			} else {
 				debuglog.WarnLog("gl: user kept Mesa3D despite working hardware OpenGL (renderer=%q)", in.Probe.Renderer)
 			}
-			MarkGLStarting(execDir, mode)
+			MarkGLStarting(l.Data, mode)
 			return
 
 		case actAskTimeout:
@@ -449,7 +446,7 @@ func EnsureDesktopOpenGL(execDir string, interactive bool) {
 				in.Probe = probeResult{Err: fmt.Errorf("declared unusable by the user after a probe timeout")}
 			default:
 				debuglog.WarnLog("gl: user chose Ignore after probe timeout — starting with the system OpenGL")
-				MarkGLStarting(execDir, mode)
+				MarkGLStarting(l.Data, mode)
 				return
 			}
 
@@ -470,13 +467,13 @@ func EnsureDesktopOpenGL(execDir string, interactive bool) {
 					in.Probe.describe(), constants.NativeStderrLogFileName, constants.MainLogFileName, rdpOpenGLDocURL),
 					mbOK|mbIconError|mbTopmost|mbSetForeground)
 			}
-			MarkGLStarting(execDir, mode)
+			MarkGLStarting(l.Data, mode)
 			return
 		}
 
 		if !interactive {
 			debuglog.WarnLog("gl: no hardware OpenGL (%s) and no Mesa3D, but the launcher runs with -tray — not touching any files", in.Probe.describe())
-			MarkGLStarting(execDir, mode)
+			MarkGLStarting(l.Data, mode)
 			return
 		}
 
@@ -487,7 +484,7 @@ func EnsureDesktopOpenGL(execDir string, interactive bool) {
 				"Hardware OpenGL 2.1 was not found — the application window cannot be rendered.\n"+
 					"Manual Mesa3D guide:\n"+win7OpenGLDocURL,
 				mbOK|mbIconWarning|mbTopmost|mbSetForeground)
-			MarkGLStarting(execDir, mode)
+			MarkGLStarting(l.Data, mode)
 			return
 		}
 
@@ -495,7 +492,7 @@ func EnsureDesktopOpenGL(execDir string, interactive bool) {
 		// и только после «Yes». Прежняя версия ставила её из mesa3d/ молча,
 		// что и убивало лаунчер на машинах с работающей видеокартой.
 		download := ""
-		if !HasMesaBundle(execDir) {
+		if !HasMesaBundle(l.App) {
 			download = "About 24 MB will be downloaded. Internet access required.\n"
 		}
 		text := fmt.Sprintf("Hardware OpenGL 2.1 was not found (got %d.%d, renderer \"%s\").\n"+
@@ -504,18 +501,18 @@ func EnsureDesktopOpenGL(execDir string, interactive bool) {
 			"DLLs are placed next to singbox-launcher.exe.", in.Probe.Major, in.Probe.Minor, in.Probe.Renderer, download)
 		if messageBox(dlgTitle, text, mbYesNo|mbIconWarning|mbTopmost|mbSetForeground) != idYes {
 			debuglog.WarnLog("gl: user declined Mesa3D install — window will likely not render")
-			MarkGLStarting(execDir, mode)
+			MarkGLStarting(l.Data, mode)
 			return
 		}
-		if installAndVerifyMesa(execDir, interactive) {
+		if installAndVerifyMesa(l, interactive) {
 			// Mesa только что легла рядом с exe, но текущий процесс уже держит
 			// системный opengl32.dll с первой своей инструкции — применить её
 			// можно только новым процессом.
-			restartToApply(execDir, GLModeMesa,
+			restartToApply(l.Data, GLModeMesa,
 				fmt.Sprintf("Mesa3D installed and verified (%s).", mesaActualDriver()))
 			mode = GLModeMesa
 		}
-		MarkGLStarting(execDir, mode)
+		MarkGLStarting(l.Data, mode)
 		return
 	}
 }
@@ -531,10 +528,10 @@ func EnsureDesktopOpenGL(execDir string, interactive bool) {
 //
 // Если запустить новый процесс не удалось — честно просим перезапустить руками
 // и продолжаем старт как раньше: хуже, но не тупик.
-func restartToApply(execDir, newMode, what string) {
+func restartToApply(d paths.DataDir, newMode, what string) {
 	// phase=restart, а не starting: процесс выйдет сам, по нашему решению, и
 	// новый старт не должен принять это за смерть на инициализации GL.
-	UpdateGLState(execDir, func(s *GLState) {
+	UpdateGLState(d, func(s *GLState) {
 		s.Phase = GLPhaseRestart
 		s.Mode = newMode
 	})
@@ -599,21 +596,21 @@ func mesaVerifiedRenderer(state GLState) string {
 // Проверка обязательна: в ассете лежат все драйверы Gallium, и на машине с
 // видеокартой Mesa по умолчанию уходит в d3d12 — тот самый драйвер GPU,
 // который только что не ответил (репорт 09.09.2026, dxil.dll рядом с exe).
-func installAndVerifyMesa(execDir string, interactive bool) bool {
+func installAndVerifyMesa(l paths.Layout, interactive bool) bool {
 	var installed []string
 	var err error
-	if HasMesaBundle(execDir) {
-		installed, err = copyMesaFromBundle(execDir)
+	if HasMesaBundle(l.App) {
+		installed, err = copyMesaFromBundle(l.App)
 		if err == nil {
 			debuglog.InfoLog("gl: copied %d bundled Mesa3D DLLs from %s next to exe: %s",
 				len(installed), constants.MesaBundleDirName, strings.Join(installed, ", "))
 		}
 	} else {
-		installed, err = downloadMesa(execDir)
+		installed, err = downloadMesa(l.App)
 	}
 	if err != nil {
 		debuglog.ErrorLog("gl: Mesa3D install failed: %v", err)
-		removeMesaFiles(execDir, installed)
+		removeMesaFiles(l.App, installed)
 		if interactive {
 			messageBox(dlgTitle, fmt.Sprintf(
 				"Mesa3D could not be installed (%v).\nThe launcher will start with the system OpenGL.\n\nManual guide: %s",
@@ -635,9 +632,9 @@ func installAndVerifyMesa(execDir string, interactive bool) bool {
 			reason = fmt.Sprintf("renderer %q is not %s", probe.Renderer, mesaPinnedDriver)
 		}
 		debuglog.ErrorLog("gl: installed Mesa3D did not pass the local probe (%s) — rolling back", reason)
-		if disErr := DisableMesa(execDir); disErr != nil {
+		if disErr := DisableMesa(l.App); disErr != nil {
 			// Откатываем хотя бы то, что сами положили.
-			removeMesaFiles(execDir, installed)
+			removeMesaFiles(l.App, installed)
 		}
 		if interactive {
 			messageBox(dlgTitle, fmt.Sprintf(
@@ -653,7 +650,7 @@ func installAndVerifyMesa(execDir string, interactive bool) bool {
 	debuglog.WarnLog("gl: Mesa3D installed and verified (renderer=%q)", probe.Renderer)
 	// Renderer и driver — в состояние: WARN про Mesa на следующих стартах
 	// печатает renderer отсюда, повторной пробы не делая.
-	UpdateGLState(execDir, func(st *GLState) {
+	UpdateGLState(l.Data, func(st *GLState) {
 		st.Renderer = probe.Renderer
 		st.Driver = mesaActualDriver()
 	})
@@ -666,7 +663,7 @@ func installAndVerifyMesa(execDir string, interactive bool) bool {
 // startBackgroundHardwareProbe — фоновая проба железа в режиме mesa
 // (SPEC 125 §2.5). Не блокирует запуск: результат нужен не гейту, а UI,
 // который после появления окна предложит вернуться на аппаратный OpenGL.
-func startBackgroundHardwareProbe(execDir, offeredRenderer string) {
+func startBackgroundHardwareProbe(a paths.AppDir, offeredRenderer string) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -676,7 +673,7 @@ func startBackgroundHardwareProbe(execDir, offeredRenderer string) {
 		// Та же уловка с переименованием, что и в гейте: без неё проба увидит
 		// Mesa, через которую прямо сейчас рисует окно, и предложит «вернуться»
 		// на неё же.
-		probe := probeHardware(execDir)
+		probe := probeHardware(a)
 		if !probe.ok() {
 			debuglog.InfoLog("gl: background hardware probe: still no usable OpenGL (%s)", probe.describe())
 			return
@@ -703,9 +700,9 @@ func startBackgroundHardwareProbe(execDir, offeredRenderer string) {
 // DLL (удалить — нет), так что живая Mesa текущего процесса это переживает.
 // libgallium_wgl.dll и dxil.dll не трогаем: Mesa могла бы подгрузить их лениво
 // именно в это окно.
-func probeHardware(execDir string) probeResult {
-	if IsMesaInstalled(execDir) {
-		src := filepath.Join(execDir, "opengl32.dll")
+func probeHardware(a paths.AppDir) probeResult {
+	if IsMesaInstalled(a) {
+		src := filepath.Join(string(a), "opengl32.dll")
 		dst := src + ".probe"
 		_ = os.Remove(dst)
 		if err := os.Rename(src, dst); err != nil {
@@ -795,7 +792,7 @@ func probeGLViaSubprocess(local bool) probeResult {
 // downloadMesa скачивает zip с DLL Mesa3D с релиза лаунчера и распаковывает
 // их рядом с exe. Preload сюда не входит: установленную Mesa сначала надо
 // проверить пробой -gl-probe-local (SPEC 125 §2.4).
-func downloadMesa(execDir string) ([]string, error) {
+func downloadMesa(a paths.AppDir) ([]string, error) {
 	tmp, err := os.CreateTemp("", "mesa3d-*.zip")
 	if err != nil {
 		return nil, fmt.Errorf("create temp: %w", err)
@@ -824,7 +821,7 @@ func downloadMesa(execDir string) ([]string, error) {
 		return nil, fmt.Errorf("download: %w", lastErr)
 	}
 
-	names, err := extractDLLs(tmpPath, execDir)
+	names, err := extractDLLs(tmpPath, string(a))
 	if err != nil {
 		return names, fmt.Errorf("extract: %w", err)
 	}

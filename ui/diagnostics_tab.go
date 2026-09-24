@@ -22,6 +22,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -317,8 +318,7 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 	})
 	refreshTrafficBtn()
 	openLogsFolderButton := widget.NewButtonWithIcon(locale.T("Logs folder"), theme.FolderOpenIcon(), func() {
-		logsDir := platform.GetLogsDir(ac.FileService.ExecDir)
-		if err := platform.OpenFolder(logsDir); err != nil {
+		if err := platform.OpenFolder(string(ac.FileService.Layout.Logs)); err != nil {
 			debuglog.ErrorLog("diagnosticsTab: Failed to open logs folder: %v", err)
 			ShowError(ac.UIService.MainWindow, err)
 		}
@@ -328,7 +328,7 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 	// troubleshooting действия, по семантике ближе к logs/STUN/debug-api,
 	// чем к информации о версии и ссылкам.
 	openConfigFolderButton := widget.NewButtonWithIcon(locale.T("Config folder"), theme.FolderOpenIcon(), func() {
-		binDir := platform.GetBinDir(ac.FileService.ExecDir)
+		binDir := ac.FileService.Layout.Data.Bin()
 		if err := platform.OpenFolder(binDir); err != nil {
 			debuglog.ErrorLog("diagnosticsTab: Failed to open config folder: %v", err)
 			ShowError(ac.UIService.MainWindow, err)
@@ -408,13 +408,15 @@ func buildMesaToggleButton(ac *core.AppController) *widget.Button {
 	if runtime.GOOS != "windows" {
 		return nil
 	}
-	execDir := ac.FileService.ExecDir
+	// Mesa живёт рядом с exe (AppDir) — единственное исключение из «AppDir
+	// только чтение» (SPEC 135 §3); gl-state.json — в DataDir.
+	appDir := ac.FileService.Layout.App
 	// Чужой одиночный opengl32.dll рядом с exe — не наша Mesa (SPEC 125 §2.1).
 	// Перезаписывать его копией из mesa3d/ мы не вправе, поэтому кнопки нет.
-	if platform.HasForeignOpenGL(execDir) {
+	if platform.HasForeignOpenGL(appDir) {
 		return nil
 	}
-	if !platform.IsMesaInstalled(execDir) && !platform.IsMesaDisabled(execDir) && !platform.HasMesaBundle(execDir) {
+	if !platform.IsMesaInstalled(appDir) && !platform.IsMesaDisabled(appDir) && !platform.HasMesaBundle(appDir) {
 		return nil
 	}
 
@@ -423,14 +425,14 @@ func buildMesaToggleButton(ac *core.AppController) *widget.Button {
 	// поэтому считается функцией, а не один раз при сборке вкладки.
 	refresh := func() {
 		switch {
-		case platform.IsMesaInstalled(execDir):
+		case platform.IsMesaInstalled(appDir):
 			btn.SetText(locale.T("Disable Mesa3D (use hardware OpenGL)"))
 		default:
 			btn.SetText(locale.T("Enable Mesa3D (software rendering)"))
 		}
 	}
 	btn = widget.NewButton("", func() {
-		disable := platform.IsMesaInstalled(execDir)
+		disable := platform.IsMesaInstalled(appDir)
 		title := locale.T("Enable Mesa3D (software rendering)")
 		// Переключение применяется только новым процессом: opengl32.dll
 		// отображается загрузчиком Windows при создании процесса, по таблице
@@ -450,10 +452,10 @@ func buildMesaToggleButton(ac *core.AppController) *widget.Button {
 			var err error
 			newMode := platform.GLModeMesa
 			if disable {
-				err = platform.DisableMesa(execDir)
+				err = platform.DisableMesa(appDir)
 				newMode = platform.GLModeHardware
 			} else {
-				err = platform.EnableMesa(execDir)
+				err = platform.EnableMesa(appDir)
 			}
 			if err != nil {
 				debuglog.ErrorLog("diagnosticsTab: Mesa3D toggle failed: %v", err)
@@ -464,7 +466,7 @@ func buildMesaToggleButton(ac *core.AppController) *widget.Button {
 			// phase=restart: выходим по своему решению, а не умираем на
 			// инициализации GL, и гейт нового процесса не должен принять одно
 			// за другое.
-			platform.UpdateGLState(execDir, func(s *platform.GLState) {
+			platform.UpdateGLState(ac.FileService.Layout.Data, func(s *platform.GLState) {
 				s.Phase = platform.GLPhaseRestart
 				s.Mode = newMode
 			})
@@ -478,5 +480,10 @@ func buildMesaToggleButton(ac *core.AppController) *widget.Button {
 		}, ac.UIService.MainWindow).Show()
 	})
 	refresh()
+	// Переключение переименовывает DLL рядом с exe: в каталоге только для
+	// чтения (установка в Program Files) оно заведомо не сработает.
+	if !paths.ProbeWritable(string(appDir)) {
+		btn.Disable()
+	}
 	return btn
 }

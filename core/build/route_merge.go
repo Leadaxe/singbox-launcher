@@ -8,6 +8,7 @@ import (
 
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/outboundutil"
+	"singbox-launcher/internal/paths"
 )
 
 // RouteRule — одно custom-rule из state, в форме, готовой для merge'а.
@@ -40,16 +41,16 @@ type RouteConfig struct {
 	Rules []RouteRule
 	// FinalOutbound — итоговый default outbound для route.final.
 	FinalOutbound string
-	// ExecDir — директория для разрешения SRS local-path
+	// DataDir — корень данных для разрешения SRS local-path
 	// (services.RuleSRSPath / services.SRSFileExists).
-	ExecDir string
+	DataDir paths.DataDir
 	// ResourceDir — АБСОЛЮТНАЯ директория ресурсов на машине, для которой
 	// собирается конфиг: `<state_dir>/resources` удалённого демона
 	// (SPEC 063 форка). Пусто = конфиг для этой машины, пути берутся из
-	// ExecDir как раньше.
+	// DataDir как раньше.
 	//
 	// Зачем отдельное поле: путь в rule_set[].path резолвит ЯДРО, а оно
-	// работает на той стороне. Подставляя сюда свой ExecDir, лаунчер эмитил
+	// работает на той стороне. Подставляя сюда свой DataDir, лаунчер эмитил
 	// путь собственной файловой системы — на роутере такого нет, ядро не
 	// находило набор и не поднималось. Значение приходит из
 	// `GET /admin/info` → state_dir; собирать его самим нельзя.
@@ -114,7 +115,7 @@ func MergeRouteSection(raw json.RawMessage, cfg RouteConfig) (json.RawMessage, e
 		// error, конфиг не пересобирается; пользователь видит сообщение и
 		// перекачивает SRS вручную через Wizard.
 		for _, rs := range r.RuleSets {
-			rsObj, err := convertRuleSetToLocalRequired(rs, cfg.ExecDir, cfg.ResourceDir)
+			rsObj, err := convertRuleSetToLocalRequired(rs, cfg.DataDir, cfg.ResourceDir)
 			if err != nil {
 				return nil, err
 			}
@@ -186,7 +187,7 @@ func ResourceNameForSRS(tag string) string { return tag + ".srs" }
 //   - state.json пришёл с другой машины с уже-local entry, но файла нет
 //
 // Идемпотентно: повторный вызов с тем же rule-set даёт тот же результат.
-func convertRuleSetToLocalRequired(rs json.RawMessage, execDir, resourceDir string) (interface{}, error) {
+func convertRuleSetToLocalRequired(rs json.RawMessage, dataDir paths.DataDir, resourceDir string) (interface{}, error) {
 	var m map[string]interface{}
 	if err := json.Unmarshal(rs, &m); err != nil {
 		return nil, fmt.Errorf("rule-set: invalid JSON: %w", err)
@@ -227,17 +228,17 @@ func convertRuleSetToLocalRequired(rs json.RawMessage, execDir, resourceDir stri
 		if tag == "" {
 			return nil, fmt.Errorf("rule-set: remote entry missing tag")
 		}
-		if execDir == "" {
-			return nil, fmt.Errorf("rule-set %q: cannot resolve local path (empty execDir)", tag)
+		if dataDir == "" {
+			return nil, fmt.Errorf("rule-set %q: cannot resolve local path (empty dataDir)", tag)
 		}
 		// Файл обязан быть скачан У НАС в любом случае: для локальной машины
 		// ядро прочитает его отсюда, для удалённой — Deploy зальёт его в
 		// ресурс-стор перед применением конфига.
-		if !services.SRSFileExists(execDir, tag) {
+		if !services.SRSFileExists(dataDir, tag) {
 			return nil, fmt.Errorf("rule-set %q: local file missing at %s — open Configurator → Rules and re-download",
-				tag, services.RuleSRSPath(execDir, tag))
+				tag, services.RuleSRSPath(dataDir, tag))
 		}
-		path := services.RuleSRSPath(execDir, tag)
+		path := services.RuleSRSPath(dataDir, tag)
 		if resourceDir != "" {
 			// Конфиг для удалённой машины: путь указывает в её ресурс-стор
 			// (SPEC 063), куда Deploy зальёт этот же файл под именем

@@ -4,14 +4,36 @@
 
 ## EN
 ### Highlights
--
+- The launcher no longer needs a writable program folder (issue #85). Data and logs have their own places: Linux `~/.local/share/singbox-launcher` and `~/.local/state/singbox-launcher/logs`, macOS `~/Library/Application Support/singbox-launcher` and `~/Library/Logs/singbox-launcher`, Windows `%LOCALAPPDATA%\singbox-launcher`. NixOS, Guix, Flatpak and snap installs start instead of failing on the first `mkdir`.
+- Portable mode is explicit. A `portable.txt` file next to the program keeps everything next to it, exactly as before; the Windows zip archives ship with it, so nothing changes for existing users. Existing installs with data next to the binary keep working where they are. Settings → Storage has a checkbox that moves the data between the two layouts and restarts the launcher.
+- macOS: on the first start, data found inside the app bundle is copied to `~/Library` and the launcher rebuilds `config.json`; the old copy stays in the bundle until you remove it. **Make an LX Backup (Settings → Backup) before updating**, or update with `build_darwin.sh -i`, which replaces only the executable and restarts the launcher: dragging a new `.app` over the old one destroys the data before the new version can move it.
+- Settings → Storage shows every path the launcher uses (mode, program, data, logs, core with its version and source, template) with Open buttons and “Copy paths” for bug reports. The same block is the first line of the log, `GET /debug/paths` in the Debug API, and `singbox-launcher -paths` on the command line, which works without a window.
+- Remove all data: Settings → Storage → “Remove all data…” lists what will be deleted (data, logs, leftovers of earlier moves, on Windows ghost wintun adapters and orphan firewall rules) and does it; the program folder itself is left for you to delete. `-purge-data` prints the plan, `-purge-data -yes` executes it, so an installer can call it.
+- Linux: the core is now looked up in the data folder, then next to the program, then in `PATH` — the distribution's `sing-box` used to win over the downloaded `lx` fork. Set `SINGBOX_LAUNCHER_CORE=/path/to/sing-box` to force a binary. `setcap` on the downloaded core does not work on a home partition mounted `nosuid`.
 
 ### Technical / Internal
--
+- New package `internal/paths`: `Layout{App, Data, Logs, Mode}` resolved once in `main()`; every path helper takes a named type (`AppDir` read-only, `DataDir`/`LogDir` writable), so passing the program folder into a writing helper no longer compiles. `FileService.ExecDir` is gone. `tools/paths_guard` in CI-lint catches the remaining bypasses (explicit conversions, `os.*` writes from `App`).
+- Resolution order: `SINGBOX_LAUNCHER_DATA_DIR` / `SINGBOX_LAUNCHER_LOG_DIR` → `portable.txt` → legacy data next to a writable binary → platform default. Rules 2–3 are skipped for a macOS `.app`.
+- Shipped vs downloaded: template, locales and core are read Data → App; a shipped template whose `wizard_template.version` equals the launcher version wins over an older downloaded one (and the stale download is removed). Core companions (`wintun.dll`, `libcronet`) are looked up next to the core that actually runs.
+- `settings.json` gains `config_data_root`: whenever the data root differs from the one `config.json` was built with (move, migration, env override), the config is rebuilt — its `.srs` and tailscale paths are absolute.
+- Migration and the Portable switch share one copier (`CopyTree`): temporary directory, permissions preserved, unreadable files skipped and counted, `state.json` never left behind; a system data folder that already holds settings is protected from the switch and from cleanup, and a portable marker over hidden system data triggers an “Existing data found” prompt instead of silently starting empty.
+- macOS daemon: the service keeps the core path recorded at install time; after the move the LOCAL panel warns when the service runs a different binary and shows the reinstall command.
+- SPEC 022 and SPEC 080 are closed as absorbed by SPEC 135.
 
 ## RU
 ### Основное
--
+- Лаунчеру больше не нужна запись в папку программы (issue #85). У данных и логов свои места: Linux `~/.local/share/singbox-launcher` и `~/.local/state/singbox-launcher/logs`, macOS `~/Library/Application Support/singbox-launcher` и `~/Library/Logs/singbox-launcher`, Windows `%LOCALAPPDATA%\singbox-launcher`. Установки на NixOS, Guix, Flatpak и snap стартуют, а не падают на первом `mkdir`.
+- Portable-режим стал явным. Файл `portable.txt` рядом с программой оставляет всё рядом с ней, как раньше; zip-архивы для Windows поставляются с ним, поэтому для нынешних пользователей ничего не меняется. Установки с данными рядом с бинарём продолжают работать там, где были. В Settings → Storage есть галка, которая переносит данные между двумя раскладками и перезапускает лаунчер.
+- macOS: при первом запуске данные, найденные внутри бандла, копируются в `~/Library`, а `config.json` пересобирается; старая копия остаётся в бандле, пока вы её не удалите. **Перед обновлением сделайте LX Backup (Settings → Backup)** или обновляйтесь через `build_darwin.sh -i`, который меняет только исполняемый файл и перезапускает лаунчер: перетаскивание нового `.app` поверх старого уничтожает данные раньше, чем новая версия успеет их перенести.
+- Settings → Storage показывает все пути лаунчера (режим, программа, данные, логи, ядро с версией и источником, шаблон) с кнопками открытия папок и «Copy paths» для сообщений об ошибках. Тот же блок — первая строка лога, `GET /debug/paths` в Debug API и `singbox-launcher -paths` в командной строке, без окна.
+- Удаление с очисткой: Settings → Storage → «Remove all data…» перечисляет, что будет удалено (данные, логи, остатки прошлых переездов, на Windows призрачные адаптеры wintun и осиротевшие правила файрвола), и делает это; папку с программой вы удаляете сами. `-purge-data` печатает план, `-purge-data -yes` выполняет, так что установщик может его вызывать.
+- Linux: ядро теперь ищется в папке данных, затем рядом с программой, затем в `PATH` — раньше дистрибутивный `sing-box` побеждал скачанный форк `lx`. `SINGBOX_LAUNCHER_CORE=/путь/к/sing-box` задаёт бинарь явно. `setcap` на скачанном ядре не работает на домашнем разделе с `nosuid`.
 
 ### Техническое / Внутреннее
--
+- Новый пакет `internal/paths`: `Layout{App, Data, Logs, Mode}` считается один раз в `main()`; каждый хелпер путей принимает именованный тип (`AppDir` только чтение, `DataDir`/`LogDir` запись), так что папку программы в пишущий хелпер не пропустит компилятор. `FileService.ExecDir` удалён. `tools/paths_guard` в CI-lint ловит оставшиеся обходы (явные конверсии, `os.*`-записи от `App`).
+- Порядок определения: `SINGBOX_LAUNCHER_DATA_DIR` / `SINGBOX_LAUNCHER_LOG_DIR` → `portable.txt` → унаследованные данные рядом с пишущимся бинарём → платформенный дефолт. Для macOS `.app` правила 2–3 не применяются.
+- Поставляемое и скачанное: шаблон, локали и ядро читаются Data → App; поставляемый шаблон с `wizard_template.version`, равным версии лаунчера, побеждает более старый скачанный (устаревшая копия удаляется). Спутники ядра (`wintun.dll`, `libcronet`) ищутся рядом с тем ядром, которое реально запускается.
+- В `settings.json` появился `config_data_root`: при любом расхождении корня данных с тем, под который собран `config.json` (переезд, миграция, переменная окружения), конфиг пересобирается — пути `.srs` и tailscale в нём абсолютные.
+- У миграции и переключателя Portable один копировщик (`CopyTree`): временный каталог, права сохраняются, нечитаемое пропускается и считается, `state.json` не теряется; системная папка данных с настройками защищена от переключателя и от очистки, а portable-маркер поверх скрытых системных данных показывает диалог «Existing data found», а не молча стартует пустым.
+- Демон macOS: служба хранит путь ядра, записанный при установке; после переезда панель LOCAL предупреждает, что служба запускает другой бинарь, и показывает команду переустановки.
+- SPEC 022 и SPEC 080 закрыты как поглощённые SPEC 135.

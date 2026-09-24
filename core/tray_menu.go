@@ -200,7 +200,7 @@ func (ac *AppController) persistHideAppFromDock(hidden bool) {
 	if ac == nil || ac.FileService == nil {
 		return
 	}
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	st := locale.LoadSettings(binDir)
 	if st.HideAppFromDock == hidden {
 		return

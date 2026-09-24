@@ -20,6 +20,8 @@ import (
 
 	"github.com/muhammadmuzzammil1998/jsonc"
 
+	"singbox-launcher/core/template"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -47,7 +49,7 @@ type fileSpec struct {
 	path string
 }
 
-// Build собирает текущий Snapshot для exec-dir.
+// Build собирает текущий Snapshot для раскладки l (шаблон и состояние — SPEC 135).
 //
 // Поведение по каждому файлу:
 //   - не существует на диске       → name в Missing;
@@ -57,12 +59,12 @@ type fileSpec struct {
 //
 // Никаких ошибок наружу — частичная полнота снапшота кодируется через
 // Missing/Errors, чтобы вызывающий мог различать сценарии без try/catch.
-func Build(execDir, launcherVersion, singboxVersion string) Snapshot {
+func Build(l paths.Layout, launcherVersion, singboxVersion string) Snapshot {
 	files := []fileSpec{
-		{name: "template", path: platform.GetWizardTemplatePath(execDir)},
-		{name: "state", path: platform.GetWizardStatePath(execDir)},
-		{name: "cache", path: platform.GetOutboundsCachePath(execDir)},
-		{name: "config", path: platform.GetConfigPath(execDir)},
+		{name: "template", path: template.ResolveTemplate(l).Path},
+		{name: "state", path: platform.GetWizardStatePath(l.Data)},
+		{name: "cache", path: platform.GetOutboundsCachePath(l.Data)},
+		{name: "config", path: platform.GetConfigPath(l.Data)},
 	}
 
 	out := Snapshot{
