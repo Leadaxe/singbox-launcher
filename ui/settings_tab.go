@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"image/color"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -251,11 +250,11 @@ func BuildSettingsContent(ac *core.AppController) (fyne.CanvasObject, func()) {
 	// «Remove all data…» — опасное действие в конце вкладки.
 	storageBlock, refreshStorage := buildStorageSection(ac)
 
-	// ---- Автозапуск (SPEC 139 §8, только Windows) --------------------------
+	// ---- Автозапуск (SPEC 139 §8, только Windows, кроме win7-32) -----------
 	// В разделе Connection: «запускать при входе» — поведение подключения.
 	connBlock := container.NewVBox(connTitle, autoPingCheck)
 	refresh := refreshStorage
-	if runtime.GOOS == "windows" {
+	if core.AutostartSupported {
 		autostartBlock, refreshAutostart := buildAutostartBlock(ac)
 		connBlock.Add(autostartBlock)
 		refresh = func() {

@@ -18,9 +18,14 @@ import (
 	"singbox-launcher/internal/platform"
 )
 
+// AutostartSupported — автозапуск есть: Windows, кроме сборки win7-32
+// (windows/386). Та под requireAdministrator, а повышенный процесс из
+// HKCU\…\Run при входе без UAC не стартует.
+const AutostartSupported = runtime.GOOS == "windows" && runtime.GOARCH != "386"
+
 // AutostartState — состояние чекбоксов автозапуска в Settings.
 type AutostartState struct {
-	Supported bool   // только Windows
+	Supported bool   // AutostartSupported
 	Enabled   bool   // значение есть и указывает на этот exe
 	Start     bool   // с -start: подключать VPN при входе
 	OtherExe  string // значение указывает на другую копию лаунчера
@@ -34,7 +39,7 @@ type AutostartState struct {
 // AutostartState читает значение автозапуска (при открытии Settings).
 // StartupApproved (отключение в Диспетчере задач) не учитывается.
 func (ac *AppController) AutostartState() AutostartState {
-	st := AutostartState{Supported: runtime.GOOS == "windows"}
+	st := AutostartState{Supported: AutostartSupported}
 	if !st.Supported {
 		return st
 	}
@@ -87,8 +92,13 @@ func (ac *AppController) AutostartOwned() bool {
 
 // AutostartCLI — флаг -autostart=on|off (SPEC 139 §8, для установщика
 // SPEC 140): on пишет "<exe>" -tray, off удаляет значение, только если оно
-// указывает на этот exe. Итог — строка в out; возвращает код выхода 0/1.
+// указывает на этот exe. Итог — строка в out; возвращает код выхода 0/1,
+// 2 — сборка без автозапуска (AutostartSupported).
 func AutostartCLI(mode, exe string, out io.Writer) int {
+	if !AutostartSupported {
+		fmt.Fprintln(out, "Autostart: not supported on this build")
+		return 2
+	}
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "on":
 		if err := writeAutostart(exe, false); err != nil {

@@ -68,6 +68,8 @@ rsrc -ico assets/app.ico -manifest app.manifest -o rsrc.syso
 просит их только для TUN (SPEC 139). Манифест всё равно встраивайте — 32-битная
 сборка без `requestedExecutionLevel` попадает под UAC-виртуализацию файлов, и запись в
 Program Files молча уходит в `VirtualStore`.
+Сборка для Windows 7 (win7-32, CI) вшивает вместо него `app.win7.manifest`:
+`requireAdministrator`, запрос UAC при каждом запуске, только portable-раскладка.
 
 4. Соберите проект:
 ```batch

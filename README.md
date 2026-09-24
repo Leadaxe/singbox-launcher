@@ -291,6 +291,8 @@ Installing a newer version over it keeps your data; Setup closes a running launc
 
 **Start with Windows**: **Settings → Connection → Start with Windows** starts the launcher in the tray at sign-in (the `singbox-launcher` value in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`); **Connect VPN at sign-in** also starts the VPN — in proxy mode directly, with TUN through the dialog above. Installers can set it with `singbox-launcher.exe -autostart=on|off`.
 
+**Windows 7 (`win7-32`)** keeps the old model: it always runs as administrator (a UAC prompt on every start), so TUN works at once without the dialog above; data stays next to the program (`portable.txt` is honored even in `C:\Program Files\…`), with no installer, no daemon service and no Start with Windows.
+
 Moving from a portable copy to the installer: in the old copy switch off **Settings → Storage → Portable mode** (the data moves to `%LOCALAPPDATA%\singbox-launcher`), then install — or carry the settings over with LX Backup.
 
 ### macOS
