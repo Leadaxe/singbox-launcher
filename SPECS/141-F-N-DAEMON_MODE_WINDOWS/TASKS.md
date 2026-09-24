@@ -28,11 +28,11 @@
 ## Этап 4 · Классификатор и менеджер Windows
 - [x] Тег `darwin || (windows && !386)`; заглушки — `!darwin && (!windows || 386)` (сделано на этапе 2; Windows — заглушки, движок закрыт `daemonEngineAvailable`).
 - [ ] Раскладка: `<ProgramFiles>\sing-box-lxd`, `<ProgramData>\sing-box-lxd` через `windows.KnownFolderPath`; набор — exe + `libcronet.dll`.
-- [ ] NotInstalled / Unsafe (`BinaryPathName`, кавычки, DACL службы, цепочка) / Stale (набор, лишний файл, `CopyMissing`) / NotRunning (≠ `SERVICE_RUNNING`) / ProcessStale / OK.
+- [ ] NotInstalled / Unsafe (`BinaryPathName`, кавычки, DACL службы, цепочка) / Stale (набор, лишний файл — остатки `.old`/`.tmp-` не лишние, `CopyMissing`) / NotRunning (≠ `SERVICE_RUNNING`) / ProcessStale / OK.
 - [ ] `minCoreForRootOwnedService` по платформе: windows `1.14.2-lx.2`; CoreTooOld во всех каналах.
-- [ ] Команды §5.1: install `--invite-out`, uninstall `--keep-copy [--purge]`, полный uninstall, `client add --invite-out`, copy, `sc.exe start` (runas); Kickstart пуст.
-- [ ] Файл приглашения в `<Data>\bin\daemon\`, автосопряжение, удаление файла, приглашение не в лог.
-- [ ] Ошибки §5.3 (отказ UAC, код ≠ 0, таймаут).
+- [ ] Команды §5.1: install `--invite-out --invite-name <имя клиента>`, uninstall `--keep-copy [--purge]`, полный uninstall, `client add --name <имя клиента> --invite-out`, copy, `sc.exe start` (runas); Kickstart пуст; имя клиента `singbox-launcher-<user>` (§5.3).
+- [ ] Файл приглашения в `<Data>\bin\daemon\`, автосопряжение, удаление файла, приглашение не в лог; после install/update — `warnings` сайдкара в результат шага и в лог.
+- [ ] Ошибки §5.3 (отказ UAC, код ≠ 0, таймаут; install с кодом 1 → `--service=status`: ≠ 0 — вердикт, 0 и нет файла — шаг `client add`).
 - [ ] Debug API `/daemon/*` и `capabilities` на Windows.
 
 ## Этап 5 · Системный прокси
@@ -45,7 +45,7 @@
 ## Этап 6 · Classic с правами (после SPEC 139)
 - [ ] Гейт по `IsElevated`: вердикты над набором, диалог с copy/install, Retry.
 - [ ] Старт копии, `Dir` = `<Data>\bin`.
-- [ ] `classic.log`: проверка цепочки `ProgramData\sing-box-lxd\logs`, файл с DACL (пользователю — чтение), ротация 2 МиБ, `CoreLogPath`.
+- [ ] `classic.log`: проверка цепочки `ProgramData\sing-box-lxd\logs`, файл с DACL (пользователю — чтение; выставляется на каждом повышенном старте — install/copy его сбрасывают), ротация 2 МиБ, `CoreLogPath`.
 - [ ] Stop/рестарт/Kill только по PID; детект `sing-box-lxd.exe` по сессии.
 - [x] Условие релиза: поиск DLL из cwd закрыт ядром (SPEC §3 п. 12).
 

@@ -108,6 +108,14 @@ type DetectText struct {
 
 // IsZero сообщает, что предикат пуст: такую запись выбрать нельзя, и линтер
 // обязан её поймать (кроме записи с Default).
+//
+// Пустой словарь json / ini / text предикатом НЕ является — ни явное `{}`,
+// ни словарь, из которого загрузчик выбросил единственное поле с именем не
+// из грамматики (`has_key` вместо `required_keys`). Движок на таком словаре
+// верен на ЛЮБОМ элементе своего пространства (у него нечего проверять), и
+// на обеих сторонах контракта эта семантика зафиксирована; поэтому рубеж —
+// здесь, в линтере данных: «json: {}» у первой формы забирал бы и элементы,
+// ради которых написаны следующие.
 func (d *Detect) IsZero() bool {
 	if d == nil {
 		return true
@@ -115,18 +123,31 @@ func (d *Detect) IsZero() bool {
 	if d.Default {
 		return false
 	}
-	if d.Text != nil && d.Text.PrefixFold == "" && d.Text.LineFold == "" &&
-		d.Text.Contains == "" && d.Text.PrefixTrim == "" && d.Text.MinLen == 0 {
-		// Пустой словарь text предикатом не является: такую запись выбрать
-		// нельзя, а «text: {}» рядом с непустым JSON-предикатом молча
-		// расширил бы ветку до «любой текст».
-		return d.Regex == "" && d.JSON == nil && d.INI == nil &&
-			len(d.SchemeIn) == 0 && d.InArray == "" &&
-			d.Not == nil && len(d.All) == 0 && len(d.Any) == 0
-	}
-	return d.Regex == "" && d.JSON == nil && d.INI == nil && d.Text == nil &&
+	return d.Regex == "" && d.JSON.isEmpty() && d.INI.isEmpty() && d.Text.isEmpty() &&
 		len(d.SchemeIn) == 0 && d.InArray == "" &&
 		d.Not == nil && len(d.All) == 0 && len(d.Any) == 0
+}
+
+// isEmpty — ни одного заполненного поля; nil считается пустым.
+func (j *DetectJSON) isEmpty() bool {
+	return j == nil ||
+		len(j.RequiredKeys) == 0 && len(j.AnyKeys) == 0 && len(j.KeyAbsent) == 0 &&
+			len(j.TypeOf) == 0 && len(j.ValueOf) == 0 && len(j.ValueIn) == 0 &&
+			len(j.ArrayElemAnyKeys) == 0
+}
+
+// isEmpty — ни одного заполненного поля; nil считается пустым.
+func (i *DetectINI) isEmpty() bool {
+	return i == nil ||
+		len(i.Sections) == 0 && len(i.Keys) == 0 && len(i.KeysAny) == 0 &&
+			i.FirstSectionFold == ""
+}
+
+// isEmpty — ни одного заполненного поля; nil считается пустым.
+func (t *DetectText) isEmpty() bool {
+	return t == nil ||
+		t.PrefixFold == "" && t.LineFold == "" && t.Contains == "" &&
+			t.PrefixTrim == "" && t.MinLen == 0
 }
 
 // Regexes собирает все регулярки предиката (включая вложенные) — линтеру,

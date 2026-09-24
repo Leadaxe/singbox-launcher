@@ -337,6 +337,110 @@ func resolveRef(doc *jsonSchemaDoc, ref string) *jsonSchemaNode {
 	return doc.Definitions[strings.TrimPrefix(ref, prefix)]
 }
 
+// TestContractMapperSchemaLinterRejectsNestedDetectPredicate — обходчик схемы
+// доходит до закрытого словаря detectJSON во ВСЕХ позициях, где грамматика
+// допускает предикат detect, и режет там имя не из грамматики.
+//
+// Случай не выдуманный: `has_key` вместо `required_keys` стоял в черновике
+// LxBox у формы `endpoint` (wireguard, tailscale). Загрузчик неизвестное имя
+// выбрасывает молча, движок (core/config/linkmap/detect.go) у json-предиката
+// читает только объявленные поля — RequiredKeys и соседей, — и от предиката
+// остаётся пустой словарь. Здесь он верен на ЛЮБОМ JSON-элементе: форма
+// выбирается уже не тем условием, что написано, `endpoint` стоит первой и
+// забирает и outbound-элементы, ради которых написана вторая форма. Ошибку
+// исправил контракт 1.1.53 раньше, чем она дошла до реестра лаунчера, —
+// поэтому линтер её ни разу не видел и не доказал, что видит.
+//
+// Второй рубеж стоит НИЖЕ по потоку: Detect.IsZero пустой словарь предикатом
+// не считает, и линтер реестра (TestSourceKindsTableWellFormed) режет такую
+// запись уже после загрузки. Здесь опечатка ловится раньше — по имени.
+//
+// Позиции вложенные, потому что каждая — отдельное звено обхода: `not` — тот
+// же `$ref detect` через ещё одну ссылку, `all[i]` / `any[i]` — через items
+// массива, `source_kinds.kinds[i].detect` — тот же словарь на уровне
+// документа, а не секции-маппера. Выпасть из обхода любое звено может порознь.
+//
+// Рубеж — от рефакторинга обходчика, а не от реестра: реестр судит
+// TestContractMapperSectionsMatchSchema. Начни validateAgainst считать узел с
+// одним `$ref` свободной формой или перестань заходить в `items` — закрытость
+// detectJSON потеряется молча, и опечатка в реестре пройдёт зелёной; здесь
+// такой обходчик падает. Секции синтетические, реестр не читается: кейсы не
+// зависят от того, что в нём сегодня написано.
+func TestContractMapperSchemaLinterRejectsNestedDetectPredicate(t *testing.T) {
+	raw, err := os.ReadFile(mapperSchemaPath)
+	if err != nil {
+		t.Fatalf("схема мапперов не читается: %v", err)
+	}
+	var doc jsonSchemaDoc
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("схема мапперов не разбирается: %v", err)
+	}
+	mapper := doc.Definitions["mapper"]
+	sourceKinds := doc.Properties["source_kinds"]
+	if mapper == nil || sourceKinds == nil {
+		t.Fatal("в схеме нет definitions.mapper или properties.source_kinds — кейсам не на чем стоять")
+	}
+
+	// hasKey — detect с json-предикатом, имени которого в грамматике нет.
+	hasKey := func() map[string]any {
+		return map[string]any{"json": map[string]any{"has_key": []any{"peers"}}}
+	}
+	// endpointForm — секция из одной формы `endpoint` (у sing-box-JSON wireguard она первая).
+	endpointForm := func(detect map[string]any) map[string]any {
+		return map[string]any{"forms": []any{map[string]any{
+			"id": "endpoint", "detect": detect, "space": "json", "level": "endpoint",
+		}}}
+	}
+
+	cases := []struct {
+		name  string
+		node  *jsonSchemaNode
+		value map[string]any
+		// want — хвост пути единственной ошибки; "" — ошибок быть не должно.
+		want string
+	}{
+		{"forms[0].detect.json", mapper,
+			endpointForm(hasKey()),
+			"forms[0].detect.json.has_key"},
+		{"forms[0].detect.not.json", mapper,
+			endpointForm(map[string]any{"not": hasKey()}),
+			"forms[0].detect.not.json.has_key"},
+		{"forms[0].detect.all[0].json", mapper,
+			endpointForm(map[string]any{"all": []any{hasKey()}}),
+			"forms[0].detect.all[0].json.has_key"},
+		{"forms[0].detect.any[1].json", mapper,
+			endpointForm(map[string]any{"any": []any{map[string]any{"default": true}, hasKey()}}),
+			"forms[0].detect.any[1].json.has_key"},
+		{"mappers.detect.json", mapper,
+			map[string]any{"detect": hasKey()},
+			"detect.json.has_key"},
+		{"source_kinds.kinds[0].detect.json", sourceKinds,
+			map[string]any{"kinds": []any{map[string]any{"source_kind": "x", "detect": hasKey()}}},
+			"kinds[0].detect.json.has_key"},
+		{"forms[0].detect.json.required_keys", mapper,
+			endpointForm(map[string]any{"json": map[string]any{"required_keys": []any{"peers"}}}),
+			""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := validateAgainst(&doc, tc.node, tc.value, "synthetic")
+			if tc.want == "" {
+				if len(errs) != 0 {
+					t.Errorf("ошибок быть не должно, получено %d:\n%s", len(errs), strings.Join(errs, "\n"))
+				}
+				return
+			}
+			wantPath := "synthetic." + tc.want + ":"
+			if len(errs) != 1 || !strings.Contains(errs[0], wantPath) ||
+				!strings.Contains(errs[0], "атрибут не из грамматики") {
+				t.Errorf("ожидалась ровно одна ошибка %q «атрибут не из грамматики», получено %d:\n%s",
+					wantPath, len(errs), strings.Join(errs, "\n"))
+			}
+		})
+	}
+}
+
 // TestContractUserInfoDeclaresSingleInto — у каждой секции с `userinfo`
 // написано, куда едет ОДИНОЧНЫЙ (беспарный) userinfo.
 //
