@@ -10,6 +10,32 @@
 
 Черновик пользовательских заметок — [docs/release_notes/upcoming.md](docs/release_notes/upcoming.md).
 
+## v2.2.0
+
+Подробные заметки: [docs/release_notes/2-2-0.md](docs/release_notes/2-2-0.md).
+
+### Возможности (5)
+
+- feat(windows)!: SPEC 139 — манифест `asInvoker`: лаунчер работает без прав администратора, режим прокси без UAC; TUN без прав — диалог «Install service / Restart as administrator / Switch to proxy mode», перезапуск с повышением через `runas` и `-handoff`; при TUN без службы права запрашиваются сразу при старте (выключается в Settings → Connection); автозапуск «Start with Windows» через HKCU Run и `-autostart=on|off` (#99)
+- feat(installer): SPEC 140 — установщик Inno Setup `…-win64-setup.exe` (Windows 10/11 x64): per-machine в Program Files, данные в `%LOCALAPPDATA%`, задачи ярлык/автозапуск/Mesa3D/служба, штатное закрытие работающего лаунчера через мьютекс и событие Quit, удаление с вопросом о данных; CI job `build-windows-installer`, ассет в релизе
+- feat(daemon)!: SPEC 141 — daemon-режим на Windows: служба `sing-box-lxd` (SCM, LocalSystem, защищённая копия в `Program Files\sing-box-lxd`), общий daemon-код вынесен из `_darwin.go`, классификатор по SCM/DACL/сайдкару, операции через `runas`, системный прокси в daemon-режиме ставит лаунчер, classic под правами исполняет только защищённую копию, панель Local с Install/Start/Fresh invite/Uninstall
+- feat(wizard): «Open file…» в диалоге Read — загрузка `state.json` из другой папки; Remote: «Import from file…» в окне «+ Add» — импорт `remote-daemons.json` со слиянием и переносом ключей
+- feat(win7): сборка win7-32 остаётся в прежней модели — `requireAdministrator`, только portable, без службы и установщика
+
+### Исправления (4)
+
+- fix(windows): консоль PowerShell за системными диалогами файлов больше не показывается
+- fix(ui): окно ресурсов машины (RES) показывает подсказки, его диалоги открываются поверх него; выключенное Направление не предлагается целью правила (`6d549a49`)
+- fix(contract): 1.1.53 — `security=reality` в share-ссылках VLESS; `servername`/`serverName` и `packet-encoding`; keep-alive из JSON-формы vmess; отрицательный `tcpKeepAliveInterval` в Xray
+- fix(paths): «Remove all data» без прав предупреждает, что старая копия в Program Files останется и при следующем старте перенесётся снова
+
+### Прочее (4)
+
+- chore(core): пин sing-box-lx 1.14.2-lx.2 (было 1.14.1-lx.12) — синк апстрима 1.14.2, ключи сна WireGuard под `lx.wg.*`, Windows-служба `sing-box-lxd`
+- chore(contract): 1.1.53 — SS без паддинга, порядок ключей и `aid` в контейнере v2rayN, `disable_sni` у TUIC, 13 секций `mappers.singbox`
+- ci(lint): линтер реестра — пустой словарь `detect` не является предикатом (SPEC 133)
+- ci(claude): бот для issues запускается по метке `claude` и команде `@claude`, а не на каждый комментарий
+
 ## v2.1.0
 
 Подробные заметки: [docs/release_notes/2-1-0.md](docs/release_notes/2-1-0.md).
