@@ -30,21 +30,26 @@ import (
 // службы и переписывает plist на копию (SPEC 100 форка). Лаунчер ничего не
 // копирует: он только читает plist, проверяет цепочку владения копии и
 // сверяет sha256 копии с ядром лаунчера и с тем, что отвечает работающий
-// демон. Всё читается без root: plist и сайдкар 0644, каталог и копия 0755.
+// демон. Всё читается без root: plist и сайдкар 0644, копия 0755.
+//
+// Раскладка lx.11 (решение владельца 24.09.2026): копия — плоский файл
+// /Library/PrivilegedHelperTools/<label>, сайдкар — <копия>.install.json;
+// каталога службы нет. Цепочка владения: /Library → PrivilegedHelperTools →
+// файл.
 
 const (
 	// daemonServiceChainRoot — верх цепочки владения копии: от него вниз до
 	// файла каждое звено обязано быть root-owned без g/o-записи.
 	daemonServiceChainRoot = "/Library"
-	// daemonServiceHelperDir — каталог службы (root:wheel 0755), зеркалит
-	// раскладку ядра lx.11.
-	daemonServiceHelperDir = "/Library/PrivilegedHelperTools/" + daemonLaunchdLabel
-	// daemonServiceBinaryName — имя копии: то же `sing-box`, что у ядра
-	// лаунчера (pgrep/ps и диагностика по имени процесса не ломаются).
-	daemonServiceBinaryName = "sing-box"
-	// daemonServiceSidecarName — сайдкар установки (root:wheel 0644):
+	// daemonServiceHelperToolsDir — каталог привилегированных помощников
+	// macOS (root:wheel 1755); копия лежит в нём плоским файлом с именем
+	// ярлыка службы (platform.PrivilegedCopyName — то же имя, тест держит их
+	// вместе).
+	daemonServiceHelperToolsDir = "/Library/PrivilegedHelperTools"
+	// daemonServiceSidecarSuffix — сайдкар установки рядом с копией,
+	// <копия>.install.json (root:wheel 0644):
 	// {source, sha256, version, installed_at, plist_path, label}.
-	daemonServiceSidecarName = "install.json"
+	daemonServiceSidecarSuffix = ".install.json"
 	// daemonHashCacheCap — потолок кэша sha256: файлов в игре два-три, потолок
 	// лишь не даёт кэшу расти от череды заменённых ядер.
 	daemonHashCacheCap = 16
@@ -62,7 +67,12 @@ const (
 
 // daemonServiceCorePath — каноническая root-owned копия ядра службы.
 func daemonServiceCorePath() string {
-	return filepath.Join(daemonServiceHelperDir, daemonServiceBinaryName)
+	return filepath.Join(daemonServiceHelperToolsDir, daemonLaunchdLabel)
+}
+
+// daemonServiceSidecarPath — сайдкар установки копии corePath.
+func daemonServiceSidecarPath(corePath string) string {
+	return corePath + daemonServiceSidecarSuffix
 }
 
 // DaemonServiceState — вердикт классификатора службы (SPEC 136 §4).
@@ -238,6 +248,11 @@ func checkRootOwnedEntry(path string, ownerUID uint32, wantDir bool) error {
 		return fmt.Errorf("%s is a symlink", path)
 	case wantDir && !fi.IsDir():
 		return fmt.Errorf("%s is not a directory", path)
+	case !wantDir && fi.IsDir():
+		// Ранние сборки lx.11 клали копию в каталог службы
+		// (<label>/sing-box): на месте плоского файла — каталог.
+		return fmt.Errorf("%s is a directory: legacy layout of the root-owned copy, remove it (sudo rm -rf %s) and run the command again",
+			path, shellQuote(path))
 	case !wantDir && !mode.IsRegular():
 		return fmt.Errorf("%s is not a regular file", path)
 	}
@@ -401,10 +416,12 @@ func shortSHA(sum string) string {
 	return sum
 }
 
-// readDaemonServiceSidecarVersion — версия из install.json каталога службы;
-// "" если сайдкара нет (ядро до lx.11) или он не разобрался. Только показ.
-func readDaemonServiceSidecarVersion(helperDir string) string {
-	data, err := os.ReadFile(filepath.Join(helperDir, daemonServiceSidecarName))
+// readDaemonServiceSidecarVersion — версия из сайдкара копии corePath
+// (<копия>.install.json); "" если сайдкара нет (ядро до lx.11) или он не
+// разобрался. Только показ.
+func readDaemonServiceSidecarVersion(corePath string) string {
+	sidecarPath := daemonServiceSidecarPath(corePath)
+	data, err := os.ReadFile(sidecarPath)
 	if err != nil {
 		return ""
 	}
@@ -412,7 +429,7 @@ func readDaemonServiceSidecarVersion(helperDir string) string {
 		Version string `json:"version"`
 	}
 	if err := json.Unmarshal(data, &sidecar); err != nil {
-		debuglog.DebugLog("daemon service: %s: %v", daemonServiceSidecarName, err)
+		debuglog.DebugLog("daemon service: %s: %v", sidecarPath, err)
 		return ""
 	}
 	return sidecar.Version

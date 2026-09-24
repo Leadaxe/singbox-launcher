@@ -13,8 +13,15 @@ const (
 	PrivilegedStartName        = ""
 	PrivilegedLegacyScriptName = ""
 	PrivilegedPidFileName      = ""
+	PrivilegedCopyName         = ""
 	PrivilegedPkillPattern     = ""
 )
+
+// IsPrivilegedCoreProcessName — копии ядра под root вне macOS нет.
+func IsPrivilegedCoreProcessName(name string) bool {
+	_ = name
+	return false
+}
 
 // RunWithPrivileges runs a command with elevated privileges (macOS only).
 // On non-darwin platforms it returns (0, 0, error).

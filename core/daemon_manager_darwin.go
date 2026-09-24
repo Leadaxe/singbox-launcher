@@ -529,7 +529,7 @@ func (ac *AppController) daemonServiceFileCheck() DaemonServiceCheck {
 	l := systemDaemonServiceLayout()
 	check := inspectDaemonServiceDefinition(l)
 	if check.CopyUsable() {
-		check.CopyVersion = readDaemonServiceSidecarVersion(filepath.Dir(l.CorePath))
+		check.CopyVersion = readDaemonServiceSidecarVersion(l.CorePath)
 	}
 	compareDaemonServiceFiles(&check, l.CorePath, ac.FileService.SingboxPath, &daemonServiceHashes)
 	return check

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 // TestPrivilegedStartCommand — команда старта ядра под root (SPEC 137 §3,
@@ -51,7 +52,9 @@ func TestPrivilegedStartCommand(t *testing.T) {
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	core := filepath.Join(base, "copy dir", "sing-box")
+	// Имя поддельного ядра — как у плоской копии: по нему pgrep/pkill
+	// находят ядро под root.
+	core := filepath.Join(base, "copy dir", PrivilegedCopyName)
 	if err := os.MkdirAll(filepath.Dir(core), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +64,7 @@ func TestPrivilegedStartCommand(t *testing.T) {
 		"echo \"cwd=$(/bin/pwd -P)\"\n" +
 		"echo \"args=$*\"\n" +
 		"/usr/bin/env\n" +
-		"/bin/sleep 0.3\n" +
+		"/bin/sleep 2\n" +
 		"echo done\n"
 	if err := os.WriteFile(core, []byte(fake), 0o755); err != nil {
 		t.Fatal(err)
@@ -152,6 +155,14 @@ func TestPrivilegedStartCommand(t *testing.T) {
 	if err := os.WriteFile(logPath, []byte(strings.Repeat("x", rotate+1)+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// Пока ядро работает, `pgrep -f PrivilegedPkillPattern` (тот же шаблон у
+	// pkill Kill-кнопок) находит и ядро-копию, и шелл обёртки.
+	pgrepCh := make(chan string, 1)
+	go func() {
+		time.Sleep(400 * time.Millisecond)
+		found, _ := exec.Command("/usr/bin/pgrep", "-f", PrivilegedPkillPattern).Output()
+		pgrepCh <- string(found)
+	}()
 	out, cmd := run(t, uid, "")
 	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
 	if len(lines) != 2 {
@@ -161,6 +172,18 @@ func TestPrivilegedStartCommand(t *testing.T) {
 	corePID, err2 := strconv.Atoi(lines[1])
 	if err1 != nil || err2 != nil || shellPID != cmd.Process.Pid || corePID <= 0 || corePID == shellPID {
 		t.Fatalf("PIDs %q: want shell %d and a separate core PID", lines, cmd.Process.Pid)
+	}
+	matched := strings.Fields(<-pgrepCh)
+	for _, pid := range []int{shellPID, corePID} {
+		hit := false
+		for _, m := range matched {
+			if m == strconv.Itoa(pid) {
+				hit = true
+			}
+		}
+		if !hit {
+			t.Fatalf("pgrep -f %q found %v, missing PID %d", PrivilegedPkillPattern, matched, pid)
+		}
 	}
 	for path, want := range map[string]os.FileMode{logDir: 0o755, logPath: 0o600, logPath + ".old": 0o600} {
 		fi, err := os.Stat(path)

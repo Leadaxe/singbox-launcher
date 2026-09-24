@@ -37,9 +37,8 @@
 
 | Что | Значение |
 |---|---|
-| Каталог службы | `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/` — `root:wheel 0755` |
-| Копия ядра | `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/sing-box` — `root:wheel 0755`; имя `sing-box` сохраняется (граница форка: `pgrep`/`ps` и диагностика по имени процесса не ломаются) |
-| Сайдкар | `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/install.json` — `root:wheel 0644`: `{source, sha256, version, installed_at, plist_path, label}` |
+| Копия ядра | **плоский файл** `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd` — `root:wheel 0755`; каталога службы нет (решение владельца 24.09.2026). Имя файла — ярлык службы, поэтому процесс ядра под root зовётся `com.leadaxe.sing-box-lxd` (в списке процессов — усечённым до 16 символов `com.leadaxe.sing`), а не `sing-box`: лаунчер ищет его по командной строке (`platform.PrivilegedPkillPattern`) и по усечённому имени (`platform.IsPrivilegedCoreProcessName`) |
+| Сайдкар | `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd.install.json` — `root:wheel 0644`: `{source, sha256, version, installed_at, plist_path, label}` |
 | plist | `ProgramArguments[0]` = копия; остальные ключи plist не меняются |
 | `lxd --service=install` | идемпотентен по sha (равные sha — копия не трогается); `daemon.json`, секрет и клиенты сохраняются; служба перезапускается (`bootout` + `bootstrap`): ядро ждёт выгрузки старой службы до 10 с и повторяет `bootstrap` |
 | `lxd --service=uninstall` | по умолчанию снимает plist, launchd **и копию** с сайдкаром; `--keep-copy` — снимает plist и launchd, копию и сайдкар оставляет (состояние COPY ONLY); `--purge` — ещё и данные демона |
@@ -57,7 +56,7 @@
 | Состояние | Условие | Показ |
 |---|---|---|
 | **NotInstalled** | plist нет | ничего; вкладка Install |
-| **Unsafe** | plist не разобрался; **или** `ProgramArguments[0]` ≠ каноническая копия (бандл, DataDir, что угодно); **или** цепочка `/Library` → `/Library/PrivilegedHelperTools` → каталог службы → файл не проходит инвариант | красная плашка, модальное предупреждение раз на версию лаунчера, WARN перед apply |
+| **Unsafe** | plist не разобрался; **или** `ProgramArguments[0]` ≠ каноническая копия (бандл, DataDir, что угодно); **или** цепочка `/Library` → `/Library/PrivilegedHelperTools` → файл копии не проходит инвариант (в том числе на месте файла — каталог ранней раскладки `<label>/sing-box`: причина «legacy layout, remove it» с командой `sudo rm -rf`) | красная плашка, модальное предупреждение раз на версию лаунчера, WARN перед apply |
 | **Stale** | путь канонический и безопасный, но sha256(копии) ≠ sha256(`EvalSymlinks(SingboxPath)`); **или** копии нет | жёлтая плашка |
 | **NotRunning** | файлы как у OK (plist на безопасную копию, sha совпал), но `launchctl print system/com.leadaxe.sing-box-lxd` (без sudo, таймаут 2 с, без кэша) — службы нет (exit 113) или `state` ≠ `running` | жёлтая плашка «The service is installed but not running» с командой `sudo launchctl bootstrap system /Library/LaunchDaemons/com.leadaxe.sing-box-lxd.plist` — **не** install; WARN перед apply |
 | **ProcessStale** | файл совпал, но работающий локальный демон отвечает `executable_sha256` ≠ sha256(копии) или `executable` ≠ каноническому пути; у ядра без этих полей (lx.8/lx.10) — `version` ≠ версии ядра лаунчера | жёлтая плашка |
@@ -66,7 +65,9 @@
 **Инвариант (Unsafe).** Каждое звено цепочки по `Lstat`: не симлинк; владелец
 uid 0; нет записи для группы и остальных (`mode & 0o022 == 0`); каталоги —
 каталоги, файл — обычный файл. Sticky-бит `/Library/PrivilegedHelperTools`
-(`1755`) инварианту не мешает. Отсутствие файла при целых каталогах — не
+(`1755`) инварианту не мешает. Каталог на месте файла копии — Unsafe с
+причиной «legacy layout of the root-owned copy, remove it». Отсутствие файла
+при целых каталогах — не
 Unsafe (создать файл в root-каталоге пользователь не может), а Stale
 («службе нечего запускать», лечится той же командой).
 
@@ -164,11 +165,12 @@ Unsafe (создать файл в root-каталоге пользовател�
    занять до ~20 с: ядро ждёт выгрузки старой службы до 10 с и повторяет
    `bootstrap`.
 3. **После.**
-   - `ls -ld /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd` и
-     `ls -l …/sing-box` — `root wheel`, `drwxr-xr-x` / `-rwxr-xr-x`;
-     `cat …/install.json` — поля §3;
+   - `ls -l /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd` —
+     обычный файл `root wheel -rwxr-xr-x`;
+     `cat /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd.install.json`
+     — поля §3 (`root wheel -rw-r--r--`);
    - `plutil -p` plist → `ProgramArguments[0]` = копия, прочие ключи прежние;
-   - `shasum -a 256 …/sing-box` == `shasum -a 256 ~/Library/Application\ Support/singbox-launcher/bin/sing-box`;
+   - `shasum -a 256 /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd` == `shasum -a 256 ~/Library/Application\ Support/singbox-launcher/bin/sing-box`;
    - `~/Library/Application\ Support/singbox-launcher/bin/sing-box lxd --service=status`
      (вызывающий бинарь — ядро лаунчера, сверяется с копией) — exit 0
      (2 — MISMATCH/UNSAFE, 3 — NOT INSTALLED, 4 — COPY ONLY, 5 — NOT RUNNING,
@@ -186,13 +188,18 @@ Unsafe (создать файл в root-каталоге пользовател�
 5. **Обновление ядра кнопкой** → диалог «Core updated» с той же командой
    install (в том числе в classic-движке при установленной службе).
 6. **Uninstall-вкладка** и «Need a fresh invite» — команды через копию;
-   Uninstall — с `--keep-copy`: после неё plist нет, копия и `install.json`
-   на месте, `<ядро-лаунчера> lxd --service=status` → exit 4 (COPY ONLY).
+   Uninstall — с `--keep-copy`: после неё plist нет, копия и
+   `com.leadaxe.sing-box-lxd.install.json` на месте, `<ядро-лаунчера> lxd --service=status` → exit 4 (COPY ONLY).
 7. **Remove all data…** — подсказка через копию, без `--keep-copy`, и текст
    «служба переживает удаление»; после команды копии нет.
 8. **Перезагрузка** → демон стартует из копии (`ps -o comm= -p <pid>` →
-   `…/com.leadaxe.sing-box-lxd/sing-box`), лаунчер из Login Items
-   сопрягается без пароля.
+   `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd`), лаунчер из
+   Login Items сопрягается без пароля.
+9. **Ранняя раскладка.** Если от dev-сборок lx.11 остался каталог
+   `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/` — красная
+   плашка, в `GET /daemon/status` → `service_detail` «… is a directory:
+   legacy layout of the root-owned copy, remove it (sudo rm -rf …)»;
+   `sudo rm -rf` этого каталога и команда install — OK.
 
 ## 10. Вне рамок
 
@@ -208,8 +215,9 @@ Unsafe (создать файл в root-каталоге пользовател�
 
 Проверить после сборки ядра:
 
-1. Каноническая раскладка §3 (каталог, имя `sing-box`, сайдкар
-   `install.json`) — константы `core/daemon_service_state_darwin.go`.
+1. Каноническая раскладка §3 (плоский файл `com.leadaxe.sing-box-lxd`,
+   сайдкар `com.leadaxe.sing-box-lxd.install.json`) — константы
+   `core/daemon_service_state_darwin.go`, имя — `platform.PrivilegedCopyName`.
 2. `install` переписывает только `ProgramArguments[0]` и перезапускает службу
    — иначе после команды остаётся ProcessStale.
 3. `install` поверх существующей службы сохраняет сопряжение — иначе после

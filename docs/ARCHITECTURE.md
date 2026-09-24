@@ -967,7 +967,7 @@ the *core*, telemetry describes the *machine*.
 The classic engine starts a TUN config as root through
 `AuthorizationExecuteWithPrivileges`; the daemon service is started as root by
 launchd. Both follow one rule: **root executes only root-owned files** — the service's
-copy of the core (`/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/sing-box`,
+copy of the core (`/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd`,
 written by the core itself on `lxd --service=install|copy`) and system utilities by
 absolute path. The launcher never copies the core and never runs sudo itself.
 

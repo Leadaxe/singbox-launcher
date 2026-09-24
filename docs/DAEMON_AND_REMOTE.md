@@ -69,7 +69,7 @@ and sudo asks you.
 `<launcher-core>` is the core the launcher uses (Settings → Storage → Core).
 `<service-core>` is the service's root-owned copy (§2.1) when the service runs one,
 otherwise the launcher core. `--keep-copy` (core lx.11+) removes the plist and the
-launchd job but leaves the copy and `install.json` in place — the classic TUN start
+launchd job but leaves the copy and its `.install.json` in place — the classic TUN start
 runs that copy (§2.2). **Remove all data…** offers the full uninstall without it, so
 the copy goes away together with the data.
 
@@ -92,9 +92,8 @@ place and points the plist at the copy:
 
 | What | Where |
 |---|---|
-| Service folder | `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/` (`root:wheel 0755`) |
-| Copy of the core | `…/com.leadaxe.sing-box-lxd/sing-box` (`root:wheel 0755`) |
-| Install record | `…/com.leadaxe.sing-box-lxd/install.json`: source, sha256, version, time, plist, label |
+| Copy of the core | the flat file `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd` (`root:wheel 0755`); no service folder |
+| Install record | `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd.install.json` (`root:wheel 0644`): source, sha256, version, time, plist, label |
 
 The same command covers every case — first install, an old plist that points at your
 own files, and a core update: `sudo <launcher-core> lxd --service=install`. It is
@@ -109,7 +108,7 @@ of the LOCAL connection settings:
 | State | Meaning | Shown as |
 |---|---|---|
 | not installed | no plist | nothing |
-| unsafe | the plist does not point at the copy, or the copy, its folder, `/Library/PrivilegedHelperTools` or `/Library` is a symlink, not owned by root, or writable by group/others | red, with the command; a one-time dialog per launcher version; a WARN line in the log before every config apply |
+| unsafe | the plist does not point at the copy, or the copy, `/Library/PrivilegedHelperTools` or `/Library` is a symlink, not owned by root, or writable by group/others; a folder in place of the copy (the early `<label>/sing-box` layout) is reported as “legacy layout, remove it” | red, with the command; a one-time dialog per launcher version; a WARN line in the log before every config apply |
 | stale | the copy differs from the launcher core (sha256), or is missing | yellow, with the command |
 | not running | the files are fine (plist on the safe copy, sha256 matches), but launchd does not run the service: not loaded or `state` ≠ `running` (`launchctl print`, no sudo) | yellow, with `sudo launchctl bootstrap system /Library/LaunchDaemons/com.leadaxe.sing-box-lxd.plist` — loading, not reinstalling |
 | process stale | the files match, but the running daemon reports another binary (`executable_sha256` from `/admin/info`; with an older core — another version) | yellow, with the command |
@@ -166,7 +165,7 @@ dialog shows one command with **Copy the command**, **Run in Terminal** and **Re
 
 | Case | Command |
 |---|---|
-| no daemon service | `sudo <launcher-core> lxd --service=copy` — core lx.11+: only the copy and `install.json`, no plist, no launchd |
+| no daemon service | `sudo <launcher-core> lxd --service=copy` — core lx.11+: only the copy and its `.install.json`, no plist, no launchd |
 | the daemon service is installed | `sudo <launcher-core> lxd --service=install` — the §2 command; it refreshes the same copy and restarts the service |
 
 After a core download the log gets a WARN with both sha256 values, and the next TUN

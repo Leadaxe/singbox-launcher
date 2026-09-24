@@ -54,3 +54,5 @@
 - [x] fix(136): Uninstall службы с `--keep-copy`, «Remove all data…» — полный uninstall.
 - [x] Доки и заметки (Windows — «следующим»).
 - [x] Права `classic.log` — пользователю лаунчера, `0600` (решение координатора): uid аргументом, проверка в теле (цифры, ≥ 501, `/usr/bin/id`), `chown`/`chmod` файла и `.old`; тест — невалидные uid и владелец/права.
+- [x] fix(136): служба не запущена — состояние NotRunning и команда `launchctl bootstrap`, не install.
+- [x] fix(136/137): копия — плоский файл `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd`, сайдкар `….install.json` (решение владельца 24.09); каталог на месте копии — Unsafe «legacy layout, remove it»; процесс копии зовётся `com.leadaxe.sing-box-lxd` — шаблон pgrep/pkill и проверка pid-файла это учитывают; тесты классификатора, гейта и `TestPrivilegedStartCommand` (pgrep находит копию).

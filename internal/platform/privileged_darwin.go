@@ -91,8 +91,30 @@ const (
 	// <Data>/bin). Больше не пишется и не исполняется; лаунчер его удаляет.
 	PrivilegedLegacyScriptName = PrivilegedStartName + ".sh"
 	PrivilegedPidFileName      = "singbox.pid"
-	PrivilegedPkillPattern     = "sing-box run|" + PrivilegedStartName
+	// PrivilegedCopyName — имя файла root-owned копии ядра
+	// (/Library/PrivilegedHelperTools/<ярлык службы>, SPEC 136/137, lx.11):
+	// процесс ядра под root зовётся так, а не sing-box. Путь копии держит
+	// core; тест сверяет имя.
+	PrivilegedCopyName = "com.leadaxe.sing-box-lxd"
+	// PrivilegedPkillPattern — командные строки привилегированного запуска
+	// для pgrep/pkill -f: ядро лаунчера (`sing-box run`), копия
+	// (`com.leadaxe.sing-box-lxd run`) и root-шелл обёртки. Демон службы
+	// (`… lxd --state-dir`) под шаблон не попадает.
+	PrivilegedPkillPattern = "sing-box run|" + PrivilegedCopyName + " run|" + PrivilegedStartName
 )
+
+// privilegedCommMax — длина имени процесса в kinfo_proc.p_comm (MAXCOMLEN):
+// длинное имя копии список процессов показывает усечённым.
+const privilegedCommMax = 16
+
+// IsPrivilegedCoreProcessName — имя процесса (в том числе усечённое до
+// p_comm) — это root-owned копия ядра.
+func IsPrivilegedCoreProcessName(name string) bool {
+	if name == PrivilegedCopyName {
+		return true
+	}
+	return len(name) == privilegedCommMax && strings.HasPrefix(PrivilegedCopyName, name)
+}
 
 // Что исполняет root (SPEC 137 §3): только root-owned файлы по абсолютным
 // путям — копия ядра (путь передаёт core) и системные утилиты. Ничего из

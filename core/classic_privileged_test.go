@@ -6,8 +6,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+
+	"singbox-launcher/internal/platform"
 )
 
 // TestPrivilegedCoreCopyGate — гейт привилегированного старта classic
@@ -31,21 +34,32 @@ func TestPrivilegedCoreCopyGate(t *testing.T) {
 	gate(t, "", privilegedCopyNoCore)
 	gate(t, filepath.Join(filepath.Dir(l.launcherCore), "absent"), privilegedCopyNoCore)
 
-	// Нет каталога копии, затем нет самой копии: создать недостающее под
+	// Нет каталога помощников, затем нет самой копии: создать недостающее под
 	// root-owned родителем пользователь не может — это «missing», не «unsafe».
-	if err := os.Remove(l.helperDir); err != nil {
+	if err := os.Remove(l.toolsDir); err != nil {
 		t.Fatal(err)
 	}
 	gate(t, l.launcherCore, privilegedCopyMissing)
-	if err := os.Mkdir(l.helperDir, 0o755); err != nil {
+	if err := os.Mkdir(l.toolsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(l.helperDir, 0o755); err != nil {
+	if err := os.Chmod(l.toolsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	c := gate(t, l.launcherCore, privilegedCopyMissing)
 	if c.LauncherSHA256 == "" || c.CopySHA256 != "" {
 		t.Fatalf("missing: launcher sha %q, copy sha %q", c.LauncherSHA256, c.CopySHA256)
+	}
+
+	// Unsafe: на месте плоской копии — каталог ранней раскладки.
+	if err := os.Mkdir(l.CorePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if c = gate(t, l.launcherCore, privilegedCopyUnsafe); !strings.Contains(c.Detail, "legacy layout") {
+		t.Fatalf("legacy folder detail: %q", c.Detail)
+	}
+	if err := os.Remove(l.CorePath); err != nil {
+		t.Fatal(err)
 	}
 
 	// OK: копия = ядро лаунчера; стартует копия. Повтор — из кэша.
@@ -86,12 +100,12 @@ func TestPrivilegedCoreCopyGate(t *testing.T) {
 		t.Fatalf("launcher core resolved to %q, want %q", c.LauncherCore, resolvedDev)
 	}
 
-	// Unsafe: каталог копии пишется группой; копия пишется всеми.
-	if err := os.Chmod(l.helperDir, 0o775); err != nil {
+	// Unsafe: каталог помощников пишется группой; копия пишется всеми.
+	if err := os.Chmod(l.toolsDir, 0o775); err != nil {
 		t.Fatal(err)
 	}
 	gate(t, l.launcherCore, privilegedCopyUnsafe)
-	if err := os.Chmod(l.helperDir, 0o755); err != nil {
+	if err := os.Chmod(l.toolsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(l.CorePath, 0o757); err != nil {
@@ -124,6 +138,30 @@ func TestPrivilegedCoreCopyGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	gate(t, l.launcherCore, privilegedCopyOK)
+
+	// Имя плоской копии — то же, что знает platform: по нему pgrep/pkill
+	// находят ядро под root, а pid-файл отличает его от чужого PID.
+	copyName := filepath.Base(daemonServiceCorePath())
+	if copyName != platform.PrivilegedCopyName || daemonServiceCorePath() != "/Library/PrivilegedHelperTools/"+daemonLaunchdLabel {
+		t.Fatalf("copy %s, platform name %s", daemonServiceCorePath(), platform.PrivilegedCopyName)
+	}
+	pattern := regexp.MustCompile(platform.PrivilegedPkillPattern)
+	for cmdline, want := range map[string]bool{
+		daemonServiceCorePath() + " run -c config.json":                                         true,
+		"/Users/u/Library/Application Support/singbox-launcher/bin/sing-box run -c config.json": true,
+		"/bin/sh -c … " + platform.PrivilegedStartName + " /x/bin":                              true,
+		daemonServiceCorePath() + " lxd --state-dir /Library/Application Support/sing-box-lxd":  false,
+		"/Users/u/bin/sing-box check -c config.json":                                            false,
+	} {
+		if got := pattern.MatchString(cmdline); got != want {
+			t.Fatalf("pkill pattern on %q: %v, want %v", cmdline, got, want)
+		}
+	}
+	for name, want := range map[string]bool{copyName: true, copyName[:16]: true, copyName[:10]: false, "sing-box": false} {
+		if got := platform.IsPrivilegedCoreProcessName(name); got != want {
+			t.Fatalf("IsPrivilegedCoreProcessName(%q) = %v, want %v", name, got, want)
+		}
+	}
 
 	// Команда: без службы — copy, при plist службы — install (она обновляет
 	// ту же копию). Путь с пробелом и апострофом разбирается sh ровно в

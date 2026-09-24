@@ -210,7 +210,7 @@ func purgeBlockingProcess(l paths.Layout, exe string) string {
 // запуска (<Data>/bin/singbox.pid: PID скрипта и PID ядра по строке; только
 // macOS, на других ОС имя файла пустое). Проверка — по списку процессов,
 // без сигналов: чужой процесс не трогаем. Переиспользованный PID отсекается
-// по имени (sing-box или sh-скрипт запуска).
+// по имени (sing-box, root-owned копия ядра — SPEC 137 — или шелл запуска).
 func purgeCoreAliveByPidFile(d paths.DataDir) (int, bool) {
 	if platform.PrivilegedPidFileName == "" {
 		return 0, false
@@ -229,7 +229,7 @@ func purgeCoreAliveByPidFile(d paths.DataDir) (int, bool) {
 			continue
 		}
 		name := strings.ToLower(info.Name)
-		if strings.Contains(name, "sing-box") || name == "sh" {
+		if strings.Contains(name, "sing-box") || platform.IsPrivilegedCoreProcessName(info.Name) || name == "sh" {
 			return pid, true
 		}
 	}

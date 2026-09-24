@@ -779,7 +779,7 @@ remote-сервер обычно не gateway. Таргет живёт в `state
 Classic-движок поднимает конфиг с TUN от root через
 `AuthorizationExecuteWithPrivileges`, службу демона от root запускает launchd.
 Правило у обоих одно: **root исполняет только root-owned файлы** — копию ядра службы
-(`/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/sing-box`, её пишет само
+(`/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd`, её пишет само
 ядро на `lxd --service=install|copy`) и системные утилиты по абсолютным путям.
 Лаунчер ядро не копирует и sudo сам не запускает.
 

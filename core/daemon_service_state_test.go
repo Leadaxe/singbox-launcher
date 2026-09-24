@@ -13,12 +13,12 @@ import (
 )
 
 // testServiceLayout — раскладка службы lx.11 во временном каталоге:
-// <base>/Library/PrivilegedHelperTools/<label>/sing-box, plist в
+// копия — плоский файл <base>/Library/PrivilegedHelperTools/<label>, plist в
 // <base>/LaunchDaemons, ядро лаунчера в <base>/data/bin. Владелец цепочки —
 // текущий uid (root-owned файлы тест создать не может).
 type testServiceLayout struct {
 	daemonServiceLayout
-	helperDir    string
+	toolsDir     string
 	launcherCore string
 }
 
@@ -26,14 +26,14 @@ func newTestServiceLayout(t *testing.T) testServiceLayout {
 	t.Helper()
 	base := t.TempDir()
 	root := filepath.Join(base, "Library")
-	helper := filepath.Join(root, "PrivilegedHelperTools", daemonLaunchdLabel)
-	for _, dir := range []string{helper, filepath.Join(base, "LaunchDaemons"), filepath.Join(base, "data", "bin")} {
+	tools := filepath.Join(root, "PrivilegedHelperTools")
+	for _, dir := range []string{tools, filepath.Join(base, "LaunchDaemons"), filepath.Join(base, "data", "bin")} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	// MkdirAll уважает umask: выставляем права цепочки явно.
-	for _, dir := range []string{root, filepath.Dir(helper), helper} {
+	for _, dir := range []string{root, tools} {
 		if err := os.Chmod(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -41,11 +41,11 @@ func newTestServiceLayout(t *testing.T) testServiceLayout {
 	l := testServiceLayout{
 		daemonServiceLayout: daemonServiceLayout{
 			PlistPath: filepath.Join(base, "LaunchDaemons", daemonLaunchdLabel+".plist"),
-			CorePath:  filepath.Join(helper, daemonServiceBinaryName),
+			CorePath:  filepath.Join(tools, filepath.Base(daemonServiceCorePath())),
 			ChainRoot: root,
 			OwnerUID:  uint32(os.Getuid()),
 		},
-		helperDir:    helper,
+		toolsDir:     tools,
 		launcherCore: filepath.Join(base, "data", "bin", "sing-box"),
 	}
 	writeTestFile(t, l.launcherCore, "core v1")
@@ -133,8 +133,27 @@ func TestDaemonServiceClassifier(t *testing.T) {
 		t.Fatalf("missing copy: CopyMissing=%v usable=%v", c.CopyMissing, c.CopyUsable())
 	}
 
+	// Unsafe: на месте плоской копии — каталог ранней раскладки
+	// (<label>/sing-box); причина говорит, что его убрать.
+	if err := os.Mkdir(l.CorePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(l.CorePath, "sing-box"), "core v1")
+	c = classifyTestService(l, &hashes)
+	expect(t, c, DaemonServiceUnsafe)
+	if !strings.Contains(c.Detail, "legacy layout") || !strings.Contains(c.Detail, "remove it") {
+		t.Fatalf("legacy folder detail: %q", c.Detail)
+	}
+	if err := os.RemoveAll(l.CorePath); err != nil {
+		t.Fatal(err)
+	}
+
 	// OK: копия = ядро лаунчера. Повтор с теми же файлами — из кэша.
 	writeTestFile(t, l.CorePath, "core v1")
+	writeTestFile(t, daemonServiceSidecarPath(l.CorePath), `{"version":"1.14.1-lx.11"}`)
+	if v := readDaemonServiceSidecarVersion(l.CorePath); v != "1.14.1-lx.11" {
+		t.Fatalf("sidecar %s: version %q", daemonServiceSidecarPath(l.CorePath), v)
+	}
 	c = classifyTestService(l, &hashes)
 	expect(t, c, DaemonServiceOK)
 	if !c.CopyUsable() || c.CopySHA256 == "" || c.CopySHA256 != c.LauncherSHA256 {
@@ -173,12 +192,12 @@ func TestDaemonServiceClassifier(t *testing.T) {
 	}
 	expect(t, classifyTestService(l, &hashes), DaemonServiceOK)
 
-	// Unsafe: каталог службы пишется группой.
-	if err := os.Chmod(l.helperDir, 0o775); err != nil {
+	// Unsafe: каталог помощников (родитель плоской копии) пишется группой.
+	if err := os.Chmod(l.toolsDir, 0o775); err != nil {
 		t.Fatal(err)
 	}
 	expect(t, classifyTestService(l, &hashes), DaemonServiceUnsafe)
-	if err := os.Chmod(l.helperDir, 0o755); err != nil {
+	if err := os.Chmod(l.toolsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
