@@ -38,6 +38,9 @@ func (f *debugAPIDaemonWiring) Status() debugapi.DaemonStatus {
 		InterruptedApply: st.InterruptedApply,
 		DaemonVersion:    st.DaemonVersion,
 		StateDir:         st.StateDir,
+		ServiceState:     string(st.Service.State),
+		ServicePath:      st.Service.ServicePath,
+		ServiceDetail:    st.Service.Detail,
 	}
 }
 

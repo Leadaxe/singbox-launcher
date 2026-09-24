@@ -13,3 +13,8 @@ func newDaemonBackend(_ *AppController) (CoreBackend, error) {
 
 // notifyDaemonServiceAfterCoreUpdate — no-op вне macOS (службы демона нет).
 func (ac *AppController) notifyDaemonServiceAfterCoreUpdate() {}
+
+// DaemonUnsafeServiceNotice — службы демона вне macOS нет (SPEC 136).
+func (ac *AppController) DaemonUnsafeServiceNotice() (servicePath, command string, due bool) {
+	return "", "", false
+}

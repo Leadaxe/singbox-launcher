@@ -385,7 +385,7 @@ Start/stop ядра при daemon-движке идут через общие `/
 
 | Метод | Путь | Что делает |
 |---|---|---|
-| GET | `/daemon/status` | Сопряжение, служба, доступность, статус ядра, паспорт демона |
+| GET | `/daemon/status` | Сопряжение, служба, доступность, статус ядра, паспорт демона; `service_state` (`not_installed`\|`unsafe`\|`stale`\|`not_running`\|`process_stale`\|`ok`), `service_path`, `service_detail` — классификатор службы (SPEC 136) |
 | POST | `/daemon/pair` | `{invite, secret?}` — сопряжение с локальным демоном |
 | POST | `/daemon/unpair` | Забыть сопряжение (ключи, пин, секрет) |
 | PATCH | `/daemon/settings` | `{addr?, secret?}` |

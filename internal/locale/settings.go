@@ -144,6 +144,11 @@ type Settings struct {
 	// лаунчера. Default false: выход из лаунчера НЕ трогает VPN — главное
 	// UX-преимущество daemon-режима.
 	DaemonStopVPNOnExit bool `json:"daemon_stop_vpn_on_exit,omitempty"`
+	// DaemonUnsafeNoticeVersion — версия лаунчера, на которой показано
+	// модальное предупреждение «служба демона запускает файл, который может
+	// подменить пользователь» (SPEC 136 §6). Одно предупреждение на версию:
+	// плашка на вкладке LOCAL остаётся до ремонта, модальное окно — нет.
+	DaemonUnsafeNoticeVersion string `json:"daemon_unsafe_notice_version,omitempty"`
 
 	// HideAppFromDock — пункт трея «Скрыть из Dock» (macOS). Пишется при
 	// каждом переключении пункта, применяется на старте: до этого поля
@@ -276,6 +281,17 @@ func MarkHiddenDataNoticeShown(binDir string) error {
 		return nil
 	}
 	s.HiddenDataNoticeShown = true
+	return SaveSettings(binDir, s)
+}
+
+// MarkDaemonUnsafeNoticeShown persists the launcher version that showed the
+// "daemon service runs a user-writable binary" warning (SPEC 136 §6).
+func MarkDaemonUnsafeNoticeShown(binDir, appVersion string) error {
+	s := LoadSettings(binDir)
+	if s.DaemonUnsafeNoticeVersion == appVersion {
+		return nil
+	}
+	s.DaemonUnsafeNoticeVersion = appVersion
 	return SaveSettings(binDir, s)
 }
 

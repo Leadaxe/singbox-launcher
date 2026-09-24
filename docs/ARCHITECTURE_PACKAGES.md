@@ -31,7 +31,7 @@ path getters. Platform-tagged files (`*_darwin.go`/`*_linux.go`/`*_windows.go`/
 | `wintun_cleanup_windows_syscall.go` | Lazy DLL bindings + GUID constants shared by the cleanup files. |
 | `fs_unix.go` / `fs_windows.go` | Atomic-write / fsync filesystem helpers per OS. |
 | `dock_handler.go` / `dock_handler_stub.go` | macOS Dock hide; stub elsewhere. |
-| `privileged_darwin.go` / `privileged_stub.go` | macOS privileged escalation (TUN cache/log removal); stub elsewhere. |
+| `privileged_darwin.go` / `privileged_stub.go` | macOS privileged execution via AEWP (SPEC 137): the TUN start of the root-owned core copy through `env -i` + a constant `sh` body, the core log `/Library/Logs/sing-box-lxd/classic.log` (root-owned folder, file owned by the launcher user `0600`) prepared and rotated by the same body (137.1), kill / pkill by absolute path without a shell, the authorization-lifetime flag `privilegedAuthReuse`; stub elsewhere. |
 | `singbox_exec_path.go` | Resolve the sing-box executable path: `SINGBOX_LAUNCHER_CORE` → `DataDir/bin` → `AppDir/bin` → `PATH` (SPEC 135 §3.3; unified across platforms, `PATH` last everywhere — previously Linux-only and first). |
 
 ### `internal/paths` (SPEC 135)
@@ -60,7 +60,7 @@ Each package is self-contained and dependency-free (or depends only on `debuglog
 | `internal/constants` | App-wide constants (file names, pinned core/template refs, UA strings, limits). | `constants.go` |
 | `internal/debuglog` | Leveled logging (Off/Error/Warn/Info/Verbose/Trace), optional in-memory sink for the diagnostics log viewer, timing helpers. | `debuglog.go`, `close.go` |
 | `internal/locale` | i18n on natural keys (SPEC 111): the English text at the call site IS the key; English lives in the code, translations come from external/remote `bin/locale/<tag>.json` (`Entry`: value / plural forms / `special` collision forms). `T`/`Tf`/`TN`/`TfN`/`Plural`/`PluralN`; any miss degrades into the key itself. Guarded by `tools/l10n` CI checkers. | `locale.go`, `entry.go`, `plural.go`, `settings.go` |
-| `internal/traffic` | Decoupled Traffic Profiler (stdlib only): Clash poller + log tailer join, rolling buffer, session recording, per-process attribution. | `profiler.go`, `session.go`, `types.go`, `clash_connections.go`, `logtail.go`, `parser.go`, `http_client.go`, `singleton.go`, `inode_unix.go`/`inode_windows.go` |
+| `internal/traffic` | Decoupled Traffic Profiler (stdlib only): Clash poller + log tailer join (the tailer can follow a changing path — `StartFollowing`, SPEC 137.1), rolling buffer, session recording, per-process attribution. | `profiler.go`, `session.go`, `types.go`, `clash_connections.go`, `logtail.go`, `parser.go`, `http_client.go`, `singleton.go`, `inode_unix.go`/`inode_windows.go` |
 | `internal/outboundutil` | Single source of truth for `reject`/`drop` literal → rule `action`/`method` mapping (shared by core build + UI). | `outbound.go` |
 | `internal/srstag` | Content-addressed local SRS filename generation (`name-<hash8>`) for dedup. | `srstag.go` |
 | `internal/urlsafe` | URL-scheme allowlist for clickable affordances (http/https/tg allowed; javascript/file/data blocked). | `url.go` |
@@ -69,7 +69,7 @@ Each package is self-contained and dependency-free (or depends only on `debuglog
 | `internal/ctxutil` | Sleep-aware context helper. | `sleep.go` |
 | `internal/process` | Thin process-list wrapper used by runtime checks. | `process.go` |
 | `internal/wizardsync` | Fyne-free predicates for GUI→model merge (`GuiTextAwaitingProgrammaticFill`, `FinalOutboundSelectReadLooksStale`) — unit-testable without CGO/GL. | `guards.go` |
-| `internal/dialogs` | Shared dialog primitives independent of `ui` (custom dialog, download-failed dialog, auto-hide info). | `dialogs.go` |
+| `internal/dialogs` | Shared dialog primitives independent of `ui` (custom dialog, download-failed dialog, auto-hide info, command + Retry dialog). | `dialogs.go` |
 | `internal/lxdclient` | mTLS client for the `sing-box lxd` daemon (SPEC 096/097): admin REST calls, certificate pinning (never optional), one-time invite parsing (`address#fingerprint#code`), per-machine client identity, channel detection, host telemetry + clients-info readers. No app state. | `client.go`, `identity.go`, `invite.go`, `host.go` |
 
 > Note: `internal/dialogs` and `internal/fynewidget` both depend on Fyne. `dialogs`
@@ -297,7 +297,9 @@ semantics: `contract/docs/BACKUP.md`.
 | `chain_probe.go` | **SPEC 110.** Shared plumbing for the layered chain probe. Lives in `core`, not in a transport: the local daemon and a remote machine ask the core over the very same RPCs, and a disagreement about which tag is sent or how the answer is read would produce different diagnoses for one chain. |
 | `backend_daemon_stub.go` | Non-darwin stub so the rest of the code compiles without gRPC (this is what keeps the Win7 build clean). |
 | `daemon_manager_darwin.go` | Daemon lifecycle from the launcher's side: the sudo command strings it hands the user (`--service=install` / `=uninstall [--purge]` / `lxd client add`), pairing, daemon passport (`GET /admin/info`). Runs nothing privileged itself. |
-| `process_service.go` | `ProcessService`: `Start`/`Stop`/`Monitor`, crash/restart state machine, privileged-script exit handling, TUN/phantom-adapter cleanup before Start (SPEC 065). |
+| `daemon_service_state_darwin.go` | **SPEC 136.** Service classifier: reads the launchd plist, checks the root-owned copy of the core and its ownership chain (`/Library` → `PrivilegedHelperTools` → the flat copy file), compares sha256 with the launcher core (cached by dev/inode/size/mtime) and with the running daemon's passport. Verdicts: not installed / unsafe / stale / process stale / ok. Reads only, no sudo. |
+| `classic_privileged_darwin.go` (+ `_other.go`) | **SPEC 137.** Gate of the classic privileged (TUN) start: the root-owned copy of the core must exist, pass the ownership chain and match the launcher core by sha256 (functions and hash cache of `daemon_service_state_darwin.go`); otherwise a dialog with one sudo command (`lxd --service=copy`, or `--service=install` when the daemon service is installed) and Retry; a WARN after a core download when the copy falls behind. Reads only, no sudo. |
+| `process_service.go` | `ProcessService`: `Start`/`Stop`/`Monitor`, crash/restart state machine, privileged-shell exit handling (the TUN start goes through the copy gate, SPEC 137), TUN/phantom-adapter cleanup before Start (SPEC 065). |
 | `config_service.go` (+ `_context.go`, `_subscriptions.go`) | `ConfigService`: `RunParserProcess`, `UpdateConfigFromSubscriptions` (cache-refresh pipeline), `buildContextFromState`, per-source refresh. Split from 1066 → ~538 LOC; promoting the peeled files to real `SubscriptionFetcher` / `ConfigContextBuilder` seams is still deferred. |
 | `rebuild.go` | `RebuildConfigIfDirty` — **sole `config.json` writer** (ADR-070-4); validate via `sing-box check`; publishes `ConfigBuilt`; `cleanupLegacyOutboundsCache`. |
 | `rebuild_raw_cache.go` | `buildSnapshotFromRawCache` — rebuild from `.raw` bodies without network. |
@@ -461,7 +463,7 @@ semantics: `contract/docs/BACKUP.md`.
 | `dns_server_form.go` / `dns_template_vars.go` | **SPEC 109.** Per-kind DNS server forms (UDP/TCP/DoT/DoH/group) + template-declared server parameters. |
 | `rules_tab.go` / `rules_unified_rows.go` | Routing rules list (add/edit/delete, SRS auto-download, per-rule outbound select). |
 | `dns_tab.go` / `dns_unified_rules.go` / `dns_user_rules.go` / `dns_preset_bundled.go` | DNS servers + unified rules editor (preset + user). |
-| `settings_tab.go` + `settings_tun_darwin.go` / `settings_tun_stub.go` | Template-vars settings; darwin TUN-off privileged cleanup. |
+| `settings_tab.go` + `settings_tun_darwin.go` / `settings_tun_stub.go` | Template-vars settings; darwin TUN-off cleanup of root-owned leftovers with the launcher's own uid (no AEWP, SPEC 137.1). |
 | `preset_ref_edit_dialog.go` / `preset_ref_convert.go` / `preset_ref_srs.go` | Preset-ref edit/convert/SRS handling. |
 | `library_rules_dialog.go` | Template-preset library picker (Add selected → CustomRules). |
 | `tight_vbox.go` / `tight_hbox.go` | Compact vbox/hbox layout helpers (`tight_hbox.go` packs row icons with a negative gap, `rowIconGap`). |

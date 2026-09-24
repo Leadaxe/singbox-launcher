@@ -346,10 +346,25 @@ func (b *DaemonBackend) applyOnce(caller string, forced bool) bool {
 	// (демон старой сборки). (2) Полное удаление clash_api (всё по gRPC).
 	// Classic-режим этой подготовки не проходит (cwd=bin/, единственное ядро).
 	runtimeDir := daemonFallbackRuntimeDir
-	if passport, infoErr := b.admin.Info(); infoErr == nil && passport.StateDir != "" {
+	passport, infoErr := b.admin.Info()
+	if infoErr == nil && passport.StateDir != "" {
 		runtimeDir = passport.StateDir
 	} else if infoErr != nil {
 		debuglog.WarnLog("daemon.%s: /admin/info unavailable (%v); using fallback runtime dir", caller, infoErr)
+	}
+	// SPEC 136: служба не на актуальной root-owned копии — громко в лог, но
+	// apply не блокируется (у пользователя работающий VPN, ремонт — одна
+	// команда).
+	var passportPtr *lxdclient.InfoData
+	if infoErr == nil {
+		passportPtr = &passport
+	}
+	if check := ac.daemonServiceCheck(passportPtr, b.admin.AddrString()); check.NeedsInstall() {
+		debuglog.WarnLog("daemon.%s: the daemon service is %s (%s) — run the Install or update service command",
+			caller, check.State, check.Detail)
+	} else if check.NeedsBootstrap() {
+		debuglog.WarnLog("daemon.%s: the daemon service is installed but not running (%s) — run: %s",
+			caller, check.Detail, daemonBootstrapCommand())
 	}
 	config, err = prepareConfigForDaemon(config, runtimeDir)
 	if err != nil {

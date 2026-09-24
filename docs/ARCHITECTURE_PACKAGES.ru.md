@@ -32,7 +32,7 @@
 | `wintun_cleanup_windows_syscall.go` | Ленивые привязки DLL и константы GUID, общие для файлов чистки. |
 | `fs_unix.go` / `fs_windows.go` | Хелперы атомарной записи и fsync по ОС. |
 | `dock_handler.go` / `dock_handler_stub.go` | Скрытие иконки в Dock на macOS; на остальных — заглушка. |
-| `privileged_darwin.go` / `privileged_stub.go` | Привилегированные операции на macOS (удаление кеша и логов TUN); на остальных — заглушка. |
+| `privileged_darwin.go` / `privileged_stub.go` | Привилегированное исполнение на macOS через AEWP (SPEC 137): старт TUN с root-owned копии ядра через `env -i` и постоянное тело `sh`, лог ядра `/Library/Logs/sing-box-lxd/classic.log` (каталог root, файл пользователя лаунчера `0600`), который готовит и ротирует то же тело (137.1), kill / pkill по абсолютным путям без шелла, флаг времени жизни авторизации `privilegedAuthReuse`; на остальных — заглушка. |
 | `singbox_exec_path.go` | Разрешение пути к исполняемому файлу sing-box: `SINGBOX_LAUNCHER_CORE` → `DataDir/bin` → `AppDir/bin` → `PATH` (SPEC 135 §3.3; порядок единый для всех платформ, `PATH` теперь последний везде — раньше был первым и только на Linux). |
 
 ### `internal/paths` (SPEC 135)
@@ -60,7 +60,7 @@ stdlib и `internal/constants`), лежит **ниже** `internal/platform` (т
 | `internal/constants` | Константы уровня приложения (имена файлов, пины ядра и шаблона, строки UA, лимиты). | `constants.go` |
 | `internal/debuglog` | Уровневое логирование (Off/Error/Warn/Info/Verbose/Trace), опциональный in-memory sink для вьюера логов, хелперы замера времени. | `debuglog.go`, `close.go` |
 | `internal/locale` | i18n: английский встроен, внешние/удалённые JSON по языкам, поиск `T`/`Tf` с фоллбэком на английский. | `locale.go`, `settings.go` |
-| `internal/traffic` | Развязанный профайлер трафика (только stdlib): сшивка Clash-поллера и хвоста лога, кольцевой буфер, запись сессий, атрибуция по процессам. | `profiler.go`, `session.go`, `types.go`, `clash_connections.go`, `logtail.go`, `parser.go`, `http_client.go`, `singleton.go`, `inode_unix.go`/`inode_windows.go` |
+| `internal/traffic` | Развязанный профайлер трафика (только stdlib): сшивка Clash-поллера и хвоста лога (хвост умеет следовать за меняющимся путём — `StartFollowing`, SPEC 137.1), кольцевой буфер, запись сессий, атрибуция по процессам. | `profiler.go`, `session.go`, `types.go`, `clash_connections.go`, `logtail.go`, `parser.go`, `http_client.go`, `singleton.go`, `inode_unix.go`/`inode_windows.go` |
 | `internal/outboundutil` | Единый источник истины для маппинга литералов `reject`/`drop` → `action`/`method` правила (общий для сборки и UI). | `outbound.go` |
 | `internal/srstag` | Контент-адресуемая генерация имён локальных SRS-файлов (`name-<hash8>`) для дедупликации. | `srstag.go` |
 | `internal/urlsafe` | Allowlist URL-схем для кликабельных элементов (http/https/tg разрешены; javascript/file/data заблокированы). | `url.go` |
@@ -69,7 +69,7 @@ stdlib и `internal/constants`), лежит **ниже** `internal/platform` (т
 | `internal/ctxutil` | Хелпер контекста, учитывающий сон системы. | `sleep.go` |
 | `internal/process` | Тонкая обёртка над списком процессов для рантайм-проверок. | `process.go` |
 | `internal/wizardsync` | Предикаты слияния GUI→модель без Fyne (`GuiTextAwaitingProgrammaticFill`, `FinalOutboundSelectReadLooksStale`) — тестируются без CGO/GL. | `guards.go` |
-| `internal/dialogs` | Общие примитивы диалогов, не зависящие от `ui` (кастомный диалог, диалог неудачной загрузки, авто-скрывающееся уведомление). | `dialogs.go` |
+| `internal/dialogs` | Общие примитивы диалогов, не зависящие от `ui` (кастомный диалог, диалог неудачной загрузки, авто-скрывающееся уведомление, диалог «команда + Retry»). | `dialogs.go` |
 | `internal/lxdclient` | mTLS-клиент демона `sing-box lxd` (SPEC 096/097): вызовы admin REST, пиннинг сертификата (никогда не опционален), разбор одноразовых приглашений (`адрес#отпечаток#код`), клиентская идентичность на машину, определение канала, чтение телеметрии хоста и clients-info. Без состояния приложения. | `client.go`, `identity.go`, `invite.go`, `host.go` |
 
 > Замечание: и `internal/dialogs`, и `internal/fynewidget` зависят от Fyne.
@@ -298,7 +298,9 @@ stdlib и `internal/constants`), лежит **ниже** `internal/platform` (т
 | `chain_probe.go` | **SPEC 110.** Общее для послойной пробы цепочки. Живёт в `core`, а не в одном из транспортов: локальный демон и удалённая машина спрашивают ядро одними и теми же RPC, и расхождение в том, какой тег отправлен или как истолкован ответ, дало бы разные диагнозы на одной и той же цепочке. |
 | `backend_daemon_stub.go` | Заглушка для не-darwin, чтобы остальной код компилировался без gRPC (именно она держит сборку под Win7 чистой). |
 | `daemon_manager_darwin.go` | Жизненный цикл демона со стороны лаунчера: строки sudo-команд, которые он отдаёт пользователю (`--service=install` / `=uninstall [--purge]` / `lxd client add`), сопряжение, паспорт демона (`GET /admin/info`). Сам ничего привилегированного не запускает. |
-| `process_service.go` | `ProcessService`: `Start`/`Stop`/`Monitor`, машина состояний crash/restart, обработка выхода привилегированного скрипта, чистка TUN и фантомных адаптеров перед стартом (SPEC 065). |
+| `daemon_service_state_darwin.go` | **SPEC 136.** Классификатор службы: читает plist launchd, проверяет root-owned копию ядра и цепочку владения (`/Library` → `PrivilegedHelperTools` → плоский файл копии), сверяет sha256 с ядром лаунчера (кэш по dev/inode/size/mtime) и с паспортом работающего демона. Вердикты: не установлена / небезопасна / устарела / процесс устарел / в порядке. Только чтение, без sudo. |
+| `classic_privileged_darwin.go` (+ `_other.go`) | **SPEC 137.** Гейт привилегированного старта classic (TUN): root-owned копия ядра есть, проходит цепочку владения и совпадает с ядром лаунчера по sha256 (функции и кэш хэшей `daemon_service_state_darwin.go`); иначе — диалог с одной sudo-командой (`lxd --service=copy`, при установленной службе — `--service=install`) и Retry; WARN после скачивания ядра, если копия отстала. Только чтение, без sudo. |
+| `process_service.go` | `ProcessService`: `Start`/`Stop`/`Monitor`, машина состояний crash/restart, обработка выхода привилегированного шелла (старт TUN — через гейт копии, SPEC 137), чистка TUN и фантомных адаптеров перед стартом (SPEC 065). |
 | `config_service.go` (+ `_context.go`, `_subscriptions.go`) | `ConfigService`: `RunParserProcess`, `UpdateConfigFromSubscriptions` (пайплайн обновления кеша), `buildContextFromState`, обновление по источникам. Разбит с 1066 до ~538 строк; поднятие отпочковавшихся файлов до настоящих швов `SubscriptionFetcher` / `ConfigContextBuilder` пока отложено. |
 | `rebuild.go` | `RebuildConfigIfDirty` — **единственный писатель `config.json`** (ADR-070-4); валидация через `sing-box check`; публикует `ConfigBuilt`; `cleanupLegacyOutboundsCache`. |
 | `rebuild_raw_cache.go` | `buildSnapshotFromRawCache` — пересборка из `.raw`-тел без сети. |
@@ -462,7 +464,7 @@ stdlib и `internal/constants`), лежит **ниже** `internal/platform` (т
 | `dns_server_form.go` / `dns_template_vars.go` | **SPEC 109.** Формы DNS-сервера по видам (UDP/TCP/DoT/DoH/группа) и параметры шаблонного сервера. |
 | `rules_tab.go` / `rules_unified_rows.go` | Список правил маршрутизации (добавление/правка/удаление, авто-загрузка SRS, выбор outbound'а на правило). |
 | `dns_tab.go` / `dns_unified_rules.go` / `dns_user_rules.go` / `dns_preset_bundled.go` | DNS-серверы и единый редактор правил (пресетные и пользовательские). |
-| `settings_tab.go` + `settings_tun_darwin.go` / `settings_tun_stub.go` | Настройки переменных шаблона; привилегированная чистка при выключении TUN на darwin. |
+| `settings_tab.go` + `settings_tun_darwin.go` / `settings_tun_stub.go` | Настройки переменных шаблона; чистка root-owned остатков при выключении TUN на darwin правами лаунчера (без AEWP, SPEC 137.1). |
 | `preset_ref_edit_dialog.go` / `preset_ref_convert.go` / `preset_ref_srs.go` | Правка, конвертация и обработка SRS для preset-ссылок. |
 | `library_rules_dialog.go` | Пикер библиотеки пресетов шаблона (Add selected → CustomRules). |
 | `tight_vbox.go` / `tight_hbox.go` | Компактные хелперы раскладки vbox/hbox (`tight_hbox.go` пакует иконки строки с отрицательным зазором `rowIconGap`). |

@@ -773,3 +773,30 @@ remote-сервер обычно не gateway. Таргет живёт в `state
 осью клиентов. Телеметрия хоста (CPU / память / хранилище / сеть самой машины) —
 отдельное окно поверх admin REST: профайлер описывает *ядро*, телеметрия описывает
 *машину*.
+
+### 11.6 Привилегированный старт classic на macOS (SPEC 136–137)
+
+Classic-движок поднимает конфиг с TUN от root через
+`AuthorizationExecuteWithPrivileges`, службу демона от root запускает launchd.
+Правило у обоих одно: **root исполняет только root-owned файлы** — копию ядра службы
+(`/Library/PrivilegedHelperTools/sing-box-lxd`, её пишет само
+ядро на `lxd --service=install|copy`) и системные утилиты по абсолютным путям.
+Лаунчер ядро не копирует и sudo сам не запускает.
+
+`ProcessService.startSingBoxPrivileged` сначала спрашивает гейт
+(`core/classic_privileged_darwin.go`): копия есть, проходит цепочку владения и
+совпадает с ядром лаунчера по sha256 — проверка цепочки и кэш хэшей взяты у
+классификатора SPEC 136. Только затем `platform.StartPrivilegedCore` запускает
+`/usr/bin/env -i PATH=… /bin/sh -c <постоянное тело> <пути>`: ни файла-скрипта, ни
+окружения лаунчера в root-шелле. Отказ гейта показывает диалог с командой
+(`internal/dialogs.ShowCommandRetry`) вместо ошибки старта, Retry идёт через
+`StartSingBoxProcess`. Авторизация живёт сессию лаунчера; `privilegedAuthReuse` в
+`internal/platform/privileged_darwin.go` сужает её до одного действия.
+
+И root не пишет по путям пользователя (137.1): вывод ядра идёт в
+`/Library/Logs/sing-box-lxd/classic.log` (каталог root, файл пользователя лаунчера
+`0600`), который готовит и ротирует то же
+постоянное тело, а `AppController.CoreLogPath()` говорит читателям, какой лог писал
+последний старт, — Core-вкладке окна логов и тейлеру профайлера трафика
+(`TrafficProfiler.StartFollowing`, путь пересчитывается на каждом тике). Чистка при
+снятии TUN удаляет root-owned остатки uid'ом лаунчера; AEWP там нет.

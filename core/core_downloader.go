@@ -141,12 +141,17 @@ func (ac *AppController) DownloadCore(ctx context.Context, version string, progr
 	ac.FileService.ResolveCore()
 	debuglog.InfoLog("core: %s (source=%s)", ac.FileService.SingboxPath, ac.FileService.CoreSource)
 
-	// 6.7. Daemon-режим: установленная launchd-служба держит СТАРЫЙ бинарь в
-	// памяти (plist указывает на тот же путь bin/sing-box, но замена файла не
-	// перезапускает процесс). Привилегированных вызовов у лаунчера нет —
-	// показываем диалог с готовой sudo-командой kickstart (терминальная
-	// модель); до её выполнения демон работает на старой версии ядра.
+	// 6.7. Служба демона (macOS): launchd запускает свою root-owned копию
+	// ядра (SPEC 136), новое ядро до неё доходит только командой install.
+	// Привилегированных вызовов у лаунчера нет — диалог с готовой
+	// sudo-командой (терминальная модель); до её выполнения демон работает
+	// на прежнем ядре.
 	ac.notifyDaemonServiceAfterCoreUpdate()
+
+	// 6.8. Classic TUN на macOS (SPEC 137) стартует ту же копию: без службы
+	// она отстаёт от нового ядра до команды copy — WARN сейчас, диалог с
+	// командой на ближайшем старте с TUN (гейт), не молча.
+	ac.notifyPrivilegedCopyAfterCoreUpdate()
 
 	// 7. Done! Invalidate the session version cache so the dashboard shows
 	// the freshly installed core without a launcher restart.

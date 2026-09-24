@@ -23,7 +23,11 @@ import (
 // macOS + APFS clones). Failures from fsnotify are non-fatal — the polling
 // path keeps us correct, just less responsive.
 type LogTailer struct {
-	path      string
+	path string
+	// pathFn — если задан, путь пересчитывается на каждом тике опроса:
+	// файл вывода ядра меняется между стартами (classic с TUN на macOS пишет
+	// в root-owned лог, без TUN — в каталог пользователя; SPEC 137.1).
+	pathFn    func() string
 	pollEvery time.Duration
 
 	out chan LogLine
@@ -37,6 +41,14 @@ func NewLogTailer(path string) *LogTailer {
 		pollEvery: 500 * time.Millisecond,
 		out:       make(chan LogLine, 128),
 	}
+}
+
+// NewLogTailerFunc — тейлер, который следует за путём pathFn: смена пути
+// переоткрывает файл (с конца, как при ротации).
+func NewLogTailerFunc(pathFn func() string) *LogTailer {
+	t := NewLogTailer(pathFn())
+	t.pathFn = pathFn
+	return t
 }
 
 // Out returns the parsed-line channel. Closed when Run returns.
@@ -126,6 +138,23 @@ func (t *LogTailer) Run(ctx context.Context) {
 			return
 
 		case <-poll.C:
+			// Путь сменился (pathFn): закрыть старый файл и открыть новый.
+			if t.pathFn != nil {
+				if np := t.pathFn(); np != t.path {
+					if watcher != nil && t.path != "" {
+						_ = watcher.Remove(t.path)
+					}
+					if f != nil {
+						_ = f.Close()
+						f, reader = nil, nil
+					}
+					t.path = np
+					if np != "" {
+						openFile()
+					}
+					continue
+				}
+			}
 			// Rotation/truncation detector. If inode changed or file size
 			// shrank, reopen.
 			if t.path == "" {

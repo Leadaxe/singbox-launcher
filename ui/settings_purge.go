@@ -31,10 +31,10 @@ func buildPurgeButton(ac *core.AppController) fyne.CanvasObject {
 		btn.Disable()
 		go func() {
 			plan := ac.PurgePlan()
-			hint := ac.DaemonUninstallHint()
+			hint, hintSurvives := ac.DaemonUninstallHint()
 			fyne.Do(func() {
 				btn.Enable()
-				showPurgeDialog(ac, plan, hint)
+				showPurgeDialog(ac, plan, hint, hintSurvives)
 			})
 		}()
 	})
@@ -45,11 +45,13 @@ func buildPurgeButton(ac *core.AppController) fyne.CanvasObject {
 // showPurgeDialog — подтверждение очистки: по строке на элемент плана с
 // чекбоксом, путём и размером; Data снять нельзя. На Windows — отдельный
 // чекбокс сетевой очистки. Если установлена служба демона, над кнопками —
-// команда её удаления: после удаления данных лаунчер её собрать не сможет.
+// команда её удаления. daemonSurvives — команда через root-owned копию
+// службы (SPEC 136): служба и команда переживают удаление данных; иначе
+// команда через ядро лаунчера, и выполнить её надо до удаления.
 //
 // Подписи — Label с переносом рядом с пустым чекбоксом: текст Check не
 // переносится и длинным путём раздул бы диалог.
-func showPurgeDialog(ac *core.AppController, plan paths.PurgePlan, daemonHint string) {
+func showPurgeDialog(ac *core.AppController, plan paths.PurgePlan, daemonHint string, daemonSurvives bool) {
 	win := ac.UIService.MainWindow
 	if len(plan.Items) == 0 {
 		dialog.ShowInformation(locale.T("Remove all launcher data"), locale.T("Nothing to remove."), win)
@@ -106,9 +108,13 @@ func showPurgeDialog(ac *core.AppController, plan paths.PurgePlan, daemonHint st
 
 	var bottom fyne.CanvasObject
 	if daemonHint != "" {
-		row := CommandRow(win, "The daemon service is installed. Remove it first with this command, otherwise the launcher will not be able to do it after the data is gone:", func() (string, error) {
-			return daemonHint, nil
-		}, true)
+		command := func() (string, error) { return daemonHint, nil }
+		var row fyne.CanvasObject
+		if daemonSurvives {
+			row = CommandRow(win, "The daemon service is installed and is not removed with the data: it runs from its own root-owned copy of the core. To remove the service as well, run this command:", command, true)
+		} else {
+			row = CommandRow(win, "The daemon service is installed. Remove it first with this command, otherwise the launcher will not be able to do it after the data is gone:", command, true)
+		}
 		bottom = container.NewVBox(widget.NewSeparator(),
 			container.NewBorder(nil, nil, container.NewVBox(widget.NewIcon(theme.WarningIcon())), nil, row))
 	}
