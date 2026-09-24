@@ -326,7 +326,8 @@ func ShowCommandRetry(window fyne.Window, title, message, command string, openTe
 type Action struct {
 	Label     string
 	Important bool // HighImportance: основное действие
-	// Disabled — кнопка недоступна; Hint — почему (строка под пояснением).
+	// Disabled — кнопка недоступна; Hint — почему: отдельная серая строка
+	// под пояснением, законченной фразой (без префикса с именем кнопки).
 	Disabled bool
 	Hint     string
 	// Run — нажатие, в UI-потоке. Диалог сам не закрывается: действие
@@ -388,7 +389,7 @@ func ShowActions(window fyne.Window, title, message string, actions []Action, di
 		content := container.NewVBox(messageScroll(msgLabel, message))
 		for _, act := range actions {
 			if act.Disabled && act.Hint != "" {
-				hint := widget.NewLabel(act.Label + ": " + act.Hint)
+				hint := widget.NewLabel(act.Hint)
 				hint.Wrapping = fyne.TextWrapWord
 				hint.Importance = widget.LowImportance
 				content.Add(hint)
