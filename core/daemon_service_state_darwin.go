@@ -248,6 +248,15 @@ func compareDaemonServiceLaunchd(c *DaemonServiceCheck, job launchdJob) {
 	}
 }
 
+// fileHashKey — идентичность содержимого файла без чтения: замена файла
+// (новый inode) или запись в него (size/mtime) меняет ключ.
+type fileHashKey struct {
+	dev   uint64
+	ino   uint64
+	size  int64
+	mtime int64
+}
+
 func statHashKey(path string) (fileHashKey, error) {
 	fi, err := os.Stat(path)
 	if err != nil {

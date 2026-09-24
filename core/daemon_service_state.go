@@ -32,8 +32,8 @@ import (
 // версии. Платформенное — в daemon_service_state_<os>.go: раскладка
 // (systemDaemonServiceLayout, daemonServiceCorePath, сайдкар), чтение
 // определения службы (inspectDaemonServiceDefinition), проверка звена
-// цепочки (checkRootOwnedEntry), ключ файла для кэшей (statHashKey) и
-// состояние у менеджера служб (compareDaemonServiceRunning).
+// цепочки (checkRootOwnedEntry), ключ файла для кэшей (fileHashKey,
+// statHashKey) и состояние у менеджера служб (compareDaemonServiceRunning).
 
 const (
 	// daemonHashCacheCap — потолок кэша sha256: файлов в игре два-три, потолок
@@ -456,17 +456,7 @@ func readDaemonServiceSidecarVersion(corePath string) string {
 	return sidecar.Version
 }
 
-// fileHashKey — идентичность содержимого файла без чтения: замена файла
-// (новый inode) или запись в него (size/mtime) меняет ключ. Заполняет
-// платформенный statHashKey.
-type fileHashKey struct {
-	dev   uint64
-	ino   uint64
-	size  int64
-	mtime int64
-}
-
-// fileHashCache — sha256 файлов по (dev, inode, size, mtime). Классификатор
+// fileHashCache — sha256 файлов по ключу файла (fileHashKey платформы). Классификатор
 // зовут на каждом открытии окна и перед каждым apply, а ядро весит десятки
 // мегабайт.
 type fileHashCache struct {

@@ -25,6 +25,10 @@ func inspectDaemonServiceDefinition(_ daemonServiceLayout) DaemonServiceCheck {
 
 func checkRootOwnedEntry(_ string, _ uint32, _ bool) error { return errDaemonWindowsPending }
 
+// fileHashKey — TODO(SPEC 141 этап 4): (VolumeSerialNumber, FileIndex, size,
+// mtime) из GetFileInformationByHandle.
+type fileHashKey struct{}
+
 func statHashKey(_ string) (fileHashKey, error) { return fileHashKey{}, errDaemonWindowsPending }
 
 func compareDaemonServiceRunning(_ *DaemonServiceCheck) {}
