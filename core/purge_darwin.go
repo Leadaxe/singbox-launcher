@@ -2,29 +2,28 @@
 
 package core
 
-import (
-	"fmt"
-	"os"
-)
-
-// daemonUninstallHint — DaemonUninstallCommand(true), если служба
-// установлена; иначе "".
-func (ac *AppController) daemonUninstallHint() string {
-	if _, err := os.Stat(daemonSystemPlistPath()); err != nil {
-		return ""
-	}
-	return ac.DaemonUninstallCommand(true)
+// daemonUninstallHint — команда удаления службы, если она установлена;
+// иначе "". survivesPurge — команда идёт через root-owned копию службы
+// (SPEC 136), которая лежит вне DataDir и переживает удаление данных.
+func (ac *AppController) daemonUninstallHint() (command string, survivesPurge bool) {
+	return daemonUninstallHintFor(ac.FileService.SingboxPath)
 }
 
 // daemonUninstallHintFor — то же без контроллера (флаг -purge-data): путь
-// ядра считается цепочкой §3.3 заново. Формат команды — как у
-// DaemonUninstallCommand(true).
-func daemonUninstallHintFor(corePath string) string {
-	if _, err := os.Stat(daemonSystemPlistPath()); err != nil {
-		return ""
+// ядра считается цепочкой SPEC 135 §3.3 заново. Бинарь — по тому же
+// правилу, что DaemonUninstallCommand: копия службы, если она безопасна,
+// иначе ядро лаунчера (его удаление данных уносит — отсюда «сначала»).
+func daemonUninstallHintFor(corePath string) (command string, survivesPurge bool) {
+	l := systemDaemonServiceLayout()
+	check := inspectDaemonServiceDefinition(l)
+	switch {
+	case check.State == DaemonServiceNotInstalled:
+		return "", false
+	case check.CopyUsable():
+		return daemonUninstallCommandFor(l.CorePath, true), true
 	}
 	if corePath == "" {
 		corePath = "sing-box"
 	}
-	return fmt.Sprintf("sudo %s lxd --service=uninstall --purge", shellQuote(corePath))
+	return daemonUninstallCommandFor(corePath, true), false
 }

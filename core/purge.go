@@ -77,9 +77,10 @@ func networkCleanupText(adapters, rules int, err error) string {
 
 // DaemonUninstallHint — команда удаления службы демона, если она
 // установлена (macOS, plist в /Library/LaunchDaemons), иначе "". Очистка
-// службу не трогает: команду выполняет пользователь до удаления данных,
-// пока ядро ещё на месте.
-func (ac *AppController) DaemonUninstallHint() string {
+// службу не трогает. survivesPurge — команда идёт через root-owned копию
+// службы (SPEC 136), её можно выполнить и после удаления данных; иначе —
+// через ядро лаунчера, и выполнять её нужно до удаления, пока ядро на месте.
+func (ac *AppController) DaemonUninstallHint() (command string, survivesPurge bool) {
 	return ac.daemonUninstallHint()
 }
 
@@ -114,10 +115,13 @@ func (ac *AppController) ExecutePurgeAndExit(p paths.PurgePlan, network bool) er
 // (процессы не трогаем), или часть удалить не вышло.
 func PurgeCLI(l paths.Layout, exe string, yes bool, out io.Writer) int {
 	plan := paths.BuildPurgePlan(l, exe, os.Getenv, runtime.GOOS, paths.ProbeWritable)
-	hint := daemonUninstallHintFor(platform.ResolveSingboxExecPath(l, os.Getenv).Path)
+	hint, hintSurvives := daemonUninstallHintFor(platform.ResolveSingboxExecPath(l, os.Getenv).Path)
 
 	fmt.Fprint(out, plan.Text())
-	if hint != "" {
+	switch {
+	case hint != "" && hintSurvives:
+		fmt.Fprintf(out, "The daemon service is installed and is not removed by this command; it runs from its own root-owned copy of the core, which the data removal does not touch. To remove the service as well:\n  %s\n", hint)
+	case hint != "":
 		fmt.Fprintf(out, "The daemon service is installed and is not removed by this command. Remove it first, while the core binary still exists:\n  %s\n", hint)
 	}
 	if !yes {

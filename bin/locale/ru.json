@@ -4487,6 +4487,9 @@
   "The daemon service is installed. Remove it first with this command, otherwise the launcher will not be able to do it after the data is gone:": {
     "value": "Служба демона установлена. Сначала удалите её этой командой, иначе после удаления данных лаунчер сделать этого уже не сможет:"
   },
+  "The daemon service is installed and is not removed with the data: it runs from its own root-owned copy of the core. To remove the service as well, run this command:": {
+    "value": "Служба демона установлена и вместе с данными не удаляется: она запускает собственную копию ядра, принадлежащую root. Чтобы удалить и службу, выполните эту команду:"
+  },
   "The following will be deleted. The program folder itself is not touched — delete it yourself afterwards.": {
     "value": "Будет удалено следующее. Папка с программой не затрагивается — удалите её сами после этого."
   },
