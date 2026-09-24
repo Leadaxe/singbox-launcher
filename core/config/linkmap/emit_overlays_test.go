@@ -194,6 +194,90 @@ func TestEmitOverlays(t *testing.T) {
 		requireSameBody(t, h, "shadowsocks", body, got, uri)
 	})
 
+	// Булев БЕЗ `emit_as` — умолчание пишет СЛОВОМ (PRIMITIVES §0.12a,
+	// контракт 1.1.53, ревизия зеркала §3 п.3).
+	//
+	// Три поля xhttp объявлены `bool_spelled` и `emit_as` НЕ несут: их
+	// написание на выходе решает умолчание, а не запись. Go писал словом,
+	// Dart цифрой, и расхождение компенсировалось оверлеем `emit_as: raw`
+	// у этих же трёх полей — оверлей снимается, умолчание закреплено
+	// здесь и кейсом корпуса uri/vless/xhttp_bool_default_spelled.
+	//
+	// Подтест судит УМОЛЧАНИЕ, поэтому первым делом требует, чтобы
+	// `emit_as` у полей и правда отсутствовал: появись он, правило стало
+	// бы объявленным, и проверять умолчание было бы нечем.
+	t.Run("bool_default_spelled", func(t *testing.T) {
+		fields := []string{"noGRPCHeader", "noSSEHeader", "xPaddingObfsMode"}
+		// Записи приезжают из блока transports#uri, подключённого vless
+		// через `include`, и разворачивает их ПЛАН, а не секция: у
+		// registry.Mapper в Params лежат только записи самой схемы.
+		_, plan, ok := h.planForDir("vless")
+		if !ok {
+			t.Fatal("плана vless#uri нет")
+		}
+		seen := map[string]bool{}
+		for _, e := range plan.Rest {
+			for _, name := range fields {
+				// Запись блока несёт имя ПОДБЛОКА: `xhttp.noGRPCHeader`.
+				if e.Name != name && e.Name != "xhttp."+name {
+					continue
+				}
+				seen[name] = true
+				if e.Param.EmitAs != "" {
+					t.Fatalf("у %s объявлен emit_as %q — подтест судит УМОЛЧАНИЕ",
+						name, e.Param.EmitAs)
+				}
+			}
+		}
+		for _, name := range fields {
+			if !seen[name] {
+				t.Fatalf("записи %s в плане vless#uri нет", name)
+			}
+		}
+		body := map[string]interface{}{
+			"type":        "vless",
+			"server":      "example-1.com",
+			"server_port": 443,
+			"uuid":        "11111111-1111-1111-1111-111111111111",
+			// server_name и utls в теле — то, что вернёт круг: ссылка
+			// несёт security=tls, а SNI по умолчанию равен адресу
+			// сервера (default_from), fp — `random`. Без них подтест
+			// сравнивал бы тело с ДООПРЕДЕЛЁННЫМ телом и падал не на
+			// написании булева, а на этих двух полях.
+			"tls": map[string]interface{}{
+				"enabled":     true,
+				"server_name": "example-1.com",
+				"utls": map[string]interface{}{
+					"enabled":     true,
+					"fingerprint": "random",
+				},
+			},
+			"transport": map[string]interface{}{
+				"type":                "xhttp",
+				"path":                "/xh",
+				"mode":                "auto",
+				"no_grpc_header":      true,
+				"no_sse_header":       true,
+				"x_padding_obfs_mode": true,
+			},
+		}
+		uri, got := emitOverlayRoundTrip(t, h, "vless", body, "xhttp-bool")
+		q := emitOverlayQuery(t, uri)
+		for _, name := range fields {
+			switch v := q.Get(name); v {
+			case "true":
+				// Умолчание сработало.
+			case "1", "0":
+				t.Errorf("%s уехал ЦИФРОЙ (%q) — умолчание §0.12a пишет словом: %s", name, v, uri)
+			case "":
+				t.Errorf("%s в ссылку не уехал вовсе: %s", name, uri)
+			default:
+				t.Errorf("%s уехал как %q, ожидалось слово true: %s", name, v, uri)
+			}
+		}
+		requireSameBody(t, h, "vless", body, got, uri)
+	})
+
 	// vmess json_map — форма-КОНТЕЙНЕР, а не query-ссылка; json_always —
 	// ключи, которые панели ждут даже пустыми.
 	t.Run("vmess_json_map", func(t *testing.T) {
