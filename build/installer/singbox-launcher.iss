@@ -111,8 +111,8 @@ english.SetupCancelledLauncherRunning=singbox-launcher is still running. Quit it
 russian.SetupCancelledLauncherRunning=singbox-launcher всё ещё работает. Закройте его и запустите установку снова.
 english.RemoveDataQuestion=Also remove the launcher settings, subscriptions and logs?%n%nOnly the data of the current Windows user is removed. Other users of this computer can remove theirs beforehand with Remove all data in the launcher settings.
 russian.RemoveDataQuestion=Удалить также настройки, подписки и логи лаунчера?%n%nУдаляются данные только текущего пользователя Windows. Другие пользователи этого компьютера могут заранее удалить свои кнопкой Remove all data в настройках лаунчера.
-english.PurgeFailed=The launcher data was not removed (exit code %1). Setup continues removing the program.%n%nRemove the data later with Remove all data in the launcher settings, or run: singbox-launcher.exe -purge-data -yes
-russian.PurgeFailed=Данные лаунчера не удалены (код выхода %1). Удаление программы продолжается.%n%nУдалите данные позже кнопкой Remove all data в настройках лаунчера или командой: singbox-launcher.exe -purge-data -yes
+english.PurgeFailed=The launcher data was not removed (exit code %1). Setup continues removing the program.%n%nTo remove the data, reinstall the launcher and remove it in its settings (Remove all data), or use a zip copy of the launcher. The full output is in the uninstall log in the TEMP folder.
+russian.PurgeFailed=Данные лаунчера не удалены (код выхода %1). Удаление программы продолжается.%n%nЧтобы удалить данные, переустановите лаунчер и удалите их в его настройках (Remove all data) или возьмите zip-копию лаунчера. Полный вывод — в журнале удаления в папке TEMP.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -459,12 +459,17 @@ begin
     RunAndLog(LauncherExe, '-autostart=off', ResultCode, Output);
 end;
 
-function JoinLines(const Lines: TArrayOfString): String;
+// LastLines joins the last Count lines: the dialog shows the tail of the
+// -purge-data output, the log keeps all of it (RunAndLog).
+function LastLines(const Lines: TArrayOfString; const Count: Integer): String;
 var
-  I: Integer;
+  I, First: Integer;
 begin
   Result := '';
-  for I := 0 to GetArrayLength(Lines) - 1 do
+  First := GetArrayLength(Lines) - Count;
+  if First < 0 then
+    First := 0;
+  for I := First to GetArrayLength(Lines) - 1 do
     Result := Result + Lines[I] + #13#10;
 end;
 
@@ -490,7 +495,7 @@ begin
   // Non-zero: a launcher in another session or a running core. The program is
   // removed anyway; the message carries the purge output and the way out.
   if (ResultCode <> 0) and not UninstallSilent then
-    SuppressibleMsgBox(FmtMessage(CustomText('PurgeFailed'), [IntToStr(ResultCode)]) + #13#10#13#10 + JoinLines(Output.StdOut),
+    SuppressibleMsgBox(FmtMessage(CustomText('PurgeFailed'), [IntToStr(ResultCode)]) + #13#10#13#10 + LastLines(Output.StdOut, 10),
       mbError, MB_OK, IDOK);
 end;
 
