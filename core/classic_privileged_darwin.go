@@ -32,6 +32,7 @@ const (
 	privilegedCopyUnsafeText      = "TUN mode starts the sing-box core as root only from a root-owned copy, and the copy's location failed the ownership check:\n%s\nIf the command below reports the same problem, fix the ownership of that path."
 	privilegedCopyServiceNoteText = "The daemon service is installed on this Mac, so the command is its Install or update command: it refreshes the same copy and restarts the service."
 	privilegedCopyInstructionText = "Run this command in Terminal (it asks for your sudo password), then click Retry:"
+	daemonCoreUpdatedBodyText     = "The daemon service still runs the previous core. Run this command in Terminal to install the new core into the service and restart it (it asks for your sudo password):"
 )
 
 // showPrivilegedCopyDialog — диалог отказа гейта (SPEC 137 §5): причина,

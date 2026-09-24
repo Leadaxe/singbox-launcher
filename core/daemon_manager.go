@@ -24,7 +24,6 @@ import (
 
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
-	daemonCoreUpdatedBodyText = "The daemon service still runs the previous core. Run this command in Terminal to install the new core into the service and restart it (it asks for your sudo password):"
 	// Подсказка вместо команды install/copy, пока ядро лаунчера не умеет
 	// root-owned копию (serviceCoreGate).
 	// Кнопка ядра на вкладке Local: «Download v…», когда ядра нет, и
