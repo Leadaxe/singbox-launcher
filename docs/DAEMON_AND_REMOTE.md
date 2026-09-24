@@ -131,15 +131,28 @@ folder, the app bundle or `PATH`:
 
 | Action | What root runs |
 |---|---|
-| Start with TUN | `/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/sh -c '<constant body>' start-singbox-privileged <data>/bin <copy> config.json <logs>/sing-box.log` |
+| Start with TUN | `/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/sh -c '<constant body>' start-singbox-privileged <data>/bin <copy> config.json /Library/Logs/sing-box-lxd 0 2097152` |
 | Stop / restart | `/bin/kill -TERM <shell pid> <core pid>` |
 | Kill in "Sing-Box already running" and in Diagnostics | `/usr/bin/pkill -TERM -f 'sing-box run\|start-singbox-privileged'` |
-| Turning TUN off in the wizard | `/bin/rm -rf -- <cache and core logs>` |
+| Turning TUN off in the wizard | nothing — the launcher removes the leftovers itself |
 
 The shell body is a constant compiled into the launcher, paths arrive as arguments,
 and `env -i` keeps the launcher's environment (its `PATH`, exported bash functions)
 away from the root shell. The `bin/start-singbox-privileged.sh` script of earlier
 versions is no longer written and is removed on the next start.
+
+Root never writes into your folders. The core's output goes to a root-owned log,
+`/Library/Logs/sing-box-lxd/classic.log` (folder `root:wheel 0755`, file `0644`,
+previous run in `classic.log.old`); the body creates the folder, refuses to touch the
+folder or the file if either is a symlink, of another type or another owner — the
+refusal reason reaches the startup error — and rotates the file above 2 MiB. The
+launcher only reads it: **Logs → Core** and the traffic profiler follow the log of the
+last start (a non-TUN start keeps writing `<logs>/sing-box.log` itself). Turning TUN
+off removes the root-owned cache and old core logs left in the data and log folders
+with the launcher's own rights — the folder, not the file owner, grants deletion — so
+no password is asked. The log is readable by every local account; at the default
+`warn` level it holds no connection addresses. **Remove all data…** does not remove
+`/Library/Logs/sing-box-lxd` (it needs root): `sudo rm -rf /Library/Logs/sing-box-lxd`.
 
 Before the password prompt the launcher checks the copy without sudo — the ownership
 chain as in §2.1 and the sha256 of the copy against the launcher core. A missing,

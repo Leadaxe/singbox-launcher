@@ -32,7 +32,7 @@
 | `wintun_cleanup_windows_syscall.go` | Ленивые привязки DLL и константы GUID, общие для файлов чистки. |
 | `fs_unix.go` / `fs_windows.go` | Хелперы атомарной записи и fsync по ОС. |
 | `dock_handler.go` / `dock_handler_stub.go` | Скрытие иконки в Dock на macOS; на остальных — заглушка. |
-| `privileged_darwin.go` / `privileged_stub.go` | Привилегированное исполнение на macOS через AEWP (SPEC 137): старт TUN с root-owned копии ядра через `env -i` и постоянное тело `sh`, kill / pkill / `rm` при снятии TUN по абсолютным путям без шелла, флаг времени жизни авторизации `privilegedAuthReuse`; на остальных — заглушка. |
+| `privileged_darwin.go` / `privileged_stub.go` | Привилегированное исполнение на macOS через AEWP (SPEC 137): старт TUN с root-owned копии ядра через `env -i` и постоянное тело `sh`, root-owned лог ядра `/Library/Logs/sing-box-lxd/classic.log`, который готовит и ротирует то же тело (137.1), kill / pkill по абсолютным путям без шелла, флаг времени жизни авторизации `privilegedAuthReuse`; на остальных — заглушка. |
 | `singbox_exec_path.go` | Разрешение пути к исполняемому файлу sing-box: `SINGBOX_LAUNCHER_CORE` → `DataDir/bin` → `AppDir/bin` → `PATH` (SPEC 135 §3.3; порядок единый для всех платформ, `PATH` теперь последний везде — раньше был первым и только на Linux). |
 
 ### `internal/paths` (SPEC 135)
@@ -60,7 +60,7 @@ stdlib и `internal/constants`), лежит **ниже** `internal/platform` (т
 | `internal/constants` | Константы уровня приложения (имена файлов, пины ядра и шаблона, строки UA, лимиты). | `constants.go` |
 | `internal/debuglog` | Уровневое логирование (Off/Error/Warn/Info/Verbose/Trace), опциональный in-memory sink для вьюера логов, хелперы замера времени. | `debuglog.go`, `close.go` |
 | `internal/locale` | i18n: английский встроен, внешние/удалённые JSON по языкам, поиск `T`/`Tf` с фоллбэком на английский. | `locale.go`, `settings.go` |
-| `internal/traffic` | Развязанный профайлер трафика (только stdlib): сшивка Clash-поллера и хвоста лога, кольцевой буфер, запись сессий, атрибуция по процессам. | `profiler.go`, `session.go`, `types.go`, `clash_connections.go`, `logtail.go`, `parser.go`, `http_client.go`, `singleton.go`, `inode_unix.go`/`inode_windows.go` |
+| `internal/traffic` | Развязанный профайлер трафика (только stdlib): сшивка Clash-поллера и хвоста лога (хвост умеет следовать за меняющимся путём — `StartFollowing`, SPEC 137.1), кольцевой буфер, запись сессий, атрибуция по процессам. | `profiler.go`, `session.go`, `types.go`, `clash_connections.go`, `logtail.go`, `parser.go`, `http_client.go`, `singleton.go`, `inode_unix.go`/`inode_windows.go` |
 | `internal/outboundutil` | Единый источник истины для маппинга литералов `reject`/`drop` → `action`/`method` правила (общий для сборки и UI). | `outbound.go` |
 | `internal/srstag` | Контент-адресуемая генерация имён локальных SRS-файлов (`name-<hash8>`) для дедупликации. | `srstag.go` |
 | `internal/urlsafe` | Allowlist URL-схем для кликабельных элементов (http/https/tg разрешены; javascript/file/data заблокированы). | `url.go` |
@@ -464,7 +464,7 @@ stdlib и `internal/constants`), лежит **ниже** `internal/platform` (т
 | `dns_server_form.go` / `dns_template_vars.go` | **SPEC 109.** Формы DNS-сервера по видам (UDP/TCP/DoT/DoH/группа) и параметры шаблонного сервера. |
 | `rules_tab.go` / `rules_unified_rows.go` | Список правил маршрутизации (добавление/правка/удаление, авто-загрузка SRS, выбор outbound'а на правило). |
 | `dns_tab.go` / `dns_unified_rules.go` / `dns_user_rules.go` / `dns_preset_bundled.go` | DNS-серверы и единый редактор правил (пресетные и пользовательские). |
-| `settings_tab.go` + `settings_tun_darwin.go` / `settings_tun_stub.go` | Настройки переменных шаблона; привилегированная чистка при выключении TUN на darwin. |
+| `settings_tab.go` + `settings_tun_darwin.go` / `settings_tun_stub.go` | Настройки переменных шаблона; чистка root-owned остатков при выключении TUN на darwin правами лаунчера (без AEWP, SPEC 137.1). |
 | `preset_ref_edit_dialog.go` / `preset_ref_convert.go` / `preset_ref_srs.go` | Правка, конвертация и обработка SRS для preset-ссылок. |
 | `library_rules_dialog.go` | Пикер библиотеки пресетов шаблона (Add selected → CustomRules). |
 | `tight_vbox.go` / `tight_hbox.go` | Компактные хелперы раскладки vbox/hbox (`tight_hbox.go` пакует иконки строки с отрицательным зазором `rowIconGap`). |

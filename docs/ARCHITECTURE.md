@@ -981,3 +981,10 @@ launcher environment in the root shell. A refused gate shows a command dialog
 through `StartSingBoxProcess`. The authorization lives for the launcher session;
 `privilegedAuthReuse` in `internal/platform/privileged_darwin.go` narrows it to a
 single action.
+
+Root also never writes into user paths (137.1): the core's output goes to the
+root-owned `/Library/Logs/sing-box-lxd/classic.log`, prepared and rotated by the
+same constant body, and `AppController.CoreLogPath()` tells readers which log the
+last start wrote — the Core tab of the log window and the traffic profiler's tailer
+(`TrafficProfiler.StartFollowing`, re-resolved every poll). The TUN-off cleanup
+deletes root-owned leftovers with the launcher's own uid; no AEWP there.

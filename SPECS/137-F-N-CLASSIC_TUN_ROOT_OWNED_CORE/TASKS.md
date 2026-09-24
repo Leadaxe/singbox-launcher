@@ -15,7 +15,7 @@
 - [x] Старт: `/usr/bin/env -i PATH=… /bin/sh -c <тело-константа> start-singbox-privileged <аргументы>`; скрипт в DataDir больше не пишется, старый удаляется.
 - [x] Stop/рестарт: `/bin/kill -TERM` по PID, pid-файл удаляет лаунчер.
 - [x] pkill (диалог «already running», Diagnostics): `/usr/bin/pkill` без шелла.
-- [x] Снятие TUN: `/bin/rm -rf --` без шелла.
+- [x] Снятие TUN: `/bin/rm -rf --` без шелла (в 137.1 заменено удалением без root).
 - [x] `privilegedAuthReuse` (вариант А; Б — `false`).
 - [x] `TestPrivilegedStartCommand` (`sh -n`, прогон с поддельным ядром, `BASH_FUNC_echo%%` и `PATH` не доходят).
 
@@ -43,3 +43,14 @@
 ## Попутно (SPEC 136, по сообщению главной сессии)
 - [x] Пустой `executable_sha256` — «неизвестно», судит версия (lx.11 считает хэш в фоне); тест классификатора дополнен.
 - [x] Коды выхода `--service=status` lx.11 (3 — NOT INSTALLED, 4 — COPY ONLY) в SPEC 136 и `docs/DAEMON_AND_REMOTE*.md`.
+
+## 137.1 · Root не пишет по путям пользователя (решение координатора)
+- [x] Вывод ядра под root — `/Library/Logs/sing-box-lxd/classic.log`: каталог и файл создаёт, проверяет (не симлинк, владелец, тип через `/usr/bin/stat -f '%u:%HT'`) и ротирует постоянное тело; отказ — причина вместо PID.
+- [x] `AppController.CoreLogPath()`; Core-вкладка логов и тейлер профайлера трафика (`StartFollowing`) следуют за ним.
+- [x] Снятие TUN без root: `removeTunLeftover` своим uid (внутри DataDir/LogDir, не симлинк); `RemoveWithPrivileges` удалён.
+- [x] `TestPrivilegedStartCommand` — новый лог, ротация, отказы по симлинку и владельцу.
+- [x] Уровень лога по умолчанию `warn`, debug/trace — только явно; stderr/паники — известный риск (SPEC §8).
+- [x] Аудит мест исполнения команд — SPEC §12.
+- [x] fix(136): Uninstall службы с `--keep-copy`, «Remove all data…» — полный uninstall.
+- [x] Доки и заметки (Windows — «следующим»).
+- [ ] Решение владельца: права `classic.log` (`0644` против файла пользователя `0600`, SPEC §8 п. 7).

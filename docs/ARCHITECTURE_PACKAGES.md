@@ -31,7 +31,7 @@ path getters. Platform-tagged files (`*_darwin.go`/`*_linux.go`/`*_windows.go`/
 | `wintun_cleanup_windows_syscall.go` | Lazy DLL bindings + GUID constants shared by the cleanup files. |
 | `fs_unix.go` / `fs_windows.go` | Atomic-write / fsync filesystem helpers per OS. |
 | `dock_handler.go` / `dock_handler_stub.go` | macOS Dock hide; stub elsewhere. |
-| `privileged_darwin.go` / `privileged_stub.go` | macOS privileged execution via AEWP (SPEC 137): the TUN start of the root-owned core copy through `env -i` + a constant `sh` body, kill / pkill / TUN-off `rm` by absolute path without a shell, the authorization-lifetime flag `privilegedAuthReuse`; stub elsewhere. |
+| `privileged_darwin.go` / `privileged_stub.go` | macOS privileged execution via AEWP (SPEC 137): the TUN start of the root-owned core copy through `env -i` + a constant `sh` body, the root-owned core log `/Library/Logs/sing-box-lxd/classic.log` prepared and rotated by the same body (137.1), kill / pkill by absolute path without a shell, the authorization-lifetime flag `privilegedAuthReuse`; stub elsewhere. |
 | `singbox_exec_path.go` | Resolve the sing-box executable path: `SINGBOX_LAUNCHER_CORE` → `DataDir/bin` → `AppDir/bin` → `PATH` (SPEC 135 §3.3; unified across platforms, `PATH` last everywhere — previously Linux-only and first). |
 
 ### `internal/paths` (SPEC 135)
@@ -60,7 +60,7 @@ Each package is self-contained and dependency-free (or depends only on `debuglog
 | `internal/constants` | App-wide constants (file names, pinned core/template refs, UA strings, limits). | `constants.go` |
 | `internal/debuglog` | Leveled logging (Off/Error/Warn/Info/Verbose/Trace), optional in-memory sink for the diagnostics log viewer, timing helpers. | `debuglog.go`, `close.go` |
 | `internal/locale` | i18n on natural keys (SPEC 111): the English text at the call site IS the key; English lives in the code, translations come from external/remote `bin/locale/<tag>.json` (`Entry`: value / plural forms / `special` collision forms). `T`/`Tf`/`TN`/`TfN`/`Plural`/`PluralN`; any miss degrades into the key itself. Guarded by `tools/l10n` CI checkers. | `locale.go`, `entry.go`, `plural.go`, `settings.go` |
-| `internal/traffic` | Decoupled Traffic Profiler (stdlib only): Clash poller + log tailer join, rolling buffer, session recording, per-process attribution. | `profiler.go`, `session.go`, `types.go`, `clash_connections.go`, `logtail.go`, `parser.go`, `http_client.go`, `singleton.go`, `inode_unix.go`/`inode_windows.go` |
+| `internal/traffic` | Decoupled Traffic Profiler (stdlib only): Clash poller + log tailer join (the tailer can follow a changing path — `StartFollowing`, SPEC 137.1), rolling buffer, session recording, per-process attribution. | `profiler.go`, `session.go`, `types.go`, `clash_connections.go`, `logtail.go`, `parser.go`, `http_client.go`, `singleton.go`, `inode_unix.go`/`inode_windows.go` |
 | `internal/outboundutil` | Single source of truth for `reject`/`drop` literal → rule `action`/`method` mapping (shared by core build + UI). | `outbound.go` |
 | `internal/srstag` | Content-addressed local SRS filename generation (`name-<hash8>`) for dedup. | `srstag.go` |
 | `internal/urlsafe` | URL-scheme allowlist for clickable affordances (http/https/tg allowed; javascript/file/data blocked). | `url.go` |
@@ -463,7 +463,7 @@ semantics: `contract/docs/BACKUP.md`.
 | `dns_server_form.go` / `dns_template_vars.go` | **SPEC 109.** Per-kind DNS server forms (UDP/TCP/DoT/DoH/group) + template-declared server parameters. |
 | `rules_tab.go` / `rules_unified_rows.go` | Routing rules list (add/edit/delete, SRS auto-download, per-rule outbound select). |
 | `dns_tab.go` / `dns_unified_rules.go` / `dns_user_rules.go` / `dns_preset_bundled.go` | DNS servers + unified rules editor (preset + user). |
-| `settings_tab.go` + `settings_tun_darwin.go` / `settings_tun_stub.go` | Template-vars settings; darwin TUN-off privileged cleanup. |
+| `settings_tab.go` + `settings_tun_darwin.go` / `settings_tun_stub.go` | Template-vars settings; darwin TUN-off cleanup of root-owned leftovers with the launcher's own uid (no AEWP, SPEC 137.1). |
 | `preset_ref_edit_dialog.go` / `preset_ref_convert.go` / `preset_ref_srs.go` | Preset-ref edit/convert/SRS handling. |
 | `library_rules_dialog.go` | Template-preset library picker (Add selected → CustomRules). |
 | `tight_vbox.go` / `tight_hbox.go` | Compact vbox/hbox layout helpers (`tight_hbox.go` packs row icons with a negative gap, `rowIconGap`). |
