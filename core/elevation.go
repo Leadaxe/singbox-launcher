@@ -63,6 +63,11 @@ func windowsNotElevated() bool {
 	return runtime.GOOS == "windows" && !platform.IsElevated()
 }
 
+// ElevateAtStartSupported — авто-повышение при старте с TUN (дополнение 24.09
+// к SPEC 139): Windows, кроме win7-32 (windows/386 собрана под
+// requireAdministrator и всегда повышена).
+const ElevateAtStartSupported = runtime.GOOS == "windows" && runtime.GOARCH != "386"
+
 // logSkippedAdminCleanups — одна строка INFO о пропущенных без прав
 // очистках старта (SPEC 139 §2 п. 4, §6 п. 2–3) вместо WARN на каждое место.
 func logSkippedAdminCleanups() {
@@ -176,12 +181,56 @@ func (ac *AppController) runRestartAsAdministrator(d *dialogs.ActionsDialog, wit
 // экземпляр сразу поднимет VPN. Блокирует до ответа UAC — звать не из
 // UI-потока.
 func (ac *AppController) RestartAsAdministrator(withStart bool) error {
+	debuglog.InfoLog("restart as administrator: asking for elevation (start=%v)", withStart)
+	if err := ac.startElevatedInstance(restartArgs(ac.FileService.Layout, withStart, false)); err != nil {
+		return err
+	}
+	// Как Quit в трее: GracefulExit на UI-потоке. RequestRestartAfterExit не
+	// взводится — новый экземпляр уже запущен.
+	fyne.Do(ac.GracefulExit)
+	return nil
+}
+
+// ElevateAtStartForTun — авто-повышение при старте (дополнение 24.09 к SPEC
+// 139): Windows x64/arm64, процесс без прав, настройка
+// elevate_on_start_for_tun включена (по умолчанию), движок не daemon и в
+// config.json есть TUN (гейт §4) — перезапуск с повышением с исходными
+// флагами (-tray и -start как были) плюс -handoff. Зовётся из main до окна,
+// трея и мьютекса экземпляра. true — повышенный экземпляр запущен, этот
+// должен выйти; отказ в UAC или ошибка — INFO и обычный старт без прав.
+func (ac *AppController) ElevateAtStartForTun() bool {
+	if !ElevateAtStartSupported || platform.IsElevated() {
+		return false
+	}
+	st := locale.LoadSettings(ac.FileService.Layout.Data.Bin())
+	if !st.ShouldElevateOnStartForTun() || st.CoreBackendMode == string(BackendDaemon) {
+		return false
+	}
+	// Первый запуск: config.json ещё не собран — TUN проверять не в чем.
+	if _, err := os.Stat(ac.FileService.ConfigPath); err != nil || !ac.tunNeedsElevation() {
+		return false
+	}
+	debuglog.WarnLog("elevate on start: TUN enabled, asking for administrator rights")
+	err := ac.startElevatedInstance(restartArgs(ac.FileService.Layout, false, true))
+	switch {
+	case err == nil:
+		return true
+	case errors.Is(err, platform.ErrElevationCancelled):
+		debuglog.InfoLog("elevate on start: the UAC prompt was cancelled; starting without rights")
+	default:
+		debuglog.InfoLog("elevate on start: %v; starting without rights", err)
+	}
+	return false
+}
+
+// startElevatedInstance запускает лаунчер с args от имени администратора
+// (окно UAC). Блокирует до ответа UAC. Выход этого экземпляра — на
+// вызывающем.
+func (ac *AppController) startElevatedInstance(args []string) error {
 	exe, err := paths.Executable()
 	if err != nil {
 		return fmt.Errorf("executable path: %w", err)
 	}
-	args := restartArgs(ac.FileService.Layout, withStart)
-	debuglog.InfoLog("restart as administrator: asking for elevation (start=%v)", withStart)
 	p, err := platform.RunElevated(exe, args, string(ac.FileService.Layout.App), platform.ElevatedShowNormal)
 	if err != nil {
 		return err
@@ -190,9 +239,6 @@ func (ac *AppController) RestartAsAdministrator(withStart bool) error {
 	if err := p.Close(); err != nil {
 		debuglog.DebugLog("restart as administrator: close process handle: %v", err)
 	}
-	// Как Quit в трее: GracefulExit на UI-потоке. RequestRestartAfterExit не
-	// взводится — новый экземпляр уже запущен.
-	fyne.Do(ac.GracefulExit)
 	return nil
 }
 
@@ -200,12 +246,18 @@ func (ac *AppController) RestartAsAdministrator(withStart bool) error {
 // (flag.Visit), а не из сырой строки: всё заданное, кроме -tray (действие
 // идёт из открытого окна), прежних -start и -handoff; плюс -start, если
 // пользователь нажимал Start, и -handoff с раскладкой и PID этого процесса.
-func restartArgs(l paths.Layout, withStart bool) []string {
+// keepLaunchFlags — авто-повышение при старте: -tray и -start передаются
+// как были (автозапуск в трее остаётся в трее).
+func restartArgs(l paths.Layout, withStart, keepLaunchFlags bool) []string {
 	var args []string
 	flag.Visit(func(f *flag.Flag) {
 		switch f.Name {
-		case trayFlagName, startFlagName, HandoffFlagName:
+		case HandoffFlagName:
 			return
+		case trayFlagName, startFlagName:
+			if !keepLaunchFlags {
+				return
+			}
 		}
 		args = append(args, "-"+f.Name+"="+f.Value.String())
 	})

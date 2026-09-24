@@ -168,6 +168,16 @@ API занят со старта (`main.go:394`) до выхода процес�
 `RestartSelf` повышенного передаёт `-handoff` дальше: раскладка та же,
 устаревший PID отсеивает проверка образа.
 
+### 5.1. Дополнение 24.09: авто-повышение при старте
+
+TUN по умолчанию, и диалог §4 всплывал на каждом запуске (проверка владельца на
+Windows 10). Теперь `main` до мьютекса SPEC 140, GL-гейта, окна и трея зовёт
+`ElevateAtStartForTun`: win64, `!IsElevated()`, `elevate_on_start_for_tun` в
+`settings.json` не `false` (дефолт — вкл.), движок не daemon, в `config.json` TUN →
+WARN `elevate on start: TUN enabled, asking for administrator rights` и перезапуск
+по §5, но `-tray`/`-start` как были, плюс `-handoff`; успех — выход. Отказ UAC или
+ошибка — INFO и старт без прав (диалог §4 при Start). Выключатель — Settings → Connection.
+
 ## 6. Гейты
 
 | # | Место | Что требует прав | Без прав |
