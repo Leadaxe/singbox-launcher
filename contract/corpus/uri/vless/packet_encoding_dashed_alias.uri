@@ -1,0 +1,4 @@
+# `packet-encoding=xudp` — написание через дефис (прогон 72 публичных подписок §525:
+# 101 узел, значение везде xudp). Второе звено записи packetEncoding, значение судит тот
+# же allowlist. Ждём packet_encoding = xudp и НЕ ждём uri_param_unknown.
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?encryption=none&security=tls&type=ws&host=live.example-1.com&path=%2Fv1&packet-encoding=xudp#pe-dashed
