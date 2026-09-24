@@ -72,7 +72,7 @@ const (
 	launchdNotLoaded = "not loaded"
 	// minCoreForRootOwnedService — первое ядро форка, чей `lxd
 	// --service=install` копирует себя в root-owned файл и переводит plist на
-	// копию (с ним же — `--service=copy`, SPEC 137). Ядро старше на той же
+	// копию (с ним же — `--service=copy`, SPEC 137). Ядро ниже на той же
 	// команде пишет в plist СВОЙ путь — файл пользователя в DataDir или
 	// бандле: это откат к дыре §1, поэтому такой команды лаунчер не даёт.
 	minCoreForRootOwnedService = "1.14.1-lx.11"
@@ -131,7 +131,7 @@ const (
 	DaemonServiceOK DaemonServiceState = "ok"
 	// DaemonServiceCoreTooOld — службу лечит команда install (вердикт был бы
 	// Unsafe, Stale или ProcessStale — он в BlockedState), но ядро лаунчера
-	// старше minCoreForRootOwnedService или его версия не разбирается: такой
+	// ниже minCoreForRootOwnedService или его версия не разбирается: такой
 	// install переписал бы plist на файл пользователя. Команды нет —
 	// сначала обновить ядро.
 	DaemonServiceCoreTooOld DaemonServiceState = "core_too_old"
@@ -320,7 +320,7 @@ func leadingDigits(s string) string {
 	return s[:end]
 }
 
-// compareCoreBuilds: база, затем номер lx, затем релиз старше своего
+// compareCoreBuilds: база, затем номер lx, затем релиз выше своего
 // пре-релиза (lx.12-rc1 < lx.12), затем номер пре-релиза. -1, 0, 1.
 func compareCoreBuilds(a, b coreBuild) int {
 	for k := range a.base {

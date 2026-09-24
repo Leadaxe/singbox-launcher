@@ -389,7 +389,7 @@ func TestDaemonServiceCommandQuoting(t *testing.T) {
 
 // TestServiceCoreVersionGate — сравнение версий ядра форка и граница
 // «ядро умеет root-owned копию» (minCoreForRootOwnedService = lx.11):
-// номер lx числом, пре-релиз младше релиза той же базы, неразборчивая
+// номер lx числом, пре-релиз ниже релиза той же базы, неразборчивая
 // версия — не умеет.
 func TestServiceCoreVersionGate(t *testing.T) {
 	for _, tc := range []struct {
@@ -540,7 +540,7 @@ func TestDaemonServiceCoreTooOld(t *testing.T) {
 	}
 
 	// Debug API /daemon/commands на настоящем «ядре»: версию лаунчер берёт
-	// из `sing-box version`, install пуст, пока ядро старше lx.11.
+	// из `sing-box version`, install пуст, пока ядро ниже lx.11.
 	for version, wantInstall := range map[string]bool{oldCore: false, "unknown": false, newCore: true} {
 		fake := filepath.Join(t.TempDir(), "sing-box")
 		writeTestFile(t, fake, "#!/bin/sh\necho 'sing-box version "+version+"'\n")

@@ -29,7 +29,7 @@ type DaemonStatus struct {
 	StateDir         string `json:"state_dir,omitempty"`
 	// ServiceState — вердикт классификатора службы (SPEC 136 §4):
 	// not_installed | unsafe | stale | not_running | process_stale | ok |
-	// core_too_old (службу лечит install, но ядро лаунчера старше lx.11 —
+	// core_too_old (службу лечит install, но ядро лаунчера ниже lx.11 —
 	// команды нет, /daemon/commands отдаёт install пустым; исходный вердикт —
 	// в service_detail). ServicePath — ProgramArguments[0] из plist,
 	// ServiceDetail — причина (английский).

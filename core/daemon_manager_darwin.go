@@ -635,7 +635,7 @@ func (ac *AppController) DaemonRepairCommand() string {
 // перезапускается). Никаких параметров: install сам выбирает loopback-порт
 // (19091+, либо адрес существующей установки), генерирует секрет, включает
 // mTLS и печатает приглашение. Адрес лаунчер узнаёт из приглашения при
-// сопряжении (PairDaemonWithInvite сохраняет invite.Addr). Ядро старше
+// сопряжении (PairDaemonWithInvite сохраняет invite.Addr). Ядро ниже
 // minCoreForRootOwnedService (или неизвестной версии) — ошибка
 // *serviceCoreTooOldError вместо команды: его install записал бы в plist
 // файл пользователя.
