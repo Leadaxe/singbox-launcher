@@ -15,13 +15,17 @@ package platform
 // A single AuthorizationRef is kept and reused while privilegedAuthReuse (Go side) is true, so the user is prompted
 // for password only once per app session; otherwise the Go side frees it after every call.
 // If the child prints decimal PIDs on the first two lines of stdout (shell PID, then sing-box PID), they are set; otherwise 0.
+// The raw first line is copied to outFirstLine: a refusing command explains itself there instead of a PID.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 static AuthorizationRef g_privilegedAuthRef = NULL;
 
-static int runWithPrivileges(const char *path, char **args, int argCount, pid_t *outScriptPid, pid_t *outSingboxPid) {
+static int runWithPrivileges(const char *path, char **args, int argCount, pid_t *outScriptPid, pid_t *outSingboxPid,
+	char *outFirstLine, int outFirstLineLen) {
 	*outScriptPid = 0;
 	*outSingboxPid = 0;
+	if (outFirstLineLen > 0)
+		outFirstLine[0] = 0;
 	if (g_privilegedAuthRef == NULL) {
 		OSStatus status = AuthorizationCreate(NULL, kAuthorizationEmptyEnvironment,
 			kAuthorizationFlagInteractionAllowed | kAuthorizationFlagExtendRights,
@@ -41,8 +45,8 @@ static int runWithPrivileges(const char *path, char **args, int argCount, pid_t 
 	}
 	if (pipe) {
 		char buf[32];
-		if (fgets(buf, (int)sizeof(buf), pipe)) {
-			long p = strtol(buf, NULL, 10);
+		if (outFirstLineLen > 0 && fgets(outFirstLine, outFirstLineLen, pipe)) {
+			long p = strtol(outFirstLine, NULL, 10);
 			if (p > 0)
 				*outScriptPid = (pid_t)p;
 		}
@@ -70,6 +74,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -106,6 +111,26 @@ const (
 	privilegedSafePath = "PATH=/usr/bin:/bin:/usr/sbin:/sbin"
 )
 
+// Лог ядра, запущенного под root (SPEC 137.1): root не пишет по путям
+// пользователя, вывод ядра идёт в root-owned каталог, лаунчер его только
+// читает. Не /Library/Application Support/sing-box-lxd: тот 0700, и без
+// root его не прочитать.
+const (
+	// PrivilegedLogDir — каталог лога (root:wheel 0755), его создаёт и
+	// проверяет тело старта.
+	PrivilegedLogDir = "/Library/Logs/sing-box-lxd"
+	// privilegedLogName — файл лога classic-ядра (root 0644); .old — прошлый.
+	privilegedLogName = "classic.log"
+	// privilegedLogRotateBytes — порог ротации при старте: как у лога ядра
+	// в каталоге пользователя (maxLogFileSize в core/services).
+	privilegedLogRotateBytes = 2 * 1024 * 1024
+)
+
+// PrivilegedCoreLogPath — файл, куда пишет вывод ядро, запущенное под root.
+func PrivilegedCoreLogPath() string {
+	return PrivilegedLogDir + "/" + privilegedLogName
+}
+
 // privilegedAuthReuse — время жизни авторизации AEWP (SPEC 137 §6).
 //
 // true — вариант А (текущий): одна авторизация на сессию лаунчера. Root
@@ -118,16 +143,36 @@ const (
 // снятие TUN и авто-рестарт после падения.
 const privilegedAuthReuse = true
 
-// privilegedStartBody — тело root-шелла старта ядра (SPEC 137 §3):
+// privilegedStartBody — тело root-шелла старта ядра (SPEC 137 §3, 137.1):
 // константа, пути приходят позиционными аргументами — $1 каталог bin,
-// $2 копия ядра, $3 имя конфига, $4 лог ядра. Первые две строки stdout —
-// PID шелла и PID ядра (их читает runWithPrivileges); затем stdout уходит
-// в лог, шелл ждёт ядро, и его выход — выход ядра (WaitForPrivilegedExit).
-const privilegedStartBody = `echo $$
-cd "$1" || exit 1
-"$2" run -c "$3" >>"$4" 2>&1 &
+// $2 копия ядра, $3 имя конфига, $4 каталог лога, $5 ожидаемый владелец
+// каталога и файла лога (uid; 0 в проде), $6 порог ротации в байтах.
+//
+// До первого PID тело готовит лог, ничего не следуя по симлинкам: каталог
+// не симлинк, создаётся и проверяется как каталог владельца $5, 0755; файл,
+// если есть, — обычный файл владельца $5, больше порога — уезжает в .old.
+// Отказ — строка «refused: <причина>» вместо PID (её читает
+// RunWithPrivileges), и ядро не стартует. Затем первые две строки stdout —
+// PID шелла и PID ядра; stdout шелла уходит в лог, шелл ждёт ядро, и его
+// выход — выход ядра (WaitForPrivilegedExit).
+const privilegedStartBody = `umask 022
+d="$4"
+f="$d/` + privilegedLogName + `"
+if [ -L "$d" ]; then echo "refused: $d is a symbolic link"; exit 1; fi
+/bin/mkdir -p "$d" || { echo "refused: cannot create $d"; exit 1; }
+if [ "$(/usr/bin/stat -f '%u:%HT' "$d")" != "$5:Directory" ]; then echo "refused: $d is not a directory owned by uid $5"; exit 1; fi
+/bin/chmod 0755 "$d" || { echo "refused: cannot chmod $d"; exit 1; }
+if [ -e "$f" ] || [ -L "$f" ]; then
+  if [ "$(/usr/bin/stat -f '%u:%HT' "$f")" != "$5:Regular File" ]; then echo "refused: $f is not a regular file owned by uid $5"; exit 1; fi
+  if [ "$(/usr/bin/stat -f %z "$f")" -gt "$6" ]; then /bin/mv -f "$f" "$f.old" || { echo "refused: cannot rotate $f"; exit 1; }; fi
+fi
+: >>"$f" || { echo "refused: cannot open $f"; exit 1; }
+/bin/chmod 0644 "$f" || { echo "refused: cannot chmod $f"; exit 1; }
+cd "$1" || { echo "refused: cannot enter $1"; exit 1; }
+echo $$
+"$2" run -c "$3" >>"$f" 2>&1 &
 echo $!
-exec >>"$4" 2>&1
+exec >>"$f" 2>&1
 wait`
 
 // privilegedMu — один вызов AEWP за раз: ссылка авторизации — глобальная
@@ -144,7 +189,8 @@ var privilegedMu sync.Mutex
 //
 // toolPath must be an absolute path of a root-owned file, and args are passed
 // as argv without a shell (SPEC 137): callers go through StartPrivilegedCore,
-// KillPrivilegedProcess, KillPrivilegedByPattern and RemoveWithPrivileges.
+// KillPrivilegedProcess and KillPrivilegedByPattern. A non-PID first line of
+// stdout (a refusal reason) comes back as the error.
 func RunWithPrivileges(toolPath string, args []string) (scriptPID, singboxPID int, err error) {
 	cPath := C.CString(toolPath)
 	defer C.free(unsafe.Pointer(cPath))
@@ -165,7 +211,8 @@ func RunWithPrivileges(toolPath string, args []string) (scriptPID, singboxPID in
 
 	privilegedMu.Lock()
 	var cScriptPid, cSingboxPid C.pid_t
-	code := C.runWithPrivileges(cPath, cArgsPtr, C.int(len(args)), &cScriptPid, &cSingboxPid)
+	var firstLine [512]C.char
+	code := C.runWithPrivileges(cPath, cArgsPtr, C.int(len(args)), &cScriptPid, &cSingboxPid, &firstLine[0], C.int(len(firstLine)))
 	if !privilegedAuthReuse {
 		C.freePrivilegedAuthorization()
 	}
@@ -173,26 +220,36 @@ func RunWithPrivileges(toolPath string, args []string) (scriptPID, singboxPID in
 	if code != 0 {
 		return 0, 0, fmt.Errorf("privileged execution failed with status %d (authorization may have been cancelled)", code)
 	}
+	// Вместо PID — строка: команда отказалась и объяснила почему (тело
+	// старта: «refused: …»). kill/pkill в stdout не пишут — там пусто.
+	if cScriptPid == 0 {
+		if msg := strings.TrimSpace(C.GoString(&firstLine[0])); msg != "" {
+			return 0, 0, fmt.Errorf("%s", msg)
+		}
+	}
 	return int(cScriptPid), int(cSingboxPid), nil
 }
 
 // PrivilegedStartArgs — инструмент и argv AEWP для старта ядра corePath с
 // TUN (SPEC 137 §3): `/usr/bin/env -i PATH=… /bin/sh -c <тело> <имя>
-// <bin> <ядро> <конфиг> <лог>`. env заменяет себя шеллом через exec — PID
-// для Wait4 тот же. Вынесено отдельно ради теста тела без root.
-func PrivilegedStartArgs(corePath, binDir, configName, logPath string) (tool string, args []string) {
+// <bin> <ядро> <конфиг> <каталог лога> <uid владельца> <порог>`. env
+// заменяет себя шеллом через exec — PID для Wait4 тот же. Каталог лога и
+// владелец — параметры ради теста тела без root; прод — StartPrivilegedCore.
+func PrivilegedStartArgs(corePath, binDir, configName, logDir string, ownerUID int, rotateBytes int64) (tool string, args []string) {
 	return privilegedEnvTool, []string{
 		"-i", privilegedSafePath,
 		privilegedShell, "-c", privilegedStartBody,
-		PrivilegedStartName, binDir, corePath, configName, logPath,
+		PrivilegedStartName, binDir, corePath, configName,
+		logDir, strconv.Itoa(ownerUID), strconv.FormatInt(rotateBytes, 10),
 	}
 }
 
 // StartPrivilegedCore запускает под root ядро corePath (root-owned копию —
-// её проверяет core до вызова) с конфигом configName из binDir и логом
-// logPath. Возвращает PID шелла-обёртки и PID ядра.
-func StartPrivilegedCore(corePath, binDir, configName, logPath string) (shellPID, corePID int, err error) {
-	tool, args := PrivilegedStartArgs(corePath, binDir, configName, logPath)
+// её проверяет core до вызова) с конфигом configName из binDir. Вывод ядра —
+// в PrivilegedCoreLogPath (root-owned, SPEC 137.1). Возвращает PID
+// шелла-обёртки и PID ядра; отказ тела — ошибка с его причиной.
+func StartPrivilegedCore(corePath, binDir, configName string) (shellPID, corePID int, err error) {
+	tool, args := PrivilegedStartArgs(corePath, binDir, configName, PrivilegedLogDir, 0, privilegedLogRotateBytes)
 	return RunWithPrivileges(tool, args)
 }
 

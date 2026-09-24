@@ -25,13 +25,15 @@ func RunWithPrivileges(toolPath string, args []string) (scriptPID, singboxPID in
 }
 
 // StartPrivilegedCore is macOS-only (TUN start as root, SPEC 137).
-func StartPrivilegedCore(corePath, binDir, configName, logPath string) (shellPID, corePID int, err error) {
+func StartPrivilegedCore(corePath, binDir, configName string) (shellPID, corePID int, err error) {
 	_ = corePath
 	_ = binDir
 	_ = configName
-	_ = logPath
 	return 0, 0, errPrivilegedNotSupported
 }
+
+// PrivilegedCoreLogPath — лога ядра под root вне macOS нет (SPEC 137.1).
+func PrivilegedCoreLogPath() string { return "" }
 
 // KillPrivilegedProcess is a no-op on non-darwin (privileged mode is macOS-only).
 func KillPrivilegedProcess(scriptPID, singboxPID int, pidFile string) error {

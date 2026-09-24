@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"singbox-launcher/core/config"
@@ -115,6 +116,43 @@ func (svc *ProcessService) CleanupStaleTunAtStart() {
 // The service ensures proper cleanup of TUN interfaces, log rotation, and process state management.
 type ProcessService struct {
 	ac *AppController
+	// coreLog — куда пишет вывод последнее запущенное ядро (SPEC 137.1):
+	// coreLogUnknown до первого старта в сессии, coreLogUser — лог в
+	// каталоге пользователя, coreLogPrivileged — root-owned лог старта с TUN.
+	coreLog atomic.Int32
+}
+
+// Куда пишет вывод classic-ядро (ProcessService.coreLog).
+const (
+	coreLogUnknown int32 = iota
+	coreLogUser
+	coreLogPrivileged
+)
+
+// CoreLogPath — файл вывода текущего (или последнего) classic-ядра: лог в
+// каталоге пользователя (<Logs>/sing-box.log), а после старта с TUN на
+// macOS — root-owned platform.PrivilegedCoreLogPath (SPEC 137.1): root в
+// каталог пользователя не пишет. До первого старта в сессии — по конфигу
+// (TUN на macOS → лог под root). Его читают Core-вкладка логов и тейлер
+// профайлера трафика; дёшево после первого вызова.
+func (ac *AppController) CoreLogPath() string {
+	privileged := platform.PrivilegedCoreLogPath()
+	if privileged == "" || ac.ProcessService == nil {
+		return ac.FileService.ChildLogPath
+	}
+	state := ac.ProcessService.coreLog.Load()
+	if state == coreLogUnknown {
+		state = coreLogUser
+		if hasTun, err := config.ConfigHasTun(ac.FileService.ConfigPath); err == nil && hasTun {
+			state = coreLogPrivileged
+		}
+		ac.ProcessService.coreLog.CompareAndSwap(coreLogUnknown, state)
+		state = ac.ProcessService.coreLog.Load()
+	}
+	if state == coreLogPrivileged {
+		return privileged
+	}
+	return ac.FileService.ChildLogPath
 }
 
 // NewProcessService constructs a ProcessService bound to the controller.
@@ -239,6 +277,7 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 		debuglog.ErrorLog("startSingBox: Failed to start Sing-Box: %v", err)
 		return
 	}
+	svc.coreLog.Store(coreLogUser)
 	ac.RunningState.Set(true)
 	ac.StoppedByUser = false
 	ac.StateService.ResetAutoUpdateFailedAttempts() // Reset so auto-update can retry after successful Start
@@ -264,7 +303,9 @@ var errPrivilegedCopyNotReady = errors.New("the root-owned core copy for the pri
 //
 // SPEC 137: root исполняет только root-owned копию ядра и системные
 // утилиты. Гейт проверяет копию до AEWP; не прошла — старта с привилегиями
-// нет. Скрипт в каталоге данных больше не пишется.
+// нет. Скрипт в каталоге данных больше не пишется. SPEC 137.1: вывод ядра
+// root пишет в свой каталог (platform.PrivilegedCoreLogPath) и там же
+// ротирует его; каталог пользователя root не трогает.
 func (svc *ProcessService) startSingBoxPrivileged() error {
 	ac := svc.ac
 	corePath, err := ac.privilegedCoreCopyGate()
@@ -273,10 +314,6 @@ func (svc *ProcessService) startSingBoxPrivileged() error {
 	}
 	binDir := ac.FileService.Layout.Data.Bin()
 	configName := filepath.Base(ac.FileService.ConfigPath)
-	logPath := ac.FileService.ChildLogPath
-	if ac.FileService.ChildLogFile != nil {
-		ac.FileService.CheckAndRotateLogFile(logPath)
-	}
 
 	pidFilePath := filepath.Join(binDir, platform.PrivilegedPidFileName)
 	// Скрипт старта до SPEC 137 больше ничто не исполняет — убираем, чтобы
@@ -289,12 +326,15 @@ func (svc *ProcessService) startSingBoxPrivileged() error {
 	}
 
 	debuglog.WarnLog("startSingBox: Starting Sing-Box with elevated privileges (TUN) from %s...", corePath)
-	type privilegedPids struct{ Script, Singbox int }
+	type privilegedPids struct {
+		Script, Singbox int
+		Err             error
+	}
 	pidCh := make(chan privilegedPids, 1)
 	go func() {
-		scriptPID, singboxPID, runErr := platform.StartPrivilegedCore(corePath, binDir, configName, logPath)
+		scriptPID, singboxPID, runErr := platform.StartPrivilegedCore(corePath, binDir, configName)
 		if runErr != nil {
-			pidCh <- privilegedPids{0, 0}
+			pidCh <- privilegedPids{Err: runErr}
 			ac.CmdMutex.Lock()
 			if ac.SingboxPrivilegedMode {
 				ac.CmdMutex.Unlock()
@@ -304,10 +344,11 @@ func (svc *ProcessService) startSingBoxPrivileged() error {
 			debuglog.WarnLog("startSingBox: privileged run failed: %v", runErr)
 			return
 		}
-		pidCh <- privilegedPids{scriptPID, singboxPID}
+		pidCh <- privilegedPids{Script: scriptPID, Singbox: singboxPID}
 		if scriptPID <= 0 {
 			return
 		}
+		svc.coreLog.Store(coreLogPrivileged)
 		ac.CmdMutex.Lock()
 		ac.SingboxCmd = nil
 		ac.SingboxPrivilegedMode = true
@@ -326,6 +367,9 @@ func (svc *ProcessService) startSingBoxPrivileged() error {
 
 	pids := <-pidCh
 	if pids.Script <= 0 {
+		if pids.Err != nil {
+			return fmt.Errorf("privileged start failed: %w", pids.Err)
+		}
 		return fmt.Errorf("privileged start failed or cancelled (no PID)")
 	}
 
