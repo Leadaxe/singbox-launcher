@@ -274,7 +274,7 @@ Pre-built binaries are not distributed. Build from source — see [Building from
 #### Option 1: installer (recommended, Windows 10 / 11 x64)
 
 1. Download `singbox-launcher-<version>-win64-setup.exe` from [Releases](https://github.com/Leadaxe/singbox-launcher/releases) and run it — one administrator prompt. The program goes to `C:\Program Files\singbox-launcher`, your data to `%LOCALAPPDATA%\singbox-launcher`; the core, `wintun.dll`, the template and Mesa3D are inside, nothing is downloaded on first launch.
-2. Optional tasks: desktop shortcut, launch at startup, software OpenGL (Mesa3D) for RDP / VMs without a GPU.
+2. Optional tasks: desktop shortcut, Start with Windows, software OpenGL (Mesa3D) for RDP / VMs without a GPU.
 3. Open **Wizard** → paste subscription URL → walk through tabs → **Save** → **Start**.
 
 Installing a newer version over it keeps your data; Setup closes a running launcher by itself (the VPN is stopped cleanly). **Settings → Apps** uninstalls it and asks whether to remove your data as well. The installer is not code-signed yet: SmartScreen may show "Windows protected your PC" — **More info → Run anyway**.

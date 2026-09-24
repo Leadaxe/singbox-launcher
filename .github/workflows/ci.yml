@@ -980,7 +980,7 @@ jobs:
 
             1. Download: `singbox-launcher-${{ needs.meta.outputs.version }}-win64-setup.exe`
             2. Run it and confirm the administrator prompt once. The launcher goes to `C:\Program Files\singbox-launcher`, your data to `%LOCALAPPDATA%\singbox-launcher`; `sing-box.exe`, `wintun.dll`, the config template and Mesa3D are included, nothing is downloaded on first launch
-               - Tasks: desktop shortcut, launch at startup, software OpenGL (Mesa3D) for RDP / VMs without a GPU
+               - Tasks: desktop shortcut, Start with Windows, software OpenGL (Mesa3D) for RDP / VMs without a GPU
                - Installing over a previous version keeps your data; uninstall from **Settings → Apps** asks whether to remove the data too
                - The installer is not code-signed yet: if SmartScreen shows "Windows protected your PC", click **More info → Run anyway**
 
