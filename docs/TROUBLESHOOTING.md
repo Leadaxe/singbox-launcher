@@ -6,6 +6,13 @@ Linux are in [BUILD_LINUX.md](BUILD_LINUX.md#troubleshooting).
 
 Russian version: [TROUBLESHOOTING.ru.md](TROUBLESHOOTING.ru.md).
 
+## All platforms
+
+### The window stops responding
+
+After about 30 s of a frozen window the launcher writes `ui-freeze-<date-time>.txt` to the logs folder (Diagnostics → **Logs folder**).
+Attach that file and the main log to the issue — it shows what the window was waiting for.
+
 ## Linux
 
 ### A password is asked three times when the VPN starts, and once when it stops
