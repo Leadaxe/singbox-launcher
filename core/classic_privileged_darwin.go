@@ -3,7 +3,11 @@
 package core
 
 import (
+	"errors"
+	"os"
 	"strings"
+
+	"fyne.io/fyne/v2"
 
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
@@ -62,4 +66,33 @@ func (ac *AppController) showPrivilegedCopyDialog(c privilegedCopyCheck, command
 	parts = append(parts, locale.T(privilegedCopyInstructionText))
 	dialogs.ShowCommandRetry(ac.UIService.MainWindow, title, strings.Join(parts, "\n\n"), command,
 		ac.OpenTerminalWithCommand, func() { go StartSingBoxProcess() })
+}
+
+// classicElevatedUsesCopy — на macOS привилегированный старт идёт своим
+// путём (TUN → AEWP, startSingBoxPrivileged), не через повышенный токен.
+func classicElevatedUsesCopy() bool { return false }
+
+// elevatedClassicStart — только Windows (SPEC 141 §8).
+func (ac *AppController) elevatedClassicStart() (string, *os.File, error) {
+	return "", nil, errors.New("elevated classic start is Windows-only")
+}
+
+// tunInstallServiceAction — диалога «TUN без прав» на macOS нет.
+func (ac *AppController) tunInstallServiceAction() (dialogs.Action, bool) {
+	return dialogs.Action{}, false
+}
+
+// showDaemonCoreUpdatedDialog — «Core updated»: sudo-команда install для
+// Terminal.
+func (ac *AppController) showDaemonCoreUpdatedDialog(command string) {
+	dialogs.ShowLinuxCapabilitiesRequired(ac.UIService.MainWindow,
+		locale.T("Core updated — update the daemon service"),
+		locale.T(daemonCoreUpdatedBodyText),
+		command)
+}
+
+// ShowDaemonUnsafeNoticeElevated — на macOS модальное предупреждение
+// показывает main.go (sudo-команда для Terminal).
+func (ac *AppController) ShowDaemonUnsafeNoticeElevated(_ fyne.Window, _, _, _ string) bool {
+	return false
 }

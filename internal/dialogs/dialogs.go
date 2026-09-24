@@ -368,6 +368,17 @@ func (a *ActionsDialog) SetBusy() {
 	a.setEnabled(false)
 }
 
+// SetBusyStatus — строка статуса при выключенных кнопках: долгое действие
+// (команда под runas, SPEC 141 §5.2) идёт; итог — SetStatus. Из любой
+// горутины.
+func (a *ActionsDialog) SetBusyStatus(text string) {
+	fyne.Do(func() {
+		a.status.SetText(text)
+		a.status.Show()
+		a.setEnabled(false)
+	})
+}
+
 func (a *ActionsDialog) setEnabled(on bool) {
 	for i, b := range a.buttons {
 		if on && !a.actions[i].Disabled {

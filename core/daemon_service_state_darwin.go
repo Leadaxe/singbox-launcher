@@ -38,6 +38,16 @@ import (
 // раскладка /Library, чтение plist, цепочка владения по uid (Stat_t), ключ
 // кэша по (dev, inode), состояние у launchd и legacy-раскладка lx.11.
 
+// minCoreForRootOwnedService — первое ядро форка, чей `lxd
+// --service=install` копирует себя в каноническую root-owned копию
+// (daemonServiceCorePath) и переводит plist на неё (с ним же —
+// `--service=copy`, SPEC 137). Его пре-релизы (lx.12-rc1) уже кладут
+// копию туда же и гейт проходят. lx.11 (dev-сборки) копировал в раннюю
+// раскладку — у нас это Unsafe (legacy); ядро до lx.11 пишет в plist
+// СВОЙ путь — файл пользователя в DataDir или бандле: откат к дыре §1.
+// Таким ядрам команды лаунчер не даёт.
+const minCoreForRootOwnedService = "1.14.1-lx.12"
+
 const (
 	// daemonServiceChainRoot — верх цепочки владения копии: от него вниз до
 	// файла каждое звено обязано быть root-owned без g/o-записи.
@@ -270,4 +280,26 @@ func statHashKey(path string) (fileHashKey, error) {
 		return fileHashKey{}, fmt.Errorf("%s: no inode information", path)
 	}
 	return fileHashKey{dev: uint64(st.Dev), ino: st.Ino, size: fi.Size(), mtime: fi.ModTime().UnixNano()}, nil
+}
+
+// checkDaemonCopyChain — цепочка владения копии раскладки l (SPEC 136).
+func checkDaemonCopyChain(l daemonServiceLayout) error {
+	return checkRootOwnedChain(l.CorePath, l.ChainRoot, l.OwnerUID)
+}
+
+// daemonSetMismatch — на macOS копия — один файл: других членов набора нет.
+func daemonSetMismatch(_, _ string, _ *fileHashCache) (name string, extra bool, detail string, err error) {
+	return "", false, "", nil
+}
+
+// daemonServiceDefined — служба установлена: plist на месте.
+func daemonServiceDefined(l daemonServiceLayout) bool {
+	_, err := os.Lstat(l.PlistPath)
+	return err == nil
+}
+
+// sameServicePath — путь процесса демона и копии: файловая система macOS
+// в лаунчере сравнивается побайтно после Clean (как до SPEC 141).
+func sameServicePath(a, b string) bool {
+	return filepath.Clean(a) == filepath.Clean(b)
 }

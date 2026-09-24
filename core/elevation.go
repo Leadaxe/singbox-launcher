@@ -88,7 +88,7 @@ func (ac *AppController) tunNeedsElevation() bool {
 // showTunElevationDialog — диалог «TUN без прав» (SPEC 139 §4) вместо старта
 // ядра. Окно скрыто (трей, -tray) — сначала показывается. Без UI — WARN.
 //
-// Порядок кнопок: [Install service — SPEC 141, первой; до неё кнопки нет] ·
+// Порядок кнопок: [Install service — SPEC 141, Windows x64/arm64] ·
 // Restart as administrator · Switch to proxy mode · Cancel.
 func (ac *AppController) showTunElevationDialog() {
 	if !ac.hasUI() {
@@ -102,7 +102,6 @@ func (ac *AppController) showTunElevationDialog() {
 		message += "\n\n" + locale.T(otherAccountText)
 	}
 
-	// SPEC 141: кнопка Install service встаёт в начало этого списка.
 	actions := []dialogs.Action{
 		{
 			Label:     locale.T("Restart as administrator"),
@@ -110,6 +109,11 @@ func (ac *AppController) showTunElevationDialog() {
 			Run:       func(d *dialogs.ActionsDialog) { ac.runRestartAsAdministrator(d, true) },
 		},
 		ac.switchToProxyAction(),
+	}
+	// SPEC 141 §9: Install service — первой (служба ставится одним окном UAC,
+	// лаунчер переходит в daemon-режим и стартует без прав).
+	if install, ok := ac.tunInstallServiceAction(); ok {
+		actions = append([]dialogs.Action{install}, actions...)
 	}
 
 	ac.UIService.ShowMainWindowOrFocusWizard()

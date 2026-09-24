@@ -5,9 +5,11 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/muhammadmuzzammil1998/jsonc"
@@ -15,7 +17,6 @@ import (
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
-	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/lxdclient"
 	"singbox-launcher/internal/platform"
@@ -64,63 +65,197 @@ const (
 //     этой функции не проходит — там Clash остаётся (см. развилку
 //     ProxyTransport: classic=Clash HTTP, daemon=gRPC).
 //
+// Шаги (3)–(4) — платформенные (prepareConfigForDaemonWith).
+//
 // Конфиг — JSONC (с комментариями): стрипим их (jsonc.ToJSON), правим map,
 // сериализуем чистым JSON (демон толерантен к обоим). Возвращает исходный
 // конфиг без изменений, если править нечего.
 func prepareConfigForDaemon(config []byte, runtimeDir string) ([]byte, error) {
+	out, _, err := prepareConfigForDaemonWith(config, runtimeDir, daemonPrepOptions{})
+	return out, err
+}
+
+// daemonPrepOptions — платформенные шаги подготовки конфига (SPEC 141 §7).
+type daemonPrepOptions struct {
+	// launcherSetsProxy — шаг (3), Windows: системный прокси ставит лаунчер
+	// в профиле пользователя, демону каждый set_system_proxy: true уходит
+	// как false, адрес первого возвращается вызывающему.
+	launcherSetsProxy bool
+	// tailscaleLocalRoot — шаг (4), Windows: state_directory узлов tailscale
+	// под этим корнем (DataDir) → <runtimeDir>/tailscale/<тег>; "" — шага нет.
+	tailscaleLocalRoot string
+}
+
+// daemonPlatformPrepOptions — шаги (3)–(4) этой платформы.
+func daemonPlatformPrepOptions() daemonPrepOptions {
+	return daemonPrepOptions{launcherSetsProxy: daemonLauncherSetsSystemProxy, tailscaleLocalRoot: daemonTailscaleLocalRoot()}
+}
+
+// prepareConfigForDaemonWith — шаги (1)–(2) и платформенные (3)–(4).
+// proxyServer — строка сервера системного прокси (`http://<addr>:<port>`,
+// как её строит ядро) первого inbound с set_system_proxy: true; "" — нет
+// или шаг (3) выключен. config.json на диске не меняется.
+func prepareConfigForDaemonWith(config []byte, runtimeDir string, opts daemonPrepOptions) (out []byte, proxyServer string, err error) {
 	clean := jsonc.ToJSON(config)
 	var root map[string]json.RawMessage
 	if err := json.Unmarshal(clean, &root); err != nil {
-		return nil, fmt.Errorf("parse config: %w", err)
-	}
-	expRaw, ok := root["experimental"]
-	if !ok {
-		return config, nil // нет experimental — ни cache_file, ни clash_api
-	}
-	var exp map[string]json.RawMessage
-	if err := json.Unmarshal(expRaw, &exp); err != nil {
-		return nil, fmt.Errorf("parse experimental: %w", err)
+		return nil, "", fmt.Errorf("parse config: %w", err)
 	}
 	changed := false
 
-	// (1) cache_file.path → абсолютный.
-	if cfRaw, ok := exp["cache_file"]; ok {
-		var cf map[string]json.RawMessage
-		if err := json.Unmarshal(cfRaw, &cf); err != nil {
-			return nil, fmt.Errorf("parse cache_file: %w", err)
+	if expRaw, ok := root["experimental"]; ok {
+		var exp map[string]json.RawMessage
+		if err := json.Unmarshal(expRaw, &exp); err != nil {
+			return nil, "", fmt.Errorf("parse experimental: %w", err)
 		}
-		var pathStr string
-		if p, ok := cf["path"]; ok {
-			_ = json.Unmarshal(p, &pathStr)
+		expChanged := false
+
+		// (1) cache_file.path → абсолютный.
+		if cfRaw, ok := exp["cache_file"]; ok {
+			var cf map[string]json.RawMessage
+			if err := json.Unmarshal(cfRaw, &cf); err != nil {
+				return nil, "", fmt.Errorf("parse cache_file: %w", err)
+			}
+			var pathStr string
+			if p, ok := cf["path"]; ok {
+				_ = json.Unmarshal(p, &pathStr)
+			}
+			if pathStr == "" {
+				pathStr = "cache.db"
+			}
+			if !filepath.IsAbs(pathStr) {
+				abs := filepath.Join(runtimeDir, filepath.Base(pathStr))
+				cf["path"], _ = json.Marshal(abs)
+				exp["cache_file"], _ = json.Marshal(cf)
+				expChanged = true
+				debuglog.InfoLog("daemon: cache_file path %q → %q", pathStr, abs)
+			}
 		}
-		if pathStr == "" {
-			pathStr = "cache.db"
+
+		// (2) clash_api — удаляем целиком (daemon работает по gRPC).
+		if _, ok := exp["clash_api"]; ok {
+			delete(exp, "clash_api")
+			expChanged = true
+			debuglog.InfoLog("daemon: removed clash_api (daemon uses gRPC)")
 		}
-		if !filepath.IsAbs(pathStr) {
-			abs := filepath.Join(runtimeDir, filepath.Base(pathStr))
-			cf["path"], _ = json.Marshal(abs)
-			exp["cache_file"], _ = json.Marshal(cf)
+		if expChanged {
+			root["experimental"], _ = json.Marshal(exp)
 			changed = true
-			debuglog.InfoLog("daemon: cache_file path %q → %q", pathStr, abs)
 		}
 	}
 
-	// (2) clash_api — удаляем целиком (daemon работает по gRPC).
-	if _, ok := exp["clash_api"]; ok {
-		delete(exp, "clash_api")
-		changed = true
-		debuglog.InfoLog("daemon: removed clash_api (daemon uses gRPC)")
+	// (3) set_system_proxy → false, адрес первого — лаунчеру.
+	if raw, ok := root["inbounds"]; ok && opts.launcherSetsProxy {
+		updated, server, inChanged, err := daemonInboundsWithoutSystemProxy(raw)
+		if err != nil {
+			return nil, "", err
+		}
+		proxyServer = server
+		if inChanged {
+			root["inbounds"] = updated
+			changed = true
+		}
+	}
+
+	// (4) state_directory tailscale из DataDir → <StateDir>/tailscale/<тег>.
+	if raw, ok := root["endpoints"]; ok && opts.tailscaleLocalRoot != "" && runtimeDir != "" {
+		updated, epChanged, err := daemonEndpointsTailscaleStateDir(raw, opts.tailscaleLocalRoot, runtimeDir)
+		if err != nil {
+			return nil, "", err
+		}
+		if epChanged {
+			root["endpoints"] = updated
+			changed = true
+		}
 	}
 
 	if !changed {
-		return config, nil
+		return config, proxyServer, nil
 	}
-	root["experimental"], _ = json.Marshal(exp)
-	out, err := json.Marshal(root)
+	out, err = json.Marshal(root)
 	if err != nil {
-		return nil, fmt.Errorf("marshal config: %w", err)
+		return nil, "", fmt.Errorf("marshal config: %w", err)
 	}
-	return out, nil
+	return out, proxyServer, nil
+}
+
+// daemonInboundsWithoutSystemProxy — шаг (3): каждый inbound с
+// set_system_proxy: true получает false; адрес первого — так, как его
+// строит ядро (common/listener: пустой или неуказанный listen →
+// 127.0.0.1, порт — listen_port); второй и следующие — WARN (у WinINet один
+// прокси).
+func daemonInboundsWithoutSystemProxy(raw json.RawMessage) (json.RawMessage, string, bool, error) {
+	var inbounds []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &inbounds); err != nil {
+		return nil, "", false, fmt.Errorf("parse inbounds: %w", err)
+	}
+	server := ""
+	changed := false
+	for _, in := range inbounds {
+		var on bool
+		if v, ok := in["set_system_proxy"]; !ok || json.Unmarshal(v, &on) != nil || !on {
+			continue
+		}
+		in["set_system_proxy"] = json.RawMessage("false")
+		changed = true
+		var tag, listen string
+		var port int
+		_ = json.Unmarshal(in["tag"], &tag)
+		_ = json.Unmarshal(in["listen"], &listen)
+		_ = json.Unmarshal(in["listen_port"], &port)
+		if server != "" {
+			debuglog.WarnLog("daemon: inbound %q also asks for the system proxy; Windows has one — keeping %s", tag, server)
+			continue
+		}
+		host := strings.TrimSpace(listen)
+		if ip := net.ParseIP(host); host == "" || (ip != nil && ip.IsUnspecified()) {
+			host = "127.0.0.1"
+		}
+		server = "http://" + net.JoinHostPort(host, strconv.Itoa(port))
+		debuglog.InfoLog("daemon: inbound %q: set_system_proxy is set by the launcher (%s), the daemon gets false", tag, server)
+	}
+	if !changed {
+		return raw, "", false, nil
+	}
+	out, err := json.Marshal(inbounds)
+	if err != nil {
+		return nil, "", false, fmt.Errorf("marshal inbounds: %w", err)
+	}
+	return out, server, true, nil
+}
+
+// daemonEndpointsTailscaleStateDir — шаг (4): state_directory узла tailscale
+// под localRoot (DataDir лаунчера) → <runtimeDir>/tailscale/<тот же
+// относительный путь>; явный каталог пользователя вне корня не трогается.
+func daemonEndpointsTailscaleStateDir(raw json.RawMessage, localRoot, runtimeDir string) (json.RawMessage, bool, error) {
+	var endpoints []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &endpoints); err != nil {
+		return nil, false, fmt.Errorf("parse endpoints: %w", err)
+	}
+	changed := false
+	for _, ep := range endpoints {
+		var typ, dir string
+		_ = json.Unmarshal(ep["type"], &typ)
+		if typ != "tailscale" || json.Unmarshal(ep["state_directory"], &dir) != nil || dir == "" {
+			continue
+		}
+		rel, err := filepath.Rel(localRoot, dir)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+			continue
+		}
+		moved := filepath.Join(runtimeDir, "tailscale", rel)
+		ep["state_directory"], _ = json.Marshal(moved)
+		changed = true
+		debuglog.InfoLog("daemon: tailscale state_directory %q → %q", dir, moved)
+	}
+	if !changed {
+		return raw, false, nil
+	}
+	out, err := json.Marshal(endpoints)
+	if err != nil {
+		return nil, false, fmt.Errorf("marshal endpoints: %w", err)
+	}
+	return out, true, nil
 }
 
 // DaemonUIStatus — снимок состояния демона для секции настроек.
@@ -362,6 +497,7 @@ func (ac *AppController) PairDaemonWithInvite(inviteRaw, secret string) error {
 // адрес. Регистрация на стороне демона (если он жив) остаётся — её снимает
 // `sing-box lxd client remove` или полное удаление службы.
 func (ac *AppController) UnpairDaemon() error {
+	ac.clearDaemonSystemProxy("unpaired")
 	if err := lxdclient.RemoveIdentity(DaemonIdentityDir(ac.FileService.Layout.Data)); err != nil {
 		return err
 	}
@@ -466,10 +602,7 @@ func (ac *AppController) notifyDaemonServiceAfterCoreUpdate() {
 		return
 	}
 	// Диалог сам оборачивается в fyne.Do — зваться из горутины загрузчика можно.
-	dialogs.ShowLinuxCapabilitiesRequired(ac.UIService.MainWindow,
-		locale.T("Core updated — update the daemon service"),
-		locale.T(daemonCoreUpdatedBodyText),
-		command)
+	ac.showDaemonCoreUpdatedDialog(command)
 }
 
 // daemonCoreUpdatedCommand — команда диалога после скачивания ядра; "" —
@@ -518,7 +651,7 @@ func daemonServiceBinaryFor(l daemonServiceLayout, launcherCore string) string {
 // вставляет в поле сопряжения. Бинарь — копия службы, если она безопасна.
 func (ac *AppController) DaemonRepairCommand() string {
 	return daemonServiceCommand(daemonServiceBinaryFor(systemDaemonServiceLayout(), ac.FileService.SingboxPath),
-		"lxd", "client", "add", "--name", "singbox-launcher")
+		"lxd", "client", "add", "--name", daemonClientName())
 }
 
 // DaemonInstallCommand — «Install or update service» (SPEC 136 §5): одна
@@ -543,7 +676,7 @@ func daemonInstallCommandFor(launcherCore, launcherVersion string) (string, erro
 	if err := serviceCoreGate(launcherVersion); err != nil {
 		return "", err
 	}
-	return daemonServiceCommand(launcherCore, "lxd", "--service=install"), nil
+	return daemonServiceCommand(launcherCore, daemonInstallArgs()...), nil
 }
 
 // DaemonUninstallCommand собирает shell-команду удаления службы для терминала.
@@ -599,7 +732,7 @@ type DaemonCommand struct {
 
 // String — платформенный рендер для показа и Copy (daemonServiceCommand):
 // macOS — `sudo '<bin>' args`, Windows — PowerShell `& '<bin>' args`
-// (' → ''). Пустая команда — "".
+// (одинарная кавычка удваивается). Пустая команда — "".
 func (c DaemonCommand) String() string {
 	if c.Binary == "" {
 		return ""

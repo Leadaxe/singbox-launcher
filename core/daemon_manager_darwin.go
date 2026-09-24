@@ -37,6 +37,16 @@ const (
 	daemonFallbackRuntimeDir = "/Library/Application Support/sing-box-lxd"
 )
 
+// daemonClientName — имя клиента сопряжения на macOS — фиксированное
+// (SPEC 141 §11: коллизия нескольких учётных записей — отдельная задача).
+func daemonClientName() string { return "singbox-launcher" }
+
+// daemonInstallArgs — аргументы «Install or update service».
+func daemonInstallArgs() []string { return []string{"lxd", "--service=install"} }
+
+// daemonFallbackStateDir — каталог рантайм-файлов демона без /admin/info.
+func daemonFallbackStateDir() string { return daemonFallbackRuntimeDir }
+
 // daemonEngineAvailable — на macOS daemon-движок доступен всегда: умеет ли
 // его ядро лаунчера, решают CoreSupportsLxd и гейт версии.
 func daemonEngineAvailable() error { return nil }

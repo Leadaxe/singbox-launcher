@@ -32,3 +32,6 @@ func findSingboxRunProcessDarwin() (bool, int, error) {
 	}
 	return false, -1, nil
 }
+
+// findPrivilegedCopyInUserSession — только Windows (SPEC 141 §8).
+func findPrivilegedCopyInUserSession() int { return -1 }

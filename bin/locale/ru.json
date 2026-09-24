@@ -4687,5 +4687,35 @@
   },
   "Without administrator rights the old copy in the program folder stays, and on the next start the launcher copies the data from it into the data folder again. To remove it, run the cleanup as administrator.": {
     "value": "Без прав администратора старая копия в папке программы остаётся, и при следующем запуске лаунчер снова скопирует из неё данные в папку данных. Чтобы удалить её, запустите очистку от имени администратора."
+  },
+  "Run as administrator": {
+    "value": "Выполнить от имени администратора"
+  },
+  "Install service": {
+    "value": "Установить службу"
+  },
+  "With administrator rights the launcher starts the sing-box core only from a protected copy in Program Files that your user account cannot modify, and there is no such copy yet.": {
+    "value": "С правами администратора лаунчер запускает ядро sing-box только из защищённой копии в Program Files, которую ваша учётная запись не может изменить, а такой копии пока нет."
+  },
+  "With administrator rights the launcher starts the sing-box core from a protected copy in Program Files, and the copy does not match the launcher's current core (%s) — for example after a core update.": {
+    "value": "С правами администратора лаунчер запускает ядро sing-box из защищённой копии в Program Files, а копия не совпадает с текущим ядром лаунчера (%s) — например, после обновления ядра."
+  },
+  "With administrator rights the launcher starts the sing-box core only from a protected copy, and the copy's location failed the protection check:\n%s\nIf the command below reports the same problem, fix the permissions of that path.": {
+    "value": "С правами администратора лаунчер запускает ядро sing-box только из защищённой копии, а расположение копии не прошло проверку защиты:\n%s\nЕсли команда ниже сообщит о той же проблеме, исправьте права на этот путь."
+  },
+  "The daemon service is installed on this computer, so the command is its Install or update command: it refreshes the same copy and restarts the service.": {
+    "value": "На этом компьютере установлена служба демона, поэтому команда — её «Установить или обновить»: она обновит ту же копию и перезапустит службу."
+  },
+  "Click Run as administrator (or run this command in PowerShell as administrator), then click Retry:": {
+    "value": "Нажмите «Выполнить от имени администратора» (или выполните эту команду в PowerShell от имени администратора), затем — «Повторить»:"
+  },
+  "The daemon service still runs the previous core. Install the new core into the service and restart it (Run as administrator):": {
+    "value": "Служба демона всё ещё работает на прежнем ядре. Установите новое ядро в службу и перезапустите её (от имени администратора):"
+  },
+  "The daemon service runs with SYSTEM rights from a file that is not protected:\n%s\n\nAny program running as you could replace it and take over this computer. Install or update the service to move it to a protected copy of the core (Run as administrator). The VPN keeps working meanwhile; the LOCAL tab of the connection settings shows this until it is fixed.": {
+    "value": "Служба демона работает с правами SYSTEM из незащищённого файла:\n%s\n\nЛюбая программа, запущенная от вашего имени, может подменить его и получить полный контроль над компьютером. Установите или обновите службу, чтобы перевести её на защищённую копию ядра (от имени администратора). VPN тем временем продолжает работать; вкладка LOCAL в настройках подключения показывает это, пока проблема не устранена."
+  },
+  "The daemon service runs with SYSTEM rights from a file that is not protected:\n%s\n\nAny program running as you could replace it and take over this computer. %s The VPN keeps working meanwhile; the LOCAL tab of the connection settings shows this until it is fixed.": {
+    "value": "Служба демона работает с правами SYSTEM из незащищённого файла:\n%s\n\nЛюбая программа, запущенная от вашего имени, может подменить его и получить полный контроль над компьютером. %s VPN тем временем продолжает работать; вкладка LOCAL в настройках подключения показывает это, пока проблема не устранена."
   }
 }

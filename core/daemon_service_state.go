@@ -39,15 +39,8 @@ const (
 	// daemonHashCacheCap — потолок кэша sha256: файлов в игре два-три, потолок
 	// лишь не даёт кэшу расти от череды заменённых ядер.
 	daemonHashCacheCap = 16
-	// minCoreForRootOwnedService — первое ядро форка, чей `lxd
-	// --service=install` копирует себя в каноническую root-owned копию
-	// (daemonServiceCorePath) и переводит plist на неё (с ним же —
-	// `--service=copy`, SPEC 137). Его пре-релизы (lx.12-rc1) уже кладут
-	// копию туда же и гейт проходят. lx.11 (dev-сборки) копировал в раннюю
-	// раскладку — у нас это Unsafe (legacy); ядро до lx.11 пишет в plist
-	// СВОЙ путь — файл пользователя в DataDir или бандле: откат к дыре §1.
-	// Таким ядрам команды лаунчер не даёт.
-	minCoreForRootOwnedService = "1.14.1-lx.12"
+	// minCoreForRootOwnedService — порог версии ядра для команд службы —
+	// константа платформы (daemon_service_state_<os>.go, SPEC 141 §6.2).
 )
 
 // DaemonServiceState — вердикт классификатора службы (SPEC 136 §4).
@@ -382,6 +375,20 @@ func compareDaemonServiceFiles(c *DaemonServiceCheck, corePath, launcherCore str
 		c.State = DaemonServiceStale
 		c.Detail = fmt.Sprintf("the root-owned copy (sha256 %s) is not the launcher core %s (sha256 %s)",
 			shortSHA(copySum), resolved, shortSHA(launcherSum))
+		return
+	}
+	// Остальные члены набора (Windows: libcronet.dll) и лишние файлы в
+	// каталоге копии (SPEC 141 §6.2); не посчитался хэш — не судим.
+	name, extra, detail, err := daemonSetMismatch(corePath, resolved, hashes)
+	if err != nil {
+		debuglog.DebugLog("daemon service: copy set: %v", err)
+		return
+	}
+	if name != "" {
+		c.State = DaemonServiceStale
+		c.MismatchFile = name
+		c.ExtraFile = extra
+		c.Detail = detail
 	}
 }
 
@@ -412,7 +419,7 @@ func compareDaemonServiceProcess(c *DaemonServiceCheck, info lxdclient.InfoData,
 	if c.State != DaemonServiceOK {
 		return
 	}
-	if info.Executable != "" && filepath.Clean(info.Executable) != filepath.Clean(corePath) {
+	if info.Executable != "" && !sameServicePath(info.Executable, corePath) {
 		c.State = DaemonServiceProcessStale
 		c.Detail = fmt.Sprintf("the running daemon was started from %s, the service runs %s", info.Executable, corePath)
 		return

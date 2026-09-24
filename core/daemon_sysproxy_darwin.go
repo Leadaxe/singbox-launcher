@@ -11,6 +11,10 @@ package core
 // адрес для setDaemonSystemProxy. На macOS — нет.
 const daemonLauncherSetsSystemProxy = false
 
+// daemonTailscaleLocalRoot — на macOS state_directory tailscale остаётся в
+// DataDir (долг SPEC 141 §11): переносить нечего.
+func daemonTailscaleLocalRoot() string { return "" }
+
 // setDaemonSystemProxy — no-op: прокси ставит ядро.
 func (ac *AppController) setDaemonSystemProxy(server string) { _ = server }
 

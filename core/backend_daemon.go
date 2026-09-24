@@ -73,6 +73,11 @@ type DaemonBackend struct {
 	// добавлять трафик ради кружка.
 	linkMu sync.Mutex
 	link   DaemonLinkState
+
+	// appliedProxy — строка системного прокси последнего успешного apply
+	// (string; "" — прокси не просили). Windows: лаунчер ставит его сам
+	// (SPEC 141 §7) и возвращает, когда ядро снова started.
+	appliedProxy atomic.Value
 }
 
 // daemonLogMaxLines зеркалит кольцевой буфер демона (lxd logMaxLines).
@@ -350,7 +355,7 @@ func (b *DaemonBackend) applyOnce(caller string, forced bool) bool {
 	// Fallback на историческую константу — только если info недоступен
 	// (демон старой сборки). (2) Полное удаление clash_api (всё по gRPC).
 	// Classic-режим этой подготовки не проходит (cwd=bin/, единственное ядро).
-	runtimeDir := daemonFallbackRuntimeDir
+	runtimeDir := daemonFallbackStateDir()
 	passport, infoErr := b.admin.Info()
 	if infoErr == nil && passport.StateDir != "" {
 		runtimeDir = passport.StateDir
@@ -373,7 +378,8 @@ func (b *DaemonBackend) applyOnce(caller string, forced bool) bool {
 		debuglog.WarnLog("daemon.%s: the daemon service is installed but not running (%s) — run: %s",
 			caller, check.Detail, daemonBootstrapCommand())
 	}
-	config, err = prepareConfigForDaemon(config, runtimeDir)
+	var proxyServer string
+	config, proxyServer, err = prepareConfigForDaemonWith(config, runtimeDir, daemonPlatformPrepOptions())
 	if err != nil {
 		ac.ShowStartupError(fmt.Errorf("daemon apply: prepare config: %w", err))
 		return false
@@ -400,6 +406,14 @@ func (b *DaemonBackend) applyOnce(caller string, forced bool) bool {
 		return false
 	}
 	atomic.StoreInt32(&b.rejectTries, 0)
+	// SPEC 141 §7: системный прокси пользователя ставит лаунчер (Windows;
+	// на macOS — no-op).
+	b.appliedProxy.Store(proxyServer)
+	if proxyServer != "" {
+		ac.setDaemonSystemProxy(proxyServer)
+	} else {
+		ac.clearDaemonSystemProxy("the applied config asks for no system proxy")
+	}
 	ac.RunningState.Set(true) // стрим статусов подтвердит
 	ac.StateService.ResetAutoUpdateFailedAttempts()
 	debuglog.InfoLog("daemon.%s: config applied, core is up", caller)
@@ -452,6 +466,7 @@ func (b *DaemonBackend) StopVPN() {
 			}
 			return
 		}
+		ac.clearDaemonSystemProxy("VPN stopped")
 		ac.RunningState.Set(false)
 	}()
 }
@@ -466,9 +481,23 @@ func (b *DaemonBackend) OnAppExit() bool {
 	}
 	if err := b.admin.Stop(); err != nil {
 		debuglog.WarnLog("daemon.OnAppExit: stop failed: %v", err)
+	} else {
+		b.ac.clearDaemonSystemProxy("VPN stopped on exit")
 	}
 	b.ac.RunningState.Set(false)
 	return true
+}
+
+// onEngineLeave — движок daemon сменяется на classic (SwitchBackendMode):
+// системный прокси, поставленный лаунчером под демон, снимается (SPEC 141 §7).
+func (b *DaemonBackend) onEngineLeave() {
+	b.ac.clearDaemonSystemProxy("engine switched to classic")
+}
+
+// appliedProxyServer — строка прокси последнего успешного apply.
+func (b *DaemonBackend) appliedProxyServer() string {
+	s, _ := b.appliedProxy.Load().(string)
+	return s
 }
 
 // Close implements CoreBackend: гасит supervisor и gRPC-соединение, снимает
@@ -612,6 +641,18 @@ func (b *DaemonBackend) consumeStatusStream(stream grpc.ServerStreamingClient[da
 			go b.retryAfterCoreFatal(msg)
 		}
 		ac.RunningState.Set(running)
+		// SPEC 141 §7 (Windows; macOS — no-op): ядро не работает (idle,
+		// fatal, откат) — снять свой прокси, в том числе после краша
+		// лаунчера: первый кадр сверяет; снова started — вернуть прокси
+		// последнего apply.
+		switch status.GetStatus() {
+		case daemonpb.ServiceStatus_IDLE, daemonpb.ServiceStatus_FATAL:
+			ac.clearDaemonSystemProxy("the core is " + strings.ToLower(status.GetStatus().String()))
+		case daemonpb.ServiceStatus_STARTED:
+			if p := b.appliedProxyServer(); p != "" {
+				ac.setDaemonSystemProxy(p)
+			}
+		}
 		if running && !wasRunning {
 			// Ядро поднялось (в т.ч. кем-то извне) — подтянуть список нод.
 			go func() {

@@ -4,6 +4,7 @@ package core
 
 import (
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -90,7 +91,7 @@ func TestServiceCoreVersionGate(t *testing.T) {
 			t.Fatalf("compare(%s, %s) = %d, want %d", tc.b, tc.a, got, -tc.want)
 		}
 	}
-	for version, want := range map[string]bool{
+	cases := map[string]bool{
 		"1.14.1-lx.8":       false,
 		"1.14.1-lx.10":      false,
 		"1.14.1-lx.11-rc1":  false,
@@ -108,7 +109,22 @@ func TestServiceCoreVersionGate(t *testing.T) {
 		"1.14.1-lx.":        false,
 		"1.14.1-lx.12x":     false,
 		"":                  false,
-	} {
+	}
+	if runtime.GOOS == "windows" {
+		// Порог Windows — 1.14.2-lx.2 (служба SCM, SPEC 141 §6.2); его rc
+		// гейт проходит.
+		cases = map[string]bool{
+			"1.14.1-lx.13":     false,
+			"1.14.2-lx.1":      false,
+			"1.14.2-lx.2-rc1":  true,
+			"1.14.2-lx.2-rc.1": true,
+			"1.14.2-lx.2":      true,
+			"1.15.0-lx.1":      true,
+			"unknown":          false,
+			"":                 false,
+		}
+	}
+	for version, want := range cases {
 		if got := coreSupportsRootOwnedCopy(version); got != want {
 			t.Fatalf("coreSupportsRootOwnedCopy(%q) = %v, want %v", version, got, want)
 		}

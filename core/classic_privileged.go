@@ -79,7 +79,7 @@ func checkPrivilegedCoreCopy(l daemonServiceLayout, launcherCore string, hashes 
 	}
 	c.LauncherSHA256 = launcherSum
 
-	if err := checkRootOwnedChain(l.CorePath, l.ChainRoot, l.OwnerUID); err != nil {
+	if err := checkDaemonCopyChain(l); err != nil {
 		if errors.Is(err, errDaemonCopyMissing) {
 			c.State = privilegedCopyMissing
 		} else {
@@ -103,6 +103,18 @@ func checkPrivilegedCoreCopy(l daemonServiceLayout, launcherCore string, hashes 
 		c.State = privilegedCopyOutdated
 		c.Detail = fmt.Sprintf("the root-owned copy %s (sha256 %s) is not the launcher core %s (sha256 %s)",
 			l.CorePath, shortSHA(copySum), resolved, shortSHA(launcherSum))
+		return c
+	}
+	// Остальные члены набора (Windows, SPEC 141 §8): закрыт по умолчанию —
+	// не посчитался хэш — старта нет.
+	name, _, detail, err := daemonSetMismatch(l.CorePath, resolved, hashes)
+	switch {
+	case err != nil:
+		c.State = privilegedCopyUnsafe
+		c.Detail = err.Error()
+	case name != "":
+		c.State = privilegedCopyOutdated
+		c.Detail = detail
 	}
 	return c
 }
@@ -115,13 +127,12 @@ func checkPrivilegedCoreCopy(l daemonServiceLayout, launcherCore string, hashes 
 // Ядро, не умеющее копию (serviceCoreGate), — команды нет, ошибка
 // *serviceCoreTooOldError: сначала обновить ядро.
 func privilegedCopyCommandFor(l daemonServiceLayout, launcherCore, launcherVersion string) (command string, viaService bool, err error) {
-	_, statErr := os.Lstat(l.PlistPath)
-	viaService = statErr == nil
+	viaService = daemonServiceDefined(l)
 	if err := serviceCoreGate(launcherVersion); err != nil {
 		return "", viaService, err
 	}
 	if viaService {
-		return daemonServiceCommand(launcherCore, "lxd", "--service=install"), true, nil
+		return daemonServiceCommand(launcherCore, daemonInstallArgs()...), true, nil
 	}
 	return daemonServiceCommand(launcherCore, "lxd", "--service=copy"), false, nil
 }
@@ -173,7 +184,7 @@ func orUnknown(sum string) string {
 // попросит первый старт с TUN.
 func (ac *AppController) notifyPrivilegedCopyAfterCoreUpdate() {
 	l := systemDaemonServiceLayout()
-	if _, err := os.Lstat(l.PlistPath); err == nil {
+	if daemonServiceDefined(l) {
 		return
 	}
 	c := checkPrivilegedCoreCopy(l, ac.FileService.SingboxPath, &daemonServiceHashes)

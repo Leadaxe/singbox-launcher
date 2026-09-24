@@ -159,7 +159,10 @@ func scheduleDaemonUnsafeNotice(controller *core.AppController, data paths.DataD
 		message = locale.Tf(daemonUnsafeNoticeCoreText, servicePath, coreHint)
 	}
 	whenWindowVisible(controller, inTray, func(win fyne.Window) {
-		dialogs.ShowLinuxCapabilitiesRequired(win, locale.T("The daemon service is not protected"), message, command)
+		// Windows (SPEC 141 §9): свой текст и кнопка Run as administrator.
+		if !controller.ShowDaemonUnsafeNoticeElevated(win, servicePath, command, coreHint) {
+			dialogs.ShowLinuxCapabilitiesRequired(win, locale.T("The daemon service is not protected"), message, command)
+		}
 		if err := locale.MarkDaemonUnsafeNoticeShown(data.Bin(), constants.AppVersion); err != nil {
 			debuglog.WarnLog("daemon unsafe notice: persist flag: %v", err)
 		}
