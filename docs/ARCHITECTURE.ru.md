@@ -884,10 +884,12 @@ Windows-бинари несут манифест `asInvoker` (он остаёт�
   `-purge-data` (CLI печатает команду для консоли администратора), Kill ядра,
   поднятого повышенным экземпляром (сообщение с Restart as administrator;
   `RunningState` не сбрасывается), переключатель Portable (предикат §7a.2;
-  недоступен в повышенном экземпляре).
+  недоступен в экземпляре, повышенном через UAC).
 - **Автозапуск** — `HKCU\…\Run\singbox-launcher` = `"<exe>" -tray [-start]`
   (`internal/platform/autostart*.go`, `core/autostart.go`): Settings → Connection
-  (недоступно в повышенном экземпляре), `-autostart=on|off` для установщика
+  (недоступно в экземпляре, повышенном через UAC, — `platform.ElevatedViaUAC`,
+  `TokenElevationTypeFull`; без UAC и у встроенного Administrator обычного
+  запуска нет, и настройка доступна), `-autostart=on|off` для установщика
   (SPEC 140), удаление в Remove all data и `-purge-data` — только если значение
   указывает на этот exe.
 - Заголовок окна повышенного экземпляра заканчивается на `(Administrator)`.

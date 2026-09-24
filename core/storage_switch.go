@@ -21,8 +21,8 @@ func PortableToggleAvailable() bool {
 // PortableToggleState — состояние чекбокса Portable в разделе Storage:
 // отмечен в режимах Portable и Legacy; недоступен (enabled=false) с причиной
 // для подсказки, когда раскладку задают переменные окружения, каталог
-// программы не пишется пользователем (SPEC 139 §7), экземпляр повышен или
-// ядро запущено.
+// программы не пишется пользователем (SPEC 139 §7), экземпляр повышен
+// через UAC или ядро запущено.
 func (ac *AppController) PortableToggleState() (checked bool, enabled bool, reason string) {
 	if ac == nil || ac.FileService == nil {
 		return false, false, ""
@@ -44,9 +44,11 @@ func (ac *AppController) portableSwitchBlocker(l paths.Layout) error {
 		return errors.New("portable mode switch is not available on this platform")
 	case l.Mode == paths.ModeEnv:
 		return errors.New(locale.T("Paths are set by environment variables"))
-	case runtime.GOOS == "windows" && platform.IsElevated():
-		// SPEC 139 §6 п. 8: повышенный экземпляр пишет туда, куда обычный
-		// не может, — переезд данных только при обычном запуске.
+	case platform.ElevatedViaUAC():
+		// SPEC 139 §6 п. 8: повышенный через UAC экземпляр пишет туда, куда
+		// обычный не может, — переезд данных только при обычном запуске. Без
+		// UAC (выключен, встроенный Administrator) обычного запуска нет, и
+		// решает предикат ниже.
 		return errors.New(locale.T("Change this in a normal start, not as administrator"))
 	case !paths.AppDirUserWritable(string(l.App), os.Getenv, runtime.GOOS, paths.ProbeWritable):
 		return errors.New(locale.T("The program folder is read-only"))

@@ -24,8 +24,10 @@ type AutostartState struct {
 	Enabled   bool   // значение есть и указывает на этот exe
 	Start     bool   // с -start: подключать VPN при входе
 	OtherExe  string // значение указывает на другую копию лаунчера
-	// Locked — повышенный экземпляр: значение пользовательское (HKCU), а
-	// повышение могло пойти под другой учётной записью — менять нельзя.
+	// Locked — экземпляр повышен через UAC: значение пользовательское
+	// (HKCU), а повышение могло пойти под другой учётной записью — менять
+	// при обычном запуске. Без UAC (выключен, встроенный Administrator)
+	// обычного запуска нет, и настройка доступна.
 	Locked bool
 }
 
@@ -36,7 +38,7 @@ func (ac *AppController) AutostartState() AutostartState {
 	if !st.Supported {
 		return st
 	}
-	st.Locked = platform.IsElevated()
+	st.Locked = platform.ElevatedViaUAC()
 	exe, err := paths.Executable()
 	if err != nil {
 		debuglog.WarnLog("autostart: executable path: %v", err)

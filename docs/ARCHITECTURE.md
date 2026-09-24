@@ -1071,11 +1071,13 @@ virtualization). Proxy-only never elevates; TUN elevates only on an explicit act
   network cleanup in Remove all data / `-purge-data` (CLI prints the command to
   finish from an administrator prompt), Kill of a core started by an elevated
   instance (a message with Restart as administrator; `RunningState` is not
-  reset), the Portable switch (predicate §7a.2; unavailable in an elevated
-  instance).
+  reset), the Portable switch (predicate §7a.2; unavailable in an instance
+  elevated through UAC).
 - **Autostart** — `HKCU\…\Run\singbox-launcher` = `"<exe>" -tray [-start]`
   (`internal/platform/autostart*.go`, `core/autostart.go`): Settings → Connection
-  (locked in an elevated instance), `-autostart=on|off` for the installer
+  (locked in an instance elevated through UAC — `platform.ElevatedViaUAC`,
+  `TokenElevationTypeFull`; with UAC off or as the built-in Administrator there
+  is no normal start, so it stays available), `-autostart=on|off` for the installer
   (SPEC 140), removal in Remove all data and `-purge-data`, only when the value
   points to this executable.
 - The elevated window title ends with `(Administrator)`.

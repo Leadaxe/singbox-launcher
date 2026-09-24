@@ -67,30 +67,55 @@ func tokenElevated() bool {
 	return member
 }
 
-// tokenElevationTypeDefault — TokenElevationTypeDefault: у токена нет
-// связанного (обычный пользователь или выключенный UAC).
-const tokenElevationTypeDefault = 1
+// Значения TOKEN_ELEVATION_TYPE.
+const (
+	// tokenElevationTypeDefault — у токена нет связанного: обычный
+	// пользователь, выключенный UAC или встроенный Administrator.
+	tokenElevationTypeDefault = 1
+	// tokenElevationTypeFull — полный токен, полученный через UAC.
+	tokenElevationTypeFull = 2
+)
+
+var (
+	elevationTypeOnce sync.Once
+	elevationType     uint32 // 0 — не прочитан (ошибка)
+)
+
+// tokenElevationType — TokenElevationType токена процесса, один раз на
+// процесс; 0 — прочитать не удалось.
+func tokenElevationType() uint32 {
+	elevationTypeOnce.Do(func() {
+		tok, err := windows.OpenCurrentProcessToken()
+		if err != nil {
+			debuglog.WarnLog("elevation: open process token: %v", err)
+			return
+		}
+		defer debuglog.RunAndLog("elevation: close process token", tok.Close)
+		var t, n uint32
+		if err := windows.GetTokenInformation(tok, windows.TokenElevationType, (*byte)(unsafe.Pointer(&t)), uint32(unsafe.Sizeof(t)), &n); err != nil {
+			debuglog.WarnLog("elevation: token elevation type: %v", err)
+			return
+		}
+		elevationType = t
+	})
+	return elevationType
+}
 
 // ElevationAsksOtherAccount — повышение спросит учётные данные другой
 // учётной записи: процесс не повышен, а у токена нет связанного полного
 // (обычный пользователь, SPEC 139 §4). Администратор под UAC получает
 // окно подтверждения, а не пароль.
 func ElevationAsksOtherAccount() bool {
-	if IsElevated() {
-		return false
-	}
-	tok, err := windows.OpenCurrentProcessToken()
-	if err != nil {
-		debuglog.WarnLog("elevation: open process token: %v", err)
-		return false
-	}
-	defer debuglog.RunAndLog("elevation: close process token", tok.Close)
-	var t, n uint32
-	if err := windows.GetTokenInformation(tok, windows.TokenElevationType, (*byte)(unsafe.Pointer(&t)), uint32(unsafe.Sizeof(t)), &n); err != nil {
-		debuglog.WarnLog("elevation: token elevation type: %v", err)
-		return false
-	}
-	return t == tokenElevationTypeDefault
+	return !IsElevated() && tokenElevationType() == tokenElevationTypeDefault
+}
+
+// ElevatedViaUAC — процесс повышен через UAC (TokenElevationTypeFull): у
+// пользователя есть и обычный запуск, где меняются пользовательские
+// настройки (автозапуск в HKCU, Portable). Отличается от IsElevated на
+// машинах без UAC и у встроенного Administrator: там права есть всегда, а
+// «обычного запуска» нет — блокировать эти настройки нельзя.
+func ElevatedViaUAC() bool {
+	return tokenElevationType() == tokenElevationTypeFull
 }
 
 // AdminCleanupTasks — очистки старта, которым нужны права администратора

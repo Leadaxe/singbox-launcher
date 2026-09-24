@@ -14,6 +14,9 @@ func IsElevated() bool { return os.Geteuid() == 0 }
 // ElevationAsksOtherAccount — только Windows.
 func ElevationAsksOtherAccount() bool { return false }
 
+// ElevatedViaUAC — только Windows.
+func ElevatedViaUAC() bool { return false }
+
 // AdminCleanupTasks — очистки старта, которым нужны права администратора;
 // вне Windows таких нет.
 func AdminCleanupTasks() []string { return nil }
