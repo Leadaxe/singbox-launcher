@@ -56,7 +56,10 @@
         "maps_to": "obfs.min_packet_size",
         "desc_en": "Minimum obfuscated packet size.",
         "desc_ru": "Минимальный размер обфусцированного пакета.",
-        "impl": "Собственный ключ LxBox для gecko (у hysteria2 нет де-факто URI-ключа) → obfs.min_packet_size. Привязан к gecko-разрыву."
+        "impl": "Ключ gecko → obfs.min_packet_size. Де-факто написание есть: `minPacketSize` (v2rayN; 3x-ui genHysteriaLink пишет пару minPacketSize/maxPacketSize при obfs=gecko — «v2rayN's gecko pair») — читается алиасом (контракт 1.1.54). Канон ЭМИТА остаётся `obfs-min-packet-size`: смена написания сдвинула бы вид ссылки у уже выданных узлов, а тело и identity от написания не зависят. Без алиаса размеры из ссылки 3x-ui терялись МОЛЧА (uri_param_unknown) — ядро брало свой дефолт (sing-quic geckoDefaultMinPacketSize = 512).",
+        "aliases": [
+          "minPacketSize"
+        ]
       },
       "obfs-max-packet-size": {
         "type": "int",
@@ -65,7 +68,10 @@
         "maps_to": "obfs.max_packet_size",
         "desc_en": "Maximum obfuscated packet size.",
         "desc_ru": "Максимальный размер обфусцированного пакета.",
-        "impl": "Собственный ключ LxBox для gecko → obfs.max_packet_size."
+        "impl": "Ключ gecko → obfs.max_packet_size. Алиас `maxPacketSize` — де-факто написание v2rayN/3x-ui (контракт 1.1.54), канон эмита — `obfs-max-packet-size`; см. obfs-min-packet-size.",
+        "aliases": [
+          "maxPacketSize"
+        ]
       },
       "upmbps": {
         "type": "int",
@@ -146,6 +152,17 @@
         "desc_en": "Skip server certificate verification.",
         "desc_ru": "Не проверять сертификат сервера.",
         "impl": "tls.insecure. Значения 1/true/yes. Go: insecure/allowInsecure/allowinsecure + skip-cert-verify (только true/1); Dart добавляет allow_insecure. Целевой набор алиасов — объединение. ЦЕЛЕВОЙ НАБОР ИМЁН — объединение обоих проектов (DRIFT §2(a), общая запись — tls.json /tls/params/insecure): insecure, allowinsecure, allow_insecure, allow-insecure, skipcertverify, skip_cert_verify, skip-cert-verify, noverify; сверка по strings.ToLower со снятием '-'/'_'; истина 1|true|yes единообразно."
+      },
+      "security": {
+        "type": "enum",
+        "values": [
+          "tls"
+        ],
+        "default": null,
+        "maps_to": null,
+        "desc_en": "TLS marker written by 3x-ui; hysteria2 always runs over TLS, so the value changes nothing.",
+        "desc_ru": "Маркер TLS, который пишет 3x-ui; hysteria2 всегда работает поверх TLS, значение ничего не меняет.",
+        "impl": "Контракт 1.1.54. 3x-ui (internal/sub/service.go, genHysteriaLink) пишет `security=tls` в КАЖДУЮ hysteria2-ссылку безусловно. hysteria2 — QUIC с TLS 1.3 внутри, выключить или сменить TLS ссылкой нельзя, поэтому `tls` принимается молча и в тело ничего не пишет. Иное значение (`none`, `reality`, …) узел не ломает, но и не применяется — об этом говорит uri_param_unknown с query_name=security. Заведено ТОЛЬКО у hysteria2: в 1.1.53 (п.7 README) `security` осознанно не заведён «для всех схем» из-за ss-мусора; общий блок tls#uri_security сюда не подключается — его ветка none сняла бы TLS, без которого hysteria2 не поднимается."
       }
     },
     "fragment": "label"
@@ -659,24 +676,32 @@
           }
         },
         "obfs-min-packet-size": {
-          "source": "query.obfs-min-packet-size",
+          "source": [
+            "query.obfs-min-packet-size",
+            "query.minPacketSize"
+          ],
           "maps_to": "obfs.min_packet_size",
           "type": "int",
           "when": {
             "obfs.type": {
               "present": true
             }
-          }
+          },
+          "impl": "Первый источник — канон эмита; `query.minPacketSize` — написание v2rayN/3x-ui (контракт 1.1.54). Правило body.fields obfs.min_packet_size requires type=gecko срабатывает на обоих написаниях одинаково (кейс salamander_camelcase_sizes_dropped)."
         },
         "obfs-max-packet-size": {
-          "source": "query.obfs-max-packet-size",
+          "source": [
+            "query.obfs-max-packet-size",
+            "query.maxPacketSize"
+          ],
           "maps_to": "obfs.max_packet_size",
           "type": "int",
           "when": {
             "obfs.type": {
               "present": true
             }
-          }
+          },
+          "impl": "Симметрично obfs-min-packet-size: алиас `query.maxPacketSize` (v2rayN/3x-ui, контракт 1.1.54)."
         },
         "upmbps": {
           "source": [
@@ -725,6 +750,26 @@
             }
           },
           "impl": "sni_heuristic_falls_back_to_server — у hysteria2 эвристика НАПИСАНИЯ есть на обоих проектах (uri.query.sni.impl), в отличие от trojan и vless. Имя без точки и двоеточия адресом быть не может, а '🔒' — витринный значок подписки: и то и другое уступает адресу сервера. Общий блок tls#uri несёт только цепочку источников и фолбэк на пустом; вторая половина правила объявляется здесь, потому что исполняют её НЕ ВСЕ схемы. Блок tls#uri_reality подключается ЯВНО: контракт 1.1.16 вынес записи REALITY из общего tls#uri, потому что разбирают их не все схемы (у trojan и http веток pbk нет вовсе). hysteria2 их разбирает — фикстура reality_fp_stripped_quic_pair ждёт блок reality в теле, и снимает его потом САНИТАЙЗЕР правилом forbidden_for с кодом tls_not_applicable_quic. Код называет то, что написал автор ссылки, а молчаливый пропуск не называл бы ничего."
+        },
+        "security": {
+          "source": "query.security",
+          "maps_to": null,
+          "when": {
+            "query.security": {
+              "not_in": [
+                "tls",
+                ""
+              ]
+            }
+          },
+          "on_present": {
+            "action": "note",
+            "code": "uri_param_unknown",
+            "params": {
+              "query_name": "security"
+            }
+          },
+          "impl": "Контракт 1.1.54, ссылки 3x-ui. Запись объявляет параметр (иначе `security=tls`, который 3x-ui пишет в каждую hysteria2-ссылку, давал бы uri_param_unknown на каждом узле) и в тело ничего не пишет: у hysteria2 TLS обязателен и ссылкой не выключается. `tls` и пустое значение проходят МОЛЧА (when ложно, on_when_false нет). Иное значение узел не ломает, но честно называется кодом uri_param_unknown — значение не применено. Блок tls#uri_security НЕ подключается: его ветка none сняла бы tls-блок. Кейсы 3xui_gecko_camelcase, security_non_tls_warn."
         }
       },
       "scheme_sets": {

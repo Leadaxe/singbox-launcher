@@ -1,0 +1,3 @@
+# security со значением не tls: узел жив (TLS у hysteria2 обязателен), значение не применено — uri_param_unknown
+# контракт 1.1.54
+hysteria2://secret@example.com:443?security=none&sni=example.com#hy2-security-none

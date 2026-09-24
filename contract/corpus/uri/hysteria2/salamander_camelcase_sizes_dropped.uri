@@ -1,0 +1,3 @@
+# salamander + gecko-размеры в написании 3x-ui/v2rayN: снимаются тем же field_requires, что дефисное написание
+# контракт 1.1.54
+hysteria2://secret@example.com:443?obfs=salamander&obfs-password=op&minPacketSize=512&maxPacketSize=1200&sni=example.com#hy2-salamander-camel

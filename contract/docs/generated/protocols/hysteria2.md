@@ -67,11 +67,13 @@ Everything a link of this scheme can carry, including the TLS and transport para
   - Maps to: [`obfs.password`](#body-obfs-password)
 - <a id="link-proto-obfs-min-packet-size"></a>**`obfs-min-packet-size`** — Minimum obfuscated packet size.
   - Supported by LxBox only
+  - Also spelled: `minPacketSize`
   - Type: int
   - Maps to: [`obfs.min_packet_size`](#body-obfs-min-packet-size)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 - <a id="link-proto-obfs-max-packet-size"></a>**`obfs-max-packet-size`** — Maximum obfuscated packet size.
   - Supported by LxBox only
+  - Also spelled: `maxPacketSize`
   - Type: int
   - Maps to: [`obfs.max_packet_size`](#body-obfs-max-packet-size)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -107,14 +109,13 @@ Everything a link of this scheme can carry, including the TLS and transport para
   - Type: bool
   - Maps to: [`tls.insecure`](#body-tls-insecure)
   - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
+- <a id="link-proto-security"></a>**`security`** — TLS marker written by 3x-ui; hysteria2 always runs over TLS, so the value changes nothing.
+  - Type: enum: `tls`
 
 ### TLS / REALITY
 
 Shared across every scheme that carries a TLS block; the reference page is [`_tls.md`](_tls.md).
 
-- <a id="link-tls-security"></a>**`security`** — Whether the link asks for TLS, and in which flavour.
-  - Type: enum: `""`, `none`, `tls`, `reality` · Default: `""`
-  - Maps to: [`tls.enabled`](#body-tls-enabled)
 - <a id="link-tls-ech"></a>**`ech`** — Encrypted Client Hello parameters in the Xray form.
   - Also spelled: `echfq`
   - Type: string · Default: `""`
@@ -182,7 +183,6 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tls-enabled"></a>**`tls.enabled`** — Enable TLS for this outbound.
   - Type: bool
   - Default: `false`
-  - Set by link parameter: [`security`](#link-tls-security)
 - <a id="body-tls-engine"></a>**`tls.engine`** — TLS implementation used for the handshake.
   - Type: enum, `""`, `go`, `apple`, `windows`, normalized: `trim_lower`
   - Default: `go`
@@ -439,6 +439,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
 **Link parameter names.** The same parameter is spelled differently by different clients; the left spelling is read as the right one.
 
 - `ports` → `mport`
+- `minPacketSize` → `obfs-min-packet-size`
+- `maxPacketSize` → `obfs-max-packet-size`
 - `up_mbps`, `up` → `upmbps`
 - `down_mbps`, `down` → `downmbps`
 - `fingerprint` → `fp`

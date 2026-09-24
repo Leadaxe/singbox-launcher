@@ -6739,3 +6739,34 @@ D133-E12; D133-E1 и D133-24 переписаны, D133-C8 обзавёлся к
   кейсу нужен per-app override; если нет — примитив чиним обе стороны.
 - **§A.9**: исполняет ли ваш движок предикат `has_key`? В грамматике его
   нет, у нас читается только `required_keys`.
+
+## 50. Контракт 1.1.54 — hysteria2: ссылки 3x-ui с gecko читаются без потерь
+
+Ссылка hysteria2 из 3x-ui (`internal/sub/service.go`, `genHysteriaLink`) с
+gecko-обфускацией давала три `uri_param_unknown`: `minPacketSize`,
+`maxPacketSize`, `security`. Узел поднимался с `obfs.type=gecko` и паролем,
+но диапазон размеров пакетов, заданный в панели, терялся МОЛЧА — ядро брало
+свой дефолт (sing-quic `geckoDefaultMinPacketSize = 512`).
+
+- **`minPacketSize` / `maxPacketSize`** — алиасы `obfs-min-packet-size` /
+  `obfs-max-packet-size` (написание v2rayN, 3x-ui повторяет его парой, только
+  при `obfs=gecko`). Второй источник записей `mappers.uri.params`; канон эмита
+  не меняется (`obfs-*-packet-size`), тело и identity тоже. Правило
+  `requires … equals: gecko` на `obfs.{min,max}_packet_size` срабатывает на
+  обоих написаниях — кейс `salamander_camelcase_sizes_dropped`. Прежняя проза
+  «у hysteria2 нет де-факто URI-ключа» снята.
+- **`security`** — заведён ТОЛЬКО у hysteria2 (в 1.1.53 п.(7) он осознанно не
+  заведён «для всех схем» из-за ss-мусора). Запись `maps_to: null`: `tls` и
+  пустое значение молчат, иное (`none`, `reality`) узел не ломает и называется
+  `uri_param_unknown` с `query_name=security` через `on_present` под `when`
+  по источнику (`not_in: ["tls", ""]`). Блок `tls#uri_security` НЕ подключён:
+  его ветка `none` сняла бы tls-блок, без которого hysteria2 не поднимается.
+- **`ech`** у hysteria2 читается уже сейчас (блок `tls#uri`, код
+  `ech_ignored`); **`vcn`** не читается нигде — в этой волне не заводится.
+
+Кейсы корпуса (3): `uri/hysteria2/3xui_gecko_camelcase`,
+`uri/hysteria2/security_non_tls_warn`,
+`uri/hysteria2/salamander_camelcase_sizes_dropped`.
+
+От вас: синк 1.1.54; Dart-движок исполняет алиасы и запись `security` по
+реестру, правок кода ожидать не должно.

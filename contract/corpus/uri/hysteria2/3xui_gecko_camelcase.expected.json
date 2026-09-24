@@ -1,0 +1,29 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "obfs": {
+          "max_packet_size": 1200,
+          "min_packet_size": 512,
+          "password": "op",
+          "type": "gecko"
+        },
+        "password": "secret",
+        "server": "example.com",
+        "server_port": 443,
+        "tls": {
+          "alpn": [
+            "h3"
+          ],
+          "enabled": true,
+          "server_name": "example.com"
+        },
+        "type": "hysteria2"
+      },
+      "kind": "outbound",
+      "label": "3x-ui",
+      "scheme": "hysteria2"
+    }
+  ],
+  "v": 1
+}
