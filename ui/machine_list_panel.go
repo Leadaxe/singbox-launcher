@@ -142,13 +142,11 @@ func CreateMachineListPanel(ac *core.AppController, proxies *ProxyListPanel) fyn
 		})
 	})
 	addBtn.Importance = widget.MediumImportance
-	openBtn := widget.NewButton(locale.T("Open…"), p.importMachines)
-	openBtn.Importance = widget.MediumImportance
 
 	header := container.NewBorder(nil, nil,
 		widget.NewLabelWithStyle(locale.T("MACHINES"), fyne.TextAlignLeading,
 			fyne.TextStyle{Bold: true}),
-		container.NewHBox(openBtn, addBtn),
+		addBtn,
 	)
 
 	scroll := container.NewVScroll(p.list)
@@ -199,28 +197,6 @@ func (p *machineListPanel) Reload() {
 	p.list.Refresh()
 	// Никаких сетевых опросов здесь: показ списка — не повод стучаться к
 	// чужим хостам. Состояние машины появляется только после явного Connect.
-}
-
-// importMachines сливает в список машины из remote-daemons.json другой папки
-// данных (прежняя portable-копия): уже известные адреса пропускаются.
-func (p *machineListPanel) importMachines() {
-	win := p.ac.UIService.MainWindow
-	path, ok, err := platform.PickOpenFile(locale.T("Load remote-daemons.json from another folder"), []string{"json"})
-	if err != nil || !ok {
-		if err == platform.ErrNativeDialogUnavailable {
-			dialog.ShowError(fmt.Errorf("%s", locale.T("Native file dialog is unavailable. Install zenity or kdialog and try again.")), win)
-		} else if err != nil {
-			debuglog.WarnLog("machine list: open dialog: %v", err)
-		}
-		return
-	}
-	n, err := p.registry.ImportFrom(path)
-	if err != nil {
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Import failed"), err), win)
-		return
-	}
-	p.Reload()
-	dialog.ShowInformation(locale.T("Open…"), locale.Tf("Imported %d remote servers", n), win)
 }
 
 // buildRow — одна строка машины: имя, платформа, адрес, статус и кнопки.

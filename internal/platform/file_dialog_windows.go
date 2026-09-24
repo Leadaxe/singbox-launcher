@@ -6,7 +6,19 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"syscall"
+
+	"golang.org/x/sys/windows"
 )
+
+// runDialogPS runs a dialog script in powershell without a console window
+// (CREATE_NO_WINDOW; the WinForms dialog itself is unaffected) and returns
+// its stdout — the picked path(s). All file dialogs go through here.
+func runDialogPS(script string) ([]byte, error) {
+	cmd := exec.Command("powershell", append([]string{"-WindowStyle", "Hidden"}, psDialogArgs(script)...)...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: windows.CREATE_NO_WINDOW}
+	return cmd.Output()
+}
 
 // pickOpenFileNative uses PowerShell + System.Windows.Forms.OpenFileDialog —
 // the native Win32 open dialog (available on Win7+). The script is passed as
@@ -16,7 +28,7 @@ import (
 // Cancel → no output on stdout.
 func pickOpenFileNative(prompt string, exts []string) (string, bool, error) {
 	script := psOpenFileScript(prompt, winFilter(exts), false)
-	out, err := exec.Command("powershell", psDialogArgs(script)...).Output()
+	out, err := runDialogPS(script)
 	if err != nil {
 		return "", false, err
 	}
@@ -32,7 +44,7 @@ func pickOpenFileNative(prompt string, exts []string) (string, bool, error) {
 // печатаем через перевод строки, как договорено в splitPickedPaths.
 func pickOpenFilesNative(prompt string, exts []string) ([]string, bool, error) {
 	script := psOpenFileScript(prompt, winFilter(exts), true)
-	out, err := exec.Command("powershell", psDialogArgs(script)...).Output()
+	out, err := runDialogPS(script)
 	if err != nil {
 		return nil, false, err
 	}
@@ -61,7 +73,7 @@ func winFilter(exts []string) string {
 // by default in WinForms, so the OS asks about overwrite itself.
 func pickSaveFileNative(prompt, defaultName string) (string, bool, error) {
 	script := psSaveFileScript(prompt, defaultName, "JSON (*.json)|*.json|All files (*.*)|*.*")
-	out, err := exec.Command("powershell", psDialogArgs(script)...).Output()
+	out, err := runDialogPS(script)
 	if err != nil {
 		return "", false, err
 	}
