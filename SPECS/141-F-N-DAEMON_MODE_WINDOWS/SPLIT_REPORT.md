@@ -76,3 +76,16 @@ classic. Linux и Win7 — прежние заглушки с новым тег�
   ошибок; полная сборка — в CI.
 - `go run ./tools/win7guard` — чисто; в наборе windows/386 из daemon-файлов
   только заглушки.
+
+## CI
+
+- `ci.yml` `run_mode=tests` — run 36027421305: Test ubuntu / macOS / Windows —
+  success.
+- `ci.yml` `run_mode=build` — run 36027439254: тесты трёх ОС, Build macOS,
+  Win64, Win7 (x86, legacy) — success.
+- `golangci-lint.yml` (запущен дополнительно) — run 36027458093: failure только
+  на errcheck, которые уже есть в `develop` 879f276e (`core/purge.go`,
+  `internal/paths/copytree.go`, `internal/paths/migrate_test.go` и два
+  `defer f.Close()`, перенесённых дословно: `readPlistProgramPath`,
+  `sha256File`). Новое от разделения — `unused` на полях `fileHashKey` под
+  Windows — исправлено: ключ кэша переехал в `_darwin.go`.
