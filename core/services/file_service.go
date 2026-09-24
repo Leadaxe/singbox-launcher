@@ -32,6 +32,7 @@ import (
 
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
@@ -107,6 +108,9 @@ func NewFileService(layout paths.Layout) (*FileService, error) {
 	// Логов ещё нет (они открываются следом, в OpenLogFiles), и debuglog
 	// ранние строки не буферизует — итог пишет main после открытия логов.
 	fs.Migration, fs.MigrationErr = paths.MigrateLegacyData(layout, nil)
+	if fs.MigrationErr == nil && fs.Migration.Migrated {
+		stampPreMigrationDataRoot(layout.Data, fs.Migration.Source)
+	}
 
 	if err := platform.EnsureDirectories(layout); err != nil {
 		return nil, fmt.Errorf("NewFileService: cannot create directories: %w", err)
@@ -118,6 +122,29 @@ func NewFileService(layout paths.Layout) (*FileService, error) {
 	fs.ChildLogPath = filepath.Join(string(layout.Logs), constants.ChildLogFileName)
 
 	return fs, nil
+}
+
+// stampPreMigrationDataRoot записывает в settings.json нового DataDir СТАРЫЙ
+// корень данных — тот, под которым собран перенесённый config.json (SPEC 135
+// §3.4, §3.5). Флаг Migration.Migrated живёт только в памяти первого старта:
+// перезапуск лаунчера до пересборки терял его, и config.json с путями .srs и
+// tailscale на старый корень уходил в ядро как есть. Несовпадение штампа с
+// текущим DataDir переживает перезапуск (core.RefreshTemplateIfStale →
+// пересборка); успешная сборка перепишет штамп текущим корнем.
+//
+// source — App/bin; корень — без хвоста bin, в той же форме, что
+// core.configDataRoot (filepath.Clean). Штамп, уже принесённый из старого
+// settings.json, не трогается. Не записалось — WARN (логов ещё нет, строка
+// уходит в stderr); миграция при этом состоялась.
+func stampPreMigrationDataRoot(data paths.DataDir, source string) {
+	bin := data.Bin()
+	if locale.LoadSettings(bin).ConfigDataRoot != "" {
+		return
+	}
+	oldRoot := filepath.Clean(filepath.Dir(source))
+	if err := locale.MarkConfigDataRoot(bin, oldRoot); err != nil {
+		debuglog.WarnLog("migration: cannot record previous data root %s: %v", oldRoot, err)
+	}
 }
 
 // ResolveCore пересчитывает путь ядра и его спутников (SPEC 135 §3.3, §5):

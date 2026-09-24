@@ -262,9 +262,11 @@ func (ac *AppController) StartTemplateRefresh() {
 		// marker, or its rebuild takes the no-op path and runs the old file.
 		//
 		// SPEC 135 §3.4: after a migration the copied config.json still points
-		// at the old root. The data-root stamp catches that only when the old
-		// settings.json carried one (post-135 releases); the version check is
-		// skipped on dev builds. The migration flag covers both gaps.
+		// at the old root. NewFileService stamps that old root into the new
+		// settings.json when it carried none, so the data-root check above
+		// fires on this start and on any restart before the rebuild. The
+		// in-memory migration flag stays as the fallback for a stamp that
+		// could not be written.
 		migrated := ac.FileService != nil && ac.FileService.Migration.Migrated
 		if (res.RebuildConfig || migrated) && ac.StateService != nil {
 			if migrated && !res.RebuildConfig {

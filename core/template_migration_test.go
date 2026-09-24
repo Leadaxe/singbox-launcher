@@ -297,6 +297,88 @@ func TestRefreshTemplateIfStale_RetriesUntilSuccessThenOncePerVersion(t *testing
 	})
 }
 
+// SPEC 135 §3.4: the config.json copied by the migration points at the old
+// root, and the in-memory Migration.Migrated flag is gone after a restart.
+// The migration stamps the old root into the new settings.json, so a launch
+// that follows it — first or after a restart before the rebuild, dev build
+// included — still rebuilds; a successful build stamps the new root and the
+// check goes quiet. A root already carried by the old settings.json is kept.
+func TestMigrationStampsPreviousDataRoot(t *testing.T) {
+	legacy := func(settings string) paths.Layout {
+		t.Helper()
+		app := newLauncherDir(t)
+		app.write("bin/wizard_states/"+constants.WizardStateFileName, `{"version":7}`)
+		app.write("bin/settings.json", settings)
+		app.write("bin/config.json", `{"route":{"rule_set":[{"path":"`+filepath.Join(app.root, "bin", "rule-sets", "x.srs")+`"}]}}`)
+		base := t.TempDir()
+		return paths.Layout{
+			App:  paths.AppDir(app.root),
+			Data: paths.DataDir(filepath.Join(base, "data")),
+			Logs: paths.LogDir(filepath.Join(base, "logs")),
+			Mode: paths.ModeSystem,
+		}
+	}
+	launch := func(l paths.Layout) (*services.FileService, TemplateRefreshResult) {
+		t.Helper()
+		fs, err := services.NewFileService(l)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fs.MigrationErr != nil {
+			t.Fatal(fs.MigrationErr)
+		}
+		fetch := &templateFetchStub{body: refreshedTemplate, status: http.StatusOK}
+		res, err := RefreshTemplateIfStale(context.Background(), l, fetch.fetch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fetch.calls != 0 {
+			t.Fatalf("dev build must not fetch the template, calls = %d", fetch.calls)
+		}
+		return fs, res
+	}
+
+	withAppVersion(t, "v-local-test", func() {
+		l := legacy(`{"lang":"ru","last_template_launcher_version":"v0.8.8"}`)
+		oldRoot := filepath.Clean(string(l.App))
+
+		fs, res := launch(l)
+		if !fs.Migration.Migrated {
+			t.Fatal("launch 1: legacy data must be migrated")
+		}
+		if got := locale.LoadSettings(l.Data.Bin()).ConfigDataRoot; got != oldRoot {
+			t.Fatalf("launch 1: config_data_root = %q, want the pre-migration root %q", got, oldRoot)
+		}
+		if !res.RebuildConfig {
+			t.Fatal("launch 1: config.json built for the old root must be rebuilt")
+		}
+
+		// Restart before any core start: no migration, no in-memory flag.
+		fs, res = launch(l)
+		if fs.Migration.Migrated {
+			t.Fatal("launch 2: data already migrated")
+		}
+		if !res.RebuildConfig {
+			t.Fatal("launch 2: a restart before the rebuild must still rebuild config.json")
+		}
+
+		stampConfigDataRoot(l) // what a successful build does
+		if _, res = launch(l); res.RebuildConfig {
+			t.Fatal("launch 3: config.json already rebuilt for the new root")
+		}
+
+		// The old settings.json already recorded where config.json was built.
+		const carried = "/where/it/was/built"
+		l = legacy(`{"lang":"ru","config_data_root":"` + carried + `"}`)
+		if _, res = launch(l); !res.RebuildConfig {
+			t.Fatal("carried root: config.json must be rebuilt")
+		}
+		if got := locale.LoadSettings(l.Data.Bin()).ConfigDataRoot; got != carried {
+			t.Fatalf("carried root: config_data_root = %q, want %q kept", got, carried)
+		}
+	})
+}
+
 // Regression: a failed pre-start rebuild used to be logged and sing-box was
 // started on the previous config.json anyway. Now the start is abandoned —
 // no process is even prepared. A missing state.json stays a legitimate start
