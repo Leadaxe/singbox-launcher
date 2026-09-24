@@ -41,7 +41,7 @@
 | Сайдкар | `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/install.json` — `root:wheel 0644`: `{source, sha256, version, installed_at, plist_path, label}` |
 | plist | `ProgramArguments[0]` = копия; остальные ключи plist не меняются |
 | `lxd --service=install` | идемпотентен по sha (равные sha — копия не трогается); `daemon.json`, секрет и клиенты сохраняются; служба перезапускается (`bootout` + `bootstrap`) |
-| `lxd --service=status` | exit 0 — OK, 2 — MISMATCH или UNSAFE, 1 — ошибка; печатает путь, sha256 копии, sha256 вызывающего бинаря, вердикт |
+| `lxd --service=status` | exit 0 — OK, 2 — MISMATCH или UNSAFE, 3 — NOT INSTALLED, 4 — COPY ONLY (копия без службы, `--service=copy` SPEC 137), 1 — ошибка; печатает путь, sha256 копии, sha256 вызывающего бинаря, вердикт |
 | `GET /admin/info` | новые поля `executable`, `executable_sha256`; у ядер до lx.11 их нет — лаунчер проверяет наличие |
 
 Всё читается без sudo: каталог и файл `0755`, сайдкар и plist `0644`.
@@ -156,7 +156,8 @@ Unsafe (создать файл в root-каталоге пользовател�
    - `plutil -p` plist → `ProgramArguments[0]` = копия, прочие ключи прежние;
    - `shasum -a 256 …/sing-box` == `shasum -a 256 ~/Library/Application\ Support/singbox-launcher/bin/sing-box`;
    - `~/Library/Application\ Support/singbox-launcher/bin/sing-box lxd --service=status`
-     (вызывающий бинарь — ядро лаунчера, сверяется с копией) — exit 0;
+     (вызывающий бинарь — ядро лаунчера, сверяется с копией) — exit 0
+     (2 — MISMATCH/UNSAFE, 3 — NOT INSTALLED, 4 — COPY ONLY, 1 — ошибка);
    - Debug API `GET /daemon/status` → `"service_state": "ok"`;
    - `launchctl print system/com.leadaxe.sing-box-lxd` — `state = running`;
    - плашки нет, сопряжение живо (Start/Stop без пароля, список узлов).

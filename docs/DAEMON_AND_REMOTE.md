@@ -111,8 +111,10 @@ of the LOCAL connection settings:
 | ok | the service runs the current root-owned copy | nothing |
 
 An unsafe service is warned about loudly but not blocked: the VPN keeps working until
-you run the command. `sudo <copy> lxd --service=status` prints the same check from
-the core's side (exit 0 — ok, 2 — mismatch or unsafe). The copy lives outside the
+you run the command. `<launcher-core> lxd --service=status` (no sudo needed) prints
+the same check from the core's side, comparing the copy with the binary that runs it:
+exit 0 — ok, 2 — mismatch or unsafe, 3 — not installed, 4 — copy only (a copy without
+the service, SPEC 137), 1 — error. The copy lives outside the
 launcher's data folder, so **Remove all data…** leaves the service in place and offers
 its uninstall command through the copy.
 
