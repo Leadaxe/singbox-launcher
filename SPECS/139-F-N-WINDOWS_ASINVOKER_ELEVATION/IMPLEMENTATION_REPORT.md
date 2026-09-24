@@ -1,8 +1,8 @@
 # SPEC 139 · Отчёт о реализации
 
 Дата: 24.09.2026. Ветка `spec-139-asinvoker` от `develop` `879f276e`. Код
-готов, CI — см. раздел «Проверки»; ручная приёмка §11 на Windows не
-проводилась (машины с Windows у реализации нет).
+готов, CI зелёный (раздел «Проверки»); ручная приёмка §11 на Windows не
+проводилась.
 
 ## Что сделано
 
@@ -106,7 +106,18 @@ Connection (только Windows), подсказка «another copy», блок
 11. **`RELEASE_NOTES.md`** — раздел ветки без номера версии, как у 136/137;
     итоговую выжимку версии пишет релиз.
 
-## Не проверено (ручная приёмка SPEC §11, CI `run_mode=build`)
+## Проверки
+
+- Локально: `go build ./...`; `GOOS=windows GOARCH=amd64|386 CGO_ENABLED=0 go vet`
+  для `internal/platform`, `internal/paths`, `internal/process` (UI и `core` под
+  Windows без cgo не собираются); `go test ./internal/paths -run
+  TestResolveMatrix`; `win7guard`, `paths_guard --strict`, `l10n_check --strict`,
+  `hardcoded_check --strict` — чисто.
+- CI `run_mode=tests` — run 36023432577: Test на macOS, Ubuntu, Windows — зелёный.
+- CI `run_mode=build` — run 36023446055: Test ×3, Build Windows (Win64), Build
+  Windows 7 (x86, legacy, go1.20 + x/sys v0.25.0), Build macOS — зелёный.
+
+## Не проверено (ручная приёмка SPEC §11)
 
 Вся Windows-специфика проверена только сборкой (CI win64 и win7-32) и
 `GOOS=windows go vet` пакетов без cgo; UI-пакет под Windows локально не
