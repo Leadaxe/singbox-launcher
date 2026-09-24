@@ -32,6 +32,8 @@ path getters. Platform-tagged files (`*_darwin.go`/`*_linux.go`/`*_windows.go`/
 | `fs_unix.go` / `fs_windows.go` | Atomic-write / fsync filesystem helpers per OS. |
 | `dock_handler.go` / `dock_handler_stub.go` | macOS Dock hide; stub elsewhere. |
 | `privileged_darwin.go` / `privileged_stub.go` | macOS privileged execution via AEWP (SPEC 137): the TUN start of the root-owned core copy through `env -i` + a constant `sh` body, the core log `/Library/Logs/sing-box-lxd/classic.log` (root-owned folder, file owned by the launcher user `0600`) prepared and rotated by the same body (137.1), kill / pkill by absolute path without a shell, the authorization-lifetime flag `privilegedAuthReuse`; stub elsewhere. |
+| `elevation.go` / `elevation_windows.go` / `elevation_other.go` | **SPEC 139.** `IsElevated` (`TokenElevation` or membership in Administrators, once per process), `ElevationAsksOtherAccount`, `AdminCleanupTasks`; `RunElevated` — `ShellExecuteExW` `runas` returning `*ElevatedProcess` (pid, `Wait`, `Close`; reused by SPEC 141), `ErrElevationCancelled`; `WaitForProcessExit` for `-handoff`. Off Windows: `euid == 0` and "not supported". |
+| `autostart.go` / `autostart_windows.go` / `autostart_other.go` | **SPEC 139 §8.** `HKCU\…\Run\singbox-launcher` value: `"<exe>" -tray [-start]` format and parsing (common), registry read/write/delete (Windows). |
 | `singbox_exec_path.go` | Resolve the sing-box executable path: `SINGBOX_LAUNCHER_CORE` → `DataDir/bin` → `AppDir/bin` → `PATH` (SPEC 135 §3.3; unified across platforms, `PATH` last everywhere — previously Linux-only and first). |
 
 ### `internal/paths` (SPEC 135)
@@ -43,11 +45,11 @@ cycles.
 
 | File | Purpose |
 |------|---------|
-| `paths.go` | `AppDir`/`DataDir`/`LogDir`/`Mode`/`Layout` types, `Resolve` (env → `portable.txt` → legacy detection → platform default), `ProbeWritable`, `Executable` (`EvalSymlinks`), `IsAppBundle`, `Layout.LogLine()`, `PathsInfo` (Settings/`-paths`/`/debug/paths` block). |
+| `paths.go` | `AppDir`/`DataDir`/`LogDir`/`Mode`/`Layout` types, `Resolve` (env → `portable.txt` → legacy detection → platform default), `AppDirUserWritable` (probe + protected Windows folders, SPEC 139 §7), `Layout.Handoff` / `ParseHandoff` (`-handoff`), `ProbeWritable`, `Executable` (`EvalSymlinks`), `IsAppBundle`, `Layout.LogLine()`, `PathsInfo` (Settings/`-paths`/`/debug/paths` block). |
 | `copytree.go` | `CopyTree` — shared copier for migration and the Portable switch: temp `dst.migrating`, owner rwx/rw normalization, unreadable-entry skip with a report, atomic promote-by-rename. |
 | `migrate.go` | `MigrateLegacyData` — copies `AppDir/bin` → `DataDir/bin` on first start when the layout is system/env and only the legacy location has `state.json`; writes `.migrated_from` last. |
 | `switch.go` | `SwitchToPortable` / `SwitchToSystem` / `SystemDefault` for the Settings → Storage Portable checkbox; `MovedBinPrefix` for leftovers from a failed switch. |
-| `purge.go` | `BuildPurgePlan` / `ExecutePurge` for the “Remove all data…” dialog and `-purge-data [-yes]`: what counts as data vs. shipped-and-kept, leftover detection, byte/file counting. |
+| `purge.go` | `BuildPurgePlan` / `ExecutePurge` for the “Remove all data…” dialog and `-purge-data [-yes]`: what counts as data vs. shipped-and-kept, leftover detection, byte/file counting; leftovers under an AppDir the process cannot write are `NeedsAdmin` (skipped, SPEC 139 §6). |
 
 ---
 
@@ -69,7 +71,7 @@ Each package is self-contained and dependency-free (or depends only on `debuglog
 | `internal/ctxutil` | Sleep-aware context helper. | `sleep.go` |
 | `internal/process` | Thin process-list wrapper used by runtime checks. | `process.go` |
 | `internal/wizardsync` | Fyne-free predicates for GUI→model merge (`GuiTextAwaitingProgrammaticFill`, `FinalOutboundSelectReadLooksStale`) — unit-testable without CGO/GL. | `guards.go` |
-| `internal/dialogs` | Shared dialog primitives independent of `ui` (custom dialog, download-failed dialog, auto-hide info, command + Retry dialog). | `dialogs.go` |
+| `internal/dialogs` | Shared dialog primitives independent of `ui` (custom dialog, download-failed dialog, auto-hide info, command + Retry dialog, action list with a status line — `ShowActions`, SPEC 139). | `dialogs.go` |
 | `internal/lxdclient` | mTLS client for the `sing-box lxd` daemon (SPEC 096/097): admin REST calls, certificate pinning (never optional), one-time invite parsing (`address#fingerprint#code`), per-machine client identity, channel detection, host telemetry + clients-info readers. No app state. | `client.go`, `identity.go`, `invite.go`, `host.go` |
 
 > Note: `internal/dialogs` and `internal/fynewidget` both depend on Fyne. `dialogs`
@@ -305,6 +307,8 @@ semantics: `contract/docs/BACKUP.md`.
 | `rebuild_raw_cache.go` | `buildSnapshotFromRawCache` — rebuild from `.raw` bodies without network. |
 | `auto_update.go` | SPEC 052 per-source event-driven auto-update: heartbeat loop, retry timers, subscribes `VpnStateChanged`. |
 | `log_level.go` | Headless log-level apply (Load→mutate→Save). |
+| `elevation.go` | **SPEC 139.** Windows elevation on demand: TUN gate in `ProcessService.Start` and its dialog (Restart as administrator / Switch to proxy mode), `RestartAsAdministrator` (`flag.Visit` args + `-handoff`, `platform.RunElevated`, then `GracefulExit`), `SwitchToProxyMode`, Kill of an elevated core without rights, `setLocalStateVars` (shared with `log_level.go`), the INFO line of skipped admin-only cleanups. |
+| `autostart.go` | **SPEC 139 §8.** Start with Windows: state for Settings, `SetAutostart`, `AutostartCLI` (`-autostart=on|off`), removal in Remove all data / `-purge-data` only when the value points to this exe. |
 | `core_downloader.go` / `core_version.go` | sing-box download + version (pinned via `constants.RequiredCoreVersion`); launcher self-update check. |
 | `wintun_downloader.go` | wintun.dll download (Windows). |
 | `template_migration.go` | `InvalidateTemplateIfStale` — drop local template on launcher upgrade. |

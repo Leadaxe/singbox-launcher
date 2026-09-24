@@ -872,9 +872,10 @@ jobs:
 
             1. Download: `singbox-launcher-${{ needs.meta.outputs.version }}-win64.zip`
                - or `singbox-launcher-${{ needs.meta.outputs.version }}-win64-full.zip` — **full** bundle: `sing-box.exe`, `wintun.dll`, the config template and Mesa3D (`mesa3d/`, used only when no hardware OpenGL — RDP, VMs) are already inside, nothing is downloaded on first launch
-            2. Extract the ZIP file to a folder, for example: `C:\Program Files\singbox-launcher\`
-            3. Run `singbox-launcher.exe` from that folder
-               - You may need administrator rights to install to Program Files
+            2. Extract the ZIP file to a folder your account can write to, for example `D:\Tools\singbox-launcher\` — settings stay next to the program (`portable.txt`)
+               - Under `C:\Program Files\` the launcher keeps its data in `%LOCALAPPDATA%\singbox-launcher` instead
+            3. Run `singbox-launcher.exe` from that folder — no administrator rights, no UAC prompt
+               - TUN needs administrator rights: Start offers **Restart as administrator** or **Switch to proxy mode**
                - The regular archive downloads `sing-box` and `wintun.dll` on first launch
 
             #### Windows 7 (x86, legacy)

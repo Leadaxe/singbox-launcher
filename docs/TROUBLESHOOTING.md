@@ -19,6 +19,47 @@ four actions) is in [issue #126](https://github.com/Leadaxe/singbox-launcher/iss
 administrator; the launcher does not install it, and the project has not verified it on
 other distributions.
 
+## Windows
+
+### Start shows “TUN needs administrator rights”
+
+The launcher runs without administrator rights (no UAC prompt at start), and TUN
+creates a network adapter and changes routes, which Windows allows only to
+administrators. The dialog offers:
+
+- **Restart as administrator** — one UAC prompt; the launcher restarts elevated with
+  the same data folder (the window title ends with `(Administrator)`) and starts the
+  VPN. On a standard user account Windows asks for an administrator's password, and
+  the launcher then runs under that account. Declining the prompt keeps the dialog
+  open.
+- **Switch to proxy mode** — turns TUN off and the local proxy with the system proxy
+  on (port `proxy_in_listen_port`, 7890 by default): browsers and most apps go
+  through the VPN, the rest connect directly. Unavailable while the configurator is
+  open — close it first.
+
+To start elevated every time, use a shortcut with “Run as administrator”; Start with
+Windows (Settings → Connection) always starts the launcher without rights.
+
+### “Sing-Box appears to be already running”, and Kill says it needs administrator rights
+
+sing-box was started by an elevated launcher that is gone (closed in Task Manager or
+crashed), and a launcher without rights cannot stop it. Choose **Restart as
+administrator** in the message; in the elevated launcher the same warning appears,
+and **Kill Process** stops the core. Network cleanup (ghost adapters, NLA profiles,
+orphan firewall rules) also runs only in an elevated launcher: without rights it is
+skipped and logged as one INFO line.
+
+### Data is in `%LOCALAPPDATA%` although `portable.txt` lies next to the program
+
+The program folder is under `Program Files` (or `Windows`), where only administrators
+can write, so the marker is ignored — **Settings → Storage → Mode** shows
+`portable.txt ignored`. Data from an older version kept next to the program was
+copied to `%LOCALAPPDATA%\singbox-launcher` on the first start; the old copy stays in
+place. To keep data next to the program, extract the zip to a folder your account can
+write to. **Remove all data…** without rights skips the old copy in `Program Files`
+(*Requires administrator rights*); run `"<exe>" -purge-data -yes` from an
+administrator command prompt to remove it.
+
 ## Remote machines
 
 ### Save and Deploy succeed, but the machine keeps running the old rules

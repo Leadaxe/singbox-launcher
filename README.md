@@ -272,10 +272,14 @@ Pre-built binaries are not distributed. Build from source — see [Building from
 ### Windows
 
 1. Download from [Releases](https://github.com/Leadaxe/singbox-launcher/releases) — regular archive for Win 10/11, `singbox-launcher-<version>-win64-full.zip` if you want everything inside (core, `wintun.dll`, template, Mesa3D for RDP/VMs without a GPU — nothing is downloaded on first launch), `singbox-launcher-<version>-win7-32.zip` for Windows 7.
-2. Extract to any folder (e.g. `C:\Program Files\singbox-launcher`).
-3. Run `singbox-launcher.exe`.
+2. Extract to a folder your account can write to (e.g. `D:\Tools\singbox-launcher` or a folder in your profile): the zip ships `portable.txt`, so settings stay next to the program. `C:\Program Files\…` works too, but only administrators can write there, so the marker is ignored and data lives in `%LOCALAPPDATA%\singbox-launcher` (see [Where data lives](#where-data-lives)).
+3. Run `singbox-launcher.exe`. It starts **without administrator rights**, with no UAC prompt.
 4. **Local** tab → **Download** to fetch `sing-box.exe`, then **Download wintun.dll** if needed.
 5. Open **Wizard** → paste subscription URL → walk through tabs → **Save** → **Start**.
+
+**TUN and administrator rights.** Proxy mode (`proxy-in` with the system proxy) needs no rights. TUN (the default) creates a network adapter and changes routes, which Windows allows only to administrators: **Start** without rights shows a dialog — **Restart as administrator** (one UAC prompt; the launcher restarts elevated, with the same data, and starts the VPN) or **Switch to proxy mode** (turns TUN off and the system proxy on). An elevated window has `(Administrator)` in its title.
+
+**Start with Windows**: **Settings → Connection → Start with Windows** starts the launcher in the tray at sign-in (the `singbox-launcher` value in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`); **Connect VPN at sign-in** also starts the VPN — in proxy mode directly, with TUN through the dialog above. Installers can set it with `singbox-launcher.exe -autostart=on|off`.
 
 ### macOS
 
@@ -325,7 +329,7 @@ The launcher separates three roles instead of keeping everything next to the exe
 
 Inside the data directory, the layout is the same `bin/…` tree previous versions kept next to the executable — `bin/config.json`, `bin/wizard_states/` (`state.json`, named snapshots, `remote/<machine-id>/` per paired machine), `bin/subscriptions/<id>.raw`, `bin/rule-sets/*.srs`, `bin/sing-box(.exe)`, `bin/wintun.dll` — it is a stable contract external tools (backup scripts, MCP servers, CI) can rely on.
 
-**Portable mode** keeps everything next to the program folder — the classic "flash drive" layout. It is on by default in every Windows zip release (a `portable.txt` marker ships with it); toggle it from **Settings → Storage → Portable mode**, which moves your data and restarts the app, or drop/remove `portable.txt` next to the executable yourself. It is unavailable on macOS `.app` builds and unnecessary on a bare macOS binary (already portable).
+**Portable mode** keeps everything next to the program folder — the classic "flash drive" layout. It is on by default in every Windows zip release (a `portable.txt` marker ships with it); toggle it from **Settings → Storage → Portable mode**, which moves your data and restarts the app, or drop/remove `portable.txt` next to the executable yourself. It is unavailable on macOS `.app` builds and unnecessary on a bare macOS binary (already portable). The program folder must be writable by your account: in a read-only folder — on Windows also anywhere under `Program Files` or `Windows`, even for an elevated launcher — `portable.txt` is ignored, data goes to the platform default, and **Settings → Storage → Mode** says `portable.txt ignored`. Data a previous version kept next to the program there is copied over on the first start; the old copy stays in place.
 
 **Environment overrides** (for Flatpak wrappers, packaging, CI, or a non-default disk layout), each independent of the others:
 
@@ -335,7 +339,7 @@ Inside the data directory, the layout is the same `bin/…` tree previous versio
 
 **See where things actually are**: **Settings → Storage** lists Mode/Program/Data/Logs/Core/Template with per-row **Open** buttons and a **Copy paths** button (paste the result into a bug report). On a machine where the window won't come up (e.g. NixOS without a working GL driver), run `singbox-launcher -paths` to print the same block to stdout and exit.
 
-**Remove the launcher and its data**: the program folder itself (the executable, on macOS the `.app`) is yours to delete however you like — the launcher never touches it. To also remove data and logs cleanly, use **Settings → Storage → Remove all data…**, or run `singbox-launcher -purge-data` for a dry-run listing (add `-yes` to actually delete). The VPN must be stopped first either way.
+**Remove the launcher and its data**: the program folder itself (the executable, on macOS the `.app`) is yours to delete however you like — the launcher never touches it. To also remove data and logs cleanly, use **Settings → Storage → Remove all data…**, or run `singbox-launcher -purge-data` for a dry-run listing (add `-yes` to actually delete). The VPN must be stopped first either way. On Windows it also removes the **Start with Windows** entry if it points to this copy. Without administrator rights, network cleanup (ghost adapters, firewall rules) and leftovers inside a protected program folder are skipped and marked *Requires administrator rights*; running `"<exe>" -purge-data -yes` from an administrator command prompt finishes the job.
 
 **Upgrading on macOS**: if data used to live inside an older `.app` bundle, the first launch of a version with this data layout migrates it automatically into `~/Library/Application Support/singbox-launcher`. Dragging a new `.app` over the old one in Finder replaces the bundle (and anything still inside it) *before* the new binary ever runs, so migration cannot save data that way — **take a Backup first** (Settings → Backup → LX Backup) or update in place with `build/build_darwin.sh -i`, which only swaps the executable.
 
@@ -402,6 +406,7 @@ To run GUI tests locally, set `TEST_PACKAGE` manually inside the script or invok
 | Wizard opens but Save fails | Inspect Internal log in **Log window**; schema validation error message is logged. |
 | Server list is empty / disabled | sing-box is not running (the list is intentionally inert until the engine is up). |
 | Subscription returns empty / errors | Check **Subscription identification** in Settings — HWID-binding panels need `Send device ID` enabled. Look at the ⚠ badge tooltip for provider announce. |
+| Windows: Start shows “TUN needs administrator rights” | The launcher runs without administrator rights; TUN needs them. Choose **Restart as administrator** or **Switch to proxy mode** — see [Installation → Windows](#windows-1). |
 | TUN doesn't capture traffic (Linux/macOS) | TUN interface usually needs root: `sudo ./singbox-launcher` or `sudo setcap cap_net_admin+ep ./singbox-launcher` (Linux). |
 | Linux: password asked 3× on VPN start, 1× on stop | `systemd-resolved` + Polkit authorize each `resolvectl` D-Bus action separately — see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#linux). |
 | Win7 32-bit: tray icon shows but window is blank / empty frame | OpenGL 2.0 vs Fyne's 2.1+ requirement — see [docs/WIN7_OPENGL.md](docs/WIN7_OPENGL.md) for the Mesa3D drop-in fix. |
