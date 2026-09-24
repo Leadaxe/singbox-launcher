@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 
 	"singbox-launcher/internal/constants"
@@ -36,16 +37,27 @@ func TestResolveMatrix(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	systemAt := func(app string, markerIgnored bool) Layout {
+		return Layout{App: AppDir(app), Data: DataDir(join("/lad", "singbox-launcher")), Logs: LogDir(join("/lad", "singbox-launcher", "logs")), Mode: ModeSystem, MarkerIgnored: markerIgnored}
+	}
+	// Защищённые каталоги Windows (SPEC 139 §7) задаются относительно AppDir
+	// фикстуры: он — временный каталог хоста.
+	parentAs := func(name string) func(app string) map[string]string {
+		return func(app string) map[string]string { return map[string]string{name: filepath.Dir(app)} }
+	}
+
 	cases := []struct {
-		name    string
-		goos    string
-		bundle  bool // exe внутри X.app/Contents/MacOS
-		marker  bool // portable.txt рядом с бинарём
-		legacy  bool // bin/wizard_states/state.json рядом с бинарём
-		probe   bool
-		env     map[string]string
-		want    func(app string) Layout
-		wantErr bool
+		name   string
+		goos   string
+		bundle bool // exe внутри X.app/Contents/MacOS
+		marker bool // portable.txt рядом с бинарём
+		legacy bool // bin/wizard_states/state.json рядом с бинарём
+		probe  bool
+		env    map[string]string
+		// extraEnv — переменные, зависящие от AppDir (защищённые каталоги).
+		extraEnv func(app string) map[string]string
+		want     func(app string) Layout
+		wantErr  bool
 	}{
 		{
 			name: "env data only", goos: "linux", marker: true,
@@ -62,7 +74,7 @@ func TestResolveMatrix(t *testing.T) {
 			},
 		},
 		{
-			name: "env log only, data by marker", goos: "linux", marker: true,
+			name: "env log only, data by marker", goos: "linux", marker: true, probe: true,
 			env: map[string]string{constants.EnvLogDir: logEnv},
 			want: func(app string) Layout {
 				return Layout{App: AppDir(app), Data: DataDir(app), Logs: LogDir(logEnv), Mode: ModeEnv, EnvSource: []string{constants.EnvLogDir}}
@@ -88,8 +100,62 @@ func TestResolveMatrix(t *testing.T) {
 			want: func(app string) Layout { return portableAt(app, ModePortable) },
 		},
 		{
-			name: "marker on windows", goos: "windows", marker: true,
+			name: "marker on windows", goos: "windows", marker: true, probe: true,
+			env:  map[string]string{"LOCALAPPDATA": "/lad", "ProgramFiles": `C:\Program Files`},
+			want: func(app string) Layout { return portableAt(app, ModePortable) },
+		},
+		// SPEC 139 §7: AppDir под защищённым каталогом Windows не пишется
+		// пользователем, даже если проба проходит (повышенный экземпляр):
+		// маркер и Legacy игнорируются, раскладка — системная.
+		{
+			name: "marker under Program Files, probe passes", goos: "windows", marker: true, probe: true,
+			env: map[string]string{"LOCALAPPDATA": "/lad"}, extraEnv: parentAs("ProgramFiles"),
+			want: func(app string) Layout { return systemAt(app, true) },
+		},
+		{
+			name: "legacy under Program Files (x86), case-insensitive", goos: "windows", legacy: true, probe: true,
+			env: map[string]string{"LOCALAPPDATA": "/lad"},
+			extraEnv: func(app string) map[string]string {
+				return map[string]string{"ProgramFiles(x86)": strings.ToUpper(filepath.Dir(app))}
+			},
+			want: func(app string) Layout { return systemAt(app, false) },
+		},
+		{
+			name: "marker and legacy at ProgramW6432 root", goos: "windows", marker: true, legacy: true, probe: true,
+			env: map[string]string{"LOCALAPPDATA": "/lad"},
+			extraEnv: func(app string) map[string]string {
+				return map[string]string{"ProgramW6432": app + string(filepath.Separator)}
+			},
+			want: func(app string) Layout { return systemAt(app, true) },
+		},
+		{
+			name: "legacy under SystemRoot", goos: "windows", legacy: true, probe: true,
+			env: map[string]string{"LOCALAPPDATA": "/lad"}, extraEnv: parentAs("SystemRoot"),
+			want: func(app string) Layout { return systemAt(app, false) },
+		},
+		{
+			name: "protected prefix without directory boundary", goos: "windows", marker: true, probe: true,
+			env: map[string]string{"LOCALAPPDATA": "/lad"},
+			extraEnv: func(app string) map[string]string {
+				return map[string]string{"ProgramFiles": app[:len(app)-1]}
+			},
+			want: func(app string) Layout { return portableAt(app, ModePortable) },
+		},
+		{
+			name: "marker in read-only folder on windows", goos: "windows", marker: true, probe: false,
 			env:  map[string]string{"LOCALAPPDATA": "/lad"},
+			want: func(app string) Layout { return systemAt(app, true) },
+		},
+		{
+			name: "marker in read-only folder on linux", goos: "linux", marker: true, probe: false,
+			env: map[string]string{"HOME": home},
+			want: func(app string) Layout {
+				return Layout{App: AppDir(app), Data: DataDir(join(home, ".local", "share", "singbox-launcher")), Logs: LogDir(join(home, ".local", "state", "singbox-launcher", "logs")), Mode: ModeSystem, MarkerIgnored: true}
+			},
+		},
+		{
+			name: "protected dirs do not apply off windows", goos: "linux", marker: true, probe: true,
+			env: map[string]string{"HOME": home}, extraEnv: parentAs("ProgramFiles"),
 			want: func(app string) Layout { return portableAt(app, ModePortable) },
 		},
 		{
@@ -164,6 +230,7 @@ func TestResolveMatrix(t *testing.T) {
 			want: func(app string) Layout { return portableAt(app, ModePortable) },
 		},
 		{name: "windows no roots, not writable", goos: "windows", probe: false, wantErr: true},
+		{name: "windows no roots, under Program Files", goos: "windows", probe: true, extraEnv: parentAs("ProgramFiles"), wantErr: true},
 	}
 
 	for _, tc := range cases {
@@ -182,7 +249,16 @@ func TestResolveMatrix(t *testing.T) {
 				writeFile(t, join(app, "bin", "wizard_states", "state.json"))
 			}
 			exe := join(app, "singbox-launcher")
-			env := func(k string) string { return tc.env[k] }
+			vars := map[string]string{}
+			for k, v := range tc.env {
+				vars[k] = v
+			}
+			if tc.extraEnv != nil {
+				for k, v := range tc.extraEnv(app) {
+					vars[k] = v
+				}
+			}
+			env := func(k string) string { return vars[k] }
 			probe := func(dir string) bool {
 				if dir != app {
 					t.Errorf("probe called for %q, want AppDir %q", dir, app)
@@ -205,6 +281,46 @@ func TestResolveMatrix(t *testing.T) {
 			}
 		})
 	}
+
+	// -handoff (SPEC 139 §5): раскладка родителя для повышенного экземпляра
+	// идёт мимо Resolve; App — каталог своего exe.
+	t.Run("handoff", func(t *testing.T) {
+		app := t.TempDir()
+		exe := join(app, "singbox-launcher")
+		valid := "4242|system|" + dataEnv + "|" + logEnv
+		want := Layout{App: AppDir(app), Data: DataDir(dataEnv), Logs: LogDir(logEnv), Mode: ModeSystem}
+
+		got, pid, err := ParseHandoff(valid, exe)
+		if err != nil || pid != 4242 || !reflect.DeepEqual(got, want) {
+			t.Fatalf("ParseHandoff(%q) = %+v, %d, %v; want %+v, 4242", valid, got, pid, err, want)
+		}
+		if back := got.Handoff(pid); back != valid {
+			t.Errorf("Handoff round trip = %q, want %q", back, valid)
+		}
+
+		// portable.txt рядом с бинарём при System — маркер игнорирован у
+		// родителя, пометка восстанавливается.
+		writeFile(t, join(app, constants.PortableMarkerFileName))
+		want.MarkerIgnored = true
+		if got, _, err := ParseHandoff(valid, exe); err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("with marker: got %+v, %v; want %+v", got, err, want)
+		}
+
+		for _, bad := range []string{
+			"",
+			"4242|system|" + dataEnv,
+			"0|system|" + dataEnv + "|" + logEnv,
+			"-1|system|" + dataEnv + "|" + logEnv,
+			"pid|system|" + dataEnv + "|" + logEnv,
+			"4242|nomad|" + dataEnv + "|" + logEnv,
+			"4242|system|rel/data|" + logEnv,
+			"4242|system|" + dataEnv + "|rel/logs",
+		} {
+			if l, _, err := ParseHandoff(bad, exe); err == nil {
+				t.Errorf("ParseHandoff(%q) = %+v, want error", bad, l)
+			}
+		}
+	})
 }
 
 func TestIsAppBundle(t *testing.T) {

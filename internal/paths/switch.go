@@ -64,7 +64,8 @@ func (r SwitchReport) Summary() string {
 // окружения, маркера и унаследованных данных: куда уедут данные при
 // выключении Portable. Ошибка, если у платформы нет системного дефолта
 // (голый бинарь macOS, Windows без LOCALAPPDATA и USERPROFILE) — выключать
-// Portable там некуда.
+// Portable там некуда. Windows-фоллбэк решает предикат AppDirUserWritable
+// (SPEC 139 §7), как и в Resolve.
 func SystemDefault(exe string, env func(string) string, goos string, probe func(string) bool) (Layout, error) {
 	app := AppDir(filepath.Dir(exe))
 	l, err := platformDefault(app, IsAppBundle(exe, goos), env, goos, probe)

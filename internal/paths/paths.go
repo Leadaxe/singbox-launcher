@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"singbox-launcher/internal/constants"
@@ -44,6 +45,10 @@ type Layout struct {
 	// EnvSource — имена сработавших переменных при Mode == ModeEnv
 	// (в порядке DATA, LOG); пусто иначе.
 	EnvSource []string
+	// MarkerIgnored — рядом с бинарём лежит portable.txt, но AppDir не
+	// пишется пользователем (SPEC 139 §7): маркер не применён, раскладка
+	// выбрана правилами 3–4.
+	MarkerIgnored bool
 }
 
 func (a AppDir) String() string  { return string(a) }
@@ -56,13 +61,72 @@ func (a AppDir) Bin() string { return filepath.Join(string(a), constants.BinDirN
 // Bin — <DataDir>/bin: состояние, кэши, скачанное.
 func (d DataDir) Bin() string { return filepath.Join(string(d), constants.BinDirName) }
 
+// markerIgnoredNote — пометка игнорированного маркера в логе, -paths и
+// /debug/paths (SPEC 139 §7). Не локализуется: текст прикладывают к issue.
+const markerIgnoredNote = "portable.txt ignored"
+
 // LogLine — первая строка лога старта.
 func (l Layout) LogLine() string {
 	s := fmt.Sprintf("layout: mode=%s app=%s data=%s logs=%s", l.Mode, l.App, l.Data, l.Logs)
 	if l.Mode == ModeEnv && len(l.EnvSource) > 0 {
 		s += " env=" + strings.Join(l.EnvSource, ",")
 	}
+	if l.MarkerIgnored {
+		s += ", " + markerIgnoredNote
+	}
 	return s
+}
+
+// AppDirUserWritable — «AppDir пишется пользователем» (SPEC 139 §7): проба
+// записи и (не Windows или AppDir не лежит под защищённым каталогом Windows:
+// %ProgramFiles%, %ProgramFiles(x86)%, %ProgramW6432%, %SystemRoot%).
+//
+// Одной пробы мало: в Program Files повышенный экземпляр её проходит, а
+// обычный — нет, и без второго условия они выбрали бы разные DataDir.
+// Защищённый каталог проверяется первым — повышенный экземпляр не пишет в
+// Program Files даже файл пробы. Предикатом пользуется всё, что выбирает
+// раскладку: правила 2–3 и Windows-фоллбэк в Resolve, SystemDefault,
+// блокировка переключателя Portable.
+func AppDirUserWritable(app string, env func(string) string, goos string, probe func(string) bool) bool {
+	if goos == "windows" && underProtectedWindowsDir(app, env) {
+		return false
+	}
+	return probe(app)
+}
+
+// protectedWindowsDirVars — переменные окружения защищённых каталогов Windows.
+var protectedWindowsDirVars = []string{"ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "SystemRoot"}
+
+// underProtectedWindowsDir — dir совпадает с одним из защищённых каталогов
+// или лежит внутри него. Сравнение без регистра и по границе каталога
+// («C:\Program Files» не накрывает «C:\Program FilesX»); разделители — оба,
+// чтобы решение не зависело от ОС, на которой идёт сравнение (тесты).
+func underProtectedWindowsDir(dir string, env func(string) string) bool {
+	d := normWinPath(dir)
+	for _, name := range protectedWindowsDirVars {
+		root := normWinPath(env(name))
+		if root == "" {
+			continue
+		}
+		if d == root || strings.HasPrefix(d, root+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// normWinPath — путь для сравнения: прямые слэши, без хвостового слэша,
+// нижний регистр.
+func normWinPath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return ""
+	}
+	p = strings.ToLower(strings.ReplaceAll(p, `\`, "/"))
+	for len(p) > 1 && strings.HasSuffix(p, "/") {
+		p = strings.TrimSuffix(p, "/")
+	}
+	return p
 }
 
 // Executable — путь к бинарю после разворота симлинков (Homebrew,
@@ -108,9 +172,11 @@ func IsAppBundle(exe string, goos string) bool {
 // Resolve определяет раскладку; первое сработавшее правило выигрывает
 // (SPEC 135 §3.2):
 //  1. SINGBOX_LAUNCHER_DATA_DIR / SINGBOX_LAUNCHER_LOG_DIR, каждая независимо;
-//  2. маркер portable.txt рядом с бинарём;
+//  2. маркер portable.txt рядом с бинарём, если AppDir пишется
+//     пользователем (AppDirUserWritable, SPEC 139 §7); иначе маркер
+//     игнорируется (Layout.MarkerIgnored);
 //  3. унаследованная раскладка (bin/wizard_states/state.json рядом с бинарём
-//     и каталог пишется);
+//     и AppDir пишется пользователем);
 //  4. платформенный дефолт.
 //
 // Правила 2 и 3 не применяются на macOS из .app.
@@ -155,6 +221,52 @@ func Resolve(exe string, env func(string) string, goos string, probe func(dir st
 	return l, nil
 }
 
+// handoffSep — разделитель полей -handoff: в путях Windows «|» недопустим.
+const handoffSep = "|"
+
+// Handoff — значение флага -handoff (SPEC 139 §5): раскладка родителя для
+// экземпляра, перезапущенного с повышением, — <PID>|<Mode>|<DataDir>|<LogDir>.
+// Окружение сессии под runas не рассчитываем (повышение могло пойти под
+// другой учётной записью), поэтому раскладка едет флагом, а не
+// переменными SINGBOX_LAUNCHER_*.
+func (l Layout) Handoff(pid int) string {
+	return strings.Join([]string{strconv.Itoa(pid), string(l.Mode), string(l.Data), string(l.Logs)}, handoffSep)
+}
+
+// ParseHandoff разбирает значение -handoff. App — каталог своего exe (сам
+// бинарь тот же, что у родителя), Mode, DataDir и LogDir — родителя.
+// Проверки: PID > 0, известный Mode, абсолютные пути; невалидное значение —
+// ошибка, вызывающий идёт в обычный Resolve. MarkerIgnored
+// восстанавливается по диску: System при лежащем рядом portable.txt.
+// EnvSource не передаётся.
+func ParseHandoff(value, exe string) (l Layout, parentPID int, err error) {
+	parts := strings.SplitN(value, handoffSep, 4)
+	if len(parts) != 4 {
+		return Layout{}, 0, fmt.Errorf("-handoff=%q: want <pid>|<mode>|<data>|<logs>", value)
+	}
+	pid, err := strconv.Atoi(parts[0])
+	if err != nil || pid <= 0 {
+		return Layout{}, 0, fmt.Errorf("-handoff: bad pid %q", parts[0])
+	}
+	mode := Mode(parts[1])
+	switch mode {
+	case ModeEnv, ModePortable, ModeLegacy, ModeSystem:
+	default:
+		return Layout{}, 0, fmt.Errorf("-handoff: unknown mode %q", parts[1])
+	}
+	data, logs := parts[2], parts[3]
+	if !filepath.IsAbs(data) || !filepath.IsAbs(logs) {
+		return Layout{}, 0, fmt.Errorf("-handoff: data and log paths must be absolute: %q, %q", data, logs)
+	}
+	app := AppDir(filepath.Dir(exe))
+	l = Layout{App: app, Data: DataDir(filepath.Clean(data)), Logs: LogDir(filepath.Clean(logs)), Mode: mode}
+	if mode == ModeSystem {
+		_, statErr := os.Stat(filepath.Join(string(app), constants.PortableMarkerFileName))
+		l.MarkerIgnored = statErr == nil
+	}
+	return l, pid, nil
+}
+
 // envAbs — значение переменной, приведённое к абсолютному пути; "" если не задана.
 func envAbs(env func(string) string, name string) (string, error) {
 	v := env(name)
@@ -169,18 +281,42 @@ func envAbs(env func(string) string, name string) (string, error) {
 }
 
 // resolveWithoutEnv — правила 2–4.
+//
+// Правило 2 без предиката (до SPEC 139) пробы не делало: portable.txt в
+// Program Files давал Portable, пока лаунчер всегда был администратором, а
+// в каталоге только для чтения на Linux ронял старт, как #85. Теперь маркер
+// в непишущемся AppDir игнорируется на всех ОС.
 func resolveWithoutEnv(app AppDir, exe string, env func(string) string, goos string, probe func(string) bool) (Layout, error) {
 	bundle := IsAppBundle(exe, goos)
+	markerIgnored := false
 	if !bundle {
+		// Проба пишет файл — не больше одного раза за Resolve.
+		var writable *bool
+		userWritable := func() bool {
+			if writable == nil {
+				w := AppDirUserWritable(string(app), env, goos, probe)
+				writable = &w
+			}
+			return *writable
+		}
 		if _, err := os.Stat(filepath.Join(string(app), constants.PortableMarkerFileName)); err == nil {
-			return portable(app, ModePortable), nil
+			if userWritable() {
+				return portable(app, ModePortable), nil
+			}
+			markerIgnored = true
 		}
 		legacyState := filepath.Join(app.Bin(), constants.WizardStatesDirName, constants.WizardStateFileName)
-		if _, err := os.Stat(legacyState); err == nil && probe(string(app)) {
+		if _, err := os.Stat(legacyState); err == nil && userWritable() {
 			return portable(app, ModeLegacy), nil
 		}
 	}
-	return platformDefault(app, bundle, env, goos, probe)
+	l, err := platformDefault(app, bundle, env, goos, probe)
+	if err != nil {
+		return Layout{}, err
+	}
+	// Голый бинарь macOS portable и без маркера — игнорировать там нечего.
+	l.MarkerIgnored = markerIgnored && l.Mode != ModePortable
+	return l, nil
 }
 
 // platformDefault — правило 4: платформенный дефолт из таблицы §3.1. Кроме
@@ -196,7 +332,7 @@ func platformDefault(app AppDir, bundle bool, env func(string) string, goos stri
 			}
 		}
 		if root == "" {
-			if probe(string(app)) {
+			if AppDirUserWritable(string(app), env, goos, probe) {
 				return portable(app, ModePortable), nil
 			}
 			return Layout{}, fmt.Errorf("cannot determine data directory: LOCALAPPDATA and USERPROFILE are empty and %s is not writable; set %s", app, constants.EnvDataDir)
@@ -285,14 +421,18 @@ func orNone(s string) string {
 }
 
 // Lines — строки "Key: value" в фиксированном порядке: Mode (с
-// переменными окружения), Program, Data, Logs, Core (путь, версия,
+// переменными окружения и пометкой игнорированного portable.txt), Program, Data, Logs, Core (путь, версия,
 // источник), Shadowed core (только если есть), Template (путь, источник),
 // wintun (только когда путь известен, то есть на Windows). Пустые значения —
 // "(none)". Текст не локализуется: его прикладывают к issue.
 func (p PathsInfo) Lines() []string {
 	mode := orNone(string(p.Layout.Mode))
-	if len(p.Layout.EnvSource) > 0 {
-		mode += " (" + strings.Join(p.Layout.EnvSource, ", ") + ")"
+	notes := append([]string(nil), p.Layout.EnvSource...)
+	if p.Layout.MarkerIgnored {
+		notes = append(notes, markerIgnoredNote)
+	}
+	if len(notes) > 0 {
+		mode += " (" + strings.Join(notes, ", ") + ")"
 	}
 	lines := []string{
 		"Mode: " + mode,
