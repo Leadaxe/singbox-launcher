@@ -617,8 +617,9 @@ Portable switch target) and the Portable switch blocker.
 it gets the parent's one as `-handoff=<pid>|<mode>|<data>|<logs>`
 (`Layout.Handoff` / `paths.ParseHandoff`; App is its own executable's folder). The
 session environment under `runas` is not relied on — elevation may use another
-account, whose `%LOCALAPPDATA%` would be a different DataDir. An invalid value
-goes to stderr and falls back to `Resolve`.
+account, whose `%LOCALAPPDATA%` would be a different DataDir. The PID is parsed
+first; DataDir and LogDir must be existing directories. An invalid value goes to
+stderr and falls back to `Resolve`, but a valid PID is still waited for.
 
 Rules 2 and 3 are **disabled when launched from a macOS `.app` bundle**
 (`paths.IsAppBundle`): nobody can drop a marker next to the bundle, and Gatekeeper

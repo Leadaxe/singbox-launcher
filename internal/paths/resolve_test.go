@@ -283,12 +283,16 @@ func TestResolveMatrix(t *testing.T) {
 	}
 
 	// -handoff (SPEC 139 §5): раскладка родителя для повышенного экземпляра
-	// идёт мимо Resolve; App — каталог своего exe.
+	// идёт мимо Resolve; App — каталог своего exe. DataDir и LogDir родитель
+	// создал до перезапуска — несуществующие отвергаются.
 	t.Run("handoff", func(t *testing.T) {
 		app := t.TempDir()
 		exe := join(app, "singbox-launcher")
-		valid := "4242|system|" + dataEnv + "|" + logEnv
-		want := Layout{App: AppDir(app), Data: DataDir(dataEnv), Logs: LogDir(logEnv), Mode: ModeSystem}
+		data, logs := t.TempDir(), t.TempDir()
+		notDir := join(data, "file")
+		writeFile(t, notDir)
+		valid := "4242|system|" + data + "|" + logs
+		want := Layout{App: AppDir(app), Data: DataDir(data), Logs: LogDir(logs), Mode: ModeSystem}
 
 		got, pid, err := ParseHandoff(valid, exe)
 		if err != nil || pid != 4242 || !reflect.DeepEqual(got, want) {
@@ -306,18 +310,30 @@ func TestResolveMatrix(t *testing.T) {
 			t.Errorf("with marker: got %+v, %v; want %+v", got, err, want)
 		}
 
+		// Битый PID — родителя не ждать (pid 0).
 		for _, bad := range []string{
 			"",
-			"4242|system|" + dataEnv,
-			"0|system|" + dataEnv + "|" + logEnv,
-			"-1|system|" + dataEnv + "|" + logEnv,
-			"pid|system|" + dataEnv + "|" + logEnv,
-			"4242|nomad|" + dataEnv + "|" + logEnv,
-			"4242|system|rel/data|" + logEnv,
-			"4242|system|" + dataEnv + "|rel/logs",
+			"0|system|" + data + "|" + logs,
+			"-1|system|" + data + "|" + logs,
+			"pid|system|" + data + "|" + logs,
 		} {
-			if l, _, err := ParseHandoff(bad, exe); err == nil {
-				t.Errorf("ParseHandoff(%q) = %+v, want error", bad, l)
+			if l, pid, err := ParseHandoff(bad, exe); err == nil || pid != 0 {
+				t.Errorf("ParseHandoff(%q) = %+v, pid %d, %v; want error and pid 0", bad, l, pid, err)
+			}
+		}
+		// PID валиден, остальное нет — ошибка, но PID возвращается: вызывающий
+		// идёт в Resolve и всё равно ждёт родителя.
+		for _, bad := range []string{
+			"4242",
+			"4242|system|" + data,
+			"4242|nomad|" + data + "|" + logs,
+			"4242|system|rel/data|" + logs,
+			"4242|system|" + data + "|rel/logs",
+			"4242|system|" + join(data, "missing") + "|" + logs,
+			"4242|system|" + data + "|" + notDir,
+		} {
+			if l, pid, err := ParseHandoff(bad, exe); err == nil || pid != 4242 {
+				t.Errorf("ParseHandoff(%q) = %+v, pid %d, %v; want error and pid 4242", bad, l, pid, err)
 			}
 		}
 	})

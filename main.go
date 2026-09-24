@@ -199,13 +199,16 @@ func whenWindowVisible(controller *core.AppController, inTray bool, show func(wi
 // -handoff, если лаунчер перезапущен с повышением (раскладка родителя, а не
 // вычисленная заново: иначе повышенный экземпляр мог бы выбрать другой
 // DataDir), иначе paths.Resolve. Невалидный -handoff — строка в stderr и
-// обычный Resolve. parentPID > 0 — родитель, выхода которого надо дождаться.
-func resolveLayout(exe, handoff string) (layout paths.Layout, parentPID int) {
+// обычный Resolve, но PID родителя из него (если разобрался) всё равно
+// возвращается. parentPID > 0 — родитель, выхода которого надо дождаться;
+// handoffErr — почему -handoff не принят (для WARN после открытия логов).
+func resolveLayout(exe, handoff string) (layout paths.Layout, parentPID int, handoffErr error) {
 	if handoff != "" {
 		l, pid, err := paths.ParseHandoff(handoff, exe)
 		if err == nil {
-			return l, pid
+			return l, pid, nil
 		}
+		parentPID, handoffErr = pid, err
 		fmt.Fprintf(os.Stderr, "singbox-launcher: %v; resolving the layout as usual\n", err)
 	}
 	l, err := paths.Resolve(exe, os.Getenv, runtime.GOOS, paths.ProbeWritable)
@@ -213,7 +216,7 @@ func resolveLayout(exe, handoff string) (layout paths.Layout, parentPID int) {
 		fmt.Fprintf(os.Stderr, "singbox-launcher: %v\n", err)
 		os.Exit(2)
 	}
-	return l, 0
+	return l, parentPID, handoffErr
 }
 
 // waitForParent ждёт выхода лаунчера, перезапустившего этот экземпляр с
@@ -263,7 +266,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "singbox-launcher: cannot determine executable path: %v\n", err)
 		os.Exit(2)
 	}
-	layout, parentPID := resolveLayout(exe, *handoffFlag)
+	layout, parentPID, handoffErr := resolveLayout(exe, *handoffFlag)
 
 	// SPEC 135 §4.1: единственный способ увидеть пути там, где окно не
 	// поднимается (NixOS без GL, headless CI). До crash-лога и GL-пробы:
@@ -342,7 +345,10 @@ func main() {
 	// строка INFO о пропущенных без прав очистках видна только в dev-сборках.
 	debuglog.WarnLog("launcher %s %s/%s started, exec=%s, elevated=%s, %s",
 		constants.AppVersion, runtime.GOOS, runtime.GOARCH, exe, yesNo(platform.IsElevated()), layout.LogLine())
-	if parentPID > 0 {
+	switch {
+	case handoffErr != nil:
+		debuglog.WarnLog("layout: -%s ignored (%v), resolved as usual", core.HandoffFlagName, handoffErr)
+	case parentPID > 0:
 		debuglog.WarnLog("layout: from -%s (restarted as administrator by pid %d)", core.HandoffFlagName, parentPID)
 	}
 	if parentWaitWarning != "" {

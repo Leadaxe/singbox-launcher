@@ -539,8 +539,9 @@ func ParseHandoff(value, exe string) (Layout, int, error) // -handoff, SPEC 139
 вычисляет: получает родительскую флагом `-handoff=<pid>|<mode>|<data>|<logs>`
 (`Layout.Handoff` / `paths.ParseHandoff`; App — каталог своего exe). На окружение
 сессии под `runas` не рассчитываем — повышение может пойти под другой учётной
-записью, у которой свой `%LOCALAPPDATA%`. Невалидное значение — строка в stderr и
-обычный `Resolve`.
+записью, у которой свой `%LOCALAPPDATA%`. PID разбирается первым; DataDir и
+LogDir должны быть существующими каталогами. Невалидное значение — строка в
+stderr и обычный `Resolve`, но родителя с валидным PID всё равно ждём.
 
 Правила 2 и 3 **отключены при запуске из бандла `.app` на macOS**
 (`paths.IsAppBundle`): маркер некому положить рядом с бандлом, да и карантин

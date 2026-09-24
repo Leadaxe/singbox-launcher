@@ -235,28 +235,37 @@ func (l Layout) Handoff(pid int) string {
 
 // ParseHandoff разбирает значение -handoff. App — каталог своего exe (сам
 // бинарь тот же, что у родителя), Mode, DataDir и LogDir — родителя.
-// Проверки: PID > 0, известный Mode, абсолютные пути; невалидное значение —
-// ошибка, вызывающий идёт в обычный Resolve. MarkerIgnored
-// восстанавливается по диску: System при лежащем рядом portable.txt.
-// EnvSource не передаётся.
+//
+// PID разбирается первым и возвращается, даже если остальные поля
+// невалидны: вызывающий ждёт родителя в любом случае — иначе две иконки в
+// трее и занятый порт Debug API. Проверки остального: известный Mode,
+// абсолютные пути, DataDir и LogDir существуют и это каталоги (родитель
+// создал оба до перезапуска). Невалидное значение — ошибка, вызывающий
+// идёт в обычный Resolve. MarkerIgnored восстанавливается по диску: System
+// при лежащем рядом portable.txt. EnvSource не передаётся.
 func ParseHandoff(value, exe string) (l Layout, parentPID int, err error) {
 	parts := strings.SplitN(value, handoffSep, 4)
-	if len(parts) != 4 {
-		return Layout{}, 0, fmt.Errorf("-handoff=%q: want <pid>|<mode>|<data>|<logs>", value)
-	}
 	pid, err := strconv.Atoi(parts[0])
 	if err != nil || pid <= 0 {
 		return Layout{}, 0, fmt.Errorf("-handoff: bad pid %q", parts[0])
+	}
+	if len(parts) != 4 {
+		return Layout{}, pid, fmt.Errorf("-handoff=%q: want <pid>|<mode>|<data>|<logs>", value)
 	}
 	mode := Mode(parts[1])
 	switch mode {
 	case ModeEnv, ModePortable, ModeLegacy, ModeSystem:
 	default:
-		return Layout{}, 0, fmt.Errorf("-handoff: unknown mode %q", parts[1])
+		return Layout{}, pid, fmt.Errorf("-handoff: unknown mode %q", parts[1])
 	}
 	data, logs := parts[2], parts[3]
-	if !filepath.IsAbs(data) || !filepath.IsAbs(logs) {
-		return Layout{}, 0, fmt.Errorf("-handoff: data and log paths must be absolute: %q, %q", data, logs)
+	for _, dir := range []string{data, logs} {
+		if !filepath.IsAbs(dir) {
+			return Layout{}, pid, fmt.Errorf("-handoff: path %q is not absolute", dir)
+		}
+		if !isDir(dir) {
+			return Layout{}, pid, fmt.Errorf("-handoff: %q is not an existing directory", dir)
+		}
 	}
 	app := AppDir(filepath.Dir(exe))
 	l = Layout{App: app, Data: DataDir(filepath.Clean(data)), Logs: LogDir(filepath.Clean(logs)), Mode: mode}
