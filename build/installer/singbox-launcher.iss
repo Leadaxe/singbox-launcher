@@ -161,7 +161,8 @@ const
   // Shared contract with internal/platform/instance_windows.go.
   LauncherMutexes = 'Local\SingboxLauncher.Instance,Global\SingboxLauncher.Instance';
   QuitEventName = 'Local\SingboxLauncher.Quit';
-  EVENT_MODIFY_STATE = $0002;
+  // EVENT_MODIFY_STATE: enough for SetEvent.
+  QuitEventAccess = $0002;
   // GracefulExit stops the core within 15 s (core/controller.go).
   CloseTimeoutMs = 20000;
   PollIntervalMs = 250;
@@ -180,8 +181,8 @@ function WinSetEvent(hEvent: THandle): BOOL;
 function WinCloseHandle(hObject: THandle): BOOL;
   external 'CloseHandle@kernel32.dll stdcall';
 
-// Msg returns a custom message with %n turned into line breaks.
-function Msg(const Name: String): String;
+// CustomText returns a custom message with %n turned into line breaks.
+function CustomText(const Name: String): String;
 begin
   Result := CustomMessage(Name);
   StringChangeEx(Result, '%n', #13#10, True);
@@ -237,7 +238,7 @@ procedure SignalLauncherQuit;
 var
   H: THandle;
 begin
-  H := WinOpenEvent(EVENT_MODIFY_STATE, False, QuitEventName);
+  H := WinOpenEvent(QuitEventAccess, False, QuitEventName);
   if H = 0 then begin
     Log('CloseLauncher: the quit event is not available (launcher in another session or not responding)');
     Exit;
@@ -277,6 +278,7 @@ end;
 function CloseLauncher(const Silent: Boolean; const CancelLabel: String): Boolean;
 var
   Labels: TArrayOfString;
+  Answer: Integer;
 begin
   Result := True;
   if not LauncherRunning then
@@ -288,22 +290,21 @@ begin
     if not Silent then begin
       // MB_ABORTRETRYIGNORE labels go in the order Retry, Ignore, Abort.
       SetArrayLength(Labels, 3);
-      Labels[0] := Msg('ButtonRetry');
-      Labels[1] := Msg('ButtonIgnore');
+      Labels[0] := CustomText('ButtonRetry');
+      Labels[1] := CustomText('ButtonIgnore');
       Labels[2] := CancelLabel;
-      case TaskDialogMsgBox(Msg('LauncherRunningTitle'), Msg('LauncherRunningText'), mbError, MB_ABORTRETRYIGNORE, Labels, 0) of
-        IDRETRY: begin
-          Log('CloseLauncher: Retry');
-          SignalLauncherQuit;
-          Continue;
-        end;
-        IDIGNORE:
-          Log('CloseLauncher: Ignore');
-      else
+      Answer := TaskDialogMsgBox(CustomText('LauncherRunningTitle'), CustomText('LauncherRunningText'), mbError, MB_ABORTRETRYIGNORE, Labels, 0);
+      if Answer = IDRETRY then begin
+        Log('CloseLauncher: Retry');
+        SignalLauncherQuit;
+        Continue;
+      end;
+      if Answer <> IDIGNORE then begin
         Log('CloseLauncher: cancelled by the user');
         Result := False;
         Exit;
       end;
+      Log('CloseLauncher: Ignore');
     end;
     TerminateLauncher;
     Sleep(1000);
@@ -319,8 +320,8 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
-  if not CloseLauncher(WizardSilent, Msg('ButtonCancelSetup')) then
-    Result := Msg('SetupCancelledLauncherRunning');
+  if not CloseLauncher(WizardSilent, CustomText('ButtonCancelSetup')) then
+    Result := CustomText('SetupCancelledLauncherRunning');
 end;
 
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo,
@@ -342,7 +343,7 @@ begin
   // SPEC 140 §5: data of an unpacked zip in the same folder; the launcher
   // migrates it on the first start (SPEC 135 §3.4).
   if FileExists(AddBackslash(WizardDirValue) + 'bin\wizard_states\state.json') then
-    Result := Result + Msg('ReadyPortableDataTitle') + NewLine + Space + Msg('ReadyPortableData') + NewLine;
+    Result := Result + CustomText('ReadyPortableDataTitle') + NewLine + Space + CustomText('ReadyPortableData') + NewLine;
 end;
 
 // ---------------------------------------------------------------------------
@@ -351,7 +352,7 @@ end;
 
 function InitializeUninstall: Boolean;
 begin
-  Result := CloseLauncher(UninstallSilent, Msg('ButtonCancelUninstall'));
+  Result := CloseLauncher(UninstallSilent, CustomText('ButtonCancelUninstall'));
 end;
 
 function AskRemoveUserData: Boolean;
@@ -360,7 +361,7 @@ begin
   if UninstallSilent then
     Result := False
   else
-    Result := SuppressibleMsgBox(Msg('RemoveDataQuestion'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES;
+    Result := SuppressibleMsgBox(CustomText('RemoveDataQuestion'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES;
   Log(Format('Remove user data: %d', [Ord(Result)]));
 end;
 
@@ -445,17 +446,20 @@ begin
   // Non-zero: a launcher in another session or a running core. The program is
   // removed anyway; the message carries the purge output and the way out.
   if (ResultCode <> 0) and not UninstallSilent then
-    SuppressibleMsgBox(FmtMessage(Msg('PurgeFailed'), [IntToStr(ResultCode)]) + #13#10#13#10 + JoinLines(Output.StdOut),
+    SuppressibleMsgBox(FmtMessage(CustomText('PurgeFailed'), [IntToStr(ResultCode)]) + #13#10#13#10 + JoinLines(Output.StdOut),
       mbError, MB_OK, IDOK);
 end;
 
-function RemoveLeftovers: Boolean;
+procedure RemoveLeftovers;
 begin
   // Only what old unpacked copies left behind; {app} itself only when empty:
   // the user may have picked a shared folder.
   DelTree(ExpandConstant('{app}\bin'), True, True, True);
   DelTree(ExpandConstant('{app}\logs'), True, True, True);
-  Result := RemoveDir(ExpandConstant('{app}'));
+  if RemoveDir(ExpandConstant('{app}')) then
+    Log('Program folder removed')
+  else
+    Log('Program folder kept: not empty');
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
@@ -473,6 +477,6 @@ begin
       end;
     usPostUninstall:
       if RemoveUserData then
-        Log(Format('Leftovers removed, program folder removed: %d', [Ord(RemoveLeftovers)]));
+        RemoveLeftovers;
   end;
 end;
