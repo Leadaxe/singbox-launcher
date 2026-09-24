@@ -137,17 +137,25 @@ func scheduleHiddenDataNotice(controller *core.AppController, l paths.Layout, di
 }
 
 // daemonUnsafeNoticeText — модальное предупреждение SPEC 136 §6 (ключ
-// перевода = английский текст, SPEC 111).
-const daemonUnsafeNoticeText = "The daemon service runs as root from a file your user account can modify:\n%s\n\nAny program running as you could replace it and gain root access. Run this command in Terminal to move the service to a root-owned copy of the core (it asks for your sudo password). The VPN keeps working meanwhile; the LOCAL tab of the connection settings shows this until it is fixed."
+// перевода = английский текст, SPEC 111). daemonUnsafeNoticeCoreText — то
+// же, когда ядро лаунчера не умеет root-owned копию: команды нет, вторая
+// подстановка — подсказка обновить ядро (core.DaemonServiceCoreHint).
+const (
+	daemonUnsafeNoticeText     = "The daemon service runs as root from a file your user account can modify:\n%s\n\nAny program running as you could replace it and gain root access. Run this command in Terminal to move the service to a root-owned copy of the core (it asks for your sudo password). The VPN keeps working meanwhile; the LOCAL tab of the connection settings shows this until it is fixed."
+	daemonUnsafeNoticeCoreText = "The daemon service runs as root from a file your user account can modify:\n%s\n\nAny program running as you could replace it and gain root access. %s The VPN keeps working meanwhile; the LOCAL tab of the connection settings shows this until it is fixed."
+)
 
 // scheduleDaemonUnsafeNotice — служба демона запускает от root файл,
 // который может подменить пользователь (SPEC 136): одно модальное
 // предупреждение на версию лаунчера, когда окно видно. Daemon-движок не
 // блокируется.
-func scheduleDaemonUnsafeNotice(controller *core.AppController, data paths.DataDir, servicePath, command string, inTray bool) {
+func scheduleDaemonUnsafeNotice(controller *core.AppController, data paths.DataDir, servicePath, command, coreHint string, inTray bool) {
+	message := locale.Tf(daemonUnsafeNoticeText, servicePath)
+	if command == "" {
+		message = locale.Tf(daemonUnsafeNoticeCoreText, servicePath, coreHint)
+	}
 	whenWindowVisible(controller, inTray, func(win fyne.Window) {
-		dialogs.ShowLinuxCapabilitiesRequired(win, locale.T("The daemon service is not protected"),
-			locale.Tf(daemonUnsafeNoticeText, servicePath), command)
+		dialogs.ShowLinuxCapabilitiesRequired(win, locale.T("The daemon service is not protected"), message, command)
 		if err := locale.MarkDaemonUnsafeNoticeShown(data.Bin(), constants.AppVersion); err != nil {
 			debuglog.WarnLog("daemon unsafe notice: persist flag: %v", err)
 		}
@@ -575,8 +583,8 @@ func main() {
 			}
 			// SPEC 136: служба демона на файле, который может подменить
 			// пользователь (plist до lx.11) — предупредить раз на версию.
-			if servicePath, command, due := controller.DaemonUnsafeServiceNotice(); due {
-				scheduleDaemonUnsafeNotice(controller, layout.Data, servicePath, command, *startInTray)
+			if servicePath, command, coreHint, due := controller.DaemonUnsafeServiceNotice(); due {
+				scheduleDaemonUnsafeNotice(controller, layout.Data, servicePath, command, coreHint, *startInTray)
 			}
 
 			// Auto-start VPN if -start flag is provided

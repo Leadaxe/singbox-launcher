@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -69,6 +70,12 @@ const (
 	launchdRunningState = "running"
 	// launchdNotLoaded — LaunchdState, когда launchd службу не знает.
 	launchdNotLoaded = "not loaded"
+	// minCoreForRootOwnedService — первое ядро форка, чей `lxd
+	// --service=install` копирует себя в root-owned файл и переводит plist на
+	// копию (с ним же — `--service=copy`, SPEC 137). Ядро старше на той же
+	// команде пишет в plist СВОЙ путь — файл пользователя в DataDir или
+	// бандле: это откат к дыре §1, поэтому такой команды лаунчер не даёт.
+	minCoreForRootOwnedService = "1.14.1-lx.11"
 )
 
 // daemonServiceCorePath — каноническая root-owned копия ядра службы.
@@ -122,6 +129,12 @@ const (
 	DaemonServiceProcessStale DaemonServiceState = "process_stale"
 	// DaemonServiceOK — служба запускает актуальную root-owned копию.
 	DaemonServiceOK DaemonServiceState = "ok"
+	// DaemonServiceCoreTooOld — службу лечит команда install (вердикт был бы
+	// Unsafe, Stale или ProcessStale — он в BlockedState), но ядро лаунчера
+	// старше minCoreForRootOwnedService или его версия не разбирается: такой
+	// install переписал бы plist на файл пользователя. Команды нет —
+	// сначала обновить ядро.
+	DaemonServiceCoreTooOld DaemonServiceState = "core_too_old"
 )
 
 // DaemonServiceCheck — вердикт и его основания. Detail — английская причина
@@ -137,11 +150,15 @@ type DaemonServiceCheck struct {
 	// если не считались.
 	CopySHA256     string
 	LauncherSHA256 string
-	// CopyVersion — версия из сайдкара install.json, LauncherVersion —
-	// `sing-box version` ядра лаунчера. Только для показа; вердикт по версии —
-	// лишь запасной путь ProcessStale (ядро без executable_sha256).
+	// CopyVersion — версия из сайдкара install.json (только показ),
+	// LauncherVersion — `sing-box version` ядра лаунчера: по ней гейт
+	// команды install (CoreTooOld) и запасной путь ProcessStale (ядро без
+	// executable_sha256).
 	CopyVersion     string
 	LauncherVersion string
+	// BlockedState — вердикт, который вылечила бы команда install, когда
+	// State = CoreTooOld; иначе пусто.
+	BlockedState DaemonServiceState
 	// RunningSHA256 / RunningVersion — что отвечает работающий демон
 	// (/admin/info); пусто, если не спрашивали или поля нет.
 	RunningSHA256  string
@@ -169,7 +186,170 @@ func (c DaemonServiceCheck) NeedsBootstrap() bool {
 // CopyUsable — plist указывает на каноническую копию, её цепочка владения
 // цела и файл на месте: Uninstall и `lxd client add` можно звать через неё.
 func (c DaemonServiceCheck) CopyUsable() bool {
-	return c.State != DaemonServiceNotInstalled && c.State != DaemonServiceUnsafe && !c.CopyMissing
+	state := c.State
+	if state == DaemonServiceCoreTooOld {
+		state = c.BlockedState
+	}
+	return state != DaemonServiceNotInstalled && state != DaemonServiceUnsafe && !c.CopyMissing
+}
+
+// InstallSupported — ядро лаунчера умеет root-owned копию: команду install
+// (и copy SPEC 137) можно показывать.
+func (c DaemonServiceCheck) InstallSupported() bool {
+	return coreSupportsRootOwnedCopy(c.LauncherVersion)
+}
+
+// gateServiceInstall — последний шаг классификатора: вердикт, который лечит
+// install, при ядре лаунчера без root-owned копии становится CoreTooOld.
+// Зовётся после каждого шага, способного вынести такой вердикт; повторный
+// вызов ничего не меняет.
+func gateServiceInstall(c *DaemonServiceCheck) {
+	if !c.NeedsInstall() || c.InstallSupported() {
+		return
+	}
+	c.BlockedState = c.State
+	c.Detail = fmt.Sprintf("%v; the service is %s: %s", serviceCoreGate(c.LauncherVersion), c.State, c.Detail)
+	c.State = DaemonServiceCoreTooOld
+}
+
+// serviceCoreTooOldError — ядро лаунчера не умеет root-owned копию: команд
+// install и copy нет. Текст — для лога и Debug API; UI показывает
+// DaemonServiceCoreHint.
+type serviceCoreTooOldError struct {
+	version string
+}
+
+func (e *serviceCoreTooOldError) Error() string {
+	version := e.version
+	if version == "" {
+		version = "of unknown version"
+	}
+	return fmt.Sprintf("the launcher core %s cannot install a root-owned copy (needs %s or newer): update the core first",
+		version, minCoreForRootOwnedService)
+}
+
+// serviceCoreGate — nil, если ядро лаунчера версии version умеет
+// root-owned копию; иначе *serviceCoreTooOldError. Единственный гейт всех
+// команд, которые исполняют ядро лаунчера под sudo для копии: install
+// (плашка, вкладка Install, диалог после обновления ядра, модальное
+// предупреждение, Debug API) и copy/install classic-гейта SPEC 137.
+func serviceCoreGate(version string) error {
+	if coreSupportsRootOwnedCopy(version) {
+		return nil
+	}
+	return &serviceCoreTooOldError{version: version}
+}
+
+// coreSupportsRootOwnedCopy — version ≥ minCoreForRootOwnedService.
+// Неразборчивая версия (пусто, dev-сборка "unknown", апстрим без -lx.N) —
+// не умеет: безопасный дефолт.
+func coreSupportsRootOwnedCopy(version string) bool {
+	have, ok := parseCoreBuild(version)
+	if !ok {
+		return false
+	}
+	want, _ := parseCoreBuild(minCoreForRootOwnedService)
+	return compareCoreBuilds(have, want) >= 0
+}
+
+// coreBuild — версия ядра форка для сравнения: база X.Y.Z, номер релиза
+// форка -lx.N и пре-релиз после него (-rc1, -rc.2, -dev).
+type coreBuild struct {
+	base   [3]int
+	lx     int
+	pre    bool
+	preNum int
+}
+
+// parseCoreBuild разбирает "1.14.1-lx.12", "v1.14.1-lx.12-rc1",
+// "1.14.1-lx.12-rc.2". Свой разбор, а не CompareVersions: тот сравнивает
+// только базу, и lx.10 для него равно lx.11. ok=false — не пронумерованный
+// релиз форка: пусто, "unknown", "unnamed-dev", апстрим без -lx.N.
+func parseCoreBuild(v string) (coreBuild, bool) {
+	var b coreBuild
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	i := strings.Index(v, "-lx.")
+	if i < 0 {
+		return b, false
+	}
+	parts := strings.Split(v[:i], ".")
+	if len(parts) != len(b.base) {
+		return b, false
+	}
+	for k, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 {
+			return b, false
+		}
+		b.base[k] = n
+	}
+	rest := v[i+len("-lx."):]
+	digits := leadingDigits(rest)
+	if digits == "" {
+		return b, false
+	}
+	n, err := strconv.Atoi(digits)
+	if err != nil {
+		return b, false
+	}
+	b.lx = n
+	rest = rest[len(digits):]
+	if rest == "" {
+		return b, true
+	}
+	if rest[0] != '-' {
+		return b, false
+	}
+	// Пре-релиз: номер — последняя группа цифр (rc1, rc.2); без цифр — 0.
+	b.pre = true
+	tail := strings.TrimRight(rest, "0123456789")
+	if num := rest[len(tail):]; num != "" {
+		if n, err := strconv.Atoi(num); err == nil {
+			b.preNum = n
+		}
+	}
+	return b, true
+}
+
+// leadingDigits — ведущие цифры s.
+func leadingDigits(s string) string {
+	end := 0
+	for end < len(s) && s[end] >= '0' && s[end] <= '9' {
+		end++
+	}
+	return s[:end]
+}
+
+// compareCoreBuilds: база, затем номер lx, затем релиз старше своего
+// пре-релиза (lx.12-rc1 < lx.12), затем номер пре-релиза. -1, 0, 1.
+func compareCoreBuilds(a, b coreBuild) int {
+	for k := range a.base {
+		if c := compareInts(a.base[k], b.base[k]); c != 0 {
+			return c
+		}
+	}
+	if c := compareInts(a.lx, b.lx); c != 0 {
+		return c
+	}
+	switch {
+	case a.pre && !b.pre:
+		return -1
+	case !a.pre && b.pre:
+		return 1
+	case a.pre:
+		return compareInts(a.preNum, b.preNum)
+	}
+	return 0
+}
+
+func compareInts(a, b int) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	}
+	return 0
 }
 
 // daemonServiceLayout — где классификатор ищет службу. Прод —
@@ -329,6 +509,21 @@ func compareDaemonServiceFiles(c *DaemonServiceCheck, corePath, launcherCore str
 		c.Detail = fmt.Sprintf("the root-owned copy (sha256 %s) is not the launcher core %s (sha256 %s)",
 			shortSHA(copySum), resolved, shortSHA(launcherSum))
 	}
+}
+
+// classifyDaemonServiceFiles — вердикт по файлам без сети (SPEC 136 §4):
+// определение службы, цепочка владения, sha копии против ядра лаунчера и
+// гейт команды install по версии ядра лаунчера (launcherVersion; "" — не
+// прочиталась).
+func classifyDaemonServiceFiles(l daemonServiceLayout, launcherCore, launcherVersion string, hashes *fileHashCache) DaemonServiceCheck {
+	check := inspectDaemonServiceDefinition(l)
+	if check.CopyUsable() {
+		check.CopyVersion = readDaemonServiceSidecarVersion(l.CorePath)
+	}
+	check.LauncherVersion = launcherVersion
+	compareDaemonServiceFiles(&check, l.CorePath, launcherCore, hashes)
+	gateServiceInstall(&check)
+	return check
 }
 
 // launchdJob — что launchd знает о службе. Known=false — спросить не
@@ -528,6 +723,49 @@ func (h *fileHashCache) sum(path string) (string, error) {
 	}
 	h.sums[key] = sum
 	return sum, nil
+}
+
+// coreVersionCache — `sing-box version` по идентичности файла (ключ как у
+// fileHashCache). Гейт команд службы зовут и из диалога после скачивания
+// ядра — раньше, чем сбрасывается сессионный кэш GetInstalledCoreVersion, —
+// а dev-сборки кладут руками: версия обязана быть версией файла на диске
+// сейчас, а не первой за сессию.
+type coreVersionCache struct {
+	mu       sync.Mutex
+	versions map[fileHashKey]string
+}
+
+// daemonCoreVersions — кэш процесса для гейта команд службы.
+var daemonCoreVersions coreVersionCache
+
+// version — версия ядра path, из кэша при неизменном ключе. Ошибка
+// (файла нет, вывод не разобрался) не кешируется.
+func (vc *coreVersionCache) version(path string) (string, error) {
+	key, err := statHashKey(path)
+	if err != nil {
+		return "", err
+	}
+	vc.mu.Lock()
+	cached, ok := vc.versions[key]
+	vc.mu.Unlock()
+	if ok {
+		return cached, nil
+	}
+	version, err := coreVersionAt(path)
+	if err != nil {
+		return "", err
+	}
+	after, statErr := statHashKey(path)
+	vc.mu.Lock()
+	defer vc.mu.Unlock()
+	if statErr != nil || after != key {
+		return version, nil
+	}
+	if vc.versions == nil || len(vc.versions) >= daemonHashCacheCap {
+		vc.versions = make(map[fileHashKey]string)
+	}
+	vc.versions[key] = version
+	return version, nil
 }
 
 func sha256File(path string) (string, error) {

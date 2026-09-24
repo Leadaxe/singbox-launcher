@@ -26,7 +26,7 @@ const (
 	daemonPairHelpText          = "Paste the invite printed by the daemon and click Pair. Where to get one:\n\n- Installing the service prints an invite at the end of its Terminal output (Install section, step 1).\n- For a fresh invite run the command below (copy or open in Terminal), then paste the printed invite into the pairing field.\n\nThe code is one-time: it burns after a successful pairing. The secret field is only for daemons running without TLS."
 	daemonUnpairConfirmBodyText = "Removes the launcher's client keys and daemon address. The daemon keeps its record of this client until removed there (sing-box lxd client remove)."
 	daemonServiceUnsafeText     = "The service runs a binary your user can modify. Install or update the service to move it to a root-owned copy."
-	daemonServiceOlderCoreText  = "The service runs an older core (%s; current: %s). Install or update the service to switch it to the current core."
+	daemonServiceOtherCoreText  = "The service runs a different core (%s) than the launcher (%s). Install or update the service to switch it to the launcher core."
 	daemonServiceNoBinaryText   = "The service has no core binary to run. Install or update the service to restore it."
 )
 
@@ -74,24 +74,43 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	// update service», а для NotRunning — загрузка plist (bootstrap). На
 	// вкладке Status, куда смотрят при проблеме; строки команд добавляются
 	// ниже, когда есть commandRowLocal. Скрыта при OK и без службы.
+	// CoreTooOld — подсказка обновить ядро, без команды (красная, если
+	// служба при этом Unsafe).
 	serviceIcon := widget.NewIcon(theme.WarningIcon())
 	serviceLabel := widget.NewLabel("")
 	serviceLabel.Wrapping = fyne.TextWrapWord
 	serviceBox := container.NewVBox(container.NewBorder(nil, nil, container.NewVBox(serviceIcon), nil, serviceLabel))
 	serviceBox.Hide()
-	var serviceInstallRow, serviceBootstrapRow fyne.CanvasObject
+	var serviceInstallRow, serviceBootstrapRow, installStepRow fyne.CanvasObject
+	// Шаг 1 вкладки Install при ядре без root-owned копии: вместо команды —
+	// подсказка обновить ядро.
+	installCoreHint := widget.NewLabel("")
+	installCoreHint.Wrapping = fyne.TextWrapWord
+	installCoreHint.Importance = widget.WarningImportance
+	installCoreHint.Hide()
 	applyServiceState := func(snap core.DaemonUIStatus) {
+		if installStepRow != nil {
+			if snap.Service.InstallSupported() {
+				installCoreHint.Hide()
+				installStepRow.Show()
+			} else {
+				installStepRow.Hide()
+				installCoreHint.SetText(core.DaemonServiceCoreHint(snap.Service.LauncherVersion))
+				installCoreHint.Show()
+			}
+		}
 		text, danger := daemonServiceNoticeText(snap.Service)
 		if text == "" {
 			serviceBox.Hide()
 			return
 		}
 		if serviceInstallRow != nil && serviceBootstrapRow != nil {
-			if snap.Service.NeedsBootstrap() {
-				serviceInstallRow.Hide()
+			serviceInstallRow.Hide()
+			serviceBootstrapRow.Hide()
+			switch {
+			case snap.Service.NeedsBootstrap():
 				serviceBootstrapRow.Show()
-			} else {
-				serviceBootstrapRow.Hide()
+			case snap.Service.NeedsInstall():
 				serviceInstallRow.Show()
 			}
 		}
@@ -290,9 +309,11 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	// 2) поле приглашения + Pair. Свежее приглашение для пере-сопряжения —
 	//    отдельной строкой ниже (lxd client add): это тот же шаг 2, только
 	//    для случая «служба уже стоит, приглашение из установки протухло».
+	installStepRow = commandRowLocal("1. Install or update the service (run in Terminal, your sudo; a first install prints a pairing invite at the end):", ac.DaemonInstallCommand) // l10n-key
 	installTab := container.NewVBox(
-		commandRowLocal("1. Install or update the service (run in Terminal, your sudo; a first install prints a pairing invite at the end):", ac.DaemonInstallCommand), // l10n-key
-		wrappedLabel("2. Paste the invite (address#fingerprint#code) and pair:"),                                                                                       // l10n-key
+		installStepRow,
+		installCoreHint,
+		wrappedLabel("2. Paste the invite (address#fingerprint#code) and pair:"), // l10n-key
 		container.NewBorder(nil, nil, nil, container.NewHBox(pairBtn, pairHelp), inviteEntry),
 		widget.NewSeparator(),
 		commandRowLocal("Need a fresh invite (service already installed)?", func() (string, error) { // l10n-key
@@ -408,7 +429,8 @@ func renderDaemonStatusText(ac *core.AppController, snap core.DaemonUIStatus, in
 }
 
 // daemonServiceNoticeText — текст плашки службы по вердикту классификатора
-// (SPEC 136 §6); "" — плашки нет. danger — красная (Unsafe), иначе жёлтая.
+// (SPEC 136 §6); "" — плашки нет. danger — красная (Unsafe, в том числе
+// CoreTooOld поверх Unsafe), иначе жёлтая.
 func daemonServiceNoticeText(c core.DaemonServiceCheck) (text string, danger bool) {
 	switch c.State {
 	case core.DaemonServiceUnsafe:
@@ -421,8 +443,18 @@ func daemonServiceNoticeText(c core.DaemonServiceCheck) (text string, danger boo
 		if c.CopyMissing {
 			return locale.T(daemonServiceNoBinaryText), false
 		}
-		return locale.Tf(daemonServiceOlderCoreText,
+		return locale.Tf(daemonServiceOtherCoreText,
 			coreBuildLabel(c.CopyVersion, c.CopySHA256), coreBuildLabel(c.LauncherVersion, c.LauncherSHA256)), false
+	case core.DaemonServiceCoreTooOld:
+		// Команды нет: install ядра лаунчера переписал бы plist на его файл.
+		text = core.DaemonServiceCoreHint(c.LauncherVersion)
+		if c.BlockedState == core.DaemonServiceUnsafe {
+			if c.ServicePath != "" {
+				text += "\n" + locale.Tf("Service binary: %s", c.ServicePath)
+			}
+			return text, true
+		}
+		return text, false
 	case core.DaemonServiceNotRunning:
 		text = locale.T("The service is installed but not running.")
 		if c.LaunchdState != "" {
@@ -434,7 +466,8 @@ func daemonServiceNoticeText(c core.DaemonServiceCheck) (text string, danger boo
 		if current == "" {
 			current = c.LauncherVersion
 		}
-		return locale.Tf(daemonServiceOlderCoreText,
+		// Файлы совпали (иначе был бы Stale): копия — ядро лаунчера.
+		return locale.Tf(daemonServiceOtherCoreText,
 			coreBuildLabel(c.RunningVersion, c.RunningSHA256), coreBuildLabel(current, c.CopySHA256)), false
 	}
 	return "", false
