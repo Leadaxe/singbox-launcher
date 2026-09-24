@@ -258,8 +258,15 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 
 // startSingBoxPrivileged starts sing-box with elevated privileges on macOS (for TUN).
 // Скрипт создаётся в platform; оркестрация и состояние — здесь.
+//
+// SPEC 137: root исполняет только root-owned копию ядра. Гейт проверяет
+// копию до AEWP; не прошла — старта с привилегиями нет.
 func (svc *ProcessService) startSingBoxPrivileged() error {
 	ac := svc.ac
+	corePath, err := ac.privilegedCoreCopyGate()
+	if err != nil {
+		return err
+	}
 	binDir := ac.FileService.Layout.Data.Bin()
 	configName := filepath.Base(ac.FileService.ConfigPath)
 	logPath := ac.FileService.ChildLogPath
@@ -270,7 +277,7 @@ func (svc *ProcessService) startSingBoxPrivileged() error {
 	scriptPath := filepath.Join(binDir, platform.PrivilegedScriptName)
 	pidFilePath := filepath.Join(binDir, platform.PrivilegedPidFileName)
 
-	if err := platform.WritePrivilegedStartScript(scriptPath, pidFilePath, binDir, ac.FileService.SingboxPath, configName, logPath); err != nil {
+	if err := platform.WritePrivilegedStartScript(scriptPath, pidFilePath, binDir, corePath, configName, logPath); err != nil {
 		return fmt.Errorf("failed to write script %s: %w", scriptPath, err)
 	}
 

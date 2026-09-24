@@ -6,10 +6,10 @@
 - [x] SPEC.md, PLAN.md, TASKS.md.
 
 ## Этап 2 · Гейт
-- [ ] `checkPrivilegedCoreCopy`: no core / missing / unsafe / outdated / ok на функциях SPEC 136 (цепочка, кэш sha, `EvalSymlinks`).
-- [ ] `privilegedCopyCommandFor`: install при plist службы, иначе `--service=copy`; квотинг `daemonServiceCommand`.
-- [ ] Гейт перед AEWP в `startSingBoxPrivileged`; стартует копия.
-- [ ] `TestPrivilegedCoreCopyGate`.
+- [x] `checkPrivilegedCoreCopy`: no core / missing / unsafe / outdated / ok на функциях SPEC 136 (цепочка, кэш sha, `EvalSymlinks`).
+- [x] `privilegedCopyCommandFor`: install при plist службы, иначе `--service=copy`; квотинг `daemonServiceCommand`.
+- [x] Гейт перед AEWP в `startSingBoxPrivileged`; стартует копия.
+- [x] `TestPrivilegedCoreCopyGate`.
 
 ## Этап 3 · Исполнение под root
 - [ ] Старт: `/usr/bin/env -i PATH=… /bin/sh -c <тело-константа> start-singbox-privileged <аргументы>`; скрипт в DataDir больше не пишется, старый удаляется.
