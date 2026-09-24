@@ -121,11 +121,6 @@ func NewProcessService(ac *AppController) *ProcessService {
 	return &ProcessService{ac: ac}
 }
 
-// buildPrivilegedKillByPatternScript returns the shell command to kill privileged script and sing-box by process name pattern (for "already running" dialog on macOS).
-func buildPrivilegedKillByPatternScript() string {
-	return "pkill -TERM -f " + strconv.Quote(platform.PrivilegedPkillPattern) + " 2>/dev/null"
-}
-
 // Start launches the sing-box process. Behavior is identical to the previous StartSingBoxProcess.
 // skipRunningCheck: если true, пропускает проверку на уже запущенный процесс (для автоперезапуска).
 func (svc *ProcessService) Start(skipRunningCheck ...bool) {
@@ -257,10 +252,11 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 }
 
 // startSingBoxPrivileged starts sing-box with elevated privileges on macOS (for TUN).
-// Скрипт создаётся в platform; оркестрация и состояние — здесь.
+// Команда root-шелла собирается в platform; оркестрация и состояние — здесь.
 //
-// SPEC 137: root исполняет только root-owned копию ядра. Гейт проверяет
-// копию до AEWP; не прошла — старта с привилегиями нет.
+// SPEC 137: root исполняет только root-owned копию ядра и системные
+// утилиты. Гейт проверяет копию до AEWP; не прошла — старта с привилегиями
+// нет. Скрипт в каталоге данных больше не пишется.
 func (svc *ProcessService) startSingBoxPrivileged() error {
 	ac := svc.ac
 	corePath, err := ac.privilegedCoreCopyGate()
@@ -274,18 +270,21 @@ func (svc *ProcessService) startSingBoxPrivileged() error {
 		ac.FileService.CheckAndRotateLogFile(logPath)
 	}
 
-	scriptPath := filepath.Join(binDir, platform.PrivilegedScriptName)
 	pidFilePath := filepath.Join(binDir, platform.PrivilegedPidFileName)
-
-	if err := platform.WritePrivilegedStartScript(scriptPath, pidFilePath, binDir, corePath, configName, logPath); err != nil {
-		return fmt.Errorf("failed to write script %s: %w", scriptPath, err)
+	// Скрипт старта до SPEC 137 больше ничто не исполняет — убираем, чтобы
+	// он не выглядел действующим.
+	legacyScript := filepath.Join(binDir, platform.PrivilegedLegacyScriptName)
+	if err := os.Remove(legacyScript); err == nil {
+		debuglog.InfoLog("startSingBox: removed the pre-SPEC 137 start script %s", legacyScript)
+	} else if !os.IsNotExist(err) {
+		debuglog.WarnLog("startSingBox: cannot remove the old start script %s: %v", legacyScript, err)
 	}
 
-	debuglog.WarnLog("startSingBox: Starting Sing-Box with elevated privileges (TUN)...")
+	debuglog.WarnLog("startSingBox: Starting Sing-Box with elevated privileges (TUN) from %s...", corePath)
 	type privilegedPids struct{ Script, Singbox int }
 	pidCh := make(chan privilegedPids, 1)
 	go func() {
-		scriptPID, singboxPID, runErr := platform.RunWithPrivileges("/bin/sh", []string{scriptPath})
+		scriptPID, singboxPID, runErr := platform.StartPrivilegedCore(corePath, binDir, configName, logPath)
 		if runErr != nil {
 			pidCh <- privilegedPids{0, 0}
 			ac.CmdMutex.Lock()
@@ -664,7 +663,7 @@ func (svc *ProcessService) checkAndShowSingBoxRunningWarning(ctx string) bool {
 			dialogs.ShowProcessKillConfirmation(svc.ac.UIService.MainWindow, func() {
 				if runtime.GOOS == "darwin" {
 					// On macOS the process may have been started with privileges (root); kill with elevated rights
-					if _, _, err := platform.RunWithPrivileges("/bin/sh", []string{"-c", buildPrivilegedKillByPatternScript()}); err != nil {
+					if err := platform.KillPrivilegedByPattern(); err != nil {
 						debuglog.WarnLog("%s: Privileged kill failed (user may have cancelled): %v", ctx, err)
 					}
 				} else {

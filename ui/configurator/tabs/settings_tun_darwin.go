@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"fyne.io/fyne/v2/dialog"
@@ -126,12 +125,9 @@ func maybeTunOffDarwin(presenter *wizardpresentation.WizardPresenter, model *wiz
 		return false
 	}
 
-	var quoted []string
-	for _, p := range targets {
-		quoted = append(quoted, strconv.Quote(p))
-	}
-	shell := "rm -rf " + strings.Join(quoted, " ")
-	_, _, err := platform.RunWithPrivileges("/bin/sh", []string{"-c", shell})
+	// SPEC 137: `/bin/rm` с путями в argv, без шелла — путь кэша приходит
+	// из конфига, и в `sh -c` имя вида `$(…)` стало бы командой под root.
+	err := platform.RemoveWithPrivileges(targets)
 	if err != nil {
 		debuglog.WarnLog("maybeTunOffDarwin: privileged rm: %v", err)
 		dialog.ShowError(err, presenter.DialogParent())

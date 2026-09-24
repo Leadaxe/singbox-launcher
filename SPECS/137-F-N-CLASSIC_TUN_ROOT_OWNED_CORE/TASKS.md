@@ -12,12 +12,12 @@
 - [x] `TestPrivilegedCoreCopyGate`.
 
 ## Этап 3 · Исполнение под root
-- [ ] Старт: `/usr/bin/env -i PATH=… /bin/sh -c <тело-константа> start-singbox-privileged <аргументы>`; скрипт в DataDir больше не пишется, старый удаляется.
-- [ ] Stop/рестарт: `/bin/kill -TERM` по PID, pid-файл удаляет лаунчер.
-- [ ] pkill (диалог «already running», Diagnostics): `/usr/bin/pkill` без шелла.
-- [ ] Снятие TUN: `/bin/rm -rf --` без шелла.
-- [ ] `privilegedAuthReuse` (вариант А; Б — `false`).
-- [ ] `TestPrivilegedStartCommand` (`sh -n`, прогон с поддельным ядром, `BASH_FUNC_echo%%` и `PATH` не доходят).
+- [x] Старт: `/usr/bin/env -i PATH=… /bin/sh -c <тело-константа> start-singbox-privileged <аргументы>`; скрипт в DataDir больше не пишется, старый удаляется.
+- [x] Stop/рестарт: `/bin/kill -TERM` по PID, pid-файл удаляет лаунчер.
+- [x] pkill (диалог «already running», Diagnostics): `/usr/bin/pkill` без шелла.
+- [x] Снятие TUN: `/bin/rm -rf --` без шелла.
+- [x] `privilegedAuthReuse` (вариант А; Б — `false`).
+- [x] `TestPrivilegedStartCommand` (`sh -n`, прогон с поддельным ядром, `BASH_FUNC_echo%%` и `PATH` не доходят).
 
 ## Этап 4 · Диалог
 - [ ] `dialogs.ShowCommandRetry`: Copy the command, Run in Terminal, Retry, Close.

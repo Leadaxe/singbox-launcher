@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -40,9 +39,9 @@ const (
 // AuthorizationRef переиспользуется (без повторного prompt'а). Иначе macOS
 // покажет sudo-prompt — это ожидаемо.
 //
-// Pattern `sing-box run|start-singbox-privileged` cовпадает с
-// platform.PrivilegedPkillPattern — ловит и сам sing-box, и shell-script
-// враппер с правами.
+// Pattern `sing-box run|start-singbox-privileged` — это
+// platform.PrivilegedPkillPattern: ловит и сам sing-box, и root-шелл
+// обёртки. pkill вызывается по абсолютному пути без шелла (SPEC 137).
 //
 // На других OS — обычный `killall`/`taskkill`, прав root не нужно
 // (sing-box на Linux/Windows запускается без elevation в нашем launcher'е,
@@ -50,8 +49,7 @@ const (
 func killSingBoxPanic(ac *core.AppController) {
 	_ = ac // зарезервировано для UI feedback в будущем
 	if runtime.GOOS == "darwin" {
-		killCmd := "pkill -TERM -f " + strconv.Quote(platform.PrivilegedPkillPattern) + " 2>/dev/null"
-		if _, _, err := platform.RunWithPrivileges("/bin/sh", []string{"-c", killCmd}); err != nil {
+		if err := platform.KillPrivilegedByPattern(); err != nil {
 			debuglog.WarnLog("killSingBoxPanic: privileged pkill failed (%v); falling back to non-privileged", err)
 			_ = platform.KillProcess(platform.GetProcessNameForCheck())
 		}
