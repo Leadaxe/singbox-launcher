@@ -511,6 +511,14 @@ Key properties:
   `fmt.Sprintf` + `strings.Join` pattern), and `outbound_filter.go`. The
   `JSONBuilder` is **partially adopted** — the full migration of every protocol
   generator onto it is deferred (see §10).
+- **Root sections without a handler pass through.** A template `config` section
+  with no dedicated builder (`log`, `certificate`, `experimental`, the fork's root
+  `lx` block) is emitted as-is after `@var` / `#if` substitution. This is the only
+  channel for `lx.masque.idle_timeout` (core ≥ lx.13; the template may carry `lx`
+  only together with that pin, lx.12 rejects the unknown root key). There is no UI
+  for it. The launcher never emits the WireGuard idle-suspend keys in either form
+  (`route.lx_idle_*`, `lx.wg.*`): desktop core builds lack `with_lx_idle_suspend`
+  and refuse them at start (SPEC 138; pinned by `TestBuildConfigPassesRootLXBlock`).
 
 See [DATA_FLOW.md §3](DATA_FLOW.md) for the build flow with the SPEC 057/058 outbound
 `Ref`/`Updates` resolution detail.

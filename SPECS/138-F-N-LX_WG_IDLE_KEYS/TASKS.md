@@ -12,13 +12,13 @@
 - [x] `TestBuildConfigPassesRootLXBlock` (`core/build/lx_root_block_test.go`), прогон по имени.
 
 ## Этап 3 · Доки
-- [ ] `docs/ARCHITECTURE.md` / `.ru.md` — сквозной путь корневого `lx`.
-- [ ] `docs/release_notes/upcoming.md` EN/RU.
-- [ ] Запись в `SPECS/README.md`.
+- [x] `docs/ARCHITECTURE.md` / `.ru.md` — сквозной путь корневого `lx`.
+- [x] `docs/release_notes/upcoming.md` EN/RU.
+- [x] Запись в `SPECS/README.md`.
 
 ## Проверки
-- [ ] `go build ./...`.
-- [ ] `l10n_check --strict`, `hardcoded_check --strict`, `paths_guard`, `win7guard`.
+- [x] `go build ./...`.
+- [x] `l10n_check --strict`, `hardcoded_check --strict`, `paths_guard`, `win7guard`.
 
 ## Ждёт
 - [ ] Релиз ядра `v1.14.1-lx.13`, затем бамп `RequiredCoreVersion` (SPEC §3.4).
