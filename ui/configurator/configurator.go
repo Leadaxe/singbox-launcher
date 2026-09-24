@@ -34,7 +34,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"image/color"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -93,12 +92,12 @@ func ShowConfigWizardForMachine(parent fyne.Window, machine services.RemoteDaemo
 	// источник для Deploy).
 	tgt.ResourceDir = machine.ResourceDir()
 	// SPEC 122: тот же довод, что у ResourceDir строкой выше — путь резолвит
-	// ядро НА МАШИНЕ, и локальный `<execDir>/bin/tailscale` там не
+	// ядро НА МАШИНЕ, и локальный `<DataDir>/bin/tailscale` там не
 	// существует. Без этого узел tailnet уносил на роутер путь с нашего
 	// Mac'а, и состояние оседало в каталоге, созданном от корня роутера.
 	tgt.TailscaleStateDir = machine.TailscaleStateDir()
 	tgt.SrsLocalDir = platform.GetRuleSetsDirFor(
-		core.GetController().FileService.ExecDir, constants.ConfigTargetRemote, machine.ID)
+		core.GetController().FileService.Layout.Data, constants.ConfigTargetRemote, machine.ID)
 	// ResourceDir кешируется в реестре при каждом соединении (SPEC 063):
 	// пути .srs в конфиге машины должны указывать в ЕЁ ресурс-стор, а не в
 	// файловую систему лаунчера. Пусто, если с машиной ещё ни разу не
@@ -138,14 +137,14 @@ func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, r
 	// Быстрый путь: файл на месте — открываем синхронно, как и раньше, без
 	// мигания прелоадера.
 	templateLoader := &wizardbusiness.DefaultTemplateLoader{}
-	templateData, loadErr := templateLoader.LoadTemplateData(ac.FileService.ExecDir)
+	templateData, loadErr := templateLoader.LoadTemplateData(ac.FileService.Layout)
 	if loadErr == nil {
 		buildWizardWindow(ac, templateLoader, templateData, target, resourceDir)
 		return
 	}
 	templateFileName := wizardtemplate.GetTemplateFileName()
 	debuglog.InfoLog("ConfigWizard: %s unreadable at %s (%v) — trying to download it",
-		templateFileName, filepath.Join(ac.FileService.ExecDir, constants.BinDirName, templateFileName), loadErr)
+		templateFileName, wizardtemplate.ResolveTemplate(ac.FileService.Layout).Path, loadErr)
 
 	// Сеть — не на UI-потоке: сюда приходят из OnTapped кнопок Local и
 	// Remote → Configure. Всё, что трогает виджеты после, идёт через fyne.Do.
@@ -154,7 +153,7 @@ func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, r
 		ctx, cancel := context.WithTimeout(context.Background(), wizardtemplate.DownloadTimeout)
 		defer cancel()
 
-		fetched, _, err := wizardtemplate.EnsureTemplate(ctx, ac.FileService.ExecDir, ac.GetURLBytes)
+		fetched, _, err := wizardtemplate.EnsureTemplate(ctx, ac.FileService.Layout, ac.GetURLBytes)
 
 		fyne.Do(func() {
 			if progress != nil {
@@ -162,7 +161,7 @@ func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, r
 			}
 			if err != nil {
 				debuglog.ErrorLog("ConfigWizard: template download failed: %v", err)
-				binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
+				binDir := ac.FileService.Layout.Data.Bin()
 				dialogs.ShowDownloadFailedManualWithReason(parent,
 					locale.T("Config template failed to load"), err.Error(),
 					wizardtemplate.GetTemplateURL(), binDir)
@@ -222,7 +221,7 @@ func buildWizardWindow(
 	guiState := &wizardpresentation.GUIState{}
 
 	model.TemplateData = templateData
-	model.ExecDir = ac.FileService.ExecDir
+	model.DataDir = ac.FileService.Layout.Data
 	// Таргет ставится ДО чтения состояния: от него зависит, из чьей
 	// директории читать. Поставить его после загрузки значило бы прочитать
 	// local-состояние и записать его в папку машины.
@@ -307,7 +306,7 @@ func buildWizardWindow(
 			} else {
 				debuglog.InfoLog("ShowConfigWizard: loaded state from state.json")
 				maybeShowMigrationReport(wizardWindow, stateFile,
-					filepath.Join(ac.FileService.ExecDir, constants.BinDirName))
+					ac.FileService.Layout.Data.Bin())
 			}
 			// LoadState восстанавливает Target из meta файла. Для машины id и
 			// каталоги всегда из реестра (§5.8 — их в файле нет и быть не
@@ -378,7 +377,7 @@ func loadConfigFromFile(presenter *wizardpresentation.WizardPresenter, fileServi
 		// If we didn't load from template or config.json - show manual download dialog
 		if model.TemplateData == nil || model.TemplateData.ParserConfig == "" {
 			ac := core.GetController()
-			binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
+			binDir := ac.FileService.Layout.Data.Bin()
 			debuglog.DebugLog("wizard: showing download failed manual (template missing)")
 			dialogs.ShowDownloadFailedManual(wizardWindow, locale.T("Config template missing"), wizardtemplate.GetTemplateURL(), binDir)
 			wizardWindow.Close()
@@ -819,14 +818,14 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 			// Если TemplateData ещё не загружен, загружаем его
 			if model.TemplateData == nil {
 				templateLoader := &wizardbusiness.DefaultTemplateLoader{}
-				templateData, err := templateLoader.LoadTemplateData(ac.FileService.ExecDir)
+				templateData, err := templateLoader.LoadTemplateData(ac.FileService.Layout)
 				if err != nil {
 					// Страховочная ветка: окно Мастера не открывается без
 					// шаблона (showConfigWizardFor его гарантирует, при
 					// необходимости скачав), так что сюда попадают, только
 					// если файл унесли из-под работающего окна. Причина —
 					// текстом ошибки, а не «см. лог».
-					binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
+					binDir := ac.FileService.Layout.Data.Bin()
 					debuglog.ErrorLog("wizard: template load on New failed: %v", err)
 					dialogs.ShowDownloadFailedManualWithReason(wizardWindow,
 						locale.T("Config template failed to load"), err.Error(),
@@ -877,7 +876,7 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 			return
 		}
 		maybeShowMigrationReport(wizardWindow, stateFile,
-			filepath.Join(presenter.Model().ExecDir, constants.BinDirName))
+			presenter.Model().DataDir.Bin())
 
 		// Синхронизируем GUI
 		presenter.SyncModelToGUI()
@@ -895,13 +894,13 @@ func handleCloneFromButton(presenter *wizardpresentation.WizardPresenter, wizard
 	if ac == nil || ac.FileService == nil {
 		return
 	}
-	execDir := ac.FileService.ExecDir
+	dataDir := ac.FileService.Layout.Data
 
 	// Машины реестра → строки списка. Платформа справочна: она свойство
 	// машины (SPEC 098 §2.4) и клоном не переносится, но объясняет, что за
 	// конфиг берём.
 	var machines []wizardbusiness.CloneSource
-	registry := services.NewRemoteRegistry(execDir)
+	registry := services.NewRemoteRegistry(dataDir)
 	list, err := registry.List()
 	if err != nil {
 		debuglog.WarnLog("clone: list machines: %v", err)
@@ -920,14 +919,14 @@ func handleCloneFromButton(presenter *wizardpresentation.WizardPresenter, wizard
 	}
 
 	sources := wizardbusiness.ListCloneSources(
-		execDir, machines, presenter.ConfigTarget(), presenter.ConfigMachineID())
+		dataDir, machines, presenter.ConfigTarget(), presenter.ConfigMachineID())
 
 	wizarddialogs.ShowCloneFromDialog(presenter, sources, func(res wizarddialogs.CloneFromResult) {
 		if res.Action != "clone" {
 			return
 		}
 
-		state, summary, loadErr := wizardbusiness.LoadCloneState(execDir, res.Source)
+		state, summary, loadErr := wizardbusiness.LoadCloneState(dataDir, res.Source)
 		if loadErr != nil {
 			dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to load state"), loadErr))
 			return

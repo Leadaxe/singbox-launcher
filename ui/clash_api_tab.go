@@ -1748,7 +1748,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				api.SetPingTestTimeoutMs(secs * 1000)
 			}
 
-			binDir := platform.GetBinDir(ac.FileService.ExecDir)
+			binDir := ac.FileService.Layout.Data.Bin()
 			st := locale.LoadSettings(binDir)
 			st.PingTestURL = api.GetPingTestURL()
 			st.PingTestAllConcurrency = api.GetPingTestAllConcurrency()

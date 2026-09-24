@@ -27,6 +27,15 @@ type DaemonStatus struct {
 	InterruptedApply bool   `json:"interrupted_apply"`
 	DaemonVersion    string `json:"daemon_version,omitempty"`
 	StateDir         string `json:"state_dir,omitempty"`
+	// ServiceState — вердикт классификатора службы (SPEC 136 §4):
+	// not_installed | unsafe | stale | not_running | process_stale | ok |
+	// core_too_old (службу лечит install, но ядро лаунчера ниже lx.12 —
+	// команды нет, /daemon/commands отдаёт install пустым; исходный вердикт —
+	// в service_detail). ServicePath — ProgramArguments[0] из plist,
+	// ServiceDetail — причина (английский).
+	ServiceState  string `json:"service_state,omitempty"`
+	ServicePath   string `json:"service_path,omitempty"`
+	ServiceDetail string `json:"service_detail,omitempty"`
 }
 
 // DaemonCommands — готовые sudo-команды для терминала оператора. API их

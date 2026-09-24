@@ -31,3 +31,10 @@ func EnableCrashOutput(path string) error {
 	}
 	return err
 }
+
+// releaseCrashOutput снимает дублирование трассы паники в crash.log и
+// закрывает копию дескриптора, которую держит runtime: иначе на Windows
+// файл (и LogDir) нельзя удалить до выхода процесса.
+func releaseCrashOutput() {
+	_ = debug.SetCrashOutput(nil, debug.CrashOptions{})
+}

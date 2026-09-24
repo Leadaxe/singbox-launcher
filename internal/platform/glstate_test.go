@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/paths"
 )
 
 // writeFile — вспомогалка: создать файл с содержимым (директории по пути уже
@@ -22,7 +23,7 @@ func writeFile(t *testing.T, path, content string) {
 }
 
 func TestGLStateLoadSaveRoundTrip(t *testing.T) {
-	dir := t.TempDir()
+	dir := paths.DataDir(t.TempDir())
 
 	if _, ok := LoadGLState(dir); ok {
 		t.Fatal("LoadGLState on an empty dir must report ok=false")
@@ -57,7 +58,7 @@ func TestGLStateLoadSaveRoundTrip(t *testing.T) {
 }
 
 func TestGLStateMarkStartingKeepsPreviousRendererAndOffer(t *testing.T) {
-	dir := t.TempDir()
+	dir := paths.DataDir(t.TempDir())
 	prev := GLState{
 		Phase:             GLPhaseRendered,
 		Mode:              GLModeMesa,
@@ -200,17 +201,17 @@ func TestDisableEnableMesa(t *testing.T) {
 		for _, name := range mesaDLLs {
 			writeFile(t, filepath.Join(dir, name), name+" body")
 		}
-		if !IsMesaInstalled(dir) {
+		if !IsMesaInstalled(paths.AppDir(dir)) {
 			t.Fatal("IsMesaInstalled must be true with opengl32 + libgallium_wgl present")
 		}
 
-		if err := DisableMesa(dir); err != nil {
+		if err := DisableMesa(paths.AppDir(dir)); err != nil {
 			t.Fatalf("DisableMesa: %v", err)
 		}
-		if IsMesaInstalled(dir) {
+		if IsMesaInstalled(paths.AppDir(dir)) {
 			t.Error("Mesa still reported as installed after DisableMesa")
 		}
-		if !IsMesaDisabled(dir) {
+		if !IsMesaDisabled(paths.AppDir(dir)) {
 			t.Error("IsMesaDisabled must be true after DisableMesa")
 		}
 		for _, name := range mesaDLLs {
@@ -219,10 +220,10 @@ func TestDisableEnableMesa(t *testing.T) {
 			}
 		}
 
-		if err := EnableMesa(dir); err != nil {
+		if err := EnableMesa(paths.AppDir(dir)); err != nil {
 			t.Fatalf("EnableMesa: %v", err)
 		}
-		if !IsMesaInstalled(dir) || IsMesaDisabled(dir) {
+		if !IsMesaInstalled(paths.AppDir(dir)) || IsMesaDisabled(paths.AppDir(dir)) {
 			t.Error("EnableMesa did not restore the DLLs")
 		}
 		for _, name := range mesaDLLs {
@@ -241,10 +242,10 @@ func TestDisableEnableMesa(t *testing.T) {
 		path := filepath.Join(dir, "opengl32.dll")
 		writeFile(t, path, "someone else's driver")
 
-		if IsMesaInstalled(dir) {
+		if IsMesaInstalled(paths.AppDir(dir)) {
 			t.Error("a lone opengl32.dll must not count as our Mesa")
 		}
-		err := DisableMesa(dir)
+		err := DisableMesa(paths.AppDir(dir))
 		if !errors.Is(err, errForeignOpenGL) {
 			t.Fatalf("DisableMesa err = %v, want errForeignOpenGL", err)
 		}
@@ -262,13 +263,13 @@ func TestDisableEnableMesa(t *testing.T) {
 		// Не-DLL в папке копироваться не должен.
 		writeFile(t, filepath.Join(bundle, "README.txt"), "not a dll")
 
-		if !HasMesaBundle(dir) {
+		if !HasMesaBundle(paths.AppDir(dir)) {
 			t.Fatal("HasMesaBundle must be true")
 		}
-		if err := EnableMesa(dir); err != nil {
+		if err := EnableMesa(paths.AppDir(dir)); err != nil {
 			t.Fatalf("EnableMesa: %v", err)
 		}
-		if !IsMesaInstalled(dir) {
+		if !IsMesaInstalled(paths.AppDir(dir)) {
 			t.Fatal("EnableMesa did not install from the bundle")
 		}
 		if _, err := os.Stat(filepath.Join(dir, "README.txt")); err == nil {
@@ -286,7 +287,7 @@ func TestDisableEnableMesa(t *testing.T) {
 		writeFile(t, filepath.Join(dir, constants.MesaBundleDirName, "opengl32.dll"), "bundled opengl32")
 		writeFile(t, filepath.Join(dir, constants.MesaBundleDirName, "libgallium_wgl.dll"), "bundled gallium")
 
-		if err := EnableMesa(dir); !errors.Is(err, errForeignOpenGL) {
+		if err := EnableMesa(paths.AppDir(dir)); !errors.Is(err, errForeignOpenGL) {
 			t.Fatalf("EnableMesa err = %v, want errForeignOpenGL", err)
 		}
 		body, err := os.ReadFile(filepath.Join(dir, "opengl32.dll"))

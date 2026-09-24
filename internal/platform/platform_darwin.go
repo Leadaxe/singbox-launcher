@@ -15,8 +15,9 @@ func GetExecutableNames() string {
 	return "sing-box"
 }
 
-// GetWintunPath returns empty string on macOS (wintun is Windows-only)
-func GetWintunPath(execDir string) string {
+// GetWintunPathFor — wintun.dll рядом с выбранным ядром (SPEC 135 §3.3):
+// загрузчик ОС ищет её рядом с sing-box.exe. Только Windows, иначе "".
+func GetWintunPathFor(coreDir string) string {
 	return ""
 }
 

@@ -1,7 +1,6 @@
 package tabs
 
 import (
-	"path/filepath"
 	"testing"
 
 	wizardtemplate "singbox-launcher/core/template"
@@ -10,7 +9,7 @@ import (
 
 func loadBundledTemplate(t *testing.T) *wizardtemplate.TemplateData {
 	t.Helper()
-	td, err := wizardtemplate.LoadTemplateData(filepath.Join("..", "..", ".."))
+	td, err := wizardtemplate.LoadTemplateData(repoRootLayout())
 	if err != nil {
 		t.Skipf("bundled template not loadable: %v", err)
 	}

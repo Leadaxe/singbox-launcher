@@ -22,6 +22,7 @@ import (
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -40,7 +41,7 @@ import (
 //     обновлённые заголовки провайдера в Meta и канонический updateStatus;
 //   - На failure: nodes[] не тронуты (SPEC 113-A), ошибка — в updateStatus;
 //   - Persist state.json через `state.Save` (atomic).
-func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
+func refreshSubscriptionsMetaAndCache(s *state.State, dataDir paths.DataDir) {
 	if s == nil {
 		return
 	}
@@ -64,7 +65,7 @@ func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 
 	// Настройки приложения — дефолт капа max_nodes (SPEC 118 Т1); читаются
 	// один раз на весь sweep, а не на каждую подписку.
-	settings := locale.LoadSettings(platform.GetBinDir(execDir))
+	settings := locale.LoadSettings(dataDir.Bin())
 
 	// Фан-аут по подпискам остаётся последовательным (memory:
 	// subscription_scale_fanout) — параллельный fetch сотен подписок
@@ -91,7 +92,7 @@ func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 
 	// Persist state с обновлённой meta. Best-effort.
 	if dirty {
-		statePath := platform.GetWizardStatePath(execDir)
+		statePath := platform.GetWizardStatePath(dataDir)
 		if err := s.Save(statePath); err != nil {
 			debuglog.WarnLog("refreshSubscriptionsMetaAndCache: state.Save: %v", err)
 		}
@@ -324,15 +325,15 @@ func (svc *ConfigService) RefreshSourceInPlace(src *state.Source) (bool, error) 
 	if src.URL == "" {
 		return false, fmt.Errorf("source %s has empty URL", src.ID)
 	}
-	execDir := svc.ac.FileService.ExecDir
+	dataDir := svc.ac.FileService.Layout.Data
 
 	// Дефолт капа — настройки приложения (SPEC Т1); их отсутствие на
 	// cold-start нормально: парсер клэмпит своим потолком.
-	settings := locale.LoadSettings(platform.GetBinDir(execDir))
+	settings := locale.LoadSettings(dataDir.Bin())
 
 	changed := refreshOneSubscriptionSource(src, settings)
 	if changed {
-		svc.persistFetchResultForSource(src, execDir)
+		svc.persistFetchResultForSource(src, dataDir)
 	}
 	return changed, nil
 }
@@ -350,11 +351,11 @@ func (svc *ConfigService) RefreshSourceInPlace(src *state.Source) (bool, error) 
 // Источник, которого на диске нет (визард ещё не сохранял его — сценарий 1
 // cold-start), НЕ создаётся: state.json пишет визард, и родить там половину
 // записи значило бы подсунуть ему источник без url и подписи.
-func (svc *ConfigService) persistFetchResultForSource(src *state.Source, execDir string) {
+func (svc *ConfigService) persistFetchResultForSource(src *state.Source, dataDir paths.DataDir) {
 	if src == nil || src.ID == "" || svc == nil || svc.ac == nil {
 		return
 	}
-	statePath := platform.GetWizardStatePath(execDir)
+	statePath := platform.GetWizardStatePath(dataDir)
 
 	svc.ac.SubscriptionMu.Lock()
 	defer svc.ac.SubscriptionMu.Unlock()
@@ -401,8 +402,8 @@ func (svc *ConfigService) RefreshSingleSubscription(sourceID string) (*state.Sou
 	if sourceID == "" {
 		return nil, fmt.Errorf("RefreshSingleSubscription: empty source id")
 	}
-	execDir := svc.ac.FileService.ExecDir
-	statePath := platform.GetWizardStatePath(execDir)
+	dataDir := svc.ac.FileService.Layout.Data
+	statePath := platform.GetWizardStatePath(dataDir)
 
 	// SPEC 052 phase 8 race-fix: load+mutate+save сериализуем через
 	// SubscriptionMu — параллельный heartbeat/manual Update обновляющий
@@ -423,7 +424,7 @@ func (svc *ConfigService) RefreshSingleSubscription(sourceID string) (*state.Sou
 		return nil, fmt.Errorf("source %s is not a subscription (type=%q)", sourceID, src.Kind)
 	}
 
-	settings := locale.LoadSettings(platform.GetBinDir(execDir))
+	settings := locale.LoadSettings(dataDir.Bin())
 	dirty := refreshOneSubscriptionSource(src, settings)
 	if dirty {
 		if err := s.Save(statePath); err != nil {

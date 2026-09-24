@@ -317,29 +317,35 @@ chmod +x singbox-launcher
 ./singbox-launcher
 ```
 
-`sing-box` авто-скачивается при первом запуске в `bin/`. Если `sing-box` есть в `PATH` (например, из distro-пакета), лаунчер использует этот бинарь.
+`sing-box` авто-скачивается при первом запуске в `bin/` каталога данных (см. [Где лежат данные](#где-лежат-данные)). Порядок поиска: `SINGBOX_LAUNCHER_CORE` (явный путь) → скачанный/каталог данных `bin/sing-box` → ядро рядом с бинарём (если положено) → `PATH`. `PATH` проверяется **последним**, а не первым — дистрибутивный `sing-box` почти никогда не форк `sing-box-lx`, который нужен лаунчеру (XHTTP, AmneziaWG). Если всё же нужен бинарь из `PATH`, укажите его явно через `SINGBOX_LAUNCHER_CORE`. Заметка: `setcap cap_net_admin+ep` не срабатывает на домашнем разделе, смонтированном с `nosuid`, — либо запускайте через `sudo`, либо перенесите бинарь на раздел без этого флага.
 
-## Структура папок
+## Где лежат данные
 
-```
-singbox-launcher/
-├── bin/
-│   ├── sing-box(.exe)             — движок, авто-загрузка
-│   ├── wintun.dll                  — только Windows, авто-загрузка
-│   ├── config.json                 — sing-box runtime config (derived view)
-│   ├── wizard_template.json        — community template с preset bundles
-│   ├── wizard_states/
-│   │   ├── state.json              — состояние визарда ЭТОЙ машины
-│   │   ├── <name>.json             — именованные снапшоты
-│   │   └── remote/<machine-id>/    — по каталогу на сопряжённую машину:
-│   │                                 state.json, config.json, srs/, subscriptions/
-│   ├── subscriptions/<id>.raw      — per-source raw cache (SPEC 052)
-│   ├── rule-sets/*.srs             — кешированные SRS rule-sets
-│   └── logs/                       — sing-box.log + rotated history
-└── singbox-launcher(.exe)
-```
+Лаунчер разделяет три роли вместо того, чтобы держать всё рядом с исполняемым файлом: **программа** (только чтение: бинарь, поставляемые шаблон/локали/ядро), **данные** (состояние, подписки, скачанные ядро/шаблон, кэши) и **логи**.
 
-Layout `bin/` — стабильный контракт, на который могут полагаться внешние инструменты (backup-скрипты, MCP-серверы, CI).
+| Платформа | Программа (только чтение) | Данные | Логи |
+|---|---|---|---|
+| Linux | каталог бинаря | `$XDG_DATA_HOME/singbox-launcher` (по умолчанию `~/.local/share/singbox-launcher`) | `$XDG_STATE_HOME/singbox-launcher/logs` (по умолчанию `~/.local/state/singbox-launcher/logs`) |
+| macOS, установлен как `.app` | `…app/Contents/MacOS` | `~/Library/Application Support/singbox-launcher` | `~/Library/Logs/singbox-launcher` |
+| macOS, голый бинарь | каталог бинаря | совпадает с программой (portable) | `<программа>/logs` |
+| Windows | каталог `.exe` | `%LOCALAPPDATA%\singbox-launcher` | `%LOCALAPPDATA%\singbox-launcher\logs` |
+| Любая платформа, **portable-режим** | каталог бинаря | совпадает с программой | `<программа>/logs` |
+
+Внутри каталога данных раскладка — та же структура `bin/…`, что раньше лежала рядом с исполняемым файлом: `bin/config.json`, `bin/wizard_states/` (`state.json`, именованные снапшоты, `remote/<machine-id>/` на сопряжённую машину), `bin/subscriptions/<id>.raw`, `bin/rule-sets/*.srs`, `bin/sing-box(.exe)`, `bin/wintun.dll` — это стабильный контракт, на который могут полагаться внешние инструменты (backup-скрипты, MCP-серверы, CI).
+
+**Portable-режим** держит всё рядом с папкой программы — классическая раскладка «на флешке». Включён по умолчанию во всех zip-релизах для Windows (маркер `portable.txt` идёт вместе с архивом); переключается из **Settings → Storage → Portable mode** (переносит данные и перезапускает приложение), либо маркер `portable.txt` рядом с бинарём можно положить/удалить руками. Недоступен на macOS-сборках `.app` и не нужен для голого бинаря macOS (он и так portable).
+
+**Переменные окружения** (для Flatpak-обёрток, упаковки, CI или нестандартной раскладки дисков), каждая независимо:
+
+- `SINGBOX_LAUNCHER_DATA_DIR` — где лежат состояние, кэш, скачанное ядро.
+- `SINGBOX_LAUNCHER_LOG_DIR` — куда пишутся логи.
+- `SINGBOX_LAUNCHER_CORE` — явный путь к бинарю `sing-box`, в обход порядка поиска выше.
+
+**Посмотреть, где что лежит**: **Settings → Storage** показывает Mode/Program/Data/Logs/Core/Template с кнопками **Open** у каждой строки и кнопкой **Copy paths** (вставьте результат в bug report). На машине, где окно не поднимается (например, NixOS без рабочего GL-драйвера), запустите `singbox-launcher -paths` — тот же блок печатается в stdout, и процесс выходит.
+
+**Удалить лаунчер и его данные**: саму папку программы (исполняемый файл, на macOS — `.app`) удаляйте как угодно — лаунчер её не трогает. Чтобы аккуратно удалить ещё и данные с логами, используйте **Settings → Storage → Remove all data…** либо `singbox-launcher -purge-data` для просмотра плана (добавьте `-yes`, чтобы выполнить). В обоих случаях VPN должен быть остановлен.
+
+**Обновление на macOS**: если данные раньше лежали внутри старого `.app`, первый запуск версии с новой раскладкой переносит их автоматически в `~/Library/Application Support/singbox-launcher`. Перетаскивание нового `.app` поверх старого в Finder заменяет бандл (и всё, что ещё было внутри) *до* первого запуска нового бинаря, так что перенести в этом случае уже нечего — **сделайте бэкап заранее** (Settings → Backup → LX Backup) или обновляйтесь на месте через `build/build_darwin.sh -i`, который меняет только исполняемый файл.
 
 ## Сборка из исходников
 

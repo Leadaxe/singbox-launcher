@@ -6,6 +6,7 @@ import (
 
 	"singbox-launcher/core/config"
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/internal/paths"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -23,13 +24,13 @@ import (
 func finalReportModel(t *testing.T) *wizardmodels.WizardModel {
 	t.Helper()
 	execDir := findProjectRoot(t)
-	td, err := wizardtemplate.LoadTemplateData(execDir)
+	td, err := wizardtemplate.LoadTemplateData(paths.Layout{App: paths.AppDir(execDir), Data: paths.DataDir(execDir)})
 	if err != nil {
 		t.Fatalf("load template: %v", err)
 	}
 	model := wizardmodels.NewWizardModel()
 	model.TemplateData = td
-	model.ExecDir = execDir
+	model.DataDir = paths.DataDir(execDir)
 	// SPEC 117: гейты «нечего собирать» смотрят на canonical model.Sources —
 	// эмулируем добавленную подписку (генератор в тестах замокан).
 	model.Sources = append(model.Sources, wizardmodels.Source{

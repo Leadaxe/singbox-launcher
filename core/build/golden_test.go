@@ -404,7 +404,7 @@ func dnsConfigFromState(s *state.State) DNSConfig {
 // молчит: servers/rules живут в state.DNS/state.Rules и идут в конфиг
 // только через MergePresetsInto{DNS,Route}.
 //
-// ExecDir/SrsCachedPaths пусты: golden-сценарии не резолвят .srs-файлы с
+// DataDir/SrsCachedPaths пусты: golden-сценарии не резолвят .srs-файлы с
 // диска (кэш rule-set'ов — не предмет byte-эквивалентности сборки).
 func presetContextFromState(s *state.State, td *template.TemplateData) PresetMergeContext {
 	ctx := PresetMergeContext{

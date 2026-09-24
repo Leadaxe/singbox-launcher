@@ -521,7 +521,7 @@ func (tab *CoreDashboardTab) createVersionBlock() fyne.CanvasObject {
 		}
 		msg += locale.T(singboxHelpExtractText) +
 			locale.T("You can download with the button above, or manually from:")
-		binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
+		binDir := tab.controller.FileService.Layout.Data.Bin()
 		urlLink := widget.NewHyperlink(constants.SingboxReleasesURL, nil)
 		_ = urlLink.SetURLFromString(constants.SingboxReleasesURL)
 		urlLink.OnTapped = func() {
@@ -586,7 +586,7 @@ func (tab *CoreDashboardTab) readConfigOnDemand() {
 	if tab.controller.FileService == nil {
 		return
 	}
-	statePath := platform.GetWizardStatePath(tab.controller.FileService.ExecDir)
+	statePath := platform.GetWizardStatePath(tab.controller.FileService.Layout.Data)
 	s, err := state.Load(statePath)
 	if err != nil {
 		debuglog.WarnLog("CoreDashboard: state.json not loaded on demand: %v", err)
@@ -623,7 +623,7 @@ func (tab *CoreDashboardTab) createStateBlock() fyne.CanvasObject {
 		// Preserve current state.json before overwriting. If there is no
 		// current state (cold install / freshly cleared) — нечего терять,
 		// просто переключаемся. Иначе показываем 3-кнопочный модал.
-		statePath := platform.GetWizardStatePath(tab.controller.FileService.ExecDir)
+		statePath := platform.GetWizardStatePath(tab.controller.FileService.Layout.Data)
 		if _, err := os.Stat(statePath); os.IsNotExist(err) {
 			tab.performStateSwitch(selectedID)
 			return
@@ -643,7 +643,7 @@ func (tab *CoreDashboardTab) refreshStateSelector() {
 	if tab.stateSelect == nil || tab.controller == nil || tab.controller.FileService == nil {
 		return
 	}
-	dir := platform.GetWizardStatesDir(tab.controller.FileService.ExecDir)
+	dir := platform.GetWizardStatesDir(tab.controller.FileService.Layout.Data)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		tab.stateSelect.Options = nil
@@ -797,7 +797,7 @@ func (tab *CoreDashboardTab) promptSaveCurrentStateAs(then func()) {
 	warning := widget.NewLabel("")
 	warning.Hide()
 
-	statesDir := platform.GetWizardStatesDir(tab.controller.FileService.ExecDir)
+	statesDir := platform.GetWizardStatesDir(tab.controller.FileService.Layout.Data)
 	exists := func(id string) bool {
 		_, err := os.Stat(filepath.Join(statesDir, id+".json"))
 		return err == nil
@@ -879,8 +879,8 @@ func (tab *CoreDashboardTab) copyCurrentStateAs(id string) error {
 	if tab.controller == nil || tab.controller.FileService == nil {
 		return fmt.Errorf("file service not initialized")
 	}
-	src := platform.GetWizardStatePath(tab.controller.FileService.ExecDir)
-	dst := filepath.Join(platform.GetWizardStatesDir(tab.controller.FileService.ExecDir), id+".json")
+	src := platform.GetWizardStatePath(tab.controller.FileService.Layout.Data)
+	dst := filepath.Join(platform.GetWizardStatesDir(tab.controller.FileService.Layout.Data), id+".json")
 	data, err := os.ReadFile(src)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", src, err)
@@ -904,9 +904,9 @@ func (tab *CoreDashboardTab) switchToNamedState(id string) error {
 	if tab.controller == nil || tab.controller.FileService == nil {
 		return fmt.Errorf("file service not initialized")
 	}
-	statesDir := platform.GetWizardStatesDir(tab.controller.FileService.ExecDir)
+	statesDir := platform.GetWizardStatesDir(tab.controller.FileService.Layout.Data)
 	src := filepath.Join(statesDir, id+".json")
-	dst := platform.GetWizardStatePath(tab.controller.FileService.ExecDir)
+	dst := platform.GetWizardStatePath(tab.controller.FileService.Layout.Data)
 	data, err := os.ReadFile(src)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", src, err)
@@ -938,13 +938,13 @@ func (tab *CoreDashboardTab) downloadConfigTemplate() {
 		ctx, cancel := context.WithTimeout(context.Background(), wizardtemplate.DownloadTimeout)
 		defer cancel()
 
-		target, err := wizardtemplate.DownloadTemplate(ctx, tab.controller.FileService.ExecDir, tab.controller.GetURLBytes)
+		target, err := wizardtemplate.DownloadTemplate(ctx, tab.controller.FileService.Layout.Data, tab.controller.GetURLBytes)
 		if err != nil {
 			fyne.Do(func() {
 				if tab.templateDownloadButton != nil {
 					tab.templateDownloadButton.Enable()
 				}
-				binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
+				binDir := tab.controller.FileService.Layout.Data.Bin()
 				debuglog.DebugLog("core_dashboard: showing download failed manual (template: %v)", err)
 				// С причиной, а не «см. лог»: диалог без неё был тупиком.
 				dialogs.ShowDownloadFailedManualWithReason(tab.controller.GetMainWindow(),
@@ -998,7 +998,7 @@ func (tab *CoreDashboardTab) handleDownload() {
 				case "error":
 					tab.downloadInProgress = false
 					tab.setSingboxState("", locale.Tf("Download v%s", constants.RequiredCoreVersion), -1)
-					binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
+					binDir := tab.controller.FileService.Layout.Data.Bin()
 					// Log the real cause: the dialog only ever said "see the log",
 					// while nothing actually wrote the failure to the log.
 					debuglog.ErrorLog("core_dashboard: sing-box download failed: %s (err=%v)", progress.Message, progress.Error)
@@ -1043,7 +1043,7 @@ func (tab *CoreDashboardTab) createWintunBlock() fyne.CanvasObject {
 			locale.Tf(wintunHelpInArchiveText, archDir) +
 			locale.T(wintunHelpPlaceText) +
 			locale.T("You can download with the button above, or manually from:")
-		binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
+		binDir := tab.controller.FileService.Layout.Data.Bin()
 		urlLink := widget.NewHyperlink(constants.WintunHomeURL, nil)
 		_ = urlLink.SetURLFromString(constants.WintunHomeURL)
 		urlLink.OnTapped = func() {
@@ -1127,9 +1127,15 @@ func (tab *CoreDashboardTab) handleWintunDownload() {
 				} else if progress.Status == "error" {
 					tab.wintunDownloadInProgress = false
 					tab.setWintunState("", locale.T("Download"), -1)
-					binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
+					// wintun.dll ищется рядом с выбранным ядром (SPEC 135 §3.3) —
+					// туда же её и класть руками.
+					coreDir := filepath.Dir(tab.controller.FileService.WintunPath)
+					reason := ""
+					if errors.Is(progress.Error, core.ErrCoreDirReadOnly) {
+						reason = progress.Message
+					}
 					debuglog.DebugLog("core_dashboard: showing download failed manual (wintun)")
-					dialogs.ShowDownloadFailedManual(tab.controller.GetMainWindow(), "wintun.dll download failed", constants.WintunHomeURL, binDir)
+					dialogs.ShowDownloadFailedManualWithReason(tab.controller.GetMainWindow(), "wintun.dll download failed", reason, constants.WintunHomeURL, coreDir)
 				}
 			})
 		}

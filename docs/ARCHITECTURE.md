@@ -76,7 +76,7 @@ The codebase is organized into **eight layers**. The cardinal rule:
 
 | Layer | Name | Packages | Responsibility |
 |-------|------|----------|----------------|
-| **L0** | platform | `internal/platform` | OS abstraction behind a unified interface: power sleep/wake, HWID device-info, process enumeration, WinTun ghost-adapter cleanup, canonical filesystem path getters. Depends only on stdlib + `debuglog`/`constants`. No upward imports. |
+| **L0** | platform | `internal/platform`, `internal/paths` | OS abstraction behind a unified interface: power sleep/wake, HWID device-info, process enumeration, WinTun ghost-adapter cleanup, canonical filesystem path getters. `internal/paths` (SPEC 135) resolves the AppDir/DataDir/LogDir layout — a package-leaf below `platform`, which imports it. Depends only on stdlib + `debuglog`/`constants`. No upward imports. |
 | **L1** | shared-internal (leaf utilities) | `internal/locale`, `internal/srstag`, `internal/outboundutil`, `internal/urlsafe`, `internal/debuglog`, `internal/constants`, `internal/traffic`, `internal/textnorm`, `internal/urlredact`, `internal/ctxutil`, `internal/process`, `internal/wizardsync`, `internal/lxdclient` | Self-contained, dependency-free helpers reused across layers: i18n catalog, content-addressed SRS tag hashing, reject/drop outbound→rule mapping (single source of truth shared by core + UI), URL-scheme allowlist, leveled logging, traffic profiler (decoupled, stdlib-only), tag display normalization, URL redaction, and the mTLS client for the `sing-box lxd` daemon (pinning, invite parsing, per-machine identity — no app state). |
 | **L2** | core-domain (state + build + config + template) | `core/state`, `core/snapshot`, `core/build`, `core/config`, `core/config/subscription`, `core/config/configtypes`, `core/config/parser`, `core/template` | Pure domain: state schema/load/save/migration, the JSON build pipeline and pure resolvers, subscription fetch/parse/encode and outbound generation, template load + preset extraction, snapshot capture. Pure functions where possible; **no Fyne, no `AppController`**. |
 | **L3** | services + lifecycle | `core/services`, `core/uiservice`, `core/events`, `core` (`controller.go`, `process_service.go`, `config_service.go`, `rebuild.go`, `auto_update.go`, `backend*.go`, `daemon_manager_darwin.go`, `main.go`, downloaders) | Stateful service implementations (`FileService`/`APIService`/`StateService`/`SRSDownloader`, the remote-machine registry / transport / deploy-resource collector), the UI-callback container (no Fyne deps), the typed `EventBus`, app/process lifecycle orchestration, and the `CoreBackend` engine seam (`LegacyBackend` / `DaemonBackend`). **Owns the EventBus and all DI wiring.** |
@@ -517,6 +517,180 @@ See [DATA_FLOW.md §3](DATA_FLOW.md) for the build flow with the SPEC 057/058 ou
 
 ---
 
+## 7a. Data directory layout (SPEC 135)
+
+Before SPEC 135 every path derived from one root, `FileService.ExecDir =
+filepath.Dir(os.Executable())`: on a read-only install (NixOS, Guix, Flatpak,
+`/opt`) `EnsureDirectories` failed on the first `MkdirAll`, and on macOS all state
+lived **inside the `.app` bundle**, so replacing it wiped user data. SPEC 135
+replaces the single root with three roles, computed once and passed by value —
+never a package-level global or lazy re-derivation:
+
+| Role | Type | Rights | Holds |
+|---|---|---|---|
+| **AppDir** | `paths.AppDir` | read-only | the executable, the shipped template + locales (`bin/wizard_template.json`, `bin/wizard_template.version`, `bin/locale/`), the shipped core + companions if bundled, `mesa3d/`, the `portable.txt` marker |
+| **DataDir** | `paths.DataDir` | read-write | all state and caches, in the pre-existing internal `bin/…` layout (state, snapshots, remote-machine profiles, `config.json`, downloaded template/locales/core, `.srs`, subscriptions, `settings.json`, `gl-state.json`, `wintun.dll`, `tailscale/`, `daemon/`, `remote-daemons/`) |
+| **LogDir** | `paths.LogDir` | read-write | the four rotated logs, `crash.log`, `native-stderr.log` |
+
+The only sanctioned write into AppDir is the Windows Mesa3D toggle
+(`internal/platform/glstate.go` `DisableMesa`/`EnableMesa`): `opengl32.dll` must
+sit next to the exe for the OS loader to find it. The Mesa buttons in Diagnostics
+are hidden when AppDir does not pass the write probe.
+
+### 7a.1 Paths per platform
+
+| Platform | AppDir | DataDir | LogDir |
+|---|---|---|---|
+| Linux | executable's directory | `$XDG_DATA_HOME/singbox-launcher` (default `~/.local/share/singbox-launcher`) | `$XDG_STATE_HOME/singbox-launcher/logs` (default `~/.local/state/…`) |
+| macOS, launched from `.app` | `…app/Contents/MacOS` | `~/Library/Application Support/singbox-launcher` | `~/Library/Logs/singbox-launcher` |
+| macOS, bare binary | executable's directory | = AppDir (portable) | `AppDir/logs` |
+| Windows | exe's directory | `%LOCALAPPDATA%\singbox-launcher` | `%LOCALAPPDATA%\singbox-launcher\logs` |
+| Any platform, portable | executable's directory | = AppDir | `AppDir/logs` |
+
+The executable's directory is taken **after** `filepath.EvalSymlinks` (Homebrew and
+`/nix/store` install symlinks); an empty `%LOCALAPPDATA%` falls back to
+`%USERPROFILE%\AppData\Local`, and if that is empty too the launcher goes portable
+when AppDir is writable, otherwise it refuses to start with a message pointing at
+`SINGBOX_LAUNCHER_DATA_DIR`.
+
+### 7a.2 `paths.Resolve` — how the layout is chosen
+
+`internal/paths` (package-leaf: stdlib + `internal/constants` only, so it can be
+imported from `main`, `internal/platform` and every test without cycles) exposes:
+
+```go
+type AppDir string   // read-only
+type DataDir string  // read-write
+type LogDir string    // read-write
+type Mode string      // "env" | "portable" | "legacy" | "system"
+
+type Layout struct {
+    App, Data, Logs AppDir/DataDir/LogDir
+    Mode            Mode
+    EnvSource       []string // which env vars fired, when Mode == "env"
+}
+
+func Resolve(exe string, env func(string) string, goos string, probe func(dir string) bool) (Layout, error)
+```
+
+`Resolve` runs **once**, first thing in `main()`, before `crash.log` is opened and
+before `RunGLProbeChild`, and the result is passed by value into
+`services.NewFileService(layout)` → `AppController`. The first rule that matches
+wins:
+
+1. **Environment variables** `SINGBOX_LAUNCHER_DATA_DIR` / `SINGBOX_LAUNCHER_LOG_DIR`
+   (independently) → `ModeEnv`.
+2. **`portable.txt`** next to the executable (content ignored, existence is enough)
+   → `ModePortable`. Shipped by the Windows zip distributions or written by the
+   in-app Portable toggle (§7a.4).
+3. **Legacy layout detected**: `bin/wizard_states/state.json` exists next to the
+   binary and AppDir passes the write probe → `ModeLegacy`, data stays where it
+   was, nothing is copied, no marker is written.
+4. **Platform default** from the table above → `ModeSystem`.
+
+Rules 2 and 3 are **disabled when launched from a macOS `.app` bundle**
+(`paths.IsAppBundle`): nobody can drop a marker next to the bundle, and Gatekeeper
+quarantine relocates it anyway. A bare macOS binary follows the same rules as
+Linux. The write probe (`paths.ProbeWritable`) creates and removes
+`AppDir/.write-probe-<pid>` — permission bits and Windows ACLs both lie, only an
+actual write is trusted.
+
+The chosen layout is logged as the first line of every start
+(`Layout.LogLine()`): `layout: mode=<mode> app=<path> data=<path> logs=<path>`.
+
+### 7a.3 Two-tier read of shipped vs. downloaded
+
+Template, locales and core are **read** through a `DataDir → AppDir` chain;
+**writes** (downloads) always go to DataDir. `EnsureDirectories(Layout)` only
+creates the writable side (`Data/bin`, `Data/bin/rule-sets`, `Logs`) — AppDir is
+never touched.
+
+- **Template.** `core/template.ResolveTemplate(Layout)` is the single rule used by
+  every read site. Order-by-location has one deliberate exception: if AppDir's
+  `wizard_template.json` carries a version marker (`wizard_template.version`)
+  equal to `constants.AppVersion` **and** DataDir's stamp
+  (`LastTemplateLauncherVersion` in `settings.json`) is empty or older, AppDir
+  wins — a fresh shipped template beats a stale downloaded one after an upgrade,
+  without a network round-trip. Otherwise the order is DataDir → AppDir. When the
+  shipped template wins, the stale downloaded copy in DataDir is **deleted**;
+  skipping that step would make the rule loop back onto the stale file the next
+  time the stamp is read (see §11, item b). `template.ReadTemplateMarker` reads
+  the marker from AppDir only.
+- **Core.** `internal/platform.ResolveSingboxExecPath` walks
+  `SINGBOX_LAUNCHER_CORE` (explicit override) → `<DataDir>/bin/sing-box` →
+  `<AppDir>/bin/sing-box` → `PATH`, in that order, **on every platform** — DataDir
+  always wins over a newer shipped core, because that is where hand-placed dev
+  builds live. When two are found, the loser is logged as `shadowed`. `PATH` is
+  now searched **last** (previously first on Linux,
+  `internal/platform/singbox_exec_path_linux.go`, now removed — the resolver is
+  unified across platforms): the launcher needs the `sing-box-lx` fork
+  (XHTTP, AWG), and a distro-packaged `sing-box` is almost never that build.
+- **Companions** (`wintun.dll`, `libcronet.*`) are resolved from the directory of
+  the **selected** core (`FileService.WintunPath = Dir(SingboxPath)/wintun.dll`),
+  not from AppDir/DataDir directly — the OS loader looks next to the binary that
+  loads them.
+- **Locales.** `LoadExternalLocales` runs twice at startup: `AppDir/bin/locale`
+  first, then `DataDir/bin/locale`; the later call overrides a whole language.
+
+### 7a.4 Migration, Portable switch, and cleanup
+
+- **Migration** (`internal/paths.MigrateLegacyData`, called from
+  `services.NewFileService` before `EnsureDirectories` and before any
+  settings/state read) copies `AppDir/bin` → `DataDir/bin` when the layout mode is
+  `system` or `env`, DataDir has no `state.json` yet, and AppDir does. The main
+  case is macOS launched from `.app` (rule 3 is disabled there); the others are a
+  Windows/Linux install whose AppDir stopped being writable, or a fresh
+  `SINGBOX_LAUNCHER_DATA_DIR` override on an existing install. Copying goes
+  through the shared copier (`internal/paths.CopyTree`) into a temporary
+  `DataDir/bin.migrating`, which is renamed into place only once complete; a
+  `DataDir/.migrated_from` marker (source path) is written **last**. An
+  interruption before the rename leaves DataDir without `state.json`, so the next
+  start retries from scratch; the source next to the binary is never touched
+  (rollback to a previous version keeps working).
+- **Portable switch** (`internal/paths.SwitchToPortable` /
+  `SwitchToSystem`, wired through `core/storage_switch.go` and the Settings →
+  Storage checkbox) uses the same copier both ways, then deletes the old copy
+  (leftovers, if deletion fails, surface in cleanup) and restarts the process via
+  `platform.RestartSelf()` — layout is resolved once per process, so switching
+  takes effect only in the new one. `RestartSelf` is a real implementation on all
+  platforms now (previously a Windows-only feature; the non-Windows path uses
+  `Setsid` to detach the child from the parent's session).
+- **`config_data_root` stamp** (§3.5 of the SPEC): `settings.json` records the
+  DataDir a saved `config.json` was built against, because it embeds **absolute**
+  paths to `.srs` files and the Tailscale state directory. Any DataDir change
+  (migration, Portable switch, env override, hand-moved `bin/`) is caught at
+  start by comparing the stamp to the current DataDir and calling
+  `MarkConfigStale` if they differ — not only after a macOS migration.
+- **Cleanup** (`internal/paths.BuildPurgePlan` / `ExecutePurge`, wired through
+  `core/purge.go`) never removes AppDir or `portable.txt`; it removes DataDir,
+  LogDir, and any detected leftovers (a failed switch's `bin.moved-*`, an unused
+  system DataDir while portable, stale `AppDir/logs`, a leftover
+  pre-migration source). Available as the Settings → Storage “Remove all
+  data…” dialog and as the `-purge-data [-yes]` flag (dry-run without `-yes`).
+- **Guard.** `tools/paths_guard` is planned as an AST scan (same shape as
+  `tools/l10n/l10n_check/scan.go`) over calls to writing helpers with an `AppDir`
+  argument, with the Mesa functions named as the sole exception — this is the
+  main defense across the ~190 call sites SPEC 135 touched, on top of the
+  compiler catching a plain `AppDir`-into-`DataDir`-parameter mismatch. Not yet
+  implemented (SPEC 135 TASKS.md, stage 4).
+
+### 7a.5 User-facing surface
+
+Settings → Storage (`ui/settings_storage.go`) shows Mode / Program (AppDir) / Data
+(DataDir) / Logs (LogDir) / Core (path, version, source) / Template (level,
+marker version) with per-row **Open** buttons and a **Copy paths** button (same
+pattern as “Copy API info”). The same block is the first line of every log, is
+served as `GET /debug/paths` (`core/debugapi`), and is printed by the `-paths`
+flag before GUI init (the only way to see paths on a machine where the window
+cannot come up — headless CI, NixOS without GL).
+
+See [SPECS/135-F-N-DATA_DIR_LAYOUT/SPEC.md](../SPECS/135-F-N-DATA_DIR_LAYOUT/SPEC.md)
+for the full design (including the rejected alternatives and the owner's
+decisions) and its §11 for where the implementation diverges from the original
+design in small ways.
+
+---
+
 ## 8. Per-package inventory
 
 The full per-package, per-file inventory (one-line responsibility per package, key
@@ -787,3 +961,31 @@ network devices, not from processes of this computer, so the per-process axis is
 replaced by a per-client one. Host telemetry (CPU / memory / storage / network of
 the machine itself) is a separate window over admin REST — the profiler describes
 the *core*, telemetry describes the *machine*.
+
+### 11.6 Privileged classic start on macOS (SPEC 136–137)
+
+The classic engine starts a TUN config as root through
+`AuthorizationExecuteWithPrivileges`; the daemon service is started as root by
+launchd. Both follow one rule: **root executes only root-owned files** — the service's
+copy of the core (`/Library/PrivilegedHelperTools/sing-box-lxd`,
+written by the core itself on `lxd --service=install|copy`) and system utilities by
+absolute path. The launcher never copies the core and never runs sudo itself.
+
+`ProcessService.startSingBoxPrivileged` asks a gate first
+(`core/classic_privileged_darwin.go`): the copy must exist, pass the ownership chain
+and match the launcher core by sha256 — the chain check and the hash cache are the
+SPEC 136 classifier's. Only then `platform.StartPrivilegedCore` runs
+`/usr/bin/env -i PATH=… /bin/sh -c <constant body> <paths>`: no script file, no
+launcher environment in the root shell. A refused gate shows a command dialog
+(`internal/dialogs.ShowCommandRetry`) instead of a startup error, and Retry goes
+through `StartSingBoxProcess`. The authorization lives for the launcher session;
+`privilegedAuthReuse` in `internal/platform/privileged_darwin.go` narrows it to a
+single action.
+
+Root also never writes into user paths (137.1): the core's output goes to the
+`/Library/Logs/sing-box-lxd/classic.log` (root-owned folder, file owned by the
+launcher user `0600`), prepared and rotated by the
+same constant body, and `AppController.CoreLogPath()` tells readers which log the
+last start wrote — the Core tab of the log window and the traffic profiler's tailer
+(`TrafficProfiler.StartFollowing`, re-resolved every poll). The TUN-off cleanup
+deletes root-owned leftovers with the launcher's own uid; no AEWP there.

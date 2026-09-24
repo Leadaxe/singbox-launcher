@@ -10,6 +10,7 @@ import (
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -54,11 +55,15 @@ func (f *debugAPIFacade) GetConfigPath() string {
 	return f.ac.FileService.ConfigPath
 }
 
-func (f *debugAPIFacade) GetExecDir() string {
+func (f *debugAPIFacade) GetLayout() paths.Layout {
 	if f.ac.FileService == nil {
-		return ""
+		return paths.Layout{}
 	}
-	return f.ac.FileService.ExecDir
+	return f.ac.FileService.Layout
+}
+
+func (f *debugAPIFacade) GetPathsInfo() paths.PathsInfo {
+	return f.ac.PathsInfo()
 }
 
 func (f *debugAPIFacade) GetLauncherVersion() string {
@@ -104,7 +109,7 @@ func (f *debugAPIFacade) LoadState() (*state.State, error) {
 	if f.ac.FileService == nil {
 		return nil, errors.New("FileService not initialized")
 	}
-	return state.Load(platform.GetWizardStatePath(f.ac.FileService.ExecDir))
+	return state.Load(platform.GetWizardStatePath(f.ac.FileService.Layout.Data))
 }
 
 // SaveState atomically writes state.json (SPEC 050 invariant — single
@@ -117,7 +122,7 @@ func (f *debugAPIFacade) SaveState(s *state.State) error {
 	if s == nil {
 		return errors.New("nil state")
 	}
-	path := platform.GetWizardStatePath(f.ac.FileService.ExecDir)
+	path := platform.GetWizardStatePath(f.ac.FileService.Layout.Data)
 	if err := s.Save(path); err != nil {
 		return err
 	}
@@ -138,7 +143,7 @@ func (f *debugAPIFacade) LoadTemplate() (*template.TemplateData, error) {
 	if f.ac.FileService == nil {
 		return nil, errors.New("FileService not initialized")
 	}
-	return template.LoadTemplateData(f.ac.FileService.ExecDir)
+	return template.LoadTemplateData(f.ac.FileService.Layout)
 }
 
 // ApplyLogLevelAndReload — proxy to core.ApplyLogLevelAndReloadCore (the
@@ -187,14 +192,14 @@ func (ac *AppController) StartDebugAPI(port int, token string) error {
 	// SPEC 100: remote-machines group. Реестр эфемерный (файловый, как у
 	// UI-панелей); пул транспортов — общий на процесс.
 	if ac.FileService != nil {
-		registry := services.NewRemoteRegistry(ac.FileService.ExecDir)
+		registry := services.NewRemoteRegistry(ac.FileService.Layout.Data)
 		if debugAPIRemotePool == nil {
 			debugAPIRemotePool = services.NewTransportPool(registry)
 		}
 		s.EnableRemote(&debugapi.RemoteAPI{
 			Registry: registry,
 			Pool:     debugAPIRemotePool,
-			ExecDir:  ac.FileService.ExecDir,
+			DataDir:  ac.FileService.Layout.Data,
 			// UI-override (SPEC 100 §3.8): хуки читаются на КАЖДЫЙ вызов, а не
 			// снимаются здесь — Debug API может стартовать раньше, чем UI
 			// зарегистрирует обработчики (RegisterOverrideAPIHooks в NewApp).

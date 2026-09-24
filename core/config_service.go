@@ -20,6 +20,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -46,7 +47,7 @@ func NewConfigService(ac *AppController) *ConfigService {
 		if ac == nil || ac.FileService == nil {
 			return subscription.SubscriptionRequestSettings{}
 		}
-		binDir := platform.GetBinDir(ac.FileService.ExecDir)
+		binDir := ac.FileService.Layout.Data.Bin()
 		s := locale.LoadSettings(binDir)
 		// Generate-and-persist HWID on first use so subsequent fetches
 		// (and the Settings tab when the user opens it) see the same ID.
@@ -181,12 +182,12 @@ func (svc *ConfigService) GenerateOutboundsFromParserConfig(
 	tagCounts map[string]int,
 	progressCallback func(float64, string),
 ) (*config.OutboundGenerationResult, error) {
-	execDir := svc.ac.FileService.ExecDir
-	subst := config.BuildVarSubstituterFromDisk(execDir)
+	layout := svc.ac.FileService.Layout
+	subst := config.BuildVarSubstituterFromDisk(layout)
 	config.SubstituteParserConfigPlaceholders(parserConfig, subst)
 
 	return config.GenerateOutboundsFromParserConfig(parserConfig, tagCounts, progressCallback,
-		directionBuildOptions(execDir))
+		directionBuildOptions(layout))
 }
 
 // UpdateConfigFromSubscriptions — **pure cache-refresh pipeline**.
@@ -220,7 +221,7 @@ func (svc *ConfigService) UpdateConfigFromSubscriptions() (*config.OutboundGener
 // а config.json так и не появлялся.
 func (svc *ConfigService) updateConfigFromSubscriptions(triggerRebuild bool) (*config.OutboundGenerationResult, error) {
 	ac := svc.ac
-	execDir := ac.FileService.ExecDir
+	layout := ac.FileService.Layout
 
 	parserConfig, stateRef, err := svc.loadParserConfigForUpdate()
 	if err != nil {
@@ -234,10 +235,10 @@ func (svc *ConfigService) updateConfigFromSubscriptions(triggerRebuild bool) (*c
 	// **Lock**: SubscriptionMu сериализует с UI per-source Refresh'ами
 	// и event-triggered retry'ями (см. controller.go SubscriptionMu).
 	ac.SubscriptionMu.Lock()
-	refreshSubscriptionsMetaAndCache(stateRef, execDir)
+	refreshSubscriptionsMetaAndCache(stateRef, layout.Data)
 	ac.SubscriptionMu.Unlock()
 
-	subst := config.BuildVarSubstituterFromDisk(execDir)
+	subst := config.BuildVarSubstituterFromDisk(layout)
 	config.SubstituteParserConfigPlaceholders(parserConfig, subst)
 
 	// SPEC 057-R-N: ensure parser_config.outbounds в правильном shape:
@@ -246,7 +247,7 @@ func (svc *ConfigService) updateConfigFromSubscriptions(triggerRebuild bool) (*c
 	//   Merge — flatten Updates[] стеки в финальное body для generator'а.
 	// На failure LoadTemplateData (template missing) — warning + skip;
 	// Update должен работать даже без template'а (legacy юзеры).
-	if td, terr := template.LoadTemplateData(execDir); terr == nil {
+	if td, terr := template.LoadTemplateData(layout); terr == nil {
 		// SPEC 058-R-N: migration legacy direct→referenced. Idempotent.
 		tgt := build.TargetSpecFromState(stateRef)
 		_ = build.MigrateOutboundsToReferencedShape(&parserConfig.ParserConfig.Outbounds, stateRef.Rules, td, tgt)
@@ -266,7 +267,7 @@ func (svc *ConfigService) updateConfigFromSubscriptions(triggerRebuild bool) (*c
 	// здесь не читаются и не парсятся, поэтому и подставлять их некуда.
 	tagCounts := make(map[string]int)
 	result, err := config.GenerateOutboundsFromParserConfig(parserConfig, tagCounts, progressCallback,
-		directionBuildOptions(execDir))
+		directionBuildOptions(layout))
 	if err != nil {
 		progressCallback(-1, fmt.Sprintf("Error: %v", err))
 		// Причины по источникам приезжают вместе с ошибкой (генератор отдаёт
@@ -361,7 +362,7 @@ func (svc *ConfigService) updateConfigFromSubscriptions(triggerRebuild bool) (*c
 // чтобы он касался state.ParserConfig) и *state.State для DNS/Route/Vars
 // в BuildContext.
 func (svc *ConfigService) loadParserConfigForUpdate() (*config.ParserConfig, *state.State, error) {
-	statePath := platform.GetWizardStatePath(svc.ac.FileService.ExecDir)
+	statePath := platform.GetWizardStatePath(svc.ac.FileService.Layout.Data)
 	s, err := state.Load(statePath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("update requires state.json — open Wizard, fill in subscriptions and Save first (load state failed: %w)", err)
@@ -406,8 +407,8 @@ func (svc *ConfigService) loadParserConfigForUpdate() (*config.ParserConfig, *st
 // broken preset-ref'а в UI).
 //
 // Read-only: errors per-file логируются и пропускаются.
-func collectAllStageRuleSetTags(execDir, target, machineID string, td *template.TemplateData) []string {
-	statesDir := platform.GetWizardStatesDirFor(execDir, target, machineID)
+func collectAllStageRuleSetTags(dataDir paths.DataDir, target, machineID string, td *template.TemplateData) []string {
+	statesDir := platform.GetWizardStatesDirFor(dataDir, target, machineID)
 	entries, err := os.ReadDir(statesDir)
 	if err != nil {
 		// Машина без единого сохранённого состояния — обычное дело сразу после
@@ -557,8 +558,8 @@ func jsonStringsToRawMessages(in []string) []json.RawMessage {
 //
 // Отсутствие шаблона — не ошибка: направления соберутся из того, что задал
 // пользователь, просто без шаблонных умолчаний.
-func directionBuildOptions(execDir string) config.DirectionBuildOptions {
-	td, err := template.LoadTemplateData(execDir)
+func directionBuildOptions(l paths.Layout) config.DirectionBuildOptions {
+	td, err := template.LoadTemplateData(l)
 	if err != nil {
 		return config.DirectionBuildOptions{}
 	}

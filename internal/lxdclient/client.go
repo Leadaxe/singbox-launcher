@@ -545,6 +545,13 @@ type InfoData struct {
 	PID           int    `json:"pid"`
 	UptimeSeconds int    `json:"uptime_seconds"`
 	LogPath       string `json:"log_path"`
+	// Executable / ExecutableSHA256 — бинарь, из которого запущен демон, и
+	// его sha256 (lx.11+, SPEC 136: служба на root-owned копии). У ядер до
+	// lx.11 полей нет — пустые строки; вызывающий проверяет наличие.
+	// ExecutableSHA256 lx.11 считает в фоне после старта и первые мгновения
+	// отдаёт "" — это «неизвестно», а не расхождение.
+	Executable       string `json:"executable,omitempty"`
+	ExecutableSHA256 string `json:"executable_sha256,omitempty"`
 }
 
 // Info возвращает паспорт демона.

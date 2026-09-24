@@ -30,6 +30,7 @@ import (
 	"testing"
 
 	"singbox-launcher/core/state"
+	"singbox-launcher/internal/paths"
 )
 
 const etalonV6MigDir = "../SPECS/118-F-N-STATE_V7/etalon/v6mig"
@@ -78,7 +79,7 @@ func TestEtalonV6MigOutboundSnapshot(t *testing.T) {
 
 	// Явный no-op-substituter: эталон не должен зависеть от шаблона на диске.
 	noSubst := func(name string) (interface{}, bool) { return nil, false }
-	cache, _, err := buildSnapshotFromState(s, execDir, noSubst, nil)
+	cache, _, err := buildSnapshotFromState(s, paths.Layout{Data: paths.DataDir(execDir)}, noSubst, nil)
 	if err != nil {
 		t.Fatalf("buildSnapshotFromState: %v", err)
 	}

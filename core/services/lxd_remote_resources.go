@@ -13,6 +13,7 @@ import (
 	"github.com/muhammadmuzzammil1998/jsonc"
 
 	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -57,7 +58,7 @@ type ResourceEntry struct {
 // Сетевой вызов — звать из горутины. Локальную часть читает даже когда машина
 // недоступна: увидеть свои файлы полезно и без связи.
 func (r *RemoteRegistry) ResourceOverview(id string) ([]ResourceEntry, error) {
-	local, err := localResourceFiles(r.execDir, id)
+	local, err := localResourceFiles(r.dataDir, id)
 	if err != nil {
 		return nil, err
 	}
@@ -122,8 +123,8 @@ type localResource struct {
 }
 
 // localResourceFiles читает srs/ машины и считает хеши.
-func localResourceFiles(execDir, id string) (map[string]localResource, error) {
-	dir := platform.GetRuleSetsDirFor(execDir, constants.ConfigTargetRemote, id)
+func localResourceFiles(dataDir paths.DataDir, id string) (map[string]localResource, error) {
+	dir := platform.GetRuleSetsDirFor(dataDir, constants.ConfigTargetRemote, id)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -157,7 +158,7 @@ func localResourceFiles(execDir, id string) (map[string]localResource, error) {
 // Файл ищется в каталоге .srs ЭТОЙ машины (SPEC 098 §2.3). Отсутствие —
 // ошибка, а не пропуск: залить конфиг со ссылкой на файл, которого нет,
 // значит уронить ядро на той стороне.
-func CollectDeployResources(execDir, machineID string, config []byte) (map[string][]byte, error) {
+func CollectDeployResources(dataDir paths.DataDir, machineID string, config []byte) (map[string][]byte, error) {
 	var parsed struct {
 		Route struct {
 			RuleSet []struct {
@@ -175,7 +176,7 @@ func CollectDeployResources(execDir, machineID string, config []byte) (map[strin
 	}
 
 	out := make(map[string][]byte)
-	srsDir := platform.GetRuleSetsDirFor(execDir, constants.ConfigTargetRemote, machineID)
+	srsDir := platform.GetRuleSetsDirFor(dataDir, constants.ConfigTargetRemote, machineID)
 	for _, rs := range parsed.Route.RuleSet {
 		if rs.Type != "local" || rs.Path == "" {
 			continue
@@ -200,7 +201,7 @@ func CollectDeployResources(execDir, machineID string, config []byte) (map[strin
 
 // UploadResource заливает один локальный файл машине.
 func (r *RemoteRegistry) UploadResource(id, name string) error {
-	dir := platform.GetRuleSetsDirFor(r.execDir, constants.ConfigTargetRemote, id)
+	dir := platform.GetRuleSetsDirFor(r.dataDir, constants.ConfigTargetRemote, id)
 	body, err := os.ReadFile(filepath.Join(dir, name))
 	if err != nil {
 		return fmt.Errorf("remote resources: read %q: %w", name, err)
@@ -225,7 +226,7 @@ func (r *RemoteRegistry) DownloadResource(id, name string) error {
 	if err != nil {
 		return err
 	}
-	dir := platform.GetRuleSetsDirFor(r.execDir, constants.ConfigTargetRemote, id)
+	dir := platform.GetRuleSetsDirFor(r.dataDir, constants.ConfigTargetRemote, id)
 	if err := os.MkdirAll(dir, platform.DefaultDirMode); err != nil {
 		return fmt.Errorf("remote resources: mkdir %s: %w", dir, err)
 	}

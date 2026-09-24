@@ -633,7 +633,7 @@ func (ac *AppController) DisableNodeNamedByCore(errText string) bool {
 	if ac == nil || ac.FileService == nil {
 		return false
 	}
-	return ac.disableNodeNamedByCoreAt(errText, platform.GetWizardStatePath(ac.FileService.ExecDir))
+	return ac.disableNodeNamedByCoreAt(errText, platform.GetWizardStatePath(ac.FileService.Layout.Data))
 }
 
 func (ac *AppController) disableNodeNamedByCoreAt(errText, statePath string) bool {
@@ -646,12 +646,12 @@ func (ac *AppController) disableNodeNamedByCoreAt(errText, statePath string) boo
 		debuglog.WarnLog("corereject: load state for start reject: %v", err)
 		return false
 	}
-	td, _, terr := ac.loadTemplateForBuild(ac.FileService.ExecDir)
+	td, _, terr := ac.loadTemplateForBuild(ac.FileService.Layout)
 	if terr != nil {
 		debuglog.WarnLog("corereject: template for start reject: %v", terr)
 		td = nil
 	}
-	_, parserRes, snapErr := buildSnapshotFromState(s, ac.FileService.ExecDir, nil, td)
+	_, parserRes, snapErr := buildSnapshotFromState(s, ac.FileService.Layout, nil, td)
 	if snapErr != nil {
 		debuglog.WarnLog("corereject: snapshot for start reject: %v", snapErr)
 		return false

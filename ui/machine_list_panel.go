@@ -123,7 +123,7 @@ const revealDuration = 180 * time.Millisecond
 func CreateMachineListPanel(ac *core.AppController, proxies *ProxyListPanel) fyne.CanvasObject {
 	p := &machineListPanel{
 		ac:             ac,
-		registry:       services.NewRemoteRegistry(ac.FileService.ExecDir),
+		registry:       services.NewRemoteRegistry(ac.FileService.Layout.Data),
 		proxies:        proxies,
 		health:         make(map[string]services.RemoteHealth),
 		errLog:         make(map[string][]connectFailure),
@@ -927,7 +927,7 @@ func (p *machineListPanel) restartCore(d services.RemoteDaemon) {
 // «собрал для одной, задеплоил на другую» тут невозможен по конструкции, а не
 // по проверке.
 func (p *machineListPanel) deployTo(d services.RemoteDaemon) {
-	path := platform.GetRemoteConfigPathFor(p.ac.FileService.ExecDir, d.ID)
+	path := platform.GetRemoteConfigPathFor(p.ac.FileService.Layout.Data, d.ID)
 	config, err := os.ReadFile(path)
 	if err != nil {
 		// Конфиг ещё не собирали. Говорим, что делать, вместо сырой ошибки

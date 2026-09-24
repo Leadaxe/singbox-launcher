@@ -178,7 +178,7 @@ func (tab *CoreDashboardTab) updateRunningStatus() {
 		//   binary есть AND state.json есть
 		hasState := false
 		if tab.controller != nil && tab.controller.FileService != nil {
-			if _, err := os.Stat(platform.GetWizardStatePath(tab.controller.FileService.ExecDir)); err == nil {
+			if _, err := os.Stat(platform.GetWizardStatePath(tab.controller.FileService.Layout.Data)); err == nil {
 				hasState = true
 			}
 		}
@@ -250,9 +250,8 @@ func (tab *CoreDashboardTab) updateConfigInfo() {
 		configExists = false
 	}
 
-	templateFileName := wizardtemplate.GetTemplateFileName()
-	templatePath := filepath.Join(tab.controller.FileService.ExecDir, "bin", templateFileName)
-	if _, err := os.Stat(templatePath); err != nil {
+	// Шаблон годится любой из двух (App или Data) — решает резолвер SPEC 135 §3.3.
+	if wizardtemplate.ResolveTemplate(tab.controller.FileService.Layout).Source == "" {
 		// Template not found — show download button, hide configurator + update.
 		if tab.templateDownloadButton != nil {
 			tab.templateDownloadButton.Show()
@@ -290,7 +289,7 @@ func (tab *CoreDashboardTab) updateConfigInfo() {
 			tab.controller.ParserMutex.Unlock()
 			hasState := false
 			if tab.controller.FileService != nil {
-				if _, err := os.Stat(platform.GetWizardStatePath(tab.controller.FileService.ExecDir)); err == nil {
+				if _, err := os.Stat(platform.GetWizardStatePath(tab.controller.FileService.Layout.Data)); err == nil {
 					hasState = true
 				}
 			}

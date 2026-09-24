@@ -241,7 +241,7 @@ func (p *WizardPresenter) executeSaveOperation() {
 }
 
 // statePathForLog возвращает каноничный путь state.json для логирования
-// и success-диалога (без I/O — просто составляет путь по execDir).
+// и success-диалога (без I/O — просто составляет путь по DataDir).
 func (p *WizardPresenter) statePathForLog() string {
 	ac := core.GetController()
 	if ac == nil || ac.FileService == nil {
@@ -250,7 +250,7 @@ func (p *WizardPresenter) statePathForLog() string {
 	// SPEC 097/098: путь зависит от таргета и машины (remote-состояние живёт
 	// в её подпапке); иначе лог показывал бы local-путь, пока запись шла в
 	// remote/<id>/.
-	return platform.GetWizardStatePathFor(ac.FileService.ExecDir, p.ConfigTarget(), p.ConfigMachineID())
+	return platform.GetWizardStatePathFor(ac.FileService.Layout.Data, p.ConfigTarget(), p.ConfigMachineID())
 }
 
 // saveStateOnly persist state.json и возвращает его путь (или "" при ошибке).
@@ -264,7 +264,7 @@ func (p *WizardPresenter) saveStateOnly() string {
 		})
 		return ""
 	}
-	statePath := platform.GetWizardStatePathFor(ac.FileService.ExecDir, p.ConfigTarget(), p.ConfigMachineID())
+	statePath := platform.GetWizardStatePathFor(ac.FileService.Layout.Data, p.ConfigTarget(), p.ConfigMachineID())
 
 	debuglog.InfoLog("SaveConfig: saving state.json to %s", statePath)
 	if err := p.SaveCurrentState(); err != nil {
@@ -405,7 +405,7 @@ func (p *WizardPresenter) writeRemoteConfig() (string, error) {
 		debuglog.ErrorLog("exportRemoteConfig: build failed: %v", err)
 		return "", err
 	}
-	outPath := platform.GetRemoteConfigPathFor(ac.FileService.ExecDir, p.ConfigMachineID())
+	outPath := platform.GetRemoteConfigPathFor(ac.FileService.Layout.Data, p.ConfigMachineID())
 	// Директория машины могла ещё не существовать: состояние сохраняется
 	// StateStore'ом, который создаёт её сам, но порядок вызовов тут не
 	// гарантирован, а WriteFile каталоги не создаёт.

@@ -6,6 +6,7 @@ import (
 
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/paths"
 )
 
 // SPEC 097: видимость полей визарда описывается ТЕМ ЖЕ языком предикатов
@@ -18,7 +19,7 @@ import (
 // (2) условие, зависящее только от @runtime.*, СКРЫВАЕТ строку (её нельзя
 // удовлетворить из UI), а не показывает выключенной.
 func TestClashVarsHiddenOnRemoteTarget(t *testing.T) {
-	td, err := wizardtemplate.LoadTemplateData(filepath.Join("..", "..", ".."))
+	td, err := wizardtemplate.LoadTemplateData(repoRootLayout())
 	if err != nil {
 		t.Skipf("bundled template not loadable: %v", err)
 	}
@@ -59,7 +60,7 @@ func TestClashVarsHiddenOnRemoteTarget(t *testing.T) {
 // гасится, а не исчезает. Разграничение важно: спутать их — значит либо
 // показывать мёртвые поля, либо прятать те, что юзер может включить.
 func TestVarConditionKindDistinguished(t *testing.T) {
-	td, err := wizardtemplate.LoadTemplateData(filepath.Join("..", "..", ".."))
+	td, err := wizardtemplate.LoadTemplateData(repoRootLayout())
 	if err != nil {
 		t.Skipf("bundled template not loadable: %v", err)
 	}
@@ -78,7 +79,7 @@ func TestVarConditionKindDistinguished(t *testing.T) {
 // её отвергал, LoadTemplateData вернул бы ошибку и визард остался без
 // шаблона (именно так это и сломалось при первой попытке).
 func TestPredicateFormLoadsCleanly(t *testing.T) {
-	if _, err := wizardtemplate.LoadTemplateData(filepath.Join("..", "..", "..")); err != nil {
+	if _, err := wizardtemplate.LoadTemplateData(repoRootLayout()); err != nil {
 		t.Fatalf("template with predicate-form if[] must load: %v", err)
 	}
 }
@@ -88,7 +89,7 @@ func TestPredicateFormLoadsCleanly(t *testing.T) {
 // DisplaySettingValue резолвил дефолты по LOCAL-таргету, поэтому на remote
 // поле показывало singbox-tun0, тогда как в конфиг шёл lxd-tun0.
 func TestSettingsRowValueMatchesTargetDefault(t *testing.T) {
-	td, err := wizardtemplate.LoadTemplateData(filepath.Join("..", "..", ".."))
+	td, err := wizardtemplate.LoadTemplateData(repoRootLayout())
 	if err != nil {
 		t.Skipf("bundled template not loadable: %v", err)
 	}
@@ -118,4 +119,11 @@ func TestSettingsRowValueMatchesTargetDefault(t *testing.T) {
 			t.Errorf("%s: state override lost, got %q", target.Target, got)
 		}
 	}
+}
+
+// repoRootLayout — portable-раскладка с корнем репозитория: поставляемый
+// bin/wizard_template.json читается как из AppDir, так и из DataDir.
+func repoRootLayout() paths.Layout {
+	root := filepath.Join("..", "..", "..")
+	return paths.Layout{App: paths.AppDir(root), Data: paths.DataDir(root)}
 }

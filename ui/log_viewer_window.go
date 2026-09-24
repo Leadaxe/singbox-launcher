@@ -3,7 +3,6 @@
 package ui
 
 import (
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -76,7 +75,7 @@ func levelColor(l debuglog.Level) string {
 
 // OpenLogViewerWindow opens a separate window with Internal, Core, and API log tabs.
 // If the window is already open, focuses it instead of opening a duplicate.
-// Registers sinks on show and clears them on close. Core tab uses ChildLogRelativePath from FileService.
+// Registers sinks on show and clears them on close. Core tab reads ac.CoreLogPath() (SPEC 137.1: the log in the root-owned folder after a TUN start on macOS).
 func OpenLogViewerWindow(ac *core.AppController) {
 	logViewerMu.Lock()
 	if logViewerWindow != nil {
@@ -102,7 +101,6 @@ func OpenLogViewerWindow(ac *core.AppController) {
 		apiLevel       debuglog.Level
 		coreLines      []string
 		coreList       *widget.List
-		corePath       = filepath.Join(ac.FileService.ExecDir, ac.FileService.ChildLogRelativePath)
 		internalCh     = make(chan logEntry, 64)
 		apiCh          = make(chan logEntry, 64)
 		coreTickStop   func()
@@ -234,7 +232,8 @@ func OpenLogViewerWindow(ac *core.AppController) {
 
 	// Core tab: в daemon-режиме логи ядра приходят по gRPC SubscribeLog
 	// (файл лога принадлежит службе и недоступен пользователю), иначе —
-	// из файла logs/sing-box.log.
+	// из файла ac.CoreLogPath(): logs/sing-box.log или, после старта с TUN
+	// на macOS, root-owned /Library/Logs/sing-box-lxd/classic.log.
 	loadCore := func() {
 		if lines, ok := ac.DaemonCoreLogLines(logViewerMaxLines); ok {
 			fyne.Do(func() {
@@ -248,7 +247,7 @@ func OpenLogViewerWindow(ac *core.AppController) {
 			})
 			return
 		}
-		lines, err := services.ReadLastLines(corePath, logViewerMaxLines)
+		lines, err := services.ReadLastLines(ac.CoreLogPath(), logViewerMaxLines)
 		if err != nil {
 			debuglog.WarnLog("logViewer: Core read failed: %v", err)
 			fyne.Do(func() {

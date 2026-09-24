@@ -45,7 +45,7 @@ type DeployResult struct {
 // Блокирующие сетевые вызовы — звать из горутины.
 func (r *RemoteRegistry) Deploy(id string, config []byte) (DeployResult, error) {
 	if config == nil {
-		path := platform.GetRemoteConfigPathFor(r.execDir, id)
+		path := platform.GetRemoteConfigPathFor(r.dataDir, id)
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -56,7 +56,7 @@ func (r *RemoteRegistry) Deploy(id string, config []byte) (DeployResult, error) 
 		config = raw
 	}
 
-	resources, err := CollectDeployResources(r.execDir, id, config)
+	resources, err := CollectDeployResources(r.dataDir, id, config)
 	if err != nil {
 		return DeployResult{}, err
 	}

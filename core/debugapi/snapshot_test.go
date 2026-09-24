@@ -52,7 +52,7 @@ func writeSnapshotFile(t *testing.T, execDir, name string, data []byte) {
 func snapshotServer(t *testing.T, execDir string) (string, string) {
 	t.Helper()
 	port := freeLocalPort(t)
-	ff := &fakeFacade{version: "1.13.x", execDir: execDir}
+	ff := &fakeFacade{version: "1.13.x", dataDir: execDir}
 	const tok = "snapshot-token"
 	s, err := New(ff, port, tok)
 	if err != nil {

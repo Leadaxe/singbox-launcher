@@ -32,7 +32,7 @@ func OpenMachineResourcesWindow(ac *core.AppController, d services.RemoteDaemon)
 		return
 	}
 	win := ac.UIService.Application.NewWindow(locale.Tf("%s — resources", d.Name))
-	registry := services.NewRemoteRegistry(ac.FileService.ExecDir)
+	registry := services.NewRemoteRegistry(ac.FileService.Layout.Data)
 
 	list := container.NewVBox()
 	summary := widget.NewLabel("")

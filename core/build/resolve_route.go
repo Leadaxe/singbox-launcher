@@ -14,6 +14,7 @@ import (
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/paths"
 )
 
 // RouteSource — discriminator происхождения route entry.
@@ -107,7 +108,7 @@ type ResolvedRoute struct {
 // Аргументы:
 //   - state         — v6 state (Rules с preset/inline/srs)
 //   - td            — TemplateData (presets с rule_set + routing rule)
-//   - execDir       — для резолва local SRS paths (preset remote rule_set)
+//   - dataDir       — для резолва local SRS paths (preset remote rule_set)
 //   - srsCachedPaths — map[user-rule-id → paths] для kind=srs (по пути на каждый URL правила)
 //
 // Возвращает ResolvedRoute. RuleSets дедуплицированы по tag (first-wins);
@@ -115,11 +116,11 @@ type ResolvedRoute struct {
 func ResolveRoute(
 	state *corestate.State,
 	td *template.TemplateData,
-	execDir string,
+	dataDir paths.DataDir,
 	srsCachedPaths map[string][]string,
 	target template.TargetSpec,
 ) ResolvedRoute {
-	return ResolveRouteWithGlobals(state, td, execDir, srsCachedPaths, target, nil)
+	return ResolveRouteWithGlobals(state, td, dataDir, srsCachedPaths, target, nil)
 }
 
 // ResolveRouteWithGlobals — ResolveRoute с доступом тела пресета к ГЛОБАЛЬНЫМ
@@ -129,7 +130,7 @@ func ResolveRoute(
 func ResolveRouteWithGlobals(
 	state *corestate.State,
 	td *template.TemplateData,
-	execDir string,
+	dataDir paths.DataDir,
 	srsCachedPaths map[string][]string,
 	target template.TargetSpec,
 	globalVars map[string]string,
@@ -159,7 +160,7 @@ func ResolveRouteWithGlobals(
 	for _, rule := range rules {
 		switch rule.Kind {
 		case corestate.RuleKindPreset:
-			resolvePresetRouteRule(&out, presetByID, rule, execDir, emittedTags, target, globalVars)
+			resolvePresetRouteRule(&out, presetByID, rule, dataDir, emittedTags, target, globalVars)
 		case corestate.RuleKindInline:
 			resolveInlineRouteRule(&out, rule)
 		case corestate.RuleKindSrs:
@@ -175,7 +176,7 @@ func resolvePresetRouteRule(
 	out *ResolvedRoute,
 	presetByID map[string]*template.Preset,
 	rule corestate.Rule,
-	execDir string,
+	dataDir paths.DataDir,
 	emittedTags map[string]bool,
 	target template.TargetSpec,
 	globalVars map[string]string,
@@ -209,7 +210,7 @@ func resolvePresetRouteRule(
 		if emittedTags[tag] {
 			continue
 		}
-		converted, skip := convertPresetRuleSetRemoteToLocal(rs, execDir, target.ResourceDir, target.SrsLocalDir)
+		converted, skip := convertPresetRuleSetRemoteToLocal(rs, dataDir, target.ResourceDir, target.SrsLocalDir)
 		if skip {
 			out.RuleSets = append(out.RuleSets, ResolvedRouteRuleSet{
 				Tag:           tag,

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/internal/paths"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -55,14 +56,14 @@ func countGlobalTag(m *wizardmodels.WizardModel, tag string) int {
 
 func TestPresetToggle_SingleCanonicalWriteAndIdempotent(t *testing.T) {
 	root := findRepoRootForTemplate(t)
-	td, err := wizardtemplate.LoadTemplateData(root)
+	td, err := wizardtemplate.LoadTemplateData(paths.Layout{App: paths.AppDir(root), Data: paths.DataDir(root)})
 	if err != nil {
 		t.Fatalf("load template: %v", err)
 	}
 
 	m := wizardmodels.NewWizardModel()
 	m.TemplateData = td
-	m.ExecDir = root
+	m.DataDir = paths.DataDir(root)
 	m.Sources = []wizardmodels.Source{{
 		ID:   "01C4SUB00000000000000000",
 		Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true},

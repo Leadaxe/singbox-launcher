@@ -69,7 +69,28 @@
 
 Поместите скачанные файлы в папку `bin/`.
 
-## 📋 Структура папок
+## 📋 Где лежит `bin/`
+
+Лаунчер разделяет три роли: **AppDir** (программа, только чтение — исполняемый
+файл и то, что поставляется в комплекте), **DataDir** (состояние, кеши,
+скачанное — чтение-запись) и **LogDir** (логи). Каталог `bin/`, описанный в
+этом файле, — это *DataDir* в его внутренней раскладке; где физически находится
+DataDir, зависит от режима:
+
+- **portable / legacy** — `bin/` лежит рядом с программой (тот же каталог, что
+  и исполняемый файл), как показано ниже.
+- **system** (обычная инсталляция) — `bin/` лежит внутри каталога данных
+  платформы: `~/.local/share/singbox-launcher` (Linux),
+  `~/Library/Application Support/singbox-launcher` (macOS),
+  `%LOCALAPPDATA%\singbox-launcher` (Windows).
+
+Подробности и таблицу по платформам см. в [README.md «Where data
+lives»](../README.md#where-data-lives) и
+[docs/ARCHITECTURE.md §7a](../docs/ARCHITECTURE.md#7a-data-directory-layout-spec-135)
+(рус.: [docs/ARCHITECTURE.ru.md §7a](../docs/ARCHITECTURE.ru.md#7a-раскладка-каталогов-данных-spec-135)).
+
+Раскладка внутри `bin/` (пример для portable/legacy, где он лежит рядом с
+программой):
 
 ```
 singbox-launcher/

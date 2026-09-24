@@ -12,7 +12,14 @@ import (
 
 // nativeStderrFile — файл держится открытым весь сеанс: закрой его, и хендл,
 // отданный в SetStdHandle, станет невалидным.
-var nativeStderrFile *os.File //nolint:unused // держит хендл SetStdHandle живым весь сеанс; читать его незачем
+var nativeStderrFile *os.File
+
+// origStderrHandle и origStderr — что было до подмены: releaseNativeStderr
+// возвращает их на место, прежде чем закрыть файл.
+var (
+	origStderrHandle windows.Handle
+	origStderr       *os.File
+)
 
 // RedirectNativeStderr уводит stderr процесса в файл path.
 //
@@ -34,13 +41,30 @@ func RedirectNativeStderr(path string) error {
 	if err != nil {
 		return fmt.Errorf("native stderr: open: %w", err)
 	}
+	prevHandle, _ := windows.GetStdHandle(windows.STD_ERROR_HANDLE)
 	if err := windows.SetStdHandle(windows.STD_ERROR_HANDLE, windows.Handle(f.Fd())); err != nil {
 		_ = f.Close()
 		return fmt.Errorf("native stderr: SetStdHandle: %w", err)
 	}
 	// os.Stderr кешируется рантаймом при старте, SetStdHandle его не меняет —
 	// подменяем и его, иначе Go-код и нативный код писали бы в разные места.
+	origStderrHandle = prevHandle
+	origStderr = os.Stderr
 	os.Stderr = f
 	nativeStderrFile = f
 	return nil
+}
+
+// releaseNativeStderr возвращает исходный stderr процесса и закрывает
+// native-stderr.log: иначе файл (и LogDir) нельзя удалить до выхода.
+func releaseNativeStderr() {
+	if nativeStderrFile == nil {
+		return
+	}
+	_ = windows.SetStdHandle(windows.STD_ERROR_HANDLE, origStderrHandle)
+	if origStderr != nil {
+		os.Stderr = origStderr
+	}
+	_ = nativeStderrFile.Close()
+	nativeStderrFile = nil
 }
