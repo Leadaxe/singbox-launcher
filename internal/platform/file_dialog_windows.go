@@ -11,7 +11,8 @@ import (
 // pickOpenFileNative uses PowerShell + System.Windows.Forms.OpenFileDialog —
 // the native Win32 open dialog (available on Win7+). The script is passed as
 // -EncodedCommand with every value base64-encoded inside it (file_dialog_ps.go):
-// the launcher runs elevated, and the caption comes from a translation file.
+// the launcher may run elevated (restarted as administrator for TUN, SPEC 139),
+// and the caption comes from a translation file.
 // Cancel → no output on stdout.
 func pickOpenFileNative(prompt string, exts []string) (string, bool, error) {
 	script := psOpenFileScript(prompt, winFilter(exts), false)

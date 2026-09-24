@@ -35,13 +35,18 @@ func (ac *AppController) PurgePlan() paths.PurgePlan {
 	return paths.BuildPurgePlan(ac.FileService.Layout, exe, os.Getenv, runtime.GOOS, paths.ProbeWritable)
 }
 
-// NetworkCleanup — призрачные wintun-адаптеры лаунчера и осиротевшие правила
-// брандмауэра sing-tun. Только Windows; на других ОС результат нулевой.
-func (ac *AppController) NetworkCleanup() (adapters, rules int, err error) {
-	return networkCleanup()
+// NetworkCleanupNeedsAdmin — сетевая очистка (адаптеры, NLA в HKLM, правила
+// брандмауэра) недоступна: Windows без прав администратора (SPEC 139 §6
+// п. 5). Диалог очистки снимает пункт с подсказкой.
+func (ac *AppController) NetworkCleanupNeedsAdmin() bool {
+	return windowsNotElevated()
 }
 
-// networkCleanup — общая часть для диалога и -purge-data.
+// errNetworkCleanupNeedsAdmin — сетевая очистка пропущена: нет прав.
+var errNetworkCleanupNeedsAdmin = errors.New("network cleanup needs administrator rights")
+
+// networkCleanup — общая часть для диалога и -purge-data. Без прав на
+// Windows — пропуск (errNetworkCleanupNeedsAdmin), ничего не трогается.
 //
 // Режим адаптеров — Aggressive: ядро к этому моменту не работает, а
 // адаптеры после Stop/taskkill часто остаются без CM_PROB_PHANTOM, и
@@ -50,6 +55,9 @@ func (ac *AppController) NetworkCleanup() (adapters, rules int, err error) {
 func networkCleanup() (adapters, rules int, err error) {
 	if runtime.GOOS != "windows" {
 		return 0, 0, nil
+	}
+	if windowsNotElevated() {
+		return 0, 0, errNetworkCleanupNeedsAdmin
 	}
 	adapters, errA := platform.CleanupGhostSingboxTunAdapters(platform.GhostTunCleanupAggressive)
 	rules, errR := platform.CleanupOrphanSingTunFirewallRules()
@@ -66,8 +74,13 @@ func networkCleanup() (adapters, rules int, err error) {
 	return adapters, rules, err
 }
 
-// networkCleanupText — строка итога сетевой очистки для stdout.
-func networkCleanupText(adapters, rules int, err error) string {
+// networkCleanupText — строка итога сетевой очистки для stdout. Пропуск без
+// прав — с командой, которая доделает очистку из консоли администратора
+// (SPEC 139 §6 п. 5).
+func networkCleanupText(exe string, adapters, rules int, err error) string {
+	if errors.Is(err, errNetworkCleanupNeedsAdmin) {
+		return fmt.Sprintf("Network cleanup: skipped (needs administrator). To finish, run from an administrator command prompt: \"%s\" -purge-data -yes\n", exe)
+	}
 	s := fmt.Sprintf("Network cleanup: %d adapter(s), %d firewall rule(s) removed", adapters, rules)
 	if err != nil {
 		s += " (errors: " + err.Error() + ")"
@@ -85,21 +98,27 @@ func (ac *AppController) DaemonUninstallHint() (command string, survivesPurge bo
 }
 
 // ExecutePurgeAndExit выполняет план и завершает процесс без перезапуска:
-// закрыть логи → удалить (data → leftover → logs) → сетевая очистка
-// (network, только Windows) → итог в stdout → os.Exit(0). Ошибка
-// возвращается только до начала удаления (ядро запущено).
-func (ac *AppController) ExecutePurgeAndExit(p paths.PurgePlan, network bool) error {
+// закрыть логи → удалить (data → leftover → logs) → значение автозапуска
+// (autostart, SPEC 139 §8) → сетевая очистка (network, только Windows) →
+// итог в stdout → os.Exit(0). Ошибка возвращается только до начала удаления
+// (ядро запущено).
+func (ac *AppController) ExecutePurgeAndExit(p paths.PurgePlan, network, autostart bool) error {
 	if ac.RunningState != nil && ac.RunningState.IsRunning() {
 		return errPurgeCoreRunning()
 	}
+	exe, exeErr := paths.Executable()
 	ac.FileService.CloseLogFiles()
 	// crash.log и native-stderr.log держит не FileService: без этого на
 	// Windows LogDir не удалить до выхода процесса.
 	debuglog.ReleaseLogFiles()
 	rep := paths.ExecutePurge(p)
 	out := rep.Text()
+	if autostart && exeErr == nil {
+		out += removeAutostartText(exe)
+	}
 	if network && runtime.GOOS == "windows" {
-		out += networkCleanupText(networkCleanup())
+		adapters, rules, err := networkCleanup()
+		out += networkCleanupText(exe, adapters, rules, err)
 	}
 	fmt.Print(out)
 	os.Exit(0)
@@ -107,7 +126,9 @@ func (ac *AppController) ExecutePurgeAndExit(p paths.PurgePlan, network bool) er
 }
 
 // PurgeCLI — флаг -purge-data (SPEC 135 §4.3, решение Е). Без yes печатает
-// план и выходит; с yes удаляет и печатает итог. Вызывается из main до
+// план и выходит; с yes удаляет и печатает итог. Без прав на Windows сеть и
+// остатки в защищённом AppDir пропускаются с подсказкой (SPEC 139 §6 п. 5–6):
+// это не ошибка, код выхода от них не зависит. Вызывается из main до
 // контроллера и GUI: логи ещё не открыты, закрывать нечего. Служба демона
 // не трогается — печатается команда. Возвращает код выхода процесса: 1,
 // если работает другой экземпляр лаунчера или ядро из каталога данных
@@ -116,8 +137,14 @@ func (ac *AppController) ExecutePurgeAndExit(p paths.PurgePlan, network bool) er
 func PurgeCLI(l paths.Layout, exe string, yes bool, out io.Writer) int {
 	plan := paths.BuildPurgePlan(l, exe, os.Getenv, runtime.GOOS, paths.ProbeWritable)
 	hint, hintSurvives := daemonUninstallHintFor(platform.ResolveSingboxExecPath(l, os.Getenv).Path)
+	// SPEC 139 §8: значение автозапуска удаляется, только если указывает на
+	// этот exe.
+	autostart := runtime.GOOS == "windows" && autostartOwned(exe)
 
 	fmt.Fprint(out, plan.Text())
+	if autostart {
+		fmt.Fprintf(out, "[autostart] %s\n", platform.AutostartLocation)
+	}
 	switch {
 	case hint != "" && hintSurvives:
 		fmt.Fprintf(out, "The daemon service is installed and is not removed by this command; it runs from its own root-owned copy of the core, which the data removal does not touch. To remove the service as well:\n  %s\n", hint)
@@ -140,8 +167,12 @@ func PurgeCLI(l paths.Layout, exe string, yes bool, out io.Writer) int {
 
 	rep := paths.ExecutePurge(plan)
 	fmt.Fprint(out, rep.Text())
+	if autostart {
+		fmt.Fprint(out, removeAutostartText(exe))
+	}
 	if runtime.GOOS == "windows" {
-		fmt.Fprint(out, networkCleanupText(networkCleanup()))
+		adapters, rules, err := networkCleanup()
+		fmt.Fprint(out, networkCleanupText(exe, adapters, rules, err))
 	}
 	if len(rep.Failed) > 0 {
 		return 1

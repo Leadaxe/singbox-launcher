@@ -498,12 +498,15 @@ type Layout struct {
     App, Data, Logs AppDir/DataDir/LogDir
     Mode            Mode
     EnvSource       []string // какие env-переменные сработали, при Mode == "env"
+    MarkerIgnored   bool     // portable.txt есть, AppDir не пишется пользователем (SPEC 139)
 }
 
 func Resolve(exe string, env func(string) string, goos string, probe func(dir string) bool) (Layout, error)
+func AppDirUserWritable(app string, env func(string) string, goos string, probe func(string) bool) bool
+func ParseHandoff(value, exe string) (Layout, int, error) // -handoff, SPEC 139
 ```
 
-`Resolve` выполняется **один раз**, первым делом в `main()`, до открытия
+`Resolve` выполняется **один раз**, сразу после `flag.Parse()` в `main()`, до открытия
 `crash.log` и до `RunGLProbeChild`, а результат передаётся по значению в
 `services.NewFileService(layout)` → `AppController`. Побеждает первое сработавшее
 правило:
@@ -511,12 +514,34 @@ func Resolve(exe string, env func(string) string, goos string, probe func(dir st
 1. **Переменные окружения** `SINGBOX_LAUNCHER_DATA_DIR` / `SINGBOX_LAUNCHER_LOG_DIR`
    (независимо друг от друга) → `ModeEnv`.
 2. **`portable.txt`** рядом с исполняемым файлом (содержимое не важно, важно
-   наличие) → `ModePortable`. Поставляется Windows zip-дистрибутивами или
-   создаётся переключателем Portable в приложении (§7a.4).
+   наличие) **и AppDir пишется пользователем** → `ModePortable`. Поставляется
+   Windows zip-дистрибутивами или создаётся переключателем Portable в приложении
+   (§7a.4). Маркер в папке, куда пользователь писать не может, игнорируется
+   (`Layout.MarkerIgnored`, WARN при старте, `portable.txt ignored` в строке лога
+   и в строке Mode), решают правила 3–4 — на всех ОС: до SPEC 139 маркер в
+   папке только для чтения на Linux ронял старт, как #85.
 3. **Обнаружена legacy-раскладка**: `bin/wizard_states/state.json` существует
-   рядом с бинарём и AppDir проходит проверку записи → `ModeLegacy`, данные
+   рядом с бинарём и AppDir пишется пользователем → `ModeLegacy`, данные
    остаются на месте, ничего не копируется, маркер не пишется.
 4. **Платформенный дефолт** из таблицы выше → `ModeSystem`.
+
+**«AppDir пишется пользователем»** (`paths.AppDirUserWritable`, SPEC 139 §7) —
+проба записи **и**, на Windows, AppDir не лежит под `%ProgramFiles%`,
+`%ProgramFiles(x86)%`, `%ProgramW6432%` или `%SystemRoot%` (без учёта регистра,
+по границе каталога; переменные приходят через `env` резолвера). Одной пробы
+мало, раз лаунчер работает с `asInvoker`: в Program Files повышенный экземпляр её
+проходит, а обычный — нет, и они выбрали бы разные DataDir. Предикатом
+пользуется всё, что выбирает раскладку: правила 2–3, Windows-фоллбэк без
+`LOCALAPPDATA`, `SystemDefault` (план очистки, цель переключателя Portable) и
+блокировка переключателя Portable.
+
+**`-handoff`.** Экземпляр, перезапущенный с правами администратора, раскладку не
+вычисляет: получает родительскую флагом `-handoff=<pid>|<mode>|<data>|<logs>`
+(`Layout.Handoff` / `paths.ParseHandoff`; App — каталог своего exe). На окружение
+сессии под `runas` не рассчитываем — повышение может пойти под другой учётной
+записью, у которой свой `%LOCALAPPDATA%`. PID разбирается первым; DataDir и
+LogDir должны быть существующими каталогами. Невалидное значение — строка в
+stderr и обычный `Resolve`, но родителя с валидным PID всё равно ждём.
 
 Правила 2 и 3 **отключены при запуске из бандла `.app` на macOS**
 (`paths.IsAppBundle`): маркер некому положить рядом с бандлом, да и карантин
@@ -526,7 +551,9 @@ Gatekeeper всё равно его перемещает. Голый бинар�
 только реальной записи.
 
 Выбранная раскладка логируется первой строкой каждого запуска
-(`Layout.LogLine()`): `layout: mode=<mode> app=<path> data=<path> logs=<path>`.
+(`Layout.LogLine()`): `layout: mode=<mode> app=<path> data=<path> logs=<path>`
+(и `, portable.txt ignored`, если маркер игнорирован); в той же строке WARN —
+`elevated=yes|no`.
 
 ### 7a.3 Двухуровневое чтение поставляемого и скачанного
 
@@ -602,7 +629,13 @@ Gatekeeper всё равно его перемещает. Голый бинар�
   неудачного переключения, неиспользуемый системный DataDir при активном
   portable, устаревший `AppDir/logs`, оставшийся источник до миграции).
   Доступна как диалог Settings → Storage «Remove all data…» и как флаг
-  `-purge-data [-yes]` (без `-yes` — сухой прогон).
+  `-purge-data [-yes]` (без `-yes` — сухой прогон). Остатки под AppDir, куда
+  процесс писать не может (Program Files без прав), — `PurgeItem.NeedsAdmin`:
+  сняты и пропущены, а не провалены (код выхода 0); тогда
+  `DataDir/.migrated_from` сохраняется, и та же команда из консоли
+  администратора найдёт и удалит их. На Windows удаляется значение автозапуска,
+  если оно указывает на этот exe, а сетевая очистка (адаптеры, NLA, правила
+  брандмауэра) без прав пропускается с подсказкой (§11.7).
 - **Страховка.** `tools/paths_guard` запланирован как AST-скан (по образцу
   `tools/l10n/l10n_check/scan.go`) по вызовам пишущих хелперов с аргументом
   `AppDir`, с функциями Mesa как единственным исключением — это основная защита
@@ -816,3 +849,60 @@ Classic-движок поднимает конфиг с TUN от root через
 последний старт, — Core-вкладке окна логов и тейлеру профайлера трафика
 (`TrafficProfiler.StartFollowing`, путь пересчитывается на каждом тике). Чистка при
 снятии TUN удаляет root-owned остатки uid'ом лаунчера; AEWP там нет.
+
+### 11.7 Права по требованию на Windows (SPEC 139)
+
+Windows-бинари несут манифест `asInvoker` (он остаётся вшитым: 32-битный процесс
+без `requestedExecutionLevel` попадает под UAC-виртуализацию файлов). Proxy-only
+не повышается никогда, TUN — только по явному действию.
+
+- **`platform.IsElevated()`** (`internal/platform/elevation_windows.go`, один раз
+  на процесс): `TokenElevation` или действующее членство в
+  `BUILTIN\Administrators` (второе — машины с выключенным UAC).
+  `ElevationAsksOtherAccount()` — `TokenElevationTypeDefault` без повышения
+  (обычный пользователь: UAC спросит учётную запись администратора). Вне Windows
+  `IsElevated` — `euid == 0`, гейты его не используют.
+- **Гейт TUN** — `ProcessService.Start` после пересборки перед стартом, до ветки
+  darwin и `exec` (`core/elevation.go`): Windows, без прав, `config.ConfigHasTun`.
+  Через него идут все входы (кнопка, трей, `-start`, Debug API, авто-рестарт).
+  Вместо ядра — диалог (`internal/dialogs.ShowActions`): **Restart as
+  administrator**, **Switch to proxy mode** (недоступна при открытом
+  конфигураторе), Cancel; SPEC 141 ставит **Install service** первой в тот же
+  список действий.
+- **Restart as administrator** — сначала новый экземпляр, старый выходит после
+  успеха: `platform.RunElevated(exe, args, AppDir, show)` (`ShellExecuteExW`
+  `runas`, `SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC`, владелец — окно на переднем
+  плане, на закреплённом потоке с инициализированным COM) возвращает
+  `*ElevatedProcess` (pid, `Wait(timeout)`, `Close`) — этот примитив берёт SPEC 141
+  для команд службы. Аргументы — из `flag.Visit` (без `-tray` и прежнего
+  `-handoff`) плюс `-start` и `-handoff`. Отмена UAC (`ErrElevationCancelled`)
+  оставляет диалог открытым со строкой статуса; успех → `GracefulExit`, как Quit в
+  трее.
+- **Новый экземпляр** — раскладка из `-handoff` (§7a.2), затем до `crash.log`,
+  GL-пробы, контроллера и трея — `platform.WaitForProcessExit(parent, exe, 25 с)`:
+  `OpenProcess` + сверка имени файла образа без учёта регистра (занятый чужим
+  процессом PID не ждём; полный путь расходится на subst, junction, сетевом диске
+  и `\\?\`) + `WaitForSingleObject`; без доступа к родителю (другая учётная
+  запись) — опрос списка процессов раз в 250 мс с той же сверкой имени.
+- **Switch to proxy mode** — `tun=false`, `enable_proxy_in=true`,
+  `proxy_in_set_system_proxy=true` в state локального профиля → Save →
+  принудительная пересборка → `StartSingBoxProcess` (тот же хелпер записи state,
+  что у переключения уровня лога).
+- **Гейты без прав** (пропуск и одна строка INFO при старте вместо WARN на каждое
+  место): очистка NLA/адаптеров/правил брандмауэра при старте, очистка
+  призрачных адаптеров после Stop, сетевая очистка в Remove all data /
+  `-purge-data` (CLI печатает команду для консоли администратора), Kill ядра,
+  поднятого повышенным экземпляром (сообщение с Restart as administrator;
+  `RunningState` не сбрасывается), переключатель Portable (предикат §7a.2;
+  недоступен в экземпляре, повышенном через UAC).
+- **Автозапуск** — `HKCU\…\Run\singbox-launcher` = `"<exe>" -tray [-start]`
+  (`internal/platform/autostart*.go`, `core/autostart.go`): Settings → Connection
+  (недоступно в экземпляре, повышенном через UAC, — `platform.ElevatedViaUAC`,
+  `TokenElevationTypeFull`; без UAC и у встроенного Administrator обычного
+  запуска нет, и настройка доступна), `-autostart=on|off` для установщика
+  (SPEC 140), удаление в Remove all data и `-purge-data` — только если значение
+  указывает на этот exe.
+- Заголовок окна повышенного экземпляра заканчивается на `(Administrator)`.
+
+Остаётся открытым (SPEC 137 §8 п. 5): classic + TUN под правами исполняет
+`<Data>\bin\sing-box.exe`; защищённая копия — со SPEC 141.

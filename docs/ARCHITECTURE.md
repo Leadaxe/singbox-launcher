@@ -576,25 +576,50 @@ type Layout struct {
     App, Data, Logs AppDir/DataDir/LogDir
     Mode            Mode
     EnvSource       []string // which env vars fired, when Mode == "env"
+    MarkerIgnored   bool     // portable.txt present, AppDir not user-writable (SPEC 139)
 }
 
 func Resolve(exe string, env func(string) string, goos string, probe func(dir string) bool) (Layout, error)
+func AppDirUserWritable(app string, env func(string) string, goos string, probe func(string) bool) bool
+func ParseHandoff(value, exe string) (Layout, int, error) // -handoff, SPEC 139
 ```
 
-`Resolve` runs **once**, first thing in `main()`, before `crash.log` is opened and
-before `RunGLProbeChild`, and the result is passed by value into
+`Resolve` runs **once**, right after `flag.Parse()` in `main()`, before `crash.log`
+is opened and before `RunGLProbeChild`, and the result is passed by value into
 `services.NewFileService(layout)` → `AppController`. The first rule that matches
 wins:
 
 1. **Environment variables** `SINGBOX_LAUNCHER_DATA_DIR` / `SINGBOX_LAUNCHER_LOG_DIR`
    (independently) → `ModeEnv`.
 2. **`portable.txt`** next to the executable (content ignored, existence is enough)
-   → `ModePortable`. Shipped by the Windows zip distributions or written by the
-   in-app Portable toggle (§7a.4).
+   **and AppDir is user-writable** → `ModePortable`. Shipped by the Windows zip
+   distributions or written by the in-app Portable toggle (§7a.4). A marker in a
+   folder that is not user-writable is ignored (`Layout.MarkerIgnored`, WARN at
+   start, `portable.txt ignored` in the log line and the Mode row) and rules 3–4
+   decide — on every OS: before SPEC 139 a marker in a read-only folder on Linux
+   failed the start the way #85 did.
 3. **Legacy layout detected**: `bin/wizard_states/state.json` exists next to the
-   binary and AppDir passes the write probe → `ModeLegacy`, data stays where it
-   was, nothing is copied, no marker is written.
+   binary and AppDir is user-writable → `ModeLegacy`, data stays where it was,
+   nothing is copied, no marker is written.
 4. **Platform default** from the table above → `ModeSystem`.
+
+**“AppDir is user-writable”** (`paths.AppDirUserWritable`, SPEC 139 §7) is the
+write probe **and**, on Windows, AppDir not lying under `%ProgramFiles%`,
+`%ProgramFiles(x86)%`, `%ProgramW6432%` or `%SystemRoot%` (case-insensitive, by
+directory boundary; the variables come through the resolver's `env`). The probe
+alone is not enough since the launcher runs `asInvoker`: in Program Files an
+elevated instance passes it and a normal one does not, and the two would pick
+different DataDirs. Every place that chooses a layout uses the predicate: rules
+2–3, the Windows fallback without `LOCALAPPDATA`, `SystemDefault` (purge plan,
+Portable switch target) and the Portable switch blocker.
+
+**`-handoff`.** An instance restarted as administrator does not resolve its layout:
+it gets the parent's one as `-handoff=<pid>|<mode>|<data>|<logs>`
+(`Layout.Handoff` / `paths.ParseHandoff`; App is its own executable's folder). The
+session environment under `runas` is not relied on — elevation may use another
+account, whose `%LOCALAPPDATA%` would be a different DataDir. The PID is parsed
+first; DataDir and LogDir must be existing directories. An invalid value goes to
+stderr and falls back to `Resolve`, but a valid PID is still waited for.
 
 Rules 2 and 3 are **disabled when launched from a macOS `.app` bundle**
 (`paths.IsAppBundle`): nobody can drop a marker next to the bundle, and Gatekeeper
@@ -604,7 +629,9 @@ Linux. The write probe (`paths.ProbeWritable`) creates and removes
 actual write is trusted.
 
 The chosen layout is logged as the first line of every start
-(`Layout.LogLine()`): `layout: mode=<mode> app=<path> data=<path> logs=<path>`.
+(`Layout.LogLine()`): `layout: mode=<mode> app=<path> data=<path> logs=<path>`
+(plus `, portable.txt ignored` when the marker was ignored); the same WARN line
+carries `elevated=yes|no`.
 
 ### 7a.3 Two-tier read of shipped vs. downloaded
 
@@ -675,6 +702,12 @@ never touched.
   system DataDir while portable, stale `AppDir/logs`, a leftover
   pre-migration source). Available as the Settings → Storage “Remove all
   data…” dialog and as the `-purge-data [-yes]` flag (dry-run without `-yes`).
+  Leftovers under an AppDir the process cannot write (Program Files without
+  rights) are `PurgeItem.NeedsAdmin`: unselected and skipped, not failed (exit
+  code 0); then `DataDir/.migrated_from` is kept, so the same command from an
+  administrator prompt finds and removes them. On Windows the Start with Windows
+  value is removed when it points to this executable, and network cleanup
+  (adapters, NLA, firewall rules) is skipped without rights with a hint (§11.7).
 - **Guard.** `tools/paths_guard` is planned as an AST scan (same shape as
   `tools/l10n/l10n_check/scan.go`) over calls to writing helpers with an `AppDir`
   argument, with the Mesa functions named as the sole exception — this is the
@@ -1005,3 +1038,59 @@ same constant body, and `AppController.CoreLogPath()` tells readers which log th
 last start wrote — the Core tab of the log window and the traffic profiler's tailer
 (`TrafficProfiler.StartFollowing`, re-resolved every poll). The TUN-off cleanup
 deletes root-owned leftovers with the launcher's own uid; no AEWP there.
+
+### 11.7 Elevation on demand on Windows (SPEC 139)
+
+The Windows executables carry an `asInvoker` manifest (it stays embedded: a
+32-bit process without `requestedExecutionLevel` is subject to UAC file
+virtualization). Proxy-only never elevates; TUN elevates only on an explicit action.
+
+- **`platform.IsElevated()`** (`internal/platform/elevation_windows.go`, once per
+  process): `TokenElevation` or effective membership in `BUILTIN\Administrators`
+  (the latter covers machines with UAC off). `ElevationAsksOtherAccount()` —
+  `TokenElevationTypeDefault` while not elevated (a standard user: UAC will ask
+  for an administrator account). Off Windows `IsElevated` is `euid == 0` and no
+  gate uses it.
+- **TUN gate** — `ProcessService.Start` after the pre-start rebuild, before the
+  darwin branch and `exec` (`core/elevation.go`): Windows, not elevated,
+  `config.ConfigHasTun`. Every entry point (button, tray, `-start`, Debug API,
+  auto-restart) goes through it. Instead of the core — a dialog
+  (`internal/dialogs.ShowActions`): **Restart as administrator**, **Switch to
+  proxy mode** (unavailable while the configurator is open), Cancel; SPEC 141 puts
+  **Install service** first in the same action list.
+- **Restart as administrator** — the new instance first, the old one exits after
+  success: `platform.RunElevated(exe, args, AppDir, show)` (`ShellExecuteExW`
+  `runas`, `SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC`, owner = the foreground
+  window, on a locked OS thread with COM initialized) returns an
+  `*ElevatedProcess` (pid, `Wait(timeout)`, `Close`) — the primitive SPEC 141
+  reuses for the service commands. Arguments come from `flag.Visit` (without
+  `-tray` and a previous `-handoff`) plus `-start` and `-handoff`. A cancelled UAC
+  prompt (`ErrElevationCancelled`) keeps the dialog open with a status line;
+  success → `GracefulExit`, as Quit in the tray.
+- **New instance** — `-handoff` layout (§7a.2), then, before `crash.log`, the GL
+  probe, the controller and the tray, `platform.WaitForProcessExit(parent, exe,
+  25 s)`: `OpenProcess` + image file-name check, case-insensitive (a reused PID
+  is not waited for; the full path would differ under subst, a junction, a network
+  drive or `\\?\`) + `WaitForSingleObject`; without access to the parent (another
+  account) — polling the process list every 250 ms with the same name check.
+- **Switch to proxy mode** — `tun=false`, `enable_proxy_in=true`,
+  `proxy_in_set_system_proxy=true` in the local state → Save → forced rebuild →
+  `StartSingBoxProcess` (the same state-write helper as the log-level switch).
+- **Gates without rights** (skip, one INFO line at start instead of a WARN per
+  place): startup NLA/adapter/firewall cleanup, ghost-adapter cleanup after Stop,
+  network cleanup in Remove all data / `-purge-data` (CLI prints the command to
+  finish from an administrator prompt), Kill of a core started by an elevated
+  instance (a message with Restart as administrator; `RunningState` is not
+  reset), the Portable switch (predicate §7a.2; unavailable in an instance
+  elevated through UAC).
+- **Autostart** — `HKCU\…\Run\singbox-launcher` = `"<exe>" -tray [-start]`
+  (`internal/platform/autostart*.go`, `core/autostart.go`): Settings → Connection
+  (locked in an instance elevated through UAC — `platform.ElevatedViaUAC`,
+  `TokenElevationTypeFull`; with UAC off or as the built-in Administrator there
+  is no normal start, so it stays available), `-autostart=on|off` for the installer
+  (SPEC 140), removal in Remove all data and `-purge-data`, only when the value
+  points to this executable.
+- The elevated window title ends with `(Administrator)`.
+
+Still open (SPEC 137 §8 item 5): classic + TUN elevated runs
+`<Data>\bin\sing-box.exe`; the protected copy comes with SPEC 141.

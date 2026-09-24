@@ -151,12 +151,11 @@ func CleanupGhostSingboxTunAdapters(mode GhostTunCleanupMode) (removed int, err 
 		)
 		if callRet == 0 {
 			// Removal failed — log and continue with the next adapter.
-			// Common cause on Win7 is ERROR_ACCESS_DENIED (not running
-			// elevated). We tolerate this silently — there's no point
-			// in spamming the log if the launcher isn't elevated and
-			// can't fix anything anyway.
+			// Callers run this only elevated (SPEC 139 gates it in core),
+			// so ERROR_ACCESS_DENIED here is unexpected: e.g. a token
+			// without the needed privilege despite elevation.
 			if errno, ok := callErr.(syscall.Errno); ok && errno == syscall.ERROR_ACCESS_DENIED {
-				debuglog.WarnLog("ghost-tun cleanup: DIF_REMOVE access-denied name=%q (run launcher as Administrator on Win7?)", name)
+				debuglog.WarnLog("ghost-tun cleanup: DIF_REMOVE access-denied name=%q (elevated=%v)", name, IsElevated())
 			} else {
 				debuglog.WarnLog("ghost-tun cleanup: DIF_REMOVE failed name=%q err=%v", name, callErr)
 			}

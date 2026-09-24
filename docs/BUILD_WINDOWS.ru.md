@@ -60,10 +60,14 @@ build\build_windows.bat
 go mod tidy
 ```
 
-3. (Опционально) Встройте иконку:
+3. (Опционально) Встройте иконку и манифест:
 ```batch
 rsrc -ico assets/app.ico -manifest app.manifest -o rsrc.syso
 ```
+`app.manifest` запрашивает `asInvoker`: лаунчер стартует без прав администратора и
+просит их только для TUN (SPEC 139). Манифест всё равно встраивайте — 32-битная
+сборка без `requestedExecutionLevel` попадает под UAC-виртуализацию файлов, и запись в
+Program Files молча уходит в `VirtualStore`.
 
 4. Соберите проект:
 ```batch

@@ -201,24 +201,32 @@ func buildStorageSection(ac *core.AppController) (fyne.CanvasObject, func()) {
 	), refresh
 }
 
-// storageModeText — строка Mode: режим раскладки и, для Env, какие
-// переменные окружения сработали.
+// storageModeText — строка Mode: режим раскладки, для Env — какие
+// переменные окружения сработали, и пометка portable.txt, лежащего в
+// непишущейся папке программы (SPEC 139 §7).
 func storageModeText(l paths.Layout) string {
+	var s string
+	var notes []string
 	switch l.Mode {
 	case paths.ModePortable:
-		return locale.T("Portable")
+		s = locale.T("Portable")
 	case paths.ModeLegacy:
-		return locale.T("Legacy")
+		s = locale.T("Legacy")
 	case paths.ModeSystem:
-		return locale.T("System")
+		s = locale.T("System")
 	case paths.ModeEnv:
-		s := locale.T("Environment")
-		if len(l.EnvSource) > 0 {
-			s += " (" + strings.Join(l.EnvSource, ", ") + ")"
-		}
-		return s
+		s = locale.T("Environment")
+		notes = append(notes, l.EnvSource...)
+	default:
+		s = string(l.Mode)
 	}
-	return string(l.Mode)
+	if l.MarkerIgnored {
+		notes = append(notes, locale.T("portable.txt ignored"))
+	}
+	if len(notes) > 0 {
+		s += " (" + strings.Join(notes, ", ") + ")"
+	}
+	return s
 }
 
 // buildPortableToggle — чекбокс Portable раздела Storage (SPEC 135 §4.2) и

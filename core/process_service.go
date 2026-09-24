@@ -50,6 +50,12 @@ const (
 // sync=false — фоновая goroutine (Stop, не блокирует UI).
 // sync=true  — inline (Restart: cleanup до Start, чтобы не снести новый адаптер).
 func runGhostTunCleanup(sync bool) {
+	// SPEC 139 §6 п. 4: без прав ядро TUN не поднимало (гейт в Start), а
+	// очистка пишет в HKLM и SetupAPI — пропуск молча.
+	if windowsNotElevated() {
+		debuglog.DebugLog("runGhostTunCleanup: skipped, not elevated")
+		return
+	}
 	run := func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -208,6 +214,17 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 	if err := ac.rebuildConfigBeforeStart(false); err != nil {
 		debuglog.ErrorLog("startSingBox: config rebuild failed, sing-box not started: %v", err)
 		ac.ShowRebuildError(err)
+		return
+	}
+
+	// SPEC 139 §4: на Windows TUN без прав администратора не стартует —
+	// вместо ядра диалог (перезапуск с правами или режим прокси). Сюда
+	// приходят все входы: кнопка, трей, -start, Debug API, авто-рестарт.
+	if ac.tunNeedsElevation() {
+		ac.showTunElevationDialog()
+		if ac.UIService != nil && ac.UIService.StartAbortedFunc != nil {
+			ac.UIService.StartAbortedFunc()
+		}
 		return
 	}
 
@@ -720,7 +737,13 @@ func (svc *ProcessService) checkAndShowSingBoxRunningWarning(ctx string) bool {
 					}
 				} else {
 					processName := platform.GetProcessNameForCheck()
-					_ = platform.KillProcess(processName)
+					err := platform.KillProcess(processName)
+					// SPEC 139 §6 п. 7: ядро повышенного экземпляра без прав не
+					// снять — сообщение с перезапуском, RunningState не трогаем.
+					if svc.ac.KillNeedsElevation(err) {
+						svc.ac.ShowKillNeedsElevation()
+						return
+					}
 				}
 				// В daemon-режиме RunningState отражает ядро ДЕМОНА, а убили
 				// мы осиротевший classic-процесс — состояние демона не
