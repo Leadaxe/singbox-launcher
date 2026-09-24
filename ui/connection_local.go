@@ -1,7 +1,8 @@
 // File connection_local.go — вкладка LOCAL окна подключения: движок
 // локального ядра.
 //
-// Радио выбирает движок: Process (classic) или Daemon (lxd, только macOS).
+// Радио выбирает движок: Process (classic) или Daemon (lxd, macOS и Windows
+// x64/arm64).
 // Радио — это намерение пользователя: выбор «Daemon» показывает панель
 // демона даже когда режим ещё не включён (службу только предстоит установить
 // и сопрячь — кнопки для этого как раз на панели). Фактический движок
@@ -25,8 +26,8 @@ const (
 )
 
 // buildLocalEngineTab собирает вкладку LOCAL. daemon-панель приходит из
-// платформенного builder'а (nil вне macOS — тогда вкладка описывает только
-// classic-режим без переключателя).
+// платформенного builder'а (nil вне daemon-платформ — тогда вкладка
+// описывает только classic-режим без переключателя).
 func buildLocalEngineTab(ac *core.AppController, win fyne.Window, onChanged func()) fyne.CanvasObject {
 	processHint := widget.NewLabel(locale.T(processHintText))
 	processHint.Wrapping = fyne.TextWrapWord
@@ -41,7 +42,7 @@ func buildLocalEngineTab(ac *core.AppController, win fyne.Window, onChanged func
 		}
 	})
 	if daemonPanel == nil {
-		// Не macOS: движок один, переключать нечего.
+		// Не daemon-платформа (Linux, Win7): движок один, переключать нечего.
 		return container.NewVBox(
 			sectionHeader(locale.T("Process (classic)")),
 			processHint,
