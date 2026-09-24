@@ -676,6 +676,25 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed ($LASTEXITCODE)" }
           Get-ChildItem $out | Format-Table Name, Length
 
+      # Ветка службы (#ifdef DaemonService) включится после SPEC 141; до тех
+      # пор её компилирует только эта проверка — на пустых файлах-заглушках,
+      # чтобы не жать набор второй раз. Результат выбрасывается.
+      - name: Compile-check DaemonService variant
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ needs.meta.outputs.version }}
+          APP_VERSION_NUMERIC: ${{ steps.numver.outputs.numeric }}
+          ISCC: ${{ steps.iscc.outputs.path }}
+        run: |
+          $fake = Join-Path $env:RUNNER_TEMP 'installer-fake-stage'
+          New-Item -ItemType Directory -Force -Path (Join-Path $fake 'bin'), (Join-Path $fake 'mesa3d') | Out-Null
+          foreach ($f in 'singbox-launcher.exe', 'bin\sing-box.exe', 'mesa3d\opengl32.dll', 'mesa3d\libgallium_wgl.dll', 'mesa3d\dxil.dll') {
+            New-Item -ItemType File -Force -Path (Join-Path $fake $f) | Out-Null
+          }
+          $out = Join-Path $env:RUNNER_TEMP 'installer-check'
+          & $env:ISCC /Q /DDaemonService "/DAppVersion=$env:APP_VERSION" "/DAppVersionNumeric=$env:APP_VERSION_NUMERIC" "/DStageDir=$fake" "/O$out" build\installer\singbox-launcher.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC (DaemonService) failed ($LASTEXITCODE)" }
+
       - name: Upload installer
         uses: actions/upload-artifact@v6
         with:
