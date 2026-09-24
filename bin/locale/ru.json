@@ -4478,6 +4478,15 @@
   "Program": {
     "value": "Программа"
   },
+  "The service is installed but not running.": {
+    "value": "Служба установлена, но не запущена."
+  },
+  "launchd reports: %s": {
+    "value": "launchd сообщает: %s"
+  },
+  "Load the service into launchd (run in Terminal, your sudo):": {
+    "value": "Загрузить службу в launchd (в терминале, ваш sudo):"
+  },
   "Install or update the service (run in Terminal, your sudo):": {
     "value": "Установить или обновить службу (выполнить в терминале, ваш sudo):"
   },

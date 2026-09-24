@@ -202,17 +202,21 @@ func (ac *AppController) DaemonStatusSnapshot() DaemonUIStatus {
 		status.StateDir = passport.StateDir
 		addDaemonProcessVerdict(&status.Service, passport, cfg.Addr)
 	}
-	if status.Service.NeedsInstall() {
+	if status.Service.NeedsInstall() || status.Service.NeedsBootstrap() {
 		debuglog.DebugLog("DaemonStatusSnapshot: daemon service %s: %s", status.Service.State, status.Service.Detail)
 	}
 	return status
 }
 
-// daemonServiceCheck — полный вердикт службы: файлы (daemonServiceFileCheck)
-// и, если передан паспорт работающего демона, процесс. Версия ядра
-// лаунчера — для показа и запасного вердикта ProcessStale.
+// daemonServiceCheck — полный вердикт службы: файлы (daemonServiceFileCheck),
+// состояние у launchd (NotRunning, только когда файлы в порядке) и, если
+// передан паспорт работающего демона, процесс. Версия ядра лаунчера — для
+// показа и запасного вердикта ProcessStale.
 func (ac *AppController) daemonServiceCheck(passport *lxdclient.InfoData, addr string) DaemonServiceCheck {
 	check := ac.daemonServiceFileCheck()
+	if check.State == DaemonServiceOK {
+		compareDaemonServiceLaunchd(&check, queryLaunchdJob(daemonLaunchdLabel))
+	}
 	if check.CopyUsable() {
 		if v, err := ac.GetInstalledCoreVersion(); err == nil {
 			check.LauncherVersion = v
@@ -547,6 +551,17 @@ func daemonServiceBinaryFor(l daemonServiceLayout, launcherCore string) string {
 // константы без спецсимволов.
 func daemonServiceCommand(binary string, args ...string) string {
 	return "sudo " + shellQuote(binary) + " " + strings.Join(args, " ")
+}
+
+// DaemonBootstrapCommand — sudo-команда загрузки установленной службы в
+// launchd (состояние NotRunning, SPEC 136 §4): plist и копия в порядке,
+// переустанавливать нечего.
+func (ac *AppController) DaemonBootstrapCommand() (string, error) {
+	return daemonBootstrapCommand(), nil
+}
+
+func daemonBootstrapCommand() string {
+	return "sudo launchctl bootstrap system " + shellQuote(daemonSystemPlistPath())
 }
 
 // DaemonKickstartCommand — sudo-команда перезапуска установленной службы

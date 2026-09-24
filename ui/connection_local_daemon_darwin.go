@@ -69,20 +69,31 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 		return renderDaemonStatusText(ac, snap, true)
 	}
 
-	// Плашка состояния службы (SPEC 136 §6): Unsafe — красная, Stale и
-	// ProcessStale — жёлтая, под текстом команда «Install or update service».
-	// На вкладке Status, куда смотрят при проблеме; строка команды
-	// добавляется ниже, когда есть commandRowLocal. Скрыта при OK и без службы.
+	// Плашка состояния службы (SPEC 136 §6): Unsafe — красная, Stale,
+	// NotRunning и ProcessStale — жёлтая, под текстом команда: «Install or
+	// update service», а для NotRunning — загрузка plist (bootstrap). На
+	// вкладке Status, куда смотрят при проблеме; строки команд добавляются
+	// ниже, когда есть commandRowLocal. Скрыта при OK и без службы.
 	serviceIcon := widget.NewIcon(theme.WarningIcon())
 	serviceLabel := widget.NewLabel("")
 	serviceLabel.Wrapping = fyne.TextWrapWord
 	serviceBox := container.NewVBox(container.NewBorder(nil, nil, container.NewVBox(serviceIcon), nil, serviceLabel))
 	serviceBox.Hide()
+	var serviceInstallRow, serviceBootstrapRow fyne.CanvasObject
 	applyServiceState := func(snap core.DaemonUIStatus) {
 		text, danger := daemonServiceNoticeText(snap.Service)
 		if text == "" {
 			serviceBox.Hide()
 			return
+		}
+		if serviceInstallRow != nil && serviceBootstrapRow != nil {
+			if snap.Service.NeedsBootstrap() {
+				serviceInstallRow.Hide()
+				serviceBootstrapRow.Show()
+			} else {
+				serviceBootstrapRow.Hide()
+				serviceInstallRow.Show()
+			}
 		}
 		if danger {
 			serviceIcon.SetResource(theme.ErrorIcon())
@@ -125,7 +136,13 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	// существующей службы обновляет root-owned копию и перезапускает службу.
 	// Отдельной строки kickstart нет: после обновления ядра перезапуск поднял
 	// бы ту же старую копию (SPEC 136 §5).
-	serviceBox.Add(commandRowLocal("Install or update the service (run in Terminal, your sudo):", ac.DaemonInstallCommand)) // l10n-key
+	serviceInstallRow = commandRowLocal("Install or update the service (run in Terminal, your sudo):", ac.DaemonInstallCommand) // l10n-key
+	// NotRunning: plist и копия в порядке, launchd службу не держит — её
+	// загружают, а не переустанавливают.
+	serviceBootstrapRow = commandRowLocal("Load the service into launchd (run in Terminal, your sudo):", ac.DaemonBootstrapCommand) // l10n-key
+	serviceBootstrapRow.Hide()
+	serviceBox.Add(serviceInstallRow)
+	serviceBox.Add(serviceBootstrapRow)
 
 	// --- Сопряжение по приглашению ---------------------------------------
 	inviteEntry := widget.NewEntry()
@@ -406,6 +423,12 @@ func daemonServiceNoticeText(c core.DaemonServiceCheck) (text string, danger boo
 		}
 		return locale.Tf(daemonServiceOlderCoreText,
 			coreBuildLabel(c.CopyVersion, c.CopySHA256), coreBuildLabel(c.LauncherVersion, c.LauncherSHA256)), false
+	case core.DaemonServiceNotRunning:
+		text = locale.T("The service is installed but not running.")
+		if c.LaunchdState != "" {
+			text += "\n" + locale.Tf("launchd reports: %s", c.LaunchdState)
+		}
+		return text, false
 	case core.DaemonServiceProcessStale:
 		current := c.CopyVersion
 		if current == "" {

@@ -111,6 +111,7 @@ of the LOCAL connection settings:
 | not installed | no plist | nothing |
 | unsafe | the plist does not point at the copy, or the copy, its folder, `/Library/PrivilegedHelperTools` or `/Library` is a symlink, not owned by root, or writable by group/others | red, with the command; a one-time dialog per launcher version; a WARN line in the log before every config apply |
 | stale | the copy differs from the launcher core (sha256), or is missing | yellow, with the command |
+| not running | the files are fine (plist on the safe copy, sha256 matches), but launchd does not run the service: not loaded or `state` ≠ `running` (`launchctl print`, no sudo) | yellow, with `sudo launchctl bootstrap system /Library/LaunchDaemons/com.leadaxe.sing-box-lxd.plist` — loading, not reinstalling |
 | process stale | the files match, but the running daemon reports another binary (`executable_sha256` from `/admin/info`; with an older core — another version) | yellow, with the command |
 | ok | the service runs the current root-owned copy | nothing |
 
@@ -118,7 +119,9 @@ An unsafe service is warned about loudly but not blocked: the VPN keeps working 
 you run the command. `<launcher-core> lxd --service=status` (no sudo needed) prints
 the same check from the core's side, comparing the copy with the binary that runs it:
 exit 0 — ok, 2 — mismatch or unsafe, 3 — not installed, 4 — copy only (a copy without
-the service, SPEC 137), 1 — error. The copy lives outside the
+the service, SPEC 137), 5 — not running (loaded state at launchd), 1 — error. The install
+command may take up to ~20 s: the core waits up to 10 s for the old service to unload
+and retries `bootstrap`. The copy lives outside the
 launcher's data folder, so **Remove all data…** leaves the service in place and offers
 its uninstall command through the copy.
 

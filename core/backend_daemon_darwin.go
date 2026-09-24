@@ -362,6 +362,9 @@ func (b *DaemonBackend) applyOnce(caller string, forced bool) bool {
 	if check := ac.daemonServiceCheck(passportPtr, b.admin.AddrString()); check.NeedsInstall() {
 		debuglog.WarnLog("daemon.%s: the daemon service is %s (%s) — run the Install or update service command",
 			caller, check.State, check.Detail)
+	} else if check.NeedsBootstrap() {
+		debuglog.WarnLog("daemon.%s: the daemon service is installed but not running (%s) — run: %s",
+			caller, check.Detail, daemonBootstrapCommand())
 	}
 	config, err = prepareConfigForDaemon(config, runtimeDir)
 	if err != nil {

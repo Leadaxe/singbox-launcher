@@ -3,6 +3,9 @@
 package core
 
 import (
+	"bufio"
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -10,10 +13,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/lxdclient"
@@ -43,6 +48,16 @@ const (
 	// daemonHashCacheCap — потолок кэша sha256: файлов в игре два-три, потолок
 	// лишь не даёт кэшу расти от череды заменённых ядер.
 	daemonHashCacheCap = 16
+	// launchctlTool / launchctlTimeout — чтение состояния службы у launchd
+	// (`launchctl print system/<label>`, без sudo); exit 113 — службы в
+	// домене нет (не загружена).
+	launchctlTool           = "/bin/launchctl"
+	launchctlTimeout        = 2 * time.Second
+	launchctlNotFoundStatus = 113
+	// launchdRunningState — `state = running` в выводе launchctl print.
+	launchdRunningState = "running"
+	// launchdNotLoaded — LaunchdState, когда launchd службу не знает.
+	launchdNotLoaded = "not loaded"
 )
 
 // daemonServiceCorePath — каноническая root-owned копия ядра службы.
@@ -63,6 +78,12 @@ const (
 	// DaemonServiceStale — копия безопасна, но это не ядро лаунчера (sha
 	// разные) или её нет вовсе.
 	DaemonServiceStale DaemonServiceState = "stale"
+	// DaemonServiceNotRunning — на диске всё в порядке (plist на безопасную
+	// копию, sha совпал), но launchd службу не держит: не загружена или
+	// state ≠ running. Лечится загрузкой plist (bootstrap), не
+	// переустановкой. Пара к вердикту NOT RUNNING (exit 5) `lxd
+	// --service=status` ядра.
+	DaemonServiceNotRunning DaemonServiceState = "not_running"
 	// DaemonServiceProcessStale — файл совпал, но работающий демон запущен из
 	// другого образа (не перезапущен после обновления копии).
 	DaemonServiceProcessStale DaemonServiceState = "process_stale"
@@ -92,6 +113,9 @@ type DaemonServiceCheck struct {
 	// (/admin/info); пусто, если не спрашивали или поля нет.
 	RunningSHA256  string
 	RunningVersion string
+	// LaunchdState — что launchd говорит о службе: значение `state = …` или
+	// «not loaded»; пусто, если не спрашивали или спросить не удалось.
+	LaunchdState string
 }
 
 // NeedsInstall — состояние лечится командой «Install or update service».
@@ -101,6 +125,12 @@ func (c DaemonServiceCheck) NeedsInstall() bool {
 		return true
 	}
 	return false
+}
+
+// NeedsBootstrap — служба установлена верно, но не запущена: лечится
+// `launchctl bootstrap` (DaemonBootstrapCommand), а не install.
+func (c DaemonServiceCheck) NeedsBootstrap() bool {
+	return c.State == DaemonServiceNotRunning
 }
 
 // CopyUsable — plist указывает на каноническую копию, её цепочка владения
@@ -255,6 +285,74 @@ func compareDaemonServiceFiles(c *DaemonServiceCheck, corePath, launcherCore str
 		c.State = DaemonServiceStale
 		c.Detail = fmt.Sprintf("the root-owned copy (sha256 %s) is not the launcher core %s (sha256 %s)",
 			shortSHA(copySum), resolved, shortSHA(launcherSum))
+	}
+}
+
+// launchdJob — что launchd знает о службе. Known=false — спросить не
+// удалось (нет launchctl, таймаут, непонятный вывод): вердикт не
+// выносится. Loaded=false — службы в домене system нет.
+type launchdJob struct {
+	Known  bool
+	Loaded bool
+	State  string
+}
+
+// queryLaunchdJob — `launchctl print system/<label>` без sudo, с таймаутом;
+// кэша нет: состояние меняется от любой команды пользователя.
+func queryLaunchdJob(label string) launchdJob {
+	ctx, cancel := context.WithTimeout(context.Background(), launchctlTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, launchctlTool, "print", "system/"+label).Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == launchctlNotFoundStatus {
+			return launchdJob{Known: true}
+		}
+		debuglog.DebugLog("daemon service: launchctl print system/%s: %v", label, err)
+		return launchdJob{}
+	}
+	state := parseLaunchctlPrintState(out)
+	if state == "" {
+		debuglog.DebugLog("daemon service: launchctl print system/%s: no state line", label)
+		return launchdJob{}
+	}
+	return launchdJob{Known: true, Loaded: true, State: state}
+}
+
+// parseLaunchctlPrintState — `state = …` самой службы: строка верхнего
+// уровня блока (один таб), а не вложенных (endpoints и т.п.).
+func parseLaunchctlPrintState(out []byte) string {
+	sc := bufio.NewScanner(bytes.NewReader(out))
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.HasPrefix(line, "\tstate = ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "\tstate = "))
+		}
+	}
+	return ""
+}
+
+// compareDaemonServiceLaunchd — шаг после файлов: служба на месте, но
+// launchd её не держит — NotRunning. Работает только поверх OK; launchd не
+// ответил — вердикт не выносится.
+func compareDaemonServiceLaunchd(c *DaemonServiceCheck, job launchdJob) {
+	if !job.Known {
+		return
+	}
+	c.LaunchdState = job.State
+	if !job.Loaded {
+		c.LaunchdState = launchdNotLoaded
+	}
+	if c.State != DaemonServiceOK {
+		return
+	}
+	switch {
+	case !job.Loaded:
+		c.State = DaemonServiceNotRunning
+		c.Detail = "the service is not loaded in launchd"
+	case job.State != launchdRunningState:
+		c.State = DaemonServiceNotRunning
+		c.Detail = fmt.Sprintf("launchd reports the service state %q", job.State)
 	}
 }
 

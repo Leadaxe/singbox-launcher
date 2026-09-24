@@ -28,7 +28,7 @@ type DaemonStatus struct {
 	DaemonVersion    string `json:"daemon_version,omitempty"`
 	StateDir         string `json:"state_dir,omitempty"`
 	// ServiceState — вердикт классификатора службы (SPEC 136 §4):
-	// not_installed | unsafe | stale | process_stale | ok. ServicePath —
+	// not_installed | unsafe | stale | not_running | process_stale | ok. ServicePath —
 	// ProgramArguments[0] из plist, ServiceDetail — причина (английский).
 	ServiceState  string `json:"service_state,omitempty"`
 	ServicePath   string `json:"service_path,omitempty"`

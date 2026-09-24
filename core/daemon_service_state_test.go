@@ -222,6 +222,46 @@ func TestDaemonServiceClassifier(t *testing.T) {
 	c = classifyTestService(l, &hashes)
 	expect(t, c, DaemonServiceOK)
 
+	// launchd: файлы в порядке, но служба не загружена или не running —
+	// NotRunning (лечится bootstrap, не install); launchd не ответил —
+	// вердикта нет; поверх файлового вердикта launchd не судит.
+	launchd := func(base DaemonServiceCheck, job launchdJob) DaemonServiceCheck {
+		lc := base
+		compareDaemonServiceLaunchd(&lc, job)
+		return lc
+	}
+	expect(t, launchd(c, launchdJob{}), DaemonServiceOK)
+	expect(t, launchd(c, launchdJob{Known: true, Loaded: true, State: "running"}), DaemonServiceOK)
+	notLoaded := launchd(c, launchdJob{Known: true})
+	expect(t, notLoaded, DaemonServiceNotRunning)
+	if notLoaded.LaunchdState != launchdNotLoaded || !notLoaded.NeedsBootstrap() || notLoaded.NeedsInstall() || !notLoaded.CopyUsable() {
+		t.Fatalf("not loaded: launchd %q bootstrap=%v install=%v usable=%v",
+			notLoaded.LaunchdState, notLoaded.NeedsBootstrap(), notLoaded.NeedsInstall(), notLoaded.CopyUsable())
+	}
+	waiting := launchd(c, launchdJob{Known: true, Loaded: true, State: "spawn scheduled"})
+	expect(t, waiting, DaemonServiceNotRunning)
+	if waiting.LaunchdState != "spawn scheduled" {
+		t.Fatalf("launchd state %q", waiting.LaunchdState)
+	}
+	staleCheck := c
+	staleCheck.State = DaemonServiceStale
+	expect(t, launchd(staleCheck, launchdJob{Known: true}), DaemonServiceStale)
+	// Процесс не перебивает NotRunning (демон, запущенный руками, — не служба).
+	nr := notLoaded
+	compareDaemonServiceProcess(&nr, lxdclient.InfoData{Executable: l.CorePath, ExecutableSHA256: "ff"}, l.CorePath)
+	expect(t, nr, DaemonServiceNotRunning)
+	if cmd := daemonBootstrapCommand(); cmd != "sudo launchctl bootstrap system '/Library/LaunchDaemons/"+daemonLaunchdLabel+".plist'" {
+		t.Fatalf("bootstrap command %q", cmd)
+	}
+	// Разбор `launchctl print`: state самой службы, не вложенных блоков.
+	printed := "system/" + daemonLaunchdLabel + " = {\n\tactive count = 0\n\tendpoints = {\n\t\tstate = active\n\t}\n\tstate = not running\n\tpid = 0\n}\n"
+	if got := parseLaunchctlPrintState([]byte(printed)); got != "not running" {
+		t.Fatalf("parsed launchd state %q, want %q", got, "not running")
+	}
+	if got := parseLaunchctlPrintState([]byte("garbage")); got != "" {
+		t.Fatalf("parsed launchd state from garbage: %q", got)
+	}
+
 	// Процесс: паспорт демона lx.11 (executable, executable_sha256).
 	process := func(info lxdclient.InfoData, launcherVersion string) DaemonServiceCheck {
 		pc := c

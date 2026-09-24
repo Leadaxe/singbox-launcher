@@ -41,9 +41,9 @@
 | Копия ядра | `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/sing-box` — `root:wheel 0755`; имя `sing-box` сохраняется (граница форка: `pgrep`/`ps` и диагностика по имени процесса не ломаются) |
 | Сайдкар | `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/install.json` — `root:wheel 0644`: `{source, sha256, version, installed_at, plist_path, label}` |
 | plist | `ProgramArguments[0]` = копия; остальные ключи plist не меняются |
-| `lxd --service=install` | идемпотентен по sha (равные sha — копия не трогается); `daemon.json`, секрет и клиенты сохраняются; служба перезапускается (`bootout` + `bootstrap`) |
+| `lxd --service=install` | идемпотентен по sha (равные sha — копия не трогается); `daemon.json`, секрет и клиенты сохраняются; служба перезапускается (`bootout` + `bootstrap`): ядро ждёт выгрузки старой службы до 10 с и повторяет `bootstrap` |
 | `lxd --service=uninstall` | по умолчанию снимает plist, launchd **и копию** с сайдкаром; `--keep-copy` — снимает plist и launchd, копию и сайдкар оставляет (состояние COPY ONLY); `--purge` — ещё и данные демона |
-| `lxd --service=status` | exit 0 — OK, 2 — MISMATCH или UNSAFE, 3 — NOT INSTALLED, 4 — COPY ONLY (копия без службы, `--service=copy` SPEC 137), 1 — ошибка; печатает путь, sha256 копии, sha256 вызывающего бинаря, вердикт |
+| `lxd --service=status` | exit 0 — OK, 2 — MISMATCH или UNSAFE, 3 — NOT INSTALLED, 4 — COPY ONLY (копия без службы, `--service=copy` SPEC 137), 5 — NOT RUNNING (на диске всё как OK, но launchd: not loaded или state ≠ running; подсказка `sudo launchctl bootstrap system <plist>`), 1 — ошибка; тяжесть OK < COPY ONLY < NOT RUNNING < MISMATCH < UNSAFE; печатает путь, sha256 копии, sha256 вызывающего бинаря, вердикт (ядро `11f440685`) |
 | `GET /admin/info` | новые поля `executable`, `executable_sha256`; у ядер до lx.11 их нет — лаунчер проверяет наличие |
 
 Всё читается без sudo: каталог и файл `0755`, сайдкар и plist `0644`.
@@ -59,6 +59,7 @@
 | **NotInstalled** | plist нет | ничего; вкладка Install |
 | **Unsafe** | plist не разобрался; **или** `ProgramArguments[0]` ≠ каноническая копия (бандл, DataDir, что угодно); **или** цепочка `/Library` → `/Library/PrivilegedHelperTools` → каталог службы → файл не проходит инвариант | красная плашка, модальное предупреждение раз на версию лаунчера, WARN перед apply |
 | **Stale** | путь канонический и безопасный, но sha256(копии) ≠ sha256(`EvalSymlinks(SingboxPath)`); **или** копии нет | жёлтая плашка |
+| **NotRunning** | файлы как у OK (plist на безопасную копию, sha совпал), но `launchctl print system/com.leadaxe.sing-box-lxd` (без sudo, таймаут 2 с, без кэша) — службы нет (exit 113) или `state` ≠ `running` | жёлтая плашка «The service is installed but not running» с командой `sudo launchctl bootstrap system /Library/LaunchDaemons/com.leadaxe.sing-box-lxd.plist` — **не** install; WARN перед apply |
 | **ProcessStale** | файл совпал, но работающий локальный демон отвечает `executable_sha256` ≠ sha256(копии) или `executable` ≠ каноническому пути; у ядра без этих полей (lx.8/lx.10) — `version` ≠ версии ядра лаунчера | жёлтая плашка |
 | **OK** | иначе | ничего |
 
@@ -82,7 +83,10 @@ Unsafe (создать файл в root-каталоге пользовател�
 выносится, вердикт остаётся по пути и инварианту. Демон недостижим или адрес
 не loopback — ProcessStale не выносится. Пустой `executable_sha256` —
 «неизвестно», а не расхождение: lx.11 считает хэш в фоне после старта и
-первые мгновения отдаёт `""`; судит запасной путь по версии.
+первые мгновения отдаёт `""`; судит запасной путь по версии. `launchctl` не
+ответил (нет утилиты, таймаут, непонятный вывод) — NotRunning не выносится.
+Демон, запущенный руками при выгруженной службе, NotRunning не отменяет:
+судим службу, а не процесс.
 
 ## 5. Команды
 
@@ -96,6 +100,7 @@ Unsafe (создать файл в root-каталоге пользовател�
 | Uninstall (вкладка Uninstall, Debug API) | `sudo '<bin>' lxd --service=uninstall --keep-copy [--purge]` | копия, если plist указывает на неё и цепочка безопасна; иначе `SingboxPath`. `--keep-copy`: копию запускает classic-старт с TUN (SPEC 137) |
 | Uninstall при удалении данных | `sudo '<bin>' lxd --service=uninstall --purge` | то же правило; без `--keep-copy` — копия уходит вместе с данными (§7) |
 | Свежее приглашение | `sudo '<bin>' lxd client add --name singbox-launcher` | то же правило, что у Uninstall |
+| Загрузить службу (NotRunning) | `sudo launchctl bootstrap system '/Library/LaunchDaemons/com.leadaxe.sing-box-lxd.plist'` | — (plist и копия в порядке, переустанавливать нечего) |
 | Kickstart | `sudo launchctl kickstart -k system/com.leadaxe.sing-box-lxd` | только Debug API `/daemon/commands`; из UI убран |
 
 Одна команда для всех случаев: первая установка, старый небезопасный plist,
@@ -116,7 +121,10 @@ Unsafe (создать файл в root-каталоге пользовател�
     который запускает служба;
   - Stale / ProcessStale — жёлтая: «The service runs an older core (…)» с
     версиями/sha; для отсутствующей копии — свой текст;
-  - под текстом — строка команды «Install or update the service».
+  - NotRunning — жёлтая: «The service is installed but not running.» +
+    состояние у launchd;
+  - под текстом — строка команды «Install or update the service», а для
+    NotRunning — «Load the service into launchd» (bootstrap).
   OK и NotInstalled — плашки нет.
 - Строка «Restart the service (after a core update)» (kickstart) убрана.
 - Вкладка **Install**, шаг 1 — «Install or update the service».
@@ -140,7 +148,7 @@ Unsafe (создать файл в root-каталоге пользовател�
 ## 8. Debug API
 
 `GET /daemon/status` получает `service_state`
-(`not_installed|unsafe|stale|process_stale|ok`), `service_path`
+(`not_installed|unsafe|stale|not_running|process_stale|ok`), `service_path`
 (`ProgramArguments[0]`) и `service_detail` (английская причина для
 диагностики). Аддитивно, старые поля не меняются.
 
@@ -152,7 +160,9 @@ Unsafe (создать файл в root-каталоге пользовател�
    той же версии — без него (в логе WARN «daemon service is unsafe» — на
    каждом старте). LOCAL → Status — красная плашка; в логе WARN перед apply;
    `GET /daemon/status` → `"service_state": "unsafe"`.
-2. Выполнить команду из плашки (sudo вводит владелец).
+2. Выполнить команду из плашки (sudo вводит владелец). Установка может
+   занять до ~20 с: ядро ждёт выгрузки старой службы до 10 с и повторяет
+   `bootstrap`.
 3. **После.**
    - `ls -ld /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd` и
      `ls -l …/sing-box` — `root wheel`, `drwxr-xr-x` / `-rwxr-xr-x`;
@@ -161,12 +171,18 @@ Unsafe (создать файл в root-каталоге пользовател�
    - `shasum -a 256 …/sing-box` == `shasum -a 256 ~/Library/Application\ Support/singbox-launcher/bin/sing-box`;
    - `~/Library/Application\ Support/singbox-launcher/bin/sing-box lxd --service=status`
      (вызывающий бинарь — ядро лаунчера, сверяется с копией) — exit 0
-     (2 — MISMATCH/UNSAFE, 3 — NOT INSTALLED, 4 — COPY ONLY, 1 — ошибка);
+     (2 — MISMATCH/UNSAFE, 3 — NOT INSTALLED, 4 — COPY ONLY, 5 — NOT RUNNING,
+     1 — ошибка);
    - Debug API `GET /daemon/status` → `"service_state": "ok"`;
    - `launchctl print system/com.leadaxe.sing-box-lxd` — `state = running`;
    - плашки нет, сопряжение живо (Start/Stop без пароля, список узлов).
 4. **Отрицательный.** Подменить ядро в DataDir (другая сборка) → Refresh →
    жёлтая Stale-плашка с разными sha; команда — возврат в OK.
+   **Не запущена.** `sudo launchctl bootout system/com.leadaxe.sing-box-lxd`
+   → Refresh → жёлтая плашка «The service is installed but not running»
+   (launchd: not loaded) со строкой bootstrap, а не install;
+   `--service=status` → exit 5; `GET /daemon/status` →
+   `"service_state": "not_running"`; команда из плашки → Refresh → OK.
 5. **Обновление ядра кнопкой** → диалог «Core updated» с той же командой
    install (в том числе в classic-движке при установленной службе).
 6. **Uninstall-вкладка** и «Need a fresh invite» — команды через копию;
