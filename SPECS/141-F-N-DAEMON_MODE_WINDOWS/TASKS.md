@@ -8,13 +8,15 @@
 - [x] Развилки решены владельцем — SPEC §13 «Решения».
 
 ## Этап 2 · Разделение (без изменения поведения)
-- [ ] `backend_daemon*_darwin.go` → общие файлы (пока с тегом `darwin`).
-- [ ] `daemon_manager`: общее / darwin.
-- [ ] `daemon_service_state`: общее / darwin; сверка sha — по набору (на darwin набор из одного файла).
-- [ ] `classic_privileged`: общее / darwin.
-- [ ] `purge_darwin.go`, `chain_probe.go`, `debugapi_wiring_daemon_darwin.go`, `ui/connection_local_daemon_darwin.go` — переименование.
-- [ ] Команда `{Binary, Args}` с платформенным рендером; darwin-строки байт в байт прежние.
-- [ ] Тесты darwin разделены тем же правилом.
+- [x] `backend_daemon*_darwin.go` → общие файлы (сразу с тегом daemon-платформ — SPLIT_REPORT.md).
+- [x] `daemon_manager`: общее / darwin.
+- [x] `daemon_service_state`: общее / darwin.
+- [ ] Сверка sha — по набору (на darwin набор из одного файла) — перенесено в этап 4.
+- [x] `classic_privileged`: общее / darwin.
+- [x] `purge_darwin.go` → `purge_daemon.go`, `chain_probe.go`, `debugapi_wiring_daemon_darwin.go` — переименование.
+- [ ] `ui/connection_local_daemon_darwin.go` — вместе с панелью Windows (этап 7).
+- [ ] Команда `{Binary, Args}` с платформенным рендером; darwin-строки байт в байт прежние — перенесено в этап 4 (пока платформенный `daemonServiceCommand`).
+- [x] Тесты darwin разделены тем же правилом.
 
 ## Этап 3 · Платформенный слой Windows
 - [ ] `runas_windows.go`: `ShellExecuteExW` (`runas`, `NOCLOSEPROCESS | NOASYNC`, `SW_HIDE`), ожидание 120 с, код выхода, `ERROR_CANCELLED` (согласовать с SPEC 139).
@@ -24,7 +26,7 @@
 - [ ] `privileged_windows.go`: `sing-box-lxd.exe`, `PrivilegedCoreLogPath`.
 
 ## Этап 4 · Классификатор и менеджер Windows
-- [ ] Тег `darwin || (windows && !386)`; заглушки — `!darwin && (!windows || 386)`.
+- [x] Тег `darwin || (windows && !386)`; заглушки — `!darwin && (!windows || 386)` (сделано на этапе 2; Windows — заглушки, движок закрыт `daemonEngineAvailable`).
 - [ ] Раскладка: `<ProgramFiles>\sing-box-lxd`, `<ProgramData>\sing-box-lxd` через `windows.KnownFolderPath`; набор — exe + `libcronet.dll`.
 - [ ] NotInstalled / Unsafe (`BinaryPathName`, кавычки, DACL службы, цепочка) / Stale (набор, лишний файл, `CopyMissing`) / NotRunning (≠ `SERVICE_RUNNING`) / ProcessStale / OK.
 - [ ] `minCoreForRootOwnedService` по платформе: windows `1.14.2-lx.2`; CoreTooOld во всех каналах.
