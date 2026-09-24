@@ -545,15 +545,15 @@ jobs:
 
           mkdir -p dist
 
-          # Embed icon + manifest. Манифест — asInvoker (SPEC 139): права
-          # администратора лаунчер просит сам, только для TUN. `-manifest`
-          # всё равно обязателен: 32-битный процесс без
-          # requestedExecutionLevel попадает под UAC-виртуализацию, запись в
-          # Program Files молча уходит в VirtualStore, и проба записи
-          # раскладки (SPEC 135/139) врёт. Win64 build идёт через
-          # build/build_windows.bat, где manifest embed'ится так же.
+          # Embed icon + manifest. Win7 — app.win7.manifest с
+          # requireAdministrator: UAC при каждом старте, всё под
+          # администратором, TUN сразу; службы и установщика нет, раскладка
+          # только portable. Win64 (Windows 10/11) — app.manifest с asInvoker
+          # (SPEC 139) через build/build_windows.bat. Без
+          # requestedExecutionLevel 32-битный процесс попал бы под
+          # UAC-виртуализацию, и проба записи раскладки (SPEC 135) врала бы.
           if [ -f "assets/app.ico" ]; then
-            rsrc.exe -arch ${GOARCH} -ico assets/app.ico -manifest app.manifest -o rsrc.syso
+            rsrc.exe -arch ${GOARCH} -ico assets/app.ico -manifest app.win7.manifest -o rsrc.syso
             echo "objdump -f rsrc.syso:"
             objdump -f rsrc.syso || true
           fi
@@ -1012,6 +1012,7 @@ jobs:
             1. Download: `singbox-launcher-${{ needs.meta.outputs.version }}-win7-32.zip`
             2. Extract the ZIP file to a folder and run `singbox-launcher-win7-32.exe`
                - For Windows 7 / 32-bit or legacy compatibility only
+               - Runs as administrator (UAC prompt on every start), settings stay next to the program (`portable.txt`); no installer and no daemon service
 
             #### Linux Support
 

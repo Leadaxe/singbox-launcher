@@ -299,6 +299,8 @@ User Agent: `singbox-launcher/<version> (<os> <arch>)`. Контроли при�
 
 **Автозапуск**: **Settings → Connection → Запускать вместе с Windows** запускает лаунчер в трее при входе (значение `singbox-launcher` в `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`); **Подключать VPN при входе** заодно поднимает VPN — в режиме прокси сразу, с TUN через диалог выше. Установщику — `singbox-launcher.exe -autostart=on|off`.
 
+**Windows 7 (`win7-32`)** остаётся в прежней модели: всегда работает от имени администратора (запрос UAC при каждом запуске), поэтому TUN работает сразу, без диалога выше; данные лежат рядом с программой (`portable.txt` учитывается и в `C:\Program Files\…`), без установщика, службы и автозапуска.
+
 Переход с portable-копии на установщик: в старой копии снимите **Settings → Storage → Portable mode** (данные переедут в `%LOCALAPPDATA%\singbox-launcher`), затем ставьте — или перенесите настройки через LX Backup.
 
 ### macOS

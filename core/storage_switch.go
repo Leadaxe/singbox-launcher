@@ -13,9 +13,10 @@ import (
 
 // PortableToggleAvailable — показывается ли переключатель Portable вообще
 // (SPEC 135 §4.2): на macOS его нет ни для .app (режима нет), ни для голого
-// бинаря (он и так portable).
+// бинаря (он и так portable); на win7-32 (windows/386) тоже — там только
+// portable, а окно всегда под администратором.
 func PortableToggleAvailable() bool {
-	return runtime.GOOS != "darwin"
+	return runtime.GOOS != "darwin" && !(runtime.GOOS == "windows" && runtime.GOARCH == "386")
 }
 
 // PortableToggleState — состояние чекбокса Portable в разделе Storage:

@@ -68,6 +68,8 @@ rsrc -ico assets/app.ico -manifest app.manifest -o rsrc.syso
 rights and asks for them only for TUN (SPEC 139). Keep the manifest embedded
 anyway — a 32-bit build without `requestedExecutionLevel` falls under UAC file
 virtualization, and writes to Program Files silently land in `VirtualStore`.
+The Windows 7 build (win7-32, CI) embeds `app.win7.manifest` instead:
+`requireAdministrator`, a UAC prompt on every start, portable layout only.
 
 4. Build the project:
 ```batch

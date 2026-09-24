@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -87,12 +88,20 @@ func (l Layout) LogLine() string {
 // Program Files даже файл пробы. Предикатом пользуется всё, что выбирает
 // раскладку: правила 2–3 и Windows-фоллбэк в Resolve, SystemDefault,
 // блокировка переключателя Portable.
+//
+// Сборка win7-32 (windows/386) — только проба, как до SPEC 139: она всегда
+// под администратором (requireAdministrator), обычного экземпляра нет, и
+// portable.txt в Program Files даёт Portable.
 func AppDirUserWritable(app string, env func(string) string, goos string, probe func(string) bool) bool {
-	if goos == "windows" && underProtectedWindowsDir(app, env) {
+	if protectedWindowsDirsApply && goos == "windows" && underProtectedWindowsDir(app, env) {
 		return false
 	}
 	return probe(app)
 }
+
+// protectedWindowsDirsApply — действует ли правило защищённых каталогов
+// Windows (SPEC 139 §7): везде, кроме сборки win7-32 (windows/386).
+const protectedWindowsDirsApply = !(runtime.GOOS == "windows" && runtime.GOARCH == "386")
 
 // protectedWindowsDirVars — переменные окружения защищённых каталогов Windows.
 var protectedWindowsDirVars = []string{"ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "SystemRoot"}
