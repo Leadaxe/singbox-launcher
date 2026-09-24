@@ -53,8 +53,17 @@ func MigrateLegacyRemoteProfile(dataDir paths.DataDir, registry *RemoteRegistry)
 	if err != nil {
 		return fmt.Errorf("remote migration: read registry: %w", err)
 	}
+	noticed := filepath.Join(dataDir.Bin(), legacyRemoteNoticedMarker)
 	if len(list) != 1 {
-		debuglog.WarnLog("remote migration: found legacy remote profile (state=%v config=%v snapshots=%d), "+
+		// Файлы лежат годами, а старт — каждый день: WARN один раз (маркер),
+		// дальше та же строка на INFO.
+		logf := debuglog.WarnLog
+		if fileExists(noticed) {
+			logf = debuglog.InfoLog
+		} else if err := os.WriteFile(noticed, nil, platform.DefaultFileMode); err != nil {
+			debuglog.DebugLog("remote migration: write %s: %v", noticed, err)
+		}
+		logf("remote migration: found legacy remote profile (state=%v config=%v snapshots=%d), "+
 			"but registry has %d machines — cannot tell whose it is; files left in place",
 			stateExists, configExists, len(snapshots), len(list))
 		return nil
@@ -89,9 +98,14 @@ func MigrateLegacyRemoteProfile(dataDir paths.DataDir, registry *RemoteRegistry)
 		}
 	}
 
+	_ = os.Remove(noticed)
 	debuglog.InfoLog("remote migration: moved %d legacy file(s) into %s (machine %q)", moved, dstDir, list[0].Name)
 	return nil
 }
+
+// legacyRemoteNoticedMarker — в Data/bin: предупреждение «чей профиль —
+// неизвестно» уже выведено на уровне WARN.
+const legacyRemoteNoticedMarker = ".legacy-remote-noticed"
 
 // legacyRemoteSnapshots возвращает именованные снапшоты, лежащие ПЛОСКО в
 // remote/ — то есть принадлежащие singleton-профилю.
