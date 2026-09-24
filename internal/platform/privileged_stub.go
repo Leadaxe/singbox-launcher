@@ -48,12 +48,6 @@ func KillPrivilegedByPattern() error {
 	return errPrivilegedNotSupported
 }
 
-// RemoveWithPrivileges is macOS-only.
-func RemoveWithPrivileges(paths []string) error {
-	_ = paths
-	return errPrivilegedNotSupported
-}
-
 // WaitForPrivilegedExit is a no-op on non-darwin.
 func WaitForPrivilegedExit(pid int) {
 	_ = pid

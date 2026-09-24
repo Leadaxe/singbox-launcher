@@ -26,7 +26,7 @@ func TestPrivilegedStartCommand(t *testing.T) {
 	if out, err := exec.Command(privilegedShell, "-n", "-c", privilegedStartBody).CombinedOutput(); err != nil {
 		t.Fatalf("sh -n: %v (%s)", err, out)
 	}
-	for _, tool := range []string{privilegedEnvTool, privilegedShell, privilegedKillTool, privilegedPkillTool, privilegedRmTool,
+	for _, tool := range []string{privilegedEnvTool, privilegedShell, privilegedKillTool, privilegedPkillTool,
 		"/usr/bin/stat", "/bin/mkdir", "/bin/chmod", "/bin/mv"} {
 		fi, err := os.Lstat(tool)
 		if err != nil {

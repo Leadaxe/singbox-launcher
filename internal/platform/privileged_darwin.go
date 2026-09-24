@@ -102,7 +102,6 @@ const (
 	privilegedShell     = "/bin/sh"
 	privilegedKillTool  = "/bin/kill"
 	privilegedPkillTool = "/usr/bin/pkill"
-	privilegedRmTool    = "/bin/rm"
 	// privilegedSafePath — единственная переменная окружения root-шелла.
 	// AEWP передаёт инструменту окружение лаунчера, а его задаёт
 	// пользователь: PATH решал бы, какой `rm` запустит root, а /bin/sh
@@ -283,17 +282,6 @@ func KillPrivilegedProcess(scriptPID, singboxPID int, pidFile string) error {
 // already running» и Kill в Diagnostics. Darwin only.
 func KillPrivilegedByPattern() error {
 	_, _, err := RunWithPrivileges(privilegedPkillTool, []string{"-TERM", "-f", PrivilegedPkillPattern})
-	return err
-}
-
-// RemoveWithPrivileges удаляет пути под root (`/bin/rm -rf --`, без шелла):
-// файлы, которые ядро с TUN оставило root-owned (кэш, логи). Darwin only.
-func RemoveWithPrivileges(paths []string) error {
-	if len(paths) == 0 {
-		return nil
-	}
-	args := append([]string{"-rf", "--"}, paths...)
-	_, _, err := RunWithPrivileges(privilegedRmTool, args)
 	return err
 }
 
