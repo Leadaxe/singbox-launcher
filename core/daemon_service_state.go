@@ -91,6 +91,12 @@ type DaemonServiceCheck struct {
 	Detail      string
 	// CopyMissing — Stale потому, что копии нет (каталоги целы).
 	CopyMissing bool
+	// MismatchFile — Stale по члену набора, кроме главного бинаря (Windows,
+	// SPEC 141 §6.2): имя расходящегося файла (`libcronet.dll`) или лишнего
+	// файла в каталоге копии; ExtraFile — это лишний файл. Пусто — расходится
+	// сам бинарь (CopySHA256/LauncherSHA256) или вердикт не Stale.
+	MismatchFile string
+	ExtraFile    bool
 	// CopySHA256 / LauncherSHA256 — hex sha256 копии и ядра лаунчера; пусто,
 	// если не считались.
 	CopySHA256     string
@@ -108,8 +114,10 @@ type DaemonServiceCheck struct {
 	// (/admin/info); пусто, если не спрашивали или поля нет.
 	RunningSHA256  string
 	RunningVersion string
-	// LaunchdState — что launchd говорит о службе: значение `state = …` или
-	// «not loaded»; пусто, если не спрашивали или спросить не удалось.
+	// LaunchdState — что менеджер служб ОС говорит о службе: macOS — значение
+	// `state = …` launchd или «not loaded»; Windows — CurrentState у SCM
+	// (`stopped`, `start_pending`, `stop_pending`, `running`, …). Пусто, если
+	// не спрашивали или спросить не удалось.
 	LaunchdState string
 }
 

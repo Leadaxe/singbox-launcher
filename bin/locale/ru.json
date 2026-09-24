@@ -4625,6 +4625,36 @@
   "The administrator prompt was cancelled.": {
     "value": "Запрос прав администратора отменён."
   },
+  "Waiting for the administrator command…": {
+    "value": "Ожидание команды администратора…"
+  },
+  "Could not run the command as administrator: %s": {
+    "value": "Не удалось выполнить команду от имени администратора: %s"
+  },
+  "The command failed (exit code %d). Run it in an elevated terminal to see its output:": {
+    "value": "Команда завершилась с ошибкой (код выхода %d). Выполните её в консоли администратора, чтобы увидеть вывод:"
+  },
+  "The administrator command is still running. Check the status again in a minute.": {
+    "value": "Команда администратора ещё выполняется. Проверьте состояние через минуту."
+  },
+  "The service is installed, but no invite was received. Pair it as a separate step:": {
+    "value": "Служба установлена, но приглашение не получено. Выполните сопряжение отдельным шагом:"
+  },
+  "The command succeeded, but pairing failed: %s": {
+    "value": "Команда выполнена, но сопряжение не удалось: %s"
+  },
+  "The service data folder was readable by another account before this install. Rotate the admin secret in daemon.json and pair again if this computer is shared.": {
+    "value": "До этой установки папку данных службы могла читать другая учётная запись. Если компьютером пользуются несколько человек, смените секрет администратора в daemon.json и выполните сопряжение заново."
+  },
+  "The service was started.": {
+    "value": "Служба запущена."
+  },
+  "The service was removed.": {
+    "value": "Служба удалена."
+  },
+  "The core copy was created or updated.": {
+    "value": "Копия ядра создана или обновлена."
+  },
   "Could not restart as administrator: %s": {
     "value": "Не удалось перезапустить от имени администратора: %s"
   },

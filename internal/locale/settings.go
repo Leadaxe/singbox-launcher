@@ -149,6 +149,12 @@ type Settings struct {
 	// подменить пользователь» (SPEC 136 §6). Одно предупреждение на версию:
 	// плашка на вкладке LOCAL остаётся до ремонта, модальное окно — нет.
 	DaemonUnsafeNoticeVersion string `json:"daemon_unsafe_notice_version,omitempty"`
+	// DaemonSystemProxy — метка владения системным прокси в daemon-режиме на
+	// Windows (SPEC 141 §7): строка сервера (`http://127.0.0.1:<порт>`),
+	// которую лаунчер поставил в WinINet пользователя. «Снять своё» снимает
+	// прокси, только если в HKCU стоит ровно она; иначе стирается метка.
+	// Пусто — лаунчер прокси не ставил. На macOS прокси ставит ядро.
+	DaemonSystemProxy string `json:"daemon_system_proxy,omitempty"`
 
 	// HideAppFromDock — пункт трея «Скрыть из Dock» (macOS). Пишется при
 	// каждом переключении пункта, применяется на старте: до этого поля

@@ -486,6 +486,14 @@ func daemonCoreUpdatedCommand(check DaemonServiceCheck, launcherCore string) str
 	return command
 }
 
+// DaemonBootstrapCommand — команда запуска установленной службы (состояние
+// NotRunning, SPEC 136 §4, SPEC 141 §5.1): plist/определение службы и копия
+// в порядке, переустанавливать нечего. macOS — `launchctl bootstrap`,
+// Windows — `sc.exe start sing-box-lxd` (START у Authenticated Users нет).
+func (ac *AppController) DaemonBootstrapCommand() (string, error) {
+	return daemonBootstrapCommand(), nil
+}
+
 // daemonServiceFileCheck — вердикт по файлам без сети (SPEC 136 §4) для
 // системной раскладки и ядра лаунчера.
 func (ac *AppController) daemonServiceFileCheck() DaemonServiceCheck {
@@ -560,3 +568,189 @@ func daemonUninstallCommandFor(binary string, purge, keepCopy bool) string {
 	}
 	return daemonServiceCommand(binary, args...)
 }
+
+// --- Операции службы с правами (SPEC 141 §5) ---------------------------
+//
+// Панель, диалоги ядра (TUN без прав, гейт classic, «Core updated») и Debug
+// API зовут одни и те же операции. На Windows операция исполняется через
+// runas (ShellExecuteExW, окно UAC) с ожиданием кода выхода, и итог
+// возвращается в DaemonRunResult; на macOS команда открывается в Terminal
+// (sudo), итог пользователь видит там (DaemonRunResult.InTerminal).
+// Платформенный признак — DaemonOpsElevated. Операции блокируют до ответа
+// UAC и выхода процесса (до daemonRunWaitTimeout) — звать из горутины, не
+// из UI-потока; на время ожидания — строка DaemonRunWaitingText.
+
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	daemonRunWaitingText      = "Waiting for the administrator command…"
+	daemonRunFailedText       = "The command failed (exit code %d). Run it in an elevated terminal to see its output:"
+	daemonRunStillRunningText = "The administrator command is still running. Check the status again in a minute."
+	daemonRunNoInviteText     = "The service is installed, but no invite was received. Pair it as a separate step:"
+	daemonRunPairFailedText   = "The command succeeded, but pairing failed: %s"
+	daemonWarnForeignDataText = "The service data folder was readable by another account before this install. Rotate the admin secret in daemon.json and pair again if this computer is shared."
+)
+
+// DaemonCommand — команда службы (SPEC 141 §5.1): исполняется argv
+// {Binary, Args}; String — только показ и Copy.
+type DaemonCommand struct {
+	Binary string
+	Args   []string
+}
+
+// String — платформенный рендер для показа и Copy (daemonServiceCommand):
+// macOS — `sudo '<bin>' args`, Windows — PowerShell `& '<bin>' args`
+// (' → ''). Пустая команда — "".
+func (c DaemonCommand) String() string {
+	if c.Binary == "" {
+		return ""
+	}
+	return daemonServiceCommand(c.Binary, c.Args...)
+}
+
+// IsZero — команды нет (гейт версии ядра, служба не установлена).
+func (c DaemonCommand) IsZero() bool { return c.Binary == "" }
+
+// DaemonServiceOp — операция службы (SPEC 141 §5.1).
+type DaemonServiceOp string
+
+const (
+	// DaemonOpInstall — «Install or update the service»: install с
+	// --invite-out и сопряжение по файлу приглашения (Windows).
+	DaemonOpInstall DaemonServiceOp = "install"
+	// DaemonOpStart — NotRunning: Windows `sc.exe start sing-box-lxd`,
+	// macOS `launchctl bootstrap`.
+	DaemonOpStart DaemonServiceOp = "start"
+	// DaemonOpFreshInvite — «Need a fresh invite»: `lxd client add` с
+	// --invite-out и сопряжение (Windows).
+	DaemonOpFreshInvite DaemonServiceOp = "fresh_invite"
+	// DaemonOpUninstall — `--service=uninstall [--keep-copy] [--purge]`.
+	DaemonOpUninstall DaemonServiceOp = "uninstall"
+	// DaemonOpCopy — `--service=copy`: копия для classic с правами, службы
+	// нет (SPEC 141 §8).
+	DaemonOpCopy DaemonServiceOp = "copy"
+)
+
+// DaemonServiceWarning — предупреждение install/copy из сайдкара копии
+// (`warnings[{code, text}]`, SPEC 141 §3 п. 3, §5.3).
+type DaemonServiceWarning struct {
+	Code string `json:"code"`
+	Text string `json:"text"`
+}
+
+// daemonWarnStateDirForeign — каталог данных службы до install был
+// читаем чужому SID (SPEC 141 §3 п. 2a).
+const daemonWarnStateDirForeign = "state_dir_foreign_before_install"
+
+// DisplayText — текст предупреждения для показа: известный код —
+// локализованный текст SPEC 141 §5.3, прочие — text ядра как есть.
+func (w DaemonServiceWarning) DisplayText() string {
+	if w.Code == daemonWarnStateDirForeign {
+		return locale.T(daemonWarnForeignDataText)
+	}
+	if w.Text != "" {
+		return w.Text
+	}
+	return w.Code
+}
+
+// DaemonRunResult — итог операции службы (SPEC 141 §5.2–5.3).
+type DaemonRunResult struct {
+	Op DaemonServiceOp
+	// Command — команда операции в виде для показа и Copy (без
+	// --invite-out: её выполняют в консоли администратора и видят вывод).
+	// При коде ≠ 0 и при ошибке запуска панель показывает её с Copy.
+	Command DaemonCommand
+	// InTerminal — macOS: команда открыта в Terminal, итог — там; прочие
+	// поля пусты (кроме Err, если Terminal не открылся).
+	InTerminal bool
+	// CoreHint — команды нет: ядро лаунчера не умеет защищённую копию
+	// (install, copy; DaemonServiceCoreHint). Command пуста.
+	CoreHint string
+	// Cancelled — пользователь отказал в UAC (platform.ErrElevationCancelled):
+	// строка статуса, диалог остаётся открытым.
+	Cancelled bool
+	// Err — ошибка запуска (ShellExecuteExW) или, при коде 0, чтения
+	// приглашения и сопряжения.
+	Err error
+	// Exited / ExitCode — процесс завершился, его код выхода.
+	Exited   bool
+	ExitCode int
+	// TimedOut — daemonRunWaitTimeout прошёл, процесс ещё работает; он не
+	// убивается.
+	TimedOut bool
+	// Paired — install / fresh invite: сопряжено по файлу --invite-out.
+	Paired bool
+	// Warnings — warnings сайдкара после install/copy (показать и в лог).
+	Warnings []DaemonServiceWarning
+	// StatusChecked / StatusCode — install с кодом 1: код `lxd
+	// --service=status` ядра лаунчера (0 OK, 2 MISMATCH/UNSAFE, 3 NOT
+	// INSTALLED, 4 COPY ONLY, 5 NOT RUNNING, 1 ошибка).
+	StatusChecked bool
+	StatusCode    int
+	// NoInvite — install с кодом 1, status 0, служба есть, файла
+	// приглашения нет: следующий шаг — DaemonOpFreshInvite (второе окно
+	// UAC). FreshInvite — его команда для показа и Copy.
+	NoInvite    bool
+	FreshInvite DaemonCommand
+	// Service — вердикт классификатора, пересчитанный после команды.
+	Service DaemonServiceCheck
+}
+
+// Succeeded — команда отработала с кодом 0 и, для install и fresh invite,
+// сопряжение по приглашению прошло.
+func (r DaemonRunResult) Succeeded() bool {
+	if r.InTerminal || r.CoreHint != "" || r.Cancelled || r.TimedOut || !r.Exited || r.ExitCode != 0 || r.Err != nil {
+		return false
+	}
+	switch r.Op {
+	case DaemonOpInstall, DaemonOpFreshInvite:
+		return r.Paired
+	}
+	return true
+}
+
+// StatusText — строка статуса для панели и диалогов (SPEC 141 §5.3), с
+// предупреждениями сайдкара отдельными строками. "" — показывать нечего
+// (macOS: итог в Terminal). Команду для Copy (Command или FreshInvite)
+// вызывающий показывает сам.
+func (r DaemonRunResult) StatusText() string {
+	var head string
+	switch {
+	case r.InTerminal:
+		if r.Err != nil {
+			return r.Err.Error()
+		}
+		return ""
+	case r.CoreHint != "":
+		return r.CoreHint
+	case r.Cancelled:
+		head = locale.T("The administrator prompt was cancelled.")
+	case r.TimedOut:
+		head = locale.T(daemonRunStillRunningText)
+	case !r.Exited && r.Err != nil:
+		head = locale.Tf("Could not run the command as administrator: %s", r.Err.Error())
+	case r.NoInvite:
+		head = locale.T(daemonRunNoInviteText)
+	case r.Exited && r.ExitCode != 0:
+		head = locale.Tf(daemonRunFailedText, r.ExitCode)
+	case r.Err != nil:
+		head = locale.Tf(daemonRunPairFailedText, r.Err.Error())
+	case r.Paired:
+		head = locale.T("Paired with the daemon.")
+	case r.Op == DaemonOpStart:
+		head = locale.T("The service was started.")
+	case r.Op == DaemonOpUninstall:
+		head = locale.T("The service was removed.")
+	case r.Op == DaemonOpCopy:
+		head = locale.T("The core copy was created or updated.")
+	}
+	lines := []string{head}
+	for _, w := range r.Warnings {
+		lines = append(lines, "⚠ "+w.DisplayText())
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+// DaemonRunWaitingText — строка статуса на время операции (окно UAC и
+// ожидание выхода процесса).
+func DaemonRunWaitingText() string { return locale.T(daemonRunWaitingText) }

@@ -122,13 +122,8 @@ func daemonServiceCommand(binary string, args ...string) string {
 	return "sudo " + shellQuote(binary) + " " + strings.Join(args, " ")
 }
 
-// DaemonBootstrapCommand — sudo-команда загрузки установленной службы в
-// launchd (состояние NotRunning, SPEC 136 §4): plist и копия в порядке,
-// переустанавливать нечего.
-func (ac *AppController) DaemonBootstrapCommand() (string, error) {
-	return daemonBootstrapCommand(), nil
-}
-
+// daemonBootstrapCommand — sudo-команда загрузки установленной службы в
+// launchd (NotRunning).
 func daemonBootstrapCommand() string {
 	return "sudo launchctl bootstrap system " + shellQuote(daemonSystemPlistPath())
 }
@@ -184,4 +179,55 @@ func appleScriptString(s string) string {
 // адрес проходят через это перед показом/вставкой в терминал.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// --- Операции службы (SPEC 141 §5; общая часть — daemon_manager.go) ---
+
+// DaemonOpsElevated — на macOS операции службы не исполняются лаунчером:
+// команда открывается в Terminal (sudo), итог и приглашение — в выводе
+// терминала (DaemonRunResult.InTerminal). Кнопка — «Run in Terminal».
+const DaemonOpsElevated = false
+
+// DaemonInstallOrUpdate — «Install or update the service» в Terminal.
+func (ac *AppController) DaemonInstallOrUpdate() DaemonRunResult {
+	command, err := ac.DaemonInstallCommand()
+	return ac.runDaemonOpInTerminal(DaemonOpInstall, command, err)
+}
+
+// DaemonStartService — загрузка службы в launchd (NotRunning) в Terminal.
+func (ac *AppController) DaemonStartService() DaemonRunResult {
+	return ac.runDaemonOpInTerminal(DaemonOpStart, daemonBootstrapCommand(), nil)
+}
+
+// DaemonFreshInvite — `lxd client add` в Terminal; приглашение из вывода
+// пользователь вставляет в поле сопряжения.
+func (ac *AppController) DaemonFreshInvite() DaemonRunResult {
+	return ac.runDaemonOpInTerminal(DaemonOpFreshInvite, ac.DaemonRepairCommand(), nil)
+}
+
+// DaemonUninstallService — удаление службы в Terminal; keepCopy=false —
+// полное удаление («Remove all data…»).
+func (ac *AppController) DaemonUninstallService(keepCopy, purge bool) DaemonRunResult {
+	binary := daemonServiceBinaryFor(systemDaemonServiceLayout(), ac.FileService.SingboxPath)
+	return ac.runDaemonOpInTerminal(DaemonOpUninstall, daemonUninstallCommandFor(binary, purge, keepCopy), nil)
+}
+
+// DaemonCopyOnly — `lxd --service=copy` (копия для старта с TUN, службы
+// нет) в Terminal.
+func (ac *AppController) DaemonCopyOnly() DaemonRunResult {
+	err := serviceCoreGate(ac.launcherCoreVersion())
+	return ac.runDaemonOpInTerminal(DaemonOpCopy, daemonServiceCommand(ac.FileService.SingboxPath, "lxd", "--service=copy"), err)
+}
+
+// runDaemonOpInTerminal — общий путь операций macOS: гейт версии ядра →
+// подсказка без команды, иначе Terminal с командой.
+func (ac *AppController) runDaemonOpInTerminal(op DaemonServiceOp, command string, gateErr error) DaemonRunResult {
+	r := DaemonRunResult{Op: op}
+	if gateErr != nil {
+		r.CoreHint = DaemonServiceCoreHint(ac.launcherCoreVersion())
+		return r
+	}
+	r.InTerminal = true
+	r.Err = ac.OpenTerminalWithCommand(command)
+	return r
 }
