@@ -43,6 +43,6 @@
 - [x] Ссылка из SPEC 135 §5.1; запись в `SPECS/README.md`.
 
 ## Приёмка
-- [ ] Ядро lx.11 собрано; ручная проверка SPEC §9 на Mac владельца.
+- [ ] Ядро lx.12 собрано; ручная проверка SPEC §9 на Mac владельца.
 - [ ] CI `run_mode=tests` зелёный (macOS: `sh -n`, `osascript`).
-- [ ] `RequiredCoreVersion` → lx.11 — отдельным коммитом при релизе.
+- [x] `RequiredCoreVersion` → lx.12 — отдельным коммитом `chore(core): pin sing-box-lx 1.14.1-lx.12` при слиянии в develop.

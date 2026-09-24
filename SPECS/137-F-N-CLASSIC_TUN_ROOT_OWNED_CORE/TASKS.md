@@ -35,14 +35,14 @@
 
 ## Приёмка
 - [x] Ядро lx.11 с `--service=copy` — в ветке форка `27e245e2e` (интерфейс SPEC §10).
-- [ ] Релиз lx.11; ручная проверка SPEC §9 на Mac владельца.
+- [ ] Релиз lx.12 (lx.11 `2c9533354` + `dc496c563` — копия `sing-box-lxd`; тег ещё не срезан); ручная проверка SPEC §9 на Mac владельца.
 - [ ] CI `run_mode=tests` зелёный.
 - [ ] Решение владельца по развилке А/Б (SPEC §6).
-- [ ] `RequiredCoreVersion` → lx.11 — вместе с SPEC 136, при релизе.
+- [x] `RequiredCoreVersion` → lx.12 — вместе с SPEC 136, коммитом `chore(core): pin sing-box-lx 1.14.1-lx.12` при слиянии в develop.
 
 ## Попутно (SPEC 136, по сообщению главной сессии)
-- [x] Пустой `executable_sha256` — «неизвестно», судит версия (lx.11 считает хэш в фоне); тест классификатора дополнен.
-- [x] Коды выхода `--service=status` lx.11 (3 — NOT INSTALLED, 4 — COPY ONLY) в SPEC 136 и `docs/DAEMON_AND_REMOTE*.md`.
+- [x] Пустой `executable_sha256` — «неизвестно», судит версия (lx.12 считает хэш в фоне); тест классификатора дополнен.
+- [x] Коды выхода `--service=status` lx.12 (3 — NOT INSTALLED, 4 — COPY ONLY) в SPEC 136 и `docs/DAEMON_AND_REMOTE*.md`.
 
 ## 137.1 · Root не пишет по путям пользователя (решение координатора)
 - [x] Вывод ядра под root — `/Library/Logs/sing-box-lxd/classic.log`: каталог и файл создаёт, проверяет (не симлинк, владелец, тип через `/usr/bin/stat -f '%u:%HT'`) и ротирует постоянное тело; отказ — причина вместо PID.
