@@ -10,6 +10,33 @@
 
 Черновик пользовательских заметок — [docs/release_notes/upcoming.md](docs/release_notes/upcoming.md).
 
+## v2.1.0
+
+Подробные заметки: [docs/release_notes/2-1-0.md](docs/release_notes/2-1-0.md).
+
+### Возможности (7)
+
+- feat(paths)!: SPEC 135 — раскладка данных `AppDir`/`DataDir`/`LogDir`: программа только на чтение, данные и логи в каталогах платформы (Linux XDG `~/.local/share` + `~/.local/state`, macOS `~/Library`, Windows `%LOCALAPPDATA%`); закрывает #85 (NixOS, Guix, Flatpak, snap); SPEC 022 и 080 поглощены (`eeae31c8`)
+- feat(paths): миграция унаследованных данных на первом старте (на macOS — из бандла в `~/Library`) с пересборкой `config.json` по штампу `config_data_root` (`aa65ba3c`, `5363dceb`)
+- feat(paths): явный portable-режим — `portable.txt` рядом с программой, во всех Windows-архивах; переключатель Portable в Settings → Storage переносит данные и перезапускает лаунчер (`9c5b70d2`, `c86db86f`)
+- feat(ui): раздел Settings → Storage — все пути, Open, Copy paths; то же в `-paths`, `GET /debug/paths` и первой строке лога (`1a9698d1`)
+- feat(paths): «Remove all data…» и `-purge-data [-yes]` — план и выполнение полной очистки, включая призрачные адаптеры wintun и осиротевшие правила файрвола на Windows (`e1a9a16f`, `123e1196`)
+- feat(daemon)!: SPEC 136 — служба демона macOS запускает root-owned копию ядра `/Library/PrivilegedHelperTools/sing-box-lxd`: классификатор службы (цепочка владения, sha256 против ядра лаунчера, `executable_sha256` работающего демона), плашка и предупреждение раз на версию, одна команда Install or update service; команды гейтятся ядром лаунчера ≥ 1.14.1-lx.12 (`caddcb43`, `b67fb944`, `c832fa5c`, `b7641edc`, `bdf29a60`)
+- feat(classic)!: SPEC 137 — classic TUN на macOS: root запускает только ту же копию и системные утилиты (`env -i` + постоянное тело `sh`, без скрипта в папке данных), гейт до пароля с диалогом Copy / Run in Terminal / Retry; лог ядра под root — `/Library/Logs/sing-box-lxd/classic.log`, снятие TUN без пароля (`dde9e489`, `ff66447f`, `0531c08a`, `94965ba5`, `5aac87f3`, `6178315f`)
+
+### Исправления (4)
+
+- fix(linux)!: порядок поиска ядра — каталог данных → рядом с программой → `PATH`; дистрибутивный `sing-box` больше не побеждает скачанный форк, `SINGBOX_LAUNCHER_CORE` задаёт бинарь явно (`7da73f3a`)
+- fix(windows): диалоги файлов запускают PowerShell через `-EncodedCommand` со значениями в base64 — подпись с `‘ ’ ‚ ‛` не выходит из кавычек в лаунчере с правами администратора (`2d905441`)
+- fix(dialogs): Copy в диалогах с командой копирует только команду, без пояснения (`a390d32b`)
+- fix(remote): предупреждение об оставшемся профиле удалённой машины без владельца — WARN один раз, дальше INFO (`1d15862c`)
+
+### Прочее (3)
+
+- chore(core): пин sing-box-lx 1.14.1-lx.12 (было lx.8) — `lxd --service=install|copy` делает root-owned копию, демон сообщает её sha256; попутно lx.9–lx.10: пул XHTTP, синк с sing-box 1.14.1 (`8c0a691d`)
+- build(darwin): `build_darwin.sh -i` меняет только исполняемый файл и перезапускает лаунчер; чистый бандл ставится без выноса данных (`f7c620ab`, `576432a9`)
+- ci(lint): страж `tools/paths_guard` — запись от `AppDir` в обход именованных типов путей (`3112f48f`)
+
 ## v2.0.0
 
 Подробные заметки: [docs/release_notes/2-0-0.md](docs/release_notes/2-0-0.md).
