@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <assemblyIdentity version="1.0.0.0" processorArchitecture="*" name="singbox-launcher.exe" type="win32"/>
+  <!-- asInvoker (SPEC 139): the launcher asks for administrator rights itself,
+       only for TUN. The manifest stays embedded: a 32-bit process without
+       requestedExecutionLevel is subject to UAC file virtualization, and writes
+       to Program Files would silently land in VirtualStore. -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
       </requestedPrivileges>
     </security>
   </trustInfo>

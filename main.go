@@ -46,6 +46,10 @@ const (
 	// glRenderedGrace — сколько процесс должен прожить после старта цикла
 	// событий, чтобы старт считался дошедшим до первого кадра (SPEC 125).
 	glRenderedGrace = 3 * time.Second
+	// handoffWaitTimeout — сколько перезапущенный с повышением экземпляр ждёт
+	// выхода родителя (SPEC 139 §5 п. 6): больше бюджета GracefulExit
+	// (15 + 3 с), чтобы родитель успел остановить ядро и закрыть логи.
+	handoffWaitTimeout = 25 * time.Second
 	// macQuitBudget — сколько выход по запросу macOS (Cmd+Q, «Завершить» в
 	// Dock, выход из системы, выключение) ждёт GracefulExit. Ядро
 	// останавливается штатно, но выход из системы лаунчер дольше не держит:
@@ -191,8 +195,66 @@ func whenWindowVisible(controller *core.AppController, inTray bool, show func(wi
 	}
 }
 
+// resolveLayout — раскладка данных процесса (SPEC 135, SPEC 139 §5): из
+// -handoff, если лаунчер перезапущен с повышением (раскладка родителя, а не
+// вычисленная заново: иначе повышенный экземпляр мог бы выбрать другой
+// DataDir), иначе paths.Resolve. Невалидный -handoff — строка в stderr и
+// обычный Resolve. parentPID > 0 — родитель, выхода которого надо дождаться.
+func resolveLayout(exe, handoff string) (layout paths.Layout, parentPID int) {
+	if handoff != "" {
+		l, pid, err := paths.ParseHandoff(handoff, exe)
+		if err == nil {
+			return l, pid
+		}
+		fmt.Fprintf(os.Stderr, "singbox-launcher: %v; resolving the layout as usual\n", err)
+	}
+	l, err := paths.Resolve(exe, os.Getenv, runtime.GOOS, paths.ProbeWritable)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "singbox-launcher: %v\n", err)
+		os.Exit(2)
+	}
+	return l, 0
+}
+
+// waitForParent ждёт выхода лаунчера, перезапустившего этот экземпляр с
+// повышением (SPEC 139 §5 п. 6), — до crash-лога, GL-пробы и контроллера:
+// пока родитель жив, он держит логи (.old на Windows не переименовать), порт
+// Debug API и иконку трея. Возвращает текст WARN для лога ("" — дождались);
+// логов ещё нет, пишет вызывающий после их открытия.
+func waitForParent(pid int, exe string) string {
+	exited, err := platform.WaitForProcessExit(pid, exe, handoffWaitTimeout)
+	switch {
+	case err != nil:
+		return fmt.Sprintf("restart as administrator: waiting for the previous launcher (pid %d): %v; starting anyway", pid, err)
+	case !exited:
+		return fmt.Sprintf("restart as administrator: the previous launcher (pid %d) is still running after %v; starting anyway", pid, handoffWaitTimeout)
+	}
+	return ""
+}
+
+// yesNo — значение флага для строки лога.
+func yesNo(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
+}
+
 // main is the application's entry point. It simply creates and runs the AppController.
 func main() {
+	// Parse command line arguments. Флаги разбираются до раскладки: -handoff
+	// (SPEC 139 §5) задаёт её сам.
+	autoStart := flag.Bool("start", false, "Automatically start VPN on launch")
+	startInTray := flag.Bool("tray", false, "Start minimized to system tray (hide window on launch)")
+	glProbe := flag.Bool("gl-probe", false, "Internal: probe desktop OpenGL and exit (used by the launcher itself)")
+	glProbeLocal := flag.Bool("gl-probe-local", false, "Internal: probe the opengl32.dll next to the exe (Mesa3D verification)")
+	pathsFlag := flag.Bool("paths", false, "Print resolved data/log/core paths and exit")
+	purgeData := flag.Bool("purge-data", false, "Remove all launcher data (dry run; add -yes to execute)")
+	purgeYes := flag.Bool("yes", false, "Confirm -purge-data")
+	autostartFlag := flag.String(core.AutostartFlagName, "", "Windows: start the launcher at sign-in (on|off), print the result and exit")
+	handoffFlag := flag.String(core.HandoffFlagName, "", "Internal: layout of the launcher that restarted this one as administrator (<pid>|<mode>|<data>|<logs>)")
+	flag.Parse()
+
 	// SPEC 135: раскладка данных (AppDir/DataDir/LogDir) решается один раз,
 	// первым действием, и дальше передаётся значением. Локали и логов ещё
 	// нет — ошибка уходит в stderr, код выхода 2.
@@ -201,21 +263,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "singbox-launcher: cannot determine executable path: %v\n", err)
 		os.Exit(2)
 	}
-	layout, err := paths.Resolve(exe, os.Getenv, runtime.GOOS, paths.ProbeWritable)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "singbox-launcher: %v\n", err)
-		os.Exit(2)
-	}
-
-	// Parse command line arguments
-	autoStart := flag.Bool("start", false, "Automatically start VPN on launch")
-	startInTray := flag.Bool("tray", false, "Start minimized to system tray (hide window on launch)")
-	glProbe := flag.Bool("gl-probe", false, "Internal: probe desktop OpenGL and exit (used by the launcher itself)")
-	glProbeLocal := flag.Bool("gl-probe-local", false, "Internal: probe the opengl32.dll next to the exe (Mesa3D verification)")
-	pathsFlag := flag.Bool("paths", false, "Print resolved data/log/core paths and exit")
-	purgeData := flag.Bool("purge-data", false, "Remove all launcher data (dry run; add -yes to execute)")
-	purgeYes := flag.Bool("yes", false, "Confirm -purge-data")
-	flag.Parse()
+	layout, parentPID := resolveLayout(exe, *handoffFlag)
 
 	// SPEC 135 §4.1: единственный способ увидеть пути там, где окно не
 	// поднимается (NixOS без GL, headless CI). До crash-лога и GL-пробы:
@@ -231,6 +279,20 @@ func main() {
 	// держится открытым. Без -yes — только план.
 	if *purgeData {
 		os.Exit(core.PurgeCLI(layout, exe, *purgeYes, os.Stdout))
+	}
+
+	// SPEC 139 §8: автозапуск для установщика (SPEC 140 §3.3) — тоже без
+	// окна и до crash-лога. Установщик зовёт его от исходного пользователя:
+	// значение пишется в HKCU того, кто входит в систему.
+	if *autostartFlag != "" {
+		os.Exit(core.AutostartCLI(*autostartFlag, exe, os.Stdout))
+	}
+
+	// SPEC 139 §5 п. 6: перезапущенный с повышением экземпляр ждёт выхода
+	// родителя, прежде чем трогать логи, порт Debug API и трей.
+	var parentWaitWarning string
+	if parentPID > 0 {
+		parentWaitWarning = waitForParent(parentPID, exe)
 	}
 
 	// Windows-бинарь собран с -H windowsgui: stderr у процесса нет, и паника
@@ -276,8 +338,19 @@ func main() {
 	// строки уровня WARN, и по логу с релиза (GlobalLevel=LevelWarn) нельзя
 	// было понять даже, какая версия упала (репорт 09.09.2026, SPEC 125 §2.7).
 	// Раскладка данных — в той же строке (SPEC 135): где искать state и логи.
-	debuglog.WarnLog("launcher %s %s/%s started, exec=%s, %s",
-		constants.AppVersion, runtime.GOOS, runtime.GOARCH, exe, layout.LogLine())
+	// elevated= (SPEC 139 §3): релизный лог пишет только WARN и выше, и
+	// строка INFO о пропущенных без прав очистках видна только в dev-сборках.
+	debuglog.WarnLog("launcher %s %s/%s started, exec=%s, elevated=%s, %s",
+		constants.AppVersion, runtime.GOOS, runtime.GOARCH, exe, yesNo(platform.IsElevated()), layout.LogLine())
+	if parentPID > 0 {
+		debuglog.WarnLog("layout: from -%s (restarted as administrator by pid %d)", core.HandoffFlagName, parentPID)
+	}
+	if parentWaitWarning != "" {
+		debuglog.WarnLog("%s", parentWaitWarning)
+	}
+	if layout.MarkerIgnored {
+		debuglog.WarnLog("layout: %s ignored: the program folder %s is not writable by the user (SPEC 139)", constants.PortableMarkerFileName, layout.App)
+	}
 	// Итог миграции (SPEC 135 §3.4) выполнен ещё в NewFileService, до
 	// открытия логов; пишем здесь, чтобы строка попала в файл.
 	if fsvc := controller.FileService; fsvc.MigrationErr != nil {
@@ -613,7 +686,13 @@ func main() {
 		})
 	}
 
-	controller.UIService.MainWindow = controller.UIService.Application.NewWindow("Singbox Launcher") // Create the main application window
+	// Повышенный экземпляр виден по заголовку (SPEC 139 §3): TUN и очистки
+	// в нём работают, а автозапуск и Portable недоступны.
+	windowTitle := "Singbox Launcher"
+	if runtime.GOOS == "windows" && platform.IsElevated() {
+		windowTitle += " (" + locale.T("Administrator") + ")"
+	}
+	controller.UIService.MainWindow = controller.UIService.Application.NewWindow(windowTitle) // Create the main application window
 	controller.UIService.MainWindow.SetIcon(controller.UIService.AppIconData)
 
 	// Create App structure to manage UI

@@ -545,12 +545,13 @@ jobs:
 
           mkdir -p dist
 
-          # Embed icon + manifest. Без `-manifest` Go подставляет default
-          # asInvoker manifest → exe запускается без UAC promptа, sing-box.exe
-          # не получает admin token, TUN inbound фейлится с "A required
-          # privilege is not held". Win64 build идёт через
-          # build/build_windows.bat где manifest уже embed'ится; Win7 path
-          # делает rsrc inline и до hotfix v0.9.9.1 забывал `-manifest`.
+          # Embed icon + manifest. Манифест — asInvoker (SPEC 139): права
+          # администратора лаунчер просит сам, только для TUN. `-manifest`
+          # всё равно обязателен: 32-битный процесс без
+          # requestedExecutionLevel попадает под UAC-виртуализацию, запись в
+          # Program Files молча уходит в VirtualStore, и проба записи
+          # раскладки (SPEC 135/139) врёт. Win64 build идёт через
+          # build/build_windows.bat, где manifest embed'ится так же.
           if [ -f "assets/app.ico" ]; then
             rsrc.exe -arch ${GOARCH} -ico assets/app.ico -manifest app.manifest -o rsrc.syso
             echo "objdump -f rsrc.syso:"
