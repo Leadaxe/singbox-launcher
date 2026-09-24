@@ -96,6 +96,13 @@ launcher down cleanly (the core is stopped first) and starts it again, because
 the renderer can only change with the process. The button is hidden when there
 is nothing to toggle.
 
+**Installed from the Windows installer** (`C:\Program Files\singbox-launcher`,
+SPEC 140): the program folder is read-only for the launcher, so it cannot put
+the DLLs next to the exe itself. Select the installer task *Software OpenGL
+(Mesa3D) for RDP / VM without GPU* (run the installer again to change it); when
+hardware OpenGL is missing, the start-up check says exactly that instead of
+offering the install, and the Diagnostics button is disabled.
+
 The download comes from this repository's
 [`mesa3d-26.2.0`](https://github.com/Leadaxe/singbox-launcher/releases/tag/mesa3d-26.2.0)
 release (a mirror of [mesa-dist-win](https://github.com/pal1000/mesa-dist-win)),

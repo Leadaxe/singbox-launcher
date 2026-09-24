@@ -159,6 +159,24 @@ go build -ldflags="-H windowsgui -s -w" -o singbox-launcher.exe
 .\singbox-launcher.exe
 ```
 
+## 📦 Установщик (Inno Setup)
+
+Релизы несут и `singbox-launcher-<версия>-win64-setup.exe` ([SPEC 140](../SPECS/140-F-N-WINDOWS_INSTALLER/SPEC.md)): установка на машину в `C:\Program Files\singbox-launcher`, данные в `%LOCALAPPDATA%\singbox-launcher`. В CI его собирает job `build-windows-installer`; локально:
+
+1. Поставить [Inno Setup 6.4+](https://jrsoftware.org/isdl.php) (`ISCC.exe` — в `C:\Program Files (x86)\Inno Setup 6`) или `choco install innosetup`.
+2. Собрать `singbox-launcher.exe` (см. выше).
+3. Подготовить набор win64-full без `portable.txt` из Git Bash — скрипт скачает закреплённые ядро и Mesa3D, wintun и шаблон возьмёт из репозитория:
+   ```bash
+   bash build/installer/stage_win64_full.sh singbox-launcher.exe v-local-test installer-stage
+   ```
+4. Скомпилировать. `AppVersion` — любая строка; `AppVersionNumeric` — строго `X.Y.Z.N` (CI берёт его из `git describe --tags --long --match "v[0-9]*" --exclude "*-prerelease"`: `v2.1.0-20-g…` → `2.1.0.20`). `StageDir` и каталог результата лучше давать абсолютными путями:
+   ```batch
+   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=v-local-test /DAppVersionNumeric=2.1.0.20 /DStageDir=%CD%\installer-stage /O%CD%\dist build\installer\singbox-launcher.iss
+   ```
+   Результат — `dist\singbox-launcher-v-local-test-win64-setup.exe`. `/DDaemonService` добавляет задачу службы sing-box-lxd (после SPEC 141).
+
+Логи: установка и удаление пишут `Setup Log *.txt` / `Uninstall Log *.txt` в `%TEMP%` (`SetupLogging`, `UninstallLogging`); туда же попадает вывод `-purge-data`.
+
 ## 📝 Примечания
 
 - Первая сборка может занять несколько минут (скачивание зависимостей)

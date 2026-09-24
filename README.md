@@ -271,7 +271,17 @@ Pre-built binaries are not distributed. Build from source — see [Building from
 
 ### Windows
 
-1. Download from [Releases](https://github.com/Leadaxe/singbox-launcher/releases) — regular archive for Win 10/11, `singbox-launcher-<version>-win64-full.zip` if you want everything inside (core, `wintun.dll`, template, Mesa3D for RDP/VMs without a GPU — nothing is downloaded on first launch), `singbox-launcher-<version>-win7-32.zip` for Windows 7.
+#### Option 1: installer (recommended, Windows 10 / 11 x64)
+
+1. Download `singbox-launcher-<version>-win64-setup.exe` from [Releases](https://github.com/Leadaxe/singbox-launcher/releases) and run it — one administrator prompt. The program goes to `C:\Program Files\singbox-launcher`, your data to `%LOCALAPPDATA%\singbox-launcher`; the core, `wintun.dll`, the template and Mesa3D are inside, nothing is downloaded on first launch.
+2. Optional tasks: desktop shortcut, Start with Windows, software OpenGL (Mesa3D) for RDP / VMs without a GPU.
+3. Open **Wizard** → paste subscription URL → walk through tabs → **Save** → **Start**.
+
+Installing a newer version over it keeps your data; Setup closes a running launcher by itself (the VPN is stopped cleanly). **Settings → Apps** uninstalls it and asks whether to remove your data as well. The installer is not code-signed yet: SmartScreen may show "Windows protected your PC" — **More info → Run anyway**.
+
+#### Option 2: portable ZIP
+
+1. Download from [Releases](https://github.com/Leadaxe/singbox-launcher/releases) — regular archive for Win 10/11, `singbox-launcher-<version>-win64-full.zip` if you want everything inside (core, `wintun.dll`, template, Mesa3D for RDP/VMs without a GPU — nothing is downloaded on first launch), `singbox-launcher-<version>-win7-32.zip` for Windows 7 (no installer there).
 2. Extract to a folder your account can write to (e.g. `D:\Tools\singbox-launcher` or a folder in your profile): the zip ships `portable.txt`, so settings stay next to the program. `C:\Program Files\…` works too, but only administrators can write there, so the marker is ignored and data lives in `%LOCALAPPDATA%\singbox-launcher` (see [Where data lives](#where-data-lives)).
 3. Run `singbox-launcher.exe`. It starts **without administrator rights**, with no UAC prompt.
 4. **Local** tab → **Download** to fetch `sing-box.exe`, then **Download wintun.dll** if needed.
@@ -280,6 +290,8 @@ Pre-built binaries are not distributed. Build from source — see [Building from
 **TUN and administrator rights.** Proxy mode (`proxy-in` with the system proxy) needs no rights. TUN (the default) creates a network adapter and changes routes, which Windows allows only to administrators: **Start** without rights shows a dialog — **Restart as administrator** (one UAC prompt; the launcher restarts elevated, with the same data, and starts the VPN) or **Switch to proxy mode** (turns TUN off and the system proxy on). An elevated window has `(Administrator)` in its title.
 
 **Start with Windows**: **Settings → Connection → Start with Windows** starts the launcher in the tray at sign-in (the `singbox-launcher` value in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`); **Connect VPN at sign-in** also starts the VPN — in proxy mode directly, with TUN through the dialog above. Installers can set it with `singbox-launcher.exe -autostart=on|off`.
+
+Moving from a portable copy to the installer: in the old copy switch off **Settings → Storage → Portable mode** (the data moves to `%LOCALAPPDATA%\singbox-launcher`), then install — or carry the settings over with LX Backup.
 
 ### macOS
 
@@ -329,7 +341,7 @@ The launcher separates three roles instead of keeping everything next to the exe
 
 Inside the data directory, the layout is the same `bin/…` tree previous versions kept next to the executable — `bin/config.json`, `bin/wizard_states/` (`state.json`, named snapshots, `remote/<machine-id>/` per paired machine), `bin/subscriptions/<id>.raw`, `bin/rule-sets/*.srs`, `bin/sing-box(.exe)`, `bin/wintun.dll` — it is a stable contract external tools (backup scripts, MCP servers, CI) can rely on.
 
-**Portable mode** keeps everything next to the program folder — the classic "flash drive" layout. It is on by default in every Windows zip release (a `portable.txt` marker ships with it); toggle it from **Settings → Storage → Portable mode**, which moves your data and restarts the app, or drop/remove `portable.txt` next to the executable yourself. It is unavailable on macOS `.app` builds and unnecessary on a bare macOS binary (already portable). The program folder must be writable by your account: in a read-only folder — on Windows also anywhere under `Program Files` or `Windows`, even for an elevated launcher — `portable.txt` is ignored, data goes to the platform default, and **Settings → Storage → Mode** says `portable.txt ignored`. Data a previous version kept next to the program there is copied over on the first start; the old copy stays in place.
+**Portable mode** keeps everything next to the program folder — the classic "flash drive" layout. It is on by default in every Windows zip release (a `portable.txt` marker ships with it; the installer ships none and removes a leftover one); toggle it from **Settings → Storage → Portable mode**, which moves your data and restarts the app, or drop/remove `portable.txt` next to the executable yourself. It is unavailable on macOS `.app` builds and unnecessary on a bare macOS binary (already portable).
 
 **Environment overrides** (for Flatpak wrappers, packaging, CI, or a non-default disk layout), each independent of the others:
 

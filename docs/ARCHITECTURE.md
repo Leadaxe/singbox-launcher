@@ -730,6 +730,27 @@ for the full design (including the rejected alternatives and the owner's
 decisions) and its §11 for where the implementation diverges from the original
 design in small ways.
 
+### 7a.6 Windows installer (SPEC 140)
+
+`build/installer/singbox-launcher.iss` (Inno Setup 6) installs per machine into
+`{autopf}\singbox-launcher`: that is an AppDir **without** `portable.txt` and
+not writable for the unelevated launcher, so the layout resolves to **System**
+(data in `%LOCALAPPDATA%\singbox-launcher`). The payload is the win64-full set
+staged by `build/installer/stage_win64_full.sh` — the same script the release
+job uses for `win64-full.zip`, which adds `portable.txt` itself. Mesa3D lands
+next to the exe only through the installer task (the GL gate cannot write there
+and points to the task instead).
+
+The installer closes a running launcher through the launcher itself:
+`internal/platform/instance_windows.go` creates `Local\` and
+`Global\SingboxLauncher.Instance` mutexes (detection) and the manual-reset event
+`Local\SingboxLauncher.Quit`; `main.go` registers them in GUI mode only, and the
+event runs `GracefulExit` on the UI thread (core stopped cleanly, system proxy
+cleared). Uninstall asks whether to remove the current user's data; on yes it
+deletes `{app}\bin\wizard_states` first (otherwise the elevated purge would pick
+the Legacy layout) and runs `-purge-data -yes`. Autostart is written and removed
+by the launcher's own `-autostart=on|off` flag (SPEC 139), not by the installer.
+
 ---
 
 ## 8. Per-package inventory
