@@ -388,7 +388,7 @@ start/stop under the daemon engine goes through the shared
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/daemon/status` | Pairing, service, reachability, core status, daemon passport; `service_state` (`not_installed`\|`unsafe`\|`stale`\|`not_running`\|`process_stale`\|`ok`), `service_path`, `service_detail` — the service classifier (SPEC 136) |
+| GET | `/daemon/status` | Pairing, service, reachability, core status, daemon passport; `service_state` (`not_installed`\|`unsafe`\|`stale`\|`not_running`\|`process_stale`\|`ok`\|`core_too_old`), `service_path`, `service_detail` — the service classifier (SPEC 136); with `core_too_old` (launcher core below lx.11) `/daemon/commands` returns an empty `install` |
 | POST | `/daemon/pair` | `{invite, secret?}` — pair with the local daemon |
 | POST | `/daemon/unpair` | Forget the pairing (keys, pin, secret) |
 | PATCH | `/daemon/settings` | `{addr?, secret?}` |

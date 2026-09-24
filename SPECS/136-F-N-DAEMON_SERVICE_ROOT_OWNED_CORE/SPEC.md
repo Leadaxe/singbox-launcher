@@ -61,6 +61,34 @@
 | **NotRunning** | файлы как у OK (plist на безопасную копию, sha совпал), но `launchctl print system/com.leadaxe.sing-box-lxd` (без sudo, таймаут 2 с, без кэша) — службы нет (exit 113) или `state` ≠ `running` | жёлтая плашка «The service is installed but not running» с командой `sudo launchctl bootstrap system /Library/LaunchDaemons/com.leadaxe.sing-box-lxd.plist` — **не** install; WARN перед apply |
 | **ProcessStale** | файл совпал, но работающий локальный демон отвечает `executable_sha256` ≠ sha256(копии) или `executable` ≠ каноническому пути; у ядра без этих полей (lx.8/lx.10) — `version` ≠ версии ядра лаунчера | жёлтая плашка |
 | **OK** | иначе | ничего |
+| **CoreTooOld** (`core_too_old`) | вердикт выше — Unsafe, Stale или ProcessStale (лечится install), но ядро лаунчера ниже `minCoreForRootOwnedService` = **1.14.1-lx.11** или его версия не разбирается (§4.1) | плашка без команды: «The launcher core (…) is older than 1.14.1-lx.11 and cannot install a root-owned service. Update the core first (Core → Download v<пин>), then install or update the service.»; поверх Unsafe — красная, иначе жёлтая |
+
+### 4.1 Гейт команд по ядру лаунчера (приёмка 24.09.2026)
+
+Команду install (и copy SPEC 137) исполняет под sudo **ядро лаунчера**. До
+lx.11 оно себя не копирует и пишет в plist свой путь — файл пользователя в
+DataDir или бандле: это возврат к дыре §1. Дефект приёмки: служба на копии
+1.14.1-lx.12-rc1, ядро лаунчера — 1.14.1-lx.8, плашка звала обновить службу
+«на текущее ядро» командой от lx.8.
+
+- Признак «ядро умеет root-owned копию» — версия ядра лаунчера
+  (`sing-box version`, кэш по `(dev, inode, size, mtime)` файла: диалог после
+  скачивания зовётся до сброса сессионного кэша версии, dev-сборки кладут
+  руками) ≥ `minCoreForRootOwnedService`. Разбор — база `X.Y.Z` и `-lx.N`
+  числом, пре-релиз ниже релиза той же базы: `lx.12-rc1` выше `lx.11`,
+  но ниже `lx.12`. `CompareVersions` для этого не годится: он сравнивает
+  только базу (`lx.10` == `lx.11`). Неразборчивая версия (пусто, `unknown` у
+  dev-сборки, апстрим без `-lx.N`) — **не умеет**.
+- Гейт один (`serviceCoreGate`), через него идут все каналы команды:
+  плашка и шаг 1 вкладки Install (вместо строки — подсказка обновить ядро),
+  диалог после обновления ядра (не показывается), модальное предупреждение
+  §6 (текст с подсказкой, без команды), classic-гейт SPEC 137 (диалог
+  «missing / outdated / not protected» с подсказкой вместо команды copy или
+  install, без Retry), Debug API `/daemon/commands` (`install` пустой).
+- Отказ — отдельное состояние `core_too_old`, а не поле detail: вердикт,
+  который вылечила бы команда, сохраняется в `BlockedState` и в
+  `service_detail` (`… ; the service is stale: …`). Так плашка знает цвет
+  (Unsafe остаётся красной), а Debug API однозначно говорит «команды нет».
 
 **Инвариант (Unsafe).** Каждое звено цепочки по `Lstat`: не симлинк; владелец
 uid 0; нет записи для группы и остальных (`mode & 0o022 == 0`); каталоги —
@@ -75,10 +103,10 @@ Unsafe (создать файл в root-каталоге пользовател�
 статуса зовётся на каждом открытии окна и перед каждым apply, а ядро весит
 десятки мегабайт. Замена файла (скачивание, `install`) меняет ключ.
 
-**Версия** только показывается (из сайдкара для копии, `sing-box version` для
-ядра лаунчера) и не судит Stale. Единственное её применение в вердикте —
-запасной путь ProcessStale для ядра без `executable_sha256`; значения `""` и
-`unknown` (dev-сборка) вердикта не дают.
+**Версия** не судит Stale (из сайдкара для копии — только показ). Версия
+ядра лаунчера (`sing-box version`) судит в двух местах: запасной путь
+ProcessStale для ядра без `executable_sha256` (значения `""` и `unknown`
+вердикта не дают) и гейт команды install — CoreTooOld (§4.1).
 
 **Не судим.** sha ядра лаунчера не посчитался (файла нет) — Stale не
 выносится, вердикт остаётся по пути и инварианту. Демон недостижим или адрес
@@ -97,7 +125,7 @@ Unsafe (создать файл в root-каталоге пользовател�
 
 | Операция | Команда | Бинарь |
 |---|---|---|
-| **Install or update service** | `sudo '<bin>' lxd --service=install` | всегда `SingboxPath`: ядро копирует **себя** |
+| **Install or update service** | `sudo '<bin>' lxd --service=install` | всегда `SingboxPath`: ядро копирует **себя**; только ядро ≥ lx.11, иначе команды нет (§4.1) |
 | Uninstall (вкладка Uninstall, Debug API) | `sudo '<bin>' lxd --service=uninstall --keep-copy [--purge]` | копия, если plist указывает на неё и цепочка безопасна; иначе `SingboxPath`. `--keep-copy`: копию запускает classic-старт с TUN (SPEC 137) |
 | Uninstall при удалении данных | `sudo '<bin>' lxd --service=uninstall --purge` | то же правило; без `--keep-copy` — копия уходит вместе с данными (§7) |
 | Свежее приглашение | `sudo '<bin>' lxd client add --name singbox-launcher` | то же правило, что у Uninstall |
@@ -112,7 +140,8 @@ Unsafe (создать файл в root-каталоге пользовател�
 `notifyDaemonServiceAfterCoreUpdate`): условие — plist существует (в любом
 движке: служба запускается launchd и без лаунчера) и вердикт по файлам не OK
 (скачано то же ядро, что уже в копии, — диалога нет); вместо kickstart
-показывает ту же команду install.
+показывает ту же команду install. Скачанное ядро ниже lx.11 — диалога нет,
+WARN в лог (§4.1).
 
 ## 6. UI (`ui/connection_local_daemon_darwin.go`)
 
@@ -120,21 +149,27 @@ Unsafe (создать файл в root-каталоге пользовател�
   - Unsafe — красная: «The service runs a binary your user can modify.
     Install or update the service to move it to a root-owned copy.» + путь,
     который запускает служба;
-  - Stale / ProcessStale — жёлтая: «The service runs an older core (…)» с
-    версиями/sha; для отсутствующей копии — свой текст;
+  - Stale / ProcessStale — жёлтая: «The service runs a different core (…)
+    than the launcher (…)» с версиями/sha — нейтрально: копия бывает и
+    новее ядра лаунчера; для отсутствующей копии — свой текст;
+  - CoreTooOld — подсказка обновить ядро, **без команды** (§4.1);
   - NotRunning — жёлтая: «The service is installed but not running.» +
     состояние у launchd;
   - под текстом — строка команды «Install or update the service», а для
-    NotRunning — «Load the service into launchd» (bootstrap).
+    NotRunning — «Load the service into launchd» (bootstrap); у CoreTooOld
+    строки команды нет.
   OK и NotInstalled — плашки нет.
 - Строка «Restart the service (after a core update)» (kickstart) убрана.
-- Вкладка **Install**, шаг 1 — «Install or update the service».
+- Вкладка **Install**, шаг 1 — «Install or update the service»; ядро
+  лаунчера ниже lx.11 — вместо строки подсказка обновить ядро.
 - Строка статуса про ядро без lxd — без номера релиза (граница фичи
   проверяется запуском бинаря, не номером).
 - **Модальное предупреждение** при Unsafe — одно на версию лаунчера:
   на старте, когда окно видно (как уведомления SPEC 135), в любом движке;
   флаг `daemon_unsafe_notice_version` в `settings.json` хранит версию, на
-  которой показано.
+  которой показано. Ядро лаунчера ниже lx.11 — то же предупреждение без
+  команды, с подсказкой обновить ядро (после обновления команду даст диалог
+  «Core updated»).
 - **WARN в лог** перед каждым apply daemon-движка, если служба не OK.
 
 ## 7. Удаление данных (SPEC 135 §4.3)
@@ -149,9 +184,12 @@ Unsafe (создать файл в root-каталоге пользовател�
 ## 8. Debug API
 
 `GET /daemon/status` получает `service_state`
-(`not_installed|unsafe|stale|not_running|process_stale|ok`), `service_path`
-(`ProgramArguments[0]`) и `service_detail` (английская причина для
-диагностики). Аддитивно, старые поля не меняются.
+(`not_installed|unsafe|stale|not_running|process_stale|ok|core_too_old`),
+`service_path` (`ProgramArguments[0]`) и `service_detail` (английская
+причина для диагностики; у `core_too_old` — версия ядра лаунчера, порог
+lx.11 и исходный вердикт). Аддитивно, старые поля не меняются.
+`GET /daemon/commands` отдаёт `install` пустым, пока ядро лаунчера ниже
+lx.11 (§4.1), — в том числе при `not_installed`.
 
 ## 9. Ручная проверка (Mac владельца, ядро lx.11)
 
@@ -179,7 +217,17 @@ Unsafe (создать файл в root-каталоге пользовател�
    - `launchctl print system/com.leadaxe.sing-box-lxd` — `state = running`;
    - плашки нет, сопряжение живо (Start/Stop без пароля, список узлов).
 4. **Отрицательный.** Подменить ядро в DataDir (другая сборка) → Refresh →
-   жёлтая Stale-плашка с разными sha; команда — возврат в OK.
+   жёлтая Stale-плашка «runs a different core (…) than the launcher (…)» с
+   разными sha; команда — возврат в OK.
+   **Ядро лаунчера ниже lx.11** (§4.1). Служба на копии lx.12, в DataDir —
+   ядро lx.8 (или dev-сборка с `version unknown`) → Refresh → плашка «The
+   launcher core (1.14.1-lx.8) is older than 1.14.1-lx.11 … Update the core
+   first (Core → Download v1.14.1-lx.12) …» **без строки команды**; на
+   вкладке Install вместо шага 1 та же подсказка; `GET /daemon/status` →
+   `"service_state": "core_too_old"`, `GET /daemon/commands` → `"install": ""`;
+   Start в classic с TUN при отстающей копии — диалог без команды и без
+   Retry. Скачать ядро (Core → Download) → диалог «Core updated» с командой
+   install → команда → OK.
    **Не запущена.** `sudo launchctl bootout system/com.leadaxe.sing-box-lxd`
    → Refresh → жёлтая плашка «The service is installed but not running»
    (launchd: not loaded) со строкой bootstrap, а не install;
@@ -206,9 +254,10 @@ Unsafe (создать файл в root-каталоге пользовател�
 
 ## 10. Вне рамок
 
-- Бамп `constants.RequiredCoreVersion` до lx.11 — отдельный коммит при
-  релизе. До него команда из плашки со старым ядром (lx.8/lx.10) plist на
-  копию не переводит: Unsafe остаётся, это честно.
+- Бамп `constants.RequiredCoreVersion` — отдельный коммит при релизе
+  (сделан: lx.12). Со старым ядром лаунчера (lx.8/lx.10) команды нет вовсе
+  (§4.1): прежнее «команда plist на копию не переводит, Unsafe остаётся»
+  было неверно — такая команда переводила plist с копии обратно на DataDir.
 - Копирование или проверка подписи копии силами лаунчера.
 - Вызов `lxd --service=status` из лаунчера.
 - Служба на Linux (`service_linux.go` форка) — там своя модель и нет daemon-

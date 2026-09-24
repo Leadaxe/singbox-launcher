@@ -358,7 +358,9 @@ examples lives in [API.md](API.md); this section is about the principles.
   `constants.RequiredCoreVersion` includes that build (the current pin lives in `internal/constants/constants.go`).
   Check the feature boundary by running the binary (`sing-box lxd --help`), not by
   release number.
-- **The root-owned copy needs core lx.12+.** With an older core the install command
-  still points the plist at the launcher's own core, and the service stays "unsafe".
+- **The root-owned copy needs core lx.12+.** With a launcher core below lx.11 (or of
+  an unknown version) the launcher offers no install or copy command at all — such a
+  core would point the plist back at the launcher's own file — and shows "update the
+  core first" instead (`service_state` `core_too_old`).
 - **A remote config has no Clash API** by design — hence the gRPC sources for both
   the node list and the profiler.
