@@ -31,7 +31,8 @@
 | `ui/connection_local_daemon_darwin.go` | плашка по состояниям, шаг 1 Install, текст про ядро без lxd, kickstart-строка убрана |
 | `ui/settings_purge.go` | текст подсказки по признаку «переживает очистку» |
 | `bin/locale/ru.json` | новые ключи, сироты сняты |
-| `docs/DAEMON_AND_REMOTE*.md`, `docs/API*.md`, `docs/ARCHITECTURE_PACKAGES*.md`, `docs/release_notes/upcoming.md`, `SPECS/README.md`, SPEC 135 §5.1 | документация |
+| `docs/DAEMON_AND_REMOTE*.md`, `docs/API*.md`, `docs/ARCHITECTURE_PACKAGES*.md`, `docs/release_notes/upcoming.md`, `RELEASE_NOTES.md`, `SPECS/README.md`, SPEC 135 §5.1 | документация |
+| `core/core_downloader.go` | комментарий шага 6.7 (install вместо kickstart) |
 
 ## Этапы (коммиты)
 

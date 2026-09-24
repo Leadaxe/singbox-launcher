@@ -97,9 +97,10 @@ Unsafe (создать файл в root-каталоге пользовател�
 обновление после скачивания ядра. Kickstart из UI убран: после обновления
 ядра перезапуск службы поднимает **старую копию**, нужен `install`.
 
-**Диалог после обновления ядра** (`core/core_downloader.go` → 
+**Диалог после обновления ядра** (`core/core_downloader.go` →
 `notifyDaemonServiceAfterCoreUpdate`): условие — plist существует (в любом
-движке: служба запускается launchd и без лаунчера); вместо kickstart
+движке: служба запускается launchd и без лаунчера) и вердикт по файлам не OK
+(скачано то же ядро, что уже в копии, — диалога нет); вместо kickstart
 показывает ту же команду install.
 
 ## 6. UI (`ui/connection_local_daemon_darwin.go`)
@@ -142,8 +143,9 @@ Unsafe (создать файл в root-каталоге пользовател�
 1. **До.** plist на бандл (`plutil -p /Library/LaunchDaemons/com.leadaxe.sing-box-lxd.plist`
    → `ProgramArguments[0]` = `…/Contents/MacOS/bin/sing-box`). Первый старт
    новой версии лаунчера — модальное предупреждение с командой; второй старт
-   той же версии — без него. LOCAL → Status — красная плашка; в логе WARN
-   перед apply.
+   той же версии — без него (в логе WARN «daemon service is unsafe» — на
+   каждом старте). LOCAL → Status — красная плашка; в логе WARN перед apply;
+   `GET /daemon/status` → `"service_state": "unsafe"`.
 2. Выполнить команду из плашки (sudo вводит владелец).
 3. **После.**
    - `ls -ld /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd` и
@@ -151,7 +153,9 @@ Unsafe (создать файл в root-каталоге пользовател�
      `cat …/install.json` — поля §3;
    - `plutil -p` plist → `ProgramArguments[0]` = копия, прочие ключи прежние;
    - `shasum -a 256 …/sing-box` == `shasum -a 256 ~/Library/Application\ Support/singbox-launcher/bin/sing-box`;
-   - `sing-box lxd --service=status` — exit 0;
+   - `~/Library/Application\ Support/singbox-launcher/bin/sing-box lxd --service=status`
+     (вызывающий бинарь — ядро лаунчера, сверяется с копией) — exit 0;
+   - Debug API `GET /daemon/status` → `"service_state": "ok"`;
    - `launchctl print system/com.leadaxe.sing-box-lxd` — `state = running`;
    - плашки нет, сопряжение живо (Start/Stop без пароля, список узлов).
 4. **Отрицательный.** Подменить ядро в DataDir (другая сборка) → Refresh →

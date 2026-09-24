@@ -6,41 +6,41 @@
 - [x] SPEC.md, PLAN.md, TASKS.md.
 
 ## Этап 2 · Классификатор
-- [ ] Константы раскладки lx.11: каталог службы, `sing-box`, `install.json`, корень цепочки `/Library`.
-- [ ] `inspectDaemonServiceDefinition`: NotInstalled / Unsafe (plist, путь, цепочка `Lstat`).
-- [ ] `compareDaemonServiceFiles`: Stale по sha (кэш `(dev, inode, size, mtime)`), отсутствующая копия.
-- [ ] `compareDaemonServiceProcess`: ProcessStale по `executable_sha256`/`executable`, запасной путь по версии.
-- [ ] Сайдкар — только для показа версии.
-- [ ] `lxdclient.InfoData`: `executable`, `executable_sha256`.
-- [ ] `TestDaemonServiceClassifier`.
+- [x] Константы раскладки lx.11: каталог службы, `sing-box`, `install.json`, корень цепочки `/Library`.
+- [x] `inspectDaemonServiceDefinition`: NotInstalled / Unsafe (plist, путь, цепочка `Lstat`).
+- [x] `compareDaemonServiceFiles`: Stale по sha (кэш `(dev, inode, size, mtime)`), отсутствующая копия.
+- [x] `compareDaemonServiceProcess`: ProcessStale по `executable_sha256`/`executable`, запасной путь по версии.
+- [x] Сайдкар — только для показа версии.
+- [x] `lxdclient.InfoData`: `executable`, `executable_sha256`.
+- [x] `TestDaemonServiceClassifier`.
 
 ## Этап 3 · Команды
-- [ ] `daemonServiceCommand` — одно место квотинга; install всегда от `SingboxPath`.
-- [ ] Uninstall и `client add` — через копию, если она безопасна.
-- [ ] Диалог после обновления ядра: условие «plist есть», команда install.
-- [ ] `appleScriptString` вынесен из `OpenTerminalWithCommand`.
-- [ ] `TestDaemonServiceCommandQuoting` (пробел и `'` в пути, `sh -n`, разбор аргументов, литерал AppleScript).
+- [x] `daemonServiceCommand` — одно место квотинга; install всегда от `SingboxPath`.
+- [x] Uninstall и `client add` — через копию, если она безопасна.
+- [x] Диалог после обновления ядра: условие «plist есть», команда install.
+- [x] `appleScriptString` вынесен из `OpenTerminalWithCommand`.
+- [x] `TestDaemonServiceCommandQuoting` (пробел и `'` в пути, `sh -n`, разбор аргументов, литерал AppleScript).
 
 ## Этап 4 · Снимок и UI
-- [ ] `DaemonUIStatus.Service` вместо сравнения путей.
-- [ ] Debug API `/daemon/status`: `service_state`, `service_path`, `service_detail`.
-- [ ] WARN перед apply.
-- [ ] Плашка Unsafe/Stale/ProcessStale на вкладке Status, kickstart-строка убрана.
-- [ ] Install, шаг 1 — «Install or update the service».
-- [ ] Текст «ядро без lxd» без номера релиза.
-- [ ] Модальное предупреждение раз на версию лаунчера (`daemon_unsafe_notice_version`).
-- [ ] Ключи `locale.T` с переводом в `bin/locale/ru.json`, сироты сняты.
+- [x] `DaemonUIStatus.Service` вместо сравнения путей.
+- [x] Debug API `/daemon/status`: `service_state`, `service_path`, `service_detail`.
+- [x] WARN перед apply.
+- [x] Плашка Unsafe/Stale/ProcessStale на вкладке Status, kickstart-строка убрана.
+- [x] Install, шаг 1 — «Install or update the service».
+- [x] Текст «ядро без lxd» без номера релиза.
+- [x] Модальное предупреждение раз на версию лаунчера (`daemon_unsafe_notice_version`).
+- [x] Ключи `locale.T` с переводом в `bin/locale/ru.json`, сироты сняты.
 - [ ] Показать владельцу.
 
 ## Этап 5 · Очистка
-- [ ] Подсказка удаления службы через копию (диалог и `-purge-data`), текст «служба переживает удаление».
+- [x] Подсказка удаления службы через копию (диалог и `-purge-data`), текст «служба переживает удаление».
 
 ## Этап 6 · Доки
-- [ ] `docs/DAEMON_AND_REMOTE.md` / `.ru.md` — root-owned копия и одна команда.
-- [ ] `docs/API.md` / `.ru.md` — поля `/daemon/status`.
-- [ ] `docs/ARCHITECTURE_PACKAGES.md` / `.ru.md` — новый файл.
-- [ ] `docs/release_notes/upcoming.md` EN/RU.
-- [ ] Ссылка из SPEC 135 §5.1; запись в `SPECS/README.md`.
+- [x] `docs/DAEMON_AND_REMOTE.md` / `.ru.md` — root-owned копия и одна команда.
+- [x] `docs/API.md` / `.ru.md` — поля `/daemon/status`.
+- [x] `docs/ARCHITECTURE_PACKAGES.md` / `.ru.md` — новый файл.
+- [x] `docs/release_notes/upcoming.md` EN/RU (строка SPEC 135 про сверку путей заменена), выжимка в `RELEASE_NOTES.md`.
+- [x] Ссылка из SPEC 135 §5.1; запись в `SPECS/README.md`.
 
 ## Приёмка
 - [ ] Ядро lx.11 собрано; ручная проверка SPEC §9 на Mac владельца.

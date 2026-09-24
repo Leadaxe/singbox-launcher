@@ -426,6 +426,13 @@ func Describe(l Layout, core CoreInfo, tmpl TemplateInfo) string
 путей; сопряжение не отваливается; статус расхождения появляется и уходит
 после переустановки службы.
 
+> **Заменено SPEC 136** ([136-F-N-DAEMON_SERVICE_ROOT_OWNED_CORE](../136-F-N-DAEMON_SERVICE_ROOT_OWNED_CORE/SPEC.md)):
+> plist на ядро лаунчера — само по себе дыра (root запускает файл
+> пользователя). С ядра lx.11 служба работает из root-owned копии
+> `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/sing-box`, а сверка
+> путей заменена классификатором (Unsafe / Stale / ProcessStale) и одной
+> командой «Install or update service».
+
 ### 5.2 Сборка macOS
 
 `build_darwin.sh`: снять перенос `bin`/`logs` ради `codesign`, вернуть
