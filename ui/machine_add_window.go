@@ -1,10 +1,12 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
@@ -118,6 +120,14 @@ func OpenAddMachineWindow(ac *core.AppController, onAdded func()) {
 	status.Wrapping = fyne.TextWrapWord
 
 	cancelBtn := widget.NewButton(locale.T("Cancel"), func() { win.Close() })
+	importBtn := widget.NewButton(locale.T("Import from file…"), func() {
+		if importMachines(ac, win) {
+			if onAdded != nil {
+				onAdded()
+			}
+			win.Close()
+		}
+	})
 	addBtn := widget.NewButton(locale.T("Add"), nil)
 	addBtn.Importance = widget.HighImportance
 
@@ -162,7 +172,7 @@ func OpenAddMachineWindow(ac *core.AppController, onAdded func()) {
 		}()
 	}
 
-	buttons := container.NewBorder(nil, nil, nil,
+	buttons := container.NewBorder(nil, nil, importBtn,
 		container.NewHBox(cancelBtn, addBtn))
 
 	body := container.NewVBox(
@@ -185,4 +195,26 @@ func OpenAddMachineWindow(ac *core.AppController, onAdded func()) {
 	win.Resize(fyne.NewSize(520, 570))
 	fynewidget.CenterOnScreen(win)
 	win.Show()
+}
+
+// importMachines сливает в реестр машины из remote-daemons.json другой папки
+// данных (прежняя portable-копия): уже известные адреса пропускаются.
+// Ошибки — в окне win; true — импорт прошёл, сводка — в главном окне.
+func importMachines(ac *core.AppController, win fyne.Window) bool {
+	path, ok, err := platform.PickOpenFile(locale.T("Load remote-daemons.json from another folder"), []string{"json"})
+	if err != nil || !ok {
+		if err == platform.ErrNativeDialogUnavailable {
+			dialog.ShowError(fmt.Errorf("%s", locale.T("Native file dialog is unavailable. Install zenity or kdialog and try again.")), win)
+		} else if err != nil {
+			debuglog.WarnLog("add machine: open dialog: %v", err)
+		}
+		return false
+	}
+	n, err := services.NewRemoteRegistry(ac.FileService.Layout.Data).ImportFrom(path)
+	if err != nil {
+		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Import failed"), err), win)
+		return false
+	}
+	dialog.ShowInformation(locale.T("Import"), locale.Tf("Imported %d remote servers", n), ac.UIService.MainWindow)
+	return true
 }

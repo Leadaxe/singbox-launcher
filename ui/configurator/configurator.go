@@ -534,13 +534,6 @@ func createStateManagementButtons(presenter *wizardpresentation.WizardPresenter,
 		handleCloneFromButton(presenter, wizardWindow)
 	})
 	guiState.CloneFromButton.Importance = widget.MediumImportance
-
-	// Open… — Read для state.json из ДРУГОЙ папки данных (прежняя
-	// portable-копия, которую перенос SPEC 135 не видит).
-	guiState.OpenStateButton = widget.NewButton(locale.T("Open…"), func() {
-		handleOpenStateButton(presenter, wizardWindow)
-	})
-	guiState.OpenStateButton.Importance = widget.MediumImportance
 }
 
 // createNavigationButtons создает кнопки навигации (Prev, Next, Close).
@@ -621,7 +614,6 @@ func updateNavigationButtons(guiState *wizardpresentation.GUIState, tabs *contai
 		buttonsContent = container.NewHBox(
 			guiState.CloseButton,
 			guiState.ReadButton,
-			guiState.OpenStateButton,
 			guiState.CloneFromButton,
 			layout.NewSpacer(),
 			guiState.NextButton,
@@ -816,6 +808,10 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 		if result.Action == "cancel" {
 			return
 		}
+		if result.Action == "open" {
+			handleOpenStateButton(presenter, wizardWindow)
+			return
+		}
 
 		if result.Action == "new" {
 			// "New" - инициализировать новое состояние из шаблона/config.json
@@ -950,9 +946,11 @@ func handleCloneFromButton(presenter *wizardpresentation.WizardPresenter, wizard
 	})
 }
 
-// handleOpenStateButton загружает state.json (или снапшот) из другой папки
-// тем же путём, что Clone from: текущее уходит в снапшот (откат — Read),
-// файл ложится на текущий таргет целиком и пишется на диск только по Save.
+// handleOpenStateButton («Open file…» в диалоге Read) загружает state.json
+// (или снапшот) из другой папки данных — прежней portable-копии, которую
+// перенос SPEC 135 не видит, — тем же путём, что Clone from: текущее уходит
+// в снапшот (откат — Read), файл ложится на текущий таргет целиком и пишется
+// на диск только по Save.
 func handleOpenStateButton(presenter *wizardpresentation.WizardPresenter, wizardWindow fyne.Window) {
 	path, ok, err := platform.PickOpenFile(locale.T("Load state.json from another folder"), []string{"json"})
 	if err != nil || !ok {

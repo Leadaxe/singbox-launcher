@@ -4769,8 +4769,11 @@
   "The daemon service runs with SYSTEM rights from a file that is not protected:\n%s\n\nAny program running as you could replace it and take over this computer. %s The VPN keeps working meanwhile; the LOCAL tab of the connection settings shows this until it is fixed.": {
     "value": "Служба демона работает с правами SYSTEM из незащищённого файла:\n%s\n\nЛюбая программа, запущенная от вашего имени, может подменить его и получить полный контроль над компьютером. %s VPN тем временем продолжает работать; вкладка LOCAL в настройках подключения показывает это, пока проблема не устранена."
   },
-  "Open…": {
-    "value": "Открыть…"
+  "Open file…": {
+    "value": "Открыть файл…"
+  },
+  "Import from file…": {
+    "value": "Импорт из файла…"
   },
   "Load state.json from another folder": {
     "value": "Загрузить state.json из другой папки"

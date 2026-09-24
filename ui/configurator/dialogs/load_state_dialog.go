@@ -4,7 +4,7 @@
 // для выбора сохранённого состояния визарда:
 //   - Простой список имён файлов (высота ~5 строк с прокруткой)
 //   - Выделение state.json как "текущее"
-//   - Кнопки: "Load", "New", "Cancel"
+//   - Кнопки: "Open file…" (state.json из другой папки), "Load", "New", "Cancel"
 //
 // Диалог используется в двух сценариях:
 //   - При открытии визарда, если существует state.json или есть другие сохранённые состояния
@@ -34,7 +34,7 @@ import (
 
 // LoadStateResult представляет результат выбора в диалоге загрузки состояния.
 type LoadStateResult struct {
-	Action     string // "load", "new", "cancel"
+	Action     string // "load", "new", "open" (файл из другой папки), "cancel"
 	SelectedID string // ID выбранного состояния (пусто для state.json)
 }
 
@@ -54,12 +54,6 @@ func ShowLoadStateDialog(presenter *wizardpresentation.WizardPresenter, onResult
 		debuglog.ErrorLog("ShowLoadStateDialog: failed to list states: %v", err)
 		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Failed to load states list"), err), guiState.Window)
 		onResult(LoadStateResult{Action: "cancel"})
-		return
-	}
-
-	// Если состояний нет, вызываем callback с "new"
-	if len(states) == 0 {
-		onResult(LoadStateResult{Action: "new"})
 		return
 	}
 
@@ -191,6 +185,18 @@ func ShowLoadStateDialog(presenter *wizardpresentation.WizardPresenter, onResult
 		})
 	})
 	loadButton.Importance = widget.HighImportance
+	// Пустая папка (свежая установка) — диалог всё равно показываем: из него
+	// берут state.json старой копии через «Open file…».
+	if len(states) == 0 {
+		loadButton.Disable()
+	}
+
+	openFileButton := widget.NewButton(locale.T("Open file…"), func() {
+		if dialogWindow != nil {
+			dialogWindow.Hide()
+		}
+		onResult(LoadStateResult{Action: "open"})
+	})
 
 	newButton := widget.NewButton(locale.T("New"), func() {
 		if dialogWindow != nil {
@@ -247,6 +253,7 @@ func ShowLoadStateDialog(presenter *wizardpresentation.WizardPresenter, onResult
 
 	// Контейнер с кнопками (без cancelButton - он будет через dismissText)
 	buttonsContainer := container.NewHBox(
+		openFileButton,
 		layout.NewSpacer(),
 		deleteButton,
 		newButton,

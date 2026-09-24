@@ -293,7 +293,7 @@ Installing a newer version over it keeps your data; Setup closes a running launc
 
 **Windows 7 (`win7-32`)** keeps the old model: it always runs as administrator (a UAC prompt on every start), so TUN works at once without the dialog above; data stays next to the program (`portable.txt` is honored even in `C:\Program Files\…`), with no installer, no daemon service and no Start with Windows.
 
-Moving from a portable copy to the installer: in the old copy switch off **Settings → Storage → Portable mode** (the data moves to `%LOCALAPPDATA%\singbox-launcher`), then install — or carry the settings over with LX Backup. If the old copy is still around, **Open…** next to **Read** in the configurator loads its `bin\wizard_states\state.json` (or any snapshot there), and **Open…** above the machine list on the Remote tab brings its remote servers from `bin\remote-daemons.json`.
+Moving from a portable copy to the installer: in the old copy switch off **Settings → Storage → Portable mode** (the data moves to `%LOCALAPPDATA%\singbox-launcher`), then install — or carry the settings over with LX Backup. If the old copy is still around, **Open file…** in the configurator's **Read** dialog loads its `bin\wizard_states\state.json` (or any snapshot there), and **Import from file…** in the Remote tab's **+ Add** window brings its remote servers from `bin\remote-daemons.json`.
 
 ### macOS
 
