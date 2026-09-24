@@ -61,13 +61,17 @@ and sudo asks you.
 | Operation | Command |
 |---|---|
 | Install or update the service | `sudo <launcher-core> lxd --service=install` |
-| Uninstall the service | `sudo <service-core> lxd --service=uninstall` |
+| Uninstall the service | `sudo <service-core> lxd --service=uninstall --keep-copy` |
 | Uninstall along with the daemon's data | the same `+ --purge` |
+| Uninstall in **Remove all data…** | `sudo <service-core> lxd --service=uninstall --purge` |
 | Mint a fresh invite | `sudo <service-core> lxd client add --name singbox-launcher` |
 
 `<launcher-core>` is the core the launcher uses (Settings → Storage → Core).
 `<service-core>` is the service's root-owned copy (§2.1) when the service runs one,
-otherwise the launcher core.
+otherwise the launcher core. `--keep-copy` (core lx.11+) removes the plist and the
+launchd job but leaves the copy and `install.json` in place — the classic TUN start
+runs that copy (§2.2). **Remove all data…** offers the full uninstall without it, so
+the copy goes away together with the data.
 
 `--service=install` takes no parameters: it picks a free loopback port itself
 (19091+, or keeps the address of an existing installation), generates the secret,

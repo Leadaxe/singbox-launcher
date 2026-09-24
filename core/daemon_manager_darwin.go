@@ -587,13 +587,21 @@ func (ac *AppController) DaemonInstallCommand() (string, error) {
 
 // DaemonUninstallCommand собирает shell-команду удаления службы для терминала.
 // purge=true — полное удаление данных демона. Бинарь — копия службы, если
-// она безопасна (SPEC 136 §5), иначе ядро лаунчера.
+// она безопасна (SPEC 136 §5), иначе ядро лаунчера. `--keep-copy` (lx.11):
+// снимаются plist и launchd, root-owned копия и сайдкар остаются — её
+// запускает classic-старт с TUN (SPEC 137).
 func (ac *AppController) DaemonUninstallCommand(purge bool) string {
-	return daemonUninstallCommandFor(daemonServiceBinaryFor(systemDaemonServiceLayout(), ac.FileService.SingboxPath), purge)
+	return daemonUninstallCommandFor(daemonServiceBinaryFor(systemDaemonServiceLayout(), ac.FileService.SingboxPath), purge, true)
 }
 
-func daemonUninstallCommandFor(binary string, purge bool) string {
+// daemonUninstallCommandFor — команда удаления службы. keepCopy=false —
+// копия уходит вместе со службой (подсказка «Remove all data…»: всё,
+// что поставил лаунчер, уходит с данными).
+func daemonUninstallCommandFor(binary string, purge, keepCopy bool) string {
 	args := []string{"lxd", "--service=uninstall"}
+	if keepCopy {
+		args = append(args, "--keep-copy")
+	}
 	if purge {
 		args = append(args, "--purge")
 	}

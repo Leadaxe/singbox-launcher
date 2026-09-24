@@ -13,6 +13,7 @@ func (ac *AppController) daemonUninstallHint() (command string, survivesPurge bo
 // ядра считается цепочкой SPEC 135 §3.3 заново. Бинарь — по тому же
 // правилу, что DaemonUninstallCommand: копия службы, если она безопасна,
 // иначе ядро лаунчера (его удаление данных уносит — отсюда «сначала»).
+// Без `--keep-copy`: копия уходит вместе со службой и данными.
 func daemonUninstallHintFor(corePath string) (command string, survivesPurge bool) {
 	l := systemDaemonServiceLayout()
 	check := inspectDaemonServiceDefinition(l)
@@ -20,10 +21,10 @@ func daemonUninstallHintFor(corePath string) (command string, survivesPurge bool
 	case check.State == DaemonServiceNotInstalled:
 		return "", false
 	case check.CopyUsable():
-		return daemonUninstallCommandFor(l.CorePath, true), true
+		return daemonUninstallCommandFor(l.CorePath, true, false), true
 	}
 	if corePath == "" {
 		corePath = "sing-box"
 	}
-	return daemonUninstallCommandFor(corePath, true), false
+	return daemonUninstallCommandFor(corePath, true, false), false
 }

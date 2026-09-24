@@ -254,12 +254,15 @@ func TestDaemonServiceClassifier(t *testing.T) {
 // пробел, апостроф и двойная кавычка: команда синтаксически верна для sh,
 // разбирается ровно в задуманные аргументы и переживает литерал AppleScript,
 // через который её получает Terminal. Uninstall идёт через копию, только
-// когда она безопасна (SPEC 136 §5).
+// когда она безопасна (SPEC 136 §5); вкладка Uninstall оставляет копию
+// (`--keep-copy`), подсказка очистки данных — нет.
 func TestDaemonServiceCommandQuoting(t *testing.T) {
 	bin := "/Users/o'brien/My Apps/\"lx\" core/sing-box"
 	commands := map[string][]string{
 		daemonServiceCommand(bin, "lxd", "--service=install"): {bin, "lxd", "--service=install"},
-		daemonUninstallCommandFor(bin, true):                  {bin, "lxd", "--service=uninstall", "--purge"},
+		daemonUninstallCommandFor(bin, true, true):            {bin, "lxd", "--service=uninstall", "--keep-copy", "--purge"},
+		daemonUninstallCommandFor(bin, false, true):           {bin, "lxd", "--service=uninstall", "--keep-copy"},
+		daemonUninstallCommandFor(bin, true, false):           {bin, "lxd", "--service=uninstall", "--purge"},
 	}
 	wantInstall := `sudo '/Users/o'\''brien/My Apps/"lx" core/sing-box' lxd --service=install`
 	if got := daemonServiceCommand(bin, "lxd", "--service=install"); got != wantInstall {

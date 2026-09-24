@@ -42,6 +42,7 @@
 | Сайдкар | `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/install.json` — `root:wheel 0644`: `{source, sha256, version, installed_at, plist_path, label}` |
 | plist | `ProgramArguments[0]` = копия; остальные ключи plist не меняются |
 | `lxd --service=install` | идемпотентен по sha (равные sha — копия не трогается); `daemon.json`, секрет и клиенты сохраняются; служба перезапускается (`bootout` + `bootstrap`) |
+| `lxd --service=uninstall` | по умолчанию снимает plist, launchd **и копию** с сайдкаром; `--keep-copy` — снимает plist и launchd, копию и сайдкар оставляет (состояние COPY ONLY); `--purge` — ещё и данные демона |
 | `lxd --service=status` | exit 0 — OK, 2 — MISMATCH или UNSAFE, 3 — NOT INSTALLED, 4 — COPY ONLY (копия без службы, `--service=copy` SPEC 137), 1 — ошибка; печатает путь, sha256 копии, sha256 вызывающего бинаря, вердикт |
 | `GET /admin/info` | новые поля `executable`, `executable_sha256`; у ядер до lx.11 их нет — лаунчер проверяет наличие |
 
@@ -92,7 +93,8 @@ Unsafe (создать файл в root-каталоге пользовател�
 | Операция | Команда | Бинарь |
 |---|---|---|
 | **Install or update service** | `sudo '<bin>' lxd --service=install` | всегда `SingboxPath`: ядро копирует **себя** |
-| Uninstall (`--purge`) | `sudo '<bin>' lxd --service=uninstall [--purge]` | копия, если plist указывает на неё и цепочка безопасна; иначе `SingboxPath` |
+| Uninstall (вкладка Uninstall, Debug API) | `sudo '<bin>' lxd --service=uninstall --keep-copy [--purge]` | копия, если plist указывает на неё и цепочка безопасна; иначе `SingboxPath`. `--keep-copy`: копию запускает classic-старт с TUN (SPEC 137) |
+| Uninstall при удалении данных | `sudo '<bin>' lxd --service=uninstall --purge` | то же правило; без `--keep-copy` — копия уходит вместе с данными (§7) |
 | Свежее приглашение | `sudo '<bin>' lxd client add --name singbox-launcher` | то же правило, что у Uninstall |
 | Kickstart | `sudo launchctl kickstart -k system/com.leadaxe.sing-box-lxd` | только Debug API `/daemon/commands`; из UI убран |
 
@@ -132,7 +134,8 @@ Unsafe (создать файл в root-каталоге пользовател�
 `-purge-data` строится тем же правилом, что Uninstall: при безопасной копии —
 команда через копию, и текст говорит, что служба переживает удаление данных
 (копия вне DataDir); иначе — через `SingboxPath` с прежним «сначала удалите
-службу, пока ядро на месте».
+службу, пока ядро на месте». Команда — полный uninstall **без** `--keep-copy`:
+копия уходит вместе со службой и данными.
 
 ## 8. Debug API
 
@@ -166,9 +169,11 @@ Unsafe (создать файл в root-каталоге пользовател�
    жёлтая Stale-плашка с разными sha; команда — возврат в OK.
 5. **Обновление ядра кнопкой** → диалог «Core updated» с той же командой
    install (в том числе в classic-движке при установленной службе).
-6. **Uninstall-вкладка** и «Need a fresh invite» — команды через копию.
-7. **Remove all data…** — подсказка через копию и текст «служба переживает
-   удаление».
+6. **Uninstall-вкладка** и «Need a fresh invite» — команды через копию;
+   Uninstall — с `--keep-copy`: после неё plist нет, копия и `install.json`
+   на месте, `<ядро-лаунчера> lxd --service=status` → exit 4 (COPY ONLY).
+7. **Remove all data…** — подсказка через копию, без `--keep-copy`, и текст
+   «служба переживает удаление»; после команды копии нет.
 8. **Перезагрузка** → демон стартует из копии (`ps -o comm= -p <pid>` →
    `…/com.leadaxe.sing-box-lxd/sing-box`), лаунчер из Login Items
    сопрягается без пароля.
@@ -200,5 +205,7 @@ Unsafe (создать файл в root-каталоге пользовател�
 6. `uninstall` убирает plist; что делать с каталогом копии — решает ядро.
    Лаунчер после удаления plist видит NotInstalled независимо от остатка
    копии, а следующий `install` перезапишет её.
-7. Classic-старт с TUN (SPEC 137) исполняет ту же копию под root: после
-   `uninstall`, снявшего копию, classic попросит `--service=copy`.
+7. Classic-старт с TUN (SPEC 137) исполняет ту же копию под root: вкладка
+   Uninstall зовёт `--service=uninstall --keep-copy` (lx.11) и копию
+   оставляет; подсказка «Remove all data…» — полный uninstall, после него
+   classic попросит `--service=copy`.
