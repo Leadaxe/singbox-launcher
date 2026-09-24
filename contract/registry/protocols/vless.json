@@ -135,7 +135,7 @@
       "sni",
       "type"
     ],
-    "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart buildQuery sort). Расхождения формы эмита (для cross-emit фазы 2): Go всегда пишет encryption=none и опускает fp при 'random', reality-ноды идут БЕЗ security=reality (только pbk/sid), insecure=1 под ключом 'insecure'; Dart пишет security=reality|tls|none явно, fp всегда (включая random), флаг под ключом 'allowInsecure'."
+    "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart buildQuery sort). Расхождения формы эмита (для cross-emit фазы 2): Go всегда пишет encryption=none и опускает fp при 'random', reality-ноды идут С security=reality (контракт 1.1.53), insecure=1 под ключом 'insecure'; Dart пишет security=reality|tls|none явно, fp всегда (включая random), флаг под ключом 'allowInsecure'."
   },
   "mapper": [
     {
@@ -488,14 +488,13 @@
         "form": "url",
         "param_order": "alphabetical",
         "omit_default": [
-          "fp:random",
-          "security:reality"
+          "fp:random"
         ],
         "emit_when": {
           "encryption": "always",
           "security": "always"
         },
-        "impl": "omit_default `fp:random`: у vless `fp=random` НЕ пишется (конвенция D-009 «пусто = random»), прочие написания пишутся. security вычеркнут из omit_default и объявлен always: у Xray-клиентов умолчание security у vless = none, и узел без явного security прочёлся бы БЕЗ TLS. names.insecure = allowInsecure — де-факто написание схемы для чужих клиентов (оверлей LxBox, принят как есть).",
+        "impl": "omit_default `fp:random`: у vless `fp=random` НЕ пишется (конвенция D-009 «пусто = random»), прочие написания пишутся. security объявлен always И БЕЗ ИСКЛЮЧЕНИЙ (контракт 1.1.53, ревизия зеркала §3 п.4): `security=reality` тоже ПИШЕТСЯ. Прежде reality была вычеркнута omit_default'ом «REALITY-ветку объявляет наличие pbk», но у Xray-клиентов отсутствие security = none, и узел без явного параметра прочтётся БЕЗ TLS — ссылку читают чужие клиенты, а не наш круг: у Xray-клиентов умолчание security у vless = none, и узел без явного security прочёлся бы БЕЗ TLS. names.insecure = allowInsecure — де-факто написание схемы для чужих клиентов (оверлей LxBox, принят как есть).",
         "names": {
           "insecure": "allowInsecure"
         }

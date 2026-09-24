@@ -162,19 +162,23 @@ func TestEmitOverlays(t *testing.T) {
 		requireSameBody(t, h, "vless", body, got, uri)
 	})
 
-	// ss padding — `emit.userinfo.padding: true`.
+	// ss padding — `emit.userinfo.padding: false` (контракт 1.1.53).
 	//
-	// Go пишет `=`-паддинг base64, Dart срезает; обе стороны читают обе
-	// формы. Написание объявлено данными, чтобы ни одна сторона не
-	// поменяла своё молча. `aes-128-gcm:testpass123` — 23 байта, то есть
-	// ровно один символ паддинга.
+	// Эталон SIP002 пишет userinfo base64url БЕЗ «=»-паддинга, и вид
+	// ссылки принадлежит формату схемы, а не удобству писателя: с 1.1.53
+	// паддинг снят у обеих сторон (ревизия зеркала §3 п.6). ЧТЕНИЕ обеих
+	// форм при этом обязательно и остаётся — см. корпус
+	// sip002_escaped_padding / sip002_userinfo_no_padding. Написание
+	// объявлено данными, чтобы ни одна сторона не поменяла своё молча.
+	// `aes-128-gcm:testpass123` — 23 байта, то есть ровно один символ
+	// паддинга, который здесь обязан ОТСУТСТВОВАТЬ.
 	t.Run("ss_userinfo_padding", func(t *testing.T) {
 		em := emitSpecFor(t, set, "ss")
 		if em.UserInfo == nil || em.UserInfo.Padding == nil {
 			t.Fatal("реестр ss не объявил emit.userinfo.padding — написание решал бы код")
 		}
-		if !*em.UserInfo.Padding {
-			t.Fatal("ожидался padding: true (написание стороны Go)")
+		if *em.UserInfo.Padding {
+			t.Fatal("ожидался padding: false (SIP002, контракт 1.1.53)")
 		}
 		body := map[string]interface{}{
 			"type":        "shadowsocks",
@@ -184,8 +188,8 @@ func TestEmitOverlays(t *testing.T) {
 			"password":    "testpass123",
 		}
 		uri, got := emitOverlayRoundTrip(t, h, "shadowsocks", body, "ss")
-		if !strings.Contains(uri, "=@") {
-			t.Errorf("userinfo без «=»-паддинга, хотя padding: true: %s", uri)
+		if strings.Contains(uri, "=@") {
+			t.Errorf("userinfo с «=»-паддингом, хотя padding: false: %s", uri)
 		}
 		requireSameBody(t, h, "shadowsocks", body, got, uri)
 	})

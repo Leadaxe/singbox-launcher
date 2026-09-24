@@ -392,9 +392,9 @@
         "param_order": "alphabetical",
         "userinfo": {
           "form": "base64",
-          "padding": true
+          "padding": false
         },
-        "impl": "userinfo.form base64 — SIP002: `method:password` кодируется целиком, адрес и метка остаются открытыми. padding объявлен явно: Go пишет «=», Dart срезает, обе стороны читают обе формы, и по правилу эмита ни одна не меняет своё написание молча."
+        "impl": "userinfo.form base64 — SIP002: `method:password` кодируется целиком, адрес и метка остаются открытыми. padding: false с контракта 1.1.53 (ревизия зеркала §3 п.6) — эталон SIP002 пишет userinfo base64url БЕЗ «=»-паддинга, и вид ссылки принадлежит формату схемы, а не удобству писателя. Прежде объявлялось true (Go писал «=», Dart срезал). ЧТЕНИЕ обеих форм обязательно для обеих сторон и остаётся: percent-декод идёт ДО base64, поэтому доезжает и экранированный %3D (корпус sip002_escaped_padding, sip002_userinfo_no_padding)."
       }
     },
     "xray": {
