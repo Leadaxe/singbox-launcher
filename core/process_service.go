@@ -222,6 +222,9 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 	// приходят все входы: кнопка, трей, -start, Debug API, авто-рестарт.
 	if ac.tunNeedsElevation() {
 		ac.showTunElevationDialog()
+		if ac.UIService != nil && ac.UIService.StartAbortedFunc != nil {
+			ac.UIService.StartAbortedFunc()
+		}
 		return
 	}
 

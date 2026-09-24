@@ -158,6 +158,22 @@ func CreateCoreDashboardTab(ac *core.AppController) fyne.CanvasObject {
 		})
 	}
 
+	// Start вернул управление без старта ядра (диалог «TUN без прав», SPEC
+	// 139): состояние не изменится, и ждать его 12 с незачем — «Запуск…»
+	// снимается сразу. Колбэк зовут и из UI-потока (кнопка Start), и из
+	// горутин (трей, Debug API) — fyne.Do ставит снятие в очередь после
+	// beginPendingOp. Снимается только ожидание старта.
+	tab.controller.UIService.StartAbortedFunc = func() {
+		fyne.Do(func() {
+			if !tab.pendingOp || !tab.pendingOpWantRun {
+				return
+			}
+			tab.pendingOp = false
+			tab.pendingOpMismatchTicks = 0
+			tab.updateRunningStatus()
+		})
+	}
+
 	// Регистрируем callback для обновления статуса конфига.
 	// SPEC 047 phase 6: этот legacy-callback ещё дёргается из UI-путей
 	// (configurator Save, dashboard Rebuild/Update/state-switch), поэтому
