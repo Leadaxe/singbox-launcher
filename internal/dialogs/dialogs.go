@@ -172,7 +172,9 @@ func ShowError(window fyne.Window, err error) {
 // with the setcap command in a selectable entry and a Copy button (issue #34).
 // title is the dialog title (e.g. "Error" or "Linux Capabilities"); message is the full
 // text (warning + explanation); command is the single line to copy (e.g. sudo setcap ...).
-// An empty command shows the message alone (no command row).
+// Copy puts only the command on the clipboard: it is pasted into a terminal,
+// where the explanation would be run as junk input. An empty command shows the
+// message alone (no command row).
 func ShowLinuxCapabilitiesRequired(window fyne.Window, title, message, command string) {
 	fyne.Do(func() {
 		mainContent := container.NewVBox()
@@ -180,8 +182,9 @@ func ShowLinuxCapabilitiesRequired(window fyne.Window, title, message, command s
 		// Обычный Label, а не Disable()'нутый Entry: отключённый Entry в Fyne
 		// рисуется цветом DisabledColor — тем же, которым рисуется
 		// placeholder, — и объяснение выглядит как незаполненная подсказка,
-		// а не как текст, который надо прочесть. Копирование от этого не
-		// теряется: кнопка Copy ниже кладёт в буфер и сообщение, и команду.
+		// а не как текст, который надо прочесть. Кнопка Copy ниже кладёт в
+		// буфер только команду: её вставляют в терминал, и пояснение там
+		// стало бы «паразитным текстом».
 		msgLabel := widget.NewLabel(message)
 		msgLabel.Wrapping = fyne.TextWrapWord
 
@@ -202,14 +205,8 @@ func ShowLinuxCapabilitiesRequired(window fyne.Window, title, message, command s
 			}
 		}
 		copyBtn := widget.NewButtonWithIcon(locale.T("Copy"), theme.ContentCopyIcon(), func() {
-			fullText := message
-			if command != "" && fullText != "" && !strings.Contains(fullText, command) {
-				fullText += "\n\n" + command
-			} else if fullText == "" {
-				fullText = command
-			}
-			if fullText != "" {
-				fyne.CurrentApp().Clipboard().SetContent(fullText)
+			if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
+				app.Clipboard().SetContent(command)
 			}
 		})
 		copyBtn.Importance = widget.LowImportance
