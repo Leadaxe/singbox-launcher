@@ -773,3 +773,22 @@ remote-сервер обычно не gateway. Таргет живёт в `state
 осью клиентов. Телеметрия хоста (CPU / память / хранилище / сеть самой машины) —
 отдельное окно поверх admin REST: профайлер описывает *ядро*, телеметрия описывает
 *машину*.
+
+### 11.6 Привилегированный старт classic на macOS (SPEC 136–137)
+
+Classic-движок поднимает конфиг с TUN от root через
+`AuthorizationExecuteWithPrivileges`, службу демона от root запускает launchd.
+Правило у обоих одно: **root исполняет только root-owned файлы** — копию ядра службы
+(`/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/sing-box`, её пишет само
+ядро на `lxd --service=install|copy`) и системные утилиты по абсолютным путям.
+Лаунчер ядро не копирует и sudo сам не запускает.
+
+`ProcessService.startSingBoxPrivileged` сначала спрашивает гейт
+(`core/classic_privileged_darwin.go`): копия есть, проходит цепочку владения и
+совпадает с ядром лаунчера по sha256 — проверка цепочки и кэш хэшей взяты у
+классификатора SPEC 136. Только затем `platform.StartPrivilegedCore` запускает
+`/usr/bin/env -i PATH=… /bin/sh -c <постоянное тело> <пути>`: ни файла-скрипта, ни
+окружения лаунчера в root-шелле. Отказ гейта показывает диалог с командой
+(`internal/dialogs.ShowCommandRetry`) вместо ошибки старта, Retry идёт через
+`StartSingBoxProcess`. Авторизация живёт сессию лаунчера; `privilegedAuthReuse` в
+`internal/platform/privileged_darwin.go` сужает её до одного действия.

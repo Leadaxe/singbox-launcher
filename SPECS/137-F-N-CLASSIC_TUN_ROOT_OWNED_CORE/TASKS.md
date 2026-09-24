@@ -27,14 +27,19 @@
 - [ ] Показать владельцу.
 
 ## Этап 5 · Доки
-- [ ] `docs/DAEMON_AND_REMOTE.md` / `.ru.md` — classic TUN на той же копии.
-- [ ] `docs/ARCHITECTURE.md` / `.ru.md` — привилегированный старт classic.
-- [ ] `docs/ARCHITECTURE_PACKAGES.md` / `.ru.md` — новые файлы.
-- [ ] `docs/release_notes/upcoming.md` EN/RU, выжимка в `RELEASE_NOTES.md`.
-- [ ] Ссылка из SPEC 136; запись в `SPECS/README.md`.
+- [x] `docs/DAEMON_AND_REMOTE.md` / `.ru.md` — classic TUN на той же копии.
+- [x] `docs/ARCHITECTURE.md` / `.ru.md` — привилегированный старт classic.
+- [x] `docs/ARCHITECTURE_PACKAGES.md` / `.ru.md` — новые файлы.
+- [x] `docs/release_notes/upcoming.md` EN/RU, выжимка в `RELEASE_NOTES.md`.
+- [x] Ссылка из SPEC 136; запись в `SPECS/README.md`.
 
 ## Приёмка
-- [ ] Ядро lx.11 с `--service=copy`; ручная проверка SPEC §9 на Mac владельца.
+- [x] Ядро lx.11 с `--service=copy` — в ветке форка `27e245e2e` (интерфейс SPEC §10).
+- [ ] Релиз lx.11; ручная проверка SPEC §9 на Mac владельца.
 - [ ] CI `run_mode=tests` зелёный.
 - [ ] Решение владельца по развилке А/Б (SPEC §6).
 - [ ] `RequiredCoreVersion` → lx.11 — вместе с SPEC 136, при релизе.
+
+## Попутно (SPEC 136, по сообщению главной сессии)
+- [x] Пустой `executable_sha256` — «неизвестно», судит версия (lx.11 считает хэш в фоне); тест классификатора дополнен.
+- [x] Коды выхода `--service=status` lx.11 (3 — NOT INSTALLED, 4 — COPY ONLY) в SPEC 136 и `docs/DAEMON_AND_REMOTE*.md`.

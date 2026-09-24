@@ -961,3 +961,23 @@ network devices, not from processes of this computer, so the per-process axis is
 replaced by a per-client one. Host telemetry (CPU / memory / storage / network of
 the machine itself) is a separate window over admin REST — the profiler describes
 the *core*, telemetry describes the *machine*.
+
+### 11.6 Privileged classic start on macOS (SPEC 136–137)
+
+The classic engine starts a TUN config as root through
+`AuthorizationExecuteWithPrivileges`; the daemon service is started as root by
+launchd. Both follow one rule: **root executes only root-owned files** — the service's
+copy of the core (`/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/sing-box`,
+written by the core itself on `lxd --service=install|copy`) and system utilities by
+absolute path. The launcher never copies the core and never runs sudo itself.
+
+`ProcessService.startSingBoxPrivileged` asks a gate first
+(`core/classic_privileged_darwin.go`): the copy must exist, pass the ownership chain
+and match the launcher core by sha256 — the chain check and the hash cache are the
+SPEC 136 classifier's. Only then `platform.StartPrivilegedCore` runs
+`/usr/bin/env -i PATH=… /bin/sh -c <constant body> <paths>`: no script file, no
+launcher environment in the root shell. A refused gate shows a command dialog
+(`internal/dialogs.ShowCommandRetry`) instead of a startup error, and Retry goes
+through `StartSingBoxProcess`. The authorization lives for the launcher session;
+`privilegedAuthReuse` in `internal/platform/privileged_darwin.go` narrows it to a
+single action.

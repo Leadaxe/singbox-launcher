@@ -31,7 +31,7 @@ path getters. Platform-tagged files (`*_darwin.go`/`*_linux.go`/`*_windows.go`/
 | `wintun_cleanup_windows_syscall.go` | Lazy DLL bindings + GUID constants shared by the cleanup files. |
 | `fs_unix.go` / `fs_windows.go` | Atomic-write / fsync filesystem helpers per OS. |
 | `dock_handler.go` / `dock_handler_stub.go` | macOS Dock hide; stub elsewhere. |
-| `privileged_darwin.go` / `privileged_stub.go` | macOS privileged escalation (TUN cache/log removal); stub elsewhere. |
+| `privileged_darwin.go` / `privileged_stub.go` | macOS privileged execution via AEWP (SPEC 137): the TUN start of the root-owned core copy through `env -i` + a constant `sh` body, kill / pkill / TUN-off `rm` by absolute path without a shell, the authorization-lifetime flag `privilegedAuthReuse`; stub elsewhere. |
 | `singbox_exec_path.go` | Resolve the sing-box executable path: `SINGBOX_LAUNCHER_CORE` → `DataDir/bin` → `AppDir/bin` → `PATH` (SPEC 135 §3.3; unified across platforms, `PATH` last everywhere — previously Linux-only and first). |
 
 ### `internal/paths` (SPEC 135)
@@ -69,7 +69,7 @@ Each package is self-contained and dependency-free (or depends only on `debuglog
 | `internal/ctxutil` | Sleep-aware context helper. | `sleep.go` |
 | `internal/process` | Thin process-list wrapper used by runtime checks. | `process.go` |
 | `internal/wizardsync` | Fyne-free predicates for GUI→model merge (`GuiTextAwaitingProgrammaticFill`, `FinalOutboundSelectReadLooksStale`) — unit-testable without CGO/GL. | `guards.go` |
-| `internal/dialogs` | Shared dialog primitives independent of `ui` (custom dialog, download-failed dialog, auto-hide info). | `dialogs.go` |
+| `internal/dialogs` | Shared dialog primitives independent of `ui` (custom dialog, download-failed dialog, auto-hide info, command + Retry dialog). | `dialogs.go` |
 | `internal/lxdclient` | mTLS client for the `sing-box lxd` daemon (SPEC 096/097): admin REST calls, certificate pinning (never optional), one-time invite parsing (`address#fingerprint#code`), per-machine client identity, channel detection, host telemetry + clients-info readers. No app state. | `client.go`, `identity.go`, `invite.go`, `host.go` |
 
 > Note: `internal/dialogs` and `internal/fynewidget` both depend on Fyne. `dialogs`
@@ -298,7 +298,8 @@ semantics: `contract/docs/BACKUP.md`.
 | `backend_daemon_stub.go` | Non-darwin stub so the rest of the code compiles without gRPC (this is what keeps the Win7 build clean). |
 | `daemon_manager_darwin.go` | Daemon lifecycle from the launcher's side: the sudo command strings it hands the user (`--service=install` / `=uninstall [--purge]` / `lxd client add`), pairing, daemon passport (`GET /admin/info`). Runs nothing privileged itself. |
 | `daemon_service_state_darwin.go` | **SPEC 136.** Service classifier: reads the launchd plist, checks the root-owned copy of the core and its ownership chain (`/Library` → `PrivilegedHelperTools` → service folder → file), compares sha256 with the launcher core (cached by dev/inode/size/mtime) and with the running daemon's passport. Verdicts: not installed / unsafe / stale / process stale / ok. Reads only, no sudo. |
-| `process_service.go` | `ProcessService`: `Start`/`Stop`/`Monitor`, crash/restart state machine, privileged-script exit handling, TUN/phantom-adapter cleanup before Start (SPEC 065). |
+| `classic_privileged_darwin.go` (+ `_other.go`) | **SPEC 137.** Gate of the classic privileged (TUN) start: the root-owned copy of the core must exist, pass the ownership chain and match the launcher core by sha256 (functions and hash cache of `daemon_service_state_darwin.go`); otherwise a dialog with one sudo command (`lxd --service=copy`, or `--service=install` when the daemon service is installed) and Retry; a WARN after a core download when the copy falls behind. Reads only, no sudo. |
+| `process_service.go` | `ProcessService`: `Start`/`Stop`/`Monitor`, crash/restart state machine, privileged-shell exit handling (the TUN start goes through the copy gate, SPEC 137), TUN/phantom-adapter cleanup before Start (SPEC 065). |
 | `config_service.go` (+ `_context.go`, `_subscriptions.go`) | `ConfigService`: `RunParserProcess`, `UpdateConfigFromSubscriptions` (cache-refresh pipeline), `buildContextFromState`, per-source refresh. Split from 1066 → ~538 LOC; promoting the peeled files to real `SubscriptionFetcher` / `ConfigContextBuilder` seams is still deferred. |
 | `rebuild.go` | `RebuildConfigIfDirty` — **sole `config.json` writer** (ADR-070-4); validate via `sing-box check`; publishes `ConfigBuilt`; `cleanupLegacyOutboundsCache`. |
 | `rebuild_raw_cache.go` | `buildSnapshotFromRawCache` — rebuild from `.raw` bodies without network. |

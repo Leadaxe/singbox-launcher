@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — classic TUN на root-owned копии ядра (ветка `spec-137-classic-root-owned`, версия не назначена)
+
+**Реализовано в ветке, ждёт ядра lx.11 и приёмки владельцем** (SPEC 137) — только macOS, classic-режим с TUN. Ядро под root запускалось из файлов, которые может изменить ваша учётная запись (скрипт в папке данных и ядро лаунчера), и после первого пароля — без вопросов на каждом рестарте. Теперь root запускает только копию ядра в `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/` (та же, что у службы демона) и системные утилиты. При первом старте с TUN после обновления лаунчер попросит выполнить одну команду (`sudo … lxd --service=copy`) и нажать «Повторить»; после обновления ядра — снова. Подробности: [docs/DAEMON_AND_REMOTE.ru.md §2.2](docs/DAEMON_AND_REMOTE.ru.md).
+
+### Highlights (EN) — classic TUN runs a root-owned copy of the core (branch `spec-137-classic-root-owned`, version not assigned yet)
+
+**Implemented on the branch, pending core lx.11 and owner acceptance** (SPEC 137) — macOS classic mode with TUN only. The core used to run as root from files your user account can modify (a script in the data folder and the launcher's core), and after the first password — without asking on every restart. Now root runs only the copy of the core in `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/` (the same one the daemon service uses) and system utilities. On the first TUN start after the update the launcher asks you to run one command (`sudo … lxd --service=copy`) and click Retry; after a core update it asks again. Details: [docs/DAEMON_AND_REMOTE.md §2.2](docs/DAEMON_AND_REMOTE.md).
+
 ### Выжимка (RU) — служба демона на root-owned копии ядра (ветка `spec-136-daemon-root-owned`, версия не назначена)
 
 **Реализовано в ветке, ждёт ядра lx.11 и приёмки владельцем** (SPEC 136) — только macOS, daemon-режим. Служба демона запускалась от root из файла, который может изменить ваша учётная запись (ядро в бандле или в папке данных). С ядра lx.11 команда установки копирует ядро в `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/` (владелец root) и переводит службу на копию. Лаунчер проверяет службу без sudo: небезопасная — красная плашка на вкладке LOCAL и один диалог на версию лаунчера, устаревшая — жёлтая; VPN при этом не блокируется. Для всех случаев одна команда **Install or update service** — первая установка, старая служба, обновление после скачивания ядра. Подробности: [docs/DAEMON_AND_REMOTE.ru.md §2.1](docs/DAEMON_AND_REMOTE.ru.md).

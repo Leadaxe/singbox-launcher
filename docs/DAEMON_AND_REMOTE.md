@@ -5,7 +5,7 @@
 > Status: current for SPEC 096 (daemon core engine), 097 (remote config target),
 > 098 (Local/Remote tabs, one profile per machine), 099 (machine traffic profiler),
 > 100 (remote/daemon coverage in the Debug API), 136 (the service runs a root-owned
-> copy of the core).
+> copy of the core), 137 (the classic TUN start runs the same copy).
 >
 > Companion documents:
 > - **[ARCHITECTURE.md](ARCHITECTURE.md)** — layers, the `CoreBackend`/`ProxyTransport` seams.
@@ -28,7 +28,7 @@ through the active engine (`CoreBackend`).
 | How the core lives | child process `sing-box run` | inside the long-lived system service `sing-box lxd` |
 | Control plane | Clash HTTP API | gRPC (`daemon.StartedService`) + admin REST |
 | Applying a config | kill + restart the process | the core is swapped in place, without restarting the service |
-| Privileges | a password on every privileged TUN start | once, at install time; nothing afterwards |
+| Privileges | macOS: a password on the first TUN start of a launcher session; root runs only the root-owned copy of the core (§2.2) | once, at install time; nothing afterwards |
 | Quitting the launcher | brings the VPN down | **leaves the VPN running** by default |
 | Core requirement | an ordinary fork build | a build with the `lxd` subcommand (`with_lx_command`) |
 
@@ -117,6 +117,39 @@ exit 0 — ok, 2 — mismatch or unsafe, 3 — not installed, 4 — copy only (a
 the service, SPEC 137), 1 — error. The copy lives outside the
 launcher's data folder, so **Remove all data…** leaves the service in place and offers
 its uninstall command through the copy.
+
+### 2.2 The classic TUN start runs the same copy (SPEC 137)
+
+In the classic engine on macOS a config with TUN starts the core as root through the
+system password prompt (once per launcher session). Root runs only the root-owned
+copy from §2.1 and system utilities by absolute path — never a file from the data
+folder, the app bundle or `PATH`:
+
+| Action | What root runs |
+|---|---|
+| Start with TUN | `/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/sh -c '<constant body>' start-singbox-privileged <data>/bin <copy> config.json <logs>/sing-box.log` |
+| Stop / restart | `/bin/kill -TERM <shell pid> <core pid>` |
+| Kill in "Sing-Box already running" and in Diagnostics | `/usr/bin/pkill -TERM -f 'sing-box run\|start-singbox-privileged'` |
+| Turning TUN off in the wizard | `/bin/rm -rf -- <cache and core logs>` |
+
+The shell body is a constant compiled into the launcher, paths arrive as arguments,
+and `env -i` keeps the launcher's environment (its `PATH`, exported bash functions)
+away from the root shell. The `bin/start-singbox-privileged.sh` script of earlier
+versions is no longer written and is removed on the next start.
+
+Before the password prompt the launcher checks the copy without sudo — the ownership
+chain as in §2.1 and the sha256 of the copy against the launcher core. A missing,
+unprotected or outdated copy (for example after a core update) stops the start, and a
+dialog shows one command with **Copy the command**, **Run in Terminal** and **Retry**:
+
+| Case | Command |
+|---|---|
+| no daemon service | `sudo <launcher-core> lxd --service=copy` — core lx.11+: only the copy and `install.json`, no plist, no launchd |
+| the daemon service is installed | `sudo <launcher-core> lxd --service=install` — the §2 command; it refreshes the same copy and restarts the service |
+
+After a core download the log gets a WARN with both sha256 values, and the next TUN
+start shows the dialog. With a copy and no service, `<launcher-core> lxd --service=status`
+exits with 4 (copy only).
 
 ---
 

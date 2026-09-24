@@ -6,8 +6,9 @@ SPEC 136, до следующего релиза лаунчера. Парная 
 у службы демона SPEC 136, плюс новая команда ядра `lxd --service=copy`.
 
 Статус: **реализовано в ветке `spec-137-classic-root-owned` (от
-`spec-136-daemon-root-owned`), ждёт ядра lx.11, ручной проверки владельцем и
-CI**.
+`spec-136-daemon-root-owned`); ядро lx.11 с `--service=copy` готово в ветке
+форка (`27e245e2e`), не выпущено; ждёт релиза ядра, ручной проверки
+владельцем и CI**.
 
 ## 1. Проблема: что исполнялось под root
 
@@ -203,11 +204,16 @@ SPEC 136), **Retry** (закрывает диалог и повторяет Star
    start is missing» с командой `sudo '…/sing-box' lxd --service=copy`; в логе
    WARN «privileged start refused». `ls <Data>/bin/start-singbox-privileged.sh`
    → нет (удалён при старте).
-2. Run in Terminal → выполнить команду (sudo вводит владелец).
+2. Run in Terminal → выполнить команду (sudo вводит владелец). В выводе —
+   `lxd: copied <src> -> /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/sing-box (sha256 <hex>, root:wheel 0755)`;
+   повтор той же команды — `lxd: already up to date <hex>`.
 3. **После.**
    - `ls -ld /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd` и
      `ls -l …/sing-box …/install.json` — `root wheel`, `drwxr-xr-x` /
      `-rwxr-xr-x` / `-rw-r--r--`; plist службы не появился;
+     `cat …/install.json` — `"plist_path": ""`;
+   - `~/Library/Application\ Support/singbox-launcher/bin/sing-box lxd --service=status`
+     — exit 4 (COPY ONLY: копия без службы);
    - `shasum -a 256 …/sing-box` == `shasum -a 256 ~/Library/Application\ Support/singbox-launcher/bin/sing-box`;
    - Retry → пароль AEWP (раз за сессию), VPN работает;
    - `ps -axo user,pid,command | grep -E 'sing-box run|start-singbox-privileged'`
@@ -232,22 +238,34 @@ SPEC 136), **Retry** (закрывает диалог и повторяет Star
 
 ## 10. Что зависит от lx.11
 
-1. **`lxd --service=copy`** (новое, в SPEC 100 форка его ещё нет): под root
-   делает только копию и сайдкар §2.3 SPEC 100 (каталог, `O_EXCL` →
-   `fsync` → `chown root:wheel` → `chmod 0755` → сверка sha → `rename`),
-   без plist и launchd; идемпотентен по sha; копия заменяется только
-   `rename` — работающий classic-процесс держит старый inode; нарушение
-   инварианта у существующих звеньев — отказ с ненулевым кодом; в сайдкаре
-   `plist_path` пустой (или иной признак «копия без службы»).
-2. `--service=install` тоже создаёт/обновляет копию (SPEC 100 §2.3) — на него
+Подтверждено ядром (ветка форка `27e245e2e`, 24.09.2026):
+
+1. **`lxd --service=copy`** — как в §5: под root делает только копию и
+   сайдкар по SPEC 100 §2.3 (каталог, `O_EXCL` → `fsync` → `chown root:wheel`
+   → `chmod 0755` → сверка sha → `rename`), без plist и launchd; в сайдкаре
+   `plist_path: ""`. Вывод: `lxd: copied <src> -> <dst> (sha256 <hex>,
+   root:wheel 0755)`, при совпадении sha — `lxd: already up to date <hex>`.
+   Копия заменяется только `rename` — работающий classic-процесс держит
+   старый inode.
+2. **`sing-box run` под root из бинаря, не прошедшего инвариант, — WARN, не
+   отказ.** Ядро само такой запуск не остановит: гейт лаунчера (§4) —
+   единственный барьер, и запуск именно копии обязателен на стороне
+   лаунчера.
+3. **`--service=status`**: exit 0 — OK, 2 — MISMATCH/UNSAFE, 3 — NOT
+   INSTALLED, 4 — COPY ONLY (копия без службы), 1 — ошибка. Лаунчер его не
+   вызывает (гейт — свой, без запуска процесса); команда — для ручной
+   проверки (§9).
+4. `--service=install` тоже создаёт/обновляет копию (SPEC 100 §2.3) — на него
    лаунчер полагается при установленной службе.
-3. `--service=uninstall` по SPEC 100 §2.4 снимает и копию (в том числе
+5. Копия самодостаточна: darwin-релиз линкует libcronet статически — naive
+   работает из `/Library/PrivilegedHelperTools/…` без соседних файлов.
+
+Открыто:
+
+6. `--service=uninstall` по SPEC 100 §2.4 снимает и копию (в том числе
    «осиротевшую»): после удаления службы classic снова попросит команду copy.
    Решение форка: снимать ли копию, у которой есть classic-потребитель.
-4. Копия самодостаточна: darwin-релиз линкует libcronet статически — naive
-   работает из `/Library/PrivilegedHelperTools/…` без соседних файлов.
-5. Самопроверка SPEC 100 §2.5 касается только `lxd`; `run` из копии под root
-   её не проходит и не должен падать от неё.
+7. Релиз lx.11 и бамп `constants.RequiredCoreVersion` (§8 п. 6).
 
 ## 11. Связь
 
