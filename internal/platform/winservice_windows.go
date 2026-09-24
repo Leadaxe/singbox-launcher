@@ -93,10 +93,12 @@ func QueryService(name string) (ServiceInfo, error) {
 	}
 	defer func() { _ = windows.CloseServiceHandle(handle) }()
 	service := &mgr.Service{Name: name, Handle: handle}
-	if config, err := service.Config(); err != nil {
+	// Только QueryServiceConfig: из конфигурации нужен BinaryPathName, а
+	// mgr.Config дочитывает ещё три QueryServiceConfig2.
+	if binaryPath, err := serviceBinaryPath(handle); err != nil {
 		info.ConfigErr = err
 	} else {
-		info.BinaryPath = config.BinaryPathName
+		info.BinaryPath = binaryPath
 	}
 	if status, err := service.Query(); err != nil {
 		info.StatusErr = err
@@ -119,6 +121,22 @@ func QueryService(name string) (ServiceInfo, error) {
 	}
 	info.DACLErr = serviceACLViolation(facts)
 	return info, nil
+}
+
+// serviceBinaryPath — BinaryPathName из QueryServiceConfig.
+func serviceBinaryPath(handle windows.Handle) (string, error) {
+	n := uint32(1024)
+	for {
+		buf := make([]byte, n)
+		cfg := (*windows.QUERY_SERVICE_CONFIG)(unsafe.Pointer(&buf[0]))
+		err := windows.QueryServiceConfig(handle, cfg, n, &n)
+		if err == nil {
+			return windows.UTF16PtrToString(cfg.BinaryPathName), nil
+		}
+		if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) || n <= uint32(len(buf)) {
+			return "", err
+		}
+	}
 }
 
 // ServiceRunning — состояние SERVICE_RUNNING.
