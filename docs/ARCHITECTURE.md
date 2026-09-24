@@ -1061,9 +1061,10 @@ virtualization). Proxy-only never elevates; TUN elevates only on an explicit act
   success → `GracefulExit`, as Quit in the tray.
 - **New instance** — `-handoff` layout (§7a.2), then, before `crash.log`, the GL
   probe, the controller and the tray, `platform.WaitForProcessExit(parent, exe,
-  25 s)`: `OpenProcess` + image-path check (a reused PID is not waited for) +
-  `WaitForSingleObject`; without access to the parent (another account) — polling
-  the process list every 250 ms.
+  25 s)`: `OpenProcess` + image file-name check, case-insensitive (a reused PID
+  is not waited for; the full path would differ under subst, a junction, a network
+  drive or `\\?\`) + `WaitForSingleObject`; without access to the parent (another
+  account) — polling the process list every 250 ms with the same name check.
 - **Switch to proxy mode** — `tun=false`, `enable_proxy_in=true`,
   `proxy_in_set_system_proxy=true` in the local state → Save → forced rebuild →
   `StartSingBoxProcess` (the same state-write helper as the log-level switch).

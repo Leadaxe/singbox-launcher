@@ -3,6 +3,7 @@ package platform
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"singbox-launcher/internal/process"
@@ -33,15 +34,17 @@ const processPollInterval = 250 * time.Millisecond
 
 // pollProcessGone ждёт, пока PID пропадёт из списка процессов, не дольше
 // timeout. Список процессов (снимок Toolhelp на Windows) виден и для
-// процессов другой учётной записи, дескриптор которых не открыть.
-func pollProcessGone(pid int, timeout time.Duration) (gone bool, err error) {
+// процессов другой учётной записи, дескриптор которых не открыть. name —
+// имя исполняемого файла ожидаемого процесса: PID с другим именем уже занят
+// чужим процессом, и ждать нечего; "" — имя не сверяется.
+func pollProcessGone(pid int, name string, timeout time.Duration) (gone bool, err error) {
 	deadline := time.Now().Add(timeout)
 	for {
-		_, found, err := process.FindProcess(pid)
+		info, found, err := process.FindProcess(pid)
 		if err != nil {
 			return false, fmt.Errorf("list processes: %w", err)
 		}
-		if !found {
+		if !found || (name != "" && !strings.EqualFold(info.Name, name)) {
 			return true, nil
 		}
 		if time.Now().After(deadline) {

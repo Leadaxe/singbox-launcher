@@ -44,11 +44,12 @@ func RunElevated(exe string, args []string, dir string, show int) (*ElevatedProc
 
 // WaitForProcessExit ждёт выхода процесса pid не дольше timeout. Вне
 // Windows -handoff не передаётся (перезапуск с повышением — только Windows),
-// поэтому здесь только опрос списка процессов, без сверки образа.
+// поэтому здесь только опрос списка процессов, без сверки имени: на Linux
+// ps отдаёт имя, урезанное до 15 символов.
 func WaitForProcessExit(pid int, exe string, timeout time.Duration) (exited bool, err error) {
 	_ = exe
 	if pid <= 0 {
 		return true, nil
 	}
-	return pollProcessGone(pid, timeout)
+	return pollProcessGone(pid, "", timeout)
 }

@@ -282,10 +282,12 @@ func RunElevated(exe string, args []string, dir string, show int) (*ElevatedProc
 // родителя, прежде чем трогать логи, порт Debug API и трей.
 //
 //   - процесса нет — exited=true сразу;
-//   - образ процесса — не exe (PID уже занят другим процессом) — не ждать,
-//     exited=true;
+//   - имя образа процесса — не имя exe (PID уже занят другим процессом) — не
+//     ждать, exited=true. Сравнивается только имя файла без учёта регистра:
+//     полный путь расходится на subst, junction, сетевом диске и префиксе
+//     \\?\, и тогда ожидания не было бы вовсе;
 //   - дескриптор не открыть (родитель под другой учётной записью) — опрос
-//     списка процессов раз в 250 мс.
+//     списка процессов раз в 250 мс с той же сверкой имени.
 //
 // exited=false — таймаут: вызывающий продолжает старт с WARN.
 func WaitForProcessExit(pid int, exe string, timeout time.Duration) (exited bool, err error) {
@@ -298,11 +300,11 @@ func WaitForProcessExit(pid int, exe string, timeout time.Duration) (exited bool
 			return true, nil // такого PID уже нет
 		}
 		debuglog.DebugLog("WaitForProcessExit: OpenProcess(%d): %v; polling the process list", pid, err)
-		return pollProcessGone(pid, timeout)
+		return pollProcessGone(pid, filepath.Base(exe), timeout)
 	}
 	defer debuglog.RunAndLog("WaitForProcessExit: close process handle", func() error { return windows.CloseHandle(h) })
 
-	if image, err := processImageOf(h); err == nil && !strings.EqualFold(filepath.Clean(image), filepath.Clean(exe)) {
+	if image, err := processImageOf(h); err == nil && !strings.EqualFold(filepath.Base(image), filepath.Base(exe)) {
 		debuglog.DebugLog("WaitForProcessExit: pid %d is %s, not the launcher; not waiting", pid, image)
 		return true, nil
 	}

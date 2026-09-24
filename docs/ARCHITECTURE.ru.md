@@ -872,9 +872,10 @@ Windows-бинари несут манифест `asInvoker` (он остаёт�
   трее.
 - **Новый экземпляр** — раскладка из `-handoff` (§7a.2), затем до `crash.log`,
   GL-пробы, контроллера и трея — `platform.WaitForProcessExit(parent, exe, 25 с)`:
-  `OpenProcess` + сверка пути образа (занятый чужим процессом PID не ждём) +
-  `WaitForSingleObject`; без доступа к родителю (другая учётная запись) — опрос
-  списка процессов раз в 250 мс.
+  `OpenProcess` + сверка имени файла образа без учёта регистра (занятый чужим
+  процессом PID не ждём; полный путь расходится на subst, junction, сетевом диске
+  и `\\?\`) + `WaitForSingleObject`; без доступа к родителю (другая учётная
+  запись) — опрос списка процессов раз в 250 мс с той же сверкой имени.
 - **Switch to proxy mode** — `tun=false`, `enable_proxy_in=true`,
   `proxy_in_set_system_proxy=true` в state локального профиля → Save →
   принудительная пересборка → `StartSingBoxProcess` (тот же хелпер записи state,
