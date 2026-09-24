@@ -98,10 +98,15 @@ RDP_OPENGL(.ru) (задача Mesa), ARCHITECTURE(.ru) §7a.6, `upcoming.md`
   wizard_template.json, wizard_template.version}`, `mesa3d/{opengl32,
   libgallium_wgl, dxil}.dll`). `go vet ./core/...` под Windows без cgo не
   собирается (fyne/gl) — только CI.
-- CI: см. итоговую сводку в сообщении к ветке (номера прогонов). Первый прогон
-  упал на ISCC (`case … else` в Pascal Script принимает один оператор),
-  исправлено. Setup ≈ 51,7 МБ, `FileVersion 2.1.0.25`, `ProductVersion` =
-  версия meta; предупреждений ISCC нет.
+- CI (ветка `spec-140-installer`):
+  - 36021777914 (`build`, `Win64`, без тестов) — красный: ISCC, `case … else` в
+    Pascal Script принимает один оператор; исправлено в `2b792eb8`.
+  - 36023011274 (`build`, `Win64`, без тестов) — зелёный; setup 51,7 МБ,
+    `FileVersion 2.1.0.25`.
+  - 36024385151 (`build`, все цели, с тестами) — зелёный: тесты трёх ОС, macOS,
+    Win64, Win7, установщик (51,7 МБ, `FileVersion 2.1.0.26`, `ProductVersion` =
+    версия meta), вариант `/DDaemonService` компилируется; предупреждений ISCC нет.
+  - 36024405504 (`tests`) — зелёный.
 - Не проверено CI в режиме `build`: состав `win64-full.zip` «до/после» —
   job `release` идёт только на теге и пререлизе. Проверит пререлиз владельца.
 
