@@ -543,6 +543,61 @@
       "params": {
         "v": null,
         "serverName": null,
+        "tcp_keep_alive": {
+          "source": {
+            "v2rayn": "json.tcp_keep_alive",
+            "legacy": "query.tcp_keep_alive"
+          },
+          "aliases": [
+            "tcpKeepAlive"
+          ],
+          "maps_to": "tcp_keep_alive",
+          "type": "duration",
+          "impl": "ПЕРЕОПРЕДЕЛЯЕТ одноимённую запись блока dialer#uri, добавляя источник формы-КОНТЕЙНЕРА (контракт 1.1.53, ревизия зеркала §3 п.17 — забрано из оверлея LxBox). Блочная запись читает только `query.*`, а у формы v2rayn query нет вовсе: ключи лежат в JSON контейнера. Прежде поле уезжало в контейнер эмитом, но обратно НЕ читалось — настройка терялась на круге. Теперь место объявлено, и оба хода пользуются одной записью."
+        },
+        "tcp_keep_alive_interval": {
+          "source": {
+            "v2rayn": "json.tcp_keep_alive_interval",
+            "legacy": "query.tcp_keep_alive_interval"
+          },
+          "aliases": [
+            "tcpKeepAliveInterval"
+          ],
+          "maps_to": "tcp_keep_alive_interval",
+          "type": "duration",
+          "impl": "Пара к `tcp_keep_alive` выше, по той же причине."
+        },
+        "disable_tcp_keep_alive": {
+          "source": {
+            "v2rayn": "json.disable_tcp_keep_alive",
+            "legacy": "query.disable_tcp_keep_alive"
+          },
+          "aliases": [
+            "disableTcpKeepAlive"
+          ],
+          "maps_to": "disable_tcp_keep_alive",
+          "type": "bool_spelled",
+          "impl": "Пара к `tcp_keep_alive` выше, по той же причине. Значение в контейнере булево (true), а не строка: `bool_spelled` читает оба написания."
+        },
+        "http_host_from_server": {
+          "source": {
+            "v2rayn": [
+              "json.add"
+            ],
+            "legacy": [
+              "host"
+            ]
+          },
+          "maps_to": "transport.host",
+          "coerce": {
+            "scalar_to_list": true
+          },
+          "priority": 90,
+          "when": {
+            "transport.type": "http"
+          },
+          "impl": "ОТКАТ host на адрес сервера у транспорта http (контракт 1.1.53, ревизия зеркала §3 п.17 — забрано из оверлея LxBox). При `net=h2` без своего host транспорт берёт адресом САМ СЕРВЕР; без отката узел приезжал с транспортом http БЕЗ host, и ядро слало запросы с пустым Host. Откат объявлен СВОЕЙ записью, а не переопределением блочного `host`: спор с блоком решается по имени и источнику, а записей `host` у блока три (ws/http/xhttp), и одноимённая запись схемы снесла бы все — вместе с транспортами, которые отката не знают. priority 90 ставит её ПОСЛЕ блочной, и умолчание merge keep_first само делает её откатом: названный автором host уже занял путь с меньшим priority, и запись молчит. coerce.scalar_to_list: у http транспорта host СПИСОК."
+        },
         "server": {
           "source": {
             "v2rayn": "json.add",
@@ -732,7 +787,23 @@
       },
       "emit": {
         "form": "v2rayn",
-        "param_order": "alphabetical",
+        "param_order": [
+          "v",
+          "ps",
+          "add",
+          "port",
+          "id",
+          "aid",
+          "scy",
+          "net",
+          "type",
+          "host",
+          "path",
+          "tls",
+          "sni",
+          "fp",
+          "alpn"
+        ],
         "json_map": {
           "v": "=2",
           "ps": "$label",
@@ -755,7 +826,7 @@
         "json_always": {
           "v": "2",
           "ps": "",
-          "aid": 0,
+          "aid": "0",
           "scy": "auto",
           "net": "tcp",
           "type": "none",
@@ -766,7 +837,7 @@
         "names": {
           "serviceName": "path"
         },
-        "impl": "Форма-КОНТЕЙНЕР v2rayN: base64(JSON), а не query-ссылка. json_map называет «ключ контейнера → путь тела | $param.<запись> | $label | =литерал»; json_always — ключи, которые панели ждут ДАЖЕ ПУСТЫМИ (опускание ломает у них чтение, а не экономит байты). names.serviceName → path: имя gRPC-канала v2rayN кладёт в ключ path, то есть emit.names действует и по форме-контейнеру (оверлей LxBox, принят как есть). param_order alphabetical: сегодняшний вывод и есть алфавит."
+        "impl": "Форма-КОНТЕЙНЕР v2rayN: base64(JSON), а не query-ссылка. json_map называет «ключ контейнера → путь тела | $param.<запись> | $label | =литерал»; json_always — ключи, которые панели ждут ДАЖЕ ПУСТЫМИ (опускание ломает у них чтение, а не экономит байты). names.serviceName → path: имя gRPC-канала v2rayN кладёт в ключ path, то есть emit.names действует и по форме-контейнеру (оверлей LxBox, принят как есть). param_order — ПЕРЕЧЕНЬ v2rayN (контракт 1.1.53, ревизия зеркала §3 п.8), взят из оверлея LxBox: контейнер читается частью клиентов ПОЗИЦИОННО, и алфавит переставлял бы ключи живых ссылок (`host`/`path` уезжали вперёд `add`). Ключи вне перечня (dial-поля keep-alive) уходят в хвост, сохраняя порядок сборки, — новое поле не переставляет старые. `aid` — СТРОКА \"0\", а не число (там же): контейнер читается и по типу, и смена типа заполнителя есть смена вида ссылки. `ps` и `scy` остаются в json_always (решение владельца: панели ждут ключи даже пустыми), `json_map` сохраняется — LxBox от карты отказывается и выводит её из таблицы, это объявленная дельта D133-E9."
       }
     },
     "xray": {
@@ -925,6 +996,38 @@
         "impl": "Ключи уровня документа плюс контейнеры, чьи листья читают записи таблицы. Список дословно равен списку LxBox и остальных xray-секций — см. развёрнутую сноску у vless."
       },
       "emit": null
+    },
+    "singbox": {
+      "detect": {
+        "json": {
+          "value_in": {
+            "type": [
+              "vmess"
+            ]
+          }
+        }
+      },
+      "body_source": "singbox",
+      "forms": [
+        {
+          "id": "outbound",
+          "detect": {
+            "default": true
+          },
+          "space": "json",
+          "level": "outbound"
+        }
+      ],
+      "params": {},
+      "unknown_key": {
+        "action": "keep",
+        "code": "json_field_unknown",
+        "ignore": [
+          "type",
+          "tag"
+        ],
+        "impl": "keep, а не drop: тело уже в каноне ядра, и чужой ключ может быть расширением форка — выбрасывать его нельзя. Но и молчать нельзя: сегодня неизвестный ключ уезжает в тело слепой копией и всплывает, лишь когда ядро отвергнет весь конфиг. `ignore` — бухгалтерия ЭЛЕМЕНТА, полем узла не являющаяся: `type` (по нему элемент и опознан) и `tag` (имя, которое читает сборка документа). Секция ПОРОЖДЕНА МЕХАНИЧЕСКИ по норме MAPPER_ENGINE §8a (образец — trojan/vless, приехавшие контрактом 1.1.15); забрана из черновика LxBox контрактом 1.1.53, ревизия зеркала §3 п.20. Пустая `params` — нормальное КОНЕЧНОЕ состояние, а не заготовка: вход sing-box это тело УЖЕ В КАНОНЕ ЯДРА, переводить нечего, и секция нужна ради detect, body_source и unknown_key. Записи появляются только там, где диалект всё-таки есть."
+      }
     }
   }
 }

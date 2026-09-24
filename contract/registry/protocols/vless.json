@@ -135,7 +135,7 @@
       "sni",
       "type"
     ],
-    "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart buildQuery sort). Расхождения формы эмита (для cross-emit фазы 2): Go всегда пишет encryption=none и опускает fp при 'random', reality-ноды идут БЕЗ security=reality (только pbk/sid), insecure=1 под ключом 'insecure'; Dart пишет security=reality|tls|none явно, fp всегда (включая random), флаг под ключом 'allowInsecure'."
+    "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart buildQuery sort). Расхождения формы эмита (для cross-emit фазы 2): Go всегда пишет encryption=none и опускает fp при 'random', reality-ноды идут С security=reality (контракт 1.1.53), insecure=1 под ключом 'insecure'; Dart пишет security=reality|tls|none явно, fp всегда (включая random), флаг под ключом 'allowInsecure'."
   },
   "mapper": [
     {
@@ -458,14 +458,17 @@
           "impl": "`xtls-rprx-vision-udp443` — не значение поля, а СОСТАВНОЕ имя: суффикс означает «UDP/443 идёт напрямую», то есть packet_encoding=xudp. Порт при этом НЕ переписывается (DRIFT §7.4, решение владельца): порт — свойство узла, а не флоу."
         },
         "packetEncoding": {
-          "source": "query.packetEncoding",
+          "source": [
+            "query.packetEncoding",
+            "query.packet-encoding"
+          ],
           "maps_to": "packet_encoding",
           "value_map": {
             "none": null
           },
           "priority": 20,
           "merge": "overwrite",
-          "impl": "QUIRKS: корпус packet_encoding_udp443_quirk_wins ждёт xudp при packetEncoding=none И flow=…-udp443. Это работает не потому, что «sets побеждает», а потому что `none` отображается в null и записи НЕ делает. Явное значение (xudp/packetaddr) перебивает — priority 20 > 10 плюс merge overwrite, ровно как сегодня (node_parser_core.go:759-768 пишет ПОСЛЕ flow)."
+          "impl": "QUIRKS: корпус packet_encoding_udp443_quirk_wins ждёт xudp при packetEncoding=none И flow=…-udp443. Это работает не потому, что «sets побеждает», а потому что `none` отображается в null и записи НЕ делает. Явное значение (xudp/packetaddr) перебивает — priority 20 > 10 плюс merge overwrite, ровно как сегодня (node_parser_core.go:759-768 пишет ПОСЛЕ flow). ВТОРОЕ ЗВЕНО `query.packet-encoding` (контракт 1.1.53, прогон 72 публичных подписок §525: 101 узел, значение везде `xudp`) — написание через дефис у части панелей. Значение судит тот же allowlist packet_encoding (`xudp`/`packetaddr`, мусор → снятие поля + packet_encoding_unknown), поэтому новое звено не расширяет множество принимаемых значений, а лишь перестаёт терять объявленное. Написание camelCase ловится fold-case и отдельного звена не требует. Кейс корпуса uri/vless/packet_encoding_dashed_alias."
         },
         "encryption": {
           "source": "query.encryption",
@@ -482,20 +485,27 @@
       },
       "unknown_key": {
         "action": "keep",
-        "code": "uri_param_unknown"
+        "code": "uri_param_unknown",
+        "ignore": [
+          "authority",
+          "_t",
+          "__rand",
+          "nonce",
+          "seq"
+        ],
+        "impl": "ТИХИЙ ИГНОР без кода (контракт 1.1.53, разбор прогона 72 публичных подписок §525). Перечислены имена, которые полем узла не являются и пробелом реестра не считаются — код на них был бы шумом на каждом узле подписки, а не сведением.\n\n`authority` (498 узлов) — gRPC-параметр Xray: при `mode=gun` он задаёт псевдо-заголовок `:authority` рукопожатия gRPC. У sing-box поля для него НЕТ вовсе (transport gRPC несёт только service_name), перенести значение некуда, и это ЛОСС ПО ДИЗАЙНУ, а не непрочитанный ключ. Молчание объявлено ЗДЕСЬ, а не кодом в warnings.json, по решению: у узла с `authority` всё остальное читается, узел рабочий, и предупреждение на каждом таком узле пугало бы без действия.\n\n`_t`, `__rand`, `nonce`, `seq` (191/180/143/164 узла) — КЭШ-БАСТЕРЫ генератора подписки: значение меняется от выдачи к выдаче и к узлу отношения не имеет. Заводить им записи было бы вредно (они не поля), а оставлять в unknown_key — значило бы держать четыре кода на узле, пока провайдер не передумает.\n\nЧТО СЮДА НЕ ПОПАЛО И ПОЧЕМУ. `amp;<имя>` (4706 узлов, половина всех uri_param_unknown) — ДЕФЕКТ ЧУЖОГО СПИСКА: провайдер отдал ссылку с HTML-экранированным `&amp;`, и `amp;sni`/`amp;type` доказывают поломку источника, а не пробел реестра (docs/testing/PUBLIC_SUBSCRIPTIONS_CORPUS.md §3). Глушить их тихим игнором нельзя: код здесь — единственный сигнал, что список битый. Мусор-метки (`descriptions` 249, `fm` 233, `freeinternet`, `Telegram`, `burmalda`, `cs`/`pcs`, куски телеграм-подписей вида `https://t.me/…`) ОСТАЮТСЯ в uri_param_unknown: они непонятны, а не безвредны, и молчание о них скрыло бы настоящее имя, если оно за ними прячется."
       },
       "emit": {
         "form": "url",
         "param_order": "alphabetical",
         "omit_default": [
-          "fp:random",
-          "security:reality"
+          "fp:random"
         ],
         "emit_when": {
           "encryption": "always",
           "security": "always"
         },
-        "impl": "omit_default `fp:random`: у vless `fp=random` НЕ пишется (конвенция D-009 «пусто = random»), прочие написания пишутся. security вычеркнут из omit_default и объявлен always: у Xray-клиентов умолчание security у vless = none, и узел без явного security прочёлся бы БЕЗ TLS. names.insecure = allowInsecure — де-факто написание схемы для чужих клиентов (оверлей LxBox, принят как есть).",
+        "impl": "omit_default `fp:random`: у vless `fp=random` НЕ пишется (конвенция D-009 «пусто = random»), прочие написания пишутся. security объявлен always И БЕЗ ИСКЛЮЧЕНИЙ (контракт 1.1.53, ревизия зеркала §3 п.4): `security=reality` тоже ПИШЕТСЯ. Прежде reality была вычеркнута omit_default'ом «REALITY-ветку объявляет наличие pbk», но у Xray-клиентов отсутствие security = none, и узел без явного параметра прочтётся БЕЗ TLS — ссылку читают чужие клиенты, а не наш круг: у Xray-клиентов умолчание security у vless = none, и узел без явного security прочёлся бы БЕЗ TLS. names.insecure = allowInsecure — де-факто написание схемы для чужих клиентов (оверлей LxBox, принят как есть).",
         "names": {
           "insecure": "allowInsecure"
         }

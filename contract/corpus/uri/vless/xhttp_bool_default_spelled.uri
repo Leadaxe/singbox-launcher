@@ -1,0 +1,6 @@
+# Три булевых поля xhttp БЕЗ `emit_as` — умолчание записи (PRIMITIVES §0.12a,
+# контракт 1.1.53, ревизия зеркала §3 п.3): на выходе булев пишется СЛОВОМ, а не
+# цифрой. У LxBox Dart писал цифрой, и расхождение компенсировалось оверлеем
+# `emit_as: raw` у этих же трёх полей — оверлей снимается, умолчание объявлено.
+# Кейс закрепляет ЧТЕНИЕ обеих форм (`true` словом и `1` цифрой) в одно значение.
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?encryption=none&security=tls&type=xhttp&path=%2Fxh&mode=auto&noGRPCHeader=true&noSSEHeader=1&xPaddingObfsMode=true#xhttp-bool-default
