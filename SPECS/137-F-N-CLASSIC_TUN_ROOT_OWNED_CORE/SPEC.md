@@ -50,36 +50,68 @@ Linux и Windows этой задачей не затрагиваются (§8).
 1. **root исполняет только root-owned файлы**: копию ядра
    `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/sing-box` (SPEC 136
    §3, интерфейс lx.11) и системные утилиты по абсолютным путям —
-   `/usr/bin/env`, `/bin/sh`, `/bin/kill`, `/usr/bin/pkill`, `/bin/rm`.
-   Никаких файлов из DataDir, бандла или `PATH`.
+   `/usr/bin/env`, `/bin/sh`, `/bin/kill`, `/usr/bin/pkill`, а в теле старта
+   `/bin/mkdir`, `/bin/chmod`, `/bin/mv`, `/usr/bin/stat`. Никаких файлов из
+   DataDir, бандла или `PATH`.
 2. **Окружение root-шелла очищено**: `/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin`.
 3. **Тело шелла — константа** в бинаре лаунчера; пути — позиционными
    аргументами (argv, без шелл-квотинга).
 4. **Гейт перед стартом** (§4): нет копии, цепочка владения нарушена или sha
    не совпал — старт с привилегиями не выполняется, AEWP не вызывается.
 5. Не-macOS платформы и daemon-режим (SPEC 136) не меняются.
+6. **root не пишет по путям пользователя** (137.1): вывод ядра — в
+   root-owned `/Library/Logs/sing-box-lxd/classic.log`; остатки прежних
+   стартов в каталогах пользователя лаунчер удаляет своим uid (§3.2).
 
 ## 3. Привилегированные вызовы после задачи
 
 | Действие | Вызов AEWP |
 |---|---|
-| Старт TUN | `/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/sh -c '<тело>' start-singbox-privileged <Data>/bin <копия> config.json <Logs>/sing-box.log` |
+| Старт TUN | `/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/sh -c '<тело>' start-singbox-privileged <Data>/bin <копия> config.json /Library/Logs/sing-box-lxd 0 2097152` |
 | Stop / рестарт | `/bin/kill -TERM <PID шелла> [<PID ядра>]` |
 | «Sing-Box already running» → Kill, Diagnostics → Kill | `/usr/bin/pkill -TERM -f 'sing-box run\|start-singbox-privileged'` |
-| Снятие галки TUN | `/bin/rm -rf -- <пути>` |
+| Снятие галки TUN | — (без root, §3.2) |
 
-Тело старта (`platform.privilegedStartBody`):
+### 3.1 Тело старта (`platform.privilegedStartBody`)
+
+Аргументы: `$1` каталог bin, `$2` копия ядра, `$3` имя конфига, `$4` каталог
+лога, `$5` владелец каталога и файла лога (uid, в проде `0`), `$6` порог
+ротации (байт, как у лога в каталоге пользователя — 2 МиБ).
 
 ```sh
+umask 022
+d="$4"
+f="$d/classic.log"
+if [ -L "$d" ]; then echo "refused: $d is a symbolic link"; exit 1; fi
+/bin/mkdir -p "$d" || { echo "refused: cannot create $d"; exit 1; }
+if [ "$(/usr/bin/stat -f '%u:%HT' "$d")" != "$5:Directory" ]; then echo "refused: …"; exit 1; fi
+/bin/chmod 0755 "$d" || { …; exit 1; }
+if [ -e "$f" ] || [ -L "$f" ]; then
+  if [ "$(/usr/bin/stat -f '%u:%HT' "$f")" != "$5:Regular File" ]; then echo "refused: …"; exit 1; fi
+  if [ "$(/usr/bin/stat -f %z "$f")" -gt "$6" ]; then /bin/mv -f "$f" "$f.old" || { …; exit 1; }; fi
+fi
+: >>"$f" || { …; exit 1; }
+/bin/chmod 0644 "$f" || { …; exit 1; }
+cd "$1" || { echo "refused: cannot enter $1"; exit 1; }
 echo $$
-cd "$1" || exit 1
-"$2" run -c "$3" >>"$4" 2>&1 &
+"$2" run -c "$3" >>"$f" 2>&1 &
 echo $!
-exec >>"$4" 2>&1
+exec >>"$f" 2>&1
 wait
 ```
 
-- Первые две строки stdout — PID шелла и PID ядра, их читает
+- **Лог (137.1).** Каталог `/Library/Logs/sing-box-lxd` (`root:wheel 0755`,
+  родитель `/Library/Logs` — `root:wheel 0755`), файл `classic.log`
+  (`root 0644`), прошлый — `classic.log.old`. Не
+  `/Library/Application Support/sing-box-lxd`: тот `0700`, и лаунчер без
+  root его не прочитает. Ни каталог, ни файл тело не трогает, если на их
+  месте симлинк, другой тип или другой владелец (`/usr/bin/stat` без `-L`
+  смотрит на саму запись); ротация — `rename` внутри root-каталога.
+- **Отказ.** До первого PID тело печатает `refused: <причина>` и выходит;
+  `RunWithPrivileges` возвращает эту строку ошибкой (первая строка stdout
+  вместо PID), ядро не стартует, пользователь видит причину в «Failed to
+  start sing-box».
+- Первые две строки stdout при успехе — PID шелла и PID ядра, их читает
   `RunWithPrivileges` (как у прежнего скрипта); затем stdout шелла уходит в
   лог, шелл ждёт ядро, и его выход — выход ядра (`WaitForPrivilegedExit` →
   `onPrivilegedScriptExited`). `env` заменяет себя шеллом через `exec`, PID
@@ -88,13 +120,30 @@ wait
   аргумент после тела становится `$0`, и имя держит совпадение с
   `platform.PrivilegedPkillPattern` — `pgrep`/`pkill` находят обёртку, как
   находили прежний скрипт.
-- `cd … || exit 1`: без каталога данных ядро не стартует в чужом cwd.
 - `ps` показывает `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/sing-box run -c config.json` от root.
 - pid-файл `<Data>/bin/singbox.pid` пишет и удаляет лаунчер от имени
   пользователя; `rm` под root больше нет. PID ≤ 0 в `kill` не передаются
   (`kill 0` — группа процессов).
 - Прежний `<Data>/bin/start-singbox-privileged.sh` при старте удаляется
   (best-effort) — его больше ничто не исполняет.
+- **Кто читает лог.** `AppController.CoreLogPath()`: после старта с TUN —
+  root-owned лог, после обычного старта — `<Logs>/sing-box.log`, до первого
+  старта в сессии — по конфигу (TUN → root-owned). По нему идут Core-вкладка
+  окна логов (`ui/log_viewer_window.go`) и тейлер профайлера трафика
+  (`ui/traffic_bootstrap.go` → `TrafficProfiler.StartFollowing`, путь
+  пересчитывается на каждом тике). `<Logs>/sing-box.log` classic без TUN
+  по-прежнему пишет сам лаунчер от имени пользователя.
+
+### 3.2 Снятие TUN без root (137.1)
+
+Галка TUN снята в визарде при остановленном ядре → кэш
+(`experimental.cache_file.path` под `bin/`) и `<Logs>/sing-box.log[.old]`,
+которые ядро под root могло оставить root-owned, лаунчер удаляет **своим
+uid**: право удаления даёт каталог (`bin/`, `logs/` — пользователя), а не
+владелец файла. Перед удалением (`removeTunLeftover`): путь внутри
+`bin/`/`logs/` лексически и после `EvalSymlinks` родителя, сам путь не
+симлинк. Интерфейс и маршруты ядро снимает само при выходе — AEWP здесь не
+вызывается вовсе.
 
 ## 4. Гейт перед стартом с привилегиями
 
@@ -148,7 +197,7 @@ SPEC 136), **Retry** (закрывает диалог и повторяет Star
 | | Вариант | Цена |
 |---|---|---|
 | **А (текущий выбор, рекомендация — ждёт слова владельца)** | авторизация на сессию лаунчера, как было | root исполняет только root-owned копию после сверки sha и системные утилиты с фиксированными аргументами — подменять нечего; пароль — один раз за сессию |
-| Б | авторизация на одно действие | пароль на каждый старт, каждую остановку, каждый рестарт при применении конфига и каждое снятие TUN; авто-рестарт после падения тоже спросит пароль |
+| Б | авторизация на одно действие | пароль на каждый старт, каждую остановку, каждый рестарт при применении конфига и каждый Kill; авто-рестарт после падения тоже спросит пароль (снятие TUN root не требует, §3.2) |
 
 Переключение — одна константа `privilegedAuthReuse` в
 `internal/platform/privileged_darwin.go` (`true` — А, `false` — Б: ссылка
@@ -170,32 +219,46 @@ SPEC 136), **Retry** (закрывает диалог и повторяет Star
 
 Решения владельца — отдельными задачами:
 
-1. **Лог ядра под root.** Root-шелл открывает `>>"<Logs>/sing-box.log"` —
-   путь в каталоге пользователя; подменённый на симлинк, он заставит root
-   дописать вывод ядра в чужой файл (часть вывода управляется конфигом).
-   Так было и до задачи. Варианты: вывод ядра через канал AEWP в лаунчер
-   (лаунчер пишет лог от своего имени; ядро завершится по SIGPIPE вместе с
-   лаунчером — смена поведения), либо приёмник вывода от имени пользователя.
+1. ~~Лог ядра под root по пути пользователя~~ — **закрыто в 137.1** (§3.1):
+   лог в root-owned `/Library/Logs/sing-box-lxd/`.
 2. **Конфиг пользователя под root.** Ядро от root читает `config.json` и
-   пишет по путям из него (`experimental.cache_file.path`, `log.output`) —
-   как и служба демона; свойство модели «root запускает пользовательский
-   конфиг».
-3. **`rm -rf` под root при снятии TUN.** Подстановки команд больше нет, но
-   `rm` следует симлинкам в каталогах-звеньях DataDir. Файлы в `bin/` и
-   `logs/` пользователь может удалить сам (право на удаление даёт каталог), —
-   кандидат на отказ от root в этом месте.
+   пишет по путям из него (`experimental.cache_file.path` — по умолчанию
+   `bin/cache.db`, `log.output`) — как и служба демона; свойство модели
+   «root запускает пользовательский конфиг». Кэш остаётся root-owned в
+   `bin/` и удаляется при снятии TUN без root (§3.2).
+3. ~~`rm -rf` под root при снятии TUN~~ — **закрыто в 137.1** (§3.2): root
+   там не нужен.
 4. **Команда copy/install исполняет под sudo ядро лаунчера** —
    пользовательский файл, как в SPEC 136 §5: пароль пользователь вводит в
    своём терминале, диалог показывает оба sha.
-5. **Windows** — лаунчер с `requireAdministrator` (`app.manifest`) запускает
-   ядро из `%LOCALAPPDATA%\singbox-launcher\bin`, куда пишет процесс обычной
-   целостности: тот же класс (повышение до высокой целостности). **Linux** —
+5. **Windows — следующей задачей.** Лаунчер с `requireAdministrator`
+   (`app.manifest`) запускает ядро из `%LOCALAPPDATA%\singbox-launcher\bin`,
+   куда пишет процесс обычной целостности: тот же класс (повышение до
+   высокой целостности); там же — PowerShell-диалоги файлов (§13). **Linux** —
    `setcap` привязан к файлу, и запись в файл снимает capability: дыры нет.
    Не трогаются (норма 5).
 6. **Бамп `constants.RequiredCoreVersion` до lx.11** — вместе с SPEC 136, при
    релизе. До него ядро без `--service=copy` команду из диалога не выполнит,
    и старт с TUN невозможен, пока копии нет: релиз лаунчера с этой задачей
    без ядра lx.11 не выпускается.
+7. **Лог под root читают все локальные пользователи.** `classic.log` —
+   `0644` в `/Library/Logs` (нужно, чтобы лаунчер читал его без root);
+   прежний `~/Library/Logs/…/sing-box.log` другим учётным записям закрыт
+   (`~/Library` — `0700`). На уровне по умолчанию (`warn`) в логе нет
+   адресов соединений; на `info`/`debug`/`trace` — домены и адреса, то есть
+   история посещений видна другим локальным пользователям Mac. Альтернатива —
+   владелец файла пользователь лаунчера и `0600` (каталог root-owned, файл
+   не подменить) — решение владельца.
+8. **Что попадает в лог.** Уровень `log.level` по умолчанию — `warn`
+   (`bin/wizard_template.json`, переменная `log_level`; то же значение
+   отдаёт `GET /state/log-level`). `debug`/`trace` включаются только явно:
+   переменная `log_level` в визарде, переключатель verbose профайлера
+   трафика (с подтверждением `ConfirmAndApplyLogLevel`) или
+   `PATCH /state/log-level` Debug API. Тело направляет в лог и stderr ядра
+   (`2>&1`): паника Go, `FATAL` старта с фрагментами ошибок разбора
+   конфига попадут в файл как есть — **известный риск, не исправляется**.
+9. **Остатки под root вне данных.** `/Library/Logs/sing-box-lxd/` «Remove
+   all data…» не удаляет (нужен root): `sudo rm -rf /Library/Logs/sing-box-lxd`.
 
 ## 9. Ручная проверка (Mac владельца, ядро lx.11, classic-движок, конфиг с TUN)
 
@@ -223,6 +286,15 @@ SPEC 136), **Retry** (закрывает диалог и повторяет Star
    - Stop / Start / применение конфига из визарда (рестарт ядра) — без
      нового пароля (вариант А); Stop гасит оба процесса,
      `<Data>/bin/singbox.pid` удалён.
+   - **Лог (137.1).** `ls -ld /Library/Logs/sing-box-lxd` — `root wheel
+     drwxr-xr-x`; `ls -l /Library/Logs/sing-box-lxd/classic.log` — `root
+     -rw-r--r--`, растёт при работе; `<Logs>/sing-box.log` при старте с TUN
+     не меняется (`ls -l` до и после). Окно логов → Core — строки из
+     `classic.log`; профайлер трафика видит DNS-события.
+   - **Отказ по логу.** `sudo rm -rf /Library/Logs/sing-box-lxd && sudo ln -s /tmp /Library/Logs/sing-box-lxd`
+     → Start → «Failed to start sing-box: … refused: /Library/Logs/sing-box-lxd
+     is a symbolic link»; ядро не запущено, в `/tmp` ничего не создано.
+     Вернуть: `sudo rm /Library/Logs/sing-box-lxd`.
 4. **Отрицательный.** Подменить ядро в DataDir другой сборкой (тот же путь)
    → Start → диалог «outdated» с двумя разными sha, в логе WARN с полными sha;
    AEWP не вызывается. Команда из диалога → Retry → старт.
@@ -234,8 +306,9 @@ SPEC 136), **Retry** (закрывает диалог и повторяет Star
    командой `--service=install` и строкой о службе.
 7. **Kill** в диалоге «Sing-Box already running» и в Diagnostics → процесс
    ядра гаснет (pkill по абсолютному пути).
-8. **Снятие TUN** в визарде при остановленном ядре → root-owned `cache.db` и
-   логи ядра удалены.
+8. **Снятие TUN** в визарде при остановленном ядре → пароль **не**
+   спрашивается; root-owned `bin/cache.db` и `<Logs>/sing-box.log[.old]`
+   прежних версий удалены (в логе лаунчера INFO «removed …»).
 
 ## 10. Что зависит от lx.11
 
@@ -261,14 +334,44 @@ SPEC 136), **Retry** (закрывает диалог и повторяет Star
 5. Копия самодостаточна: darwin-релиз линкует libcronet статически — naive
    работает из `/Library/PrivilegedHelperTools/…` без соседних файлов.
 
+6. **`--service=uninstall`** по умолчанию снимает и копию; `--keep-copy`
+   снимает plist и launchd, копию и сайдкар оставляет (COPY ONLY, exit 4).
+   Лаунчер: вкладка Uninstall службы — с `--keep-copy` (копию запускает
+   classic), подсказка «Remove all data…» — полный uninstall (SPEC 136 §5, §7).
+
 Открыто:
 
-6. `--service=uninstall` по SPEC 100 §2.4 снимает и копию (в том числе
-   «осиротевшую»): после удаления службы classic снова попросит команду copy.
-   Решение форка: снимать ли копию, у которой есть classic-потребитель.
 7. Релиз lx.11 и бамп `constants.RequiredCoreVersion` (§8 п. 6).
 
 ## 11. Связь
 
 - SPEC 136 — служба демона на той же копии; ссылка оттуда (§10).
 - SPEC 100 форка — раскладка и копирование; `--service=copy` — дополнение к нему.
+
+## 12. Проверено: где лаунчер собирает и исполняет команды (аудит 24.09.2026)
+
+Grep по всему коду лаунчера (без тестов и `tools/`): `exec.Command`, AEWP,
+`sh -c`, `osascript`, `powershell`, sudo-строки, `fmt.Sprintf` в команду —
+все платформы. Исправлялись только привилегированные вызовы macOS; остальное
+— вердикт. Строки — на коммите `5aac87f3`.
+
+| Файл:строка | Что подставляется | Откуда значение | Под кем | Вердикт |
+|---|---|---|---|---|
+| `internal/platform/privileged_darwin.go:252` (`StartPrivilegedCore` ← `core/process_service.go:335`) | argv `env -i … /bin/sh -c <тело> <bin> <копия> <конфиг> <каталог лога> 0 <порог>` | bin — DataDir; копия — константа SPEC 136 после гейта; конфиг — `basename(ConfigPath)`; остальное — константы | root (AEWP) | **исправлено** (§1 п. 1 → §3.1): был скрипт из DataDir с путями через `strconv.Quote` и окружение лаунчера |
+| `internal/platform/privileged_darwin.go:267` (`KillPrivilegedProcess` ← `core/process_service.go:589, 678`) | argv `/bin/kill -TERM <pid> [<pid>]` | PID из вывода тела старта | root | **исправлено**: было `sh -c "kill …; rm -f \"<pid-файл>\""`, `rm` по PATH лаунчера |
+| `internal/platform/privileged_darwin.go:284` (`KillPrivilegedByPattern` ← `core/process_service.go:718`, `ui/diagnostics_tab.go:52`) | argv `/usr/bin/pkill -TERM -f <шаблон>` | константа | root | **исправлено**: было `sh -c "pkill …"`, `pkill` по PATH |
+| `ui/configurator/tabs/settings_tun_darwin.go` (снятие TUN) | — | — | пользователь | **исправлено**: было `sh -c "rm -rf \"<пути>\""` под root с путём кэша из конфига (`$(…)` → команда под root); теперь `os.RemoveAll` своим uid (§3.2) |
+| `core/daemon_manager_darwin.go:549` (`daemonServiceCommand`: install / copy / uninstall / client add) | `sudo '<bin>' lxd …` — показывается, лаунчер не исполняет | `SingboxPath` или копия | пользователь в своём терминале (sudo) | безопасно: `shellQuote`; тесты `TestDaemonServiceCommandQuoting`, `TestPrivilegedCoreCopyGate` (`sh -n`, разбор аргументов) |
+| `core/daemon_manager_darwin.go:457`, `:555` | `sudo grep … '<daemon.json>'`, `sudo launchctl kickstart …` — показываются | константы | пользователь (sudo) | безопасно |
+| `core/daemon_manager_darwin.go:627` (`OpenTerminalWithCommand`) | `osascript -e 'tell application "Terminal" … do script "<команда>"'` | команды строк выше | пользователь | безопасно: `appleScriptString` экранирует `\` и `"`, round-trip в `TestDaemonServiceCommandQuoting` |
+| `ui/machine_add_window.go:105`, `ui/machine_edit_window.go:137` | `sudo sing-box lxd client add` — показывается для удалённой машины | константа | пользователь удалённой машины | безопасно |
+| `internal/platform/file_dialog_darwin.go:14, 34, 136` | `osascript -e <скрипт>` с подписью, расширениями, именем файла | locale (каталог в DataDir), константы, `backup.SuggestFileName(дата)` | пользователь | безопасно: `appleScriptStringLiteral` экранирует `\` и `"`; привилегий нет |
+| `core/process_service.go:260`, `core/rebuild.go:39`, `core/core_capabilities.go:76, 168, 254`, `core/core_version.go:45`, `core/core_chain_capability.go:81`, `core/daemon_manager_darwin.go:331` | ядро лаунчера `run -c` / `check -c` / `version` / `lxd --help` (argv) | `SingboxPath`, `ConfigPath` | пользователь | безопасно: argv, свой uid |
+| `core/process_detect_darwin.go:21`, `core/tls_roots_darwin.go:63`, `core/netiface/friendly_darwin.go:68`, `internal/platform/proclist_darwin.go:23`, `internal/platform/platform_darwin.go:26, 31, 36, 41, 80, 121`, `internal/platform/device_info_darwin.go:63`, `internal/platform/restart_other.go:27` | `pgrep`, `/usr/bin/security`, `networksetup`, `ps`, `open`, `killall`, `kill -9`, `sw_vers`, `sysctl`, перезапуск себя (argv) | константы, вывод системных утилит, пути лаунчера | пользователь | безопасно: без шелла; поиск по PATH под своим uid повышения не даёт |
+| `core/controller.go:555` (`RunHidden`) | argv | — | — | безопасно; вызовов нет — мёртвый код, кандидат на удаление |
+| `internal/platform/platform_linux.go:90` (`GetSetCapCommand` ← `core/controller.go:594`, `core/process_service.go:218`) | `sudo setcap '…' %s` — путь **без кавычек**, показывается | `SingboxPath` | пользователь в терминале (sudo) | вне рамок (Linux, лаунчер не исполняет): путь с пробелом или метасимволом даст неверную команду — `shellQuote` отдельной правкой |
+| `internal/platform/platform_linux.go:29, 34, 39, 44, 73`, `internal/platform/file_dialog_linux.go:36, 61` | `xdg-open`, `killall`, `kill`, `getcap`, `zenity`/`kdialog` (argv) | пути, URL, подписи | пользователь | безопасно: argv без шелла |
+| `internal/platform/file_dialog_windows.go:24, 49, 92` | `powershell -Command <скрипт>` с подписью, фильтром, именем файла через `psSingleQuote` | подпись — locale: `ru.json` в `%LOCALAPPDATA%\singbox-launcher\bin\locale`, скачивается и пишется процессом обычной целостности; имя — дата; расширения — константы | **администратор** (`requireAdministrator`) | **вне рамок — Windows следующим**: `psSingleQuote` удваивает только ASCII `'`, а PowerShell считает кавычками и `‘ ’ ‚ ‛` (U+2018–U+201B) — перевод с такой кавычкой из подменённого `ru.json` выходит из литерала и исполняется с правами администратора. Лечится экранированием всех четырёх или передачей значений через окружение |
+| `core/process_service.go:813` | `tasklist /FI "IMAGENAME eq sing-box.exe"` (`fmt.Sprintf`) | константа | администратор | безопасно |
+| `internal/platform/platform_windows.go:30, 35, 44, 48, 57, 61`, `internal/platform/device_info_windows.go:58`, `internal/platform/singtun_fwrules_windows.go:60`, `internal/platform/glprobe_windows.go:747`, `internal/platform/restart_windows.go:37` | `explorer`, `rundll32 url.dll,FileProtocolHandler <url>`, `taskkill`, `wmic`, `netsh … name=<правило>`, перезапуск себя (argv) | пути, URL, PID, имена правил файрвола (создать правило может только администратор) | администратор | вне рамок (Windows): шелла нет, системный PATH идёт раньше пользовательского; сам запуск ядра из `%LOCALAPPDATA%` под администратором — §8 п. 5 |
+
