@@ -4654,5 +4654,8 @@
   },
   "portable.txt ignored": {
     "value": "portable.txt не учитывается"
+  },
+  "Without administrator rights the old copy in the program folder stays, and on the next start the launcher copies the data from it into the data folder again. To remove it, run the cleanup as administrator.": {
+    "value": "Без прав администратора старая копия в папке программы остаётся, и при следующем запуске лаунчер снова скопирует из неё данные в папку данных. Чтобы удалить её, запустите очистку от имени администратора."
   }
 }

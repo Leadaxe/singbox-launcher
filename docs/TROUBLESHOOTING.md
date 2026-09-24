@@ -57,8 +57,9 @@ can write, so the marker is ignored — **Settings → Storage → Mode** shows
 copied to `%LOCALAPPDATA%\singbox-launcher` on the first start; the old copy stays in
 place. To keep data next to the program, extract the zip to a folder your account can
 write to. **Remove all data…** without rights skips the old copy in `Program Files`
-(*Requires administrator rights*); run `"<exe>" -purge-data -yes` from an
-administrator command prompt to remove it.
+(*Requires administrator rights*), and since that copy stays, the next start
+migrates it into `%LOCALAPPDATA%` again. Run the cleanup as administrator —
+`"<exe>" -purge-data -yes` from an administrator command prompt — to remove it.
 
 ## Remote machines
 

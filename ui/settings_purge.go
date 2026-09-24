@@ -16,6 +16,14 @@ import (
 	"singbox-launcher/internal/paths"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	// purgeOldCopyStaysText — источник миграции в защищённой папке программы
+	// без прав не удалить (SPEC 139 §6 п. 6), а MigrateLegacyData при
+	// следующем старте скопирует его в пустой DataDir снова.
+	purgeOldCopyStaysText = "Without administrator rights the old copy in the program folder stays, and on the next start the launcher copies the data from it into the data folder again. To remove it, run the cleanup as administrator."
+)
+
 // buildPurgeButton — кнопка «Remove all data…» раздела Storage (SPEC 135
 // §4.3). При запущенном ядре кнопка активна, но диалог очистки не
 // открывает: просит сначала остановить VPN. План считается в фоне — обход
@@ -68,6 +76,7 @@ func showPurgeDialog(ac *core.AppController, plan paths.PurgePlan, daemonHint st
 
 	list := container.NewVBox()
 	checks := make([]*widget.Check, len(plan.Items))
+	oldCopyStays := false // источник миграции в защищённой папке пропущен
 	for i, it := range plan.Items {
 		check := widget.NewCheck("", nil)
 		// Системная папка с state.json при portable по умолчанию снята:
@@ -99,6 +108,15 @@ func showPurgeDialog(ac *core.AppController, plan paths.PurgePlan, daemonHint st
 			lines.Add(needsAdminLabel())
 		}
 		list.Add(container.NewBorder(nil, nil, container.NewVBox(check), nil, lines))
+		if it.NeedsAdmin && it.Note == paths.PurgeNotePreMigrationApp {
+			oldCopyStays = true
+		}
+	}
+	if oldCopyStays {
+		warn := widget.NewLabel(locale.T(purgeOldCopyStaysText))
+		warn.Wrapping = fyne.TextWrapWord
+		warn.Importance = widget.WarningImportance
+		list.Add(warn)
 	}
 
 	var networkCheck, autostartCheck *widget.Check
