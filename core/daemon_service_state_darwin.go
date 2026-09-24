@@ -260,7 +260,10 @@ func compareDaemonServiceFiles(c *DaemonServiceCheck, corePath, launcherCore str
 
 // compareDaemonServiceProcess — третий шаг: паспорт работающего демона.
 // executable/executable_sha256 появились в lx.11; у старого ядра их нет, и
-// запасной путь — версия (пустая и "unknown" вердикта не дают).
+// запасной путь — версия (пустая и "unknown" вердикта не дают). Пустой
+// executable_sha256 — «неизвестно» и у lx.11: хэш считается в фоне после
+// старта демона, и до готовности поле пустое. ProcessStale по нему не
+// выносится — судит версия.
 func compareDaemonServiceProcess(c *DaemonServiceCheck, info lxdclient.InfoData, corePath string) {
 	c.RunningSHA256 = info.ExecutableSHA256
 	c.RunningVersion = info.Version
@@ -272,7 +275,7 @@ func compareDaemonServiceProcess(c *DaemonServiceCheck, info lxdclient.InfoData,
 		c.Detail = fmt.Sprintf("the running daemon was started from %s, the service runs %s", info.Executable, corePath)
 		return
 	}
-	if info.ExecutableSHA256 != "" {
+	if info.ExecutableSHA256 != "" { // "" — ядро до lx.11 или хэш ещё считается
 		if c.CopySHA256 != "" && !strings.EqualFold(info.ExecutableSHA256, c.CopySHA256) {
 			c.State = DaemonServiceProcessStale
 			c.Detail = fmt.Sprintf("the running daemon (sha256 %s) is not the service binary (sha256 %s)",

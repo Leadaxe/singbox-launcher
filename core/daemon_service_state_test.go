@@ -232,6 +232,11 @@ func TestDaemonServiceClassifier(t *testing.T) {
 	expect(t, process(lxdclient.InfoData{Executable: l.CorePath, ExecutableSHA256: c.CopySHA256}, ""), DaemonServiceOK)
 	expect(t, process(lxdclient.InfoData{Executable: l.CorePath, ExecutableSHA256: "00" + c.CopySHA256[2:]}, ""), DaemonServiceProcessStale)
 	expect(t, process(lxdclient.InfoData{Executable: l.launcherCore, ExecutableSHA256: c.CopySHA256}, ""), DaemonServiceProcessStale)
+	// lx.11 сразу после старта: executable есть, executable_sha256 ещё
+	// считается в фоне и пуст — «неизвестно», не ProcessStale; судит версия.
+	expect(t, process(lxdclient.InfoData{Executable: l.CorePath, Version: "1.14.1-lx.11"}, "1.14.1-lx.11"), DaemonServiceOK)
+	expect(t, process(lxdclient.InfoData{Executable: l.CorePath, Version: "unknown"}, "1.14.1-lx.11"), DaemonServiceOK)
+	expect(t, process(lxdclient.InfoData{Executable: l.CorePath, Version: "1.14.1-lx.10"}, "1.14.1-lx.11"), DaemonServiceProcessStale)
 	// Старое ядро (lx.8/lx.10): полей нет — судит версия; dev-сборка не судит.
 	expect(t, process(lxdclient.InfoData{Version: "1.14.1-lx.10"}, "1.14.1-lx.11"), DaemonServiceProcessStale)
 	expect(t, process(lxdclient.InfoData{Version: "1.14.1-lx.11"}, "1.14.1-lx.11"), DaemonServiceOK)
