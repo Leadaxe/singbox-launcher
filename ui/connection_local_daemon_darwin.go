@@ -25,6 +25,9 @@ const (
 	daemonHintText              = "Run the VPN core inside a long-lived system daemon (sing-box lxd). Config changes swap the core in-process — no password prompts, and quitting the launcher can keep the VPN up. Managed over gRPC like the Android app."
 	daemonPairHelpText          = "Paste the invite printed by the daemon and click Pair. Where to get one:\n\n- Installing the service prints an invite at the end of its Terminal output (Install section, step 1).\n- For a fresh invite run the command below (copy or open in Terminal), then paste the printed invite into the pairing field.\n\nThe code is one-time: it burns after a successful pairing. The secret field is only for daemons running without TLS."
 	daemonUnpairConfirmBodyText = "Removes the launcher's client keys and daemon address. The daemon keeps its record of this client until removed there (sing-box lxd client remove)."
+	daemonServiceUnsafeText     = "The service runs a binary your user can modify. Install or update the service to move it to a root-owned copy."
+	daemonServiceOlderCoreText  = "The service runs an older core (%s; current: %s). Install or update the service to switch it to the current core."
+	daemonServiceNoBinaryText   = "The service has no core binary to run. Install or update the service to restore it."
 )
 
 // wrappedLabel — Label с переносом: длинная подпись не должна задавать
@@ -66,21 +69,30 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 		return renderDaemonStatusText(ac, snap, true)
 	}
 
-	// Служба запускает другое ядро (SPEC 135 §5.1): после переезда данных
-	// plist держит старый путь. Предупреждение и команда переустановки — на
-	// вкладке Status, куда смотрят при проблеме; содержимое блока собирается
-	// ниже, когда есть commandRowLocal. Скрыт, пока расхождения нет.
-	coreMismatchLabel := widget.NewLabel("")
-	coreMismatchLabel.Wrapping = fyne.TextWrapWord
-	coreMismatchBox := container.NewVBox(coreMismatchLabel)
-	coreMismatchBox.Hide()
-	applyCoreMismatch := func(snap core.DaemonUIStatus) {
-		if !snap.ServiceCoreMismatch {
-			coreMismatchBox.Hide()
+	// Плашка состояния службы (SPEC 136 §6): Unsafe — красная, Stale и
+	// ProcessStale — жёлтая, под текстом команда «Install or update service».
+	// На вкладке Status, куда смотрят при проблеме; строка команды
+	// добавляется ниже, когда есть commandRowLocal. Скрыта при OK и без службы.
+	serviceIcon := widget.NewIcon(theme.WarningIcon())
+	serviceLabel := widget.NewLabel("")
+	serviceLabel.Wrapping = fyne.TextWrapWord
+	serviceBox := container.NewVBox(container.NewBorder(nil, nil, container.NewVBox(serviceIcon), nil, serviceLabel))
+	serviceBox.Hide()
+	applyServiceState := func(snap core.DaemonUIStatus) {
+		text, danger := daemonServiceNoticeText(snap.Service)
+		if text == "" {
+			serviceBox.Hide()
 			return
 		}
-		coreMismatchLabel.SetText(locale.Tf("The service runs another core binary:\n%s\nReinstall the service to switch it to the current core.", snap.ServiceCorePath))
-		coreMismatchBox.Show()
+		if danger {
+			serviceIcon.SetResource(theme.ErrorIcon())
+			serviceLabel.Importance = widget.DangerImportance
+		} else {
+			serviceIcon.SetResource(theme.WarningIcon())
+			serviceLabel.Importance = widget.WarningImportance
+		}
+		serviceLabel.SetText(text)
+		serviceBox.Show()
 	}
 	// onSnapshot — дополнительный потребитель того же снапшота (выбор
 	// стартовой вкладки). Отдельной горутины он не заводит: DaemonStatusSnapshot
@@ -92,7 +104,7 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 			snap := ac.DaemonStatusSnapshot()
 			fyne.Do(func() {
 				status.SetText(renderStatus(snap))
-				applyCoreMismatch(snap)
+				applyServiceState(snap)
 				if onSnapshot != nil {
 					onSnapshot(snap)
 				}
@@ -108,14 +120,12 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 		return CommandRow(win, labelKey, command, true)
 	}
 
-	// Та же команда установки, что на вкладке Install (второй экземпляр
-	// строки: объект Fyne не живёт в двух вкладках сразу). `--service=install`
-	// поверх существующей службы переписывает plist на текущее ядро.
-	coreMismatchBox.Add(commandRowLocal("Reinstall the service (run in Terminal, your sudo):", ac.DaemonInstallCommand)) // l10n-key
-
-	kickstartRow := commandRowLocal("Restart the service (after a core update):", func() (string, error) { // l10n-key
-		return ac.DaemonKickstartCommand(), nil
-	})
+	// Та же команда, что на вкладке Install (второй экземпляр строки: объект
+	// Fyne не живёт в двух вкладках сразу). `--service=install` поверх
+	// существующей службы обновляет root-owned копию и перезапускает службу.
+	// Отдельной строки kickstart нет: после обновления ядра перезапуск поднял
+	// бы ту же старую копию (SPEC 136 §5).
+	serviceBox.Add(commandRowLocal("Install or update the service (run in Terminal, your sudo):", ac.DaemonInstallCommand)) // l10n-key
 
 	// --- Сопряжение по приглашению ---------------------------------------
 	inviteEntry := widget.NewEntry()
@@ -264,8 +274,8 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	//    отдельной строкой ниже (lxd client add): это тот же шаг 2, только
 	//    для случая «служба уже стоит, приглашение из установки протухло».
 	installTab := container.NewVBox(
-		commandRowLocal("1. Install the service (run in Terminal, your sudo — prints a pairing invite at the end):", ac.DaemonInstallCommand), // l10n-key
-		wrappedLabel("2. Paste the invite (address#fingerprint#code) and pair:"),                                                              // l10n-key
+		commandRowLocal("1. Install or update the service (run in Terminal, your sudo; a first install prints a pairing invite at the end):", ac.DaemonInstallCommand), // l10n-key
+		wrappedLabel("2. Paste the invite (address#fingerprint#code) and pair:"),                                                                                       // l10n-key
 		container.NewBorder(nil, nil, nil, container.NewHBox(pairBtn, pairHelp), inviteEntry),
 		widget.NewSeparator(),
 		commandRowLocal("Need a fresh invite (service already installed)?", func() (string, error) { // l10n-key
@@ -275,13 +285,11 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 
 	// --- Вкладка Status: состояние + повседневные параметры ----------------
 	// Порядок продиктован тем, как читают экран при проблеме: сначала статус
-	// (что не так), сразу под ним перезапуск службы (типовое лечение после
-	// обновления ядра), и только затем параметры подключения.
+	// (что не так), сразу под ним плашка службы с командой ремонта, и только
+	// затем параметры подключения.
 	statusTab := container.NewVBox(
 		container.NewBorder(nil, nil, nil, refreshBtn, status),
-		coreMismatchBox,
-		widget.NewSeparator(),
-		kickstartRow,
+		serviceBox,
 		widget.NewSeparator(),
 		widget.NewLabelWithStyle(locale.T("Connection"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		container.NewBorder(nil, nil, widget.NewLabel(locale.T("Daemon address:")), nil, addressEntry),
@@ -333,7 +341,7 @@ func renderDaemonStatusText(ac *core.AppController, snap core.DaemonUIStatus, in
 		if snap.CoreSupportsLxd {
 			b.WriteString(locale.T("✅ Installed core supports the daemon"))
 		} else {
-			b.WriteString(locale.T("❌ Installed core has no lxd support (need sing-box-lx 1.14.0-lx.23+)"))
+			b.WriteString(locale.T("❌ Installed core has no lxd support (a sing-box-lx build with the lxd command is required)"))
 		}
 		b.WriteString("\n")
 		if snap.ServiceInstalled {
@@ -380,6 +388,52 @@ func renderDaemonStatusText(ac *core.AppController, snap core.DaemonUIStatus, in
 		b.WriteString(locale.T("— Daemon engine is not active yet: install the service and pair on the Install tab, then it switches on automatically."))
 	}
 	return b.String()
+}
+
+// daemonServiceNoticeText — текст плашки службы по вердикту классификатора
+// (SPEC 136 §6); "" — плашки нет. danger — красная (Unsafe), иначе жёлтая.
+func daemonServiceNoticeText(c core.DaemonServiceCheck) (text string, danger bool) {
+	switch c.State {
+	case core.DaemonServiceUnsafe:
+		text = locale.T(daemonServiceUnsafeText)
+		if c.ServicePath != "" {
+			text += "\n" + locale.Tf("Service binary: %s", c.ServicePath)
+		}
+		return text, true
+	case core.DaemonServiceStale:
+		if c.CopyMissing {
+			return locale.T(daemonServiceNoBinaryText), false
+		}
+		return locale.Tf(daemonServiceOlderCoreText,
+			coreBuildLabel(c.CopyVersion, c.CopySHA256), coreBuildLabel(c.LauncherVersion, c.LauncherSHA256)), false
+	case core.DaemonServiceProcessStale:
+		current := c.CopyVersion
+		if current == "" {
+			current = c.LauncherVersion
+		}
+		return locale.Tf(daemonServiceOlderCoreText,
+			coreBuildLabel(c.RunningVersion, c.RunningSHA256), coreBuildLabel(current, c.CopySHA256)), false
+	}
+	return "", false
+}
+
+// coreBuildLabel — «версия · sha256[:12]» для плашки; пустые части
+// опускаются, обе пустые — «?».
+func coreBuildLabel(version, sha string) string {
+	var parts []string
+	if version != "" {
+		parts = append(parts, version)
+	}
+	if len(sha) > 12 {
+		sha = sha[:12]
+	}
+	if sha != "" {
+		parts = append(parts, sha)
+	}
+	if len(parts) == 0 {
+		return "?"
+	}
+	return strings.Join(parts, " · ")
 }
 
 // showCommandHelpDialog — единый вид справок «текст + готовая команда»:

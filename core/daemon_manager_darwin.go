@@ -16,6 +16,7 @@ import (
 	"github.com/muhammadmuzzammil1998/jsonc"
 
 	"singbox-launcher/core/services"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
@@ -156,15 +157,10 @@ type DaemonUIStatus struct {
 	// демон недостижим или собран до появления info-эндпоинта.
 	DaemonVersion string
 	StateDir      string
-	// ServiceCorePath — ProgramArguments[0] из plist установленной службы:
-	// бинарь ядра, который запускает launchd. Пусто, если службы нет или
-	// plist не разобрался.
-	ServiceCorePath string
-	// ServiceCoreMismatch — служба запускает не то ядро, что лаунчер
-	// (SingboxPath). Типичный случай — переезд данных SPEC 135: служба
-	// осталась на бандловом бинаре, обновление ядра до неё не доходит.
-	// Лечится повторной установкой службы.
-	ServiceCoreMismatch bool
+	// Service — вердикт классификатора службы (SPEC 136 §4): что запускает
+	// launchd, root-owned ли это копия, то ли в ней ядро, что у лаунчера, и
+	// из того ли образа работает демон. Заменил сверку путей SPEC 135 §5.1.
+	Service DaemonServiceCheck
 }
 
 // DaemonStatusSnapshot собирает состояние службы/сопряжения/демона.
@@ -179,10 +175,8 @@ func (ac *AppController) DaemonStatusSnapshot() DaemonUIStatus {
 	if status.Address == "" {
 		status.Address = daemonDefaultListen
 	}
-	if _, err := os.Stat(daemonSystemPlistPath()); err == nil {
-		status.ServiceInstalled = true
-		ac.fillServiceCorePath(&status)
-	}
+	status.Service = ac.daemonServiceCheck(nil, "")
+	status.ServiceInstalled = status.Service.State != DaemonServiceNotInstalled
 	status.Paired = st.DaemonServerFingerprint != "" && lxdclient.HasIdentity(DaemonIdentityDir(ac.FileService.Layout.Data))
 	if !status.Paired && st.DaemonAddress == "" {
 		return status
@@ -206,39 +200,62 @@ func (ac *AppController) DaemonStatusSnapshot() DaemonUIStatus {
 	if passport, infoErr := client.Info(); infoErr == nil {
 		status.DaemonVersion = passport.Version
 		status.StateDir = passport.StateDir
+		addDaemonProcessVerdict(&status.Service, passport, cfg.Addr)
+	}
+	if status.Service.NeedsInstall() {
+		debuglog.DebugLog("DaemonStatusSnapshot: daemon service %s: %s", status.Service.State, status.Service.Detail)
 	}
 	return status
 }
 
-// fillServiceCorePath сверяет ядро, которое запускает launchd-служба, с ядром
-// лаунчера (SPEC 135 §5.1). `--service=install` фиксирует путь к бинарю в
-// plist; после переезда данных SingboxPath уезжает в DataDir, а служба
-// продолжает запускать старый бинарь. plist — 0644, читается без root.
-func (ac *AppController) fillServiceCorePath(status *DaemonUIStatus) {
-	plistPath := daemonSystemPlistPath()
-	corePath, err := readPlistProgramPath(plistPath)
-	if err != nil {
-		debuglog.DebugLog("DaemonStatusSnapshot: service core path from %s: %v", plistPath, err)
-		return
+// daemonServiceCheck — полный вердикт службы: файлы (daemonServiceFileCheck)
+// и, если передан паспорт работающего демона, процесс. Версия ядра
+// лаунчера — для показа и запасного вердикта ProcessStale.
+func (ac *AppController) daemonServiceCheck(passport *lxdclient.InfoData, addr string) DaemonServiceCheck {
+	check := ac.daemonServiceFileCheck()
+	if check.CopyUsable() {
+		if v, err := ac.GetInstalledCoreVersion(); err == nil {
+			check.LauncherVersion = v
+		}
 	}
-	status.ServiceCorePath = corePath
-	launcherCore := ac.FileService.SingboxPath
-	if corePath == "" || launcherCore == "" || sameFilePath(corePath, launcherCore) {
-		return
+	if passport != nil {
+		addDaemonProcessVerdict(&check, *passport, addr)
 	}
-	status.ServiceCoreMismatch = true
-	debuglog.WarnLog("daemon: service runs %s, launcher core is %s — reinstall the service", corePath, launcherCore)
+	return check
 }
 
-// sameFilePath — два пути указывают на один файл: сначала лексически, затем
-// с раскрытием симлинков (ядро в DataDir бывает ссылкой на dev-сборку).
-func sameFilePath(a, b string) bool {
-	if filepath.Clean(a) == filepath.Clean(b) {
-		return true
+// addDaemonProcessVerdict — сверка с паспортом только для демона на этой
+// машине: паспорт чужого адреса о локальной службе ничего не говорит.
+func addDaemonProcessVerdict(check *DaemonServiceCheck, passport lxdclient.InfoData, addr string) {
+	if !lxdclient.IsLoopbackAddr(addr) {
+		return
 	}
-	ra, errA := filepath.EvalSymlinks(a)
-	rb, errB := filepath.EvalSymlinks(b)
-	return errA == nil && errB == nil && ra == rb
+	compareDaemonServiceProcess(check, passport, daemonServiceCorePath())
+}
+
+// DaemonUnsafeServiceNotice — условие модального предупреждения SPEC 136 §6:
+// служба Unsafe и на этой версии лаунчера предупреждения ещё не было.
+// Дёшево (plist и Lstat цепочки, без хэшей и сети) — зовётся на старте.
+// servicePath — что запускает служба (или причина, если plist не
+// разобрался); command — «Install or update service».
+func (ac *AppController) DaemonUnsafeServiceNotice() (servicePath, command string, due bool) {
+	check := inspectDaemonServiceDefinition(systemDaemonServiceLayout())
+	if check.State != DaemonServiceUnsafe {
+		return "", "", false
+	}
+	debuglog.WarnLog("daemon service is unsafe: %s — run the Install or update service command", check.Detail)
+	if locale.LoadSettings(ac.FileService.Layout.Data.Bin()).DaemonUnsafeNoticeVersion == constants.AppVersion {
+		return "", "", false
+	}
+	command, err := ac.DaemonInstallCommand()
+	if err != nil {
+		return "", "", false
+	}
+	servicePath = check.ServicePath
+	if servicePath == "" {
+		servicePath = check.Detail
+	}
+	return servicePath, command, true
 }
 
 // readPlistProgramPath достаёт ProgramArguments[0] из XML-plist launchd:

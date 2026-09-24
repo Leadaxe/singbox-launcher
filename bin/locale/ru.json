@@ -2473,8 +2473,8 @@
   "✅ Installed core supports the daemon": {
     "value": "✅ Установленное ядро поддерживает демон"
   },
-  "❌ Installed core has no lxd support (need sing-box-lx 1.14.0-lx.23+)": {
-    "value": "❌ Ядро без поддержки lxd (нужен sing-box-lx 1.14.0-lx.23+)"
+  "❌ Installed core has no lxd support (a sing-box-lx build with the lxd command is required)": {
+    "value": "❌ Ядро без поддержки lxd (нужна сборка sing-box-lx с командой lxd)"
   },
   "✅ System service installed": {
     "value": "✅ Системная служба установлена"
@@ -2590,9 +2590,6 @@
   "— Daemon engine is not active yet: install the service and pair on the Install tab, then it switches on automatically.": {
     "value": "— Daemon-движок ещё не активен: установите службу и сопрягитесь на вкладке «Установка» — он включится автоматически."
   },
-  "Restart the service (after a core update):": {
-    "value": "Перезапустить службу (после обновления ядра):"
-  },
   "Copy the command": {
     "value": "Скопировать команду"
   },
@@ -2620,8 +2617,8 @@
   "Install": {
     "value": "Установка"
   },
-  "1. Install the service (run in Terminal, your sudo — prints a pairing invite at the end):": {
-    "value": "1. Установить службу (в терминале, ваш sudo — в конце печатает приглашение):"
+  "1. Install or update the service (run in Terminal, your sudo; a first install prints a pairing invite at the end):": {
+    "value": "1. Установить или обновить службу (в терминале, ваш sudo; первая установка в конце печатает приглашение):"
   },
   "2. Paste the invite (address#fingerprint#code) and pair:": {
     "value": "2. Вставьте приглашение (адрес#отпечаток#код) и сопрягитесь:"
@@ -4454,8 +4451,8 @@
   "Program": {
     "value": "Программа"
   },
-  "Reinstall the service (run in Terminal, your sudo):": {
-    "value": "Переустановите службу (выполнить в Terminal, ваш sudo):"
+  "Install or update the service (run in Terminal, your sudo):": {
+    "value": "Установить или обновить службу (выполнить в терминале, ваш sudo):"
   },
   "Remove all data…": {
     "value": "Удалить все данные…"
@@ -4496,8 +4493,23 @@
   "The program folder is read-only": {
     "value": "Папка программы доступна только для чтения"
   },
-  "The service runs another core binary:\n%s\nReinstall the service to switch it to the current core.": {
-    "value": "Служба запускает другой бинарь ядра:\n%s\nПереустановите службу, чтобы перевести её на текущее ядро."
+  "The service runs a binary your user can modify. Install or update the service to move it to a root-owned copy.": {
+    "value": "Служба запускает бинарь, который может изменить ваш пользователь. Установите или обновите службу, чтобы перевести её на копию, принадлежащую root."
+  },
+  "Service binary: %s": {
+    "value": "Бинарь службы: %s"
+  },
+  "The service runs an older core (%s; current: %s). Install or update the service to switch it to the current core.": {
+    "value": "Служба запускает устаревшее ядро (%s; текущее: %s). Установите или обновите службу, чтобы перевести её на текущее ядро."
+  },
+  "The service has no core binary to run. Install or update the service to restore it.": {
+    "value": "У службы нет бинаря ядра для запуска. Установите или обновите службу, чтобы восстановить его."
+  },
+  "The daemon service is not protected": {
+    "value": "Служба демона не защищена"
+  },
+  "The daemon service runs as root from a file your user account can modify:\n%s\n\nAny program running as you could replace it and gain root access. Run this command in Terminal to move the service to a root-owned copy of the core (it asks for your sudo password). The VPN keeps working meanwhile; the LOCAL tab of the connection settings shows this until it is fixed.": {
+    "value": "Служба демона запускается от root из файла, который может изменить ваша учётная запись:\n%s\n\nЛюбая программа, работающая от вашего имени, может подменить его и получить права root. Выполните эту команду в терминале, чтобы перевести службу на копию ядра, принадлежащую root (спросит ваш sudo-пароль). VPN тем временем продолжает работать; вкладка LOCAL в настройках подключения показывает это предупреждение, пока проблема не устранена."
   },
   "Unused data": {
     "value": "Неиспользуемые данные"
