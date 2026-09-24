@@ -27,7 +27,7 @@ import (
 // форка, линия v1.14.2): `--service=install|copy`, --invite-out, набор с
 // libcronet.dll. Пре-релиз порогового релиза (rc.1) гейт проходит: разбор
 // сравнивает базу и lx.N, пре-релиз ядра лаунчера не понижает.
-const minCoreForRootOwnedService = "1.14.2-lx.2-rc.1"
+const minCoreForRootOwnedService = "1.14.2-lx.2-rc.3"
 
 // daemonServiceCorePath — главный файл набора защищённой копии.
 func daemonServiceCorePath() string {
