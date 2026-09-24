@@ -67,7 +67,7 @@ Linux и Windows этой задачей не затрагиваются (§8).
 
 | Действие | Вызов AEWP |
 |---|---|
-| Старт TUN | `/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/sh -c '<тело>' start-singbox-privileged <Data>/bin <копия> config.json /Library/Logs/sing-box-lxd 0 2097152` |
+| Старт TUN | `/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/sh -c '<тело>' start-singbox-privileged <Data>/bin <копия> config.json /Library/Logs/sing-box-lxd 0 <uid лаунчера> 2097152` |
 | Stop / рестарт | `/bin/kill -TERM <PID шелла> [<PID ядра>]` |
 | «Sing-Box already running» → Kill, Diagnostics → Kill | `/usr/bin/pkill -TERM -f 'sing-box run\|start-singbox-privileged'` |
 | Снятие галки TUN | — (без root, §3.2) |
@@ -75,23 +75,31 @@ Linux и Windows этой задачей не затрагиваются (§8).
 ### 3.1 Тело старта (`platform.privilegedStartBody`)
 
 Аргументы: `$1` каталог bin, `$2` копия ядра, `$3` имя конфига, `$4` каталог
-лога, `$5` владелец каталога и файла лога (uid, в проде `0`), `$6` порог
-ротации (байт, как у лога в каталоге пользователя — 2 МиБ).
+лога, `$5` владелец каталога лога (uid, в проде `0`), `$6` uid пользователя
+лаунчера (`os.Getuid()`) — владелец файла лога, `$7` порог ротации (байт, как у
+лога в каталоге пользователя — 2 МиБ).
 
 ```sh
 umask 022
 d="$4"
 f="$d/classic.log"
+u="$6"
+case "$u" in ''|*[!0-9]*) echo "refused: invalid uid '$u'"; exit 1;; esac
+if [ "$u" -lt 501 ]; then echo "refused: uid $u is not a regular user"; exit 1; fi
+g="$(/usr/bin/id -g "$u" 2>/dev/null)" || { echo "refused: no user with uid $u"; exit 1; }
+case "$g" in ''|*[!0-9]*) echo "refused: no group for uid $u"; exit 1;; esac
 if [ -L "$d" ]; then echo "refused: $d is a symbolic link"; exit 1; fi
 /bin/mkdir -p "$d" || { echo "refused: cannot create $d"; exit 1; }
 if [ "$(/usr/bin/stat -f '%u:%HT' "$d")" != "$5:Directory" ]; then echo "refused: …"; exit 1; fi
 /bin/chmod 0755 "$d" || { …; exit 1; }
 if [ -e "$f" ] || [ -L "$f" ]; then
-  if [ "$(/usr/bin/stat -f '%u:%HT' "$f")" != "$5:Regular File" ]; then echo "refused: …"; exit 1; fi
-  if [ "$(/usr/bin/stat -f %z "$f")" -gt "$6" ]; then /bin/mv -f "$f" "$f.old" || { …; exit 1; }; fi
+  o="$(/usr/bin/stat -f '%u:%HT' "$f")"
+  if [ "$o" != "$u:Regular File" ] && [ "$o" != "0:Regular File" ]; then echo "refused: …"; exit 1; fi
+  /bin/chmod 0600 "$f" && /usr/sbin/chown "$u:$g" "$f" || { …; exit 1; }
+  if [ "$(/usr/bin/stat -f %z "$f")" -gt "$7" ]; then /bin/mv -f "$f" "$f.old" || { …; exit 1; }; fi
 fi
 : >>"$f" || { …; exit 1; }
-/bin/chmod 0644 "$f" || { …; exit 1; }
+/bin/chmod 0600 "$f" && /usr/sbin/chown "$u:$g" "$f" || { …; exit 1; }
 cd "$1" || { echo "refused: cannot enter $1"; exit 1; }
 echo $$
 "$2" run -c "$3" >>"$f" 2>&1 &
@@ -101,12 +109,22 @@ wait
 ```
 
 - **Лог (137.1).** Каталог `/Library/Logs/sing-box-lxd` (`root:wheel 0755`,
-  родитель `/Library/Logs` — `root:wheel 0755`), файл `classic.log`
-  (`root 0644`), прошлый — `classic.log.old`. Не
-  `/Library/Application Support/sing-box-lxd`: тот `0700`, и лаунчер без
-  root его не прочитает. Ни каталог, ни файл тело не трогает, если на их
-  месте симлинк, другой тип или другой владелец (`/usr/bin/stat` без `-L`
-  смотрит на саму запись); ротация — `rename` внутри root-каталога.
+  родитель `/Library/Logs` — `root:wheel 0755`); файл `classic.log` —
+  **пользователя лаунчера, `0600`** (решение координатора 24.09.2026),
+  прошлый — `classic.log.old` с тем же владельцем и правами. Другие
+  локальные учётные записи лог не читают, а подменить файл (переименовать,
+  заменить симлинком) пользователь не может — каталог root-owned. Не
+  `/Library/Application Support/sing-box-lxd`: тот `0700`, и лаунчер без root
+  его не прочитает.
+- **uid владельца** приходит аргументом из лаунчера (`os.Getuid()`) и
+  проверяется телом: только цифры, не меньше 501, учётная запись существует
+  (`/usr/bin/id -g` по абсолютному пути даёт и группу для `chown`). Проверка
+  идёт до любых действий с каталогом.
+- Ни каталог, ни файл тело не трогает, если на их месте симлинк, другой тип
+  или другой владелец (`/usr/bin/stat` без `-L` смотрит на саму запись):
+  файл допускается только этого пользователя или root (лог сборок 137.1 до
+  этого решения был `root 0644` — его тело забирает пользователю); ротация —
+  `rename` внутри root-каталога, `.old` уже принадлежит пользователю.
 - **Отказ.** До первого PID тело печатает `refused: <причина>` и выходит;
   `RunWithPrivileges` возвращает эту строку ошибкой (первая строка stdout
   вместо PID), ядро не стартует, пользователь видит причину в «Failed to
@@ -241,14 +259,9 @@ SPEC 136), **Retry** (закрывает диалог и повторяет Star
    релизе. До него ядро без `--service=copy` команду из диалога не выполнит,
    и старт с TUN невозможен, пока копии нет: релиз лаунчера с этой задачей
    без ядра lx.11 не выпускается.
-7. **Лог под root читают все локальные пользователи.** `classic.log` —
-   `0644` в `/Library/Logs` (нужно, чтобы лаунчер читал его без root);
-   прежний `~/Library/Logs/…/sing-box.log` другим учётным записям закрыт
-   (`~/Library` — `0700`). На уровне по умолчанию (`warn`) в логе нет
-   адресов соединений; на `info`/`debug`/`trace` — домены и адреса, то есть
-   история посещений видна другим локальным пользователям Mac. Альтернатива —
-   владелец файла пользователь лаунчера и `0600` (каталог root-owned, файл
-   не подменить) — решение владельца.
+7. ~~Лог читают все локальные пользователи~~ — **решено**: `classic.log`
+   принадлежит пользователю лаунчера, `0600` (§3.1); как и прежний
+   `~/Library/Logs/…/sing-box.log`, другим учётным записям он закрыт.
 8. **Что попадает в лог.** Уровень `log.level` по умолчанию — `warn`
    (`bin/wizard_template.json`, переменная `log_level`; то же значение
    отдаёт `GET /state/log-level`). `debug`/`trace` включаются только явно:
@@ -256,7 +269,8 @@ SPEC 136), **Retry** (закрывает диалог и повторяет Star
    трафика (с подтверждением `ConfirmAndApplyLogLevel`) или
    `PATCH /state/log-level` Debug API. Тело направляет в лог и stderr ядра
    (`2>&1`): паника Go, `FATAL` старта с фрагментами ошибок разбора
-   конфига попадут в файл как есть — **известный риск, не исправляется**.
+   конфига попадут в файл как есть. **Риск приемлем:** лог `0600` у того же
+   пользователя, которому принадлежит и сам конфиг.
 9. **Остатки под root вне данных.** `/Library/Logs/sing-box-lxd/` «Remove
    all data…» не удаляет (нужен root): `sudo rm -rf /Library/Logs/sing-box-lxd`.
 
@@ -287,8 +301,9 @@ SPEC 136), **Retry** (закрывает диалог и повторяет Star
      нового пароля (вариант А); Stop гасит оба процесса,
      `<Data>/bin/singbox.pid` удалён.
    - **Лог (137.1).** `ls -ld /Library/Logs/sing-box-lxd` — `root wheel
-     drwxr-xr-x`; `ls -l /Library/Logs/sing-box-lxd/classic.log` — `root
-     -rw-r--r--`, растёт при работе; `<Logs>/sing-box.log` при старте с TUN
+     drwxr-xr-x`; `ls -l /Library/Logs/sing-box-lxd/classic.log` — `<вы>
+     staff -rw-------`, растёт при работе; из другой учётной записи
+     `cat` → `Permission denied`; `<Logs>/sing-box.log` при старте с TUN
      не меняется (`ls -l` до и после). Окно логов → Core — строки из
      `classic.log`; профайлер трафика видит DNS-события.
    - **Отказ по логу.** `sudo rm -rf /Library/Logs/sing-box-lxd && sudo ln -s /tmp /Library/Logs/sing-box-lxd`

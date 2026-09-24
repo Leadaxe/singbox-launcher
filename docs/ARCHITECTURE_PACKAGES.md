@@ -31,7 +31,7 @@ path getters. Platform-tagged files (`*_darwin.go`/`*_linux.go`/`*_windows.go`/
 | `wintun_cleanup_windows_syscall.go` | Lazy DLL bindings + GUID constants shared by the cleanup files. |
 | `fs_unix.go` / `fs_windows.go` | Atomic-write / fsync filesystem helpers per OS. |
 | `dock_handler.go` / `dock_handler_stub.go` | macOS Dock hide; stub elsewhere. |
-| `privileged_darwin.go` / `privileged_stub.go` | macOS privileged execution via AEWP (SPEC 137): the TUN start of the root-owned core copy through `env -i` + a constant `sh` body, the root-owned core log `/Library/Logs/sing-box-lxd/classic.log` prepared and rotated by the same body (137.1), kill / pkill by absolute path without a shell, the authorization-lifetime flag `privilegedAuthReuse`; stub elsewhere. |
+| `privileged_darwin.go` / `privileged_stub.go` | macOS privileged execution via AEWP (SPEC 137): the TUN start of the root-owned core copy through `env -i` + a constant `sh` body, the core log `/Library/Logs/sing-box-lxd/classic.log` (root-owned folder, file owned by the launcher user `0600`) prepared and rotated by the same body (137.1), kill / pkill by absolute path without a shell, the authorization-lifetime flag `privilegedAuthReuse`; stub elsewhere. |
 | `singbox_exec_path.go` | Resolve the sing-box executable path: `SINGBOX_LAUNCHER_CORE` → `DataDir/bin` → `AppDir/bin` → `PATH` (SPEC 135 §3.3; unified across platforms, `PATH` last everywhere — previously Linux-only and first). |
 
 ### `internal/paths` (SPEC 135)

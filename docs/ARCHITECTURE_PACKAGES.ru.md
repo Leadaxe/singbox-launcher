@@ -32,7 +32,7 @@
 | `wintun_cleanup_windows_syscall.go` | Ленивые привязки DLL и константы GUID, общие для файлов чистки. |
 | `fs_unix.go` / `fs_windows.go` | Хелперы атомарной записи и fsync по ОС. |
 | `dock_handler.go` / `dock_handler_stub.go` | Скрытие иконки в Dock на macOS; на остальных — заглушка. |
-| `privileged_darwin.go` / `privileged_stub.go` | Привилегированное исполнение на macOS через AEWP (SPEC 137): старт TUN с root-owned копии ядра через `env -i` и постоянное тело `sh`, root-owned лог ядра `/Library/Logs/sing-box-lxd/classic.log`, который готовит и ротирует то же тело (137.1), kill / pkill по абсолютным путям без шелла, флаг времени жизни авторизации `privilegedAuthReuse`; на остальных — заглушка. |
+| `privileged_darwin.go` / `privileged_stub.go` | Привилегированное исполнение на macOS через AEWP (SPEC 137): старт TUN с root-owned копии ядра через `env -i` и постоянное тело `sh`, лог ядра `/Library/Logs/sing-box-lxd/classic.log` (каталог root, файл пользователя лаунчера `0600`), который готовит и ротирует то же тело (137.1), kill / pkill по абсолютным путям без шелла, флаг времени жизни авторизации `privilegedAuthReuse`; на остальных — заглушка. |
 | `singbox_exec_path.go` | Разрешение пути к исполняемому файлу sing-box: `SINGBOX_LAUNCHER_CORE` → `DataDir/bin` → `AppDir/bin` → `PATH` (SPEC 135 §3.3; порядок единый для всех платформ, `PATH` теперь последний везде — раньше был первым и только на Linux). |
 
 ### `internal/paths` (SPEC 135)

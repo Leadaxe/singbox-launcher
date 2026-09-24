@@ -13,21 +13,26 @@ import (
 // TestPrivilegedStartCommand — команда старта ядра под root (SPEC 137 §3,
 // 137.1) без root: тело — синтаксически верный sh; всё, что оно и AEWP
 // исполняют, — root-owned файлы по абсолютным путям. argv, прогнанный как
-// есть (без AEWP, владелец лога — свой uid вместо 0), с поддельным ядром в
-// пути с пробелом и апострофом и с отравленным окружением
+// есть (без AEWP, владелец каталога лога — свой uid вместо 0), с поддельным
+// ядром в пути с пробелом и апострофом и с отравленным окружением
 // (`BASH_FUNC_echo%%`, чужой PATH): создаёт каталог лога 0755, ротирует
 // большой лог в .old, печатает ровно два PID — шелла (тот же процесс: env
 // делает exec) и ядра, — запускает ядро из каталога bin с `run -c
-// <конфиг>`, чистым PATH и без функций окружения, пишет его вывод в свой
-// лог 0644 и выходит только после ядра. Симлинк на месте каталога или
-// файла лога и чужой владелец — отказ с причиной вместо PID, ядро не
-// стартует.
+// <конфиг>`, чистым PATH и без функций окружения, пишет его вывод в лог
+// пользователя 0600 (и .old — 0600) и выходит только после ядра. Отказ с
+// причиной вместо PID, ядро не стартует: uid пользователя не число, меньше
+// 501 или без учётной записи; симлинк на месте каталога или файла лога;
+// чужой владелец каталога.
 func TestPrivilegedStartCommand(t *testing.T) {
 	if out, err := exec.Command(privilegedShell, "-n", "-c", privilegedStartBody).CombinedOutput(); err != nil {
 		t.Fatalf("sh -n: %v (%s)", err, out)
 	}
+	uid := os.Getuid()
+	if minUID, _ := strconv.Atoi(privilegedMinUserUID); uid < minUID {
+		t.Skipf("uid %d is below %s: the body hands the log only to a regular user", uid, privilegedMinUserUID)
+	}
 	for _, tool := range []string{privilegedEnvTool, privilegedShell, privilegedKillTool, privilegedPkillTool,
-		"/usr/bin/stat", "/bin/mkdir", "/bin/chmod", "/bin/mv"} {
+		"/usr/bin/stat", "/bin/mkdir", "/bin/chmod", "/bin/mv", "/usr/sbin/chown", "/usr/bin/id"} {
 		fi, err := os.Lstat(tool)
 		if err != nil {
 			t.Fatalf("%s: %v", tool, err)
@@ -63,12 +68,16 @@ func TestPrivilegedStartCommand(t *testing.T) {
 	}
 	logDir := filepath.Join(base, "Logs dir", "sing-box-lxd")
 	logPath := filepath.Join(logDir, privilegedLogName)
-	uid := os.Getuid()
 	const rotate = 64
 
-	run := func(t *testing.T, ownerUID int) (string, *exec.Cmd) {
+	// run — argv как есть; userUID != "" подменяет аргумент uid пользователя
+	// (проверка валидации в теле).
+	run := func(t *testing.T, dirOwnerUID int, userUID string) (string, *exec.Cmd) {
 		t.Helper()
-		tool, args := PrivilegedStartArgs(core, binDir, "config.json", logDir, ownerUID, rotate)
+		tool, args := PrivilegedStartArgs(core, binDir, "config.json", logDir, dirOwnerUID, uid, rotate)
+		if userUID != "" {
+			args[11] = userUID
+		}
 		cmd := exec.Command(tool, args...)
 		cmd.Env = append(os.Environ(),
 			"BASH_FUNC_echo%%=() { printf 'HIJACK\\n'; }",
@@ -80,12 +89,22 @@ func TestPrivilegedStartCommand(t *testing.T) {
 		return string(out), cmd
 	}
 
-	tool, args := PrivilegedStartArgs(core, binDir, "config.json", logDir, uid, rotate)
-	if tool != privilegedEnvTool || len(args) != 12 || args[0] != "-i" || args[1] != privilegedSafePath ||
+	tool, args := PrivilegedStartArgs(core, binDir, "config.json", logDir, 0, uid, rotate)
+	if tool != privilegedEnvTool || len(args) != 13 || args[0] != "-i" || args[1] != privilegedSafePath ||
 		args[2] != privilegedShell || args[3] != "-c" || args[4] != privilegedStartBody || args[5] != PrivilegedStartName ||
 		args[6] != binDir || args[7] != core || args[8] != "config.json" || args[9] != logDir ||
-		args[10] != strconv.Itoa(uid) || args[11] != strconv.Itoa(rotate) {
+		args[10] != "0" || args[11] != strconv.Itoa(uid) || args[12] != strconv.Itoa(rotate) {
 		t.Fatalf("unexpected command: %s %q", tool, args)
+	}
+
+	// Отказы по uid пользователя: не число, системный, несуществующий.
+	for _, bad := range []string{"abc", "5o1", "-1", "500", "0", "4000000000"} {
+		if out, _ := run(t, uid, bad); !strings.HasPrefix(out, "refused: ") || strings.Contains(out, "done") {
+			t.Fatalf("user uid %q: %q", bad, out)
+		}
+	}
+	if _, err := os.Lstat(logDir); !os.IsNotExist(err) {
+		t.Fatalf("a refused uid must stop before the log folder is touched: %v", err)
 	}
 	if !strings.Contains(PrivilegedPkillPattern, PrivilegedStartName) {
 		t.Fatalf("pkill pattern %q does not match the shell name %q", PrivilegedPkillPattern, PrivilegedStartName)
@@ -102,21 +121,21 @@ func TestPrivilegedStartCommand(t *testing.T) {
 	if err := os.Symlink(decoy, logDir); err != nil {
 		t.Fatal(err)
 	}
-	if out, _ := run(t, uid); !strings.HasPrefix(out, "refused: ") || strings.Contains(out, "done") {
+	if out, _ := run(t, uid, ""); !strings.HasPrefix(out, "refused: ") || strings.Contains(out, "done") {
 		t.Fatalf("symlinked log folder: %q", out)
 	}
 	if err := os.Remove(logDir); err != nil {
 		t.Fatal(err)
 	}
 	// Чужой владелец каталога (в проде — не root).
-	if out, _ := run(t, uid+1); !strings.HasPrefix(out, "refused: ") {
+	if out, _ := run(t, uid+1, ""); !strings.HasPrefix(out, "refused: ") {
 		t.Fatalf("foreign owner: %q", out)
 	}
 	// Симлинк на месте файла лога.
 	if err := os.Symlink(filepath.Join(decoy, "target"), logPath); err != nil {
 		t.Fatal(err)
 	}
-	if out, _ := run(t, uid); !strings.HasPrefix(out, "refused: ") {
+	if out, _ := run(t, uid, ""); !strings.HasPrefix(out, "refused: ") {
 		t.Fatalf("symlinked log file: %q", out)
 	}
 	if _, err := os.Stat(filepath.Join(decoy, "target")); !os.IsNotExist(err) {
@@ -133,7 +152,7 @@ func TestPrivilegedStartCommand(t *testing.T) {
 	if err := os.WriteFile(logPath, []byte(strings.Repeat("x", rotate+1)+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	out, cmd := run(t, uid)
+	out, cmd := run(t, uid, "")
 	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
 	if len(lines) != 2 {
 		t.Fatalf("stdout must be exactly two PID lines, got %q", out)
@@ -143,10 +162,14 @@ func TestPrivilegedStartCommand(t *testing.T) {
 	if err1 != nil || err2 != nil || shellPID != cmd.Process.Pid || corePID <= 0 || corePID == shellPID {
 		t.Fatalf("PIDs %q: want shell %d and a separate core PID", lines, cmd.Process.Pid)
 	}
-	for path, want := range map[string]os.FileMode{logDir: 0o755, logPath: 0o644} {
+	for path, want := range map[string]os.FileMode{logDir: 0o755, logPath: 0o600, logPath + ".old": 0o600} {
 		fi, err := os.Stat(path)
-		if err != nil || fi.Mode().Perm() != want {
-			t.Fatalf("%s: mode %v, want %04o (%v)", path, fi.Mode().Perm(), want, err)
+		if err != nil {
+			t.Fatal(err)
+		}
+		st, _ := fi.Sys().(*syscall.Stat_t)
+		if fi.Mode().Perm() != want || st == nil || int(st.Uid) != uid {
+			t.Fatalf("%s: mode %04o, want %04o, owned by the launcher user %d", path, fi.Mode().Perm(), want, uid)
 		}
 	}
 	if old, err := os.ReadFile(logPath + ".old"); err != nil || !strings.HasPrefix(string(old), "xxx") {

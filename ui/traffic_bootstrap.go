@@ -90,7 +90,7 @@ func EnsureTrafficProfilerStarted(ac *core.AppController) {
 		return ac.APIService.GetClashAPIConfig()
 	}
 	// Файл вывода ядра зависит от старта (SPEC 137.1): classic с TUN на
-	// macOS пишет в root-owned лог — тейлер следует за ac.CoreLogPath.
+	// macOS пишет в лог в root-owned каталоге — тейлер следует за ac.CoreLogPath.
 	p.StartFollowing(cfg, ac.CoreLogPath, profilerHTTPClient)
 
 	// Источник трафика по режиму: daemon → gRPC SubscribeConnections,

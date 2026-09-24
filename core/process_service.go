@@ -118,7 +118,7 @@ type ProcessService struct {
 	ac *AppController
 	// coreLog — куда пишет вывод последнее запущенное ядро (SPEC 137.1):
 	// coreLogUnknown до первого старта в сессии, coreLogUser — лог в
-	// каталоге пользователя, coreLogPrivileged — root-owned лог старта с TUN.
+	// каталоге пользователя, coreLogPrivileged — лог старта с TUN в root-owned каталоге.
 	coreLog atomic.Int32
 }
 
@@ -131,7 +131,7 @@ const (
 
 // CoreLogPath — файл вывода текущего (или последнего) classic-ядра: лог в
 // каталоге пользователя (<Logs>/sing-box.log), а после старта с TUN на
-// macOS — root-owned platform.PrivilegedCoreLogPath (SPEC 137.1): root в
+// macOS — platform.PrivilegedCoreLogPath в root-owned каталоге (SPEC 137.1): root в
 // каталог пользователя не пишет. До первого старта в сессии — по конфигу
 // (TUN на macOS → лог под root). Его читают Core-вкладка логов и тейлер
 // профайлера трафика; дёшево после первого вызова.

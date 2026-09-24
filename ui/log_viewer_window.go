@@ -75,7 +75,7 @@ func levelColor(l debuglog.Level) string {
 
 // OpenLogViewerWindow opens a separate window with Internal, Core, and API log tabs.
 // If the window is already open, focuses it instead of opening a duplicate.
-// Registers sinks on show and clears them on close. Core tab reads ac.CoreLogPath() (SPEC 137.1: the root-owned log after a TUN start on macOS).
+// Registers sinks on show and clears them on close. Core tab reads ac.CoreLogPath() (SPEC 137.1: the log in the root-owned folder after a TUN start on macOS).
 func OpenLogViewerWindow(ac *core.AppController) {
 	logViewerMu.Lock()
 	if logViewerWindow != nil {

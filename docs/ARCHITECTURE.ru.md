@@ -793,8 +793,9 @@ Classic-движок поднимает конфиг с TUN от root через
 `StartSingBoxProcess`. Авторизация живёт сессию лаунчера; `privilegedAuthReuse` в
 `internal/platform/privileged_darwin.go` сужает её до одного действия.
 
-И root не пишет по путям пользователя (137.1): вывод ядра идёт в root-owned
-`/Library/Logs/sing-box-lxd/classic.log`, который готовит и ротирует то же
+И root не пишет по путям пользователя (137.1): вывод ядра идёт в
+`/Library/Logs/sing-box-lxd/classic.log` (каталог root, файл пользователя лаунчера
+`0600`), который готовит и ротирует то же
 постоянное тело, а `AppController.CoreLogPath()` говорит читателям, какой лог писал
 последний старт, — Core-вкладке окна логов и тейлеру профайлера трафика
 (`TrafficProfiler.StartFollowing`, путь пересчитывается на каждом тике). Чистка при

@@ -113,16 +113,22 @@ const (
 // Лог ядра, запущенного под root (SPEC 137.1): root не пишет по путям
 // пользователя, вывод ядра идёт в root-owned каталог, лаунчер его только
 // читает. Не /Library/Application Support/sing-box-lxd: тот 0700, и без
-// root его не прочитать.
+// root его не прочитать. Файл принадлежит пользователю лаунчера, 0600:
+// другие локальные учётные записи его не читают, а подменить его нельзя —
+// каталог root-owned.
 const (
 	// PrivilegedLogDir — каталог лога (root:wheel 0755), его создаёт и
 	// проверяет тело старта.
 	PrivilegedLogDir = "/Library/Logs/sing-box-lxd"
-	// privilegedLogName — файл лога classic-ядра (root 0644); .old — прошлый.
+	// privilegedLogName — файл лога classic-ядра (пользователь лаунчера,
+	// 0600); .old — прошлый, тот же владелец.
 	privilegedLogName = "classic.log"
 	// privilegedLogRotateBytes — порог ротации при старте: как у лога ядра
 	// в каталоге пользователя (maxLogFileSize в core/services).
 	privilegedLogRotateBytes = 2 * 1024 * 1024
+	// privilegedMinUserUID — первый uid обычной учётной записи macOS: лог
+	// отдаётся только такому владельцу (строка — её вставляет тело).
+	privilegedMinUserUID = "501"
 )
 
 // PrivilegedCoreLogPath — файл, куда пишет вывод ядро, запущенное под root.
@@ -145,28 +151,39 @@ const privilegedAuthReuse = true
 // privilegedStartBody — тело root-шелла старта ядра (SPEC 137 §3, 137.1):
 // константа, пути приходят позиционными аргументами — $1 каталог bin,
 // $2 копия ядра, $3 имя конфига, $4 каталог лога, $5 ожидаемый владелец
-// каталога и файла лога (uid; 0 в проде), $6 порог ротации в байтах.
+// каталога лога (uid; 0 в проде), $6 uid пользователя лаунчера — владелец
+// файла лога, $7 порог ротации в байтах.
 //
-// До первого PID тело готовит лог, ничего не следуя по симлинкам: каталог
-// не симлинк, создаётся и проверяется как каталог владельца $5, 0755; файл,
-// если есть, — обычный файл владельца $5, больше порога — уезжает в .old.
-// Отказ — строка «refused: <причина>» вместо PID (её читает
-// RunWithPrivileges), и ядро не стартует. Затем первые две строки stdout —
-// PID шелла и PID ядра; stdout шелла уходит в лог, шелл ждёт ядро, и его
-// выход — выход ядра (WaitForPrivilegedExit).
+// До первого PID тело готовит лог, ничего не следуя по симлинкам: $6 —
+// только цифры, не меньше 501, пользователь существует (`/usr/bin/id`);
+// каталог не симлинк, создаётся и проверяется как каталог владельца $5,
+// 0755; файл, если есть, — обычный файл этого пользователя или root,
+// отдаётся пользователю (0600), больше порога — уезжает в .old с тем же
+// владельцем; новый файл — тоже пользователю, 0600. Отказ — строка
+// «refused: <причина>» вместо PID (её читает RunWithPrivileges), и ядро не
+// стартует. Затем первые две строки stdout — PID шелла и PID ядра; stdout
+// шелла уходит в лог, шелл ждёт ядро, и его выход — выход ядра
+// (WaitForPrivilegedExit).
 const privilegedStartBody = `umask 022
 d="$4"
 f="$d/` + privilegedLogName + `"
+u="$6"
+case "$u" in ''|*[!0-9]*) echo "refused: invalid uid '$u'"; exit 1;; esac
+if [ "$u" -lt ` + privilegedMinUserUID + ` ]; then echo "refused: uid $u is not a regular user"; exit 1; fi
+g="$(/usr/bin/id -g "$u" 2>/dev/null)" || { echo "refused: no user with uid $u"; exit 1; }
+case "$g" in ''|*[!0-9]*) echo "refused: no group for uid $u"; exit 1;; esac
 if [ -L "$d" ]; then echo "refused: $d is a symbolic link"; exit 1; fi
 /bin/mkdir -p "$d" || { echo "refused: cannot create $d"; exit 1; }
 if [ "$(/usr/bin/stat -f '%u:%HT' "$d")" != "$5:Directory" ]; then echo "refused: $d is not a directory owned by uid $5"; exit 1; fi
 /bin/chmod 0755 "$d" || { echo "refused: cannot chmod $d"; exit 1; }
 if [ -e "$f" ] || [ -L "$f" ]; then
-  if [ "$(/usr/bin/stat -f '%u:%HT' "$f")" != "$5:Regular File" ]; then echo "refused: $f is not a regular file owned by uid $5"; exit 1; fi
-  if [ "$(/usr/bin/stat -f %z "$f")" -gt "$6" ]; then /bin/mv -f "$f" "$f.old" || { echo "refused: cannot rotate $f"; exit 1; }; fi
+  o="$(/usr/bin/stat -f '%u:%HT' "$f")"
+  if [ "$o" != "$u:Regular File" ] && [ "$o" != "0:Regular File" ]; then echo "refused: $f is not a regular file owned by uid $u or root"; exit 1; fi
+  /bin/chmod 0600 "$f" && /usr/sbin/chown "$u:$g" "$f" || { echo "refused: cannot hand $f to uid $u"; exit 1; }
+  if [ "$(/usr/bin/stat -f %z "$f")" -gt "$7" ]; then /bin/mv -f "$f" "$f.old" || { echo "refused: cannot rotate $f"; exit 1; }; fi
 fi
 : >>"$f" || { echo "refused: cannot open $f"; exit 1; }
-/bin/chmod 0644 "$f" || { echo "refused: cannot chmod $f"; exit 1; }
+/bin/chmod 0600 "$f" && /usr/sbin/chown "$u:$g" "$f" || { echo "refused: cannot hand $f to uid $u"; exit 1; }
 cd "$1" || { echo "refused: cannot enter $1"; exit 1; }
 echo $$
 "$2" run -c "$3" >>"$f" 2>&1 &
@@ -231,24 +248,26 @@ func RunWithPrivileges(toolPath string, args []string) (scriptPID, singboxPID in
 
 // PrivilegedStartArgs — инструмент и argv AEWP для старта ядра corePath с
 // TUN (SPEC 137 §3): `/usr/bin/env -i PATH=… /bin/sh -c <тело> <имя>
-// <bin> <ядро> <конфиг> <каталог лога> <uid владельца> <порог>`. env
-// заменяет себя шеллом через exec — PID для Wait4 тот же. Каталог лога и
-// владелец — параметры ради теста тела без root; прод — StartPrivilegedCore.
-func PrivilegedStartArgs(corePath, binDir, configName, logDir string, ownerUID int, rotateBytes int64) (tool string, args []string) {
+// <bin> <ядро> <конфиг> <каталог лога> <владелец каталога> <uid
+// пользователя> <порог>`. env заменяет себя шеллом через exec — PID для
+// Wait4 тот же. Каталог лога и его владелец — параметры ради теста тела без
+// root; прод — StartPrivilegedCore.
+func PrivilegedStartArgs(corePath, binDir, configName, logDir string, logDirOwnerUID, userUID int, rotateBytes int64) (tool string, args []string) {
 	return privilegedEnvTool, []string{
 		"-i", privilegedSafePath,
 		privilegedShell, "-c", privilegedStartBody,
 		PrivilegedStartName, binDir, corePath, configName,
-		logDir, strconv.Itoa(ownerUID), strconv.FormatInt(rotateBytes, 10),
+		logDir, strconv.Itoa(logDirOwnerUID), strconv.Itoa(userUID), strconv.FormatInt(rotateBytes, 10),
 	}
 }
 
 // StartPrivilegedCore запускает под root ядро corePath (root-owned копию —
 // её проверяет core до вызова) с конфигом configName из binDir. Вывод ядра —
-// в PrivilegedCoreLogPath (root-owned, SPEC 137.1). Возвращает PID
+// в PrivilegedCoreLogPath (каталог root-owned, файл — пользователю лаунчера
+// 0600, SPEC 137.1). Возвращает PID
 // шелла-обёртки и PID ядра; отказ тела — ошибка с его причиной.
 func StartPrivilegedCore(corePath, binDir, configName string) (shellPID, corePID int, err error) {
-	tool, args := PrivilegedStartArgs(corePath, binDir, configName, PrivilegedLogDir, 0, privilegedLogRotateBytes)
+	tool, args := PrivilegedStartArgs(corePath, binDir, configName, PrivilegedLogDir, 0, os.Getuid(), privilegedLogRotateBytes)
 	return RunWithPrivileges(tool, args)
 }
 
