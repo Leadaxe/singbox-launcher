@@ -141,6 +141,10 @@ func (ac *AppController) SwitchBackendMode(mode BackendMode) error {
 	}
 	switch mode {
 	case BackendClassic:
+		// SPEC 141 §7: прокси, поставленный лаунчером под демон, снимается.
+		if leaver, ok := ac.Backend().(interface{ onEngineLeave() }); ok {
+			leaver.onEngineLeave()
+		}
 		ac.setBackend(NewLegacyBackend(ac))
 		return nil
 	case BackendDaemon:

@@ -80,7 +80,7 @@ SPEC 070 кодифицировал эти слои, удалил мёртвый
 | **L0** | platform | `internal/platform`, `internal/paths` | Абстракция ОС за единым интерфейсом: sleep/wake, HWID-информация об устройстве, перечисление процессов, чистка призрачных WinTun-адаптеров, канонические геттеры путей. `internal/paths` (SPEC 135) разрешает раскладку AppDir/DataDir/LogDir — пакет-лист ниже `platform`, который его импортирует. Зависит только от stdlib + `debuglog`/`constants`. Никаких импортов вверх. |
 | **L1** | shared-internal (листовые утилиты) | `internal/locale`, `internal/srstag`, `internal/outboundutil`, `internal/urlsafe`, `internal/debuglog`, `internal/constants`, `internal/traffic`, `internal/textnorm`, `internal/urlredact`, `internal/ctxutil`, `internal/process`, `internal/wizardsync`, `internal/lxdclient` | Самодостаточные, ни от чего не зависящие хелперы, переиспользуемые всеми слоями: каталог i18n, контент-адресуемое хеширование SRS-тегов, маппинг reject/drop outbound → rule (единый источник истины для core и UI), allowlist URL-схем, уровневое логирование, профайлер трафика (развязанный, только stdlib), нормализация отображения тегов, редакция URL и mTLS-клиент демона `sing-box lxd` (пиннинг, разбор приглашений, идентичность на машину — без состояния приложения). |
 | **L2** | core-domain (состояние + сборка + конфиг + шаблон) | `core/state`, `core/snapshot`, `core/build`, `core/config`, `core/config/subscription`, `core/config/configtypes`, `core/config/parser`, `core/template` | Чистый домен: схема состояния, загрузка/сохранение/миграции, JSON-пайплайн сборки и чистые резолверы, загрузка/разбор/кодирование подписок и генерация outbound'ов, загрузка шаблона и извлечение пресетов, снятие снапшота. Чистые функции где возможно; **никакого Fyne, никакого `AppController`**. |
-| **L3** | сервисы + жизненный цикл | `core/services`, `core/uiservice`, `core/events`, `core` (`controller.go`, `process_service.go`, `config_service.go`, `rebuild.go`, `auto_update.go`, `backend*.go`, `daemon_manager_darwin.go`, `main.go`, загрузчики) | Реализации сервисов с состоянием (`FileService`/`APIService`/`StateService`/`SRSDownloader`, реестр удалённых машин, транспорт, сборщик ресурсов для Deploy), контейнер UI-колбэков (без зависимости от Fyne), типизированный `EventBus`, оркестрация жизненного цикла приложения и процесса и шов движков `CoreBackend` (`LegacyBackend` / `DaemonBackend`). **Владеет EventBus и всей DI-разводкой.** |
+| **L3** | сервисы + жизненный цикл | `core/services`, `core/uiservice`, `core/events`, `core` (`controller.go`, `process_service.go`, `config_service.go`, `rebuild.go`, `auto_update.go`, `backend*.go`, `daemon_manager*.go`, `main.go`, загрузчики) | Реализации сервисов с состоянием (`FileService`/`APIService`/`StateService`/`SRSDownloader`, реестр удалённых машин, транспорт, сборщик ресурсов для Deploy), контейнер UI-колбэков (без зависимости от Fyne), типизированный `EventBus`, оркестрация жизненного цикла приложения и процесса и шов движков `CoreBackend` (`LegacyBackend` / `DaemonBackend`). **Владеет EventBus и всей DI-разводкой.** |
 | **L4** | api / удалённое управление | `api`, `core/debugapi` | Исходящий клиент Clash API (`api/`) и входящий Debug HTTP API (`core/debugapi`), который интроспектирует и управляет приложением через интерфейс `ControllerFacade`. Оба стоят выше домена, но достижимы из сервисов; `debugapi` говорит с контроллером только через интерфейс. |
 | **L5** | ui-presentation (MVP конфигуратора) | `ui/configurator/presentation`, `ui/configurator/business`, `ui/configurator/models`, `ui/configurator/configurator.go`, `ui/configurator/utils` | MVP-слои визарда: **presentation** (оркестрация + диспетчеризация `fyne.Do`), **business** (чистая логика за интерфейсом `UIUpdater` — никогда не импортирует Fyne), **models** (чистая `WizardModel` + контейнеры слотов и порядка). `business → models → core-domain`; `presentation → business`; **business никогда не импортирует presentation**. |
 | **L6** | ui-views (вкладки / диалоги / корень) | `ui` (`app.go` + `*_tab.go`), `ui/configurator/tabs`, `ui/configurator/dialogs`, `ui/configurator/outbounds_configurator`, `ui/traffic` | Представления Fyne: корневая полоса вкладок, главные вкладки (Локально / Удалённые, затем Настройки / Диагностика / Справка), вкладки и диалоги конфигуратора, конфигуратор outbound'ов, окно профайлера трафика и окна на машину (добавление машины, настройки подключения, телеметрия хоста, ресурсы, профайлер машины). Подписывается на EventBus / колбэки UIService; читает домен для отрисовки. |
@@ -770,9 +770,17 @@ presentation/business (F). Подробный список файлов — в �
 | `LegacyBackend` | classic — спавн и супервизия `sing-box run` | Clash HTTP API | все |
 | `DaemonBackend` | daemon — ядро внутри системной службы `sing-box lxd` | gRPC (`daemon.StartedService`) + admin REST | только macOS |
 
-Classic остаётся дефолтом и не меняется. Весь daemon/gRPC-код сидит под darwin
-build-тегами и никогда не попадает в `go.win7.mod` — сборка под Win7 компилируется
-без grpc/protobuf. Protobuf-стабы демона вендорятся из форка через
+Classic остаётся дефолтом и не меняется. Код daemon-движка общий для
+*daemon-платформ* — `//go:build darwin || (windows && !386)` (SPEC 141 §4):
+`backend_daemon.go` (+ `_dns`, `_traffic`, `_tailscale`), `chain_probe.go`,
+`daemon_manager.go`, `daemon_service_state.go`, `classic_privileged.go`,
+`debugapi_wiring_daemon.go`, `purge_daemon.go`. Платформенное — в `*_darwin.go`
+(launchd, plist, цепочка владения по uid через `Stat_t`, ключ кэша хэшей по
+dev/inode, рендер sudo, Terminal, тексты диалогов) и `*_windows.go` (заглушки
+точек расширения; на Windows движок закрыт `daemonEngineAvailable`, пока нет
+слоя службы и ядра v1.14.2-lx.2). Linux и Win7 (`windows/386`, `go.win7.mod`)
+собирают заглушки с тегом `!darwin && (!windows || 386)`; gRPC-клиент и код
+удалённых машин тегов не несут. Protobuf-стабы демона вендорятся из форка через
 `scripts/sync_daemonpb.sh`.
 
 ### 11.2 `ProxyTransport` — шов операций с прокси
@@ -846,7 +854,7 @@ Classic-движок поднимает конфиг с TUN от root через
 Лаунчер ядро не копирует и sudo сам не запускает.
 
 `ProcessService.startSingBoxPrivileged` сначала спрашивает гейт
-(`core/classic_privileged_darwin.go`): копия есть, проходит цепочку владения и
+(`core/classic_privileged.go`, тексты диалога — в `_darwin.go`): копия есть, проходит цепочку владения и
 совпадает с ядром лаунчера по sha256 — проверка цепочки и кэш хэшей взяты у
 классификатора SPEC 136. Только затем `platform.StartPrivilegedCore` запускает
 `/usr/bin/env -i PATH=… /bin/sh -c <постоянное тело> <пути>`: ни файла-скрипта, ни

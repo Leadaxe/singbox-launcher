@@ -79,7 +79,7 @@ The codebase is organized into **eight layers**. The cardinal rule:
 | **L0** | platform | `internal/platform`, `internal/paths` | OS abstraction behind a unified interface: power sleep/wake, HWID device-info, process enumeration, WinTun ghost-adapter cleanup, canonical filesystem path getters. `internal/paths` (SPEC 135) resolves the AppDir/DataDir/LogDir layout — a package-leaf below `platform`, which imports it. Depends only on stdlib + `debuglog`/`constants`. No upward imports. |
 | **L1** | shared-internal (leaf utilities) | `internal/locale`, `internal/srstag`, `internal/outboundutil`, `internal/urlsafe`, `internal/debuglog`, `internal/constants`, `internal/traffic`, `internal/textnorm`, `internal/urlredact`, `internal/ctxutil`, `internal/process`, `internal/wizardsync`, `internal/lxdclient` | Self-contained, dependency-free helpers reused across layers: i18n catalog, content-addressed SRS tag hashing, reject/drop outbound→rule mapping (single source of truth shared by core + UI), URL-scheme allowlist, leveled logging, traffic profiler (decoupled, stdlib-only), tag display normalization, URL redaction, and the mTLS client for the `sing-box lxd` daemon (pinning, invite parsing, per-machine identity — no app state). |
 | **L2** | core-domain (state + build + config + template) | `core/state`, `core/snapshot`, `core/build`, `core/config`, `core/config/subscription`, `core/config/configtypes`, `core/config/parser`, `core/template` | Pure domain: state schema/load/save/migration, the JSON build pipeline and pure resolvers, subscription fetch/parse/encode and outbound generation, template load + preset extraction, snapshot capture. Pure functions where possible; **no Fyne, no `AppController`**. |
-| **L3** | services + lifecycle | `core/services`, `core/uiservice`, `core/events`, `core` (`controller.go`, `process_service.go`, `config_service.go`, `rebuild.go`, `auto_update.go`, `backend*.go`, `daemon_manager_darwin.go`, `main.go`, downloaders) | Stateful service implementations (`FileService`/`APIService`/`StateService`/`SRSDownloader`, the remote-machine registry / transport / deploy-resource collector), the UI-callback container (no Fyne deps), the typed `EventBus`, app/process lifecycle orchestration, and the `CoreBackend` engine seam (`LegacyBackend` / `DaemonBackend`). **Owns the EventBus and all DI wiring.** |
+| **L3** | services + lifecycle | `core/services`, `core/uiservice`, `core/events`, `core` (`controller.go`, `process_service.go`, `config_service.go`, `rebuild.go`, `auto_update.go`, `backend*.go`, `daemon_manager*.go`, `main.go`, downloaders) | Stateful service implementations (`FileService`/`APIService`/`StateService`/`SRSDownloader`, the remote-machine registry / transport / deploy-resource collector), the UI-callback container (no Fyne deps), the typed `EventBus`, app/process lifecycle orchestration, and the `CoreBackend` engine seam (`LegacyBackend` / `DaemonBackend`). **Owns the EventBus and all DI wiring.** |
 | **L4** | api / remote-control | `api`, `core/debugapi` | Outbound Clash API client (`api/`) and inbound Debug HTTP API (`core/debugapi`) that introspects/controls the app through a `ControllerFacade` interface. Both sit above domain but are reachable from services; `debugapi` talks to the controller only via an interface. |
 | **L5** | ui-presentation (configurator MVP) | `ui/configurator/presentation`, `ui/configurator/business`, `ui/configurator/models`, `ui/configurator/configurator.go`, `ui/configurator/utils` | MVP layers for the wizard: **presentation** (orchestration + `fyne.Do` dispatch), **business** (pure logic behind the `UIUpdater` interface — never imports Fyne), **models** (pure `WizardModel` + slot/order containers). `business → models → core-domain`; `presentation → business`; **business never imports presentation**. |
 | **L6** | ui-views (tabs / dialogs / root) | `ui` (`app.go` + `*_tab.go`), `ui/configurator/tabs`, `ui/configurator/dialogs`, `ui/configurator/outbounds_configurator`, `ui/traffic` | Fyne views: root tab strip, main tabs (Local = proxy list + core dashboard, Remote = proxy list + machine list, then Settings / Diagnostics / Help), configurator tabs/dialogs, outbounds configurator, traffic profiler window, and the per-machine windows (add-machine, connection settings, host telemetry, resources, machine profiler). Subscribes to EventBus / UIService callbacks; reads core-domain for rendering. |
@@ -957,10 +957,18 @@ they sit where they do.
 | `LegacyBackend` | classic — spawn + supervise `sing-box run` | Clash HTTP API | all |
 | `DaemonBackend` | daemon — core inside the `sing-box lxd` system service | gRPC (`daemon.StartedService`) + admin REST | macOS only |
 
-Classic remains the default and is unchanged. All daemon/gRPC code sits behind
-darwin build tags and never enters `go.win7.mod` — the Win7 build compiles without
-grpc/protobuf. The daemon protobuf stubs are vendored from the fork via
-`scripts/sync_daemonpb.sh`.
+Classic remains the default and is unchanged. The daemon engine code is shared by
+the *daemon platforms* — `//go:build darwin || (windows && !386)` (SPEC 141 §4):
+`backend_daemon.go` (+ `_dns`, `_traffic`, `_tailscale`), `chain_probe.go`,
+`daemon_manager.go`, `daemon_service_state.go`, `classic_privileged.go`,
+`debugapi_wiring_daemon.go`, `purge_daemon.go`. Per-OS parts sit in `*_darwin.go`
+(launchd, plist, uid ownership chain via `Stat_t`, hash-cache key by dev/inode,
+sudo rendering, Terminal, dialog texts) and `*_windows.go` (extension-point
+stubs; the engine stays closed on Windows through `daemonEngineAvailable` until
+the service layer and core v1.14.2-lx.2 land). Linux and Win7 (`windows/386`,
+`go.win7.mod`) compile stubs tagged `!darwin && (!windows || 386)`; the gRPC
+client and the remote-machine code are untagged. The daemon protobuf stubs are
+vendored from the fork via `scripts/sync_daemonpb.sh`.
 
 ### 11.2 `ProxyTransport` — the proxy-operation seam
 
@@ -1034,7 +1042,7 @@ written by the core itself on `lxd --service=install|copy`) and system utilities
 absolute path. The launcher never copies the core and never runs sudo itself.
 
 `ProcessService.startSingBoxPrivileged` asks a gate first
-(`core/classic_privileged_darwin.go`): the copy must exist, pass the ownership chain
+(`core/classic_privileged.go`, dialog texts in `_darwin.go`): the copy must exist, pass the ownership chain
 and match the launcher core by sha256 — the chain check and the hash cache are the
 SPEC 136 classifier's. Only then `platform.StartPrivilegedCore` runs
 `/usr/bin/env -i PATH=… /bin/sh -c <constant body> <paths>`: no script file, no

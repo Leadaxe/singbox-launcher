@@ -1,16 +1,19 @@
-//go:build darwin
+//go:build darwin || (windows && !386)
 
 package core
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// testRuntimeDir имитирует state_dir из /admin/info.
-const testRuntimeDir = "/Library/Application Support/sing-box-lxd/state"
+// testRuntimeDir имитирует state_dir из /admin/info. Фиктивный, но
+// абсолютный на любой daemon-платформе: на Windows путь без буквы диска
+// абсолютным не считается.
+var testRuntimeDir = filepath.Join(os.TempDir(), "sing-box-lxd", "state")
 
 func TestPrepareConfigForDaemon(t *testing.T) {
 	t.Run("relative cache_file → absolute in support dir", func(t *testing.T) {
@@ -53,12 +56,13 @@ func TestPrepareConfigForDaemon(t *testing.T) {
 	})
 
 	t.Run("already absolute → untouched", func(t *testing.T) {
-		in := []byte(`{"experimental":{"cache_file":{"path":"/var/db/cache.db"}}}`)
+		abs, _ := json.Marshal(filepath.Join(os.TempDir(), "db", "cache.db"))
+		in := []byte(`{"experimental":{"cache_file":{"path":` + string(abs) + `}}}`)
 		out, err := prepareConfigForDaemon(in, testRuntimeDir)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(string(out), "/var/db/cache.db") {
+		if string(out) != string(in) {
 			t.Fatalf("absolute path was altered: %s", out)
 		}
 	})

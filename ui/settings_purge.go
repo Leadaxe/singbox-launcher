@@ -148,12 +148,9 @@ func showPurgeDialog(ac *core.AppController, plan paths.PurgePlan, daemonHint st
 	var bottom fyne.CanvasObject
 	if daemonHint != "" {
 		command := func() (string, error) { return daemonHint, nil }
-		var row fyne.CanvasObject
-		if daemonSurvives {
-			row = CommandRow(win, "The daemon service is installed and is not removed with the data: it runs from its own root-owned copy of the core. To remove the service as well, run this command:", command, true)
-		} else {
-			row = CommandRow(win, "The daemon service is installed. Remove it first with this command, otherwise the launcher will not be able to do it after the data is gone:", command, true)
-		}
+		// macOS — команда для Terminal, Windows — «Run as administrator»
+		// (connection_local_daemon.go).
+		row := daemonPurgeRow(ac, win, daemonSurvives, command)
 		bottom = container.NewVBox(widget.NewSeparator(),
 			container.NewBorder(nil, nil, container.NewVBox(widget.NewIcon(theme.WarningIcon())), nil, row))
 	}
