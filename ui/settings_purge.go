@@ -32,9 +32,10 @@ func buildPurgeButton(ac *core.AppController) fyne.CanvasObject {
 		go func() {
 			plan := ac.PurgePlan()
 			hint, hintSurvives := ac.DaemonUninstallHint()
+			autostart := ac.AutostartOwned()
 			fyne.Do(func() {
 				btn.Enable()
-				showPurgeDialog(ac, plan, hint, hintSurvives)
+				showPurgeDialog(ac, plan, hint, hintSurvives, autostart)
 			})
 		}()
 	})
@@ -44,16 +45,20 @@ func buildPurgeButton(ac *core.AppController) fyne.CanvasObject {
 
 // showPurgeDialog — подтверждение очистки: по строке на элемент плана с
 // чекбоксом, путём и размером; Data снять нельзя. На Windows — отдельный
-// чекбокс сетевой очистки. Если установлена служба демона, над кнопками —
-// команда её удаления. daemonSurvives — команда через root-owned копию
-// службы (SPEC 136): служба и команда переживают удаление данных; иначе
-// команда через ядро лаунчера, и выполнить её надо до удаления.
+// чекбокс сетевой очистки и, если значение автозапуска указывает на этот
+// exe (autostart), чекбокс его удаления (SPEC 139 §8). Без прав
+// администратора сетевая очистка и остатки в защищённой папке программы
+// сняты и недоступны (SPEC 139 §6 п. 5–6). Если установлена служба демона,
+// над кнопками — команда её удаления. daemonSurvives — команда через
+// root-owned копию службы (SPEC 136): служба и команда переживают удаление
+// данных; иначе команда через ядро лаунчера, и выполнить её надо до
+// удаления.
 //
 // Подписи — Label с переносом рядом с пустым чекбоксом: текст Check не
 // переносится и длинным путём раздул бы диалог.
-func showPurgeDialog(ac *core.AppController, plan paths.PurgePlan, daemonHint string, daemonSurvives bool) {
+func showPurgeDialog(ac *core.AppController, plan paths.PurgePlan, daemonHint string, daemonSurvives, autostart bool) {
 	win := ac.UIService.MainWindow
-	if len(plan.Items) == 0 {
+	if len(plan.Items) == 0 && !autostart {
 		dialog.ShowInformation(locale.T("Remove all launcher data"), locale.T("Nothing to remove."), win)
 		return
 	}
@@ -68,7 +73,7 @@ func showPurgeDialog(ac *core.AppController, plan paths.PurgePlan, daemonHint st
 		// Системная папка с state.json при portable по умолчанию снята:
 		// это могут быть настоящие данные, скрытые маркером.
 		check.SetChecked(it.Selected)
-		if it.Kind == paths.PurgeData {
+		if it.Kind == paths.PurgeData || it.NeedsAdmin {
 			check.Disable()
 		}
 		checks[i] = check
@@ -90,17 +95,33 @@ func showPurgeDialog(ac *core.AppController, plan paths.PurgePlan, daemonHint st
 			note.Importance = widget.LowImportance
 			lines.Add(note)
 		}
+		if it.NeedsAdmin {
+			lines.Add(needsAdminLabel())
+		}
 		list.Add(container.NewBorder(nil, nil, container.NewVBox(check), nil, lines))
 	}
 
-	var networkCheck *widget.Check
+	var networkCheck, autostartCheck *widget.Check
 	if runtime.GOOS == "windows" {
+		list.Add(widget.NewSeparator())
+		if autostart {
+			autostartCheck = widget.NewCheck("", nil)
+			autostartCheck.SetChecked(true)
+			label := widget.NewLabel(locale.T("Autostart entry (Start with Windows)"))
+			label.Wrapping = fyne.TextWrapWord
+			list.Add(container.NewBorder(nil, nil, container.NewVBox(autostartCheck), nil, label))
+		}
 		networkCheck = widget.NewCheck("", nil)
 		networkCheck.SetChecked(true)
 		label := widget.NewLabel(locale.T("Network cleanup: ghost wintun adapters and orphan firewall rules"))
 		label.Wrapping = fyne.TextWrapWord
-		list.Add(widget.NewSeparator())
-		list.Add(container.NewBorder(nil, nil, container.NewVBox(networkCheck), nil, label))
+		lines := container.NewVBox(label)
+		if ac.NetworkCleanupNeedsAdmin() {
+			networkCheck.SetChecked(false)
+			networkCheck.Disable()
+			lines.Add(needsAdminLabel())
+		}
+		list.Add(container.NewBorder(nil, nil, container.NewVBox(networkCheck), nil, lines))
 	}
 
 	scroll := container.NewVScroll(list)
@@ -129,17 +150,27 @@ func showPurgeDialog(ac *core.AppController, plan paths.PurgePlan, daemonHint st
 				plan.Items[i].Selected = check.Checked
 			}
 			network := networkCheck != nil && networkCheck.Checked
+			removeAutostart := autostartCheck != nil && autostartCheck.Checked
 			debuglog.WarnLog("settings.storage: removing launcher data and exiting:\n%s", plan.Text())
 			go func() {
 				// Успех завершает процесс внутри (os.Exit); ошибка — только до
 				// начала удаления.
-				if err := ac.ExecutePurgeAndExit(plan, network); err != nil {
+				if err := ac.ExecutePurgeAndExit(plan, network, removeAutostart); err != nil {
 					ShowError(win, err)
 				}
 			}()
 		}, win)
 	confirm.Resize(fyne.NewSize(600, 460))
 	confirm.Show()
+}
+
+// needsAdminLabel — пометка пункта очистки, недоступного без прав
+// администратора (SPEC 139 §6 п. 5–6).
+func needsAdminLabel() *widget.Label {
+	l := widget.NewLabel(locale.T("Requires administrator rights"))
+	l.Wrapping = fyne.TextWrapWord
+	l.Importance = widget.WarningImportance
+	return l
 }
 
 // purgeKindText — подпись раздела плана.
