@@ -159,7 +159,7 @@ Just launch `singbox-launcher.exe` by double-clicking it, or from the command li
 
 Releases also ship `singbox-launcher-<version>-win64-setup.exe` ([SPEC 140](../SPECS/140-F-N-WINDOWS_INSTALLER/SPEC.md)): a per-machine install into `C:\Program Files\singbox-launcher`, data in `%LOCALAPPDATA%\singbox-launcher`. CI builds it in the `build-windows-installer` job; to build it locally:
 
-1. Install [Inno Setup 6](https://jrsoftware.org/isdl.php) (`ISCC.exe` lands in `C:\Program Files (x86)\Inno Setup 6`), or `choco install innosetup`.
+1. Install [Inno Setup 6.4+](https://jrsoftware.org/isdl.php) (`ISCC.exe` lands in `C:\Program Files (x86)\Inno Setup 6`), or `choco install innosetup`.
 2. Build `singbox-launcher.exe` (see above).
 3. Stage the win64-full set without `portable.txt` from Git Bash — the script downloads the pinned core and Mesa3D and takes wintun and the template from the repository:
    ```bash

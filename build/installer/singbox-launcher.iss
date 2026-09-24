@@ -13,6 +13,11 @@
 ; Inno comments go on their own lines only: a ";" after a value would become part
 ; of the value or a parameter.
 
+; 6.3: x64os and a UTF-8 script without BOM; 6.4: ExecAndCaptureOutput.
+#if VER < EncodeVer(6,4,0)
+  #error Inno Setup 6.4+ required
+#endif
+
 #ifndef AppVersion
   #error AppVersion is not defined: pass /DAppVersion=<version> to ISCC
 #endif

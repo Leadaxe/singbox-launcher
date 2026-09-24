@@ -159,7 +159,7 @@ go build -ldflags="-H windowsgui -s -w" -o singbox-launcher.exe
 
 Релизы несут и `singbox-launcher-<версия>-win64-setup.exe` ([SPEC 140](../SPECS/140-F-N-WINDOWS_INSTALLER/SPEC.md)): установка на машину в `C:\Program Files\singbox-launcher`, данные в `%LOCALAPPDATA%\singbox-launcher`. В CI его собирает job `build-windows-installer`; локально:
 
-1. Поставить [Inno Setup 6](https://jrsoftware.org/isdl.php) (`ISCC.exe` — в `C:\Program Files (x86)\Inno Setup 6`) или `choco install innosetup`.
+1. Поставить [Inno Setup 6.4+](https://jrsoftware.org/isdl.php) (`ISCC.exe` — в `C:\Program Files (x86)\Inno Setup 6`) или `choco install innosetup`.
 2. Собрать `singbox-launcher.exe` (см. выше).
 3. Подготовить набор win64-full без `portable.txt` из Git Bash — скрипт скачает закреплённые ядро и Mesa3D, wintun и шаблон возьмёт из репозитория:
    ```bash

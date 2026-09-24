@@ -659,7 +659,13 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "choco install innosetup failed ($LASTEXITCODE)" }
           }
           if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
-          Write-Host "ISCC: $iscc"
+          # Скрипт требует 6.4+ (x64os и UTF-8 без BOM — 6.3,
+          # ExecAndCaptureOutput — 6.4); образ несёт новее, и тогда ставить
+          # ничего не нужно — только проверка.
+          $vi = (Get-Item $iscc).VersionInfo
+          $ver = [version]::new($vi.FileMajorPart, $vi.FileMinorPart, $vi.FileBuildPart)
+          Write-Host "ISCC: $iscc ($ver)"
+          if ($ver -lt [version]'6.4.0') { throw "Inno Setup $ver is too old, 6.4+ required" }
           "path=$iscc" >> $env:GITHUB_OUTPUT
 
       - name: Build installer
