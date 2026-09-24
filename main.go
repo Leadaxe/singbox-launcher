@@ -370,6 +370,16 @@ func main() {
 		debuglog.WarnLog("migration: another instance is migrating, skipping")
 	}
 
+	// Дополнение 24.09 к SPEC 139: при включённом TUN лаунчер без прав сразу
+	// перезапускается с повышением (флаги, включая -tray и -start, как были).
+	// До мьютекса экземпляра, GL-гейта, окна и трея: новый экземпляр ждёт
+	// выхода этого. Отказ в UAC — обычный старт без прав.
+	if controller.ElevateAtStartForTun() {
+		api.SetAPILogFile(nil)
+		controller.FileService.CloseLogFiles()
+		os.Exit(0)
+	}
+
 	// SPEC 140 §4: мьютексы экземпляра и событие Quit (Windows). Установщик
 	// находит лаунчер по мьютексу и просит закрыться событием: выход — как
 	// Quit в трее, на UI-потоке и без перезапуска, чтобы ядро остановилось

@@ -162,6 +162,12 @@ type Settings struct {
 	// На других платформах поле игнорируется (Dock есть только у macOS).
 	HideAppFromDock bool `json:"hide_app_from_dock,omitempty"`
 
+	// ElevateOnStartForTun — Windows x64/arm64 (дополнение 24.09 к SPEC 139):
+	// при включённом TUN лаунчер без прав сразу перезапускается с повышением.
+	// *bool: nil → дефолт (true), явный false — стартовать без прав и
+	// спрашивать при Start (диалог SPEC 139 §4).
+	ElevateOnStartForTun *bool `json:"elevate_on_start_for_tun,omitempty"`
+
 	// --- Умолчания подписок (SPEC 118 Т1) ---------------------------------
 	//
 	// Умолчания reload/max_nodes — поведение лаунчера, одни на все состояния
@@ -202,6 +208,14 @@ func (s *Settings) ShouldSendHWID() bool {
 		return true
 	}
 	return s.SubscriptionSendHWID == nil || *s.SubscriptionSendHWID
+}
+
+// ShouldElevateOnStartForTun — true если флаг nil (default) или явно true.
+func (s *Settings) ShouldElevateOnStartForTun() bool {
+	if s == nil {
+		return true
+	}
+	return s.ElevateOnStartForTun == nil || *s.ElevateOnStartForTun
 }
 
 // EnsureHWID возвращает существующий HWID (если уже сгенерирован), либо

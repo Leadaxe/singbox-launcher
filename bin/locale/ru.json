@@ -4730,6 +4730,12 @@
   "Autostart entry (Start with Windows)": {
     "value": "Запись автозапуска (Запускать вместе с Windows)"
   },
+  "Ask for administrator rights at start when TUN is enabled": {
+    "value": "Запрашивать права администратора при старте, если включён TUN"
+  },
+  "Off: the launcher starts without rights and asks when you press Start": {
+    "value": "Выкл: лаунчер стартует без прав и спросит при нажатии Start"
+  },
   "portable.txt ignored": {
     "value": "portable.txt не учитывается"
   },

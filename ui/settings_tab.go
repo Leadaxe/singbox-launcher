@@ -262,6 +262,9 @@ func BuildSettingsContent(ac *core.AppController) (fyne.CanvasObject, func()) {
 			refreshAutostart()
 		}
 	}
+	if core.ElevateAtStartSupported {
+		connBlock.Add(buildElevateOnStartBlock(binDir))
+	}
 
 	// Language first so the two subscription sections (Subscriptions +
 	// Subscription identification) sit together instead of being split by the
@@ -286,6 +289,26 @@ func BuildSettingsContent(ac *core.AppController) (fyne.CanvasObject, func()) {
 		storageBlock,
 	)
 	return content, refresh
+}
+
+// buildElevateOnStartBlock — чекбокс авто-повышения при старте с TUN
+// (дополнение 24.09 к SPEC 139): settings.json elevate_on_start_for_tun, по
+// умолчанию включено. Применяется со следующего запуска.
+func buildElevateOnStartBlock(binDir string) fyne.CanvasObject {
+	check := widget.NewCheck(locale.T("Ask for administrator rights at start when TUN is enabled"), nil)
+	cur := locale.LoadSettings(binDir)
+	check.SetChecked(cur.ShouldElevateOnStartForTun())
+	check.OnChanged = func(on bool) {
+		st := locale.LoadSettings(binDir)
+		st.ElevateOnStartForTun = &on
+		if err := locale.SaveSettings(binDir, st); err != nil {
+			debuglog.WarnLog("settings_tab: save elevate_on_start_for_tun: %v", err)
+		}
+	}
+	hint := widget.NewLabel(locale.T("Off: the launcher starts without rights and asks when you press Start"))
+	hint.Wrapping = fyne.TextWrapWord
+	hint.Importance = widget.LowImportance
+	return container.NewVBox(check, hint)
 }
 
 // autostartIndent — отступ вложенного чекбокса «Connect VPN at sign-in».
