@@ -4538,8 +4538,14 @@
   "Service binary: %s": {
     "value": "Бинарь службы: %s"
   },
-  "The service runs an older core (%s; current: %s). Install or update the service to switch it to the current core.": {
-    "value": "Служба запускает устаревшее ядро (%s; текущее: %s). Установите или обновите службу, чтобы перевести её на текущее ядро."
+  "The service runs a different core (%s) than the launcher (%s). Install or update the service to switch it to the launcher core.": {
+    "value": "Служба запускает другое ядро (%s), не ядро лаунчера (%s). Установите или обновите службу, чтобы перевести её на ядро лаунчера."
+  },
+  "The launcher core (%s) is older than %s and cannot install a root-owned service. Update the core first: Local tab → Download/Reinstall v%s, then install or update the service.": {
+    "value": "Версия ядра лаунчера (%s) ниже %s: оно не умеет ставить службу на копию, принадлежащую root. Сначала обновите ядро: вкладка «Локально» → «Скачать/Переустановить v%s», затем установите или обновите службу."
+  },
+  "The launcher core (%s) is not a numbered sing-box-lx release, so the launcher cannot confirm it installs a root-owned service. Update the core first: Local tab → Download/Reinstall v%s, then install or update the service.": {
+    "value": "Ядро лаунчера (%s) — не нумерованный релиз sing-box-lx, и лаунчер не может убедиться, что оно ставит службу на копию, принадлежащую root. Сначала обновите ядро: вкладка «Локально» → «Скачать/Переустановить v%s», затем установите или обновите службу."
   },
   "The service has no core binary to run. Install or update the service to restore it.": {
     "value": "У службы нет бинаря ядра для запуска. Установите или обновите службу, чтобы восстановить его."
@@ -4549,6 +4555,9 @@
   },
   "The daemon service runs as root from a file your user account can modify:\n%s\n\nAny program running as you could replace it and gain root access. Run this command in Terminal to move the service to a root-owned copy of the core (it asks for your sudo password). The VPN keeps working meanwhile; the LOCAL tab of the connection settings shows this until it is fixed.": {
     "value": "Служба демона запускается от root из файла, который может изменить ваша учётная запись:\n%s\n\nЛюбая программа, работающая от вашего имени, может подменить его и получить права root. Выполните эту команду в терминале, чтобы перевести службу на копию ядра, принадлежащую root (спросит ваш sudo-пароль). VPN тем временем продолжает работать; вкладка LOCAL в настройках подключения показывает это предупреждение, пока проблема не устранена."
+  },
+  "The daemon service runs as root from a file your user account can modify:\n%s\n\nAny program running as you could replace it and gain root access. %s The VPN keeps working meanwhile; the LOCAL tab of the connection settings shows this until it is fixed.": {
+    "value": "Служба демона запускается от root из файла, который может изменить ваша учётная запись:\n%s\n\nЛюбая программа, работающая от вашего имени, может подменить его и получить права root. %s VPN тем временем продолжает работать; вкладка LOCAL в настройках подключения показывает это предупреждение, пока проблема не устранена."
   },
   "Unused data": {
     "value": "Неиспользуемые данные"

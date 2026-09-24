@@ -172,6 +172,9 @@ func ShowError(window fyne.Window, err error) {
 // with the setcap command in a selectable entry and a Copy button (issue #34).
 // title is the dialog title (e.g. "Error" or "Linux Capabilities"); message is the full
 // text (warning + explanation); command is the single line to copy (e.g. sudo setcap ...).
+// Copy puts only the command on the clipboard: it is pasted into a terminal,
+// where the explanation would be run as junk input. An empty command shows the
+// message alone (no command row).
 func ShowLinuxCapabilitiesRequired(window fyne.Window, title, message, command string) {
 	fyne.Do(func() {
 		mainContent := container.NewVBox()
@@ -179,8 +182,9 @@ func ShowLinuxCapabilitiesRequired(window fyne.Window, title, message, command s
 		// Обычный Label, а не Disable()'нутый Entry: отключённый Entry в Fyne
 		// рисуется цветом DisabledColor — тем же, которым рисуется
 		// placeholder, — и объяснение выглядит как незаполненная подсказка,
-		// а не как текст, который надо прочесть. Копирование от этого не
-		// теряется: кнопка Copy ниже кладёт в буфер и сообщение, и команду.
+		// а не как текст, который надо прочесть. Кнопка Copy ниже кладёт в
+		// буфер только команду: её вставляют в терминал, и пояснение там
+		// стало бы «паразитным текстом».
 		msgLabel := widget.NewLabel(message)
 		msgLabel.Wrapping = fyne.TextWrapWord
 
@@ -201,14 +205,8 @@ func ShowLinuxCapabilitiesRequired(window fyne.Window, title, message, command s
 			}
 		}
 		copyBtn := widget.NewButtonWithIcon(locale.T("Copy"), theme.ContentCopyIcon(), func() {
-			fullText := message
-			if command != "" && fullText != "" && !strings.Contains(fullText, command) {
-				fullText += "\n\n" + command
-			} else if fullText == "" {
-				fullText = command
-			}
-			if fullText != "" {
-				fyne.CurrentApp().Clipboard().SetContent(fullText)
+			if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
+				app.Clipboard().SetContent(command)
 			}
 		})
 		copyBtn.Importance = widget.LowImportance
@@ -216,7 +214,9 @@ func ShowLinuxCapabilitiesRequired(window fyne.Window, title, message, command s
 			entry,
 			container.NewHBox(layout.NewSpacer(), copyBtn),
 		)
-		mainContent.Add(cmdRow)
+		if command != "" {
+			mainContent.Add(cmdRow)
+		}
 		// Reserve extra vertical space so the bottom dialog bar never overlaps the command row.
 		bottomSpacer := canvas.NewRectangle(color.Transparent)
 		bottomSpacer.SetMinSize(fyne.NewSize(1, 8))
@@ -261,7 +261,8 @@ const commandCopyFeedback = 1200 * time.Millisecond
 // пояснение, команда в поле только для чтения, кнопки «Copy the command» и
 // «Run in Terminal», внизу Close и Retry. Retry закрывает диалог и зовёт
 // onRetry. openTerminal == nil прячет кнопку терминала, onRetry == nil —
-// Retry. Сам диалог ничего привилегированного не запускает.
+// Retry, command == "" — поле и кнопки команды (остаётся пояснение). Сам
+// диалог ничего привилегированного не запускает.
 func ShowCommandRetry(window fyne.Window, title, message, command string, openTerminal func(string) error, onRetry func()) {
 	fyne.Do(func() {
 		msgLabel := widget.NewLabel(message)
@@ -310,7 +311,11 @@ func ShowCommandRetry(window fyne.Window, title, message, command string, openTe
 			retryBtn.Importance = widget.HighImportance
 			buttons = container.NewHBox(retryBtn)
 		}
-		content := container.NewVBox(messageScroll(msgLabel, message), entry, actions)
+		content := container.NewVBox(messageScroll(msgLabel, message))
+		if command != "" {
+			content.Add(entry)
+			content.Add(actions)
+		}
 		d = NewCustom(title, content, buttons, locale.T("Close"), window)
 		d.Show()
 		debuglog.DebugLog("dialogs: ShowCommandRetry %q shown", title)

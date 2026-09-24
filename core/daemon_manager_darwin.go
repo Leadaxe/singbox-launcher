@@ -27,6 +27,12 @@ import (
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
 	daemonCoreUpdatedBodyText = "The daemon service still runs the previous core. Run this command in Terminal to install the new core into the service and restart it (it asks for your sudo password):"
+	// Подсказка вместо команды install/copy, пока ядро лаунчера не умеет
+	// root-owned копию (serviceCoreGate).
+	// Кнопка ядра на вкладке Local: «Download v…», когда ядра нет, и
+	// «Reinstall v…», когда стоит другая версия (core_dashboard_tab_status.go).
+	daemonServiceCoreTooOldText  = "The launcher core (%s) is older than %s and cannot install a root-owned service. Update the core first: Local tab → Download/Reinstall v%s, then install or update the service."
+	daemonServiceCoreUnknownText = "The launcher core (%s) is not a numbered sing-box-lx release, so the launcher cannot confirm it installs a root-owned service. Update the core first: Local tab → Download/Reinstall v%s, then install or update the service."
 )
 
 // Управление launchd-службой демона `sing-box lxd` (задача 057 форка,
@@ -202,7 +208,7 @@ func (ac *AppController) DaemonStatusSnapshot() DaemonUIStatus {
 		status.StateDir = passport.StateDir
 		addDaemonProcessVerdict(&status.Service, passport, cfg.Addr)
 	}
-	if status.Service.NeedsInstall() || status.Service.NeedsBootstrap() {
+	if status.Service.NeedsInstall() || status.Service.NeedsBootstrap() || status.Service.State == DaemonServiceCoreTooOld {
 		debuglog.DebugLog("DaemonStatusSnapshot: daemon service %s: %s", status.Service.State, status.Service.Detail)
 	}
 	return status
@@ -210,17 +216,13 @@ func (ac *AppController) DaemonStatusSnapshot() DaemonUIStatus {
 
 // daemonServiceCheck — полный вердикт службы: файлы (daemonServiceFileCheck),
 // состояние у launchd (NotRunning, только когда файлы в порядке) и, если
-// передан паспорт работающего демона, процесс. Версия ядра лаунчера — для
-// показа и запасного вердикта ProcessStale.
+// передан паспорт работающего демона, процесс. Версия ядра лаунчера (её
+// кладёт файловый шаг) — для гейта install, показа и запасного вердикта
+// ProcessStale.
 func (ac *AppController) daemonServiceCheck(passport *lxdclient.InfoData, addr string) DaemonServiceCheck {
 	check := ac.daemonServiceFileCheck()
 	if check.State == DaemonServiceOK {
 		compareDaemonServiceLaunchd(&check, queryLaunchdJob(daemonLaunchdLabel))
-	}
-	if check.CopyUsable() {
-		if v, err := ac.GetInstalledCoreVersion(); err == nil {
-			check.LauncherVersion = v
-		}
 	}
 	if passport != nil {
 		addDaemonProcessVerdict(&check, *passport, addr)
@@ -230,36 +232,68 @@ func (ac *AppController) daemonServiceCheck(passport *lxdclient.InfoData, addr s
 
 // addDaemonProcessVerdict — сверка с паспортом только для демона на этой
 // машине: паспорт чужого адреса о локальной службе ничего не говорит.
+// ProcessStale лечится install — гейт по ядру лаунчера и здесь.
 func addDaemonProcessVerdict(check *DaemonServiceCheck, passport lxdclient.InfoData, addr string) {
 	if !lxdclient.IsLoopbackAddr(addr) {
 		return
 	}
 	compareDaemonServiceProcess(check, passport, daemonServiceCorePath())
+	gateServiceInstall(check)
+}
+
+// launcherCoreVersion — версия ядра лаунчера для гейта команд службы
+// (кэш по идентичности файла); "" — ядра нет или версия не прочиталась.
+func (ac *AppController) launcherCoreVersion() string {
+	version, err := daemonCoreVersions.version(ac.FileService.SingboxPath)
+	if err != nil {
+		debuglog.DebugLog("daemon service: launcher core version: %v", err)
+		return ""
+	}
+	return version
+}
+
+// DaemonServiceCoreHint — подсказка вместо команды install/copy, пока ядро
+// лаунчера версии version не умеет root-owned копию: обновить ядро кнопкой
+// на вкладке Local (закреплённая версия), затем установить службу. Без
+// команды.
+func DaemonServiceCoreHint(version string) string {
+	if _, ok := parseCoreBuild(version); ok {
+		return locale.Tf(daemonServiceCoreTooOldText, version, minCoreForRootOwnedService, constants.RequiredCoreVersion)
+	}
+	if version == "" {
+		version = "?"
+	}
+	return locale.Tf(daemonServiceCoreUnknownText, version, constants.RequiredCoreVersion)
 }
 
 // DaemonUnsafeServiceNotice — условие модального предупреждения SPEC 136 §6:
 // служба Unsafe и на этой версии лаунчера предупреждения ещё не было.
-// Дёшево (plist и Lstat цепочки, без хэшей и сети) — зовётся на старте.
-// servicePath — что запускает служба (или причина, если plist не
-// разобрался); command — «Install or update service».
-func (ac *AppController) DaemonUnsafeServiceNotice() (servicePath, command string, due bool) {
+// Дёшево (plist и Lstat цепочки, без хэшей и сети; версия ядра лаунчера —
+// из кэша) — зовётся на старте. servicePath — что запускает служба (или
+// причина, если plist не разобрался); command — «Install or update
+// service». Ядро лаунчера не умеет root-owned копию — command пуста, а
+// coreHint — подсказка сначала обновить ядро.
+func (ac *AppController) DaemonUnsafeServiceNotice() (servicePath, command, coreHint string, due bool) {
 	check := inspectDaemonServiceDefinition(systemDaemonServiceLayout())
 	if check.State != DaemonServiceUnsafe {
-		return "", "", false
+		return "", "", "", false
 	}
-	debuglog.WarnLog("daemon service is unsafe: %s — run the Install or update service command", check.Detail)
-	if locale.LoadSettings(ac.FileService.Layout.Data.Bin()).DaemonUnsafeNoticeVersion == constants.AppVersion {
-		return "", "", false
-	}
-	command, err := ac.DaemonInstallCommand()
+	version := ac.launcherCoreVersion()
+	command, err := daemonInstallCommandFor(ac.FileService.SingboxPath, version)
 	if err != nil {
-		return "", "", false
+		coreHint = DaemonServiceCoreHint(version)
+		debuglog.WarnLog("daemon service is unsafe: %s — %v", check.Detail, err)
+	} else {
+		debuglog.WarnLog("daemon service is unsafe: %s — run the Install or update service command", check.Detail)
+	}
+	if locale.LoadSettings(ac.FileService.Layout.Data.Bin()).DaemonUnsafeNoticeVersion == constants.AppVersion {
+		return "", "", "", false
 	}
 	servicePath = check.ServicePath
 	if servicePath == "" {
 		servicePath = check.Detail
 	}
-	return servicePath, command, true
+	return servicePath, command, coreHint, true
 }
 
 // readPlistProgramPath достаёт ProgramArguments[0] из XML-plist launchd:
@@ -498,22 +532,22 @@ func (ac *AppController) reloadDaemonBackendIfActive() {
 // Привилегированных вызовов нет — диалог с готовой sudo-командой.
 func (ac *AppController) notifyDaemonServiceAfterCoreUpdate() {
 	check := ac.daemonServiceFileCheck()
-	switch check.State {
-	case DaemonServiceNotInstalled:
+	command := daemonCoreUpdatedCommand(check, ac.FileService.SingboxPath)
+	switch {
+	case check.State == DaemonServiceNotInstalled:
 		return
-	case DaemonServiceOK:
+	case check.State == DaemonServiceOK:
 		// Скачано то же ядро, что уже в копии: обновлять нечего.
 		debuglog.InfoLog("notifyDaemonServiceAfterCoreUpdate: the service already runs this core")
+		return
+	case command == "":
+		// CoreTooOld: скачанное ядро копию не умеет — команды нет.
+		debuglog.WarnLog("notifyDaemonServiceAfterCoreUpdate: core updated; the daemon service is %s (%s)", check.State, check.Detail)
 		return
 	}
 	debuglog.WarnLog("notifyDaemonServiceAfterCoreUpdate: core updated; the daemon service is %s (%s) until the install command runs",
 		check.State, check.Detail)
 	if !ac.hasUI() {
-		return
-	}
-	command, err := ac.DaemonInstallCommand()
-	if err != nil {
-		debuglog.WarnLog("notifyDaemonServiceAfterCoreUpdate: %v", err)
 		return
 	}
 	// Диалог сам оборачивается в fyne.Do — зваться из горутины загрузчика можно.
@@ -523,16 +557,25 @@ func (ac *AppController) notifyDaemonServiceAfterCoreUpdate() {
 		command)
 }
 
-// daemonServiceFileCheck — вердикт по файлам без сети (SPEC 136 §4):
-// определение службы, цепочка владения, sha копии против ядра лаунчера.
-func (ac *AppController) daemonServiceFileCheck() DaemonServiceCheck {
-	l := systemDaemonServiceLayout()
-	check := inspectDaemonServiceDefinition(l)
-	if check.CopyUsable() {
-		check.CopyVersion = readDaemonServiceSidecarVersion(l.CorePath)
+// daemonCoreUpdatedCommand — команда диалога после скачивания ядра; "" —
+// диалога нет: службы нет, копия уже это ядро (OK) или ядро лаунчера не
+// умеет root-owned копию (CoreTooOld).
+func daemonCoreUpdatedCommand(check DaemonServiceCheck, launcherCore string) string {
+	if !check.NeedsInstall() {
+		return ""
 	}
-	compareDaemonServiceFiles(&check, l.CorePath, ac.FileService.SingboxPath, &daemonServiceHashes)
-	return check
+	command, err := daemonInstallCommandFor(launcherCore, check.LauncherVersion)
+	if err != nil {
+		return ""
+	}
+	return command
+}
+
+// daemonServiceFileCheck — вердикт по файлам без сети (SPEC 136 §4) для
+// системной раскладки и ядра лаунчера.
+func (ac *AppController) daemonServiceFileCheck() DaemonServiceCheck {
+	return classifyDaemonServiceFiles(systemDaemonServiceLayout(), ac.FileService.SingboxPath,
+		ac.launcherCoreVersion(), &daemonServiceHashes)
 }
 
 // daemonServiceBinaryFor — бинарь для Uninstall и `lxd client add`: копия
@@ -589,15 +632,27 @@ func (ac *AppController) DaemonRepairCommand() string {
 
 // DaemonInstallCommand — «Install or update service» (SPEC 136 §5): одна
 // команда для первой установки, старого небезопасного plist и обновления
-// после скачивания ядра. Бинарь — всегда ядро лаунчера: ядро lx.11+ копирует
-// СЕБЯ в root-owned каталог службы и переписывает plist на копию
+// после скачивания ядра. Бинарь — всегда ядро лаунчера: ядро lx.12+ копирует
+// СЕБЯ в root-owned копию службы и переписывает plist на копию
 // (идемпотентно по sha, daemon.json и клиенты сохраняются, служба
 // перезапускается). Никаких параметров: install сам выбирает loopback-порт
 // (19091+, либо адрес существующей установки), генерирует секрет, включает
 // mTLS и печатает приглашение. Адрес лаунчер узнаёт из приглашения при
-// сопряжении (PairDaemonWithInvite сохраняет invite.Addr).
+// сопряжении (PairDaemonWithInvite сохраняет invite.Addr). Ядро ниже
+// minCoreForRootOwnedService (или неизвестной версии) — ошибка
+// *serviceCoreTooOldError вместо команды: его install записал бы в plist
+// файл пользователя.
 func (ac *AppController) DaemonInstallCommand() (string, error) {
-	return daemonServiceCommand(ac.FileService.SingboxPath, "lxd", "--service=install"), nil
+	return daemonInstallCommandFor(ac.FileService.SingboxPath, ac.launcherCoreVersion())
+}
+
+// daemonInstallCommandFor — команда install для ядра лаунчера launcherCore
+// версии launcherVersion, через гейт serviceCoreGate.
+func daemonInstallCommandFor(launcherCore, launcherVersion string) (string, error) {
+	if err := serviceCoreGate(launcherVersion); err != nil {
+		return "", err
+	}
+	return daemonServiceCommand(launcherCore, "lxd", "--service=install"), nil
 }
 
 // DaemonUninstallCommand собирает shell-команду удаления службы для терминала.

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/platform"
 )
 
@@ -195,7 +196,10 @@ func TestPrivilegedCoreCopyGate(t *testing.T) {
 		if tc.withPlist {
 			writeTestPlist(t, l.PlistPath, l.CorePath)
 		}
-		command, viaService := privilegedCopyCommandFor(l.daemonServiceLayout, bin)
+		command, viaService, err := privilegedCopyCommandFor(l.daemonServiceLayout, bin, constants.RequiredCoreVersion)
+		if err != nil {
+			t.Fatalf("plist=%v: %v", tc.withPlist, err)
+		}
 		if viaService != tc.wantService {
 			t.Fatalf("plist=%v: viaService %v, want %v", tc.withPlist, viaService, tc.wantService)
 		}

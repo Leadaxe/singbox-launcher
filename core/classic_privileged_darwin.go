@@ -122,17 +122,25 @@ func checkPrivilegedCoreCopy(l daemonServiceLayout, launcherCore string, hashes 
 // обновляет копию (SPEC 137 §5). Установлена служба демона — её команда
 // install из SPEC 136: она обновляет ту же копию и перезапускает службу.
 // Иначе — `lxd --service=copy` (lx.11): только копия и сайдкар, без plist.
-// Бинарь — ядро лаунчера: ядро копирует себя само.
-func privilegedCopyCommandFor(l daemonServiceLayout, launcherCore string) (command string, viaService bool) {
-	if _, err := os.Lstat(l.PlistPath); err == nil {
-		return daemonServiceCommand(launcherCore, "lxd", "--service=install"), true
+// Бинарь — ядро лаунчера версии launcherVersion: ядро копирует себя само.
+// Ядро, не умеющее копию (serviceCoreGate), — команды нет, ошибка
+// *serviceCoreTooOldError: сначала обновить ядро.
+func privilegedCopyCommandFor(l daemonServiceLayout, launcherCore, launcherVersion string) (command string, viaService bool, err error) {
+	_, statErr := os.Lstat(l.PlistPath)
+	viaService = statErr == nil
+	if err := serviceCoreGate(launcherVersion); err != nil {
+		return "", viaService, err
 	}
-	return daemonServiceCommand(launcherCore, "lxd", "--service=copy"), false
+	if viaService {
+		return daemonServiceCommand(launcherCore, "lxd", "--service=install"), true, nil
+	}
+	return daemonServiceCommand(launcherCore, "lxd", "--service=copy"), false, nil
 }
 
 // privilegedCoreCopyGate — гейт перед AEWP: путь копии для старта или
 // ошибка. Отказ по копии (missing / unsafe / outdated) пишется WARN с
-// обоими sha и показывается диалогом с одной sudo-командой; тогда
+// обоими sha и показывается диалогом с одной sudo-командой — или, если
+// ядро лаунчера копию не умеет, с подсказкой сначала обновить ядро; тогда
 // возвращается errPrivilegedCopyNotReady, и Start не добавляет «Failed to
 // start sing-box». Нет ядра лаунчера — обычная ошибка старта.
 func (ac *AppController) privilegedCoreCopyGate() (string, error) {
@@ -145,10 +153,18 @@ func (ac *AppController) privilegedCoreCopyGate() (string, error) {
 	case privilegedCopyNoCore:
 		return "", errors.New(c.Detail)
 	}
-	command, viaService := privilegedCopyCommandFor(l, ac.FileService.SingboxPath)
-	debuglog.WarnLog("startSingBox: privileged start refused, core copy %s: %s (copy sha256 %s, launcher core sha256 %s); command: %s",
-		c.State, c.Detail, orUnknown(c.CopySHA256), orUnknown(c.LauncherSHA256), command)
-	ac.showPrivilegedCopyDialog(c, command, viaService)
+	version := ac.launcherCoreVersion()
+	command, viaService, cmdErr := privilegedCopyCommandFor(l, ac.FileService.SingboxPath, version)
+	var coreHint string
+	if cmdErr != nil {
+		coreHint = DaemonServiceCoreHint(version)
+		debuglog.WarnLog("startSingBox: privileged start refused, core copy %s: %s (copy sha256 %s, launcher core sha256 %s); no command: %v",
+			c.State, c.Detail, orUnknown(c.CopySHA256), orUnknown(c.LauncherSHA256), cmdErr)
+	} else {
+		debuglog.WarnLog("startSingBox: privileged start refused, core copy %s: %s (copy sha256 %s, launcher core sha256 %s); command: %s",
+			c.State, c.Detail, orUnknown(c.CopySHA256), orUnknown(c.LauncherSHA256), command)
+	}
+	ac.showPrivilegedCopyDialog(c, command, viaService, coreHint)
 	return "", errPrivilegedCopyNotReady
 }
 
@@ -162,8 +178,9 @@ func orUnknown(sum string) string {
 
 // showPrivilegedCopyDialog — диалог отказа гейта (SPEC 137 §5): причина,
 // одна sudo-команда, Copy the command / Run in Terminal / Retry / Close.
-// Retry повторяет Start тем же путём, что кнопка Start.
-func (ac *AppController) showPrivilegedCopyDialog(c privilegedCopyCheck, command string, viaService bool) {
+// Retry повторяет Start тем же путём, что кнопка Start. command == "" (ядро
+// лаунчера копию не умеет) — вместо команды coreHint, кнопка одна: Close.
+func (ac *AppController) showPrivilegedCopyDialog(c privilegedCopyCheck, command string, viaService bool, coreHint string) {
 	if !ac.hasUI() {
 		return
 	}
@@ -180,6 +197,11 @@ func (ac *AppController) showPrivilegedCopyDialog(c privilegedCopyCheck, command
 		reason = locale.Tf(privilegedCopyUnsafeText, c.Detail)
 	}
 	parts := []string{reason}
+	if command == "" {
+		parts = append(parts, coreHint)
+		dialogs.ShowCommandRetry(ac.UIService.MainWindow, title, strings.Join(parts, "\n\n"), "", nil, nil)
+		return
+	}
 	if viaService {
 		parts = append(parts, locale.T(privilegedCopyServiceNoteText))
 	}
@@ -203,7 +225,12 @@ func (ac *AppController) notifyPrivilegedCopyAfterCoreUpdate() {
 	if c.State != privilegedCopyOutdated {
 		return
 	}
-	command, _ := privilegedCopyCommandFor(l, ac.FileService.SingboxPath)
+	command, _, err := privilegedCopyCommandFor(l, ac.FileService.SingboxPath, ac.launcherCoreVersion())
+	if err != nil {
+		debuglog.WarnLog("core updated: the root-owned copy for the privileged (TUN) start is outdated (copy sha256 %s, launcher core sha256 %s); no command: %v",
+			c.CopySHA256, c.LauncherSHA256, err)
+		return
+	}
 	debuglog.WarnLog("core updated: the root-owned copy for the privileged (TUN) start is outdated (copy sha256 %s, launcher core sha256 %s); the next TUN start asks to run: %s",
 		c.CopySHA256, c.LauncherSHA256, command)
 }

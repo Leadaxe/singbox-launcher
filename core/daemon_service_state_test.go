@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"singbox-launcher/core/services"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/lxdclient"
 )
 
@@ -382,5 +384,174 @@ func TestDaemonServiceCommandQuoting(t *testing.T) {
 	writeTestFile(t, l.CorePath, "core v0")
 	if got := daemonServiceBinaryFor(l.daemonServiceLayout, l.launcherCore); got != l.CorePath {
 		t.Fatalf("safe copy: binary %s, want the copy", got)
+	}
+}
+
+// TestServiceCoreVersionGate — сравнение версий ядра форка и граница
+// «ядро умеет root-owned копию» (minCoreForRootOwnedService = lx.12):
+// номер lx числом, пре-релиз ниже релиза той же базы (но rc порогового
+// lx.12 гейт проходит), неразборчивая версия — не умеет.
+func TestServiceCoreVersionGate(t *testing.T) {
+	for _, tc := range []struct {
+		a, b string
+		want int
+	}{
+		{"1.14.1-lx.12-rc1", "1.14.1-lx.8", 1},
+		{"1.14.1-lx.10", "1.14.1-lx.9", 1},
+		{"1.14.1-lx.12-rc1", "1.14.1-lx.12", -1},
+		{"1.14.1-lx.12-rc.1", "1.14.1-lx.12-rc.2", -1},
+		{"1.14.1-lx.11", "1.14.1-lx.11", 0},
+		{"v1.14.1-lx.11", "1.14.1-lx.11", 0},
+		{"1.15.0-lx.1", "1.14.1-lx.40", 1},
+		{"1.14.0-lx.40", "1.14.1-lx.1", -1},
+	} {
+		a, okA := parseCoreBuild(tc.a)
+		b, okB := parseCoreBuild(tc.b)
+		if !okA || !okB {
+			t.Fatalf("parse %q=%v, %q=%v", tc.a, okA, tc.b, okB)
+		}
+		if got := compareCoreBuilds(a, b); got != tc.want {
+			t.Fatalf("compare(%s, %s) = %d, want %d", tc.a, tc.b, got, tc.want)
+		}
+		if got := compareCoreBuilds(b, a); got != -tc.want {
+			t.Fatalf("compare(%s, %s) = %d, want %d", tc.b, tc.a, got, -tc.want)
+		}
+	}
+	for version, want := range map[string]bool{
+		"1.14.1-lx.8":       false,
+		"1.14.1-lx.10":      false,
+		"1.14.1-lx.11-rc1":  false,
+		"1.14.1-lx.11":      false, // ранняя раскладка — Unsafe (legacy)
+		"1.14.1-lx.12-rc1":  true,
+		"1.14.1-lx.12-rc.2": true,
+		"1.14.1-lx.12":      true,
+		"v1.14.1-lx.12":     true,
+		"1.14.0-lx.40":      false,
+		"1.15.0-lx.1":       true,
+		"1.14.1":            false, // апстрим: lxd нет вовсе
+		"unknown":           false, // dev-сборка
+		"unnamed-dev":       false,
+		"v-local-test":      false,
+		"1.14.1-lx.":        false,
+		"1.14.1-lx.12x":     false,
+		"":                  false,
+	} {
+		if got := coreSupportsRootOwnedCopy(version); got != want {
+			t.Fatalf("coreSupportsRootOwnedCopy(%q) = %v, want %v", version, got, want)
+		}
+	}
+	if !coreSupportsRootOwnedCopy(constants.RequiredCoreVersion) {
+		t.Fatalf("the pinned core %s must support the root-owned copy", constants.RequiredCoreVersion)
+	}
+}
+
+// TestDaemonServiceCoreTooOld — живой дефект приёмки SPEC 136: служба на
+// root-owned копии lx.12-rc1, ядро лаунчера lx.8 (до lx.11 install пишет в
+// plist свой путь в DataDir, lx.11 — копию в раннюю раскладку). Ни один канал не отдаёт команду: плашка
+// (вердикт без install/bootstrap), диалог после обновления ядра, модальное
+// предупреждение и classic-гейт (daemonInstallCommandFor /
+// privilegedCopyCommandFor), Debug API /daemon/commands. Ядро lx.12 при
+// другой копии — Stale с командой.
+func TestDaemonServiceCoreTooOld(t *testing.T) {
+	const oldCore, newCore = "1.14.1-lx.8", "1.14.1-lx.12"
+	l := newTestServiceLayout(t)
+	var hashes fileHashCache
+	noCommand := func(t *testing.T, c DaemonServiceCheck, blocked DaemonServiceState) {
+		t.Helper()
+		if c.State != DaemonServiceCoreTooOld || c.BlockedState != blocked {
+			t.Fatalf("state %s (blocked %s), want core_too_old over %s (detail: %s)", c.State, c.BlockedState, blocked, c.Detail)
+		}
+		if c.NeedsInstall() || c.NeedsBootstrap() || c.InstallSupported() {
+			t.Fatalf("core_too_old offers a command: install=%v bootstrap=%v supported=%v", c.NeedsInstall(), c.NeedsBootstrap(), c.InstallSupported())
+		}
+		if !strings.Contains(c.Detail, minCoreForRootOwnedService) || !strings.Contains(c.Detail, string(blocked)) {
+			t.Fatalf("detail %q: want the minimum core and the blocked verdict", c.Detail)
+		}
+		if cmd := daemonCoreUpdatedCommand(c, l.launcherCore); cmd != "" {
+			t.Fatalf("core update dialog command %q", cmd)
+		}
+		hint := DaemonServiceCoreHint(c.LauncherVersion)
+		if !strings.Contains(hint, "v"+constants.RequiredCoreVersion) || strings.Contains(hint, "sudo") {
+			t.Fatalf("hint %q: want Download v%s and no command", hint, constants.RequiredCoreVersion)
+		}
+	}
+
+	// Копия lx.12-rc1 цела, ядро лаунчера — другой файл (lx.8).
+	writeTestPlist(t, l.PlistPath, l.CorePath)
+	writeTestFile(t, l.CorePath, "core lx.12-rc1")
+	writeTestFile(t, daemonServiceSidecarPath(l.CorePath), `{"version":"1.14.1-lx.12-rc1"}`)
+	writeTestFile(t, l.launcherCore, "core lx.8")
+	c := classifyDaemonServiceFiles(l.daemonServiceLayout, l.launcherCore, oldCore, &hashes)
+	noCommand(t, c, DaemonServiceStale)
+	if !c.CopyUsable() || c.CopyVersion != "1.14.1-lx.12-rc1" || c.LauncherVersion != oldCore {
+		t.Fatalf("usable=%v copy %q launcher %q", c.CopyUsable(), c.CopyVersion, c.LauncherVersion)
+	}
+	// Версия не читается (dev-сборка, нет ядра) или lx.11 — тот же отказ.
+	for _, version := range []string{"", "unknown", "1.14.1-lx.11"} {
+		noCommand(t, classifyDaemonServiceFiles(l.daemonServiceLayout, l.launcherCore, version, &hashes), DaemonServiceStale)
+	}
+
+	// Ядро lx.12, копия другая — Stale с командой install.
+	c = classifyDaemonServiceFiles(l.daemonServiceLayout, l.launcherCore, newCore, &hashes)
+	if c.State != DaemonServiceStale || !c.NeedsInstall() || c.BlockedState != "" {
+		t.Fatalf("lx.12 core: state %s blocked %q install=%v", c.State, c.BlockedState, c.NeedsInstall())
+	}
+	wantInstall := daemonServiceCommand(l.launcherCore, "lxd", "--service=install")
+	if cmd := daemonCoreUpdatedCommand(c, l.launcherCore); cmd != wantInstall {
+		t.Fatalf("core update dialog command %q, want %q", cmd, wantInstall)
+	}
+
+	// Unsafe (plist на ядро лаунчера) — отказ сохраняет красный вердикт, а
+	// копией такая служба не пользуется.
+	writeTestPlist(t, l.PlistPath, l.launcherCore)
+	c = classifyDaemonServiceFiles(l.daemonServiceLayout, l.launcherCore, oldCore, &hashes)
+	noCommand(t, c, DaemonServiceUnsafe)
+	if c.CopyUsable() || c.ServicePath != l.launcherCore {
+		t.Fatalf("unsafe under core_too_old: usable=%v path %q", c.CopyUsable(), c.ServicePath)
+	}
+
+	// ProcessStale (файлы совпали, демон из другого образа) — тот же гейт.
+	writeTestPlist(t, l.PlistPath, l.CorePath)
+	writeTestFile(t, l.launcherCore, "core lx.12-rc1")
+	c = classifyDaemonServiceFiles(l.daemonServiceLayout, l.launcherCore, oldCore, &hashes)
+	if c.State != DaemonServiceOK {
+		t.Fatalf("same files: state %s (%s)", c.State, c.Detail)
+	}
+	compareDaemonServiceProcess(&c, lxdclient.InfoData{Executable: l.CorePath, ExecutableSHA256: "ff"}, l.CorePath)
+	gateServiceInstall(&c)
+	noCommand(t, c, DaemonServiceProcessStale)
+
+	// Команды: install (плашка, вкладка Install, модальное предупреждение)
+	// и copy/install classic-гейта — только для ядра lx.12+.
+	for _, withPlist := range []bool{false, true} {
+		if withPlist {
+			writeTestPlist(t, l.PlistPath, l.CorePath)
+		} else if err := os.Remove(l.PlistPath); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		if cmd, _, err := privilegedCopyCommandFor(l.daemonServiceLayout, l.launcherCore, oldCore); cmd != "" || err == nil {
+			t.Fatalf("plist=%v: classic command %q, err %v", withPlist, cmd, err)
+		}
+		if cmd, _, err := privilegedCopyCommandFor(l.daemonServiceLayout, l.launcherCore, newCore); cmd == "" || err != nil {
+			t.Fatalf("plist=%v: lx.12 classic command %q, err %v", withPlist, cmd, err)
+		}
+	}
+	if cmd, err := daemonInstallCommandFor(l.launcherCore, oldCore); cmd != "" || err == nil {
+		t.Fatalf("install command %q, err %v", cmd, err)
+	}
+
+	// Debug API /daemon/commands на настоящем «ядре»: версию лаунчер берёт
+	// из `sing-box version`, install пуст, пока ядро ниже lx.12.
+	for version, wantInstall := range map[string]bool{oldCore: false, "unknown": false, newCore: true} {
+		fake := filepath.Join(t.TempDir(), "sing-box")
+		writeTestFile(t, fake, "#!/bin/sh\necho 'sing-box version "+version+"'\n")
+		ac := &AppController{FileService: &services.FileService{SingboxPath: fake}}
+		install := (&debugAPIDaemonWiring{ac: ac}).Commands().Install
+		if got := install != ""; got != wantInstall {
+			t.Fatalf("core %s: Debug API install command %q", version, install)
+		}
+		if wantInstall && install != daemonServiceCommand(fake, "lxd", "--service=install") {
+			t.Fatalf("core %s: Debug API install command %q", version, install)
+		}
 	}
 }
