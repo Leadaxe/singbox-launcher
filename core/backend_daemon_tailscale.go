@@ -1,4 +1,6 @@
-// File backend_daemon_tailscale_darwin.go — стрим статуса tailnet локального
+//go:build darwin
+
+// File backend_daemon_tailscale.go — стрим статуса tailnet локального
 // демона (SPEC 130). Образец — superviseConnections: reconnect с backoff,
 // сброс backoff только после реально полученного кадра (Subscribe* у grpc-go
 // «успешен» и при лежащем демоне — ошибка всплывает в первом Recv).
