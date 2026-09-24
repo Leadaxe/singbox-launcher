@@ -252,7 +252,8 @@ SPEC 136), **Retry** (закрывает диалог и повторяет Star
 5. **Windows — следующей задачей.** Лаунчер с `requireAdministrator`
    (`app.manifest`) запускает ядро из `%LOCALAPPDATA%\singbox-launcher\bin`,
    куда пишет процесс обычной целостности: тот же класс (повышение до
-   высокой целостности); там же — PowerShell-диалоги файлов (§13). **Linux** —
+   высокой целостности). PowerShell-диалоги файлов, найденные аудитом (§12),
+   исправлены отдельно. **Linux** —
    `setcap` привязан к файлу, и запись в файл снимает capability: дыры нет.
    Не трогаются (норма 5).
 6. **Бамп `constants.RequiredCoreVersion` до lx.11** — вместе с SPEC 136, при
@@ -386,7 +387,7 @@ Grep по всему коду лаунчера (без тестов и `tools/`)
 | `core/controller.go:555` (`RunHidden`) | argv | — | — | безопасно; вызовов нет — мёртвый код, кандидат на удаление |
 | `internal/platform/platform_linux.go:90` (`GetSetCapCommand` ← `core/controller.go:594`, `core/process_service.go:218`) | `sudo setcap '…' %s` — путь **без кавычек**, показывается | `SingboxPath` | пользователь в терминале (sudo) | вне рамок (Linux, лаунчер не исполняет): путь с пробелом или метасимволом даст неверную команду — `shellQuote` отдельной правкой |
 | `internal/platform/platform_linux.go:29, 34, 39, 44, 73`, `internal/platform/file_dialog_linux.go:36, 61` | `xdg-open`, `killall`, `kill`, `getcap`, `zenity`/`kdialog` (argv) | пути, URL, подписи | пользователь | безопасно: argv без шелла |
-| `internal/platform/file_dialog_windows.go:24, 49, 92` | `powershell -Command <скрипт>` с подписью, фильтром, именем файла через `psSingleQuote` | подпись — locale: `ru.json` в `%LOCALAPPDATA%\singbox-launcher\bin\locale`, скачивается и пишется процессом обычной целостности; имя — дата; расширения — константы | **администратор** (`requireAdministrator`) | **вне рамок — Windows следующим**: `psSingleQuote` удваивает только ASCII `'`, а PowerShell считает кавычками и `‘ ’ ‚ ‛` (U+2018–U+201B) — перевод с такой кавычкой из подменённого `ru.json` выходит из литерала и исполняется с правами администратора. Лечится экранированием всех четырёх или передачей значений через окружение |
+| `internal/platform/file_dialog_windows.go:24, 49, 92` | `powershell -Command <скрипт>` с подписью, фильтром, именем файла через `psSingleQuote` | подпись — locale: `ru.json` в `%LOCALAPPDATA%\singbox-launcher\bin\locale`, скачивается и пишется процессом обычной целостности; имя — дата; расширения — константы | **администратор** (`requireAdministrator`) | **исправлено** отдельным коммитом `fix(windows)`: `psSingleQuote` удваивал только ASCII `'`, а PowerShell считает кавычками и `‘ ’ ‚ ‛` (U+2018–U+201B) — перевод с такой кавычкой выходил из литерала. Теперь скрипт целиком собирается в `file_dialog_ps.go`, каждое значение — base64 от UTF-8, раскодируемое в самом скрипте, и уходит как `-EncodedCommand` (base64 от UTF-16LE); тест `TestPowerShellEncodedDialogScript` |
 | `core/process_service.go:813` | `tasklist /FI "IMAGENAME eq sing-box.exe"` (`fmt.Sprintf`) | константа | администратор | безопасно |
 | `internal/platform/platform_windows.go:30, 35, 44, 48, 57, 61`, `internal/platform/device_info_windows.go:58`, `internal/platform/singtun_fwrules_windows.go:60`, `internal/platform/glprobe_windows.go:747`, `internal/platform/restart_windows.go:37` | `explorer`, `rundll32 url.dll,FileProtocolHandler <url>`, `taskkill`, `wmic`, `netsh … name=<правило>`, перезапуск себя (argv) | пути, URL, PID, имена правил файрвола (создать правило может только администратор) | администратор | вне рамок (Windows): шелла нет, системный PATH идёт раньше пользовательского; сам запуск ядра из `%LOCALAPPDATA%` под администратором — §8 п. 5 |
 
