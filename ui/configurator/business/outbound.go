@@ -100,6 +100,18 @@ func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 	// вписанные в опции сырым JSON или чужим файлом, целью detour, позиции и
 	// правила не становятся — такая цель протухает от правки tag_policy.
 	declared := DeclaredRootNames(model)
+	// Выключенное Направление остаётся объявленным именем (опцию у соседа
+	// сбрасывать нельзя — включат обратно), но целью правила оно не
+	// становится и через чужие опции: в config.json его нет.
+	disabled := map[string]bool{}
+	for i := range model.GlobalOutbounds {
+		if d := &model.GlobalOutbounds[i]; d.Disabled {
+			disabled[strings.TrimSpace(d.Tag)] = true
+			if d.Auto != nil {
+				disabled[d.AutoTag()] = true
+			}
+		}
+	}
 	for i := range model.GlobalOutbounds {
 		outbound := &model.GlobalOutbounds[i]
 		if outbound.Disabled {
@@ -109,7 +121,7 @@ func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 			tags[outbound.Tag] = struct{}{}
 		}
 		for _, extra := range outbound.AddOutbounds {
-			if declared[strings.TrimSpace(extra)] {
+			if name := strings.TrimSpace(extra); declared[name] && !disabled[name] {
 				tags[extra] = struct{}{}
 			}
 		}

@@ -715,6 +715,92 @@ func copyIdentity(src, dst string) error {
 	return nil
 }
 
+// ImportFrom сливает в реестр машины из remote-daemons.json ДРУГОЙ папки
+// данных — прежней portable-копии, которую перенос SPEC 135 не видит.
+//
+// Слияние, не замена: машина с уже известным адресом пропускается, свои
+// записи не трогаются. Вместе с записью едут клиентская пара (без неё mTLS не
+// пустит, и запись была бы пустышкой) и state.json визарда машины; собранный
+// config.json, .srs и тела подписок — нет, их Save и Deploy восстановят сами
+// (как в CopyProfileFrom). Не нашлась пара — запись всё равно берём: канал
+// чинится Edit → re-pair, который сохраняет запись и её настройки.
+//
+// Возвращает число добавленных машин.
+func (r *RemoteRegistry) ImportFrom(path string) (int, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return 0, fmt.Errorf("remote import: read: %w", err)
+	}
+	var src []RemoteDaemon
+	if err := json.Unmarshal(raw, &src); err != nil {
+		return 0, fmt.Errorf("remote import: parse %s: %w", path, err)
+	}
+	srcBin := filepath.Dir(path)
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	list, err := r.listLocked()
+	if err != nil {
+		return 0, err
+	}
+	added := 0
+next:
+	for _, d := range src {
+		d.Addr = strings.TrimSpace(d.Addr)
+		if d.Addr == "" {
+			continue
+		}
+		for _, have := range list {
+			if strings.EqualFold(have.Addr, d.Addr) {
+				continue next
+			}
+		}
+		// ID из чужого файла идёт в пути — берём только чистый slug.
+		srcID := d.ID
+		if srcID == "" || slugifyRemote(srcID) != srcID {
+			srcID = ""
+		}
+		d.ID = srcID
+		for _, have := range list {
+			if have.ID == d.ID {
+				d.ID = ""
+				break
+			}
+		}
+		if d.ID == "" {
+			d.ID = uniqueRemoteID(d.Name, d.Addr, list)
+		}
+		if srcID != "" {
+			if err := copyIdentity(filepath.Join(srcBin, constants.RemoteDaemonsDirName, srcID), r.identityDir(d.ID)); err != nil {
+				debuglog.WarnLog("remote import: %q: client keys not copied: %v", d.Name, err)
+			}
+			srcState := filepath.Join(srcBin, constants.WizardStatesDirName, constants.ConfigTargetRemote, srcID, constants.WizardStateFileName)
+			dstState := platform.GetWizardStatePathFor(r.dataDir, constants.ConfigTargetRemote, d.ID)
+			if st, err := os.ReadFile(srcState); err == nil {
+				if _, statErr := os.Stat(dstState); os.IsNotExist(statErr) {
+					_ = os.MkdirAll(filepath.Dir(dstState), platform.DefaultDirMode)
+					if err := os.WriteFile(dstState, st, platform.DefaultFileMode); err != nil {
+						debuglog.WarnLog("remote import: %q: state not copied: %v", d.Name, err)
+					}
+				}
+			}
+		}
+		if strings.TrimSpace(d.Name) == "" {
+			d.Name = d.Addr
+		}
+		list = append(list, d)
+		added++
+		debuglog.InfoLog("remote import: %q at %s taken from %s", d.Name, d.Addr, path)
+	}
+	if added == 0 {
+		return 0, nil
+	}
+	if err := r.saveLocked(list); err != nil {
+		return 0, err
+	}
+	return added, nil
+}
+
 // RemoteHealth — состояние удалённой машины для строки списка (SPEC 097).
 //
 // Диагностика КАЖДОЙ машины отдельно: до этого окно показывало статус

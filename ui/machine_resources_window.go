@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	fynetooltip "github.com/dweymouth/fyne-tooltip"
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/core"
@@ -76,7 +77,7 @@ func OpenMachineResourcesWindow(ac *core.AppController, d services.RemoteDaemon)
 					if e.State == services.ResourceOrphan {
 						nOrphan++
 					}
-					list.Add(resourceRow(ac, registry, d, e, reload))
+					list.Add(resourceRow(win, registry, d, e, reload))
 				}
 				summary.SetText(locale.Tf("%d local · %d on server · %d orphan", nLocal, nServer, nOrphan))
 				list.Refresh()
@@ -127,7 +128,7 @@ func OpenMachineResourcesWindow(ac *core.AppController, d services.RemoteDaemon)
 		nil, nil,
 		components.WrapInScrollWithGutter(list),
 	)
-	win.SetContent(container.NewPadded(body))
+	win.SetContent(fynetooltip.AddWindowToolTipLayer(container.NewPadded(body), win.Canvas()))
 	win.Resize(fyne.NewSize(680, 480))
 	fynewidget.CenterOnScreen(win)
 	win.Show()
@@ -135,7 +136,7 @@ func OpenMachineResourcesWindow(ac *core.AppController, d services.RemoteDaemon)
 }
 
 // resourceRow — строка одного ресурса: имя, размеры, состояние и действия.
-func resourceRow(ac *core.AppController, registry *services.RemoteRegistry,
+func resourceRow(win fyne.Window, registry *services.RemoteRegistry,
 	d services.RemoteDaemon, e services.ResourceEntry, reload func()) fyne.CanvasObject {
 	name := widget.NewLabelWithStyle(e.Name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
@@ -160,7 +161,7 @@ func resourceRow(ac *core.AppController, registry *services.RemoteRegistry,
 			err := action()
 			fyne.Do(func() {
 				if err != nil {
-					dialog.ShowError(err, ac.UIService.MainWindow)
+					dialog.ShowError(err, win)
 				}
 				reload()
 			})
@@ -196,7 +197,7 @@ func resourceRow(ac *core.AppController, registry *services.RemoteRegistry,
 					if ok {
 						run(func() error { return registry.DeleteRemoteResource(d.ID, e.Name) })
 					}
-				}, ac.UIService.MainWindow)
+				}, win)
 		})
 		if e.InUse {
 			del.SetToolTip(locale.T("The running config references this file — deploy a config without it first"))

@@ -33,6 +33,8 @@ const (
 	PurgeNoteOldLogs            = "old logs next to the program"
 	PurgeNotePreMigration       = "pre-migration data in the bundle"
 	PurgeNotePreMigrationApp    = "pre-migration data next to the program"
+	// PurgeNoteNeedsAdmin — пометка элемента с NeedsAdmin в тексте плана.
+	PurgeNoteNeedsAdmin = "requires administrator rights"
 )
 
 // shippedBinNames — поставляемое внутри <App>/bin, которое очистка не
@@ -72,6 +74,10 @@ type PurgeItem struct {
 	// внутри Path, а сам Path не трогается: режим Env, где DataDir и LogDir
 	// выбрал пользователь и там может лежать чужое.
 	Files []string
+	// NeedsAdmin — остаток лежит под AppDir, а процесс не проходит пробу
+	// записи AppDir (Program Files без прав, SPEC 139 §6 п. 6): элемент снят и
+	// недоступен — это пропуск, а не неудачная попытка удаления.
+	NeedsAdmin bool
 }
 
 // PurgePlan — что удалит очистка.
@@ -217,13 +223,16 @@ func BuildPurgePlan(l Layout, exe string, env func(string) string, goos string, 
 		}
 	}
 
+	migrationIdx := -1
 	if src := migratedFrom(l.Data); src != "" && !sameDir(src, l.Data.Bin()) {
 		note := PurgeNotePreMigrationApp
 		if bundle {
 			note = PurgeNotePreMigration
 		}
-		add(PurgeLeftover, src, note)
+		migrationIdx = add(PurgeLeftover, src, note)
 	}
+
+	p.markNeedsAdmin(l, migrationIdx, probe)
 
 	for i := range p.Items {
 		it := &p.Items[i]
@@ -238,6 +247,59 @@ func BuildPurgePlan(l Layout, exe string, env func(string) string, goos string, 
 		}
 	}
 	return p
+}
+
+// markNeedsAdmin снимает остатки под AppDir, которые процесс удалить не
+// может (SPEC 139 §6 п. 6): обычная проба записи AppDir, не предикат §7 —
+// повышенный экземпляр в Program Files удалить может. Если снят источник
+// миграции, маркер <Data>/.migrated_from сохраняется: по нему та же команда
+// из консоли администратора найдёт остаток и доделает очистку.
+func (p *PurgePlan) markNeedsAdmin(l Layout, migrationIdx int, probe func(string) bool) {
+	app := string(l.App)
+	if app == "" {
+		return
+	}
+	var writable *bool
+	for i := range p.Items {
+		it := &p.Items[i]
+		if it.Kind != PurgeLeftover || !isUnder(it.Path, app) {
+			continue
+		}
+		if writable == nil {
+			w := probe(app)
+			writable = &w
+		}
+		if *writable {
+			return
+		}
+		it.Selected = false
+		it.NeedsAdmin = true
+	}
+	if migrationIdx < 0 || !p.Items[migrationIdx].NeedsAdmin {
+		return
+	}
+	marker := filepath.Join(string(l.Data), constants.MigratedFromMarkerFileName)
+	p.keep = append(p.keep, marker)
+	// Элемент с Files (режим Env) удаляет файлы поштучно, мимо keep: маркер
+	// убирается из списка. Пустой Files значил бы «весь каталог» — такой
+	// элемент выпадает из плана.
+	items := p.Items[:0]
+	for _, it := range p.Items {
+		if len(it.Files) > 0 {
+			var files []string
+			for _, f := range it.Files {
+				if filepath.Clean(f) != marker {
+					files = append(files, f)
+				}
+			}
+			if len(files) == 0 {
+				continue
+			}
+			it.Files = files
+		}
+		items = append(items, it)
+	}
+	p.Items = items
 }
 
 // launcherLogNames — имена файлов логов лаунчера в LogDir: четыре лога с
@@ -340,6 +402,9 @@ func (p PurgePlan) Text() string {
 		}
 		if it.Note != "" {
 			b.WriteString(" - " + it.Note)
+		}
+		if it.NeedsAdmin {
+			b.WriteString(" - " + PurgeNoteNeedsAdmin)
 		}
 		if !it.Selected {
 			b.WriteString(" (skipped)")

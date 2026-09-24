@@ -48,6 +48,7 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/services"
+	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
@@ -807,6 +808,10 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 		if result.Action == "cancel" {
 			return
 		}
+		if result.Action == "open" {
+			handleOpenStateButton(presenter, wizardWindow)
+			return
+		}
 
 		if result.Action == "new" {
 			// "New" - инициализировать новое состояние из шаблона/config.json
@@ -939,6 +944,32 @@ func handleCloneFromButton(presenter *wizardpresentation.WizardPresenter, wizard
 			applyClone(presenter, wizardWindow, res.Source, state)
 		})
 	})
+}
+
+// handleOpenStateButton («Open file…» в диалоге Read) загружает state.json
+// (или снапшот) из другой папки данных — прежней portable-копии, которую
+// перенос SPEC 135 не видит, — тем же путём, что Clone from: текущее уходит
+// в снапшот (откат — Read), файл ложится на текущий таргет целиком и пишется
+// на диск только по Save.
+func handleOpenStateButton(presenter *wizardpresentation.WizardPresenter, wizardWindow fyne.Window) {
+	path, ok, err := platform.PickOpenFile(locale.T("Load state.json from another folder"), []string{"json"})
+	if err != nil || !ok {
+		if err == platform.ErrNativeDialogUnavailable {
+			dialogs.ShowError(wizardWindow, fmt.Errorf("%s", locale.T("Native file dialog is unavailable. Install zenity or kdialog and try again.")))
+		} else if err != nil {
+			debuglog.WarnLog("wizard: open state dialog: %v", err)
+		}
+		return
+	}
+	state, err := corestate.Load(path)
+	if err != nil {
+		dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to load state"), err))
+		return
+	}
+	// Имя и описание снапшота — свойство чужой папки, сюда не едут.
+	state.ID, state.Comment = "", ""
+	applyClone(presenter, wizardWindow, wizardbusiness.CloneSource{Name: path}, state)
+	maybeShowMigrationReport(wizardWindow, state, presenter.Model().DataDir.Bin())
 }
 
 // applyClone делает снапшот текущего состояния и применяет клон.

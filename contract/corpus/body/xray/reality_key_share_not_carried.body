@@ -1,0 +1,11 @@
+# Xray-элемент REALITY с `realitySettings.keyShare` — поле, которого у КОНВЕРТЕРА нет:
+# «Xray-JSON аналога нет» (tls.json, tls.reality.key_share). На входах sing-box и URI
+# поле читается с контракта 1.1.4 (SPEC 089), из Xray-конфига — нет, и выбор обмена
+# ключами теряется. Ждём тело БЕЗ tls.reality.key_share и код на нечитаемом листе
+# (норма вложенных ключей, 1.1.52).
+#
+# Кейс заведён по прямому требованию дельты-КАНДИДАТА D133-C8 («нужно завести, сегодня
+# такого кейса нет»). Поведение НЕ меняется: стороны совпадают, это не расхождение, а
+# общая дыра, и решение по ней за владельцем. Кейс лишь делает потерю ВИДИМОЙ —
+# станет красным ровно тогда, когда чтение решат включить.
+[{"remarks": "reality keyshare", "outbounds": [{"tag": "proxy", "protocol": "vless", "settings": {"vnext": [{"address": "r.example", "port": 443, "users": [{"id": "11111111-2222-3333-4444-555555555555", "encryption": "none", "flow": "xtls-rprx-vision"}]}]}, "streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {"publicKey": "AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw", "shortId": "abcd", "fingerprint": "chrome", "keyShare": "hybrid"}}}]}]

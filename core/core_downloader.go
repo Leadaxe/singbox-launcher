@@ -141,8 +141,9 @@ func (ac *AppController) DownloadCore(ctx context.Context, version string, progr
 	ac.FileService.ResolveCore()
 	debuglog.InfoLog("core: %s (source=%s)", ac.FileService.SingboxPath, ac.FileService.CoreSource)
 
-	// 6.7. Служба демона (macOS): launchd запускает свою root-owned копию
-	// ядра (SPEC 136), новое ядро до неё доходит только командой install.
+	// 6.7. Служба демона (macOS, Windows — SPEC 141 §10): launchd / SCM
+	// запускает свою защищённую копию ядра (SPEC 136), новое ядро до неё
+	// доходит только командой install.
 	// Привилегированных вызовов у лаунчера нет — диалог с готовой
 	// sudo-командой (терминальная модель); до её выполнения демон работает
 	// на прежнем ядре.

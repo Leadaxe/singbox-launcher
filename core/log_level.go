@@ -59,24 +59,8 @@ func ApplyLogLevelAndReloadCore(ac *AppController, level string) error {
 	if ac == nil || ac.FileService == nil {
 		return errors.New("core: no controller")
 	}
-	statePath := platform.GetWizardStatePath(ac.FileService.Layout.Data)
-	s, err := state.Load(statePath)
-	if err != nil {
-		return fmt.Errorf("load state: %w", err)
-	}
-	found := false
-	for i := range s.Vars {
-		if s.Vars[i].Name == TrafficLogLevelVar {
-			s.Vars[i].Value = level
-			found = true
-			break
-		}
-	}
-	if !found {
-		s.Vars = append(s.Vars, state.SettingVar{Name: TrafficLogLevelVar, Value: level})
-	}
-	if err := s.Save(statePath); err != nil {
-		return fmt.Errorf("save state: %w", err)
+	if err := setLocalStateVars(ac, []state.SettingVar{{Name: TrafficLogLevelVar, Value: level}}); err != nil {
+		return err
 	}
 	if err := ac.RebuildConfigIfDirty(true); err != nil {
 		return fmt.Errorf("rebuild config: %w", err)

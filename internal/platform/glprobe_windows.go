@@ -62,6 +62,10 @@ const (
 	// вызывается в main.go ниже гейта, переводов на этот момент ещё нет.
 	dlgTitle = "Singbox Launcher — OpenGL"
 
+	// installerMesaTask — подпись задачи Mesa в установщике (SPEC 140 §3.3,
+	// build/installer/singbox-launcher.iss, [CustomMessages] TaskMesa).
+	installerMesaTask = "Software OpenGL (Mesa3D) for RDP / VM without GPU"
+
 	// mesaPinnedDriver — драйвер Gallium, который лаунчер пинит через
 	// GALLIUM_DRIVER. В ассете лежат все драйверы (d3d12, zink, llvmpipe), и
 	// без пина Mesa на машине с видеокартой уходит в d3d12 — то есть в тот же
@@ -460,11 +464,18 @@ func EnsureDesktopOpenGL(l paths.Layout, interactive bool) {
 			// Mesa уже стоит и всё равно не дошли до кадра — чинить нечем.
 			debuglog.ErrorLog("gl: neither hardware OpenGL (%s) nor Mesa3D works — the window may stay blank", in.Probe.describe())
 			if interactive {
+				// Установка в Program Files (SPEC 140): Mesa туда кладёт задача
+				// установщика — снять её можно только переустановкой без неё.
+				reinstallHint := ""
+				if !paths.AppDirUserWritable(string(l.App), os.Getenv, runtime.GOOS, paths.ProbeWritable) {
+					reinstallHint = fmt.Sprintf("If Mesa3D came with the installer, run the installer again\n"+
+						"without the task \"%s\".\n\n", installerMesaTask)
+				}
 				messageBox(dlgTitle, fmt.Sprintf(
 					"Neither hardware OpenGL (%s) nor Mesa3D works on this machine.\n"+
-						"The launcher will start, but the window may stay blank.\n\n"+
+						"The launcher will start, but the window may stay blank.\n\n%s"+
 						"Details: logs/%s, logs/%s\nManual guide: %s",
-					in.Probe.describe(), constants.NativeStderrLogFileName, constants.MainLogFileName, rdpOpenGLDocURL),
+					in.Probe.describe(), reinstallHint, constants.NativeStderrLogFileName, constants.MainLogFileName, rdpOpenGLDocURL),
 					mbOK|mbIconError|mbTopmost|mbSetForeground)
 			}
 			MarkGLStarting(l.Data, mode)
@@ -483,6 +494,25 @@ func EnsureDesktopOpenGL(l paths.Layout, interactive bool) {
 			messageBox(dlgTitle,
 				"Hardware OpenGL 2.1 was not found — the application window cannot be rendered.\n"+
 					"Manual Mesa3D guide:\n"+win7OpenGLDocURL,
+				mbOK|mbIconWarning|mbTopmost|mbSetForeground)
+			MarkGLStarting(l.Data, mode)
+			return
+		}
+
+		// Каталог программы не пишется (установка в Program Files, SPEC 140
+		// §8): положить DLL рядом с exe отсюда нельзя, копирование упало бы
+		// после «Yes». Mesa в такой установке ставит сам установщик — задачей
+		// на странице выбора задач. Предикат — общий с выбором раскладки:
+		// повышенный экземпляр в Program Files тоже «не пишет».
+		if !paths.AppDirUserWritable(string(l.App), os.Getenv, runtime.GOOS, paths.ProbeWritable) {
+			debuglog.WarnLog("gl: no hardware OpenGL (%s); the program folder %s is read-only — Mesa3D install is left to the installer task", in.Probe.describe(), l.App)
+			messageBox(dlgTitle, fmt.Sprintf("Hardware OpenGL 2.1 was not found (got %d.%d, renderer \"%s\").\n"+
+				"The window cannot be rendered without it. This is typical for RDP sessions\n"+
+				"and servers/VMs without a GPU.\n\n"+
+				"The program folder is read-only, so Mesa3D cannot be installed from here.\n"+
+				"Run the launcher installer again and select the task\n"+
+				"\"%s\".\n\nManual guide: %s",
+				in.Probe.Major, in.Probe.Minor, in.Probe.Renderer, installerMesaTask, rdpOpenGLDocURL),
 				mbOK|mbIconWarning|mbTopmost|mbSetForeground)
 			MarkGLStarting(l.Data, mode)
 			return

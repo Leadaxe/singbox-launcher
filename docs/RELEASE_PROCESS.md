@@ -110,7 +110,7 @@ gh run watch <RUN_ID> --exit-status
 ```
 
 At the finish line expect:
-- 5 artifacts: `macos.zip`, `macos-catalina.zip`, `win64.zip`, `win64-full.zip` (exe + pinned core + wintun + template + Mesa3D in `mesa3d/`, assembled by the release job from the source constants), `win7-32.zip` + `checksums.txt`.
+- 6 artifacts: `macos.zip`, `macos-catalina.zip`, `win64-setup.exe` (Inno Setup installer, SPEC 140: the same set as `win64-full` without `portable.txt`, built by the `build-windows-installer` job), `win64.zip`, `win64-full.zip` (exe + pinned core + wintun + template + Mesa3D in `mesa3d/`, staged by `build/installer/stage_win64_full.sh` from the source constants), `win7-32.zip` + `checksums.txt` (covers the installer too).
 - The release is published (`isDraft=false`, `isPrerelease=false`).
 - The body contains Downloads + Checksums + your `X-Y-Z.md` and no foreign blocks.
 
@@ -278,7 +278,7 @@ People who already downloaded the previous artifact are unaffected, but their ch
 - [ ] The `RELEASE_NOTES.md` index is updated.
 - [ ] The `docs(release): vX.Y.Z notes` commit is pushed.
 - [ ] `main` ← merge `develop`, pushed; the `vX.Y.Z` tag pushed **as a separate command**.
-- [ ] `gh run watch` is green; the release has 4 archives + `checksums.txt`.
+- [ ] `gh run watch` is green; the release has 5 archives + `win64-setup.exe` + `checksums.txt` (with a line for the installer).
 - [ ] **`main` merged back into `develop`** (§1.5) — without this step develop is "not from the tag".
 - [ ] **The `RequiredTemplateRef` source default is bumped** to the new `origin/main` HEAD (§1.5, §5).
 - [ ] `git describe` on develop shows `vX.Y.Z-0-...` or `vX.Y.Z`.

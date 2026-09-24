@@ -1,0 +1,5 @@
+# `servername=` вместо `sni=` — написание v2rayN/Xray того же параметра (прогон 72
+# публичных подписок §525: 161 узел; ещё 9 — `serverName` в другом регистре). Третье
+# звено цепочки `sni` блока tls#uri, поэтому читается ровно тогда, когда ни `sni`, ни
+# `peer` не названы. Ждём tls.server_name = cover.example-1.com, без uri_param_unknown.
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?encryption=none&security=tls&type=tcp&serverName=cover.example-1.com#servername-alias

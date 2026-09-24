@@ -149,12 +149,24 @@ type Settings struct {
 	// подменить пользователь» (SPEC 136 §6). Одно предупреждение на версию:
 	// плашка на вкладке LOCAL остаётся до ремонта, модальное окно — нет.
 	DaemonUnsafeNoticeVersion string `json:"daemon_unsafe_notice_version,omitempty"`
+	// DaemonSystemProxy — метка владения системным прокси в daemon-режиме на
+	// Windows (SPEC 141 §7): строка сервера (`http://127.0.0.1:<порт>`),
+	// которую лаунчер поставил в WinINet пользователя. «Снять своё» снимает
+	// прокси, только если в HKCU стоит ровно она; иначе стирается метка.
+	// Пусто — лаунчер прокси не ставил. На macOS прокси ставит ядро.
+	DaemonSystemProxy string `json:"daemon_system_proxy,omitempty"`
 
 	// HideAppFromDock — пункт трея «Скрыть из Dock» (macOS). Пишется при
 	// каждом переключении пункта, применяется на старте: до этого поля
 	// состояние жило только в памяти и терялось при перезапуске (issue #112).
 	// На других платформах поле игнорируется (Dock есть только у macOS).
 	HideAppFromDock bool `json:"hide_app_from_dock,omitempty"`
+
+	// ElevateOnStartForTun — Windows x64/arm64 (дополнение 24.09 к SPEC 139):
+	// при включённом TUN лаунчер без прав сразу перезапускается с повышением.
+	// *bool: nil → дефолт (true), явный false — стартовать без прав и
+	// спрашивать при Start (диалог SPEC 139 §4).
+	ElevateOnStartForTun *bool `json:"elevate_on_start_for_tun,omitempty"`
 
 	// --- Умолчания подписок (SPEC 118 Т1) ---------------------------------
 	//
@@ -196,6 +208,14 @@ func (s *Settings) ShouldSendHWID() bool {
 		return true
 	}
 	return s.SubscriptionSendHWID == nil || *s.SubscriptionSendHWID
+}
+
+// ShouldElevateOnStartForTun — true если флаг nil (default) или явно true.
+func (s *Settings) ShouldElevateOnStartForTun() bool {
+	if s == nil {
+		return true
+	}
+	return s.ElevateOnStartForTun == nil || *s.ElevateOnStartForTun
 }
 
 // EnsureHWID возвращает существующий HWID (если уже сгенерирован), либо

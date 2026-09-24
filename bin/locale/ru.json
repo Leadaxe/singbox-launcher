@@ -4490,6 +4490,54 @@
   "Install or update the service (run in Terminal, your sudo):": {
     "value": "Установить или обновить службу (выполнить в терминале, ваш sudo):"
   },
+  "Run as administrator": {
+    "value": "Выполнить от имени администратора"
+  },
+  "Start the service": {
+    "value": "Запустить службу"
+  },
+  "Service Control Manager reports: %s": {
+    "value": "Диспетчер служб сообщает: %s"
+  },
+  "The service copy differs from the launcher core in %s. Install or update the service to refresh it.": {
+    "value": "Копия службы расходится с ядром лаунчера в файле %s. Установите или обновите службу."
+  },
+  "The service runs a binary your user can modify. Install or update the service to move it to a protected copy.": {
+    "value": "Служба запускает бинарь, который может изменить ваш пользователь. Установите или обновите службу, чтобы перевести её на защищённую копию."
+  },
+  "Install or update the service (Windows asks for administrator rights):": {
+    "value": "Установить или обновить службу (Windows запросит права администратора):"
+  },
+  "1. Install or update the service (Windows asks for administrator rights; the launcher pairs with it automatically):": {
+    "value": "1. Установить или обновить службу (Windows запросит права администратора; лаунчер сопряжётся с ней сам):"
+  },
+  "2. If pairing did not happen automatically, paste an invite (address#fingerprint#code) and pair:": {
+    "value": "2. Если сопряжение не произошло само, вставьте приглашение (адрес#отпечаток#код) и сопрягитесь:"
+  },
+  "2. Remove the service (Windows asks for administrator rights):": {
+    "value": "2. Удалить службу (Windows запросит права администратора):"
+  },
+  "Paste the invite printed by the daemon and click Pair. Installing or updating the service pairs the launcher automatically, so an invite is only needed when that did not happen:\n\n- \"Need a fresh invite\" on the Install tab issues a new invite and pairs with it (Windows asks for administrator rights).\n- Or run the command below in a terminal opened as administrator, then paste the printed invite into the pairing field.\n\nThe code is one-time: it burns after a successful pairing. The secret field is only for daemons running without TLS.": {
+    "value": "Вставьте приглашение, которое печатает демон, и нажмите «Сопрячь». Установка или обновление службы сопрягает лаунчер автоматически, поэтому приглашение нужно, только если этого не произошло:\n\n- «Нужно свежее приглашение» на вкладке «Установка» выпускает новое приглашение и сопрягается по нему (Windows запросит права администратора).\n- Или выполните команду ниже в консоли, открытой от имени администратора, затем вставьте напечатанное приглашение в поле сопряжения.\n\nКод одноразовый — сгорает после успешного сопряжения. Поле секрета нужно только для демонов без TLS."
+  },
+  "Remove the service": {
+    "value": "Удаление службы"
+  },
+  "Keep the protected core copy? The classic engine starts from it when the launcher runs as administrator. Remove all also deletes the copy and all daemon data.": {
+    "value": "Оставить защищённую копию ядра? Из неё запускается classic-движок, когда лаунчер работает от имени администратора. «Удалить всё» удалит и копию, и все данные демона."
+  },
+  "Keep the core copy": {
+    "value": "Оставить копию ядра"
+  },
+  "Remove all": {
+    "value": "Удалить всё"
+  },
+  "The daemon service is installed and is not removed with the data: it runs from its own protected copy of the core. To remove the service as well, run this command as administrator:": {
+    "value": "Служба демона установлена и вместе с данными не удаляется: она запускает собственную защищённую копию ядра. Чтобы удалить и службу, выполните эту команду от имени администратора:"
+  },
+  "The daemon service is installed. Remove it first with this command as administrator, otherwise the launcher will not be able to do it after the data is gone:": {
+    "value": "Служба демона установлена. Сначала удалите её этой командой от имени администратора, иначе после удаления данных лаунчер сделать этого уже не сможет:"
+  },
   "Remove all data…": {
     "value": "Удалить все данные…"
   },
@@ -4600,5 +4648,140 @@
   },
   "Only: %s": {
     "value": "Только: %s"
+  },
+  "TUN needs administrator rights": {
+    "value": "Для TUN нужны права администратора"
+  },
+  "TUN mode creates a network adapter and changes routes, which Windows allows only to administrators. The launcher is running without administrator rights.": {
+    "value": "Режим TUN создаёт сетевой адаптер и меняет маршруты — Windows разрешает это только администраторам. Лаунчер запущен без прав администратора."
+  },
+  "Proxy mode needs no rights: programs that use the system proxy (browsers and most apps) go through the local proxy on port %s, the rest connect directly.": {
+    "value": "Режиму прокси права не нужны: программы, которые используют системный прокси (браузеры и большинство приложений), пойдут через локальный прокси на порту %s, остальные — напрямую."
+  },
+  "Windows will ask for an administrator account, and the launcher will run under that account.": {
+    "value": "Windows спросит учётную запись администратора, и лаунчер будет работать под ней."
+  },
+  "Restart as administrator": {
+    "value": "Перезапустить от имени администратора"
+  },
+  "Switch to proxy mode": {
+    "value": "Перейти в режим прокси"
+  },
+  "Close the configurator first": {
+    "value": "Сначала закройте конфигуратор"
+  },
+  "The administrator prompt was cancelled.": {
+    "value": "Запрос прав администратора отменён."
+  },
+  "Waiting for the administrator command…": {
+    "value": "Ожидание команды администратора…"
+  },
+  "Could not run the command as administrator: %s": {
+    "value": "Не удалось выполнить команду от имени администратора: %s"
+  },
+  "The command failed (exit code %d). Run it in an elevated terminal to see its output:": {
+    "value": "Команда завершилась с ошибкой (код выхода %d). Выполните её в консоли администратора, чтобы увидеть вывод:"
+  },
+  "The administrator command is still running. Check the status again in a minute.": {
+    "value": "Команда администратора ещё выполняется. Проверьте состояние через минуту."
+  },
+  "The service is installed, but no invite was received. Pair it as a separate step:": {
+    "value": "Служба установлена, но приглашение не получено. Выполните сопряжение отдельным шагом:"
+  },
+  "The command succeeded, but pairing failed: %s": {
+    "value": "Команда выполнена, но сопряжение не удалось: %s"
+  },
+  "The service data folder was readable by another account before this install. Rotate the admin secret in daemon.json and pair again if this computer is shared.": {
+    "value": "До этой установки папку данных службы могла читать другая учётная запись. Если компьютером пользуются несколько человек, смените секрет администратора в daemon.json и выполните сопряжение заново."
+  },
+  "The service was started.": {
+    "value": "Служба запущена."
+  },
+  "The service was removed.": {
+    "value": "Служба удалена."
+  },
+  "The core copy was created or updated.": {
+    "value": "Копия ядра создана или обновлена."
+  },
+  "Could not restart as administrator: %s": {
+    "value": "Не удалось перезапустить от имени администратора: %s"
+  },
+  "sing-box was started with administrator rights, and this launcher cannot stop it without them. Restart the launcher as administrator to stop it.": {
+    "value": "sing-box запущен с правами администратора, и лаунчер без прав не может его остановить. Перезапустите лаунчер от имени администратора."
+  },
+  "Administrator": {
+    "value": "Администратор"
+  },
+  "Start with Windows": {
+    "value": "Запускать вместе с Windows"
+  },
+  "Connect VPN at sign-in": {
+    "value": "Подключать VPN при входе"
+  },
+  "Windows starts another copy: %s": {
+    "value": "Windows запускает другую копию: %s"
+  },
+  "Change this in a normal start, not as administrator": {
+    "value": "Меняется при обычном запуске, не от имени администратора"
+  },
+  "Requires administrator rights": {
+    "value": "Нужны права администратора"
+  },
+  "Autostart entry (Start with Windows)": {
+    "value": "Запись автозапуска (Запускать вместе с Windows)"
+  },
+  "Ask for administrator rights at start when TUN is enabled": {
+    "value": "Запрашивать права администратора при старте, если включён TUN"
+  },
+  "Off: the launcher starts without rights and asks when you press Start": {
+    "value": "Выкл: лаунчер стартует без прав и спросит при нажатии Start"
+  },
+  "portable.txt ignored": {
+    "value": "portable.txt не учитывается"
+  },
+  "Without administrator rights the old copy in the program folder stays, and on the next start the launcher copies the data from it into the data folder again. To remove it, run the cleanup as administrator.": {
+    "value": "Без прав администратора старая копия в папке программы остаётся, и при следующем запуске лаунчер снова скопирует из неё данные в папку данных. Чтобы удалить её, запустите очистку от имени администратора."
+  },
+  "Install service": {
+    "value": "Установить службу"
+  },
+  "With administrator rights the launcher starts the sing-box core only from a protected copy in Program Files that your user account cannot modify, and there is no such copy yet.": {
+    "value": "С правами администратора лаунчер запускает ядро sing-box только из защищённой копии в Program Files, которую ваша учётная запись не может изменить, а такой копии пока нет."
+  },
+  "With administrator rights the launcher starts the sing-box core from a protected copy in Program Files, and the copy does not match the launcher's current core (%s) — for example after a core update.": {
+    "value": "С правами администратора лаунчер запускает ядро sing-box из защищённой копии в Program Files, а копия не совпадает с текущим ядром лаунчера (%s) — например, после обновления ядра."
+  },
+  "With administrator rights the launcher starts the sing-box core only from a protected copy, and the copy's location failed the protection check:\n%s\nIf the command below reports the same problem, fix the permissions of that path.": {
+    "value": "С правами администратора лаунчер запускает ядро sing-box только из защищённой копии, а расположение копии не прошло проверку защиты:\n%s\nЕсли команда ниже сообщит о той же проблеме, исправьте права на этот путь."
+  },
+  "The daemon service is installed on this computer, so the command is its Install or update command: it refreshes the same copy and restarts the service.": {
+    "value": "На этом компьютере установлена служба демона, поэтому команда — её «Установить или обновить»: она обновит ту же копию и перезапустит службу."
+  },
+  "Click Run as administrator (or run this command in PowerShell as administrator), then click Retry:": {
+    "value": "Нажмите «Выполнить от имени администратора» (или выполните эту команду в PowerShell от имени администратора), затем — «Повторить»:"
+  },
+  "The daemon service still runs the previous core. Install the new core into the service and restart it (Run as administrator):": {
+    "value": "Служба демона всё ещё работает на прежнем ядре. Установите новое ядро в службу и перезапустите её (от имени администратора):"
+  },
+  "The daemon service runs with SYSTEM rights from a file that is not protected:\n%s\n\nAny program running as you could replace it and take over this computer. Install or update the service to move it to a protected copy of the core (Run as administrator). The VPN keeps working meanwhile; the LOCAL tab of the connection settings shows this until it is fixed.": {
+    "value": "Служба демона работает с правами SYSTEM из незащищённого файла:\n%s\n\nЛюбая программа, запущенная от вашего имени, может подменить его и получить полный контроль над компьютером. Установите или обновите службу, чтобы перевести её на защищённую копию ядра (от имени администратора). VPN тем временем продолжает работать; вкладка LOCAL в настройках подключения показывает это, пока проблема не устранена."
+  },
+  "The daemon service runs with SYSTEM rights from a file that is not protected:\n%s\n\nAny program running as you could replace it and take over this computer. %s The VPN keeps working meanwhile; the LOCAL tab of the connection settings shows this until it is fixed.": {
+    "value": "Служба демона работает с правами SYSTEM из незащищённого файла:\n%s\n\nЛюбая программа, запущенная от вашего имени, может подменить его и получить полный контроль над компьютером. %s VPN тем временем продолжает работать; вкладка LOCAL в настройках подключения показывает это, пока проблема не устранена."
+  },
+  "Open file…": {
+    "value": "Открыть файл…"
+  },
+  "Import from file…": {
+    "value": "Импорт из файла…"
+  },
+  "Load state.json from another folder": {
+    "value": "Загрузить state.json из другой папки"
+  },
+  "Load remote-daemons.json from another folder": {
+    "value": "Загрузить remote-daemons.json из другой папки"
+  },
+  "Imported %d remote servers": {
+    "value": "Импортировано удалённых серверов: %d"
   }
 }

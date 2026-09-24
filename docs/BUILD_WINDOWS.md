@@ -60,10 +60,16 @@ The script automatically:
 go mod tidy
 ```
 
-3. (Optional) Embed the icon:
+3. (Optional) Embed the icon and the manifest:
 ```batch
 rsrc -ico assets/app.ico -manifest app.manifest -o rsrc.syso
 ```
+`app.manifest` requests `asInvoker`: the launcher starts without administrator
+rights and asks for them only for TUN (SPEC 139). Keep the manifest embedded
+anyway — a 32-bit build without `requestedExecutionLevel` falls under UAC file
+virtualization, and writes to Program Files silently land in `VirtualStore`.
+The Windows 7 build (win7-32, CI) embeds `app.win7.manifest` instead:
+`requireAdministrator`, a UAC prompt on every start, portable layout only.
 
 4. Build the project:
 ```batch
@@ -154,6 +160,24 @@ Just launch `singbox-launcher.exe` by double-clicking it, or from the command li
 ```batch
 .\singbox-launcher.exe
 ```
+
+## 📦 Installer (Inno Setup)
+
+Releases also ship `singbox-launcher-<version>-win64-setup.exe` ([SPEC 140](../SPECS/140-F-N-WINDOWS_INSTALLER/SPEC.md)): a per-machine install into `C:\Program Files\singbox-launcher`, data in `%LOCALAPPDATA%\singbox-launcher`. CI builds it in the `build-windows-installer` job; to build it locally:
+
+1. Install [Inno Setup 6.4+](https://jrsoftware.org/isdl.php) (`ISCC.exe` lands in `C:\Program Files (x86)\Inno Setup 6`), or `choco install innosetup`.
+2. Build `singbox-launcher.exe` (see above).
+3. Stage the win64-full set without `portable.txt` from Git Bash — the script downloads the pinned core and Mesa3D and takes wintun and the template from the repository:
+   ```bash
+   bash build/installer/stage_win64_full.sh singbox-launcher.exe v-local-test installer-stage
+   ```
+4. Compile. `AppVersion` is any string; `AppVersionNumeric` must be `X.Y.Z.N` (CI takes it from `git describe --tags --long --match "v[0-9]*" --exclude "*-prerelease"`: `v2.1.0-20-g…` → `2.1.0.20`). `StageDir` and the output folder are best given as absolute paths:
+   ```batch
+   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=v-local-test /DAppVersionNumeric=2.1.0.20 /DStageDir=%CD%\installer-stage /O%CD%\dist build\installer\singbox-launcher.iss
+   ```
+   The result is `dist\singbox-launcher-v-local-test-win64-setup.exe`. `/DDaemonService` adds the sing-box-lxd service task (after SPEC 141).
+
+Logs: Setup and Uninstall write `Setup Log *.txt` / `Uninstall Log *.txt` to `%TEMP%` (`SetupLogging`, `UninstallLogging`); the output of `-purge-data` goes there too.
 
 ## 📝 Notes
 

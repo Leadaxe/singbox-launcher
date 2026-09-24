@@ -2,12 +2,14 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
@@ -248,6 +250,22 @@ func BuildSettingsContent(ac *core.AppController) (fyne.CanvasObject, func()) {
 	// «Remove all data…» — опасное действие в конце вкладки.
 	storageBlock, refreshStorage := buildStorageSection(ac)
 
+	// ---- Автозапуск (SPEC 139 §8, только Windows, кроме win7-32) -----------
+	// В разделе Connection: «запускать при входе» — поведение подключения.
+	connBlock := container.NewVBox(connTitle, autoPingCheck)
+	refresh := refreshStorage
+	if core.AutostartSupported {
+		autostartBlock, refreshAutostart := buildAutostartBlock(ac)
+		connBlock.Add(autostartBlock)
+		refresh = func() {
+			refreshStorage()
+			refreshAutostart()
+		}
+	}
+	if core.ElevateAtStartSupported {
+		connBlock.Add(buildElevateOnStartBlock(binDir))
+	}
+
 	// Language first so the two subscription sections (Subscriptions +
 	// Subscription identification) sit together instead of being split by the
 	// Language block.
@@ -255,8 +273,7 @@ func BuildSettingsContent(ac *core.AppController) (fyne.CanvasObject, func()) {
 		langTitle,
 		langRow,
 		widget.NewSeparator(),
-		connTitle,
-		autoPingCheck,
+		connBlock,
 		widget.NewSeparator(),
 		subsTitle,
 		autoUpdateCheck,
@@ -271,7 +288,101 @@ func BuildSettingsContent(ac *core.AppController) (fyne.CanvasObject, func()) {
 		widget.NewSeparator(),
 		storageBlock,
 	)
-	return content, refreshStorage
+	return content, refresh
+}
+
+// buildElevateOnStartBlock — чекбокс авто-повышения при старте с TUN
+// (дополнение 24.09 к SPEC 139): settings.json elevate_on_start_for_tun, по
+// умолчанию включено. Применяется со следующего запуска.
+func buildElevateOnStartBlock(binDir string) fyne.CanvasObject {
+	check := widget.NewCheck(locale.T("Ask for administrator rights at start when TUN is enabled"), nil)
+	cur := locale.LoadSettings(binDir)
+	check.SetChecked(cur.ShouldElevateOnStartForTun())
+	check.OnChanged = func(on bool) {
+		st := locale.LoadSettings(binDir)
+		st.ElevateOnStartForTun = &on
+		if err := locale.SaveSettings(binDir, st); err != nil {
+			debuglog.WarnLog("settings_tab: save elevate_on_start_for_tun: %v", err)
+		}
+	}
+	hint := widget.NewLabel(locale.T("Off: the launcher starts without rights and asks when you press Start"))
+	hint.Wrapping = fyne.TextWrapWord
+	hint.Importance = widget.LowImportance
+	return container.NewVBox(check, hint)
+}
+
+// autostartIndent — отступ вложенного чекбокса «Connect VPN at sign-in».
+const autostartIndent = 28
+
+// buildAutostartBlock — чекбоксы автозапуска (SPEC 139 §8): «Start with
+// Windows» и вложенный «Connect VPN at sign-in» (доступен при отмеченном
+// первом). Значение другой копии лаунчера — не отмечено, с подсказкой;
+// установка перезаписывает его. В повышенном экземпляре оба недоступны:
+// значение пользовательское, а повышение могло пойти под другой учётной
+// записью. Второе значение — refresh: перечитывает реестр при выборе
+// вкладки Settings.
+func buildAutostartBlock(ac *core.AppController) (fyne.CanvasObject, func()) {
+	startCheck := widget.NewCheck(locale.T("Start with Windows"), nil)
+	connectCheck := widget.NewCheck(locale.T("Connect VPN at sign-in"), nil)
+	hint := widget.NewLabel("")
+	hint.Wrapping = fyne.TextWrapBreak
+	hint.Importance = widget.LowImportance
+	hint.Hide()
+
+	var refresh func()
+	apply := func(bool) {
+		enabled := startCheck.Checked
+		start := enabled && connectCheck.Checked
+		startCheck.Disable()
+		connectCheck.Disable()
+		go func() {
+			err := ac.SetAutostart(enabled, start)
+			fyne.Do(func() {
+				if err != nil {
+					ShowError(ac.UIService.MainWindow, err)
+				}
+				refresh()
+			})
+		}()
+	}
+	setChecked := func(c *widget.Check, v bool) {
+		c.OnChanged = nil
+		c.SetChecked(v)
+		c.OnChanged = apply
+	}
+	refresh = func() {
+		st := ac.AutostartState()
+		setChecked(startCheck, st.Enabled)
+		setChecked(connectCheck, st.Enabled && st.Start)
+		switch {
+		case st.Locked:
+			startCheck.Disable()
+			connectCheck.Disable()
+			hint.SetText(locale.T("Change this in a normal start, not as administrator"))
+			hint.Show()
+			return
+		case st.OtherExe != "":
+			hint.SetText(locale.Tf("Windows starts another copy: %s", st.OtherExe))
+			hint.Show()
+		default:
+			hint.Hide()
+		}
+		startCheck.Enable()
+		if st.Enabled {
+			connectCheck.Enable()
+		} else {
+			connectCheck.Disable()
+		}
+	}
+	refresh()
+
+	indent := canvas.NewRectangle(color.Transparent)
+	indent.SetMinSize(fyne.NewSize(autostartIndent, 1))
+	return container.NewVBox(
+		startCheck,
+		container.NewBorder(nil, nil, indent, nil, connectCheck),
+		hint,
+	), refresh
 }
 
 // buildSubscriptionDefaultsBlock — два умолчания подписок (SPEC 118 Т8):

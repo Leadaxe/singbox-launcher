@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin || (windows && !386)
 
 // File chain_probe.go — общее для послойной пробы цепочки (SPEC 110).
 //

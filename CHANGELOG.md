@@ -10,6 +10,33 @@
 
 Черновик пользовательских заметок — [docs/release_notes/upcoming.md](docs/release_notes/upcoming.md).
 
+## v2.2.0
+
+Подробные заметки: [docs/release_notes/2-2-0.md](docs/release_notes/2-2-0.md).
+
+### Возможности (5)
+
+- feat(windows)!: SPEC 139 — манифест `asInvoker`: лаунчер работает без прав администратора, режим прокси без UAC; TUN без прав — диалог «Install service / Restart as administrator / Switch to proxy mode», перезапуск с повышением через `runas` и `-handoff`; при TUN без службы права запрашиваются сразу при старте (выключается в Settings → Connection); автозапуск «Start with Windows» через HKCU Run и `-autostart=on|off` (#99)
+- feat(installer): SPEC 140 — установщик Inno Setup `…-win64-setup.exe` (Windows 10/11 x64): per-machine в Program Files, данные в `%LOCALAPPDATA%`, задачи ярлык/автозапуск/Mesa3D/служба, штатное закрытие работающего лаунчера через мьютекс и событие Quit, удаление с вопросом о данных; CI job `build-windows-installer`, ассет в релизе
+- feat(daemon)!: SPEC 141 — daemon-режим на Windows: служба `sing-box-lxd` (SCM, LocalSystem, защищённая копия в `Program Files\sing-box-lxd`), общий daemon-код вынесен из `_darwin.go`, классификатор по SCM/DACL/сайдкару, операции через `runas`, системный прокси в daemon-режиме ставит лаунчер, classic под правами исполняет только защищённую копию, панель Local с Install/Start/Fresh invite/Uninstall
+- feat(wizard): «Open file…» в диалоге Read — загрузка `state.json` из другой папки; Remote: «Import from file…» в окне «+ Add» — импорт `remote-daemons.json` со слиянием и переносом ключей
+- feat(win7): сборка win7-32 остаётся в прежней модели — `requireAdministrator`, только portable, без службы и установщика
+
+### Исправления (4)
+
+- fix(windows): консоль PowerShell за системными диалогами файлов больше не показывается
+- fix(ui): окно ресурсов машины (RES) показывает подсказки, его диалоги открываются поверх него; выключенное Направление не предлагается целью правила (`6d549a49`)
+- fix(contract): 1.1.53 — `security=reality` в share-ссылках VLESS; `servername`/`serverName` и `packet-encoding`; keep-alive из JSON-формы vmess; отрицательный `tcpKeepAliveInterval` в Xray
+- fix(paths): «Remove all data» без прав предупреждает, что старая копия в Program Files останется и при следующем старте перенесётся снова
+
+### Прочее (5)
+
+- feat(diag): сторож зависания UI — если UI-поток не отвечает ~30 с, полный дамп горутин пишется в `logs/ui-freeze-<время>.txt` (хранятся 3 последних), в лог — WARN с путём
+- chore(core): пин sing-box-lx 1.14.2-lx.2 (было 1.14.1-lx.12) — синк апстрима 1.14.2, ключи сна WireGuard под `lx.wg.*`, Windows-служба `sing-box-lxd`
+- chore(contract): 1.1.53 — SS без паддинга, порядок ключей и `aid` в контейнере v2rayN, `disable_sni` у TUIC, 13 секций `mappers.singbox`
+- ci(lint): линтер реестра — пустой словарь `detect` не является предикатом (SPEC 133)
+- ci(claude): бот для issues запускается по метке `claude` и команде `@claude`, а не на каждый комментарий
+
 ## v2.1.0
 
 Подробные заметки: [docs/release_notes/2-1-0.md](docs/release_notes/2-1-0.md).
@@ -36,6 +63,61 @@
 - chore(core): пин sing-box-lx 1.14.1-lx.12 (было lx.8) — `lxd --service=install|copy` делает root-owned копию, демон сообщает её sha256; попутно lx.9–lx.10: пул XHTTP, синк с sing-box 1.14.1 (`8c0a691d`)
 - build(darwin): `build_darwin.sh -i` меняет только исполняемый файл и перезапускает лаунчер; чистый бандл ставится без выноса данных (`f7c620ab`, `576432a9`)
 - ci(lint): страж `tools/paths_guard` — запись от `AppDir` в обход именованных типов путей (`3112f48f`)
+
+## v2.0.2
+
+Подробные заметки: [docs/release_notes/2-0-2.md](docs/release_notes/2-0-2.md).
+
+### Возможности (1)
+
+- feat(contract): `dropped[]` несёт `index` элемента и машинный `code`, включая записи, которые не удалось прочитать вовсе (код `form_unrecognized`); коды получили и отбраковки, у которых их не было, — `scheme_unsupported`, `service_record_ignored`, `body_dialect_unrecognized` (`cb6889e0`, `54124264`)
+
+### Исправления (19)
+
+- fix(subscription): истёкшая подписка сообщает об этом, а не отдаёт один мёртвый сервер — баннер панели синтаксически валидной ссылкой (Remnawave `vless://…@0.0.0.0:1#⚠ Subscription expired`, 3x-ui `socks://127.0.0.1:1080`) распознаётся по адресу (`banner_targets`), текст провайдера после `#` показывается причиной (`8a915861`)
+- fix(source): `vpn://` с голым wg-quick / AmneziaWG `.conf` читается (форма `bare_conf`), а не уходит в ветку сжатого профиля с «declared uncompressed size out of range»; паддинг `=` необязателен (`54124264`)
+- fix(source): схема `amneziawg://` — третье написание рядом с `wg://` и `awg://` (`54124264`)
+- fix(source): подписка из одного конфига Xray (вид `xray_config`) разбирается как массив из одного, а не отбраковывается «missing type» (`54124264`)
+- fix(xray): outbound'ы WireGuard, SOCKS и HTTP импортируются, а не пропадают с диагнозом «протокол не поддержан» (`86c85a48`)
+- fix(xray): транспорт kcp или quic — отбраковка узла с причиной (объявленный `on_invalid` селектора транспорта исполняется), а не узел plain-TCP, который не соединится (`86c85a48`)
+- fix(xray): больше не теряются `alpn` (с общего блока `tlsSettings`), `mux` → `multiplex`, заголовки WebSocket и HTTP, таймауты транспортов, версии TLS, наборы шифров, сертификаты и ECH; массив и карта в источнике доезжают до записи реестра (`86c85a48`)
+- fix(xray): негодный элемент списка (например число в `alpn`) снимается элементом, а не всей настройкой (`86c85a48`)
+- fix(contract): камуфляж HTTP-заголовком поверх чистого TCP — отбраковка узла с причиной `transport_header_unsupported`: ссылочная форма маппилась в HTTP/2-транспорт ядра, JSON-форма терялась молча; `none` и пусто не затронуты (`8a915861`)
+- fix(socks): `socks://base64(user:pass)` (так пишет v2rayN) сохраняет пароль — `decode_requires_separator`, обе половины обязательны (`8a915861`)
+- fix(vmess): настройки XHTTP из `extra` читаются, в том числе вложенным объектом, как его пишет Marzban (`8a915861`)
+- fix(hysteria2): короткие `up` / `down` читаются, а не дают два `uri_param_unknown` с потерей полосы (`8a915861`)
+- fix(hysteria2): полоса с единицей измерения (`100mbps`, `300 Mbps`) сохраняется — `normalize: bandwidth_mbps`: kbps/bps округляются вниз, gbps ×1000, неизвестный суффикс значения не даёт (`54124264`)
+- fix(hysteria2): обфускация Salamander и её пароль из `finalmask.udp[0]` сохраняются (`54124264`)
+- fix(hysteria): диапазон `server_ports` вне 0–65535 или с ведущими нулями (`99999:99999`, `00443:00444`) снимается с узла с предупреждением, а не роняет весь конфиг (`5ca6408d`)
+- fix(xhttp): `sessionIDPlacement` / `sessionIDKey` в написании Xray читаются в `extra` и плоским query — session id больше не уходит в дефолтный `path` (#131) (`11d5cbc9`, `86c85a48`)
+- fix(source): служебные строки `incy://routing/…` и `happ://routing/…` пропускаются с info-кодом `service_record_ignored`, а не идут отказами (`54124264`)
+- fix(configurator): длинные валидные ссылки не отбраковываются — предел длины один, контрактный 65536 из реестра (`limits.json max_uri_length`) через `CheckURILength`; константа 8192 конфигуратора снята, отказ несёт `uri_too_long` с длиной и пределом (`40d15046`, `86c85a48`)
+- fix(contract): неизвестный ключ внутри объявленного блока (`streamSettings`, `extra` и т. п.) даёт пометку, а не теряется молча; тела узлов не меняются (`8a915861`)
+
+### Прочее (7)
+
+- chore(contract): контракт 1.1.46 → 1.1.52 — род группы = тип тела sing-box (`genus`), правило «комментарий с `=` — не имя узла» для `.conf` перенесено из движка в реестр (`label.comment`), перенумерация волн 1.1.48/1.1.49, снят мёртвый код `clash_yaml_unsupported`, три новых закрытых атрибута схемы (`banner_targets`, `decode_requires_separator`, `nested_quiet`) (`319e7c4a`, `c15d434a`, `24601fcd`, `dfd01725`, `3f66987b`, `080f0367`)
+- test(linkmap): сверка оверлеев эмита — круг на каждое правило, именной круг `keep_empty_tail` у socks4; раннер корпуса построчных тел переведён на чистый парсер тела — тихий игнор больше не неотличим от молчаливой пропажи (`2657b44f`, `ea25430f`, `54124264`)
+- fix(win7): легаси-сборка go1.20 снова собирается — `sync.OnceValue` из проверки баннеров (`8a915861`, тот же цикл) заменена на `sync.Once`; `win7guard` теперь ловит `sync.OnceValue`/`OnceValues`/`OnceFunc` (`5c2b6d3a`)
+- chore(lint): golangci-lint 2.12.2 зелёный на всех трёх ОС, мёртвый код снят; две сироты каталога локализации (`f710b259`, `29185bb2`)
+- chore(deps): `google.golang.org/grpc` 1.83.2 → 1.84.0 (#132) (`5cdb5640`)
+- chore(constants): bump `RequiredTemplateRef` source-default (`4d49a76a`)
+- docs(spec): SPEC 135 DATA_DIR_LAYOUT — раскладка данных `AppDir`/`DataDir`/`LogDir` (закрывает #85, поглощает 022 и 080); реализация — в v2.1.0 (`318f9ae2`, `807707f3`, `d5f8776d`)
+
+## v2.0.1
+
+Подробные заметки: [docs/release_notes/2-0-1.md](docs/release_notes/2-0-1.md) (в конце — полные заметки v2.0.0).
+
+### Исправления (3)
+
+- fix(ui): Servers — сортировка при активном фильтре сразу меняет порядок видимых строк: кэш отфильтрованного среза сбрасывается после сортировки (`4972e4ec`)
+- fix(remote): SPEC 132 — Save больше не оставляет прошлую сборку `config.json`: локальная проверка не могла принять конфиг удалённой машины (`rule_set[].path` ведут в её файловую систему), файл молча не заменялся при «wrote» в логе и диалоге, и Deploy уносил на машину старую сборку (`9ef6d3be`)
+- fix(remote): SPEC 132 — страховка «ядро отвергло узел» работает для конфига удалённой машины: на время проверки пути наборов правил подменяются локальными из профиля машины; отказ ядра «не про узел» показывается ошибкой с текстом ядра вместо «Remote config exported» (`c715868d`)
+
+### Прочее (2)
+
+- docs(troubleshooting): `docs/TROUBLESHOOTING.md` (EN и RU) — симптом, проверка и обход для remote-Save в 2.0.0, оставлявшего на машине старые правила (`10e627e4`)
+- chore(constants): bump `RequiredTemplateRef` source-default (`e71be9a2`)
 
 ## v2.0.0
 

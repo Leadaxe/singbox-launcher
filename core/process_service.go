@@ -50,6 +50,12 @@ const (
 // sync=false — фоновая goroutine (Stop, не блокирует UI).
 // sync=true  — inline (Restart: cleanup до Start, чтобы не снести новый адаптер).
 func runGhostTunCleanup(sync bool) {
+	// SPEC 139 §6 п. 4: без прав ядро TUN не поднимало (гейт в Start), а
+	// очистка пишет в HKLM и SetupAPI — пропуск молча.
+	if windowsNotElevated() {
+		debuglog.DebugLog("runGhostTunCleanup: skipped, not elevated")
+		return
+	}
 	run := func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -143,7 +149,10 @@ func (ac *AppController) CoreLogPath() string {
 	state := ac.ProcessService.coreLog.Load()
 	if state == coreLogUnknown {
 		state = coreLogUser
-		if hasTun, err := config.ConfigHasTun(ac.FileService.ConfigPath); err == nil && hasTun {
+		if classicElevatedUsesCopy() {
+			// Windows: повышенный classic пишет в classic.log при любом конфиге.
+			state = coreLogPrivileged
+		} else if hasTun, err := config.ConfigHasTun(ac.FileService.ConfigPath); err == nil && hasTun {
 			state = coreLogPrivileged
 		}
 		ac.ProcessService.coreLog.CompareAndSwap(coreLogUnknown, state)
@@ -211,6 +220,17 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 		return
 	}
 
+	// SPEC 139 §4: на Windows TUN без прав администратора не стартует —
+	// вместо ядра диалог (перезапуск с правами или режим прокси). Сюда
+	// приходят все входы: кнопка, трей, -start, Debug API, авто-рестарт.
+	if ac.tunNeedsElevation() {
+		ac.showTunElevationDialog()
+		if ac.UIService != nil && ac.UIService.StartAbortedFunc != nil {
+			ac.UIService.StartAbortedFunc()
+		}
+		return
+	}
+
 	// Check capabilities on Linux before starting
 	if suggestion := platform.CheckAndSuggestCapabilities(ac.FileService.SingboxPath); suggestion != "" {
 		debuglog.WarnLog("startSingBox: Capabilities check failed: %s", suggestion)
@@ -256,11 +276,31 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 		}
 	}
 
+	// SPEC 141 §8: повышенный лаунчер на Windows исполняет только
+	// защищённую копию ядра (гейт по токену при любом конфиге), вывод — в
+	// classic.log с явным DACL.
+	corePath := ac.FileService.SingboxPath
+	var privilegedLog *os.File
+	if classicElevatedUsesCopy() {
+		path, logFile, err := ac.elevatedClassicStart()
+		if err != nil {
+			// Отказ гейта копии уже показан своим диалогом с командой.
+			if !errors.Is(err, errPrivilegedCopyNotReady) {
+				ac.ShowStartupError(err)
+			}
+			return
+		}
+		corePath, privilegedLog = path, logFile
+	}
+
 	debuglog.WarnLog("startSingBox: Starting Sing-Box...")
-	ac.SingboxCmd = exec.Command(ac.FileService.SingboxPath, "run", "-c", filepath.Base(ac.FileService.ConfigPath))
+	ac.SingboxCmd = exec.Command(corePath, "run", "-c", filepath.Base(ac.FileService.ConfigPath))
 	platform.PrepareCommand(ac.SingboxCmd)
 	ac.SingboxCmd.Dir = ac.FileService.Layout.Data.Bin()
-	if ac.FileService.ChildLogFile != nil {
+	if privilegedLog != nil {
+		ac.SingboxCmd.Stdout = privilegedLog
+		ac.SingboxCmd.Stderr = privilegedLog
+	} else if ac.FileService.ChildLogFile != nil {
 		// Check and rotate log file before starting new process to prevent unbounded growth
 		ac.FileService.CheckAndRotateLogFile(ac.FileService.ChildLogPath)
 
@@ -272,12 +312,21 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 	} else {
 		debuglog.WarnLog("startSingBox: Warning: sing-box log file not available, output will not be logged.")
 	}
-	if err := ac.SingboxCmd.Start(); err != nil {
+	startErr := ac.SingboxCmd.Start()
+	if privilegedLog != nil {
+		// У ядра свой дескриптор classic.log; наш больше не нужен.
+		_ = privilegedLog.Close()
+	}
+	if err := startErr; err != nil {
 		ac.ShowStartupError(fmt.Errorf("failed to start Sing-Box process: %w", err))
 		debuglog.ErrorLog("startSingBox: Failed to start Sing-Box: %v", err)
 		return
 	}
-	svc.coreLog.Store(coreLogUser)
+	if privilegedLog != nil {
+		svc.coreLog.Store(coreLogPrivileged)
+	} else {
+		svc.coreLog.Store(coreLogUser)
+	}
 	ac.RunningState.Set(true)
 	ac.StoppedByUser = false
 	ac.StateService.ResetAutoUpdateFailedAttempts() // Reset so auto-update can retry after successful Start
@@ -720,7 +769,20 @@ func (svc *ProcessService) checkAndShowSingBoxRunningWarning(ctx string) bool {
 					}
 				} else {
 					processName := platform.GetProcessNameForCheck()
-					_ = platform.KillProcess(processName)
+					var err error
+					if runtime.GOOS == "windows" && foundPID > 0 && foundPID == findPrivilegedCopyInUserSession() {
+						// SPEC 141 §8: копия ядра повышенного classic — только
+						// по PID: sing-box-lxd.exe так же зовётся служба.
+						err = platform.KillProcessByPID(foundPID)
+					} else {
+						err = platform.KillProcess(processName)
+					}
+					// SPEC 139 §6 п. 7: ядро повышенного экземпляра без прав не
+					// снять — сообщение с перезапуском, RunningState не трогаем.
+					if svc.ac.KillNeedsElevation(err) {
+						svc.ac.ShowKillNeedsElevation()
+						return
+					}
 				}
 				// В daemon-режиме RunningState отражает ядро ДЕМОНА, а убили
 				// мы осиротевший classic-процесс — состояние демона не
@@ -843,6 +905,12 @@ func (svc *ProcessService) isSingBoxProcessRunning() (bool, int) {
 			}
 		}
 		debuglog.DebugLog("isSingBoxProcessRunning: tasklist found processes but none matched '%s'", processName)
+		// SPEC 141 §8: копия ядра повышенного classic в сессии пользователя;
+		// служба (сессия 0) к завершению не предлагается.
+		if pid := findPrivilegedCopyInUserSession(); pid > 0 {
+			debuglog.DebugLog("isSingBoxProcessRunning: found the protected core copy in a user session: PID=%d", pid)
+			return true, pid
+		}
 		return false, -1
 	}
 

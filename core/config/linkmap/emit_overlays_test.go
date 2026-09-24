@@ -162,19 +162,23 @@ func TestEmitOverlays(t *testing.T) {
 		requireSameBody(t, h, "vless", body, got, uri)
 	})
 
-	// ss padding — `emit.userinfo.padding: true`.
+	// ss padding — `emit.userinfo.padding: false` (контракт 1.1.53).
 	//
-	// Go пишет `=`-паддинг base64, Dart срезает; обе стороны читают обе
-	// формы. Написание объявлено данными, чтобы ни одна сторона не
-	// поменяла своё молча. `aes-128-gcm:testpass123` — 23 байта, то есть
-	// ровно один символ паддинга.
+	// Эталон SIP002 пишет userinfo base64url БЕЗ «=»-паддинга, и вид
+	// ссылки принадлежит формату схемы, а не удобству писателя: с 1.1.53
+	// паддинг снят у обеих сторон (ревизия зеркала §3 п.6). ЧТЕНИЕ обеих
+	// форм при этом обязательно и остаётся — см. корпус
+	// sip002_escaped_padding / sip002_userinfo_no_padding. Написание
+	// объявлено данными, чтобы ни одна сторона не поменяла своё молча.
+	// `aes-128-gcm:testpass123` — 23 байта, то есть ровно один символ
+	// паддинга, который здесь обязан ОТСУТСТВОВАТЬ.
 	t.Run("ss_userinfo_padding", func(t *testing.T) {
 		em := emitSpecFor(t, set, "ss")
 		if em.UserInfo == nil || em.UserInfo.Padding == nil {
 			t.Fatal("реестр ss не объявил emit.userinfo.padding — написание решал бы код")
 		}
-		if !*em.UserInfo.Padding {
-			t.Fatal("ожидался padding: true (написание стороны Go)")
+		if *em.UserInfo.Padding {
+			t.Fatal("ожидался padding: false (SIP002, контракт 1.1.53)")
 		}
 		body := map[string]interface{}{
 			"type":        "shadowsocks",
@@ -184,10 +188,94 @@ func TestEmitOverlays(t *testing.T) {
 			"password":    "testpass123",
 		}
 		uri, got := emitOverlayRoundTrip(t, h, "shadowsocks", body, "ss")
-		if !strings.Contains(uri, "=@") {
-			t.Errorf("userinfo без «=»-паддинга, хотя padding: true: %s", uri)
+		if strings.Contains(uri, "=@") {
+			t.Errorf("userinfo с «=»-паддингом, хотя padding: false: %s", uri)
 		}
 		requireSameBody(t, h, "shadowsocks", body, got, uri)
+	})
+
+	// Булев БЕЗ `emit_as` — умолчание пишет СЛОВОМ (PRIMITIVES §0.12a,
+	// контракт 1.1.53, ревизия зеркала §3 п.3).
+	//
+	// Три поля xhttp объявлены `bool_spelled` и `emit_as` НЕ несут: их
+	// написание на выходе решает умолчание, а не запись. Go писал словом,
+	// Dart цифрой, и расхождение компенсировалось оверлеем `emit_as: raw`
+	// у этих же трёх полей — оверлей снимается, умолчание закреплено
+	// здесь и кейсом корпуса uri/vless/xhttp_bool_default_spelled.
+	//
+	// Подтест судит УМОЛЧАНИЕ, поэтому первым делом требует, чтобы
+	// `emit_as` у полей и правда отсутствовал: появись он, правило стало
+	// бы объявленным, и проверять умолчание было бы нечем.
+	t.Run("bool_default_spelled", func(t *testing.T) {
+		fields := []string{"noGRPCHeader", "noSSEHeader", "xPaddingObfsMode"}
+		// Записи приезжают из блока transports#uri, подключённого vless
+		// через `include`, и разворачивает их ПЛАН, а не секция: у
+		// registry.Mapper в Params лежат только записи самой схемы.
+		_, plan, ok := h.planForDir("vless")
+		if !ok {
+			t.Fatal("плана vless#uri нет")
+		}
+		seen := map[string]bool{}
+		for _, e := range plan.Rest {
+			for _, name := range fields {
+				// Запись блока несёт имя ПОДБЛОКА: `xhttp.noGRPCHeader`.
+				if e.Name != name && e.Name != "xhttp."+name {
+					continue
+				}
+				seen[name] = true
+				if e.Param.EmitAs != "" {
+					t.Fatalf("у %s объявлен emit_as %q — подтест судит УМОЛЧАНИЕ",
+						name, e.Param.EmitAs)
+				}
+			}
+		}
+		for _, name := range fields {
+			if !seen[name] {
+				t.Fatalf("записи %s в плане vless#uri нет", name)
+			}
+		}
+		body := map[string]interface{}{
+			"type":        "vless",
+			"server":      "example-1.com",
+			"server_port": 443,
+			"uuid":        "11111111-1111-1111-1111-111111111111",
+			// server_name и utls в теле — то, что вернёт круг: ссылка
+			// несёт security=tls, а SNI по умолчанию равен адресу
+			// сервера (default_from), fp — `random`. Без них подтест
+			// сравнивал бы тело с ДООПРЕДЕЛЁННЫМ телом и падал не на
+			// написании булева, а на этих двух полях.
+			"tls": map[string]interface{}{
+				"enabled":     true,
+				"server_name": "example-1.com",
+				"utls": map[string]interface{}{
+					"enabled":     true,
+					"fingerprint": "random",
+				},
+			},
+			"transport": map[string]interface{}{
+				"type":                "xhttp",
+				"path":                "/xh",
+				"mode":                "auto",
+				"no_grpc_header":      true,
+				"no_sse_header":       true,
+				"x_padding_obfs_mode": true,
+			},
+		}
+		uri, got := emitOverlayRoundTrip(t, h, "vless", body, "xhttp-bool")
+		q := emitOverlayQuery(t, uri)
+		for _, name := range fields {
+			switch v := q.Get(name); v {
+			case "true":
+				// Умолчание сработало.
+			case "1", "0":
+				t.Errorf("%s уехал ЦИФРОЙ (%q) — умолчание §0.12a пишет словом: %s", name, v, uri)
+			case "":
+				t.Errorf("%s в ссылку не уехал вовсе: %s", name, uri)
+			default:
+				t.Errorf("%s уехал как %q, ожидалось слово true: %s", name, v, uri)
+			}
+		}
+		requireSameBody(t, h, "vless", body, got, uri)
 	})
 
 	// vmess json_map — форма-КОНТЕЙНЕР, а не query-ссылка; json_always —

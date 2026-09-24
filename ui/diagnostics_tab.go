@@ -43,19 +43,25 @@ const (
 // platform.PrivilegedPkillPattern: ловит и сам sing-box, и root-шелл
 // обёртки. pkill вызывается по абсолютному пути без шелла (SPEC 137).
 //
-// На других OS — обычный `killall`/`taskkill`, прав root не нужно
-// (sing-box на Linux/Windows запускается без elevation в нашем launcher'е,
-// privileges идут через capability/manifest).
-func killSingBoxPanic(ac *core.AppController) {
-	_ = ac // зарезервировано для UI feedback в будущем
+// На других OS — обычный `killall`/`taskkill`. На Linux права идут через
+// capabilities, root не нужен. На Windows лаунчер работает без прав
+// (asInvoker, SPEC 139), и ядро, поднятое повышенным экземпляром (TUN), без
+// прав не снять: тогда сообщение с «Restart as administrator», и false —
+// RunningState не сбрасывается вслепую (SPEC 139 §6 п. 7).
+func killSingBoxPanic(ac *core.AppController) bool {
 	if runtime.GOOS == "darwin" {
 		if err := platform.KillPrivilegedByPattern(); err != nil {
 			debuglog.WarnLog("killSingBoxPanic: privileged pkill failed (%v); falling back to non-privileged", err)
 			_ = platform.KillProcess(platform.GetProcessNameForCheck())
 		}
-		return
+		return true
 	}
-	_ = platform.KillProcess(platform.GetProcessNameForCheck())
+	err := platform.KillProcess(platform.GetProcessNameForCheck())
+	if ac.KillNeedsElevation(err) {
+		ac.ShowKillNeedsElevation()
+		return false
+	}
+	return true
 }
 
 // STUN settings (process-wide, overridable from Diagnostics tab).
@@ -336,7 +342,9 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 	// MediaStopIcon (⏹) дублировал бы visual.
 	killSingBoxButton := widget.NewButton(locale.T("🛑 Kill Sing-Box"), func() {
 		go func() {
-			killSingBoxPanic(ac)
+			if !killSingBoxPanic(ac) {
+				return
+			}
 			fyne.Do(func() {
 				dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow,
 					locale.T("Kill"), locale.T("Sing-Box killed if running."))

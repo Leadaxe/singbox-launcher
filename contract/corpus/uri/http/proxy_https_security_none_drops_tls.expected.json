@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "testpass123",
+        "server": "example-1.com",
+        "server_port": 8443,
+        "type": "http",
+        "username": "user"
+      },
+      "kind": "outbound",
+      "label": "https-none",
+      "scheme": "http"
+    }
+  ],
+  "v": 1
+}

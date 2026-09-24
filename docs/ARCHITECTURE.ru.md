@@ -80,7 +80,7 @@ SPEC 070 кодифицировал эти слои, удалил мёртвый
 | **L0** | platform | `internal/platform`, `internal/paths` | Абстракция ОС за единым интерфейсом: sleep/wake, HWID-информация об устройстве, перечисление процессов, чистка призрачных WinTun-адаптеров, канонические геттеры путей. `internal/paths` (SPEC 135) разрешает раскладку AppDir/DataDir/LogDir — пакет-лист ниже `platform`, который его импортирует. Зависит только от stdlib + `debuglog`/`constants`. Никаких импортов вверх. |
 | **L1** | shared-internal (листовые утилиты) | `internal/locale`, `internal/srstag`, `internal/outboundutil`, `internal/urlsafe`, `internal/debuglog`, `internal/constants`, `internal/traffic`, `internal/textnorm`, `internal/urlredact`, `internal/ctxutil`, `internal/process`, `internal/wizardsync`, `internal/lxdclient` | Самодостаточные, ни от чего не зависящие хелперы, переиспользуемые всеми слоями: каталог i18n, контент-адресуемое хеширование SRS-тегов, маппинг reject/drop outbound → rule (единый источник истины для core и UI), allowlist URL-схем, уровневое логирование, профайлер трафика (развязанный, только stdlib), нормализация отображения тегов, редакция URL и mTLS-клиент демона `sing-box lxd` (пиннинг, разбор приглашений, идентичность на машину — без состояния приложения). |
 | **L2** | core-domain (состояние + сборка + конфиг + шаблон) | `core/state`, `core/snapshot`, `core/build`, `core/config`, `core/config/subscription`, `core/config/configtypes`, `core/config/parser`, `core/template` | Чистый домен: схема состояния, загрузка/сохранение/миграции, JSON-пайплайн сборки и чистые резолверы, загрузка/разбор/кодирование подписок и генерация outbound'ов, загрузка шаблона и извлечение пресетов, снятие снапшота. Чистые функции где возможно; **никакого Fyne, никакого `AppController`**. |
-| **L3** | сервисы + жизненный цикл | `core/services`, `core/uiservice`, `core/events`, `core` (`controller.go`, `process_service.go`, `config_service.go`, `rebuild.go`, `auto_update.go`, `backend*.go`, `daemon_manager_darwin.go`, `main.go`, загрузчики) | Реализации сервисов с состоянием (`FileService`/`APIService`/`StateService`/`SRSDownloader`, реестр удалённых машин, транспорт, сборщик ресурсов для Deploy), контейнер UI-колбэков (без зависимости от Fyne), типизированный `EventBus`, оркестрация жизненного цикла приложения и процесса и шов движков `CoreBackend` (`LegacyBackend` / `DaemonBackend`). **Владеет EventBus и всей DI-разводкой.** |
+| **L3** | сервисы + жизненный цикл | `core/services`, `core/uiservice`, `core/events`, `core` (`controller.go`, `process_service.go`, `config_service.go`, `rebuild.go`, `auto_update.go`, `backend*.go`, `daemon_manager*.go`, `main.go`, загрузчики) | Реализации сервисов с состоянием (`FileService`/`APIService`/`StateService`/`SRSDownloader`, реестр удалённых машин, транспорт, сборщик ресурсов для Deploy), контейнер UI-колбэков (без зависимости от Fyne), типизированный `EventBus`, оркестрация жизненного цикла приложения и процесса и шов движков `CoreBackend` (`LegacyBackend` / `DaemonBackend`). **Владеет EventBus и всей DI-разводкой.** |
 | **L4** | api / удалённое управление | `api`, `core/debugapi` | Исходящий клиент Clash API (`api/`) и входящий Debug HTTP API (`core/debugapi`), который интроспектирует и управляет приложением через интерфейс `ControllerFacade`. Оба стоят выше домена, но достижимы из сервисов; `debugapi` говорит с контроллером только через интерфейс. |
 | **L5** | ui-presentation (MVP конфигуратора) | `ui/configurator/presentation`, `ui/configurator/business`, `ui/configurator/models`, `ui/configurator/configurator.go`, `ui/configurator/utils` | MVP-слои визарда: **presentation** (оркестрация + диспетчеризация `fyne.Do`), **business** (чистая логика за интерфейсом `UIUpdater` — никогда не импортирует Fyne), **models** (чистая `WizardModel` + контейнеры слотов и порядка). `business → models → core-domain`; `presentation → business`; **business никогда не импортирует presentation**. |
 | **L6** | ui-views (вкладки / диалоги / корень) | `ui` (`app.go` + `*_tab.go`), `ui/configurator/tabs`, `ui/configurator/dialogs`, `ui/configurator/outbounds_configurator`, `ui/traffic` | Представления Fyne: корневая полоса вкладок, главные вкладки (Локально / Удалённые, затем Настройки / Диагностика / Справка), вкладки и диалоги конфигуратора, конфигуратор outbound'ов, окно профайлера трафика и окна на машину (добавление машины, настройки подключения, телеметрия хоста, ресурсы, профайлер машины). Подписывается на EventBus / колбэки UIService; читает домен для отрисовки. |
@@ -434,6 +434,14 @@ build.BuildConfig  (чистая)
   поля в порядке вставки вместо хрупкой связки `fmt.Sprintf` + `strings.Join`) и
   `outbound_filter.go`. `JSONBuilder` внедрён **частично** — полный перевод всех
   генераторов протоколов на него отложен (см. §10).
+- **Корневые секции без обработчика проходят насквозь.** Секция `config` шаблона без
+  своего сборщика (`log`, `certificate`, `experimental`, корневой блок форка `lx`)
+  уходит в конфиг как есть, после подстановки `@var` / `#if`. Это единственный канал
+  для `lx.masque.idle_timeout` (ядро ≥ lx.13; блок `lx` в шаблоне допустим только
+  вместе с таким пином, lx.12 отвергает неизвестный ключ корня). UI для него нет.
+  Ключи сна WireGuard лаунчер не пишет ни в какой форме (`route.lx_idle_*`,
+  `lx.wg.*`): десктопные сборки ядра собраны без `with_lx_idle_suspend` и отвергают их
+  на старте (SPEC 138; закреплено `TestBuildConfigPassesRootLXBlock`).
 
 ---
 
@@ -490,12 +498,15 @@ type Layout struct {
     App, Data, Logs AppDir/DataDir/LogDir
     Mode            Mode
     EnvSource       []string // какие env-переменные сработали, при Mode == "env"
+    MarkerIgnored   bool     // portable.txt есть, AppDir не пишется пользователем (SPEC 139)
 }
 
 func Resolve(exe string, env func(string) string, goos string, probe func(dir string) bool) (Layout, error)
+func AppDirUserWritable(app string, env func(string) string, goos string, probe func(string) bool) bool
+func ParseHandoff(value, exe string) (Layout, int, error) // -handoff, SPEC 139
 ```
 
-`Resolve` выполняется **один раз**, первым делом в `main()`, до открытия
+`Resolve` выполняется **один раз**, сразу после `flag.Parse()` в `main()`, до открытия
 `crash.log` и до `RunGLProbeChild`, а результат передаётся по значению в
 `services.NewFileService(layout)` → `AppController`. Побеждает первое сработавшее
 правило:
@@ -503,12 +514,34 @@ func Resolve(exe string, env func(string) string, goos string, probe func(dir st
 1. **Переменные окружения** `SINGBOX_LAUNCHER_DATA_DIR` / `SINGBOX_LAUNCHER_LOG_DIR`
    (независимо друг от друга) → `ModeEnv`.
 2. **`portable.txt`** рядом с исполняемым файлом (содержимое не важно, важно
-   наличие) → `ModePortable`. Поставляется Windows zip-дистрибутивами или
-   создаётся переключателем Portable в приложении (§7a.4).
+   наличие) **и AppDir пишется пользователем** → `ModePortable`. Поставляется
+   Windows zip-дистрибутивами или создаётся переключателем Portable в приложении
+   (§7a.4). Маркер в папке, куда пользователь писать не может, игнорируется
+   (`Layout.MarkerIgnored`, WARN при старте, `portable.txt ignored` в строке лога
+   и в строке Mode), решают правила 3–4 — на всех ОС: до SPEC 139 маркер в
+   папке только для чтения на Linux ронял старт, как #85.
 3. **Обнаружена legacy-раскладка**: `bin/wizard_states/state.json` существует
-   рядом с бинарём и AppDir проходит проверку записи → `ModeLegacy`, данные
+   рядом с бинарём и AppDir пишется пользователем → `ModeLegacy`, данные
    остаются на месте, ничего не копируется, маркер не пишется.
 4. **Платформенный дефолт** из таблицы выше → `ModeSystem`.
+
+**«AppDir пишется пользователем»** (`paths.AppDirUserWritable`, SPEC 139 §7) —
+проба записи **и**, на Windows, AppDir не лежит под `%ProgramFiles%`,
+`%ProgramFiles(x86)%`, `%ProgramW6432%` или `%SystemRoot%` (без учёта регистра,
+по границе каталога; переменные приходят через `env` резолвера). Одной пробы
+мало, раз лаунчер работает с `asInvoker`: в Program Files повышенный экземпляр её
+проходит, а обычный — нет, и они выбрали бы разные DataDir. Предикатом
+пользуется всё, что выбирает раскладку: правила 2–3, Windows-фоллбэк без
+`LOCALAPPDATA`, `SystemDefault` (план очистки, цель переключателя Portable) и
+блокировка переключателя Portable.
+
+**`-handoff`.** Экземпляр, перезапущенный с правами администратора, раскладку не
+вычисляет: получает родительскую флагом `-handoff=<pid>|<mode>|<data>|<logs>`
+(`Layout.Handoff` / `paths.ParseHandoff`; App — каталог своего exe). На окружение
+сессии под `runas` не рассчитываем — повышение может пойти под другой учётной
+записью, у которой свой `%LOCALAPPDATA%`. PID разбирается первым; DataDir и
+LogDir должны быть существующими каталогами. Невалидное значение — строка в
+stderr и обычный `Resolve`, но родителя с валидным PID всё равно ждём.
 
 Правила 2 и 3 **отключены при запуске из бандла `.app` на macOS**
 (`paths.IsAppBundle`): маркер некому положить рядом с бандлом, да и карантин
@@ -518,7 +551,9 @@ Gatekeeper всё равно его перемещает. Голый бинар�
 только реальной записи.
 
 Выбранная раскладка логируется первой строкой каждого запуска
-(`Layout.LogLine()`): `layout: mode=<mode> app=<path> data=<path> logs=<path>`.
+(`Layout.LogLine()`): `layout: mode=<mode> app=<path> data=<path> logs=<path>`
+(и `, portable.txt ignored`, если маркер игнорирован); в той же строке WARN —
+`elevated=yes|no`.
 
 ### 7a.3 Двухуровневое чтение поставляемого и скачанного
 
@@ -594,7 +629,13 @@ Gatekeeper всё равно его перемещает. Голый бинар�
   неудачного переключения, неиспользуемый системный DataDir при активном
   portable, устаревший `AppDir/logs`, оставшийся источник до миграции).
   Доступна как диалог Settings → Storage «Remove all data…» и как флаг
-  `-purge-data [-yes]` (без `-yes` — сухой прогон).
+  `-purge-data [-yes]` (без `-yes` — сухой прогон). Остатки под AppDir, куда
+  процесс писать не может (Program Files без прав), — `PurgeItem.NeedsAdmin`:
+  сняты и пропущены, а не провалены (код выхода 0); тогда
+  `DataDir/.migrated_from` сохраняется, и та же команда из консоли
+  администратора найдёт и удалит их. На Windows удаляется значение автозапуска,
+  если оно указывает на этот exe, а сетевая очистка (адаптеры, NLA, правила
+  брандмауэра) без прав пропускается с подсказкой (§11.7).
 - **Страховка.** `tools/paths_guard` запланирован как AST-скан (по образцу
   `tools/l10n/l10n_check/scan.go`) по вызовам пишущих хелперов с аргументом
   `AppDir`, с функциями Mesa как единственным исключением — это основная защита
@@ -615,6 +656,27 @@ Settings → Storage (`ui/settings_storage.go`) показывает Mode / Prog
 См. [SPECS/135-F-N-DATA_DIR_LAYOUT/SPEC.md](../SPECS/135-F-N-DATA_DIR_LAYOUT/SPEC.md)
 для полного дизайна (включая отвергнутые альтернативы и решения владельца) и его
 §11 — где реализация в мелочах расходится с исходным дизайном.
+
+### 7a.6 Установщик Windows (SPEC 140)
+
+`build/installer/singbox-launcher.iss` (Inno Setup 6) ставит программу на машину
+в `{autopf}\singbox-launcher`: это AppDir **без** `portable.txt`, закрытый для
+записи неповышенному лаунчеру, поэтому раскладка — **System** (данные в
+`%LOCALAPPDATA%\singbox-launcher`). Содержимое — набор win64-full, который готовит
+`build/installer/stage_win64_full.sh`; тот же скрипт зовёт job release для
+`win64-full.zip` и сам докладывает `portable.txt`. Mesa3D попадает рядом с exe
+только задачей установщика (GL-гейт писать туда не может и подсказывает задачу).
+
+Работающий лаунчер установщик закрывает руками самого лаунчера:
+`internal/platform/instance_windows.go` создаёт мьютексы `Local\` и
+`Global\SingboxLauncher.Instance` (обнаружение) и событие с ручным сбросом
+`Local\SingboxLauncher.Quit`; `main.go` регистрирует их только в GUI-режиме, а
+событие вызывает `GracefulExit` на UI-потоке (ядро останавливается штатно,
+системный прокси снимается). Удаление спрашивает, удалять ли данные текущего
+пользователя; при «Да» сначала удаляет `{app}\bin\wizard_states` (иначе
+повышенная очистка выбрала бы Legacy) и запускает `-purge-data -yes`. Автозапуск
+пишет и снимает сам лаунчер флагом `-autostart=on|off` (SPEC 139), а не
+установщик.
 
 ---
 
@@ -708,9 +770,17 @@ presentation/business (F). Подробный список файлов — в �
 | `LegacyBackend` | classic — спавн и супервизия `sing-box run` | Clash HTTP API | все |
 | `DaemonBackend` | daemon — ядро внутри системной службы `sing-box lxd` | gRPC (`daemon.StartedService`) + admin REST | только macOS |
 
-Classic остаётся дефолтом и не меняется. Весь daemon/gRPC-код сидит под darwin
-build-тегами и никогда не попадает в `go.win7.mod` — сборка под Win7 компилируется
-без grpc/protobuf. Protobuf-стабы демона вендорятся из форка через
+Classic остаётся дефолтом и не меняется. Код daemon-движка общий для
+*daemon-платформ* — `//go:build darwin || (windows && !386)` (SPEC 141 §4):
+`backend_daemon.go` (+ `_dns`, `_traffic`, `_tailscale`), `chain_probe.go`,
+`daemon_manager.go`, `daemon_service_state.go`, `classic_privileged.go`,
+`debugapi_wiring_daemon.go`, `purge_daemon.go`. Платформенное — в `*_darwin.go`
+(launchd, plist, цепочка владения по uid через `Stat_t`, ключ кэша хэшей по
+dev/inode, рендер sudo, Terminal, тексты диалогов) и `*_windows.go` (заглушки
+точек расширения; на Windows движок закрыт `daemonEngineAvailable`, пока нет
+слоя службы и ядра v1.14.2-lx.2). Linux и Win7 (`windows/386`, `go.win7.mod`)
+собирают заглушки с тегом `!darwin && (!windows || 386)`; gRPC-клиент и код
+удалённых машин тегов не несут. Protobuf-стабы демона вендорятся из форка через
 `scripts/sync_daemonpb.sh`.
 
 ### 11.2 `ProxyTransport` — шов операций с прокси
@@ -784,7 +854,7 @@ Classic-движок поднимает конфиг с TUN от root через
 Лаунчер ядро не копирует и sudo сам не запускает.
 
 `ProcessService.startSingBoxPrivileged` сначала спрашивает гейт
-(`core/classic_privileged_darwin.go`): копия есть, проходит цепочку владения и
+(`core/classic_privileged.go`, тексты диалога — в `_darwin.go`): копия есть, проходит цепочку владения и
 совпадает с ядром лаунчера по sha256 — проверка цепочки и кэш хэшей взяты у
 классификатора SPEC 136. Только затем `platform.StartPrivilegedCore` запускает
 `/usr/bin/env -i PATH=… /bin/sh -c <постоянное тело> <пути>`: ни файла-скрипта, ни
@@ -800,3 +870,60 @@ Classic-движок поднимает конфиг с TUN от root через
 последний старт, — Core-вкладке окна логов и тейлеру профайлера трафика
 (`TrafficProfiler.StartFollowing`, путь пересчитывается на каждом тике). Чистка при
 снятии TUN удаляет root-owned остатки uid'ом лаунчера; AEWP там нет.
+
+### 11.7 Права по требованию на Windows (SPEC 139)
+
+Windows-бинари несут манифест `asInvoker` (он остаётся вшитым: 32-битный процесс
+без `requestedExecutionLevel` попадает под UAC-виртуализацию файлов). Proxy-only
+не повышается никогда, TUN — только по явному действию.
+
+- **`platform.IsElevated()`** (`internal/platform/elevation_windows.go`, один раз
+  на процесс): `TokenElevation` или действующее членство в
+  `BUILTIN\Administrators` (второе — машины с выключенным UAC).
+  `ElevationAsksOtherAccount()` — `TokenElevationTypeDefault` без повышения
+  (обычный пользователь: UAC спросит учётную запись администратора). Вне Windows
+  `IsElevated` — `euid == 0`, гейты его не используют.
+- **Гейт TUN** — `ProcessService.Start` после пересборки перед стартом, до ветки
+  darwin и `exec` (`core/elevation.go`): Windows, без прав, `config.ConfigHasTun`.
+  Через него идут все входы (кнопка, трей, `-start`, Debug API, авто-рестарт).
+  Вместо ядра — диалог (`internal/dialogs.ShowActions`): **Restart as
+  administrator**, **Switch to proxy mode** (недоступна при открытом
+  конфигураторе), Cancel; SPEC 141 ставит **Install service** первой в тот же
+  список действий.
+- **Restart as administrator** — сначала новый экземпляр, старый выходит после
+  успеха: `platform.RunElevated(exe, args, AppDir, show)` (`ShellExecuteExW`
+  `runas`, `SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC`, владелец — окно на переднем
+  плане, на закреплённом потоке с инициализированным COM) возвращает
+  `*ElevatedProcess` (pid, `Wait(timeout)`, `Close`) — этот примитив берёт SPEC 141
+  для команд службы. Аргументы — из `flag.Visit` (без `-tray` и прежнего
+  `-handoff`) плюс `-start` и `-handoff`. Отмена UAC (`ErrElevationCancelled`)
+  оставляет диалог открытым со строкой статуса; успех → `GracefulExit`, как Quit в
+  трее.
+- **Новый экземпляр** — раскладка из `-handoff` (§7a.2), затем до `crash.log`,
+  GL-пробы, контроллера и трея — `platform.WaitForProcessExit(parent, exe, 25 с)`:
+  `OpenProcess` + сверка имени файла образа без учёта регистра (занятый чужим
+  процессом PID не ждём; полный путь расходится на subst, junction, сетевом диске
+  и `\\?\`) + `WaitForSingleObject`; без доступа к родителю (другая учётная
+  запись) — опрос списка процессов раз в 250 мс с той же сверкой имени.
+- **Switch to proxy mode** — `tun=false`, `enable_proxy_in=true`,
+  `proxy_in_set_system_proxy=true` в state локального профиля → Save →
+  принудительная пересборка → `StartSingBoxProcess` (тот же хелпер записи state,
+  что у переключения уровня лога).
+- **Гейты без прав** (пропуск и одна строка INFO при старте вместо WARN на каждое
+  место): очистка NLA/адаптеров/правил брандмауэра при старте, очистка
+  призрачных адаптеров после Stop, сетевая очистка в Remove all data /
+  `-purge-data` (CLI печатает команду для консоли администратора), Kill ядра,
+  поднятого повышенным экземпляром (сообщение с Restart as administrator;
+  `RunningState` не сбрасывается), переключатель Portable (предикат §7a.2;
+  недоступен в экземпляре, повышенном через UAC).
+- **Автозапуск** — `HKCU\…\Run\singbox-launcher` = `"<exe>" -tray [-start]`
+  (`internal/platform/autostart*.go`, `core/autostart.go`): Settings → Connection
+  (недоступно в экземпляре, повышенном через UAC, — `platform.ElevatedViaUAC`,
+  `TokenElevationTypeFull`; без UAC и у встроенного Administrator обычного
+  запуска нет, и настройка доступна), `-autostart=on|off` для установщика
+  (SPEC 140), удаление в Remove all data и `-purge-data` — только если значение
+  указывает на этот exe.
+- Заголовок окна повышенного экземпляра заканчивается на `(Administrator)`.
+
+Остаётся открытым (SPEC 137 §8 п. 5): classic + TUN под правами исполняет
+`<Data>\bin\sing-box.exe`; защищённая копия — со SPEC 141.

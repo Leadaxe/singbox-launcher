@@ -1,0 +1,15 @@
+{
+  "dropped": [
+    {
+      "code": "protocol_unsupported",
+      "index": 0,
+      "reason": "unsupported protocol \"hysteria\"",
+      "ref": "proxy"
+    }
+  ],
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [],
+  "v": 1
+}

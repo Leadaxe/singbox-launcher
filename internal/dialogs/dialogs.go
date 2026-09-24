@@ -322,6 +322,120 @@ func ShowCommandRetry(window fyne.Window, title, message, command string, openTe
 	})
 }
 
+// Action — кнопка диалога ShowActions.
+type Action struct {
+	Label     string
+	Important bool // HighImportance: основное действие
+	// Disabled — кнопка недоступна; Hint — почему: отдельная серая строка
+	// под пояснением, законченной фразой (без префикса с именем кнопки).
+	Disabled bool
+	Hint     string
+	// Run — нажатие, в UI-потоке. Диалог сам не закрывается: действие
+	// зовёт Hide или пишет строку статуса (SetStatus).
+	Run func(d *ActionsDialog)
+}
+
+// ActionsDialog — открытый диалог ShowActions.
+type ActionsDialog struct {
+	d       dialog.Dialog
+	status  *widget.Label
+	buttons []*widget.Button
+	actions []Action
+}
+
+// Hide закрывает диалог. Из любой горутины.
+func (a *ActionsDialog) Hide() {
+	fyne.Do(func() { a.d.Hide() })
+}
+
+// SetStatus пишет строку статуса над кнопками ("" — прячет её) и снова
+// включает кнопки после SetBusy. Из любой горутины.
+func (a *ActionsDialog) SetStatus(text string) {
+	fyne.Do(func() {
+		a.status.SetText(text)
+		if text == "" {
+			a.status.Hide()
+		} else {
+			a.status.Show()
+		}
+		a.setEnabled(true)
+	})
+}
+
+// SetBusy выключает кнопки действий, пока идёт долгое действие (запрос UAC),
+// чтобы его не запустили второй раз. Из UI-потока.
+func (a *ActionsDialog) SetBusy() {
+	a.setEnabled(false)
+}
+
+// SetBusyStatus — строка статуса при выключенных кнопках: долгое действие
+// (команда под runas, SPEC 141 §5.2) идёт; итог — SetStatus. Из любой
+// горутины.
+func (a *ActionsDialog) SetBusyStatus(text string) {
+	fyne.Do(func() {
+		a.status.SetText(text)
+		a.status.Show()
+		a.setEnabled(false)
+	})
+}
+
+func (a *ActionsDialog) setEnabled(on bool) {
+	for i, b := range a.buttons {
+		if on && !a.actions[i].Disabled {
+			b.Enable()
+		} else {
+			b.Disable()
+		}
+	}
+}
+
+// ShowActions — диалог с пояснением и набором действий (SPEC 139 §4:
+// «TUN без прав»; SPEC 141 добавит в тот же список Install service):
+// пояснение, подсказки недоступных действий, строка статуса (отказ в UAC,
+// ошибка) и кнопки — dismissText слева, действия справа в порядке списка.
+func ShowActions(window fyne.Window, title, message string, actions []Action, dismissText string) {
+	fyne.Do(func() {
+		msgLabel := widget.NewLabel(message)
+		msgLabel.Wrapping = fyne.TextWrapWord
+		content := container.NewVBox(messageScroll(msgLabel, message))
+		for _, act := range actions {
+			if act.Disabled && act.Hint != "" {
+				hint := widget.NewLabel(act.Hint)
+				hint.Wrapping = fyne.TextWrapWord
+				hint.Importance = widget.LowImportance
+				content.Add(hint)
+			}
+		}
+		status := widget.NewLabel("")
+		status.Wrapping = fyne.TextWrapWord
+		status.Importance = widget.WarningImportance
+		status.Hide()
+		content.Add(status)
+
+		a := &ActionsDialog{status: status, actions: actions}
+		row := container.NewHBox()
+		for _, act := range actions {
+			act := act
+			btn := widget.NewButton(act.Label, func() {
+				if act.Run != nil {
+					act.Run(a)
+				}
+			})
+			if act.Important {
+				btn.Importance = widget.HighImportance
+			}
+			if act.Disabled {
+				btn.Disable()
+			}
+			a.buttons = append(a.buttons, btn)
+			row.Add(btn)
+		}
+		a.d = NewCustom(title, content, row, dismissText, window)
+		a.d.Show()
+		debuglog.DebugLog("dialogs: ShowActions %q shown", title)
+	})
+}
+
 // ShowErrorText shows an error dialog with a text message
 func ShowErrorText(window fyne.Window, title, message string) {
 	fyne.Do(func() {

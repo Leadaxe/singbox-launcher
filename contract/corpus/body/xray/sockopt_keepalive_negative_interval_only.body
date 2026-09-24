@@ -1,0 +1,3 @@
+# Вход Xray: keep-alive ВЫКЛЮЧЕН отрицательным ИНТЕРВАЛОМ, при этом idle не задан
+# (закрытие дыры чтения реестра, ревизия зеркала §3 п.11, контракт 1.1.53).
+[{"remarks":"sockopt negative interval only","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"a.example","port":443,"users":[{"id":"11111111-2222-3333-4444-555555555555","encryption":"none"}]}]},"streamSettings":{"network":"tcp","security":"none","sockopt":{"tcpKeepAliveInterval":-5}}}]}]
